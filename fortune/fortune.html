@@ -1,0 +1,1063 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#171717">
+<title>命运小屋</title>
+<link rel="stylesheet" href="../shared/css/mobile-fit.css?v=20261107fate1">
+<script src="../shared/js/native-feel.js"></script>
+<style>
+:root{color-scheme:dark;--bg:#171717;--panel:#202020;--panel2:#282828;--ink:#ededed;--muted:#a6a6a6;--dim:#757575;--line:#444444;--line-soft:#333333;--metal:#c4c4c4;--paper:#ededed;--serif:Georgia,"Songti SC","Noto Serif CJK SC",serif;--sans:-apple-system,BlinkMacSystemFont,"SF Pro Display","PingFang SC","Microsoft YaHei",sans-serif}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font-family:var(--sans)}
+body{overscroll-behavior-y:none}
+button,input{font:inherit}
+button{color:inherit}
+button:focus-visible,input:focus-visible{outline:2px solid var(--metal);outline-offset:3px}
+.fate-app{width:min(1080px,100%);margin:0 auto;padding:20px clamp(14px,3vw,30px) 42px}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:4px 0 17px;border-bottom:1px solid var(--line-soft)}
+.back-home{border:0;background:none;padding:8px 0;color:var(--muted);font-size:12px;letter-spacing:1px}
+.top-label{font:10px Arial,sans-serif;color:var(--dim);letter-spacing:2px}
+.hero{padding:30px 0 22px}
+.hero-kicker{font:9px Arial,sans-serif;letter-spacing:3px;color:var(--metal)}
+h1{font:clamp(34px,6vw,58px)/1.12 var(--serif);font-weight:400;letter-spacing:5px;margin:12px 0 9px}
+.hero-copy{font:13px/1.9 var(--serif);color:#afafaf;margin:0;max-width:570px}
+.room-scene{position:relative;height:clamp(290px,43vw,430px);min-height:290px;overflow:hidden;border:1px solid #515151;background:radial-gradient(ellipse at 50% 32%,#7777772e 0,transparent 43%),linear-gradient(160deg,#303030 0%,#222222 56%,#171717 100%);isolation:isolate}
+.room-scene:before{content:"";position:absolute;z-index:-1;left:0;right:0;bottom:0;height:34%;background:linear-gradient(180deg,#323232,#222222);clip-path:polygon(0 0,100% 0,100% 100%,0 100%)}
+.room-scene:after{content:"";position:absolute;z-index:-1;left:0;right:0;bottom:0;height:32%;background:repeating-linear-gradient(0deg,transparent 0 37px,#a5a5a520 38px,#a5a5a50d 39px),linear-gradient(90deg,#181818,#323232 50%,#181818);clip-path:polygon(0 10%,100% 0,100% 100%,0 100%)}
+.window-frame{position:absolute;left:50%;top:7%;transform:translateX(-50%);width:min(35%,260px);height:57%;border:8px solid #4b4b4b;background:linear-gradient(180deg,#171717,#626262 72%,#818181);clip-path:polygon(50% 0,100% 17%,100% 100%,0 100%,0 17%);box-shadow:0 0 0 1px #ababab55,0 0 45px #c6c6c618}
+.window-frame:before{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:#d2d2d266}
+.window-frame:after{content:"";position:absolute;left:0;right:0;top:52%;height:1px;background:#d2d2d266}
+.moon{position:absolute;left:50%;top:18%;width:49px;height:49px;transform:translateX(-50%);border-radius:50%;background:#d8d8d8;box-shadow:0 0 33px #dfdfdf77}
+.shelf{position:absolute;left:6%;right:6%;top:57%;height:5px;background:#666666;box-shadow:0 2px 0 #161616}
+.shelf span{position:absolute;bottom:5px;width:15px;height:34px;border:1px solid #919191;background:linear-gradient(90deg,#343434,#8e8e8e,#303030)}
+.shelf span:nth-child(1){left:13%}.shelf span:nth-child(2){left:23%;height:28px}.shelf span:nth-child(3){left:33%;height:39px}.shelf span:nth-child(4){right:19%;height:31px}.shelf span:nth-child(5){right:9%;height:42px}
+.desk{position:absolute;left:50%;bottom:-4%;transform:translateX(-50%);width:min(78%,780px);height:35%;background:linear-gradient(180deg,#757575 0 11%,#484848 12%,#2b2b2b 100%);clip-path:polygon(7% 0,93% 0,100% 100%,0 100%);box-shadow:0 -10px 35px #0008}
+.desk-edge{position:absolute;left:50%;bottom:29%;transform:translateX(-50%);width:64%;height:2px;background:#d0d0d077}
+.scene-entry{position:absolute;z-index:3;display:flex;flex-direction:column;align-items:center;gap:7px;border:0;background:transparent;color:#d8d8d8;text-shadow:0 2px 6px #000000;padding:7px;min-width:78px}
+.scene-entry .entry-mark{display:grid;place-items:center;width:53px;height:53px;border:1px solid #bbbbbb99;background:#232323a8;clip-path:polygon(50% 0,94% 21%,100% 78%,50% 100%,0 78%,6% 21%);transition:transform .2s,background .2s}
+.scene-entry:hover .entry-mark,.scene-entry:focus-visible .entry-mark{transform:translateY(-4px);background:#4b4b4b}
+.scene-entry svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.25;stroke-linecap:round;stroke-linejoin:round}
+.scene-entry strong{font:12px var(--serif);font-weight:400;letter-spacing:1px}
+.scene-entry small{font:9px Arial,sans-serif;color:#b9b9b9;letter-spacing:1.5px}
+.entry-tarot{left:16%;bottom:13%}.entry-wheel{left:50%;bottom:12%;transform:translateX(-50%)}.entry-oracle{right:15%;bottom:13%}
+.scene-entry.entry-wheel:hover,.scene-entry.entry-wheel:focus-visible{transform:translate(-50%,-3px)}
+.scene-caption{position:absolute;top:12px;left:15px;color:#b0b0b0;font:9px Arial,sans-serif;letter-spacing:2px}
+.module-index{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin-top:22px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.module-link{display:flex;align-items:center;gap:12px;text-align:left;padding:17px 12px 17px 0;background:none;border:0;color:var(--ink);min-width:0}
+.module-link+.module-link{border-left:1px solid var(--line-soft);padding-left:16px}
+.module-no{font:10px Georgia,serif;color:var(--metal)}
+.module-copy{display:flex;flex-direction:column;gap:5px;min-width:0}
+.module-copy strong{font:17px var(--serif);font-weight:400}
+.module-copy small{font-size:10px;color:var(--dim);white-space:nowrap}
+.module-link:hover strong{color:var(--metal)}
+.home-note{display:flex;justify-content:space-between;gap:12px;margin-top:16px;color:var(--dim);font-size:10px;line-height:1.7}
+.view{padding-top:24px}
+.view[hidden]{display:none!important}
+.view-head{display:flex;align-items:end;justify-content:space-between;gap:16px;margin-bottom:18px}
+.view-head h2{font:clamp(27px,4vw,38px) var(--serif);font-weight:400;margin:8px 0 5px;letter-spacing:2px}
+.view-head p{font-size:11px;line-height:1.8;color:var(--muted);margin:0}
+.back-room{border:1px solid var(--line);background:transparent;color:var(--muted);font-size:11px;padding:9px 13px;white-space:nowrap}
+.control-label{display:block;font-size:10px;color:var(--muted);letter-spacing:1px;margin-bottom:8px}
+.question-input{width:100%;padding:12px 13px;border:1px solid var(--line);background:#202020;color:var(--ink);font-size:12px;border-radius:0}
+.spread-switch{display:flex;gap:7px;margin-top:14px}
+.spread-switch button{border:1px solid var(--line);padding:8px 15px;background:transparent;color:var(--muted);font-size:11px}
+.spread-switch button.active{background:var(--paper);border-color:var(--paper);color:#1a1a1a}
+.primary-action{border:1px solid var(--metal);background:var(--metal);color:#202020;padding:12px 23px;font-size:11px;letter-spacing:1px}
+.primary-action:disabled{opacity:.45;cursor:not-allowed}
+.secondary-action{border:1px solid var(--line);background:transparent;color:var(--muted);padding:11px 17px;font-size:11px}
+.tarot-tools{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:16px 0}
+.crystal-stage{min-height:300px;display:flex;justify-content:center;align-items:center;gap:clamp(10px,3vw,26px);padding:22px 10px 30px;border-top:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft);background:radial-gradient(ellipse at center,#7c7c7c14,transparent 62%)}
+.crystal-card{width:clamp(88px,16vw,142px);aspect-ratio:.62;padding:3px;border:0;background:linear-gradient(145deg,#ededed,#8d8d8d 24%,#292929 55%,#d0d0d0 82%);clip-path:polygon(50% 0,100% 17%,100% 82%,50% 100%,0 82%,0 17%);filter:drop-shadow(0 13px 12px #0008);transition:transform .28s}
+.crystal-card:nth-child(2){transform:translateY(-12px)}
+.crystal-card:nth-child(3){transform:translateY(8px)}
+.crystal-face{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;gap:9px;padding:13px 5px;background:radial-gradient(ellipse at 50% 35%,#737373,#232323 72%);clip-path:polygon(50% 1%,98% 17%,98% 82%,50% 99%,2% 82%,2% 17%);color:#d1d1d1}
+.crystal-face:after{content:"";position:absolute;inset:8px;border:1px solid #d2d2d29c;clip-path:polygon(50% 0,100% 17%,100% 83%,50% 100%,0 83%,0 17%);pointer-events:none}
+.crystal-index{font:10px Georgia,serif;letter-spacing:2px;color:#bababa}
+.crystal-name{font:clamp(14px,2.2vw,18px) var(--serif);font-weight:400;max-width:95%;text-align:center}
+.crystal-latin{font:8px Arial,sans-serif;letter-spacing:1px;color:#ababab;text-align:center}
+.crystal-empty{opacity:.85}.crystal-revealed .crystal-card{transform:translateY(-5px)}
+.reading-results{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;margin-top:20px}
+.reading-result{border-top:1px solid var(--metal);padding:13px 2px 0;min-width:0}
+.reading-result .position{font-size:9px;letter-spacing:1px;color:var(--metal)}
+.reading-result h3{font:22px var(--serif);font-weight:400;margin:10px 0 3px}
+.reading-result .latin{font:9px Arial,sans-serif;color:var(--dim);letter-spacing:1px}
+.reading-result p{font-size:12px;line-height:1.9;color:#cbcbcb;margin:12px 0}
+.reading-result .reflection{border-top:1px solid var(--line-soft);padding-top:10px;color:#b0b0b0;font-size:11px;line-height:1.8}
+.tarot-empty{font:13px var(--serif);color:var(--dim);text-align:center;width:100%}
+.wheel-layout{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:25px;align-items:start}
+.wheel-panel{min-width:0}
+.wheel-stage{position:relative;width:min(100%,540px);margin:0 auto;padding:18px}
+.wheel-disc{width:100%;aspect-ratio:1;border-radius:50%;border:7px solid #a2a2a2;background:#282828;box-shadow:0 12px 45px #0008,0 0 0 1px #d5d5d566;transition:transform 5.2s cubic-bezier(.12,.72,.08,1);overflow:hidden}
+#wheelCanvas{display:block;width:100%;height:100%;border-radius:50%}
+.wheel-marker{position:absolute;z-index:3;left:50%;top:4px;transform:translateX(-50%);width:0;height:0;border-left:11px solid transparent;border-right:11px solid transparent;border-top:22px solid #c4c4c4;filter:drop-shadow(0 1px 3px #0009)}
+.wheel-center{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:66px;height:66px;border-radius:50%;border:4px solid #9d9d9d;background:#242424;display:grid;place-items:center;color:#cfcfcf;font:18px Georgia,serif;box-shadow:0 2px 8px #0008;pointer-events:none}
+.wheel-controls{display:flex;justify-content:center;margin:12px 0}
+.wheel-result{min-height:49px;text-align:center;padding:13px 8px;color:var(--metal);font:18px var(--serif)}
+.wheel-side{border-left:1px solid var(--line-soft);padding-left:19px}
+.wheel-side h3{font:20px var(--serif);font-weight:400;margin:0 0 6px}
+.wheel-side p{font-size:10px;line-height:1.8;color:var(--dim);margin:0 0 14px}
+.add-row{display:flex;gap:6px;margin:12px 0}
+.add-row input{min-width:0;flex:1;background:#202020;border:1px solid var(--line);padding:10px;color:var(--ink);font-size:11px}
+.add-row button{border:1px solid var(--line);background:#2f2f2f;color:var(--ink);padding:0 12px;font-size:11px}
+.option-list{list-style:none;padding:0;margin:0;max-height:300px;overflow:auto;border-top:1px solid var(--line-soft)}
+.option-list li{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line-soft);font-size:11px}
+.option-list .remove-option{border:0;background:none;color:#888888;padding:3px 8px;font-size:16px}
+.wheel-history{margin-top:18px;border-top:1px solid var(--line-soft);padding-top:12px}
+.wheel-history h4{font:15px var(--serif);font-weight:400;margin:0 0 9px}
+.wheel-history ol{margin:0;padding:0;list-style:none}
+.wheel-history li{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid #333333;font-size:10px;color:var(--muted)}
+.wheel-history time{color:var(--dim);white-space:nowrap}
+.oracle-controls{display:flex;gap:7px;flex-wrap:wrap;margin:16px 0}
+.oracle-controls button{border:1px solid var(--line);background:transparent;color:var(--muted);padding:8px 14px;font-size:11px}
+.oracle-controls button.active{background:var(--paper);color:#1b1b1b;border-color:var(--paper)}
+.oracle-paper{max-width:650px;margin:18px auto 0;padding:29px clamp(20px,5vw,52px);border:1px solid #c3c3c3;background:#ededed;color:#272727;text-align:center;min-height:240px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative}
+.oracle-paper:before{content:"";position:absolute;inset:8px;border:1px solid #aaaaaa;pointer-events:none}
+.oracle-number{font:10px Arial,sans-serif;letter-spacing:3px;color:#808080}
+.oracle-paper h3{font:clamp(28px,4vw,40px) var(--serif);font-weight:400;margin:15px 0 9px}
+.oracle-paper p{font:13px/2 var(--serif);color:#4f4f4f;max-width:440px;margin:0}
+.oracle-advice{font-size:10px;color:#777777;margin-top:15px;letter-spacing:1px}
+.oracle-placeholder{font:14px var(--serif);color:#777777}
+.message-line{min-height:19px;margin-top:11px;font-size:10px;color:#adadad;line-height:1.7}
+.storage-notice{margin:12px 0 0;padding:10px 12px;border-left:2px solid #969696;background:#262626;color:#dedede;font-size:11px;line-height:1.7}
+.storage-notice[hidden]{display:none!important}
+button:disabled{opacity:.42;cursor:not-allowed}
+.record-section{margin-top:22px;padding-top:13px;border-top:1px solid var(--line-soft)}
+.record-section h3{font:16px var(--serif);font-weight:400;margin:0 0 7px}
+.record-list{list-style:none;padding:0;margin:0}
+.record-list li{border-bottom:1px solid var(--line-soft)}
+.record-trigger{display:flex;flex-direction:column;align-items:flex-start;gap:5px;width:100%;padding:10px 2px;border:0;background:transparent;text-align:left;color:var(--ink)}
+.record-trigger:hover .record-title{color:var(--metal)}
+.record-meta{font:9px Arial,sans-serif;letter-spacing:.8px;color:var(--dim)}
+.record-title{font:14px var(--serif);color:#d7d7d7}
+.record-detail{font-size:10px;line-height:1.7;color:var(--muted)}
+@media(max-width:720px){.wheel-layout{grid-template-columns:1fr}.wheel-side{border-left:0;border-top:1px solid var(--line-soft);padding:18px 0 0}.wheel-stage{width:min(100%,470px)}.module-copy small{white-space:normal}}
+@media(max-width:560px){.fate-app{padding:13px 13px 32px}.hero{padding:25px 0 18px}.room-scene{height:310px}.scene-entry .entry-mark{width:43px;height:43px}.scene-entry svg{width:20px;height:20px}.entry-tarot{left:7%;bottom:14%}.entry-wheel{bottom:13%}.entry-oracle{right:6%;bottom:14%}.module-index{grid-template-columns:1fr}.module-link{padding:13px 0}.module-link+.module-link{border-left:0;border-top:1px solid var(--line-soft);padding-left:0}.module-copy strong{font-size:16px}.view-head{align-items:start;flex-direction:column}.back-room{align-self:end}.crystal-stage{min-height:245px;gap:7px;padding-left:0;padding-right:0}.crystal-card{width:clamp(80px,25vw,112px)}.reading-results{grid-template-columns:1fr;gap:17px}.reading-result{padding-top:10px}.wheel-stage{padding:12px}.wheel-center{width:54px;height:54px}.top-label{display:none}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{transition-duration:.01ms!important;scroll-behavior:auto!important}}
+
+/* Fate Cabin home refresh — architectural layers, object-led navigation */
+.fate-app{width:min(1220px,100%);padding:22px clamp(16px,3.2vw,38px) 48px}
+.topbar{padding:7px 0 18px}
+.back-home{display:inline-flex;align-items:center;gap:9px;letter-spacing:.6px}
+.back-home:before{content:"←";font:16px Georgia,serif;color:#d1d1d1;transition:transform .2s}
+.back-home:hover:before{transform:translateX(-3px)}
+.top-label{font-size:9px;letter-spacing:2.6px}
+.hero{display:grid;grid-template-columns:minmax(0,1fr) 190px;align-items:end;gap:36px;padding:42px 0 29px}
+.hero-kicker{display:flex;align-items:center;gap:13px;font-size:9px;letter-spacing:3px}
+.hero-edition{color:#777;letter-spacing:1.4px}
+h1{font-size:clamp(46px,6.4vw,76px);letter-spacing:.15em;margin:13px 0 12px}
+.hero-copy{font-size:14px;line-height:2;color:#b9b9b9;max-width:590px}
+.hero-side{border-left:1px solid #4a4a4a;padding:2px 0 4px 20px;margin-bottom:5px}
+.hero-side-top{display:flex;align-items:center;justify-content:space-between;color:#777;font:9px Arial,sans-serif;letter-spacing:2px}
+.hero-side-top strong{font:24px Georgia,serif;color:#cfcfcf;font-weight:400}
+.hero-side-rule{height:1px;background:#4a4a4a;margin:11px 0 12px}
+.hero-side-kicker{font:8px Arial,sans-serif;letter-spacing:1.8px;color:#888}
+.hero-side p{font:15px/1.9 var(--serif);color:#dedede;margin:7px 0 0;letter-spacing:2px}
+.room-scene{height:clamp(390px,43vw,510px);min-height:390px;border:1px solid #555;background:radial-gradient(ellipse at 50% 28%,#bcbcbc20 0,transparent 43%),radial-gradient(ellipse at 50% 80%,#a0a0a012 0,transparent 52%),linear-gradient(180deg,#343434 0%,#272727 55%,#1b1b1b 100%);box-shadow:inset 0 0 0 8px #ffffff04,inset 0 22px 65px #0005;isolation:isolate}
+.room-scene:before{height:38%;bottom:0;background:linear-gradient(180deg,#343434 0%,#242424 100%);clip-path:polygon(0 0,100% 0,100% 100%,0 100%);border-top:1px solid #666}
+.room-scene:after{height:33%;bottom:0;background:repeating-linear-gradient(0deg,transparent 0 42px,#a5a5a515 43px,#a5a5a505 44px),linear-gradient(90deg,#1b1b1b,#333 50%,#1b1b1b);clip-path:polygon(0 5%,100% 0,100% 100%,0 100%);opacity:.95}
+.scene-caption{top:19px;left:22px;font:9px Arial,sans-serif;letter-spacing:1.8px;color:#c0c0c0}
+.scene-light{display:inline-block;width:6px;height:6px;margin-right:8px;border-radius:50%;background:#d7d7d7;box-shadow:0 0 12px #eee;vertical-align:1px}
+.scene-coordinate{position:absolute;right:22px;top:19px;color:#777;font:8px Arial,sans-serif;letter-spacing:2px}
+.wall-panel{position:absolute;top:10%;bottom:35%;width:18%;border:1px solid #8a8a8a18;opacity:.8}
+.wall-panel:before,.wall-panel:after{content:"";position:absolute;background:#9e9e9e16}
+.wall-panel:before{top:0;bottom:0;left:50%;width:1px}
+.wall-panel:after{left:0;right:0;top:48%;height:1px}
+.wall-panel-left{left:4%}.wall-panel-right{right:4%}
+.wall-sconce{position:absolute;top:34%;width:30px;height:50px;border:1px solid #777;border-top:0;border-radius:0 0 18px 18px;background:linear-gradient(90deg,#333,#777 50%,#333);opacity:.85}
+.wall-sconce:before{content:"";position:absolute;left:50%;top:-8px;transform:translateX(-50%);width:1px;height:9px;background:#888}
+.wall-sconce i{position:absolute;left:50%;top:10px;transform:translateX(-50%);width:9px;height:19px;border-radius:50% 50% 35% 35%;background:#ddd;box-shadow:0 0 18px 6px #ddd4}
+.wall-sconce-left{left:13%}.wall-sconce-right{right:13%}
+.window-frame{left:50%;top:7%;width:min(31%,340px);height:59%;border:1px solid #888;border-bottom:0;border-radius:48% 48% 0 0;clip-path:none;background:radial-gradient(ellipse at 50% 34%,#a5a5a528,transparent 56%),linear-gradient(180deg,#191919 0%,#333 61%,#555 100%);box-shadow:0 0 0 8px #7777770c,0 0 55px #d0d0d014}
+.window-frame:before{left:50%;right:auto;top:7%;bottom:0;width:1px;height:auto;background:#c2c2c25c}
+.window-frame:after{left:4%;right:4%;top:58%;height:1px;background:#c2c2c25c}
+.moon{top:17%;width:58px;height:58px;background:radial-gradient(circle at 36% 35%,#f0f0f0,#bdbdbd 70%);box-shadow:0 0 25px 7px #d9d9d91d,0 0 70px #ddd2}
+.window-star{position:absolute;width:3px;height:3px;border-radius:50%;background:#ddd;box-shadow:0 0 9px #eee}
+.star-one{top:23%;left:25%}.star-two{top:36%;right:24%;width:2px;height:2px}
+.shelf{left:7%;right:7%;top:61%;height:4px;background:linear-gradient(180deg,#b4b4b4,#555);box-shadow:0 3px 0 #111,0 8px 18px #0006}
+.shelf span{width:14px;border:1px solid #9d9d9d;background:linear-gradient(90deg,#333,#a4a4a4 45%,#4b4b4b);box-shadow:inset 2px 0 3px #fff2}
+.shelf span:nth-child(1){left:10%;height:39px}.shelf span:nth-child(2){left:13%;height:30px}.shelf span:nth-child(3){left:16%;height:44px}.shelf span:nth-child(4){right:15%;height:35px}.shelf span:nth-child(5){right:11%;height:43px}
+.shelf-detail{position:absolute;top:59%;width:58px;height:9px;border-top:1px solid #a0a0a055;border-bottom:1px solid #a0a0a033}
+.shelf-detail-left{left:6%}.shelf-detail-right{right:6%}
+.desk{bottom:-2%;height:33%;width:82%;background:linear-gradient(180deg,#777 0%,#555 6%,#303030 16%,#202020 100%);clip-path:polygon(6% 0,94% 0,100% 100%,0 100%);box-shadow:0 -12px 45px #0008}
+.desk:before{content:"";position:absolute;left:7%;right:7%;top:10%;height:1px;background:#eee5}
+.desk-edge{bottom:31%;height:2px;width:72%;background:linear-gradient(90deg,transparent,#d8d8d8aa 14%,#d8d8d8aa 86%,transparent);box-shadow:0 2px 5px #0008}
+.desk-front-line{position:absolute;z-index:2;left:50%;bottom:7%;transform:translateX(-50%);width:44%;height:1px;background:#aaa3}
+.scene-floor-note{position:absolute;z-index:2;left:50%;bottom:3%;transform:translateX(-50%);font:7px Arial,sans-serif;letter-spacing:2px;color:#747474;white-space:nowrap}
+.scene-floor-note span{padding:0 7px;color:#aaa}
+.scene-entry{z-index:4;bottom:8%;min-width:0;width:19%;gap:6px;padding:8px 5px 5px;transition:transform .24s ease,color .24s ease}
+.entry-tarot{left:13%}.entry-wheel{left:50%;transform:translateX(-50%)}.entry-oracle{right:13%}
+.scene-entry .entry-mark{position:relative;display:grid;place-items:center;width:108px;height:106px;border:0;background:transparent;clip-path:none;transition:transform .25s ease,filter .25s ease}
+.scene-entry .entry-mark:after{content:"";position:absolute;z-index:1;left:8px;right:8px;bottom:1px;height:18px;border:1px solid #bcbcbc66;border-radius:50%;background:radial-gradient(ellipse,#ddd4 0%,#7775 48%,transparent 73%);box-shadow:0 5px 13px #0007}
+.scene-entry .object-shape{position:absolute;z-index:2;display:block;filter:drop-shadow(0 8px 10px #0009)}
+.object-crystal{top:4px;width:48px;height:83px;clip-path:polygon(50% 0,89% 15%,100% 58%,50% 100%,0 58%,11% 15%);background:linear-gradient(105deg,#f0f0f0 0%,#777 16%,#d7d7d7 31%,#555 48%,#e6e6e6 66%,#777 82%,#eee 100%)}
+.object-crystal:before{content:"";position:absolute;inset:0;background:linear-gradient(72deg,transparent 48%,#fff7 49%,transparent 51%),linear-gradient(155deg,transparent 45%,#1118 46%,transparent 48%);clip-path:polygon(50% 0,100% 58%,50% 100%,0 58%)}
+.object-wheel{top:8px;width:76px;height:76px;border:5px solid #aaa;border-radius:50%;background:repeating-conic-gradient(from -15deg,#d7d7d7 0deg 28deg,#686868 28deg 58deg);box-shadow:inset 0 0 0 3px #303030,0 5px 15px #0009}
+.object-wheel:before{content:"";position:absolute;left:50%;top:50%;width:19px;height:19px;transform:translate(-50%,-50%);border:3px solid #bbb;border-radius:50%;background:#292929;box-shadow:0 0 0 3px #555}
+.object-oracle{top:9px;width:53px;height:76px;clip-path:polygon(0 0,78% 0,100% 16%,100% 100%,0 100%);border:1px solid #aaa;background:linear-gradient(90deg,#777,#e1e1e1 23%,#aaa 55%,#efefef 72%,#777);box-shadow:0 8px 15px #0009}
+.object-oracle:before{content:"";position:absolute;right:0;top:0;border-top:12px solid #555;border-left:12px solid transparent}
+.scene-entry svg{position:relative;z-index:3;width:29px;height:29px;stroke:#282828;stroke-width:1.05;filter:drop-shadow(0 1px 1px #fff8)}
+.entry-wheel svg{stroke:#222}.entry-oracle svg{stroke:#333}
+.scene-entry strong{font:14px var(--serif);letter-spacing:1.5px;color:#eee;text-shadow:0 2px 7px #000}
+.scene-entry small{font:8px Arial,sans-serif;color:#c2c2c2;letter-spacing:1.5px}
+.scene-entry .entry-hint{margin-top:3px;color:#8f8f8f;font:9px var(--serif);letter-spacing:.5px;opacity:0;transform:translateY(4px);transition:opacity .2s,transform .2s}
+.scene-entry:hover,.scene-entry:focus-visible{color:#fff}
+.scene-entry:hover .entry-mark,.scene-entry:focus-visible .entry-mark{transform:translateY(-7px);filter:brightness(1.12)}
+.scene-entry:hover .entry-hint,.scene-entry:focus-visible .entry-hint{opacity:1;transform:translateY(0)}
+.scene-entry.entry-wheel:hover,.scene-entry.entry-wheel:focus-visible{transform:translate(-50%,-5px)}
+.index-heading{display:flex;justify-content:space-between;gap:12px;margin:28px 0 11px;color:#777;font:8px Arial,sans-serif;letter-spacing:2px}
+.module-index{grid-template-columns:repeat(3,minmax(0,1fr));margin-top:0;border-top:1px solid #575757;border-bottom:1px solid #575757}
+.module-link{position:relative;align-items:flex-start;flex-direction:column;gap:18px;min-height:142px;padding:19px 30px 18px 17px;background:linear-gradient(145deg,#232323,#1a1a1a);transition:background .2s}
+.module-link+.module-link{border-left:1px solid #424242;padding-left:22px}
+.module-no{font:8px Arial,sans-serif;color:#999;letter-spacing:1.8px}
+.module-no i{font-style:normal;color:#666;padding:0 3px}
+.module-copy{gap:7px}
+.module-copy strong{font:22px var(--serif);letter-spacing:1px}
+.module-copy small{font-size:10px;color:#999;white-space:normal;line-height:1.6}
+.module-arrow{position:absolute;right:18px;top:16px;width:16px;height:16px;color:#888;transition:transform .2s,color .2s}.module-arrow:before{content:"+";font:16px Georgia,serif}
+.module-link:hover{background:linear-gradient(145deg,#303030,#202020)}
+.module-link:hover .module-arrow{transform:translate(3px,-3px);color:#eee}
+.home-note{margin-top:14px;color:#747474;font:8px Arial,sans-serif;letter-spacing:1.1px}
+.home-note span:first-child{font:10px var(--serif);letter-spacing:.4px;color:#aaa}
+@media(max-width:760px){
+ .hero{grid-template-columns:1fr;gap:15px;padding:30px 0 22px}
+ .hero-side{display:none}
+ .room-scene{height:410px;min-height:410px}
+ .window-frame{width:38%;height:57%}
+ .wall-panel{width:13%}
+ .wall-sconce-left{left:8%}.wall-sconce-right{right:8%}
+ .scene-entry{width:25%}.entry-tarot{left:7%}.entry-oracle{right:7%}
+ .module-link{min-height:132px;padding:17px 24px 16px 13px}
+ .module-link+.module-link{padding-left:17px}
+}
+@media(max-width:560px){
+ .fate-app{padding:13px 13px 32px}
+ .hero{padding:25px 0 18px}
+ .hero-edition{display:none}
+ h1{font-size:clamp(40px,12vw,54px);letter-spacing:.12em}
+ .hero-copy{font-size:12px}
+ .room-scene{height:345px;min-height:345px}
+ .scene-coordinate{display:none}
+ .window-frame{width:44%;height:55%;top:8%}
+ .moon{width:39px;height:39px}
+ .wall-panel{top:17%;bottom:40%;width:10%}
+ .wall-sconce{top:36%;transform:scale(.78)}
+ .shelf{top:59%;left:5%;right:5%}
+ .shelf span{width:9px}
+ .desk{height:34%;width:94%}
+ .desk-edge{bottom:32%;width:86%}
+ .scene-entry{width:31%;bottom:8%;gap:5px}
+ .entry-tarot{left:1%}.entry-oracle{right:1%}
+ .scene-entry .entry-mark{width:76px;height:76px}
+ .scene-entry .entry-mark:after{left:4px;right:4px;height:13px}
+ .object-crystal{width:35px;height:60px;top:1px}
+ .object-wheel{width:56px;height:56px;top:6px}
+ .object-wheel:before{width:14px;height:14px}
+ .object-oracle{width:41px;height:58px;top:5px}
+ .scene-entry svg{width:22px;height:22px}
+ .scene-entry strong{font-size:12px}
+ .scene-entry small{font-size:7px;letter-spacing:.8px}
+ .scene-entry .entry-hint{display:none}
+ .scene-floor-note{font-size:6px;letter-spacing:1px}
+ .index-heading{margin-top:22px;font-size:7px}
+ .module-index{grid-template-columns:1fr}
+ .module-link{min-height:0;gap:9px;padding:15px 27px 15px 11px}
+ .module-link+.module-link{border-left:0;border-top:1px solid #424242;padding-left:11px}
+ .module-copy strong{font-size:18px}
+ .module-copy small{font-size:9px}
+ .module-arrow{right:11px;top:17px}
+ .home-note{flex-direction:column}
+}
+
+
+/* Interior ritual spaces — shared material language for all three tools */
+.view:not([hidden]){animation:fateViewEnter .42s cubic-bezier(.2,.72,.2,1) both}
+@keyframes fateViewEnter{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.view-head{padding-bottom:17px;border-bottom:1px solid #3c3c3c;margin-bottom:21px}
+.view-head>div{position:relative;padding-left:17px}
+.view-head>div:before{content:"";position:absolute;left:0;top:3px;bottom:4px;width:2px;background:linear-gradient(180deg,#ddd,#555)}
+.view-head h2{font-size:clamp(31px,4.5vw,46px);letter-spacing:2px;margin:9px 0 7px}
+.view-head p{max-width:590px;font:12px/1.9 var(--serif);color:#aaa}
+.back-room{border-color:#585858;padding:10px 15px;transition:background .2s,border-color .2s,color .2s}
+.back-room:hover{background:#eee;border-color:#eee;color:#1d1d1d}
+.ritual-note{display:flex;align-items:center;gap:18px;padding:13px 16px;margin:0 0 18px;border:1px solid #383838;background:linear-gradient(100deg,#242424,#1b1b1b)}
+.ritual-note-index{flex:0 0 auto;color:#aaa;font:8px Arial,sans-serif;letter-spacing:1.6px}
+.ritual-note p{margin:0;color:#aaa;font:11px/1.8 var(--serif)}
+.question-panel{max-width:760px;padding:18px 19px 15px;border:1px solid #484848;background:linear-gradient(145deg,#252525,#1d1d1d);box-shadow:0 12px 32px #0002}
+.question-panel .control-label{display:flex;align-items:center;justify-content:space-between}
+.question-panel .control-label span{font:8px Arial,sans-serif;letter-spacing:1.5px;color:#777}
+.question-input{border:0;border-bottom:1px solid #575757;background:transparent;padding:12px 2px;color:#eee;font:14px var(--serif);transition:border-color .2s}
+.question-input:focus{border-color:#ddd;outline:none}
+.question-input::placeholder{color:#777}
+.spread-switch{display:inline-flex;gap:0;padding:3px;border:1px solid #484848;margin-top:15px;background:#191919}
+.spread-switch button{min-width:104px;border:0;padding:9px 15px;color:#aaa;transition:background .2s,color .2s}
+.spread-switch button.active{background:#dedede;color:#222}
+.tarot-tools{max-width:760px;align-items:center;margin:17px 0 13px}
+.tarot-tools-copy{display:flex;flex-direction:column;gap:4px}
+.tarot-tools-copy .control-label{margin:0;color:#ddd;font:12px var(--serif);letter-spacing:1px}
+.tarot-tools-hint{font:9px Arial,sans-serif;letter-spacing:.8px;color:#777}
+.primary-action{display:inline-flex;justify-content:center;align-items:center;gap:9px;min-height:42px;padding:12px 24px;border:1px solid #dedede;background:#dedede;color:#202020;letter-spacing:1.1px;transition:background .2s,border-color .2s,transform .2s}
+.primary-action:hover{background:#fff;border-color:#fff;transform:translateY(-1px)}
+.primary-action:active{transform:translateY(0)}
+.crystal-stage{position:relative;max-width:980px;min-height:355px;margin-top:0;border:1px solid #494949;background:radial-gradient(ellipse at 50% 52%,#bcbcbc18 0,transparent 48%),linear-gradient(180deg,#202020,#171717);overflow:hidden}
+.crystal-stage:before,.crystal-stage:after{content:"";position:absolute;pointer-events:none}
+.crystal-stage:before{inset:12px;border:1px solid #ffffff0a}
+.crystal-stage:after{left:8%;right:8%;bottom:16%;height:1px;background:linear-gradient(90deg,transparent,#aaa5 20%,#aaa5 80%,transparent)}
+.empty-altar{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;min-height:330px;color:#8f8f8f;text-align:center}
+.empty-altar>span{font:8px Arial,sans-serif;letter-spacing:2.4px;color:#888}
+.empty-altar p{margin:0;font:13px/2 var(--serif);color:#aaa}
+.empty-crystals{position:relative;display:flex;align-items:end;justify-content:center;width:180px;height:120px;margin-bottom:1px}
+.empty-crystals i{position:relative;display:block;width:39px;height:76px;margin:0 -3px;border:1px solid #c5c5c577;clip-path:polygon(50% 0,87% 18%,100% 61%,50% 100%,0 61%,13% 18%);background:linear-gradient(105deg,#666,#ddd 30%,#777 52%,#e5e5e5 68%,#555);filter:drop-shadow(0 8px 13px #0009)}
+.empty-crystals i:after{content:"";position:absolute;inset:0;background:linear-gradient(70deg,transparent 48%,#fff9 49%,transparent 51%);clip-path:polygon(50% 0,100% 61%,50% 100%,0 61%)}
+.empty-crystals i:nth-child(1){height:58px;width:32px;opacity:.65}
+.empty-crystals i:nth-child(2){height:103px;width:50px;z-index:2}
+.empty-crystals i:nth-child(3){height:68px;width:36px;opacity:.8}
+.crystal-card{position:relative;width:clamp(105px,16vw,152px);aspect-ratio:.68;padding:3px;clip-path:polygon(50% 0,88% 13%,100% 35%,88% 78%,50% 100%,12% 78%,0 35%,12% 13%);background:linear-gradient(135deg,#f1f1f1,#777 18%,#252525 48%,#dedede 73%,#555);filter:drop-shadow(0 17px 17px #000b);animation:crystalRise .72s cubic-bezier(.18,.72,.2,1) both}
+.crystal-card:nth-child(2){transform:translateY(-12px);animation-delay:.1s;animation-name:crystalRiseCenter}
+.crystal-card:nth-child(3){transform:translateY(8px);animation-delay:.2s;animation-name:crystalRiseRight}
+@keyframes crystalRise{from{opacity:0;transform:translateY(20px) scale(.94)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes crystalRiseCenter{from{opacity:0;transform:translateY(10px) scale(.94)}to{opacity:1;transform:translateY(-12px) scale(1)}}
+@keyframes crystalRiseRight{from{opacity:0;transform:translateY(20px) scale(.94)}to{opacity:1;transform:translateY(8px) scale(1)}}
+.crystal-face{background:radial-gradient(ellipse at 50% 34%,#6d6d6d,#222 72%);clip-path:polygon(50% 1%,87% 14%,98% 35%,86% 78%,50% 99%,14% 78%,2% 35%,13% 14%);gap:8px}
+.crystal-face:after{inset:10px;clip-path:polygon(50% 0,100% 35%,86% 78%,50% 100%,14% 78%,0 35%);border-color:#d2d2d266}
+.crystal-facet{position:absolute;inset:20% 17% 22%;display:grid;place-items:center;opacity:.44}
+.crystal-facet svg{width:100%;height:100%;fill:none;stroke:#dedede;stroke-width:.8;stroke-linejoin:round}
+.crystal-index{position:relative;z-index:1;color:#dedede;font-size:11px}
+.crystal-name{position:relative;z-index:1;text-shadow:0 2px 5px #000;font-size:clamp(15px,2.2vw,19px)}
+.crystal-latin{position:relative;z-index:1}
+.reading-results{max-width:980px;gap:0;border:1px solid #3e3e3e;background:#1c1c1c}
+.reading-result{padding:18px 19px 17px;border-top:0;min-height:218px}
+.reading-result+.reading-result{border-left:1px solid #383838}
+.reading-result .position{font:8px Arial,sans-serif;letter-spacing:1.3px}
+.reading-result h3{font-size:25px;margin:13px 0 3px}
+.reading-result p{font:12px/2 var(--serif);color:#c5c5c5}
+.reading-result .reflection{font:10px/1.8 var(--serif)}
+.record-section{max-width:980px;margin-top:24px;padding-top:15px}
+.record-section h3{font-size:17px;letter-spacing:1px}
+.record-list li{border-color:#333}
+.record-trigger{padding:12px 8px;transition:background .2s}
+.record-trigger:hover{background:#222}
+.record-meta{letter-spacing:1.1px}
+.record-title{font-size:15px}
+.wheel-layout{gap:34px;grid-template-columns:minmax(0,1fr) 295px}
+.wheel-panel{padding:15px 16px 18px;border:1px solid #3d3d3d;background:linear-gradient(145deg,#222,#191919)}
+.wheel-stage{isolation:isolate;width:min(100%,560px);padding:34px 25px 43px}
+.wheel-stage:before{content:"";position:absolute;inset:19px 10px 28px;border:1px solid #73737355;border-radius:50%;background:repeating-conic-gradient(from 0deg,#aaa4 0deg .45deg,transparent .45deg 7.5deg);mask:radial-gradient(circle,transparent 0 72%,#000 72.5% 73%,transparent 73.5%);pointer-events:none}
+.wheel-stage:after{content:"";position:absolute;inset:24px 15px 33px;border:1px solid #555;border-radius:50%;pointer-events:none}
+.wheel-stage-caption,.wheel-stage-foot{position:absolute;left:0;right:0;display:flex;justify-content:space-between;gap:10px;color:#777;font:7px Arial,sans-serif;letter-spacing:1.5px}
+.wheel-stage-caption{top:0}.wheel-stage-foot{bottom:7px;font-size:7px;letter-spacing:1px}
+.wheel-disc{position:relative;z-index:1;border:8px solid #b9b9b9;outline:1px solid #555;outline-offset:4px;box-shadow:0 18px 38px #000b,inset 0 0 0 4px #333;transition:transform 5.2s cubic-bezier(.12,.72,.08,1)}
+.wheel-marker{top:19px;border-left-width:13px;border-right-width:13px;border-top-width:25px;border-top-color:#e3e3e3;filter:drop-shadow(0 2px 3px #000)}
+.wheel-center{z-index:2;width:72px;height:72px;border:5px solid #bcbcbc;background:radial-gradient(circle,#333,#171717 72%);box-shadow:0 0 0 4px #555,0 4px 15px #000}
+.wheel-center:before{content:"";position:absolute;inset:5px;border:1px solid #aaa;border-radius:50%}
+.wheel-center span{position:relative;font:15px var(--serif);letter-spacing:2px}
+.wheel-controls{margin:12px 0 3px}
+.wheel-controls .primary-action{min-width:176px}
+.spin-icon{width:13px;height:13px;border:1px solid #555;border-radius:50%;background:conic-gradient(#555 0deg 45deg,#eee 45deg 90deg,#555 90deg 135deg,#eee 135deg 180deg,#555 180deg 225deg,#eee 225deg 270deg,#555 270deg 315deg,#eee);box-shadow:inset 0 0 0 4px #ddd}
+.wheel-result{display:flex;flex-direction:column;align-items:center;gap:5px;min-height:61px;margin:4px 0 0;padding:11px 8px 13px;border-top:1px solid #3d3d3d;border-bottom:1px solid #3d3d3d;color:#eee;font:20px var(--serif);letter-spacing:1px}
+.wheel-result strong{font-weight:400}
+.wheel-result span{font:8px Arial,sans-serif;color:#777;letter-spacing:1.4px}
+.wheel-history{border:0;margin-top:15px;padding-top:0}
+.wheel-history h4{font-size:16px;margin-bottom:8px}
+.wheel-history li{padding:9px 4px;border-color:#383838}
+.wheel-side{padding:18px 19px;border:1px solid #3d3d3d;background:linear-gradient(180deg,#232323,#1b1b1b)}
+.wheel-side-top{display:flex;align-items:center;justify-content:space-between}
+.wheel-side-top>span{font:8px Arial,sans-serif;color:#888;letter-spacing:1.3px}
+.wheel-side h3{font-size:23px;margin:13px 0 7px}
+.wheel-side p{font:11px/1.9 var(--serif);color:#aaa}
+.add-row input{border-color:#4a4a4a;background:#181818}
+.add-row input:focus{outline:0;border-color:#ddd}
+.add-row button{border-color:#d2d2d2;background:#d2d2d2;color:#222;transition:background .2s}
+.add-row button:hover{background:#fff}
+.option-list{border-color:#454545}
+.option-list li{padding:10px 3px;border-color:#383838}
+.option-list .remove-option{width:25px;height:25px;border:1px solid #444;line-height:1;border-radius:50%;transition:background .2s,color .2s}
+.option-list .remove-option:hover:not(:disabled){background:#ddd;color:#222}
+.oracle-preface{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:0 0 13px}
+.oracle-preface>span{font:8px Arial,sans-serif;color:#aaa;letter-spacing:2px}
+.oracle-preface p{margin:0;color:#888;font:11px var(--serif)}
+.oracle-controls{gap:0;padding:4px;width:max-content;max-width:100%;border:1px solid #444;background:#1d1d1d}
+.oracle-controls button{min-width:76px;border:0;padding:9px 15px;transition:background .2s,color .2s}
+.oracle-controls button.active{background:#dedede;color:#1b1b1b}
+.oracle-paper-wrap{max-width:760px;margin:18px auto 0;padding:19px 0 0;background:linear-gradient(90deg,transparent,#252525 15%,#252525 85%,transparent);text-align:center}
+.oracle-paper{max-width:620px;min-height:305px;margin:0 auto;padding:38px clamp(22px,6vw,62px);border:1px solid #d2d2d2;background:linear-gradient(135deg,#f1f1f1,#d8d8d8 62%,#e8e8e8);box-shadow:0 16px 35px #0007;color:#242424;animation:paperReveal .48s ease both}
+@keyframes paperReveal{from{opacity:.65;transform:translateY(7px) rotateX(2deg)}to{opacity:1;transform:translateY(0) rotateX(0)}}
+.oracle-paper:before{inset:9px;border:1px solid #a6a6a6}
+.oracle-paper:after{content:"";position:absolute;top:0;right:0;width:24px;height:24px;background:linear-gradient(225deg,#777 0 49%,#cfcfcf 50%);opacity:.7}
+.oracle-placeholder{display:flex;flex-direction:column;align-items:center;gap:13px;color:#747474;font:8px Arial,sans-serif;letter-spacing:2px}
+.oracle-placeholder p{font:14px/2 var(--serif);color:#555;letter-spacing:0;margin:0}
+.oracle-placeholder-seal,.oracle-seal{display:grid;place-items:center;width:43px;height:43px;border:1px solid #777;color:#444;font:20px var(--serif);transform:rotate(-8deg)}
+.oracle-number{position:relative;z-index:1;margin-bottom:11px;font:8px Arial,sans-serif;letter-spacing:2px;color:#777}
+.oracle-paper h3{position:relative;z-index:1;font-size:clamp(32px,4vw,44px);letter-spacing:5px;margin:9px 0 13px}
+.oracle-paper p{position:relative;z-index:1;font-size:13px;line-height:2.1;color:#444}
+.oracle-advice{position:relative;z-index:1;max-width:460px;margin:20px auto 0;padding-top:13px;border-top:1px solid #aaa;font:11px/1.9 var(--serif);color:#626262;letter-spacing:.4px}
+.oracle-seal{position:absolute;right:35px;bottom:31px;width:35px;height:35px;border:1px solid #888;font-size:17px;opacity:.72}
+.oracle-paper-caption{display:block;margin:10px auto 0;color:#777;font:7px Arial,sans-serif;letter-spacing:2px}
+.oracle-action{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;margin-top:18px}
+.oracle-action>span{font:7px Arial,sans-serif;color:#666;letter-spacing:1.5px}
+.oracle-action .primary-action{min-width:180px}
+.bottom-note{max-width:980px;margin:34px auto 0;padding-top:13px;border-top:1px solid #363636;color:#777;font:10px/1.8 var(--serif)}
+@media(max-width:760px){
+ .wheel-layout{grid-template-columns:1fr;gap:18px}
+ .wheel-panel{padding:12px 10px 15px}
+ .wheel-side{border:1px solid #3d3d3d;padding:17px}
+ .wheel-stage{width:min(100%,520px)}
+ .reading-results{grid-template-columns:1fr}
+ .reading-result+.reading-result{border-left:0;border-top:1px solid #383838}
+}
+@media(max-width:560px){
+ .view-head{gap:10px}
+ .view-head>div{padding-left:12px}
+ .view-head h2{font-size:32px}
+ .view-head p{font-size:11px}
+ .ritual-note{align-items:flex-start;flex-direction:column;gap:6px;padding:12px}
+ .question-panel{padding:15px 13px 13px}
+ .spread-switch{display:flex;width:100%}
+ .spread-switch button{flex:1;min-width:0;padding:9px 8px}
+ .tarot-tools{align-items:flex-end}
+ .tarot-tools-hint{font-size:8px}
+ .primary-action{padding:11px 15px;font-size:10px;min-height:40px}
+ .crystal-stage{min-height:285px;padding:14px 4px}
+ .empty-altar{min-height:255px}
+ .empty-crystals{transform:scale(.83);margin-bottom:-8px}
+ .crystal-card{width:clamp(88px,27vw,110px)}
+ .crystal-stage:after{bottom:14%}
+ .reading-results{margin-top:15px}
+ .reading-result{min-height:0;padding:15px 13px}
+ .reading-result h3{font-size:22px}
+ .wheel-stage{padding:30px 15px 39px}
+ .wheel-stage-caption,.wheel-stage-foot{font-size:6px;letter-spacing:.8px}
+ .wheel-marker{top:15px}
+ .wheel-center{width:57px;height:57px}
+ .wheel-result{font-size:18px}
+ .wheel-side{padding:15px}
+ .oracle-preface{align-items:flex-start;flex-direction:column;gap:5px}
+ .oracle-controls{display:grid;width:100%;grid-template-columns:repeat(4,1fr)}
+ .oracle-controls button{min-width:0;padding:9px 6px}
+ .oracle-paper-wrap{padding-top:13px}
+ .oracle-paper{min-height:280px;padding:35px 20px}
+ .oracle-seal{right:22px;bottom:22px}
+ .oracle-paper-caption{font-size:6px}
+ .oracle-action>span{text-align:center;font-size:6px}
+ .bottom-note{margin-top:25px;font-size:9px}
+}
+@media(prefers-reduced-motion:reduce){
+ .view:not([hidden]),.crystal-card,.oracle-paper{animation:none!important}
+ .scene-entry,.scene-entry .entry-mark,.module-link,.primary-action{transition:none!important}
+}
+
+
+/* Editable wheel options */
+.wheel-footer-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px}
+.wheel-footer-actions button{border:0;border-bottom:1px solid #666;background:transparent;color:#bcbcbc;padding:6px 0;font:10px var(--serif);cursor:pointer}
+.wheel-footer-actions button:hover{color:#fff;border-color:#ddd}
+.wheel-footer-actions span{font:8px Arial,sans-serif;letter-spacing:.6px;color:#777}
+.option-actions{display:flex;align-items:center;gap:5px;flex:0 0 auto}
+.option-list li{min-height:40px}
+.option-label{min-width:0;overflow-wrap:anywhere}
+.edit-option,.save-option,.cancel-option{border:1px solid #484848;background:transparent;color:#aaa;padding:5px 8px;font-size:9px;transition:background .2s,color .2s,border-color .2s}
+.edit-option:hover,.save-option:hover,.cancel-option:hover{border-color:#aaa;background:#e5e5e5;color:#222}
+.save-option{background:#d6d6d6;border-color:#d6d6d6;color:#222}
+.wheel-edit-input{min-width:0;flex:1;width:100%;background:#171717;color:#eee;border:1px solid #777;padding:7px 8px;font-size:11px}
+.wheel-edit-input:focus{outline:1px solid #ddd;outline-offset:1px}
+.option-list li.is-editing{gap:5px}
+@media(max-width:560px){.wheel-footer-actions{align-items:flex-start;flex-direction:column;gap:5px}.wheel-edit-input{font-size:12px}}
+
+</style>
+</head>
+<body>
+<main class="fate-app" id="fateApp">
+<header class="topbar">
+  <button class="back-home" type="button" data-exit>返回桌面</button>
+  <div class="top-label">A SMALL ROOM FOR CHOICES</div>
+</header>
+<div class="storage-notice" id="fateStorageNotice" role="status" aria-live="polite" hidden></div>
+
+<section id="homeView">
+  <div class="hero">
+    <div class="hero-main">
+      <div class="hero-kicker">THE FATE CABIN <span class="hero-edition">／ A QUIET ROOM FOR CHOICES</span></div>
+      <h1>命运小屋</h1>
+      <p class="hero-copy">把犹豫暂时放在门外，给直觉一点说话的时间。今晚，想把哪件事交给命运？</p>
+    </div>
+    <aside class="hero-side" aria-label="小屋的三种方式">
+      <div class="hero-side-top"><span>ROOM NO.</span><strong>01</strong></div>
+      <div class="hero-side-rule"></div>
+      <span class="hero-side-kicker">THREE QUIET WAYS</span>
+      <p>一张牌<br>一次选择<br>一支签</p>
+    </aside>
+  </div>
+
+  <section class="room-scene" aria-label="命运小屋互动场景">
+    <div class="scene-caption"><span class="scene-light"></span>灯还亮着 · 小屋一直在这里</div>
+    <div class="scene-coordinate">NIGHT ROOM&nbsp;&nbsp; / &nbsp;&nbsp;NO. 01</div>
+    <div class="wall-panel wall-panel-left"></div>
+    <div class="wall-panel wall-panel-right"></div>
+    <div class="wall-sconce wall-sconce-left"><i></i></div>
+    <div class="wall-sconce wall-sconce-right"><i></i></div>
+    <div class="window-frame"><span class="moon"></span><span class="window-star star-one"></span><span class="window-star star-two"></span></div>
+    <div class="shelf"><span></span><span></span><span></span><span></span><span></span></div>
+    <div class="shelf-detail shelf-detail-left"></div>
+    <div class="shelf-detail shelf-detail-right"></div>
+    <div class="desk"></div><div class="desk-edge"></div>
+    <div class="desk-front-line"></div>
+    <div class="scene-floor-note">A ROOM TO THINK IN <span>·</span> THREE OBJECTS WAITING FOR YOU</div>
+
+    <button class="scene-entry entry-tarot" type="button" data-open="tarot">
+      <span class="entry-mark">
+        <span class="object-shape object-crystal"></span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 4 8l2.5 11h11L20 8z"/><path d="m4 8 8 4 8-4M12 12v7"/></svg>
+      </span>
+      <strong>水晶塔罗</strong><small>THE CRYSTAL CARDS</small>
+      <span class="entry-hint">翻开一张启示</span>
+    </button>
+    <button class="scene-entry entry-wheel" type="button" data-open="wheel">
+      <span class="entry-mark">
+        <span class="object-shape object-wheel"></span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2"/><path d="M12 3v7M20 8l-6 3M18 18l-5-4M6 18l5-4M4 8l6 3"/></svg>
+      </span>
+      <strong>大转盘</strong><small>THE DECISION WHEEL</small>
+      <span class="entry-hint">把选择交给偶然</span>
+    </button>
+    <button class="scene-entry entry-oracle" type="button" data-open="oracle">
+      <span class="entry-mark">
+        <span class="object-shape object-oracle"></span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10l2 4-2 14H7L5 7z"/><path d="M8 10h8M9 14h6M10 17h4"/></svg>
+      </span>
+      <strong>今日灵签</strong><small>THE DAILY ORACLE</small>
+      <span class="entry-hint">读一段今日提醒</span>
+    </button>
+  </section>
+
+  <div class="index-heading"><span>ENTER THE ROOM</span><span>SELECT ONE TO BEGIN</span></div>
+  <nav class="module-index" aria-label="小屋功能">
+    <button class="module-link" type="button" data-open="tarot">
+      <span class="module-no">01 <i>／</i> CARDS</span>
+      <span class="module-copy"><strong>水晶塔罗</strong><small>单张启示，或展开过去、现在与未来。</small></span>
+      <span class="module-arrow" aria-hidden="true"></span>
+    </button>
+    <button class="module-link" type="button" data-open="wheel">
+      <span class="module-no">02 <i>／</i> CHOICE</span>
+      <span class="module-copy"><strong>大转盘</strong><small>写下自己的选项，让指针替你停下。</small></span>
+      <span class="module-arrow" aria-hidden="true"></span>
+    </button>
+    <button class="module-link" type="button" data-open="oracle">
+      <span class="module-no">03 <i>／</i> ORACLE</span>
+      <span class="module-copy"><strong>今日灵签</strong><small>综合、关系、学业与心情的每日一签。</small></span>
+      <span class="module-arrow" aria-hidden="true"></span>
+    </button>
+  </nav>
+  <div class="home-note"><span id="homeRecent">结果会留在这台设备的浏览器。</span><span>PRIVATE ROOM&nbsp;&nbsp;／&nbsp;&nbsp;LOCAL RECORDS ONLY</span></div>
+</section>
+
+<section class="view" id="tarotView" hidden>
+  <div class="view-head">
+    <div><div class="hero-kicker">01 / THE CRYSTAL CARDS</div><h2>水晶塔罗</h2><p>从完整的 78 张牌组中抽取单张启示，或让三张牌分别照见过去、现在与未来。牌意用于自我整理，不替你做决定。</p></div>
+    <button class="back-room" type="button" data-go-home>回到小屋</button>
+  </div>
+  <div class="ritual-note"><span class="ritual-note-index">A MOMENT TO REFLECT&nbsp; / &nbsp;01</span><p>先把问题放在心里。不必写得完整，也不需要立刻找到答案。</p></div>
+  <div class="question-panel">
+    <label class="control-label" for="tarotQuestion">此刻想问的事 <span>OPTIONAL</span></label>
+    <input class="question-input" id="tarotQuestion" maxlength="120" placeholder="写下一件你正在思考的事……">
+    <div class="spread-switch" aria-label="选择牌阵">
+      <button type="button" data-spread="single">单张启示</button>
+      <button type="button" class="active" data-spread="three">三张牌阵</button>
+    </div>
+  </div>
+  <div class="tarot-tools">
+    <div class="tarot-tools-copy"><span class="control-label" id="spreadDescription">过去 · 现在 · 未来</span><span class="tarot-tools-hint">完整 78 张牌组 · 让水晶替你整理思绪</span></div>
+    <button class="primary-action" type="button" data-action="draw-tarot">抽取三张</button>
+  </div>
+  <div class="crystal-stage" id="crystalStage" aria-live="polite"><div class="empty-altar"><div class="empty-crystals"><i></i><i></i><i></i></div><span>THE CRYSTAL ALTAR</span><p>水晶尚未翻开<br>准备好时，抽取属于你的牌。</p></div></div>
+  <div class="reading-results" id="tarotResults"></div>
+  <section class="record-section" aria-label="塔罗历史记录">
+    <h3>最近的抽取</h3>
+    <ol class="record-list" id="tarotHistory"></ol>
+  </section>
+  <div class="message-line" id="tarotMessage" aria-live="polite"></div>
+</section>
+
+<section class="view" id="wheelView" hidden>
+  <div class="view-head">
+    <div><div class="hero-kicker">02 / THE WHEEL</div><h2>大转盘</h2><p>把想做的事放进转盘，剩下的交给一次公平的随机选择。选项可以随时增删。</p></div>
+    <button class="back-room" type="button" data-go-home>回到小屋</button>
+  </div>
+  <div class="wheel-layout">
+    <section class="wheel-panel">
+      <div class="wheel-stage">
+        <div class="wheel-stage-caption"><span>THE WHEEL OF CHOICE</span><span>01 — 16</span></div>
+        <div class="wheel-marker" aria-hidden="true"></div>
+        <div class="wheel-disc" id="wheelDisc"><canvas id="wheelCanvas" width="600" height="600" aria-label="可旋转的大转盘"></canvas></div>
+        <div class="wheel-center" aria-hidden="true"><span>命运</span></div>
+        <div class="wheel-stage-foot"><span>LET THE MOMENT DECIDE</span><span>公平随机 · 等分扇区</span></div>
+      </div>
+      <div class="wheel-controls"><button class="primary-action" type="button" data-action="spin" id="spinButton"><span class="spin-icon" aria-hidden="true"></span><span id="spinButtonLabel">开始转动</span></button></div>
+      <div class="wheel-result" id="wheelResult" aria-live="polite"><strong id="wheelResultText">转盘准备好了。</strong><span>每个选项拥有相同的机会</span></div>
+      <div class="wheel-history"><h4>最近结果</h4><ol id="wheelHistory"><li>还没有转动记录。</li></ol></div>
+    </section>
+    <aside class="wheel-side">
+      <div class="wheel-side-top"><div class="hero-kicker">CUSTOM OPTIONS</div><span id="wheelCount">08 / 16</span></div>
+      <h3>转盘内容</h3>
+      <p>亲手写下想做的事。至少保留两项，最多十六项。</p>
+      <div class="add-row"><input id="newWheelOption" maxlength="18" placeholder="添加一个选项"><button type="button" data-action="add-option">＋ 添加</button></div>
+      <ul class="option-list" id="wheelOptions"></ul>
+      <div class="wheel-footer-actions"><button type="button" data-action="reset-options">恢复默认选项</button><span>可编辑每一项 · 最多 16 项</span></div>
+      <div class="message-line" id="wheelMessage" aria-live="polite"></div>
+    </aside>
+  </div>
+</section>
+
+<section class="view" id="oracleView" hidden>
+  <div class="view-head">
+    <div><div class="hero-kicker">03 / THE ORACLE</div><h2>今日灵签</h2><p>选一个你正在思考的方向，抽一支签。读完它，再回到自己的判断。</p></div>
+    <button class="back-room" type="button" data-go-home>回到小屋</button>
+  </div>
+  <div class="oracle-preface"><span>CHOOSE A SUBJECT</span><p>把注意力留给一个方向，再抽取今天的提醒。</p></div>
+  <div class="oracle-controls" aria-label="灵签主题">
+    <button type="button" class="active" data-oracle-category="综合">综合</button>
+    <button type="button" data-oracle-category="关系">关系</button>
+    <button type="button" data-oracle-category="学业">学业</button>
+    <button type="button" data-oracle-category="心情">心情</button>
+  </div>
+  <div class="oracle-paper-wrap">
+    <div class="oracle-paper" id="oraclePaper" aria-live="polite"><div class="oracle-placeholder"><span class="oracle-placeholder-seal">签</span><span>THE DAILY ORACLE</span><p>签筒安静地放在桌上。<br>准备好时，抽一支签。</p></div></div>
+    <span class="oracle-paper-caption">A SMALL NOTE FOR TODAY</span>
+  </div>
+  <div class="oracle-action"><span>READ SLOWLY&nbsp; / &nbsp;KEEP YOUR OWN JUDGMENT</span><button class="primary-action" type="button" data-action="draw-oracle">抽取今日灵签</button></div>
+  <section class="record-section" aria-label="灵签历史记录">
+    <h3>最近的灵签</h3>
+    <ol class="record-list" id="oracleHistory"></ol>
+  </section>
+  <div class="message-line" id="oracleMessage" style="text-align:center" aria-live="polite"></div>
+</section>
+
+<footer class="bottom-note">命运小屋是一处娱乐与自我反思空间。塔罗、灵签和随机转盘的内容不构成现实预测，也不替代个人判断。</footer>
+</main>
+
+<script>
+(function(){
+'use strict';
+var app=document.getElementById('fateApp');
+if(!app)return;
+var STORE_KEY='maomao_fate_cabin_v1';
+var defaultOptions=['出门走走','看一部电影','整理一下房间','做点好吃的','读一会儿书','早点休息','听听音乐','留给明天'];
+var tarotDeck=[
+ {name:'愚者',latin:'THE FOOL',mark:'0',meaning:'新的开始未必需要完整的地图。你可以先迈出一小步，在行动里认识真正的方向。',reflection:'允许自己尝试，但给重要决定留出确认的时间。'},
+ {name:'魔术师',latin:'THE MAGICIAN',mark:'I',meaning:'你手边已经有一些可以使用的资源。把分散的想法收拢，先完成最关键的一件事。',reflection:'列出现在真正拥有的三样资源，并选一个马上开始。'},
+ {name:'女祭司',latin:'THE HIGH PRIESTESS',mark:'II',meaning:'还有一些信息尚未浮现。直觉值得倾听，但也可以让事实慢慢补齐画面。',reflection:'先观察，不急着替未知下结论。'},
+ {name:'皇后',latin:'THE EMPRESS',mark:'III',meaning:'照料、创造和耐心会带来新的空间。你不需要靠持续用力证明每一件事。',reflection:'为一件重要的事留出稳定而舒服的时间。'},
+ {name:'皇帝',latin:'THE EMPEROR',mark:'IV',meaning:'边界和秩序能让复杂的事情变得清楚。稳定不是僵化，而是知道什么值得优先。',reflection:'把眼前的事情分成现在、稍后和暂时不做。'},
+ {name:'教皇',latin:'THE HIEROPHANT',mark:'V',meaning:'经验和可靠的方法可以成为参考。借鉴他人的路径，同时保留自己的判断。',reflection:'找一个可信的资料来源，核对最重要的信息。'},
+ {name:'恋人',latin:'THE LOVERS',mark:'VI',meaning:'选择背后常常藏着真正重视的东西。比起迎合外界，更重要的是看清自己的价值排序。',reflection:'问问自己：这个选择和我在意的事情一致吗？'},
+ {name:'战车',latin:'THE CHARIOT',mark:'VII',meaning:'方向明确时，行动会逐渐积累力量。遇到阻力不一定要停下，也可以调整路线。',reflection:'把目标拆成一个今天能完成的小步骤。'},
+ {name:'力量',latin:'STRENGTH',mark:'VIII',meaning:'坚定不一定需要很大的声音。耐心、温和与清楚的边界，也是一种力量。',reflection:'在不勉强自己的前提下，坚持一件重要的事。'},
+ {name:'隐者',latin:'THE HERMIT',mark:'IX',meaning:'独处可以帮助你听见自己的想法。暂时放慢，并不是落后，而是在重新辨认方向。',reflection:'留一段不被打扰的时间，整理自己的真实感受。'},
+ {name:'命运之轮',latin:'WHEEL OF FORTUNE',mark:'X',meaning:'局面总会变化。你无法控制每个变量，但可以留意新的线索并保持一点弹性。',reflection:'为计划准备一个可调整的版本。'},
+ {name:'正义',latin:'JUSTICE',mark:'XI',meaning:'清楚的事实能帮助你做出更稳妥的判断。把感受、推测和已经确认的信息分开。',reflection:'先写下事实，再写下自己的解释。'},
+ {name:'倒吊人',latin:'THE HANGED MAN',mark:'XII',meaning:'换一个角度，也许能看见原本忽略的部分。暂时停顿可以让思路重新排列。',reflection:'试着从另一个人的角度复述眼前的问题。'},
+ {name:'死神',latin:'DEATH',mark:'XIII',meaning:'结束一个旧阶段，也是在为新的空间腾出位置。变化可以慢慢发生，不必一次完成。',reflection:'找出一件已经不再适合自己的旧习惯。'},
+ {name:'节制',latin:'TEMPERANCE',mark:'XIV',meaning:'现在适合调整，而不是推翻。给不同的想法一点时间，让节奏重新对齐。',reflection:'今天只调整一个环节，不必要求全部立刻改变。'},
+ {name:'恶魔',latin:'THE DEVIL',mark:'XV',meaning:'某些习惯或期待可能正在占据太多注意力。看见它们，就多了一点重新选择的空间。',reflection:'辨认一件让自己分心的事，并为它设一个边界。'},
+ {name:'高塔',latin:'THE TOWER',mark:'XVI',meaning:'原有安排出现变化时，先稳住自己，再判断哪些部分需要重建。变化本身不等于失败。',reflection:'先处理最实际、最可控的一件事。'},
+ {name:'星星',latin:'THE STAR',mark:'XVII',meaning:'希望有时来自很小的恢复。你可以不急着得到答案，先让自己重新积累一点能量。',reflection:'记下最近一件让你感觉安定的小事。'},
+ {name:'月亮',latin:'THE MOON',mark:'XVIII',meaning:'眼前也许还有模糊的地方。未知不必马上被解释，等信息更完整再行动也可以。',reflection:'把担心和已知事实分开写下来。'},
+ {name:'太阳',latin:'THE SUN',mark:'XIX',meaning:'清晰、坦率和简单的快乐值得被认真对待。让自己看见已经完成的部分。',reflection:'给一件做得不错的小事一个明确的肯定。'},
+ {name:'审判',latin:'JUDGEMENT',mark:'XX',meaning:'回顾过去不是为了责备自己，而是看清已经学会了什么。你可以带着新的理解继续向前。',reflection:'回顾一次经历，写下现在会采用的不同做法。'},
+ {name:'世界',latin:'THE WORLD',mark:'XXI',meaning:'一个阶段可以被好好收尾。完成并不意味着停止，而是让下一段旅程有更清楚的起点。',reflection:'收好手头的一件事，再开始新的计划。'}
+];
+var oracleDeck={
+ '综合':[
+  ['静水','先让心绪沉下来，答案会比匆忙时更清楚。','今天给自己留一点安静的时间。'],
+  ['微光','很小的进展也值得记录，它正在把你带向更稳的地方。','完成一件十分钟内可以做完的事。'],
+  ['缓行','慢一点不代表错过。先确认方向，再决定速度。','把手头的事按重要程度重新排一遍。'],
+  ['新页','旧的经验可以留下，新的尝试也可以开始。','给一个搁置的想法十分钟。'],
+  ['回声','你曾经认真做过的事，仍然会留下影响。','回看一件已经完成的事情。'],
+  ['留白','暂时没有答案，也是一种真实的状态。','今天不急着填满所有空隙。']
+ ],
+ '关系':[
+  ['倾听','理解不一定来自立刻回应，有时先听完就已经很重要。','把想说的话放慢一点，也给对方表达的空间。'],
+  ['边界','舒服的关系允许彼此有自己的节奏。','想清楚一件自己愿意和不愿意的事。'],
+  ['坦诚','清楚表达比反复猜测更容易靠近事实。','用简单直接的话说出自己的需要。'],
+  ['耐心','关系需要时间，也需要双方都愿意投入。','观察行动与承诺是否一致。']
+ ],
+ '学业':[
+  ['积累','知识会在反复使用中变得牢固，不必追求一次记住全部。','选一个知识点，做一次主动回忆。'],
+  ['专注','把注意力放在当前的一件事上，减少同时开始的任务。','设定一个短时段，只做一件事。'],
+  ['求证','遇到不懂的地方，提出具体问题往往比盲目重复更有效。','把卡住的步骤写成一个明确问题。'],
+  ['复盘','错误可以成为线索，帮助你找到下一次更好的方法。','回顾一次练习，找出最值得改进的一点。']
+ ],
+ '心情':[
+  ['呼吸','先照顾此刻的自己，不必把所有事情同时解决。','喝点水，离开屏幕几分钟。'],
+  ['松弛','休息不是奖励，而是日常生活的一部分。','为今天安排一段没有任务的时间。'],
+  ['接纳','情绪会变化，不需要因为某个瞬间就给自己下结论。','用一句话描述现在的感受，不评价它。'],
+  ['回暖','状态可以慢慢恢复。先做一件让生活容易一点的小事。','整理一个小角落，给自己一点空间。']
+ ]
+};
+function buildMinorArcana(){
+ var suits=[
+  {name:'权杖',en:'WANDS',focus:'行动、创造与热情',reading:'这张牌提醒你留意正在萌芽的动力，以及你愿意为之投入的方向。'},
+  {name:'圣杯',en:'CUPS',focus:'情感、关系与直觉',reading:'这张牌邀请你辨认自己的感受，也看看关系里是否保留了真诚与流动。'},
+  {name:'宝剑',en:'SWORDS',focus:'思考、沟通与判断',reading:'这张牌把重点放在事实、表达和边界上，清晰往往来自诚实面对问题。'},
+  {name:'星币',en:'PENTACLES',focus:'现实、资源与长期积累',reading:'这张牌提醒你观察手边的资源，并把想法落实到能持续推进的小事上。'}
+ ];
+ var ranks=[
+  {name:'王牌',en:'ACE',mark:'A',meaning:'一个新的机会或念头正在出现。它还很小，但值得认真看见。',reflection:'先给这个开端一点空间，不必急着要求结果。'},
+  {name:'二',en:'TWO',mark:'II',meaning:'两个方向需要被放在一起衡量。选择前，先确认各自真正代表什么。',reflection:'写下两个选项各自的收获与代价，再决定下一步。'},
+  {name:'三',en:'THREE',mark:'III',meaning:'成长正在发生，也可能需要合作、练习或把想法表达出来。',reflection:'寻找一个可以交流、试做或共同推进的切入口。'},
+  {name:'四',en:'FOUR',mark:'IV',meaning:'稳定和结构变得重要。先建立可靠的基础，再考虑扩张。',reflection:'整理现有安排，找出最需要稳定下来的一环。'},
+  {name:'五',en:'FIVE',mark:'V',meaning:'摩擦或不适提醒你，旧办法可能需要调整。困难并不是最终结论。',reflection:'先辨认真正的问题，不要把一时的挫折当成全部。'},
+  {name:'六',en:'SIX',mark:'VI',meaning:'分享、修复或重新调整正在成为主题。留意付出与接受是否平衡。',reflection:'看看哪里需要表达感谢、寻求支持或重新分配精力。'},
+  {name:'七',en:'SEVEN',mark:'VII',meaning:'耐心和坚持正在接受检验。继续之前，确认目标仍然值得投入。',reflection:'回顾目前的进展，再决定要坚持、修正还是暂缓。'},
+  {name:'八',en:'EIGHT',mark:'VIII',meaning:'熟练来自持续练习。把注意力放回过程，细节会逐渐积累成能力。',reflection:'选一个具体步骤，认真完成，而不是同时铺开很多事。'},
+  {name:'九',en:'NINE',mark:'IX',meaning:'一个阶段已经积累了不少成果，也需要留意是否过度消耗。',reflection:'确认自己已经走到哪里，并为接下来的节奏留出余地。'},
+  {name:'十',en:'TEN',mark:'X',meaning:'某个循环接近收束。完成、交接或放下，可能比继续增加任务更重要。',reflection:'把可以结束的事情收好，为下一阶段腾出空间。'},
+  {name:'侍从',en:'PAGE',mark:'P',meaning:'好奇心和学习意愿带来新的线索。先观察、提问，再逐渐形成自己的方法。',reflection:'允许自己从基础开始，给新知识一次实践机会。'},
+  {name:'骑士',en:'KNIGHT',mark:'KNI',meaning:'行动速度正在加快。热情很有力量，也需要方向和节奏来承接。',reflection:'行动前确认目标，避免只顾向前而忘记检查路线。'},
+  {name:'王后',en:'QUEEN',mark:'Q',meaning:'成熟的照料与理解正在发挥作用。温和也可以有清楚的边界。',reflection:'用耐心照顾重要的事，同时尊重自己的需要。'},
+  {name:'国王',en:'KING',mark:'K',meaning:'经验、责任和掌控力成为重点。真正的稳定来自清楚地承担选择。',reflection:'明确优先级，并为自己的决定负责。'}
+ ];
+ var cards=[];
+ suits.forEach(function(suit){
+  ranks.forEach(function(rank){
+   cards.push({
+    name:suit.name+rank.name,latin:rank.en+' OF '+suit.en,mark:rank.mark,
+    meaning:rank.meaning+'在'+suit.focus+'的主题里，'+suit.reading,
+    reflection:'给自己的提醒：'+rank.reflection+'可以从'+suit.focus+'中找到一个今天就能实践的动作。'
+   });
+  });
+ });
+ return cards;
+}
+var TAROT_DECK_TOTAL=78;
+tarotDeck=tarotDeck.concat(buildMinorArcana());
+if(tarotDeck.length!==TAROT_DECK_TOTAL||new Set(tarotDeck.map(function(card){return card.name;})).size!==TAROT_DECK_TOTAL)throw new Error('Tarot deck must contain 78 unique cards.');
+var positions=['过去 · 来处','现在 · 此刻','未来 · 可能'];
+var state={wheelOptions:defaultOptions.slice(),wheelHistory:[],tarotHistory:[],oracleHistory:[],dailyOracle:{}};
+var storageHealthy=true,spread='three',selectedOracleCategory='综合',wheelRotation=0,spinning=false,editingWheelIndex=null;
+var $=function(selector){return app.querySelector(selector);};
+var $$=function(selector){return Array.prototype.slice.call(app.querySelectorAll(selector));};
+function message(selector,text){var el=$(selector);if(el)el.textContent=text;}
+function dateKey(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function setStorageNotice(text){
+ var notice=$('#fateStorageNotice');
+ if(!notice)return;
+ notice.textContent=text||'';
+ notice.hidden=!text;
+}
+function loadState(){
+ try{
+  var raw=window.localStorage.getItem(STORE_KEY);
+  if(!raw)return;
+  var saved=JSON.parse(raw);
+  if(!saved||typeof saved!=='object'||Array.isArray(saved))throw new Error('invalid state');
+  if(Array.isArray(saved.wheelOptions)&&saved.wheelOptions.length>=2&&saved.wheelOptions.length<=16&&saved.wheelOptions.every(function(x){return typeof x==='string'&&x.trim()&&x.length<=18;}))state.wheelOptions=saved.wheelOptions.slice();
+  if(Array.isArray(saved.wheelHistory))state.wheelHistory=saved.wheelHistory.filter(function(x){return x&&typeof x.value==='string'&&typeof x.time==='string';}).slice(0,30);
+  if(Array.isArray(saved.tarotHistory))state.tarotHistory=saved.tarotHistory.filter(function(x){return x&&Array.isArray(x.cards)&&x.cards.length>=1&&x.cards.length<=3&&x.cards.every(function(name){return typeof name==='string'&&tarotDeck.some(function(card){return card.name===name;});});}).slice(0,20);
+  if(Array.isArray(saved.oracleHistory))state.oracleHistory=saved.oracleHistory.filter(function(x){return x&&typeof x.title==='string'&&typeof x.category==='string'&&Object.prototype.hasOwnProperty.call(oracleDeck,x.category)&&typeof x.date==='string'&&typeof x.message==='string'&&typeof x.advice==='string';}).slice(0,30);
+  if(saved.dailyOracle&&typeof saved.dailyOracle==='object'&&!Array.isArray(saved.dailyOracle))state.dailyOracle=saved.dailyOracle;
+ }catch(error){
+  storageHealthy=false;
+  setStorageNotice('本地记录读取失败。原始数据不会被覆盖，本次操作只能临时使用，离开页面后可能无法保留。');
+ }
+}
+function saveState(){
+ if(!storageHealthy){
+  setStorageNotice('本地记录暂时无法读取，原始数据已保留；本次操作不会写入本机。');
+  return false;
+ }
+ try{
+  window.localStorage.setItem(STORE_KEY,JSON.stringify(state));
+  setStorageNotice('');
+  return true;
+ }catch(error){
+  setStorageNotice('本地保存失败，可能是浏览器存储空间或权限不足。当前页面仍可继续使用，但新结果不会可靠保留。');
+  return false;
+ }
+}
+function showView(name){
+ var ids={home:'homeView',tarot:'tarotView',wheel:'wheelView',oracle:'oracleView'};
+ Object.keys(ids).forEach(function(key){var el=$('#'+ids[key]);if(el)el.hidden=key!==name;});
+ if(name==='wheel')drawWheel();
+ if(name==='tarot')renderCrystalPlaceholders();
+ window.scrollTo({top:0,behavior:'smooth'});
+}
+function renderCrystalPlaceholders(){
+ var stage=$('#crystalStage');
+ if(stage.querySelector('.crystal-card'))return;
+ stage.innerHTML='<div class="empty-altar"><div class="empty-crystals"><i></i><i></i><i></i></div><span>THE CRYSTAL ALTAR</span><p>水晶尚未翻开<br>准备好时，抽取属于你的牌。</p></div>';
+}
+function setSpread(value){
+ spread=value;
+ $$('[data-spread]').forEach(function(b){b.classList.toggle('active',b.getAttribute('data-spread')===spread);});
+ message('#spreadDescription',spread==='three'?'过去 · 现在 · 未来':'一张牌 · 此刻的提示');
+ $('[data-action="draw-tarot"]').textContent=spread==='three'?'抽取三张':'抽取一张';
+}
+function shufflePick(count){
+ var pool=tarotDeck.map(function(_,i){return i;});
+ for(var i=pool.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var tmp=pool[i];pool[i]=pool[j];pool[j]=tmp;}
+ return pool.slice(0,count);
+}
+function renderTarotReading(indices,question){
+ var stage=$('#crystalStage'),results=$('#tarotResults'),count=indices.length;
+ stage.innerHTML='';
+ indices.forEach(function(index){
+  var card=tarotDeck[index],node=document.createElement('div');node.className='crystal-card';
+  var face=document.createElement('div');face.className='crystal-face';
+  var facet=document.createElement('span');facet.className='crystal-facet';facet.setAttribute('aria-hidden','true');
+  facet.innerHTML='<svg viewBox="0 0 80 112" focusable="false"><path d="M40 3 70 22 76 54 40 108 4 54 10 22Z"/><path d="M10 22 40 36 70 22M4 54 40 36 76 54M40 3 40 36 40 108M10 22 4 54M70 22 76 54"/><path d="m22 17 18 19 18-19M22 83l18-47 18 47"/></svg>';
+  var mark=document.createElement('span');mark.className='crystal-index';mark.textContent=card.mark;
+  var name=document.createElement('strong');name.className='crystal-name';name.textContent=card.name;
+  var latin=document.createElement('span');latin.className='crystal-latin';latin.textContent=card.latin;
+  face.appendChild(facet);face.appendChild(mark);face.appendChild(name);face.appendChild(latin);node.appendChild(face);stage.appendChild(node);
+ });
+ results.innerHTML='';
+ indices.forEach(function(index,i){
+  var card=tarotDeck[index],article=document.createElement('article');article.className='reading-result';
+  var pos=document.createElement('div');pos.className='position';pos.textContent=count===1?'此刻 · 启示':positions[i];
+  var name=document.createElement('h3');name.textContent=card.name;
+  var latin=document.createElement('div');latin.className='latin';latin.textContent=card.latin;
+  var meaning=document.createElement('p');meaning.textContent=card.meaning;
+  var advice=document.createElement('div');advice.className='reflection';advice.textContent='给自己的提醒：'+card.reflection;
+  article.appendChild(pos);article.appendChild(name);article.appendChild(latin);article.appendChild(meaning);article.appendChild(advice);results.appendChild(article);
+ });
+}
+function renderTarotHistory(){
+ var list=$('#tarotHistory');list.innerHTML='';
+ if(!state.tarotHistory.length){var empty=document.createElement('li');empty.className='record-detail';empty.textContent='还没有抽取记录。';list.appendChild(empty);return;}
+ state.tarotHistory.slice(0,8).forEach(function(entry,index){
+  var item=document.createElement('li'),button=document.createElement('button');button.type='button';button.className='record-trigger';button.setAttribute('data-tarot-history-index',String(index));
+  var meta=document.createElement('span');meta.className='record-meta';meta.textContent=entry.date||'历史记录';
+  var title=document.createElement('span');title.className='record-title';title.textContent=(entry.cards||[]).join(' · ');
+  var detail=document.createElement('span');detail.className='record-detail';detail.textContent=entry.question?'问题：'+entry.question:'点击重新查看这次牌阵';
+  button.appendChild(meta);button.appendChild(title);button.appendChild(detail);item.appendChild(button);list.appendChild(item);
+ });
+}
+function openTarotHistory(index){
+ var entry=state.tarotHistory[index];if(!entry||!Array.isArray(entry.cards))return;
+ var indices=entry.cards.map(function(name){return tarotDeck.findIndex(function(card){return card.name===name;});}).filter(function(i){return i>=0;});
+ if(!indices.length)return;
+ setSpread(indices.length===1?'single':'three');
+ renderTarotReading(indices,entry.question||'');
+ message('#tarotMessage','已重新打开 '+(entry.date||'')+' 的抽取记录。');
+}
+function drawTarot(){
+ var count=spread==='three'?3:1,indices=shufflePick(count),question=$('#tarotQuestion').value.trim();
+ renderTarotReading(indices,question);
+ state.tarotHistory.unshift({date:dateKey(),question:question,cards:indices.map(function(i){return tarotDeck[i].name;})});
+ state.tarotHistory=state.tarotHistory.slice(0,20);
+ var saved=saveState();renderTarotHistory();updateHomeNote();
+ message('#tarotMessage',(question?'这次抽取围绕的问题：'+question+'。':'已完成一次水晶抽取。')+(saved?' 已保存在本机。':' 本次牌面已显示，但保存失败。'));
+}
+function drawWheel(){
+ var canvas=$('#wheelCanvas');if(!canvas)return;
+ var ctx=canvas.getContext('2d');if(!ctx)return;
+ var values=state.wheelOptions, count=values.length, size=canvas.width,center=size/2,radius=size/2-7,step=Math.PI*2/count,start=-Math.PI/2;
+ ctx.clearRect(0,0,size,size);ctx.save();ctx.translate(center,center);
+ var colors=['#e3e3e3','#cbcbcb','#ececec','#b6b6b6'];
+ for(var i=0;i<count;i++){
+  var a=start+i*step;
+  ctx.beginPath();ctx.moveTo(0,0);ctx.arc(0,0,radius,a,a+step);ctx.closePath();
+  ctx.fillStyle=colors[i%colors.length];ctx.fill();
+  ctx.strokeStyle='#6c6c6c';ctx.lineWidth=2;ctx.stroke();
+  ctx.save();ctx.rotate(a+step/2);ctx.translate(radius*.64,0);ctx.rotate(Math.PI/2);
+  ctx.fillStyle='#242424';ctx.textAlign='center';ctx.textBaseline='middle';
+  var fontSize=Math.max(10,Math.min(16,190/count));ctx.font='500 '+fontSize+'px "Microsoft YaHei",sans-serif';
+  var label=values[i].length>9?values[i].slice(0,8)+'…':values[i];
+  ctx.fillText(label,0,0,Math.max(45,radius*.55));ctx.restore();
+ }
+ ctx.beginPath();ctx.arc(0,0,radius-3,0,Math.PI*2);ctx.strokeStyle='#464646';ctx.lineWidth=3;ctx.stroke();ctx.restore();
+ renderWheelOptions();renderWheelHistory();
+}
+function renderWheelOptions(){
+ var list=$('#wheelOptions');list.innerHTML='';
+ var input=$('#newWheelOption'),addButton=$('[data-action="add-option"]'),resetButton=$('[data-action="reset-options"]');
+ input.disabled=spinning;
+ addButton.disabled=spinning;
+ if(resetButton)resetButton.disabled=spinning;
+ var countLabel=$('#wheelCount');if(countLabel)countLabel.textContent=String(state.wheelOptions.length).padStart(2,'0')+' / 16';
+ state.wheelOptions.forEach(function(value,index){
+  var item=document.createElement('li');
+  if(editingWheelIndex===index){
+   item.className='is-editing';
+   var editor=document.createElement('input');editor.type='text';editor.id='wheelEditInput';editor.className='wheel-edit-input';editor.maxLength=18;editor.value=value;editor.setAttribute('aria-label','编辑第 '+(index+1)+' 项');editor.disabled=spinning;
+   var save=document.createElement('button');save.type='button';save.className='save-option';save.setAttribute('data-save-option',String(index));save.textContent='保存';save.disabled=spinning;
+   var cancel=document.createElement('button');cancel.type='button';cancel.className='cancel-option';cancel.setAttribute('data-cancel-option','');cancel.textContent='取消';cancel.disabled=spinning;
+   item.appendChild(editor);item.appendChild(save);item.appendChild(cancel);
+  }else{
+   var label=document.createElement('span');label.className='option-label';label.textContent=(index+1)+'. '+value;
+   var actions=document.createElement('div');actions.className='option-actions';
+   var edit=document.createElement('button');edit.type='button';edit.className='edit-option';edit.setAttribute('data-edit-option',String(index));edit.setAttribute('aria-label','编辑选项 '+value);edit.textContent='编辑';edit.disabled=spinning;
+   var remove=document.createElement('button');remove.type='button';remove.className='remove-option';remove.setAttribute('data-remove-option',String(index));remove.setAttribute('aria-label','删除选项 '+value);remove.textContent='×';remove.disabled=spinning||state.wheelOptions.length<=2;
+   actions.appendChild(edit);actions.appendChild(remove);item.appendChild(label);item.appendChild(actions);
+  }
+  list.appendChild(item);
+ });
+ $('#spinButton').disabled=spinning||state.wheelOptions.length<2;
+ $('#spinButtonLabel').textContent=spinning?'转动中…':'开始转动';
+}
+function renderWheelHistory(){
+ var list=$('#wheelHistory');list.innerHTML='';
+ if(!state.wheelHistory.length){var empty=document.createElement('li');empty.textContent='还没有转动记录。';list.appendChild(empty);return;}
+ state.wheelHistory.slice(0,8).forEach(function(entry){
+  var item=document.createElement('li'),name=document.createElement('span'),time=document.createElement('time');
+  name.textContent=entry.value;time.textContent=entry.time;
+  item.appendChild(name);item.appendChild(time);list.appendChild(item);
+ });
+}
+function addWheelOption(){
+ if(spinning)return;
+ var input=$('#newWheelOption'),value=input.value.trim();
+ if(!value){message('#wheelMessage','先写下一个选项。');return;}
+ if(value.length>18){message('#wheelMessage','每个选项最多十八个字。');return;}
+ if(state.wheelOptions.length>=16){message('#wheelMessage','最多添加十六个选项。');return;}
+ if(state.wheelOptions.some(function(x){return x.toLowerCase()===value.toLowerCase();})){message('#wheelMessage','这个选项已经在转盘里了。');return;}
+ state.wheelOptions.push(value);input.value='';
+ var saved=saveState();drawWheel();
+ message('#wheelMessage',saved?'已添加：'+value:'选项已加入当前页面，但本地保存失败；离开页面后可能丢失。');
+}
+function beginWheelEdit(index){
+ if(spinning||index<0||index>=state.wheelOptions.length)return;
+ editingWheelIndex=index;renderWheelOptions();
+ var editor=$('#wheelEditInput');if(editor){editor.focus();editor.select();}
+}
+function cancelWheelEdit(){editingWheelIndex=null;renderWheelOptions();}
+function saveWheelEdit(index){
+ if(spinning||editingWheelIndex!==index)return;
+ var editor=$('#wheelEditInput'),value=editor?editor.value.trim():'';
+ if(!value){message('#wheelMessage','选项名称不能为空。');if(editor)editor.focus();return;}
+ if(value.length>18){message('#wheelMessage','每个选项最多十八个字。');return;}
+ if(state.wheelOptions.some(function(x,i){return i!==index&&x.toLowerCase()===value.toLowerCase();})){message('#wheelMessage','这个选项已经在转盘里了。');return;}
+ state.wheelOptions[index]=value;editingWheelIndex=null;
+ var saved=saveState();drawWheel();
+ message('#wheelMessage',saved?'已更新选项：'+value:'选项已修改，但本地保存失败；刷新后可能恢复旧名称。');
+}
+function resetWheelOptions(){
+ if(spinning)return;
+ editingWheelIndex=null;state.wheelOptions=defaultOptions.slice();
+ var saved=saveState();drawWheel();$('#wheelResultText').textContent='转盘已恢复默认选项。';
+ message('#wheelMessage',saved?'已恢复初始的八个选项。':'已恢复当前页面的默认选项，但本地保存失败。');
+}
+function removeWheelOption(index){
+ if(spinning||state.wheelOptions.length<=2)return;
+ state.wheelOptions.splice(index,1);
+ if(editingWheelIndex===index)editingWheelIndex=null;
+ else if(editingWheelIndex!==null&&editingWheelIndex>index)editingWheelIndex--;
+ var saved=saveState();drawWheel();
+ message('#wheelMessage',saved?'已移除一个选项。':'选项已从当前页面移除，但本地保存失败；刷新后可能恢复。');
+}
+function spinWheel(){
+ if(spinning||state.wheelOptions.length<2)return;
+ spinning=true;renderWheelOptions();message('#wheelMessage','转盘正在转动。');$('#wheelResultText').textContent='正在转动…';
+ var chosen=Math.floor(Math.random()*state.wheelOptions.length),step=360/state.wheelOptions.length;
+ var desired=((360-((chosen+.5)*step))%360+360)%360;
+ var current=((wheelRotation%360)+360)%360,delta=(desired-current+360)%360;
+ var reduced=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+ wheelRotation+= (reduced?1:6)*360+delta;
+ var disc=$('#wheelDisc'),finished=false;
+ function finish(){
+  if(finished)return;finished=true;spinning=false;
+  var value=state.wheelOptions[chosen];$('#wheelResultText').textContent='这次的结果：'+value;
+  var now=new Date(),time=now.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',hour12:false});
+  state.wheelHistory.unshift({value:value,time:time,date:dateKey()});state.wheelHistory=state.wheelHistory.slice(0,30);
+  var saved=saveState();renderWheelHistory();renderWheelOptions();updateHomeNote();
+  message('#wheelMessage',saved?'结果已记录。':'结果已经产生，但本地保存失败；刷新后可能无法找回。');
+ }
+ disc.addEventListener('transitionend',function onEnd(event){if(event.propertyName!=='transform')return;disc.removeEventListener('transitionend',onEnd);finish();});
+ disc.style.transform='rotate('+wheelRotation+'deg)';
+ window.setTimeout(finish,reduced?80:5500);
+}
+function setOracleCategory(category){
+ selectedOracleCategory=category;
+ $$('[data-oracle-category]').forEach(function(b){b.classList.toggle('active',b.getAttribute('data-oracle-category')===category);});
+ renderSavedOracle();
+}
+function renderOracleResult(entry){
+ var paper=$('#oraclePaper');paper.innerHTML='';
+ var seal=document.createElement('span');seal.className='oracle-seal';seal.setAttribute('aria-hidden','true');seal.textContent='签';
+  var number=document.createElement('div');number.className='oracle-number';number.textContent=entry.category+' · '+entry.date;
+ var title=document.createElement('h3');title.textContent=entry.title;
+ var text=document.createElement('p');text.textContent=entry.message;
+ var advice=document.createElement('div');advice.className='oracle-advice';advice.textContent='今日提醒 · '+entry.advice;
+ paper.appendChild(seal);paper.appendChild(number);paper.appendChild(title);paper.appendChild(text);paper.appendChild(advice);
+}
+function renderSavedOracle(){
+ var key=dateKey()+'_'+selectedOracleCategory,entry=state.dailyOracle[key];
+ if(entry)renderOracleResult(entry);
+ else $('#oraclePaper').innerHTML='<div class="oracle-placeholder"><span class="oracle-placeholder-seal">签</span><span>THE DAILY ORACLE</span><p>签筒安静地放在桌上。<br>准备好时，抽一支签。</p></div>';
+}
+function renderOracleHistory(){
+ var list=$('#oracleHistory');list.innerHTML='';
+ if(!state.oracleHistory.length){var empty=document.createElement('li');empty.className='record-detail';empty.textContent='还没有抽签记录。';list.appendChild(empty);return;}
+ state.oracleHistory.slice(0,8).forEach(function(entry,index){
+  var item=document.createElement('li'),button=document.createElement('button');button.type='button';button.className='record-trigger';button.setAttribute('data-oracle-history-index',String(index));
+  var meta=document.createElement('span');meta.className='record-meta';meta.textContent=(entry.date||'')+' · '+(entry.category||'综合');
+  var title=document.createElement('span');title.className='record-title';title.textContent=entry.title||'灵签';
+  var detail=document.createElement('span');detail.className='record-detail';detail.textContent=entry.message||'点击查看这条灵签';
+  button.appendChild(meta);button.appendChild(title);button.appendChild(detail);item.appendChild(button);list.appendChild(item);
+ });
+}
+function openOracleHistory(index){
+ var entry=state.oracleHistory[index];if(!entry)return;
+ selectedOracleCategory=Object.prototype.hasOwnProperty.call(oracleDeck,entry.category)?entry.category:'综合';
+ $$('[data-oracle-category]').forEach(function(button){button.classList.toggle('active',button.getAttribute('data-oracle-category')===selectedOracleCategory);});
+ renderOracleResult(entry);
+ message('#oracleMessage','已重新打开 '+(entry.date||'')+' 的灵签记录。');
+}
+function drawOracle(){
+ var pool=oracleDeck[selectedOracleCategory],index=Math.floor(Math.random()*pool.length),item=pool[index];
+ var entry={category:selectedOracleCategory,date:dateKey(),title:item[0],message:item[1],advice:item[2]};
+ state.dailyOracle[dateKey()+'_'+selectedOracleCategory]=entry;
+ state.oracleHistory.unshift(entry);state.oracleHistory=state.oracleHistory.slice(0,30);
+ var saved=saveState();renderOracleResult(entry);renderOracleHistory();updateHomeNote();
+ message('#oracleMessage',saved?'今日灵签已经保存，可以随时回来重读。':'灵签已显示，但本地保存失败；刷新后可能无法找回。');
+}
+function updateHomeNote(){
+ var notes=[];
+ if(state.wheelHistory.length)notes.push('转盘：'+state.wheelHistory[0].value);
+ if(state.tarotHistory.length)notes.push('塔罗：'+state.tarotHistory[0].cards.join('、'));
+ if(state.oracleHistory.length)notes.push('灵签：'+state.oracleHistory[0].title);
+ var el=$('#homeRecent');
+ if(el)el.textContent=notes.length?notes.slice(0,3).join('　／　'):'结果会留在这台设备的浏览器。';
+}
+app.addEventListener('click',function(event){
+ var open=event.target.closest('[data-open]');
+ if(open){showView(open.getAttribute('data-open'));return;}
+ if(event.target.closest('[data-exit]')){window.location.assign('../index.html');return;}
+ if(event.target.closest('[data-go-home]')){showView('home');return;}
+ var tarotRecord=event.target.closest('[data-tarot-history-index]');
+ if(tarotRecord){openTarotHistory(Number(tarotRecord.getAttribute('data-tarot-history-index')));return;}
+ var oracleRecord=event.target.closest('[data-oracle-history-index]');
+ if(oracleRecord){openOracleHistory(Number(oracleRecord.getAttribute('data-oracle-history-index')));return;}
+ var spreadButton=event.target.closest('[data-spread]');
+ if(spreadButton){setSpread(spreadButton.getAttribute('data-spread'));return;}
+ var category=event.target.closest('[data-oracle-category]');
+ if(category){setOracleCategory(category.getAttribute('data-oracle-category'));return;}
+ var edit=event.target.closest('[data-edit-option]');
+ if(edit){beginWheelEdit(Number(edit.getAttribute('data-edit-option')));return;}
+ var saveEdit=event.target.closest('[data-save-option]');
+ if(saveEdit){saveWheelEdit(Number(saveEdit.getAttribute('data-save-option')));return;}
+ var cancelEdit=event.target.closest('[data-cancel-option]');
+ if(cancelEdit){cancelWheelEdit();return;}
+ var remove=event.target.closest('[data-remove-option]');
+ if(remove){removeWheelOption(Number(remove.getAttribute('data-remove-option')));return;}
+ var action=event.target.closest('[data-action]');
+ if(!action)return;
+ var type=action.getAttribute('data-action');
+ if(type==='draw-tarot')drawTarot();
+ if(type==='spin')spinWheel();
+ if(type==='add-option')addWheelOption();
+ if(type==='reset-options')resetWheelOptions();
+ if(type==='draw-oracle')drawOracle();
+});
+$('#newWheelOption').addEventListener('keydown',function(event){if(event.key==='Enter'){event.preventDefault();addWheelOption();}});
+$('#wheelOptions').addEventListener('keydown',function(event){
+ if(!event.target||event.target.id!=='wheelEditInput')return;
+ if(event.key==='Enter'){event.preventDefault();saveWheelEdit(editingWheelIndex);}
+ if(event.key==='Escape'){event.preventDefault();cancelWheelEdit();}
+});
+loadState();setSpread('three');drawWheel();renderTarotHistory();renderOracleHistory();setOracleCategory('综合');updateHomeNote();
+})();
+</script>
+</body>
+</html>

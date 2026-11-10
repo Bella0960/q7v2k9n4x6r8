@@ -47,5 +47,14 @@ test('switching and resetting icons can roll back, while deleting a preset does 
 });
 
 test('service worker cache version changes so installed PWA users receive the updated icon page', () => {
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v173'/);
+  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v174'/);
+});
+
+
+test('icon preset registry includes every desktop shortcut, including Fate Cabin', () => {
+  const desktopHome = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const shortcutIds = [...new Set([...desktopHome.matchAll(/data-drag="(app_[^"]+)"/g)].map(match => match[1]))];
+  const configuredIds = [...new Set([...iconSettings.matchAll(/\{\s*id:\s*'(app_[^']+)'/g)].map(match => match[1]))];
+  const missing = shortcutIds.filter(id => !configuredIds.includes(id));
+  assert.deepEqual(missing, [], 'every desktop app must be available to individual icon upload and saved icon presets');
 });
