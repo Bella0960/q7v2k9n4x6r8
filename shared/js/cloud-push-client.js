@@ -516,19 +516,24 @@
     });
   }
 
-  function completeAutonomyActivity(activity, text) {
+  function completeAutonomyActivity(activity, text, options) {
     if (!activity || !/^[A-Za-z0-9_-]{16,64}$/.test(String(activity.id || ''))) {
       return Promise.reject(new Error('自主活动 ID 无效'));
     }
     var attemptCount = Number(activity.attemptCount);
     var message = String(text || '').trim();
-    if (!Number.isSafeInteger(attemptCount) || attemptCount < 1 || message.length < 2) {
+    options = options && typeof options === 'object' ? options : {};
+    var displayName = String(options.displayName || '').replace(/[<>\\u0000-\\u001F]/g, ' ').replace(/\\s+/g, ' ').trim();
+    displayName = Array.from(displayName).slice(0, 48).join('');
+    var bubbleCount = Number(options.bubbleCount);
+    if (!Number.isSafeInteger(attemptCount) || attemptCount < 1 ||
+        message.length < 2 || !Number.isSafeInteger(bubbleCount) || bubbleCount < 1 || bubbleCount > 4) {
       return Promise.reject(new Error('自主活动结果无效'));
     }
     return requestDeviceMetadata(
       '/api/autonomy/activities/' + encodeURIComponent(activity.id) + '/complete',
       'POST',
-      { attemptCount: attemptCount, text: message }
+      { attemptCount: attemptCount, text: message, displayName: displayName, bubbleCount: bubbleCount }
     );
   }
 
