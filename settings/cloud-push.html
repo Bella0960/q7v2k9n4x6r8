@@ -471,7 +471,7 @@
             <div class="cloud-guide-list">
                 <div class="cloud-guide-item">
                     <strong>推送通知</strong>
-                    <p>负责把云端发出的通知显示在这台设备上。打开它只代表允许接收通知，不会因此自动生成聊天内容，也不会替角色开启主动联系。</p>
+                    <p>负责把云端发出的通知显示在这台设备上。角色主动消息的通知会显示角色名称和消息条数，不包含私聊正文；点击通知可直接进入对应聊天。打开它只代表允许接收通知，不会因此自动生成聊天内容，也不会替角色开启主动联系。</p>
                 </div>
                 <div class="cloud-guide-item">
                     <strong>角色主动联系</strong>
@@ -487,7 +487,7 @@
                 </div>
             </div>
 
-            <p class="cloud-guide-limit"><strong>目前需要知道的限制：</strong>角色主动联系的聊天内容仍由已配对设备上的 MAOMAO 使用本机 API 配置和本地聊天上下文生成。设备需要打开 MAOMAO 并保持页面在前台；应用关闭或处于后台时，目前不会在云端独立生成新聊天内容。所以，开启授权不等于角色会 24 小时自动发消息。</p>
+            <p class="cloud-guide-limit"><strong>目前需要知道的限制：</strong>角色主动联系的聊天内容仍由已配对设备上的 MAOMAO 使用本机 API 配置和本地聊天上下文生成，需要 MAOMAO 在前台运行。消息生成并进入云端收件箱后，即使你切换到其他应用，也可以由系统推送提醒你；Android 是否显示顶部横幅，还取决于系统通知权限和横幅设置。PWA 不能强制覆盖其他应用显示悬浮窗口。应用完全关闭或处于后台时，云端不会自行生成下一条 AI 消息，所以开启授权不等于角色会 24 小时自动发消息。</p>
 
             <div class="cloud-guide-status" aria-label="当前功能进度">
                 <h3 class="cloud-guide-status-title">当前进度</h3>
