@@ -323,7 +323,7 @@ button,a{font:inherit}
       });
       var result = outcome && outcome.result;
       if (!result || !result.ok) {
-        toast(result && result.reason === 'storage' ? '保存失败，请检查手机存储空间' : '这张卡目前无法执行该操作');
+        toast(result && result.reason === 'invalid' ? '卡片数据异常，已停止修改；请先恢复本地数据' : (result && result.reason === 'storage' ? '保存失败，请检查手机存储空间' : '这张卡目前无法执行该操作'));
         return;
       }
       var card = result.card || outcome.before;
