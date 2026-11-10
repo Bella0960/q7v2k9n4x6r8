@@ -61,7 +61,7 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 
 ### CI and deployment evidence
 - Main production workflow run #42918127727 (attempt 2) for `f0cf6c7` concluded failure. Its deploy job has `logs_url: null` and `steps: null`; no build/test/deploy step was executed or reported.
-- PR #243 Tutorial Guide Regression run #42922634791 was retried once. The retry was accepted, queued, then failed with an empty step list and no job log. This confirms the runner problem remains; it does not indicate a tutorial test assertion failure.
+- PR #243 has since advanced to head `d66d9b7a59b148cddfa13b1361497a07bf573b51` (`fix(test): repair newline in private-gallery tutorial assertion`). Its latest Tutorial Guide Regression run #42923116703 was retried once; the retry again completed as failure with `steps: null` and `logs_url: null`. No tutorial test step executed, so this is still an Actions execution blocker rather than a test result.
 - PR #243's eight workflow runs and PR #242's latest workflow runs are failures without executed steps. Treat all related checks as NOT VERIFIED, not as code-test failures or passes.
 - Cloudflare account read-only inspection shows Worker `mao` deployment `9ba47808-90b3-4d30-b133-6f0af373a1cc`, version `1a090b6e-1ba9-4661-a9d4-c3c7e2e64fa8` (version number 315), receiving 100% traffic; created 2026-11-10T22:50:38Z. Its metadata has no `workers/commit_sha` annotation. The timestamp is shortly after the main commit, but does not prove the deployed bundle is exactly `f0cf6c7`.
 - The configured Worker URL is https://mao.miamor520000.workers.dev. A direct HTTP check from this execution environment could not resolve DNS, so live route availability was not verified here.
