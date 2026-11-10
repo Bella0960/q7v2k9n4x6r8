@@ -92,7 +92,7 @@ async function subscribeDevice(ctx, device, subscription) {
 
 /* ------------------------------------------------------------------ */
 
-test('迁移 0001–0016 建立云推送、活动幂等、上下文来源与多设备消息回执结构', async () => {
+test('迁移 0001–0017 建立云推送、活动幂等、上下文共享快照与多设备消息回执结构', async () => {
   const testDb = openTestDb();
   applyMigrations(testDb.exec);
   const tables = testDb.query("SELECT name FROM sqlite_master WHERE type = 'table'")
@@ -114,7 +114,9 @@ test('迁移 0001–0016 建立云推送、活动幂等、上下文来源与多�
     'device_pairing_tokens',
     'device_bootstrap',
     'character_context_versions',
-    'character_context_events'
+    'character_context_events',
+    'user_context_sharing',
+    'character_context_snapshots'
   ]) {
     assert.ok(tables.includes(expected), `缺少表 ${expected}`);
   }
@@ -136,15 +138,17 @@ test('迁移 0001–0016 建立云推送、活动幂等、上下文来源与多�
   assert.ok(indexes.includes('idx_outbound_pending_device_character'), '出站收件箱必须按目标设备、角色与状态建立索引');
   assert.ok(indexes.includes('idx_activity_dedupe'), '自主活动必须按账号/角色/上下文幂等键唯一');
   assert.ok(indexes.includes('idx_activity_recipient_due'), '自主活动必须支持按角色与到期状态查询');
+  assert.ok(indexes.includes('idx_context_snapshots_latest'), '角色上下文快照必须支持按账号/角色读取最新版本');
+  assert.ok(indexes.includes('idx_outbound_group'), '多气泡出站消息必须支持按组顺序恢复');
   const activityColumns = testDb.query("PRAGMA table_info('activity_queue')").map(row => String(row.name));
   assert.ok(activityColumns.includes('dedupe_key'), '活动队列必须保存稳定幂等键');
-  for (const column of ['result_json', 'result_server_message_id', 'result_dedupe_key']) {
+  for (const column of ['result_json', 'result_server_message_id', 'result_dedupe_key', 'result_group_id', 'result_message_count']) {
     assert.ok(activityColumns.includes(column), `活动队列必须保存不可变生成结果字段 ${column}`);
   }
   const contextVersionColumns = testDb.query("PRAGMA table_info('character_context_versions')").map(row => String(row.name));
   assert.ok(contextVersionColumns.includes('updated_by_device_id'), '上下文版本必须记录最后更新设备');
   const outboundColumns = testDb.query("PRAGMA table_info('outbound_messages')").map(row => String(row.name));
-  for (const column of ['push_accepted_at', 'device_received_at', 'local_saved_at', 'read_at', 'read_by_device_id']) {
+  for (const column of ['push_accepted_at', 'device_received_at', 'local_saved_at', 'read_at', 'read_by_device_id', 'group_id', 'group_index', 'group_count']) {
     assert.ok(outboundColumns.includes(column), `出站消息缺少生命周期字段 ${column}`);
   }
   const receiptColumns = testDb.query("PRAGMA table_info('outbound_device_receipts')").map(row => String(row.name));
@@ -160,7 +164,7 @@ test('迁移 0001–0016 建立云推送、活动幂等、上下文来源与多�
   const applied = applyMigrations(testDb.exec);
   assert.deepEqual(applied, []);
   const versions = testDb.query('SELECT version FROM schema_migrations');
-  assert.equal(versions.length, 16);
+  assert.equal(versions.length, 17);
   assert.deepEqual(versions.map(row => row.version).sort(), [
     '0001_init',
     '0002_autonomy_metadata',
@@ -177,7 +181,8 @@ test('迁移 0001–0016 建立云推送、活动幂等、上下文来源与多�
     '0013_mao_account_restore_state',
     '0014_mao_admin_directory_indexes',
     '0015_mao_account_audit_cursor',
-    '0016_mao_global_audit_cursor'
+    '0016_mao_global_audit_cursor',
+    '0017_cloud_autonomous_context'
   ]);
 });
 
