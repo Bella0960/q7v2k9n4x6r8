@@ -155,6 +155,41 @@
         return (chars / 1024 / 1024).toFixed(2) + ' MB';
     }
 
+    // 备份会保留本地音频元数据，但按当前策略不导出 audio.blob。
+    // 新备份使用 __backup.excluded 明确记录；旧 schema 2 备份则从 audio 元数据兼容推断。
+    function getExcludedAudioRecords(excluded, indexedDBData) {
+        var explicit = Array.isArray(excluded) ? excluded.filter(function (item) {
+            return item && item.db === 'maomao-media-store' && item.store === 'audio';
+        }) : [];
+        if (explicit.length) return explicit;
+
+        var mediaDb = indexedDBData && indexedDBData['maomao-media-store'];
+        var records = mediaDb && Array.isArray(mediaDb.audio) ? mediaDb.audio : [];
+        return records.filter(function (record) {
+            return record && !Object.prototype.hasOwnProperty.call(record, 'blob');
+        }).map(function (record) {
+            return {
+                id: String(record.id == null ? '' : record.id),
+                label: String(record.name || record.title || record.id || '未命名本地音频').slice(0, 100),
+                bytes: Number(record.size) || 0,
+                reason: '旧版备份未包含 audio.blob'
+            };
+        });
+    }
+
+    function formatExcludedAudioSummary(excluded, indexedDBData) {
+        var items = getExcludedAudioRecords(excluded, indexedDBData);
+        if (!items.length) return '';
+        var totalBytes = items.reduce(function (total, item) {
+            return total + (Number(item.bytes) || 0);
+        }, 0);
+        var names = items.slice(0, 4).map(function (item) {
+            return String(item.label || item.id || '未命名音频').slice(0, 28);
+        }).join('、');
+        return items.length + ' 首，共 ' + fmtSize(totalBytes)
+            + (names ? '；' + names + (items.length > 4 ? ' 等' : '') : '');
+    }
+
     // Blob → base64（不含 data: 前缀，直接裸 base64 字符串写进 JSON）
     function blobToBase64(blob) {
         return new Promise(function (resolve, reject) {
@@ -362,19 +397,9 @@
             var msg = parts.join('、');
             if (withSecrets) msg += '，含 API 密钥';
             if (dbWarnings.length) msg += '（' + dbWarnings.length + ' 个 IndexedDB 库读取失败已跳过）';
-            var audioOmissions = excludedFields.filter(function (item) {
-                return item.db === 'maomao-media-store' && item.store === 'audio';
-            });
-            if (audioOmissions.length) {
-                var audioOmittedBytes = audioOmissions.reduce(function (total, item) {
-                    return total + (Number(item.bytes) || 0);
-                }, 0);
-                var audioOmittedNames = audioOmissions.slice(0, 4).map(function (item) {
-                    return String(item.label || item.id).slice(0, 28);
-                }).join('、');
-                msg += '（本地音乐文件未打包：' + audioOmissions.length + ' 首，共 ' + fmtSize(audioOmittedBytes)
-                    + (audioOmittedNames ? '；' + audioOmittedNames + (audioOmissions.length > 4 ? ' 等' : '') : '')
-                    + '；完整清单已写入备份文件）';
+            var audioOmissionSummary = formatExcludedAudioSummary(excludedFields);
+            if (audioOmissionSummary) {
+                msg += '（本地音乐文件未打包：' + audioOmissionSummary + '；完整清单已写入备份文件）';
             } else if (hasAudioMeta) {
                 msg += '（本地音频条目元数据已包含；本地音频文件本身不在备份范围内）';
             }
@@ -980,9 +1005,16 @@
             if (idbMeta && typeof idbMeta === 'object') {
                 Object.keys(idbMeta).forEach(function (k) { idbTotal += (idbMeta[k] || 0); });
             }
+            var omittedAudioSummary = formatExcludedAudioSummary(obj.__backup.excluded, obj.indexedDB);
+            var audioImportWarning = omittedAudioSummary
+                ? '\\n\\n警告：这份备份未包含本地音乐文件（' + omittedAudioSummary
+                    + '）。导入会覆盖当前音频库，可能移除本机原有的本地音乐文件。'
+                    + '若这些文件尚未另行保存，请取消导入。'
+                : '';
             if (!confirm('将用备份覆盖当前全部数据（localStorage ' + count + ' 项'
                     + (idbTotal ? '，IndexedDB ' + idbTotal + ' 项' : '') + '）' + label
-                    + '。\n\n当前数据会先自动导出一份安全备份，localStorage 导入失败会自动回滚。确定继续？')) return;
+                    + '。\\n\\n当前数据会先自动导出一份安全备份，localStorage 导入失败会自动回滚。确定继续？'
+                    + audioImportWarning)) return;
 
             // 1. 建立本机恢复点：把当前 localStorage 快照写入独立 IndexedDB，
             //    写完立即读回并用 verifyRestore 对 localStorage 实际内容做校验。
@@ -1096,6 +1128,7 @@
             if (dbSkippedBlob) parts.push('有 ' + dbSkippedBlob + ' 项 IndexedDB 记录因内容损坏未恢复');
             if (dbFailed.length) parts.push('部分 IndexedDB 未恢复：' + dbFailed.join('；'));
             if (dbSkippedOld) parts.push('备份版本较旧，未包含媒体与书籍数据');
+            if (omittedAudioSummary) parts.push('原备份未包含本地音乐文件（' + omittedAudioSummary + '）');
             if (fontOrphanCleaned) parts.push('自定义字体未随备份恢复，请重新上传');
             var tail = backupFileWarn || '';
             toast(parts.join('，') + tail + '，正在刷新…');
