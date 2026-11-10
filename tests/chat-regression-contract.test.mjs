@@ -1865,7 +1865,7 @@ test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat
   assert.match(groupPlay, /data-setting="followUpEnabled"/);
   assert.match(chatNotifier, /PhoneAPI\.completeJSON/);
   assert.match(chatNotifier, /chat_proactive_global_attempt_at/);
-  assert.match(chatNotifier, /proactiveContact: true/);
+  assert.match(chatNotifier, /message\.proactiveContact = true/);
   assert.match(chatNotifier, /saveChatHistory\(candidate\.contact\.id, freshHistory\)/);
   assert.match(chatNotifier, /tick\(\);/);
   assert.match(chatNotifier, /startProactiveScheduler\(\)/);
@@ -1911,7 +1911,7 @@ test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat
   assert.match(chatNotifier, /claimAutonomyActivity\(roleId\)/);
   assert.match(chatNotifier, /completeAutonomyActivity\(activity, content\)/);
   assert.match(chatNotifier, /skipAutonomyActivity\(activity, 'no_worthy_message'\)/);
-  assert.match(chatNotifier, /localMessage\.serverMessageId = serverMessageId|serverMessageId: serverMessageId/);
+  assert.match(chatNotifier, /messages\[messages\.length - 1\]\.serverMessageId = serverMessageId/);
 
 });
 
