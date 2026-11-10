@@ -2947,23 +2947,9 @@
         // differs from the immutable cloud envelope; otherwise a damaged local
         // row could silently consume the only recoverable server copy.
         function inspectCloudOutboundHistory(history, serverMessageId, expectedText) {
-            if (!Array.isArray(history)) return 'conflict';
-            var matches = [];
-            for (var i = 0; i < history.length; i += 1) {
-                var item = history[i];
-                if (item && String(item.serverMessageId || '') === serverMessageId) {
-                    matches.push(item);
-                }
-            }
-            if (!matches.length) return 'missing';
-            if (matches.length !== 1) return 'conflict';
-            var existing = matches[0];
-            var existingText = typeof existing.text === 'string'
-                ? existing.text
-                : (typeof existing.content === 'string' ? existing.content : null);
-            return existing.role === 'assistant' && existingText === expectedText
-                ? 'match'
-                : 'conflict';
+            var policy = window.ChatMessagePolicy;
+            if (!policy || typeof policy.inspectCloudOutboundHistory !== 'function') return 'conflict';
+            return policy.inspectCloudOutboundHistory(history, serverMessageId, expectedText);
         }
 
         // 云端主动消息进入现有聊天历史：只接收纯文字，serverMessageId 是本地幂等键。
@@ -2983,57 +2969,50 @@
             var history = loadMessages();
             if (!Array.isArray(history)) return false;
             var existingState = inspectCloudOutboundHistory(history, serverMessageId, messageText);
-            // 本地已经保存但上一次 ACK 断网：只有角色和完整正文都匹配时才补 ACK。
+            // 已保存的整组气泡可以补 ACK；部分、重复或正文冲突时一律不 ACK。
             if (existingState === 'match') return true;
-            // 同一 ID 对应的本地行若损坏/冲突，不能追加重复气泡，也不能误 ACK。
             if (existingState === 'conflict') return false;
 
             var createdAt = Number(envelope && envelope.createdAt);
             if (!Number.isSafeInteger(createdAt) || createdAt <= 0) createdAt = Date.now();
-            var message = {
-                role: 'assistant',
-                text: messageText,
-                time: createdAt,
-                mid: 'cloud_' + serverMessageId,
-                serverMessageId: serverMessageId,
-                source: 'cloud_autonomous'
-            };
-            ensureMid(message);
+            var policy = window.ChatMessagePolicy;
+            if (!policy || typeof policy.buildCloudOutboundMessages !== 'function') return false;
+            var messages = policy.buildCloudOutboundMessages(messageText, serverMessageId, { time: createdAt });
+            if (!messages.length) return false;
 
             var wasNearBottom = !chatMessages ||
                 (chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight <= 120);
-            history.push(message);
+            var originalLength = history.length;
+            history.push.apply(history, messages);
             if (!saveMessages(history)) {
-                history.pop();
+                history.splice(originalLength, messages.length);
                 return false;
             }
 
-            // 只有已经通过 PhoneStorage/localStorage 写后读回验证才刷新现有聊天 UI。
+            // Each bubble is a durable message row with its own mid. Persist the
+            // whole turn first, then pace the visual append without partial ACK.
             if (_vl) {
                 vlRefresh();
                 if (wasNearBottom) scrollToBottom(true);
             } else {
-                // History is durable before the serialized visual pacing begins.
                 var appendIndex = chatMessages.querySelectorAll('.msg-row[data-idx]').length;
-                await appendAiMessageWithPacing(message, appendIndex, { scrollToBottom: wasNearBottom });
+                await appendReplyMessagesWithPacing(messages, appendIndex, { scrollToBottom: wasNearBottom });
             }
 
-            // 气泡呈现期间其他标签页可能写回较旧历史。ACK 前再读一次，
-            // 若云端消息被覆盖，则合并回最新历史并再次写后读回验证。
+            // Rendering or another tab may race with history writes. Re-check
+            // the complete envelope; repair only when the batch is wholly missing.
             var postRenderHistory = loadMessages();
-            var stillSaved = Array.isArray(postRenderHistory) && postRenderHistory.some(function (item) {
-                return item && String(item.serverMessageId || '') === serverMessageId;
-            });
-            if (!stillSaved) {
+            var persistedState = inspectCloudOutboundHistory(postRenderHistory, serverMessageId, messageText);
+            if (persistedState === 'missing') {
                 if (!Array.isArray(postRenderHistory)) return false;
-                postRenderHistory.push(message);
-                if (!saveMessages(postRenderHistory)) return false;
-                var confirmedHistory = loadMessages();
-                var confirmed = Array.isArray(confirmedHistory) && confirmedHistory.some(function (item) {
-                    return item && String(item.serverMessageId || '') === serverMessageId;
+                var knownMids = new Set(postRenderHistory.map(function (item) { return String(item && item.mid || ''); }));
+                messages.forEach(function (message) {
+                    if (!knownMids.has(String(message.mid || ''))) postRenderHistory.push(message);
                 });
-                if (!confirmed) return false;
+                if (!saveMessages(postRenderHistory)) return false;
+                persistedState = inspectCloudOutboundHistory(loadMessages(), serverMessageId, messageText);
             }
+            if (persistedState !== 'match') return false;
 
             // 只广播消息 ID，不广播消息正文；其他标签页从本地持久化历史重新读取。
             try {
