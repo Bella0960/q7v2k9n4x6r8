@@ -229,6 +229,23 @@ test('所有危险操作使用屏幕中央原生模态确认，不再使用浏�
   assert.match(adminCss, /\.admin-confirm-actions/);
 });
 
+test('撤销、停用和永久撤销均以红色标记，确认弹窗同步提示风险', () => {
+  assert.match(adminHtml, /danger-zone-heading[\s\S]*risk-hint[\s\S]*红色标记为高风险/);
+  assert.match(adminScript, /el\('button', 'open-detail danger', '撤销'\)/);
+  assert.match(adminScript, /el\('button', 'invite-revoke-button', '撤销当前邀请码'\)/);
+  assert.match(adminScript, /createActionButton\('停用账号', 'danger', 'disable', true\)/);
+  assert.match(adminScript, /createActionButton\('永久撤销', 'danger', 'revoke', true\)/);
+  assert.match(adminScript, /dialog\.classList\.toggle\('is-danger', Boolean\(options\.danger\)\)/);
+  assert.match(adminScript, /dialog\?\.classList\.remove\('is-danger'\)/);
+  assert.match(adminCss, /--danger:#c9343d/);
+  assert.match(adminCss, /\.status-disabled,\.status-revoked\{color:var\(--danger\)/);
+  assert.match(adminCss, /\.open-detail\.danger\{[^}]*color:var\(--danger\)/);
+  assert.match(adminCss, /\.invite-revoke-button\{[^}]*color:var\(--danger\)/);
+  assert.match(adminCss, /\.action-button\.danger\{[^}]*color:var\(--danger\)/);
+  assert.match(adminCss, /\.admin-confirm-dialog\.is-danger \.eyebrow[\s\S]*\.admin-confirm-content h2\{color:var\(--danger\)\}/);
+  assert.match(adminCss, /\.admin-confirm-actions button\.danger\{border-color:var\(--danger\);background:var\(--danger\);color:#fff\}/);
+});
+
 test('账号危险操作区位于账号详情与审计记录之后的页面底部', () => {
   const audit = adminHtml.indexOf('id="auditList"');
   const loadMore = adminHtml.indexOf('id="loadMoreAudit"');
