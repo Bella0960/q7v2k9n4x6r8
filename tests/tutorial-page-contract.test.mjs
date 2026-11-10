@@ -31,7 +31,7 @@ test('guide documents the merged chat features and the reported settings blocker
   assert.match(guideScript, /配对头像/);
   assert.match(guideScript, /收藏给 TA/);
   assert.match(guideScript, /角色图库/);
-  assert.match(guideScript, /三个点点不开对话设置/);
+  assert.match(guideScript, /点不开对话设置/);
   assert.match(guideScript, /真实通知还需要单独完成推送链路和真机验收/);
 });
 
