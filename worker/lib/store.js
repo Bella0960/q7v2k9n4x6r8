@@ -1022,7 +1022,7 @@ class CloudStore {
     if (!this.isActiveAccountDevice(userId, deviceId)) return { revoked: true, saved: false };
     const sharing = this.getUserContextSharing(userId);
     if (!sharing || Number(sharing.enabled) !== 1) return { disabled: true, saved: false };
-    const messagesJson = serializeStoreJson(recentMessages, 7000, 'context.recentMessages');
+    const messagesJson = serializeStoreJson(recentMessages, 9000, 'context.recentMessages');
     const normalizedName = String(characterName || '');
     const normalizedPersona = String(personaText || '');
     const normalizedLastUserAt = Number(lastUserMessageAt);
