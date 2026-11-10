@@ -206,6 +206,21 @@ test('账号安全操作共享忙碌锁，并恢复按钮原始禁用状态', ()
     '操作结束不能无条件重新启用所有按钮');
 });
 
+test('管理员中心返回桌面仅显示独立图标，并保留可访问名称', () => {
+  const html = readFileSync(new URL('../admin/admin-center.html', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../admin/admin-center.css', import.meta.url), 'utf8');
+  const link = /<a class="back-link" href="\.\.\/index\.html" aria-label="返回桌面" title="返回桌面">([\s\S]*?)<\/a>/.exec(html);
+  assert.ok(link, '返回桌面入口必须保留正确目标和可访问名称');
+  assert.match(link[1], /<svg[\s\S]*?aria-hidden="true"/,
+    '返回桌面应使用独立 SVG 图标，而不是大段文字');
+  assert.doesNotMatch(link[1], /返回桌面/,
+    '按钮可见区域不得再显示四个大字');
+  assert.match(css, /\.back-link\{[^}]*flex:0 0 38px/,
+    '图标按钮宽度必须固定，不能挤压标题');
+  assert.match(css, /\.back-link:focus-visible/,
+    '图标按钮必须保留键盘焦点提示');
+});
+
 const accountAuthSource = readFileSync(new URL('../worker/lib/account-auth.js', import.meta.url), 'utf8');
 const passwordIterations = Number(/const PASSWORD_ITERATIONS = (\d+);/.exec(accountAuthSource)?.[1] || NaN);
 
