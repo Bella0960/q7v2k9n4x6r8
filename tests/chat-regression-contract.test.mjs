@@ -3039,6 +3039,41 @@ test('商店旧订单按原时间线补齐进度且损坏订单存储不被空�
   assert.match(shopPage, /订单数据异常，已停止覆盖保存/);
 });
 
+test('亲属卡存储损坏时，所有写入口必须拒绝覆盖并保留原始数据', () => {
+  const malformedStores = [
+    '{broken-json',
+    '{"not":"an-array"}',
+    '[null]',
+    '[{"roleId":"role-1"}]',
+    '[{"id":"same"},{"id":"same"}]',
+    '[{"id":"card-1","history":{}}]',
+    '[{"id":"card-1","paymentReceipts":{}}]'
+  ];
+
+  for (const raw of malformedStores) {
+    let writes = 0;
+    const storage = {
+      getItem: () => raw,
+      setItem: () => { writes += 1; }
+    };
+    const sandbox = { window: {}, localStorage: storage };
+    runInNewContext(roleFamilyCardsSource, sandbox);
+    const api = sandbox.window.RoleFamilyCards;
+    const state = api.readState();
+    assert.equal(state.ok, false, 'malformed card store must be reported as unreadable');
+    assert.equal(api.createInvite({
+      roleId: 'role-new', monthlyLimit: 50, singleLimit: 20
+    }), null, 'new invites must not replace malformed saved cards');
+    assert.equal(api.update('card-1', 'accept').reason, 'storage');
+    assert.equal(api.applyRoleChange('role-1', {
+      action: 'revoke'
+    }).reason, 'storage');
+    assert.equal(api.consume('card-1', 5, '商店', 'shop', 'damaged-payment').reason, 'storage');
+    assert.equal(api.writeAll([]), false, 'even the exposed write helper must fail closed');
+    assert.equal(writes, 0, 'no storage mutation may be attempted on a malformed store');
+  }
+});
+
 test('亲属卡状态变更必须通过本地存储写后读回确认', () => {
   let stored = '[]';
   let silentlyDropWrites = false;
