@@ -3921,6 +3921,107 @@ test('亲密付设置数据损坏时，设置页和交易模块都拒绝恢复�
   assert.deepEqual(writes, ['close_pay']);
 });
 
+test('账本财务记录损坏时拒绝显示为空并阻止覆盖，正常写入与订单使用同一把锁', async () => {
+  assert.match(financePage, /账本数据异常，已暂停新增和批注/);
+  assert.match(financePage, /async function mutateFinanceRecords\(mutator\)/);
+  assert.match(financePage, /ledger\.runExclusive\(function \(\)/);
+  assert.match(financePage, /if \(!list\) return;/,
+    'the AI finance annotation path must stop when records are unreadable');
+  assert.match(financePage, /if \(loadRecords\(\) === null\)/,
+    'the manual entry sheet must not open over corrupted finance records');
+
+  const start = financePage.indexOf('  function readFinanceRecordsState()');
+  const end = financePage.indexOf('  function escapeFinanceText(value)', start);
+  assert.ok(start >= 0 && end > start, 'finance storage and mutation helpers must be extractable');
+  const helperSource = financePage.slice(start, end);
+
+  for (const raw of ['{broken-json', 'null', '{}', '[null]', '[{"amount":"not-a-number"}]']) {
+    const values = new Map([['finance_records', raw]]);
+    const writes = [];
+    const localStorage = {
+      getItem: key => values.has(key) ? values.get(key) : null,
+      setItem: (key, value) => {
+        writes.push(key);
+        values.set(key, String(value));
+      }
+    };
+    const window = {
+      navigator: { locks: { request: (_name, _options, callback) => Promise.resolve().then(callback) } },
+      localStorage
+    };
+    runInNewContext(walletLedgerSource, { window });
+    const sandbox = {
+      window, localStorage,
+      console: { warn: () => {} },
+      showToast: () => {}
+    };
+    runInNewContext(helperSource, sandbox);
+    assert.equal(sandbox.loadRecords(), null, 'invalid finance storage must remain distinguishable from an empty ledger');
+    const outcome = await sandbox.mutateFinanceRecords(list => {
+      list.push({ id: 'should-not-write', amount: 5, type: 'expense' });
+      return true;
+    });
+    assert.equal(outcome.ok, false);
+    assert.equal(outcome.reason, 'invalid');
+    assert.deepEqual(writes, [], 'corrupted finance data must never be overwritten');
+    assert.equal(values.get('finance_records'), raw);
+  }
+
+  const values = new Map();
+  const writes = [];
+  const localStorage = {
+    getItem: key => values.has(key) ? values.get(key) : null,
+    setItem: (key, value) => {
+      writes.push(key);
+      values.set(key, String(value));
+    }
+  };
+  let queue = Promise.resolve();
+  let active = 0;
+  let maxActive = 0;
+  const window = {
+    navigator: {
+      locks: {
+        request: (_name, options, callback) => {
+          assert.equal(options.mode, 'exclusive');
+          const run = queue.then(async () => {
+            active += 1;
+            maxActive = Math.max(maxActive, active);
+            try { return await callback(); }
+            finally { active -= 1; }
+          });
+          queue = run.catch(() => {});
+          return run;
+        }
+      }
+    },
+    localStorage
+  };
+  runInNewContext(walletLedgerSource, { window });
+  const sandbox = {
+    window, localStorage,
+    console: { warn: () => {} },
+    showToast: () => {}
+  };
+  runInNewContext(helperSource, sandbox);
+  assert.deepEqual(JSON.parse(JSON.stringify(sandbox.loadRecords())), []);
+  const results = await Promise.all([
+    sandbox.mutateFinanceRecords(list => {
+      list.push({ id: 'manual-entry-1', amount: 8, type: 'expense', category: '餐饮' });
+      return { id: 'manual-entry-1' };
+    }),
+    sandbox.mutateFinanceRecords(list => {
+      list.push({ id: 'manual-entry-2', amount: 12, type: 'income', category: '其他' });
+      return { id: 'manual-entry-2' };
+    })
+  ]);
+  assert.ok(results.every(result => result.ok));
+  assert.equal(maxActive, 1, 'manual ledger writes and checkout writes must serialize on the shared wallet lock');
+  const persisted = JSON.parse(values.get('finance_records'));
+  assert.deepEqual(persisted.map(row => row.id).sort(), ['manual-entry-1', 'manual-entry-2']);
+  assert.equal(writes.length, 2);
+});
+
 test('商店、外卖亲密付必须验证额度和余额，且扣款未确认不能继续下单', () => {
   for (const [name, source] of [['shop', shopPage], ['takeout', takeoutPage]]) {
     assert.match(source, /async function doPay\(\)/, name + ' checkout must await the ledger lock');
