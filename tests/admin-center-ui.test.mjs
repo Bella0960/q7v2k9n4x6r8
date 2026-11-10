@@ -99,7 +99,7 @@ test('账号审计时间线展示邀请码生成与撤销事件，但不显示�
   assert.match(adminScript, /invite_revoke: '撤销专属邀请码'/);
   assert.ok(adminScript.includes("const actorLabel = record.action === 'invite_redeem' || record.action === 'account_register'"),
     '邀请码核销和账号注册应标记为账号操作者');
-  assert.match(adminScript, /record\\.action === 'admin_bootstrap'\\s*\\?\\s*'系统 '\\s*:\\s*'管理员 '/,
+  assert.match(adminScript, /record\.action === 'admin_bootstrap'\s*\?\s*'系统 '\s*:\s*'管理员 '/,
     '管理员初始化应标记为系统，其他管理操作应标记为管理员');
   assert.match(adminScript, /if \(record\.inviteId\) subline\.push\('邀请码记录 '/);
   assert.match(adminScript, /if \(record\.sourceAction === 'disable'\) subline\.push\('随账号停用自动撤销'/);
