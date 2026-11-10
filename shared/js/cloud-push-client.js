@@ -326,12 +326,10 @@
     if (typeof enabled !== 'boolean') return Promise.reject(new Error('enabled 必须是布尔值'));
     return requestDeviceMetadata('/api/autonomy/context-sharing', 'PUT', { enabled: enabled }).then(function (payload) {
       contextSharingEnabledCache = Boolean(payload && payload.enabled);
-      if (contextSharingEnabledCache) {
-        // Sharing begins from the next verified local save, not from old cached fingerprints.
-        clearLocalContextMetadata(CONTEXT_FINGERPRINT_PREFIX);
-      } else {
-        clearLocalContextMetadata(CONTEXT_SNAPSHOT_PENDING_PREFIX);
-      }
+      // Re-consent always starts from the next verified local save; never
+      // replay a context snapshot queued under an earlier consent session.
+      clearLocalContextMetadata(CONTEXT_FINGERPRINT_PREFIX);
+      clearLocalContextMetadata(CONTEXT_SNAPSHOT_PENDING_PREFIX);
       return payload;
     });
   }
