@@ -3901,12 +3901,7 @@ test('自主活动 API：本地生成器可安全认领并把结果交给原有�
   const completed = await ctx.asJson(completePath, {
     method: 'POST',
     device,
-    body: {
-      attemptCount: activity.attemptCount,
-      text: proactiveMessage,
-      bubbles: proactiveBubbles,
-      displayName: '林深'
-    }
+    body: { attemptCount: activity.attemptCount, text: proactiveMessage }
   });
   assert.equal(completed.status, 200);
   assert.equal(completed.payload.completed, true);
