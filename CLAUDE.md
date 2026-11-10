@@ -44,7 +44,7 @@ wallet/                 # wallet / finance（记账）/ shop（商店）/ shop-a
 settings/               # settings（API 配置）/ appearance / font-settings / sound-settings
 profile/                # profile（我的）/ edit-profile
 cafe/ games/ diary/ travel/ beauty/ theme-store/ music/ library/ tools/ envelope/   # 单页 App
-apps/settings/          # 历史样式候选目录；引用与打包范围仍待 GOV-003 核验，不得据此直接删除
+apps/settings/          # 旧样式资源（2 个 CSS）；当前页面未发现引用，但 Vite 静态资源遍历仍会打包，删除前须核对外部路径与产物
 ```
 
 **注意：`chat/chat/` 双层目录是重构后的真实路径，不是笔误。**

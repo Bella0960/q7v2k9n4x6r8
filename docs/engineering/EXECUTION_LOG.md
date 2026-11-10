@@ -5,7 +5,7 @@ This is the durable checkpoint for owner-assigned, multi-step work. Update it af
 ## Current work package
 
 - **Owner request:** Identify remaining MAOMAO work, start with low-risk items, and adopt end-to-end execution so the owner does not need to repeatedly say “continue”.
-- **Task IDs:** GOV-001, GOV-004
+- **Task IDs:** GOV-001, GOV-004, GOV-003
 - **Status:** IN PROGRESS
 - **Working branch:** `GOV-001-autonomous-execution-and-doc-sync`
 - **Base:** `main` at `f0cf6c74f0272219ebe4aa9e5a8c21fea7e49273`
@@ -22,6 +22,9 @@ This is the durable checkpoint for owner-assigned, multi-step work. Update it af
 
 ## Open PRs requiring reconciliation (not automatically mergeable)
 
+- PR #247 — GOV-003 read-only audit of `apps/settings/`; both stylesheets are unreferenced by current in-repo page source but are still copied into `dist`, so no deletion is proposed.
+- PR #248 — CI-004 no-dependency JavaScript syntax checker for `.js/.mjs/.cjs` and executable inline HTML scripts; test commands are added, but the commands have not been run and CI hookup is pending.
+
 - #243 interactive desktop tutorial — PR description/source checks now report 50 step-by-step guides, 29 desktop-app guides and 10 FAQs; real-phone acceptance is not verified. Its latest Tutorial Guide Regression job still failed before any step executed.
 - #242 chat beauty preview / chat layout — the unrelated top-right menu experiment has been removed from its branch; do not reintroduce it.
 - #148 cloud push infrastructure; #239 server-side model and grouped outbound delivery depends on #148.
@@ -37,6 +40,15 @@ This is the durable checkpoint for owner-assigned, multi-step work. Update it af
 | Refresh handbook tree metrics | REVIEW PR #244 | Computed from complete recursive GitHub tree |
 | Add continuous execution protocol | REVIEW PR #244 | AGENTS.md, REMEDIATION_BACKLOG.md, AI_HANDOFF_PROMPT.md |
 | Create durable cross-session checkpoint | REVIEW PR #244 | This file |
+
+## Current repository checkpoint — 2026-11-11
+
+- `main` remains at `f0cf6c74f0272219ebe4aa9e5a8c21fea7e49273`; no merge or deployment occurred in this work.
+- 40 open PRs were visible at the latest check. PRs #244–#248 are Draft/open and unmerged.
+- PR #214's date-mode transparency rules are already present on current main; do not port that old diff again.
+- Forum post creation and Moments auto-reply both use the shared `PhoneStorage` Moments collection.
+- Legacy `apps/settings` CSS remains shipped in `dist`; no deletion has been made.
+- `npm run lint` placeholder has a replacement proposed in PR #248; actual commands are still NOT RUN.
 
 ## Next actions
 
@@ -74,7 +86,12 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - PR #244 remains Draft. PRs #245 and #246 are stacked on its branch; do not merge them ahead of the base dependency.
 - PR #243 is not Draft, but its CI has not actually run and the phone tutorial/navigation flow has not been verified on a real device.
 
-### Work performed this run
+### Current GOV-003 audit
+
+- `GOV-003-legacy-settings-assets-audit` is stacked on `GOV-001-autonomous-execution-and-doc-sync` at `f66cdff964e7db88d9f73095878f17f47f97182d`.
+- Two legacy CSS files remain in build output despite no current in-repo consumers. Deletion is not included and still requires explicit owner approval plus external-path review.
+
+## Work performed this run
 - Re-ran only the tutorial-specific failed workflow for PR #243 to check whether Actions runner allocation had recovered. The retry failed before steps began.
 - Updated this execution log on the existing GOV-001 branch so the tutorial inventory and current CI/deployment evidence are no longer stale.
 - No application code, secrets, user data, production Worker, or APK was changed.
