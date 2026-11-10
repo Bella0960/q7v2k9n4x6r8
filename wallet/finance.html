@@ -409,6 +409,11 @@
         var state = readFinanceRecordsState();
         if (!state.ok) return { ok: false, reason: state.reason || 'invalid' };
         var list = state.value;
+        // Preserve the same deterministic IDs used by loadRecords() for legacy rows
+        // so an AI annotation can still locate a pre-ID transaction after re-reading.
+        list.forEach(function (row, index) {
+          if (!row.id) row.id = 'f_legacy_' + index + '_' + (row.time || '') + '_' + (row.category || '');
+        });
         var result = typeof mutator === 'function' ? mutator(list) : null;
         if (result && result.abort) return { ok: false, reason: result.abort };
 
