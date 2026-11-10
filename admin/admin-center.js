@@ -456,6 +456,11 @@
   }
 
   async function openAccount(accountId) {
+    if (selectedAccountId !== accountId) {
+      generatedCode = '';
+      $('generatedCode').textContent = '';
+      $('inviteCodeSheet').hidden = true;
+    }
     selectedAccountId = accountId;
     $('accountDetail').hidden = false;
     $('detailUsername').textContent = '正在读取…';
@@ -871,6 +876,9 @@
 
   function closeDetail() {
     selectedAccountId = '';
+    generatedCode = '';
+    $('generatedCode').textContent = '';
+    $('inviteCodeSheet').hidden = true;
     auditRequestSequence += 1;
     accountDetailRequestSequence += 1;
     $('accountDetail').hidden = true;
