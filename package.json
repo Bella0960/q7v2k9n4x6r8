@@ -7,7 +7,7 @@
     "dev": "vite --host 0.0.0.0 --port 3000",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0 --port 3000",
-    "lint": "node -e 'console.log(\"Lint passed\")'",
+    "lint": "node scripts/lint.mjs",
     "test:chat:contract": "node --test tests/chat-regression-contract.test.mjs tests/chat-role-sticker-library.test.mjs tests/role-avatar-library.test.mjs tests/chat-image-vision.test.mjs tests/role-gallery-image-autonomy.test.mjs",
     "test:chat:reply": "node --test tests/chat-reply-bubble-mode.test.mjs",
     "test:chat:isolation": "node --test tests/chat-data-isolation.test.mjs",
@@ -42,7 +42,8 @@
     "test:icons:presets": "node --test tests/icon-presets-contract.test.mjs",
     "test:images": "node --test tests/image-generation-pipeline.test.mjs",
     "test:role:avatars": "node --test tests/role-avatar-library.test.mjs",
-    "test:chat:image-vision": "node --test tests/chat-image-vision.test.mjs"
+    "test:chat:image-vision": "node --test tests/chat-image-vision.test.mjs",
+    "test:lint": "node --test tests/lint-script.test.mjs"
   },
   "devDependencies": {
     "playwright": "^1.64.1",
