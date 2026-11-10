@@ -3275,6 +3275,49 @@ test('亲属卡所有状态变更与商店外卖消费共用钱包锁', () => {
   assert.match(detail, /window\.handleRoleFamilyCardAction = async function/);
   assert.match(detail, /return window\.RoleFamilyCards\.update\(cardId, action\)/);
 
+  // Execute the real card-wallet page action wrapper and assert that its storage
+  // mutation is called only from inside the shared wallet lock.
+  const actionStart = familyCardsPage.indexOf('var pendingCardActions = new Set();');
+  const actionEnd = familyCardsPage.indexOf("\n\n  document.querySelector('.filters')", actionStart);
+  assert.ok(actionStart >= 0 && actionEnd > actionStart,
+    'family card page action wrapper must be extractable');
+  let lockDepth = 0;
+  const updatedCards = [];
+  const pageSandbox = {
+    window: {
+      MaoMaoWalletLedger: {
+        runExclusive: async (task) => {
+          lockDepth += 1;
+          try { return await task(); }
+          finally { lockDepth -= 1; }
+        }
+      }
+    },
+    api: {
+      find: id => ({ id: id, roleId: 'role-' + id }),
+      update: (id, action) => {
+        assert.equal(lockDepth, 1,
+          'card status storage mutation must execute inside the shared wallet lock');
+        updatedCards.push({ id: id, action: action });
+        return { ok: true, card: { id: id, roleId: 'role-' + id } };
+      }
+    },
+    appendRoleNotice: () => {},
+    render: () => {},
+    toast: () => {},
+    console: { warn: () => {} }
+  };
+  runInNewContext(familyCardsPage.slice(actionStart, actionEnd), pageSandbox);
+  await Promise.all([
+    pageSandbox.runAction('accept', 'card-a'),
+    pageSandbox.runAction('pause', 'card-b')
+  ]);
+  assert.deepEqual(updatedCards, [
+    { id: 'card-a', action: 'accept' },
+    { id: 'card-b', action: 'pause' }
+  ]);
+  assert.equal(lockDepth, 0, 'the card page must release the shared lock after each action');
+
   // Exercise the shared lock contract: an update from the card wallet page must
   // not overlap a consume operation from a commerce page.
   let tail = Promise.resolve();
