@@ -27,6 +27,7 @@ function load(options = {}) {
     const media = {
         async addRef(assetId, ownerType, ownerId) {
             calls.added.push({ assetId, ownerType, ownerId });
+            if (options.deleteRoleOnAddRef) roles.splice(0, roles.length, { id: 'role-b' });
             return options.failAddRef ? { ok: false } : { ok: true };
         },
         async removeRef(assetId, ownerType, ownerId) {
@@ -34,8 +35,11 @@ function load(options = {}) {
             return { ok: true, value: { removed: true } };
         },
         async removeAsset(assetId) {
-            calls.assetsRemoved.push(assetId);
-            return { ok: true };
+            const stillOwnedByGallery = Object.values(records).some(items =>
+                items.some(item => String(item.assetId) === String(assetId))
+            );
+            if (!stillOwnedByGallery) calls.assetsRemoved.push(assetId);
+            return stillOwnedByGallery ? { ok: false } : { ok: true };
         }
     };
     class MediaRepository {
@@ -151,7 +155,7 @@ test('rollback releases only the message reference and preserves the gallery ass
     await api.releaseReferences(messages);
 
     assert.deepEqual(calls.removed, [{
-        assetId: 'asset-a1',
+        assetId: 'asset-a2',
         ownerType: 'chat-message',
         ownerId: messages[0].mid
     }]);
@@ -182,6 +186,29 @@ test('stream marker stripping removes complete and incomplete gallery markers fr
     const { api } = load();
     assert.equal(api.stripStreamMarker('你好 [[MAOMAO_IMAGE:image-a2]]'), '你好 ');
     assert.equal(api.stripStreamMarker('你好 [[MAOMAO_IMAGE:ima'), '你好 ');
+});
+
+test('image record read failures fail closed before a chat-message reference is created', async () => {
+    const { api, calls } = load({ failGet: true });
+    const catalogue = await api.prepare('role-a');
+    const parsed = api.extractMarkers('[[MAOMAO_IMAGE:image-a2]]', catalogue);
+    const messages = await api.createMessages('role-a', parsed.attachments);
+    assert.equal(messages.length, 0);
+    assert.equal(calls.get.length, 1);
+    assert.equal(calls.added.length, 0);
+});
+
+test('deleting the role during media reference creation rolls back the message reference', async () => {
+    const { api, calls } = load({ deleteRoleOnAddRef: true });
+    const catalogue = await api.prepare('role-a');
+    const parsed = api.extractMarkers('[[MAOMAO_IMAGE:image-a2]]', catalogue);
+    const messages = await api.createMessages('role-a', parsed.attachments);
+    assert.equal(messages.length, 0);
+    assert.equal(calls.added.length, 1);
+    assert.equal(calls.removed.length, 1);
+    assert.equal(calls.removed[0].assetId, 'asset-a2');
+    assert.equal(calls.removed[0].ownerType, 'chat-message');
+    assert.equal(calls.assetsRemoved.length, 0);
 });
 
 test('missing roles and gallery errors fail closed without preventing text replies', async () => {
