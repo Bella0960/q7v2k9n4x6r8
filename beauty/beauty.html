@@ -1159,7 +1159,7 @@ function getCurrentTarget(){
 }
 function setCurrentTarget(t){
   document.querySelectorAll('#targetPills .pill').forEach(function(x){
-    x.classList.toggle('on', x.dataset.target === t);
+    x.classList.toggle('on', String(x.dataset.target) === String(t));
   });
 }
 
