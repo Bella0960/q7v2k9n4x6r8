@@ -1917,13 +1917,13 @@ test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat
 });
 
 test('proactive contact notifier is loaded on home and navigation pages and precached by PWA', () => {
-  assert.match(homePage, /chat-notifier\.js\?v=20261107v7/);
-  assert.match(navPage, /chat-notifier\.js\?v=20261107v7/);
-  assert.match(detail, /chat-notifier\.js\?v=20261107v7/);
+  assert.match(homePage, /chat-notifier\.js\?v=20261110v8/);
+  assert.match(navPage, /chat-notifier\.js\?v=20261110v8/);
+  assert.match(detail, /chat-notifier\.js\?v=20261110v8/);
   assert.match(detail, /cloud-push-client\.js\?v=20261107v2/);
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v19/);
   assert.match(serviceWorker, /phone-app-pwa-v217/);
-  assert.match(serviceWorker, /chat-notifier\.js\?v=20261107v7/);
+  assert.match(serviceWorker, /chat-notifier\.js\?v=20261110v8/);
   assert.match(serviceWorker, /cloud-push-client\.js\?v=20261107v2/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v19/);
   assert.match(serviceWorker, /chat-followup-policy/);
@@ -3361,7 +3361,7 @@ test('聊天详情页的多气泡呈现队列只声明一次', () => {
 });
 
 test('亲属卡所有状态变更与商店外卖消费共用钱包锁', async () => {
-  assert.match(familyCardsPage, /wallet-ledger\.js\?v=20261107v7/);
+  assert.match(familyCardsPage, /wallet-ledger\.js\?v=20261110v8/);
   assert.match(familyCardsPage, /async function runAction\(action, id\)/);
   assert.match(familyCardsPage, /await ledger\.runExclusive\(function \(\)/);
   assert.match(familyCardsPage, /api\.update\(id, action\)/);
@@ -3790,7 +3790,7 @@ test('聊天、商店、外卖和钱包充值提现统一使用同一个钱包�
     ['takeout', takeoutPage],
     ['wallet', walletPage]
   ]) {
-    assert.match(source, /wallet-ledger\.js\?v=20261107v7/,
+    assert.match(source, /wallet-ledger\.js\?v=20261110v8/,
       name + ' must load the shared wallet ledger coordinator');
     assert.match(source, /MaoMaoWalletLedger\.runExclusive|ledger\.runExclusive/,
       name + ' must route balance mutations through the shared lock');
@@ -3809,7 +3809,7 @@ test('聊天、商店、外卖和钱包充值提现统一使用同一个钱包�
 
 
 test('亲密付额度、对象和开关设置也与商店及外卖结算共用钱包锁', () => {
-  assert.match(closePayPage, /wallet-ledger\.js\?v=20261107v7/);
+  assert.match(closePayPage, /wallet-ledger\.js\?v=20261110v8/);
   assert.match(closePayPage, /async function mutateData\(mutator\)/);
   assert.match(closePayPage, /ledger\.runExclusive\(function \(\)/);
   assert.match(closePayPage, /localStorage\.getItem\(KEY\) !== serialized/,
@@ -4107,7 +4107,7 @@ test('用户发出的红包/转账在钱包扣款后聊天保存失败时可恢�
 });
 
 test('用户红包/转账发送入口也使用共享钱包锁并刷新 chat-extras 脚本', () => {
-  assert.match(detail, /wallet-ledger\.js\?v=20261107v7/);
+  assert.match(detail, /wallet-ledger\.js\?v=20261110v8/);
   assert.match(detail, /chat-extras\.js\?t=20261107wallet2/);
   assert.match(chatExtrasSource, /ledger\.runExclusive\(function \(\)/);
   assert.match(chatExtrasSource, /paymentId: paymentId/);
