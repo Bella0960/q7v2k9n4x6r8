@@ -9,6 +9,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (relativePath) => readFileSync(resolve(root, relativePath), 'utf8');
 
 const detail = read('chat/chat/chat-detail.html');
+const cloudWorkerApp = read('worker/lib/app.js');
 const walletLedgerSource = read('shared/js/phone/wallet-ledger.js');
 const orderAfterSalesSource = read('shared/js/phone/order-after-sales.js');
 const financePage = read('wallet/finance.html');
@@ -3780,4 +3781,27 @@ test('offline face-to-face role card customizer exposes persisted styles and con
   assert.match(date, /applyProfileCardPreset\('transparent'\)/, 'reset should restore the transparent style');
   assert.ok(date.includes('id="dateForm"') && date.includes('id="replyOptionsBtn"') && date.includes('id="bgImageFile"'),
     'existing story composer, reply helper, and background upload should remain present');
+});
+
+
+test('chat main inline script parses and declares one shared pacing queue', () => {
+  const inlineScripts = Array.from(detail.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi))
+    .filter((match) => !/\bsrc\s*=/.test(match[1]));
+  assert.ok(inlineScripts.length > 0, 'chat detail should contain an inline runtime script');
+  assert.doesNotThrow(() => new Function(inlineScripts[0][2]),
+    'the main chat runtime script must parse before any chat feature can run');
+  assert.equal((inlineScripts[0][2].match(/\blet\s+aiBubblePacingRunId\s*=/g) || []).length, 1);
+  assert.equal((inlineScripts[0][2].match(/\blet\s+aiBubblePacingQueue\s*=/g) || []).length, 1);
+});
+
+test('cloud role context snapshot route matches the actual API path', () => {
+  const routeLine = cloudWorkerApp.split('\n').find((line) => line.includes('const characterContextSnapshotMatch ='));
+  assert.ok(routeLine, 'Worker should declare the role context snapshot route');
+  const literal = routeLine.match(/=\s*(\/.*\/)\.exec\(path\)/);
+  assert.ok(literal, 'route matcher should be a regular-expression literal');
+  const routePattern = new Function('return (' + literal[1] + ');')();
+  const match = routePattern.exec('/api/characters/role-123/context-snapshot');
+  assert.ok(match, 'the documented API route should match');
+  assert.equal(match[1], 'role-123');
+  assert.equal(routePattern.test('/api/characters/role-123/context-snapshot/extra'), false);
 });
