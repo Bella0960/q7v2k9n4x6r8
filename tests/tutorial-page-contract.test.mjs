@@ -12,6 +12,7 @@ function read(path) {
 const home = read('index.html');
 const serviceWorker = read('sw.js');
 const guideHtml = read('tutorial/tutorial.html');
+const chatDetail = read('chat/chat/chat-detail.html');
 const guideScript = read('tutorial/tutorial.js');
 const packageJson = JSON.parse(read('package.json'));
 
@@ -50,6 +51,12 @@ test('tutorial saves local test notes and exports a report without touching chat
   assert.match(guideHtml, /id="resetModal"/);
   assert.match(guideScript, /maomao_tutorial_progress_v1/);
   assert.match(guideScript, /function exportProgress/);
+});
+
+test('conversation settings has a direct navigation fallback and is cached in the PWA shell', () => {
+  assert.match(chatDetail, /onclick="window\.location\.assign\('chat-settings\.html\?roleId='/);
+  assert.match(chatDetail, /btnMoreMenu\.addEventListener\('click'/);
+  assert.ok(serviceWorker.includes("'./chat/chat/chat-settings.html'"));
 });
 
 test('PWA app shell includes the tutorial and uses the refreshed cache version', () => {
