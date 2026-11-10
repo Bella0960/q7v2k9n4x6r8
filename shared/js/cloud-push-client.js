@@ -1668,7 +1668,9 @@
             '云端定时调度：' + (ready.cloudSchedulerRuntimeVerified ? '最近 15 分钟内有运行记录' : '最近 15 分钟内没有运行记录'),
             '最近一次云端调度：' + (ready.cloudSchedulerLastRunAt ? new Date(ready.cloudSchedulerLastRunAt).toLocaleString() + '（' + String(ready.cloudSchedulerLastRunStatus || '未知') + '）' : '暂无记录'),
             '真实模型生成验收：' + (ready.cloudModelGenerationVerified ? '最近 30 天内有成功出站记录' : '最近 30 天内没有成功生成记录'),
+            '最近一次真实模型出站：' + (ready.cloudModelLastGeneratedAt ? new Date(ready.cloudModelLastGeneratedAt).toLocaleString() : '暂无记录'),
             '当前设备 Web Push 服务端回执：' + (ready.cloudPushAcceptanceVerified ? '最近 30 天内有 HTTP 成功接受记录' : '最近 30 天内没有 HTTP 成功接受记录'),
+            '当前设备最近 Push 接受：' + (ready.cloudPushLastAcceptedAt ? new Date(ready.cloudPushLastAcceptedAt).toLocaleString() : '暂无记录'),
             '说明：服务端接受不等于系统已显示通知；Android 锁屏横幅仍需真机验收。',
             '最近 24 小时调度阻塞原因：' + (Array.isArray(ready.recentSchedulerReasons) && ready.recentSchedulerReasons.length
               ? ready.recentSchedulerReasons.map(function (item) {
