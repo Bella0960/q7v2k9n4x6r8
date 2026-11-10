@@ -4949,7 +4949,7 @@ test('云端角色上下文共享默认关闭、内容有界且关闭后删除�
   const snapshotBody = {
     eventId,
     characterName: '测试角色',
-    personaText: '角色设定包含邮箱 person@example.com、网址 https://example.com 和号码 12345678901。',
+    personaText: '角色设定包含邮箱 person@example.com、网址 https://example.com、号码 12345678901、sk-proj-12345678901234567890、Bearer abcdefghijklmnopqrstuvwxyz123456 和 -----BEGIN PRIVATE KEY-----secret-material-----END PRIVATE KEY-----。',
     recentMessages: [
       { role: 'user', content: '这是一条测试消息。' },
       { role: 'assistant', content: '收到，我会记住本轮的简短上下文。' }
@@ -4983,6 +4983,9 @@ test('云端角色上下文共享默认关闭、内容有界且关闭后删除�
   assert.equal(stored.persona_text.includes('person@example.com'), false);
   assert.equal(stored.persona_text.includes('https://example.com'), false);
   assert.equal(stored.persona_text.includes('12345678901'), false);
+  assert.equal(stored.persona_text.includes('sk-proj-12345678901234567890'), false);
+  assert.equal(stored.persona_text.includes('abcdefghijklmnopqrstuvwxyz123456'), false);
+  assert.equal(stored.persona_text.includes('secret-material'), false);
 
   const disabled = await ctx.asJson('/api/autonomy/context-sharing', {
     method: 'PUT', device, body: { enabled: false }
