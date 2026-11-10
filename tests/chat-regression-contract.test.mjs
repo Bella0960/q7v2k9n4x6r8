@@ -2591,8 +2591,8 @@ test('图片卡批量保存失败时不显示半批内容，红包转账失败�
   assert.match(paySandbox.toast, /红包\/转账卡片未能保存/);
 });
 
-test('亲属卡独立存储成功但聊天记录失败时，不伪造聊天卡片已保存', () => {
-  const start = detail.indexOf('function insertRoleFamilyCardInvitations(historyList, cardSpecs)');
+test('亲属卡独立存储成功但聊天记录失败时，不伪造聊天卡片已保存', async () => {
+  const start = detail.indexOf('async function insertRoleFamilyCardInvitations(historyList, cardSpecs)');
   const end = detail.indexOf('\n\n        window.handle', start);
   assert.ok(start >= 0 && end > start, 'role-family invitation handler must be present');
   let createdExternalCard = false;
@@ -2605,6 +2605,9 @@ test('亲属卡独立存储成功但聊天记录失败时，不伪造聊天卡�
     currentCharacter: { id: 'role-1', name: '角色' },
     contactName: '角色',
     window: {
+      MaoMaoWalletLedger: {
+        runExclusive: (task) => Promise.resolve().then(task)
+      },
       RoleFamilyCards: {
         findForRole: () => [],
         createInvite: () => { createdExternalCard = true; return { id: 'family-card-1' }; }
@@ -2616,7 +2619,7 @@ test('亲属卡独立存储成功但聊天记录失败时，不伪造聊天卡�
   };
   runInNewContext(detail.slice(start, end), sandbox);
   const history = [{ mid: 'existing' }];
-  assert.equal(sandbox.insertRoleFamilyCardInvitations(history, [{
+  assert.equal(await sandbox.insertRoleFamilyCardInvitations(history, [{
     kind: 'standard', monthlyLimit: 500, singleLimit: 100, note: '测试'
   }]), false);
   assert.equal(createdExternalCard, true, 'the separate role-family store may already contain the invite');
