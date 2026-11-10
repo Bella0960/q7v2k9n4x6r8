@@ -6,22 +6,67 @@
 
   var KEY = 'maomao_role_family_cards_v1';
 
-  function readAll() {
+  function readAllState() {
+    var raw;
     try {
-      var value = JSON.parse(localStorage.getItem(KEY) || '[]');
-      return Array.isArray(value) ? value.filter(function (item) {
-        return item && typeof item === 'object' && item.id;
-      }) : [];
-    } catch (e) { return []; }
+      raw = localStorage.getItem(KEY);
+    } catch (error) {
+      return { ok: false, reason: 'storage', value: null };
+    }
+    if (raw == null) return { ok: true, reason: '', value: [] };
+
+    var value;
+    try {
+      value = JSON.parse(raw);
+    } catch (error) {
+      return { ok: false, reason: 'invalid', value: null };
+    }
+    if (!Array.isArray(value)) return { ok: false, reason: 'invalid', value: null };
+
+    var ids = Object.create(null);
+    for (var i = 0; i < value.length; i++) {
+      var item = value[i];
+      if (!item || typeof item !== 'object' || Array.isArray(item) ||
+          item.id == null || !String(item.id).trim()) {
+        return { ok: false, reason: 'invalid', value: null };
+      }
+      var id = String(item.id);
+      if (ids[id]) return { ok: false, reason: 'invalid', value: null };
+      ids[id] = true;
+      if (Object.prototype.hasOwnProperty.call(item, 'history') && !Array.isArray(item.history)) {
+        return { ok: false, reason: 'invalid', value: null };
+      }
+      if (Object.prototype.hasOwnProperty.call(item, 'paymentReceipts') &&
+          !Array.isArray(item.paymentReceipts)) {
+        return { ok: false, reason: 'invalid', value: null };
+      }
+    }
+    return { ok: true, reason: '', value: value };
+  }
+
+  function readAll() {
+    var state = readAllState();
+    return state.ok ? state.value : [];
   }
 
   function writeAll(cards) {
+    if (!Array.isArray(cards)) return false;
+    // Refuse to overwrite an unreadable existing store. An empty-looking result
+    // must never be mistaken for permission to replace the user's saved cards.
+    var before = readAllState();
+    if (!before.ok) return false;
+    for (var i = 0; i < cards.length; i++) {
+      if (!cards[i] || typeof cards[i] !== 'object' || Array.isArray(cards[i]) ||
+          cards[i].id == null || !String(cards[i].id).trim()) return false;
+    }
     try {
-      var serialized = JSON.stringify(Array.isArray(cards) ? cards : []);
+      var serialized = JSON.stringify(cards);
       localStorage.setItem(KEY, serialized);
       // Some storage adapters can report success while retaining an older value.
       // Treat the mutation as committed only when the exact payload reads back.
-      return localStorage.getItem(KEY) === serialized;
+      if (localStorage.getItem(KEY) !== serialized) return false;
+      var after = readAllState();
+      return after.ok && JSON.stringify(after.value) === serialized;
     } catch (e) { return false; }
   }
 
@@ -75,7 +120,9 @@
     var singleLimit = Math.round((Number(input.singleLimit) || 0) * 100) / 100;
     if (!input.roleId || monthlyLimit <= 0 || singleLimit <= 0) return null;
 
-    var cards = readAll();
+    var state = readAllState();
+    if (!state.ok) return null;
+    var cards = state.value;
     var stamp = Date.now();
     var id = 'rfc_' + stamp.toString(36) + '_' + Math.random().toString(36).slice(2, 9);
     var card = {
@@ -107,7 +154,9 @@
   }
 
   function update(cardId, action) {
-    var cards = readAll();
+    var state = readAllState();
+    if (!state.ok) return { ok: false, reason: 'storage', card: null };
+    var cards = state.value;
     var card = cards.find(function (item) { return String(item.id) === String(cardId); });
     if (!card) return { ok: false, reason: 'missing', card: null };
 
@@ -134,7 +183,9 @@
 
   function applyRoleChange(roleId, change) {
     change = change || {};
-    var cards = readAll();
+    var state = readAllState();
+    if (!state.ok) return { ok: false, reason: 'storage', card: null };
+    var cards = state.value;
     var matches = cards.filter(function (card) {
       return String(card.roleId || '') === String(roleId || '') &&
         (card.status === 'active' || card.status === 'pending' || card.status === 'paused');
@@ -166,7 +217,9 @@
   }
 
   function consume(cardId, amount, note, appId, transactionId) {
-    var cards = readAll();
+    var state = readAllState();
+    if (!state.ok) return { ok: false, reason: 'storage', card: null };
+    var cards = state.value;
     var card = cards.find(function (item) { return String(item.id) === String(cardId); });
     if (!card) return { ok: false, reason: 'missing', card: null };
 
@@ -216,6 +269,7 @@
   global.RoleFamilyCards = {
     key: KEY,
     readAll: readAll,
+    readState: readAllState,
     writeAll: writeAll,
     monthKey: monthKey,
     usedThisMonth: usedThisMonth,
