@@ -443,9 +443,11 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 ### 14.1 主动消息 → Push 投递
 
 - 新增 `CloudStore.listOutboundPushCandidates({ now, limit })`：只查询 `delivery_status='pending'` 的出站消息、仍授权的目标设备及有效订阅，并排除已发送 / 已终止通知；只挑选首次投递、到期重试或过期发送租约。
-- 新增 `buildOutboundPushPayload()`：通知标题为“新消息”，正文只提示“有一位角色刚刚联系你，打开聊天查看”，点击路径为 `chat/chat/chat-detail.html?id=<characterId>`。通知 payload 不带聊天正文、人设、记忆或 API Key。
+- `buildOutboundPushPayload()`：通知标题显示角色名称，正文提示本回合包含几条消息，点击路径为 `chat/chat/chat-detail.html?id=<characterId>`。通知 payload 不带聊天正文、人设、记忆或 API Key。
 - 新增 `dispatchPendingOutboundPushes()`：复用既有 `push_deliveries`，以 `outbound:<serverMessageId> + subscriptionId` 为去重范围，先 CAS 认领 60 秒租约，再走现有 VAPID/Web Push 发送、成功/失效状态记录与失败退避。
 - 主动消息完成并持久化到 outbox 后立即尝试 Push。Push 服务不可用或发送失败不会回滚消息；收件箱仍保留，聊天页前台轮询可继续接收。
+- **多气泡按回合交付**：本机完成接口可提交经校验的 `bubbles[]`（1–4 条）和角色显示名；服务端把完整数组写进同一条不可变 outbox envelope。接收端将它恢复成多条独立聊天记录，每条拥有自己的本地 `mid` / bubble index，只有最后一条携带 envelope `serverMessageId`。只有整组消息写入并读回验证成功后才 ACK，部分保存或正文冲突都保持待处理。
+- **一回合一条系统通知**：无论本回合拆成几条气泡，Push 都按同一个 envelope 去重，只发送一条系统通知；横幅显示角色名称和消息数量，不显示私聊正文，避免锁屏泄露内容。
 - 每个订阅独立维护投递状态，最多 5 次发送尝试；临时网络错误、408/425/429、5xx 走指数退避，订阅返回 gone 时停用该订阅。
 
 ### 14.2 定时重试与暂存结果恢复
@@ -468,6 +470,7 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 
 - 这是 Worker 代码层面的真实 Web Push 发送路径，不代表真实 Android 手机已经收到通知。仍需 Cloudflare Worker 部署、VAPID secrets、设备订阅、通知权限和锁屏真机验收。
 - Push service 接受请求只代表服务端投递被接受，不保证操作系统最终展示通知；用户关闭通知权限、浏览器 / PWA 被系统限制或设备离线时，仍以 outbox + 前台聊天轮询及后续 Push 重试恢复。
+- Android 是否出现屏幕顶部 heads-up 横幅，取决于用户通知权限、系统通知渠道与横幅设置；Web PWA 可以请求系统通知和振动，但不能强制在其他 App 上方创建 MAOMAO 自定义悬浮窗。点击系统通知会重新校验账号并跳转到角色聊天。
 - Node/SQLite 契约测试、`npm run build`、Wrangler dry-run、Cloudflare 部署和 Android 锁屏通知测试均为 **NOT VERIFIED**。本轮未合并 PR、未部署 Worker、未更新 APK。
 ## 15. M2.5a：Push 与暂存结果的维护顺序及重试细节
 
