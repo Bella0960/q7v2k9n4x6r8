@@ -375,8 +375,9 @@
       if (!row || typeof row !== 'object' || Array.isArray(row)) {
         return { ok: false, reason: 'invalid', value: null };
       }
-      if (Object.prototype.hasOwnProperty.call(row, 'amount') &&
-          (!isFinite(Number(row.amount)) || Number(row.amount) < 0)) {
+      if (!Object.prototype.hasOwnProperty.call(row, 'amount') ||
+          row.amount == null || row.amount === '' ||
+          !isFinite(Number(row.amount)) || Number(row.amount) < 0) {
         return { ok: false, reason: 'invalid', value: null };
       }
       if (Object.prototype.hasOwnProperty.call(row, 'type') && typeof row.type !== 'string') {
