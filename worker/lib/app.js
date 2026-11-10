@@ -226,23 +226,32 @@ function validateScheduleInput(body) {
  * Build a privacy-safe notification for an already-persisted chat outbox row.
  * Message text is intentionally omitted so lock-screen previews reveal no chat content.
  */
-export function buildOutboundPushPayload({ characterId, serverMessageId, timestamp, accountId = OWNER_USER_ID }) {
+export function buildOutboundPushPayload({
+  characterId, serverMessageId, groupId, messageCount, characterName,
+  timestamp, accountId = OWNER_USER_ID
+}) {
   const roleId = String(characterId || '');
   const messageId = String(serverMessageId || '');
+  const group = String(groupId || messageId);
   const maoAccountId = String(accountId || OWNER_USER_ID);
+  const count = Math.max(1, Math.min(4, Math.floor(Number(messageCount) || 1)));
+  const name = String(characterName || '').replace(/[<>\u0000-\u001F]/g, '').trim().slice(0, 48) || '角色';
   if (!roleId || roleId.length > 96 ||
       !/^[A-Za-z0-9_-]{16,128}$/.test(messageId) ||
+      !/^[A-Za-z0-9_-]{16,128}$/.test(group) ||
       !(maoAccountId === OWNER_USER_ID || /^MAO-[A-Z0-9]{12,24}$/.test(maoAccountId))) {
     throw new TypeError('outbound push target is invalid');
   }
   return {
     type: 'chat_message',
     accountId: maoAccountId,
-    title: '新消息',
-    body: '有一位角色刚刚联系你，打开聊天查看。',
+    title: name,
+    body: count > 1
+      ? '刚刚发来 ' + count + ' 条消息，打开聊天查看。'
+      : '刚刚发来一条消息，打开聊天查看。',
     url: './chat/chat/chat-detail.html?id=' + encodeURIComponent(roleId),
-    tag: 'maomao-chat-' + messageId,
-    dedupeKey: ('outbound:' + messageId).slice(0, 96),
+    tag: 'maomao-chat-' + group,
+    dedupeKey: ('outbound-group:' + group).slice(0, 120),
     timestamp: Number(timestamp)
   };
 }
@@ -296,7 +305,8 @@ export async function dispatchPendingOutboundPushes({
 
   for (const candidate of candidates) {
     const deliveryTimestamp = Number(typeof now === 'function' ? now() : timestamp);
-    const dedupeKey = 'outbound:' + String(candidate.server_message_id);
+    const groupId = String(candidate.group_id || candidate.server_message_id);
+    const dedupeKey = 'outbound-group:' + groupId;
     const deliveryOwner = randomToken(12);
     const claim = store.claimDelivery({
       id: randomToken(12),
@@ -327,6 +337,9 @@ export async function dispatchPendingOutboundPushes({
         accountId: candidate.target_account_id || OWNER_USER_ID,
         characterId: candidate.character_id,
         serverMessageId: candidate.server_message_id,
+        groupId,
+        messageCount: candidate.group_count || 1,
+        characterName: candidate.character_name,
         timestamp: Number(candidate.created_at || timestamp)
       });
       outcome = await sendWebPush(
@@ -424,8 +437,9 @@ export async function dispatchPendingOutboundPushes({
     if (outcome.ok) {
       summary.sent += 1;
       store.markPushSuccess(candidate.subscription_id, finishedAt);
-      store.markOutboundPushAccepted({
-        serverMessageId: candidate.server_message_id,
+      store.markOutboundGroupPushAccepted({
+        groupId: candidate.group_id,
+        fallbackMessageId: candidate.server_message_id,
         now: finishedAt
       });
     } else if (outcome.gone) {
@@ -1421,6 +1435,11 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       const envelope = {
         serverMessageId: row.server_message_id,
         characterId: row.character_id,
+        groupId: row.group_id || null,
+        groupIndex: Number(row.group_index || 1),
+        groupCount: Number(row.group_count || 1),
+        cursorId: String(row.id),
+        cursorCreatedAt: Number(row.created_at),
         createdAt: Number(row.created_at),
         lifecycle: {
           pushAcceptedAt: row.push_accepted_at == null ? null : Number(row.push_accepted_at),
@@ -1439,7 +1458,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       if (payloadError) envelope.payloadError = payloadError;
       return envelope;
     });
-    const lastRow = rows.length === limit ? rows[rows.length - 1] : null;
+    const lastRow = rows.length > limit ? rows[rows.length - 1] : null;
     const nextCursor = lastRow
       ? { createdAt: Number(lastRow.created_at), id: String(lastRow.id) }
       : null;
