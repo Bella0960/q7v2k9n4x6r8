@@ -8,7 +8,7 @@
 <script src="../shared/js/native-feel.js"></script>
 <script src="../shared/js/phone/phone_storage.js"></script>
 <script src="../shared/js/phone/role_family_cards.js?v=20261107v2"></script>
-<script src="../shared/js/phone/wallet-ledger.js?v=20261107v6"></script>
+<script src="../shared/js/phone/wallet-ledger.js?v=20261107v7"></script>
 <script src="../shared/js/phone/order-after-sales.js?v=20261107v2"></script>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
 <style>
@@ -1200,9 +1200,11 @@
             return row && row.paymentId === transactionId;
           });
           oldWalletRaw = localStorage.getItem('workData');
-          var wd = JSON.parse(oldWalletRaw || 'null') || { balance: 1000, history: [] };
-          if (typeof wd.balance !== 'number' || !isFinite(wd.balance)) wd.balance = 1000;
-          if (!Array.isArray(wd.history)) wd.history = [];
+          var wd = ledger.readWalletForMutation('workData', oldWalletRaw);
+          if (!wd) {
+            toast('钱包数据异常，已停止亲密付扣款；请先修复或恢复钱包数据，原交易编号保留');
+            return;
+          }
           var walletAlreadyCommitted = wd.history.some(function (row) {
             return row && row.paymentId === transactionId;
           });
