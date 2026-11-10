@@ -2931,7 +2931,7 @@
                                 var raw = message && (message.time != null ? message.time :
                                     (message.timestamp != null ? message.timestamp : message.createdAt));
                                 if (typeof raw === 'number' && Number.isSafeInteger(raw) && raw > 0) return raw;
-                                if (typeof raw === 'string' && /^\\d{4}-\\d{2}-\\d{2}T/.test(raw)) {
+                                if (typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(raw)) {
                                     var parsed = Date.parse(raw);
                                     return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0;
                                 }
@@ -2978,7 +2978,7 @@
                             ].filter(function (part) { return typeof part === 'string' && part.trim(); });
                             return {
                                 characterName: String(currentCharacter.name || currentCharacter.nickname || ''),
-                                personaText: personaParts.join('\\n').slice(0, 5000),
+                                personaText: personaParts.join('\n').slice(0, 5000),
                                 recentMessages: recent.slice(-12),
                                 lastUserMessageAt: latestUser.time
                             };
