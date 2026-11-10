@@ -7,13 +7,13 @@ Status vocabulary: OPEN, IN PROGRESS, FIXED, DEFERRED, NOT VERIFIED.
 ## Phase 0 — Establish an accurate baseline
 
 ### GOV-001 — Reconcile project documentation
-**Priority:** P0 · **Status:** IN PROGRESS (handbook added; source docs still need alignment)
+**Priority:** P0 · **Status:** IN PROGRESS (2026-11-11: refreshed main-tree inventory and corrected CLAUDE.md page count, storage wording, Service Worker wording, and test/lint description; remaining handoff details still need review)
 
 Current evidence:
-- Recursive main tree has 88 HTML pages; CLAUDE.md says 48.
-- index.html currently registers ./sw.js; CLAUDE.md says registration disabled.
-- CLAUDE.md claims localStorage is the only persistence layer; IndexedDB is already used by multiple modules.
-- Historical audit/refactor docs describe dated states.
+- The complete recursive main tree at `f0cf6c74f0272219ebe4aa9e5a8c21fea7e49273` contains 89 HTML pages, 112 JS/MJS files, 14 CSS files, and 445 tree entries.
+- `index.html` registers `./sw.js`; Service Worker behavior still requires browser/device verification after changes.
+- The project uses both localStorage and multiple IndexedDB databases; migration and backup coverage remain incomplete.
+- Historical audit/refactor docs describe dated states and must retain their historical labels.
 
 Scope: align CLAUDE.md with current verified architecture, link to docs/engineering, mark historical reports as dated, and remove contradictions without deleting useful design/behavior rules.
 
@@ -40,6 +40,21 @@ Scope: inspect apps/settings, previews, design, old reproduction scripts, androi
 Acceptance:
 - Candidate has no runtime/build reference, no user data, no active workflow dependency.
 - A PR shows exact deletion and impact; no bulk cleanup.
+
+### GOV-004 — Continuous task execution and durable handoff
+**Priority:** P0 · **Status:** IN PROGRESS (execution protocol and cross-session log introduced on branch GOV-001-autonomous-execution-and-doc-sync)
+
+Purpose: one owner request is one complete work package. The agent owns decomposition, sequencing, implementation, tests, repair loops, and the final report; the owner should not need to repeatedly say “continue”.
+
+Acceptance:
+- Default direct requests such as “fix”, “finish”, or “complete” enter IMPLEMENT-ON-BRANCH mode. Read-only mode is used only when explicitly requested.
+- The agent executes every in-scope, authorized, independently actionable subtask until acceptance criteria pass or a concrete blocker/approval boundary is reached.
+- After each subtask, update `docs/engineering/EXECUTION_LOG.md` with status, evidence, branch/commit/PR, tests, and next action; independent tasks continue even if one item is blocked.
+- Ask the owner only for product decisions, missing requirements, credentials/secrets, destructive data actions, schema migrations requiring approval, and production merge/deployment/release actions.
+- Never merge to `main`, deploy production, update APKs, configure secrets, or perform irreversible user-data operations without explicit owner approval.
+- Do not claim background execution after the conversation/session ends. Leave a durable checkpoint so the next session can resume without asking the owner to repeat the task.
+
+Execution semantics: “complete all” means all authorized work in the assigned scope, not silently activating deferred roadmap items or crossing approval boundaries. Blocked items must be recorded with the exact dependency and not disguised as completed.
 
 ## Phase 1 — GitHub and build governance
 
