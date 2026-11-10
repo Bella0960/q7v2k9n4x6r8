@@ -3879,6 +3879,15 @@ test('亲密付设置数据损坏时，设置页和交易模块都拒绝恢复�
     assert.equal(values.get('close_pay'), raw, 'the original broken setting must be preserved');
   }
 
+  for (const source of [shopPage, takeoutPage]) {
+    assert.match(source, /ledger\.readClosePayForMutation\('close_pay'\)/,
+      'checkout must use the strict shared close-pay reader');
+    assert.match(source, /亲密付设置数据异常，已暂停扣款/,
+      'checkout must visibly distinguish corrupted close-pay settings');
+    assert.match(source, /readClosePayState\('close_pay'\)/,
+      'checkout UI must inspect the close-pay storage state');
+  }
+
   // Only genuinely absent settings are initialized with first-use defaults.
   const values = new Map();
   const writes = [];
