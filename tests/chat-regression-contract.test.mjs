@@ -4630,6 +4630,10 @@ test('商店与外卖刷新后都从待结算快照恢复原支付方式，不�
   assert.match(takeoutPage, /这笔结算必须沿用原支付方式/);
 });
 
+test('亲属卡页面只加载一个共享钱包锁实例，避免重复初始化锁队列', () => {
+  assert.equal((familyCardsPage.match(/wallet-ledger\.js/g) || []).length, 1);
+});
+
 test('记账页面实际加载共享钱包锁模块，财务写入与订单结算使用同一模块', () => {
   assert.match(financePage, /wallet-ledger\.js\?v=20261110v9/);
   assert.match(shopPage, /recordFinanceLines\(transactionId, financeRows, 'finance_records'\)/);
