@@ -264,11 +264,16 @@ export function buildOutboundPushPayload({
 export async function dispatchPendingOutboundPushes({
   store,
   env = {},
-  now = Date.now(),
+  now = Date.now,
   fetchImpl = fetch,
   limit = 50
 } = {}) {
-  const timestamp = Number(typeof now === 'function' ? now() : now);
+  const clock = typeof now === 'function' ? now : () => Number(now);
+  const readTimestamp = () => {
+    const value = Number(clock());
+    return Number.isSafeInteger(value) && value > 0 ? value : null;
+  };
+  const timestamp = readTimestamp();
   if (!Number.isSafeInteger(timestamp) || timestamp <= 0 || !store ||
       typeof store.listOutboundPushCandidates !== 'function') {
     return { configured: false, reason: 'dispatcher_unavailable', attempted: 0, sent: 0, failed: 0 };
@@ -304,7 +309,11 @@ export async function dispatchPendingOutboundPushes({
   const deliveryLeaseMs = 60000;
 
   for (const candidate of candidates) {
-    const deliveryTimestamp = Number(typeof now === 'function' ? now() : timestamp);
+    const deliveryTimestamp = readTimestamp();
+    if (deliveryTimestamp == null) {
+      summary.failed += 1;
+      continue;
+    }
     const groupId = candidate.group_id ? String(candidate.group_id) : null;
     const dedupeKey = groupId
       ? 'outbound-group:' + groupId
@@ -325,7 +334,7 @@ export async function dispatchPendingOutboundPushes({
       const existing = store.findDelivery(dedupeKey, candidate.subscription_id);
       if (existing?.status === 'sending') summary.inProgress += 1;
       else if (existing?.status === 'error' &&
-               Number(existing.next_attempt_at || 0) > timestamp) summary.retryDeferred += 1;
+               Number(existing.next_attempt_at || 0) > (readTimestamp() ?? timestamp)) summary.retryDeferred += 1;
       else if (existing?.status === 'failed' ||
                Number(existing?.attempt_count || 0) >= maxDeliveryAttempts) summary.retryExhausted += 1;
       else summary.skipped += 1;
@@ -370,7 +379,11 @@ export async function dispatchPendingOutboundPushes({
     }
 
     if (outcome.skipped) {
-      const finishedAt = Number(typeof now === 'function' ? now() : timestamp);
+      const finishedAt = readTimestamp();
+      if (finishedAt == null) {
+        summary.failed += 1;
+        continue;
+      }
       const finalized = store.finishDelivery({
         dedupeKey,
         subscriptionId: candidate.subscription_id,
@@ -420,7 +433,11 @@ export async function dispatchPendingOutboundPushes({
       6 * 60 * 60 * 1000,
       30000 * (2 ** Math.max(0, Number(claim.attempt_count) - 1))
     );
-    const finishedAt = Number(typeof now === 'function' ? now() : timestamp);
+    const finishedAt = readTimestamp();
+    if (finishedAt == null) {
+      summary.failed += 1;
+      continue;
+    }
     const nextAttemptAt = canRetry ? finishedAt + retryDelayMs : null;
     const finalized = store.finishDelivery({
       dedupeKey,
