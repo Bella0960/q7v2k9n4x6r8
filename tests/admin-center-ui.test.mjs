@@ -44,13 +44,21 @@ test('audit request failures offer a retry but authentication failures leave the
   assert.match(audit, /retryButton\.addEventListener\('click', \(\) => loadAudit\(accountId, reset\)\)/);
 });
 
-test('new one-time invitation codes are scrolled into view before a follow-up refresh can fail', () => {
-  assert.match(adminHtml, /id="inviteCodeSheet" hidden/);
+test('new one-time invitation code is placed at the top of account detail and brought into view', () => {
+  const detailStart = adminHtml.indexOf('<section class="detail-sheet" id="accountDetail" hidden>');
+  const codeStart = adminHtml.indexOf('<section class="code-sheet" id="inviteCodeSheet" hidden>');
+  const accountIdentity = adminHtml.indexOf('<div class="detail-id">', detailStart);
+  const detailEnd = adminHtml.indexOf('</section>', accountIdentity);
+  assert.ok(detailStart >= 0 && codeStart > detailStart && codeStart < accountIdentity && accountIdentity < detailEnd,
+    'the one-time code panel must be inside account detail, immediately above account identity and the lower detail content');
+
   const reveal = adminScript.indexOf("$('inviteCodeSheet').hidden = false;");
   const scroll = adminScript.indexOf("$('inviteCodeSheet').scrollIntoView", reveal);
   const refresh = adminScript.indexOf('await refreshAll();', reveal);
   assert.ok(reveal >= 0 && scroll > reveal && refresh > scroll,
-    'the code must be visible on a phone even if the subsequent directory refresh fails');
+    'the code must be revealed and brought into view before a follow-up directory refresh');
+  assert.match(adminScript, /inviteCodeSheet'\)\.scrollIntoView\(\{ behavior: 'smooth', block: 'start' \}\)/);
+  assert.match(adminCss, /\.detail-sheet \.code-sheet\{margin:0 0 16px/);
   assert.match(adminCss, /\.generated-code[\s\S]*user-select:all/);
 });
 
