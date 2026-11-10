@@ -4220,10 +4220,6 @@
         // 全量重绘只递增 generation，即可取消当前及排队中的旧节点。
         let aiBubblePacingRunId = 0;
         let aiBubblePacingQueue = Promise.resolve();
-        // 单条 AI 回复、逐条落库的多气泡回复、云端主动消息共用同一呈现队列。
-        // 全量重绘会递增 generation，从而取消还未呈现的旧节点。
-        let aiBubblePacingRunId = 0;
-        let aiBubblePacingQueue = Promise.resolve();
 
         function appendMessagesWithPacing(messages, startIdx, options) {
             const safeMessages = Array.isArray(messages) ? messages.filter(Boolean) : [];
