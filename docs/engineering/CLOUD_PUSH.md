@@ -714,7 +714,7 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - 模型可返回不发送，或 1–4 条独立文字气泡。每条消息拥有独立 `serverMessageId`，并记录相同 `group_id`、顺序和组内总数。出站组结果先不可变暂存，再逐条建立 outbox；中断后由收件箱恢复逻辑补齐。
 - 一组多气泡只发送一条 Web Push 通知。通知使用角色名称和消息条数，不包含私聊正文。另一设备必须先把整组气泡一次性写入本机聊天历史并读回验证，再逐条提交本地保存 ACK；任何一条 ACK 失败都会保留整组可恢复状态。
 - 历史单条消息继续使用旧的通知去重键；新增组消息使用组级去重，不改变旧数据语义。
-- 云端执行器在数据库查询阶段就筛选 `executionMode=cloud` 的到期任务，再应用批次上限，避免较早的前台任务长期占满查询批次、饿死云端任务。每轮 tick 会写入不含聊天内容的运行摘要；准备检查会分别显示最近 15 分钟 Cron 记录和最近 30 天真实模型生成记录，不把“有配置”误报为“已运行/已生成”。
+- 云端执行器在数据库查询阶段就筛选 `executionMode=cloud` 的到期任务，再应用批次上限，避免较早的前台任务长期占满查询批次、饿死云端任务。每轮 tick 会写入不含聊天内容的运行摘要；准备检查会分别显示最近 15 分钟 Cron 记录、最近 30 天真实模型生成记录，以及当前设备最近 30 天 Web Push 服务端成功接受回执。Push 回执按账号和设备隔离；HTTP 成功仅表示 Push 服务接受请求，不代表系统已经展示通知。
 
 ### 26.2 隐私与凭据配置
 
@@ -728,7 +728,7 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 ### 26.3 验证与发布边界
 
 - 新增 `tests/cloud-autonomous-model.test.mjs`，覆盖服务端凭据、HTTPS/主机白名单、限量上下文、1–4 条输出、无发送结果、无凭据 fail-closed，以及模型响应超过租约后禁止提交。
-- 扩展 `tests/cloud-push-contract.test.mjs`，覆盖迁移 0017、共享默认关闭、上下文脱敏/删除、多气泡分组恢复、部分 ACK 后整组重拉、单组单通知及组级 Push 回执，并增加云端任务先过滤再限批、运行/生成状态 fail-closed 断言。
+- 扩展 `tests/cloud-push-contract.test.mjs`，覆盖迁移 0017、共享默认关闭、上下文脱敏/删除、多气泡分组恢复、部分 ACK 后整组重拉、单组单通知及组级 Push 回执，并增加云端任务先过滤再限批、运行/生成状态 fail-closed、Push 服务端接受回执按当前账号与设备隔离的断言。
 - 上述测试已写入仓库，但当前工作环境没有运行 MAOMAO 的 Node/SQLite 测试与 Vite 构建；结果仍为 **NOT RUN**。真实模型供应商调用、Cloudflare 定时任务、系统通知横幅、Android 退出应用后的端到端表现仍为 **NOT VERIFIED**。
 - 本轮后续可靠性修复位于独立分支 `fix/cloud-autonomy-background-reliability-20261111`，以 `feat/cloud-autonomous-server-model` 为基础，不改写原 PR #239。没有修改 `main`，没有合并 PR #148/#239，没有更新生产 Worker `mao`，没有部署，也没有生成/更新 APK。
 - 尚未配置任何服务端模型 Secret。即使代码合并，只有部署环境单独配置服务端密钥、模型 URL/名称并完成真机验收后，云端自主生成才会真正启用。
