@@ -2424,7 +2424,7 @@ test('AI 气泡动画结束后，红包/转账/图片/通话卡统一使用最�
   assert.ok(callCard > refreshAfterPacing && payCards > refreshAfterPacing &&
     familyCards > refreshAfterPacing && heartCards > refreshAfterPacing && imageCards > refreshAfterPacing,
     'all follow-up card handlers must receive the refreshed history after the only pacing await');
-  assert.match(detail, /persistedAssistantMessage = aiMsg/);
+  assert.match(detail, /persistedAssistantMessage = replyMessages/);
   assert.match(detail, /if \(!Array\.isArray\(historyList\)\)/);
 });
 
@@ -4277,8 +4277,8 @@ test('商店和外卖结算的扣款、财务明细、订单都使用同一 paym
   }
   assert.match(shopPage, /function saveOrders\(o\)[\s\S]*?getItem\('shop_orders'\) === serialized/,
     'shop orders require exact readback');
-  assert.match(takeoutPage, /getItem\('takeout_orders'\) !== ordersSerialized/,
-    'takeout orders require exact readback');
+  assert.match(takeoutPage, /function saveTakeoutOrders\(rows\)[\s\S]*?setItem\('takeout_orders', serialized\);[\s\S]*?getItem\('takeout_orders'\) === serialized/,
+    'takeout orders require exact readback after the shared save helper persists the serialized snapshot');
 });
 
 
