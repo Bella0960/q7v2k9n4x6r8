@@ -348,6 +348,7 @@
     var PROACTIVE_CHECK_MS = 5 * 60 * 1000;
     var PROACTIVE_GLOBAL_COOLDOWN_MS = 24 * 60 * 60 * 1000;
     var PROACTIVE_MIN_IDLE_MS = 8 * 60 * 60 * 1000;
+    var PROACTIVE_INITIAL_DELAY_MS = 2 * 60 * 1000;
     var PROACTIVE_LOCK_KEY = 'chat_proactive_request_lock';
     var proactiveSchedulerStarted = false;
     var proactiveRequestPending = false;
@@ -371,7 +372,8 @@
 
     function ensureProactiveDependencies() {
         if (global.PhoneStorage && global.PhoneAPI && typeof global.PhoneAPI.completeJSON === 'function' &&
-            global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function') {
+            global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function' &&
+            typeof global.ChatPresencePolicy.evaluateInitialProactiveContact === 'function') {
             return Promise.resolve(true);
         }
         if (proactiveDependenciesPromise) return proactiveDependenciesPromise;
@@ -387,8 +389,8 @@
         }).then(function (ok) {
             if (!ok) return false;
             return loadProactiveScript(
-                proactiveAsset('shared/js/phone/chat-presence-policy.js?v=20261102v17'),
-                function () { return !!global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function'; }
+                proactiveAsset('shared/js/phone/chat-presence-policy.js?v=20261111firstcontact1'),
+                function () { return !!global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function' && typeof global.ChatPresencePolicy.evaluateInitialProactiveContact === 'function'; }
             );
         }).then(function (ok) {
             if (!ok) proactiveDependenciesPromise = null;
@@ -437,6 +439,23 @@
         return null;
     }
 
+    function hasConversationActivity(history) {
+        return (Array.isArray(history) ? history : []).some(function (item) {
+            if (!item || item.silent || item.isError || item.role === 'system_error') return false;
+            if (item.role !== 'user' && item.role !== 'sent' &&
+                item.role !== 'assistant' && item.role !== 'received') return false;
+            return !!String(item.text || item.content || '').trim() ||
+                !!item.type || !!item.image || !!item.voice || !!item.attachment;
+        });
+    }
+
+    function proactiveHistoryUnchanged(candidate, history) {
+        if (candidate && candidate.isInitialContact) return !hasConversationActivity(history);
+        var latest = newestMeaningfulMessage(history);
+        return !!latest && !!candidate && !!candidate.latest &&
+            latest.time === candidate.latest.time && latest.text === candidate.latest.text;
+    }
+
     function chooseProactiveCandidate(now) {
         var globalAttemptAt = Number(safeGet('chat_proactive_global_attempt_at')) || 0;
         if (globalAttemptAt && now - globalAttemptAt >= 0 &&
@@ -453,7 +472,48 @@
             var history = readHistory(id);
             var intervalMs = proactiveIntervalHours(id) * 60 * 60 * 1000;
             var roleAttemptAt = Number(safeGet('chat_proactive_last_attempt_' + id)) || 0;
-            var evaluation = global.ChatPresencePolicy.evaluateProactiveContact(history, {
+            var latest = newestMeaningfulMessage(history);
+            var evaluation;
+            var isInitialContact = !hasConversationActivity(history);
+
+            if (isInitialContact) {
+                var enabledAtKey = 'chat_proactive_contact_enabled_at_' + id;
+                var enabledAt = Number(safeGet(enabledAtKey)) || 0;
+                // Existing opt-ins without an activation timestamp wait from this upgrade onward.
+                if (!enabledAt) {
+                    enabledAt = now;
+                    safeSet(enabledAtKey, String(enabledAt));
+                }
+                if (safeGet('chat_proactive_first_contact_sent_' + id) === 'true') return;
+                evaluation = global.ChatPresencePolicy.evaluateInitialProactiveContact({
+                    enabled: true,
+                    blocked: false,
+                    pageVisible: true,
+                    hasHistory: false,
+                    firstContactSent: false,
+                    enabledAt: enabledAt,
+                    initialDelayMs: PROACTIVE_INITIAL_DELAY_MS,
+                    now: now,
+                    globalCooldownMs: PROACTIVE_GLOBAL_COOLDOWN_MS,
+                    roleCooldownMs: intervalMs,
+                    globalLastAttemptAt: globalAttemptAt,
+                    roleLastAttemptAt: roleAttemptAt,
+                    quietStartHour: 9,
+                    quietEndHour: 22
+                });
+                if (!evaluation.eligible) return;
+                candidates.push({
+                    contact: contact,
+                    history: history,
+                    evaluation: evaluation,
+                    latest: null,
+                    lastUserMessageAt: 0,
+                    isInitialContact: true
+                });
+                return;
+            }
+
+            evaluation = global.ChatPresencePolicy.evaluateProactiveContact(history, {
                 enabled: true,
                 blocked: false,
                 pageVisible: true,
@@ -467,15 +527,14 @@
                 quietStartHour: 9,
                 quietEndHour: 22
             });
-            if (!evaluation.eligible) return;
-            var latest = newestMeaningfulMessage(history);
-            if (!latest || latest.time !== evaluation.lastMessageAt) return;
+            if (!evaluation.eligible || !latest || latest.time !== evaluation.lastMessageAt) return;
             candidates.push({
                 contact: contact,
                 history: history,
                 evaluation: evaluation,
                 latest: latest,
-                lastUserMessageAt: evaluation.lastUserMessageAt
+                lastUserMessageAt: evaluation.lastUserMessageAt,
+                isInitialContact: false
             });
         });
 
@@ -536,6 +595,7 @@
         var ready = await ensureProactiveDependencies();
         if (!ready || !global.ChatPresencePolicy ||
             typeof global.ChatPresencePolicy.evaluateProactiveContact !== 'function' ||
+            typeof global.ChatPresencePolicy.evaluateInitialProactiveContact !== 'function' ||
             typeof global.ChatPresencePolicy.buildProactiveContactPrompt !== 'function' ||
             !global.PhoneAPI || typeof global.PhoneAPI.completeJSON !== 'function') return;
 
@@ -572,7 +632,7 @@
             var system = global.ChatPresencePolicy.buildProactiveContactPrompt(
                 candidate.contact,
                 candidate.history,
-                { localTime: localTime, voiceProfile: voiceProfile }
+                { localTime: localTime, voiceProfile: voiceProfile, initialContact: candidate.isInitialContact === true }
             );
             var messages = [{ role: 'system', content: system }];
             messages.push.apply(messages, historyForProactivePrompt(candidate.history));
@@ -594,9 +654,7 @@
 
             // 请求期间若用户又发了消息，放弃这条过时的主动联系。
             var freshHistory = readHistory(candidate.contact.id);
-            var freshLatest = newestMeaningfulMessage(freshHistory);
-            if (!freshLatest || freshLatest.time !== candidate.latest.time ||
-                freshLatest.text !== candidate.latest.text) return;
+            if (!proactiveHistoryUnchanged(candidate, freshHistory)) return;
 
             var newMessage = {
                 role: 'assistant',
@@ -610,6 +668,9 @@
                 ? global.PhoneStorage.saveChatHistory(candidate.contact.id, freshHistory)
                 : safeSet('chat_history_' + candidate.contact.id, freshHistory);
             if (!saved) return;
+            if (candidate.isInitialContact) {
+                safeSet('chat_proactive_first_contact_sent_' + candidate.contact.id, 'true');
+            }
             tick();
         } catch (error) {
             // 自动联系失败不打断当前页面；本次尝试已有冷却记录，避免重复消耗 API。
