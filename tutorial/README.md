@@ -6,7 +6,7 @@ The desktop app `教程` is the user-facing guide and test notebook for the phon
 
 - 50 guides total, including every one of the 29 desktop app shortcuts (including the Tutorial app itself).
 - Chat-specific sections: composer `+` menu, conversation settings, reply-bubble modes, proactive contact vs. follow-up, role stickers, avatar archive / pair builder, generated-image gallery, private/public images, image recognition, and chat memory/time options.
-- FAQ covering common entry-point confusion, per-role isolation, image prerequisites, background push limitations, and recording Bugs.
+- 11 FAQs covering common entry-point confusion, per-role isolation, image prerequisites, private-gallery auto-send behavior, background push limitations, and recording Bugs.
 - Local per-guide test checkbox, step-by-step progress, free-text issue notes, and exportable test report.
 
 ## Update on every user-visible feature merge
