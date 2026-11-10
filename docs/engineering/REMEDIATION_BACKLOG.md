@@ -203,6 +203,20 @@ Acceptance before implementation:
 
 ## Feature implementation
 
+### UI-ICON-001 — Keep icon customization aligned with launcher inventory
+**Priority:** P1 · **Status:** IN PROGRESS
+
+Evidence: `settings/icon-settings.html` maintained a separate 18-entry application list while the current launcher in `index.html` contains 28 app tiles. Eleven current launcher entries had no upload/restore row, and the settings page still listed the removed `app_shopadmin` entry.
+
+Scope: derive the icon customization rows from the launcher's `button[data-drag^="app_"]` entries. Keep the existing per-app storage keys, IndexedDB image records, preset metadata, and rollback behavior unchanged.
+
+Acceptance:
+- Every launcher app tile with a visible name and default SVG appears automatically in the icon settings page.
+- Newly added launcher apps are included without editing a second app list; removed apps no longer appear as active upload rows.
+- Existing `home_icon_img_<appId>` data, saved preset metadata, and preset image records remain intact; no storage key migration or destructive cleanup is performed.
+- Contract tests verify launcher inventory coverage, stable storage keys, and the PWA cache version.
+- Production build and relevant icon preset tests pass.
+
 ### AI-IMG-001 — Complete role-based image generation and gallery
 **Priority:** P1 · **Status:** IN PROGRESS
 
