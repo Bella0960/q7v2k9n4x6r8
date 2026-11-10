@@ -479,7 +479,7 @@
     if (receiptRows.length !== 1 || receiptRows[0].role !== 'assistant') return 'conflict';
     var receiptRow = receiptRows[0];
     var receiptText = String(receiptRow.text || receiptRow.content || '').trim();
-    if (expected.length === 1 && receiptText === expectedText) return 'match';
+    if (receiptText === text) return 'match';
 
     // Intermediate compatibility: sender builds before cloud completion may
     // have independent bubbles + one receipt on the final bubble, but no
