@@ -114,7 +114,8 @@ test('legacy composer CSS is scoped to the default theme only', () => {
 test('there is one native form submit send control, not a cloned floating button', () => {
   assert.equal(detail.split('id="myFloatSend"').length - 1, 1);
   assert.ok(detail.includes('<button class="send-icon-btn disabled" id="myFloatSend" type="submit"'));
-  assert.ok(!detail.includes("b.id = 'myFloatSend';"));
+  assert.ok(detail.includes("if(!b.id) b.id = 'myFloatSend';"));
+  assert.ok(!detail.includes("b.onclick = function(){ if(typeof window.sendMsg==='function') window.sendMsg(); }"));
   assert.ok(detail.includes("var b = document.getElementById('myFloatSend') || d.querySelector('.send-icon-btn')"));
 });
 
