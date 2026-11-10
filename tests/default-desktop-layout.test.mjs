@@ -174,25 +174,31 @@ test('creator account detail supports copying permanent IDs and prevents stale a
   const adminCss = readFileSync(new URL('../admin/admin-center.css', import.meta.url), 'utf8');
 
   assert.match(adminHtml, /id="copyDetailId"/);
-  assert.match(adminScript, /if \(!navigator\\.clipboard\\?\\.writeText\) throw new Error\('Clipboard API unavailable'\)/,
+  assert.ok(adminScript.includes("if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');"),
     'clipboard access must be capability-checked before copying');
-  assert.match(adminScript, /await navigator\\.clipboard\\.writeText\(value\)/,
+  assert.ok(adminScript.includes('await navigator.clipboard.writeText(value);'),
     'the confirmed permanent ID must be copied when Clipboard API is available');
   assert.match(adminScript, /range\.selectNodeContents\(\$\('detailId'\)\)/,
     'manual selection must remain possible when clipboard access is unavailable');
-  assert.match(adminScript, /const result = await api\('\/api\/admin\/accounts\/'[\s\S]*if \(selectedAccountId !== accountId\) return;[\s\S]*list\.replaceChildren\(\)/,
+  assert.ok(adminScript.includes("const result = await api(\n        '/api/admin/accounts/'"),
+    'account audit must be fetched from the server for the selected permanent ID');
+  assert.ok(adminScript.includes('if (selectedAccountId !== accountId || requestSequence !== auditRequestSequence) return;'),
     'a slower audit response must not replace the currently selected account history');
+  assert.ok(adminScript.includes('if (reset) list.replaceChildren();'),
+    'the audit list is replaced only after the response passes the account and request-sequence guard');
   assert.match(adminCss, /\.copy-detail-id\{/);
 });
 
 test('invitation records can navigate directly to their bound account details', () => {
   const adminScript = readFileSync(new URL('../admin/admin-center.js', import.meta.url), 'utf8');
 
-  assert.match(adminScript, /const targetAccount = invite\.target_account_id[\s\S]*accounts\.find\(account => account\.id === invite\.target_account_id\)/);
   assert.match(adminScript, /el\('button', 'open-detail', '查看账号'\)/);
-  assert.match(adminScript, /detailButton\.addEventListener\('click', \(\) => openAccountFromInvite\(targetAccount\.id\)\)/);
+  assert.ok(adminScript.includes("detailButton.addEventListener('click', () => openAccountFromInvite(invite.target_account_id))"),
+    'an invitation row must open the account bound to its permanent MAO ID');
   assert.match(adminScript, /function activateTab\(name\)[\s\S]*usersView[\s\S]*invitesView[\s\S]*closeDetail\(\)/);
-  assert.match(adminScript, /function openAccountFromInvite\(accountId\)[\s\S]*activateTab\('users'\)[\s\S]*accountFilter = 'all'[\s\S]*\$\('accountSearch'\)\.value = ''[\s\S]*renderAccounts\(\)[\s\S]*openAccount\(accountId\)/);
+  assert.ok(adminScript.includes("$('accountSearch').value = accountId;"),
+    'the account directory must search by the bound permanent ID, including accounts outside the loaded page');
+  assert.match(adminScript, /function openAccountFromInvite\(accountId\)[\s\S]*activateTab\('users'\)[\s\S]*accountFilter = 'all'[\s\S]*loadAccountPage\(true\)[\s\S]*openAccount\(accountId\)/);
   assert.match(adminScript, /button\.addEventListener\('click', \(\) => activateTab\(button\.dataset\.tab\)\)/);
 });
 
@@ -218,7 +224,10 @@ test('creator invitation directory supports target search and lifecycle-state fi
   assert.match(adminScript, /\[invite\.id, invite\.target_account_id, invite\.target_email, invite\.target_username\]/);
   assert.match(adminScript, /inviteFilter === 'all' \|\| inviteState\(invite\) === inviteFilter/);
   assert.match(adminScript, /updateInviteFilterCounts\(\)/);
-  assert.match(adminScript, /\$\('inviteSearch'\)\.addEventListener\('input', renderInvites\)/);
+  assert.ok(adminScript.includes("$('inviteSearch').addEventListener('input', () => {"),
+    'search changes must be handled by the debounced input listener');
+  assert.ok(adminScript.includes('run(() => loadInvitePage(true));'),
+    'search and filter changes must reload the server-side invitation directory');
   assert.match(adminScript, /data-invite-filter[\s\S]*setAttribute\('aria-pressed', active \? 'true' : 'false'\)/);
   assert.match(adminScript, /if \(state === 'pending'\)[\s\S]*'撤销'/,
     'only active unused invitations should expose the revoke action');
