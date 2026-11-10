@@ -184,5 +184,5 @@ AI 接口配置存 `api_settings`（默认 `https://api.openai.com/v1`，内置 
 - 共享脚本加载顺序惯例：`font-loader.js` → `native-feel.js` →（数据页）`phone/phone_storage.js` + `phone/phone_api.js` → 页面脚本。
 - JS 里的相对路径按**页面 URL**（而非脚本位置）解析；跨目录跳转统一用相对路径（如 characters-manager.js 的 `../../index.html`），nav.js 用动态 appBase 兼容子路径部署。PHONE_APPS 注册表的 `page` 字段是根绝对路径，但目前无任何消费方（纯元数据）。
 - 改完 HTML/CSS/JS 若走静态托管缓存，记得 bump 页面引用的 `?v=` 参数。
-- 全量备份/恢复在设置页 DATA 分组（settings/js/backup.js）：JSON 带 `__backup.schema` 版本校验（当前 1，拒收更高版本），排除 `api_call_logs`；导入前自动下载当前数据作安全备份，写入失败自动回滚。
+- 全量备份/恢复在设置页 DATA 分组（settings/js/backup.js）：JSON 带 `__backup.schema` 版本校验（当前 2，拒收更高版本），排除 `api_call_logs`；导入前自动下载当前数据作安全备份，写入失败自动回滚。
 - 仓库包含 `docs/engineering/README.md` 工程手册与 `tests/` 测试目录；`package.json` 提供多个 Node/Playwright 测试入口。`npm run lint` 当前仍只是打印固定的 “Lint passed”，不是真正的 lint 检查。`.trae/` 是 IDE 配置（git-ignored）。`docs/audit-report.html` 是历史审计报告，其中的旧路径已因目录重构失效，仅作参考。
