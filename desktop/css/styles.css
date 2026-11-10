@@ -745,6 +745,9 @@ button { color: inherit; font: inherit; }
 .desktop-grid .ds-widget {
   grid-column: span 2;
 }
+/* Privileged app tiles must respect the HTML hidden attribute despite display:flex rules. */
+[data-drag="app_admin_center"][hidden] { display: none !important; }
+
 .desktop-grid .app-tile,
 .desktop-grid .app-card,
 .desktop-grid .dock-item {
