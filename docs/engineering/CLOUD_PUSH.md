@@ -720,7 +720,7 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 
 - `AUTONOMY_MODEL_API_KEY` 必须配置为 Cloudflare Worker Secret；不得写入仓库、`wrangler.jsonc` 普通变量、前端代码、设备 localStorage 或聊天消息，也不得让用户在聊天中发送密钥。
 - `AUTONOMY_MODEL_API_URL`、`AUTONOMY_MODEL_NAME` 由部署维护者在 Worker 环境变量中配置。模型接口采用 OpenAI-compatible Chat Completions 格式；URL 必须为 HTTPS，且主机必须精确命中 `AUTONOMY_MODEL_ALLOWED_HOSTS` 白名单。默认白名单为 `api.openai.com`。
-- 可选变量 `AUTONOMY_MODEL_ALLOWED_HOSTS` 用逗号分隔精确主机名；`AUTONOMY_MODEL_TIMEOUT_MS` 默认为 20,000，允许范围 3,000–60,000 毫秒。
+- 可选变量 `AUTONOMY_MODEL_ALLOWED_HOSTS` 用逗号分隔精确主机名；`AUTONOMY_MODEL_TIMEOUT_MS` 默认为 20,000，允许范围 3,000–60,000 毫秒。执行租约 `AUTONOMY_LEASE_MS` 必须比模型超时至少多 1,000 毫秒；不满足时 Worker 会跳过执行并记录原因，不会让过期模型结果落库。
 - 非密钥调度默认值位于测试分支 `wrangler.jsonc`：租约 60 秒、每次 tick 最多 10 个任务、失败退避 60 秒/5 分钟/15 分钟/30 分钟、心跳 TTL 90 秒、设备租约 120 秒、设备 grace 0、用户消息空闲门槛 30 分钟。它们是待验收的配置，不是容量承诺。
 - 关闭上下文共享会删除云端角色上下文快照，并取消尚未开始的主动联系任务；不会删除本机聊天记录。已提交的 outbox 消息仍按原投递生命周期处理，不会因关闭共享而改写已发送内容。
 - 服务端模型提示词与结果不会写入 Worker 执行日志。模型输出会被结构化验证，并过滤 URL、邮箱、恋爱/性内容、自伤内容及索取密码、验证码或私人联系方式等明显越界内容；这类过滤不能代替真实运行中的安全验收。
