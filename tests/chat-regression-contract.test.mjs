@@ -3067,11 +3067,11 @@ test('亲属卡存储损坏时，所有写入口必须拒绝覆盖并保留原�
     assert.equal(api.createInvite({
       roleId: 'role-new', monthlyLimit: 50, singleLimit: 20
     }), null, 'new invites must not replace malformed saved cards');
-    assert.equal(api.update('card-1', 'accept').reason, 'storage');
+    assert.equal(api.update('card-1', 'accept').reason, 'invalid');
     assert.equal(api.applyRoleChange('role-1', {
       action: 'revoke'
-    }).reason, 'storage');
-    assert.equal(api.consume('card-1', 5, '商店', 'shop', 'damaged-payment').reason, 'storage');
+    }).reason, 'invalid');
+    assert.equal(api.consume('card-1', 5, '商店', 'shop', 'damaged-payment').reason, 'invalid');
     assert.equal(api.writeAll([]), false, 'even the exposed write helper must fail closed');
     assert.equal(writes, 0, 'no storage mutation may be attempted on a malformed store');
   }
