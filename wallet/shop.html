@@ -1254,7 +1254,7 @@
     catch (error) { showToast('原结算快照损坏，已停止恢复'); return; }
     if (!snapshot || typeof snapshot !== 'object' || !Array.isArray(snapshot.items) ||
         !isFinite(Number(snapshot.total)) || Number(snapshot.total) < 0 ||
-        ['cart', 'direct'].indexOf(snapshot.source) === -1 || !pending.paymentMethod) {
+        ['cart', 'direct', undefined].indexOf(snapshot.source) === -1 || !pending.paymentMethod) {
       showToast('原结算快照缺少必要信息，已停止恢复；不会创建新交易');
       return;
     }
@@ -1277,6 +1277,8 @@
       showToast('原订单金额校验未通过，已停止恢复');
       return;
     }
+    // Older pending checkouts did not store the source. Preserve the cart in
+    // that ambiguous legacy case rather than risk clearing unrelated items.
     if (snapshot.source === 'cart') {
       var oldCart = shopCart.slice();
       var oldCartRaw = localStorage.getItem('shop_cart');
@@ -1353,7 +1355,13 @@
               total: total,
               source: payFromCart ? 'cart' : 'direct'
             });
-            if (pendingShopCheckoutSignature && pendingShopCheckoutSignature !== currentCheckoutSignature) {
+            var currentLegacyCheckoutSignature = JSON.stringify({
+              items: payItems.map(function (item) { return { id: item.id, cn: item.cn, price: item.price }; }),
+              total: total
+            });
+            if (pendingShopCheckoutSignature &&
+                pendingShopCheckoutSignature !== currentCheckoutSignature &&
+                pendingShopCheckoutSignature !== currentLegacyCheckoutSignature) {
               showToast('当前商品与未完成原交易不一致，已停止结算；请恢复原商品后重试');
               return;
             }

@@ -4618,6 +4618,8 @@ test('商店与外卖刷新后都从待结算快照恢复原支付方式，不�
   assert.match(shopPage, /getPendingCheckout\('shop'\)/);
   assert.match(shopPage, /source: payFromCart \? 'cart' : 'direct'/);
   assert.match(shopPage, /pendingShopCheckoutSignature \|\| currentCheckoutSignature/);
+  assert.match(shopPage, /currentLegacyCheckoutSignature/);
+  assert.match(shopPage, /Older pending checkouts did not store the source/);
   assert.match(shopPage, /restorePendingShopCheckout\(\);/);
   assert.match(takeoutPage, /function restorePendingTakeoutCheckout\(\)/);
   assert.match(takeoutPage, /getPendingCheckout\('takeout'\)/);
