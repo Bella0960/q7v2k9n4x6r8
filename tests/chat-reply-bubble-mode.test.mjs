@@ -517,7 +517,7 @@ test('聊天页接线：缺字段走 legacy、按模式生成、已存内容不�
   assert.match(detailSource, /function getActiveReplyBubbleMode\(\)/);
   assert.match(detailSource, /hasOwnProperty\.call\(currentCharacter, 'replyBubbleMode'\)/);
   assert.match(detailSource, /currentCharacter\.replyBubbleMode/);
-  assert.match(detailSource, /buildReplyMessages\(fullText, getActiveReplyBubbleMode\(\)/);
+  assert.match(detailSource, /buildReplyMessages\(\s*fullText,\s*getActiveReplyBubbleMode\(\)/);
   assert.match(detailSource, /parseReplyContent\(raw, 'legacy'\)/);
   // 历史展示不得套用 5 条上限：上限只在生成侧（policy 的 legacyUncapped 守卫）生效。
   assert.ok(!/bubbles\.length > 5/.test(detailSource), '已存内容渲染不得截断到 5 条');
