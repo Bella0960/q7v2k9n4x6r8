@@ -207,7 +207,7 @@ test('账号安全操作共享忙碌锁，并恢复按钮原始禁用状态', ()
 });
 
 const accountAuthSource = readFileSync(new URL('../worker/lib/account-auth.js', import.meta.url), 'utf8');
-const passwordIterations = Number(/const PASSWORD_ITERATIONS = (\\d+);/.exec(accountAuthSource)?.[1] || NaN);
+const passwordIterations = Number(/const PASSWORD_ITERATIONS = (\d+);/.exec(accountAuthSource)?.[1] || NaN);
 
 test('Cloudflare Workers PBKDF2 stays within the WebCrypto iteration limit', () => {
   assert.ok(Number.isInteger(passwordIterations) && passwordIterations <= 100000,
