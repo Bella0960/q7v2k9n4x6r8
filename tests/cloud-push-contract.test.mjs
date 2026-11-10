@@ -565,7 +565,8 @@ test('角色上下文版本事件：仅保存事件 ID、服务器递增、重�
     'server_model_credentials_missing',
     'global_autonomy_not_enabled',
     'context_sharing_not_enabled',
-    'cloud_model_scheduler_runtime_not_verified'
+    'cloud_model_scheduler_runtime_not_verified',
+    'cloud_model_generation_not_verified'
   ]);
 
   const snapshot = ctx.store.getSchedulerGateSnapshot({ userId: 'owner', characterId: 'char-a' });
@@ -1702,7 +1703,8 @@ test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设
     'global_autonomy_not_enabled',
     'context_sharing_not_enabled',
     'context_version_unavailable',
-    'cloud_model_scheduler_runtime_not_verified'
+    'cloud_model_scheduler_runtime_not_verified',
+    'cloud_model_generation_not_verified'
   ]);
   assert.deepEqual(readiness.payload.recentSchedulerReasons, [
     { reasonCode: 'context_version_unavailable', count: 1 }
