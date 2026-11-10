@@ -81,6 +81,15 @@ const profilePage = read('profile/profile.html');
 const wechatThemeCss = read('shared/css/wechat-theme-refinements.css');
 const packageJson = JSON.parse(read('package.json'));
 
+function createWalletLedgerForTest(navigatorApi) {
+  const walletWindow = { navigator: navigatorApi || {} };
+  runInNewContext(walletLedgerSource, {
+    window: walletWindow,
+    globalThis: walletWindow
+  });
+  return walletWindow;
+}
+
 test('synthetic fixture set covers the compatibility-critical message families', () => {
   const ids = fixtures.cases.map((item) => item.id);
   assert.equal(new Set(ids).size, ids.length, 'fixture case IDs must be unique');
@@ -2643,7 +2652,11 @@ test('钱包流水已落库但聊天状态写入失败时，下一次点击只�
   let resultPopups = 0;
   const toastMessages = [];
 
+  const walletWindow = createWalletLedgerForTest({
+    locks: { request: (_name, _options, callback) => Promise.resolve().then(callback) }
+  });
   const sandbox = {
+    window: walletWindow,
     loadMessages: () => clone(persistedHistory),
     ensureMid: (message) => {
       if (!message.mid) message.mid = 'payment-mid';
@@ -2917,12 +2930,12 @@ test('订单售后在财务流水已关联但订单最终确认失败时，可�
   const partialOrder = JSON.parse(state.get('takeout_orders'))[0];
   assert.equal(partialOrder.afterSales.status, 'recording');
   const financeAfterPartial = JSON.parse(state.get('finance_records'));
-  assert.equal(financeAfterPartial[0].afterSalesRequestId, 'takeout-after-sales-id');
+  assert.equal(financeAfterPartial[0].afterSalesRequestId, 'mm-as-takeout-after-sales-id');
 
   blockFinalOrderWrite = false;
   const recovered = await api.submit(input);
   assert.equal(recovered.ok, true);
-  assert.equal(recovered.request.requestId, 'takeout-after-sales-id');
+  assert.equal(recovered.request.requestId, 'mm-as-takeout-after-sales-id');
   assert.equal(recovered.request.status, 'pending_review');
   assert.equal(JSON.parse(state.get('finance_records')).length, 1);
   assert.equal(JSON.parse(state.get('takeout_orders'))[0].afterSales.journalStatus, 'linked');
@@ -3089,8 +3102,9 @@ test('多个标签页并发领取时，全局钱包锁串行化不同交易并�
   };
 
   function makeTab() {
+    const walletWindow = createWalletLedgerForTest({ locks: sharedLockManager });
     const sandbox = {
-      navigator: { locks: sharedLockManager },
+      window: walletWindow,
       loadMessages: () => clone(persistedHistory),
       ensureMid: (message) => message.mid,
       getWorkData: () => clone(wallet),
@@ -3150,7 +3164,9 @@ test('浏览器不支持 Web Locks 时保留本页防连点，并明确提醒跨
   const start = detail.indexOf('const pendingPaymentOperations = new Set();');
   const end = detail.indexOf('// ===== 群投票', start);
   let walletReads = 0;
+  const walletWindow = createWalletLedgerForTest({});
   const sandbox = {
+    window: walletWindow,
     loadMessages: () => [{ role: 'assistant', type: 'redpacket', amount: '1.00', status: 'unopened', mid: 'fallback-pay' }],
     ensureMid: (message) => message.mid,
     getWorkData: () => { walletReads += 1; return { balance: 0, history: [] }; },
