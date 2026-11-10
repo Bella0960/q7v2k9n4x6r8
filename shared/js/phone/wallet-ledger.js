@@ -87,9 +87,13 @@
     paymentMethod = String(paymentMethod || 'normal').slice(0, 64);
     if (!channel || !signature || signature.length > 8000) return null;
 
-    var rows = readPendingCheckouts();
+    // Keep completed receipts in the persisted ledger. Reading only pending rows
+    // here would silently erase completed history whenever a new checkout starts.
+    var rows = readStoredCheckouts();
     if (!rows) return null;
-    var existing = rows.find(function (item) { return item.channel === channel; });
+    var existing = rows.find(function (item) {
+      return item.status === 'pending' && item.channel === channel;
+    });
     if (existing) {
       // Only one unresolved checkout per channel is allowed. This also prevents a
       // changed cart from bypassing an earlier partial commit and being charged again.
