@@ -2305,3 +2305,16 @@ test('AI replies can send only images from the active role gallery and keep medi
   assert.ok(serviceWorker.includes('role-gallery-image-autonomy.js?v=20261111v1'));
   assert.ok(serviceWorker.includes('phone-app-pwa-v199'));
 });
+
+
+test('every inline runtime script in chat detail parses before it is shipped', () => {
+  const inlineScripts = Array.from(detail.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi))
+    .filter((match) => !/\bsrc\s*=/.test(match[1]));
+  assert.ok(inlineScripts.length > 0, 'chat detail should include inline runtime scripts');
+  inlineScripts.forEach((match, index) => {
+    assert.doesNotThrow(
+      () => new Function(match[2]),
+      'chat detail inline script #' + index + ' must parse'
+    );
+  });
+});
