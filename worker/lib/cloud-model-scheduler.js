@@ -79,11 +79,15 @@ function retryTime(attempt, now, config, maxAttempts) {
 }
 
 export async function runCloudModelTick({
-  store, env = {}, now = Date.now(), fetchImpl = fetch
+  store, env = {}, now = Date.now, fetchImpl = fetch
 } = {}) {
-  const timestamp = Number(typeof now === 'function' ? now() : now);
+  // Keep a live clock. A fixed Cron-start timestamp can let an expired
+  // executor lease pass the final database fence after a slow model response.
+  const clock = typeof now === 'function' ? now : () => Number(now);
+  const timestamp = Number(clock());
   const config = readTickConfig(env);
-  const modelConfigured = Boolean(readAutonomyModelConfig(env));
+  const modelConfig = readAutonomyModelConfig(env);
+  const modelConfigured = Boolean(modelConfig);
   const validated = validateConfig(config);
   const summary = {
     ok: Boolean(validated.ok && modelConfigured),
@@ -104,29 +108,42 @@ export async function runCloudModelTick({
     log(store, timestamp, 'autonomy_cloud_tick', 'skipped', 'server_model_credentials_missing', null);
     return summary;
   }
+  if (validated.config.leaseMs <= modelConfig.timeoutMs + 1000) {
+    summary.ok = false;
+    summary.reason = 'model_timeout_exceeds_executor_lease';
+    log(store, timestamp, 'autonomy_cloud_tick', 'skipped',
+      'model_timeout_exceeds_executor_lease', null, {
+        leaseMs: validated.config.leaseMs,
+        modelTimeoutMs: modelConfig.timeoutMs
+      });
+    return summary;
+  }
+  if (typeof store.listDueCloudActivities !== 'function') {
+    summary.ok = false;
+    summary.reason = 'cloud_due_query_unavailable';
+    log(store, timestamp, 'autonomy_cloud_tick', 'skipped',
+      'cloud_due_query_unavailable', null);
+    return summary;
+  }
 
-  const tasks = store.listDueActivities(timestamp, validated.config.tickLimit)
-    .filter(task => {
-      if (task.kind !== 'contact') return false;
-      try {
-        const payload = JSON.parse(String(task.payload_json || '{}'));
-        // The Worker may only execute explicitly cloud-owned tasks. Legacy
-        // foreground tasks remain available to their paired device executor.
-        return payload.executionMode === 'cloud';
-      } catch {
-        return false;
-      }
-    });
-  summary.due = tasks.length;
+  // The database filters cloud-owned contact work before LIMIT is applied.
+  // Legacy foreground tasks can therefore never starve the cloud queue.
+  const tasks = await store.listDueCloudActivities(timestamp, validated.config.tickLimit);
+  summary.due = Array.isArray(tasks) ? tasks.length : 0;
   const gate = createSchedulerGate({
     store,
-    now: () => timestamp,
+    now: clock,
     config: readGateConfig(env)
   });
 
-  for (const task of tasks) {
+  for (const task of Array.isArray(tasks) ? tasks : []) {
+    const taskNow = Number(clock());
+    if (!Number.isSafeInteger(taskNow) || taskNow <= 0) {
+      summary.deferred += 1;
+      continue;
+    }
     const decision = planTask(task, {
-      now: timestamp,
+      now: taskNow,
       config: validated.config,
       gate,
       owner: OWNER
@@ -136,11 +153,11 @@ export async function runCloudModelTick({
         id: decision.taskId,
         expectedAttemptCount: decision.expectedAttemptCount,
         expectedStatus: decision.expectedStatus,
-        now: timestamp
+        now: Number(clock())
       });
       if (changed) summary.superseded += 1;
       else summary.deferred += 1;
-      log(store, timestamp, 'autonomy_cloud_tick',
+      log(store, Number(clock()), 'autonomy_cloud_tick',
         changed ? 'superseded' : 'deferred',
         changed ? decision.reason : REASON_CODES.CLAIM_LOST, task);
       continue;
@@ -152,31 +169,32 @@ export async function runCloudModelTick({
         expectedStatus: decision.expectedStatus,
         expectedLockedBy: decision.expectedLockedBy,
         expectedLockedUntil: decision.expectedLockedUntil,
-        now: timestamp
+        now: Number(clock())
       });
       if (changed) summary.failed += 1;
       else summary.deferred += 1;
-      log(store, timestamp, 'autonomy_cloud_tick',
+      log(store, Number(clock()), 'autonomy_cloud_tick',
         changed ? 'failed' : 'deferred', decision.reason, task);
       continue;
     }
     if (decision.action !== 'claim') {
       summary.deferred += 1;
-      log(store, timestamp, 'autonomy_cloud_tick', 'deferred', decision.reason, task);
+      log(store, Number(clock()), 'autonomy_cloud_tick', 'deferred', decision.reason, task);
       continue;
     }
 
+    const claimNow = Number(clock());
     const claimed = store.claimActivity({
       id: decision.taskId,
       expectedAttemptCount: decision.expectedAttemptCount,
       expectedStatus: decision.expectedStatus,
       owner: OWNER,
-      leaseUntil: decision.leaseUntil,
-      now: timestamp
+      leaseUntil: claimNow + validated.config.leaseMs,
+      now: claimNow
     });
     if (!claimed) {
       summary.deferred += 1;
-      log(store, timestamp, 'autonomy_cloud_tick', 'deferred', REASON_CODES.CLAIM_LOST, task);
+      log(store, Number(clock()), 'autonomy_cloud_tick', 'deferred', REASON_CODES.CLAIM_LOST, task);
       continue;
     }
     summary.claimed += 1;
@@ -184,7 +202,7 @@ export async function runCloudModelTick({
     const payload = decodeTaskPayload(claimed);
     const userId = String(task.user_id || 'owner');
     const contextVersion = payload && payload.contextVersion;
-    const snapshot = contextVersion ? store.getCharacterContextSnapshot({
+    const snapshot = contextVersion ? await store.getCharacterContextSnapshot({
       userId, characterId: claimed.character_id, contextVersion
     }) : null;
 
@@ -193,44 +211,46 @@ export async function runCloudModelTick({
         id: claimed.id,
         expectedAttemptCount: attemptCount,
         expectedStatus: 'running',
-        now: timestamp
+        now: Number(clock())
       });
       summary.superseded += 1;
-      log(store, timestamp, 'autonomy_cloud_tick', 'superseded',
+      log(store, Number(clock()), 'autonomy_cloud_tick', 'superseded',
         'context_snapshot_missing_or_revoked', claimed);
       continue;
     }
 
     const generation = await generateAutonomousMessages({ env, snapshot, fetchImpl });
     if (!generation.ok) {
-      const nextAttemptAt = retryTime(attemptCount, timestamp, validated.config, Number(claimed.max_attempts));
+      const finishedAt = Number(clock());
+      const nextAttemptAt = retryTime(attemptCount, finishedAt, validated.config, Number(claimed.max_attempts));
       const failed = store.failActivity({
-        id: claimed.id, owner: OWNER, attemptCount, now: timestamp, nextAttemptAt
+        id: claimed.id, owner: OWNER, attemptCount, now: finishedAt, nextAttemptAt
       });
       if (failed && nextAttemptAt != null) summary.deferred += 1;
       else summary.failed += 1;
-      log(store, timestamp, 'autonomy_cloud_model', failed ? 'retry' : 'failed',
+      log(store, Number(clock()), 'autonomy_cloud_model', failed ? 'retry' : 'failed',
         generation.reason || 'model_execution_failed', claimed, { attemptCount });
       continue;
     }
 
     if (!generation.send) {
+      const finishedAt = Number(clock());
       const completed = store.completeActivity({
-        id: claimed.id, owner: OWNER, attemptCount, now: timestamp
+        id: claimed.id, owner: OWNER, attemptCount, now: finishedAt
       });
       if (completed) summary.skipped += 1;
       else summary.deferred += 1;
-      log(store, timestamp, 'autonomy_cloud_model',
+      log(store, Number(clock()), 'autonomy_cloud_model',
         completed ? 'skipped' : 'deferred', 'no_worthy_message', claimed);
       continue;
     }
 
     // Recheck the exact current version and all scheduling gates after the
-    // network call; a user message or a foreground chat arriving meanwhile
-    // invalidates this generated result instead of delivering stale content.
-    const latestVersion = store.getCharacterContextVersion(userId, claimed.character_id);
-    const latestSharing = store.getUserContextSharing(userId);
-    const latestSnapshot = store.getCharacterContextSnapshot({
+    // network call; a user message, consent revocation, device revoke or
+    // foreground chat arriving meanwhile invalidates the generated result.
+    const latestVersion = await store.getCharacterContextVersion(userId, claimed.character_id);
+    const latestSharing = await store.getUserContextSharing(userId);
+    const latestSnapshot = await store.getCharacterContextSnapshot({
       userId,
       characterId: claimed.character_id,
       contextVersion
@@ -247,24 +267,25 @@ export async function runCloudModelTick({
       user_id: userId,
       source_device_revoked_at: null
     }) : { autonomyAllowed: false, reasonCode: 'stale_context' };
+    const validatedAt = Number(clock());
 
     if (!stillCurrent || gateAfter.autonomyAllowed !== true || gateAfter.characterState !== 'active') {
       const isStale = !stillCurrent || gateAfter.reasonCode === 'stale_context';
       if (isStale) {
         store.supersedeActivity({
           id: claimed.id, expectedAttemptCount: attemptCount,
-          expectedStatus: 'running', now: timestamp
+          expectedStatus: 'running', now: validatedAt
         });
         summary.superseded += 1;
       } else {
-        const nextAttemptAt = retryTime(attemptCount, timestamp, validated.config, Number(claimed.max_attempts));
+        const nextAttemptAt = retryTime(attemptCount, validatedAt, validated.config, Number(claimed.max_attempts));
         const retried = store.failActivity({
-          id: claimed.id, owner: OWNER, attemptCount, now: timestamp, nextAttemptAt
+          id: claimed.id, owner: OWNER, attemptCount, now: validatedAt, nextAttemptAt
         });
         if (retried && nextAttemptAt != null) summary.deferred += 1;
         else summary.failed += 1;
       }
-      log(store, timestamp, 'autonomy_cloud_model',
+      log(store, Number(clock()), 'autonomy_cloud_model',
         isStale ? 'superseded' : 'deferred',
         gateAfter.reasonCode || 'execution_gate_changed', claimed);
       continue;
@@ -276,42 +297,60 @@ export async function runCloudModelTick({
       dedupeKey: groupId + ':' + String(index + 1),
       payload: { type: 'text', text }
     }));
+    // Read the clock again immediately before the atomic lease + context fence.
+    const commitAt = Number(clock());
     const completed = store.completeCloudActivityWithOutboundGroup({
       id: claimed.id,
       owner: OWNER,
       attemptCount,
-      now: timestamp,
+      now: commitAt,
       groupId,
       contextVersion,
       sourceDeviceId: snapshot.source_device_id,
       messages
     });
     if (!completed) {
-      // The database-level context/source fence rejected a stale or revoked
-      // result after model generation. Release the running task as superseded.
+      // A lease that expired while the provider was responding must not be
+      // accepted with the timestamp from when Cron originally started.
       const superseded = store.supersedeActivity({
         id: claimed.id,
         expectedAttemptCount: attemptCount,
         expectedStatus: 'running',
-        now: timestamp
+        now: Number(clock())
       });
       if (superseded) summary.superseded += 1;
       else summary.deferred += 1;
-      log(store, timestamp, 'autonomy_cloud_model',
+      log(store, Number(clock()), 'autonomy_cloud_model',
         superseded ? 'superseded' : 'deferred',
         'outbound_group_commit_fenced', claimed);
       continue;
     }
     if (completed.completed !== true) {
       summary.failed += 1;
-      log(store, timestamp, 'autonomy_cloud_model', 'failed',
+      log(store, Number(clock()), 'autonomy_cloud_model', 'failed',
         'outbound_group_commit_conflict', claimed);
       continue;
     }
     summary.generatedGroups += 1;
     summary.generatedMessages += generation.messages.length;
-    log(store, timestamp, 'autonomy_cloud_model', 'success',
+    log(store, Number(clock()), 'autonomy_cloud_model', 'success',
       'outbound_group_committed', claimed, { messageCount: generation.messages.length });
   }
+
+  const finishedAt = Number(clock());
+  const tickStatus = summary.failed > 0 ? 'degraded' : 'success';
+  log(store, finishedAt, 'autonomy_cloud_tick', tickStatus,
+    tickStatus === 'success' ? 'cloud_tick_completed' : 'cloud_tick_completed_with_failures',
+    null, {
+      due: summary.due,
+      claimed: summary.claimed,
+      generatedGroups: summary.generatedGroups,
+      generatedMessages: summary.generatedMessages,
+      skipped: summary.skipped,
+      deferred: summary.deferred,
+      superseded: summary.superseded,
+      failed: summary.failed
+    });
+  summary.finishedAt = finishedAt;
   return summary;
 }
