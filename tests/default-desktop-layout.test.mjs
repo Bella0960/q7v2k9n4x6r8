@@ -199,7 +199,10 @@ test('invitation records can navigate directly to their bound account details', 
   assert.ok(adminScript.includes("$('accountSearch').value = accountId;"),
     'the account directory must search by the bound permanent ID, including accounts outside the loaded page');
   assert.match(adminScript, /function openAccountFromInvite\(accountId\)[\s\S]*activateTab\('users'\)[\s\S]*accountFilter = 'all'[\s\S]*loadAccountPage\(true\)[\s\S]*openAccount\(accountId\)/);
-  assert.match(adminScript, /button\.addEventListener\('click', \(\) => activateTab\(button\.dataset\.tab\)\)/);
+  assert.ok(adminScript.includes("const tab = button.dataset.tab;"),
+    'navigation reads the selected tab from the clicked button');
+  assert.ok(adminScript.includes('activateTab(tab);'),
+    'navigation activates the selected tab through the shared view switcher');
 });
 
 test('creator invitation directory supports target search and lifecycle-state filters', () => {
