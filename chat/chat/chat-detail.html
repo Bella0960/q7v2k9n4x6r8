@@ -3763,8 +3763,11 @@
             if (typeof idx === 'number') row.dataset.idx = idx;
             // 多选删除用：消息唯一标识
             row.dataset.time = String(msg.time || '');
-            // 单条操作用：稳定标识（不存在时自动补齐）
-            row.dataset.mid = ensureMid(msg);
+            // 单条操作用：稳定消息 ID；气泡身份在解析正文后补齐为 mid 或 mid#index。
+            const msgMid = ensureMid(msg);
+            row.dataset.mid = msgMid;
+            row.dataset.bubbleId = msgMid;
+            row.dataset.bubbleIndex = String(Math.max(0, Number(msg.bubbleIndex) || 0));
             if (msg.serverMessageId) row.dataset.serverMessageId = String(msg.serverMessageId);
 
             const bubble = document.createElement('div');
@@ -4076,6 +4079,8 @@
                             row.removeAttribute('data-server-message-id');
                         }
                         bubble.textContent = parsed.bubbles[0];
+                        row.dataset.bubbleId = bubbleIdFor(msgMid, 0, parsed.bubbles.length);
+                        row.dataset.bubbleIndex = '0';
                         // 双语聊天：每段外语正文底下挂一条灰色中文翻译
                         if (parsed.translations && parsed.translations[0]) {
                             var tr0 = document.createElement('div');
@@ -4087,8 +4092,10 @@
                         for (var bi = 1; bi < parsed.bubbles.length; bi++) {
                             var extraRow = document.createElement('div');
                             extraRow.className = 'msg-row received';
-                            extraRow.dataset.mid = ensureMid(msg);
+                            extraRow.dataset.mid = msgMid;
                             extraRow.dataset.time = String(msg.time || '');
+                            extraRow.dataset.bubbleId = bubbleIdFor(msgMid, bi, parsed.bubbles.length);
+                            extraRow.dataset.bubbleIndex = String(bi);
                             if (bi === parsed.bubbles.length - 1 && msg.serverMessageId) {
                                 extraRow.dataset.serverMessageId = String(msg.serverMessageId);
                             }
