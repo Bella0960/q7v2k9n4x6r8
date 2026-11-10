@@ -172,9 +172,45 @@
     }
   }
 
+  // Read the wallet snapshot used by a balance mutation. Missing storage keeps the
+  // app's first-use balance; malformed existing data fails closed and is never
+  // silently replaced with a fabricated balance.
+  function readWalletForMutation(storageKey, rawOverride) {
+    storageKey = String(storageKey || 'workData');
+    var raw;
+    try {
+      if (arguments.length > 1) {
+        raw = rawOverride;
+      } else {
+        if (!global.localStorage || typeof global.localStorage.getItem !== 'function') return null;
+        raw = global.localStorage.getItem(storageKey);
+      }
+    } catch (error) {
+      return null;
+    }
+
+    if (raw == null) return { balance: 1000, history: [] };
+
+    var wallet;
+    try {
+      wallet = JSON.parse(raw);
+    } catch (error) {
+      return null;
+    }
+    if (!wallet || typeof wallet !== 'object' || Array.isArray(wallet) ||
+        typeof wallet.balance !== 'number' || !isFinite(wallet.balance) ||
+        wallet.balance < 0) {
+      return null;
+    }
+    if (!Object.prototype.hasOwnProperty.call(wallet, 'history')) wallet.history = [];
+    else if (!Array.isArray(wallet.history)) return null;
+    return wallet;
+  }
+
   global.MaoMaoWalletLedger = Object.freeze({
     lockName: LOCK_NAME,
     runExclusive: runExclusive,
+    readWalletForMutation: readWalletForMutation,
     getOrCreatePendingCheckout: getOrCreatePendingCheckout,
     cancelPendingCheckout: cancelPendingCheckout,
     isPendingCheckout: isPendingCheckout,
