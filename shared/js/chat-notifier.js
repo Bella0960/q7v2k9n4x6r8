@@ -641,7 +641,13 @@
         });
         var serverMessageId = String(options.serverMessageId || '');
         if (serverMessageId) {
-            // The final bubble acknowledges the one server outbound row after it is actually read.
+            // One cloud outbox envelope represents this turn. Every local bubble
+            // carries the envelope identity; only the final bubble owns its ACK.
+            messages.forEach(function (message, index) {
+                message.cloudEnvelopeId = serverMessageId;
+                message.cloudBubbleIndex = index;
+                message.cloudBubbleCount = messages.length;
+            });
             messages[messages.length - 1].serverMessageId = serverMessageId;
         }
         return messages;
