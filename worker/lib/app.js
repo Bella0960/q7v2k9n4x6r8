@@ -1260,6 +1260,10 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
   function normalizeSnapshotText(value, maxLength, field) {
     if (typeof value !== 'string') throw new ApiError(400, 'INVALID_CONTEXT_SNAPSHOT', field + ' 必须是文字');
     let result = value
+      .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, '[私钥已省略]')
+      .replace(/\b(?:sk-[A-Za-z0-9_-]{16,}|AIza[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{20,})\b/g, '[密钥已省略]')
+      .replace(/\bBearer\s+[A-Za-z0-9._~+/-]{12,}/gi, 'Bearer [凭据已省略]')
+      .replace(/\b(?:api[_-]?key|access[_-]?token|secret|password|token)\s*[:=]\s*[\w.+/-]{12,}/gi, '[凭据已省略]')
       .replace(/<[^>]*>/g, ' ')
       .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ' ')
       .replace(/https?:\/\/\S+/gi, '[链接已省略]')
