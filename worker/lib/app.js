@@ -2243,7 +2243,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         if (method === 'PUT') return await setCharacterAutonomy(request, characterId);
       }
 
-      const characterContextSnapshotMatch = /^\\/api\\/characters\\/([^/]+)\\/context-snapshot$/.exec(path);
+      const characterContextSnapshotMatch = /^\/api\/characters\/([^/]+)\/context-snapshot$/.exec(path);
       if (characterContextSnapshotMatch && readCharacterId(characterContextSnapshotMatch[1]) && method === 'POST') {
         return await saveCharacterContextSnapshot(request, readCharacterId(characterContextSnapshotMatch[1]));
       }
