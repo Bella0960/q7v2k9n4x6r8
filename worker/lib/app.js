@@ -251,7 +251,7 @@ export function buildOutboundPushPayload({
       : '刚刚发来一条消息，打开聊天查看。',
     url: './chat/chat/chat-detail.html?id=' + encodeURIComponent(roleId),
     tag: 'maomao-chat-' + group,
-    dedupeKey: ('outbound-group:' + group).slice(0, 120),
+    dedupeKey: (groupId ? 'outbound-group:' + group : 'outbound:' + messageId).slice(0, 120),
     timestamp: Number(timestamp)
   };
 }
@@ -305,8 +305,10 @@ export async function dispatchPendingOutboundPushes({
 
   for (const candidate of candidates) {
     const deliveryTimestamp = Number(typeof now === 'function' ? now() : timestamp);
-    const groupId = String(candidate.group_id || candidate.server_message_id);
-    const dedupeKey = 'outbound-group:' + groupId;
+    const groupId = candidate.group_id ? String(candidate.group_id) : null;
+    const dedupeKey = groupId
+      ? 'outbound-group:' + groupId
+      : 'outbound:' + String(candidate.server_message_id);
     const deliveryOwner = randomToken(12);
     const claim = store.claimDelivery({
       id: randomToken(12),
@@ -1413,7 +1415,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     } catch (error) {
       // Recovery is best-effort; a repair failure must not block older inbox rows.
     }
-    const rows = await store.listPendingOutboundMessages({
+    const fetchedRows = await store.listPendingOutboundMessages({
       userId,
       deviceId: device.id,
       characterId,
@@ -1421,6 +1423,27 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       afterCreatedAt,
       afterId
     });
+    // Store reads up to three extra rows. Only include that overflow when it
+    // completes the final group at this page boundary; legacy rows retain the
+    // original requested page size and cursor behavior.
+    const rows = fetchedRows.slice(0, limit);
+    if (rows.length === limit) {
+      const boundary = rows[rows.length - 1];
+      const boundaryGroupId = boundary && boundary.group_id;
+      if (boundaryGroupId) {
+        const expectedCount = Number(boundary.group_count || 1);
+        while (
+          rows.length < fetchedRows.length &&
+          rows.length - (fetchedRows.length - rows.length) < limit + 3 &&
+          fetchedRows[rows.length] &&
+          fetchedRows[rows.length].group_id === boundaryGroupId &&
+          Number(fetchedRows[rows.length].group_index) <= expectedCount
+        ) {
+          rows.push(fetchedRows[rows.length]);
+          if (Number(rows[rows.length - 1].group_index) >= expectedCount) break;
+        }
+      }
+    }
     const messages = rows.map(row => {
       let payload;
       let payloadError = null;
@@ -1458,7 +1481,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       if (payloadError) envelope.payloadError = payloadError;
       return envelope;
     });
-    const lastRow = rows.length > limit ? rows[rows.length - 1] : null;
+    const lastRow = rows.length >= limit ? rows[rows.length - 1] : null;
     const nextCursor = lastRow
       ? { createdAt: Number(lastRow.created_at), id: String(lastRow.id) }
       : null;
