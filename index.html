@@ -209,6 +209,14 @@
                   <span class="ds-del" title="移除">×</span>
                 </button>
 
+                <button class="app-card app-tile" type="button" data-href="luck-room/luck-room.html" data-drag="app_luckroom" data-name="一点运气" title="一点运气">
+                  <span class="app-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 19.5 7v10L12 21.5 4.5 17V7z"/><path d="M12 2.5V21.5M4.5 7 12 11.5 19.5 7M4.5 17 12 12.5 19.5 17"/><circle cx="12" cy="12" r="2.2"/></svg>
+                  </span>
+                  <span class="app-name">一点运气</span>
+                  <span class="ds-del" title="移除">×</span>
+                </button>
+
                 <button class="app-card app-tile" type="button" data-href="cafe/cafe.html" data-drag="app_cafe" data-name="咖啡馆" title="咖啡馆经营">
                   <span class="app-icon">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h13v7a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z"/><path d="M17 10h2a3 3 0 0 1 0 6h-3"/><path d="M8 3c0 1.5 1.5 1.5 1.5 3M13 3c0 1.5 1.5 1.5 1.5 3"/><path d="M3 22h17"/></svg>
@@ -728,6 +736,21 @@
         while (currentLayout.pages.length <= pageIndex) currentLayout.pages.push([]);
         var beautyIndex = currentLayout.pages[pageIndex].indexOf('app_beauty');
         currentLayout.pages[pageIndex].splice(beautyIndex >= 0 ? beautyIndex + 1 : currentLayout.pages[pageIndex].length, 0, id);
+        saveLayout(currentLayout);
+      })();
+
+      // 新增「一点运气」入口：为已有桌面布局补入新 App，不覆盖用户排列和已移除记录。
+      (function addLuckRoomShortcutToExistingLayouts() {
+        var id = 'app_luckroom';
+        var exists = (currentLayout.pages || []).some(function (page) { return page.indexOf(id) !== -1; })
+          || (currentLayout.dock || []).indexOf(id) !== -1
+          || (currentLayout.removed || []).indexOf(id) !== -1;
+        if (exists) return;
+        var pageIndex = (currentLayout.pages || []).findIndex(function (page) { return page.indexOf('app_games') !== -1; });
+        if (pageIndex < 0) pageIndex = Math.max(0, currentLayout.pages.length - 1);
+        while (currentLayout.pages.length <= pageIndex) currentLayout.pages.push([]);
+        var gamesIndex = currentLayout.pages[pageIndex].indexOf('app_games');
+        currentLayout.pages[pageIndex].splice(gamesIndex >= 0 ? gamesIndex + 1 : currentLayout.pages[pageIndex].length, 0, id);
         saveLayout(currentLayout);
       })();
 

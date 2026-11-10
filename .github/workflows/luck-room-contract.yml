@@ -1,0 +1,53 @@
+name: Luck Room Feature Contract
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'luck-room/**'
+      - 'tests/luck-room-contract.test.mjs'
+      - 'tests/luck-room-browser.mjs'
+      - 'tests/default-desktop-layout.test.mjs'
+      - '.github/workflows/luck-room-contract.yml'
+      - 'index.html'
+      - 'settings/icon-settings.html'
+      - 'package.json'
+      - 'package-lock.json'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: luck-room-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  luck-room-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Production build
+        run: npm run build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Luck room contract tests
+        run: npm run test:luck-room
+      - name: Mobile browser smoke test
+        run: node tests/luck-room-browser.mjs
+      - name: Upload mobile screenshots
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: luck-room-mobile-smoke
+          path: artifacts/luck-room-*.png
+          if-no-files-found: ignore
