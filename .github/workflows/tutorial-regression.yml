@@ -1,0 +1,41 @@
+name: Tutorial Guide Regression
+
+on:
+  pull_request:
+    paths:
+      - 'index.html'
+      - 'tutorial/**'
+      - 'tests/tutorial-page-contract.test.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'sw.js'
+  push:
+    branches:
+      - main
+    paths:
+      - 'index.html'
+      - 'tutorial/**'
+      - 'tests/tutorial-page-contract.test.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'sw.js'
+
+permissions:
+  contents: read
+
+jobs:
+  tutorial-contract:
+    name: tutorial-contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Verify tutorial coverage and navigation contracts
+        run: npm run test:tutorial
