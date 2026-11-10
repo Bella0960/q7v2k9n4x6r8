@@ -850,6 +850,39 @@
             .npc-profile-avatar { width:62px; height:76px; }
         }
 
+
+        /* 角色专属头像收藏：黑白灰、轻量网格，当前头像以细黑框标记 */
+        .avatar-library-section { padding:20px 0 4px; border-bottom:1px solid #D9D9D4; }
+        .avatar-library-heading { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; }
+        .avatar-library-kicker { color:#999; font-size:8px; letter-spacing:.16em; }
+        .avatar-library-heading h3 { margin-top:6px; color:#171717; font:400 23px/1.1 Georgia,"Noto Serif SC",serif; letter-spacing:-.035em; }
+        .avatar-library-heading p { margin-top:6px; color:#999; font-size:10px; line-height:1.5; }
+        .avatar-library-add { display:inline-flex; align-items:center; gap:5px; flex-shrink:0; min-height:33px; padding:0 10px; border:1px solid #D8D8D3; border-radius:0; background:#fff; color:#222; font:inherit; font-size:10px; cursor:pointer; }
+        .avatar-library-add span { font-size:15px; line-height:1; }
+        .avatar-library-add:active { background:#F4F4F2; }
+        .avatar-library-status { min-height:16px; padding-top:9px; color:#999; font-size:9px; line-height:1.5; }
+        .avatar-library-status[data-state="error"] { color:#777; }
+        .avatar-library-status[data-state="success"] { color:#555; }
+        .avatar-library-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px 10px; padding:3px 0 20px; }
+        .avatar-library-card { min-width:0; }
+        .avatar-library-preview { display:block; width:100%; padding:0; border:1px solid transparent; background:transparent; color:#222; text-align:left; cursor:pointer; font:inherit; }
+        .avatar-library-photo { position:relative; display:block; width:100%; aspect-ratio:4/5; overflow:hidden; background:#EEEEEB; }
+        .avatar-library-photo img { display:block; width:100%; height:100%; object-fit:cover; opacity:0; transition:opacity .22s ease; }
+        .avatar-library-photo img[src] { opacity:1; }
+        .avatar-library-photo img.is-missing { opacity:0; }
+        .avatar-library-current { position:absolute; left:5px; top:5px; padding:4px 5px; background:#171717; color:#fff; font-size:8px; letter-spacing:.04em; opacity:0; }
+        .avatar-library-card.is-active .avatar-library-current { opacity:1; }
+        .avatar-library-label { display:block; padding-top:7px; overflow:hidden; color:#555; font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
+        .avatar-library-select-label { display:block; padding-top:4px; color:#999; font-size:9px; }
+        .avatar-library-card.is-active .avatar-library-select-label { color:#222; }
+        .avatar-library-card.is-active .avatar-library-preview { border-color:#171717; }
+        .avatar-library-remove { margin-top:6px; padding:3px 0; border:0; background:transparent; color:#999; font:inherit; font-size:9px; cursor:pointer; }
+        .avatar-library-remove:disabled { color:#BBB; cursor:not-allowed; }
+        .avatar-library-empty { grid-column:1/-1; display:flex; min-height:104px; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:16px; border:1px dashed #DADAD5; color:#999; text-align:center; font-size:10px; line-height:1.55; }
+        .avatar-library-empty strong { color:#555; font-weight:500; }
+        .avatar-library-empty-mark { color:#999; font:400 22px Georgia,serif; }
+        @media (prefers-reduced-motion:reduce) { .avatar-library-photo img { transition:none; } }
+
     </style>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
 </head>
@@ -1170,8 +1203,12 @@
         </div>
 
     </div>
+    <input type="file" id="avatarLibraryFileInput" accept="image/*" class="hidden" aria-label="添加角色头像">
     <script src="../../shared/js/phone/phone_storage.js?v=20261102a"></script>
-    <script src="js/characters-manager.js?v=20261102a"></script>
+    <script src="../../shared/js/phone/storage/repository.js"></script>
+    <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
+    <script src="../../shared/js/phone/role-avatar-library.js?v=20261107v14"></script>
+    <script src="js/characters-manager.js?v=20261107v11"></script>
     <script src="../../shared/js/nav.js"></script>
 <script src="../../shared/js/statusbar-control.js"></script>
 </body>

@@ -1,9 +1,9 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v173';
+const CACHE_NAME = 'phone-app-pwa-v198';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
-// v173 release: serve imported fonts from a persistent same-origin cache to avoid per-page IndexedDB Blob reads.
+// v196 release: sweep orphaned role-owned media refs during avatar cleanup.
 const APP_SHELL = [
   './',
   './index.html',
@@ -55,6 +55,9 @@ const APP_SHELL = [
   './chat/date/date.html',
   './chat/date/journey.html',
   './chat/chat/chat-detail.html',
+  './chat/chat/js/chat-extras.js?t=20261107imagevision1',
+  './worldbook/characters/characters.html',
+  './worldbook/characters/js/characters-manager.js?v=20261107v11',
   './travel/dream-travel.html',
   './novel/novel.html',
   './novel/novel-detail.html',
@@ -80,8 +83,9 @@ const APP_SHELL = [
   'shared/js/phone/phone_storage.js',
   './shared/js/phone/phone_context.js?v=20261102npc1',
   'shared/js/phone/chat-message-policy.js?v=20261029v5',
+  './shared/js/phone/chat-image-vision.js?v=20261107v5',
   'shared/js/phone/chat-send-policy.js?v=20261029v2',
-  'shared/js/phone/chat-context-policy.js?v=20261031v1',
+  'shared/js/phone/chat-context-policy.js?v=20261107vision1',
   './shared/js/phone/chat-presence-policy.js?v=20261102v17',
   './shared/js/phone/role-public-timeline.js?v=20261102v1',
   './shared/js/phone/group-chat-policy.js?v=20261102v5',
@@ -91,7 +95,9 @@ const APP_SHELL = [
   'shared/js/phone/memory_space_v2.js?v=20261024v1',
   './shared/js/chat-notifier.js?v=20261102v3',
   'shared/js/phone/storage/repository.js',
-  'shared/js/phone/storage/media-repository.js?v=20261106v1',
+  'shared/js/phone/storage/media-repository.js?v=20261107v2',
+  './shared/js/phone/role-sticker-library.js?v=20261107v2',
+  './shared/js/phone/role-avatar-library.js?v=20261107v14',
   'shared/js/phone/phone_api.js?v=20261106v1',
   'shared/js/phone/image-generation.js?v=20261106v1',
   'desktop/js/script.js',

@@ -238,8 +238,8 @@
 
     /**
      * putBlob(blobOrDataUrl, {type, mimeType, ownerType, ownerId})
-     * → Promise<{ ok:true, value:{ assetId, size, hash, reused } } | { ok:false, error:{code, message, retryable} }>
-     * 同 hash 已存在时复用已有 assetId（reused=true），不复制 Blob。
+     * → Promise<{ ok:true, value:{ assetId, size, hash, reused }, meta:{ reused, refAdded } } | { ok:false, error:{code, message, retryable} }>
+     * 同 hash 已存在时复用已有 assetId（reused=true）；refAdded 表示本次是否新增当前 owner 的引用。
      */
     MediaRepository.prototype.putBlob = function (input, opts) {
         var self = this;
@@ -283,12 +283,13 @@
                             var existing = checkReq.result;
                             resolve({ ok: true,
                                 value: { assetId: finalAssetId, size: size, hash: hash, reused: reused, type: type },
-                                meta: { reused: reused } });
+                                meta: { reused: reused, refAdded: refAdded } });
                         };
                         tx.onerror = function () { finishError(tx.error); };
                         tx.onabort = function () { finishError(tx.error); };
                         var finalAssetId = assetId;
                         var reused = false;
+                        var refAdded = false;
                         checkReq.onsuccess = function () {
                             var existing = checkReq.result;
                             finalAssetId = existing ? existing.assetId : assetId;
@@ -312,7 +313,10 @@
                                 var exists = refList.some(function (item) {
                                     return item && item.ownerType === opts.ownerType && item.ownerId === opts.ownerId;
                                 });
-                                if (!exists) refList.push({ ownerType: opts.ownerType, ownerId: opts.ownerId });
+                                if (!exists) {
+                                    refList.push({ ownerType: opts.ownerType, ownerId: opts.ownerId });
+                                    refAdded = true;
+                                }
                                 var primary = refList[0] || { ownerType: opts.ownerType, ownerId: opts.ownerId };
                                 refs.put({
                                     assetId: finalAssetId,
