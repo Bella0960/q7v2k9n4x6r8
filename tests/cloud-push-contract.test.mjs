@@ -2529,7 +2529,7 @@ test('sw.js 保留缓存与离线导航，并新增 push / notificationclick', a
   assert.equal(sw.notifications.length, 1);
   assert.equal(sw.notifications[0].title, '测试');
   assert.equal(sw.notifications[0].options.tag, 't1');
-  assert.deepEqual(sw.notifications[0].options.vibrate, [120, 60, 120]);
+  assert.deepEqual(Array.from(sw.notifications[0].options.vibrate), [120, 60, 120]);
   assert.equal(sw.notifications[0].options.requireInteraction, false);
   assert.equal(sw.notifications[0].options.actions[0].title, '查看聊天');
   assert.equal(
@@ -3715,9 +3715,11 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
 
   assert.ok(chat.includes('../../shared/js/cloud-push-client.js'),
     '聊天页必须加载云端收件箱客户端');
+  assert.ok(chat.includes('inspectCloudOutboundHistory(history, serverMessageId, messageText, payload.bubbles)'),
+    '收件端必须将云端 bubbles 数组传给完整性校验');
   assert.ok(chat.includes('function persistCloudOutboundMessage(payload, envelope)'),
     '聊天页必须有写入现有消息历史的适配器');
-  assert.ok(chat.includes('policy.inspectCloudOutboundHistory(history, serverMessageId, messageText, bubbles)'),
+  assert.ok(chat.includes('return policy.inspectCloudOutboundHistory(history, serverMessageId, expectedText, bubbles);'),
     '云端重复投递必须校验完整气泡批次和稳定 envelope ID');
   assert.ok(chat.includes('policy.buildCloudOutboundMessages(messageText, serverMessageId'),
     '云端收件箱必须将一条 envelope 还原为多个独立本地消息');
