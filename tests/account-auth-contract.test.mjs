@@ -2782,7 +2782,7 @@ test('设备在写入期间被撤销后，不能重新写入 presence、lease �
   const originalStoreExec = ctx.store.exec.bind(ctx.store);
   ctx.store.exec = (sql, ...params) => {
     const result = originalStoreExec(sql, ...params);
-    if (/UPDATE\\s+devices/i.test(String(sql)) && /revoked_at/i.test(String(sql))) {
+    if (String(sql).toLowerCase().includes('update devices') && String(sql).toLowerCase().includes('revoked_at')) {
       deviceMutationTrace.push({ sql: String(sql), params });
     }
     return result;
