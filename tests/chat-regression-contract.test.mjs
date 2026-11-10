@@ -3308,6 +3308,38 @@ test('商店与外卖亲密付使用严格钱包快照，损坏的既有余额�
   }
 });
 
+test('聊天收款入口也拒绝损坏的钱包数据，不再把余额重置成 1000', () => {
+  const readerStart = detail.indexOf("const WORK_DATA_KEY = 'workData';");
+  const readerEnd = detail.indexOf('function saveWorkData(wd)', readerStart);
+  assert.ok(readerStart >= 0 && readerEnd > readerStart, 'chat wallet reader must be present');
+  const readerSource = detail.slice(readerStart, readerEnd);
+
+  function readChatWallet(raw, exists = true) {
+    const localStorage = { getItem: () => exists ? raw : null };
+    const window = { navigator: {}, localStorage };
+    runInNewContext(walletLedgerSource, { window });
+    const sandbox = { window, localStorage };
+    runInNewContext(readerSource, sandbox);
+    return sandbox.getWorkData();
+  }
+
+  assert.deepEqual(JSON.parse(JSON.stringify(readChatWallet(null, false))),
+    { balance: 1000, history: [] }, 'first-use wallet initialization remains compatible');
+  assert.equal(readChatWallet('{broken-json'), null,
+    'corrupt JSON must block receipt before any balance mutation');
+  assert.equal(readChatWallet('{"balance":"60","history":[]}'), null,
+    'a string balance must not be converted into a fabricated wallet balance');
+  assert.equal(readChatWallet('{"balance":60,"history":{}}'), null,
+    'a malformed history store must not be silently erased');
+  const legacy = readChatWallet('{"balance":60}');
+  assert.equal(legacy.balance, 60);
+  assert.deepEqual(JSON.parse(JSON.stringify(legacy.history)), []);
+
+  assert.match(detail, /return ledger\.readWalletForMutation\(WORK_DATA_KEY\)/);
+  assert.doesNotMatch(detail, /wd = \{ balance: 1000 \}/,
+    'chat receipts must not silently replace malformed wallet data');
+});
+
 test('聊天、商店、外卖和钱包充值提现统一使用同一个钱包锁', () => {
   for (const [name, source] of [
     ['chat detail', detail],
