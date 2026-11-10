@@ -18,6 +18,8 @@
   var DEVICE_STORAGE_KEY = 'cloud_device_v1';
   var CONTEXT_FINGERPRINT_PREFIX = 'cloud_context_fingerprint_v1:';
   var CONTEXT_PENDING_PREFIX = 'cloud_context_pending_v1:';
+  var CONTEXT_SNAPSHOT_PENDING_PREFIX = 'cloud_context_snapshot_pending_v1:';
+  var contextSharingEnabledCache = null;
   var contextSyncPromises = Object.create(null);
   var activeContextEventIds = Object.create(null);
   var localContextFingerprints = Object.create(null);
@@ -311,6 +313,43 @@
   function setGlobalAutonomy(enabled) {
     if (typeof enabled !== 'boolean') return Promise.reject(new Error('enabled 必须是布尔值'));
     return requestDeviceMetadata('/api/autonomy/global', 'PUT', { enabled: enabled });
+  }
+
+  function getContextSharing() {
+    return requestDeviceMetadata('/api/autonomy/context-sharing', 'GET').then(function (payload) {
+      contextSharingEnabledCache = Boolean(payload && payload.enabled);
+      return { enabled: contextSharingEnabledCache };
+    });
+  }
+
+  function setContextSharing(enabled) {
+    if (typeof enabled !== 'boolean') return Promise.reject(new Error('enabled 必须是布尔值'));
+    return requestDeviceMetadata('/api/autonomy/context-sharing', 'PUT', { enabled: enabled }).then(function (payload) {
+      contextSharingEnabledCache = Boolean(payload && payload.enabled);
+      if (contextSharingEnabledCache) {
+        // Sharing begins from the next verified local save, not from old cached fingerprints.
+        clearLocalContextMetadata(CONTEXT_FINGERPRINT_PREFIX);
+      } else {
+        clearLocalContextMetadata(CONTEXT_SNAPSHOT_PENDING_PREFIX);
+      }
+      return payload;
+    });
+  }
+
+  function clearLocalContextMetadata(prefix) {
+    try {
+      var keys = [];
+      for (var index = 0; index < localStorage.length; index += 1) {
+        var key = localStorage.key(index);
+        if (key && key.indexOf(prefix) === 0) keys.push(key);
+      }
+      keys.forEach(function (key) { localStorage.removeItem(key); });
+    } catch (error) {}
+    if (prefix === CONTEXT_SNAPSHOT_PENDING_PREFIX) {
+      Object.keys(localContextPendingEvents).forEach(function (key) {
+        if (key.indexOf(prefix) === 0) delete localContextPendingEvents[key];
+      });
+    }
   }
 
   function getCharacterAutonomy(characterId) {
@@ -795,17 +834,46 @@
     if (contextSyncPromises[key]) return contextSyncPromises[key];
 
     var pendingKey = contextMetadataKey(CONTEXT_PENDING_PREFIX, value);
+    var snapshotPendingKey = contextMetadataKey(CONTEXT_SNAPSHOT_PENDING_PREFIX, value);
     var eventId = readContextMetadata(pendingKey, localContextPendingEvents);
     if (!eventId) return Promise.resolve(null);
 
     activeContextEventIds[key] = eventId;
-    var promise = requestDeviceMetadata(
-      '/api/characters/' + characterPath(value) + '/context-version',
-      'POST',
-      { eventId: eventId }
-    ).then(function (payload) {
+    var pendingSnapshot = readContextMetadata(snapshotPendingKey, localContextPendingEvents);
+    var snapshotPayload = null;
+    if (pendingSnapshot) {
+      try { snapshotPayload = JSON.parse(pendingSnapshot); } catch (error) { snapshotPayload = null; }
+      if (!snapshotPayload || snapshotPayload.eventId !== eventId) snapshotPayload = null;
+    }
+
+    var submit = snapshotPayload
+      ? getContextSharing().then(function (sharing) {
+          if (sharing.enabled) {
+            return requestDeviceMetadata(
+              '/api/characters/' + characterPath(value) + '/context-snapshot',
+              'POST',
+              snapshotPayload
+            );
+          }
+          writeContextMetadata(snapshotPendingKey, null, localContextPendingEvents);
+          return requestDeviceMetadata(
+            '/api/characters/' + characterPath(value) + '/context-version',
+            'POST',
+            { eventId: eventId }
+          );
+        })
+      : requestDeviceMetadata(
+          '/api/characters/' + characterPath(value) + '/context-version',
+          'POST',
+          { eventId: eventId }
+        );
+
+    var promise = submit.then(function (payload) {
       if (readContextMetadata(pendingKey, localContextPendingEvents) === eventId) {
         writeContextMetadata(pendingKey, null, localContextPendingEvents);
+      }
+      if (readContextMetadata(snapshotPendingKey, localContextPendingEvents)) {
+        writeContextMetadata(snapshotPendingKey, null, localContextPendingEvents);
       }
       return payload;
     }).finally(function () {
@@ -820,7 +888,7 @@
     return promise;
   }
 
-  function noteCharacterContextChanged(characterId, history) {
+  function noteCharacterContextChanged(characterId, history, snapshot) {
     var value = String(characterId || '');
     if (!value) return Promise.reject(new Error('角色 ID 无效'));
     var fingerprint = fingerprintCharacterHistory(history);
@@ -828,24 +896,58 @@
 
     var fingerprintKey = contextMetadataKey(CONTEXT_FINGERPRINT_PREFIX, value);
     var pendingKey = contextMetadataKey(CONTEXT_PENDING_PREFIX, value);
-    var previous = readContextMetadata(fingerprintKey, localContextFingerprints);
-    if (previous === fingerprint) {
+    var snapshotPendingKey = contextMetadataKey(CONTEXT_SNAPSHOT_PENDING_PREFIX, value);
+
+    function queueContentFreeVersion() {
+      var previous = readContextMetadata(fingerprintKey, localContextFingerprints);
+      if (previous === fingerprint) {
+        return flushCharacterContextVersion(value).then(function (payload) {
+          return { changed: false, synced: Boolean(payload), payload: payload };
+        });
+      }
+      writeContextMetadata(fingerprintKey, fingerprint, localContextFingerprints);
+      writeContextMetadata(pendingKey, randomBase64Url(18), localContextPendingEvents);
+      writeContextMetadata(snapshotPendingKey, null, localContextPendingEvents);
       return flushCharacterContextVersion(value).then(function (payload) {
-        return { changed: false, synced: Boolean(payload), payload: payload };
+        return { changed: true, synced: Boolean(payload), payload: payload };
       });
     }
 
-    // Every distinct saved-history fingerprint gets a fresh event ID. This
-    // matters across tabs: a token already in flight in another page must not
-    // be reused for a later history change. Offline edits replace the pending
-    // token, so the latest saved state is represented by one eventual bump.
-    var pendingEventId = randomBase64Url(18);
+    if (!snapshot || typeof snapshot !== 'object') return queueContentFreeVersion();
 
-    writeContextMetadata(fingerprintKey, fingerprint, localContextFingerprints);
-    writeContextMetadata(pendingKey, pendingEventId, localContextPendingEvents);
-
-    return flushCharacterContextVersion(value).then(function (payload) {
-      return { changed: true, synced: Boolean(payload), payload: payload };
+    // Never send the snapshot body until the authenticated server confirms
+    // that this account's separate context-sharing switch is enabled.
+    return getContextSharing().then(function (sharing) {
+      if (!sharing.enabled) return queueContentFreeVersion();
+      var previous = readContextMetadata(fingerprintKey, localContextFingerprints);
+      if (previous === fingerprint) {
+        return flushCharacterContextVersion(value).then(function (payload) {
+          return { changed: false, shared: true, synced: Boolean(payload), payload: payload };
+        });
+      }
+      var eventId = randomBase64Url(18);
+      var body = {
+        eventId: eventId,
+        characterName: String(snapshot.characterName || ''),
+        personaText: String(snapshot.personaText || ''),
+        recentMessages: Array.isArray(snapshot.recentMessages) ? snapshot.recentMessages.slice(-12) : [],
+        lastUserMessageAt: Number(snapshot.lastUserMessageAt)
+      };
+      writeContextMetadata(fingerprintKey, fingerprint, localContextFingerprints);
+      writeContextMetadata(pendingKey, eventId, localContextPendingEvents);
+      writeContextMetadata(snapshotPendingKey, JSON.stringify(body), localContextPendingEvents);
+      return flushCharacterContextVersion(value).then(function (payload) {
+        return { changed: true, shared: true, synced: Boolean(payload), payload: payload };
+      });
+    }).catch(function (error) {
+      // A failed preference read never falls back to uploading content.
+      if (snapshot) {
+        return queueContentFreeVersion().then(function (result) {
+          result.contextSharingCheckFailed = true;
+          return result;
+        });
+      }
+      throw error;
     });
   }
 
@@ -1620,6 +1722,8 @@
     getCharacterSchedule: getCharacterSchedule,
     setCharacterSchedule: setCharacterSchedule,
     getCharacterContextVersion: getCharacterContextVersion,
+    getContextSharing: getContextSharing,
+    setContextSharing: setContextSharing,
     enqueueAutonomyActivity: enqueueAutonomyActivity,
     claimAutonomyActivity: claimAutonomyActivity,
     completeAutonomyActivity: completeAutonomyActivity,
