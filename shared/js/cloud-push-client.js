@@ -753,15 +753,12 @@
     var receivedDeferred = 0;
     var persistedCount = 0;
     var saved = 0;
+    var groupsSaved = 0;
     var ackDeferred = 0;
     var persistErrors = 0;
     var deferred = 0;
     var pagesProcessed = 0;
 
-    // A stable keyset cursor lets us move past a repeatedly failing envelope.
-    // The cursor is per role + device and survives page reloads. It never ACKs
-    // or deletes failed messages; reaching the end clears it so old failures
-    // are revisited on the next polling cycle.
     while (pagesProcessed < maxPages) {
       var page = await getCharacterOutboundPage(characterId, safeLimit, cursor);
       var messages = page.messages;
@@ -776,41 +773,112 @@
       }
 
       receivedCount += messages.length;
-      for (var index = 0; index < messages.length; index += 1) {
-        var message = messages[index];
-        // Device-received and local-save receipts remain independent.
-        try {
-          await markCharacterOutboundReceived(characterId, message.serverMessageId);
-          receivedMarked += 1;
-        } catch (receiveError) {
-          receivedDeferred += 1;
+      var offset = 0;
+      var blockedByIncompleteGroup = false;
+      while (offset < messages.length) {
+        var first = messages[offset];
+        var groupId = String(first && first.groupId || '');
+        var expectedCount = groupId ? Number(first.groupCount) : 1;
+        if (!Number.isSafeInteger(expectedCount) || expectedCount < 1 || expectedCount > 4) {
+          deferred += 1;
+          blockedByIncompleteGroup = true;
+          break;
         }
 
+        var group = [];
+        var next = offset;
+        var groupKey = groupId || ('single:' + String(first && first.serverMessageId || ''));
+        while (next < messages.length) {
+          var candidate = messages[next];
+          var candidateKey = String(candidate && candidate.groupId || '') ||
+            ('single:' + String(candidate && candidate.serverMessageId || ''));
+          if (candidateKey !== groupKey) break;
+          group.push(candidate);
+          next += 1;
+        }
+        if (group.length !== expectedCount) {
+          // The server over-fetches up to three extra rows so a 1..4 bubble
+          // group is never cut by a page boundary. Do not cursor past a short group.
+          deferred += 1;
+          blockedByIncompleteGroup = true;
+          break;
+        }
+        var validGroup = group.every(function (item, index) {
+          return item && item.serverMessageId &&
+            (!groupId || (
+              String(item.groupId || '') === groupId &&
+              Number(item.groupCount) === expectedCount &&
+              Number(item.groupIndex) === index + 1
+            ));
+        });
+        if (!validGroup) {
+          deferred += 1;
+          blockedByIncompleteGroup = true;
+          break;
+        }
+
+        for (var receivedIndex = 0; receivedIndex < group.length; receivedIndex += 1) {
+          try {
+            await markCharacterOutboundReceived(characterId, group[receivedIndex].serverMessageId);
+            receivedMarked += 1;
+          } catch (receiveError) {
+            receivedDeferred += 1;
+          }
+        }
+
+        var payloads = group.map(function (item) { return item.payload; });
         var persisted = false;
         try {
-          persisted = await persistMessage(message.payload, message);
+          persisted = group.length === 1
+            ? await persistMessage(payloads[0], group[0])
+            : await persistMessage(payloads, group);
         } catch (persistError) {
-          // Keep the cloud row pending, but continue through this page and later pages.
           persistErrors += 1;
           deferred += 1;
-          continue;
+          blockedByIncompleteGroup = true;
+          break;
         }
         if (persisted !== true) {
           deferred += 1;
-          continue;
+          blockedByIncompleteGroup = true;
+          break;
         }
-        persistedCount += 1;
+        persistedCount += group.length;
 
-        try {
-          await acknowledgeCharacterOutboundMessage(characterId, message.serverMessageId);
-          saved += 1;
-        } catch (ackError) {
-          // A later scan sees the same serverMessageId and retries ACK without reinserting.
-          ackDeferred += 1;
+        var groupAckOk = true;
+        for (var ackIndex = 0; ackIndex < group.length; ackIndex += 1) {
+          try {
+            await acknowledgeCharacterOutboundMessage(characterId, group[ackIndex].serverMessageId);
+            saved += 1;
+          } catch (ackError) {
+            ackDeferred += 1;
+            groupAckOk = false;
+          }
         }
+        if (!groupAckOk) {
+          // Keep the cursor before this group. The inbox query returns every
+          // row of a partially acknowledged group so all ACKs can be retried.
+          blockedByIncompleteGroup = true;
+          break;
+        }
+
+        groupsSaved += 1;
+        var last = group[group.length - 1];
+        var groupCursor = {
+          createdAt: Number(last.cursorCreatedAt != null ? last.cursorCreatedAt : last.createdAt),
+          id: String(last.cursorId || '')
+        };
+        if (Number.isSafeInteger(groupCursor.createdAt) && groupCursor.createdAt >= 0 &&
+            isValidOutboundCursorId(groupCursor.id)) {
+          cursor = groupCursor;
+          writeOutboundCursor(cursorKey, cursor);
+        }
+        offset = next;
       }
 
       pagesProcessed += 1;
+      if (blockedByIncompleteGroup) break;
+      if (offset !== messages.length) break;
       cursor = page.nextCursor;
       writeOutboundCursor(cursorKey, cursor);
       if (!cursor) break;
@@ -823,6 +891,7 @@
       receivedDeferred: receivedDeferred,
       persisted: persistedCount,
       saved: saved,
+      groupsSaved: groupsSaved,
       ackDeferred: ackDeferred,
       persistErrors: persistErrors,
       deferred: deferred
