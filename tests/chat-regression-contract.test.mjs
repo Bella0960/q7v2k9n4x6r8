@@ -18,6 +18,7 @@ const takeoutPage = read('wallet/takeout.html');
 const walletPage = read('wallet/wallet.html');
 const closePayPage = read('wallet/close-pay.html');
 const roleFamilyCardsSource = read('shared/js/phone/role_family_cards.js');
+const familyCardsPage = read('wallet/family-cards.html');
 const chatNotifier = read('shared/js/chat-notifier.js');
 const navPage = read('shared/js/nav.js');
 const homePage = read('index.html');
@@ -3259,6 +3260,55 @@ test('不支持 Web Locks 的浏览器只提供页面内队列并明确暴露降
   ]);
   assert.deepEqual(order, ['first-start', 'first-end', 'second-start', 'second-end']);
   assert.deepEqual(notices, ['fallback'], 'fallback warning is emitted only once per page');
+});
+
+test('亲属卡所有状态变更与商店外卖消费共用钱包锁', () => {
+  assert.match(familyCardsPage, /wallet-ledger\.js\?v=20261107v7/);
+  assert.match(familyCardsPage, /async function runAction\(action, id\)/);
+  assert.match(familyCardsPage, /await ledger\.runExclusive\(function \(\)/);
+  assert.match(familyCardsPage, /api\.update\(id, action\)/);
+  assert.match(detail, /async function applyRoleFamilyCardChanges\(changes\)/);
+  assert.match(detail, /async function insertRoleFamilyCardInvitations\(historyList, cardSpecs\)/);
+  assert.match(detail, /await ledger\.runExclusive\(function \(\)/);
+  assert.match(detail, /await applyRoleFamilyCardChanges\(parsedRoleFamilyCard\.changes\)/);
+  assert.match(detail, /await insertRoleFamilyCardInvitations\(historyList, parsedRoleFamilyCard\.cards\)/);
+  assert.match(detail, /window\.handleRoleFamilyCardAction = async function/);
+  assert.match(detail, /return window\.RoleFamilyCards\.update\(cardId, action\)/);
+
+  // Exercise the shared lock contract: an update from the card wallet page must
+  // not overlap a consume operation from a commerce page.
+  let tail = Promise.resolve();
+  let active = 0;
+  let maxActive = 0;
+  const window = {
+    navigator: {
+      locks: {
+        request: (_name, options, callback) => {
+          assert.equal(options.mode, 'exclusive');
+          const run = tail.then(async () => {
+            active += 1;
+            maxActive = Math.max(maxActive, active);
+            try { return await callback(); }
+            finally { active -= 1; }
+          });
+          tail = run.catch(() => {});
+          return run;
+        }
+      }
+    }
+  };
+  runInNewContext(walletLedgerSource, { window });
+  const ledger = window.MaoMaoWalletLedger;
+  const order = [];
+  return Promise.all([
+    ledger.runExclusive(async () => { order.push('consume:start'); await Promise.resolve(); order.push('consume:end'); }),
+    ledger.runExclusive(async () => { order.push('card-update:start'); await Promise.resolve(); order.push('card-update:end'); })
+  ]).then(() => {
+    assert.equal(maxActive, 1, 'commerce consumption and card status writes must never overlap');
+    assert.deepEqual(order, [
+      'consume:start', 'consume:end', 'card-update:start', 'card-update:end'
+    ]);
+  });
 });
 
 test('商店与外卖亲密付使用严格钱包快照，损坏的既有余额数据必须停止', () => {
