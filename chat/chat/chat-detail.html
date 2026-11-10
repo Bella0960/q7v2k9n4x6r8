@@ -3326,6 +3326,28 @@
             return null;
         }
 
+        // 按 bubbleId 取具体气泡（老记录 mid#index 也能定位），所有单条操作都走这里。
+        function resolveBubbleInPage(bubbleId) {
+            if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.resolveBubble === 'function') {
+                return window.ChatMessagePolicy.resolveBubble(loadMessages(), bubbleId);
+            }
+            var msg = findByMid(bubbleId);
+            return msg ? {
+                mid: bubbleId, message: msg, messageIndex: -1, index: 0, count: 1,
+                text: String(msg.text || msg.content || ''), translation: ''
+            } : null;
+        }
+
+        // 局部操作后统一重渲染，保证旁白、译文、气泡索引与存储一致。
+        function rerenderFromList(list) {
+            if (_vl) { vlRefresh(); return; }
+            chatMessages.innerHTML = '';
+            var frag = document.createDocumentFragment();
+            (list || loadMessages()).forEach(function (m, i) { appendMessageToDOM(m, i, frag); });
+            chatMessages.appendChild(frag);
+            scrollToBottom(true);
+        }
+
         // ================= 发送失败重试：按 mid 复用原用户消息，不新增重复记录 =================
         // 旧数据可能没有 mid：找不到 mid 时退回 time 匹配，只为定位，不补写、不迁移历史数据。
         function _locateRetryMessage(list, mid, time) {
@@ -3528,9 +3550,38 @@
         }
 
         // ===== 解析 AI 回复：移除所有内部推理标记，只渲染聊天正文与角色旁白 =====
+        // 角色级回复模式：新角色默认显式 auto；未配置字段的老角色走 legacy，保留原有分段数量。
+        function normalizeReplyBubbleMode(value) {
+            if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.normalizeReplyBubbleMode === 'function') {
+                return window.ChatMessagePolicy.normalizeReplyBubbleMode(value);
+            }
+            var mode = String(value || '').trim().toLowerCase();
+            if (mode === 'single') return 'single';
+            if (mode === 'multi') return 'multi';
+            return 'auto';
+        }
+        function getActiveReplyBubbleMode() {
+            if (!currentCharacter) return 'auto';
+            if (!Object.prototype.hasOwnProperty.call(currentCharacter, 'replyBubbleMode')) {
+                return 'legacy';
+            }
+            return normalizeReplyBubbleMode(currentCharacter.replyBubbleMode);
+        }
+
+        // 气泡身份：单气泡消息用 mid；老记录一条消息拆出多个气泡时用 mid#index。
+        function bubbleIdFor(mid, index, count) {
+            if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.bubbleIdFor === 'function') {
+                return window.ChatMessagePolicy.bubbleIdFor(mid, index, count);
+            }
+            var base = String(mid || '');
+            if (!base) return '';
+            return count > 1 ? base + '#' + index : base;
+        }
+
+        // 已存内容按原文分段渲染：回复模式只影响新生成/落库，不重排或截断历史气泡。
         function parseReplyContent(raw) {
             if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.parseReplyContent === 'function') {
-                return window.ChatMessagePolicy.parseReplyContent(raw);
+                return window.ChatMessagePolicy.parseReplyContent(raw, 'legacy');
             }
             // Compatibility fallback: preserve the original parser if the shared module is unavailable.
             var text = stripInternalReasoning(raw);
@@ -3550,6 +3601,8 @@
                 var s = seg.trim();
                 if (s) bubbles.push(s);
             });
+            // Stored history is rendered without today's generation limits or mode changes.
+            // Never merge or truncate old text while displaying an existing conversation.
 
             return { thinks: [], narrations: narrations, bubbles: bubbles };
         }
@@ -4107,8 +4160,8 @@
                 fillAvatar(avatar, currentCharacter.avatar, USER_SVG);
             }
 
-            // 群聊：AI 成员回复在气泡上方显示成员名
-            if (isGroupChat && !isSent && !isError && msg.name) {
+            // 群聊：AI 成员回复在气泡上方显示成员名（逐条落库的后续气泡不重复显示）
+            if (isGroupChat && !isSent && !isError && msg.name && !(Number(msg.bubbleIndex) > 0)) {
                 const nameTag = document.createElement('div');
                 nameTag.className = 'msg-sender';
                 nameTag.textContent = msg.name;
@@ -5333,10 +5386,10 @@
             '4. 人名、地名不翻译。\n' +
             '5. 长度与原文相当，不要扩写。';
 
-        async function translateMessage(mid) {
-            const msg = findByMid(mid);
-            if (!msg) return;
-            const src = String((msg.text || msg.content) || '').trim();
+        async function translateMessage(bubbleId) {
+            const resolved = resolveBubbleInPage(bubbleId);
+            if (!resolved) return;
+            const src = String(resolved.text || '').trim();
             if (!src) {
                 if (typeof showToast === 'function') showToast('这条消息没有可翻译的文字');
                 return;
@@ -5353,26 +5406,26 @@
                 return;
             }
             const list = loadMessages();
+            var idx = -1;
             for (let i = 0; i < list.length; i++) {
-                if (ensureMid(list[i]) === mid) {
-                    list[i].translation = out;
-                    list[i].translationAt = Date.now();
-                    break;
-                }
+                if (ensureMid(list[i]) === resolved.mid) { idx = i; break; }
             }
-            saveMessages(list);
-            const row = chatMessages.querySelector('.msg-row[data-mid="' + mid + '"]');
-            const bubbleEl = row ? row.querySelector('.msg-bubble') : null;
-            if (bubbleEl) {
-                const old = bubbleEl.querySelector('.msg-translation');
-                if (old) old.remove();
-                const tr = document.createElement('div');
-                tr.className = 'msg-translation';
-                tr.textContent = out;
-                bubbleEl.appendChild(tr);
+            if (idx === -1) return;
+            const msg = list[idx];
+            if (resolved.count > 1 && window.ChatMessagePolicy && typeof window.ChatMessagePolicy.applyBubbleTranslation === 'function') {
+                // 老记录多气泡：翻译写回目标段，兄弟气泡不受影响。
+                var textField = (msg.content != null && msg.text == null) ? 'content' : 'text';
+                var rebuilt = window.ChatMessagePolicy.applyBubbleTranslation(String(msg.text || msg.content || ''), resolved.index, out);
+                msg[textField] = rebuilt;
             } else {
-                renderAllMessages();
+                msg.translation = out;
+                msg.translationAt = Date.now();
             }
+            if (!saveMessages(list)) {
+                if (typeof showToast === 'function') showToast('保存失败，未写入翻译');
+                return;
+            }
+            rerenderFromList(list);
             if (typeof showToast === 'function') showToast('已翻译');
         }
 
@@ -6149,11 +6202,19 @@
                 systemPrompt += `\n补充要求: ${customPrompt}`;
             }
             // 说话方式强制约束（每次请求必注入）
+            const replyBubbleMode = getActiveReplyBubbleMode();
+            const bubbleSplitRule = replyBubbleMode === 'single'
+                ? '本轮只输出一条完整消息，不要用空行分隔多个气泡。'
+                : (replyBubbleMode === 'multi'
+                    ? '本轮必须拆成 2–5 条连续消息，每条用换行分隔（单换行即可），每条简短、只表达一个意思，禁止把一句话拆成碎片。'
+                    : (replyBubbleMode === 'legacy'
+                        ? '按角色原有的自然聊天节奏分段，不设置固定条数上限；内容简短时保持 1 条，禁止按字数或标点机械拆分。'
+                        : '需要拆成多条消息时用双回车分隔，系统会自动拆成多个气泡；单次回复最多 5 条，通常 2–3 条，内容简短或只有一个意思时保持 1 条，禁止按字数或标点机械拆分。'));
             const SPEAK_STYLE = '[说话方式强制约束]\n' +
                 '1. 当前是线上文字聊天，优先使用角色自然会发出的对话，不要写成小说、说明文或客服答复。\n' +
                 '2. 不写星号包裹的动作或括号心理描写；确有必要的简短神态/环境内容才使用 <narratage>...</narratage>。\n' +
                 '3. 直接输出自然的聊天正文，不输出思维链、分析过程、推理草稿或 <think>/<reasoning>/<analysis> 标签。\n' +
-                '4. 默认简短；需要拆成多条消息时用双回车分隔，系统会自动拆成多个气泡。不要强制固定句数或字数。\n' +
+                '4. 默认简短；' + bubbleSplitRule + '不要强制固定句数或字数。\n' +
                 '5. 不要每句话都加表情、颜文字或语气词，按角色自己的习惯表达。\n' +
                 '6. 不使用“作为AI”“我是语言模型”等助手式自我说明。';
             if (!systemPrompt.includes('[说话方式强制约束]')) {
@@ -6195,7 +6256,11 @@
               '',
               '【输出格式】',
               '只输出角色在当前模式下应当发送的内容，不输出推理、分析或生成说明。',
-              '线上聊天以自然对话为主；多条独立消息之间用双回车分隔，动作/神态旁白仅在必要时使用 <narratage>...</narratage>。',
+              replyBubbleMode === 'single'
+                ? '线上聊天以自然对话为主；本轮只输出一条完整消息，不要用空行分隔多个气泡，动作/神态旁白仅在必要时使用 <narratage>...</narratage>。'
+                : (replyBubbleMode === 'multi'
+                    ? '线上聊天以自然对话为主；本轮必须拆成 2–5 条连续消息，每条用换行分隔，单条简短，动作/神态旁白仅在必要时使用 <narratage>...</narratage>。'
+                    : '线上聊天以自然对话为主；多意思、连续动作或语气变化时用双回车分隔成多条独立消息，单次最多 5 条，动作/神态旁白仅在必要时使用 <narratage>...</narratage>。'),
               '不要添加角色姓名前缀，不要把隐藏机器标记解释给用户。',
               '═══════════════════════════════════',
               '',
@@ -6563,6 +6628,9 @@
 
             // 打字机气泡引用（首个 delta 到达时复用现有气泡结构创建）
             let streamBubble = null;
+            // 流式临时消息实际创建的全部节点（主 row + 旁白块 + 额外气泡行）。
+            // 收尾时按节点精确移除，避免多气泡临时消息只删掉主 row 而残留孤儿气泡。
+            let streamNodes = [];
             let fullText = '';
             // 意外异常时，用最后一次收到并尝试渲染的原始累计文本做保文兜底。
             let lastPaintedStreamText = '';
@@ -6596,19 +6664,21 @@
                     const loadingEl = document.getElementById(statusId);
                     if (loadingEl) loadingEl.remove();
                     var tmpStreamMsg = { role: 'assistant', text: tmpText, name: groupReplyPick ? groupReplyPick.name : undefined };
+                    // 先用 DocumentFragment 组装，拿到本次临时消息的全部节点（主 row / 旁白 / 额外气泡）。
+                    const sfrag = document.createDocumentFragment();
+                    appendMessageToDOM(tmpStreamMsg, undefined, sfrag);
+                    streamNodes = Array.prototype.slice.call(sfrag.childNodes);
+                    const firstRow = streamNodes.filter(function (node) {
+                        return node.nodeType === 1 && node.classList && node.classList.contains('msg-row');
+                    })[0];
                     if (_vl) {
                         // 虚拟列表：流式气泡挂进窗口容器，并标记 streaming 暂停窗口重排（避免每帧被 scroll 监听器打断）
                         _vl.streaming = true;
-                        const sfrag = document.createDocumentFragment();
-                        appendMessageToDOM(tmpStreamMsg, undefined, sfrag);
                         _vl.win.appendChild(sfrag);
-                        const srow = _vl.win.lastElementChild;
-                        streamBubble = srow ? srow.querySelector('.msg-bubble') : null;
                     } else {
-                        appendMessageToDOM(tmpStreamMsg);
-                        const lastRow = chatMessages.lastElementChild;
-                        streamBubble = lastRow ? lastRow.querySelector('.msg-bubble') : null;
+                        chatMessages.appendChild(sfrag);
                     }
+                    streamBubble = firstRow ? firstRow.querySelector('.msg-bubble') : null;
                     if (typeof SoundSystem !== 'undefined') SoundSystem.play('receive', currentRoleId || '');
                 }
                 if (streamBubble) streamBubble.textContent = tmpText;
@@ -6753,8 +6823,8 @@
                         // 语义一致，且自动跳过隐藏消息（语音/约会剧情等），搜索跳转 hl= 不会错位。
                         // 不能用 historyList.length-1：隐藏消息会让两者偏移，导致定位错行。
                         if (_vl) {
-                            // 虚拟列表：流式收尾，仅重测最后一条（内容定稿）后重窗口化，O(1) 而非整表重测。
-                            vlFinalizeLast();
+                            // 虚拟列表：多条回复需要整体重算窗口与高度。
+                            vlRefresh();
                         } else {
                             var aiMessageIndex = chatMessages.querySelectorAll('.msg-row[data-idx]').length;
                             var shouldPaceBubbles = activeChatModeForPrompt !== 'narration' &&
@@ -6762,16 +6832,21 @@
                                 activeChatModeForPrompt !== 'date' &&
                                 !(isGroupChat && currentGroup && currentGroup.settings && currentGroup.settings.chatMode === 'offline');
                             if (shouldPaceBubbles) {
-                                await appendAiMessageWithPacing(aiMsg, aiMessageIndex);
+                                await appendReplyMessagesWithPacing(replyMessages, aiMessageIndex);
                             } else {
-                                appendMessageToDOM(aiMsg, aiMessageIndex);
+                                replyMessages.forEach(function (message, offset) {
+                                    appendMessageToDOM(message, aiMessageIndex + offset);
+                                });
                                 scrollToBottom(true);
                             }
                         }
                     } else if (streamBubble) {
                         // 模型只输出了标记：移除空白气泡、不落文本（来电卡/红包卡仍会插入）
-                        const onlyRow = streamBubble.closest('.msg-row');
-                        if (onlyRow) onlyRow.remove();
+                        for (var mn = 0; mn < streamNodes.length; mn++) {
+                            var mnNode = streamNodes[mn];
+                            if (mnNode && mnNode.parentNode) mnNode.parentNode.removeChild(mnNode);
+                        }
+                        streamNodes = [];
                         // 仅私聊标记也可能构成一条完整回复，需要立即刷新群私聊卡片。
                         if (window.__groupPrivateCardPending) {
                             window.__groupPrivateCardPending = false;
@@ -6932,8 +7007,11 @@
             var list = loadMessages();
             var targetIdx = -1;
             if (mid) {
+                // mid 可能是气泡身份 mid#index：只取 mid 部分定位所属消息。
+                var parsedTarget = window.ChatMessagePolicy && typeof window.ChatMessagePolicy.parseBubbleId === 'function'
+                    ? window.ChatMessagePolicy.parseBubbleId(mid) : { mid: mid, index: 0 };
                 for (var k = 0; k < list.length; k++) {
-                    if (ensureMid(list[k]) === mid) { targetIdx = k; break; }
+                    if (ensureMid(list[k]) === parsedTarget.mid) { targetIdx = k; break; }
                 }
             } else {
                 // 从后往前找最后一条 AI 消息
@@ -6946,18 +7024,15 @@
                 if (typeof showToast === 'function') showToast(mid ? '这条消息已不存在' : '还没有 AI 回复可以重玩');
                 return;
             }
-            list.splice(targetIdx, 1);
-            saveMessages(list);
-            // 清空聊天区重新渲染
-            if (_vl) {
-                vlRefresh();
+            // 改写以「整轮回复」为单位：同 turnId 的所有气泡一起移除；老记录无 turnId 时只删该条消息。
+            var targetBubbleId = mid || ensureMid(list[targetIdx]);
+            if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.removeTurnFromHistory === 'function') {
+                list = window.ChatMessagePolicy.removeTurnFromHistory(list, targetBubbleId);
             } else {
-                chatMessages.innerHTML = '';
-                var regenFrag = document.createDocumentFragment();
-                list.forEach(function(m) { appendMessageToDOM(m, undefined, regenFrag); });
-                chatMessages.appendChild(regenFrag);
-                scrollToBottom(true);
+                list.splice(targetIdx, 1);
             }
+            saveMessages(list);
+            rerenderFromList(list);
             // 触发重新生成
             sendMsg({ isRegenerate: true, regenDirection: direction || '' });
         };
@@ -6970,13 +7045,14 @@
 
         // ================= 消息多选（长按进入） =================
         var selectingMode = false;
-        var selectedTimes = new Set();
+        // 多选按气泡身份（bubbleId）记录，选中一个气泡不会连带同一条老消息的兄弟气泡。
+        var selectedBubbles = new Set();
         var pressTimer = null;
 
-        function enterSelection(msgTime) {
+        function enterSelection(bubbleId) {
             selectingMode = true;
-            selectedTimes = new Set();
-            if (msgTime) selectedTimes.add(msgTime);
+            selectedBubbles = new Set();
+            if (bubbleId) selectedBubbles.add(String(bubbleId));
             chatMessages.classList.add('selecting');
             document.getElementById('selectBar').classList.add('show');
             // 给所有消息行插入勾选圈
@@ -6991,7 +7067,7 @@
 
         function exitSelection() {
             selectingMode = false;
-            selectedTimes = new Set();
+            selectedBubbles = new Set();
             chatMessages.classList.remove('selecting');
             var bar = document.getElementById('selectBar');
             if (bar) bar.classList.remove('show');
@@ -7003,22 +7079,22 @@
         }
 
         function updateSelectionUI() {
-            document.getElementById('selectCount').textContent = '已选 ' + selectedTimes.size + ' 条';
+            document.getElementById('selectCount').textContent = '已选 ' + selectedBubbles.size + ' 条';
             chatMessages.querySelectorAll('.msg-row').forEach(function (row) {
-                var t = row.dataset.time;
+                var id = row.dataset.bubbleId || row.dataset.mid;
                 var c = row.querySelector('.msg-select-check');
-                if (!t || !c) return;
-                var on = selectedTimes.has(t);
+                if (!id || !c) return;
+                var on = selectedBubbles.has(id);
                 c.classList.toggle('checked', on);
                 row.classList.toggle('ghost', on);
             });
         }
 
         function toggleSelectRow(row) {
-            var t = row.dataset.time;
-            if (!t) return;
-            if (selectedTimes.has(t)) selectedTimes.delete(t);
-            else selectedTimes.add(t);
+            var id = row.dataset.bubbleId || row.dataset.mid;
+            if (!id) return;
+            if (selectedBubbles.has(id)) selectedBubbles.delete(id);
+            else selectedBubbles.add(id);
             updateSelectionUI();
         }
 
@@ -7089,8 +7165,9 @@
         }
 
         // 锚定定位：气泡上方放得下就向上弹，否则向下；左右与上下都钳制在手机屏内
-        function positionMsgMenu(mid) {
-            var row = chatMessages.querySelector('.msg-row[data-mid="' + mid + '"]');
+        function positionMsgMenu(bubbleId) {
+            var row = chatMessages.querySelector('.msg-row[data-bubble-id="' + bubbleId + '"]') ||
+                chatMessages.querySelector('.msg-row[data-mid="' + bubbleId + '"]');
             var host = document.querySelector('.phone-mockup') || document.body;
             if (!row || !msgSheetList || !host) { msgSheetList.style.visibility = ''; return; }
             var hostRect = host.getBoundingClientRect();
@@ -7119,15 +7196,17 @@
             msgSheetList.style.visibility = '';
         }
 
-        function openMsgSheet(mid) {
-            var msg = findByMid(mid);
-            if (!msg || !msgSheetOverlay) return;
-            msgSheetMid = mid;
-            msgSheetList.innerHTML = buildMsgMenuHTML(msg);
+        function openMsgSheet(bubbleId) {
+            var resolved = resolveBubbleInPage(bubbleId);
+            if (!resolved || !msgSheetOverlay) return;
+            msgSheetMid = bubbleId;
+            // 菜单按目标气泡文本生成，避免老记录多气泡消息把整条正文都算进来。
+            var menuMsg = Object.assign({}, resolved.message, { text: resolved.text });
+            msgSheetList.innerHTML = buildMsgMenuHTML(menuMsg);
             msgSheetList.style.visibility = 'hidden';
             msgSheetOpenedAt = Date.now();
             msgSheetOverlay.classList.add('active');
-            positionMsgMenu(mid);
+            positionMsgMenu(bubbleId);
         }
 
         // 点击菜单以外的任何位置关闭；聊天区滚动时也关闭（菜单锚定的是旧位置）
@@ -7148,19 +7227,21 @@
                 var btn = e.target.closest('.msg-sheet-item');
                 if (!btn) return;
                 var act = btn.getAttribute('data-act');
-                var mid = msgSheetMid;
-                var msg = findByMid(mid);
+                var bubbleId = msgSheetMid;
+                var resolved = resolveBubbleInPage(bubbleId);
                 closeMsgSheet();
-                if (!msg) return;
-                if (act === 'select') { enterSelection(String(msg.time || '')); return; }
-                if (act === 'copy') { copyMessageText(msg); return; }
-                if (act === 'forward') { openForwardSheet(mid); return; }
+                if (!resolved) return;
+                var msg = resolved.message;
+                var bubbleText = String(resolved.text || '') || plainTextOf(msg);
+                if (act === 'select') { enterSelection(bubbleId); return; }
+                if (act === 'copy') { copyMessageText({ text: bubbleText }); return; }
+                if (act === 'forward') { openForwardSheet(bubbleId, resolved); return; }
                 if (act === 'quote') {
                     var quoteAuthorName = msg.name ||
                         ((msg.role === 'sent' || msg.role === 'user') ? '我' :
                         ((document.getElementById('chat-title') || {}).textContent || '对方'));
                     pendingQuote = {
-                        mid: mid, text: plainTextOf(msg), fromRole: msg.role,
+                        mid: resolved.mid, bubbleId: bubbleId, text: bubbleText, fromRole: msg.role,
                         authorName: String(quoteAuthorName || '原消息').trim()
                     };
                     var qb = document.getElementById('quoteBar');
@@ -7172,17 +7253,17 @@
                     return;
                 }
                 if (act === 'translate') {
-                    if (typeof translateMessage === 'function') translateMessage(mid);
+                    if (typeof translateMessage === 'function') translateMessage(bubbleId);
                     else if (typeof showToast === 'function') showToast('翻译功能稍后开放');
                     return;
                 }
                 if (act === 'rewrite') {
-                    if (typeof openRegenForMid === 'function') openRegenForMid(mid);
+                    if (typeof openRegenForMid === 'function') openRegenForMid(bubbleId);
                     else if (typeof showToast === 'function') showToast('改写功能稍后开放');
                     return;
                 }
-                if (act === 'edit') { openEditSheet(mid); return; }
-                if (act === 'delete') { deleteOneMessage(mid); return; }
+                if (act === 'edit') { openEditSheet(bubbleId); return; }
+                if (act === 'delete') { deleteOneMessage(bubbleId); return; }
             });
         }
 
@@ -7213,24 +7294,29 @@
             }
         }
 
-        // ---------- 单条删除 ----------
-        function deleteOneMessage(mid) {
+        // ---------- 单条删除（按气泡身份，只删目标气泡） ----------
+        function deleteOneMessage(bubbleId) {
             var list = loadMessages();
-            var keep = list.filter(function (m) { return ensureMid(m) !== mid; });
-            if (keep.length === list.length) {
+            var resolved = resolveBubbleInPage(bubbleId);
+            var keep;
+            if (resolved && window.ChatMessagePolicy && typeof window.ChatMessagePolicy.removeBubblesFromHistory === 'function') {
+                keep = window.ChatMessagePolicy.removeBubblesFromHistory(list, [bubbleId]);
+            } else if (resolved) {
+                keep = list.filter(function (m) { return ensureMid(m) !== resolved.mid; });
+            } else {
+                keep = list;
+            }
+            // 老记录部分删除时消息条数不变（只重建文本），不能只看长度判断“没删到”。
+            var changed = keep.length !== list.length || keep.some(function (m, i) { return m !== list[i]; });
+            if (!changed) {
                 if (typeof showToast === 'function') showToast('消息已不存在');
                 return;
             }
-            saveMessages(keep);
-            if (_vl) {
-                vlRefresh();
-            } else {
-                chatMessages.innerHTML = '';
-                var delOneFrag = document.createDocumentFragment();
-                keep.forEach(function (m, i) { appendMessageToDOM(m, i, delOneFrag); });
-                chatMessages.appendChild(delOneFrag);
-                scrollToBottom(true);
+            if (!saveMessages(keep)) {
+                if (typeof showToast === 'function') showToast('保存失败，未删除');
+                return;
             }
+            rerenderFromList(keep);
             if (typeof showToast === 'function') showToast('已删除 1 条消息');
         }
 
@@ -7249,59 +7335,56 @@
             editMid = '';
         }
 
-        function openEditSheet(mid) {
-            var msg = findByMid(mid);
-            if (!msg || !editOverlay) return;
-            var isAi = msg.role === 'received' || msg.role === 'assistant';
-            editMid = mid;
+        function openEditSheet(bubbleId) {
+            var resolved = resolveBubbleInPage(bubbleId);
+            if (!resolved || !editOverlay) return;
+            var isAi = resolved.message.role === 'received' || resolved.message.role === 'assistant';
+            editMid = bubbleId;
             if (editTitleEl) editTitleEl.textContent = isAi ? '修改 TA 说的话' : '修改内容';
-            if (editInput) editInput.value = String(msg.text || msg.content || '');
+            if (editInput) editInput.value = String(resolved.text || '');
             editOpenedAt = Date.now();
             editOverlay.classList.add('active');
             setTimeout(function () { try { editInput.focus(); } catch (e) {} }, 60);
         }
 
         function saveEditedMessage() {
-            var mid = editMid;
+            var bubbleId = editMid;
+            var resolved = resolveBubbleInPage(bubbleId);
+            if (!resolved) {
+                if (typeof showToast === 'function') showToast('消息已不存在');
+                closeEditSheet();
+                return;
+            }
+            var newText = String(editInput.value || '').trim();
+            if (!newText) {
+                if (typeof showToast === 'function') showToast('内容不能为空');
+                return;
+            }
+            if (newText === String(resolved.text || '').trim()) { closeEditSheet(); return; }
             var list = loadMessages();
             var idx = -1;
-            for (var i = 0; i < list.length; i++) { if (ensureMid(list[i]) === mid) { idx = i; break; } }
+            for (var i = 0; i < list.length; i++) { if (ensureMid(list[i]) === resolved.mid) { idx = i; break; } }
             if (idx === -1) {
                 if (typeof showToast === 'function') showToast('消息已不存在');
                 closeEditSheet();
                 return;
             }
             var msg = list[idx];
-            var newText = String(editInput.value || '').trim();
-            if (!newText) {
-                if (typeof showToast === 'function') showToast('内容不能为空');
-                return;
+            var textField = (msg.content != null && msg.text == null) ? 'content' : 'text';
+            if (resolved.count > 1 && window.ChatMessagePolicy && typeof window.ChatMessagePolicy.replaceBubbleInText === 'function') {
+                // 老记录一条消息含多个气泡：只替换目标段，兄弟气泡原样重建。
+                var rebuilt = window.ChatMessagePolicy.replaceBubbleInText(String(msg.text || msg.content || ''), resolved.index, newText);
+                msg[textField] = rebuilt || newText;
+            } else {
+                msg[textField] = newText;
             }
-            if (newText === String(msg.text || msg.content || '').trim()) { closeEditSheet(); return; }
-            if (msg.content != null && msg.text == null) msg.content = newText; else msg.text = newText;
             msg.edited = true;
             msg.editedAt = Date.now();
-            saveMessages(list);
-
-            var row = chatMessages.querySelector('.msg-row[data-mid="' + mid + '"]');
-            var bubbleEl = row ? row.querySelector('.msg-bubble') : null;
-            var textishOnly = !!bubbleEl;
-            if (bubbleEl) {
-                Array.prototype.forEach.call(bubbleEl.children, function (c) {
-                    if (!c.classList.contains('msg-translation') && !c.classList.contains('msg-edited')) textishOnly = false;
-                });
+            if (!saveMessages(list)) {
+                if (typeof showToast === 'function') showToast('保存失败，未修改');
+                return;
             }
-            if (bubbleEl && textishOnly) {
-                var keepTr = bubbleEl.querySelector('.msg-translation');
-                bubbleEl.textContent = newText;
-                if (keepTr) bubbleEl.appendChild(keepTr);
-                var tag = document.createElement('div');
-                tag.className = 'msg-edited';
-                tag.textContent = '已编辑';
-                bubbleEl.appendChild(tag);
-            } else {
-                renderAllMessages();
-            }
+            rerenderFromList(list);
             closeEditSheet();
             if (typeof showToast === 'function') showToast('已保存');
         }
@@ -7353,10 +7436,12 @@
             return out;
         }
 
-        function openForwardSheet(mid) {
-            var msg = findByMid(mid);
-            if (!msg || !fwOverlay) return;
-            if (msg.type === 'redpacket' || msg.type === 'transfer') {
+        function openForwardSheet(bubbleId, resolved) {
+            resolved = resolved || resolveBubbleInPage(bubbleId);
+            if (!resolved || !fwOverlay) return;
+            var msg = resolved.message;
+            // 类型专属消息（红包/转账）只在整条消息只有一个气泡时拦截；老记录可单独转发某个文字气泡。
+            if (resolved.count === 1 && (msg.type === 'redpacket' || msg.type === 'transfer')) {
                 if (typeof showToast === 'function') showToast('红包/转账不支持转发');
                 return;
             }
@@ -7377,7 +7462,7 @@
                 }).join('');
             }
             fwList.innerHTML = html;
-            fwList.dataset.mid = mid;
+            fwList.dataset.bubbleId = bubbleId;
             fwOpenedAt = Date.now();
             fwOverlay.classList.add('active');
         }
@@ -7394,18 +7479,19 @@
             fwList.addEventListener('click', function (e) {
                 var btn = e.target.closest('.fw-item');
                 if (!btn) return;
-                var mid = fwList.dataset.mid;
+                var bubbleId = fwList.dataset.bubbleId;
                 var targetId = btn.getAttribute('data-id');
                 var targetName = btn.getAttribute('data-name');
-                var msg = findByMid(mid);
+                var resolved = resolveBubbleInPage(bubbleId);
                 closeForwardSheet();
-                if (!msg) return;
-                forwardMessage(msg, targetId, targetName);
+                if (!resolved) return;
+                forwardMessage(resolved, targetId, targetName);
             });
         }
 
         // 只携带白名单字段，避免把本地状态（mid/status/translation/isError）带过去引发二次余额逻辑
-        function forwardMessage(msg, targetId, targetName) {
+        function forwardMessage(resolved, targetId, targetName) {
+            var msg = resolved.message;
             var key = 'chat_history_' + targetId;
             var arr = [];
             try { arr = JSON.parse(localStorage.getItem(key) || '[]'); } catch (e) { arr = []; }
@@ -7415,13 +7501,15 @@
                 time: Date.now(),
                 forwarded: true,
                 forwardFrom: { id: String(aliasRoleId), name: roleDisplayName },
-                text: plainTextOf(msg)
+                text: String(resolved.text || '') || plainTextOf(msg)
             };
-            if (msg.type === 'image' && msg.img) { fwd.type = 'image'; fwd.img = msg.img; fwd.desc = msg.desc || ''; }
-            else if (msg.type === 'voice') { fwd.type = 'voice'; fwd.duration = msg.duration || 3; }
-            else if (msg.type === 'location' && msg.location) { fwd.type = 'location'; fwd.location = msg.location; }
-            else if (msg.type === 'card' && msg.card) { fwd.type = 'card'; fwd.card = msg.card; }
-            else if (msg.type === 'sticker' && msg.img) { fwd.type = 'sticker'; fwd.img = msg.img; fwd.desc = msg.desc || ''; }
+            if (resolved.count === 1) {
+                if (msg.type === 'image' && msg.img) { fwd.type = 'image'; fwd.img = msg.img; fwd.desc = msg.desc || ''; }
+                else if (msg.type === 'voice') { fwd.type = 'voice'; fwd.duration = msg.duration || 3; }
+                else if (msg.type === 'location' && msg.location) { fwd.type = 'location'; fwd.location = msg.location; }
+                else if (msg.type === 'card' && msg.card) { fwd.type = 'card'; fwd.card = msg.card; }
+                else if (msg.type === 'sticker' && msg.img) { fwd.type = 'sticker'; fwd.img = msg.img; fwd.desc = msg.desc || ''; }
+            }
             arr.push(fwd);
             try {
                 localStorage.setItem(key, JSON.stringify(arr));
@@ -7479,11 +7567,12 @@
         chatMessages.addEventListener('pointerdown', function (e) {
             if (selectingMode) return;
             var row = e.target.closest('.msg-row');
-            if (!row || !row.dataset.mid) return;
+            var bubbleId = row && (row.dataset.bubbleId || row.dataset.mid);
+            if (!row || !bubbleId) return;
             pressTimer = setTimeout(function () {
                 pressTimer = null;
                 if (navigator.vibrate) { try { navigator.vibrate(10); } catch (err) {} }
-                openMsgSheet(row.dataset.mid);
+                openMsgSheet(bubbleId);
             }, 500);
         });
         ['pointerup', 'pointerleave', 'pointercancel', 'wheel', 'scroll'].forEach(function (ev) {
@@ -7500,23 +7589,23 @@
 
         document.getElementById('selectCancelBtn').addEventListener('click', exitSelection);
         document.getElementById('selectDeleteBtn').addEventListener('click', function () {
-            if (!selectedTimes.size) { exitSelection(); return; }
+            if (!selectedBubbles.size) { exitSelection(); return; }
+            var removedCount = selectedBubbles.size;
             var list = loadMessages();
-            var keep = list.filter(function (m) {
-                return !selectedTimes.has(String(m.time || ''));
-            });
-            saveMessages(keep);
-            if (_vl) {
-                vlRefresh();
+            var keep;
+            if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.removeBubblesFromHistory === 'function') {
+                keep = window.ChatMessagePolicy.removeBubblesFromHistory(list, Array.from(selectedBubbles));
             } else {
-                chatMessages.innerHTML = '';
-                var delManyFrag = document.createDocumentFragment();
-                keep.forEach(function (m, i) { appendMessageToDOM(m, i, delManyFrag); });
-                chatMessages.appendChild(delManyFrag);
+                keep = list.slice();
             }
-            scrollToBottom(true);
+            if (!saveMessages(keep)) {
+                if (typeof showToast === 'function') showToast('保存失败，未删除');
+                exitSelection();
+                return;
+            }
+            rerenderFromList(keep);
             exitSelection();
-            if (typeof showToast === 'function') showToast('已删除 ' + selectedTimes.size + ' 条消息');
+            if (typeof showToast === 'function') showToast('已删除 ' + removedCount + ' 条消息');
         });
 
         if (chatForm) {
