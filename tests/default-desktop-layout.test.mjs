@@ -51,7 +51,7 @@ test('every desktop app is assigned exactly once and dock apps stay in the dock'
   assert.match(index, /roleMeta\.content === 'super_admin'/, 'creator-only shortcut must require the server-injected admin role');
   assert.match(index, /tile\.hidden = !isSuperAdmin/,
     'ordinary accounts must explicitly hide the privileged shortcut');
-  assert.match(desktopCss, /\[data-drag="app_admin_center"\]\[hidden\]\s*\{\s*display:\s*none\s*!important\s*\}/,
+  assert.match(desktopCss, /button\.app-card\.app-tile\[data-drag="app_admin_center"\]\[hidden\]\s*\{\s*display:\s*none\s*!important\s*;/,
     'desktop display rules must not override the hidden state on the admin-only tile');
 
 });
