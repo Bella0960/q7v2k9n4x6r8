@@ -1424,7 +1424,9 @@ class CloudStore {
             AND latest.character_id = o.character_id
         )
        LEFT JOIN push_deliveries p
-         ON p.dedupe_key = ('outbound-group:' || COALESCE(o.group_id, o.server_message_id))
+         ON p.dedupe_key = CASE WHEN o.group_id IS NULL
+           THEN ('outbound:' || o.server_message_id)
+           ELSE ('outbound-group:' || o.group_id) END
         AND p.subscription_id = s.id
        WHERE r.local_saved_at IS NULL
          AND COALESCE(o.group_index, 1) = 1
