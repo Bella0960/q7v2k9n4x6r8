@@ -316,7 +316,11 @@
     var existingByIndex = Object.create(null);
     for (var rowIndex = 0; rowIndex < rows.length; rowIndex++) {
       var row = rows[rowIndex];
-      if (!row || typeof row !== 'object' || Array.isArray(row)) {
+      if (!row || typeof row !== 'object' || Array.isArray(row) ||
+          !Object.prototype.hasOwnProperty.call(row, 'amount') ||
+          row.amount == null || row.amount === '' ||
+          !isFinite(Number(row.amount)) || Number(row.amount) < 0 ||
+          (Object.prototype.hasOwnProperty.call(row, 'type') && typeof row.type !== 'string')) {
         return { ok: false, reason: 'invalid-store' };
       }
       if (row.paymentId !== transactionId) continue;

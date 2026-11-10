@@ -4296,8 +4296,10 @@ test('亲密付已有部分扣款时，设置变化不能取消原交易恢复�
 });
 
 test('外卖交易签名包含餐厅，且亲属卡通知只在订单和购物车结算确认后发出', () => {
-  assert.match(takeoutPage, /checkoutSignature = JSON\.stringify\(\{\s*shopId: orderShop\.id/,
+  assert.match(takeoutPage, /function buildTakeoutCheckoutSignature\(items, orderShop, total\)[\s\S]*?return JSON\.stringify\(\{\s*shopId: orderShop\.id/,
     'same dishes from different restaurants must not share a checkout ID');
+  assert.match(takeoutPage, /buildTakeoutCheckoutSignature\(items, orderShop, total\)/,
+    'checkout must use the restaurant-bound signature helper');
   const cartClear = takeoutPage.indexOf('if (!saveCart())');
   const complete = takeoutPage.indexOf('completePendingCheckout(transactionId)', cartClear);
   const notify = takeoutPage.indexOf('notifyRoleCardIssuer(roleFamilyCard', complete);
@@ -4632,4 +4634,115 @@ test('记账页面实际加载共享钱包锁模块，财务写入与订单结�
   assert.match(takeoutPage, /recordFinanceLines\(transactionId, financeRows, 'finance_records'\)/);
   assert.doesNotMatch(shopPage, /JSON\.parse\(localStorage\.getItem\('finance_records'\) \|\| '\[\]'\)/);
   assert.doesNotMatch(takeoutPage, /JSON\.parse\(localStorage\.getItem\('finance_records'\) \|\| '\[\]'\)/);
+});
+
+
+test('即时收款在聊天状态保存失败后，重试只入账一次并补齐财务流水', async () => {
+  const readerStart = detail.indexOf("const WORK_DATA_KEY = 'workData';");
+  const readerEnd = detail.indexOf('function saveWorkData(wd)', readerStart);
+  const paymentStart = detail.indexOf('const pendingPaymentOperations = new Set();');
+  const paymentEnd = detail.indexOf('// ===== 群投票', paymentStart);
+  assert.ok(readerStart >= 0 && readerEnd > readerStart);
+  assert.ok(paymentStart >= 0 && paymentEnd > paymentStart);
+  const readerSource = detail.slice(readerStart, readerEnd);
+  const paymentSource = detail.slice(paymentStart, paymentEnd);
+
+  const values = new Map([
+    ['workData', JSON.stringify({ balance: 50, history: [] })],
+    ['finance_records', '[]']
+  ]);
+  let history = [{
+    role: 'assistant', type: 'redpacket', amount: '10.00',
+    status: 'unopened', mid: 'receipt-recovery-001'
+  }];
+  let failFirstChatSave = true;
+  const writes = [];
+  const toasts = [];
+  let rendered = 0;
+  const localStorage = {
+    getItem: key => values.has(key) ? values.get(key) : null,
+    setItem: (key, value) => {
+      writes.push(key);
+      values.set(key, String(value));
+    },
+    removeItem: key => values.delete(key)
+  };
+  const window = {
+    navigator: {
+      locks: { request: (_name, _options, callback) => Promise.resolve().then(callback) }
+    },
+    localStorage
+  };
+  runInNewContext(walletLedgerSource, { window });
+
+  const sandbox = {
+    window,
+    localStorage,
+    loadMessages: () => JSON.parse(JSON.stringify(history)),
+    ensureMid: message => message.mid,
+    saveWorkData: next => {
+      const serialized = JSON.stringify(next);
+      localStorage.setItem('workData', serialized);
+      return localStorage.getItem('workData') === serialized;
+    },
+    saveMessages: next => {
+      if (failFirstChatSave) {
+        failFirstChatSave = false;
+        return false;
+      }
+      history = JSON.parse(JSON.stringify(next));
+      return true;
+    },
+    showToast: message => toasts.push(message),
+    renderAllMessages: () => { rendered += 1; },
+    openPayResult: () => {},
+    currentCharacter: { name: '角色' },
+    console: { warn: () => {} }
+  };
+  runInNewContext(readerSource + paymentSource, sandbox);
+
+  const clickReceipt = () => sandbox.handlePayCardClick({
+    currentTarget: {
+      getAttribute: name => name === 'data-mid' ? 'receipt-recovery-001' : null,
+      setAttribute: () => {},
+      removeAttribute: () => {}
+    }
+  });
+
+  await clickReceipt();
+  let wallet = JSON.parse(values.get('workData'));
+  assert.equal(wallet.balance, 60, 'first receipt credits the wallet');
+  assert.equal(wallet.history.length, 1);
+  assert.equal(wallet.history[0].paymentId, 'receipt-recovery-001');
+  assert.equal(history[0].status, 'unopened',
+    'failed chat persistence must not falsely mark the receipt card as received');
+  assert.equal(JSON.parse(values.get('finance_records')).length, 0);
+
+  await clickReceipt();
+  wallet = JSON.parse(values.get('workData'));
+  assert.equal(wallet.balance, 60, 'retry must not credit the same receipt twice');
+  assert.equal(wallet.history.length, 1);
+  assert.equal(history[0].status, 'opened', 'retry must restore the card status');
+  const financeRows = JSON.parse(values.get('finance_records'));
+  assert.equal(financeRows.length, 1);
+  assert.equal(financeRows[0].paymentId, 'receipt-recovery-001');
+  assert.equal(financeRows[0].type, '收入');
+  assert.equal(financeRows[0].category, '红包');
+
+  await clickReceipt();
+  wallet = JSON.parse(values.get('workData'));
+  assert.equal(wallet.balance, 60, 'reopening a completed card must remain idempotent');
+  assert.equal(wallet.history.length, 1);
+  assert.equal(JSON.parse(values.get('finance_records')).length, 1);
+  assert.equal(rendered, 1);
+});
+
+test('聊天即时收款遇到损坏的既有财务流水时保留原值，不将其当作空账本覆盖', () => {
+  const start = detail.indexOf('function ensureFinanceRecord()');
+  const end = detail.indexOf('function persistReceiptStatus()', start);
+  assert.ok(start >= 0 && end > start);
+  const source = detail.slice(start, end);
+  assert.match(source, /financeRaw === ''/);
+  assert.match(source, /financeRaw == null/);
+  assert.doesNotMatch(source, /getItem\\('finance_records'\\)\\s*\\|\\|\\s*'\\[\\]'/);
 });

@@ -8175,8 +8175,25 @@
 
                 function ensureFinanceRecord() {
                     try {
-                        let fin = JSON.parse(localStorage.getItem('finance_records') || '[]');
-                        if (!Array.isArray(fin)) return false;
+                        // This handler already runs under the shared wallet lock.
+                        // Missing means first-use; an existing empty/corrupt value must never be replaced.
+                        var financeRaw = localStorage.getItem('finance_records');
+                        let fin;
+                        if (financeRaw == null) fin = [];
+                        else {
+                            if (financeRaw === '') return false;
+                            fin = JSON.parse(financeRaw);
+                            if (!Array.isArray(fin)) return false;
+                            for (var rowIndex = 0; rowIndex < fin.length; rowIndex++) {
+                                var storedRow = fin[rowIndex];
+                                if (!storedRow || typeof storedRow !== 'object' || Array.isArray(storedRow) ||
+                                    !Object.prototype.hasOwnProperty.call(storedRow, 'amount') ||
+                                    storedRow.amount == null || storedRow.amount === '' ||
+                                    !isFinite(Number(storedRow.amount)) || Number(storedRow.amount) < 0 ||
+                                    (Object.prototype.hasOwnProperty.call(storedRow, 'type') &&
+                                        typeof storedRow.type !== 'string')) return false;
+                            }
+                        }
                         var matches = fin.filter(function (entry) {
                             return entry && String(entry.paymentId || '') === String(paymentId);
                         });
