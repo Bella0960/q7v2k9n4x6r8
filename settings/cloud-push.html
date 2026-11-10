@@ -374,6 +374,19 @@
                         <span class="slider"></span>
                     </label>
                 </div>
+                <div class="cloud-row cloud-context-sharing-row">
+                    <div class="cloud-row-copy">
+                        <div class="cloud-row-title">允许云端使用角色上下文</div>
+                        <div class="cloud-row-note">单独授权角色设定与近期文字，用于离线时生成主动消息</div>
+                    </div>
+                    <label class="switch" aria-label="允许云端使用角色上下文">
+                        <input type="checkbox" id="cloudContextSharingToggle" disabled>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <p class="cloud-hint cloud-context-sharing-hint">
+                    默认关闭。开启后，仅同步角色称呼、角色设定文字和最近最多 12 条纯文字聊天消息；图片、语音、附件、完整聊天记录和手机里的 API Key 都不会上传。关闭后，云端保存的角色上下文会被删除；本机聊天记录不受影响。
+                </p>
                 <div class="cloud-form">
                     <div class="cloud-subtitle">角色授权</div>
                     <label class="cloud-field">
@@ -391,7 +404,7 @@
                         </select>
                     </div>
                     <button id="cloudRoleAutonomySave" class="cloud-button" type="button">保存角色授权</button>
-                    <p class="cloud-hint">角色名称只从本机读取；云端只保存角色 ID、授权状态和作息，不上传聊天记录或角色设定。</p>
+                    <p class="cloud-hint">角色名称默认只从本机读取；只有单独开启上方上下文共享后，才会同步有限角色设定与近期文字。</p>
                 </div>
             </div>
 
@@ -487,7 +500,7 @@
                 </div>
             </div>
 
-            <p class="cloud-guide-limit"><strong>目前需要知道的限制：</strong>角色主动联系的聊天内容仍由已配对设备上的 MAOMAO 使用本机 API 配置和本地聊天上下文生成。设备需要打开 MAOMAO 并保持页面在前台；应用关闭或处于后台时，目前不会在云端独立生成新聊天内容。所以，开启授权不等于角色会 24 小时自动发消息。</p>
+            <p class="cloud-guide-limit"><strong>目前需要知道的限制：</strong>云端后台生成还要求单独开启上下文共享、配置服务端模型凭据，并完成调度与真机验收。服务端凭据与手机 API Key 完全分离；上下文共享默认关闭，关闭后会删除云端快照。</p>
 
             <div class="cloud-guide-status" aria-label="当前功能进度">
                 <h3 class="cloud-guide-status-title">当前进度</h3>
@@ -497,7 +510,7 @@
                 </div>
                 <div class="cloud-guide-status-item">
                     <strong>关闭应用后生成</strong>
-                    <p>尚未实现。当前 Worker 不会在应用关闭或手机锁屏时独立调用 AI 模型；Web Push 只负责通知，不负责生成聊天内容。</p>
+                    <p>正在测试分支接入服务端模型执行器；需要部署端单独配置 Worker Secret 与模型白名单，并完成运行验收后才能使用。当前正式 Worker 尚未具备此能力。</p>
                 </div>
                 <div class="cloud-guide-status-item">
                     <strong>真实设备验收</strong>
