@@ -9,7 +9,8 @@
 <script src="../shared/js/native-feel.js"></script>
 <script src="../shared/js/phone/phone_storage.js"></script>
 <script src="../shared/js/phone/wallet-ledger.js?v=20261107v7"></script>
-<script src="../shared/js/phone/role_family_cards.js?v=20261107v2"></script>
+<script src="../shared/js/phone/wallet-ledger.js?v=20261107v7"></script>
+<script src="../shared/js/phone/role_family_cards.js?v=20261107v3"></script>
 <style>
 :root{color-scheme:light;--ink:#111;--muted:#8e8e93;--line:#e5e5ea;--paper:#f7f7f9;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -167,8 +168,10 @@ button,a{font:inherit}
     return ({ pending:'待领取', active:'可使用', paused:'已暂停', revoked:'已撤销', rejected:'已婉拒' })[status] || '不可用';
   }
   function getCards() {
-    if (!api) return [];
-    return api.readAll().slice().sort(function (a, b) {
+    if (!api || typeof api.readState !== 'function') return null;
+    var state = api.readState();
+    if (!state || !state.ok || !Array.isArray(state.value)) return null;
+    return state.value.slice().sort(function (a, b) {
       return (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0);
     });
   }
@@ -242,6 +245,13 @@ button,a{font:inherit}
       return;
     }
     var cards = getCards();
+    if (!cards) {
+      document.getElementById('activeCount').textContent = '—';
+      document.getElementById('remainingTotal').textContent = '暂不可用';
+      document.getElementById('cardCountNote').textContent = '数据读取失败';
+      cardList.innerHTML = '<div class="empty"><strong>卡包数据异常</strong>已保存的卡片数据无法安全读取。为避免覆盖原始记录，当前已暂停领取、调整和消费相关操作；请先恢复本地数据，再刷新此页面。</div>';
+      return;
+    }
     var activeCards = cards.filter(function (card) { return card.status === 'active'; });
     var remaining = activeCards.reduce(function (sum, card) {
       return sum + Math.max(0, (Number(card.monthlyLimit) || 0) - api.usedThisMonth(card));
