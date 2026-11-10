@@ -307,7 +307,7 @@ function buildCtxFull(opts) {
         extractVar(backupSrc, 'IDB_TARGETS')
     ];
     const fnNames = [
-        '
+        '$', 'toast', 'fmtSize', 'getExcludedAudioRecords', 'formatExcludedAudioSummary', 'includeSecretsEnabled', 'snapshot',
         'stringifyIndexedDB',
         'base64ToBlob', 'blobToBase64', 'idbOpen',
         'dumpStore', 'dumpDatabase',
@@ -1533,4 +1533,41 @@ test('11 生产 doExport：本地音频 Blob 排除清单包含歌曲名称和�
     // 导出是只读操作：原 IndexedDB Blob 仍然保留。
     assert.equal(mediaDb._data.audio.length, 1);
     assert.ok(mediaDb._data.audio[0].blob instanceof SandboxBlob);
+});
+
+
+/* ═══════════════════════════════════════════════
+   12. 新旧备份都能识别未包含的本地音频文件
+   ═══════════════════════════════════════════════ */
+test('12 音频遗漏摘要兼容新备份清单与旧 schema 2 备份', () => {
+    const ctx = buildCtxFull();
+    const currentSummary = ctx.formatExcludedAudioSummary([{
+        db: 'maomao-media-store',
+        store: 'audio',
+        id: 'song_new',
+        label: '海边的风',
+        bytes: 1536
+    }]);
+    assert.equal(currentSummary, '1 首，共 1.5 KB；海边的风');
+
+    // 旧版 schema 2 备份没有 __backup.excluded，但会保留音频元数据且不含 blob。
+    const legacySummary = ctx.formatExcludedAudioSummary([], {
+        'maomao-media-store': {
+            audio: [
+                { id: 'song_old', name: '旧版本地歌曲', size: 2048 },
+                { id: 'remote_or_complete', name: '仍含 Blob 的记录', size: 1024, blob: new SandboxBlob([Buffer.alloc(1024)], { type: 'audio/mpeg' }) }
+            ]
+        }
+    });
+    assert.equal(legacySummary, '1 首，共 2.0 KB；旧版本地歌曲');
+});
+
+/* ═══════════════════════════════════════════════
+   13. 导入确认和完成提示必须提醒备份中缺失的本地音频
+   ═══════════════════════════════════════════════ */
+test('13 导入备份前后都提示本地音频文件未包含', () => {
+    assert.match(backupSrc, /var omittedAudioSummary = formatExcludedAudioSummary\(obj\.__backup\.excluded, obj\.indexedDB\)/);
+    assert.match(backupSrc, /警告：这份备份未包含本地音乐文件/);
+    assert.match(backupSrc, /导入会覆盖当前音频库，可能移除本机原有的本地音乐文件/);
+    assert.match(backupSrc, /if \(omittedAudioSummary\) parts\.push\('原备份未包含本地音乐文件/);
 });
