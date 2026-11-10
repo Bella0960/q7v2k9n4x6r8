@@ -3935,7 +3935,7 @@ test('账本财务记录损坏时拒绝显示为空并阻止覆盖，正常写�
   assert.ok(start >= 0 && end > start, 'finance storage and mutation helpers must be extractable');
   const helperSource = financePage.slice(start, end);
 
-  for (const raw of ['{broken-json', 'null', '{}', '[null]', '[{"amount":"not-a-number"}]']) {
+  for (const raw of ['{broken-json', 'null', '{}', '[null]', '[{"amount":"not-a-number"}]', '[{"type":"expense"}]']) {
     const values = new Map([['finance_records', raw]]);
     const writes = [];
     const localStorage = {
