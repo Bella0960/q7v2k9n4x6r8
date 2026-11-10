@@ -525,18 +525,30 @@
     options = options && typeof options === 'object' ? options : {};
     var displayName = String(options.displayName || '').replace(/[<>\\u0000-\\u001F]/g, ' ').replace(/\\s+/g, ' ').trim();
     displayName = Array.from(displayName).slice(0, 48).join('');
-    var bubbleCount = Number(options.bubbleCount);
-    if (!Number.isSafeInteger(attemptCount) || attemptCount < 1 ||
-        message.length < 2 || !Number.isSafeInteger(bubbleCount) || bubbleCount < 1 || bubbleCount > 4) {
+    var body = { attemptCount: attemptCount, text: message };
+    if (Array.isArray(options.bubbles)) {
+      var bubbles = options.bubbles.map(function (value) {
+        return typeof value === 'string' ? value.trim() : '';
+      });
+      if (!bubbles.length || bubbles.length > 4 ||
+          bubbles.some(function (bubble) {
+            var length = Array.from(bubble).length;
+            return length < 2 || length > 220 || /[<>\\u0000-\\u001F]/.test(bubble) || /https?:\\/\\//i.test(bubble);
+          }) || bubbles.join('\\n\\n') !== message) {
+        return Promise.reject(new Error('主动消息气泡内容无效'));
+      }
+      body.bubbles = bubbles;
+      body.displayName = displayName;
+    }
+    if (!Number.isSafeInteger(attemptCount) || attemptCount < 1 || message.length < 2) {
       return Promise.reject(new Error('自主活动结果无效'));
     }
     return requestDeviceMetadata(
       '/api/autonomy/activities/' + encodeURIComponent(activity.id) + '/complete',
       'POST',
-      { attemptCount: attemptCount, text: message, displayName: displayName, bubbleCount: bubbleCount }
+      body
     );
   }
-
   function skipAutonomyActivity(activity, reasonCode) {
     if (!activity || !/^[A-Za-z0-9_-]{16,64}$/.test(String(activity.id || ''))) {
       return Promise.reject(new Error('自主活动 ID 无效'));
