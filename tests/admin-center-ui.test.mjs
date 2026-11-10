@@ -62,6 +62,18 @@ test('new one-time invitation code is placed at the top of account detail and br
   assert.match(adminCss, /\.generated-code[\s\S]*user-select:all/);
 });
 
+test('one-time invitation text is cleared when leaving the account or switching users', () => {
+  const openStart = adminScript.indexOf('  async function openAccount(accountId) {');
+  const renderStart = adminScript.indexOf('  function createActionButton(', openStart);
+  const openAccount = adminScript.slice(openStart, renderStart);
+  assert.match(openAccount, /selectedAccountId !== accountId[\s\S]*generatedCode = ''[\s\S]*inviteCodeSheet'\)\.hidden = true/);
+
+  const closeStart = adminScript.indexOf('  function closeDetail() {');
+  const closeEnd = adminScript.indexOf('\n  }', closeStart) + '\n  }'.length;
+  const closeDetail = adminScript.slice(closeStart, closeEnd);
+  assert.match(closeDetail, /generatedCode = ''[\s\S]*generatedCode'\)\.textContent = ''[\s\S]*inviteCodeSheet'\)\.hidden = true/);
+});
+
 test('retry controls remain touchable and readable at narrow phone widths', () => {
   assert.match(adminCss, /\.page-error\{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap/);
   assert.match(adminCss, /\.error-retry,.audit-retry\{min-height:32px/);
