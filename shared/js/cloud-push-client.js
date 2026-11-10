@@ -1702,7 +1702,11 @@
             ready.note || '此检查只读取配置与匿名队列汇总，不会发送通知。'
           ];
           if (readinessResult) readinessResult.textContent = lines.join('\n');
-          setStatusText(ready.testPushReady ? '云端推送配置已具备测试条件' : '云端仍有配置未完成');
+          setStatusText(ready.testPushReady && ready.autonomousMessageGenerationReady
+            ? '主动联系与推送均已通过近期运行验收'
+            : ready.testPushReady
+              ? '推送通道可测试；主动联系仍有配置或运行验收项目未完成'
+              : '云端仍有配置未完成');
         } catch (error) {
           if (readinessResult) readinessResult.textContent = '检查失败：' + (error.message || '未知错误');
           setStatusText('读取云端准备情况失败');
