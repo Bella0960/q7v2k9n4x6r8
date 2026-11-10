@@ -25,7 +25,7 @@
     <script src="../../shared/js/phone/chat-presence-policy.js?v=20261102v19"></script>
     <script src="../../shared/js/phone/role-public-timeline.js?v=20261102v1"></script>
     <script src="../../shared/js/phone/group-chat-policy.js?v=20261102v5"></script>
-    <script src="../../shared/js/chat-notifier.js?v=20261107v6"></script>
+    <script src="../../shared/js/chat-notifier.js?v=20261107v7"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -4550,7 +4550,7 @@
 
         function renderAllMessages() {
             // 清空或全量重绘时终止尚未完成的逐条气泡呈现。
-            ++aiBubblePacingRunId;
+            aiBubblePacingRunId += 1;
             // 有语音播放动画在跑就先掐断——气泡会被整批替换，旧节点已失效。
             if (typeof stopVoicePlay === 'function') stopVoicePlay();
             const visibleList = computeVisibleList();

@@ -84,7 +84,7 @@
         var map = {}; // id -> {id, name, avatar, isGroup}
         readCharacters().forEach(function (c) {
             if (c && c.id != null) {
-                map[String(c.id)] = {
+                var contact = {
                     id: String(c.id),
                     name: c.name || c.nickname || '角色',
                     avatar: c.avatar || '',
@@ -92,6 +92,11 @@
                     relationship: c.relationship || c.relationshipType || c.relationshipStage || 'friend',
                     isGroup: false
                 };
+                // Old roles have no replyBubbleMode: preserve their legacy free-flow reply cadence.
+                if (Object.prototype.hasOwnProperty.call(c, 'replyBubbleMode')) {
+                    contact.replyBubbleMode = c.replyBubbleMode;
+                }
+                map[String(c.id)] = contact;
             }
         });
         readGroups().forEach(function (g) {
@@ -379,6 +384,7 @@
 
     function ensureProactiveDependencies() {
         if (global.PhoneStorage && global.PhoneAPI && typeof global.PhoneAPI.completeJSON === 'function' &&
+            global.ChatMessagePolicy && typeof global.ChatMessagePolicy.buildReplyMessages === 'function' &&
             global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function' &&
             typeof global.ChatPresencePolicy.normalizeProactiveBubbles === 'function' &&
             typeof global.ChatPresencePolicy.buildVoiceHabitProfile === 'function') {
@@ -393,6 +399,12 @@
             return loadProactiveScript(
                 proactiveAsset('shared/js/phone/phone_api.js'),
                 function () { return !!global.PhoneAPI && typeof global.PhoneAPI.completeJSON === 'function'; }
+            );
+        }).then(function (ok) {
+            if (!ok) return false;
+            return loadProactiveScript(
+                proactiveAsset('shared/js/phone/chat-message-policy.js?v=20261029v5'),
+                function () { return !!global.ChatMessagePolicy && typeof global.ChatMessagePolicy.buildReplyMessages === 'function'; }
             );
         }).then(function (ok) {
             if (!ok) return false;
@@ -529,6 +541,49 @@
         var policy = global.ChatPresencePolicy;
         if (!policy || typeof policy.normalizeProactiveBubbles !== 'function') return '';
         return policy.normalizeProactiveBubbles(value);
+    }
+
+    // Use the same per-bubble message identity as ordinary AI replies.
+    // Old roles without an explicit setting keep their historical automatic/legacy parsing.
+    function buildProactiveReplyMessages(content, contact, options) {
+        options = options && typeof options === 'object' ? options : {};
+        var policy = global.ChatMessagePolicy;
+        var time = Number(options.time) || Date.now();
+        var roleId = String(contact && contact.id || 'role');
+        var turnId = String(options.turnId || (
+            'proactive-' + roleId + '-' + time + '-' + Math.random().toString(36).slice(2, 10)
+        ));
+        var hasRoleMode = !!contact &&
+            Object.prototype.hasOwnProperty.call(contact, 'replyBubbleMode');
+        var mode = hasRoleMode && policy && typeof policy.normalizeReplyBubbleMode === 'function'
+            ? policy.normalizeReplyBubbleMode(contact.replyBubbleMode)
+            : 'legacy';
+        var messages = policy && typeof policy.buildReplyMessages === 'function'
+            ? policy.buildReplyMessages(content, mode, {
+                time: time,
+                turnId: turnId,
+                voiceMode: 'online'
+            })
+            : [{
+                role: 'assistant',
+                text: String(content || ''),
+                time: time,
+                turnId: turnId,
+                mid: 'proactive-' + time + '-' + Math.random().toString(36).slice(2, 10),
+                voiceMode: 'online'
+            }];
+        if (!Array.isArray(messages) || !messages.length) return [];
+        messages.forEach(function (message) {
+            message.role = 'assistant';
+            message.proactiveContact = true;
+            message.source = String(options.source || 'local_proactive');
+        });
+        var serverMessageId = String(options.serverMessageId || '');
+        if (serverMessageId) {
+            // The final bubble acknowledges the one server outbound row after it is actually read.
+            messages[messages.length - 1].serverMessageId = serverMessageId;
+        }
+        return messages;
     }
 
     var cloudExecutorPresenceManagers = Object.create(null);
@@ -728,17 +783,15 @@
             if (!freshHistory.some(function (item) {
                 return item && String(item.serverMessageId || '') === serverMessageId;
             })) {
-                var localMessage = {
-                    role: 'assistant',
-                    text: content,
+                var proactiveMessages = buildProactiveReplyMessages(content, candidate.contact, {
                     time: Date.now(),
-                    voiceMode: 'online',
-                    proactiveContact: true,
                     source: 'cloud_autonomous',
-                    mid: 'cloud_' + serverMessageId,
                     serverMessageId: serverMessageId
-                };
-                freshHistory.push(localMessage);
+                });
+                if (!proactiveMessages.length) return true;
+                // Keep the server receipt on the final bubble only; the other bubbles
+                // remain independent local messages under the same turnId.
+                freshHistory.push.apply(freshHistory, proactiveMessages);
                 var saved = global.PhoneStorage && typeof global.PhoneStorage.saveChatHistory === 'function'
                     ? global.PhoneStorage.saveChatHistory(roleId, freshHistory)
                     : safeSet('chat_history_' + roleId, freshHistory);
@@ -845,14 +898,12 @@
             if (!freshLatest || freshLatest.time !== candidate.latest.time ||
                 freshLatest.text !== candidate.latest.text) return;
 
-            var newMessage = {
-                role: 'assistant',
-                text: content,
+            var proactiveMessages = buildProactiveReplyMessages(content, candidate.contact, {
                 time: Date.now(),
-                voiceMode: 'online',
-                proactiveContact: true
-            };
-            freshHistory.push(newMessage);
+                source: 'local_proactive'
+            });
+            if (!proactiveMessages.length) return;
+            freshHistory.push.apply(freshHistory, proactiveMessages);
             var saved = global.PhoneStorage && typeof global.PhoneStorage.saveChatHistory === 'function'
                 ? global.PhoneStorage.saveChatHistory(candidate.contact.id, freshHistory)
                 : safeSet('chat_history_' + candidate.contact.id, freshHistory);
