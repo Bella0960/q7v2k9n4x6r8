@@ -1598,6 +1598,16 @@ test('主动消息 Push 成功回执按账号和当前设备隔离，且只认�
   assert.equal(ownerSubscription.id, 'push-sub-owner-active');
   assert.equal(disabledOwnerSubscription.id, 'push-sub-owner-disabled');
   assert.equal(otherSubscription.id, 'push-sub-other-active');
+  const expiredOwnerSubscription = ctx.store.upsertSubscription({
+    id: 'push-sub-owner-expired',
+    deviceId: ownerDevice.deviceId,
+    endpoint: 'https://push.example.invalid/owner-expired',
+    p256dh: 'expired-p256dh',
+    authKey: 'expired-auth',
+    now: base,
+    expirationTime: base - 1
+  }, { maxSubscriptions: 3 });
+  assert.equal(expiredOwnerSubscription.id, 'push-sub-owner-expired');
 
   ctx.store.logExecution({
     id: 'push-accept-owner-ok',
@@ -1618,6 +1628,15 @@ test('主动消息 Push 成功回执按账号和当前设备隔离，且只认�
     now: base + 2
   });
   ctx.store.disableSubscriptionById(disabledOwnerSubscription.id, 'user', base + 3);
+  ctx.store.logExecution({
+    id: 'push-accept-owner-expired-sub-ok',
+    deviceId: ownerDevice.deviceId,
+    kind: 'outbound_push',
+    status: 'success',
+    reasonCode: 'delivered',
+    detail: { subscriptionId: expiredOwnerSubscription.id },
+    now: base + 6
+  });
   ctx.store.logExecution({
     id: 'push-accept-owner-failed',
     deviceId: ownerDevice.deviceId,
