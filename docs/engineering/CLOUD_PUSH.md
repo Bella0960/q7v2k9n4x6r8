@@ -73,7 +73,7 @@
 ## 5. 本地验证
 
 ```bash
-npm run test:cloud:push      # 12 个契约测试（真实 SQLite 迁移 + 真实加密）
+npm run test:cloud:push      # Web Push + 服务端模型 + SQLite 契约回归（真实迁移与加密）
 npm run test:schedule        # 22 个时间/时区/状态/租约测试
 npm run test:autonomy        # 19 个调度纯逻辑 + 真实 SQLite 骨架测试
 npm run test:pwa:navigation  # 静态资源与离线导航回归
