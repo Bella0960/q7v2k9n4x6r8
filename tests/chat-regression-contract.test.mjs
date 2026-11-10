@@ -4198,6 +4198,9 @@ test('钱包结算编号跨页面刷新复用，支付方式不能在未完成�
   const nextId = secondLedger.getOrCreatePendingCheckout('shop', '[{"sku":1}]', 'normal');
   assert.ok(nextId);
   assert.notEqual(nextId, firstId, 'a completed checkout allows a new intentional purchase');
+  const storedAfterNextCheckout = JSON.parse(storage.getItem('maomao_wallet_pending_checkouts_v1'));
+  assert.equal(storedAfterNextCheckout.find((item) => item.id === firstId).status, 'completed',
+    'starting a new checkout must preserve earlier completed receipts');
   const cancelledId = secondLedger.getOrCreatePendingCheckout('takeout', '[{"sku":9}]', 'normal');
   assert.ok(cancelledId, 'a separate channel can start an independent checkout');
   assert.equal(secondLedger.cancelPendingCheckout(cancelledId), true,
