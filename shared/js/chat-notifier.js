@@ -378,7 +378,7 @@
     function ensureOptionalCloudClient() {
         if (global.MaomaoCloud) return Promise.resolve(true);
         return loadProactiveScript(
-            proactiveAsset('shared/js/cloud-push-client.js'),
+            proactiveAsset('shared/js/cloud-push-client.js?v=20261111cloudpush1'),
             function () { return !!global.MaomaoCloud; }
         ).then(function () { return true; });
     }
