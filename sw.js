@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v217';
+const CACHE_NAME = 'phone-app-pwa-v218';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 // v179 release: resume visible-bubble read observation after foreground restore.
 const APP_SHELL = [
@@ -93,18 +93,18 @@ const APP_SHELL = [
   './shared/js/phone/role_family_cards.js?v=20261107v2',
   './shared/js/phone/wallet-ledger.js?v=20261107v6',
   './shared/js/phone/phone_context.js?v=20261102npc1',
-  'shared/js/phone/chat-message-policy.js?v=20261029v5',
+  'shared/js/phone/chat-message-policy.js?v=20261111cloudbubble1',
   'shared/js/phone/chat-send-policy.js?v=20261029v2',
   'shared/js/phone/chat-context-policy.js?v=20261031v1',
-  './shared/js/phone/chat-presence-policy.js?v=20261102v19',
+  './shared/js/phone/chat-presence-policy.js?v=20261111firstcontact1',
   './shared/js/phone/role-public-timeline.js?v=20261102v1',
   './shared/js/phone/group-chat-policy.js?v=20261102v5',
   './shared/js/phone/chat-followup-policy.js?v=20261102v1',
   'shared/js/phone/phone_stream.js',
   'shared/js/phone/memory_recall.js?v=20261024v2',
   'shared/js/phone/memory_space_v2.js?v=20261024v1',
-  './shared/js/chat-notifier.js?v=20261107v7',
-  './shared/js/cloud-push-client.js?v=20261107v2',
+  './shared/js/chat-notifier.js?v=20261111cloudpush1',
+  './shared/js/cloud-push-client.js?v=20261111cloudpush1',
   'shared/js/phone/storage/repository.js',
   'shared/js/phone/storage/media-repository.js?v=20261106v1',
   'shared/js/phone/phone_api.js?v=20261106v1',
