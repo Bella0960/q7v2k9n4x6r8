@@ -267,6 +267,19 @@ Acceptance:
 - No runtime framework introduced.
 - Each module declares required global APIs in comments/tests.
 
+### HOME-INDICATOR-002 — Add a precise Home Indicator hit target to forum detail
+**Priority:** P1 · **Status:** IN PROGRESS (ported onto the latest GOV-001 base; automated browser/device acceptance pending)
+
+Scope: create the exact 84×4px transparent hit target on app pages even when a fixed `.comment-bar` exists; move the forum composer above the indicator band only while the indicator is enabled; restore the original composer bottom spacing when the preference is disabled.
+
+Acceptance:
+- The visible Home Indicator line remains 84×4px and the separate hit target aligns exactly with it.
+- Tapping the line center on forum detail returns to the desktop.
+- Comment input center and edge taps still focus; typing and submitting a comment still work.
+- When the Home Indicator is hidden, the hit target disappears and the comment composer returns to `bottom: 0px`.
+- Check 375×812, 390×844, and 430×932; no horizontal overflow.
+- Do not enlarge the invisible hit area, change other pages' geometry, or alter comment data.
+
 ## Phase 4 — Reliability, security, performance
 
 ### QA-001 — Expand real browser/mobile acceptance
