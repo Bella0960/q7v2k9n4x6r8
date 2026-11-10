@@ -12,6 +12,17 @@
  *   8. clearOnRestore 在 restoreDatabase 层生效（空 store 仍 clear）
  *   9. 体积边界：store 总 Blob 超限 → 最后几条被跳过 → 触发 atomicExport
  *  10. doExport 层：atomicExportFailed 的库不进 dbData，进 dbWarnings + allSkipped
+ *  11-14. 多 store / 跨数据库恢复回滚、私有 Blob 恢复点与容量边界
+ *  15-24. 完整导入链故障注入：localStorage / IndexedDB / 恢复点异常
+ *  25-30. 恢复点内容指纹、原生事务生命周期、删除后读回校验
+ *  31. 数据库回滚后逐库读回指纹，检测事务成功但静默漏写
+ *  32-33. 整机导入互斥、FileReader 初始化失败与锁释放
+ *  34-37. 页面中断后的启动恢复、恢复失败重试与 committed 清理
+ *  38-39. 阶段日志写入保护、未预期异常后的恢复点保留
+ *  40-43. 跨标签页导入互斥、过期租约接管、恢复互斥与旧租约拒写
+ *  44-45. 清理中断时保留阶段标记，避免已提交数据被误回滚
+ *  46-47. 跨标签页租约写入/续期未提交时不得误报持锁
+ *  48-49. 浏览器存储配额预检与容量 API 不可用时的安全降级
  */
 
 import test from 'node:test';
@@ -113,6 +124,16 @@ function makeFileReader() {
                 }
                 if (this.onload) this.onload();
             });
+        },
+        readAsArrayBuffer(blob) {
+            Promise.resolve().then(() => {
+                if (!blob || !blob._data) throw new Error('mock Blob has no bytes');
+                this.result = Uint8Array.from(blob._data).buffer;
+                if (this.onload) this.onload();
+            }).catch(error => {
+                this.error = error;
+                if (this.onerror) this.onerror();
+            });
         }
     };
 }
@@ -130,12 +151,26 @@ function makeIDB(name, version, storeDefs) {
         objectStoreNames: {
             contains(sn) { return storeNames.includes(sn); }
         },
-        close() {},
+        _closeCount: 0,
+        _deferComplete: false,
+        _pendingComplete: null,
+        _lastTransaction: null,
+        _requestSuccessCount: 0,
+        _flushComplete() {
+            const pending = this._pendingComplete;
+            this._pendingComplete = null;
+            if (pending) pending();
+        },
+        close() { this._closeCount++; },
         // idbOpen 的 onupgradeneeded 回调会调这个——未预注册的 DB 需能动态建空 store
         createObjectStore(storeName, opts) {
             if (!storeNames.includes(storeName)) {
                 storeNames.push(storeName);
                 data[storeName] = [];
+                storeDefs.push({
+                    store: storeName,
+                    keyPath: opts && opts.keyPath ? opts.keyPath : null
+                });
             }
             return {
                 createIndex() {}, deleteIndex() {}, index() {},
@@ -144,68 +179,136 @@ function makeIDB(name, version, storeDefs) {
             };
         },
         transaction(storeName, mode) {
-            assert.ok(data[storeName] !== undefined, `store ${storeName} 不存在`);
+            const transactionNames = Array.isArray(storeName) ? storeName.slice() : [storeName];
+            transactionNames.forEach(name => {
+                assert.ok(data[name] !== undefined, `store ${name} 不存在`);
+            });
+            const before = mode === 'readwrite'
+                ? Object.fromEntries(transactionNames.map(name => [name, data[name].slice()]))
+                : null;
+            db._transactions = db._transactions || [];
+            db._transactions.push({ storeNames: transactionNames.slice(), mode });
+
             let oncompleteCb = null;
-            let onsuccessCb = null;
-            const store = {
-                _name: storeName,
-                _defs: storeDefs.find(d => d.store === storeName),
-                clear() {
-                    data[storeName] = [];
-                    return { onsuccess: null, result: undefined };
-                },
-                put(value, key) {
-                    const def = storeDefs.find(d => d.store === storeName);
-                    let k;
-                    if (def && def.keyPath) k = value[def.keyPath];
-                    else k = key;
-                    if (k === undefined || k === null) k = String(Date.now()) + '_' + Math.random();
-                    // 非 keyPath store：把生成的 key 存到 record 上（getAllKeys 需要）
-                    if (!(def && def.keyPath)) value.__mock_key = k;
-                    const idx = data[storeName].findIndex(r => {
-                        if (def && def.keyPath) return r[def.keyPath] === k;
-                        return r.__mock_key === k;
-                    });
-                    // 直接存引用，不做 JSON 序列化（Blob 保持 instanceof Blob，_data 保留）
-                    if (idx >= 0) data[storeName][idx] = value;
-                    else data[storeName].push(value);
-                    return { onsuccess: null, result: k };
-                },
-                getAllKeys() {
-                    const keys = data[storeName].map(r => {
-                        const def = storeDefs.find(d => d.store === storeName);
-                        if (def && def.keyPath) return r[def.keyPath];
-                        return r.__mock_key;
-                    });
-                    const req = { result: keys, onsuccess: null };
-                    Promise.resolve().then(() => { if (req.onsuccess) req.onsuccess({ target: req }); });
-                    return req;
-                },
-                get(key) {
-                    const match = data[storeName].find(r => {
-                        const def = storeDefs.find(d => d.store === storeName);
-                        if (def && def.keyPath) return r[def.keyPath] === key;
-                        return r.__mock_key === key;
-                    });
-                    // 直接返回引用——Blob 仍是 SandboxBlob 实例，_data 完整
-                    const req = { result: match || undefined, onsuccess: null };
-                    Promise.resolve().then(() => { if (req.onsuccess) req.onsuccess({ target: req }); });
-                    return req;
-                }
-            };
+            let onabortCb = null;
+            let aborted = false;
+            const stores = {};
+            function makeStore(name) {
+                if (stores[name]) return stores[name];
+                const store = {
+                    _name: name,
+                    _defs: storeDefs.find(d => d.store === name),
+                    clear() {
+                        data[name] = [];
+                        return { onsuccess: null, result: undefined };
+                    },
+                    put(value, key) {
+                        const def = storeDefs.find(d => d.store === name);
+                        const failure = db._failPut;
+                        if (failure && failure.store === name
+                                && (!failure.assetId || String(value && value.assetId) === String(failure.assetId))
+                                && (!failure.id || String(value && value.id) === String(failure.id))
+                                && (!failure.role || String(value && value.role) === String(failure.role))) {
+                            db._failPut = null;
+                            throw new Error(failure.message || 'mock IndexedDB put failed');
+                        }
+                        const drop = db._dropPut;
+                        if (drop && drop.store === name
+                                && (!drop.assetId || String(value && value.assetId) === String(drop.assetId))
+                                && (!drop.id || String(value && value.id) === String(drop.id))) {
+                            db._dropPut = null;
+                            return { onsuccess: null, result: undefined };
+                        }
+                        let k;
+                        if (def && def.keyPath) k = value[def.keyPath];
+                        else k = key;
+                        if (k === undefined || k === null) k = String(Date.now()) + '_' + Math.random();
+                        if (!(def && def.keyPath)) value.__mock_key = k;
+                        const idx = data[name].findIndex(r => {
+                            if (def && def.keyPath) return r[def.keyPath] === k;
+                            return r.__mock_key === k;
+                        });
+                        if (idx >= 0) data[name][idx] = value;
+                        else data[name].push(value);
+                        return { onsuccess: null, result: k };
+                    },
+                    getAll() {
+                        const req = { result: data[name].slice(), onsuccess: null };
+                        Promise.resolve().then(() => { if (req.onsuccess) req.onsuccess({ target: req }); });
+                        return req;
+                    },
+                    getAllKeys() {
+                        const keys = data[name].map(r => {
+                            const def = storeDefs.find(d => d.store === name);
+                            if (def && def.keyPath) return r[def.keyPath];
+                            return r.__mock_key;
+                        });
+                        const req = { result: keys, onsuccess: null };
+                        Promise.resolve().then(() => { if (req.onsuccess) req.onsuccess({ target: req }); });
+                        return req;
+                    },
+                    get(key) {
+                        const match = data[name].find(r => {
+                            const def = storeDefs.find(d => d.store === name);
+                            if (def && def.keyPath) return r[def.keyPath] === key;
+                            return r.__mock_key === key;
+                        });
+                        const req = { result: match || undefined, onsuccess: null, onerror: null };
+                        Promise.resolve().then(() => {
+                            db._requestSuccessCount++;
+                            if (req.onsuccess) req.onsuccess({ target: req });
+                        });
+                        return req;
+                    },
+                    delete(key) {
+                        const def = storeDefs.find(d => d.store === name);
+                        const index = data[name].findIndex(r => {
+                            if (def && def.keyPath) return r[def.keyPath] === key;
+                            return r.__mock_key === key;
+                        });
+                        if (index >= 0) data[name].splice(index, 1);
+                        return { onsuccess: null, result: undefined };
+                    }
+                };
+                stores[name] = store;
+                return store;
+            }
+
             const tx = {
-                objectStore() { return store; },
+                objectStore(name) {
+                    const target = name || transactionNames[0];
+                    assert.ok(transactionNames.includes(target), `store ${target} 不在事务中`);
+                    return makeStore(target);
+                },
                 error: null,
+                abort() {
+                    if (aborted) return;
+                    aborted = true;
+                    this.error = this.error || new Error('mock transaction aborted');
+                    if (before) Object.keys(before).forEach(name => { data[name] = before[name].slice(); });
+                    db._pendingComplete = null;
+                    if (onabortCb) Promise.resolve().then(() => onabortCb());
+                },
                 set oncomplete(fn) {
                     oncompleteCb = fn;
-                    Promise.resolve().then(() => { if (oncompleteCb) oncompleteCb(); });
+                    const complete = () => {
+                        if (oncompleteCb && !aborted) oncompleteCb();
+                    };
+                    // IndexedDB transaction complete event is queued after request success
+                    // callbacks; use a later task rather than a microtask in this mock.
+                    if (db._deferComplete) db._pendingComplete = complete;
+                    else setTimeout(complete, 0);
                 },
                 get oncomplete() { return oncompleteCb; },
                 set onerror(fn) { this._onerror = fn; },
                 get onerror() { return this._onerror; },
-                set onabort(fn) { this._onabort = fn; },
+                set onabort(fn) {
+                    onabortCb = fn;
+                    if (aborted && onabortCb) Promise.resolve().then(() => onabortCb());
+                },
                 get onabort() { return this._onabort; }
             };
+            db._lastTransaction = tx;
             return tx;
         }
     };
@@ -218,6 +321,7 @@ function registerBlob() {
         if (parts && !Array.isArray(parts)) parts = [parts];
         const bufs = parts.map(p => {
             if (p instanceof Uint8Array || Buffer.isBuffer(p)) return p;
+            if (p && Buffer.isBuffer(p._data)) return p._data;
             return Buffer.from(String(p), 'utf8');
         });
         const totalLen = bufs.reduce((s, b) => s + b.length, 0);
@@ -238,7 +342,9 @@ function registerBlob() {
             _b64: this._data ? this._data.toString('base64') : ''
         };
     };
-    Blob.prototype.slice = function () { return new Blob([this._data], { type: this.type }); };
+    Blob.prototype.slice = function (start, end) {
+        return new Blob([this._data.subarray(start || 0, end === undefined ? this._data.length : end)], { type: this.type });
+    };
     globalThis.Blob = Blob;
     return Blob;
 }
@@ -304,15 +410,41 @@ function buildCtxFull(opts) {
         extractVar(backupSrc, 'EXCLUDE_KEYS'),
         extractVar(backupSrc, 'SECRET_KEYS'),
         extractVar(backupSrc, 'CORE_HINTS'),
-        extractVar(backupSrc, 'IDB_TARGETS')
+        extractVar(backupSrc, 'IDB_TARGETS'),
+        extractVar(backupSrc, 'RP_DB_NAME'),
+        extractVar(backupSrc, 'RP_DB_VERSION'),
+        extractVar(backupSrc, 'RP_STORE_NAME'),
+        extractVar(backupSrc, 'RP_ROLE_PRE'),
+        extractVar(backupSrc, 'RP_ROLE_IDB_PRE'),
+        extractVar(backupSrc, 'RP_ROLE_META'),
+        extractVar(backupSrc, 'RP_ROLE_LOCK'),
+        extractVar(backupSrc, 'RESTORE_POINT_IDB_MAX_BYTES'),
+        extractVar(backupSrc, 'IMPORT_LOCK_LEASE_MS'),
+        extractVar(backupSrc, 'IMPORT_LOCK_HEARTBEAT_MS'),
+        extractVar(backupSrc, 'importLockOwner'),
+        extractVar(backupSrc, 'importLockHeartbeat'),
+        extractVar(backupSrc, 'importLockLost'),
+        extractVar(backupSrc, 'importInProgress'),
+        extractVar(backupSrc, 'importRecoveryReady')
     ];
     const fnNames = [
         '$', 'toast', 'includeSecretsEnabled', 'snapshot',
         'stringifyIndexedDB',
         'base64ToBlob', 'blobToBase64', 'idbOpen',
         'dumpStore', 'dumpDatabase',
-        'restoreStore', 'restoreDatabase',
-        'doExport'
+        'restoreStore', 'restoreDatabase', 'validateBackup', 'restore', 'verifyRestore',
+        'rpOpen', 'rpWriteSnapshot', 'rpReadSnapshot', 'rpDeleteRole',
+        'rpAcquireImportLock', 'rpRenewImportLock', 'rpReleaseImportLock',
+        'startImportLockHeartbeat', 'stopImportLockHeartbeat', 'releaseImportLock',
+        'assertImportLock', 'clearRestorePoints', 'writeImportState',
+        'recoverInterruptedImportUnlocked', 'recoverInterruptedImportOnStartup', 'validateInterruptedRestorePoints',
+        'downloadSnapshot', 'carryOverSecrets', 'checkFontPresetOrphan',
+        'rescueUtf8Bytes', 'serializeRecoveryPointValue', 'readBlobArrayBuffer',
+        'rescueCrcTable', 'rescueCrc32', 'createRecoveryRescueZip', 'markUnavailableRescueAssets',
+        'createRecoveryPointRescuePackage',
+        'estimateRestorePointBytes', 'assertRestorePointCapacity', 'fingerprintRestorePoint', 'dumpDatabaseForRestorePoint',
+        'captureIndexedDbRestorePoint', 'restoreIndexedDBWithRollback',
+        'doExport', 'handleImportFile', 'startImportFileRead'
     ];
     const fnSrcs = fnNames.map(n => extractFunction(backupSrc, n));
     const ctxSrc = varSrcs.concat(fnSrcs).join('\n');
@@ -345,7 +477,10 @@ function buildCtxFull(opts) {
     const intercepted = {
         downloads: [],   // 被拦截的 Blob { name, bodyStr }
         toasts: [],
-        confirmResult: opts.confirmResult || false  // 默认用户不确认带密钥
+        confirmResult: opts.confirmResult || false, // 默认用户不确认带密钥
+        confirmCalls: 0,
+        reloads: 0,
+        deletedRestorePoints: []
     };
 
     const mockEl = () => ({
@@ -365,6 +500,8 @@ function buildCtxFull(opts) {
         Error: globalThis.Error,
         Date: globalThis.Date,
         setTimeout: (fn) => { fn(); return 0; },
+        setInterval(fn) { return { callback: fn }; },
+        clearInterval() {},
         // URL.createObjectURL → 返回假 URL，不访问 DOM
         URL: {
             createObjectURL(blob) {
@@ -391,10 +528,30 @@ function buildCtxFull(opts) {
             createElement(tag) { return mockEl(); },
             body: { appendChild() {} }
         },
+        location: { reload() { intercepted.reloads++; } },
         alert(msg) { intercepted.toasts.push({ kind: 'alert', msg }); },
-        confirm(msg) { return intercepted.confirmResult; }
+        confirm(msg) {
+            intercepted.confirmCalls++;
+            return intercepted.confirmResult;
+        }
     };
     runInNewContext(ctxSrc, ctx, { filename: 'backup.js (sandbox)' });
+    // 沙箱测试从稳定状态开始；生产页面会在启动恢复检查完成前保持 false。
+    ctx.importRecoveryReady = true;
+
+    // 文件导入仍调用生产 handleImportFile；只把浏览器 FileReader 的文本读取
+    // 接到测试 Promise，便于等待 async onload 完整结束，不复制导入流程逻辑。
+    const OriginalFileReader = ctx.FileReader;
+    ctx.FileReader = function MockImportFileReader() {
+        const reader = new OriginalFileReader();
+        reader.readAsText = function (file) {
+            ctx.__pendingImport = Promise.resolve().then(() => {
+                reader.result = file && file.content !== undefined ? file.content : String(file || '');
+                return reader.onload && reader.onload({ target: reader });
+            });
+        };
+        return reader;
+    };
 
     // 替换 doExport 内部的 toast / $ 以便拦截
     const origToast = ctx.toast;
@@ -407,10 +564,98 @@ function buildCtxFull(opts) {
     // 覆盖 $('toastMsg') 返回 null，让原 toast 走 alert 分支 → 被我们拦截
     ctx.$ = function (id) { return null; };
 
+    const restorePointRows = new Map();
+    ctx.__realRestorePointApi = {
+        rpOpen: ctx.rpOpen,
+        rpWriteSnapshot: ctx.rpWriteSnapshot,
+        rpReadSnapshot: ctx.rpReadSnapshot,
+        rpDeleteRole: ctx.rpDeleteRole
+    };
+    ctx.rpWriteSnapshot = async (snap, role) => { restorePointRows.set(role, { role, snap, createdAt: Date.now() }); };
+    ctx.rpReadSnapshot = async (role) => { const row = restorePointRows.get(role); return row ? Object.assign({ role }, row) : null; };
+    ctx.rpDeleteRole = async (role) => {
+        restorePointRows.delete(role);
+        intercepted.deletedRestorePoints.push(role);
+    };
+    ctx.__restorePointRows = restorePointRows;
     ctx.__intercepted = intercepted;
     ctx.__lsStore = mockLocalStorage;
     assert.ok(ctx.IDB_TARGETS, 'runInNewContext 后 IDB_TARGETS 应挂在 ctx 上');
     return ctx;
+}
+
+
+
+/* ── 完整导入流程测试辅助：使用生产 handleImportFile，只替换浏览器文件读取 ── */
+function makeImportPayload(indexedDB) {
+    const databases = indexedDB || {};
+    const summary = {};
+    Object.keys(databases).forEach(dbName => {
+        summary[dbName] = Object.values(databases[dbName]).reduce(
+            (sum, rows) => sum + (Array.isArray(rows) ? rows.length : 0), 0
+        );
+    });
+    return {
+        __backup: {
+            app: 'phone-app',
+            schema: 2,
+            exportedAt: '2026-11-08T00:00:00.000Z',
+            indexedDB: summary
+        },
+        data: {
+            ai_custom_characters: JSON.stringify({ profile: 'imported-character-state' }),
+            phone_data_v2: 'imported-phone-state'
+        },
+        indexedDB: databases
+    };
+}
+
+async function runImport(ctx, payload) {
+    ctx.handleImportFile({ content: JSON.stringify(payload) });
+    // The cross-tab IndexedDB lease is acquired asynchronously before FileReader starts.
+    await new Promise(resolve => setTimeout(resolve, 5));
+    assert.ok(ctx.__pendingImport, 'handleImportFile must start a waitable FileReader import');
+    await ctx.__pendingImport;
+}
+
+async function seedCrossDatabaseImportFixture(ctx) {
+    const mediaDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-media-store');
+    const mediaDb = registerDB('maomao-media-store', mediaDef.version, mediaDef.stores);
+    await injectRecords(mediaDb, 'wallpapers', mediaDef.stores.find(s => s.store === 'wallpapers'), [
+        { __key: 'wallpaper-old-key', id: 'wallpaper-old', name: 'Old wallpaper' }
+    ]);
+    await injectRecords(mediaDb, 'audio', mediaDef.stores.find(s => s.store === 'audio'), [
+        { id: 'audio-old', title: 'Old local audio',
+          blob: new SandboxBlob([Buffer.from('original-local-audio')], { type: 'audio/mpeg' }) }
+    ]);
+
+    const fontDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-font-presets');
+    const fontDb = registerDB('maomao-font-presets', fontDef.version, fontDef.stores);
+    await injectRecords(fontDb, 'presets', fontDef.stores.find(s => s.store === 'presets'), [
+        { id: 'font-old', label: 'Old font',
+          blob: new SandboxBlob([Buffer.from('old-font-bytes')], { type: 'font/ttf' }) }
+    ]);
+    return { mediaDb, fontDb };
+}
+
+function makeCrossDatabaseIncoming() {
+    return makeImportPayload({
+        'maomao-media-store': {
+            wallpapers: [{
+                __key: 'wallpaper-new-key',
+                __value: { id: 'wallpaper-new', name: 'New wallpaper' }
+            }],
+            audio: []
+        },
+        'maomao-font-presets': {
+            presets: [{
+                id: 'font-new',
+                label: 'Incoming font',
+                blob: 'aGVsbG8=',
+                __blobMime_blob: 'font/ttf'
+            }]
+        }
+    });
 }
 
 /* ── 基础沙箱：只恢复相关（测试 01-05 已用的，但已修复了 BlobPolyfill typo） ── */
@@ -744,9 +989,65 @@ test('08 restoreDatabase clearOnRestore：空 store 仍 clear，不残留旧数�
 });
 
 /* ═══════════════════════════════════════════════
-   9. atomicExport：store 总量超限（多条累加越过 blobStoreMaxBytes）
+   9. restoreDatabase 多 store 原子性：后续 store 写入失败时整库回滚
    ═══════════════════════════════════════════════ */
-test('09 dumpDatabase：store 总 Blob 超限 → 多条被跳过 → atomicExportFailed', async () => {
+test('09 restoreDatabase：任一 store 写入失败会回滚同一 DB 的全部 store', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull();
+    const definition = ctx.IDB_TARGETS.find(t => t.db === 'maomao-assets');
+    const db = registerDB('maomao-assets', definition.version, definition.stores);
+
+    await injectRecords(db, 'assets', definition.stores.find(s => s.store === 'assets'), [
+        { assetId: 'old-asset', type: 'image', mimeType: 'image/png' }
+    ]);
+    await injectRecords(db, 'blobs', definition.stores.find(s => s.store === 'blobs'), [
+        { assetId: 'old-asset', blob: new SandboxBlob([Buffer.from('original-bytes')], { type: 'image/png' }) }
+    ]);
+    await injectRecords(db, 'refs', definition.stores.find(s => s.store === 'refs'), [
+        { assetId: 'old-asset', ownerType: 'character', ownerId: 'char_old' }
+    ]);
+    await injectRecords(db, 'image_records', definition.stores.find(s => s.store === 'image_records'), [
+        { id: 'old-record', assetId: 'old-asset', characterId: 'char_old', isPrivate: true }
+    ]);
+
+    const incoming = {
+        assets: [{ assetId: 'new-asset', type: 'image', mimeType: 'image/jpeg' }],
+        blobs: [{
+            assetId: 'broken-blob',
+            blob: 'aGVsbG8=',
+            __blobMime_blob: 'image/jpeg'
+        }],
+        refs: [{ assetId: 'new-asset', ownerType: 'character', ownerId: 'char_new' }],
+        image_records: [{ id: 'new-record', assetId: 'new-asset', characterId: 'char_new', isPrivate: false }]
+    };
+    db._failPut = { store: 'blobs', assetId: 'broken-blob', message: 'injected restore failure' };
+
+    await assert.rejects(
+        ctx.restoreDatabase('maomao-assets', definition.version, definition.stores, incoming),
+        /injected restore failure/
+    );
+
+    assert.deepEqual(db._data.assets.map(x => x.assetId), ['old-asset'],
+        'assets written before the failure must be rolled back');
+    assert.equal(db._data.blobs.length, 1);
+    assert.equal(db._data.blobs[0].assetId, 'old-asset');
+    assert.ok(isBlobLike(db._data.blobs[0].blob));
+    assert.equal(db._data.blobs[0].blob._data.toString('utf8'), 'original-bytes');
+    assert.deepEqual(db._data.refs.map(x => x.ownerId), ['char_old'],
+        'later stores must keep their original values');
+    assert.deepEqual(db._data.image_records.map(x => x.id), ['old-record']);
+
+    const atomicTx = db._transactions.findLast(tx =>
+        tx.mode === 'readwrite' && tx.storeNames.length === 4
+    );
+    assert.ok(atomicTx, 'all four stores must share one readwrite transaction');
+    assert.deepEqual(atomicTx.storeNames, ['assets', 'blobs', 'refs', 'image_records']);
+});
+
+/* ═══════════════════════════════════════════════
+   10. atomicExport：store 总量超限（多条累加越过 blobStoreMaxBytes）
+   ═══════════════════════════════════════════════ */
+test('10 dumpDatabase：store 总 Blob 超限 → 多条被跳过 → atomicExportFailed', async () => {
     clearAllDBs();
     const ctx = buildCtxFull();
     const maomaoAssetsDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-assets');
@@ -796,7 +1097,7 @@ test('09 dumpDatabase：store 总 Blob 超限 → 多条被跳过 → atomicExpo
       - dbWarnings + allSkipped 在 toast 文案里出现
       - 最终 JSON body 可 parse 且结构正确
    ═══════════════════════════════════════════════ */
-test('10 生产 doExport：localStorage 有数据 + atomicExportFailed 的 DB 被排除', async () => {
+test('11 生产 doExport：localStorage 有数据 + atomicExportFailed 的 DB 被排除', async () => {
     clearAllDBs();
 
     // ── localStorage mock 里预置若干键值（snapshot 会读它们） ──
@@ -893,4 +1194,1902 @@ test('10 生产 doExport：localStorage 有数据 + atomicExportFailed 的 DB �
     assert.ok(/已导出/.test(lastToast.msg), 'toast 应说已导出');
     assert.ok(/媒体 Blob.*超限/.test(lastToast.msg) || /atomicExport/.test(lastToast.msg) || /maomao-assets/.test(lastToast.msg) || /1 个 IndexedDB/.test(lastToast.msg),
         'toast 应提到 maomao-assets atomicExportFailed 警告');
+});
+
+test('12 restoreIndexedDBWithRollback: later database failure rolls back earlier database and preserves audio Blob', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull();
+
+    const mediaDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-media-store');
+    const mediaDb = registerDB('maomao-media-store', mediaDef.version, mediaDef.stores);
+    await injectRecords(mediaDb, 'wallpapers', mediaDef.stores.find(s => s.store === 'wallpapers'), [
+        { __key: 'wallpaper-old-key', id: 'wallpaper-old', name: 'Old wallpaper' }
+    ]);
+    const originalAudioBytes = Buffer.from('original-local-audio');
+    await injectRecords(mediaDb, 'audio', mediaDef.stores.find(s => s.store === 'audio'), [
+        { id: 'audio-old', title: 'Old local audio', blob: new SandboxBlob([originalAudioBytes], { type: 'audio/mpeg' }) }
+    ]);
+
+    const fontDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-font-presets');
+    const fontDb = registerDB('maomao-font-presets', fontDef.version, fontDef.stores);
+    await injectRecords(fontDb, 'presets', fontDef.stores.find(s => s.store === 'presets'), [
+        { id: 'font-old', label: 'Old font', blob: new SandboxBlob([Buffer.from('old-font-bytes')], { type: 'font/ttf' }) }
+    ]);
+
+    const incoming = {
+        'maomao-media-store': {
+            wallpapers: [{ __key: 'wallpaper-new-key', __value: { id: 'wallpaper-new', name: 'New wallpaper' } }],
+            audio: [{ id: 'audio-new', title: 'New local audio' }]
+        },
+        'maomao-font-presets': {
+            presets: [{ id: 'font-new', label: 'Broken incoming font', blob: 'aGVsbG8=', __blobMime_blob: 'font/ttf' }]
+        }
+    };
+    fontDb._failPut = { store: 'presets', id: 'font-new', message: 'injected font database failure' };
+
+    const restorePoint = await ctx.captureIndexedDbRestorePoint(incoming);
+    assert.deepEqual(restorePoint.targets.map(t => t.db), ['maomao-media-store', 'maomao-font-presets']);
+    assert.ok(ctx.__restorePointRows.has('pre-import-indexeddb'));
+
+    const result = await ctx.restoreIndexedDBWithRollback(incoming, restorePoint);
+    assert.equal(result.ok, false);
+    assert.equal(result.failedDb, 'maomao-font-presets');
+    assert.deepEqual(result.rollbackFailures, []);
+
+    assert.deepEqual(mediaDb._data.wallpapers.map(x => x.id), ['wallpaper-old'],
+        'the first restored database must be rolled back');
+    assert.equal(mediaDb._data.audio.length, 1);
+    assert.equal(mediaDb._data.audio[0].id, 'audio-old');
+    assert.ok(isBlobLike(mediaDb._data.audio[0].blob),
+        'excluded audio blobs in regular exports must still exist in the private restore point');
+    assert.equal(mediaDb._data.audio[0].blob.type, 'audio/mpeg');
+    assert.equal(mediaDb._data.audio[0].blob._data.toString('utf8'), 'original-local-audio');
+    assert.equal(fontDb._data.presets.length, 1,
+        'the failing database transaction itself must leave the original store unchanged');
+    assert.equal(fontDb._data.presets[0].id, 'font-old');
+});
+
+test('13 IndexedDB restore failure rolls back globally and retains recovery points if rollback is uncertain', () => {
+    assert.match(backupSrc, /var allRollbackOk = localRollbackOk && localRollbackVerify\.ok/);
+    assert.match(backupSrc, /idbRestoreResult\.rollbackFailures\.length === 0/);
+    assert.match(backupSrc, /await rpDeleteRole\(RP_ROLE_PRE\);\s*await rpDeleteRole\(RP_ROLE_IDB_PRE\);/);
+    assert.match(backupSrc, /部分回滚未能确认；本机恢复点已保留/);
+    assert.match(backupSrc, /captureIndexedDbRestorePoint\(obj\.indexedDB\)/);
+});
+
+test('14 restore-point snapshot keeps excluded local fields and enforces a size ceiling', () => {
+    const snapshotStart = backupSrc.indexOf('function dumpDatabaseForRestorePoint(');
+    const snapshotEnd = backupSrc.indexOf('function captureIndexedDbRestorePoint(', snapshotStart);
+    assert.ok(snapshotStart >= 0 && snapshotEnd > snapshotStart);
+    const snapshotFn = backupSrc.slice(snapshotStart, snapshotEnd);
+    assert.match(snapshotFn, /db\.transaction\(storeNames, 'readonly'\)/);
+    assert.match(snapshotFn, /store\.getAll\(\)/);
+    assert.match(snapshotFn, /store\.getAllKeys\(\)/);
+    assert.match(snapshotFn, /__key: key, __value: values\[index\]/);
+    assert.match(backupSrc, /RESTORE_POINT_IDB_MAX_BYTES = 150 \* 1024 \* 1024/);
+    assert.match(backupSrc, /estimateRestorePointBytes\(snapshots\)/);
+    assert.match(backupSrc, /超过本机安全恢复点上限/);
+    assert.match(backupSrc, /estimateRestorePointBytes\(stored\.snap\) !== estimatedBytes/);
+});
+
+
+
+/* ═══════════════════════════════════════════════
+   15. 完整导入链：localStorage 新数据写入失败后恢复原样
+   ═══════════════════════════════════════════════ */
+test('15 完整导入：localStorage 写入失败时回滚原值且不触碰业务数据库', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({
+        confirmResult: true,
+        localStorage: {
+            ai_custom_characters: 'old-character-state',
+            phone_data_v2: 'old-phone-state',
+            keep_local_setting: 'keep-me'
+        }
+    });
+    const mediaDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-media-store');
+    const mediaDb = registerDB('maomao-media-store', mediaDef.version, mediaDef.stores);
+    await injectRecords(mediaDb, 'wallpapers', mediaDef.stores.find(s => s.store === 'wallpapers'), [
+        { __key: 'wallpaper-old-key', id: 'wallpaper-old', name: 'Old wallpaper' }
+    ]);
+
+    const originalSetItem = ctx.localStorage.setItem;
+    let injected = false;
+    Object.defineProperty(ctx.localStorage, 'setItem', {
+        configurable: true,
+        value: function (key, value) {
+            if (key === 'phone_data_v2' && !injected) {
+                injected = true;
+                throw new Error('injected localStorage import write failure');
+            }
+            return originalSetItem.call(this, key, value);
+        }
+    });
+
+    await runImport(ctx, makeImportPayload({
+        'maomao-media-store': {
+            wallpapers: [{ __key: 'wallpaper-new-key', __value: { id: 'wallpaper-new', name: 'New wallpaper' } }],
+            audio: []
+        }
+    }));
+
+    assert.equal(injected, true, '故障注入必须发生在 localStorage 导入写入阶段');
+    assert.equal(ctx.localStorage.ai_custom_characters, 'old-character-state');
+    assert.equal(ctx.localStorage.phone_data_v2, 'old-phone-state');
+    assert.equal(ctx.localStorage.keep_local_setting, 'keep-me');
+    assert.deepEqual(mediaDb._data.wallpapers.map(row => row.id), ['wallpaper-old'],
+        'localStorage 阶段失败时不得开始业务 IndexedDB 覆盖');
+    assert.equal(ctx.__restorePointRows.size, 0, '确认完整回滚后应清理两份临时恢复点');
+    assert.ok(ctx.__intercepted.toasts.some(item => /已从本机恢复点回滚到导入前状态/.test(item.msg)));
+    assert.equal(ctx.__intercepted.reloads, 0, '失败导入不得刷新页面');
+});
+
+/* ═══════════════════════════════════════════════
+   16. 完整导入链：后一个数据库失败，前一个库与 localStorage 一起回滚
+   ═══════════════════════════════════════════════ */
+test('16 完整导入：第二个数据库失败时逆序回滚首库和 localStorage', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({
+        confirmResult: true,
+        localStorage: {
+            ai_custom_characters: 'old-character-state',
+            phone_data_v2: 'old-phone-state',
+            keep_local_setting: 'keep-me'
+        }
+    });
+    const { mediaDb, fontDb } = await seedCrossDatabaseImportFixture(ctx);
+    fontDb._failPut = {
+        store: 'presets',
+        id: 'font-new',
+        message: 'injected second database failure'
+    };
+
+    await runImport(ctx, makeCrossDatabaseIncoming());
+
+    assert.equal(ctx.localStorage.ai_custom_characters, 'old-character-state');
+    assert.equal(ctx.localStorage.phone_data_v2, 'old-phone-state');
+    assert.equal(ctx.localStorage.keep_local_setting, 'keep-me');
+    assert.deepEqual(mediaDb._data.wallpapers.map(row => row.id), ['wallpaper-old']);
+    assert.equal(mediaDb._data.audio.length, 1);
+    assert.equal(mediaDb._data.audio[0].id, 'audio-old');
+    assert.ok(isBlobLike(mediaDb._data.audio[0].blob));
+    assert.equal(mediaDb._data.audio[0].blob.type, 'audio/mpeg');
+    assert.equal(mediaDb._data.audio[0].blob._data.toString('utf8'), 'original-local-audio',
+        '跨库回滚必须保留普通备份不会导出的本地音乐 Blob');
+    assert.equal(fontDb._data.presets.length, 1);
+    assert.equal(fontDb._data.presets[0].id, 'font-old');
+    assert.equal(ctx.__restorePointRows.size, 0, '所有回滚均确认后才清理恢复点');
+    assert.ok(ctx.__intercepted.toasts.some(item => /已将其他数据全部回滚到导入前状态/.test(item.msg)));
+    assert.equal(ctx.__intercepted.reloads, 0);
+});
+
+/* ═══════════════════════════════════════════════
+   17. 完整导入链：跨库回滚失败时保留两份本机恢复点
+   ═══════════════════════════════════════════════ */
+test('17 完整导入：前序数据库回滚失败时保留 localStorage 与 IndexedDB 恢复点', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({
+        confirmResult: true,
+        localStorage: {
+            ai_custom_characters: 'old-character-state',
+            phone_data_v2: 'old-phone-state'
+        }
+    });
+    const { mediaDb, fontDb } = await seedCrossDatabaseImportFixture(ctx);
+
+    // 首库导入写入 wallpaper-new 不触发；只有回滚写回 wallpaper-old 时故意失败。
+    mediaDb._failPut = {
+        store: 'wallpapers',
+        id: 'wallpaper-old',
+        message: 'injected first database rollback failure'
+    };
+    fontDb._failPut = {
+        store: 'presets',
+        id: 'font-new',
+        message: 'injected second database failure'
+    };
+
+    await runImport(ctx, makeCrossDatabaseIncoming());
+
+    assert.equal(ctx.localStorage.ai_custom_characters, 'old-character-state',
+        'localStorage 应尽力恢复，即使 IndexedDB 回滚失败');
+    assert.equal(ctx.localStorage.phone_data_v2, 'old-phone-state');
+    assert.deepEqual(mediaDb._data.wallpapers.map(row => row.id), ['wallpaper-new'],
+        '故意失败的首库回滚应留下可识别的部分恢复状态');
+    assert.equal(fontDb._data.presets.length, 1);
+    assert.equal(fontDb._data.presets[0].id, 'font-old');
+    assert.ok(ctx.__restorePointRows.has('pre-import'),
+        'localStorage 原始快照必须保留');
+    assert.ok(ctx.__restorePointRows.has('pre-import-indexeddb'),
+        '包含本地 Blob 的 IndexedDB 原始快照必须保留');
+    assert.ok(ctx.__intercepted.toasts.some(item =>
+        /部分回滚未能确认；本机恢复点已保留/.test(item.msg)
+        && /请勿清理网站数据/.test(item.msg)
+    ));
+    assert.equal(ctx.__intercepted.reloads, 0);
+});
+
+/* ═══════════════════════════════════════════════
+   18. 完整导入链：localStorage 自身回滚失败时保留可恢复快照
+   ═══════════════════════════════════════════════ */
+test('18 完整导入：localStorage 写入及其回滚均失败时保留两份恢复点', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({
+        confirmResult: true,
+        localStorage: {
+            ai_custom_characters: 'old-character-state',
+            phone_data_v2: 'old-phone-state'
+        }
+    });
+    const mediaDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-media-store');
+    const mediaDb = registerDB('maomao-media-store', mediaDef.version, mediaDef.stores);
+    await injectRecords(mediaDb, 'wallpapers', mediaDef.stores.find(s => s.store === 'wallpapers'), [
+        { __key: 'wallpaper-old-key', id: 'wallpaper-old', name: 'Old wallpaper' }
+    ]);
+
+    const originalSetItem = ctx.localStorage.setItem;
+    let failuresRemaining = 2;
+    Object.defineProperty(ctx.localStorage, 'setItem', {
+        configurable: true,
+        value: function (key, value) {
+            if (key === 'phone_data_v2' && failuresRemaining > 0) {
+                failuresRemaining--;
+                throw new Error('injected persistent localStorage write failure');
+            }
+            return originalSetItem.call(this, key, value);
+        }
+    });
+
+    await runImport(ctx, makeImportPayload({
+        'maomao-media-store': {
+            wallpapers: [{ __key: 'wallpaper-new-key', __value: { id: 'wallpaper-new', name: 'New wallpaper' } }],
+            audio: []
+        }
+    }));
+
+    assert.equal(failuresRemaining, 0, '导入写入和本地回滚各应触发一次故障');
+    assert.equal(ctx.localStorage.phone_data_v2, undefined,
+        '模拟回滚失败后，受影响 key 应保持缺失而不是伪报完整恢复');
+    assert.equal(ctx.localStorage.ai_custom_characters, 'old-character-state');
+    assert.deepEqual(mediaDb._data.wallpapers.map(row => row.id), ['wallpaper-old'],
+        'localStorage 阶段失败时业务数据库仍不得被覆盖');
+    assert.ok(ctx.__restorePointRows.has('pre-import'));
+    assert.ok(ctx.__restorePointRows.has('pre-import-indexeddb'));
+    const retainedLocal = ctx.__restorePointRows.get('pre-import').snap;
+    assert.equal(retainedLocal.phone_data_v2, 'old-phone-state',
+        '保留的恢复点必须仍包含失败回滚前的原始 localStorage 值');
+    assert.ok(ctx.__intercepted.toasts.some(item =>
+        /回滚未完全成功/.test(item.msg) && /本机恢复点已保留/.test(item.msg)
+    ));
+    assert.equal(ctx.__intercepted.reloads, 0);
+});
+
+/* ═══════════════════════════════════════════════
+   19. 完整导入链：IndexedDB 快照建立失败时在修改业务数据前中止
+   ═══════════════════════════════════════════════ */
+test('19 完整导入：IndexedDB 恢复点写入失败时提前中止且不修改原数据', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({
+        confirmResult: true,
+        localStorage: {
+            ai_custom_characters: 'old-character-state',
+            phone_data_v2: 'old-phone-state'
+        }
+    });
+    const mediaDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-media-store');
+    const mediaDb = registerDB('maomao-media-store', mediaDef.version, mediaDef.stores);
+    await injectRecords(mediaDb, 'wallpapers', mediaDef.stores.find(s => s.store === 'wallpapers'), [
+        { __key: 'wallpaper-old-key', id: 'wallpaper-old', name: 'Old wallpaper' }
+    ]);
+
+    const writeSnapshot = ctx.rpWriteSnapshot;
+    ctx.rpWriteSnapshot = async (snap, role) => {
+        if (role === 'pre-import-indexeddb') {
+            throw new Error('injected IndexedDB restore-point quota failure');
+        }
+        return writeSnapshot(snap, role);
+    };
+
+    await runImport(ctx, makeImportPayload({
+        'maomao-media-store': {
+            wallpapers: [{ __key: 'wallpaper-new-key', __value: { id: 'wallpaper-new', name: 'New wallpaper' } }],
+            audio: []
+        }
+    }));
+
+    assert.equal(ctx.localStorage.ai_custom_characters, 'old-character-state');
+    assert.equal(ctx.localStorage.phone_data_v2, 'old-phone-state');
+    assert.deepEqual(mediaDb._data.wallpapers.map(row => row.id), ['wallpaper-old']);
+    assert.equal(ctx.__restorePointRows.size, 0,
+        '未能建立完整快照时应删除本轮不完整恢复点并保持业务数据原样');
+    assert.ok(ctx.__intercepted.toasts.some(item =>
+        /无法建立完整的 IndexedDB 回滚恢复点/.test(item.msg)
+        && /现有业务数据未修改/.test(item.msg)
+    ));
+    assert.equal(ctx.__intercepted.reloads, 0);
+});
+
+
+/* ═══════════════════════════════════════════════
+   20. 完整导入链成功：验证数据提交、恢复点清理与刷新
+   ═══════════════════════════════════════════════ */
+test('20 完整导入成功：业务数据写入后清理两份恢复点并刷新', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({
+        confirmResult: true,
+        localStorage: {
+            ai_custom_characters: 'old-character-state',
+            phone_data_v2: 'old-phone-state',
+            keep_local_setting: 'keep-me'
+        }
+    });
+    const mediaDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-media-store');
+    const mediaDb = registerDB('maomao-media-store', mediaDef.version, mediaDef.stores);
+    await injectRecords(mediaDb, 'wallpapers', mediaDef.stores.find(s => s.store === 'wallpapers'), [
+        { __key: 'wallpaper-old-key', id: 'wallpaper-old', name: 'Old wallpaper' }
+    ]);
+
+    await runImport(ctx, makeImportPayload({
+        'maomao-media-store': {
+            wallpapers: [{
+                __key: 'wallpaper-new-key',
+                __value: { id: 'wallpaper-new', name: 'Imported wallpaper' }
+            }],
+            audio: []
+        }
+    }));
+
+    assert.equal(ctx.localStorage.ai_custom_characters,
+        JSON.stringify({ profile: 'imported-character-state' }));
+    assert.equal(ctx.localStorage.phone_data_v2, 'imported-phone-state');
+    assert.equal(ctx.localStorage.keep_local_setting, undefined,
+        '成功导入按备份内容覆盖普通 localStorage 键');
+    assert.deepEqual(mediaDb._data.wallpapers.map(row => row.id), ['wallpaper-new']);
+    assert.equal(ctx.__restorePointRows.size, 0, '成功提交后应清理两份临时恢复点');
+    assert.equal(ctx.__intercepted.reloads, 1, '成功导入应触发一次页面刷新');
+    assert.ok(ctx.__intercepted.toasts.some(item => /导入成功/.test(item.msg)));
+});
+
+/* ═══════════════════════════════════════════════
+   21. 完整导入链：无法完整读取旧 localStorage 时拒绝开始导入
+   ═══════════════════════════════════════════════ */
+test('21 完整导入：导入前 localStorage 读取失败时中止且不建立不完整恢复点', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({
+        confirmResult: true,
+        localStorage: {
+            ai_custom_characters: 'old-character-state',
+            phone_data_v2: 'old-phone-state'
+        }
+    });
+    const originalGetItem = ctx.localStorage.getItem;
+    Object.defineProperty(ctx.localStorage, 'getItem', {
+        configurable: true,
+        value: function (key) {
+            if (key === 'phone_data_v2') throw new Error('injected localStorage read failure');
+            return originalGetItem.call(this, key);
+        }
+    });
+
+    await runImport(ctx, makeImportPayload({
+        'maomao-media-store': { wallpapers: [] }
+    }));
+
+    assert.equal(ctx.localStorage.ai_custom_characters, 'old-character-state');
+    assert.equal(ctx.localStorage.phone_data_v2, 'old-phone-state');
+    assert.equal(ctx.__restorePointRows.size, 0,
+        '不完整的 localStorage 快照不得写成可用恢复点');
+    assert.equal(ctx.__intercepted.reloads, 0);
+    assert.ok(ctx.__intercepted.toasts.some(item =>
+        /无法完整读取本机数据/.test(item.msg) && /phone_data_v2/.test(item.msg)
+    ));
+});
+
+/* ═══════════════════════════════════════════════
+   22. localStorage.clear 故障：不得产生异步未处理异常，且应尝试恢复
+   ═══════════════════════════════════════════════ */
+test('22 完整导入：localStorage.clear 抛错时安全中止并从恢复点恢复原值', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({
+        confirmResult: true,
+        localStorage: {
+            ai_custom_characters: 'old-character-state',
+            phone_data_v2: 'old-phone-state'
+        }
+    });
+    const originalClear = ctx.localStorage.clear;
+    let failOnce = true;
+    Object.defineProperty(ctx.localStorage, 'clear', {
+        configurable: true,
+        value: function () {
+            if (failOnce) {
+                failOnce = false;
+                throw new Error('injected localStorage clear failure');
+            }
+            return originalClear.call(this);
+        }
+    });
+
+    await runImport(ctx, makeImportPayload({
+        'maomao-media-store': { wallpapers: [] }
+    }));
+
+    assert.equal(ctx.localStorage.ai_custom_characters, 'old-character-state');
+    assert.equal(ctx.localStorage.phone_data_v2, 'old-phone-state');
+    assert.equal(ctx.__restorePointRows.size, 0,
+        '回滚成功后应清理恢复点');
+    assert.equal(ctx.__intercepted.reloads, 0);
+    assert.ok(ctx.__intercepted.toasts.some(item =>
+        /已从本机恢复点回滚到导入前状态/.test(item.msg)
+    ));
+});
+
+/* ═══════════════════════════════════════════════
+   23. localStorage 恢复校验必须拒绝额外残留键
+   ═══════════════════════════════════════════════ */
+test('23 verifyRestore：检测导入前快照之外的额外残留键', () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({
+        localStorage: {
+            ai_custom_characters: 'old-character-state',
+            unexpected_residue: 'should-not-remain'
+        }
+    });
+    const result = ctx.verifyRestore({
+        ai_custom_characters: 'old-character-state'
+    });
+    assert.equal(result.ok, false);
+    assert.equal(Array.from(result.extra).join(','), 'unexpected_residue');
+    assert.equal(result.missing.length, 0);
+    assert.equal(result.mismatched.length, 0);
+});
+
+
+/* ═══════════════════════════════════════════════
+   24. localStorage 键清单不可读时，恢复校验必须失败
+   ═══════════════════════════════════════════════ */
+test('24 verifyRestore：无法读取 localStorage 键清单时不能把空快照判为成功', () => {
+    clearAllDBs();
+    const ctx = buildCtxFull();
+    ctx.localStorage = new Proxy(ctx.localStorage, {
+        ownKeys() { throw new Error('injected localStorage key enumeration failure'); }
+    });
+    const result = ctx.verifyRestore({});
+    assert.equal(result.ok, false);
+    assert.equal(result.keyReadOk, false);
+});
+
+
+/* ═══════════════════════════════════════════════
+   25. 恢复点指纹识别等大小文本内容被改写
+   ═══════════════════════════════════════════════ */
+test('25 captureIndexedDbRestorePoint：读回内容同长度被改写时指纹校验失败', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull();
+    const mediaDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-media-store');
+    const mediaDb = registerDB('maomao-media-store', mediaDef.version, mediaDef.stores);
+    await injectRecords(mediaDb, 'wallpapers', mediaDef.stores.find(s => s.store === 'wallpapers'), [
+        { __key: 'wallpaper-key', id: 'wallpaper-1', name: 'Old wallpaper' }
+    ]);
+
+    const readSnapshot = ctx.rpReadSnapshot;
+    ctx.rpReadSnapshot = async role => {
+        const stored = await readSnapshot(role);
+        if (role !== 'pre-import-indexeddb' || !stored) return stored;
+        const dbData = stored.snap['maomao-media-store'];
+        const rows = dbData.wallpapers.map(row => ({
+            ...row,
+            __value: { ...row.__value, name: 'Bad wallpaper' }
+        }));
+        return {
+            ...stored,
+            snap: {
+                ...stored.snap,
+                'maomao-media-store': { ...dbData, wallpapers: rows }
+            }
+        };
+    };
+
+    await assert.rejects(
+        ctx.captureIndexedDbRestorePoint({
+            'maomao-media-store': { wallpapers: [] }
+        }),
+        /内容指纹校验失败/
+    );
+});
+
+/* ═══════════════════════════════════════════════
+   26. 恢复点指纹读取真实 Blob 字节，不只比较 MIME 和体积
+   ═══════════════════════════════════════════════ */
+test('26 fingerprintRestorePoint：同 MIME、同体积但二进制不同的 Blob 指纹不同', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull();
+    const first = new SandboxBlob([Buffer.from('original-audio')], { type: 'audio/mpeg' });
+    const changed = new SandboxBlob([Buffer.from('original-audiX')], { type: 'audio/mpeg' });
+    assert.equal(first.size, changed.size);
+    assert.equal(first.type, changed.type);
+
+    const firstFingerprint = await ctx.fingerprintRestorePoint({ blob: first });
+    const changedFingerprint = await ctx.fingerprintRestorePoint({ blob: changed });
+    assert.notEqual(firstFingerprint, changedFingerprint,
+        '校验必须读取 Blob 实际字节，不能只依赖 size/type');
+    const clonedFingerprint = await ctx.fingerprintRestorePoint({
+        blob: new SandboxBlob([Buffer.from('original-audio')], { type: 'audio/mpeg' })
+    });
+    assert.equal(firstFingerprint, clonedFingerprint,
+        '结构化克隆后的相同 Blob 内容必须产生相同指纹');
+});
+
+
+/* ═══════════════════════════════════════════════
+   27. 恢复点 IndexedDB API：真实写入、事务完成后读回和清理
+   ═══════════════════════════════════════════════ */
+test('27 恢复点 API：真实写入/读回/清理使用完整事务并关闭数据库连接', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull();
+    const restoreDb = registerDB('maomao-restore-point', 1, [
+        { store: 'restores', keyPath: 'role' }
+    ]);
+    const api = ctx.__realRestorePointApi;
+    const snapshot = {
+        profile: 'before-import',
+        nested: { enabled: true, values: [1, 2, 3] }
+    };
+
+    await api.rpWriteSnapshot(snapshot, 'pre-import');
+    assert.equal(restoreDb._data.restores.length, 1);
+    assert.equal(restoreDb._data.restores[0].role, 'pre-import');
+
+    const restored = await api.rpReadSnapshot('pre-import');
+    assert.deepEqual(restored.snap, snapshot);
+    assert.ok(restoreDb._closeCount >= 2,
+        'write and read operations must close their IndexedDB connections');
+
+    await api.rpDeleteRole('pre-import');
+    assert.equal(restoreDb._data.restores.length, 0);
+    assert.ok(restoreDb._closeCount >= 3,
+        'delete operation must close its IndexedDB connection');
+});
+
+/* ═══════════════════════════════════════════════
+   28. 恢复点读取：request success 不等于只读事务完成
+   ═══════════════════════════════════════════════ */
+test('28 rpReadSnapshot：必须等 readonly 事务 complete 后才 resolve', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull();
+    const restoreDb = registerDB('maomao-restore-point', 1, [
+        { store: 'restores', keyPath: 'role' }
+    ]);
+    const api = ctx.__realRestorePointApi;
+    await api.rpWriteSnapshot({ value: 'durable-snapshot' }, 'pre-import');
+
+    restoreDb._deferComplete = true;
+    let settled = false;
+    const pendingRead = api.rpReadSnapshot('pre-import').then(value => {
+        settled = true;
+        return value;
+    });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.ok(restoreDb._requestSuccessCount > 0,
+        'the object-store get request should already have succeeded');
+    assert.equal(settled, false,
+        'the read promise must not resolve before its transaction completes');
+
+    restoreDb._flushComplete();
+    const result = await pendingRead;
+    assert.equal(result.snap.value, 'durable-snapshot');
+    assert.equal(settled, true);
+    restoreDb._deferComplete = false;
+});
+
+/* ═══════════════════════════════════════════════
+   29. 恢复点读取：请求成功后事务中止仍必须判失败
+   ═══════════════════════════════════════════════ */
+test('29 rpReadSnapshot：request success 后 readonly 事务 abort 必须 reject', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull();
+    const restoreDb = registerDB('maomao-restore-point', 1, [
+        { store: 'restores', keyPath: 'role' }
+    ]);
+    const api = ctx.__realRestorePointApi;
+    await api.rpWriteSnapshot({ value: 'durable-snapshot' }, 'pre-import');
+
+    restoreDb._deferComplete = true;
+    const pendingRead = api.rpReadSnapshot('pre-import');
+    await new Promise(resolve => setImmediate(resolve));
+    assert.ok(restoreDb._requestSuccessCount > 0);
+    restoreDb._lastTransaction.abort();
+    await assert.rejects(pendingRead, /mock transaction aborted|aborted/);
+    restoreDb._deferComplete = false;
+});
+
+
+/* ═══════════════════════════════════════════════
+   30. 恢复点删除失败：必须读回发现残留并告知用户
+   ═══════════════════════════════════════════════ */
+test('30 clearRestorePoints：删除后仍可读到恢复点时返回失败列表', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull();
+    ctx.__restorePointRows.set('pre-import', {
+        snap: { ai_custom_characters: 'old-state' },
+        createdAt: Date.now()
+    });
+    ctx.__restorePointRows.set('pre-import-indexeddb', {
+        snap: { 'maomao-media-store': { wallpapers: [] } },
+        createdAt: Date.now()
+    });
+
+    const deleteRole = ctx.rpDeleteRole;
+    ctx.rpDeleteRole = async role => {
+        if (role === 'pre-import-indexeddb') return;
+        return deleteRole(role);
+    };
+
+    const result = await ctx.clearRestorePoints();
+    assert.equal(result.ok, false);
+    assert.equal(result.failed.length, 1);
+    assert.equal(result.failed[0], 'pre-import-indexeddb');
+    assert.equal(ctx.__restorePointRows.has('pre-import'), false);
+    assert.equal(ctx.__restorePointRows.has('pre-import-indexeddb'), true,
+        '未确认删除的恢复点必须保留');
+});
+
+
+/* ═══════════════════════════════════════════════
+   31. 数据库回滚事务成功但静默漏写：必须回读发现并保留恢复点
+   ═══════════════════════════════════════════════ */
+test('31 完整导入：数据库回滚事务成功但数据未完整写回时判定回滚失败', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({
+        confirmResult: true,
+        localStorage: {
+            ai_custom_characters: 'old-character-state',
+            phone_data_v2: 'old-phone-state'
+        }
+    });
+    const { mediaDb, fontDb } = await seedCrossDatabaseImportFixture(ctx);
+
+    // rollback restoreDatabase 的事务正常 complete，但故意静默丢弃原 wallpaper。
+    mediaDb._dropPut = {
+        store: 'wallpapers',
+        id: 'wallpaper-old'
+    };
+    // 第二库导入失败，触发首库回滚。
+    fontDb._failPut = {
+        store: 'presets',
+        id: 'font-new',
+        message: 'injected second database failure'
+    };
+
+    await runImport(ctx, makeCrossDatabaseIncoming());
+
+    assert.equal(ctx.localStorage.ai_custom_characters, 'old-character-state');
+    assert.equal(ctx.localStorage.phone_data_v2, 'old-phone-state');
+    assert.equal(mediaDb._data.wallpapers.length, 0,
+        '故障注入应模拟事务成功但原记录静默漏写');
+    assert.ok(ctx.__restorePointRows.has('pre-import'),
+        'localStorage 恢复点必须继续保留');
+    assert.ok(ctx.__restorePointRows.has('pre-import-indexeddb'),
+        '含本地 Blob 的数据库恢复点必须继续保留');
+    assert.ok(ctx.__intercepted.toasts.some(item =>
+        /部分回滚未能确认/.test(item.msg)
+        && /maomao-media-store/.test(item.msg)
+        && /请勿清理网站数据/.test(item.msg)
+    ));
+    assert.equal(ctx.__intercepted.reloads, 0);
+});
+
+
+/* ═══════════════════════════════════════════════
+   32. 同一设备重复导入互斥：并发第二次拒绝，完成后允许重试
+   ═══════════════════════════════════════════════ */
+test('32 完整导入：并发重复导入被拒绝且首轮结束后锁正确释放', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({
+        confirmResult: true,
+        localStorage: {
+            ai_custom_characters: 'old-character-state',
+            phone_data_v2: 'old-phone-state'
+        }
+    });
+    const payloadA = makeImportPayload({
+        'maomao-media-store': { wallpapers: [] }
+    });
+    const payloadB = makeImportPayload({
+        'maomao-media-store': {
+            wallpapers: [{
+                __key: 'wallpaper-second',
+                __value: { id: 'wallpaper-second', name: 'Second import' }
+            }]
+        }
+    });
+
+    ctx.handleImportFile({ content: JSON.stringify(payloadA) });
+    await new Promise(resolve => setTimeout(resolve, 5));
+    const firstImport = ctx.__pendingImport;
+    assert.ok(firstImport, 'first import must start');
+    ctx.handleImportFile({ content: JSON.stringify(payloadB) });
+
+    assert.equal(ctx.__pendingImport, firstImport,
+        'second import must not create a second FileReader/import chain');
+    assert.ok(ctx.__intercepted.toasts.some(item => /已有整机导入正在进行/.test(item.msg)));
+
+    await firstImport;
+    assert.equal(ctx.__intercepted.confirmCalls, 1,
+        'only the first import may reach the confirmation dialog');
+    assert.equal(ctx.__intercepted.reloads, 1);
+    assert.equal(ctx.__restorePointRows.size, 0);
+
+    // 首轮结束后锁必须释放，用户可以重新发起一次导入。
+    ctx.handleImportFile({ content: JSON.stringify(payloadB) });
+    await new Promise(resolve => setTimeout(resolve, 5));
+    const secondImport = ctx.__pendingImport;
+    assert.ok(secondImport);
+    await secondImport;
+    assert.equal(ctx.__intercepted.confirmCalls, 2);
+    assert.equal(ctx.__intercepted.reloads, 2);
+});
+
+
+/* ═══════════════════════════════════════════════
+   33. 文件读取器构造失败也必须释放导入互斥锁
+   ═══════════════════════════════════════════════ */
+test('33 handleImportFile：FileReader 构造失败后允许重新发起导入', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({ confirmResult: true });
+    const validReader = ctx.FileReader;
+    ctx.FileReader = function BrokenFileReader() {
+        throw new Error('injected FileReader constructor failure');
+    };
+
+    ctx.handleImportFile({ content: '{}' });
+    await new Promise(resolve => setTimeout(resolve, 5));
+    assert.ok(ctx.__intercepted.toasts.some(item =>
+        /无法初始化文件读取器|FileReader constructor failure/.test(item.msg)
+    ));
+
+    ctx.FileReader = validReader;
+    await runImport(ctx, makeImportPayload({}));
+    assert.equal(ctx.__intercepted.confirmCalls, 1,
+        'lock must be released after FileReader initialization failure');
+    assert.equal(ctx.__intercepted.reloads, 1);
+});
+
+
+/* ═══════════════════════════════════════════════
+   34. 浏览器中断后：下次打开设置页自动提供完整回滚
+   ═══════════════════════════════════════════════ */
+test('34 recoverInterruptedImportOnStartup：恢复 localStorage、跨库记录与本地音乐 Blob', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({
+        confirmResult: true,
+        localStorage: {
+            ai_custom_characters: 'old-character-state',
+            phone_data_v2: 'old-phone-state',
+            keep_local_setting: 'keep-me'
+        }
+    });
+    const mediaDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-media-store');
+    const mediaDb = registerDB('maomao-media-store', mediaDef.version, mediaDef.stores);
+    await injectRecords(mediaDb, 'wallpapers',
+        mediaDef.stores.find(s => s.store === 'wallpapers'), [
+            { __key: 'wallpaper-old-key', id: 'wallpaper-old', name: 'Old wallpaper' }
+        ]);
+    await injectRecords(mediaDb, 'audio',
+        mediaDef.stores.find(s => s.store === 'audio'), [
+            { id: 'audio-old', title: 'Old local audio',
+              blob: new SandboxBlob([Buffer.from('original-local-audio')], { type: 'audio/mpeg' }) }
+        ]);
+
+    const beforeMedia = await ctx.dumpDatabaseForRestorePoint(
+        mediaDef.db, mediaDef.version, mediaDef.stores
+    );
+    ctx.__restorePointRows.set('pre-import', {
+        snap: {
+            ai_custom_characters: 'old-character-state',
+            phone_data_v2: 'old-phone-state',
+            keep_local_setting: 'keep-me'
+        },
+        createdAt: Date.now()
+    });
+    ctx.__restorePointRows.set('pre-import-indexeddb', {
+        snap: { 'maomao-media-store': beforeMedia },
+        createdAt: Date.now()
+    });
+    await ctx.writeImportState('applying', ['maomao-media-store']);
+
+    await ctx.restoreDatabase('maomao-media-store', mediaDef.version, mediaDef.stores, {
+        wallpapers: [{
+            __key: 'wallpaper-new-key',
+            __value: { id: 'wallpaper-new', name: 'Imported wallpaper' }
+        }],
+        audio: [{ id: 'audio-new', title: 'Imported audio' }]
+    });
+    ctx.restore({
+        ai_custom_characters: 'new-character-state',
+        phone_data_v2: 'new-phone-state'
+    });
+
+    const recovered = await ctx.recoverInterruptedImportOnStartup();
+    assert.equal(recovered, true);
+    assert.equal(ctx.localStorage.ai_custom_characters, 'old-character-state');
+    assert.equal(ctx.localStorage.phone_data_v2, 'old-phone-state');
+    assert.equal(ctx.localStorage.keep_local_setting, 'keep-me');
+    assert.deepEqual(mediaDb._data.wallpapers.map(row => row.id), ['wallpaper-old']);
+    assert.equal(mediaDb._data.audio.length, 1);
+    assert.equal(mediaDb._data.audio[0].id, 'audio-old');
+    assert.equal(mediaDb._data.audio[0].blob.type, 'audio/mpeg');
+    assert.equal(mediaDb._data.audio[0].blob._data.toString('utf8'), 'original-local-audio');
+    assert.equal(ctx.__restorePointRows.size, 0,
+        '全部恢复并验证通过后才能清理恢复点与阶段标记');
+    assert.ok(ctx.__intercepted.toasts.some(item => /已将上次未完成的整机导入恢复到导入前状态/.test(item.msg)));
+});
+
+/* ═══════════════════════════════════════════════
+   35. 用户暂不恢复：必须保留恢复点并阻止新导入
+   ═══════════════════════════════════════════════ */
+test('35 recoverInterruptedImportOnStartup：用户取消时保留所有恢复点', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({ confirmResult: false });
+    ctx.__restorePointRows.set('pre-import', {
+        snap: { ai_custom_characters: 'old-state' },
+        createdAt: Date.now()
+    });
+    await ctx.writeImportState('applying', []);
+
+    const recovered = await ctx.recoverInterruptedImportOnStartup();
+    assert.equal(recovered, false);
+    ctx.importRecoveryReady = false; // mirrors the settings-page startup gate
+    assert.ok(ctx.__restorePointRows.has('pre-import'));
+    assert.ok(ctx.__restorePointRows.has('pre-import-meta'));
+    ctx.handleImportFile({ content: JSON.stringify(makeImportPayload({})) });
+    assert.ok(ctx.__intercepted.toasts.some(item =>
+        /正在检查或恢复上次未完成的整机导入/.test(item.msg)
+    ));
+    assert.equal(ctx.__pendingImport, undefined,
+        '恢复未确认前不能开始覆盖新的备份');
+});
+
+/* ═══════════════════════════════════════════════
+   36. 中断恢复再次失败：localStorage 尽力恢复，全部恢复点继续保留
+   ═══════════════════════════════════════════════ */
+test('36 recoverInterruptedImportOnStartup：数据库恢复失败时保留两份快照供重试', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({
+        confirmResult: true,
+        localStorage: {
+            ai_custom_characters: 'new-character-state',
+            phone_data_v2: 'new-phone-state'
+        }
+    });
+    const mediaDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-media-store');
+    const mediaDb = registerDB('maomao-media-store', mediaDef.version, mediaDef.stores);
+    await injectRecords(mediaDb, 'wallpapers',
+        mediaDef.stores.find(s => s.store === 'wallpapers'), [
+            { __key: 'wallpaper-old-key', id: 'wallpaper-old', name: 'Old wallpaper' }
+        ]);
+    const beforeMedia = await ctx.dumpDatabaseForRestorePoint(
+        mediaDef.db, mediaDef.version, mediaDef.stores
+    );
+    ctx.__restorePointRows.set('pre-import', {
+        snap: {
+            ai_custom_characters: 'old-character-state',
+            phone_data_v2: 'old-phone-state'
+        },
+        createdAt: Date.now()
+    });
+    ctx.__restorePointRows.set('pre-import-indexeddb', {
+        snap: { 'maomao-media-store': beforeMedia },
+        createdAt: Date.now()
+    });
+    await ctx.writeImportState('applying', ['maomao-media-store']);
+
+    await ctx.restoreDatabase('maomao-media-store', mediaDef.version, mediaDef.stores, {
+        wallpapers: [{
+            __key: 'wallpaper-new-key',
+            __value: { id: 'wallpaper-new', name: 'Imported wallpaper' }
+        }]
+    });
+    mediaDb._failPut = {
+        store: 'wallpapers',
+        id: 'wallpaper-old',
+        message: 'injected recovery retry failure'
+    };
+
+    const recovered = await ctx.recoverInterruptedImportOnStartup();
+    assert.equal(recovered, false);
+    assert.equal(ctx.localStorage.ai_custom_characters, 'old-character-state',
+        '即使 IndexedDB 恢复失败，也应尽力恢复独立的 localStorage');
+    assert.equal(ctx.localStorage.phone_data_v2, 'old-phone-state');
+    assert.deepEqual(mediaDb._data.wallpapers.map(row => row.id), ['wallpaper-new']);
+    assert.ok(ctx.__restorePointRows.has('pre-import'));
+    assert.ok(ctx.__restorePointRows.has('pre-import-indexeddb'));
+    assert.ok(ctx.__restorePointRows.has('pre-import-meta'),
+        '恢复失败时阶段标记必须继续保持 applying');
+    assert.ok(ctx.__intercepted.toasts.some(item =>
+        /上次整机导入恢复未能完全完成/.test(item.msg)
+        && /maomao-media-store/.test(item.msg)
+        && /原始恢复点已保留/.test(item.msg)
+    ));
+});
+
+/* ═══════════════════════════════════════════════
+   37. 已提交但清理中断：启动时只清理，不回滚已导入数据
+   ═══════════════════════════════════════════════ */
+test('37 recoverInterruptedImportOnStartup：committed 状态只清理残留恢复点', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({
+        confirmResult: true,
+        localStorage: {
+            ai_custom_characters: 'imported-character-state',
+            phone_data_v2: 'imported-phone-state'
+        }
+    });
+    ctx.__restorePointRows.set('pre-import', {
+        snap: { ai_custom_characters: 'old-character-state' },
+        createdAt: Date.now()
+    });
+    ctx.__restorePointRows.set('pre-import-indexeddb', {
+        snap: { 'maomao-media-store': { wallpapers: [] } },
+        createdAt: Date.now()
+    });
+    await ctx.writeImportState('committed', ['maomao-media-store']);
+
+    const recovered = await ctx.recoverInterruptedImportOnStartup();
+    assert.equal(recovered, true);
+    assert.equal(ctx.localStorage.ai_custom_characters, 'imported-character-state',
+        'committed 数据不应被旧快照覆盖');
+    assert.equal(ctx.localStorage.phone_data_v2, 'imported-phone-state');
+    assert.equal(ctx.__restorePointRows.size, 0);
+    assert.ok(ctx.__intercepted.toasts.some(item => /清理上次成功导入遗留的恢复点/.test(item.msg)));
+});
+
+
+/* ═══════════════════════════════════════════════
+   38. 无法持久化 applying 标记：必须在业务覆盖前中止
+   ═══════════════════════════════════════════════ */
+test('38 完整导入：写入 applying 阶段标记失败时不得覆盖任何业务数据', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({
+        confirmResult: true,
+        localStorage: {
+            ai_custom_characters: 'old-character-state',
+            phone_data_v2: 'old-phone-state'
+        }
+    });
+    const mediaDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-media-store');
+    const mediaDb = registerDB('maomao-media-store', mediaDef.version, mediaDef.stores);
+    await injectRecords(mediaDb, 'wallpapers',
+        mediaDef.stores.find(s => s.store === 'wallpapers'), [
+            { __key: 'wallpaper-old-key', id: 'wallpaper-old', name: 'Old wallpaper' }
+        ]);
+
+    const writeSnapshot = ctx.rpWriteSnapshot;
+    ctx.rpWriteSnapshot = async (snap, role) => {
+        if (role === 'pre-import-meta') throw new Error('injected import journal quota failure');
+        return writeSnapshot(snap, role);
+    };
+
+    await runImport(ctx, makeImportPayload({
+        'maomao-media-store': {
+            wallpapers: [{
+                __key: 'wallpaper-new-key',
+                __value: { id: 'wallpaper-new', name: 'New wallpaper' }
+            }]
+        }
+    }));
+
+    assert.equal(ctx.localStorage.ai_custom_characters, 'old-character-state');
+    assert.equal(ctx.localStorage.phone_data_v2, 'old-phone-state');
+    assert.deepEqual(mediaDb._data.wallpapers.map(row => row.id), ['wallpaper-old']);
+    assert.equal(ctx.__restorePointRows.size, 0,
+        '阶段日志写入失败且业务数据未修改时，应清理本轮恢复点');
+    assert.ok(ctx.__intercepted.toasts.some(item =>
+        /无法写入导入阶段保护记录/.test(item.msg)
+        && /现有业务数据未修改/.test(item.msg)
+    ));
+    assert.equal(ctx.__intercepted.reloads, 0);
+});
+
+/* ═══════════════════════════════════════════════
+   39. 意外异常发生在覆盖之后：锁住新导入并保留日志等待启动恢复
+   ═══════════════════════════════════════════════ */
+test('39 完整导入：阶段日志写入后的未预期异常必须保留恢复点并禁止继续导入', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({
+        confirmResult: true,
+        localStorage: {
+            ai_custom_characters: 'old-character-state',
+            phone_data_v2: 'old-phone-state'
+        }
+    });
+    const mediaDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-media-store');
+    const mediaDb = registerDB('maomao-media-store', mediaDef.version, mediaDef.stores);
+    await injectRecords(mediaDb, 'wallpapers',
+        mediaDef.stores.find(s => s.store === 'wallpapers'), [
+            { __key: 'wallpaper-old-key', id: 'wallpaper-old', name: 'Old wallpaper' }
+        ]);
+
+    ctx.restoreIndexedDBWithRollback = async () => {
+        throw new Error('injected unexpected restore pipeline exception');
+    };
+
+    await runImport(ctx, makeImportPayload({
+        'maomao-media-store': {
+            wallpapers: [{
+                __key: 'wallpaper-new-key',
+                __value: { id: 'wallpaper-new', name: 'New wallpaper' }
+            }]
+        }
+    }));
+
+    assert.equal(ctx.localStorage.ai_custom_characters,
+        JSON.stringify({ profile: 'imported-character-state' }));
+    assert.equal(ctx.localStorage.phone_data_v2, 'imported-phone-state');
+    assert.ok(ctx.__restorePointRows.has('pre-import'));
+    assert.ok(ctx.__restorePointRows.has('pre-import-indexeddb'));
+    assert.equal(ctx.__restorePointRows.get('pre-import-meta').snap.status, 'applying');
+    assert.equal(ctx.importRecoveryReady, false,
+        '当次页面不能在未知混合状态下覆盖恢复点并开始新导入');
+    assert.equal(ctx.__intercepted.reloads, 0);
+
+    const pendingBefore = ctx.__pendingImport;
+    ctx.handleImportFile({ content: JSON.stringify(makeImportPayload({})) });
+    assert.equal(ctx.__pendingImport, pendingBefore);
+    assert.ok(ctx.__intercepted.toasts.some(item =>
+        /正在检查或恢复上次未完成的整机导入/.test(item.msg)
+    ));
+});
+
+
+/* ═══════════════════════════════════════════════
+   40. 跨标签页导入互斥：同一 origin 只允许一个标签页取得租约
+   ═══════════════════════════════════════════════ */
+test('40 handleImportFile：第二个标签页无法取得活动导入租约', async () => {
+    clearAllDBs();
+    const ctxA = buildCtxFull({
+        confirmResult: true,
+        localStorage: { ai_custom_characters: 'tab-a-before' }
+    });
+    const ctxB = buildCtxFull({
+        confirmResult: true,
+        localStorage: { ai_custom_characters: 'tab-b-before' }
+    });
+
+    const writeA = ctxA.rpWriteSnapshot;
+    let releaseWrite;
+    const writeGate = new Promise(resolve => { releaseWrite = resolve; });
+    ctxA.rpWriteSnapshot = async (snap, role) => {
+        if (role === 'pre-import') await writeGate;
+        return writeA(snap, role);
+    };
+
+    const payload = makeImportPayload({});
+    ctxA.handleImportFile({ content: JSON.stringify(payload) });
+    await new Promise(resolve => setTimeout(resolve, 5));
+    assert.ok(ctxA.__pendingImport, 'first tab should have acquired the lock and begun reading');
+
+    ctxB.handleImportFile({ content: JSON.stringify(payload) });
+    await new Promise(resolve => setTimeout(resolve, 5));
+    assert.equal(ctxB.__pendingImport, undefined,
+        'second tab must not start a FileReader while the first tab holds the lease');
+    assert.ok(ctxB.__intercepted.toasts.some(item =>
+        /另一个 MAOMAO 标签页正在导入或恢复数据/.test(item.msg)
+    ));
+
+    releaseWrite();
+    await ctxA.__pendingImport;
+    const lockDb = openDbs['maomao-restore-point'];
+    assert.ok(lockDb);
+    assert.equal(lockDb._data.restores.some(row => row.role === 'active-import-lock'), false,
+        'first tab must release the shared IndexedDB lock at the end');
+
+    ctxB.handleImportFile({ content: JSON.stringify(payload) });
+    await new Promise(resolve => setTimeout(resolve, 5));
+    assert.ok(ctxB.__pendingImport,
+        'second tab may start once the first tab has released the lease');
+    await ctxB.__pendingImport;
+});
+
+/* ═══════════════════════════════════════════════
+   41. 崩溃遗留的过期租约：新页面可安全接管
+   ═══════════════════════════════════════════════ */
+test('41 rpAcquireImportLock：过期租约可以被新页面接管', async () => {
+    clearAllDBs();
+    const ctxA = buildCtxFull();
+    const ctxB = buildCtxFull();
+    const first = await ctxA.rpAcquireImportLock('crashed-tab-owner');
+    assert.equal(first, true);
+
+    const lockDb = openDbs['maomao-restore-point'];
+    const row = lockDb._data.restores.find(item => item.role === 'active-import-lock');
+    assert.ok(row);
+    row.expiresAt = Date.now() - 1000; // 模拟页面崩溃且租约自然过期
+
+    const takeover = await ctxB.rpAcquireImportLock('recovery-tab-owner');
+    assert.equal(takeover, true);
+    const replaced = lockDb._data.restores.find(item => item.role === 'active-import-lock');
+    assert.equal(replaced.owner, 'recovery-tab-owner');
+    await ctxB.rpReleaseImportLock('recovery-tab-owner');
+    assert.equal(lockDb._data.restores.some(item => item.role === 'active-import-lock'), false);
+});
+
+/* ═══════════════════════════════════════════════
+   42. 活动导入租约存在时：新标签页不能启动中断恢复
+   ═══════════════════════════════════════════════ */
+test('42 recoverInterruptedImportOnStartup：活动标签页持有租约时不得并发回滚', async () => {
+    clearAllDBs();
+    const activeTab = buildCtxFull();
+    const newTab = buildCtxFull({ confirmResult: true });
+    assert.equal(await activeTab.rpAcquireImportLock(activeTab.importLockOwner), true);
+
+    newTab.__restorePointRows.set('pre-import', {
+        snap: { ai_custom_characters: 'old-state' },
+        createdAt: Date.now()
+    });
+    await newTab.writeImportState('applying', []);
+
+    const recovered = await newTab.recoverInterruptedImportOnStartup();
+    assert.equal(recovered, false);
+    assert.ok(newTab.__restorePointRows.has('pre-import'),
+        '新标签页不得在另一标签页持有租约时回滚业务数据');
+    assert.ok(newTab.__intercepted.toasts.some(item =>
+        /另一个 MAOMAO 标签页正在导入或恢复数据/.test(item.msg)
+    ));
+    await activeTab.rpReleaseImportLock(activeTab.importLockOwner);
+});
+
+
+/* ═══════════════════════════════════════════════
+   43. 原标签页恢复运行时：续租失败必须停止后续写入
+   ═══════════════════════════════════════════════ */
+test('43 assertImportLock：租约已被新标签页接管时旧标签页必须失败关闭', async () => {
+    clearAllDBs();
+    const oldTab = buildCtxFull();
+    const recoveryTab = buildCtxFull();
+
+    assert.equal(await oldTab.rpAcquireImportLock(oldTab.importLockOwner), true);
+    const lockDb = openDbs['maomao-restore-point'];
+    const row = lockDb._data.restores.find(item => item.role === 'active-import-lock');
+    assert.ok(row);
+    row.expiresAt = Date.now() - 1000;
+
+    assert.equal(await recoveryTab.rpAcquireImportLock(recoveryTab.importLockOwner), true);
+    await assert.rejects(oldTab.assertImportLock(), /已被其他标签页接管/);
+    assert.equal(oldTab.importLockLost, true);
+    assert.equal(oldTab.importRecoveryReady, false);
+
+    await recoveryTab.rpReleaseImportLock(recoveryTab.importLockOwner);
+});
+
+
+/* ═══════════════════════════════════════════════
+   44. 数据快照删除失败：必须保留 committed 阶段标记
+   ═══════════════════════════════════════════════ */
+test('44 clearRestorePoints：任一数据快照删除失败时保留阶段标记', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull();
+    ctx.__restorePointRows.set('pre-import', {
+        snap: { ai_custom_characters: 'old-state' },
+        createdAt: Date.now()
+    });
+    ctx.__restorePointRows.set('pre-import-indexeddb', {
+        snap: { 'maomao-media-store': { wallpapers: [] } },
+        createdAt: Date.now()
+    });
+    ctx.__restorePointRows.set('pre-import-meta', {
+        snap: { status: 'committed', indexedDbTargets: ['maomao-media-store'] },
+        createdAt: Date.now()
+    });
+
+    const deleteRole = ctx.rpDeleteRole;
+    ctx.rpDeleteRole = async role => {
+        if (role === 'pre-import') return; // 模拟 quota / transaction abort
+        return deleteRole(role);
+    };
+
+    const result = await ctx.clearRestorePoints();
+    assert.equal(result.ok, false);
+    assert.equal(result.failed.length, 1);
+    assert.equal(result.failed[0], 'pre-import');
+    assert.ok(ctx.__restorePointRows.has('pre-import'));
+    assert.ok(ctx.__restorePointRows.has('pre-import-meta'),
+        'committed marker must remain while any data snapshot remains');
+    assert.equal(ctx.__restorePointRows.has('pre-import-indexeddb'), false,
+        '清理流程仍可继续删除另一份快照，但不得提前删阶段标记');
+});
+
+/* ═══════════════════════════════════════════════
+   45. 两份数据快照清理成功后，阶段标记必须最后删除
+   ═══════════════════════════════════════════════ */
+test('45 clearRestorePoints：阶段标记最后删除，避免清理过程留下无标记快照', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull();
+    const roles = ['pre-import', 'pre-import-indexeddb', 'pre-import-meta'];
+    roles.forEach(role => ctx.__restorePointRows.set(role, {
+        snap: { role },
+        createdAt: Date.now()
+    }));
+
+    const deleted = [];
+    const deleteRole = ctx.rpDeleteRole;
+    ctx.rpDeleteRole = async role => {
+        deleted.push(role);
+        return deleteRole(role);
+    };
+
+    const result = await ctx.clearRestorePoints();
+    assert.equal(result.ok, true);
+    assert.equal(deleted.join(','), roles.join(','));
+    assert.equal(ctx.__restorePointRows.size, 0);
+});
+
+
+/* ═══════════════════════════════════════════════
+   46. 锁写入请求同步抛错：不得把未提交的租约报告为已获取
+   ═══════════════════════════════════════════════ */
+test('46 rpAcquireImportLock：锁记录 put 同步失败时拒绝授予租约', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull();
+    const rpDb = registerDB('maomao-restore-point', 1, [
+        { store: 'restores', keyPath: 'role' }
+    ]);
+    rpDb._failPut = {
+        store: 'restores',
+        role: 'active-import-lock',
+        message: 'injected import lock put failure'
+    };
+
+    await assert.rejects(
+        ctx.rpAcquireImportLock('owner-that-never-committed'),
+        /injected import lock put failure/
+    );
+    assert.equal(rpDb._data.restores.length, 0,
+        '锁记录未写入时不得留下半成品租约');
+});
+
+
+/* ═══════════════════════════════════════════════
+   47. 租约续期 put 失败：不得继续声称仍持有有效租约
+   ═══════════════════════════════════════════════ */
+test('47 rpRenewImportLock：续期写入失败时必须返回错误而非续租成功', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull();
+    const rpDb = registerDB('maomao-restore-point', 1, [
+        { store: 'restores', keyPath: 'role' }
+    ]);
+    assert.equal(await ctx.rpAcquireImportLock('lease-owner'), true);
+
+    const original = rpDb._data.restores.find(row => row.role === 'active-import-lock');
+    assert.ok(original);
+    const originalExpiry = original.expiresAt;
+    rpDb._failPut = {
+        store: 'restores',
+        role: 'active-import-lock',
+        message: 'injected lease renewal failure'
+    };
+
+    await assert.rejects(
+        ctx.rpRenewImportLock('lease-owner'),
+        /injected lease renewal failure/
+    );
+    const after = rpDb._data.restores.find(row => row.role === 'active-import-lock');
+    assert.ok(after);
+    assert.equal(after.owner, 'lease-owner');
+    assert.equal(after.expiresAt, originalExpiry,
+        '续租事务失败时不能把租约报告为已延长');
+});
+
+test('48 完整导入：只恢复音频元数据时保留同 ID 本地 Blob', async () => {
+    const restoreSource = backupSrc.slice(backupSrc.indexOf('function restoreDatabase('), backupSrc.indexOf('function estimateRestorePointBytes('));
+    assert.match(restoreSource, /store\.get\(entry\.lookupKey\)/);
+    assert.doesNotMatch(restoreSource, /excludedFields[\s\S]{0,500}?store\.getAll\(/,
+        'metadata restore must not clone every local audio Blob into memory');
+    clearAllDBs();
+    const ctx = buildCtxFull({
+        confirmResult: true,
+        localStorage: {
+            ai_custom_characters: 'old-character-state',
+            phone_data_v2: 'old-phone-state'
+        }
+    });
+    const mediaDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-media-store');
+    const mediaDb = registerDB('maomao-media-store', mediaDef.version, mediaDef.stores);
+    const audioDef = mediaDef.stores.find(s => s.store === 'audio');
+    const originalBytes = Buffer.from('keep-this-device-local-audio');
+    const staleBytes = Buffer.from('remove-this-unreferenced-audio');
+    await injectRecords(mediaDb, 'audio', audioDef, [
+        { id: 'audio-keep', title: 'Old title', blob: new SandboxBlob([originalBytes], { type: 'audio/mpeg' }) },
+        { id: 'audio-stale', title: 'No longer in backup', blob: new SandboxBlob([staleBytes], { type: 'audio/ogg' }) }
+    ]);
+
+    await runImport(ctx, makeImportPayload({
+        'maomao-media-store': {
+            audio: [
+                {
+                    id: 'audio-keep',
+                    title: 'Updated metadata from backup',
+                    // 普通备份不会携带 blob；即使输入文件伪造同名字段，也不得覆盖本机原件。
+                    blob: 'aW5jb21pbmctZmlsZS1tdXN0LW5vdC1vdmVyd3JpdGU='
+                },
+                {
+                    id: 'audio-new',
+                    title: 'New metadata without local file',
+                    blob: 'bmV3LWZha2UtZmlsZQ=='
+                }
+            ]
+        }
+    }));
+
+    const kept = mediaDb._data.audio.find(row => row.id === 'audio-keep');
+    const added = mediaDb._data.audio.find(row => row.id === 'audio-new');
+    const removed = mediaDb._data.audio.find(row => row.id === 'audio-stale');
+    assert.ok(kept, 'matching audio metadata should remain');
+    assert.equal(kept.title, 'Updated metadata from backup');
+    assert.ok(isBlobLike(kept.blob), 'matching local audio Blob must be preserved');
+    assert.equal(kept.blob.type, 'audio/mpeg');
+    assert.equal(kept.blob._data.toString('utf8'), 'keep-this-device-local-audio',
+        'incoming excluded fields must not replace the local audio file');
+    assert.ok(added, 'new audio metadata should be imported');
+    assert.equal(added.blob, undefined,
+        'a backup without a local audio file must not inject an excluded blob');
+    assert.equal(removed, undefined,
+        'records absent from the imported metadata snapshot should still be removed');
+    assert.equal(ctx.__restorePointRows.size, 0,
+        'successful import should still clean both verified restore points');
+    assert.equal(ctx.__intercepted.reloads, 1);
+
+    const exported = await ctx.dumpDatabase('maomao-media-store', mediaDef.version, mediaDef.stores);
+    assert.equal(exported.data.audio.length, 2, 'audio metadata remains part of a regular backup');
+    assert.ok(exported.data.audio.every(row => !Object.prototype.hasOwnProperty.call(row, 'blob')),
+        'regular backup must still exclude local audio binary data');
+});
+
+
+
+/* ═══════════════════════════════════════════════
+   48. 浏览器剩余配额不足：在写入恢复点前主动中止
+   ═══════════════════════════════════════════════ */
+test('48 assertRestorePointCapacity：剩余配额不足时拒绝写恢复点并给出可操作提示', async () => {
+    const ctx = buildCtxFull();
+    ctx.window.navigator = {
+        storage: {
+            estimate: async () => ({
+                quota: 100 * 1024 * 1024,
+                usage: 98 * 1024 * 1024
+            })
+        }
+    };
+
+    await assert.rejects(
+        ctx.assertRestorePointCapacity(10 * 1024 * 1024),
+        error => error.name === 'QuotaExceededError'
+            && /剩余存储空间不足/.test(error.message)
+            && /尚未覆盖现有业务数据/.test(error.message)
+    );
+
+    ctx.window.navigator.storage.estimate = async () => ({
+        quota: 500 * 1024 * 1024,
+        usage: 100 * 1024 * 1024
+    });
+    const result = await ctx.assertRestorePointCapacity(10 * 1024 * 1024);
+    assert.equal(result.checked, true);
+    assert.ok(result.required > 10 * 1024 * 1024,
+        '预检应包含写入膨胀与额外余量');
+});
+
+/* ═══════════════════════════════════════════════
+   49. 浏览器不支持容量估算：保留事务级失败保护，不误判数据损坏
+   ═══════════════════════════════════════════════ */
+test('49 assertRestorePointCapacity：容量 API 不可用时安全降级', async () => {
+    const ctx = buildCtxFull();
+    ctx.window.navigator = {};
+    assert.deepEqual(await ctx.assertRestorePointCapacity(1024), { checked: false });
+});
+
+
+/* ═══════════════════════════════════════════════
+   50. localStorage 恢复点内容损坏：预检必须拒绝回滚
+   ═══════════════════════════════════════════════ */
+test('50 validateInterruptedRestorePoints：localStorage 快照出现非字符串值时失败关闭', async () => {
+    const ctx = buildCtxFull();
+    const localRecord = {
+        role: 'pre-import',
+        snap: { ai_custom_characters: { corrupted: true } },
+        createdAt: Date.now()
+    };
+    const result = await ctx.validateInterruptedRestorePoints(localRecord, null, null);
+    assert.equal(result.ok, false);
+    assert.match(result.message, /localStorage 恢复点包含非字符串值/);
+});
+
+/* ═══════════════════════════════════════════════
+   51. IndexedDB 恢复点缺少 store：不得先恢复其他业务数据
+   ═══════════════════════════════════════════════ */
+test('51 recoverInterruptedImportUnlocked：缺少 store 时在任何业务写入前中止', async () => {
+    const ctx = buildCtxFull({ confirmResult: true });
+    const rows = new Map([
+        ['pre-import', {
+            role: 'pre-import',
+            snap: { ai_custom_characters: 'old-character-state' },
+            createdAt: Date.now()
+        }],
+        ['pre-import-indexeddb', {
+            role: 'pre-import-indexeddb',
+            // media 数据库实际有 wallpapers + audio；故意漏掉 audio
+            snap: { 'maomao-media-store': { wallpapers: [] } },
+            createdAt: Date.now()
+        }],
+        ['pre-import-meta', {
+            role: 'pre-import-meta',
+            snap: { status: 'applying', indexedDbTargets: ['maomao-media-store'] },
+            createdAt: Date.now()
+        }]
+    ]);
+    ctx.rpReadSnapshot = async role => rows.get(role) || null;
+
+    let businessWrites = 0;
+    ctx.restore = () => { businessWrites++; return true; };
+    ctx.restoreDatabase = async () => { businessWrites++; };
+    const recovered = await ctx.recoverInterruptedImportUnlocked();
+
+    assert.equal(recovered, false);
+    assert.equal(businessWrites, 0,
+        '快照预检失败时 localStorage 与所有 IndexedDB 都不得被写入');
+    assert.ok(rows.has('pre-import'));
+    assert.ok(rows.has('pre-import-indexeddb'));
+    assert.ok(rows.has('pre-import-meta'));
+    assert.ok(ctx.__intercepted.toasts.some(item =>
+        /object store 清单不完整/.test(item.msg) && /原始恢复点未清理/.test(item.msg)
+    ));
+});
+
+/* ═══════════════════════════════════════════════
+   52. 阶段元数据与快照数据库清单不一致：在回滚前阻断
+   ═══════════════════════════════════════════════ */
+test('52 validateInterruptedRestorePoints：阶段数据库清单与快照不一致时拒绝恢复', async () => {
+    const ctx = buildCtxFull();
+    const media = ctx.IDB_TARGETS.find(target => target.db === 'maomao-media-store');
+    const stores = {};
+    media.stores.forEach(def => { stores[def.store] = []; });
+    const result = await ctx.validateInterruptedRestorePoints(
+        {
+            role: 'pre-import',
+            snap: { ai_custom_characters: 'old-state' },
+            createdAt: Date.now()
+        },
+        {
+            role: 'pre-import-indexeddb',
+            snap: { 'maomao-media-store': stores },
+            createdAt: Date.now()
+        },
+        {
+            role: 'pre-import-meta',
+            snap: { status: 'applying', indexedDbTargets: ['maomao-font-presets'] },
+            createdAt: Date.now()
+        }
+    );
+    assert.equal(result.ok, false);
+    assert.match(result.message, /数据库清单不一致/);
+});
+
+/* ═══════════════════════════════════════════════
+   53. out-of-line 记录缺少原始主键：不能清空业务库后才发现
+   ═══════════════════════════════════════════════ */
+test('53 validateInterruptedRestorePoints：out-of-line 记录缺少主键时拒绝恢复', async () => {
+    const ctx = buildCtxFull();
+    const media = ctx.IDB_TARGETS.find(target => target.db === 'maomao-media-store');
+    const stores = {};
+    media.stores.forEach(def => { stores[def.store] = []; });
+    stores.wallpapers = [{ __value: { id: 'orphan-record' } }];
+    const result = await ctx.validateInterruptedRestorePoints(
+        {
+            role: 'pre-import',
+            snap: { ai_custom_characters: 'old-state' },
+            createdAt: Date.now()
+        },
+        {
+            role: 'pre-import-indexeddb',
+            snap: { 'maomao-media-store': stores },
+            createdAt: Date.now()
+        },
+        {
+            role: 'pre-import-meta',
+            snap: { status: 'applying', indexedDbTargets: ['maomao-media-store'] },
+            createdAt: Date.now()
+        }
+    );
+    assert.equal(result.ok, false);
+    assert.match(result.message, /wallpapers 第 1 条记录缺少原始主键或内容/);
+});
+
+/* ═══════════════════════════════════════════════
+   54. committed 清理中断：允许缺失已删除的快照并继续清理
+   ═══════════════════════════════════════════════ */
+test('54 validateInterruptedRestorePoints：committed 清理阶段不要求已删除的数据库快照仍存在', async () => {
+    const ctx = buildCtxFull();
+    const result = await ctx.validateInterruptedRestorePoints(
+        {
+            role: 'pre-import',
+            snap: { ai_custom_characters: 'old-state' },
+            createdAt: Date.now()
+        },
+        null,
+        {
+            role: 'pre-import-meta',
+            snap: { status: 'committed', indexedDbTargets: ['maomao-media-store'] },
+            createdAt: Date.now()
+        }
+    );
+    assert.equal(result.ok, true);
+    assert.equal(result.status, 'committed');
+});
+
+
+/* ═══════════════════════════════════════════════
+   55. 早期阶段标记没有数据库清单：从已校验快照推导兼容恢复
+   ═══════════════════════════════════════════════ */
+test('55 validateInterruptedRestorePoints：兼容未记录 IndexedDB 清单的早期阶段标记', async () => {
+    const ctx = buildCtxFull();
+    const media = ctx.IDB_TARGETS.find(target => target.db === 'maomao-media-store');
+    const stores = {};
+    media.stores.forEach(def => { stores[def.store] = []; });
+    const result = await ctx.validateInterruptedRestorePoints(
+        {
+            role: 'pre-import',
+            snap: { ai_custom_characters: 'old-state' },
+            createdAt: Date.now()
+        },
+        {
+            role: 'pre-import-indexeddb',
+            snap: { 'maomao-media-store': stores },
+            createdAt: Date.now()
+        },
+        {
+            role: 'pre-import-meta',
+            snap: { status: 'applying' },
+            createdAt: Date.now()
+        }
+    );
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.targetNames, ['maomao-media-store']);
+});
+
+
+/* ═══════════════════════════════════════════════
+   56. 内容仍符合结构但字节已变化：指纹必须发现恢复点被改写
+   ═══════════════════════════════════════════════ */
+test('56 validateInterruptedRestorePoints：结构有效但快照内容被改写时拒绝回滚', async () => {
+    const ctx = buildCtxFull();
+    const localSnapshot = { ai_custom_characters: 'before-value' };
+    const indexedSnapshots = {};
+    const integrity = await ctx.fingerprintRestorePoint({
+        localStorage: localSnapshot,
+        indexedDB: indexedSnapshots
+    });
+    localSnapshot.ai_custom_characters = 'changed-value'; // 仍是合法字符串，只有内容指纹能发现变化。
+
+    const result = await ctx.validateInterruptedRestorePoints(
+        { role: 'pre-import', snap: localSnapshot, createdAt: Date.now() },
+        null,
+        {
+            role: 'pre-import-meta',
+            snap: { status: 'applying', indexedDbTargets: [], integrity },
+            createdAt: Date.now()
+        }
+    );
+    assert.equal(result.ok, false);
+    assert.match(result.message, /恢复点内容指纹不一致/);
+});
+
+/* ═══════════════════════════════════════════════
+   57. 阶段切换不得丢失 applying 阶段的完整性指纹
+   ═══════════════════════════════════════════════ */
+test('57 writeImportState：切换 committed / rolled-back 状态时继承原内容指纹', async () => {
+    const ctx = buildCtxFull();
+    const integrity = '0123456789abcdef';
+    ctx.__restorePointRows.set('pre-import-meta', {
+        role: 'pre-import-meta',
+        snap: {
+            status: 'applying',
+            indexedDbTargets: ['maomao-media-store'],
+            integrity
+        },
+        createdAt: Date.now()
+    });
+
+    await ctx.writeImportState('committed', ['maomao-media-store']);
+    const committed = ctx.__restorePointRows.get('pre-import-meta');
+    assert.equal(committed.snap.status, 'committed');
+    assert.equal(committed.snap.integrity, integrity);
+
+    await ctx.writeImportState('rolled-back', ['maomao-media-store']);
+    const rolledBack = ctx.__restorePointRows.get('pre-import-meta');
+    assert.equal(rolledBack.snap.status, 'rolled-back');
+    assert.equal(rolledBack.snap.integrity, integrity);
+});
+
+
+/* ═══════════════════════════════════════════════
+   58. 本地音频 Blob 同尺寸内容变化：二进制指纹必须识别
+   ═══════════════════════════════════════════════ */
+test('58 validateInterruptedRestorePoints：同尺寸同 MIME 的音频 Blob 内容变化也必须被发现', async () => {
+    const ctx = buildCtxFull();
+    const media = ctx.IDB_TARGETS.find(target => target.db === 'maomao-media-store');
+    const localSnapshot = { ai_custom_characters: 'unchanged-local-state' };
+    const dbSnapshot = {};
+    media.stores.forEach(def => { dbSnapshot[def.store] = []; });
+    dbSnapshot.audio = [{
+        id: 'local-audio-1',
+        title: 'Local recording',
+        blob: new SandboxBlob([Buffer.from('AAAA-original')], { type: 'audio/mpeg' })
+    }];
+    const integrity = await ctx.fingerprintRestorePoint({
+        localStorage: localSnapshot,
+        indexedDB: { 'maomao-media-store': dbSnapshot }
+    });
+    // 大小和 MIME 都保持不变，只替换二进制内容。
+    dbSnapshot.audio[0].blob = new SandboxBlob([Buffer.from('BBBB-original')], { type: 'audio/mpeg' });
+
+    const result = await ctx.validateInterruptedRestorePoints(
+        { role: 'pre-import', snap: localSnapshot, createdAt: Date.now() },
+        {
+            role: 'pre-import-indexeddb',
+            snap: { 'maomao-media-store': dbSnapshot },
+            createdAt: Date.now()
+        },
+        {
+            role: 'pre-import-meta',
+            snap: {
+                status: 'applying',
+                indexedDbTargets: ['maomao-media-store'],
+                integrity
+            },
+            createdAt: Date.now()
+        }
+    );
+    assert.equal(result.ok, false);
+    assert.match(result.message, /恢复点内容指纹不一致/);
+});
+
+
+/* ═══════════════════════════════════════════════
+   59. 恢复点抢救 ZIP：完整保留本地 Blob 二进制附件
+   ═══════════════════════════════════════════════ */
+test('59 createRecoveryPointRescuePackage：导出 JSON 清单和原始 Blob 附件而不删除恢复点', async () => {
+    const ctx = buildCtxFull();
+    assert.equal((await ctx.rescueCrc32(new SandboxBlob([Buffer.from('123456789')]))).toString(16),
+        'cbf43926', 'ZIP CRC32 must use the standard polynomial and byte order');
+    const audioBytes = Buffer.from('rescue-local-audio-original');
+    ctx.__restorePointRows.set('pre-import', {
+        role: 'pre-import',
+        snap: { ai_custom_characters: 'old-character-state' },
+        createdAt: Date.now()
+    });
+    ctx.__restorePointRows.set('pre-import-indexeddb', {
+        role: 'pre-import-indexeddb',
+        snap: {
+            'maomao-media-store': {
+                wallpapers: [],
+                audio: [{
+                    id: 'rescue-audio-1',
+                    title: 'Local audio',
+                    blob: new SandboxBlob([audioBytes], { type: 'audio/mpeg' })
+                }]
+            }
+        },
+        createdAt: Date.now()
+    });
+    ctx.__restorePointRows.set('pre-import-meta', {
+        role: 'pre-import-meta',
+        snap: { status: 'applying', indexedDbTargets: ['maomao-media-store'] },
+        createdAt: Date.now()
+    });
+
+    const result = await ctx.createRecoveryPointRescuePackage();
+    assert.ok(result);
+    assert.equal(result.records, 3);
+    assert.equal(result.assets, 1);
+    assert.equal(result.readErrors.length, 0);
+
+    const zip = Buffer.from(result.blob._data);
+    assert.equal(zip.readUInt32LE(0), 0x04034b50, 'archive must begin with a ZIP local-file header');
+    const entries = [];
+    let offset = 0;
+    while (offset + 30 <= zip.length && zip.readUInt32LE(offset) === 0x04034b50) {
+        const nameLength = zip.readUInt16LE(offset + 26);
+        const extraLength = zip.readUInt16LE(offset + 28);
+        const size = zip.readUInt32LE(offset + 18);
+        const nameStart = offset + 30;
+        const dataStart = nameStart + nameLength + extraLength;
+        const name = zip.subarray(nameStart, nameStart + nameLength).toString('utf8');
+        const data = zip.subarray(dataStart, dataStart + size);
+        entries.push({ name, data, headerOffset: offset, crc: zip.readUInt32LE(offset + 14) });
+        offset = dataStart + size;
+    }
+    assert.equal(zip.readUInt32LE(offset), 0x02014b50,
+        'central directory must immediately follow local file entries');
+    for (const entry of entries) {
+        const expectedCrc = await ctx.rescueCrc32(new SandboxBlob([entry.data]));
+        assert.equal(entry.crc, expectedCrc, 'local ZIP CRC must match file bytes: ' + entry.name);
+    }
+    const readmeEntry = entries.find(entry => entry.name === 'README.txt');
+    const manifestEntry = entries.find(entry => entry.name === 'recovery-points.json');
+    const assetEntry = entries.find(entry => entry.name === 'assets/blob-000001.bin');
+    assert.ok(readmeEntry, 'human-readable README must be included');
+    assert.match(readmeEntry.data.toString('utf8'), /不是普通备份文件/);
+    assert.match(readmeEntry.data.toString('utf8'), /可能包含 API 密钥/);
+    assert.ok(manifestEntry, 'manifest must be included');
+    assert.ok(assetEntry, 'binary Blob must be a separate ZIP entry');
+    assert.equal(assetEntry.data.toString('utf8'), 'rescue-local-audio-original');
+    const manifest = JSON.parse(manifestEntry.data.toString('utf8'));
+    assert.equal(manifest.format, 'maomao-restore-point-rescue');
+    assert.equal(manifest.recordStatuses['pre-import'], 'exported');
+    assert.equal(manifest.recordStatuses['pre-import-indexeddb'], 'exported');
+    assert.equal(manifest.recordStatuses['pre-import-meta'], 'exported');
+    assert.equal(
+        manifest.records['pre-import-indexeddb'].snap['maomao-media-store'].audio[0].blob.file,
+        'assets/blob-000001.bin'
+    );
+    assert.equal(
+        manifest.records['pre-import-indexeddb'].snap['maomao-media-store'].audio[0].blob.mime,
+        'audio/mpeg'
+    );
+    assert.ok(ctx.__restorePointRows.has('pre-import'));
+    assert.ok(ctx.__restorePointRows.has('pre-import-indexeddb'));
+    assert.ok(ctx.__restorePointRows.has('pre-import-meta'));
+});
+
+/* ═══════════════════════════════════════════════
+   60. 抢救序列化遇到循环引用：明确拒绝而不静默丢失关系
+   ═══════════════════════════════════════════════ */
+test('60 serializeRecoveryPointValue：循环引用必须明确报错', async () => {
+    const ctx = buildCtxFull();
+    const cyclic = { label: 'cycle' };
+    cyclic.self = cyclic;
+    await assert.rejects(
+        ctx.serializeRecoveryPointValue(cyclic, [], { assetIndex: 0, stack: [] }),
+        /循环引用/
+    );
+});
+
+
+/* ═══════════════════════════════════════════════
+   61. 单份恢复点损坏：其他可读记录仍可单独导出
+   ═══════════════════════════════════════════════ */
+test('61 createRecoveryPointRescuePackage：单份记录序列化失败时继续导出其他记录且清理孤立附件', async () => {
+    const ctx = buildCtxFull();
+    const partialBlob = new SandboxBlob([Buffer.from('orphan-blob-must-not-enter-archive')], { type: 'audio/mpeg' });
+    const brokenSnapshot = { firstBlob: partialBlob };
+    brokenSnapshot.cycle = brokenSnapshot;
+
+    ctx.__restorePointRows.set('pre-import', {
+        role: 'pre-import',
+        snap: brokenSnapshot,
+        createdAt: Date.now()
+    });
+    ctx.__restorePointRows.set('pre-import-indexeddb', {
+        role: 'pre-import-indexeddb',
+        snap: { 'maomao-media-store': { wallpapers: [], audio: [] } },
+        createdAt: Date.now()
+    });
+    ctx.__restorePointRows.set('pre-import-meta', {
+        role: 'pre-import-meta',
+        snap: { status: 'applying', indexedDbTargets: ['maomao-media-store'] },
+        createdAt: Date.now()
+    });
+
+    const result = await ctx.createRecoveryPointRescuePackage();
+    assert.ok(result);
+    assert.equal(result.records, 2, 'readable roles must still be exported');
+    assert.equal(result.assets, 0,
+        'binary assets queued before a failed role serialization must be rolled back');
+    assert.equal(result.readErrors.length, 1);
+    assert.equal(result.readErrors[0].role, 'pre-import');
+    assert.match(result.readErrors[0].message, /循环引用/);
+
+    const zip = Buffer.from(result.blob._data);
+    let offset = 0;
+    const entries = [];
+    while (offset + 30 <= zip.length && zip.readUInt32LE(offset) === 0x04034b50) {
+        const nameLength = zip.readUInt16LE(offset + 26);
+        const extraLength = zip.readUInt16LE(offset + 28);
+        const size = zip.readUInt32LE(offset + 18);
+        const nameStart = offset + 30;
+        const dataStart = nameStart + nameLength + extraLength;
+        const name = zip.subarray(nameStart, nameStart + nameLength).toString('utf8');
+        entries.push({ name: name, data: zip.subarray(dataStart, dataStart + size) });
+        offset = dataStart + size;
+    }
+    assert.deepEqual(entries.map(entry => entry.name).sort(), ['README.txt', 'recovery-points.json'],
+        'failed role must not leave an orphan binary file in the rescue ZIP');
+    const manifestEntry = entries.find(entry => entry.name === 'recovery-points.json');
+    const manifest = JSON.parse(manifestEntry.data.toString('utf8'));
+    assert.equal(manifest.recordStatuses['pre-import'], 'error');
+    assert.equal(manifest.recordStatuses['pre-import-indexeddb'], 'exported');
+    assert.equal(manifest.recordStatuses['pre-import-meta'], 'exported');
+    assert.equal(manifest.readErrors[0].role, 'pre-import');
+    assert.ok(ctx.__restorePointRows.has('pre-import'));
+    assert.ok(ctx.__restorePointRows.has('pre-import-indexeddb'));
+    assert.ok(ctx.__restorePointRows.has('pre-import-meta'));
+});
+
+
+/* ═══════════════════════════════════════════════
+   62. 单个 Blob 分块读取失败：其他附件仍可导出并明确标记 partial
+   ═══════════════════════════════════════════════ */
+test('62 createRecoveryPointRescuePackage：单个二进制附件读取失败不拖垮其他附件', async () => {
+    const ctx = buildCtxFull();
+    ctx.FileReader = function RescueFailureFileReader() {
+        return {
+            result: null,
+            error: null,
+            onload: null,
+            onerror: null,
+            readAsArrayBuffer(blob) {
+                if (blob && blob._data && blob._data.toString('utf8').includes('BAD-ASSET')) {
+                    this.error = new Error('injected binary chunk read failure');
+                    if (this.onerror) this.onerror();
+                    return;
+                }
+                this.result = Uint8Array.from(blob._data).buffer;
+                if (this.onload) this.onload();
+            }
+        };
+    };
+
+    ctx.__restorePointRows.set('pre-import', {
+        role: 'pre-import',
+        snap: {
+            media: [
+                new SandboxBlob([Buffer.from('BAD-ASSET')], { type: 'audio/mpeg' }),
+                new SandboxBlob([Buffer.from('GOOD-ASSET')], { type: 'image/png' })
+            ]
+        },
+        createdAt: Date.now()
+    });
+    ctx.__restorePointRows.set('pre-import-meta', {
+        role: 'pre-import-meta',
+        snap: { status: 'applying', indexedDbTargets: [] },
+        createdAt: Date.now()
+    });
+
+    const result = await ctx.createRecoveryPointRescuePackage();
+    assert.ok(result);
+    assert.equal(result.records, 2);
+    assert.equal(result.assets, 1, 'only the readable Blob should be placed in ZIP');
+    assert.equal(result.readErrors.length, 1);
+    assert.equal(result.readErrors[0].role, 'assets/blob-000001.bin');
+    assert.match(result.readErrors[0].message, /injected binary chunk read failure/);
+
+    const zip = Buffer.from(result.blob._data);
+    let offset = 0;
+    const entries = [];
+    while (offset + 30 <= zip.length && zip.readUInt32LE(offset) === 0x04034b50) {
+        const nameLength = zip.readUInt16LE(offset + 26);
+        const extraLength = zip.readUInt16LE(offset + 28);
+        const size = zip.readUInt32LE(offset + 18);
+        const nameStart = offset + 30;
+        const dataStart = nameStart + nameLength + extraLength;
+        entries.push({
+            name: zip.subarray(nameStart, nameStart + nameLength).toString('utf8'),
+            data: zip.subarray(dataStart, dataStart + size)
+        });
+        offset = dataStart + size;
+    }
+    const manifestEntry = entries.find(entry => entry.name === 'recovery-points.json');
+    const goodAsset = entries.find(entry => entry.name === 'assets/blob-000002.bin');
+    assert.ok(goodAsset);
+    assert.equal(goodAsset.data.toString('utf8'), 'GOOD-ASSET');
+    assert.equal(entries.some(entry => entry.name === 'assets/blob-000001.bin'), false,
+        'the unreadable original must not be represented by a corrupt or empty file');
+    const manifest = JSON.parse(manifestEntry.data.toString('utf8'));
+    assert.equal(manifest.recordStatuses['pre-import'], 'partial');
+    const blobs = manifest.records['pre-import'].snap.media;
+    assert.equal(blobs[0].unavailable, true);
+    assert.match(blobs[0].reason, /injected binary chunk read failure/);
+    assert.equal(blobs[1].file, 'assets/blob-000002.bin');
+    assert.equal(blobs[1].unavailable, undefined);
+    assert.ok(ctx.__restorePointRows.has('pre-import'),
+        'partial rescue export must not delete the original record');
 });

@@ -779,27 +779,133 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
       localStorage.setItem('maomao_reader_local_books_v1', JSON.stringify(stored));
     });
   }
-  function removeLocalBooks() {
-    var removedIds = books.filter(function (b) { return b.isLocal; }).map(function (b) { return b.id; });
-    return idbGetAll('comments').catch(function () { return []; }).then(function (items) {
-      return Promise.all((items || []).filter(function (c) { return removedIds.indexOf(c.bookId) !== -1; })
-        .map(function (c) { return idbDelete('comments', c.id).catch(function () {}); }));
-    }).catch(function () {}).then(function () {
-      return Promise.all(removedIds.map(function (id) { return idbDelete('books', id).catch(function () {}); }));
-    }).catch(function () {}).then(function () {
-      var fallback = readStoredBookFallback().filter(function (b) { return removedIds.indexOf(b.id) === -1; });
-      try { localStorage.setItem('maomao_reader_local_books_v1', JSON.stringify(fallback)); } catch (e) {}
-      try {
-        var savedComments = JSON.parse(localStorage.getItem('maomao_reader_comments_v1') || '[]');
-        if (Array.isArray(savedComments)) {
-          savedComments = savedComments.filter(function (c) { return removedIds.indexOf(c.bookId) === -1; });
-          localStorage.setItem('maomao_reader_comments_v1', JSON.stringify(savedComments));
+  function idbDeleteLocalBooksAndComments(removedIds) {
+    if (!removedIds.length) return Promise.resolve();
+    var idSet = new Set(removedIds.map(function (id) { return String(id); }));
+    return openReaderDb().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx;
+        try {
+          tx = db.transaction(['books', 'comments'], 'readwrite');
+          var bookStore = tx.objectStore('books');
+          var commentStore = tx.objectStore('comments');
+          removedIds.forEach(function (id) { bookStore.delete(id); });
+          var commentsRequest = commentStore.getAll();
+          commentsRequest.onsuccess = function () {
+            (commentsRequest.result || []).forEach(function (comment) {
+              if (comment && idSet.has(String(comment.bookId))) {
+                commentStore.delete(comment.id);
+              }
+            });
+          };
+          commentsRequest.onerror = function () {
+            try { tx.abort(); } catch (e) {}
+          };
+        } catch (error) {
+          if (tx) { try { tx.abort(); } catch (e) {} }
+          reject(error || new Error('本地书籍删除事务无法启动'));
+          return;
         }
-      } catch (e) {}
-      Object.keys(commentCache).forEach(function (key) {
-        if (removedIds.some(function (id) { return key.indexOf(String(id) + '|') === 0; })) delete commentCache[key];
+        tx.oncomplete = function () { resolve(); };
+        tx.onerror = function () { reject(tx.error || new Error('本地书籍删除失败')); };
+        tx.onabort = function () { reject(tx.error || new Error('本地书籍删除事务已回滚')); };
       });
-      books = books.filter(function (b) { return !b.isLocal; });
+    });
+  }
+
+  function updateLocalBookFallback(removedIds) {
+    var bookKey = 'maomao_reader_local_books_v1';
+    var commentKey = 'maomao_reader_comments_v1';
+    var before = {};
+    var after = {};
+    [bookKey, commentKey].forEach(function (key) {
+      before[key] = localStorage.getItem(key);
+      after[key] = before[key];
+    });
+    var idSet = new Set(removedIds.map(function (id) { return String(id); }));
+    if (before[bookKey] !== null) {
+      var savedBooks = JSON.parse(before[bookKey]);
+      if (!Array.isArray(savedBooks)) throw new Error('备用书籍数据格式异常，未执行清空');
+      after[bookKey] = JSON.stringify(savedBooks.filter(function (book) {
+        return !book || !idSet.has(String(book.id));
+      }));
+    }
+    if (before[commentKey] !== null) {
+      var savedComments = JSON.parse(before[commentKey]);
+      if (!Array.isArray(savedComments)) throw new Error('备用段评数据格式异常，未执行清空');
+      after[commentKey] = JSON.stringify(savedComments.filter(function (comment) {
+        return !comment || !idSet.has(String(comment.bookId));
+      }));
+    }
+    try {
+      if (after[bookKey] !== before[bookKey]) localStorage.setItem(bookKey, after[bookKey]);
+      if (after[commentKey] !== before[commentKey]) localStorage.setItem(commentKey, after[commentKey]);
+      [bookKey, commentKey].forEach(function (key) {
+        if (localStorage.getItem(key) !== after[key]) {
+          throw new Error('备用存储校验失败：' + key);
+        }
+      });
+    } catch (error) {
+      var rollbackError = null;
+      [bookKey, commentKey].forEach(function (key) {
+        try {
+          if (before[key] === null) localStorage.removeItem(key);
+          else localStorage.setItem(key, before[key]);
+        } catch (restoreError) {
+          rollbackError = restoreError;
+        }
+      });
+      if (rollbackError) {
+        throw new Error('备用存储更新失败，且自动回滚未能完全确认；请先导出备份。');
+      }
+      throw error;
+    }
+    return function rollback() {
+      var rollbackError = null;
+      [bookKey, commentKey].forEach(function (key) {
+        try {
+          if (before[key] === null) localStorage.removeItem(key);
+          else localStorage.setItem(key, before[key]);
+          if (localStorage.getItem(key) !== before[key]) {
+            throw new Error('备用存储回滚校验失败：' + key);
+          }
+        } catch (error) {
+          rollbackError = error;
+        }
+      });
+      if (rollbackError) throw new Error('备用存储自动回滚未能完全确认；请先导出备份。');
+    };
+  }
+
+  function removeLocalBooks() {
+    var removedIds = books.filter(function (book) {
+      return book && book.isLocal && book.id != null;
+    }).map(function (book) { return book.id; });
+    if (!removedIds.length) return Promise.resolve();
+
+    var rollbackFallback;
+    try {
+      rollbackFallback = updateLocalBookFallback(removedIds);
+    } catch (error) {
+      return Promise.reject(error);
+    }
+
+    return idbDeleteLocalBooksAndComments(removedIds).catch(function (error) {
+      try {
+        rollbackFallback();
+      } catch (rollbackError) {
+        throw rollbackError;
+      }
+      throw error;
+    }).then(function () {
+      Object.keys(commentCache).forEach(function (key) {
+        if (removedIds.some(function (id) {
+          return key.indexOf(String(id) + '|') === 0;
+        })) delete commentCache[key];
+      });
+      books = books.filter(function (book) {
+        return !book || !book.isLocal || removedIds.indexOf(book.id) === -1;
+      });
       renderShelf();
       renderHome();
       showToast('已清空本地书籍');
@@ -1906,11 +2012,23 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
   document.getElementById('fsUp').addEventListener('click', function () {
     if (settings.fs < 22) { settings.fs += 1; applySettings(); }
   });
+  var localBooksCleanupBusy = false;
   document.getElementById('clearRow').addEventListener('click', function () {
-    var hasLocal = books.some(function (b) { return b.isLocal; });
+    var button = this;
+    var hasLocal = books.some(function (b) { return b && b.isLocal; });
+    if (localBooksCleanupBusy) return;
     if (!hasLocal) { showToast('没有本地书籍'); return; }
     if (!confirm('清空后会移除所有导入的书籍和对应段评，示例书籍不会受影响。继续吗？')) return;
-    removeLocalBooks().catch(function () { showToast('清空失败，请稍后重试'); });
+    localBooksCleanupBusy = true;
+    button.disabled = true;
+    removeLocalBooks().then(function () {
+      localBooksCleanupBusy = false;
+      button.disabled = false;
+    }, function (error) {
+      showToast('清空失败：' + String(error && error.message || error || '请稍后重试').slice(0, 90));
+      localBooksCleanupBusy = false;
+      button.disabled = false;
+    });
   });
 
   /* ===== 数据与操作：选择本地书籍 ===== */

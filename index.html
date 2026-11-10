@@ -159,6 +159,13 @@
                   <span class="app-name">设置</span>
                   <span class="ds-del" title="移除">×</span>
                 </button>
+                <button class="app-card app-tile" type="button" data-href="tutorial/tutorial.html" data-drag="app_tutorial" data-name="教程" title="教程">
+                  <span class="app-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v19H6.5A2.5 2.5 0 0 1 4 18.5z"/><path d="M4 18.5A2.5 2.5 0 0 1 6.5 16H20M8 6h8M8 9h8M8 12h5"/></svg>
+                  </span>
+                  <span class="app-name">教程</span>
+                  <span class="ds-del" title="移除">×</span>
+                </button>
 
                 <button class="app-card app-tile" type="button" data-href="wallet/finance.html" data-drag="app_finance" data-name="记账" title="记账">
                   <span class="app-icon">
@@ -648,7 +655,7 @@
           pages: [
             ['clock-lg', 'app_inspect', 'app_worldbook', 'app_memory', 'app_forum', 'duo', 'photowall', 'app_wallet', 'app_music', 'app_beauty', 'app_theme_store'],
             ['app_characters', 'app_footprint', 'app_settings', 'app_finance', 'app_takeout', 'app_couple', 'app_growth', 'app_companion', 'app_games', 'app_cafe', 'app_live_room', 'app_poster'],
-            ['app_library', 'app_envelope', 'app_diary', 'app_novelstudio', 'app_dreamtravel', 'app_date']
+            ['app_library', 'app_envelope', 'app_diary', 'app_novelstudio', 'app_dreamtravel', 'app_date', 'app_tutorial']
           ],
           dock: ['app_chat', 'app_shop'],
           removed: ['image', 'postcard', 'polaroid', 'dialog', 'music', 'clock', 'todo', 'calendar', 'countdown', 'note', 'social', 'triple', 'ins', 'profile', 'stack']
@@ -728,6 +735,19 @@
         while (currentLayout.pages.length <= pageIndex) currentLayout.pages.push([]);
         var beautyIndex = currentLayout.pages[pageIndex].indexOf('app_beauty');
         currentLayout.pages[pageIndex].splice(beautyIndex >= 0 ? beautyIndex + 1 : currentLayout.pages[pageIndex].length, 0, id);
+        saveLayout(currentLayout);
+      })();
+
+      // 新增教程入口：为已有自定义布局补入教程图标；若用户曾主动收纳则尊重其选择。
+      (function addTutorialShortcutToExistingLayouts() {
+        var id = 'app_tutorial';
+        var exists = (currentLayout.pages || []).some(function (page) { return page.indexOf(id) !== -1; })
+          || (currentLayout.dock || []).indexOf(id) !== -1
+          || (currentLayout.removed || []).indexOf(id) !== -1;
+        if (exists) return;
+        var pageIndex = Math.max(0, (currentLayout.pages || []).length - 1);
+        while (currentLayout.pages.length <= pageIndex) currentLayout.pages.push([]);
+        currentLayout.pages[pageIndex].push(id);
         saveLayout(currentLayout);
       })();
 

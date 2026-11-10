@@ -1,0 +1,61 @@
+name: Tutorial App Regression
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tutorial/**'
+      - 'index.html'
+      - 'sw.js'
+      - 'vite.config.js'
+      - 'package.json'
+      - 'tests/tutorial-app-contract.test.mjs'
+      - 'tests/default-desktop-layout.test.mjs'
+      - 'settings/js/backup.js'
+      - 'tests/media-backup.test.mjs'
+      - '.github/workflows/tutorial-regression.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tutorial/**'
+      - 'index.html'
+      - 'sw.js'
+      - 'vite.config.js'
+      - 'package.json'
+      - 'tests/tutorial-app-contract.test.mjs'
+      - 'tests/default-desktop-layout.test.mjs'
+      - 'settings/js/backup.js'
+      - 'tests/media-backup.test.mjs'
+      - '.github/workflows/tutorial-regression.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-tutorial:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out MAOMAO
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Run tutorial contract tests
+        run: npm run test:tutorial
+      - name: Verify complete backup restore and rollback paths
+        run: npm run test:media:backup
+      - name: Verify PWA navigation and icon cache contracts
+        run: npm run test:pwa:navigation
+      - name: Verify font runtime and cache recovery contracts
+        run: npm run test:font:runtime
+      - name: Verify chat regression cache contracts
+        run: npm run test:chat:contract
+      - name: Verify desktop layout regression
+        run: npm run test:desktop:layout
+      - name: Build all MAOMAO pages
+        run: npm run build
