@@ -563,6 +563,8 @@ test('角色上下文版本事件：仅保存事件 ID、服务器递增、重�
   assert.equal(readiness.payload.cloudSchedulerLastRunAt, null);
   assert.equal(readiness.payload.cloudModelLastGeneratedAt, null);
   assert.deepEqual(readiness.payload.autonomyExecutionBlockers, [
+    'web_push_keys_not_configured',
+    'current_device_push_subscription_missing',
     'activity_executor_config_missing',
     'server_model_credentials_missing',
     'global_autonomy_not_enabled',
@@ -1756,6 +1758,7 @@ test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设
   assert.equal(readiness.payload.contextVersionTrackedRoles, 0);
   assert.equal(readiness.payload.autonomousMessageGenerationReady, false);
   assert.deepEqual(readiness.payload.autonomyExecutionBlockers, [
+    'current_device_push_subscription_missing',
     'activity_executor_config_missing',
     'server_model_credentials_missing',
     'global_autonomy_not_enabled',
