@@ -4628,6 +4628,79 @@ test('聊天 Push 失败会写入退避记录，并由后续维护重试同一�
 });
 
 
+test('Push 请求超过投递租约后，旧发送者不得确认成功或覆盖新租约', async () => {
+  const base = 1800000000000;
+  let clock = base;
+  let leaseUntil = 0;
+  let finishAt = 0;
+  let accepted = 0;
+  const keys = makeVapidKeys();
+  const subscription = await makeBrowserSubscription();
+  const candidate = {
+    subscription_id: 'subscription-lease-test',
+    outbound_message_id: 'out_push_lease_message_123456',
+    server_message_id: 'push_lease_message_123456',
+    group_id: null,
+    target_account_id: 'owner',
+    character_id: 'char-push-lease',
+    group_count: 1,
+    character_name: '角色甲',
+    created_at: base,
+    endpoint: subscription.endpoint,
+    p256dh: subscription.p256dh,
+    auth_key: subscription.auth,
+    device_id: 'device_push_lease_123456'
+  };
+  const store = {
+    listOutboundPushCandidates({ now, limit }) {
+      assert.equal(now, base);
+      assert.equal(limit, 10);
+      return [candidate];
+    },
+    claimDelivery(args) {
+      leaseUntil = args.leaseUntil;
+      return { attempt_count: 1, lease_until: args.leaseUntil };
+    },
+    isActivePushSubscription() {
+      return true;
+    },
+    finishDelivery(args) {
+      finishAt = args.now;
+      return args.now < leaseUntil ? { status: args.status } : null;
+    },
+    markPushSuccess() {
+      accepted += 1;
+    },
+    markOutboundGroupPushAccepted() {
+      accepted += 1;
+    },
+    logExecution() {}
+  };
+  const fetchImpl = async () => {
+    // Simulate a provider response arriving after the 60-second delivery lease.
+    clock = base + 60_001;
+    return new Response('', { status: 201 });
+  };
+  const result = await dispatchPendingOutboundPushes({
+    store,
+    env: {
+      VAPID_PUBLIC_KEY: keys.publicB64,
+      VAPID_PRIVATE_KEY: keys.privateB64,
+      VAPID_SUBJECT: 'mailto:test@maomao.dev'
+    },
+    now: () => clock,
+    fetchImpl,
+    limit: 10
+  });
+
+  assert.equal(leaseUntil, base + 60_000);
+  assert.ok(finishAt > leaseUntil);
+  assert.equal(result.attempted, 1);
+  assert.equal(result.sent, 0);
+  assert.equal(result.failed, 1);
+  assert.equal(accepted, 0, '过期租约不得记录 Push 已接受');
+});
+
 test('聊天 Push 面向同账号所有有效设备，排除跨账号和已撤销设备', async () => {
   const now = 1800000000000;
   const ctx = setupTestStore(openTestDb());
