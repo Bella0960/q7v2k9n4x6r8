@@ -841,7 +841,18 @@
                 return true;
             }
 
-            var completion = await cloud.completeAutonomyActivity(activity, content);
+            var notificationMessages = buildProactiveReplyMessages(content, candidate.contact, {
+                time: Date.now(),
+                source: 'cloud_autonomous'
+            });
+            if (!notificationMessages.length) {
+                await cloud.skipAutonomyActivity(activity, 'invalid_generation');
+                return true;
+            }
+            var completion = await cloud.completeAutonomyActivity(activity, content, {
+                displayName: candidate.contact.name,
+                bubbleCount: notificationMessages.length
+            });
             // The server may accept the task but skip its stale result after a
             // final gate re-check. This is a terminal decision, not a transient
             // generation failure; do not immediately requeue it.
