@@ -2593,7 +2593,7 @@ test('图片卡批量保存失败时不显示半批内容，红包转账失败�
 
 test('亲属卡独立存储成功但聊天记录失败时，不伪造聊天卡片已保存', async () => {
   const start = detail.indexOf('async function insertRoleFamilyCardInvitations(historyList, cardSpecs)');
-  const end = detail.indexOf('\n\n        window.handle', start);
+  const end = detail.indexOf('\n\n        var pendingRoleFamilyCardActions', start);
   assert.ok(start >= 0 && end > start, 'role-family invitation handler must be present');
   let createdExternalCard = false;
   let rendered = 0;
