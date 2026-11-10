@@ -3077,6 +3077,43 @@ test('亲属卡存储损坏时，所有写入口必须拒绝覆盖并保留原�
   }
 });
 
+test('亲属卡写入接口在存储正常时也拒绝无效的新数据载荷', () => {
+  let stored = '[]';
+  let writes = 0;
+  const storage = {
+    getItem: () => stored,
+    setItem: (key, value) => { writes += 1; stored = String(value); }
+  };
+  const sandbox = { window: {}, localStorage: storage };
+  runInNewContext(roleFamilyCardsSource, sandbox);
+  const api = sandbox.window.RoleFamilyCards;
+
+  const invalidPayloads = [
+    [{ id: 'same' }, { id: 'same' }],
+    [{ id: 'bad-history', history: {} }],
+    [{ id: 'bad-history-row', history: [null] }],
+    [{ id: 'bad-receipts', paymentReceipts: {} }],
+    [{ id: 'bad-receipt-row', paymentReceipts: [{ amount: 5 }] }],
+    [{ id: 'bad-limit', monthlyLimit: 'not-a-number' }],
+    [{ id: 'bad-status', status: 'unknown' }]
+  ];
+  for (const payload of invalidPayloads) {
+    assert.equal(api.writeAll(payload), false,
+      'invalid payload must be rejected before storage write: ' + JSON.stringify(payload));
+    assert.equal(stored, '[]', 'existing valid cards must remain unchanged');
+    assert.equal(writes, 0, 'invalid payload must not call localStorage.setItem');
+  }
+
+  const validLegacy = [{
+    id: 'legacy-card', roleId: 'role-1', status: 'active',
+    monthlyLimit: 100, singleLimit: 30,
+    history: [{ amount: '12.50', time: Date.now(), note: '旧记录' }]
+  }];
+  assert.equal(api.writeAll(validLegacy), true, 'valid legacy card records remain writable');
+  assert.equal(writes, 1);
+  assert.equal(api.find('legacy-card').history.length, 1);
+});
+
 test('亲属卡状态变更必须通过本地存储写后读回确认', () => {
   let stored = '[]';
   let silentlyDropWrites = false;
