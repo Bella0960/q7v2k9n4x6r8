@@ -9,6 +9,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (relativePath) => readFileSync(resolve(root, relativePath), 'utf8');
 
 const detail = read('chat/chat/chat-detail.html');
+const chatExtras = read('chat/chat/js/chat-extras.js');
 const chatNotifier = read('shared/js/chat-notifier.js');
 const navPage = read('shared/js/nav.js');
 const homePage = read('index.html');
@@ -2357,4 +2358,31 @@ test('first-contact runtime remains opt-in, one-shot and safe against a new user
   assert.match(chatNotifier, /chat_proactive_contact_enabled_at_/);
   assert.match(chatSettings, /新角色开启后也可以在合适时间发起第一条友好开场/);
   assert.match(chatSettings, /应用完全关闭时不会自行生成/);
+});
+
+
+test('bottom composer plus menu opens, closes and routes every visible feature', () => {
+  assert.match(detail, /id="plus-action-btn"/);
+  assert.match(detail, /id="plusPanelOverlay"/);
+  assert.match(chatExtras, /plusBtn\.addEventListener\('click',\s*togglePlusPanel\)/);
+  assert.match(chatExtras, /getElementById\('plusPanelBackdrop'\)\.addEventListener\('click',\s*closePlusPanel\)/);
+  assert.match(chatExtras, /panelOverlay\.querySelectorAll\('\.plus-item'\)\.forEach/);
+  assert.match(chatExtras, /handleFeature\(feat\)/);
+
+  const visibleFeatures = Array.from(detail.matchAll(/class="plus-item"\s+data-feat="([^"]+)"/g))
+    .map((match) => match[1]);
+  assert.ok(visibleFeatures.length >= 15, 'composer should retain its existing feature grid');
+  const handledByExtras = new Set(Array.from(chatExtras.matchAll(/case\s+['"]([^'"]+)['"]\s*:/g))
+    .map((match) => match[1]));
+  const handledByChatDetail = new Set(['group-poll', 'group-chain', 'live-room', 'music-app']);
+  visibleFeatures.forEach((feature) => {
+    assert.ok(
+      handledByExtras.has(feature) || handledByChatDetail.has(feature),
+      'visible composer feature must have a concrete handler: ' + feature
+    );
+  });
+  assert.match(detail, /pollAction\.addEventListener\('click'/);
+  assert.match(detail, /chainAction\.addEventListener\('click'/);
+  assert.match(detail, /data-feat="live-room"[\s\S]*?addEventListener\('click'/);
+  assert.match(detail, /data-feat="music-app"[\s\S]*?addEventListener\('click'/);
 });
