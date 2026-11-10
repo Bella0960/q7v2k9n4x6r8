@@ -1088,12 +1088,27 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const activityExecutorConfigured = readActivityExecutionConfig(env) !== null;
     const serverModelConfigured = Boolean(readAutonomyModelConfig(env));
     const contextSharing = await store.getUserContextSharing(userId);
+    const contextSharingEnabled = Boolean(contextSharing && Number(contextSharing.enabled) === 1);
     const activityQueue = await store.getActivityQueueSummary({ userId });
     const timestamp = now();
     const recentSchedulerReasons = await store.getRecentAutonomyReasonSummary({
       userId,
       since: timestamp - 86400000
     });
+    const latestCloudTick = await store.getLatestCloudAutonomyTick();
+    const cloudSchedulerLastRunAt = latestCloudTick ? Number(latestCloudTick.createdAt) : null;
+    const cloudSchedulerRuntimeVerified = Boolean(
+      latestCloudTick &&
+      ['success', 'degraded'].includes(String(latestCloudTick.status)) &&
+      Number.isSafeInteger(cloudSchedulerLastRunAt) &&
+      cloudSchedulerLastRunAt <= timestamp &&
+      timestamp - cloudSchedulerLastRunAt <= 15 * 60 * 1000
+    );
+    const cloudModelLastGeneratedAt = await store.getLatestCloudAutonomyGeneration({ userId });
+    const cloudModelGenerationVerified = Number.isSafeInteger(Number(cloudModelLastGeneratedAt)) &&
+      Number(cloudModelLastGeneratedAt) > 0 &&
+      Number(cloudModelLastGeneratedAt) <= timestamp &&
+      timestamp - Number(cloudModelLastGeneratedAt) <= 30 * 24 * 60 * 60 * 1000;
     const presenceSummary = presenceConfig
       ? await store.getPresenceSummary({
           userId,
@@ -1102,6 +1117,18 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
           graceMs: presenceConfig.graceMs
         })
       : null;
+
+    const autonomyExecutionBlockers = [
+      ...(activityExecutorConfigured ? [] : ['activity_executor_config_missing']),
+      ...(serverModelConfigured ? [] : ['server_model_credentials_missing']),
+      ...(globalAutonomy?.enabled === 1 ? [] : ['global_autonomy_not_enabled']),
+      ...(contextSharingEnabled ? [] : ['context_sharing_not_enabled']),
+      ...(contextVersionReady ? [] : ['context_version_unavailable']),
+      ...(cloudSchedulerRuntimeVerified ? [] : ['cloud_model_scheduler_runtime_not_verified']),
+      ...(cloudModelGenerationVerified ? [] : ['cloud_model_generation_not_verified'])
+    ];
+    const autonomousMessageGenerationReady = autonomyExecutionBlockers.length === 0;
+
     return ok({
       deviceAuthorized: true,
       deviceAuthConfigured: pepper.length >= 32,
@@ -1124,20 +1151,18 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       contextVersionLatestUpdatedAt: contextVersionSummary.latestUpdatedAt,
       activityExecutorAvailable: activityExecutorConfigured && serverModelConfigured,
       serverModelConfigured,
-      contextSharingEnabled: Boolean(contextSharing && Number(contextSharing.enabled) === 1),
+      contextSharingEnabled,
+      cloudSchedulerRuntimeVerified,
+      cloudSchedulerLastRunAt,
+      cloudSchedulerLastRunStatus: latestCloudTick?.status || null,
+      cloudModelGenerationVerified,
+      cloudModelLastGeneratedAt: cloudModelLastGeneratedAt || null,
       deviceLocalModelRequired: false,
-      autonomousMessageGenerationReady: false,
-      autonomyExecutionBlockers: [
-        ...(activityExecutorConfigured ? [] : ['activity_executor_config_missing']),
-        ...(serverModelConfigured ? [] : ['server_model_credentials_missing']),
-        ...(contextSharing && Number(contextSharing.enabled) === 1 ? [] : ['context_sharing_not_enabled']),
-        ...(contextVersionReady ? [] : ['context_version_unavailable']),
-        'cloud_model_scheduler_runtime_not_verified'
-      ],
-      note: '云端模型只会使用单独开启共享后上传的角色称呼、角色设定和最多 12 条文字消息；图片、语音、附件及手机 API Key 不会上传。服务端模型凭据只从 Worker Secret 读取。当前测试分支已接入服务端生成执行器与多气泡组收件箱，但尚未部署，也未完成真实模型和手机通知链路验收。'
+      autonomousMessageGenerationReady,
+      autonomyExecutionBlockers,
+      note: '云端后台任务由 Worker 定时处理，不要求小手机保持前台。只有单独开启上下文共享后，角色称呼、角色设定和最多 12 条文字消息才会同步到云端并交给服务端模型；图片、语音、附件及手机 API Key 不会上传。运行状态以最近 15 分钟调度记录为准；“主动消息生成已就绪”还要求最近 30 天内至少有一次真实模型生成并完成出站入库。设备 Web Push 与消息生成是两条独立链路。'
     });
   }
-
   async function getGlobalAutonomy(request) {
     const device = await authenticate(request);
     const row = await store.getUserAutonomy(device.user_id || OWNER_USER_ID);
