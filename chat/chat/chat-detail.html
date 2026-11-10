@@ -2918,20 +2918,80 @@
             if (wrote && _verifyHistoryRoundTrip(list)) {
                 _resetWarnCooldown('chat-save');
 
-                // After the local history round-trip succeeds, notify the cloud
-                // with a random event ID only. The history list is fingerprinted
-                // locally and is never passed into a network request.
+                // The local history has passed write/read-back verification.
+                // The cloud client checks the separate account consent before it
+                // sends any role profile or recent text; without consent it sends
+                // only the old content-free context revision event.
                 if (!isGroupChat && window.MaomaoCloud &&
                     typeof window.MaomaoCloud.noteCharacterContextChanged === 'function') {
                     try {
+                        var cloudSnapshot = (function buildBoundedCloudContextSnapshot(history) {
+                            if (!Array.isArray(history) || !currentCharacter) return null;
+                            function messageTimestamp(message) {
+                                var raw = message && (message.time != null ? message.time :
+                                    (message.timestamp != null ? message.timestamp : message.createdAt));
+                                if (typeof raw === 'number' && Number.isSafeInteger(raw) && raw > 0) return raw;
+                                if (typeof raw === 'string' && /^\\d{4}-\\d{2}-\\d{2}T/.test(raw)) {
+                                    var parsed = Date.parse(raw);
+                                    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0;
+                                }
+                                return 0;
+                            }
+                            var latestUser = null;
+                            for (var i = history.length - 1; i >= 0; i -= 1) {
+                                var candidate = history[i];
+                                if (!candidate || typeof candidate !== 'object') continue;
+                                var candidateRole = String(candidate.role || '');
+                                if (candidateRole === 'sent' || candidateRole === 'user') {
+                                    var candidateText = String(candidate.text != null ? candidate.text : (candidate.content || '')).trim();
+                                    var candidateTime = messageTimestamp(candidate);
+                                    if (candidateText && candidateTime) {
+                                        latestUser = { content: candidateText, time: candidateTime };
+                                        break;
+                                    }
+                                }
+                            }
+                            if (!latestUser) return null;
+
+                            var recent = [];
+                            for (var j = Math.max(0, history.length - 40); j < history.length; j += 1) {
+                                var item = history[j];
+                                if (!item || typeof item !== 'object') continue;
+                                var type = String(item.type || 'text').toLowerCase();
+                                if (['image', 'virtual-image', 'sticker', 'voice', 'audio', 'video', 'file',
+                                    'image-pending', 'system', 'transfer', 'red-envelope'].indexOf(type) !== -1) continue;
+                                if (item.attachments || item.image || item.file || item.audio || item.video) continue;
+                                var role = String(item.role || '');
+                                var speaker = (role === 'sent' || role === 'user') ? 'user' :
+                                    (role === 'received' || role === 'assistant' || role === 'character') ? 'assistant' : '';
+                                if (!speaker) continue;
+                                var content = String(item.text != null ? item.text : (item.content || '')).trim();
+                                if (!content) continue;
+                                recent.push({ role: speaker, content: content.slice(0, 600) });
+                            }
+                            var personaParts = [
+                                currentCharacter.persona,
+                                currentCharacter.prompt,
+                                currentCharacter.systemPrompt,
+                                currentCharacter.speechStyle,
+                                currentCharacter.relationship
+                            ].filter(function (part) { return typeof part === 'string' && part.trim(); });
+                            return {
+                                characterName: String(currentCharacter.name || currentCharacter.nickname || ''),
+                                personaText: personaParts.join('\\n').slice(0, 5000),
+                                recentMessages: recent.slice(-12),
+                                lastUserMessageAt: latestUser.time
+                            };
+                        })(list);
                         window.MaomaoCloud.noteCharacterContextChanged(
                             String(currentCharacter.id || currentRoleId || ''),
-                            list
+                            list,
+                            cloudSnapshot
                         ).catch(function (error) {
-                            console.warn('[cloud] 角色上下文版本待同步', error && error.message || error);
+                            console.warn('[cloud] 角色上下文同步待重试', error && error.message || error);
                         });
                     } catch (error) {
-                        console.warn('[cloud] 角色上下文版本待同步', error && error.message || error);
+                        console.warn('[cloud] 角色上下文同步待重试', error && error.message || error);
                     }
                 }
                 return true;
