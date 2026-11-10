@@ -6,7 +6,7 @@ import {
   base64UrlToBytes, randomToken, sha256Hex, timingSafeEqualHex
 } from './crypto.js';
 import {
-  PushConfigError, parseVapidKeys, sendWebPush
+  PushConfigError, PUSH_SEND_TIMEOUT_MS, parseVapidKeys, sendWebPush
 } from './webpush.js';
 import '../../shared/js/phone/character-schedule-policy.js';
 import { planTask, nextRetryAt } from './scheduler-policy.js';
@@ -292,6 +292,17 @@ export async function dispatchPendingOutboundPushes({
     };
   }
 
+  const deliveryLeaseMs = 60000;
+  if (deliveryLeaseMs <= PUSH_SEND_TIMEOUT_MS + 1000) {
+    return {
+      configured: false,
+      reason: 'push_timeout_exceeds_delivery_lease',
+      attempted: 0,
+      sent: 0,
+      failed: 0
+    };
+  }
+
   const candidates = store.listOutboundPushCandidates({ now: timestamp, limit });
   const summary = {
     configured: true,
@@ -306,7 +317,6 @@ export async function dispatchPendingOutboundPushes({
     retryExhausted: 0
   };
   const maxDeliveryAttempts = 5;
-  const deliveryLeaseMs = 60000;
 
   for (const candidate of candidates) {
     const deliveryTimestamp = readTimestamp();
