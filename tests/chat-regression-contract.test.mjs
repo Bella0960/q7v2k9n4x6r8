@@ -2609,6 +2609,7 @@ test('亲属卡独立存储成功但聊天记录失败时，不伪造聊天卡�
         runExclusive: (task) => Promise.resolve().then(task)
       },
       RoleFamilyCards: {
+        readState: () => ({ ok: true, reason: '', value: [] }),
         findForRole: () => [],
         createInvite: () => { createdExternalCard = true; return { id: 'family-card-1' }; }
       }
@@ -3369,14 +3370,19 @@ test('亲属卡所有状态变更与商店外卖消费共用钱包锁', async ()
   assert.ok(actionStart >= 0 && actionEnd > actionStart,
     'family card page action wrapper must be extractable');
   let lockDepth = 0;
+  let lockQueue = Promise.resolve();
   const updatedCards = [];
   const pageSandbox = {
     window: {
       MaoMaoWalletLedger: {
-        runExclusive: async (task) => {
-          lockDepth += 1;
-          try { return await task(); }
-          finally { lockDepth -= 1; }
+        runExclusive: (task) => {
+          const next = lockQueue.then(async () => {
+            lockDepth += 1;
+            try { return await task(); }
+            finally { lockDepth -= 1; }
+          });
+          lockQueue = next.catch(() => {});
+          return next;
         }
       }
     },
@@ -3688,6 +3694,7 @@ test('聊天收款入口也拒绝损坏的钱包数据，不再把余额重置�
     window, localStorage,
     loadMessages: () => JSON.parse(JSON.stringify(history)),
     ensureMid: message => message.mid,
+    saveWorkData: () => false,
     saveMessages: next => {
       writes.push('chat-history');
       history = JSON.parse(JSON.stringify(next));
