@@ -124,9 +124,9 @@ Acceptance:
 - No untracked IndexedDB database remains.
 
 ### DATA-002 — Complete backup coverage for MediaRepository
-**Priority:** P0 · **Status:** OPEN
+**Priority:** P0 · **Status:** IN PROGRESS (2026-11-11: implementation is already present on main; automated execution/restore acceptance remains NOT VERIFIED)
 
-Evidence: maomao-assets (assets/blobs/refs) is not in backup.js IDB_TARGETS at baseline.
+Evidence: current main `settings/js/backup.js` includes `maomao-assets` v2 stores `assets`, `blobs`, `refs`, and `image_records`; Blob payloads use Base64 with size limits; `atomicExport: true` excludes the entire database if any blob is skipped; `clearOnRestore: true` clears stores even when the backup store is empty. `tests/media-backup.test.mjs` contains 10 focused cases for MIME preservation, empty-store clearing, invalid Base64 handling, size-limit atomic exclusion, full four-store round trip, and reference integrity. The test file exists but its execution has not been verified in this environment.
 
 Acceptance:
 - Export includes metadata, Blob payloads, references, and integrity hashes.
