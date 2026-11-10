@@ -1665,6 +1665,9 @@
             '云端执行器：' + (ready.activityExecutorAvailable ? '已接入' : '尚未接入，任务不会被实际执行'),
             '服务端模型凭据：' + (ready.serverModelConfigured ? '已配置' : '未配置'),
             '角色上下文共享：' + (ready.contextSharingEnabled ? '已开启' : '默认关闭'),
+            '云端定时调度：' + (ready.cloudSchedulerRuntimeVerified ? '最近 15 分钟内有成功运行记录' : '最近 15 分钟内没有成功运行记录'),
+            '最近一次云端调度：' + (ready.cloudSchedulerLastRunAt ? new Date(ready.cloudSchedulerLastRunAt).toLocaleString() + '（' + String(ready.cloudSchedulerLastRunStatus || '未知') + '）' : '暂无记录'),
+            '真实模型生成验收：' + (ready.cloudModelGenerationVerified ? '最近 30 天内有成功出站记录' : '最近 30 天内没有成功生成记录'),
             '最近 24 小时调度阻塞原因：' + (Array.isArray(ready.recentSchedulerReasons) && ready.recentSchedulerReasons.length
               ? ready.recentSchedulerReasons.map(function (item) {
                   var labels = {
