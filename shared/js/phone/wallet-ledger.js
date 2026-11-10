@@ -117,15 +117,19 @@
   function cancelPendingCheckout(transactionId) {
     transactionId = String(transactionId || '');
     if (!transactionId) return false;
-    var rows = readPendingCheckouts();
+    // Read the complete ledger, not only pending rows. Completed transaction
+    // receipts must survive cancellation of an unrelated unfinished checkout.
+    var rows = readStoredCheckouts();
     if (!rows) return false;
+    var target = rows.find(function (item) { return item.id === transactionId; });
+    if (!target) return true;
+    // A committed checkout is immutable through the cancellation path.
+    if (target.status !== 'pending') return false;
     var next = rows.filter(function (item) { return item.id !== transactionId; });
-    if (next.length === rows.length) return true;
     if (!writePendingCheckouts(next)) return false;
-    var verified = readPendingCheckouts();
+    var verified = readStoredCheckouts();
     return !!verified && !verified.some(function (item) { return item.id === transactionId; });
   }
-
   function getPendingCheckout(channel) {
     channel = String(channel || '').trim().slice(0, 32);
     if (!channel) return null;
