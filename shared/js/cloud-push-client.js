@@ -1699,6 +1699,23 @@
               : '暂无记录'),
             '角色聊天版本计数：' + (ready.contextVersionReady ? '已有记录' : '尚未记录'),
             '已跟踪角色数：' + Number(ready.contextVersionTrackedRoles || 0),
+            '主动联系/推送未完成项：' + (Array.isArray(ready.autonomyExecutionBlockers) && ready.autonomyExecutionBlockers.length
+              ? ready.autonomyExecutionBlockers.map(function (reason) {
+                  var labels = {
+                    web_push_keys_not_configured: '未配置 Web Push 密钥',
+                    current_device_push_subscription_missing: '当前设备没有有效推送订阅',
+                    activity_executor_config_missing: '云端活动执行参数缺失',
+                    server_model_credentials_missing: '未配置服务端模型凭据',
+                    global_autonomy_not_enabled: '账号级主动联系总开关未开启',
+                    context_sharing_not_enabled: '尚未同意云端上下文共享',
+                    context_version_unavailable: '尚无可信聊天上下文版本',
+                    cloud_model_scheduler_runtime_not_verified: '最近 15 分钟没有成功的云端调度记录',
+                    cloud_model_generation_not_verified: '最近 30 天没有成功的模型出站入库记录',
+                    cloud_push_provider_acceptance_not_verified: '当前设备最近 30 天没有 Web Push 服务端成功接受回执'
+                  };
+                  return labels[reason] || reason;
+                }).join('；')
+              : '暂无'),
             'AI 主动消息生成：' + (ready.autonomousMessageGenerationReady ? '已就绪' : '未就绪'),
             '',
             ready.note || '此检查只读取配置与匿名队列汇总，不会发送通知。'
