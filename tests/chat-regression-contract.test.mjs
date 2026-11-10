@@ -3967,6 +3967,38 @@ test('账本财务记录损坏时拒绝显示为空并阻止覆盖，正常写�
     assert.equal(values.get('finance_records'), raw);
   }
 
+  // Old finance rows without IDs must retain the same generated ID through a
+  // locked mutation so the AI annotation path can still update that legacy row.
+  const legacyValues = new Map([['finance_records', JSON.stringify([{
+    amount: 6, type: 'expense', category: '餐饮', note: '旧记录', time: '11月10日'
+  }])]]);
+  const legacyLocalStorage = {
+    getItem: key => legacyValues.has(key) ? legacyValues.get(key) : null,
+    setItem: (key, value) => { legacyValues.set(key, String(value)); }
+  };
+  const legacyWindow = {
+    navigator: { locks: { request: (_name, _options, callback) => Promise.resolve().then(callback) } },
+    localStorage: legacyLocalStorage
+  };
+  runInNewContext(walletLedgerSource, { window: legacyWindow });
+  const legacySandbox = {
+    window: legacyWindow, localStorage: legacyLocalStorage,
+    console: { warn: () => {} }, showToast: () => {}
+  };
+  runInNewContext(helperSource, legacySandbox);
+  const legacyRow = legacySandbox.loadRecords()[0];
+  assert.ok(legacyRow.id.startsWith('f_legacy_'));
+  const legacyUpdate = await legacySandbox.mutateFinanceRecords(list => {
+    const target = list.find(row => row.id === legacyRow.id);
+    assert.ok(target, 'the legacy finance row must be found after lock re-read');
+    target.charComments = [{ id: 'legacy-comment', text: '仍能批注' }];
+    return true;
+  });
+  assert.equal(legacyUpdate.ok, true);
+  const legacyPersisted = JSON.parse(legacyValues.get('finance_records'))[0];
+  assert.equal(legacyPersisted.id, legacyRow.id);
+  assert.equal(legacyPersisted.charComments[0].text, '仍能批注');
+
   const values = new Map();
   const writes = [];
   const localStorage = {
