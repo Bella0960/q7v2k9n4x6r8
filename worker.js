@@ -117,11 +117,12 @@ export class CloudDatabase {
       });
     }
     if (url.pathname === '/internal/tick' && request.method === 'POST') {
-      const timestamp = Date.now();
       const result = await runCloudModelTick({
         store: this.store,
         env: this.env,
-        now: timestamp,
+        // Pass the clock, not a Cron-start snapshot: the model call may
+        // outlive its lease and the executor must recheck real wall time.
+        now: Date.now,
         fetchImpl: fetch
       });
       let pushDispatch;
