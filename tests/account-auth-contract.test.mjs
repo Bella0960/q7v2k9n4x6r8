@@ -206,6 +206,14 @@ test('账号安全操作共享忙碌锁，并恢复按钮原始禁用状态', ()
     '操作结束不能无条件重新启用所有按钮');
 });
 
+const accountAuthSource = readFileSync(new URL('../worker/lib/account-auth.js', import.meta.url), 'utf8');
+const passwordIterations = Number(/const PASSWORD_ITERATIONS = (\\d+);/.exec(accountAuthSource)?.[1] || NaN);
+
+test('Cloudflare Workers PBKDF2 stays within the WebCrypto iteration limit', () => {
+  assert.ok(Number.isInteger(passwordIterations) && passwordIterations <= 100000,
+    'Cloudflare Workers rejects PBKDF2 iteration counts above 100,000');
+});
+
 const BOOTSTRAP_SECRET = 'test-mao-super-admin-bootstrap-secret-32-characters';
 
 function cookieFrom(response) {
