@@ -4373,6 +4373,31 @@ test('本机主动消息完成后会立即发送不含正文的角色聊天 Push
   assert.equal(repeated.payload.alreadyCompleted, true);
   assert.equal(repeated.payload.pushDispatch.sent, 0);
   assert.equal(pushFetch.calls.length, 1, '重复完成请求不得重复推送');
+
+  const invalidBatch = await ctx.asJson('/api/autonomy/activities/' + activity.id + '/complete', {
+    method: 'POST',
+    device,
+    body: {
+      attemptCount: activity.attemptCount,
+      text: proactiveMessage,
+      bubbles: ['与正文不匹配的第一条。', '与正文不匹配的第二条。'],
+      displayName: '林深'
+    }
+  });
+  assert.equal(invalidBatch.status, 400, '气泡数组与原文边界不一致时必须拒绝');
+  assert.equal(invalidBatch.payload.error.code, 'INVALID_ACTIVITY_RESULT');
+  assert.equal(pushFetch.calls.length, 1, '无效气泡批次不能触发第二条系统通知');
+
+  const safeLabelNotification = buildOutboundPushPayload({
+    characterId: 'char-push',
+    serverMessageId,
+    timestamp: now,
+    characterName: '林深' + String.fromCharCode(0, 10),
+    bubbleCount: 9
+  });
+  assert.equal(safeLabelNotification.title, '林深 给你发来消息');
+  assert.match(safeLabelNotification.body, /一条新消息/);
+  assert.equal(safeLabelNotification.body.includes('我刚刚想到'), false);
 });
 
 test('聊天 Push 失败会写入退避记录，并由后续维护重试同一条通知', async () => {
