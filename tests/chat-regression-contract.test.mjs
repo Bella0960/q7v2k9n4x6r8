@@ -66,7 +66,7 @@ const followUpPolicyWindow = {};
 runInNewContext(followUpPolicySource, { window: followUpPolicyWindow, globalThis: followUpPolicyWindow });
 const followUpPolicy = followUpPolicyWindow.ChatFollowUpPolicy;
 
-const presencePolicySource = read('shared/js/phone/chat-presence-policy.js');
+
 const presencePolicyWindow = {};
 runInNewContext(presencePolicySource, { window: presencePolicyWindow });
 const presencePolicy = presencePolicyWindow.ChatPresencePolicy;
