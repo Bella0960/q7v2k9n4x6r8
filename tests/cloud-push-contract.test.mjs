@@ -1667,6 +1667,15 @@ test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设
     now: base
   });
   ctx.store.logExecution({
+    id: 'readiness-own-cloud-reason',
+    deviceId: device.deviceId,
+    kind: 'autonomy_cloud_tick',
+    status: 'deferred',
+    reasonCode: 'foreground_lease_held',
+    detail: {},
+    now: base + 1
+  });
+  ctx.store.logExecution({
     id: 'readiness-own-success',
     deviceId: device.deviceId,
     kind: 'autonomy_tick',
@@ -1691,6 +1700,15 @@ test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设
     status: 'deferred',
     reasonCode: 'another_users_reason',
     detail: { taskId: 'another-private-task-id' },
+    now: base
+  });
+  ctx.store.logExecution({
+    id: 'readiness-other-cloud-reason',
+    deviceId: otherDevice.deviceId,
+    kind: 'autonomy_cloud_tick',
+    status: 'deferred',
+    reasonCode: 'other_cloud_reason',
+    detail: {},
     now: base
   });
 
@@ -1769,7 +1787,8 @@ test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设
     'cloud_push_provider_acceptance_not_verified'
   ]);
   assert.deepEqual(readiness.payload.recentSchedulerReasons, [
-    { reasonCode: 'context_version_unavailable', count: 1 }
+    { reasonCode: 'context_version_unavailable', count: 1 },
+    { reasonCode: 'foreground_lease_held', count: 1 }
   ]);
   assert.equal(readiness.payload.schedulerDiagnosticsWindowMs, 86400000);
   const readinessJson = JSON.stringify(readiness.payload);
@@ -1779,6 +1798,7 @@ test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设
   assert.equal(readinessJson.includes('another-private-character'), false);
   assert.equal(readinessJson.includes('other-user-private-payload'), false);
   assert.equal(readinessJson.includes('another_users_reason'), false);
+  assert.equal(readinessJson.includes('other_cloud_reason'), false);
   assert.equal(readinessJson.includes('private-task-id'), false);
   assert.deepEqual(ctx.store.getActivityQueueSummary({ userId: 'another-user' }), {
     total: 1, waiting: 1, retry: 0, running: 0,
@@ -1787,7 +1807,10 @@ test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设
   assert.deepEqual(ctx.store.getRecentAutonomyReasonSummary({
     userId: 'another-user',
     since: base - 86400000
-  }), [{ reasonCode: 'another_users_reason', count: 1 }]);
+  }), [
+    { reasonCode: 'another_users_reason', count: 1 },
+    { reasonCode: 'other_cloud_reason', count: 1 }
+  ]);
 
   const anonymous = await ctx.asJson('/api/autonomy/readiness');
   assert.equal(anonymous.status, 401);
