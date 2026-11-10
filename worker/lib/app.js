@@ -1676,11 +1676,22 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     } catch (error) {
       // Keep claiming other eligible work even if one staged outbox needs repair.
     }
-    const tasks = await store.listDueActivitiesForUser({
+    const tasks = (await store.listDueActivitiesForUser({
       userId,
       characterId,
       now: timestamp,
       limit: Math.min(config.tickLimit, 20)
+    })).filter(task => {
+      // Cloud-owned contact tasks must never be claimed by a foreground
+      // phone executor; only the Worker model scheduler can execute them.
+      try {
+        const payload = JSON.parse(String(task.payload_json || '{}'));
+        return payload.executionMode !== 'cloud';
+      } catch {
+        // Preserve the existing device-side validation/failure path for
+        // malformed legacy payloads rather than silently hiding them.
+        return true;
+      }
     });
 
     let blockedReason = 'no_due_activity';
