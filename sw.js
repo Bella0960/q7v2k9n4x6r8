@@ -57,6 +57,7 @@ const APP_SHELL = [
   './chat/date/date.html',
   './chat/date/journey.html',
   './chat/chat/chat-detail.html',
+  './chat/chat/chat-settings.html',
   './chat/chat/js/chat-extras.js?t=20261107imagevision1',
   './worldbook/characters/characters.html',
   './worldbook/characters/js/characters-manager.js?v=20261107v11',
