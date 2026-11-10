@@ -174,7 +174,10 @@ test('creator account detail supports copying permanent IDs and prevents stale a
   const adminCss = readFileSync(new URL('../admin/admin-center.css', import.meta.url), 'utf8');
 
   assert.match(adminHtml, /id="copyDetailId"/);
-  assert.match(adminScript, /navigator\.clipboard\?\.writeText\(value\)/);
+  assert.match(adminScript, /if \(!navigator\\.clipboard\\?\\.writeText\) throw new Error\('Clipboard API unavailable'\)/,
+    'clipboard access must be capability-checked before copying');
+  assert.match(adminScript, /await navigator\\.clipboard\\.writeText\(value\)/,
+    'the confirmed permanent ID must be copied when Clipboard API is available');
   assert.match(adminScript, /range\.selectNodeContents\(\$\('detailId'\)\)/,
     'manual selection must remain possible when clipboard access is unavailable');
   assert.match(adminScript, /const result = await api\('\/api\/admin\/accounts\/'[\s\S]*if \(selectedAccountId !== accountId\) return;[\s\S]*list\.replaceChildren\(\)/,
