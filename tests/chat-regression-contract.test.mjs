@@ -1314,8 +1314,8 @@ test('chat presence policy derives a bounded pause from the previous bubble leng
 });
 
 test('chat detail stages multi-bubble replies and preserves the existing stream path', () => {
-  assert.match(detail, /async function appendAiMessageWithPacing\(msg, idx\)/);
-  assert.match(detail, /async function appendReplyMessagesWithPacing\(messages, startIdx\)/);
+  assert.match(detail, /function appendAiMessageWithPacing\(msg, idx, options\)/);
+  assert.match(detail, /function appendReplyMessagesWithPacing\(messages, startIdx, options\)/);
   assert.match(detail, /await appendReplyMessagesWithPacing\(replyMessages, aiMessageIndex\)/);
   assert.match(detail, /chatMessages\.appendChild\(node\)/);
   assert.match(detail, /\+\+aiBubblePacingRunId/);
