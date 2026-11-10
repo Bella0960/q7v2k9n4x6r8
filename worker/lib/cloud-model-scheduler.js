@@ -272,6 +272,8 @@ export async function runCloudModelTick({
       attemptCount,
       now: timestamp,
       groupId,
+      contextVersion,
+      sourceDeviceId: snapshot.source_device_id,
       messages
     });
     if (!completed || completed.completed !== true) {
