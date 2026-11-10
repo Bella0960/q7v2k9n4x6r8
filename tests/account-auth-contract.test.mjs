@@ -2778,6 +2778,15 @@ test('设备在写入期间被撤销后，不能重新写入 presence、lease �
     AUTONOMY_DEVICE_LEASE_MS: '120000',
     AUTONOMY_DEVICE_GRACE_MS: '30000'
   });
+  const deviceMutationTrace = [];
+  const originalStoreExec = ctx.store.exec.bind(ctx.store);
+  ctx.store.exec = (sql, ...params) => {
+    const result = originalStoreExec(sql, ...params);
+    if (/UPDATE\\s+devices/i.test(String(sql)) && /revoked_at/i.test(String(sql))) {
+      deviceMutationTrace.push({ sql: String(sql), params });
+    }
+    return result;
+  };
   const admin = await ctx.fetchTo('/api/admin/bootstrap', {
     method: 'POST',
     body: {
@@ -2820,6 +2829,8 @@ test('设备在写入期间被撤销后，不能重新写入 presence、lease �
   };
 
   const heartbeatDevice = await registerDevice('device_presence_race01');
+  assert.equal(deviceMutationTrace.length, 0,
+    '新设备登记时不应自动写入 revoked_at：' + JSON.stringify(deviceMutationTrace));
   const originalPresence = ctx.store.upsertDevicePresence.bind(ctx.store);
   ctx.store.upsertDevicePresence = options => {
     revokeAtWrite(heartbeatDevice);
@@ -2903,6 +2914,15 @@ test('设备撤销并发时，不能新增上下文版本事件或排队自主�
     AUTONOMY_TICK_LIMIT: '5',
     AUTONOMY_RETRY_BACKOFF_MS: '1000,5000'
   });
+  const deviceMutationTrace = [];
+  const originalStoreExec = ctx.store.exec.bind(ctx.store);
+  ctx.store.exec = (sql, ...params) => {
+    const result = originalStoreExec(sql, ...params);
+    if (/UPDATE\\s+devices/i.test(String(sql)) && /revoked_at/i.test(String(sql))) {
+      deviceMutationTrace.push({ sql: String(sql), params });
+    }
+    return result;
+  };
   const admin = await ctx.fetchTo('/api/admin/bootstrap', {
     method: 'POST',
     body: {
@@ -2928,6 +2948,8 @@ test('设备撤销并发时，不能新增上下文版本事件或排队自主�
   };
 
   const contextDevice = await registerDevice('device_context_race_01');
+  assert.equal(deviceMutationTrace.length, 0,
+    '新设备登记时不应自动写入 revoked_at：' + JSON.stringify(deviceMutationTrace));
   const characterId = 'role_context_revoke_race';
   const originalRecord = ctx.store.recordCharacterContextEvent.bind(ctx.store);
   ctx.store.recordCharacterContextEvent = options => {
