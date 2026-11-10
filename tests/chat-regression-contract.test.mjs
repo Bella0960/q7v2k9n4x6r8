@@ -1871,6 +1871,18 @@ test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat
   assert.match(chatNotifier, /startProactiveScheduler\(\)/);
   assert.match(chatNotifier, /executeCloudProactiveCandidate/);
   assert.ok(chatNotifier.includes('cleanProactiveMessage(result.data)'));
+  assert.match(chatNotifier, /function buildProactiveReplyMessages\(content, contact, options\)/,
+    'local and cloud proactive contact must share the role-level per-bubble message builder');
+  assert.match(chatNotifier, /Object\.prototype\.hasOwnProperty\.call\(c, 'replyBubbleMode'\)/,
+    'role-level bubble mode must be copied only when explicitly configured, preserving legacy roles');
+  assert.match(chatNotifier, /buildReplyMessages\(content, mode,/,
+    'proactive contact must use the same message policy as ordinary AI replies');
+  assert.match(chatNotifier, /freshHistory\.push\.apply\(freshHistory, proactiveMessages\)/,
+    'each proactive bubble must be persisted as its own message');
+  assert.match(chatNotifier, /messages\[messages\.length - 1\]\.serverMessageId = serverMessageId/,
+    'the server outbound receipt must attach to the final bubble so read acknowledgement remains intact');
+  assert.match(chatNotifier, /chat-message-policy\.js\?v=20261029v5/,
+    'the home-page proactive scheduler must load the shared bubble identity policy');
   assert.match(chatNotifier, /buildVoiceHabitProfile\(\s*candidate\.history/);
   assert.match(chatNotifier, /chat_voice_habits_v1_/);
   assert.match(chatNotifier, /normalizeProactiveBubbles === 'function'/);
