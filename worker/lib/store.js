@@ -2514,6 +2514,30 @@ class CloudStore {
     }));
   }
 
+  getRecentPushReasonSummary({ userId = 'owner', deviceId, since } = {}) {
+    const safeDeviceId = requireStoreString(deviceId, 'push.deviceId');
+    const windowStart = Number(since);
+    if (!Number.isSafeInteger(windowStart) || windowStart < 0) return [];
+    return this.exec(
+      `SELECT e.reason_code, COUNT(*) AS total
+       FROM execution_log e
+       INNER JOIN devices d ON d.id = e.device_id
+       WHERE d.user_id = ? AND d.id = ?
+         AND e.kind = 'outbound_push'
+         AND e.status IN ('retry', 'failed', 'skipped')
+         AND e.created_at >= ?
+       GROUP BY e.reason_code
+       ORDER BY total DESC, e.reason_code ASC
+       LIMIT 12`,
+      userId,
+      safeDeviceId,
+      windowStart
+    ).map(row => ({
+      reasonCode: String(row.reason_code || ''),
+      count: Number(row.total || 0)
+    }));
+  }
+
   /**
    * The tick row is content-free and global to this Worker deployment.
    * It lets readiness distinguish "configured" from "Cron has actually run".
