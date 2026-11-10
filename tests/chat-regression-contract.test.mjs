@@ -2293,3 +2293,15 @@ test('AI replies can choose one role-favorite sticker without leaking machine ma
   assert.ok(serviceWorker.includes('role-sticker-library.js?v=20261107v2'));
   assert.ok(serviceWorker.includes('phone-app-pwa-v198'));
 });
+
+
+test('AI replies can send only images from the active role gallery and keep media references safe', () => {
+  assert.ok(detail.includes('role-gallery-image-autonomy.js?v=20261111v1'));
+  assert.match(detail, /RoleGalleryImageAutonomy\\.prepare\\(roleGalleryCharacterId\\)/);
+  assert.match(detail, /RoleGalleryImageAutonomy\\.extractMarkers\\(fullText, roleGalleryCatalogue\\)/);
+  assert.match(detail, /RoleGalleryImageAutonomy\\.createMessages\\([\\s\\S]*?parsedRoleGallery\\.attachments/);
+  assert.match(detail, /RoleGalleryImageAutonomy\\.releaseReferences\\(aiRoleGalleryMessages\\)/);
+  assert.match(detail, /aiRoleGalleryMessages\\.forEach\\(function \\(galleryMessage\\)/);
+  assert.ok(serviceWorker.includes('role-gallery-image-autonomy.js?v=20261111v1'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v199'));
+});

@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v198';
+const CACHE_NAME = 'phone-app-pwa-v199';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 // v196 release: sweep orphaned role-owned media refs during avatar cleanup.
 const APP_SHELL = [
@@ -100,6 +100,7 @@ const APP_SHELL = [
   './shared/js/phone/role-avatar-library.js?v=20261107v14',
   'shared/js/phone/phone_api.js?v=20261106v1',
   'shared/js/phone/image-generation.js?v=20261106v1',
+  './shared/js/phone/role-gallery-image-autonomy.js?v=20261111v1',
   'desktop/js/script.js',
   'shared/js/statusbar-control.js',
   'shared/js/nav.js',
