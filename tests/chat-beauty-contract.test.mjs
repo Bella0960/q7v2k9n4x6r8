@@ -96,21 +96,18 @@ test('global presets apply to list and detail; role presets apply only to matchi
   assert.equal(groupStyle.textContent, presets[0].css);
 });
 
-test('legacy composer CSS is scoped to the default theme only', () => {
-  const first = styleContent('maomao-chatgpt-inspired-composer');
-  const second = styleContent('maomao-composer-position-correction');
-  const composer = first + '\n' + second;
-  const prefix = '.phone-mockup[data-chat-theme-preset="default"] ';
-  assert.ok(composer.includes(prefix + '.input-dock'));
-  assert.ok(composer.includes(prefix + '.input-capsule'));
-  assert.ok(composer.includes(prefix + '.plus-action-btn'));
-  assert.ok(composer.includes(prefix + '.send-icon-btn'));
-  assert.ok(!composer.includes('\n.input-dock {'));
-  assert.ok(!composer.includes('\n.input-capsule {'));
+test('default chat layout stays theme-scoped and custom CSS is loaded last', () => {
+  const layout = styleContent('maomao-chat-detail-layout-v1');
+  const prefix = ':where(.phone-mockup[data-chat-theme-preset="default"]) ';
+  assert.ok(layout.includes(prefix + '.input-dock'));
+  assert.ok(layout.includes(prefix + '.input-capsule'));
+  assert.ok(layout.includes(prefix + '.plus-action-btn'));
+  assert.ok(!detail.includes('maomao-chatgpt-inspired-composer'));
+  assert.ok(!detail.includes('maomao-composer-position-correction'));
   assert.ok(!detail.includes('iMessage 全透明磨砂玻璃主题 - 强制覆盖层'));
   assert.ok(!detail.includes('最终强制：底部透明'));
+  assert.ok(customCssLoader.includes('(document.body || document.head || document.documentElement).appendChild(style)'));
 });
-
 test('there is one native form submit send control, not a cloned floating button', () => {
   assert.equal(detail.split('id="myFloatSend"').length - 1, 1);
   assert.ok(detail.includes('<button class="send-icon-btn disabled" id="myFloatSend" type="submit"'));
