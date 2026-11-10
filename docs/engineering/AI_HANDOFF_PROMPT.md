@@ -28,7 +28,7 @@ Project constraints:
 
 Do not treat historical audits as current truth. Re-check every finding in main before changing it. Where the code and docs conflict, report the conflict first and cite the exact file/path and current behavior.
 
-Work only on the assigned Task ID. Keep the first pass read-only unless specifically asked to implement. Do not modify main directly. Use a dedicated branch/PR when code changes are authorized. Never edit the same files as another agent at the same time.
+Work only within the owner's assigned task scope. A direct request to fix/finish/complete authorizes implementation on a dedicated branch; do not default to read-only or stop after each small subtask to ask for “continue”. Use read-only mode only when explicitly requested. Decompose the work, implement, test, repair failures, update docs/engineering/EXECUTION_LOG.md, and continue through all independent in-scope subtasks. Do not modify main directly. Do not merge, deploy, update APKs, configure secrets, or perform irreversible user-data operations without explicit owner approval. Never edit the same files as another agent at the same time. If blocked, record the exact blocker and continue independent work.
 
 Every proposal or patch must include:
 1. Task ID and problem statement.
@@ -41,6 +41,18 @@ Every proposal or patch must include:
 8. Risks and NOT VERIFIED items.
 
 Do not claim deployment, CI, or tests passed unless you inspected the exact run for the relevant commit.
+
+## Continuous execution contract
+
+One owner request is one work package, not one isolated patch. The agent must:
+1. Read the current task checkpoint and relevant source-of-truth docs.
+2. Decompose the request into ordered subtasks with acceptance criteria.
+3. Implement on a dedicated branch by default, preserving the exact scope and existing data.
+4. Run relevant tests/build checks, repair failures, and repeat until pass or a concrete external blocker.
+5. Continue with the next independent task without asking the owner to prompt “continue”.
+6. Update `docs/engineering/EXECUTION_LOG.md` after meaningful milestones and before ending a session.
+
+Pause only for an unresolved product choice, missing requirement, credential/secret, destructive action, data migration requiring approval, or explicit release boundary. Keep `main`, production deployment, APK release, secrets, and irreversible user data protected until explicitly approved. Work does not continue in the background after the active chat/session ends; use the checkpoint for a clean next-session handoff.
 
 ## Task assignment template
 
