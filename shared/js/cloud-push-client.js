@@ -345,9 +345,11 @@
       }
       keys.forEach(function (key) { localStorage.removeItem(key); });
     } catch (error) {}
-    if (prefix === CONTEXT_SNAPSHOT_PENDING_PREFIX) {
-      Object.keys(localContextPendingEvents).forEach(function (key) {
-        if (key.indexOf(prefix) === 0) delete localContextPendingEvents[key];
+    if (prefix === CONTEXT_SNAPSHOT_PENDING_PREFIX || prefix === CONTEXT_FINGERPRINT_PREFIX) {
+      var cache = prefix === CONTEXT_FINGERPRINT_PREFIX
+        ? localContextFingerprints : localContextPendingEvents;
+      Object.keys(cache).forEach(function (key) {
+        if (key.indexOf(prefix) === 0) delete cache[key];
       });
     }
   }
@@ -1267,6 +1269,20 @@
       subscribed = Boolean(await registration.pushManager.getSubscription());
     }
     setToggle(subscribed);
+    var contextSharingToggle = document.getElementById('cloudContextSharingToggle');
+    if (contextSharingToggle) {
+      contextSharingToggle.disabled = true;
+      contextSharingToggle.checked = false;
+      if (readDevice()) {
+        try {
+          var contextSharing = await getContextSharing();
+          contextSharingToggle.checked = Boolean(contextSharing.enabled);
+          contextSharingToggle.disabled = false;
+        } catch (error) {
+          // Sharing remains disabled when its server state cannot be verified.
+        }
+      }
+    }
     var autonomyToggle = document.getElementById('cloudAutonomyToggle');
     if (autonomyToggle) {
       autonomyToggle.disabled = true;
@@ -1290,6 +1306,7 @@
     var testRow = document.getElementById('cloudTestRow');
     var readinessRow = document.getElementById('cloudReadinessCheck');
     var readinessResult = document.getElementById('cloudReadinessResult');
+    var contextSharingToggle = document.getElementById('cloudContextSharingToggle');
     var revokeRow = document.getElementById('cloudRevokeRow');
     var pairCreateRow = document.getElementById('cloudPairCreateRow');
     var pairCodeInput = document.getElementById('cloudPairCodeInput');
@@ -1310,7 +1327,7 @@
     var roleAway = document.getElementById('cloudRoleAway');
     var roleScheduleSave = document.getElementById('cloudRoleScheduleSave');
     if (!toggle && !testRow && !readinessRow && !revokeRow && !pairCreateRow && !pairConnectButton &&
-        !autonomyToggle && !roleSelect && !roleAutonomySave && !roleScheduleSave) return;
+        !autonomyToggle && !contextSharingToggle && !roleSelect && !roleAutonomySave && !roleScheduleSave) return;
 
     function localCharacters() {
       try {
@@ -1430,6 +1447,25 @@
           setStatusText('保存授权失败：' + (error.message || '未知错误'));
         } finally {
           autonomyToggle.disabled = false;
+        }
+      });
+    }
+
+    if (contextSharingToggle) {
+      contextSharingToggle.addEventListener('change', async function () {
+        var desired = contextSharingToggle.checked;
+        contextSharingToggle.disabled = true;
+        setStatusText(desired ? '正在开启上下文共享…' : '正在关闭并删除云端上下文…');
+        try {
+          await setContextSharing(desired);
+          setStatusText(desired
+            ? '上下文共享已开启；从下一次成功保存聊天记录开始同步有限文字'
+            : '上下文共享已关闭，云端角色快照已删除');
+        } catch (error) {
+          contextSharingToggle.checked = !desired;
+          setStatusText('保存上下文共享设置失败：' + (error.message || '未知错误'));
+        } finally {
+          contextSharingToggle.disabled = false;
         }
       });
     }
@@ -1560,6 +1596,8 @@
               ' / 已作废 ' + Number(ready.activityQueue && ready.activityQueue.superseded || 0) +
               ' / 其他 ' + Number(ready.activityQueue && ready.activityQueue.other || 0) + '）',
             '云端执行器：' + (ready.activityExecutorAvailable ? '已接入' : '尚未接入，任务不会被实际执行'),
+            '服务端模型凭据：' + (ready.serverModelConfigured ? '已配置' : '未配置'),
+            '角色上下文共享：' + (ready.contextSharingEnabled ? '已开启' : '默认关闭'),
             '最近 24 小时调度阻塞原因：' + (Array.isArray(ready.recentSchedulerReasons) && ready.recentSchedulerReasons.length
               ? ready.recentSchedulerReasons.map(function (item) {
                   var labels = {
