@@ -979,6 +979,151 @@ class CloudStore {
     )[0] || null;
   }
 
+  getUserContextSharing(userId) {
+    return this.exec(
+      'SELECT user_id, enabled, updated_at, updated_by_device_id FROM user_context_sharing WHERE user_id = ?',
+      userId
+    )[0] || null;
+  }
+
+  setUserContextSharing({ userId, enabled, deviceId, now }) {
+    if (!this.isActiveAccountDevice(userId, deviceId)) return null;
+    const value = enabled === true ? 1 : 0;
+    return this.transaction(() => {
+      this.exec(
+        `INSERT INTO user_context_sharing (user_id, enabled, updated_at, updated_by_device_id)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(user_id) DO UPDATE SET
+           enabled = excluded.enabled,
+           updated_at = excluded.updated_at,
+           updated_by_device_id = excluded.updated_by_device_id`,
+        userId, value, now, deviceId
+      );
+      if (value === 0) {
+        this.exec('DELETE FROM character_context_snapshots WHERE user_id = ?', userId);
+        this.exec(
+          `UPDATE activity_queue
+           SET status = 'superseded', locked_by = NULL, locked_until = NULL,
+               next_attempt_at = NULL, updated_at = ?
+           WHERE status IN ('waiting', 'retry') AND kind = 'contact'
+             AND device_id IN (SELECT id FROM devices WHERE user_id = ?)`,
+          now, userId
+        );
+      }
+      return this.getUserContextSharing(userId);
+    });
+  }
+
+  recordCharacterContextSnapshot({
+    userId, characterId, eventId, deviceId, characterName = '',
+    personaText = '', recentMessages = [], lastUserMessageAt, now,
+    eventLimit = 600, windowStart = Number(now) - 3600000
+  }) {
+    if (!this.isActiveAccountDevice(userId, deviceId)) return { revoked: true, saved: false };
+    const sharing = this.getUserContextSharing(userId);
+    if (!sharing || Number(sharing.enabled) !== 1) return { disabled: true, saved: false };
+    const messagesJson = serializeStoreJson(recentMessages, 7000, 'context.recentMessages');
+    const normalizedName = String(characterName || '');
+    const normalizedPersona = String(personaText || '');
+    const normalizedLastUserAt = Number(lastUserMessageAt);
+
+    return this.transaction(() => {
+      const existingEvent = this.exec(
+        `SELECT event_id, context_version FROM character_context_events
+         WHERE user_id = ? AND character_id = ? AND event_id = ?`,
+        userId, characterId, eventId
+      )[0] || null;
+      let contextVersion = existingEvent ? Number(existingEvent.context_version || 0) : 0;
+      if (existingEvent && contextVersion < 1) {
+        return { conflict: true, saved: false, reason: 'event_version_unavailable' };
+      }
+
+      if (!existingEvent) {
+        if (this.countRecentCharacterContextEvents(deviceId, windowStart) >= eventLimit) {
+          return { limited: true, saved: false };
+        }
+        const insertedEvent = this.exec(
+          `INSERT OR IGNORE INTO character_context_events
+            (user_id, character_id, event_id, device_id, created_at, context_version)
+           VALUES (?, ?, ?, ?, ?, NULL) RETURNING event_id`,
+          userId, characterId, eventId, deviceId, now
+        )[0];
+        if (!insertedEvent) return { conflict: true, saved: false, reason: 'event_collision' };
+        const versionRow = this.exec(
+          `INSERT INTO character_context_versions
+            (user_id, character_id, version, updated_at, updated_by_device_id)
+           VALUES (?, ?, 1, ?, ?)
+           ON CONFLICT(user_id, character_id) DO UPDATE SET
+             version = character_context_versions.version + 1,
+             updated_at = excluded.updated_at,
+             updated_by_device_id = excluded.updated_by_device_id
+           RETURNING version`,
+          userId, characterId, now, deviceId
+        )[0];
+        contextVersion = Number(versionRow && versionRow.version || 0);
+        if (!Number.isSafeInteger(contextVersion) || contextVersion < 1) {
+          throw new Error('context version update failed');
+        }
+        this.exec(
+          `UPDATE character_context_events SET context_version = ?
+           WHERE user_id = ? AND character_id = ? AND event_id = ? AND context_version IS NULL`,
+          contextVersion, userId, characterId, eventId
+        );
+      }
+
+      const existingSnapshot = this.exec(
+        `SELECT source_device_id, character_name, persona_text,
+                recent_messages_json, last_user_message_at
+         FROM character_context_snapshots
+         WHERE user_id = ? AND character_id = ? AND context_version = ?`,
+        userId, characterId, contextVersion
+      )[0] || null;
+      if (existingSnapshot) {
+        const same = existingSnapshot.source_device_id === deviceId &&
+          existingSnapshot.character_name === normalizedName &&
+          existingSnapshot.persona_text === normalizedPersona &&
+          existingSnapshot.recent_messages_json === messagesJson &&
+          Number(existingSnapshot.last_user_message_at) === normalizedLastUserAt;
+        return same ? { saved: true, duplicate: true, contextVersion }
+          : { conflict: true, saved: false, reason: 'snapshot_immutable' };
+      }
+
+      const insertedSnapshot = this.exec(
+        `INSERT INTO character_context_snapshots
+          (user_id, character_id, context_version, source_device_id,
+           character_name, persona_text, recent_messages_json,
+           last_user_message_at, updated_at)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+         WHERE EXISTS (SELECT 1 FROM user_context_sharing WHERE user_id = ? AND enabled = 1)
+         RETURNING context_version`,
+        userId, characterId, contextVersion, deviceId, normalizedName,
+        normalizedPersona, messagesJson, normalizedLastUserAt, now, userId
+      )[0];
+      return insertedSnapshot ? { saved: true, duplicate: false, contextVersion }
+        : { disabled: true, saved: false };
+    });
+  }
+
+  getCharacterContextSnapshot({ userId, characterId, contextVersion }) {
+    return this.exec(
+      `SELECT s.user_id, s.character_id, s.context_version, s.source_device_id,
+              s.character_name, s.persona_text, s.recent_messages_json,
+              s.last_user_message_at, s.updated_at
+       FROM character_context_snapshots s
+       INNER JOIN user_context_sharing sharing
+         ON sharing.user_id = s.user_id AND sharing.enabled = 1
+       INNER JOIN character_context_versions current
+         ON current.user_id = s.user_id AND current.character_id = s.character_id
+        AND current.version = s.context_version
+       INNER JOIN devices source
+         ON source.id = s.source_device_id AND source.user_id = s.user_id
+        AND source.revoked_at IS NULL
+       WHERE s.user_id = ? AND s.character_id = ? AND s.context_version = ?
+       LIMIT 1`,
+      userId, characterId, contextVersion
+    )[0] || null;
+  }
+
   countRecentCharacterContextEvents(deviceId, since) {
     const row = this.exec(
       'SELECT COUNT(*) AS total FROM character_context_events WHERE device_id = ? AND created_at >= ?',
@@ -1173,30 +1318,37 @@ class CloudStore {
     const dedupeKey = message?.dedupeKey == null ? null : requireStoreString(message.dedupeKey, 'outbound.dedupeKey');
     const payloadJson = serializeStoreJson(message.payload, 12000, 'outbound.payload');
     const now = Number(message.now);
+    const groupId = message?.groupId == null ? null : requireStoreString(message.groupId, 'outbound.groupId');
+    const groupIndex = message?.groupIndex == null ? 1 : Number(message.groupIndex);
+    const groupCount = message?.groupCount == null ? 1 : Number(message.groupCount);
     if (!Number.isSafeInteger(now) || now < 0) throw new TypeError('outbound.now 必须是非负安全整数');
+    if (!Number.isSafeInteger(groupIndex) || !Number.isSafeInteger(groupCount) ||
+        groupCount < 1 || groupCount > 4 || groupIndex < 1 || groupIndex > groupCount ||
+        (!groupId && (groupIndex !== 1 || groupCount !== 1))) {
+      throw new TypeError('outbound group metadata invalid');
+    }
 
     const recipient = this.exec(
       'SELECT id FROM devices WHERE id = ? AND user_id = ? AND revoked_at IS NULL',
-      deviceId,
-      userId
+      deviceId, userId
     )[0];
     if (!recipient) return { inserted: false, unavailable: true, message: null };
 
     const inserted = this.exec(
       `INSERT OR IGNORE INTO outbound_messages
         (id, device_id, character_id, payload_json, server_message_id, dedupe_key,
-         created_at, delivered_at, delivery_status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 'pending')
+         created_at, delivered_at, delivery_status, group_id, group_index, group_count)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 'pending', ?, ?, ?)
        RETURNING *`,
-      id, deviceId, characterId, payloadJson, serverMessageId, dedupeKey, now
+      id, deviceId, characterId, payloadJson, serverMessageId, dedupeKey,
+      now, groupId, groupIndex, groupCount
     )[0];
     if (inserted) return { inserted: true, idempotent: false, message: inserted };
 
     const existing = this.exec(
       `SELECT * FROM outbound_messages
        WHERE server_message_id = ? OR (? IS NOT NULL AND dedupe_key = ?)
-       ORDER BY CASE WHEN server_message_id = ? THEN 0 ELSE 1 END
-       LIMIT 1`,
+       ORDER BY CASE WHEN server_message_id = ? THEN 0 ELSE 1 END LIMIT 1`,
       serverMessageId, dedupeKey, dedupeKey, serverMessageId
     )[0] || null;
     const same = existing &&
@@ -1204,12 +1356,14 @@ class CloudStore {
       existing.character_id === characterId &&
       existing.server_message_id === serverMessageId &&
       (existing.dedupe_key ?? null) === dedupeKey &&
-      existing.payload_json === payloadJson;
+      existing.payload_json === payloadJson &&
+      (existing.group_id ?? null) === groupId &&
+      Number(existing.group_index || 1) === groupIndex &&
+      Number(existing.group_count || 1) === groupCount;
     return same
       ? { inserted: false, idempotent: true, message: existing }
       : { inserted: false, conflict: true, message: existing };
   }
-
   /**
    * Return pending chat outbox rows paired with active push subscriptions whose
    * per-message delivery is missing or due for retry. Message bodies are never
