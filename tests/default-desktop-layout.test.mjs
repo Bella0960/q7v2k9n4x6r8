@@ -133,11 +133,11 @@ test('pending accounts can be suspended and existing unused invitations can be r
 
   assert.match(adminHtml, /id="accountInviteStatus" hidden/,
     'account detail needs a dedicated current-invitation status region');
-  assert.match(adminScript, /const activeInvite = snapshot\\.invite \\|\\| null/,
+  assert.match(adminScript, /const activeInvite = snapshot\.invite \|\| null/,
     'account detail must use the server-authoritative invitation snapshot');
-  assert.match(adminScript, /if \\(currentAccount\\.status === 'pending_invite'\\)[\\s\\S]*const activeInvite = snapshot\\.invite/,
+  assert.match(adminScript, /if \(currentAccount\.status === 'pending_invite'\)[\s\S]*const activeInvite = snapshot\.invite/,
     'only pending accounts may display their current active invitation');
-  assert.match(adminScript, /if \\(activeInvite\\)[\\s\\S]*撤销当前邀请码[\\s\\S]*\\/api\\/admin\\/invites\\//,
+  assert.match(adminScript, /if \(activeInvite\)[\s\S]*撤销当前邀请码[\s\S]*\/api\/admin\/invites\//,
     'the current server-confirmed invitation must be revocable before reissue');
   assert.match(adminScript, /已有有效的专属邀请码/);
   assert.match(adminScript, /原始邀请码只在生成时展示一次/);
