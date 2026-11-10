@@ -277,8 +277,9 @@ test('备份兼容：快照包含字段，恢复后字段与其它属性全部�
   const snapshotSource = extractFunction(backupSource, 'function snapshot(dropCaches, dropSecrets)', '\n    }');
   const excludeDecl = backupSource.match(/var EXCLUDE_KEYS = [^\n]+;/)[0];
   const secretDecl = backupSource.match(/var SECRET_KEYS = [^\n]+;/)[0];
+  const deviceBoundDecl = backupSource.match(/var DEVICE_BOUND_KEYS = [^\n]+;/)[0];
   const context = { localStorage: storage, JSON, Object, Array };
-  runInNewContext(`${excludeDecl}\n${secretDecl}\n${snapshotSource}\nglobalThis.__snapshot = snapshot;`, context);
+  runInNewContext(`${excludeDecl}\n${secretDecl}\n${deviceBoundDecl}\n${snapshotSource}\nglobalThis.__snapshot = snapshot;`, context);
   const snapshot = context.__snapshot;
 
   const exported = snapshot(true, true);
@@ -356,7 +357,10 @@ test('同一毫秒内不同回复轮次的气泡 ID 不冲突，且可安全解�
   assert.ok(allIds.every((id) => !id.includes('#')), '轮次 ID 中的 # 必须编码，不能混入旧版气泡分隔符');
 
   first.forEach((message) => {
-    assert.deepEqual(policy.parseBubbleId(message.mid), { mid: message.mid, index: 0 });
+    // parseBubbleId executes in a VM realm; compare its data fields rather than realm-specific prototypes.
+    const parsed = policy.parseBubbleId(message.mid);
+    assert.equal(parsed.mid, message.mid);
+    assert.equal(parsed.index, 0);
   });
 
   const repeated = policy.buildReplyMessages('第一句\n第二句', 'multi', {
