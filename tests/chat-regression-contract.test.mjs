@@ -41,6 +41,7 @@ const date = read('chat/date/date.html');
 const journey = read('chat/date/journey.html');
 const fixtures = JSON.parse(readFileSync(resolve(root, 'tests/fixtures/chat-message-cases.json'), 'utf8'));
 const policySource = read('shared/js/phone/chat-message-policy.js');
+const presencePolicySource = read('shared/js/phone/chat-presence-policy.js');
 const policyWindow = {};
 runInNewContext(policySource, { window: policyWindow, globalThis: {} });
 const policy = policyWindow.ChatMessagePolicy;
@@ -1848,6 +1849,15 @@ test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat
   assert.match(chatSettings, /value="24"/);
   assert.match(chatSettings, /value="48"/);
   assert.match(chatSettings, /value="72"/);
+  assert.match(chatSettings, /chat_proactive_contact_enabled_at_/);
+  assert.match(chatSettings, /新角色开启后也可以主动发出第一条开场消息/);
+  assert.match(chatNotifier, /evaluateInitialProactiveContact/);
+  assert.match(chatNotifier, /PROACTIVE_INITIAL_DELAY_MS = 2 \* 60 \* 1000/);
+  assert.match(chatNotifier, /chat_proactive_first_contact_sent_/);
+  assert.match(chatNotifier, /cloud\.noteCharacterContextChanged\(roleId, candidate\.history\)/);
+  assert.match(chatNotifier, /function hasConversationActivity\(history\)/);
+  assert.match(chatNotifier, /function proactiveHistoryUnchanged\(candidate, history\)/);
+  assert.match(presencePolicySource, /NS\.evaluateInitialProactiveContact = evaluateInitialProactiveContact/);
 
   assert.match(chatNotifier, /document\.visibilityState === 'hidden'/);
   assert.match(chatNotifier, /PROACTIVE_GLOBAL_COOLDOWN_MS = 24 \* 60 \* 60 \* 1000/);
