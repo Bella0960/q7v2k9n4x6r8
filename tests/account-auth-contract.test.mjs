@@ -127,8 +127,17 @@ test('创作者管理中心的危险操作必须先居中确认，取消不得�
     '确认框必须覆盖页面并居中显示');
   assert.match(css, /\.admin-confirm-dialog::backdrop\{background:/,
     '确认时必须弱化背景，避免误点底层页面');
-  assert.match(css, /\.admin-confirm-actions button\.danger\{[^}]*background:#e5e6e9/i,
-    '危险确认按钮使用浅灰色而不是黑底');
+  assert.match(css, /\.admin-confirm-actions button\.danger\{[^}]*background:var\(--danger\)[^}]*color:#fff/i,
+    '危险确认按钮必须使用明确的红色风险提示');
+  assert.match(css, /--danger:#c9343d/);
+  assert.match(css, /\.action-button\.danger\{[^}]*color:var\(--danger\)/,
+    '停用和永久撤销操作在账号详情中必须显红');
+  assert.match(css, /\.invite-revoke-button\{[^}]*color:var\(--danger\)/,
+    '当前邀请码撤销按钮必须显红');
+  assert.match(css, /\.open-detail\.danger\{[^}]*color:var\(--danger\)/,
+    '邀请码目录的撤销按钮必须显红');
+  assert.match(script, /dialog\.classList\.toggle\('is-danger', Boolean\(options\.danger\)\)/,
+    '危险确认弹窗应切换风险样式');
   assert.match(script, /function openAdminConfirmation\(options\)/);
   assert.match(script, /dialog\.showModal\(\)/);
   assert.match(script, /adminConfirmDialog'\)\.addEventListener\('cancel'/,
