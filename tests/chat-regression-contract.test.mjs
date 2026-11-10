@@ -3043,6 +3043,11 @@ test('商店旧订单按原时间线补齐进度且损坏订单存储不被空�
 });
 
 test('亲属卡存储损坏时，所有写入口必须拒绝覆盖并保留原始数据', () => {
+  assert.match(shopPage, /亲属卡数据异常，已暂停使用和扣款/);
+  assert.match(takeoutPage, /亲属卡数据异常，已暂停使用和扣款/);
+  assert.match(shopPage, /if \(!roleCardState\.ok\)[\s\S]*?ledger\.cancelPendingCheckout\(transactionId\)/);
+  assert.match(takeoutPage, /if \(!roleCardState\.ok\)[\s\S]*?ledger\.cancelPendingCheckout\(transactionId\)/);
+
   const malformedStores = [
     '{broken-json',
     '{"not":"an-array"}',
