@@ -2946,10 +2946,10 @@
         // Refuse ACK when the row is duplicated, has the wrong role, or its body
         // differs from the immutable cloud envelope; otherwise a damaged local
         // row could silently consume the only recoverable server copy.
-        function inspectCloudOutboundHistory(history, serverMessageId, expectedText) {
+        function inspectCloudOutboundHistory(history, serverMessageId, expectedText, bubbles) {
             var policy = window.ChatMessagePolicy;
             if (!policy || typeof policy.inspectCloudOutboundHistory !== 'function') return 'conflict';
-            return policy.inspectCloudOutboundHistory(history, serverMessageId, expectedText);
+            return policy.inspectCloudOutboundHistory(history, serverMessageId, expectedText, bubbles);
         }
 
         // 云端主动消息进入现有聊天历史：只接收纯文字，serverMessageId 是本地幂等键。
@@ -2968,7 +2968,7 @@
 
             var history = loadMessages();
             if (!Array.isArray(history)) return false;
-            var existingState = inspectCloudOutboundHistory(history, serverMessageId, messageText);
+            var existingState = inspectCloudOutboundHistory(history, serverMessageId, messageText, payload.bubbles);
             // 已保存的整组气泡可以补 ACK；部分、重复或正文冲突时一律不 ACK。
             if (existingState === 'match') return true;
             if (existingState === 'conflict') return false;
@@ -2977,7 +2977,7 @@
             if (!Number.isSafeInteger(createdAt) || createdAt <= 0) createdAt = Date.now();
             var policy = window.ChatMessagePolicy;
             if (!policy || typeof policy.buildCloudOutboundMessages !== 'function') return false;
-            var messages = policy.buildCloudOutboundMessages(messageText, serverMessageId, { time: createdAt });
+            var messages = policy.buildCloudOutboundMessages(messageText, serverMessageId, { time: createdAt, bubbles: payload.bubbles });
             if (!messages.length) return false;
 
             var wasNearBottom = !chatMessages ||
@@ -3002,7 +3002,7 @@
             // Rendering or another tab may race with history writes. Re-check
             // the complete envelope; repair only when the batch is wholly missing.
             var postRenderHistory = loadMessages();
-            var persistedState = inspectCloudOutboundHistory(postRenderHistory, serverMessageId, messageText);
+            var persistedState = inspectCloudOutboundHistory(postRenderHistory, serverMessageId, messageText, payload.bubbles);
             if (persistedState === 'missing') {
                 if (!Array.isArray(postRenderHistory)) return false;
                 var knownMids = new Set(postRenderHistory.map(function (item) { return String(item && item.mid || ''); }));
@@ -3010,7 +3010,7 @@
                     if (!knownMids.has(String(message.mid || ''))) postRenderHistory.push(message);
                 });
                 if (!saveMessages(postRenderHistory)) return false;
-                persistedState = inspectCloudOutboundHistory(loadMessages(), serverMessageId, messageText);
+                persistedState = inspectCloudOutboundHistory(loadMessages(), serverMessageId, messageText, payload.bubbles);
             }
             if (persistedState !== 'match') return false;
 
