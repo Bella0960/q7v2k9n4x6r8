@@ -1817,7 +1817,7 @@ test('主动联系支持角色习惯决定数量的独立气泡并兼容旧版 t
     '刚刚看到一家新开的书店。\n\n感觉你可能会喜欢那里的选书。'
   );
   assert.deepEqual(
-    policy.parseReplyContent(multiBubbleText).bubbles,
+    Array.from(policy.parseReplyContent(multiBubbleText).bubbles),
     ['刚刚看到一家新开的书店。', '感觉你可能会喜欢那里的选书。'],
     'the exact text sent through the cloud API must still render as separate chat bubbles'
   );
@@ -1988,7 +1988,7 @@ test('PWA manifest is referenced from the deployment root so relative icon and s
 });
 
 test('Service Worker navigation does not abort slow mobile page requests', () => {
-  assert.ok(serviceWorker.includes("if (req.mode === 'navigate')"));
+  assert.ok(serviceWorker.includes("if (req.mode === 'navigate' && !isPublicAccountPage)"));
   assert.ok(serviceWorker.includes('fetch(req).then'));
   assert.equal(serviceWorker.includes('new AbortController()'), false);
   assert.equal(serviceWorker.includes('controller.abort()'), false);
@@ -2006,8 +2006,8 @@ test('Cloudflare Worker preserves explicit HTML routes and maps only the root to
   assert.equal(wranglerConfig.assets.html_handling, 'none');
   assert.equal(wranglerConfig.assets.run_worker_first, true);
   assert.match(worker, /url\.pathname === "\/"[\s\S]*?new URL\("\/index\.html", url\)/);
-  assert.match(worker, /return env\.ASSETS\.fetch\(request\)/,
-    'non-root app routes must be passed through unchanged instead of falling back to index.html');
+  assert.match(worker, /const response = await env\.ASSETS\.fetch\(request\)[\s\S]*return isHtmlDocument && authorizedAccount[\s\S]*: response;/,
+    'non-root app routes must pass through ASSETS unchanged, with account scope injected only after authorization');
 });
 
 
