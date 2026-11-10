@@ -166,12 +166,12 @@ Super-admin only:
 
 ## Isolated account-auth preview
 
-The account-auth branch has a dedicated preview deployment configuration. It is deliberately separate from the production Worker:
+The MAO account-auth/Cloud Push development line has a dedicated preview deployment configuration. It is deliberately separate from the production Worker:
 
 - Production remains `wrangler.jsonc` with Worker name `mao`; this preview uses `wrangler.preview.jsonc` with Worker name `mao-auth-preview`.
 - Both scripts run the same `worker.js` and bind a `CloudDatabase` SQLite Durable Object. A Durable Object namespace belongs to its Worker script, so the different script names create a separate namespace and do not attach to production's `mao` database. The shared internal object name in `worker.js` is only an ID name inside each Worker's own namespace.
 - Preview has no route to the production Worker and no cron trigger. The account/admin UI and authenticated APIs run against the preview Worker and its own empty database. Autonomous scheduled activity and maintenance are not started by this preview.
-- The preview workflow listens only to pushes on `feat/mao-account-auth-foundation`; the existing production workflow remains main-only and unchanged.
+- The preview workflow listens only to pushes on `feat/cloud-autonomous-activity-push`; it checks out the exact triggering SHA and deploys `wrangler.preview.jsonc` to `mao-auth-preview`. The existing production workflow remains main-only and unchanged.
 
 Before the preview workflow can deploy, add these GitHub Actions repository secrets. Secret values must never be committed or placed in issue/PR comments:
 
