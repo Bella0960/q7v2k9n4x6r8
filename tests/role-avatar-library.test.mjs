@@ -659,7 +659,7 @@ test('deleting a character releases only its references and re-discovers interru
 });
 
 test('PWA shell caches the role portrait archive and its runtime at v195', () => {
-  assert.ok(serviceWorker.includes("const CACHE_NAME = 'phone-app-pwa-v200'"));
+  assert.ok(serviceWorker.includes("const CACHE_NAME = 'phone-app-pwa-v201'"));
   assert.ok(serviceWorker.includes("'./worldbook/characters/characters.html'"));
   assert.ok(serviceWorker.includes("'./worldbook/characters/js/characters-manager.js?v=20261107v11'"));
   assert.ok(serviceWorker.includes("'./shared/js/phone/role-avatar-library.js?v=20261107v14'"));
