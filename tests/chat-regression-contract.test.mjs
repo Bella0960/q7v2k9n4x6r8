@@ -1287,10 +1287,10 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 });
 
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
-  assert.match(detail, /chat-presence-policy\.js\?v=20261102v17/);
+  assert.match(detail, /chat-presence-policy\.js\?v=20261111firstcontact1/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
   assert.match(serviceWorker, /phone-app-pwa-v198/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261111firstcontact1/);
 });
 
 
@@ -1412,7 +1412,7 @@ test('chat detail persists voice habits per character and per group session with
   assert.match(detail, /buildEmotionContinuityPrompt/);
   assert.match(detail, /maxScan: 24/);
   assert.match(serviceWorker, /phone-app-pwa-v198/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261111firstcontact1/);
 });
 
 
@@ -1597,9 +1597,9 @@ test('chat detail injects the role autonomy prompt and precaches the updated pol
   assert.ok(detail.includes('ChatPresencePolicy.buildAutonomyPrompt'));
   assert.ok(detail.includes('maxNotes: 3'));
   assert.ok(detail.includes('maxTurns: 4'));
-  assert.ok(detail.includes('chat-presence-policy.js?v=20261102v17'));
+  assert.ok(detail.includes('chat-presence-policy.js?v=20261111firstcontact1'));
   assert.ok(serviceWorker.includes('phone-app-pwa-v198'));
-  assert.ok(serviceWorker.includes('chat-presence-policy.js?v=20261102v17'));
+  assert.ok(serviceWorker.includes('chat-presence-policy.js?v=20261111firstcontact1'));
 });
 
 
@@ -1801,13 +1801,13 @@ test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat
 });
 
 test('proactive contact notifier is loaded on home and navigation pages and precached by PWA', () => {
-  assert.match(homePage, /chat-notifier\.js\?v=20261102v3/);
-  assert.match(navPage, /chat-notifier\.js\?v=20261102v3/);
-  assert.match(detail, /chat-notifier\.js\?v=20261102v3/);
-  assert.match(detail, /chat-presence-policy\.js\?v=20261102v17/);
+  assert.match(homePage, /chat-notifier\.js\?v=20261111firstcontact1/);
+  assert.match(navPage, /chat-notifier\.js\?v=20261111firstcontact1/);
+  assert.match(detail, /chat-notifier\.js\?v=20261111firstcontact1/);
+  assert.match(detail, /chat-presence-policy\.js\?v=20261111firstcontact1/);
   assert.match(serviceWorker, /phone-app-pwa-v198/);
-  assert.match(serviceWorker, /chat-notifier\.js\?v=20261102v3/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
+  assert.match(serviceWorker, /chat-notifier\.js\?v=20261111firstcontact1/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261111firstcontact1/);
   assert.match(serviceWorker, /chat-followup-policy/);
 });
 
@@ -2303,7 +2303,7 @@ test('AI replies can send only images from the active role gallery and keep medi
   assert.match(detail, /RoleGalleryImageAutonomy\\.releaseReferences\\(aiRoleGalleryMessages\\)/);
   assert.match(detail, /aiRoleGalleryMessages\\.forEach\\(function \\(galleryMessage\\)/);
   assert.ok(serviceWorker.includes('role-gallery-image-autonomy.js?v=20261111v1'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v199'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v200'));
 });
 
 
@@ -2317,4 +2317,44 @@ test('every inline runtime script in chat detail parses before it is shipped', (
       'chat detail inline script #' + index + ' must parse'
     );
   });
+});
+
+ 
+test('newly enabled roles may make one friendly first opening without prior chat history', () => {
+  assert.equal(typeof presencePolicy.evaluateInitialProactiveContact, 'function');
+  const now = new Date(2026, 10, 11, 12, 0, 0).getTime();
+  const base = {
+    enabled: true, now, localHour: 12, enabledAt: now - 3 * 60 * 1000,
+    initialDelayMs: 2 * 60 * 1000,
+    globalCooldownMs: 24 * 60 * 60 * 1000, roleCooldownMs: 24 * 60 * 60 * 1000,
+    quietStartHour: 9, quietEndHour: 22
+  };
+  assert.equal(presencePolicy.evaluateInitialProactiveContact(base).eligible, true);
+  assert.equal(presencePolicy.evaluateInitialProactiveContact({ ...base, enabled: false }).reason, 'disabled');
+  assert.equal(presencePolicy.evaluateInitialProactiveContact({ ...base, hasHistory: true }).reason, 'history-exists');
+  assert.equal(presencePolicy.evaluateInitialProactiveContact({ ...base, firstContactSent: true }).reason, 'already-sent');
+  assert.equal(presencePolicy.evaluateInitialProactiveContact({ ...base, pageVisible: false }).reason, 'page-hidden');
+  assert.equal(presencePolicy.evaluateInitialProactiveContact({ ...base, localHour: 23 }).reason, 'quiet-hours');
+  assert.equal(presencePolicy.evaluateInitialProactiveContact({ ...base, enabledAt: now - 30 * 1000 }).reason, 'initial-delay');
+  assert.equal(presencePolicy.evaluateInitialProactiveContact({ ...base, enabledAt: 0 }).reason, 'missing-enable-time');
+  assert.equal(presencePolicy.evaluateInitialProactiveContact({ ...base, globalLastAttemptAt: now - 5 * 60 * 1000 }).reason, 'global-cooldown');
+  assert.equal(presencePolicy.evaluateInitialProactiveContact({
+    ...base, roleLastAttemptAt: now - 5 * 60 * 1000, roleCooldownMs: 48 * 60 * 60 * 1000
+  }).reason, 'role-cooldown');
+  const prompt = presencePolicy.buildProactiveContactPrompt(
+    { name: '测试角色', persona: '喜欢阅读' }, [], { initialContact: true }
+  );
+  assert.match(prompt, /第一次主动开场/);
+  assert.match(prompt, /不要假装以前聊过/);
+  assert.match(prompt, /非暧昧、非恋爱表达/);
+});
+
+test('first-contact runtime remains opt-in, one-shot and safe against a new user message during generation', () => {
+  assert.match(chatNotifier, /PROACTIVE_INITIAL_DELAY_MS = 2 \* 60 \* 1000/);
+  assert.match(chatNotifier, /function hasConversationActivity\(history\)/);
+  assert.match(chatNotifier, /function proactiveHistoryUnchanged\(candidate, history\)/);
+  assert.match(chatNotifier, /chat_proactive_first_contact_sent_/);
+  assert.match(chatNotifier, /chat_proactive_contact_enabled_at_/);
+  assert.match(chatSettings, /新角色开启后也可以在合适时间发起第一条友好开场/);
+  assert.match(chatSettings, /应用完全关闭时不会自行生成/);
 });
