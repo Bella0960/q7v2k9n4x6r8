@@ -211,6 +211,7 @@ test('管理员中心返回桌面仅显示独立图标，并保留可访问名�
   const css = readFileSync(new URL('../admin/admin-center.css', import.meta.url), 'utf8');
   const link = /<a class="back-link" href="\.\.\/index\.html" aria-label="返回桌面" title="返回桌面">([\s\S]*?)<\/a>/.exec(html);
   assert.ok(link, '返回桌面入口必须保留正确目标和可访问名称');
+  assert.match(link[0], /title="返回桌面"/, '悬停时应保留简短功能提示');
   assert.match(link[1], /<svg[\s\S]*?aria-hidden="true"/,
     '返回桌面应使用独立 SVG 图标，而不是大段文字');
   assert.doesNotMatch(link[1], /返回桌面/,
