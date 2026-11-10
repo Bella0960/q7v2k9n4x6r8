@@ -1876,7 +1876,7 @@ test('Service Worker navigation does not abort slow mobile page requests', () =>
 });
 
 test('Cloudflare Worker preserves explicit HTML routes and maps only the root to the desktop index', () => {
-  const wranglerConfig = JSON.parse(read('wrangler.jsonc').replace(/^\/\/.*\n/, ''));
+  const wranglerConfig = JSON.parse(read('wrangler.jsonc').replace(/^\uFEFF/, '').replace(/^\/\/.*\r?\n/, ''));
   const worker = read('worker.js');
 
   assert.equal(wranglerConfig.main, 'worker.js');
