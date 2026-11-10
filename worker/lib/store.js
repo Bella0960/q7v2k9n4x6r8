@@ -2553,6 +2553,28 @@ class CloudStore {
     return row ? Number(row.created_at) : null;
   }
 
+  /**
+   * Per-device proof that the Web Push service accepted an autonomous chat
+   * notification (HTTP success). This is not proof that the OS displayed it.
+   */
+  getLatestAutonomyPushAcceptance({ userId = 'owner', deviceId } = {}) {
+    const safeDeviceId = requireStoreString(deviceId, 'push.deviceId');
+    const row = this.exec(
+      `SELECT e.created_at
+       FROM execution_log e
+       INNER JOIN devices d ON d.id = e.device_id
+       WHERE d.user_id = ? AND d.id = ?
+         AND e.kind = 'outbound_push'
+         AND e.status = 'success'
+         AND e.reason_code = 'delivered'
+       ORDER BY e.created_at DESC, e.id DESC
+       LIMIT 1`,
+      userId,
+      safeDeviceId
+    )[0] || null;
+    return row ? Number(row.created_at) : null;
+  }
+
   hasMaoSuperAdminAccount() {
     return Boolean(this.exec("SELECT id FROM mao_accounts WHERE role = 'super_admin' LIMIT 1")[0]);
   }
