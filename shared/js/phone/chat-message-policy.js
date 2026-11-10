@@ -392,6 +392,25 @@
     return text;
   }
 
+  function normalizeCloudBubbleTexts(rawText, suppliedBubbles) {
+    if (Array.isArray(suppliedBubbles)) {
+      if (!suppliedBubbles.length || suppliedBubbles.length > 4) return [];
+      var cleaned = [];
+      for (var i = 0; i < suppliedBubbles.length; i += 1) {
+        if (typeof suppliedBubbles[i] !== 'string') return [];
+        var bubble = suppliedBubbles[i].trim();
+        var length = Array.from(bubble).length;
+        if (length < 2 || length > 220 ||
+            /[<>\\u0000-\\u001F]/.test(bubble) ||
+            /https?:\\/\\//i.test(bubble)) return [];
+        cleaned.push(bubble);
+      }
+      if (cleaned.join('\\n\\n') !== String(rawText || '').trim()) return [];
+      return cleaned;
+    }
+    return parseReplyContent(String(rawText || ''), 'legacy').bubbles;
+  }
+
   // Cloud autonomous replies use one durable outbox envelope per turn, but
   // every generated bubble becomes its own local message with stable identity.
   function buildCloudOutboundMessages(rawText, serverMessageId, meta) {
@@ -399,14 +418,17 @@
     var text = typeof rawText === 'string' ? rawText.trim() : '';
     if (!/^[A-Za-z0-9_-]{16,128}$/.test(messageId) || !text || text.length > 10000) return [];
     meta = meta && typeof meta === 'object' ? meta : {};
+    var bubbleTexts = normalizeCloudBubbleTexts(text, meta.bubbles);
+    if (!bubbleTexts.length) return [];
+    var serialized = bubbleTexts.join('\\n\\n');
     var time = Number(meta.time) || Date.now();
     var turnId = String(meta.turnId || ('cloud_' + messageId));
-    var messages = buildReplyMessages(text, 'legacy', {
+    var messages = buildReplyMessages(serialized, 'legacy', {
       time: time,
       turnId: turnId,
       voiceMode: String(meta.voiceMode || 'online')
     });
-    if (!Array.isArray(messages) || !messages.length || messages.length > 5) return [];
+    if (!Array.isArray(messages) || messages.length !== bubbleTexts.length) return [];
     var count = messages.length;
     messages.forEach(function (message, index) {
       message.role = 'assistant';
@@ -422,12 +444,12 @@
   // Idempotency check shared by cloud inbox receivers. Supports older builds
   // that stored one combined message or only attached the receipt to the final
   // bubble, while rejecting partial/corrupted batches instead of ACKing them.
-  function inspectCloudOutboundHistory(history, serverMessageId, expectedText) {
+  function inspectCloudOutboundHistory(history, serverMessageId, expectedText, suppliedBubbles) {
     if (!Array.isArray(history)) return 'conflict';
     var messageId = String(serverMessageId || '');
     var text = typeof expectedText === 'string' ? expectedText.trim() : '';
     if (!/^[A-Za-z0-9_-]{16,128}$/.test(messageId) || !text) return 'conflict';
-    var expected = parseReplyContent(text, 'legacy').bubbles;
+    var expected = normalizeCloudBubbleTexts(text, suppliedBubbles);
     if (!expected.length) return 'conflict';
 
     var tagged = history.filter(function (item) {
@@ -457,7 +479,7 @@
     if (receiptRows.length !== 1 || receiptRows[0].role !== 'assistant') return 'conflict';
     var receiptRow = receiptRows[0];
     var receiptText = String(receiptRow.text || receiptRow.content || '').trim();
-    if (receiptText === text) return 'match';
+    if (expected.length === 1 && receiptText === expectedText) return 'match';
 
     // Intermediate compatibility: sender builds before cloud completion may
     // have independent bubbles + one receipt on the final bubble, but no
@@ -476,7 +498,6 @@
     return String(turnRows[turnRows.length - 1].serverMessageId || '') === messageId
       ? 'match' : 'conflict';
   }
-
   function isHiddenFromOnlineTimeline(message) {
     if (!message) return false;
     // 线下剧情消息、静默指令、线下到达开场（老数据可能没打 mode 但带 arrivalStart）
