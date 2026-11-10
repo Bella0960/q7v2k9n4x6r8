@@ -3262,6 +3262,13 @@ test('不支持 Web Locks 的浏览器只提供页面内队列并明确暴露降
   assert.deepEqual(notices, ['fallback'], 'fallback warning is emitted only once per page');
 });
 
+test('聊天详情页的多气泡呈现队列只声明一次', () => {
+  assert.equal((detail.match(/let aiBubblePacingRunId = 0;/g) || []).length, 1,
+    'the chat detail script must declare its pacing generation counter exactly once');
+  assert.equal((detail.match(/let aiBubblePacingQueue = Promise\.resolve\(\);/g) || []).length, 1,
+    'the chat detail script must declare its pacing queue exactly once');
+});
+
 test('亲属卡所有状态变更与商店外卖消费共用钱包锁', async () => {
   assert.match(familyCardsPage, /wallet-ledger\.js\?v=20261107v7/);
   assert.match(familyCardsPage, /async function runAction\(action, id\)/);
