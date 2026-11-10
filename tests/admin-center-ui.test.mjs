@@ -97,7 +97,10 @@ test('账号审计时间线展示邀请码生成与撤销事件，但不显示�
   assert.match(adminScript, /invite_create: '生成专属邀请码'/);
   assert.match(adminScript, /invite_redeem: '用户核销邀请码'/);
   assert.match(adminScript, /invite_revoke: '撤销专属邀请码'/);
-  assert.match(adminScript, /record\.action === 'invite_redeem' \? '账号 ' : '管理员 '/);
+  assert.ok(adminScript.includes("const actorLabel = record.action === 'invite_redeem' || record.action === 'account_register'"),
+    '邀请码核销和账号注册应标记为账号操作者');
+  assert.ok(adminScript.includes("? '账号 ' : (record.action === 'admin_bootstrap' ? '系统 ' : '管理员 ')"),
+    '管理员初始化应标记为系统，其他管理操作应标记为管理员');
   assert.match(adminScript, /if \(record\.inviteId\) subline\.push\('邀请码记录 '/);
   assert.match(adminScript, /if \(record\.sourceAction === 'disable'\) subline\.push\('随账号停用自动撤销'/);
   assert.match(adminScript, /if \(record\.sourceAction === 'revoke'\) subline\.push\('随账号永久撤销自动失效'/);
