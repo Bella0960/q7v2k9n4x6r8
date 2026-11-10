@@ -614,7 +614,33 @@
     renderGuides();
   });
   $('guideSearch').addEventListener('input', function () { renderGuides(); renderApps(); renderFaqs(); });
-  $('guideGrid').addEventListener('click', function (event) {\n    var start = event.target.closest('[data-start-guide]');\n    if (start) startGuide(start.getAttribute('data-start-guide'));\n  });\n  $('appDirectory').addEventListener('click', function (event) {\n    var start = event.target.closest('[data-start-guide]');\n    if (start) startGuide(start.getAttribute('data-start-guide'));\n  });\n  $('walkClose').addEventListener('click', closeGuide);\n  $('walkPrevious').addEventListener('click', function () { moveWalkthrough(-1); });\n  $('walkNext').addEventListener('click', function () { moveWalkthrough(1); });\n  $('walkStepDone').addEventListener('change', function () {\n    if (!activeWalkthrough) return;\n    var state = stepState(activeWalkthrough);\n    var index = state.walked.indexOf(activeStepIndex);\n    if (this.checked && index === -1) state.walked.push(activeStepIndex);\n    if (!this.checked && index !== -1) state.walked.splice(index, 1);\n    saveWalkthroughState();\n    renderGuides();\n  });\n  $('walkthroughModal').addEventListener('click', function (event) {\n    if (event.target === $('walkthroughModal')) closeGuide();\n  });\n  document.addEventListener('keydown', function (event) {\n    if (event.key === 'Escape' && !$('walkthroughModal').hidden) closeGuide();\n  });\n  $('guideGrid').addEventListener('change', function (event) {
+  $('guideGrid').addEventListener('click', function (event) {
+    var start = event.target.closest('[data-start-guide]');
+    if (start) startGuide(start.getAttribute('data-start-guide'));
+  });
+  $('appDirectory').addEventListener('click', function (event) {
+    var start = event.target.closest('[data-start-guide]');
+    if (start) startGuide(start.getAttribute('data-start-guide'));
+  });
+  $('walkClose').addEventListener('click', closeGuide);
+  $('walkPrevious').addEventListener('click', function () { moveWalkthrough(-1); });
+  $('walkNext').addEventListener('click', function () { moveWalkthrough(1); });
+  $('walkStepDone').addEventListener('change', function () {
+    if (!activeWalkthrough) return;
+    var state = stepState(activeWalkthrough);
+    var index = state.walked.indexOf(activeStepIndex);
+    if (this.checked && index === -1) state.walked.push(activeStepIndex);
+    if (!this.checked && index !== -1) state.walked.splice(index, 1);
+    saveWalkthroughState();
+    renderGuides();
+  });
+  $('walkthroughModal').addEventListener('click', function (event) {
+    if (event.target === $('walkthroughModal')) closeGuide();
+  });
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape' && !$('walkthroughModal').hidden) closeGuide();
+  });
+  $('guideGrid').addEventListener('change', function (event) {
     var checkbox = event.target.closest('[data-done]');
     if (checkbox) {
       entryState(checkbox.getAttribute('data-done')).done = checkbox.checked;
