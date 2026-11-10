@@ -1550,6 +1550,61 @@ test('云端活动查询先筛选 cloud-owned 任务再应用批次限制', asyn
   }));
 });
 
+test('主动消息 Push 成功回执按账号和当前设备隔离，且只认服务端成功状态', async () => {
+  const ctx = setupTestStore(openTestDb());
+  const ownerDevice = makeDevice();
+  await registerDevice(ctx, ownerDevice);
+  const otherDevice = makeDevice();
+  ctx.store.insertDevice({
+    id: otherDevice.deviceId,
+    userId: 'another-user',
+    secretHash: 'synthetic-other-user-device-hash',
+    now: Date.now()
+  });
+  const base = Date.now();
+
+  ctx.store.logExecution({
+    id: 'push-accept-owner-ok',
+    deviceId: ownerDevice.deviceId,
+    kind: 'outbound_push',
+    status: 'success',
+    reasonCode: 'delivered',
+    detail: { messageCount: 2 },
+    now: base
+  });
+  ctx.store.logExecution({
+    id: 'push-accept-owner-failed',
+    deviceId: ownerDevice.deviceId,
+    kind: 'outbound_push',
+    status: 'failed',
+    reasonCode: 'push_delivery_failed',
+    detail: {},
+    now: base + 1
+  });
+  ctx.store.logExecution({
+    id: 'push-accept-other-ok',
+    deviceId: otherDevice.deviceId,
+    kind: 'outbound_push',
+    status: 'success',
+    reasonCode: 'delivered',
+    detail: {},
+    now: base + 2
+  });
+
+  assert.equal(ctx.store.getLatestAutonomyPushAcceptance({
+    userId: 'owner',
+    deviceId: ownerDevice.deviceId
+  }), base);
+  assert.equal(ctx.store.getLatestAutonomyPushAcceptance({
+    userId: 'owner',
+    deviceId: otherDevice.deviceId
+  }), null);
+  assert.equal(ctx.store.getLatestAutonomyPushAcceptance({
+    userId: 'another-user',
+    deviceId: otherDevice.deviceId
+  }), base + 2);
+});
+
 test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设备鉴权', async () => {
   const ctx = setupTestStore(openTestDb(), {
     DEVICE_SECRET_PEPPER: 'test-device-secret-pepper-for-contract-tests-32chars',
