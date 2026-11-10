@@ -2557,8 +2557,10 @@ class CloudStore {
    * Per-device proof that the Web Push service accepted an autonomous chat
    * notification (HTTP success). This is not proof that the OS displayed it.
    */
-  getLatestAutonomyPushAcceptance({ userId = 'owner', deviceId } = {}) {
+  getLatestAutonomyPushAcceptance({ userId = 'owner', deviceId, now = Date.now() } = {}) {
     const safeDeviceId = requireStoreString(deviceId, 'push.deviceId');
+    const timestamp = Number(now);
+    if (!Number.isSafeInteger(timestamp) || timestamp <= 0) return null;
     const row = this.exec(
       `SELECT e.created_at
        FROM execution_log e
@@ -2567,10 +2569,19 @@ class CloudStore {
          AND e.kind = 'outbound_push'
          AND e.status = 'success'
          AND e.reason_code = 'delivered'
+         AND EXISTS (
+           SELECT 1
+           FROM push_subscriptions s
+           WHERE s.id = json_extract(e.detail_json, '$.subscriptionId')
+             AND s.device_id = d.id
+             AND s.disabled_at IS NULL
+             AND (s.expiration_time IS NULL OR s.expiration_time > ?)
+         )
        ORDER BY e.created_at DESC, e.id DESC
        LIMIT 1`,
       userId,
-      safeDeviceId
+      safeDeviceId,
+      timestamp
     )[0] || null;
     return row ? Number(row.created_at) : null;
   }
