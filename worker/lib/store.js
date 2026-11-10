@@ -1380,10 +1380,12 @@ class CloudStore {
               target_device.id AS device_id,
               target_device.user_id AS target_account_id,
               source_device.id AS source_device_id,
-              o.character_id, o.server_message_id, o.created_at,
+              o.character_id, o.server_message_id, o.group_id,
+              o.group_index, o.group_count, o.created_at,
+              context_snapshot.character_name,
               s.id AS subscription_id, s.endpoint, s.p256dh, s.auth_key
        FROM outbound_messages o
-        INNER JOIN devices source_device ON source_device.id = o.device_id
+       INNER JOIN devices source_device ON source_device.id = o.device_id
        INNER JOIN devices target_device
          ON target_device.user_id = source_device.user_id
         AND target_device.revoked_at IS NULL
@@ -1393,13 +1395,24 @@ class CloudStore {
          ON r.server_message_id = o.server_message_id
         AND r.user_id = source_device.user_id
         AND r.device_id = target_device.id
+       LEFT JOIN character_context_snapshots context_snapshot
+         ON context_snapshot.user_id = source_device.user_id
+        AND context_snapshot.character_id = o.character_id
+        AND context_snapshot.context_version = (
+          SELECT MAX(latest.context_version)
+          FROM character_context_snapshots latest
+          WHERE latest.user_id = source_device.user_id
+            AND latest.character_id = o.character_id
+        )
        LEFT JOIN push_deliveries p
-         ON p.dedupe_key = ('outbound:' || o.server_message_id)
+         ON p.dedupe_key = ('outbound-group:' || COALESCE(o.group_id, o.server_message_id))
         AND p.subscription_id = s.id
        WHERE r.local_saved_at IS NULL
+         AND COALESCE(o.group_index, 1) = 1
          AND NOT EXISTS (
            SELECT 1 FROM activity_queue staged
            WHERE staged.status = 'completed'
+             AND staged.result_group_id IS NULL
              AND staged.result_server_message_id = o.server_message_id
              AND staged.result_json IS NOT NULL
              AND (
@@ -1418,16 +1431,13 @@ class CloudStore {
          )
        ORDER BY o.created_at ASC, o.id ASC, target_device.created_at ASC, target_device.id ASC
        LIMIT ?`,
-      timestamp,
-      timestamp,
-      safeLimit
+      timestamp, timestamp, safeLimit
     );
   }
-
   getOutboundAccess({ userId, deviceId, characterId, serverMessageId }) {
     return this.exec(
       `SELECT o.id, o.server_message_id, o.character_id, o.created_at,
-              o.delivery_status, o.push_accepted_at, o.device_received_at,
+              o.group_id, o.group_index, o.group_count, o.delivery_status, o.push_accepted_at, o.device_received_at,
               o.local_saved_at, o.read_at, o.read_by_device_id
        FROM outbound_messages o
        INNER JOIN devices source_device ON source_device.id = o.device_id
@@ -1440,6 +1450,7 @@ class CloudStore {
          AND NOT EXISTS (
            SELECT 1 FROM activity_queue staged
            WHERE staged.status = 'completed'
+             AND staged.result_group_id IS NULL
              AND staged.result_server_message_id = o.server_message_id
              AND staged.result_json IS NOT NULL
              AND (
@@ -1477,7 +1488,7 @@ class CloudStore {
     }
     return this.exec(
       `SELECT o.id, o.character_id, o.payload_json, o.server_message_id,
-              o.created_at, o.delivery_status, o.push_accepted_at,
+              o.group_id, o.group_index, o.group_count, o.created_at, o.delivery_status, o.push_accepted_at,
               o.device_received_at, o.local_saved_at, o.read_at, o.read_by_device_id,
               r.device_received_at AS current_device_received_at,
               r.local_saved_at AS current_device_local_saved_at,
