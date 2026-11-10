@@ -2820,7 +2820,7 @@ test('设备在写入期间被撤销后，不能重新写入 presence、lease �
     assert.equal(stored.user_id, accountId,
       '刚登记的设备必须归属于当前 MAO 永久 ID：' + JSON.stringify(stored));
     assert.equal(stored.revoked_at, null,
-      '刚登记的设备在模拟撤销前必须仍然有效：' + JSON.stringify(stored));
+      '刚登记的设备在模拟撤销前必须仍然有效：' + JSON.stringify({ stored, deviceMutationTrace }));
     assert.equal(
       ctx.store.revokeMaoAccountDevice(accountId, device.deviceId, ctx.now()),
       true,
@@ -2963,7 +2963,7 @@ test('设备撤销并发时，不能新增上下文版本事件或排队自主�
     assert.equal(
       ctx.store.revokeMaoAccountDevice(accountId, contextDevice.deviceId, ctx.now()),
       true,
-      '上下文事件设备撤销必须成功：' + JSON.stringify(stored)
+      '上下文事件设备撤销必须成功：' + JSON.stringify({ stored, deviceMutationTrace })
     );
     return originalRecord({ ...options, requireActiveDevice: true });
   };
