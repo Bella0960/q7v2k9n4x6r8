@@ -420,6 +420,11 @@ self.addEventListener('push', event => {
       },
       icon: './assets/mao-bunny-192.png',
       badge: './assets/icon-192.png',
+      timestamp: Number.isSafeInteger(Number(payload.timestamp)) && Number(payload.timestamp) > 0
+        ? Number(payload.timestamp) : Date.now(),
+      vibrate: [120, 60, 120],
+      actions: [{ action: 'open', title: '查看聊天' }],
+      requireInteraction: false,
       renotify: false,
       silent: false
     });
