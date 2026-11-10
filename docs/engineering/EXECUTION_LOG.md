@@ -33,18 +33,18 @@ This is the durable checkpoint for owner-assigned, multi-step work. Update it af
 
 | Item | Status | Evidence |
 |---|---|---|
-| Refresh CLAUDE facts against current main tree | IN PROGRESS on this branch | Page count, chat-detail line count, storage/Service Worker wording, `apps/settings` caution, tests/lint note |
-| Refresh handbook tree metrics | IN PROGRESS on this branch | Computed from complete recursive GitHub tree |
-| Add continuous execution protocol | IN PROGRESS on this branch | AGENTS.md, REMEDIATION_BACKLOG.md, AI_HANDOFF_PROMPT.md |
-| Create durable cross-session checkpoint | IN PROGRESS on this branch | This file |
+| Refresh CLAUDE facts against current main tree | REVIEW PR #244 | Page count, chat-detail line count, storage/Service Worker wording, `apps/settings` caution, tests/lint note |
+| Refresh handbook tree metrics | REVIEW PR #244 | Computed from complete recursive GitHub tree |
+| Add continuous execution protocol | REVIEW PR #244 | AGENTS.md, REMEDIATION_BACKLOG.md, AI_HANDOFF_PROMPT.md |
+| Create durable cross-session checkpoint | REVIEW PR #244 | This file |
 
 ## Next actions
 
-1. Inspect the full diff and ensure every changed statement is source-grounded.
-2. Verify the docs-only branch is internally consistent; for text-only edits, no build is required, but validate exact wording and links.
-3. Open a reviewable PR for GOV-001/GOV-004; keep it unmerged and undeployed.
-4. Continue with the next low-risk item: GOV-002 read-only app/file/route ownership index, then CI-003/CI-004 and other small governance work.
-5. Reconcile old feature PRs against current main, then proceed to data backup and chat work in dependency order.
+1. PR #244 is open as Draft; review is requested and no merge/deploy is allowed without approval.
+2. Continue with GOV-002 read-only app/file/route ownership index, starting from the current 89-page main tree.
+3. Inspect small, independent code PRs against current main before deciding whether to port them; do not rebase or merge stale branches blindly.
+4. Audit CI-003/CI-004 and the recent failing-runner behavior; only then modify workflow/package scripts.
+5. Proceed to data backup and chat work in dependency order after the read-only inventories.
 
 ## Resume instruction
 
