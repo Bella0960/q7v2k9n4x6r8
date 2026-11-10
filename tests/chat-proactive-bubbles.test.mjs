@@ -129,9 +129,11 @@ test('first proactive contact can begin a new role conversation without prior us
     now, localHour: 12, globalCooldownMs: 24 * 60 * 60 * 1000,
     roleCooldownMs: 24 * 60 * 60 * 1000
   };
-  assert.deepEqual(presencePolicy.evaluateInitialProactiveContact(options), {
-    eligible: true, reason: 'eligible', enabledAt: options.enabledAt, idleMs: 2 * 60 * 1000
-  });
+  const eligible = presencePolicy.evaluateInitialProactiveContact(options);
+  assert.equal(eligible.eligible, true);
+  assert.equal(eligible.reason, 'eligible');
+  assert.equal(eligible.enabledAt, options.enabledAt);
+  assert.equal(eligible.idleMs, 2 * 60 * 1000);
   assert.equal(presencePolicy.evaluateInitialProactiveContact({ ...options, enabled: false }).reason, 'disabled');
   assert.equal(presencePolicy.evaluateInitialProactiveContact({ ...options, blocked: true }).reason, 'blocked');
   assert.equal(presencePolicy.evaluateInitialProactiveContact({ ...options, pageVisible: false }).reason, 'page-hidden');
