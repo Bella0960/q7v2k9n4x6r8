@@ -4997,7 +4997,14 @@ test('云端角色上下文共享默认关闭、内容有界且关闭后删除�
 
 test('云端多气泡按组暂存、整组恢复，并在另一设备逐条 ACK 前保持整组可取', async () => {
   const now = 1800000000000;
-  const ctx = setupTestStore(openTestDb());
+  const ctx = setupTestStore(openTestDb(), {
+    AUTONOMY_LEASE_MS: '60000',
+    AUTONOMY_TICK_LIMIT: '10',
+    AUTONOMY_RETRY_BACKOFF_MS: '60000,300000',
+    AUTONOMY_HEARTBEAT_TTL_MS: '90000',
+    AUTONOMY_DEVICE_LEASE_MS: '120000',
+    AUTONOMY_DEVICE_GRACE_MS: '0'
+  });
   ctx.timestamps.push(now);
   const device = makeDevice();
   await registerDevice(ctx, device);
@@ -5035,6 +5042,15 @@ test('云端多气泡按组暂存、整组恢复，并在另一设备逐条 ACK 
     requireActiveDevice: true
   });
   assert.equal(queued.inserted, true);
+
+  const phoneClaim = await ctx.asJson(
+    '/api/autonomy/characters/char-group/activities/claim',
+    { method: 'POST', device, body: {} }
+  );
+  assert.equal(phoneClaim.status, 200);
+  assert.equal(phoneClaim.payload.activity, null,
+    '标记为 cloud 的活动只能由 Worker 模型执行器认领');
+
   const claimed = ctx.store.claimActivity({
     id: taskId,
     expectedAttemptCount: 0,
