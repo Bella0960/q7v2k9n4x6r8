@@ -1671,6 +1671,17 @@
             '最近一次真实模型出站：' + (ready.cloudModelLastGeneratedAt ? new Date(ready.cloudModelLastGeneratedAt).toLocaleString() : '暂无记录'),
             '当前设备 Web Push 服务端回执：' + (ready.cloudPushAcceptanceVerified ? '最近 30 天内有 HTTP 成功接受记录' : '最近 30 天内没有 HTTP 成功接受记录'),
             '当前设备最近 Push 接受：' + (ready.cloudPushLastAcceptedAt ? new Date(ready.cloudPushLastAcceptedAt).toLocaleString() : '暂无记录'),
+            '当前设备最近 24 小时推送异常：' + (Array.isArray(ready.recentPushReasons) && ready.recentPushReasons.length
+              ? ready.recentPushReasons.map(function (item) {
+                  var labels = {
+                    push_delivery_failed: '推送服务请求失败（按策略重试或终止）',
+                    subscription_gone: '推送订阅已被服务端判定失效',
+                    subscription_unavailable_before_send: '发送前订阅已撤销或失效',
+                    delivery_lease_lost: '投递租约已过期或被其他执行者接管'
+                  };
+                  return (labels[item.reasonCode] || item.reasonCode) + ' × ' + Number(item.count || 0);
+                }).join('、')
+              : '暂无记录'),
             '说明：服务端接受不等于系统已显示通知；Android 锁屏横幅仍需真机验收。',
             '最近 24 小时调度阻塞原因：' + (Array.isArray(ready.recentSchedulerReasons) && ready.recentSchedulerReasons.length
               ? ready.recentSchedulerReasons.map(function (item) {
