@@ -938,6 +938,12 @@ button { color: inherit; font: inherit; }
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   z-index: 2;
   gap: 4px;
+  /* Let empty space clicks reach the background image upload layer below. */
+  pointer-events: none;
+}
+.ds-postcard .pc-body > * {
+  /* Keep avatar and editable text controls interactive. */
+  pointer-events: auto;
 }
 .ds-postcard .pc-avatar {
   width: 56px; height: 56px;
