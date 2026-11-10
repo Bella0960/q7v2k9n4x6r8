@@ -436,14 +436,31 @@
     var haystack = [guide.title, guide.summary, guide.location, guide.test].concat(guide.steps || []).join(' ').toLowerCase();
     return haystack.indexOf(query) !== -1;
   }
+  function targetLabel(raw) {
+    var matches = String(raw || '').match(/[「“"]([^」”"]+)[」”"]/g);
+    if (matches && matches.length) return matches[matches.length - 1].replace(/[「」“”"]/g, '');
+    var words = String(raw || '').split(/[，。；：]/);
+    return (words[0] || '当前操作').slice(0, 22);
+  }
+  function stepState(guide) {
+    var state = entryState(guide.id);
+    if (!Array.isArray(state.walked)) state.walked = [];
+    return state;
+  }
+  var activeWalkthrough = null;
+  var activeStepIndex = 0;
+
   function guideCard(guide) {
     var state = entryState(guide.id);
     var checked = state.done === true;
     var note = state.note == null ? (guide.defaultNote || '') : String(state.note);
-    var status = guide.issue ? '<span class="status issue">待修复 / 待验收</span>' : '<span class="status">操作指南</span>';
-    var steps = (guide.steps || []).map(function (step) { return '<li>' + escapeHtml(step) + '</li>'; }).join('');
+    var walked = Array.isArray(state.walked) ? state.walked.filter(Boolean).length : 0;
+    var status = guide.issue
+      ? '<span class="status issue">待真机复测</span>'
+      : '<span class="status">操作指南</span>';
+    var stepCount = (guide.steps || []).length;
     var open = guide.href
-      ? '<a class="open-link" href="' + escapeHtml(guide.href) + '">' + escapeHtml(guide.action || '打开功能') +
+      ? '<a class="open-link" href="' + escapeHtml(guide.href) + '" target="_blank" rel="noopener">' + escapeHtml(guide.action || '打开功能') +
         '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></a>'
       : '';
     return '<article class="guide-card" data-guide-id="' + escapeHtml(guide.id) + '">' +
@@ -451,34 +468,122 @@
       '</div><h3 class="guide-title">' + escapeHtml(guide.title) + '</h3><p class="guide-summary">' + escapeHtml(guide.summary) +
       '</p></div>' + status + '</div>' +
       '<div class="guide-location"><b>入口：</b>' + escapeHtml(guide.location) + '</div>' +
-      '<ol class="steps">' + steps + '</ol>' +
-      '<div class="test-box"><div class="test-title">本项怎么测</div><p class="test-description">' + escapeHtml(guide.test) + '</p>' +
+      '<div class="test-description" style="margin-top:10px;">' + stepCount + ' 个分步操作 · 已走完 ' + walked + ' 步</div>' +
+      '<div class="test-box"><div class="test-title">本项怎么测</div><p class="test-description">' + escapeHtml(guide.test || '按步骤打开功能并确认页面正常。') + '</p>' +
       '<label class="test-mark"><input type="checkbox" data-done="' + escapeHtml(guide.id) + '"' + (checked ? ' checked' : '') +
-      '> 我已经在手机上试过这一项</label>' +
+      '> 我已经在手机上实际测试过这一项</label>' +
       '<textarea class="note" data-note="' + escapeHtml(guide.id) + '" rows="2" placeholder="测试备注 / 遇到的问题">' + escapeHtml(note) + '</textarea></div>' +
-      '<div class="guide-actions">' + open + '<span class="guide-hint">' + (guide.issue ? '当前有待处理反馈，测试后请写下具体现象。' : '勾选状态和备注只保存在本浏览器。') + '</span></div>' +
+      '<div class="guide-actions"><button class="start-guide" type="button" data-start-guide="' + escapeHtml(guide.id) + '">一步一步跟着做</button>' +
+      open + '<span class="guide-hint">' + (guide.issue ? '有待真机复测记录；完成测试后请在备注写下设备和现象。' : '勾选状态和备注只保存在本浏览器。') + '</span></div>' +
       '</article>';
   }
   function renderGuides() {
     var query = String($('guideSearch').value || '').trim().toLowerCase();
     var found = GUIDES.filter(function (guide) { return matchesGuide(guide, query); });
-    $('visibleCount').textContent = found.length + ' 项';
+    $('visibleCount').textContent = found.length + ' 项教程';
     $('guideGrid').innerHTML = found.length
       ? found.map(guideCard).join('')
       : '<div class="empty">没有找到匹配的教程。试试功能名称或入口关键词。</div>';
     refreshProgress();
   }
   function renderApps() {
-    $('appDirectory').innerHTML = APPS.map(function (app) {
-      return '<a class="app-link" href="../' + escapeHtml(app[1]) + '"><strong>' + escapeHtml(app[0]) +
-        '</strong><span>' + escapeHtml(app[2]) + '</span></a>';
-    }).join('');
+    var query = String($('guideSearch').value || '').trim().toLowerCase();
+    var found = APPS.filter(function (app) {
+      return !query || app.join(' ').toLowerCase().indexOf(query) !== -1;
+    });
+    $('appDirectory').innerHTML = found.map(function (app) {
+      var guide = GUIDES.find(function (item) { return item.id.indexOf('app-') === 0 && item.href === '../' + app[1]; });
+      var tutorialButton = guide
+        ? '<button type="button" class="app-guide-btn" data-start-guide="' + escapeHtml(guide.id) + '">分步教程</button>'
+        : '';
+      return '<div class="app-link"><a class="app-open" href="../' + escapeHtml(app[1]) + '" target="_blank" rel="noopener"><strong>' + escapeHtml(app[0]) +
+        '</strong><span>' + escapeHtml(app[2]) + '</span></a>' + tutorialButton + '</div>';
+    }).join('') || '<div class="empty">没有匹配的桌面应用。</div>';
+  }
+  function renderFaqs() {
+    var query = String($('guideSearch').value || '').trim().toLowerCase();
+    var found = FAQS.filter(function (faq) { return !query || (faq[0] + ' ' + faq[1]).toLowerCase().indexOf(query) !== -1; });
+    $('faqList').innerHTML = found.map(function (faq) {
+      return '<details class="faq-item"><summary>' + escapeHtml(faq[0]) + '</summary><p>' + escapeHtml(faq[1]) + '</p></details>';
+    }).join('') || '<div class="empty">没有匹配的常见问题。</div>';
   }
   function refreshProgress() {
     var done = GUIDES.filter(function (guide) { return progress[guide.id] && progress[guide.id].done === true; }).length;
     var total = GUIDES.length;
     $('testCount').textContent = done + ' / ' + total + ' 已测试';
     $('progressFill').style.width = (total ? (done / total * 100) : 0) + '%';
+  }
+  function saveWalkthroughState() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(progress)); } catch (error) {}
+    refreshProgress();
+  }
+  function renderWalkthrough() {
+    if (!activeWalkthrough) return;
+    var guide = activeWalkthrough;
+    var steps = guide.steps || [];
+    if (!steps.length) return;
+    activeStepIndex = Math.max(0, Math.min(activeStepIndex, steps.length - 1));
+    var raw = steps[activeStepIndex];
+    var text = typeof raw === 'string' ? raw : String(raw.text || raw.instruction || '');
+    var target = typeof raw === 'object' && raw.target ? raw.target : targetLabel(text);
+    var route = String(guide.location || '').split(/\s*→\s*/).filter(Boolean);
+    $('walkTitle').textContent = guide.title;
+    $('walkStepCount').textContent = '第 ' + (activeStepIndex + 1) + ' 步 / 共 ' + steps.length + ' 步';
+    $('walkPercent').textContent = Math.round((activeStepIndex + 1) / steps.length * 100) + '%';
+    $('walkProgressBar').style.width = ((activeStepIndex + 1) / steps.length * 100) + '%';
+    $('walkRoute').innerHTML = route.map(function (part, index) {
+      return (index ? '<span class="walk-route-arrow">›</span>' : '') +
+        '<span class="walk-route-chip">' + escapeHtml(part) + '</span>';
+    }).join('');
+    $('walkPhoneTarget').textContent = target.slice(0, 15);
+    $('walkVisualTarget').textContent = target;
+    $('walkStepTitle').textContent = '操作 ' + (activeStepIndex + 1);
+    $('walkStepCopy').textContent = text;
+    $('walkStepTip').textContent = typeof raw === 'object' && raw.tip
+      ? String(raw.tip) : '按当前步骤操作真实页面。若页面上的按钮名称或布局与这里不同，先不要猜，记录差异并在对应教程卡片里备注。';
+    $('walkPractice').textContent = guide.test || '按本教程的入口完成一次无风险检查，并确认页面能正常返回。';
+    var state = stepState(guide);
+    $('walkStepDone').checked = state.walked.indexOf(activeStepIndex) !== -1;
+    $('walkPrevious').disabled = activeStepIndex === 0;
+    $('walkNext').textContent = activeStepIndex === steps.length - 1 ? '完成引导' : '下一步';
+    $('walkOpenPage').href = guide.href || '../index.html';
+  }
+  function startGuide(id) {
+    var guide = GUIDES.find(function (item) { return item.id === id; });
+    if (!guide) return;
+    activeWalkthrough = guide;
+    var state = stepState(guide);
+    activeStepIndex = Number.isInteger(state.lastStep) ? state.lastStep : 0;
+    $('walkthroughModal').hidden = false;
+    renderWalkthrough();
+  }
+  function closeGuide() {
+    if (activeWalkthrough) {
+      var state = stepState(activeWalkthrough);
+      state.lastStep = activeStepIndex;
+      saveWalkthroughState();
+    }
+    $('walkthroughModal').hidden = true;
+    activeWalkthrough = null;
+  }
+  function moveWalkthrough(delta) {
+    if (!activeWalkthrough) return;
+    var state = stepState(activeWalkthrough);
+    if (delta > 0) {
+      if (state.walked.indexOf(activeStepIndex) === -1) state.walked.push(activeStepIndex);
+      if (activeStepIndex >= activeWalkthrough.steps.length - 1) {
+        state.learned = true;
+        state.lastStep = activeStepIndex;
+        saveWalkthroughState();
+        closeGuide();
+        return;
+      }
+    }
+    activeStepIndex = Math.max(0, Math.min(activeWalkthrough.steps.length - 1, activeStepIndex + delta));
+    state.lastStep = activeStepIndex;
+    saveWalkthroughState();
+    renderWalkthrough();
+    renderGuides();
   }
   function exportProgress() {
     var lines = ['MAOMAO 手机测试记录', '指南版本：' + GUIDE_VERSION, '导出时间：' + new Date().toLocaleString(), ''];
@@ -487,7 +592,7 @@
       lines.push((state.done ? '[已测试] ' : '[待测试] ') + guide.title);
       lines.push('入口：' + guide.location);
       if (state.note) lines.push('备注：' + state.note);
-      if (guide.issue) lines.push('状态：待修复 / 待验收');
+      if (guide.issue) lines.push('状态：待真机复测（已加导航兜底，尚未验证结果）');
       lines.push('');
     });
     var blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
@@ -508,8 +613,8 @@
     renderFilters();
     renderGuides();
   });
-  $('guideSearch').addEventListener('input', renderGuides);
-  $('guideGrid').addEventListener('change', function (event) {
+  $('guideSearch').addEventListener('input', function () { renderGuides(); renderApps(); renderFaqs(); });
+  $('guideGrid').addEventListener('click', function (event) {\n    var start = event.target.closest('[data-start-guide]');\n    if (start) startGuide(start.getAttribute('data-start-guide'));\n  });\n  $('appDirectory').addEventListener('click', function (event) {\n    var start = event.target.closest('[data-start-guide]');\n    if (start) startGuide(start.getAttribute('data-start-guide'));\n  });\n  $('walkClose').addEventListener('click', closeGuide);\n  $('walkPrevious').addEventListener('click', function () { moveWalkthrough(-1); });\n  $('walkNext').addEventListener('click', function () { moveWalkthrough(1); });\n  $('walkStepDone').addEventListener('change', function () {\n    if (!activeWalkthrough) return;\n    var state = stepState(activeWalkthrough);\n    var index = state.walked.indexOf(activeStepIndex);\n    if (this.checked && index === -1) state.walked.push(activeStepIndex);\n    if (!this.checked && index !== -1) state.walked.splice(index, 1);\n    saveWalkthroughState();\n    renderGuides();\n  });\n  $('walkthroughModal').addEventListener('click', function (event) {\n    if (event.target === $('walkthroughModal')) closeGuide();\n  });\n  document.addEventListener('keydown', function (event) {\n    if (event.key === 'Escape' && !$('walkthroughModal').hidden) closeGuide();\n  });\n  $('guideGrid').addEventListener('change', function (event) {
     var checkbox = event.target.closest('[data-done]');
     if (checkbox) {
       entryState(checkbox.getAttribute('data-done')).done = checkbox.checked;
