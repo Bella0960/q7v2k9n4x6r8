@@ -461,6 +461,12 @@
         }
     }
 
+    function clearPreview() {
+        revokePreviewUrl();
+        var style = document.getElementById('fontPreviewStyle');
+        if (style) style.remove();
+    }
+
     function previewSource(source) {
         var url = '';
         if (source.type === 'file') {
@@ -477,8 +483,9 @@
             document.head.appendChild(style);
         }
         var safeUrl = String(url).replace(/["'\\\r\n]/g, '');
-        style.textContent = '@font-face{font-family:"MAOMAOUserFont";src:url("' + safeUrl + '") format("' + source.format + '");font-display:swap;}'
-            + '#fontPreview{font-family:"MAOMAOUserFont",' + FALLBACK_STACK + ' !important;}';
+        /* 预览使用独立 family，避免与全局 MAOMAOUserFont 重复注册同一字体。 */
+        style.textContent = '@font-face{font-family:"MAOMAOPreviewFont";src:url("' + safeUrl + '") format("' + source.format + '");font-display:swap;}'
+            + '#fontPreview{font-family:"MAOMAOPreviewFont",' + FALLBACK_STACK + ' !important;}';
     }
 
     function applyGlobalSource(source) {
@@ -549,7 +556,7 @@
         try {
             var url = normalizeUrl(raw);
             pendingSource = { type: 'url', url: url, format: getFormat(url) };
-            previewSource(pendingSource);
+            clearPreview();
             try {
                 localStorage.setItem('custom_font_url', url);
                 localStorage.removeItem('active_font_preset_id');
@@ -616,7 +623,7 @@
             localStorage.setItem('active_font_preset_id', record.id);
             localStorage.removeItem('custom_font_url');
         } catch (e) {}
-        previewSource(pendingSource);
+        clearPreview();
         var applied = applyGlobalSource(pendingSource);
         if (record.fileName) fileName.textContent = record.fileName;
         showHint('正在应用字体方案：' + record.name);
@@ -748,7 +755,6 @@
         if (savedUrl) {
             input.value = savedUrl;
             pendingSource = { type: 'url', url: savedUrl, format: getFormat(savedUrl) };
-            previewSource(pendingSource);
         }
         refreshPresets().then(function (records) {
             if (activeId) {

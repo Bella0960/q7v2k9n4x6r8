@@ -233,6 +233,8 @@
     var mineFilter='all';
     var fontRecords=[];
     var fontPreviewUrls={};
+    var fontFaceStates={};
+    var fontPreviewFailures={};
     var bubbleScopeValue='global';
     var toastTimer=null;
     var defaultThemes=[
@@ -413,10 +415,10 @@
           var tx=db.transaction(FONT_STORE,'readonly'),req=tx.objectStore(FONT_STORE).getAll();
           req.onsuccess=function(){fontRecords=req.result||[];};
           req.onerror=function(){db.close();reject(req.error||new Error('读取字体失败'));};
-          tx.oncomplete=function(){db.close();resolve(fontRecords);};
+          tx.oncomplete=function(){db.close();pruneFontPreviews();resolve(fontRecords);};
           tx.onerror=function(){db.close();reject(tx.error||new Error('读取字体失败'));};
         });
-      }).catch(function(){fontRecords=[];});
+      }).catch(function(){fontRecords=[];pruneFontPreviews();});
     }
     function activeFontId(){try{return localStorage.getItem('active_font_preset_id')||'';}catch(e){return '';}}
     function activeFontUrl(){try{return localStorage.getItem('custom_font_url')||'';}catch(e){return '';}}
@@ -583,17 +585,94 @@
       if(window.MAOMAOFontRuntime)window.MAOMAOFontRuntime.clear();
       toast('已恢复系统默认字体');render();
     }
+    function isBlobPreviewUrl(url){return typeof url==='string'&&/^blob:/.test(url);}
+    /* IndexedDB 每次读取都会返回新的 Blob 实例，不能用对象引用判断记录是否变化。 */
+    function previewIdentity(record){
+      if(record.type==='file'&&record.blob){
+        return 'blob:'+(record.blob.size||0)+':'+(record.createdAt||0)+':'+(record.blob.type||'');
+      }
+      return 'url:'+(record.url||'');
+    }
+    /* 释放单个字体预览：撤销 ObjectURL、注销 FontFace、清空状态。 */
+    function releaseFontPreview(cacheKey){
+      var state=fontFaceStates[cacheKey];
+      if(state&&state.face&&document.fonts&&document.fonts.delete){
+        try{document.fonts.delete(state.face);}catch(e){}
+      }
+      delete fontFaceStates[cacheKey];
+      var url=fontPreviewUrls[cacheKey];
+      if(isBlobPreviewUrl(url)){
+        try{URL.revokeObjectURL(url);}catch(e){}
+      }
+      delete fontPreviewUrls[cacheKey];
+    }
+    /* 字体记录删除、刷新或记录内容变化后，回收不再对应任何记录的预览资源。 */
+    function pruneFontPreviews(){
+      var live={};
+      fontRecords.forEach(function(record){live[String(record.id)]=record;});
+      Object.keys(fontFaceStates).forEach(function(cacheKey){
+        var record=live[cacheKey];
+        if(!record){releaseFontPreview(cacheKey);delete fontPreviewFailures[cacheKey];return;}
+        var state=fontFaceStates[cacheKey];
+        if(state.identity!==previewIdentity(record)){releaseFontPreview(cacheKey);delete fontPreviewFailures[cacheKey];}
+      });
+      Object.keys(fontPreviewUrls).forEach(function(cacheKey){
+        var record=live[cacheKey];
+        if(!record){releaseFontPreview(cacheKey);delete fontPreviewFailures[cacheKey];return;}
+        var source=fontPreviewUrls[cacheKey];
+        if(isBlobPreviewUrl(source)){
+          if(!(record.type==='file'&&record.blob)){releaseFontPreview(cacheKey);delete fontPreviewFailures[cacheKey];}
+        }else if(record.url!==source){
+          releaseFontPreview(cacheKey);delete fontPreviewFailures[cacheKey];
+        }
+      });
+      Object.keys(fontPreviewFailures).forEach(function(cacheKey){
+        var record=live[cacheKey];
+        if(!record||previewIdentity(record)!==fontPreviewFailures[cacheKey])delete fontPreviewFailures[cacheKey];
+      });
+    }
+    function applyFontPreviewFamily(cacheKey,family){
+      document.querySelectorAll('[data-font-specimen]').forEach(function(node){
+        if(String(node.dataset.fontSpecimen)===cacheKey)node.style.fontFamily='"'+family+'",sans-serif';
+      });
+    }
     function bindFontSpecimens(){
       if(!window.FontFace||!window.URL||!URL.createObjectURL)return;
+      pruneFontPreviews();
       document.querySelectorAll('[data-font-specimen]').forEach(function(el){
-        var record=fontRecords.filter(function(r){return String(r.id)===el.dataset.fontSpecimen;})[0];
+        var cacheKey=String(el.dataset.fontSpecimen);
+        var record=fontRecords.filter(function(r){return String(r.id)===cacheKey;})[0];
         if(!record)return;
-        var cacheKey=String(record.id);
+        var family='StorePreview_'+cacheKey.replace(/[^a-z0-9_-]/gi,'');
+        /* 同一字体只创建一个 FontFace 并加载一次；列表重绘/切换分类时复用结果。 */
+        var state=fontFaceStates[cacheKey];
+        if(state&&state.ready){el.style.fontFamily='"'+family+'",sans-serif';return;}
+        if(state)return;
+        /* 同一方案已知加载失败时不再重复解码；记录变化或刷新后由 pruneFontPreviews 清除。 */
+        if(fontPreviewFailures[cacheKey]===previewIdentity(record))return;
         if(!fontPreviewUrls[cacheKey])fontPreviewUrls[cacheKey]=record.type==='file'&&record.blob?URL.createObjectURL(record.blob):(record.url||'');
-        var source=fontPreviewUrls[cacheKey];if(!source)return;
-        var family='StorePreview_'+String(record.id).replace(/[^a-z0-9_-]/gi,'');
-        var face=new FontFace(family,'url("'+String(source).replace(/["']/g,'')+'")');
-        face.load().then(function(loaded){document.fonts.add(loaded);el.style.fontFamily='"'+family+'",sans-serif';}).catch(function(){});
+        var source=fontPreviewUrls[cacheKey];if(!source){delete fontPreviewUrls[cacheKey];return;}
+        state=fontFaceStates[cacheKey]={
+          family:family,ready:false,face:null,identity:previewIdentity(record)
+        };
+        var face;
+        try{face=new FontFace(family,'url("'+String(source).replace(/["']/g,'')+'")');}catch(e){releaseFontPreview(cacheKey);return;}
+        state.face=face;
+        face.load().then(function(loaded){
+          /* 加载期间方案被删除/刷新：不再注册字体，也不再触碰旧 DOM 节点。 */
+          if(fontFaceStates[cacheKey]!==state)return;
+          try{document.fonts.add(loaded);}catch(e){}
+          state.ready=true;
+          state.face=loaded;
+          delete fontPreviewFailures[cacheKey];
+          applyFontPreviewFamily(cacheKey,family);
+        }).catch(function(){
+          /* 加载失败：标记失败并撤销本次创建的 ObjectURL，后续重绘不再重复解码。 */
+          if(fontFaceStates[cacheKey]===state){
+            fontPreviewFailures[cacheKey]=previewIdentity(record);
+            releaseFontPreview(cacheKey);
+          }
+        });
       });
     }
     function openPage(relative){
@@ -640,7 +719,7 @@
       }
     },{passive:true});
     function refreshAll(){
-      loadFonts().then(function(){render();bindFontSpecimens();});
+      loadFonts().then(function(){render();});
       if(currentCategory==='bubbles'||currentCategory==='mine')render();
     }
     window.addEventListener('pageshow',refreshAll);
@@ -648,6 +727,10 @@
       if(!event.key||[VISUAL_KEY,DELETED_KEY,'beauty_chat_global_v1','maomao_chat_theme_preset','active_font_preset_id',OWN_KEY,CHAT_LIST_THEME_KEY].indexOf(event.key)>=0)refreshAll();
     });
     document.addEventListener('visibilitychange',function(){if(!document.hidden)refreshAll();});
+    /* 页面卸载/进入后台缓存时释放全部预览资源，避免 ObjectURL 与 FontFace 常驻。 */
+    window.addEventListener('pagehide',function(){
+      Object.keys(fontFaceStates).concat(Object.keys(fontPreviewUrls)).forEach(function(key){releaseFontPreview(key);});
+    });
     loadFonts().then(function(){render();bindFontSpecimens();});
   })();
   </script>
