@@ -29,7 +29,7 @@
       // 角色专属预设只在角色聊天详情页加载，避免串到列表或群聊。
       if (isChatDetail && currentRole && !/^g/i.test(currentRole)) {
         presets.forEach(function (preset) {
-          if (preset && preset.target === currentRole &&
+          if (preset && String(preset.target) === String(currentRole) &&
               active[currentRole] === preset.name && typeof preset.css === 'string') {
             cssToApply.push(preset.css);
           }
