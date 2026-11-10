@@ -4550,7 +4550,7 @@
 
         function renderAllMessages() {
             // 清空或全量重绘时终止尚未完成的逐条气泡呈现。
-            aiBubblePacingRunId += 1;
+            ++aiBubblePacingRunId;
             // 有语音播放动画在跑就先掐断——气泡会被整批替换，旧节点已失效。
             if (typeof stopVoicePlay === 'function') stopVoicePlay();
             const visibleList = computeVisibleList();
