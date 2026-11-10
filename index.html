@@ -747,6 +747,9 @@
         var id = 'app_admin_center';
         var tile = document.querySelector('[data-drag="' + id + '"]');
         if (!tile) return;
+        // Keep the privileged shortcut hidden unless the server-injected role is super_admin.
+        // The stylesheet also enforces [hidden] because app-tile display rules otherwise override it.
+        tile.hidden = !isSuperAdmin;
         if (isSuperAdmin) {
           tile.hidden = false;
           // A creator must always be able to open the management center.
