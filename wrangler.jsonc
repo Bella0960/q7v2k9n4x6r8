@@ -11,6 +11,9 @@
     "not_found_handling": "none",
     "run_worker_first": true
   },
+  "vars": {
+    "AUTONOMY_MIN_IDLE_MS": "1800000"
+  },
   "durable_objects": {
     "bindings": [
       {
@@ -26,7 +29,7 @@
     }
   ],
   "triggers": {
-    "crons": ["17 3 * * *"]
+    "crons": ["*/5 * * * *"]
   },
   "previews": {}
 }
