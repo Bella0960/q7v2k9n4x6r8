@@ -1917,13 +1917,13 @@ test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat
 });
 
 test('proactive contact notifier is loaded on home and navigation pages and precached by PWA', () => {
-  assert.match(homePage, /chat-notifier\.js\?v=20261110v8/);
-  assert.match(navPage, /chat-notifier\.js\?v=20261110v8/);
-  assert.match(detail, /chat-notifier\.js\?v=20261110v8/);
+  assert.match(homePage, /chat-notifier\.js\?v=20261107v7/);
+  assert.match(navPage, /chat-notifier\.js\?v=20261107v7/);
+  assert.match(detail, /chat-notifier\.js\?v=20261107v7/);
   assert.match(detail, /cloud-push-client\.js\?v=20261107v2/);
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v19/);
   assert.match(serviceWorker, /phone-app-pwa-v217/);
-  assert.match(serviceWorker, /chat-notifier\.js\?v=20261110v8/);
+  assert.match(serviceWorker, /chat-notifier\.js\?v=20261107v7/);
   assert.match(serviceWorker, /cloud-push-client\.js\?v=20261107v2/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v19/);
   assert.match(serviceWorker, /chat-followup-policy/);
@@ -2376,10 +2376,11 @@ test('AI 等待回复期间收到主动消息时，最终落库会合并最新�
   const sendStart = detail.indexOf('async function sendMsg(opts)');
   const snapshotRefresh = detail.indexOf('historyList = refreshSendHistorySnapshot(', sendStart);
   const retryMutation = detail.indexOf('var retryRemarked = false', snapshotRefresh);
-  const aiAppend = detail.indexOf('historyList.push(aiMsg)', snapshotRefresh);
+  const aiAppend = detail.indexOf('replyMessages.forEach(function (message) { historyList.push(message); });', snapshotRefresh);
+  const assistantSave = detail.indexOf('if (!saveMessages(historyList))', aiAppend);
   assert.ok(sendStart >= 0 && snapshotRefresh > sendStart,
     'sendMsg must refresh history after the asynchronous model request returns');
-  assert.ok(retryMutation > snapshotRefresh && aiAppend > snapshotRefresh,
+  assert.ok(retryMutation > snapshotRefresh && aiAppend > retryMutation && assistantSave > aiAppend,
     'both retry-error and successful reply persistence must use the refreshed history');
 
   const helperStart = detail.indexOf('function refreshSendHistorySnapshot(');
@@ -2411,7 +2412,7 @@ test('AI 等待回复期间收到主动消息时，最终落库会合并最新�
 
 test('AI 气泡动画结束后，红包/转账/图片/通话卡统一使用最新历史', () => {
   const sendStart = detail.indexOf('async function sendMsg(opts)');
-  const pacingAwait = detail.indexOf('await appendAiMessageWithPacing(aiMsg, aiMessageIndex)', sendStart);
+  const pacingAwait = detail.indexOf('await appendReplyMessagesWithPacing(replyMessages, aiMessageIndex)', sendStart);
   const refreshAfterPacing = detail.indexOf('historyList = refreshHistoryAfterAssistantPacing(', pacingAwait);
   const callCard = detail.indexOf('insertIncomingCallCard(historyList)', refreshAfterPacing);
   const payCards = detail.indexOf('insertPayCards(historyList, parsedPay.items)', callCard);
@@ -2497,8 +2498,8 @@ test('cloud outbound 多气泡仅在最后一条进入视口后标记已读，�
   assert.match(appendSource, /extraRow\.dataset\.serverMessageId = String\(msg\.serverMessageId\)/);
   assert.match(appendSource, /host\.appendChild\(el\);[\s\S]{0,180}observeCloudOutboundReadRow\(el\)/);
 
-  const paceStart = detail.indexOf('function appendAiMessageWithPacing');
-  const paceEnd = detail.indexOf('// ================= 虚拟列表', paceStart);
+  const paceStart = detail.indexOf('function appendMessagesWithPacing(messages, startIdx, options)');
+  const paceEnd = detail.indexOf('function appendAiMessageWithPacing', paceStart);
   assert.ok(paceStart >= 0 && paceEnd > paceStart);
   const pacingSource = detail.slice(paceStart, paceEnd);
   assert.match(pacingSource, /chatMessages\.appendChild\(node\);[\s\S]{0,120}observeCloudOutboundReadRow\(node\)/);
@@ -3361,7 +3362,7 @@ test('聊天详情页的多气泡呈现队列只声明一次', () => {
 });
 
 test('亲属卡所有状态变更与商店外卖消费共用钱包锁', async () => {
-  assert.match(familyCardsPage, /wallet-ledger\.js\?v=20261110v8/);
+  assert.match(familyCardsPage, /wallet-ledger\.js\?v=20261110v9/);
   assert.match(familyCardsPage, /async function runAction\(action, id\)/);
   assert.match(familyCardsPage, /await ledger\.runExclusive\(function \(\)/);
   assert.match(familyCardsPage, /api\.update\(id, action\)/);
@@ -3790,7 +3791,7 @@ test('聊天、商店、外卖和钱包充值提现统一使用同一个钱包�
     ['takeout', takeoutPage],
     ['wallet', walletPage]
   ]) {
-    assert.match(source, /wallet-ledger\.js\?v=20261110v8/,
+    assert.match(source, /wallet-ledger\.js\?v=20261110v9/,
       name + ' must load the shared wallet ledger coordinator');
     assert.match(source, /MaoMaoWalletLedger\.runExclusive|ledger\.runExclusive/,
       name + ' must route balance mutations through the shared lock');
@@ -3809,7 +3810,7 @@ test('聊天、商店、外卖和钱包充值提现统一使用同一个钱包�
 
 
 test('亲密付额度、对象和开关设置也与商店及外卖结算共用钱包锁', () => {
-  assert.match(closePayPage, /wallet-ledger\.js\?v=20261110v8/);
+  assert.match(closePayPage, /wallet-ledger\.js\?v=20261110v9/);
   assert.match(closePayPage, /async function mutateData\(mutator\)/);
   assert.match(closePayPage, /ledger\.runExclusive\(function \(\)/);
   assert.match(closePayPage, /localStorage\.getItem\(KEY\) !== serialized/,
@@ -4139,7 +4140,7 @@ test('用户发出的红包/转账在钱包扣款后聊天保存失败时可恢�
 });
 
 test('用户红包/转账发送入口也使用共享钱包锁并刷新 chat-extras 脚本', () => {
-  assert.match(detail, /wallet-ledger\.js\?v=20261110v8/);
+  assert.match(detail, /wallet-ledger\.js\?v=20261110v9/);
   assert.match(detail, /chat-extras\.js\?t=20261107wallet2/);
   assert.match(chatExtrasSource, /ledger\.runExclusive\(function \(\)/);
   assert.match(chatExtrasSource, /paymentId: paymentId/);
