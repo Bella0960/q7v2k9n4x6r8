@@ -564,6 +564,56 @@ test('管理员初始化唯一、账号注册先生成永久 ID 并保持待授�
   assert.equal(registrationAudit[0].actor_account_id, registered.payload.account.id);
 });
 
+test('同一超级管理员账号在两个独立登录会话中都保留管理员权限', async () => {
+  const ctx = setupTestStore(openTestDb(), { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const bootstrap = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator-multi-device',
+      password: 'creator-multi-device-password-123',
+      confirmPassword: 'creator-multi-device-password-123'
+    }
+  });
+  assert.equal(bootstrap.status, 200);
+  const firstClientCookie = cookieFrom(bootstrap);
+
+  // A second browser/device logs into the same creator account independently.
+  const secondLogin = await ctx.fetchTo('/api/accounts/login', {
+    method: 'POST',
+    body: {
+      identifier: 'creator-multi-device',
+      password: 'creator-multi-device-password-123'
+    }
+  });
+  assert.equal(secondLogin.status, 200);
+  const secondClientCookie = cookieFrom(secondLogin);
+  assert.notEqual(secondClientCookie, firstClientCookie,
+    'each device/client must receive its own independent session cookie');
+
+  const [firstMe, secondMe] = await Promise.all([
+    ctx.fetchTo('/api/accounts/me', { headers: { cookie: firstClientCookie } }),
+    ctx.fetchTo('/api/accounts/me', { headers: { cookie: secondClientCookie } })
+  ]);
+  const firstAccount = await json(firstMe);
+  const secondAccount = await json(secondMe);
+  assert.equal(firstAccount.status, 200);
+  assert.equal(secondAccount.status, 200);
+  assert.equal(firstAccount.payload.account.id, secondAccount.payload.account.id,
+    'both clients must resolve to the same permanent MAO account ID');
+  assert.equal(firstAccount.payload.account.role, 'super_admin');
+  assert.equal(secondAccount.payload.account.role, 'super_admin');
+
+  const [firstAdminAccess, secondAdminAccess] = await Promise.all([
+    ctx.fetchTo('/api/admin/invites', { headers: { cookie: firstClientCookie } }),
+    ctx.fetchTo('/api/admin/invites', { headers: { cookie: secondClientCookie } })
+  ]);
+  assert.equal(firstAdminAccess.status, 200,
+    'the creator account must access the admin API from the first client');
+  assert.equal(secondAdminAccess.status, 200,
+    'the same creator account must access the admin API from the second client');
+});
+
 test('登录会话与旧标签页 MAO 上下文不一致时，所有账号 API 都必须拒绝', async () => {
   const db = openTestDb();
   const ctx = setupTestStore(db);
