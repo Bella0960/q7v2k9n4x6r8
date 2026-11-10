@@ -392,6 +392,19 @@
     return text;
   }
 
+  function hasUnsafeCloudText(value, allowLineFeed) {
+    var text = String(value || '');
+    if (text.indexOf('<') !== -1 || text.indexOf('>') !== -1) return true;
+    var lower = text.toLowerCase();
+    if (lower.indexOf('http://') !== -1 || lower.indexOf('https://') !== -1) return true;
+    for (var i = 0; i < text.length; i += 1) {
+      var code = text.charCodeAt(i);
+      if (code < 32 && !(allowLineFeed === true && code === 10)) return true;
+      if (code === 127) return true;
+    }
+    return false;
+  }
+
   function normalizeCloudBubbleTexts(rawText, suppliedBubbles) {
     if (Array.isArray(suppliedBubbles)) {
       if (!suppliedBubbles.length || suppliedBubbles.length > 4) return [];
@@ -400,12 +413,10 @@
         if (typeof suppliedBubbles[i] !== 'string') return [];
         var bubble = suppliedBubbles[i].trim();
         var length = Array.from(bubble).length;
-        if (length < 2 || length > 220 ||
-            /[<>\\u0000-\\u001F]/.test(bubble) ||
-            /https?:\\/\\//i.test(bubble)) return [];
+        if (length < 2 || length > 220 || hasUnsafeCloudText(bubble, true)) return [];
         cleaned.push(bubble);
       }
-      if (cleaned.join('\\n\\n') !== String(rawText || '').trim()) return [];
+      if (cleaned.join(String.fromCharCode(10, 10)) !== String(rawText || '').trim()) return [];
       return cleaned;
     }
     return parseReplyContent(String(rawText || ''), 'legacy').bubbles;
@@ -420,7 +431,7 @@
     meta = meta && typeof meta === 'object' ? meta : {};
     var bubbleTexts = normalizeCloudBubbleTexts(text, meta.bubbles);
     if (!bubbleTexts.length) return [];
-    var serialized = bubbleTexts.join('\\n\\n');
+    var serialized = bubbleTexts.join(String.fromCharCode(10, 10));
     var time = Number(meta.time) || Date.now();
     var turnId = String(meta.turnId || ('cloud_' + messageId));
     var messages = buildReplyMessages(serialized, 'legacy', {
