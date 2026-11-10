@@ -229,7 +229,12 @@ export function buildOutboundPushPayload({ characterId, serverMessageId, timesta
   const roleId = String(characterId || '');
   const messageId = String(serverMessageId || '');
   const maoAccountId = String(accountId || OWNER_USER_ID);
-  const safeName = String(characterName || '').replace(/[<>\\u0000-\\u001F]/g, ' ').replace(/\\s+/g, ' ').trim().slice(0, 48);
+  let safeName = '';
+  for (const character of String(characterName || '')) {
+    const code = character.codePointAt(0);
+    if (code >= 32 && code !== 127 && character !== '<' && character !== '>') safeName += character;
+  }
+  safeName = safeName.trim().slice(0, 48);
   const count = Number(bubbleCount);
   const safeCount = Number.isSafeInteger(count) && count >= 1 && count <= 4 ? count : 1;
   if (!roleId || roleId.length > 96 ||
@@ -1594,24 +1599,34 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         !Object.prototype.hasOwnProperty.call(body, 'text') || hasBubbles !== hasDisplayName) {
       throw new ApiError(400, 'INVALID_ACTIVITY_RESULT', '完成请求只允许 attemptCount/text，以及成对提供的 bubbles/displayName');
     }
+    const hasUnsafeText = (value, allowLineFeed = false) => {
+      const text = String(value || '');
+      if (text.includes('<') || text.includes('>')) return true;
+      const lower = text.toLowerCase();
+      if (lower.includes('http://') || lower.includes('https://')) return true;
+      for (const character of text) {
+        const code = character.codePointAt(0);
+        if (code < 32 && !(allowLineFeed && code === 10)) return true;
+        if (code === 127) return true;
+      }
+      return false;
+    };
     const attemptCount = Number(body.attemptCount);
     const messageText = String(body.text || '').trim();
     if (!Number.isSafeInteger(attemptCount) || attemptCount < 1 ||
         messageText.length < 2 || Array.from(messageText).length > 220 ||
-        /[<>\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]/.test(messageText) ||
-        /https?:\\/\\//i.test(messageText)) {
+        hasUnsafeText(messageText, true)) {
       throw new ApiError(400, 'INVALID_ACTIVITY_RESULT', '主动消息必须是 2–220 字的普通文字');
     }
     let outboundPayload = { type: 'text', text: messageText };
     if (hasBubbles) {
       if (!Array.isArray(body.bubbles) || body.bubbles.length < 1 || body.bubbles.length > 4 ||
           typeof body.displayName !== 'string' || Array.from(body.displayName).length > 48 ||
-          /[<>\\u0000-\\u001F]/.test(body.displayName) || /https?:\\/\\//i.test(body.displayName)) {
+          hasUnsafeText(body.displayName)) {
         throw new ApiError(400, 'INVALID_ACTIVITY_RESULT', '主动消息气泡列表或角色名称无效');
       }
       const bubbles = body.bubbles.map(value => typeof value === 'string' ? value.trim() : '');
-      if (bubbles.some(value => value.length < 2 || Array.from(value).length > 220 ||
-          /[<>\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]/.test(value) || /https?:\\/\\//i.test(value)) ||
+      if (bubbles.some(value => value.length < 2 || Array.from(value).length > 220 || hasUnsafeText(value, true)) ||
           bubbles.join(String.fromCharCode(10, 10)) !== messageText) {
         throw new ApiError(400, 'INVALID_ACTIVITY_RESULT', '主动消息气泡边界或正文不匹配');
       }
