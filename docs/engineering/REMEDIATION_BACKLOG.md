@@ -33,7 +33,7 @@ Acceptance:
 - No app is deleted as an “orphan” based only on naming.
 
 ### GOV-003 — Validate root cleanup candidates
-**Priority:** P2 · **Status:** OPEN
+**Priority:** P2 · **Status:** IN PROGRESS (2026-11-11: `apps/settings/` audited; two CSS files have no current in-repo consumers but are still emitted into `dist`; no files deleted pending external-path/production-artifact confirmation)
 
 Scope: inspect apps/settings, previews, design, old reproduction scripts, android wrapper, and npm publish workflow usage. Search references and deployment inclusion before proposing removal.
 
