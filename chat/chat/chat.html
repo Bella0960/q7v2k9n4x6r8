@@ -1584,5 +1584,36 @@
     })();
   </script>
 <script src="../../shared/js/custom-css.js"></script>
+<style id="maomao-chat-list-layout-v1">
+html, body {
+  width:100%;
+  min-height:100%;
+  margin:0 !important;
+  background:#fff !important;
+}
+body {
+  min-height:100dvh;
+  display:flex;
+  justify-content:center;
+  align-items:stretch;
+  overflow-x:hidden;
+}
+.phone-mockup {
+  position:relative;
+  width:min(430px,100vw) !important;
+  height:100vh !important;
+  height:100dvh !important;
+  min-height:0 !important;
+  max-height:none !important;
+  margin:0 auto !important;
+  border:0 !important;
+  border-radius:0 !important;
+  box-shadow:none !important;
+  overflow:hidden !important;
+}
+@media (max-width:600px) {
+  .phone-mockup { width:100vw !important; }
+}
+</style>
 </body>
 </html>

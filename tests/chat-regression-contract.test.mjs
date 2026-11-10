@@ -2303,5 +2303,5 @@ test('AI replies can send only images from the active role gallery and keep medi
   assert.match(detail, /RoleGalleryImageAutonomy\\.releaseReferences\\(aiRoleGalleryMessages\\)/);
   assert.match(detail, /aiRoleGalleryMessages\\.forEach\\(function \\(galleryMessage\\)/);
   assert.ok(serviceWorker.includes('role-gallery-image-autonomy.js?v=20261111v1'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v199'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v200'));
 });
