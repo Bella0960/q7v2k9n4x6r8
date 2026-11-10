@@ -180,8 +180,12 @@ test('creator account detail supports copying permanent IDs and prevents stale a
     'the confirmed permanent ID must be copied when Clipboard API is available');
   assert.match(adminScript, /range\.selectNodeContents\(\$\('detailId'\)\)/,
     'manual selection must remain possible when clipboard access is unavailable');
-  assert.match(adminScript, /const result = await api\('\/api\/admin\/accounts\/'[\s\S]*if \(selectedAccountId !== accountId\) return;[\s\S]*list\.replaceChildren\(\)/,
+  assert.ok(adminScript.includes("const result = await api(\n        '/api/admin/accounts/'"),
+    'account audit must be fetched from the server for the selected permanent ID');
+  assert.ok(adminScript.includes('if (selectedAccountId !== accountId || requestSequence !== auditRequestSequence) return;'),
     'a slower audit response must not replace the currently selected account history');
+  assert.ok(adminScript.includes('if (reset) list.replaceChildren();'),
+    'the audit list is replaced only after the response passes the account and request-sequence guard');
   assert.match(adminCss, /\.copy-detail-id\{/);
 });
 
