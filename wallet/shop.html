@@ -8,7 +8,7 @@
 <script src="../shared/js/native-feel.js"></script>
 <script src="../shared/js/phone/phone_storage.js"></script>
 <script src="../shared/js/phone/role_family_cards.js?v=20261107v3"></script>
-<script src="../shared/js/phone/wallet-ledger.js?v=20261110v8"></script>
+<script src="../shared/js/phone/wallet-ledger.js?v=20261110v9"></script>
 <script src="../shared/js/phone/order-after-sales.js?v=20261107v2"></script>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
 <style>
@@ -642,6 +642,11 @@
   }
 
   function buyNow() {
+    if (pendingShopCheckoutSignature) {
+      showToast('存在未完成的原结算，请先恢复原交易');
+      restorePendingShopCheckout();
+      return;
+    }
     if (!currentProduct) return;
     // 直接走支付：临时把当前商品作为订单
     const tmpCart = [{ id: currentProduct.id, name: currentProduct.name, cn: currentProduct.cn, price: currentProduct.price }];
@@ -690,6 +695,7 @@
   let payItems = [];
   let payFromCart = false;
   let payMethod = 'normal'; // 'normal' | 'close_pay'
+  let pendingShopCheckoutSignature = '';
 
   // 读取亲密付配置（用户给角色代付，保留原有方向）
   function getClosePay() {
@@ -748,7 +754,7 @@
       : [];
     if (payMethod.indexOf('role_card:') === 0) {
       var selectedRoleCard = getRoleCardFromMethod(payMethod);
-      if (!selectedRoleCard || !canUseRoleCard(selectedRoleCard, total)) payMethod = 'normal';
+      if (!pendingShopCheckoutSignature && (!selectedRoleCard || !canUseRoleCard(selectedRoleCard, total))) payMethod = 'normal';
     }
 
     var normalHtml =
@@ -765,7 +771,7 @@
     var cpHtml = closePayDataInvalid
       ? '<div style="padding:12px 14px;border-radius:14px;background:#F7F7F9;font-size:0.75rem;color:#666;line-height:1.6;margin-bottom:10px;">亲密付设置数据异常，已暂停扣款。原设置与交易记录未被修改，请先恢复数据。</div>'
       : '';
-    if (canClose) {
+    if (canClose || (pendingShopCheckoutSignature && payMethod === 'close_pay' && cp)) {
       cpHtml =
         '<div data-method="close_pay" style="padding:14px;border-radius:14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;border:1.5px solid ' + (payMethod==='close_pay' ? '#111' : '#E5E5EA') + ';background:#fff;cursor:pointer;">' +
           '<div>' +
@@ -807,6 +813,10 @@
     box.innerHTML = normalHtml + cpHtml + roleCardsHtml;
     box.querySelectorAll('[data-method]').forEach(function(el){
       el.addEventListener('click', function(){
+        if (pendingShopCheckoutSignature && el.dataset.method !== payMethod) {
+          showToast('这笔结算必须沿用原支付方式；请先完成原交易恢复');
+          return;
+        }
         payMethod = el.dataset.method;
         renderPayMethods(total);
       });
@@ -1230,7 +1240,82 @@
     document.getElementById('cartTotal').textContent = '¥' + total;
   }
 
+  function restorePendingShopCheckout() {
+    var ledger = window.MaoMaoWalletLedger;
+    if (!ledger || typeof ledger.getPendingCheckout !== 'function') return;
+    var pending = ledger.getPendingCheckout('shop');
+    if (pending === undefined) return;
+    if (pending === null) {
+      showToast('未完成结算记录无法读取，已停止自动恢复；请先检查本地存储');
+      return;
+    }
+    var snapshot;
+    try { snapshot = JSON.parse(pending.signature); }
+    catch (error) { showToast('原结算快照损坏，已停止恢复'); return; }
+    if (!snapshot || typeof snapshot !== 'object' || !Array.isArray(snapshot.items) ||
+        !isFinite(Number(snapshot.total)) || Number(snapshot.total) < 0 ||
+        ['cart', 'direct'].indexOf(snapshot.source) === -1 || !pending.paymentMethod) {
+      showToast('原结算快照缺少必要信息，已停止恢复；不会创建新交易');
+      return;
+    }
+    var restoredItems = [];
+    var computedTotal = 0;
+    for (var i = 0; i < snapshot.items.length; i++) {
+      var saved = snapshot.items[i];
+      var product = saved && PRODUCTS.find(function (item) {
+        return String(item.id) === String(saved.id);
+      });
+      if (!product || product.cn !== saved.cn || Number(product.price) !== Number(saved.price)) {
+        showToast('原商品信息与当前商品目录不一致，已停止恢复');
+        return;
+      }
+      restoredItems.push({ id:product.id, name:product.name, cn:product.cn, price:Number(product.price) });
+      computedTotal += Number(product.price);
+    }
+    if (!restoredItems.length ||
+        Math.round(computedTotal * 100) !== Math.round(Number(snapshot.total) * 100)) {
+      showToast('原订单金额校验未通过，已停止恢复');
+      return;
+    }
+    if (snapshot.source === 'cart') {
+      var oldCart = shopCart.slice();
+      var oldCartRaw = localStorage.getItem('shop_cart');
+      shopCart = restoredItems.map(function (item) {
+        return { id:item.id, name:item.name, cn:item.cn, price:item.price };
+      });
+      if (!saveCart(shopCart)) {
+        shopCart = oldCart;
+        try {
+          if (oldCartRaw == null) localStorage.removeItem('shop_cart');
+          else localStorage.setItem('shop_cart', oldCartRaw);
+        } catch (restoreError) {}
+        showToast('原购物车恢复失败，未继续结算');
+        updateBadge();
+        return;
+      }
+      payFromCart = true;
+    } else {
+      payFromCart = false;
+    }
+    payItems = restoredItems;
+    payMethod = String(pending.paymentMethod);
+    pendingShopCheckoutSignature = String(pending.signature);
+    document.getElementById('payAmount').textContent = '¥' + computedTotal;
+    document.getElementById('payTotal').textContent = '¥' + computedTotal;
+    renderPayMethods(computedTotal);
+    document.getElementById('cartView').style.display = 'none';
+    document.getElementById('detailView').classList.remove('show');
+    document.getElementById('payView').style.display = 'block';
+    showToast('已恢复原商品和支付方式；点击确认只会继续原交易');
+    window.scrollTo(0, 0);
+  }
+
   function checkout() {
+    if (pendingShopCheckoutSignature) {
+      showToast('存在未完成的原结算，请先恢复原交易');
+      restorePendingShopCheckout();
+      return;
+    }
     if (shopCart.length === 0) return;
     payItems = shopCart.slice();
     payFromCart = true;
@@ -1263,10 +1348,16 @@
       await ledger.runExclusive(function () {
         
             const total = payItems.reduce((s,c) => s + c.price, 0);
-            var checkoutSignature = JSON.stringify({
+            var currentCheckoutSignature = JSON.stringify({
               items: payItems.map(function (item) { return { id: item.id, cn: item.cn, price: item.price }; }),
               total: total,
+              source: payFromCart ? 'cart' : 'direct'
             });
+            if (pendingShopCheckoutSignature && pendingShopCheckoutSignature !== currentCheckoutSignature) {
+              showToast('当前商品与未完成原交易不一致，已停止结算；请恢复原商品后重试');
+              return;
+            }
+            var checkoutSignature = pendingShopCheckoutSignature || currentCheckoutSignature;
             var transactionId = ledger.getOrCreatePendingCheckout('shop', checkoutSignature, payMethod);
             if (!transactionId) {
               showToast('存在未完成的结算；请恢复上次商品和支付方式后继续，避免重复扣款');
@@ -1423,35 +1514,22 @@
               }
             }
 
-            // 财务明细按交易 ID + 商品序号幂等写入；失败时保留待恢复交易。
-            try {
-              const list = JSON.parse(localStorage.getItem('finance_records') || '[]');
-              if (!Array.isArray(list)) throw new Error('finance_records is not an array');
-              payItems.forEach(function (item, index) {
-                var exists = list.some(function (row) {
-                  return row && row.paymentId === transactionId && Number(row.paymentLineIndex) === index;
-                });
-                if (!exists) list.push({
-                  amount: item.price,
-                  type: 'expense',
-                  category: payMethod === 'close_pay' ? '亲密付' : (payMethod.indexOf('role_card:') === 0 ? '亲属卡' : '购物'),
-                  note: (payMethod === 'close_pay'
-                    ? '亲密付给' + ((getClosePay()||{}).roleName||'TA') + ' · '
-                    : (roleFamilyCard ? roleFamilyCard.roleName + ' 亲属卡代付 · ' : '商店 · ')) + item.cn,
-                  time: timeStr,
-                  paymentId: transactionId,
-                  paymentLineIndex: index
-                });
-              });
-              var financeSerialized = JSON.stringify(list);
-              localStorage.setItem('finance_records', financeSerialized);
-              if (localStorage.getItem('finance_records') !== financeSerialized) {
-                showToast('支付已记录，但财务明细未保存；再次提交会补齐且不会重复扣款');
-                return;
-              }
-            } catch (financeError) {
-              console.warn('[shop] 财务明细保存失败', financeError);
-              showToast('财务明细保存失败；再次提交可恢复原交易');
+            // 共享账本严格校验原流水，再按 paymentId + 商品序号幂等补齐。
+            var financeRows = payItems.map(function (item, index) {
+              return {
+                amount: item.price,
+                type: 'expense',
+                category: payMethod === 'close_pay' ? '亲密付' : (payMethod.indexOf('role_card:') === 0 ? '亲属卡' : '购物'),
+                note: (payMethod === 'close_pay'
+                  ? '亲密付给' + ((getClosePay()||{}).roleName||'TA') + ' · '
+                  : (roleFamilyCard ? roleFamilyCard.roleName + ' 亲属卡代付 · ' : '商店 · ')) + item.cn,
+                time: timeStr,
+                paymentLineIndex: index
+              };
+            });
+            var financeResult = ledger.recordFinanceLines(transactionId, financeRows, 'finance_records');
+            if (!financeResult.ok) {
+              showToast('财务流水异常或与原交易冲突，已停止写入；原交易仍保留待恢复');
               return;
             }
 
@@ -1523,6 +1601,7 @@
               }
               return;
             }
+            pendingShopCheckoutSignature = '';
             try {
               if (roleFamilyCard) {
                             notifyRoleCardIssuer(roleFamilyCard,
@@ -1590,6 +1669,7 @@
   renderProducts();
   renderHot();
   updateBadge();
+  restorePendingShopCheckout();
 
   // 给指定角色发一条礼物消息（模拟 TA 送你东西）
   function sendGiftToRole(roleId, product) {

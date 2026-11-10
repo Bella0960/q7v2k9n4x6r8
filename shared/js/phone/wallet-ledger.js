@@ -290,6 +290,105 @@
     return state.ok ? state.value : null;
   }
 
+
+  function financeMoney(value) {
+    return Math.round(Number(value) * 100) / 100;
+  }
+
+  function inspectFinancePaymentRows(rows, transactionId, expectedRows) {
+    if (!Array.isArray(rows) || !Array.isArray(expectedRows) || !expectedRows.length) {
+      return { ok: false, reason: 'invalid-lines' };
+    }
+    var expectedByIndex = Object.create(null);
+    for (var i = 0; i < expectedRows.length; i++) {
+      var expected = expectedRows[i];
+      if (!expected || typeof expected !== 'object' || Array.isArray(expected) ||
+          !Number.isInteger(expected.paymentLineIndex) || expected.paymentLineIndex < 0 ||
+          !isFinite(Number(expected.amount)) || Number(expected.amount) < 0 ||
+          expected.type !== 'expense' ||
+          typeof expected.category !== 'string' || !expected.category) {
+        return { ok: false, reason: 'invalid-lines' };
+      }
+      var expectedKey = String(expected.paymentLineIndex);
+      if (expectedByIndex[expectedKey]) return { ok: false, reason: 'duplicate-expected-line' };
+      expectedByIndex[expectedKey] = expected;
+    }
+    var existingByIndex = Object.create(null);
+    for (var rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+      var row = rows[rowIndex];
+      if (!row || typeof row !== 'object' || Array.isArray(row)) {
+        return { ok: false, reason: 'invalid-store' };
+      }
+      if (row.paymentId !== transactionId) continue;
+      if (!Number.isInteger(row.paymentLineIndex) || row.paymentLineIndex < 0) {
+        return { ok: false, reason: 'transaction-conflict' };
+      }
+      var key = String(row.paymentLineIndex);
+      var wanted = expectedByIndex[key];
+      if (!wanted || existingByIndex[key]) return { ok: false, reason: 'transaction-conflict' };
+      if (row.type !== wanted.type || row.category !== wanted.category ||
+          financeMoney(row.amount) !== financeMoney(wanted.amount)) {
+        return { ok: false, reason: 'transaction-conflict' };
+      }
+      existingByIndex[key] = true;
+    }
+    var additions = [];
+    Object.keys(expectedByIndex).forEach(function (key) {
+      if (!existingByIndex[key]) {
+        additions.push(Object.assign({}, expectedByIndex[key], {
+          paymentId: transactionId,
+          paymentLineIndex: Number(key)
+        }));
+      }
+    });
+    return { ok: true, additions: additions };
+  }
+
+  // Called only while runExclusive() is held. Missing storage is first-use;
+  // empty, malformed, or conflicting existing data is never reset.
+  function recordFinanceLines(transactionId, expectedRows, storageKey) {
+    transactionId = String(transactionId || '');
+    storageKey = String(storageKey || 'finance_records');
+    if (!transactionId || transactionId.length > 160) return { ok: false, reason: 'invalid-transaction' };
+    var raw;
+    try {
+      if (!global.localStorage || typeof global.localStorage.getItem !== 'function') {
+        return { ok: false, reason: 'storage-read' };
+      }
+      raw = global.localStorage.getItem(storageKey);
+    } catch (error) { return { ok: false, reason: 'storage-read' }; }
+    var rows;
+    if (raw == null) rows = [];
+    else {
+      if (raw === '') return { ok: false, reason: 'invalid-store' };
+      try { rows = JSON.parse(raw); }
+      catch (error) { return { ok: false, reason: 'invalid-store' }; }
+      if (!Array.isArray(rows)) return { ok: false, reason: 'invalid-store' };
+    }
+    var inspected = inspectFinancePaymentRows(rows, transactionId, expectedRows);
+    if (!inspected.ok) return inspected;
+    if (inspected.additions.length) {
+      var serialized;
+      try {
+        serialized = JSON.stringify(rows.concat(inspected.additions));
+        global.localStorage.setItem(storageKey, serialized);
+        if (global.localStorage.getItem(storageKey) !== serialized) {
+          return { ok: false, reason: 'storage-write' };
+        }
+      } catch (error) { return { ok: false, reason: 'storage-write' }; }
+    }
+    var verifyRaw;
+    try { verifyRaw = global.localStorage.getItem(storageKey); }
+    catch (error) { return { ok: false, reason: 'readback' }; }
+    if (verifyRaw == null || verifyRaw === '') return { ok: false, reason: 'readback' };
+    var verifiedRows;
+    try { verifiedRows = JSON.parse(verifyRaw); }
+    catch (error) { return { ok: false, reason: 'readback' }; }
+    var verified = inspectFinancePaymentRows(verifiedRows, transactionId, expectedRows);
+    if (!verified.ok || verified.additions.length) return { ok: false, reason: 'readback' };
+    return { ok: true, replayed: inspected.additions.length === 0 };
+  }
+
   global.MaoMaoWalletLedger = Object.freeze({
     lockName: LOCK_NAME,
     runExclusive: runExclusive,
@@ -301,6 +400,7 @@
     isPendingCheckout: isPendingCheckout,
     getPendingCheckout: getPendingCheckout,
     completePendingCheckout: completePendingCheckout,
+    recordFinanceLines: recordFinanceLines,
     supportsCrossTabLock: function () {
       return !!(global.navigator && global.navigator.locks &&
         typeof global.navigator.locks.request === 'function');

@@ -4534,3 +4534,102 @@ test('offline face-to-face role card customizer exposes persisted styles and con
   assert.ok(date.includes('id="dateForm"') && date.includes('id="replyOptionsBtn"') && date.includes('id="bgImageFile"'),
     'existing story composer, reply helper, and background upload should remain present');
 });
+
+
+test('共享账本补齐财务流水时只初始化真正不存在的记录，并对重试保持幂等', () => {
+  const values = new Map();
+  const writes = [];
+  const localStorage = {
+    getItem: (key) => values.has(key) ? values.get(key) : null,
+    setItem: (key, value) => { writes.push([key, String(value)]); values.set(key, String(value)); }
+  };
+  const window = { navigator: {}, localStorage };
+  runInNewContext(walletLedgerSource, { window });
+  const rows = [
+    { amount: 12, type: 'expense', category: '购物', note: '商品A', time: '11月10日', paymentLineIndex: 0 },
+    { amount: 8, type: 'expense', category: '购物', note: '商品B', time: '11月10日', paymentLineIndex: 1 }
+  ];
+  const first = window.MaoMaoWalletLedger.recordFinanceLines('checkout-1', rows, 'finance_records');
+  assert.equal(first.ok, true);
+  assert.equal(first.replayed, false);
+  const stored = JSON.parse(values.get('finance_records'));
+  assert.equal(stored.length, 2);
+  assert.deepEqual(stored.map((row) => row.paymentId), ['checkout-1', 'checkout-1']);
+  assert.deepEqual(stored.map((row) => row.paymentLineIndex), [0, 1]);
+  const replay = window.MaoMaoWalletLedger.recordFinanceLines('checkout-1', rows, 'finance_records');
+  assert.equal(replay.ok, true);
+  assert.equal(replay.replayed, true);
+  assert.equal(JSON.parse(values.get('finance_records')).length, 2);
+  assert.equal(writes.length, 1, 'replay must not write duplicate records');
+});
+
+test('共享账本遇到空字符串、损坏 JSON 或非数组财务记录时拒绝覆盖', () => {
+  for (const raw of ['', '{broken-json', 'null', '{}']) {
+    const values = new Map([['finance_records', raw]]);
+    let writes = 0;
+    const localStorage = {
+      getItem: (key) => values.has(key) ? values.get(key) : null,
+      setItem: (key, value) => { writes += 1; values.set(key, String(value)); }
+    };
+    const window = { navigator: {}, localStorage };
+    runInNewContext(walletLedgerSource, { window });
+    const result = window.MaoMaoWalletLedger.recordFinanceLines('checkout-2', [
+      { amount: 10, type: 'expense', category: '外卖', paymentLineIndex: 0 }
+    ], 'finance_records');
+    assert.equal(result.ok, false, 'invalid value must fail closed');
+    assert.equal(values.get('finance_records'), raw, 'original bytes must remain unchanged');
+    assert.equal(writes, 0, 'invalid finance records must not be overwritten');
+  }
+});
+
+test('共享账本遇到同交易编号的重复行或冲突金额时停止自动补账', () => {
+  const cases = [
+    [
+      { amount: 9, type: 'expense', category: '购物', paymentId: 'checkout-3', paymentLineIndex: 0 },
+      { amount: 9, type: 'expense', category: '购物', paymentId: 'checkout-3', paymentLineIndex: 0 }
+    ],
+    [{ amount: 99, type: 'expense', category: '购物', paymentId: 'checkout-3', paymentLineIndex: 0 }],
+    [{ amount: 9, type: 'income', category: '购物', paymentId: 'checkout-3', paymentLineIndex: 0 }]
+  ];
+  for (const initial of cases) {
+    const raw = JSON.stringify(initial);
+    const values = new Map([['finance_records', raw]]);
+    let writes = 0;
+    const localStorage = {
+      getItem: (key) => values.has(key) ? values.get(key) : null,
+      setItem: (key, value) => { writes += 1; values.set(key, String(value)); }
+    };
+    const window = { navigator: {}, localStorage };
+    runInNewContext(walletLedgerSource, { window });
+    const result = window.MaoMaoWalletLedger.recordFinanceLines('checkout-3', [
+      { amount: 9, type: 'expense', category: '购物', paymentLineIndex: 0 },
+      { amount: 4, type: 'expense', category: '购物', paymentLineIndex: 1 }
+    ], 'finance_records');
+    assert.equal(result.ok, false);
+    assert.equal(values.get('finance_records'), raw);
+    assert.equal(writes, 0);
+  }
+});
+
+test('商店与外卖刷新后都从待结算快照恢复原支付方式，不允许将原交易换成新付款方式', () => {
+  assert.match(shopPage, /function restorePendingShopCheckout\(\)/);
+  assert.match(shopPage, /getPendingCheckout\('shop'\)/);
+  assert.match(shopPage, /source: payFromCart \? 'cart' : 'direct'/);
+  assert.match(shopPage, /pendingShopCheckoutSignature \|\| currentCheckoutSignature/);
+  assert.match(shopPage, /restorePendingShopCheckout\(\);/);
+  assert.match(takeoutPage, /function restorePendingTakeoutCheckout\(\)/);
+  assert.match(takeoutPage, /getPendingCheckout\('takeout'\)/);
+  assert.match(takeoutPage, /pendingTakeoutCheckoutSignature \|\| currentCheckoutSignature/);
+  assert.match(takeoutPage, /buildTakeoutCheckoutSignature/);
+  assert.match(takeoutPage, /restorePendingTakeoutCheckout\(\);/);
+  assert.match(shopPage, /这笔结算必须沿用原支付方式/);
+  assert.match(takeoutPage, /这笔结算必须沿用原支付方式/);
+});
+
+test('记账页面实际加载共享钱包锁模块，财务写入与订单结算使用同一模块', () => {
+  assert.match(financePage, /wallet-ledger\.js\?v=20261110v9/);
+  assert.match(shopPage, /recordFinanceLines\(transactionId, financeRows, 'finance_records'\)/);
+  assert.match(takeoutPage, /recordFinanceLines\(transactionId, financeRows, 'finance_records'\)/);
+  assert.doesNotMatch(shopPage, /JSON\.parse\(localStorage\.getItem\('finance_records'\) \|\| '\[\]'\)/);
+  assert.doesNotMatch(takeoutPage, /JSON\.parse\(localStorage\.getItem\('finance_records'\) \|\| '\[\]'\)/);
+});
