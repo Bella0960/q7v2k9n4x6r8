@@ -1127,6 +1127,8 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       : null;
 
     const autonomyExecutionBlockers = [
+      ...(vapid.configured ? [] : ['web_push_keys_not_configured']),
+      ...(activeSubscriptions.length > 0 ? [] : ['current_device_push_subscription_missing']),
       ...(activityExecutorConfigured ? [] : ['activity_executor_config_missing']),
       ...(serverModelConfigured ? [] : ['server_model_credentials_missing']),
       ...(globalAutonomy?.enabled === 1 ? [] : ['global_autonomy_not_enabled']),
