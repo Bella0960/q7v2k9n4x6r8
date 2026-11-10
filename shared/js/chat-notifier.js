@@ -740,6 +740,16 @@
 
         var context;
         try {
+            // A first-contact character may have an empty local history. Create
+            // its opaque context-version event so the same account/device lease
+            // and queue fencing still apply; no chat text or persona is uploaded.
+            if (candidate.isInitialContact) {
+                if (typeof cloud.noteCharacterContextChanged !== 'function') {
+                    resetProactiveAttempt(roleId);
+                    return true;
+                }
+                await cloud.noteCharacterContextChanged(roleId, candidate.history);
+            }
             // Flush and confirm local ownership before taking a role lease;
             // a device with stale local history must not block the true owner.
             if (typeof cloud.flushCharacterContextVersion === 'function') {
@@ -820,9 +830,7 @@
             // Re-check the local chat after generation. No message body, persona
             // or history has been sent to the Worker; only this result is handed off.
             var freshHistory = readHistory(roleId);
-            var freshLatest = newestMeaningfulMessage(freshHistory);
-            if (!freshLatest || freshLatest.time !== candidate.latest.time ||
-                freshLatest.text !== candidate.latest.text) {
+            if (!proactiveHistoryUnchanged(candidate, freshHistory)) {
                 await cloud.skipAutonomyActivity(activity, 'context_changed');
                 return true;
             }
@@ -859,7 +867,12 @@
                 var verified = readHistory(roleId).some(function (item) {
                     return item && String(item.serverMessageId || '') === serverMessageId;
                 });
-                if (saved && verified) tick();
+                if (saved && verified) {
+                    if (candidate.isInitialContact) {
+                        safeSet('chat_proactive_first_contact_sent_' + roleId, 'true');
+                    }
+                    tick();
+                }
             }
             return true;
         } catch (error) {
@@ -888,6 +901,7 @@
         var ready = await ensureProactiveDependencies();
         if (!ready || !global.ChatPresencePolicy ||
             typeof global.ChatPresencePolicy.evaluateProactiveContact !== 'function' ||
+            typeof global.ChatPresencePolicy.evaluateInitialProactiveContact !== 'function' ||
             typeof global.ChatPresencePolicy.buildProactiveContactPrompt !== 'function' ||
             !global.PhoneAPI || typeof global.PhoneAPI.completeJSON !== 'function') return;
 
@@ -930,7 +944,7 @@
             var system = global.ChatPresencePolicy.buildProactiveContactPrompt(
                 candidate.contact,
                 candidate.history,
-                { localTime: localTime, voiceProfile: voiceProfile }
+                { localTime: localTime, voiceProfile: voiceProfile, initialContact: candidate.isInitialContact === true }
             );
             var messages = [{ role: 'system', content: system }];
             messages.push.apply(messages, historyForProactivePrompt(candidate.history));
@@ -955,9 +969,7 @@
 
             // 请求期间若用户又发了消息，放弃这条过时的主动联系。
             var freshHistory = readHistory(candidate.contact.id);
-            var freshLatest = newestMeaningfulMessage(freshHistory);
-            if (!freshLatest || freshLatest.time !== candidate.latest.time ||
-                freshLatest.text !== candidate.latest.text) return;
+            if (!proactiveHistoryUnchanged(candidate, freshHistory)) return;
 
             var proactiveMessages = buildProactiveReplyMessages(content, candidate.contact, {
                 time: Date.now(),
@@ -969,6 +981,9 @@
                 ? global.PhoneStorage.saveChatHistory(candidate.contact.id, freshHistory)
                 : safeSet('chat_history_' + candidate.contact.id, freshHistory);
             if (!saved) return;
+            if (candidate.isInitialContact) {
+                safeSet('chat_proactive_first_contact_sent_' + candidate.contact.id, 'true');
+            }
             tick();
         } catch (error) {
             // 自动联系失败不打断当前页面；本次尝试已有冷却记录，避免重复消耗 API。
