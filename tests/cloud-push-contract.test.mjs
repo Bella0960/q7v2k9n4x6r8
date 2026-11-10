@@ -1499,6 +1499,48 @@ test('单设备每小时配对签发上限包含已消费配对码且由原子�
   assert.equal(ctx.query('SELECT COUNT(*) AS total FROM device_pairing_tokens')[0].total, 5);
 });
 
+test('云端活动查询先筛选 cloud-owned 任务再应用批次限制', async () => {
+  const ctx = setupTestStore(openTestDb());
+  const device = makeDevice();
+  await registerDevice(ctx, device);
+  const base = Date.now();
+
+  const enqueue = (id, executionMode, scheduledAt) => ctx.store.enqueueActivity({
+    id,
+    deviceId: device.deviceId,
+    characterId: 'cloud-role-1',
+    kind: 'contact',
+    scheduledAt,
+    maxAttempts: 3,
+    now: base,
+    payload: {
+      contextVersion: 1,
+      sourceDeviceId: device.deviceId,
+      executionMode
+    }
+  });
+
+  enqueue('foreground-due-1', 'foreground', base - 5000);
+  enqueue('foreground-due-2', 'foreground', base - 4000);
+  enqueue('cloud-due-1', 'cloud', base - 3000);
+  enqueue('cloud-due-2', 'cloud', base - 2000);
+  enqueue('cloud-future', 'cloud', base + 60_000);
+
+  const legacyBatch = ctx.store.listDueActivities(base, 2);
+  assert.deepEqual(legacyBatch.map(row => row.id), [
+    'foreground-due-1', 'foreground-due-2'
+  ]);
+
+  const cloudBatch = ctx.store.listDueCloudActivities(base, 2);
+  assert.deepEqual(cloudBatch.map(row => row.id), [
+    'cloud-due-1', 'cloud-due-2'
+  ]);
+  assert.ok(cloudBatch.every(row => {
+    const payload = JSON.parse(row.payload_json);
+    return payload.executionMode === 'cloud';
+  }));
+});
+
 test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设备鉴权', async () => {
   const ctx = setupTestStore(openTestDb(), {
     DEVICE_SECRET_PEPPER: 'test-device-secret-pepper-for-contract-tests-32chars',
@@ -1652,6 +1694,7 @@ test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设
   assert.deepEqual(readiness.payload.autonomyExecutionBlockers, [
     'activity_executor_config_missing',
     'server_model_credentials_missing',
+    'global_autonomy_not_enabled',
     'context_sharing_not_enabled',
     'context_version_unavailable',
     'cloud_model_scheduler_runtime_not_verified'
