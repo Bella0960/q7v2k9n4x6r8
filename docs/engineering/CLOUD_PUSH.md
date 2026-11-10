@@ -1,6 +1,6 @@
 # Cloud Autonomous Activity & Web Push
 
-Milestone 1：云端基础与真实 Web Push。后续里程碑（排班状态机、活动队列执行、AI 决策、日记）只在本文件末尾预留，不在本阶段实现。
+本文记录 MAOMAO 云端设备、真实 Web Push、自主活动调度与模型主动联系的演进过程。早期里程碑状态保留为历史记录，当前实现与验收边界以对应最新章节及 PR 状态为准。
 
 ## 1. 架构与持久化选型
 
@@ -727,8 +727,8 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 
 ### 26.3 验证与发布边界
 
-- 新增 `tests/cloud-autonomous-model.test.mjs`，覆盖服务端凭据、HTTPS/主机白名单、限量上下文、1–4 条输出、无发送结果和无凭据 fail-closed。
-- 扩展 `tests/cloud-push-contract.test.mjs`，覆盖迁移 0017、共享默认关闭、上下文脱敏/删除、多气泡分组恢复、部分 ACK 后整组重拉、单组单通知及组级 Push 回执。
+- 新增 `tests/cloud-autonomous-model.test.mjs`，覆盖服务端凭据、HTTPS/主机白名单、限量上下文、1–4 条输出、无发送结果、无凭据 fail-closed，以及模型响应超过租约后禁止提交。
+- 扩展 `tests/cloud-push-contract.test.mjs`，覆盖迁移 0017、共享默认关闭、上下文脱敏/删除、多气泡分组恢复、部分 ACK 后整组重拉、单组单通知及组级 Push 回执，并增加云端任务先过滤再限批、运行/生成状态 fail-closed 断言。
 - 上述测试已写入仓库，但当前工作环境没有运行 MAOMAO 的 Node/SQLite 测试与 Vite 构建；结果仍为 **NOT RUN**。真实模型供应商调用、Cloudflare 定时任务、系统通知横幅、Android 退出应用后的端到端表现仍为 **NOT VERIFIED**。
-- 本轮只修改独立测试分支 `feat/cloud-autonomous-server-model`。没有修改 `main`，没有合并到 PR #148，没有更新生产 Worker `mao`，没有部署，也没有生成/更新 APK。
+- 本轮后续可靠性修复位于独立分支 `fix/cloud-autonomy-background-reliability-20261111`，以 `feat/cloud-autonomous-server-model` 为基础，不改写原 PR #239。没有修改 `main`，没有合并 PR #148/#239，没有更新生产 Worker `mao`，没有部署，也没有生成/更新 APK。
 - 尚未配置任何服务端模型 Secret。即使代码合并，只有部署环境单独配置服务端密钥、模型 URL/名称并完成真机验收后，云端自主生成才会真正启用。
