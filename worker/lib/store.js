@@ -1919,6 +1919,94 @@ class CloudStore {
    * The target tenant/device/role are taken only from persisted queue + device
    * rows, never from caller-supplied identifiers.
    */
+  completeCloudActivityWithOutboundGroup({ id, owner, attemptCount, now, groupId, messages }) {
+    if (!Array.isArray(messages) || messages.length < 1 || messages.length > 4) {
+      throw new TypeError('cloud outbound group requires 1..4 messages');
+    }
+    const prepared = messages.map((message, index) => ({
+      serverMessageId: requireStoreString(message?.serverMessageId, 'group.serverMessageId'),
+      dedupeKey: requireStoreString(message?.dedupeKey, 'group.dedupeKey'),
+      payload: message.payload,
+      groupId,
+      groupIndex: index + 1,
+      groupCount: messages.length
+    }));
+    const resultJson = JSON.stringify(prepared);
+    const existingTask = this.exec(
+      `SELECT q.*, d.user_id AS user_id FROM activity_queue q
+       INNER JOIN devices d ON d.id = q.device_id
+       WHERE q.id = ? AND q.status = 'completed'
+         AND q.attempt_count = ? AND d.revoked_at IS NULL`,
+      id, attemptCount
+    )[0] || null;
+    if (existingTask) {
+      if (existingTask.result_group_id !== groupId ||
+          Number(existingTask.result_message_count || 1) !== prepared.length ||
+          existingTask.result_json !== resultJson) return null;
+      return this.enqueueCloudGroupRows(existingTask, prepared, now, true);
+    }
+
+    const task = this.exec(
+      `SELECT q.*, d.user_id AS user_id FROM activity_queue q
+       INNER JOIN devices d ON d.id = q.device_id
+       WHERE q.id = ? AND q.status = 'running'
+         AND q.locked_by = ? AND q.attempt_count = ?
+         AND q.locked_until > ? AND d.revoked_at IS NULL`,
+      id, owner, attemptCount, now
+    )[0] || null;
+    if (!task) return null;
+
+    const completed = this.exec(
+      `UPDATE activity_queue
+       SET status = 'completed', locked_by = NULL, locked_until = NULL,
+           next_attempt_at = NULL, updated_at = ?, result_json = ?,
+           result_server_message_id = ?, result_dedupe_key = ?,
+           result_group_id = ?, result_message_count = ?
+       WHERE id = ? AND status = 'running' AND locked_by = ?
+         AND attempt_count = ? AND locked_until > ?
+       RETURNING id`,
+      now, resultJson, prepared[0].serverMessageId,
+      'outbound-group:' + groupId, groupId, prepared.length,
+      id, owner, attemptCount, now
+    )[0];
+    if (!completed) return null;
+    return this.enqueueCloudGroupRows(task, prepared, now, false);
+  }
+
+  enqueueCloudGroupRows(task, prepared, now, alreadyCompleted) {
+    let inserted = 0;
+    let idempotent = 0;
+    for (const item of prepared) {
+      const result = this.enqueueOutboundMessage({
+        id: 'out_' + item.serverMessageId,
+        deviceId: task.device_id,
+        userId: task.user_id,
+        characterId: task.character_id,
+        serverMessageId: item.serverMessageId,
+        dedupeKey: item.dedupeKey,
+        payload: item.payload,
+        groupId: item.groupId,
+        groupIndex: item.groupIndex,
+        groupCount: item.groupCount,
+        now
+      });
+      if (result.unavailable || result.conflict) {
+        return { completed: false, conflict: true, inserted, idempotent };
+      }
+      if (result.inserted) inserted += 1;
+      else if (result.idempotent) idempotent += 1;
+    }
+    return {
+      completed: true,
+      alreadyCompleted: alreadyCompleted === true,
+      groupId: prepared[0].groupId,
+      messageCount: prepared.length,
+      serverMessageIds: prepared.map(item => item.serverMessageId),
+      outboundInserted: inserted,
+      outboundIdempotent: idempotent
+    };
+  }
+
   repairAllStagedActivityOutboxes({ now, limit = 50 }) {
     const safeLimit = Math.max(1, Math.min(200, Math.floor(Number(limit) || 50)));
     const timestamp = Number(now);
@@ -1927,7 +2015,8 @@ class CloudStore {
     }
     const rows = this.exec(
       `SELECT q.id, q.device_id, q.character_id, q.result_json,
-              q.result_server_message_id, q.result_dedupe_key, q.updated_at,
+              q.result_server_message_id, q.result_dedupe_key,
+              q.result_group_id, q.result_message_count, q.updated_at,
               d.user_id
        FROM activity_queue q
        INNER JOIN devices d
@@ -1935,16 +2024,20 @@ class CloudStore {
        WHERE q.status = 'completed'
          AND q.result_json IS NOT NULL
          AND q.result_server_message_id IS NOT NULL
-         AND NOT EXISTS (
-           SELECT 1 FROM outbound_messages o
-           WHERE o.server_message_id = q.result_server_message_id
-             AND o.device_id = q.device_id
-             AND o.character_id = q.character_id
-             AND o.payload_json = q.result_json
-             AND o.dedupe_key IS q.result_dedupe_key
+         AND (
+           (q.result_group_id IS NOT NULL AND
+             (SELECT COUNT(*) FROM outbound_messages o WHERE o.group_id = q.result_group_id)
+               < q.result_message_count)
+           OR (q.result_group_id IS NULL AND NOT EXISTS (
+             SELECT 1 FROM outbound_messages o
+             WHERE o.server_message_id = q.result_server_message_id
+               AND o.device_id = q.device_id
+               AND o.character_id = q.character_id
+               AND o.payload_json = q.result_json
+               AND o.dedupe_key IS q.result_dedupe_key
+           ))
          )
-       ORDER BY q.updated_at ASC, q.id ASC
-       LIMIT ?`,
+       ORDER BY q.updated_at ASC, q.id ASC LIMIT ?`,
       safeLimit
     );
 
@@ -1956,6 +2049,32 @@ class CloudStore {
         payload = JSON.parse(row.result_json);
       } catch {
         deferred += 1;
+        continue;
+      }
+      if (row.result_group_id) {
+        if (!Array.isArray(payload) || payload.length !== Number(row.result_message_count)) {
+          deferred += 1;
+          continue;
+        }
+        let groupOk = true;
+        for (const item of payload) {
+          const result = this.enqueueOutboundMessage({
+            id: 'out_' + item.serverMessageId,
+            deviceId: row.device_id,
+            userId: row.user_id,
+            characterId: row.character_id,
+            serverMessageId: item.serverMessageId,
+            dedupeKey: item.dedupeKey,
+            payload: item.payload,
+            groupId: item.groupId,
+            groupIndex: item.groupIndex,
+            groupCount: item.groupCount,
+            now: Number(row.updated_at || timestamp)
+          });
+          if (result.inserted || result.idempotent) repaired += 1;
+          else groupOk = false;
+        }
+        if (!groupOk) deferred += 1;
         continue;
       }
       const result = this.enqueueOutboundMessage({
