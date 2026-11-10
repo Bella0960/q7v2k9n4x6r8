@@ -3261,6 +3261,53 @@ test('不支持 Web Locks 的浏览器只提供页面内队列并明确暴露降
   assert.deepEqual(notices, ['fallback'], 'fallback warning is emitted only once per page');
 });
 
+test('商店与外卖亲密付使用严格钱包快照，损坏的既有余额数据必须停止', () => {
+  function makeLedger(raw, exists = true) {
+    const localStorage = {
+      getItem: () => exists ? raw : null
+    };
+    const window = { navigator: {}, localStorage };
+    runInNewContext(walletLedgerSource, { window });
+    return window.MaoMaoWalletLedger;
+  }
+
+  const firstUse = makeLedger(null, false).readWalletForMutation();
+  assert.deepEqual(JSON.parse(JSON.stringify(firstUse)), { balance: 1000, history: [] },
+    'only a genuinely missing wallet record may use the first-use balance');
+
+  const legacy = makeLedger('{"balance":42.5}').readWalletForMutation();
+  assert.equal(legacy.balance, 42.5, 'a valid legacy wallet without history keeps its balance');
+  assert.deepEqual(JSON.parse(JSON.stringify(legacy.history)), []);
+
+  const valid = makeLedger(JSON.stringify({
+    balance: 23.75,
+    history: [{ paymentId: 'existing-payment', amount: 4 }]
+  })).readWalletForMutation();
+  assert.equal(valid.balance, 23.75);
+  assert.equal(valid.history[0].paymentId, 'existing-payment');
+
+  for (const raw of [
+    '{broken-json',
+    'null',
+    '[]',
+    '{"balance":"42.5","history":[]}',
+    '{"balance":-1,"history":[]}',
+    '{"balance":42.5,"history":{}}'
+  ]) {
+    assert.equal(makeLedger(raw).readWalletForMutation(), null,
+      'malformed existing wallet data must fail closed: ' + raw);
+  }
+
+  for (const [name, source] of [['shop', shopPage], ['takeout', takeoutPage]]) {
+    assert.match(source, /ledger\.readWalletForMutation\('workData', oldWalletRaw\)/,
+      name + ' must use the strict shared wallet reader');
+    assert.match(source, /钱包数据异常，已停止亲密付扣款/,
+      name + ' must stop instead of fabricating a replacement balance');
+    assert.doesNotMatch(source, /JSON\.parse\(oldWalletRaw \|\| 'null'\) \|\| \{ balance: 1000, history: \[\] \}/,
+      name + ' must not replace malformed persisted wallet data with 1000');
+  }
+});
+
 test('聊天、商店、外卖和钱包充值提现统一使用同一个钱包锁', () => {
   for (const [name, source] of [
     ['chat detail', detail],
@@ -3268,7 +3315,7 @@ test('聊天、商店、外卖和钱包充值提现统一使用同一个钱包�
     ['takeout', takeoutPage],
     ['wallet', walletPage]
   ]) {
-    assert.match(source, /wallet-ledger\.js\?v=20261107v6/,
+    assert.match(source, /wallet-ledger\.js\?v=20261107v7/,
       name + ' must load the shared wallet ledger coordinator');
     assert.match(source, /MaoMaoWalletLedger\.runExclusive|ledger\.runExclusive/,
       name + ' must route balance mutations through the shared lock');
@@ -3287,7 +3334,7 @@ test('聊天、商店、外卖和钱包充值提现统一使用同一个钱包�
 
 
 test('亲密付额度、对象和开关设置也与商店及外卖结算共用钱包锁', () => {
-  assert.match(closePayPage, /wallet-ledger\.js\?v=20261107v6/);
+  assert.match(closePayPage, /wallet-ledger\.js\?v=20261107v7/);
   assert.match(closePayPage, /async function mutateData\(mutator\)/);
   assert.match(closePayPage, /ledger\.runExclusive\(function \(\)/);
   assert.match(closePayPage, /localStorage\.getItem\(KEY\) !== serialized/,
@@ -3386,7 +3433,7 @@ test('用户发出的红包/转账在钱包扣款后聊天保存失败时可恢�
 });
 
 test('用户红包/转账发送入口也使用共享钱包锁并刷新 chat-extras 脚本', () => {
-  assert.match(detail, /wallet-ledger\.js\?v=20261107v6/);
+  assert.match(detail, /wallet-ledger\.js\?v=20261107v7/);
   assert.match(detail, /chat-extras\.js\?t=20261107wallet2/);
   assert.match(chatExtrasSource, /ledger\.runExclusive\(function \(\)/);
   assert.match(chatExtrasSource, /paymentId: paymentId/);
