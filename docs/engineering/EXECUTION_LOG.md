@@ -23,6 +23,7 @@ This is the durable checkpoint for owner-assigned, multi-step work. Update it af
 ## Open PRs requiring reconciliation (not automatically mergeable)
 
 - PR #247 — GOV-003 read-only audit of `apps/settings/`; both stylesheets are unreferenced by current in-repo page source but are still copied into `dist`, so no deletion is proposed.
+- PR #248 — CI-004 no-dependency JavaScript syntax checker for `.js/.mjs/.cjs` and executable inline HTML scripts; test commands are added, but the commands have not been run and CI hookup is pending.
 
 - #243 interactive desktop tutorial — PR description/source checks now report 50 step-by-step guides, 29 desktop-app guides and 10 FAQs; real-phone acceptance is not verified. Its latest Tutorial Guide Regression job still failed before any step executed.
 - #242 chat beauty preview / chat layout — the unrelated top-right menu experiment has been removed from its branch; do not reintroduce it.
@@ -39,6 +40,15 @@ This is the durable checkpoint for owner-assigned, multi-step work. Update it af
 | Refresh handbook tree metrics | REVIEW PR #244 | Computed from complete recursive GitHub tree |
 | Add continuous execution protocol | REVIEW PR #244 | AGENTS.md, REMEDIATION_BACKLOG.md, AI_HANDOFF_PROMPT.md |
 | Create durable cross-session checkpoint | REVIEW PR #244 | This file |
+
+## Current repository checkpoint — 2026-11-11
+
+- `main` remains at `f0cf6c74f0272219ebe4aa9e5a8c21fea7e49273`; no merge or deployment occurred in this work.
+- 40 open PRs were visible at the latest check. PRs #244–#248 are Draft/open and unmerged.
+- PR #214's date-mode transparency rules are already present on current main; do not port that old diff again.
+- Forum post creation and Moments auto-reply both use the shared `PhoneStorage` Moments collection.
+- Legacy `apps/settings` CSS remains shipped in `dist`; no deletion has been made.
+- `npm run lint` placeholder has a replacement proposed in PR #248; actual commands are still NOT RUN.
 
 ## Next actions
 
