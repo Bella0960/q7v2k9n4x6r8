@@ -1099,9 +1099,28 @@ class CloudStore {
         userId, characterId, contextVersion, deviceId, normalizedName,
         normalizedPersona, messagesJson, normalizedLastUserAt, now, userId
       )[0];
+      if (insertedSnapshot) {
+        this.exec(
+          `DELETE FROM character_context_snapshots
+           WHERE user_id = ? AND character_id = ? AND context_version < ?`,
+          userId, characterId, contextVersion
+        );
+      }
       return insertedSnapshot ? { saved: true, duplicate: false, contextVersion }
         : { disabled: true, saved: false };
     });
+  }
+
+  getLatestCharacterContextSnapshot({ userId, characterId }) {
+    return this.exec(
+      `SELECT user_id, character_id, context_version, source_device_id,
+              character_name, persona_text, recent_messages_json,
+              last_user_message_at, updated_at
+       FROM character_context_snapshots
+       WHERE user_id = ? AND character_id = ?
+       ORDER BY context_version DESC LIMIT 1`,
+      userId, characterId
+    )[0] || null;
   }
 
   getCharacterContextSnapshot({ userId, characterId, contextVersion }) {
@@ -1756,6 +1775,33 @@ class CloudStore {
     return this.exec(
       'SELECT * FROM activity_queue WHERE dedupe_key = ?',
       dedupeKey
+    )[0] || null;
+  }
+
+  supersedePendingContactActivities({ userId, characterId, now }) {
+    return this.exec(
+      `UPDATE activity_queue
+       SET status = 'superseded', locked_by = NULL, locked_until = NULL,
+           next_attempt_at = NULL, updated_at = ?
+       WHERE character_id = ? AND kind = 'contact'
+         AND status IN ('waiting', 'retry')
+         AND device_id IN (SELECT id FROM devices WHERE user_id = ?)
+       RETURNING id`,
+      now, characterId, userId
+    ).length;
+  }
+
+  refreshPendingContactActivityContext({ deviceId, characterId, dedupeKey, contextVersion, now }) {
+    const payloadJson = serializeStoreJson({
+      contextVersion, sourceDeviceId: deviceId, executionMode: 'cloud'
+    }, 4000, 'activity.payload');
+    return this.exec(
+      `UPDATE activity_queue
+       SET payload_json = ?, updated_at = ?
+       WHERE device_id = ? AND character_id = ? AND kind = 'contact'
+         AND dedupe_key = ? AND status IN ('waiting', 'retry')
+       RETURNING id`,
+      payloadJson, now, deviceId, characterId, dedupeKey
     )[0] || null;
   }
 
