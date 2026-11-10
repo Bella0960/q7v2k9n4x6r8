@@ -1320,25 +1320,40 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const minIdleMs = parsePositiveEnv(env, 'AUTONOMY_MIN_IDLE_MS');
     const isNewUserTurn = !previousSnapshot ||
       lastUserMessageAt > Number(previousSnapshot.last_user_message_at || 0);
-    if (globalAutonomy?.enabled === 1 && roleEnabled && isNewUserTurn) {
+
+    if (globalAutonomy?.enabled === 1 && roleEnabled) {
       if (!executionConfig || minIdleMs == null) {
         queueReason = 'activity_schedule_not_configured';
       } else {
         scheduledAt = Math.max(timestamp, lastUserMessageAt + minIdleMs);
         const dedupeKey = [
           'cloud-contact-v1', encodeURIComponent(userId),
-          encodeURIComponent(characterId), String(result.contextVersion)
+          encodeURIComponent(characterId), String(lastUserMessageAt)
         ].join(':');
-        const enqueue = await store.enqueueActivity({
-          id: randomToken(16), deviceId: device.id, characterId, kind: 'contact',
-          scheduledAt, maxAttempts: executionConfig.maxAttempts,
-          payload: { contextVersion: result.contextVersion, sourceDeviceId: device.id, executionMode: 'cloud' },
-          dedupeKey, now: timestamp, userId, requireActiveDevice: true
-        });
-        if (enqueue.revoked) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销');
-        if (enqueue.conflict) throw new ApiError(409, 'ACTIVITY_IDEMPOTENCY_CONFLICT', '主动联系任务幂等冲突');
-        queued = Boolean(enqueue.inserted || enqueue.duplicate);
-        queueReason = queued ? 'queued' : 'not_queued';
+        if (isNewUserTurn) {
+          await store.supersedePendingContactActivities({ userId, characterId, now: timestamp });
+          if (await store.countPendingActivitiesForCharacter(userId, characterId) >= 5) {
+            queueReason = 'activity_queue_full';
+          } else {
+            const enqueue = await store.enqueueActivity({
+              id: randomToken(16), deviceId: device.id, characterId, kind: 'contact',
+              scheduledAt, maxAttempts: executionConfig.maxAttempts,
+              payload: { contextVersion: result.contextVersion, sourceDeviceId: device.id, executionMode: 'cloud' },
+              dedupeKey, now: timestamp, userId, requireActiveDevice: true
+            });
+            if (enqueue.revoked) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销');
+            if (enqueue.conflict) throw new ApiError(409, 'ACTIVITY_IDEMPOTENCY_CONFLICT', '主动联系任务幂等冲突');
+            queued = Boolean(enqueue.inserted || enqueue.duplicate);
+            queueReason = queued ? 'queued' : 'not_queued';
+          }
+        } else {
+          const refreshed = await store.refreshPendingContactActivityContext({
+            deviceId: device.id, characterId, dedupeKey,
+            contextVersion: result.contextVersion, now: timestamp
+          });
+          queued = Boolean(refreshed);
+          queueReason = queued ? 'pending_task_context_refreshed' : 'same_user_turn_no_pending_task';
+        }
       }
     }
     return ok({
