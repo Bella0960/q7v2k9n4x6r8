@@ -1612,7 +1612,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       const bubbles = body.bubbles.map(value => typeof value === 'string' ? value.trim() : '');
       if (bubbles.some(value => value.length < 2 || Array.from(value).length > 220 ||
           /[<>\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]/.test(value) || /https?:\\/\\//i.test(value)) ||
-          bubbles.join('\\n\\n') !== messageText) {
+          bubbles.join(String.fromCharCode(10, 10)) !== messageText) {
         throw new ApiError(400, 'INVALID_ACTIVITY_RESULT', '主动消息气泡边界或正文不匹配');
       }
       outboundPayload = {
