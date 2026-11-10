@@ -615,6 +615,47 @@
     };
   }
 
+  // A role with no meaningful conversation can make one low-pressure first opening
+  // after the user explicitly enables proactive contact. This is separate from
+  // the idle-after-conversation policy below.
+  function evaluateInitialProactiveContact(options) {
+    options = options || {};
+    var now = Number(options.now);
+    var enabled = options.enabled === true;
+    if (!enabled) return { eligible: false, reason: 'disabled' };
+    if (options.blocked === true) return { eligible: false, reason: 'blocked' };
+    if (options.pageVisible === false) return { eligible: false, reason: 'page-hidden' };
+    if (options.hasHistory === true) return { eligible: false, reason: 'history-exists' };
+    if (options.firstContactSent === true) return { eligible: false, reason: 'already-sent' };
+    if (!Number.isFinite(now) || now <= 0) return { eligible: false, reason: 'invalid-timestamp' };
+
+    var hour = options.localHour == null ? new Date(now).getHours() : Number(options.localHour);
+    var quietStart = Math.max(0, Math.min(23, Number(options.quietStartHour == null ? 9 : options.quietStartHour)));
+    var quietEnd = Math.max(1, Math.min(24, Number(options.quietEndHour == null ? 22 : options.quietEndHour)));
+    if (!Number.isFinite(hour) || hour < quietStart || hour >= quietEnd) {
+      return { eligible: false, reason: 'quiet-hours' };
+    }
+
+    var enabledAt = Number(options.enabledAt) || 0;
+    if (!enabledAt || enabledAt > now) return { eligible: false, reason: 'missing-enable-time' };
+    var initialDelayMs = Math.max(0, Number(options.initialDelayMs) || 0);
+    if (now - enabledAt < initialDelayMs) {
+      return { eligible: false, reason: 'initial-delay', remainingMs: initialDelayMs - (now - enabledAt) };
+    }
+
+    var globalCooldownMs = Math.max(1, Number(options.globalCooldownMs) || 24 * 60 * 60 * 1000);
+    var roleCooldownMs = Math.max(globalCooldownMs, Number(options.roleCooldownMs) || globalCooldownMs);
+    var globalLastAttemptAt = Number(options.globalLastAttemptAt) || 0;
+    var roleLastAttemptAt = Number(options.roleLastAttemptAt) || 0;
+    if (globalLastAttemptAt && now - globalLastAttemptAt >= 0 && now - globalLastAttemptAt < globalCooldownMs) {
+      return { eligible: false, reason: 'global-cooldown' };
+    }
+    if (roleLastAttemptAt && now - roleLastAttemptAt >= 0 && now - roleLastAttemptAt < roleCooldownMs) {
+      return { eligible: false, reason: 'role-cooldown' };
+    }
+
+    return { eligible: true, reason: 'eligible', enabledAt: enabledAt, idleMs: now - enabledAt };
+  }
   function normalizeProactiveBubbles(value) {
     var source = value;
     if (source && typeof source === 'object' && !Array.isArray(source)) {
@@ -737,6 +778,7 @@
   NS.collectLifeContinuityNotes = collectLifeContinuityNotes;
   NS.buildAutonomyPrompt = buildAutonomyPrompt;
   NS.evaluateProactiveContact = evaluateProactiveContact;
+  NS.evaluateInitialProactiveContact = evaluateInitialProactiveContact;
   NS.buildProactiveContactPrompt = buildProactiveContactPrompt;
   NS.normalizeProactiveBubbles = normalizeProactiveBubbles;
   NS.getBubbleDelayMs = getBubbleDelayMs;
