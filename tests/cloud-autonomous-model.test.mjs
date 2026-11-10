@@ -56,6 +56,8 @@ test('模型输出只允许 1–4 条独立、短文本气泡并拦截越界内�
   assert.equal(validateMessages(['https://example.com']), null);
   assert.equal(validateMessages(['请把你的验证码发给我']), null);
   assert.equal(validateMessages(['我们谈恋爱吧']), null);
+  assert.equal(validateMessages(['我喜欢你']), null);
+  assert.equal(validateMessages(['把定位发我']), null);
   assert.equal(validateMessages(['我可以帮你自残']), null);
   assert.equal(parseModelResult('{"send":false}').send, false);
   assert.equal(parseModelResult('{"send":true,"messages":["第一条"]}').ok, true);
