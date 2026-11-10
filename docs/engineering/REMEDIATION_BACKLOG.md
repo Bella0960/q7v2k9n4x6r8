@@ -23,7 +23,7 @@ Acceptance:
 - Every claim is tagged as current fact, historical finding, or open question.
 
 ### GOV-002 — Build full function and file ownership index
-**Priority:** P1 · **Status:** OPEN
+**Priority:** P1 · **Status:** IN PROGRESS (2026-11-11: added the 89-page tree and launcher inventory; source-verified query-parameter receivers and key sender→receiver flows are mapped; dynamic routes, complete cross-page writes, dependencies, and storage ownership remain)
 
 Scope: inventory launcher apps, all 88 HTML pages, shared scripts/styles, page routes, key global symbols, and cross-module callers. Verify which pages are production, hidden, test, preview, or maintenance-only.
 

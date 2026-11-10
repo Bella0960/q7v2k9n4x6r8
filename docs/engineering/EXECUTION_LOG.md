@@ -5,7 +5,7 @@ This is the durable checkpoint for owner-assigned, multi-step work. Update it af
 ## Current work package
 
 - **Owner request:** Identify remaining MAOMAO work, start with low-risk items, and adopt end-to-end execution so the owner does not need to repeatedly say “continue”.
-- **Task IDs:** GOV-001, GOV-004
+- **Task IDs:** GOV-001, GOV-004, GOV-002
 - **Status:** IN PROGRESS
 - **Working branch:** `GOV-001-autonomous-execution-and-doc-sync`
 - **Base:** `main` at `f0cf6c74f0272219ebe4aa9e5a8c21fea7e49273`
@@ -21,6 +21,8 @@ This is the durable checkpoint for owner-assigned, multi-step work. Update it af
 - Do not claim browser/device acceptance based only on static source checks.
 
 ## Open PRs requiring reconciliation (not automatically mergeable)
+
+- PR #246 — GOV-002: 89-page inventory, 28 launcher destinations, and partial source-verified route/query handoff map; full dynamic-route/storage ownership map remains open.
 
 - #243 interactive desktop tutorial — PR description/source checks now report 50 step-by-step guides, 29 desktop-app guides and 10 FAQs; real-phone acceptance is not verified. Its latest Tutorial Guide Regression job still failed before any step executed.
 - #242 chat beauty preview / chat layout — the unrelated top-right menu experiment has been removed from its branch; do not reintroduce it.
@@ -74,7 +76,12 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - PR #244 remains Draft. PRs #245 and #246 are stacked on its branch; do not merge them ahead of the base dependency.
 - PR #243 is not Draft, but its CI has not actually run and the phone tutorial/navigation flow has not been verified on a real device.
 
-### Work performed this run
+### Current GOV-002 work
+
+- `GOV-002-app-page-inventory` is stacked on `GOV-001-autonomous-execution-and-doc-sync` at `f66cdff964e7db88d9f73095878f17f47f97182d`.
+- `APP_PAGE_INVENTORY.md` lists all 89 HTML pages, 28 `data-href` destinations, 2 additional HTML links, and partial receiver/sender route mappings. Query/caller/storage inventory remains incomplete by design and is marked accordingly.
+
+## Work performed this run
 - Re-ran only the tutorial-specific failed workflow for PR #243 to check whether Actions runner allocation had recovered. The retry failed before steps began.
 - Updated this execution log on the existing GOV-001 branch so the tutorial inventory and current CI/deployment evidence are no longer stale.
 - No application code, secrets, user data, production Worker, or APK was changed.

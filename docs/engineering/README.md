@@ -15,6 +15,7 @@
 - **STORAGE_AND_MIGRATION.md** — browser storage inventory, known data risks, target design, safe migration procedure.
 - **DEVELOPMENT_GOVERNANCE.md** — GitHub workflow, branch/PR policy, tests, security, asset rules, AI collaboration.
 - **REMEDIATION_BACKLOG.md** — phased tasks, dependencies, parallel work lanes, acceptance criteria.
+- **APP_PAGE_INVENTORY.md** — current HTML-page tree, desktop destinations, and partial source-verified route map; dynamic callers/storage ownership remain in progress.
 - **AI_HANDOFF_PROMPT.md** — copyable prompt and task assignment template for other AIs.
 
 Existing references which remain important:
