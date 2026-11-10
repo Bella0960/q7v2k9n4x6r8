@@ -693,11 +693,9 @@
 
   // 读取亲密付配置（用户给角色代付，保留原有方向）
   function getClosePay() {
-    try {
-      var d = JSON.parse(localStorage.getItem('close_pay') || 'null');
-      if (d && typeof d === 'object') return d;
-    } catch (e) {}
-    return null;
+    var ledger = window.MaoMaoWalletLedger;
+    if (!ledger || typeof ledger.readClosePayForMutation !== 'function') return null;
+    return ledger.readClosePayForMutation('close_pay');
   }
 
   function escapeFamilyCardText(value) {
@@ -734,7 +732,11 @@
   // 动态渲染支付方式列表：日常账户 + 可选亲密付
   function renderPayMethods(total) {
     var box = document.getElementById('payMethods');
-    var cp = getClosePay();
+    var cpState = window.MaoMaoWalletLedger &&
+      typeof window.MaoMaoWalletLedger.readClosePayState === 'function'
+      ? window.MaoMaoWalletLedger.readClosePayState('close_pay') : { ok: false, reason: 'module' };
+    var cp = cpState.ok ? cpState.value : null;
+    var closePayDataInvalid = !cpState.ok && cpState.reason !== 'module';
     var canClose = cp && cp.enabled && cp.roleName &&
                    (Number(cp.used) || 0) + total <= (Number(cp.limit) || 0);
     var roleCardApi = window.RoleFamilyCards;
@@ -760,7 +762,9 @@
         '</div>' +
       '</div>';
 
-    var cpHtml = '';
+    var cpHtml = closePayDataInvalid
+      ? '<div style="padding:12px 14px;border-radius:14px;background:#F7F7F9;font-size:0.75rem;color:#666;line-height:1.6;margin-bottom:10px;">亲密付设置数据异常，已暂停扣款。原设置与交易记录未被修改，请先恢复数据。</div>'
+      : '';
     if (canClose) {
       cpHtml =
         '<div data-method="close_pay" style="padding:14px;border-radius:14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;border:1.5px solid ' + (payMethod==='close_pay' ? '#111' : '#E5E5EA') + ';background:#fff;cursor:pointer;">' +
