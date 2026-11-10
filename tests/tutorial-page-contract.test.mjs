@@ -90,7 +90,8 @@ test('composer menu guide covers the actual one-to-one and group menu entry labe
 });
 
 test('conversation settings has a direct navigation fallback and is cached in the PWA shell', () => {
-  assert.match(chatDetail, /onclick="window\.location\.assign\('chat-settings\.html\?roleId='/);
+  assert.match(chatDetail, /onclick="if\(this\.dataset\.navBound!=='1'\)/);
+  assert.match(chatDetail, /btnMoreMenu\.dataset\.navBound = '1'/);
   assert.match(chatDetail, /btnMoreMenu\.addEventListener\('click'/);
   assert.ok(serviceWorker.includes("'./chat/chat/chat-settings.html'"));
 });
