@@ -3376,7 +3376,7 @@ test('亲属卡所有状态变更与商店外卖消费共用钱包锁', async ()
   // Execute the real AI-initiated role adjustment path and prove the card module
   // is invoked while the origin-wide wallet lock is held.
   const roleChangeStart = detail.indexOf('async function applyRoleFamilyCardChanges(changes)');
-  const roleChangeEnd = detail.indexOf("\\n\\n        async function insertRoleFamilyCardInvitations", roleChangeStart);
+  const roleChangeEnd = detail.indexOf('async function insertRoleFamilyCardInvitations(historyList, cardSpecs)', roleChangeStart);
   assert.ok(roleChangeStart >= 0 && roleChangeEnd > roleChangeStart,
     'AI role-change function must be extractable');
   let roleLockDepth = 0;
