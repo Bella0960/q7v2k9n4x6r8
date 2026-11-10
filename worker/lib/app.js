@@ -1111,7 +1111,8 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       timestamp - Number(cloudModelLastGeneratedAt) <= 30 * 24 * 60 * 60 * 1000;
     const cloudPushLastAcceptedAt = await store.getLatestAutonomyPushAcceptance({
       userId,
-      deviceId: device.id
+      deviceId: device.id,
+      now: timestamp
     });
     const cloudPushAcceptanceVerified = Number.isSafeInteger(Number(cloudPushLastAcceptedAt)) &&
       Number(cloudPushLastAcceptedAt) > 0 &&
