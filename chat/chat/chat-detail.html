@@ -7939,24 +7939,12 @@
             return "url('" + s.replace(/[\\'")(\s]/g, function (c) { return '\\' + c.charCodeAt(0).toString(16) + ' '; }) + "')";
         }
 
-        // ========== 钱包余额 workData：安全读写 ==========
-        // 结构非法 / 余额非有限数字时一律回落 { balance: 1000 }，绝不把脏数据带进计算
+        // ========== 钱包余额 workData：严格读取，损坏时停止支付 ==========
         const WORK_DATA_KEY = 'workData';
         function getWorkData() {
-            let wd = null;
-            try {
-                const raw = localStorage.getItem(WORK_DATA_KEY);
-                if (raw) wd = JSON.parse(raw);
-            } catch (e) {}
-            if (!wd || typeof wd !== 'object' || Array.isArray(wd)) {
-                wd = { balance: 1000 };
-            }
-            if (typeof wd.balance !== 'number' || !isFinite(wd.balance)) {
-                wd.balance = 1000;
-            }
-            // 交易明细：history 缺失或非法时补空数组（老数据自动兼容）
-            if (!Array.isArray(wd.history)) wd.history = [];
-            return wd;
+            const ledger = window.MaoMaoWalletLedger;
+            if (!ledger || typeof ledger.readWalletForMutation !== 'function') return null;
+            return ledger.readWalletForMutation(WORK_DATA_KEY);
         }
         function saveWorkData(wd) {
             try {
