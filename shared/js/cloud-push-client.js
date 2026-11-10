@@ -523,18 +523,23 @@
     var attemptCount = Number(activity.attemptCount);
     var message = String(text || '').trim();
     options = options && typeof options === 'object' ? options : {};
-    var displayName = String(options.displayName || '').replace(/[<>\\u0000-\\u001F]/g, ' ').replace(/\\s+/g, ' ').trim();
-    displayName = Array.from(displayName).slice(0, 48).join('');
+    var displayName = Array.from(String(options.displayName || '').replace(/[<>]/g, ' ').trim()).slice(0, 48).join('');
     var body = { attemptCount: attemptCount, text: message };
     if (Array.isArray(options.bubbles)) {
       var bubbles = options.bubbles.map(function (value) {
         return typeof value === 'string' ? value.trim() : '';
       });
-      if (!bubbles.length || bubbles.length > 4 ||
-          bubbles.some(function (bubble) {
-            var length = Array.from(bubble).length;
-            return length < 2 || length > 220 || /[<>\\u0000-\\u001F]/.test(bubble) || /https?:\\/\\//i.test(bubble);
-          }) || bubbles.join('\\n\\n') !== message) {
+      var invalidBubble = bubbles.some(function (bubble) {
+        var length = Array.from(bubble).length;
+        if (length < 2 || length > 220 || bubble.indexOf('http://') !== -1 || bubble.indexOf('https://') !== -1) return true;
+        for (var i = 0; i < bubble.length; i += 1) {
+          var code = bubble.charCodeAt(i);
+          if (code < 32 && code !== 10) return true;
+        }
+        return false;
+      });
+      if (!bubbles.length || bubbles.length > 4 || invalidBubble ||
+          bubbles.join(String.fromCharCode(10, 10)) !== message) {
         return Promise.reject(new Error('主动消息气泡内容无效'));
       }
       body.bubbles = bubbles;
