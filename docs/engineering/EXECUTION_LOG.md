@@ -22,7 +22,7 @@ This is the durable checkpoint for owner-assigned, multi-step work. Update it af
 
 ## Open PRs requiring reconciliation (not automatically mergeable)
 
-- #243 interactive desktop tutorial — source review says 14 guides and a 28-app directory; real phone acceptance is not verified.
+- #243 interactive desktop tutorial — PR description/source checks now report 50 step-by-step guides, 29 desktop-app guides and 10 FAQs; real-phone acceptance is not verified. Its latest Tutorial Guide Regression job still failed before any step executed.
 - #242 chat beauty preview / chat layout — the unrelated top-right menu experiment has been removed from its branch; do not reintroduce it.
 - #148 cloud push infrastructure; #239 server-side model and grouped outbound delivery depends on #148.
 - #237 wallet corruption/data-integrity protection currently targets the cloud-autonomous branch as its base.
@@ -49,3 +49,38 @@ This is the durable checkpoint for owner-assigned, multi-step work. Update it af
 ## Resume instruction
 
 On the next turn/session, read this file and the current `AGENTS.md` first. Continue from the earliest unfinished item above. Do not ask the owner to repeat the task or say “continue”; ask only for a genuine approval-boundary decision or missing requirement.
+
+
+## Daily execution — 2026-11-11 (07:00 Asia/Shanghai)
+
+### Verified repository state
+- `main` remains at `f0cf6c74f0272219ebe4aa9e5a8c21fea7e49273`.
+- 38 open PRs; 0 open ordinary Issues.
+- The latest main commit adds role-scoped gallery image delivery. The separate multi-bubble PR #184 is still not integrated.
+- No PR met the required merge conditions in this run. No merge was attempted.
+
+### CI and deployment evidence
+- Main production workflow run #42918127727 (attempt 2) for `f0cf6c7` concluded failure. Its deploy job has `logs_url: null` and `steps: null`; no build/test/deploy step was executed or reported.
+- PR #243 Tutorial Guide Regression run #42922634791 was retried once. The retry was accepted, queued, then failed with an empty step list and no job log. This confirms the runner problem remains; it does not indicate a tutorial test assertion failure.
+- PR #243's eight workflow runs and PR #242's latest workflow runs are failures without executed steps. Treat all related checks as NOT VERIFIED, not as code-test failures or passes.
+- Cloudflare account read-only inspection shows Worker `mao` deployment `9ba47808-90b3-4d30-b133-6f0af373a1cc`, version `1a090b6e-1ba9-4661-a9d4-c3c7e2e64fa8` (version number 315), receiving 100% traffic; created 2026-11-10T22:50:38Z. Its metadata has no `workers/commit_sha` annotation. The timestamp is shortly after the main commit, but does not prove the deployed bundle is exactly `f0cf6c7`.
+- The configured Worker URL is https://mao.miamor520000.workers.dev. A direct HTTP check from this execution environment could not resolve DNS, so live route availability was not verified here.
+
+### Important branch and dependency findings
+- PR #184 multi-bubble replies: 20 commits ahead and 16 behind current main; GitHub reports it is not mergeable. It remains open/Draft.
+- PR #148 cloud push: 1,339 commits ahead and 5 behind main; GitHub reports it is not mergeable. It is a very large development stack and must not be merged as one unreviewed unit.
+- PR #239 server-side model/grouped delivery is stacked on #148 and compares as 1,395 commits ahead / 5 behind main. Its own PR description says model-provider connectivity, Cloudflare scheduled execution and phone delivery remain unverified; the required server-side model secret is not configured.
+- PR #237 wallet integrity work is also stacked on the cloud-autonomous branch; it is not an independent main-based fix.
+- PR #244 remains Draft. PRs #245 and #246 are stacked on its branch; do not merge them ahead of the base dependency.
+- PR #243 is not Draft, but its CI has not actually run and the phone tutorial/navigation flow has not been verified on a real device.
+
+### Work performed this run
+- Re-ran only the tutorial-specific failed workflow for PR #243 to check whether Actions runner allocation had recovered. The retry failed before steps began.
+- Updated this execution log on the existing GOV-001 branch so the tutorial inventory and current CI/deployment evidence are no longer stale.
+- No application code, secrets, user data, production Worker, or APK was changed.
+
+### Next actions
+1. Restore GitHub Actions runner/job execution and obtain real step logs; do not merge on empty/failed checks.
+2. Reconcile #184 against current main after CI is available, then run chat reply/bubble regression and browser acceptance.
+3. Break the #148/#239 cloud-push stack into reviewable milestones; configure the Worker model secret only through the protected Cloudflare secret mechanism after the user has selected/authorized the provider.
+4. Verify the active Worker version against a recorded main SHA and perform a real external route/device check before calling production current.
