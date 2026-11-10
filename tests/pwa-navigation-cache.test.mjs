@@ -41,7 +41,7 @@ test('service worker caches the public account entry but excludes protected app 
   assert.match(serviceWorker, /fetch\('\.\/pwa-pages\.json'/);
   assert.match(serviceWorker, /APP_SHELL\.concat\(pageEntries\)/);
   assert.ok(serviceWorker.includes("url === './account/index.html' || url === './account/bootstrap.html' || !/\\.html"));
-  assert.ok(serviceWorker.includes('./shared/js/mao-account-scope.js?v=1'));
+  assert.ok(serviceWorker.includes('./shared/js/mao-account-scope.js?v=2'));
   assert.ok(serviceWorker.includes('./account/manage.css'));
   assert.ok(serviceWorker.includes('./account/manage.js'));
   assert.ok(serviceWorker.includes('./account/settings-link.js?v=1'));
