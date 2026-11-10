@@ -3898,7 +3898,12 @@ test('自主活动 API：本地生成器可安全认领并把结果交给原有�
   const completed = await ctx.asJson(completePath, {
     method: 'POST',
     device,
-    body: { attemptCount: activity.attemptCount, text: proactiveMessage }
+    body: {
+      attemptCount: activity.attemptCount,
+      text: proactiveMessage,
+      bubbles: proactiveBubbles,
+      displayName: '林深'
+    }
   });
   assert.equal(completed.status, 200);
   assert.equal(completed.payload.completed, true);
@@ -4288,7 +4293,8 @@ test('本机主动消息完成后会立即发送不含正文的角色聊天 Push
   assert.equal(claimed.status, 200);
   const activity = claimed.payload.activity;
 
-  const proactiveMessage = '我刚刚想到一件想和你分享的事。\n\n另外还有一件小事，也想顺便告诉你。';
+  const proactiveBubbles = ['我刚刚想到一件想和你分享的事。', '另外还有一件小事，也想顺便告诉你。'];
+  const proactiveMessage = proactiveBubbles.join(String.fromCharCode(10, 10));
   const completed = await ctx.asJson('/api/autonomy/activities/' + activity.id + '/complete', {
     method: 'POST',
     device,
@@ -4313,12 +4319,17 @@ test('本机主动消息完成后会立即发送不含正文的角色聊天 Push
   assert.equal(outboundInbox.payload.messages.length, 1);
   assert.equal(outboundInbox.payload.messages[0].payload.type, 'text');
   assert.equal(outboundInbox.payload.messages[0].payload.text, proactiveMessage,
-    '云端收件箱必须原样保留用于拆分气泡的空行分隔符');
+    '云端收件箱必须原样保留气泡边界');
+  assert.deepEqual(outboundInbox.payload.messages[0].payload.bubbles, proactiveBubbles);
+  assert.equal(outboundInbox.payload.messages[0].payload.displayName, '林深');
+  assert.equal(outboundInbox.payload.messages[0].payload.bubbleCount, 2);
 
   const notification = buildOutboundPushPayload({
     characterId: 'char-push',
     serverMessageId,
-    timestamp: now
+    timestamp: now,
+    characterName: '林深',
+    bubbleCount: 2
   });
   assert.equal(notification.url, './chat/chat/chat-detail.html?id=char-push');
   assert.equal(notification.type, 'chat_message');
@@ -4336,7 +4347,8 @@ test('本机主动消息完成后会立即发送不含正文的角色聊天 Push
     serverMessageId,
     timestamp: now
   }), /outbound push target is invalid/);
-  assert.match(notification.body, /有一位角色刚刚联系你/);
+  assert.equal(notification.title, '林深 给你发来消息');
+  assert.match(notification.body, /2 条消息/);
   assert.equal(notification.body.includes('我刚刚想到'), false,
     '锁屏通知不得暴露主动消息正文');
   assert.equal(notification.dedupeKey, 'outbound:' + serverMessageId);
@@ -4344,7 +4356,12 @@ test('本机主动消息完成后会立即发送不含正文的角色聊天 Push
   const repeated = await ctx.asJson('/api/autonomy/activities/' + activity.id + '/complete', {
     method: 'POST',
     device,
-    body: { attemptCount: activity.attemptCount, text: proactiveMessage }
+    body: {
+      attemptCount: activity.attemptCount,
+      text: proactiveMessage,
+      bubbles: proactiveBubbles,
+      displayName: '林深'
+    }
   });
   assert.equal(repeated.status, 200);
   assert.equal(repeated.payload.alreadyCompleted, true);
