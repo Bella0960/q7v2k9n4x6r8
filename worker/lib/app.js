@@ -1137,6 +1137,11 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       userId,
       since: timestamp - 86400000
     });
+    const recentPushReasons = await store.getRecentPushReasonSummary({
+      userId,
+      deviceId: device.id,
+      since: timestamp - 86400000
+    });
     const latestCloudTick = await store.getLatestCloudAutonomyTick();
     const cloudSchedulerLastRunAt = latestCloudTick ? Number(latestCloudTick.createdAt) : null;
     const cloudSchedulerRuntimeVerified = Boolean(
@@ -1200,6 +1205,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       globalAutonomyEnabled: globalAutonomy?.enabled === 1,
       activityQueue,
       recentSchedulerReasons,
+      recentPushReasons,
       schedulerDiagnosticsWindowMs: 86400000,
       // This account-level aggregate does not replace the exact per-character
       // version check performed by scheduler-gate for every context task.
