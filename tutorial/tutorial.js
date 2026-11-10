@@ -465,7 +465,7 @@
     var state = entryState(guide.id);
     var checked = state.done === true;
     var note = state.note == null ? (guide.defaultNote || '') : String(state.note);
-    var walked = Array.isArray(state.walked) ? state.walked.filter(Boolean).length : 0;
+    var walked = Array.isArray(state.walked) ? state.walked.length : 0;
     var status = guide.issue
       ? '<span class="status issue">待真机复测</span>'
       : '<span class="status">操作指南</span>';
@@ -580,15 +580,12 @@
   function moveWalkthrough(delta) {
     if (!activeWalkthrough) return;
     var state = stepState(activeWalkthrough);
-    if (delta > 0) {
-      if (state.walked.indexOf(activeStepIndex) === -1) state.walked.push(activeStepIndex);
-      if (activeStepIndex >= activeWalkthrough.steps.length - 1) {
-        state.learned = true;
-        state.lastStep = activeStepIndex;
-        saveWalkthroughState();
-        closeGuide();
-        return;
-      }
+    if (delta > 0 && activeStepIndex >= activeWalkthrough.steps.length - 1) {
+      state.learned = state.walked.length === activeWalkthrough.steps.length;
+      state.lastStep = activeStepIndex;
+      saveWalkthroughState();
+      closeGuide();
+      return;
     }
     activeStepIndex = Math.max(0, Math.min(activeWalkthrough.steps.length - 1, activeStepIndex + delta));
     state.lastStep = activeStepIndex;
@@ -596,6 +593,7 @@
     renderWalkthrough();
     renderGuides();
   }
+
   function exportProgress() {
     var lines = ['MAOMAO 手机测试记录', '指南版本：' + GUIDE_VERSION, '导出时间：' + new Date().toLocaleString(), ''];
     GUIDES.forEach(function (guide) {
