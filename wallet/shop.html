@@ -738,9 +738,12 @@
     var canClose = cp && cp.enabled && cp.roleName &&
                    (Number(cp.used) || 0) + total <= (Number(cp.limit) || 0);
     var roleCardApi = window.RoleFamilyCards;
-    var roleCards = roleCardApi ? roleCardApi.readAll().filter(function (card) {
-      return card && card.status === 'active';
-    }) : [];
+    var roleCardState = roleCardApi && typeof roleCardApi.readState === 'function'
+      ? roleCardApi.readState() : { ok: !roleCardApi, value: [] };
+    var roleCardDataInvalid = !!(roleCardApi && !roleCardState.ok);
+    var roleCards = roleCardApi && roleCardState.ok
+      ? roleCardState.value.filter(function (card) { return card && card.status === 'active'; })
+      : [];
     if (payMethod.indexOf('role_card:') === 0) {
       var selectedRoleCard = getRoleCardFromMethod(payMethod);
       if (!selectedRoleCard || !canUseRoleCard(selectedRoleCard, total)) payMethod = 'normal';
@@ -773,7 +776,9 @@
       cpHtml = '<div style="padding:12px 14px;border-radius:14px;background:#F7F7F7;font-size:0.75rem;color:#999;margin-bottom:10px;">你设置的亲密付还没有绑定角色</div>';
     }
 
-    var roleCardsHtml = roleCards.map(function (card) {
+    var roleCardsHtml = roleCardDataInvalid
+      ? '<div style="padding:12px 14px;border-radius:14px;background:#F7F7F9;color:#666;font-size:0.75rem;line-height:1.6;margin-bottom:10px;">亲属卡数据异常，已暂停使用和扣款。原始卡片记录未被修改，请先恢复卡片数据。</div>'
+      : roleCards.map(function (card) {
       var method = 'role_card:' + card.id;
       var available = Math.max(0, (Number(card.monthlyLimit) || 0) - roleCardApi.usedThisMonth(card));
       var usable = canUseRoleCard(card, total);
@@ -1265,6 +1270,13 @@
             }
             var roleFamilyCard = getRoleCardFromMethod(payMethod);
             if (payMethod.indexOf('role_card:') === 0) {
+              var roleCardState = window.RoleFamilyCards && typeof window.RoleFamilyCards.readState === 'function'
+                ? window.RoleFamilyCards.readState() : { ok: false, reason: 'module' };
+              if (!roleCardState.ok) {
+                ledger.cancelPendingCheckout(transactionId);
+                showToast('亲属卡数据异常，已停止扣款；请先恢复卡片数据');
+                return;
+              }
               if (!roleFamilyCard) {
                 ledger.cancelPendingCheckout(transactionId);
                 showToast('这张亲属卡不存在或已失效');
@@ -1276,10 +1288,13 @@
                 roleFamilyCard.id, total, '商店 · ' + payItems.map(function (item) { return item.cn; }).join('、'), 'shop', transactionId
               );
               if (!roleCardSpend || !roleCardSpend.ok) {
-                if (roleCardSpend && (roleCardSpend.reason === 'limit' || roleCardSpend.reason === 'missing')) {
+                if (roleCardSpend && ['limit', 'missing', 'invalid'].indexOf(roleCardSpend.reason) !== -1) {
                   ledger.cancelPendingCheckout(transactionId);
                 }
-                showToast(roleCardSpend && roleCardSpend.reason === 'storage' ? '亲属卡记录保存失败，请重试' : '亲属卡额度已变化，请重新选择支付方式');
+                showToast(roleCardSpend && roleCardSpend.reason === 'invalid'
+                  ? '亲属卡数据异常，已停止扣款；请先恢复卡片数据'
+                  : (roleCardSpend && roleCardSpend.reason === 'storage'
+                    ? '亲属卡记录保存失败，请重试' : '亲属卡额度已变化，请重新选择支付方式'));
                 renderPayMethods(total);
                 return;
               }
