@@ -3690,16 +3690,18 @@ test('客户端只在消息持久化回调确认成功后才确认云端出站�
   const end = clientSource.indexOf('  function flushCharacterContextVersion(', start);
   assert.ok(start >= 0 && end > start, '客户端必须提供独立的出站接收处理器');
   const receiver = clientSource.slice(start, end);
-  const receiptIndex = receiver.indexOf('await markCharacterOutboundReceived(characterId, message.serverMessageId)');
-  const persistIndex = receiver.indexOf('await persistMessage(message.payload, message)');
+  const receiptIndex = receiver.indexOf('await markCharacterOutboundReceived(characterId, group[receivedIndex].serverMessageId)');
+  const persistIndex = receiver.indexOf('await persistMessage(payloads, group)');
   const guardIndex = receiver.indexOf('if (persisted !== true)');
-  const ackIndex = receiver.indexOf('await acknowledgeCharacterOutboundMessage(characterId, message.serverMessageId)');
+  const ackIndex = receiver.indexOf('await acknowledgeCharacterOutboundMessage(characterId, group[ackIndex].serverMessageId)');
   assert.ok(receiptIndex >= 0 && persistIndex > receiptIndex && guardIndex > persistIndex && ackIndex > guardIndex,
-    '顺序必须是设备收到回执、本地持久化、成功检查，最后才是本地保存 ACK');
+    '顺序必须是整组设备收到回执、一次性本地持久化、成功检查，最后逐条 ACK');
   assert.ok(receiver.includes('deferred += 1'), '本地保存失败时必须保留云端待确认消息');
-  assert.ok(receiver.includes('catch (persistError)'), '单条持久化异常必须被隔离，不能中断整批接收');
-  assert.ok(receiver.includes('catch (ackError)'), '单条 ACK 网络异常必须被隔离，后续消息仍应继续处理');
+  assert.ok(receiver.includes('catch (persistError)'), '整组持久化异常必须被隔离，不能中断轮询');
+  assert.ok(receiver.includes('catch (ackError)'), '逐条 ACK 网络异常必须被隔离，未完成组会在下一轮重试');
   assert.ok(receiver.includes('persisted: persistedCount'), '应区分本地已保存与云端 ACK 已确认');
+  assert.ok(receiver.includes('group.length !== expectedCount'), '不完整气泡组不得写入或确认');
+  assert.ok(receiver.includes('blockedByIncompleteGroup'), '组消息失败时必须停止推进游标');
   assert.ok(receiver.includes('ackDeferred: ackDeferred'), 'ACK 失败应单独报告以便后续重试');
   assert.ok(receiver.includes('persistErrors: persistErrors'), '本地存储异常应单独计数');
   assert.ok(clientSource.includes('getCharacterOutboundMessages: getCharacterOutboundMessages'));
@@ -3721,7 +3723,7 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
     '聊天页必须有写入现有消息历史的适配器');
   assert.ok(chat.includes("item && String(item.serverMessageId || '') === serverMessageId"),
     '重复投递必须先按稳定 serverMessageId 查重');
-  assert.ok(chat.includes("mid: 'cloud_' + serverMessageId"),
+  assert.ok(chat.includes("mid: 'cloud_' + entry.serverMessageId"),
     '云端消息必须有稳定本地 mid');
   assert.ok(chat.includes("msg.serverMessageId != null"),
     '写后读回校验必须包含云端服务端消息 ID');
@@ -3774,11 +3776,11 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
   assert.ok(saveIndex >= 0 && renderIndex > saveIndex &&
     pacedRenderIndex > renderIndex,
     '必须先验证本地保存成功，再走任一消息渲染分支');
-  assert.ok(adapter.includes('if (document.visibilityState === \'hidden\') return false'),
+  assert.ok(adapter.includes("document.visibilityState === 'hidden'") && adapter.includes('isGroupChat'),
     '页面隐藏后，迟到的拉取响应不能再写入聊天历史');
   assert.ok(adapter.includes('if (isGroupChat'),
     '群聊不得误接单角色的出站收件箱');
-  assert.ok(adapter.includes('payloadType !== \'text\''),
+  assert.ok(adapter.includes("String(itemPayload.type || 'text') !== 'text'"),
     '未知载荷类型必须保持未确认，不能误写成普通文字');
 
   const syncStart = chat.indexOf('(function startCloudOutboundSyncForActiveRole()');
