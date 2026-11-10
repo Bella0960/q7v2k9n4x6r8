@@ -4198,6 +4198,19 @@ test('钱包结算编号跨页面刷新复用，支付方式不能在未完成�
   const nextId = secondLedger.getOrCreatePendingCheckout('shop', '[{"sku":1}]', 'normal');
   assert.ok(nextId);
   assert.notEqual(nextId, firstId, 'a completed checkout allows a new intentional purchase');
+  const cancelledId = secondLedger.getOrCreatePendingCheckout('takeout', '[{"sku":9}]', 'normal');
+  assert.ok(cancelledId, 'a separate channel can start an independent checkout');
+  assert.equal(secondLedger.cancelPendingCheckout(cancelledId), true,
+    'an unfinished checkout can be cancelled');
+  const storedAfterCancellation = JSON.parse(storage.getItem('maomao_wallet_pending_checkouts_v1'));
+  assert.equal(storedAfterCancellation.find((item) => item.id === firstId).status, 'completed',
+    'cancelling an unfinished checkout must preserve completed transaction receipts');
+  assert.equal(storedAfterCancellation.some((item) => item.id === cancelledId), false,
+    'cancellation must remove only the requested pending transaction');
+  assert.equal(secondLedger.cancelPendingCheckout(cancelledId), true,
+    'repeating cancellation after the pending row is gone is idempotent');
+  assert.equal(secondLedger.cancelPendingCheckout(firstId), false,
+    'a completed transaction must not be cancellable');
 
   const blockedStorage = {
     getItem: () => '',
