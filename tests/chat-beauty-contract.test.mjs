@@ -13,12 +13,6 @@ const serviceWorker = read('sw.js');
 
 function applyCustomCss(pathname, search, presets, active) {
   let injected = null;
-  const existing = {
-    id: 'custom-beauty-css',
-    textContent: '',
-    removed: false,
-    remove() { this.removed = true; }
-  };
   const document = {
     readyState: 'complete',
     getElementById(id) {
@@ -26,22 +20,11 @@ function applyCustomCss(pathname, search, presets, active) {
     },
     createElement(tag) {
       assert.equal(tag, 'style');
-      injected = {
-        id: '',
-        textContent: '',
-        remove() { this.removed = true; }
-      };
+      injected = { id: '', textContent: '', remove() { this.removed = true; } };
       return injected;
     },
     head: {
-      appendChild(element) {
-        injected = element;
-      }
-    },
-    documentElement: {
-      appendChild(element) {
-        injected = element;
-      }
+      appendChild(element) { injected = element; }
     }
   };
   const storage = new Map([
@@ -62,22 +45,37 @@ function applyCustomCss(pathname, search, presets, active) {
   return injected;
 }
 
-test('beauty editor uses one global target and deduplicates live character IDs', () => {
-  assert.match(beauty, /box\.innerHTML = '<div class="pill on" data-target="all">聊天全局<\\/div>'/);
-  assert.match(beauty, /var seen = Object\.create\(null\)/);
-  assert.match(beauty, /if \(!id \|\| id === 'all' \|\| seen\[id\]\) return/);
-  assert.doesNotMatch(beauty, /data-target="role_[123]"/);
+function styleContent(id) {
+  const opening = '<style id="' + id + '">';
+  const start = detail.indexOf(opening);
+  assert.notEqual(start, -1, 'missing style block: ' + id);
+  const contentStart = start + opening.length;
+  const end = detail.indexOf('</style>', contentStart);
+  assert.notEqual(end, -1, 'unterminated style block: ' + id);
+  return detail.slice(contentStart, end);
+}
+
+test('beauty editor builds a single global target and deduplicates live role IDs', () => {
+  assert.ok(beauty.includes('box.innerHTML = \'<div class="pill on" data-target="all">聊天全局</div>\''));
+  assert.ok(beauty.includes('var seen = Object.create(null)'));
+  assert.ok(beauty.includes("if (!id || id === 'all' || seen[id]) return"));
+  assert.ok(!beauty.includes('data-target="role_1"'));
+  assert.ok(!beauty.includes('data-target="role_2"'));
+  assert.ok(!beauty.includes('data-target="role_3"'));
+  assert.ok(beauty.includes('String(x.dataset.target) === String(t)'));
 });
 
-test('CSS import updates an isolated real-class preview and save enables the selected preset', () => {
-  assert.match(beauty, /id="presetPreviewHost"/);
-  assert.match(beauty, /attachShadow\(\{ mode: 'open' \}\)/);
-  assert.match(beauty, /custom\.textContent = editor \? editor\.value : ''/);
-  assert.match(beauty, /updatePresetPreview\(\);[\\s\\S]*document\.getElementById\('presetCss'\)\.addEventListener\('input', updatePresetPreview\)/);
-  assert.match(beauty, /if \(!setPresets\(list\)\)/);
-  assert.match(beauty, /active\[target\] = name/);
-  assert.match(beauty, /if \(!setActive\(active\)\)/);
-  assert.match(beauty, /已保存并启用/);
+test('CSS import feeds an isolated live chat preview and a successful save activates the preset', () => {
+  assert.ok(beauty.includes('id="presetPreviewHost"'));
+  assert.ok(beauty.includes("host.attachShadow({ mode: 'open' })"));
+  assert.ok(beauty.includes("custom.textContent = editor ? editor.value : ''"));
+  assert.ok(beauty.includes("document.getElementById('presetCss').addEventListener('input', updatePresetPreview)"));
+  assert.ok(beauty.includes("document.getElementById('presetCss').value = ev.target.result"));
+  assert.ok(beauty.includes('updatePresetPreview();'));
+  assert.ok(beauty.includes('if (!setPresets(list))'));
+  assert.ok(beauty.includes('active[target] = name'));
+  assert.ok(beauty.includes('if (!setActive(active))'));
+  assert.ok(beauty.includes('已保存并启用'));
 });
 
 test('global presets apply to list and detail; role presets apply only to matching one-to-one detail', () => {
@@ -92,39 +90,48 @@ test('global presets apply to list and detail; role presets apply only to matchi
   assert.equal(listStyle.textContent, presets[0].css);
 
   const roleOneStyle = applyCustomCss('/chat/chat/chat-detail.html', '?id=role_1', presets, active);
-  assert.equal(roleOneStyle.textContent, presets[0].css + '\\n' + presets[1].css);
+  assert.equal(roleOneStyle.textContent, presets[0].css + '\n' + presets[1].css);
 
   const groupStyle = applyCustomCss('/chat/chat/chat-detail.html', '?id=g-family', presets, active);
   assert.equal(groupStyle.textContent, presets[0].css);
 });
 
-test('legacy composer overrides are scoped to default theme only', () => {
-  const styles = [...detail.matchAll(/<style\\b([^>]*)>([\\s\\S]*?)<\\/style>/gi)];
-  const composer = styles
-    .filter(match => /maomao-chatgpt-inspired-composer|maomao-composer-position-correction/.test(match[1]))
-    .map(match => match[2])
-    .join('\\n');
-  assert.equal((composer.match(/\\.phone-mockup\\[data-chat-theme-preset="default"\\]/g) || []).length > 10, true);
-  assert.doesNotMatch(composer, /(^|\\n)\\s*\\.(?:input-dock|input-capsule|send-icon-btn|plus-action-btn|plus-panel-sheet|chat-stage)\\b/m);
-  assert.doesNotMatch(detail, /iMessage 全透明磨砂玻璃主题 - 强制覆盖层/);
-  assert.doesNotMatch(detail, /最终强制：底部透明/);
+test('legacy composer CSS is scoped to the default theme only', () => {
+  const first = styleContent('maomao-chatgpt-inspired-composer');
+  const second = styleContent('maomao-composer-position-correction');
+  const composer = first + '\n' + second;
+  const prefix = '.phone-mockup[data-chat-theme-preset="default"] ';
+  assert.ok(composer.includes(prefix + '.input-dock'));
+  assert.ok(composer.includes(prefix + '.input-capsule'));
+  assert.ok(composer.includes(prefix + '.plus-action-btn'));
+  assert.ok(composer.includes(prefix + '.send-icon-btn'));
+  assert.ok(!composer.includes('\n.input-dock {'));
+  assert.ok(!composer.includes('\n.input-capsule {'));
+  assert.ok(!detail.includes('iMessage 全透明磨砂玻璃主题 - 强制覆盖层'));
+  assert.ok(!detail.includes('最终强制：底部透明'));
 });
 
-test('the send control remains a single native form submit button', () => {
-  assert.equal((detail.match(/id="myFloatSend"/g) || []).length, 1);
-  assert.match(detail, /<button class="send-icon-btn disabled" id="myFloatSend" type="submit"/);
-  assert.doesNotMatch(detail, /document\.createElement\('button'\);\\s*b\.id = 'myFloatSend'/);
-  assert.match(detail, /var b = document\.getElementById\('myFloatSend'\) \|\| d\.querySelector\('\.send-icon-btn'\)/);
+test('there is one native form submit send control, not a cloned floating button', () => {
+  assert.equal(detail.split('id="myFloatSend"').length - 1, 1);
+  assert.ok(detail.includes('<button class="send-icon-btn disabled" id="myFloatSend" type="submit"'));
+  assert.ok(!detail.includes("b.id = 'myFloatSend';"));
+  assert.ok(detail.includes("var b = document.getElementById('myFloatSend') || d.querySelector('.send-icon-btn')"));
 });
 
-test('chat list and detail use flat full-height app surfaces rather than a duplicate device bezel', () => {
-  assert.match(list, /maomao-chat-list-layout-v1/);
-  assert.match(detail, /maomao-chat-detail-layout-v1/);
-  assert.match(list, /border:0 !important;[\\s\\S]*border-radius:0 !important;[\\s\\S]*box-shadow:none !important/);
-  assert.match(detail, /border:0 !important;[\\s\\S]*border-radius:0 !important;[\\s\\S]*box-shadow:none !important/);
+test('chat list and detail remove the duplicate device bezel', () => {
+  assert.ok(list.includes('maomao-chat-list-layout-v1'));
+  assert.ok(detail.includes('maomao-chat-detail-layout-v1'));
+  const listLayout = list.slice(list.indexOf('<style id="maomao-chat-list-layout-v1">'));
+  const detailLayout = detail.slice(detail.indexOf('<style id="maomao-chat-detail-layout-v1">'));
+  for (const layout of [listLayout, detailLayout]) {
+    assert.ok(layout.includes('border:0 !important'));
+    assert.ok(layout.includes('border-radius:0 !important'));
+    assert.ok(layout.includes('box-shadow:none !important'));
+    assert.ok(layout.includes('height:100dvh !important'));
+  }
 });
 
 test('service worker cache version advances with the chat page layout changes', () => {
-  assert.match(serviceWorker, /CACHE_NAME = 'phone-app-pwa-v200'/);
-  assert.match(serviceWorker, /role-gallery-image-autonomy\.js\?v=20261111v1/);
+  assert.ok(serviceWorker.includes("CACHE_NAME = 'phone-app-pwa-v200'"));
+  assert.ok(serviceWorker.includes('role-gallery-image-autonomy.js?v=20261111v1'));
 });
