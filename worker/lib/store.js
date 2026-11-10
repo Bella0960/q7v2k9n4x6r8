@@ -2173,29 +2173,32 @@ class CloudStore {
   repairStagedActivityOutbox({ userId, deviceId, characterId, now, limit = 10 }) {
     const safeLimit = Math.max(1, Math.min(20, Math.floor(Number(limit) || 10)));
     const rows = this.exec(
-      `SELECT q.id, q.device_id, q.character_id, q.result_json,
-              q.result_server_message_id, q.result_dedupe_key, q.updated_at,
-              d.user_id
-       FROM activity_queue q
-       INNER JOIN devices d ON d.id = q.device_id
-       WHERE d.user_id = ? AND d.id = ? AND d.revoked_at IS NULL
-         AND q.character_id = ? AND q.status = 'completed'
-         AND q.result_json IS NOT NULL
-         AND q.result_server_message_id IS NOT NULL
-         AND NOT EXISTS (
-           SELECT 1 FROM outbound_messages o
-           WHERE o.server_message_id = q.result_server_message_id
-             AND o.device_id = q.device_id
-             AND o.character_id = q.character_id
-             AND o.payload_json = q.result_json
-             AND o.dedupe_key IS q.result_dedupe_key
-         )
-       ORDER BY q.updated_at ASC, q.id ASC
-       LIMIT ?`,
-      userId,
-      deviceId,
-      characterId,
-      safeLimit
+      "SELECT q.id, q.device_id, q.character_id, q.result_json, \
+              q.result_server_message_id, q.result_dedupe_key, \
+              q.result_group_id, q.result_message_count, q.updated_at, \
+              d.user_id \
+       FROM activity_queue q \
+       INNER JOIN devices d ON d.id = q.device_id \
+       WHERE d.user_id = ? AND d.id = ? AND d.revoked_at IS NULL \
+         AND q.character_id = ? AND q.status = 'completed' \
+         AND q.result_json IS NOT NULL \
+         AND q.result_server_message_id IS NOT NULL \
+         AND ( \
+           (q.result_group_id IS NULL AND NOT EXISTS ( \
+             SELECT 1 FROM outbound_messages o \
+             WHERE o.server_message_id = q.result_server_message_id \
+               AND o.device_id = q.device_id \
+               AND o.character_id = q.character_id \
+               AND o.payload_json = q.result_json \
+               AND o.dedupe_key IS q.result_dedupe_key \
+           )) \
+           OR (q.result_group_id IS NOT NULL AND \
+             (SELECT COUNT(*) FROM outbound_messages o \
+              WHERE o.group_id = q.result_group_id) < q.result_message_count) \
+         ) \
+       ORDER BY q.updated_at ASC, q.id ASC \
+       LIMIT ?",
+      userId, deviceId, characterId, safeLimit
     );
 
     let repaired = 0;
@@ -2206,6 +2209,16 @@ class CloudStore {
         payload = JSON.parse(row.result_json);
       } catch {
         deferred += 1;
+        continue;
+      }
+      if (row.result_group_id) {
+        if (!Array.isArray(payload) || payload.length !== Number(row.result_message_count)) {
+          deferred += 1;
+          continue;
+        }
+        const result = this.enqueueCloudGroupRows(row, payload, Number(row.updated_at || now), true);
+        if (result.completed) repaired += result.outboundInserted + result.outboundIdempotent;
+        else deferred += 1;
         continue;
       }
       const result = this.enqueueOutboundMessage({
@@ -2223,7 +2236,6 @@ class CloudStore {
     }
     return { repaired, deferred };
   }
-
 
   listDueActivities(now, limit) {
     return this.exec(
