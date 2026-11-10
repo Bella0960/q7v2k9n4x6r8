@@ -9,6 +9,7 @@ Milestone 1：云端基础与真实 Web Push。后续里程碑（排班状态机
   - 理由：当前仓库的部署路径是"零账号级资源"的静态 Worker 部署。D1 需要在账号里先 `wrangler d1 create` 并把 `database_id` 写回 `wrangler.jsonc`，否则 `wrangler deploy` 会失败，直接阻断现有站点发布。Durable Object 随部署自动创建，同样是 Cloudflare 原生、事务性、SQLite 语义的持久化能力。
   - 迁移 SQL 是标准 SQLite 方言（`worker/migrations/0001_init.js`），若以后切到 D1，可原样迁移。
 - **定时**：`triggers.crons`（每日 03:17 UTC）清理过期/长期停用的推送订阅，并调用一次调度 tick。调度频率与生产配置值尚未拍板，因此没有擅自增加更高频 Cron。
+- **隔离预览**：`wrangler.preview.jsonc` 独立使用每分钟 Cron，仅用于维护清理、不可变 outbox 恢复和 Push 失败重试，便于手机验收通知链路。预览 `internal/tick` 仍没有消息生成 executor（`executorAvailable=false`），不会在后台调用 AI；生产 `wrangler.jsonc` 的每日 03:17 UTC Cron 不变。
 - **密钥**：VAPID 私钥、设备密钥 pepper 与首台设备初始认领码只通过 Cloudflare secrets 注入，前端只能拿到公开的 VAPID public key。
 
 ## 2. 表结构（0001_init）
