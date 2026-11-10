@@ -4220,13 +4220,22 @@
         // 全量重绘只递增 generation，即可取消当前及排队中的旧节点。
         let aiBubblePacingRunId = 0;
         let aiBubblePacingQueue = Promise.resolve();
-        function appendAiMessageWithPacing(msg, idx, options) {
+        // 单条 AI 回复、逐条落库的多气泡回复、云端主动消息共用同一呈现队列。
+        // 全量重绘会递增 generation，从而取消还未呈现的旧节点。
+        let aiBubblePacingRunId = 0;
+        let aiBubblePacingQueue = Promise.resolve();
+
+        function appendMessagesWithPacing(messages, startIdx, options) {
+            const safeMessages = Array.isArray(messages) ? messages.filter(Boolean) : [];
+            if (!safeMessages.length) return Promise.resolve();
             const generation = aiBubblePacingRunId;
             const shouldScroll = !(options && options.scrollToBottom === false);
             const renderTask = async function () {
                 if (generation !== aiBubblePacingRunId) return;
                 const fragment = document.createDocumentFragment();
-                appendMessageToDOM(msg, idx, fragment);
+                safeMessages.forEach(function (message, offset) {
+                    appendMessageToDOM(message, startIdx + offset, fragment);
+                });
                 const nodes = Array.prototype.slice.call(fragment.childNodes);
                 const rowCount = nodes.filter(function (node) {
                     return node.nodeType === 1 && node.classList && node.classList.contains('msg-row');
@@ -4240,7 +4249,6 @@
                     !presencePolicy || typeof presencePolicy.getBubbleDelayMs !== 'function') {
                     if (generation !== aiBubblePacingRunId) return;
                     chatMessages.appendChild(fragment);
-                    // appendMessageToDOM 组装时节点仍在临时 fragment；进入真实 DOM 后再注册已读观察器。
                     nodes.forEach(function (node) {
                         if (node && node.nodeType === 1 && node.classList && node.classList.contains('msg-row')) {
                             observeCloudOutboundReadRow(node);
@@ -4259,7 +4267,6 @@
                         const delay = presencePolicy.getBubbleDelayMs(previousText);
                         await new Promise(function (resolve) { setTimeout(resolve, delay); });
                     }
-                    // 全量重绘发生时取消尚未显示的旧节点，防止重复或乱序。
                     if (generation !== aiBubblePacingRunId) return;
                     if (isMessageRow) {
                         node.classList.add('chat-bubble-arrive');
@@ -4275,6 +4282,14 @@
             const queued = aiBubblePacingQueue.then(renderTask, renderTask);
             aiBubblePacingQueue = queued.catch(function () {});
             return queued;
+        }
+
+        function appendAiMessageWithPacing(msg, idx, options) {
+            return appendMessagesWithPacing([msg], idx, options);
+        }
+
+        function appendReplyMessagesWithPacing(messages, startIdx, options) {
+            return appendMessagesWithPacing(messages, startIdx, options);
         }
 
         // ================= 虚拟列表（P3）：长会话窗口化渲染 =================
