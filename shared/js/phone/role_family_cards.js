@@ -6,6 +6,45 @@
 
   var KEY = 'maomao_role_family_cards_v1';
 
+  function isValidCardsList(value) {
+    if (!Array.isArray(value)) return false;
+    var ids = Object.create(null);
+    for (var i = 0; i < value.length; i++) {
+      var item = value[i];
+      if (!item || typeof item !== 'object' || Array.isArray(item) ||
+          item.id == null || !String(item.id).trim()) return false;
+
+      var id = String(item.id);
+      if (ids[id]) return false;
+      ids[id] = true;
+
+      if (Object.prototype.hasOwnProperty.call(item, 'history')) {
+        if (!Array.isArray(item.history)) return false;
+        for (var h = 0; h < item.history.length; h++) {
+          var row = item.history[h];
+          if (!row || typeof row !== 'object' || Array.isArray(row) ||
+              !isFinite(Number(row.amount)) || Number(row.amount) < 0) return false;
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(item, 'paymentReceipts')) {
+        if (!Array.isArray(item.paymentReceipts)) return false;
+        for (var p = 0; p < item.paymentReceipts.length; p++) {
+          var receipt = item.paymentReceipts[p];
+          if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt) ||
+              !String(receipt.paymentId || '').trim() ||
+              !isFinite(Number(receipt.amount)) || Number(receipt.amount) < 0) return false;
+        }
+      }
+      if (item.monthlyLimit != null &&
+          (!isFinite(Number(item.monthlyLimit)) || Number(item.monthlyLimit) <= 0)) return false;
+      if (item.singleLimit != null &&
+          (!isFinite(Number(item.singleLimit)) || Number(item.singleLimit) <= 0)) return false;
+      if (item.status != null &&
+          ['pending', 'active', 'paused', 'revoked', 'rejected'].indexOf(item.status) === -1) return false;
+    }
+    return true;
+  }
+
   function readAllState() {
     var raw;
     try {
@@ -21,26 +60,7 @@
     } catch (error) {
       return { ok: false, reason: 'invalid', value: null };
     }
-    if (!Array.isArray(value)) return { ok: false, reason: 'invalid', value: null };
-
-    var ids = Object.create(null);
-    for (var i = 0; i < value.length; i++) {
-      var item = value[i];
-      if (!item || typeof item !== 'object' || Array.isArray(item) ||
-          item.id == null || !String(item.id).trim()) {
-        return { ok: false, reason: 'invalid', value: null };
-      }
-      var id = String(item.id);
-      if (ids[id]) return { ok: false, reason: 'invalid', value: null };
-      ids[id] = true;
-      if (Object.prototype.hasOwnProperty.call(item, 'history') && !Array.isArray(item.history)) {
-        return { ok: false, reason: 'invalid', value: null };
-      }
-      if (Object.prototype.hasOwnProperty.call(item, 'paymentReceipts') &&
-          !Array.isArray(item.paymentReceipts)) {
-        return { ok: false, reason: 'invalid', value: null };
-      }
-    }
+    if (!isValidCardsList(value)) return { ok: false, reason: 'invalid', value: null };
     return { ok: true, reason: '', value: value };
   }
 
@@ -55,10 +75,7 @@
     // must never be mistaken for permission to replace the user's saved cards.
     var before = readAllState();
     if (!before.ok) return false;
-    for (var i = 0; i < cards.length; i++) {
-      if (!cards[i] || typeof cards[i] !== 'object' || Array.isArray(cards[i]) ||
-          cards[i].id == null || !String(cards[i].id).trim()) return false;
-    }
+    if (!isValidCardsList(cards)) return false;
     try {
       var serialized = JSON.stringify(cards);
       localStorage.setItem(KEY, serialized);
