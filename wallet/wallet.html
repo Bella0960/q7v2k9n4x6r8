@@ -6,7 +6,7 @@
 <title>钱包 · 小手机</title>
 <script src="../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../shared/js/native-feel.js"></script>
-<script src="../shared/js/phone/role_family_cards.js?v=20261107v2"></script>
+<script src="../shared/js/phone/role_family_cards.js?v=20261107v3"></script>
 <script src="../shared/js/phone/wallet-ledger.js?v=20261107v7"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -731,7 +731,13 @@
       familyCardSummary.textContent = '查看角色送来的额度卡';
       return;
     }
-    var cards = window.RoleFamilyCards.readAll();
+    var cardState = typeof window.RoleFamilyCards.readState === 'function'
+      ? window.RoleFamilyCards.readState() : { ok: false };
+    if (!cardState.ok || !Array.isArray(cardState.value)) {
+      familyCardSummary.textContent = '卡片数据异常，已暂停修改';
+      return;
+    }
+    var cards = cardState.value;
     var activeCount = cards.filter(function (card) { return card.status === 'active'; }).length;
     var pendingCount = cards.filter(function (card) { return card.status === 'pending'; }).length;
     familyCardSummary.textContent = activeCount || pendingCount
