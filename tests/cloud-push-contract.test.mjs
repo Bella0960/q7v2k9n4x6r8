@@ -2529,6 +2529,9 @@ test('sw.js 保留缓存与离线导航，并新增 push / notificationclick', a
   assert.equal(sw.notifications.length, 1);
   assert.equal(sw.notifications[0].title, '测试');
   assert.equal(sw.notifications[0].options.tag, 't1');
+  assert.deepEqual(sw.notifications[0].options.vibrate, [120, 60, 120]);
+  assert.equal(sw.notifications[0].options.requireInteraction, false);
+  assert.equal(sw.notifications[0].options.actions[0].title, '查看聊天');
   assert.equal(
     sw.notifications[0].options.data.url,
     'https://mao.test/chat/chat/chat-detail.html?id=heroine',
@@ -4298,7 +4301,12 @@ test('本机主动消息完成后会立即发送不含正文的角色聊天 Push
   const completed = await ctx.asJson('/api/autonomy/activities/' + activity.id + '/complete', {
     method: 'POST',
     device,
-    body: { attemptCount: activity.attemptCount, text: proactiveMessage }
+    body: {
+      attemptCount: activity.attemptCount,
+      text: proactiveMessage,
+      bubbles: proactiveBubbles,
+      displayName: '林深'
+    }
   });
   assert.equal(completed.status, 200);
   assert.equal(completed.payload.completed, true);
