@@ -1068,9 +1068,12 @@
     var canClose = cp && cp.enabled && cp.roleName &&
                    (Number(cp.used)||0) + total <= (Number(cp.limit)||0);
     var roleCardApi = window.RoleFamilyCards;
-    var roleCards = roleCardApi ? roleCardApi.readAll().filter(function (card) {
-      return card && card.status === 'active';
-    }) : [];
+    var roleCardState = roleCardApi && typeof roleCardApi.readState === 'function'
+      ? roleCardApi.readState() : { ok: !roleCardApi, value: [] };
+    var roleCardDataInvalid = !!(roleCardApi && !roleCardState.ok);
+    var roleCards = roleCardApi && roleCardState.ok
+      ? roleCardState.value.filter(function (card) { return card && card.status === 'active'; })
+      : [];
     if (payMethod.indexOf('role_card:') === 0) {
       var selectedCard = getRoleCardFromMethod(payMethod);
       if (!selectedCard || !canUseRoleCard(selectedCard, total)) payMethod = 'normal';
@@ -1089,6 +1092,9 @@
         '<div class="pay-method-sub">剩余 ¥' + Math.max(0, Number(cp.limit)-Number(cp.used)).toFixed(2) + ' / 月</div></div>' +
         '<div class="pay-method-radio"></div>' +
       '</div>';
+    }
+    if (roleCardDataInvalid) {
+      html += '<div style="padding:12px 14px;border-radius:14px;background:#F7F7F9;color:#666;font-size:.75rem;line-height:1.6;margin-bottom:10px;">亲属卡数据异常，已暂停使用和扣款。原始卡片记录未被修改，请先恢复卡片数据。</div>';
     }
     roleCards.forEach(function (card) {
       var method = 'role_card:' + card.id;
@@ -1156,6 +1162,13 @@
             }
             var roleFamilyCard = getRoleCardFromMethod(payMethod);
             if (payMethod.indexOf('role_card:') === 0) {
+              var roleCardState = window.RoleFamilyCards && typeof window.RoleFamilyCards.readState === 'function'
+                ? window.RoleFamilyCards.readState() : { ok: false, reason: 'module' };
+              if (!roleCardState.ok) {
+                ledger.cancelPendingCheckout(transactionId);
+                toast('亲属卡数据异常，已停止扣款；请先恢复卡片数据');
+                return;
+              }
               if (!roleFamilyCard) {
                 ledger.cancelPendingCheckout(transactionId);
                 toast('这张亲属卡不存在或已失效');
@@ -1168,10 +1181,13 @@
                 roleFamilyCard.id, total, '外卖 · ' + items.map(function (it) { return it.dish.name + '×' + it.qty; }).join('、'), 'takeout', transactionId
               );
               if (!familySpend || !familySpend.ok) {
-                if (familySpend && (familySpend.reason === 'limit' || familySpend.reason === 'missing')) {
+                if (familySpend && ['limit', 'missing', 'invalid'].indexOf(familySpend.reason) !== -1) {
                   ledger.cancelPendingCheckout(transactionId);
                 }
-                toast(familySpend && familySpend.reason === 'storage' ? '亲属卡记录保存失败，请重试' : '亲属卡额度已变化，请重新选择');
+                toast(familySpend && familySpend.reason === 'invalid'
+                  ? '亲属卡数据异常，已停止扣款；请先恢复卡片数据'
+                  : (familySpend && familySpend.reason === 'storage'
+                    ? '亲属卡记录保存失败，请重试' : '亲属卡额度已变化，请重新选择'));
                 closeCheckout();
                 openCheckout();
                 return;
