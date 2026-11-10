@@ -11,6 +11,7 @@ import {
 import '../../shared/js/phone/character-schedule-policy.js';
 import { planTask, nextRetryAt } from './scheduler-policy.js';
 import { createSchedulerGate } from './scheduler-gate.js';
+import { readAutonomyModelConfig } from './model-executor.js';
 
 const DEVICE_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
 const DEVICE_SECRET_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
@@ -1069,6 +1070,8 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const contextVersionSummary = await store.getCharacterContextVersionSummary(userId);
     const contextVersionReady = contextVersionSummary.roleCount > 0;
     const activityExecutorConfigured = readActivityExecutionConfig(env) !== null;
+    const serverModelConfigured = Boolean(readAutonomyModelConfig(env));
+    const contextSharing = await store.getUserContextSharing(userId);
     const activityQueue = await store.getActivityQueueSummary({ userId });
     const timestamp = now();
     const recentSchedulerReasons = await store.getRecentAutonomyReasonSummary({
@@ -1103,15 +1106,19 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       contextVersionTrackedRoles: contextVersionSummary.roleCount,
       contextVersionMaxObserved: contextVersionSummary.maxVersion,
       contextVersionLatestUpdatedAt: contextVersionSummary.latestUpdatedAt,
-      activityExecutorAvailable: activityExecutorConfigured,
-      deviceLocalModelRequired: true,
+      activityExecutorAvailable: activityExecutorConfigured && serverModelConfigured,
+      serverModelConfigured,
+      contextSharingEnabled: Boolean(contextSharing && Number(contextSharing.enabled) === 1),
+      deviceLocalModelRequired: false,
       autonomousMessageGenerationReady: false,
       autonomyExecutionBlockers: [
         ...(activityExecutorConfigured ? [] : ['activity_executor_config_missing']),
-        'device_local_model_runtime_not_verified',
-        ...(contextVersionReady ? [] : ['context_version_unavailable'])
+        ...(serverModelConfigured ? [] : ['server_model_credentials_missing']),
+        ...(contextSharing && Number(contextSharing.enabled) === 1 ? [] : ['context_sharing_not_enabled']),
+        ...(contextVersionReady ? [] : ['context_version_unavailable']),
+        'cloud_model_scheduler_runtime_not_verified'
       ],
-      note: '云端只保存活动元数据与生成后的出站文字；生成由已配对前台设备调用本机 PhoneAPI 和本地 API 配置完成。聊天正文、角色设定和 API Key 不上传。应用关闭或页面后台时不会继续生成；完整运行与真机链路尚未验收。'
+      note: '云端模型只会使用单独开启共享后上传的角色称呼、角色设定和最多 12 条文字消息；图片、语音、附件及手机 API Key 不会上传。服务端模型凭据只从 Worker Secret 读取。当前分支仍需完成执行器运行与真机验收，尚未部署。'
     });
   }
 
@@ -1208,6 +1215,135 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       changed: result.changed,
       version: result.version,
       updatedAt: result.updatedAt
+    });
+  }
+
+  async function getContextSharing(request) {
+    const device = await authenticate(request);
+    const row = await store.getUserContextSharing(device.user_id || OWNER_USER_ID);
+    return ok({ enabled: Boolean(row && Number(row.enabled) === 1), configured: Boolean(row) });
+  }
+
+  async function setContextSharing(request) {
+    const device = await authenticate(request);
+    const body = await readJsonBody(request);
+    if (!body || typeof body !== 'object' || Array.isArray(body) ||
+        Object.keys(body).length !== 1 || typeof body.enabled !== 'boolean') {
+      throw new ApiError(400, 'INVALID_CONTEXT_SHARING', '请求只允许包含布尔值 enabled');
+    }
+    const row = await store.setUserContextSharing({
+      userId: device.user_id || OWNER_USER_ID,
+      enabled: body.enabled,
+      deviceId: device.id,
+      now: now()
+    });
+    if (!row) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销');
+    return ok({ enabled: Number(row.enabled) === 1, deletedSnapshots: body.enabled ? 0 : true });
+  }
+
+  function normalizeSnapshotText(value, maxLength, field) {
+    if (typeof value !== 'string') throw new ApiError(400, 'INVALID_CONTEXT_SNAPSHOT', field + ' 必须是文字');
+    let result = value
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]/g, ' ')
+      .replace(/https?:\\/\\/\\S+/gi, '[链接已省略]')
+      .replace(/[\\w.+-]+@[\\w.-]+\\.[A-Za-z]{2,}/g, '[邮箱已省略]')
+      .replace(/(?<!\\d)(?:\\+?\\d[\\s().-]?){8,15}(?!\\d)/g, '[号码已省略]')
+      .replace(/\\s+/g, ' ')
+      .trim();
+    if (Array.from(result).length > maxLength) result = Array.from(result).slice(0, maxLength).join('');
+    return result;
+  }
+
+  async function saveCharacterContextSnapshot(request, characterId) {
+    const device = await authenticate(request);
+    const body = await readJsonBody(request);
+    const allowed = new Set(['eventId', 'characterName', 'personaText', 'recentMessages', 'lastUserMessageAt']);
+    if (!body || typeof body !== 'object' || Array.isArray(body) ||
+        Object.keys(body).length !== allowed.size || Object.keys(body).some(key => !allowed.has(key))) {
+      throw new ApiError(400, 'INVALID_CONTEXT_SNAPSHOT', '上下文快照字段不完整或包含未允许的数据');
+    }
+    const eventId = String(body.eventId || '').trim();
+    if (!CONTEXT_EVENT_ID_PATTERN.test(eventId)) {
+      throw new ApiError(400, 'INVALID_CONTEXT_SNAPSHOT', 'eventId 格式无效');
+    }
+    const userId = device.user_id || OWNER_USER_ID;
+    const sharing = await store.getUserContextSharing(userId);
+    if (!sharing || Number(sharing.enabled) !== 1) return ok({ disabled: true, saved: false });
+
+    const characterName = normalizeSnapshotText(body.characterName, 80, 'characterName');
+    const personaText = normalizeSnapshotText(body.personaText, 5000, 'personaText');
+    if (!Array.isArray(body.recentMessages) || body.recentMessages.length > 12) {
+      throw new ApiError(400, 'INVALID_CONTEXT_SNAPSHOT', 'recentMessages 最多包含 12 条文字消息');
+    }
+    const recentMessages = body.recentMessages.map((item, index) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item) ||
+          Object.keys(item).length !== 2 ||
+          Object.keys(item).some(key => !['role', 'content'].includes(key)) ||
+          !['user', 'assistant'].includes(item.role)) {
+        throw new ApiError(400, 'INVALID_CONTEXT_SNAPSHOT', 'recentMessages[' + index + '] 格式无效');
+      }
+      return {
+        role: item.role,
+        content: normalizeSnapshotText(item.content, 600, 'recentMessages[' + index + '].content')
+      };
+    });
+    const totalChars = Array.from(personaText).length + Array.from(characterName).length +
+      recentMessages.reduce((sum, item) => sum + Array.from(item.content).length, 0);
+    if (totalChars > 11000) throw new ApiError(413, 'CONTEXT_SNAPSHOT_TOO_LARGE', '角色上下文超过允许的总长度');
+
+    const timestamp = now();
+    const lastUserMessageAt = Number(body.lastUserMessageAt);
+    if (!Number.isSafeInteger(lastUserMessageAt) || lastUserMessageAt <= 0 ||
+        lastUserMessageAt > timestamp + 60000 || lastUserMessageAt < timestamp - 30 * 86400000) {
+      throw new ApiError(400, 'INVALID_CONTEXT_SNAPSHOT_TIME', '最后一条用户消息时间无效');
+    }
+    const previousSnapshot = await store.getLatestCharacterContextSnapshot({ userId, characterId });
+    const result = await store.recordCharacterContextSnapshot({
+      userId, characterId, eventId, deviceId: device.id,
+      characterName, personaText, recentMessages, lastUserMessageAt,
+      now: timestamp, eventLimit: 600, windowStart: timestamp - 3600000
+    });
+    if (result.revoked) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销');
+    if (result.limited) throw new ApiError(429, 'CONTEXT_VERSION_RATE_LIMITED', '上下文同步过于频繁，请稍后重试');
+    if (result.conflict) throw new ApiError(409, 'CONTEXT_SNAPSHOT_CONFLICT', '上下文版本已存在不同快照，请重新保存聊天记录');
+    if (result.disabled || !result.saved) return ok({ disabled: true, saved: false });
+
+    let queued = false;
+    let scheduledAt = null;
+    let queueReason = 'autonomy_not_enabled';
+    const globalAutonomy = await store.getUserAutonomy(userId);
+    const roleAutonomy = await store.getCharacterAutonomy(userId, characterId);
+    const roleEnabled = roleAutonomy?.enabled == null
+      ? globalAutonomy?.enabled === 1 : roleAutonomy.enabled === 1;
+    const executionConfig = readActivityExecutionConfig(env);
+    const minIdleMs = parsePositiveEnv(env, 'AUTONOMY_MIN_IDLE_MS');
+    const isNewUserTurn = !previousSnapshot ||
+      lastUserMessageAt > Number(previousSnapshot.last_user_message_at || 0);
+    if (globalAutonomy?.enabled === 1 && roleEnabled && isNewUserTurn) {
+      if (!executionConfig || minIdleMs == null) {
+        queueReason = 'activity_schedule_not_configured';
+      } else {
+        scheduledAt = Math.max(timestamp, lastUserMessageAt + minIdleMs);
+        const dedupeKey = [
+          'cloud-contact-v1', encodeURIComponent(userId),
+          encodeURIComponent(characterId), String(result.contextVersion)
+        ].join(':');
+        const enqueue = await store.enqueueActivity({
+          id: randomToken(16), deviceId: device.id, characterId, kind: 'contact',
+          scheduledAt, maxAttempts: executionConfig.maxAttempts,
+          payload: { contextVersion: result.contextVersion, sourceDeviceId: device.id, executionMode: 'cloud' },
+          dedupeKey, now: timestamp, userId, requireActiveDevice: true
+        });
+        if (enqueue.revoked) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销');
+        if (enqueue.conflict) throw new ApiError(409, 'ACTIVITY_IDEMPOTENCY_CONFLICT', '主动联系任务幂等冲突');
+        queued = Boolean(enqueue.inserted || enqueue.duplicate);
+        queueReason = queued ? 'queued' : 'not_queued';
+      }
+    }
+    return ok({
+      saved: true, duplicate: result.duplicate === true, contextVersion: result.contextVersion,
+      queued, scheduledAt, queueReason
     });
   }
 
@@ -2024,6 +2160,8 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       if (path === '/api/devices/pairing-token' && method === 'POST') return await createDevicePairingToken(request);
       if (path === '/api/devices/revoke' && method === 'POST') return await revokeDevice(request);
       if (path === '/api/autonomy/readiness' && method === 'GET') return await getAutonomyReadiness(request);
+      if (path === '/api/autonomy/context-sharing' && method === 'GET') return await getContextSharing(request);
+      if (path === '/api/autonomy/context-sharing' && method === 'PUT') return await setContextSharing(request);
       if (path === '/api/autonomy/global' && method === 'GET') return await getGlobalAutonomy(request);
       if (path === '/api/autonomy/global' && method === 'PUT') return await setGlobalAutonomy(request);
 
@@ -2032,6 +2170,11 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         const characterId = readCharacterId(characterAutonomyMatch[1]);
         if (method === 'GET') return await getCharacterAutonomy(request, characterId);
         if (method === 'PUT') return await setCharacterAutonomy(request, characterId);
+      }
+
+      const characterContextSnapshotMatch = /^\\/api\\/characters\\/([^/]+)\\/context-snapshot$/.exec(path);
+      if (characterContextSnapshotMatch && readCharacterId(characterContextSnapshotMatch[1]) && method === 'POST') {
+        return await saveCharacterContextSnapshot(request, readCharacterId(characterContextSnapshotMatch[1]));
       }
 
       const characterContextVersionMatch = /^\/api\/characters\/([^/]+)\/context-version$/.exec(path);
