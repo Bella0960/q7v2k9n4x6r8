@@ -106,7 +106,17 @@ export async function runCloudModelTick({
   }
 
   const tasks = store.listDueActivities(timestamp, validated.config.tickLimit)
-    .filter(task => task.kind === 'contact');
+    .filter(task => {
+      if (task.kind !== 'contact') return false;
+      try {
+        const payload = JSON.parse(String(task.payload_json || '{}'));
+        // The Worker may only execute explicitly cloud-owned tasks. Legacy
+        // foreground tasks remain available to their paired device executor.
+        return payload.executionMode === 'cloud';
+      } catch {
+        return false;
+      }
+    });
   summary.due = tasks.length;
   const gate = createSchedulerGate({
     store,
