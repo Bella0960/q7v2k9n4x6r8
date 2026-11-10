@@ -319,7 +319,8 @@
       href:'../chat/chat/chat.html', action:'打开聊天'
     },
 
-    // 桌面 28 个应用逐项说明：以每个应用当前真实页面结构为准。
+    // 桌面 29 个应用逐项说明：以每个应用当前真实页面结构为准。
+    {id:'app-tutorial',category:'入门',title:'教程',summary:'从这里查功能入口、一步一步跟着真实页面操作，并保存测试记录。',location:'桌面 → 教程。',steps:['打开教程，先看「最近更新」了解当前版本增加了什么。','通过分类或搜索找到功能，点「一步一步跟着做」进入单步引导。','每一步可以打开真实页面，在新标签页完成操作后切回教程继续。','测试后勾选「我已经在手机上实际测试过这一项」，遇到问题写备注并导出测试记录。'],test:'启动任意一项分步教程，前进和后退，再勾选一条测试状态，刷新页面确认进度保留。',href:'../tutorial/tutorial.html',action:'打开教程'},
     {id:'app-inspect',category:'应用',title:'查手机',summary:'按角色查看其手机内容；先选角色，再查看该角色当前可访问的内容。',location:'桌面 → 查手机。',steps:['打开「查手机」，页面标题为「选择查看的角色」。','选择要查看的角色，再按页面显示的类别或记录查看信息。','退出后切换另一个角色，确认查看对象随选择改变。'],test:'切换两个角色分别打开，确认页面没有把角色 A 的内容误显示到角色 B。',href:'../inspect-phone/select.html',action:'打开查手机'},
     {id:'app-worldbook',category:'应用',title:'世界书',summary:'用于管理故事世界设定和可供角色引用的资料条目。',location:'桌面 → 世界书。',steps:['打开「世界书」，查看现有世界设定列表。','新增或编辑条目时，先写清条目标题、背景内容和触发线索，再保存。','返回角色聊天，用条目中明确的关键词验证上下文是否能引用该设定。'],test:'新增一条无敏感内容的测试设定，保存后重新进入世界书确认仍存在。',href:'../worldbook/worldbook/worldbook.html',action:'打开世界书'},
     {id:'app-memory',category:'应用',title:'记忆空间',summary:'查看和维护长期记忆；它与当前聊天窗口的最近消息条数不是同一设置。',location:'桌面 → 记忆。',steps:['打开「记忆空间」，确认当前所选角色。','查看当前角色已保存的记忆内容，再按页面提供的编辑入口维护记录。','切换到另一个角色，确认两者记忆不混用。'],test:'分别查看两个角色的记忆列表，确认当前角色切换后内容随角色变化。',href:'../worldbook/memory/memory.html',action:'打开记忆空间'},
@@ -375,6 +376,7 @@
     ['角色库', 'worldbook/characters/characters.html', '角色资料、头像收藏与配对'],
     ['角色足迹', 'chat/footprint/footprint.html', '角色相关足迹'],
     ['设置', 'settings/settings.html', 'API 与应用设置'],
+    ['教程', 'tutorial/tutorial.html', '逐步学习、练习与测试记录'],
     ['记账', 'wallet/finance.html', '账目记录'],
     ['外卖', 'wallet/takeout.html', '外卖模拟应用'],
     ['情侣空间', 'couple/couple.html', '共同空间'],
