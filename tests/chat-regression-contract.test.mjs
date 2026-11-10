@@ -1608,9 +1608,9 @@ test('chat detail injects the role autonomy prompt and precaches the updated pol
   assert.ok(detail.includes('ChatPresencePolicy.buildAutonomyPrompt'));
   assert.ok(detail.includes('maxNotes: 3'));
   assert.ok(detail.includes('maxTurns: 4'));
-  assert.ok(detail.includes('chat-presence-policy.js?v=20261102v19'));
+  assert.ok(detail.includes('chat-presence-policy.js?v=20261111firstcontact1'));
   assert.ok(serviceWorker.includes('phone-app-pwa-v218'));
-  assert.ok(serviceWorker.includes('chat-presence-policy.js?v=20261102v19'));
+  assert.ok(serviceWorker.includes('chat-presence-policy.js?v=20261111firstcontact1'));
 });
 
 
@@ -1920,7 +1920,7 @@ test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat
   assert.match(chatNotifier, /getCharacterContextVersion\(roleId\)/);
   assert.match(chatNotifier, /enqueueAutonomyActivity\(roleId, Number\(context\.version\)\)/);
   assert.match(chatNotifier, /claimAutonomyActivity\(roleId\)/);
-  assert.match(chatNotifier, /completeAutonomyActivity\(activity, content\)/);
+  assert.match(chatNotifier, /completeAutonomyActivity\(activity, cloudMessageText, \{/);
   assert.match(chatNotifier, /skipAutonomyActivity\(activity, 'no_worthy_message'\)/);
   assert.match(chatNotifier, /messages\[messages\.length - 1\]\.serverMessageId = serverMessageId/);
 
