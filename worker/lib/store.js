@@ -1227,6 +1227,8 @@ class CloudStore {
               target_device.user_id AS target_account_id,
               source_device.id AS source_device_id,
               o.character_id, o.server_message_id, o.created_at,
+              COALESCE(json_extract(o.payload_json, '$.displayName'), '') AS character_name,
+              COALESCE(json_extract(o.payload_json, '$.bubbleCount'), 1) AS bubble_count,
               s.id AS subscription_id, s.endpoint, s.p256dh, s.auth_key
        FROM outbound_messages o
         INNER JOIN devices source_device ON source_device.id = o.device_id
