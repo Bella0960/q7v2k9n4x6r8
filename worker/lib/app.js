@@ -1278,15 +1278,21 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
   async function saveCharacterContextSnapshot(request, characterId) {
     const device = await authenticate(request);
     const body = await readJsonBody(request);
-    const allowed = new Set(['eventId', 'characterName', 'personaText', 'recentMessages', 'lastUserMessageAt']);
+    const required = ['eventId', 'characterName', 'personaText', 'recentMessages', 'lastUserMessageAt'];
+    const allowed = new Set([...required, 'initialContact']);
     if (!body || typeof body !== 'object' || Array.isArray(body) ||
-        Object.keys(body).length !== allowed.size || Object.keys(body).some(key => !allowed.has(key))) {
+        required.some(key => !Object.prototype.hasOwnProperty.call(body, key)) ||
+        Object.keys(body).some(key => !allowed.has(key)) ||
+        (Object.prototype.hasOwnProperty.call(body, 'initialContact') &&
+         typeof body.initialContact !== 'boolean')) {
       throw new ApiError(400, 'INVALID_CONTEXT_SNAPSHOT', '上下文快照字段不完整或包含未允许的数据');
     }
-    const eventId = String(body.eventId || '').trim();
-    if (!CONTEXT_EVENT_ID_PATTERN.test(eventId)) {
+    const initialContact = body.initialContact === true;
+    const suppliedEventId = String(body.eventId || '').trim();
+    if (!CONTEXT_EVENT_ID_PATTERN.test(suppliedEventId)) {
       throw new ApiError(400, 'INVALID_CONTEXT_SNAPSHOT', 'eventId 格式无效');
     }
+
     const userId = device.user_id || OWNER_USER_ID;
     const sharing = await store.getUserContextSharing(userId);
     if (!sharing || Number(sharing.enabled) !== 1) return ok({ disabled: true, saved: false });
@@ -1314,16 +1320,56 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
 
     const timestamp = now();
     const lastUserMessageAt = Number(body.lastUserMessageAt);
-    if (!Number.isSafeInteger(lastUserMessageAt) || lastUserMessageAt <= 0 ||
-        lastUserMessageAt > timestamp + 60000 || lastUserMessageAt < timestamp - 30 * 86400000) {
+    if (!Number.isSafeInteger(lastUserMessageAt)) {
       throw new ApiError(400, 'INVALID_CONTEXT_SNAPSHOT_TIME', '最后一条用户消息时间无效');
     }
-    const previousSnapshot = await store.getLatestCharacterContextSnapshot({ userId, characterId });
-    const result = await store.recordCharacterContextSnapshot({
-      userId, characterId, eventId, deviceId: device.id,
-      characterName, personaText, recentMessages, lastUserMessageAt,
-      now: timestamp, eventLimit: 600, windowStart: timestamp - 3600000
-    });
+    if (initialContact) {
+      if (lastUserMessageAt !== 0 || recentMessages.length !== 0) {
+        throw new ApiError(400, 'INVALID_INITIAL_CONTACT_SNAPSHOT',
+          '首次主动开场必须使用空消息列表和 lastUserMessageAt=0');
+      }
+    } else if (lastUserMessageAt <= 0 ||
+        lastUserMessageAt > timestamp + 60000 ||
+        lastUserMessageAt < timestamp - 30 * 86400000) {
+      throw new ApiError(400, 'INVALID_CONTEXT_SNAPSHOT_TIME', '最后一条用户消息时间无效');
+    }
+
+    let previousSnapshot = await store.getLatestCharacterContextSnapshot({ userId, characterId });
+    let result;
+    if (initialContact && previousSnapshot && Number(previousSnapshot.last_user_message_at) > 0) {
+      return ok({
+        saved: false, duplicate: true, queued: false, scheduledAt: null,
+        queueReason: 'conversation_already_exists'
+      });
+    }
+
+    if (initialContact && previousSnapshot && Number(previousSnapshot.last_user_message_at) === 0) {
+      result = { saved: true, duplicate: true, contextVersion: Number(previousSnapshot.context_version) };
+    } else {
+      const eventId = initialContact
+        ? 'initial_' + (await sha256Hex(
+          userId + '|' + characterId + '|' + String(sharing.updated_at || 0)
+        )).slice(0, 40)
+        : suppliedEventId;
+      result = await store.recordCharacterContextSnapshot({
+        userId, characterId, eventId, deviceId: device.id,
+        characterName, personaText, recentMessages, lastUserMessageAt,
+        now: timestamp, eventLimit: 600, windowStart: timestamp - 3600000
+      });
+      if (result.conflict && initialContact) {
+        const racedSnapshot = await store.getLatestCharacterContextSnapshot({ userId, characterId });
+        if (racedSnapshot && Number(racedSnapshot.last_user_message_at) === 0 &&
+            racedSnapshot.character_name === characterName &&
+            racedSnapshot.persona_text === personaText &&
+            racedSnapshot.recent_messages_json === '[]') {
+          previousSnapshot = racedSnapshot;
+          result = {
+            saved: true, duplicate: true, contextVersion: Number(racedSnapshot.context_version)
+          };
+        }
+      }
+    }
+
     if (result.revoked) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销');
     if (result.limited) throw new ApiError(429, 'CONTEXT_VERSION_RATE_LIMITED', '上下文同步过于频繁，请稍后重试');
     if (result.conflict) throw new ApiError(409, 'CONTEXT_SNAPSHOT_CONFLICT', '上下文版本已存在不同快照，请重新保存聊天记录');
@@ -1337,48 +1383,115 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const roleEnabled = roleAutonomy?.enabled == null
       ? globalAutonomy?.enabled === 1 : roleAutonomy.enabled === 1;
     const executionConfig = readActivityExecutionConfig(env);
-    const minIdleMs = parsePositiveEnv(env, 'AUTONOMY_MIN_IDLE_MS');
-    const isNewUserTurn = !previousSnapshot ||
-      lastUserMessageAt > Number(previousSnapshot.last_user_message_at || 0);
 
-    if (globalAutonomy?.enabled === 1 && roleEnabled) {
-      if (!executionConfig || minIdleMs == null) {
+    if (initialContact) {
+      const initialDedupeKey = [
+        'cloud-initial-contact-v1',
+        encodeURIComponent(userId),
+        encodeURIComponent(characterId)
+      ].join(':');
+      const existingInitialTask = await store.getActivityByDedupeKey(initialDedupeKey);
+      if (existingInitialTask) {
+        const status = String(existingInitialTask.status || '');
+        queued = ['waiting', 'retry', 'running'].includes(status);
+        scheduledAt = Number(existingInitialTask.scheduled_at) || null;
+        queueReason = queued ? 'initial_contact_already_queued' : 'initial_contact_already_used';
+      } else if (globalAutonomy?.enabled !== 1 || !roleEnabled) {
+        queueReason = 'autonomy_not_enabled';
+      } else if (!executionConfig) {
         queueReason = 'activity_schedule_not_configured';
+      } else if (await store.countPendingActivitiesForCharacter(userId, characterId) >= 5) {
+        queueReason = 'activity_queue_full';
       } else {
-        scheduledAt = Math.max(timestamp, lastUserMessageAt + minIdleMs);
-        const dedupeKey = [
-          'cloud-contact-v1', encodeURIComponent(userId),
-          encodeURIComponent(characterId), String(lastUserMessageAt)
-        ].join(':');
-        if (isNewUserTurn) {
-          await store.supersedePendingContactActivities({ userId, characterId, now: timestamp });
-          if (await store.countPendingActivitiesForCharacter(userId, characterId) >= 5) {
-            queueReason = 'activity_queue_full';
-          } else {
-            const enqueue = await store.enqueueActivity({
-              id: randomToken(16), deviceId: device.id, characterId, kind: 'contact',
-              scheduledAt, maxAttempts: executionConfig.maxAttempts,
-              payload: { contextVersion: result.contextVersion, sourceDeviceId: device.id, executionMode: 'cloud' },
-              dedupeKey, now: timestamp, userId, requireActiveDevice: true
-            });
-            if (enqueue.revoked) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销');
-            if (enqueue.conflict) throw new ApiError(409, 'ACTIVITY_IDEMPOTENCY_CONFLICT', '主动联系任务幂等冲突');
-            queued = Boolean(enqueue.inserted || enqueue.duplicate);
-            queueReason = queued ? 'queued' : 'not_queued';
-          }
+        const snapshotSource = previousSnapshot && Number(previousSnapshot.last_user_message_at) === 0
+          ? previousSnapshot.source_device_id
+          : device.id;
+        const usableSnapshot = store.getCharacterContextSnapshot({
+          userId, characterId, contextVersion: result.contextVersion
+        });
+        if (!usableSnapshot || usableSnapshot.source_device_id !== snapshotSource ||
+            !store.isActiveAccountDevice(userId, snapshotSource)) {
+          queueReason = 'initial_snapshot_source_unavailable';
         } else {
-          const refreshed = await store.refreshPendingContactActivityContext({
-            deviceId: device.id, characterId, dedupeKey,
-            contextVersion: result.contextVersion, now: timestamp
+          scheduledAt = timestamp + 2 * 60 * 1000;
+          const enqueue = await store.enqueueActivity({
+            id: randomToken(16),
+            deviceId: snapshotSource,
+            characterId,
+            kind: 'contact',
+            scheduledAt,
+            maxAttempts: executionConfig.maxAttempts,
+            payload: {
+              contextVersion: result.contextVersion,
+              sourceDeviceId: snapshotSource,
+              executionMode: 'cloud',
+              triggerType: 'initial_contact'
+            },
+            dedupeKey: initialDedupeKey,
+            now: timestamp,
+            userId,
+            requireActiveDevice: true
           });
-          queued = Boolean(refreshed);
-          queueReason = queued ? 'pending_task_context_refreshed' : 'same_user_turn_no_pending_task';
+          if (enqueue.revoked) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销');
+          if (enqueue.conflict) throw new ApiError(409, 'ACTIVITY_IDEMPOTENCY_CONFLICT', '首次主动联系任务幂等冲突');
+          queued = Boolean(enqueue.inserted || enqueue.duplicate);
+          queueReason = queued ? 'queued_initial_contact' : 'not_queued';
+        }
+      }
+    } else {
+      const minIdleMs = parsePositiveEnv(env, 'AUTONOMY_MIN_IDLE_MS');
+      const isNewUserTurn = !previousSnapshot ||
+        lastUserMessageAt > Number(previousSnapshot.last_user_message_at || 0);
+
+      if (globalAutonomy?.enabled === 1 && roleEnabled) {
+        if (!executionConfig || minIdleMs == null) {
+          queueReason = 'activity_schedule_not_configured';
+        } else {
+          scheduledAt = Math.max(timestamp, lastUserMessageAt + minIdleMs);
+          const dedupeKey = [
+            'cloud-contact-v1', encodeURIComponent(userId),
+            encodeURIComponent(characterId), String(lastUserMessageAt)
+          ].join(':');
+          if (isNewUserTurn) {
+            await store.supersedePendingContactActivities({ userId, characterId, now: timestamp });
+            if (await store.countPendingActivitiesForCharacter(userId, characterId) >= 5) {
+              queueReason = 'activity_queue_full';
+            } else {
+              const enqueue = await store.enqueueActivity({
+                id: randomToken(16), deviceId: device.id, characterId, kind: 'contact',
+                scheduledAt, maxAttempts: executionConfig.maxAttempts,
+                payload: {
+                  contextVersion: result.contextVersion,
+                  sourceDeviceId: device.id,
+                  executionMode: 'cloud'
+                },
+                dedupeKey, now: timestamp, userId, requireActiveDevice: true
+              });
+              if (enqueue.revoked) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销');
+              if (enqueue.conflict) throw new ApiError(409, 'ACTIVITY_IDEMPOTENCY_CONFLICT', '主动联系任务幂等冲突');
+              queued = Boolean(enqueue.inserted || enqueue.duplicate);
+              queueReason = queued ? 'queued' : 'not_queued';
+            }
+          } else {
+            const refreshed = await store.refreshPendingContactActivityContext({
+              deviceId: device.id, characterId, dedupeKey,
+              contextVersion: result.contextVersion, now: timestamp
+            });
+            queued = Boolean(refreshed);
+            queueReason = queued ? 'pending_task_context_refreshed' : 'same_user_turn_no_pending_task';
+          }
         }
       }
     }
+
     return ok({
-      saved: true, duplicate: result.duplicate === true, contextVersion: result.contextVersion,
-      queued, scheduledAt, queueReason
+      saved: true,
+      duplicate: result.duplicate === true,
+      contextVersion: result.contextVersion,
+      queued,
+      scheduledAt,
+      queueReason,
+      initialContact
     });
   }
 
