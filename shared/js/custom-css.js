@@ -44,7 +44,8 @@
       if (!style) {
         style = document.createElement('style');
         style.id = 'custom-beauty-css';
-        (document.head || document.documentElement).appendChild(style);
+        // DOMContentLoaded runs after page styles are parsed; append last so custom CSS wins.
+        (document.body || document.head || document.documentElement).appendChild(style);
       }
       // 放在原页面样式之后注入，避免默认 CSS 把美化覆盖掉。
       style.textContent = cssToApply.join('\n');
