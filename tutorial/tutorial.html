@@ -86,6 +86,80 @@
     .modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:17px; }
     .modal-actions button { min-height:36px; padding:0 13px; border:1px solid var(--line); border-radius:9px; background:#fff; color:#555; font:inherit; font-size:11px; cursor:pointer; }
     .modal-actions .confirm { border-color:#171717; background:#171717; color:#fff; }
+
+    .guide-card .guide-actions { justify-content:flex-start; }
+    .guide-actions .open-link { margin-right:auto; }
+    .start-guide, .app-guide-btn {
+      min-height:34px; padding:0 11px; border:1px solid #DADAE0; border-radius:9px;
+      background:#fff; color:#333; font:inherit; font-size:10px; cursor:pointer;
+    }
+    .start-guide:active, .app-guide-btn:active { background:#F2F2F4; }
+    .app-link { gap:7px; }
+    .app-open { display:flex; flex-direction:column; gap:4px; color:#222; text-decoration:none; }
+    .app-open strong { font-size:11px; font-weight:600; }
+    .app-open span { color:#999; font-size:9px; line-height:1.45; }
+    .faq-section { margin-top:28px; }
+    .faq-list { display:grid; gap:8px; }
+    .faq-item { padding:13px 14px; border:1px solid var(--line); border-radius:12px; background:#fff; }
+    .faq-item summary { color:#222; font-size:12px; font-weight:600; cursor:pointer; list-style:none; }
+    .faq-item summary::-webkit-details-marker { display:none; }
+    .faq-item p { margin:8px 0 0; color:#777; font-size:11px; line-height:1.7; }
+    .walkthrough-backdrop {
+      position:fixed; inset:0; z-index:1100; display:flex; align-items:center; justify-content:center;
+      padding:14px; background:rgba(0,0,0,.4);
+    }
+    .walkthrough-backdrop[hidden] { display:none; }
+    .walkthrough {
+      display:flex; flex-direction:column; width:min(560px,100%); max-height:min(92vh,900px);
+      overflow:hidden; border:1px solid #E5E5EA; border-radius:20px; background:#F7F7F9;
+      box-shadow:0 22px 70px rgba(0,0,0,.22);
+    }
+    .walk-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 17px 12px; background:#fff; border-bottom:1px solid var(--line); }
+    .walk-kicker { color:#999; font-size:9px; letter-spacing:.14em; }
+    .walk-title { margin:4px 0 0; color:#171717; font-size:17px; font-weight:650; letter-spacing:-.03em; }
+    .walk-close { width:32px; height:32px; border:1px solid var(--line); border-radius:50%; background:#fff; color:#555; font-size:18px; line-height:1; cursor:pointer; }
+    .walk-progress-wrap { padding:12px 17px 0; background:#fff; }
+    .walk-progress-copy { display:flex; justify-content:space-between; color:#777; font-size:10px; }
+    .walk-progress-track { height:4px; margin-top:8px; overflow:hidden; border-radius:99px; background:#E9E9ED; }
+    .walk-progress-bar { width:0; height:100%; background:#222; transition:width .2s ease; }
+    .walk-body { padding:15px 17px 18px; overflow:auto; }
+    .walk-route { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:12px; }
+    .walk-route-chip { display:inline-flex; align-items:center; min-height:24px; padding:0 8px; border:1px solid #E4E4E8; border-radius:999px; background:#fff; color:#666; font-size:9px; }
+    .walk-route-arrow { color:#AAA; font-size:10px; }
+    .walk-visual {
+      display:grid; grid-template-columns:78px minmax(0,1fr); align-items:center; gap:13px;
+      padding:13px; border:1px solid #E6E6EA; border-radius:14px; background:#fff;
+    }
+    .walk-phone { width:72px; height:104px; padding:7px 5px; border:2px solid #D3D3D8; border-radius:13px; background:#F8F8FA; }
+    .walk-phone-notch { width:23px; height:4px; margin:0 auto 7px; border-radius:99px; background:#C8C8CE; }
+    .walk-phone-head { height:11px; margin-bottom:7px; border-radius:4px; background:#E5E5E9; }
+    .walk-phone-row { height:9px; margin:5px 0; border-radius:3px; background:#EBEBEF; }
+    .walk-phone-row.short { width:62%; }
+    .walk-phone-row.target { display:flex; align-items:center; height:19px; padding:0 4px; border:1px solid #777; background:#fff; color:#222; font-size:6px; overflow:hidden; white-space:nowrap; }
+    .walk-visual-title { color:#999; font-size:9px; letter-spacing:.1em; }
+    .walk-visual-target { margin-top:5px; color:#222; font-size:12px; font-weight:650; line-height:1.5; }
+    .walk-visual-note { margin-top:4px; color:#999; font-size:9px; line-height:1.5; }
+    .walk-step-title { margin:15px 0 6px; color:#171717; font-size:15px; font-weight:650; }
+    .walk-step-copy { color:#555; font-size:12px; line-height:1.8; white-space:pre-line; }
+    .walk-tip { margin-top:12px; padding:11px 12px; border-radius:10px; background:#fff; color:#777; font-size:10px; line-height:1.7; }
+    .walk-practice { margin-top:12px; padding:12px; border:1px solid #E5E5E9; border-radius:12px; background:#fff; }
+    .walk-practice strong { display:block; color:#333; font-size:11px; }
+    .walk-practice p { margin:5px 0 0; color:#777; font-size:10px; line-height:1.6; }
+    .walk-done { display:flex; align-items:center; gap:8px; margin-top:13px; color:#555; font-size:11px; }
+    .walk-done input { width:16px; height:16px; margin:0; accent-color:#171717; }
+    .walk-foot { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:12px 17px calc(12px + env(safe-area-inset-bottom)); border-top:1px solid var(--line); background:#fff; }
+    .walk-foot button, .walk-foot a { display:inline-flex; align-items:center; justify-content:center; min-height:38px; padding:0 12px; border:1px solid var(--line); border-radius:10px; background:#fff; color:#444; font:inherit; font-size:11px; text-decoration:none; cursor:pointer; }
+    .walk-foot .walk-primary { border-color:#171717; background:#171717; color:#fff; }
+    .walk-foot button:disabled { opacity:.35; cursor:not-allowed; }
+    .walk-foot .walk-open { margin-right:auto; }
+    @media (max-width:420px) {
+      .walkthrough { max-height:94vh; border-radius:17px; }
+      .walk-visual { grid-template-columns:67px minmax(0,1fr); gap:10px; }
+      .walk-phone { width:63px; height:96px; }
+      .walk-foot { gap:6px; padding-left:11px; padding-right:11px; }
+      .walk-foot button, .walk-foot a { padding:0 9px; font-size:10px; }
+    }
+
     @media (min-width:620px) { .page { padding-left:26px; padding-right:26px; } .guide-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .guide-card { display:flex; flex-direction:column; } .guide-actions { margin-top:auto; padding-top:12px; } .app-list { grid-template-columns:repeat(4,minmax(0,1fr)); } }
   </style>
 </head>
@@ -142,6 +216,15 @@
     </div>
     <section class="guide-grid" id="guideGrid" aria-live="polite"></section>
 
+
+    <section class="faq-section" aria-labelledby="faqTitle">
+      <div class="section-head">
+        <h2 id="faqTitle">常见问题</h2>
+        <span>按问题快速定位</span>
+      </div>
+      <div class="faq-list" id="faqList"></div>
+    </section>
+
     <section class="app-directory" aria-labelledby="appDirectoryTitle">
       <div class="section-head">
         <h2 id="appDirectoryTitle">桌面应用速查</h2>
@@ -166,6 +249,54 @@
     </section>
   </div>
 
-  <script src="tutorial.js?v=20261111v1"></script>
+
+  <div class="walkthrough-backdrop" id="walkthroughModal" hidden>
+    <section class="walkthrough" role="dialog" aria-modal="true" aria-labelledby="walkTitle">
+      <header class="walk-head">
+        <div>
+          <div class="walk-kicker">STEP-BY-STEP WALKTHROUGH</div>
+          <h2 class="walk-title" id="walkTitle">操作教程</h2>
+        </div>
+        <button class="walk-close" type="button" id="walkClose" aria-label="关闭教程">×</button>
+      </header>
+      <div class="walk-progress-wrap">
+        <div class="walk-progress-copy"><span id="walkStepCount">第 1 步</span><span id="walkPercent">0%</span></div>
+        <div class="walk-progress-track"><div class="walk-progress-bar" id="walkProgressBar"></div></div>
+      </div>
+      <div class="walk-body">
+        <div class="walk-route" id="walkRoute"></div>
+        <div class="walk-visual">
+          <div class="walk-phone" aria-hidden="true">
+            <div class="walk-phone-notch"></div>
+            <div class="walk-phone-head"></div>
+            <div class="walk-phone-row"></div>
+            <div class="walk-phone-row short"></div>
+            <div class="walk-phone-row target" id="walkPhoneTarget">当前步骤</div>
+            <div class="walk-phone-row short"></div>
+          </div>
+          <div>
+            <div class="walk-visual-title">界面定位示意</div>
+            <div class="walk-visual-target" id="walkVisualTarget">当前步骤</div>
+            <div class="walk-visual-note">示意图用于定位入口；实际布局以打开后的手机页面为准。</div>
+          </div>
+        </div>
+        <h3 class="walk-step-title" id="walkStepTitle"></h3>
+        <div class="walk-step-copy" id="walkStepCopy"></div>
+        <div class="walk-tip" id="walkStepTip"></div>
+        <div class="walk-practice">
+          <strong>本教程的练习目标</strong>
+          <p id="walkPractice"></p>
+        </div>
+        <label class="walk-done"><input type="checkbox" id="walkStepDone"> 我已经完成这一步</label>
+      </div>
+      <footer class="walk-foot">
+        <button type="button" id="walkPrevious">上一步</button>
+        <a class="walk-open" id="walkOpenPage" href="../index.html" target="_blank" rel="noopener">打开真实页面 ↗</a>
+        <button type="button" id="walkNext" class="walk-primary">下一步</button>
+      </footer>
+    </section>
+  </div>
+
+  <script src="tutorial.js?v=20261111v2"></script>
 </body>
 </html>
