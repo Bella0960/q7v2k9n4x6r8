@@ -82,7 +82,7 @@ Deliver: map 88 HTML pages into production apps, maintenance pages, previews, an
 ### Agent B — Storage/database registry
 Task: DATA-001
 Mode: READ-ONLY AUDIT
-Deliver: every localStorage key family and every IndexedDB database/store, owner module, version, blob fields, backup status, migration status, and quota/error handling. Explicitly verify maomao-assets backup omission and audio Blob exclusion. Do not migrate data.
+Deliver: every localStorage key family and every IndexedDB database/store, owner module, version, blob fields, backup status, migration status, and quota/error handling. Verify current maomao-assets v2 coverage (assets/blobs/refs/image_records), Blob limits, atomicExport/clearOnRestore, and the media-backup regression results. Separately report the maomao-media-store audio Blob exclusion. Do not migrate data.
 
 ### Agent C — Chat-history call-site inventory
 Task: DATA-005
