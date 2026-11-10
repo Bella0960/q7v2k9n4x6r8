@@ -55,6 +55,8 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Run chat regression contract tests
         run: |
+          npm run test:chat:reply
+          npm run test:chat:bubbles
           npm run test:chat:contract
           npm run test:desktop:layout
           npm run test:bugfix:blockers

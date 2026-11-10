@@ -858,7 +858,8 @@ function handleSaveRole() {
             tone: toneVal,
             appearanceDescription: appearanceVal,
             styleKeywords: styleKeywordsVal,
-            worldBookIds: selectedWorldBookIds.slice()
+            worldBookIds: selectedWorldBookIds.slice(),
+            replyBubbleMode: 'auto'
         });
     }
 
