@@ -99,7 +99,7 @@ export class CloudDatabase {
         pushDispatch = await dispatchPendingOutboundPushes({
           store: this.store,
           env: this.env,
-          now: timestamp,
+          now: Date.now,
           fetchImpl: fetch,
           limit: 50
         });
@@ -130,7 +130,7 @@ export class CloudDatabase {
         pushDispatch = await dispatchPendingOutboundPushes({
           store: this.store,
           env: this.env,
-          now: Date.now(),
+          now: Date.now,
           fetchImpl: fetch,
           limit: 50
         });
