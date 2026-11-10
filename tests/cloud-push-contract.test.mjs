@@ -3778,7 +3778,7 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
     '必须先验证本地保存成功，再走任一消息渲染分支');
   assert.ok(adapter.includes("document.visibilityState === 'hidden'") && adapter.includes('isGroupChat'),
     '页面隐藏后，迟到的拉取响应不能再写入聊天历史');
-  assert.ok(adapter.includes('if (isGroupChat'),
+  assert.ok(adapter.includes('|| isGroupChat'),
     '群聊不得误接单角色的出站收件箱');
   assert.ok(adapter.includes("String(itemPayload.type || 'text') !== 'text'"),
     '未知载荷类型必须保持未确认，不能误写成普通文字');
@@ -3805,7 +3805,7 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
 
   const serviceWorkerCacheVersion = serviceWorker.match(/const CACHE_NAME = ['"]phone-app-pwa-v(\d+)['"]/);
   assert.ok(serviceWorkerCacheVersion &&
-    Number(serviceWorkerCacheVersion[1]) >= 179,
+    Number(serviceWorkerCacheVersion[1]) >= 219,
     'PWA 缓存版本不得回退到可见区域已读观察修复之前');
   assert.ok(serviceWorker.includes("'./chat/chat/chat-detail.html'"),
     'PWA shell 应继续预缓存现有聊天详情页');
