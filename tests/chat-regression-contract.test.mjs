@@ -3361,6 +3361,141 @@ test('亲属卡所有状态变更与商店外卖消费共用钱包锁', async ()
   });
 });
 
+test('亲属卡实际消费与卡包暂停操作不会互相覆盖记录', async () => {
+  const values = new Map();
+  const localStorage = {
+    getItem: key => values.has(key) ? values.get(key) : null,
+    setItem: (key, value) => { values.set(key, String(value)); },
+    removeItem: key => { values.delete(key); }
+  };
+  let queue = Promise.resolve();
+  let active = 0;
+  let maxActive = 0;
+  const locks = {
+    request: (_name, options, callback) => {
+      assert.equal(options.mode, 'exclusive');
+      const run = queue.then(async () => {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        try { return await callback(); }
+        finally { active -= 1; }
+      });
+      queue = run.catch(() => {});
+      return run;
+    }
+  };
+  const window = {
+    navigator: { locks: locks },
+    localStorage: localStorage,
+    console: { warn: () => {} }
+  };
+  const sandbox = { window, localStorage, console: window.console };
+  runInNewContext(walletLedgerSource, sandbox);
+  runInNewContext(roleFamilyCardsSource, sandbox);
+  const api = window.RoleFamilyCards;
+  const card = api.createInvite({
+    roleId: 'role-1', roleName: '角色',
+    kind: 'family', monthlyLimit: 100, singleLimit: 50
+  });
+  assert.ok(card);
+  assert.equal(api.update(card.id, 'accept').ok, true);
+
+  const actionStart = familyCardsPage.indexOf('var pendingCardActions = new Set();');
+  const actionEnd = familyCardsPage.indexOf("\n\n  document.querySelector('.filters')", actionStart);
+  sandbox.api = api;
+  sandbox.appendRoleNotice = () => {};
+  sandbox.render = () => {};
+  sandbox.toast = () => {};
+  runInNewContext(familyCardsPage.slice(actionStart, actionEnd), sandbox);
+
+  // The commerce debit obtains the lock first. The card page pauses the card only
+  // after the receipt is committed, preserving its newly written history.
+  const spendPromise = window.MaoMaoWalletLedger.runExclusive(() =>
+    api.consume(card.id, 12, '商店消费', 'shop', 'shop-payment-concurrent')
+  );
+  const pausePromise = sandbox.runAction('pause', card.id);
+  const spend = await spendPromise;
+  await pausePromise;
+
+  assert.equal(spend.ok, true);
+  assert.equal(maxActive, 1, 'commerce spend and card status update must be serialized');
+  const saved = api.find(card.id);
+  assert.equal(saved.status, 'paused');
+  assert.equal(saved.history.length, 1, 'pausing a card must not overwrite its committed spend row');
+  assert.equal(saved.history[0].paymentId, 'shop-payment-concurrent');
+  assert.equal(api.usedThisMonth(saved), 12);
+});
+
+test('并发重复提交售后申请只创建一个申请编号和一组财务关联', async () => {
+  const state = new Map([
+    ['shop_orders', JSON.stringify([{
+      paymentId: 'parallel-shop-payment', total: 10, payMethod: 'normal', ts: 1000,
+      items: [{ cn: '商品A', price: 6 }, { cn: '商品B', price: 4 }]
+    }])],
+    ['finance_records', JSON.stringify([
+      { paymentId: 'parallel-shop-payment', paymentLineIndex: 0, amount: 6, type: 'expense', category: '购物' },
+      { paymentId: 'parallel-shop-payment', paymentLineIndex: 1, amount: 4, type: 'expense', category: '购物' }
+    ])]
+  ]);
+  const localStorage = {
+    getItem: key => state.has(key) ? state.get(key) : null,
+    setItem: (key, value) => { state.set(key, String(value)); }
+  };
+  let queue = Promise.resolve();
+  let active = 0;
+  let maxActive = 0;
+  let lockCalls = 0;
+  const window = {
+    navigator: {
+      locks: {
+        request: (name, options, callback) => {
+          lockCalls += 1;
+          assert.equal(name, 'maomao-wallet-ledger-v1');
+          assert.equal(options.mode, 'exclusive');
+          const run = queue.then(async () => {
+            active += 1;
+            maxActive = Math.max(maxActive, active);
+            try { return await callback(); }
+            finally { active -= 1; }
+          });
+          queue = run.catch(() => {});
+          return run;
+        }
+      }
+    },
+    localStorage: localStorage,
+    crypto: { randomUUID: () => 'parallel-after-sales-id' },
+    console: { warn: () => {} }
+  };
+  const sandbox = { window, localStorage, console: window.console };
+  runInNewContext(walletLedgerSource, sandbox);
+  runInNewContext(orderAfterSalesSource, sandbox);
+  const api = window.MaoMaoOrderAfterSales;
+  const input = {
+    channel: 'shop', ordersKey: 'shop_orders', financeKey: 'finance_records',
+    paymentId: 'parallel-shop-payment', amount: 10, paymentMethod: 'normal',
+    type: 'cancel', reason: '下错订单'
+  };
+
+  const results = await Promise.all([api.submit(input), api.submit(input)]);
+  assert.ok(results.every(result => result.ok));
+  assert.equal(new Set(results.map(result => result.request.requestId)).size, 1,
+    'concurrent retries must reuse the same application ID');
+  assert.equal(results.filter(result => result.replayed).length, 1,
+    'exactly one of the serialized submissions should be a replay');
+  assert.equal(lockCalls, 2);
+  assert.equal(maxActive, 1, '售后申请与原财务流水的关联必须串行写入');
+  const orders = JSON.parse(state.get('shop_orders'));
+  const finances = JSON.parse(state.get('finance_records'));
+  assert.equal(orders[0].afterSales.status, 'pending_review');
+  assert.equal(orders[0].afterSales.journalStatus, 'linked');
+  assert.equal(finances.length, 2, 'no duplicate or synthetic refund row may be created');
+  assert.ok(finances.every(row =>
+    row.afterSalesRequestId === orders[0].afterSales.requestId &&
+    row.afterSalesStatus === 'pending_review'
+  ));
+});
+
 test('商店与外卖亲密付使用严格钱包快照，损坏的既有余额数据必须停止', () => {
   function makeLedger(raw, exists = true) {
     const localStorage = {
