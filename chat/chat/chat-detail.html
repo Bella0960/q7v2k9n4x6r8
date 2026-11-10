@@ -4870,6 +4870,9 @@
                     changes.forEach(function (change) {
                         var result = window.RoleFamilyCards.applyRoleChange(roleId, change);
                         if (result && result.ok) changed = true;
+                        else if (result && result.reason === 'invalid' && typeof showToast === 'function') {
+                            showToast('亲属卡数据异常，已停止调整；请先恢复本地数据');
+                        }
                     });
                     return changed;
                 }, {
@@ -4899,6 +4902,16 @@
             var roleName = String((currentCharacter && currentCharacter.name) || contactName || '角色');
             try {
                 return await ledger.runExclusive(function () {
+                    var cardState = typeof window.RoleFamilyCards.readState === 'function'
+                        ? window.RoleFamilyCards.readState() : { ok: false, reason: 'module' };
+                    if (!cardState.ok) {
+                        if (typeof showToast === 'function') {
+                            showToast(cardState.reason === 'invalid'
+                                ? '亲属卡数据异常，已暂停发放；请先恢复本地数据'
+                                : '亲属卡存储暂不可用，发放已暂停');
+                        }
+                        return false;
+                    }
                     var inserted = false;
                     var originalLength = historyList.length;
                     var historyChanged = false;
@@ -4991,7 +5004,7 @@
                     }
                 });
                 if (!result || !result.ok) {
-                    if (typeof showToast === 'function') showToast(result && result.reason === 'storage' ? '保存失败：本地空间不足' : '这张卡当前无法执行该操作');
+                    if (typeof showToast === 'function') showToast(result && result.reason === 'invalid' ? '亲属卡数据异常，已停止修改；请先恢复本地数据' : (result && result.reason === 'storage' ? '保存失败：本地空间不足' : '这张卡当前无法执行该操作'));
                     return;
                 }
                 renderAllMessages();
