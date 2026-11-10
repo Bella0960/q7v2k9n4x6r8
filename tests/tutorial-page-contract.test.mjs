@@ -38,7 +38,8 @@ test('guide documents the merged chat features and correctly separates unverifie
   assert.match(guideScript, /收藏给TA/);
   assert.match(guideScript, /角色图库/);
   assert.match(guideScript, /主动联系只在 MAOMAO 前台打开时检查/);
-  assert.match(guideScript, /手机系统推送要单独验收/);\n  assert.match(guideScript, /私密.*公开.*不会阻止 AI/);
+  assert.match(guideScript, /手机系统推送要单独验收/);
+  assert.match(guideScript, /私密.*公开.*不会阻止 AI/);
   assert.match(guideScript, /此前的手机打不开反馈仍需在安装版和普通浏览器分别实测/);
 });
 
