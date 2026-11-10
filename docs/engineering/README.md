@@ -2,7 +2,8 @@
 
 **Purpose:** A single, current handoff package for AI agents and human contributors helping maintain MAOMAO.
 
-**Baseline date:** 2026-11-03  
+**Original baseline date:** 2026-11-03  
+**Latest repository-tree inventory:** 2026-11-11 (main SHA `f0cf6c74f0272219ebe4aa9e5a8c21fea7e49273`)  
 **Repository:** Bella0960/MAOMAO  
 **Default branch:** main  
 **Architecture decision:** Keep the existing native HTML/CSS/JavaScript multi-page application. Improve its boundaries and reliability incrementally; do not rewrite it.
@@ -32,18 +33,17 @@ The recursive Git tree for main was complete (not truncated) at this baseline:
 
 | Metric | Verified value |
 |---|---:|
-| Tracked files in tree | 296 |
-| HTML pages | 88 |
-| JS/MJS files | 69 |
-| CSS files | 11 |
-| GitHub repository reported size | about 90,934 KB |
-| Total file sizes in recursive tree | 94,486,753 bytes (about 90.1 MiB) |
+| Entries in recursive tree (files + directories) | 445 |
+| HTML pages | 89 |
+| JS/MJS files | 112 |
+| CSS files | 14 |
+| Total sizes of tracked file blobs | 95,744,389 bytes (about 91.3 MiB) |
 | Main application shape | Native multi-page web app |
 | Runtime/framework | Native HTML/CSS/JS; Vite is the build tool |
 | Current delivery | Static web assets deployed through Cloudflare Workers |
 | User-data cloud backend | Not configured in wrangler.jsonc |
 
-The tree snapshot is a point-in-time measurement. Re-run the inventory when making a release or asset optimization decision.
+The tree snapshot is a point-in-time measurement for the main SHA listed above. The recursive GitHub tree response was complete (not truncated). Re-run the inventory when making a release or asset optimization decision.
 
 ## Critical current facts
 
