@@ -1318,7 +1318,7 @@ test('chat detail stages multi-bubble replies and preserves the existing stream 
   assert.match(detail, /function appendReplyMessagesWithPacing\(messages, startIdx, options\)/);
   assert.match(detail, /await appendReplyMessagesWithPacing\(replyMessages, aiMessageIndex\)/);
   assert.match(detail, /chatMessages\.appendChild\(node\)/);
-  assert.match(detail, /\+\+aiBubblePacingRunId/);
+  assert.match(detail, /aiBubblePacingRunId \+= 1/);
   assert.match(detail, /prefers-reduced-motion: reduce/);
   assert.match(detail, /activeChatModeForPrompt !== 'narration'/);
   assert.match(detail, /PhoneStream\.chat\(\{/);
@@ -2665,6 +2665,9 @@ test('钱包流水已落库但聊天状态写入失败时，下一次点击只�
     },
     currentCharacter: { name: '角色' }
   };
+  const walletWindow = { navigator: {}, localStorage: sandbox.localStorage };
+  runInNewContext(walletLedgerSource, { window: walletWindow });
+  sandbox.window = walletWindow;
   runInNewContext(handlerSource, sandbox);
   const event = {
     currentTarget: {
@@ -2917,12 +2920,12 @@ test('订单售后在财务流水已关联但订单最终确认失败时，可�
   const partialOrder = JSON.parse(state.get('takeout_orders'))[0];
   assert.equal(partialOrder.afterSales.status, 'recording');
   const financeAfterPartial = JSON.parse(state.get('finance_records'));
-  assert.equal(financeAfterPartial[0].afterSalesRequestId, 'takeout-after-sales-id');
+  assert.equal(financeAfterPartial[0].afterSalesRequestId, 'mm-as-takeout-after-sales-id');
 
   blockFinalOrderWrite = false;
   const recovered = await api.submit(input);
   assert.equal(recovered.ok, true);
-  assert.equal(recovered.request.requestId, 'takeout-after-sales-id');
+  assert.equal(recovered.request.requestId, 'mm-as-takeout-after-sales-id');
   assert.equal(recovered.request.status, 'pending_review');
   assert.equal(JSON.parse(state.get('finance_records')).length, 1);
   assert.equal(JSON.parse(state.get('takeout_orders'))[0].afterSales.journalStatus, 'linked');
@@ -2977,7 +2980,7 @@ test('记账页能从原支出行追溯订单售后申请，且申请期间不�
 
 test('商店与外卖售后入口只对可核验的原始支付流水开放，且明确不自动退款', () => {
   for (const [name, page] of [['shop', shopPage], ['takeout', takeoutPage]]) {
-    assert.match(page, /order-after-sales\\.js\\?v=20261107v2/);
+    assert.ok(page.includes('order-after-sales.js?v=20261107v2'));
     assert.match(page, /MaoMaoOrderAfterSales\.canSubmit/);
     assert.match(page, /MaoMaoOrderAfterSales|journal\.submit/);
     assert.match(page, /不会自动退款/);
@@ -3089,8 +3092,14 @@ test('多个标签页并发领取时，全局钱包锁串行化不同交易并�
   };
 
   function makeTab() {
+    const tabStorage = {
+      getItem: (key) => key === 'finance_records' ? financeRecords : null,
+      setItem: (key, value) => { if (key === 'finance_records') financeRecords = String(value); }
+    };
+    const walletWindow = { navigator: { locks: sharedLockManager }, localStorage: tabStorage };
+    runInNewContext(walletLedgerSource, { window: walletWindow });
     const sandbox = {
-      navigator: { locks: sharedLockManager },
+      window: walletWindow,
       loadMessages: () => clone(persistedHistory),
       ensureMid: (message) => message.mid,
       getWorkData: () => clone(wallet),
@@ -3099,10 +3108,7 @@ test('多个标签页并发领取时，全局钱包锁串行化不同交易并�
       showToast: () => {},
       renderAllMessages: () => { renders += 1; },
       openPayResult: () => { popups += 1; },
-      localStorage: {
-        getItem: (key) => key === 'finance_records' ? financeRecords : null,
-        setItem: (key, value) => { if (key === 'finance_records') financeRecords = String(value); }
-      },
+      localStorage: tabStorage,
       currentCharacter: { name: '角色' }
     };
     runInNewContext(handlerSource, sandbox);
@@ -3163,6 +3169,9 @@ test('浏览器不支持 Web Locks 时保留本页防连点，并明确提醒跨
     localStorage: { getItem: () => '[]', setItem: () => {} },
     toasts: []
   };
+  const walletWindow = { navigator: {}, localStorage: sandbox.localStorage };
+  runInNewContext(walletLedgerSource, { window: walletWindow });
+  sandbox.window = walletWindow;
   runInNewContext(detail.slice(start, end), sandbox);
   const event = { currentTarget: { getAttribute: () => 'fallback-pay' } };
   await Promise.all([
@@ -3259,7 +3268,7 @@ test('聊天、商店、外卖和钱包充值提现统一使用同一个钱包�
     ['takeout', takeoutPage],
     ['wallet', walletPage]
   ]) {
-    assert.match(source, /wallet-ledger\.js\?v=20261107v4/,
+    assert.match(source, /wallet-ledger\.js\?v=20261107v6/,
       name + ' must load the shared wallet ledger coordinator');
     assert.match(source, /MaoMaoWalletLedger\.runExclusive|ledger\.runExclusive/,
       name + ' must route balance mutations through the shared lock');
@@ -3278,7 +3287,7 @@ test('聊天、商店、外卖和钱包充值提现统一使用同一个钱包�
 
 
 test('亲密付额度、对象和开关设置也与商店及外卖结算共用钱包锁', () => {
-  assert.match(closePayPage, /wallet-ledger\.js\?v=20261107v4/);
+  assert.match(closePayPage, /wallet-ledger\.js\?v=20261107v6/);
   assert.match(closePayPage, /async function mutateData\(mutator\)/);
   assert.match(closePayPage, /ledger\.runExclusive\(function \(\)/);
   assert.match(closePayPage, /localStorage\.getItem\(KEY\) !== serialized/,
@@ -3377,7 +3386,7 @@ test('用户发出的红包/转账在钱包扣款后聊天保存失败时可恢�
 });
 
 test('用户红包/转账发送入口也使用共享钱包锁并刷新 chat-extras 脚本', () => {
-  assert.match(detail, /wallet-ledger\.js\?v=20261107v4/);
+  assert.match(detail, /wallet-ledger\.js\?v=20261107v6/);
   assert.match(detail, /chat-extras\.js\?t=20261107wallet2/);
   assert.match(chatExtrasSource, /ledger\.runExclusive\(function \(\)/);
   assert.match(chatExtrasSource, /paymentId: paymentId/);
