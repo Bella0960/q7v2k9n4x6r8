@@ -4,7 +4,8 @@
  * It claims only due, already-authorized contact tasks; rechecks the role
  * schedule, foreground leases, consent and context version before committing.
  * Model input is a bounded snapshot and model output is stored as 1..4
- * independently identified outbound rows before push dispatch.
+ * independently identified outbound rows before push dispatch. The exact
+ * source device and current snapshot are revalidated after the model call.
  */
 import { planTask, validateConfig, nextRetryAt, REASON_CODES } from './scheduler-policy.js';
 import { createSchedulerGate } from './scheduler-gate.js';
@@ -219,11 +220,18 @@ export async function runCloudModelTick({
     // invalidates this generated result instead of delivering stale content.
     const latestVersion = store.getCharacterContextVersion(userId, claimed.character_id);
     const latestSharing = store.getUserContextSharing(userId);
+    const latestSnapshot = store.getCharacterContextSnapshot({
+      userId,
+      characterId: claimed.character_id,
+      contextVersion
+    });
     const stillCurrent = latestVersion &&
       Number(latestVersion.version) === contextVersion &&
       latestSharing && Number(latestSharing.enabled) === 1 &&
-      Number(latestVersion.updated_by_device_id === snapshot.source_device_id ||
-        latestVersion.updated_by_device_id === task.device_id);
+      latestSnapshot &&
+      latestSnapshot.source_device_id === snapshot.source_device_id &&
+      String(latestVersion.updated_by_device_id || '') === snapshot.source_device_id &&
+      snapshot.source_device_id === task.device_id;
     const gateAfter = stillCurrent ? gate({
       ...claimed,
       user_id: userId,
