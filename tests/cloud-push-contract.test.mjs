@@ -5092,3 +5092,79 @@ test('云端多气泡按组暂存、整组恢复，并在另一设备逐条 ACK 
   assert.equal(afterAllAck.status, 200);
   assert.equal(afterAllAck.payload.messages.length, 0);
 });
+
+
+
+test('多气泡组只发送一条不含正文的角色通知，并将 Push 回执标到整组', async () => {
+  const now = 1800000000000;
+  const keys = makeVapidKeys();
+  const pushFetch = createFakePushFetch(201);
+  const ctx = setupTestStore(openTestDb(), {
+    VAPID_PUBLIC_KEY: keys.publicB64,
+    VAPID_PRIVATE_KEY: keys.privateB64,
+    VAPID_SUBJECT: 'mailto:test@maomao.dev',
+    fetchImpl: pushFetch
+  });
+  const device = makeDevice();
+  await registerDevice(ctx, device);
+  const subscription = await makeBrowserSubscription();
+  const subscribed = await subscribeDevice(ctx, device, subscription);
+  assert.equal(subscribed.status, 200);
+
+  const groupId = 'pushgrp_' + randomToken(20);
+  const messages = [
+    '第一条不应显示在锁屏的正文。',
+    '第二条也不应显示在锁屏的正文。',
+    '第三条也不应显示在锁屏的正文。'
+  ];
+  for (let index = 0; index < messages.length; index += 1) {
+    const result = ctx.store.enqueueOutboundMessage({
+      id: 'out_' + groupId + '_' + index,
+      deviceId: device.deviceId,
+      userId: 'owner',
+      characterId: 'char-group-push',
+      serverMessageId: groupId + '_' + String(index + 1).padStart(2, '0'),
+      dedupeKey: groupId + ':' + (index + 1),
+      payload: { type: 'text', text: messages[index] },
+      groupId,
+      groupIndex: index + 1,
+      groupCount: messages.length,
+      now
+    });
+    assert.equal(result.inserted, true);
+  }
+
+  const sent = await dispatchPendingOutboundPushes({
+    store: ctx.store,
+    env: {
+      VAPID_PUBLIC_KEY: keys.publicB64,
+      VAPID_PRIVATE_KEY: keys.privateB64,
+      VAPID_SUBJECT: 'mailto:test@maomao.dev'
+    },
+    now,
+    fetchImpl: pushFetch,
+    limit: 50
+  });
+  assert.equal(sent.sent, 1);
+  assert.equal(pushFetch.calls.length, 1);
+  const delivery = ctx.store.findDelivery('outbound-group:' + groupId, subscribed.payload.subscription.id);
+  assert.equal(delivery.status, 'sent');
+
+  for (let index = 0; index < messages.length; index += 1) {
+    const row = ctx.store.getOutboundMessage(groupId + '_' + String(index + 1).padStart(2, '0'));
+    assert.ok(row.push_accepted_at, '整组中的每条消息都应记录 Push 已接受');
+  }
+
+  const notification = buildOutboundPushPayload({
+    characterId: 'char-group-push',
+    serverMessageId: groupId + '_01',
+    groupId,
+    messageCount: 3,
+    characterName: '角色甲',
+    timestamp: now
+  });
+  assert.equal(notification.title, '角色甲');
+  assert.match(notification.body, /3 条消息/);
+  assert.equal(notification.body.includes(messages[0]), false);
+  assert.equal(notification.dedupeKey, 'outbound-group:' + groupId);
+});
