@@ -172,7 +172,7 @@
 
   function update(cardId, action) {
     var state = readAllState();
-    if (!state.ok) return { ok: false, reason: 'storage', card: null };
+    if (!state.ok) return { ok: false, reason: state.reason || 'storage', card: null };
     var cards = state.value;
     var card = cards.find(function (item) { return String(item.id) === String(cardId); });
     if (!card) return { ok: false, reason: 'missing', card: null };
@@ -201,7 +201,7 @@
   function applyRoleChange(roleId, change) {
     change = change || {};
     var state = readAllState();
-    if (!state.ok) return { ok: false, reason: 'storage', card: null };
+    if (!state.ok) return { ok: false, reason: state.reason || 'storage', card: null };
     var cards = state.value;
     var matches = cards.filter(function (card) {
       return String(card.roleId || '') === String(roleId || '') &&
@@ -235,7 +235,7 @@
 
   function consume(cardId, amount, note, appId, transactionId) {
     var state = readAllState();
-    if (!state.ok) return { ok: false, reason: 'storage', card: null };
+    if (!state.ok) return { ok: false, reason: state.reason || 'storage', card: null };
     var cards = state.value;
     var card = cards.find(function (item) { return String(item.id) === String(cardId); });
     if (!card) return { ok: false, reason: 'missing', card: null };
