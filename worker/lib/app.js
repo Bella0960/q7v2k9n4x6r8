@@ -1127,18 +1127,22 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       : null;
 
     const autonomyExecutionBlockers = [
-      ...(vapid.configured ? [] : ['web_push_keys_not_configured']),
-      ...(activeSubscriptions.length > 0 ? [] : ['current_device_push_subscription_missing']),
       ...(activityExecutorConfigured ? [] : ['activity_executor_config_missing']),
       ...(serverModelConfigured ? [] : ['server_model_credentials_missing']),
       ...(globalAutonomy?.enabled === 1 ? [] : ['global_autonomy_not_enabled']),
       ...(contextSharingEnabled ? [] : ['context_sharing_not_enabled']),
       ...(contextVersionReady ? [] : ['context_version_unavailable']),
       ...(cloudSchedulerRuntimeVerified ? [] : ['cloud_model_scheduler_runtime_not_verified']),
-      ...(cloudModelGenerationVerified ? [] : ['cloud_model_generation_not_verified']),
+      ...(cloudModelGenerationVerified ? [] : ['cloud_model_generation_not_verified'])
+    ];
+    const pushDeliveryBlockers = [
+      ...(vapid.configured ? [] : ['web_push_keys_not_configured']),
+      ...(activeSubscriptions.length > 0 ? [] : ['current_device_push_subscription_missing']),
       ...(cloudPushAcceptanceVerified ? [] : ['cloud_push_provider_acceptance_not_verified'])
     ];
     const autonomousMessageGenerationReady = autonomyExecutionBlockers.length === 0;
+    const pushDeliveryReady = pushDeliveryBlockers.length === 0;
+    const autonomousContactAndPushReady = autonomousMessageGenerationReady && pushDeliveryReady;
 
     return ok({
       deviceAuthorized: true,
@@ -1173,7 +1177,10 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       deviceLocalModelRequired: false,
       autonomousMessageGenerationReady,
       autonomyExecutionBlockers,
-      note: '云端后台任务由 Worker 定时处理，不要求小手机保持前台。只有单独开启上下文共享后，角色称呼、角色设定和最多 12 条文字消息才会同步到云端并交给服务端模型；图片、语音、附件及手机 API Key 不会上传。运行状态以最近 15 分钟调度记录、最近 30 天真实模型出站入库及当前设备最近 30 天 Web Push 服务端接受回执为准。HTTP 成功只表示推送服务接受请求，不表示 Android 一定显示通知；锁屏展示仍需真机验收。'
+      pushDeliveryReady,
+      pushDeliveryBlockers,
+      autonomousContactAndPushReady,
+      note: '云端后台任务由 Worker 定时处理，不要求小手机保持前台。只有单独开启上下文共享后，角色称呼、角色设定和最多 12 条文字消息才会同步到云端并交给服务端模型；图片、语音、附件及手机 API Key 不会上传。主动消息生成与当前设备 Push 采用独立验收状态：前者看最近 15 分钟调度及最近 30 天真实模型出站入库，后者看 VAPID 配置、当前设备订阅和最近 30 天服务端接受回执。HTTP 成功只表示推送服务接受请求，不表示 Android 一定显示通知；锁屏展示仍需真机验收。'
     });
   }
   async function getGlobalAutonomy(request) {
