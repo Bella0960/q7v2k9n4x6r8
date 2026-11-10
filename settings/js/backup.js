@@ -50,7 +50,7 @@
             db: 'maomao-media-store',
             version: 2,   // 含 audio store（本地音乐）
             stores: [
-                { store: 'wallpapers', keyPath: null },
+                { store: 'wallpapers', keyPath: null, validateBeforeClear: true },
                 { store: 'audio',      keyPath: 'id', excludeFields: ['blob'] }
             ]
         },
@@ -746,6 +746,41 @@
     // 记录损坏（缺少必要字段）时静默跳过，不 throw。
     // 返回 Promise<{ written: number, skipped: number }>：实际写进 DB 的条数 / 跳过的条数。
     // clearOnRestore: 空数组时也执行 clear()，确保恢复后 store 与备份状态完全一致。
+    // 校验图片 data URL 的 MIME、编码和实际解码内容。只接受图片类型，且不允许空内容或畸形 Base64/百分号编码。
+    function isValidImageDataUrl(value) {
+        if (typeof value !== 'string' || !value) return false;
+        var comma = value.indexOf(',');
+        if (comma < 0) return false;
+
+        var metadata = value.slice(5, comma);
+        if (value.slice(0, 5).toLowerCase() !== 'data:') return false;
+        var parts = metadata.split(';');
+        var mime = (parts.shift() || '').trim();
+        if (!/^image\/[a-z0-9][a-z0-9.+_-]*$/i.test(mime)) return false;
+
+        var isBase64 = false;
+        for (var i = 0; i < parts.length; i++) {
+            var part = parts[i].trim();
+            if (/^base64$/i.test(part)) {
+                if (isBase64 || i !== parts.length - 1) return false;
+                isBase64 = true;
+            } else if (!/^[a-z0-9!#$&^_.+-]+=[a-z0-9!#$&^_.+-]+$/i.test(part)) {
+                return false;
+            }
+        }
+
+        var payload = value.slice(comma + 1);
+        if (!payload || /[\r\n\t ]/.test(payload)) return false;
+        if (isBase64) {
+            // 严格 Base64：完整四字符分组、正确 padding、无非法字符。
+            if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(payload)) return false;
+            try { return atob(payload).length > 0; } catch (e) { return false; }
+        }
+
+        // 非 Base64 data URL 允许 percent-encoding，但每个转义序列必须完整且解码后非空。
+        try { return decodeURIComponent(payload).length > 0; } catch (e) { return false; }
+    }
+
     function restoreStore(db, storeDef, records, clearOnRestore) {
         var blobFields = storeDef.blobFields || [];
         return new Promise(function (resolve, reject) {
@@ -753,6 +788,31 @@
             if (!Array.isArray(records) || (!records.length && !clearOnRestore)) {
                 resolve({ written: 0, skipped: 0 });
                 return;
+            }
+            // validateBeforeClear：先校验整批记录，任意一条损坏就整库放弃，
+            // 不执行 clear()，保留本机已有图片，避免"清空后只写回一部分"的半套数据。
+            if (storeDef.validateBeforeClear) {
+                var invalid = 0;
+                for (var v = 0; v < records.length; v++) {
+                    var candidate = records[v];
+                    if (!candidate || typeof candidate !== 'object'
+                            || !Object.prototype.hasOwnProperty.call(candidate, '__key')
+                            || !Object.prototype.hasOwnProperty.call(candidate, '__value')) {
+                        invalid++;
+                        continue;
+                    }
+                    var rawValue = candidate.__value;
+                    // wallpaper-store 的真实写入格式是 data URL 字符串；兼容旧版导出包装对象，但验证其 dataUrl 字段。
+                    var imageValue = typeof rawValue === 'string'
+                        ? rawValue
+                        : (rawValue && typeof rawValue === 'object' ? rawValue.dataUrl : '');
+                    if (typeof candidate.__key !== 'string' || !candidate.__key
+                            || !isValidImageDataUrl(imageValue)) invalid++;
+                }
+                if (invalid) {
+                    resolve({ written: 0, skipped: invalid, aborted: true });
+                    return;
+                }
             }
             var storeName = storeDef.store;
             var tx = db.transaction(storeName, 'readwrite');
@@ -773,6 +833,8 @@
                     if (rec && Object.prototype.hasOwnProperty.call(rec, '__key')
                             && Object.prototype.hasOwnProperty.call(rec, '__value')) {
                         value = rec.__value;
+                        if (storeDef.validateBeforeClear && value && typeof value === 'object'
+                                && typeof value.dataUrl === 'string') value = value.dataUrl;
                         key = rec.__key;
                     } else if (rec && typeof rec === 'object') {
                         value = rec;
@@ -834,9 +896,9 @@
             var storeMap = {};
             storeDefs.forEach(function (d) { storeMap[d.store] = d; });
             var storeNames = Object.keys(incomingDb);
-            var i = 0, totalWritten = 0, totalSkipped = 0;
+            var i = 0, totalWritten = 0, totalSkipped = 0, anyAborted = false;
             function next() {
-                if (i >= storeNames.length) { db.close(); return { written: totalWritten, skipped: totalSkipped, dbRestored: true }; }
+                if (i >= storeNames.length) { db.close(); return { written: totalWritten, skipped: totalSkipped, dbRestored: true, aborted: anyAborted }; }
                 var sn = storeNames[i++];
                 var def = storeMap[sn];
                 if (!def) return next();
@@ -846,6 +908,7 @@
                 return restoreStore(db, def, records, clearOnRestore).then(function (res) {
                     totalWritten += res.written;
                     totalSkipped += res.skipped;
+                    if (res.aborted) anyAborted = true;
                     return next();
                 });
             }
@@ -1019,6 +1082,7 @@
             var dbRestored = 0;
             var dbSkippedBlob = 0;  // blob 解码失败被跳过的记录数
             var dbFailed = [];
+            var dbAborted = [];     // 记录损坏导致整库未恢复（保留本机原数据）的库
             var dbSkippedOld = false;
             if (obj.__backup.schema >= 2 && obj.indexedDB && typeof obj.indexedDB === 'object') {
                 for (var i = 0; i < IDB_TARGETS.length; i++) {
@@ -1029,6 +1093,7 @@
                         var res = await restoreDatabase(tgt.db, tgt.version, tgt.stores, incomingDb);
                         dbRestored += res.written;
                         dbSkippedBlob += res.skipped;
+                        if (res.aborted) dbAborted.push(tgt.db);
                     } catch (e) {
                         dbFailed.push(tgt.db + '（' + ((e && e.message) || '未知错误') + '）');
                     }
@@ -1052,6 +1117,7 @@
             }
             if (dbRestored) parts.push('已恢复 IndexedDB ' + dbRestored + ' 项');
             if (dbSkippedBlob) parts.push('有 ' + dbSkippedBlob + ' 项 IndexedDB 记录因内容损坏未恢复');
+            if (dbAborted.length) parts.push('图片库备份记录损坏，已保留本机原有图片未覆盖（' + dbAborted.join('、') + '）');
             if (dbFailed.length) parts.push('部分 IndexedDB 未恢复：' + dbFailed.join('；'));
             if (dbSkippedOld) parts.push('备份版本较旧，未包含媒体与书籍数据');
             if (fontOrphanCleaned) parts.push('自定义字体未随备份恢复，请重新上传');
