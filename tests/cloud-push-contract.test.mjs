@@ -3717,10 +3717,10 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
     '聊天页必须加载云端收件箱客户端');
   assert.ok(chat.includes('function persistCloudOutboundMessage(payload, envelope)'),
     '聊天页必须有写入现有消息历史的适配器');
-  assert.ok(chat.includes("item && String(item.serverMessageId || '') === serverMessageId"),
-    '重复投递必须先按稳定 serverMessageId 查重');
-  assert.ok(chat.includes("mid: 'cloud_' + serverMessageId"),
-    '云端消息必须有稳定本地 mid');
+  assert.ok(chat.includes('policy.inspectCloudOutboundHistory(history, serverMessageId, messageText, bubbles)'),
+    '云端重复投递必须校验完整气泡批次和稳定 envelope ID');
+  assert.ok(chat.includes('policy.buildCloudOutboundMessages(messageText, serverMessageId'),
+    '云端收件箱必须将一条 envelope 还原为多个独立本地消息');
   assert.ok(chat.includes("msg.serverMessageId != null"),
     '写后读回校验必须包含云端服务端消息 ID');
   assert.ok(chat.includes('row.dataset.serverMessageId = String(msg.serverMessageId)'),
@@ -3736,31 +3736,29 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
   const adapterStart = chat.indexOf('function persistCloudOutboundMessage(payload, envelope)');
   const adapterEnd = chat.indexOf('// 同一角色优先用 Web Locks 串行接收', adapterStart);
   assert.ok(adapterStart >= 0 && adapterEnd > adapterStart);
-  const helperStart = chat.indexOf('function inspectCloudOutboundHistory(');
-  const helperEnd = chat.indexOf('        // 云端主动消息进入现有聊天历史', helperStart);
-  assert.ok(helperStart >= 0 && helperEnd > helperStart,
-    '云端重复消息必须提供本地记录完整性检查');
-  const helperSource = chat.slice(helperStart, helperEnd).trim();
-  const inspectHistory = vm.runInNewContext('(' + helperSource + ')');
+  const messagePolicySource = fs.readFileSync(path.join(rootDir, 'shared/js/phone/chat-message-policy.js'), 'utf8');
+  const policyWindow = {};
+  vm.runInNewContext(messagePolicySource, { window: policyWindow, globalThis: policyWindow });
+  const messagePolicy = policyWindow.ChatMessagePolicy;
   const serverMessageId = 'cloud_integrity_message_123456';
-  const expectedText = '完整的云端正文';
-  assert.equal(inspectHistory([], serverMessageId, expectedText), 'missing');
-  assert.equal(inspectHistory([{
-    role: 'assistant', serverMessageId, text: expectedText
-  }], serverMessageId, expectedText), 'match');
-  assert.equal(inspectHistory([{
-    role: 'assistant', serverMessageId, text: '被截断的正文'
-  }], serverMessageId, expectedText), 'conflict',
+  const expectedBubbles = ['第一条独立消息。', '第二条独立消息。'];
+  const expectedText = expectedBubbles.join(String.fromCharCode(10, 10));
+  assert.equal(messagePolicy.inspectCloudOutboundHistory([], serverMessageId, expectedText, expectedBubbles), 'missing');
+  const savedBubbles = messagePolicy.buildCloudOutboundMessages(expectedText, serverMessageId, {
+    time: 1800000000000, bubbles: expectedBubbles
+  });
+  assert.equal(savedBubbles.length, 2);
+  assert.equal(messagePolicy.inspectCloudOutboundHistory(savedBubbles, serverMessageId, expectedText, expectedBubbles), 'match');
+  assert.equal(messagePolicy.inspectCloudOutboundHistory(savedBubbles.slice(0, 1), serverMessageId, expectedText, expectedBubbles), 'conflict',
+    '只保存部分气泡时不得确认整组云端消息');
+  const tampered = savedBubbles.map(item => ({ ...item }));
+  tampered[0].text = '被截断的正文';
+  assert.equal(messagePolicy.inspectCloudOutboundHistory(tampered, serverMessageId, expectedText, expectedBubbles), 'conflict',
     '正文不一致时必须保持云端消息未确认');
-  assert.equal(inspectHistory([{
-    role: 'sent', serverMessageId, text: expectedText
-  }], serverMessageId, expectedText), 'conflict',
-    '错误角色不能冒充已保存的角色消息');
-  assert.equal(inspectHistory([
-    { role: 'assistant', serverMessageId, text: expectedText },
-    { role: 'assistant', serverMessageId, text: expectedText }
-  ], serverMessageId, expectedText), 'conflict',
-    '本地存在重复服务端 ID 时不得提前确认');
+  assert.equal(messagePolicy.inspectCloudOutboundHistory([{
+    role: 'assistant', serverMessageId, text: expectedText
+  }], serverMessageId, expectedText, expectedBubbles), 'match',
+    '旧版本整段消息仍可补做幂等 ACK');
 
   const adapter = chat.slice(adapterStart, adapterEnd);
   assert.ok(adapter.includes("existingState === 'match'"));
@@ -3768,7 +3766,7 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
     '本地记录内容冲突时必须保留云端待同步状态');
   const saveIndex = adapter.indexOf('if (!saveMessages(history))');
   const renderIndex = adapter.indexOf('if (_vl) {');
-  const pacedRenderIndex = adapter.indexOf('await appendAiMessageWithPacing(');
+  const pacedRenderIndex = adapter.indexOf('await appendReplyMessagesWithPacing(messages, appendIndex');
   assert.ok(saveIndex >= 0 && renderIndex > saveIndex &&
     pacedRenderIndex > renderIndex,
     '必须先验证本地保存成功，再走任一消息渲染分支');
