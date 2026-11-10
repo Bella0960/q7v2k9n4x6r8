@@ -1434,7 +1434,6 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         const expectedCount = Number(boundary.group_count || 1);
         while (
           rows.length < fetchedRows.length &&
-          rows.length - (fetchedRows.length - rows.length) < limit + 3 &&
           fetchedRows[rows.length] &&
           fetchedRows[rows.length].group_id === boundaryGroupId &&
           Number(fetchedRows[rows.length].group_index) <= expectedCount
