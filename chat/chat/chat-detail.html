@@ -6828,35 +6828,85 @@
                     fullText = cleanupAiReply(fullText);
                     groupReplyVisible = !!fullText;
                     if (fullText) {
-                        // 落库（保留 think/narratage 标签供 parseReplyContent 解析）
-                        const aiMsg = { role: 'assistant', text: fullText, time: Date.now(), voiceMode: presenceMode || 'online', name: groupReplyPick ? groupReplyPick.name : undefined, memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined };
-                        ensureMid(aiMsg);
-                        persistedAssistantMessage = aiMsg;
-                        historyList.push(aiMsg);
-                        window.__groupPrivateCardPending = false;
-                        saveMessages(historyList);
-                        // 用户正在这个页面里看着这条回复流式出来 → 算已读，不算未读
-                        try { if (window.ChatNotifier) ChatNotifier.markSeen(aliasRoleId, aiMsg.time); } catch (e) {}
-                        inflightSnapshot = null;
-                        // 删掉流式期间的临时气泡（它只显示了剥离标签后的原始文本）
-                        if (streamBubble) {
-                            var tempRow = streamBubble.closest('.msg-row');
-                            if (tempRow) tempRow.remove();
+                        // 一次模型回复按当前角色模式拆成独立消息；每个气泡拥有独立 mid。
+                        // 旧角色缺省走 legacy，不改变历史角色原有分段节奏。
+                        const replyTurnTime = Date.now();
+                        const replyTurnId = 't' + replyTurnTime + '-' + Math.random().toString(36).slice(2, 8);
+                        let replyMessages = [];
+                        if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.buildReplyMessages === 'function') {
+                            replyMessages = window.ChatMessagePolicy.buildReplyMessages(
+                                fullText,
+                                getActiveReplyBubbleMode(),
+                                {
+                                    turnId: replyTurnId,
+                                    time: replyTurnTime,
+                                    voiceMode: presenceMode || 'online',
+                                    name: groupReplyPick ? groupReplyPick.name : undefined,
+                                    memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined
+                                }
+                            );
                         }
-                        // Fix C（增量追加）：只把最终交付的这条 AI 消息挂到 DOM 末尾，
-                        // 不再清空重建全部气泡。原实现每条 AI 回复收尾都 O(N) 全量重渲染
-                        // （N=消息总数），长对话下冻结数百~上千毫秒；改为只追加最后一条后
-                        // 复杂度降为 O(1)。appendMessageToDOM 内部会调用 parseReplyContent，
-                        // 能把含 思维链/旁白/双回车 的回复正确展开成多个气泡，
-                        // 视觉结果与全量渲染完全一致。
-                        // 若本条回复同时携带红包/亲属卡等卡片，下方 insertPayCards /
-                        // insertRoleFamilyCardInvitations 仍会按需全量重渲染（自带兜底），
-                        // 普通文本回复则全程不再触发全量渲染。
-                        // data-idx 取「当前已渲染的带 idx 行数」——与全量渲染的 0..k-1 连续编号
-                        // 语义一致，且自动跳过隐藏消息（语音/约会剧情等），搜索跳转 hl= 不会错位。
-                        // 不能用 historyList.length-1：隐藏消息会让两者偏移，导致定位错行。
+                        if (!Array.isArray(replyMessages) || !replyMessages.length) {
+                            replyMessages = [{
+                                role: 'assistant',
+                                text: fullText,
+                                time: replyTurnTime,
+                                voiceMode: presenceMode || 'online',
+                                name: groupReplyPick ? groupReplyPick.name : undefined,
+                                memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined
+                            }];
+                        }
+                        replyMessages.forEach(function (message) {
+                            if (!message || typeof message !== 'object') return;
+                            if (!message.role) message.role = 'assistant';
+                            if (!Number(message.time)) message.time = replyTurnTime;
+                            ensureMid(message);
+                        });
+                        replyMessages = replyMessages.filter(function (message) {
+                            return message && typeof message === 'object' && String(message.text || message.content || '').trim();
+                        });
+                        if (!replyMessages.length) {
+                            // 仅旁白或结构标记时仍保留原始正文，确保这轮的可见旁白不会丢失。
+                            replyMessages = [{
+                                role: 'assistant',
+                                text: fullText,
+                                time: replyTurnTime,
+                                voiceMode: presenceMode || 'online',
+                                name: groupReplyPick ? groupReplyPick.name : undefined,
+                                memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined
+                            }];
+                            ensureMid(replyMessages[0]);
+                        }
+
+                        persistedAssistantMessage = replyMessages;
+                        replyMessages.forEach(function (message) { historyList.push(message); });
+                        window.__groupPrivateCardPending = false;
+                        if (!saveMessages(historyList)) {
+                            throw new Error('AI 回复已生成，但聊天记录写入校验失败；为避免丢失，暂未显示为已发送');
+                        }
+                        // 用户正在这个页面里看着这轮回复 → 整轮最后一条消息作为已读观察点。
+                        try {
+                            if (window.ChatNotifier) {
+                                ChatNotifier.markSeen(aliasRoleId, replyMessages[replyMessages.length - 1].time);
+                            }
+                        } catch (e) {}
+                        inflightSnapshot = null;
+
+                        // 清除流式临时节点：临时正文可能已经被解析成多个行，必须整组移除。
+                        if (streamNodes.length) {
+                            for (var sn = 0; sn < streamNodes.length; sn++) {
+                                var snNode = streamNodes[sn];
+                                if (snNode && snNode.parentNode) snNode.parentNode.removeChild(snNode);
+                            }
+                        } else if (streamBubble) {
+                            var tempRow = streamBubble.closest('.msg-row');
+                            if (tempRow && tempRow.parentNode) tempRow.parentNode.removeChild(tempRow);
+                        }
+                        streamNodes = [];
+                        streamBubble = null;
+
+                        // 普通文本仍走增量追加；气泡按消息数组呈现，云端已读观察点由各行保留。
                         if (_vl) {
-                            // 虚拟列表：多条回复需要整体重算窗口与高度。
                             vlRefresh();
                         } else {
                             var aiMessageIndex = chatMessages.querySelectorAll('.msg-row[data-idx]').length;
