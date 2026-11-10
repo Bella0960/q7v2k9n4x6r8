@@ -623,7 +623,7 @@
             $('generatedCode').textContent = generatedCode;
             $('copyInviteCode').textContent = '复制邀请码';
             $('inviteCodeSheet').hidden = false;
-            $('inviteCodeSheet').scrollIntoView({ behavior: 'smooth', block: 'center' });
+            $('inviteCodeSheet').scrollIntoView({ behavior: 'smooth', block: 'start' });
             await refreshAll();
           }
         }));
