@@ -21,7 +21,7 @@ npm run preview   # 预览构建产物
 # 项目无构建产物依赖：任何静态服务器指向仓库根即可
 ```
 
-## 目录结构（按功能划分；2026-11-03 main 快照共 88 个 HTML 页面）
+## 目录结构（按功能划分；2026-11-11 main 快照共 89 个 HTML 页面）
 
 ```
 index.html              # ★ 入口：手机主屏/启动器（状态栏 + 应用宫格 + Dock + ~1180 行拖拽引擎）
@@ -44,7 +44,7 @@ wallet/                 # wallet / finance（记账）/ shop（商店）/ shop-a
 settings/               # settings（API 配置）/ appearance / font-settings / sound-settings
 profile/                # profile（我的）/ edit-profile
 cafe/ games/ diary/ travel/ beauty/ theme-store/ music/ library/ tools/ envelope/   # 单页 App
-apps/settings/          # ⚠️ 孤儿目录：无任何引用的旧样式副本，待清理
+apps/settings/          # 历史样式候选目录；引用与打包范围仍待 GOV-003 核验，不得据此直接删除
 ```
 
 **注意：`chat/chat/` 双层目录是重构后的真实路径，不是笔误。**
@@ -52,7 +52,7 @@ apps/settings/          # ⚠️ 孤儿目录：无任何引用的旧样式副�
 ## 入口与核心模块
 
 - **index.html** = 手机主屏：第一页默认组件优先（大时钟、图片、照片墙、待办、月历、倒数日、便签），第二/三页放应用图标，Dock 为聊天和商店。内嵌拖拽引擎（实时让位 + 跨页流转 + Dock 自由布局），布局存 `ds_layout_v13`；编辑模式 `body.home-editing` 抑制跳转。
-- **chat/chat/chat-detail.html**（4800+ 行，项目心脏）：AI 对话核心——流式响应、群聊、心形编辑器（`.bubble-heart`）、通话/图片消息、正则过滤、自动总结记忆。
+- **chat/chat/chat-detail.html**（当前 main 快照 9,463 行；编辑前须重新测量，项目核心聊天页面）：AI 对话核心——流式响应、群聊、心形编辑器（`.bubble-heart`）、通话/图片消息、正则过滤、自动总结记忆。
 - **shared/js/phone/**（AI 基础设施层，见下节）是模拟世界的"后端"。
 - 复合 App：forum/（9 页）、wallet/（4 页）、settings/（4 页）；其余为单页 App。
 
@@ -185,4 +185,4 @@ AI 接口配置存 `api_settings`（默认 `https://api.openai.com/v1`，内置 
 - JS 里的相对路径按**页面 URL**（而非脚本位置）解析；跨目录跳转统一用相对路径（如 characters-manager.js 的 `../../index.html`），nav.js 用动态 appBase 兼容子路径部署。PHONE_APPS 注册表的 `page` 字段是根绝对路径，但目前无任何消费方（纯元数据）。
 - 改完 HTML/CSS/JS 若走静态托管缓存，记得 bump 页面引用的 `?v=` 参数。
 - 全量备份/恢复在设置页 DATA 分组（settings/js/backup.js）：JSON 带 `__backup.schema` 版本校验（当前 1，拒收更高版本），排除 `api_call_logs`；导入前自动下载当前数据作安全备份，写入失败自动回滚。
-- 无 README、无测试、lint 为空操作；`.trae/` 是 IDE 配置（git-ignored）。`docs/audit-report.html` 是历史审计报告，其中的旧路径已因目录重构失效，仅作参考。
+- 仓库包含 `docs/engineering/README.md` 工程手册与 `tests/` 测试目录；`package.json` 提供多个 Node/Playwright 测试入口。`npm run lint` 当前仍只是打印固定的 “Lint passed”，不是真正的 lint 检查。`.trae/` 是 IDE 配置（git-ignored）。`docs/audit-report.html` 是历史审计报告，其中的旧路径已因目录重构失效，仅作参考。
