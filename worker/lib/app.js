@@ -1259,11 +1259,11 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     if (typeof value !== 'string') throw new ApiError(400, 'INVALID_CONTEXT_SNAPSHOT', field + ' 必须是文字');
     let result = value
       .replace(/<[^>]*>/g, ' ')
-      .replace(/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]/g, ' ')
-      .replace(/https?:\\/\\/\\S+/gi, '[链接已省略]')
-      .replace(/[\\w.+-]+@[\\w.-]+\\.[A-Za-z]{2,}/g, '[邮箱已省略]')
-      .replace(/(?<!\\d)(?:\\+?\\d[\\s().-]?){8,15}(?!\\d)/g, '[号码已省略]')
-      .replace(/\\s+/g, ' ')
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ' ')
+      .replace(/https?:\/\/\S+/gi, '[链接已省略]')
+      .replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g, '[邮箱已省略]')
+      .replace(/(?<!\d)(?:\+?\d[\s().-]?){8,15}(?!\d)/g, '[号码已省略]')
+      .replace(/\s+/g, ' ')
       .trim();
     if (Array.from(result).length > maxLength) result = Array.from(result).slice(0, maxLength).join('');
     return result;
