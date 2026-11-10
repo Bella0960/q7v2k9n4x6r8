@@ -3308,7 +3308,7 @@ test('商店与外卖亲密付使用严格钱包快照，损坏的既有余额�
   }
 });
 
-test('聊天收款入口也拒绝损坏的钱包数据，不再把余额重置成 1000', () => {
+test('聊天收款入口也拒绝损坏的钱包数据，不再把余额重置成 1000', async () => {
   const readerStart = detail.indexOf("const WORK_DATA_KEY = 'workData';");
   const readerEnd = detail.indexOf('function saveWorkData(wd)', readerStart);
   assert.ok(readerStart >= 0 && readerEnd > readerStart, 'chat wallet reader must be present');
@@ -3338,6 +3338,67 @@ test('聊天收款入口也拒绝损坏的钱包数据，不再把余额重置�
   assert.match(detail, /return ledger\.readWalletForMutation\(WORK_DATA_KEY\)/);
   assert.doesNotMatch(detail, /wd = \{ balance: 1000 \}/,
     'chat receipts must not silently replace malformed wallet data');
+
+  const paymentStart = detail.indexOf('const pendingPaymentOperations = new Set();');
+  const paymentEnd = detail.indexOf('// ===== 群投票', paymentStart);
+  assert.ok(paymentStart >= 0 && paymentEnd > paymentStart,
+    'chat payment receipt handler must be present');
+  const paymentSource = detail.slice(paymentStart, paymentEnd);
+
+  const values = new Map([
+    ['workData', '{broken-json'],
+    ['finance_records', '[]']
+  ]);
+  const writes = [];
+  let history = [{
+    role: 'assistant', type: 'redpacket', amount: '10.00',
+    status: 'unopened', mid: 'corrupt-wallet-redpacket'
+  }];
+  const localStorage = {
+    getItem: key => values.has(key) ? values.get(key) : null,
+    setItem: (key, value) => {
+      writes.push(key);
+      values.set(key, String(value));
+    }
+  };
+  const window = {
+    navigator: {
+      locks: { request: (_name, _options, callback) => Promise.resolve().then(callback) }
+    },
+    localStorage
+  };
+  runInNewContext(walletLedgerSource, { window });
+  const toasts = [];
+  const sandbox = {
+    window, localStorage,
+    loadMessages: () => JSON.parse(JSON.stringify(history)),
+    ensureMid: message => message.mid,
+    saveMessages: next => {
+      writes.push('chat-history');
+      history = JSON.parse(JSON.stringify(next));
+      return true;
+    },
+    showToast: message => toasts.push(message),
+    renderAllMessages: () => writes.push('render'),
+    openPayResult: () => writes.push('success-popup'),
+    currentCharacter: { name: '角色' },
+    console: { warn: () => {} }
+  };
+  runInNewContext(readerSource + paymentSource, sandbox);
+  await sandbox.handlePayCardClick({
+    currentTarget: {
+      getAttribute: name => name === 'data-mid' ? 'corrupt-wallet-redpacket' : null,
+      setAttribute: () => {},
+      removeAttribute: () => {}
+    }
+  });
+  assert.equal(values.get('workData'), '{broken-json',
+    'a failed wallet read must preserve the original corrupt data for recovery');
+  assert.deepEqual(writes, [],
+    'a corrupt wallet must not be changed, acknowledged in chat, or shown as successful');
+  assert.equal(history[0].status, 'unopened',
+    'the red packet must remain unopened until the wallet is readable');
+  assert.match(toasts.at(-1), /钱包数据读取失败/);
 });
 
 test('聊天、商店、外卖和钱包充值提现统一使用同一个钱包锁', () => {
