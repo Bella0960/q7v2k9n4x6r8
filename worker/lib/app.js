@@ -1109,6 +1109,14 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       Number(cloudModelLastGeneratedAt) > 0 &&
       Number(cloudModelLastGeneratedAt) <= timestamp &&
       timestamp - Number(cloudModelLastGeneratedAt) <= 30 * 24 * 60 * 60 * 1000;
+    const cloudPushLastAcceptedAt = await store.getLatestAutonomyPushAcceptance({
+      userId,
+      deviceId: device.id
+    });
+    const cloudPushAcceptanceVerified = Number.isSafeInteger(Number(cloudPushLastAcceptedAt)) &&
+      Number(cloudPushLastAcceptedAt) > 0 &&
+      Number(cloudPushLastAcceptedAt) <= timestamp &&
+      timestamp - Number(cloudPushLastAcceptedAt) <= 30 * 24 * 60 * 60 * 1000;
     const presenceSummary = presenceConfig
       ? await store.getPresenceSummary({
           userId,
@@ -1125,7 +1133,8 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       ...(contextSharingEnabled ? [] : ['context_sharing_not_enabled']),
       ...(contextVersionReady ? [] : ['context_version_unavailable']),
       ...(cloudSchedulerRuntimeVerified ? [] : ['cloud_model_scheduler_runtime_not_verified']),
-      ...(cloudModelGenerationVerified ? [] : ['cloud_model_generation_not_verified'])
+      ...(cloudModelGenerationVerified ? [] : ['cloud_model_generation_not_verified']),
+      ...(cloudPushAcceptanceVerified ? [] : ['cloud_push_provider_acceptance_not_verified'])
     ];
     const autonomousMessageGenerationReady = autonomyExecutionBlockers.length === 0;
 
@@ -1157,10 +1166,12 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       cloudSchedulerLastRunStatus: latestCloudTick?.status || null,
       cloudModelGenerationVerified,
       cloudModelLastGeneratedAt: cloudModelLastGeneratedAt || null,
+      cloudPushAcceptanceVerified,
+      cloudPushLastAcceptedAt,
       deviceLocalModelRequired: false,
       autonomousMessageGenerationReady,
       autonomyExecutionBlockers,
-      note: '云端后台任务由 Worker 定时处理，不要求小手机保持前台。只有单独开启上下文共享后，角色称呼、角色设定和最多 12 条文字消息才会同步到云端并交给服务端模型；图片、语音、附件及手机 API Key 不会上传。运行状态以最近 15 分钟调度记录为准；“主动消息生成已就绪”还要求最近 30 天内至少有一次真实模型生成并完成出站入库。设备 Web Push 与消息生成是两条独立链路。'
+      note: '云端后台任务由 Worker 定时处理，不要求小手机保持前台。只有单独开启上下文共享后，角色称呼、角色设定和最多 12 条文字消息才会同步到云端并交给服务端模型；图片、语音、附件及手机 API Key 不会上传。运行状态以最近 15 分钟调度记录、最近 30 天真实模型出站入库及当前设备最近 30 天 Web Push 服务端接受回执为准。HTTP 成功只表示推送服务接受请求，不表示 Android 一定显示通知；锁屏展示仍需真机验收。'
     });
   }
   async function getGlobalAutonomy(request) {
