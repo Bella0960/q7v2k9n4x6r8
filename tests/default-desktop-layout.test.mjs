@@ -143,7 +143,7 @@ test('pending accounts can be suspended and existing unused invitations can be r
   assert.match(adminScript, /原始邀请码只在生成时展示一次/);
   assert.match(adminScript, /accountInviteStatus[\s\S]*revokeButton[\s\S]*\/api\/admin\/invites\//,
     'the existing invitation must be revocable directly from account detail');
-  assert.match(adminScript, /createActionButton\('停用账号', 'danger', 'disable', true\);[\s\S]*else if \(account\.status === 'active'\)/,
+  assert.match(adminScript, /createActionButton\('停用账号', 'danger', 'disable', true\);[\s\S]*else if \(currentAccount\.status === 'active'\)/,
     'pending_invite and active accounts must both expose temporary disable');
   assert.match(adminCss, /\.invite-status\[hidden\]\{display:none\}/);
   assert.match(adminCss, /\.invite-revoke-button/);
