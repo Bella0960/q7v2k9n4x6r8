@@ -850,7 +850,7 @@
                 return true;
             }
             var cloudBubbles = notificationMessages.map(function (message) { return String(message.text || '').trim(); });
-            var cloudMessageText = cloudBubbles.join('\n\n');
+            var cloudMessageText = cloudBubbles.join(String.fromCharCode(10, 10));
             var completion = await cloud.completeAutonomyActivity(activity, cloudMessageText, {
                 displayName: candidate.contact.name,
                 bubbles: cloudBubbles
