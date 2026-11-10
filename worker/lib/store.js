@@ -2554,6 +2554,8 @@ class CloudStore {
         'device_pairing_tokens',
         'character_context_versions',
         'character_context_events',
+        'user_context_sharing',
+        'character_context_snapshots',
         'outbound_device_receipts'
       ];
       for (const table of tables) {
