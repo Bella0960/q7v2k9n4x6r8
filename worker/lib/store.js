@@ -1996,7 +1996,7 @@ class CloudStore {
    * The target tenant/device/role are taken only from persisted queue + device
    * rows, never from caller-supplied identifiers.
    */
-  completeCloudActivityWithOutboundGroup({ id, owner, attemptCount, now, groupId, messages }) {
+  completeCloudActivityWithOutboundGroup({ id, owner, attemptCount, now, groupId, contextVersion, sourceDeviceId, messages }) {
     if (!Array.isArray(messages) || messages.length < 1 || messages.length > 4) {
       throw new TypeError('cloud outbound group requires 1..4 messages');
     }
@@ -2008,6 +2008,11 @@ class CloudStore {
       groupIndex: index + 1,
       groupCount: messages.length
     }));
+    const safeContextVersion = Number(contextVersion);
+    const safeSourceDeviceId = requireStoreString(sourceDeviceId, 'group.sourceDeviceId');
+    if (!Number.isSafeInteger(safeContextVersion) || safeContextVersion < 1) {
+      throw new TypeError('cloud outbound group contextVersion invalid');
+    }
     const resultJson = JSON.stringify(prepared);
     const existingTask = this.exec(
       `SELECT q.*, d.user_id AS user_id FROM activity_queue q
@@ -2041,10 +2046,24 @@ class CloudStore {
            result_group_id = ?, result_message_count = ?
        WHERE id = ? AND status = 'running' AND locked_by = ?
          AND attempt_count = ? AND locked_until > ?
+         AND device_id = ?
+         AND EXISTS (
+           SELECT 1 FROM devices source
+           INNER JOIN character_context_versions version
+             ON version.user_id = source.user_id
+            AND version.character_id = activity_queue.character_id
+            AND version.version = ?
+            AND version.updated_by_device_id = source.id
+           INNER JOIN user_context_sharing sharing
+             ON sharing.user_id = source.user_id AND sharing.enabled = 1
+           WHERE source.id = activity_queue.device_id
+             AND source.id = ? AND source.revoked_at IS NULL
+         )
        RETURNING id`,
       now, resultJson, prepared[0].serverMessageId,
       'outbound-group:' + groupId, groupId, prepared.length,
-      id, owner, attemptCount, now
+      id, owner, attemptCount, now,
+      safeSourceDeviceId, safeContextVersion, safeSourceDeviceId
     )[0];
     if (!completed) return null;
     return this.enqueueCloudGroupRows(task, prepared, now, false);
