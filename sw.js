@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v200';
+const CACHE_NAME = 'phone-app-pwa-v201';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 // v196 release: sweep orphaned role-owned media refs during avatar cleanup.
 const APP_SHELL = [
@@ -93,7 +93,7 @@ const APP_SHELL = [
   'shared/js/phone/phone_stream.js',
   'shared/js/phone/memory_recall.js?v=20261024v2',
   'shared/js/phone/memory_space_v2.js?v=20261024v1',
-  './shared/js/chat-notifier.js?v=20261102v3',
+  './shared/js/chat-notifier.js?v=20261111v4',
   'shared/js/phone/storage/repository.js',
   'shared/js/phone/storage/media-repository.js?v=20261107v2',
   './shared/js/phone/role-sticker-library.js?v=20261107v2',
