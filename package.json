@@ -42,7 +42,7 @@
     "test:accounts:gate-contract": "node --test tests/account-auth-gate-contract.test.mjs",
     "test:accounts:local": "node scripts/run-account-auth-gate.mjs",
     "test:admin:center": "node --test tests/admin-center-ui.test.mjs",
-    "test:cloud:push": "node --test tests/cloud-push-contract.test.mjs",
+    "test:cloud:push": "node --test tests/cloud-push-contract.test.mjs tests/cloud-autonomous-model.test.mjs",
     "test:schedule": "node --test tests/character-schedule-policy.test.mjs",
     "test:autonomy": "node --test tests/autonomy-scheduler.test.mjs",
     "test:preview:config": "node --test tests/preview-deployment-isolation.test.mjs",
