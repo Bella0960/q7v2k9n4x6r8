@@ -413,7 +413,7 @@ export async function dispatchPendingOutboundPushes({
         deviceId: candidate.device_id,
         kind: 'outbound_push',
         status: finalized ? 'skipped' : 'failed',
-        reasonCode: 'subscription_unavailable_before_send',
+        reasonCode: finalized ? 'subscription_unavailable_before_send' : 'delivery_lease_lost',
         detail: {
           outboundMessageId: candidate.outbound_message_id,
           serverMessageId: candidate.server_message_id,
@@ -461,6 +461,21 @@ export async function dispatchPendingOutboundPushes({
 
     if (!finalized) {
       summary.failed += 1;
+      await store.logExecution({
+        id: randomToken(12),
+        deviceId: candidate.device_id,
+        kind: 'outbound_push',
+        status: 'failed',
+        reasonCode: 'delivery_lease_lost',
+        detail: {
+          outboundMessageId: candidate.outbound_message_id,
+          serverMessageId: candidate.server_message_id,
+          subscriptionId: candidate.subscription_id,
+          httpStatus: Number.isFinite(statusCode) ? statusCode : 0,
+          retryScheduled: false
+        },
+        now: finishedAt
+      });
       continue;
     }
     if (outcome.ok) {
