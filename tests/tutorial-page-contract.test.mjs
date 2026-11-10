@@ -15,6 +15,7 @@ const guideHtml = read('tutorial/tutorial.html');
 const chatDetail = read('chat/chat/chat-detail.html');
 const guideScript = read('tutorial/tutorial.js');
 const packageJson = JSON.parse(read('package.json'));
+const tutorialWorkflow = read('.github/workflows/tutorial-regression.yml');
 
 test('tutorial script parses without syntax errors', () => {
   assert.doesNotThrow(() => new Function(guideScript));
@@ -94,6 +95,14 @@ test('conversation settings has a direct navigation fallback and is cached in th
   assert.match(chatDetail, /btnMoreMenu\.dataset\.navBound = '1'/);
   assert.match(chatDetail, /btnMoreMenu\.addEventListener\('click'/);
   assert.ok(serviceWorker.includes("'./chat/chat/chat-settings.html'"));
+});
+
+test('tutorial workflow enforces a guide update when user-facing app pages change', () => {
+  assert.match(tutorialWorkflow, /pull_request:/);
+  assert.match(tutorialWorkflow, /npm run test:tutorial/);
+  assert.match(tutorialWorkflow, /User-facing MAOMAO files changed without updating tutorial\/tutorial\.js/);
+  assert.match(tutorialWorkflow, /git diff --name-only/);
+  assert.match(tutorialWorkflow, /tutorial\/tutorial\.js/);
 });
 
 test('PWA app shell caches the full guide bundle and has a matching test command', () => {
