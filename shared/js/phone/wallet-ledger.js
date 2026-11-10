@@ -207,10 +207,95 @@
     return wallet;
   }
 
+  function readClosePayState(storageKey, rawOverride) {
+    storageKey = String(storageKey || 'close_pay');
+    var raw;
+    try {
+      if (arguments.length > 1) raw = rawOverride;
+      else {
+        if (!global.localStorage || typeof global.localStorage.getItem !== 'function') {
+          return { ok: false, reason: 'storage', value: null };
+        }
+        raw = global.localStorage.getItem(storageKey);
+      }
+    } catch (error) {
+      return { ok: false, reason: 'storage', value: null };
+    }
+
+    var defaults = {
+      enabled: false,
+      roleId: '',
+      roleName: '',
+      limit: 500,
+      used: 0,
+      history: []
+    };
+    if (raw == null) return { ok: true, reason: '', value: defaults };
+
+    var data;
+    try { data = JSON.parse(raw); }
+    catch (error) { return { ok: false, reason: 'invalid', value: null }; }
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      return { ok: false, reason: 'invalid', value: null };
+    }
+
+    if (Object.prototype.hasOwnProperty.call(data, 'enabled') && typeof data.enabled !== 'boolean') {
+      return { ok: false, reason: 'invalid', value: null };
+    }
+    for (var key of ['roleId', 'roleName', 'roleAvatar']) {
+      if (Object.prototype.hasOwnProperty.call(data, key) && typeof data[key] !== 'string') {
+        return { ok: false, reason: 'invalid', value: null };
+      }
+    }
+
+    var limit = Object.prototype.hasOwnProperty.call(data, 'limit') ? Number(data.limit) : 500;
+    var used = Object.prototype.hasOwnProperty.call(data, 'used') ? Number(data.used) : 0;
+    if (!isFinite(limit) || limit < 0 || !isFinite(used) || used < 0) {
+      return { ok: false, reason: 'invalid', value: null };
+    }
+
+    var history = Object.prototype.hasOwnProperty.call(data, 'history') ? data.history : [];
+    if (!Array.isArray(history)) return { ok: false, reason: 'invalid', value: null };
+    var paymentIds = Object.create(null);
+    for (var i = 0; i < history.length; i++) {
+      var row = history[i];
+      if (!row || typeof row !== 'object' || Array.isArray(row) ||
+          !isFinite(Number(row.amount)) || Number(row.amount) <= 0 ||
+          !isFinite(Number(row.time)) || Number(row.time) <= 0 ||
+          (row.note != null && typeof row.note !== 'string') ||
+          (row.paymentId != null && typeof row.paymentId !== 'string')) {
+        return { ok: false, reason: 'invalid', value: null };
+      }
+      if (row.paymentId) {
+        if (paymentIds[row.paymentId]) return { ok: false, reason: 'invalid', value: null };
+        paymentIds[row.paymentId] = true;
+      }
+    }
+
+    var value = Object.assign({}, data, {
+      enabled: Object.prototype.hasOwnProperty.call(data, 'enabled') ? data.enabled : false,
+      roleId: Object.prototype.hasOwnProperty.call(data, 'roleId') ? data.roleId : '',
+      roleName: Object.prototype.hasOwnProperty.call(data, 'roleName') ? data.roleName : '',
+      limit: limit,
+      used: used,
+      history: history
+    });
+    return { ok: true, reason: '', value: value };
+  }
+
+  function readClosePayForMutation(storageKey, rawOverride) {
+    var state = arguments.length > 1
+      ? readClosePayState(storageKey, rawOverride)
+      : readClosePayState(storageKey);
+    return state.ok ? state.value : null;
+  }
+
   global.MaoMaoWalletLedger = Object.freeze({
     lockName: LOCK_NAME,
     runExclusive: runExclusive,
     readWalletForMutation: readWalletForMutation,
+    readClosePayState: readClosePayState,
+    readClosePayForMutation: readClosePayForMutation,
     getOrCreatePendingCheckout: getOrCreatePendingCheckout,
     cancelPendingCheckout: cancelPendingCheckout,
     isPendingCheckout: isPendingCheckout,
