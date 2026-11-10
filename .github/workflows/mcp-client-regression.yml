@@ -1,0 +1,72 @@
+name: MCP Client Regression
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/mcp-client-regression.yml'
+      - 'settings/mcp-connections.html'
+      - 'shared/js/phone/mcp-client.js'
+      - 'shared/js/phone/mcp-role-permissions.js'
+      - 'shared/js/phone/mcp-ai-tools.js'
+      - 'tests/mcp-client.test.mjs'
+      - 'tests/mcp-role-permissions.test.mjs'
+      - 'tests/mcp-ai-tools.test.mjs'
+      - 'package.json'
+      - 'sw.js'
+      - 'chat/chat/chat-detail.html'
+      - 'tests/chat-regression-contract.test.mjs'
+      - 'tests/pwa-navigation-cache.test.mjs'
+      - 'tests/icon-presets-contract.test.mjs'
+      - 'tests/font-runtime-performance.test.mjs'
+      - 'tests/default-desktop-layout.test.mjs'
+  pull_request:
+    paths:
+      - '.github/workflows/mcp-client-regression.yml'
+      - 'settings/mcp-connections.html'
+      - 'shared/js/phone/mcp-client.js'
+      - 'shared/js/phone/mcp-role-permissions.js'
+      - 'shared/js/phone/mcp-ai-tools.js'
+      - 'tests/mcp-client.test.mjs'
+      - 'tests/mcp-role-permissions.test.mjs'
+      - 'tests/mcp-ai-tools.test.mjs'
+      - 'package.json'
+      - 'sw.js'
+      - 'chat/chat/chat-detail.html'
+      - 'tests/chat-regression-contract.test.mjs'
+      - 'tests/pwa-navigation-cache.test.mjs'
+      - 'tests/icon-presets-contract.test.mjs'
+      - 'tests/font-runtime-performance.test.mjs'
+      - 'tests/default-desktop-layout.test.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mcp-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run MCP client contract tests
+        run: npm run test:mcp
+
+  production-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Build MAOMAO
+        run: npm run build

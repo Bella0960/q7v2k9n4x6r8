@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>MCP 连接 · 设置</title>
+<script src="../shared/js/native-feel.js"></script>
+<script src="../shared/js/phone/mcp-client.js?v=20261108m"></script>
+<script src="../shared/js/phone/mcp-role-permissions.js?v=20261108a"></script>
+<link rel="stylesheet" href="../shared/css/mobile-fit.css">
+<style>
+:root{--ink:#111;--muted:#777;--line:#e4e4e7;--paper:#fff}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:#f4f4f5;color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Microsoft YaHei",sans-serif}
+button,input,textarea{font:inherit}
+.page{width:min(440px,100%);min-height:100dvh;margin:0 auto;background:#fff;padding:calc(env(safe-area-inset-top) + 16px) 20px calc(env(safe-area-inset-bottom) + 28px)}
+.head{display:flex;align-items:center;gap:14px;padding-bottom:20px;border-bottom:1px solid var(--line)}
+.back{border:0;background:transparent;font-size:24px;padding:2px 6px 2px 0;cursor:pointer}
+.title{font-size:20px;font-weight:600;letter-spacing:-.3px}
+.eyebrow{font-size:10px;letter-spacing:.18em;color:var(--muted);margin:24px 0 9px}
+.intro{font-size:13px;line-height:1.7;color:#555;margin:0 0 20px}
+.panel{border:1px solid var(--line);padding:15px;margin:12px 0}
+.field{display:block;margin:12px 0}
+.field span{display:block;font-size:12px;color:#555;margin-bottom:6px}
+.field input,.tool-input{width:100%;border:1px solid #d7d7db;border-radius:7px;background:#fff;color:#111;padding:11px 12px;font-size:13px;outline:none}
+.field input:focus,.tool-input:focus{border-color:#777}
+.hint{font-size:11px;line-height:1.6;color:#888;margin:8px 0}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.btn{border:1px solid #111;background:#111;color:#fff;padding:10px 14px;border-radius:7px;font-size:12px;cursor:pointer}
+.btn.secondary{background:#fff;color:#111;border-color:#ccc}
+.btn:disabled{opacity:.45;cursor:default}
+.status{font-size:12px;line-height:1.6;padding:10px 0;color:#555;white-space:pre-wrap}
+.status.error{color:#8a2525}
+.saved-list{display:grid;gap:7px}
+.saved-item{border:1px solid var(--line);padding:10px;display:flex;align-items:center;gap:8px;font-size:12px}
+.saved-item button{border:0;background:none;color:#555;text-decoration:underline;cursor:pointer}
+.saved-item .saved-name{flex:1;min-width:0;overflow-wrap:anywhere}
+.tool{border-top:1px solid var(--line);padding:14px 0}
+.tool-head{display:flex;justify-content:space-between;gap:12px;align-items:start}
+.tool-name{font-size:14px;font-weight:600;overflow-wrap:anywhere}
+.tool-desc{font-size:11px;line-height:1.6;color:#777;margin:5px 0 10px}
+.tool-input{min-height:76px;resize:vertical;font-family:ui-monospace,monospace;font-size:11px}
+.role-permissions{border:1px solid var(--line);padding:12px;margin:12px 0;background:#fafafa}
+.role-permissions select{width:100%;border:1px solid #d7d7db;border-radius:7px;background:#fff;color:#111;padding:10px 12px;font-size:12px}
+.role-permissions-head{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:8px}
+.tool-permission{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:10px 0 0;padding-top:10px;border-top:1px solid #eee}
+.tool-permission-status{font-size:11px;color:#777;line-height:1.5}
+.tool-result{margin:9px 0 0;background:#f6f6f7;padding:10px;white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.5 ui-monospace,monospace;max-height:220px;overflow:auto}
+.empty{font-size:12px;color:#999;padding:16px 0}
+.notice{background:#f6f6f7;padding:12px;font-size:11px;line-height:1.7;color:#555;margin:14px 0}
+.hidden{display:none!important}
+@media(min-width:600px){.page{margin:18px auto;min-height:calc(100dvh - 36px);border:1px solid #e5e5e5}}
+</style>
+</head>
+<body>
+<main class="page">
+  <header class="head">
+    <button class="back" type="button" aria-label="返回设置" onclick="history.back()">‹</button>
+    <div class="title">MCP 连接中心</div>
+  </header>
+  <div class="eyebrow">MODEL CONTEXT PROTOCOL</div>
+  <p class="intro">连接支持 MCP Streamable HTTP 的外部工具服务。连接后可以查看工具说明，并在逐次确认后手动调用。</p>
+  <section class="panel">
+    <div class="eyebrow" style="margin-top:0">连接服务</div>
+    <label class="field"><span>服务名称</span><input id="serverName" maxlength="60" placeholder="例如：我的知识库"></label>
+    <label class="field"><span>MCP 服务地址</span><input id="serverUrl" inputmode="url" autocomplete="url" placeholder="https://example.com/mcp"></label>
+    <label class="field"><span>Bearer Token（可选）</span><input id="serverToken" type="password" autocomplete="off" placeholder="仅本次页面会话使用，不会保存"></label>
+    <p class="hint">凭据只保存在当前页面内存，离开页面即清除；保存的服务列表只包含名称和地址。</p>
+    <div class="actions">
+      <button class="btn" id="connectBtn" type="button">连接并读取工具</button>
+      <button class="btn secondary" id="disconnectBtn" type="button" disabled>断开连接</button>
+    </div>
+    <div class="status" id="connectStatus" role="status" aria-live="polite">尚未连接</div>
+  </section>
+  <section class="panel">
+    <div class="eyebrow" style="margin-top:0">已保存的服务</div>
+    <div id="savedList" class="saved-list"><div class="empty">尚未保存连接</div></div>
+  </section>
+  <section class="panel hidden" id="toolsPanel">
+    <div class="eyebrow" style="margin-top:0">可用工具</div>
+    <p class="hint" id="serverInfo"></p>
+    <div class="role-permissions">
+      <div class="role-permissions-head">
+        <label class="field" style="margin:0"><span>角色级工具授权</span><select id="permissionRole" aria-label="选择需要管理 MCP 权限的角色"><option value="">选择角色（默认无授权）</option></select></label>
+        <button class="btn secondary" id="clearRolePermissions" type="button" disabled>清空该角色授权</button>
+      </div>
+      <p class="hint" id="permissionHint">每个角色独立授权到具体服务和工具。当前连接的 Bearer Token 按连接共用，不会复制到角色记录。未授权角色不能通过角色调用接口使用 MCP。</p>
+    </div>
+    <div id="toolList"></div>
+  </section>
+  <div class="notice">安全说明：工具结果只作为文本展示，不会执行服务端返回的脚本。手动调用仍逐次确认。角色授权按角色 ID、服务地址、工具名称和参数结构 SHA-256 指纹分别保存；参数结构变化后旧授权自动失效。授权记录只保存在本机，不包含令牌、调用参数或工具结果。这是客户端角色调用门禁，不代替 MCP 服务端自身的账户权限校验。角色调用接口已有权限门禁，但尚未接入 AI 自动工具选择。浏览器连接还要求 MCP 服务允许当前网站的 CORS 跨域请求。</div>
+</main>
+<script>
+(function () {
+  'use strict';
+  var STORE_KEY = 'maomao_mcp_connections_v1';
+  var client = null, activeTools = [], serverInfo = null;
+  var activeServiceName = '', activeServerUrl = '';
+  var $ = function (id) { return document.getElementById(id); };
+  function readRoles() {
+    try {
+      var rows = JSON.parse(localStorage.getItem('ai_custom_characters') || '[]');
+      if (!Array.isArray(rows)) return [];
+      return rows.filter(function (role) {
+        return role && role.id != null && String(role.id).trim() && String(role.id).length <= 160;
+      });
+    } catch (error) { return []; }
+  }
+  function renderPermissionRoles() {
+    var picker = $('permissionRole');
+    var previous = picker.value;
+    var roles = readRoles();
+    picker.innerHTML = '<option value="">选择角色（默认无授权）</option>' + roles.map(function (role) {
+      var label = String(role.name || role.nickname || '未命名角色').slice(0, 80);
+      return '<option value="' + esc(role.id) + '">' + esc(label) + '</option>';
+    }).join('');
+    if (roles.some(function (role) { return String(role.id) === previous; })) picker.value = previous;
+  }
+  async function refreshRolePermissions() {
+    var roleId = $('permissionRole').value;
+    var buttons = Array.prototype.slice.call($('toolList').querySelectorAll('[data-permission-action]'));
+    var manager = window.MaoMcpRolePermissions;
+    buttons.forEach(function (button) { button.disabled = !roleId || !client || !manager; });
+    $('clearRolePermissions').disabled = !roleId || !manager;
+    if (!roleId) {
+      $('permissionHint').textContent = '请选择一个角色。每个角色默认没有 MCP 工具权限。';
+      buttons.forEach(function (button) {
+        button.textContent = '为所选角色授权';
+        button.dataset.granted = 'false';
+        var status = button.closest('.tool').querySelector('[data-permission-status]');
+        if (status) status.textContent = '未选择角色';
+      });
+      return;
+    }
+    if (!manager) {
+      $('permissionHint').textContent = '角色授权模块不可用，已拒绝所有角色调用。';
+      return;
+    }
+    $('permissionHint').textContent = '正在检查该角色的独立授权记录…';
+    for (var i = 0; i < buttons.length; i++) {
+      var button = buttons[i];
+      var index = Number(button.getAttribute('data-permission-action'));
+      var tool = activeTools[index];
+      var status = button.closest('.tool').querySelector('[data-permission-status]');
+      try {
+        var granted = !!tool && await manager.isAllowed(roleId, activeServerUrl, tool);
+        if ($('permissionRole').value !== roleId || !button.isConnected) return;
+        button.dataset.granted = granted ? 'true' : 'false';
+        button.textContent = granted ? '撤销角色授权' : '为此角色授权';
+        if (status) status.textContent = granted ? '此角色已获准使用' : '此角色尚未获准';
+      } catch (error) {
+        button.dataset.granted = 'false';
+        button.disabled = true;
+        if (status) status.textContent = error.message || '权限记录读取失败，已拒绝';
+      }
+    }
+    if ($('permissionRole').value === roleId) {
+      $('permissionHint').textContent = '权限按角色、服务、工具和参数结构分别匹配；结构变化会要求重新授权。';
+    }
+  }
+  function safeRead() {
+    try { var v = JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); return Array.isArray(v) ? v : []; }
+    catch (e) { return []; }
+  }
+  function safeWrite(items) {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(items)); return true; }
+    catch (e) { setStatus('无法保存服务列表：本机存储不可用。', true); return false; }
+  }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+  function setStatus(message, error) {
+    $('connectStatus').textContent = message;
+    $('connectStatus').classList.toggle('error', !!error);
+  }
+  function renderSaved() {
+    var rows = safeRead();
+    if (!rows.length) { $('savedList').innerHTML = '<div class="empty">尚未保存连接</div>'; return; }
+    $('savedList').innerHTML = rows.map(function (row) {
+      return '<div class="saved-item"><span class="saved-name">' + esc(row.name) + '<br><span style="color:#888">' + esc(row.url) + '</span></span>' +
+        '<button type="button" data-load="' + esc(row.id) + '">载入</button><button type="button" data-remove="' + esc(row.id) + '">删除</button></div>';
+    }).join('');
+  }
+  function renderTools() {
+    $('toolsPanel').classList.toggle('hidden', !client);
+    $('serverInfo').textContent = serverInfo
+      ? '服务：' + String(serverInfo.name || 'MCP Server') + ' · 协议：' + String(serverInfo.version || '未提供')
+      : '已读取工具清单';
+    renderPermissionRoles();
+    if (!activeTools.length) {
+      $('toolList').innerHTML = '<div class="empty">服务暂未提供工具。</div>';
+      refreshRolePermissions();
+      return;
+    }
+    $('toolList').innerHTML = activeTools.map(function (tool, index) {
+      return '<article class="tool" data-tool-index="' + index + '">' +
+        '<div class="tool-head"><div class="tool-name">' + esc(tool.name) + '</div><button class="btn secondary" type="button" data-call="' + index + '">调用工具</button></div>' +
+        '<div class="tool-desc">' + esc(tool.description || '服务未提供工具说明。') + '</div>' +
+        '<textarea class="tool-input" aria-label="' + esc(tool.name) + ' 参数 JSON" spellcheck="false">{}</textarea>' +
+        '<div class="tool-permission"><span class="tool-permission-status" data-permission-status>未选择角色</span><button class="btn secondary" type="button" data-permission-action="' + index + '">为所选角色授权</button></div>' +
+        '<details><summary class="hint">查看参数结构</summary><pre class="tool-result">' + esc(JSON.stringify(tool.inputSchema || {}, null, 2)) + '</pre></details>' +
+        '<pre class="tool-result hidden" data-result></pre></article>';
+    }).join('');
+    refreshRolePermissions();
+  }
+  function disconnect() {
+    var old = client;
+    client = null; activeTools = []; serverInfo = null;
+    activeServiceName = ''; activeServerUrl = '';
+    $('serverToken').value = '';
+    $('disconnectBtn').disabled = true;
+    $('toolsPanel').classList.add('hidden');
+    $('permissionRole').value = '';
+    if (old) old.disconnect();
+  }
+  $('connectBtn').addEventListener('click', async function () {
+    disconnect();
+    var url = $('serverUrl').value.trim();
+    var name = $('serverName').value.trim() || 'MCP 服务';
+    var token = $('serverToken').value;
+    var candidateClient = null;
+    $('connectBtn').disabled = true;
+    try {
+      var validatedUrl = MaoMcpClient.validateEndpoint(url);
+      setStatus('正在连接并协商 MCP 协议…');
+      candidateClient = MaoMcpClient.createClient({url:validatedUrl, token:token});
+      var init = await candidateClient.initialize();
+      var tools = await candidateClient.listTools();
+      var id = 'mcp_' + Date.now().toString(36);
+      var rows = safeRead().filter(function (x) { return x.url !== validatedUrl; });
+      rows.unshift({id:id,name:name.slice(0,60),url:validatedUrl,updatedAt:Date.now()});
+      if (!safeWrite(rows.slice(0,30))) {
+        await candidateClient.disconnect();
+        candidateClient = null;
+        return;
+      }
+      client = candidateClient;
+      candidateClient = null;
+      activeTools = tools;
+      serverInfo = init.serverInfo || null;
+      activeServiceName = name.slice(0, 60);
+      activeServerUrl = validatedUrl;
+      $('serverToken').value = '';
+      $('disconnectBtn').disabled = false;
+      setStatus('已连接 · 发现 ' + tools.length + ' 个工具。');
+      renderSaved();
+      renderTools();
+    } catch (error) {
+      if (candidateClient) await candidateClient.disconnect();
+      disconnect();
+      setStatus(error && error.message ? error.message : '连接失败。', true);
+    } finally {
+      $('serverToken').value = '';
+      $('connectBtn').disabled = false;
+    }
+  });
+  $('disconnectBtn').addEventListener('click', function () {
+    disconnect(); setStatus('已断开连接。');
+  });
+  $('savedList').addEventListener('click', function (event) {
+    var load = event.target.closest('[data-load]');
+    var remove = event.target.closest('[data-remove]');
+    if (load) {
+      var row = safeRead().find(function (x) { return String(x.id) === load.getAttribute('data-load'); });
+      if (!row) return;
+      $('serverName').value = row.name || ''; $('serverUrl').value = row.url || '';
+      $('serverToken').value = ''; setStatus('已载入地址。请重新输入令牌并连接。');
+      return;
+    }
+    if (remove) {
+      disconnect();
+      safeWrite(safeRead().filter(function (x) { return String(x.id) !== remove.getAttribute('data-remove'); }));
+      renderSaved(); setStatus('已删除服务配置。');
+    }
+  });
+  $('permissionRole').addEventListener('change', refreshRolePermissions);
+  $('clearRolePermissions').addEventListener('click', async function () {
+    var roleId = $('permissionRole').value;
+    if (!roleId || !window.MaoMcpRolePermissions) return;
+    var roleOption = $('permissionRole').selectedOptions[0];
+    var roleName = roleOption ? roleOption.textContent : roleId;
+    if (!window.confirm('清空角色“' + roleName + '”的全部 MCP 工具授权？此操作会撤销该角色在所有已连接服务上的授权。')) return;
+    $('clearRolePermissions').disabled = true;
+    try {
+      await MaoMcpRolePermissions.revokeRole(roleId);
+      $('permissionHint').textContent = '该角色的全部 MCP 工具授权已清空。';
+      await refreshRolePermissions();
+    } catch (error) {
+      $('permissionHint').textContent = error && error.message ? error.message : '清空授权失败。';
+      $('clearRolePermissions').disabled = false;
+    }
+  });
+  $('toolList').addEventListener('click', async function (event) {
+    var permissionButton = event.target.closest('[data-permission-action]');
+    if (permissionButton) {
+      if (!client || !activeServerUrl || !window.MaoMcpRolePermissions) return;
+      var permissionIndex = Number(permissionButton.getAttribute('data-permission-action'));
+      var permissionTool = activeTools[permissionIndex];
+      var roleId = $('permissionRole').value;
+      var selectedRole = $('permissionRole').selectedOptions[0];
+      var roleName = selectedRole ? selectedRole.textContent : roleId;
+      if (!permissionTool || !roleId) {
+        $('permissionHint').textContent = '请先选择要授权的角色。';
+        return;
+      }
+      var wasGranted = permissionButton.dataset.granted === 'true';
+      var actionText = wasGranted ? '撤销' : '授予';
+      var confirmText = actionText + '角色“' + roleName + '”使用 MCP 工具“' + permissionTool.name +
+        '”？\n\n服务：' + activeServiceName + '\n地址：' + activeServerUrl +
+        '\n\n授权只适用于当前工具及当前参数结构；结构变化后需要重新授权。';
+      if (!window.confirm(confirmText)) return;
+      permissionButton.disabled = true;
+      try {
+        if (wasGranted) {
+          await MaoMcpRolePermissions.revokeTool(roleId, activeServerUrl, permissionTool.name);
+        } else {
+          await MaoMcpRolePermissions.grantTool(roleId, activeServerUrl, permissionTool);
+        }
+        await refreshRolePermissions();
+      } catch (error) {
+        $('permissionHint').textContent = error && error.message ? error.message : '授权操作失败，已拒绝调用。';
+        permissionButton.disabled = true;
+      }
+      return;
+    }
+    var button = event.target.closest('[data-call]');
+    if (!button || !client) return;
+    var tool = activeTools[Number(button.getAttribute('data-call'))];
+    var card = button.closest('.tool');
+    var input = card && card.querySelector('.tool-input');
+    var resultBox = card && card.querySelector('[data-result]');
+    if (!tool || !input || !resultBox) return;
+    var args;
+    try {
+      if (new TextEncoder().encode(input.value).byteLength > 32768) throw new Error('参数 JSON 超过 32 KB UTF-8 限制，请缩小内容后重试。');
+      args = JSON.parse(input.value || '{}');
+      if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('参数必须是 JSON 对象。');
+      MaoMcpClient.validateToolArguments(tool.inputSchema || { type: 'object' }, args);
+    } catch (error) {
+      resultBox.textContent = error.message || '参数 JSON 格式错误。';
+      resultBox.classList.remove('hidden'); return;
+    }
+    var confirmText = '即将调用 MCP 工具：' + tool.name + '\n\n参数：\n' + JSON.stringify(args, null, 2) +
+      '\n\nMCP 服务：' + activeServiceName + '\n地址：' + activeServerUrl + '\n\n工具会访问外部服务并可能产生外部影响。确定继续吗？';
+    if (!window.confirm(confirmText)) return;
+    button.disabled = true; resultBox.textContent = '正在调用…'; resultBox.classList.remove('hidden');
+    try {
+      var result = await client.callTool(tool.name, args);
+      resultBox.textContent = JSON.stringify(result, null, 2).slice(0, 12000);
+    } catch (error) {
+      resultBox.textContent = error && error.message ? error.message : '工具调用失败。';
+    } finally { button.disabled = false; }
+  });
+  renderSaved();
+  // A page-session token and MCP session should not survive navigation or a
+  // back-forward cache restore. Reconnect explicitly after returning.
+  window.addEventListener('pagehide', function () {
+    disconnect();
+  });
+  window.addEventListener('pageshow', function (event) {
+    if (event && event.persisted) {
+      disconnect();
+      setStatus('页面已恢复。为保护连接凭据，请重新连接 MCP 服务。');
+      renderSaved();
+    }
+  });
+})();
+</script>
+</body>
+</html>
