@@ -1007,13 +1007,13 @@
             }
             var omittedAudioSummary = formatExcludedAudioSummary(obj.__backup.excluded, obj.indexedDB);
             var audioImportWarning = omittedAudioSummary
-                ? '\\n\\n警告：这份备份未包含本地音乐文件（' + omittedAudioSummary
+                ? '\n\n警告：这份备份未包含本地音乐文件（' + omittedAudioSummary
                     + '）。导入会覆盖当前音频库，可能移除本机原有的本地音乐文件。'
                     + '若这些文件尚未另行保存，请取消导入。'
                 : '';
             if (!confirm('将用备份覆盖当前全部数据（localStorage ' + count + ' 项'
                     + (idbTotal ? '，IndexedDB ' + idbTotal + ' 项' : '') + '）' + label
-                    + '。\\n\\n当前数据会先自动导出一份安全备份，localStorage 导入失败会自动回滚。确定继续？'
+                    + '。\n\n当前数据会先自动导出一份安全备份，localStorage 导入失败会自动回滚。确定继续？'
                     + audioImportWarning)) return;
 
             // 1. 建立本机恢复点：把当前 localStorage 快照写入独立 IndexedDB，
