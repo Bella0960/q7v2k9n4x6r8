@@ -962,6 +962,7 @@
     if (!value) return Promise.reject(new Error('角色 ID 无效'));
     var fingerprint = fingerprintCharacterHistory(history);
     if (fingerprint == null) return Promise.resolve({ changed: false });
+    var initialContact = Boolean(snapshot && snapshot.initialContact === true);
 
     var fingerprintKey = contextMetadataKey(CONTEXT_FINGERPRINT_PREFIX, value);
     var pendingKey = contextMetadataKey(CONTEXT_PENDING_PREFIX, value);
@@ -989,7 +990,7 @@
     return getContextSharing().then(function (sharing) {
       if (!sharing.enabled) return queueContentFreeVersion();
       var previous = readContextMetadata(fingerprintKey, localContextFingerprints);
-      if (previous === fingerprint) {
+      if (previous === fingerprint && !initialContact) {
         return flushCharacterContextVersion(value).then(function (payload) {
           return { changed: false, shared: true, synced: Boolean(payload), payload: payload };
         });
@@ -1002,6 +1003,7 @@
         recentMessages: Array.isArray(snapshot.recentMessages) ? snapshot.recentMessages.slice(-12) : [],
         lastUserMessageAt: Number(snapshot.lastUserMessageAt)
       };
+      if (initialContact) body.initialContact = true;
       writeContextMetadata(fingerprintKey, fingerprint, localContextFingerprints);
       writeContextMetadata(pendingKey, eventId, localContextPendingEvents);
       writeContextMetadata(snapshotPendingKey, JSON.stringify(body), localContextPendingEvents);
