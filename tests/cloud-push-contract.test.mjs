@@ -4927,3 +4927,168 @@ test('生命周期回执支持同账号跨设备恢复，但不能跨账号或�
   );
   assert.equal(forgedAck.status, 404);
 });
+
+
+
+test('云端角色上下文共享默认关闭、内容有界且关闭后删除快照', async () => {
+  const now = 1800000000000;
+  const ctx = setupTestStore(openTestDb());
+  ctx.timestamps.push(now);
+  const device = makeDevice();
+  await registerDevice(ctx, device);
+
+  const initial = await ctx.asJson('/api/autonomy/context-sharing', { device });
+  assert.equal(initial.status, 200);
+  assert.equal(initial.payload.enabled, false);
+
+  const eventId = randomToken(20);
+  const snapshotBody = {
+    eventId,
+    characterName: '测试角色',
+    personaText: '角色设定包含邮箱 person@example.com、网址 https://example.com 和号码 12345678901。',
+    recentMessages: [
+      { role: 'user', content: '这是一条测试消息。' },
+      { role: 'assistant', content: '收到，我会记住本轮的简短上下文。' }
+    ],
+    lastUserMessageAt: now - 1000
+  };
+  const denied = await ctx.asJson('/api/characters/char-context/context-snapshot', {
+    method: 'POST', device, body: snapshotBody
+  });
+  assert.equal(denied.status, 200);
+  assert.equal(denied.payload.disabled, true);
+  assert.equal(ctx.query('SELECT * FROM character_context_snapshots').length, 0);
+
+  const enabled = await ctx.asJson('/api/autonomy/context-sharing', {
+    method: 'PUT', device, body: { enabled: true }
+  });
+  assert.equal(enabled.status, 200);
+  assert.equal(enabled.payload.enabled, true);
+
+  const saved = await ctx.asJson('/api/characters/char-context/context-snapshot', {
+    method: 'POST', device, body: snapshotBody
+  });
+  assert.equal(saved.status, 200);
+  assert.equal(saved.payload.saved, true);
+  const stored = ctx.store.getLatestCharacterContextSnapshot({
+    userId: 'owner', characterId: 'char-context'
+  });
+  assert.ok(stored);
+  assert.equal(stored.character_name, '测试角色');
+  assert.equal(stored.recent_messages_json.includes('这是一条测试消息'), true);
+  assert.equal(stored.persona_text.includes('person@example.com'), false);
+  assert.equal(stored.persona_text.includes('https://example.com'), false);
+  assert.equal(stored.persona_text.includes('12345678901'), false);
+
+  const disabled = await ctx.asJson('/api/autonomy/context-sharing', {
+    method: 'PUT', device, body: { enabled: false }
+  });
+  assert.equal(disabled.status, 200);
+  assert.equal(disabled.payload.enabled, false);
+  assert.equal(ctx.query('SELECT * FROM character_context_snapshots').length, 0);
+});
+
+test('云端多气泡按组暂存、整组恢复，并在另一设备逐条 ACK 前保持整组可取', async () => {
+  const now = 1800000000000;
+  const ctx = setupTestStore(openTestDb());
+  ctx.timestamps.push(now);
+  const device = makeDevice();
+  await registerDevice(ctx, device);
+
+  const consent = await ctx.asJson('/api/autonomy/context-sharing', {
+    method: 'PUT', device, body: { enabled: true }
+  });
+  assert.equal(consent.status, 200);
+  const snapshot = await ctx.asJson('/api/characters/char-group/context-snapshot', {
+    method: 'POST',
+    device,
+    body: {
+      eventId: randomToken(20),
+      characterName: '分组测试角色',
+      personaText: '自然、简洁、友善。',
+      recentMessages: [{ role: 'user', content: '测试整组消息恢复。' }],
+      lastUserMessageAt: now - 1000
+    }
+  });
+  assert.equal(snapshot.status, 200);
+  assert.equal(snapshot.payload.contextVersion, 1);
+
+  const taskId = randomToken(20);
+  const queued = ctx.store.enqueueActivity({
+    id: taskId,
+    deviceId: device.deviceId,
+    userId: 'owner',
+    characterId: 'char-group',
+    kind: 'contact',
+    scheduledAt: now - 500,
+    maxAttempts: 3,
+    payload: { contextVersion: 1, sourceDeviceId: device.deviceId, executionMode: 'cloud' },
+    dedupeKey: 'test-cloud-group:' + taskId,
+    now,
+    requireActiveDevice: true
+  });
+  assert.equal(queued.inserted, true);
+  const claimed = ctx.store.claimActivity({
+    id: taskId,
+    expectedAttemptCount: 0,
+    expectedStatus: 'waiting',
+    owner: 'cloud_model_executor',
+    leaseUntil: now + 60000,
+    now
+  });
+  assert.ok(claimed);
+
+  const groupId = 'cloudgrp_' + randomToken(18) + '_1';
+  const messages = [
+    '第一条独立气泡。',
+    '第二条独立气泡。',
+    '第三条独立气泡。'
+  ].map((text, index) => ({
+    serverMessageId: groupId + '_' + String(index + 1).padStart(2, '0'),
+    dedupeKey: groupId + ':' + String(index + 1),
+    payload: { type: 'text', text }
+  }));
+  const completed = ctx.store.completeCloudActivityWithOutboundGroup({
+    id: taskId,
+    owner: 'cloud_model_executor',
+    attemptCount: 1,
+    now,
+    groupId,
+    contextVersion: 1,
+    sourceDeviceId: device.deviceId,
+    messages
+  });
+  assert.equal(completed.completed, true);
+  assert.equal(completed.messageCount, 3);
+
+  // 模拟 Worker 在 outbox 部分写入后被中断，设备收件箱读取必须补齐缺失行。
+  ctx.store.exec('DELETE FROM outbound_messages WHERE group_id = ? AND group_index = 3', groupId);
+  assert.equal(ctx.store.getOutboundMessage(messages[2].serverMessageId), null);
+  const pulled = await ctx.asJson('/api/characters/char-group/outbound?limit=2', { device });
+  assert.equal(pulled.status, 200);
+  assert.equal(pulled.payload.messages.length, 3);
+  assert.deepEqual(pulled.payload.messages.map(item => item.groupIndex), [1, 2, 3]);
+  assert.ok(pulled.payload.messages.every(item => item.groupId === groupId));
+  assert.equal(ctx.store.getOutboundMessage(messages[2].serverMessageId).group_count, 3);
+
+  const firstAck = await ctx.asJson(
+    '/api/characters/char-group/outbound/' + messages[0].serverMessageId + '/ack',
+    { method: 'POST', device }
+  );
+  assert.equal(firstAck.status, 200);
+  const afterPartialAck = await ctx.asJson('/api/characters/char-group/outbound?limit=2', { device });
+  assert.equal(afterPartialAck.status, 200);
+  assert.equal(afterPartialAck.payload.messages.length, 3,
+    '部分 ACK 失败后必须重新拉取完整消息组');
+
+  for (const item of messages) {
+    const ack = await ctx.asJson(
+      '/api/characters/char-group/outbound/' + item.serverMessageId + '/ack',
+      { method: 'POST', device }
+    );
+    assert.equal(ack.status, 200);
+  }
+  const afterAllAck = await ctx.asJson('/api/characters/char-group/outbound', { device });
+  assert.equal(afterAllAck.status, 200);
+  assert.equal(afterAllAck.payload.messages.length, 0);
+});
