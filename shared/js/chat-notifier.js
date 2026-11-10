@@ -849,9 +849,11 @@
                 await cloud.skipAutonomyActivity(activity, 'invalid_generation');
                 return true;
             }
-            var completion = await cloud.completeAutonomyActivity(activity, content, {
+            var cloudBubbles = notificationMessages.map(function (message) { return String(message.text || '').trim(); });
+            var cloudMessageText = cloudBubbles.join('\n\n');
+            var completion = await cloud.completeAutonomyActivity(activity, cloudMessageText, {
                 displayName: candidate.contact.name,
-                bubbleCount: notificationMessages.length
+                bubbles: cloudBubbles
             });
             // The server may accept the task but skip its stale result after a
             // final gate re-check. This is a terminal decision, not a transient
@@ -863,34 +865,34 @@
                 return true;
             }
 
-            // Mirror the accepted outbound message into this device's existing
-            // local conversation. The outbox keeps it pending until local
-            // history write/read-back is verified by the chat-detail receiver.
-            if (!freshHistory.some(function (item) {
-                return item && String(item.serverMessageId || '') === serverMessageId;
-            })) {
-                var proactiveMessages = buildProactiveReplyMessages(content, candidate.contact, {
+            // Mirror the exact bubble batch accepted by the server into this
+            // device's local history. Only the final bubble carries the ACK ID.
+            var policy = global.ChatMessagePolicy;
+            if (!policy || typeof policy.inspectCloudOutboundHistory !== 'function') return true;
+            var localState = policy.inspectCloudOutboundHistory(
+                freshHistory, serverMessageId, cloudMessageText, cloudBubbles
+            );
+            if (localState === 'conflict') return true;
+            if (localState === 'missing') {
+                var proactiveMessages = buildProactiveReplyMessages(cloudMessageText, candidate.contact, {
                     time: Date.now(),
                     source: 'cloud_autonomous',
                     serverMessageId: serverMessageId
                 });
-                if (!proactiveMessages.length) return true;
-                // Keep the server receipt on the final bubble only; the other bubbles
-                // remain independent local messages under the same turnId.
+                if (proactiveMessages.length !== cloudBubbles.length) return true;
                 freshHistory.push.apply(freshHistory, proactiveMessages);
                 var saved = global.PhoneStorage && typeof global.PhoneStorage.saveChatHistory === 'function'
                     ? global.PhoneStorage.saveChatHistory(roleId, freshHistory)
                     : safeSet('chat_history_' + roleId, freshHistory);
-                var verified = readHistory(roleId).some(function (item) {
-                    return item && String(item.serverMessageId || '') === serverMessageId;
-                });
-                if (saved && verified) {
-                    if (candidate.isInitialContact) {
-                        safeSet('chat_proactive_first_contact_sent_' + roleId, 'true');
-                    }
-                    tick();
-                }
+                var verified = policy.inspectCloudOutboundHistory(
+                    readHistory(roleId), serverMessageId, cloudMessageText, cloudBubbles
+                ) === 'match';
+                if (!saved || !verified) return true;
             }
+            if (candidate.isInitialContact) {
+                safeSet('chat_proactive_first_contact_sent_' + roleId, 'true');
+            }
+            tick();
             return true;
         } catch (error) {
             if (activity) {
