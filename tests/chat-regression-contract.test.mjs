@@ -2598,6 +2598,7 @@ test('亲属卡独立存储成功但聊天记录失败时，不伪造聊天卡�
   let createdExternalCard = false;
   let rendered = 0;
   let toast = '';
+  let lockDepth = 0;
   const sandbox = {
     isGroupChat: false,
     aliasRoleId: 'role-1',
@@ -2606,12 +2607,20 @@ test('亲属卡独立存储成功但聊天记录失败时，不伪造聊天卡�
     contactName: '角色',
     window: {
       MaoMaoWalletLedger: {
-        runExclusive: (task) => Promise.resolve().then(task)
+        runExclusive: async (task) => {
+          lockDepth += 1;
+          try { return await task(); }
+          finally { lockDepth -= 1; }
+        }
       },
       RoleFamilyCards: {
         readState: () => ({ ok: true, reason: '', value: [] }),
         findForRole: () => [],
-        createInvite: () => { createdExternalCard = true; return { id: 'family-card-1' }; }
+        createInvite: () => {
+          assert.equal(lockDepth, 1, 'AI issued card must be created inside the shared wallet lock');
+          createdExternalCard = true;
+          return { id: 'family-card-1' };
+        }
       }
     },
     saveMessages: () => false,
@@ -2624,6 +2633,7 @@ test('亲属卡独立存储成功但聊天记录失败时，不伪造聊天卡�
     kind: 'standard', monthlyLimit: 500, singleLimit: 100, note: '测试'
   }]), false);
   assert.equal(createdExternalCard, true, 'the separate role-family store may already contain the invite');
+  assert.equal(lockDepth, 0, 'the wallet lock must be released after chat persistence fails');
   assert.equal(history.length, 1, 'the unsaved chat invitation must be rolled back');
   assert.equal(rendered, 0, 'the unsaved chat card must not be displayed as persisted');
   assert.match(toast, /聊天记录未能保存/);
@@ -3362,6 +3372,56 @@ test('亲属卡所有状态变更与商店外卖消费共用钱包锁', async ()
   assert.match(detail, /await insertRoleFamilyCardInvitations\(historyList, parsedRoleFamilyCard\.cards\)/);
   assert.match(detail, /window\.handleRoleFamilyCardAction = async function/);
   assert.match(detail, /return window\.RoleFamilyCards\.update\(cardId, action\)/);
+
+  // Execute the real AI-initiated role adjustment path and prove the card module
+  // is invoked while the origin-wide wallet lock is held.
+  const roleChangeStart = detail.indexOf('async function applyRoleFamilyCardChanges(changes)');
+  const roleChangeEnd = detail.indexOf("\\n\\n        async function insertRoleFamilyCardInvitations", roleChangeStart);
+  assert.ok(roleChangeStart >= 0 && roleChangeEnd > roleChangeStart,
+    'AI role-change function must be extractable');
+  let roleLockDepth = 0;
+  let roleLockQueue = Promise.resolve();
+  const roleChanges = [];
+  const roleSandbox = {
+    isGroupChat: false,
+    aliasRoleId: 'role-ai',
+    currentRoleId: 'role-ai',
+    currentCharacter: { id: 'role-ai', name: '角色' },
+    window: {
+      MaoMaoWalletLedger: {
+        runExclusive: task => {
+          const run = roleLockQueue.then(async () => {
+            roleLockDepth += 1;
+            try { return await task(); }
+            finally { roleLockDepth -= 1; }
+          });
+          roleLockQueue = run.catch(() => {});
+          return run;
+        }
+      },
+      RoleFamilyCards: {
+        applyRoleChange: (roleId, change) => {
+          assert.equal(roleLockDepth, 1,
+            'AI-issued card adjustment/revocation must execute inside the shared lock');
+          roleChanges.push({ roleId: roleId, action: change.action });
+          return { ok: true };
+        }
+      }
+    },
+    showToast: () => {},
+    console: { warn: () => {} }
+  };
+  runInNewContext(detail.slice(roleChangeStart, roleChangeEnd), roleSandbox);
+  const changed = await roleSandbox.applyRoleFamilyCardChanges([
+    { action: 'adjust', monthlyLimit: 100, singleLimit: 50 },
+    { action: 'revoke' }
+  ]);
+  assert.equal(changed, true);
+  assert.deepEqual(roleChanges, [
+    { roleId: 'role-ai', action: 'adjust' },
+    { roleId: 'role-ai', action: 'revoke' }
+  ]);
+  assert.equal(roleLockDepth, 0, 'AI role-change lock must be released after completion');
 
   // Execute the real card-wallet page action wrapper and assert that its storage
   // mutation is called only from inside the shared wallet lock.
