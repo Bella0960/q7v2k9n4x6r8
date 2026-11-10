@@ -405,7 +405,7 @@
         }).then(function (ok) {
             if (!ok) return false;
             return loadProactiveScript(
-                proactiveAsset('shared/js/phone/chat-message-policy.js?v=20261029v5'),
+                proactiveAsset('shared/js/phone/chat-message-policy.js?v=20261111cloudbubble1'),
                 function () { return !!global.ChatMessagePolicy && typeof global.ChatMessagePolicy.buildReplyMessages === 'function'; }
             );
         }).then(function (ok) {
