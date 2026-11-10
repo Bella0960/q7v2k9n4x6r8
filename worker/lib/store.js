@@ -1522,10 +1522,24 @@ class CloudStore {
         AND r.user_id = requesting_device.user_id
         AND r.device_id = requesting_device.id
        WHERE source_device.user_id = ? AND o.character_id = ?
-         AND r.local_saved_at IS NULL
+         AND (
+           (o.group_id IS NULL AND r.local_saved_at IS NULL)
+           OR (o.group_id IS NOT NULL AND EXISTS (
+             SELECT 1
+             FROM outbound_messages group_row
+             LEFT JOIN outbound_device_receipts group_receipt
+               ON group_receipt.server_message_id = group_row.server_message_id
+              AND group_receipt.user_id = requesting_device.user_id
+              AND group_receipt.device_id = requesting_device.id
+             WHERE group_row.group_id = o.group_id
+               AND group_row.character_id = o.character_id
+               AND group_receipt.local_saved_at IS NULL
+           ))
+         )
          AND NOT EXISTS (
            SELECT 1 FROM activity_queue staged
            WHERE staged.status = 'completed'
+             AND staged.result_group_id IS NULL
              AND staged.result_server_message_id = o.server_message_id
              AND staged.result_json IS NOT NULL
              AND (
@@ -1540,7 +1554,7 @@ class CloudStore {
        ORDER BY o.created_at ASC, o.id ASC
        LIMIT ?`,
       deviceId, userId, userId, characterId,
-      cursorTime, cursorTime, cursorTime, cursorId, safeLimit
+      cursorTime, cursorTime, cursorTime, cursorId, Math.min(53, safeLimit + 3)
     );
   }
 
@@ -1563,13 +1577,17 @@ class CloudStore {
 
   markOutboundPushAccepted({ serverMessageId, now }) {
     return this.exec(
-      `UPDATE outbound_messages
-       SET push_accepted_at = COALESCE(push_accepted_at, ?)
-       WHERE server_message_id = ?
-       RETURNING server_message_id, push_accepted_at`,
-      now,
-      serverMessageId
+      'UPDATE outbound_messages SET push_accepted_at = COALESCE(push_accepted_at, ?) WHERE server_message_id = ? RETURNING server_message_id, push_accepted_at',
+      now, serverMessageId
     )[0] || null;
+  }
+
+  markOutboundGroupPushAccepted({ groupId, fallbackMessageId, now }) {
+    if (!groupId) return this.markOutboundPushAccepted({ serverMessageId: fallbackMessageId, now });
+    return this.exec(
+      'UPDATE outbound_messages SET push_accepted_at = COALESCE(push_accepted_at, ?) WHERE group_id = ? RETURNING server_message_id, push_accepted_at',
+      now, groupId
+    );
   }
 
   markOutboundReceived({ userId, deviceId, characterId, serverMessageId, now }) {
