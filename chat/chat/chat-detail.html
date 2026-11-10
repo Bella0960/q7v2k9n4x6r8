@@ -7890,6 +7890,51 @@
         syncChatThemeLayout();
 
         renderAllMessages();
+
+        // Empty chats contain one local welcome placeholder for the UI. It is
+        // not a user conversation and must not be uploaded as fabricated history.
+        function queueCloudInitialContactForEmptyChat() {
+            if (isGroupChat || !currentCharacter || !currentCharacter.id ||
+                !window.MaomaoCloud ||
+                typeof window.MaomaoCloud.noteCharacterContextChanged !== 'function') return;
+            var history = loadMessages();
+            var untouchedWelcome = Array.isArray(history) && history.length === 1 &&
+                history[0] && history[0].role === 'received' &&
+                String(history[0].text || history[0].content || '') ===
+                    ('你好，我是' + String(contactName || '') + '！很高兴和你聊天。');
+            var genuinelyEmpty = Array.isArray(history) && history.length === 0;
+            if (!untouchedWelcome && !genuinelyEmpty) return;
+
+            var personaParts = [
+                currentCharacter.persona,
+                currentCharacter.prompt,
+                currentCharacter.systemPrompt,
+                currentCharacter.speechStyle,
+                currentCharacter.relationship
+            ].filter(function (part) { return typeof part === 'string' && part.trim(); });
+            var snapshot = {
+                characterName: String(currentCharacter.name || currentCharacter.nickname || contactName || ''),
+                personaText: personaParts.join('\n').slice(0, 5000),
+                recentMessages: [],
+                lastUserMessageAt: 0,
+                initialContact: true
+            };
+            window.MaomaoCloud.noteCharacterContextChanged(
+                String(currentCharacter.id || currentRoleId || ''),
+                history,
+                snapshot
+            ).then(function (result) {
+                if (result && result.payload && result.payload.queueReason &&
+                    result.payload.queueReason !== 'queued_initial_contact' &&
+                    result.payload.queueReason !== 'initial_contact_already_queued' &&
+                    result.payload.queueReason !== 'initial_contact_already_used') {
+                    console.info('[cloud] 首次主动联系暂未排队：', result.payload.queueReason);
+                }
+            }).catch(function (error) {
+                console.warn('[cloud] 首次主动联系上下文同步待重试', error && error.message || error);
+            });
+        }
+        queueCloudInitialContactForEmptyChat();
         highlightMessageFromUrl();
 
         // 美化中心保存后，页面从返回缓存恢复时重新读取最新配置。
