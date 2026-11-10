@@ -1568,6 +1568,36 @@ test('主动消息 Push 成功回执按账号和当前设备隔离，且只认�
     now: Date.now()
   });
   const base = Date.now();
+  const ownerSubscription = ctx.store.upsertSubscription({
+    id: 'push-sub-owner-active',
+    deviceId: ownerDevice.deviceId,
+    endpoint: 'https://push.example.invalid/owner-active',
+    p256dh: 'owner-p256dh',
+    authKey: 'owner-auth',
+    now: base,
+    expirationTime: base + 120_000
+  }, { maxSubscriptions: 3 });
+  const disabledOwnerSubscription = ctx.store.upsertSubscription({
+    id: 'push-sub-owner-disabled',
+    deviceId: ownerDevice.deviceId,
+    endpoint: 'https://push.example.invalid/owner-disabled',
+    p256dh: 'old-p256dh',
+    authKey: 'old-auth',
+    now: base,
+    expirationTime: base + 120_000
+  }, { maxSubscriptions: 3 });
+  const otherSubscription = ctx.store.upsertSubscription({
+    id: 'push-sub-other-active',
+    deviceId: otherDevice.deviceId,
+    endpoint: 'https://push.example.invalid/other-active',
+    p256dh: 'other-p256dh',
+    authKey: 'other-auth',
+    now: base,
+    expirationTime: base + 120_000
+  }, { maxSubscriptions: 3 });
+  assert.equal(ownerSubscription.id, 'push-sub-owner-active');
+  assert.equal(disabledOwnerSubscription.id, 'push-sub-owner-disabled');
+  assert.equal(otherSubscription.id, 'push-sub-other-active');
 
   ctx.store.logExecution({
     id: 'push-accept-owner-ok',
@@ -1575,17 +1605,27 @@ test('主动消息 Push 成功回执按账号和当前设备隔离，且只认�
     kind: 'outbound_push',
     status: 'success',
     reasonCode: 'delivered',
-    detail: { messageCount: 2 },
+    detail: { messageCount: 2, subscriptionId: ownerSubscription.id },
     now: base
   });
+  ctx.store.logExecution({
+    id: 'push-accept-owner-disabled-sub-ok',
+    deviceId: ownerDevice.deviceId,
+    kind: 'outbound_push',
+    status: 'success',
+    reasonCode: 'delivered',
+    detail: { subscriptionId: disabledOwnerSubscription.id },
+    now: base + 2
+  });
+  ctx.store.disableSubscriptionById(disabledOwnerSubscription.id, 'user', base + 3);
   ctx.store.logExecution({
     id: 'push-accept-owner-failed',
     deviceId: ownerDevice.deviceId,
     kind: 'outbound_push',
     status: 'failed',
     reasonCode: 'push_delivery_failed',
-    detail: {},
-    now: base + 1
+    detail: { subscriptionId: ownerSubscription.id },
+    now: base + 4
   });
   ctx.store.logExecution({
     id: 'push-accept-other-ok',
@@ -1593,22 +1633,25 @@ test('主动消息 Push 成功回执按账号和当前设备隔离，且只认�
     kind: 'outbound_push',
     status: 'success',
     reasonCode: 'delivered',
-    detail: {},
-    now: base + 2
+    detail: { subscriptionId: otherSubscription.id },
+    now: base + 5
   });
 
   assert.equal(ctx.store.getLatestAutonomyPushAcceptance({
     userId: 'owner',
-    deviceId: ownerDevice.deviceId
+    deviceId: ownerDevice.deviceId,
+    now: base + 10
   }), base);
   assert.equal(ctx.store.getLatestAutonomyPushAcceptance({
     userId: 'owner',
-    deviceId: otherDevice.deviceId
+    deviceId: otherDevice.deviceId,
+    now: base + 10
   }), null);
   assert.equal(ctx.store.getLatestAutonomyPushAcceptance({
     userId: 'another-user',
-    deviceId: otherDevice.deviceId
-  }), base + 2);
+    deviceId: otherDevice.deviceId,
+    now: base + 10
+  }), base + 5);
 });
 
 test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设备鉴权', async () => {
