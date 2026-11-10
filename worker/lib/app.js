@@ -1134,7 +1134,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         ...(contextVersionReady ? [] : ['context_version_unavailable']),
         'cloud_model_scheduler_runtime_not_verified'
       ],
-      note: '云端模型只会使用单独开启共享后上传的角色称呼、角色设定和最多 12 条文字消息；图片、语音、附件及手机 API Key 不会上传。服务端模型凭据只从 Worker Secret 读取。当前分支仍需完成执行器运行与真机验收，尚未部署。'
+      note: '云端模型只会使用单独开启共享后上传的角色称呼、角色设定和最多 12 条文字消息；图片、语音、附件及手机 API Key 不会上传。服务端模型凭据只从 Worker Secret 读取。当前测试分支已接入服务端生成执行器与多气泡组收件箱，但尚未部署，也未完成真实模型和手机通知链路验收。'
     });
   }
 
