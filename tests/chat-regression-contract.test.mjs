@@ -1919,11 +1919,11 @@ test('proactive contact notifier is loaded on home and navigation pages and prec
   assert.match(homePage, /chat-notifier\.js\?v=20261107v6/);
   assert.match(navPage, /chat-notifier\.js\?v=20261107v6/);
   assert.match(detail, /chat-notifier\.js\?v=20261107v6/);
-  assert.match(detail, /cloud-push-client\.js\?v=20261107v1/);
+  assert.match(detail, /cloud-push-client\.js\?v=20261107v2/);
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v19/);
   assert.match(serviceWorker, /phone-app-pwa-v216/);
   assert.match(serviceWorker, /chat-notifier\.js\?v=20261107v6/);
-  assert.match(serviceWorker, /cloud-push-client\.js\?v=20261107v1/);
+  assert.match(serviceWorker, /cloud-push-client\.js\?v=20261107v2/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v19/);
   assert.match(serviceWorker, /chat-followup-policy/);
 });
