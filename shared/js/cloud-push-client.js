@@ -1665,7 +1665,7 @@
             '云端执行器：' + (ready.activityExecutorAvailable ? '已接入' : '尚未接入，任务不会被实际执行'),
             '服务端模型凭据：' + (ready.serverModelConfigured ? '已配置' : '未配置'),
             '角色上下文共享：' + (ready.contextSharingEnabled ? '已开启' : '默认关闭'),
-            '云端定时调度：' + (ready.cloudSchedulerRuntimeVerified ? '最近 15 分钟内有成功运行记录' : '最近 15 分钟内没有成功运行记录'),
+            '云端定时调度：' + (ready.cloudSchedulerRuntimeVerified ? '最近 15 分钟内有运行记录' : '最近 15 分钟内没有运行记录'),
             '最近一次云端调度：' + (ready.cloudSchedulerLastRunAt ? new Date(ready.cloudSchedulerLastRunAt).toLocaleString() + '（' + String(ready.cloudSchedulerLastRunStatus || '未知') + '）' : '暂无记录'),
             '真实模型生成验收：' + (ready.cloudModelGenerationVerified ? '最近 30 天内有成功出站记录' : '最近 30 天内没有成功生成记录'),
             '当前设备 Web Push 服务端回执：' + (ready.cloudPushAcceptanceVerified ? '最近 30 天内有 HTTP 成功接受记录' : '最近 30 天内没有 HTTP 成功接受记录'),
@@ -1709,7 +1709,7 @@
                     global_autonomy_not_enabled: '账号级主动联系总开关未开启',
                     context_sharing_not_enabled: '尚未同意云端上下文共享',
                     context_version_unavailable: '尚无可信聊天上下文版本',
-                    cloud_model_scheduler_runtime_not_verified: '最近 15 分钟没有成功的云端调度记录',
+                    cloud_model_scheduler_runtime_not_verified: '最近 15 分钟没有云端调度运行记录',
                     cloud_model_generation_not_verified: '最近 30 天没有成功的模型出站入库记录',
                     cloud_push_provider_acceptance_not_verified: '当前设备最近 30 天没有 Web Push 服务端成功接受回执'
                   };
