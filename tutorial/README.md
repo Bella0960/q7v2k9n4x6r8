@@ -22,7 +22,7 @@ The desktop app `教程` is the user-facing guide and test notebook for the phon
 4. Keep `sw.js` app-shell entries and cache version in sync with every tutorial HTML/JS asset version change.
 5. Do not mark a feature as tested merely because its source or setting exists. In particular, role proactive-contact checks, cloud autonomous messages, Web Push delivery, and lock-screen notifications are separate acceptance items.
 6. Keep unresolved phone reports visible as `待真机复测` with the specific reproduction details. Never describe an unverified fix as complete.
-7. Do not put API keys, passwords, private chat text, personal phone numbers, or private media into tutorial notes or exported test reports.
+7. The dedicated `.github/workflows/tutorial-regression.yml` check enforces this on pull requests: changes to user-facing app paths must include a `tutorial/tutorial.js` update. Keep the update history and exact step locations current so a passing contract check also means the guide catalog was deliberately touched.\n8. Do not put API keys, passwords, private chat text, personal phone numbers, or private media into tutorial notes or exported test reports.
 
 ## Local data and privacy
 
