@@ -18,6 +18,7 @@
     <script src="../../shared/js/phone/chat-image-vision.js?v=20261107v5"></script>
     <script src="../../shared/js/phone/phone_api.js?v=20261106v1"></script>
     <script src="../../shared/js/phone/image-generation.js?v=20261106v1"></script>
+    <script src="../../shared/js/phone/role-gallery-image-autonomy.js?v=20261111v1"></script>
     <script src="../../shared/js/phone/role_family_cards.js?v=20261028v3"></script>
     <script src="../../shared/js/phone/memory_recall.js?v=20261024v2"></script>
     <script src="../../shared/js/phone/phone_stream.js"></script>
@@ -6008,6 +6009,24 @@
                 '需要发放时，在正常回复末尾附加一个机器标记，格式必须是 [亲属卡:月额度:单笔上限:给对方的留言] 或 [亲密付:月额度:单笔上限:给对方的留言]。金额必须是正数，单笔上限不得高于月额度；留言不要包含右方括号。前端会把标记转换为聊天卡片，不要解释标记本身。\n' +
                 '若需要调整你发出的最近一张未撤销卡，可附加 [调整亲属卡:新月额度:新单笔上限:简短说明]；若想撤销，可附加 [撤销亲属卡]。只有确实在剧情中作出这些决定时才输出对应标记。\n' +
                 '亲属卡只是 MAOMAO 内的虚拟额度，只能用于应用内模拟商店和外卖结算，不是真实余额，不涉及真实支付、银行卡或外部扣款。不得声称已经执行任何现实付款。\n\n';
+            // 只向一对一角色聊天提供该角色自己的图库目录；群聊、静默、重生成不触发自主发图。
+            var roleGalleryCharacterId = (!isGroupChat && !isRegen && !contextOnly && !silent &&
+                presenceMode === 'online' && currentCharacter && currentCharacter.id != null)
+                ? String(currentCharacter.id) : '';
+            var roleGalleryCatalogue = null;
+            if (roleGalleryCharacterId && window.RoleGalleryImageAutonomy &&
+                typeof window.RoleGalleryImageAutonomy.prepare === 'function') {
+                try {
+                    roleGalleryCatalogue = await window.RoleGalleryImageAutonomy.prepare(roleGalleryCharacterId);
+                    if (roleGalleryCatalogue && roleGalleryCatalogue.prompt) {
+                        systemPrompt += '\\n\\n' + roleGalleryCatalogue.prompt;
+                    }
+                } catch (galleryError) {
+                    // 图库不可用时仍照常完成文字聊天。
+                    roleGalleryCatalogue = null;
+                }
+            }
+
             // 构造 OpenAI 兼容格式 messages 数组 (system + 历史记录)
             const apiMessages = [
                 { role: 'system', content: systemPrompt }
@@ -6378,6 +6397,10 @@
                     fullText = parsedHeart.text;
                     const parsedImg = extractVImageMarkers(fullText);
                     fullText = parsedImg.text;
+                    const parsedRoleGallery = window.RoleGalleryImageAutonomy && roleGalleryCatalogue
+                        ? window.RoleGalleryImageAutonomy.extractMarkers(fullText, roleGalleryCatalogue)
+                        : { text: fullText, attachments: [] };
+                    fullText = parsedRoleGallery.text;
                     // 删除模型意外输出的推理草稿，再进行普通聊天文本清洗
                     fullText = stripInternalReasoning(fullText);
                     fullText = cleanupAiReply(fullText);
@@ -6393,6 +6416,19 @@
                         ensureMid(stickerMessage);
                         return stickerMessage;
                     });
+                    var aiRoleGalleryMessages = [];
+                    if (streamResult.ok && roleGalleryCharacterId && parsedRoleGallery.attachments.length &&
+                        !isGroupChat && !isRegen && !contextOnly && !silent && presenceMode === 'online' &&
+                        window.RoleGalleryImageAutonomy && typeof window.RoleGalleryImageAutonomy.createMessages === 'function') {
+                        try {
+                            aiRoleGalleryMessages = await window.RoleGalleryImageAutonomy.createMessages(
+                                roleGalleryCharacterId,
+                                parsedRoleGallery.attachments
+                            );
+                        } catch (galleryCreateError) {
+                            aiRoleGalleryMessages = [];
+                        }
+                    }
                     var avatarCandidates = parsedAvatarCandidate.candidates || [];
                     var avatarPairs = parsedAvatarCandidate.pairs || [];
                     var replyMessages = [];
@@ -6418,11 +6454,12 @@
                             memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined
                         }];
                     }
-                    if (fullText || aiStickerMessages.length || avatarCandidates.length || avatarPairs.length) {
-                        // 正文按角色气泡偏好拆分；表情与头像候选仍保留在同一回复回合中。
-                        groupReplyVisible = !!fullText || aiStickerMessages.length > 0;
+                    if (fullText || aiStickerMessages.length || aiRoleGalleryMessages.length || avatarCandidates.length || avatarPairs.length) {
+                        // 正文按角色气泡偏好拆分；表情与图库图片仍保留在同一回复回合中。
+                        groupReplyVisible = !!fullText || aiStickerMessages.length > 0 || aiRoleGalleryMessages.length > 0;
                         replyMessages.forEach(function (message) { historyList.push(message); });
                         aiStickerMessages.forEach(function (stickerMessage) { historyList.push(stickerMessage); });
+                        aiRoleGalleryMessages.forEach(function (galleryMessage) { historyList.push(galleryMessage); });
                         window.__groupPrivateCardPending = false;
                         var replySaved = saveMessages(historyList);
                         var avatarRoleId = aliasRoleId || currentCharacter.id;
@@ -6464,18 +6501,25 @@
                         }
                         if (!replySaved) {
                             // 持久化失败时不把未保存的文字或表情渲染成已发送消息。
-                            replyMessages.concat(aiStickerMessages).forEach(function (message) {
+                            replyMessages.concat(aiStickerMessages, aiRoleGalleryMessages).forEach(function (message) {
                                 var failedIndex = historyList.indexOf(message);
                                 if (failedIndex >= 0) historyList.splice(failedIndex, 1);
                             });
+                            if (aiRoleGalleryMessages.length && window.RoleGalleryImageAutonomy &&
+                                typeof window.RoleGalleryImageAutonomy.releaseReferences === 'function') {
+                                try { await window.RoleGalleryImageAutonomy.releaseReferences(aiRoleGalleryMessages); } catch (galleryRollbackError) {}
+                            }
                             replyMessages = [];
                             aiStickerMessages = [];
+                            aiRoleGalleryMessages = [];
                             try { saveMessages(historyList); } catch (rollbackError) {}
                             if (typeof showToast === 'function') showToast('回复保存失败，请检查本机存储空间');
                         } else {
-                            var lastVisibleMessage = aiStickerMessages.length
-                                ? aiStickerMessages[aiStickerMessages.length - 1]
-                                : replyMessages[replyMessages.length - 1];
+                            var lastVisibleMessage = aiRoleGalleryMessages.length
+                                ? aiRoleGalleryMessages[aiRoleGalleryMessages.length - 1]
+                                : (aiStickerMessages.length
+                                    ? aiStickerMessages[aiStickerMessages.length - 1]
+                                    : replyMessages[replyMessages.length - 1]);
                             if (lastVisibleMessage && window.ChatNotifier) {
                                 try { ChatNotifier.markSeen(aliasRoleId, lastVisibleMessage.time); } catch (e) {}
                             }
@@ -6491,7 +6535,7 @@
                             var tempRow = streamBubble.closest('.msg-row');
                             if (tempRow && tempRow.parentNode) tempRow.remove();
                         }
-                        if (replySaved && (replyMessages.length || aiStickerMessages.length)) {
+                        if (replySaved && (replyMessages.length || aiStickerMessages.length || aiRoleGalleryMessages.length)) {
                             if (_vl) {
                                 vlRefresh();
                             } else {
@@ -6514,6 +6558,13 @@
                                     aiStickerMessages.forEach(function (stickerMessage) {
                                         var stickerMessageIndex = chatMessages.querySelectorAll('.msg-row[data-idx]').length;
                                         appendMessageToDOM(stickerMessage, stickerMessageIndex);
+                                    });
+                                }
+                                if (aiRoleGalleryMessages.length) {
+                                    if (!replyMessages.length && !aiStickerMessages.length && typeof SoundSystem !== 'undefined') SoundSystem.play('receive', currentRoleId || '');
+                                    aiRoleGalleryMessages.forEach(function (galleryMessage) {
+                                        var galleryMessageIndex = chatMessages.querySelectorAll('.msg-row[data-idx]').length;
+                                        appendMessageToDOM(galleryMessage, galleryMessageIndex);
                                     });
                                 }
                                 scrollToBottom(true);
