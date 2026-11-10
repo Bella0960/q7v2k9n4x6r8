@@ -201,7 +201,31 @@ export async function runCloudModelTick({
       continue;
     }
 
-    const generation = await generateAutonomousMessages({ env, snapshot, fetchImpl });
+    const isInitialContact = payload.triggerType === 'initial_contact';
+    const snapshotLastUserMessageAt = Number(snapshot.last_user_message_at);
+    let snapshotMessages = [];
+    try { snapshotMessages = JSON.parse(String(snapshot.recent_messages_json || '[]')); } catch {}
+    const initialSnapshotIsValid = isInitialContact &&
+      snapshotLastUserMessageAt === 0 &&
+      Array.isArray(snapshotMessages) &&
+      snapshotMessages.length === 0;
+    if ((isInitialContact && !initialSnapshotIsValid) ||
+        (!isInitialContact && (!Number.isSafeInteger(snapshotLastUserMessageAt) || snapshotLastUserMessageAt <= 0))) {
+      store.supersedeActivity({
+        id: claimed.id,
+        expectedAttemptCount: attemptCount,
+        expectedStatus: 'running',
+        now: timestamp
+      });
+      summary.superseded += 1;
+      log(store, timestamp, 'autonomy_cloud_tick', 'superseded',
+        'initial_contact_snapshot_invalid', claimed);
+      continue;
+    }
+
+    const generation = await generateAutonomousMessages({
+      env, snapshot, fetchImpl, initialContact: isInitialContact
+    });
     if (!generation.ok) {
       const nextAttemptAt = retryTime(attemptCount, timestamp, validated.config, Number(claimed.max_attempts));
       const failed = store.failActivity({
