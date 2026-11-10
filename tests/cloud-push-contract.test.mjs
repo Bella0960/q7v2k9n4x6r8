@@ -558,6 +558,8 @@ test('角色上下文版本事件：仅保存事件 ID、服务器递增、重�
   assert.equal(readiness.payload.autonomousMessageGenerationReady, false);
   assert.equal(readiness.payload.cloudSchedulerRuntimeVerified, false);
   assert.equal(readiness.payload.cloudModelGenerationVerified, false);
+  assert.equal(readiness.payload.cloudPushAcceptanceVerified, false);
+  assert.equal(readiness.payload.cloudPushLastAcceptedAt, null);
   assert.equal(readiness.payload.cloudSchedulerLastRunAt, null);
   assert.equal(readiness.payload.cloudModelLastGeneratedAt, null);
   assert.deepEqual(readiness.payload.autonomyExecutionBlockers, [
@@ -566,7 +568,8 @@ test('角色上下文版本事件：仅保存事件 ID、服务器递增、重�
     'global_autonomy_not_enabled',
     'context_sharing_not_enabled',
     'cloud_model_scheduler_runtime_not_verified',
-    'cloud_model_generation_not_verified'
+    'cloud_model_generation_not_verified',
+    'cloud_push_provider_acceptance_not_verified'
   ]);
 
   const snapshot = ctx.store.getSchedulerGateSnapshot({ userId: 'owner', characterId: 'char-a' });
@@ -1704,7 +1707,8 @@ test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设
     'context_sharing_not_enabled',
     'context_version_unavailable',
     'cloud_model_scheduler_runtime_not_verified',
-    'cloud_model_generation_not_verified'
+    'cloud_model_generation_not_verified',
+    'cloud_push_provider_acceptance_not_verified'
   ]);
   assert.deepEqual(readiness.payload.recentSchedulerReasons, [
     { reasonCode: 'context_version_unavailable', count: 1 }
