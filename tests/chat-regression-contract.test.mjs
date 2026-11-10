@@ -3823,6 +3823,95 @@ test('亲密付额度、对象和开关设置也与商店及外卖结算共用�
   }
 });
 
+test('亲密付设置数据损坏时，设置页和交易模块都拒绝恢复默认值并覆盖原记录', async () => {
+  const corruptedValues = [
+    '{broken-json',
+    'null',
+    '[]',
+    '{"enabled":"true","limit":500,"used":0,"history":[]}',
+    '{"enabled":true,"limit":"not-a-number","used":0,"history":[]}',
+    '{"enabled":true,"limit":500,"used":0,"history":{}}',
+    '{"enabled":true,"limit":500,"used":0,"history":[{"amount":10,"time":1},{"amount":10,"time":2,"paymentId":"same"},{"amount":10,"time":3,"paymentId":"same"}]}'
+  ];
+
+  for (const raw of corruptedValues) {
+    const values = new Map([['close_pay', raw]]);
+    const writes = [];
+    const localStorage = {
+      getItem: key => values.has(key) ? values.get(key) : null,
+      setItem: (key, value) => {
+        writes.push(key);
+        values.set(key, String(value));
+      }
+    };
+    const window = {
+      navigator: {
+        locks: {
+          request: (_name, _options, callback) => Promise.resolve().then(callback)
+        }
+      },
+      localStorage
+    };
+    runInNewContext(walletLedgerSource, { window });
+    const state = window.MaoMaoWalletLedger.readClosePayState('close_pay');
+    assert.equal(state.ok, false, 'corrupted close-pay data must be rejected: ' + raw);
+    assert.equal(window.MaoMaoWalletLedger.readClosePayForMutation('close_pay'), null);
+
+    const sandbox = {
+      window,
+      localStorage,
+      console: { warn: () => {} },
+      toast: () => {}
+    };
+    const start = closePayPage.indexOf("var KEY = 'close_pay';");
+    const end = closePayPage.indexOf('function getCharacters()', start);
+    assert.ok(start >= 0 && end > start, 'close-pay storage mutation code must be extractable');
+    runInNewContext(closePayPage.slice(start, end), sandbox);
+    assert.equal(sandbox.getDataState().ok, false);
+    assert.equal(sandbox.getData(), null);
+    const outcome = await sandbox.mutateData(data => {
+      data.limit = 1;
+      return true;
+    });
+    assert.equal(outcome.ok, false);
+    assert.equal(outcome.reason, 'invalid');
+    assert.deepEqual(writes, [], 'invalid settings must not trigger any storage write');
+    assert.equal(values.get('close_pay'), raw, 'the original broken setting must be preserved');
+  }
+
+  // Only genuinely absent settings are initialized with first-use defaults.
+  const values = new Map();
+  const writes = [];
+  const localStorage = {
+    getItem: key => values.has(key) ? values.get(key) : null,
+    setItem: (key, value) => { writes.push(key); values.set(key, String(value)); }
+  };
+  const window = {
+    navigator: {
+      locks: { request: (_name, _options, callback) => Promise.resolve().then(callback) }
+    },
+    localStorage
+  };
+  runInNewContext(walletLedgerSource, { window });
+  const defaults = window.MaoMaoWalletLedger.readClosePayState('close_pay');
+  assert.equal(defaults.ok, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(defaults.value)), {
+    enabled: false, roleId: '', roleName: '', limit: 500, used: 0, history: []
+  });
+  const sandbox = { window, localStorage, console: { warn: () => {} }, toast: () => {} };
+  const start = closePayPage.indexOf("var KEY = 'close_pay';");
+  const end = closePayPage.indexOf('function getCharacters()', start);
+  runInNewContext(closePayPage.slice(start, end), sandbox);
+  const saved = await sandbox.mutateData(data => {
+    data.roleId = 'role-1';
+    data.roleName = '角色';
+    return true;
+  });
+  assert.equal(saved.ok, true);
+  assert.equal(JSON.parse(values.get('close_pay')).roleId, 'role-1');
+  assert.deepEqual(writes, ['close_pay']);
+});
+
 test('商店、外卖亲密付必须验证额度和余额，且扣款未确认不能继续下单', () => {
   for (const [name, source] of [['shop', shopPage], ['takeout', takeoutPage]]) {
     assert.match(source, /async function doPay\(\)/, name + ' checkout must await the ledger lock');
