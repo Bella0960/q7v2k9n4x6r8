@@ -1318,7 +1318,7 @@ test('chat detail stages multi-bubble replies and preserves the existing stream 
   assert.match(detail, /function appendReplyMessagesWithPacing\(messages, startIdx, options\)/);
   assert.match(detail, /await appendReplyMessagesWithPacing\(replyMessages, aiMessageIndex\)/);
   assert.match(detail, /chatMessages\.appendChild\(node\)/);
-  assert.match(detail, /aiBubblePacingRunId \\+= 1/);
+  assert.match(detail, /aiBubblePacingRunId \+= 1/);
   assert.match(detail, /prefers-reduced-motion: reduce/);
   assert.match(detail, /activeChatModeForPrompt !== 'narration'/);
   assert.match(detail, /PhoneStream\.chat\(\{/);
