@@ -276,10 +276,26 @@ export async function runCloudModelTick({
       sourceDeviceId: snapshot.source_device_id,
       messages
     });
-    if (!completed || completed.completed !== true) {
+    if (!completed) {
+      // The database-level context/source fence rejected a stale or revoked
+      // result after model generation. Release the running task as superseded.
+      const superseded = store.supersedeActivity({
+        id: claimed.id,
+        expectedAttemptCount: attemptCount,
+        expectedStatus: 'running',
+        now: timestamp
+      });
+      if (superseded) summary.superseded += 1;
+      else summary.deferred += 1;
+      log(store, timestamp, 'autonomy_cloud_model',
+        superseded ? 'superseded' : 'deferred',
+        'outbound_group_commit_fenced', claimed);
+      continue;
+    }
+    if (completed.completed !== true) {
       summary.failed += 1;
       log(store, timestamp, 'autonomy_cloud_model', 'failed',
-        'outbound_group_commit_failed', claimed);
+        'outbound_group_commit_conflict', claimed);
       continue;
     }
     summary.generatedGroups += 1;
