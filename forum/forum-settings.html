@@ -156,6 +156,13 @@
       </label>
       <p class="gossip-help">开启后，在八卦帖留言“继续说”“后来呢”“蹲后续”等，楼主才会更新下一段；普通讨论仍由网友接话。关闭后可以在帖子里手动点“让楼主继续讲”。</p>
     </div>
+    <div class="field-group gossip-setting" id="forumWorldOptions" hidden>
+      <label class="gossip-toggle" for="worldAutoContinue">
+        <span>主题事件自动追更</span>
+        <input type="checkbox" id="worldAutoContinue" checked>
+      </label>
+      <p class="gossip-help">校园、都市、修仙、赛博与自定义主题可以连载事件。留言明确询问“后来呢”“有新进展吗”才由楼主补充；普通评论仍由网友接话，也可以手动追更。</p>
+    </div>
     <div class="field-group">
       <label class="field-label" for="forumWorld">论坛世界书（网友设定）</label>
       <textarea class="field-area" id="forumWorld" placeholder="写清楚这个论坛里都是什么人，他们会聊什么话题。比如：这是一个八卦论坛，网友们天天讨论娱乐圈的瓜，谁出轨了谁塌房了，语气都是吃瓜群众的样子..."></textarea>
@@ -202,6 +209,7 @@
       chip.classList.toggle('active',chip.dataset.id===theme);
     });
     document.getElementById('gossipOptions').hidden=theme!=='bagua';
+    document.getElementById('forumWorldOptions').hidden=theme==='bagua';
   }
 
   function render() {
@@ -210,8 +218,10 @@
     document.getElementById('forumName').value = cfg.name || '';
     document.getElementById('forumWorld').value = cfg.world || '';
     document.getElementById('gossipAutoContinue').checked=cfg.gossipAutoContinue!==false;
+    document.getElementById('worldAutoContinue').checked=cfg.worldAutoContinue!==false;
     theme = cfg.theme || 'reality';
     document.getElementById('gossipOptions').hidden=theme!=='bagua';
+    document.getElementById('forumWorldOptions').hidden=theme==='bagua';
     // 在加号前插入自定义主题 chips
     const box = document.getElementById('themeOpts');
     const addBtn = document.getElementById('addThemeBtn');
@@ -281,6 +291,7 @@
     cfg.world = document.getElementById('forumWorld').value.trim();
     cfg.customThemes = customThemes;
     cfg.gossipAutoContinue=document.getElementById('gossipAutoContinue').checked;
+    cfg.worldAutoContinue=document.getElementById('worldAutoContinue').checked;
     try {
       saveConfig(cfg);
       showSaveStatus('');
