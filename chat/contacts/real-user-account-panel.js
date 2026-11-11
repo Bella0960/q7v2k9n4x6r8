@@ -408,13 +408,21 @@
   }
 
   async function refreshServerData() {
-    var results = await Promise.all([
-      client.listFriendRoster(),
+    // Read the cookie-backed account before making any other scoped requests.
+    // This prevents parallel /me and friend-list requests using different tabs' sessions.
+    var roster = await client.listFriendRoster();
+    var listResults = await Promise.all([
       client.listRequests('incoming'),
       client.listRequests('outgoing'),
       client.listBlocked()
     ]);
+    var results = [roster].concat(listResults);
     var account = client.getState().account;
+    if (!account || account.id !== roster.ownerAccountId) {
+      var mismatch = new Error('friend_data_account_mismatch');
+      mismatch.code = 'friend_data_account_mismatch';
+      throw mismatch;
+    }
     var directory = root.PhoneContactDirectory;
     if (!account || !directory || typeof directory.syncServerSnapshot !== 'function') {
       throw new Error('real_user_directory_sync_unavailable');
