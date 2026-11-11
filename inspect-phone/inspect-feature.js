@@ -413,7 +413,8 @@
       appTitle.textContent=title;
       appBody.innerHTML=content;
       appLayer.classList.add('open');
-      appBody.scrollTop=0;
+      // 手机聊天进入详情或新增消息后，默认看到最新对话。
+      appBody.scrollTop=(current==='chat'&&view&&view.kind==='chat')?appBody.scrollHeight:0;
     }
     function close(){appLayer.classList.remove('open');current='';view=null;notice='';}
     function chooseScreen(){
@@ -521,13 +522,21 @@
     function refreshSection() {
       if(waiting)return;
       var id=current,api=global.PhoneAPI,cfg=global.PhoneStorage&&PhoneStorage.getApiConfig?PhoneStorage.getApiConfig():{};
+      if(!permission||selected.indexOf(id)<0){hint('这个板块尚未获得角色分享许可。');return;}
+      if(pendingChat&&id==='chat'){hint('请先等待当前联系人的回复，避免覆盖发送中的消息。');return;}
       if(!api||typeof api.completeJSON!=='function'||!clean(cfg.apiKey)){hint('还没有配置聊天 API。当前可查看本地剧情样例；配置后可按角色人设刷新。');return;}
       waiting=true;notice='正在生成当前板块，不会重写其他板块。';render();
       var requestRoleId=roleId,requestNow=Date.now();
       api.completeJSON({system:'你是一位虚构角色生活资料编剧，只返回合法 JSON，不涉及真实用户隐私。',user:promptFor(id,role,data,requestNow),timeoutMs:60000,temperature:.85}).then(function(result){
         if(!result||!result.ok||!valid(id,result.data,requestNow,data.facts))throw new Error('生成内容结构、数量或时间不合要求，原记录已保留');
         if(roleId!==requestRoleId)return;
-        data.sections[id]=result.data;data.source[id]='ai';commit();
+        if(localDay(new Date())!==localDay(new Date(requestNow)))throw new Error('已跨入新的一天，请重新打开本板块刷新。');
+        var oldSection=data.sections[id],oldSource=data.source[id],oldUpdated=data.updatedAt;
+        data.sections[id]=result.data;data.source[id]='ai';data.updatedAt=Date.now();
+        if(!save(data)){
+          data.sections[id]=oldSection;data.source[id]=oldSource;data.updatedAt=oldUpdated;
+          throw new Error('手机存储空间不足，原有记录没有被覆盖。');
+        }
         notice='当前板块已更新，其他板块没有改变。';
       }).catch(function(err){notice=clean(err&&err.message,180)||'生成失败，原记录保留。';})
       .finally(function(){waiting=false;if(current===id)render();});
@@ -536,7 +545,13 @@
       if(pendingChat||current!=='chat'||!view||view.kind!=='chat')return;
       var text=clean(input,200),idx=view.index,contact=data.sections.chat.contacts[idx];if(!text||!contact)return;
       var message={side:'me',text:text,time:Date.now(),status:'sent'};
-      contact.messages.push(message);contact.lastTime=message.time;commit();
+      var oldMessages=contact.messages.slice(),oldLastTime=contact.lastTime;
+      contact.messages=oldMessages.concat([message]).slice(-100);
+      contact.lastTime=message.time;
+      if(!commit()){
+        contact.messages=oldMessages;contact.lastTime=oldLastTime;
+        notice='消息保存失败，未发送给 AI。请检查手机存储空间。';render();return;
+      }
       var cfg=global.PhoneStorage&&PhoneStorage.getApiConfig?PhoneStorage.getApiConfig():{},api=global.PhoneAPI;
       if(!api||!clean(cfg.apiKey)){
         notice='消息已保存为虚构剧情；未配置 API，暂不能生成对方回复。';render();return;
@@ -547,7 +562,15 @@
         '角色设定：'+roleContext(role)+'\n近期消息：'+JSON.stringify(contact.messages.slice(-10));
       api.complete({system:'你正在模拟虚构的手机联系人。只输出联系人回复。',user:promptText,timeoutMs:30000}).then(function(reply){
         if(!clean(reply,240))throw new Error('回复为空');
-        contact.messages.push({side:'ai',text:clean(reply,240),time:Date.now(),status:'sent'});contact.lastTime=Date.now();commit();notice='';
+        var oldReplyMessages=contact.messages.slice(),oldReplyTime=contact.lastTime;
+        contact.messages=oldReplyMessages.concat([{side:'ai',text:clean(reply,240),time:Date.now(),status:'sent'}]).slice(-100);
+        contact.lastTime=Date.now();
+        if(!commit()){
+          contact.messages=oldReplyMessages;contact.lastTime=oldReplyTime;
+          notice='联系人已经回复，但保存失败，原消息仍保留。';
+          return;
+        }
+        notice='';
       }).catch(function(e){notice='回复暂时失败，发送的消息仍保留。'+clean(e&&e.message,80);})
       .finally(function(){pendingChat=null;if(current==='chat')render();});
     }
@@ -591,7 +614,11 @@
       var action=e.target.closest('[data-action]');if(!action)return;
       var a=action.dataset.action;
       if(a==='close'||a==='deny'){close();return;}
-      if(a==='grant'){permission=access(role,new Date());permission.at=Date.now();commit();chooseScreen();return;}
+      if(a==='grant'){
+        var decision=access(role,new Date());
+        if(decision.decision==='拒绝'){notice='角色拒绝分享手机。';requestScreen();return;}
+        permission=decision;permission.at=Date.now();commit();chooseScreen();return;
+      }
       if(a==='start'){if(!selected.length){hint('请至少选择一个板块。');return;}commit();close();return;}
       if(a==='all'){selected=ITEMS.map(function(x){return x.id;});commit();chooseScreen();return;}
       if(a==='choose'){chooseScreen();return;}
