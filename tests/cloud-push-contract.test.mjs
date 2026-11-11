@@ -4990,6 +4990,49 @@ test('一台设备已保存消息后，其他尚未保存设备仍能获得 Push
   );
 });
 
+test('Cron 维护失败后仍必须执行云端模型 tick，并明确报告失败', async () => {
+  const { default: workerEntry } = await import('../worker.js');
+  for (const scenario of [
+    { maintenanceThrows: true, expectedError: /cloud_maintenance_transport_failed/ },
+    { maintenanceStatus: 503, expectedError: /cloud_maintenance_http_503/ }
+  ]) {
+    const calls = [];
+    let pending = null;
+    const env = {
+      CLOUD_DB: {
+        idFromName(name) {
+          assert.equal(name, 'maomao-global');
+          return 'test-durable-object-id';
+        },
+        get(id) {
+          assert.equal(id, 'test-durable-object-id');
+          return {
+            async fetch(request) {
+              const route = new URL(request.url).pathname;
+              calls.push(route);
+              if (route === '/internal/maintenance') {
+                if (scenario.maintenanceThrows) throw new Error('synthetic transport failure');
+                return new Response('maintenance failure', { status: scenario.maintenanceStatus });
+              }
+              return Response.json({ ok: true });
+            }
+          };
+        }
+      }
+    };
+    const ctx = {
+      waitUntil(promise) {
+        pending = promise;
+      }
+    };
+    await workerEntry.scheduled({}, env, ctx);
+    assert.ok(pending, 'Cron 必须注册后台执行');
+    await assert.rejects(pending, scenario.expectedError);
+    assert.deepEqual(calls, ['/internal/maintenance', '/internal/tick'],
+      '维护失败也必须执行后续主动联系 tick');
+  }
+});
+
 test('Worker scheduled maintenance 会持续扫描并重试待送达的聊天 Push', () => {
   const workerSource = fs.readFileSync(path.join(rootDir, 'worker.js'), 'utf8');
   assert.match(workerSource, /import \{ createApp, dispatchPendingOutboundPushes \} from '\.\/worker\/lib\/app\.js'/);
