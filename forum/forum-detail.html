@@ -445,7 +445,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
   }
   function getForumThreadWorldbook(){
     let cfg={};try{cfg=JSON.parse(localStorage.getItem('forum_config')||'{}')}catch(e){console.warn('[Forum] getForumThreadWorldbook 解析 forum_config 失败，使用默认主题人设',e)}
-    const id=cfg.theme||'reality';
+    const id=post&&post.themeId||cfg.theme||'reality';
     const custom=(Array.isArray(cfg.customThemes)?cfg.customThemes:[]).find(x=>x&&x.id===id);
     const themeNames={reality:'现代都市',bagua:'八卦吃瓜',xiuxian:'修仙界',academy:'校园',future:'赛博朋克'};
     const themeName=custom?(custom.name||'自定义主题'):(themeNames[id]||'现代都市');
@@ -1063,11 +1063,82 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     return completed;
   }
 
+  // Theme-specific fictional events progress without overwriting the original post.
+  async function generateForumWorldContinuation(target,readerText){
+    if(!post||!window.ForumWorldEvents||!ForumWorldEvents.isEvent(post)||worldReplyBusy||worldPageHidden)return false;
+    const state=ForumWorldEvents.progress(post);
+    if(state.finished){toast('这件事已经有了结果');return false;}
+    worldReplyBusy=true;renderPost();
+    const status=document.getElementById('aiCommentStatus');
+    if(status)status.textContent='楼主正在整理这件事的新进展…';
+    try{
+      const world=post.worldEvent;
+      const oldUpdates=post.comments.filter(c=>c&&c.source==='forum-world-author')
+        .map(c=>({chapter:c.worldChapter,text:String(c.text||'').slice(0,1200)})).slice(-4);
+      const context={
+        theme:getForumTheme(world.themeId).name,arcId:world.arcId,outline:world.outline,
+        cast:world.cast,facts:Array.isArray(world.facts)?world.facts.slice(-18):[],
+        original:{title:postTitle(),body:postBody()},updates:oldUpdates,
+        readerQuestion:String(readerText||'请更新事情的进展').slice(0,180),
+        nextChapter:state.chapter+1,totalChapters:state.maxChapters,
+        finalChapter:state.chapter+1>=state.maxChapters
+      };
+      const prompt='你是完全虚构的'+context.theme+'论坛帖的原作者，回来补充这件事真正发生的新进展。只返回 JSON。已知前情：'+JSON.stringify(context)+
+        '\n这一更写180-360个汉字，分2-3个自然段。有现场感、具体动作和前后衔接，不重讲开头，不编造与既有事实冲突的信息。至少揭示两个新的具体事实，推进人物做出选择，不写官方总结，也不写满屏感叹。'+
+        (context.finalChapter?'这是收尾更新，要讲清楚结果、各方选择和善后，不继续挖坑。':'这次至少解决一个疑问，保留下一次真正需要解释的细节。')+
+        '\n校园应体现课程/社团/宿舍的现实安排，修仙遵循宗门规矩和修为代价，赛博描绘居民生活与技术限制，都市强调真实人际选择，自定义主题遵守世界书。不要把故事写成统一的反转八卦。人物和经历纯属虚构。'+
+        '\n返回格式：{"update":"新进展完整正文","newFacts":["这次新增具体事实A","新增事实B"]}。';
+      const result=await forumAIJSON(prompt,0.88,[]);
+      if(worldPageHidden)return false;
+      if(!result||!result.ok||!result.data)throw new Error('没有生成有效的事件进展');
+      const checked=ForumWorldEvents.checkUpdate(result.data,[postBody()].concat(oldUpdates.map(x=>x.text)),world.facts);
+      if(!checked.ok)throw new Error(checked.reason);
+      const previousStory=JSON.parse(JSON.stringify(world)),previousLength=post.comments.length,stamp=Date.now();
+      const chapter=state.chapter+1;
+      post.comments.push({id:'forum_world_author_'+stamp.toString(36)+'_'+chapter,
+        name:post.name,avatar:post.avatar,residentId:post.residentId,owner:'community',
+        source:'forum-world-author',worldChapter:chapter,text:checked.update,time:stamp,
+        replyTo:target&&target.name?String(target.name):'',likes:0,replies:[]});
+      post.worldEvent={
+        ...world,chapter,maxChapters:state.maxChapters,finished:chapter>=state.maxChapters,
+        facts:(Array.isArray(world.facts)?world.facts:[]).concat(checked.newFacts).slice(-24),
+        updatedAt:stamp
+      };
+      if(!saveNow()){
+        post.comments.splice(previousLength);
+        post.worldEvent=previousStory;
+        renderComments();renderPost();return false;
+      }
+      renderComments();renderPost();
+      if(!target){
+        const all=document.querySelectorAll('#commentList .forum-world-author');
+        const last=all[all.length-1];
+        if(last&&typeof last.scrollIntoView==='function')last.scrollIntoView({behavior:'smooth',block:'center'});
+      }
+      if(status)status.textContent=post.worldEvent.finished?'楼主已经交代了这件事的结果':'楼主发布了第 '+chapter+' 次新进展';
+      return true;
+    }catch(error){
+      console.warn('[Forum] 事件进展生成失败，旧帖及章节保持不变',error);
+      if(status)status.textContent='新进展没有保存：'+String(error&&error.message||'检查 API 后重试').slice(0,82);
+      return false;
+    }finally{
+      worldReplyBusy=false;renderPost();
+    }
+  }
+  async function continueForumWorld(){
+    return generateForumWorldContinuation(null,'请根据已有事实自然推进，想看最新结果');
+  }
+
   async function generateRepliesToUserComment(target,text,submittedImageIds){
     if(!target)return;
     if(!gossipSeriesRunning&&window.ForumGossip&&ForumGossip.isGossipPost(post)&&!ForumGossip.progress(post).finished&&
        readForumConfig().gossipAutoContinue!==false&&ForumGossip.wantsContinuation(text)){
       await generateGossipAuthorContinuation(target,text);
+      return;
+    }
+    if(window.ForumWorldEvents&&ForumWorldEvents.isEvent(post)&&!ForumWorldEvents.progress(post).finished&&
+       readForumConfig().worldAutoContinue!==false&&ForumWorldEvents.wantsUpdate(text)){
+      await generateForumWorldContinuation(target,text);
       return;
     }
     const status=document.getElementById('aiCommentStatus');
@@ -1273,6 +1344,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
   }
   window.addEventListener('pagehide',function(){
     gossipSeriesStopRequested=true;
+    worldPageHidden=true;
     if(gossipReadObserver){gossipReadObserver.disconnect();gossipReadObserver=null}
   });
   document.addEventListener('visibilitychange',function(){if(document.hidden)gossipSeriesStopRequested=true});
