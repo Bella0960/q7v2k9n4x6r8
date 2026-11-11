@@ -625,7 +625,6 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
   }
   function jumpToGossipLatest(){
     if(!post||!window.ForumGossip||!ForumGossip.isGossipPost(post))return;
-    if(gossipView!=='author')setGossipView('author');
     const updates=document.querySelectorAll('#commentList [data-gossip-chapter]');
     const latest=updates.length?updates[updates.length-1]:null;
     if(!latest){toast('楼主还没更新，先点“让楼主继续讲”');return}
@@ -695,7 +694,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     if(hasGossipStory){
       const progress=ForumGossip.progress(post);
       const progressEl=document.getElementById('gossipReaderProgress');
-      if(progressEl)progressEl.textContent='连载 · '+(progress.finished?'已完结':'更新中')+' · '+progress.chapter+'/'+progress.maxChapters+' 更';
+      if(progressEl)progressEl.textContent='虚构连载 · '+(progress.finished?'已完结':'更新中')+' · '+progress.chapter+'/'+progress.maxChapters+' 更';
       const jump=document.getElementById('gossipJumpLatest');
       if(jump)jump.disabled=!post.comments.some(c=>c&&c.source==='gossip-author');
       for(const mode of ['all','author']){
@@ -750,7 +749,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       <div class="comment ${c.source==='gossip-author'?'gossip-author-update':''}" ${c.source==='gossip-author'?'data-gossip-chapter="'+Math.max(1,Math.floor(Number(c.gossipChapter)||1))+'"':''}>
         <div class="c-avatar" style="background:${avatarBackground(c)}">${avatarContent(c, false)}</div>
         <div class="c-body">
-          <div class="c-name">${esc(c.name)}${c.source==='gossip-author' ? '<span class="gossip-author-tag">楼主 · 第 '+String(c.gossipChapter||1)+' 更</span>' : ''}${c.replyTo ? '<span class="c-at"> 回复 '+esc(c.replyTo)+'</span>' : ''}</div>
+          <div class="c-name">${esc(c.name)}${c.source==='gossip-author' ? '<span class="gossip-author-tag">楼主 · 第 '+Math.max(1,Math.floor(Number(c.gossipChapter)||1))+' 更</span>' : ''}${c.replyTo ? '<span class="c-at"> 回复 '+esc(c.replyTo)+'</span>' : ''}</div>
           <div class="c-text">${esc(c.text)}</div>
           ${window.ForumMedia?ForumMedia.markup(c.mediaAssetIds,"comment-media"):""}
           <div class="c-actions">
@@ -940,6 +939,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
         return false;
       }
       renderComments();renderPost();
+      if(!target)jumpToGossipLatest();
       if(status){
         status.textContent=story.finished?'楼主已经更新完结局了':'楼主更新了第 '+nextChapter+' 段后续';
         setTimeout(function(){if(status.textContent.indexOf('楼主')===0)status.textContent=''},4600);
@@ -1035,7 +1035,9 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       input.value='';
       clearCommentImages();
       cancelReply();
-      renderComments();renderPost();
+      // After posting from author-only view, reveal the reader's saved comment.
+      if(gossipView==='author')gossipView='all';
+      renderPost();renderComments();
       await generateRepliesToUserComment(replyContainer,text||'（只附了一张图片）',assetIds);
     }catch(error){
       toast(error&&error.message?error.message:'评论图片保存失败，请重试');
