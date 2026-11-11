@@ -156,13 +156,14 @@
         {side:'ai',text:'好，群里说。',time:at(now,1,19,18)}
       ]}
     ];
+    contacts.slice(2).forEach(function(c){c.messages.splice(3,0,{side:'system',text:'对方撤回了一条消息',time:c.messages[2].time+30000,status:'recalled'});});
     var moments=[
       {text:'今天最难的不是做决定，是把话说清楚。',time:at(now,0,21,22),image:'桌角的一杯温水和摊开的笔记本',visibility:'部分可见',hesitated:true,comments:[{name:p.pair,text:'你还好吗？'},{name:'高中好友阿诺',text:'周末出来走走。'}]},
       {text:'终于找到上次说的那家小店。',time:at(now,1,12,55),image:p.place+'附近的店招和一份简单的午餐',visibility:'好友可见',hesitated:false,comments:[{name:'表姐思思',text:'看着不错！'},{name:p.pair,text:'下回带我。'}]},
       {text:'做完一件拖了好久的小事。',time:at(now,3,17,20),image:'文具店的纸袋和一张收据',visibility:'好友可见',hesitated:false,comments:[{name:'社团伙伴阿川',text:'值得纪念。'}]}
     ];
     var searches=[
-      {query:'怎么判断别人是不是在委婉地拒绝',time:at(now,0,2,11)},
+      {query:'怎么判断特别联系人是不是在委婉地拒绝',time:at(now,0,2,11)},
       {query:'一条消息发出去又撤回对方会怎么想',time:at(now,1,1,38)},
       {query:p.place+'附近午餐推荐',time:at(now,1,11,17)},
       {query:'送朋友一份不过分贵重的礼物',time:at(now,2,20,4)},
@@ -213,7 +214,7 @@
       {description:'一张只写着「还没想好怎么开口」的备忘录截图',time:at(now,1,22,31)},
       {description:'与特别联系人的旧聊天片段，部分内容被角色自行遮盖',time:at(now,3,23,44)}
     ];
-    var apps=[{name:'微信',minutes:81},{name:'音乐',minutes:62},{name:'浏览器',minutes:45},{name:'相册',minutes:28},{name:'备忘录',minutes:17}];
+    var apps=[{name:'微信',minutes:81,visits:22},{name:'音乐',minutes:62,visits:5},{name:'浏览器',minutes:45,visits:9},{name:'相册',minutes:28,visits:7},{name:'备忘录',minutes:17,visits:3}];
     return {schema:1,roleId:String(roleId),day:localDay(now),updatedAt:now.getTime(),facts:facts,source:{},selected:[],permission:null,
       sections:{
         chat:{contacts:contacts},moments:{moments:moments},browser:{searchHistory:searches,bookmarks:[{title:'周末步行路线整理',summary:'两条适合不赶时间的城市散步路线'},{title:'简单记录法',summary:'把待办拆成今天能完成的小步骤'},{title:'实用礼物尺寸表',summary:'常见小物件规格对照'}]},
@@ -345,7 +346,7 @@
           }).join('')+'</div><form class="inspect-compose" id="inspectCompose"><input name="message" maxlength="200" placeholder="以角色身份发送消息" autocomplete="off" aria-label="发送消息">'+
             '<button type="submit" '+(pendingChat?'disabled':'')+'>'+(pendingChat?'回复中':'发送')+'</button></form>';
         }else body='<div class="list">'+arr(section.contacts).map(function(c,i){
-          var m=arr(c.messages).slice(-1)[0]||{};return '<button class="item inspect-contact" data-detail="chat" data-index="'+i+'"><span class="inspect-avatar">'+html(c.avatar||c.name.slice(0,1))+'</span><span><strong>'+html(c.name)+'</strong><small>'+html(c.relationship||'')+' · '+html(m.text||'暂无消息')+'</small></span>'+
+          var m=arr(c.messages).slice(-1)[0]||{};return '<button class="item inspect-contact" data-detail="chat" data-index="'+i+'"><span class="inspect-avatar">'+html(c.avatar||c.name.slice(0,1))+'</span><span><strong>'+html(c.name)+'</strong><small>'+html(c.relationship||'')+' · '+html(dateTime(c.lastTime))+' · '+html(m.text||'暂无消息')+'</small></span>'+
             (num(c.unread,0)>0?'<i class="inspect-unread" aria-label="未读"></i>':'')+'</button>';
         }).join('')+'</div>';
       } else if(current==='moments'){
@@ -362,8 +363,11 @@
           '<p class="inspect-muted">需要剧情密码（默认111111），内容还受到角色关系进度影响。密码不是数据加密。</p>'+
             (pinView==='notes'?pinForm():button('输入密码','notesPin')));
       } else if(current==='wallet'){
-        var tx=arr(section.transactions),spent=tx.filter(function(x){return num(x.amount,0)<0;}).reduce(function(s,x){return s+Math.abs(num(x.amount,0));},0);
-        body='<div class="inspect-summary"><small>剧情余额</small><strong>'+money(num(section.balance,0))+'</strong><small>近期开支 '+money(spent)+'</small></div>'+
+        var tx=arr(section.transactions),month=new Date(),categoryTotals={};
+        var spent=tx.filter(function(x){var d=new Date(x.time);return num(x.amount,0)<0&&d.getFullYear()===month.getFullYear()&&d.getMonth()===month.getMonth();})
+          .reduce(function(total,x){var v=Math.abs(num(x.amount,0));categoryTotals[x.type||'其他']=(categoryTotals[x.type||'其他']||0)+v;return total+v;},0);
+        var largest=Object.keys(categoryTotals).sort(function(a,b){return categoryTotals[b]-categoryTotals[a];})[0]||'暂无';
+        body='<div class="inspect-summary"><small>剧情余额</small><strong>'+money(num(section.balance,0))+'</strong><small>本月支出 '+money(spent)+' · 最大支出类别 '+html(largest)+'</small></div>'+
           block('收支明细',tx.map(function(x){return '<div class="inspect-transaction"><span><b>'+html(x.merchant)+'</b><small>'+html(x.type)+' · '+html(dateTime(x.time))+(x.memo?' · '+html(x.memo):'')+'</small></span><strong>'+money(x.amount)+'</strong></div>';}).join(''));
       } else if(current==='music'){
         body=block('最近播放',arr(section.recent).map(function(x){return line(x.title+' · '+x.artist,dateTime(x.time)+(x.repeat?' · 深夜循环':'') );}).join(''))+
@@ -378,10 +382,10 @@
           block('隐藏相册',unlockedAlbum?arr(section.hidden).map(function(x){return line(dateTime(x.time),x.description);}).join(''):
             '<p class="inspect-muted">需额外的虚构相册密码，线索藏在已解锁的备忘录中。</p>'+
             (pinView==='album'?pinForm():button('输入相册密码','albumPin')))+
-          '<p class="inspect-muted">共 '+num(section.total,0)+' 张 · 最近7天新增 '+num(section.newSevenDays,0)+' 张</p>';
+          '<p class="inspect-muted">共 '+num(section.total,0)+' 张 · 最近7天新增 '+num(section.newSevenDays,0)+' 张 · 最近拍摄 '+html(dateTime(Math.max.apply(null,arr(section.photos).map(function(x){return num(x.time,0)}))))+'</p>';
       } else if(current==='device'){
         body='<div class="inspect-summary"><small>今日屏幕使用</small><strong>'+Math.floor(num(section.screenMinutes,0)/60)+'小时'+(num(section.screenMinutes,0)%60)+'分</strong><small>23:00–06:00 '+num(section.nightMinutes,0)+' 分钟</small></div>'+
-          block('常用应用',arr(section.apps).map(function(x){return line(x.name,num(x.minutes,0)+' 分钟');}).join(''))+
+          block('常用应用',arr(section.apps).map(function(x){return line(x.name,num(x.minutes,0)+' 分钟 · 打开 '+num(x.visits,0)+' 次');}).join(''))+
           block('设备概览',line('电量',num(section.battery,0)+'%')+line('Wi-Fi',section.wifi)+line('手机型号',section.model)+line('存储',num(section.storageUsedGb,0)+' / '+num(section.storageTotalGb,0)+' GB')+
           line('所在位置',section.location)+line('拿起次数',num(section.pickups,0)+' 次')+line('专注 / 放松',num(section.focusMinutes,0)+' / '+num(section.relaxMinutes,0)+' 分钟'));
       } else if(current==='forum'){
