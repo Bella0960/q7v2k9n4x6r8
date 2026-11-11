@@ -129,9 +129,9 @@ test('tutorial workflow enforces a guide update when user-facing app pages chang
 });
 
 test('PWA app shell caches the full guide bundle and has a matching test command', () => {
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v203'/);
+  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v204'/);
   assert.ok(serviceWorker.includes("'./tutorial/tutorial.html'"));
-  assert.ok(serviceWorker.includes("'./tutorial/tutorial.js?v=20261111v3'"));
+  assert.ok(serviceWorker.includes("'./tutorial/tutorial.js?v=20261111v4'"));
   assert.equal(packageJson.scripts['test:tutorial'], 'node --test tests/tutorial-page-contract.test.mjs');
 });
 
@@ -140,4 +140,32 @@ test('chat detail scripts parse so the conversation settings handler can bind', 
     .filter(([, attributes]) => !/\bsrc\s*=|\btype\s*=/.test(attributes));
   assert.ok(scripts.some(([, , source]) => /async function sendMsg\(/.test(source)));
   for (const [, , source] of scripts) new Function(source);
+});
+
+const apiSettings = read('settings/settings.html');
+const apiSettingsScript = read('settings/js/settings.js');
+const miniMaxSettings = read('settings/minimax-tts.html');
+
+test('API-first handbook explains credentials, /v1, connection results, sampling, images and MiniMax', () => {
+  for (const chapter of ['api-first', 'api-url-v1', 'api-errors', 'api-params', 'api-images', 'minimax-voice-guide']) {
+    assert.ok(guideScript.includes('"id": "' + chapter + '"'), 'missing technical chapter: ' + chapter);
+    assert.ok(guideHtml.includes('data-open-guide="' + chapter + '"'), 'missing chapter navigation: ' + chapter);
+  }
+  for (const keyword of ['401','403','404','429','CORS','chat/completions','images/generations','Temperature','Top P','Group ID','Voice ID']) {
+    assert.ok(guideScript.includes(keyword), 'missing critical technical concept: ' + keyword);
+  }
+  assert.match(guideHtml, /id="diagnoseSelect"/);
+  assert.match(guideHtml, /id="diagnoseAnswer"/);
+  assert.match(guideScript, /function guideCard\(guide\)/);
+  assert.match(guideScript, /\^#guide=/);
+});
+
+test('actual settings link to relevant lessons and temperature zero is saved', () => {
+  for (const chapter of ['api-first','api-url-v1','api-errors','api-params','api-images']) {
+    assert.ok(apiSettings.includes('tutorial.html#guide=' + chapter), 'API settings missing lesson link: ' + chapter);
+  }
+  assert.ok(miniMaxSettings.includes('tutorial.html#guide=minimax-voice-guide'));
+  assert.equal((apiSettingsScript.match(/temperature: Number\.isFinite\(Number\(apiTemperatureInput\.value\)\)/g) || []).length, 2);
+  assert.doesNotMatch(apiSettingsScript, /temperature: parseFloat\(apiTemperatureInput\.value\) \|\| 0\.7/);
+  assert.ok(guideScript.includes('保存只表示配置写到浏览器'));
 });
