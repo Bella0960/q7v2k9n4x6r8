@@ -548,18 +548,52 @@
     profile = { nameA:$('setNameA').value.trim(), nameB:$('setNameB').value.trim(), startDate:$('setDate').value, partnerId:$('setPartner').value, myAvatar:profile.myAvatar||'', taAvatar:profile.taAvatar||'' };
     write(K.profile, profile); renderProfile(); closeSet();
     $('chatBtn').style.display = profile.partnerId ? 'inline-block' : 'none';
-    
-    // 新绑定：自动给对方发邀请消息
+
+    // 新绑定：资料保存与聊天邀请分开确认，不能把消息写入失败伪装成完整成功。
+    let invitationSaved = true;
     if(!hadPartner && profile.partnerId){
+      const msg = '♡ 邀请你绑定我们的情侣空间，从此以后，我们的纪念日、回忆、心愿清单，都存在这里啦。';
+      const message = { role: 'user', text: msg, time: Date.now(), type: 'text' };
       try {
-        const msg = '♡ 邀请你绑定我们的情侣空间，从此以后，我们的纪念日、回忆、心愿清单，都存在这里啦。';
-        let history = JSON.parse(localStorage.getItem('chat_history_' + profile.partnerId) || '[]');
-        history.push({ role: 'user', text: msg, time: Date.now(), type: 'text' });
-        localStorage.setItem('chat_history_' + profile.partnerId, JSON.stringify(history));
-      } catch(e){}
+        const storage = window.PhoneStorage;
+        let history;
+        if (storage && typeof storage.getChatHistory === 'function') {
+          history = storage.getChatHistory(profile.partnerId);
+        } else {
+          const raw = localStorage.getItem('chat_history_' + profile.partnerId);
+          history = raw ? JSON.parse(raw) : [];
+        }
+        if (!Array.isArray(history)) throw new Error('聊天记录格式无法识别');
+
+        const next = history.slice();
+        next.push(message);
+        let saved = false;
+        if (storage && typeof storage.saveChatHistory === 'function') {
+          saved = storage.saveChatHistory(profile.partnerId, next) === true;
+        } else {
+          localStorage.setItem('chat_history_' + profile.partnerId, JSON.stringify(next));
+          saved = true;
+        }
+        if (!saved) throw new Error('聊天记录写入失败');
+
+        const verified = storage && typeof storage.getChatHistory === 'function'
+          ? storage.getChatHistory(profile.partnerId)
+          : JSON.parse(localStorage.getItem('chat_history_' + profile.partnerId) || '[]');
+        const last = Array.isArray(verified) && verified.length ? verified[verified.length - 1] : null;
+        if (!Array.isArray(verified) || verified.length !== next.length ||
+            !last || last.role !== message.role || last.type !== message.type ||
+            last.time !== message.time || last.text !== message.text) {
+          throw new Error('聊天记录写入后校验失败');
+        }
+      } catch(error) {
+        invitationSaved = false;
+        console.error('[Couple] partner invitation history persistence failed:', error);
+      }
     }
-    
-    toast('已保存');
+
+    toast(invitationSaved
+      ? '已保存'
+      : '资料已保存，但邀请消息没有写入聊天记录，请稍后在聊天中重试');
   };
   window.closeSheet = closeSheet;
   window.openSheet = openSheet;

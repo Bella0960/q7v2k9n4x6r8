@@ -439,7 +439,7 @@ test('parallel portrait uploads merge into the latest role snapshot instead of o
   assert.equal(results.every(result => result.ok), true);
   assert.equal(api.list('role-a').length, 2);
   assert.deepEqual(
-    api.list('role-a').map(item => item.label).sort(),
+    Array.from(api.list('role-a'), item => item.label).sort(),
     ['并发头像 A', '并发头像 B']
   );
 });
@@ -654,12 +654,12 @@ test('deleting a character releases only its references and re-discovers interru
   assert.ok(managerSource.includes('await library.removeRole(String(id))'));
   assert.ok(managerSource.includes('listPendingRoleCleanups()'));
   assert.ok(managerSource.includes('const discovered = library.listPendingRoleCleanups()'));
-  assert.ok(managerSource.includes('删除标记暂时无法扫描'));
+  assert.ok(managerSource.includes('角色头像清理标记暂时无法扫描，将继续处理已有重试队列'));
   assert.ok(managerSource.includes('角色删除失败，原有资料和头像均已保留。'));
 });
 
-test('PWA shell caches the role portrait archive and its runtime at v195', () => {
-  assert.ok(serviceWorker.includes("const CACHE_NAME = 'phone-app-pwa-v198'"));
+test('PWA shell caches the role portrait archive and its runtime', () => {
+  assert.ok(serviceWorker.includes("const CACHE_NAME = 'phone-app-pwa-v202'"));
   assert.ok(serviceWorker.includes("'./worldbook/characters/characters.html'"));
   assert.ok(serviceWorker.includes("'./worldbook/characters/js/characters-manager.js?v=20261107v11'"));
   assert.ok(serviceWorker.includes("'./shared/js/phone/role-avatar-library.js?v=20261107v14'"));

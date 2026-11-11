@@ -246,7 +246,8 @@ test('candidate assets share the original media blob and do not change the activ
   assert.ok(avatarLibrarySource.includes('media.getAsset(assetId)'));
   assert.ok(avatarLibrarySource.includes("media.addRef(assetId, OWNER_TYPE, String(roleId))"));
   assert.ok(avatarLibrarySource.includes("source: options.source === 'legacy' ? 'legacy' : (options.source === 'chat' ? 'chat' : 'upload')"));
-  assert.ok(avatarLibrarySource.includes("var latest = readState(roleId)"));
+  assert.match(avatarLibrarySource,
+    /media\.addRef\(assetId, OWNER_TYPE, String\(roleId\)\)[\s\S]*?var latestResult = readStateResult\(roleId\);[\s\S]*?var latest = latestResult\.value/);
   assert.ok(avatarLibrarySource.includes("activeId: latest.activeId, items: [item].concat(latest.items)"));
   assert.ok(avatarLibrarySource.includes("return { ok: true, value: copyItem(item, next.activeId), meta: { linked: true } }"));
 });
@@ -254,15 +255,21 @@ test('candidate assets share the original media blob and do not change the activ
 test('deleted chat images release only chat references after single or bulk deletion is saved', () => {
   assert.ok(chatDetailSource.includes('function releaseDeletedChatImageReferences(messages)'));
   assert.ok(chatDetailSource.includes("String(message.assetId),\n                        'chat-message',"));
-  assert.ok(chatDetailSource.includes('if (!saveMessages(keep))'));
-  assert.ok(chatDetailSource.includes('releaseDeletedChatImageReferences(removedMessages)'));
-  assert.ok(chatDetailSource.includes('releaseDeletedChatImageReferences([removedMessage])'));
+  const single = chatDetailSource.slice(chatDetailSource.indexOf('function deleteOneMessage(bubbleId)'));
+  const bulk = chatDetailSource.slice(chatDetailSource.indexOf("document.getElementById('selectDeleteBtn').addEventListener"));
+  for (const handler of [single, bulk]) {
+    const save = handler.indexOf('if (!saveMessages(keep))');
+    const release = handler.indexOf('releaseDeletedChatImageReferences(removedMessages)');
+    assert.ok(save >= 0 && release > save, 'reference cleanup must follow a successful save');
+    assert.match(handler.slice(save, release), /删除失败[\s\S]*?return;/);
+    assert.match(handler.slice(0, release), /removedMessages = list\.filter\(function \(m\) \{ return !keptMids\.has/);
+  }
   assert.ok(chatExtrasSource.includes('releaseDeletedChatImageReferences(previousMessages)'));
   assert.ok(chatDetailSource.includes('window.releaseDeletedChatImageReferences = releaseDeletedChatImageReferences'));
 });
 
 test('PWA shell and package contracts include the chat vision runtime', () => {
-  assert.ok(serviceWorkerSource.includes("const CACHE_NAME = 'phone-app-pwa-v198'"));
+  assert.ok(serviceWorkerSource.includes("const CACHE_NAME = 'phone-app-pwa-v202'"));
   assert.ok(serviceWorkerSource.includes('chat-image-vision.js?v=20261107v5'));
   assert.ok(serviceWorkerSource.includes('chat-context-policy.js?v=20261107vision1'));
   assert.ok(serviceWorkerSource.includes('chat-extras.js?t=20261107imagevision1'));
@@ -272,7 +279,8 @@ test('PWA shell and package contracts include the chat vision runtime', () => {
 
 
 test('forwarding an asset-backed chat image adds a destination chat reference', () => {
-  assert.ok(chatDetailSource.includes('async function forwardMessage(msg, targetId, targetName)'));
+  assert.match(chatDetailSource,
+    /async function forwardMessage\(resolved, targetId, targetName\)\s*\{\s*var msg = resolved\.message;/);
   assert.ok(chatDetailSource.includes("_chatImageMediaRepo.addRef(fwd.assetId, 'chat-message', String(fwd.mid))"));
   assert.ok(chatDetailSource.includes('fwd.assetId = String(msg.assetId)'));
   assert.ok(chatDetailSource.includes('if (linkedImageRef)'));
