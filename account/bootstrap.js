@@ -27,7 +27,7 @@
       try { payload = await response.json(); } catch {}
       if (!response.ok || !payload || payload.ok !== true) {
         const error = new Error(payload?.error?.message || '服务器返回异常，请检查连接后重试');
-        error.code = payload?.error?.code || 'REQUEST_FAILED';
+        error.code = payload?.error?.code || ('HTTP_' + response.status);
         error.status = response.status;
         throw error;
       }
@@ -241,8 +241,10 @@
             showInitialized();
             return;
           }
-          errorNode.textContent = '刚才的提交没有获得成功回执，目前也未查到管理员。请检查连接后再操作，不要连续点击创建。' +
-            (error.code ? '（' + error.code + '）' : '');
+          const safeCode = String(error.code || 'UNKNOWN').replace(/[^A-Z0-9_]/g, '').slice(0, 60);
+          const serverStatus = typeof error.status === 'number' ? ' / HTTP ' + error.status : '';
+          errorNode.textContent = '管理员尚未创建。服务器反馈：' + safeCode + serverStatus +
+            '。请把这个错误代号反馈给开发者；先不要再次提交。';
         } catch {
           errorNode.textContent = '提交时网络中断，且暂时无法确认结果。请不要重复提交，稍后刷新页面检查初始化状态。';
         }
