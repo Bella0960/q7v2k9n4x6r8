@@ -6,7 +6,7 @@ import {
   base64UrlToBytes, randomToken, sha256Hex, timingSafeEqualHex
 } from './crypto.js';
 import {
-  PushConfigError, parseVapidKeys, sendWebPush
+  PushConfigError, PUSH_SEND_TIMEOUT_MS, parseVapidKeys, sendWebPush
 } from './webpush.js';
 import '../../shared/js/phone/character-schedule-policy.js';
 import { planTask, nextRetryAt } from './scheduler-policy.js';
@@ -264,11 +264,16 @@ export function buildOutboundPushPayload({
 export async function dispatchPendingOutboundPushes({
   store,
   env = {},
-  now = Date.now(),
+  now = Date.now,
   fetchImpl = fetch,
   limit = 50
 } = {}) {
-  const timestamp = Number(typeof now === 'function' ? now() : now);
+  const clock = typeof now === 'function' ? now : () => Number(now);
+  const readTimestamp = () => {
+    const value = Number(clock());
+    return Number.isSafeInteger(value) && value > 0 ? value : null;
+  };
+  const timestamp = readTimestamp();
   if (!Number.isSafeInteger(timestamp) || timestamp <= 0 || !store ||
       typeof store.listOutboundPushCandidates !== 'function') {
     return { configured: false, reason: 'dispatcher_unavailable', attempted: 0, sent: 0, failed: 0 };
@@ -281,6 +286,17 @@ export async function dispatchPendingOutboundPushes({
     return {
       configured: false,
       reason: error instanceof PushConfigError ? 'push_not_configured' : 'push_configuration_error',
+      attempted: 0,
+      sent: 0,
+      failed: 0
+    };
+  }
+
+  const deliveryLeaseMs = 60000;
+  if (deliveryLeaseMs <= PUSH_SEND_TIMEOUT_MS + 1000) {
+    return {
+      configured: false,
+      reason: 'push_timeout_exceeds_delivery_lease',
       attempted: 0,
       sent: 0,
       failed: 0
@@ -304,7 +320,11 @@ export async function dispatchPendingOutboundPushes({
   const deliveryLeaseMs = 60000;
 
   for (const candidate of candidates) {
-    const deliveryTimestamp = Number(typeof now === 'function' ? now() : timestamp);
+    const deliveryTimestamp = readTimestamp();
+    if (deliveryTimestamp == null) {
+      summary.failed += 1;
+      continue;
+    }
     const groupId = candidate.group_id ? String(candidate.group_id) : null;
     const dedupeKey = groupId
       ? 'outbound-group:' + groupId
@@ -325,7 +345,7 @@ export async function dispatchPendingOutboundPushes({
       const existing = store.findDelivery(dedupeKey, candidate.subscription_id);
       if (existing?.status === 'sending') summary.inProgress += 1;
       else if (existing?.status === 'error' &&
-               Number(existing.next_attempt_at || 0) > timestamp) summary.retryDeferred += 1;
+               Number(existing.next_attempt_at || 0) > (readTimestamp() ?? timestamp)) summary.retryDeferred += 1;
       else if (existing?.status === 'failed' ||
                Number(existing?.attempt_count || 0) >= maxDeliveryAttempts) summary.retryExhausted += 1;
       else summary.skipped += 1;
@@ -370,7 +390,11 @@ export async function dispatchPendingOutboundPushes({
     }
 
     if (outcome.skipped) {
-      const finishedAt = Number(typeof now === 'function' ? now() : timestamp);
+      const finishedAt = readTimestamp();
+      if (finishedAt == null) {
+        summary.failed += 1;
+        continue;
+      }
       const finalized = store.finishDelivery({
         dedupeKey,
         subscriptionId: candidate.subscription_id,
@@ -390,7 +414,7 @@ export async function dispatchPendingOutboundPushes({
         deviceId: candidate.device_id,
         kind: 'outbound_push',
         status: finalized ? 'skipped' : 'failed',
-        reasonCode: 'subscription_unavailable_before_send',
+        reasonCode: finalized ? 'subscription_unavailable_before_send' : 'delivery_lease_lost',
         detail: {
           outboundMessageId: candidate.outbound_message_id,
           serverMessageId: candidate.server_message_id,
@@ -420,7 +444,11 @@ export async function dispatchPendingOutboundPushes({
       6 * 60 * 60 * 1000,
       30000 * (2 ** Math.max(0, Number(claim.attempt_count) - 1))
     );
-    const finishedAt = Number(typeof now === 'function' ? now() : timestamp);
+    const finishedAt = readTimestamp();
+    if (finishedAt == null) {
+      summary.failed += 1;
+      continue;
+    }
     const nextAttemptAt = canRetry ? finishedAt + retryDelayMs : null;
     const finalized = store.finishDelivery({
       dedupeKey,
@@ -434,6 +462,21 @@ export async function dispatchPendingOutboundPushes({
 
     if (!finalized) {
       summary.failed += 1;
+      await store.logExecution({
+        id: randomToken(12),
+        deviceId: candidate.device_id,
+        kind: 'outbound_push',
+        status: 'failed',
+        reasonCode: 'delivery_lease_lost',
+        detail: {
+          outboundMessageId: candidate.outbound_message_id,
+          serverMessageId: candidate.server_message_id,
+          subscriptionId: candidate.subscription_id,
+          httpStatus: Number.isFinite(statusCode) ? statusCode : 0,
+          retryScheduled: false
+        },
+        now: finishedAt
+      });
       continue;
     }
     if (outcome.ok) {
@@ -1088,12 +1131,41 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const activityExecutorConfigured = readActivityExecutionConfig(env) !== null;
     const serverModelConfigured = Boolean(readAutonomyModelConfig(env));
     const contextSharing = await store.getUserContextSharing(userId);
+    const contextSharingEnabled = Boolean(contextSharing && Number(contextSharing.enabled) === 1);
     const activityQueue = await store.getActivityQueueSummary({ userId });
     const timestamp = now();
     const recentSchedulerReasons = await store.getRecentAutonomyReasonSummary({
       userId,
       since: timestamp - 86400000
     });
+    const recentPushReasons = await store.getRecentPushReasonSummary({
+      userId,
+      deviceId: device.id,
+      since: timestamp - 86400000
+    });
+    const latestCloudTick = await store.getLatestCloudAutonomyTick();
+    const cloudSchedulerLastRunAt = latestCloudTick ? Number(latestCloudTick.createdAt) : null;
+    const cloudSchedulerRuntimeVerified = Boolean(
+      latestCloudTick &&
+      ['success', 'degraded'].includes(String(latestCloudTick.status)) &&
+      Number.isSafeInteger(cloudSchedulerLastRunAt) &&
+      cloudSchedulerLastRunAt <= timestamp &&
+      timestamp - cloudSchedulerLastRunAt <= 15 * 60 * 1000
+    );
+    const cloudModelLastGeneratedAt = await store.getLatestCloudAutonomyGeneration({ userId });
+    const cloudModelGenerationVerified = Number.isSafeInteger(Number(cloudModelLastGeneratedAt)) &&
+      Number(cloudModelLastGeneratedAt) > 0 &&
+      Number(cloudModelLastGeneratedAt) <= timestamp &&
+      timestamp - Number(cloudModelLastGeneratedAt) <= 30 * 24 * 60 * 60 * 1000;
+    const cloudPushLastAcceptedAt = await store.getLatestAutonomyPushAcceptance({
+      userId,
+      deviceId: device.id,
+      now: timestamp
+    });
+    const cloudPushAcceptanceVerified = Number.isSafeInteger(Number(cloudPushLastAcceptedAt)) &&
+      Number(cloudPushLastAcceptedAt) > 0 &&
+      Number(cloudPushLastAcceptedAt) <= timestamp &&
+      timestamp - Number(cloudPushLastAcceptedAt) <= 30 * 24 * 60 * 60 * 1000;
     const presenceSummary = presenceConfig
       ? await store.getPresenceSummary({
           userId,
@@ -1102,6 +1174,25 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
           graceMs: presenceConfig.graceMs
         })
       : null;
+
+    const autonomyExecutionBlockers = [
+      ...(activityExecutorConfigured ? [] : ['activity_executor_config_missing']),
+      ...(serverModelConfigured ? [] : ['server_model_credentials_missing']),
+      ...(globalAutonomy?.enabled === 1 ? [] : ['global_autonomy_not_enabled']),
+      ...(contextSharingEnabled ? [] : ['context_sharing_not_enabled']),
+      ...(contextVersionReady ? [] : ['context_version_unavailable']),
+      ...(cloudSchedulerRuntimeVerified ? [] : ['cloud_model_scheduler_runtime_not_verified']),
+      ...(cloudModelGenerationVerified ? [] : ['cloud_model_generation_not_verified'])
+    ];
+    const pushDeliveryBlockers = [
+      ...(vapid.configured ? [] : ['web_push_keys_not_configured']),
+      ...(activeSubscriptions.length > 0 ? [] : ['current_device_push_subscription_missing']),
+      ...(cloudPushAcceptanceVerified ? [] : ['cloud_push_provider_acceptance_not_verified'])
+    ];
+    const autonomousMessageGenerationReady = autonomyExecutionBlockers.length === 0;
+    const pushDeliveryReady = pushDeliveryBlockers.length === 0;
+    const autonomousContactAndPushReady = autonomousMessageGenerationReady && pushDeliveryReady;
+
     return ok({
       deviceAuthorized: true,
       deviceAuthConfigured: pepper.length >= 32,
@@ -1115,6 +1206,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       globalAutonomyEnabled: globalAutonomy?.enabled === 1,
       activityQueue,
       recentSchedulerReasons,
+      recentPushReasons,
       schedulerDiagnosticsWindowMs: 86400000,
       // This account-level aggregate does not replace the exact per-character
       // version check performed by scheduler-gate for every context task.
@@ -1124,20 +1216,23 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       contextVersionLatestUpdatedAt: contextVersionSummary.latestUpdatedAt,
       activityExecutorAvailable: activityExecutorConfigured && serverModelConfigured,
       serverModelConfigured,
-      contextSharingEnabled: Boolean(contextSharing && Number(contextSharing.enabled) === 1),
+      contextSharingEnabled,
+      cloudSchedulerRuntimeVerified,
+      cloudSchedulerLastRunAt,
+      cloudSchedulerLastRunStatus: latestCloudTick?.status || null,
+      cloudModelGenerationVerified,
+      cloudModelLastGeneratedAt: cloudModelLastGeneratedAt || null,
+      cloudPushAcceptanceVerified,
+      cloudPushLastAcceptedAt,
       deviceLocalModelRequired: false,
-      autonomousMessageGenerationReady: false,
-      autonomyExecutionBlockers: [
-        ...(activityExecutorConfigured ? [] : ['activity_executor_config_missing']),
-        ...(serverModelConfigured ? [] : ['server_model_credentials_missing']),
-        ...(contextSharing && Number(contextSharing.enabled) === 1 ? [] : ['context_sharing_not_enabled']),
-        ...(contextVersionReady ? [] : ['context_version_unavailable']),
-        'cloud_model_scheduler_runtime_not_verified'
-      ],
-      note: '云端模型只会使用单独开启共享后上传的角色称呼、角色设定和最多 12 条文字消息；图片、语音、附件及手机 API Key 不会上传。服务端模型凭据只从 Worker Secret 读取。当前测试分支已接入服务端生成执行器与多气泡组收件箱，但尚未部署，也未完成真实模型和手机通知链路验收。'
+      autonomousMessageGenerationReady,
+      autonomyExecutionBlockers,
+      pushDeliveryReady,
+      pushDeliveryBlockers,
+      autonomousContactAndPushReady,
+      note: '云端后台任务由 Worker 定时处理，不要求小手机保持前台。只有单独开启上下文共享后，角色称呼、角色设定和最多 12 条文字消息才会同步到云端并交给服务端模型；图片、语音、附件及手机 API Key 不会上传。主动消息生成与当前设备 Push 采用独立验收状态：前者看最近 15 分钟调度及最近 30 天真实模型出站入库，后者看 VAPID 配置、当前设备订阅和最近 30 天服务端接受回执。HTTP 成功只表示推送服务接受请求，不表示 Android 一定显示通知；锁屏展示仍需真机验收。'
     });
   }
-
   async function getGlobalAutonomy(request) {
     const device = await authenticate(request);
     const row = await store.getUserAutonomy(device.user_id || OWNER_USER_ID);
