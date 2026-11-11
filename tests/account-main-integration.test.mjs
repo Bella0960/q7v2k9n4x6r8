@@ -75,3 +75,13 @@ test('founder bootstrap refuses HTTP 200 responses without a verified founder se
   assert.match(bootstrap, /payload\.account\?\.founderNumber !== '001'/);
   assert.match(bootstrap, /window\.location\.replace\('\/admin\/admin-center\.html'\)/);
 });
+
+test('phone QA Worker Preview has its own SQLite-backed account store', () => {
+  const wrangler = JSON.parse(read('wrangler.jsonc').replace(/^\s*\/\/[^\n]*$/gm, ''));
+  assert.equal(wrangler.name, 'mao');
+  assert.ok(wrangler.migrations.some(m => m.new_sqlite_classes?.includes('CloudDatabase')));
+  assert.deepEqual(wrangler.previews.durable_objects.bindings, [
+    { name: 'CLOUD_DB', class_name: 'CloudDatabase' }
+  ]);
+  assert.equal(wrangler.assets.run_worker_first, true);
+});
