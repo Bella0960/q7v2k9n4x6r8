@@ -176,10 +176,10 @@ test('friend code, request list and friend list use only the authenticated API',
       });
     }
     if (url.includes('/v1/friends/requests?direction=incoming')) {
-      return jsonResponse({ ok: true, requests: [{ id: 'request_123456', peer: { id: 'peer-1' } }] });
+      return jsonResponse({ ok: true, ownerAccountId: 'self-1', requests: [{ id: 'request_123456', peer: { id: 'peer-1' } }] });
     }
     if (url.endsWith('/v1/friends/blocks')) {
-      return jsonResponse({ ok: true, blocked: [{ id: 'blocked-1', displayName: 'Blocked' }] });
+      return jsonResponse({ ok: true, ownerAccountId: 'self-1', blocked: [{ id: 'blocked-1', displayName: 'Blocked' }] });
     }
     if (url.endsWith('/v1/friends/codes/rotate')) {
       return jsonResponse({ ok: true, code: 'a'.repeat(64), qrPayload: 'mao://friend/add?code=' + 'a'.repeat(64) }, 201);
@@ -647,4 +647,58 @@ test('friend roster and account avatar URLs omit private avatar references when 
   assert.equal(roster.friends[0].avatarAssetId, undefined);
   assert.equal(roster.relationships[0].avatarAssetId, undefined);
   assert.equal(app.client.avatarUrl(assetId), '');
+});
+
+test('friend requests and blocked list reject the wrong account even with HTTP 200', async () => {
+  for (const kind of ['incoming', 'outgoing', 'blocked']) {
+    const app = runtime(async (url) => {
+      if (url.endsWith('/capabilities')) return jsonResponse(enabledCapabilities);
+      if (url.endsWith('/v1/auth/me')) return jsonResponse({ ok: true, account: {
+        id: 'owner-current', handle: 'owner', displayName: 'Owner', status: 'active'
+      } });
+      if (url.includes('/v1/friends/requests?')) {
+        return jsonResponse({ ok: true, ownerAccountId: 'owner-other',
+          requests: [{ id: 'private_request_01', peer: { displayName: 'Private' } }] });
+      }
+      if (url.endsWith('/v1/friends/blocks')) {
+        return jsonResponse({ ok: true, ownerAccountId: 'owner-other',
+          blocked: [{ id: 'private_blocked_01', displayName: 'Private' }] });
+      }
+      return jsonResponse({ ok: false, error: 'not_found' }, 404);
+    });
+    await app.client.restore();
+    await assert.rejects(kind === 'blocked' ? app.client.listBlocked() : app.client.listRequests(kind),
+      error => error.code === 'friend_data_account_mismatch');
+    assert.equal(app.client.getState().account.id, 'owner-current');
+  }
+});
+
+test('late private list response is rejected after the account logs out', async () => {
+  let resolveBlocked;
+  const app = runtime(async url => {
+    if (url.endsWith('/capabilities')) return jsonResponse(enabledCapabilities);
+    if (url.endsWith('/v1/auth/me')) return jsonResponse({ ok: true, account: {
+      id: 'owner-current', handle: 'owner', displayName: 'Owner', status: 'active'
+    } });
+    if (url.endsWith('/v1/friends/blocks')) {
+      return new Promise(resolve => { resolveBlocked = resolve; });
+    }
+    if (url.endsWith('/v1/auth/logout')) return jsonResponse({ ok: true });
+    return jsonResponse({ ok: false, error: 'not_found' }, 404);
+  });
+  await app.client.restore();
+  const pending = app.client.listBlocked();
+  await Promise.resolve();
+  assert.equal(typeof resolveBlocked, 'function');
+  await app.client.logout();
+  resolveBlocked(jsonResponse({ ok: true, ownerAccountId: 'owner-current',
+    blocked: [{ id: 'someone-private', displayName: 'Private Person' }] }));
+  await assert.rejects(pending, error => error.code === 'friend_data_account_mismatch');
+  assert.equal(app.client.getState().account, null);
+});
+
+test('Contacts loads cookie-confirmed friends before incoming, outgoing, and blocks', () => {
+  assert.match(PANEL_SOURCE, /var roster = await client\.listFriendRoster\(\)/);
+  assert.match(PANEL_SOURCE, /var listResults = await Promise\.all/);
+  assert.match(PANEL_SOURCE, /account\.id !== roster\.ownerAccountId/);
 });
