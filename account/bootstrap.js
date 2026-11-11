@@ -10,7 +10,10 @@
 
   async function request(path, method = 'GET', body = null) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 15000);
+    // The first password derivation may run on a cold Durable Object.
+    // Give one-time founder creation more time, without automatically repeating it.
+    const timeoutMs = method === 'POST' ? 60000 : 15000;
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch(path, {
         method,
@@ -39,10 +42,14 @@
       return payload;
     } catch (error) {
       if (error?.name === 'AbortError') {
-        throw new Error('请求超时，操作结果尚未确认。请先重新检查初始化状态，不要反复注册。');
+        const timeoutError = new Error('请求超时，操作结果尚未确认。');
+        timeoutError.code = 'REQUEST_TIMEOUT';
+        throw timeoutError;
       }
-      if (error instanceof TypeError) {
-        throw new Error('网络连接失败，请检查手机网络后重新检查。');
+      if (error?.name === 'TypeError') {
+        const networkError = new Error('网络连接中断，暂时无法确认提交结果。');
+        networkError.code = 'NETWORK_ERROR';
+        throw networkError;
       }
       throw error;
     } finally {
@@ -174,6 +181,24 @@
       }
       if (error.code === 'INVALID_BOOTSTRAP_SECRET') {
         errorNode.textContent = '初始化密钥与服务器配置不一致，请核对后重试。不要将密钥发送给任何人。';
+        return;
+      }
+      if (error.code === 'NETWORK_ERROR' || error.code === 'REQUEST_TIMEOUT' ||
+          (typeof error.status === 'number' && error.status >= 500)) {
+        // A failed response is not proof that the one-time write failed.
+        // Read server state only; NEVER automatically repeat the POST.
+        errorNode.textContent = '提交结果尚未确认，正在检查管理员是否已经创建…';
+        try {
+          const status = await request('/api/admin/bootstrap/status');
+          if (status.initialized) {
+            showInitialized();
+            return;
+          }
+          errorNode.textContent = '刚才的提交没有获得成功回执，目前也未查到管理员。请检查连接后再操作，不要连续点击创建。' +
+            (error.code ? '（' + error.code + '）' : '');
+        } catch {
+          errorNode.textContent = '提交时网络中断，且暂时无法确认结果。请不要重复提交，稍后刷新页面检查初始化状态。';
+        }
         return;
       }
       errorNode.textContent = error.message || '初始化失败，请检查密钥并重试。';
