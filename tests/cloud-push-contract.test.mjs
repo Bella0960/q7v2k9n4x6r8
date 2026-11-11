@@ -5200,7 +5200,7 @@ test('空聊天首次主动联系在授权后只排队一次，模型生成云�
     AUTONOMY_LEASE_MS: '60000',
     AUTONOMY_TICK_LIMIT: '10',
     AUTONOMY_RETRY_BACKOFF_MS: '60000,300000',
-    AUTONOMY_MIN_IDLE_MS: '60000',
+    AUTONOMY_MIN_IDLE_MS: '86400000',
     AUTONOMY_HEARTBEAT_TTL_MS: '90000',
     AUTONOMY_DEVICE_LEASE_MS: '120000',
     AUTONOMY_DEVICE_GRACE_MS: '0',
@@ -5285,6 +5285,44 @@ test('空聊天首次主动联系在授权后只排队一次，模型生成云�
   assert.equal(malformed.status, 400);
   assert.equal(malformed.payload.error.code, 'INVALID_INITIAL_CONTACT_SNAPSHOT');
 
+  // A genuine user turn arriving before the initial task is claimed supersedes it.
+  ctx.timestamps.push(now + 3000);
+  const conversation = await ctx.asJson('/api/characters/' + characterId + '/context-snapshot', {
+    method: 'POST',
+    device,
+    body: {
+      eventId: randomToken(20),
+      characterName: '测试角色',
+      personaText: '喜欢阅读，表达友善而简洁。',
+      recentMessages: [
+        { role: 'user', content: '你好，我今天读完一本书。' },
+        { role: 'assistant', content: '听起来很不错。' }
+      ],
+      lastUserMessageAt: now + 2000
+    }
+  });
+  assert.equal(conversation.status, 200);
+  assert.equal(conversation.payload.contextVersion, first.payload.contextVersion + 1);
+  const savedConversation = ctx.store.getLatestCharacterContextSnapshot({ userId: 'owner', characterId });
+  assert.ok(Number(savedConversation.last_user_message_at) > 0);
+  const supersededInitialTask = ctx.store.getActivityByDedupeKey(initialDedupeKey);
+  assert.equal(supersededInitialTask.status, 'superseded');
+
+  // A second, still-empty role demonstrates the full cloud model -> grouped outbox path.
+  const cloudCharacterId = 'char-first-cloud-model';
+  ctx.store.setCharacterSchedule('owner', cloudCharacterId, 'UTC', {
+    active: [{ start: '00:00', end: '24:00' }],
+    busy: [], asleep: [], away: false
+  }, now + 3000, device.deviceId);
+  const cloudInitial = await ctx.asJson('/api/characters/' + cloudCharacterId + '/context-snapshot', {
+    method: 'POST',
+    device,
+    body: { ...initialBody, eventId: randomToken(20) }
+  });
+  assert.equal(cloudInitial.status, 200);
+  assert.equal(cloudInitial.payload.queued, true);
+  const cloudInitialDedupeKey = 'cloud-initial-contact-v1:owner:' + cloudCharacterId;
+
   let modelRequest;
   const modelFetch = async (url, init) => {
     modelRequest = { url, init };
@@ -5299,11 +5337,11 @@ test('空聊天首次主动联系在授权后只排队一次，模型生成云�
       }]
     }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   };
-  ctx.timestamps.push(now + 120000);
+  ctx.timestamps.push(now + 123000);
   const tick = await runCloudModelTick({
     store: ctx.store,
     env,
-    now: now + 120000,
+    now: now + 123000,
     fetchImpl: modelFetch
   });
   assert.equal(tick.ok, true);
@@ -5314,31 +5352,11 @@ test('空聊天首次主动联系在授权后只排队一次，模型生成云�
   assert.match(prompt.messages[1].content, /"initialContact":true/);
   const outbox = ctx.query(
     'SELECT group_id, group_index, group_count, payload_json FROM outbound_messages WHERE character_id = ? ORDER BY group_index',
-    characterId
+    cloudCharacterId
   );
   assert.equal(outbox.length, 2);
   assert.equal(outbox[0].group_id, outbox[1].group_id);
   assert.deepEqual(outbox.map(row => Number(row.group_index)), [1, 2]);
   assert.deepEqual(outbox.map(row => Number(row.group_count)), [2, 2]);
-
-  const conversation = await ctx.asJson('/api/characters/' + characterId + '/context-snapshot', {
-    method: 'POST',
-    device,
-    body: {
-      eventId: randomToken(20),
-      characterName: '测试角色',
-      personaText: '喜欢阅读，表达友善而简洁。',
-      recentMessages: [
-        { role: 'user', content: '你好，我今天读完一本书。' },
-        { role: 'assistant', content: '听起来很不错。' }
-      ],
-      lastUserMessageAt: now + 121000
-    }
-  });
-  assert.equal(conversation.status, 200);
-  assert.equal(conversation.payload.contextVersion, first.payload.contextVersion + 1);
-  const savedConversation = ctx.store.getLatestCharacterContextSnapshot({ userId: 'owner', characterId });
-  assert.ok(Number(savedConversation.last_user_message_at) > 0);
-  const completedInitialTask = ctx.store.getActivityByDedupeKey(initialDedupeKey);
-  assert.equal(completedInitialTask.status, 'completed');
+  assert.equal(ctx.store.getActivityByDedupeKey(cloudInitialDedupeKey).status, 'completed');
 });
