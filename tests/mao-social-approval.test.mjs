@@ -351,3 +351,26 @@ test('a new 001-approved friendship cannot reopen chat history from a removed re
       'old messages are retained but never exposed through the newer friendship');
   } finally { ctx.close(); }
 });
+
+test('admin audit write failure rolls back friend approval atomically', async () => {
+  const ctx = setup();
+  try {
+    const id = 'audit_rollback_0001';
+    await invite(ctx, 'alice-session', 'bob-session', id);
+    await ctx.call('bob-session', '/api/social/friend-requests/' + id + '/accept', 'POST');
+    ctx.exec("CREATE TRIGGER fail_social_audit BEFORE INSERT ON mao_account_audit " +
+      "WHEN NEW.action = 'social_friend_approved' BEGIN SELECT RAISE(ABORT, 'audit_failed'); END");
+    const denied = await ctx.call('founder-session',
+      '/api/admin/social/friend-approvals/' + id + '/approve', 'POST');
+    assert.equal(denied.status, 500);
+    assert.equal(ctx.exec('SELECT COUNT(*) AS n FROM mao_social_friends')[0].n, 0);
+    assert.equal(ctx.exec('SELECT status FROM mao_social_requests WHERE id = ?', id)[0].status,
+      'pending_admin');
+    ctx.exec('DROP TRIGGER fail_social_audit');
+    const retried = await ctx.call('founder-session',
+      '/api/admin/social/friend-approvals/' + id + '/approve', 'POST');
+    assert.equal(retried.body.request.status, 'approved');
+    assert.equal(ctx.exec('SELECT COUNT(*) AS n FROM mao_social_friends')[0].n, 1);
+    assert.equal(ctx.exec("SELECT COUNT(*) AS n FROM mao_account_audit WHERE action = 'social_friend_approved'")[0].n, 1);
+  } finally { ctx.close(); }
+});
