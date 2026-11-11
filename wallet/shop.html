@@ -724,11 +724,9 @@
   }
   function notifyRoleCardIssuer(card, message) {
     if (!card || !card.roleId) return false;
-    var saved = appendChatHistoryMessage(card.roleId, {
+    return appendChatHistoryMessage(card.roleId, {
       role: 'user', type: 'text', text: message, time: Date.now()
     });
-    if (!saved) showToast('业务操作已完成，但聊天通知没有保存，请稍后在聊天中补发');
-    return saved;
   }
 
   // 动态渲染支付方式列表：日常账户 + 可选亲密付
@@ -1053,6 +1051,7 @@
     const now = new Date();
     const timeStr = (now.getMonth()+1) + '月' + now.getDate() + '日';
     const itemsDesc = payItems.map(c => c.cn).join('、');
+    var chatNoticeFailed = false;
 
     // 记账：写 finance_records
     try {
@@ -1097,18 +1096,20 @@
               text: '刚刚帮你付了 ¥' + total + '（' + itemsDesc + '），喜欢就好。',
               time: Date.now()
             });
-            if (!noticeSaved) showToast('付款已完成，但聊天通知未保存，请稍后补发');
+            if (!noticeSaved) chatNoticeFailed = true;
           }
         }
       } catch(e) {}
     }
 
     if (roleFamilyCard) {
-      notifyRoleCardIssuer(roleFamilyCard,
+      if (!notifyRoleCardIssuer(roleFamilyCard,
         '我刚刚使用你给我的' + (roleFamilyCard.kind === 'intimate' ? '亲密付' : '亲属卡') +
         '在商店买了' + payItems.map(function (item) { return item.cn; }).join('、') +
         '，共 ¥' + total.toFixed(2) + '。本月已经使用 ¥' +
-        window.RoleFamilyCards.usedThisMonth(roleFamilyCard).toFixed(2) + '。');
+        window.RoleFamilyCards.usedThisMonth(roleFamilyCard).toFixed(2) + '。')) {
+        chatNoticeFailed = true;
+      }
     }
 
     // 写入订单
@@ -1132,6 +1133,9 @@
        </div>`).join('');
     document.getElementById('payView').style.display = 'none';
     document.getElementById('receiptBox').classList.add('show');
+    if (chatNoticeFailed) {
+      showToast('订单已完成，但聊天通知未保存；请稍后在对应聊天中补发');
+    }
   }
 
   function closeReceipt() {
