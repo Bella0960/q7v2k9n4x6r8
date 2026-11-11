@@ -97,8 +97,13 @@ for(var section of ['inviteSection','requestsSection','friendsSection','approval
 el('accountLabel').textContent='登录状态已变化，请重新进入。';
 }
 async function api(path,method,body){
+var authContext=account&&account.id;
+// All authenticated MAO endpoints require the page account namespace,
+// not just the session cookie. /api/accounts/me works without it on first load.
+var headers={Accept:'application/json',...(body?{'Content-Type':'application/json'}:{})};
+if(authContext)headers['X-MAO-Account-Context']=authContext;
 var response=await fetch(path,{method:method||'GET',credentials:'same-origin',cache:'no-store',redirect:'error',
-headers:{Accept:'application/json',...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
+headers:headers,...(body?{body:JSON.stringify(body)}:{})});
 var result;try{result=await response.json()}catch(e){throw new Error('服务器没有返回合法 JSON。');}
 if(!response.ok||!result||result.ok!==true){
 var code=result&&result.error&&result.error.code||'';
