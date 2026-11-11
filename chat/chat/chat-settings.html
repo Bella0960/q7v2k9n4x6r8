@@ -1590,7 +1590,7 @@
               <option value="72">72 小时</option>
             </select>
           </div>
-          <p style="padding:0 14px 12px 58px;font-size:10px;line-height:1.6;color:#999;">仅在 MAOMAO 前台打开时检查；至少安静 8 小时、每天全局最多一次判断。需要 API 额度，关闭后不再主动联系。</p>
+          <p style="padding:0 14px 12px 58px;font-size:10px;line-height:1.6;color:#999;">新角色开启后也可以在合适时间发起第一条友好开场；已有聊天仍需安静至少 8 小时。仅在 MAOMAO 前台打开且 API 可用时生成，每天全局最多尝试一次，09:00–22:00 之外不发送。手机锁屏或应用完全关闭时不会自行生成；关闭后停止主动联系。</p>
         </div>
 
         <div class="settings-card" id="followUpCard">
@@ -3145,6 +3145,8 @@
       var next = !proactiveContactToggle.checked;
       try {
         localStorage.setItem(PROACTIVE_CONTACT_KEY, next ? 'true' : 'false');
+        if (next) localStorage.setItem('chat_proactive_contact_enabled_at_' + roleId, String(Date.now()));
+        else localStorage.removeItem('chat_proactive_contact_enabled_at_' + roleId);
       } catch (e) {
         showToast('操作失败，请重试');
         return;
