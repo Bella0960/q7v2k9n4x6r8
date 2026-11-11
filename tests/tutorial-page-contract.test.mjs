@@ -169,3 +169,91 @@ test('actual settings link to relevant lessons and temperature zero is saved', (
   assert.doesNotMatch(apiSettingsScript, /temperature: parseFloat\(apiTemperatureInput\.value\) \|\| 0\.7/);
   assert.ok(guideScript.includes('保存只表示配置写到浏览器'));
 });
+
+
+test('technical handbook shows readable chapters and separates voice wiring from settings storage', () => {
+  for (const id of ['walkArticle','walkStepperContent','walkProgressWrap','catalogDetails']) {
+    assert.ok(guideHtml.includes('id="' + id + '"'), 'missing technical article component: ' + id);
+  }
+  assert.match(guideScript, /function renderTechnicalGuide\(guide\)/);
+  assert.match(guideScript, /function isTechnicalGuide\(guide\)/);
+  assert.match(guideScript, /OFFICIAL_PORTALS/);
+  assert.match(guideScript, /尚未核实完整的远程语音合成请求/);
+  assert.match(guideScript, /\$\('walkArticle'\)\.hidden = false/);
+  assert.match(guideScript, /\$\('walkStepperContent'\)\.hidden = false/);
+  assert.match(guideHtml, /class="diagnosis-disclaimer"/);
+  assert.ok(miniMaxSettings.includes('尚不等于完成真实语音连接或播放验收'));
+  assert.ok(miniMaxSettings.includes("return localStorage.getItem(STORAGE_KEY) === serialized"));
+  assert.ok(miniMaxSettings.includes('保存失败，请检查浏览器存储空间和权限'));
+});
+
+test('live connection checks current form and distinguishes success, errors and unsupported response shapes', async () => {
+  const start = apiSettingsScript.indexOf('function friendlyHttpError(status, detail) {');
+  const end = apiSettingsScript.indexOf('// 绑定测试连接按钮点击', start);
+  assert.ok(start >= 0 && end > start, 'cannot isolate connection-test runtime');
+  const functionSource = apiSettingsScript.slice(start, end);
+  const make = new Function(
+    'apiKeyInput','apiUrlInput','apiModelInput','document',
+    'fetch','AbortController','setTimeout','clearTimeout','URL','Date',
+    functionSource + '\nreturn testConnection;'
+  );
+  const scenarios = [
+    { name:'success', code:200, match:/聊天连接成功.*保存全部设置/ },
+    { name:'HTTP 400', code:400, match:/请求格式/ },
+    { name:'HTTP 401', code:401, match:/API Key/ },
+    { name:'HTTP 403', code:403, match:/访问权限/ },
+    { name:'HTTP 404', code:404, match:/模型/ },
+    { name:'HTTP 429', code:429, match:/额度/ },
+    { name:'HTTP 500', code:500, match:/服务器/ },
+    { name:'malformed HTTP 200', code:200, response:{ hello:true }, match:/未包含兼容的聊天结果/ },
+    { name:'CORS', error:'Failed to fetch', match:/CORS/ },
+    { name:'timeout', error:'timeout', abort:true, match:/15 秒/ },
+    { name:'duplicate path', url:'https://example.invalid/v1/chat/completions', match:/移除末尾/ },
+    { name:'empty Key', key:'', match:/请先填写 API Key/ },
+    { name:'invalid URL', url:'not-a-url', match:/有效网址/ }
+  ];
+  for (const scenario of scenarios) {
+    const keyInput = { value: scenario.key === undefined ? 'not-a-real-key' : scenario.key };
+    const urlInput = { value: scenario.url || 'https://example.invalid/v1' };
+    const modelInput = { value:'demo-chat-model' };
+    const button = { disabled:false, textContent:'测试连接' };
+    const message = { innerText:'', style:{} };
+    const calls = [];
+    const fetchMock = async (url, options) => {
+      calls.push({ url, options });
+      if (scenario.error) {
+        const error = new Error(scenario.error);
+        if (scenario.abort) error.name = 'AbortError';
+        throw error;
+      }
+      return {
+        status:scenario.code, ok:scenario.code < 300,
+        statusText:'ERROR',
+        json:async () => scenario.response || (
+          scenario.code === 200
+            ? { choices:[{ message:{ content:'OK' } }] }
+            : { error:{ message:'Provider error' } }
+        )
+      };
+    };
+    const check = make(
+      keyInput,urlInput,modelInput,
+      {getElementById(id) { return id === 'test-msg' ? message : id === 'btn-test-connection' ? button : null; }},
+      fetchMock,AbortController,()=>1,()=>{},URL,Date
+    );
+    await check();
+    assert.match(message.innerText, scenario.match, scenario.name);
+    assert.equal(button.disabled, false, scenario.name + ': unlock');
+    assert.equal(button.textContent, '测试连接', scenario.name + ': label');
+    assert.doesNotMatch(message.innerText, /not-a-real-key/, scenario.name + ': key is not shown');
+    if (scenario.name === 'success') {
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0].url, 'https://example.invalid/v1/chat/completions');
+      const request = JSON.parse(calls[0].options.body);
+      assert.equal(request.model, 'demo-chat-model');
+      assert.equal(Object.prototype.hasOwnProperty.call(request, 'max_tokens'), false);
+      assert.equal(Object.prototype.hasOwnProperty.call(request, 'temperature'), false);
+      assert.equal(request.messages.length, 1);
+    }
+  }
+});
