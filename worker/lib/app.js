@@ -2034,7 +2034,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         let pushDispatch = null;
         try {
           pushDispatch = await dispatchPendingOutboundPushes({
-            store, env, now: timestamp, fetchImpl, limit: 10
+            store, env, now, fetchImpl, limit: 10
           });
         } catch (error) {
           pushDispatch = { configured: false, reason: 'dispatch_deferred' };
@@ -2124,7 +2124,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     let pushDispatch = null;
     try {
       pushDispatch = await dispatchPendingOutboundPushes({
-        store, env, now: timestamp, fetchImpl, limit: 10
+        store, env, now, fetchImpl, limit: 10
       });
     } catch (error) {
       // The durable outbox is already committed. Push failure must never
