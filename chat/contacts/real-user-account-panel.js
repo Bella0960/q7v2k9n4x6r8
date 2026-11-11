@@ -212,6 +212,11 @@
       blocked_accounts_temporarily_unavailable: '暂时无法读取已屏蔽的用户。',
       friend_code_temporarily_unavailable: '暂时无法生成好友码。',
       invalid_friend_code_expiry: '好友码有效期未通过校验，请重新生成。',
+      invalid_server_response: '服务器没有返回完整结果，请刷新核对后再试。',
+      invalid_friend_request_ack: '好友申请缺少服务器确认，请先刷新申请列表。',
+      invalid_friend_transition_ack: '申请处理结果未得到服务器确认，请先刷新。',
+      invalid_friend_remove_ack: '删除好友的结果不明确，请刷新列表核对。',
+      invalid_friend_block_ack: '屏蔽操作结果不明确，请刷新列表核对。',
       invalid_friend_code_response: '服务器返回的好友码无效，请重新生成。',
       request_not_pending: '这条申请已经处理过，请刷新列表。'
     };
