@@ -8,31 +8,45 @@
   let statusCheckInProgress = false;
 
   async function request(path, method = 'GET', body = null) {
-    const response = await fetch(path, {
-      method,
-      credentials: 'same-origin',
-      cache: 'no-store',
-      headers: body ? { 'content-type': 'application/json', accept: 'application/json' } : { accept: 'application/json' },
-      body: body ? JSON.stringify(body) : undefined
-    });
-    let payload = null;
-    try { payload = await response.json(); } catch {}
-    if (!response.ok || !payload || payload.ok !== true) {
-      const error = new Error(payload?.error?.message || '服务器返回异常，请检查连接后重试');
-      error.code = payload?.error?.code || 'REQUEST_FAILED';
-      error.status = response.status;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    try {
+      const response = await fetch(path, {
+        method,
+        credentials: 'same-origin',
+        cache: 'no-store',
+        signal: controller.signal,
+        headers: body ? { 'content-type': 'application/json', accept: 'application/json' } : { accept: 'application/json' },
+        body: body ? JSON.stringify(body) : undefined
+      });
+      let payload = null;
+      try { payload = await response.json(); } catch {}
+      if (!response.ok || !payload || payload.ok !== true) {
+        const error = new Error(payload?.error?.message || '服务器返回异常，请检查连接后重试');
+        error.code = payload?.error?.code || 'REQUEST_FAILED';
+        error.status = response.status;
+        throw error;
+      }
+      // A successful HTTP status alone must never unlock administrator UI.
+      if (path === '/api/admin/bootstrap/status' && typeof payload.initialized !== 'boolean') {
+        throw new Error('服务器初始化状态无效，请刷新后重试');
+      }
+      if (path === '/api/admin/bootstrap' &&
+          (payload.account?.role !== 'super_admin' || payload.account?.founderNumber !== '001')) {
+        throw new Error('服务器尚未确认管理员身份，请不要重复提交，先检查登录状态');
+      }
+      return payload;
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        throw new Error('请求超时，操作结果尚未确认。请先重新检查初始化状态，不要反复注册。');
+      }
+      if (error instanceof TypeError) {
+        throw new Error('网络连接失败，请检查手机网络后重新检查。');
+      }
       throw error;
+    } finally {
+      clearTimeout(timer);
     }
-    // A successful HTTP status is not proof that administrator setup succeeded.
-    // Never redirect on an empty, stale or incompatible Worker response.
-    if (path === '/api/admin/bootstrap/status' && typeof payload.initialized !== 'boolean') {
-      throw new Error('服务器初始化状态无效，请刷新后重试');
-    }
-    if (path === '/api/admin/bootstrap' &&
-        (payload.account?.role !== 'super_admin' || payload.account?.founderNumber !== '001')) {
-      throw new Error('服务器尚未确认管理员身份，请不要重复提交，先检查登录状态');
-    }
-    return payload;
   }
 
   function showInitialized() {
