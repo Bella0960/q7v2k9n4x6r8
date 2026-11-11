@@ -8,7 +8,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
-assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v196'/);
+assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v197'/);
 const viteConfig = read('vite.config.js');
 
 test('build emits a manifest containing every HTML entry point', () => {
@@ -79,6 +79,18 @@ test('Contacts account client scripts are part of the versioned app shell', () =
   assert.match(avatarService, /REAL_USER_AVATAR_ENABLED/);
 });
 
+test('Contacts PWA shell pins new friend invitations and account scripts to matching versions', () => {
+  const page = read('chat/contacts/contacts.html');
+  for (const route of [
+    'real-user-friend-invite.js?v=20261112v1',
+    'real-user-account-client.js?v=20261112v1',
+    'real-user-account-panel.js?v=20261112v1'
+  ]) {
+    assert.ok(serviceWorker.includes(route), 'PWA shell missing ' + route);
+    assert.ok(page.includes(route), 'Contacts HTML missing ' + route);
+  }
+});
+
 test('real-user chat API requests always bypass the static cache and fetch live state', () => {
   const apiGateIndex = serviceWorker.indexOf("url.pathname === '/api/real-user-chat'");
   const staticCacheIndex = serviceWorker.indexOf('caches.match(req).then(cached =>');
@@ -88,5 +100,5 @@ test('real-user chat API requests always bypass the static cache and fetch live 
   assert.match(serviceWorker,
     /event\.respondWith\(fetch\(req, \{ cache: 'no-store' \}\)\);[\s\S]*?return;/,
     'real-user capability and message endpoints must always use a no-store network request');
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v196'/);
+  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v197'/);
 });
