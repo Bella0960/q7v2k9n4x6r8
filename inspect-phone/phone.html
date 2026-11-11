@@ -6,6 +6,7 @@
 <title>查手机</title>
 <script src="../shared/js/phone/phone_storage.js"></script>
 <script src="../shared/js/phone/phone_api.js"></script>
+<script src="./inspect-feature.js?v=20261111v1"></script>
 <style>
 :root{color-scheme:light;--ink:#222226;--muted:#8d8d95;--line:#e5e5ea;--bg:#f7f7f9;--card:#fff;font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif}
 *{box-sizing:border-box}
@@ -130,6 +131,38 @@ body{
     padding:0 !important;
   }
 }
+
+/* 虚构手机 · 黑白灰界面，锁屏触摸逻辑保持原样 */
+.inspect-intro{padding:14px 0 20px}.inspect-intro b{display:block;font-size:21px;font-weight:500}
+.inspect-intro p,.inspect-muted{font-size:12px;color:var(--muted);line-height:1.7}
+.inspect-label{padding:11px;border-radius:12px;background:#fff;color:#555;font-size:12px;line-height:1.7;border:1px solid var(--line);margin-bottom:14px}
+.inspect-choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.inspect-choose{border:1px solid var(--line);border-radius:14px;padding:13px 11px;background:#fff;display:flex;gap:10px;min-height:76px}
+.inspect-choose input{accent-color:#222;flex:none;margin:2px 0 0}
+.inspect-choose strong{display:block;font-size:13px;font-weight:500}.inspect-choose small{display:block;font-size:11px;line-height:1.55;margin-top:4px;color:var(--muted)}
+.inspect-actions,.inspect-toolbar{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-top:12px}.inspect-toolbar{justify-content:space-between;margin:0 0 8px}
+.inspect-button{padding:9px 12px;background:#fff;border:1px solid #d6d6dc;border-radius:10px;font-size:12px;color:#333;cursor:pointer}
+.inspect-button.primary{background:#222;color:#fff;border-color:#222}.inspect-button:disabled{opacity:.45;cursor:default}
+.inspect-alert{font-size:12px;color:#555;background:#fff;border:1px solid #ddd;padding:10px;border-radius:10px}
+.inspect-section{margin:12px 0 20px}.inspect-section h3{font-size:13px;font-weight:500;margin:0 0 8px}
+.inspect-line{padding:11px 2px;border-bottom:1px solid var(--line);font-size:13px;line-height:1.6}
+.inspect-line strong{display:block;font-size:13px;font-weight:500}.inspect-line small{display:block;margin-top:3px;font-size:11px;line-height:1.6;color:var(--muted)}
+.inspect-contact{display:flex;align-items:center;gap:10px;width:100%;min-width:0}
+.inspect-contact>span:nth-child(2){min-width:0;flex:1}.inspect-contact small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.inspect-avatar{display:grid;place-items:center;border:1px solid #e0e0e4;background:#eeeef1;color:#666;border-radius:14px;width:42px;height:42px;font-size:13px;flex:none}
+.inspect-unread{width:7px;height:7px;background:#ba3232;border-radius:50%;flex:none}
+.inspect-system{font-size:11px;color:var(--muted);text-align:center;margin:4px 0}.inspect-status{font-size:10px;color:#999;align-self:flex-end}
+.inspect-compose{display:flex;align-items:center;gap:8px;padding:12px 0;margin-top:20px;border-top:1px solid var(--line)}
+.inspect-compose input{min-width:0;flex:1;padding:11px;border-radius:10px;border:1px solid var(--line);background:#fff;font-size:13px}
+.inspect-compose button{border:0;border-radius:10px;background:#222;color:#fff;padding:10px 14px}
+.inspect-post{border-bottom:1px solid var(--line);padding:14px 2px}.inspect-post>small{font-size:11px;color:var(--muted);display:block;line-height:1.8}.inspect-post>strong{font-size:14px;font-weight:500}
+.inspect-post p{font-size:13px;line-height:1.8;margin:8px 0}.inspect-photo{padding:16px;border-radius:12px;background:#ececef;color:#555;font-size:12px;line-height:1.6;margin:10px 0}
+.inspect-summary{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:18px}
+.inspect-summary strong{display:block;font-size:25px;font-weight:400;margin:8px 0}.inspect-summary small{font-size:12px;color:var(--muted)}
+.inspect-transaction{padding:12px 2px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:12px;align-items:center}
+.inspect-transaction b{font-weight:500;font-size:13px}.inspect-transaction small{font-size:11px;color:var(--muted);display:block;line-height:1.5}
+.inspect-transaction>strong{font-size:13px;font-weight:500;white-space:nowrap}
+@media(max-width:480px){.app-body{padding-bottom:calc(30px + env(safe-area-inset-bottom,0px))}.grid{gap:16px 6px}.dock{padding-bottom:calc(22px + env(safe-area-inset-bottom,0px))}}
 </style>
 </head>
 <body>
@@ -282,6 +315,7 @@ body{
     unlockFired=true;
     lock.classList.add('hide');
     phone.classList.add('show');
+    if(window.InspectPhoneFeature&&window.InspectPhoneFeature.onUnlock)window.InspectPhoneFeature.onUnlock();
   }
   /** 复位手势追踪状态（不含 gestureMaxDistSq）——pointerup/touchend 里先 reset 再等 click 到达。
    *  gestureMaxDistSq 必须保留到 click 处理完，这样 synthetic click 到来时守卫能读到真实位移。
@@ -392,190 +426,10 @@ body{
     unlockPhone();
   });
 
-  var titles={album:'相册',chat:'聊天',notes:'备忘录',forum:'论坛',browser:'浏览器',settings:'设置'};
-  var roleName=String(role.name||'角色');
-  var roleBio=[role.description,role.bio,role.personality,role.character,role.speechStyle,role.prompt,role.systemPrompt]
-    .filter(Boolean).join('\n').replace(/\s+/g,' ').trim().slice(0,2600);
-  var roleId=String(role.id!==undefined&&role.id!==null?role.id:(requestedId||roles.indexOf(role)));
-  function localDateKey(date){
-    var d=date||new Date();
-    return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
-  }
-  function escHtml(value){
-    return String(value==null?'':value).replace(/[&<>"']/g,function(ch){
-      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];
-    });
-  }
-  function safeText(value,max){
-    return String(value==null?'':value).replace(/[\u0000-\u001f]/g,' ').trim().slice(0,max||240);
-  }
-  function makeFallbackContent(){
-    var dateLabel=(new Date().getMonth()+1)+'月'+new Date().getDate()+'日';
-    return {
-      notes:[
-        {date:dateLabel,text:roleName+'把今天想记住的一件小事留在这里。'},
-        {date:'最近',text:'有空的时候，想把还没完成的事情慢慢整理好。'},
-        {date:'备忘',text:'不必把每一天都安排得很满，留一点时间给自己。'}
-      ],
-      chats:[
-        {name:'熟悉的人',messages:[
-          {side:'ai',text:'今天过得怎么样？'},
-          {side:'me',text:'还不错，刚好有一点自己的时间。'},
-          {side:'ai',text:'那就好，记得早点休息。'}
-        ]},
-        {name:'联系人',messages:[
-          {side:'ai',text:'上次说的事情，后来怎么样了？'},
-          {side:'me',text:'我记着呢，等忙完这阵再和你说。'},
-          {side:'ai',text:'好，不着急。'}
-        ]}
-      ],
-      posts:[
-        {title:'留给今天的一句话',text:'有些想法不需要马上得到答案，先把它记下来就好。'},
-        {title:'最近的小发现',text:'日常里总有一些不起眼的瞬间，回头想想却值得留下。'},
-        {title:'随手记录',text:'今天也有认真生活，剩下的事情明天再慢慢处理。'}
-      ],
-      history:['天气与出行','收藏的网页','最近查过的资料']
-    };
-  }
-  var contentCacheKey='inspect_phone_content_v2_'+encodeURIComponent(roleId)+'_'+localDateKey();
-  var phoneContent=makeFallbackContent();
-  var hasCachedContent=false;
-  function normalizePhoneContent(data){
-    if(!data||typeof data!=='object')return null;
-    var notes=Array.isArray(data.notes)?data.notes.slice(0,5).map(function(n){
-      return {date:safeText(n&&n.date,30)||'最近',text:safeText(n&&n.text,320)};
-    }).filter(function(n){return n.text;}):[];
-    var chats=Array.isArray(data.chats)?data.chats.slice(0,4).map(function(c){
-      var messages=Array.isArray(c&&c.messages)?c.messages.slice(0,8).map(function(m){
-        return {side:m&&m.side==='me'?'me':'ai',text:safeText(m&&m.text,220)};
-      }).filter(function(m){return m.text;}):[];
-      return {name:safeText(c&&c.name,36)||'联系人',messages:messages};
-    }).filter(function(c){return c.messages.length;}):[];
-    var posts=Array.isArray(data.posts)?data.posts.slice(0,5).map(function(p){
-      return {title:safeText(p&&p.title,80),text:safeText(p&&p.text,360)};
-    }).filter(function(p){return p.title||p.text;}):[];
-    var history=Array.isArray(data.history)?data.history.slice(0,6).map(function(v){return safeText(v,80);}).filter(Boolean):[];
-    if(!notes.length&&!chats.length&&!posts.length&&!history.length)return null;
-    return {notes:notes.length?notes:phoneContent.notes,chats:chats.length?chats:phoneContent.chats,
-      posts:posts.length?posts:phoneContent.posts,history:history.length?history:phoneContent.history};
-  }
-  function applyPhoneContent(data){
-    if(!data)return;
-    phoneContent=data;
-    notes=phoneContent.notes;
-    chats=phoneContent.chats;
-    posts=phoneContent.posts;
-    history=phoneContent.history;
-    if(currentApp)renderApp();
-  }
-  try{
-    var cached=JSON.parse(localStorage.getItem(contentCacheKey)||'null');
-    var normalized=normalizePhoneContent(cached);
-    if(normalized){applyPhoneContent(normalized);hasCachedContent=true;}
-  }catch(e){}
-  var notes=phoneContent.notes;
-  var chats=phoneContent.chats;
-  var posts=phoneContent.posts;
-  var history=phoneContent.history;
-
-  function generateRolePhoneContent(){
-    if(hasCachedContent)return;
-    var cfg=window.PhoneStorage&&PhoneStorage.getApiConfig?PhoneStorage.getApiConfig():{};
-    if(!cfg||!String(cfg.apiKey||'').trim()||!window.PhoneAPI||typeof PhoneAPI.completeJSON!=='function')return;
-    var today=localDateKey();
-    var systemPrompt='你正在为一个虚构角色生成其私人手机里的日常内容。你必须严格依据角色设定写作，角色是手机主人；聊天记录中 side=me 的发言属于角色本人，side=ai 属于联系人。所有内容要像真实生活留下的记录，不要客服腔、不要说明你在生成数据，不要凭空写夸张剧情。只返回 JSON 对象，不要 Markdown。';
-    var userPrompt='今天日期：'+today+'\n角色姓名：'+roleName+'\n角色人设：'+(roleBio||'请根据角色姓名创作克制、可信的普通日常')+
-      '\n请生成以下 JSON：{"notes":[{"date":"日期","text":"备忘录内容"}],"chats":[{"name":"联系人昵称","messages":[{"side":"ai或me","text":"消息内容"}]}],"posts":[{"title":"帖子标题","text":"帖子正文"}],"history":["浏览记录"]}。'+
-      '\n要求：备忘录 3 条；聊天 2 组，每组 3-5 条来回消息；论坛帖子 3 条；浏览记录 3-5 条。语气、兴趣、作息、表达习惯必须符合该角色；不要所有角色都写海边、咖啡、天气等相同内容；内容自然、具体但日常，不要透露角色设定文本本身。';
-    PhoneAPI.completeJSON({system:systemPrompt,user:userPrompt,temperature:0.85,timeoutMs:22000}).then(function(result){
-      if(!result||!result.ok)return;
-      var normalized=normalizePhoneContent(result.data);
-      if(!normalized)return;
-      applyPhoneContent(normalized);
-      try{localStorage.setItem(contentCacheKey,JSON.stringify(normalized));}catch(e){}
-    }).catch(function(error){
-      console.warn('[InspectPhone] 角色内容生成失败，保留本地日常内容',error);
-    });
-  }
-  generateRolePhoneContent();
-
-  function renderApp(){
-    if(!currentApp)return;
-    appTitle.textContent=titles[currentApp];
-    if(currentApp==='album'){
-      appBody.innerHTML='<h3 class="panel-title">相册</h3><div class="album">'+Array.from({length:9},function(){return '<div class="cell"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M5 16l4-4 3 3 3-3 4 4"/></svg></div>';}).join('')+'</div>';
-      return;
-    }
-    if(currentApp==='chat'){
-      if(!chatOpen){
-        appBody.innerHTML='<h3 class="panel-title">聊天</h3><div class="list">'+chats.map(function(c,i){var last=(c.messages||[]).slice(-1)[0];return '<button class="item" type="button" data-chat="'+i+'"><strong>'+escHtml(c.name)+'</strong><small>'+escHtml(last&&last.text||'暂无消息')+'</small></button>';}).join('')+'</div>';
-      }else{
-        var c=chats[chatIndex]||chats[0];
-        appBody.innerHTML='<div class="bubbles">'+c.messages.map(function(m){return '<div class="row '+(m.side==='me'?'me':'ai')+'"><div class="bubble">'+escHtml(m.text)+'</div></div>';}).join('')+'</div>';
-      }
-      return;
-    }
-    if(currentApp==='notes'){
-      appBody.innerHTML='<h3 class="panel-title">备忘录</h3>'+notes.map(function(n){return '<article class="note"><time>'+escHtml(n.date)+'</time><p>'+escHtml(n.text)+'</p></article>';}).join('');
-      return;
-    }
-    if(currentApp==='forum'){
-      if(!forumOpen){
-        appBody.innerHTML='<h3 class="panel-title">论坛</h3><div class="list">'+posts.map(function(p,i){return '<button class="item" type="button" data-post="'+i+'"><strong>'+escHtml(p.title)+'</strong><small>'+escHtml(p.text)+'</small></button>';}).join('')+'</div>';
-      }else{
-        var p=posts[forumIndex]||posts[0];
-        appBody.innerHTML='<h3 class="panel-title">'+escHtml(p.title)+'</h3><p style="font-size:13px;line-height:1.7;color:#43434a">'+escHtml(p.text)+'</p>';
-      }
-      return;
-    }
-    if(currentApp==='browser'){
-      appBody.innerHTML='<div class="browser"><div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4 4"/></svg><span>最近浏览</span></div><div class="list">'+history.map(function(h){return '<div class="item"><strong>'+escHtml(h)+'</strong></div>';}).join('')+'</div></div>';
-      return;
-    }
-    if(currentApp==='settings'){
-      appBody.innerHTML='<h3 class="panel-title">设置</h3><div class="simple"><div>Device Owner</div><strong>'+escHtml(roleName)+'</strong><div>System</div><strong>Phone OS 1.0</strong></div>';
-      return;
-    }
-    appBody.innerHTML='<div class="empty">暂无内容</div>';
-  }
-
-  function openApp(name,event){
-    currentApp=name;
-    chatOpen=false;
-    forumOpen=false;
-    renderApp();
-    if(event){
-      var r=event.currentTarget.getBoundingClientRect();
-      var s=event.currentTarget.closest('.main').getBoundingClientRect();
-      var x=r.left+r.width/2-s.left;
-      var y=r.top+r.height/2-s.top;
-      appLayer.style.transformOrigin=x+'px '+y+'px';
-    }
-    appLayer.classList.add('open');
-  }
-
-  document.querySelectorAll('.app').forEach(function(btn){
-    btn.addEventListener('click',function(event){openApp(btn.dataset.app,event);});
-  });
-
-  appBody.addEventListener('click',function(event){
-    var chatItem=event.target.closest('[data-chat]');
-    if(chatItem){chatIndex=+chatItem.dataset.chat;chatOpen=true;renderApp();return;}
-    var postItem=event.target.closest('[data-post]');
-    if(postItem){forumIndex=+postItem.dataset.post;forumOpen=true;renderApp();}
-  });
-
-  var appBack=document.getElementById('appBack');
-  if(appBack){
-    appBack.addEventListener('click',function(){
-      if(currentApp==='chat'&&chatOpen){chatOpen=false;renderApp();return;}
-      if(currentApp==='forum'&&forumOpen){forumOpen=false;renderApp();return;}
-      appLayer.classList.remove('open');
-      currentApp='';
-    });
-  }else{
-    console.warn('[inspect-phone] appBack 按钮未找到，返回功能不可用');
-  }
+  // 保留原手机外壳及上滑解锁；内容由独立的虚构角色剧情模块接管。
+  if(window.InspectPhoneFeature&&typeof window.InspectPhoneFeature.mount==='function'){
+    window.InspectPhoneFeature.mount({role:role,requestedId:requestedId,appLayer:appLayer,appBody:appBody,appTitle:appTitle,phone:phone,lock:lock});
+  }else{appBody.textContent='剧情模块加载失败，请刷新页面。';}
 })();
 </script>
 </body>
