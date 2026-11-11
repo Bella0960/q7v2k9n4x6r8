@@ -318,3 +318,42 @@ test('forum settings cannot navigate or change selected theme after unverified w
   const scripts=[...settings.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)];
   for(const [,script] of scripts) assert.doesNotThrow(()=>new Function(script));
 });
+
+
+test('failed deletion and follow writes cannot falsely report success or discard corrupt follows',()=>{
+  const start=detail.indexOf('  function deletePost() {');
+  const end=detail.indexOf('  async function aiReply()',start);
+  assert.ok(start>=0&&end>start);
+  const source=detail.slice(start,end);
+  const saved=[{id:'post-1',body:'值得保留的原帖'},{id:'post-2',body:'第二篇'}];
+  let disk=JSON.stringify(saved),follows='["阿诺"]',ignore=true,renders=0;
+  const alerts=[],toasts=[];
+  const storage={
+    getItem(key){return key==='forum_posts'?disk:follows;},
+    setItem(key,value){
+      if(ignore)return;
+      if(key==='forum_posts')disk=value;else follows=value;
+    }
+  };
+  const context={localStorage:storage,post:{id:'post-1'},
+    window:{location:{href:'forum-detail.html'}},confirm:()=>true,
+    alert:x=>alerts.push(String(x)),toast:x=>toasts.push(String(x)),
+    renderComments:()=>renders++,console};
+  runInNewContext(source+';this.deletePost=deletePost;this.toggleFollow=toggleFollow;this.isFollowing=isFollowing;',context);
+  context.deletePost();
+  assert.equal(JSON.parse(disk).length,2);
+  assert.equal(context.window.location.href,'forum-detail.html');
+  assert.equal(alerts.at(-1),'删除失败，请重试');
+  context.toggleFollow('阿诺');
+  assert.equal(follows,'["阿诺"]');
+  assert.equal(renders,0);
+  assert.match(toasts.at(-1),/未保存/);
+  follows='malformed-json';
+  context.toggleFollow('阿诺');
+  assert.equal(follows,'malformed-json','malformed follows must not be overwritten');
+  assert.match(toasts.at(-1),/未覆盖原数据/);
+  follows='[]';ignore=false;
+  context.toggleFollow('阿诺');
+  assert.equal(context.isFollowing('阿诺'),true);
+  assert.equal(renders,1);
+});
