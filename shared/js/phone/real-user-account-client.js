@@ -68,8 +68,8 @@
       }
       throw makeError(code, response.status, payload);
     }
-    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-      throw makeError('invalid_server_response', response.status);
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload) || payload.ok !== true) {
+      throw makeError('invalid_server_response', response.status, payload);
     }
     return payload;
   }
@@ -151,8 +151,8 @@
       }
       throw makeError(code, response.status, payload);
     }
-    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-      throw makeError('invalid_server_response', response.status);
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload) || payload.ok !== true) {
+      throw makeError('invalid_server_response', response.status, payload);
     }
     return payload;
   }
@@ -490,10 +490,14 @@
     var cleanNote = String(note == null ? '' : note).trim().slice(0, 160);
     var id = String(stableRequestId || requestId());
     if (!/^[A-Za-z0-9_-]{8,96}$/.test(id)) throw makeError('invalid_request_id', 400);
-    return request('/v1/friends/requests', {
+    var payload = await request('/v1/friends/requests', {
       method: 'POST',
       body: { requestId: id, code: normalizedCode, note: cleanNote || undefined }
     });
+    if (!payload.request || payload.request.id !== id || payload.request.status !== 'pending') {
+      throw makeError('invalid_friend_request_ack', 200, payload);
+    }
+    return payload;
   }
 
   async function transitionRequest(id, action) {
@@ -503,25 +507,35 @@
     }
     var requestKey = String(id == null ? '' : id).trim();
     if (!/^[A-Za-z0-9_-]{8,96}$/.test(requestKey)) throw makeError('invalid_request_id', 400);
-    return request('/v1/friends/requests/' + encodeURIComponent(requestKey) + '/' + action, {
+    var payload = await request('/v1/friends/requests/' + encodeURIComponent(requestKey) + '/' + action, {
       method: 'POST'
     });
+    var expectedStatus = action === 'accept' ? 'accepted' : action === 'decline' ? 'declined' : 'cancelled';
+    if (!payload.request || payload.request.id !== requestKey || payload.request.status !== expectedStatus) {
+      throw makeError('invalid_friend_transition_ack', 200, payload);
+    }
+    return payload;
   }
 
   async function removeFriend(id) {
     requireFriends();
     var accountId = String(id == null ? '' : id).trim();
     if (!accountId || accountId === state.account.id) throw makeError('invalid_friend_id', 400);
-    return request('/v1/friends/' + encodeURIComponent(accountId), { method: 'DELETE' });
+    var payload = await request('/v1/friends/' + encodeURIComponent(accountId), { method: 'DELETE' });
+    if (typeof payload.removed !== 'boolean') throw makeError('invalid_friend_remove_ack', 200, payload);
+    return payload;
   }
 
   async function setBlocked(id, blocked) {
     requireFriends();
     var accountId = String(id == null ? '' : id).trim();
     if (!accountId || accountId === state.account.id) throw makeError('invalid_friend_id', 400);
-    return request('/v1/friends/' + encodeURIComponent(accountId) + '/block', {
-      method: blocked === false ? 'DELETE' : 'POST'
+    var desired = blocked !== false;
+    var payload = await request('/v1/friends/' + encodeURIComponent(accountId) + '/block', {
+      method: desired ? 'POST' : 'DELETE'
     });
+    if (payload.blocked !== desired) throw makeError('invalid_friend_block_ack', 200, payload);
+    return payload;
   }
 
   root.PhoneRealUserAccountClient = {
