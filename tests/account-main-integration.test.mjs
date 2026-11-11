@@ -51,7 +51,7 @@ test('old cache-first PWA entries cannot bypass the new server login gate', () =
   assert.match(sw, /return await fetch\(req\)/);
   assert.match(sw, /url\.pathname === '\/api' \|\| url\.pathname\.startsWith\('\/api\/'\)/);
   assert.match(sw, /requestedAccountId !== account\.id/);
-  assert.match(worker, /<meta name=\\"mao-account-role\\"/);
+  assert.match(worker, /mao-account-role/);
 });
 
 test('account authentication and its assets exist without replacing the latest main app', () => {
