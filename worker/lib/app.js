@@ -1324,7 +1324,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       throw new ApiError(400, 'INVALID_CONTEXT_SNAPSHOT_TIME', '最后一条用户消息时间无效');
     }
     if (initialContact) {
-      if (lastUserMessageAt !== 0 || recentMessages.length !== 0) {
+      if (body.lastUserMessageAt !== 0 || lastUserMessageAt !== 0 || recentMessages.length !== 0) {
         throw new ApiError(400, 'INVALID_INITIAL_CONTACT_SNAPSHOT',
           '首次主动开场必须使用空消息列表和 lastUserMessageAt=0');
       }
