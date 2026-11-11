@@ -1,4 +1,4 @@
-import { pbkdf2 as nativePbkdf2 } from 'node:crypto';
+import { pbkdf2 as nativePbkdf2, createHmac } from 'node:crypto';
 import { ApiError, ok, json, readJsonBody } from './http.js';
 import { randomToken, sha256Hex, base64UrlToBytes, timingSafeEqualHex } from './crypto.js';
 
@@ -17,20 +17,40 @@ function toHex(bytes) {
   return Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
 }
 
-// Keep the original PBKDF2-HMAC-SHA256 / 210000 rounds / 32-byte format
-// exactly unchanged, so previously registered password hashes still verify.
-// Cloudflare's WebCrypto PBKDF2 raised NotSupportedError in the live preview;
-// its supported node:crypto API provides the same standard algorithm.
+// PBKDF2-HMAC-SHA256 (RFC 8018), one 32-byte block. The HMAC path avoids
+// PBKDF2-specific operations that raise NotSupportedError on the live Durable
+// Object runtime. It keeps exactly the same 210000-round historical digest.
+export function pbkdf2HmacSha256Fallback(passwordBytes, salt, iterations = PASSWORD_ITERATIONS) {
+  const block = new Uint8Array(salt.length + 4);
+  block.set(salt);
+  block[block.length - 1] = 1; // INT_32_BE(1) for one 256-bit output block
+  const hmac = input => createHmac('sha256', passwordBytes).update(input).digest();
+  let previous = hmac(block);
+  const derived = Uint8Array.from(previous);
+  for (let iteration = 1; iteration < iterations; iteration += 1) {
+    previous = hmac(previous);
+    for (let byte = 0; byte < 32; byte += 1) derived[byte] ^= previous[byte];
+  }
+  return derived;
+}
+
+// Never weaken or switch the stored password hash format on a runtime error.
 export async function passwordDigest(password, saltText) {
   const salt = base64UrlToBytes(saltText);
   if (!salt || salt.length < 16) throw new ApiError(500, 'ACCOUNT_CREDENTIAL_INVALID', '账号凭据异常');
   const passwordBytes = new TextEncoder().encode(String(password));
-  const derived = await new Promise((resolve, reject) => {
-    nativePbkdf2(passwordBytes, salt, PASSWORD_ITERATIONS, 32, 'sha256', (error, output) => {
-      if (error) reject(error);
-      else resolve(output);
+  let derived;
+  try {
+    derived = await new Promise((resolve, reject) => {
+      nativePbkdf2(passwordBytes, salt, PASSWORD_ITERATIONS, 32, 'sha256', (error, output) => {
+        if (error) reject(error);
+        else resolve(output);
+      });
     });
-  });
+  } catch (error) {
+    if (error?.name !== 'NotSupportedError') throw error;
+    derived = pbkdf2HmacSha256Fallback(passwordBytes, salt);
+  }
   return toHex(derived);
 }
 
