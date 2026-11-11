@@ -66,3 +66,59 @@ test('comments can trigger the original author to continue and conclude in place
   assert.match(detail,/if\(!saveNow\(\)\)/);
   assert.match(detail,/ForumGossip\.isRepeat\(update,/);
 });
+
+
+test('only explicit requests advance a gossip story, ordinary discussion does not',()=>{
+  for(const message of ['继续说','继续','然后呢？','我蹲后续','楼主说完吧','后来怎么样','结局呢','接着更','继续生成']){
+    assert.equal(G.wantsContinuation(message),true,message);
+  }
+  for(const message of ['哈哈这也太离谱了','我认识的人也遇到过','这一点我不同意','说法有点片面','']){
+    assert.equal(G.wantsContinuation(message),false,message);
+  }
+});
+
+test('saved author comments recover a stale chapter cursor without rewriting history',()=>{
+  const p={gossipStory:{outlineId:'double_life',chapter:1,maxChapters:4,finished:false},
+    comments:[{source:'forum-ai',text:'讨论'},{source:'gossip-author',gossipChapter:2,text:'第二章'}]};
+  const state=G.progress(p);
+  assert.equal(state.chapter,2);
+  assert.equal(state.nextChapter,3);
+  assert.equal(state.finished,false);
+  assert.equal(p.gossipStory.chapter,1);
+  p.comments.push({source:'gossip-author',gossipChapter:4});
+  assert.equal(G.progress(p).finished,true);
+  assert.equal(G.progress(p).nextChapter,4);
+});
+
+test('chapter count is bounded and a corrupt cursor cannot generate endless updates',()=>{
+  const p={gossipStory:{outlineId:'unspoken_crush',chapter:999,maxChapters:999},comments:[]};
+  const state=G.progress(p);
+  assert.equal(state.maxChapters,8);
+  assert.equal(state.chapter,8);
+  assert.equal(state.finished,true);
+  const q={gossipStory:{outlineId:'unspoken_crush',chapter:0,maxChapters:'invalid'},comments:[]};
+  assert.equal(G.progress(q).maxChapters,4);
+});
+
+test('validation rejects repeated or content-free chapters but accepts substantive progress',()=>{
+  const old='上周六我们在咖啡馆里碰面，才发现两个人一直说的不是同一件事。大家都以为他们早就商量过搬家的计划，但实际上谁也没有明确解释。';
+  const update='周二下午我去了一趟旧公寓，发现她已经把墙上的相框收进了纸箱。她并没有立刻搬走，而是先给对方发了一条长消息，解释这几个月为什么一直犹豫。晚上两个人在小区门口聊了很久，最后决定先各自住一段时间，再一起处理租约。';
+  const payload={update,newFacts:['她已经收起相框','两人决定暂时分开住']};
+  const result=G.validateUpdate(payload,[old],['此前双方没有讨论过租约']);
+  assert.equal(result.ok,true);
+  assert.equal(result.newFacts.length,2);
+  assert.equal(G.validateUpdate({...payload,update:old},[old],[]).ok,false);
+  assert.equal(G.validateUpdate({...payload,newFacts:['她已经收起相框','她已经收起相框']},[old],[]).ok,false);
+  assert.equal(G.validateUpdate({...payload,newFacts:['以前就知道的事实','新事实']},[old],['以前就知道的事实']).ok,false);
+  assert.equal(G.validateUpdate({...payload,update:'还没完'},[old],[]).ok,false);
+});
+
+test('manual continuation and explicit comment continuation share the same safe path',()=>{
+  assert.match(detail,/ForumGossip\.progress\(post\)/);
+  assert.match(detail,/ForumGossip\.validateUpdate\(data,/);
+  assert.match(detail,/ForumGossip\.wantsContinuation\(text\)/);
+  assert.match(detail,/readForumConfig\(\)\.gossipAutoContinue!==false/);
+  assert.match(detail,/story\.finished=ending;/);
+  assert.doesNotMatch(detail,/story\.finished=ending\|\|/);
+  assert.match(detail,/post\.gossipStory=previousStory/);
+});
