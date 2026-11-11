@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS mao_social_requests (
   status TEXT NOT NULL CHECK (status IN
     ('pending_peer','pending_admin','approved','declined','cancelled','rejected')),
   note TEXT NOT NULL DEFAULT '',
+  submitted_code_hash TEXT NOT NULL,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   responded_at INTEGER,
