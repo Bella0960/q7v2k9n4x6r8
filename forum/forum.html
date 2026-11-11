@@ -38,6 +38,7 @@ button:disabled{opacity:.45;cursor:default}
 .gossip-feed-progress:before{content:"";width:5px;height:5px;border-radius:50%;background:#666}
 .gossip-feed-progress.finished{color:#8b8b8b}
 .gossip-feed-progress.finished:before{background:#aaa}
+.gossip-feed-unread{margin-left:2px;padding:3px 6px;background:#222;color:#fff;font-size:9px;font-weight:600;border-radius:2px;letter-spacing:0}
 .forum-media-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:12px;max-width:100%}.forum-media-item{margin:0;min-width:0;overflow:hidden;background:#f1f1f1;aspect-ratio:4/3}.forum-media-item img{display:block;width:100%;height:100%;object-fit:cover}.forum-media-item img.media-load-failed{object-fit:contain;padding:12px;color:#888;font-size:9px}.post-media{max-width:330px}
 .inline-quote{margin:0 0 18px;padding:11px 0 12px 14px;border-left:2px solid #222;background:linear-gradient(90deg,#f7f7f6,rgba(255,255,255,0) 92%);font:italic 15px/1.65 var(--serif);color:#555}.inline-quote small{display:block;margin-top:6px;font:7px var(--sans);font-style:normal;letter-spacing:.16em;color:#aaa}
 .empty-state{text-align:center;padding:35px 20px 31px;border-top:1px solid #e7e7e7;border-bottom:1px solid #e7e7e7}.empty-state strong{font:30px var(--serif);font-weight:400;color:#b5b5b5}.empty-state h3{font-size:13px;margin:12px 0 6px;font-weight:650}.empty-state p{font-size:10px;color:#999;line-height:1.8;margin:0 auto 12px;max-width:230px}.text-button{border:0;border-bottom:1px solid #222;background:transparent;padding:5px 0;font-size:10px}
@@ -324,7 +325,11 @@ function roleImageAction(p){
 function gossipReadingHint(p){
  if(getForumTheme().id!=='bagua'||!window.ForumGossip||!ForumGossip.isGossipPost(p))return '';
  const progress=ForumGossip.progress(p);
- return '<div class="gossip-feed-progress '+(progress.finished?'finished':'')+'">'+'虚构连载 · '+(progress.finished?'已完结':'连载中')+' · 楼主已更 '+progress.chapter+'/'+progress.maxChapters+'</div>';
+ let unread=0;
+ try{unread=ForumGossip.unreadCount(p,window.localStorage)}catch(e){}
+ return '<div class="gossip-feed-progress '+(progress.finished?'finished':'')+'">虚构连载 · '+(progress.finished?'已完结':'连载中')+
+  ' · 楼主已更 '+progress.chapter+'/'+progress.maxChapters+
+  (unread?'<span class="gossip-feed-unread" aria-label="未读 '+unread+' 更">未读 '+unread+' 更</span>':'')+'</div>';
 }
 function renderPost(p,index){const isFeatured=!!p.featured&&page==='home'&&topicFilter==='全部'&&!searchText;return '<article class="post" data-post="'+esc(p.id)+'"><div class="post-avatar '+(index%3===0?'gray':'')+'">'+forumAvatarContent(p)+'</div><div class="post-main"><div class="post-meta"><div class="post-user">'+esc(p.name)+(p.role?'<span class="author-tag">'+esc(p.role)+'</span>':'')+'</div><span class="post-time">'+esc(p.time||'刚刚')+'</span></div>'+(p.title?'<h3 class="post-title">'+esc(p.title)+'</h3>':'')+'<p class="post-body '+(getForumTheme().id==='bagua'&&p.gossipStory?'gossip-feed-body':'')+'">'+esc(p.body||'')+'</p>'+gossipReadingHint(p)+(window.ForumMedia?ForumMedia.markup(p.mediaAssetIds,'post-media'):'')+roleImageAction(p)+'<span class="post-topic"># '+esc(p.topic||'碎碎念')+'</span><div class="post-bottom"><div class="post-actions"><button class="quiet-action '+(p.liked?'liked':'')+'" data-like="'+esc(p.id)+'" aria-label="点赞">'+icon('heart')+'<span>'+Number(p.likes||0)+'</span></button><button class="quiet-action" data-comment="'+esc(p.id)+'" aria-label="评论">'+icon('comment')+'<span>'+Number(p.comments||0)+'</span></button><button class="quiet-action" data-share="'+esc(p.id)+'" aria-label="分享">'+icon('share')+'</button></div><span class="post-endmark">Nº '+String(index+1).padStart(2,'0')+'</span></div></div></article>'}
 function renderHome(){
