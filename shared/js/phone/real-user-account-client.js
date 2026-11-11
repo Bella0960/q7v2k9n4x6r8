@@ -467,7 +467,15 @@
 
   async function rotateFriendCode() {
     requireFriends();
-    return request('/v1/friends/codes/rotate', { method: 'POST' });
+    var verifiedAccount = await refreshAccount();
+    var startedRevision = authRevision;
+    var payload = await request('/v1/friends/codes/rotate', { method: 'POST' });
+    if (startedRevision !== authRevision || !state.account ||
+        payload.ownerAccountId !== verifiedAccount.id ||
+        state.account.id !== verifiedAccount.id) {
+      throw makeError('friend_data_account_mismatch', 409);
+    }
+    return payload;
   }
 
   async function revokeFriendCode() {
