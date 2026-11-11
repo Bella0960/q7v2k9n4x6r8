@@ -41,7 +41,13 @@
         <p>在 Cloudflare 控制台找到 Worker <b>mao</b> 的当前账号测试 Preview，添加两项类型为 <b>Secret</b> 的变量：</p>
         <p><code>DEVICE_SECRET_PEPPER</code> — 独立随机值，至少 32 个字符。</p>
         <p><code>MAO_SUPER_ADMIN_BOOTSTRAP_SECRET</code> — 另一组独立随机值，至少 32 个字符；创建管理员时要填这一组。</p>
-        <p>不要把密钥写进 GitHub、公开聊天或截图里，也不要改正式 Production 的密钥。保存并部署 Preview 后点击上方「重新检查」。</p>
+        <p>不要把密钥写进 GitHub、公开聊天或截图里，也不要改正式 Production 的密钥。当前 Preview 已经创建，Cloudflare 的 Previews Base 设置只会影响以后新建的 Preview。</p>
+        <details><summary>当前测试 Preview 的准确配置命令</summary>
+          <p>在已登录 Cloudflare 的 Wrangler 环境中依次运行，下列命令会交互式询问密钥值：</p>
+          <p><code>npx wrangler preview secret put DEVICE_SECRET_PEPPER --worker-name mao --name integration/account-001-current-main-20261111</code></p>
+          <p><code>npx wrangler preview secret put MAO_SUPER_ADMIN_BOOTSTRAP_SECRET --worker-name mao --name integration/account-001-current-main-20261111</code></p>
+          <p>输入值请使用下方本机生成的不同密钥。完成后点击上方「重新检查」，不要在公开终端命令里直接写密钥值。</p>
+        </details>
         <button class="bootstrap-retry" id="bootstrapMakeSecrets" type="button">在本机生成两组安全密钥</button>
         <div id="bootstrapSecretTools" hidden>
           <p>生成后分别复制到 Cloudflare 的对应 Secret。只保存在当前页面内存，关闭或刷新就会消失；请勿公开。</p>
