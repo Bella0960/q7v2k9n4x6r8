@@ -665,7 +665,7 @@
     ]
   };
   var TECH_EXTRAS = {
-    'api-first': '申请提示：先找到开发者平台中的 API Keys / 密钥管理，再确认账户是否具备调用额度。网页聊天会员不等于 API 自动有余额。不同服务商的实际页面入口可能随版本变更。',
+    'api-first': '申请提示：先找到开发者平台中的 API Keys / 密钥管理，再确认账户是否具备调用额度。网页聊天会员不等于 API 自动有余额。不同服务商的实际页面入口可能随版本变更。特别注意：测试连接和实际聊天会把你的 Key 发送到所填 Base URL，请只使用你信任且核对过的服务商域名。',
     'api-url-v1': '填写示例（虚构域名）：服务商给出 https://api.example.com/v1 → Base URL 就填 https://api.example.com/v1。MAOMAO 会继续访问 https://api.example.com/v1/chat/completions。不要把 /chat/completions 自己再加到输入框。',
     'api-errors': '看到 400 请求格式错误时，还应核对模型是否支持当前接口及请求参数。某些模型不接受 max_tokens 或 temperature 等字段；这不能直接判定 Key 已失效。',
     'api-params': '入门建议：先试 0.7，再按实际效果少量调整。设置页允许 0～2，但个别模型只允许固定值或不支持这些采样参数。0 是有效温度，不应在保存时被自动变为 0.7。',
