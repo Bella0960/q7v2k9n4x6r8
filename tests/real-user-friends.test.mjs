@@ -733,3 +733,16 @@ test("friend rows changed during pagination remain visible instead of being mist
   assert.ok(updated, "the changed relationship must not vanish from a later page");
   assert.equal(updated.status, "removed");
 });
+
+test("friend inbox, outbox and block list carry the authenticated account ID", async () => {
+  const ctx = await setup();
+  const inbox = await call(ctx, "/requests?direction=incoming", "GET", undefined, "alice");
+  const outbox = await call(ctx, "/requests?direction=outgoing", "GET", undefined, "bob");
+  const blocks = await call(ctx, "/blocks", "GET", undefined, "alice");
+  assert.equal(inbox.response.status, 200);
+  assert.equal(outbox.response.status, 200);
+  assert.equal(blocks.response.status, 200);
+  assert.equal(inbox.body.ownerAccountId, "account-alice-001");
+  assert.equal(outbox.body.ownerAccountId, "account-bob-001");
+  assert.equal(blocks.body.ownerAccountId, "account-alice-001");
+});
