@@ -519,7 +519,7 @@ function forumFallbackPost(role,index){
   const titles=theme.id==='bagua'?baguaTitles:['今天在「'+theme.name+'」里遇到的一件小事','关于「'+theme.name+'」，有个问题想问问大家','刚刚看到一个和「'+theme.name+'」有关的讨论','留一条今天的主题观察','有没有人也关注「'+theme.name+'」这件事'];
   const bodies=theme.id==='bagua'?baguaBodies:['刚刚遇到一个挺有意思的情况，想放到这里和大家交流。没有急着下结论，也欢迎补充不同经历。','最近在留意这方面的信息，发现每个人的体验差异还挺大。想听听大家怎么理解。','把刚看到的线索记一下，之后有新信息再回来补充。欢迎有经验的人分享具体情况。','事情不算大，但很符合这个主题。顺手记下来，也许能碰到有相同兴趣的人。','想问问大家平时会怎么处理这种情况？比起单一答案，更想看看不同做法背后的原因。'];
   const title=titles[index%titles.length],body=bodies[index%bodies.length];
-  return {id:'role_'+id,name:role.name,avatar:String(role.name).slice(0,1),role:'role',topic:topics[index%topics.length],time:'刚刚',title:title,body:body,likes:0,comments:[],liked:false,owner:'role',roleId:id,created:Date.now()-index*1000,tag:'role',content:title+'\n'+body,generatedBy:'fallback',themeId:theme.id};
+  return {id:'role_'+theme.id+'_'+id,name:role.name,avatar:String(role.name).slice(0,1),role:'role',topic:topics[index%topics.length],time:'刚刚',title:title,body:body,likes:0,comments:[],liked:false,owner:'role',roleId:id,created:Date.now()-index*1000,tag:'role',content:title+'\n'+body,generatedBy:'fallback',themeId:theme.id};
 }
 function ensureRolePosts(){
   const roles=forumRoleList(),activeTheme=getForumTheme();
@@ -535,17 +535,17 @@ function ensureRolePosts(){
   roles.forEach(function(role,index){
     const roleId=forumRoleId(role);
     if(!roleId)return;
-    const postId='role_'+roleId;
-    let post=posts.find(p=>String(p.id)===postId);
-    if(!post||post.themeId!==activeTheme.id){
-      const replacement=forumFallbackPost(role,index);
-      if(post){replacement.likes=Number(post.likes||0);replacement.comments=Array.isArray(post.comments)?post.comments.slice():Number(post.comments||0);replacement.liked=!!post.liked;Object.assign(post,replacement)}
-      else {post=replacement;posts.unshift(post)}
+    const postId='role_'+activeTheme.id+'_'+roleId;
+    // Old "role_<id>" entries remain available in their original theme; never rewrite their story or comments.
+    let post=posts.find(p=>String(p.id)===postId)||
+      posts.find(p=>String(p.id)==='role_'+roleId&&p.themeId===activeTheme.id);
+    if(!post){
+      post=forumFallbackPost(role,index);
+      posts.unshift(post);
       changed=true;
     }
-    // 主题切换后重新按当前论坛语境生成，原有互动数据保留。
     if(post.generatedBy!=='ai'){
-      pending.push({roleId:roleId,name:String(role.name),persona:forumRoleBio(role)});
+      pending.push({roleId:roleId,postId:String(post.id),name:String(role.name),persona:forumRoleBio(role)});
     }
   });
   if(changed)save();
@@ -615,7 +615,8 @@ function generateRolePosts(targets){
       if(!item)return;
       const roleId=String(item.roleId==null?'':item.roleId);
       if(!requested.some(r=>r.roleId===roleId))return;
-      const post=posts.find(p=>String(p.id)==='role_'+roleId);
+      const request=requested.find(r=>r.roleId===roleId);
+      const post=request&&posts.find(p=>String(p.id)===request.postId&&p.themeId===theme.id);
       if(!post)return;
       const title=String(item.title||'').trim().slice(0,80);
       const body=String(item.body||'').trim().slice(0,400);
