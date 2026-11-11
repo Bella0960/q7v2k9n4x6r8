@@ -317,7 +317,6 @@ export async function dispatchPendingOutboundPushes({
     retryExhausted: 0
   };
   const maxDeliveryAttempts = 5;
-  const deliveryLeaseMs = 60000;
 
   for (const candidate of candidates) {
     const deliveryTimestamp = readTimestamp();
