@@ -17,7 +17,7 @@ function createPhone() {
   const elements = [];
   const byId = new Map();
   const requests = [];
-  const state = { switched: false, failRead: false, posted: [], badAck: false, deferRead: false, readWaiters: [], chatReadReply: null, chatReads: 0, intervalFn: null, friendshipId: 'request_generation_0001' };
+  const state = { switched: false, failRead: false, posted: [], badAck: false, deferRead: false, readWaiters: [], chatReadReply: null, chatReads: 0, intervalFn: null, friendshipId: 'request_generation_0001', friendStillApproved: true };
   function element(tag, id = '') {
     const node = { tag, id, hidden: false, disabled: false, events: {},
       children: [], scrollHeight: 100, scrollTop: 0, style: {},
@@ -57,7 +57,7 @@ function createPhone() {
       payload = { ok: true, ownerAccountId: A, requests: [] };
     } else if (url === '/api/social/friends') {
       payload = { ok: true, ownerAccountId: A,
-        friends: [{ id: B, displayName: 'Bob' }] };
+        friends: state.friendStillApproved ? [{ id: B, displayName: 'Bob' }] : [] };
     } else if (url.startsWith('/api/social/chats/')) {
       if (options.method === 'POST') {
         state.posted.push(body);
@@ -298,4 +298,20 @@ test('every mobile outgoing message declares current server friendship generatio
   await phone.get('chatForm').events.submit({ preventDefault() {} });
   assert.equal(phone.state.posted.length, 1);
   assert.equal(phone.state.posted[0].friendshipId, 'request_generation_0001');
+});
+
+test('a server-authoritative friend removal immediately purges the open chat and polling', async () => {
+  const phone = createPhone();
+  await phone.openChat();
+  assert.equal(phone.get('chatPanel').hidden, false);
+  assert.equal(phone.get('messages').children.length, 1);
+  phone.get('chatText').value = 'unsent private draft';
+  assert.equal(typeof phone.state.intervalFn, 'function');
+  phone.state.friendStillApproved = false;
+  phone.get('refresh').events.click();
+  await phone.settle();
+  assert.equal(phone.get('chatPanel').hidden, true, 'revoked friend cannot keep an open conversation');
+  assert.equal(phone.get('messages').children.length, 0, 'old private chat bubbles must be purged');
+  assert.equal(phone.get('chatText').value, '', 'old draft must not outlive a revoked relationship');
+  assert.equal(phone.state.intervalFn, null, 'revoked chat cannot keep polling in the background');
 });
