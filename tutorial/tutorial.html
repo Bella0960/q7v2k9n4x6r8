@@ -243,6 +243,11 @@
     .walk-done { font-size:11px; color:#777; }
     @media (max-width:370px) { .topic { min-height:125px; padding:12px; } .topic strong { font-size:14px; } .topic small { font-size:10px; } .start-guide { padding:0 9px; } }
 
+
+    .catalog { margin:24px 0 7px; border-top:1px solid #E6E6EA; padding:14px 0; }
+    .catalog-summary { display:flex; justify-content:space-between; gap:10px; cursor:pointer; font-size:14px; font-weight:600; color:#222; }
+    .catalog-summary span { font-size:11px; font-weight:400; color:#999; }
+    .catalog[open] .filters { margin-top:15px; }
   </style>
 </head>
 <body>
@@ -316,8 +321,6 @@
         <button class="tool-btn" id="resetTests" type="button">清空进度</button>
       </div>
     </details>
-    <nav class="filters" id="guideFilters" aria-label="教程分类"></nav>
-
     <section class="faq-section" aria-labelledby="faqTitle">
       <div class="section-head">
         <h2 id="faqTitle">常见问题</h2>
@@ -326,12 +329,16 @@
       <div class="faq-list" id="faqList"></div>
     </section>
 
-    <div class="section-head">
-      <h2>完整教程目录</h2>
-      <span id="visibleCount">正在载入…</span>
-    </div>
+    <details class="catalog" id="catalogDetails">
+      <summary class="catalog-summary">全部课程与操作记录 <span id="visibleCount">正在载入…</span></summary>
+    <nav class="filters" id="guideFilters" aria-label="教程分类"></nav>
+
+
     <section class="guide-grid" id="guideGrid" aria-live="polite"></section>
 
+
+
+    </details>
 
     <details class="app-directory" aria-labelledby="appDirectoryTitle">
       <summary id="appDirectoryTitle">桌面应用入口速查 <span>按需展开</span></summary>
