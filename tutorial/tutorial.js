@@ -11,6 +11,15 @@
   var GUIDE_UPDATES = [
     {
       date: '2026-11-11',
+      title: '账号整合测试中 · 尚未发布',
+      items: [
+        '新的统一登录、邀请码和创始管理员 001 正在独立分支验证；原有手机入口尚未切换。',
+        '普通账号可以从设置查看自己的 MAO 账号；创始管理员登录后才会在桌面看到「管理中心」。',
+        '实际手机登录、首次初始化和跨账号隔离必须验收后才能标记为已完成。'
+      ]
+    },
+    {
+      date: '2026-11-11',
       title: '教程全面补全',
       items: [
         '新增逐步引导模式：一次显示一个操作步骤，带界面定位示意、真实页面入口、练习目标和本地步骤进度。',
@@ -321,7 +330,24 @@
       href:'../chat/chat/chat.html', action:'打开聊天'
     },
 
-    // 桌面 29 个应用逐项说明：以每个应用当前真实页面结构为准。
+    {
+      id:'account-access', category:'设置', title:'统一账号与邀请码：普通用户如何进入',
+      summary:'登录、注册都从相同入口进入；普通注册不会获得管理员身份。完成注册后需要对应邀请码授权。',
+      location:'小手机统一入口 → 注册或登录 → 邀请码验证；登录后可从「设置」进入账号管理。',
+      steps:[
+        '已有账号直接登录，不要重复注册。',
+        '普通用户第一次创建账号后，根据提示输入创作者发放的专属邀请码。',
+        '邀请码与目标账号绑定，不要把自己的密码或邀请码发到公开论坛。',
+        '获得授权后进入原来的小手机桌面；普通用户看不到「管理中心」。',
+        '遇到域名跳转异常时停止输入凭据并记录地址栏域名。'
+      ],
+      test:'验证普通账号被要求完成邀请码授权，进入桌面后没有管理员中心。不要提交真实凭据到教程测试备注。',
+      href:'../account/manage.html', action:'打开账号管理',
+      issue:true, defaultNote:'当前为功能分支整合测试，正式手机登录与首次初始化尚未验收。'
+    },
+
+    // 桌面 29 个普通应用逐项说明；唯一创始者另外有专属管理中心。
+
     {id:'app-tutorial',category:'入门',title:'教程',summary:'从这里查功能入口、一步一步跟着真实页面操作，并保存测试记录。',location:'桌面 → 教程。',steps:['打开教程，先看「最近更新」了解当前版本增加了什么。','通过分类或搜索找到功能，点「一步一步跟着做」进入单步引导。','每一步可以打开真实页面，在新标签页完成操作后切回教程继续。','测试后勾选「我已经在手机上实际测试过这一项」，遇到问题写备注并导出测试记录。'],test:'启动任意一项分步教程，前进和后退，再勾选一条测试状态，刷新页面确认进度保留。',href:'../tutorial/tutorial.html',action:'打开教程'},
     {id:'app-inspect',category:'应用',title:'查手机',summary:'按角色查看其手机内容；先选角色，再查看该角色当前可访问的内容。',location:'桌面 → 查手机。',steps:['打开「查手机」，页面标题为「选择查看的角色」。','选择要查看的角色，再按页面显示的类别或记录查看信息。','退出后切换另一个角色，确认查看对象随选择改变。'],test:'切换两个角色分别打开，确认页面没有把角色 A 的内容误显示到角色 B。',href:'../inspect-phone/select.html',action:'打开查手机'},
     {id:'app-worldbook',category:'应用',title:'世界书',summary:'用于管理故事世界设定和可供角色引用的资料条目。',location:'桌面 → 世界书。',steps:['打开「世界书」，查看现有世界设定列表。','新增或编辑条目时，先写清条目标题、背景内容和触发线索，再保存。','返回角色聊天，用条目中明确的关键词验证上下文是否能引用该设定。'],test:'新增一条无敏感内容的测试设定，保存后重新进入世界书确认仍存在。',href:'../worldbook/worldbook/worldbook.html',action:'打开世界书'},
@@ -398,6 +424,29 @@
     ['聊天', 'chat/chat/chat.html', '聊天列表与角色会话'],
     ['店铺', 'wallet/shop.html', '应用内商店']
   ];
+
+  // The server injects this meta after a successful session check. The public
+  // script must never decide admin permissions from names, URLs or localStorage.
+  var founderRole = document.querySelector('meta[name="mao-account-role"]');
+  var isFounder = !!(founderRole && founderRole.content === 'super_admin');
+  if (isFounder) {
+    GUIDES.push({
+      id:'app-admin', category:'设置', title:'管理中心（唯一创始管理员 001）',
+      summary:'只对登录后经服务器确认的创始管理员展示；编号 001 是身份标记，不是注册或提权密码。',
+      location:'同一个小手机入口登录 → 桌面 → 管理中心。',
+      steps:[
+        '从唯一的小手机入口登录自己的原始创始管理员账号，不另建普通账号。',
+        '回到桌面，确认「设置」附近出现「管理中心」，普通用户桌面没有该入口。',
+        '打开管理中心，核对创始管理员标识 001。',
+        '在「用户管理」查看普通账号，在「邀请码管理」为指定账号生成或撤销邀请码。',
+        '完成后检查操作审计；不要公开初始化密钥、管理员密码或完整邀请码。'
+      ],
+      test:'创始账号能打开管理中心，普通账号不能打开或调用管理员 API，既有聊天和桌面数据保持不变。',
+      href:'../admin/admin-center.html', action:'进入管理中心', issue:true,
+      defaultNote:'账号整合仍在独立分支测试，真实创始账号登录和手机入口未验收。'
+    });
+    APPS.push(['管理中心', 'admin/admin-center.html', '仅唯一创始管理员 001 可见']);
+  }
 
   var categories = ['全部', '入门', '聊天', '角色', '图片', '设置', '外观', '社交', '应用'];
   var activeCategory = '全部';
