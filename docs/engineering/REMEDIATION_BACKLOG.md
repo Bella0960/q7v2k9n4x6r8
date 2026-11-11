@@ -180,15 +180,28 @@ Acceptance:
 - Existing legacy image messages render unchanged.
 
 ### DATA-008 — Make remaining legacy storage callers explicit
-**Priority:** P2 · **Status:** OPEN
+**Priority:** P2 · **Status:** IN PROGRESS (PR #255, 2026-11-11)
 
 Scope: migrate direct localStorage readers/writers page-by-page to approved PhoneStorage/repository APIs after storage contracts are stable.
+
+Progress in PR #255:
+- Added verified history writes and explicit failure handling for offline/date chat, travel-journey stage messages, group-call result cards, forum post sharing, couple-space invitations, wallet shop/takeout/family-card notices, and shake-match contact initialization.
+- Added behavior tests for write refusal, readback mismatch, quota errors, role isolation, and retry/deduplication.
+- No history key or message schema was renamed; no history was truncated or migrated.
+- A failed purchase/order is not inferred from a failed chat notice: transaction state and message-notice state remain separate.
+
+Remaining:
+- Finish the legacy read/write audit against DATA-005 and migrate search/settings and any remaining direct writers after the parallel multi-bubble branch is reconciled.
+- Audit remaining read-only legacy fallbacks in memory/context/library paths.
+- Confirm backup/export behavior before changing the storage backend (DATA-001/002/006/007).
+- Run the complete local/CI regression suite and validate on a real phone/PWA.
 
 Acceptance:
 - Each migration is limited to one domain or feature.
 - No hidden change to key names or role scoping.
 - Failures propagate and are tested.
 - Direct access remains only where documented as an intentional compatibility boundary.
+- DATA-008 remains OPEN until the remaining callers are migrated and the full regression/device acceptance is complete.
 
 ### DATA-009 — Decide cloud sync, if ever required
 **Priority:** P3 · **Status:** DEFERRED
