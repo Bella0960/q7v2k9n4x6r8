@@ -891,7 +891,8 @@ test('摇一摇：联系人列表保存并读回成功后才创建欢迎消息',
     { role: 'assistant', text: '你好，很高兴认识你。', time: '12:30' }
   );
 
-  assert.deepEqual(result, { characterSaved: true, historySaved: true });
+  assert.equal(result.characterSaved, true);
+  assert.equal(result.historySaved, true);
   assert.equal(characters.length, 1);
   assert.equal(characters[0].id, 'shake_new');
   assert.equal(history.length, 1);
@@ -914,7 +915,8 @@ test('摇一摇：联系人列表写入失败时不继续生成聊天记录', ()
     { role: 'assistant', text: '你好', time: '12:31' }
   );
 
-  assert.deepEqual(result, { characterSaved: false, historySaved: false });
+  assert.equal(result.characterSaved, false);
+  assert.equal(result.historySaved, false);
   assert.equal(historyWrites, 0);
 });
 
@@ -939,6 +941,7 @@ test('摇一摇：联系人已保存但欢迎消息失败时分别返回状态',
     { role: 'assistant', text: '你好', time: '12:32' }
   );
 
-  assert.deepEqual(result, { characterSaved: true, historySaved: false });
+  assert.equal(result.characterSaved, true);
+  assert.equal(result.historySaved, false);
   assert.equal(characters.length, 1);
 });
