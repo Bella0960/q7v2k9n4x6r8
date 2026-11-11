@@ -124,11 +124,12 @@ test('network failure after submit checks founder state without repeating POST',
       statusReads += 1;
       return result({ ok: true, initialized: false, configured: true });
     }
+    if (path.endsWith('/preflight')) return result({ ok: true, initialized: false, configured: true });
     throw new TypeError('Failed to fetch');
   });
   await page.settle();
   await page.submit();
-  assert.equal(page.calls.filter(call => call.options.method === 'POST').length, 1);
+  assert.equal(page.calls.filter(call => call.path === '/api/admin/bootstrap').length, 1);
   assert.equal(statusReads, 3, 'initial readiness, pre-submit, post-error read-only status');
   assert.deepEqual(page.redirects, []);
   assert.match(page.nodes.bootstrapError.textContent, /没有获得成功回执/);
@@ -140,6 +141,7 @@ test('ambiguous POST followed by confirmed founder creation shows login instead 
   let initialized = false;
   const page = mount(async path => {
     if (path.endsWith('/status')) return result({ ok: true, initialized, configured: true });
+    if (path.endsWith('/preflight')) return result({ ok: true, initialized: false, configured: true });
     initialized = true;
     throw new TypeError('connection reset after commit');
   });
@@ -147,7 +149,7 @@ test('ambiguous POST followed by confirmed founder creation shows login instead 
   await page.submit();
   assert.equal(page.nodes.bootstrapComplete.hidden, false);
   assert.equal(page.nodes.bootstrapForm.hidden, true);
-  assert.equal(page.calls.filter(call => call.options.method === 'POST').length, 1);
+  assert.equal(page.calls.filter(call => call.path === '/api/admin/bootstrap').length, 1);
 });
 
 test('status lookup failure after ambiguous submit warns instead of automatically retrying', async () => {
@@ -157,16 +159,30 @@ test('status lookup failure after ambiguous submit warns instead of automaticall
       if (postFailed) throw new TypeError('offline');
       return result({ ok: true, initialized: false, configured: true });
     }
+    if (path.endsWith('/preflight')) return result({ ok: true, initialized: false, configured: true });
     postFailed = true;
     throw new TypeError('Failed to fetch');
   });
   await page.settle();
   await page.submit();
   assert.match(page.nodes.bootstrapError.textContent, /暂时无法确认结果/);
-  assert.equal(page.calls.filter(call => call.options.method === 'POST').length, 1);
+  assert.equal(page.calls.filter(call => call.path === '/api/admin/bootstrap').length, 1);
 });
 
 test('bootstrap POST receives longer timeout than status checks and never auto-reposts', () => {
   assert.match(source, /method === 'POST' \? 60000 : 15000/);
   assert.match(source, /NEVER automatically repeat the POST/);
+});
+
+test('failed same-origin POST preflight never submits credentials or writes founder account', async () => {
+  const page = mount(async path => {
+    if (path.endsWith('/status')) return result({ ok: true, initialized: false, configured: true });
+    if (path.endsWith('/preflight')) throw new TypeError('Network unreachable');
+    throw new Error('founder POST must not be called');
+  });
+  await page.settle();
+  await page.submit();
+  assert.equal(page.calls.filter(call => call.path === '/api/admin/bootstrap').length, 0);
+  assert.equal(page.calls.filter(call => call.path === '/api/admin/bootstrap/preflight').length, 1);
+  assert.match(page.nodes.bootstrapError.textContent, /管理员资料尚未提交/);
 });
