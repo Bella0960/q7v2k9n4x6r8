@@ -182,7 +182,7 @@ test('friend code, request list and friend list use only the authenticated API',
       return jsonResponse({ ok: true, ownerAccountId: 'self-1', blocked: [{ id: 'blocked-1', displayName: 'Blocked' }] });
     }
     if (url.endsWith('/v1/friends/codes/rotate')) {
-      return jsonResponse({ ok: true, code: 'a'.repeat(64), qrPayload: 'mao://friend/add?code=' + 'a'.repeat(64) }, 201);
+      return jsonResponse({ ok: true, ownerAccountId: 'self-1', code: 'a'.repeat(64), qrPayload: 'mao://friend/add?code=' + 'a'.repeat(64), expiresAt: Date.now() + 900000 }, 201);
     }
     if (url.endsWith('/v1/auth/me')) {
       return jsonResponse({ ok: true, account: { id: 'self-1', handle: 'self_1', displayName: 'Self', status: 'active' } });
@@ -773,4 +773,48 @@ test('Contacts distinguishes server-accepted friend mutations from subsequent re
   assert.match(actionBlock, /try \{\s*await refreshServerData\(\);/);
   assert.match(actionBlock, /操作已被服务器接收，但名单暂时未刷新/);
   assert.match(actionBlock, /if \(!handleSessionExpired\(refreshError\)\)/);
+});
+
+test('friend QR rotation rejects server code for another account even on HTTP 201', async () => {
+  const app = runtime(async url => {
+    if (url.endsWith('/capabilities')) return jsonResponse(enabledCapabilities);
+    if (url.endsWith('/v1/auth/me')) return jsonResponse({ ok: true, account: {
+      id: 'owner-current', handle: 'current', displayName: 'Current', status: 'active'
+    } });
+    if (url.endsWith('/v1/friends/codes/rotate')) return jsonResponse({ ok: true,
+      ownerAccountId: 'owner-other', code: 'f'.repeat(64),
+      expiresAt: Date.now() + 900000
+    }, 201);
+    return jsonResponse({ ok: false, error: 'not_found' }, 404);
+  });
+  await app.client.restore();
+  await assert.rejects(app.client.rotateFriendCode(),
+    error => error.code === 'friend_data_account_mismatch');
+  assert.equal(app.client.getState().account.id, 'owner-current');
+});
+
+test('friend QR rotation cannot expose a code that arrived after logout', async () => {
+  let resolveRotation;
+  const app = runtime(async url => {
+    if (url.endsWith('/capabilities')) return jsonResponse(enabledCapabilities);
+    if (url.endsWith('/v1/auth/me')) return jsonResponse({ ok: true, account: {
+      id: 'owner-current', handle: 'current', displayName: 'Current', status: 'active'
+    } });
+    if (url.endsWith('/v1/friends/codes/rotate')) {
+      return new Promise(resolve => { resolveRotation = resolve; });
+    }
+    if (url.endsWith('/v1/auth/logout')) return jsonResponse({ ok: true });
+    return jsonResponse({ ok: false, error: 'not_found' }, 404);
+  });
+  await app.client.restore();
+  const pending = app.client.rotateFriendCode();
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(typeof resolveRotation, 'function');
+  await app.client.logout();
+  resolveRotation(jsonResponse({ ok: true, ownerAccountId: 'owner-current',
+    code: 'c'.repeat(64), expiresAt: Date.now() + 900000 }, 201));
+  await assert.rejects(pending, error => error.code === 'friend_data_account_mismatch');
+  assert.equal(app.client.getState().account, null);
 });
