@@ -52,7 +52,11 @@
   function arr(list) {return Array.isArray(list)?list:[];}
   function storyKey(roleId) {return 'inspect_story_v1_'+encodeURIComponent(String(roleId));}
   function hash(x) {var h=2166136261;for(var i=0;i<x.length;i++){h=Math.imul(h^x.charCodeAt(i),16777619);}return h>>>0;}
-  function hiddenPin(roleId) {return String(100000+hash(String(roleId)+'_fictional_album')%900000);}
+  function hiddenPin(roleId,role) {
+    var birthday=role&&String(role.birthday||role.birthDate||role.birthdate||'').replace(/\D/g,'');
+    if(birthday&&birthday.length>=6)return birthday.slice(-6);
+    return String(100000+hash(String(roleId)+'_fictional_album')%900000);
+  }
   function read(roleId,now) {
     try {var data=JSON.parse(localStorage.getItem(storyKey(roleId))||'null');
       if(data&&data.schema===1&&data.roleId===String(roleId)&&data.day===localDay(now)&&data.sections&&data.facts)return data;
@@ -231,8 +235,14 @@
     var rel=clean(role.relationshipStatus||role.relationship||'朋友',30);
     if(/吵架|陌生|冷战|绝交/.test(rel))return {decision:'拒绝',reason:'现在的关系还不足以分享私人内容。',confidence:.88};
     var guarded=/防备|戒备|警惕|边界感强|不信任/.test(text);
+    var mood=clean(role.lastConversationMood||role.lastChatEmotion||role.mood||'',80);
+    if(/愤怒|非常生气|厌恶|严重争执/.test(mood))
+      return {decision:'拒绝',reason:'上次对话留下了不愉快，角色现在不想展示手机。',confidence:.84};
+    var tense=/生气|冷淡|不安|难过|委屈|争执|尴尬/.test(mood);
     var night=now.getHours()<5||now.getHours()>=23;
-    if(guarded||night)return {decision:'犹豫',reason:night?'时间太晚，对方想先确认你的意图。':'对方愿意分享一部分，但有自己的边界。',confidence:.72};
+    if(guarded||night||tense)return {decision:'犹豫',
+      reason:tense?'刚才的对话气氛有些紧张，角色想保留一点空间。':night?'时间太晚，对方想先确认你的意图。':'对方愿意分享一部分，但有自己的边界。',
+      confidence:.72};
     return {decision:'同意',reason:'对方愿意分享普通日常，锁定内容仍需单独许可。',confidence:.81};
   }
   function detection(durationSec,alert,lockAttempts,appSwitches) {
@@ -359,7 +369,7 @@
         body=block('未锁定',arr(section.notes).map(function(x){return line(x.title,x.text+' · '+dateTime(x.updatedAt));}).join(''))+
           block('锁定备忘录',unlockedNotes?
             (revealCount?arr(section.locked).slice(0,revealCount).map(function(x){return line(x.title,x.text+' · '+dateTime(x.updatedAt));}).join(''):'<p class="inspect-muted">角色暂时不愿分享这些私人记录。</p>')+
-            (revealCount?'<p class="inspect-muted">下一处线索：虚构相册密码 '+html(hiddenPin(roleId))+'（仅供剧情解谜）。</p>':''):
+            (revealCount?'<p class="inspect-muted">下一处线索：虚构相册密码 '+html(hiddenPin(roleId,role))+'（仅供剧情解谜）。</p>':''):
           '<p class="inspect-muted">需要剧情密码（默认111111），内容还受到角色关系进度影响。密码不是数据加密。</p>'+
             (pinView==='notes'?pinForm():button('输入密码','notesPin')));
       } else if(current==='wallet'){
@@ -403,7 +413,10 @@
       pin=String(pin||'').trim();
       pinView='';
       if(kind==='notes'&&pin==='111111'){unlockedNotes=true;notice='已验证剧情密码，角色愿意分享的部分已显示。';render();return;}
-      if(kind==='album'&&pin===hiddenPin(roleId)){unlockedAlbum=true;notice='已解锁剧情相册。';render();return;}
+      if(kind==='album'&&pin===hiddenPin(roleId,role)){
+        if(affection<55){hint('密码正确，但角色当前还不愿意公开隐藏照片。');return;}
+        unlockedAlbum=true;notice='已解锁角色愿意分享的剧情相册。';render();return;
+      }
       var danger=detection((Date.now()-sessionStarted)/1000,permission&&permission.decision==='犹豫',lockedAttempts,switches);
       if(danger.caught){current='caught';notice='角色发现有人尝试进入锁定内容，收回了查看许可。';permission=null;commit();render();}
       else hint('密码不正确。角色似乎注意到了这次尝试。');
@@ -491,7 +504,7 @@
       if(a==='stop'){close();return;}
     });
     global.InspectPhoneFeature={mount:mount,valid:valid,promptFor:promptFor,storyKey:storyKey,access:access,detection:detection,hiddenPin:hiddenPin,defaultItems:ITEMS};
-    global.InspectPhoneFeature.onUnlock=function(){if(permission)chooseScreen();else requestScreen();};
+    global.InspectPhoneFeature.onUnlock=function(){sessionStarted=Date.now();if(permission)chooseScreen();else requestScreen();};
     commit();
     return global.InspectPhoneFeature;
   }
