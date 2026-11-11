@@ -145,7 +145,18 @@ function writeMirrorFromProfile(profile, extra) {
 function saveActiveProfile(fields) {
     try {
         var list = getProfiles();
-        var active = getActiveProfile();
+        // Read the active ID, then resolve the entry INSIDE this same list.
+        // getActiveProfile() makes a second storage read; mutating that detached
+        // object does not change the list that saveProfiles() persists.
+        var activeId = '';
+        try {
+            activeId = window.PhoneStorage
+                ? PhoneStorage.getActiveProfileId()
+                : (localStorage.getItem('api_active_profile') || '');
+        } catch (error) {}
+        var active = list.find(function (item) {
+            return item && String(item.id) === String(activeId);
+        }) || list[0] || null;
         if (!active) {
             active = { id: 'p' + Date.now().toString(36), createdAt: Date.now() };
             list.push(active);
