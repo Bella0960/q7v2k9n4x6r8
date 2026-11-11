@@ -80,10 +80,21 @@ function setup({ enabled = true, chatEnabled = true, nowFn = () => now } = {}) {
     env: { MAO_SOCIAL_ENABLED: enabled ? 'true' : 'false',
       MAO_SOCIAL_CHAT_ENABLED: chatEnabled ? 'true' : 'false' }, now: nowFn });
   async function call(who, path, method = 'GET', body) {
+    // QA client binds every text message to the server-confirmed friendship.
+    // The caller can explicitly override friendshipId to test stale generation.
+    let outgoing = body;
+    const chatPeer = /^\/api\/social\/chats\/(MAO-[A-Z0-9]{12,24})\/messages$/.exec(path);
+    if (method === 'POST' && chatPeer && body && body.clientMessageId && !body.friendshipId) {
+      const ownerId = sessions.get(who)?.account_id;
+      const low = ownerId < chatPeer[1] ? ownerId : chatPeer[1];
+      const high = ownerId < chatPeer[1] ? chatPeer[1] : ownerId;
+      const relation = exec("SELECT source_request_id FROM mao_social_friends WHERE pair_low=? AND pair_high=? AND status='accepted'", low, high)[0];
+      outgoing = {...body, friendshipId: relation?.source_request_id || 'pre_approval_test'};
+    }
     const request = new Request('https://mao.example' + path, {
       method,
-      headers: { 'x-test-session': who, ...(body ? {'content-type':'application/json'} : {}) },
-      ...(body ? { body: JSON.stringify(body) } : {})
+      headers: { 'x-test-session': who, ...(outgoing ? {'content-type':'application/json'} : {}) },
+      ...(outgoing ? { body: JSON.stringify(outgoing) } : {})
     });
     try {
       const response = await service.handle(request, path.split('?')[0], method);
@@ -299,7 +310,8 @@ test('late session expiration cannot write a message after an async body read', 
     const message = new Request('https://mao.example' + route, {
       method: 'POST',
       headers: { 'x-test-session': 'alice-session', 'content-type': 'application/json' },
-      body: JSON.stringify({ clientMessageId: 'expiry_msg_0001', text: 'Must be rejected' })
+      body: JSON.stringify({ clientMessageId: 'expiry_msg_0001', friendshipId:id,
+        text: 'Must be rejected' })
     });
     const originalText = message.text.bind(message);
     Object.defineProperty(message, 'text', { value: async () => {
@@ -351,6 +363,10 @@ test('a new 001-approved friendship cannot reopen chat history from a removed re
     assert.deepEqual(reopened.body.messages, [], 'old relation messages must stay hidden');
     assert.equal(reopened.body.friendshipId, secondId);
     assert.notEqual(reopened.body.friendshipId, originalRead.body.friendshipId);
+    const rejectedOldGeneration = await ctx.call('alice-session', pathAB, 'POST', {
+      ...oldPayload, clientMessageId: 'stale_generation_new_message_001', friendshipId: firstId
+    });
+    assert.equal(rejectedOldGeneration.code, 'SOCIAL_FRIENDSHIP_CHANGED');
     assert.equal((await ctx.call('alice-session', pathAB, 'POST', oldPayload)).code, 'SOCIAL_MESSAGE_ID_REUSED');
     const newer = await ctx.call('alice-session', pathAB, 'POST', {
       clientMessageId: 'new_relation_message_001', text: 'A new beginning'
