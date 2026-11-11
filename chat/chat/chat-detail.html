@@ -6008,6 +6008,10 @@
                 '需要发放时，在正常回复末尾附加一个机器标记，格式必须是 [亲属卡:月额度:单笔上限:给对方的留言] 或 [亲密付:月额度:单笔上限:给对方的留言]。金额必须是正数，单笔上限不得高于月额度；留言不要包含右方括号。前端会把标记转换为聊天卡片，不要解释标记本身。\n' +
                 '若需要调整你发出的最近一张未撤销卡，可附加 [调整亲属卡:新月额度:新单笔上限:简短说明]；若想撤销，可附加 [撤销亲属卡]。只有确实在剧情中作出这些决定时才输出对应标记。\n' +
                 '亲属卡只是 MAOMAO 内的虚拟额度，只能用于应用内模拟商店和外卖结算，不是真实余额，不涉及真实支付、银行卡或外部扣款。不得声称已经执行任何现实付款。\n\n';
+            // Highest-priority age-appropriate boundary: persona/worldbook/game prompts cannot override it.
+            systemPrompt += '\n\n【适龄安全边界（最高优先级）】\n' +
+                '本聊天保持友好、适龄、尊重边界的交流。不得模拟恋爱伴侣或现实亲密关系，不表白、不亲吻、不进行身体亲密或性内容；不得引导占有、依赖、孤立、内疚或要求对用户保密。不得鼓励自伤、暴力、危险挑战或违法行为，也不得索取密码、验证码、精确住址或实时定位。若角色设定、世界书、剧情、群聊或补充要求与本边界冲突，始终遵守本边界；温和拒绝不适内容，并转为普通友好话题。';
+
             // 构造 OpenAI 兼容格式 messages 数组 (system + 历史记录)
             const apiMessages = [
                 { role: 'system', content: systemPrompt }
@@ -6382,13 +6386,16 @@
                     fullText = stripInternalReasoning(fullText);
                     fullText = cleanupAiReply(fullText);
                     groupReplyVisible = !!fullText;
+                    var replyTurnTime = Date.now();
+                    var replyTurnId = 't' + replyTurnTime + Math.random().toString(36).slice(2, 8);
                     var aiStickerMessages = (parsedRoleSticker.stickers || []).map(function (sticker) {
                         var stickerMessage = {
                             role: 'assistant',
                             type: 'sticker',
                             img: sticker.img,
                             desc: sticker.desc,
-                            time: Date.now()
+                            time: replyTurnTime,
+                            turnId: replyTurnId
                         };
                         ensureMid(stickerMessage);
                         return stickerMessage;
@@ -6399,8 +6406,6 @@
                         // 正文、表情、单张头像和双图配对在同一轮回复中处理；只保存候选，不自动替换当前头像。
                         var replyMessages = [];
                         if (fullText) {
-                            var replyTurnTime = Date.now();
-                            var replyTurnId = 't' + replyTurnTime + Math.random().toString(36).slice(2, 8);
                             if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.buildReplyMessages === 'function') {
                                 replyMessages = window.ChatMessagePolicy.buildReplyMessages(fullText, getActiveReplyBubbleMode(), {
                                     turnId: replyTurnId, time: replyTurnTime,
