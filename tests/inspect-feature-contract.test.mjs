@@ -104,10 +104,10 @@ test('单板块更新的数据需具备足够记录，拒绝未来时间与不�
 
 function setupInteractive(role={id:'interactive-role',name:'测试',relationship:'朋友'},apiKey=false) {
   const store=new Map(),handlers={};
-  let failWrites=false;
+  let failWrites=false,ignoreWrites=false;
   const storage={
     getItem(key){return store.has(key)?store.get(key):null;},
-    setItem(key,value){if(failWrites)throw new Error('quota exceeded');store.set(key,String(value));},
+    setItem(key,value){if(failWrites)throw new Error('quota exceeded');if(ignoreWrites)return;store.set(key,String(value));},
     removeItem(key){store.delete(key);}
   };
   const node=name=>({
@@ -151,7 +151,8 @@ function setupInteractive(role={id:'interactive-role',name:'测试',relationship
   return {
     store,window,storage,appBody,appTitle,key,read,mount,start,
     action,openApp,openContact,submitMessage,
-    setFailWrites(value){failWrites=value;}
+    setFailWrites(value){failWrites=value;},
+    setIgnoreWrites(value){ignoreWrites=value;}
   };
 }
 
@@ -296,4 +297,30 @@ test('刷新微信保留玩家已发送的消息和真实生成的虚构联系�
   assert.ok(after.messages.some(m=>m.text==='这条是我在虚构角色手机里刚发的'));
   assert.ok(after.messages.some(m=>m.text==='收到，你路上小心。'));
   assert.ok(after.messages.some(m=>m.text==='一条新的AI生成开场白'));
+});
+
+
+test('手机模拟存储静默拒绝写入时，不能显示已授权或制造虚构聊天消息',()=>{
+  const ui=setupInteractive();ui.mount();ui.window.InspectPhoneFeature.onUnlock();
+  const original=ui.storage.getItem(ui.key);
+  ui.setIgnoreWrites(true);
+  ui.action('grant');
+  assert.equal(ui.appTitle.textContent,'请求查看','授权未保存时必须停在请求页面');
+  assert.match(ui.appBody.innerHTML,/存储空间不足/);
+  assert.equal(ui.storage.getItem(ui.key),original);
+  ui.setIgnoreWrites(false);
+  ui.action('grant');
+  const before=ui.read();
+  ui.setIgnoreWrites(true);
+  ui.action('all');
+  assert.equal(ui.read().selected.length,before.selected.length,'失败的全选不能保存在本机');
+  assert.doesNotMatch(ui.appBody.innerHTML,/data-choose="chat" checked/,'失败的全选不能留在画面上');
+  ui.setIgnoreWrites(false);
+  ui.action('all');ui.action('start');ui.openApp('chat');ui.openContact(0);
+  const count=ui.read().sections.chat.contacts[0].messages.length;
+  ui.setIgnoreWrites(true);
+  ui.submitMessage('这条消息存储静默丢弃');
+  assert.equal(ui.read().sections.chat.contacts[0].messages.length,count);
+  assert.doesNotMatch(ui.appBody.innerHTML,/这条消息存储静默丢弃/);
+  ui.setIgnoreWrites(false);
 });
