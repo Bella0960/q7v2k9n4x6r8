@@ -74,7 +74,7 @@ textarea{min-height:70px;resize:vertical}
 (function(){
 'use strict';
 var account=null, currentCode=null, currentChat=null, cursor=0, messageTimer=null;
-var chatEpoch=0, activeMessageLoad=null, seenMessageSeq=new Set();
+var chatEpoch=0, activeMessageLoad=null, seenMessageSeq=new Set(), currentFriendshipId=null;
 var pendingSendId=null, pendingSendFingerprint=null, pendingMessageId=null, pendingMessageText=null;
 var el=function(id){return document.getElementById(id)};
 var pattern=/^[a-f0-9]{64}$/;
@@ -86,7 +86,7 @@ function explain(err){var o=err&&err.message||'操作失败';return o.length>220
 var authErrors=new Set(['ACCOUNT_CONTEXT_CHANGED','ACCOUNT_CONTEXT_REQUIRED','LOGIN_REQUIRED',
 'ACCOUNT_DISABLED','SOCIAL_SESSION_EXPIRED','SOCIAL_LOGIN_REQUIRED','SOCIAL_INVITE_REQUIRED']);
 function closeChat(){
-clearTimer();chatEpoch++;activeMessageLoad=null;seenMessageSeq.clear();
+clearTimer();chatEpoch++;activeMessageLoad=null;seenMessageSeq.clear();currentFriendshipId=null;
 currentChat=null;cursor=0;pendingMessageId=null;pendingMessageText=null;
 el('messages').textContent='';el('chatText').value='';el('chatPanel').hidden=true;
 }
@@ -251,9 +251,24 @@ if(activeMessageLoad&&activeMessageLoad.epoch===epoch)return activeMessageLoad.p
 var task=(async function(){
 var result=await api('/api/social/chats/'+encodeURIComponent(target)+'/messages?after='+startCursor);
 if(epoch!==chatEpoch||!account||account.id!==ownerId||!currentChat||currentChat.id!==target)return;
-if(result.ownerAccountId!==ownerId||result.peerId!==target){
-clearPrivateSession();throw new Error('聊天所属账号异常，已清除旧账号资料。');
+if(result.ownerAccountId!==ownerId||result.peerId!==target||
+!(/^[A-Za-z0-9_-]{8,96}$/).test(result.friendshipId)){
+clearPrivateSession();throw new Error('聊天所属账号或好友关系异常，已清除旧账号资料。');
 }
+// The second 001 approval starts a new conversation. Never reuse old bubbles,
+// cursor or a still-pending retry from the previous friendship.
+if(currentFriendshipId&&currentFriendshipId!==result.friendshipId){
+var newFriendshipId=result.friendshipId;
+seenMessageSeq.clear();cursor=0;startCursor=0;el('messages').textContent='';
+result=await api('/api/social/chats/'+encodeURIComponent(target)+'/messages?after=0');
+if(epoch!==chatEpoch||!account||account.id!==ownerId||!currentChat||currentChat.id!==target)return;
+if(result.ownerAccountId!==ownerId||result.peerId!==target||
+result.friendshipId!==newFriendshipId){
+clearPrivateSession();throw new Error('好友关系在刷新时变化，请重新进入。');
+}
+pendingMessageId=null;pendingMessageText=null;
+}
+currentFriendshipId=result.friendshipId;
 if(!Array.isArray(result.messages)||!Number.isSafeInteger(result.nextCursor)||
 result.nextCursor<startCursor){
 throw new Error('聊天记录返回格式异常，请刷新后重试。');
@@ -278,7 +293,7 @@ activeMessageLoad={epoch:epoch,promise:task};
 try{await task}finally{if(activeMessageLoad&&activeMessageLoad.promise===task)activeMessageLoad=null;}
 }
 async function openChat(friend){
-clearTimer();chatEpoch++;activeMessageLoad=null;seenMessageSeq.clear();
+clearTimer();chatEpoch++;activeMessageLoad=null;seenMessageSeq.clear();currentFriendshipId=null;
 pendingMessageId=null;pendingMessageText=null;currentChat=friend;cursor=0;el('messages').textContent='';el('chatTitle').textContent=friend.displayName||friend.id;
 el('chatPanel').hidden=false;
 var openedEpoch=chatEpoch;
@@ -316,20 +331,25 @@ finally{buttonBusy(btn,false);}
 });
 el('chatForm').addEventListener('submit',async function(e){
 e.preventDefault();var btn=el('chatSend');if(btn.disabled||!currentChat)return;
-var msg=el('chatText').value.trim();if(!msg)return;buttonBusy(btn,true);
+var msg=el('chatText').value.trim();if(!msg)return;
+if(!currentFriendshipId){status('请先完成当前好友关系验证，再发送消息。');return;}
+buttonBusy(btn,true);
 var peerId=currentChat.id,ownerId=account&&account.id;
+var sentFriendshipId=currentFriendshipId,sendEpoch=chatEpoch;
 try{
 var fingerprint=peerId+'\n'+msg;
 if(!pendingMessageId||pendingMessageText!==fingerprint){
 pendingMessageId=messageId();pendingMessageText=fingerprint;
 }
 var result=await api('/api/social/chats/'+encodeURIComponent(peerId)+'/messages','POST',
-{clientMessageId:pendingMessageId,text:msg});
-if(!result.message||result.message.senderId!==ownerId||
+{clientMessageId:pendingMessageId,text:msg,friendshipId:sentFriendshipId});
+if(result.friendshipId!==sentFriendshipId||
+!result.message||result.message.senderId!==ownerId||
 result.message.recipientId!==peerId||result.message.text!==msg||!result.message.id){
 throw new Error('消息发送结果缺少服务器确认，请先刷新核对。');
 }
-if(!account||account.id!==ownerId||!currentChat||currentChat.id!==peerId)return;
+if(!account||account.id!==ownerId||!currentChat||currentChat.id!==peerId||
+chatEpoch!==sendEpoch||currentFriendshipId!==sentFriendshipId)return;
 pendingMessageId=null;pendingMessageText=null;
 if(el('chatText').value.trim()===msg)el('chatText').value='';
 status('服务器已确认收到消息。');
