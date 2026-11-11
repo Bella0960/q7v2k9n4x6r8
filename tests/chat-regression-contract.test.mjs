@@ -2374,6 +2374,8 @@ test('chat detail: history identity includes message state, not only role/time/t
 
   assert.notEqual(sandbox.identity({ ...base, status: 'received' }), identity);
   assert.notEqual(sandbox.identity({ ...base, amount: 30 }), identity);
+  assert.notEqual(sandbox.identity({ ...base, imageRecordId: 'image_1' }), identity);
+  assert.notEqual(sandbox.identity({ ...base, img: 'data:image/png;base64,first-payload' }), identity);
   assert.notEqual(sandbox.identity({ ...base, poll: { votes: { a: 0 } } }), identity);
   assert.notEqual(sandbox.identity({ ...base, chain: { closed: true } }), identity);
   assert.notEqual(sandbox.identity({ ...base, call: { connected: true } }), identity);
