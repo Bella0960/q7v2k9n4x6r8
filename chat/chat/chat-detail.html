@@ -8205,7 +8205,16 @@
                     if (options.length < 2) { showToast('投票选项不能完全相同'); return; }
                     var history = loadMessages();
                     var message = { role: 'user', type: 'group_poll', text: '', poll: { question: question.slice(0, 100), options: options, votes: {}, closed: false }, time: Date.now() };
-                    ensureMid(message); history.push(message); saveMessages(history); closeComposer(); renderAllMessages(); showToast('群投票已发起');
+                    ensureMid(message);
+                    history.push(message);
+                    if (!saveMessages(history)) {
+                        history.pop();
+                        showToast('群投票没有保存成功，请检查本地存储空间');
+                        return;
+                    }
+                    closeComposer();
+                    renderAllMessages();
+                    showToast('群投票已发起');
                     maybeStartGroupActivity();
                 } else if (composerMode === 'chain') {
                     var title = composerQuestion.value.trim();
@@ -8214,7 +8223,16 @@
                     var entries = first ? [{ memberId: '__user', name: '我', text: first.slice(0, 120), time: Date.now() }] : [];
                     var chainHistory = loadMessages();
                     var chainMessage = { role: 'user', type: 'group_chain', text: '', chain: { title: title.slice(0, 80), entries: entries, closed: false }, time: Date.now() };
-                    ensureMid(chainMessage); chainHistory.push(chainMessage); saveMessages(chainHistory); closeComposer(); renderAllMessages(); showToast('群接龙已发起');
+                    ensureMid(chainMessage);
+                    chainHistory.push(chainMessage);
+                    if (!saveMessages(chainHistory)) {
+                        chainHistory.pop();
+                        showToast('群接龙没有保存成功，请检查本地存储空间');
+                        return;
+                    }
+                    closeComposer();
+                    renderAllMessages();
+                    showToast('群接龙已发起');
                     maybeStartGroupActivity();
                 } else if (composerMode === 'join') {
                     var entryText = composerEntry.value.trim();
@@ -8225,8 +8243,16 @@
                     if (!targetChain || targetChain.closed) { closeComposer(); showToast('这条接龙已结束'); renderAllMessages(); return; }
                     if (!Array.isArray(targetChain.entries)) targetChain.entries = [];
                     if (targetChain.entries.some(function (entry) { return String(entry.memberId || '') === '__user'; })) { showToast('你已经参与过这条接龙'); return; }
+                    var previousEntries = JSON.parse(JSON.stringify(targetChain.entries));
                     targetChain.entries.push({ memberId: '__user', name: '我', text: entryText.slice(0, 120), time: Date.now() });
-                    saveMessages(joinHistory); closeComposer(); renderAllMessages(); showToast('已加入接龙');
+                    if (!saveMessages(joinHistory)) {
+                        targetChain.entries = previousEntries;
+                        showToast('接龙内容没有保存成功，请检查本地存储空间');
+                        return;
+                    }
+                    closeComposer();
+                    renderAllMessages();
+                    showToast('已加入接龙');
                 }
             });
             var messageContainer = document.getElementById('chat-messages');
@@ -8245,16 +8271,32 @@
                     var poll = pollMessage && pollMessage.poll;
                     var optionIndex = parseInt(voteButton.getAttribute('data-poll-option'), 10);
                     if (!poll || poll.closed || !Array.isArray(poll.options) || optionIndex < 0 || optionIndex >= poll.options.length) return;
-                    if (!poll.votes || typeof poll.votes !== 'object') poll.votes = {};
+                    var previousVotes = poll.votes && typeof poll.votes === 'object'
+                        ? JSON.parse(JSON.stringify(poll.votes)) : null;
+                    poll.votes = poll.votes && typeof poll.votes === 'object' ? poll.votes : {};
                     poll.votes.__user = optionIndex;
-                    saveMessages(history); renderAllMessages(); return;
+                    if (!saveMessages(history)) {
+                        if (previousVotes) poll.votes = previousVotes;
+                        else delete poll.votes;
+                        showToast('投票没有保存成功，请检查本地存储空间');
+                        return;
+                    }
+                    renderAllMessages();
+                    return;
                 }
                 var closePollButton = event.target.closest('[data-poll-close]');
                 if (closePollButton) {
                     var pollHistory = loadMessages();
                     var pollToClose = pollHistory.find(function (item) { return item && item.type === 'group_poll' && String(ensureMid(item)) === String(closePollButton.getAttribute('data-poll-close')); });
                     if (pollToClose && pollToClose.poll && !pollToClose.poll.closed) {
-                        pollToClose.poll.closed = true; saveMessages(pollHistory); renderAllMessages(); showToast('投票已结束');
+                        pollToClose.poll.closed = true;
+                        if (!saveMessages(pollHistory)) {
+                            pollToClose.poll.closed = false;
+                            showToast('投票状态没有保存成功，请稍后重试');
+                            return;
+                        }
+                        renderAllMessages();
+                        showToast('投票已结束');
                     }
                     return;
                 }
@@ -8272,7 +8314,14 @@
                     var closeHistory = loadMessages();
                     var chainToClose = closeHistory.find(function (item) { return item && item.type === 'group_chain' && String(ensureMid(item)) === String(closeChainButton.getAttribute('data-chain-close')); });
                     if (chainToClose && chainToClose.chain && !chainToClose.chain.closed) {
-                        chainToClose.chain.closed = true; saveMessages(closeHistory); renderAllMessages(); showToast('接龙已结束');
+                        chainToClose.chain.closed = true;
+                        if (!saveMessages(closeHistory)) {
+                            chainToClose.chain.closed = false;
+                            showToast('接龙状态没有保存成功，请稍后重试');
+                            return;
+                        }
+                        renderAllMessages();
+                        showToast('接龙已结束');
                     }
                 }
             });
@@ -8511,7 +8560,11 @@
                 };
                 var list = loadMessages();
                 list.push(msg);
-                saveMessages(list);
+                if (!saveMessages(list)) {
+                    list.pop();
+                    if (typeof showToast === 'function') showToast('表情没有保存到聊天记录，请检查本地存储空间');
+                    return false;
+                }
                 if (_vl) vlRefresh(); else appendMessageToDOM(msg);
                 scrollToBottom(true);
                 if (typeof SoundSystem !== 'undefined') SoundSystem.play('send');
@@ -8521,6 +8574,7 @@
                     silent: true,
                     contextOnly: true
                 });
+                return true;
             }
         })();
     </script>
