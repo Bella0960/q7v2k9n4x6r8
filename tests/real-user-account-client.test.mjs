@@ -702,3 +702,58 @@ test('Contacts loads cookie-confirmed friends before incoming, outgoing, and blo
   assert.match(PANEL_SOURCE, /var listResults = await Promise\.all/);
   assert.match(PANEL_SOURCE, /account\.id !== roster\.ownerAccountId/);
 });
+
+test('late 401 from a previous account never signs out a new login', async () => {
+  let settleOld;
+  const app = runtime(async (url) => {
+    if (url.endsWith('/capabilities')) return jsonResponse(enabledCapabilities);
+    if (url.endsWith('/v1/auth/me')) return jsonResponse({ ok: true, account: {
+      id: 'owner-previous', handle: 'previous', displayName: 'Previous', status: 'active'
+    } });
+    if (url.endsWith('/v1/friends/blocks')) return new Promise(resolve => { settleOld = resolve; });
+    if (url.endsWith('/v1/auth/login')) return jsonResponse({ ok: true, account: {
+      id: 'owner-current', handle: 'current', displayName: 'Current', status: 'active'
+    } });
+    return jsonResponse({ ok: false, error: 'not_found' }, 404);
+  });
+  await app.client.restore();
+  const oldRequest = app.client.listBlocked();
+  await Promise.resolve();
+  assert.equal(typeof settleOld, 'function');
+  await app.client.login({ handle: 'current', password: 'a sufficiently long password' });
+  settleOld(jsonResponse({ ok: false, error: 'authentication_required' }, 401));
+  await assert.rejects(oldRequest, error => error.code === 'stale_account_response');
+  assert.equal(app.client.getState().account.id, 'owner-current');
+});
+
+test('late successful /me cannot restore a session after logout', async () => {
+  let settleOld;
+  let meCount = 0;
+  const app = runtime(async (url) => {
+    if (url.endsWith('/capabilities')) return jsonResponse(enabledCapabilities);
+    if (url.endsWith('/v1/auth/me')) {
+      meCount++;
+      if (meCount === 2) return new Promise(resolve => { settleOld = resolve; });
+      return jsonResponse({ ok: true, account: {
+        id: 'owner-before', handle: 'before', displayName: 'Before', status: 'active'
+      } });
+    }
+    if (url.endsWith('/v1/auth/logout')) return jsonResponse({ ok: true });
+    return jsonResponse({ ok: false, error: 'not_found' }, 404);
+  });
+  await app.client.restore();
+  const oldRefresh = app.client.refreshAccount();
+  await Promise.resolve();
+  assert.equal(typeof settleOld, 'function');
+  await app.client.logout();
+  settleOld(jsonResponse({ ok: true, account: {
+    id: 'owner-before', handle: 'before', displayName: 'Before', status: 'active'
+  } }));
+  await assert.rejects(oldRefresh, error => error.code === 'stale_account_response');
+  assert.equal(app.client.getState().account, null);
+});
+
+test('mobile Contacts does not display stale session refresh as a login failure', () => {
+  assert.match(PANEL_SOURCE, /stale_account_response: '登录状态已变化/);
+  assert.match(PANEL_SOURCE, /if \(error && error.code === 'stale_account_response'\) return/);
+});
