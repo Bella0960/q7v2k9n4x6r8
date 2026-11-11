@@ -1742,6 +1742,15 @@ test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设
     now: base + 1
   });
   ctx.store.logExecution({
+    id: 'readiness-own-push-failure',
+    deviceId: device.deviceId,
+    kind: 'outbound_push',
+    status: 'failed',
+    reasonCode: 'delivery_lease_lost',
+    detail: { serverMessageId: 'private-push-message-id' },
+    now: base + 2
+  });
+  ctx.store.logExecution({
     id: 'readiness-own-success',
     deviceId: device.deviceId,
     kind: 'autonomy_tick',
@@ -1767,6 +1776,15 @@ test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设
     reasonCode: 'another_users_reason',
     detail: { taskId: 'another-private-task-id' },
     now: base
+  });
+  ctx.store.logExecution({
+    id: 'readiness-other-push-failure',
+    deviceId: otherDevice.deviceId,
+    kind: 'outbound_push',
+    status: 'failed',
+    reasonCode: 'other_users_push_failure',
+    detail: {},
+    now: base + 2
   });
   ctx.store.logExecution({
     id: 'readiness-other-cloud-reason',
@@ -1860,6 +1878,9 @@ test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设
     { reasonCode: 'context_version_unavailable', count: 1 },
     { reasonCode: 'foreground_lease_held', count: 1 }
   ]);
+  assert.deepEqual(readiness.payload.recentPushReasons, [
+    { reasonCode: 'delivery_lease_lost', count: 1 }
+  ]);
   assert.equal(readiness.payload.schedulerDiagnosticsWindowMs, 86400000);
   const readinessJson = JSON.stringify(readiness.payload);
   assert.equal(readinessJson.includes('private-test-key'), false);
@@ -1870,6 +1891,8 @@ test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设
   assert.equal(readinessJson.includes('another_users_reason'), false);
   assert.equal(readinessJson.includes('other_cloud_reason'), false);
   assert.equal(readinessJson.includes('private-task-id'), false);
+  assert.equal(readinessJson.includes('private-push-message-id'), false);
+  assert.equal(readinessJson.includes('other_users_push_failure'), false);
   assert.deepEqual(ctx.store.getActivityQueueSummary({ userId: 'another-user' }), {
     total: 1, waiting: 1, retry: 0, running: 0,
     completed: 0, failed: 0, superseded: 0, other: 0
@@ -1881,6 +1904,12 @@ test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设
     { reasonCode: 'another_users_reason', count: 1 },
     { reasonCode: 'other_cloud_reason', count: 1 }
   ]);
+
+  assert.deepEqual(ctx.store.getRecentPushReasonSummary({
+    userId: 'another-user',
+    deviceId: otherDevice.deviceId,
+    since: base - 86400000
+  }), [{ reasonCode: 'other_users_push_failure', count: 1 }]);
 
   const anonymous = await ctx.asJson('/api/autonomy/readiness');
   assert.equal(anonymous.status, 401);
