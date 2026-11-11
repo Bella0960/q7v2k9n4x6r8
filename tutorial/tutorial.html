@@ -267,6 +267,8 @@
     .diagnosis-disclaimer { font-size:11px !important; color:#999 !important; margin-top:10px !important; }
     .walk-foot a { overflow-wrap:anywhere; }
 
+    .storage-alert { margin:12px 0; padding:12px 14px; background:#F7F2F1; border:1px solid #E6DAD8; border-radius:10px; color:#7A3934; font-size:12px; line-height:1.75; }
+    .storage-alert[hidden] { display:none !important; }
   </style>
 </head>
 <body>
@@ -334,6 +336,7 @@
       </label>
     </div>
 
+    <p class="storage-alert" id="storageAlert" role="status" hidden></p>
     <details class="tracking">
       <summary>测试记录与进度 <span id="testCount">0 / 0 已测试</span></summary>
       <p class="tracking-note">仅保存在当前浏览器；勾选不等于自动验证成功。</p>
