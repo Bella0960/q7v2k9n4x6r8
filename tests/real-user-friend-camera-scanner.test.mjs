@@ -28,14 +28,18 @@ function makeRuntime(options = {}) {
     addEventListener(type, fn) { this.handlers[type] = fn; },
     removeEventListener(type) { delete this.handlers[type]; }
   };
-  const mediaDevices = {
-    async getUserMedia(value) {
-      requests += 1;
-      constraints = value;
-      if (options.cameraError) throw options.cameraError;
-      return stream;
-    }
-  };
+  // Respect explicitly supplied browser capability mocks, including {}:
+  // an unsupported browser must not silently acquire the default camera stub.
+  const mediaDevices = Object.prototype.hasOwnProperty.call(options, 'mediaDevices')
+    ? options.mediaDevices
+    : {
+      async getUserMedia(value) {
+        requests += 1;
+        constraints = value;
+        if (options.cameraError) throw options.cameraError;
+        return stream;
+      }
+    };
   const document = {
     hidden: false,
     head: { appendChild(script) { script.onerror && script.onerror(); } },
