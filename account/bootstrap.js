@@ -147,6 +147,35 @@
 
   retryButton.addEventListener('click', checkStatus);
 
+  // Read-only POST connectivity check: no password, authorization secret or
+  // account payload is included. Useful when a mobile browser reports a fetch failure.
+  const testConnection = document.getElementById('bootstrapTestConnection');
+  const connectionStatus = document.getElementById('bootstrapConnectionStatus');
+  if (testConnection && connectionStatus) {
+    testConnection.addEventListener('click', async () => {
+      testConnection.disabled = true;
+      connectionStatus.hidden = false;
+      connectionStatus.textContent = '正在检查服务器能否接收提交请求…';
+      try {
+        const result = await request('/api/admin/bootstrap/preflight', 'POST', {});
+        if (result.initialized) {
+          showInitialized();
+          connectionStatus.textContent = '服务器已创建管理员，请返回账号入口登录。';
+        } else if (result.configured === false) {
+          connectionStatus.textContent = '服务器安全密钥未配置完整，尚不能注册管理员。';
+        } else {
+          connectionStatus.textContent = '连接检查通过。服务器已接收测试请求，没有提交密码或创建账号。';
+        }
+      } catch (error) {
+        connectionStatus.textContent = '连接检查失败（' +
+          (error.code || (error.status ? 'HTTP ' + error.status : 'UNKNOWN')) +
+          '）。未发送密码或初始化密钥；请把这段错误代码反馈给开发者。';
+      } finally {
+        testConnection.disabled = false;
+      }
+    });
+  }
+
   form.addEventListener('submit', async event => {
     event.preventDefault();
     errorNode.textContent = '';
