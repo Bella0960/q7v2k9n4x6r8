@@ -55,6 +55,12 @@
   .field-group { padding-bottom: 4px; }
   .field-label { display: block; margin: 20px 0 7px; font-size: 9px; color: #999; letter-spacing: .06em; }
   .field-group:first-child .field-label { margin-top: 14px; }
+  .gossip-setting { padding-top:15px; }
+  .gossip-setting[hidden] { display:none; }
+  .gossip-toggle { display:flex;align-items:center;justify-content:space-between;gap:14px;font-size:12px;color:#333;cursor:pointer; }
+  .gossip-toggle input { accent-color:#181818;width:17px;height:17px;flex-shrink:0; }
+  .gossip-help { font-size:10px;color:#999;line-height:1.8;margin-top:8px; }
+
   .field, .field-area {
     display: block; width: 100%; border: 0; border-bottom: 1px solid #ddd;
     background: transparent; border-radius: 0; padding: 10px 0;
@@ -143,6 +149,13 @@
         </div>
       </div>
     </div>
+    <div class="field-group gossip-setting" id="gossipOptions" hidden>
+      <label class="gossip-toggle" for="gossipAutoContinue">
+        <span>楼主自动续更</span>
+        <input type="checkbox" id="gossipAutoContinue" checked>
+      </label>
+      <p class="gossip-help">开启后，你在八卦帖里评论或追问，楼主就会继续讲下一段。关闭后仍可在帖子里手动点“让楼主继续讲”。</p>
+    </div>
     <div class="field-group">
       <label class="field-label" for="forumWorld">论坛世界书（网友设定）</label>
       <textarea class="field-area" id="forumWorld" placeholder="写清楚这个论坛里都是什么人，他们会聊什么话题。比如：这是一个八卦论坛，网友们天天讨论娱乐圈的瓜，谁出轨了谁塌房了，语气都是吃瓜群众的样子..."></textarea>
@@ -165,6 +178,7 @@
     theme = this.dataset.id;
     document.querySelectorAll('#themeOpts .opt-chip').forEach(c => c.classList.remove('active'));
     this.classList.add('active');
+    document.getElementById('gossipOptions').hidden=theme!=='bagua';
     // 主题单独即时保存，避免选完刷新后退回旧主题；其他表单字段仍由“保存设置”统一保存。
     try {
       const cfg = loadConfig();
@@ -180,7 +194,9 @@
     customThemes = Array.isArray(cfg.customThemes) ? cfg.customThemes : [];
     document.getElementById('forumName').value = cfg.name || '';
     document.getElementById('forumWorld').value = cfg.world || '';
+    document.getElementById('gossipAutoContinue').checked=cfg.gossipAutoContinue!==false;
     theme = cfg.theme || 'reality';
+    document.getElementById('gossipOptions').hidden=theme!=='bagua';
     // 在加号前插入自定义主题 chips
     const box = document.getElementById('themeOpts');
     const addBtn = document.getElementById('addThemeBtn');
@@ -242,6 +258,7 @@
     cfg.theme = theme;
     cfg.world = document.getElementById('forumWorld').value.trim();
     cfg.customThemes = customThemes;
+    cfg.gossipAutoContinue=document.getElementById('gossipAutoContinue').checked;
     saveConfig(cfg);
     location.href = 'forum.html';
   }
