@@ -127,6 +127,25 @@ function publicAccount(account) {
 }
 
 export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
+  // QA: exercise the *same* 210000-round KDF before accepting credentials.
+  // No caller password, secret or account data enters this fixed-vector check.
+  // Cache per Durable Object instance to avoid repeated expensive derivations.
+  let passwordCryptoProbe = null;
+  async function assertPasswordCryptoReady() {
+    if (!passwordCryptoProbe) {
+      passwordCryptoProbe = passwordDigest('maomao-public-crypto-self-check', 'AAAAAAAAAAAAAAAAAAAAAA')
+        .then(digest => {
+          if (!/^[a-f0-9]{64}$/.test(digest)) throw new Error('KDF_OUTPUT_INVALID');
+        })
+        .catch(error => {
+          passwordCryptoProbe = null;
+          console.error('[founder-bootstrap] crypto-preflight-failed', error?.name || 'Error');
+          throw new ApiError(503, 'BOOTSTRAP_PASSWORD_DERIVATION_FAILED', '服务器密码保护模块不可用');
+        });
+    }
+    return passwordCryptoProbe;
+  }
+
   async function createSession(account, request) {
     const token = randomToken(32);
     const timestamp = now();
@@ -826,11 +845,13 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
           (path === '/api/admin/bootstrap/preflight' && method === 'POST')) {
         // Report readiness without exposing server secret values or key material.
         const initialized = store.hasMaoSuperAdminAccount();
-        return ok({
-          initialized,
-          configured: String(env.MAO_SUPER_ADMIN_BOOTSTRAP_SECRET || '').length >= 32 &&
-            String(env.DEVICE_SECRET_PEPPER || '').length >= 32
-        });
+        const configured = String(env.MAO_SUPER_ADMIN_BOOTSTRAP_SECRET || '').length >= 32 &&
+          String(env.DEVICE_SECRET_PEPPER || '').length >= 32;
+        const isPreflight = path === '/api/admin/bootstrap/preflight';
+        if (isPreflight && configured && !initialized) {
+          await assertPasswordCryptoReady();
+        }
+        return ok({ initialized, configured, ...(isPreflight ? { cryptoReady: configured && !initialized } : {}) });
       }
       if (path === '/api/accounts/register' && method === 'POST') return await register(request);
       if (path === '/api/accounts/login' && method === 'POST') return await login(request);
