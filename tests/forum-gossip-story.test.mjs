@@ -264,3 +264,57 @@ test('mobile back navigation reloads persisted chapters and a failed refresh lea
   assert.match(home,/posts=fresh\.concat\(posts\.map\(p=>\(\{\.\.\.p,comments:/);
   assert.match(home,/if\(!save\(\)\)\{posts=before;return false\}/);
 });
+
+
+test('forum detail verifies persistence even when localStorage silently ignores the write',()=>{
+  const start=detail.indexOf('  function saveNow() {');
+  const end=detail.indexOf('  function toast(msg)',start);
+  assert.ok(start>=0&&end>start,'forum saveNow must exist');
+  const fn=detail.slice(start,end);
+  const create=(storage,posts=[{id:'fiction-1',comments:[]}])=>{
+    const ctx={post:{id:'fiction-1',comments:[{id:'new-comment',text:'这次新增的留言'}]},
+      localStorage:storage,loadPosts:()=>posts,toast:()=>{},console};
+    runInNewContext(fn+';this.writePost=saveNow;',ctx);
+    return ctx.writePost;
+  };
+  let disk=JSON.stringify([{id:'fiction-1',comments:[]}]);
+  const muted={getItem:()=>disk,setItem:()=>{}};
+  assert.equal(create(muted)(),false,'write ignored without throwing must not report success');
+  const store={getItem:()=>disk,setItem:(_key,text)=>{disk=text}};
+  assert.equal(create(store)(),true);
+  assert.equal(JSON.parse(disk)[0].comments[0].text,'这次新增的留言');
+  const missing=create(store,[{id:'different-post'}]);
+  assert.equal(missing(),false,'missing post cannot silently claim saved');
+});
+
+test('forum likes roll back visual changes when storage cannot persist',()=>{
+  const section=detail.slice(detail.indexOf('  function likeComment(i) {'),detail.indexOf('  let replyToIdx',detail.indexOf('  function likeComment(i) {')));
+  const toggle=detail.slice(detail.indexOf('  function toggleLike() {'),detail.indexOf('  // Serialized gossip:',detail.indexOf('  function toggleLike() {')));
+  assert.match(section,/if \(!saveNow\(\)\) \{ c\.liked = wasLiked; c\.likes = oldLikes; \}/);
+  assert.match(section,/if \(!saveNow\(\)\) \{ r\.liked = wasLiked; r\.likes = oldLikes; \}/);
+  assert.match(toggle,/if \(!saveNow\(\)\) \{ post\.liked = wasLiked; post\.likes = oldLikes; \}/);
+  const data={liked:false,likes:0,comments:[{liked:false,likes:0,replies:[{liked:true,likes:1}]}]};
+  let renders=0;
+  const ctx={post:data,saveNow:()=>false,renderComments:()=>{renders++},renderPost:()=>{renders++}};
+  runInNewContext(section+toggle+';this.likeComment=likeComment;this.likeReply=likeReply;this.toggleLike=toggleLike;',ctx);
+  ctx.likeComment(0);
+  assert.equal(data.comments[0].liked,false);
+  assert.equal(data.comments[0].likes,0);
+  ctx.likeReply(0,0);
+  assert.equal(data.comments[0].replies[0].liked,true);
+  assert.equal(data.comments[0].replies[0].likes,1);
+  ctx.toggleLike();
+  assert.equal(data.liked,false);
+  assert.equal(data.likes,0);
+  assert.equal(renders,3);
+});
+
+test('forum settings cannot navigate or change selected theme after unverified writes',()=>{
+  assert.match(settings,/localStorage\.getItem\('forum_config'\)!==raw/);
+  assert.match(settings,/theme=previous/);
+  assert.match(settings,/customThemes=nextThemes/);
+  assert.match(settings,/保存失败，设置尚未写入本机/);
+  assert.match(settings,/role="status" aria-live="polite"/);
+  const scripts=[...settings.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)];
+  for(const [,script] of scripts) assert.doesNotThrow(()=>new Function(script));
+});
