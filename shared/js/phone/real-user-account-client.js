@@ -7,6 +7,8 @@
     account: null,
     lastCheckedAt: 0
   };
+  var authRevision = 0;
+  function staleAuthResponse() { return makeError('stale_account_response', 409); }
 
   function makeError(code, status, payload, cause) {
     var error = new Error(code || 'request_failed');
@@ -18,6 +20,7 @@
   }
 
   async function request(path, options) {
+    var startedRevision = authRevision;
     options = options && typeof options === 'object' ? options : {};
     if (typeof root.fetch !== 'function') throw makeError('fetch_unavailable', 0);
 
@@ -58,6 +61,8 @@
     if (!response.ok || (payload && payload.ok === false)) {
       var code = payload && payload.error ? String(payload.error) : 'http_' + response.status;
       if (response.status === 401) {
+        if (startedRevision !== authRevision) throw staleAuthResponse();
+        authRevision += 1;
         state.account = null;
         setActiveDirectoryAccount(null);
       }
@@ -115,6 +120,7 @@
   }
 
   async function requestAvatar(path, method, file) {
+    var startedRevision = authRevision;
     if (typeof root.fetch !== 'function') throw makeError('fetch_unavailable', 0);
     var response;
     try {
@@ -138,6 +144,8 @@
     if (!response.ok || (payload && payload.ok === false)) {
       var code = payload && payload.error ? String(payload.error) : 'http_' + response.status;
       if (response.status === 401) {
+        if (startedRevision !== authRevision) throw staleAuthResponse();
+        authRevision += 1;
         state.account = null;
         setActiveDirectoryAccount(null);
       }
@@ -160,9 +168,11 @@
   }
 
   async function restore() {
+    var startedRevision = ++authRevision;
     state.account = null;
     setActiveDirectoryAccount(null);
     var capabilities = await discover();
+    if (startedRevision !== authRevision) throw staleAuthResponse();
     if (!featureEnabled('accountAuth')) {
       return {
         capabilities: capabilities,
@@ -174,8 +184,10 @@
 
     try {
       var payload = await request('/v1/auth/me');
+      if (startedRevision !== authRevision) throw staleAuthResponse();
       state.account = normalizeAccount(payload.account);
       if (!state.account) throw makeError('invalid_account_response', 200, payload);
+      authRevision += 1;
       setActiveDirectoryAccount(state.account);
     } catch (error) {
       if (error && error.status === 401) {
@@ -194,14 +206,18 @@
 
   async function authenticate(action, values) {
     requireAuth();
+    var startedRevision = ++authRevision;
     var payload = await request('/v1/auth/' + action, {
       method: 'POST',
       body: values
     });
-    state.account = normalizeAccount(payload.account);
-    if (!state.account) throw makeError('invalid_account_response', 200, payload);
-    setActiveDirectoryAccount(state.account);
-    return state.account;
+    if (startedRevision !== authRevision) throw staleAuthResponse();
+    var signedIn = normalizeAccount(payload.account);
+    if (!signedIn) throw makeError('invalid_account_response', 200, payload);
+    state.account = signedIn;
+    authRevision += 1;
+    setActiveDirectoryAccount(signedIn);
+    return signedIn;
   }
 
   async function register(values) {
@@ -226,10 +242,13 @@
   async function refreshAccount() {
     requireAuth();
     if (!state.account) throw makeError('authentication_required', 401);
+    var startedRevision = authRevision;
     var payload = await request('/v1/auth/me');
+    if (startedRevision !== authRevision) throw staleAuthResponse();
     var updated = normalizeAccount(payload.account);
     if (!updated) throw makeError('invalid_account_response', 200, payload);
     state.account = updated;
+    authRevision += 1;
     setActiveDirectoryAccount(updated);
     return updated;
   }
@@ -242,15 +261,18 @@
       throw makeError('invalid_display_name', 400);
     }
     var previousAccountId = state.account.id;
+    var startedRevision = authRevision;
     var payload = await request('/v1/auth/me', {
       method: 'PATCH',
       body: { displayName: cleanName }
     });
     var updated = normalizeAccount(payload.account);
+    if (startedRevision !== authRevision) throw staleAuthResponse();
     if (!updated || updated.id !== previousAccountId) {
       throw makeError('invalid_account_response', 200, payload);
     }
     state.account = updated;
+    authRevision += 1;
     setActiveDirectoryAccount(updated);
     return updated;
   }
@@ -262,12 +284,15 @@
       throw makeError('invalid_avatar_file', 400);
     }
     var accountId = state.account.id;
+    var startedRevision = authRevision;
     var payload = await requestAvatar('/v1/profile/avatar', 'POST', file);
+    if (startedRevision !== authRevision) throw staleAuthResponse();
     var updated = normalizeAccount(payload.account);
     if (!updated || updated.id !== accountId || !updated.avatarAssetId) {
       throw makeError('invalid_account_response', 200, payload);
     }
     state.account = updated;
+    authRevision += 1;
     setActiveDirectoryAccount(updated);
     return { account: updated, avatar: payload.avatar || null };
   }
@@ -275,12 +300,15 @@
   async function removeAvatar() {
     requireProfileAvatar();
     var accountId = state.account.id;
+    var startedRevision = authRevision;
     var payload = await request('/v1/profile/avatar', { method: 'DELETE' });
+    if (startedRevision !== authRevision) throw staleAuthResponse();
     var updated = normalizeAccount(payload.account);
     if (!updated || updated.id !== accountId || updated.avatarAssetId) {
       throw makeError('invalid_account_response', 200, payload);
     }
     state.account = updated;
+    authRevision += 1;
     setActiveDirectoryAccount(updated);
     return updated;
   }
@@ -294,8 +322,11 @@
 
   async function logout() {
     requireAuth();
+    var startedRevision = ++authRevision;
     var payload = await request('/v1/auth/logout', { method: 'POST' });
+    if (startedRevision !== authRevision) throw staleAuthResponse();
     state.account = null;
+    authRevision += 1;
     setActiveDirectoryAccount(null);
     return payload;
   }
@@ -322,6 +353,7 @@
     // Refresh the HttpOnly-cookie session first: another tab may have logged
     // into a different account since this client instance was created.
     var sessionAccount = await refreshAccount();
+    var startedRevision = authRevision;
     var friends = [];
     var relationships = [];
     var snapshotAt = null;
@@ -336,6 +368,7 @@
       if (snapshotAt !== null) query += '&snapshotAt=' + encodeURIComponent(String(snapshotAt));
       if (cursor) query += '&after=' + encodeURIComponent(cursor);
       var payload = await request('/v1/friends' + query);
+      if (startedRevision !== authRevision) throw staleAuthResponse();
       if (!Array.isArray(payload.friends) || !Array.isArray(payload.relationships) ||
           typeof payload.hasMore !== 'boolean' || !Number.isSafeInteger(Number(payload.snapshotAt))) {
         throw makeError('invalid_friend_roster_response', 200, payload);
@@ -407,7 +440,9 @@
       throw makeError('invalid_direction', 400);
     }
     var expectedOwnerId = state.account.id;
+    var startedRevision = authRevision;
     var payload = await request('/v1/friends/requests?direction=' + direction);
+    if (startedRevision !== authRevision) throw staleAuthResponse();
     if (!state.account || state.account.id !== expectedOwnerId ||
         payload.ownerAccountId !== expectedOwnerId) {
       throw makeError('friend_data_account_mismatch', 409);
@@ -419,7 +454,9 @@
   async function listBlocked() {
     requireFriends();
     var expectedOwnerId = state.account.id;
+    var startedRevision = authRevision;
     var payload = await request('/v1/friends/blocks');
+    if (startedRevision !== authRevision) throw staleAuthResponse();
     if (!state.account || state.account.id !== expectedOwnerId ||
         payload.ownerAccountId !== expectedOwnerId) {
       throw makeError('friend_data_account_mismatch', 409);
@@ -505,7 +542,8 @@
       return {
         capabilities: state.capabilities,
         account: state.account,
-        lastCheckedAt: state.lastCheckedAt
+        lastCheckedAt: state.lastCheckedAt,
+        authRevision: authRevision
       };
     }
   };
