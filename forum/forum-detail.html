@@ -958,7 +958,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
         return false;
       }
       renderComments();renderPost();
-      if(!target)jumpToGossipLatest();
+      if(!target&&!gossipSeriesRunning)jumpToGossipLatest();
       if(status){
         const message=story.finished?'楼主已经更新完结局了':'楼主更新了第 '+nextChapter+' 段后续';
         status.textContent=message;
@@ -1003,6 +1003,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       gossipSeriesRunning=false;
       gossipSeriesStopRequested=false;
       renderPost();
+      if(completed&&!stopped)jumpToGossipLatest();
       const status=document.getElementById('aiCommentStatus');
       if(status&&stopped)status.textContent='已停止连续追更，生成成功的章节都已保存';
       else if(status&&completed)status.textContent='这个故事已经讲到结局了';
@@ -1012,7 +1013,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
 
   async function generateRepliesToUserComment(target,text,submittedImageIds){
     if(!target)return;
-    if(window.ForumGossip&&ForumGossip.isGossipPost(post)&&!ForumGossip.progress(post).finished&&
+    if(!gossipSeriesRunning&&window.ForumGossip&&ForumGossip.isGossipPost(post)&&!ForumGossip.progress(post).finished&&
        readForumConfig().gossipAutoContinue!==false&&ForumGossip.wantsContinuation(text)){
       await generateGossipAuthorContinuation(target,text);
       return;
@@ -1197,6 +1198,8 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     commentImageButton.addEventListener('click',function(){commentImagesInput.click()});
     commentImagesInput.addEventListener('change',function(){commentImageFiles=Array.from(this.files||[]);ForumMedia.preview(commentImageFiles,document.getElementById('commentImagePreview'));document.querySelector('.comment-bar').classList.toggle('has-images',commentImageFiles.length>0)});
   }
+  window.addEventListener('pagehide',function(){gossipSeriesStopRequested=true});
+  document.addEventListener('visibilitychange',function(){if(document.hidden)gossipSeriesStopRequested=true});
   loadPost();
 </script>
 </body>
