@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { pbkdf2Sync, webcrypto } from 'node:crypto';
-import { passwordDigest } from '../worker/lib/account-auth.js';
+import { passwordDigest, pbkdf2HmacSha256Fallback } from '../worker/lib/account-auth.js';
 
 const ROUNDS = 210000;
 
@@ -40,3 +40,24 @@ test('invalid or undersized salt fails closed', async () => {
 });
 
 
+
+test('HMAC fallback matches standard PBKDF2 exactly at full 210000 rounds', () => {
+  for (const [password, saltHex] of [
+    ['Correct horse 密码', '00112233445566778899aabbccddeeff'],
+    ['Unicode 密码 123!', 'ffeeddccbbaa99887766554433221100']
+  ]) {
+    const salt = Buffer.from(saltHex, 'hex');
+    const actual = pbkdf2HmacSha256Fallback(new TextEncoder().encode(password), salt);
+    const expected = pbkdf2Sync(Buffer.from(password, 'utf8'), salt, ROUNDS, 32, 'sha256');
+    assert.deepEqual(Buffer.from(actual), expected);
+  }
+});
+
+test('HMAC fallback rejects algorithm downgrade by producing exactly historical output', async () => {
+  const salt = Buffer.from('fedcba9876543210fedcba9876543210', 'hex');
+  const password = 'admin 001';
+  assert.equal(
+    Buffer.from(pbkdf2HmacSha256Fallback(new TextEncoder().encode(password), salt)).toString('hex'),
+    await passwordDigest(password, salt.toString('base64url'))
+  );
+});
