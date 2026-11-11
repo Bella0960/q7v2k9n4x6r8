@@ -5,7 +5,7 @@ button,input{font:inherit}
 button{cursor:pointer}
 .manage-shell{width:min(100%,560px);min-height:100svh;margin:0 auto;padding:max(20px,env(safe-area-inset-top)) 20px max(28px,env(safe-area-inset-bottom))}
 .manage-header{display:flex;align-items:center;gap:14px;padding:12px 0 24px}
-.back-link{width:auto;min-height:38px;padding:0 11px;display:grid;place-items:center;border:1px solid var(--line);border-radius:11px;background:#fff;color:#686b72;text-decoration:none;font-size:11px}
+.back-link{width:auto;min-height:44px;padding:0 11px;white-space:nowrap;display:grid;place-items:center;border:1px solid var(--line);border-radius:11px;background:#fff;color:#686b72;text-decoration:none;font-size:11px}
 .eyebrow{font-size:9px;letter-spacing:.16em;color:#a0a3aa;font-weight:650;margin-bottom:5px}
 h1{font-size:25px;letter-spacing:-.04em;margin:0;font-weight:650}
 .header-mark{margin-left:auto;font-size:12px;letter-spacing:.17em;font-weight:700;color:#555963}
