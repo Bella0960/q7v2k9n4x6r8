@@ -641,9 +641,87 @@
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(progress)); } catch (error) {}
     refreshProgress();
   }
+  // Technical lessons are continuous reference articles, not checkbox wizards.
+  // This does not change the legacy lesson progress or its storage structure.
+  var TECH_CHAPTERS = {
+    'api-first': ['API 究竟帮你做什么', '区分三个容易混淆的东西', '选择服务商', '创建自己的 API Key', '核对模型能力', '保护访问凭证'],
+    'api-url-v1': ['先选服务商', '理解 Base URL', '为什么有时要写 /v1', '填写 API Key', '填写正确模型 ID', '保存与测试各自做什么', '失败后先按提示排查'],
+    'api-errors': ['缺少必填项', '401 与 403', '404', '429', '5xx 和超时', '网络与跨域', '连接成功之后还要测什么'],
+    'api-params': ['Temperature：随机性', '范围与模型兼容性', 'Top P：采样范围', 'Tokens：最大长度', '上下文与记忆条数', '适合新用户的调整方法'],
+    'api-images': ['先确认聊天 API', '单独选择图片模型', '填写图片生成接口', '确认返回格式', '选角色并生图', '遇到失败先查什么', '是否允许角色自主发送'],
+    'minimax-voice-guide': ['三种凭证各是什么', '先分清大陆版和国际版', '准备语音专用凭证', '选模型并保存设置', '保存不代表语音已经连通', 'Voice ID 与角色开关', '如何验收真正发声']
+  };
+  var OFFICIAL_PORTALS = {
+    'api-first': [
+      ['OpenAI API 开发者平台', 'https://platform.openai.com/'],
+      ['DeepSeek 开发者平台', 'https://platform.deepseek.com/'],
+      ['Moonshot 开发者平台', 'https://platform.moonshot.cn/'],
+      ['智谱开放平台', 'https://open.bigmodel.cn/'],
+      ['硅基流动开放平台', 'https://cloud.siliconflow.cn/']
+    ],
+    'minimax-voice-guide': [
+      ['MiniMax 大陆版开发者平台', 'https://platform.minimaxi.com/'],
+      ['MiniMax 国际版开发者平台', 'https://platform.minimax.io/']
+    ]
+  };
+  var TECH_EXTRAS = {
+    'api-first': '申请提示：先找到开发者平台中的 API Keys / 密钥管理，再确认账户是否具备调用额度。网页聊天会员不等于 API 自动有余额。不同服务商的实际页面入口可能随版本变更。',
+    'api-url-v1': '填写示例（虚构域名）：服务商给出 https://api.example.com/v1 → Base URL 就填 https://api.example.com/v1。MAOMAO 会继续访问 https://api.example.com/v1/chat/completions。不要把 /chat/completions 自己再加到输入框。',
+    'api-errors': '看到 400 请求格式错误时，还应核对模型是否支持当前接口及请求参数。某些模型不接受 max_tokens 或 temperature 等字段；这不能直接判定 Key 已失效。',
+    'api-params': '入门建议：先试 0.7，再按实际效果少量调整。设置页允许 0～2，但个别模型只允许固定值或不支持这些采样参数。0 是有效温度，不应在保存时被自动变为 0.7。',
+    'api-images': '图片生成可能单独计费。用于角色图库的图片应先确认人物和场景归属；新图默认私密，只有主动改为公开后才可能被角色自主挑选发送。',
+    'minimax-voice-guide': '重要现状：当前仓库能够核实 MiniMax 配置页面与本地保存逻辑，但尚未核实完整的远程语音合成请求、角色 Voice ID 编辑入口和声音播放闭环。教程不能写成“配置完成即可发声”，真正可用性需要独立开发与验收。'
+  };
+  function isTechnicalGuide(guide) {
+    return !!(guide && Object.prototype.hasOwnProperty.call(TECH_CHAPTERS, guide.id));
+  }
+  function renderTechnicalGuide(guide) {
+    var titles = TECH_CHAPTERS[guide.id] || [];
+    var steps = guide.steps || [];
+    var chapterHtml = steps.map(function (entry, index) {
+      var body = typeof entry === 'string' ? entry : String(entry.text || entry.instruction || '');
+      return '<section class="walk-article-section"><h3><span>' + String(index + 1).padStart(2, '0') +
+        '</span>' + escapeHtml(titles[index] || '操作说明') +
+        '</h3><p>' + escapeHtml(body) + '</p></section>';
+    }).join('');
+    var links = OFFICIAL_PORTALS[guide.id] || [];
+    var linksHtml = links.length
+      ? '<div class="walk-article-links"><h3>开发者平台参考入口</h3>' +
+        links.map(function (entry) {
+          return '<a href="' + escapeHtml(entry[1]) + '" target="_blank" rel="noopener noreferrer">' +
+            escapeHtml(entry[0]) + '<small>访问官网 ›</small></a>';
+        }).join('') +
+        '<p class="walk-article-note">以上为平台入口参考，当前未实时检查网站菜单及套餐信息。创建密钥前请核实域名与实际 API 计费规则。</p></div>'
+      : '';
+    $('walkArticle').innerHTML = '<p class="walk-article-intro">' + escapeHtml(guide.summary) + '</p>' +
+      chapterHtml +
+      '<aside class="walk-article-example"><strong>记住这一点</strong><p>' +
+      escapeHtml(TECH_EXTRAS[guide.id] || '') + '</p></aside>' +
+      linksHtml +
+      '<p class="walk-article-note">对应功能入口：' + escapeHtml(guide.location) +
+      '。本页是使用说明，不会读取或保存你的 API Key，也不会代替真实连接测试。</p>';
+    $('walkArticle').hidden = false;
+    $('walkStepperContent').hidden = true;
+    $('walkProgressWrap').hidden = true;
+    $('walkPrevious').hidden = true;
+    $('walkNext').hidden = true;
+    $('walkTitle').textContent = guide.title;
+    $('walkOpenPage').href = guide.href || '../index.html';
+    $('walkOpenPage').textContent = guide.action || '打开真实页面';
+  }
   function renderWalkthrough() {
     if (!activeWalkthrough) return;
     var guide = activeWalkthrough;
+    if (isTechnicalGuide(guide)) {
+      renderTechnicalGuide(guide);
+      return;
+    }
+    $('walkArticle').hidden = true;
+    $('walkStepperContent').hidden = false;
+    $('walkProgressWrap').hidden = false;
+    $('walkPrevious').hidden = false;
+    $('walkNext').hidden = false;
+    $('walkOpenPage').textContent = guide.action || '打开真实页面';
     var steps = guide.steps || [];
     if (!steps.length) return;
     activeStepIndex = Math.max(0, Math.min(activeStepIndex, steps.length - 1));
@@ -680,6 +758,7 @@
     activeStepIndex = Number.isInteger(state.lastStep) ? state.lastStep : 0;
     $('walkthroughModal').hidden = false;
     renderWalkthrough();
+    $('walkBody').scrollTop = 0;
   }
   function closeGuide() {
     if (activeWalkthrough) {
@@ -704,6 +783,7 @@
     state.lastStep = activeStepIndex;
     saveWalkthroughState();
     renderWalkthrough();
+    $('walkBody').scrollTop = 0;
     renderGuides();
   }
 
