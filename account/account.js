@@ -112,11 +112,6 @@
 
   function presentAccount(account) {
     currentAccount = account || null;
-    const creatorAccess = account?.status === 'active' && account.role === 'super_admin';
-    for (const id of ['enterAdminCenter', 'manageInvitations']) {
-      const link = byId(id);
-      if (link) link.hidden = !creatorAccess;
-    }
     if (!account) {
       showPanel('welcomePanel');
       return;
@@ -131,8 +126,11 @@
       return;
     }
     if (account.status === 'active') {
+      // Both normal users and the creator enter the same phone desktop.
+      // The server-injected account role controls the creator-only tile.
       byId('authorizedAccountId').textContent = account.id || '—';
       showPanel('authorizedPanel');
+      window.location.assign('/index.html');
       return;
     }
     showPanel('welcomePanel');
@@ -327,18 +325,6 @@
 
   byId('enterMao').addEventListener('click', () => {
     if (currentAccount?.status === 'active') window.location.assign('/index.html');
-  });
-
-  byId('enterAdminCenter').addEventListener('click', () => {
-    if (currentAccount?.status === 'active' && currentAccount.role === 'super_admin') {
-      window.location.assign('/admin/admin-center.html');
-    }
-  });
-
-  byId('manageInvitations').addEventListener('click', () => {
-    if (currentAccount?.status === 'active' && currentAccount.role === 'super_admin') {
-      window.location.assign('/admin/admin-center.html?tab=invites');
-    }
   });
 
   async function checkCreatorBootstrapEntry() {
