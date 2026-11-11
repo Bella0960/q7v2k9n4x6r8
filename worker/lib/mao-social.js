@@ -48,11 +48,12 @@ export function createMaoSocial({ store, accountAuth, env = {}, now = () => Date
     if (a === b) throw new ApiError(400, 'SOCIAL_SELF', '不能添加自己');
     eligible(a); eligible(b); notBlocked(a, b);
     const [low, high] = pair(a, b);
-    if (!one("SELECT pair_low FROM mao_social_friends WHERE pair_low = ? AND pair_high = ? " +
-      "AND status = 'accepted' LIMIT 1", low, high)) {
+    const relation = one("SELECT source_request_id FROM mao_social_friends " +
+      "WHERE pair_low = ? AND pair_high = ? AND status = 'accepted' LIMIT 1", low, high);
+    if (!relation) {
       throw new ApiError(403, 'SOCIAL_NOT_APPROVED', '尚未通过 001 管理员好友审批');
     }
-    return [low, high];
+    return [low, high, relation.source_request_id];
   }
 
   async function actorOf(request) {
@@ -268,9 +269,10 @@ export function createMaoSocial({ store, accountAuth, env = {}, now = () => Date
       return transaction(() => {
         const time = now();
         assertSession(actor, time);
-        const [low, high] = friendship(actor.account_id, peer);
+        const [low, high, sourceRequestId] = friendship(actor.account_id, peer);
         const list = rows("SELECT seq,id,sender_id,recipient_id,body,created_at FROM mao_social_messages " +
-          "WHERE pair_low=? AND pair_high=? AND seq>? ORDER BY seq ASC LIMIT 50", low, high, after);
+          "WHERE pair_low=? AND pair_high=? AND source_request_id=? AND seq>? ORDER BY seq ASC LIMIT 50",
+          low, high, sourceRequestId, after);
         return ok({ ownerAccountId: actor.account_id, peerId: peer,
           messages: list.map(m => ({ seq: Number(m.seq), id: m.id, senderId: m.sender_id,
             recipientId: m.recipient_id, text: m.body, createdAt: Number(m.created_at) })),
@@ -286,11 +288,12 @@ export function createMaoSocial({ store, accountAuth, env = {}, now = () => Date
     return transaction(() => {
       const time = now();
       assertSession(actor, time);
-      const [low, high] = friendship(actor.account_id, peer);
+      const [low, high, sourceRequestId] = friendship(actor.account_id, peer);
       const old = one("SELECT * FROM mao_social_messages WHERE sender_id=? AND client_message_id=?",
         actor.account_id, clientMessageId);
       if (old) {
-        if (old.recipient_id !== peer || old.body !== text) {
+        if (old.recipient_id !== peer || old.body !== text ||
+            old.source_request_id !== sourceRequestId) {
           throw new ApiError(409, 'SOCIAL_MESSAGE_ID_REUSED', '消息编号已经使用');
         }
         return ok({ message: { id: old.id, seq: Number(old.seq),
@@ -303,9 +306,9 @@ export function createMaoSocial({ store, accountAuth, env = {}, now = () => Date
       if (Number(recent.n) >= 60) throw new ApiError(429, 'SOCIAL_MESSAGE_RATE_LIMIT', '发送过于频繁，请稍后再试');
       const id = 'msg_' + randomToken(18);
       const result = rows("INSERT INTO mao_social_messages " +
-        "(id,pair_low,pair_high,sender_id,recipient_id,client_message_id,body,created_at) " +
-        "VALUES (?,?,?,?,?,?,?,?) RETURNING seq",
-        id, low, high, actor.account_id, peer, clientMessageId, text, time);
+        "(id,pair_low,pair_high,source_request_id,sender_id,recipient_id,client_message_id,body,created_at) " +
+        "VALUES (?,?,?,?,?,?,?,?,?) RETURNING seq",
+        id, low, high, sourceRequestId, actor.account_id, peer, clientMessageId, text, time);
       return ok({ message: { id, seq: Number(result[0].seq),
         senderId: actor.account_id, recipientId: peer, text, createdAt: time } });
     });
