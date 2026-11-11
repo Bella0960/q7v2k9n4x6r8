@@ -20,6 +20,7 @@ const shopPageSource = read('wallet/shop.html');
 const takeoutPageSource = read('wallet/takeout.html');
 const familyCardsPageSource = read('wallet/family-cards.html');
 const journeyPageSource = read('chat/date/journey.html');
+const shakePageSource = read('chat/shake/shake.html');
 
 /* ---------- 真实源码函数提取（行为级执行，不做字符串存在性断言） ---------- */
 
@@ -851,4 +852,93 @@ test('赴约行程：历史中已存在相同 journeyId/stage 时不重复插入
   assert.equal(writer.read().length, 1);
   assert.deepEqual(writer.state.sentStages, [0]);
   assert.equal(writer.attempts, 0);
+});
+
+
+function loadShakeCharacterWriter(storage) {
+  const sandbox = {
+    PhoneStorage: storage,
+    console: { error() {} }
+  };
+  const source = extractFunction(shakePageSource, 'persistShakeCharacter') + '\npersistShakeCharacter;';
+  const persist = runInNewContext(source, sandbox, { filename: 'chat/shake/shake.html#persistShakeCharacter' });
+  return persist;
+}
+
+test('摇一摇：联系人列表保存并读回成功后才创建欢迎消息', () => {
+  let characters = [];
+  let history = [];
+  const persist = loadShakeCharacterWriter({
+    result: {
+      getCharacters: () => characters.length
+        ? { ok: true, value: JSON.parse(JSON.stringify(characters)) }
+        : { ok: false, error: { code: 'NOT_FOUND' } },
+      saveCharacters: (list) => {
+        characters = JSON.parse(JSON.stringify(list));
+        return { ok: true, value: true };
+      }
+    },
+    getCharacters: () => JSON.parse(JSON.stringify(characters)),
+    getChatHistory: () => JSON.parse(JSON.stringify(history)),
+    saveChatHistory: (id, list) => {
+      assert.equal(id, 'shake_new');
+      history = JSON.parse(JSON.stringify(list));
+      return true;
+    }
+  });
+  const result = persist(
+    { id: 'shake_new', name: '新联系人' },
+    { role: 'assistant', text: '你好，很高兴认识你。', time: '12:30' }
+  );
+
+  assert.deepEqual(result, { characterSaved: true, historySaved: true });
+  assert.equal(characters.length, 1);
+  assert.equal(characters[0].id, 'shake_new');
+  assert.equal(history.length, 1);
+  assert.equal(history[0].text, '你好，很高兴认识你。');
+});
+
+test('摇一摇：联系人列表写入失败时不继续生成聊天记录', () => {
+  let historyWrites = 0;
+  const persist = loadShakeCharacterWriter({
+    result: {
+      getCharacters: () => ({ ok: false, error: { code: 'NOT_FOUND' } }),
+      saveCharacters: () => ({ ok: false, error: { code: 'QUOTA_EXCEEDED' } })
+    },
+    getCharacters: () => [],
+    getChatHistory: () => [],
+    saveChatHistory: () => { historyWrites += 1; return true; }
+  });
+  const result = persist(
+    { id: 'shake_failed', name: '未保存联系人' },
+    { role: 'assistant', text: '你好', time: '12:31' }
+  );
+
+  assert.deepEqual(result, { characterSaved: false, historySaved: false });
+  assert.equal(historyWrites, 0);
+});
+
+test('摇一摇：联系人已保存但欢迎消息失败时分别返回状态', () => {
+  let characters = [];
+  const persist = loadShakeCharacterWriter({
+    result: {
+      getCharacters: () => characters.length
+        ? { ok: true, value: JSON.parse(JSON.stringify(characters)) }
+        : { ok: false, error: { code: 'NOT_FOUND' } },
+      saveCharacters: (list) => {
+        characters = JSON.parse(JSON.stringify(list));
+        return { ok: true, value: true };
+      }
+    },
+    getCharacters: () => JSON.parse(JSON.stringify(characters)),
+    getChatHistory: () => [],
+    saveChatHistory: () => false
+  });
+  const result = persist(
+    { id: 'shake_no_greeting', name: '未写入欢迎消息' },
+    { role: 'assistant', text: '你好', time: '12:32' }
+  );
+
+  assert.deepEqual(result, { characterSaved: true, historySaved: false });
+  assert.equal(characters.length, 1);
 });
