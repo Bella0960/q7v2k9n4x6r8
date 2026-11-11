@@ -7831,6 +7831,7 @@
             var text = String(rawText || '');
             if (!isGroupChat || !currentGroup || !Array.isArray(historyList)) return text;
             var changedHistory = false;
+            var groupHistoryRollback = [];
             var relationshipEventSeen = false;
             text = text.replace(/\[群关系变化[:：]([^:：\]]{1,100})[:：]([^:：\]]{1,20})[:：]([+-]?\d{1,3})[:：]([+-]?\d{1,3})[:：]([^\]]{1,120})\]/gi, function (marker, targetKey, level, intimacyDelta, trustDelta, summary) {
                 if (relationshipEventSeen) return '';
@@ -7892,6 +7893,13 @@
                 var poll = pollMessage && pollMessage.poll;
                 var optionIndex = parseInt(optionNumber, 10) - 1;
                 if (poll && !poll.closed && Array.isArray(poll.options) && optionIndex >= 0 && optionIndex < poll.options.length && speaker && speaker.id != null) {
+                    groupHistoryRollback.push({
+                        kind: 'votes',
+                        message: pollMessage,
+                        hadVotes: !!poll.votes,
+                        votes: poll.votes && typeof poll.votes === 'object'
+                            ? JSON.parse(JSON.stringify(poll.votes)) : null
+                    });
                     if (!poll.votes || typeof poll.votes !== 'object') poll.votes = {};
                     poll.votes[String(speaker.id)] = optionIndex;
                     changedHistory = true;
@@ -7902,9 +7910,15 @@
                 var chainMessage = historyList.find(function (item) { return item && item.type === 'group_chain' && String(ensureMid(item)) === String(chainMid); });
                 var chain = chainMessage && chainMessage.chain;
                 if (chain && !chain.closed && speaker && speaker.id != null && String(entryText || '').trim()) {
-                    if (!Array.isArray(chain.entries)) chain.entries = [];
-                    var duplicate = chain.entries.some(function (entry) { return String(entry.memberId || '') === String(speaker.id); });
+                    var duplicate = Array.isArray(chain.entries) && chain.entries.some(function (entry) { return String(entry.memberId || '') === String(speaker.id); });
                     if (!duplicate) {
+                        groupHistoryRollback.push({
+                            kind: 'entries',
+                            message: chainMessage,
+                            hadEntries: Array.isArray(chain.entries),
+                            entries: Array.isArray(chain.entries) ? JSON.parse(JSON.stringify(chain.entries)) : []
+                        });
+                        if (!Array.isArray(chain.entries)) chain.entries = [];
                         chain.entries.push({ memberId: String(speaker.id), name: groupMemberDisplayName(speaker), text: String(entryText).trim().slice(0, 120), time: Date.now() });
                         changedHistory = true;
                     }
@@ -7926,8 +7940,9 @@
                 var displayName = groupMemberDisplayName(target);
                 var privateMessageText = String(privateText).trim().slice(0, 300);
                 var privateMsg = { role: 'assistant', name: displayName, text: privateMessageText, time: Date.now(), fromGroupId: String(currentGroup.id), privateFromGroup: true };
+                var privateHistory = [];
+                var privateSaved = false;
                 try {
-                    var privateHistory = [];
                     if (window.PhoneStorage && typeof window.PhoneStorage.getChatHistory === 'function') {
                         var storedHistory = window.PhoneStorage.getChatHistory(targetId);
                         if (Array.isArray(storedHistory)) privateHistory = storedHistory.slice();
@@ -7938,25 +7953,44 @@
                         if (Array.isArray(parsedPrivateHistory)) privateHistory = parsedPrivateHistory;
                     }
                     privateHistory.push(privateMsg);
-                    var saveOk = true;
                     if (window.PhoneStorage && typeof window.PhoneStorage.saveChatHistory === 'function') {
-                        saveOk = !!window.PhoneStorage.saveChatHistory(targetId, privateHistory);
+                        privateSaved = window.PhoneStorage.saveChatHistory(targetId, privateHistory) === true;
                     } else {
-                        try { localStorage.setItem('chat_history_' + targetId, JSON.stringify(privateHistory)); }
-                        catch (e) { saveOk = false; }
+                        localStorage.setItem('chat_history_' + targetId, JSON.stringify(privateHistory));
+                        privateSaved = true;
                     }
-                    if (!saveOk && typeof showToast === 'function') showToast('私聊记录未能保存，请检查本地存储空间');
-                } catch (e) {
-                    if (typeof showToast === 'function') showToast('私聊记录未能保存，请检查本地存储空间');
+                    var verifiedPrivate = window.PhoneStorage && typeof window.PhoneStorage.getChatHistory === 'function'
+                        ? window.PhoneStorage.getChatHistory(targetId)
+                        : JSON.parse(localStorage.getItem('chat_history_' + targetId) || '[]');
+                    var lastPrivate = Array.isArray(verifiedPrivate) && verifiedPrivate.length
+                        ? verifiedPrivate[verifiedPrivate.length - 1] : null;
+                    privateSaved = privateSaved && Array.isArray(verifiedPrivate) &&
+                        verifiedPrivate.length === privateHistory.length && lastPrivate &&
+                        lastPrivate.role === privateMsg.role && lastPrivate.type === privateMsg.type &&
+                        lastPrivate.time === privateMsg.time && lastPrivate.text === privateMsg.text &&
+                        lastPrivate.fromGroupId === privateMsg.fromGroupId;
+                } catch (privateError) {
+                    privateSaved = false;
+                    console.error('[GroupChat] private message persistence failed:', privateError);
                 }
+                if (!privateSaved) {
+                    if (typeof showToast === 'function') showToast('群私聊消息没有保存成功，未显示已发送状态');
+                    return '';
+                }
+
                 var groupPrivateMessage = {
                     role: 'assistant', type: 'group_private', text: privateMessageText,
                     senderId: targetId, privateRoleId: targetId, senderName: displayName,
                     name: displayName, fromGroupId: String(currentGroup.id), time: Date.now()
                 };
                 ensureMid(groupPrivateMessage);
+                var previousGroupLength = historyList.length;
                 historyList.push(groupPrivateMessage);
-                saveMessages(historyList);
+                if (!saveMessages(historyList)) {
+                    historyList.length = previousGroupLength;
+                    if (typeof showToast === 'function') showToast('私聊已保存，但群聊中的私聊入口没有保存成功');
+                    return '';
+                }
                 window.__groupPrivateCardPending = true;
                 showGroupPrivatePopup(displayName, targetId, privateMessageText);
                 return '';
@@ -8001,7 +8035,20 @@
                 return '';
             });
             text = text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
-            if (changedHistory) saveMessages(historyList);
+            if (changedHistory && !saveMessages(historyList)) {
+                groupHistoryRollback.forEach(function (snapshot) {
+                    var targetMessage = snapshot.message;
+                    if (!targetMessage) return;
+                    if (snapshot.kind === 'votes') {
+                        if (snapshot.hadVotes) targetMessage.poll.votes = snapshot.votes;
+                        else delete targetMessage.poll.votes;
+                    } else if (snapshot.kind === 'entries') {
+                        if (snapshot.hadEntries) targetMessage.chain.entries = snapshot.entries;
+                        else delete targetMessage.chain.entries;
+                    }
+                });
+                if (typeof showToast === 'function') showToast('群投票/接龙回应没有保存成功，原有互动状态已恢复');
+            }
             return text;
         }
 
