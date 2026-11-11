@@ -498,10 +498,19 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       if(!result||!result.ok||!result.data||!Array.isArray(result.data.comments))throw new Error('评论生成结果无效');
       const added=result.data.comments.slice(0,4).map((x,i)=>makeDetailAIComment(x,i)).filter(Boolean);
       if(added.length){
+        const previousComments=post.comments;
+        const previousBatch=post.aiCommentBatch,previousBatchAt=post.aiCommentBatchAt;
         post.comments=post.comments.concat(added);
         post.aiCommentBatch='v1';
         post.aiCommentBatchAt=Date.now();
-        saveNow();renderComments();renderPost();
+        if(!saveNow()){
+          post.comments=previousComments;
+          post.aiCommentBatch=previousBatch;
+          post.aiCommentBatchAt=previousBatchAt;
+          renderComments();renderPost();
+          return;
+        }
+        renderComments();renderPost();
         if(status){status.textContent='又有 '+added.length+' 位网友加入了讨论';setTimeout(()=>{if(status.textContent.indexOf('又有 ')===0)status.textContent=''},4200)}
       }else if(status){status.textContent='暂时还没人接话，过会儿再来看看'}
     }catch(error){
@@ -787,20 +796,30 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
   function deleteComment(i) {
     const removed=post.comments[i];
     if (!isOwn(removed)) return;
-    post.comments.splice(i, 1);
-    if (replyToIdx >= i) { replyToIdx = -1; cancelReply(); }
-    if(saveNow()&&removed.id&&Array.isArray(removed.mediaAssetIds))ForumMedia.release(removed.mediaAssetIds,'forum-comment',removed.id);
-    renderComments();
-    renderPost();
+    post.comments.splice(i,1);
+    if(!saveNow()){
+      post.comments.splice(i,0,removed);
+      renderComments();renderPost();
+      return;
+    }
+    if(replyToIdx>=i)cancelReply();
+    if(removed.id&&Array.isArray(removed.mediaAssetIds)&&window.ForumMedia)
+      ForumMedia.release(removed.mediaAssetIds,'forum-comment',removed.id);
+    renderComments();renderPost();
     toast('评论已删除');
   }
   function deleteReply(i, j) {
     const c = post.comments[i],removed=c&&c.replies&&c.replies[j];
     if (!removed || !isOwn(removed)) return;
-    c.replies.splice(j, 1);
-    if(saveNow()&&removed.id&&Array.isArray(removed.mediaAssetIds))ForumMedia.release(removed.mediaAssetIds,'forum-comment',removed.id);
-    renderComments();
-    renderPost();
+    c.replies.splice(j,1);
+    if(!saveNow()){
+      c.replies.splice(j,0,removed);
+      renderComments();renderPost();
+      return;
+    }
+    if(removed.id&&Array.isArray(removed.mediaAssetIds)&&window.ForumMedia)
+      ForumMedia.release(removed.mediaAssetIds,'forum-comment',removed.id);
+    renderComments();renderPost();
     toast('回复已删除');
   }
 
@@ -904,12 +923,19 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       const imageIds=Array.from(new Set([].concat(post.mediaAssetIds||[],target.mediaAssetIds||[],submittedImageIds||[]))).slice(0,2);
       const result=await forumAIJSON(prompt,0.94,imageIds);
       if(!result||!result.ok||!result.data||!Array.isArray(result.data.replies))throw new Error('回复生成结果无效');
+      const previousReplies=Array.isArray(target.replies)?target.replies.slice():[];
       if(!Array.isArray(target.replies))target.replies=[];
       result.data.replies.slice(0,2).forEach((x,i)=>{
         const c=makeDetailAIComment({residentId:x.residentId,text:x.text},i);
         if(c)target.replies.push({name:c.name,avatar:c.avatar,residentId:c.residentId,owner:'community',source:'forum-ai',text:c.text,time:Date.now()+i*1000,replyTo:String(x.replyTo||'我'),likes:0});
       });
-      saveNow();renderComments();renderPost();
+      if(!saveNow()){
+        target.replies=previousReplies;
+        renderComments();renderPost();
+        if(status)status.textContent='网友回复没保存成功，请检查本机存储空间';
+        return;
+      }
+      renderComments();renderPost();
       if(status){status.textContent='有网友回应了你的留言';setTimeout(()=>{if(status.textContent==='有网友回应了你的留言')status.textContent=''},4200)}
     }catch(error){
       console.warn('[Forum] 网友回应失败',error);
@@ -1052,7 +1078,11 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       const result=await forumAIJSON(prompt,0.93,post.mediaAssetIds);
       if(!result||!result.ok||!result.data)throw new Error('评论生成失败');
       const c=makeDetailAIComment(result.data,post.comments.length);
-      if(c){post.comments.push(c);saveNow();renderComments();renderPost();toast('一位网友加入了讨论')}
+      if(c){
+        post.comments.push(c);
+        if(!saveNow()){post.comments.pop();renderComments();renderPost();return}
+        renderComments();renderPost();toast('一位网友加入了讨论');
+      }
     }catch(error){console.warn('[Forum] 手动生成评论失败',error);toast((post.mediaAssetIds||[]).length?'图片已保留；当前 API 或模型可能不支持看图':'暂时没能生成回复')}
   }
 
