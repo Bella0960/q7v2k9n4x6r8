@@ -319,3 +319,35 @@ test('revoked MAO session cannot read even friend lists or pending applications'
     assert.equal(friends.code, 'SOCIAL_SESSION_EXPIRED');
   } finally { ctx.close(); }
 });
+
+test('a new 001-approved friendship cannot reopen chat history from a removed relationship', async () => {
+  const ctx = setup();
+  try {
+    const firstId = 'relation_first_0001';
+    await invite(ctx, 'alice-session', 'bob-session', firstId);
+    await ctx.call('bob-session', '/api/social/friend-requests/' + firstId + '/accept', 'POST');
+    await ctx.call('founder-session', '/api/admin/social/friend-approvals/' + firstId + '/approve', 'POST');
+    const pathAB = '/api/social/chats/' + bob + '/messages';
+    const oldPayload = { clientMessageId: 'previous_relation_message_001', text: 'Previous relationship' };
+    assert.equal((await ctx.call('alice-session', pathAB, 'POST', oldPayload)).status, 200);
+    assert.equal((await ctx.call('bob-session', '/api/social/chats/' + alice + '/messages')).body.messages.length, 1);
+    assert.equal((await ctx.call('alice-session', '/api/social/friends/' + bob, 'DELETE')).body.removed, true);
+    assert.equal((await ctx.call('bob-session', '/api/social/chats/' + alice + '/messages')).code, 'SOCIAL_NOT_APPROVED');
+
+    const secondId = 'relation_second_0001';
+    await invite(ctx, 'alice-session', 'bob-session', secondId);
+    await ctx.call('bob-session', '/api/social/friend-requests/' + secondId + '/accept', 'POST');
+    await ctx.call('founder-session', '/api/admin/social/friend-approvals/' + secondId + '/approve', 'POST');
+    const reopened = await ctx.call('bob-session', '/api/social/chats/' + alice + '/messages');
+    assert.deepEqual(reopened.body.messages, [], 'old relation messages must stay hidden');
+    assert.equal((await ctx.call('alice-session', pathAB, 'POST', oldPayload)).code, 'SOCIAL_MESSAGE_ID_REUSED');
+    const newer = await ctx.call('alice-session', pathAB, 'POST', {
+      clientMessageId: 'new_relation_message_001', text: 'A new beginning'
+    });
+    assert.equal(newer.status, 200);
+    const current = await ctx.call('bob-session', '/api/social/chats/' + alice + '/messages');
+    assert.deepEqual(current.body.messages.map(m => m.text), ['A new beginning']);
+    assert.equal(ctx.exec('SELECT COUNT(*) AS n FROM mao_social_messages')[0].n, 2,
+      'old messages are retained but never exposed through the newer friendship');
+  } finally { ctx.close(); }
+});
