@@ -42,6 +42,15 @@
         <p><code>DEVICE_SECRET_PEPPER</code> — 独立随机值，至少 32 个字符。</p>
         <p><code>MAO_SUPER_ADMIN_BOOTSTRAP_SECRET</code> — 另一组独立随机值，至少 32 个字符；创建管理员时要填这一组。</p>
         <p>不要把密钥写进 GitHub、公开聊天或截图里，也不要改正式 Production 的密钥。保存并部署 Preview 后点击上方「重新检查」。</p>
+        <button class="bootstrap-retry" id="bootstrapMakeSecrets" type="button">在本机生成两组安全密钥</button>
+        <div id="bootstrapSecretTools" hidden>
+          <p>生成后分别复制到 Cloudflare 的对应 Secret。只保存在当前页面内存，关闭或刷新就会消失；请勿公开。</p>
+          <label>第一组：设备安全密钥 <input id="bootstrapPepperValue" type="password" readonly autocomplete="off" aria-label="本机生成的设备安全密钥"></label>
+          <button class="bootstrap-retry" type="button" data-bootstrap-copy="pepper">复制设备安全密钥</button>
+          <label>第二组：管理员首次初始化密钥 <input id="bootstrapFounderValue" type="password" readonly autocomplete="off" aria-label="本机生成的管理员初始化密钥"></label>
+          <button class="bootstrap-retry" type="button" data-bootstrap-copy="founder">复制初始化密钥</button>
+          <p role="status" id="bootstrapCopyStatus" aria-live="polite"></p>
+        </div>
         <a href="https://dash.cloudflare.com/" target="_blank" rel="noopener noreferrer">打开 Cloudflare 控制台</a>
       </aside>
       <form id="bootstrapForm" hidden>
