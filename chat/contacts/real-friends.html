@@ -172,7 +172,31 @@ action(buttons,'撤回',async()=>{await mutate('/api/social/friend-requests/'+it
 row.appendChild(buttons);area.appendChild(row);
 });
 }
-async function mutate(path,method){await api(path,method||'POST');await refresh();status('服务器已确认本次操作。');}
+async function mutate(path,method){
+var response=await api(path,method||'POST');
+var requestId=path.match(/\/friend-requests\/([^/]+)\/(accept|decline|cancel)$/);
+var adminReview=path.match(/\/friend-approvals\/([^/]+)\/(approve|reject)$/);
+if(requestId){
+var expected={accept:'pending_admin',decline:'declined',cancel:'cancelled'}[requestId[2]];
+if(!response.request||response.request.id!==requestId[1]||response.request.status!==expected)
+throw new Error('好友申请缺少明确的服务端回执，请刷新核对。');
+}
+if(adminReview){
+var decision=adminReview[2]==='approve'?'approved':'rejected';
+if(!response.request||response.request.id!==adminReview[1]||response.request.status!==decision)
+throw new Error('管理员审批结果不明确，请先刷新核对。');
+}
+if(method==='DELETE'&&path.endsWith('/block')){
+if(response.blocked!==false)throw new Error('解除屏蔽结果不明确，请刷新核对。');
+}else if(path.endsWith('/block')){
+if(response.blocked!==true)throw new Error('屏蔽结果不明确，请刷新核对。');
+}else if(method==='DELETE'){
+if(typeof response.removed!=='boolean')throw new Error('好友删除结果不明确，请刷新核对。');
+}
+status('操作已由服务器确认。');
+try{await refresh()}catch(e){status('操作已确认，但列表未刷新：'+explain(e))}
+return response;
+}
 async function refresh(){
 if(!account)return;
 var ownerId=account.id;
@@ -231,7 +255,7 @@ el('messages').appendChild(node);
 cursor=result.nextCursor;el('messages').scrollTop=el('messages').scrollHeight;
 }
 async function openChat(friend){
-clearTimer();currentChat=friend;cursor=0;el('messages').textContent='';el('chatTitle').textContent=friend.displayName||friend.id;
+clearTimer();pendingMessageId=null;pendingMessageText=null;currentChat=friend;cursor=0;el('messages').textContent='';el('chatTitle').textContent=friend.displayName||friend.id;
 el('chatPanel').hidden=false;await loadMessages();
 messageTimer=setInterval(function(){if(document.visibilityState==='visible')loadMessages().catch(e=>{status(explain(e));clearTimer();})},5000);
 }
@@ -264,10 +288,23 @@ finally{buttonBusy(btn,false);}
 el('chatForm').addEventListener('submit',async function(e){
 e.preventDefault();var btn=el('chatSend');if(btn.disabled||!currentChat)return;
 var msg=el('chatText').value.trim();if(!msg)return;buttonBusy(btn,true);
-try{if(!pendingMessageId||pendingMessageText!==msg){pendingMessageId=messageId();pendingMessageText=msg;}
-await api('/api/social/chats/'+encodeURIComponent(currentChat.id)+'/messages','POST',
+var peerId=currentChat.id,ownerId=account&&account.id;
+try{
+var fingerprint=peerId+'\n'+msg;
+if(!pendingMessageId||pendingMessageText!==fingerprint){
+pendingMessageId=messageId();pendingMessageText=fingerprint;
+}
+var result=await api('/api/social/chats/'+encodeURIComponent(peerId)+'/messages','POST',
 {clientMessageId:pendingMessageId,text:msg});
-pendingMessageId=null;pendingMessageText=null;el('chatText').value='';await loadMessages();
+if(!result.message||result.message.senderId!==ownerId||
+result.message.recipientId!==peerId||result.message.text!==msg||!result.message.id){
+throw new Error('消息发送结果缺少服务器确认，请先刷新核对。');
+}
+if(!account||account.id!==ownerId||!currentChat||currentChat.id!==peerId)return;
+pendingMessageId=null;pendingMessageText=null;
+if(el('chatText').value.trim()===msg)el('chatText').value='';
+status('服务器已确认收到消息。');
+try{await loadMessages()}catch(e){status('消息已发送，但聊天记录尚未刷新：'+explain(e))}
 }catch(err){status('消息尚未确认：'+explain(err))}
 finally{buttonBusy(btn,false);}
 });
