@@ -85,3 +85,17 @@ test('phone QA Worker Preview has its own SQLite-backed account store', () => {
   ]);
   assert.equal(wrangler.assets.run_worker_first, true);
 });
+
+test('founder sign-up readiness is a non-secret boolean and blocks unavailable Preview setup', () => {
+  const backend = read('worker/lib/account-auth.js');
+  const html = read('account/bootstrap.html');
+  const entry = read('account/bootstrap.js');
+  assert.match(backend, /configured: String\(env\.MAO_SUPER_ADMIN_BOOTSTRAP_SECRET \|\| ''\)\.length >= 32/);
+  assert.match(backend, /String\(env\.DEVICE_SECRET_PEPPER \|\| ''\)\.length >= 32/);
+  assert.match(html, /id="bootstrapSetupHelp"/);
+  assert.match(html, /npx wrangler preview secret put DEVICE_SECRET_PEPPER/);
+  assert.match(html, /npx wrangler preview secret put MAO_SUPER_ADMIN_BOOTSTRAP_SECRET/);
+  assert.match(entry, /if \(status\.configured === false\)/);
+  assert.match(entry, /crypto\.getRandomValues\(bytes\)/);
+  assert.doesNotMatch(entry, /localStorage|sessionStorage|document\.cookie/);
+});
