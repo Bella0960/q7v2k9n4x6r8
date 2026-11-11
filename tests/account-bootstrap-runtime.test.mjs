@@ -186,3 +186,29 @@ test('failed same-origin POST preflight never submits credentials or writes foun
   assert.equal(page.calls.filter(call => call.path === '/api/admin/bootstrap/preflight').length, 1);
   assert.match(page.nodes.bootstrapError.textContent, /管理员资料尚未提交/);
 });
+
+test('manual connectivity check sends an empty POST without founder secrets or credentials', async () => {
+  const page = mount(async path => path.endsWith('/status')
+    ? result({ ok: true, initialized: false, configured: true })
+    : result({ ok: true, initialized: false, configured: true }));
+  await page.settle();
+  await page.nodes.bootstrapTestConnection.listeners.click();
+  const checks = page.calls.filter(call => call.path === '/api/admin/bootstrap/preflight');
+  assert.equal(checks.length, 1);
+  assert.equal(checks[0].options.method, 'POST');
+  assert.equal(checks[0].options.body, '{}');
+  assert.equal(page.calls.filter(call => call.path === '/api/admin/bootstrap').length, 0);
+  assert.match(page.nodes.bootstrapConnectionStatus.textContent, /连接检查通过/);
+});
+
+test('failed manual preflight shows an error code and never sends founder credentials', async () => {
+  const page = mount(async path => {
+    if (path.endsWith('/status')) return result({ ok: true, initialized: false, configured: true });
+    throw new TypeError('Failed to fetch');
+  });
+  await page.settle();
+  await page.nodes.bootstrapTestConnection.listeners.click();
+  assert.match(page.nodes.bootstrapConnectionStatus.textContent, /NETWORK_ERROR/);
+  assert.equal(page.calls.filter(call => call.path === '/api/admin/bootstrap').length, 0);
+  assert.equal(page.nodes.bootstrapTestConnection.disabled, false);
+});
