@@ -383,7 +383,7 @@ test('release build retains the original whole-app gate before social acceptance
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   assert.equal(pkg.scripts.prebuild, 'npm run test:release:gate && npm run test:social:approval');
-  for (const suite of ['accounts', 'features', 'regressions']) {
+  for (const suite of ['accounts', 'features', 'regressions', 'extended']) {
     assert.ok(pkg.scripts['test:release:gate'].includes('test:release:' + suite));
   }
   assert.match(pkg.scripts['test:social:approval'], /tests\/mao-social-approval\.test\.mjs/);
