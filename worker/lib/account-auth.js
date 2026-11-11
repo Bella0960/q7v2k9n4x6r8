@@ -1,3 +1,4 @@
+import { pbkdf2 as nativePbkdf2 } from 'node:crypto';
 import { ApiError, ok, json, readJsonBody } from './http.js';
 import { randomToken, sha256Hex, base64UrlToBytes, timingSafeEqualHex } from './crypto.js';
 
@@ -16,16 +17,21 @@ function toHex(bytes) {
   return Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
 }
 
-async function passwordDigest(password, saltText) {
+// Keep the original PBKDF2-HMAC-SHA256 / 210000 rounds / 32-byte format
+// exactly unchanged, so previously registered password hashes still verify.
+// Cloudflare's WebCrypto PBKDF2 raised NotSupportedError in the live preview;
+// its supported node:crypto API provides the same standard algorithm.
+export async function passwordDigest(password, saltText) {
   const salt = base64UrlToBytes(saltText);
   if (!salt || salt.length < 16) throw new ApiError(500, 'ACCOUNT_CREDENTIAL_INVALID', '账号凭据异常');
-  const material = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
-  const bits = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', salt, iterations: PASSWORD_ITERATIONS, hash: 'SHA-256' },
-    material,
-    256
-  );
-  return toHex(new Uint8Array(bits));
+  const passwordBytes = new TextEncoder().encode(String(password));
+  const derived = await new Promise((resolve, reject) => {
+    nativePbkdf2(passwordBytes, salt, PASSWORD_ITERATIONS, 32, 'sha256', (error, output) => {
+      if (error) reject(error);
+      else resolve(output);
+    });
+  });
+  return toHex(derived);
 }
 
 function adminDirectoryOptions(request, allowedStatuses, idPattern) {
