@@ -32,6 +32,12 @@
     const visual = viewMap[id] || viewMap.welcomePanel;
     const shell = byId('ivoryApp');
     if (shell) shell.dataset.view = visual[0];
+    // A single header back control for every step; never overlay form inputs.
+    const back = byId('ivoryNavBack');
+    if (back) {
+      back.hidden = id === 'welcomePanel' || id === 'authorizedPanel';
+      back.dataset.show = (id === 'invitePanel' || id === 'blockedPanel') ? 'loginPanel' : 'welcomePanel';
+    }
     if (byId('ivoryWindowTitle')) byId('ivoryWindowTitle').textContent = visual[1] + ' — private space';
     if (byId('ivoryKicker')) byId('ivoryKicker').textContent = visual[2];
     if (byId('ivoryHeading')) {
