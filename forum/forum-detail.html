@@ -646,11 +646,12 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     document.getElementById('likeBtn').classList.toggle('liked', !!post.liked);
     const gossipButton=document.getElementById('gossipContinue');
     if(gossipButton){
-      const story=window.ForumGossip&&ForumGossip.isGossipPost(post)?post.gossipStory:null;
-      gossipButton.hidden=!story;
-      if(story){
-        gossipButton.disabled=!!story.finished||gossipReplyBusy;
-        gossipButton.textContent=story.finished?'这条瓜已经讲完':gossipReplyBusy?'楼主正在写后续…':'让楼主继续讲 · '+String(story.chapter||0)+' / '+String(story.maxChapters||4);
+      const hasStory=window.ForumGossip&&ForumGossip.isGossipPost(post);
+      gossipButton.hidden=!hasStory;
+      if(hasStory){
+        const progress=ForumGossip.progress(post);
+        gossipButton.disabled=progress.finished||gossipReplyBusy;
+        gossipButton.textContent=progress.finished?'这条瓜已经讲完':gossipReplyBusy?'楼主正在写后续…':'让楼主继续讲 · '+progress.chapter+' / '+progress.maxChapters;
       }
     }
   }
@@ -815,11 +816,11 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
   // Serialized gossip: a commenter can ask for more; the original fictional poster continues.
   async function generateGossipAuthorContinuation(target,readerText){
     if(!post||!window.ForumGossip||!ForumGossip.isGossipPost(post)||gossipReplyBusy)return false;
-    const story=post.gossipStory;
-    if(story.finished){toast('楼主已经把这个故事讲完了');return false}
+    const story=post.gossipStory,progress=ForumGossip.progress(post);
+    if(progress.finished){toast('楼主已经把这个故事讲完了');return false}
     const status=document.getElementById('aiCommentStatus');
-    const nextChapter=Math.max(0,Number(story.chapter)||0)+1;
-    const maxChapters=Math.max(3,Number(story.maxChapters)||4);
+    const nextChapter=progress.nextChapter;
+    const maxChapters=progress.maxChapters;
     const ending=nextChapter>=maxChapters;
     gossipReplyBusy=true;
     renderPost();
@@ -840,9 +841,10 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
         '\\n人物都要是虚构的普通成年人，不能指向现实可识别人物，不能声称现实人物的隐私或未经证实的负面事实。不要把 AI、故事设定、提示词写到正文。\\nJSON 格式：{"update":"楼主本次长篇后续","newFacts":["本次新增事实1","本次新增事实2"],"reactions":[{"residentId":"路人id","text":"一句自然的催更或讨论"}],"finished":'+(ending?'true':'false')+'}。reactions 可为空，最多两条，不要全都说蹲。';
       const result=await forumAIJSON(prompt,0.93,[]);
       if(!result||!result.ok||!result.data)throw new Error('楼主没有生成有效后续');
-      const data=result.data,update=String(data.update||'').trim().slice(0,1800);
-      if(update.length<70)throw new Error('本次后续太短，没有讲出新情节');
-      if(ForumGossip.isRepeat(update,[postBody()].concat(updates.map(function(u){return u.text}))))throw new Error('本次故事与之前重复，已停止写入');
+      const data=result.data;
+      const checked=ForumGossip.validateUpdate(data,[postBody()].concat(updates.map(function(u){return u.text})),story.facts);
+      if(!checked.ok)throw new Error(checked.reason);
+      const update=checked.update;
       const previousLength=post.comments.length;
       const previousStory=JSON.parse(JSON.stringify(story));
       const stamp=Date.now();
@@ -855,10 +857,11 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
         if(c&&!ForumGossip.isRepeat(c.text,post.comments.map(function(x){return x.text})))post.comments.push(c);
       });
       const oldFacts=Array.isArray(story.facts)?story.facts.slice():[];
-      const added=Array.isArray(data.newFacts)?data.newFacts.map(function(x){return String(x||'').trim().slice(0,180)}).filter(Boolean):[];
-      story.facts=Array.from(new Set(oldFacts.concat(added))).slice(-25);
+      story.facts=oldFacts.concat(checked.newFacts).slice(-25);
       story.chapter=nextChapter;
-      story.finished=ending||(data.finished===true&&nextChapter>=3);
+      story.maxChapters=maxChapters;
+      // Only the final scheduled update can close the serial, even when the model says otherwise.
+      story.finished=ending;
       story.updatedAt=stamp;
       if(!saveNow()){
         post.comments.splice(previousLength);
@@ -874,7 +877,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       return true;
     }catch(error){
       console.warn('[Forum] 楼主连续爆料生成失败，未写入重复或不完整内容',error);
-      if(status)status.textContent='这次没续上；检查 API 或再点一次“让楼主继续讲”';
+      if(status)status.textContent='这次没续上：'+String(error&&error.message||'检查 API 后重试').slice(0,76);
       return false;
     }finally{
       gossipReplyBusy=false;
@@ -887,7 +890,8 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
 
   async function generateRepliesToUserComment(target,text,submittedImageIds){
     if(!target)return;
-    if(window.ForumGossip&&ForumGossip.isGossipPost(post)&&!post.gossipStory.finished&&readForumConfig().gossipAutoContinue!==false){
+    if(window.ForumGossip&&ForumGossip.isGossipPost(post)&&!ForumGossip.progress(post).finished&&
+       readForumConfig().gossipAutoContinue!==false&&ForumGossip.wantsContinuation(text)){
       await generateGossipAuthorContinuation(target,text);
       return;
     }
