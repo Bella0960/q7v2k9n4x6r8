@@ -4,8 +4,18 @@
   const panels = ['welcomePanel', 'registerPanel', 'loginPanel', 'invitePanel', 'authorizedPanel', 'blockedPanel'];
   const byId = id => document.getElementById(id);
   let currentAccount = null;
+  let viewRevision = 0;
+  let authBusy = false;
+
+  function setAuthBusy(value) {
+    authBusy = value;
+    document.querySelectorAll('[data-show], .form button[type="submit"]').forEach(button => {
+      button.disabled = value;
+    });
+  }
 
   function showPanel(id) {
+    viewRevision += 1;
     for (const panelId of panels) {
       const panel = byId(panelId);
       if (panel) panel.hidden = panelId !== id;
@@ -56,23 +66,48 @@
     if (path === '/api/accounts/invites/redeem' && currentAccount?.id) {
       headers['x-mao-account-context'] = currentAccount.id;
     }
-    const response = await fetch(path, {
-      method,
-      credentials: 'same-origin',
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-      cache: 'no-store'
-    });
-    let payload = {};
-    try { payload = await response.json(); } catch { /* malformed response is handled below */ }
-    if (!response.ok || payload.ok === false) {
-      const code = payload.error?.code || 'REQUEST_FAILED';
-      const error = new Error(payload.error?.message || '请求未成功，请稍后再试');
-      error.code = code;
-      error.status = response.status;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+    try {
+      const response = await fetch(path, {
+        method,
+        credentials: 'same-origin',
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+        cache: 'no-store',
+        signal: controller.signal
+      });
+      let payload;
+      try { payload = await response.json(); } catch (error) {
+        if (error.name === 'AbortError') throw error;
+        throw new Error('服务返回异常，请稍后再试；若刚提交注册，请先尝试登录。');
+      }
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+        throw new Error('服务返回异常，请稍后再试。');
+      }
+      if (!response.ok || payload.ok === false) {
+        const code = payload.error?.code || 'REQUEST_FAILED';
+        const error = new Error(payload.error?.message || '请求未成功，请稍后再试');
+        error.code = code;
+        error.status = response.status;
+        throw error;
+      }
+      if (payload.ok !== true) throw new Error('服务返回异常，请稍后再试。');
+      if (['/api/accounts/register', '/api/accounts/login', '/api/accounts/me', '/api/accounts/invites/redeem'].includes(path) &&
+          (!/^MAO-[A-Z0-9]{12,24}$/.test(String(payload.account?.id || '')) ||
+           !['pending_invite', 'active', 'disabled', 'revoked'].includes(payload.account?.status))) {
+        throw new Error('账号结果未能确认，请重新登录后继续。');
+      }
+      return payload;
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        throw new Error('请求超时，结果尚未确认。若刚提交注册，请先尝试登录，避免重复创建。');
+      }
+      if (error instanceof TypeError) throw new Error('网络连接失败，请检查网络后重试。');
       throw error;
+    } finally {
+      clearTimeout(timeout);
     }
-    return payload;
   }
 
   function presentAccount(account) {
@@ -101,6 +136,12 @@
   function showAuthError(error, fieldId) {
     if (error.code === 'ACCOUNT_DISABLED') {
       showPanel('blockedPanel');
+      return;
+    }
+    if (error.status === 401 && fieldId === 'inviteError') {
+      currentAccount = null;
+      showPanel('loginPanel');
+      setError('loginError', '登录已过期，请重新登录后继续验证邀请码。');
       return;
     }
     setError(fieldId, error.message || '请求失败，请稍后再试');
@@ -147,6 +188,7 @@
 
   byId('registerForm').addEventListener('submit', async event => {
     event.preventDefault();
+    if (authBusy) return;
     setError('registerError');
     const form = new FormData(event.currentTarget);
     const body = {
@@ -155,11 +197,31 @@
       confirmPassword: String(form.get('confirmPassword') || ''),
       qqEmail: String(form.get('qqEmail') || '').trim()
     };
+    if (!/^[\p{L}\p{N}_-]{2,24}$/u.test(body.username)) {
+      setError('registerError', '用户名需要为 2–24 位字母、数字、下划线或连字符。');
+      return;
+    }
+    if (body.password.length < 10 || body.password.length > 128) {
+      setError('registerError', '密码长度需要为 10–128 位。');
+      return;
+    }
+    if (body.password !== body.confirmPassword) {
+      setError('registerError', '两次输入的密码不一致。');
+      return;
+    }
+    if (body.qqEmail && (body.qqEmail.length > 254 || !/^[^\s@]+@(?:qq\.com|vip\.qq\.com|foxmail\.com)$/i.test(body.qqEmail))) {
+      setError('registerError', '请输入有效的 QQ 邮箱地址，或留空。');
+      return;
+    }
+    viewRevision += 1;
+    setAuthBusy(true);
+    const submittedForm = event.currentTarget;
     const button = event.currentTarget.querySelector('button[type="submit"]');
     button.disabled = true;
     try {
       const created = await api('/api/accounts/register', 'POST', body);
       const accountId = created.account.id;
+      submittedForm.reset();
       const loginIdentifier = byId('loginForm').querySelector('[name="identifier"]');
       if (loginIdentifier) loginIdentifier.value = body.username;
 
@@ -187,14 +249,23 @@
     } catch (error) {
       showAuthError(error, 'registerError');
     } finally {
+      setAuthBusy(false);
       button.disabled = false;
     }
   });
 
   byId('loginForm').addEventListener('submit', async event => {
     event.preventDefault();
+    if (authBusy) return;
     setError('loginError');
     const form = new FormData(event.currentTarget);
+    if (!String(form.get('identifier') || '').trim() || !String(form.get('password') || '')) {
+      setError('loginError', '请输入账号和密码。');
+      return;
+    }
+    viewRevision += 1;
+    setAuthBusy(true);
+    const submittedForm = event.currentTarget;
     const button = event.currentTarget.querySelector('button[type="submit"]');
     button.disabled = true;
     try {
@@ -202,18 +273,27 @@
         identifier: String(form.get('identifier') || '').trim(),
         password: String(form.get('password') || '')
       });
+      submittedForm.querySelector('[name="password"]').value = '';
       presentAccount(result.account);
     } catch (error) {
       showAuthError(error, 'loginError');
     } finally {
+      setAuthBusy(false);
       button.disabled = false;
     }
   });
 
   byId('inviteForm').addEventListener('submit', async event => {
     event.preventDefault();
+    if (authBusy) return;
     setError('inviteError');
     const form = new FormData(event.currentTarget);
+    if (!/^[A-Za-z0-9_-]{32,128}$/.test(String(form.get('inviteCode') || '').trim())) {
+      setError('inviteError', '请粘贴管理员发放的完整邀请码。');
+      return;
+    }
+    viewRevision += 1;
+    setAuthBusy(true);
     const button = event.currentTarget.querySelector('button[type="submit"]');
     button.disabled = true;
     try {
@@ -224,6 +304,7 @@
     } catch (error) {
       showAuthError(error, 'inviteError');
     } finally {
+      setAuthBusy(false);
       button.disabled = false;
     }
   });
@@ -235,7 +316,7 @@
       await navigator.clipboard.writeText(value);
       byId('copyAccountId').textContent = '已复制';
     } catch {
-      byId('copyAccountId').textContent = value;
+      setError('inviteError', '复制未成功，请长按上方永久 ID 复制。');
     }
   });
 
@@ -255,6 +336,7 @@
   }
 
   (async function restoreSession() {
+    const revision = viewRevision;
     const params = new URLSearchParams(window.location.search);
     checkCreatorBootstrapEntry();
     if (params.get('disabled') === '1') {
@@ -263,10 +345,13 @@
     }
     try {
       const result = await api('/api/accounts/me');
+      if (revision !== viewRevision) return;
       presentAccount(result.account);
     } catch (error) {
+      if (revision !== viewRevision) return;
       if (error.code === 'ACCOUNT_DISABLED') showPanel('blockedPanel');
       else showPanel('welcomePanel');
     }
   })();
 })();
+
