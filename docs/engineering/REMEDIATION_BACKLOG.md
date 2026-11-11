@@ -277,7 +277,16 @@ Acceptance:
 - Automated static contracts are not described as full E2E coverage.
 
 ### QA-002 — Add storage-failure tests
-**Priority:** P1 · **Status:** OPEN
+**Priority:** P1 · **Status:** IN PROGRESS (chat-history cases added in PR #255)
+
+Progress:
+- Added behavior tests for chat history save rejection, readback mismatch, localStorage quota failure, role isolation, date-mode rollback, journey retry/deduplication, call/forum/wallet notices, and shake-match initialization.
+- The tests are wired into the existing `npm run test:chat:isolation` script.
+
+Remaining:
+- Add IndexedDB unavailable/blocked/quota tests when the DATA-001 registry and DATA-006 storage implementation are ready.
+- Run the suite locally and obtain actionable CI output; current Actions runs returned failed conclusions without job steps or logs.
+- Verify refresh/reopen and storage behavior on desktop and real mobile browsers.
 
 Acceptance:
 - Simulate localStorage quota errors and IndexedDB unavailable/blocked/quota errors.
