@@ -289,6 +289,10 @@ export function createMaoSocial({ store, accountAuth, env = {}, now = () => Date
           senderId: actor.account_id, recipientId: peer, text, createdAt: Number(old.created_at) },
           replay: true });
       }
+      // Per-account abuse boundary is checked in the same SQLite transaction as the insert.
+      const recent = one("SELECT COUNT(*) AS n FROM mao_social_messages WHERE sender_id = ? AND created_at > ?",
+        actor.account_id, time - 60000);
+      if (Number(recent.n) >= 60) throw new ApiError(429, 'SOCIAL_MESSAGE_RATE_LIMIT', '发送过于频繁，请稍后再试');
       const id = 'msg_' + randomToken(18);
       const result = rows("INSERT INTO mao_social_messages " +
         "(id,pair_low,pair_high,sender_id,recipient_id,client_message_id,body,created_at) " +
