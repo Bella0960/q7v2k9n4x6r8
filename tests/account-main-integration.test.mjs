@@ -66,3 +66,12 @@ test('account authentication and its assets exist without replacing the latest m
     assert.ok(existsSync(join(root, file)), 'missing integration asset: ' + file);
   }
 });
+
+test('founder bootstrap refuses HTTP 200 responses without a verified founder session', () => {
+  const bootstrap = read('account/bootstrap.js');
+  assert.match(bootstrap, /payload\.ok !== true/);
+  assert.match(bootstrap, /typeof payload\.initialized !== 'boolean'/);
+  assert.match(bootstrap, /payload\.account\?\.role !== 'super_admin'/);
+  assert.match(bootstrap, /payload\.account\?\.founderNumber !== '001'/);
+  assert.match(bootstrap, /window\.location\.replace\('\/admin\/admin-center\.html'\)/);
+});
