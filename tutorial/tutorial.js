@@ -776,15 +776,16 @@
       }
     }
     activeWalkthrough = guide;
-    var state = stepState(guide);
-    activeStepIndex = Number.isInteger(state.lastStep) ? state.lastStep : 0;
+    // Reading a technical handbook chapter should not create test progress.
+    var state = isTechnicalGuide(guide) ? null : stepState(guide);
+    activeStepIndex = state && Number.isInteger(state.lastStep) ? state.lastStep : 0;
     $('walkthroughModal').hidden = false;
     renderWalkthrough();
     $('walkBody').scrollTop = 0;
     if ($('walkClose') && typeof $('walkClose').focus === 'function') $('walkClose').focus();
   }
   function closeGuide() {
-    if (activeWalkthrough) {
+    if (activeWalkthrough && !isTechnicalGuide(activeWalkthrough)) {
       var state = stepState(activeWalkthrough);
       state.lastStep = activeStepIndex;
       saveWalkthroughState();
