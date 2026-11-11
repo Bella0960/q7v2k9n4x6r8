@@ -502,11 +502,9 @@
   }
   function notifyRoleCardIssuer(card, message) {
     if (!card || !card.roleId) return false;
-    var saved = appendChatHistoryMessage(card.roleId, {
+    return appendChatHistoryMessage(card.roleId, {
       role: 'user', type: 'text', text: message, time: Date.now()
     });
-    if (!saved) toast('订单业务已完成，但聊天通知没有保存，请稍后在聊天中补发');
-    return saved;
   }
 
   function toast(msg) {
@@ -808,6 +806,7 @@
     var now = new Date();
     var timeStr = (now.getMonth()+1) + '月' + now.getDate() + '日';
     var itemsDesc = items.map(it => it.dish.name + '×' + it.qty).join('、');
+    var chatNoticeFailed = false;
 
     // 1. 写记账
     try {
@@ -848,17 +847,19 @@
               text: '刚刚帮你点了外卖：' + itemsDesc + '，¥' + total + '，等好吃的到吧～',
               time: Date.now()
             });
-            if (!noticeSaved) toast('订单已提交，但聊天通知未保存，请稍后补发');
+            if (!noticeSaved) chatNoticeFailed = true;
           }
         }
       } catch(e) {}
     }
 
     if (roleFamilyCard) {
-      notifyRoleCardIssuer(roleFamilyCard,
+      if (!notifyRoleCardIssuer(roleFamilyCard,
         '我刚刚使用你给我的' + (roleFamilyCard.kind === 'intimate' ? '亲密付' : '亲属卡') +
         '点了外卖：' + itemsDesc + '，共 ¥' + total.toFixed(2) + '。本月已使用 ¥' +
-        window.RoleFamilyCards.usedThisMonth(roleFamilyCard).toFixed(2) + '。');
+        window.RoleFamilyCards.usedThisMonth(roleFamilyCard).toFixed(2) + '。')) {
+        chatNoticeFailed = true;
+      }
     }
 
     // 3. 写订单
@@ -876,7 +877,9 @@
     closeCheckout();
     if (currentShop) renderDishes();
     else updateCartUI();
-    toast('下单成功，预计 ' + orderShop.delivery + ' 送达');
+    toast(chatNoticeFailed
+      ? '下单成功，但聊天通知未保存，请稍后在对应聊天中补发'
+      : '下单成功，预计 ' + orderShop.delivery + ' 送达');
   }
 
   // ===== 转发给TA =====
