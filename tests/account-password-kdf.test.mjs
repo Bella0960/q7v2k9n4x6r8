@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { pbkdf2Sync, webcrypto } from 'node:crypto';
-import { passwordDigest } from '../worker/lib/account-auth.js';
+import { passwordDigest, createAccountAuth } from '../worker/lib/account-auth.js';
 
 const ROUNDS = 210000;
 
@@ -37,4 +37,33 @@ test('password hashing remains deterministic and salt-separated for login', asyn
 test('invalid or undersized salt fails closed', async () => {
   await assert.rejects(passwordDigest('password', '?bad'), /账号凭据异常/);
   await assert.rejects(passwordDigest('password', Buffer.alloc(8).toString('base64url')), /账号凭据异常/);
+});
+
+
+test('founder preflight validates password KDF without accepting credentials or writing accounts', async () => {
+  let writes = 0;
+  const store = {
+    hasMaoSuperAdminAccount: () => false,
+    createMaoSuperAdminAccountIfEmpty: () => { writes += 1; throw new Error('unexpected account write'); }
+  };
+  const auth = createAccountAuth({
+    store,
+    env: {
+      DEVICE_SECRET_PEPPER: 'x'.repeat(64),
+      MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: 'y'.repeat(64)
+    }
+  });
+  const request = new Request('https://qa.example.test/api/admin/bootstrap/preflight', {
+    method: 'POST',
+    headers: { Origin: 'https://qa.example.test', 'content-type': 'application/json' },
+    body: '{}'
+  });
+  const preflight = await auth.handle(request, '/api/admin/bootstrap/preflight', 'POST');
+  assert.equal(preflight.status, 200);
+  const payload = await preflight.json();
+  assert.equal(payload.ok, true);
+  assert.equal(payload.initialized, false);
+  assert.equal(payload.configured, true);
+  assert.equal(payload.cryptoReady, true);
+  assert.equal(writes, 0);
 });
