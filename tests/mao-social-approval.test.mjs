@@ -1,0 +1,221 @@
+import assert from 'node:assert/strict';
+import { DatabaseSync } from 'node:sqlite';
+import test from 'node:test';
+import { createMaoSocial } from '../worker/lib/mao-social.js';
+import { SQL } from '../worker/migrations/0017_mao_social.js';
+
+const alice = 'MAO-AAAAAAAAAAAA';
+const bob = 'MAO-BBBBBBBBBBBB';
+const carol = 'MAO-CCCCCCCCCCCC';
+const founder = 'MAO-ZZZZZZZZZZZZ';
+const now = 1794445200000;
+const profile = [
+  [alice, 'Alice', 'user', 'active', now],
+  [bob, 'Bob', 'user', 'active', now],
+  [carol, 'Carol', 'user', 'active', now],
+  [founder, 'Founder', 'super_admin', 'active', now]
+];
+
+function setup({ enabled = true } = {}) {
+  const db = new DatabaseSync(':memory:');
+  db.exec("PRAGMA foreign_keys=ON");
+  db.exec("CREATE TABLE mao_accounts " +
+    "(id TEXT PRIMARY KEY, username TEXT NOT NULL, role TEXT NOT NULL, " +
+    "status TEXT NOT NULL, authorized_at INTEGER)");
+  db.exec("CREATE TABLE mao_account_sessions (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, " +
+    "expires_at INTEGER NOT NULL, revoked_at INTEGER)");
+  db.exec("CREATE TABLE mao_account_audit (id TEXT PRIMARY KEY,actor_account_id TEXT, " +
+    "target_account_id TEXT,action TEXT,detail_json TEXT,created_at INTEGER)");
+  for (const row of profile) {
+    db.prepare("INSERT INTO mao_accounts VALUES(?,?,?,?,?)").run(...row);
+  }
+  const sessions = new Map([
+    ['alice-session', { account_id: alice, session_id: 'alice-session', status: 'active', role: 'user', authorized_at: now }],
+    ['bob-session', { account_id: bob, session_id: 'bob-session', status: 'active', role: 'user', authorized_at: now }],
+    ['carol-session', { account_id: carol, session_id: 'carol-session', status: 'active', role: 'user', authorized_at: now }],
+    ['founder-session', { account_id: founder, session_id: 'founder-session', status: 'active', role: 'super_admin', authorized_at: now }]
+  ]);
+  for (const session of sessions.values()) {
+    db.prepare("INSERT INTO mao_account_sessions VALUES(?,?,?,NULL)")
+      .run(session.session_id, session.account_id, now + 86400000);
+  }
+  db.exec(SQL);
+  const exec = (sql, ...values) => {
+    const statement = db.prepare(sql);
+    if (/^\s*SELECT\b/i.test(sql) || /\bRETURNING\b/i.test(sql)) return statement.all(...values);
+    statement.run(...values);
+    return [];
+  };
+  const transaction = callback => {
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      const result = callback();
+      db.exec('COMMIT');
+      return result;
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+  };
+  const store = {
+    exec, transaction,
+    isActiveMaoSuperAdminSession(id, sid, at) {
+      return !!exec("SELECT s.id FROM mao_account_sessions s JOIN mao_accounts a ON a.id=s.account_id " +
+        "WHERE s.id=? AND s.account_id=? AND s.revoked_at IS NULL AND s.expires_at>? " +
+        "AND a.role='super_admin' AND a.status='active'", sid, id, at)[0];
+    }
+  };
+  const accountAuth = {
+    async getAuthenticatedAccount(request) {
+      const session = sessions.get(request.headers.get('x-test-session'));
+      if (!session) return null;
+      const account = exec("SELECT role,status,authorized_at FROM mao_accounts WHERE id=?",session.account_id)[0];
+      return account ? {...session,...account} : null;
+    }
+  };
+  const service = createMaoSocial({ store, accountAuth,
+    env: { MAO_SOCIAL_ENABLED: enabled ? 'true' : 'false' }, now: () => now });
+  async function call(who, path, method = 'GET', body) {
+    const request = new Request('https://mao.example' + path, {
+      method,
+      headers: { 'x-test-session': who, ...(body ? {'content-type':'application/json'} : {}) },
+      ...(body ? { body: JSON.stringify(body) } : {})
+    });
+    try {
+      const response = await service.handle(request, path.split('?')[0], method);
+      return { status: response.status, body: await response.json() };
+    } catch (error) {
+      return { status: error.status || 500, code: error.code, message: error.message };
+    }
+  }
+  return { db, exec, sessions, call, close: () => db.close() };
+}
+
+async function invite(ctx, from, to, requestId) {
+  const code = await ctx.call(to, '/api/social/friend-codes', 'POST');
+  assert.equal(code.status, 200, JSON.stringify(code));
+  assert.match(code.body.code, /^[a-f0-9]{64}$/);
+  const applied = await ctx.call(from, '/api/social/friend-requests', 'POST',
+    { requestId, code: code.body.code, note: 'Hello' });
+  return { code, applied };
+}
+
+test('MAO social migrations apply to real SQLite without a D1 or duplicate account table', () => {
+  const ctx = setup();
+  try {
+    const tableNames = ctx.exec("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'mao_social_%'");
+    assert.equal(tableNames.length, 5);
+    assert.equal(ctx.exec("SELECT COUNT(*) AS n FROM mao_accounts")[0].n, 4);
+    assert.equal(ctx.exec("SELECT COUNT(*) AS n FROM mao_social_friends")[0].n, 0);
+  } finally { ctx.close(); }
+});
+
+test('friendship requires peer consent AND 001 approval before either chat direction works', async () => {
+  const ctx = setup();
+  try {
+    const id = 'friend_application_0001';
+    const { code, applied } = await invite(ctx, 'alice-session', 'bob-session', id);
+    assert.equal(code.body.ownerAccountId, bob);
+    assert.equal(applied.body.request.status, 'pending_peer');
+    assert.equal((await ctx.call('alice-session', '/api/social/friends')).body.friends.length, 0);
+    assert.equal((await ctx.call('alice-session',
+      '/api/social/chats/' + bob + '/messages')).code, 'SOCIAL_NOT_APPROVED');
+    assert.equal((await ctx.call('bob-session',
+      '/api/social/chats/' + alice + '/messages', 'POST',
+      { clientMessageId:'pre_approval_msg', text:'Not yet' })).code, 'SOCIAL_NOT_APPROVED');
+    const adminEarly = await ctx.call('founder-session',
+      '/api/admin/social/friend-approvals/' + id + '/approve', 'POST');
+    assert.equal(adminEarly.code, 'SOCIAL_NOT_AWAITING_ADMIN');
+    const consent = await ctx.call('bob-session', '/api/social/friend-requests/' + id + '/accept', 'POST');
+    assert.equal(consent.body.request.status, 'pending_admin');
+    assert.equal((await ctx.call('alice-session', '/api/social/friends')).body.friends.length, 0);
+    const denied = await ctx.call('alice-session',
+      '/api/admin/social/friend-approvals/' + id + '/approve', 'POST');
+    assert.equal(denied.code, 'SOCIAL_ADMIN_ONLY');
+    const queue = await ctx.call('founder-session', '/api/admin/social/friend-approvals');
+    assert.equal(queue.body.approvals.length, 1);
+    assert.equal(queue.body.approvals[0].requesterId, alice);
+    const reviewed = await ctx.call('founder-session',
+      '/api/admin/social/friend-approvals/' + id + '/approve', 'POST');
+    assert.equal(reviewed.body.request.status, 'approved');
+    assert.equal((await ctx.call('alice-session', '/api/social/friends')).body.friends[0].id, bob);
+    assert.equal((await ctx.call('bob-session', '/api/social/friends')).body.friends[0].id, alice);
+    assert.equal(ctx.exec("SELECT COUNT(*) AS n FROM mao_account_audit WHERE action='social_friend_approved'")[0].n, 1);
+  } finally { ctx.close(); }
+});
+
+test('two account message roundtrip, idempotency and private conversation scope', async () => {
+  const ctx = setup();
+  try {
+    const id = 'request_msg_0001';
+    assert.equal((await invite(ctx,'alice-session','bob-session',id)).applied.status, 200);
+    await ctx.call('bob-session', '/api/social/friend-requests/' + id + '/accept', 'POST');
+    await ctx.call('founder-session', '/api/admin/social/friend-approvals/' + id + '/approve', 'POST');
+    const pathAB = '/api/social/chats/' + bob + '/messages';
+    const sent = await ctx.call('alice-session', pathAB, 'POST', {
+      clientMessageId: 'message_device_a_001', text: 'Hello from A'
+    });
+    assert.equal(sent.body.message.senderId, alice);
+    const replay = await ctx.call('alice-session', pathAB, 'POST', {
+      clientMessageId: 'message_device_a_001', text: 'Hello from A'
+    });
+    assert.equal(replay.body.replay, true);
+    assert.equal(replay.body.message.id, sent.body.message.id);
+    const forgedRetry = await ctx.call('alice-session', pathAB, 'POST', {
+      clientMessageId: 'message_device_a_001', text: 'Changed'
+    });
+    assert.equal(forgedRetry.code, 'SOCIAL_MESSAGE_ID_REUSED');
+    const received = await ctx.call('bob-session','/api/social/chats/' + alice + '/messages');
+    assert.equal(received.body.messages.length, 1);
+    assert.equal(received.body.messages[0].text, 'Hello from A');
+    assert.equal((await ctx.call('carol-session','/api/social/chats/' + alice + '/messages')).code,
+      'SOCIAL_NOT_APPROVED');
+    const reply = await ctx.call('bob-session','/api/social/chats/' + alice + '/messages','POST', {
+      clientMessageId: 'message_device_b_001',text: 'Hello from B'
+    });
+    assert.equal(reply.body.message.senderId, bob);
+    assert.equal((await ctx.call('alice-session',pathAB)).body.messages.length, 2);
+  } finally { ctx.close(); }
+});
+
+test('admin reject, block, remove, account disable and session revocation all fail closed', async () => {
+  const ctx = setup();
+  try {
+    const id = 'request_reject_0001';
+    await invite(ctx,'alice-session','carol-session',id);
+    await ctx.call('carol-session','/api/social/friend-requests/' + id + '/accept','POST');
+    const reject = await ctx.call('founder-session',
+      '/api/admin/social/friend-approvals/' + id + '/reject','POST');
+    assert.equal(reject.body.request.status, 'rejected');
+    assert.equal((await ctx.call('alice-session','/api/social/chats/' + carol + '/messages')).code,
+      'SOCIAL_NOT_APPROVED');
+    const requestId = 'request_block_0001';
+    await invite(ctx,'alice-session','bob-session',requestId);
+    await ctx.call('bob-session','/api/social/friend-requests/' + requestId + '/accept','POST');
+    await ctx.call('founder-session',
+      '/api/admin/social/friend-approvals/' + requestId + '/approve','POST');
+    await ctx.call('alice-session','/api/social/friends/' + bob + '/block','POST');
+    assert.equal((await ctx.call('bob-session','/api/social/chats/' + alice + '/messages')).code,'SOCIAL_BLOCKED');
+    await ctx.call('alice-session','/api/social/friends/' + bob + '/block','DELETE');
+    assert.equal((await ctx.call('alice-session','/api/social/chats/' + bob + '/messages')).code,
+      'SOCIAL_NOT_APPROVED');
+    ctx.exec("UPDATE mao_accounts SET status='disabled' WHERE id=?", bob);
+    assert.equal((await ctx.call('alice-session','/api/social/chats/' + bob + '/messages')).code,
+      'SOCIAL_ACCOUNT_NOT_ACTIVE');
+    ctx.exec("UPDATE mao_account_sessions SET revoked_at=? WHERE id=?",now,'alice-session');
+    assert.equal((await ctx.call('alice-session','/api/social/friend-codes','POST')).code,
+      'SOCIAL_SESSION_EXPIRED');
+    ctx.exec("UPDATE mao_account_sessions SET revoked_at=? WHERE id=?",now,'founder-session');
+    assert.equal((await ctx.call('founder-session','/api/admin/social/friend-approvals')).code,
+      'SOCIAL_ADMIN_ONLY');
+  } finally { ctx.close(); }
+});
+
+test('no feature opt-in never exposes social endpoints', async () => {
+  const ctx = setup({ enabled: false });
+  try {
+    const disabled = await ctx.call('alice-session','/api/social/friend-codes','POST');
+    assert.equal(disabled.status, 503);
+    assert.equal(disabled.code, 'SOCIAL_NOT_ENABLED');
+  } finally { ctx.close(); }
+});
