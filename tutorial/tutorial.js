@@ -476,7 +476,8 @@
     ["温度 Temperature、Top P 和最大 Tokens 怎么选？","温度较低一般更稳定，较高一般更随机；Top P 同样控制采样范围，通常先只调整其一。Tokens 是长度预算，不等于字数；模型能否调整依服务商而定。"],
     ["图片生成模型填写什么？","填写提供商支持的准确图片模型 ID，不是聊天模型 ID。可选图片接口 URL 留空时使用 Base URL + /images/generations；有自定义端点时按官方文档填写。"],
     ["MiniMax 的 Group ID 和 Voice ID 一样吗？","不一样。Group ID 标识服务商账户或项目，Voice ID 标识要合成的具体音色；MiniMax 语音 Key 也与其他聊天平台的 Key 分开。"],
-    ["MiniMax 保存后为什么没有声音？","保存设置不是网络连接测试。需确认语音服务权限、Group ID、角色 Voice ID、对话语音开关与实际发声链路。目前语音设置页没有独立的测试连接按钮。"],
+    ["MiniMax 保存后为什么没有声音？","保存设置不是网络连接测试。当前仓库只有 MiniMax 本地配置的明确证据，角色发声的完整链路仍未核实，不能以保存成功作为可发声证明。"],
+    ["MIX 和 MiniMax 是同一个语音功能吗？","目前只核实到「MiniMax 语音合成」的设置入口，尚未找到单独的 MIX 语音提供方配置。不要自行把 MIX 的参数填进 MiniMax；若产品接入了 MIX，应有独立的配置、帮助和测试。"],
     ["角色图片为什么没有自动发送？","角色自主挑图只从当前角色已保存、标记为公开的图库图片中选择。私密图片不会自主发送；即使有公开图片，也不是每轮聊天都必须发送。"]
   ];
 
@@ -525,15 +526,28 @@
   function loadProgress() {
     try {
       var parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-      return parsed && typeof parsed === 'object' ? parsed : {};
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
     } catch (error) { return {}; }
   }
+  function setStorageAlert(message) {
+    var el = $('storageAlert');
+    if (!el) return;
+    el.textContent = message || '';
+    el.hidden = !message;
+  }
   function saveProgress() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(progress)); } catch (error) {}
+    var saved = false;
+    try {
+      var encoded = JSON.stringify(progress);
+      localStorage.setItem(STORAGE_KEY, encoded);
+      saved = localStorage.getItem(STORAGE_KEY) === encoded;
+    } catch (error) { saved = false; }
+    setStorageAlert(saved ? '' : '测试记录未保存到本机。请检查浏览器存储权限或空间；当前勾选刷新后可能丢失。');
     refreshProgress();
+    return saved;
   }
   function entryState(id) {
-    if (!progress[id] || typeof progress[id] !== 'object') progress[id] = {};
+    if (!progress[id] || typeof progress[id] !== 'object' || Array.isArray(progress[id])) progress[id] = {};
     return progress[id];
   }
   function renderUpdates() {
@@ -638,8 +652,7 @@
     $('progressFill').style.width = (total ? (done / total * 100) : 0) + '%';
   }
   function saveWalkthroughState() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(progress)); } catch (error) {}
-    refreshProgress();
+    return saveProgress();
   }
   // Technical lessons are continuous reference articles, not checkbox wizards.
   // This does not change the legacy lesson progress or its storage structure.
@@ -669,8 +682,8 @@
     'api-url-v1': '填写示例（虚构域名）：服务商给出 https://api.example.com/v1 → Base URL 就填 https://api.example.com/v1。MAOMAO 会继续访问 https://api.example.com/v1/chat/completions。不要把 /chat/completions 自己再加到输入框。',
     'api-errors': '看到 400 请求格式错误时，还应核对模型是否支持当前接口及请求参数。某些模型不接受 max_tokens 或 temperature 等字段；这不能直接判定 Key 已失效。',
     'api-params': '入门建议：先试 0.7，再按实际效果少量调整。设置页允许 0～2，但个别模型只允许固定值或不支持这些采样参数。0 是有效温度，不应在保存时被自动变为 0.7。',
-    'api-images': '图片生成可能单独计费。用于角色图库的图片应先确认人物和场景归属；新图默认私密，只有主动改为公开后才可能被角色自主挑选发送。',
-    'minimax-voice-guide': '重要现状：当前仓库能够核实 MiniMax 配置页面与本地保存逻辑，但尚未核实完整的远程语音合成请求、角色 Voice ID 编辑入口和声音播放闭环。教程不能写成“配置完成即可发声”，真正可用性需要独立开发与验收。'
+    'api-images': '图片生成可能单独计费。为整理画面，角色生图功能会读取当前角色最近最多 14 条聊天消息中的文字片段，并将所整理的上下文提供给配置的 AI 服务商；只用自己愿意提供给服务商的测试内容。新图默认私密，设为公开后才可能被角色自主发出。',
+    'minimax-voice-guide': '注意区分 MiniMax 与你提到的 MIX：当前代码里能核实的是 MiniMax 语音配置页面，未核实有独立的 MIX 服务商配置或调用功能，不能将两者当成一回事。当前仓库能核实 MiniMax 配置页面和本地保存逻辑，但尚未核实完整的远程语音合成请求、角色 Voice ID 编辑入口和声音播放闭环。真实发声需要独立开发与验收。'
   };
   function isTechnicalGuide(guide) {
     return !!(guide && Object.prototype.hasOwnProperty.call(TECH_CHAPTERS, guide.id));
@@ -882,15 +895,24 @@
     var note = event.target.closest('[data-note]');
     if (!note) return;
     entryState(note.getAttribute('data-note')).note = note.value;
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(progress)); } catch (error) {}
+    saveProgress();
   });
   $('exportTests').addEventListener('click', exportProgress);
   $('resetTests').addEventListener('click', function () { $('resetModal').hidden = false; });
   $('cancelReset').addEventListener('click', function () { $('resetModal').hidden = true; });
   $('confirmReset').addEventListener('click', function () {
-    progress = {};
-    try { localStorage.removeItem(STORAGE_KEY); } catch (error) {}
+    var removed = false;
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+      removed = localStorage.getItem(STORAGE_KEY) == null;
+    } catch (error) { removed = false; }
     $('resetModal').hidden = true;
+    if (!removed) {
+      setStorageAlert('无法清空本机的测试记录，请检查浏览器存储权限。');
+      return;
+    }
+    progress = {};
+    setStorageAlert('');
     renderGuides();
     refreshProgress();
   });
