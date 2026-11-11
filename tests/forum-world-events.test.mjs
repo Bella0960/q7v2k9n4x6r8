@@ -224,3 +224,20 @@ test('author updates persist sequential chapters; failure rolls back original fi
   assert.equal(await api.continueForumWorld(),false);
   assert.equal(writes,4,'finished stories do not make another API write');
 });
+
+
+test('forum list rejects silently ignored localStorage writes',()=>{
+  const begin=home.indexOf('function save(){'),end=home.indexOf('function esc(v)',begin);
+  assert.ok(begin>=0&&end>begin);
+  const code=home.slice(begin,end);
+  let disk='[]',ignored=true;
+  const ctx={STORE:'forum_posts',posts:[{id:'new',title:'一条真实要保存的帖子'}],
+    localStorage:{setItem(_k,v){if(!ignored)disk=v},getItem:()=>disk},
+    console:{warn:()=>{}},toast:()=>{}};
+  const save=runInNewContext(code+'\nsave;',ctx);
+  assert.equal(save(),false);
+  assert.equal(disk,'[]');
+  ignored=false;
+  assert.equal(save(),true);
+  assert.equal(JSON.parse(disk)[0].id,'new');
+});
