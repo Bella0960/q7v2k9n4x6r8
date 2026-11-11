@@ -255,6 +255,12 @@ test('one-time friend codes, stable retry id and message flood protection', asyn
     const retry = await ctx.call('alice-session','/api/social/friend-requests','POST',body);
     assert.equal(retry.body.replay,true);
     assert.equal(retry.body.request.id,requestId);
+    const alteredNote = await ctx.call('alice-session','/api/social/friend-requests','POST',
+      {...body,note:'Different text'});
+    assert.equal(alteredNote.code,'SOCIAL_ID_REUSED');
+    const alteredCode = await ctx.call('alice-session','/api/social/friend-requests','POST',
+      {...body,code:'c'.repeat(64)});
+    assert.equal(alteredCode.code,'SOCIAL_ID_REUSED');
     const stolen = await ctx.call('carol-session','/api/social/friend-requests','POST',
       {requestId:'request_stolen_0001',code:inviteCode.body.code});
     assert.equal(stolen.code,'SOCIAL_CODE_EXPIRED');
