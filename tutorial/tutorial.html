@@ -293,7 +293,7 @@
         <button type="button" class="topic" data-open-guide="api-errors"><span class="topic-index">03 / FIX</span><strong>连接失败怎么办</strong><small>401、404、429 与跨域</small></button>
         <button type="button" class="topic" data-open-guide="api-params"><span class="topic-index">04 / TUNE</span><strong>温度与参数</strong><small>Temperature、Top P、Tokens</small></button>
         <button type="button" class="topic" data-open-guide="api-images"><span class="topic-index">05 / IMAGE</span><strong>图片生成</strong><small>图片模型和生图接口</small></button>
-        <button type="button" class="topic" data-open-guide="minimax-voice-guide"><span class="topic-index">06 / VOICE</span><strong>MiniMax 语音</strong><small>Group ID、Voice ID、配置</small></button>
+        <button type="button" class="topic" data-open-guide="minimax-voice-guide"><span class="topic-index">06 / VOICE</span><strong>MiniMax 语音</strong><small>Group ID、Voice ID · 发声待验收</small></button>
       </div>
     </section>
 
@@ -306,6 +306,8 @@
         <option value="">选择连接结果…</option>
         <option value="missing">请先填写 API Key / 地址 / 模型</option>
         <option value="success">连接成功，但其他功能不能用</option>
+        <option value="invalid-result">HTTP 200，但聊天仍然不能用</option>
+        <option value="400">400 · 请求格式或模型参数</option>
         <option value="401">401 · API Key 错误</option>
         <option value="403">403 · 无权访问</option>
         <option value="404">404 · 地址或模型不存在</option>
