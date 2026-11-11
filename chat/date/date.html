@@ -2983,15 +2983,15 @@ body {
             paintStream(text.slice(0, i));
             if (i >= text.length) {
                 clearInterval(timer);
-                removeStreaming();
                 var previousHistory = history.slice();
                 history.push({ role: 'assistant', text: text, time: Date.now(), mode: 'date', scene: sceneName || undefined });
                 if (!saveHistory(history, previousHistory)) {
-                    appendSys('角色回复已生成，但聊天记录未能保存；请检查存储空间后重试。');
+                    appendSys('这段角色回复尚未保存，请先复制上方文字，再检查存储空间后重试。');
                     setSending(false);
                     scrollBottom();
                     return;
                 }
+                removeStreaming();
                 appendAiParagraphs(text, history.length - 1);
                 setSending(false);
                 scrollBottom();
@@ -3303,8 +3303,7 @@ body {
                     var previousHistory = history.slice();
                     history.push(aiPartial);
                     if (!saveHistory(history, previousHistory)) {
-                        if (streamingP) removeStreaming();
-                        appendSys('已生成部分回复，但聊天记录未能保存；请复制需要保留的内容后重试。');
+                        appendSys('上方部分回复尚未保存，请先复制需要保留的文字，再检查存储空间后重试。');
                         setSending(false);
                         scrollBottom();
                         return;
@@ -3332,16 +3331,16 @@ body {
                 .replace(/\[记住:[^\]]*\]/g, '')
                 .replace(/\n{3,}/g, '\n\n').trim();
 
-            if (streamingP) removeStreaming();
             var aiMsg = { role: 'assistant', text: fullText, time: Date.now(), mode: 'date', scene: sceneName || undefined };
             var previousHistory = history.slice();
             history.push(aiMsg);
             if (!saveHistory(history, previousHistory)) {
-                appendSys('角色回复已生成，但聊天记录未能保存；请检查存储空间后重试。');
+                appendSys('上方角色回复尚未保存，请先复制需要保留的文字，再检查存储空间后重试。');
                 setSending(false);
                 scrollBottom();
                 return;
             }
+            if (streamingP) removeStreaming();
             appendAiParagraphs(fullText, history.length - 1);
             setSending(false);
             scrollBottom();
