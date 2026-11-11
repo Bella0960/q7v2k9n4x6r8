@@ -8,7 +8,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
-assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v203'/);
+assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v204'/);
 const viteConfig = read('vite.config.js');
 
 test('build emits a manifest containing every HTML entry point', () => {
@@ -37,18 +37,19 @@ test('every desktop app shortcut is emitted as a real HTML page in the productio
   }
 });
 
-test('service worker precaches all HTML routes listed by the build manifest', () => {
-  assert.match(serviceWorker, /fetch\('\.\/pwa-pages\.json'/);
-  assert.match(serviceWorker, /APP_SHELL\.concat\(pageEntries\)/);
-  assert.match(serviceWorker, /cache\.add\(url\)/);
+test('service worker stores public login pages but never precaches account-owned HTML', () => {
+  assert.match(serviceWorker, /fetch\\('\\.\\/pwa-pages\\.json'/);
+  assert.match(serviceWorker, /APP_SHELL\\.concat\\(pageEntries\\)/);
+  assert.match(serviceWorker, /filter\\(url => url === '\\.\\/account\\/index\\.html'/);
+  assert.match(serviceWorker, /cache\\.add\\(url\\)/);
 });
 
-test('mobile navigation serves cached app pages before waiting for network', () => {
-  assert.match(serviceWorker, /var cachedPromise = caches\.match\(req\)/);
-  assert.match(serviceWorker, /if \(cached\) return cached/);
-  assert.match(serviceWorker, /event\.waitUntil\(updatePromise/);
+test('private navigation reaches the Worker identity gate and cannot use cached app HTML', () => {
+  assert.match(serviceWorker, /if \\(req\\.mode === 'navigate' && !isPublicAccountPage\\)/);
+  assert.match(serviceWorker, /return await fetch\\(req\\)/);
+  assert.match(serviceWorker, /var cachedPromise = caches\\.match\\(req\\)/);
+  assert.match(serviceWorker, /event\\.waitUntil\\(updatePromise/);
 });
-
 
 test('desktop app navigation has one valid capture-phase owner', () => {
   assert.doesNotMatch(desktopScript, /data-href 点击跳转|target\.closest\('\[data-href\]'\)/,
