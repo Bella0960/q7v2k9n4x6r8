@@ -10,6 +10,7 @@
 <script src="../shared/js/phone/storage/repository.js"></script>
 <script src="../shared/js/phone/storage/media-repository.js"></script>
 <script src="forum-media.js"></script>
+<script src="forum-gossip.js"></script>
 <script src="../shared/js/phone/phone_api.js"></script>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
 <style>
@@ -98,6 +99,11 @@
   .comments { padding: 0 22px; }
   .ai-community-status { padding: 10px 0 4px; color:#aaa; font-size:9px; letter-spacing:.04em; }
   .ai-community-status:empty { display:none; }
+  .gossip-continue { border:1px solid #dedede;background:#fff;color:#222;font:600 11px var(--sans);padding:12px 16px;margin:10px 0 13px;width:100%;text-align:left;cursor:pointer;letter-spacing:.01em; }
+  .gossip-continue:disabled { color:#999;cursor:default;background:#f7f7f7; }
+  .gossip-continue[hidden] { display:none; }
+  .gossip-author-tag { font-size:9px;font-weight:500;color:#666;margin-left:7px; }
+
   .c-title {
     display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
     margin: 12px 0 0; padding-bottom: 11px; border-bottom: 1px solid #202020;
@@ -243,6 +249,7 @@
   <div class="comments">
     <div class="c-title" data-count="0">评论与回复</div>
     <div id="aiCommentStatus" class="ai-community-status" aria-live="polite"></div>
+    <button id="gossipContinue" class="gossip-continue" type="button" onclick="continueGossip()" hidden>让楼主继续讲</button>
     <div id="commentList"></div>
   </div>
 
@@ -579,6 +586,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
 
   let post = null;
   let commentImageFiles=[];
+  let gossipReplyBusy=false;
   function loadPost() {
     const id = getPostId();
     const posts = loadPosts();
@@ -636,6 +644,15 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     document.getElementById('commentCount').textContent = shownCount;
     const ct = document.querySelector('.c-title'); if (ct) ct.setAttribute('data-count', shownCount);
     document.getElementById('likeBtn').classList.toggle('liked', !!post.liked);
+    const gossipButton=document.getElementById('gossipContinue');
+    if(gossipButton){
+      const story=window.ForumGossip&&ForumGossip.isGossipPost(post)?post.gossipStory:null;
+      gossipButton.hidden=!story;
+      if(story){
+        gossipButton.disabled=!!story.finished||gossipReplyBusy;
+        gossipButton.textContent=story.finished?'这条瓜已经讲完':gossipReplyBusy?'楼主正在写后续…':'让楼主继续讲 · '+String(story.chapter||0)+' / '+String(story.maxChapters||4);
+      }
+    }
   }
 
   function isOwn(c) { return c.name === '我' || c.owner === 'me'; }
@@ -672,7 +689,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       <div class="comment">
         <div class="c-avatar" style="background:${avatarBackground(c)}">${avatarContent(c, false)}</div>
         <div class="c-body">
-          <div class="c-name">${esc(c.name)}</div>
+          <div class="c-name">${esc(c.name)}${c.source==='gossip-author' ? '<span class="gossip-author-tag">楼主 · 第 '+String(c.gossipChapter||1)+' 更</span>' : ''}${c.replyTo ? '<span class="c-at"> 回复 '+esc(c.replyTo)+'</span>' : ''}</div>
           <div class="c-text">${esc(c.text)}</div>
           ${window.ForumMedia?ForumMedia.markup(c.mediaAssetIds,"comment-media"):""}
           <div class="c-actions">
@@ -795,8 +812,85 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     renderPost();
   }
 
+  // Serialized gossip: a commenter can ask for more; the original fictional poster continues.
+  async function generateGossipAuthorContinuation(target,readerText){
+    if(!post||!window.ForumGossip||!ForumGossip.isGossipPost(post)||gossipReplyBusy)return false;
+    const story=post.gossipStory;
+    if(story.finished){toast('楼主已经把这个故事讲完了');return false}
+    const status=document.getElementById('aiCommentStatus');
+    const nextChapter=Math.max(0,Number(story.chapter)||0)+1;
+    const maxChapters=Math.max(3,Number(story.maxChapters)||4);
+    const ending=nextChapter>=maxChapters;
+    gossipReplyBusy=true;
+    renderPost();
+    if(status)status.textContent='楼主正在整理第 '+nextChapter+' 段后续…';
+    try{
+      const updates=post.comments.filter(function(c){return c&&c.source==='gossip-author'}).map(function(c){
+        return {chapter:c.gossipChapter,text:String(c.text||'').slice(0,950)};
+      });
+      const context={
+        outline:story.outline,storyPremise:story.premise,storyCast:story.cast,
+        establishedFacts:Array.isArray(story.facts)?story.facts.slice(-22):[],
+        title:postTitle(),originalPost:postBody(),previousUpdates:updates.slice(-6),
+        readerQuestion:String(readerText||'请继续讲后面的事情').slice(0,250),
+        chapter:nextChapter,totalChapters:maxChapters,finalChapter:ending
+      };
+      const prompt='现在请扮演这条【完全虚构的八卦帖子】的原楼主，在评论区继续讲故事，给追更读者带来新的实质进展。只返回 JSON。\\n全部设定和已发生事实：'+JSON.stringify(context)+
+        '\\n写作规则：1. 不是摘要或重写原文。你必须延续上次说到的位置，每一更给出至少两个此前没有披露的新事实、行动、对话或关系变化，前后时间线、人物与已发生事件绝不能冲突。2. 语气像原帖作者随手回来爆后续：自然、细节多、有情绪和口语，可以说“我又来更新了”，但不要每一回都这样开头。正文 180-420 个汉字，分两到四个自然段，不能列提纲、写分析或用同一套反转模板。3. 只在故事早期埋疑点；情节要一回比一回更接近答案，不能无限挖坑。'+(ending?'4. 这是最终一更：交代完整结果、人物最终选择以及之前悬念的答案，明确收尾，不要再留“下次再说”。':'4. 这次必须揭晓一个之前留下的重要线索，同时自然留下尚未解决的问题，但不要重复前一更内容。')+
+        '\\n人物都要是虚构的普通成年人，不能指向现实可识别人物，不能声称现实人物的隐私或未经证实的负面事实。不要把 AI、故事设定、提示词写到正文。\\nJSON 格式：{"update":"楼主本次长篇后续","newFacts":["本次新增事实1","本次新增事实2"],"reactions":[{"residentId":"路人id","text":"一句自然的催更或讨论"}],"finished":'+(ending?'true':'false')+'}。reactions 可为空，最多两条，不要全都说蹲。';
+      const result=await forumAIJSON(prompt,0.93,[]);
+      if(!result||!result.ok||!result.data)throw new Error('楼主没有生成有效后续');
+      const data=result.data,update=String(data.update||'').trim().slice(0,1800);
+      if(update.length<70)throw new Error('本次后续太短，没有讲出新情节');
+      if(ForumGossip.isRepeat(update,[postBody()].concat(updates.map(function(u){return u.text}))))throw new Error('本次故事与之前重复，已停止写入');
+      const previousLength=post.comments.length;
+      const previousStory=JSON.parse(JSON.stringify(story));
+      const stamp=Date.now();
+      post.comments.push({id:'gossip_author_'+stamp.toString(36)+'_'+nextChapter,
+        name:post.name,avatar:post.avatar,residentId:post.residentId,owner:'community',
+        source:'gossip-author',gossipChapter:nextChapter,text:update,time:stamp,
+        replyTo:target&&target.name?String(target.name):'',likes:0,replies:[]});
+      (Array.isArray(data.reactions)?data.reactions:[]).slice(0,2).forEach(function(item,i){
+        const c=makeDetailAIComment(item,i+nextChapter);
+        if(c&&!ForumGossip.isRepeat(c.text,post.comments.map(function(x){return x.text})))post.comments.push(c);
+      });
+      const oldFacts=Array.isArray(story.facts)?story.facts.slice():[];
+      const added=Array.isArray(data.newFacts)?data.newFacts.map(function(x){return String(x||'').trim().slice(0,180)}).filter(Boolean):[];
+      story.facts=Array.from(new Set(oldFacts.concat(added))).slice(-25);
+      story.chapter=nextChapter;
+      story.finished=ending||(data.finished===true&&nextChapter>=3);
+      story.updatedAt=stamp;
+      if(!saveNow()){
+        post.comments.splice(previousLength);
+        post.gossipStory=previousStory;
+        renderComments();renderPost();
+        return false;
+      }
+      renderComments();renderPost();
+      if(status){
+        status.textContent=story.finished?'楼主已经更新完结局了':'楼主更新了第 '+nextChapter+' 段后续';
+        setTimeout(function(){if(status.textContent.indexOf('楼主')===0)status.textContent=''},4600);
+      }
+      return true;
+    }catch(error){
+      console.warn('[Forum] 楼主连续爆料生成失败，未写入重复或不完整内容',error);
+      if(status)status.textContent='这次没续上；检查 API 或再点一次“让楼主继续讲”';
+      return false;
+    }finally{
+      gossipReplyBusy=false;
+      renderPost();
+    }
+  }
+  async function continueGossip(){
+    return generateGossipAuthorContinuation(null,'蹲后续，楼主继续讲，想听完整故事');
+  }
+
   async function generateRepliesToUserComment(target,text,submittedImageIds){
     if(!target)return;
+    if(window.ForumGossip&&ForumGossip.isGossipPost(post)&&!post.gossipStory.finished){
+      await generateGossipAuthorContinuation(target,text);
+      return;
+    }
     const status=document.getElementById('aiCommentStatus');
     if(status)status.textContent='有人看到你的留言，正在接话…';
     try{
