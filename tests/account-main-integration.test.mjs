@@ -99,3 +99,11 @@ test('founder sign-up readiness is a non-secret boolean and blocks unavailable P
   assert.match(entry, /crypto\.getRandomValues\(bytes\)/);
   assert.doesNotMatch(entry, /localStorage|sessionStorage|document\.cookie/);
 });
+
+test('iPhone 注册页不输出会被 Safari 渲染成绿色表情方块的装饰', () => {
+  const html = read('account/index.html');
+  assert.doesNotMatch(html, /<div class="footer-divider"/);
+  assert.doesNotMatch(html, /✳/);
+  assert.match(html, /id="registerPanel"/);
+  assert.match(html, /id="inviteForm"/);
+});
