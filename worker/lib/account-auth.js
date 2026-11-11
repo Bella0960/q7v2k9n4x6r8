@@ -112,6 +112,7 @@ function publicAccount(account) {
     id: account.id,
     username: account.username,
     role: account.role,
+    ...(account.role === 'super_admin' ? { founderNumber: '001' } : {}),
     status: account.status,
     qqEmail: account.qq_email || null,
     qqEmailVerified: Boolean(account.qq_email_verified_at),
