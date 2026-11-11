@@ -99,8 +99,9 @@ export function createMaoSocial({ store, accountAuth, env = {}, now = () => Date
       assertSession(actor, time);
       const existingId = one("SELECT * FROM mao_social_requests WHERE id = ?", requestId);
       if (existingId) {
-        if (existingId.requester_id !== actor.account_id) {
-          throw new ApiError(409, 'SOCIAL_ID_REUSED', '申请编号已被其他账号使用');
+        if (existingId.requester_id !== actor.account_id ||
+            existingId.submitted_code_hash !== hash || existingId.note !== note) {
+          throw new ApiError(409, 'SOCIAL_ID_REUSED', '申请编号已绑定另一条申请，不得重复使用');
         }
         return ok({ request: requestView(existingId), replay: true });
       }
@@ -126,9 +127,9 @@ export function createMaoSocial({ store, accountAuth, env = {}, now = () => Date
         time, hash, time);
       if (consumed.length !== 1) throw new ApiError(409, 'SOCIAL_CODE_REUSED', '好友码已被使用');
       rows("INSERT INTO mao_social_requests " +
-        "(id,requester_id,recipient_id,pair_low,pair_high,status,note,created_at,updated_at) " +
-        "VALUES (?,?,?,?,?,'pending_peer',?,?,?)",
-        requestId, actor.account_id, issued.owner_id, low, high, note, time, time);
+        "(id,requester_id,recipient_id,pair_low,pair_high,status,note,submitted_code_hash,created_at,updated_at) " +
+        "VALUES (?,?,?,?,?,'pending_peer',?,?,?,?)",
+        requestId, actor.account_id, issued.owner_id, low, high, note, hash, time, time);
       return ok({ request: { id: requestId, status: 'pending_peer',
         recipientId: issued.owner_id, adminApprovalRequired: true } });
     });
