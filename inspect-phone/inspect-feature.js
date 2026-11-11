@@ -236,7 +236,8 @@
   }
   function detection(durationSec,alert,lockAttempts,appSwitches) {
     var risk=Math.min(.92,.015+Math.max(0,durationSec)/3600+Math.max(0,appSwitches)*.05+Math.max(0,lockAttempts)*.30+(alert?.18:0));
-    return {risk:risk,caught:Math.random()<risk};
+    var caught=Math.random()<risk;
+    return {risk:risk,caught:caught,evidence:caught?'角色注意到锁定区域被打开过。':'没有新的提示',aftermath:caught?'角色收回查看许可，暂时不再分享。':'角色仍保持原来的态度'};
   }
   function promptFor(id,role,data,now) {
     var f=JSON.stringify(data.facts);
@@ -289,7 +290,9 @@
     var appLayer=opts.appLayer,appBody=opts.appBody,appTitle=opts.appTitle;
     var grid=document.querySelector('.grid'),dock=document.querySelector('.dock'),back=document.getElementById('appBack');
     var current='',view=null,selected=data.selected||[],permission=data.permission||null,waiting=false,alerted=false;
-    var unlockedNotes=false,unlockedAlbum=false,sessionStarted=Date.now(),switches=0,lockedAttempts=0,pendingChat=null;
+    var unlockedNotes=false,unlockedAlbum=false,pinView='',sessionStarted=Date.now(),switches=0,lockedAttempts=0,pendingChat=null;
+    var affection=num(role.affection,num(role.favorability,num(role.intimacy,50)));
+    var revealCount=affection>=70?3:affection>=35?1:0;
     var notice='',accessType='';
     function commit(){data.selected=selected;data.permission=permission;data.updatedAt=Date.now();if(!save(data))notice='当前存储空间不足，改动可能无法保留。';}
     function currentSource(){return data.source[current]==='ai'?'AI 剧情记录':'本地剧情样例 · 未调用 AI';}
@@ -353,8 +356,11 @@
         block('书签',arr(section.bookmarks).map(function(x){return line(x.title,x.summary);}).join(''));
       } else if(current==='notes'){
         body=block('未锁定',arr(section.notes).map(function(x){return line(x.title,x.text+' · '+dateTime(x.updatedAt));}).join(''))+
-          block('锁定备忘录',unlockedNotes?arr(section.locked).map(function(x){return line(x.title,x.text+' · '+dateTime(x.updatedAt));}).join(''):
-          '<p class="inspect-muted">需要剧情密码，只有角色允许后才能查看。</p>'+button('输入密码','notesPin'));
+          block('锁定备忘录',unlockedNotes?
+            (revealCount?arr(section.locked).slice(0,revealCount).map(function(x){return line(x.title,x.text+' · '+dateTime(x.updatedAt));}).join(''):'<p class="inspect-muted">角色暂时不愿分享这些私人记录。</p>')+
+            (revealCount?'<p class="inspect-muted">下一处线索：虚构相册密码 '+html(hiddenPin(roleId))+'（仅供剧情解谜）。</p>':''):
+          '<p class="inspect-muted">需要剧情密码（默认111111），内容还受到角色关系进度影响。密码不是数据加密。</p>'+
+            (pinView==='notes'?pinForm():button('输入密码','notesPin')));
       } else if(current==='wallet'){
         var tx=arr(section.transactions),spent=tx.filter(function(x){return num(x.amount,0)<0;}).reduce(function(s,x){return s+Math.abs(num(x.amount,0));},0);
         body='<div class="inspect-summary"><small>剧情余额</small><strong>'+money(num(section.balance,0))+'</strong><small>近期开支 '+money(spent)+'</small></div>'+
@@ -370,7 +376,8 @@
       } else if(current==='album'){
         body=block('最近照片 · 文字描述',arr(section.photos).map(function(x){return line(x.type+' · '+dateTime(x.time),x.description);}).join(''))+
           block('隐藏相册',unlockedAlbum?arr(section.hidden).map(function(x){return line(dateTime(x.time),x.description);}).join(''):
-            '<p class="inspect-muted">需额外的虚构相册密码（与备忘录密码不同）。</p>'+button('输入相册密码','albumPin'))+
+            '<p class="inspect-muted">需额外的虚构相册密码，线索藏在已解锁的备忘录中。</p>'+
+            (pinView==='album'?pinForm():button('输入相册密码','albumPin')))+
           '<p class="inspect-muted">共 '+num(section.total,0)+' 张 · 最近7天新增 '+num(section.newSevenDays,0)+' 张</p>';
       } else if(current==='device'){
         body='<div class="inspect-summary"><small>今日屏幕使用</small><strong>'+Math.floor(num(section.screenMinutes,0)/60)+'小时'+(num(section.screenMinutes,0)%60)+'分</strong><small>23:00–06:00 '+num(section.nightMinutes,0)+' 分钟</small></div>'+
@@ -386,11 +393,12 @@
         '<p class="inspect-muted">'+html(currentSource())+' · 同一角色的已生成记录会保留</p>';
       open(item?item.name:'查手机',header+(notice?'<p class="inspect-alert">'+html(notice)+'</p>':'')+(body||empty()));
     }
-    function exposeOrNotice(kind) {
+    function pinForm(){return '<form class="inspect-pin" id="inspectPinForm"><input type="password" name="pin" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" required autocomplete="off" placeholder="输入六位剧情密码" aria-label="剧情密码"><button type="submit">解锁</button></form>';}
+    function exposeOrNotice(kind,pin) {
       lockedAttempts++;
-      var pin=prompt(kind==='notes'?'输入备忘录剧情密码（默认 111111）':'输入相册剧情密码（角色专属）','');
-      if(pin===null)return;
-      if(kind==='notes'&&pin==='111111'){unlockedNotes=true;notice='已解锁剧情备忘录。';render();return;}
+      pin=String(pin||'').trim();
+      pinView='';
+      if(kind==='notes'&&pin==='111111'){unlockedNotes=true;notice='已验证剧情密码，角色愿意分享的部分已显示。';render();return;}
       if(kind==='album'&&pin===hiddenPin(roleId)){unlockedAlbum=true;notice='已解锁剧情相册。';render();return;}
       var danger=detection((Date.now()-sessionStarted)/1000,permission&&permission.decision==='犹豫',lockedAttempts,switches);
       if(danger.caught){current='caught';notice='角色发现有人尝试进入锁定内容，收回了查看许可。';permission=null;commit();render();}
@@ -454,8 +462,14 @@
       commit();
     });
     appBody.addEventListener('submit',function(e){
-      if(e.target.id!=='inspectCompose')return;e.preventDefault();
-      var inp=e.target.querySelector('[name=message]');sendAsRole(inp?inp.value:'');
+      if(e.target.id==='inspectPinForm'){
+        e.preventDefault();var pin=e.target.querySelector('[name=pin]');
+        exposeOrNotice(current,pin&&pin.value);return;
+      }
+      if(e.target.id==='inspectCompose'){
+        e.preventDefault();var inp=e.target.querySelector('[name=message]');
+        sendAsRole(inp?inp.value:'');
+      }
     });
     appBody.addEventListener('click',function(e){
       var detail=e.target.closest('[data-detail]');
@@ -468,8 +482,8 @@
       if(a==='all'){selected=ITEMS.map(function(x){return x.id;});commit();chooseScreen();return;}
       if(a==='choose'){chooseScreen();return;}
       if(a==='refresh'){refreshSection();return;}
-      if(a==='notesPin'){exposeOrNotice('notes');return;}
-      if(a==='albumPin'){exposeOrNotice('album');return;}
+      if(a==='notesPin'){pinView='notes';render();return;}
+      if(a==='albumPin'){pinView='album';render();return;}
       if(a==='stop'){close();return;}
     });
     global.InspectPhoneFeature={mount:mount,valid:valid,promptFor:promptFor,storyKey:storyKey,access:access,detection:detection,hiddenPin:hiddenPin,defaultItems:ITEMS};
