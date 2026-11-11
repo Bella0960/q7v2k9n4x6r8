@@ -94,7 +94,7 @@ function createPhone() {
     reload() { state.reloads = (state.reloads || 0) + 1; } };
   vm.runInNewContext(script, { window, document, fetch: fetchMock, location,
     navigator: { clipboard: { writeText: async () => {} } }, crypto: webcrypto,
-    URL, history: { replaceState() {} }, setInterval: fn => { state.intervalFn = fn; return 1; }, clearInterval() {},
+    URL, history: { replaceState() {} }, setInterval: fn => { state.intervalFn = fn; return 1; }, clearInterval() { state.intervalFn = null; },
     confirm: () => true, console }, { timeout: 2000, filename: 'real-friends.html' });
   const settle = async () => {
     for (let i = 0; i < 8; i++) await new Promise(resolve => setImmediate(resolve));
@@ -251,4 +251,23 @@ test('a cookie switch during delayed chat polling cannot restore stale private m
   await phone.settle();
   assert.equal(phone.get('messages').children.length, 0,
     'an in-flight success from the previous cookie account must not restore any private text');
+});
+
+test('closing during the first history load cannot resurrect a hidden polling timer', async () => {
+  const phone = createPhone();
+  await phone.settle();
+  phone.state.deferRead = true;
+  const button = phone.elements.find(e => e.textContent === '聊天' && e.events.click);
+  assert.ok(button);
+  const opening = button.events.click();
+  await phone.settle();
+  assert.equal(phone.state.readWaiters.length, 1, 'first history request is still pending');
+  phone.get('closeChat').events.click();
+  assert.equal(phone.get('chatPanel').hidden, true);
+  phone.state.deferRead = false;
+  phone.state.readWaiters.shift()();
+  await opening;
+  await phone.settle();
+  assert.equal(phone.state.intervalFn, null, 'closing the view must cancel any future polling');
+  assert.equal(phone.get('messages').children.length, 0);
 });
