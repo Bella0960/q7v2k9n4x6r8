@@ -282,6 +282,7 @@ export function createMaoSocial({ store, accountAuth, env = {}, now = () => Date
     const body = await readJsonBody(request, 5000);
     const text = String(body.text || '').trim();
     const clientMessageId = valid(body.clientMessageId, REQUEST_ID, 'SOCIAL_MESSAGE_ID_INVALID');
+    const expectedFriendshipId = valid(body.friendshipId, REQUEST_ID, 'SOCIAL_FRIENDSHIP_ID_REQUIRED');
     if (!text || Array.from(text).length > 2000) {
       throw new ApiError(400, 'SOCIAL_MESSAGE_INVALID', '消息内容长度不符合要求');
     }
@@ -289,6 +290,9 @@ export function createMaoSocial({ store, accountAuth, env = {}, now = () => Date
       const time = now();
       assertSession(actor, time);
       const [low, high, sourceRequestId] = friendship(actor.account_id, peer);
+      if (expectedFriendshipId !== sourceRequestId) {
+        throw new ApiError(409, 'SOCIAL_FRIENDSHIP_CHANGED', '好友关系已经变化，请重新打开聊天');
+      }
       const old = one("SELECT * FROM mao_social_messages WHERE sender_id=? AND client_message_id=?",
         actor.account_id, clientMessageId);
       if (old) {
