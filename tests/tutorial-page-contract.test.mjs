@@ -102,7 +102,7 @@ test('tutorial workflow enforces a guide update when user-facing app pages chang
   assert.match(tutorialWorkflow, /pull_request:/);
   assert.match(tutorialWorkflow, /npm run test:tutorial/);
   assert.match(tutorialWorkflow, /User-facing MAOMAO files changed without updating tutorial\/tutorial\.js/);
-  assert.match(tutorialWorkflow, /git diff --name-only/);
+  assert.match(tutorialWorkflow, /execFileSync\('git', \['diff', '--name-only',/);
   assert.match(tutorialWorkflow, /tutorial\/tutorial\.js/);
 });
 
@@ -111,4 +111,11 @@ test('PWA app shell caches the full guide bundle and has a matching test command
   assert.ok(serviceWorker.includes("'./tutorial/tutorial.html'"));
   assert.ok(serviceWorker.includes("'./tutorial/tutorial.js?v=20261111v2'"));
   assert.equal(packageJson.scripts['test:tutorial'], 'node --test tests/tutorial-page-contract.test.mjs');
+});
+
+test('chat detail scripts parse so the conversation settings handler can bind', () => {
+  const scripts = [...chatDetail.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)]
+    .filter(([, attributes]) => !/\bsrc\s*=|\btype\s*=/.test(attributes));
+  assert.ok(scripts.some(([, , source]) => /async function sendMsg\(/.test(source)));
+  for (const [, , source] of scripts) new Function(source);
 });
