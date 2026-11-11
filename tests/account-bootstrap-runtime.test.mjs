@@ -57,6 +57,7 @@ test('first-run status must be a valid boolean before showing setup form', async
 test('HTTP 200 with missing founder identity cannot redirect on bootstrap', async () => {
   const page = mount(async path => path.endsWith('/status')
     ? result({ ok: true, initialized: false })
+    : path.endsWith('/preflight') ? result({ ok: true, initialized: false, configured: true, cryptoReady: true })
     : result({ ok: true, account: { role: 'user', founderNumber: '001' } }));
   await page.settle();
   assert.equal(page.nodes.bootstrapForm.hidden, false);
@@ -69,6 +70,7 @@ test('HTTP 200 with missing founder identity cannot redirect on bootstrap', asyn
 test('only confirmed founder 001 bootstrap response opens the management center', async () => {
   const page = mount(async path => path.endsWith('/status')
     ? result({ ok: true, initialized: false })
+    : path.endsWith('/preflight') ? result({ ok: true, initialized: false, configured: true, cryptoReady: true })
     : result({ ok: true, account: { role: 'super_admin', founderNumber: '001' } }));
   await page.settle();
   await page.submit();
@@ -94,12 +96,14 @@ test('failed initial status check keeps form hidden and retry restores it', asyn
 test('administrator setup always uses same-origin credentials and an abort signal', async () => {
   const page = mount(async path => path.endsWith('/status')
     ? result({ ok: true, initialized: false })
+    : path.endsWith('/preflight') ? result({ ok: true, initialized: false, configured: true, cryptoReady: true })
     : result({ ok: true, account: { role: 'super_admin', founderNumber: '001' } }));
   await page.settle();
   await page.submit();
   assert.ok(page.calls.every(call => call.options.credentials === 'same-origin'));
   assert.ok(page.calls.every(call => call.options.signal));
   assert.equal(page.calls.at(-1).options.method, 'POST');
+  assert.equal(page.calls.at(-1).path, '/api/admin/bootstrap');
 });
 
 test('missing Preview secrets never exposes founder registration form until configured', async () => {
