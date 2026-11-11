@@ -97,8 +97,9 @@
   }
   function profile(role) {
     var text=roleContext(role),work=/公司|职员|上班|设计师|工程师|教师|工作|医生|店员|律师|图书编辑|工程|毕业|自由职业/.test(text);
-    var studying=/在校|大学生|高中生|中学生|小学生|大一|大二|大三|高一|高二|高三|研究生|读书中/.test(text);
-    var student=studying&&!(/毕业|已工作/.test(text)&&!/在读|在校/.test(text));
+    var studying=/学生|在校|大学生|高中生|中学生|小学生|大一|大二|大三|高一|高二|高三|研究生|读书中/.test(text);
+    var currentStudy=/在校|大学生|高中生|中学生|小学生|大一|大二|大三|高一|高二|高三|研究生|在读/.test(text);
+    var student=studying&&(currentStudy||!work)&&!(/毕业|已工作/.test(text)&&!currentStudy);
     if(!student&&!work&&/大学|高中|校园|宿舍/.test(text))student=true;
     if(!student&&!work&&Number(role.age)>0&&Number(role.age)<18)student=true;
     var place=student?'学校':work?'公司':'工作室';
