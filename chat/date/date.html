@@ -2859,7 +2859,10 @@ body {
             return true;
         } catch (error) {
             if (Array.isArray(rollback)) {
-                list.splice.apply(list, [0, list.length].concat(rollback));
+                list.length = 0;
+                for (var rollbackIndex = 0; rollbackIndex < rollback.length; rollbackIndex++) {
+                    list.push(rollback[rollbackIndex]);
+                }
             }
             console.error('[Date] chat history persistence failed:', error);
             toast('聊天记录保存失败，本次操作没有完成，请检查存储空间后重试');
