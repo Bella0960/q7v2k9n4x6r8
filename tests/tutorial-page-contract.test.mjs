@@ -104,7 +104,7 @@ test('tutorial provides a real stepper, interface-location illustration, FAQ, an
   assert.match(guideScript, /function moveWalkthrough/);
   assert.match(guideScript, /function renderFaqs/);
   const faqSection = guideScript.slice(guideScript.indexOf('var FAQS = ['), guideScript.indexOf('var APPS = ['));
-  assert.equal((faqSection.match(/^    \['/gm) || []).length, 11, 'expected searchable FAQ entries');
+  assert.equal((faqSection.match(/^    ['"]/gm) || []).length, 12, 'expected searchable FAQ entries');
 });
 
 test('composer menu guide covers the actual one-to-one and group menu entry labels', () => {
@@ -156,6 +156,9 @@ test('API-first handbook explains credentials, /v1, connection results, sampling
   }
   assert.match(guideHtml, /id="diagnoseSelect"/);
   assert.match(guideHtml, /id="diagnoseAnswer"/);
+  assert.match(guideHtml, /id="storageAlert"/);
+  assert.match(guideScript, /MIX 和 MiniMax 是同一个语音功能吗/);
+  assert.match(guideScript, /最近最多 14 条聊天消息/);
   assert.match(guideScript, /function guideCard\(guide\)/);
   assert.match(guideScript, /\^#guide=/);
 });
@@ -256,4 +259,15 @@ test('live connection checks current form and distinguishes success, errors and 
       assert.equal(request.messages.length, 1);
     }
   }
+});
+
+
+test('tutorial storage failures are visible and existing valid progress survives', () => {
+  const script = guideScript;
+  assert.match(script, /return parsed && typeof parsed === 'object' && !Array\.isArray\(parsed\)/);
+  assert.match(script, /测试记录未保存到本机/);
+  assert.match(script, /无法清空本机的测试记录/);
+  assert.match(script, /function saveWalkthroughState\(\) \{[\s\S]*?return saveProgress\(\)/);
+  assert.match(script, /var removed = false/);
+  assert.ok(guideHtml.includes('id="storageAlert"'));
 });
