@@ -323,6 +323,12 @@ test('API profile writes and selection verify persistent storage, including sile
 });
 
 
+test('direct API setting links resolve to the real configuration panel', () => {
+  assert.match(apiSettings, /<main class="content" id="api">/);
+  assert.match(guideScript, /Reading a technical handbook chapter should not create test progress/);
+  assert.match(guideScript, /activeWalkthrough && !isTechnicalGuide\(activeWalkthrough\)/);
+});
+
 test('editing an existing API profile persists the same entry, not a detached copy', () => {
   const start = apiSettingsScript.indexOf('function getProfiles() {');
   const end = apiSettingsScript.indexOf('let allModels = null;', start);
