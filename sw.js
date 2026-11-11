@@ -20,7 +20,7 @@ const APP_SHELL = [
   './account/ivory-entry.css',
   './account/account.js',
   './tutorial/tutorial.html',
-  './tutorial/tutorial.js?v=20261111v3',
+  './tutorial/tutorial.js?v=20261111v4',
   './beauty/beauty.html',
   './theme-store/theme-store.html',
   './chat/chat/chat.html',
