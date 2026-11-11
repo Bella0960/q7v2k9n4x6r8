@@ -11,6 +11,7 @@
 <script src="../shared/js/phone/storage/repository.js"></script>
 <script src="../shared/js/phone/storage/media-repository.js"></script>
 <script src="forum-media.js"></script>
+<script src="forum-gossip.js"></script>
 <script src="../shared/js/phone/phone_api.js"></script>
 <script src="../shared/js/custom-css.js"></script>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
@@ -376,10 +377,12 @@ async function refreshFeed(){
  if(!apiCfg||!String(apiCfg.apiKey||'').trim()){toast('先配置 API，路人才会来发帖');return false}
  forumRefreshBusy=true;
  const theme=getForumTheme(),topics=theme.roleTopics&&theme.roleTopics.length?theme.roleTopics:['日常交流'];
- const recent=posts.filter(p=>p&&p.title&&p.body).slice(0,8).map(p=>({id:p.id,name:p.name,title:p.title,body:String(p.body||'').slice(0,150),topic:p.topic,comments:Array.isArray(p.comments)?p.comments.slice(-4).map(c=>({name:c.name,text:String(c.text||'').slice(0,110),replies:Array.isArray(c.replies)?c.replies.slice(-2).map(r=>({name:r.name,text:String(r.text||'').slice(0,90)})):[]})):[],legacyCommentCount:typeof p.comments==='number'?p.comments:0}));
+ const recent=posts.filter(p=>p&&p.title&&p.body).slice(0,15).map(p=>({id:p.id,name:p.name,title:p.title,body:String(p.body||'').slice(0,150),topic:p.topic,comments:Array.isArray(p.comments)?p.comments.slice(-4).map(c=>({name:c.name,text:String(c.text||'').slice(0,110),replies:Array.isArray(c.replies)?c.replies.slice(-2).map(r=>({name:r.name,text:String(r.text||'').slice(0,90)})):[]})):[],legacyCommentCount:typeof p.comments==='number'?p.comments:0}));
  const roster=FORUM_RESIDENTS.map(r=>({id:r.id,name:r.name,style:r.style}));
  const system=forumWorldbook()+'\n\n你现在负责维护论坛的真实讨论流。写作要像不同网友各自在空闲时间打开手机时发的内容：有具体细节，有不同脾气，有人简短，有人会追问；禁止模板化、排比式和客服式表达。';
- const user='请为这个论坛生成一次新的社区动态。必须只输出 JSON。\n可用话题：'+JSON.stringify(topics)+'\n固定路人资料（请复用这些昵称，保持性格稳定）：'+JSON.stringify(roster)+'\n最近已经存在的帖子（不要改写、复刻这些内容）：'+JSON.stringify(recent)+'\n生成规则：\n1. 新增 2-3 篇全新帖子，每篇作者从固定路人中选一位；这批帖子尽量由不同居民发布，不要同一居民连续刷屏；标题自然，正文约 35-140 字，不要都像公告。\n2. 每篇新帖子自带 1-3 条真实感评论；其中部分评论可以有 1 条楼中楼回复。评论彼此有呼应，允许观点不同，不要统一夸楼主。\n3. 再从最近帖子里挑 1 篇，追加 1-2 条新评论，postId 必须照抄给定的真实 id；不要重复已有评论。\n4. 所有 residentId 必须来自固定路人资料；话题必须从可用话题中选择。\nJSON 格式：{"posts":[{"residentId":"路人id","title":"标题","body":"正文","topic":"话题","likes":3,"comments":[{"residentId":"路人id","text":"评论","replies":[{"residentId":"路人id","text":"楼中楼回复","replyTo":"被回复昵称"}]}]}],"activity":[{"postId":"现有帖子id","comments":[{"residentId":"路人id","text":"追加评论","replies":[]}]}]}';
+ const gossipMode=theme.id==='bagua'&&!!window.ForumGossip;
+ const gossipPlans=gossipMode?ForumGossip.planBatch(posts,3):[];
+ const user=gossipMode?('请为虚构社区的『八卦吃瓜』栏目创作三个互不重复、可以在评论区连载的生活故事。必须只返回 JSON。\n本次三个选题，每个选题对应一篇帖子，不可以遗漏、换题或合并：'+JSON.stringify(gossipPlans)+'\n每一个只是创作大纲，不是实际发生的瓜。请原创虚构成年人物、昵称、关系、地点和事件，不映射现实中的可识别人物，也不编造现实人物的隐私或指控。每个故事情节要具体：开头抓人、关系清楚、至少两个可信的生活细节、有悬念但不要一开始说穿。三篇主角和地点、误会来源、叙述方式与反转类型必须不同。风格像真人匿名发帖，比如『谁懂啊，我昨天才发现…』，而不是百科概述、官方公告或道德总结；不要每篇都用同一种开头。每条标题 9-34 字，正文 130-330 字，只交代开端，不要直接完结。\n已有帖子（避免故事、人物和细节重复）：'+JSON.stringify(recent)+'\n可用话题：'+JSON.stringify(topics)+'\n固定网友：'+JSON.stringify(roster)+'\n每篇包含 1-3 条由不同网友发表的评论，其中一位可以问『后来呢』『蹲个后续』，其余可以质疑或补充，禁止清一色催更或重复。为后续连载保存能坚持到结局的故事骨架：storyPremise（核心冲突和预期发展，100 字内）、storyCast（虚构人物关系，100 字内）、storyFacts（首帖已经明确发生的 2-5 条事实）。每篇 outlineId 必须与选题 id 一致。\nJSON 格式：{\"posts\":[{\"outlineId\":\"选题id\",\"residentId\":\"固定网友id\",\"title\":\"生活化标题\",\"body\":\"第一回正文\",\"topic\":\"恋爱观察\",\"storyPremise\":\"故事骨架\",\"storyCast\":\"人物关系\",\"storyFacts\":[\"事实1\",\"事实2\"],\"comments\":[{\"residentId\":\"固定网友id\",\"text\":\"评论\",\"replies\":[] }]}],\"activity\":[]}'):('请为这个论坛生成一次新的社区动态。必须只输出 JSON。\n可用话题：'+JSON.stringify(topics)+'\n固定路人资料（请复用这些昵称，保持性格稳定）：'+JSON.stringify(roster)+'\n最近已经存在的帖子（不要改写、复刻这些内容）：'+JSON.stringify(recent)+'\n生成规则：\n1. 新增 2-3 篇全新帖子，每篇作者从固定路人中选一位；这批帖子尽量由不同居民发布，不要同一居民连续刷屏；标题自然，正文约 35-140 字，不要都像公告。\n2. 每篇新帖子自带 1-3 条真实感评论；其中部分评论可以有 1 条楼中楼回复。评论彼此有呼应，允许观点不同，不要统一夸楼主。\n3. 再从最近帖子里挑 1 篇，追加 1-2 条新评论，postId 必须照抄给定的真实 id；不要重复已有评论。\n4. 所有 residentId 必须来自固定路人资料；话题必须从可用话题中选择。\nJSON 格式：{"posts":[{"residentId":"路人id","title":"标题","body":"正文","topic":"话题","likes":3,"comments":[{"residentId":"路人id","text":"评论","replies":[{"residentId":"路人id","text":"楼中楼回复","replyTo":"被回复昵称"}]}]}],"activity":[{"postId":"现有帖子id","comments":[{"residentId":"路人id","text":"追加评论","replies":[]}]}]}');
  try{
   toast('正在等社区成员发帖…');
   const result=await PhoneAPI.completeJSON({system:system,user:user,temperature:0.92,timeoutMs:32000});
@@ -391,8 +394,9 @@ async function refreshFeed(){
    const title=String(item.title).trim().slice(0,90),body=String(item.body).trim().slice(0,700);
    if(!title||!body||existingTitles.has(title))return;
    const author=forumResident(item.residentId,i);
+   if(gossipMode&&(!gossipPlans[i]||ForumGossip.isRepeat(body,posts.filter(p=>p.gossipStory).slice(0,30).map(p=>p.body).concat(fresh.map(p=>p.body)))))return;
    const comments=(Array.isArray(item.comments)?item.comments:[]).slice(0,3).map((c,j)=>forumMakeAIComment(c,j)).filter(Boolean);
-   fresh.push({id:'forum_ai_'+now.toString(36)+'_'+i,name:author.name,avatar:'#333333',residentId:author.id,role:'社区成员',tag:'resident',owner:'community',topic:topics.includes(item.topic)?item.topic:topics[i%topics.length],time:now-i*5*60000,created:now-i*5*60000,title:title,body:body,likes:Math.max(0,Math.min(30,Number(item.likes)||0)),comments:comments,liked:false,generatedBy:'community-ai',themeId:theme.id,aiCommentBatch:comments.length?'v1':''});
+   fresh.push({id:'forum_ai_'+now.toString(36)+'_'+i,name:author.name,avatar:'#333333',residentId:author.id,role:'社区成员',tag:'resident',owner:'community',topic:topics.includes(item.topic)?item.topic:topics[i%topics.length],time:now-i*5*60000,created:now-i*5*60000,title:title,body:body,likes:Math.max(0,Math.min(30,Number(item.likes)||0)),comments:comments,liked:false,generatedBy:'community-ai',themeId:theme.id,gossipStory:gossipMode?ForumGossip.storyFromOpening(item,gossipPlans[i],i):undefined,aiCommentBatch:comments.length?'v1':''});
    existingTitles.add(title);
   });
   if(!fresh.length)throw new Error('这次没有生成新的帖子，请稍后再刷新');
