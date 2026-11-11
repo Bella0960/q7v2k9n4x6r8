@@ -19,7 +19,7 @@ const profile = [
   [founder, 'Founder', 'super_admin', 'active', now]
 ];
 
-function setup({ enabled = true } = {}) {
+function setup({ enabled = true, nowFn = () => now } = {}) {
   const db = new DatabaseSync(':memory:');
   db.exec("PRAGMA foreign_keys=ON");
   db.exec("CREATE TABLE mao_accounts " +
@@ -77,7 +77,7 @@ function setup({ enabled = true } = {}) {
     }
   };
   const service = createMaoSocial({ store, accountAuth,
-    env: { MAO_SOCIAL_ENABLED: enabled ? 'true' : 'false' }, now: () => now });
+    env: { MAO_SOCIAL_ENABLED: enabled ? 'true' : 'false' }, now: nowFn });
   async function call(who, path, method = 'GET', body) {
     const request = new Request('https://mao.example' + path, {
       method,
@@ -91,7 +91,7 @@ function setup({ enabled = true } = {}) {
       return { status: error.status || 500, code: error.code, message: error.message };
     }
   }
-  return { db, exec, sessions, call, close: () => db.close() };
+  return { db, exec, sessions, service, call, close: () => db.close() };
 }
 
 async function invite(ctx, from, to, requestId) {
@@ -279,4 +279,43 @@ test('one-time friend codes, stable retry id and message flood protection', asyn
     assert.equal(legitimateReplay.body.replay,true);
     assert.equal(ctx.exec("SELECT COUNT(*) AS n FROM mao_social_messages")[0].n,60);
   } finally {ctx.close();}
+});
+
+
+test('late session expiration cannot write a message after an async body read', async () => {
+  let clock = now;
+  const ctx = setup({ nowFn: () => clock });
+  try {
+    const id = 'late_expiry_0001';
+    await invite(ctx, 'alice-session', 'bob-session', id);
+    await ctx.call('bob-session', '/api/social/friend-requests/' + id + '/accept', 'POST');
+    await ctx.call('founder-session', '/api/admin/social/friend-approvals/' + id + '/approve', 'POST');
+    const route = '/api/social/chats/' + bob + '/messages';
+    const message = new Request('https://mao.example' + route, {
+      method: 'POST',
+      headers: { 'x-test-session': 'alice-session', 'content-type': 'application/json' },
+      body: JSON.stringify({ clientMessageId: 'expiry_msg_0001', text: 'Must be rejected' })
+    });
+    const originalText = message.text.bind(message);
+    Object.defineProperty(message, 'text', { value: async () => {
+      const body = await originalText();
+      clock = now + 86400001;
+      return body;
+    } });
+    await assert.rejects(ctx.service.handle(message, route, 'POST'),
+      error => error.code === 'SOCIAL_SESSION_EXPIRED');
+    assert.equal(ctx.exec('SELECT COUNT(*) AS n FROM mao_social_messages')[0].n, 0);
+  } finally { ctx.close(); }
+});
+
+test('revoked MAO session cannot read even friend lists or pending applications', async () => {
+  const ctx = setup();
+  try {
+    await invite(ctx, 'alice-session', 'bob-session', 'revoked_read_0001');
+    ctx.exec('UPDATE mao_account_sessions SET revoked_at = ? WHERE id = ?', now, 'alice-session');
+    const inbox = await ctx.call('alice-session', '/api/social/friend-requests?direction=outgoing');
+    const friends = await ctx.call('alice-session', '/api/social/friends');
+    assert.equal(inbox.code, 'SOCIAL_SESSION_EXPIRED');
+    assert.equal(friends.code, 'SOCIAL_SESSION_EXPIRED');
+  } finally { ctx.close(); }
 });
