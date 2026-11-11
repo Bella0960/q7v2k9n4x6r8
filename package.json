@@ -34,7 +34,7 @@
     "test:forum:seed": "node --test tests/forum-seed-comments.test.mjs",
     "test:forum:mobile": "node tests/forum-media-mobile.mjs",
     "test:group:ui": "node --test tests/group-ui-collapse-invite.test.mjs",
-    "test:contact:groups": "node --test tests/contact-groups-visibility.test.mjs tests/contact-directory-lifecycle.test.mjs tests/contact-communication-policy.test.mjs tests/real-user-conversation-repository.test.mjs tests/real-user-chat-worker-gate.test.mjs tests/real-user-chat-d1-schema.test.mjs tests/real-user-d1-relationship-integration.test.mjs tests/real-user-d1-worker-integration.test.mjs tests/real-user-auth.test.mjs tests/real-user-friends.test.mjs tests/real-user-avatar.test.mjs tests/real-user-account-client.test.mjs && node tests/contact-groups-browser.mjs",
+    "test:contact:groups": "node --test tests/contact-groups-visibility.test.mjs tests/contact-directory-lifecycle.test.mjs tests/contact-communication-policy.test.mjs tests/real-user-conversation-repository.test.mjs tests/real-user-chat-worker-gate.test.mjs tests/real-user-chat-d1-schema.test.mjs tests/real-user-d1-relationship-integration.test.mjs tests/real-user-d1-worker-integration.test.mjs tests/real-user-auth.test.mjs tests/real-user-friends.test.mjs tests/real-user-avatar.test.mjs tests/real-user-account-client.test.mjs tests/real-user-friend-invite-links.test.mjs tests/real-user-friend-camera-scanner.test.mjs && node tests/contact-groups-browser.mjs",
     "test:real-user:client": "node --test tests/real-user-account-client.test.mjs",
     "test:group:invite-e2e": "node --test tests/group-chat-invite-e2e.test.mjs",
     "test:wechat:browser": "node tests/wechat-theme-browser.mjs",
