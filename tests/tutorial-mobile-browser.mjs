@@ -65,9 +65,16 @@ async function openGuide(page, id, expectedTitle) {
   assert.equal(await page.locator('#walkStepperContent').isVisible(), false);
   assert.equal(await page.locator('#walkNext').isVisible(), false);
   assert.ok((await page.locator('#walkArticle .walk-article-section').count()) >= 6);
+  assert.equal(await page.evaluate(() => document.body.style.overflow), 'hidden',
+    'article must lock background scrolling');
+  assert.equal(await page.locator('#walkClose').evaluate(el => el === document.activeElement), true,
+    'modal close control should receive initial focus');
   await page.locator('#walkClose').click();
   await page.locator('#walkthroughModal').waitFor({ state:'hidden' });
-  record(id + ' article navigation');
+  assert.equal(await page.evaluate(() => document.body.style.overflow), '',
+    'background scrolling must resume after closing');
+  assert.equal(await page.evaluate((id) => document.activeElement?.getAttribute('data-open-guide') === id), true, id);
+  record(id + ' article navigation, focus and scroll lock');
 }
 try {
   browser = await chromium.launch({ headless:true });
