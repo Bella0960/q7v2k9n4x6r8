@@ -808,9 +808,11 @@ test('friend QR rotation cannot expose a code that arrived after logout', async 
   });
   await app.client.restore();
   const pending = app.client.rotateFriendCode();
-  await Promise.resolve();
-  await Promise.resolve();
-  await Promise.resolve();
+  // The implementation awaits a session refresh plus JSON decoding before
+  // posting the code rotation. Allow those microtasks to settle deterministically.
+  for (let tick = 0; tick < 40 && !resolveRotation; tick++) {
+    await Promise.resolve();
+  }
   assert.equal(typeof resolveRotation, 'function');
   await app.client.logout();
   resolveRotation(jsonResponse({ ok: true, ownerAccountId: 'owner-current',
