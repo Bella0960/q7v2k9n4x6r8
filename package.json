@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 3000",
+    "prebuild": "node --test tests/account-password-kdf.test.mjs",
     "build": "vite build",
+    "test:accounts:kdf": "node --test tests/account-password-kdf.test.mjs",
     "preview": "vite preview --host 0.0.0.0 --port 3000",
     "lint": "node -e 'console.log(\"Lint passed\")'",
     "test:accounts:integration": "node --test tests/account-auth-contract.test.mjs tests/account-entry-runtime.test.mjs tests/account-bootstrap-runtime.test.mjs tests/account-storage-isolation.test.mjs tests/admin-center-ui.test.mjs tests/account-main-integration.test.mjs",
