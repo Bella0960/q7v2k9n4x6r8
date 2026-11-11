@@ -4602,7 +4602,8 @@ test('本机主动消息完成后会立即发送不含正文的角色聊天 Push
     serverMessageId,
     timestamp: now
   }), /outbound push target is invalid/);
-  assert.match(notification.body, /有一位角色刚刚联系你/);
+  assert.equal(notification.title, '角色');
+  assert.equal(notification.body, '刚刚发来一条消息，打开聊天查看。');
   assert.equal(notification.body.includes('我刚刚想到'), false,
     '锁屏通知不得暴露主动消息正文');
   assert.equal(notification.dedupeKey, 'outbound:' + serverMessageId);
