@@ -143,15 +143,22 @@ Acceptance:
 - No auto-delete feature.
 
 ### DATA-005 — Inventory all chat-history read/write callers
-**Priority:** P0 · **Status:** OPEN
+**Priority:** P0 · **Status:** FIXED (static source inventory completed 2026-11-11)
 
-Scope: chat detail/list/search, calls, date/journey, memory, moments, notifications, forum, wallet cards, chat extras, PhoneStorage, tests, backup/export.
+Evidence: `docs/chat-history-callers.md` records the main-branch readers, writers, deletions, role/group/date-mode scopes, legacy fallbacks, test-only callers, and known persistence-result handling gaps.
+
+Completed:
+- Identified production call sites across chat detail/list/search/settings, chat extras, date/journey, calls, notifier, wallet, forum, couple, role matching, memory, library, image generation, PhoneStorage, ConversationRepository, and backup/restore.
+- Recorded the current localStorage-backed `chat_history_<id>` behavior, PhoneStorage compatibility rules, shared online/date history, and distinct role/group ID domains.
+- Assigned a safe migration order and called out write paths that ignore save failures or bypass PhoneStorage.
 
 Acceptance:
-- Call-site matrix identifies file, operation, role/group ID, legacy fallback, and whether write is direct or through PhoneStorage.
-- Every caller assigned a migration step.
-- Cross-role/group isolation and date-mode shared history rules are recorded.
-- This is initially read-only inventory; do not switch storage backend in this task.
+- [x] Call-site matrix identifies file, operation, role/group ID, legacy fallback, and whether write is direct or through PhoneStorage.
+- [x] Every caller assigned a migration step.
+- [x] Cross-role/group isolation and date-mode shared history rules are recorded.
+- [x] This was a read-only inventory; no storage backend was switched.
+
+Remaining implementation is tracked by DATA-006/007/008 and QA-002. DATA-005 being fixed does not mean those runtime defects are fixed.
 
 ### DATA-006 — Design and implement IndexedDB conversation storage
 **Priority:** P0 · **Status:** BLOCKED BY DATA-001/002/005
