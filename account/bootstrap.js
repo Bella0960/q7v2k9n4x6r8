@@ -163,8 +163,10 @@
           connectionStatus.textContent = '服务器已创建管理员，请返回账号入口登录。';
         } else if (result.configured === false) {
           connectionStatus.textContent = '服务器安全密钥未配置完整，尚不能注册管理员。';
+        } else if (result.cryptoReady === true) {
+          connectionStatus.textContent = '连接与密码保护自检均已通过。未提交真实密码，也没有创建账号。';
         } else {
-          connectionStatus.textContent = '连接检查通过。服务器已接收测试请求，没有提交密码或创建账号。';
+          connectionStatus.textContent = '连接成功，但服务器尚未确认密码保护模块可用。先不要提交管理员资料。';
         }
       } catch (error) {
         connectionStatus.textContent = '连接检查失败（' +
@@ -205,6 +207,10 @@
       }
       if (probe.configured === false) {
         errorNode.textContent = '服务器安全配置尚未就绪，尚未提交管理员资料。';
+        return;
+      }
+      if (probe.cryptoReady !== true) {
+        errorNode.textContent = '服务器未确认密码保护模块可用，管理员资料尚未提交。请先点击连接检查。';
         return;
       }
       attemptedCreate = true;
