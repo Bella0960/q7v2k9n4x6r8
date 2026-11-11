@@ -416,7 +416,8 @@
     var data=existing?carryForward(existing,role,roleId,now):fallback(role,roleId,now);
     var appLayer=opts.appLayer,appBody=opts.appBody,appTitle=opts.appTitle;
     var grid=document.querySelector('.grid'),dock=document.querySelector('.dock'),back=document.getElementById('appBack');
-    var current='',view=null,selected=data.selected||[],permission=data.permission||null,waiting=false,alerted=false;
+    // 每次实际进入手机都重新询问，不沿用上次页面留下的许可。
+    var current='',view=null,selected=arr(data.selected),permission=null,waiting=false;
     var unlockedNotes=false,unlockedAlbum=false,pinView='',sessionStarted=Date.now(),switches=0,lockedAttempts=0,pendingChat=null;
     var affection=num(role.affection,num(role.favorability,num(role.intimacy,60)));
     var revealCount=affection>=70?3:affection>=35?1:0;
@@ -427,6 +428,20 @@
       if(!ok)notice='当前存储空间不足，改动无法持久保存。';
       return ok;
     }
+    // 只修复缺失/损坏的板块入口，不覆盖仍可读取的既有聊天和记录。
+    var mandatory={chat:'contacts',moments:'moments',browser:'searchHistory',notes:'notes',
+      wallet:'transactions',music:'recent',map:'stops',album:'photos',device:'apps',forum:'posts'};
+    var fallbackSections=null;
+    ITEMS.forEach(function(item){
+      if(!data.sections||!data.sections[item.id]||!Array.isArray(data.sections[item.id][mandatory[item.id]])){
+        if(!fallbackSections)fallbackSections=fallback(role,roleId,now).sections;
+        if(!data.sections||typeof data.sections!=='object')data.sections={};
+        data.sections[item.id]=fallbackSections[item.id];
+        if(!data.source||typeof data.source!=='object')data.source={};
+        delete data.source[item.id];
+      }
+    });
+    if(!data.source||typeof data.source!=='object')data.source={};
     function currentSource(){
       var source=data.source[current]==='ai'?'AI 剧情记录':'本地剧情样例 · 未调用 AI';
       return source+(data.carriedFrom?' · 含 '+data.carriedFrom+' 的历史记录':'');
