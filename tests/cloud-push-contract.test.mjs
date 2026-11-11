@@ -5020,6 +5020,20 @@ test('Worker scheduled maintenance 会持续扫描并重试待送达的聊天 Pu
   const dispatchIndex = maintenanceHandler.indexOf('dispatchPendingOutboundPushes');
   assert.ok(recoveryIndex >= 0 && dispatchIndex > recoveryIndex,
     '定时维护必须先恢复暂存收件箱，再发送对应 Push');
+  assert.match(
+    maintenanceHandler,
+    /dispatchPendingOutboundPushes\([\s\S]{0,220}now:\s*Date\.now/
+  );
+  const tickStart = workerSource.indexOf(
+    "if (url.pathname === '/internal/tick' && request.method === 'POST') {"
+  );
+  const tickEnd = workerSource.indexOf("return new Response('Not found'", tickStart);
+  assert.ok(tickStart >= 0 && tickEnd > tickStart, 'Worker 必须存在独立的 internal tick 处理分支');
+  const tickHandler = workerSource.slice(tickStart, tickEnd);
+  assert.match(
+    tickHandler,
+    /dispatchPendingOutboundPushes\([\s\S]{0,220}now:\s*Date\.now/
+  );
 });
 
 
