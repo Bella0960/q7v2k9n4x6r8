@@ -17,7 +17,7 @@ function createPhone() {
   const elements = [];
   const byId = new Map();
   const requests = [];
-  const state = { switched: false, failRead: false, posted: [], badAck: false, deferRead: false, readWaiters: [], chatReadReply: null, chatReads: 0, intervalFn: null, friendshipId: 'request_generation_0001', friendStillApproved: true };
+  const state = { switched: false, failRead: false, posted: [], badAck: false, deferRead: false, readWaiters: [], chatReadReply: null, chatReads: 0, intervalFn: null, friendshipId: 'request_generation_0001', friendStillApproved: true, chatDisabled: false };
   function element(tag, id = '') {
     const node = { tag, id, hidden: false, disabled: false, events: {},
       children: [], scrollHeight: 100, scrollTop: 0, style: {},
@@ -59,7 +59,10 @@ function createPhone() {
       payload = { ok: true, ownerAccountId: A,
         friends: state.friendStillApproved ? [{ id: B, displayName: 'Bob' }] : [] };
     } else if (url.startsWith('/api/social/chats/')) {
-      if (options.method === 'POST') {
+      if (state.chatDisabled) {
+        status = 503;
+        payload = { ok: false, error: { code: 'SOCIAL_CHAT_NOT_ENABLED', message: '真人私聊尚未完成端到端加密验收' } };
+      } else if (options.method === 'POST') {
         state.posted.push(body);
         const message = { id: 'server-message-' + state.posted.length,
           senderId: A, recipientId: B, text: body.text };
@@ -314,4 +317,19 @@ test('a server-authoritative friend removal immediately purges the open chat and
   assert.equal(phone.get('messages').children.length, 0, 'old private chat bubbles must be purged');
   assert.equal(phone.get('chatText').value, '', 'old draft must not outlive a revoked relationship');
   assert.equal(phone.state.intervalFn, null, 'revoked chat cannot keep polling in the background');
+});
+
+test('server-disabled non-E2EE chat never leaves an editable plaintext form visible', async () => {
+  const phone = createPhone();
+  await phone.settle();
+  phone.state.chatDisabled = true;
+  const button = phone.elements.find(node => node.textContent === '聊天' && node.events.click);
+  assert.ok(button, 'friend should have a chat entry');
+  await button.events.click();
+  await phone.settle();
+  assert.equal(phone.get('chatPanel').hidden, true, 'plaintext chat must close when server disables it');
+  assert.equal(phone.get('chatText').value, '');
+  assert.equal(phone.get('messages').children.length, 0);
+  assert.match(phone.get('status').textContent, /端到端加密验收/);
+  assert.equal(phone.state.posted.length, 0, 'no message may leave the browser while disabled');
 });
