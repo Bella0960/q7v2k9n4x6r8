@@ -339,6 +339,11 @@ export function createMaoSocial({ store, accountAuth, env = {}, now = () => Date
     }
     const messages = /^\/api\/social\/chats\/(MAO-[A-Z0-9]{12,24})\/messages$/.exec(path);
     if (messages && (method === 'GET' || method === 'POST')) {
+      // Isolated QA-only plaintext transport. Do not enable before key exchange,
+      // end-to-end encryption and cross-device recovery have passed acceptance.
+      if (env.MAO_SOCIAL_CHAT_ENABLED !== 'true') {
+        throw new ApiError(503, 'SOCIAL_CHAT_NOT_ENABLED', '真人私聊尚未完成端到端加密验收');
+      }
       return chat(request, actor, messages[1], method);
     }
     throw new ApiError(404, 'SOCIAL_ROUTE_NOT_FOUND', '真人好友接口不存在');
