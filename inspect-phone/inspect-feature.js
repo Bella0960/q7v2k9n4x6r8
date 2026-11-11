@@ -419,6 +419,40 @@
     });
     return false;
   }
+  function keepPlayerChatTurns(oldSection,nextSection) {
+    if(!oldSection||!Array.isArray(oldSection.contacts)||!Array.isArray(nextSection.contacts))return nextSection;
+    var next=Object.assign({},nextSection,{contacts:nextSection.contacts.map(function(c){
+      return Object.assign({},c,{messages:arr(c.messages).slice()});
+    })});
+    var preservedKinds={player_as_role:true,generated_contact_reply:true};
+    oldSection.contacts.forEach(function(oldContact){
+      var preserved=arr(oldContact.messages).filter(function(m){return m&&preservedKinds[m.origin]===true;});
+      if(!preserved.length)return;
+      var target=next.contacts.find(function(c){
+        return (oldContact.id&&c.id&&String(oldContact.id)===String(c.id))||
+          (c.name&&oldContact.name&&c.name===oldContact.name);
+      });
+      if(!target){
+        if(next.contacts.length>=8)throw new Error('新生成的联系人和已有互动无法对应，旧聊天已保留。');
+        target=Object.assign({},oldContact,{messages:arr(oldContact.messages).slice()});
+        next.contacts.push(target);
+        return;
+      }
+      var fingerprints={};
+      target.messages.forEach(function(m){
+        fingerprints[String(m.time)+'|'+String(m.side)+'|'+String(m.text)]=true;
+      });
+      preserved.forEach(function(m){
+        var key=String(m.time)+'|'+String(m.side)+'|'+String(m.text);
+        if(!fingerprints[key])target.messages.push(m);
+        fingerprints[key]=true;
+      });
+      target.messages.sort(function(a,b){return num(a.time,0)-num(b.time,0);});
+      target.messages=target.messages.slice(-60);
+      target.lastTime=Math.max(num(target.lastTime,0),num(target.messages[target.messages.length-1].time,0));
+    });
+    return next;
+  }
   function mount(opts) {
     var role=opts.role, roleId=String(role.id!==undefined&&role.id!==null?role.id:opts.requestedId||'0');
     var now=new Date(),existing=read(roleId,now);
@@ -592,7 +626,10 @@
         if(roleId!==requestRoleId)return;
         if(localDay(new Date())!==localDay(new Date(requestNow)))throw new Error('已跨入新的一天，请重新打开本板块刷新。');
         var oldSection=data.sections[id],oldSource=data.source[id],oldUpdated=data.updatedAt;
-        data.sections[id]=result.data;data.source[id]='ai';data.updatedAt=Date.now();
+        if(JSON.stringify(result.data)===JSON.stringify(oldSection))
+          throw new Error('新内容与旧记录完全相同，已保留原内容。');
+        var nextSection=id==='chat'?keepPlayerChatTurns(oldSection,result.data):result.data;
+        data.sections[id]=nextSection;data.source[id]='ai';data.updatedAt=Date.now();
         if(!save(data)){
           data.sections[id]=oldSection;data.source[id]=oldSource;data.updatedAt=oldUpdated;
           throw new Error('手机存储空间不足，原有记录没有被覆盖。');
@@ -604,7 +641,7 @@
     function sendAsRole(input) {
       if(pendingChat||current!=='chat'||!view||view.kind!=='chat')return;
       var text=clean(input,200),idx=view.index,contact=data.sections.chat.contacts[idx];if(!text||!contact)return;
-      var message={side:'me',text:text,time:Date.now(),status:'sent'};
+      var message={side:'me',text:text,time:Date.now(),status:'sent',origin:'player_as_role'};
       var oldMessages=contact.messages.slice(),oldLastTime=contact.lastTime;
       contact.messages=oldMessages.concat([message]).slice(-60);
       contact.lastTime=message.time;
@@ -623,7 +660,7 @@
       api.complete({system:'你正在模拟虚构的手机联系人。只输出联系人回复。',user:promptText,timeoutMs:30000}).then(function(reply){
         if(!clean(reply,240))throw new Error('回复为空');
         var oldReplyMessages=contact.messages.slice(),oldReplyTime=contact.lastTime;
-        contact.messages=oldReplyMessages.concat([{side:'ai',text:clean(reply,240),time:Date.now(),status:'sent'}]).slice(-60);
+        contact.messages=oldReplyMessages.concat([{side:'ai',text:clean(reply,240),time:Date.now(),status:'sent',origin:'generated_contact_reply'}]).slice(-60);
         contact.lastTime=Date.now();
         if(!commit()){
           contact.messages=oldReplyMessages;contact.lastTime=oldReplyTime;
