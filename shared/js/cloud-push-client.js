@@ -1740,11 +1740,15 @@
           if (readinessResult) readinessResult.textContent = lines.join('\n');
           setStatusText(ready.autonomousContactAndPushReady
             ? '主动联系与当前设备推送均已通过近期验收'
-            : ready.autonomousMessageGenerationReady && ready.testPushReady
-              ? '云端主动生成已就绪；当前设备推送仍未通过近期回执验收'
-              : ready.testPushReady
-                ? '当前设备推送可进行测试；云端主动生成仍有配置或运行验收项目未完成'
-                : '云端仍有配置未完成');
+            : ready.autonomousMessageGenerationReady && ready.pushDeliveryReady
+              ? '云端主动生成与当前设备推送已通过独立验收'
+              : ready.autonomousMessageGenerationReady && ready.testPushReady
+                ? '云端主动生成已就绪；推送通道可测试，但近期接受回执尚未通过'
+                : ready.autonomousMessageGenerationReady
+                  ? '云端主动生成已就绪；当前设备推送仍有配置或验收项目未完成'
+                  : ready.testPushReady
+                    ? '当前设备推送可进行测试；云端主动生成仍有配置或运行验收项目未完成'
+                    : '云端仍有配置未完成');
         } catch (error) {
           if (readinessResult) readinessResult.textContent = '检查失败：' + (error.message || '未知错误');
           setStatusText('读取云端准备情况失败');
