@@ -116,3 +116,57 @@ test('missing Preview secrets never exposes founder registration form until conf
   assert.equal(page.nodes.bootstrapSetupHelp.hidden, true);
   assert.equal(page.nodes.retryBootstrapCheck.hidden, true);
 });
+
+test('network failure after submit checks founder state without repeating POST', async () => {
+  let statusReads = 0;
+  const page = mount(async (path) => {
+    if (path.endsWith('/status')) {
+      statusReads += 1;
+      return result({ ok: true, initialized: false, configured: true });
+    }
+    throw new TypeError('Failed to fetch');
+  });
+  await page.settle();
+  await page.submit();
+  assert.equal(page.calls.filter(call => call.options.method === 'POST').length, 1);
+  assert.equal(statusReads, 3, 'initial readiness, pre-submit, post-error read-only status');
+  assert.deepEqual(page.redirects, []);
+  assert.match(page.nodes.bootstrapError.textContent, /没有获得成功回执/);
+  assert.match(page.nodes.bootstrapError.textContent, /NETWORK_ERROR/);
+  assert.equal(page.nodes.bootstrapSubmit.disabled, false);
+});
+
+test('ambiguous POST followed by confirmed founder creation shows login instead of retry', async () => {
+  let initialized = false;
+  const page = mount(async path => {
+    if (path.endsWith('/status')) return result({ ok: true, initialized, configured: true });
+    initialized = true;
+    throw new TypeError('connection reset after commit');
+  });
+  await page.settle();
+  await page.submit();
+  assert.equal(page.nodes.bootstrapComplete.hidden, false);
+  assert.equal(page.nodes.bootstrapForm.hidden, true);
+  assert.equal(page.calls.filter(call => call.options.method === 'POST').length, 1);
+});
+
+test('status lookup failure after ambiguous submit warns instead of automatically retrying', async () => {
+  let postFailed = false;
+  const page = mount(async path => {
+    if (path.endsWith('/status')) {
+      if (postFailed) throw new TypeError('offline');
+      return result({ ok: true, initialized: false, configured: true });
+    }
+    postFailed = true;
+    throw new TypeError('Failed to fetch');
+  });
+  await page.settle();
+  await page.submit();
+  assert.match(page.nodes.bootstrapError.textContent, /暂时无法确认结果/);
+  assert.equal(page.calls.filter(call => call.options.method === 'POST').length, 1);
+});
+
+test('bootstrap POST receives longer timeout than status checks and never auto-reposts', () => {
+  assert.match(source, /method === 'POST' \? 60000 : 15000/);
+  assert.match(source, /NEVER automatically repeat the POST/);
+});
