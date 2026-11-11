@@ -466,11 +466,14 @@ async function refreshFeed(){
    if(!item||!item.title||!item.body)return;
    const title=String(item.title).trim().slice(0,90),body=String(item.body).trim().slice(0,700);
    if(!title||!body||existingTitles.has(title))return;
+   const eventStory=eventPlan?ForumWorldEvents.fromOpening(item,eventPlan,theme):undefined;
+   if(eventPlan&&(title.length<7||body.length<90||!eventStory||
+     eventStory.facts.length<2||new Set(eventStory.facts).size<2))return;
    const author=forumResident(item.residentId,i);
    if(gossipMode&&ForumGossip.isRepeat(body,posts.filter(p=>p.gossipStory).slice(0,30).map(p=>p.body).concat(fresh.map(p=>p.body))))return;
    if(eventMode&&ForumWorldEvents.duplicated(body,posts.filter(p=>p.worldEvent&&p.worldEvent.themeId===theme.id).slice(0,30).map(p=>p.body).concat(fresh.map(p=>p.body))))return;
    const comments=(Array.isArray(item.comments)?item.comments:[]).slice(0,3).map((c,j)=>forumMakeAIComment(c,j)).filter(Boolean);
-   fresh.push({id:'forum_ai_'+now.toString(36)+'_'+i,name:author.name,avatar:'#333333',residentId:author.id,role:'社区成员',tag:'resident',owner:'community',topic:eventPlan&&topics.includes(eventPlan.topic)?eventPlan.topic:(topics.includes(item.topic)?item.topic:topics[i%topics.length]),time:now-i*5*60000,created:now-i*5*60000,title:title,body:body,likes:Math.max(0,Math.min(30,Number(item.likes)||0)),comments:comments,liked:false,generatedBy:'community-ai',themeId:theme.id,gossipStory:gossipMode?ForumGossip.storyFromOpening(item,gossipPlan,i):undefined,worldEvent:eventPlan?ForumWorldEvents.fromOpening(item,eventPlan,theme):undefined,aiCommentBatch:comments.length?'v1':''});
+   fresh.push({id:'forum_ai_'+now.toString(36)+'_'+i,name:author.name,avatar:'#333333',residentId:author.id,role:'社区成员',tag:'resident',owner:'community',topic:eventPlan&&topics.includes(eventPlan.topic)?eventPlan.topic:(topics.includes(item.topic)?item.topic:topics[i%topics.length]),time:now-i*5*60000,created:now-i*5*60000,title:title,body:body,likes:Math.max(0,Math.min(30,Number(item.likes)||0)),comments:comments,liked:false,generatedBy:'community-ai',themeId:theme.id,gossipStory:gossipMode?ForumGossip.storyFromOpening(item,gossipPlan,i):undefined,worldEvent:eventStory,aiCommentBatch:comments.length?'v1':''});
    existingTitles.add(title);
    if(gossipMode)usedGossipPlans.add(gossipPlan.id);
    if(eventPlan)usedEventPlans.add(eventPlan.id);
