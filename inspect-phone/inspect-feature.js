@@ -75,7 +75,15 @@
   function fallback(role,roleId,now) {
     var p=profile(role),name=clean(role.name,30)||'角色';
     var low=p.level==='student',high=p.level==='high',meal=low?19:high?228:38,shop=low?85:high?780:189;
-    var factTimes=[at(now,0,8,35),at(now,0,12,20),at(now,0,16,10),at(now,0,19,35)];
+    var dayMinutes=now.getHours()*60+now.getMinutes();
+    var stamps;
+    if(dayMinutes<540)stamps=[515,740,970,1175].map(function(m){return m-1440;});
+    else if(dayMinutes<780)stamps=[420,460,500,dayMinutes-5];
+    else if(dayMinutes<1020)stamps=[515,620,740,dayMinutes-10];
+    else if(dayMinutes<1200)stamps=[515,700,860,dayMinutes-15];
+    else stamps=[515,740,970,1175];
+    var midnight=new Date(now);midnight.setHours(0,0,0,0);
+    var factTimes=stamps.map(function(m){return midnight.getTime()+m*60000;});
     var facts=[
       {id:'e1',time:factTimes[0],place:'住处',event:'临出门前想起一件没说完的事',amount:0},
       {id:'e2',time:factTimes[1],place:p.place+'附近的小店',event:'吃午饭，顺手拍了一张照片',amount:-meal},
@@ -175,8 +183,8 @@
     var salary=low?1200:high?23000:6800;
     var transactions=[
       {merchant:low?'生活费转入':'月度收入',amount:salary,type:'收入',time:at(now,5,9,0),memo:'固定来源'},
-      {merchant:p.place+'附近的小店',amount:-meal,type:'餐饮',time:at(now,0,12,21),memo:'午饭'},
-      {merchant:'街角文具店',amount:-shop,type:'购物',time:at(now,0,16,11),memo:'挑了很久才买'},
+      {merchant:p.place+'附近的小店',amount:-meal,type:'餐饮',time:factTimes[1]+60000,memo:'午饭'},
+      {merchant:'街角文具店',amount:-shop,type:'购物',time:factTimes[2]+60000,memo:'挑了很久才买'},
       {merchant:'便利店',amount:-(low?12:26),type:'餐饮',time:at(now,1,20,10),memo:'晚间补给'},
       {merchant:'线上音乐',amount:-15,type:'订阅',time:at(now,2,10,5),memo:'月度订阅'},
       {merchant:'周末电影',amount:-(low?25:48),type:'娱乐',time:at(now,3,16,4),memo:'散心'},
@@ -194,11 +202,11 @@
     var mapStops=facts.map(function(f,i){return {place:f.place,arrival:f.time,durationMinutes:[35,42,25,120][i],thought:['今天要不要先发那条消息？','坐这儿刚好能安静一会儿。','想买，又觉得会不会太刻意。','那条消息还是先别发吧。'][i]};});
     var photos=[
       {description:'镜子里匆匆整理衣领的自拍',type:'自拍',time:at(now,0,8,21)},
-      {description:p.place+'附近午饭的餐盘，桌上有折好的收据',type:'食物',time:at(now,0,12,20)},
+      {description:p.place+'附近午饭的餐盘，桌上有折好的收据',type:'食物',time:factTimes[1]},
       {description:'回家路上透过玻璃拍的街灯',type:'风景',time:at(now,0,19,22)},
       {description:'一张未发送的聊天草稿截图，昵称和内容部分被遮住',type:'截图',time:at(now,1,21,13)},
       {description:'好友散步时的背影，人物是虚构故事中的阿诺',type:'生活记录',time:at(now,3,17,19)},
-      {description:'文具店橱窗里一件准备送给特别联系人的小物件',type:'线索',time:at(now,0,16,8)}
+      {description:'文具店橱窗里一件准备送给特别联系人的小物件',type:'线索',time:factTimes[2]-120000}
     ];
     var hidden=[
       {description:'文具店的小礼物和写到一半的卡片',time:at(now,0,16,12)},
@@ -213,7 +221,7 @@
         music:{recent:recent,playlists:[{name:'深夜还醒着',tracks:['晚风来信','最后一班车','不着急']},{name:'路上听',tracks:['二十分钟的路','清晨开窗']},{name:'舍不得删',tracks:['落在书页里','晚风来信']}],top:[{title:'晚风来信',plays:37},{title:'落在书页里',plays:24},{title:'二十分钟的路',plays:18}]},
         map:{stops:mapStops,steps:5487,distanceKm:4.2,outHours:5,frequentPlace:'住处'},
         album:{photos:photos,hidden:hidden,total:456,newSevenDays:17},
-        device:{screenMinutes:233,nightMinutes:48,apps:apps,battery:76,wifi:'StoryHome-5G',model:'虚构型号 · Mobile X',storageUsedGb:54,storageTotalGb:128,pickups:61,focusMinutes:84,relaxMinutes:62,location:'住处'},
+        device:{screenMinutes:233,nightMinutes:48,apps:apps,battery:76,wifi:'StoryHome-5G',model:'虚构型号 · Mobile X',storageUsedGb:54,storageTotalGb:128,pickups:61,focusMinutes:84,relaxMinutes:62,location:facts[facts.length-1].place},
         forum:{posts:[{title:'今天终于买到了那本书',text:'在街角书店犹豫很久，最后还是拿走了。回去再慢慢读。',time:at(now,2,16,5),comments:[{name:'阿蓝',text:'求后续读后感'}]},{title:'午饭有什么不踩雷的选择',text:'最近总在熟悉的地方来回转，想换点新的。',time:at(now,1,12,1),comments:[{name:'小乙',text:'看看街角那家'}]},{title:'周末打算出去走走',text:'不想排满时间，就随便走走看看。',time:at(now,3,19,10),comments:[{name:'南风',text:'这样最好'}]}]}
       }};
   }
@@ -348,7 +356,7 @@
           block('锁定备忘录',unlockedNotes?arr(section.locked).map(function(x){return line(x.title,x.text+' · '+dateTime(x.updatedAt));}).join(''):
           '<p class="inspect-muted">需要剧情密码，只有角色允许后才能查看。</p>'+button('输入密码','notesPin'));
       } else if(current==='wallet'){
-        var tx=arr(section.transactions),spent=tx.filter(function(x){return num(x.amount,0)<0;}).reduce(function(s,x){return s-Math.abs(num(x.amount,0));},0);
+        var tx=arr(section.transactions),spent=tx.filter(function(x){return num(x.amount,0)<0;}).reduce(function(s,x){return s+Math.abs(num(x.amount,0));},0);
         body='<div class="inspect-summary"><small>剧情余额</small><strong>'+money(num(section.balance,0))+'</strong><small>近期开支 '+money(spent)+'</small></div>'+
           block('收支明细',tx.map(function(x){return '<div class="inspect-transaction"><span><b>'+html(x.merchant)+'</b><small>'+html(x.type)+' · '+html(dateTime(x.time))+(x.memo?' · '+html(x.memo):'')+'</small></span><strong>'+money(x.amount)+'</strong></div>';}).join(''));
       } else if(current==='music'){
