@@ -2879,6 +2879,11 @@
             // Verify behavior-bearing metadata too, not only visible text:
             // payment status, role-card references, call outcomes and group poll/chain state
             // must not report success when only the text portion round-trips.
+            var mediaSignature = function (value) {
+                if (typeof value !== 'string' || !value) return '';
+                // Keep readback checks cheap for data URLs and other large attachments.
+                return value.length + ':' + value.slice(0, 48) + ':' + value.slice(-32);
+            };
             var metadata = [
                 msg.type || '',
                 msg.status || '',
@@ -2889,7 +2894,21 @@
                 msg.sendFailedReason || '',
                 msg.returnRequestedAt == null ? '' : String(msg.returnRequestedAt),
                 msg.returnedAt == null ? '' : String(msg.returnedAt),
+                msg.acceptedAt == null ? '' : String(msg.acceptedAt),
                 msg.editedAt == null ? '' : String(msg.editedAt),
+                msg.assetId || '',
+                msg.imageRecordId || '',
+                msg.desc || '',
+                msg.isPrivate ? '1' : '0',
+                msg.img ? mediaSignature(msg.img) : '',
+                msg.audio ? mediaSignature(msg.audio) : '',
+                msg.location && typeof msg.location === 'object' ? JSON.stringify(msg.location) : '',
+                msg.gift && typeof msg.gift === 'object' ? JSON.stringify(msg.gift) : '',
+                msg.fromGroupId || '',
+                msg.privateRoleId || '',
+                msg.privateFromGroup ? '1' : '0',
+                msg.senderId || '',
+                msg.memberId || '',
                 msg.poll && typeof msg.poll === 'object' ? JSON.stringify(msg.poll) : '',
                 msg.chain && typeof msg.chain === 'object' ? JSON.stringify(msg.chain) : '',
                 msg.call && typeof msg.call === 'object' ? JSON.stringify(msg.call) : ''
