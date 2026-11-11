@@ -211,6 +211,8 @@
       friends_temporarily_unavailable: '好友列表暂时无法读取。',
       blocked_accounts_temporarily_unavailable: '暂时无法读取已屏蔽的用户。',
       friend_code_temporarily_unavailable: '暂时无法生成好友码。',
+      invalid_friend_code_expiry: '好友码有效期未通过校验，请重新生成。',
+      invalid_friend_code_response: '服务器返回的好友码无效，请重新生成。',
       request_not_pending: '这条申请已经处理过，请刷新列表。'
     };
     return messages[code] || (code ? '操作未完成：' + code : '操作未完成，请稍后重试。');
@@ -491,12 +493,28 @@
 
   function renderCode(payload) {
     clearCodeExpiryTimer();
-    var code = String(payload && payload.code || '').trim().toLowerCase();
-    if (!/^[a-f0-9]{64}$/.test(code)) throw new Error('invalid_friend_code_response');
+    currentCode = null;
+    el('ruCodeArea').hidden = true;
+    var account = client.getState().account;
+    if (!account || !payload || payload.ownerAccountId !== account.id) {
+      var mismatch = new Error('friend_data_account_mismatch');
+      mismatch.code = 'friend_data_account_mismatch';
+      throw mismatch;
+    }
+    var code = String(payload.code || '').trim().toLowerCase();
+    if (!/^[a-f0-9]{64}$/.test(code)) {
+      var invalidCode = new Error('invalid_friend_code_response');
+      invalidCode.code = 'invalid_friend_code_response';
+      throw invalidCode;
+    }
     var expiresAt = Number(payload.expiresAt);
     if (!Number.isFinite(expiresAt)) expiresAt = Date.parse(payload.expiresAt);
-    if (!Number.isFinite(expiresAt)) expiresAt = Date.now() + 15 * 60 * 1000;
-    currentCode = { code: code, expiresAt: expiresAt };
+    if (!Number.isSafeInteger(expiresAt) || expiresAt <= Date.now()) {
+      var invalidExpiry = new Error('invalid_friend_code_expiry');
+      invalidExpiry.code = 'invalid_friend_code_expiry';
+      throw invalidExpiry;
+    }
+    currentCode = { code: code, expiresAt: expiresAt, ownerAccountId: account.id };
     el('ruCodeArea').hidden = false;
     el('ruFriendCode').textContent = code;
     var qrContainer = el('ruQrCode');
@@ -529,9 +547,15 @@
     if (!el('ruFriendCodeInput').value) el('ruFriendCodeInput').value = pendingInviteCode;
     return true;
   }
+  function activeCurrentCode() {
+    var account = client.getState().account;
+    return currentCode && currentCode.expiresAt > Date.now() && account &&
+      account.id === currentCode.ownerAccountId ? currentCode : null;
+  }
   function buildCurrentShareUrl() {
-    if (!currentCode || !inviteLinks) return '';
-    return inviteLinks.createShareUrl(root.location, currentCode.code);
+    var validCode = activeCurrentCode();
+    if (!validCode || !inviteLinks) return '';
+    return inviteLinks.createShareUrl(root.location, validCode.code);
   }
   function clearCodeExpiryTimer() {
     if (codeExpiryTimer) root.clearInterval(codeExpiryTimer);
@@ -540,7 +564,7 @@
   function updateCodeExpiry() {
     if (!currentCode) return;
     var remaining = currentCode.expiresAt - Date.now();
-    var expired = remaining <= 0;
+    var expired = !activeCurrentCode();
     ['ruCopyCode', 'ruCopyPayload', 'ruShareCode'].forEach(function (id) { el(id).disabled = expired; });
     if (expired) {
       el('ruCodeExpiry').textContent = '邀请已过期，请重新生成。';
@@ -754,7 +778,7 @@
   }
 
   el('ruCopyCode').addEventListener('click', async function () {
-    try { await copyValue(currentCode && currentCode.code); setStatus('好友码已复制。'); }
+    try { await copyValue(activeCurrentCode() && activeCurrentCode().code); setStatus('好友码已复制。'); }
     catch (error) { setStatus('复制失败，请长按好友码手动复制。', 'error'); }
   });
   el('ruCopyPayload').addEventListener('click', async function () {
@@ -849,6 +873,7 @@
     var code = extractCode(el('ruFriendCodeInput').value);
     if (!code) { setStatus(explainError({ code: 'invalid_friend_code' }), 'error'); return; }
     var button = event.currentTarget.querySelector('button[type="submit"]');
+    if (!button || button.disabled) return;
     setBusy(button, true, '发送中…');
     try {
       await client.sendFriendRequest(code, el('ruFriendNote').value);
