@@ -31,7 +31,14 @@ function mount(fetchImpl = async () => response({ ok: true, account: pending }),
     };
   }
   const nodes = new Map([...html.matchAll(/\bid="([^"]+)"/g)].map(m => [m[1], node(m[1])]));
-  const nav = [...html.matchAll(/data-show="([^"]+)"/g)].map(m => Object.assign(node('nav'), { dataset: { show: m[1] } }));
+  // Reuse the same element for id lookup and click handling. Header back's
+  // data-show is updated dynamically as the user moves between account steps.
+  const nav = [...html.matchAll(/<button\b[^>]*\bdata-show="([^"]+)"[^>]*>/g)].map(m => {
+    const id = /\bid="([^"]+)"/.exec(m[0])?.[1];
+    const element = id ? nodes.get(id) : node('nav');
+    element.dataset.show = m[1];
+    return element;
+  });
   for (const [id, fields] of Object.entries({ registerForm: ['username', 'password', 'confirmPassword', 'qqEmail'], loginForm: ['identifier', 'password'], inviteForm: ['inviteCode'] })) {
     const form = nodes.get(id);
     form.fields = Object.fromEntries(fields.map(name => [name, node(name)]));
@@ -241,4 +248,40 @@ test('admin sign-in entry opens login after confirmed unauthenticated session', 
   const page = mount(async () => response({ ok: false, error: { code: 'UNAUTHORIZED' } }, 401), '?admin=1');
   await flush();
   assert.equal(page.view(), 'login');
+});
+
+test('welcome has no redundant footer, and every account step has one header back button', async () => {
+  const css = fs.readFileSync(new URL('../account/ivory-entry.css', import.meta.url), 'utf8');
+  const welcomePanel = html.slice(html.indexOf('id="welcomePanel"'), html.indexOf('id="registerPanel"'));
+  const titlebar = html.slice(html.indexOf('<header class="titlebar"'), html.indexOf('</header>') + '</header>'.length);
+  assert.doesNotMatch(welcomePanel, /同一入口|独立账号/);
+  assert.doesNotMatch(html, /<footer class="page-footer">/);
+  assert.match(titlebar, /id="ivoryNavBack"/);
+  assert.equal((html.match(/id="ivoryNavBack"/g) || []).length, 1);
+  assert.doesNotMatch(html, /class="back-button"/);
+  assert.match(css, /\.ivory-entry \.titlebar \.ivory-nav-back\s*\{/);
+  assert.match(css, /min-height:44px/);
+  assert.doesNotMatch(css, /\.ivory-entry \.panel \.back-button/);
+});
+
+test('header back navigates signup/login to welcome, and invitation back to login', async () => {
+  const page = mount();
+  await flush();
+  const back = page.nodes.get('ivoryNavBack');
+  assert.equal(page.view(), 'invite');
+  assert.equal(back.hidden, false);
+  assert.equal(back.dataset.show, 'loginPanel');
+  back.listeners.click();
+  assert.equal(page.view(), 'login');
+  assert.equal(back.dataset.show, 'welcomePanel');
+  back.listeners.click();
+  assert.equal(page.view(), 'welcome');
+  assert.equal(back.hidden, true);
+  page.navigate('registerPanel');
+  assert.equal(page.view(), 'signup');
+  assert.equal(back.hidden, false);
+  assert.equal(back.dataset.show, 'welcomePanel');
+  back.listeners.click();
+  assert.equal(page.view(), 'welcome');
+  assert.equal(back.hidden, true);
 });
