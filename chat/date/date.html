@@ -2836,9 +2836,35 @@ body {
         } catch (e) {}
         return [];
     }
-    function saveHistory(list) {
-        if (_storage) { _storage.saveChatHistory(roleId, list); return; }
-        try { localStorage.setItem(HISTORY_KEY, JSON.stringify(list)); } catch (e) {}
+    // 保存前写入完整候选历史；写入失败或读回不一致时恢复调用前的数组，禁止界面继续把未持久化操作当成成功。
+    function saveHistory(list, rollback) {
+        try {
+            if (!Array.isArray(list)) throw new Error('聊天记录格式无效');
+            var payload = JSON.stringify(list);
+            var wrote = false;
+            var verified;
+            if (_storage && typeof _storage.saveChatHistory === 'function') {
+                wrote = _storage.saveChatHistory(roleId, list) === true;
+                if (!wrote) throw new Error('PhoneStorage 写入失败');
+                if (typeof _storage.getChatHistory !== 'function') throw new Error('缺少聊天记录读回接口');
+                verified = _storage.getChatHistory(roleId);
+            } else {
+                localStorage.setItem(HISTORY_KEY, payload);
+                wrote = true;
+                verified = JSON.parse(localStorage.getItem(HISTORY_KEY) || 'null');
+            }
+            if (!wrote || !Array.isArray(verified) || JSON.stringify(verified) !== payload) {
+                throw new Error('聊天记录写入后校验失败');
+            }
+            return true;
+        } catch (error) {
+            if (Array.isArray(rollback)) {
+                list.splice.apply(list, [0, list.length].concat(rollback));
+            }
+            console.error('[Date] chat history persistence failed:', error);
+            toast('聊天记录保存失败，本次操作没有完成，请检查存储空间后重试');
+            return false;
+        }
     }
 
     /* ---------- 本地内容生成（预览用，不依赖 API） ----------
@@ -2890,12 +2916,13 @@ body {
             var curVer = '';
             try { curVer = localStorage.getItem(PREVIEW_KEY) || ''; } catch (e) {}
             if (curVer === PREVIEW_VER && history.length === 3) return;
+            var previousHistory = history.slice();
             history.length = 0;
             var tp = Date.now();
             history.push({ role: 'assistant', text: buildLocalOpening(), time: tp, mode: 'date', scene: sceneName || undefined });
             history.push({ role: 'user', text: buildLocalUserDemo(), time: tp + 1, mode: 'date', scene: sceneName || undefined });
             history.push({ role: 'assistant', text: buildLocalReply(), time: tp + 2, mode: 'date', scene: sceneName || undefined });
-            saveHistory(history);
+            if (!saveHistory(history, previousHistory)) return;
             try { localStorage.setItem(PREVIEW_KEY, PREVIEW_VER); } catch (e) {}
             return;
         }
@@ -2906,6 +2933,7 @@ body {
                 return m && m.mode === 'date' && String(m.arrivalJourneyId || '') === String(arrivalKey);
             });
             if (!alreadyRecordedArrival) {
+                var previousHistory = history.slice();
                 history.push({
                     role: 'user',
                     text: '我终于抵达「' + (sceneName || '约定地点') + '」，抬头在人群中寻找' + charName + '。请从见面这一刻开始，自然地写出你的第一反应与动作。',
@@ -2915,17 +2943,18 @@ body {
                     arrivalStart: true,
                     arrivalJourneyId: arrivalKey
                 });
-                saveHistory(history);
+                if (!saveHistory(history, previousHistory)) return;
             }
             return;
         }
 
-        // 真实使用：只在还没有任何赴约剧情时补一条角色开场白。
+        // 真实使用：只在还没有任何赴约剧情时补一条角色开场白.
         // 线上聊天与路上消息保留在同一历史中，但不属于小说正文。
         var hasDateMsg = history.some(function (m) { return m && m.mode === 'date'; });
         if (hasDateMsg) return;
+        var previousHistory = history.slice();
         history.push({ role: 'assistant', text: buildLocalOpening(), time: Date.now(), mode: 'date', scene: sceneName || undefined });
-        saveHistory(history);
+        saveHistory(history, previousHistory);
     }
     // 本地模拟流式：逐字上屏，最终落库并渲染为气泡
     function localReplySim() {
@@ -2941,8 +2970,14 @@ body {
             if (i >= text.length) {
                 clearInterval(timer);
                 removeStreaming();
+                var previousHistory = history.slice();
                 history.push({ role: 'assistant', text: text, time: Date.now(), mode: 'date', scene: sceneName || undefined });
-                saveHistory(history);
+                if (!saveHistory(history, previousHistory)) {
+                    appendSys('角色回复已生成，但聊天记录未能保存；请检查存储空间后重试。');
+                    setSending(false);
+                    scrollBottom();
+                    return;
+                }
                 appendAiParagraphs(text, history.length - 1);
                 setSending(false);
                 scrollBottom();
@@ -3251,8 +3286,15 @@ body {
                 if (fullText) {
                     appendSys('连接中断，以上为已写出的内容');
                     var aiPartial = { role: 'assistant', text: fullText, time: Date.now(), mode: 'date', scene: sceneName || undefined };
+                    var previousHistory = history.slice();
                     history.push(aiPartial);
-                    saveHistory(history);
+                    if (!saveHistory(history, previousHistory)) {
+                        if (streamingP) removeStreaming();
+                        appendSys('已生成部分回复，但聊天记录未能保存；请复制需要保留的内容后重试。');
+                        setSending(false);
+                        scrollBottom();
+                        return;
+                    }
                     if (streamingP) removeStreaming();
                     appendAiParagraphs(fullText, history.length - 1);
                 }
@@ -3278,8 +3320,14 @@ body {
 
             if (streamingP) removeStreaming();
             var aiMsg = { role: 'assistant', text: fullText, time: Date.now(), mode: 'date', scene: sceneName || undefined };
+            var previousHistory = history.slice();
             history.push(aiMsg);
-            saveHistory(history);
+            if (!saveHistory(history, previousHistory)) {
+                appendSys('角色回复已生成，但聊天记录未能保存；请检查存储空间后重试。');
+                setSending(false);
+                scrollBottom();
+                return;
+            }
             appendAiParagraphs(fullText, history.length - 1);
             setSending(false);
             scrollBottom();
@@ -3525,8 +3573,12 @@ body {
         setSending(true);
 
         var userMsg = { role: 'user', text: text, time: Date.now(), mode: 'date', scene: sceneName || undefined };
+        var previousHistory = history.slice();
         history.push(userMsg);
-        saveHistory(history);
+        if (!saveHistory(history, previousHistory)) {
+            setSending(false);
+            return;
+        }
         appendMessage(userMsg, history.length - 1);
         input.value = '';
         input.style.height = 'auto';
@@ -3549,8 +3601,13 @@ body {
             toast('没有可以重写的回复');
             return;
         }
+        var previousHistory = history.slice();
         history.pop();
-        saveHistory(history);
+        if (!saveHistory(history, previousHistory)) {
+            renderAll();
+            scrollBottom();
+            return;
+        }
         renderAll();   // 气泡结构统一重渲染，避免残留旧气泡
         scrollBottom();
         setSending(true);
@@ -3664,8 +3721,13 @@ body {
         if (sending) return;
         var m = history[idx];
         if (!m || !(m.role === 'assistant' || m.role === 'received')) { toast('这条不是角色回复'); return; }
+        var previousHistory = history.slice();
         history.splice(idx, 1);
-        saveHistory(history);
+        if (!saveHistory(history, previousHistory)) {
+            renderAll();
+            scrollBottom();
+            return;
+        }
         renderAll();
         scrollBottom();
         setSending(true);
@@ -3702,8 +3764,13 @@ body {
         btnSave.addEventListener('click', function () {
             var v = ta.value.trim();
             if (!v) { toast('内容不能为空'); return; }
+            var previousHistory = history.slice();
             history[idx].text = v;
-            saveHistory(history);
+            if (!saveHistory(history, previousHistory)) {
+                renderAll();
+                scrollBottom();
+                return;
+            }
             renderAll();
             scrollBottom();
         });
@@ -3717,8 +3784,13 @@ body {
     // 删除：从剧情与聊天记录中移除这条回复
     function deleteMsg(idx) {
         if (history[idx]) {
+            var previousHistory = history.slice();
             history.splice(idx, 1);
-            saveHistory(history);
+            if (!saveHistory(history, previousHistory)) {
+                renderAll();
+                scrollBottom();
+                return;
+            }
             renderAll();
             scrollBottom();
             toast('已删除这条回复');
