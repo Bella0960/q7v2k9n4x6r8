@@ -63,7 +63,14 @@
     }catch(e){}
     return null;
   }
-  function save(data) {try {localStorage.setItem(storyKey(data.roleId),JSON.stringify(data));return true;}catch(e){return false;}}
+  function save(data) {
+    try {
+      var key=storyKey(data.roleId),encoded=JSON.stringify(data);
+      localStorage.setItem(key,encoded);
+      // Some embedded mobile storage implementations ignore writes without throwing.
+      return localStorage.getItem(key)===encoded;
+    }catch(e){return false;}
+  }
   // 跨天只延续已存在的故事；不重置聊天、隐私线索与板块记录。
   // 每日的事实追加后，新的 AI 板块刷新才能引用最新事件；昨日内容作为历史保留。
   function carryForward(previous,role,roleId,now) {
@@ -514,6 +521,7 @@
       }).join('');
       open('查手机 · 选择板块','<div class="inspect-intro"><b>'+html(role.name)+'</b><p>全部是虚构的角色剧情，不会读取任何真实手机数据。</p></div>'+
         (permission?'<div class="inspect-label">角色回应：'+html(permission.decision)+' · '+html(permission.reason)+'</div>':'')+
+        (notice?'<p class="inspect-alert">'+html(notice)+'</p>':'')+
         '<div class="inspect-choices">'+cards+'</div><div class="inspect-actions">'+button('开始查看已选板块','start','primary')+button('全部选择','all')+'</div>');
     }
     function requestScreen(){
@@ -523,6 +531,7 @@
       open('请求查看','<div class="inspect-intro"><b>'+html(role.name)+'</b><p>先询问角色是否愿意分享手机里的虚构日常。</p></div>'+
         '<div class="inspect-label">'+html(d.decision)+' · '+html(d.reason)+'</div>'+
         '<p class="inspect-muted">信心 '+Math.round(d.confidence*100)+'%。同意也不代表自动解锁秘密；锁定内容仍需另外取得权限。</p>'+
+        (notice?'<p class="inspect-alert">'+html(notice)+'</p>':'')+
         '<div class="inspect-actions">'+button(d.decision==='拒绝'?'尊重决定':'确认继续',d.decision==='拒绝'?'deny':'grant','primary')+
         button('返回桌面','close')+'</div>');
     }
@@ -691,9 +700,13 @@
     appBody.addEventListener('change',function(e){
       var cb=e.target.closest('[data-choose]');if(!cb)return;
       var id=cb.dataset.choose;
+      var before=selected.slice();
       if(cb.checked&&selected.indexOf(id)<0)selected.push(id);
       if(!cb.checked)selected=selected.filter(function(x){return x!==id;});
-      commit();
+      if(!commit()){
+        selected=before;data.selected=before;
+        chooseScreen();
+      }
     });
     appBody.addEventListener('submit',function(e){
       if(e.target.id==='inspectPinForm'){
@@ -714,10 +727,25 @@
       if(a==='grant'){
         var decision=access(role,new Date());
         if(decision.decision==='拒绝'){notice='角色拒绝分享手机。';requestScreen();return;}
-        permission=decision;permission.at=Date.now();commit();chooseScreen();return;
+        var beforePermission=permission;
+        permission=decision;permission.at=Date.now();
+        if(!commit()){
+          permission=beforePermission;data.permission=beforePermission;
+          requestScreen();return;
+        }
+        notice='';chooseScreen();return;
       }
-      if(a==='start'){if(!selected.length){hint('请至少选择一个板块。');return;}commit();close();return;}
-      if(a==='all'){selected=ITEMS.map(function(x){return x.id;});commit();chooseScreen();return;}
+      if(a==='start'){
+        if(!selected.length){hint('请至少选择一个板块。');return;}
+        if(!commit()){chooseScreen();return;}
+        close();return;
+      }
+      if(a==='all'){
+        var beforeSelected=selected.slice();
+        selected=ITEMS.map(function(x){return x.id;});
+        if(!commit()){selected=beforeSelected;data.selected=beforeSelected;}
+        chooseScreen();return;
+      }
       if(a==='choose'){chooseScreen();return;}
       if(a==='refresh'){refreshSection();return;}
       if(a==='notesPin'){pinView='notes';render();return;}
