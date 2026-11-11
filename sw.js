@@ -152,7 +152,8 @@ self.addEventListener('install', event => {
       // Only public sign-in/first-time setup HTML may be cached.
       // Private app documents must always pass the Worker identity gate.
       const resources = Array.from(new Set(APP_SHELL.concat(pageEntries)))
-        .filter(url => url === './account/index.html' || url === './account/bootstrap.html' || !/\.html(?:\?|$)/i.test(url));
+        .filter(url => url === './account/index.html' || url === './account/bootstrap.html' ||
+          (url !== './' && url !== '/' && !/\.html(?:\?|$)/i.test(url)));
       await Promise.all(resources.map(url => cache.add(url).catch(() => undefined)));
     }).then(() => self.skipWaiting())
   );
