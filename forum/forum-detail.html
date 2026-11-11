@@ -102,6 +102,11 @@
   .gossip-continue { border:1px solid #dedede;background:#fff;color:#222;font:600 11px var(--sans);padding:12px 16px;margin:10px 0 13px;width:100%;text-align:left;cursor:pointer;letter-spacing:.01em; }
   .gossip-continue:disabled { color:#999;cursor:default;background:#f7f7f7; }
   .gossip-continue[hidden] { display:none; }
+  .gossip-series { width:100%;padding:11px 15px;min-height:38px;margin:0 0 7px;border:1px solid #dedede;background:#f8f8f8;color:#424242;text-align:left;font:600 11px var(--sans);cursor:pointer; }
+  .gossip-series[hidden] { display:none; }
+  .gossip-series:disabled { color:#999;cursor:default; }
+  .gossip-series-note { font-size:9px;line-height:1.65;color:#999;margin:0 0 12px; }
+  .gossip-series-note[hidden] { display:none; }
   .gossip-author-tag { font-size:9px;font-weight:600;color:#333;margin-left:7px; }
   .gossip-reader-tools { margin:10px 0 12px; padding:12px 0; border-top:1px solid #ededed; border-bottom:1px solid #ededed; }
   .gossip-reader-tools[hidden] { display:none; }
@@ -271,6 +276,8 @@
       </div>
     </div>
     <button id="gossipContinue" class="gossip-continue" type="button" onclick="continueGossip()" hidden>让楼主继续讲</button>
+    <button id="gossipFinishAll" class="gossip-series" type="button" onclick="finishGossipSeries()" hidden>连续讲到结局</button>
+    <p id="gossipSeriesNote" class="gossip-series-note" hidden>连续追更会逐章调用你配置的 API，每更保存一次；点“停止”后不会再开始下一更。</p>
     <div id="commentList"></div>
   </div>
 
@@ -617,6 +624,8 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
   let post = null;
   let commentImageFiles=[];
   let gossipReplyBusy=false;
+  let gossipSeriesRunning=false;
+  let gossipSeriesStopRequested=false;
   let gossipView='all';
   function setGossipView(mode){
     if(!post||!window.ForumGossip||!ForumGossip.isGossipPost(post))return;
@@ -703,14 +712,24 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       }
     }
     if(gossipButton){
-      const hasStory=window.ForumGossip&&ForumGossip.isGossipPost(post);
-      gossipButton.hidden=!hasStory;
-      if(hasStory){
+      gossipButton.hidden=!hasGossipStory;
+      if(hasGossipStory){
         const progress=ForumGossip.progress(post);
-        gossipButton.disabled=progress.finished||gossipReplyBusy;
+        gossipButton.disabled=progress.finished||gossipReplyBusy||gossipSeriesRunning;
         gossipButton.textContent=progress.finished?'这条瓜已经讲完':gossipReplyBusy?'楼主正在写后续…':'让楼主继续讲 · '+progress.chapter+' / '+progress.maxChapters;
       }
     }
+    const seriesButton=document.getElementById('gossipFinishAll');
+    const seriesNote=document.getElementById('gossipSeriesNote');
+    if(seriesButton){
+      seriesButton.hidden=!hasGossipStory;
+      if(hasGossipStory){
+        const progress=ForumGossip.progress(post);
+        seriesButton.disabled=(progress.finished&&!gossipSeriesRunning)||(gossipReplyBusy&&!gossipSeriesRunning);
+        seriesButton.textContent=gossipSeriesRunning?(gossipSeriesStopRequested?'将在这一更后停止':'停止连续追更'):'连续讲到结局';
+      }
+    }
+    if(seriesNote)seriesNote.hidden=!hasGossipStory;
   }
 
   function isOwn(c) { return c.name === '我' || c.owner === 'me'; }
@@ -941,8 +960,9 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       renderComments();renderPost();
       if(!target)jumpToGossipLatest();
       if(status){
-        status.textContent=story.finished?'楼主已经更新完结局了':'楼主更新了第 '+nextChapter+' 段后续';
-        setTimeout(function(){if(status.textContent.indexOf('楼主')===0)status.textContent=''},4600);
+        const message=story.finished?'楼主已经更新完结局了':'楼主更新了第 '+nextChapter+' 段后续';
+        status.textContent=message;
+        setTimeout(function(){if(status.textContent===message)status.textContent=''},4600);
       }
       return true;
     }catch(error){
@@ -955,7 +975,39 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     }
   }
   async function continueGossip(){
+    if(gossipSeriesRunning)return false;
     return generateGossipAuthorContinuation(null,'蹲后续，楼主继续讲，想听完整故事');
+  }
+  async function finishGossipSeries(){
+    if(gossipSeriesRunning){
+      gossipSeriesStopRequested=true;
+      renderPost();
+      return false;
+    }
+    if(!post||!window.ForumGossip||!ForumGossip.isGossipPost(post)||gossipReplyBusy||ForumGossip.progress(post).finished)return false;
+    gossipSeriesRunning=true;
+    gossipSeriesStopRequested=false;
+    renderPost();
+    let completed=false;
+    try{
+      // Upper bound prevents a malformed chapter cursor from issuing endless API requests.
+      for(let i=0;i<8;i++){
+        if(gossipSeriesStopRequested)break;
+        if(ForumGossip.progress(post).finished){completed=true;break}
+        const ok=await generateGossipAuthorContinuation(null,'请继续讲清下一段，按已保存的剧情和时间线逐步推进到结局');
+        if(!ok)break;
+        if(ForumGossip.progress(post).finished){completed=true;break}
+      }
+    }finally{
+      const stopped=gossipSeriesStopRequested;
+      gossipSeriesRunning=false;
+      gossipSeriesStopRequested=false;
+      renderPost();
+      const status=document.getElementById('aiCommentStatus');
+      if(status&&stopped)status.textContent='已停止连续追更，生成成功的章节都已保存';
+      else if(status&&completed)status.textContent='这个故事已经讲到结局了';
+    }
+    return completed;
   }
 
   async function generateRepliesToUserComment(target,text,submittedImageIds){
