@@ -63,7 +63,7 @@ textarea{min-height:70px;resize:vertical}
 <section id="friendsSection" hidden><h2>已审批的真人好友</h2><div id="friends"></div></section>
 <section id="chatPanel" hidden>
 <div class="row"><h2 id="chatTitle" style="margin:0;flex:1"></h2><button id="closeChat">关闭</button></div>
-<p class="fine">仅已批准的双方可收发消息。本测试版使用前台轮询，不会冒充实时推送。</p>
+<p class="fine">仅已批准的双方可收发消息。本测试版使用前台轮询。文字消息尚未完成端到端加密验收，请勿发送敏感内容。</p>
 <div id="messages" role="log" aria-live="polite"></div>
 <form id="chatForm"><textarea id="chatText" maxlength="2000" placeholder="输入消息…" required></textarea><button class="primary" type="submit" id="chatSend">发送</button></form>
 </section>
@@ -339,7 +339,13 @@ if(document.visibilityState==='visible'&&account){
 refresh().then(function(){if(currentChat)return loadMessages()}).catch(e=>status(explain(e)));
 }
 });
-window.addEventListener('pagehide',clearTimer);
+// A browser may preserve the page in its back-forward cache (BFCache).
+// Clear all account-owned DOM before navigation instead of showing stale chat
+// to a different account when the user returns through browser history.
+window.addEventListener('pagehide',function(){clearPrivateSession();});
+window.addEventListener('pageshow',function(event){
+if(event&&event.persisted)location.reload();
+});
 (async function init(){
 var incoming=readCode(location.href);if(incoming){el('friendCode').value=incoming;history.replaceState(null,'',location.pathname+location.search);}
 try{
