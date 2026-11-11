@@ -646,7 +646,7 @@
     renderGuides();
   }
 
-  function buildTestReport() {
+  function buildTestReport(onlyTouched) {
     // Only share explicitly written testing notes and non-secret device context.
     // Never inspect chat history, API settings, local files or account identifiers.
     var standalone = Boolean(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
@@ -669,14 +669,18 @@
       '注意：以上信息仅通过主动点击复制/导出提供；不包含账号密码、聊天记录或 API Key。',
       ''
     ];
+    var reported = 0;
     GUIDES.forEach(function (guide) {
       var state = progress[guide.id] || {};
+      if (onlyTouched && !state.done && !String(state.note || '').trim()) return;
+      reported += 1;
       lines.push((state.done ? '[已测试] ' : '[待测试] ') + guide.title);
       lines.push('入口：' + guide.location);
       if (state.note) lines.push('备注：' + state.note);
       if (guide.issue) lines.push('状态：待真机复测（尚未验证结果）');
       lines.push('');
     });
+    if (onlyTouched && !reported) lines.push('尚未记录测试项；请先在对应功能填写备注。');
     return lines.join('\n');
   }
 
@@ -695,7 +699,7 @@
   async function copyProgress() {
     var button = $('copyTests');
     var hint = $('copyTestsHint');
-    var report = buildTestReport();
+    var report = buildTestReport(true);
     button.disabled = true;
     try {
       if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
