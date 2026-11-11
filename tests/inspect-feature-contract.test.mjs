@@ -227,3 +227,51 @@ test('AI 合法刷新只修改目标板块，其他板块保持逐字一致',asy
     if(key!=='music')assert.deepEqual(after.sections[key],before.sections[key]);
   }
 });
+
+
+test('冻结时钟下凌晨/白天/傍晚与深夜的全部板块均符合时间契约',()=>{
+  const minutes=[[0,3],[7,3],[12,30],[17,35],[17,42],[19,40],[23,55]];
+  for(const [hour,minute] of minutes){
+    const timestamp=new Date(2026,10,11,hour,minute).getTime();
+    class FrozenDate extends Date {
+      constructor(...args){super(...(args.length?args:[timestamp]));}
+      static now(){return timestamp;}
+    }
+    const records=new Map(),storage={
+      getItem(key){return records.get(key)||null;},
+      setItem(key,value){records.set(key,String(value));}
+    };
+    const node=()=>({innerHTML:'',textContent:'',scrollHeight:500,scrollTop:0,
+      classList:{add(){},remove(){}},addEventListener(){}});
+    const document={querySelector(){return node();},getElementById(){return node();}};
+    const window={PhoneStorage:{getApiConfig(){return {};}}};
+    vm.runInNewContext(src,{window,localStorage:storage,document,Date:FrozenDate,Math,JSON,Number,String,Array,Object,console});
+    window.InspectPhoneFeature.mount({
+      role:{id:'clock',name:'测试',description:'大学生'},requestedId:'clock',
+      appBody:node(),appLayer:node(),appTitle:node()
+    });
+    const snapshot=JSON.parse(records.get('inspect_story_v1_clock'));
+    const label=hour+':'+minute;
+    assert.ok(snapshot.facts.every(f=>f.time<=timestamp),label+' 出现未来事件');
+    for(const [id,section] of Object.entries(snapshot.sections)){
+      assert.equal(window.InspectPhoneFeature.valid(id,section,timestamp,snapshot.facts),true,
+        label+' '+id+' 内容不符合验收契约');
+    }
+    assert.ok(snapshot.sections.device.screenMinutes<=hour*60+minute,
+      label+' 今日屏幕使用时间超过已过时间');
+    assert.equal(snapshot.sections.device.apps.reduce((sum,x)=>sum+x.minutes,0),
+      snapshot.sections.device.screenMinutes,label+' App使用时间与总量不一致');
+    assert.ok(snapshot.sections.browser.searchHistory.every((h,i,arr)=>!i||arr[i-1].time>=h.time),
+      label+' 搜索记录不是时间倒序');
+  }
+});
+
+test('毕业后工作的角色不能被大学经历误判为学生消费层',()=>{
+  const adult=setupInteractive({id:'editor',name:'编辑',age:26,
+    description:'大学毕业，已经工作五年，现在是图书编辑，消费正常'});
+  adult.start();
+  assert.equal(adult.read().sections.wallet.transactions[0].amount,6800);
+  const student=setupInteractive({id:'student',name:'学生',age:20,description:'在校大学生，课余打工'});
+  student.start();
+  assert.equal(student.read().sections.wallet.transactions[0].amount,1200);
+});
