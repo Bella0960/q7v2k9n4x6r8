@@ -44,6 +44,7 @@
   // A casual reaction should not silently consume a chapter; only a clear request advances it.
   function wantsContinuation(text){
     var s=clean(text,300).replace(/\s+/g,'');
+    if(/(?:不要|别|不用|先不|停止|暂停|先别)(?:再|继续)?(?:说|讲|更|写|生成)|别剧透|先别说结局/.test(s))return false;
     return !!s&&/(?:继续(?:说|讲|更|写|更新|生成)|^继续(?:啊|呀|吧|！|!|。)?$|接着(?:说|讲|更|写)|往下(?:说|讲)|后续|后面呢|后来(?:呢|怎么样|如何|发生|咋样)|蹲(?:更|后续)?|催更|求(?:更|后续)|结局(?:呢|是|如何|怎么)|说完|讲完|然后呢|下一(?:更|章|集|回)|再讲|再说点)/i.test(s);
   }
   // Derive the chapter cursor from saved author updates as well as the story bible.
@@ -59,7 +60,8 @@
     });
     chapter=Math.min(maxChapters,chapter);
     return {chapter:chapter,maxChapters:maxChapters,nextChapter:Math.min(maxChapters,chapter+1),
-      finished:!!story.finished||chapter>=maxChapters};
+      // Older versions could mark chapter 3 finished before the planned finale.
+      finished:chapter>=maxChapters};
   }
   // Validate substantive progress before any new comment or chapter state is persisted.
   function validateUpdate(data,earlierTexts,existingFacts){
