@@ -229,3 +229,26 @@ test('BFCache pagehide wipes private DOM before a different MAO account can see 
   phone.window.events.pageshow({ persisted: true });
   assert.equal(phone.state.reloads, 1);
 });
+
+test('a cookie switch during delayed chat polling cannot restore stale private messages', async () => {
+  const phone = createPhone();
+  await phone.openChat();
+  phone.state.chatReadReply = { ok: true, ownerAccountId: A, peerId: B,
+    messages: [{ id: 'late-private', seq: 2, text: 'Must never appear', senderId: B, recipientId: A }],
+    nextCursor: 2 };
+  phone.state.deferRead = true;
+  phone.state.intervalFn();
+  await phone.settle();
+  assert.equal(phone.state.readWaiters.length, 1);
+  phone.state.switched = true;
+  phone.get('refresh').events.click();
+  await phone.settle();
+  assert.equal(phone.get('chatPanel').hidden, true);
+  assert.equal(phone.get('friendsSection').hidden, true);
+  assert.equal(phone.get('messages').children.length, 0);
+  phone.state.deferRead = false;
+  phone.state.readWaiters.shift()();
+  await phone.settle();
+  assert.equal(phone.get('messages').children.length, 0,
+    'an in-flight success from the previous cookie account must not restore any private text');
+});
