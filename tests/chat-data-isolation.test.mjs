@@ -16,6 +16,9 @@ const datePageSource = read('chat/date/date.html');
 const forumDetailSource = read('forum/forum-detail.html');
 const callPageSource = read('chat/call/call.html');
 const couplePageSource = read('couple/couple.html');
+const shopPageSource = read('wallet/shop.html');
+const takeoutPageSource = read('wallet/takeout.html');
+const familyCardsPageSource = read('wallet/family-cards.html');
 
 /* ---------- 真实源码函数提取（行为级执行，不做字符串存在性断言） ---------- */
 
@@ -674,4 +677,81 @@ test('情侣绑定：邀请消息持久化结果与资料保存提示保持区�
   assert.match(couplePageSource, /storage\.saveChatHistory\(profile\.partnerId, next\) === true/);
   assert.match(couplePageSource, /聊天记录写入后校验失败/);
   assert.match(couplePageSource, /资料已保存，但邀请消息没有写入聊天记录/);
+});
+
+
+function loadWalletMessageWriter(source, functionName, storage, localStorage = createLocalStorage()) {
+  const sandbox = {
+    window: { PhoneStorage: storage },
+    localStorage,
+    console: { error() {} },
+    toast() {}
+  };
+  runInNewContext(extractFunction(source, functionName), sandbox, {
+    filename: 'wallet#' + functionName
+  });
+  return { write: sandbox[functionName], localStorage };
+}
+
+test('钱包消息：商店与外卖写入器只追加到指定角色，不串写其他会话', () => {
+  for (const [source, functionName] of [
+    [shopPageSource, 'appendChatHistoryMessage'],
+    [takeoutPageSource, 'appendChatHistoryMessage']
+  ]) {
+    const records = {
+      roleA: [{ role: 'assistant', text: 'A 的旧消息', time: 1 }],
+      roleB: [{ role: 'assistant', text: 'B 的旧消息', time: 2 }]
+    };
+    const storage = {
+      getChatHistory: (id) => JSON.parse(JSON.stringify(records[id] || [])),
+      saveChatHistory: (id, list) => {
+        records[id] = JSON.parse(JSON.stringify(list));
+        return true;
+      }
+    };
+    const writer = loadWalletMessageWriter(source, functionName, storage);
+    const notice = { role: 'user', type: 'text', text: '只属于 A 的付款通知', time: 3 };
+
+    assert.equal(writer.write('roleA', notice), true);
+    assert.equal(records.roleA.length, 2);
+    assert.equal(records.roleA[1].text, notice.text);
+    assert.equal(records.roleB.length, 1);
+    assert.equal(records.roleB[0].text, 'B 的旧消息');
+  }
+});
+
+test('钱包消息：写入失败或读回缺失时返回失败，不把通知当成成功', () => {
+  const failedSave = loadWalletMessageWriter(shopPageSource, 'appendChatHistoryMessage', {
+    getChatHistory: () => [],
+    saveChatHistory: () => false
+  });
+  assert.equal(failedSave.write('roleA', {
+    role: 'user', type: 'text', text: '失败通知', time: 4
+  }), false);
+
+  const failedReadback = loadWalletMessageWriter(takeoutPageSource, 'appendChatHistoryMessage', {
+    getChatHistory: () => [],
+    saveChatHistory: () => true
+  });
+  assert.equal(failedReadback.write('roleA', {
+    role: 'user', type: 'text', text: '读回缺失', time: 5
+  }), false);
+});
+
+test('亲属卡通知：失败状态不会被普通卡片成功提示覆盖', () => {
+  const writer = loadWalletMessageWriter(familyCardsPageSource, 'appendRoleNotice', {
+    getChatHistory: () => [],
+    saveChatHistory: () => false
+  });
+  assert.equal(writer.write({ roleId: 'roleA' }, '卡片通知'), false);
+  assert.match(familyCardsPageSource, /var noticeSaved = !verb \|\| appendRoleNotice\(card, verb\)/);
+  assert.match(familyCardsPageSource, /卡片操作已保存，但聊天通知未写入/);
+});
+
+test('商店和外卖：交易成功但聊天通知失败时显示合并后的明确状态', () => {
+  assert.match(shopPageSource, /var chatNoticeFailed = false/);
+  assert.match(shopPageSource, /订单已完成，但聊天通知未保存/);
+  assert.match(takeoutPageSource, /var chatNoticeFailed = false/);
+  assert.match(takeoutPageSource, /下单成功，但聊天通知未保存/);
+  assert.match(takeoutPageSource, /if \(!forwarded\)[\s\S]*?return;[\s\S]*?toast\('已转发给 '/);
 });
