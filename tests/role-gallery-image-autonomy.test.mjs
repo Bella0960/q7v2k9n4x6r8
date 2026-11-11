@@ -13,12 +13,14 @@ function load(options = {}) {
     const roles = options.roles || [{ id: 'role-a' }, { id: 'role-b' }];
     const records = options.records || {
         'role-a': [
-            { id: 'image-a1', assetId: 'asset-a1', sceneDescription: '海边傍晚', isPrivate: true },
+            { id: 'image-private', assetId: 'asset-private', sceneDescription: '私密场景', isPrivate: true },
+            { id: 'image-legacy', assetId: 'asset-legacy', sceneDescription: '旧私密场景' },
+            { id: 'image-a1', assetId: 'asset-a1', sceneDescription: '海边傍晚', isPrivate: false },
             { id: 'image-a2', assetId: 'asset-a2', sceneDescription: '雨天咖啡馆', isPrivate: false },
-            { id: 'image-a3', assetId: 'asset-a3', sceneDescription: '窗边的书', isPrivate: true }
+            { id: 'image-a3', assetId: 'asset-a3', sceneDescription: '窗边的书', isPrivate: false }
         ],
         'role-b': [
-            { id: 'image-b1', assetId: 'asset-b1', sceneDescription: '夜晚街道', isPrivate: true }
+            { id: 'image-b1', assetId: 'asset-b1', sceneDescription: '夜晚街道', isPrivate: false }
         ]
     };
     const calls = { added: [], removed: [], assetsRemoved: [], list: [] };
@@ -29,7 +31,7 @@ function load(options = {}) {
         },
         async removeRef(assetId, ownerType, ownerId) {
             calls.removed.push({ assetId, ownerType, ownerId });
-            return { ok: true, value: { removed: true } };
+            return { ok: true, value: { removed: true, refCount: 1 } };
         },
         async removeAsset(assetId) {
             calls.assetsRemoved.push(assetId);
@@ -44,6 +46,17 @@ function load(options = {}) {
             calls.list.push({ characterId, scope });
             if (options.failList) throw new Error('gallery unavailable');
             return { ok: true, value: records[String(characterId)] || [] };
+        }
+        async get(imageId) {
+            for (const [characterId, images] of Object.entries(records)) {
+                const image = images.find(item => item.id === imageId);
+                if (image) {
+                    return { ok: true, value: {
+                        ...image, characterId, ...options.latestRecords?.[imageId]
+                    } };
+                }
+            }
+            return { ok: false };
         }
     }
     const window = {
@@ -65,12 +78,12 @@ test('gallery catalogue is scoped to the active character and hides asset identi
     assert.deepEqual(Array.from(a.images, item => item.id), ['image-a1', 'image-a2', 'image-a3']);
     assert.deepEqual(Array.from(b.images, item => item.id), ['image-b1']);
     assert.match(a.prompt, /image-a1/);
-    assert.doesNotMatch(a.prompt, /asset-a1|image-b1/);
+    assert.doesNotMatch(a.prompt, /asset-a1|image-b1|image-private|image-legacy|私密场景/);
     assert.match(b.prompt, /image-b1/);
     assert.doesNotMatch(b.prompt, /asset-b1|image-a1/);
     assert.deepEqual(calls.list, [
-        { characterId: 'role-a', scope: 'all' },
-        { characterId: 'role-b', scope: 'all' }
+        { characterId: 'role-a', scope: 'public' },
+        { characterId: 'role-b', scope: 'public' }
     ]);
 });
 
@@ -78,7 +91,7 @@ test('only exact gallery IDs become attachments; invented and cross-character ma
     const { api } = load();
     const catalogue = await api.prepare('role-a');
     const parsed = api.extractMarkers(
-        '看这张。 [[MAOMAO_IMAGE:image-a1]] [[MAOMAO_IMAGE:image-b1]] [[MAOMAO_IMAGE:invented]]',
+        '看这张。 [[MAOMAO_IMAGE:image-a1]] [[MAOMAO_IMAGE:image-b1]] [[MAOMAO_IMAGE:image-private]] [[MAOMAO_IMAGE:invented]]',
         catalogue
     );
 
@@ -150,4 +163,23 @@ test('missing roles and gallery errors fail closed without preventing text repli
     const parsed = unavailable.api.extractMarkers('普通文字 [[MAOMAO_IMAGE:unknown]]', catalogue);
     assert.equal(parsed.text, '普通文字');
     assert.equal(parsed.attachments.length, 0);
+});
+
+test('a gallery image made private during generation cannot become a chat attachment', async () => {
+    const { api, calls } = load({ latestRecords: { 'image-a1': { isPrivate: true } } });
+    const catalogue = await api.prepare('role-a');
+    const { attachments } = api.extractMarkers('[[MAOMAO_IMAGE:image-a1]]', catalogue);
+    assert.equal(attachments.length, 1);
+
+    assert.deepEqual(Array.from(await api.createMessages('role-a', attachments)), []);
+    assert.deepEqual(calls.added, []);
+});
+
+test('an attachment selected for one role cannot be linked in another role', async () => {
+    const { api, calls } = load();
+    const catalogue = await api.prepare('role-a');
+    const { attachments } = api.extractMarkers('[[MAOMAO_IMAGE:image-a1]]', catalogue);
+
+    assert.deepEqual(Array.from(await api.createMessages('role-b', attachments)), []);
+    assert.deepEqual(calls.added, []);
 });
