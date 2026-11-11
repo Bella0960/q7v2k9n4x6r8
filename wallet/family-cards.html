@@ -304,7 +304,6 @@ button,a{font:inherit}
       return true;
     } catch (error) {
       console.error('[Wallet:family-cards] chat history persistence failed:', error);
-      toast('卡片操作已保存，但聊天通知未写入，请稍后在聊天中补发');
       return false;
     }
   }
@@ -323,9 +322,11 @@ button,a{font:inherit}
       pause:'我先把你给我的卡暂停使用了。',
       resume:'我恢复使用你给我的卡了。'
     })[action];
-    if (verb) appendRoleNotice(card, verb);
+    var noticeSaved = !verb || appendRoleNotice(card, verb);
     render();
-    toast(({accept:'已领取，可以在商店和外卖结算使用',reject:'已婉拒这张卡',pause:'卡片已暂停',resume:'卡片已恢复使用'})[action] || '已更新');
+    toast(noticeSaved
+      ? (({accept:'已领取，可以在商店和外卖结算使用',reject:'已婉拒这张卡',pause:'卡片已暂停',resume:'卡片已恢复使用'})[action] || '已更新')
+      : '卡片操作已保存，但聊天通知未写入，请稍后在对应聊天中补发');
   }
 
   document.querySelector('.filters').addEventListener('click', function (event) {
