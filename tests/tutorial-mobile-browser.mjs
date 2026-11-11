@@ -98,6 +98,9 @@ try {
       await openGuide(page, 'api-params', '温度、Top P、Tokens 到底调什么');
       await openGuide(page, 'api-images', 'AI 生图：为什么聊天能用却画不出图');
       await openGuide(page, 'minimax-voice-guide', 'MiniMax 语音：API、Group ID 与 Voice ID');
+      assert.equal(await page.evaluate(() => localStorage.getItem('maomao_tutorial_progress_v1')), null,
+        'reading technical articles must not create a test-progress record');
+      record('reading articles has no local storage side effects');
 
       await page.selectOption('#diagnoseSelect', '404');
       assert.match(await page.locator('#diagnoseAnswer').innerText(), /Base URL/);
