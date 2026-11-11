@@ -69,6 +69,12 @@ async function openGuide(page, id, expectedTitle) {
     'article must lock background scrolling');
   assert.equal(await page.locator('#walkClose').evaluate(el => el === document.activeElement), true,
     'modal close control should receive initial focus');
+  await page.keyboard.press('Shift+Tab');
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'walkOpenPage',
+    'Shift+Tab must stay inside the modal rather than focus the background');
+  await page.keyboard.press('Tab');
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'walkClose',
+    'Tab should wrap back to the modal close control');
   await page.locator('#walkClose').click();
   await page.locator('#walkthroughModal').waitFor({ state:'hidden' });
   assert.equal(await page.evaluate(() => document.body.style.overflow), '',
