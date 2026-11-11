@@ -5,7 +5,10 @@ button,input,textarea{font:inherit}
 button{cursor:pointer}
 .admin-shell{width:min(100%,620px);min-height:100svh;margin:0 auto;padding:max(18px,env(safe-area-inset-top)) 18px max(28px,env(safe-area-inset-bottom))}
 .admin-header{display:flex;align-items:center;gap:13px;padding:10px 0 22px}
-.back-link{width:max-content;min-width:44px;min-height:44px;padding:0 11px;white-space:nowrap;display:grid;place-items:center;border:1px solid var(--line);border-radius:12px;background:#fff;color:#454850;text-decoration:none;font-size:21px}
+.back-link{display:inline-flex;align-items:center;justify-content:flex-start;gap:5px;flex:0 0 auto;min-height:44px;padding:0 2px;border:0;border-radius:0;background:transparent;color:#696c73;text-decoration:none;font-size:12px;font-weight:500;letter-spacing:.02em;white-space:nowrap;-webkit-tap-highlight-color:transparent}
+.back-link svg{width:17px;height:17px;flex:0 0 17px;display:block}
+.back-link:hover{color:#202226}
+.back-link:focus-visible{outline:2px solid #9b9ea5;outline-offset:3px;border-radius:4px}
 .eyebrow{font-size:9px;letter-spacing:.17em;color:#9da0a7;font-weight:650;margin-bottom:5px}
 h1{margin:0;font-size:24px;letter-spacing:-.035em;font-weight:650}
 .admin-mark{margin-left:auto;font-size:12px;letter-spacing:.16em;color:#585c65;font-weight:700}
