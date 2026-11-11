@@ -658,8 +658,8 @@ test('deleting a character releases only its references and re-discovers interru
   assert.ok(managerSource.includes('角色删除失败，原有资料和头像均已保留。'));
 });
 
-test('PWA shell caches the role portrait archive and its runtime at v195', () => {
-  assert.ok(serviceWorker.includes("const CACHE_NAME = 'phone-app-pwa-v198'"));
+test('PWA shell caches the role portrait archive and its runtime', () => {
+  assert.ok(serviceWorker.includes("const CACHE_NAME = 'phone-app-pwa-v202'"));
   assert.ok(serviceWorker.includes("'./worldbook/characters/characters.html'"));
   assert.ok(serviceWorker.includes("'./worldbook/characters/js/characters-manager.js?v=20261107v11'"));
   assert.ok(serviceWorker.includes("'./shared/js/phone/role-avatar-library.js?v=20261107v14'"));

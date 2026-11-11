@@ -9,14 +9,14 @@
     'use strict';
 
     var NS = global.RoleGalleryImageAutonomy = {};
-    var MARKER_RE = /\\[\\[MAOMAO_IMAGE:([^\\]]{1,160})\\]\\]/g;
+    var MARKER_RE = /\[\[MAOMAO_IMAGE:([^\]]{1,160})\]\]/g;
     var MAX_IMAGES = 18;
     var MAX_ATTACHMENTS = 2;
 
     function clean(value, max) {
         return String(value == null ? '' : value)
-            .replace(/[\\u0000-\\u001f\\u007f]/g, ' ')
-            .replace(/\\s+/g, ' ')
+            .replace(/[\u0000-\u001f\u007f]/g, ' ')
+            .replace(/\s+/g, ' ')
             .trim()
             .slice(0, max || 180);
     }
@@ -49,10 +49,10 @@
             if (!storage || !storage.ImageRepository) return result;
             var media = storage.MediaRepository ? new storage.MediaRepository() : null;
             var repository = new storage.ImageRepository(media);
-            var listed = await repository.listByCharacter(characterId, 'all');
+            var listed = await repository.listByCharacter(characterId, 'public');
             var records = listed && listed.ok && Array.isArray(listed.value) ? listed.value : [];
             records.slice(0, MAX_IMAGES).forEach(function (record) {
-                if (!record || !record.id || !record.assetId) return;
+                if (!record || record.isPrivate !== false || !record.id || !record.assetId) return;
                 var id = clean(record.id, 120);
                 var description = clean(record.sceneDescription || record.prompt || '角色图片', 180);
                 if (!id || !description || result.imageById[id]) return;
@@ -60,7 +60,7 @@
                     id: id,
                     assetId: String(record.assetId),
                     description: description,
-                    isPrivate: record.isPrivate !== false
+                    isPrivate: false
                 };
                 result.images.push(item);
                 result.imageById[id] = item;
@@ -81,7 +81,7 @@
             result.images.forEach(function (item) {
                 lines.push('- ' + item.id + ' | ' + item.description);
             });
-            result.prompt = lines.join('\\n');
+            result.prompt = lines.join('\n');
         } else {
             result.prompt = '当前角色的图片图库没有可发送图片；不要输出 [[MAOMAO_IMAGE:ID]] 标记。';
         }
@@ -105,9 +105,9 @@
         // Strip all gallery markers, including unknown IDs, from visible text/history.
         MARKER_RE.lastIndex = 0;
         var cleaned = source.replace(MARKER_RE, '')
-            .replace(/[ \\t]+\\n/g, '\\n')
-            .replace(/\\n{3,}/g, '\\n\\n')
-            .replace(/\\s+$/, '');
+            .replace(/[ \t]+\n/g, '\n')
+            .replace(/\n{3,}/g, '\n\n')
+            .replace(/\s+$/, '');
         return { text: cleaned, attachments: attachments };
     };
 
@@ -115,18 +115,25 @@
         characterId = clean(characterId, 120);
         if (!characterId || !hasCharacter(characterId) || !Array.isArray(attachments)) return [];
         var storage = global.PhoneStorage;
-        if (!storage || !storage.MediaRepository) return [];
+        if (!storage || !storage.MediaRepository || !storage.ImageRepository) return [];
         var media = new storage.MediaRepository();
         if (!media || typeof media.addRef !== 'function') return [];
+        var repository = new storage.ImageRepository(media);
 
         var messages = [];
         for (var i = 0; i < attachments.length && messages.length < MAX_ATTACHMENTS; i++) {
             var selected = attachments[i];
-            if (!selected || selected.type !== 'image' || !selected.item || !selected.item.assetId) continue;
+            if (!selected || selected.type !== 'image' || !selected.item || !selected.item.id) continue;
             var mid = makeId();
-            var assetId = String(selected.item.assetId);
+            var assetId;
             var linked;
             try {
+                // The gallery may have changed while the model was replying.
+                var latest = await repository.get(selected.item.id);
+                var record = latest && latest.ok ? latest.value : null;
+                if (!record || record.isPrivate !== false || String(record.characterId) !== characterId ||
+                    !record.assetId || String(record.assetId) !== selected.item.assetId) continue;
+                assetId = String(record.assetId);
                 linked = await media.addRef(assetId, 'chat-message', mid);
             } catch (error) {
                 linked = null;
@@ -141,7 +148,7 @@
                 imageRecordId: clean(selected.item.id, 120),
                 desc: description,
                 text: '[图片] ' + description,
-                isPrivate: selected.item.isPrivate !== false,
+                isPrivate: false,
                 mediaSource: 'character-image-gallery',
                 characterId: characterId,
                 time: Date.now()
@@ -161,6 +168,7 @@
             try {
                 var released = await media.removeRef(String(message.assetId), 'chat-message', String(message.mid));
                 if (released && released.ok && released.value && released.value.removed &&
+                    released.value.refCount === 0 &&
                     typeof media.removeAsset === 'function') {
                     await media.removeAsset(String(message.assetId));
                 }
