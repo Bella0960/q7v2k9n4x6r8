@@ -6496,6 +6496,7 @@
                         });
                         window.__groupPrivateCardPending = false;
                         var replySaved = saveMessages(historyList);
+                        var replySaveFailed = !replySaved;
                         if (!replySaved) {
                             replyMessages.concat(aiStickerMessages).forEach(function (message) {
                                 var failedIndex = historyList.indexOf(message);
@@ -6504,7 +6505,11 @@
                             replyMessages = [];
                             aiStickerMessages = [];
                             aiMsg = null;
-                            if (typeof showToast === 'function') showToast('AI 回复保存失败，未将未保存的消息显示为已发送。');
+                            // 不把未保存内容写成正式历史，但保留当前屏幕上的生成正文供用户复制。
+                            if (streamBubble && fullText) streamBubble.textContent = fullText;
+                            if (typeof showToast === 'function') {
+                                showToast('AI 回复尚未保存。上方文字暂留在当前页面，请先复制保留，再检查存储空间。');
+                            }
                         }
                         var avatarRoleId = aliasRoleId || currentCharacter.id;
                         if (replySaved && !isGroupChat && window.RoleAvatarLibrary &&
@@ -6560,10 +6565,20 @@
                             try { if (window.ChatNotifier) ChatNotifier.markSeen(aliasRoleId, aiStickerMessages[0].time); } catch (e) {}
                         }
                         inflightSnapshot = null;
-                        // 删掉流式期间的临时气泡（它只显示了剥离标签后的原始文本）
+                        // 成功时清除临时气泡并用正式历史重绘；失败时保留正文，但明确标出它没有保存。
                         if (streamBubble) {
                             var tempRow = streamBubble.closest('.msg-row');
-                            if (tempRow) tempRow.remove();
+                            if (replySaveFailed && tempRow && fullText) {
+                                tempRow.setAttribute('data-unsaved-reply', 'true');
+                                tempRow.setAttribute('aria-label', 'AI 回复尚未保存，请复制保留');
+                                var unsavedNotice = document.createElement('div');
+                                unsavedNotice.textContent = '尚未保存 · 请复制保留';
+                                unsavedNotice.style.cssText = 'margin:4px 0 8px 42px;font-size:11px;line-height:1.4;color:#B42318;';
+                                tempRow.appendChild(unsavedNotice);
+                                if (_vl) _vl.streaming = false;
+                            } else if (tempRow) {
+                                tempRow.remove();
+                            }
                         }
 
                         if (replyMessages.length) {
