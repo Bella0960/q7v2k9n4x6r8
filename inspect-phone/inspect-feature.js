@@ -59,11 +59,37 @@
   }
   function read(roleId,now) {
     try {var data=JSON.parse(localStorage.getItem(storyKey(roleId))||'null');
-      if(data&&data.schema===1&&data.roleId===String(roleId)&&data.day===localDay(now)&&data.sections&&data.facts)return data;
+      if(data&&data.schema===1&&data.roleId===String(roleId)&&data.sections&&Array.isArray(data.facts)&&data.facts.length&&typeof data.sections==='object')return data;
     }catch(e){}
     return null;
   }
   function save(data) {try {localStorage.setItem(storyKey(data.roleId),JSON.stringify(data));return true;}catch(e){return false;}}
+  // 跨天只延续已存在的故事；不重置聊天、隐私线索与板块记录。
+  // 每日的事实追加后，新的 AI 板块刷新才能引用最新事件；昨日内容作为历史保留。
+  function carryForward(previous,role,roleId,now) {
+    if(previous.day===localDay(now))return previous;
+    var newDay=fallback(role,roleId,now);
+    var oldFacts=arr(previous.facts).filter(function(f){
+      return f&&num(f.time,0)<=now.getTime()&&num(f.time,0)>=now.getTime()-14*86400000;
+    });
+    var known={};
+    oldFacts.forEach(function(f){known[String(f.time)+'|'+String(f.place)]=true;});
+    var extra=arr(newDay.facts).filter(function(f){
+      return !known[String(f.time)+'|'+String(f.place)]&&
+        (!oldFacts.length||num(f.time,0)>num(oldFacts[oldFacts.length-1].time,0));
+    }).map(function(f){return Object.assign({},f,{id:localDay(new Date(f.time))+'-'+f.id});});
+    var copy=Object.assign({},previous);
+    copy.facts=oldFacts.concat(extra).sort(function(a,b){return a.time-b.time;}).slice(-20);
+    copy.day=localDay(now);
+    copy.permission=null; // 不能因为昨天同意就默认永久授权
+    copy.lastRolloverAt=now.getTime();
+    copy.selected=arr(previous.selected).filter(function(id){return ITEMS.some(function(x){return x.id===id;});});
+    copy.sections=previous.sections||newDay.sections;
+    copy.source=previous.source||{};
+    // 保持历史数据可见、可继续聊天；不凭空把旧钱包和旧照片说成今天发生。
+    copy.carriedFrom=previous.day;
+    return copy;
+  }
   function roleContext(role) {
     return [role.name,role.age,role.job,role.occupation,role.education,role.description,role.bio,role.personality,role.character,role.speechStyle,role.prompt,role.systemPrompt]
       .filter(Boolean).map(function(x){return clean(x,500);}).join('；').slice(0,3000);
@@ -297,7 +323,8 @@
   }
   function mount(opts) {
     var role=opts.role, roleId=String(role.id!==undefined&&role.id!==null?role.id:opts.requestedId||'0');
-    var now=new Date(),data=read(roleId,now)||fallback(role,roleId,now);
+    var now=new Date(),existing=read(roleId,now);
+    var data=existing?carryForward(existing,role,roleId,now):fallback(role,roleId,now);
     var appLayer=opts.appLayer,appBody=opts.appBody,appTitle=opts.appTitle;
     var grid=document.querySelector('.grid'),dock=document.querySelector('.dock'),back=document.getElementById('appBack');
     var current='',view=null,selected=data.selected||[],permission=data.permission||null,waiting=false,alerted=false;
@@ -305,8 +332,16 @@
     var affection=num(role.affection,num(role.favorability,num(role.intimacy,50)));
     var revealCount=affection>=70?3:affection>=35?1:0;
     var notice='',accessType='';
-    function commit(){data.selected=selected;data.permission=permission;data.updatedAt=Date.now();if(!save(data))notice='当前存储空间不足，改动可能无法保留。';}
-    function currentSource(){return data.source[current]==='ai'?'AI 剧情记录':'本地剧情样例 · 未调用 AI';}
+    function commit(){
+      data.selected=selected;data.permission=permission;data.updatedAt=Date.now();
+      var ok=save(data);
+      if(!ok)notice='当前存储空间不足，改动无法持久保存。';
+      return ok;
+    }
+    function currentSource(){
+      var source=data.source[current]==='ai'?'AI 剧情记录':'本地剧情样例 · 未调用 AI';
+      return source+(data.carriedFrom?' · 含 '+data.carriedFrom+' 的历史记录':'');
+    }
     function hint(text){notice=clean(text,200);render();}
     function button(text,act,extra){return '<button type="button" class="inspect-button '+(extra||'')+'" data-action="'+act+'">'+html(text)+'</button>';}
     function line(title,sub,attr){return '<div class="inspect-line" '+(attr||'')+'><strong>'+html(title)+'</strong>'+(sub?'<small>'+html(sub)+'</small>':'')+'</div>';}
