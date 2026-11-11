@@ -17,7 +17,7 @@ const deferred = () => {
 };
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
-function mount(fetchImpl = async () => response({ ok: true, account: pending })) {
+function mount(fetchImpl = async () => response({ ok: true, account: pending }), search = '') {
   function node(id) {
     return { id, hidden: false, disabled: false, value: '', textContent: '', dataset: {}, listeners: {},
       addEventListener(type, fn) { this.listeners[type] = fn; },
@@ -39,7 +39,7 @@ function mount(fetchImpl = async () => response({ ok: true, account: pending }))
   }
   const calls = [], timers = new Map();
   let nextTimer = 0;
-  const window = { location: { search: '', assign(url) { window.destination = url; } }, scrollTo() {} };
+  const window = { location: { search, assign(url) { window.destination = url; } }, scrollTo() {} };
   const context = {
     document: {
       getElementById: id => nodes.get(id),
@@ -194,4 +194,46 @@ test('shipped entry handlers register, login and redeem a real SQLite-backed bou
   assert.equal(page.calls.find(c => c.path.endsWith('/redeem')).init.headers['x-mao-account-context'], accountId);
   page.nodes.get('enterMao').listeners.click();
   assert.equal(page.window.destination, '/index.html');
+});
+
+test('creator admin entry uses protected same-origin route rather than an external domain', () => {
+  assert.match(html, /href="\/admin\/admin-center\.html">管理员入口/);
+  assert.doesNotMatch(html, /admin\.mao520\.com/);
+});
+
+test('only an active super-admin can open creator management and invitation links', async () => {
+  const owner = mount(async () => response({ ok: true, account: {
+    id: 'MAO-AAAAAAAAAAAA', role: 'super_admin', status: 'active'
+  } }));
+  await flush();
+  assert.equal(owner.view(), 'authorized');
+  assert.equal(owner.nodes.get('enterAdminCenter').hidden, false);
+  assert.equal(owner.nodes.get('manageInvitations').hidden, false);
+  owner.nodes.get('enterAdminCenter').listeners.click();
+  assert.equal(owner.window.destination, '/admin/admin-center.html');
+  owner.nodes.get('manageInvitations').listeners.click();
+  assert.equal(owner.window.destination, '/admin/admin-center.html?tab=invites');
+
+  const member = mount(async () => response({ ok: true, account: {
+    id: 'MAO-BBBBBBBBBBBB', role: 'user', status: 'active'
+  } }));
+  await flush();
+  assert.equal(member.nodes.get('enterAdminCenter').hidden, true);
+  assert.equal(member.nodes.get('manageInvitations').hidden, true);
+  member.nodes.get('enterAdminCenter').listeners.click();
+  assert.equal(member.window.destination, undefined);
+
+  const pendingOwner = mount(async () => response({ ok: true, account: {
+    id: 'MAO-CCCCCCCCCCCC', role: 'super_admin', status: 'pending_invite'
+  } }));
+  await flush();
+  assert.equal(pendingOwner.nodes.get('enterAdminCenter').hidden, true);
+  pendingOwner.nodes.get('enterAdminCenter').listeners.click();
+  assert.equal(pendingOwner.window.destination, undefined);
+});
+
+test('admin sign-in entry opens login after confirmed unauthenticated session', async () => {
+  const page = mount(async () => response({ ok: false, error: { code: 'UNAUTHORIZED' } }, 401), '?admin=1');
+  await flush();
+  assert.equal(page.view(), 'login');
 });
