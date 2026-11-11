@@ -20,7 +20,7 @@ function mount(onRequest) {
     };
   }
   for (const id of ['bootstrapForm', 'bootstrapError', 'bootstrapComplete',
-    'bootstrapStatus', 'retryBootstrapCheck']) node(id);
+    'bootstrapStatus', 'retryBootstrapCheck', 'bootstrapSetupHelp']) node(id);
   const submitButton = node('bootstrapSubmit');
   const form = node('bootstrapForm');
   form.values = { bootstrapSecret: 'a'.repeat(32), username: 'creator001',
@@ -29,7 +29,7 @@ function mount(onRequest) {
   form.reset = () => { form.values.password = ''; form.values.confirmPassword = ''; form.values.bootstrapSecret = ''; };
   const redirects = [], calls = [];
   const context = {
-    document: { getElementById: node },
+    document: { getElementById: node, querySelectorAll() { return []; } },
     window: { location: { replace(url) { redirects.push(url); } } },
     FormData: class { constructor(element) { this.values = element.values; } get(key) { return this.values[key]; } },
     AbortController, setTimeout, clearTimeout,
@@ -100,4 +100,19 @@ test('administrator setup always uses same-origin credentials and an abort signa
   assert.ok(page.calls.every(call => call.options.credentials === 'same-origin'));
   assert.ok(page.calls.every(call => call.options.signal));
   assert.equal(page.calls.at(-1).options.method, 'POST');
+});
+
+test('missing Preview secrets never exposes founder registration form until configured', async () => {
+  let ready = false;
+  const page = mount(async () => result({ ok: true, initialized: false, configured: ready }));
+  await page.settle();
+  assert.equal(page.nodes.bootstrapForm.hidden, true);
+  assert.equal(page.nodes.bootstrapSetupHelp.hidden, false);
+  assert.equal(page.nodes.retryBootstrapCheck.hidden, false);
+  assert.match(page.nodes.bootstrapStatus.textContent, /尚未配置安全密钥/);
+  ready = true;
+  await page.retry();
+  assert.equal(page.nodes.bootstrapForm.hidden, false);
+  assert.equal(page.nodes.bootstrapSetupHelp.hidden, true);
+  assert.equal(page.nodes.retryBootstrapCheck.hidden, true);
 });
