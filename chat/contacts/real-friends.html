@@ -111,7 +111,7 @@ if(!response.ok||!result||result.ok!==true){
 var code=result&&result.error&&result.error.code||'';
 if(authErrors.has(code))clearPrivateSession();
 else if(path.indexOf('/api/social/chats/')===0 &&
-['SOCIAL_NOT_APPROVED','SOCIAL_BLOCKED','SOCIAL_ACCOUNT_NOT_ACTIVE'].includes(code))closeChat();
+['SOCIAL_NOT_APPROVED','SOCIAL_BLOCKED','SOCIAL_ACCOUNT_NOT_ACTIVE','SOCIAL_CHAT_NOT_ENABLED'].includes(code))closeChat();
 throw new Error(result&&result.error&&result.error.message||code||'HTTP '+response.status);
 }
 return result;
