@@ -323,6 +323,49 @@ test('API profile writes and selection verify persistent storage, including sile
 });
 
 
+test('editing an existing API profile persists the same entry, not a detached copy', () => {
+  const start = apiSettingsScript.indexOf('function getProfiles() {');
+  const end = apiSettingsScript.indexOf('let allModels = null;', start);
+  assert.ok(start >= 0 && end > start);
+  const isolated = apiSettingsScript.slice(start, end);
+  const create = new Function('window', 'PhoneStorage', 'localStorage', 'API_STORAGE_KEY',
+    isolated + '\nreturn { saveActiveProfile, getProfiles, getActiveProfile };');
+  const values = new Map([
+    ['api_active_profile', 'second'],
+    ['api_profiles_v1', JSON.stringify([
+      { id:'first', name:'first', model:'model-a' },
+      { id:'second', name:'second', model:'model-b' }
+    ])]
+  ]);
+  let discard = false;
+  const storage = {
+    setItem(key, value) { if (!discard) values.set(key, String(value)); },
+    getItem(key) { return values.has(key) ? values.get(key) : null; }
+  };
+  const phone = {
+    // Each read returns a fresh set of objects, matching real localStorage parsing.
+    getApiProfiles() { return JSON.parse(storage.getItem('api_profiles_v1') || '[]'); },
+    saveApiProfiles(list) { storage.setItem('api_profiles_v1', JSON.stringify(list)); },
+    getActiveProfileId() { return storage.getItem('api_active_profile') || ''; },
+    setActiveProfileId(id) { storage.setItem('api_active_profile', id); }
+  };
+  const funcs = create({PhoneStorage:phone}, phone, storage, 'api_settings');
+  const before = funcs.getActiveProfile();
+  assert.equal(before.model, 'model-b');
+  assert.equal(funcs.saveActiveProfile({name:'UPDATED', model:'model-new', temperature:0}), true);
+  let persisted = JSON.parse(storage.getItem('api_profiles_v1'));
+  assert.equal(persisted[0].model, 'model-a', 'other profiles are unchanged');
+  assert.equal(persisted[1].name, 'UPDATED', 'updated profile name survives re-read');
+  assert.equal(persisted[1].model, 'model-new', 'updated model survives re-read');
+  assert.equal(persisted[1].temperature, 0, 'temperature zero survives');
+  assert.equal(JSON.parse(storage.getItem('api_settings')).model, 'model-new', 'mirror matches the persisted profile');
+  // Simulate the settings being denied storage writes: success cannot be claimed.
+  discard = true;
+  assert.equal(funcs.saveActiveProfile({model:'should-not-save'}), false);
+  persisted = JSON.parse(storage.getItem('api_profiles_v1'));
+  assert.equal(persisted[1].model, 'model-new', 'failure does not mutate the persisted profile');
+});
+
 test('phone browser regression is wired to the release gate and covers core use cases', () => {
   assert.equal(packageJson.scripts['test:tutorial:browser'], 'node tests/tutorial-mobile-browser.mjs');
   assert.match(tutorialWorkflow, /npm run test:tutorial:browser/);
