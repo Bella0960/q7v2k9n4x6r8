@@ -815,22 +815,24 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
   }
 
   function likeComment(i) {
-    const c = post.comments[i];
-    c.liked = !c.liked;
-    c.likes = (c.likes || 0) + (c.liked ? 1 : -1);
-    const posts = loadPosts();
-    const idx = posts.findIndex(p => p.id === post.id);
-    if (idx >= 0) { posts[idx] = post; savePosts(posts); }
+    const c = post?.comments?.[i];
+    if (!c) return;
+    const wasLiked = Boolean(c.liked);
+    const oldLikes = Number(c.likes) || 0;
+    c.liked = !wasLiked;
+    c.likes = Math.max(0, oldLikes + (c.liked ? 1 : -1));
+    if (!saveNow()) { c.liked = wasLiked; c.likes = oldLikes; }
     renderComments();
   }
 
   function likeReply(i, j) {
-    const r = post.comments[i].replies[j];
-    r.liked = !r.liked;
-    r.likes = (r.likes || 0) + (r.liked ? 1 : -1);
-    const posts = loadPosts();
-    const idx = posts.findIndex(p => p.id === post.id);
-    if (idx >= 0) { posts[idx] = post; savePosts(posts); }
+    const r = post?.comments?.[i]?.replies?.[j];
+    if (!r) return;
+    const wasLiked = Boolean(r.liked);
+    const oldLikes = Number(r.likes) || 0;
+    r.liked = !wasLiked;
+    r.likes = Math.max(0, oldLikes + (r.liked ? 1 : -1));
+    if (!saveNow()) { r.liked = wasLiked; r.likes = oldLikes; }
     renderComments();
   }
 
@@ -853,7 +855,15 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     try {
       const posts = loadPosts();
       const idx = posts.findIndex(p => p.id === post.id);
-      if (idx >= 0) { posts[idx] = post; savePosts(posts); return true; }
+      if (idx < 0) throw new Error('帖子已不存在，无法保存');
+      posts[idx] = post;
+      const serialized = JSON.stringify(posts);
+      localStorage.setItem('forum_posts', serialized);
+      // Mobile storage can silently refuse writes. Do not report success without readback.
+      if (localStorage.getItem('forum_posts') !== serialized) {
+        throw new Error('本机存储回读不一致');
+      }
+      return true;
     } catch(e) { console.warn('[Forum] 保存帖子改动失败，当前页面继续显示已读出的内容', e); }
     toast('保存失败，请重试');
     return false;
@@ -903,11 +913,12 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
   }
 
   function toggleLike() {
-    post.liked = !post.liked;
-    post.likes += post.liked ? 1 : -1;
-    const posts = loadPosts();
-    const idx = posts.findIndex(p => p.id === post.id);
-    if (idx >= 0) { posts[idx] = post; savePosts(posts); }
+    if (!post) return;
+    const wasLiked = Boolean(post.liked);
+    const oldLikes = Number(post.likes) || 0;
+    post.liked = !wasLiked;
+    post.likes = Math.max(0, oldLikes + (post.liked ? 1 : -1));
+    if (!saveNow()) { post.liked = wasLiked; post.likes = oldLikes; }
     renderPost();
   }
 
