@@ -241,3 +241,33 @@ test('forum list rejects silently ignored localStorage writes',()=>{
   assert.equal(save(),true);
   assert.equal(JSON.parse(disk)[0].id,'new');
 });
+
+
+test('switching a role between two worlds never rewrites old comments or duplicates its own posts',()=>{
+  const start=home.indexOf('function forumFallbackPost(role,index)');
+  const end=home.indexOf('\nlet roleImageQueueBusy=',start);
+  assert.ok(start>=0&&end>start);
+  const role={id:'role-1',name:'虚构角色甲'};
+  let active={id:'academy',name:'校园',roleTopics:['社团日常']};
+  let saves=0;
+  const ctx={posts:[],Date,forumRoleList:()=>[role],forumRoleId:x=>String(x.id),
+    forumRoleBio:()=>'人物基础设定',getForumTheme:()=>active,
+    save:()=>{saves++;return true},generateRolePosts:()=>{}};
+  const api=runInNewContext(home.slice(start,end)+'\n({ensureRolePosts,getPosts:()=>posts})',ctx);
+  api.ensureRolePosts();
+  const campus=api.getPosts()[0];
+  assert.equal(campus.id,'role_academy_role-1');
+  campus.comments.push({text:'校园中的旧评论'});
+  campus.likes=9;
+  const original=JSON.stringify(campus);
+  active={id:'xiuxian',name:'修仙界',roleTopics:['宗门八卦']};
+  api.ensureRolePosts();
+  assert.equal(api.getPosts().length,2);
+  assert.equal(JSON.stringify(campus),original);
+  assert.ok(api.getPosts().some(p=>p.id==='role_xiuxian_role-1'));
+  active={id:'academy',name:'校园',roleTopics:['社团日常']};
+  api.ensureRolePosts();
+  assert.equal(api.getPosts().length,2);
+  assert.equal(JSON.stringify(campus),original);
+  assert.equal(saves,2);
+});
