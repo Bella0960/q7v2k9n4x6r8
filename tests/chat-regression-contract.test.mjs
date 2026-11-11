@@ -2373,8 +2373,8 @@ test('cloud outbound bubbles persist first, then use serialized pacing without s
 
 
 test('chat detail shipped inline script parses before the UI can run', () => {
-  const scripts = [...detail.matchAll(/<script\\b([^>]*)>([\\s\\S]*?)<\\/script>/gi)];
-  const mainScript = scripts.find(match => !/\\bsrc=/.test(match[1]) && match[2].includes('function appendMessagesWithPacing('));
+  const scripts = [...detail.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)];
+  const mainScript = scripts.find(match => !/\bsrc=/.test(match[1]) && match[2].includes('function appendMessagesWithPacing('));
   assert.ok(mainScript, 'the main chat script must be present in the shipped HTML');
   assert.doesNotThrow(() => new Script(mainScript[2]),
     'a duplicate lexical declaration or syntax error must never prevent the full chat page from loading');
