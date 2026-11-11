@@ -389,15 +389,19 @@ async function refreshFeed(){
   if(!result||!result.ok||!result.data||!Array.isArray(result.data.posts))throw new Error('AI 没有返回有效帖子');
   const data=result.data,now=Date.now(),existingTitles=new Set(posts.map(p=>String(p.title||'').trim()).filter(Boolean));
   const fresh=[];
+  const usedGossipPlans=new Set();
   data.posts.slice(0,3).forEach((item,i)=>{
+   const gossipPlan=gossipMode?gossipPlans.find(p=>p.id===String(item&&item.outlineId||'')):null;
+   if(gossipMode&&(!gossipPlan||usedGossipPlans.has(gossipPlan.id)))return;
    if(!item||!item.title||!item.body)return;
    const title=String(item.title).trim().slice(0,90),body=String(item.body).trim().slice(0,700);
    if(!title||!body||existingTitles.has(title))return;
    const author=forumResident(item.residentId,i);
-   if(gossipMode&&(!gossipPlans[i]||ForumGossip.isRepeat(body,posts.filter(p=>p.gossipStory).slice(0,30).map(p=>p.body).concat(fresh.map(p=>p.body)))))return;
+   if(gossipMode&&ForumGossip.isRepeat(body,posts.filter(p=>p.gossipStory).slice(0,30).map(p=>p.body).concat(fresh.map(p=>p.body))))return;
    const comments=(Array.isArray(item.comments)?item.comments:[]).slice(0,3).map((c,j)=>forumMakeAIComment(c,j)).filter(Boolean);
-   fresh.push({id:'forum_ai_'+now.toString(36)+'_'+i,name:author.name,avatar:'#333333',residentId:author.id,role:'社区成员',tag:'resident',owner:'community',topic:topics.includes(item.topic)?item.topic:topics[i%topics.length],time:now-i*5*60000,created:now-i*5*60000,title:title,body:body,likes:Math.max(0,Math.min(30,Number(item.likes)||0)),comments:comments,liked:false,generatedBy:'community-ai',themeId:theme.id,gossipStory:gossipMode?ForumGossip.storyFromOpening(item,gossipPlans[i],i):undefined,aiCommentBatch:comments.length?'v1':''});
+   fresh.push({id:'forum_ai_'+now.toString(36)+'_'+i,name:author.name,avatar:'#333333',residentId:author.id,role:'社区成员',tag:'resident',owner:'community',topic:topics.includes(item.topic)?item.topic:topics[i%topics.length],time:now-i*5*60000,created:now-i*5*60000,title:title,body:body,likes:Math.max(0,Math.min(30,Number(item.likes)||0)),comments:comments,liked:false,generatedBy:'community-ai',themeId:theme.id,gossipStory:gossipMode?ForumGossip.storyFromOpening(item,gossipPlan,i):undefined,aiCommentBatch:comments.length?'v1':''});
    existingTitles.add(title);
+   if(gossipMode)usedGossipPlans.add(gossipPlan.id);
   });
   if(!fresh.length)throw new Error('这次没有生成新的帖子，请稍后再刷新');
   const before=posts.slice();
