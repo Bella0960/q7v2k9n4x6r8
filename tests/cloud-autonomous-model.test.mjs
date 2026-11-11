@@ -256,6 +256,7 @@ test('云端模型响应超过执行租约后，提交必须使用新的真实�
         source_device_id: 'device-1',
         character_name: '测试角色',
         persona_text: '日常、自然地分享生活。',
+        last_user_message_at: base - 30 * 60_000,
         recent_messages_json: JSON.stringify([
           { role: 'user', content: '最近怎么样？' }
         ])
