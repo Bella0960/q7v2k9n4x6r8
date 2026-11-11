@@ -179,6 +179,9 @@
     var code = error && error.code ? error.code : '';
     var messages = {
       network_unavailable: '暂时无法连接服务器，请检查网络后重试。',
+      stale_account_response: '登录状态已变化，已忽略之前的请求；请刷新查看最新内容。',
+      friend_data_account_mismatch: '账号已切换，旧账号的好友资料不会显示；请刷新。',
+      friend_roster_account_mismatch: '好友资料所属账号不一致，请刷新。',
       account_auth_unavailable: '服务器尚未开通真人账号服务。',
       friend_service_unavailable: '账号服务可用，但好友服务还没有启用。',
       authentication_required: '登录状态已失效，请重新登录。',
@@ -481,6 +484,7 @@
     refreshProfileAndFriends().then(function () {
       setStatus('账号资料与好友资料已从服务器同步。');
     }).catch(function (error) {
+      if (error && error.code === 'stale_account_response') return;
       if (!handleSessionExpired(error)) setStatus(explainError(error), 'error');
     });
   }
