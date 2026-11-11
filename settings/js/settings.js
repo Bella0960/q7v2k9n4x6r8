@@ -371,8 +371,12 @@ async function testConnection() {
     let testUrl;
     try {
         const url = new URL(baseUrlRaw);
-        if (!/^https?:$/.test(url.protocol) || url.username || url.password || url.search || url.hash) {
-            fail('Base URL 只能填写 http(s) 接口前缀，不能包含账号、查询参数或 #片段。');
+        if (url.protocol !== 'https:') {
+            fail('Base URL 必须使用 HTTPS，避免 API Key 在 HTTP 明文连接中泄露；请使用服务商提供的 HTTPS 地址。');
+            return;
+        }
+        if (url.username || url.password || url.search || url.hash) {
+            fail('Base URL 只能填写接口前缀，不能包含账号、查询参数或 #片段。');
             return;
         }
         if (/\/(?:chat\/completions|images\/generations|models)\/?$/i.test(url.pathname)) {
@@ -411,8 +415,11 @@ async function testConnection() {
         let body;
         try { body = await response.json(); } catch (error) { body = null; }
         if (response.ok) {
-            if (!body || !Array.isArray(body.choices) || !body.choices.length) {
-                fail('接口返回 HTTP ' + response.status + '，但未包含兼容的聊天结果 choices。请核对接口协议和模型。');
+            var validChat = body && Array.isArray(body.choices) && body.choices.some(function (choice) {
+                return choice && choice.message && typeof choice.message.content === 'string' && choice.message.content.trim().length > 0;
+            });
+            if (!validChat) {
+                fail('接口返回 HTTP ' + response.status + '，但没有可用的聊天文字结果（choices[].message.content）。请核对接口协议和模型。');
                 return;
             }
             msgEl.innerText = '聊天连接成功 · ' + (Date.now() - t0) + 'ms · ' + model +
@@ -429,7 +436,9 @@ async function testConnection() {
             : response.status === 429 ? '请查看服务商控制台的额度及频率限制，不要连续重试。'
             : response.status >= 500 ? '可能是服务商故障，请稍后重试。'
             : '请按状态码和服务商返回信息排查。';
-        fail(friendlyHttpError(response.status, detail) + '。' + hint);
+        // Never display the full credential, even if an upstream service echoes it in an error response.
+        var safeDetail = detail && apiKey ? detail.split(apiKey).join('[已隐藏密钥]') : detail;
+        fail(friendlyHttpError(response.status, safeDetail) + '。' + hint);
     } catch (error) {
         if (error && error.name === 'AbortError') {
             fail('15 秒内没有收到响应。可能是网络慢或服务端延迟，不能直接判定 Key 错误。');
