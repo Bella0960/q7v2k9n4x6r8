@@ -537,7 +537,7 @@
     return progress[id];
   }
   function renderUpdates() {
-    $('guideVersion').textContent = GUIDE_VERSION;
+    if ($('guideVersion')) $('guideVersion').textContent = GUIDE_VERSION;
     $('footerVersion').textContent = GUIDE_VERSION;
     var latest = GUIDE_UPDATES[0];
     $('updatesDate').textContent = latest ? latest.date : '暂无记录';
@@ -820,6 +820,7 @@
   renderFilters();
   renderGuides();
   renderApps();
+  renderFaqs();
   // Direct links from API, image and MiniMax settings open the matching chapter.
   var linkedGuide = /^#guide=([a-z0-9-]+)$/.exec(window.location.hash);
   if (linkedGuide) startGuide(linkedGuide[1]);
