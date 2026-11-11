@@ -353,6 +353,14 @@ function likePost(id){const p=posts.find(x=>x.id===id);if(!p)return;p.liked=!p.l
 function commentPost(id){location.href='forum-detail.html?id='+id+'&focus=comment'}
 function sharePost(id){const p=posts.find(x=>x.id===id);if(!p)return;const txt=(p.title?p.title+'\n':'')+(p.body||p.content||'')+'\n\n— '+p.name+' / #'+(p.topic||'碎碎念');if(navigator.share){navigator.share({title:p.title||'论坛帖子',text:txt}).catch(()=>{})}else{const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();try{document.execCommand('copy')}catch(e){}document.body.removeChild(ta);toast('帖子内容已复制')}}
 root.addEventListener('click',function(e){const imageAction=e.target.closest('[data-generate-image]');if(imageAction){generateRolePostImage(imageAction.dataset.generateImage);return}const t=e.target.closest('[data-topic]');if(t){topicFilter=t.dataset.topic;page='home';render();return}const s=e.target.closest('[data-sort]');if(s){sortMode=s.dataset.sort;if(sortMode==='回应最多')posts.sort((a,b)=>Number(countComments(b))-Number(countComments(a)));render();return}const l=e.target.closest('[data-like]');if(l){likePost(l.dataset.like);return}const c=e.target.closest('[data-comment]');if(c){location.href='forum-detail.html?id='+c.dataset.comment+'&focus=comment';return}const sh=e.target.closest('[data-share]');if(sh){sharePost(sh.dataset.share);return}const card=e.target.closest('.post[data-post]');if(card){location.href='forum-detail.html?id='+card.dataset.post;return}const feat=e.target.closest('.featured[data-post]');if(feat){location.href='forum-detail.html?id='+feat.dataset.post;return}if(e.target.closest('[data-compose]')){openCompose();return}if(e.target.closest('[data-gohome]')){page='home';render();return}});
+window.addEventListener('pageshow',function(event){
+ if(!event.persisted)return;
+ // Mobile back/forward cache can preserve the old feed DOM after detail writes.
+ const y=scroll.scrollTop;
+ posts=loadPosts();
+ render();
+ scroll.scrollTop=y;
+});
 document.querySelectorAll('.nav-item').forEach(b=>b.addEventListener('click',()=>{const p=b.dataset.page;if(p==='notice'){location.href='forum-notifications.html';return}if(p==='me'){location.href='forum-profile.html';return}page=p;render();scroll.scrollTop=0}));$('composeTop').addEventListener('click',openCompose);$('closeCompose').addEventListener('click',closeCompose);$('composeOverlay').addEventListener('click',e=>{if(e.target===$('composeOverlay'))closeCompose()});$('submitPost').addEventListener('click',submitPost);$('draftImageButton').addEventListener('click',()=>$('draftImages').click());$('draftImages').addEventListener('change',function(){draftImageFiles=Array.from(this.files||[]);ForumMedia.preview(draftImageFiles,$('draftImagePreview'));$('draftImageCount').textContent=draftImageFiles.length+' 张已选 · 最多 4 张';});$('searchToggle').addEventListener('click',()=>{if(page!=='home')page='home';searchOpen=!searchOpen;render();scroll.scrollTop=0});$('backButton').addEventListener('click',()=>{if(history.length>1)history.back();else toast('这是独立页面预览')});
 /* ===== 下拉刷新：适配内部滚动容器 ===== */
 let prStartY=0,prPulling=false,prReady=false;
@@ -423,8 +431,10 @@ async function refreshFeed(){
    if(gossipMode)usedGossipPlans.add(gossipPlan.id);
   });
   if(!fresh.length)throw new Error('这次没有生成新的帖子，请稍后再刷新');
-  const before=posts.slice();
-  posts=fresh.concat(posts);
+  if(gossipMode&&fresh.length!==gossipPlans.length)throw new Error('三篇故事没有全部生成成功，本次不会发布残缺连载');
+  // The activity pass must not mutate existing post objects until the full batch saves.
+  const before=posts;
+  posts=fresh.concat(posts.map(p=>({...p,comments:Array.isArray(p.comments)?p.comments.slice():p.comments})));
   let activityCount=0;
   (Array.isArray(data.activity)?data.activity:[]).slice(0,2).forEach(entry=>{
    const target=posts.find(p=>String(p.id)===String(entry.postId));
