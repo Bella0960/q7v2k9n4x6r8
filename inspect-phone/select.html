@@ -8,7 +8,7 @@
 :root{color-scheme:light;font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
-body{display:grid;place-items:center;background:radial-gradient(circle at 20% 15%,rgba(255,255,255,.9),rgba(247,247,249,.6) 50%,rgba(232,232,238,.8)),linear-gradient(160deg,#f7f7f9,#e7e8ec);color:#333;overflow:hidden}
+body{display:grid;place-items:center;background:#f7f7f9;color:#333;overflow:hidden}
 .page{width:min(340px,calc(100% - 40px));animation:fade .35s ease both}
 .tip{text-align:center;font-size:13px;color:#9a9aa2;letter-spacing:.08em;margin:0 0 26px}
 .roles{display:flex;justify-content:center;gap:20px;flex-wrap:wrap}
@@ -31,13 +31,15 @@ body{display:grid;place-items:center;background:radial-gradient(circle at 20% 15
   var roles=[];
   try{roles=JSON.parse(localStorage.getItem('ai_custom_characters')||'[]')||[];}catch(e){roles=[];}
   roles=roles.filter(function(r){return r&&r.name;});
+  function esc(value){return String(value==null?'':value).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]});}
+  function avatarSrc(value){var v=String(value||'').trim();return /^(https?:\/\/|data:image\/|blob:|\.?\.?\/)/i.test(v)?esc(v):'';}
   var box=document.getElementById('roles');
   if(!roles.length){box.innerHTML='<div class="empty">暂无可查看的角色<br>请先在角色库中创建</div>';return;}
   box.innerHTML=roles.map(function(role,index){
-    var avatar=role.avatar
+    var avatar=avatarSrc(role.avatar)
       ?'<img class="avatar" src="'+role.avatar+'" alt="">'
       :'<div class="avatar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20c1.4-3.5 4.2-5.2 7.5-5.2s6.1 1.7 7.5 5.2"/></svg></div>';
-    return '<button class="role" type="button" data-id="'+encodeURIComponent(role.id!==undefined&&role.id!==null?role.id:index)+'"><div class="name">'+role.name+'</div>'+avatar+'</button>';
+    return '<button class="role" type="button" data-id="'+encodeURIComponent(role.id!==undefined&&role.id!==null?role.id:index)+'">'+avatar+'<div class="name">'+esc(role.name)+'</div></button>';
   }).join('');
   box.addEventListener('click',function(event){
     var item=event.target.closest('.role');
