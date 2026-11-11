@@ -88,9 +88,10 @@ function createPhone() {
     events: {},
     addEventListener(event, fn) { this.events[event] = fn; }
   };
-  const window = { crypto: webcrypto, addEventListener() {} };
+  const window = { crypto: webcrypto, events: {}, addEventListener(name, callback) { this.events[name] = callback; } };
   const location = { href: 'https://example.test/chat/contacts/real-friends.html',
-    origin: 'https://example.test', pathname: '/chat/contacts/real-friends.html', search: '' };
+    origin: 'https://example.test', pathname: '/chat/contacts/real-friends.html', search: '',
+    reload() { state.reloads = (state.reloads || 0) + 1; } };
   vm.runInNewContext(script, { window, document, fetch: fetchMock, location,
     navigator: { clipboard: { writeText: async () => {} } }, crypto: webcrypto,
     URL, history: { replaceState() {} }, setInterval: fn => { state.intervalFn = fn; return 1; }, clearInterval() {},
@@ -98,7 +99,7 @@ function createPhone() {
   const settle = async () => {
     for (let i = 0; i < 8; i++) await new Promise(resolve => setImmediate(resolve));
   };
-  return { get, elements, requests, state, settle, async openChat() {
+  return { get, elements, requests, state, window, settle, async openChat() {
     await this.settle();
     const button = elements.find(e => e.textContent === '聊天' && e.events.click);
     assert.ok(button, 'the approved friend must have a chat button');
@@ -210,4 +211,21 @@ test('a late response from a previously closed chat cannot mutate a reopened sam
   await phone.settle();
   assert.deepEqual(phone.get('messages').children.map(n => n.textContent), ['Fresh timeline'],
     'old response from same peer must be discarded by conversation generation');
+});
+
+test('BFCache pagehide wipes private DOM before a different MAO account can see it', async () => {
+  const phone = createPhone();
+  await phone.openChat();
+  assert.ok(phone.get('messages').children.some(x => x.textContent === 'Private text'));
+  assert.equal(typeof phone.window.events.pagehide, 'function');
+  phone.window.events.pagehide({});
+  assert.equal(phone.get('messages').children.length, 0);
+  assert.equal(phone.get('chatText').value, '');
+  assert.equal(phone.get('friends').children.length, 0);
+  assert.equal(phone.get('friendsSection').hidden, true);
+  assert.equal(phone.get('chatPanel').hidden, true);
+  assert.equal(phone.get('accountLabel').textContent, '登录状态已变化，请重新进入。');
+  assert.equal(typeof phone.window.events.pageshow, 'function');
+  phone.window.events.pageshow({ persisted: true });
+  assert.equal(phone.state.reloads, 1);
 });
