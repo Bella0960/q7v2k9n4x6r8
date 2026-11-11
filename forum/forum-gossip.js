@@ -41,6 +41,44 @@
       return total>=5&&matches/total>0.65;
     });
   }
+  // A casual reaction should not silently consume a chapter; only a clear request advances it.
+  function wantsContinuation(text){
+    var s=clean(text,300).replace(/\\s+/g,'');
+    return !!s&&/(?:继续(?:说|讲|更|写|更新)|接着(?:说|讲|更|写)|往下(?:说|讲)|后续|后面呢|后来(?:呢|怎么样|如何|发生|咋样)|蹲(?:更|后续)?|催更|求(?:更|后续)|结局(?:呢|是|如何|怎么)|说完|讲完|然后呢|下一(?:更|章|集|回)|再讲|再说点)/i.test(s);
+  }
+  // Derive the chapter cursor from saved author updates as well as the story bible.
+  function progress(post){
+    var story=post&&post.gossipStory||{},count=Number(story.maxChapters);
+    var maxChapters=Number.isFinite(count)?Math.min(8,Math.max(3,Math.floor(count))):4;
+    var current=Number(story.chapter);
+    var chapter=Number.isFinite(current)?Math.max(0,Math.floor(current)):0;
+    (Array.isArray(post&&post.comments)?post.comments:[]).forEach(function(c){
+      if(!c||c.source!=='gossip-author')return;
+      var n=Number(c.gossipChapter);
+      if(Number.isFinite(n))chapter=Math.max(chapter,Math.floor(n));
+    });
+    chapter=Math.min(maxChapters,chapter);
+    return {chapter:chapter,maxChapters:maxChapters,nextChapter:Math.min(maxChapters,chapter+1),
+      finished:!!story.finished||chapter>=maxChapters};
+  }
+  // Validate substantive progress before any new comment or chapter state is persisted.
+  function validateUpdate(data,earlierTexts,existingFacts){
+    var update=clean(data&&data.update,1800);
+    if(update.length<90)return {ok:false,reason:'这一更太短，没讲清楚新情节'};
+    if(isRepeat(update,earlierTexts))return {ok:false,reason:'这一更重复了之前的内容'};
+    var seen=new Set((Array.isArray(existingFacts)?existingFacts:[]).map(normalized));
+    var newFacts=[];
+    (Array.isArray(data&&data.newFacts)?data.newFacts:[]).forEach(function(value){
+      var fact=clean(value,180),key=normalized(fact);
+      if(key.length<6||seen.has(key))return;
+      seen.add(key);
+      newFacts.push(fact);
+    });
+    if(newFacts.length<2)return {ok:false,reason:'没有提供足够的新情节，未保存这次更新'};
+    return {ok:true,update:update,newFacts:newFacts.slice(0,8)};
+  }
   function isGossipPost(post){return !!(post&&post.gossipStory&&idea(post.gossipStory.outlineId))}
-  root.ForumGossip={ideas:IDEAS,idea:idea,planBatch:planBatch,storyFromOpening:storyFromOpening,isRepeat:isRepeat,isGossipPost:isGossipPost};
+  root.ForumGossip={ideas:IDEAS,idea:idea,planBatch:planBatch,storyFromOpening:storyFromOpening,
+    isRepeat:isRepeat,wantsContinuation:wantsContinuation,progress:progress,
+    validateUpdate:validateUpdate,isGossipPost:isGossipPost};
 })(window);
