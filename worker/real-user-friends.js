@@ -300,6 +300,7 @@ async function listFriendRequests(request, env, account, url) {
     return authJson({
       ok: true,
       direction,
+      ownerAccountId: account.id,
       requests: (result.results || []).map(row => ({
         id: row.id,
         note: row.note,
@@ -442,6 +443,7 @@ async function listBlocked(env, account) {
     ).bind(account.id, MAX_LIST_LIMIT).all();
     return authJson({
       ok: true,
+      ownerAccountId: account.id,
       blocked: (result.results || []).map(row => ({
         id: row.id,
         handle: row.handle,
