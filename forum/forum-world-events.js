@@ -88,5 +88,40 @@
     if(/(?:别|不要|停止|暂停|不用|先别)(?:继续|更新|说|讲|写)|别剧透/.test(q))return false;
     return /(?:后来呢|后续呢|新进展|有(?:后续|结果|更新)吗|进度怎么样|进展如何|继续(?:说|讲|更新)|蹲后续|最后怎么样|怎么样了|下一更)/.test(q);
   }
-  root.ForumWorldEvents={worlds:WORLDS,getWorld,plans,fromOpening,isEvent,progress,checkUpdate,duplicated,wantsUpdate};
+  const VOICES={
+    reality:[
+      ['街角晚风','下班后常路过街角小店，说话慢，喜欢补充实际细节'],
+      ['早八地铁','通勤人，语速快，抱怨归抱怨，会承认看错'],
+      ['住在北边','习惯核对消息出处和时间线'],
+      ['小柚住二楼','邻里热心人，直爽但不抢结论'],
+      ['便利店后门','夜班工作者，冷幽默'],
+      ['四点的拿铁','新入职，愿意讲自己遇到过的尴尬']],
+    academy:[
+      ['图书馆靠窗','课后留在图书馆，善于观察同学关系'],
+      ['隔壁宿舍小唐','社团活动积极，偶尔吐槽排练'],
+      ['课表核对员','选课仔细，提醒时间和规则'],
+      ['社团小梨','直率，有时一句话提到点子上'],
+      ['食堂二楼','打工学生，习惯用冷幽默化解尴尬'],
+      ['晚自习灯亮','小组任务认真，愿意协调大家时间']],
+    xiuxian:[
+      ['外门小七','外门弟子，能描述宗门日常与杂务'],
+      ['灵兽房阿蘅','灵兽饲养弟子，爱追查奇怪足迹'],
+      ['执事簿边角','熟悉任务规章，话不多但严谨'],
+      ['丹房青梨','炼丹弟子，说话快，常提药材细节'],
+      ['后山守夜人','守夜弟子，冷幽默'],
+      ['云梯半日闲','低阶散修，细心分享修炼琐事']],
+    future:[
+      ['末班夜车','夜班通勤居民，语气克制'],
+      ['维修台二号','维修学徒，关注维修记录而非阴谋'],
+      ['北区离线者','谨慎核对公告和设备故障时间'],
+      ['巷口小电流','热心邻居，直爽且爱追问'],
+      ['旧芯片回收站','夜市居民，偶尔冷幽默'],
+      ['凌晨四点店','便利店夜班员工，分享普通生活']]
+  };
+  function residents(theme,base){
+    const voice=theme&&VOICES[theme.id];return (Array.isArray(base)?base:[]).map((r,i)=>{
+      const v=voice&&voice[i];return v?{id:r.id,name:v[0],style:v[1]}:{id:r.id,name:r.name,style:r.style};
+    });
+  }
+  root.ForumWorldEvents={worlds:WORLDS,getWorld,residents,plans,fromOpening,isEvent,progress,checkUpdate,duplicated,wantsUpdate};
 })(window);
