@@ -106,6 +106,7 @@
     var p=profile(role),name=clean(role.name,30)||'角色';
     var low=p.level==='student',high=p.level==='high',meal=low?19:high?228:38,shop=low?85:high?780:189;
     var dayMinutes=now.getHours()*60+now.getMinutes();
+    var coworkerDay=dayMinutes<17*60+40?1:0;
     var stamps;
     if(dayMinutes<540)stamps=[515,740,970,1175].map(function(m){return m-1440;});
     else if(dayMinutes<780)stamps=[420,460,500,dayMinutes-5];
@@ -134,16 +135,16 @@
         {side:'me',text:'晚点再说吧。',time:at(now,0,21,8),status:'read_no_reply'}
       ]},
       {id:'c2',name:p.pair,avatar:'林',relationship:p.student?'室友':p.pair.startsWith('同事')?'同事':'邻居',lastTime:at(now,0,17,40),unread:2,messages:[
-        {side:'ai',text:'午饭那家店怎么样？',time:at(now,0,12,24)},
-        {side:'me',text:'还可以，就是人多。',time:at(now,0,12,25)},
-        {side:'ai',text:'你是不是又忘带伞了。',time:at(now,0,12,26)},
-        {side:'me',text:'……差点。',time:at(now,0,12,27)},
-        {side:'ai',text:'你真是。',time:at(now,0,12,28)},
-        {side:'me',text:'等等，我有个事想问',time:at(now,0,17,35)},
-        {side:'system',text:'对方撤回了一条消息',time:at(now,0,17,36),status:'recalled'},
-        {side:'ai',text:'算了，见面再说。',time:at(now,0,17,37)},
-        {side:'me',text:'行。',time:at(now,0,17,39)},
-        {side:'ai',text:'桌上那本书别忘带走。',time:at(now,0,17,40)}
+        {side:'ai',text:'午饭那家店怎么样？',time:at(now,coworkerDay,12,24)},
+        {side:'me',text:'还可以，就是人多。',time:at(now,coworkerDay,12,25)},
+        {side:'ai',text:'你是不是又忘带伞了。',time:at(now,coworkerDay,12,26)},
+        {side:'me',text:'……差点。',time:at(now,coworkerDay,12,27)},
+        {side:'ai',text:'你真是。',time:at(now,coworkerDay,12,28)},
+        {side:'me',text:'等等，我有个事想问',time:at(now,coworkerDay,17,35)},
+        {side:'system',text:'对方撤回了一条消息',time:at(now,coworkerDay,17,36),status:'recalled'},
+        {side:'ai',text:'算了，见面再说。',time:at(now,coworkerDay,17,37)},
+        {side:'me',text:'行。',time:at(now,coworkerDay,17,39)},
+        {side:'ai',text:'桌上那本书别忘带走。',time:at(now,coworkerDay,17,40)}
       ]},
       {id:'c3',name:'高中好友阿诺',avatar:'诺',relationship:'高中好友',lastTime:at(now,1,22,5),unread:0,messages:[
         {side:'ai',text:'你最近是不是有心事？',time:at(now,1,21,58)},
@@ -205,9 +206,10 @@
       {query:'周末短途散步路线',time:at(now,3,14,5)},
       {query:'已清除3条历史记录',time:at(now,0,3,7),deleted:true}
     ];
+    searches.sort(function(a,b){return b.time-a.time;});
     var notes=[
       {title:'这两天',text:'买纸巾；给阿诺回消息；记得把那本书还给小林。',createdAt:at(now,2,10,0),updatedAt:at(now,0,9,3)},
-      {title:'没发出去的话',text:'有些话写完又删了，不知道该怎么开头。',createdAt:at(now,1,22,18),updatedAt:at(now,0,0,52)},
+      {title:'没发出去的话',text:'有些话写完又删了，不知道该怎么开头。',createdAt:at(now,1,22,18),updatedAt:Math.max(at(now,1,22,18),at(now,0,0,52))},
       {title:'零碎',text:'午饭那家店坐窗边会比较安静。',createdAt:at(now,1,12,30),updatedAt:at(now,0,12,45)},
       {title:'别忘了',text:'下周把活动报名的事确认一下。',createdAt:at(now,3,18,30),updatedAt:at(now,2,8,0)}
     ];
@@ -235,6 +237,7 @@
       {title:'不着急',artist:'林间雨',time:at(now,2,23,48)},
       {title:'二十分钟的路',artist:'空白日历',time:at(now,3,17,10)}
     ];
+    recent.sort(function(a,b){return b.time-a.time;});
     var mapStops=facts.map(function(f,i){return {place:f.place,arrival:f.time,durationMinutes:Math.max(0,Math.min([35,42,25,120][i],Math.floor((now.getTime()-f.time)/60000))),thought:['今天要不要先发那条消息？','坐这儿刚好能安静一会儿。','想买，又觉得会不会太刻意。','那条消息还是先别发吧。'][i]};});
     var photos=[
       {description:'镜子里匆匆整理衣领的自拍',type:'自拍',time:at(now,0,8,21)},
@@ -491,6 +494,7 @@
         var spent=tx.filter(function(x){var d=new Date(x.time);return num(x.amount,0)<0&&d.getFullYear()===month.getFullYear()&&d.getMonth()===month.getMonth();})
           .reduce(function(total,x){var v=Math.abs(num(x.amount,0));categoryTotals[x.type||'其他']=(categoryTotals[x.type||'其他']||0)+v;return total+v;},0);
         var largest=Object.keys(categoryTotals).sort(function(a,b){return categoryTotals[b]-categoryTotals[a];})[0]||'暂无';
+        tx=tx.slice().sort(function(a,b){return num(b.time,0)-num(a.time,0);});
         body='<div class="inspect-summary"><small>剧情余额</small><strong>'+money(num(section.balance,0))+'</strong><small>本月支出 '+money(spent)+' · 最大支出类别 '+html(largest)+'</small></div>'+
           block('收支明细',tx.map(function(x){return '<div class="inspect-transaction"><span><b>'+html(x.merchant)+'</b><small>'+html(x.type)+' · '+html(dateTime(x.time))+(x.memo?' · '+html(x.memo):'')+'</small></span><strong>'+money(x.amount)+'</strong></div>';}).join(''));
       } else if(current==='music'){
