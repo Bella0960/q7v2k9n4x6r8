@@ -51,10 +51,15 @@
     var expectedCode = String(serverPayload && serverPayload.code || '').trim().toLowerCase();
     var payload = String(serverPayload && serverPayload.qrPayload || '').trim();
     if (!CODE_PATTERN.test(expectedCode)) throw new Error('invalid_friend_qr_payload');
-    if (extractFriendCode(payload) === expectedCode) return payload;
-    var fallbackCode = extractFriendCode(shareUrl, locationLike);
-    if (fallbackCode === expectedCode) return String(shareUrl);
-    throw new Error('invalid_friend_qr_payload');
+    // Standard phone cameras can open HTTPS, unlike an unregistered mao:// scheme.
+    // Keep accepting the legacy value, but never embed it in a newly rendered QR.
+    if (payload && extractFriendCode(payload) !== expectedCode) {
+      throw new Error('invalid_friend_qr_payload');
+    }
+    if (extractFriendCode(shareUrl, locationLike) !== expectedCode) {
+      throw new Error('invalid_friend_qr_payload');
+    }
+    return String(shareUrl);
   }
   root.PhoneRealUserInviteLinks = {
     createShareUrl: createShareUrl,
