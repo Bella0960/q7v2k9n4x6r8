@@ -6780,15 +6780,22 @@
                 return;
             }
             // 改写以「整轮回复」为单位：同 turnId 的所有气泡一起移除；老记录无 turnId 时只删该条消息。
+            var previousHistory = list.slice();
             var targetBubbleId = mid || ensureMid(list[targetIdx]);
             if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.removeTurnFromHistory === 'function') {
                 list = window.ChatMessagePolicy.removeTurnFromHistory(list, targetBubbleId);
             } else {
                 list.splice(targetIdx, 1);
             }
-            saveMessages(list);
+            if (!saveMessages(list)) {
+                // 未能保存删除操作时恢复原回复，不能先从界面移除再继续重新生成。
+                saveMessages(previousHistory);
+                rerenderFromList(previousHistory);
+                if (typeof showToast === 'function') showToast('原回复没有删除成功，已保留原消息；暂未开始重新生成');
+                return;
+            }
             rerenderFromList(list);
-            // 触发重新生成
+            // 只有整轮旧回复已成功移除，才开始重新生成。
             sendMsg({ isRegenerate: true, regenDirection: direction || '' });
         };
 
