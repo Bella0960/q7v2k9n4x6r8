@@ -65,6 +65,17 @@ async function openGuide(page, id, expectedTitle) {
   assert.equal(await page.locator('#walkStepperContent').isVisible(), false);
   assert.equal(await page.locator('#walkNext').isVisible(), false);
   assert.ok((await page.locator('#walkArticle .walk-article-section').count()) >= 6);
+  if (id === 'api-first') {
+    const [target] = await Promise.all([
+      page.context().waitForEvent('page'),
+      page.locator('#walkOpenPage').click()
+    ]);
+    await target.waitForLoadState('domcontentloaded');
+    assert.equal(new URL(target.url()).hash, '#api', 'API article opens its real settings anchor');
+    await target.locator('#api').waitFor({ state:'attached' });
+    await target.close();
+    record('API settings link opens the real #api panel');
+  }
   assert.equal(await page.evaluate(() => document.body.style.overflow), 'hidden',
     'article must lock background scrolling');
   assert.equal(await page.locator('#walkClose').evaluate(el => el === document.activeElement), true,
