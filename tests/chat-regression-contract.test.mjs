@@ -1121,12 +1121,12 @@ test('known external history writers remain on the migration inventory', () => {
 });
 
 test('inspect phone uses role-scoped new storyline instead of the retired shared content cache', () => {
-  assert.match(inspectPhone, /phone_storage\\.js/);
-  assert.match(inspectPhone, /phone_api\\.js/);
-  assert.match(inspectPhone, /inspect-feature\\.js/);
-  assert.match(inspectPhone, /InspectPhoneFeature\\.mount/);
+  assert.match(inspectPhone, /phone_storage\.js/);
+  assert.match(inspectPhone, /phone_api\.js/);
+  assert.match(inspectPhone, /inspect-feature\.js/);
+  assert.match(inspectPhone, /InspectPhoneFeature\.mount/);
   assert.match(inspectFeature, /inspect_story_v1_/);
-  assert.match(inspectFeature, /encodeURIComponent\\(String\\(roleId\\)\\)/);
+  assert.match(inspectFeature, /encodeURIComponent\(String\(roleId\)\)/);
   assert.match(inspectFeature, /function valid/);
   assert.doesNotMatch(inspectPhone, /inspect_phone_content_v2_/, 'retired shared cache must not be resurrected');
 });
