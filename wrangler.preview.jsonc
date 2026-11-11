@@ -1,0 +1,29 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mao-auth-preview",
+  "main": "worker.js",
+  "compatibility_date": "2026-10-27",
+  "workers_dev": true,
+  "preview_urls": false,
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "html_handling": "none",
+    "not_found_handling": "none",
+    "run_worker_first": true
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "CLOUD_DB",
+        "class_name": "CloudDatabase"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["CloudDatabase"]
+    }
+  ]
+}
