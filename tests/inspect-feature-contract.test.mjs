@@ -100,3 +100,130 @@ test('单板块更新的数据需具备足够记录，拒绝未来时间与不�
     sections:{notes:{notes:[]}}
   },now).includes('单板块刷新不能修改其他板块'));
 });
+
+
+function setupInteractive(role={id:'interactive-role',name:'测试',relationship:'朋友'},apiKey=false) {
+  const store=new Map(),handlers={};
+  let failWrites=false;
+  const storage={
+    getItem(key){return store.has(key)?store.get(key):null;},
+    setItem(key,value){if(failWrites)throw new Error('quota exceeded');store.set(key,String(value));},
+    removeItem(key){store.delete(key);}
+  };
+  const node=name=>({
+    name,innerHTML:'',textContent:'',scrollHeight:550,scrollTop:0,
+    classList:{add(){},remove(){}},
+    addEventListener(event,handler){handlers[name+':'+event]=handler;}
+  });
+  const grid=node('grid'),dock=node('dock'),back=node('back'),
+    appBody=node('appBody'),appLayer=node('appLayer'),appTitle=node('appTitle');
+  const document={
+    querySelector(selector){return selector==='.grid'?grid:dock;},
+    getElementById(){return back;}
+  };
+  const window={
+    PhoneStorage:{getApiConfig(){return apiKey?{apiKey:'test-only'}:{};}},
+    PhoneAPI:{completeJSON:async()=>({ok:false}),complete:async()=>''}
+  };
+  vm.runInNewContext(src,{window,localStorage:storage,document,Date,Math,JSON,Number,String,Array,Object,console});
+  const mount=()=>window.InspectPhoneFeature.mount({
+    role,requestedId:String(role.id),appBody,appLayer,appTitle
+  });
+  const key=window.InspectPhoneFeature.storyKey(role.id);
+  const read=()=>JSON.parse(storage.getItem(key));
+  const action=id=>handlers['appBody:click']({
+    target:{closest(sel){return sel==='[data-action]'?{dataset:{action:id}}:null;}}
+  });
+  const openApp=id=>handlers[(id==='chat'||id==='browser'?'dock':'grid')+':click']({
+    target:{closest(sel){return sel==='[data-app]'?{dataset:{app:id}}:null;}}
+  });
+  const openContact=index=>handlers['appBody:click']({
+    target:{closest(sel){return sel==='[data-detail]'?{dataset:{detail:'chat',index:String(index)}}:null;}}
+  });
+  const submitMessage=message=>handlers['appBody:submit']({
+    target:{id:'inspectCompose',querySelector(){return {value:message};}},
+    preventDefault(){}
+  });
+  const start=()=>{
+    mount();window.InspectPhoneFeature.onUnlock();
+    action('grant');action('all');action('start');
+  };
+  return {
+    store,window,storage,appBody,appTitle,key,read,mount,start,
+    action,openApp,openContact,submitMessage,
+    setFailWrites(value){failWrites=value;}
+  };
+}
+
+test('全部十个虚构板块的本地数据通过严格校验',()=>{
+  const ui=setupInteractive();ui.start();
+  const snapshot=ui.read(),now=Date.now();
+  for(const [id,section] of Object.entries(snapshot.sections)){
+    assert.equal(ui.window.InspectPhoneFeature.valid(id,section,now,snapshot.facts),true,
+      id+' 样例不满足结构/时间/跨板块事实校验');
+  }
+});
+
+test('跨天后聊天与用户选择不丢失，旧许可不自动延续',()=>{
+  const ui=setupInteractive();ui.start();
+  const snapshot=ui.read();
+  snapshot.day='2026-11-10';
+  snapshot.selected=['chat','notes'];
+  snapshot.permission={decision:'同意',at:Date.now()-86400000};
+  snapshot.sections.chat.contacts[0].messages.push({
+    side:'me',text:'跨天保留的唯一消息',time:Date.now()-60000
+  });
+  ui.storage.setItem(ui.key,JSON.stringify(snapshot));
+  ui.mount();
+  const next=ui.read();
+  assert.notEqual(next.day,'2026-11-10');
+  assert.equal(next.permission,null);
+  assert.deepEqual(Array.from(next.selected),['chat','notes']);
+  assert.ok(next.sections.chat.contacts[0].messages.some(m=>m.text==='跨天保留的唯一消息'));
+});
+
+test('保存失败时不虚假发送聊天；未配置API仍会保存明确的剧情消息',()=>{
+  const ui=setupInteractive();ui.start();ui.openApp('chat');ui.openContact(0);
+  ui.submitMessage('记录1，没有API也应保留');
+  assert.ok(ui.read().sections.chat.contacts[0].messages.some(m=>m.text.includes('记录1')));
+  const count=ui.read().sections.chat.contacts[0].messages.length;
+  ui.setFailWrites(true);
+  ui.submitMessage('记录2，保存失败不应留在界面');
+  ui.setFailWrites(false);
+  assert.equal(ui.read().sections.chat.contacts[0].messages.length,count);
+  assert.doesNotMatch(ui.appBody.innerHTML,/记录2/);
+});
+
+test('AI 数据不足或跨板块消费冲突时，原记录不被覆盖',async()=>{
+  const ui=setupInteractive(undefined,true);ui.start();ui.openApp('wallet');
+  const previous=ui.storage.getItem(ui.key);
+  ui.window.PhoneAPI.completeJSON=async()=>({
+    ok:true,data:{transactions:[{merchant:'只有一笔',amount:-1}]}
+  });
+  ui.action('refresh');
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(ui.storage.getItem(ui.key),previous);
+
+  const original=ui.read().sections.wallet;
+  const conflicting=JSON.parse(JSON.stringify(original));
+  conflicting.transactions[1].amount=-999;
+  ui.window.PhoneAPI.completeJSON=async()=>({ok:true,data:conflicting});
+  ui.action('refresh');
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(ui.storage.getItem(ui.key),previous);
+});
+
+test('AI 合法刷新只修改目标板块，其他板块保持逐字一致',async()=>{
+  const ui=setupInteractive(undefined,true);ui.start();ui.openApp('music');
+  const before=ui.read(),music=JSON.parse(JSON.stringify(before.sections.music));
+  music.recent[0].title='刷新后独有的歌曲名称';
+  ui.window.PhoneAPI.completeJSON=async()=>({ok:true,data:music});
+  ui.action('refresh');
+  await new Promise(resolve=>setImmediate(resolve));
+  const after=ui.read();
+  assert.equal(after.sections.music.recent[0].title,'刷新后独有的歌曲名称');
+  assert.equal(after.source.music,'ai');
+  for(const key of Object.keys(before.sections)){
+    if(key!=='music')assert.deepEqual(after.sections[key],before.sections[key]);
+  }
+});
