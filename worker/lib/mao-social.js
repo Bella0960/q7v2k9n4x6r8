@@ -273,7 +273,7 @@ export function createMaoSocial({ store, accountAuth, env = {}, now = () => Date
         const list = rows("SELECT seq,id,sender_id,recipient_id,body,created_at FROM mao_social_messages " +
           "WHERE pair_low=? AND pair_high=? AND source_request_id=? AND seq>? ORDER BY seq ASC LIMIT 50",
           low, high, sourceRequestId, after);
-        return ok({ ownerAccountId: actor.account_id, peerId: peer,
+        return ok({ ownerAccountId: actor.account_id, peerId: peer, friendshipId: sourceRequestId,
           messages: list.map(m => ({ seq: Number(m.seq), id: m.id, senderId: m.sender_id,
             recipientId: m.recipient_id, text: m.body, createdAt: Number(m.created_at) })),
           nextCursor: list.length ? Number(list[list.length - 1].seq) : after });
@@ -296,7 +296,7 @@ export function createMaoSocial({ store, accountAuth, env = {}, now = () => Date
             old.source_request_id !== sourceRequestId) {
           throw new ApiError(409, 'SOCIAL_MESSAGE_ID_REUSED', '消息编号已经使用');
         }
-        return ok({ message: { id: old.id, seq: Number(old.seq),
+        return ok({ friendshipId: sourceRequestId, message: { id: old.id, seq: Number(old.seq),
           senderId: actor.account_id, recipientId: peer, text, createdAt: Number(old.created_at) },
           replay: true });
       }
@@ -309,7 +309,7 @@ export function createMaoSocial({ store, accountAuth, env = {}, now = () => Date
         "(id,pair_low,pair_high,source_request_id,sender_id,recipient_id,client_message_id,body,created_at) " +
         "VALUES (?,?,?,?,?,?,?,?,?) RETURNING seq",
         id, low, high, sourceRequestId, actor.account_id, peer, clientMessageId, text, time);
-      return ok({ message: { id, seq: Number(result[0].seq),
+      return ok({ friendshipId: sourceRequestId, message: { id, seq: Number(result[0].seq),
         senderId: actor.account_id, recipientId: peer, text, createdAt: time } });
     });
   }
