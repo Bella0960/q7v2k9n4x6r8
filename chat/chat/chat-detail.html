@@ -2876,7 +2876,26 @@
             if (!msg || typeof msg !== 'object') return '';
             var body = msg.text != null ? msg.text : (msg.content != null ? msg.content : '');
             var marker = msg.mid != null ? msg.mid : (msg.time != null ? msg.time : '');
-            return String(msg.role || '') + '\u0001' + String(marker) + '\u0001' + String(body);
+            // Verify behavior-bearing metadata too, not only visible text:
+            // payment status, role-card references, call outcomes and group poll/chain state
+            // must not report success when only the text portion round-trips.
+            var metadata = [
+                msg.type || '',
+                msg.status || '',
+                msg.amount == null ? '' : String(msg.amount),
+                msg.cardId || '',
+                msg.turnId || '',
+                msg.sendFailed ? '1' : '0',
+                msg.sendFailedReason || '',
+                msg.returnRequestedAt == null ? '' : String(msg.returnRequestedAt),
+                msg.returnedAt == null ? '' : String(msg.returnedAt),
+                msg.editedAt == null ? '' : String(msg.editedAt),
+                msg.poll && typeof msg.poll === 'object' ? JSON.stringify(msg.poll) : '',
+                msg.chain && typeof msg.chain === 'object' ? JSON.stringify(msg.chain) : '',
+                msg.call && typeof msg.call === 'object' ? JSON.stringify(msg.call) : ''
+            ];
+            return String(msg.role || '') + '\u0001' + String(marker) + '\u0001' +
+                String(body) + '\u0001' + JSON.stringify(metadata);
         }
 
         function _verifyHistoryRoundTrip(list) {
