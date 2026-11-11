@@ -12,6 +12,8 @@ const chatBeautySource = read('shared/js/chat-beauty.js');
 const chatPageSource = read('chat/chat/chat.html');
 const myMomentsSource = read('chat/moments/my-moments.html');
 const chatDetailSource = read('chat/chat/chat-detail.html');
+const datePageSource = read('chat/date/date.html');
+const forumDetailSource = read('forum/forum-detail.html');
 
 /* ---------- 真实源码函数提取（行为级执行，不做字符串存在性断言） ---------- */
 
@@ -456,4 +458,132 @@ test('名片：刷新后仍只从所属会话读回，不与其他角色共享�
   assert.equal(reloadedB.length, 1);
   assert.equal(reloadedB[0].text, 'B 的普通消息');
   assert.equal(reloadedB.some((msg) => msg.type === 'card'), false);
+});
+
+
+/* ---------- 跨页面写入：失败必须显式反馈，且不留下未保存的内存状态 ---------- */
+
+function loadDateSaveHistory(storage, localStorage = createLocalStorage()) {
+  const toasts = [];
+  const sandbox = {
+    _storage: storage,
+    roleId: 'roleA',
+    HISTORY_KEY: 'chat_history_roleA',
+    localStorage,
+    toast: (message) => toasts.push(message),
+    console: { error() {} }
+  };
+  runInNewContext(extractFunction(datePageSource, 'saveHistory'), sandbox, {
+    filename: 'chat/date/date.html#saveHistory'
+  });
+  return { save: sandbox.saveHistory, toasts, localStorage };
+}
+
+test('赴约历史：PhoneStorage 写入失败时回滚本次变更并提示，不冒充成功', () => {
+  const original = [{ role: 'user', text: '旧内容', time: 1 }];
+  const candidate = original.slice();
+  candidate.push({ role: 'user', text: '新内容', time: 2 });
+  const sandbox = loadDateSaveHistory({
+    getChatHistory: () => original.slice(),
+    saveChatHistory: () => false
+  });
+
+  assert.equal(sandbox.save(candidate, original), false);
+  assert.deepEqual(candidate, original, '失败时必须恢复原数组，避免 UI 将未保存消息留作已完成状态');
+  assert.equal(sandbox.toasts.length, 1);
+  assert.match(sandbox.toasts[0], /保存失败/);
+});
+
+test('赴约历史：写入返回成功但读回内容不一致时仍判失败并回滚', () => {
+  const original = [{ role: 'assistant', text: '旧回复', time: 1 }];
+  const candidate = original.slice();
+  candidate.push({ role: 'user', text: '待保存', time: 2 });
+  const sandbox = loadDateSaveHistory({
+    saveChatHistory: () => true,
+    getChatHistory: () => original.slice()
+  });
+
+  assert.equal(sandbox.save(candidate, original), false);
+  assert.deepEqual(candidate, original);
+  assert.match(sandbox.toasts[0], /保存失败/);
+});
+
+test('赴约历史：成功写入后必须完整读回同一数组才返回成功', () => {
+  let persisted = [];
+  const candidate = [{ role: 'user', text: '新消息', time: 2, mode: 'date', scene: '咖啡馆' }];
+  const sandbox = loadDateSaveHistory({
+    saveChatHistory: (id, list) => {
+      assert.equal(id, 'roleA');
+      persisted = JSON.parse(JSON.stringify(list));
+      return true;
+    },
+    getChatHistory: () => JSON.parse(JSON.stringify(persisted))
+  });
+
+  assert.equal(sandbox.save(candidate, []), true);
+  assert.deepEqual(persisted, candidate);
+  assert.deepEqual(sandbox.toasts, []);
+});
+
+test('赴约历史：没有 PhoneStorage 时 localStorage 写入异常也会回滚', () => {
+  const original = [{ role: 'assistant', text: '旧内容', time: 1 }];
+  const candidate = original.slice();
+  candidate.push({ role: 'user', text: '新内容', time: 2 });
+  const localStorage = {
+    getItem() { return null; },
+    setItem() { throw new Error('quota exceeded'); }
+  };
+  const sandbox = loadDateSaveHistory(null, localStorage);
+
+  assert.equal(sandbox.save(candidate, original), false);
+  assert.deepEqual(candidate, original);
+  assert.match(sandbox.toasts[0], /保存失败/);
+});
+
+function loadForumSharePost(storage, localStorage = createLocalStorage()) {
+  const alerts = [];
+  const sandbox = {
+    window: { PhoneStorage: storage },
+    localStorage,
+    alert: (message) => alerts.push(message),
+    console: { warn() {}, error() {} },
+    postBody: () => '测试帖子正文',
+    postTitle: () => '测试帖子标题'
+  };
+  runInNewContext(extractFunction(forumDetailSource, 'sharePost'), sandbox, {
+    filename: 'forum/forum-detail.html#sharePost'
+  });
+  localStorage.setItem('ai_custom_characters', JSON.stringify([{ id: 'roleA', name: '角色甲' }]));
+  return { share: sandbox.sharePost, alerts, localStorage };
+}
+
+test('论坛分享：PhoneStorage 保存失败时不显示分享成功', () => {
+  const sandbox = loadForumSharePost({
+    getChatHistory: () => [],
+    saveChatHistory: () => false
+  });
+
+  sandbox.share();
+  assert.equal(sandbox.alerts.length, 1);
+  assert.match(sandbox.alerts[0], /分享失败/);
+  assert.doesNotMatch(sandbox.alerts[0], /已分享给/);
+});
+
+test('论坛分享：保存并读回目标角色消息后才显示成功', () => {
+  let persisted = [];
+  const sandbox = loadForumSharePost({
+    getChatHistory: () => JSON.parse(JSON.stringify(persisted)),
+    saveChatHistory: (id, list) => {
+      assert.equal(id, 'roleA');
+      persisted = JSON.parse(JSON.stringify(list));
+      return true;
+    }
+  });
+
+  sandbox.share();
+  assert.equal(persisted.length, 1);
+  assert.equal(persisted[0].role, 'user');
+  assert.match(persisted[0].text, /测试帖子正文/);
+  assert.equal(sandbox.alerts.length, 1);
+  assert.match(sandbox.alerts[0], /已分享给 角色甲/);
 });
