@@ -208,7 +208,14 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       throw new ApiError(400, 'PASSWORD_MISMATCH', '两次输入的密码不一致');
     }
     const salt = randomToken(16);
-    const passwordHash = await passwordDigest(password, salt);
+    let passwordHash;
+    try {
+      passwordHash = await passwordDigest(password, salt);
+    } catch (error) {
+      // Security: never log passwords, secret values, request bodies or hashes.
+      console.error('[founder-bootstrap] password-derivation-failed', error?.name || 'Error');
+      throw new ApiError(503, 'BOOTSTRAP_PASSWORD_DERIVATION_FAILED', '管理员密码保护模块处理失败，请联系开发者检查服务器日志');
+    }
     const timestamp = now();
     const account = {
       id: 'MAO-' + randomToken(12).replace(/[-_]/g, 'X').toUpperCase(),
@@ -226,10 +233,16 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       if (/unique|constraint/i.test(String(error?.message || error))) {
         throw new ApiError(409, 'ADMIN_ALREADY_INITIALIZED', '超级管理员已经初始化');
       }
-      throw error;
+      console.error('[founder-bootstrap] account-transaction-failed', error?.name || 'Error');
+      throw new ApiError(503, 'BOOTSTRAP_ACCOUNT_TRANSACTION_FAILED', '管理员资料写入失败，请联系开发者检查服务器日志');
     }
     if (!created) throw new ApiError(409, 'ADMIN_ALREADY_INITIALIZED', '超级管理员已经初始化');
-    return await createSession(store.getMaoAccountById(account.id), request);
+    try {
+      return await createSession(store.getMaoAccountById(account.id), request);
+    } catch (error) {
+      console.error('[founder-bootstrap] session-establishment-failed', error?.name || 'Error');
+      throw new ApiError(503, 'BOOTSTRAP_SESSION_FAILED', '管理员已创建，但登录会话未建立，请返回登录页面');
+    }
   }
 
   async function register(request) {
