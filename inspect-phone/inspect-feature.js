@@ -521,7 +521,7 @@
     }
     function refreshSection() {
       if(waiting)return;
-      var id=current,api=global.PhoneAPI,cfg=global.PhoneStorage&&PhoneStorage.getApiConfig?PhoneStorage.getApiConfig():{};
+      var id=current,api=global.PhoneAPI,cfg=global.PhoneStorage&&global.PhoneStorage.getApiConfig?global.PhoneStorage.getApiConfig():{};
       if(!permission||selected.indexOf(id)<0){hint('这个板块尚未获得角色分享许可。');return;}
       if(pendingChat&&id==='chat'){hint('请先等待当前联系人的回复，避免覆盖发送中的消息。');return;}
       if(!api||typeof api.completeJSON!=='function'||!clean(cfg.apiKey)){hint('还没有配置聊天 API。当前可查看本地剧情样例；配置后可按角色人设刷新。');return;}
@@ -552,7 +552,7 @@
         contact.messages=oldMessages;contact.lastTime=oldLastTime;
         notice='消息保存失败，未发送给 AI。请检查手机存储空间。';render();return;
       }
-      var cfg=global.PhoneStorage&&PhoneStorage.getApiConfig?PhoneStorage.getApiConfig():{},api=global.PhoneAPI;
+      var cfg=global.PhoneStorage&&global.PhoneStorage.getApiConfig?global.PhoneStorage.getApiConfig():{},api=global.PhoneAPI;
       if(!api||!clean(cfg.apiKey)){
         notice='消息已保存为虚构剧情；未配置 API，暂不能生成对方回复。';render();return;
       }
