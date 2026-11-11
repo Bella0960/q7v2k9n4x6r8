@@ -269,6 +269,22 @@
 
     .storage-alert { margin:12px 0; padding:12px 14px; background:#F7F2F1; border:1px solid #E6DAD8; border-radius:10px; color:#7A3934; font-size:12px; line-height:1.75; }
     .storage-alert[hidden] { display:none !important; }
+
+    /* Phone accessibility and monochrome finish. */
+    .back { min-height:44px; align-items:center; }
+    .start-guide { min-height:44px; }
+    .walk-close { width:44px; height:44px; flex-shrink:0; border-radius:50%; }
+    .walk-foot button, .walk-foot a { min-height:44px; }
+    .walk-foot { gap:8px; }
+    .walk-foot .walk-open { text-align:center; }
+    .status.issue { background:#F1F1F1; color:#555; }
+    .storage-alert { background:#F7F7F7; border-color:#D8D8D8; color:#444; }
+    .storage-alert::before { content:''; display:inline-block; width:5px; height:5px; border-radius:50%; background:#B64036; margin-right:8px; vertical-align:2px; }
+    .walkthrough { max-height:calc(100dvh - 24px); }
+    @media (prefers-reduced-motion:reduce) {
+      .progress-fill, .walk-progress-bar { transition:none; }
+    }
+
   </style>
 </head>
 <body>
