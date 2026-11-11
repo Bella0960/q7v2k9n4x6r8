@@ -10,6 +10,35 @@
       const panel = byId(panelId);
       if (panel) panel.hidden = panelId !== id;
     }
+    // Appearance only. All authentication and invitation logic continues below.
+    const viewMap = {
+      welcomePanel: ['welcome', 'welcome.html', 'PRIVATE SPACE', '给日常留一处属于自己的空间。', 'a place of your own · vol. 01'],
+      registerPanel: ['signup', 'create.html', 'NEW BEGINNING', '为自己的小小空间，写下第一行。', ''],
+      loginPanel: ['login', 'login.html', 'WELCOME BACK', '属于你的故事，继续从这里开始。', ''],
+      invitePanel: ['invite', 'invitation.html', 'PRIVATE INVITATION', '每个小空间，都有一把自己的钥匙。', ''],
+      authorizedPanel: ['authorized', 'welcome.html', 'YOUR SPACE', '你的空间已经准备好了。', ''],
+      blockedPanel: ['blocked', 'account.html', 'ACCOUNT NOTICE', '当前账号暂时无法进入。', '']
+    };
+    const visual = viewMap[id] || viewMap.welcomePanel;
+    const shell = byId('ivoryApp');
+    if (shell) shell.dataset.view = visual[0];
+    if (byId('ivoryWindowTitle')) byId('ivoryWindowTitle').textContent = visual[1] + ' — private space';
+    if (byId('ivoryKicker')) byId('ivoryKicker').textContent = visual[2];
+    if (byId('ivoryHeading')) {
+      byId('ivoryHeading').innerHTML = ({
+        welcomePanel: '欢迎来到 <span class="latin">MAO</span>',
+        registerPanel: '开启新的篇章',
+        loginPanel: '欢迎回来',
+        invitePanel: '只属于你的邀请',
+        authorizedPanel: '欢迎进入 <span class="latin">MAO</span>',
+        blockedPanel: '账号状态通知'
+      })[id] || '欢迎来到 <span class="latin">MAO</span>';
+    }
+    if (byId('ivorySubtitle')) byId('ivorySubtitle').textContent = visual[3];
+    if (byId('ivoryMeta')) {
+      byId('ivoryMeta').textContent = visual[4];
+      byId('ivoryMeta').hidden = !visual[4];
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
