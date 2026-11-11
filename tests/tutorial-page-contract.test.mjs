@@ -148,3 +148,15 @@ test('chat detail scripts parse so the conversation settings handler can bind', 
   assert.ok(scripts.some(([, , source]) => /async function sendMsg\(/.test(source)));
   for (const [, , source] of scripts) new Function(source);
 });
+
+test('mobile bug report is copyable, compact and only collects declared test notes', () => {
+  assert.match(guideHtml, /id="copyTests"/);
+  assert.match(guideHtml, /id="copyTestsHint"/);
+  assert.match(guideScript, /function buildTestReport\(onlyTouched\)/);
+  assert.match(guideScript, /if \(onlyTouched && !state\.done && !String\(state\.note \|\| ''\)\.trim\(\)\) return/);
+  assert.match(guideScript, /var report = buildTestReport\(true\)/);
+  assert.match(guideScript, /navigator\.clipboard\.writeText\(report\)/);
+  assert.match(guideScript, /window\.prompt\('未能自动复制/);
+  assert.match(guideScript, /'屏幕视口：' \+ width/);
+  assert.doesNotMatch(guideScript.slice(guideScript.indexOf('function buildTestReport('), guideScript.indexOf('function exportProgress(')), /chat_history|api_key|localStorage\.getItem|document\.cookie/i);
+});
