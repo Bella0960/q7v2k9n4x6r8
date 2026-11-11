@@ -29,6 +29,28 @@ test('tutorial is a desktop app and is added without resetting saved layouts', (
   assert.match(home, /indexOf\('app_settings'\)/);
 });
 
+test('tutorial migration preserves custom pages, Dock and removal choices', () => {
+  const source = home.match(/\(function addTutorialShortcutToExistingLayouts\(\) \{[\s\S]*?\n      \}\)\(\);/);
+  assert.ok(source);
+  const migrate = new Function('currentLayout', 'saveLayout', source[0]);
+  const layout = { pages: [['app_chat'], ['app_settings', 'app_finance']], dock: ['app_shop'], removed: ['clock'] };
+  let saves = 0;
+  const save = () => { saves++; };
+  migrate(layout, save);
+  migrate(layout, save);
+  assert.deepEqual(layout, {
+    pages: [['app_chat'], ['app_settings', 'app_tutorial', 'app_finance']],
+    dock: ['app_shop'],
+    removed: ['clock']
+  });
+  assert.equal(saves, 1);
+
+  const hidden = { pages: [['app_settings']], dock: ['app_shop'], removed: ['app_tutorial'] };
+  migrate(hidden, save);
+  assert.deepEqual(hidden.pages, [['app_settings']]);
+  assert.equal(saves, 1);
+});
+
 test('guide documents the merged chat features and correctly separates unverified push', () => {
   assert.match(guideScript, /PR #241/);
   assert.match(guideScript, /PR #240/);
@@ -39,7 +61,7 @@ test('guide documents the merged chat features and correctly separates unverifie
   assert.match(guideScript, /角色图库/);
   assert.match(guideScript, /主动联系只在 MAOMAO 前台打开时检查/);
   assert.match(guideScript, /手机系统推送要单独验收/);
-  assert.match(guideScript, /私密.*公开.*不会阻止 AI/);
+  assert.match(guideScript, /自主挑图只使用标记为「公开」/);
   assert.match(guideScript, /此前的手机打不开反馈仍需在安装版和普通浏览器分别实测/);
 });
 
@@ -107,9 +129,9 @@ test('tutorial workflow enforces a guide update when user-facing app pages chang
 });
 
 test('PWA app shell caches the full guide bundle and has a matching test command', () => {
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v201'/);
+  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v203'/);
   assert.ok(serviceWorker.includes("'./tutorial/tutorial.html'"));
-  assert.ok(serviceWorker.includes("'./tutorial/tutorial.js?v=20261111v2'"));
+  assert.ok(serviceWorker.includes("'./tutorial/tutorial.js?v=20261111v3'"));
   assert.equal(packageJson.scripts['test:tutorial'], 'node --test tests/tutorial-page-contract.test.mjs');
 });
 

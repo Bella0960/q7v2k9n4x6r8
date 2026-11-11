@@ -871,14 +871,57 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
 
   function sharePost() {
     let roles = [];
-    try { roles = JSON.parse(localStorage.getItem('ai_custom_characters') || '[]'); } catch(e){ console.warn('[Forum] sharePost 解析 ai_custom_characters 失败，按无联系人继续', e); }
-    if (!roles.length) { alert('还没有联系人，先去加好友吧'); return; }
-    const name = roles[0].name;
+    try { roles = JSON.parse(localStorage.getItem('ai_custom_characters') || '[]'); } catch(e) {
+      console.warn('[Forum] sharePost 解析 ai_custom_characters 失败', e);
+      alert('联系人列表暂时无法读取，请重试');
+      return;
+    }
+    if (!Array.isArray(roles) || !roles.length || !roles[0] || !roles[0].id) {
+      alert('还没有可分享的联系人，请先去添加联系人');
+      return;
+    }
+
+    const target = roles[0];
     const msg = '【分享帖子】' + (postBody() || postTitle()).substring(0, 50);
-    let history = JSON.parse(localStorage.getItem('chat_history_' + roles[0].id) || '[]');
-    history.push({ role: 'user', text: msg, time: Date.now(), type: 'text' });
-    localStorage.setItem('chat_history_' + roles[0].id, JSON.stringify(history));
-    alert('已分享给 ' + name);
+    const message = { role: 'user', text: msg, time: Date.now(), type: 'text' };
+
+    try {
+      const storage = window.PhoneStorage;
+      let history;
+      if (storage && typeof storage.getChatHistory === 'function') {
+        history = storage.getChatHistory(target.id);
+      } else {
+        const raw = localStorage.getItem('chat_history_' + target.id);
+        history = raw ? JSON.parse(raw) : [];
+      }
+      if (!Array.isArray(history)) throw new Error('聊天记录格式无法识别');
+
+      const next = history.slice();
+      next.push(message);
+      let saved = false;
+      if (storage && typeof storage.saveChatHistory === 'function') {
+        saved = storage.saveChatHistory(target.id, next) === true;
+      } else {
+        localStorage.setItem('chat_history_' + target.id, JSON.stringify(next));
+        saved = true;
+      }
+      if (!saved) throw new Error('聊天记录写入失败');
+
+      const verified = storage && typeof storage.getChatHistory === 'function'
+        ? storage.getChatHistory(target.id)
+        : JSON.parse(localStorage.getItem('chat_history_' + target.id) || '[]');
+      const last = Array.isArray(verified) && verified.length ? verified[verified.length - 1] : null;
+      if (!Array.isArray(verified) || verified.length !== next.length ||
+          !last || last.role !== message.role || last.type !== message.type ||
+          last.time !== message.time || last.text !== message.text) {
+        throw new Error('聊天记录写入后校验失败');
+      }
+
+      alert('已分享给 ' + (target.name || '该联系人'));
+    } catch (error) {
+      console.error('[Forum] sharePost chat history persistence failed:', error);
+      alert('帖子分享失败：聊天记录没有保存成功，请检查存储空间后重试');
+    }
   }
 
   function deletePost() {

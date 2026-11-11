@@ -272,22 +272,40 @@ button,a{font:inherit}
     toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, 1800);
   }
   function appendRoleNotice(card, message) {
-    if (!card || !card.roleId) return;
+    if (!card || !card.roleId) return false;
     try {
-      var list;
-      if (window.PhoneStorage && typeof window.PhoneStorage.getChatHistory === 'function') {
-        list = window.PhoneStorage.getChatHistory(card.roleId);
+      var storage = window.PhoneStorage;
+      var history = storage && typeof storage.getChatHistory === 'function'
+        ? storage.getChatHistory(card.roleId)
+        : JSON.parse(localStorage.getItem('chat_history_' + card.roleId) || '[]');
+      if (!Array.isArray(history)) throw new Error('聊天记录格式无法识别');
+
+      var next = history.slice();
+      var notice = { role:'user', type:'text', text:message, time:Date.now() };
+      next.push(notice);
+      var saved = false;
+      if (storage && typeof storage.saveChatHistory === 'function') {
+        saved = storage.saveChatHistory(card.roleId, next) === true;
       } else {
-        list = JSON.parse(localStorage.getItem('chat_history_' + card.roleId) || '[]');
+        localStorage.setItem('chat_history_' + card.roleId, JSON.stringify(next));
+        saved = true;
       }
-      if (!Array.isArray(list)) list = [];
-      list.push({ role:'user', type:'text', text:message, time:Date.now() });
-      if (window.PhoneStorage && typeof window.PhoneStorage.saveChatHistory === 'function') {
-        window.PhoneStorage.saveChatHistory(card.roleId, list);
-      } else {
-        localStorage.setItem('chat_history_' + card.roleId, JSON.stringify(list));
+      if (!saved) throw new Error('聊天记录写入失败');
+
+      var verified = storage && typeof storage.getChatHistory === 'function'
+        ? storage.getChatHistory(card.roleId)
+        : JSON.parse(localStorage.getItem('chat_history_' + card.roleId) || '[]');
+      var last = Array.isArray(verified) && verified.length ? verified[verified.length - 1] : null;
+      if (!Array.isArray(verified) || verified.length !== next.length ||
+          !last || last.role !== notice.role || last.type !== notice.type ||
+          last.time !== notice.time || last.text !== notice.text) {
+        throw new Error('聊天记录写入后校验失败');
       }
-    } catch (e) {}
+      return true;
+    } catch (error) {
+      console.error('[Wallet:family-cards] chat history persistence failed:', error);
+      return false;
+    }
   }
   function runAction(action, id) {
     if (!api) return;
@@ -304,9 +322,11 @@ button,a{font:inherit}
       pause:'我先把你给我的卡暂停使用了。',
       resume:'我恢复使用你给我的卡了。'
     })[action];
-    if (verb) appendRoleNotice(card, verb);
+    var noticeSaved = !verb || appendRoleNotice(card, verb);
     render();
-    toast(({accept:'已领取，可以在商店和外卖结算使用',reject:'已婉拒这张卡',pause:'卡片已暂停',resume:'卡片已恢复使用'})[action] || '已更新');
+    toast(noticeSaved
+      ? (({accept:'已领取，可以在商店和外卖结算使用',reject:'已婉拒这张卡',pause:'卡片已暂停',resume:'卡片已恢复使用'})[action] || '已更新')
+      : '卡片操作已保存，但聊天通知未写入，请稍后在对应聊天中补发');
   }
 
   document.querySelector('.filters').addEventListener('click', function (event) {

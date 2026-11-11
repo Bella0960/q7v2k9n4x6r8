@@ -508,22 +508,24 @@
     } catch (e) {}
     // 群通话结束后写入群聊天记录，便于回到群里查看通话结果。
     if (isGroupCall && currentGroup) {
+      var callHistorySaved = false;
       try {
         var history = [];
         if (window.PhoneStorage && typeof window.PhoneStorage.getChatHistory === 'function') {
           var stored = window.PhoneStorage.getChatHistory(roleId);
           if (Array.isArray(stored)) history = stored.slice();
-        }
-        if (!history.length) {
+        } else {
           var rawHistory = localStorage.getItem('chat_history_' + roleId);
           var parsedHistory = rawHistory ? JSON.parse(rawHistory) : [];
           if (Array.isArray(parsedHistory)) history = parsedHistory;
         }
+
         var durationText = connected ? formatTime(seconds) : '未接通';
-        history.push({
+        var callTime = Date.now();
+        var callMessage = {
           role: 'user',
           type: 'call',
-          time: Date.now(),
+          time: callTime,
           call: {
             type: 'voice',
             title: '群语音通话',
@@ -532,13 +534,38 @@
             duration: connected ? seconds : 0,
             participants: (currentGroup.members || []).map(function (member) { return member.nickname || member.name || '群成员'; })
           }
-        });
+        };
+        var nextHistory = history.slice();
+        nextHistory.push(callMessage);
+
+        var wrote = false;
         if (window.PhoneStorage && typeof window.PhoneStorage.saveChatHistory === 'function') {
-          window.PhoneStorage.saveChatHistory(roleId, history);
+          wrote = window.PhoneStorage.saveChatHistory(roleId, nextHistory) === true;
         } else {
-          localStorage.setItem('chat_history_' + roleId, JSON.stringify(history));
+          localStorage.setItem('chat_history_' + roleId, JSON.stringify(nextHistory));
+          wrote = true;
         }
-      } catch (e) {}
+        if (!wrote) throw new Error('群通话结果写入失败');
+
+        var verifiedHistory = window.PhoneStorage && typeof window.PhoneStorage.getChatHistory === 'function'
+          ? window.PhoneStorage.getChatHistory(roleId)
+          : JSON.parse(localStorage.getItem('chat_history_' + roleId) || '[]');
+        var lastMessage = Array.isArray(verifiedHistory) && verifiedHistory.length
+          ? verifiedHistory[verifiedHistory.length - 1] : null;
+        if (!Array.isArray(verifiedHistory) || verifiedHistory.length !== nextHistory.length ||
+            !lastMessage || lastMessage.role !== 'user' || lastMessage.type !== 'call' ||
+            lastMessage.time !== callTime ||
+            !lastMessage.call || lastMessage.call.title !== '群语音通话' ||
+            lastMessage.call.duration !== callMessage.call.duration) {
+          throw new Error('群通话结果写入后校验失败');
+        }
+        callHistorySaved = true;
+      } catch (error) {
+        console.error('[Call] group call history persistence failed:', error);
+      }
+      if (!callHistorySaved) {
+        alert('通话已经结束，但群通话记录未能保存到聊天中。请检查存储空间；通话不会自动补写。');
+      }
     }
     window.location.href = '../chat/chat-detail.html?id=' + encodeURIComponent(roleId);
   }
