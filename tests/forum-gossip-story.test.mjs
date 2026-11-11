@@ -10,6 +10,7 @@ const read=(path)=>readFileSync(resolve(root,path),'utf8');
 const code=read('forum/forum-gossip.js');
 const home=read('forum/forum.html');
 const detail=read('forum/forum-detail.html');
+const settings=read('forum/forum-settings.html');
 const browser={window:{}};
 runInNewContext(code,browser);
 const G=browser.window.ForumGossip;
