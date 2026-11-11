@@ -7,8 +7,8 @@
   <meta name="description" content="MAO 独立账号入口 · 象牙花笺">
   <title>MAO · 象牙花笺</title>
   <link rel="stylesheet" href="/account/account.css">
-  <link rel="stylesheet" href="/account/ivory-entry.css?v=20261111-mobile2">
-  <script src="/account/account.js?v=20261111-flow1" defer></script>
+  <link rel="stylesheet" href="/account/ivory-entry.css?v=20261111-mobile3">
+  <script src="/account/account.js?v=20261111-flow2" defer></script>
 </head>
 <body>
   <main id="ivoryApp" class="account-shell app ivory-entry" data-view="welcome">
@@ -17,6 +17,7 @@
     <div class="ornamental-frame" aria-hidden="true"></div>
     <div class="content">
       <header class="titlebar" aria-label="MAO 私人空间">
+        <button class="ivory-nav-back" id="ivoryNavBack" type="button" data-show="welcomePanel" aria-label="返回上一页" hidden><span aria-hidden="true">←</span> 返回</button>
         <div class="dots" aria-hidden="true"><span></span><span></span><span></span></div>
         <span class="titlebar-title" id="ivoryWindowTitle">welcome.html — private space</span>
       </header>
@@ -36,10 +37,8 @@
         <section class="panel welcome-panel view" id="welcomePanel">
   <button class="primary-button" type="button" data-show="registerPanel">创建新账号 <span aria-hidden="true" class="ivory-arrow">→</span></button>
   <button class="text-button" type="button" data-show="loginPanel">已有账号 · 登录</button>
-  <div class="ivory-welcome-admin"><span aria-hidden="true">✳</span><span>同一入口 · 独立账号</span></div>
 </section>
         <section class="panel form-panel view" id="registerPanel" hidden>
-      <button class="back-button" type="button" data-show="welcomePanel" aria-label="返回">返回</button>
       <div class="eyebrow">CREATE ACCOUNT · 02</div>
       <h1>创建账号</h1>
       <p class="lead">先建立你的永久身份，再完成邀请码验证。</p>
@@ -72,7 +71,6 @@
       </form>
     </section>
         <section class="panel form-panel view" id="loginPanel" hidden>
-      <button class="back-button" type="button" data-show="welcomePanel" aria-label="返回">返回</button>
       <div class="eyebrow">SIGN IN</div>
       <h1>欢迎回来。</h1>
       <p class="lead">登录你的 MAO 独立账号，继续进入专属空间。</p>
@@ -92,7 +90,6 @@
       <button class="text-button" type="button" data-show="registerPanel">还没有账号？创建账号</button>
     </section>
         <section class="panel form-panel view" id="invitePanel" hidden>
-      <button class="back-button" type="button" data-show="loginPanel" aria-label="返回">返回</button>
       <div class="eyebrow">INVITATION · 04</div>
       <h1>邀请码验证</h1>
       <p class="lead">你的永久 ID 已创建。请使用管理员发放给你的专属邀请码完成授权。</p>
@@ -151,7 +148,6 @@
     <button class="primary-button" type="button" id="confirmCreatorContact">我知道了</button>
   </dialog>
   <a id="creatorBootstrapLink" class="creator-bootstrap-link" href="./bootstrap.html" hidden>创作者首次初始化</a>
-  <footer class="page-footer">MAO <span>·</span> PRIVATE ACCOUNT ACCESS</footer>
 </body>
 </html>
 
