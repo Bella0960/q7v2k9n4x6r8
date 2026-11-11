@@ -852,11 +852,19 @@
     setBusy(button, true, '发送中…');
     try {
       await client.sendFriendRequest(code, el('ruFriendNote').value);
+      // The server already accepted the request. A later refresh failure must
+      // never describe the submission as failed or encourage duplicate sends.
       el('ruFriendCodeInput').value = '';
       el('ruFriendNote').value = '';
       pendingInviteCode = '';
-      await refreshServerData();
-      setStatus('好友申请已提交。');
+      try {
+        await refreshServerData();
+        setStatus('好友申请已提交。');
+      } catch (refreshError) {
+        if (!handleSessionExpired(refreshError)) {
+          setStatus('好友申请已提交，但列表暂时未刷新。请稍后点击刷新查看。', 'error');
+        }
+      }
     } catch (error) {
       setStatus(explainError(error), 'error');
     } finally {
@@ -894,8 +902,16 @@
       else if (action === 'remove-friend') await client.removeFriend(id);
       else if (action === 'block-friend') await client.setBlocked(id, true);
       else if (action === 'unblock-user') await client.setBlocked(id, false);
-      await refreshServerData();
-      setStatus(action === 'unblock-user' ? '已解除屏蔽。双方不会自动恢复好友关系。' : '好友关系已更新。');
+      // Only a successful mutation enters this block. Do not label an already
+      // acknowledged action as failed just because the roster refresh failed.
+      try {
+        await refreshServerData();
+        setStatus(action === 'unblock-user' ? '已解除屏蔽。双方不会自动恢复好友关系。' : '好友关系已更新。');
+      } catch (refreshError) {
+        if (!handleSessionExpired(refreshError)) {
+          setStatus('操作已被服务器接收，但名单暂时未刷新。请稍后点击刷新查看。', 'error');
+        }
+      }
     } catch (error) {
       setStatus(explainError(error), 'error');
     } finally {
