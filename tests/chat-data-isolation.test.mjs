@@ -19,6 +19,7 @@ const couplePageSource = read('couple/couple.html');
 const shopPageSource = read('wallet/shop.html');
 const takeoutPageSource = read('wallet/takeout.html');
 const familyCardsPageSource = read('wallet/family-cards.html');
+const journeyPageSource = read('chat/date/journey.html');
 
 /* ---------- 真实源码函数提取（行为级执行，不做字符串存在性断言） ---------- */
 
@@ -754,4 +755,100 @@ test('商店和外卖：交易成功但聊天通知失败时显示合并后的�
   assert.match(takeoutPageSource, /var chatNoticeFailed = false/);
   assert.match(takeoutPageSource, /下单成功，但聊天通知未保存/);
   assert.match(takeoutPageSource, /if \(!forwarded\)[\s\S]*?return;[\s\S]*?toast\('已转发给 '/);
+});
+
+
+function loadJourneyMessageWriter(storage, saved = []) {
+  let persisted = JSON.parse(JSON.stringify(saved));
+  let attempts = 0;
+  let warnings = 0;
+  let stateWrites = 0;
+  const sandbox = {
+    window: {},
+    localStorage: createLocalStorage(),
+    roleId: 'roleA',
+    historyKey: 'chat_history_roleA',
+    stateKey: 'chat_journey_state_roleA',
+    state: { startedAt: 1000, scene: '咖啡馆', sentStages: [], messages: ['刚出门'] },
+    stages: [{ at: 0 }],
+    fallbackMessages: ['刚出门'],
+    PhoneStorage: undefined,
+    console: { error() {} },
+    saveState() { stateWrites += 1; },
+    showStorageWarning() { warnings += 1; },
+    generateFallbackText() { return '刚出门'; },
+    loadHistory() { return JSON.parse(JSON.stringify(persisted)); }
+  };
+  sandbox.window.PhoneStorage = storage ? {
+    saveChatHistory(id, list) {
+      attempts += 1;
+      return storage.saveChatHistory(id, list, (next) => {
+        persisted = JSON.parse(JSON.stringify(next));
+      });
+    },
+    getChatHistory() {
+      return JSON.parse(JSON.stringify(persisted));
+    }
+  } : null;
+  const source = [
+    extractFunction(journeyPageSource, 'saveHistory'),
+    extractFunction(journeyPageSource, 'appendJourneyMessage')
+  ].join('\n') + '\nappendJourneyMessage;';
+  const append = runInNewContext(source, sandbox, { filename: 'chat/date/journey.html#appendJourneyMessage' });
+  return {
+    append,
+    state: sandbox.state,
+    read: () => JSON.parse(JSON.stringify(persisted)),
+    get attempts() { return attempts; },
+    get warnings() { return warnings; },
+    get stateWrites() { return stateWrites; }
+  };
+}
+
+test('赴约行程：阶段消息写入失败时不标记已发送，并在下一帧重试', () => {
+  let allowSave = false;
+  const writer = loadJourneyMessageWriter({
+    saveChatHistory(id, list, persist) {
+      assert.equal(id, 'roleA');
+      if (!allowSave) return false;
+      persist(list);
+      return true;
+    }
+  });
+
+  writer.append(0);
+  assert.deepEqual(writer.state.sentStages, [], '失败时不能写入 sentStages');
+  assert.equal(writer.read().length, 0);
+  assert.equal(writer.warnings, 1);
+
+  allowSave = true;
+  writer.append(0);
+  assert.deepEqual(writer.state.sentStages, [0]);
+  assert.equal(writer.read().length, 1);
+  assert.equal(writer.read()[0].mode, 'journey');
+  assert.equal(writer.read()[0].journeyStage, 0);
+  assert.equal(writer.attempts, 2);
+});
+
+test('赴约行程：历史中已存在相同 journeyId/stage 时不重复插入', () => {
+  const existing = [{
+    role: 'assistant',
+    type: 'text',
+    text: '刚出门',
+    time: 1000,
+    mode: 'journey',
+    journeyId: '1000',
+    journeyStage: 0,
+    scene: '咖啡馆'
+  }];
+  const writer = loadJourneyMessageWriter({
+    saveChatHistory() {
+      throw new Error('不应再次写入');
+    }
+  }, existing);
+
+  writer.append(0);
+  assert.equal(writer.read().length, 1);
+  assert.deepEqual(writer.state.sentStages, [0]);
+  assert.equal(writer.attempts, 0);
 });
