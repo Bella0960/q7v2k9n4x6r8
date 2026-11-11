@@ -1659,6 +1659,37 @@ test('主动消息 Push 成功回执按账号和当前设备隔离，且只认�
     deviceId: otherDevice.deviceId,
     now: base + 10
   }), base + 5);
+
+  const renewed = ctx.store.upsertSubscription({
+    id: 'unused-id-on-renewal',
+    deviceId: ownerDevice.deviceId,
+    endpoint: 'https://push.example.invalid/owner-active',
+    p256dh: 'renewed-p256dh',
+    authKey: 'renewed-auth',
+    now: base + 10,
+    expirationTime: base + 120_000
+  }, { maxSubscriptions: 3 });
+  assert.equal(renewed.id, ownerSubscription.id);
+  assert.equal(ctx.store.getLatestAutonomyPushAcceptance({
+    userId: 'owner',
+    deviceId: ownerDevice.deviceId,
+    now: base + 11
+  }), null, '重新订阅后旧接受回执不能被当成新订阅的验收结果');
+
+  ctx.store.logExecution({
+    id: 'push-accept-owner-renewed-ok',
+    deviceId: ownerDevice.deviceId,
+    kind: 'outbound_push',
+    status: 'success',
+    reasonCode: 'delivered',
+    detail: { subscriptionId: ownerSubscription.id },
+    now: base + 12
+  });
+  assert.equal(ctx.store.getLatestAutonomyPushAcceptance({
+    userId: 'owner',
+    deviceId: ownerDevice.deviceId,
+    now: base + 13
+  }), base + 12);
 });
 
 
