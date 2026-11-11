@@ -275,3 +275,25 @@ test('毕业后工作的角色不能被大学经历误判为学生消费层',()=
   student.start();
   assert.equal(student.read().sections.wallet.transactions[0].amount,1200);
 });
+
+
+test('刷新微信保留玩家已发送的消息和真实生成的虚构联系人回复',async()=>{
+  const ui=setupInteractive(undefined,true);
+  ui.start();ui.openApp('chat');ui.openContact(0);
+  ui.window.PhoneAPI.complete=async()=> '收到，你路上小心。';
+  ui.submitMessage('这条是我在虚构角色手机里刚发的');
+  await new Promise(resolve=>setImmediate(resolve));
+  const before=ui.read(),contact=before.sections.chat.contacts[0];
+  assert.ok(contact.messages.some(m=>m.origin==='player_as_role'));
+  assert.ok(contact.messages.some(m=>m.origin==='generated_contact_reply'));
+  const next=JSON.parse(JSON.stringify(before.sections.chat));
+  next.contacts[0].messages=next.contacts[0].messages.filter(m=>!m.origin);
+  next.contacts[0].messages[0].text='一条新的AI生成开场白';
+  ui.window.PhoneAPI.completeJSON=async()=>({ok:true,data:next});
+  ui.action('refresh');
+  await new Promise(resolve=>setImmediate(resolve));
+  const after=ui.read().sections.chat.contacts[0];
+  assert.ok(after.messages.some(m=>m.text==='这条是我在虚构角色手机里刚发的'));
+  assert.ok(after.messages.some(m=>m.text==='收到，你路上小心。'));
+  assert.ok(after.messages.some(m=>m.text==='一条新的AI生成开场白'));
+});
