@@ -237,7 +237,7 @@ test('request transitions accept only server-supported actions', async () => {
     if (url.endsWith('/v1/auth/me')) {
       return jsonResponse({ ok: true, account: { id: 'self-1', handle: 'self_1', displayName: 'Self', status: 'active' } });
     }
-    if (url.endsWith('/accept')) return jsonResponse({ ok: true, request: { status: 'accepted' } });
+    if (url.endsWith('/accept')) return jsonResponse({ ok: true, request: { id: 'request_123456', status: 'accepted' } });
     return jsonResponse({ ok: false, error: 'not_found' }, 404);
   });
 
@@ -817,4 +817,66 @@ test('friend QR rotation cannot expose a code that arrived after logout', async 
     code: 'c'.repeat(64), expiresAt: Date.now() + 900000 }, 201));
   await assert.rejects(pending, error => error.code === 'friend_data_account_mismatch');
   assert.equal(app.client.getState().account, null);
+});
+
+test('HTTP 200 without an explicit success envelope cannot be mistaken for a friend operation', async () => {
+  const app = runtime(async url => {
+    if (url.endsWith('/capabilities')) return jsonResponse(enabledCapabilities);
+    if (url.endsWith('/v1/auth/me')) return jsonResponse({ ok: true, account: {
+      id: 'owner-current', handle: 'current', displayName: 'Current', status: 'active'
+    } });
+    if (url.endsWith('/v1/friends/requests')) return jsonResponse({ request: { status: 'pending' } });
+    return jsonResponse({ ok: false, error: 'not_found' }, 404);
+  });
+  await app.client.restore();
+  await assert.rejects(app.client.sendFriendRequest('a'.repeat(64), ''),
+    error => error.code === 'invalid_server_response');
+});
+
+test('friend request and decision require matching server request ids and states', async () => {
+  const app = runtime(async url => {
+    if (url.endsWith('/capabilities')) return jsonResponse(enabledCapabilities);
+    if (url.endsWith('/v1/auth/me')) return jsonResponse({ ok: true, account: {
+      id: 'owner-current', handle: 'current', displayName: 'Current', status: 'active'
+    } });
+    if (url.endsWith('/v1/friends/requests')) {
+      return jsonResponse({ ok: true, request: { id: 'wrong_request_id', status: 'pending' } });
+    }
+    if (url.endsWith('/accept')) {
+      return jsonResponse({ ok: true, request: { id: 'correct_request_id', status: 'declined' } });
+    }
+    return jsonResponse({ ok: false, error: 'not_found' }, 404);
+  });
+  await app.client.restore();
+  await assert.rejects(app.client.sendFriendRequest('b'.repeat(64), '', 'correct_request_id'),
+    error => error.code === 'invalid_friend_request_ack');
+  await assert.rejects(app.client.transitionRequest('correct_request_id', 'accept'),
+    error => error.code === 'invalid_friend_transition_ack');
+});
+
+test('friend removal and blocking require truthful server-confirmed result types', async () => {
+  let blockedResult = null;
+  let removeResult = null;
+  const app = runtime(async (url, options) => {
+    if (url.endsWith('/capabilities')) return jsonResponse(enabledCapabilities);
+    if (url.endsWith('/v1/auth/me')) return jsonResponse({ ok: true, account: {
+      id: 'owner-current', handle: 'current', displayName: 'Current', status: 'active'
+    } });
+    if (url.endsWith('/v1/friends/peer-account-123/block')) {
+      return jsonResponse({ ok: true, blocked: blockedResult });
+    }
+    if (url.endsWith('/v1/friends/peer-account-123') && options.method === 'DELETE') {
+      return jsonResponse({ ok: true, removed: removeResult });
+    }
+    return jsonResponse({ ok: false, error: 'not_found' }, 404);
+  });
+  await app.client.restore();
+  await assert.rejects(app.client.removeFriend('peer-account-123'),
+    error => error.code === 'invalid_friend_remove_ack');
+  await assert.rejects(app.client.setBlocked('peer-account-123', true),
+    error => error.code === 'invalid_friend_block_ack');
+  blockedResult = true;
+  removeResult = false;
+  assert.equal((await app.client.setBlocked('peer-account-123', true)).blocked, true);
+  assert.equal((await app.client.removeFriend('peer-account-123')).removed, false);
 });
