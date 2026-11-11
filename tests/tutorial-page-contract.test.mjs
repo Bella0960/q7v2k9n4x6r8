@@ -277,3 +277,46 @@ test('tutorial storage failures are visible and existing valid progress survives
   assert.match(script, /var removed = false/);
   assert.ok(guideHtml.includes('id="storageAlert"'));
 });
+
+
+test('API profile writes and selection verify persistent storage, including silent failures', () => {
+  const profileCode = apiSettingsScript.slice(
+    apiSettingsScript.indexOf('function saveProfiles(list) {'),
+    apiSettingsScript.indexOf('function getActiveProfile() {')
+  );
+  assert.match(profileCode, /return raw !== null && JSON\.stringify\(JSON\.parse\(raw\)\)/);
+  const create = new Function('window', 'PhoneStorage', 'localStorage',
+    profileCode + '\nreturn { saveProfiles, setActiveProfileVerified };'
+  );
+  const values = new Map();
+  let discardWrites = false;
+  const storage = {
+    setItem(key, value) { if (!discardWrites) values.set(key, String(value)); },
+    getItem(key) { return values.has(key) ? values.get(key) : null; },
+    removeItem(key) { values.delete(key); }
+  };
+  const direct = create({ PhoneStorage:null }, null, storage);
+  assert.equal(direct.saveProfiles([{ id:'one', name:'test' }]), true);
+  discardWrites = true;
+  assert.equal(direct.saveProfiles([{ id:'two', name:'test' }]), false);
+  assert.equal(direct.setActiveProfileVerified('two'), false);
+  discardWrites = false;
+  assert.equal(direct.setActiveProfileVerified('one'), true);
+  const phoneStorage = {
+    saveApiProfiles(list) {
+      // Existing implementation returns void even when its internal rawSet fails.
+      if (!discardWrites) storage.setItem('api_profiles_v1', JSON.stringify(list));
+    },
+    setActiveProfileId(id) { if (!discardWrites) storage.setItem('api_active_profile', id); },
+    getActiveProfileId() { return storage.getItem('api_active_profile') || ''; }
+  };
+  const phone = create({ PhoneStorage:phoneStorage }, phoneStorage, storage);
+  assert.equal(phone.saveProfiles([{ id:'three' }]), true);
+  assert.equal(phone.setActiveProfileVerified('three'), true);
+  discardWrites = true;
+  assert.equal(phone.saveProfiles([{ id:'four' }]), false);
+  assert.equal(phone.setActiveProfileVerified('four'), false);
+  assert.match(apiSettingsScript, /if \(!saveActiveProfile\(collectFormFields\(\)\)\)/);
+  assert.match(apiSettingsScript, /if \(!saveProfiles\(rest\)\)/);
+  assert.match(apiSettingsScript, /return localStorage\.getItem\(API_STORAGE_KEY\) === serialized/);
+});
