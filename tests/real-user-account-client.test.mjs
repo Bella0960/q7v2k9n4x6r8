@@ -757,3 +757,20 @@ test('mobile Contacts does not display stale session refresh as a login failure'
   assert.match(PANEL_SOURCE, /stale_account_response: '登录状态已变化/);
   assert.match(PANEL_SOURCE, /if \(error && error.code === 'stale_account_response'\) return/);
 });
+
+test('Contacts distinguishes server-accepted friend mutations from subsequent refresh failures', () => {
+  const submitStart = PANEL_SOURCE.indexOf("await client.sendFriendRequest(code, el('ruFriendNote').value)");
+  const submitEnd = PANEL_SOURCE.indexOf("el('ruAddFriendForm').addEventListener", 0);
+  assert.ok(submitEnd >= 0 && submitStart > submitEnd);
+  const submitBlock = PANEL_SOURCE.slice(submitStart, PANEL_SOURCE.indexOf("el('ruRefreshFriends').addEventListener", submitStart));
+  assert.match(submitBlock, /try \{\s*await refreshServerData\(\);/);
+  assert.match(submitBlock, /好友申请已提交，但列表暂时未刷新/);
+  assert.match(submitBlock, /if \(!handleSessionExpired\(refreshError\)\)/);
+
+  const actionStart = PANEL_SOURCE.indexOf("if (action === 'accept-request') await client.transitionRequest");
+  assert.ok(actionStart > 0);
+  const actionBlock = PANEL_SOURCE.slice(actionStart, PANEL_SOURCE.indexOf("panel.addEventListener('toggle'", actionStart));
+  assert.match(actionBlock, /try \{\s*await refreshServerData\(\);/);
+  assert.match(actionBlock, /操作已被服务器接收，但名单暂时未刷新/);
+  assert.match(actionBlock, /if \(!handleSessionExpired\(refreshError\)\)/);
+});
