@@ -1,0 +1,107 @@
+name: Tutorial Guide Regression
+
+on:
+  pull_request:
+    paths:
+      - 'index.html'
+      - 'desktop/**'
+      - 'tutorial/**'
+      - 'tests/tutorial-page-contract.test.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'sw.js'
+      - 'chat/**'
+      - 'worldbook/**'
+      - 'settings/**'
+      - 'forum/**'
+      - 'wallet/**'
+      - 'beauty/**'
+      - 'theme-store/**'
+      - 'music/**'
+      - 'library/**'
+      - 'diary/**'
+      - 'novel/**'
+      - 'travel/**'
+      - 'couple/**'
+      - 'growth/**'
+      - 'companion/**'
+      - 'games/**'
+      - 'cafe/**'
+      - 'poster/**'
+      - 'envelope/**'
+      - 'inspect-phone/**'
+  push:
+    branches:
+      - main
+    paths:
+      - 'index.html'
+      - 'desktop/**'
+      - 'tutorial/**'
+      - 'tests/tutorial-page-contract.test.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'sw.js'
+      - 'chat/**'
+      - 'worldbook/**'
+      - 'settings/**'
+      - 'forum/**'
+      - 'wallet/**'
+      - 'beauty/**'
+      - 'theme-store/**'
+      - 'music/**'
+      - 'library/**'
+      - 'diary/**'
+      - 'novel/**'
+      - 'travel/**'
+      - 'couple/**'
+      - 'growth/**'
+      - 'companion/**'
+      - 'games/**'
+      - 'cafe/**'
+      - 'poster/**'
+      - 'envelope/**'
+      - 'inspect-phone/**'
+
+permissions:
+  contents: read
+
+jobs:
+  tutorial-contract:
+    name: tutorial-contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Require a guide update for user-facing feature changes
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          const base = process.env.PR_BASE_SHA;
+          const changed = execFileSync('git', ['diff', '--name-only', `${base}...HEAD`], { encoding: 'utf8' })
+            .split(/\r?\n/).filter(Boolean);
+          const userFacing = changed.filter((path) =>
+            /^(index\.html|desktop\/|chat\/|worldbook\/|settings\/|forum\/|wallet\/|beauty\/|theme-store\/|music\/|library\/|diary\/|novel\/|travel\/|couple\/|growth\/|companion\/|games\/|cafe\/|poster\/|envelope\/|inspect-phone\/)/.test(path)
+          );
+          if (userFacing.length && !changed.includes('tutorial/tutorial.js')) {
+            console.error('User-facing MAOMAO files changed without updating tutorial/tutorial.js:');
+            userFacing.forEach((path) => console.error(' - ' + path));
+            process.exit(1);
+          }
+          console.log(userFacing.length
+            ? 'Tutorial catalog updated together with user-facing changes.'
+            : 'No user-facing feature changes require a tutorial catalog update.');
+          NODE
+      - name: Install dependencies
+        run: npm ci
+      - name: Verify tutorial coverage and navigation contracts
+        run: npm run test:tutorial

@@ -160,6 +160,14 @@
                   <span class="ds-del" title="移除">×</span>
                 </button>
 
+                <button class="app-card app-tile" type="button" data-href="tutorial/tutorial.html" data-drag="app_tutorial" data-name="教程" title="教程" aria-label="打开使用教程">
+                  <span class="app-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3.5h10.5L19 7v13.5H5z"/><path d="M15 3.5V7h4M8 11h8M8 14.5h8M8 18h5"/></svg>
+                  </span>
+                  <span class="app-name">教程</span>
+                  <span class="ds-del" title="移除">×</span>
+                </button>
+
                 <button class="app-card app-tile" type="button" data-href="wallet/finance.html" data-drag="app_finance" data-name="记账" title="记账">
                   <span class="app-icon">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
@@ -647,7 +655,7 @@
           v: 14,
           pages: [
             ['clock-lg', 'app_inspect', 'app_worldbook', 'app_memory', 'app_forum', 'duo', 'photowall', 'app_wallet', 'app_music', 'app_beauty', 'app_theme_store'],
-            ['app_characters', 'app_footprint', 'app_settings', 'app_finance', 'app_takeout', 'app_couple', 'app_growth', 'app_companion', 'app_games', 'app_cafe', 'app_live_room', 'app_poster'],
+            ['app_characters', 'app_footprint', 'app_settings', 'app_tutorial', 'app_finance', 'app_takeout', 'app_couple', 'app_growth', 'app_companion', 'app_games', 'app_cafe', 'app_live_room', 'app_poster'],
             ['app_library', 'app_envelope', 'app_diary', 'app_novelstudio', 'app_dreamtravel', 'app_date']
           ],
           dock: ['app_chat', 'app_shop'],
@@ -728,6 +736,22 @@
         while (currentLayout.pages.length <= pageIndex) currentLayout.pages.push([]);
         var beautyIndex = currentLayout.pages[pageIndex].indexOf('app_beauty');
         currentLayout.pages[pageIndex].splice(beautyIndex >= 0 ? beautyIndex + 1 : currentLayout.pages[pageIndex].length, 0, id);
+        saveLayout(currentLayout);
+      })();
+
+      // 新增教程应用入口：放在「设置」附近；保留用户已有桌面、Dock 和主动移除记录。
+      (function addTutorialShortcutToExistingLayouts() {
+        var id = 'app_tutorial';
+        var exists = (currentLayout.pages || []).some(function (page) { return page.indexOf(id) !== -1; })
+          || (currentLayout.dock || []).indexOf(id) !== -1
+          || (currentLayout.removed || []).indexOf(id) !== -1;
+        if (exists) return;
+        var pageIndex = (currentLayout.pages || []).findIndex(function (page) { return page.indexOf('app_settings') !== -1; });
+        if (pageIndex < 0) pageIndex = (currentLayout.pages || []).findIndex(function (page) { return page.indexOf('app_characters') !== -1; });
+        if (pageIndex < 0) pageIndex = 0;
+        while (currentLayout.pages.length <= pageIndex) currentLayout.pages.push([]);
+        var anchor = currentLayout.pages[pageIndex].indexOf('app_settings');
+        currentLayout.pages[pageIndex].splice(anchor >= 0 ? anchor + 1 : currentLayout.pages[pageIndex].length, 0, id);
         saveLayout(currentLayout);
       })();
 

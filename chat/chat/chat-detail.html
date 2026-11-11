@@ -2080,7 +2080,7 @@
                 <button class="nav-circle-btn imessage-video-btn" type="button" id="btn-header-video" aria-label="视频通话" title="视频通话">
                     <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="3"></rect><path d="m16 10 5-3v10l-5-3"></path></svg>
                 </button>
-                <button class="nav-circle-btn" type="button" id="btn-more-menu" aria-label="对话设置" title="对话设置">
+                <button class="nav-circle-btn" type="button" id="btn-more-menu" aria-label="对话设置" title="对话设置" onclick="if(this.dataset.navBound!=='1'){window.location.assign('chat-settings.html?roleId=' + encodeURIComponent(new URLSearchParams(window.location.search).get('id') || ''))}">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="#111111"><circle cx="5" cy="12" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle><circle cx="19" cy="12" r="1.6"></circle></svg>
                 </button>
             </div>
@@ -7481,9 +7481,13 @@
 
         // ================= 三点图标：直接跳转对话设置页（不再弹出菜单） =================
         const btnMoreMenu = document.getElementById('btn-more-menu');
-        if (btnMoreMenu) btnMoreMenu.addEventListener('click', function () {
-            window.location.href = 'chat-settings.html?roleId=' + encodeURIComponent(currentCharacter.id);
-        });
+        if (btnMoreMenu) {
+            // Use the normal initialized handler when available; keep the inline route as a no-JS-binding fallback.
+            btnMoreMenu.dataset.navBound = '1';
+            btnMoreMenu.addEventListener('click', function () {
+                window.location.href = 'chat-settings.html?roleId=' + encodeURIComponent(currentCharacter.id);
+            });
+        }
         const btnHeaderVideo = document.getElementById('btn-header-video');
         if (btnHeaderVideo) btnHeaderVideo.addEventListener('click', function () {
             const existingVideoAction = document.querySelector('.plus-item[data-feat="video"]');

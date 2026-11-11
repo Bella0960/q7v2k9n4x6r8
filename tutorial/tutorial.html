@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#F7F7F9">
+  <title>教程 · 小手机</title>
+  <style>
+    :root { color-scheme: light; --ink:#111; --muted:#777; --soft:#F5F5F7; --line:#E7E7EB; --red:#C33B35; }
+    * { box-sizing:border-box; }
+    html { min-height:100%; background:#F7F7F9; }
+    body { margin:0; background:#F7F7F9; color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",sans-serif; -webkit-tap-highlight-color:transparent; }
+    .page { width:min(760px,100%); min-height:100vh; margin:0 auto; padding:calc(12px + env(safe-area-inset-top)) 18px calc(32px + env(safe-area-inset-bottom)); }
+    .topbar { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:5px 0 22px; }
+    .back { display:inline-flex; align-items:center; gap:7px; color:#333; text-decoration:none; font-size:13px; }
+    .back svg { width:17px; height:17px; stroke:currentColor; fill:none; stroke-width:1.6; }
+    .top-kicker { color:#999; font-size:9px; letter-spacing:.16em; }
+    .hero { padding:13px 0 23px; }
+    .eyebrow { color:#999; font-size:10px; letter-spacing:.15em; }
+    h1 { margin:9px 0 8px; font-size:34px; line-height:1.08; font-weight:650; letter-spacing:-.06em; }
+    .intro { margin:0; max-width:560px; color:#777; font-size:13px; line-height:1.75; }
+    .hero-meta { display:flex; flex-wrap:wrap; gap:7px; margin-top:15px; }
+    .meta-chip { padding:5px 9px; border:1px solid var(--line); border-radius:999px; color:#666; font-size:10px; background:rgba(255,255,255,.65); }
+    .updates { margin:0 0 21px; padding:15px 16px 13px; background:#fff; border:1px solid var(--line); border-radius:16px; }
+    .updates-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .updates-title { font-size:13px; font-weight:650; }
+    .updates-date { color:#999; font-size:10px; }
+    .update-list { display:grid; gap:8px; margin-top:11px; }
+    .update-item { display:grid; grid-template-columns:8px minmax(0,1fr); gap:9px; color:#555; font-size:11px; line-height:1.6; }
+    .update-dot { width:5px; height:5px; margin-top:6px; border-radius:50%; background:#C33B35; }
+    .updates-foot { margin:10px 0 0; color:#999; font-size:10px; line-height:1.6; }
+    .test-summary { display:flex; justify-content:space-between; align-items:center; gap:12px; margin:0 0 12px; }
+    .summary-copy { color:#777; font-size:11px; }
+    .summary-count { color:#333; font-size:11px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .progress-track { height:4px; margin:0 0 19px; overflow:hidden; background:#E9E9ED; border-radius:99px; }
+    .progress-fill { width:0; height:100%; background:#222; transition:width .2s ease; }
+    .tools { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:0 0 12px; }
+    .search-wrap { flex:1 1 220px; position:relative; }
+    .search-wrap svg { position:absolute; left:12px; top:50%; width:16px; height:16px; transform:translateY(-50%); stroke:#999; fill:none; stroke-width:1.6; }
+    .search { width:100%; height:41px; padding:0 13px 0 36px; border:1px solid var(--line); border-radius:12px; outline:none; background:#fff; color:#111; font:inherit; font-size:12px; }
+    .search:focus { border-color:#999; }
+    .tool-btn { min-height:40px; padding:0 12px; border:1px solid var(--line); border-radius:11px; background:#fff; color:#555; font:inherit; font-size:11px; cursor:pointer; }
+    .filters { display:flex; gap:7px; overflow-x:auto; padding:2px 0 12px; scrollbar-width:none; }
+    .filters::-webkit-scrollbar { display:none; }
+    .filter { flex:0 0 auto; min-height:32px; padding:0 12px; border:1px solid var(--line); border-radius:999px; background:transparent; color:#777; font:inherit; font-size:11px; cursor:pointer; }
+    .filter[aria-pressed="true"] { background:#171717; border-color:#171717; color:#fff; }
+    .section-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin:17px 0 10px; }
+    .section-head h2 { margin:0; font-size:16px; font-weight:650; letter-spacing:-.03em; }
+    .section-head span { color:#999; font-size:10px; }
+    .guide-grid { display:grid; grid-template-columns:1fr; gap:11px; }
+    .guide-card { padding:16px; border:1px solid var(--line); border-radius:16px; background:#fff; }
+    .guide-top { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
+    .guide-title-wrap { min-width:0; }
+    .guide-category { color:#999; font-size:9px; letter-spacing:.12em; }
+    .guide-title { margin:5px 0 5px; color:#171717; font-size:16px; font-weight:650; letter-spacing:-.025em; }
+    .guide-summary { margin:0; color:#777; font-size:11px; line-height:1.65; }
+    .status { flex:0 0 auto; padding:4px 7px; border-radius:999px; background:#F2F2F4; color:#666; font-size:9px; white-space:nowrap; }
+    .status.issue { color:#963D38; background:#F8EEEE; }
+    .guide-location { margin:12px 0 0; padding:10px 11px; background:#F7F7F9; border-radius:10px; color:#555; font-size:11px; line-height:1.6; }
+    .guide-location b { color:#222; font-weight:600; }
+    .steps { margin:12px 0 0; padding:0 0 0 19px; color:#555; font-size:11px; line-height:1.8; }
+    .steps li { padding-left:2px; margin:3px 0; }
+    .test-box { margin:12px 0 0; padding-top:11px; border-top:1px solid #F0F0F2; }
+    .test-title { color:#333; font-size:11px; font-weight:600; }
+    .test-description { margin:4px 0 9px; color:#888; font-size:10px; line-height:1.6; }
+    .test-mark { display:flex; align-items:center; gap:8px; color:#555; font-size:11px; cursor:pointer; user-select:none; }
+    .test-mark input { width:16px; height:16px; accent-color:#171717; margin:0; }
+    .note { display:block; width:100%; min-height:58px; margin-top:9px; padding:9px 10px; border:1px solid #E8E8EC; border-radius:9px; outline:none; resize:vertical; background:#FCFCFD; color:#333; font:inherit; font-size:11px; line-height:1.55; }
+    .note:focus { border-color:#999; background:#fff; }
+    .guide-actions { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; margin-top:12px; }
+    .open-link { display:inline-flex; align-items:center; gap:6px; min-height:34px; padding:0 10px; border-radius:9px; background:#171717; color:#fff; text-decoration:none; font-size:10px; }
+    .open-link svg { width:13px; height:13px; fill:none; stroke:currentColor; stroke-width:1.6; }
+    .guide-hint { color:#999; font-size:9px; line-height:1.5; }
+    .app-directory { margin-top:28px; }
+    .app-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+    .app-link { display:flex; flex-direction:column; gap:4px; min-width:0; padding:11px; border:1px solid var(--line); border-radius:11px; background:#fff; color:#222; text-decoration:none; }
+    .app-link strong { font-size:11px; font-weight:600; }
+    .app-link span { color:#999; font-size:9px; line-height:1.45; }
+    .empty { padding:28px 12px; border:1px dashed #D8D8DE; border-radius:13px; color:#999; text-align:center; font-size:11px; }
+    .footer { margin-top:25px; padding-top:14px; border-top:1px solid var(--line); color:#999; font-size:10px; line-height:1.7; }
+    .modal-backdrop { position:fixed; inset:0; z-index:1000; display:flex; align-items:center; justify-content:center; padding:22px; background:rgba(0,0,0,.35); }
+    .modal-backdrop[hidden] { display:none; }
+    .modal { width:min(340px,100%); padding:19px; border:1px solid #E6E6EA; border-radius:16px; background:#fff; box-shadow:0 18px 60px rgba(0,0,0,.16); }
+    .modal h2 { margin:0 0 8px; font-size:16px; }
+    .modal p { margin:0; color:#777; font-size:11px; line-height:1.7; }
+    .modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:17px; }
+    .modal-actions button { min-height:36px; padding:0 13px; border:1px solid var(--line); border-radius:9px; background:#fff; color:#555; font:inherit; font-size:11px; cursor:pointer; }
+    .modal-actions .confirm { border-color:#171717; background:#171717; color:#fff; }
+
+    .guide-card .guide-actions { justify-content:flex-start; }
+    .guide-actions .open-link { margin-right:auto; }
+    .start-guide, .app-guide-btn {
+      min-height:34px; padding:0 11px; border:1px solid #DADAE0; border-radius:9px;
+      background:#fff; color:#333; font:inherit; font-size:10px; cursor:pointer;
+    }
+    .start-guide:active, .app-guide-btn:active { background:#F2F2F4; }
+    .app-link { gap:7px; }
+    .app-open { display:flex; flex-direction:column; gap:4px; color:#222; text-decoration:none; }
+    .app-open strong { font-size:11px; font-weight:600; }
+    .app-open span { color:#999; font-size:9px; line-height:1.45; }
+    .faq-section { margin-top:28px; }
+    .faq-list { display:grid; gap:8px; }
+    .faq-item { padding:13px 14px; border:1px solid var(--line); border-radius:12px; background:#fff; }
+    .faq-item summary { color:#222; font-size:12px; font-weight:600; cursor:pointer; list-style:none; }
+    .faq-item summary::-webkit-details-marker { display:none; }
+    .faq-item p { margin:8px 0 0; color:#777; font-size:11px; line-height:1.7; }
+    .walkthrough-backdrop {
+      position:fixed; inset:0; z-index:1100; display:flex; align-items:center; justify-content:center;
+      padding:14px; background:rgba(0,0,0,.4);
+    }
+    .walkthrough-backdrop[hidden] { display:none; }
+    .walkthrough {
+      display:flex; flex-direction:column; width:min(560px,100%); max-height:min(92vh,900px);
+      overflow:hidden; border:1px solid #E5E5EA; border-radius:20px; background:#F7F7F9;
+      box-shadow:0 22px 70px rgba(0,0,0,.22);
+    }
+    .walk-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 17px 12px; background:#fff; border-bottom:1px solid var(--line); }
+    .walk-kicker { color:#999; font-size:9px; letter-spacing:.14em; }
+    .walk-title { margin:4px 0 0; color:#171717; font-size:17px; font-weight:650; letter-spacing:-.03em; }
+    .walk-close { width:32px; height:32px; border:1px solid var(--line); border-radius:50%; background:#fff; color:#555; font-size:18px; line-height:1; cursor:pointer; }
+    .walk-progress-wrap { padding:12px 17px 0; background:#fff; }
+    .walk-progress-copy { display:flex; justify-content:space-between; color:#777; font-size:10px; }
+    .walk-progress-track { height:4px; margin-top:8px; overflow:hidden; border-radius:99px; background:#E9E9ED; }
+    .walk-progress-bar { width:0; height:100%; background:#222; transition:width .2s ease; }
+    .walk-body { padding:15px 17px 18px; overflow:auto; }
+    .walk-route { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:12px; }
+    .walk-route-chip { display:inline-flex; align-items:center; min-height:24px; padding:0 8px; border:1px solid #E4E4E8; border-radius:999px; background:#fff; color:#666; font-size:9px; }
+    .walk-route-arrow { color:#AAA; font-size:10px; }
+    .walk-visual {
+      display:grid; grid-template-columns:78px minmax(0,1fr); align-items:center; gap:13px;
+      padding:13px; border:1px solid #E6E6EA; border-radius:14px; background:#fff;
+    }
+    .walk-phone { width:72px; height:104px; padding:7px 5px; border:2px solid #D3D3D8; border-radius:13px; background:#F8F8FA; }
+    .walk-phone-notch { width:23px; height:4px; margin:0 auto 7px; border-radius:99px; background:#C8C8CE; }
+    .walk-phone-head { height:11px; margin-bottom:7px; border-radius:4px; background:#E5E5E9; }
+    .walk-phone-row { height:9px; margin:5px 0; border-radius:3px; background:#EBEBEF; }
+    .walk-phone-row.short { width:62%; }
+    .walk-phone-row.target { display:flex; align-items:center; height:19px; padding:0 4px; border:1px solid #777; background:#fff; color:#222; font-size:6px; overflow:hidden; white-space:nowrap; }
+    .walk-visual-title { color:#999; font-size:9px; letter-spacing:.1em; }
+    .walk-visual-target { margin-top:5px; color:#222; font-size:12px; font-weight:650; line-height:1.5; }
+    .walk-visual-note { margin-top:4px; color:#999; font-size:9px; line-height:1.5; }
+    .walk-step-title { margin:15px 0 6px; color:#171717; font-size:15px; font-weight:650; }
+    .walk-step-copy { color:#555; font-size:12px; line-height:1.8; white-space:pre-line; }
+    .walk-tip { margin-top:12px; padding:11px 12px; border-radius:10px; background:#fff; color:#777; font-size:10px; line-height:1.7; }
+    .walk-practice { margin-top:12px; padding:12px; border:1px solid #E5E5E9; border-radius:12px; background:#fff; }
+    .walk-practice strong { display:block; color:#333; font-size:11px; }
+    .walk-practice p { margin:5px 0 0; color:#777; font-size:10px; line-height:1.6; }
+    .walk-done { display:flex; align-items:center; gap:8px; margin-top:13px; color:#555; font-size:11px; }
+    .walk-done input { width:16px; height:16px; margin:0; accent-color:#171717; }
+    .walk-foot { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:12px 17px calc(12px + env(safe-area-inset-bottom)); border-top:1px solid var(--line); background:#fff; }
+    .walk-foot button, .walk-foot a { display:inline-flex; align-items:center; justify-content:center; min-height:38px; padding:0 12px; border:1px solid var(--line); border-radius:10px; background:#fff; color:#444; font:inherit; font-size:11px; text-decoration:none; cursor:pointer; }
+    .walk-foot .walk-primary { border-color:#171717; background:#171717; color:#fff; }
+    .walk-foot button:disabled { opacity:.35; cursor:not-allowed; }
+    .walk-foot .walk-open { margin-right:auto; }
+    @media (max-width:420px) {
+      .walkthrough { max-height:94vh; border-radius:17px; }
+      .walk-visual { grid-template-columns:67px minmax(0,1fr); gap:10px; }
+      .walk-phone { width:63px; height:96px; }
+      .walk-foot { gap:6px; padding-left:11px; padding-right:11px; }
+      .walk-foot button, .walk-foot a { padding:0 9px; font-size:10px; }
+    }
+
+    @media (min-width:620px) { .page { padding-left:26px; padding-right:26px; } .guide-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .guide-card { display:flex; flex-direction:column; } .guide-actions { margin-top:auto; padding-top:12px; } .app-list { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="topbar">
+      <a class="back" href="../index.html" aria-label="返回桌面">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+        <span>返回桌面</span>
+      </a>
+      <span class="top-kicker">HOW TO USE / GUIDE</span>
+    </header>
+
+    <section class="hero">
+      <div class="eyebrow">MAOMAO PHONE · USER GUIDE</div>
+      <h1>使用教程</h1>
+      <p class="intro">功能在哪、怎么打开、应该怎么测，都放在这里。每项教程都能记录测试结果和问题，不用再靠记忆找入口。</p>
+      <div class="hero-meta">
+        <span class="meta-chip">按功能查入口</span>
+        <span class="meta-chip">逐步操作</span>
+        <span class="meta-chip">记录测试与 Bug</span>
+        <span class="meta-chip" id="guideVersion">指南版本</span>
+      </div>
+    </section>
+
+    <section class="updates" aria-labelledby="updatesTitle">
+      <div class="updates-head">
+        <span class="updates-title" id="updatesTitle">最近更新</span>
+        <span class="updates-date" id="updatesDate">更新记录</span>
+      </div>
+      <div class="update-list" id="updateList"><div class="update-item"><span class="update-dot"></span><span>正在读取更新记录…</span></div></div>
+      <p class="updates-foot">正式功能合并后同步补充入口和操作步骤；只有经过实际验收的项目才会标记为已验证。</p>
+    </section>
+
+    <div class="test-summary">
+      <span class="summary-copy">你的手机测试进度会保存在当前浏览器，不会修改角色聊天数据。</span>
+      <span class="summary-count" id="testCount">0 / 0 已测试</span>
+    </div>
+    <div class="progress-track" aria-label="测试进度"><div class="progress-fill" id="progressFill"></div></div>
+
+    <div class="tools">
+      <label class="search-wrap">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"></circle><path d="m16 16 5 5"></path></svg>
+        <input class="search" id="guideSearch" type="search" placeholder="搜索功能名称、入口或操作…" autocomplete="off">
+      </label>
+      <button class="tool-btn" id="exportTests" type="button">导出测试记录</button>
+      <button class="tool-btn" id="resetTests" type="button">清空进度</button>
+    </div>
+    <nav class="filters" id="guideFilters" aria-label="教程分类"></nav>
+
+    <div class="section-head">
+      <h2>功能教程</h2>
+      <span id="visibleCount">正在载入…</span>
+    </div>
+    <section class="guide-grid" id="guideGrid" aria-live="polite"></section>
+
+
+    <section class="faq-section" aria-labelledby="faqTitle">
+      <div class="section-head">
+        <h2 id="faqTitle">常见问题</h2>
+        <span>按问题快速定位</span>
+      </div>
+      <div class="faq-list" id="faqList"></div>
+    </section>
+
+    <section class="app-directory" aria-labelledby="appDirectoryTitle">
+      <div class="section-head">
+        <h2 id="appDirectoryTitle">桌面应用速查</h2>
+        <span>点名称可直接打开</span>
+      </div>
+      <div class="app-list" id="appDirectory"></div>
+    </section>
+
+    <footer class="footer">
+      教程会随正式版本更新。若某项功能入口改变、页面打不开或实际行为与步骤不符，请在对应教程的测试备注中写下现象，再导出测试记录。当前版本：<span id="footerVersion"></span>。
+    </footer>
+  </main>
+
+  <div class="modal-backdrop" id="resetModal" hidden>
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="resetTitle">
+      <h2 id="resetTitle">清空教程测试进度？</h2>
+      <p>这只会删除本页保存的勾选状态和测试备注，不会清空聊天记录、角色资料或任何手机应用数据。</p>
+      <div class="modal-actions">
+        <button type="button" id="cancelReset">取消</button>
+        <button class="confirm" type="button" id="confirmReset">清空进度</button>
+      </div>
+    </section>
+  </div>
+
+
+  <div class="walkthrough-backdrop" id="walkthroughModal" hidden>
+    <section class="walkthrough" role="dialog" aria-modal="true" aria-labelledby="walkTitle">
+      <header class="walk-head">
+        <div>
+          <div class="walk-kicker">STEP-BY-STEP WALKTHROUGH</div>
+          <h2 class="walk-title" id="walkTitle">操作教程</h2>
+        </div>
+        <button class="walk-close" type="button" id="walkClose" aria-label="关闭教程">×</button>
+      </header>
+      <div class="walk-progress-wrap">
+        <div class="walk-progress-copy"><span id="walkStepCount">第 1 步</span><span id="walkPercent">0%</span></div>
+        <div class="walk-progress-track"><div class="walk-progress-bar" id="walkProgressBar"></div></div>
+      </div>
+      <div class="walk-body">
+        <div class="walk-route" id="walkRoute"></div>
+        <div class="walk-visual">
+          <div class="walk-phone" aria-hidden="true">
+            <div class="walk-phone-notch"></div>
+            <div class="walk-phone-head"></div>
+            <div class="walk-phone-row"></div>
+            <div class="walk-phone-row short"></div>
+            <div class="walk-phone-row target" id="walkPhoneTarget">当前步骤</div>
+            <div class="walk-phone-row short"></div>
+          </div>
+          <div>
+            <div class="walk-visual-title">界面定位示意</div>
+            <div class="walk-visual-target" id="walkVisualTarget">当前步骤</div>
+            <div class="walk-visual-note">示意图用于定位入口；实际布局以打开后的手机页面为准。</div>
+          </div>
+        </div>
+        <h3 class="walk-step-title" id="walkStepTitle"></h3>
+        <div class="walk-step-copy" id="walkStepCopy"></div>
+        <div class="walk-tip" id="walkStepTip"></div>
+        <div class="walk-practice">
+          <strong>本教程的练习目标</strong>
+          <p id="walkPractice"></p>
+        </div>
+        <label class="walk-done"><input type="checkbox" id="walkStepDone"> 我已经完成这一步</label>
+      </div>
+      <footer class="walk-foot">
+        <button type="button" id="walkPrevious">上一步</button>
+        <a class="walk-open" id="walkOpenPage" href="../index.html" target="_blank" rel="noopener">打开真实页面 ↗</a>
+        <button type="button" id="walkNext" class="walk-primary">下一步</button>
+      </footer>
+    </section>
+  </div>
+
+  <script src="tutorial.js?v=20261111v3"></script>
+</body>
+</html>
