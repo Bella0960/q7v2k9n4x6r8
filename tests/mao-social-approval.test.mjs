@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { createMaoSocial } from '../worker/lib/mao-social.js';
 import { SQL } from '../worker/migrations/0017_mao_social.js';
@@ -218,4 +221,24 @@ test('no feature opt-in never exposes social endpoints', async () => {
     assert.equal(disabled.status, 503);
     assert.equal(disabled.code, 'SOCIAL_NOT_ENABLED');
   } finally { ctx.close(); }
+});
+
+test('integration keeps MAO account identity, origin checks and AI chat isolated', () => {
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const app = fs.readFileSync(path.join(root, 'worker/lib/app.js'), 'utf8');
+  const social = fs.readFileSync(path.join(root, 'worker/lib/mao-social.js'), 'utf8');
+  const contacts = fs.readFileSync(path.join(root, 'chat/contacts/contacts.html'), 'utf8');
+  const mobile = fs.readFileSync(path.join(root, 'chat/contacts/real-friends.html'), 'utf8');
+  const migrations = fs.readFileSync(path.join(root, 'worker/lib/migrations.js'), 'utf8');
+  assert.match(app, /assertSameOriginMutation\(request\);[\s\S]*?await assertAccountPageContext\(request, path\);[\s\S]*?await accountAuth.handle\(request, path, method\);[\s\S]*?await maoSocial.handle\(request, path, method\)/);
+  assert.match(social, /MAO_SOCIAL_ENABLED !== 'true'/);
+  assert.doesNotMatch(social, /REAL_USER_AUTH_ENABLED|REAL_USER_FRIENDS_ENABLED|D1|real_user_sessions/);
+  assert.match(migrations, /0017_mao_social/);
+  assert.match(contacts, /href="\.\/real-friends\.html"/);
+  assert.match(mobile, /\/api\/accounts\/me/);
+  assert.match(mobile, /\/api\/admin\/social\/friend-approvals/);
+  assert.match(mobile, /\/api\/social\/chats\//);
+  assert.doesNotMatch(mobile, /\/api\/real-user-chat|\/wallet\/|red.packet|transferMoney/);
+  assert.match(mobile, /make\('div',m\.text/);
+  assert.doesNotMatch(mobile, /innerHTML\s*=\s*m\.text/);
 });
