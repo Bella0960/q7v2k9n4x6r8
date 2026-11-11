@@ -4553,6 +4553,7 @@
             if (!roleId) return false;
             var roleName = String((currentCharacter && currentCharacter.name) || contactName || '角色');
             var inserted = false;
+            var previousHistoryLength = historyList.length;
             cardSpecs.forEach(function (spec) {
                 // 先检查这个角色是否已有未撤销的卡（active/pending/paused）
                 // 如果有，就自动调整已有卡的额度，不创建新卡
@@ -4590,10 +4591,12 @@
                 });
                 inserted = true;
             });
-            if (inserted) {
-                saveMessages(historyList);
-                renderAllMessages();
+            if (historyList.length > previousHistoryLength && !saveMessages(historyList)) {
+                historyList.length = previousHistoryLength;
+                if (typeof showToast === 'function') showToast('虚拟卡资料已处理，但聊天卡片没有保存成功；原有聊天记录已保留');
+                return false;
             }
+            if (inserted) renderAllMessages();
             return inserted;
         }
 
@@ -7745,10 +7748,14 @@
             }
             if (!Array.isArray(wd.history)) wd.history = [];
             if (wd.history.some(function (entry) { return entry && String(entry.paymentId || '') === String(paymentId); })) {
+                var duplicatePreviousStatus = msg.status;
                 msg.status = isRed ? 'opened' : 'received';
-                saveMessages(list);
+                var duplicateStatusSaved = saveMessages(list);
+                if (!duplicateStatusSaved) msg.status = duplicatePreviousStatus;
                 renderAllMessages();
-                showToast('这笔款项已经入账');
+                showToast(duplicateStatusSaved
+                    ? '这笔款项已经入账'
+                    : '这笔款项已经入账，但聊天卡片状态未保存；请刷新后检查');
                 return;
             }
             const oldBalance = Number(wd.balance);
@@ -7763,13 +7770,19 @@
             });
             if (!saveWorkData(wd)) return;
 
-            // 如果这是角色退回的转账，只有用户实际收款后，原转账才改为「已退回」。
+            // 交易已入账后，再单独保存聊天卡片状态；聊天写入失败不能回滚已完成的虚拟收款。
+            var statusSnapshots = [{ message: msg, status: msg.status, returnedAt: msg.returnedAt }];
             if (!isRed && /退回|退还|还给你/.test(String(msg.message || ''))) {
                 for (let ri = list.length - 1; ri >= 0; ri--) {
                     const previous = list[ri];
                     if (previous && (previous.role === 'user' || previous.role === 'sent') &&
                         previous.type === 'transfer' && previous.status === 'returning' &&
                         Number(previous.amount) === amountNum) {
+                        statusSnapshots.push({
+                            message: previous,
+                            status: previous.status,
+                            returnedAt: previous.returnedAt
+                        });
                         previous.status = 'returned';
                         previous.returnedAt = Date.now();
                         break;
@@ -7777,7 +7790,15 @@
                 }
             }
             msg.status = isRed ? 'opened' : 'received';
-            saveMessages(list);
+            var chatStatusSaved = saveMessages(list);
+            if (!chatStatusSaved) {
+                statusSnapshots.forEach(function (snapshot) {
+                    if (snapshot.status == null) delete snapshot.message.status;
+                    else snapshot.message.status = snapshot.status;
+                    if (snapshot.returnedAt == null) delete snapshot.message.returnedAt;
+                    else snapshot.message.returnedAt = snapshot.returnedAt;
+                });
+            }
 
             // 记账本只在真正收款时记收入，避免 AI 生成卡片但用户尚未领取就提前入账。
             try {
@@ -7796,6 +7817,9 @@
                 }
             } catch (e) {}
             renderAllMessages();
+            if (!chatStatusSaved) {
+                showToast('款项已入账，但聊天卡片状态没有保存；请检查存储空间后刷新聊天');
+            }
 
             // 3. 结果弹窗：红包「已存入余额」，转账「收款成功」
             openPayResult('+' + amountNum.toFixed(2), isRed ? '已存入余额' : '收款成功');
