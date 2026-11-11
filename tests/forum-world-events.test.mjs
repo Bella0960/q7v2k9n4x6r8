@@ -132,3 +132,95 @@ test('all modified inlined code parses for mobile browser execution',()=>{
   }
   assert.doesNotThrow(()=>new Function(code));
 });
+
+
+test('AI refresh publishes two complete campus event openings and preserves old-theme posts',async()=>{
+  const source=home.slice(home.indexOf('async function refreshFeed(){'),
+    home.indexOf('\n}\n\n// 自动为角色生成',home.indexOf('async function refreshFeed(){'))+2);
+  const current={id:'academy',name:'校园',roleTopics:['社团日常','宿舍见闻','课业求助']};
+  const selected=Array.from(W.plans(current,[],2));
+  const old={id:'old-city',themeId:'reality',title:'原来的城市帖',body:'那间小店',comments:[],created:1};
+  let writes=0,images=0;
+  const fakePosts=selected.map((plan,i)=>({
+    arcId:plan.id,threadCast:'社团负责人、借场地的学生',threadFacts:['十点发现排练教室撞期','午后讨论了新排练方案'],
+    residentId:i?'resident_orange':'resident_latewind',
+    topic:plan.topic,title:i?'宿舍讨论室临时借给社团后大家怎么排期':'社团活动和彩排时间撞在一起怎么办',
+    body:'昨天晚上活动负责人来到小会议室，把每个人的排练时间重新写在了纸上。有人说上午的课不能改，有人说下午可以提前到场。负责借教室的同学跑去问值班室，另一位同学把其他社团的时间也列了出来。大家终于意识到问题不只在教室，还在各组的课表。'+String(i),
+    comments:[{residentId:'resident_orange',text:'这个时间是学校统一安排的吗'}]
+  }));
+  const ctx={window:{PhoneAPI:{completeJSON:async()=>({ok:true,data:{posts:fakePosts,activity:[]}})},
+    PhoneStorage:{getApiConfig:()=>({apiKey:'dummy'})},ForumWorldEvents:W},
+    PhoneAPI:{completeJSON:async()=>({ok:true,data:{posts:fakePosts,activity:[]}})},
+    PhoneStorage:{getApiConfig:()=>({apiKey:'dummy'})},
+    ForumWorldEvents:W,forumRefreshBusy:false,posts:[old],getForumTheme:()=>current,
+    visibleInCurrentTheme:p=>!p.themeId||p.themeId===current.id,forumWorldbook:()=>'', 
+    FORUM_RESIDENTS:[{id:'resident_latewind',name:'晚风',style:'细心'},
+      {id:'resident_orange',name:'小唐',style:'爽快'}],
+    forumResident:(id)=>({id:id||'resident_orange',name:id||'小唐'}),
+    forumMakeAIComment:item=>({text:item.text,name:'网友',source:'forum-ai'}),
+    save:()=>{writes++;return true;},render:()=>{images++;},scroll:{scrollTop:50},
+    toast:()=>{},console:{warn:()=>{}},Date,Math,Set,JSON};
+  const api=runInNewContext(source+'\n({refreshFeed,getPosts:()=>posts})',ctx);
+  assert.equal(await api.refreshFeed(),true);
+  const resulting=api.getPosts();
+  assert.equal(resulting.length,3);
+  assert.equal(resulting.filter(p=>p.worldEvent).length,2);
+  assert.ok(resulting.every(p=>p.themeId===current.id||p.id==='old-city'));
+  assert.equal(resulting.find(p=>p.id==='old-city').title,'原来的城市帖');
+  assert.equal(writes,1);
+  assert.equal(images,1);
+
+  // A partial batch must not replace the working feed or lose its persisted arcs.
+  const before=JSON.stringify(api.getPosts());
+  fakePosts[1].threadFacts=['不足'];
+  assert.equal(await api.refreshFeed(),false);
+  assert.equal(JSON.stringify(api.getPosts()),before);
+  assert.equal(writes,1);
+});
+
+test('author updates persist sequential chapters; failure rolls back original fiction',async()=>{
+  const start=detail.indexOf('  // Theme-specific fictional events progress');
+  const end=detail.indexOf('  async function generateRepliesToUserComment',start);
+  assert.ok(start>=0&&end>start);
+  const source=detail.slice(start,end);
+  const themeValue={id:'academy',name:'校园'};
+  const makePost=()=>({
+    id:'story-1',name:'图书馆靠窗',avatar:'图',residentId:'resident_latewind',
+    themeId:'academy',title:'借教室出现了分歧',
+    body:'原帖开篇：负责排练的同学发现教室被重复借用，决定先问清原委。',
+    comments:[],
+    worldEvent:W.fromOpening({threadCast:'社长与同学',threadFacts:['上午预约教室','时间表出错']},W.plans(themeValue,[],1)[0],themeValue)
+  });
+  let writes=0,request=0,persist=true;
+  const post=makePost(),status={textContent:''};
+  const ctx={window:{ForumWorldEvents:W},ForumWorldEvents:W,post,
+    worldReplyBusy:false,worldPageHidden:false,
+    document:{getElementById:()=>status,querySelectorAll:()=>[]},
+    forumAIJSON:async()=>{
+      request++;
+      const newText='楼主这次又回到了活动楼，先向值班同学核对了预约表，发现大家看到的并不是同一份时间。负责排练的组长当场把自己的登记截图给了对方，几名社员又去找了参加活动的人确认。那天中午他们终于商量出另一种安排，也知道还有一些细节需要第二天说清。第'+request+'次更新。';
+      return {ok:true,data:{update:newText.repeat(2),
+        newFacts:['第'+request+'次发现了不同预约日期','第'+request+'次重新征求了社员意见']}};
+    },
+    saveNow:()=>{writes++;return persist;},renderPost:()=>{},renderComments:()=>{},
+    getForumTheme:()=>themeValue,postTitle:()=>post.title,postBody:()=>post.body,
+    toast:()=>{},console:{warn:()=>{}},Date,JSON};
+  const api=runInNewContext(source+'\n({continueForumWorld,generateForumWorldContinuation})',ctx);
+  assert.equal(await api.continueForumWorld(),true);
+  assert.equal(post.comments.length,1);
+  assert.equal(post.comments[0].source,'forum-world-author');
+  assert.equal(post.worldEvent.chapter,1);
+  assert.equal(post.worldEvent.finished,false);
+  persist=false;
+  const before=JSON.stringify(post);
+  assert.equal(await api.continueForumWorld(),false);
+  assert.equal(JSON.stringify(post),before,'failed persistence must not change post or chapter');
+  persist=true;
+  assert.equal(await api.continueForumWorld(),true);
+  assert.equal(await api.continueForumWorld(),true);
+  assert.equal(post.worldEvent.chapter,3);
+  assert.equal(post.worldEvent.finished,true);
+  assert.equal(post.comments.filter(c=>c.source==='forum-world-author').length,3);
+  assert.equal(await api.continueForumWorld(),false);
+  assert.equal(writes,4,'finished stories do not make another API write');
+});
