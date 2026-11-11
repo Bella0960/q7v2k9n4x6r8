@@ -45,6 +45,22 @@ h1{font:normal clamp(28px,6.75vw,42px)/1.25 var(--serif);letter-spacing:-.055em;
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 
 /* Real MAO account integration. These rules only apply to /account/index.html. */
+/* Keep navigation in the header: never position it over form fields. */
+.ivory-entry .titlebar{position:relative;min-width:0}
+.ivory-entry .titlebar .ivory-nav-back{
+  position:absolute;inset-block-start:50%;inset-inline-start:0;
+  transform:translateY(-50%);z-index:2;
+  display:inline-flex;align-items:center;justify-content:center;gap:5px;
+  min-width:68px;min-height:44px;padding:0 9px;
+  border:1px solid #ded1c8b8;border-radius:24px;
+  color:#776c64;background:#fdf9f5ee;
+  font:12px/1 var(--serif);white-space:nowrap;
+}
+.ivory-entry .titlebar .ivory-nav-back span{font:18px/1 Georgia,serif}
+.ivory-entry:not([data-view=welcome]) .titlebar{padding-inline:76px 10px}
+.ivory-entry:not([data-view=welcome]) .titlebar .dots{display:none}
+.ivory-entry .titlebar-title{min-width:0;overflow:hidden;text-overflow:ellipsis}
+
 body:before{content:none}
 .account-shell.app{display:block;width:min(100%,472px);max-width:100%;margin:0;min-height:812px;padding:0;flex:none}
 .ivory-entry .content{position:relative;z-index:9}
@@ -53,7 +69,6 @@ body:before{content:none}
 .ivory-entry .panel>.eyebrow,.ivory-entry .panel>h1,.ivory-entry .panel>.lead{display:none}
 .ivory-entry .state-panel .blocked-label{margin:0 0 16px}
 .ivory-entry .panel form{margin:0 auto}
-.ivory-entry .panel .back-button{position:absolute;left:40px;top:100px;z-index:11;display:flex;align-items:center;justify-content:center;min-height:29px;padding:5px 11px;border:1px solid #ded1c8a9;border-radius:32px;background:#fffcfae5;backdrop-filter:blur(8px);font-size:11px;color:#81756b}
 .ivory-entry .welcome-panel>.primary-button{margin:0}
 .ivory-entry .welcome-panel>.text-button{margin:23px auto 0}
 .ivory-entry .primary-button{border:1px solid #807872;min-height:56px;padding:11px 18px;width:100%;display:flex;justify-content:center;align-items:center;gap:11px;border-radius:40px;background:linear-gradient(125deg,#817b76 0%,#55514e 52%,#78716c 100%);box-shadow:inset 0 1px 1px #fff7,0 8px 16px #5d51452b,0 2px 1px #ffffffbd;color:#fff;font:17px var(--serif);letter-spacing:.19em;transition:transform .2s,box-shadow .2s,filter .2s}
@@ -63,10 +78,6 @@ body:before{content:none}
 .ivory-entry .primary-button:disabled{opacity:.6;transform:none}
 .ivory-entry .text-button{width:auto;min-height:0}
 .ivory-entry .ivory-arrow{font:20px Georgia,serif;letter-spacing:0}
-.ivory-entry .ivory-welcome-admin{margin-top:55px;display:grid;justify-items:center;gap:12px;text-align:center;color:#ada096}
-.ivory-entry .ivory-welcome-admin>span{display:block;width:100%;display:flex;align-items:center;justify-content:center;gap:15px;font:20px var(--serif)}
-.ivory-entry .ivory-welcome-admin>span:before,.ivory-entry .ivory-welcome-admin>span:after{content:'';height:1px;flex:1;background:linear-gradient(90deg,transparent,#d4c9c2a8)}
-.ivory-entry .ivory-welcome-admin a{font:12px var(--serif);text-decoration:underline;text-decoration-style:dotted;text-underline-offset:5px;color:#a0958c}
 .ivory-entry .welcome-panel+.panel{margin:0}
 .ivory-entry .form label{display:grid;gap:7px;font:12px var(--serif);color:#796e66;letter-spacing:.06em}
 .ivory-entry .form label>input,.ivory-entry .password-field{height:48px;border:1px solid #dbcec4;background:#ffffffbd;border-radius:24px;box-shadow:inset 0 1px 2px #f4ede6,0 1px #fff}
@@ -92,13 +103,9 @@ body:before{content:none}
  body{padding:0}
  .account-shell.app{min-height:100svh;border-radius:0;box-shadow:none}
  .ivory-entry .content{padding:33px 34px 26px}
- .ivory-entry .panel .back-button{top:95px;left:27px}
- .ivory-entry .ivory-welcome-admin{margin-top:50px}
 }
 @media(max-width:360px){
  .ivory-entry .content{padding:28px 29px 18px}
- .ivory-entry .panel .back-button{left:21px;top:88px}
- .ivory-entry .ivory-welcome-admin{margin-top:35px}
 }
 
 /* Mobile access: keep the approved artwork while making every form reachable. */
@@ -116,11 +123,9 @@ body:before{content:none}
  .ivory-entry .titlebar-title{font-size:11px;overflow:hidden;text-overflow:ellipsis}
  .ivory-entry .subtitle{white-space:normal}
  .ivory-entry .form input{font-size:16px;scroll-margin-block:24px}
- .ivory-entry .panel .back-button{position:static;width:max-content;min-height:44px;margin:0 0 16px}
- .ivory-entry .text-button,.ivory-entry .ivory-welcome-admin a,.ivory-entry .creator-contact-link{min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+ .ivory-entry .text-button,.ivory-entry .creator-contact-link{min-height:44px;display:inline-flex;align-items:center;justify-content:center}
  .ivory-entry .welcome-panel{text-align:center}
  .ivory-entry .welcome-panel>.text-button{margin-top:12px}
- .ivory-entry .ivory-welcome-admin{margin-top:28px;gap:4px}
  .ivory-entry:not([data-view=welcome]) .hero{height:clamp(115px,32vw,165px)}
  .ivory-entry:not([data-view=welcome]) .actions{margin-top:18px}
  .ivory-entry:not([data-view=welcome]) .kicker{margin-bottom:10px;font-size:9px;letter-spacing:.18em}
@@ -131,5 +136,4 @@ body:before{content:none}
 @media(max-width:560px) and (max-height:700px){
  .ivory-entry[data-view=welcome] .hero{height:clamp(180px,34svh,255px)}
  .ivory-entry[data-view=welcome] .actions{margin-top:25px}
- .ivory-entry[data-view=welcome] .ivory-welcome-admin{margin-top:16px}
 }
