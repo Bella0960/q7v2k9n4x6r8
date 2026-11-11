@@ -165,7 +165,7 @@
         {side:'ai',text:'不急，照顾好自己。',time:at(now,2,18,30)},
         {side:'me',text:'好。',time:at(now,2,18,31)}
       ]},
-      {id:'c5',name:'社团伙伴阿川',avatar:'川',relationship:'活动伙伴',lastTime:at(now,3,14,50),unread:1,messages:[
+      {id:'c5',name:'社团伙伴阿川',avatar:'川',relationship:'活动伙伴',lastTime:at(now,3,14,50),unread:0,messages:[
         {side:'ai',text:'那个活动报名了吗？',time:at(now,3,14,40)},
         {side:'me',text:'还没决定。',time:at(now,3,14,41)},
         {side:'ai',text:'你上次不是很想去。',time:at(now,3,14,42)},
@@ -186,7 +186,12 @@
         {side:'ai',text:'好，群里说。',time:at(now,1,19,18)}
       ]}
     ];
-    contacts.slice(2).forEach(function(c){c.messages.splice(3,0,{side:'system',text:'对方撤回了一条消息',time:c.messages[2].time+30000,status:'recalled'});});
+    contacts.slice(2).forEach(function(c){
+      c.messages.splice(3,0,{side:'system',text:'对方撤回了一条消息',time:c.messages[2].time+30000,status:'recalled'});
+    });
+    contacts.forEach(function(c){
+      c.lastTime=c.messages[c.messages.length-1].time;
+    });
     var moments=[
       {text:'今天最难的不是做决定，是把话说清楚。',time:at(now,0,21,22),image:'桌角的一杯温水和摊开的笔记本',visibility:'部分可见',hesitated:true,comments:[{name:p.pair,text:'你还好吗？'},{name:'高中好友阿诺',text:'周末出来走走。'}]},
       {text:'终于找到上次说的那家小店。',time:at(now,1,12,55),image:p.place+'附近的店招和一份简单的午餐',visibility:'好友可见',hesitated:false,comments:[{name:'表姐思思',text:'看着不错！'},{name:p.pair,text:'下回带我。'}]},
@@ -230,7 +235,7 @@
       {title:'不着急',artist:'林间雨',time:at(now,2,23,48)},
       {title:'二十分钟的路',artist:'空白日历',time:at(now,3,17,10)}
     ];
-    var mapStops=facts.map(function(f,i){return {place:f.place,arrival:f.time,durationMinutes:[35,42,25,120][i],thought:['今天要不要先发那条消息？','坐这儿刚好能安静一会儿。','想买，又觉得会不会太刻意。','那条消息还是先别发吧。'][i]};});
+    var mapStops=facts.map(function(f,i){return {place:f.place,arrival:f.time,durationMinutes:Math.max(0,Math.min([35,42,25,120][i],Math.floor((now.getTime()-f.time)/60000))),thought:['今天要不要先发那条消息？','坐这儿刚好能安静一会儿。','想买，又觉得会不会太刻意。','那条消息还是先别发吧。'][i]};});
     var photos=[
       {description:'镜子里匆匆整理衣领的自拍',type:'自拍',time:at(now,0,8,21)},
       {description:p.place+'附近午饭的餐盘，桌上有折好的收据',type:'食物',time:factTimes[1]},
@@ -244,7 +249,11 @@
       {description:'一张只写着「还没想好怎么开口」的备忘录截图',time:at(now,1,22,31)},
       {description:'与特别联系人的旧聊天片段，部分内容被角色自行遮盖',time:at(now,3,23,44)}
     ];
+    var screenMinutes=Math.min(233,Math.max(0,Math.floor(dayMinutes*.55)));
     var apps=[{name:'微信',minutes:81,visits:22},{name:'音乐',minutes:62,visits:5},{name:'浏览器',minutes:45,visits:9},{name:'相册',minutes:28,visits:7},{name:'备忘录',minutes:17,visits:3}];
+    var counted=0;
+    apps.forEach(function(a){a.minutes=Math.floor(a.minutes*screenMinutes/233);counted+=a.minutes;});
+    apps[0].minutes+=screenMinutes-counted;
     return {schema:1,roleId:String(roleId),day:localDay(now),updatedAt:now.getTime(),facts:facts,source:{},selected:[],permission:null,
       sections:{
         chat:{contacts:contacts},moments:{moments:moments},browser:{searchHistory:searches,bookmarks:[{title:'周末步行路线整理',summary:'两条适合不赶时间的城市散步路线'},{title:'简单记录法',summary:'把待办拆成今天能完成的小步骤'},{title:'实用礼物尺寸表',summary:'常见小物件规格对照'}]},
@@ -252,7 +261,7 @@
         music:{recent:recent,playlists:[{name:'深夜还醒着',tracks:['晚风来信','最后一班车','不着急']},{name:'路上听',tracks:['二十分钟的路','清晨开窗']},{name:'舍不得删',tracks:['落在书页里','晚风来信']}],top:[{title:'晚风来信',plays:37},{title:'落在书页里',plays:24},{title:'二十分钟的路',plays:18}]},
         map:{stops:mapStops,steps:5487,distanceKm:4.2,outHours:5,frequentPlace:'住处'},
         album:{photos:photos,hidden:hidden,total:456,newSevenDays:17},
-        device:{screenMinutes:233,nightMinutes:48,apps:apps,battery:76,wifi:'StoryHome-5G',model:'虚构型号 · Mobile X',storageUsedGb:54,storageTotalGb:128,pickups:61,focusMinutes:84,relaxMinutes:62,location:facts[facts.length-1].place},
+        device:{screenMinutes:screenMinutes,nightMinutes:Math.min(48,screenMinutes),apps:apps,battery:76,wifi:'StoryHome-5G',model:'虚构型号 · Mobile X',storageUsedGb:54,storageTotalGb:128,pickups:61,focusMinutes:84,relaxMinutes:62,location:facts[facts.length-1].place},
         forum:{posts:[{title:'今天终于买到了那本书',text:'在街角书店犹豫很久，最后还是拿走了。回去再慢慢读。',time:at(now,2,16,5),comments:[{name:'阿蓝',text:'求后续读后感'}]},{title:'午饭有什么不踩雷的选择',text:'最近总在熟悉的地方来回转，想换点新的。',time:at(now,1,12,1),comments:[{name:'小乙',text:'看看街角那家'}]},{title:'周末打算出去走走',text:'不想排满时间，就随便走走看看。',time:at(now,3,19,10),comments:[{name:'南风',text:'这样最好'}]}]}
       }};
   }
@@ -326,9 +335,12 @@
         if(names[c.name])return false;names[c.name]=true;
         if(/群/.test(c.name)||/群/.test(c.relationship))group=true;
         if(c.id==='user'||c.name==='你'||c.name==='用户')hasUser=true;
-        return c.messages.every(function(m){
+        if(!hasTime(c,'lastTime')||c.lastTime<c.messages[c.messages.length-1].time)return false;
+        if(num(c.unread,-1)<0||num(c.unread,-1)>99)return false;
+        return c.messages.every(function(m,i){
           return m&&['me','ai','system'].indexOf(m.side)>=0&&named(m.text)&&hasTime(m)&&
-            (m.side!=='system'||m.status==='recalled');
+            (m.side!=='system'||m.status==='recalled')&&
+            (i===0||m.time>=c.messages[i-1].time);
         });
       }))return false;
       return group&&hasUser&&list.some(function(c){
@@ -341,9 +353,10 @@
       return named(m.text)&&hasTime(m)&&named(m.image)&&compact(m.comments,1,8)&&
         m.comments.every(function(c){return named(c.name)&&named(c.text);});
     })&&list.some(function(m){return m.hesitated||m.visibility==='部分可见';});
-    if(id==='browser')return compact(list,6,12)&&list.every(function(h){return named(h.query)&&hasTime(h);})&&
+    if(id==='browser')return compact(list,5,8)&&list.every(function(h){return named(h.query)&&hasTime(h);})&&
       list.filter(function(h){var hr=new Date(h.time).getHours();return hr>=0&&hr<4;}).length>=2&&
       list.some(function(h){return h.deleted===true||/清除|删除/.test(h.query);})&&
+      list.some(function(h){return /你|喜欢|关系|聊天|好友|在意|特别|感情/.test(h.query);})&&
       compact(data.bookmarks,2,3)&&data.bookmarks.every(function(b){return named(b.title)&&named(b.summary);});
     if(id==='notes')return compact(list,3,5)&&compact(data.locked,2,3)&&
       list.concat(data.locked).every(function(n){
@@ -365,7 +378,10 @@
       list.some(function(t){var h=new Date(t.time).getHours();return t.repeat&&h>=0&&h<4;});
     if(id==='map'){
       if(!compact(list,3,5)||!list.every(function(p){return named(p.place)&&hasTime(p,'arrival')&&named(p.thought)&&num(p.durationMinutes,-1)>=0;}))return false;
-      if(!list.every(function(p,i){return !i||p.arrival>=list[i-1].arrival;}))return false;
+      if(!list.every(function(p,i){
+        return p.arrival+num(p.durationMinutes,0)*60000<=now+60000&&
+          (!i||p.arrival>=list[i-1].arrival);
+      }))return false;
       var truth=arr(facts).slice(-4);
       return truth.length===0||list.filter(function(p){
         return truth.some(function(f){return p.place===f.place&&Math.abs(p.arrival-f.time)<=15*60000;});
