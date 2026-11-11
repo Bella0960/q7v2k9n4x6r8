@@ -1012,7 +1012,8 @@ test('online rendering and search preserve date/silent filtering and error exclu
 
 test('message identity and model-context mapping keep compatibility fields', () => {
   assert.match(detail, /function ensureMid\(msg\)/);
-  assert.match(detail, /row\.dataset\.mid = ensureMid\(msg\)/);
+  assert.match(detail, /row\.dataset\.mid = msgMid/);
+  assert.match(detail, /const msgMid = ensureMid\(msg\)/);
   assert.match(detail, /m\.text \|\| m\.content/);
   assert.match(detail, /m\.role === 'sent' \|\| m\.role === 'user'/);
   assert.match(detail, /ChatMessagePolicy\.stripInternalReasoning/);
@@ -1305,9 +1306,10 @@ test('chat presence policy derives a bounded pause from the previous bubble leng
 
 test('chat detail stages multi-bubble replies and preserves the existing stream path', () => {
   assert.match(detail, /async function appendAiMessageWithPacing\(msg, idx\)/);
-  assert.match(detail, /await appendAiMessageWithPacing\(aiMsg, aiMessageIndex\)/);
+  assert.match(detail, /async function appendReplyMessagesWithPacing\(messages, startIdx\)/);
+  assert.match(detail, /await appendReplyMessagesWithPacing\(replyMessages, aiMessageIndex\)/);
   assert.match(detail, /chatMessages\.appendChild\(node\)/);
-  assert.match(detail, /aiBubblePacingRunId \+= 1/);
+  assert.match(detail, /\+\+aiBubblePacingRunId/);
   assert.match(detail, /prefers-reduced-motion: reduce/);
   assert.match(detail, /activeChatModeForPrompt !== 'narration'/);
   assert.match(detail, /PhoneStream\.chat\(\{/);
@@ -1876,7 +1878,10 @@ test('Service Worker navigation does not abort slow mobile page requests', () =>
 });
 
 test('Cloudflare Worker preserves explicit HTML routes and maps only the root to the desktop index', () => {
-  const wranglerConfig = JSON.parse(read('wrangler.jsonc').replace(/^\/\/.*\n/, ''));
+  // 工作区在 Windows 上可能是 CRLF（i/lf w/crlf），这里只统一行尾，断言内容不变。
+  const wranglerRaw = read('wrangler.jsonc');
+  assert.match(wranglerRaw, /^\/\/[^\r\n]*(\r?\n|$)/, 'wrangler.jsonc 首行应为注释，测试必须先剥离注释');
+  const wranglerConfig = JSON.parse(wranglerRaw.replace(/\r\n/g, '\n').replace(/^\/\/.*\n/, ''));
   const worker = read('worker.js');
 
   assert.equal(wranglerConfig.main, 'worker.js');
