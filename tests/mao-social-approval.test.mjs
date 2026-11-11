@@ -334,8 +334,12 @@ test('a new 001-approved friendship cannot reopen chat history from a removed re
     await ctx.call('founder-session', '/api/admin/social/friend-approvals/' + firstId + '/approve', 'POST');
     const pathAB = '/api/social/chats/' + bob + '/messages';
     const oldPayload = { clientMessageId: 'previous_relation_message_001', text: 'Previous relationship' };
-    assert.equal((await ctx.call('alice-session', pathAB, 'POST', oldPayload)).status, 200);
-    assert.equal((await ctx.call('bob-session', '/api/social/chats/' + alice + '/messages')).body.messages.length, 1);
+    const oldResult = await ctx.call('alice-session', pathAB, 'POST', oldPayload);
+    assert.equal(oldResult.status, 200);
+    assert.equal(oldResult.body.friendshipId, firstId);
+    const originalRead = await ctx.call('bob-session', '/api/social/chats/' + alice + '/messages');
+    assert.equal(originalRead.body.friendshipId, firstId);
+    assert.equal(originalRead.body.messages.length, 1);
     assert.equal((await ctx.call('alice-session', '/api/social/friends/' + bob, 'DELETE')).body.removed, true);
     assert.equal((await ctx.call('bob-session', '/api/social/chats/' + alice + '/messages')).code, 'SOCIAL_NOT_APPROVED');
 
@@ -345,11 +349,14 @@ test('a new 001-approved friendship cannot reopen chat history from a removed re
     await ctx.call('founder-session', '/api/admin/social/friend-approvals/' + secondId + '/approve', 'POST');
     const reopened = await ctx.call('bob-session', '/api/social/chats/' + alice + '/messages');
     assert.deepEqual(reopened.body.messages, [], 'old relation messages must stay hidden');
+    assert.equal(reopened.body.friendshipId, secondId);
+    assert.notEqual(reopened.body.friendshipId, originalRead.body.friendshipId);
     assert.equal((await ctx.call('alice-session', pathAB, 'POST', oldPayload)).code, 'SOCIAL_MESSAGE_ID_REUSED');
     const newer = await ctx.call('alice-session', pathAB, 'POST', {
       clientMessageId: 'new_relation_message_001', text: 'A new beginning'
     });
     assert.equal(newer.status, 200);
+    assert.equal(newer.body.friendshipId, secondId);
     const current = await ctx.call('bob-session', '/api/social/chats/' + alice + '/messages');
     assert.deepEqual(current.body.messages.map(m => m.text), ['A new beginning']);
     assert.equal(ctx.exec('SELECT COUNT(*) AS n FROM mao_social_messages')[0].n, 2,
