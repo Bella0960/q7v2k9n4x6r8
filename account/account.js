@@ -116,7 +116,7 @@
     }
   }
 
-  function presentAccount(account) {
+  function presentAccount(account, options = {}) {
     currentAccount = account || null;
     if (!account) {
       showPanel('welcomePanel');
@@ -136,7 +136,9 @@
       // The server-injected account role controls the creator-only tile.
       byId('authorizedAccountId').textContent = account.id || '—';
       showPanel('authorizedPanel');
-      window.location.assign('/index.html');
+      // First successful invite redemption deserves a real confirmation screen.
+      // Returning active sessions and ordinary logins still enter the desktop directly.
+      if (options.fromInvite !== true) window.location.assign('/index.html');
       return;
     }
     showPanel('welcomePanel');
@@ -309,7 +311,7 @@
       const result = await api('/api/accounts/invites/redeem', 'POST', {
         inviteCode: String(form.get('inviteCode') || '').trim()
       });
-      presentAccount(result.account);
+      presentAccount(result.account, { fromInvite: true });
     } catch (error) {
       showAuthError(error, 'inviteError');
     } finally {
