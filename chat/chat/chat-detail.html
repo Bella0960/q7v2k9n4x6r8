@@ -4472,18 +4472,34 @@
             };
         }
         function applyTransferDecisionMarkers(historyList, amounts) {
-            if (!Array.isArray(historyList) || !Array.isArray(amounts) || !amounts.length) return;
+            var snapshots = [];
+            if (!Array.isArray(historyList) || !Array.isArray(amounts) || !amounts.length) return snapshots;
             amounts.forEach(function (amount) {
                 for (var i = historyList.length - 1; i >= 0; i--) {
                     var previous = historyList[i];
                     if (previous && (previous.role === 'user' || previous.role === 'sent') &&
                         previous.type === 'transfer' && (!previous.status || previous.status === 'unopened') &&
                         Number(previous.amount) === Number(amount)) {
+                        snapshots.push({
+                            message: previous,
+                            status: previous.status,
+                            acceptedAt: previous.acceptedAt
+                        });
                         previous.status = 'accepted';
                         previous.acceptedAt = Date.now();
                         break;
                     }
                 }
+            });
+            return snapshots;
+        }
+        function rollbackTransferDecisionMarkers(snapshots) {
+            (Array.isArray(snapshots) ? snapshots : []).forEach(function (snapshot) {
+                if (!snapshot || !snapshot.message) return;
+                if (snapshot.status == null) delete snapshot.message.status;
+                else snapshot.message.status = snapshot.status;
+                if (snapshot.acceptedAt == null) delete snapshot.message.acceptedAt;
+                else snapshot.message.acceptedAt = snapshot.acceptedAt;
             });
         }
 
@@ -6436,7 +6452,8 @@
                     const roleFamilyCardChanged = applyRoleFamilyCardChanges(parsedRoleFamilyCard.changes);
                     const parsedTransferDecision = extractTransferDecisionMarkers(fullText);
                     fullText = parsedTransferDecision.text;
-                    applyTransferDecisionMarkers(historyList, parsedTransferDecision.amounts);
+                    // 转账状态会与本轮回复一并保存；若主回复写入失败，状态也回滚。
+                    var transferDecisionSnapshots = [];
                     // 剥离自动记忆标记 [记住:xxx]，并存进 user_memory
                     const parsedMem = extractMemoryMarkers(fullText);
                     fullText = parsedMem.text;
@@ -6466,7 +6483,8 @@
                     });
                     var avatarCandidates = parsedAvatarCandidate.candidates || [];
                     var avatarPairs = parsedAvatarCandidate.pairs || [];
-                    if (fullText || aiStickerMessages.length || avatarCandidates.length || avatarPairs.length) {
+                    if (fullText || aiStickerMessages.length || avatarCandidates.length || avatarPairs.length ||
+                        (parsedTransferDecision.amounts && parsedTransferDecision.amounts.length)) {
                         // 正文、表情、单张头像和双图配对在同一轮回复中处理；只保存候选，不自动替换当前头像。
                         var replyMessages = [];
                         if (fullText) {
@@ -6495,6 +6513,7 @@
                             historyList.push(stickerMessage);
                         });
                         window.__groupPrivateCardPending = false;
+                        transferDecisionSnapshots = applyTransferDecisionMarkers(historyList, parsedTransferDecision.amounts);
                         var replySaved = saveMessages(historyList);
                         var replySaveFailed = !replySaved;
                         if (!replySaved) {
@@ -6505,6 +6524,7 @@
                             replyMessages = [];
                             aiStickerMessages = [];
                             aiMsg = null;
+                            rollbackTransferDecisionMarkers(transferDecisionSnapshots);
                             // 不把未保存内容写成正式历史，但保留当前屏幕上的生成正文供用户复制。
                             if (streamBubble && fullText) streamBubble.textContent = fullText;
                             if (typeof showToast === 'function') {
