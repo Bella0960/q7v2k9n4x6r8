@@ -615,6 +615,45 @@
     };
   }
 
+  // A new role can make one low-pressure opening after explicit opt-in.
+  function evaluateInitialProactiveContact(options) {
+    options = options || {};
+    var now = Number(options.now);
+    if (options.enabled !== true) return { eligible: false, reason: 'disabled' };
+    if (options.blocked === true) return { eligible: false, reason: 'blocked' };
+    if (options.pageVisible === false) return { eligible: false, reason: 'page-hidden' };
+    if (options.hasHistory === true) return { eligible: false, reason: 'history-exists' };
+    if (options.firstContactSent === true) return { eligible: false, reason: 'already-sent' };
+    if (!Number.isFinite(now) || now <= 0) return { eligible: false, reason: 'invalid-timestamp' };
+
+    var hour = options.localHour == null ? new Date(now).getHours() : Number(options.localHour);
+    var quietStart = Math.max(0, Math.min(23, Number(options.quietStartHour == null ? 9 : options.quietStartHour)));
+    var quietEnd = Math.max(1, Math.min(24, Number(options.quietEndHour == null ? 22 : options.quietEndHour)));
+    if (!Number.isFinite(hour) || hour < quietStart || hour >= quietEnd) {
+      return { eligible: false, reason: 'quiet-hours' };
+    }
+
+    var enabledAt = Number(options.enabledAt) || 0;
+    if (!enabledAt || enabledAt > now) return { eligible: false, reason: 'missing-enable-time' };
+    var initialDelayMs = Math.max(0, Number(options.initialDelayMs) || 0);
+    if (now - enabledAt < initialDelayMs) {
+      return { eligible: false, reason: 'initial-delay', remainingMs: initialDelayMs - (now - enabledAt) };
+    }
+
+    var globalCooldownMs = Math.max(1, Number(options.globalCooldownMs) || 24 * 60 * 60 * 1000);
+    var roleCooldownMs = Math.max(globalCooldownMs, Number(options.roleCooldownMs) || globalCooldownMs);
+    var globalLastAttemptAt = Number(options.globalLastAttemptAt) || 0;
+    var roleLastAttemptAt = Number(options.roleLastAttemptAt) || 0;
+    if (globalLastAttemptAt && now - globalLastAttemptAt >= 0 && now - globalLastAttemptAt < globalCooldownMs) {
+      return { eligible: false, reason: 'global-cooldown' };
+    }
+    if (roleLastAttemptAt && now - roleLastAttemptAt >= 0 && now - roleLastAttemptAt < roleCooldownMs) {
+      return { eligible: false, reason: 'role-cooldown' };
+    }
+
+    return { eligible: true, reason: 'eligible', enabledAt: enabledAt, idleMs: now - enabledAt };
+  }
+
   function buildProactiveContactPrompt(contact, history, options) {
     options = options || {};
     var name = String(contact && contact.name || '角色').trim() || '角色';
@@ -628,8 +667,16 @@
       '一次最多发一条自然短消息，不连续追发，不强行制造问题，不输出动作旁白、隐藏机器标记、红包/转账/通话/图片指令或 Markdown。',
       '若确实适合发送，只输出 JSON：{"send":true,"text":"一条自然的消息"}；若不适合，输出 {"send":false,"text":""}。不要在 JSON 外添加任何文字。'
     ];
+    if (options.initialContact === true) {
+      lines.push('', '【第一次主动开场】',
+        '这是你们第一次在聊天中开口，当前没有聊天记录。不要假装以前聊过、见过、约定过或共同经历过任何事情。',
+        '只根据明确提供的角色设定和称呼，做一个简短、友好、日常的开场；可以分享符合人设的兴趣话题，也可以选择不发送。',
+        '首次开场保持非暧昧、非恋爱表达，不表白、不要求亲密承诺，不制造依赖、占有或愧疚。',
+        '不要把用户未提供的信息当成事实，也不要声称正在现实地点或执行现实行动。不要要求对方立即回复。');
+    }
     if (persona) lines.push('', '【角色设定】', persona);
-    var voicePrompt = buildPrompt({ mode: 'online', history: history, maxSamples: 2, maxSampleChars: 72 });
+    var voicePrompt = options.initialContact === true ? '' :
+      buildPrompt({ mode: 'online', history: history, maxSamples: 2, maxSampleChars: 72 });
     if (voicePrompt) lines.push('', voicePrompt);
     var habitPrompt = buildVoiceHabitPrompt(options.voiceProfile);
     if (habitPrompt) lines.push('', habitPrompt);
@@ -695,6 +742,7 @@
   NS.collectLifeContinuityNotes = collectLifeContinuityNotes;
   NS.buildAutonomyPrompt = buildAutonomyPrompt;
   NS.evaluateProactiveContact = evaluateProactiveContact;
+  NS.evaluateInitialProactiveContact = evaluateInitialProactiveContact;
   NS.buildProactiveContactPrompt = buildProactiveContactPrompt;
   NS.getBubbleDelayMs = getBubbleDelayMs;
   NS.buildPrompt = buildPrompt;
