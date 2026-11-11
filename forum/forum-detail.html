@@ -10,6 +10,7 @@
 <script src="../shared/js/phone/storage/repository.js"></script>
 <script src="../shared/js/phone/storage/media-repository.js"></script>
 <script src="forum-media.js"></script>
+<script src="forum-gossip.js"></script>
 <script src="../shared/js/phone/phone_api.js"></script>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
 <style>
@@ -98,6 +99,32 @@
   .comments { padding: 0 22px; }
   .ai-community-status { padding: 10px 0 4px; color:#aaa; font-size:9px; letter-spacing:.04em; }
   .ai-community-status:empty { display:none; }
+  .gossip-continue { border:1px solid #dedede;background:#fff;color:#222;font:600 11px var(--sans);padding:12px 16px;margin:10px 0 13px;width:100%;text-align:left;cursor:pointer;letter-spacing:.01em; }
+  .gossip-continue:disabled { color:#999;cursor:default;background:#f7f7f7; }
+  .gossip-continue[hidden] { display:none; }
+  .gossip-series { width:100%;padding:11px 15px;min-height:38px;margin:0 0 7px;border:1px solid #dedede;background:#f8f8f8;color:#424242;text-align:left;font:600 11px var(--sans);cursor:pointer; }
+  .gossip-series[hidden] { display:none; }
+  .gossip-series:disabled { color:#999;cursor:default; }
+  .gossip-series-note { font-size:9px;line-height:1.65;color:#999;margin:0 0 12px; }
+  .gossip-series-note[hidden] { display:none; }
+  .gossip-author-tag { font-size:9px;font-weight:600;color:#333;margin-left:7px; }
+  .gossip-reader-tools { margin:10px 0 12px; padding:12px 0; border-top:1px solid #ededed; border-bottom:1px solid #ededed; }
+  .gossip-reader-tools[hidden] { display:none; }
+  .gossip-reader-top { display:flex;align-items:center;justify-content:space-between;gap:10px; }
+  .gossip-reader-actions {display:flex;align-items:center;justify-content:flex-start;gap:16px;margin-top:6px;flex-wrap:wrap;}
+  .gossip-read-sentinel {display:block;width:1px;height:1px;pointer-events:none;}
+  .gossip-read-manual {border:0;background:transparent;color:#909090;font:10px var(--sans);padding:7px 0 3px;cursor:pointer;}
+  .gossip-read-manual:disabled {color:#aaa;cursor:default;}
+  .gossip-reader-progress { font-size:11px;color:#4b4b4b;font-weight:600; }
+  .gossip-reader-jump { background:transparent;border:0;border-bottom:1px solid #aaa;color:#555;font:11px var(--sans);padding:7px 1px;cursor:pointer; }
+  .gossip-reader-jump:disabled { color:#aaa;border-bottom-color:#ddd;cursor:default; }
+  .gossip-reader-tabs { display:flex;gap:8px;margin-top:10px; }
+  .gossip-reader-tab { border:1px solid #e5e5e5;background:#fff;color:#666;padding:9px 13px;min-height:36px;font:11px var(--sans);cursor:pointer; }
+  .gossip-reader-tab[aria-pressed="true"] { background:#191919;color:#fff;border-color:#191919; }
+  .gossip-author-update { padding-left:11px;border-left:2px solid #333;scroll-margin-top:88px; }
+  .gossip-author-update .c-text { color:#343434;font-size:12px;line-height:2;white-space:pre-wrap; }
+  @media (prefers-reduced-motion: reduce) { .gossip-author-update { scroll-behavior:auto; } }
+
   .c-title {
     display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
     margin: 12px 0 0; padding-bottom: 11px; border-bottom: 1px solid #202020;
@@ -243,6 +270,20 @@
   <div class="comments">
     <div class="c-title" data-count="0">评论与回复</div>
     <div id="aiCommentStatus" class="ai-community-status" aria-live="polite"></div>
+    <div id="gossipReaderTools" class="gossip-reader-tools" hidden>
+      <div class="gossip-reader-top"><span id="gossipReaderProgress" class="gossip-reader-progress">连载 · 正在开篇</span></div>
+      <div class="gossip-reader-actions">
+        <button id="gossipResume" class="gossip-reader-jump" type="button" onclick="resumeGossipReading()" disabled>接着读</button>
+        <button id="gossipJumpLatest" class="gossip-reader-jump" type="button" onclick="jumpToGossipLatest()" disabled>跳到最新一更</button>
+      </div>
+      <div class="gossip-reader-tabs" role="group" aria-label="八卦连载阅读模式">
+        <button id="gossipViewAll" class="gossip-reader-tab" type="button" aria-pressed="true" onclick="setGossipView('all')">全部讨论</button>
+        <button id="gossipViewAuthor" class="gossip-reader-tab" type="button" aria-pressed="false" onclick="setGossipView('author')">只看楼主</button>
+      </div>
+    </div>
+    <button id="gossipContinue" class="gossip-continue" type="button" onclick="continueGossip()" hidden>让楼主继续讲</button>
+    <button id="gossipFinishAll" class="gossip-series" type="button" onclick="finishGossipSeries()" hidden>连续讲到结局</button>
+    <p id="gossipSeriesNote" class="gossip-series-note" hidden>连续追更会逐章调用你配置的 API，每更保存一次；点“停止”后不会再开始下一更。</p>
     <div id="commentList"></div>
   </div>
 
@@ -281,57 +322,9 @@ function getForumTheme(themeOverride){
  const p=THEME_PRESETS[id]||THEME_PRESETS.reality;
  return {...p,id:id,displayName:(cfg.name&&cfg.name!=='我的论坛'?cfg.name:p.name),roleTopics:p.topics.slice(1),world:[p.tagline,cfg.world].filter(Boolean).join('\n')};
 }
-function getSeededPosts(themeOverride){
- const t=getForumTheme(themeOverride),base=seeded.map(x=>({...x})),bagua=[
- ['娱乐八卦','最近这档综艺的剪辑，评论区已经吵成两派了。','有人觉得节目组在带节奏，也有人说只是镜头取舍。先不急着站队，想看看大家完整看完之后是什么感觉。'],
- ['爆料求证','求原始出处：这张聊天截图最早是从哪里传出来的？','目前看到的都是二次转发，缺少完整上下文。有没有人找到原帖？没有来源之前先当作未证实消息。'],
- ['恋爱观察','朋友恋爱后突然很少发动态，是正常的吗？','不是要替别人下判断，只是发现关系状态变化后，社交习惯也会跟着变。大家怎么看？'],
- ['避雷投稿','消费体验分享：哪些细节值得提前问清楚？','比起情绪化结论，具体时间、订单和沟通记录更有参考价值。欢迎分享真实体验。'],
- ['网友热议','一个话题从小范围讨论冲上热榜，通常是因为什么？','是当事人回应、媒体跟进，还是网友不断补充信息？想听听大家观察到的传播规律。'],
- ['真假鉴定','看到热门消息先别转：三步确认它是不是旧闻。','查发布时间、找最初发布账号，再对照可靠来源。没有核实前先别把传闻当事实。']
- ];
- const generic=[
- ['今日话题','今天有没有一件很小、但让你心情变好的事？','不一定是什么大事。可能是路上刚好吹来的风，买到了喜欢的东西，或者终于把拖了几天的小事处理好了。'],
- ['生活观察','最近发现，生活里有些不起眼的角落很值得留意。','一条不太拥挤的小路、一家开得很晚的店，或者偶然遇到的善意。'],
- ['深夜碎念','今天想给自己留一点不用赶时间的空白。','把待办先放一放，慢慢整理思绪。生活不是每一天都要交出成果。'],
- ['邻里闲谈','有没有人也收藏着附近那些不起眼的小店？','店面不大，老板记得熟客的习惯。每次路过都会觉得这种小小的连接很珍贵。'],
- ['职场见闻','今天在工作或学习里学到一个实用的小方法。','把复杂的事情拆成几个能马上开始的小步骤，压力好像就没那么容易堆起来了。'],
- ['随手分享','留一条今天看到的有趣小发现。','没有特别的故事，只是觉得值得记下来，也许会碰到有相同经历的人。']
- ];
- const packs={bagua:bagua,xiuxian:[
- ['宗门八卦','听说隔壁峰最近又在招收新弟子了？','路过山门时看到告示换了新的，不知道今年的考核会不会比往年严格。'],
- ['修炼日常','记录一下今日闭关：终于把卡了很久的心法理顺了。','没有惊天进展，只是把总出错的地方重新拆开练了一遍。稳稳向前也算进步。'],
- ['秘境见闻','上次秘境里那片会发光的树林，有人知道来历吗？','当时只顾着赶路，没有记下方位。现在回想起来还是觉得奇特。'],
- ['灵兽奇闻','灵兽是不是都知道自己什么时候最可爱？','明明刚闯完祸，转头就趴在门口装乖。各峰的灵兽是不是都这么会拿捏人？'],
- ['丹药测评','新出的清心丹有人试过了吗？口感和效果如何？','看介绍说适合长途御剑后调息，想先听听用过的仙友怎么评价。'],
- ['悬赏求助','求助：灵田里的聚灵阵总是偶尔失灵。','已经检查过阵眼和灵石，还是会在夜里出现波动。有没有擅长阵法的同门愿意指点？']
- ],academy:[
- ['校园八卦','最近学校里最热闹的话题，居然是食堂换菜单。','大家已经开始认真比较哪家窗口更值得排队了。有没有隐藏菜单推荐？'],
- ['课业求助','有没有人整理过这门课的复习重点？','笔记已经记了不少，但知识点有点散。想找同学交流一下怎么安排复习顺序。'],
- ['社团日常','社团招新结束后，第一次活动准备做什么比较好？','希望新成员能快速熟悉起来，不想一上来就安排太正式的流程。'],
- ['宿舍见闻','宿舍里最能提升幸福感的小物件是什么？','最近想添置一点实用的东西，最好是不占地方、每天都能用上的那种。'],
- ['表白墙','如果想认识同校的人，除了表白墙还有什么自然的方式？','更希望从共同兴趣或活动开始，不想给别人造成压力。'],
- ['二手闲置','毕业季交换区开张：书籍和小家电都可以来晒一晒。','标清成色、价格和校内取货地点，方便有需要的人联系。']
- ],future:[
- ['赛博见闻','今晚东区的公共屏幕又出现了异常广告。','持续时间不长，像是旧系统缓存没有清理干净。有人记录到完整画面了吗？'],
- ['义体改造','轻型义体的维护周期到底应该按什么标准算？','不同厂商的建议差异挺大。想听听长期使用者的真实维护记录。'],
- ['AI关系','你会给常用的个人 AI 保留一份离线记忆吗？','云端同步方便，但有时也想把重要的对话留在本地。大家更看重便利还是掌控感？'],
- ['数据黑市','看到可疑的数据交易帖，最稳妥的处理方式是什么？','没有核实来源，也不建议点开陌生附件。有人知道正规渠道该怎么提交线索吗？'],
- ['夜城生活','凌晨三点的高架桥下，居然有一家还亮着灯的修理铺。','老板不爱说话，但工具收得特别整齐。夜班结束时路过，会让人觉得这座城市还没睡。'],
- ['设备测评','新款掌上终端的续航测试，有没有真实用户数据？','官方数据看起来很漂亮，想看看连续导航、通讯和高负载下的实际表现。']
- ]};
- const rows=packs[t.id]||generic,names=['宝宝','拾光','阿柴','Lin','慢慢','七号房间'],avatars=['宝','拾','柴','林','慢','七'];
- return base.map((p,i)=>{const r=rows[i]||generic[i];return {...p,id:'p'+(i+1),name:names[i],avatar:avatars[i],topic:r[0],title:r[1],body:r[2],featured:i===0,owner:'seed',themeId:t.id}});
-}
+// Keep detail-page load behavior aligned with the main forum feed: no synthetic seed posts.
+function getSeededPosts(themeOverride){return []}
 
-const seeded=[
-{id:'p1',name:'宝宝',avatar:'宝',role:'AI',topic:'今日话题',time:'刚刚',title:'今天的你，有没有一件很小但很开心的事？',body:'不一定是什么大事。可能是路上刚好吹来的风，买到了喜欢的东西，或者忙完之后终于坐下来发了会儿呆。\n\n想听听大家今天的小小幸运。',likes:18,comments:6,featured:true,liked:false},
-{id:'p2',name:'拾光',avatar:'拾',topic:'深夜食堂',time:'12 分钟前',title:'刚刚把房间收拾干净，突然觉得生活可以重新开始。',body:'明明只是整理了一下桌面，扔掉几张旧纸，把窗户打开通了会儿风。屋子变得清爽，人好像也跟着松了一口气。',likes:14,comments:3,liked:false},
-{id:'p3',name:'阿柴',avatar:'柴',topic:'碎碎念',time:'28 分钟前',title:'成年人的快乐，有时候就是不用马上回复任何消息。',body:'把手机倒扣在桌上，给自己留半小时空白。没有错过什么，也没有落下什么。今天想先照顾一下自己的节奏。',likes:9,comments:2,liked:false},
-{id:'p4',name:'Lin',avatar:'林',topic:'生活观察',time:'1 小时前',title:'发现一家很安静的小店。',body:'靠窗的位置能看见树影，店里放着音量很轻的音乐。点一杯热饮就可以坐很久。想把这种不被催促的下午收藏起来。',likes:23,comments:8,liked:false},
-{id:'p5',name:'慢慢',avatar:'慢',topic:'今日话题',time:'2 小时前',title:'如果今天能给自己放一个小假，你会去哪里？',body:'我想去没有太多人的海边，坐着看一会儿水。什么也不用完成，也不急着把心情整理好。',likes:11,comments:4,liked:false},
-{id:'p6',name:'七号房间',avatar:'七',topic:'随手分享',time:'昨天',title:'最近喜欢上了记录不完整的生活。',body:'不修图，不一定写结尾，有时候只是记下一句没说完的话。以前觉得记录要有意义，现在觉得它只要是真的，就很好。',likes:7,comments:1,liked:false}
-];
 function buildPreviousSeedSets(stored,seedIds){
  const themes=new Set();
  (Array.isArray(stored)?stored:[]).forEach(item=>{
@@ -491,10 +484,19 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       if(!result||!result.ok||!result.data||!Array.isArray(result.data.comments))throw new Error('评论生成结果无效');
       const added=result.data.comments.slice(0,4).map((x,i)=>makeDetailAIComment(x,i)).filter(Boolean);
       if(added.length){
+        const previousComments=post.comments;
+        const previousBatch=post.aiCommentBatch,previousBatchAt=post.aiCommentBatchAt;
         post.comments=post.comments.concat(added);
         post.aiCommentBatch='v1';
         post.aiCommentBatchAt=Date.now();
-        saveNow();renderComments();renderPost();
+        if(!saveNow()){
+          post.comments=previousComments;
+          post.aiCommentBatch=previousBatch;
+          post.aiCommentBatchAt=previousBatchAt;
+          renderComments();renderPost();
+          return;
+        }
+        renderComments();renderPost();
         if(status){status.textContent='又有 '+added.length+' 位网友加入了讨论';setTimeout(()=>{if(status.textContent.indexOf('又有 ')===0)status.textContent=''},4200)}
       }else if(status){status.textContent='暂时还没人接话，过会儿再来看看'}
     }catch(error){
@@ -579,6 +581,70 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
 
   let post = null;
   let commentImageFiles=[];
+  let gossipReplyBusy=false;
+  let gossipSeriesRunning=false;
+  let gossipSeriesStopRequested=false;
+  let gossipView='all';
+  let gossipReadObserver=null;
+  function gossipLocalStore(){try{return window.localStorage}catch(error){return null}}
+  function syncGossipReading(){
+    if(!post||!window.ForumGossip||!ForumGossip.isGossipPost(post))return;
+    const progress=ForumGossip.progress(post);
+    const store=gossipLocalStore();
+    const unread=ForumGossip.unreadCount(post,store);
+    const label=document.getElementById('gossipReaderProgress');
+    if(label)label.textContent='虚构连载 · '+(progress.finished?'已完结':'更新中')+
+      ' · '+progress.chapter+'/'+progress.maxChapters+' 更'+(unread?' · 未读 '+unread+' 更':'');
+    const resume=document.getElementById('gossipResume');
+    if(resume)resume.disabled=!ForumGossip.nextUnreadChapter(post,store);
+    document.querySelectorAll('#commentList [data-gossip-mark-read]').forEach(function(button){
+      const chapter=Number(button.getAttribute('data-gossip-mark-read'));
+      const saved=ForumGossip.readChapter(post,store)>=chapter;
+      button.disabled=saved;
+      button.textContent=saved?'已读':'读完这一更';
+    });
+  }
+  function markGossipRead(chapter){
+    if(!post||!window.ForumGossip||!ForumGossip.isGossipPost(post))return false;
+    const saved=ForumGossip.markReadChapter(post,chapter,gossipLocalStore());
+    if(saved)syncGossipReading();
+    return saved;
+  }
+  function observeGossipRead(){
+    if(gossipReadObserver){gossipReadObserver.disconnect();gossipReadObserver=null}
+    if(!post||!window.ForumGossip||!ForumGossip.isGossipPost(post))return;
+    if(!('IntersectionObserver' in window))return;
+    gossipReadObserver=new IntersectionObserver(function(entries){
+      entries.forEach(function(entry){
+        if(!entry.isIntersecting||document.hidden)return;
+        const chapter=Number(entry.target.getAttribute('data-gossip-read-chapter'));
+        if(markGossipRead(chapter)&&gossipReadObserver)gossipReadObserver.unobserve(entry.target);
+      });
+    },{root:null,rootMargin:'0px 0px -18% 0px',threshold:0.75});
+    document.querySelectorAll('#commentList [data-gossip-read-chapter]').forEach(function(marker){
+      gossipReadObserver.observe(marker);
+    });
+  }
+  function resumeGossipReading(){
+    if(!post||!window.ForumGossip||!ForumGossip.isGossipPost(post))return;
+    const chapter=ForumGossip.nextUnreadChapter(post,gossipLocalStore());
+    if(!chapter){toast('已经读到最新一更了');return}
+    const target=document.querySelector('#commentList [data-gossip-chapter="'+chapter+'"]');
+    if(!target){toast('这一更暂时未能加载，请重新打开帖子');return}
+    target.scrollIntoView({behavior:window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});
+  }
+  function setGossipView(mode){
+    if(!post||!window.ForumGossip||!ForumGossip.isGossipPost(post))return;
+    gossipView=mode==='author'?'author':'all';
+    renderPost();renderComments();
+  }
+  function jumpToGossipLatest(){
+    if(!post||!window.ForumGossip||!ForumGossip.isGossipPost(post))return;
+    const updates=document.querySelectorAll('#commentList [data-gossip-chapter]');
+    const latest=updates.length?updates[updates.length-1]:null;
+    if(!latest){toast('楼主还没更新，先点“让楼主继续讲”');return}
+    latest.scrollIntoView({behavior:window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});
+  }
   function loadPost() {
     const id = getPostId();
     const posts = loadPosts();
@@ -636,6 +702,39 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     document.getElementById('commentCount').textContent = shownCount;
     const ct = document.querySelector('.c-title'); if (ct) ct.setAttribute('data-count', shownCount);
     document.getElementById('likeBtn').classList.toggle('liked', !!post.liked);
+    const gossipButton=document.getElementById('gossipContinue');
+    const gossipTools=document.getElementById('gossipReaderTools');
+    const hasGossipStory=!!(window.ForumGossip&&ForumGossip.isGossipPost(post));
+    if(gossipTools)gossipTools.hidden=!hasGossipStory;
+    if(hasGossipStory){
+      const progress=ForumGossip.progress(post);
+      syncGossipReading();
+      const jump=document.getElementById('gossipJumpLatest');
+      if(jump)jump.disabled=!post.comments.some(c=>c&&c.source==='gossip-author');
+      for(const mode of ['all','author']){
+        const btn=document.getElementById(mode==='all'?'gossipViewAll':'gossipViewAuthor');
+        if(btn)btn.setAttribute('aria-pressed',String(gossipView===mode));
+      }
+    }
+    if(gossipButton){
+      gossipButton.hidden=!hasGossipStory;
+      if(hasGossipStory){
+        const progress=ForumGossip.progress(post);
+        gossipButton.disabled=progress.finished||gossipReplyBusy||gossipSeriesRunning;
+        gossipButton.textContent=progress.finished?'这条瓜已经讲完':gossipReplyBusy?'楼主正在写后续…':'让楼主继续讲 · '+progress.chapter+' / '+progress.maxChapters;
+      }
+    }
+    const seriesButton=document.getElementById('gossipFinishAll');
+    const seriesNote=document.getElementById('gossipSeriesNote');
+    if(seriesButton){
+      seriesButton.hidden=!hasGossipStory;
+      if(hasGossipStory){
+        const progress=ForumGossip.progress(post);
+        seriesButton.disabled=(progress.finished&&!gossipSeriesRunning)||(gossipReplyBusy&&!gossipSeriesRunning);
+        seriesButton.textContent=gossipSeriesRunning?(gossipSeriesStopRequested?'将在这一更后停止':'停止连续追更'):'连续讲到结局';
+      }
+    }
+    if(seriesNote)seriesNote.hidden=!hasGossipStory;
   }
 
   function isOwn(c) { return c.name === '我' || c.owner === 'me'; }
@@ -663,17 +762,21 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
 
   function renderComments() {
     const list = document.getElementById('commentList');
+    if(gossipReadObserver){gossipReadObserver.disconnect();gossipReadObserver=null}
     if(window.ForumMedia)ForumMedia.revokeIn(list);
-    if (!post.comments.length) {
-      list.innerHTML = '<div style="color:#b8b8b8;font-size:11px;padding:20px 0;text-align:center;">还没有回应——做第一个说点什么的人</div>';
+    const authorOnly=window.ForumGossip&&ForumGossip.isGossipPost(post)&&gossipView==='author';
+    const visible=post.comments.map((c,i)=>({c,i})).filter(({c})=>!authorOnly||c.source==='gossip-author');
+    if(!visible.length){
+      list.innerHTML='<div style="color:#a4a4a4;font-size:11px;padding:20px 0;text-align:center;">'+(authorOnly?'楼主暂时还没有后续，点上面的按钮可以催更':'还没有回应——做第一个说点什么的人')+'</div>';
       return;
     }
-    list.innerHTML = post.comments.map((c, i) => `
-      <div class="comment">
+    list.innerHTML = visible.map(({c,i}) => `
+      <div class="comment ${c.source==='gossip-author'?'gossip-author-update':''}" ${c.source==='gossip-author'?'data-gossip-chapter="'+Math.max(1,Math.floor(Number(c.gossipChapter)||1))+'"':''}>
         <div class="c-avatar" style="background:${avatarBackground(c)}">${avatarContent(c, false)}</div>
         <div class="c-body">
-          <div class="c-name">${esc(c.name)}</div>
+          <div class="c-name">${esc(c.name)}${c.source==='gossip-author' ? '<span class="gossip-author-tag">楼主 · 第 '+Math.max(1,Math.floor(Number(c.gossipChapter)||1))+' 更</span>' : ''}${c.replyTo ? '<span class="c-at"> 回复 '+esc(c.replyTo)+'</span>' : ''}</div>
           <div class="c-text">${esc(c.text)}</div>
+          ${c.source==='gossip-author'?'<span class="gossip-read-sentinel" data-gossip-read-chapter="'+Math.max(1,Math.floor(Number(c.gossipChapter)||1))+'"></span>':''}
           ${window.ForumMedia?ForumMedia.markup(c.mediaAssetIds,"comment-media"):""}
           <div class="c-actions">
             <span class="c-time">${safeTime(c.time)}</span>
@@ -684,6 +787,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
             </span>
             ${isOwn(c) ? '<span class="c-del" onclick="deleteComment(' + i + ')">删除</span>' : ''}
           </div>
+          ${c.source==='gossip-author'?'<button class="gossip-read-manual" data-gossip-mark-read="'+Math.max(1,Math.floor(Number(c.gossipChapter)||1))+'" type="button" onclick="markGossipRead('+Math.max(1,Math.floor(Number(c.gossipChapter)||1))+')">读完这一更</button>':''}
           ${c.replies && c.replies.length ? `<div class="c-replies">${c.replies.map((r, j) => `
             <div class="comment">
               <div class="c-avatar" style="background:${avatarBackground(r)}">${avatarContent(r, false)}</div>
@@ -706,25 +810,29 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       </div>
     `).join('');
     if(window.ForumMedia)ForumMedia.hydrate(list);
+    observeGossipRead();
+    syncGossipReading();
   }
 
   function likeComment(i) {
-    const c = post.comments[i];
-    c.liked = !c.liked;
-    c.likes = (c.likes || 0) + (c.liked ? 1 : -1);
-    const posts = loadPosts();
-    const idx = posts.findIndex(p => p.id === post.id);
-    if (idx >= 0) { posts[idx] = post; savePosts(posts); }
+    const c = post?.comments?.[i];
+    if (!c) return;
+    const wasLiked = Boolean(c.liked);
+    const oldLikes = Number(c.likes) || 0;
+    c.liked = !wasLiked;
+    c.likes = Math.max(0, oldLikes + (c.liked ? 1 : -1));
+    if (!saveNow()) { c.liked = wasLiked; c.likes = oldLikes; }
     renderComments();
   }
 
   function likeReply(i, j) {
-    const r = post.comments[i].replies[j];
-    r.liked = !r.liked;
-    r.likes = (r.likes || 0) + (r.liked ? 1 : -1);
-    const posts = loadPosts();
-    const idx = posts.findIndex(p => p.id === post.id);
-    if (idx >= 0) { posts[idx] = post; savePosts(posts); }
+    const r = post?.comments?.[i]?.replies?.[j];
+    if (!r) return;
+    const wasLiked = Boolean(r.liked);
+    const oldLikes = Number(r.likes) || 0;
+    r.liked = !wasLiked;
+    r.likes = Math.max(0, oldLikes + (r.liked ? 1 : -1));
+    if (!saveNow()) { r.liked = wasLiked; r.likes = oldLikes; }
     renderComments();
   }
 
@@ -747,7 +855,15 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     try {
       const posts = loadPosts();
       const idx = posts.findIndex(p => p.id === post.id);
-      if (idx >= 0) { posts[idx] = post; savePosts(posts); return true; }
+      if (idx < 0) throw new Error('帖子已不存在，无法保存');
+      posts[idx] = post;
+      const serialized = JSON.stringify(posts);
+      localStorage.setItem('forum_posts', serialized);
+      // Mobile storage can silently refuse writes. Do not report success without readback.
+      if (localStorage.getItem('forum_posts') !== serialized) {
+        throw new Error('本机存储回读不一致');
+      }
+      return true;
     } catch(e) { console.warn('[Forum] 保存帖子改动失败，当前页面继续显示已读出的内容', e); }
     toast('保存失败，请重试');
     return false;
@@ -769,34 +885,160 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
   function deleteComment(i) {
     const removed=post.comments[i];
     if (!isOwn(removed)) return;
-    post.comments.splice(i, 1);
-    if (replyToIdx >= i) { replyToIdx = -1; cancelReply(); }
-    if(saveNow()&&removed.id&&Array.isArray(removed.mediaAssetIds))ForumMedia.release(removed.mediaAssetIds,'forum-comment',removed.id);
-    renderComments();
-    renderPost();
+    post.comments.splice(i,1);
+    if(!saveNow()){
+      post.comments.splice(i,0,removed);
+      renderComments();renderPost();
+      return;
+    }
+    if(replyToIdx>=i)cancelReply();
+    if(removed.id&&Array.isArray(removed.mediaAssetIds)&&window.ForumMedia)
+      ForumMedia.release(removed.mediaAssetIds,'forum-comment',removed.id);
+    renderComments();renderPost();
     toast('评论已删除');
   }
   function deleteReply(i, j) {
     const c = post.comments[i],removed=c&&c.replies&&c.replies[j];
     if (!removed || !isOwn(removed)) return;
-    c.replies.splice(j, 1);
-    if(saveNow()&&removed.id&&Array.isArray(removed.mediaAssetIds))ForumMedia.release(removed.mediaAssetIds,'forum-comment',removed.id);
-    renderComments();
-    renderPost();
+    c.replies.splice(j,1);
+    if(!saveNow()){
+      c.replies.splice(j,0,removed);
+      renderComments();renderPost();
+      return;
+    }
+    if(removed.id&&Array.isArray(removed.mediaAssetIds)&&window.ForumMedia)
+      ForumMedia.release(removed.mediaAssetIds,'forum-comment',removed.id);
+    renderComments();renderPost();
     toast('回复已删除');
   }
 
   function toggleLike() {
-    post.liked = !post.liked;
-    post.likes += post.liked ? 1 : -1;
-    const posts = loadPosts();
-    const idx = posts.findIndex(p => p.id === post.id);
-    if (idx >= 0) { posts[idx] = post; savePosts(posts); }
+    if (!post) return;
+    const wasLiked = Boolean(post.liked);
+    const oldLikes = Number(post.likes) || 0;
+    post.liked = !wasLiked;
+    post.likes = Math.max(0, oldLikes + (post.liked ? 1 : -1));
+    if (!saveNow()) { post.liked = wasLiked; post.likes = oldLikes; }
     renderPost();
+  }
+
+  // Serialized gossip: a commenter can ask for more; the original fictional poster continues.
+  async function generateGossipAuthorContinuation(target,readerText){
+    if(!post||!window.ForumGossip||!ForumGossip.isGossipPost(post)||gossipReplyBusy)return false;
+    const story=post.gossipStory,progress=ForumGossip.progress(post);
+    if(progress.finished){toast('楼主已经把这个故事讲完了');return false}
+    const status=document.getElementById('aiCommentStatus');
+    const nextChapter=progress.nextChapter;
+    const maxChapters=progress.maxChapters;
+    const ending=nextChapter>=maxChapters;
+    gossipReplyBusy=true;
+    renderPost();
+    if(status)status.textContent='楼主正在整理第 '+nextChapter+' 段后续…';
+    try{
+      const updates=post.comments.filter(function(c){return c&&c.source==='gossip-author'}).map(function(c){
+        return {chapter:c.gossipChapter,text:String(c.text||'').slice(0,950)};
+      });
+      const context={
+        outline:story.outline,storyPremise:story.premise,storyCast:story.cast,
+        establishedFacts:Array.isArray(story.facts)?story.facts.slice(-22):[],
+        title:postTitle(),originalPost:postBody(),previousUpdates:updates.slice(-6),
+        readerQuestion:String(readerText||'请继续讲后面的事情').slice(0,250),
+        chapter:nextChapter,totalChapters:maxChapters,finalChapter:ending
+      };
+      const prompt='现在请扮演这条【完全虚构的八卦帖子】的原楼主，在评论区继续讲故事，给追更读者带来新的实质进展。只返回 JSON。\\n全部设定和已发生事实：'+JSON.stringify(context)+
+        '\\n写作规则：1. 不是摘要或重写原文。你必须延续上次说到的位置，每一更给出至少两个此前没有披露的新事实、行动、对话或关系变化，前后时间线、人物与已发生事件绝不能冲突。2. 语气像原帖作者随手回来爆后续：自然、细节多、有情绪和口语，可以说“我又来更新了”，但不要每一回都这样开头。正文 180-420 个汉字，分两到四个自然段，不能列提纲、写分析或用同一套反转模板。3. 只在故事早期埋疑点；情节要一回比一回更接近答案，不能无限挖坑。'+(ending?'4. 这是最终一更：交代完整结果、人物最终选择以及之前悬念的答案，明确收尾，不要再留“下次再说”。':'4. 这次必须揭晓一个之前留下的重要线索，同时自然留下尚未解决的问题，但不要重复前一更内容。')+
+        '\\n人物都要是虚构的普通成年人，不能指向现实可识别人物，不能声称现实人物的隐私或未经证实的负面事实。不要把 AI、故事设定、提示词写到正文。\\nJSON 格式：{"update":"楼主本次长篇后续","newFacts":["本次新增事实1","本次新增事实2"],"reactions":[{"residentId":"路人id","text":"一句自然的催更或讨论"}],"finished":'+(ending?'true':'false')+'}。reactions 可为空，最多两条，不要全都说蹲。';
+      const result=await forumAIJSON(prompt,0.93,[]);
+      if(!result||!result.ok||!result.data)throw new Error('楼主没有生成有效后续');
+      const data=result.data;
+      const checked=ForumGossip.validateUpdate(data,[postBody()].concat(updates.map(function(u){return u.text})),story.facts);
+      if(!checked.ok)throw new Error(checked.reason);
+      const update=checked.update;
+      const previousLength=post.comments.length;
+      const previousStory=JSON.parse(JSON.stringify(story));
+      const stamp=Date.now();
+      post.comments.push({id:'gossip_author_'+stamp.toString(36)+'_'+nextChapter,
+        name:post.name,avatar:post.avatar,residentId:post.residentId,owner:'community',
+        source:'gossip-author',gossipChapter:nextChapter,text:update,time:stamp,
+        replyTo:target&&target.name?String(target.name):'',likes:0,replies:[]});
+      (Array.isArray(data.reactions)?data.reactions:[]).slice(0,2).forEach(function(item,i){
+        const c=makeDetailAIComment(item,i+nextChapter);
+        if(c&&!ForumGossip.isRepeat(c.text,post.comments.map(function(x){return x.text})))post.comments.push(c);
+      });
+      const oldFacts=Array.isArray(story.facts)?story.facts.slice():[];
+      story.facts=oldFacts.concat(checked.newFacts).slice(-25);
+      story.chapter=nextChapter;
+      story.maxChapters=maxChapters;
+      // Only the final scheduled update can close the serial, even when the model says otherwise.
+      story.finished=ending;
+      story.updatedAt=stamp;
+      if(!saveNow()){
+        post.comments.splice(previousLength);
+        post.gossipStory=previousStory;
+        renderComments();renderPost();
+        return false;
+      }
+      renderComments();renderPost();
+      if(!target&&!gossipSeriesRunning)jumpToGossipLatest();
+      if(status){
+        const message=story.finished?'楼主已经更新完结局了':'楼主更新了第 '+nextChapter+' 段后续';
+        status.textContent=message;
+        setTimeout(function(){if(status.textContent===message)status.textContent=''},4600);
+      }
+      return true;
+    }catch(error){
+      console.warn('[Forum] 楼主连续爆料生成失败，未写入重复或不完整内容',error);
+      if(status)status.textContent='这次没续上：'+String(error&&error.message||'检查 API 后重试').slice(0,76);
+      return false;
+    }finally{
+      gossipReplyBusy=false;
+      renderPost();
+    }
+  }
+  async function continueGossip(){
+    if(gossipSeriesRunning)return false;
+    return generateGossipAuthorContinuation(null,'蹲后续，楼主继续讲，想听完整故事');
+  }
+  async function finishGossipSeries(){
+    if(gossipSeriesRunning){
+      gossipSeriesStopRequested=true;
+      renderPost();
+      return false;
+    }
+    if(!post||!window.ForumGossip||!ForumGossip.isGossipPost(post)||gossipReplyBusy||ForumGossip.progress(post).finished)return false;
+    gossipSeriesRunning=true;
+    gossipSeriesStopRequested=false;
+    renderPost();
+    let completed=false;
+    try{
+      // Upper bound prevents a malformed chapter cursor from issuing endless API requests.
+      for(let i=0;i<8;i++){
+        if(gossipSeriesStopRequested)break;
+        if(ForumGossip.progress(post).finished){completed=true;break}
+        const ok=await generateGossipAuthorContinuation(null,'请继续讲清下一段，按已保存的剧情和时间线逐步推进到结局');
+        if(!ok)break;
+        if(ForumGossip.progress(post).finished){completed=true;break}
+      }
+    }finally{
+      const stopped=gossipSeriesStopRequested;
+      gossipSeriesRunning=false;
+      gossipSeriesStopRequested=false;
+      renderPost();
+      if(completed&&!stopped)jumpToGossipLatest();
+      const status=document.getElementById('aiCommentStatus');
+      if(status&&stopped)status.textContent='已停止连续追更，生成成功的章节都已保存';
+      else if(status&&completed)status.textContent='这个故事已经讲到结局了';
+    }
+    return completed;
   }
 
   async function generateRepliesToUserComment(target,text,submittedImageIds){
     if(!target)return;
+    if(!gossipSeriesRunning&&window.ForumGossip&&ForumGossip.isGossipPost(post)&&!ForumGossip.progress(post).finished&&
+       readForumConfig().gossipAutoContinue!==false&&ForumGossip.wantsContinuation(text)){
+      await generateGossipAuthorContinuation(target,text);
+      return;
+    }
     const status=document.getElementById('aiCommentStatus');
     if(status)status.textContent='有人看到你的留言，正在接话…';
     try{
@@ -806,12 +1048,19 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       const imageIds=Array.from(new Set([].concat(post.mediaAssetIds||[],target.mediaAssetIds||[],submittedImageIds||[]))).slice(0,2);
       const result=await forumAIJSON(prompt,0.94,imageIds);
       if(!result||!result.ok||!result.data||!Array.isArray(result.data.replies))throw new Error('回复生成结果无效');
+      const previousReplies=Array.isArray(target.replies)?target.replies.slice():[];
       if(!Array.isArray(target.replies))target.replies=[];
       result.data.replies.slice(0,2).forEach((x,i)=>{
         const c=makeDetailAIComment({residentId:x.residentId,text:x.text},i);
         if(c)target.replies.push({name:c.name,avatar:c.avatar,residentId:c.residentId,owner:'community',source:'forum-ai',text:c.text,time:Date.now()+i*1000,replyTo:String(x.replyTo||'我'),likes:0});
       });
-      saveNow();renderComments();renderPost();
+      if(!saveNow()){
+        target.replies=previousReplies;
+        renderComments();renderPost();
+        if(status)status.textContent='网友回复没保存成功，请检查本机存储空间';
+        return;
+      }
+      renderComments();renderPost();
       if(status){status.textContent='有网友回应了你的留言';setTimeout(()=>{if(status.textContent==='有网友回应了你的留言')status.textContent=''},4200)}
     }catch(error){
       console.warn('[Forum] 网友回应失败',error);
@@ -860,7 +1109,9 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       input.value='';
       clearCommentImages();
       cancelReply();
-      renderComments();renderPost();
+      // After posting from author-only view, reveal the reader's saved comment.
+      if(gossipView==='author')gossipView='all';
+      renderPost();renderComments();
       await generateRepliesToUserComment(replyContainer,text||'（只附了一张图片）',assetIds);
     }catch(error){
       toast(error&&error.message?error.message:'评论图片保存失败，请重试');
@@ -929,7 +1180,9 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     try {
       const posts = JSON.parse(localStorage.getItem('forum_posts') || '[]');
       const filtered = posts.filter(p => p.id !== post.id);
-      localStorage.setItem('forum_posts', JSON.stringify(filtered));
+      const serialized=JSON.stringify(filtered);
+      localStorage.setItem('forum_posts', serialized);
+      if(localStorage.getItem('forum_posts')!==serialized)throw new Error('删除结果未持久保存');
       alert('帖子已删除');
       window.location.href = 'forum.html';
     } catch(e) {
@@ -937,13 +1190,32 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     }
   }
 
-  function getFollows() { return JSON.parse(localStorage.getItem('forum_follows') || '[]'); }
-  function isFollowing(name) { return getFollows().indexOf(name) >= 0; }
+  function getFollows() {
+    try {
+      const parsed=JSON.parse(localStorage.getItem('forum_follows') || '[]');
+      return Array.isArray(parsed)?parsed:null;
+    } catch(error) {
+      console.warn('[Forum] 关注记录读取失败，保留原数据',error);
+      return null;
+    }
+  }
+  function isFollowing(name) {
+    const follows=getFollows();
+    return Array.isArray(follows)&&follows.includes(name);
+  }
   function toggleFollow(name) {
-    let f = getFollows();
-    if (isFollowing(name)) f = f.filter(x => x !== name);
-    else f.push(name);
-    localStorage.setItem('forum_follows', JSON.stringify(f));
+    const follows=getFollows();
+    if(!follows){toast('关注记录无法读取，未覆盖原数据');return;}
+    const next=follows.includes(name)?follows.filter(x=>x!==name):follows.concat([name]);
+    const serialized=JSON.stringify(next);
+    try {
+      localStorage.setItem('forum_follows',serialized);
+      if(localStorage.getItem('forum_follows')!==serialized)throw new Error('关注状态未持久保存');
+    } catch(error) {
+      console.warn('[Forum] 关注状态保存失败',error);
+      toast('关注状态未保存，请检查存储空间后重试');
+      return;
+    }
     renderComments();
   }
 
@@ -954,7 +1226,11 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       const result=await forumAIJSON(prompt,0.93,post.mediaAssetIds);
       if(!result||!result.ok||!result.data)throw new Error('评论生成失败');
       const c=makeDetailAIComment(result.data,post.comments.length);
-      if(c){post.comments.push(c);saveNow();renderComments();renderPost();toast('一位网友加入了讨论')}
+      if(c){
+        post.comments.push(c);
+        if(!saveNow()){post.comments.pop();renderComments();renderPost();return}
+        renderComments();renderPost();toast('一位网友加入了讨论');
+      }
     }catch(error){console.warn('[Forum] 手动生成评论失败',error);toast((post.mediaAssetIds||[]).length?'图片已保留；当前 API 或模型可能不支持看图':'暂时没能生成回复')}
   }
 
@@ -964,6 +1240,11 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     commentImageButton.addEventListener('click',function(){commentImagesInput.click()});
     commentImagesInput.addEventListener('change',function(){commentImageFiles=Array.from(this.files||[]);ForumMedia.preview(commentImageFiles,document.getElementById('commentImagePreview'));document.querySelector('.comment-bar').classList.toggle('has-images',commentImageFiles.length>0)});
   }
+  window.addEventListener('pagehide',function(){
+    gossipSeriesStopRequested=true;
+    if(gossipReadObserver){gossipReadObserver.disconnect();gossipReadObserver=null}
+  });
+  document.addEventListener('visibilitychange',function(){if(document.hidden)gossipSeriesStopRequested=true});
   loadPost();
 </script>
 </body>

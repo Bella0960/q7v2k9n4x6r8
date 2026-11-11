@@ -55,6 +55,12 @@
   .field-group { padding-bottom: 4px; }
   .field-label { display: block; margin: 20px 0 7px; font-size: 9px; color: #999; letter-spacing: .06em; }
   .field-group:first-child .field-label { margin-top: 14px; }
+  .gossip-setting { padding-top:15px; }
+  .gossip-setting[hidden] { display:none; }
+  .gossip-toggle { display:flex;align-items:center;justify-content:space-between;gap:14px;font-size:12px;color:#333;cursor:pointer; }
+  .gossip-toggle input { accent-color:#181818;width:17px;height:17px;flex-shrink:0; }
+  .gossip-help { font-size:10px;color:#999;line-height:1.8;margin-top:8px; }
+
   .field, .field-area {
     display: block; width: 100%; border: 0; border-bottom: 1px solid #ddd;
     background: transparent; border-radius: 0; padding: 10px 0;
@@ -143,11 +149,19 @@
         </div>
       </div>
     </div>
+    <div class="field-group gossip-setting" id="gossipOptions" hidden>
+      <label class="gossip-toggle" for="gossipAutoContinue">
+        <span>楼主自动续更</span>
+        <input type="checkbox" id="gossipAutoContinue" checked>
+      </label>
+      <p class="gossip-help">开启后，在八卦帖留言“继续说”“后来呢”“蹲后续”等，楼主才会更新下一段；普通讨论仍由网友接话。关闭后可以在帖子里手动点“让楼主继续讲”。</p>
+    </div>
     <div class="field-group">
       <label class="field-label" for="forumWorld">论坛世界书（网友设定）</label>
       <textarea class="field-area" id="forumWorld" placeholder="写清楚这个论坛里都是什么人，他们会聊什么话题。比如：这是一个八卦论坛，网友们天天讨论娱乐圈的瓜，谁出轨了谁塌房了，语气都是吃瓜群众的样子..."></textarea>
     </div>
     <button class="submit-button" type="button" onclick="save()">保存设置</button>
+    <p id="forumSettingsSaveStatus" role="status" aria-live="polite" style="font-size:11px;line-height:1.7;color:#666;margin-top:10px"></p>
   </div>
 
 <script>
@@ -155,24 +169,39 @@
     try { return JSON.parse(localStorage.getItem('forum_config') || '{}'); }
     catch(e) { return {}; }
   }
-  function saveConfig(c) { localStorage.setItem('forum_config', JSON.stringify(c)); }
+  function saveConfig(c) {
+    const raw=JSON.stringify(c);
+    localStorage.setItem('forum_config',raw);
+    if(localStorage.getItem('forum_config')!==raw)throw new Error('设置写入后校验失败');
+  }
+  function showSaveStatus(message){
+    const node=document.getElementById('forumSettingsSaveStatus');
+    if(node)node.textContent=message||'';
+  }
   function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
   let theme = 'reality';
   let customThemes = [];
 
   function selectChip() {
-    theme = this.dataset.id;
-    document.querySelectorAll('#themeOpts .opt-chip').forEach(c => c.classList.remove('active'));
-    this.classList.add('active');
-    // 主题单独即时保存，避免选完刷新后退回旧主题；其他表单字段仍由“保存设置”统一保存。
+    const selected=this.dataset.id;
+    const previous=theme;
+    // Keep the previous visible choice when a mobile storage write fails.
     try {
-      const cfg = loadConfig();
-      cfg.theme = theme;
+      const cfg=loadConfig();
+      cfg.theme=selected;
       saveConfig(cfg);
-    } catch (e) {
-      console.warn('[ForumSettings] theme save failed', e);
+      theme=selected;
+      showSaveStatus('');
+    } catch(e) {
+      theme=previous;
+      showSaveStatus('主题未保存成功，请检查本机存储空间后重试。');
+      console.warn('[ForumSettings] theme save failed',e);
     }
+    document.querySelectorAll('#themeOpts .opt-chip').forEach(chip=>{
+      chip.classList.toggle('active',chip.dataset.id===theme);
+    });
+    document.getElementById('gossipOptions').hidden=theme!=='bagua';
   }
 
   function render() {
@@ -180,7 +209,9 @@
     customThemes = Array.isArray(cfg.customThemes) ? cfg.customThemes : [];
     document.getElementById('forumName').value = cfg.name || '';
     document.getElementById('forumWorld').value = cfg.world || '';
+    document.getElementById('gossipAutoContinue').checked=cfg.gossipAutoContinue!==false;
     theme = cfg.theme || 'reality';
+    document.getElementById('gossipOptions').hidden=theme!=='bagua';
     // 在加号前插入自定义主题 chips
     const box = document.getElementById('themeOpts');
     const addBtn = document.getElementById('addThemeBtn');
@@ -214,11 +245,18 @@
     customThemes = Array.isArray(cfg.customThemes) ? cfg.customThemes : [];
     if (customThemes.some(t => t.name === name)) { hint.textContent = '这个主题名称已存在'; nameInput.focus(); return; }
     const t = { id: 'custom_' + Date.now().toString(36), name: name, topics: topics.slice(0, 6), world: world };
-    customThemes.push(t);
-    cfg.customThemes = customThemes;
-    cfg.theme = t.id;
-    saveConfig(cfg);
-    theme = t.id;
+    const nextThemes=customThemes.concat([t]);
+    cfg.customThemes=nextThemes;
+    cfg.theme=t.id;
+    try {
+      saveConfig(cfg);
+    } catch(error) {
+      hint.textContent='主题未能保存，请检查本机存储空间后重试。';
+      console.warn('[ForumSettings] custom theme save failed',error);
+      return;
+    }
+    customThemes=nextThemes;
+    theme=t.id;
     nameInput.value = ''; topicsInput.value = ''; worldInput.value = ''; hint.textContent = '';
     document.getElementById('customThemeRow').style.display = 'none';
     render();
@@ -242,8 +280,15 @@
     cfg.theme = theme;
     cfg.world = document.getElementById('forumWorld').value.trim();
     cfg.customThemes = customThemes;
-    saveConfig(cfg);
-    location.href = 'forum.html';
+    cfg.gossipAutoContinue=document.getElementById('gossipAutoContinue').checked;
+    try {
+      saveConfig(cfg);
+      showSaveStatus('');
+      location.href='forum.html';
+    } catch(error) {
+      showSaveStatus('保存失败，设置尚未写入本机。请检查存储空间后重试。');
+      console.warn('[ForumSettings] config save failed',error);
+    }
   }
 
   render();
