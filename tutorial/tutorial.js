@@ -590,6 +590,8 @@
   }
   var activeWalkthrough = null;
   var activeStepIndex = 0;
+  var focusBeforeWalkthrough = null;
+  var previousBodyOverflow = null;
 
   function guideCard(guide) {
     var state = entryState(guide.id);
@@ -766,12 +768,20 @@
   function startGuide(id) {
     var guide = GUIDES.find(function (item) { return item.id === id; });
     if (!guide) return;
+    if (!activeWalkthrough) {
+      focusBeforeWalkthrough = document.activeElement || null;
+      if (document.body && document.body.style) {
+        previousBodyOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+      }
+    }
     activeWalkthrough = guide;
     var state = stepState(guide);
     activeStepIndex = Number.isInteger(state.lastStep) ? state.lastStep : 0;
     $('walkthroughModal').hidden = false;
     renderWalkthrough();
     $('walkBody').scrollTop = 0;
+    if ($('walkClose') && typeof $('walkClose').focus === 'function') $('walkClose').focus();
   }
   function closeGuide() {
     if (activeWalkthrough) {
@@ -781,6 +791,13 @@
     }
     $('walkthroughModal').hidden = true;
     activeWalkthrough = null;
+    if (document.body && document.body.style && previousBodyOverflow !== null) {
+      document.body.style.overflow = previousBodyOverflow;
+    }
+    previousBodyOverflow = null;
+    var returnFocus = focusBeforeWalkthrough;
+    focusBeforeWalkthrough = null;
+    if (returnFocus && returnFocus.isConnected && typeof returnFocus.focus === 'function') returnFocus.focus();
   }
   function moveWalkthrough(delta) {
     if (!activeWalkthrough) return;
@@ -876,7 +893,26 @@
     if (event.target === $('walkthroughModal')) closeGuide();
   });
   document.addEventListener('keydown', function (event) {
-    if (event.key === 'Escape' && !$('walkthroughModal').hidden) closeGuide();
+    if ($('walkthroughModal').hidden) return;
+    if (event.key === 'Escape') {
+      closeGuide();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    var controls = Array.from($('walkthroughModal').querySelectorAll('button, a[href], input, textarea, select, [tabindex]'))
+      .filter(function (item) {
+        return !item.disabled && item.getAttribute('tabindex') !== '-1' &&
+          typeof item.getClientRects === 'function' && item.getClientRects().length > 0;
+      });
+    if (!controls.length) return;
+    var first = controls[0], last = controls[controls.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
   });
   $('guideGrid').addEventListener('change', function (event) {
     var checkbox = event.target.closest('[data-done]');
