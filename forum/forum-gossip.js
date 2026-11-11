@@ -79,8 +79,48 @@
     if(newFacts.length<2)return {ok:false,reason:'没有提供足够的新情节，未保存这次更新'};
     return {ok:true,update:update,newFacts:newFacts.slice(0,8)};
   }
+  // Reading progress is local to the browser. Never rewrite or discard story content to track it.
+  function readKey(post){
+    return 'forum_gossip_read_v1:'+String(post&&post.id==null?'':post&&post.id||'').slice(0,160);
+  }
+  function readChapter(post,store){
+    if(!isGossipPost(post)||!post.id||!store||typeof store.getItem!=='function')return 0;
+    try{
+      var saved=Number(store.getItem(readKey(post)));
+      return Number.isFinite(saved)?Math.max(0,Math.min(progress(post).chapter,Math.floor(saved))):0;
+    }catch(error){return 0}
+  }
+  function unreadCount(post,store){
+    if(!isGossipPost(post))return 0;
+    return Math.max(0,progress(post).chapter-readChapter(post,store));
+  }
+  function nextUnreadChapter(post,store){
+    var seen=readChapter(post,store);
+    var chapters=(Array.isArray(post&&post.comments)?post.comments:[])
+      .filter(function(c){return c&&c.source==='gossip-author'&&Number.isInteger(Number(c.gossipChapter))})
+      .map(function(c){return Number(c.gossipChapter)})
+      .filter(function(n){return n>seen&&n<=progress(post).chapter})
+      .sort(function(a,b){return a-b});
+    return chapters.length?chapters[0]:0;
+  }
+  function markReadChapter(post,chapter,store){
+    if(!isGossipPost(post)||!post.id||!store||typeof store.setItem!=='function')return false;
+    var n=Math.floor(Number(chapter));
+    var max=progress(post).chapter;
+    // Never mark an unsaved, future, or fabricated chapter as read.
+    if(!Number.isFinite(n)||n<1||n>max)return false;
+    // An author update must actually exist in the saved comments list.
+    if(!(Array.isArray(post.comments)?post.comments:[]).some(function(c){
+      return c&&c.source==='gossip-author'&&Number(c.gossipChapter)===n;
+    }))return false;
+    var next=Math.max(n,readChapter(post,store));
+    try{store.setItem(readKey(post),String(next));return true}
+    catch(error){return false}
+  }
   function isGossipPost(post){return !!(post&&post.gossipStory&&idea(post.gossipStory.outlineId))}
   root.ForumGossip={ideas:IDEAS,idea:idea,planBatch:planBatch,storyFromOpening:storyFromOpening,
     isRepeat:isRepeat,wantsContinuation:wantsContinuation,progress:progress,
-    validateUpdate:validateUpdate,isGossipPost:isGossipPost};
+    validateUpdate:validateUpdate,isGossipPost:isGossipPost,
+    readChapter:readChapter,unreadCount:unreadCount,
+    nextUnreadChapter:nextUnreadChapter,markReadChapter:markReadChapter};
 })(window);
