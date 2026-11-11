@@ -242,3 +242,35 @@ test('integration keeps MAO account identity, origin checks and AI chat isolated
   assert.match(mobile, /make\('div',m\.text/);
   assert.doesNotMatch(mobile, /innerHTML\s*=\s*m\.text/);
 });
+
+test('one-time friend codes, stable retry id and message flood protection', async () => {
+  const ctx = setup();
+  try {
+    const requestId = 'request_onetime_0001';
+    const inviteCode = await ctx.call('bob-session','/api/social/friend-codes','POST');
+    assert.equal(inviteCode.status,200);
+    const body = {requestId,code:inviteCode.body.code,note:'Hello'};
+    const first = await ctx.call('alice-session','/api/social/friend-requests','POST',body);
+    assert.equal(first.body.request.status,'pending_peer');
+    const retry = await ctx.call('alice-session','/api/social/friend-requests','POST',body);
+    assert.equal(retry.body.replay,true);
+    assert.equal(retry.body.request.id,requestId);
+    const stolen = await ctx.call('carol-session','/api/social/friend-requests','POST',
+      {requestId:'request_stolen_0001',code:inviteCode.body.code});
+    assert.equal(stolen.code,'SOCIAL_CODE_EXPIRED');
+    await ctx.call('bob-session','/api/social/friend-requests/'+requestId+'/accept','POST');
+    await ctx.call('founder-session','/api/admin/social/friend-approvals/'+requestId+'/approve','POST');
+    for(let i=0;i<60;i++){
+      const response = await ctx.call('alice-session','/api/social/chats/'+bob+'/messages','POST',
+        {clientMessageId:'rate_limit_msg_'+String(i).padStart(4,'0'),text:'Hello '+i});
+      assert.equal(response.status,200,'unexpected limit at '+i+': '+JSON.stringify(response));
+    }
+    const limited = await ctx.call('alice-session','/api/social/chats/'+bob+'/messages','POST',
+      {clientMessageId:'rate_limit_msg_0060',text:'Extra'});
+    assert.equal(limited.code,'SOCIAL_MESSAGE_RATE_LIMIT');
+    const legitimateReplay = await ctx.call('alice-session','/api/social/chats/'+bob+'/messages','POST',
+      {clientMessageId:'rate_limit_msg_0000',text:'Hello 0'});
+    assert.equal(legitimateReplay.body.replay,true);
+    assert.equal(ctx.exec("SELECT COUNT(*) AS n FROM mao_social_messages")[0].n,60);
+  } finally {ctx.close();}
+});
