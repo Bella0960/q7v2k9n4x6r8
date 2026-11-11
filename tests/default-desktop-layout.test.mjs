@@ -41,7 +41,7 @@ test('every desktop app is assigned exactly once and dock apps stay in the dock'
   const pages = extractDefaultPages(index);
   const assigned = pages.flat();
   const appIds = [...new Set([...index.matchAll(/data-drag="(app_[^"]+)"/g)].map((m) => m[1]))]
-    .filter((id) => id !== 'app_chat' && id !== 'app_shop');
+    .filter((id) => id !== 'app_chat' && id !== 'app_shop' && id !== 'app_admin_center');
   assert.equal(new Set(assigned).size, assigned.length, 'default pages must not contain duplicate items');
   assert.deepEqual([...assigned].filter((id) => id.startsWith('app_')).sort(), [...appIds].sort());
   assert.match(index, /dock:\s*\['app_chat',\s*'app_shop'\]/);
@@ -53,7 +53,7 @@ test('the mobile home grid keeps four columns and supports vertical page scrolli
   assert.match(desktopCss, /#gridPage0 > \[data-drag\]:nth-child\(6\)[^{]*\{ grid-column: 3 \/ 5 !important; grid-row: 3 \/ 5 !important;/);
   assert.match(mobileCss, /#gridPage0 > \[data-drag\]:nth-child\(7\)[^{]*\{ grid-column: 1 \/ 3 !important; grid-row: 5 \/ 7 !important;/);
   assert.match(mobileCss, /\.maomao-home \.home-page[\s\S]*?overflow-y:\s*auto\s*!important/);
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v203'/);
+  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v204'/);
 });
 
 
