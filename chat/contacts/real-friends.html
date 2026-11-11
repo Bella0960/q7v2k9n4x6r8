@@ -260,6 +260,7 @@ clearPrivateSession();throw new Error('聊天所属账号或好友关系异常�
 if(currentFriendshipId&&currentFriendshipId!==result.friendshipId){
 var newFriendshipId=result.friendshipId;
 seenMessageSeq.clear();cursor=0;startCursor=0;el('messages').textContent='';
+el('chatText').value='';status('好友关系已重新审批，旧聊天已隐藏。');
 result=await api('/api/social/chats/'+encodeURIComponent(target)+'/messages?after=0');
 if(epoch!==chatEpoch||!account||account.id!==ownerId||!currentChat||currentChat.id!==target)return;
 if(result.ownerAccountId!==ownerId||result.peerId!==target||
