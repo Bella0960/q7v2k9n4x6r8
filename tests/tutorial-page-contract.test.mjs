@@ -16,6 +16,7 @@ const chatDetail = read('chat/chat/chat-detail.html');
 const guideScript = read('tutorial/tutorial.js');
 const packageJson = JSON.parse(read('package.json'));
 const tutorialWorkflow = read('.github/workflows/tutorial-regression.yml');
+const browserSuite = read('tests/tutorial-mobile-browser.mjs');
 
 test('tutorial script parses without syntax errors', () => {
   assert.doesNotThrow(() => new Function(guideScript));
@@ -319,4 +320,23 @@ test('API profile writes and selection verify persistent storage, including sile
   assert.match(apiSettingsScript, /if \(!saveActiveProfile\(collectFormFields\(\)\)\)/);
   assert.match(apiSettingsScript, /if \(!saveProfiles\(rest\)\)/);
   assert.match(apiSettingsScript, /return localStorage\.getItem\(API_STORAGE_KEY\) === serialized/);
+});
+
+
+test('phone browser regression is wired to the release gate and covers core use cases', () => {
+  assert.equal(packageJson.scripts['test:tutorial:browser'], 'node tests/tutorial-mobile-browser.mjs');
+  assert.match(tutorialWorkflow, /npm run test:tutorial:browser/);
+  assert.match(tutorialWorkflow, /npx playwright install --with-deps chromium/);
+  assert.match(tutorialWorkflow, /npm run build/);
+  assert.match(tutorialWorkflow, /tests\/tutorial-mobile-browser\.mjs/);
+  for (const width of [320,375,390,430,768]) {
+    assert.ok(browserSuite.includes(String(width)), 'missing mobile viewport: ' + width);
+  }
+  for (const id of ['api-first','api-errors','api-params','api-images','minimax-voice-guide']) {
+    assert.ok(browserSuite.includes("openGuide(page, '" + id + "'"), 'missing real-browser article: ' + id);
+  }
+  for (const phrase of ['#diagnoseSelect','#catalogDetails','#faqList','#walkStepperContent',
+    '#storageAlert','pageerror','assertNoOverflow']) {
+    assert.ok(browserSuite.includes(phrase), 'missing real-browser check: ' + phrase);
+  }
 });
