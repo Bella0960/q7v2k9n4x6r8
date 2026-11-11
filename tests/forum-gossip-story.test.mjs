@@ -193,3 +193,56 @@ test('explicit finish-to-ending is bounded, cancellable, and retains saved updat
   assert.match(detail,/if\(!target&&!gossipSeriesRunning\)jumpToGossipLatest\(\)/);
   assert.match(detail,/每更保存一次/);
 });
+
+test('each gossip story tracks reading locally without rewriting chapters or other posts',()=>{
+  const saved=new Map();
+  const storage={getItem:key=>saved.get(key)??null,setItem:(key,value)=>{saved.set(key,value)}};
+  const makePost=id=>({id,gossipStory:{outlineId:'double_life',chapter:2,maxChapters:4},
+    comments:[{source:'gossip-author',gossipChapter:1,text:'第一更'},
+      {source:'forum-ai',text:'有人在讨论'},
+      {source:'gossip-author',gossipChapter:2,text:'第二更'}]});
+  const a=makePost('fiction-a'),b=makePost('fiction-b');
+  assert.equal(G.unreadCount(a,storage),2);
+  assert.equal(G.nextUnreadChapter(a,storage),1);
+  assert.equal(G.markReadChapter(a,1,storage),true);
+  assert.equal(G.readChapter(a,storage),1);
+  assert.equal(G.unreadCount(a,storage),1);
+  assert.equal(G.nextUnreadChapter(a,storage),2);
+  assert.equal(G.unreadCount(b,storage),2);
+  assert.equal(G.markReadChapter(a,2,storage),true);
+  assert.equal(G.readChapter(a,storage),2);
+  assert.equal(G.markReadChapter(a,1,storage),true);
+  assert.equal(G.readChapter(a,storage),2);
+  assert.equal(G.nextUnreadChapter(a,storage),0);
+  assert.equal(a.gossipStory.chapter,2);
+  assert.equal(a.comments.length,3);
+});
+
+test('invalid or unpersisted chapters cannot be marked read and storage failure is safe',()=>{
+  const p={id:'fiction-c',gossipStory:{outlineId:'unspoken_crush',chapter:3,maxChapters:4},
+    comments:[{source:'gossip-author',gossipChapter:1}]};
+  const storage={getItem:()=>null,setItem:()=>{}};
+  assert.equal(G.markReadChapter(p,0,storage),false);
+  assert.equal(G.markReadChapter(p,2,storage),false);
+  assert.equal(G.markReadChapter(p,3,storage),false);
+  assert.equal(G.markReadChapter(p,4,storage),false);
+  assert.equal(G.markReadChapter(p,1,storage),true);
+  const blocked={getItem:()=>{throw Error('unavailable')},setItem:()=>{throw Error('full')}};
+  assert.equal(G.readChapter(p,blocked),0);
+  assert.equal(G.markReadChapter(p,1,blocked),false);
+  assert.equal(G.unreadCount({id:'other',comments:[],gossipStory:{outlineId:'unknown'}},blocked),0);
+});
+
+test('mobile feed and detail expose unread progress and the next unread chapter',()=>{
+  assert.match(home,/ForumGossip\.unreadCount\(p,window\.localStorage\)/);
+  assert.match(home,/gossip-feed-unread/);
+  assert.match(detail,/id="gossipResume"/);
+  assert.match(detail,/function resumeGossipReading\(\)/);
+  assert.match(detail,/ForumGossip\.nextUnreadChapter\(post,gossipLocalStore\(\)\)/);
+  assert.match(detail,/data-gossip-read-chapter/);
+  assert.match(detail,/new IntersectionObserver\(/);
+  assert.match(detail,/function markGossipRead\(chapter\)/);
+  assert.match(detail,/data-gossip-mark-read/);
+  assert.match(detail,/function syncGossipReading\(\)/);
+  assert.match(detail,/if\(gossipReadObserver\)\{gossipReadObserver\.disconnect\(\)/);
+});
