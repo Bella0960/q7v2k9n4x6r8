@@ -5026,6 +5026,16 @@ test('Worker scheduled maintenance 会持续扫描并重试待送达的聊天 Pu
     tickHandler,
     /dispatchPendingOutboundPushes\([\s\S]{0,220}now:\s*Date\.now/
   );
+
+  const appSource = fs.readFileSync(path.join(rootDir, 'worker/lib/app.js'), 'utf8');
+  const liveClockImmediateDispatches = appSource.match(
+    /dispatchPendingOutboundPushes\(\{\s*store,\s*env,\s*now,\s*fetchImpl,\s*limit:\s*10\s*\}\)/g
+  ) || [];
+  assert.equal(liveClockImmediateDispatches.length, 2,
+    '活动完成后的两条即时 Push 路径都必须传入实时钟函数');
+  assert.doesNotMatch(appSource,
+    /dispatchPendingOutboundPushes\(\{\s*store,\s*env,\s*now:\s*timestamp/,
+    '即时 Push 不得继续传入固定请求开始时间');
 });
 
 
