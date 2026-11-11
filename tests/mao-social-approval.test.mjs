@@ -236,6 +236,10 @@ test('integration keeps MAO account identity, origin checks and AI chat isolated
   assert.match(migrations, /0017_mao_social/);
   assert.match(contacts, /href="\.\/real-friends\.html"/);
   assert.match(mobile, /\/api\/accounts\/me/);
+  assert.match(mobile, /if\(authContext\)headers\['X-MAO-Account-Context'\]=authContext;/);
+  assert.match(mobile, /var session=await api\('\/api\/accounts\/me'\)/);
+  assert.match(mobile, /管理员审批结果不明确/);
+  assert.match(mobile, /消息已发送，但聊天记录尚未刷新/);
   assert.match(mobile, /\/api\/admin\/social\/friend-approvals/);
   assert.match(mobile, /\/api\/social\/chats\//);
   assert.doesNotMatch(mobile, /\/api\/real-user-chat|\/wallet\/|red.packet|transferMoney/);
@@ -373,4 +377,15 @@ test('admin audit write failure rolls back friend approval atomically', async ()
     assert.equal(ctx.exec('SELECT COUNT(*) AS n FROM mao_social_friends')[0].n, 1);
     assert.equal(ctx.exec("SELECT COUNT(*) AS n FROM mao_account_audit WHERE action = 'social_friend_approved'")[0].n, 1);
   } finally { ctx.close(); }
+});
+
+test('release build retains the original whole-app gate before social acceptance', () => {
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+  assert.equal(pkg.scripts.prebuild, 'npm run test:release:gate && npm run test:social:approval');
+  for (const suite of ['accounts', 'features', 'regressions']) {
+    assert.ok(pkg.scripts['test:release:gate'].includes('test:release:' + suite));
+  }
+  assert.match(pkg.scripts['test:social:approval'], /tests\/mao-social-approval\.test\.mjs/);
+  assert.match(pkg.scripts['test:social:approval'], /tests\/mao-social-mobile-runtime\.test\.mjs/);
 });
