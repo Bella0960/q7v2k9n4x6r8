@@ -15,6 +15,7 @@ const homePage = read('index.html');
 const momentsPage = read('chat/moments/moments.html');
 const groupPlay = read('chat/chat/group-play.html');
 const inspectPhone = read('inspect-phone/phone.html');
+const inspectFeature = read('inspect-phone/inspect-feature.js');
 const forumPage = read('forum/forum.html');
 const footprint = read('chat/footprint/footprint.html');
 const libraryReader = read('library/library.html');
@@ -1119,16 +1120,19 @@ test('known external history writers remain on the migration inventory', () => {
   }
 });
 
-test('inspect phone generates and caches private content by character and local date', () => {
+test('inspect phone generates a fictional storyline by character and local date without overwriting live data', () => {
   assert.match(inspectPhone, /phone_storage\.js/);
   assert.match(inspectPhone, /phone_api\.js/);
-  assert.match(inspectPhone, /PhoneAPI\.completeJSON/);
-  assert.match(inspectPhone, /roleBio/);
-  assert.match(inspectPhone, /inspect_phone_content_v2_/);
-  assert.match(inspectPhone, /if\(hasCachedContent\)return/);
-  assert.match(inspectPhone, /encodeURIComponent\(roleId\)/);
-  assert.match(inspectPhone, /function normalizePhoneContent/);
-  assert.match(inspectPhone, /escHtml/);
+  assert.match(inspectPhone, /inspect-feature\.js/);
+  assert.match(inspectPhone, /InspectPhoneFeature\.mount/);
+  assert.match(inspectFeature, /inspect_story_v1_/);
+  assert.match(inspectFeature, /encodeURIComponent\(String\(roleId\)\)/);
+  assert.match(inspectFeature, /function localDay/);
+  assert.match(inspectFeature, /function valid/);
+  assert.match(inspectFeature, /api\.completeJSON/);
+  assert.match(inspectFeature, /function promptFor/);
+  assert.match(inspectFeature, /function save/);
+  assert.match(inspectFeature, /function html/);
 });
 
 test('forum creates a fallback for every role and upgrades it with persona-based AI content', () => {
