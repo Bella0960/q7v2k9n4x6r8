@@ -1871,7 +1871,7 @@ test('PWA manifest is referenced from the deployment root so relative icon and s
 });
 
 test('Service Worker navigation does not abort slow mobile page requests', () => {
-  assert.ok(serviceWorker.includes("if (req.mode === 'navigate')"));
+  assert.ok(serviceWorker.includes("if (req.mode === 'navigate' && !isPublicAccountPage)"));
   assert.ok(serviceWorker.includes('fetch(req).then'));
   assert.equal(serviceWorker.includes('new AbortController()'), false);
   assert.equal(serviceWorker.includes('controller.abort()'), false);
@@ -1888,8 +1888,12 @@ test('Cloudflare Worker preserves explicit HTML routes and maps only the root to
   assert.equal(wranglerConfig.assets.html_handling, 'none');
   assert.equal(wranglerConfig.assets.run_worker_first, true);
   assert.match(worker, /url\.pathname === "\/"[\s\S]*?new URL\("\/index\.html", url\)/);
-  assert.match(worker, /return env\.ASSETS\.fetch\(request\)/,
-    'non-root app routes must be passed through unchanged instead of falling back to index.html');
+  assert.match(worker, /const response = await env\.ASSETS\.fetch\(request\)/,
+    'non-root app routes must use their actual paths rather than falling back to index.html');
+  assert.match(worker, /injectAccountScope\(response, authorizedAccount\)/,
+    'authenticated pages must receive isolated server-side account metadata');
+  assert.match(worker, /authorizedAccount\.role !== 'super_admin'/,
+    'administrator routes cannot be opened as ordinary accounts');
 });
 
 
