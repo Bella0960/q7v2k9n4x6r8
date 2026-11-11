@@ -85,6 +85,7 @@
     copy.lastRolloverAt=now.getTime();
     copy.selected=arr(previous.selected).filter(function(id){return ITEMS.some(function(x){return x.id===id;});});
     copy.sections=previous.sections||newDay.sections;
+    copy.secrets=arr(previous.secrets).length?previous.secrets:newDay.secrets;
     copy.source=previous.source||{};
     // 保持历史数据可见、可继续聊天；不凭空把旧钱包和旧照片说成今天发生。
     copy.carriedFrom=previous.day;
@@ -124,6 +125,11 @@
       {id:'e2',time:factTimes[1],place:p.place+'附近的小店',event:'吃午饭，顺手拍了一张照片',amount:-meal},
       {id:'e3',time:factTimes[2],place:'街角文具店',event:'挑了很久才买下一个小东西',amount:-shop},
       {id:'e4',time:factTimes[3],place:'住处',event:'晚间整理消息和备忘录',amount:0}
+    ];
+    var secrets=[
+      {id:'s1',type:'关于两人关系',summary:'有一段很想解释的话，写完后撤回了。',linkedEvent:'e4',exposeAt:35},
+      {id:'s2',type:'关于用户',summary:'在文具店悄悄挑了一个想送给你的礼物。',linkedEvent:'e3',exposeAt:60},
+      {id:'s3',type:'关于角色自己',summary:'曾经因为担心说错话，选择独自消化压力。',linkedEvent:'e1',exposeAt:80}
     ];
     // 今天未发生的场景不会写成今天：at() 会放到前一天；页面标明最近24小时轨迹。
     var u='你',contacts=[
@@ -265,7 +271,7 @@
     var steps=Math.min(5487,Math.floor(dayMinutes*6));
     var distanceKm=Math.round(steps*.00077*10)/10;
     var outHours=Math.round(Math.min(5,dayMinutes/120)*10)/10;
-    return {schema:1,roleId:String(roleId),day:localDay(now),updatedAt:now.getTime(),facts:facts,source:{},selected:[],permission:null,
+    return {schema:1,roleId:String(roleId),day:localDay(now),updatedAt:now.getTime(),facts:facts,secrets:secrets,source:{},selected:[],permission:null,
       sections:{
         chat:{contacts:contacts},moments:{moments:moments},browser:{searchHistory:searches,bookmarks:[{title:'周末步行路线整理',summary:'两条适合不赶时间的城市散步路线'},{title:'简单记录法',summary:'把待办拆成今天能完成的小步骤'},{title:'实用礼物尺寸表',summary:'常见小物件规格对照'}]},
         notes:{notes:notes,locked:locked},wallet:{transactions:transactions,balance:low?2120:high?58720:8160},
@@ -305,6 +311,8 @@
       '当前本地时间：'+new Date(now).toISOString()+'；角色人设（姓名/年龄/职业/教育/消费/性格均优先）：'+roleContext(role),
       '角色与玩家是不同人。手机主人发言 side=me，联系人发言 side=ai，撤回系统提示 side=system。',
       '统一生活事实时间线（不可修改，跨板块必须对应）：'+f,
+      '统一秘密线索（禁止写入公开记录，锁定备忘录/隐藏相册必须复用，不能互相矛盾）：'+
+        JSON.stringify(arr(data.secrets)).slice(0,1300),
       '现有该板块内容（仅为避免重复，可以续写，不要复制）：'+old,
       '其他已存在的生活线索：'+other,
       '必须：时间戳为13位毫秒且不能晚于现在；内容全部虚构，不涉及真实地址/账号/号码。',
@@ -420,7 +428,7 @@
     var current='',view=null,selected=arr(data.selected),permission=null,waiting=false;
     var unlockedNotes=false,unlockedAlbum=false,pinView='',sessionStarted=Date.now(),switches=0,lockedAttempts=0,pendingChat=null;
     var affection=num(role.affection,num(role.favorability,num(role.intimacy,60)));
-    var revealCount=affection>=70?3:affection>=35?1:0;
+    var revealCount=affection>=80?3:affection>=60?2:affection>=35?1:0;
     var notice='',accessType='';
     function commit(){
       data.selected=selected;data.permission=permission;data.updatedAt=Date.now();
@@ -442,6 +450,7 @@
       }
     });
     if(!data.source||typeof data.source!=='object')data.source={};
+    if(!Array.isArray(data.secrets)||!data.secrets.length)data.secrets=fallback(role,roleId,now).secrets;
     function currentSource(){
       var source=data.source[current]==='ai'?'AI 剧情记录':'本地剧情样例 · 未调用 AI';
       return source+(data.carriedFrom?' · 含 '+data.carriedFrom+' 的历史记录':'');
@@ -534,7 +543,10 @@
           block('设备摘要',line('步数 '+num(section.steps,0),'移动 '+num(section.distanceKm,0)+' km · 外出 '+num(section.outHours,0)+' 小时')+line('近3天最常停留',section.frequentPlace));
       } else if(current==='album'){
         body=block('最近照片 · 文字描述',arr(section.photos).map(function(x){return line(x.type+' · '+dateTime(x.time),x.description);}).join(''))+
-          block('隐藏相册',unlockedAlbum?arr(section.hidden).map(function(x){return line(dateTime(x.time),x.description);}).join(''):
+          block('隐藏相册',unlockedAlbum?
+            arr(section.hidden).slice(0,revealCount).map(function(x){return line(dateTime(x.time),x.description);}).join('')+
+              (revealCount<arr(section.hidden).length?'<p class="inspect-muted">其余内容仍由角色保留，需要更深的信任。</p>':''):
+
             '<p class="inspect-muted">需额外的虚构相册密码，线索藏在已解锁的备忘录中。</p>'+
             (pinView==='album'?pinForm():button('输入相册密码','albumPin')))+
           '<p class="inspect-muted">共 '+num(section.total,0)+' 张 · 最近7天新增 '+num(section.newSevenDays,0)+' 张 · 最近拍摄 '+html(dateTime(Math.max.apply(null,arr(section.photos).map(function(x){return num(x.time,0)}))))+'</p>';
