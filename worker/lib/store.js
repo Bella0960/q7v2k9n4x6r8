@@ -2256,6 +2256,41 @@ class CloudStore {
     return { repaired, deferred };
   }
 
+  /**
+   * Fetch cloud-owned contact work in SQL before applying the batch limit.
+   * Filtering after listDueActivities(limit) can starve cloud tasks behind
+   * older foreground-owned rows, even when a cloud task is already due.
+   */
+  listDueCloudActivities(now, limit) {
+    const safeLimit = Math.max(1, Math.min(50, Math.floor(Number(limit) || 10)));
+    return this.exec(
+      `SELECT q.*, d.user_id AS user_id,
+              d.revoked_at AS source_device_revoked_at
+       FROM activity_queue q
+       LEFT JOIN devices d ON d.id = q.device_id
+       WHERE q.kind = 'contact'
+         AND CASE
+           WHEN json_valid(q.payload_json)
+           THEN json_extract(q.payload_json, '$.executionMode')
+           ELSE NULL
+         END = 'cloud'
+         AND (
+           (q.status IN ('waiting', 'retry')
+             AND COALESCE(q.next_attempt_at, q.scheduled_at) <= ?
+             AND (q.locked_until IS NULL OR q.locked_until <= ?))
+           OR (q.status = 'running'
+             AND q.locked_until IS NOT NULL
+             AND q.locked_until <= ?)
+         )
+       ORDER BY COALESCE(q.next_attempt_at, q.scheduled_at) ASC, q.id ASC
+       LIMIT ?`,
+      now,
+      now,
+      now,
+      safeLimit
+    );
+  }
+
   listDueActivities(now, limit) {
     return this.exec(
       `SELECT q.*, d.user_id AS user_id,
@@ -2465,7 +2500,7 @@ class CloudStore {
        FROM execution_log e
        INNER JOIN devices d ON d.id = e.device_id
        WHERE d.user_id = ?
-         AND e.kind = 'autonomy_tick'
+         AND e.kind IN ('autonomy_tick', 'autonomy_cloud_tick')
          AND e.status IN ('deferred', 'failed', 'superseded', 'skipped')
          AND e.created_at >= ?
        GROUP BY e.reason_code
@@ -2477,6 +2512,102 @@ class CloudStore {
       reasonCode: String(row.reason_code || ''),
       count: Number(row.total || 0)
     }));
+  }
+
+  getRecentPushReasonSummary({ userId = 'owner', deviceId, since } = {}) {
+    const safeDeviceId = requireStoreString(deviceId, 'push.deviceId');
+    const windowStart = Number(since);
+    if (!Number.isSafeInteger(windowStart) || windowStart < 0) return [];
+    return this.exec(
+      `SELECT e.reason_code, COUNT(*) AS total
+       FROM execution_log e
+       INNER JOIN devices d ON d.id = e.device_id
+       WHERE d.user_id = ? AND d.id = ?
+         AND e.kind = 'outbound_push'
+         AND e.status IN ('retry', 'failed', 'skipped')
+         AND e.created_at >= ?
+       GROUP BY e.reason_code
+       ORDER BY total DESC, e.reason_code ASC
+       LIMIT 12`,
+      userId,
+      safeDeviceId,
+      windowStart
+    ).map(row => ({
+      reasonCode: String(row.reason_code || ''),
+      count: Number(row.total || 0)
+    }));
+  }
+
+  /**
+   * The tick row is content-free and global to this Worker deployment.
+   * It lets readiness distinguish "configured" from "Cron has actually run".
+   */
+  getLatestCloudAutonomyTick() {
+    const row = this.exec(
+      `SELECT status, reason_code, created_at
+       FROM execution_log
+       WHERE kind = 'autonomy_cloud_tick'
+       ORDER BY created_at DESC, id DESC
+       LIMIT 1`
+    )[0] || null;
+    return row ? {
+      status: String(row.status || ''),
+      reasonCode: String(row.reason_code || ''),
+      createdAt: Number(row.created_at)
+    } : null;
+  }
+
+  /**
+   * A successful generation marker is scoped to the authenticated account;
+   * it contains no prompt, generated text, or character identifier.
+   */
+  getLatestCloudAutonomyGeneration({ userId = 'owner' } = {}) {
+    const row = this.exec(
+      `SELECT e.created_at
+       FROM execution_log e
+       INNER JOIN devices d ON d.id = e.device_id
+       WHERE d.user_id = ?
+         AND e.kind = 'autonomy_cloud_model'
+         AND e.status = 'success'
+         AND e.reason_code = 'outbound_group_committed'
+       ORDER BY e.created_at DESC, e.id DESC
+       LIMIT 1`,
+      userId
+    )[0] || null;
+    return row ? Number(row.created_at) : null;
+  }
+
+  /**
+   * Per-device proof that the Web Push service accepted an autonomous chat
+   * notification (HTTP success). This is not proof that the OS displayed it.
+   */
+  getLatestAutonomyPushAcceptance({ userId = 'owner', deviceId, now = Date.now() } = {}) {
+    const safeDeviceId = requireStoreString(deviceId, 'push.deviceId');
+    const timestamp = Number(now);
+    if (!Number.isSafeInteger(timestamp) || timestamp <= 0) return null;
+    const row = this.exec(
+      `SELECT e.created_at
+       FROM execution_log e
+       INNER JOIN devices d ON d.id = e.device_id
+       WHERE d.user_id = ? AND d.id = ?
+         AND e.kind = 'outbound_push'
+         AND e.status = 'success'
+         AND e.reason_code = 'delivered'
+         AND EXISTS (
+           SELECT 1
+           FROM push_subscriptions s
+           WHERE s.id = json_extract(e.detail_json, '$.subscriptionId')
+             AND s.device_id = d.id
+             AND s.disabled_at IS NULL
+             AND (s.expiration_time IS NULL OR s.expiration_time > ?)
+         )
+       ORDER BY e.created_at DESC, e.id DESC
+       LIMIT 1`,
+      userId,
+      safeDeviceId,
+      timestamp
+    )[0] || null;
+    return row ? Number(row.created_at) : null;
   }
 
   hasMaoSuperAdminAccount() {
