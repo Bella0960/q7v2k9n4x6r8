@@ -801,7 +801,10 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
   return {
     getAuthenticatedAccount,
     handle: async (request, path, method) => {
-      if (path === '/api/admin/bootstrap/status' && method === 'GET') {
+      // This same-origin, read-only POST probe checks the path used by the
+      // founder form without accepting or logging any credentials.
+      if ((path === '/api/admin/bootstrap/status' && method === 'GET') ||
+          (path === '/api/admin/bootstrap/preflight' && method === 'POST')) {
         // Report readiness without exposing server secret values or key material.
         const initialized = store.hasMaoSuperAdminAccount();
         return ok({
