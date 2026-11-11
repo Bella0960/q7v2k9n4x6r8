@@ -214,8 +214,23 @@ export default {
     if (!env.CLOUD_DB) return;
     ctx.waitUntil((async () => {
       const stub = env.CLOUD_DB.get(env.CLOUD_DB.idFromName(INSTANCE_NAME));
-      await stub.fetch(new Request('https://maomao.internal/internal/maintenance', { method: 'POST' }));
-      await stub.fetch(new Request('https://maomao.internal/internal/tick', { method: 'POST' }));
+      let maintenanceError = null;
+      try {
+        const response = await stub.fetch(new Request(
+          'https://maomao.internal/internal/maintenance', { method: 'POST' }
+        ));
+        if (!response.ok) maintenanceError = new Error('cloud_maintenance_http_' + response.status);
+      } catch {
+        maintenanceError = new Error('cloud_maintenance_transport_failed');
+      }
+
+      // A transient maintenance failure must not starve proactive contacts.
+      // Always attempt the cloud model tick before reporting either error.
+      const tickResponse = await stub.fetch(new Request(
+        'https://maomao.internal/internal/tick', { method: 'POST' }
+      ));
+      if (!tickResponse.ok) throw new Error('cloud_tick_http_' + tickResponse.status);
+      if (maintenanceError) throw maintenanceError;
     })());
   }
 };
