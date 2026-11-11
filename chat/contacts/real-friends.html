@@ -280,7 +280,12 @@ try{await task}finally{if(activeMessageLoad&&activeMessageLoad.promise===task)ac
 async function openChat(friend){
 clearTimer();chatEpoch++;activeMessageLoad=null;seenMessageSeq.clear();
 pendingMessageId=null;pendingMessageText=null;currentChat=friend;cursor=0;el('messages').textContent='';el('chatTitle').textContent=friend.displayName||friend.id;
-el('chatPanel').hidden=false;await loadMessages();
+el('chatPanel').hidden=false;
+var openedEpoch=chatEpoch;
+await loadMessages();
+// Closing or switching chat while the first history request was in flight
+// must not leave a hidden polling timer running against a stale conversation.
+if(openedEpoch!==chatEpoch||!currentChat||currentChat.id!==friend.id)return;
 messageTimer=setInterval(function(){if(document.visibilityState==='visible')loadMessages().catch(e=>{status(explain(e));clearTimer();})},5000);
 }
 el('closeChat').addEventListener('click',closeChat);
