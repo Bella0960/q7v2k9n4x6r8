@@ -53,17 +53,21 @@ test('opening a share link captures the invite and clears only the fragment', ()
   assert.equal(calls.length, 1);
   assert.equal(calls[0][2], '/chat/contacts/contacts.html');
 });
-test('the QR uses the exact server-returned payload and creates a local SVG', () => {
+test('QR encodes verified HTTPS share link for ordinary mobile cameras', () => {
   const sandbox = { console };
   vm.runInNewContext(qrSource, sandbox, { filename: 'qrcode-generator.js' });
   assert.equal(typeof sandbox.qrcode, 'function');
   const api = inviteApi();
   const link = api.createShareUrl(page, code);
   const serverPayload = { code, qrPayload: 'mao://friend/add?code=' + code };
-  const qrPayload = api.getQrPayload(serverPayload, link);
-  assert.equal(qrPayload, serverPayload.qrPayload);
+  const qrPayload = api.getQrPayload(serverPayload, link, page);
+  assert.equal(qrPayload, link);
+  assert.equal(api.extractFriendCode(qrPayload, page), code);
+  assert.equal(new URL(qrPayload).protocol, 'https:');
   assert.equal(api.getQrPayload({ code }, link, page), link);
   assert.throws(() => api.getQrPayload({ code, qrPayload: 'https://attacker.example/#mao-friend=' + code }, link, page), /invalid_friend_qr_payload/);
+  assert.throws(() => api.getQrPayload({ code, qrPayload: 'mao://friend/add?code=' + 'b'.repeat(64) }, link, page), /invalid_friend_qr_payload/);
+  assert.throws(() => api.getQrPayload({ code }, 'https://attacker.example/chat/contacts/contacts.html#mao-friend=' + code, page), /invalid_friend_qr_payload/);
   const qr = sandbox.qrcode(0, 'M');
   qr.addData(qrPayload, 'Byte');
   qr.make();
