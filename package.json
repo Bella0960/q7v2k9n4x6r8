@@ -53,9 +53,10 @@
     "test:release:accounts": "node --test tests/account-password-kdf.test.mjs tests/account-auth-contract.test.mjs tests/account-entry-runtime.test.mjs tests/account-bootstrap-runtime.test.mjs tests/account-storage-isolation.test.mjs tests/admin-center-ui.test.mjs tests/account-main-integration.test.mjs",
     "test:release:features": "node --test tests/forum-gossip-story.test.mjs tests/forum-world-events.test.mjs tests/inspect-feature-contract.test.mjs tests/forum-chat-blockers.test.mjs",
     "test:release:regressions": "node --test tests/chat-regression-contract.test.mjs tests/chat-data-isolation.test.mjs tests/chat-reply-bubble-mode.test.mjs tests/tutorial-page-contract.test.mjs tests/media-backup.test.mjs",
-    "test:release:gate": "npm run test:release:accounts && npm run test:release:features && npm run test:release:regressions",
+    "test:release:gate": "npm run test:release:accounts && npm run test:release:features && npm run test:release:regressions && npm run test:release:extended",
     "test:release:artifacts": "node --test tests/pwa-navigation-cache.test.mjs tests/default-desktop-layout.test.mjs",
-    "postbuild": "npm run test:release:artifacts"
+    "postbuild": "npm run test:release:artifacts",
+    "test:release:extended": "node --test tests/chat-role-sticker-library.test.mjs tests/role-avatar-library.test.mjs tests/chat-image-vision.test.mjs tests/role-gallery-image-autonomy.test.mjs tests/chat-call-experience.test.mjs tests/group-chat-invite-e2e.test.mjs tests/phone-api-image-generation.test.mjs tests/image-generation-pipeline.test.mjs tests/forum-media.test.mjs tests/forum-seed-comments.test.mjs tests/detective-case-unlock.test.mjs tests/font-runtime-performance.test.mjs tests/icon-presets-contract.test.mjs tests/group-ui-collapse-invite.test.mjs"
   },
   "devDependencies": {
     "playwright": "^1.64.1",
