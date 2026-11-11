@@ -160,12 +160,25 @@
     };
     const button = form.querySelector('button[type="submit"]');
     button.disabled = true;
+    let attemptedCreate = false;
     try {
       const status = await request('/api/admin/bootstrap/status');
       if (status.initialized) {
         showInitialized();
         return;
       }
+      // First verify that authenticated-preview networking permits a same-origin
+      // POST. This probe never transmits passwords or initialization secrets.
+      const probe = await request('/api/admin/bootstrap/preflight', 'POST', {});
+      if (probe.initialized) {
+        showInitialized();
+        return;
+      }
+      if (probe.configured === false) {
+        errorNode.textContent = '服务器安全配置尚未就绪，尚未提交管理员资料。';
+        return;
+      }
+      attemptedCreate = true;
       await request('/api/admin/bootstrap', 'POST', body);
       // The bootstrap endpoint establishes the new super-admin's HttpOnly session.
       form.reset();
@@ -181,6 +194,11 @@
       }
       if (error.code === 'INVALID_BOOTSTRAP_SECRET') {
         errorNode.textContent = '初始化密钥与服务器配置不一致，请核对后重试。不要将密钥发送给任何人。';
+        return;
+      }
+      if (!attemptedCreate) {
+        errorNode.textContent = '连接检查没有通过，管理员资料尚未提交。请检查网络或稍后重试。' +
+          (error.code ? '（' + error.code + '）' : '');
         return;
       }
       if (error.code === 'NETWORK_ERROR' || error.code === 'REQUEST_TIMEOUT' ||
