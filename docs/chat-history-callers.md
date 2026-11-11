@@ -4,6 +4,8 @@
 **任务：** DATA-005 · 聊天历史读写者盘点  
 **性质：** 只读盘点；本文件不改变聊天数据、存储键、消息结构或存储后端。
 
+**主线更新：** #255 已为线下聊天、旅行、群通话、论坛分享、钱包通知、伴侣邀请和摇一摇加上保存失败处理。下表与第 4 节保留审计基线，最新进度见 DATA-008。
+
 ## 1. 当前存储事实
 
 - 聊天历史主键仍是 `chat_history_<conversationId>`，每个角色或群组各保存一个完整消息数组；底层仍以浏览器 localStorage 为主。
@@ -52,7 +54,7 @@
 | `tests/chat-regression-contract.test.mjs` / `tests/forum-chat-blockers.test.mjs` | 聊天调用契约与相关跨模块行为测试 | 属于自动回归，不代表真实手机/PWA 验收。 |
 | `perf/*.mjs` | 性能基准与浏览器测试数据初始化 | 对 `chat_history_*` 的写入是隔离测试夹具，不是生产业务写入。 |
 
-## 4. 已知保存可靠性缺口
+## 4. 审计基线上的保存可靠性缺口
 
 以下是本次静态源码检查直接确认的缺口，不代表所有场景都必然丢消息；它们代表当前调用者没有获得可靠的失败检测：
 
@@ -81,4 +83,4 @@
 - 未切换 localStorage / IndexedDB 后端；
 - 未运行 npm / Playwright / Vite build；
 - 未验证真实设备持久化、存储配额、刷新恢复、第二设备同步或系统推送；
-- 未更改 main、线上 Worker、Worker secrets 或 APK。
+- 未部署 Worker、变更 Worker secrets 或生成 APK。

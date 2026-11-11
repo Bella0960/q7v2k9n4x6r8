@@ -187,15 +187,28 @@ Acceptance:
 - Existing legacy image messages render unchanged.
 
 ### DATA-008 — Make remaining legacy storage callers explicit
-**Priority:** P2 · **Status:** OPEN
+**Priority:** P2 · **Status:** IN PROGRESS (PR #255, 2026-11-11)
 
 Scope: migrate direct localStorage readers/writers page-by-page to approved PhoneStorage/repository APIs after storage contracts are stable.
+
+Progress in PR #255:
+- Added verified history writes and explicit failure handling for offline/date chat, travel-journey stage messages, group-call result cards, forum post sharing, couple-space invitations, wallet shop/takeout/family-card notices, and shake-match contact initialization.
+- Added behavior tests for write refusal, readback mismatch, quota errors, role isolation, and retry/deduplication.
+- No history key or message schema was renamed; no history was truncated or migrated.
+- A failed purchase/order is not inferred from a failed chat notice: transaction state and message-notice state remain separate.
+
+Remaining:
+- Finish the legacy read/write audit against DATA-005 and migrate search/settings and any remaining direct writers after the parallel multi-bubble branch is reconciled.
+- Audit remaining read-only legacy fallbacks in memory/context/library paths.
+- Confirm backup/export behavior before changing the storage backend (DATA-001/002/006/007).
+- Run the complete local/CI regression suite and validate on a real phone/PWA.
 
 Acceptance:
 - Each migration is limited to one domain or feature.
 - No hidden change to key names or role scoping.
 - Failures propagate and are tested.
 - Direct access remains only where documented as an intentional compatibility boundary.
+- DATA-008 remains OPEN until the remaining callers are migrated and the full regression/device acceptance is complete.
 
 ### DATA-009 — Decide cloud sync, if ever required
 **Priority:** P3 · **Status:** DEFERRED
@@ -271,7 +284,16 @@ Acceptance:
 - Automated static contracts are not described as full E2E coverage.
 
 ### QA-002 — Add storage-failure tests
-**Priority:** P1 · **Status:** OPEN
+**Priority:** P1 · **Status:** IN PROGRESS (chat-history cases added in PR #255)
+
+Progress:
+- Added behavior tests for chat history save rejection, readback mismatch, localStorage quota failure, role isolation, date-mode rollback, journey retry/deduplication, call/forum/wallet notices, and shake-match initialization.
+- The tests are wired into the existing `npm run test:chat:isolation` script.
+
+Remaining:
+- Add IndexedDB unavailable/blocked/quota tests when the DATA-001 registry and DATA-006 storage implementation are ready.
+- Run the suite locally and obtain actionable CI output; current Actions runs returned failed conclusions without job steps or logs.
+- Verify refresh/reopen and storage behavior on desktop and real mobile browsers.
 
 Acceptance:
 - Simulate localStorage quota errors and IndexedDB unavailable/blocked/quota errors.
