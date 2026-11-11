@@ -17,6 +17,7 @@ import {
 import { applyMigrations, MIGRATIONS, splitSql } from '../worker/lib/migrations.js';
 import { createStore } from '../worker/lib/store.js';
 import { buildOutboundPushPayload, dispatchPendingOutboundPushes } from '../worker/lib/app.js';
+import { runCloudModelTick } from '../worker/lib/cloud-model-scheduler.js';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -5190,4 +5191,154 @@ test('多气泡组只发送一条不含正文的角色通知，并将 Push 回�
   assert.match(notification.body, /3 条消息/);
   assert.equal(notification.body.includes(messages[0]), false);
   assert.equal(notification.dedupeKey, 'outbound-group:' + groupId);
+});
+
+
+test('空聊天首次主动联系在授权后只排队一次，模型生成云端分组，用户消息会取消旧开场', async () => {
+  const now = 1800000000000;
+  const env = {
+    AUTONOMY_LEASE_MS: '60000',
+    AUTONOMY_TICK_LIMIT: '10',
+    AUTONOMY_RETRY_BACKOFF_MS: '60000,300000',
+    AUTONOMY_MIN_IDLE_MS: '60000',
+    AUTONOMY_HEARTBEAT_TTL_MS: '90000',
+    AUTONOMY_DEVICE_LEASE_MS: '120000',
+    AUTONOMY_DEVICE_GRACE_MS: '0',
+    AUTONOMY_MODEL_API_KEY: 'server-only-initial-test-key-1234567890',
+    AUTONOMY_MODEL_NAME: 'gpt-4.1-mini',
+    AUTONOMY_MODEL_API_URL: 'https://api.openai.com/v1/chat/completions',
+    AUTONOMY_MODEL_TIMEOUT_MS: '5000'
+  };
+  const ctx = setupTestStore(openTestDb(), env);
+  ctx.timestamps.push(now);
+  const device = makeDevice();
+  await registerDevice(ctx, device);
+  const characterId = 'char-first-contact';
+
+  const consent = await ctx.asJson('/api/autonomy/context-sharing', {
+    method: 'PUT', device, body: { enabled: true }
+  });
+  assert.equal(consent.status, 200);
+  assert.equal(ctx.store.setUserAutonomy('owner', true, now, device.deviceId).enabled, 1);
+  assert.equal(ctx.store.setCharacterAutonomy('owner', characterId, true, now, device.deviceId).enabled, 1);
+  ctx.store.setCharacterSchedule('owner', characterId, 'UTC', {
+    active: [{ start: '00:00', end: '24:00' }],
+    busy: [], asleep: [], away: false
+  }, now, device.deviceId);
+
+  const initialBody = {
+    eventId: randomToken(20),
+    characterName: '测试角色',
+    personaText: '喜欢阅读，表达友善而简洁。',
+    recentMessages: [],
+    lastUserMessageAt: 0,
+    initialContact: true
+  };
+  const first = await ctx.asJson('/api/characters/' + characterId + '/context-snapshot', {
+    method: 'POST', device, body: initialBody
+  });
+  assert.equal(first.status, 200);
+  assert.equal(first.payload.saved, true);
+  assert.equal(first.payload.initialContact, true);
+  assert.equal(first.payload.queued, true);
+  assert.equal(first.payload.queueReason, 'queued_initial_contact');
+  assert.equal(first.payload.scheduledAt, now + 120000);
+
+  const snapshot = ctx.store.getLatestCharacterContextSnapshot({ userId: 'owner', characterId });
+  assert.ok(snapshot);
+  assert.equal(Number(snapshot.last_user_message_at), 0);
+  assert.equal(snapshot.recent_messages_json, '[]');
+
+  const initialDedupeKey = 'cloud-initial-contact-v1:owner:' + characterId;
+  const initialTask = ctx.store.getActivityByDedupeKey(initialDedupeKey);
+  assert.ok(initialTask);
+  assert.equal(initialTask.status, 'waiting');
+  const taskPayload = JSON.parse(initialTask.payload_json);
+  assert.equal(taskPayload.triggerType, 'initial_contact');
+  assert.equal(taskPayload.executionMode, 'cloud');
+  assert.equal(taskPayload.contextVersion, first.payload.contextVersion);
+
+  const reopened = await ctx.asJson('/api/characters/' + characterId + '/context-snapshot', {
+    method: 'POST', device, body: { ...initialBody, eventId: randomToken(20) }
+  });
+  assert.equal(reopened.status, 200);
+  assert.equal(reopened.payload.duplicate, true);
+  assert.equal(reopened.payload.contextVersion, first.payload.contextVersion);
+  assert.equal(reopened.payload.queueReason, 'initial_contact_already_queued');
+  assert.equal(ctx.query(
+    'SELECT id FROM activity_queue WHERE dedupe_key = ?', initialDedupeKey
+  ).length, 1);
+  assert.equal(ctx.query(
+    'SELECT context_version FROM character_context_snapshots WHERE user_id = ? AND character_id = ?',
+    'owner', characterId
+  ).length, 1);
+
+  const malformed = await ctx.asJson('/api/characters/' + characterId + '/context-snapshot', {
+    method: 'POST',
+    device,
+    body: {
+      ...initialBody,
+      eventId: randomToken(20),
+      recentMessages: [{ role: 'user', content: '不能把有历史的聊天伪装成首次开场。' }]
+    }
+  });
+  assert.equal(malformed.status, 400);
+  assert.equal(malformed.payload.error.code, 'INVALID_INITIAL_CONTACT_SNAPSHOT');
+
+  let modelRequest;
+  const modelFetch = async (url, init) => {
+    modelRequest = { url, init };
+    return new Response(JSON.stringify({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            send: true,
+            messages: ['你好，想和你分享一个有趣的小发现。', '你今天有什么想聊的话题吗？']
+          })
+        }
+      }]
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+  ctx.timestamps.push(now + 120000);
+  const tick = await runCloudModelTick({
+    store: ctx.store,
+    env,
+    now: now + 120000,
+    fetchImpl: modelFetch
+  });
+  assert.equal(tick.ok, true);
+  assert.equal(tick.generatedGroups, 1);
+  assert.equal(tick.generatedMessages, 2);
+  const prompt = JSON.parse(modelRequest.init.body);
+  assert.match(prompt.messages[0].content, /first opening in a chat/);
+  assert.match(prompt.messages[1].content, /"initialContact":true/);
+  const outbox = ctx.query(
+    'SELECT group_id, group_index, group_count, payload_json FROM outbound_messages WHERE character_id = ? ORDER BY group_index',
+    characterId
+  );
+  assert.equal(outbox.length, 2);
+  assert.equal(outbox[0].group_id, outbox[1].group_id);
+  assert.deepEqual(outbox.map(row => Number(row.group_index)), [1, 2]);
+  assert.deepEqual(outbox.map(row => Number(row.group_count)), [2, 2]);
+
+  const conversation = await ctx.asJson('/api/characters/' + characterId + '/context-snapshot', {
+    method: 'POST',
+    device,
+    body: {
+      eventId: randomToken(20),
+      characterName: '测试角色',
+      personaText: '喜欢阅读，表达友善而简洁。',
+      recentMessages: [
+        { role: 'user', content: '你好，我今天读完一本书。' },
+        { role: 'assistant', content: '听起来很不错。' }
+      ],
+      lastUserMessageAt: now + 121000
+    }
+  });
+  assert.equal(conversation.status, 200);
+  assert.equal(conversation.payload.contextVersion, first.payload.contextVersion + 1);
+  const savedConversation = ctx.store.getLatestCharacterContextSnapshot({ userId: 'owner', characterId });
+  assert.ok(Number(savedConversation.last_user_message_at) > 0);
+  const completedInitialTask = ctx.store.getActivityByDedupeKey(initialDedupeKey);
+  assert.equal(completedInitialTask.status, 'completed');
 });
