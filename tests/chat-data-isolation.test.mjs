@@ -14,6 +14,8 @@ const myMomentsSource = read('chat/moments/my-moments.html');
 const chatDetailSource = read('chat/chat/chat-detail.html');
 const datePageSource = read('chat/date/date.html');
 const forumDetailSource = read('forum/forum-detail.html');
+const callPageSource = read('chat/call/call.html');
+const couplePageSource = read('couple/couple.html');
 
 /* ---------- 真实源码函数提取（行为级执行，不做字符串存在性断言） ---------- */
 
@@ -586,4 +588,73 @@ test('论坛分享：保存并读回目标角色消息后才显示成功', () =>
   assert.match(persisted[0].text, /测试帖子正文/);
   assert.equal(sandbox.alerts.length, 1);
   assert.match(sandbox.alerts[0], /已分享给 角色甲/);
+});
+
+
+function loadGroupCallEndCall(storage, localStorage = createLocalStorage()) {
+  const alerts = [];
+  const sessionValues = {};
+  const sandbox = {
+    connectTimer: null,
+    tickTimer: null,
+    clearTimeout() {},
+    clearInterval() {},
+    sessionStorage: {
+      setItem(key, value) { sessionValues[key] = String(value); }
+    },
+    roleId: 'groupA',
+    callType: 'voice',
+    connected: true,
+    seconds: 65,
+    isGroupCall: true,
+    currentGroup: { members: [{ nickname: '成员甲' }] },
+    window: { PhoneStorage: storage, location: { href: '' } },
+    localStorage,
+    formatTime: (seconds) => String(seconds),
+    alert: (message) => alerts.push(message),
+    console: { error() {} },
+    encodeURIComponent
+  };
+  runInNewContext(extractFunction(callPageSource, 'endCall'), sandbox, {
+    filename: 'chat/call/call.html#endCall'
+  });
+  return { endCall: sandbox.endCall, alerts, sessionValues, window: sandbox.window };
+}
+
+test('群通话：保存并读回通话卡片后才视为聊天记录已保存', () => {
+  let persisted = [];
+  const sandbox = loadGroupCallEndCall({
+    getChatHistory: () => JSON.parse(JSON.stringify(persisted)),
+    saveChatHistory: (id, list) => {
+      assert.equal(id, 'groupA');
+      persisted = JSON.parse(JSON.stringify(list));
+      return true;
+    }
+  });
+
+  sandbox.endCall();
+  assert.equal(persisted.length, 1);
+  assert.equal(persisted[0].type, 'call');
+  assert.equal(persisted[0].call.title, '群语音通话');
+  assert.deepEqual(sandbox.alerts, []);
+  assert.match(sandbox.window.location.href, /chat-detail\.html\?id=groupA/);
+});
+
+test('群通话：PhoneStorage 写入失败时明确提示，不把失败当成功', () => {
+  const sandbox = loadGroupCallEndCall({
+    getChatHistory: () => [],
+    saveChatHistory: () => false
+  });
+
+  sandbox.endCall();
+  assert.equal(sandbox.alerts.length, 1);
+  assert.match(sandbox.alerts[0], /群通话记录未能保存/);
+  assert.match(sandbox.window.location.href, /chat-detail\.html\?id=groupA/);
+});
+
+test('情侣绑定：邀请消息持久化结果与资料保存提示保持区分', () => {
+  assert.match(couplePageSource, /let invitationSaved = true/);
+  assert.match(couplePageSource, /storage\.saveChatHistory\(profile\.partnerId, next\) === true/);
+  assert.match(couplePageSource, /聊天记录写入后校验失败/);
+  assert.match(couplePageSource, /资料已保存，但邀请消息没有写入聊天记录/);
 });
