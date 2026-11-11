@@ -89,7 +89,7 @@
       await request('/api/admin/bootstrap', 'POST', body);
       // The bootstrap endpoint establishes the new super-admin's HttpOnly session.
       form.reset();
-      window.location.replace('../index.html');
+      window.location.replace('/admin/admin-center.html');
     } catch (error) {
       if (error.code === 'ADMIN_ALREADY_INITIALIZED') {
         showInitialized();
