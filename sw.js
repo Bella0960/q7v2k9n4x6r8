@@ -1,12 +1,24 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v203';
+const CACHE_NAME = 'phone-app-pwa-v204';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 // v196 release: sweep orphaned role-owned media refs during avatar cleanup.
 const APP_SHELL = [
   './',
   './index.html',
+  './shared/js/mao-account-scope.js?v=2',
+  './account/manage.css',
+  './account/manage.js',
+  './account/settings-link.js?v=1',
+  './admin/admin-center.css',
+  './admin/admin-center.js',
+  './account/index.html',
+  './account/bootstrap.html',
+  './account/bootstrap.js',
+  './account/account.css',
+  './account/ivory-entry.css',
+  './account/account.js',
   './tutorial/tutorial.html',
   './tutorial/tutorial.js?v=20261111v3',
   './beauty/beauty.html',
@@ -137,7 +149,10 @@ self.addEventListener('install', event => {
         // 清单不可用时仍继续安装已有核心资源，不阻塞整个 PWA。
       }
 
-      const resources = Array.from(new Set(APP_SHELL.concat(pageEntries)));
+      // Only public sign-in/first-time setup HTML may be cached.
+      // Private app documents must always pass the Worker identity gate.
+      const resources = Array.from(new Set(APP_SHELL.concat(pageEntries)))
+        .filter(url => url === './account/index.html' || url === './account/bootstrap.html' || !/\.html(?:\?|$)/i.test(url));
       await Promise.all(resources.map(url => cache.add(url).catch(() => undefined)));
     }).then(() => self.skipWaiting())
   );
@@ -165,27 +180,107 @@ self.addEventListener('fetch', event => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
+  // Authenticated API responses are account-private; never store them in the shared origin cache.
+  if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return;
+
   // User-imported fonts are cached once by font-loader.js and served as same-origin
   // font resources. Keep this cache separate from the versioned app-shell cache.
   const fontAssetPrefix = new URL('__maomao_fonts/', self.registration.scope).pathname;
   if (url.pathname.startsWith(fontAssetPrefix)) {
-    event.respondWith(
-      caches.open(FONT_ASSET_CACHE).then(function (cache) {
-        return cache.match(req).then(function (cached) {
-          return cached || new Response('', {
+    // CSS font requests do not carry custom fetch headers. The account ID is
+    // therefore part of ordinary-account font URLs and is matched against the
+    // current HttpOnly session before opening any account's CacheStorage.
+    event.respondWith((async function () {
+      try {
+        const relativeFontPath = url.pathname.slice(fontAssetPrefix.length);
+        const firstSegment = relativeFontPath.split('/')[0] || '';
+        let requestedAccountId = '';
+        try { requestedAccountId = decodeURIComponent(firstSegment); } catch (error) {
+          return new Response('', { status: 404, headers: { 'Cache-Control': 'no-store' } });
+        }
+        const hasAccountPath = /^MAO-[A-Z0-9]{12,24}$/.test(requestedAccountId);
+        const authHeaders = new Headers({ 'accept': 'application/json' });
+        const pageAccountContext = req.headers.get('x-mao-account-context');
+        if (pageAccountContext) authHeaders.set('x-mao-account-context', pageAccountContext);
+        if (hasAccountPath) authHeaders.set('x-mao-account-context', requestedAccountId);
+
+        const authResponse = await fetch('/api/accounts/me', {
+          method: 'GET',
+          credentials: 'same-origin',
+          cache: 'no-store',
+          headers: authHeaders
+        });
+        if (!authResponse.ok) {
+          return new Response('', {
             status: 404,
             headers: { 'Cache-Control': 'no-store' }
           });
+        }
+        const payload = await authResponse.json();
+        const account = payload && payload.account;
+        if (!account || !/^MAO-[A-Z0-9]{12,24}$/.test(String(account.id || ''))) {
+          return new Response('', {
+            status: 404,
+            headers: { 'Cache-Control': 'no-store' }
+          });
+        }
+
+        let cacheName;
+        if (account.role === 'super_admin') {
+          // Preserve the creator's existing unqualified font URLs and cache.
+          if (hasAccountPath) {
+            return new Response('', { status: 404, headers: { 'Cache-Control': 'no-store' } });
+          }
+          cacheName = FONT_ASSET_CACHE;
+        } else {
+          // A stale tab A must never resolve its font URL through account B's cookie.
+          if (!hasAccountPath || requestedAccountId !== account.id) {
+            return new Response('', { status: 404, headers: { 'Cache-Control': 'no-store' } });
+          }
+          cacheName = '__mao_account_v1__' + encodeURIComponent(account.id) + '__' + FONT_ASSET_CACHE;
+        }
+
+        const cache = await caches.open(cacheName);
+        return await cache.match(req) || new Response('', {
+          status: 404,
+          headers: { 'Cache-Control': 'no-store' }
         });
-      })
-    );
+      } catch (error) {
+        return new Response('', {
+          status: 503,
+          headers: { 'Cache-Control': 'no-store' }
+        });
+      }
+    })());
     return;
   }
 
-  // 页面导航采用“缓存优先、后台更新”：
-  // 已缓存的应用立即打开，不让慢网络/VPN 阻塞页面；缓存未命中时才等待网络。
-  // 绝不把 index.html 当作其他应用的兜底页面，避免点开应用却重新显示桌面。
-  if (req.mode === 'navigate') {
+  // Protected app documents must reach the Worker on every navigation so
+  // account disable/revocation cannot be bypassed by a stale offline HTML cache.
+  // On network loss, fall back only to the public account entry, never cached app pages.
+  const accountPath = new URL('account/', self.registration.scope).pathname;
+  const isPublicAccountPage = url.pathname === accountPath ||
+    url.pathname === accountPath + 'index.html' ||
+    url.pathname === accountPath + 'bootstrap.html';
+  if (req.mode === 'navigate' && !isPublicAccountPage) {
+    event.respondWith((async function () {
+      try {
+        return await fetch(req);
+      } catch {
+        const entry = new URL('account/index.html', self.registration.scope);
+        const cachedEntry = await caches.match(entry.href).catch(function () { return null; });
+        return cachedEntry || new Response('当前处于离线状态，请联网验证 MAO 账号后继续。', {
+          status: 503,
+          headers: { 'Content-Type': 'text/plain; charset=UTF-8', 'Cache-Control': 'no-store' }
+        });
+      }
+    })());
+    return;
+  }
+
+  // The public account entry stays cache-first so a disabled or offline device
+  // can display the safe sign-in/disabled notice, never a cached app document.
+  if (req.mode === 'navigate' && isPublicAccountPage) {
     event.respondWith((async function () {
       var cachedPromise = caches.match(req).catch(function () { return null; });
       var cacheWritePromise = null;
