@@ -124,3 +124,50 @@ test('没有服务端凭据时模型执行器 fail-closed，不发起网络请�
   assert.deepEqual(result, { ok: false, reason: 'model_not_configured' });
   assert.equal(fetchCalls, 0);
 });
+
+
+test('云端模型首次开场只读取空历史并明确禁止虚构过往互动', async () => {
+  let request;
+  const fetchMock = async (url, init) => {
+    request = { url, init };
+    return new Response(JSON.stringify({
+      choices: [{
+        message: {
+          content: JSON.stringify({ send: true, messages: ['你好，今天想聊点什么？'] })
+        }
+      }]
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+  const result = await generateAutonomousMessages({
+    env: MODEL_ENV,
+    fetchImpl: fetchMock,
+    initialContact: true,
+    snapshot: {
+      character_name: '测试角色',
+      persona_text: '喜欢阅读',
+      recent_messages_json: '[]',
+      last_user_message_at: 0
+    }
+  });
+  assert.equal(result.ok, true);
+  const body = JSON.parse(request.init.body);
+  assert.match(body.messages[0].content, /Never claim you have chatted, met/);
+  assert.match(body.messages[0].content, /non-romantic opening/);
+  assert.deepEqual(JSON.parse(body.messages[1].content).recentMessages, []);
+  assert.equal(JSON.parse(body.messages[1].content).initialContact, true);
+
+  let invalidCalls = 0;
+  const invalid = await generateAutonomousMessages({
+    env: MODEL_ENV,
+    initialContact: true,
+    snapshot: {
+      character_name: '测试角色',
+      persona_text: '',
+      recent_messages_json: JSON.stringify([{ role: 'user', content: '已有聊天' }]),
+      last_user_message_at: 12345
+    },
+    fetchImpl: async () => { invalidCalls += 1; throw new Error('must not call model'); }
+  });
+  assert.deepEqual(invalid, { ok: false, reason: 'initial_contact_context_invalid' });
+  assert.equal(invalidCalls, 0);
+});
