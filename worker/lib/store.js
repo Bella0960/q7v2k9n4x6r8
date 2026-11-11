@@ -2599,6 +2599,7 @@ class CloudStore {
            WHERE s.id = json_extract(e.detail_json, '$.subscriptionId')
              AND s.device_id = d.id
              AND s.disabled_at IS NULL
+             AND e.created_at >= s.updated_at
              AND (s.expiration_time IS NULL OR s.expiration_time > ?)
          )
        ORDER BY e.created_at DESC, e.id DESC
