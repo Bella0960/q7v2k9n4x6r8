@@ -182,7 +182,7 @@
         return;
       }
       if (error.status === 401 || error.status === 403 || error.code === 'ADMIN_ONLY') {
-        window.location.replace('../index.html');
+        window.location.replace('/account/index.html?admin=1');
         return;
       }
       const stateConflictCodes = [
@@ -528,7 +528,7 @@
         return;
       }
       if (error.status === 401 || error.status === 403 || error.code === 'ADMIN_ONLY') {
-        window.location.replace('../index.html');
+        window.location.replace('/account/index.html?admin=1');
         return;
       }
       $('detailUsername').textContent = '账号状态暂时无法核对';
@@ -723,7 +723,7 @@
         return;
       }
       if (error.status === 401 || error.status === 403 || error.code === 'ADMIN_ONLY') {
-        window.location.replace('../index.html');
+        window.location.replace('/account/index.html?admin=1');
         return;
       }
       const message = el('p', 'empty-note', error.message || '管理记录暂时无法读取。');
@@ -856,7 +856,7 @@
         return;
       }
       if (error.status === 401 || error.status === 403 || error.code === 'ADMIN_ONLY') {
-        window.location.replace('../index.html');
+        window.location.replace('/account/index.html?admin=1');
         return;
       }
       const message = el('p', 'empty-note', error.message || '全局审计记录暂时无法读取。');
@@ -1065,10 +1065,11 @@
     try {
       const me = await api('/api/accounts/me');
       if (!me.account || me.account.role !== 'super_admin' || me.account.status !== 'active') {
-        window.location.replace('../index.html');
+        window.location.replace('/account/index.html?admin=1');
         return;
       }
       await refreshAll();
+      if (new URLSearchParams(window.location.search).get('tab') === 'invites') activateTab('invites');
       hideError();
     } catch (error) {
       if (error.code === 'ACCOUNT_DISABLED') {
@@ -1076,7 +1077,7 @@
         return;
       }
       if (error.status === 401 || error.status === 403 || error.code === 'ADMIN_ONLY') {
-        window.location.replace('../index.html');
+        window.location.replace('/account/index.html?admin=1');
         return;
       }
       $('accountsList').replaceChildren(el('p', 'empty-note', '账号数据暂未加载，请重新检查。'));
