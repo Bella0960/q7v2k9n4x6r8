@@ -17,7 +17,7 @@ function createPhone() {
   const elements = [];
   const byId = new Map();
   const requests = [];
-  const state = { switched: false, failRead: false, posted: [], badAck: false, deferRead: false, readWaiters: [], chatReadReply: null, chatReads: 0, intervalFn: null };
+  const state = { switched: false, failRead: false, posted: [], badAck: false, deferRead: false, readWaiters: [], chatReadReply: null, chatReads: 0, intervalFn: null, friendshipId: 'request_generation_0001' };
   function element(tag, id = '') {
     const node = { tag, id, hidden: false, disabled: false, events: {},
       children: [], scrollHeight: 100, scrollTop: 0, style: {},
@@ -64,12 +64,12 @@ function createPhone() {
         const message = { id: 'server-message-' + state.posted.length,
           senderId: A, recipientId: B, text: body.text };
         if (state.badAck) delete message.id;
-        payload = { ok: true, message };
+        payload = { ok: true, friendshipId: state.friendshipId, message };
       } else if (state.failRead) {
         status = 503;
         payload = { ok: false, error: { code: 'TEMPORARY_FAILURE', message: 'read failed' } };
       } else {
-        payload = { ok: true, ownerAccountId: A, peerId: B,
+        payload = { ok: true, ownerAccountId: A, peerId: B, friendshipId: state.friendshipId,
           messages: [{ id: 'remote-1', seq: 1, text: 'Private text', senderId: B, recipientId: A }],
           nextCursor: 1 };
       }
@@ -170,7 +170,7 @@ test('overlapping polling is serialized and repeated server messages never doubl
   await phone.openChat();
   const messages = phone.get('messages');
   assert.equal(messages.children.length, 1);
-  phone.state.chatReadReply = { ok: true, ownerAccountId: A, peerId: B,
+  phone.state.chatReadReply = { ok: true, ownerAccountId: A, peerId: B, friendshipId: phone.state.friendshipId,
     messages: [{ id: 'remote-2', seq: 2, text: 'One update', senderId: B, recipientId: A }],
     nextCursor: 2 };
   phone.state.deferRead = true;
@@ -193,7 +193,7 @@ test('overlapping polling is serialized and repeated server messages never doubl
 test('a late response from a previously closed chat cannot mutate a reopened same-peer chat', async () => {
   const phone = createPhone();
   await phone.openChat();
-  phone.state.chatReadReply = { ok: true, ownerAccountId: A, peerId: B,
+  phone.state.chatReadReply = { ok: true, ownerAccountId: A, peerId: B, friendshipId: phone.state.friendshipId,
     messages: [{ id: 'old-stale', seq: 2, text: 'Stale old request', senderId: B, recipientId: A }],
     nextCursor: 2 };
   phone.state.deferRead = true;
@@ -202,7 +202,7 @@ test('a late response from a previously closed chat cannot mutate a reopened sam
   assert.equal(phone.state.readWaiters.length, 1);
   phone.get('closeChat').events.click();
   phone.state.deferRead = false;
-  phone.state.chatReadReply = { ok: true, ownerAccountId: A, peerId: B,
+  phone.state.chatReadReply = { ok: true, ownerAccountId: A, peerId: B, friendshipId: phone.state.friendshipId,
     messages: [{ id: 'fresh-1', seq: 1, text: 'Fresh timeline', senderId: B, recipientId: A }],
     nextCursor: 1 };
   await phone.openChat();
@@ -233,7 +233,7 @@ test('BFCache pagehide wipes private DOM before a different MAO account can see 
 test('a cookie switch during delayed chat polling cannot restore stale private messages', async () => {
   const phone = createPhone();
   await phone.openChat();
-  phone.state.chatReadReply = { ok: true, ownerAccountId: A, peerId: B,
+  phone.state.chatReadReply = { ok: true, ownerAccountId: A, peerId: B, friendshipId: phone.state.friendshipId,
     messages: [{ id: 'late-private', seq: 2, text: 'Must never appear', senderId: B, recipientId: A }],
     nextCursor: 2 };
   phone.state.deferRead = true;
@@ -270,4 +270,32 @@ test('closing during the first history load cannot resurrect a hidden polling ti
   await phone.settle();
   assert.equal(phone.state.intervalFn, null, 'closing the view must cancel any future polling');
   assert.equal(phone.get('messages').children.length, 0);
+});
+
+test('001 reapproval of the same peer hides old bubbles, resets cursor and clears stale draft', async () => {
+  const phone = createPhone();
+  await phone.openChat();
+  assert.deepEqual(phone.get('messages').children.map(n => n.textContent), ['Private text']);
+  phone.get('chatText').value = 'Unsent text from old relationship';
+  phone.state.friendshipId = 'request_generation_0002';
+  phone.state.chatReadReply = { ok: true, ownerAccountId: A, peerId: B,
+    friendshipId: phone.state.friendshipId,
+    messages: [{ id: 'new-scope-1', seq: 2, text: 'Newly approved chat', senderId: B, recipientId: A }],
+    nextCursor: 2 };
+  phone.state.intervalFn();
+  await phone.settle();
+  assert.deepEqual(phone.get('messages').children.map(n => n.textContent), ['Newly approved chat']);
+  assert.equal(phone.get('chatText').value, '');
+  assert.match(phone.get('status').textContent, /好友关系已重新审批/);
+  assert.ok(phone.requests.some(request => request.url.endsWith('/messages?after=0')),
+    'new relation must restart pagination from zero');
+});
+
+test('every mobile outgoing message declares current server friendship generation', async () => {
+  const phone = createPhone();
+  await phone.openChat();
+  phone.get('chatText').value = 'Generation-bound text';
+  await phone.get('chatForm').events.submit({ preventDefault() {} });
+  assert.equal(phone.state.posted.length, 1);
+  assert.equal(phone.state.posted[0].friendshipId, 'request_generation_0001');
 });
