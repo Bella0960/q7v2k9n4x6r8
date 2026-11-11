@@ -684,23 +684,49 @@
   function canUseRoleCard(card, total) {
     return !!(window.RoleFamilyCards && window.RoleFamilyCards.canUse(card, total));
   }
-  function notifyRoleCardIssuer(card, message) {
-    if (!card || !card.roleId) return;
+  function appendChatHistoryMessage(roleId, message) {
+    if (!roleId || !message) return false;
     try {
-      var list;
-      if (window.PhoneStorage && typeof window.PhoneStorage.getChatHistory === 'function') {
-        list = window.PhoneStorage.getChatHistory(card.roleId);
+      var storage = window.PhoneStorage;
+      var history = storage && typeof storage.getChatHistory === 'function'
+        ? storage.getChatHistory(roleId)
+        : JSON.parse(localStorage.getItem('chat_history_' + roleId) || '[]');
+      if (!Array.isArray(history)) throw new Error('聊天记录格式无法识别');
+
+      var next = history.slice();
+      next.push(message);
+      var saved = false;
+      if (storage && typeof storage.saveChatHistory === 'function') {
+        saved = storage.saveChatHistory(roleId, next) === true;
       } else {
-        list = JSON.parse(localStorage.getItem('chat_history_' + card.roleId) || '[]');
+        localStorage.setItem('chat_history_' + roleId, JSON.stringify(next));
+        saved = true;
       }
-      if (!Array.isArray(list)) list = [];
-      list.push({ role: 'user', type: 'text', text: message, time: Date.now() });
-      if (window.PhoneStorage && typeof window.PhoneStorage.saveChatHistory === 'function') {
-        window.PhoneStorage.saveChatHistory(card.roleId, list);
-      } else {
-        localStorage.setItem('chat_history_' + card.roleId, JSON.stringify(list));
+      if (!saved) throw new Error('聊天记录写入失败');
+
+      var verified = storage && typeof storage.getChatHistory === 'function'
+        ? storage.getChatHistory(roleId)
+        : JSON.parse(localStorage.getItem('chat_history_' + roleId) || '[]');
+      var last = Array.isArray(verified) && verified.length ? verified[verified.length - 1] : null;
+      if (!Array.isArray(verified) || verified.length !== next.length ||
+          !last || last.role !== message.role || last.type !== message.type ||
+          last.time !== message.time ||
+          (message.text !== undefined && last.text !== message.text) ||
+          (message.gift && (!last.gift || last.gift.name !== message.gift.name ||
+            last.gift.price !== message.gift.price))) {
+        throw new Error('聊天记录写入后校验失败');
       }
-    } catch (e) {}
+      return true;
+    } catch (error) {
+      console.error('[Wallet:shop] chat history persistence failed:', error);
+      return false;
+    }
+  }
+  function notifyRoleCardIssuer(card, message) {
+    if (!card || !card.roleId) return false;
+    return appendChatHistoryMessage(card.roleId, {
+      role: 'user', type: 'text', text: message, time: Date.now()
+    });
   }
 
   // 动态渲染支付方式列表：日常账户 + 可选亲密付
@@ -1025,6 +1051,7 @@
     const now = new Date();
     const timeStr = (now.getMonth()+1) + '月' + now.getDate() + '日';
     const itemsDesc = payItems.map(c => c.cn).join('、');
+    var chatNoticeFailed = false;
 
     // 记账：写 finance_records
     try {
@@ -1061,28 +1088,28 @@
           cp.history.push({ amount: total, note: '商店 · ' + itemsDesc, time: Date.now() });
           localStorage.setItem('close_pay', JSON.stringify(cp));
 
-          // 给对方发一条聊天消息
+          // 给对方发一条聊天消息；支付状态独立保存，通知失败单独提示。
           if (cp.roleId) {
-            var key = 'chat_history_' + cp.roleId;
-            var arr = JSON.parse(localStorage.getItem(key) || '[]');
-            arr.push({
+            var noticeSaved = appendChatHistoryMessage(cp.roleId, {
               role: 'user',
               type: 'text',
               text: '刚刚帮你付了 ¥' + total + '（' + itemsDesc + '），喜欢就好。',
               time: Date.now()
             });
-            localStorage.setItem(key, JSON.stringify(arr));
+            if (!noticeSaved) chatNoticeFailed = true;
           }
         }
       } catch(e) {}
     }
 
     if (roleFamilyCard) {
-      notifyRoleCardIssuer(roleFamilyCard,
+      if (!notifyRoleCardIssuer(roleFamilyCard,
         '我刚刚使用你给我的' + (roleFamilyCard.kind === 'intimate' ? '亲密付' : '亲属卡') +
         '在商店买了' + payItems.map(function (item) { return item.cn; }).join('、') +
         '，共 ¥' + total.toFixed(2) + '。本月已经使用 ¥' +
-        window.RoleFamilyCards.usedThisMonth(roleFamilyCard).toFixed(2) + '。');
+        window.RoleFamilyCards.usedThisMonth(roleFamilyCard).toFixed(2) + '。')) {
+        chatNoticeFailed = true;
+      }
     }
 
     // 写入订单
@@ -1106,6 +1133,9 @@
        </div>`).join('');
     document.getElementById('payView').style.display = 'none';
     document.getElementById('receiptBox').classList.add('show');
+    if (chatNoticeFailed) {
+      showToast('订单已完成，但聊天通知未保存；请稍后在对应聊天中补发');
+    }
   }
 
   function closeReceipt() {
@@ -1137,17 +1167,15 @@
 
   // 给指定角色发一条礼物消息（模拟 TA 送你东西）
   function sendGiftToRole(roleId, product) {
-    try {
-      var key = 'chat_history_' + roleId;
-      var arr = JSON.parse(localStorage.getItem(key) || '[]');
-      arr.push({
-        role: 'ai',
-        type: 'gift',
-        gift: { name: product.cn, price: product.price, status: '正在派送中' },
-        time: Date.now()
-      });
-      localStorage.setItem(key, JSON.stringify(arr));
-    } catch(e) {}
+    if (!product) return false;
+    var saved = appendChatHistoryMessage(roleId, {
+      role: 'ai',
+      type: 'gift',
+      gift: { name: product.cn, price: product.price, status: '正在派送中' },
+      time: Date.now()
+    });
+    if (!saved) showToast('礼物通知没有保存到聊天记录，请稍后重试');
+    return saved;
   }
   window.sendGiftToRole = sendGiftToRole;
 </script>

@@ -710,6 +710,73 @@
     result.classList.add('show');
   }
 
+  // 新角色创建与欢迎消息分开验证；防止角色写入失败或聊天初始化静默丢失。
+  function persistShakeCharacter(newChar, welcomeMessage) {
+    try {
+      var resultApi = PhoneStorage.result;
+      var chars = [];
+      if (resultApi && typeof resultApi.getCharacters === 'function') {
+        var readResult = resultApi.getCharacters();
+        if (readResult && readResult.ok && Array.isArray(readResult.value)) {
+          chars = readResult.value;
+        } else if (readResult && readResult.error &&
+            readResult.error.code === 'NOT_FOUND') {
+          chars = [];
+        } else {
+          throw new Error('联系人列表无法安全读取');
+        }
+      } else {
+        chars = PhoneStorage.getCharacters();
+      }
+      if (!Array.isArray(chars)) throw new Error('联系人列表格式无法识别');
+      if (chars.some(function (item) { return item && String(item.id) === String(newChar.id); })) {
+        throw new Error('新联系人 ID 已存在，请重新摇一摇');
+      }
+
+      var oldHistory = PhoneStorage.getChatHistory(newChar.id);
+      if (Array.isArray(oldHistory) && oldHistory.length) {
+        throw new Error('新联系人聊天 ID 已存在，请重新摇一摇');
+      }
+
+      var nextChars = chars.slice();
+      nextChars.push(newChar);
+      if (resultApi && typeof resultApi.saveCharacters === 'function') {
+        var writeResult = resultApi.saveCharacters(nextChars);
+        if (!writeResult || writeResult.ok !== true) {
+          throw new Error('联系人列表写入失败');
+        }
+      } else {
+        PhoneStorage.saveCharacters(nextChars);
+      }
+
+      var verifiedChars;
+      if (resultApi && typeof resultApi.getCharacters === 'function') {
+        var verifiedResult = resultApi.getCharacters();
+        verifiedChars = verifiedResult && verifiedResult.ok ? verifiedResult.value : null;
+      }
+      if (!Array.isArray(verifiedChars)) verifiedChars = PhoneStorage.getCharacters();
+      if (!Array.isArray(verifiedChars) ||
+          !verifiedChars.some(function (item) { return item && String(item.id) === String(newChar.id); })) {
+        throw new Error('联系人写入后校验失败');
+      }
+
+      var historySaved = PhoneStorage.saveChatHistory(newChar.id, [welcomeMessage]) === true;
+      if (!historySaved) return { characterSaved: true, historySaved: false };
+      var verifiedHistory = PhoneStorage.getChatHistory(newChar.id);
+      var last = Array.isArray(verifiedHistory) && verifiedHistory.length
+        ? verifiedHistory[verifiedHistory.length - 1] : null;
+      if (!Array.isArray(verifiedHistory) || verifiedHistory.length !== 1 ||
+          !last || last.role !== welcomeMessage.role || last.time !== welcomeMessage.time ||
+          last.text !== welcomeMessage.text) {
+        return { characterSaved: true, historySaved: false };
+      }
+      return { characterSaved: true, historySaved: true };
+    } catch (error) {
+      console.error('[Shake] new character persistence failed:', error);
+      return { characterSaved: false, historySaved: false };
+    }
+  }
+
   // ===== 打个招呼 → 加为好友并进聊天 =====
   document.getElementById('btnSayHi').addEventListener('click', function() {
     if (!currentMatch) return;
@@ -728,17 +795,18 @@
       createdAt: Date.now()
     };
 
-    // 加入角色列表
-    var chars = PhoneStorage.getCharacters();
-    chars.push(newChar);
-    PhoneStorage.saveCharacters(chars);
-
-    // 写入初始欢迎消息
+    // 角色列表与首条欢迎消息分别写入并读回校验。
     var now = new Date();
     var timeStr = now.getHours() + ':' + (now.getMinutes() < 10 ? '0' + now.getMinutes() : now.getMinutes());
-    PhoneStorage.saveChatHistory(newId, [
-      { role: 'assistant', text: currentMatch.greeting, time: timeStr }
-    ]);
+    var welcomeMessage = { role: 'assistant', text: currentMatch.greeting, time: timeStr };
+    var persisted = persistShakeCharacter(newChar, welcomeMessage);
+    if (!persisted.characterSaved) {
+      alert('新联系人没有保存成功，请检查手机存储空间后重试。');
+      return;
+    }
+    if (!persisted.historySaved) {
+      alert('联系人已加入，但欢迎消息没有写入聊天记录。进入聊天后可以继续发送第一条消息。');
+    }
 
     // 存入这个角色的朋友圈动态（按角色隔离，phoneData[contactId]['moments']）
     if (currentMatch.moments && currentMatch.moments.length) {
