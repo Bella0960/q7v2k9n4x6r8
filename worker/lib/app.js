@@ -1963,6 +1963,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       '/api/accounts/logout',
       '/api/accounts/me',
       '/api/admin/bootstrap/status',
+      '/api/admin/bootstrap/preflight',
       '/api/admin/bootstrap',
       '/api/health',
       '/api/push/config'
