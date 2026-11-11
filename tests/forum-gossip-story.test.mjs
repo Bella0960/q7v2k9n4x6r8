@@ -137,3 +137,19 @@ test('legacy premature finished flag does not hide the missing final chapter',()
   assert.equal(progress.nextChapter,4);
   assert.equal(progress.finished,false);
 });
+
+test('AI comments and user deletions roll back when local persistence fails',()=>{
+  assert.match(detail,/post\.comments=previousComments/);
+  assert.match(detail,/post\.aiCommentBatch=previousBatch/);
+  assert.match(detail,/target\.replies=previousReplies/);
+  assert.match(detail,/post\.comments\.splice\(i,0,removed\)/);
+  assert.match(detail,/c\.replies\.splice\(j,0,removed\)/);
+  assert.match(detail,/if\(!saveNow\(\)\)\{post\.comments\.pop\(\)/);
+});
+
+test('auto-continuation setting explains that casual comments keep normal replies',()=>{
+  const settings=read('forum/forum-settings.html');
+  assert.match(settings,/gossipAutoContinue/);
+  assert.match(settings,/普通讨论仍由网友接话/);
+  assert.match(detail,/ForumGossip\.wantsContinuation\(text\)/);
+});
