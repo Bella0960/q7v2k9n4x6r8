@@ -295,31 +295,93 @@
       '优先复用上述事件ID涉及的人物、地点、价格与日期。不添加与现有板块冲突的事件。只输出单个板块的JSON对象。'
     ].join('\n');
   }
-  function valid(id,data,now) {
-    if(!data||typeof data!=='object'||Array.isArray(data))return false;
+  function valid(id,data,now,facts) {
+    if(!Object.prototype.hasOwnProperty.call(LIMIT,id)||
+       !data||typeof data!=='object'||Array.isArray(data))return false;
     var lists={chat:'contacts',moments:'moments',browser:'searchHistory',notes:'notes',wallet:'transactions',music:'recent',map:'stops',album:'photos',device:'apps',forum:'posts'};
-    var key=lists[id],min=LIMIT[id];
-    if(!Array.isArray(data[key])||data[key].length<min||data[key].length>80)return false;
-    if(id==='chat'&&(!data.contacts.every(function(c){return c&&c.name&&Array.isArray(c.messages)&&c.messages.length>=8&&c.messages.length<=14;})))return false;
-    if(id==='browser'&&(!Array.isArray(data.bookmarks)||data.bookmarks.length<2))return false;
-    if(id==='notes'&&(!Array.isArray(data.locked)||data.locked.length<2))return false;
-    if(id==='music'&&(!Array.isArray(data.playlists)||data.playlists.length<2||!Array.isArray(data.top)))return false;
-    if(id==='album'&&(!Array.isArray(data.hidden)||data.hidden.length<3))return false;
-    if(id==='wallet'&&(!data.transactions.some(function(t){return num(t.amount,0)>0})||data.transactions.filter(function(t){return num(t.amount,0)<0}).length<5))return false;
-    var asText=JSON.stringify(data);
-    if(asText.length>90000)return false;
-    // 不允许用未来时间冒充已经发生的事情，时间字段必须来自允许的区间。
-    var bad=false;
+    var list=data[lists[id]];
+    if(!Array.isArray(list)||list.length<LIMIT[id]||list.length>60)return false;
+    var serialized;
+    try{serialized=JSON.stringify(data);}catch(error){return false;}
+    if(!serialized||serialized.length>90000)return false;
+    var validTime=function(t){return typeof t==='number'&&Number.isSafeInteger(t)&&t>=now-35*86400000&&t<=now+60000;};
+    var named=function(x){return typeof x==='string'&&x.trim().length>0&&x.length<=320;};
+    var hasTime=function(item,key){return item&&validTime(item[key||'time']);};
+    var compact=function(list,min,max){return Array.isArray(list)&&list.length>=min&&list.length<=max;};
+    var good=true;
     function scan(x,depth) {
-      if(bad||depth>10||!x||typeof x!=='object')return;
+      if(!good||depth>12||!x||typeof x!=='object')return;
       Object.keys(x).forEach(function(k){
-        if(/^(time|lastTime|arrival|createdAt|updatedAt)$/.test(k)&&x[k]!=null){
-          var t=Number(x[k]);if(!Number.isFinite(t)||t>now+60000||t<now-35*86400000)bad=true;
-        } else if(x[k]&&typeof x[k]==='object')scan(x[k],depth+1);
+        if(/^(time|lastTime|arrival|createdAt|updatedAt)$/.test(k)&&x[k]!=null&&!validTime(x[k]))good=false;
+        else if(x[k]&&typeof x[k]==='object')scan(x[k],depth+1);
       });
     }
     scan(data,0);
-    return !bad;
+    if(!good)return false;
+    if(id==='chat'){
+      var names={};var group=false;var hasUser=false;
+      if(list.length<5||list.length>8)return false;
+      if(!list.every(function(c){
+        if(!c||!named(c.name)||!named(c.relationship)||!compact(c.messages,8,12))return false;
+        if(names[c.name])return false;names[c.name]=true;
+        if(/群/.test(c.name)||/群/.test(c.relationship))group=true;
+        if(c.id==='user'||c.name==='你'||c.name==='用户')hasUser=true;
+        return c.messages.every(function(m){
+          return m&&['me','ai','system'].indexOf(m.side)>=0&&named(m.text)&&hasTime(m)&&
+            (m.side!=='system'||m.status==='recalled');
+        });
+      }))return false;
+      return group&&hasUser&&list.some(function(c){
+        return c.messages.some(function(m){return m.status==='recalled';});
+      })&&list.some(function(c){
+        return c.messages.some(function(m){return m.status==='read_no_reply';});
+      });
+    }
+    if(id==='moments')return compact(list,3,5)&&list.every(function(m){
+      return named(m.text)&&hasTime(m)&&named(m.image)&&compact(m.comments,1,8)&&
+        m.comments.every(function(c){return named(c.name)&&named(c.text);});
+    })&&list.some(function(m){return m.hesitated||m.visibility==='部分可见';});
+    if(id==='browser')return compact(list,6,12)&&list.every(function(h){return named(h.query)&&hasTime(h);})&&
+      list.filter(function(h){var hr=new Date(h.time).getHours();return hr>=0&&hr<4;}).length>=2&&
+      list.some(function(h){return h.deleted===true||/清除|删除/.test(h.query);})&&
+      compact(data.bookmarks,2,3)&&data.bookmarks.every(function(b){return named(b.title)&&named(b.summary);});
+    if(id==='notes')return compact(list,3,5)&&compact(data.locked,2,3)&&
+      list.concat(data.locked).every(function(n){
+        return named(n.title)&&named(n.text)&&hasTime(n,'createdAt')&&hasTime(n,'updatedAt')&&n.createdAt<=n.updatedAt;
+      });
+    if(id==='wallet'){
+      if(!compact(list,6,12)||typeof data.balance!=='number'||!Number.isFinite(data.balance)||data.balance<0)return false;
+      var income=list.filter(function(t){return t&&Number(t.amount)>0;}),expense=list.filter(function(t){return t&&Number(t.amount)<0;});
+      if(!compact(income,1,2)||!compact(expense,5,8))return false;
+      if(!list.every(function(t){return named(t.merchant)&&named(t.type)&&hasTime(t)&&typeof t.amount==='number'&&Number.isFinite(t.amount)&&Math.abs(t.amount)<10000000;}))return false;
+      var spentFacts=arr(facts).filter(function(f){return f&&Number(f.amount)<0;}).slice(-4);
+      return spentFacts.every(function(f){return list.some(function(t){
+        return t.merchant===f.place&&Math.abs(t.amount-f.amount)<.011&&Math.abs(t.time-f.time)<=15*60000;
+      });});
+    }
+    if(id==='music')return compact(list,5,8)&&list.every(function(t){return named(t.title)&&named(t.artist)&&hasTime(t);})&&
+      compact(data.playlists,2,3)&&data.playlists.every(function(p){return named(p.name)&&compact(p.tracks,2,3);})&&
+      compact(data.top,3,3)&&data.top.every(function(t){return named(t.title)&&num(t.plays,0)>=0;})&&
+      list.some(function(t){var h=new Date(t.time).getHours();return t.repeat&&h>=0&&h<4;});
+    if(id==='map'){
+      if(!compact(list,3,5)||!list.every(function(p){return named(p.place)&&hasTime(p,'arrival')&&named(p.thought)&&num(p.durationMinutes,-1)>=0;}))return false;
+      if(!list.every(function(p,i){return !i||p.arrival>=list[i-1].arrival;}))return false;
+      var truth=arr(facts).slice(-4);
+      return truth.length===0||list.filter(function(p){
+        return truth.some(function(f){return p.place===f.place&&Math.abs(p.arrival-f.time)<=15*60000;});
+      }).length>=Math.min(2,truth.length);
+    }
+    if(id==='album')return compact(list,5,8)&&compact(data.hidden,3,5)&&
+      list.concat(data.hidden).every(function(p){return named(p.description)&&hasTime(p);})&&
+      Number.isInteger(data.total)&&data.total>=list.length;
+    if(id==='device')return compact(list,5,5)&&list.every(function(a){return named(a.name)&&num(a.minutes,-1)>=0;})&&
+      Number.isFinite(data.screenMinutes)&&data.screenMinutes>=0&&data.screenMinutes<=1440&&
+      Number.isFinite(data.battery)&&data.battery>=0&&data.battery<=100;
+    if(id==='forum')return compact(list,3,5)&&list.every(function(p){
+      return named(p.title)&&named(p.text)&&hasTime(p)&&compact(p.comments,1,20)&&
+        p.comments.every(function(c){return named(c.name)&&named(c.text);});
+    });
+    return false;
   }
   function mount(opts) {
     var role=opts.role, roleId=String(role.id!==undefined&&role.id!==null?role.id:opts.requestedId||'0');
@@ -463,7 +525,7 @@
       waiting=true;notice='正在生成当前板块，不会重写其他板块。';render();
       var requestRoleId=roleId,requestNow=Date.now();
       api.completeJSON({system:'你是一位虚构角色生活资料编剧，只返回合法 JSON，不涉及真实用户隐私。',user:promptFor(id,role,data,requestNow),timeoutMs:60000,temperature:.85}).then(function(result){
-        if(!result||!result.ok||!valid(id,result.data,requestNow))throw new Error('生成内容结构、数量或时间不合要求，原记录已保留');
+        if(!result||!result.ok||!valid(id,result.data,requestNow,data.facts))throw new Error('生成内容结构、数量或时间不合要求，原记录已保留');
         if(roleId!==requestRoleId)return;
         data.sections[id]=result.data;data.source[id]='ai';commit();
         notice='当前板块已更新，其他板块没有改变。';
