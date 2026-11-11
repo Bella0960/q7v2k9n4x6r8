@@ -229,9 +229,32 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
   }
   function saveHistory(list){
     try {
-      if(window.PhoneStorage && typeof window.PhoneStorage.saveChatHistory==='function') return window.PhoneStorage.saveChatHistory(roleId,list);
-    } catch(e) {}
-    try { localStorage.setItem(historyKey,JSON.stringify(list)); return true; } catch(e) { return false; }
+      if(!Array.isArray(list)) throw new Error('聊天记录格式无效');
+      var wrote=false, verified;
+      if(window.PhoneStorage && typeof window.PhoneStorage.saveChatHistory==='function') {
+        wrote=window.PhoneStorage.saveChatHistory(roleId,list)===true;
+        if(!wrote) throw new Error('PhoneStorage 写入失败');
+        if(typeof window.PhoneStorage.getChatHistory!=='function') throw new Error('缺少聊天记录读回接口');
+        verified=window.PhoneStorage.getChatHistory(roleId);
+      } else {
+        localStorage.setItem(historyKey,JSON.stringify(list));
+        wrote=true;
+        verified=JSON.parse(localStorage.getItem(historyKey)||'null');
+      }
+      var expected=list.length?list[list.length-1]:null;
+      var actual=Array.isArray(verified)&&verified.length?verified[verified.length-1]:null;
+      if(!wrote || !Array.isArray(verified) || verified.length!==list.length ||
+          (expected && (!actual || actual.role!==expected.role || actual.type!==expected.type ||
+            actual.time!==expected.time || actual.text!==expected.text ||
+            actual.mode!==expected.mode || actual.journeyId!==expected.journeyId ||
+            actual.journeyStage!==expected.journeyStage))) {
+        throw new Error('聊天记录写入后校验失败');
+      }
+      return true;
+    } catch(error) {
+      console.error('[Journey] chat history persistence failed:',error);
+      return false;
+    }
   }
   function saveState(){ try { localStorage.setItem(stateKey,JSON.stringify(state)); } catch(e) {} }
   function loadState(){ try { var s=JSON.parse(localStorage.getItem(stateKey)||'null'); return s && typeof s==='object' ? s : null; } catch(e) { return null; } }
@@ -259,23 +282,40 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
     return fallbackMessages[3];
   }
   function appendJourneyMessage(stageIndex){
-    if(!state || stageIndex<0 || stageIndex>3) return;
+    if(!state || stageIndex<0 || stageIndex>3) return false;
     state.sentStages=Array.isArray(state.sentStages)?state.sentStages:[];
-    if(state.sentStages.indexOf(stageIndex)!==-1) return;
+    var journeyId=String(state.startedAt);
+    var list=loadHistory();
+    // 历史是最终事实来源：即使行程状态保存失败，刷新后也不会重复插入同一阶段消息。
+    var existing=list.some(function(message){
+      return message && message.mode==='journey' &&
+        String(message.journeyId||'')===journeyId &&
+        Number(message.journeyStage)===stageIndex;
+    });
+    if(existing){
+      if(state.sentStages.indexOf(stageIndex)===-1) state.sentStages.push(stageIndex);
+      saveState();
+      return true;
+    }
+    if(state.sentStages.indexOf(stageIndex)!==-1) return true;
+
     var messageList=Array.isArray(state.messages)?state.messages:fallbackMessages;
     var text=String(messageList[stageIndex]||generateFallbackText(stageIndex)).trim();
     if(!text) text=generateFallbackText(stageIndex);
-    var list=loadHistory();
     var messageTime=Number(state.startedAt||Date.now()) + stages[stageIndex].at;
-    var entry={role:'assistant',text:text,time:messageTime,mode:'journey',journeyId:String(state.startedAt),journeyStage:stageIndex,scene:state.scene,type:'text'};
+    var entry={role:'assistant',text:text,time:messageTime,mode:'journey',journeyId:journeyId,journeyStage:stageIndex,scene:state.scene,type:'text'};
     if(stageIndex===0){
       entry.type='location';
       entry.location={label:'已开启位置共享：正在前往'+state.scene+' · 预计30秒到达'};
     }
     list.push(entry);
-    if(!saveHistory(list)){ showStorageWarning(); }
+    if(!saveHistory(list)){
+      showStorageWarning();
+      return false;
+    }
     state.sentStages.push(stageIndex);
     saveState();
+    return true;
   }
   var storageWarned=false;
   function showStorageWarning(){
@@ -335,6 +375,8 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
     var stageIndex=0;
     for(var i=0;i<stages.length;i++){if(elapsed>=stages[i].at)stageIndex=i;}
     if(state.lastStage!==stageIndex){state.lastStage=stageIndex;saveState();updateStage(stageIndex);}
+    // 保存失败时在后续帧重试；appendJourneyMessage 会先检查历史避免重复写入。
+    if(stageIndex<4) appendJourneyMessage(stageIndex);
     if(elapsed>=totalDuration){gotoStory();return;}
     animationId=window.requestAnimationFrame(tick);
   }
