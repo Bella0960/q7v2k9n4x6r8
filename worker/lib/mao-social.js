@@ -69,12 +69,12 @@ export function createMaoSocial({ store, accountAuth, env = {}, now = () => Date
   });
 
   async function rotate(actor) {
-    const time = now();
     const bytes = new Uint8Array(32);
     crypto.getRandomValues(bytes);
     const code = Array.from(bytes, x => x.toString(16).padStart(2, '0')).join('');
     const hash = await sha256Hex(code);
     return transaction(() => {
+      const time = now();
       assertSession(actor, time);
       const recent = one("SELECT COUNT(*) AS n FROM mao_social_codes WHERE owner_id = ? AND created_at > ?",
         actor.account_id, time - 3600000);
@@ -140,9 +140,12 @@ export function createMaoSocial({ store, accountAuth, env = {}, now = () => Date
       throw new ApiError(400, 'SOCIAL_DIRECTION_INVALID', '申请列表方向无效');
     }
     const field = direction === 'incoming' ? 'recipient_id' : 'requester_id';
-    const list = rows("SELECT * FROM mao_social_requests WHERE " + field +
-      " = ? ORDER BY created_at DESC LIMIT 100", actor.account_id);
-    return ok({ ownerAccountId: actor.account_id, direction, requests: list.map(requestView) });
+    return transaction(() => {
+      assertSession(actor, now());
+      const list = rows("SELECT * FROM mao_social_requests WHERE " + field +
+        " = ? ORDER BY created_at DESC LIMIT 100", actor.account_id);
+      return ok({ ownerAccountId: actor.account_id, direction, requests: list.map(requestView) });
+    });
   }
 
   function respond(actor, id, action) {
@@ -214,7 +217,9 @@ export function createMaoSocial({ store, accountAuth, env = {}, now = () => Date
   }
 
   function listFriends(actor) {
-    const list = rows("SELECT a.id,a.username FROM mao_social_friends f " +
+    return transaction(() => {
+      assertSession(actor, now());
+      const list = rows("SELECT a.id,a.username FROM mao_social_friends f " +
       "JOIN mao_accounts a ON a.id = CASE WHEN f.pair_low = ? THEN f.pair_high ELSE f.pair_low END " +
       "WHERE (f.pair_low = ? OR f.pair_high = ?) AND f.status = 'accepted' " +
       "AND a.status = 'active' AND (a.role = 'super_admin' OR a.authorized_at IS NOT NULL) " +
@@ -223,8 +228,9 @@ export function createMaoSocial({ store, accountAuth, env = {}, now = () => Date
       "(b.blocker_id=f.pair_high AND b.blocked_id=f.pair_low)) " +
       "ORDER BY a.username COLLATE NOCASE LIMIT 100",
       actor.account_id, actor.account_id, actor.account_id);
-    return ok({ ownerAccountId: actor.account_id,
-      friends: list.map(row => ({ id: row.id, displayName: row.username })) });
+      return ok({ ownerAccountId: actor.account_id,
+        friends: list.map(row => ({ id: row.id, displayName: row.username })) });
+    });
   }
 
   function manageFriend(actor, peer, action) {
@@ -254,13 +260,13 @@ export function createMaoSocial({ store, accountAuth, env = {}, now = () => Date
   }
 
   async function chat(request, actor, peer, method) {
-    const time = now();
     if (method === 'GET') {
       const after = Number(new URL(request.url).searchParams.get('after') || 0);
       if (!Number.isSafeInteger(after) || after < 0) {
         throw new ApiError(400, 'SOCIAL_CURSOR_INVALID', '消息游标不合法');
       }
       return transaction(() => {
+        const time = now();
         assertSession(actor, time);
         const [low, high] = friendship(actor.account_id, peer);
         const list = rows("SELECT seq,id,sender_id,recipient_id,body,created_at FROM mao_social_messages " +
@@ -278,6 +284,7 @@ export function createMaoSocial({ store, accountAuth, env = {}, now = () => Date
       throw new ApiError(400, 'SOCIAL_MESSAGE_INVALID', '消息内容长度不符合要求');
     }
     return transaction(() => {
+      const time = now();
       assertSession(actor, time);
       const [low, high] = friendship(actor.account_id, peer);
       const old = one("SELECT * FROM mao_social_messages WHERE sender_id=? AND client_message_id=?",
