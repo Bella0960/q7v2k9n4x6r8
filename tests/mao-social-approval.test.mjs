@@ -19,7 +19,7 @@ const profile = [
   [founder, 'Founder', 'super_admin', 'active', now]
 ];
 
-function setup({ enabled = true, nowFn = () => now } = {}) {
+function setup({ enabled = true, chatEnabled = true, nowFn = () => now } = {}) {
   const db = new DatabaseSync(':memory:');
   db.exec("PRAGMA foreign_keys=ON");
   db.exec("CREATE TABLE mao_accounts " +
@@ -77,7 +77,8 @@ function setup({ enabled = true, nowFn = () => now } = {}) {
     }
   };
   const service = createMaoSocial({ store, accountAuth,
-    env: { MAO_SOCIAL_ENABLED: enabled ? 'true' : 'false' }, now: nowFn });
+    env: { MAO_SOCIAL_ENABLED: enabled ? 'true' : 'false',
+      MAO_SOCIAL_CHAT_ENABLED: chatEnabled ? 'true' : 'false' }, now: nowFn });
   async function call(who, path, method = 'GET', body) {
     const request = new Request('https://mao.example' + path, {
       method,
@@ -388,4 +389,26 @@ test('release build retains the original whole-app gate before social acceptance
   }
   assert.match(pkg.scripts['test:social:approval'], /tests\/mao-social-approval\.test\.mjs/);
   assert.match(pkg.scripts['test:social:approval'], /tests\/mao-social-mobile-runtime\.test\.mjs/);
+});
+
+test('social chat remains unavailable without a separate E2EE QA opt-in', async () => {
+  const ctx = setup({ chatEnabled: false });
+  try {
+    const id = 'chat_off_0001';
+    const inviteCode = await invite(ctx, 'alice-session', 'bob-session', id);
+    assert.equal(inviteCode.applied.body.request.status, 'pending_peer');
+    await ctx.call('bob-session', '/api/social/friend-requests/' + id + '/accept', 'POST');
+    await ctx.call('founder-session', '/api/admin/social/friend-approvals/' + id + '/approve', 'POST');
+    const messagesPath = '/api/social/chats/' + bob + '/messages';
+    const read = await ctx.call('alice-session', messagesPath);
+    const write = await ctx.call('alice-session', messagesPath, 'POST', {
+      clientMessageId: 'blocked_unencrypted_message_1', text: 'Private text'
+    });
+    assert.equal(read.status, 503);
+    assert.equal(read.code, 'SOCIAL_CHAT_NOT_ENABLED');
+    assert.equal(write.code, 'SOCIAL_CHAT_NOT_ENABLED');
+    assert.equal(ctx.exec('SELECT COUNT(*) AS n FROM mao_social_messages')[0].n, 0);
+    assert.equal((await ctx.call('alice-session', '/api/social/friends')).body.friends.length, 1,
+      'friendship administration remains testable even when chat is disabled');
+  } finally { ctx.close(); }
 });
