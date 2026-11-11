@@ -122,3 +122,18 @@ test('manual continuation and explicit comment continuation share the same safe 
   assert.doesNotMatch(detail,/story\.finished=ending\|\|/);
   assert.match(detail,/post\.gossipStory=previousStory/);
 });
+
+test('do not auto-spoil when the reader asks the author to stop',()=>{
+  for(const message of ['不要继续说','先别讲了','别剧透','暂停更新','不用再讲','先别说结局']){
+    assert.equal(G.wantsContinuation(message),false,message);
+  }
+});
+
+test('legacy premature finished flag does not hide the missing final chapter',()=>{
+  const p={gossipStory:{outlineId:'perfect_couple',chapter:3,maxChapters:4,finished:true},
+    comments:[{source:'gossip-author',gossipChapter:3,text:'旧版本提前完结的第三回'}]};
+  const progress=G.progress(p);
+  assert.equal(progress.chapter,3);
+  assert.equal(progress.nextChapter,4);
+  assert.equal(progress.finished,false);
+});
