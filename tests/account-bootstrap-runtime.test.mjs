@@ -132,7 +132,7 @@ test('network failure after submit checks founder state without repeating POST',
   assert.equal(page.calls.filter(call => call.path === '/api/admin/bootstrap').length, 1);
   assert.equal(statusReads, 3, 'initial readiness, pre-submit, post-error read-only status');
   assert.deepEqual(page.redirects, []);
-  assert.match(page.nodes.bootstrapError.textContent, /没有获得成功回执/);
+  assert.match(page.nodes.bootstrapError.textContent, /管理员尚未创建/);
   assert.match(page.nodes.bootstrapError.textContent, /NETWORK_ERROR/);
   assert.equal(page.nodes.bootstrapSubmit.disabled, false);
 });
@@ -211,4 +211,30 @@ test('failed manual preflight shows an error code and never sends founder creden
   assert.match(page.nodes.bootstrapConnectionStatus.textContent, /NETWORK_ERROR/);
   assert.equal(page.calls.filter(call => call.path === '/api/admin/bootstrap').length, 0);
   assert.equal(page.nodes.bootstrapTestConnection.disabled, false);
+});
+
+test('server 503 uses sanitized origin error code and status after read-only reconciliation', async () => {
+  const page = mount(async path => {
+    if (path.endsWith('/status')) return result({ ok: true, initialized: false, configured: true });
+    if (path.endsWith('/preflight')) return result({ ok: true, initialized: false, configured: true });
+    return result({ ok: false, error: { code: 'BOOTSTRAP_PASSWORD_DERIVATION_FAILED', message: '管理员创建失败' } }, 503);
+  });
+  await page.settle();
+  await page.submit();
+  assert.match(page.nodes.bootstrapError.textContent, /BOOTSTRAP_PASSWORD_DERIVATION_FAILED/);
+  assert.match(page.nodes.bootstrapError.textContent, /HTTP 503/);
+  assert.equal(page.calls.filter(call => call.path === '/api/admin/bootstrap').length, 1);
+});
+
+test('non-JSON Cloudflare error response retains the HTTP status instead of a generic retry prompt', async () => {
+  const page = mount(async path => {
+    if (path.endsWith('/status')) return result({ ok: true, initialized: false, configured: true });
+    if (path.endsWith('/preflight')) return result({ ok: true, initialized: false, configured: true });
+    return { ok: false, status: 520, async json() { throw new SyntaxError('not JSON'); } };
+  });
+  await page.settle();
+  await page.submit();
+  assert.match(page.nodes.bootstrapError.textContent, /HTTP_520/);
+  assert.match(page.nodes.bootstrapError.textContent, /HTTP 520/);
+  assert.equal(page.calls.filter(call => call.path === '/api/admin/bootstrap').length, 1);
 });
