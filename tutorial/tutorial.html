@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#F7F7F9">
+  <meta name="theme-color" content="#FBFBFC">
   <title>教程 · 小手机</title>
   <style>
     :root { color-scheme: light; --ink:#111; --muted:#777; --soft:#F5F5F7; --line:#E7E7EB; --red:#C33B35; }
@@ -161,6 +161,130 @@
     }
 
     @media (min-width:620px) { .page { padding-left:26px; padding-right:26px; } .guide-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .guide-card { display:flex; flex-direction:column; } .guide-actions { margin-top:auto; padding-top:12px; } .app-list { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+
+
+    /* API-first handbook: quiet monochrome, content before checklist. */
+    html, body { background:#FBFBFC; }
+    .page { width:min(760px,100%); padding:calc(14px + env(safe-area-inset-top)) 18px calc(35px + env(safe-area-inset-bottom)); }
+    .topbar { padding:6px 0 22px; }
+    .top-kicker { font-size:10px; letter-spacing:.06em; }
+    .hero { padding:8px 0 21px; }
+    .eyebrow { font-size:10px; color:#888; letter-spacing:.08em; }
+    h1 { font-size:31px; line-height:1.16; letter-spacing:-.05em; margin:10px 0 11px; }
+    .intro { font-size:14px; line-height:1.85; color:#666; max-width:600px; }
+    .section-head { margin:18px 0 14px; }
+    .section-head h2 { font-size:17px; }
+    .section-head span { font-size:11px; }
+    .topic-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; }
+    .topic { min-height:116px; padding:14px; background:#fff; border:1px solid #E7E7EA; border-radius:13px; display:flex; flex-direction:column; align-items:flex-start; text-align:left; gap:5px; font:inherit; color:#161616; cursor:pointer; }
+    .topic:focus-visible, .start-guide:focus-visible, .guide-extra summary:focus-visible { outline:2px solid #333; outline-offset:2px; }
+    .topic-index { color:#929298; font-size:9px; font-weight:550; letter-spacing:.12em; }
+    .topic strong { margin-top:7px; font-size:15px; font-weight:650; letter-spacing:-.02em; }
+    .topic small { font-size:11px; color:#777; line-height:1.6; }
+    .diagnosis { margin:27px 0 18px; padding:19px; background:#F2F2F3; border:1px solid #E7E7EA; border-radius:15px; }
+    .diagnosis-kicker { color:#888; font-size:10px; letter-spacing:.08em; }
+    .diagnosis h2 { margin:7px 0 6px; font-size:19px; font-weight:650; letter-spacing:-.03em; }
+    .diagnosis>p { margin:0 0 14px; color:#777; font-size:12px; line-height:1.75; }
+    .diagnosis-label { display:block; font-size:11px; font-weight:600; margin:12px 0 7px; }
+    .diagnosis select { display:block; width:100%; min-height:44px; padding:0 11px; border-radius:10px; border:1px solid #D8D8DD; background:#fff; color:#222; font:inherit; font-size:13px; }
+    .diagnosis .diagnosis-answer { margin:13px 0 14px; font-size:13px; color:#3F3F42; line-height:1.8; }
+    .diagnosis-link { font-size:12px; font-weight:600; color:#222; text-decoration:underline; text-underline-offset:3px; }
+    .updates { margin:17px 0; padding:12px 15px; border-radius:11px; background:#fff; }
+    .updates-head { cursor:pointer; }
+    .updates-head .updates-title { font-size:12px; font-weight:550; }
+    .update-list { padding-top:9px; }
+    .tracking { margin:18px 0 12px; border-top:1px solid #E7E7EA; border-bottom:1px solid #E7E7EA; padding:12px 0; }
+    .tracking summary { display:flex; justify-content:space-between; gap:10px; cursor:pointer; color:#666; font-size:12px; }
+    .tracking summary span { color:#888; font-variant-numeric:tabular-nums; }
+    .tracking-note { font-size:11px; color:#999; line-height:1.7; }
+    .tracking-actions { display:flex; gap:8px; margin-top:10px; }
+    .tools { margin:20px 0 10px; }
+    .search { font-size:13px; border-radius:11px; height:44px; }
+    .filters { margin:4px 0 10px; padding-bottom:6px; }
+    .filter { font-size:11px; min-height:34px; }
+    .faq-section { margin:25px 0 23px; }
+    .faq-list { gap:0; border-top:1px solid #E6E6EA; }
+    .faq-item { border:0; border-bottom:1px solid #E6E6EA; border-radius:0; background:transparent; padding:15px 1px; }
+    .faq-item summary { font-size:13px; font-weight:550; line-height:1.6; }
+    .faq-item p { color:#666; font-size:12px; line-height:1.8; }
+    .guide-grid { display:grid; grid-template-columns:1fr !important; gap:0; }
+    .guide-card { display:block !important; padding:16px 1px; border:0; border-bottom:1px solid #E6E6EA; border-radius:0; background:transparent; }
+    .guide-main { display:flex; justify-content:space-between; align-items:center; gap:14px; }
+    .guide-title-wrap { min-width:0; }
+    .guide-category { color:#9B9B9B; font-size:10px; letter-spacing:0; }
+    .guide-title { margin:5px 0 4px; font-size:15px; }
+    .guide-summary { font-size:12px; line-height:1.75; }
+    .start-guide { flex-shrink:0; min-height:38px; padding:0 12px; border:1px solid #222; background:#222; color:#fff; border-radius:10px; font-size:11px; }
+    .start-guide:active { background:#444; }
+    .guide-extra { margin-top:12px; }
+    .guide-extra summary { display:inline-block; padding:3px 0; cursor:pointer; color:#777; font-size:11px; }
+    .guide-extra .guide-location { margin:10px 0 0; font-size:12px; padding:11px; background:#F2F2F4; }
+    .guide-mini-progress { margin-top:9px; color:#888; font-size:11px; }
+    .guide-extra .test-box { margin-top:8px; }
+    .guide-extra .test-title { font-size:12px; }
+    .guide-extra .test-description, .test-mark { font-size:12px; }
+    .guide-extra .note { min-height:62px; font-size:12px; }
+    .guide-actions { margin-top:10px; padding-top:0 !important; }
+    .guide-actions .open-link { padding:0; min-height:30px; color:#222; background:transparent; border-radius:0; text-decoration:underline; text-underline-offset:3px; font-size:12px; }
+    .app-directory { margin-top:31px; padding:14px 0; border-top:1px solid #E6E6EA; }
+    .app-directory>summary { display:flex; justify-content:space-between; cursor:pointer; font-size:14px; font-weight:600; }
+    .app-directory>summary span { color:#999; font-size:11px; font-weight:400; }
+    .app-list { margin-top:18px; }
+    .footer { font-size:11px; line-height:1.85; }
+    .walkthrough { background:#fff; border:0; box-shadow:0 8px 38px rgba(0,0,0,.13); }
+    .walk-body { padding:16px 18px 24px; }
+    .walk-visual { display:none; }
+    .walk-step-title { font-size:13px; color:#999; margin:14px 0 5px; }
+    .walk-step-copy { font-size:15px; line-height:1.85; color:#222; }
+    .walk-tip { font-size:12px; line-height:1.75; background:#F5F5F6; }
+    .walk-practice { background:#FBFBFC; }
+    .walk-practice strong { font-size:12px; }
+    .walk-practice p { font-size:12px; }
+    .walk-done { font-size:11px; color:#777; }
+    @media (max-width:370px) { .topic { min-height:125px; padding:12px; } .topic strong { font-size:14px; } .topic small { font-size:10px; } .start-guide { padding:0 9px; } }
+
+
+    .catalog { margin:24px 0 7px; border-top:1px solid #E6E6EA; padding:14px 0; }
+    .catalog-summary { display:flex; justify-content:space-between; gap:10px; cursor:pointer; font-size:14px; font-weight:600; color:#222; }
+    .catalog-summary span { font-size:11px; font-weight:400; color:#999; }
+    .catalog[open] .filters { margin-top:15px; }
+
+    .walk-article[hidden], #walkStepperContent[hidden], .walk-progress-wrap[hidden], .walk-foot button[hidden] { display:none !important; }
+    .walk-article { padding:2px 0 12px; }
+    .walk-article-intro { margin:0 0 24px; color:#555; font-size:15px; line-height:1.85; }
+    .walk-article-section { padding:19px 0; border-top:1px solid #EAEAEA; }
+    .walk-article-section h3 { display:flex; align-items:baseline; gap:10px; margin:0 0 10px; color:#151515; font-size:16px; font-weight:650; }
+    .walk-article-section h3 span { color:#AAA; font-size:11px; letter-spacing:.08em; font-variant-numeric:tabular-nums; }
+    .walk-article-section p { margin:0; color:#525252; font-size:15px; line-height:1.85; white-space:pre-line; overflow-wrap:anywhere; }
+    .walk-article-links { padding-top:18px; border-top:1px solid #EAEAEA; }
+    .walk-article-links h3 { margin:0 0 10px; font-size:13px; }
+    .walk-article-links a { display:flex; justify-content:space-between; gap:10px; padding:11px 0; font-size:13px; color:#222; border-bottom:1px solid #EFEFEF; text-decoration:none; }
+    .walk-article-links a small { font-size:11px; color:#999; }
+    .walk-article-example { border:1px solid #E6E6E8; background:#F8F8F9; padding:12px; border-radius:10px; margin:16px 0 20px; }
+    .walk-article-example strong { font-size:12px; font-weight:650; }
+    .walk-article-example p { margin:8px 0 0; font-size:14px; color:#444; line-height:1.85; overflow-wrap:anywhere; }
+    .walk-article-note { padding:13px 14px; background:#F5F5F5; color:#555; border-radius:10px; font-size:12px; line-height:1.85; margin-top:15px; }
+    .diagnosis-disclaimer { font-size:11px !important; color:#999 !important; margin-top:10px !important; }
+    .walk-foot a { overflow-wrap:anywhere; }
+
+    .storage-alert { margin:12px 0; padding:12px 14px; background:#F7F2F1; border:1px solid #E6DAD8; border-radius:10px; color:#7A3934; font-size:12px; line-height:1.75; }
+    .storage-alert[hidden] { display:none !important; }
+
+    /* Phone accessibility and monochrome finish. */
+    .back { min-height:44px; align-items:center; }
+    .start-guide { min-height:44px; }
+    .walk-close { width:44px; height:44px; flex-shrink:0; border-radius:50%; }
+    .walk-foot button, .walk-foot a { min-height:44px; }
+    .walk-foot { gap:8px; }
+    .walk-foot .walk-open { text-align:center; }
+    .status.issue { background:#F1F1F1; color:#555; }
+    .storage-alert { background:#F7F7F7; border-color:#D8D8D8; color:#444; }
+    .storage-alert::before { content:''; display:inline-block; width:5px; height:5px; border-radius:50%; background:#B64036; margin-right:8px; vertical-align:2px; }
+    .walkthrough { max-height:calc(100dvh - 24px); }
+    @media (prefers-reduced-motion:reduce) {
+      .progress-fill, .walk-progress-bar { transition:none; }
+    }
+
   </style>
 </head>
 <body>
@@ -174,67 +298,96 @@
     </header>
 
     <section class="hero">
-      <div class="eyebrow">MAOMAO PHONE · USER GUIDE</div>
-      <h1>使用教程</h1>
-      <p class="intro">功能在哪、怎么打开、应该怎么测，都放在这里。每项教程都能记录测试结果和问题，不用再靠记忆找入口。</p>
-      <div class="hero-meta">
-        <span class="meta-chip">按功能查入口</span>
-        <span class="meta-chip">逐步操作</span>
-        <span class="meta-chip">记录测试与 Bug</span>
-        <span class="meta-chip" id="guideVersion">指南版本</span>
+      <div class="eyebrow">HELP / 使用手册</div>
+      <h1>把小手机配置好</h1>
+      <p class="intro">不用从桌面手势学起。先把最容易卡住的 API、模型、生图与语音讲清楚，再去探索其他功能。</p>
+    </section>
+
+    <section class="topics" aria-labelledby="topicsTitle">
+      <div class="section-head"><h2 id="topicsTitle">从真正难的地方开始</h2><span>点选课程即可阅读</span></div>
+      <div class="topic-grid" id="topicGrid">
+        <button type="button" class="topic" data-open-guide="api-first"><span class="topic-index">01 / START</span><strong>API 是什么</strong><small>在哪申请、Key 有什么用</small></button>
+        <button type="button" class="topic" data-open-guide="api-url-v1"><span class="topic-index">02 / CONNECT</span><strong>地址与 /v1</strong><small>Base URL、模型、连接测试</small></button>
+        <button type="button" class="topic" data-open-guide="api-errors"><span class="topic-index">03 / FIX</span><strong>连接失败怎么办</strong><small>401、404、429 与跨域</small></button>
+        <button type="button" class="topic" data-open-guide="api-params"><span class="topic-index">04 / TUNE</span><strong>温度与参数</strong><small>Temperature、Top P、Tokens</small></button>
+        <button type="button" class="topic" data-open-guide="api-images"><span class="topic-index">05 / IMAGE</span><strong>图片生成</strong><small>图片模型和生图接口</small></button>
+        <button type="button" class="topic" data-open-guide="minimax-voice-guide"><span class="topic-index">06 / VOICE</span><strong>MiniMax 语音</strong><small>Group ID、Voice ID · 发声待验收</small></button>
       </div>
     </section>
 
-    <section class="updates" aria-labelledby="updatesTitle">
-      <div class="updates-head">
-        <span class="updates-title" id="updatesTitle">最近更新</span>
-        <span class="updates-date" id="updatesDate">更新记录</span>
-      </div>
+    <section class="diagnosis" aria-labelledby="diagnosisTitle">
+      <div class="diagnosis-kicker">API · 故障定位</div>
+      <h2 id="diagnosisTitle">连接测试显示了什么？</h2>
+      <p>选你看到的提示，先检查最可能的原因。这里只解释，不会使用或上传你的密钥。</p>
+      <label class="diagnosis-label" for="diagnoseSelect">测试结果</label>
+      <select id="diagnoseSelect">
+        <option value="">选择连接结果…</option>
+        <option value="missing">请先填写 API Key / 地址 / 模型</option>
+        <option value="success">连接成功，但其他功能不能用</option>
+        <option value="invalid-result">HTTP 200，但聊天仍然不能用</option>
+        <option value="400">400 · 请求格式或模型参数</option>
+        <option value="401">401 · API Key 错误</option>
+        <option value="403">403 · 无权访问</option>
+        <option value="404">404 · 地址或模型不存在</option>
+        <option value="429">429 · 过于频繁 / 额度不足</option>
+        <option value="5xx">500 / 502 / 503 / 504 · 服务端异常</option>
+        <option value="timeout">请求超时</option>
+        <option value="network">Failed to fetch / CORS / 网络错误</option>
+      </select>
+      <p class="diagnosis-answer" id="diagnoseAnswer" aria-live="polite">选一个实际出现的提示，即可看到原因和先检查什么。这里不会发送网络请求。</p>
+      <p class="diagnosis-disclaimer">不同服务商的接口约定可能不同；这里是排查方向，不代表已经检测你的 API 配置。</p>
+      <a class="diagnosis-link" href="../settings/settings.html#api">去真实的 API 设置页面 →</a>
+    </section>
+
+    <details class="updates" aria-labelledby="updatesTitle">
+      <summary class="updates-head"><span class="updates-title" id="updatesTitle">查看本次更新内容</span><span class="updates-date" id="updatesDate">更新记录</span></summary>
       <div class="update-list" id="updateList"><div class="update-item"><span class="update-dot"></span><span>正在读取更新记录…</span></div></div>
-      <p class="updates-foot">正式功能合并后同步补充入口和操作步骤；只有经过实际验收的项目才会标记为已验证。</p>
-    </section>
-
-    <div class="test-summary">
-      <span class="summary-copy">你的手机测试进度会保存在当前浏览器，不会修改角色聊天数据。</span>
-      <span class="summary-count" id="testCount">0 / 0 已测试</span>
-    </div>
-    <div class="progress-track" aria-label="测试进度"><div class="progress-fill" id="progressFill"></div></div>
+      <p class="updates-foot">更新说明不等于真实手机验收；尚未验证的项目不会标为通过。</p>
+    </details>
 
     <div class="tools">
       <label class="search-wrap">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"></circle><path d="m16 16 5 5"></path></svg>
-        <input class="search" id="guideSearch" type="search" placeholder="搜索功能名称、入口或操作…" autocomplete="off">
+        <input class="search" id="guideSearch" type="search" placeholder="搜索 API、错误、功能…" autocomplete="off">
       </label>
-      <button class="tool-btn" id="exportTests" type="button">导出测试记录</button>
-      <button class="tool-btn" id="resetTests" type="button">清空进度</button>
     </div>
-    <nav class="filters" id="guideFilters" aria-label="教程分类"></nav>
 
-    <div class="section-head">
-      <h2>功能教程</h2>
-      <span id="visibleCount">正在载入…</span>
-    </div>
-    <section class="guide-grid" id="guideGrid" aria-live="polite"></section>
-
-
+    <p class="storage-alert" id="storageAlert" role="status" hidden></p>
+    <details class="tracking">
+      <summary>测试记录与进度 <span id="testCount">0 / 0 已测试</span></summary>
+      <p class="tracking-note">仅保存在当前浏览器；勾选不等于自动验证成功。</p>
+      <div class="progress-track" aria-label="测试进度"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="tracking-actions">
+        <button class="tool-btn" id="exportTests" type="button">导出记录</button>
+        <button class="tool-btn" id="resetTests" type="button">清空进度</button>
+      </div>
+    </details>
     <section class="faq-section" aria-labelledby="faqTitle">
       <div class="section-head">
         <h2 id="faqTitle">常见问题</h2>
-        <span>按问题快速定位</span>
+        <span>打开问题看答案</span>
       </div>
       <div class="faq-list" id="faqList"></div>
     </section>
 
-    <section class="app-directory" aria-labelledby="appDirectoryTitle">
-      <div class="section-head">
-        <h2 id="appDirectoryTitle">桌面应用速查</h2>
-        <span>点名称可直接打开</span>
-      </div>
+    <details class="catalog" id="catalogDetails">
+      <summary class="catalog-summary">全部课程与操作记录 <span id="visibleCount">正在载入…</span></summary>
+    <nav class="filters" id="guideFilters" aria-label="教程分类"></nav>
+
+
+    <section class="guide-grid" id="guideGrid" aria-live="polite"></section>
+
+
+
+    </details>
+
+    <details class="app-directory" aria-labelledby="appDirectoryTitle">
+      <summary id="appDirectoryTitle">桌面应用入口速查 <span>按需展开</span></summary>
       <div class="app-list" id="appDirectory"></div>
-    </section>
+    </details>
 
     <footer class="footer">
-      教程会随正式版本更新。若某项功能入口改变、页面打不开或实际行为与步骤不符，请在对应教程的测试备注中写下现象，再导出测试记录。当前版本：<span id="footerVersion"></span>。
+      如页面显示与教程不一致，请优先以当前页面及服务商官方文档为准。可在教程中记录问题，但请勿填写 API Key、密码或私人聊天信息。<span id="footerVersion"></span>
     </footer>
   </main>
 
@@ -254,16 +407,18 @@
     <section class="walkthrough" role="dialog" aria-modal="true" aria-labelledby="walkTitle">
       <header class="walk-head">
         <div>
-          <div class="walk-kicker">STEP-BY-STEP WALKTHROUGH</div>
+          <div class="walk-kicker">GUIDE / 学习说明</div>
           <h2 class="walk-title" id="walkTitle">操作教程</h2>
         </div>
         <button class="walk-close" type="button" id="walkClose" aria-label="关闭教程">×</button>
       </header>
-      <div class="walk-progress-wrap">
+      <div class="walk-progress-wrap" id="walkProgressWrap">
         <div class="walk-progress-copy"><span id="walkStepCount">第 1 步</span><span id="walkPercent">0%</span></div>
         <div class="walk-progress-track"><div class="walk-progress-bar" id="walkProgressBar"></div></div>
       </div>
-      <div class="walk-body">
+      <div class="walk-body" id="walkBody">
+        <article class="walk-article" id="walkArticle" hidden></article>
+        <div id="walkStepperContent">
         <div class="walk-route" id="walkRoute"></div>
         <div class="walk-visual">
           <div class="walk-phone" aria-hidden="true">
@@ -277,7 +432,7 @@
           <div>
             <div class="walk-visual-title">界面定位示意</div>
             <div class="walk-visual-target" id="walkVisualTarget">当前步骤</div>
-            <div class="walk-visual-note">示意图用于定位入口；实际布局以打开后的手机页面为准。</div>
+            <div class="walk-visual-note">实际控件以当前版本手机页面为准。</div>
           </div>
         </div>
         <h3 class="walk-step-title" id="walkStepTitle"></h3>
@@ -287,7 +442,8 @@
           <strong>本教程的练习目标</strong>
           <p id="walkPractice"></p>
         </div>
-        <label class="walk-done"><input type="checkbox" id="walkStepDone"> 我已经完成这一步</label>
+        <label class="walk-done"><input type="checkbox" id="walkStepDone"> 标记这一步已阅读（仅本机保存）</label>
+        </div>
       </div>
       <footer class="walk-foot">
         <button type="button" id="walkPrevious">上一步</button>
@@ -297,6 +453,6 @@
     </section>
   </div>
 
-  <script src="tutorial.js?v=20261111v3"></script>
+  <script src="tutorial.js?v=20261111v4"></script>
 </body>
 </html>

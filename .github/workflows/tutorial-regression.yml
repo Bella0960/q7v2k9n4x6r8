@@ -7,6 +7,7 @@ on:
       - 'desktop/**'
       - 'tutorial/**'
       - 'tests/tutorial-page-contract.test.mjs'
+      - 'tests/tutorial-mobile-browser.mjs'
       - 'package.json'
       - 'package-lock.json'
       - 'sw.js'
@@ -38,6 +39,7 @@ on:
       - 'desktop/**'
       - 'tutorial/**'
       - 'tests/tutorial-page-contract.test.mjs'
+      - 'tests/tutorial-mobile-browser.mjs'
       - 'package.json'
       - 'package-lock.json'
       - 'sw.js'
@@ -105,3 +107,9 @@ jobs:
         run: npm ci
       - name: Verify tutorial coverage and navigation contracts
         run: npm run test:tutorial
+      - name: Install Chromium for real phone-layout smoke
+        run: npx playwright install --with-deps chromium
+      - name: Verify mobile tutorial navigation and error states
+        run: npm run test:tutorial:browser
+      - name: Compile application
+        run: npm run build

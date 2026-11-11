@@ -16,6 +16,7 @@ const chatDetail = read('chat/chat/chat-detail.html');
 const guideScript = read('tutorial/tutorial.js');
 const packageJson = JSON.parse(read('package.json'));
 const tutorialWorkflow = read('.github/workflows/tutorial-regression.yml');
+const browserSuite = read('tests/tutorial-mobile-browser.mjs');
 
 test('tutorial script parses without syntax errors', () => {
   assert.doesNotThrow(() => new Function(guideScript));
@@ -104,7 +105,7 @@ test('tutorial provides a real stepper, interface-location illustration, FAQ, an
   assert.match(guideScript, /function moveWalkthrough/);
   assert.match(guideScript, /function renderFaqs/);
   const faqSection = guideScript.slice(guideScript.indexOf('var FAQS = ['), guideScript.indexOf('var APPS = ['));
-  assert.equal((faqSection.match(/^    \['/gm) || []).length, 11, 'expected searchable FAQ entries');
+  assert.equal((faqSection.match(/^    \[/gm) || []).length, 12, 'expected searchable FAQ entries');
 });
 
 test('composer menu guide covers the actual one-to-one and group menu entry labels', () => {
@@ -129,9 +130,9 @@ test('tutorial workflow enforces a guide update when user-facing app pages chang
 });
 
 test('PWA app shell caches the full guide bundle and has a matching test command', () => {
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v203'/);
+  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v204'/);
   assert.ok(serviceWorker.includes("'./tutorial/tutorial.html'"));
-  assert.ok(serviceWorker.includes("'./tutorial/tutorial.js?v=20261111v3'"));
+  assert.ok(serviceWorker.includes("'./tutorial/tutorial.js?v=20261111v4'"));
   assert.equal(packageJson.scripts['test:tutorial'], 'node --test tests/tutorial-page-contract.test.mjs');
 });
 
@@ -140,4 +141,251 @@ test('chat detail scripts parse so the conversation settings handler can bind', 
     .filter(([, attributes]) => !/\bsrc\s*=|\btype\s*=/.test(attributes));
   assert.ok(scripts.some(([, , source]) => /async function sendMsg\(/.test(source)));
   for (const [, , source] of scripts) new Function(source);
+});
+
+const apiSettings = read('settings/settings.html');
+const apiSettingsScript = read('settings/js/settings.js');
+const miniMaxSettings = read('settings/minimax-tts.html');
+
+test('API-first handbook explains credentials, /v1, connection results, sampling, images and MiniMax', () => {
+  for (const chapter of ['api-first', 'api-url-v1', 'api-errors', 'api-params', 'api-images', 'minimax-voice-guide']) {
+    assert.ok(guideScript.includes('"id": "' + chapter + '"'), 'missing technical chapter: ' + chapter);
+    assert.ok(guideHtml.includes('data-open-guide="' + chapter + '"'), 'missing chapter navigation: ' + chapter);
+  }
+  for (const keyword of ['401','403','404','429','CORS','chat/completions','images/generations','Temperature','Top P','Group ID','Voice ID']) {
+    assert.ok(guideScript.includes(keyword), 'missing critical technical concept: ' + keyword);
+  }
+  assert.match(guideHtml, /id="diagnoseSelect"/);
+  assert.match(guideHtml, /id="diagnoseAnswer"/);
+  assert.match(guideHtml, /id="storageAlert"/);
+  assert.match(guideScript, /MIX 和 MiniMax 是同一个语音功能吗/);
+  assert.match(guideScript, /最近最多 14 条聊天消息/);
+  assert.match(guideScript, /function guideCard\(guide\)/);
+  assert.match(guideScript, /\^#guide=/);
+});
+
+test('actual settings link to relevant lessons and temperature zero is saved', () => {
+  for (const chapter of ['api-first','api-url-v1','api-errors','api-params','api-images']) {
+    assert.ok(apiSettings.includes('tutorial.html#guide=' + chapter), 'API settings missing lesson link: ' + chapter);
+  }
+  assert.ok(miniMaxSettings.includes('tutorial.html#guide=minimax-voice-guide'));
+  assert.equal((apiSettingsScript.match(/temperature: Number\.isFinite\(Number\(apiTemperatureInput\.value\)\)/g) || []).length, 2);
+  assert.doesNotMatch(apiSettingsScript, /temperature: parseFloat\(apiTemperatureInput\.value\) \|\| 0\.7/);
+  assert.ok(guideScript.includes('保存只表示配置写到浏览器'));
+});
+
+
+test('technical handbook shows readable chapters and separates voice wiring from settings storage', () => {
+  for (const id of ['walkArticle','walkStepperContent','walkProgressWrap','catalogDetails']) {
+    assert.ok(guideHtml.includes('id="' + id + '"'), 'missing technical article component: ' + id);
+  }
+  assert.match(guideScript, /function renderTechnicalGuide\(guide\)/);
+  assert.match(guideScript, /function isTechnicalGuide\(guide\)/);
+  assert.match(guideScript, /OFFICIAL_PORTALS/);
+  assert.match(guideScript, /尚未核实完整的远程语音合成请求/);
+  assert.match(guideScript, /\$\('walkArticle'\)\.hidden = false/);
+  assert.match(guideScript, /\$\('walkStepperContent'\)\.hidden = false/);
+  assert.match(guideHtml, /class="diagnosis-disclaimer"/);
+  assert.ok(miniMaxSettings.includes('尚不等于完成真实语音连接或播放验收'));
+  assert.ok(miniMaxSettings.includes("return localStorage.getItem(STORAGE_KEY) === serialized"));
+  assert.ok(miniMaxSettings.includes('保存失败，请检查浏览器存储空间和权限'));
+});
+
+test('live connection checks current form and distinguishes success, errors and unsupported response shapes', async () => {
+  const start = apiSettingsScript.indexOf('function friendlyHttpError(status, detail) {');
+  const end = apiSettingsScript.indexOf('// 绑定测试连接按钮点击', start);
+  assert.ok(start >= 0 && end > start, 'cannot isolate connection-test runtime');
+  const functionSource = apiSettingsScript.slice(start, end);
+  const make = new Function(
+    'apiKeyInput','apiUrlInput','apiModelInput','document',
+    'fetch','AbortController','setTimeout','clearTimeout','URL','Date',
+    functionSource + '\nreturn testConnection;'
+  );
+  const scenarios = [
+    { name:'success', code:200, match:/聊天连接成功.*保存全部设置/ },
+    { name:'HTTP 400', code:400, match:/请求格式/ },
+    { name:'HTTP 401', code:401, match:/API Key/ },
+    { name:'HTTP 403', code:403, match:/访问权限/ },
+    { name:'HTTP 404', code:404, match:/模型/ },
+    { name:'HTTP 429', code:429, match:/额度/ },
+    { name:'HTTP 500', code:500, match:/服务器/ },
+    { name:'malformed HTTP 200', code:200, response:{ hello:true }, match:/没有可用的聊天文字结果/ },
+    { name:'empty chat content', code:200, response:{ choices:[{ message:{ content:'' } }] }, match:/没有可用的聊天文字结果/ },
+    { name:'credentials echoed by provider', code:401, response:{ error:{ message:'not-a-real-key should not appear' } }, match:/已隐藏密钥/ },
+    { name:'insecure HTTP', url:'http://example.invalid/v1', match:/HTTPS/ },
+    { name:'CORS', error:'Failed to fetch', match:/CORS/ },
+    { name:'timeout', error:'timeout', abort:true, match:/15 秒/ },
+    { name:'duplicate path', url:'https://example.invalid/v1/chat/completions', match:/移除末尾/ },
+    { name:'empty Key', key:'', match:/请先填写 API Key/ },
+    { name:'invalid URL', url:'not-a-url', match:/有效网址/ }
+  ];
+  for (const scenario of scenarios) {
+    const keyInput = { value: scenario.key === undefined ? 'not-a-real-key' : scenario.key };
+    const urlInput = { value: scenario.url || 'https://example.invalid/v1' };
+    const modelInput = { value:'demo-chat-model' };
+    const button = { disabled:false, textContent:'测试连接' };
+    const message = { innerText:'', style:{} };
+    const calls = [];
+    const fetchMock = async (url, options) => {
+      calls.push({ url, options });
+      if (scenario.error) {
+        const error = new Error(scenario.error);
+        if (scenario.abort) error.name = 'AbortError';
+        throw error;
+      }
+      return {
+        status:scenario.code, ok:scenario.code < 300,
+        statusText:'ERROR',
+        json:async () => scenario.response || (
+          scenario.code === 200
+            ? { choices:[{ message:{ content:'OK' } }] }
+            : { error:{ message:'Provider error' } }
+        )
+      };
+    };
+    const check = make(
+      keyInput,urlInput,modelInput,
+      {getElementById(id) { return id === 'test-msg' ? message : id === 'btn-test-connection' ? button : null; }},
+      fetchMock,AbortController,()=>1,()=>{},URL,Date
+    );
+    await check();
+    assert.match(message.innerText, scenario.match, scenario.name);
+    assert.equal(button.disabled, false, scenario.name + ': unlock');
+    assert.equal(button.textContent, '测试连接', scenario.name + ': label');
+    assert.doesNotMatch(message.innerText, /not-a-real-key/, scenario.name + ': key is not shown');
+    if (scenario.name === 'insecure HTTP' || scenario.name === 'invalid URL' || scenario.name === 'duplicate path' || scenario.name === 'empty Key') {
+      assert.equal(calls.length, 0, scenario.name + ': no request should be sent');
+    }
+    if (scenario.name === 'success') {
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0].url, 'https://example.invalid/v1/chat/completions');
+      const request = JSON.parse(calls[0].options.body);
+      assert.equal(request.model, 'demo-chat-model');
+      assert.equal(Object.prototype.hasOwnProperty.call(request, 'max_tokens'), false);
+      assert.equal(Object.prototype.hasOwnProperty.call(request, 'temperature'), false);
+      assert.equal(request.messages.length, 1);
+    }
+  }
+});
+
+
+test('tutorial storage failures are visible and existing valid progress survives', () => {
+  const script = guideScript;
+  assert.match(script, /return parsed && typeof parsed === 'object' && !Array\.isArray\(parsed\)/);
+  assert.match(script, /测试记录未保存到本机/);
+  assert.match(script, /无法清空本机的测试记录/);
+  assert.match(script, /function saveWalkthroughState\(\) \{[\s\S]*?return saveProgress\(\)/);
+  assert.match(script, /var removed = false/);
+  assert.ok(guideHtml.includes('id="storageAlert"'));
+});
+
+
+test('API profile writes and selection verify persistent storage, including silent failures', () => {
+  const profileCode = apiSettingsScript.slice(
+    apiSettingsScript.indexOf('function saveProfiles(list) {'),
+    apiSettingsScript.indexOf('function getActiveProfile() {')
+  );
+  assert.match(profileCode, /return raw !== null && JSON\.stringify\(JSON\.parse\(raw\)\)/);
+  const create = new Function('window', 'PhoneStorage', 'localStorage',
+    profileCode + '\nreturn { saveProfiles, setActiveProfileVerified };'
+  );
+  const values = new Map();
+  let discardWrites = false;
+  const storage = {
+    setItem(key, value) { if (!discardWrites) values.set(key, String(value)); },
+    getItem(key) { return values.has(key) ? values.get(key) : null; },
+    removeItem(key) { values.delete(key); }
+  };
+  const direct = create({ PhoneStorage:null }, null, storage);
+  assert.equal(direct.saveProfiles([{ id:'one', name:'test' }]), true);
+  discardWrites = true;
+  assert.equal(direct.saveProfiles([{ id:'two', name:'test' }]), false);
+  assert.equal(direct.setActiveProfileVerified('two'), false);
+  discardWrites = false;
+  assert.equal(direct.setActiveProfileVerified('one'), true);
+  const phoneStorage = {
+    saveApiProfiles(list) {
+      // Existing implementation returns void even when its internal rawSet fails.
+      if (!discardWrites) storage.setItem('api_profiles_v1', JSON.stringify(list));
+    },
+    setActiveProfileId(id) { if (!discardWrites) storage.setItem('api_active_profile', id); },
+    getActiveProfileId() { return storage.getItem('api_active_profile') || ''; }
+  };
+  const phone = create({ PhoneStorage:phoneStorage }, phoneStorage, storage);
+  assert.equal(phone.saveProfiles([{ id:'three' }]), true);
+  assert.equal(phone.setActiveProfileVerified('three'), true);
+  discardWrites = true;
+  assert.equal(phone.saveProfiles([{ id:'four' }]), false);
+  assert.equal(phone.setActiveProfileVerified('four'), false);
+  assert.match(apiSettingsScript, /if \(!saveActiveProfile\(collectFormFields\(\)\)\)/);
+  assert.match(apiSettingsScript, /if \(!saveProfiles\(rest\)\)/);
+  assert.match(apiSettingsScript, /return localStorage\.getItem\(API_STORAGE_KEY\) === serialized/);
+});
+
+
+test('direct API setting links resolve to the real configuration panel', () => {
+  assert.match(apiSettings, /<main class="content" id="api">/);
+  assert.match(guideScript, /Reading a technical handbook chapter should not create test progress/);
+  assert.match(guideScript, /activeWalkthrough && !isTechnicalGuide\(activeWalkthrough\)/);
+});
+
+test('editing an existing API profile persists the same entry, not a detached copy', () => {
+  const start = apiSettingsScript.indexOf('function getProfiles() {');
+  const end = apiSettingsScript.indexOf('let allModels = null;', start);
+  assert.ok(start >= 0 && end > start);
+  const isolated = apiSettingsScript.slice(start, end);
+  const create = new Function('window', 'PhoneStorage', 'localStorage', 'API_STORAGE_KEY',
+    isolated + '\nreturn { saveActiveProfile, getProfiles, getActiveProfile };');
+  const values = new Map([
+    ['api_active_profile', 'second'],
+    ['api_profiles_v1', JSON.stringify([
+      { id:'first', name:'first', model:'model-a' },
+      { id:'second', name:'second', model:'model-b' }
+    ])]
+  ]);
+  let discard = false;
+  const storage = {
+    setItem(key, value) { if (!discard) values.set(key, String(value)); },
+    getItem(key) { return values.has(key) ? values.get(key) : null; }
+  };
+  const phone = {
+    // Each read returns a fresh set of objects, matching real localStorage parsing.
+    getApiProfiles() { return JSON.parse(storage.getItem('api_profiles_v1') || '[]'); },
+    saveApiProfiles(list) { storage.setItem('api_profiles_v1', JSON.stringify(list)); },
+    getActiveProfileId() { return storage.getItem('api_active_profile') || ''; },
+    setActiveProfileId(id) { storage.setItem('api_active_profile', id); }
+  };
+  const funcs = create({PhoneStorage:phone}, phone, storage, 'api_settings');
+  const before = funcs.getActiveProfile();
+  assert.equal(before.model, 'model-b');
+  assert.equal(funcs.saveActiveProfile({name:'UPDATED', model:'model-new', temperature:0}), true);
+  let persisted = JSON.parse(storage.getItem('api_profiles_v1'));
+  assert.equal(persisted[0].model, 'model-a', 'other profiles are unchanged');
+  assert.equal(persisted[1].name, 'UPDATED', 'updated profile name survives re-read');
+  assert.equal(persisted[1].model, 'model-new', 'updated model survives re-read');
+  assert.equal(persisted[1].temperature, 0, 'temperature zero survives');
+  assert.equal(JSON.parse(storage.getItem('api_settings')).model, 'model-new', 'mirror matches the persisted profile');
+  // Simulate the settings being denied storage writes: success cannot be claimed.
+  discard = true;
+  assert.equal(funcs.saveActiveProfile({model:'should-not-save'}), false);
+  persisted = JSON.parse(storage.getItem('api_profiles_v1'));
+  assert.equal(persisted[1].model, 'model-new', 'failure does not mutate the persisted profile');
+});
+
+test('phone browser regression is wired to the release gate and covers core use cases', () => {
+  assert.equal(packageJson.scripts['test:tutorial:browser'], 'node tests/tutorial-mobile-browser.mjs');
+  assert.match(tutorialWorkflow, /npm run test:tutorial:browser/);
+  assert.match(tutorialWorkflow, /npx playwright install --with-deps chromium/);
+  assert.match(tutorialWorkflow, /npm run build/);
+  assert.match(tutorialWorkflow, /tests\/tutorial-mobile-browser\.mjs/);
+  for (const width of [320,375,390,430,768]) {
+    assert.ok(browserSuite.includes(String(width)), 'missing mobile viewport: ' + width);
+  }
+  for (const id of ['api-first','api-errors','api-params','api-images','minimax-voice-guide']) {
+    assert.ok(browserSuite.includes("openGuide(page, '" + id + "'"), 'missing real-browser article: ' + id);
+  }
+  for (const phrase of ['#diagnoseSelect','#catalogDetails','#faqList','#walkStepperContent',
+    '#storageAlert','pageerror','assertNoOverflow']) {
+    assert.ok(browserSuite.includes(phrase), 'missing real-browser check: ' + phrase);
+  }
 });

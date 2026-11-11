@@ -5,7 +5,7 @@
 (function () {
   'use strict';
 
-  var GUIDE_VERSION = '2026.11.11 · v2';
+  var GUIDE_VERSION = '2026.11.11 · v3';
   var STORAGE_KEY = 'maomao_tutorial_progress_v1';
 
   var GUIDE_UPDATES = [
@@ -13,7 +13,7 @@
       date: '2026-11-11',
       title: '教程全面补全',
       items: [
-        '新增逐步引导模式：一次显示一个操作步骤，带界面定位示意、真实页面入口、练习目标和本地步骤进度。',
+        '教程改为 API 入门优先：从 API Key、Base URL 和 /v1，到 HTTP 错误、温度、图片模型与 MiniMax 语音，按真实设置入口讲解。',
         '教程扩展到 50 项，覆盖全部 29 个桌面应用；聊天底部「＋」菜单 19 个入口单独说明，并增加常见问题。',
         '补正头像配对和表情收藏操作名称；角色自主挑图只使用标记为「公开」的图片，并补上对话设置直达兜底。'
       ]
@@ -30,6 +30,119 @@
   ];
 
   var GUIDES = [
+    {
+      "id": "api-first",
+      "category": "设置",
+      "title": "API 到底是什么？从哪里获取",
+      "summary": "先弄懂模型服务、API Key、模型名称的区别，再去申请自己的访问凭证。",
+      "location": "桌面 → 设置 → API 设置；API Key 需要到所选模型服务商的官方开发者平台获取。",
+      "steps": [
+        "API 可以理解为应用与 AI 服务通信的接口。MAOMAO 负责聊天界面和角色设定；实际生成文字或图片的是你选择的模型服务商。",
+        "API Key 是访问凭证，作用类似只给程序使用的钥匙；它不是聊天账号密码，也不是模型名字。Base URL 是接口地址，模型名称决定调用哪一种 AI。",
+        "先选支持所需功能的服务商，前往它的官方开发者控制台，按平台要求创建账号并开通 API 服务。部分服务需要验证、配额或计费，网页聊天订阅不一定包含 API 额度。",
+        "在服务商控制台的 API Keys 或密钥管理中创建新密钥。通常只显示一次；复制后在 MAOMAO「设置 → API 设置」的 API Key 栏粘贴，不要公开分享。",
+        "查服务商文档确认 Base URL、聊天模型 ID，以及该模型是否支持文字、识图和图片生成。每一种能力都需单独确认，不能看到同一品牌就默认全能。",
+        "不需要把密钥发给任何人做排障。若怀疑泄露，立即到服务商控制台撤销旧密钥并创建新密钥。"
+      ],
+      "test": "不用填任何真实密钥，先指出三个概念：Key 是凭证、Base URL 是地址、模型 ID 是型号；正式填好后再去测试连接。",
+      "href": "../settings/settings.html#api",
+      "action": "打开 API 设置"
+    },
+    {
+      "id": "api-url-v1",
+      "category": "设置",
+      "title": "Base URL、/v1、模型名怎么填",
+      "summary": "按服务商文档核对地址；/v1 不是人人都要手动补，也不能把完整请求地址当作 Base URL。",
+      "location": "桌面 → 设置 → API 设置 → 服务商 / Base URL / API Key / 默认模型。",
+      "steps": [
+        "服务商下拉框会为部分平台自动填入地址与默认模型，但仍要对照你所用服务商的最新开发者文档核实。",
+        "Base URL 是接口前缀。例如部分 OpenAI 兼容服务用 https://服务商域名/v1；MAOMAO 会在它后面追加 chat/completions 进行聊天测试。",
+        "不要把 /chat/completions 也填进 Base URL，否则可能重复拼接。不要盲目添加 /v1：不同服务商也可能使用 /api/paas/v4 等前缀，需以它自己的文档为准。",
+        "API Key 粘贴来自所选服务商的真实有效密钥。不要在教程备注或问题截图里暴露它。",
+        "默认模型填写服务商提供的准确聊天模型 ID，不是你给角色起的名字。可以点「拉取模型」尝试获取列表；列表失败不代表所有聊天接口都不能用。",
+        "先保存配置，再点「测试连接」。当前实现会向 Base URL + /chat/completions 发送一条极短的聊天请求，成功只说明当前聊天接口响应，不代表图片或语音服务也成功。",
+        "如果测试失败，展开下方故障排查，根据实际提示先查凭证、地址、模型、额度或跨域，不要一直反复点击。"
+      ],
+      "test": "不公开 Key 的前提下，核对 Base URL 只到接口前缀、模型名为真实 ID，并记录「测试连接」显示的状态文字。",
+      "href": "../settings/settings.html#api",
+      "action": "前往连接配置"
+    },
+    {
+      "id": "api-errors",
+      "category": "设置",
+      "title": "连接测试失败：按报错解决",
+      "summary": "从 HTTP 401 / 403 / 404 / 429、超时和跨域逐项排查，避免无方向反复重试。",
+      "location": "桌面 → 设置 → API 设置 → 测试连接 → 查看状态提示。",
+      "steps": [
+        "先确认三项都已填写：API Key、Base URL、默认聊天模型。空字段会在发请求前直接提示；请先补齐。",
+        "401 一般是 Key 无效、复制错误或已撤销；到相同服务商控制台核对，必要时创建新 Key。403 往往是账号、项目、地区或模型访问权限不满足。",
+        "404 通常是接口地址拼错，或当前提供方不支持所填模型。检查 Base URL 是否已包含末尾路径，以及服务商是否提供 OpenAI 兼容的 /chat/completions。",
+        "429 表示请求过于频繁或可用额度不足。先在服务商后台查看配额、账单或使用限制；不要靠不停重试解决。",
+        "500 / 502 / 503 / 504 通常与服务端或网关故障有关，可以稍后重试并查看服务商状态。超时则检查网络、接口延迟及地址。",
+        "浏览器提示 Failed to fetch、CORS 或网络错误时，可能是跨域限制、HTTPS/证书、拦截或网络问题。网页前端不能绕过服务商的跨域限制；选择支持浏览器调用的接口，或由可信后端代发。",
+        "显示连接成功仍需要单独验证：发送一条真实聊天消息、生成一张测试图、再按 MiniMax 配置测试语音。不要把一个成功提示当成所有功能通过。"
+      ],
+      "test": "把实际提示与对应原因匹配；只记录状态码、服务商和现象，不上传 API Key 或包含个人数据的完整请求。",
+      "href": "../settings/settings.html#api",
+      "action": "检查报错"
+    },
+    {
+      "id": "api-params",
+      "category": "设置",
+      "title": "温度、Top P、Tokens 到底调什么",
+      "summary": "了解随机性、回复长度与概率采样；不必为了更会聊天把所有数值调到最大。",
+      "location": "桌面 → 设置 → API 设置 → 高级参数。",
+      "steps": [
+        "温度 Temperature 控制生成时的随机性，数值低通常更稳定一致，数值高通常更灵活多变，但也可能更跑题；不是智商、情绪值或回复速度。",
+        "MAOMAO 当前滑块显示 0～2，常见起点是 0.7。部分模型仅允许特定范围或不支持自行设置温度；若报参数错误，以服务商文档为准。",
+        "Top P 是另一种控制候选词范围的采样参数。通常建议优先只调温度或 Top P 其中之一，先观察效果。",
+        "最大回复 Tokens 控制可生成内容的长度上限，Token 不是汉字数量；上限太低可能让输出截断，过高也不保证模型一定说那么多。",
+        "记忆条数决定 MAOMAO 传入多少近期对话，不等于模型永远记住所有内容；上下文长度和实际费用由服务商和模型决定。",
+        "建议先用默认值完成文字聊天，再小幅改一个参数，并在同一角色、同类话题上比较。出现不支持的参数报错，先恢复默认。"
+      ],
+      "test": "保持其他参数不变，只小幅改变温度后测试；不必追求固定气泡数或一次输出非常长的答案。",
+      "href": "../settings/settings.html#api",
+      "action": "查看高级参数"
+    },
+    {
+      "id": "api-images",
+      "category": "图片",
+      "title": "AI 生图：为什么聊天能用却画不出图",
+      "summary": "图片生成模型、图片接口和文本聊天模型是分开的；先核对服务商是否支持。",
+      "location": "桌面 → 设置 → API 设置 → 图片生成；再到「角色生图与图库」。",
+      "steps": [
+        "先在 API 设置中确保基础服务商与 API Key 有效；聊天连接成功只验证文字聊天，不验证图片生成功能。",
+        "在「图片生成模型」填写服务商支持的准确生图模型 ID。聊天模型 ID 不能直接当作生图模型使用。",
+        "图片接口 URL 可留空，让 MAOMAO 使用 Base URL + /images/generations；若服务商的图片端点不同，就必须按它的文档提供完整、正确的图片生成接口 URL。",
+        "当前实现要求服务商提供兼容的图片生成接口，并能返回 Base64 图片或者可下载的图片 URL；不是所有模型或平台都满足。",
+        "到「角色生图与图库」选定角色、填写所需角色外貌和场景后再点生成。生成记录应保存在当前角色名下；新图默认私密。",
+        "若聊天成功而生图失败，先检查图片模型权限、配额、接口地址以及该模型返回格式。不要直接判定是角色图库坏了；还要确认当前角色是否已选中。",
+        "需要角色自主发图时，先检查图库里是否有愿意公开的图片；私密图片不会被自主选取，也不保证每一轮聊天都发图。"
+      ],
+      "test": "用不涉及隐私的简单场景生成一张测试图，查看是否保存到正确角色，且默认私密；失败时记下提示文字。",
+      "href": "../settings/image-generation.html",
+      "action": "打开角色生图"
+    },
+    {
+      "id": "minimax-voice-guide",
+      "category": "设置",
+      "title": "MiniMax 语音：API、Group ID 与 Voice ID",
+      "summary": "这是独立的语音合成服务，和文字聊天 API 不是一回事；保存设置也不等于已能发声。",
+      "location": "桌面 → 设置 → MiniMax 语音合成。",
+      "steps": [
+        "先区分三样东西：MiniMax API Key 用来授权语音请求；Group ID 是对应平台账户/项目标识；Voice ID 是具体要使用的声音标识。它们不能互相代替。",
+        "打开「设置 → MiniMax 语音合成」，根据所注册的服务地区选择国际版或大陆版；在相应官方平台申请该地区的语音 API 凭证，并核实账户权限和额度。",
+        "把 MiniMax 的 API Key 粘贴到语音页面，把控制台提供的 Group ID 填入 Group ID；这通常不是聊天模型的 API Key。",
+        "选择当前页面提供的 speech-01 或 speech-02 模型，并开启页面顶部的「启用 MiniMax 语音合成」，点击「保存 TTS 设置」。具体模型可用性以服务商实际账户为准。",
+        "当前这个设置页有「保存 TTS 设置」，但没有独立的「测试语音连接」按钮；保存只表示配置写到浏览器，不代表服务端认证、音色或音频播放成功。",
+        "页面还要求为角色设置 Voice ID，并在该角色的对话设置中启用语音开关。如果手机里没找到 Voice ID 的真实编辑入口，应该记录为待核实，不要随意拿其他字段替代。",
+        "要验收语音，需在角色聊天中真正触发一次语音输出，确认音色、播放和具体报错；文字聊天成功或 TTS 保存提示都不能代替这个测试。"
+      ],
+      "test": "核对地区版本、语音 Key、Group ID、模型、启用状态；不要在测试记录写 Key。真正发声需单独实机测试。",
+      "href": "../settings/minimax-tts.html",
+      "action": "打开语音设置"
+    },
+
     {
       id: 'desktop', category: '入门', title: '桌面、翻页与应用入口',
       summary: '先认识桌面图标、页面翻页和编辑模式。新应用会自动出现在桌面，不需要重新摆放旧图标。',
@@ -315,7 +428,7 @@
         '主动联系只在 MAOMAO 前台打开时检查，需要 API 额度；它不是锁屏后的系统推送。',
         '自然追问与主动联系独立：它是在你暂未回复时接续话题，你一回复便终止。',
         '在 CHAT TOOLS 分组可以打开「足迹」「面具」「时刻」等关联页面。',
-        '设置保存不等于后台推送验收；关闭网页或锁屏后是否收到通知，需要单独做真实设备测试。'
+        '设置保存不等于后台推送验收；手机系统推送要单独验收。关闭网页或锁屏后是否收到通知，需要在真实设备上确认。'
       ],
       test:'只检查开关和间隔能否保存；不要为测试而开启不想使用的自动化功能，也不要把前台运行当作后台推送通过。',
       href:'../chat/chat/chat.html', action:'打开聊天'
@@ -354,17 +467,18 @@
   ]);
 
   var FAQS = [
-    ['底部「＋」和右上角「⋯」有什么区别？','底部「＋」是发送/互动工具菜单；右上角「⋯」进入当前角色的对话设置。两个入口不同，不要把一个当成另一个。'],
-    ['多气泡在哪里设置？','聊天详情右上角「⋯」→ 对话设置 →「回复气泡模式」，可选单条、自动、连续多条。'],
-    ['角色表情为什么不显示？','先在「全部表情」点击表情卡片下方的「收藏给TA」，再切到「角色表情」查看；点图片本身会直接发送表情。'],
-    ['头像收藏和角色图片图库是同一个东西吗？','不是。头像收藏和配对头像在桌面「角色库」的角色档案；生成图片的角色图库在桌面「设置」→「角色生图与图库」。'],
-    ['角色为什么没有主动发来系统通知？','对话设置里的「主动联系」当前说明为 MAOMAO 前台运行时检查。关闭网页后的云端主动消息和手机系统推送要单独验收，不能用这个开关代替。'],
-    ['生成图片为什么失败？','需要有角色、固定外貌描述、有效 API Key 和单独配置的图片模型；聊天模型和图片模型是两项设置。'],
-    ['角色没有自主发图怎么办？','先检查当前角色自己的角色图库是否有已保存图片，再用线上一对一聊天自然交流。自主发图不是每轮必发，群聊、旁白、静默回合和重生成不走这条路径。'],
-    ['教程测试勾选保存在哪里？','保存在当前浏览器的本地教程进度键中，不会写入聊天记录或角色资料。换浏览器或清理站点数据后，测试勾选可能需要重新记录。'],
-    ['标记为私密的角色图库图片会自动发送吗？','自主挑图只使用标记为「公开」的图片。发出前会再次检查图片状态。'],
-    ['桌面找不到某个应用怎么办？','先左右翻页；若之前手动移除过应用，进入桌面编辑状态检查应用仓库。不要通过重置桌面来找图标。'],
-    ['教程里的功能打不开怎么办？','在对应教程的测试备注记录入口、设备/浏览器、点击步骤和看到的现象，然后导出测试记录。不要把 API Key、密码或私人聊天内容写进备注。']
+    ["API 是什么？和 ChatGPT 网页会员一样吗？","API 是 MAOMAO 与模型服务商通信的接口。API Key 是单独的访问凭证；网页订阅通常不能直接当作 API 额度。需到所选服务商开发者平台核实。"],
+    ["API Key 从哪里获取？","在选定服务商的官方开发者控制台创建密钥，按平台要求启用 API。通常只显示一次，请妥善保存，不要把它写在教程备注、截图或公开仓库里。"],
+    ["Base URL 后面的 /v1 是什么？要不要加？","它通常是 API 路由版本前缀，不是账号编号；只有服务商文档要求时才添加。MAOMAO 会在 Base URL 后拼接 /chat/completions，别把完整接口地址重复填写。"],
+    ["为什么「测试连接」成功却不能生成图片？","当前测试只发一个简短的聊天请求到 /chat/completions；图片还需要独立的图片模型与兼容的图片接口，语音也需要独立配置。"],
+    ["401、403、404 是什么意思？","401 常见为 Key 无效；403 是没有相应权限；404 多为地址或模型名称错误。先核对服务商文档、控制台权限和具体接口前缀。"],
+    ["429、超时、CORS 或 Failed to fetch 怎么办？","429 先检查频率与额度；超时先查网络与响应时间；CORS/Failed to fetch 可能涉及浏览器跨域、HTTPS、阻断或地址错误。不能仅靠反复重试解决。"],
+    ["温度 Temperature、Top P 和最大 Tokens 怎么选？","温度较低一般更稳定，较高一般更随机；Top P 同样控制采样范围，通常先只调整其一。Tokens 是长度预算，不等于字数；模型能否调整依服务商而定。"],
+    ["图片生成模型填写什么？","填写提供商支持的准确图片模型 ID，不是聊天模型 ID。可选图片接口 URL 留空时使用 Base URL + /images/generations；有自定义端点时按官方文档填写。"],
+    ["MiniMax 的 Group ID 和 Voice ID 一样吗？","不一样。Group ID 标识服务商账户或项目，Voice ID 标识要合成的具体音色；MiniMax 语音 Key 也与其他聊天平台的 Key 分开。"],
+    ["MiniMax 保存后为什么没有声音？","保存设置不是网络连接测试。当前仓库只有 MiniMax 本地配置的明确证据，角色发声的完整链路仍未核实，不能以保存成功作为可发声证明。"],
+    ["MIX 和 MiniMax 是同一个语音功能吗？","目前只核实到「MiniMax 语音合成」的设置入口，尚未找到单独的 MIX 语音提供方配置。不要自行把 MIX 的参数填进 MiniMax；若产品接入了 MIX，应有独立的配置、帮助和测试。"],
+    ["角色图片为什么没有自动发送？","角色自主挑图只从当前角色已保存、标记为公开的图库图片中选择。私密图片不会自主发送；即使有公开图片，也不是每轮聊天都必须发送。"]
   ];
 
   var APPS = [
@@ -412,19 +526,32 @@
   function loadProgress() {
     try {
       var parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-      return parsed && typeof parsed === 'object' ? parsed : {};
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
     } catch (error) { return {}; }
   }
+  function setStorageAlert(message) {
+    var el = $('storageAlert');
+    if (!el) return;
+    el.textContent = message || '';
+    el.hidden = !message;
+  }
   function saveProgress() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(progress)); } catch (error) {}
+    var saved = false;
+    try {
+      var encoded = JSON.stringify(progress);
+      localStorage.setItem(STORAGE_KEY, encoded);
+      saved = localStorage.getItem(STORAGE_KEY) === encoded;
+    } catch (error) { saved = false; }
+    setStorageAlert(saved ? '' : '测试记录未保存到本机。请检查浏览器存储权限或空间；当前勾选刷新后可能丢失。');
     refreshProgress();
+    return saved;
   }
   function entryState(id) {
-    if (!progress[id] || typeof progress[id] !== 'object') progress[id] = {};
+    if (!progress[id] || typeof progress[id] !== 'object' || Array.isArray(progress[id])) progress[id] = {};
     return progress[id];
   }
   function renderUpdates() {
-    $('guideVersion').textContent = GUIDE_VERSION;
+    if ($('guideVersion')) $('guideVersion').textContent = GUIDE_VERSION;
     $('footerVersion').textContent = GUIDE_VERSION;
     var latest = GUIDE_UPDATES[0];
     $('updatesDate').textContent = latest ? latest.date : '暂无记录';
@@ -463,33 +590,32 @@
   }
   var activeWalkthrough = null;
   var activeStepIndex = 0;
+  var focusBeforeWalkthrough = null;
+  var previousBodyOverflow = null;
 
   function guideCard(guide) {
     var state = entryState(guide.id);
     var checked = state.done === true;
     var note = state.note == null ? (guide.defaultNote || '') : String(state.note);
     var walked = Array.isArray(state.walked) ? state.walked.length : 0;
-    var status = guide.issue
-      ? '<span class="status issue">待真机复测</span>'
-      : '<span class="status">操作指南</span>';
-    var stepCount = (guide.steps || []).length;
     var open = guide.href
-      ? '<a class="open-link" href="' + escapeHtml(guide.href) + '" target="_blank" rel="noopener">' + escapeHtml(guide.action || '打开功能') +
-        '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></a>'
+      ? '<a class="open-link" href="' + escapeHtml(guide.href) + '" target="_blank" rel="noopener">' + escapeHtml(guide.action || '打开功能') + '</a>'
       : '';
     return '<article class="guide-card" data-guide-id="' + escapeHtml(guide.id) + '">' +
-      '<div class="guide-top"><div class="guide-title-wrap"><div class="guide-category">' + escapeHtml(guide.category.toUpperCase()) +
-      '</div><h3 class="guide-title">' + escapeHtml(guide.title) + '</h3><p class="guide-summary">' + escapeHtml(guide.summary) +
-      '</p></div>' + status + '</div>' +
+      '<div class="guide-main"><div class="guide-title-wrap"><span class="guide-category">' + escapeHtml(guide.category) + '</span>' +
+      '<h3 class="guide-title">' + escapeHtml(guide.title) + '</h3>' +
+      '<p class="guide-summary">' + escapeHtml(guide.summary) + '</p></div>' +
+      '<button class="start-guide" type="button" data-start-guide="' + escapeHtml(guide.id) + '">开始学习</button></div>' +
+      '<details class="guide-extra"><summary>入口、操作步骤与测试记录</summary>' +
       '<div class="guide-location"><b>入口：</b>' + escapeHtml(guide.location) + '</div>' +
-      '<div class="test-description" style="margin-top:10px;">' + stepCount + ' 个分步操作 · 已走完 ' + walked + ' 步</div>' +
-      '<div class="test-box"><div class="test-title">本项怎么测</div><p class="test-description">' + escapeHtml(guide.test || '按步骤打开功能并确认页面正常。') + '</p>' +
+      '<div class="guide-mini-progress">' + (guide.steps || []).length + ' 步 · 当前走完 ' + walked + ' 步</div>' +
+      '<div class="test-box"><div class="test-title">怎样确认成功</div><p class="test-description">' +
+      escapeHtml(guide.test || '按步骤操作并观察真实页面结果。') + '</p>' +
       '<label class="test-mark"><input type="checkbox" data-done="' + escapeHtml(guide.id) + '"' + (checked ? ' checked' : '') +
-      '> 我已经在手机上实际测试过这一项</label>' +
-      '<textarea class="note" data-note="' + escapeHtml(guide.id) + '" rows="2" placeholder="测试备注 / 遇到的问题">' + escapeHtml(note) + '</textarea></div>' +
-      '<div class="guide-actions"><button class="start-guide" type="button" data-start-guide="' + escapeHtml(guide.id) + '">一步一步跟着做</button>' +
-      open + '<span class="guide-hint">' + (guide.issue ? '有待真机复测记录；完成测试后请在备注写下设备和现象。' : '勾选状态和备注只保存在本浏览器。') + '</span></div>' +
-      '</article>';
+      '> 已在手机上实际验证</label>' +
+      '<textarea class="note" data-note="' + escapeHtml(guide.id) + '" rows="2" placeholder="可选：记录设备与现象（不要写 API Key）">' + escapeHtml(note) + '</textarea></div>' +
+      '<div class="guide-actions">' + open + (guide.issue ? '<span class="guide-hint">仍需手机实测。</span>' : '') + '</div>' +
+      '</details></article>';
   }
   function renderGuides() {
     var query = String($('guideSearch').value || '').trim().toLowerCase();
@@ -528,12 +654,89 @@
     $('progressFill').style.width = (total ? (done / total * 100) : 0) + '%';
   }
   function saveWalkthroughState() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(progress)); } catch (error) {}
-    refreshProgress();
+    return saveProgress();
+  }
+  // Technical lessons are continuous reference articles, not checkbox wizards.
+  // This does not change the legacy lesson progress or its storage structure.
+  var TECH_CHAPTERS = {
+    'api-first': ['API 究竟帮你做什么', '区分三个容易混淆的东西', '选择服务商', '创建自己的 API Key', '核对模型能力', '保护访问凭证'],
+    'api-url-v1': ['先选服务商', '理解 Base URL', '为什么有时要写 /v1', '填写 API Key', '填写正确模型 ID', '保存与测试各自做什么', '失败后先按提示排查'],
+    'api-errors': ['缺少必填项', '401 与 403', '404', '429', '5xx 和超时', '网络与跨域', '连接成功之后还要测什么'],
+    'api-params': ['Temperature：随机性', '范围与模型兼容性', 'Top P：采样范围', 'Tokens：最大长度', '上下文与记忆条数', '适合新用户的调整方法'],
+    'api-images': ['先确认聊天 API', '单独选择图片模型', '填写图片生成接口', '确认返回格式', '选角色并生图', '遇到失败先查什么', '是否允许角色自主发送'],
+    'minimax-voice-guide': ['三种凭证各是什么', '先分清大陆版和国际版', '准备语音专用凭证', '选模型并保存设置', '保存不代表语音已经连通', 'Voice ID 与角色开关', '如何验收真正发声']
+  };
+  var OFFICIAL_PORTALS = {
+    'api-first': [
+      ['OpenAI API 开发者平台', 'https://platform.openai.com/'],
+      ['DeepSeek 开发者平台', 'https://platform.deepseek.com/'],
+      ['Moonshot 开发者平台', 'https://platform.moonshot.cn/'],
+      ['智谱开放平台', 'https://open.bigmodel.cn/'],
+      ['硅基流动开放平台', 'https://cloud.siliconflow.cn/']
+    ],
+    'minimax-voice-guide': [
+      ['MiniMax 大陆版开发者平台', 'https://platform.minimaxi.com/'],
+      ['MiniMax 国际版开发者平台', 'https://platform.minimax.io/']
+    ]
+  };
+  var TECH_EXTRAS = {
+    'api-first': '申请提示：先找到开发者平台中的 API Keys / 密钥管理，再确认账户是否具备调用额度。网页聊天会员不等于 API 自动有余额。不同服务商的实际页面入口可能随版本变更。特别注意：测试连接和实际聊天会把你的 Key 发送到所填 Base URL，请只使用你信任且核对过的服务商域名。',
+    'api-url-v1': '填写示例（虚构域名）：服务商给出 https://api.example.com/v1 → Base URL 就填 https://api.example.com/v1。MAOMAO 会继续访问 https://api.example.com/v1/chat/completions。不要把 /chat/completions 自己再加到输入框。',
+    'api-errors': '看到 400 请求格式错误时，还应核对模型是否支持当前接口及请求参数。某些模型不接受 max_tokens 或 temperature 等字段；这不能直接判定 Key 已失效。',
+    'api-params': '入门建议：先试 0.7，再按实际效果少量调整。设置页允许 0～2，但个别模型只允许固定值或不支持这些采样参数。0 是有效温度，不应在保存时被自动变为 0.7。',
+    'api-images': '图片生成可能单独计费。为整理画面，角色生图功能会读取当前角色最近最多 14 条聊天消息中的文字片段，并将所整理的上下文提供给配置的 AI 服务商；只用自己愿意提供给服务商的测试内容。新图默认私密，设为公开后才可能被角色自主发出。',
+    'minimax-voice-guide': '注意区分 MiniMax 与你提到的 MIX：当前代码里能核实的是 MiniMax 语音配置页面，未核实有独立的 MIX 服务商配置或调用功能，不能将两者当成一回事。当前仓库能核实 MiniMax 配置页面和本地保存逻辑，但尚未核实完整的远程语音合成请求、角色 Voice ID 编辑入口和声音播放闭环。真实发声需要独立开发与验收。'
+  };
+  function isTechnicalGuide(guide) {
+    return !!(guide && Object.prototype.hasOwnProperty.call(TECH_CHAPTERS, guide.id));
+  }
+  function renderTechnicalGuide(guide) {
+    var titles = TECH_CHAPTERS[guide.id] || [];
+    var steps = guide.steps || [];
+    var chapterHtml = steps.map(function (entry, index) {
+      var body = typeof entry === 'string' ? entry : String(entry.text || entry.instruction || '');
+      return '<section class="walk-article-section"><h3><span>' + String(index + 1).padStart(2, '0') +
+        '</span>' + escapeHtml(titles[index] || '操作说明') +
+        '</h3><p>' + escapeHtml(body) + '</p></section>';
+    }).join('');
+    var links = OFFICIAL_PORTALS[guide.id] || [];
+    var linksHtml = links.length
+      ? '<div class="walk-article-links"><h3>开发者平台参考入口</h3>' +
+        links.map(function (entry) {
+          return '<a href="' + escapeHtml(entry[1]) + '" target="_blank" rel="noopener noreferrer">' +
+            escapeHtml(entry[0]) + '<small>访问官网 ›</small></a>';
+        }).join('') +
+        '<p class="walk-article-note">以上为平台入口参考，当前未实时检查网站菜单及套餐信息。创建密钥前请核实域名与实际 API 计费规则。</p></div>'
+      : '';
+    $('walkArticle').innerHTML = '<p class="walk-article-intro">' + escapeHtml(guide.summary) + '</p>' +
+      chapterHtml +
+      '<aside class="walk-article-example"><strong>记住这一点</strong><p>' +
+      escapeHtml(TECH_EXTRAS[guide.id] || '') + '</p></aside>' +
+      linksHtml +
+      '<p class="walk-article-note">对应功能入口：' + escapeHtml(guide.location) +
+      '。本页是使用说明，不会读取或保存你的 API Key，也不会代替真实连接测试。</p>';
+    $('walkArticle').hidden = false;
+    $('walkStepperContent').hidden = true;
+    $('walkProgressWrap').hidden = true;
+    $('walkPrevious').hidden = true;
+    $('walkNext').hidden = true;
+    $('walkTitle').textContent = guide.title;
+    $('walkOpenPage').href = guide.href || '../index.html';
+    $('walkOpenPage').textContent = guide.action || '打开真实页面';
   }
   function renderWalkthrough() {
     if (!activeWalkthrough) return;
     var guide = activeWalkthrough;
+    if (isTechnicalGuide(guide)) {
+      renderTechnicalGuide(guide);
+      return;
+    }
+    $('walkArticle').hidden = true;
+    $('walkStepperContent').hidden = false;
+    $('walkProgressWrap').hidden = false;
+    $('walkPrevious').hidden = false;
+    $('walkNext').hidden = false;
+    $('walkOpenPage').textContent = guide.action || '打开真实页面';
     var steps = guide.steps || [];
     if (!steps.length) return;
     activeStepIndex = Math.max(0, Math.min(activeStepIndex, steps.length - 1));
@@ -562,23 +765,40 @@
     $('walkNext').textContent = activeStepIndex === steps.length - 1 ? '完成引导' : '下一步';
     $('walkOpenPage').href = guide.href || '../index.html';
   }
-  function startGuide(id) {
+  function startGuide(id, trigger) {
     var guide = GUIDES.find(function (item) { return item.id === id; });
     if (!guide) return;
+    if (!activeWalkthrough) {
+      focusBeforeWalkthrough = trigger || document.activeElement || null;
+      if (document.body && document.body.style) {
+        previousBodyOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+      }
+    }
     activeWalkthrough = guide;
-    var state = stepState(guide);
-    activeStepIndex = Number.isInteger(state.lastStep) ? state.lastStep : 0;
+    // Reading a technical handbook chapter should not create test progress.
+    var state = isTechnicalGuide(guide) ? null : stepState(guide);
+    activeStepIndex = state && Number.isInteger(state.lastStep) ? state.lastStep : 0;
     $('walkthroughModal').hidden = false;
     renderWalkthrough();
+    $('walkBody').scrollTop = 0;
+    if ($('walkClose') && typeof $('walkClose').focus === 'function') $('walkClose').focus();
   }
   function closeGuide() {
-    if (activeWalkthrough) {
+    if (activeWalkthrough && !isTechnicalGuide(activeWalkthrough)) {
       var state = stepState(activeWalkthrough);
       state.lastStep = activeStepIndex;
       saveWalkthroughState();
     }
     $('walkthroughModal').hidden = true;
     activeWalkthrough = null;
+    if (document.body && document.body.style && previousBodyOverflow !== null) {
+      document.body.style.overflow = previousBodyOverflow;
+    }
+    previousBodyOverflow = null;
+    var returnFocus = focusBeforeWalkthrough;
+    focusBeforeWalkthrough = null;
+    if (returnFocus && returnFocus.isConnected && typeof returnFocus.focus === 'function') returnFocus.focus();
   }
   function moveWalkthrough(delta) {
     if (!activeWalkthrough) return;
@@ -594,6 +814,7 @@
     state.lastStep = activeStepIndex;
     saveWalkthroughState();
     renderWalkthrough();
+    $('walkBody').scrollTop = 0;
     renderGuides();
   }
 
@@ -618,6 +839,29 @@
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
   }
 
+  // Overview shortcuts and a local-only error explanation panel; never submit or store API keys.
+  $('topicGrid').addEventListener('click', function (event) {
+    var button = event.target.closest('[data-open-guide]');
+    if (button) startGuide(button.getAttribute('data-open-guide'), button);
+  });
+  var diagnosis = {
+    '': '选一个实际出现的提示，即可看到原因和先检查什么。这里不会发送网络请求。',
+    'missing': '先补齐 Key、Base URL 和默认聊天模型。填写后保存，再测试。',
+    'success': '仅代表当前输入的聊天请求成功；请保存全部设置，再发一条聊天验证。生图和语音要单独检查。',
+    'invalid-result': 'HTTP 200 只表示服务器接收了请求。如果响应没有兼容的 choices 数据，MAOMAO 仍无法当作聊天结果使用；需检查是否调用了正确的聊天接口。',
+    '400': '先查模型是否支持当前请求格式与参数。部分模型不接受 max_tokens 或 temperature；400 不等于 Key 必然错误。',
+    '401': '优先检查 Key 是否来自当前服务商、是否过期或撤销。不要把 Key 发给别人检查。',
+    '403': '检查账户、项目、地区和模型访问权限；有些服务需要单独开通 API 权限。',
+    '404': '检查 Base URL 前缀（包括服务商要求的版本路径）和模型 ID；不要把 /chat/completions 重复填写。',
+    '429': '检查服务商的频率限制和剩余额度；反复点击测试通常不会解决。',
+    '5xx': '通常是服务端或网关异常。可稍后再试，并查看服务商状态。',
+    'timeout': '检查网络、服务器响应与地址是否可访问，当前聊天测试超时阈值为 15 秒。',
+    'network': '可能是 CORS、证书、HTTPS、网络屏蔽或接口地址错误。浏览器无法自行绕过服务端的跨域限制。'
+  };
+  $('diagnoseSelect').addEventListener('change', function () {
+    $('diagnoseAnswer').textContent = diagnosis[this.value] || diagnosis[''];
+  });
+
   $('guideFilters').addEventListener('click', function (event) {
     var button = event.target.closest('[data-category]');
     if (!button) return;
@@ -625,14 +869,14 @@
     renderFilters();
     renderGuides();
   });
-  $('guideSearch').addEventListener('input', function () { renderGuides(); renderApps(); renderFaqs(); });
+  $('guideSearch').addEventListener('input', function () { if (this.value.trim()) $('catalogDetails').open = true; renderGuides(); renderApps(); renderFaqs(); });
   $('guideGrid').addEventListener('click', function (event) {
     var start = event.target.closest('[data-start-guide]');
-    if (start) startGuide(start.getAttribute('data-start-guide'));
+    if (start) startGuide(start.getAttribute('data-start-guide'), start);
   });
   $('appDirectory').addEventListener('click', function (event) {
     var start = event.target.closest('[data-start-guide]');
-    if (start) startGuide(start.getAttribute('data-start-guide'));
+    if (start) startGuide(start.getAttribute('data-start-guide'), start);
   });
   $('walkClose').addEventListener('click', closeGuide);
   $('walkPrevious').addEventListener('click', function () { moveWalkthrough(-1); });
@@ -650,7 +894,26 @@
     if (event.target === $('walkthroughModal')) closeGuide();
   });
   document.addEventListener('keydown', function (event) {
-    if (event.key === 'Escape' && !$('walkthroughModal').hidden) closeGuide();
+    if ($('walkthroughModal').hidden) return;
+    if (event.key === 'Escape') {
+      closeGuide();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    var controls = Array.from($('walkthroughModal').querySelectorAll('button, a[href], input, textarea, select, [tabindex]'))
+      .filter(function (item) {
+        return !item.disabled && item.getAttribute('tabindex') !== '-1' &&
+          typeof item.getClientRects === 'function' && item.getClientRects().length > 0;
+      });
+    if (!controls.length) return;
+    var first = controls[0], last = controls[controls.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
   });
   $('guideGrid').addEventListener('change', function (event) {
     var checkbox = event.target.closest('[data-done]');
@@ -669,15 +932,24 @@
     var note = event.target.closest('[data-note]');
     if (!note) return;
     entryState(note.getAttribute('data-note')).note = note.value;
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(progress)); } catch (error) {}
+    saveProgress();
   });
   $('exportTests').addEventListener('click', exportProgress);
   $('resetTests').addEventListener('click', function () { $('resetModal').hidden = false; });
   $('cancelReset').addEventListener('click', function () { $('resetModal').hidden = true; });
   $('confirmReset').addEventListener('click', function () {
-    progress = {};
-    try { localStorage.removeItem(STORAGE_KEY); } catch (error) {}
+    var removed = false;
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+      removed = localStorage.getItem(STORAGE_KEY) == null;
+    } catch (error) { removed = false; }
     $('resetModal').hidden = true;
+    if (!removed) {
+      setStorageAlert('无法清空本机的测试记录，请检查浏览器存储权限。');
+      return;
+    }
+    progress = {};
+    setStorageAlert('');
     renderGuides();
     refreshProgress();
   });
@@ -689,4 +961,8 @@
   renderFilters();
   renderGuides();
   renderApps();
+  renderFaqs();
+  // Direct links from API, image and MiniMax settings open the matching chapter.
+  var linkedGuide = /^#guide=([a-z0-9-]+)$/.exec(window.location.hash);
+  if (linkedGuide) startGuide(linkedGuide[1]);
 })();
