@@ -366,6 +366,7 @@ export async function runCloudModelTick({
 
   const finishedAt = Number(clock());
   const tickStatus = summary.failed > 0 ? 'degraded' : 'success';
+  summary.ok = tickStatus === 'success';
   log(store, finishedAt, 'autonomy_cloud_tick', tickStatus,
     tickStatus === 'success' ? 'cloud_tick_completed' : 'cloud_tick_completed_with_failures',
     null, {
