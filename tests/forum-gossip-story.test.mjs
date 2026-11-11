@@ -153,3 +153,43 @@ test('auto-continuation setting explains that casual comments keep normal replie
   assert.match(settings,/普通讨论仍由网友接话/);
   assert.match(detail,/ForumGossip\.wantsContinuation\(text\)/);
 });
+
+test('mobile gossip feed shows the real story and readable per-post progress',()=>{
+  assert.match(home,/function gossipReadingHint\(p\)/);
+  assert.match(home,/虚构连载 · /);
+  assert.match(home,/ForumGossip\.progress\(p\)/);
+  assert.match(home,/gossip-feed-body/);
+  assert.match(home,/featured\.gossipStory\?featured\.title/);
+  assert.match(home,/p\.id===featured\.id/);
+  assert.match(home,/gossipUpdatedAt/);
+});
+
+test('mobile reader can filter for author chapters without changing saved comment indices',()=>{
+  assert.match(detail,/id="gossipReaderTools"/);
+  assert.match(detail,/id="gossipViewAll"/);
+  assert.match(detail,/id="gossipViewAuthor"/);
+  assert.match(detail,/aria-pressed/);
+  assert.match(detail,/post\.comments\.map\(\(c,i\)=>\(\{c,i\}\)\)\.filter/);
+  assert.match(detail,/data-gossip-chapter/);
+  assert.match(detail,/function setGossipView\(mode\)/);
+  assert.match(detail,/function jumpToGossipLatest\(\)/);
+  assert.match(detail,/scrollIntoView/);
+  assert.match(detail,/if\(gossipView==='author'\)gossipView='all'/);
+  assert.match(detail,/gossip-author-update/);
+});
+
+test('explicit finish-to-ending is bounded, cancellable, and retains saved updates',()=>{
+  assert.match(detail,/id="gossipFinishAll"/);
+  assert.match(detail,/onclick="finishGossipSeries\(\)"/);
+  assert.match(detail,/async function finishGossipSeries\(\)/);
+  assert.match(detail,/gossipSeriesRunning=true/);
+  assert.match(detail,/for\(let i=0;i<8;i\+\+\)/);
+  assert.match(detail,/if\(gossipSeriesStopRequested\)break/);
+  assert.match(detail,/await generateGossipAuthorContinuation\(null,/);
+  assert.match(detail,/if\(!ok\)break/);
+  assert.match(detail,/gossipSeriesStopRequested=true/);
+  assert.match(detail,/addEventListener\('pagehide'/);
+  assert.match(detail,/addEventListener\('visibilitychange'/);
+  assert.match(detail,/if\(!target&&!gossipSeriesRunning\)jumpToGossipLatest\(\)/);
+  assert.match(detail,/每更保存一次/);
+});
