@@ -2360,3 +2360,56 @@ test('chat detail: multi-bubble history readback verifies behavior-bearing state
   assert.match(detail, /msg\.call && typeof msg\.call === 'object' \? JSON\.stringify\(msg\.call\)/);
   assert.match(detail, /if \(!saveMessages\(list\)\)[\s\S]*?原回复没有删除成功[\s\S]*?return[\s\S]*?sendMsg\(\{ isRegenerate: true/);
 });
+
+
+test('chat detail: history identity includes message state, not only role/time/text', () => {
+  const start = detail.indexOf('function _messageIdentity(msg)');
+  const end = detail.indexOf('\n        function _verifyHistoryRoundTrip', start);
+  assert.ok(start >= 0 && end > start, 'message identity helper should remain independently testable');
+  const source = detail.slice(start, end);
+  const sandbox = {};
+  runInNewContext(source + '\nglobalThis.identity = _messageIdentity;', sandbox);
+  const base = { role: 'assistant', mid: 'm1', text: '转账', type: 'transfer', amount: 20, status: 'unopened' };
+  const identity = sandbox.identity(base);
+
+  assert.notEqual(sandbox.identity({ ...base, status: 'received' }), identity);
+  assert.notEqual(sandbox.identity({ ...base, amount: 30 }), identity);
+  assert.notEqual(sandbox.identity({ ...base, poll: { votes: { a: 0 } } }), identity);
+  assert.notEqual(sandbox.identity({ ...base, chain: { closed: true } }), identity);
+  assert.notEqual(sandbox.identity({ ...base, call: { connected: true } }), identity);
+});
+
+test('chat detail: transfer decision markers roll back when the main reply cannot be saved', () => {
+  const start = detail.indexOf('function applyTransferDecisionMarkers(historyList, amounts)');
+  const end = detail.indexOf('\n        // ---- 角色赠予亲属卡/亲密付', start);
+  assert.ok(start >= 0 && end > start, 'transfer decision helper should be present');
+  const source = detail.slice(start, end);
+  const sandbox = {
+    history: [{ role: 'user', type: 'transfer', amount: 25 }],
+    snapshots: null
+  };
+  runInNewContext(
+    source + '\nsnapshots = applyTransferDecisionMarkers(history, [25]);',
+    sandbox
+  );
+  assert.equal(sandbox.history[0].status, 'accepted');
+  assert.equal(sandbox.history[0].acceptedAt > 0, true);
+  runInNewContext(source + '\nrollbackTransferDecisionMarkers(snapshots);', sandbox);
+  assert.equal(sandbox.history[0].status, undefined);
+  assert.equal(sandbox.history[0].acceptedAt, undefined);
+});
+
+test('chat detail: AI transfer-decision state is committed with its reply and rolled back on failure', () => {
+  assert.match(detail, /var transferDecisionSnapshots = \[\]/);
+  assert.match(detail, /transferDecisionSnapshots = applyTransferDecisionMarkers\(historyList, parsedTransferDecision\.amounts\)/);
+  assert.match(detail, /rollbackTransferDecisionMarkers\(transferDecisionSnapshots\)/);
+  assert.match(detail, /\(parsedTransferDecision\.amounts && parsedTransferDecision\.amounts\.length\)/);
+});
+
+test('chat detail: group interaction state and private-message entry require verified persistence', () => {
+  assert.match(detail, /groupHistoryRollback\.push\(\{[\s\S]*?kind: 'votes'/);
+  assert.match(detail, /groupHistoryRollback\.push\(\{[\s\S]*?kind: 'entries'/);
+  assert.match(detail, /if \(changedHistory && !saveMessages\(historyList\)\)[\s\S]*?groupHistoryRollback\.forEach/);
+  assert.match(detail, /privateSaved = privateSaved && Array\.isArray\(verifiedPrivate\)/);
+  assert.match(detail, /if \(!privateSaved\)[\s\S]*?未显示已发送状态/);
+});
