@@ -765,11 +765,11 @@
     $('walkNext').textContent = activeStepIndex === steps.length - 1 ? '完成引导' : '下一步';
     $('walkOpenPage').href = guide.href || '../index.html';
   }
-  function startGuide(id) {
+  function startGuide(id, trigger) {
     var guide = GUIDES.find(function (item) { return item.id === id; });
     if (!guide) return;
     if (!activeWalkthrough) {
-      focusBeforeWalkthrough = document.activeElement || null;
+      focusBeforeWalkthrough = trigger || document.activeElement || null;
       if (document.body && document.body.style) {
         previousBodyOverflow = document.body.style.overflow;
         document.body.style.overflow = 'hidden';
@@ -841,7 +841,7 @@
   // Overview shortcuts and a local-only error explanation panel; never submit or store API keys.
   $('topicGrid').addEventListener('click', function (event) {
     var button = event.target.closest('[data-open-guide]');
-    if (button) startGuide(button.getAttribute('data-open-guide'));
+    if (button) startGuide(button.getAttribute('data-open-guide'), button);
   });
   var diagnosis = {
     '': '选一个实际出现的提示，即可看到原因和先检查什么。这里不会发送网络请求。',
@@ -871,11 +871,11 @@
   $('guideSearch').addEventListener('input', function () { if (this.value.trim()) $('catalogDetails').open = true; renderGuides(); renderApps(); renderFaqs(); });
   $('guideGrid').addEventListener('click', function (event) {
     var start = event.target.closest('[data-start-guide]');
-    if (start) startGuide(start.getAttribute('data-start-guide'));
+    if (start) startGuide(start.getAttribute('data-start-guide'), start);
   });
   $('appDirectory').addEventListener('click', function (event) {
     var start = event.target.closest('[data-start-guide]');
-    if (start) startGuide(start.getAttribute('data-start-guide'));
+    if (start) startGuide(start.getAttribute('data-start-guide'), start);
   });
   $('walkClose').addEventListener('click', closeGuide);
   $('walkPrevious').addEventListener('click', function () { moveWalkthrough(-1); });
