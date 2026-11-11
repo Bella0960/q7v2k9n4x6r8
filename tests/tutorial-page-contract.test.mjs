@@ -65,21 +65,28 @@ test('guide documents the merged chat features and correctly separates unverifie
   assert.match(guideScript, /此前的手机打不开反馈仍需在安装版和普通浏览器分别实测/);
 });
 
-test('all 29 desktop app shortcuts have a matching app guide and quick-open entry', () => {
+test('all 30 desktop app shortcuts have a matching guide; creator-only tutorial is role-gated', () => {
   const tiles = [...home.matchAll(/data-href="([^"]+)" data-drag="(app_[^"]+)" data-name="([^"]+)"/g)]
     .map((match) => ({ path: match[1], id: match[2], name: match[3] }))
     .filter((item) => item.id.startsWith('app_'));
   const appGuideIds = [...guideScript.matchAll(/id:'(app-[^']+)'/g)].map((match) => match[1]);
   const appEntries = [...guideScript.matchAll(/\['([^']+)',\s*'([^']+\.html)',\s*'[^']+'\]/g)]
     .map((match) => ({ name: match[1], path: match[2] }));
-  assert.equal(tiles.length, 29, 'expected all desktop app tiles, including Tutorial');
-  assert.equal(appGuideIds.length, 29, 'every app must have its own step-by-step guide');
-  assert.equal(appEntries.length, 29, 'every app must appear in the quick-open directory');
+  assert.equal(tiles.length, 30, 'expected 29 ordinary tiles plus the creator-only manager');
+  assert.equal(appGuideIds.length, 30, 'the founder-only app also needs a guide');
+  assert.equal(appEntries.length, 30, 'the founder-only app also needs a directory entry');
   tiles.forEach((tile) => {
     assert.ok(guideScript.includes("href:'../" + tile.path + "'"), 'missing app guide route for ' + tile.name);
     assert.ok(appEntries.some((entry) => entry.path === tile.path), 'missing quick-open entry for ' + tile.name);
     assert.ok(existsSync(resolve(root, tile.path)), 'missing app page for ' + tile.name + ': ' + tile.path);
   });
+  assert.ok(tiles.some(tile => tile.id === 'app_admin_center' && tile.path === 'admin/admin-center.html'));
+  assert.match(guideScript, /founderRole\.content === 'super_admin'/);
+  assert.match(guideScript, /if \(isFounder\) \{/);
+  assert.match(guideScript, /GUIDES\.push\(\{/);
+  assert.match(guideScript, /APPS\.push\(\['管理中心'/);
+  assert.match(guideScript, /id:'account-access'/);
+  assert.match(guideScript, /id:'app-admin'/);
 });
 
 test('all tutorial guide deep links resolve to real HTML pages', () => {
@@ -129,7 +136,7 @@ test('tutorial workflow enforces a guide update when user-facing app pages chang
 });
 
 test('PWA app shell caches the full guide bundle and has a matching test command', () => {
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v203'/);
+  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v204'/);
   assert.ok(serviceWorker.includes("'./tutorial/tutorial.html'"));
   assert.ok(serviceWorker.includes("'./tutorial/tutorial.js?v=20261111v3'"));
   assert.equal(packageJson.scripts['test:tutorial'], 'node --test tests/tutorial-page-contract.test.mjs');
