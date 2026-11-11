@@ -39,7 +39,7 @@ class FakeD1 {
       return {
         ready_tables: this.schemaReady ? 4 : 0,
         ready_indexes: Number(this.friendCodeIndexReady) + Number(this.friendRequestIndexReady),
-        ready_triggers: this.friendLifecycleTriggersReady ? 10 : 0
+        ready_triggers: this.friendLifecycleTriggersReady ? 11 : 0
       };
     }
     if (sql.includes("FROM sqlite_master")) {
@@ -391,6 +391,7 @@ test("QR rotation returns a short-lived one-time code and revokes the previous c
   assert.equal(first.response.status, 201);
   assert.match(first.body.code, /^[a-f0-9]{64}$/);
   assert.equal(first.body.qrPayload, "mao://friend/add?code=" + first.body.code);
+  assert.equal(first.body.ownerAccountId, "account-alice-001");
   assert.equal(first.body.expiresInSeconds, 900);
   const firstHash = await sha256Hex(first.body.code);
   assert.equal(context.db.codes.get(firstHash).revoked_at, null);
