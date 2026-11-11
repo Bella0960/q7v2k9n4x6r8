@@ -114,6 +114,7 @@ async function rotateFriendCode(request, env, account) {
     ]);
     return authJson({
       ok: true,
+      ownerAccountId: account.id,
       code,
       qrPayload: "mao://friend/add?code=" + code,
       expiresAt,
