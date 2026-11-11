@@ -17,7 +17,7 @@ function createPhone() {
   const elements = [];
   const byId = new Map();
   const requests = [];
-  const state = { switched: false, failRead: false, posted: [], badAck: false };
+  const state = { switched: false, failRead: false, posted: [], badAck: false, deferRead: false, readWaiters: [], chatReadReply: null, chatReads: 0, intervalFn: null };
   function element(tag, id = '') {
     const node = { tag, id, hidden: false, disabled: false, events: {},
       children: [], scrollHeight: 100, scrollTop: 0, style: {},
@@ -70,8 +70,13 @@ function createPhone() {
         payload = { ok: false, error: { code: 'TEMPORARY_FAILURE', message: 'read failed' } };
       } else {
         payload = { ok: true, ownerAccountId: A, peerId: B,
-          messages: [{ id: 'remote-1', seq: 1, text: 'Private text', senderId: B }],
+          messages: [{ id: 'remote-1', seq: 1, text: 'Private text', senderId: B, recipientId: A }],
           nextCursor: 1 };
+      }
+      if (options.method === 'GET') {
+        state.chatReads++;
+        if (state.chatReadReply) payload = state.chatReadReply;
+        if (state.deferRead) await new Promise(resolve => state.readWaiters.push(resolve));
       }
     } else throw Error('Unexpected mobile HTTP request: ' + url);
     return { ok: status === 200, status, json: async () => payload };
@@ -80,14 +85,15 @@ function createPhone() {
     visibilityState: 'visible',
     getElementById: get,
     createElement: tag => element(tag),
-    addEventListener() {}
+    events: {},
+    addEventListener(event, fn) { this.events[event] = fn; }
   };
   const window = { crypto: webcrypto, addEventListener() {} };
   const location = { href: 'https://example.test/chat/contacts/real-friends.html',
     origin: 'https://example.test', pathname: '/chat/contacts/real-friends.html', search: '' };
   vm.runInNewContext(script, { window, document, fetch: fetchMock, location,
     navigator: { clipboard: { writeText: async () => {} } }, crypto: webcrypto,
-    URL, history: { replaceState() {} }, setInterval: () => 1, clearInterval() {},
+    URL, history: { replaceState() {} }, setInterval: fn => { state.intervalFn = fn; return 1; }, clearInterval() {},
     confirm: () => true, console }, { timeout: 2000, filename: 'real-friends.html' });
   const settle = async () => {
     for (let i = 0; i < 8; i++) await new Promise(resolve => setImmediate(resolve));
@@ -156,4 +162,52 @@ test('ambiguous chat response keeps draft and retries with the same clientMessag
   assert.equal(input.value, '');
   assert.equal(phone.state.posted.length, 2);
   assert.equal(phone.state.posted[0].clientMessageId, phone.state.posted[1].clientMessageId);
+});
+
+test('overlapping polling is serialized and repeated server messages never double-render', async () => {
+  const phone = createPhone();
+  await phone.openChat();
+  const messages = phone.get('messages');
+  assert.equal(messages.children.length, 1);
+  phone.state.chatReadReply = { ok: true, ownerAccountId: A, peerId: B,
+    messages: [{ id: 'remote-2', seq: 2, text: 'One update', senderId: B, recipientId: A }],
+    nextCursor: 2 };
+  phone.state.deferRead = true;
+  const before = phone.state.chatReads;
+  phone.state.intervalFn();
+  phone.state.intervalFn();
+  await phone.settle();
+  assert.equal(phone.state.chatReads - before, 1, 'concurrent polls must use a single request');
+  assert.equal(phone.state.readWaiters.length, 1);
+  phone.state.deferRead = false;
+  phone.state.readWaiters.shift()();
+  await phone.settle();
+  assert.deepEqual(messages.children.map(n => n.textContent), ['Private text', 'One update']);
+  phone.state.intervalFn();
+  await phone.settle();
+  assert.deepEqual(messages.children.map(n => n.textContent), ['Private text', 'One update'],
+    'out-of-order duplicate responses must not draw the same message twice');
+});
+
+test('a late response from a previously closed chat cannot mutate a reopened same-peer chat', async () => {
+  const phone = createPhone();
+  await phone.openChat();
+  phone.state.chatReadReply = { ok: true, ownerAccountId: A, peerId: B,
+    messages: [{ id: 'old-stale', seq: 2, text: 'Stale old request', senderId: B, recipientId: A }],
+    nextCursor: 2 };
+  phone.state.deferRead = true;
+  phone.state.intervalFn();
+  await phone.settle();
+  assert.equal(phone.state.readWaiters.length, 1);
+  phone.get('closeChat').events.click();
+  phone.state.deferRead = false;
+  phone.state.chatReadReply = { ok: true, ownerAccountId: A, peerId: B,
+    messages: [{ id: 'fresh-1', seq: 1, text: 'Fresh timeline', senderId: B, recipientId: A }],
+    nextCursor: 1 };
+  await phone.openChat();
+  assert.deepEqual(phone.get('messages').children.map(n => n.textContent), ['Fresh timeline']);
+  phone.state.readWaiters.shift()();
+  await phone.settle();
+  assert.deepEqual(phone.get('messages').children.map(n => n.textContent), ['Fresh timeline'],
+    'old response from same peer must be discarded by conversation generation');
 });
