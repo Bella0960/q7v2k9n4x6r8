@@ -384,6 +384,9 @@
       }
       cursor = nextCursor;
     }
+    if (!state.account || state.account.id !== snapshotOwnerId) {
+      throw makeError('friend_roster_account_mismatch', 409);
+    }
     return {
       ownerAccountId: snapshotOwnerId,
       friends: friends,
@@ -403,14 +406,26 @@
     if (direction !== 'incoming' && direction !== 'outgoing') {
       throw makeError('invalid_direction', 400);
     }
+    var expectedOwnerId = state.account.id;
     var payload = await request('/v1/friends/requests?direction=' + direction);
-    return Array.isArray(payload.requests) ? payload.requests : [];
+    if (!state.account || state.account.id !== expectedOwnerId ||
+        payload.ownerAccountId !== expectedOwnerId) {
+      throw makeError('friend_data_account_mismatch', 409);
+    }
+    if (!Array.isArray(payload.requests)) throw makeError('invalid_friend_requests_response', 200);
+    return payload.requests;
   }
 
   async function listBlocked() {
     requireFriends();
+    var expectedOwnerId = state.account.id;
     var payload = await request('/v1/friends/blocks');
-    return Array.isArray(payload.blocked) ? payload.blocked : [];
+    if (!state.account || state.account.id !== expectedOwnerId ||
+        payload.ownerAccountId !== expectedOwnerId) {
+      throw makeError('friend_data_account_mismatch', 409);
+    }
+    if (!Array.isArray(payload.blocked)) throw makeError('invalid_blocked_users_response', 200);
+    return payload.blocked;
   }
 
   async function rotateFriendCode() {
