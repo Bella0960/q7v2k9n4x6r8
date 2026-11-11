@@ -5,6 +5,7 @@
   const completeNode = document.getElementById('bootstrapComplete');
   const statusNode = document.getElementById('bootstrapStatus');
   const retryButton = document.getElementById('retryBootstrapCheck');
+  const setupHelp = document.getElementById('bootstrapSetupHelp');
   let statusCheckInProgress = false;
 
   async function request(path, method = 'GET', body = null) {
@@ -53,6 +54,7 @@
     form.hidden = true;
     statusNode.hidden = true;
     retryButton.hidden = true;
+    if (setupHelp) setupHelp.hidden = true;
     completeNode.hidden = false;
     errorNode.textContent = '';
   }
@@ -65,12 +67,20 @@
     statusNode.hidden = false;
     statusNode.textContent = '正在确认服务器初始化状态…';
     retryButton.hidden = true;
+    if (setupHelp) setupHelp.hidden = true;
     retryButton.disabled = true;
 
     try {
       const status = await request('/api/admin/bootstrap/status');
       if (status.initialized) {
         showInitialized();
+        return;
+      }
+      if (status.configured === false) {
+        // Never present a form that the server cannot accept yet.
+        statusNode.textContent = '账号测试环境尚未配置安全密钥，请按下方说明设置后重新检查。';
+        retryButton.hidden = false;
+        if (setupHelp) setupHelp.hidden = false;
         return;
       }
       statusNode.hidden = true;
