@@ -11,6 +11,7 @@
 <script src="../shared/js/phone/storage/media-repository.js"></script>
 <script src="forum-media.js"></script>
 <script src="forum-gossip.js"></script>
+<script src="forum-world-events.js?v=20261111v1"></script>
 <script src="../shared/js/phone/phone_api.js"></script>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
 <style>
@@ -99,6 +100,11 @@
   .comments { padding: 0 22px; }
   .ai-community-status { padding: 10px 0 4px; color:#aaa; font-size:9px; letter-spacing:.04em; }
   .ai-community-status:empty { display:none; }
+  .world-thread-tools[hidden]{display:none}
+  .world-thread-tools{margin:8px 0 16px}
+  .world-thread-progress{font-size:10px;line-height:1.8;color:#777;margin-bottom:7px}
+  .forum-world-author{border-left:2px solid #888;padding-left:11px;scroll-margin-top:90px}
+  .forum-world-author .c-text{white-space:pre-wrap;line-height:2;color:#333}
   .gossip-continue { border:1px solid #dedede;background:#fff;color:#222;font:600 11px var(--sans);padding:12px 16px;margin:10px 0 13px;width:100%;text-align:left;cursor:pointer;letter-spacing:.01em; }
   .gossip-continue:disabled { color:#999;cursor:default;background:#f7f7f7; }
   .gossip-continue[hidden] { display:none; }
@@ -284,6 +290,10 @@
     <button id="gossipContinue" class="gossip-continue" type="button" onclick="continueGossip()" hidden>让楼主继续讲</button>
     <button id="gossipFinishAll" class="gossip-series" type="button" onclick="finishGossipSeries()" hidden>连续讲到结局</button>
     <p id="gossipSeriesNote" class="gossip-series-note" hidden>连续追更会逐章调用你配置的 API，每更保存一次；点“停止”后不会再开始下一更。</p>
+    <div id="forumWorldTools" class="world-thread-tools" hidden>
+      <p id="forumWorldProgress" class="world-thread-progress" aria-live="polite"></p>
+      <button id="forumWorldContinue" class="gossip-continue" type="button" onclick="continueForumWorld()">让楼主补充新进展</button>
+    </div>
     <div id="commentList"></div>
   </div>
 
@@ -428,7 +438,11 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
    {id:'resident_far',name:'远山',style:'有经验，愿意给实际建议'},
    {id:'resident_pick',name:'拾光者',style:'喜欢补充背景和时间线'}
   ];
-  function detailResident(id,index){return DETAIL_RESIDENTS.find(x=>x.id===String(id))||DETAIL_RESIDENTS[(index||0)%DETAIL_RESIDENTS.length]}
+  function detailResident(id,index){
+    const theme=getForumTheme(post&&post.themeId||undefined);
+    const residents=window.ForumWorldEvents?ForumWorldEvents.residents(theme,DETAIL_RESIDENTS):DETAIL_RESIDENTS;
+    return residents.find(x=>x.id===String(id))||residents[(index||0)%residents.length];
+  }
   function getForumThreadWorldbook(){
     let cfg={};try{cfg=JSON.parse(localStorage.getItem('forum_config')||'{}')}catch(e){console.warn('[Forum] getForumThreadWorldbook 解析 forum_config 失败，使用默认主题人设',e)}
     const id=cfg.theme||'reality';
@@ -477,7 +491,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     const status=document.getElementById('aiCommentStatus');
     if(status)status.textContent='社区里有人正在看这条帖子…';
     try{
-      const residents=DETAIL_RESIDENTS.map(r=>({id:r.id,name:r.name,style:r.style}));
+      const residents=DETAIL_RESIDENTS.map((r,i)=>detailResident(r.id,i)).map(r=>({id:r.id,name:r.name,style:r.style}));
       const existing=post.comments.slice(-5).map(c=>({name:c.name,text:c.text,replies:(c.replies||[]).map(x=>x.text)}));
       const prompt='请为下面这条论坛帖子补上第一批自然的网友讨论。只返回 JSON。\n固定路人：'+JSON.stringify(residents)+'\n帖子：'+JSON.stringify({author:post.name,title:postTitle(),body:postBody(),topic:post.topic||''})+'\n已有评论（不要重复）：'+JSON.stringify(existing)+'\n要求：生成 3-4 条评论，至少有两种不同态度；评论要抓住帖子细节，有人追问、有人分享经历、有人补充或温和反对。选择 1-2 条评论加一条楼中楼回复，让讨论有来有回。禁止每条都夸楼主或只说“确实”“哈哈”。所有 residentId 必须来自固定路人。格式：{"comments":[{"residentId":"路人id","text":"评论内容","replies":[{"residentId":"路人id","text":"回复内容","replyTo":"被回复昵称"}]}]}';
       const result=await forumAIJSON(prompt,0.93,post.mediaAssetIds);
@@ -585,6 +599,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
   let gossipSeriesRunning=false;
   let gossipSeriesStopRequested=false;
   let gossipView='all';
+  let worldReplyBusy=false,worldPageHidden=false;
   let gossipReadObserver=null;
   function gossipLocalStore(){try{return window.localStorage}catch(error){return null}}
   function syncGossipReading(){
@@ -735,6 +750,22 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       }
     }
     if(seriesNote)seriesNote.hidden=!hasGossipStory;
+    const eventTools=document.getElementById('forumWorldTools');
+    const event=!!(window.ForumWorldEvents&&ForumWorldEvents.isEvent(post));
+    if(eventTools){
+      eventTools.hidden=!event;
+      if(event){
+        const state=ForumWorldEvents.progress(post);
+        const progressEl=document.getElementById('forumWorldProgress');
+        const button=document.getElementById('forumWorldContinue');
+        if(progressEl)progressEl.textContent='事件进展 · '+state.chapter+'/'+state.maxChapters+
+          (state.finished?' · 已有结果':' · 还有后续');
+        if(button){
+          button.disabled=worldReplyBusy||state.finished;
+          button.textContent=state.finished?'这件事已经有了结果':worldReplyBusy?'楼主正在整理新进展…':'让楼主补充新进展';
+        }
+      }
+    }
   }
 
   function isOwn(c) { return c.name === '我' || c.owner === 'me'; }
@@ -771,10 +802,10 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       return;
     }
     list.innerHTML = visible.map(({c,i}) => `
-      <div class="comment ${c.source==='gossip-author'?'gossip-author-update':''}" ${c.source==='gossip-author'?'data-gossip-chapter="'+Math.max(1,Math.floor(Number(c.gossipChapter)||1))+'"':''}>
+      <div class="comment ${c.source==='gossip-author'?'gossip-author-update':c.source==='forum-world-author'?'forum-world-author':''}" ${c.source==='gossip-author'?'data-gossip-chapter="'+Math.max(1,Math.floor(Number(c.gossipChapter)||1))+'"':''}>
         <div class="c-avatar" style="background:${avatarBackground(c)}">${avatarContent(c, false)}</div>
         <div class="c-body">
-          <div class="c-name">${esc(c.name)}${c.source==='gossip-author' ? '<span class="gossip-author-tag">楼主 · 第 '+Math.max(1,Math.floor(Number(c.gossipChapter)||1))+' 更</span>' : ''}${c.replyTo ? '<span class="c-at"> 回复 '+esc(c.replyTo)+'</span>' : ''}</div>
+          <div class="c-name">${esc(c.name)}${c.source==='gossip-author' ? '<span class="gossip-author-tag">楼主 · 第 '+Math.max(1,Math.floor(Number(c.gossipChapter)||1))+' 更</span>' : c.source==='forum-world-author'?'<span class="gossip-author-tag">楼主 · 第 '+Math.max(1,Math.floor(Number(c.worldChapter)||1))+' 次进展</span>':''}${c.replyTo ? '<span class="c-at"> 回复 '+esc(c.replyTo)+'</span>' : ''}</div>
           <div class="c-text">${esc(c.text)}</div>
           ${c.source==='gossip-author'?'<span class="gossip-read-sentinel" data-gossip-read-chapter="'+Math.max(1,Math.floor(Number(c.gossipChapter)||1))+'"></span>':''}
           ${window.ForumMedia?ForumMedia.markup(c.mediaAssetIds,"comment-media"):""}
@@ -1042,7 +1073,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     const status=document.getElementById('aiCommentStatus');
     if(status)status.textContent='有人看到你的留言，正在接话…';
     try{
-      const residents=DETAIL_RESIDENTS.map(r=>({id:r.id,name:r.name,style:r.style}));
+      const residents=DETAIL_RESIDENTS.map((r,i)=>detailResident(r.id,i)).map(r=>({id:r.id,name:r.name,style:r.style}));
       const threadContext={anchorName:target.name,anchorText:target.text,hasAttachedImages:!!((target.mediaAssetIds||[]).length||(submittedImageIds||[]).length),replies:(target.replies||[]).slice(-5).map(r=>({name:r.name,text:r.text}))};
       const prompt='论坛里刚出现一条新留言，请让 1-2 位不同的路人自然回应它。只返回 JSON。\n路人资料：'+JSON.stringify(residents)+'\n帖子：'+JSON.stringify({title:postTitle(),body:postBody(),topic:post.topic||''})+'\n当前讨论串：'+JSON.stringify(threadContext)+'\n用户刚刚说：'+JSON.stringify(text)+'\n要求：回复要直接回应这句话和上下文，不要泛泛夸赞或重复已有内容；可以追问、分享相似经历或有礼貌地提出不同看法。最多两条，第二条可以接第一条的话。每条 10-55 字，保持口语和各自性格。格式：{"replies":[{"residentId":"路人id","text":"回复","replyTo":"我"}]}';
       const imageIds=Array.from(new Set([].concat(post.mediaAssetIds||[],target.mediaAssetIds||[],submittedImageIds||[]))).slice(0,2);
