@@ -1147,7 +1147,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const cloudSchedulerLastRunAt = latestCloudTick ? Number(latestCloudTick.createdAt) : null;
     const cloudSchedulerRuntimeVerified = Boolean(
       latestCloudTick &&
-      ['success', 'degraded'].includes(String(latestCloudTick.status)) &&
+      ['success', 'degraded', 'skipped'].includes(String(latestCloudTick.status)) &&
       Number.isSafeInteger(cloudSchedulerLastRunAt) &&
       cloudSchedulerLastRunAt <= timestamp &&
       timestamp - cloudSchedulerLastRunAt <= 15 * 60 * 1000
