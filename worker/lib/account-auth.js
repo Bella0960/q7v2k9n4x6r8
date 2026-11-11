@@ -802,7 +802,13 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     getAuthenticatedAccount,
     handle: async (request, path, method) => {
       if (path === '/api/admin/bootstrap/status' && method === 'GET') {
-        return ok({ initialized: store.hasMaoSuperAdminAccount() });
+        // Report readiness without exposing server secret values or key material.
+        const initialized = store.hasMaoSuperAdminAccount();
+        return ok({
+          initialized,
+          configured: String(env.MAO_SUPER_ADMIN_BOOTSTRAP_SECRET || '').length >= 32 &&
+            String(env.DEVICE_SECRET_PEPPER || '').length >= 32
+        });
       }
       if (path === '/api/accounts/register' && method === 'POST') return await register(request);
       if (path === '/api/accounts/login' && method === 'POST') return await login(request);
