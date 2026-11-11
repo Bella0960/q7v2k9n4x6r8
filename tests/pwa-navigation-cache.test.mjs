@@ -8,7 +8,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
-assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v204'/);
+assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v205'/);
 const viteConfig = read('vite.config.js');
 
 test('build emits a manifest containing every HTML entry point', () => {
@@ -47,7 +47,7 @@ test('service worker stores public login pages but never precaches account-owned
 test('private navigation reaches the Worker identity gate and cannot use cached app HTML', () => {
   assert.match(serviceWorker, /if \(req\.mode === 'navigate' && !isPublicAccountPage\)/);
   assert.match(serviceWorker, /return await fetch\(req\)/);
-  assert.match(serviceWorker, /var cachedPromise = caches\.match\(req\)/);
+  assert.match(serviceWorker, /var fresh = await networkPromise;/);
   assert.match(serviceWorker, /event\.waitUntil\(updatePromise/);
 });
 
@@ -62,4 +62,19 @@ test('desktop app navigation has one valid capture-phase owner', () => {
 test('failed app navigation never falls back to the desktop index page', () => {
   assert.doesNotMatch(serviceWorker, /cached \|\| caches\.match\('\.\/index\.html'\)/);
   assert.match(serviceWorker, /status: 503/);
+});
+
+test('public login uses fresh network HTML first, with offline-only cache fallback', () => {
+  const start = serviceWorker.indexOf("if (req.mode === 'navigate' && isPublicAccountPage)");
+  const end = serviceWorker.indexOf('// 所有历史版本参数的 font-loader', start);
+  assert.ok(start > 0 && end > start);
+  const route = serviceWorker.slice(start, end);
+  assert.match(route, /fetch\(req, \{ cache: 'no-store' \}\)/);
+  assert.match(route, /event\.waitUntil\(networkPromise/);
+  const freshAt = route.indexOf('var fresh = await networkPromise;');
+  const cachedAt = route.indexOf('var cached = await caches.match(req)');
+  assert.ok(freshAt >= 0 && cachedAt > freshAt,
+    'fresh HTML must be returned before consulting the offline cache');
+  assert.match(route, /if \(cached\) return cached;/);
+  assert.doesNotMatch(route, /if \(cached\) return cached;[\s\S]*?var fresh = await networkPromise;/);
 });
