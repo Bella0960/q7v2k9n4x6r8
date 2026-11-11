@@ -215,6 +215,12 @@ if(!account||account.id!==ownerId)return;
 for(var result of list)if(result.ownerAccountId!==ownerId){
 clearPrivateSession();throw new Error('账号身份与好友资料不一致，已清除旧账号资料。');
 }
+// An authoritative friends refresh may revoke an active chat (remove, block,
+// disabled account or a remote approval change). Never leave its old bubbles
+// and drafts visible while waiting for the next polling interval.
+if(currentChat&&!list[2].friends.some(function(friend){return friend.id===currentChat.id;})){
+closeChat();
+}
 renderList('incoming',list[0].requests,'incoming');renderList('outgoing',list[1].requests,'outgoing');
 var peers=el('friends');peers.textContent='';
 if(!list[2].friends.length)peers.appendChild(make('p','还没有经过审批的真人好友','fine'));
