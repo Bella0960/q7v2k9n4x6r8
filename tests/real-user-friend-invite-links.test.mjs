@@ -8,6 +8,7 @@ import test from 'node:test';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const inviteSource = fs.readFileSync(path.join(ROOT, 'shared/js/phone/real-user-friend-invite.js'), 'utf8');
 const qrSource = fs.readFileSync(path.join(ROOT, 'shared/js/phone/qrcode-generator.js'), 'utf8');
+const panelSource = fs.readFileSync(path.join(ROOT, 'chat/contacts/real-user-account-panel.js'), 'utf8');
 function inviteApi() {
   const window = {};
   vm.runInNewContext(inviteSource, { window, URL, String, RegExp, Error }, { filename: 'real-user-friend-invite.js' });
@@ -75,4 +76,22 @@ test('QR encodes verified HTTPS share link for ordinary mobile cameras', () => {
   assert.match(svg, /^<svg/);
   assert.match(svg, /viewBox=/);
   assert.ok(qr.getModuleCount() >= 21);
+});
+
+test('mobile invite code cannot be copied or shared after expiry or account switch', () => {
+  assert.match(panelSource, /function activeCurrentCode\(\)/);
+  assert.match(panelSource, /currentCode\.expiresAt > Date\.now\(\)/);
+  assert.match(panelSource, /account\.id === currentCode\.ownerAccountId/);
+  assert.match(panelSource, /var expired = !activeCurrentCode\(\)/);
+  assert.match(panelSource, /copyValue\(activeCurrentCode\(\) && activeCurrentCode\(\)\.code\)/);
+  assert.match(panelSource, /var validCode = activeCurrentCode\(\)/);
+  assert.match(panelSource, /expiresAt <= Date\.now\(\)/);
+  assert.doesNotMatch(panelSource, /if \(!Number\.isFinite\(expiresAt\)\) expiresAt = Date\.now\(\) \+ 15/);
+});
+
+test('mobile invite UI rejects expired server codes and repeated submissions', () => {
+  assert.match(panelSource, /payload\.ownerAccountId !== account\.id/);
+  assert.match(panelSource, /invalid_friend_code_expiry/);
+  assert.match(panelSource, /if \(!button \|\| button\.disabled\) return/);
+  assert.match(panelSource, /try \{\s*await refreshServerData\(\)/);
 });
