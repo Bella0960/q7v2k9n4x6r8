@@ -1180,7 +1180,9 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     try {
       const posts = JSON.parse(localStorage.getItem('forum_posts') || '[]');
       const filtered = posts.filter(p => p.id !== post.id);
-      localStorage.setItem('forum_posts', JSON.stringify(filtered));
+      const serialized=JSON.stringify(filtered);
+      localStorage.setItem('forum_posts', serialized);
+      if(localStorage.getItem('forum_posts')!==serialized)throw new Error('删除结果未持久保存');
       alert('帖子已删除');
       window.location.href = 'forum.html';
     } catch(e) {
@@ -1188,13 +1190,32 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     }
   }
 
-  function getFollows() { return JSON.parse(localStorage.getItem('forum_follows') || '[]'); }
-  function isFollowing(name) { return getFollows().indexOf(name) >= 0; }
+  function getFollows() {
+    try {
+      const parsed=JSON.parse(localStorage.getItem('forum_follows') || '[]');
+      return Array.isArray(parsed)?parsed:null;
+    } catch(error) {
+      console.warn('[Forum] 关注记录读取失败，保留原数据',error);
+      return null;
+    }
+  }
+  function isFollowing(name) {
+    const follows=getFollows();
+    return Array.isArray(follows)&&follows.includes(name);
+  }
   function toggleFollow(name) {
-    let f = getFollows();
-    if (isFollowing(name)) f = f.filter(x => x !== name);
-    else f.push(name);
-    localStorage.setItem('forum_follows', JSON.stringify(f));
+    const follows=getFollows();
+    if(!follows){toast('关注记录无法读取，未覆盖原数据');return;}
+    const next=follows.includes(name)?follows.filter(x=>x!==name):follows.concat([name]);
+    const serialized=JSON.stringify(next);
+    try {
+      localStorage.setItem('forum_follows',serialized);
+      if(localStorage.getItem('forum_follows')!==serialized)throw new Error('关注状态未持久保存');
+    } catch(error) {
+      console.warn('[Forum] 关注状态保存失败',error);
+      toast('关注状态未保存，请检查存储空间后重试');
+      return;
+    }
     renderComments();
   }
 
