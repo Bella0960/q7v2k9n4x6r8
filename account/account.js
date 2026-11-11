@@ -112,6 +112,11 @@
 
   function presentAccount(account) {
     currentAccount = account || null;
+    const creatorAccess = account?.status === 'active' && account.role === 'super_admin';
+    for (const id of ['enterAdminCenter', 'manageInvitations']) {
+      const link = byId(id);
+      if (link) link.hidden = !creatorAccess;
+    }
     if (!account) {
       showPanel('welcomePanel');
       return;
@@ -324,6 +329,18 @@
     if (currentAccount?.status === 'active') window.location.assign('/index.html');
   });
 
+  byId('enterAdminCenter').addEventListener('click', () => {
+    if (currentAccount?.status === 'active' && currentAccount.role === 'super_admin') {
+      window.location.assign('/admin/admin-center.html');
+    }
+  });
+
+  byId('manageInvitations').addEventListener('click', () => {
+    if (currentAccount?.status === 'active' && currentAccount.role === 'super_admin') {
+      window.location.assign('/admin/admin-center.html?tab=invites');
+    }
+  });
+
   async function checkCreatorBootstrapEntry() {
     const link = byId('creatorBootstrapLink');
     if (!link) return;
@@ -350,7 +367,7 @@
     } catch (error) {
       if (revision !== viewRevision) return;
       if (error.code === 'ACCOUNT_DISABLED') showPanel('blockedPanel');
-      else showPanel('welcomePanel');
+      else showPanel(params.get('admin') === '1' ? 'loginPanel' : 'welcomePanel');
     }
   })();
 })();
