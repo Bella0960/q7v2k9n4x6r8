@@ -74,6 +74,7 @@ textarea{min-height:70px;resize:vertical}
 (function(){
 'use strict';
 var account=null, currentCode=null, currentChat=null, cursor=0, messageTimer=null;
+var chatEpoch=0, activeMessageLoad=null, seenMessageSeq=new Set();
 var pendingSendId=null, pendingSendFingerprint=null, pendingMessageId=null, pendingMessageText=null;
 var el=function(id){return document.getElementById(id)};
 var pattern=/^[a-f0-9]{64}$/;
@@ -85,7 +86,8 @@ function explain(err){var o=err&&err.message||'操作失败';return o.length>220
 var authErrors=new Set(['ACCOUNT_CONTEXT_CHANGED','ACCOUNT_CONTEXT_REQUIRED','LOGIN_REQUIRED',
 'ACCOUNT_DISABLED','SOCIAL_SESSION_EXPIRED','SOCIAL_LOGIN_REQUIRED','SOCIAL_INVITE_REQUIRED']);
 function closeChat(){
-clearTimer();currentChat=null;cursor=0;pendingMessageId=null;pendingMessageText=null;
+clearTimer();chatEpoch++;activeMessageLoad=null;seenMessageSeq.clear();
+currentChat=null;cursor=0;pendingMessageId=null;pendingMessageText=null;
 el('messages').textContent='';el('chatText').value='';el('chatPanel').hidden=true;
 }
 function clearPrivateSession(){
@@ -241,21 +243,43 @@ row.appendChild(bar);area.appendChild(row);
 }
 }
 async function loadMessages(){
-if(!currentChat)return;
-var target=currentChat.id,ownerId=account&&account.id;
-var result=await api('/api/social/chats/'+encodeURIComponent(target)+'/messages?after='+cursor);
-if(!account||account.id!==ownerId||!currentChat||currentChat.id!==target)return;
+if(!currentChat||!account)return;
+var target=currentChat.id,ownerId=account.id,epoch=chatEpoch,startCursor=cursor;
+// Polling, tab-resume and send confirmation may overlap. Only one fetch per
+// conversation generation may render; old responses must never touch a new view.
+if(activeMessageLoad&&activeMessageLoad.epoch===epoch)return activeMessageLoad.promise;
+var task=(async function(){
+var result=await api('/api/social/chats/'+encodeURIComponent(target)+'/messages?after='+startCursor);
+if(epoch!==chatEpoch||!account||account.id!==ownerId||!currentChat||currentChat.id!==target)return;
 if(result.ownerAccountId!==ownerId||result.peerId!==target){
 clearPrivateSession();throw new Error('聊天所属账号异常，已清除旧账号资料。');
 }
+if(!Array.isArray(result.messages)||!Number.isSafeInteger(result.nextCursor)||
+result.nextCursor<startCursor){
+throw new Error('聊天记录返回格式异常，请刷新后重试。');
+}
+for(var m of result.messages){
+if(!Number.isSafeInteger(m.seq)||m.seq<=0||m.seq<=startCursor||
+(m.senderId!==ownerId&&m.senderId!==target)||
+(m.recipientId!==ownerId&&m.recipientId!==target)){
+throw new Error('聊天消息记录异常，未使用不可信数据。');
+}
+}
 result.messages.forEach(function(m){
-var node=make('div',m.text,'bubble'+(m.senderId===account.id?' mine':''));
+if(seenMessageSeq.has(m.seq))return;
+seenMessageSeq.add(m.seq);
+var node=make('div',m.text,'bubble'+(m.senderId===ownerId?' mine':''));
 el('messages').appendChild(node);
 });
-cursor=result.nextCursor;el('messages').scrollTop=el('messages').scrollHeight;
+cursor=Math.max(cursor,result.nextCursor);
+el('messages').scrollTop=el('messages').scrollHeight;
+})();
+activeMessageLoad={epoch:epoch,promise:task};
+try{await task}finally{if(activeMessageLoad&&activeMessageLoad.promise===task)activeMessageLoad=null;}
 }
 async function openChat(friend){
-clearTimer();pendingMessageId=null;pendingMessageText=null;currentChat=friend;cursor=0;el('messages').textContent='';el('chatTitle').textContent=friend.displayName||friend.id;
+clearTimer();chatEpoch++;activeMessageLoad=null;seenMessageSeq.clear();
+pendingMessageId=null;pendingMessageText=null;currentChat=friend;cursor=0;el('messages').textContent='';el('chatTitle').textContent=friend.displayName||friend.id;
 el('chatPanel').hidden=false;await loadMessages();
 messageTimer=setInterval(function(){if(document.visibilityState==='visible')loadMessages().catch(e=>{status(explain(e));clearTimer();})},5000);
 }
