@@ -208,7 +208,10 @@ test('live connection checks current form and distinguishes success, errors and 
     { name:'HTTP 404', code:404, match:/模型/ },
     { name:'HTTP 429', code:429, match:/额度/ },
     { name:'HTTP 500', code:500, match:/服务器/ },
-    { name:'malformed HTTP 200', code:200, response:{ hello:true }, match:/未包含兼容的聊天结果/ },
+    { name:'malformed HTTP 200', code:200, response:{ hello:true }, match:/没有可用的聊天文字结果/ },
+    { name:'empty chat content', code:200, response:{ choices:[{ message:{ content:'' } }] }, match:/没有可用的聊天文字结果/ },
+    { name:'credentials echoed by provider', code:401, response:{ error:{ message:'not-a-real-key should not appear' } }, match:/已隐藏密钥/ },
+    { name:'insecure HTTP', url:'http://example.invalid/v1', match:/HTTPS/ },
     { name:'CORS', error:'Failed to fetch', match:/CORS/ },
     { name:'timeout', error:'timeout', abort:true, match:/15 秒/ },
     { name:'duplicate path', url:'https://example.invalid/v1/chat/completions', match:/移除末尾/ },
@@ -249,6 +252,9 @@ test('live connection checks current form and distinguishes success, errors and 
     assert.equal(button.disabled, false, scenario.name + ': unlock');
     assert.equal(button.textContent, '测试连接', scenario.name + ': label');
     assert.doesNotMatch(message.innerText, /not-a-real-key/, scenario.name + ': key is not shown');
+    if (scenario.name === 'insecure HTTP' || scenario.name === 'invalid URL' || scenario.name === 'duplicate path' || scenario.name === 'empty Key') {
+      assert.equal(calls.length, 0, scenario.name + ': no request should be sent');
+    }
     if (scenario.name === 'success') {
       assert.equal(calls.length, 1);
       assert.equal(calls[0].url, 'https://example.invalid/v1/chat/completions');
