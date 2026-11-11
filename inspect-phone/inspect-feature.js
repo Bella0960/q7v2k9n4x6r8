@@ -91,20 +91,24 @@
     return copy;
   }
   function roleContext(role) {
-    return [role.name,role.age,role.job,role.occupation,role.education,role.description,role.bio,role.personality,role.character,role.speechStyle,role.prompt,role.systemPrompt]
+    return [role.name,role.age,role.job,role.work,role.occupation,role.education,role.school,role.consumptionLevel,role.spending,role.income,role.description,role.bio,role.personality,role.character,role.speechStyle,role.prompt,role.systemPrompt]
       .filter(Boolean).map(function(x){return clean(x,500);}).join('；').slice(0,3000);
   }
   function profile(role) {
-    var text=roleContext(role),student=/学生|大学|高中|研究生|校园|宿舍/.test(text);
-    var work=/公司|职员|上班|设计师|工程师|教师|工作|医生|店员|律师/.test(text);
+    var text=roleContext(role),work=/公司|职员|上班|设计师|工程师|教师|工作|医生|店员|律师|图书编辑|工程|毕业|自由职业/.test(text);
+    var studying=/在校|大学生|高中生|中学生|小学生|大一|大二|大三|高一|高二|高三|研究生|读书中/.test(text);
+    var student=studying&&!(/毕业|已工作/.test(text)&&!/在读|在校/.test(text));
+    if(!student&&!work&&/大学|高中|校园|宿舍/.test(text))student=true;
+    if(!student&&!work&&Number(role.age)>0&&Number(role.age)<18)student=true;
     var place=student?'学校':work?'公司':'工作室';
     var pair=student?'室友小林':work?'同事小林':'邻居小林';
-    var level=/富裕|有钱|高收入|总裁|企业家/.test(text)?'high':student?'student':'normal';
+    var level=/富裕|有钱|高收入|总裁|企业家|消费高/.test(text)?'high':
+      student?'student':/节俭|省钱|低收入|拮据|贫困|手头紧/.test(text)?'low':'normal';
     return {student:student,place:place,pair:pair,level:level};
   }
   function fallback(role,roleId,now) {
     var p=profile(role),name=clean(role.name,30)||'角色';
-    var low=p.level==='student',high=p.level==='high',meal=low?19:high?228:38,shop=low?85:high?780:189;
+    var low=p.level==='student'||p.level==='low',high=p.level==='high',meal=low?19:high?228:38,shop=low?85:high?780:189;
     var dayMinutes=now.getHours()*60+now.getMinutes();
     var coworkerDay=dayMinutes<17*60+40?1:0;
     var stamps;
@@ -218,7 +222,7 @@
       {title:'想到什么写什么',text:'文具店那个小东西，是想送给你的；买完又担心太突然。',createdAt:at(now,1,23,12),updatedAt:at(now,0,23,12)},
       {title:'11.09',text:'并不是所有没回的消息都意味着冷淡。那天我只是需要安静一下。',createdAt:at(now,2,23,18),updatedAt:at(now,2,23,20)}
     ];
-    var salary=low?1200:high?23000:6800;
+    var salary=p.level==='student'?1200:p.level==='low'?3200:high?23000:6800;
     var transactions=[
       {merchant:low?'生活费转入':'月度收入',amount:salary,type:'收入',time:at(now,5,9,0),memo:'固定来源'},
       {merchant:p.place+'附近的小店',amount:-meal,type:'餐饮',time:factTimes[1]+60000,memo:'午饭'},
@@ -257,14 +261,18 @@
     var counted=0;
     apps.forEach(function(a){a.minutes=Math.floor(a.minutes*screenMinutes/233);counted+=a.minutes;});
     apps[0].minutes+=screenMinutes-counted;
+    var pickups=Math.min(61,Math.floor(dayMinutes*.13));
+    var steps=Math.min(5487,Math.floor(dayMinutes*6));
+    var distanceKm=Math.round(steps*.00077*10)/10;
+    var outHours=Math.round(Math.min(5,dayMinutes/120)*10)/10;
     return {schema:1,roleId:String(roleId),day:localDay(now),updatedAt:now.getTime(),facts:facts,source:{},selected:[],permission:null,
       sections:{
         chat:{contacts:contacts},moments:{moments:moments},browser:{searchHistory:searches,bookmarks:[{title:'周末步行路线整理',summary:'两条适合不赶时间的城市散步路线'},{title:'简单记录法',summary:'把待办拆成今天能完成的小步骤'},{title:'实用礼物尺寸表',summary:'常见小物件规格对照'}]},
         notes:{notes:notes,locked:locked},wallet:{transactions:transactions,balance:low?2120:high?58720:8160},
         music:{recent:recent,playlists:[{name:'深夜还醒着',tracks:['晚风来信','最后一班车','不着急']},{name:'路上听',tracks:['二十分钟的路','清晨开窗']},{name:'舍不得删',tracks:['落在书页里','晚风来信']}],top:[{title:'晚风来信',plays:37},{title:'落在书页里',plays:24},{title:'二十分钟的路',plays:18}]},
-        map:{stops:mapStops,steps:5487,distanceKm:4.2,outHours:5,frequentPlace:'住处'},
+        map:{stops:mapStops,steps:steps,distanceKm:distanceKm,outHours:outHours,frequentPlace:'住处'},
         album:{photos:photos,hidden:hidden,total:456,newSevenDays:17},
-        device:{screenMinutes:screenMinutes,nightMinutes:Math.min(48,screenMinutes),apps:apps,battery:76,wifi:'StoryHome-5G',model:'虚构型号 · Mobile X',storageUsedGb:54,storageTotalGb:128,pickups:61,focusMinutes:84,relaxMinutes:62,location:facts[facts.length-1].place},
+        device:{screenMinutes:screenMinutes,nightMinutes:Math.min(48,screenMinutes),apps:apps,battery:76,wifi:'StoryHome-5G',model:'虚构型号 · Mobile X',storageUsedGb:54,storageTotalGb:128,pickups:pickups,focusMinutes:Math.min(84,dayMinutes),relaxMinutes:Math.min(62,dayMinutes),location:facts[facts.length-1].place},
         forum:{posts:[{title:'今天终于买到了那本书',text:'在街角书店犹豫很久，最后还是拿走了。回去再慢慢读。',time:at(now,2,16,5),comments:[{name:'阿蓝',text:'求后续读后感'}]},{title:'午饭有什么不踩雷的选择',text:'最近总在熟悉的地方来回转，想换点新的。',time:at(now,1,12,1),comments:[{name:'小乙',text:'看看街角那家'}]},{title:'周末打算出去走走',text:'不想排满时间，就随便走走看看。',time:at(now,3,19,10),comments:[{name:'南风',text:'这样最好'}]}]}
       }};
   }
@@ -315,7 +323,7 @@
     if(!Array.isArray(list)||list.length<LIMIT[id]||list.length>60)return false;
     var serialized;
     try{serialized=JSON.stringify(data);}catch(error){return false;}
-    if(!serialized||serialized.length>90000)return false;
+    if(!serialized||serialized.length>45000)return false;
     var validTime=function(t){return typeof t==='number'&&Number.isSafeInteger(t)&&t>=now-35*86400000&&t<=now+60000;};
     var named=function(x){return typeof x==='string'&&x.trim().length>0&&x.length<=320;};
     var hasTime=function(item,key){return item&&validTime(item[key||'time']);};
@@ -410,7 +418,7 @@
     var grid=document.querySelector('.grid'),dock=document.querySelector('.dock'),back=document.getElementById('appBack');
     var current='',view=null,selected=data.selected||[],permission=data.permission||null,waiting=false,alerted=false;
     var unlockedNotes=false,unlockedAlbum=false,pinView='',sessionStarted=Date.now(),switches=0,lockedAttempts=0,pendingChat=null;
-    var affection=num(role.affection,num(role.favorability,num(role.intimacy,50)));
+    var affection=num(role.affection,num(role.favorability,num(role.intimacy,60)));
     var revealCount=affection>=70?3:affection>=35?1:0;
     var notice='',accessType='';
     function commit(){
@@ -424,7 +432,11 @@
       return source+(data.carriedFrom?' · 含 '+data.carriedFrom+' 的历史记录':'');
     }
     function hint(text){notice=clean(text,200);render();}
-    function button(text,act,extra){return '<button type="button" class="inspect-button '+(extra||'')+'" data-action="'+act+'">'+html(text)+'</button>';}
+    function button(text,act,extra){
+      var disabled=extra==='disabled';
+      return '<button type="button" class="inspect-button '+(extra||'')+'" data-action="'+act+'"'+
+        (disabled?' disabled aria-disabled="true"':'')+'>'+html(text)+'</button>';
+    }
     function line(title,sub,attr){return '<div class="inspect-line" '+(attr||'')+'><strong>'+html(title)+'</strong>'+(sub?'<small>'+html(sub)+'</small>':'')+'</div>';}
     function block(title,body){return '<section class="inspect-section"><h3>'+html(title)+'</h3>'+body+'</section>';}
     function empty(){return '<p class="inspect-muted">尚无记录</p>';}
@@ -566,7 +578,7 @@
       var text=clean(input,200),idx=view.index,contact=data.sections.chat.contacts[idx];if(!text||!contact)return;
       var message={side:'me',text:text,time:Date.now(),status:'sent'};
       var oldMessages=contact.messages.slice(),oldLastTime=contact.lastTime;
-      contact.messages=oldMessages.concat([message]).slice(-100);
+      contact.messages=oldMessages.concat([message]).slice(-60);
       contact.lastTime=message.time;
       if(!commit()){
         contact.messages=oldMessages;contact.lastTime=oldLastTime;
@@ -583,7 +595,7 @@
       api.complete({system:'你正在模拟虚构的手机联系人。只输出联系人回复。',user:promptText,timeoutMs:30000}).then(function(reply){
         if(!clean(reply,240))throw new Error('回复为空');
         var oldReplyMessages=contact.messages.slice(),oldReplyTime=contact.lastTime;
-        contact.messages=oldReplyMessages.concat([{side:'ai',text:clean(reply,240),time:Date.now(),status:'sent'}]).slice(-100);
+        contact.messages=oldReplyMessages.concat([{side:'ai',text:clean(reply,240),time:Date.now(),status:'sent'}]).slice(-60);
         contact.lastTime=Date.now();
         if(!commit()){
           contact.messages=oldReplyMessages;contact.lastTime=oldReplyTime;
