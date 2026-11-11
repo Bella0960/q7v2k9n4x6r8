@@ -50,8 +50,10 @@ test('private navigation goes directly to Worker and never reuses cached protect
   assert.ok(start >= 0 && end > start, 'public and private navigation must use distinct paths');
   const privateRoute = serviceWorker.slice(start, end);
   assert.match(privateRoute, /return await fetch\(req\)/);
-  assert.doesNotMatch(privateRoute, /caches\.match|caches\.open|event\.waitUntil/,
-    'a protected HTML request must never be answered from a shared cache');
+  assert.match(privateRoute, /new URL\('account\/index\.html'/, 'offline fallback must point only to the public login page');
+  assert.match(privateRoute, /caches\.match\(entry\.href\)/, 'offline login is allowed');
+  assert.doesNotMatch(privateRoute, /caches\.match\(req\)|caches\.open|event\.waitUntil/,
+    'a protected HTML request itself must never be cached or served from cache');
 });
 
 test('desktop app navigation has one valid capture-phase owner', () => {
