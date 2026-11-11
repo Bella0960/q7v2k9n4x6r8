@@ -2309,3 +2309,54 @@ test('first-contact runtime remains opt-in, one-shot and safe against a new user
   assert.match(chatSettings, /新角色开启后也可以在合适时间发起第一条友好开场/);
   assert.match(chatSettings, /应用完全关闭时不会自行生成/);
 });
+
+
+test('chat detail: generated cards and manual stickers render only after history persistence succeeds', () => {
+  assert.match(detail, /function insertIncomingCallCard\(historyList\)[\s\S]*?if \(!saveMessages\(historyList\)\)[\s\S]*?return false[\s\S]*?return true/);
+  assert.match(detail, /if \(insertIncomingCallCard\(historyList\)\) maybeAutoIncomingCall\(\)/);
+  assert.match(detail, /function insertVImageCards\(historyList, descs\)[\s\S]*?if \(!saveMessages\(historyList\)\)[\s\S]*?historyList\.length = previousLength[\s\S]*?return false/);
+  assert.match(detail, /function insertPayCards\(historyList, items\)[\s\S]*?if \(!saveMessages\(historyList\)\)[\s\S]*?previousTransferStates\.forEach/);
+  assert.match(detail, /if \(!saveMessages\(list\)\)[\s\S]*?表情没有保存到聊天记录[\s\S]*?return false[\s\S]*?sendMsg\(/);
+});
+
+test('chat detail: a failed AI reply save leaves copyable on-screen text but not a false sent record', () => {
+  assert.match(detail, /var replySaveFailed = !replySaved/);
+  assert.match(detail, /AI 回复尚未保存。上方文字暂留在当前页面，请先复制保留/);
+  assert.match(detail, /data-unsaved-reply/);
+  assert.match(detail, /尚未保存 · 请复制保留/);
+  assert.match(detail, /if \(replySaveFailed && tempRow && fullText\)/);
+});
+
+test('chat detail: payment ledger success is independent from chat-card status persistence', () => {
+  assert.match(detail, /if \(!saveWorkData\(wd\)\) return/);
+  assert.match(detail, /var chatStatusSaved = saveMessages\(list\)/);
+  assert.match(detail, /款项已入账，但聊天卡片状态没有保存/);
+  assert.match(detail, /duplicateStatusSaved \? '这笔款项已经入账'/);
+  assert.match(detail, /msg\.status = isRed \? 'opened' : 'received'/);
+});
+
+test('chat detail: group private messages require both the target history and group entry to persist', () => {
+  assert.match(detail, /privateSaved = window\.PhoneStorage\.saveChatHistory\(targetId, privateHistory\) === true/);
+  assert.match(detail, /verifiedPrivate\.length === privateHistory\.length/);
+  assert.match(detail, /if \(!privateSaved\)[\s\S]*?未显示已发送状态[\s\S]*?return ''/);
+  assert.match(detail, /if \(!saveMessages\(historyList\)\)[\s\S]*?群聊中的私聊入口没有保存成功/);
+  assert.match(detail, /showGroupPrivatePopup\(displayName, targetId, privateMessageText\)/);
+});
+
+test('chat detail: group poll and chain mutations roll back rather than showing false success', () => {
+  assert.match(detail, /if \(!saveMessages\(history\)\)[\s\S]*?群投票没有保存成功[\s\S]*?return/);
+  assert.match(detail, /if \(!saveMessages\(chainHistory\)\)[\s\S]*?群接龙没有保存成功[\s\S]*?return/);
+  assert.match(detail, /if \(!saveMessages\(joinHistory\)\)[\s\S]*?targetChain\.entries = previousEntries/);
+  assert.match(detail, /if \(!saveMessages\(history\)\)[\s\S]*?poll\.votes = previousVotes/);
+  assert.match(detail, /if \(!saveMessages\(pollHistory\)\)[\s\S]*?pollToClose\.poll\.closed = false/);
+  assert.match(detail, /if \(!saveMessages\(closeHistory\)\)[\s\S]*?chainToClose\.chain\.closed = false/);
+});
+
+test('chat detail: multi-bubble history readback verifies behavior-bearing state and reroll is gated', () => {
+  assert.match(detail, /msg\.type \|\| ''/);
+  assert.match(detail, /msg\.status \|\| ''/);
+  assert.match(detail, /msg\.poll && typeof msg\.poll === 'object' \? JSON\.stringify\(msg\.poll\)/);
+  assert.match(detail, /msg\.chain && typeof msg\.chain === 'object' \? JSON\.stringify\(msg\.chain\)/);
+  assert.match(detail, /msg\.call && typeof msg\.call === 'object' \? JSON\.stringify\(msg\.call\)/);
+  assert.match(detail, /if \(!saveMessages\(list\)\)[\s\S]*?原回复没有删除成功[\s\S]*?return[\s\S]*?sendMsg\(\{ isRegenerate: true/);
+});
