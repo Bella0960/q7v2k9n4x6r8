@@ -246,3 +246,21 @@ test('mobile feed and detail expose unread progress and the next unread chapter'
   assert.match(detail,/function syncGossipReading\(\)/);
   assert.match(detail,/if\(gossipReadObserver\)\{gossipReadObserver\.disconnect\(\)/);
 });
+
+test('forum detail and feed do not re-inject obsolete generic seeded posts',()=>{
+  assert.match(home,/function getSeededPosts\(themeOverride\)\{\s*return \[\];\s*\}/);
+  assert.match(detail,/function getSeededPosts\(themeOverride\)\{return \[\]\}/);
+  assert.doesNotMatch(detail,/const seeded=\[/);
+  assert.match(detail,/const seedPosts = getSeededPosts\(\)/);
+});
+
+test('mobile back navigation reloads persisted chapters and a failed refresh leaves original data alone',()=>{
+  assert.match(home,/addEventListener\('pageshow',function\(event\)/);
+  assert.match(home,/if\(!event\.persisted\)return/);
+  assert.match(home,/posts=loadPosts\(\)/);
+  assert.match(home,/render\(\);\s*scroll\.scrollTop=y/);
+  assert.match(home,/fresh\.length!==gossipPlans\.length/);
+  assert.match(home,/const before=posts;/);
+  assert.match(home,/posts=fresh\.concat\(posts\.map\(p=>\(\{\.\.\.p,comments:/);
+  assert.match(home,/if\(!save\(\)\)\{posts=before;return false\}/);
+});
