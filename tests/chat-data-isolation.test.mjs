@@ -510,6 +510,23 @@ test('赴约历史：写入返回成功但读回内容不一致时仍判失败�
   assert.match(sandbox.toasts[0], /保存失败/);
 });
 
+test('赴约历史：读回数组长度相同但本次变更内容被改写时仍判失败', () => {
+  const original = [{ role: 'assistant', text: '旧回复', time: 1 }];
+  const candidate = original.slice();
+  candidate.push({ role: 'user', text: '我刚发送的内容', time: 2, mode: 'date' });
+  const sandbox = loadDateSaveHistory({
+    saveChatHistory: () => true,
+    getChatHistory: () => [
+      { role: 'assistant', text: '旧回复', time: 1 },
+      { role: 'user', text: '被错误改写的内容', time: 2, mode: 'date' }
+    ]
+  });
+
+  assert.equal(sandbox.save(candidate, original), false);
+  assert.deepEqual(candidate, original);
+  assert.match(sandbox.toasts[0], /保存失败/);
+});
+
 test('赴约历史：成功写入后必须完整读回同一数组才返回成功', () => {
   let persisted = [];
   const candidate = [{ role: 'user', text: '新消息', time: 2, mode: 'date', scene: '咖啡馆' }];
