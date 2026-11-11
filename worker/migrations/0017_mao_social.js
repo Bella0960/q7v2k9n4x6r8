@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS mao_social_messages (
   id TEXT NOT NULL UNIQUE,
   pair_low TEXT NOT NULL,
   pair_high TEXT NOT NULL,
+  source_request_id TEXT NOT NULL REFERENCES mao_social_requests(id),
   sender_id TEXT NOT NULL REFERENCES mao_accounts(id),
   recipient_id TEXT NOT NULL REFERENCES mao_accounts(id),
   client_message_id TEXT NOT NULL,
@@ -75,5 +76,5 @@ CREATE TABLE IF NOT EXISTS mao_social_messages (
   CHECK (sender_id <> recipient_id)
 );
 CREATE INDEX IF NOT EXISTS idx_mao_social_messages_pair
-  ON mao_social_messages(pair_low, pair_high, seq);
+  ON mao_social_messages(pair_low, pair_high, source_request_id, seq);
 `;
