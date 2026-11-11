@@ -67,9 +67,23 @@ function getProfiles() {
     } catch (e) { return []; }
 }
 function saveProfiles(list) {
-    if (window.PhoneStorage) { PhoneStorage.saveApiProfiles(list); return true; }
-    try { localStorage.setItem('api_profiles_v1', JSON.stringify(list || [])); return true; }
-    catch (e) { return false; }
+    try {
+        var value = Array.isArray(list) ? list : [];
+        if (window.PhoneStorage) PhoneStorage.saveApiProfiles(value);
+        else localStorage.setItem('api_profiles_v1', JSON.stringify(value));
+        // PhoneStorage.saveApiProfiles currently returns void and rawSet may swallow errors.
+        // Always read back; a catch-free call is not proof the profile was saved.
+        var raw = localStorage.getItem('api_profiles_v1');
+        return raw !== null && JSON.stringify(JSON.parse(raw)) === JSON.stringify(value);
+    } catch (e) { return false; }
+}
+function setActiveProfileVerified(id) {
+    try {
+        if (window.PhoneStorage) PhoneStorage.setActiveProfileId(id);
+        else localStorage.setItem('api_active_profile', String(id));
+        var stored = window.PhoneStorage ? PhoneStorage.getActiveProfileId() : localStorage.getItem('api_active_profile');
+        return String(stored || '') === String(id || '');
+    } catch (e) { return false; }
 }
 function getActiveProfile() {
     var list = getProfiles();
@@ -120,8 +134,11 @@ function writeMirrorFromProfile(profile, extra) {
         memoryCount: (extra && extra.memoryCount != null) ? extra.memoryCount : 20,
         timeAware: !(extra && extra.timeAware === false)
     };
-    try { localStorage.setItem(API_STORAGE_KEY, JSON.stringify(mirror)); return true; }
-    catch (e) { return false; }
+    try {
+        var serialized = JSON.stringify(mirror);
+        localStorage.setItem(API_STORAGE_KEY, serialized);
+        return localStorage.getItem(API_STORAGE_KEY) === serialized;
+    } catch (e) { return false; }
 }
 
 // 把表单字段写入激活方案，并重写 api_settings 镜像；memoryCount/timeAware 是聊天行为项，仅进镜像不进方案
@@ -136,8 +153,7 @@ function saveActiveProfile(fields) {
         for (var k in fields) active[k] = fields[k];
         active.updatedAt = Date.now();
         if (!saveProfiles(list)) return false;
-        if (window.PhoneStorage) PhoneStorage.setActiveProfileId(active.id);
-        else try { localStorage.setItem('api_active_profile', active.id); } catch (e) {}
+        if (!setActiveProfileVerified(active.id)) return false;
         return writeMirrorFromProfile(active, fields);
     } catch (e) {
         return false;
@@ -230,16 +246,23 @@ function switchProfile(id) {
     var current = getActiveProfile();
     if (!id || (current && String(current.id) === String(id))) return;
     // 静默自动保存：当前表单写回当前方案，改动不丢
-    saveActiveProfile(collectFormFields());
-    // 切换指针 → 重写镜像 → 回填表单
-    if (window.PhoneStorage) PhoneStorage.setActiveProfileId(id);
-    else try { localStorage.setItem('api_active_profile', id); } catch (e) {}
+    if (!saveActiveProfile(collectFormFields())) {
+        showToast('当前 API 方案保存失败，已取消切换以避免丢失配置');
+        return;
+    }
+    if (!setActiveProfileVerified(id)) {
+        showToast('无法切换 API 方案，请检查浏览器存储权限');
+        return;
+    }
     var next = getActiveProfile();
-    if (next) {
-        writeMirrorFromProfile(next, {
-            memoryCount: parseInt(apiMemoryInput.value, 10) || 20,
-            timeAware: apiTimeAwareInput.checked
-        });
+    if (!next || String(next.id) !== String(id) || !writeMirrorFromProfile(next, {
+        memoryCount: parseInt(apiMemoryInput.value, 10) || 20,
+        timeAware: apiTimeAwareInput.checked
+    })) {
+        setActiveProfileVerified(current.id);
+        writeMirrorFromProfile(current, collectFormFields());
+        showToast('API 方案切换失败，原方案已尽量保留；请检查存储空间');
+        return;
     }
     loadConfig();
     syncParamLabels();
@@ -292,9 +315,11 @@ function createProfile() {
     };
     list.push(p);
     if (!saveProfiles(list)) { showToast('新建失败：存储空间不足'); return; }
-    if (window.PhoneStorage) PhoneStorage.setActiveProfileId(p.id);
-    else try { localStorage.setItem('api_active_profile', p.id); } catch (e) {}
-    writeMirrorFromProfile(p, { memoryCount: fields.memoryCount, timeAware: fields.timeAware });
+    if (!setActiveProfileVerified(p.id) ||
+        !writeMirrorFromProfile(p, { memoryCount: fields.memoryCount, timeAware: fields.timeAware })) {
+        showToast('已建立方案记录，但未完成激活或保存，请检查浏览器存储空间');
+        return;
+    }
     loadConfig();
     syncParamLabels();
     renderProfilePills();
@@ -308,15 +333,17 @@ function deleteActiveProfile() {
     if (!active) return;
     if (!confirm('确定删除方案「' + (active.name || '未命名') + '」？不可恢复。')) return;
     var rest = list.filter(function (p) { return String(p.id) !== String(active.id); });
-    saveProfiles(rest);
+    if (!saveProfiles(rest)) {
+        showToast('删除失败：API 方案未能保存，请检查浏览器存储');
+        return;
+    }
     var next = rest[0] || null;
-    if (window.PhoneStorage) PhoneStorage.setActiveProfileId(next ? next.id : '');
-    else try { localStorage.setItem('api_active_profile', next ? next.id : ''); } catch (e) {}
-    if (next) {
-        writeMirrorFromProfile(next, {
-            memoryCount: parseInt(apiMemoryInput.value, 10) || 20,
-            timeAware: apiTimeAwareInput.checked
-        });
+    if (!next || !setActiveProfileVerified(next.id) || !writeMirrorFromProfile(next, {
+        memoryCount: parseInt(apiMemoryInput.value, 10) || 20,
+        timeAware: apiTimeAwareInput.checked
+    })) {
+        showToast('删除记录已写入，但无法激活其他方案，请检查浏览器存储');
+        return;
     }
     loadConfig();
     syncParamLabels();
