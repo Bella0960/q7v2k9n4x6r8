@@ -192,44 +192,49 @@ test('shipped entry handlers register, login and redeem a real SQLite-backed bou
   assert.equal(page.view(), 'authorized', page.nodes.get('inviteError').textContent);
   assert.equal(api.store.getMaoAccountById(accountId).status, 'active');
   assert.equal(page.calls.find(c => c.path.endsWith('/redeem')).init.headers['x-mao-account-context'], accountId);
-  page.nodes.get('enterMao').listeners.click();
-  assert.equal(page.window.destination, '/index.html');
+  assert.equal(page.window.destination, '/index.html', 'successful invitation redemption enters the ordinary desktop automatically');
 });
 
-test('creator admin entry uses protected same-origin route rather than an external domain', () => {
-  assert.match(html, /href="\/admin\/admin-center\.html">管理员入口/);
+test('the unified account entry exposes no separate public administrator link', () => {
+  assert.doesNotMatch(html, /管理员入口|href="\/admin\/admin-center\.html"/);
   assert.doesNotMatch(html, /admin\.mao520\.com/);
+  assert.match(html, /data-show="registerPanel"/);
+  assert.match(html, /data-show="loginPanel"/);
 });
 
-test('only an active super-admin can open creator management and invitation links', async () => {
-  const owner = mount(async () => response({ ok: true, account: {
-    id: 'MAO-AAAAAAAAAAAA', role: 'super_admin', status: 'active'
+test('unique founder 001 and ordinary active members both enter the phone desktop after session restore', async () => {
+  const founder = mount(async () => response({ ok: true, account: {
+    id: 'MAO-AAAAAAAAAAAA', role: 'super_admin', founderNumber: '001', status: 'active'
   } }));
   await flush();
-  assert.equal(owner.view(), 'authorized');
-  assert.equal(owner.nodes.get('enterAdminCenter').hidden, false);
-  assert.equal(owner.nodes.get('manageInvitations').hidden, false);
-  owner.nodes.get('enterAdminCenter').listeners.click();
-  assert.equal(owner.window.destination, '/admin/admin-center.html');
-  owner.nodes.get('manageInvitations').listeners.click();
-  assert.equal(owner.window.destination, '/admin/admin-center.html?tab=invites');
+  assert.equal(founder.window.destination, '/index.html');
 
-  const member = mount(async () => response({ ok: true, account: {
+  const ordinary = mount(async () => response({ ok: true, account: {
     id: 'MAO-BBBBBBBBBBBB', role: 'user', status: 'active'
   } }));
   await flush();
-  assert.equal(member.nodes.get('enterAdminCenter').hidden, true);
-  assert.equal(member.nodes.get('manageInvitations').hidden, true);
-  member.nodes.get('enterAdminCenter').listeners.click();
-  assert.equal(member.window.destination, undefined);
+  assert.equal(ordinary.window.destination, '/index.html');
 
   const pendingOwner = mount(async () => response({ ok: true, account: {
-    id: 'MAO-CCCCCCCCCCCC', role: 'super_admin', status: 'pending_invite'
+    id: 'MAO-CCCCCCCCCCCC', role: 'user', status: 'pending_invite'
   } }));
   await flush();
-  assert.equal(pendingOwner.nodes.get('enterAdminCenter').hidden, true);
-  pendingOwner.nodes.get('enterAdminCenter').listeners.click();
+  assert.equal(pendingOwner.view(), 'invite');
   assert.equal(pendingOwner.window.destination, undefined);
+});
+
+test('a valid login enters the desktop immediately, without an extra administrator page', async () => {
+  const page = mount(async path => path.endsWith('/me')
+    ? response({ ok: false, error: { code: 'ACCOUNT_SESSION_REQUIRED' } }, 401)
+    : response({ ok: true, account: {
+      id: 'MAO-AAAAAAAAAAAA', status: 'active', role: 'super_admin', founderNumber: '001'
+    } }));
+  await flush();
+  page.navigate('loginPanel');
+  page.fill('loginForm', { identifier: 'creator', password: 'test-password-123' });
+  await page.submit('loginForm');
+  assert.equal(page.window.destination, '/index.html');
+  assert.equal(page.nodes.get('loginForm').fields.password.value, '');
 });
 
 test('admin sign-in entry opens login after confirmed unauthenticated session', async () => {
