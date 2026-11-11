@@ -74,7 +74,7 @@ textarea{min-height:70px;resize:vertical}
 (function(){
 'use strict';
 var account=null, currentCode=null, currentChat=null, cursor=0, messageTimer=null;
-var pendingSendId=null, pendingMessageId=null;
+var pendingSendId=null, pendingSendFingerprint=null, pendingMessageId=null, pendingMessageText=null;
 var el=function(id){return document.getElementById(id)};
 var pattern=/^[a-f0-9]{64}$/;
 var idPattern=/^MAO-[A-Z0-9]{12,24}$/;
@@ -214,11 +214,12 @@ e.preventDefault();var btn=el('sendRequest');if(btn.disabled)return;
 var code=readCode(el('friendCode').value);if(!code){status('好友码或分享链接无效。');return;}
 buttonBusy(btn,true);
 try{
-if(!pendingSendId)pendingSendId=requestId();
+var fingerprint=code+'\n'+el('friendNote').value;
+if(!pendingSendId||pendingSendFingerprint!==fingerprint){pendingSendId=requestId();pendingSendFingerprint=fingerprint;}
 var result=await api('/api/social/friend-requests','POST',
 {requestId:pendingSendId,code:code,note:el('friendNote').value});
 if(result.request.status!=='pending_peer'&&result.request.status!=='pending_admin')throw new Error('服务器未确认申请状态');
-pendingSendId=null;el('friendCode').value='';el('friendNote').value='';
+pendingSendId=null;pendingSendFingerprint=null;el('friendCode').value='';el('friendNote').value='';
 status('申请已提交，等待对方同意及 001 最终审批。');
 try{await refresh()}catch(e){status('申请已被服务器确认，但刷新列表失败：'+explain(e))}
 }catch(err){status(explain(err))}
@@ -227,10 +228,10 @@ finally{buttonBusy(btn,false);}
 el('chatForm').addEventListener('submit',async function(e){
 e.preventDefault();var btn=el('chatSend');if(btn.disabled||!currentChat)return;
 var msg=el('chatText').value.trim();if(!msg)return;buttonBusy(btn,true);
-try{if(!pendingMessageId)pendingMessageId=messageId();
+try{if(!pendingMessageId||pendingMessageText!==msg){pendingMessageId=messageId();pendingMessageText=msg;}
 await api('/api/social/chats/'+encodeURIComponent(currentChat.id)+'/messages','POST',
 {clientMessageId:pendingMessageId,text:msg});
-pendingMessageId=null;el('chatText').value='';await loadMessages();
+pendingMessageId=null;pendingMessageText=null;el('chatText').value='';await loadMessages();
 }catch(err){status('消息尚未确认：'+explain(err))}
 finally{buttonBusy(btn,false);}
 });
