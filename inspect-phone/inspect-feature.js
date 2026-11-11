@@ -203,7 +203,7 @@
     var notes=[
       {title:'这两天',text:'买纸巾；给阿诺回消息；记得把那本书还给小林。',createdAt:at(now,2,10,0),updatedAt:at(now,0,9,3)},
       {title:'没发出去的话',text:'有些话写完又删了，不知道该怎么开头。',createdAt:at(now,1,22,18),updatedAt:at(now,0,0,52)},
-      {title:'零碎',text:'午饭那家店坐窗边会比较安静。',createdAt:at(now,1,13,0),updatedAt:at(now,0,12,45)},
+      {title:'零碎',text:'午饭那家店坐窗边会比较安静。',createdAt:at(now,1,12,30),updatedAt:at(now,0,12,45)},
       {title:'别忘了',text:'下周把活动报名的事确认一下。',createdAt:at(now,3,18,30),updatedAt:at(now,2,8,0)}
     ];
     var locked=[
