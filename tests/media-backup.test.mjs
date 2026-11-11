@@ -307,7 +307,7 @@ function buildCtxFull(opts) {
         extractVar(backupSrc, 'IDB_TARGETS')
     ];
     const fnNames = [
-        '$', 'toast', 'includeSecretsEnabled', 'snapshot',
+        '$', 'toast', 'fmtSize', 'getExcludedAudioRecords', 'formatExcludedAudioSummary', 'includeSecretsEnabled', 'snapshot',
         'stringifyIndexedDB',
         'base64ToBlob', 'blobToBase64', 'idbOpen',
         'dumpStore', 'dumpDatabase',
@@ -893,4 +893,264 @@ test('10 生产 doExport：localStorage 有数据 + atomicExportFailed 的 DB �
     assert.ok(/已导出/.test(lastToast.msg), 'toast 应说已导出');
     assert.ok(/媒体 Blob.*超限/.test(lastToast.msg) || /atomicExport/.test(lastToast.msg) || /maomao-assets/.test(lastToast.msg) || /1 个 IndexedDB/.test(lastToast.msg),
         'toast 应提到 maomao-assets atomicExportFailed 警告');
+});
+, 'toast', 'fmtSize', 'includeSecretsEnabled', 'snapshot',
+        'stringifyIndexedDB',
+        'base64ToBlob', 'blobToBase64', 'idbOpen',
+        'dumpStore', 'dumpDatabase',
+        'restoreStore', 'restoreDatabase',
+        'doExport'
+    ];
+    const fnSrcs = fnNames.map(n => extractFunction(backupSrc, n));
+    const ctxSrc = varSrcs.concat(fnSrcs).join('\n');
+
+    // localStorage mock：数据直接挂在 mock 对象上，方法设为不可枚举，
+    // 这样 Object.keys(localStorage) 能拿到真实数据键，而不会被 getItem 等污染
+    const mockLocalStorage = opts.localStorage ? Object.assign({}, opts.localStorage) : {};
+    Object.defineProperty(mockLocalStorage, 'getItem', {
+        value(k) { return this.hasOwnProperty(k) ? String(this[k]) : null; },
+        enumerable: false, configurable: true
+    });
+    Object.defineProperty(mockLocalStorage, 'setItem', {
+        value(k, v) { this[k] = String(v); },
+        enumerable: false, configurable: true
+    });
+    Object.defineProperty(mockLocalStorage, 'removeItem', {
+        value(k) { delete this[k]; },
+        enumerable: false, configurable: true
+    });
+    Object.defineProperty(mockLocalStorage, 'clear', {
+        value() { for (const k of Object.keys(this)) delete this[k]; },
+        enumerable: false, configurable: true
+    });
+    Object.defineProperty(mockLocalStorage, 'length', {
+        get() { return Object.keys(this).length; },
+        enumerable: false, configurable: true
+    });
+
+    // doExport 副作用拦截器
+    const intercepted = {
+        downloads: [],   // 被拦截的 Blob { name, bodyStr }
+        toasts: [],
+        confirmResult: opts.confirmResult || false  // 默认用户不确认带密钥
+    };
+
+    const mockEl = () => ({
+        textContent: '', classList: { add() {}, remove() {} },
+        href: '', download: '', click() {}, remove() {}, appendChild() {}, style: {}
+    });
+
+    const ctx = {
+        Blob: SandboxBlob,
+        FileReader: makeFileReader,
+        indexedDB: globalThis.indexedDB,
+        window: { indexedDB: globalThis.indexedDB },
+        localStorage: mockLocalStorage,
+        atob: (s) => Buffer.from(s, 'base64').toString('binary'),
+        Uint8Array: globalThis.Uint8Array,
+        Promise: globalThis.Promise,
+        Error: globalThis.Error,
+        Date: globalThis.Date,
+        setTimeout: (fn) => { fn(); return 0; },
+        // URL.createObjectURL → 返回假 URL，不访问 DOM
+        URL: {
+            createObjectURL(blob) {
+                // 拦截下载的 Blob：读出内容
+                let bodyStr = null;
+                try {
+                    const b64 = blob._data ? blob._data.toString('base64') : '';
+                    // Blob.prototype.arrayBuffer 不存在，SandboxBlob 也没有 text()；
+                    // doExport 用 new Blob([bodyStr], { type: ... })，把 bodyStr 读一下
+                    bodyStr = '';
+                    if (blob instanceof SandboxBlob && blob._data) {
+                        // bodyStr 在 SandboxBlob 构造时被当作 parts 第一个元素传入
+                        // doExport 的 bodyStr 是 JSON 文本 → SandboxBlob 里就是这个字符串的 utf8 bytes
+                        bodyStr = blob._data.toString('utf8');
+                    }
+                } catch (_) {}
+                intercepted.downloads.push({ name: '(unknown)', bodyStr });
+                return 'blob:mock/' + Math.random();
+            },
+            revokeObjectURL() {}
+        },
+        // document.createElement('a') → 返回 mock 元素；a.click 触发拦截
+        document: {
+            createElement(tag) { return mockEl(); },
+            body: { appendChild() {} }
+        },
+        alert(msg) { intercepted.toasts.push({ kind: 'alert', msg }); },
+        confirm(msg) { return intercepted.confirmResult; }
+    };
+    runInNewContext(ctxSrc, ctx, { filename: 'backup.js (sandbox)' });
+
+    // 替换 doExport 内部的 toast / $ 以便拦截
+    const origToast = ctx.toast;
+    ctx.toast = function (msg) {
+        intercepted.toasts.push({ kind: 'toast', msg });
+        // 仍保留原 toast 行为（原 toast 在沙箱里依赖 $('toastMsg') 返回 null，
+        // 会走 alert 分支，但 alert 已被我们拦截，所以是 no-op）
+        origToast(msg);
+    };
+    // 覆盖 $('toastMsg') 返回 null，让原 toast 走 alert 分支 → 被我们拦截
+    ctx.$ = function (id) { return null; };
+
+    ctx.__intercepted = intercepted;
+    ctx.__lsStore = mockLocalStorage;
+    assert.ok(ctx.IDB_TARGETS, 'runInNewContext 后 IDB_TARGETS 应挂在 ctx 上');
+    return ctx;
+}
+
+/* ── 基础沙箱：只恢复相关（测试 01-05 已用的，但已修复了 BlobPolyfill typo） ── */
+function buildCtx() {
+    const BlobFactory = function Blob(parts, opts) {
+        this.type = (opts && opts.type) || '';
+        this._parts = parts;
+    };
+    const ctx = {
+        Blob: BlobFactory,
+        atob: (s) => Buffer.from(s, 'base64').toString('binary'),
+        Uint8Array: globalThis.Uint8Array
+    };
+    runInNewContext(extractFunction(backupSrc, 'base64ToBlob'), ctx);
+    runInNewContext(extractFunction(backupSrc, 'restoreStore'), ctx);
+    return ctx;
+}
+
+function isBlobLike(obj) {
+    return obj != null && typeof obj === 'object' && typeof obj.type === 'string';
+}
+
+/* ── 简易 IDB mock（基础 restoreStore 测试用，不需要完整 transaction API） ── */
+function makeIDB_restore(initialData) {
+    const stores = {};
+    Object.keys(initialData).forEach(sn => {
+        stores[sn] = initialData[sn].map(r => JSON.parse(JSON.stringify(r)));
+    });
+    const db = {
+        close() {},
+        transaction(storeName) {
+            if (!stores[storeName]) stores[storeName] = [];
+            let cleared = false;
+            const puts = [];
+            let oncompleteCb = null;
+            const storeObj = {
+                clear() { cleared = true; return {}; },
+                put(value) { puts.push(value); return {}; },
+                getAll() {
+                    const req = { result: stores[storeName].slice(), onsuccess: null };
+                    Promise.resolve().then(() => { if (req.onsuccess) req.onsuccess({ target: req }); });
+                    return req;
+                }
+            };
+            const tx = {
+                objectStore() { return storeObj; },
+                error: null,
+                set oncomplete(fn) {
+                    oncompleteCb = fn;
+                    if (cleared) stores[storeName] = [];
+                    puts.forEach(v => stores[storeName].push(JSON.parse(JSON.stringify(v))));
+                    if (oncompleteCb) oncompleteCb();
+                },
+                get oncomplete() { return oncompleteCb; },
+                set onerror(fn) { this._onerror = fn; },
+                get onerror() { return this._onerror; },
+                set onabort(fn) { this._onabort = fn; },
+                get onabort() { return this._onabort; }
+            };
+            return tx;
+        },
+        _stores: stores
+    };
+    return db;
+}
+
+const MINIMAL_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+/* ═══════════════════════════════════════════════
+   11. 本地音频 Blob 按策略排除时，备份文件与导出提示必须列出名称和体积
+   ═══════════════════════════════════════════════ */
+test('11 生产 doExport：本地音频 Blob 排除清单包含歌曲名称和字节数', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({
+        localStorage: { ai_custom_characters: JSON.stringify([{ id: 'role_a' }]) }
+    });
+
+    const mediaDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-media-store');
+    const audioDef = mediaDef.stores.find(s => s.store === 'audio');
+    const mediaDb = registerDB('maomao-media-store', mediaDef.version, mediaDef.stores);
+    const audioBytes = Buffer.alloc(1536, 0x41);
+    await injectRecords(mediaDb, 'audio', audioDef, [{
+        id: 'song_local_1',
+        name: '海边的风',
+        artist: '本地导入',
+        size: audioBytes.length,
+        blob: new SandboxBlob([audioBytes], { type: 'audio/mpeg' })
+    }]);
+
+    await ctx.doExport();
+
+    const inter = ctx.__intercepted;
+    assert.ok(inter.downloads.length >= 1, '应仍然生成备份文件');
+    const download = inter.downloads[inter.downloads.length - 1];
+    const parsed = JSON.parse(download.bodyStr);
+    const audioRecords = parsed.indexedDB['maomao-media-store'].audio;
+    assert.equal(audioRecords.length, 1, '音频列表元数据仍应被保留');
+    assert.equal(audioRecords[0].name, '海边的风');
+    assert.equal(Object.prototype.hasOwnProperty.call(audioRecords[0], 'blob'), false,
+        '当前备份策略仍不导出原始音频 Blob');
+
+    const excluded = parsed.__backup.excluded || [];
+    assert.equal(excluded.length, 1, '备份头部应有一条明确的二进制排除记录');
+    assert.equal(excluded[0].db, 'maomao-media-store');
+    assert.equal(excluded[0].store, 'audio');
+    assert.equal(excluded[0].id, 'song_local_1');
+    assert.equal(excluded[0].label, '海边的风');
+    assert.equal(excluded[0].bytes, 1536);
+    assert.match(excluded[0].reason, /排除 Blob 字段/);
+
+    const lastToast = inter.toasts[inter.toasts.length - 1];
+    assert.match(lastToast.msg, /本地音乐文件未打包：1 首/);
+    assert.match(lastToast.msg, /1\.5 KB/);
+    assert.match(lastToast.msg, /海边的风/);
+
+    // 导出是只读操作：原 IndexedDB Blob 仍然保留。
+    assert.equal(mediaDb._data.audio.length, 1);
+    assert.ok(mediaDb._data.audio[0].blob instanceof SandboxBlob);
+});
+
+
+/* ═══════════════════════════════════════════════
+   12. 新旧备份都能识别未包含的本地音频文件
+   ═══════════════════════════════════════════════ */
+test('12 音频遗漏摘要兼容新备份清单与旧 schema 2 备份', () => {
+    const ctx = buildCtxFull();
+    const currentSummary = ctx.formatExcludedAudioSummary([{
+        db: 'maomao-media-store',
+        store: 'audio',
+        id: 'song_new',
+        label: '海边的风',
+        bytes: 1536
+    }]);
+    assert.equal(currentSummary, '1 首，共 1.5 KB；海边的风');
+
+    // 旧版 schema 2 备份没有 __backup.excluded，但会保留音频元数据且不含 blob。
+    const legacySummary = ctx.formatExcludedAudioSummary([], {
+        'maomao-media-store': {
+            audio: [
+                { id: 'song_old', name: '旧版本地歌曲', size: 2048 },
+                { id: 'remote_or_complete', name: '仍含 Blob 的记录', size: 1024, blob: new SandboxBlob([Buffer.alloc(1024)], { type: 'audio/mpeg' }) }
+            ]
+        }
+    });
+    assert.equal(legacySummary, '1 首，共 2.0 KB；旧版本地歌曲');
+});
+
+/* ═══════════════════════════════════════════════
+   13. 导入确认和完成提示必须提醒备份中缺失的本地音频
+   ═══════════════════════════════════════════════ */
+test('13 导入备份前后都提示本地音频文件未包含', () => {
+    assert.match(backupSrc, /var omittedAudioSummary = formatExcludedAudioSummary\(obj\.__backup\.excluded, obj\.indexedDB\)/);
+    assert.match(backupSrc, /警告：这份备份未包含本地音乐文件/);
+    assert.match(backupSrc, /导入会覆盖当前音频库，可能移除本机原有的本地音乐文件/);
+    assert.match(backupSrc, /if \(omittedAudioSummary\) parts\.push\('原备份未包含本地音乐文件/);
 });

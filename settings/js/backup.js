@@ -155,6 +155,41 @@
         return (chars / 1024 / 1024).toFixed(2) + ' MB';
     }
 
+    // 备份会保留本地音频元数据，但按当前策略不导出 audio.blob。
+    // 新备份使用 __backup.excluded 明确记录；旧 schema 2 备份则从 audio 元数据兼容推断。
+    function getExcludedAudioRecords(excluded, indexedDBData) {
+        var explicit = Array.isArray(excluded) ? excluded.filter(function (item) {
+            return item && item.db === 'maomao-media-store' && item.store === 'audio';
+        }) : [];
+        if (explicit.length) return explicit;
+
+        var mediaDb = indexedDBData && indexedDBData['maomao-media-store'];
+        var records = mediaDb && Array.isArray(mediaDb.audio) ? mediaDb.audio : [];
+        return records.filter(function (record) {
+            return record && !Object.prototype.hasOwnProperty.call(record, 'blob');
+        }).map(function (record) {
+            return {
+                id: String(record.id == null ? '' : record.id),
+                label: String(record.name || record.title || record.id || '未命名本地音频').slice(0, 100),
+                bytes: Number(record.size) || 0,
+                reason: '旧版备份未包含 audio.blob'
+            };
+        });
+    }
+
+    function formatExcludedAudioSummary(excluded, indexedDBData) {
+        var items = getExcludedAudioRecords(excluded, indexedDBData);
+        if (!items.length) return '';
+        var totalBytes = items.reduce(function (total, item) {
+            return total + (Number(item.bytes) || 0);
+        }, 0);
+        var names = items.slice(0, 4).map(function (item) {
+            return String(item.label || item.id || '未命名音频').slice(0, 28);
+        }).join('、');
+        return items.length + ' 首，共 ' + fmtSize(totalBytes)
+            + (names ? '；' + names + (items.length > 4 ? ' 等' : '') : '');
+    }
+
     // Blob → base64（不含 data: 前缀，直接裸 base64 字符串写进 JSON）
     function blobToBase64(blob) {
         return new Promise(function (resolve, reject) {
@@ -251,6 +286,7 @@
             var dbData = {};     // <dbName>: { data: { store: records[] }, skipped: [...] }
             var dbWarnings = []; // 整个库读不到的（null）
             var allSkipped = []; // 体积超限 / 转换失败的细粒度跳过
+            var excludedFields = []; // 配置明确排除的二进制内容，单独记录而不混入失败项
             var dbOverview = {}; // 给 __backup.indexedDB 概览用
             var dbTotal = 0;
             var hasAudioMeta = false;
@@ -262,6 +298,9 @@
                     dbWarnings.push(tgt.db + '（读取失败）');
                     continue;
                 }
+                (part.excluded || []).forEach(function (s) {
+                    excludedFields.push({ db: tgt.db, store: s.store, id: s.id, label: s.label, fields: s.fields, reason: s.reason, bytes: s.bytes });
+                });
                 // atomicExport 失败：blobs 有条目超限，整库排除以保持媒体数据一致性
                 if (part.atomicExportFailed) {
                     var skipCount = part.skipped ? part.skipped.length : 0;
@@ -296,7 +335,7 @@
             // 估算最终 JSON 总量 → 超过阈值提前告知用户等待
             var estimated = JSON.stringify({
                 __backup: { app: BACKUP_APP, schema: BACKUP_SCHEMA, exportedAt: new Date().toISOString(),
-                            count: Object.keys(snap).length, indexedDB: dbOverview },
+                            count: Object.keys(snap).length, indexedDB: dbOverview, excluded: excludedFields },
                 data: snap
             }).length;
             // indexedDB 部分的估算：粗略按每条记录 100 字符（非 blob 字段）+ blob store 每条 blobBase64 长度
@@ -325,7 +364,8 @@
                     schema: BACKUP_SCHEMA,
                     exportedAt: new Date().toISOString(),
                     count: Object.keys(snap).length,
-                    indexedDB: dbOverview
+                    indexedDB: dbOverview,
+                    excluded: excludedFields
                 },
                 data: snap
             };
@@ -357,7 +397,12 @@
             var msg = parts.join('、');
             if (withSecrets) msg += '，含 API 密钥';
             if (dbWarnings.length) msg += '（' + dbWarnings.length + ' 个 IndexedDB 库读取失败已跳过）';
-            if (hasAudioMeta) msg += '（本地音频元数据已包含，音频文件本身未打包）';
+            var audioOmissionSummary = formatExcludedAudioSummary(excludedFields);
+            if (audioOmissionSummary) {
+                msg += '（本地音乐文件未打包：' + audioOmissionSummary + '；完整清单已写入备份文件）';
+            } else if (hasAudioMeta) {
+                msg += '（本地音频条目元数据已包含；本地音频文件本身不在备份范围内）';
+            }
             if (allSkipped.length) {
                 msg += '（' + allSkipped.length + ' 项因体积超限或读取失败未包含'
                     + '：' + allSkipped.slice(0, 5).map(function (s) { return s.db + '.' + s.store + '::' + s.id; }).join('、')
@@ -542,7 +587,7 @@
         var blobStoreMax = storeDef.blobStoreMaxBytes || Infinity;
 
         if (!db.objectStoreNames.contains(storeDef.store)) {
-            return Promise.resolve({ records: [], skipped: [] });
+            return Promise.resolve({ records: [], skipped: [], excluded: [] });
         }
 
         // ---- 阶段 A：拿主键列表 ----
@@ -570,6 +615,7 @@
         return getAllKeys().then(async function (keys) {
             var records = [];
             var skipped = [];
+            var excluded = []; // 按配置排除、但元数据记录仍保留的二进制字段
             var totalBlob = 0;  // 已接受的 Blob 总量
             var idx = 0;
 
@@ -635,6 +681,27 @@
                     continue;  // 不做 blobToBase64，省时间也省内存
                 }
 
+                // 记录被 excludeFields 排除的真实二进制内容，供备份报告展示；不把它误记为读取/体积失败。
+                var excludedBlobFields = [];
+                var excludedBytes = 0;
+                for (var ef = 0; ef < excludeFields.length; ef++) {
+                    var excludedValue = rawValue[excludeFields[ef]];
+                    if (excludedValue instanceof Blob) {
+                        excludedBlobFields.push(excludeFields[ef]);
+                        excludedBytes += Number(excludedValue.size) || 0;
+                    }
+                }
+                if (excludedBlobFields.length) {
+                    var excludedLabel = rawValue.name || rawValue.title || rawValue.fileName || idForReport;
+                    excluded.push({
+                        id: String(idForReport),
+                        label: String(excludedLabel).slice(0, 100),
+                        fields: excludedBlobFields,
+                        bytes: excludedBytes,
+                        reason: '备份策略排除 Blob 字段：' + excludedBlobFields.join('、')
+                    });
+                }
+
                 // ---- 处理这条记录（此时 getOne 事务早已 commit，Blob 持有在 JS 变量里安全） ----
                 try {
                     var inner = rawValue;
@@ -675,13 +742,13 @@
                 idx++;
             }
 
-            return { records: records, skipped: skipped };
+            return { records: records, skipped: skipped, excluded: excluded };
         });
     }
 
     // dump 一个 DB：打开 → 逐 store dump → 关闭。
     // 任一环节失败都 catch，返回 null 表示"整个 DB 跳过"，由上层决定是否提示。
-    // 成功返回 { data: { <storeName>: [records...] }, skipped: [ { store, id, reason, bytes } ] }
+    // 成功返回 { data: { <storeName>: [records...] }, skipped: [...], excluded: [按配置排除的 Blob 清单] }
     //
     // atomicExport 选项（仅对 maomao-assets 启用）：
     //   若该库的任何 store 有条目被跳过（如 Blob 超限），整个库从备份包中排除，
@@ -705,15 +772,19 @@
             var defs = storeDefs.slice();
             var out = {};
             var skippedAll = [];
+            var excludedAll = [];
             var i = 0;
             function next() {
-                if (i >= defs.length) { db.close(); return { data: out, skipped: skippedAll }; }
+                if (i >= defs.length) { db.close(); return { data: out, skipped: skippedAll, excluded: excludedAll }; }
                 var def = defs[i++];
                 return dumpStore(db, def).then(function (res) {
                     // clearOnRestore: 空 store 也写入 []，使恢复时能执行 clear()
                     if (res.records.length || clearOnRestore) out[def.store] = res.records;
                     res.skipped.forEach(function (s) {
                         skippedAll.push({ store: def.store, id: s.id, reason: s.reason, bytes: s.bytes });
+                    });
+                    (res.excluded || []).forEach(function (s) {
+                        excludedAll.push({ store: def.store, id: s.id, label: s.label, fields: s.fields, reason: s.reason, bytes: s.bytes });
                     });
                     return next();
                 });
@@ -724,7 +795,7 @@
             // atomicExport: 任何 store 有跳过 → 整库排除
             if (atomicExport && result.skipped && result.skipped.length) {
                 if (db) { try { db.close(); } catch (e) {} }
-                return { data: null, skipped: result.skipped, atomicExportFailed: true };
+                return { data: null, skipped: result.skipped, excluded: result.excluded || [], atomicExportFailed: true };
             }
             return result;
         }).catch(function () {
@@ -934,9 +1005,16 @@
             if (idbMeta && typeof idbMeta === 'object') {
                 Object.keys(idbMeta).forEach(function (k) { idbTotal += (idbMeta[k] || 0); });
             }
+            var omittedAudioSummary = formatExcludedAudioSummary(obj.__backup.excluded, obj.indexedDB);
+            var audioImportWarning = omittedAudioSummary
+                ? '\n\n警告：这份备份未包含本地音乐文件（' + omittedAudioSummary
+                    + '）。导入会覆盖当前音频库，可能移除本机原有的本地音乐文件。'
+                    + '若这些文件尚未另行保存，请取消导入。'
+                : '';
             if (!confirm('将用备份覆盖当前全部数据（localStorage ' + count + ' 项'
                     + (idbTotal ? '，IndexedDB ' + idbTotal + ' 项' : '') + '）' + label
-                    + '。\n\n当前数据会先自动导出一份安全备份，localStorage 导入失败会自动回滚。确定继续？')) return;
+                    + '。\n\n当前数据会先自动导出一份安全备份，localStorage 导入失败会自动回滚。确定继续？'
+                    + audioImportWarning)) return;
 
             // 1. 建立本机恢复点：把当前 localStorage 快照写入独立 IndexedDB，
             //    写完立即读回并用 verifyRestore 对 localStorage 实际内容做校验。
@@ -1050,6 +1128,7 @@
             if (dbSkippedBlob) parts.push('有 ' + dbSkippedBlob + ' 项 IndexedDB 记录因内容损坏未恢复');
             if (dbFailed.length) parts.push('部分 IndexedDB 未恢复：' + dbFailed.join('；'));
             if (dbSkippedOld) parts.push('备份版本较旧，未包含媒体与书籍数据');
+            if (omittedAudioSummary) parts.push('原备份未包含本地音乐文件（' + omittedAudioSummary + '）');
             if (fontOrphanCleaned) parts.push('自定义字体未随备份恢复，请重新上传');
             var tail = backupFileWarn || '';
             toast(parts.join('，') + tail + '，正在刷新…');

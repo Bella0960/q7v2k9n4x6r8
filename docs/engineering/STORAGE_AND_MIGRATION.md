@@ -37,7 +37,7 @@ PhoneStorage provides a common API and error-result namespace, but not every exi
 
 | Database | Version / stores | Main consumer | Current backup observation |
 |---|---|---|---|
-| maomao-media-store | v2: wallpapers (out-of-line key), audio (keyPath id) | shared/js/wallpaper-store.js and music/music.html | Listed in backup.js. wallpapers included. audio record's blob field is explicitly excluded, so the actual audio file is not included by that target rule. |
+| maomao-media-store | v2: wallpapers (out-of-line key), audio (keyPath id) | shared/js/wallpaper-store.js and music/music.html | wallpapers and audio metadata are included; audio.blob is intentionally excluded. New exports record omitted audio IDs/names/bytes in __backup.excluded and show an export summary; import confirmation and completion notices explain that local audio binaries are missing. Full-audio backup or a separate large-media export remains undecided. |
 | `maomao-media-store.wallpapers` records keyed `home_icon_preset_img_v1_<presetId>_<appId>` | Saved icon-set image copies | settings/icon-settings.html | Included in the existing wallpapers backup/restore path |
 | maomao_diary_photo_store_v1 | v1: photos (keyPath key) | diary/diary.html | Listed in backup.js |
 | maomao-reading-library | v1: books (keyPath id), comments (keyPath id) | library/library.html | Listed in backup.js |
@@ -53,7 +53,7 @@ The database register is a code-derived inventory, not a complete audit of every
 - Its getPage method currently reads the complete history array and slices it in memory. This is not disk-level paging.
 - MediaRepository supports Blob storage, SHA-256-based IDs, de-duplication, and reference records. The registered `maomao-assets` v2 database also stores generated-image metadata in `image_records`; image bytes remain in `blobs` and chat/gallery records reference them by assetId.
 - Diary photos use IndexedDB but store a data field (source currently uses strings/data URLs), not necessarily Blob.
-- Local music files use IndexedDB audio records, but backup.js excludes the blob field. Decide whether music should be included in a full backup or separately exportable.
+- Local music files use IndexedDB audio records, but the standard backup still excludes audio.blob. The export manifest and toast now disclose each omitted track and its byte size, and import warns that existing local audio may be replaced. Decide whether music belongs in full backup or a separate large-media export; do not treat metadata-only restore as restoring the music file.
 - Backup.js includes several fixed IndexedDB database/store definitions. Any new DB/store must be registered and covered by restore tests at the same time it is introduced.
 
 ## 3. Target architecture
@@ -115,7 +115,7 @@ Never begin with “move then delete.” Follow this order:
 
 1. **Inventory:** find every reader/writer of chat_history_<id>, characters, memories, images, stickers, calls, date mode, group messages, wallet/forum integrations, search, backup, export, and import.
 2. **Baseline:** capture current schema examples using synthetic fixtures; record counts, message order, stable IDs, role/group IDs, and all known fields. Never use real private chats as public fixtures.
-3. **Backup coverage:** update backup.js for maomao-assets, media blobs/refs, and audio Blob inclusion or an explicitly documented separate-export route. Test backup and restore both ways.
+3. **Backup verification:** maomao-assets v2 and its four stores are already registered in backup.js with atomic export and clear-on-restore. Verify tests/media-backup.test.mjs and a real export/restore cycle. DATA-003 now reports excluded audio names and sizes, but full-audio backup versus a separate large-media export is still an open product decision.
 4. **Preflight:** check IndexedDB availability and navigator.storage.estimate() where supported. Do not assume a fixed browser quota. Estimate required free space plus headroom; stop safely if insufficient.
 5. **Shadow copy:** copy existing localStorage histories to IndexedDB without changing the source key. Process large histories in bounded batches; show progress and allow retry.
 6. **Verification:** compare per-conversation message counts, stable IDs/mids, order, timestamps, role/group association, and a deterministic hash of normalized records. Verify media references and readable previews.

@@ -122,14 +122,15 @@ Acceptance:
 Dependency: DATA-001.
 
 ### DATA-003 — Fix audio Blob backup semantics
-**Priority:** P1 · **Status:** OPEN
+**Priority:** P1 · **Status:** IN PROGRESS (2026-11-11: omission manifest and import warning implemented; full-audio backup policy remains open)
 
-Evidence: backup.js currently sets excludeFields: ['blob'] for audio store records, so the local music file itself is omitted from that backup target.
+Evidence: `maomao-media-store.audio` still intentionally excludes the `blob` field from schema-2 full backups. The current implementation now records each excluded local audio item in `__backup.excluded` with id, label, field, reason, and byte count; the export notice summarizes count/size, and the import confirmation plus completion notice warn that the original backup did not contain local audio. Old schema-2 backups without the manifest are handled by deriving a best-effort list from audio metadata. `tests/media-backup.test.mjs` adds export, legacy-summary, and import-warning coverage (13 declared cases total); execution is NOT VERIFIED until CI/browser test steps actually run.
 
 Acceptance:
 - Decide and document whether full backups include local audio or offer a separate “large media” export.
-- No silent omission; export UI lists skipped audio files and size.
-- Restore result clearly reports what was restored.
+- No silent omission: the export UI and backup manifest list omitted audio items and byte sizes.
+- Import confirmation warns before the audio store is overwritten; restore completion reports the missing local audio files.
+- Verify a real export/import cycle on two clean browser profiles before closing the remaining policy and data-preservation risk.
 
 ### DATA-004 — Add storage usage and error diagnostics
 **Priority:** P1 · **Status:** OPEN
