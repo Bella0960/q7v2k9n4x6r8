@@ -495,6 +495,7 @@ test('管理员初始化唯一、账号注册先生成永久 ID 并保持待授�
   assert.equal(firstResult.status, 200);
   assert.match(firstResult.payload.account.id, /^MAO-[A-Z0-9]{12,24}$/);
   assert.equal(firstResult.payload.account.role, 'super_admin');
+  assert.equal(firstResult.payload.account.founderNumber, '001', 'the sole creator receives the fixed founder number');
   const bootstrapAudit = ctx.query(
     "SELECT action, actor_account_id, target_account_id FROM mao_account_audit WHERE target_account_id = ?",
     firstResult.payload.account.id
@@ -518,6 +519,8 @@ test('管理员初始化唯一、账号注册先生成永久 ID 并保持待授�
   assert.equal(registered.status, 201);
   assert.match(registered.payload.account.id, /^MAO-[A-Z0-9]{12,24}$/);
   assert.equal(registered.payload.account.status, 'pending_invite');
+  assert.equal(Object.hasOwn(registered.payload.account, 'founderNumber'), false,
+    'ordinary registrations cannot claim the founder number');
   assert.notEqual(registered.payload.account.id, firstResult.payload.account.id);
   const registrationAudit = ctx.query(
     "SELECT action, actor_account_id, target_account_id FROM mao_account_audit WHERE target_account_id = ?",
