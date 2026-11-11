@@ -7,7 +7,7 @@
     <script src="../../shared/js/native-feel.js"></script>
     <script src="../../shared/js/custom-css.js"></script>
     <script src="../../shared/js/wallpaper-store.js?v=20261026v2"></script>
-    <script src="../../shared/js/chat-beauty.js?v=20261102v3"></script>
+    <script src="../../shared/js/chat-beauty.js?v=20261112v1"></script>
     <link rel="stylesheet" href="../../shared/css/chat-beauty-runtime.css?v=20261031v1">
     <link rel="stylesheet" href="../call/call-overlay.css?v=20261105v1">
     <script src="../../shared/js/phone/phone_storage.js"></script>
@@ -2058,8 +2058,9 @@
 <script src="../../shared/js/chat-page-theme.js?v=20261105v1"></script>
 <link rel="stylesheet" href="../../shared/css/silver-butterfly-theme.css?v=20261102v5">
 <link rel="stylesheet" href="../../shared/css/wechat-theme-refinements.css?v=20261105v2">
+<link rel="stylesheet" href="../../shared/css/chat-light-surfaces.css?v=20261112v1">
 </head>
-<body>
+<body class="chat-light-detail">
     <div class="phone-mockup">
         <div class="status-bar">
             <span>4:41</span>
@@ -9438,7 +9439,22 @@ form#chat-form .send-icon-btn { display: flex !important; visibility: visible !i
       : 'position:absolute;right:14px;bottom:8px;width:36px;height:36px;border-radius:50%;background:#fff;border:none;box-shadow:0 1px 4px rgba(0,0,0,.1);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:60;color:#111;';
     b.innerHTML = wechat ? SEND_ICON : HEART_ICON;
   }
-  function sync(){ force(); fixAll(); }
+  function sync(){
+    var shell = document.querySelector('.phone-mockup');
+    var preset = shell && shell.getAttribute('data-chat-theme-preset');
+    if (!preset || preset === 'default') {
+      var floating = document.getElementById('myFloatSend');
+      if (floating) floating.remove();
+      var form = document.getElementById('chat-form');
+      if (form) {
+        ['background','background-color','border-top','backdrop-filter','-webkit-backdrop-filter'].forEach(function(key){ form.style.removeProperty(key); });
+        var nativeSend = form.querySelector('.send-icon-btn');
+        if (nativeSend) nativeSend.style.removeProperty('display');
+      }
+      return;
+    }
+    force(); fixAll();
+  }
   sync();
   window.addEventListener('load', function(){ setTimeout(sync, 100); setTimeout(sync, 500); });
   window.addEventListener('pageshow', function(){ setTimeout(sync, 0); });

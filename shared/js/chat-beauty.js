@@ -82,10 +82,21 @@
         chatBgDim: 0,
         themePreset: 'default' // built-in theme preset metadata
     };
+    // CHAT-UI-001: only the default page receives the light visual baseline.
+    // Saved global and role values are still layered on top in resolve().
+    var LIGHT_DEFAULTS = {
+        avatarSize: 36, avatarBorderWidth: 0,
+        myBubbleBg: '#18181A', partnerBubbleBg: '#E5E5EA',
+        myBubbleRadius: '18px', partnerBubbleRadius: '18px',
+        myBubbleRadiusTL: 18, myBubbleRadiusTR: 18, myBubbleRadiusBR: 18, myBubbleRadiusBL: 18,
+        partnerBubbleRadiusTL: 18, partnerBubbleRadiusTR: 18, partnerBubbleRadiusBR: 18, partnerBubbleRadiusBL: 18,
+        partnerBubbleBorderWidth: 0, myBubbleFontSize: 14.5, partnerBubbleFontSize: 14.5
+    };
     NS.DEFAULTS = DEFAULTS;
     NS.getDefaults = function () {
         var copy = {};
         for (var key in DEFAULTS) copy[key] = Array.isArray(DEFAULTS[key]) ? DEFAULTS[key].slice() : DEFAULTS[key];
+        for (var lightKey in LIGHT_DEFAULTS) copy[lightKey] = LIGHT_DEFAULTS[lightKey];
         return copy;
     };
 
@@ -349,6 +360,9 @@
         var out = {};
         for (var k in DEFAULTS) out[k] = DEFAULTS[k];
         var activeThemePreset = NS.getThemePreset();
+        if (activeThemePreset === 'default') {
+            for (var lightKey in LIGHT_DEFAULTS) out[lightKey] = LIGHT_DEFAULTS[lightKey];
+        }
         // A page theme supplies default bubble values only. Explicit global and per-role
         // bubble customizations are then layered over it, preserving the editor's purpose.
         var pageBubbleDefaults = activeThemePreset === 'imessage' ? IMESSAGE_BUBBLE_DEFAULTS :

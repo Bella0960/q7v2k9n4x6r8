@@ -399,3 +399,11 @@ Do not parallelize:
 5. Agent E: PERF-001 — image asset inventory and safe optimization recommendations, no replacements yet.
 
 Only after these reports are reviewed should implementation tasks be assigned.
+
+
+### CHAT-UI-001 — Light default chat list and detail
+**Priority:** P0 · **Status:** IN PROGRESS (owner-approved visual change, 2026-11-12)
+
+Scope: remove the decorative bezel from the two chat surfaces; implement a white, compact default layout based on the owner's HTML reference; preserve all existing chat operations and selected themes. See `CHAT-UI-001.md` for exact changes, validation and rollback.
+
+Acceptance: 375–430px and desktop visual verification, multiline/keyboard/quote clearance, existing message and feature actions, saved beauty and background isolation, full build and relevant regression checks. No production completion claim before browser and device checks.
