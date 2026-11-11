@@ -64,7 +64,7 @@ test('comments can trigger the original author to continue and conclude in place
   assert.match(detail,/story\.chapter=nextChapter/);
   assert.match(detail,/story\.finished=ending/);
   assert.match(detail,/if\(!saveNow\(\)\)/);
-  assert.match(detail,/ForumGossip\.isRepeat\(update,/);
+  assert.match(detail,/ForumGossip\.validateUpdate\(data,/);
 });
 
 
