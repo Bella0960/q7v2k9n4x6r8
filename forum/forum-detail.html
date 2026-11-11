@@ -102,7 +102,19 @@
   .gossip-continue { border:1px solid #dedede;background:#fff;color:#222;font:600 11px var(--sans);padding:12px 16px;margin:10px 0 13px;width:100%;text-align:left;cursor:pointer;letter-spacing:.01em; }
   .gossip-continue:disabled { color:#999;cursor:default;background:#f7f7f7; }
   .gossip-continue[hidden] { display:none; }
-  .gossip-author-tag { font-size:9px;font-weight:500;color:#666;margin-left:7px; }
+  .gossip-author-tag { font-size:9px;font-weight:600;color:#333;margin-left:7px; }
+  .gossip-reader-tools { margin:10px 0 12px; padding:12px 0; border-top:1px solid #ededed; border-bottom:1px solid #ededed; }
+  .gossip-reader-tools[hidden] { display:none; }
+  .gossip-reader-top { display:flex;align-items:center;justify-content:space-between;gap:10px; }
+  .gossip-reader-progress { font-size:11px;color:#4b4b4b;font-weight:600; }
+  .gossip-reader-jump { background:transparent;border:0;border-bottom:1px solid #aaa;color:#555;font:11px var(--sans);padding:7px 1px;cursor:pointer; }
+  .gossip-reader-jump:disabled { color:#aaa;border-bottom-color:#ddd;cursor:default; }
+  .gossip-reader-tabs { display:flex;gap:8px;margin-top:10px; }
+  .gossip-reader-tab { border:1px solid #e5e5e5;background:#fff;color:#666;padding:9px 13px;min-height:36px;font:11px var(--sans);cursor:pointer; }
+  .gossip-reader-tab[aria-pressed="true"] { background:#191919;color:#fff;border-color:#191919; }
+  .gossip-author-update { padding-left:11px;border-left:2px solid #333;scroll-margin-top:88px; }
+  .gossip-author-update .c-text { color:#343434;font-size:12px;line-height:2;white-space:pre-wrap; }
+  @media (prefers-reduced-motion: reduce) { .gossip-author-update { scroll-behavior:auto; } }
 
   .c-title {
     display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
@@ -249,6 +261,15 @@
   <div class="comments">
     <div class="c-title" data-count="0">评论与回复</div>
     <div id="aiCommentStatus" class="ai-community-status" aria-live="polite"></div>
+    <div id="gossipReaderTools" class="gossip-reader-tools" hidden>
+      <div class="gossip-reader-top"><span id="gossipReaderProgress" class="gossip-reader-progress">连载 · 正在开篇</span>
+        <button id="gossipJumpLatest" class="gossip-reader-jump" type="button" onclick="jumpToGossipLatest()" disabled>跳到最新一更</button>
+      </div>
+      <div class="gossip-reader-tabs" role="group" aria-label="八卦连载阅读模式">
+        <button id="gossipViewAll" class="gossip-reader-tab" type="button" aria-pressed="true" onclick="setGossipView('all')">全部讨论</button>
+        <button id="gossipViewAuthor" class="gossip-reader-tab" type="button" aria-pressed="false" onclick="setGossipView('author')">只看楼主</button>
+      </div>
+    </div>
     <button id="gossipContinue" class="gossip-continue" type="button" onclick="continueGossip()" hidden>让楼主继续讲</button>
     <div id="commentList"></div>
   </div>
@@ -596,6 +617,20 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
   let post = null;
   let commentImageFiles=[];
   let gossipReplyBusy=false;
+  let gossipView='all';
+  function setGossipView(mode){
+    if(!post||!window.ForumGossip||!ForumGossip.isGossipPost(post))return;
+    gossipView=mode==='author'?'author':'all';
+    renderPost();renderComments();
+  }
+  function jumpToGossipLatest(){
+    if(!post||!window.ForumGossip||!ForumGossip.isGossipPost(post))return;
+    if(gossipView!=='author')setGossipView('author');
+    const updates=document.querySelectorAll('#commentList [data-gossip-chapter]');
+    const latest=updates.length?updates[updates.length-1]:null;
+    if(!latest){toast('楼主还没更新，先点“让楼主继续讲”');return}
+    latest.scrollIntoView({behavior:window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});
+  }
   function loadPost() {
     const id = getPostId();
     const posts = loadPosts();
@@ -654,6 +689,20 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     const ct = document.querySelector('.c-title'); if (ct) ct.setAttribute('data-count', shownCount);
     document.getElementById('likeBtn').classList.toggle('liked', !!post.liked);
     const gossipButton=document.getElementById('gossipContinue');
+    const gossipTools=document.getElementById('gossipReaderTools');
+    const hasGossipStory=!!(window.ForumGossip&&ForumGossip.isGossipPost(post));
+    if(gossipTools)gossipTools.hidden=!hasGossipStory;
+    if(hasGossipStory){
+      const progress=ForumGossip.progress(post);
+      const progressEl=document.getElementById('gossipReaderProgress');
+      if(progressEl)progressEl.textContent='连载 · '+(progress.finished?'已完结':'更新中')+' · '+progress.chapter+'/'+progress.maxChapters+' 更';
+      const jump=document.getElementById('gossipJumpLatest');
+      if(jump)jump.disabled=!post.comments.some(c=>c&&c.source==='gossip-author');
+      for(const mode of ['all','author']){
+        const btn=document.getElementById(mode==='all'?'gossipViewAll':'gossipViewAuthor');
+        if(btn)btn.setAttribute('aria-pressed',String(gossipView===mode));
+      }
+    }
     if(gossipButton){
       const hasStory=window.ForumGossip&&ForumGossip.isGossipPost(post);
       gossipButton.hidden=!hasStory;
@@ -691,12 +740,14 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
   function renderComments() {
     const list = document.getElementById('commentList');
     if(window.ForumMedia)ForumMedia.revokeIn(list);
-    if (!post.comments.length) {
-      list.innerHTML = '<div style="color:#b8b8b8;font-size:11px;padding:20px 0;text-align:center;">还没有回应——做第一个说点什么的人</div>';
+    const authorOnly=window.ForumGossip&&ForumGossip.isGossipPost(post)&&gossipView==='author';
+    const visible=post.comments.map((c,i)=>({c,i})).filter(({c})=>!authorOnly||c.source==='gossip-author');
+    if(!visible.length){
+      list.innerHTML='<div style="color:#a4a4a4;font-size:11px;padding:20px 0;text-align:center;">'+(authorOnly?'楼主暂时还没有后续，点上面的按钮可以催更':'还没有回应——做第一个说点什么的人')+'</div>';
       return;
     }
-    list.innerHTML = post.comments.map((c, i) => `
-      <div class="comment">
+    list.innerHTML = visible.map(({c,i}) => `
+      <div class="comment ${c.source==='gossip-author'?'gossip-author-update':''}" ${c.source==='gossip-author'?'data-gossip-chapter="'+Math.max(1,Math.floor(Number(c.gossipChapter)||1))+'"':''}>
         <div class="c-avatar" style="background:${avatarBackground(c)}">${avatarContent(c, false)}</div>
         <div class="c-body">
           <div class="c-name">${esc(c.name)}${c.source==='gossip-author' ? '<span class="gossip-author-tag">楼主 · 第 '+String(c.gossipChapter||1)+' 更</span>' : ''}${c.replyTo ? '<span class="c-at"> 回复 '+esc(c.replyTo)+'</span>' : ''}</div>
