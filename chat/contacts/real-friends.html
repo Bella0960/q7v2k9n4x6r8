@@ -82,11 +82,31 @@ function status(s){el('status').textContent=s;}
 function requestId(){if(window.crypto&&crypto.randomUUID)return 'req_'+crypto.randomUUID().replace(/-/g,'');var a=new Uint8Array(18);crypto.getRandomValues(a);return 'req_'+Array.from(a,x=>x.toString(16).padStart(2,'0')).join('');}
 function messageId(){return 'msgclient_'+requestId();}
 function explain(err){var o=err&&err.message||'操作失败';return o.length>220?o.slice(0,220):o;}
+var authErrors=new Set(['ACCOUNT_CONTEXT_CHANGED','ACCOUNT_CONTEXT_REQUIRED','LOGIN_REQUIRED',
+'ACCOUNT_DISABLED','SOCIAL_SESSION_EXPIRED','SOCIAL_LOGIN_REQUIRED','SOCIAL_INVITE_REQUIRED']);
+function closeChat(){
+clearTimer();currentChat=null;cursor=0;pendingMessageId=null;pendingMessageText=null;
+el('messages').textContent='';el('chatText').value='';el('chatPanel').hidden=true;
+}
+function clearPrivateSession(){
+closeChat();resetCode();account=null;pendingSendId=null;pendingSendFingerprint=null;
+for(var key of ['incoming','outgoing','friends','approvals','codeLabel','friendCode','friendNote']){
+var node=el(key);if(node){if('value' in node)node.value='';else node.textContent='';}
+}
+for(var section of ['inviteSection','requestsSection','friendsSection','approvalSection'])el(section).hidden=true;
+el('accountLabel').textContent='登录状态已变化，请重新进入。';
+}
 async function api(path,method,body){
 var response=await fetch(path,{method:method||'GET',credentials:'same-origin',cache:'no-store',redirect:'error',
 headers:{Accept:'application/json',...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
 var result;try{result=await response.json()}catch(e){throw new Error('服务器没有返回合法 JSON。');}
-if(!response.ok||result.ok!==true)throw new Error(result.error&&result.error.message||result.error&&result.error.code||'HTTP '+response.status);
+if(!response.ok||!result||result.ok!==true){
+var code=result&&result.error&&result.error.code||'';
+if(authErrors.has(code))clearPrivateSession();
+else if(path.indexOf('/api/social/chats/')===0 &&
+['SOCIAL_NOT_APPROVED','SOCIAL_BLOCKED','SOCIAL_ACCOUNT_NOT_ACTIVE'].includes(code))closeChat();
+throw new Error(result&&result.error&&result.error.message||code||'HTTP '+response.status);
+}
 return result;
 }
 function buttonBusy(button,busy){button.disabled=busy;}
@@ -150,12 +170,20 @@ row.appendChild(buttons);area.appendChild(row);
 async function mutate(path,method){await api(path,method||'POST');await refresh();status('服务器已确认本次操作。');}
 async function refresh(){
 if(!account)return;
+var ownerId=account.id;
+var session=await api('/api/accounts/me');
+if(!account||!session.account||session.account.id!==ownerId||session.account.status!=='active'){
+clearPrivateSession();throw new Error('登录账号已变化，请重新进入。');
+}
 var list=await Promise.all([
 api('/api/social/friend-requests?direction=incoming'),
 api('/api/social/friend-requests?direction=outgoing'),
 api('/api/social/friends')
 ]);
-for(var result of list)if(result.ownerAccountId!==account.id)throw new Error('账号身份与好友资料不一致，已停止显示。');
+if(!account||account.id!==ownerId)return;
+for(var result of list)if(result.ownerAccountId!==ownerId){
+clearPrivateSession();throw new Error('账号身份与好友资料不一致，已清除旧账号资料。');
+}
 renderList('incoming',list[0].requests,'incoming');renderList('outgoing',list[1].requests,'outgoing');
 var peers=el('friends');peers.textContent='';
 if(!list[2].friends.length)peers.appendChild(make('p','还没有经过审批的真人好友','fine'));
@@ -185,9 +213,12 @@ row.appendChild(bar);area.appendChild(row);
 }
 async function loadMessages(){
 if(!currentChat)return;
-var target=currentChat.id;var result=await api('/api/social/chats/'+encodeURIComponent(target)+'/messages?after='+cursor);
-if(!currentChat||currentChat.id!==target)return;
-if(result.ownerAccountId!==account.id||result.peerId!==target)throw new Error('聊天所属账号异常');
+var target=currentChat.id,ownerId=account&&account.id;
+var result=await api('/api/social/chats/'+encodeURIComponent(target)+'/messages?after='+cursor);
+if(!account||account.id!==ownerId||!currentChat||currentChat.id!==target)return;
+if(result.ownerAccountId!==ownerId||result.peerId!==target){
+clearPrivateSession();throw new Error('聊天所属账号异常，已清除旧账号资料。');
+}
 result.messages.forEach(function(m){
 var node=make('div',m.text,'bubble'+(m.senderId===account.id?' mine':''));
 el('messages').appendChild(node);
@@ -199,7 +230,7 @@ clearTimer();currentChat=friend;cursor=0;el('messages').textContent='';el('chatT
 el('chatPanel').hidden=false;await loadMessages();
 messageTimer=setInterval(function(){if(document.visibilityState==='visible')loadMessages().catch(e=>{status(explain(e));clearTimer();})},5000);
 }
-el('closeChat').addEventListener('click',function(){clearTimer();currentChat=null;el('chatPanel').hidden=true;});
+el('closeChat').addEventListener('click',closeChat);
 el('rotate').addEventListener('click',async function(){var btn=el('rotate');if(btn.disabled)return;buttonBusy(btn,true);
 try{renderCode(await api('/api/social/friend-codes','POST'));status('已签发一次性好友码。');}catch(e){resetCode();status(explain(e))}
 finally{buttonBusy(btn,false);}
@@ -236,7 +267,12 @@ pendingMessageId=null;pendingMessageText=null;el('chatText').value='';await load
 finally{buttonBusy(btn,false);}
 });
 el('refresh').addEventListener('click',function(){refresh().then(()=>status('已从服务器刷新。')).catch(e=>status(explain(e)))});
-document.addEventListener('visibilitychange',function(){codeExpiry();if(document.visibilityState==='visible'&&currentChat)loadMessages().catch(e=>status(explain(e)))});
+document.addEventListener('visibilitychange',function(){
+codeExpiry();
+if(document.visibilityState==='visible'&&account){
+refresh().then(function(){if(currentChat)return loadMessages()}).catch(e=>status(explain(e)));
+}
+});
 window.addEventListener('pagehide',clearTimer);
 (async function init(){
 var incoming=readCode(location.href);if(incoming){el('friendCode').value=incoming;history.replaceState(null,'',location.pathname+location.search);}
