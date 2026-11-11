@@ -1,9 +1,9 @@
 /**
  * Cloudflare Worker 入口（与静态资源同域共存）。
  *
- *  - /api/*          → Durable Object（SQLite 存储）中的 Milestone 1 云接口
- *  - 其他路径        → 交给 env.ASSETS（即现有 dist 静态站点，行为不变）
- *  - scheduled       → 清理过期订阅（Cron Trigger）
+ *  - /api/*          → Durable Object（SQLite 存储）中的账号、设备、聊天出站与推送 API
+ *  - 其他路径        → 交给 env.ASSETS（即现有 dist 静态站点）
+ *  - scheduled       → 维护订阅/上下文、执行到期云端主动联系并派发 Web Push
  *
  * 这里不使用 D1：见 docs/engineering/CLOUD_PUSH.md 的选型说明
  * （静态站部署目前不需要任何账号级资源，引入 D1 需要先创建数据库并回填
@@ -99,7 +99,7 @@ export class CloudDatabase {
         pushDispatch = await dispatchPendingOutboundPushes({
           store: this.store,
           env: this.env,
-          now: timestamp,
+          now: Date.now,
           fetchImpl: fetch,
           limit: 50
         });
@@ -117,11 +117,12 @@ export class CloudDatabase {
       });
     }
     if (url.pathname === '/internal/tick' && request.method === 'POST') {
-      const timestamp = Date.now();
       const result = await runCloudModelTick({
         store: this.store,
         env: this.env,
-        now: timestamp,
+        // Pass the clock, not a Cron-start snapshot: the model call may
+        // outlive its lease and the executor must recheck real wall time.
+        now: Date.now,
         fetchImpl: fetch
       });
       let pushDispatch;
@@ -129,7 +130,7 @@ export class CloudDatabase {
         pushDispatch = await dispatchPendingOutboundPushes({
           store: this.store,
           env: this.env,
-          now: Date.now(),
+          now: Date.now,
           fetchImpl: fetch,
           limit: 50
         });
