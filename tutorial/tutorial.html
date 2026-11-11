@@ -248,6 +248,25 @@
     .catalog-summary { display:flex; justify-content:space-between; gap:10px; cursor:pointer; font-size:14px; font-weight:600; color:#222; }
     .catalog-summary span { font-size:11px; font-weight:400; color:#999; }
     .catalog[open] .filters { margin-top:15px; }
+
+    .walk-article[hidden], #walkStepperContent[hidden], .walk-progress-wrap[hidden], .walk-foot button[hidden] { display:none !important; }
+    .walk-article { padding:2px 0 12px; }
+    .walk-article-intro { margin:0 0 24px; color:#555; font-size:14px; line-height:1.9; }
+    .walk-article-section { padding:19px 0; border-top:1px solid #EAEAEA; }
+    .walk-article-section h3 { display:flex; align-items:baseline; gap:10px; margin:0 0 8px; color:#151515; font-size:15px; font-weight:650; }
+    .walk-article-section h3 span { color:#AAA; font-size:11px; letter-spacing:.08em; font-variant-numeric:tabular-nums; }
+    .walk-article-section p { margin:0; color:#525252; font-size:13px; line-height:1.95; white-space:pre-line; overflow-wrap:anywhere; }
+    .walk-article-links { padding-top:18px; border-top:1px solid #EAEAEA; }
+    .walk-article-links h3 { margin:0 0 10px; font-size:13px; }
+    .walk-article-links a { display:flex; justify-content:space-between; gap:10px; padding:11px 0; font-size:13px; color:#222; border-bottom:1px solid #EFEFEF; text-decoration:none; }
+    .walk-article-links a small { font-size:11px; color:#999; }
+    .walk-article-example { border:1px solid #E6E6E8; background:#F8F8F9; padding:12px; border-radius:10px; margin:16px 0 20px; }
+    .walk-article-example strong { font-size:12px; font-weight:650; }
+    .walk-article-example p { margin:8px 0 0; font-size:12px; color:#444; line-height:1.9; overflow-wrap:anywhere; }
+    .walk-article-note { padding:13px 14px; background:#F5F5F5; color:#555; border-radius:10px; font-size:12px; line-height:1.85; margin-top:15px; }
+    .diagnosis-disclaimer { font-size:11px !important; color:#999 !important; margin-top:10px !important; }
+    .walk-foot a { overflow-wrap:anywhere; }
+
   </style>
 </head>
 <body>
@@ -296,6 +315,7 @@
         <option value="network">Failed to fetch / CORS / 网络错误</option>
       </select>
       <p class="diagnosis-answer" id="diagnoseAnswer" aria-live="polite">选一个实际出现的提示，即可看到原因和先检查什么。这里不会发送网络请求。</p>
+      <p class="diagnosis-disclaimer">不同服务商的接口约定可能不同；这里是排查方向，不代表已经检测你的 API 配置。</p>
       <a class="diagnosis-link" href="../settings/settings.html#api">去真实的 API 设置页面 →</a>
     </section>
 
@@ -371,11 +391,13 @@
         </div>
         <button class="walk-close" type="button" id="walkClose" aria-label="关闭教程">×</button>
       </header>
-      <div class="walk-progress-wrap">
+      <div class="walk-progress-wrap" id="walkProgressWrap">
         <div class="walk-progress-copy"><span id="walkStepCount">第 1 步</span><span id="walkPercent">0%</span></div>
         <div class="walk-progress-track"><div class="walk-progress-bar" id="walkProgressBar"></div></div>
       </div>
-      <div class="walk-body">
+      <div class="walk-body" id="walkBody">
+        <article class="walk-article" id="walkArticle" hidden></article>
+        <div id="walkStepperContent">
         <div class="walk-route" id="walkRoute"></div>
         <div class="walk-visual">
           <div class="walk-phone" aria-hidden="true">
@@ -400,6 +422,7 @@
           <p id="walkPractice"></p>
         </div>
         <label class="walk-done"><input type="checkbox" id="walkStepDone"> 标记这一步已阅读（仅本机保存）</label>
+        </div>
       </div>
       <footer class="walk-foot">
         <button type="button" id="walkPrevious">上一步</button>
