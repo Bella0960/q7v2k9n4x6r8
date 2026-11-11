@@ -820,4 +820,7 @@
   renderFilters();
   renderGuides();
   renderApps();
+  // Direct links from API, image and MiniMax settings open the matching chapter.
+  var linkedGuide = /^#guide=([a-z0-9-]+)$/.exec(window.location.hash);
+  if (linkedGuide) startGuide(linkedGuide[1]);
 })();
