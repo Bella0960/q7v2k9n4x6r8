@@ -756,7 +756,7 @@
     renderFilters();
     renderGuides();
   });
-  $('guideSearch').addEventListener('input', function () { renderGuides(); renderApps(); renderFaqs(); });
+  $('guideSearch').addEventListener('input', function () { if (this.value.trim()) $('catalogDetails').open = true; renderGuides(); renderApps(); renderFaqs(); });
   $('guideGrid').addEventListener('click', function (event) {
     var start = event.target.closest('[data-start-guide]');
     if (start) startGuide(start.getAttribute('data-start-guide'));
