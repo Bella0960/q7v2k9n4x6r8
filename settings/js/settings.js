@@ -388,7 +388,7 @@ async function testConnection() {
     const model = (apiModelInput.value || '').trim();
     const fail = function (message) {
         msgEl.innerText = '连接未通过：' + message;
-        msgEl.style.color = '#963D38';
+        msgEl.style.color = '#555';
     };
 
     if (!apiKey) { fail('请先填写 API Key。'); return; }
@@ -451,7 +451,7 @@ async function testConnection() {
             }
             msgEl.innerText = '聊天连接成功 · ' + (Date.now() - t0) + 'ms · ' + model +
                 '。当前表单有效；请点击「保存全部设置」，再到聊天中发一条消息验证。图片生成与语音需另测。';
-            msgEl.style.color = '#356B4B';
+            msgEl.style.color = '#333';
             return;
         }
         const detail = body && body.error && typeof body.error.message === 'string' ? body.error.message : '';
