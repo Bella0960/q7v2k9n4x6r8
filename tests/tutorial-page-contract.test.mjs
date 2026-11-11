@@ -104,7 +104,7 @@ test('tutorial provides a real stepper, interface-location illustration, FAQ, an
   assert.match(guideScript, /function moveWalkthrough/);
   assert.match(guideScript, /function renderFaqs/);
   const faqSection = guideScript.slice(guideScript.indexOf('var FAQS = ['), guideScript.indexOf('var APPS = ['));
-  assert.equal((faqSection.match(/^    ['"]/gm) || []).length, 12, 'expected searchable FAQ entries');
+  assert.equal((faqSection.match(/^    \[/gm) || []).length, 12, 'expected searchable FAQ entries');
 });
 
 test('composer menu guide covers the actual one-to-one and group menu entry labels', () => {
