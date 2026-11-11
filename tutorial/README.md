@@ -1,13 +1,15 @@
 # MAOMAO interactive tutorial
 
-The desktop app `教程` is the user-facing guide and test notebook for the phone simulator. It is not a static help page: each guide has a one-step-at-a-time walkthrough, route locator, a small interface-location illustration, a real-page link, and a practical exercise.
+The desktop app `教程` is the user-facing guide and test notebook for the phone simulator. It is not a static help page: each guide has a one-step-at-a-time walkthrough, route locator, a real-page link, practical exercises, and a collapsed test notebook. The technical courses appear first; routine desktop navigation stays in the secondary directory.
 
 ## Current coverage
 
-- 50 guides total, including every one of the 29 desktop app shortcuts (including the Tutorial app itself).
+- 56 guides total, including every one of the 29 desktop app shortcuts (including the Tutorial app itself).
 - Chat-specific sections: composer `+` menu, conversation settings, reply-bubble modes, proactive contact vs. follow-up, role stickers, avatar archive / pair builder, generated-image gallery, private/public images, image recognition, and chat memory/time options.
-- 11 FAQs covering common entry-point confusion, per-role isolation, image prerequisites, private-gallery auto-send behavior, background push limitations, and recording Bugs.
-- Local per-guide test checkbox, step-by-step progress, free-text issue notes, and exportable test report.
+- 11 FAQs centered on API credentials, versioned Base URLs, HTTP error codes, image generation, MiniMax credentials, and sampling parameters.
+- Six API-first courses: understanding API and acquiring a Key, Base URL and /v1, connection troubleshooting, Temperature / Top P / Tokens, AI image setup, and MiniMax TTS with Group ID / Voice ID.
+- Settings pages link directly to their relevant handbook chapter using `#guide=...`, and the landing page contains a local-only connection-error explainer. No API Key is entered into or transmitted by the handbook.
+- Existing per-guide checklist, steps, free-text notes, and export remain accessible under collapsed sections. Checking off a lesson never implies a network or real-device pass.
 
 ## Update on every user-visible feature merge
 
