@@ -98,6 +98,46 @@
     }
   }
 
+  // Local-only setup helper. No generated key is uploaded or persisted by
+  // this UI; users explicitly paste both values into their own Cloudflare Preview.
+  const generateButton = document.getElementById('bootstrapMakeSecrets');
+  const generatedTools = document.getElementById('bootstrapSecretTools');
+  const pepperValue = document.getElementById('bootstrapPepperValue');
+  const founderValue = document.getElementById('bootstrapFounderValue');
+  const copyStatus = document.getElementById('bootstrapCopyStatus');
+  if (generateButton && generatedTools && pepperValue && founderValue) {
+    generateButton.addEventListener('click', () => {
+      if (!globalThis.crypto || typeof crypto.getRandomValues !== 'function') {
+        if (copyStatus) copyStatus.textContent = '当前浏览器不支持安全随机数生成，请使用更新版本的 HTTPS 浏览器。';
+        return;
+      }
+      const hexSecret = () => {
+        const bytes = new Uint8Array(32);
+        crypto.getRandomValues(bytes);
+        return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+      };
+      pepperValue.value = hexSecret();
+      founderValue.value = hexSecret();
+      // The user will need this same value after configuring Cloudflare.
+      const formSecret = form.querySelector('[name="bootstrapSecret"]');
+      if (formSecret) formSecret.value = founderValue.value;
+      generatedTools.hidden = false;
+      if (copyStatus) copyStatus.textContent = '两组不同密钥已生成。请复制到 Cloudflare Preview；关闭本页后无法恢复。';
+    });
+    for (const button of document.querySelectorAll('[data-bootstrap-copy]')) {
+      button.addEventListener('click', async () => {
+        const value = button.dataset.bootstrapCopy === 'pepper' ? pepperValue.value : founderValue.value;
+        if (!value) return;
+        try {
+          await navigator.clipboard.writeText(value);
+          if (copyStatus) copyStatus.textContent = '已复制。请粘贴到对应的 Cloudflare Preview Secret，不要发送给其他人。';
+        } catch {
+          if (copyStatus) copyStatus.textContent = '浏览器未允许复制，请长按对应输入框复制，或在安全浏览器重试。';
+        }
+      });
+    }
+  }
+
   retryButton.addEventListener('click', checkStatus);
 
   form.addEventListener('submit', async event => {
