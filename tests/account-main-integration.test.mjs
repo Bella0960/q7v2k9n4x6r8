@@ -44,7 +44,8 @@ test('the one entry uses same-origin sessions, not a public admin domain', () =>
 });
 
 test('old cache-first PWA entries cannot bypass the new server login gate', () => {
-  assert.match(sw, /phone-app-pwa-v204/);
+  const cacheVersion = Number(/phone-app-pwa-v(\d+)/.exec(sw)?.[1]);
+  assert.ok(cacheVersion >= 204, 'account login gate must never restore an older cache version');
   assert.match(sw, /APP_SHELL\.concat\(pageEntries\)/);
   assert.match(sw, /Only public sign-in\/first-time setup HTML may be cached/);
   assert.match(sw, /if \(req\.mode === 'navigate' && !isPublicAccountPage\)/);
@@ -90,7 +91,7 @@ test('founder sign-up readiness is a non-secret boolean and blocks unavailable P
   const backend = read('worker/lib/account-auth.js');
   const html = read('account/bootstrap.html');
   const entry = read('account/bootstrap.js');
-  assert.match(backend, /configured: String\(env\.MAO_SUPER_ADMIN_BOOTSTRAP_SECRET \|\| ''\)\.length >= 32/);
+  assert.match(backend, /(?:configured:|const configured =)\s*String\(env\.MAO_SUPER_ADMIN_BOOTSTRAP_SECRET \|\| ''\)\.length >= 32/);
   assert.match(backend, /String\(env\.DEVICE_SECRET_PEPPER \|\| ''\)\.length >= 32/);
   assert.match(html, /id="bootstrapSetupHelp"/);
   assert.match(html, /npx wrangler preview secret put DEVICE_SECRET_PEPPER/);
@@ -98,4 +99,12 @@ test('founder sign-up readiness is a non-secret boolean and blocks unavailable P
   assert.match(entry, /if \(status\.configured === false\)/);
   assert.match(entry, /crypto\.getRandomValues\(bytes\)/);
   assert.doesNotMatch(entry, /localStorage|sessionStorage|document\.cookie/);
+});
+
+test('iPhone 注册页不输出会被 Safari 渲染成绿色表情方块的装饰', () => {
+  const html = read('account/index.html');
+  assert.doesNotMatch(html, /<div class="footer-divider"/);
+  assert.doesNotMatch(html, /✳/);
+  assert.match(html, /id="registerPanel"/);
+  assert.match(html, /id="inviteForm"/);
 });

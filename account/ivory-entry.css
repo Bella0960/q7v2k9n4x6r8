@@ -137,3 +137,13 @@ body:before{content:none}
  .ivory-entry[data-view=welcome] .hero{height:clamp(180px,34svh,255px)}
  .ivory-entry[data-view=welcome] .actions{margin-top:25px}
 }
+
+/* After a verified invitation redemption, give the result its own quiet page. */
+.ivory-entry[data-view=authorized] .state-panel{padding:4px 0 10px}
+.ivory-entry[data-view=authorized] .state-panel>.state-icon{display:grid;place-items:center;width:60px;height:60px;margin:5px auto 16px;border:1px solid #d9cec4;border-radius:50%;background:#fffaf7e8;color:#756b64;box-shadow:0 5px 16px #5d514512}
+.ivory-entry[data-view=authorized] .state-panel>.state-icon svg{display:block;width:40px;height:40px}
+.ivory-entry[data-view=authorized] .state-panel>.eyebrow{display:block;margin:0 0 9px;color:#a39990;letter-spacing:.23em;font:10px var(--serif)}
+.ivory-entry[data-view=authorized] .state-panel>h1{display:block;margin:0;color:#524a44;white-space:normal;font:normal clamp(23px,6vw,29px)/1.3 var(--serif);letter-spacing:.045em}
+.ivory-entry[data-view=authorized] .state-panel>.lead{display:block;max-width:285px;margin:12px auto 22px;color:#8d8178;font:12px/1.85 var(--serif);letter-spacing:.02em}
+.ivory-entry[data-view=authorized] .state-panel>.identity-card{text-align:left;margin:0 0 19px}
+.ivory-entry[data-view=authorized] .state-panel>#enterMao{margin:0}

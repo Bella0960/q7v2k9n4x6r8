@@ -199,7 +199,10 @@ test('shipped entry handlers register, login and redeem a real SQLite-backed bou
   assert.equal(page.view(), 'authorized', page.nodes.get('inviteError').textContent);
   assert.equal(api.store.getMaoAccountById(accountId).status, 'active');
   assert.equal(page.calls.find(c => c.path.endsWith('/redeem')).init.headers['x-mao-account-context'], accountId);
-  assert.equal(page.window.destination, '/index.html', 'successful invitation redemption enters the ordinary desktop automatically');
+  assert.equal(page.window.destination, undefined, 'first successful redemption shows confirmation before desktop');
+  assert.match(html, /id="authorizedPanel"[\s\S]*?<svg[\s\S]*?id="enterMao"/, 'authorized screen uses a non-emoji SVG confirmation');
+  page.nodes.get('enterMao').listeners.click();
+  assert.equal(page.window.destination, '/index.html', 'confirmed active user enters desktop on explicit tap');
 });
 
 test('the unified account entry exposes no separate public administrator link', () => {

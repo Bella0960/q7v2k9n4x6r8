@@ -2003,7 +2003,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       await assertAccountPageContext(request, path);
       const accountResponse = await accountAuth.handle(request, path, method);
       if (accountResponse) return accountResponse;
-      // Official MAO session + same Durable Object; never route to legacy D1 auth.
+      // Same MAO account session, same Durable Object, never the legacy D1 auth.
       const socialResponse = await maoSocial.handle(request, path, method);
       if (socialResponse) return socialResponse;
 
