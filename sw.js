@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v204';
+const CACHE_NAME = 'phone-app-pwa-v205';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 // v196 release: sweep orphaned role-owned media refs during avatar cleanup.
 const APP_SHELL = [
@@ -279,34 +279,31 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // The public account entry stays cache-first so a disabled or offline device
-  // can display the safe sign-in/disabled notice, never a cached app document.
+  // The public sign-in pages are network-first to prevent stale layouts after
+  // an update. Offline fallback is limited to these public pages; never app HTML.
   if (req.mode === 'navigate' && isPublicAccountPage) {
     event.respondWith((async function () {
-      var cachedPromise = caches.match(req).catch(function () { return null; });
       var cacheWritePromise = null;
-      var networkPromise = fetch(req).then(function (response) {
+      var networkPromise = fetch(req, { cache: 'no-store' }).then(function (response) {
         if (response && response.ok) {
           var copy = response.clone();
-          // 写回缓存单独成 Promise：失败只影响缓存，不影响已成功的网络响应。
           cacheWritePromise = caches.open(CACHE_NAME)
             .then(function (cache) { return cache.put(req, copy); })
             .catch(function () { return undefined; });
         }
         return response;
-      }).catch(function () {
-        return null;
-      });
+      }).catch(function () { return null; });
 
-      // 后台生命周期必须覆盖“取网络 + 打开缓存 + 写入缓存”的完整异步过程。
-      var updatePromise = networkPromise.then(function () { return cacheWritePromise; });
-      event.waitUntil(updatePromise.then(function () { return undefined; }));
-
-      var cached = await cachedPromise;
-      if (cached) return cached;
+      // Keep a successful cache write alive, but show fresh HTML immediately.
+      event.waitUntil(networkPromise.then(function () { return cacheWritePromise; })
+        .then(function () { return undefined; }));
 
       var fresh = await networkPromise;
       if (fresh) return fresh;
+
+      // Only when the network genuinely fails, show a cached public sign-in.
+      var cached = await caches.match(req).catch(function () { return null; });
+      if (cached) return cached;
 
       return new Response('此页面暂时无法连接，请检查网络后重试。', {
         status: 503,
