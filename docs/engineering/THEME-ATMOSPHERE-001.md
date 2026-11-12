@@ -205,3 +205,10 @@ Re-inspected four user-uploaded `Camera_xhs_*.mp4` reference clips (36/29/38/33 
 Isolated execution of the actual `shared/js/atmosphere-my-home.js` under a DOM fixture and source contracts: **4/4 passed** (real route, independent wallpaper, non-destructive photo filter/scroll, post rerender, old theme restore, native picker, visual preference). Static PWA/asset checks: **9/9 passed**. The personal homepage's original inline application script parsed successfully.
 
 These checks are **not** full browser/device E2E. Before release, verify native file-picker permissions and image persistence, 320/375/390/430px viewport alignment, old theme behavior, real photo & comment rendering, keyboard focus and safe-area overlap, dark wallpapers under both tone settings, and offline PWA upgrade. Keep PR #273 Draft; do not merge, deploy production, or claim all tests pass from this evidence.
+
+### Follow-up: origin-aware personal-home return and PWA v214
+
+- The old `my-moments.html` back button always linked to `moments.html`, even when launched from `profile/profile.html` (“我的”). In atmosphere only, the My-tab link now appends `?from=profile`; the personal homepage intercepts its native back button to return to `../../profile/profile.html` for that explicit source. Entries from Moments continue using the original `moments.html` route. Old-theme href and behavior are restored on theme switch.
+- The main four-page controller now loads as `atmosphere-pages.js?v=20261112p4`; the personal-home controller as `atmosphere-my-home.js?v=20261112h2`; PWA cache version `v214`. Dedicated PWA tests and page references have been updated.
+- Added isolated origin-aware return test; the personal-home test suite now executes **5/5 pass**, including proper destination, opt-in-only interception and legacy preservation. Additional static latest-version/PWA check **6/6 pass**.
+- This remains isolated testing only; mobile browser screenshot, real camera/image picker, scroll/focus under keyboard and integrated PWA installation/update have not been verified. Keep PR Draft.
