@@ -14,3 +14,22 @@
 .sf-icon-tile{width:100%;aspect-ratio:1;display:grid;place-items:center;border-radius:10px;background:white;color:#aaa;overflow:hidden;border:1px solid #ededed}
 .sf-icon-tile img{width:100%;height:100%;object-fit:cover}
 .sf-icon-preview .sf-error{margin:0}
+
+
+/* MAOMAO's original built-in themes own their merchandise artwork. Keep the native
+ * themeArt composition instead of repackaging old themes as generic six-page screens. */
+.sf-native-cover .product-art{height:230px;min-height:230px;max-height:230px;margin:0;border-radius:15px}
+.sf-native-cover .theme-art-wechat,.sf-native-cover .theme-art-silver-butterfly{padding:11px}
+.sf-native-cover .wechat-mini-screens,.sf-native-cover .silver-mini-screens{min-height:0;height:100%}
+.sf-native-feature{display:flex;align-items:flex-start;justify-content:center;min-width:0}
+.sf-native-feature .product-art{width:100%;height:220px;min-height:220px;border-radius:12px}
+.sf-native-detail-art{max-width:360px;margin:14px auto 16px}
+.sf-native-detail-art .product-art{width:100%;height:215px;min-height:215px;border-radius:12px}
+.sf-native-detail-art .wechat-mini-screens,.sf-native-detail-art .silver-mini-screens{height:100%}
+.sf-native-detail-art+.sf-caption{font-size:11px;line-height:1.9}
+.store-app .product-foot{gap:7px}
+.store-app .product-foot .action-btn{flex:1;min-width:0;white-space:normal}
+@media(max-width:360px){
+  .sf-native-cover .product-art{height:190px;min-height:190px;max-height:190px}
+  .sf-native-feature .product-art{height:195px;min-height:195px}
+}
