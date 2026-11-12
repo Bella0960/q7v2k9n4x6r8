@@ -59,8 +59,8 @@ function boot(role={id:'native-1',name:'小叶',description:'在校大学生',re
 }
 
 test('真手机壳内载入新的应用模块与样式，保持上滑解锁',()=>{
-  assert.match(phone,/inspect-native-view\.js\?v=20261112v4/);
-  assert.match(phone,/inspect-native\.css\?v=20261112v4/);
+  assert.match(phone,/inspect-native-view\.js\?v=20261112v5/);
+  assert.match(phone,/inspect-native\.css\?v=20261112v5/);
   assert.match(phone,/id="appReload"/);
   assert.match(phone,/SWIPE_UP_THRESHOLD_PX = 36/);
   assert.match(skin,/\.nv-chat-detail/);
