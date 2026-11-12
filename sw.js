@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v220';
+const CACHE_NAME = 'phone-app-pwa-v221';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 // v196 release: sweep orphaned role-owned media refs during avatar cleanup.
 const APP_SHELL = [
@@ -19,7 +19,7 @@ const APP_SHELL = [
   './tutorial/tutorial.js?v=20261111v3',
   './beauty/beauty.html',
   './theme-store/preview-scene.js?v=20261112m4',
-  './theme-store/preview-scene.css?v=20261112m4',
+  './theme-store/preview-scene.css?v=20261112m5',
   './theme-store/storefront.js?v=20261112m4',
   './theme-store/storefront.css?v=20261112m4',
   './theme-store/collection-store.js?v=20261112m3',
