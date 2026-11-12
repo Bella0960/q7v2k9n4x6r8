@@ -542,6 +542,33 @@
         '<p class="inspect-muted">之后角色会更谨慎。请尊重其决定。</p>'+button('结束查看','stop','primary'));return;}
       if(!current)return;
       var body='',section=data.sections[current]||{};
+      // Native app pages share the same data, role permissions, caches and AI writer.
+      // The legacy flat renderer below remains a no-op fallback for old cached clients.
+      if(global.InspectPhoneNative && typeof global.InspectPhoneNative.render==='function'){
+        var nativeScreen=global.InspectPhoneNative.render({
+          app:current,view:view,section:section,roleName:role.name,
+          unlockedNotes:unlockedNotes,unlockedAlbum:unlockedAlbum,
+          revealCount:revealCount,pinView:pinView,hiddenPin:hiddenPin(roleId,role),
+          pinForm:pinForm,button:button,pendingChat:pendingChat,
+          source:currentSource()
+        });
+        if(!nativeScreen&&view){
+          view=null;
+          nativeScreen=global.InspectPhoneNative.render({
+            app:current,view:null,section:section,roleName:role.name,
+            unlockedNotes:unlockedNotes,unlockedAlbum:unlockedAlbum,
+            revealCount:revealCount,pinView:pinView,hiddenPin:hiddenPin(roleId,role),
+            pinForm:pinForm,button:button,pendingChat:pendingChat,
+            source:currentSource()
+          });
+        }
+        if(nativeScreen){
+          var nativeNotice=notice?'<p class="inspect-alert" role="status">'+html(notice)+'</p>':'';
+          var sourceText=nativeScreen.detail?'':'<p class="nv-source">'+html(currentSource())+' · 虚构角色数据</p>';
+          open(nativeScreen.title,nativeNotice+nativeScreen.body+sourceText);
+          return;
+        }
+      }
       if(current==='chat'){
         if(view&&view.kind==='chat'){
           var c=section.contacts[view.index];
@@ -692,6 +719,8 @@
       if(selected.indexOf(b.dataset.app)<0){chooseScreen();return;}
       current=b.dataset.app;view=null;notice='';switches++;render();
     });});
+    var reload=document.getElementById('appReload');
+    if(reload)reload.addEventListener('click',function(){if(ITEMS.some(function(x){return x.id===current;}))refreshSection();});
     back.addEventListener('click',function(){
       if(view){view=null;render();return;}
       if(current==='caught'){close();return;}
@@ -719,8 +748,23 @@
       }
     });
     appBody.addEventListener('click',function(e){
+      var tab=e.target.closest('[data-native-tab]');
+      if(tab&&current==='chat'){
+        var tabId=tab.dataset.nativeTab;
+        view=tabId==='chats'?null:{kind:'chatTab',tab:tabId};
+        notice='';render();return;
+      }
       var detail=e.target.closest('[data-detail]');
-      if(detail){view={kind:detail.dataset.detail,index:Number(detail.dataset.index)};notice='';render();return;}
+      if(detail){
+        var kind=detail.dataset.detail,index=Number(detail.dataset.index);
+        if(kind==='noop')return;
+        if(kind.indexOf('switch-')===0){
+          var nextApp=kind.slice(7);
+          if(!permission||selected.indexOf(nextApp)<0){chooseScreen();return;}
+          current=nextApp;view=null;notice='';render();return;
+        }
+        view={kind:kind,index:index};notice='';render();return;
+      }
       var action=e.target.closest('[data-action]');if(!action)return;
       var a=action.dataset.action;
       if(a==='close'||a==='deny'){close();return;}
