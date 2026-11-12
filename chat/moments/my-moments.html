@@ -1135,20 +1135,39 @@
       if (e.key === 'Enter') submitComment();
     });
 
-    /* ===== 壁纸上传：FileReader + Canvas（最大宽 600 等比，JPEG 0.7） ===== */
+    /* ===== 壁纸上传：旧主题 600px/.7；薄影自适应高清并限制体积 ===== */
     function compressCover(file, cb) {
       var reader = new FileReader();
       reader.onload = function (ev) {
         var img = new Image();
         img.onload = function () {
           try {
-            var maxW = 600;
-            var scale = Math.min(1, maxW / img.width);
-            var canvas = document.createElement('canvas');
-            canvas.width = Math.round(img.width * scale);
-            canvas.height = Math.round(img.height * scale);
-            canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-            cb(canvas.toDataURL('image/jpeg', 0.7));
+            var shell = document.querySelector('.phone-mockup');
+            var atmosphere = shell && shell.getAttribute('data-chat-theme-preset') === 'atmosphere';
+            // Prefer better cover detail without risking an unbounded base64 asset.
+            // The existing 600px / JPEG .7 pipeline is unchanged for other themes.
+            var presets = atmosphere
+              ? [[1280, 0.86], [1024, 0.82], [840, 0.78], [600, 0.7]]
+              : [[600, 0.7]];
+            var encoded = '';
+            for (var i = 0; i < presets.length; i++) {
+              var maxW = presets[i][0];
+              var scale = Math.min(1, maxW / img.width);
+              var canvas = document.createElement('canvas');
+              canvas.width = Math.max(1, Math.round(img.width * scale));
+              canvas.height = Math.max(1, Math.round(img.height * scale));
+              var ctx = canvas.getContext('2d');
+              if (!ctx) throw new Error('Canvas unavailable');
+              if (atmosphere) {
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+              }
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              encoded = canvas.toDataURL('image/jpeg', presets[i][1]);
+              // ~480 KB encoded budget. Large detailed images step down gracefully.
+              if (!atmosphere || encoded.length <= 640000 || i === presets.length - 1) break;
+            }
+            cb(encoded);
           } catch (err) {
             alert('图片处理失败，请更换图片重试');
             cb('');
