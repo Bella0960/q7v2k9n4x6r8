@@ -1,0 +1,207 @@
+/* V5 additive customization controls only.
+   No overrides to the approved page compositions, typography, navigation,
+   chat message layout, music strip, or horizontal media carousel. */
+.phone .v5-custom-trigger{
+ position:absolute;z-index:7;width:29px;height:29px;display:grid;
+ place-items:center;padding:6px;border:1px solid var(--border);
+ border-radius:50%;background:var(--glass);color:var(--ink);
+ backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+ cursor:pointer;transition:transform .2s ease,background .2s ease;
+}
+.phone .v5-custom-trigger:active{transform:scale(.92)}
+.phone .v5-custom-trigger svg{width:15px;height:15px;stroke-width:1.55}
+.phone .hero{position:relative}
+.phone .v5-custom-home{right:22px;top:10px}
+.phone .profile-center{position:relative}
+.phone .v5-custom-self{right:19px;top:8px}
+.phone .chat-person{position:relative}
+.phone .v5-custom-contact{left:20px;top:-8px;width:23px;height:23px;padding:5px}
+.phone .v5-custom-contact svg{width:13px;height:13px}
+.phone .mini-music{position:relative}
+.phone .v5-custom-music{right:42px;top:9px;width:25px;height:25px;padding:5px}
+.phone [data-v5-custom-image="true"]{background-repeat:no-repeat!important;background-position:center!important;background-size:cover!important}
+.phone .hero-art[data-v5-custom-image="true"] .shape{display:none!important}
+.phone .drawer-cover[data-v5-custom-image="true"]:before{opacity:.12}
+.phone .profile-center[data-v5-custom-image="true"]{
+ border-radius:4px;padding-top:14px;padding-bottom:14px;
+ background-blend-mode:multiply;
+}
+.phone .profile-center[data-v5-custom-image="true"] :is(h2,small){
+ position:relative;text-shadow:0 1px 5px #0006;color:#fff;
+}
+.phone .v5-custom-overlay[hidden]{display:none!important}
+.phone .v5-custom-overlay{
+ position:absolute;inset:0;z-index:90;display:flex;
+ align-items:flex-end;justify-content:center;overflow:hidden;
+}
+.phone .v5-custom-mask{
+ position:absolute;inset:0;appearance:none;background:rgba(0,0,0,.43);
+ border:none;backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);
+ animation:v5-custom-fade .23s ease;
+}
+.phone .v5-custom-sheet{
+ position:relative;display:flex;flex-direction:column;
+ width:100%;max-height:min(75%,660px);
+ padding:9px 19px max(21px,env(safe-area-inset-bottom));
+ background:var(--surface);color:var(--ink);
+ border-radius:19px 19px 0 0;border-top:1px solid var(--border);
+ box-shadow:0 -8px 32px #0002;
+ animation:v5-custom-rise .32s cubic-bezier(.19,.8,.2,1) both;
+ isolation:isolate;
+}
+.phone .v5-custom-grip{
+ width:34px;height:3px;background:var(--fine);opacity:.65;
+ border-radius:4px;margin:0 auto 18px;flex-shrink:0;
+}
+.phone .v5-custom-head{
+ display:flex;justify-content:space-between;align-items:center;gap:14px;
+}
+.phone .v5-custom-head small{
+ display:block;color:var(--muted);font-size:9px;
+ letter-spacing:.2em;font-weight:600;margin-bottom:5px;
+}
+.phone .v5-custom-head h2{
+ font:400 28px/1.2 Georgia,"Songti SC",serif;letter-spacing:-.045em;
+ margin:0;color:var(--ink);
+}
+.phone .v5-custom-close{
+ width:33px;height:33px;flex-shrink:0;display:grid;place-items:center;
+ border:1px solid var(--border);border-radius:50%;
+ background:var(--glass);color:var(--ink);font-size:21px;font-weight:300;
+}
+.phone .v5-custom-tabs{
+ display:flex;gap:21px;flex-shrink:0;align-items:center;
+ margin:13px 0 1px;border-bottom:1px solid var(--border);
+}
+.phone .v5-custom-tabs button{
+ border:0;border-bottom:1px solid transparent;border-radius:0;
+ padding:10px 0;min-height:40px;
+ background:transparent;color:var(--muted);
+ font-size:11px;white-space:nowrap;cursor:pointer;
+}
+.phone .v5-custom-tabs button.active{
+ color:var(--ink);border-bottom-color:var(--ink);
+}
+.phone .v5-custom-body{
+ min-height:100px;overflow-y:auto;overscroll-behavior:contain;
+ -webkit-overflow-scrolling:touch;scrollbar-width:none;
+}
+.phone .v5-custom-body::-webkit-scrollbar{display:none}
+.phone .v5-custom-section[hidden]{display:none!important}
+.phone .v5-custom-section{padding:9px 0 3px}
+.phone .v5-custom-row{
+ display:flex;align-items:center;gap:12px;width:100%;min-height:54px;
+ text-align:left;padding:9px 4px;margin:0;
+ background:transparent;color:var(--ink);
+ border:0;border-radius:6px;cursor:pointer;
+ transition:background .2s ease,transform .22s ease;
+}
+.phone .v5-custom-row:active{
+ background:var(--tile);transform:translateX(2px);
+}
+.phone .v5-custom-row-ico{
+ flex:0 0 30px;width:30px;height:30px;display:grid;place-items:center;
+ background:var(--tile);border:1px solid var(--border);border-radius:6px;
+}
+.phone .v5-custom-row-ico svg{
+ width:17px;height:17px;stroke:currentColor;fill:none;
+}
+.phone .v5-custom-copy{
+ flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;
+}
+.phone .v5-custom-copy strong{
+ font-size:11px;line-height:1.3;font-weight:570;letter-spacing:.01em;
+}
+.phone .v5-custom-copy small{
+ font-size:9px;line-height:1.4;color:var(--muted);font-weight:400;
+}
+.phone .v5-custom-chevron{font:300 21px/1 Georgia,serif;color:var(--muted)}
+.phone .v5-custom-foot{
+ flex-shrink:0;border-top:1px solid var(--border);
+ padding:13px 0 0;margin:6px 0 0;color:var(--muted);
+ font-size:9px;line-height:1.6;
+}
+.phone .v5-custom-note{
+ font-size:10px;color:var(--muted);line-height:1.7;
+ padding:12px 6px;
+}
+.phone .v5-custom-track{
+ display:flex;align-items:center;gap:4px;min-height:51px;
+ border-bottom:1px solid var(--border);
+}
+.phone .v5-custom-track-main{
+ flex:1;min-width:0;display:flex;align-items:center;gap:12px;
+ color:var(--ink);text-align:left;padding:11px 0;
+ background:transparent;border:0;min-height:45px;
+}
+.phone .v5-custom-track-main[aria-pressed="true"]{
+ color:var(--ink);font-weight:620;
+}
+.phone .v5-custom-track-index{
+ color:var(--muted);font:400 11px/1 Georgia,serif;flex-shrink:0;
+}
+.phone .v5-custom-track-title{
+ display:block;min-width:0;overflow:hidden;white-space:nowrap;
+ text-overflow:ellipsis;font-size:11px;
+}
+.phone .v5-custom-remove{
+ flex:0 0 33px;width:33px;height:33px;border:0;
+ background:transparent;color:var(--muted);padding:7px;
+ border-radius:50%;
+}
+.phone .v5-custom-remove svg{width:18px;height:18px}
+.phone .v5-custom-sticker-tools{
+ margin:9px 0 2px;border-top:1px solid var(--border);
+ padding:10px 0 1px;display:flex;flex-direction:column;gap:8px;
+}
+.phone .v5-custom-sticker-add{
+ display:inline-flex;align-items:center;justify-content:center;
+ align-self:flex-start;min-height:32px;
+ padding:6px 11px;border:1px solid var(--border);
+ border-radius:5px;color:var(--ink);background:var(--tile);font-size:10px;
+}
+.phone .v5-custom-sticker-grid{
+ display:flex;align-items:center;gap:7px;overflow-x:auto;
+ scrollbar-width:none;padding:0 2px 5px;
+}
+.phone .v5-custom-sticker{
+ flex:0 0 38px;width:38px;height:38px;padding:2px;
+ background:var(--tile);border:1px solid var(--border);border-radius:5px;
+}
+.phone .v5-custom-sticker img{
+ display:block;width:100%;height:100%;object-fit:contain;
+}
+.phone .v5-custom-status{
+ position:absolute;z-index:96;left:16%;right:16%;bottom:92px;
+ min-height:0;pointer-events:none;
+ text-align:center;color:var(--ink);
+ font-size:10px;line-height:1.45;
+ background:var(--glass);border-radius:10px;
+ backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+}
+.phone .v5-custom-status:not(:empty){
+ padding:10px 12px;border:1px solid var(--border);
+ box-shadow:0 5px 18px #0002;
+}
+.phone :is(.v5-custom-trigger,.v5-custom-close,.v5-custom-row,.v5-custom-track-main,.v5-custom-remove,.v5-custom-sticker,.v5-custom-sticker-add,.v5-custom-tabs button):focus-visible{
+ outline:1.5px solid var(--ink);outline-offset:2px;
+}
+@keyframes v5-custom-rise{
+ from{opacity:.8;transform:translateY(32px)}
+ to{opacity:1;transform:translateY(0)}
+}
+@keyframes v5-custom-fade{
+ from{opacity:0}to{opacity:1}
+}
+@media(max-width:359px){
+ .phone .v5-custom-sheet{padding-left:15px;padding-right:15px}
+ .phone .v5-custom-tabs{gap:13px}
+}
+@media(prefers-reduced-motion:reduce){
+ .phone .v5-custom-mask,.phone .v5-custom-sheet{
+  animation:none!important;transition:none!important;
+ }
+ .phone .v5-custom-row,.phone .v5-custom-trigger{
+  transition:none!important;
+ }
+}
