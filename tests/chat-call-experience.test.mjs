@@ -24,7 +24,8 @@ test('voice and video actions open the shared in-chat call layer', () => {
 test('call messages go through the existing chat send pipeline and are recorded', () => {
   assert.match(overlay, /global\.sendMsg\(\{\s*text:\s*text\s*\}\)/);
   assert.match(overlay, /type:\s*'call'/);
-  assert.match(overlay, /saveMessages\(history\)/);
+  assert.match(overlay, /saveMessages\(next\)/);
+  assert.match(overlay, /var next = Array\.isArray\(history\) \? history\.concat\(\[record\]\)/);
   assert.match(overlay, /appendMessageToDOM\(record\)/);
   assert.match(overlay, /聊天服务暂不可用，消息已保留[\s\S]*?input\.value = text/);
 });
