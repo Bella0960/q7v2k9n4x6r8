@@ -556,3 +556,34 @@ test('forum refresh / 新帖子自带评论：根评论和楼中楼都按身份�
     ['我来补充', '还有一个细节']
   );
 });
+
+test('forum refresh / AI 改标题重复讲同一长故事：保留旧帖并过滤同批重复正文', () => {
+  const api = runForumRefreshCore();
+  const longBody = '楼主昨天在街角花店看见熟悉的蓝色雨伞，今天同一把伞又出现在车站，旁边还放着一张写有周五日期的纸条。';
+  const current = [{ id: 'old', title: '昨天的线索', body: longBody, comments: [{ name: '旧网友', text: '我记得这把伞' }] }];
+  const fresh = [
+    { id: 'renamed', title: '车站的新发现', body: '  ' + longBody + '\\n', comments: [] },
+    { id: 'new-one', title: '另一件事', body: '今天有人在小区门口整理遗失物招领，居民们逐个确认了物品归属，最后管理员把清单贴到了公告栏。', comments: [] },
+    { id: 'new-two', title: '换个标题继续讲', body: '今天有人在小区门口整理遗失物招领，居民们逐个确认了物品归属，最后管理员把清单贴到了公告栏。', comments: [] }
+  ];
+  const result = api.mergeForumRefreshData(current, fresh, [], () => null);
+  assert.equal(result.addedPostCount, 1);
+  assert.deepEqual(Array.from(result.posts, post => post.id), ['new-one', 'old']);
+  assert.equal(result.posts[1].comments[0].text, '我记得这把伞');
+  assert.equal(current.length, 1, '去重不得修改原来的帖子数组');
+});
+
+test('forum refresh / 短句重复不误杀不同主题，长文大小写和空白统一比较', () => {
+  const api = runForumRefreshCore();
+  const current = [{ id: 'one', title: 'A', body: '今天下雨了', comments: [] }];
+  const fresh = [{ id: 'two', title: 'B', body: '今天下雨了', comments: [] }];
+  assert.equal(api.mergeForumRefreshData(current, fresh, [], () => null).addedPostCount, 1);
+  const long = 'THIS IS A DETAILED FICTIONAL STORY WITH A LONG UNIQUE SEQUENCE ABOUT A LOST LETTER';
+  const deduped = api.mergeForumRefreshData(
+    [{ id: 'old', title: 'first', body: long, comments: [] }],
+    [{ id: 'new', title: 'second', body: ' this is a detailed fictional story with a long unique sequence about a lost letter ', comments: [] }],
+    [], () => null
+  );
+  assert.equal(deduped.addedPostCount, 0);
+  assert.equal(deduped.changed, false);
+});
