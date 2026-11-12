@@ -7997,13 +7997,16 @@
             return ledger.readWalletForMutation(WORK_DATA_KEY);
         }
         function saveWorkData(wd) {
-            try {
-                localStorage.setItem(WORK_DATA_KEY, JSON.stringify(wd));
-                return true;
-            } catch (e) {
-                showToast('保存失败：本地存储空间不足');
+            // All chat transfers and gift credits go through the shared wallet writer.
+            // Callers coordinate through MaoMaoWalletLedger.runExclusive().
+            const ledger = window.MaoMaoWalletLedger;
+            if (!ledger || typeof ledger.commitWalletSnapshot !== 'function') {
+                showToast('钱包模块尚未加载，交易未保存');
                 return false;
             }
+            const result = ledger.commitWalletSnapshot(wd);
+            if (!result.ok) showToast('钱包记录未能保存或核实，请检查钱包数据');
+            return result.ok;
         }
 
         // ========== 红包/转账结果弹窗 ==========
