@@ -528,6 +528,11 @@
     // It must never be described as a server-side timer: it runs on re-entry.
     var lifeResult=global.InspectPhoneLifeClock&&global.InspectPhoneLifeClock.advance?
       global.InspectPhoneLifeClock.advance(data,role,now):{added:0};
+    // Persona-based fictional web/forum details extend legacy samples without
+    // erasing the role's existing posts, searches or previously saved comments.
+    var personaWeb=global.InspectPersonaWeb;
+    var webSeed=personaWeb&&personaWeb.seed?
+      personaWeb.seed(role,roleId,data,now):{added:0};
     function currentSource(){
       var source=data.source[current]==='ai'?'AI 剧情记录':data.source[current]==='offline-sample'?'离线预置剧情 · 非AI生成':'本地剧情样例 · 未调用 AI';
       return source+(data.carriedFrom?' · 含 '+data.carriedFrom+' 的历史记录':'');
@@ -592,7 +597,8 @@
           unlockedNotes:unlockedNotes,unlockedAlbum:unlockedAlbum,
           revealCount:revealCount,pinView:pinView,hiddenPin:hiddenPin(roleId,role),
           pinForm:pinForm,button:button,pendingChat:pendingChat,
-          source:currentSource(),roleAvatar:role.avatar||role.photo||'',roleId:roleId
+          source:currentSource(),roleAvatar:role.avatar||role.photo||'',roleId:roleId,
+          personaWeb:personaWeb,persona:personaWeb&&personaWeb.persona?personaWeb.persona(role):null
         });
         if(!nativeScreen&&view){
           view=null;
@@ -601,7 +607,8 @@
             unlockedNotes:unlockedNotes,unlockedAlbum:unlockedAlbum,
             revealCount:revealCount,pinView:pinView,hiddenPin:hiddenPin(roleId,role),
             pinForm:pinForm,button:button,pendingChat:pendingChat,
-            source:currentSource(),roleAvatar:role.avatar||role.photo||'',roleId:roleId
+            source:currentSource(),roleAvatar:role.avatar||role.photo||'',roleId:roleId,
+            personaWeb:personaWeb,persona:personaWeb&&personaWeb.persona?personaWeb.persona(role):null
           });
         }
         if(nativeScreen){
