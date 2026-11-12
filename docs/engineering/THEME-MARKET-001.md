@@ -36,7 +36,7 @@ Application captures prior state and restores exact sparse storage on failure; a
 - Saved outfit metadata holds a preset ID, never base64. Default icons may be saved as an empty preset ID. Custom icons without an active saved preset deliberately fail with instructions to save the current pack first, rather than falsely reporting a successful snapshot.
 - On reapply, verify each required preset image before changing current icons; update all known app IDs together using the original desktop icon keys; capture exact previous image bytes and restore them on failure, including when current icons are unsaved custom ones. Only selected scopes are applied; the active preset marker is rolled back too.
 - Storefront outfit dialog now displays up to eight real saved icon thumbnails from existing IndexedDB image records, without touching real chats/profiles. Desktop layout previews use six distinct original thin-line app glyphs instead of repeating the grid icon.
-- New four Node regression cases cover metadata-only saved presets, theme isolation, rejection of unsaved custom icon snapshots and partial-write rollback plus missing-image preflight. These new cases have **NOT been executed in this connector-only session**; prior 10/10 Node and 6/6 Chromium evidence relates to commit `60ade716` only.
+- Four new Node cases cover metadata-only saved presets, theme isolation, unsaved custom icon rejection, partial-write rollback and missing-image preflight; the Chromium script also now exercises the icon snapshot UI, real IndexedDB thumbnail and scoped apply. One-command scripts: `npm run test:theme:market` and `npm run test:theme:market:browser`. **New/modified cases have NOT been executed in this connector-only session**; prior 10/10 Node and 6/6 Chromium evidence relates to commit `60ade716` only.
 - PWA shell resources are now `m3` and cache name `v219`; full offline install/upgrade tests remain **NOT VERIFIED**.
 
 ## NOT VERIFIED / release blockers
@@ -48,3 +48,8 @@ Application captures prior state and restores exact sparse storage on failure; a
 - End-to-end full backup export/import and multi-tab concurrent application still require tests. Deleting records retains image bytes and does not reclaim storage.
 
 Keep draft. No production deployment or main merge until remaining acceptance is completed and reviewed.
+
+
+## Current remote CI signal
+
+GitHub Actions jobs for commit `abff7049` were reported as `failure` but both jobs had zero reported steps, and GitHub's log endpoint returned `BlobNotFound`. This does not establish that any application test assertion ran; the root cause is not confirmed. Do not infer passing tests from the CI signal. When a full source workspace and a working runner are available, run `npm run test:theme:market`, `npm run test:theme:market:browser`, `npm run build`, followed by existing chat/theme tests, Android/iPhone and installed-PWA acceptance.
