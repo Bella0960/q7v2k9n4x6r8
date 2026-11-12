@@ -107,7 +107,7 @@
    node.setAttribute('data-at-keyboard','');
    node.setAttribute('role','button');node.tabIndex=0;
    node.addEventListener('keydown',function(e){
-     if(e.target!==node||(e.key!=='Enter'&&e.key!==' '))return;
+     if(!isActive()||e.target!==node||(e.key!=='Enter'&&e.key!==' '))return;
      e.preventDefault();node.click();
    });
  }
@@ -125,7 +125,7 @@
      if(main){
        var heading=element('header','at-profile-heading');
        heading.hidden=true;
-       heading.append(element('span','at-profile-eyebrow','PROFILE'),element('h1','at-profile-heading-title','我的'));
+       heading.append(element('span','at-profile-eyebrow','PROFILE'),element('h2','at-profile-heading-title','我的'));
        main.insertBefore(heading,main.firstChild);
        bar=heading;
      }
