@@ -858,6 +858,44 @@
     renderGuides();
   }
 
+  function buildTestReport(onlyTouched) {
+    // Only share explicitly written testing notes and non-secret device context.
+    // Never inspect chat history, API settings, local files or account identifiers.
+    var standalone = Boolean(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+      Boolean(navigator.standalone);
+    var swControlled = Boolean(navigator.serviceWorker && navigator.serviceWorker.controller);
+    var width = document.documentElement.clientWidth || window.innerWidth || 0;
+    var height = window.innerHeight || 0;
+    var lines = [
+      'MAOMAO 手机测试记录',
+      '指南版本：' + GUIDE_VERSION,
+      '记录时间：' + new Date().toLocaleString(),
+      '测试站点：' + window.location.origin,
+      '屏幕视口：' + width + ' × ' + height,
+      '显示比例：' + (window.devicePixelRatio || 1),
+      '运行方式：' + (standalone ? '桌面 PWA' : '浏览器网页'),
+      'Service Worker：' + (swControlled ? '正在控制页面' : '未控制当前页面'),
+      '网络状态：' + (navigator.onLine === false ? '浏览器报告离线' : '浏览器未报告离线（不代表服务器可用）'),
+      '浏览器：' + navigator.userAgent,
+      '',
+      '注意：以上信息仅通过主动点击复制/导出提供；不包含账号密码、聊天记录或 API Key。',
+      ''
+    ];
+    var reported = 0;
+    GUIDES.forEach(function (guide) {
+      var state = progress[guide.id] || {};
+      if (onlyTouched && !state.done && !String(state.note || '').trim()) return;
+      reported += 1;
+      lines.push((state.done ? '[已测试] ' : '[待测试] ') + guide.title);
+      lines.push('入口：' + guide.location);
+      if (state.note) lines.push('备注：' + state.note);
+      if (guide.issue) lines.push('状态：待真机复测（尚未验证结果）');
+      lines.push('');
+    });
+    if (onlyTouched && !reported) lines.push('尚未记录测试项；请先在对应功能填写备注。');
+    return lines.join('\n');
+  }
+
   function exportProgress() {
     var lines = ['MAOMAO 手机测试记录', '指南版本：' + GUIDE_VERSION, '导出时间：' + new Date().toLocaleString(), ''];
     GUIDES.forEach(function (guide) {
@@ -901,6 +939,29 @@
   $('diagnoseSelect').addEventListener('change', function () {
     $('diagnoseAnswer').textContent = diagnosis[this.value] || diagnosis[''];
   });
+
+  async function copyProgress() {
+    var button = $('copyTests');
+    var hint = $('copyTestsHint');
+    var report = buildTestReport(true);
+    button.disabled = true;
+    try {
+      if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
+        throw new Error('CLIPBOARD_UNAVAILABLE');
+      }
+      await navigator.clipboard.writeText(report);
+      hint.textContent = '测试报告已复制。现在可以直接粘贴给开发者，不必下载文件。';
+    } catch (error) {
+      // Clipboard access is frequently restricted in mobile embedded browsers.
+      // Keep an accessible copyable fallback rather than falsely claiming success.
+      if (typeof window.prompt === 'function') {
+        window.prompt('未能自动复制，请长按选择并复制报告内容：', report);
+      }
+      hint.textContent = '未获得系统剪贴板权限；已尝试打开手动复制窗口。若未显示，请使用「导出测试记录」。';
+    } finally {
+      button.disabled = false;
+    }
+  }
 
   $('guideFilters').addEventListener('click', function (event) {
     var button = event.target.closest('[data-category]');
@@ -975,6 +1036,7 @@
     saveProgress();
   });
   $('exportTests').addEventListener('click', exportProgress);
+  $('copyTests').addEventListener('click', copyProgress);
   $('resetTests').addEventListener('click', function () { $('resetModal').hidden = false; });
   $('cancelReset').addEventListener('click', function () { $('resetModal').hidden = true; });
   $('confirmReset').addEventListener('click', function () {
