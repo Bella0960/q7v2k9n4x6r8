@@ -5986,7 +5986,7 @@
             // 真正的跨应用互动：用户在角色手机的备忘录/朋友圈留下内容，
             // 不造一条“角色已回复”的假消息，也不修改聊天历史；
             // 同账号同域本地故事由本角色下一次正常 AI 回复作为可选话题读取。
-            var inspectPhoneEventIds=[];
+            var inspectPhoneEventIds=[],inspectPhoneFocusId=null;
             if (!isGroupChat && !silent && !contextOnly && !isRegen &&
                 presenceMode === 'online' &&
                 window.InspectInteractionBridge &&
@@ -6001,6 +6001,7 @@
                     if (inspectPhonePacket && inspectPhonePacket.text) {
                         systemPrompt += '\n\n' + inspectPhonePacket.text;
                         inspectPhoneEventIds=inspectPhonePacket.eventIds||[];
+                        inspectPhoneFocusId=inspectPhonePacket.focusId||null;
                     }
                 } catch (inspectPhoneContextError) {
                     // 隔离查手机数据出错时不影响正常聊天。
@@ -6543,13 +6544,13 @@
                             // Only after a real model response has been saved: mark the
                             // exact notes/comments offered to AI this turn. This is NOT
                             // a fictional "read receipt", and no message is fabricated.
-                            if (!isGroupChat && inspectPhoneEventIds.length &&
+                            if (!isGroupChat && (inspectPhoneEventIds.length||inspectPhoneFocusId) &&
                                 window.InspectInteractionBridge &&
                                 typeof window.InspectInteractionBridge.markOffered === 'function') {
                                 try {
                                     window.InspectInteractionBridge.markOffered(
                                         String(currentRoleId || currentCharacter.id || ''),
-                                        inspectPhoneEventIds, localStorage, Date.now()
+                                        inspectPhoneEventIds, localStorage, Date.now(), inspectPhoneFocusId
                                     );
                                 } catch (inspectPhoneMarkError) {}
                             }
