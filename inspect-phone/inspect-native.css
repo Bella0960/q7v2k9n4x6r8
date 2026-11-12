@@ -389,3 +389,63 @@
 .nv-chat-handoff{display:block;width:calc(100% - 34px);margin:7px 17px 20px;padding:12px;background:#f5f5f7;border:1px solid #e9e9ed;border-radius:9px;color:#37373d;font-size:13px;text-align:center}
 .nv-note-editor .nv-paper-body{user-select:text;-webkit-user-select:text}
 .nv-moment-card{border-radius:0}
+
+
+/* Persona-led native forum + self-contained browser. No fake web-network claims. */
+.nv-forum-home{min-height:100%;background:#f6f6f7}
+.nv-forum-intro{padding:24px 19px 18px;background:#fff}
+.nv-forum-intro>span{font-size:10px;letter-spacing:1.8px;text-transform:uppercase;color:#a1a1a5}
+.nv-forum-intro h1{margin:8px 0 5px;font-family:Georgia,"Songti SC",serif;font-size:31px;font-weight:500;letter-spacing:-.8px}
+.nv-forum-intro p{font-size:12px;color:#8e8e93;margin:0}
+.nv-forum-switch{display:flex;gap:25px;align-items:center;padding:12px 20px 0;background:#fff}
+.nv-forum-switch button{background:none;border:0;padding:8px 0 13px;font-size:13px;color:#8e8e92;position:relative}
+.nv-forum-switch button.active{color:#1b1b1f;font-weight:600}
+.nv-forum-switch button.active:after{content:"";position:absolute;bottom:0;left:0;right:0;height:2px;background:#29292b}
+.nv-forum-feed{padding:10px 0}
+.nv-forum-row{display:block;padding:0 15px;margin:0 0 9px;width:100%;text-align:left;background:transparent;border:0}
+.nv-forum-row .nv-forum-card{padding:16px 16px 13px;border-radius:11px;background:#fff;border:1px solid #f1f1f2}
+.nv-forum-row .nv-forum-card h2{font-size:17px;line-height:1.55;font-weight:600;margin:12px 0 8px;color:#242426}
+.nv-forum-row .nv-forum-card>p{font-size:12px;line-height:1.8;margin:0;color:#727277;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.nv-forum-row .nv-forum-card footer{color:#99999d;font-size:11px;margin:14px 0 0}
+.nv-forum-author{display:flex;align-items:center;gap:10px}
+.nv-forum-author span:not(.nv-avatar){display:grid;gap:3px;text-align:left}
+.nv-forum-author strong{font-size:13px;font-weight:600}
+.nv-forum-author small{font-size:11px;color:#9c9ca1}
+.nv-forum-article{padding:22px 19px;background:#fff}
+.nv-forum-article h1{font-size:24px;line-height:1.55;margin:22px 0 17px;font-weight:600;color:#2a2a2e}
+.nv-forum-article .nv-paper-body{font-size:14px;line-height:1.95}
+.nv-post-actions{border-top:1px solid #f0f0f0;margin-top:24px;padding:17px 0 0;display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#a3a3a6}
+.nv-post-actions button{background:#f6f6f7;border:0;border-radius:20px;padding:9px 16px;font-size:12px;color:#49494f}
+.nv-browser-app{min-height:100%;background:#fff;padding:10px 0 24px}
+.nv-browser-hero{background:#f8f8f8;margin:10px 14px 16px;border-radius:16px;padding:25px 20px}
+.nv-browser-hero small{font-size:10px;color:#999;letter-spacing:2px}
+.nv-browser-hero h1{font-family:Georgia,"Songti SC",serif;font-size:30px;font-weight:500;letter-spacing:-.5px;margin:7px 0 8px;color:#29292d}
+.nv-browser-hero p{font-size:12px;color:#8f8f93;margin:0}
+.nv-web-search{height:44px;border:1px solid #e6e6e8;border-radius:11px;background:#f7f7f8;display:flex;align-items:center;gap:9px;padding:0 8px 0 13px;margin:10px 14px 16px}
+.nv-web-search svg{color:#9e9ea3;flex:0 0 18px}
+.nv-web-search input{border:0;outline:0;font-family:inherit;font-size:13px;background:transparent;color:#29292e;flex:1;min-width:0}
+.nv-web-search button{border:0;border-radius:7px;background:#27272c;color:white;font-size:11px;padding:8px 12px;flex:none}
+.nv-web-label{margin:17px 19px 9px;font-size:14px;font-weight:600;color:#25252a;display:flex;align-items:baseline;gap:9px}
+.nv-web-label small{font-size:11px;font-weight:400;color:#9f9fa5}
+.nv-web-result-row{display:block;text-align:left;width:100%;padding:0;background:#fff;border:0}
+.nv-web-result{display:flex;flex-direction:column;text-align:left;gap:7px;padding:16px 19px;border-bottom:1px solid #f1f1f2}
+.nv-web-result small{font-size:11px;color:#9b9ba0}
+.nv-web-result strong{font-size:16px;font-weight:500;line-height:1.5;color:#333338}
+.nv-web-result span{color:#8e8e93;font-size:12px;line-height:1.8}
+.nv-web-history{min-height:58px;display:flex;gap:13px;align-items:center;text-align:left;width:100%;padding:11px 18px;border-bottom:1px solid #f5f5f6;background:#fff}
+.nv-web-history .nv-line-copy{display:grid;gap:5px}
+.nv-web-history .nv-line-copy strong{font-size:13px;font-weight:500}
+.nv-web-history .nv-line-copy small{font-size:11px;color:#a6a6aa}
+.nv-web-history-icon{height:29px;width:29px;border-radius:9px;background:#f6f6f7;color:#777;display:grid;place-items:center;flex:none}
+.nv-web-history-icon svg{width:15px;height:15px}
+.nv-web-shortcuts{display:flex;gap:9px;padding:3px 14px 5px}
+.nv-web-shortcuts button{flex:1;background:#fafafa;border:1px solid #e9e9eb;border-radius:10px;color:#55555b;padding:13px 7px;font-size:12px}
+.nv-browser-article{min-height:100%;background:#fff;padding:28px 22px 40px}
+.nv-browser-domain{font-size:11px;color:#9b9ba1;letter-spacing:.3px;margin-bottom:18px}
+.nv-browser-article h1{font-family:Georgia,"Songti SC",serif;font-size:26px;line-height:1.45;font-weight:500;letter-spacing:-.3px;margin:0 0 15px}
+.nv-browser-article .nv-browser-lead{font-size:15px;line-height:1.8;color:#68686d;margin:0 0 23px}
+.nv-browser-article>p:not(.nv-browser-lead){font-size:14px;line-height:2.05;color:#36363b;white-space:pre-wrap;margin:0 0 19px}
+.nv-browser-article footer{padding:18px 0;border-top:1px solid #eee;display:flex;align-items:center;justify-content:space-between;gap:8px;color:#a0a0a5;font-size:11px}
+.nv-browser-article footer button{border:1px solid #e5e5e9;background:#f6f6f8;border-radius:9px;color:#444;padding:10px 14px;font-size:12px}
+.nv-browser-empty{margin:25px 18px;padding:20px;border:1px solid #f0f0f2;border-radius:10px;background:#fafafa;line-height:1.9;font-size:13px;color:#666}
+.nv-browser-empty p{font-size:12px;color:#999;margin-top:12px}
