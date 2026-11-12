@@ -14,7 +14,7 @@
   function when(t){var d=new Date(n(t,Date.now()));return isNaN(d.getTime())?'未知':(d.getMonth()+1)+'月'+d.getDate()+'日 '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
   function hm(t){var d=new Date(n(t,Date.now()));return isNaN(d.getTime())?'--:--':String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
   function cash(v){return (n(v)<0?'-':'+')+'¥'+Math.abs(n(v)).toFixed(2);}
-  function tap(kind,index,body,css){return '<button type="button" class="nv-tap '+(css||'')+'" data-detail="'+esc(kind)+'" data-index="'+n(index)+'">'+body+'<span class="nv-chevron" aria-hidden="true">›</span></button>';}
+  function tap(kind,index,body,css){return '<button type="button" class="nv-tap '+(css||'')+'" data-detail="'+esc(kind)+'" data-index="'+n(index)+'">'+body+'</button>';}
   function displayName(name){var full=String(name||'');return full.replace(/^(高中好友|社团伙伴|同事|室友|表姐|表哥|表弟|表妹|好友|邻居)/,'')||full;}
   function avatar(name,size,image){
     var label=esc(String(name||'?').slice(0,1));
@@ -90,15 +90,23 @@
       }).join('')+'</nav>';
     } else if(app==='notes') {
       var publicNotes=arr(s.notes),locked=arr(s.locked).slice(0,o.revealCount||0);
-      if(v&&(v.kind==='note'||v.kind==='locked-note'||v.kind==='archived-note')) {
+      if(v&&v.kind==='note-editor'){
+        title=v.index<0?'新建备忘录':'编辑备忘录';
+        var editing=v.index<0?{title:'',text:''}:publicNotes[v.index];
+        if(!editing)return null;
+        body='<form class="nv-note-form" id="inspectNoteEditForm">'+
+          '<input name="title" maxlength="80" placeholder="标题" aria-label="备忘录标题" value="'+esc(editing.title)+'">'+
+          '<textarea name="text" maxlength="4000" rows="12" placeholder="在这里写点什么..." aria-label="备忘录内容">'+esc(editing.text)+'</textarea>'+
+          '<div class="nv-edit-actions"><button type="button" data-action="cancelNoteEdit">取消</button><button type="submit">保存</button></div></form>';
+      } else if(v&&(v.kind==='note'||v.kind==='locked-note'||v.kind==='archived-note')) {
         var note=(v.kind==='note'?publicNotes:v.kind==='archived-note'?arr(s.archive):locked)[v.index];if(!note)return null;
         title='备忘录';
         var text=String(note.text||'');
         body='<div class="nv-note-editor"><div class="nv-note-date">'+esc(when(note.updatedAt))+'</div><h1>'+esc(note.title)+'</h1>'+
-          paper(text)+'</div><div class="nv-edit-foot">此页面为角色日记原文 · 只读　　'+esc(when(note.createdAt))+'</div>';
+          paper(text)+'</div><div class="nv-edit-foot">'+esc(when(note.createdAt))+(v.kind==='note'?'<button type="button" data-action="editNote">编辑</button>':'')+'</div>';
       } else {
         title='备忘录';
-        body='<div class="nv-notes-index"><h1>备忘录</h1><div class="nv-search">⌕　搜索备忘录</div>'+
+        body='<div class="nv-notes-index"><div class="nv-notes-heading"><h1>备忘录</h1><button type="button" data-action="newNote" aria-label="新建备忘录">新建</button></div><div class="nv-search">⌕　搜索备忘录</div>'+
           '<div class="nv-note-count">'+publicNotes.length+' 条备忘录</div>'+
           publicNotes.map(function(x,i){return tap('note',i,
             '<span class="nv-note-copy"><strong>'+esc(x.title)+'</strong><small>'+esc(x.text).replace(/\s+/g,' ').slice(0,65)+'</small>'+
@@ -117,7 +125,10 @@
       if(v&&v.kind==='moment'){
         var m=arr(s.moments)[v.index];if(!m)return null;
         body=sheet('动态详情',esc(when(m.time)),'<div class="nv-feed-text">'+esc(m.text)+'</div><div class="nv-photo-placeholder">'+esc(m.image)+'</div>'+
-          group('评论',arr(m.comments).map(function(x){return '<p class="nv-comment">'+avatar(x.name,'small')+'<span><strong>'+esc(x.name)+'</strong><br>'+esc(x.text)+'</span></p>';}).join('')));
+          group('评论',arr(m.comments).map(function(x){return '<p class="nv-comment">'+avatar(x.name,'small')+
+            '<span><strong>'+esc(x.name)+'</strong><br>'+esc(x.text)+'</span></p>';}).join(''))+
+          '<form class="nv-moment-comment-form" id="inspectMomentComment"><input name="text" maxlength="300" aria-label="朋友圈评论" placeholder="写评论..."><button type="submit">发表</button></form>'+
+          '<button class="nv-chat-handoff" type="button" data-action="chatAboutMoment">去和'+esc(name)+'聊天</button>');
       } else {
         body='<div class="nv-moments-cover"><div class="nv-cover-title">生活碎片 <small>分享给好友</small></div>'+
           '<div class="nv-cover-owner">'+esc(name)+'　'+avatar(name)+'</div></div><div class="nv-moments-feed">'+arr(s.moments).map(function(m,i){
@@ -205,7 +216,7 @@
         '<p class="nv-hint">文字场景预览，并非真实拍摄照片</p></div>';
     } else if(app==='device'){
       title='设置';
-      body='<div class="nv-settings-owner">'+avatar(name,'large')+'<span><strong>'+esc(name)+'的手机</strong><small>账户、设备与使用习惯</small></span><b>›</b></div>'+
+      body='<div class="nv-settings-owner">'+avatar(name,'large')+'<span><strong>'+esc(name)+'的手机</strong><small>账户、设备与使用习惯</small></span></div>'+
         group('屏幕使用时间',entry('noop',0,'今日屏幕使用',Math.floor(n(s.screenMinutes)/60)+'小时'+n(s.screenMinutes)%60+'分')+
           '<div class="nv-time-chart">'+arr(s.apps).slice(0,5).map(function(a,i){return '<div style="height:'+Math.min(95,Math.max(8,n(a.minutes)*100/Math.max(1,n(s.screenMinutes))))+'%"></div>';}).join('')+'</div>'+
           arr(s.apps).map(function(a){return '<div class="nv-setting-row"><span>'+esc(a.name)+'</span><strong>'+n(a.minutes)+' 分钟</strong></div>';}).join(''))+
