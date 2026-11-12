@@ -203,6 +203,12 @@
   var all=posts(),withImages=all.filter(function(post){
    return !!post.querySelector('.my-post-image');
   });
+  // Keep the horizontal reading position when the original post list rerenders
+  // (for example after a like, comment or new post). Replacing children without
+  // preserving this value jumps the whole filmstrip back to its first image.
+  var previousScroll=albumTrack.scrollLeft||0;
+  if(selectedPost && 'isConnected' in selectedPost && !selectedPost.isConnected)
+   clearPhotoSelection();
   albumTrack.replaceChildren();
   if(albumAll)albumAll.textContent='全部照片 '+String(withImages.length).padStart(2,'0');
   withImages.slice(0,12).forEach(function(post,i){
@@ -217,6 +223,8 @@
    button.addEventListener('click',function(){revealPost(post);});
    albumTrack.append(button);
   });
+  if(active()&&albumTrack.children.length)
+   albumTrack.scrollLeft=previousScroll;
   album.hidden=!active()||!albumTrack.children.length;
  }
  function sync(){
