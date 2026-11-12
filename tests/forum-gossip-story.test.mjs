@@ -358,3 +358,12 @@ test('failed deletion and follow writes cannot falsely report success or discard
   assert.equal(context.isFollowing('阿诺'),true);
   assert.equal(renders,1);
 });
+
+test('gossip continuation rejects facts that merely extend or shorten a saved reveal',()=>{
+  const update='周二下午我去了一趟旧公寓，发现她已经把墙上的相框收进了纸箱。她没有立刻搬走，而是先给对方发了一条长消息，解释这几个月为什么一直犹豫。晚上两个人在小区门口聊了很久，最后决定先各自住一段时间，再一起处理租约。';
+  const oldFacts=['她已经决定搬离原来的公寓'];
+  const duplicate=G.validateUpdate({update,newFacts:['她已经决定搬离原来的公寓并且告诉了朋友','她已经决定搬离']},[],oldFacts);
+  assert.equal(duplicate.ok,false,'rewriting a prior reveal cannot count as two new facts');
+  const fresh=G.validateUpdate({update,newFacts:['双方决定分别租房','他们约定下周讨论租约']},[],oldFacts);
+  assert.equal(fresh.ok,true,'independent new events remain eligible');
+});
