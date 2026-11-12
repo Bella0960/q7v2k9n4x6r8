@@ -67,7 +67,7 @@
   function userAskedAboutPhone(text){
     // Opt-in re-reference: no repeated unsolicited suggestions in ordinary chat.
     var value=str(text,280);
-    return /备忘录|日记|朋友圈|留言|评论|手机|写给你|我写的|我留的|看到(了|没|过)|看见(了|没|过)|你发现/.test(value);
+    return /备忘录|日记|朋友圈|留言|评论|手机|我写的|我留的|我改的|写给你|你.{0,8}(看到|看见|发现).{0,8}(写|留|内容|那句话)/.test(value);
   }
   function buildPromptPacket(roleId,storage,now,options){
     var story=read(roleId,storage);
