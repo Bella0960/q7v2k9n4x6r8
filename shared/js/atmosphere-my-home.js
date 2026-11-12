@@ -4,7 +4,7 @@
  */
 (function(){
  'use strict';
- var shell,stage,panel,album,albumTrack,tabs,empty,sign,edit,mode,observer;
+ var shell,stage,panel,album,albumTrack,tabs,empty,sign,edit,masthead,mode,observer;
  var ready=false,choice='all',kit=window.MAOMAOAtmosphereIcons;
  var TONE_KEY='maomao_atmosphere_tone_v1';
  function el(tag,cls,text){
@@ -45,7 +45,7 @@
   return button;
  }
  function makeMasthead(){
-  var header=el('header','at-home-masthead');
+  var header=el('header','at-home-masthead');masthead=header;
   header.setAttribute('aria-label','我的主页快捷操作');
   var kicker=el('span','at-home-kicker','MY SPACE');
   var actions=el('div','at-home-masthead-actions');
@@ -76,7 +76,7 @@
   }catch(e){info={};}
   var text=typeof info.sign==='string'?info.sign.trim():'';
   sign.textContent=text.slice(0,110);
-  sign.hidden=!text;
+  sign.hidden=!active()||!text;
  }
  function makeIdentity(){
   var hero=document.querySelector('.profile-hero');
@@ -84,7 +84,7 @@
   if(!hero||!name)return;
   sign=el('p','at-home-sign');sign.hidden=true;
   name.parentNode.append(sign);
-  var edit=el('a','at-home-edit-profile','编辑资料');
+  edit=el('a','at-home-edit-profile','编辑资料');
   edit.href='../../profile/edit-profile.html';
   hero.append(edit);
   renderSign();
@@ -199,6 +199,8 @@
   if(!on){
    shell.removeAttribute('data-at-home-tone');
   }else syncTone();
+  if(masthead)masthead.hidden=!on;
+  if(edit)edit.hidden=!on;
   if(sign)renderSign();
   update();
  }
