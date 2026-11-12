@@ -43,6 +43,26 @@ try {
   await page.waitForURL('**/chat-detail.html?id=at_test_a');
   await page.locator('.msg-bubble').first().waitFor();
   assert.equal(await shell.getAttribute('data-at-tone'),'dark');
+  // The late legacy detail-page script used to add a second floating button
+  // and force a white composer; neither may override this opted-in theme.
+  assert.equal(await page.locator('form#chat-form button[type="submit"]').count(),1);
+  assert.equal(await page.locator('#myFloatSend').count(),0);
+  const visuals=await page.evaluate(()=>{
+   const stage=document.querySelector('.chat-stage');
+   const cap=document.querySelector('form#chat-form .input-capsule');
+   const send=document.querySelector('form#chat-form .send-icon-btn');
+   const phone=document.querySelector('.phone-mockup');
+   return {stage:getComputedStyle(stage).backgroundColor,
+    capsule:getComputedStyle(cap).backgroundColor,
+    send:getComputedStyle(send).backgroundColor,
+    sendPosition:getComputedStyle(send).position,
+    phoneWidth:phone.getBoundingClientRect().width};
+  });
+  assert.equal(visuals.stage,'rgba(0, 0, 0, 0)','message stage stays transparent');
+  assert.notEqual(visuals.capsule,'rgb(255, 255, 255)','dark composer must not be legacy white');
+  assert.notEqual(visuals.send,'rgb(255, 255, 255)','dark sender must use atmosphere palette');
+  assert.equal(visuals.sendPosition,'relative','native sender stays in form flow');
+  if(width<=600)assert.ok(Math.abs(visuals.phoneWidth-width)<2,'phone shell fills mobile viewport');
   await page.getByPlaceholder('发送消息…').fill('多行输入\n保留原生发送流程');
   const bounds=await page.locator('#chat-form').boundingBox();
   assert.ok(bounds&&bounds.y+bounds.height<=901,'composer stays within viewport');
