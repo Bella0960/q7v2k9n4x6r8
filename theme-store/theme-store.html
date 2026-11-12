@@ -382,20 +382,24 @@
       var active=window.ChatBeauty&&ChatBeauty.getThemePreset?ChatBeauty.getThemePreset():'default',owned=getOwned();
       var listActive=getChatListTheme()==='editorial',listOwned=owned.indexOf('messages-editorial')>=0;
       var listButtonLabel=listActive?'恢复默认':(listOwned?'应用设计':'免费获取并应用');
-      var html=(market?market.renderThemeFeature():'')+'<div class="section-head"><div><h3>聊天列表主题</h3></div><p>只改变聊天列表首页</p></div>'+
-        '<div class="chat-list-theme-grid">'+
-          '<article class="product-card chat-list-theme-card">'+editorialListArt()+
-            '<div class="product-meta"><span class="product-eyebrow">01 / MESSAGES EDITION</span><strong class="product-title">留白 Messages</strong><span class="product-desc">中性灰白底色、克制字重与轻分隔。聊天列表独立换肤，不影响其他页面。</span></div>'+
-            '<div class="product-foot"><span class="product-price">'+(listOwned?'已收录':'FREE')+'</span><button type="button" class="action-btn '+(listActive?'light':'')+'" data-action="chat-list-theme-toggle">'+listButtonLabel+'</button></div>'+
-          '</article>'+
-        '</div>'+
-        '<div class="section-head"><div><h3>整套聊天主题</h3></div><p>一键切换聊天页的整体呈现</p></div><div class="product-grid">';
+      // Source-owned completed themes come first. The standalone Messages list theme
+      // and featured new-theme gallery remain available below the six real products.
+      var html='<div class="section-head sf-native-section"><div><h3>原有主题</h3></div><p>六套独立外观 · 原有功能保留</p></div><div class="product-grid">';
       defaultThemes.forEach(function(item){
         var isOwned=owned.indexOf(item.id)>=0,isActive=active===item.id;
         var label=isActive?'正在使用':(isOwned?'应用主题':'免费获取并应用');
         html+='<article class="product-card">'+themeArt(item)+'<div class="product-meta"><span class="product-eyebrow">'+item.eyebrow+'</span><strong class="product-title">'+item.name+'</strong><span class="product-desc">'+item.desc+'</span></div><div class="product-foot"><span class="product-price">'+(isOwned?'已收录':'FREE')+'</span><button type="button" class="action-btn light" data-sf="detail" data-id="'+item.id+'">预览</button><button type="button" class="action-btn '+(isOwned?'light':'')+'" data-action="theme-apply" data-id="'+item.id+'" '+(isActive?'disabled':'')+'>'+label+'</button></div></article>';
       });
-      html+='</div><div class="helper-row"><p>列表主题独立保存，只作用于聊天首页；其他整套主题仍按原有方式切换。</p><button class="text-link" data-action="open-beauty" type="button">进入聊天美化</button></div>';
+      html+='</div>'+
+        '<div class="section-head sf-list-theme-section"><div><h3>聊天列表专属主题</h3></div><p>单独切换，不影响聊天详情</p></div>'+
+        '<div class="chat-list-theme-grid">'+
+          '<article class="product-card chat-list-theme-card">'+editorialListArt()+
+            '<div class="product-meta"><span class="product-eyebrow">01 / MESSAGES EDITION</span><strong class="product-title">留白 Messages</strong><span class="product-desc">中性灰白底色、克制字重与轻分隔。聊天列表独立换肤，不影响其他页面。</span></div>'+
+            '<div class="product-foot"><span class="product-price">'+(listOwned?'已收录':'FREE')+'</span><button type="button" class="action-btn '+(listActive?'light':'')+'" data-action="chat-list-theme-toggle">'+listButtonLabel+'</button></div>'+
+          '</article>'+
+        '</div>';
+      if(market)html+=market.renderThemeFeature();
+      html+='<div class="helper-row"><p>主题与聊天气泡可以分别设置。原来的角色消息、联系人和动态数据不会因切换主题清空。</p><button class="text-link" data-action="open-beauty" type="button">进入聊天美化</button></div>';
       return html;
     }
     function renderBubbles(){
