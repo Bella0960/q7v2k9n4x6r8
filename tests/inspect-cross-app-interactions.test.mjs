@@ -135,8 +135,8 @@ test('刷新前保留用户笔记和朋友圈评论，不得变成假 AI 回复'
 });
 
 test('真实聊天页面载入互动桥接，并只注入当前角色的提示词',()=>{
-  assert.match(phoneSource,/inspect_interaction_bridge\.js\?v=20261112v1/);
-  assert.match(chatSource,/inspect_interaction_bridge\.js\?v=20261112v1/);
+  assert.match(phoneSource,/inspect_interaction_bridge\.js\?v=20261112v2/);
+  assert.match(chatSource,/inspect_interaction_bridge\.js\?v=20261112v2/);
   assert.match(chatSource,/if \(!isGroupChat && !silent && !contextOnly && !isRegen/);
   assert.match(chatSource,/InspectInteractionBridge\.buildPromptPacket/);
   assert.match(chatSource,/String\(currentRoleId \|\| currentCharacter\.id \|\| ''\)/);
