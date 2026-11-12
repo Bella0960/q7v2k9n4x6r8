@@ -180,3 +180,28 @@ User's four-page refinement request continued on the existing Draft PR #273, wit
 - Four-page isolated behavior tests **9/9**, existing My collections tests **3/3**, new music adapter tests **4/4**, static PWA version/asset consistency **9/9**. `atmosphere-pages.js` and the diary/music inline scripts also passed JavaScript parsing.
 - Tests above were executed in a controlled JavaScript fixture with source fetched from GitHub, **not** full Node/Vite checkout, E2E browser against MAOMAO, API/media integration or Android PWA. No main merge, production deployment or APK.
 - Still required: integrated browser rendering on mobile widths, real music route navigation, audio player behavior, message/image/sticker sends, dynamic post comments, profile uploads and background isolation, keyboard safe area and PWA offline update. Keep Draft until evidence exists.
+
+## 2026-11-12 — The actual My Homepage, not just the My tab
+
+**Root cause:** `profile/profile.html` is the My tab, but its existing “我的主页” item opens a separate native route, `chat/moments/my-moments.html`. Earlier atmosphere changes polished only the former. The real My Homepage was not part of the opt-in theme, and its native wallpaper/hero/post feed remained old-fashioned.
+
+### Source-grounded design review
+
+Re-inspected four user-uploaded `Camera_xhs_*.mp4` reference clips (36/29/38/33 seconds). The dark personal profile, cover imagery, small tabs, horizontally scrollable media, layered chat navigation, subtle state changes and light/dark transitions are visible source-derived motifs. The new homepage photo strip and content filters are MAOMAO-specific extensions, not claims about code or features supplied by those videos. No reference imagery is committed to the repository. See `docs/design/EDITORIAL_INTERACTION_REFERENCE.md`.
+
+### Code integrated into the existing real route
+
+- `chat/moments/my-moments.html` now includes the **existing** ChatBeauty page-theme bridge and the opt-in `shared/css/atmosphere-my-home.css`, `shared/js/atmosphere-my-home.js`, plus the existing original precision SVG kit. No second theme choice or page replacement.
+- Native wallpaper remains `my_home_cover_v1`, including its one-time migration guard; the existing upload handler alone writes it. It does **not** read/write `myProfile.cover`, chat covers, or other characters' wallpapers. The new cover shortcut only delegates to the existing file picker.
+- The atmosphere-only hero centers the *real* user avatar, nickname and optionally the existing signature; it has a real link to edit profile. A light, legible monochrome veil covers the existing wallpaper without discarding/copying it.
+- A photo-strip reads images from the homepage's **existing displayed** `.my-post` DOM, with horizontal snap scrolling and tap-to-jump to the original post; the original comments, likes, delete buttons and post storage are left in place. Re-rendering the original post list updates the strip automatically.
+- A simple `全部/照片/文字` filter works only on existing posts via the `hidden` property and is non-persistent. Arrow keys, Home/End and clear empty state are supported. Old-theme switchback reveals all posts and hides every atmosphere-only enhancement.
+- A monochrome theme toggle shares the existing `maomao_atmosphere_tone_v1` visual preference; a failed save reports a visible error instead of claiming success. The original wallpaper brightness detector remains intact.
+- `shared/css/atmosphere-my-home.css` scopes all visual rules to `[data-chat-theme-preset="atmosphere"][data-at-home-surface="personal-home"]`, includes keyboard focus, 350px accommodations, reduced-motion fallback, and keeps the native comments bottom sheet usable.
+- `sw.js` advances to `phone-app-pwa-v213` and precaches `my-moments.html`, `profile/profile.html`, the new CSS/JS and the page's precise theme dependencies. `tests/pwa-navigation-cache.test.mjs` asserts those resources.
+
+### Verification and release status
+
+Isolated execution of the actual `shared/js/atmosphere-my-home.js` under a DOM fixture and source contracts: **4/4 passed** (real route, independent wallpaper, non-destructive photo filter/scroll, post rerender, old theme restore, native picker, visual preference). Static PWA/asset checks: **9/9 passed**. The personal homepage's original inline application script parsed successfully.
+
+These checks are **not** full browser/device E2E. Before release, verify native file-picker permissions and image persistence, 320/375/390/430px viewport alignment, old theme behavior, real photo & comment rendering, keyboard focus and safe-area overlap, dark wallpapers under both tone settings, and offline PWA upgrade. Keep PR #273 Draft; do not merge, deploy production, or claim all tests pass from this evidence.
