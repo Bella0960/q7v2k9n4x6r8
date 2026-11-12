@@ -8,6 +8,7 @@
 <script src="../../shared/js/native-feel.js"></script>
 <script src="../../shared/js/wallpaper-store.js?v=20261026v2"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
+<script src="../../shared/js/phone/local-chat-voice.js?v=20261112a"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   body {
@@ -1135,6 +1136,17 @@
     outline: 1px solid #111111;
     outline-offset: 2px;
   }
+  #localVoiceAuto::after {
+    content: "";
+    width: 40px;
+    height: 24px;
+    flex: none;
+    border-radius: 999px;
+    background: radial-gradient(circle at 12px center, #fff 0 7px, transparent 7.5px) #b0b0b5;
+  }
+  #localVoiceAuto[aria-checked="true"]::after {
+    background: radial-gradient(circle at 28px center, #fff 0 7px, transparent 7.5px) #111;
+  }
 </style>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
 </head>
@@ -1513,6 +1525,29 @@
             <button type="button" class="bubble-mode-opt" data-mode="auto" role="radio" aria-checked="true">自动</button>
             <button type="button" class="bubble-mode-opt" data-mode="multi" role="radio" aria-checked="false">连续多条</button>
           </div>
+        </div>
+
+        <div class="settings-card" id="localVoiceCard" hidden>
+          <div class="bubble-mode-head">
+            <span class="action-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round"><path d="M4 10v4m4-7v10m4-13v16m4-13v10m4-7v4"/></svg>
+            </span>
+            <span class="action-body">
+              <span class="action-title">角色声线</span>
+              <span class="action-sub">使用本机语音，免费试听与播放</span>
+            </span>
+          </div>
+          <div class="bubble-mode-options" id="localVoiceOptions" role="group" aria-label="角色声线">
+            <button type="button" class="bubble-mode-opt" data-preset="bright" aria-pressed="false">清亮</button>
+            <button type="button" class="bubble-mode-opt" data-preset="soft" aria-pressed="true">柔和</button>
+            <button type="button" class="bubble-mode-opt" data-preset="deep" aria-pressed="false">低沉</button>
+            <button type="button" class="bubble-mode-opt" id="localVoicePreview">试听</button>
+          </div>
+          <button type="button" class="action-row" id="localVoiceAuto" role="switch" aria-checked="false">
+            <span class="action-body">
+              <span class="action-title">偶尔自动发语音</span>
+            </span>
+          </button>
         </div>
 
       </div>
@@ -3079,6 +3114,65 @@
     });
   } else if (bubbleModeCard) {
     bubbleModeCard.style.display = 'none';
+  }
+
+  var localVoice = window.LocalChatVoice;
+  var localVoiceCard = document.getElementById('localVoiceCard');
+  if (localVoice && !isGroupSetting && roleId) {
+    localVoiceCard.hidden = false;
+    var localVoiceOptions = document.getElementById('localVoiceOptions');
+    var localVoicePreview = document.getElementById('localVoicePreview');
+    var localVoiceAuto = document.getElementById('localVoiceAuto');
+
+    function renderLocalVoiceSettings() {
+      var preferences = localVoice.readPreferences(roleId);
+      localVoiceOptions.querySelectorAll('[data-preset]').forEach(function (button) {
+        var selected = button.dataset.preset === preferences.preset;
+        button.classList.toggle('active', selected);
+        button.setAttribute('aria-pressed', String(selected));
+      });
+      localVoiceAuto.setAttribute('aria-checked', String(preferences.auto));
+    }
+    function saveLocalVoiceSettings(preferences) {
+      if (!localVoice.savePreferences(roleId, preferences)) {
+        showToast('语音偏好保存失败，请重试');
+        return;
+      }
+      renderLocalVoiceSettings();
+    }
+
+    renderLocalVoiceSettings();
+    localVoiceOptions.addEventListener('click', function (event) {
+      var option = event.target.closest('[data-preset]');
+      if (!option) return;
+      localVoice.stop();
+      var preferences = localVoice.readPreferences(roleId);
+      preferences.preset = option.dataset.preset;
+      saveLocalVoiceSettings(preferences);
+    });
+    localVoicePreview.addEventListener('click', function () {
+      if (localVoicePreview.textContent === '停止') {
+        localVoice.stop();
+        return;
+      }
+      var language;
+      try { language = localStorage.getItem('chat_reply_language'); } catch (e) {}
+      var preferences = localVoice.readPreferences(roleId);
+      if (localVoice.speak(localVoice.sample(language), preferences.preset, language, function (failed) {
+        localVoicePreview.textContent = '试听';
+        if (failed) showToast('试听失败，请检查手机的文字转语音设置');
+      })) {
+        localVoicePreview.textContent = '停止';
+      } else {
+        showToast('当前语言没有可用的本机语音');
+      }
+    });
+    localVoiceAuto.addEventListener('click', function () {
+      var preferences = localVoice.readPreferences(roleId);
+      preferences.auto = !preferences.auto;
+      saveLocalVoiceSettings(preferences);
+    });
+    window.addEventListener('pagehide', localVoice.stop);
   }
 
   // ================= 自动发动态（chat_auto_moment_<roleId> = true/false） =================

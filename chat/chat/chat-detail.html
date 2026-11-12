@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="../../shared/css/chat-beauty-runtime.css?v=20261031v1">
     <link rel="stylesheet" href="../call/call-overlay.css?v=20261105v1">
     <script src="../../shared/js/phone/phone_storage.js"></script>
+    <script src="../../shared/js/phone/local-chat-voice.js?v=20261112a"></script>
     <script src="../../shared/js/phone/storage/repository.js"></script>
     <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
     <script src="../../shared/js/phone/role-avatar-library.js?v=20261107v14"></script>
@@ -22,7 +23,7 @@
     <script src="../../shared/js/phone/role_family_cards.js?v=20261028v3"></script>
     <script src="../../shared/js/phone/memory_recall.js?v=20261024v2"></script>
     <script src="../../shared/js/phone/phone_stream.js"></script>
-    <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
+    <script src="../../shared/js/phone/chat-message-policy.js?v=20261112bilingual1"></script>
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v2"></script>
     <script src="../../shared/js/phone/chat-context-policy.js?v=20261107vision1"></script>
     <script src="../../shared/js/phone/chat-presence-policy.js?v=20261102v17"></script>
@@ -650,7 +651,7 @@
         .edit-confirm { background: #111111; color: #FFFFFF; }
 
         /* 译文小字 / 已编辑标记 */
-        .msg-translation { font-size: 0.688rem; line-height: 1.45; color: #8E8E93; margin-top: 6px; padding-top: 6px; border-top: 0.5px solid rgba(0,0,0,0.08); }
+        .msg-translation { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.688rem; line-height: 1.45; color: #8E8E93; margin-top: 6px; padding-top: 6px; border-top: 0.5px solid rgba(0,0,0,0.08); }
         .msg-edited { font-size: 0.625rem; color: #C7C7CC; margin-top: 4px; }
 
         /* 语音气泡：单行波形 + 时长，转写文字常驻在气泡下方 */
@@ -659,6 +660,8 @@
         .voice-wave { display: flex; align-items: flex-end; gap: 2px; height: 18px; }
         .voice-wave i { width: 2px; border-radius: 1px; background: currentColor; opacity: 0.4; }
         .voice-wave i.on { opacity: 1; }
+        .local-voice-play { border: 0; padding: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+        .local-voice-play:focus-visible { outline: 1px solid currentColor; outline-offset: 3px; }
         .voice-dur { font-size: 0.688rem; opacity: 0.7; }
         .msg-voice { display: flex; flex-direction: column; gap: 4px; max-width: min(260px, 100%); }
         .msg-row.sent .msg-voice, .msg-row.right .msg-voice { align-items: flex-end; }
@@ -2782,7 +2785,27 @@
 
         const storageKey = `chat_history_${currentCharacter.id}`;
 
+        const BILINGUAL_REPLY_LANGUAGES = Object.freeze({
+            __proto__: null,
+            en: { name: '英语', example: "Hey, what's up?", hello: 'Hi! Nice to meet you.', groupHello: 'Welcome to the group!' },
+            ja: { name: '日语', example: 'ねえ、今何してるの？', hello: 'はじめまして！よろしくね。', groupHello: 'グループへようこそ！' },
+            ko: { name: '韩语', example: '지금 뭐 해?', hello: '안녕! 만나서 반가워.', groupHello: '그룹에 온 걸 환영해!' }
+        });
+
+        function getChatReplyLanguage() {
+            try { return localStorage.getItem('chat_reply_language') || ''; }
+            catch (e) { return ''; }
+        }
+
         function getInitialMessages() {
+            var language = BILINGUAL_REPLY_LANGUAGES[getChatReplyLanguage()];
+            if (language) {
+                return [{
+                    role: 'received',
+                    text: isGroupChat ? language.groupHello : language.hello,
+                    translation: isGroupChat ? '欢迎加入群聊！' : '你好！很高兴认识你。'
+                }];
+            }
             if (isGroupChat) {
                 return [
                     { role: 'received', text: `欢迎来到「${contactName}」群聊，一起聊聊吧。` }
@@ -3491,8 +3514,29 @@
                 for (var vb = 0; vb < 16; vb++) {
                     voiceBars += '<i style="height:' + (5 + Math.round(Math.random() * 13)) + 'px"></i>';
                 }
-                bubble.innerHTML = '<div class="voice-row"><span class="voice-wave" data-bars="1">' + voiceBars + '</span>' +
-                    '<span class="voice-dur">' + voiceSecs + '"</span></div>';
+                var isLocalSpeech = !!msg.localSpeech;
+                bubble.innerHTML = '<div class="voice-row"><span class="voice-wave" data-bars="1" aria-hidden="true">' + voiceBars + '</span>' +
+                    (isLocalSpeech ? '<button type="button" class="voice-dur local-voice-play">播放</button>' :
+                        '<span class="voice-dur">' + voiceSecs + '"</span>') + '</div>';
+                if (isLocalSpeech) {
+                    bubble.addEventListener('click', function (event) {
+                        if (selectingMode || document.getElementById('msgSheetOverlay').classList.contains('active')) return;
+                        event.stopPropagation();
+                        var play = bubble.querySelector('.local-voice-play');
+                        if (play.textContent === '停止') {
+                            stopVoicePlay();
+                            return;
+                        }
+                        stopVoicePlay();
+                        var speech = window.LocalChatVoice;
+                        var started = speech && speech.speak(msg.text, msg.localSpeech.preset, msg.localSpeech.language, function (failed) {
+                            play.textContent = '播放';
+                            if (failed && typeof showToast === 'function') showToast('本机语音播放失败，仍可查看转写文字');
+                        });
+                        if (started) play.textContent = '停止';
+                        else if (typeof showToast === 'function') showToast('当前语言没有可用的本机语音');
+                    });
+                }
                 if (msg.text) {
                     var vWrap = document.createElement('div');
                     vWrap.className = 'msg-voice';
@@ -3501,10 +3545,10 @@
                     // 改为直接铺在波形气泡下面。双语模式下转写可能带 [中译:...]，
                     // 拆成「原文 + 灰色中文」两行，与正文气泡的双语渲染保持一致。
                     var vtRaw = String(msg.text);
-                    var vtMain = vtRaw, vtZh = '';
+                    var vtMain = vtRaw, vtZh = isLocalSpeech ? String(msg.translation || '') : '';
                     var vtMatch = vtRaw.match(/\[中译[:：]([\s\S]*?)\]/);
                     if (vtMatch) {
-                        vtZh = String(vtMatch[1] || '').trim();
+                        vtZh = vtZh || String(vtMatch[1] || '').trim();
                         vtMain = vtRaw.replace(vtMatch[0], '').replace(/\n{2,}/g, '\n').trim();
                     }
                     if (vtMain || vtZh) {
@@ -3811,7 +3855,7 @@
 
             // 译文小字（AI 翻译结果落库后随消息一起渲染）
             // 若 parseReplyContent 已经从 [中译:] 解析出翻译条（双语聊天模式），就不重复挂手动翻译
-            if (msg.translation && !bubble.querySelector('.msg-translation')) {
+            if (msg.translation && !(msg.type === 'voice' && msg.localSpeech) && !bubble.querySelector('.msg-translation')) {
                 const trEl = document.createElement('div');
                 trEl.className = 'msg-translation';
                 trEl.textContent = String(msg.translation);
@@ -4908,6 +4952,39 @@
             }
         }
 
+        function bilingualReplyInstructions(language) {
+            return '每条气泡先独占一行写纯' + language.name +
+                '正文。人名也用该语言可读的写法。紧接下一行写 [中译:自然的简体中文译文]。' +
+                '中文只能在中译标记内，不可夹在原文中、放在括号里或另写一行。' +
+                '每组原文和译文之间不空行，每两组之间空一行。不要添加语言标签、代码围栏或说明。示例：\n' +
+                language.example + '\n[中译:嘿，在干嘛呢？]';
+        }
+
+        async function ensureBilingualReply(raw, languageCode, language, allowRepair) {
+            var policy = window.ChatMessagePolicy;
+            if (!policy || typeof policy.isCompleteBilingualReply !== 'function') return '';
+            var parsed = policy.parseUnmergedBilingualReply(raw);
+            if (!parsed.bubbles.length) return raw;
+            if (policy.isCompleteBilingualReply(raw, languageCode)) {
+                return policy.rebuildReplyText(parsed.narrations, parsed.bubbles, parsed.translations);
+            }
+            if (allowRepair) {
+                // Only send the role's visible dialogue to the formatter. No tools or actions are replayed.
+                var dialogue = policy.rebuildReplyText([], parsed.bubbles, parsed.translations);
+                var repaired = await callAiNonStream(
+                    '修正这段角色台词的语言和排版，保留语气、原意、顺序和段数。不要接话或添加剧情。\n' +
+                    bilingualReplyInstructions(language),
+                    dialogue
+                );
+                if (repaired && policy.isCompleteBilingualReply(repaired, languageCode)) {
+                    var corrected = policy.parseUnmergedBilingualReply(repaired);
+                    return policy.rebuildReplyText(parsed.narrations, corrected.bubbles, corrected.translations);
+                }
+            }
+            if (typeof showToast === 'function') showToast('有些外语回复未能配好中文译文，可重试。');
+            return policy.keepCompleteBilingualBubbles(raw, languageCode);
+        }
+
         // ================= AI 翻译：结果写入 msg.translation 落库并就地追加小字 =================
         const TRANSLATE_SYSTEM = '[任务]\n你是翻译引擎，只做翻译，不做其他任何事。\n' +
             '[规则]\n' +
@@ -5022,9 +5099,14 @@
                 var cleaned = stripInternalReasoning(raw)
                     .replace(/<narratage\b[^>]*>[\s\S]*?(?:<\/narratage\s*>|$)/gi, '')
                     .replace(/<\/?narratage\b[^>]*>/gi, '')
-                    .replace(/\[中译[:：][^\]]{0,800}\]/g, '')
                     .replace(/\n{3,}/g, '\n\n')
                     .trim();
+                if (inflightSnapshot.replyLang) {
+                    var policy = window.ChatMessagePolicy;
+                    if (!policy || !policy.isCompleteBilingualReply(cleaned, inflightSnapshot.replyLang)) return;
+                } else {
+                    cleaned = cleaned.replace(/\[中译[:：][^\]]{0,800}\]/g, '').replace(/\n{3,}/g, '\n\n').trim();
+                }
                 if (!cleaned) return;
                 var list = loadMessages();
                 list.push({
@@ -5828,31 +5910,6 @@
             // 叙事总规范（线上模式）：与线下模式共用同一套表达规范，边界清晰
             systemPrompt += '\n\n[叙事总规范]\n- 边界清晰：当前是线上聊天模式（隔着屏幕交流），只写消息内容与打字时的心理，不写面对面动作或场景描写；线下模式的面对面叙事不适用于这里。\n- 动作描写原则：只在推进剧情、表现人物情绪、传递关键信息时才添加动作描述，删减无意义的动作与状态描写。\n- 拒绝模板：不要堆砌「动作 + 环境 + 心理」的固定结构，避免机械式的动作衔接。\n- 允许纯对话：可以只写台词和少量必要的心理，无需每条回复都搭配动作描写。\n- 表达精简：减少「刚刚、此刻、下一秒、就在这时」这类无实义的时间词；日常分享内容要有话题性，避免流水账式的状态汇报。';
 
-            // 聊天语言：角色用外语回复，每段后附 [中译:...] 由前端渲染成灰色翻译条
-            try {
-                const replyLang = localStorage.getItem('chat_reply_language') || 'zh';
-                if (replyLang && replyLang !== 'zh') {
-                    const LANG_MAP = {
-                        en: { name: '英语', native: 'English', sampleForeign: "Hey, what's up?", sampleZh: '嘿，在干嘛呢？' },
-                        ja: { name: '日语', native: '日本語', sampleForeign: 'ねえ、今何してるの？', sampleZh: '喂，现在在干嘛？' },
-                        ko: { name: '韩语', native: '한국어', sampleForeign: '지금 뭐 해?', sampleZh: '现在在干嘛？' }
-                    };
-                    const L = LANG_MAP[replyLang];
-                    if (L) {
-                        systemPrompt += '\n\n[聊天语言设置 · 强制]\n' +
-                            '从现在起，你和对方聊天时必须全程使用' + L.name + '（' + L.native + '），就像一个母语为' + L.name + '的人在发微信。\n' +
-                            '规则：\n' +
-                            '1. 所有正文台词、<narratage>旁白、[心声:]内心独白都用' + L.name + '书写，不要夹中文（人名、地名、品牌名等专有名词除外）。\n' +
-                            '2. 每一段' + L.name + '正文结束后，紧接着另起一行（不要空行）附上中文翻译，格式严格为：[中译:这句话的自然中文意思]\n' +
-                            '   示例：\n' + L.sampleForeign + '\n[中译:' + L.sampleZh + ']\n' +
-                            '3. 翻译要口语化、自然通顺，是这句话的中文意思，不要逐字硬译，不要加引号，不要加"翻译："前缀。\n' +
-                            '4. 如果一条回复被空行分成多段（多个气泡），每一段后面都要单独跟自己的 [中译:]。\n' +
-                            '5. 其他机器标记（[记住:]、[红包:]、[转账:]、[图片:]、[发起语音通话]、[群动作:]、[群投票:]、[群接龙:]、[群私聊:] 等）保持原样，不要翻译它们，也不要把它们放进 [中译:] 里。\n' +
-                            '6. 不要向对方解释你在用什么语言，不要说"我用英语/日语/韩语回复你"之类的话，自然地直接说。';
-                    }
-                }
-            } catch (e) {}
-
             // 旁白模式是可切回的持久模式，覆盖上面的线上短消息规则。
             var activeChatModeForPrompt = 'online';
             try { activeChatModeForPrompt = localStorage.getItem('chat_mode_' + aliasRoleId) || 'online'; } catch (e) {}
@@ -6028,6 +6085,14 @@
             }
 
             // 构造 OpenAI 兼容格式 messages 数组 (system + 历史记录)
+            // Freeze the language and bubble mode for this turn, including retries and streaming.
+            var replyLang = getChatReplyLanguage();
+            var replyLanguage = BILINGUAL_REPLY_LANGUAGES[replyLang];
+            if (replyLanguage) {
+                systemPrompt += '\n\n[聊天语言与格式 · 优先规则]\n' + bilingualReplyInstructions(replyLanguage) +
+                    '\n旁白与心声使用' + replyLanguage.name + '。原有机器标记格式保持不变，另起一行输出，绝不放进译文。';
+            }
+
             const apiMessages = [
                 { role: 'system', content: systemPrompt }
             ];
@@ -6229,10 +6294,13 @@
                         }
                         return snapshotText;
                     })(),
+                    replyLang: replyLanguage ? replyLang : '',
                     voiceMode: presenceMode || 'online',
                     groupName: groupReplyPick ? groupReplyPick.name : undefined,
                     memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined
                 };
+                // Keep the typing indicator until source and translation can be validated together.
+                if (replyLanguage) return;
                 /* 推理标签可能先于正文到达；在真正有可见聊天文字前，不创建气泡。 */
                 var tmpText = stripInternalReasoning(extractVoiceCallMarker(text).text);
                 tmpText = tmpText
@@ -6315,7 +6383,7 @@
 
             // 流内一直没出现 loading 移除（零 delta 兜底）
             const loadingEl2 = document.getElementById(statusId);
-            if (loadingEl2) loadingEl2.remove();
+            if (loadingEl2 && !replyLanguage) loadingEl2.remove();
 
             // 错误分类与日志（成功/失败都记录；文案在下方收尾分支组装成气泡）
             var errText = '';
@@ -6404,6 +6472,11 @@
                     // 删除模型意外输出的推理草稿，再进行普通聊天文本清洗
                     fullText = stripInternalReasoning(fullText);
                     fullText = cleanupAiReply(fullText);
+                    if (replyLanguage && fullText) {
+                        inflightSnapshot = null;
+                        fullText = await ensureBilingualReply(fullText, replyLang, replyLanguage, streamResult.ok);
+                    }
+                    if (loadingEl2) loadingEl2.remove();
                     groupReplyVisible = !!fullText;
                     var aiStickerMessages = (parsedRoleSticker.stickers || []).map(function (sticker) {
                         var stickerMessage = {
@@ -6435,7 +6508,7 @@
                     if (fullText && window.ChatMessagePolicy && typeof window.ChatMessagePolicy.buildReplyMessages === 'function') {
                         var replyTurnTime = Date.now();
                         var replyTurnId = 't' + replyTurnTime + Math.random().toString(36).slice(2, 6);
-                        replyMessages = window.ChatMessagePolicy.buildReplyMessages(fullText, getActiveReplyBubbleMode(), {
+                        replyMessages = window.ChatMessagePolicy.buildReplyMessages(fullText, replyBubbleMode, {
                             turnId: replyTurnId,
                             time: replyTurnTime,
                             voiceMode: presenceMode || 'online',
@@ -6453,6 +6526,10 @@
                             name: groupReplyPick ? groupReplyPick.name : undefined,
                             memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined
                         }];
+                    }
+                    if (streamResult.ok && !isGroupChat && !isRegen && !contextOnly && !silent &&
+                        presenceMode === 'online' && window.LocalChatVoice) {
+                        window.LocalChatVoice.maybeApplyToReply(replyMessages, historyList, aliasRoleId, replyLang, Date.now());
                     }
                     if (fullText || aiStickerMessages.length || aiRoleGalleryMessages.length || avatarCandidates.length || avatarPairs.length) {
                         // 正文按角色气泡偏好拆分；表情与图库图片仍保留在同一回复回合中。
@@ -6652,6 +6729,7 @@
                 console.error('[chat-detail] 流式收尾处理异常:', postErr);
             }
 
+            if (loadingEl2) loadingEl2.remove();
             aiSending = false;   // R3：所有出口统一解锁
             // 恢复 header 名字（所有出口统一恢复）
             if (chatTitleEl) chatTitleEl.textContent = originalTitleText;
@@ -7245,6 +7323,10 @@
                     fwd.type = 'image'; fwd.img = msg.img; fwd.desc = msg.desc || '';
                 } else if (msg.type === 'voice') {
                     fwd.type = 'voice'; fwd.duration = msg.duration || 3;
+                    if (msg.localSpeech) {
+                        fwd.localSpeech = { preset: msg.localSpeech.preset, language: msg.localSpeech.language };
+                        if (msg.translation) fwd.translation = msg.translation;
+                    }
                 } else if (msg.type === 'location' && msg.location) {
                     fwd.type = 'location'; fwd.location = msg.location;
                 } else if (msg.type === 'card' && msg.card) {
@@ -7292,10 +7374,12 @@
         var voicePlayTimer = null;
         function stopVoicePlay() {
             if (voicePlayTimer) { clearInterval(voicePlayTimer); voicePlayTimer = null; }
+            if (window.LocalChatVoice) window.LocalChatVoice.stop();
         }
+        window.addEventListener('pagehide', stopVoicePlay);
         chatMessages.addEventListener('click', function (e) {
             var vbubble = e.target.closest('.msg-bubble');
-            if (!vbubble || !vbubble.classList.contains('bubble-voice')) return;
+            if (!vbubble || !vbubble.classList.contains('bubble-voice') || vbubble.querySelector('.local-voice-play')) return;
             var wave = vbubble.querySelector('.voice-wave');
             if (!wave || wave.dataset.playing === '1') return;
             wave.dataset.playing = '1';
@@ -9019,7 +9103,8 @@
 
   /* 单一交互：点一次开始聆听，再点一次结束。完全不使用长按/指针捕获逻辑。 */
   var SpeechRecognitionCtor=window.SpeechRecognition||window.webkitSpeechRecognition;
-  var recognition=null, mode='', finalText='', interimText='', startTimer=null, stopRequested=false;
+  var touchInput=typeof window.matchMedia==='function'&&window.matchMedia('(pointer: coarse)').matches;
+  var recognition=null, mode='', finalText='', interimText='', timer=null;
   var oldPlaceholder=input.getAttribute('data-default-placeholder')||input.placeholder;
 
   function getRestoredPlaceholder(){
@@ -9029,24 +9114,36 @@
     } catch(e) { return oldPlaceholder; }
   }
 
-  function toast(message){
+  function toast(message, keyboardFallback){
     /* Voice feedback stays local to this control, so other page-level toast/click guards cannot replace it. */
     var el=document.getElementById('voice-input-status');
     if(!el){
       el=document.createElement('div');el.id='voice-input-status';
+      el.setAttribute('role','status');
       el.style.cssText='position:absolute;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:9999;background:#111;color:#fff;padding:9px 13px;font:12px -apple-system,BlinkMacSystemFont,sans-serif;max-width:85%;text-align:center';
       var shell=document.querySelector('.phone-mockup');
       if(shell)shell.appendChild(el);else document.body.appendChild(el);
     }
     el.textContent=message;el.style.display='block';clearTimeout(el._timer);
-    el._timer=setTimeout(function(){el.style.display='none'},3200);
+    if(keyboardFallback&&touchInput){
+      var fallback=document.createElement('button');
+      fallback.type='button';
+      fallback.textContent='打开键盘';
+      fallback.style.cssText='display:block;margin:6px auto 0;color:inherit;background:transparent;border:0;padding:6px;text-decoration:underline;font:inherit;cursor:pointer';
+      fallback.addEventListener('click',function(){
+        input.focus();
+        toast('点手机键盘上的麦克风听写，文字会留在输入框。');
+      });
+      el.appendChild(fallback);
+    }
+    el._timer=setTimeout(function(){el.style.display='none'},keyboardFallback?6500:3200);
   }
 
   function setActive(active,label){
     btn.classList.toggle('recording',active);
     btn.setAttribute('aria-pressed',active?'true':'false');
     btn.title=label||(active?'正在聆听，再点一下结束':'点一下开始语音输入，再点一下结束');
-    input.placeholder=active?'正在聆听… 再点一下结束':getRestoredPlaceholder();
+    input.placeholder=active?btn.title:getRestoredPlaceholder();
   }
 
   function putText(text){
@@ -9061,11 +9158,11 @@
 
   function errorText(code){
     switch(code){
-      case 'not-allowed':
-      case 'service-not-allowed': return '请允许浏览器使用麦克风和语音识别功能后重试';
+      case 'not-allowed': return '麦克风权限未开启，请检查网站权限和手机系统里的浏览器权限';
+      case 'service-not-allowed': return '当前浏览器的网页听写服务不可用，可用手机键盘听写';
       case 'audio-capture': return '没有检测到可用的麦克风';
       case 'no-speech': return '没有识别到语音。点一下开始，说完后再点一下结束';
-      case 'network': return '浏览器的语音识别服务连接失败；这不是聊天 API 的转写接口';
+      case 'network': return '浏览器的语音识别服务连不上，可用手机键盘听写';
       case 'language-not-supported': return '当前浏览器语音识别不支持中文';
       case 'aborted': return '';
       default: return '语音识别暂时不可用，请检查麦克风权限后重试';
@@ -9073,123 +9170,106 @@
   }
 
   function resetState(){
-    if(startTimer){clearTimeout(startTimer);startTimer=null}
+    clearTimeout(timer);
+    timer=null;
     recognition=null;
     mode='';
     finalText='';
     interimText='';
-    stopRequested=false;
     setActive(false);
-    btn.disabled=false;
-    input.placeholder=getRestoredPlaceholder();
+  }
+
+  function finish(rec,error,abort){
+    if(recognition!==rec)return;
+    var result=(finalText+' '+interimText).trim();
+    resetState();
+    if(abort){try{rec.abort()}catch(e){}}
+    if(result)putText(result);
+    else if(error!=='aborted')toast(error?errorText(error):'没有识别到文字。再点一次，等显示正在聆听后再说。',true);
   }
 
   function startListening(){
     if(mode!=='')return;
+    if(!window.isSecureContext){
+      toast('网页麦克风需要 HTTPS，请用小手机的正式链接打开。',true);
+      return;
+    }
     if(!SpeechRecognitionCtor){
-      input.focus();
-      toast('当前浏览器不支持网页语音识别。可点输入框，再使用手机键盘上的麦克风听写；文字不会自动发送。');
+      toast('当前浏览器不支持网页听写，可点手机键盘上的麦克风。',true);
       return;
     }
     var rec;
     try{rec=new SpeechRecognitionCtor()}
-    catch(e){toast('无法启动语音识别，请检查麦克风权限后重试');return}
+    catch(e){toast('无法启动网页听写，请检查麦克风权限。',true);return}
 
     recognition=rec;
     mode='starting';
-    finalText='';
-    interimText='';
     rec.lang='zh-CN';
-    rec.continuous=true;
+    // Mobile recognizers can end a single utterance themselves. Keep continuous dictation on desktop.
+    rec.continuous=!touchInput;
     rec.interimResults=true;
     rec.maxAlternatives=1;
-    setActive(true,'正在开启语音识别… 再点一下可结束');
-
-    /* 避免浏览器既未触发 onstart 也未触发 onend 时，按钮卡死无法停止。 */
-    startTimer=setTimeout(function(){
-      if(recognition!==rec||mode!=='starting')return;
-      /* 用户在启动阶段已点过停止：静默收尾，不把它当成“启动超时”故障。 */
-      if(stopRequested){resetState();return;}
-      try{rec.abort()}catch(e){}
+    setActive(true,'正在开启麦克风…');
+    timer=setTimeout(function(){
+      if(recognition!==rec)return;
       resetState();
-      toast('语音识别启动超时。请检查麦克风权限或换用 Chrome 浏览器。');
+      try{rec.abort()}catch(e){}
+      toast('麦克风启动超时，请检查权限，或用手机键盘听写。',true);
     },8000);
 
     rec.onstart=function(){
-      if(recognition!==rec)return;
-      if(startTimer){clearTimeout(startTimer);startTimer=null}
+      if(recognition!==rec||mode!=='starting')return;
+      clearTimeout(timer);
+      timer=null;
       mode='listening';
-      setActive(true,'正在聆听；说完后再点一次结束');
-      /* 用户在启动阶段又点了一次时，等 onstart 确认就绪后再 stop，避免浏览器判定“操作太快”。 */
-      if(stopRequested){
-        mode='stopping';
-        setActive(true,'正在整理语音文字…');
-        try{rec.stop()}
-        catch(e){try{rec.abort()}catch(ignore){};resetState();toast('语音服务未能正常结束，已重置。请再点一次重试。')}
-        return;
-      }
-      toast('正在聆听。说完后再点一次波形结束。');
+      var label=touchInput?'正在聆听… 说完会自动结束':'正在聆听… 再点一下结束';
+      setActive(true,label);
+      toast(label);
     };
 
     rec.onresult=function(event){
       if(recognition!==rec)return;
-      var interim='';
-      for(var i=event.resultIndex;i<event.results.length;i++){
+      var complete=[], draft=[];
+      // The result list is cumulative. Rebuild it so an interim becoming final is never appended twice.
+      for(var i=0;i<event.results.length;i++){
         var result=event.results[i];
         var spoken=result&&result[0]?String(result[0].transcript||'').trim():'';
-        if(!spoken)continue;
-        if(result.isFinal)finalText+=(finalText?' ':'')+spoken;
-        else interim+=(interim?' ':'')+spoken;
+        if(spoken)(result.isFinal?complete:draft).push(spoken);
       }
-      interimText=interim;
-      /* 识别预览只放在输入框占位提示里，不会直接发送消息。 */
-      input.placeholder=interimText||'正在聆听；说完后再点一次结束';
+      finalText=complete.join(' ');
+      interimText=draft.join(' ');
+      input.placeholder=interimText||finalText||btn.title;
     };
 
     rec.onerror=function(event){
-      if(recognition!==rec)return;
-      rec._maomaoError=event&&event.error?event.error:'';
+      finish(rec,event&&event.error||'unknown',true);
     };
 
     rec.onend=function(){
-      if(recognition!==rec)return;
-      var result=(finalText+' '+interimText).trim();
-      var error=rec._maomaoError||'';
-      var wasActive=mode!=='';
-      var endedByUser=(mode==='stopping'||stopRequested);
-      resetState();
-      if(result)putText(result);
-      else if(error&&error!=='aborted')toast(errorText(error));
-      else if(wasActive&&endedByUser)toast('已结束，但没有识别到文字。请说完后再点一次结束。');
+      finish(rec,'',false);
     };
 
     try{rec.start()}
     catch(e){
-      resetState();
-      toast('浏览器拒绝启动语音识别，请确认麦克风权限并使用 HTTPS。');
+      finish(rec,e&&e.name==='NotAllowedError'?'not-allowed':'service-not-allowed',true);
     }
   }
 
   function stopListening(){
     if(mode==='starting'){
-      /* 不把“正在启动”当成失败，也不立刻调用 stop；等浏览器 onstart 后自动结束。 */
-      stopRequested=true;
-      setActive(true,'正在启动，已收到结束指令…');
-      toast('已收到结束指令，正在等语音服务就绪；不会重复启动。');
+      var pending=recognition;
+      resetState();
+      try{pending.abort()}catch(e){}
+      toast('已取消开启麦克风');
       return;
     }
-    if(mode==='listening'){
-      mode='stopping';
-      setActive(true,'正在整理语音文字…');
-      try{if(recognition)recognition.stop()}
-      catch(e){
-        try{if(recognition)recognition.abort()}catch(ignore){}
-        resetState();
-        toast('语音已结束，请再试一次');
-      }
-      return;
-    }
-    if(mode==='stopping')toast('正在整理语音文字，请稍等一下');
+    if(mode!=='listening')return;
+    var rec=recognition;
+    mode='stopping';
+    setActive(true,'正在整理语音文字…');
+    timer=setTimeout(function(){finish(rec,'',true)},2500);
+    try{rec.stop()}
+    catch(e){finish(rec,'',true)}
   }
 
   btn.addEventListener('click',function(event){
@@ -9198,17 +9278,18 @@
     else stopListening();
   });
 
-  /* 页面离开时清理语音识别和启动看门狗。 */
+  /* Also runs after the page is restored and navigated away from again. */
   window.addEventListener('pagehide',function(){
-    if(startTimer){clearTimeout(startTimer);startTimer=null}
-    try{if(recognition)recognition.abort()}catch(e){}
-    recognition=null;mode='';
-  },{once:true});
+    var rec=recognition;
+    resetState();
+    if(rec){try{rec.abort()}catch(e){}}
+  });
 
   window.MAOMAO_VOICE_CAPABILITIES={
     speechToText:!!SpeechRecognitionCtor,
     recordingFallback:false,
     interaction:'tap-to-start-tap-to-stop',
+    autoEndsAfterSpeech:touchInput,
     captureMode:'Browser SpeechRecognition',
     requiresConfiguredAPI:false
   };

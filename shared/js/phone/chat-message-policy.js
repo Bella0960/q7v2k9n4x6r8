@@ -38,7 +38,7 @@
   // Parse model output into narration blocks and visible chat bubbles.
   // The output shape intentionally matches parseReplyContent's legacy contract.
   // Each bubble may carry a parallel Chinese translation extracted from [中译:...] markers.
-  var TRANSLATION_MARKER_REGEX = /\[中译[:：]([^\]]{1,800})\]/g;
+  var TRANSLATION_MARKER_REGEX = /[\[［【]中译\s*[:：]([^\]］】]{0,800})[\]］】]/g;
 
   function stripTranslationMarkers(raw) {
     return String(raw || '').replace(TRANSLATION_MARKER_REGEX, '').replace(/\n{3,}/g, '\n\n').trim();
@@ -102,26 +102,83 @@
       if (narration) narrations.push(narration);
     }
     text = text.replace(/<narratage>[\s\S]*?<\/narratage>/gi, '');
-    var segments = splitReplySegments(text, mode);
+    // Bind a standalone translation line to the preceding source before splitting.
+    // Placeholders also protect line breaks inside a translation from the multi-bubble splitter.
+    var pairedTranslations = [];
+    text = text.replace(new RegExp('(?:[ \\t]*\\r?\\n)*[ \\t]*' + TRANSLATION_MARKER_REGEX.source, 'g'), function (_, translation) {
+      var index = pairedTranslations.push(translation.trim()) - 1;
+      return '\u0000TR' + index + '\u0000';
+    });
+    var segments = splitReplySegments(text.replace(/\r\n/g, '\n'), mode);
     var bubbles = [];
     var translations = [];
     segments.forEach(function (segment) {
-      var bubble = segment.trim();
-      if (!bubble) return;
-      // Pull out [中译:...] from this bubble; the translation renders as a small grey strip under the bubble.
-      var translation = '';
-      TRANSLATION_MARKER_REGEX.lastIndex = 0;
-      bubble = bubble.replace(TRANSLATION_MARKER_REGEX, function (_, t) {
-        translation = String(t || '').trim();
+      var parts = [];
+      var bubble = segment.replace(/\u0000TR(\d+)\u0000/g, function (_, index) {
+        var translation = pairedTranslations[Number(index)];
+        if (translation) parts.push(translation);
         return '';
-      }).replace(/[ \t]*\n[ \t]*(?=\n|$)/g, '\n').trim();
+      }).trim();
       if (bubble) {
         bubbles.push(bubble);
-        translations.push(translation);
+        translations.push(parts.join('\n'));
       }
     });
     var merged = mergeReplyBubbles(bubbles, translations, mode, legacyUncapped);
     return { thinks: [], narrations: narrations, bubbles: merged.bubbles, translations: merged.translations };
+  }
+
+  function isForeignReplyText(text, language) {
+    var letters = text.match(/\p{L}/gu) || [];
+    var foreign = letters.join('');
+    if (language === 'en') return /^[\p{Script=Latin}]+$/u.test(foreign);
+    if (language === 'ko') {
+      return /\p{Script=Hangul}/u.test(foreign) && /^[\p{Script=Hangul}\p{Script=Latin}]+$/u.test(foreign);
+    }
+    if (language === 'ja') {
+      // Han is shared by both languages. Require kana and reject obvious simplified
+      // Chinese spillover without stripping the kanji that belong in Japanese.
+      return /[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(foreign) &&
+        /^[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}\p{Script=Latin}]+$/u.test(foreign) &&
+        !/[吗们这没觉说话给么还让过从刚对见听译嗎們這麼]/u.test(foreign) &&
+        !text.split(/[\r\n。！？!?（()）]+/u).some(function (clause) {
+          return /\p{Script=Han}{4,}/u.test(clause) &&
+            !/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(clause);
+        });
+    }
+    return false;
+  }
+
+  function isBilingualPair(body, translation, language) {
+    return isForeignReplyText(body, language) && !!translation &&
+      /\p{Script=Han}/u.test(translation) &&
+      !/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(translation) &&
+      !/[\[［【]\s*中译/u.test(body);
+  }
+
+  function parseUnmergedBilingualReply(raw) {
+    return parseReplyContent(raw, { mode: 'multi', legacyUncapped: true });
+  }
+
+  function isCompleteBilingualReply(raw, language) {
+    var parsed = parseUnmergedBilingualReply(raw);
+    return parsed.bubbles.length > 0 && parsed.bubbles.every(function (body, index) {
+      return isBilingualPair(body, parsed.translations[index], language);
+    });
+  }
+
+  function keepCompleteBilingualBubbles(raw, language) {
+    var parsed = parseUnmergedBilingualReply(raw);
+    var bubbles = [];
+    var translations = [];
+    parsed.bubbles.forEach(function (body, index) {
+      var translation = parsed.translations[index];
+      if (isBilingualPair(body, translation, language)) {
+        bubbles.push(body);
+        translations.push(translation);
+      }
+    });
+    return rebuildReplyText(parsed.narrations, bubbles, translations);
   }
 
   /* ================= 气泡级身份与逐条落库（纯函数，无 DOM / 无存储副作用） ================= */
@@ -436,6 +493,9 @@
     stripInternalReasoning: stripInternalReasoning,
     extractMemoryMarkers: extractMemoryMarkers,
     parseReplyContent: parseReplyContent,
+    isCompleteBilingualReply: isCompleteBilingualReply,
+    parseUnmergedBilingualReply: parseUnmergedBilingualReply,
+    keepCompleteBilingualBubbles: keepCompleteBilingualBubbles,
     buildReplyMessages: buildReplyMessages,
     bubbleIdFor: bubbleIdFor,
     parseBubbleId: parseBubbleId,
