@@ -19,7 +19,7 @@
  if(!rows.length)recent.append(link('返回聊天列表','chat/chat/chat.html'));
  var name=document.getElementById('userHandle')||document.getElementById('chat-title');drawer.querySelector('.at-drawer-head strong').textContent='QUICK ACCESS';
  // Read only this page's own cover. Never read another surface's cover key.
- var cover=document.getElementById('coverBox');var art=drawer.querySelector('.at-drawer-cover');if(cover&&cover.style.backgroundImage)art.style.backgroundImage=cover.style.backgroundImage;
+ var cover=document.getElementById('coverBox');var art=drawer.querySelector('.at-drawer-cover');art.style.backgroundImage=cover&&cover.style.backgroundImage?cover.style.backgroundImage:'';
  }
  function mount(){if(drawer)return;var host=document.querySelector('.chat-theme-actions')||document.querySelector('.chat-header-actions');if(!host)return;
  var tools=el('div','at-tools');opener=icon('menu','打开会话侧栏');opener.setAttribute('aria-expanded','false');opener.setAttribute('aria-controls','atConversationDrawer');opener.addEventListener('click',open);quickTone=icon('tone','切换深浅模式');quickTone.className+=' at-quick-tone';quickTone.addEventListener('click',toggleTone);tools.append(opener,quickTone);host.append(tools);
