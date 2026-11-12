@@ -1147,7 +1147,7 @@
             // Prefer better cover detail without risking an unbounded base64 asset.
             // The existing 600px / JPEG .7 pipeline is unchanged for other themes.
             var presets = atmosphere
-              ? [[1280, 0.86], [1024, 0.82], [840, 0.78], [600, 0.7]]
+              ? [[1280, 0.86], [1024, 0.82], [840, 0.78], [600, 0.7], [480, 0.68]]
               : [[600, 0.7]];
             var encoded = '';
             for (var i = 0; i < presets.length; i++) {
@@ -1165,7 +1165,10 @@
               ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
               encoded = canvas.toDataURL('image/jpeg', presets[i][1]);
               // ~480 KB encoded budget. Large detailed images step down gracefully.
-              if (!atmosphere || encoded.length <= 640000 || i === presets.length - 1) break;
+              if (!atmosphere || encoded.length <= 640000) break;
+            }
+            if (atmosphere && encoded.length > 640000) {
+              throw new Error('Wallpaper exceeds encoded budget');
             }
             cb(encoded);
           } catch (err) {
