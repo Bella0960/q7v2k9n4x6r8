@@ -71,3 +71,17 @@ test('tiny photos are not artificially upscaled and separate cover storage is un
  assert.match(page,/if \(!saveMyHomeCover\(dataUrl\)\) return;/);
  assert.doesNotMatch(source,/localStorage|indexedDB|myProfile\.cover/);
 });
+
+test('last-resort cover downscale stays under the encoded storage budget',()=>{
+ const h=fixture('atmosphere',2400,w=>w>480?670000:250000);
+ assert.deepEqual(h.calls.map(x=>x.width),[1280,1024,840,600,480]);
+ assert.equal(h.calls[h.calls.length-1].quality,0.68);
+ assert.ok(h.data.length<=640000);
+ assert.deepEqual(h.errors,[]);
+});
+test('pathological image over the budget fails visibly instead of attempting a huge save',()=>{
+ const h=fixture('atmosphere',2400,()=>720000);
+ assert.equal(h.calls.length,5);
+ assert.equal(h.data,'');
+ assert.ok(h.errors.includes('图片处理失败，请更换图片重试'));
+});
