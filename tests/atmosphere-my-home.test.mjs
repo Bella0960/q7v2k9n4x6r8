@@ -164,3 +164,13 @@ test('all-photos shortcut reveals the first original photo and never creates a s
  assert.equal(h.b.getAttribute('data-at-home-selected'),null);
  assert.equal(h.gallery().hidden,true);
 });
+test('photo rail retains horizontal position on a native feed rerender',()=>{
+ const h=fixture(),rail=h.gallery().querySelector('.at-home-album-track');
+ rail.scrollLeft=69;
+ const added=h.post('photo','data:image/png;base64,PPP');
+ h.notify(h.panel);
+ assert.equal(rail.scrollLeft,69,'rerender must not reset horizontal reading position');
+ assert.equal(h.gallery().querySelectorAll('.at-home-photo').length,3);
+ assert.equal(added.hidden,false);
+});
+
