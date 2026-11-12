@@ -13,7 +13,7 @@
     "test:chat:isolation": "node --test tests/chat-data-isolation.test.mjs",
     "test:bugfix:blockers": "node --test tests/forum-chat-blockers.test.mjs",
     "test:tutorial": "node --test tests/tutorial-page-contract.test.mjs",
-    "test:inspect:contract": "node --test tests/inspect-feature-contract.test.mjs",
+    "test:inspect:contract": "node --test tests/inspect-feature-contract.test.mjs tests/inspect-native-contract.test.mjs",
     "test:detective:unlock": "node --test tests/detective-case-unlock.test.mjs",
     "perf:bench": "node perf/bench.mjs",
     "perf:bench:mobile": "THROTTLE=4 node perf/bench.mjs",
