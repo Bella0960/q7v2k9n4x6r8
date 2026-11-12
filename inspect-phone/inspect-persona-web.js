@@ -56,7 +56,7 @@ var flowers=[
  paragraphs:['读到喜欢的一段可以记下页码，再写两三句自己的想法。','很多阅读感受会在几天之后改变，不必追求第一次写下的观点就完全正确。','把书签、笔记和借阅记录整理在一起，下次找书会方便很多。']}
 ];
 var contentById={};flowers.forEach(function(p){contentById[p.id]=p;});
-function resultGroups(query,p){
+function resultGroups(query,p,section){
   var q=str(query,120).toLowerCase().trim();
   if(!q)return [];
   if(/花|玫瑰|郁金香|花店|女朋友|对象|恋人|女友|男友|送礼|纪念日|礼物/.test(q))
@@ -64,8 +64,9 @@ function resultGroups(query,p){
   if(/作业|学习|课程|社团|考试|校园/.test(q))return [contentById['school-focus'],contentById['work-focus']];
   if(/设计|灵感|创作|摄影|素材/.test(q))return [contentById['creative-focus'],contentById['work-focus']];
   if(/书|阅读|读书|书签|写作/.test(q))return [contentById['book-focus'],contentById['work-focus']];
-  if(/工作|待办|时间|生活|计划/.test(q))return [contentById['work-focus'],contentById[p.student?'school-focus':'book-focus']];
-  return [];
+  if(/工作|待办|时间|生活|计划/.test(q))return [contentById['work-focus'],contentById[p&&p.student?'school-focus':'book-focus']];
+  var cached=arr(section&&section.aiResults).find(function(x){return x.query===q;});
+  return cached?arr(cached.ids).map(function(id){return article(id,section);}).filter(Boolean):[];
 }
 function seed(role,roleId,data,now){
   if(!data||!data.sections)return {added:0};
@@ -129,23 +130,51 @@ function search(section,query,now){
   return {ok:true,query:q,results:resultGroups(q)};
 }
 function visit(section,id,query,now){
-  if(!section||!contentById[id])return false;
+  if(!section||!article(id,section))return false;
   section.pageViews=arr(section.pageViews);
-  section.pageViews.unshift({articleId:id,title:contentById[id].title,query:str(query,120),
+  section.pageViews.unshift({articleId:id,title:article(id,section).title,query:str(query,120),
     time:Number(now)||Date.now(),origin:'fictional_browsing'});
   section.pageViews=section.pageViews.slice(0,50);
   return true;
 }
 function bookmark(section,id,now){
-  if(!section||!contentById[id])return false;
+  if(!section||!article(id,section))return false;
   section.bookmarks=arr(section.bookmarks);
   if(section.bookmarks.some(function(x){return x.articleId===id;}))return true;
-  section.bookmarks.unshift({articleId:id,title:contentById[id].title,summary:contentById[id].snippet,
+  section.bookmarks.unshift({articleId:id,title:article(id,section).title,summary:article(id,section).snippet,
     time:Number(now)||Date.now(),origin:'user_on_fictional_phone'});
   section.bookmarks=section.bookmarks.slice(0,30);return true;
 }
 function history(section){return arr(section&&section.searchHistory).slice().sort(function(a,b){return Number(b.time)-Number(a.time);});}
-function article(id){return contentById[id]||null;}
-function find(query,p){return resultGroups(query,p);}
-global.InspectPersonaWeb={seed:seed,persona:persona,search:search,visit:visit,bookmark:bookmark,history:history,article:article,find:find};
+function article(id,section){
+  if(contentById[id])return contentById[id];
+  var a=arr(section&&section.aiPages).find(function(x){return x.id===id;});
+  return a||null;
+}
+function acceptAI(section,query,output,now){
+  if(!section||!output||typeof output!=='object'||!Array.isArray(output.pages)||
+    output.pages.length<2||output.pages.length>4)return false;
+  var valid=output.pages.every(function(p){
+    return p&&typeof p.title==='string'&&p.title.trim().length>=4&&p.title.length<=100&&
+      typeof p.snippet==='string'&&p.snippet.trim().length>=8&&p.snippet.length<=240&&
+      Array.isArray(p.paragraphs)&&p.paragraphs.length>=2&&p.paragraphs.length<=5&&
+      p.paragraphs.every(function(x){return typeof x==='string'&&x.trim().length>=25&&x.length<=1000;});
+  });
+  if(!valid)return false;
+  var t=Number(now)||Date.now(),idBase='fiction-ai:'+t+':'+Math.floor(Math.random()*1e5)+':';
+  var pages=output.pages.map(function(p,i){
+    return {id:idBase+i,title:str(p.title,100),snippet:str(p.snippet,240),
+      domain:'AI 生成的虚构资料 · 非实时网页',category:'AI 虚构参考',
+      paragraphs:p.paragraphs.map(function(x){return str(x,1000);}),
+      source:'ai_synthesized',at:t};
+  });
+  section.aiPages=arr(section.aiPages).concat(pages).slice(-40);
+  section.aiResults=arr(section.aiResults).filter(function(x){
+    return x.query!==str(query,120).toLowerCase().trim();
+  }).concat([{query:str(query,120).toLowerCase().trim(),ids:pages.map(function(x){return x.id;}),at:t}]).slice(-12);
+  return true;
+}
+function find(query,p,section){return resultGroups(query,p,section);}
+global.InspectPersonaWeb={seed:seed,persona:persona,search:search,visit:visit,
+  bookmark:bookmark,history:history,article:article,find:find,acceptAI:acceptAI};
 })(window);
