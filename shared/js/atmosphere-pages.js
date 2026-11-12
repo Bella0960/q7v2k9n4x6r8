@@ -126,7 +126,7 @@
      e.preventDefault();node.click();
    });
  }
- var favoritesSheet=null, favoritesLastFocus=null, favoritesLocked=[], favoritesShowing=false;
+ var favoritesSheet=null, favoritesLastFocus=null, favoritesLocked=[], favoritesShowing=false, favoritesHideTimer=0;
  function closeFavoritesSheet(restore){
    if(!favoritesSheet||!favoritesShowing)return;
    favoritesShowing=false;
@@ -134,13 +134,22 @@
    favoritesSheet.setAttribute('aria-hidden','true');favoritesSheet.inert=true;
    favoritesLocked.forEach(function(pair){pair.node.inert=pair.before;});
    favoritesLocked=[];
+   if(favoritesHideTimer){clearTimeout(favoritesHideTimer);favoritesHideTimer=0;}
+   if(!isActive()||restore===false)favoritesSheet.hidden=true;
+   else favoritesHideTimer=setTimeout(function(){
+     if(!favoritesShowing&&favoritesSheet)favoritesSheet.hidden=true;
+     favoritesHideTimer=0;
+   },390);
    if(restore!==false&&favoritesLastFocus&&favoritesLastFocus.isConnected)favoritesLastFocus.focus();
  }
  function openFavoritesSheet(){
    if(!isActive())return;
    if(!favoritesSheet)mountFavoritesSheet();
    if(!favoritesSheet||favoritesShowing)return;
+   if(favoritesHideTimer){clearTimeout(favoritesHideTimer);favoritesHideTimer=0;}
    favoritesShowing=true;favoritesLastFocus=document.activeElement;
+   favoritesSheet.hidden=false;
+   void favoritesSheet.offsetWidth;
    favoritesSheet.inert=false;favoritesSheet.setAttribute('aria-hidden','false');
    Array.from(shell.children).forEach(function(node){
      if(node===favoritesSheet||node.tagName==='SCRIPT'||node.tagName==='STYLE')return;
@@ -154,6 +163,7 @@
    if(favoritesSheet||!shell||surface!=='profile')return;
    favoritesSheet=element('div','at-favorites-overlay');
    favoritesSheet.setAttribute('aria-hidden','true');favoritesSheet.inert=true;
+   favoritesSheet.hidden=true;
    var backdrop=element('button','at-favorites-backdrop');
    backdrop.type='button';backdrop.setAttribute('aria-label','关闭收藏面板');
    backdrop.addEventListener('click',function(){closeFavoritesSheet(true);});
