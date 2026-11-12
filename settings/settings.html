@@ -44,7 +44,7 @@
             <!-- ACCOUNT 分组 -->
             <div class="group-title">ACCOUNT</div>
             <section class="card">
-                <div class="menu-row user-row" style="cursor:pointer;" role="link" tabindex="0" aria-label="打开 MAO 账号管理">
+                <div class="menu-row user-row" style="cursor:default;">
                     <div class="avatar" id="settingsAvatar">简</div>
                     <div class="menu-info">
                         <div class="menu-title" id="settingsName">未设置昵称</div>
@@ -202,7 +202,7 @@
                     <h1 class="header-title">API</h1>
                 </div>
             </header>
-            <main class="content">
+            <main class="content" id="api">
                 <!-- 方案条：横向滚动胶囊（当前方案黑底白字），切走前静默自动保存当前表单 -->
                 <div class="api-row profile-row">
                     <label>配置方案</label>
@@ -240,6 +240,7 @@
                     <div class="api-row">
                         <label for="api-url">Base URL</label>
                         <input id="api-url" value="https://api.openai.com/v1" placeholder="例如 https://api.openai.com/v1">
+                        <div class="param-hint"><a href="../tutorial/tutorial.html#guide=api-url-v1" style="color:#555;text-decoration:underline;text-underline-offset:3px;">Base URL 和 /v1 怎么填？</a></div>
                     </div>
 
                     <div class="api-row">
@@ -252,6 +253,7 @@
                         </div>
                     </div>
                     <div id="key-error" class="api-hint">请填写 API Key 后再开始聊天</div>
+                    <p class="param-hint"><a href="../tutorial/tutorial.html#guide=api-first" style="color:#555;text-decoration:underline;text-underline-offset:3px;">第一次使用？了解 API 是什么、如何申请密钥</a></p>
 
                     <div class="api-row">
                         <label for="api-model">默认模型</label>
@@ -274,7 +276,7 @@
                     <div class="api-row">
                         <label for="api-image-endpoint">图片生成接口 URL（可选）</label>
                         <input id="api-image-endpoint" type="url" placeholder="留空使用 Base URL + /images/generations">
-                        <div class="param-hint">需要服务商兼容 OpenAI Images API；图片模型使用同一 API Key。支持 Base64 图片或可下载的图片 URL。</div>
+                        <div class="param-hint">需要服务商兼容 OpenAI Images API；图片模型使用同一 API Key。支持 Base64 图片或可下载的图片 URL。<a href="../tutorial/tutorial.html#guide=api-images" style="color:#555;text-decoration:underline;text-underline-offset:3px;">查看生图配置教程</a></div>
                     </div>
 
                     <h3 class="api-section-title">高级参数</h3>
@@ -282,7 +284,7 @@
                     <div class="api-row">
                         <label for="api-temperature">温度 Temperature<span class="param-val" id="api-temperature-val">0.7</span></label>
                         <input id="api-temperature" type="range" min="0" max="2" step="0.1" value="0.7">
-                        <div class="param-hint">0 = 精准稳定 · 1 = 均衡（默认） · 2 = 天马行空</div>
+                        <div class="param-hint">0 = 更稳定 · 0.7 = 当前默认 · 2 = 更随机（实际范围以模型支持为准）。<a href="../tutorial/tutorial.html#guide=api-params" style="color:#555;text-decoration:underline;text-underline-offset:3px;">了解温度 / Top P / Tokens</a></div>
                     </div>
 
                     <div class="api-row">
@@ -314,8 +316,10 @@
                 </form>
                 <div class="btn-group">
                     <button type="button" id="btn-test-connection" class="btn-test">测试连接</button>
+                    <p class="param-hint" style="font-size:12px;line-height:1.7;">会向所选服务商发送一条简短测试消息，可能产生少量 API 费用。这里只测试当前表单；成功后仍需点击「保存全部设置」，再去聊天验证。</p>
                 </div>
                 <div id="test-msg" class="model-fetch-msg"></div>
+                <p class="param-hint"><a href="../tutorial/tutorial.html#guide=api-errors" style="color:#555;text-decoration:underline;text-underline-offset:3px;">连接失败？查看 401 / 403 / 404 / 429、跨域和超时排查</a></p>
                 <p class="tip-text">配置保存在本地（localStorage），用于大模型对话。</p>
             </main>
         </div>
@@ -455,6 +459,6 @@
         }
     })();
     </script>
-    <script src="../account/settings-link.js?v=1" defer></script>
+  <script src="../account/settings-link.js?v=1" defer></script>
 </body>
 </html>
