@@ -41,9 +41,11 @@ test('corrupt collection and invalid scope are rejected without destructive repl
 test('new cache revision lists exact storefront resources and retains legacy themes',()=>{
  const page=readFileSync(new URL('../theme-store/theme-store.html',import.meta.url),'utf8');
  const sw=readFileSync(new URL('../sw.js',import.meta.url),'utf8');
- for(const name of ['storefront.css','preview-scene.js']){assert.ok(page.includes(name+'?v=20261113m7'));assert.ok(sw.includes('./theme-store/'+name+'?v=20261113m7'));}
+ for(const name of ['preview-scene.js']){assert.ok(page.includes(name+'?v=20261113m7'));assert.ok(sw.includes('./theme-store/'+name+'?v=20261113m7'));}
   assert.ok(page.includes('preview-scene.css?v=20261113m7'));
   assert.ok(sw.includes('./theme-store/preview-scene.css?v=20261113m7'));
+  assert.ok(page.includes('storefront.css?v=20261112m4'));
+  assert.ok(sw.includes('./theme-store/storefront.css?v=20261112m4'));
   assert.ok(page.includes('storefront.js?v=20261113m8'));
   assert.ok(sw.includes('./theme-store/storefront.js?v=20261113m8'))
   assert.ok(page.includes('collection-store.js?v=20261112m3'));
