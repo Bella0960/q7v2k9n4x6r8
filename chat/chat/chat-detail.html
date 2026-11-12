@@ -5986,19 +5986,24 @@
             // 真正的跨应用互动：用户在角色手机的备忘录/朋友圈留下内容，
             // 不造一条“角色已回复”的假消息，也不修改聊天历史；
             // 同账号同域本地故事由本角色下一次正常 AI 回复作为可选话题读取。
-            if (!isGroupChat && window.InspectInteractionBridge &&
-                typeof window.InspectInteractionBridge.buildPrompt === 'function') {
+            var inspectPhoneEventIds=[];
+            if (!isGroupChat && !silent && !contextOnly && !isRegen &&
+                presenceMode === 'online' &&
+                window.InspectInteractionBridge &&
+                typeof window.InspectInteractionBridge.buildPromptPacket === 'function') {
                 try {
-                    var inspectPhoneInteractionContext=window.InspectInteractionBridge.buildPrompt(
+                    var inspectPhonePacket=window.InspectInteractionBridge.buildPromptPacket(
                         String(currentRoleId || currentCharacter.id || ''),
                         localStorage,
-                        Date.now()
+                        Date.now(),
+                        {userText:text}
                     );
-                    if (inspectPhoneInteractionContext) {
-                        systemPrompt += '\n\n' + inspectPhoneInteractionContext;
+                    if (inspectPhonePacket && inspectPhonePacket.text) {
+                        systemPrompt += '\n\n' + inspectPhonePacket.text;
+                        inspectPhoneEventIds=inspectPhonePacket.eventIds||[];
                     }
                 } catch (inspectPhoneContextError) {
-                    // 不影响原有聊天、角色人格锁或 API 请求。
+                    // 隔离查手机数据出错时不影响正常聊天。
                 }
             }
 
@@ -6535,6 +6540,19 @@
                             try { saveMessages(historyList); } catch (rollbackError) {}
                             if (typeof showToast === 'function') showToast('回复保存失败，请检查本机存储空间');
                         } else {
+                            // Only after a real model response has been saved: mark the
+                            // exact notes/comments offered to AI this turn. This is NOT
+                            // a fictional "read receipt", and no message is fabricated.
+                            if (!isGroupChat && inspectPhoneEventIds.length &&
+                                window.InspectInteractionBridge &&
+                                typeof window.InspectInteractionBridge.markOffered === 'function') {
+                                try {
+                                    window.InspectInteractionBridge.markOffered(
+                                        String(currentRoleId || currentCharacter.id || ''),
+                                        inspectPhoneEventIds, localStorage, Date.now()
+                                    );
+                                } catch (inspectPhoneMarkError) {}
+                            }
                             var lastVisibleMessage = aiRoleGalleryMessages.length
                                 ? aiRoleGalleryMessages[aiRoleGalleryMessages.length - 1]
                                 : (aiStickerMessages.length
