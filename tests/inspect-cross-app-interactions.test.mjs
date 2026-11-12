@@ -260,3 +260,35 @@ test('旧手机标签页不把聊天已经消费的话题重新变成待发送',
   assert.ok(after.pendingChatFocus.usedAt>0);
   assert.equal(bridge.buildPromptPacket('focus-consumed-saved',u.window.localStorage).mode,'fresh');
 });
+
+
+test('朋友圈去聊天精确带上本条动态最近两条本人评论，不吞掉更早或其他新评论',()=>{
+  const u=setup('focus-comment-detail');u.start();u.app('moments');u.detail('moment',0);
+  for(const text of ['第一条旧评论','第二条最近评论','第三条最新评论']){
+    u.submit('inspectMomentComment',{text});
+  }
+  const before=u.read(),comments=before.sections.moments.moments[0].comments
+    .filter(x=>x.origin==='user_on_fictional_phone');
+  assert.equal(comments.length,3);
+  assert.ok(comments.every(c=>c.interactionId));
+  u.action('chatAboutMoment');
+  const focus=u.read().pendingChatFocus;
+  assert.equal(focus.kind,'moment');
+  assert.match(focus.text,/第二条最近评论/);
+  assert.match(focus.text,/第三条最新评论/);
+  assert.doesNotMatch(focus.text,/第一条旧评论/);
+  assert.equal(focus.includedEventIds.length,2);
+  const bridge=u.window.InspectInteractionBridge;
+  const packet=bridge.buildPromptPacket('focus-comment-detail',u.window.localStorage);
+  assert.equal(packet.mode,'focused');
+  assert.match(packet.text,/第三条最新评论/);
+  assert.equal(bridge.markOffered('focus-comment-detail',[],u.window.localStorage,Date.now(),packet.focusId),true);
+  const after=u.read(),byId=Object.fromEntries(after.interactions.map(x=>[x.id,x]));
+  assert.equal(byId[comments[0].interactionId].offeredToAIAt,undefined);
+  assert.ok(byId[comments[1].interactionId].offeredToAIAt>0);
+  assert.ok(byId[comments[2].interactionId].offeredToAIAt>0);
+  const remaining=bridge.buildPromptPacket('focus-comment-detail',u.window.localStorage);
+  assert.equal(remaining.mode,'fresh');
+  assert.match(remaining.text,/第一条旧评论/);
+  assert.doesNotMatch(remaining.text,/第三条最新评论/);
+});
