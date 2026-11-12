@@ -8,7 +8,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
-assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v218'/);
+assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v219'/);
 const viteConfig = read('vite.config.js');
 
 test('build emits a manifest containing every HTML entry point', () => {
@@ -71,6 +71,11 @@ test('opt-in atmosphere assets are precached for the mobile PWA',()=>{
  assert.ok(serviceWorker.includes('./shared/js/atmosphere-icons.js?v=20261112i1'));
  assert.ok(serviceWorker.includes('./shared/css/atmosphere-pages.css?v=20261112p3'));
  assert.ok(serviceWorker.includes('./shared/js/atmosphere-pages.js?v=20261112p4'));
+ assert.ok(serviceWorker.includes('./shared/css/atmosphere-editorial-home.css?v=20261112e1'));
+ assert.ok(serviceWorker.includes('./shared/js/atmosphere-editorial-home.js?v=20261112e1'));
+ assert.ok(serviceWorker.includes('./theme-store/atmosphere-live-preview.html'));
+ assert.ok(serviceWorker.includes('./chat/chat/chat.html'));
+
  assert.ok(serviceWorker.includes('./chat/moments/my-moments.html'));
  assert.ok(serviceWorker.includes('./profile/profile.html'));
  assert.ok(serviceWorker.includes('./shared/css/atmosphere-my-home.css?v=20261112h2'));
