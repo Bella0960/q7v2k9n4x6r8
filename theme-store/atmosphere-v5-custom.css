@@ -1,24 +1,15 @@
 /* V5 additive customization controls only.
    No overrides to the approved page compositions, typography, navigation,
    chat message layout, music strip, or horizontal media carousel. */
-.phone .v5-custom-trigger{
- position:absolute;z-index:7;width:29px;height:29px;display:grid;
- place-items:center;padding:6px;border:1px solid var(--border);
- border-radius:50%;background:var(--glass);color:var(--ink);
- backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
- cursor:pointer;transition:transform .2s ease,background .2s ease;
+.phone #page-chat .chat-person .portrait,
+.phone #page-profile .profile-pic{
+ cursor:pointer;
 }
-.phone .v5-custom-trigger:active{transform:scale(.92)}
-.phone .v5-custom-trigger svg{width:15px;height:15px;stroke-width:1.55}
-.phone .hero{position:relative}
-.phone .v5-custom-home{right:22px;top:10px}
-.phone .profile-center{position:relative}
-.phone .v5-custom-self{right:19px;top:8px}
-.phone .chat-person{position:relative}
-.phone .v5-custom-contact{left:20px;top:-8px;width:23px;height:23px;padding:5px}
-.phone .v5-custom-contact svg{width:13px;height:13px}
-.phone .mini-music{position:relative}
-.phone .v5-custom-music{right:42px;top:9px;width:25px;height:25px;padding:5px}
+.phone #page-chat .chat-person .portrait:focus-visible,
+.phone #page-profile .profile-pic:focus-visible{
+ outline:1.5px solid var(--ink);
+ outline-offset:3px;
+}
 .phone [data-v5-custom-image="true"]{background-repeat:no-repeat!important;background-position:center!important;background-size:cover!important}
 .phone .hero-art[data-v5-custom-image="true"] .shape{display:none!important}
 .phone .drawer-cover[data-v5-custom-image="true"]:before{opacity:.12}
@@ -205,7 +196,7 @@
  padding:10px 12px;border:1px solid var(--border);
  box-shadow:0 5px 18px #0002;
 }
-.phone :is(.v5-custom-trigger,.v5-custom-close,.v5-custom-row,.v5-custom-track-main,.v5-custom-remove,.v5-custom-sticker,.v5-custom-sticker-add,.v5-custom-tabs button):focus-visible{
+.phone :is(.v5-custom-close,.v5-custom-row,.v5-custom-track-main,.v5-custom-remove,.v5-custom-sticker,.v5-custom-sticker-add,.v5-custom-tabs button):focus-visible{
  outline:1.5px solid var(--ink);outline-offset:2px;
 }
 @keyframes v5-custom-rise{
@@ -223,7 +214,7 @@
  .phone .v5-custom-mask,.phone .v5-custom-sheet{
   animation:none!important;transition:none!important;
  }
- .phone .v5-custom-row,.phone .v5-custom-trigger{
+ .phone .v5-custom-row{
   transition:none!important;
  }
 }
