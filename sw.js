@@ -16,6 +16,7 @@ const APP_SHELL = [
   './inspect-phone/select.html',
   './inspect-phone/phone.html',
   './inspect-phone/inspect-native.css?v=20261112v4',
+  './shared/js/phone/inspect_account_guard.js?v=20261112v1',
   './shared/js/phone/inspect_interaction_bridge.js?v=20261112v4',
   './inspect-phone/inspect-persona-web.js?v=20261112v1',
   './inspect-phone/inspect-life-clock.js?v=20261112v1',
