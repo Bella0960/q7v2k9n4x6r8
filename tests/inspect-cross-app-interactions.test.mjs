@@ -26,7 +26,8 @@ function setup(roleId='test-note-owner',store=new Map()) {
     reload=node('reload'),appBody=node('appBody'),appLayer=node('appLayer'),appTitle=node('appTitle');
   const document={querySelector(q){return q==='.grid'?grid:dock;},
     getElementById(q){return q==='appBack'?back:reload;}};
-  const window={PhoneStorage:{getApiConfig(){return {};}},localStorage:storage};
+  const window={PhoneStorage:{getApiConfig(){return {};}},localStorage:storage,
+    location:{hostname:'app.mao520.com',assign(href){window.navigatedTo=href;}}};
   const context={window,document,localStorage:storage,Date,Math,JSON,Number,String,Array,Object,console};
   vm.runInNewContext(bridgeSource,context);
   vm.runInNewContext(nativeSource,context);
@@ -202,4 +203,60 @@ test('聊天已提供给AI的状态不会被旧查手机标签页后续保存冲
   assert.equal(latest.eventIds.length,1,'仅新编辑产生的线索应该待提供');
   assert.doesNotMatch(latest.text,/角色聊天自然提起即可/);
   assert.match(latest.text,/更新后也不应该重复提醒/);
+});
+
+
+test('日记详情点击聊聊这件事，保存明确话题并跳入同角色正式聊天',()=>{
+  const u=setup('focus-note-role');u.start();u.app('notes');u.detail('note',0);
+  const original=u.read().sections.notes.notes[0];
+  u.action('chatAboutNote');
+  assert.equal(u.window.navigatedTo,'../chat/chat/chat-detail.html?id=focus-note-role');
+  const d=u.read();
+  assert.equal(d.pendingChatFocus.kind,'note');
+  assert.equal(d.pendingChatFocus.title,original.title);
+  assert.equal(d.pendingChatFocus.text,original.text);
+  assert.equal(u.window.InspectInteractionBridge.buildPromptPacket('focus-note-role',u.window.localStorage).mode,'focused');
+});
+
+test('朋友圈详情点击去聊天只聚焦当前一条动态，不改变用户已发评论',()=>{
+  const u=setup('focus-moment-role');u.start();u.app('moments');u.detail('moment',0);
+  const before=u.read(),count=before.sections.moments.moments[0].comments.length;
+  u.action('chatAboutMoment');
+  assert.equal(u.window.navigatedTo,'../chat/chat/chat-detail.html?id=focus-moment-role');
+  const after=u.read();
+  assert.equal(after.pendingChatFocus.kind,'moment');
+  assert.equal(after.pendingChatFocus.text,before.sections.moments.moments[0].text);
+  assert.equal(after.sections.moments.moments[0].comments.length,count);
+});
+
+test('手机存储失败时指定话题不跳转、不显示虚假成功',()=>{
+  const u=setup('focus-save-failed');u.start();u.app('notes');u.detail('note',0);
+  u.failWrites(true);
+  u.action('chatAboutNote');
+  u.failWrites(false);
+  assert.equal(u.window.navigatedTo,undefined);
+  assert.equal(u.read().pendingChatFocus,undefined);
+  assert.match(u.appBody.innerHTML,/存储空间不足/);
+});
+
+test('独立 Cloudflare 预览不能伪装成已联通正式聊天',()=>{
+  const u=setup('preview-focus');u.start();u.app('notes');u.detail('note',0);
+  u.window.location.hostname='maomao-inspect-native.miamor520000.workers.dev';
+  u.action('chatAboutNote');
+  assert.equal(u.window.navigatedTo,undefined);
+  assert.equal(u.read().pendingChatFocus,undefined);
+  assert.match(u.appBody.innerHTML,/不同一个域名/);
+});
+
+test('旧手机标签页不把聊天已经消费的话题重新变成待发送',()=>{
+  const u=setup('focus-consumed-saved');u.start();u.app('notes');u.detail('note',0);
+  u.action('chatAboutNote');
+  const bridge=u.window.InspectInteractionBridge;
+  const packet=bridge.buildPromptPacket('focus-consumed-saved',u.window.localStorage);
+  assert.equal(bridge.markOffered('focus-consumed-saved',[],u.window.localStorage,Date.now(),packet.focusId),true);
+  // Inspect feature still holds a stale copy. Save an unrelated phone action.
+  u.action('editNote');u.submit('inspectNoteEditForm',{title:'又修改的内容',text:'新的正文内容'});
+  const after=u.read();
+  assert.ok(after.pendingChatFocus.usedAt>0);
+  assert.equal(bridge.buildPromptPacket('focus-consumed-saved',u.window.localStorage).mode,'fresh');
 });
