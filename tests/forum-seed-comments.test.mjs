@@ -589,13 +589,13 @@ test('forum refresh / 短句重复不误杀不同主题，长文大小写和空�
 });
 
 test('refresh commit refuses silent writes and preserves latest stored discussion',()=>{
-  const start=source.indexOf('function cloneForumRefreshPost(post)');
-  const end=source.indexOf('let forumRefreshBusy=false',start);
+  const start=forumHome.indexOf('function cloneForumRefreshPost(post)');
+  const end=forumHome.indexOf('let forumRefreshBusy=false',start);
   assert.ok(start>=0&&end>start);
   const storageData={raw:JSON.stringify([{id:'p1',title:'已有讨论',body:'保留的正文',comments:[{name:'原网友',source:'user',text:'已保存评论'}]}]),drop:true};
   const storage={getItem:()=>storageData.raw,setItem:(_k,v)=>{if(!storageData.drop)storageData.raw=v}};
   const context={STORE:'forum_posts',storage,localStorage:storage};
-  runInNewContext(source.slice(start,end)+';this.commitRefresh=commitForumRefreshData;',context);
+  runInNewContext(forumHome.slice(start,end)+';this.commitRefresh=commitForumRefreshData;',context);
   const post={id:'p2',title:'新的内容',body:'新增正文内容',comments:[]};
   let result=context.commitRefresh([post],[],x=>x,storage);
   assert.equal(result.ok,false);
