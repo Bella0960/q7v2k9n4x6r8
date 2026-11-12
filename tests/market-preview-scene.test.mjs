@@ -122,8 +122,12 @@ test('expanded theme tab renders native original catalogue instead of replacing 
  assert.match(html,/function renderThemes\(\)/);
  assert.match(html,/function themeArt\(theme\)/);
  for(const id of ['wechat','qq','silver-butterfly','atmosphere']){
-  assert.match(html,new RegExp("theme\\.id==='"+id+"'"));
+  assert.ok(html.includes("id:'"+id+"'"),'original preset '+id+' is still in native catalogue');
  }
+ for(const id of ['wechat','silver-butterfly','atmosphere']){
+  assert.ok(html.includes("theme.id==='"+id+"'"),'special original cover '+id+' is retained');
+ }
+ assert.match(html,/theme-art-'\+theme\.id/); // QQ/default/iMessage use the original built-in bubble artwork
  assert.match(html,/data-action=\\"theme-apply\\"/);
  assert.match(html,/data-action=\\"chat-list-theme-toggle\\"/);
 });
