@@ -399,13 +399,13 @@
    The source music/diary/poster apps remain the owners of favorite data. */
 .phone-mockup[data-chat-theme-preset="atmosphere"][data-at-surface="profile"] .at-favorites-overlay{
  position:absolute;inset:0;z-index:990;display:grid;align-items:end;
- pointer-events:none;visibility:hidden;
+ pointer-events:none;visibility:hidden;transition:visibility .39s;
 }
 .phone-mockup[data-chat-theme-preset="atmosphere"][data-at-surface="profile"] .at-favorites-overlay.at-visible{
  pointer-events:auto;visibility:visible;
 }
-.phone-mockup[data-chat-theme-preset="atmosphere"][data-at-surface="profile"] .at-favorites-overlay[aria-hidden="true"]{
- visibility:hidden!important;pointer-events:none!important;
+.phone-mockup[data-chat-theme-preset="atmosphere"][data-at-surface="profile"] .at-favorites-overlay[hidden]{
+ display:none!important;
 }
 .phone-mockup[data-chat-theme-preset="atmosphere"][data-at-surface="profile"] .at-favorites-backdrop{
  position:absolute;inset:0;width:100%;height:100%;background:#0005;
@@ -490,6 +490,7 @@
  font-size:22px;font-weight:300;color:var(--at-muted);text-align:center;
 }
 @media(prefers-reduced-motion:reduce){
+ .phone-mockup[data-chat-theme-preset="atmosphere"] .at-favorites-overlay,
  .phone-mockup[data-chat-theme-preset="atmosphere"] .at-favorites-backdrop,
  .phone-mockup[data-chat-theme-preset="atmosphere"] .at-favorites-sheet,
  .phone-mockup[data-chat-theme-preset="atmosphere"] .at-favorites-link{
