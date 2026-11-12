@@ -41,8 +41,10 @@ test('corrupt collection and invalid scope are rejected without destructive repl
 test('new cache revision lists exact storefront resources and retains legacy themes',()=>{
  const page=readFileSync(new URL('../theme-store/theme-store.html',import.meta.url),'utf8');
  const sw=readFileSync(new URL('../sw.js',import.meta.url),'utf8');
- for(const name of ['storefront.js','storefront.css','collection-store.js']){assert.ok(page.includes(name+'?v=20261112m3'));assert.ok(sw.includes('./theme-store/'+name+'?v=20261112m3'));}
- assert.ok(sw.includes("phone-app-pwa-v219"));
+ for(const name of ['storefront.js','storefront.css','preview-scene.js','preview-scene.css']){assert.ok(page.includes(name+'?v=20261112m4'));assert.ok(sw.includes('./theme-store/'+name+'?v=20261112m4'));}
+  assert.ok(page.includes('collection-store.js?v=20261112m3'));
+  assert.ok(sw.includes('./theme-store/collection-store.js?v=20261112m3'));
+ assert.ok(sw.includes("phone-app-pwa-v220"));
  for(const id of ['default','wechat','imessage','qq','silver-butterfly','atmosphere'])assert.ok(page.includes("id:'"+id+"'"));
 });
 test('outfit editing can narrow scope or explicitly recapture without duplicating or applying it',async()=>{
