@@ -137,8 +137,9 @@ test('刷新前保留用户笔记和朋友圈评论，不得变成假 AI 回复'
 test('真实聊天页面载入互动桥接，并只注入当前角色的提示词',()=>{
   assert.match(phoneSource,/inspect_interaction_bridge\.js\?v=20261112v1/);
   assert.match(chatSource,/inspect_interaction_bridge\.js\?v=20261112v1/);
-  assert.match(chatSource,/if \(!isGroupChat && window\.InspectInteractionBridge/);
-  assert.match(chatSource,/buildPrompt\([\s\S]*?String\(currentRoleId \|\| currentCharacter\.id \|\| ''\)/);
+  assert.match(chatSource,/if \(!isGroupChat && !silent && !contextOnly && !isRegen/);
+  assert.match(chatSource,/InspectInteractionBridge\.buildPromptPacket/);
+  assert.match(chatSource,/String\(currentRoleId \|\| currentCharacter\.id \|\| ''\)/);
 });
 
 test('所有 App 列表不添加重复箭头；含 HTML 字符的用户留言只渲染转义文本',()=>{
