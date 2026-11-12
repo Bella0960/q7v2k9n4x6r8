@@ -2339,7 +2339,7 @@ test('chat detail: payment ledger success is independent from chat-card status p
   assert.match(detail, /if \(!saveWorkData\(wd\)\) return/);
   assert.match(detail, /var chatStatusSaved = saveMessages\(list\)/);
   assert.match(detail, /款项已入账，但聊天卡片状态没有保存/);
-  assert.match(detail, /duplicateStatusSaved \? '这笔款项已经入账'/);
+  assert.match(detail, /duplicateStatusSaved\s*\? '这笔款项已经入账'/);
   assert.match(detail, /msg\.status = isRed \? 'opened' : 'received'/);
 });
 
