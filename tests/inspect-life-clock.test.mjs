@@ -113,7 +113,7 @@ test('连续七天的虚构场景不重复，不因为刷新换一个故事',()=
  assert.equal(s.facts.length,7);
  assert.equal(new Set(s.facts.map(x=>x.place)).size,7);
  const before=s.facts.map(x=>x.id+'|'+x.place);
- clock.advance(s,role,new Date(at('2026-11-08','22:00')));
+ clock.advance(s,role,new Date(at('2026-11-08','09:05')));
  assert.deepEqual(s.facts.map(x=>x.id+'|'+x.place),before);
 });
 
