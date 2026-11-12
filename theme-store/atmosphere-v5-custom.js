@@ -11,7 +11,6 @@
  const state={db:null,records:new Map(),urls:new Map(),activeContact:'lin',
    tracks:[],selectedTrack:null,audio:new Audio(),panel:null,tab:'appearance',
    ephemeral:false,disposed:false};
- const editSvg='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14 5 5 5-10.5 10H4v-4.5L14 5Z"/><path d="m12 7 5 5"/></svg>';
  const photoSvg='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m4 17 6-6 4 4 3-3 4 5"/></svg>';
  const musicSvg='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l11-2v13"/><circle cx="6.5" cy="18.5" r="2.5"/><circle cx="17.5" cy="16.5" r="2.5"/></svg>';
  const portraitSvg='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M4.6 20c.4-4.7 3.2-7.2 7.4-7.2s7 2.5 7.4 7.2"/></svg>';
@@ -30,7 +29,7 @@
   strong.textContent=label;small.textContent=content;p.append(strong,small);
   return b;
  }
- function btn(label,cl,html=editSvg){
+ function btn(label,cl,html=''){
   const n=document.createElement('button');n.type='button';n.className=cl;
   n.setAttribute('aria-label',label);n.innerHTML=html;return n;
  }
