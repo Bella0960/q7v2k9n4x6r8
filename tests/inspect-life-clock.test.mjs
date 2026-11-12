@@ -103,3 +103,26 @@ test('真实手机加载了时间线模块，且主引擎在阅读角色数据�
  assert.match(feature,/global\.InspectPhoneLifeClock\.advance\(data,role,now\)/);
  assert.match(sw,/inspect-life-clock\.js\?v=20261112v1/);
 });
+
+
+test('连续七天的虚构场景不重复，不因为刷新换一个故事',()=>{
+ const clock=run(),s=story('sevenDayPersona'),role={name:'林禾',occupation:'图书编辑'};
+ clock.advance(s,role,new Date(at('2026-11-01')));
+ const r=clock.advance(s,role,new Date(at('2026-11-08')));
+ assert.equal(r.added,7);
+ assert.equal(s.facts.length,7);
+ assert.equal(new Set(s.facts.map(x=>x.place)).size,7);
+ const before=s.facts.map(x=>x.id+'|'+x.place);
+ clock.advance(s,role,new Date(at('2026-11-08','22:00')));
+ assert.deepEqual(s.facts.map(x=>x.id+'|'+x.place),before);
+});
+
+test('日记完整正文按角色身份处理，学生不会突然写下班经历',()=>{
+ const clock=run(),s=story('studentRole');
+ const role={name:'小叶',occupation:'在校大学生'};
+ clock.advance(s,role,new Date(at('2026-11-01')));
+ clock.advance(s,role,new Date(at('2026-11-08')));
+ assert.equal(s.sections.notes.notes.length,7);
+ assert.ok(s.sections.notes.notes.every(x=>x.text.length>40));
+ assert.ok(s.sections.notes.notes.every(x=>!x.text.includes('下班后')));
+});
