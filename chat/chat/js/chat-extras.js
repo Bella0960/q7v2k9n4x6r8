@@ -871,6 +871,20 @@
     });
   }
 
+  // loadMessages() can synthesize a welcome message when storage is unreadable.
+  // Never interpret that synthetic fallback as proof that a payment card is absent.
+  function readOutgoingHistorySnapshot(roleId) {
+    if (!roleId) return null;
+    try {
+      var raw = localStorage.getItem('chat_history_' + String(roleId));
+      if (raw == null) return null;
+      var history = JSON.parse(raw);
+      return Array.isArray(history) ? history : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
   function persistOutgoingWallet(wallet, paymentId, expectedStatus) {
     try {
       if (saveWorkData(wallet) !== true) return false;
@@ -928,7 +942,11 @@
           Number(entry.time) > 0 && Date.now() - Number(entry.time) >= 2 * 60 * 1000;
       });
       if (!oldPending.length) return;
-      var messages = loadMessages();
+      var messages = readOutgoingHistorySnapshot(roleId);
+      if (!messages) {
+        if (typeof showToast === 'function') showToast('聊天记录无法核实，钱包待恢复交易已保留；请勿重复付款');
+        return;
+      }
       oldPending.forEach(function (entry) {
         var id = String(entry.paymentId || '');
         if (!id) return;
@@ -1006,16 +1024,20 @@
       cardSaved = false;
     }
     if (!cardSaved) {
-      // A failed readback might still have written the card; never refund that uncertain send.
-      var storedCard = false;
-      try { storedCard = outgoingPaymentInHistory(loadMessages(), paymentId); } catch (error) {}
-      var recovered = settleOutgoingPayment(paymentId, storedCard);
+      // A failed readback might still have written the card; only refund when
+      // the raw role history is legible and confirms the card is absent.
+      var storedHistory = readOutgoingHistorySnapshot(roleId);
+      var readable = Array.isArray(storedHistory);
+      var storedCard = readable && outgoingPaymentInHistory(storedHistory, paymentId);
+      var recovered = readable && settleOutgoingPayment(paymentId, storedCard);
       if (typeof showToast === 'function') {
-        showToast(storedCard
-          ? '聊天卡片保存状态不确定，请刷新检查，暂未通知角色'
-          : recovered
-            ? '聊天卡片保存失败，扣款已退回，消息未发送'
-            : '聊天保存失败，扣款等待恢复；请检查钱包记录，暂勿重复发送');
+        showToast(!readable
+          ? '聊天记录无法核实，扣款待恢复；请检查存储，暂勿重复发送'
+          : storedCard
+            ? '聊天卡片保存状态不确定，请刷新检查，暂未通知角色'
+            : recovered
+              ? '聊天卡片保存失败，扣款已退回，消息未发送'
+              : '聊天保存失败，扣款等待恢复；请检查钱包记录，暂勿重复发送');
       }
       return;
     }
