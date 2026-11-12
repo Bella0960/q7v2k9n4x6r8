@@ -72,7 +72,7 @@
     var newFacts=[];
     (Array.isArray(data&&data.newFacts)?data.newFacts:[]).forEach(function(value){
       var fact=clean(value,180),key=normalized(fact);
-      if(key.length<6||seen.has(key))return;
+      if(key.length<6||seen.has(key)||Array.from(seen).some(function(previous){return previous.length>=12&&(key.includes(previous)||previous.includes(key))}))return;
       seen.add(key);
       newFacts.push(fact);
     });
