@@ -216,6 +216,12 @@
  display:block;width:17px!important;height:17px!important;
  stroke:currentColor!important;stroke-width:1.55!important;
 }
+.phone-mockup[data-chat-theme-preset="atmosphere"][data-at-surface="moments"] .action-btn.liked{
+ color:var(--at-ink)!important;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"][data-at-surface="moments"] .action-btn.liked svg{
+ color:var(--at-ink)!important;stroke:currentColor!important;fill:currentColor!important;
+}
 .phone-mockup[data-chat-theme-preset="atmosphere"][data-at-surface="moments"] .comment-sheet{
  background:var(--at-bg)!important;color:var(--at-ink)!important;
  border-radius:14px 14px 0 0!important;
