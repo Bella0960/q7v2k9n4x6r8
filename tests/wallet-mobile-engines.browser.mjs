@@ -148,6 +148,8 @@ async function run(browserType, device, label, origin) {
         engine: label, devicePreset: device, webLocksAvailable: locks,
         limitation: 'mobile-like desktop browser engine; not physical phone'
       }));
+      assert.equal(locks, true,
+        'This engine lacks Web Locks; page-local queue cannot prove safe concurrent wallet transactions');
     } finally { await context.close(); }
   } finally { await browser.close(); }
 }
