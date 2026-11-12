@@ -43,8 +43,10 @@
     // A note edited three times is ONE topic, the most recent version wins.
     var latest={},result=[];
     events.forEach(function(e){
-      var source=e.sourceId||e.id,group=e.type==='moment_comment'?'moment:':'note:';
-      var groupId=group+source;
+      // Memo edits supersede earlier versions of the same memo.
+      // Different comments on the same Moment remain separate conversations.
+      var groupId=e.type==='moment_comment'?
+        'comment:'+e.id:'note:'+(e.sourceId||e.id);
       if(latest[groupId]){
         var i=result.indexOf(latest[groupId]);
         if(i>=0)result.splice(i,1);
@@ -73,11 +75,10 @@
     var events=latestBySource(relevant(story.interactions,now));
     var fresh=events.filter(function(e){return !Number(e.offeredToAIAt);}).slice(-FRESH_LIMIT);
     var explicit=!!(options&&userAskedAboutPhone(options.userText));
-    var selected=fresh,mode='fresh';
-    if(!selected.length&&explicit){
-      selected=events.slice(-BACKGROUND_LIMIT);
-      mode='reference';
-    }
+    // When directly asked about the phone, include the newest stored context
+    // even if older clues were already offered during previous replies.
+    var selected=explicit?events.slice(-BACKGROUND_LIMIT):fresh;
+    var mode=explicit?'reference':'fresh';
     if(!selected.length)return {text:'',eventIds:[],mode:'none'};
     var prompt=[
       '【虚构角色手机：已保存的跨应用互动线索（仅供角色本人适时参考）】',
