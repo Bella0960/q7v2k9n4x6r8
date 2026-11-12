@@ -885,6 +885,23 @@
     }
   }
 
+  // Legacy getWorkData() silently replaces corrupt records with a default balance.
+  // Keep that compatibility elsewhere, but do not authorize new payments or refunds
+  // against a synthetic balance when a stored wallet record is unreadable.
+  function outgoingWalletRecordValid() {
+    try {
+      var raw = localStorage.getItem('workData');
+      if (raw == null) return true; // Brand-new local wallet: legacy default applies.
+      var stored = JSON.parse(raw);
+      return !!stored && typeof stored === 'object' && !Array.isArray(stored) &&
+        typeof stored.balance === 'number' && isFinite(stored.balance) &&
+        stored.balance >= 0 &&
+        (stored.history == null || Array.isArray(stored.history));
+    } catch (error) {
+      return false;
+    }
+  }
+
   function persistOutgoingWallet(wallet, paymentId, expectedStatus) {
     try {
       if (saveWorkData(wallet) !== true) return false;
@@ -904,6 +921,7 @@
 
   function settleOutgoingPayment(paymentId, hasChatCard) {
     try {
+      if (!outgoingWalletRecordValid()) return false;
       var wallet = getWorkData();
       if (!wallet || !Array.isArray(wallet.history)) return false;
       var entry = wallet.history.find(function (item) {
@@ -932,6 +950,10 @@
   function recoverOutgoingPaymentsUnderLock() {
     if (!currentCharacter || currentCharacter.id == null) return;
     try {
+      if (!outgoingWalletRecordValid()) {
+        if (typeof showToast === 'function') showToast('钱包数据无法核实，自动恢复已暂停');
+        return;
+      }
       var wallet = getWorkData();
       if (!wallet || !Array.isArray(wallet.history)) return;
       var roleId = String(currentCharacter.id);
@@ -976,6 +998,10 @@
     var roleId = currentCharacter && currentCharacter.id != null ? String(currentCharacter.id) : '';
     if (!roleId) {
       if (typeof showToast === 'function') showToast('角色信息不可用，未发送');
+      return;
+    }
+    if (!outgoingWalletRecordValid()) {
+      if (typeof showToast === 'function') showToast('钱包数据损坏或余额异常，未扣款；请先恢复钱包数据');
       return;
     }
     var wallet = getWorkData();
