@@ -8,7 +8,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
-assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v203'/);
+assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v205'/);
 const viteConfig = read('vite.config.js');
 
 test('build emits a manifest containing every HTML entry point', () => {
@@ -61,4 +61,11 @@ test('desktop app navigation has one valid capture-phase owner', () => {
 test('failed app navigation never falls back to the desktop index page', () => {
   assert.doesNotMatch(serviceWorker, /cached \|\| caches\.match\('\.\/index\.html'\)/);
   assert.match(serviceWorker, /status: 503/);
+});
+
+
+test('opt-in atmosphere assets are precached for the mobile PWA',()=>{
+ assert.match(serviceWorker, /shared\\/css\\/atmosphere-theme\\.css\\?v=20261112v1/);
+ assert.match(serviceWorker, /shared\\/js\\/atmosphere-theme\\.js\\?v=20261112v1/);
+ assert.match(serviceWorker, /shared\\/js\\/chat-list-theme\\.js\\?v=20261112at1/);
 });
