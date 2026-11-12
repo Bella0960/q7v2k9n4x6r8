@@ -227,11 +227,31 @@ test('invalid or unpersisted chapters cannot be marked read and storage failure 
   assert.equal(G.markReadChapter(p,2,storage),false);
   assert.equal(G.markReadChapter(p,3,storage),false);
   assert.equal(G.markReadChapter(p,4,storage),false);
-  assert.equal(G.markReadChapter(p,1,storage),true);
+  assert.equal(G.markReadChapter(p,1,storage),false,'ignored write must not report success');
+  const saved=new Map();
+  const verified={getItem:key=>saved.get(key)??null,setItem:(key,value)=>{saved.set(key,value)}};
+  assert.equal(G.markReadChapter(p,1,verified),true);
+  assert.equal(G.readChapter(p,verified),1);
   const blocked={getItem:()=>{throw Error('unavailable')},setItem:()=>{throw Error('full')}};
   assert.equal(G.readChapter(p,blocked),0);
   assert.equal(G.markReadChapter(p,1,blocked),false);
   assert.equal(G.unreadCount({id:'other',comments:[],gossipStory:{outlineId:'unknown'}},blocked),0);
+});
+
+test('stale read cursor stays unread when storage silently ignores an advance',()=>{
+  const post={id:'fiction-read-retry',gossipStory:{outlineId:'double_life',chapter:2,maxChapters:4},
+    comments:[{source:'gossip-author',gossipChapter:1},{source:'gossip-author',gossipChapter:2}]};
+  let stored='1';
+  let drop=true;
+  const storage={getItem:()=>stored,setItem:(_key,value)=>{if(!drop)stored=value}};
+  assert.equal(G.readChapter(post,storage),1);
+  assert.equal(G.markReadChapter(post,2,storage),false);
+  assert.equal(G.readChapter(post,storage),1,'failed write must retain previously read chapter');
+  assert.equal(G.unreadCount(post,storage),1);
+  drop=false;
+  assert.equal(G.markReadChapter(post,2,storage),true,'later retry should succeed');
+  assert.equal(G.readChapter(post,storage),2);
+  assert.equal(G.unreadCount(post,storage),0);
 });
 
 test('mobile feed and detail expose unread progress and the next unread chapter',()=>{
@@ -261,9 +281,9 @@ test('mobile back navigation reloads persisted chapters and a failed refresh lea
   assert.match(home,/posts=loadPosts\(\)/);
   assert.match(home,/render\(\);\s*scroll\.scrollTop=y/);
   assert.match(home,/fresh\.length!==gossipPlans\.length/);
-  assert.match(home,/const before=posts;/);
-  assert.match(home,/posts=fresh\.concat\(posts\.map\(p=>\(\{\.\.\.p,comments:/);
-  assert.match(home,/if\(!save\(\)\)\{posts=before;return false\}/);
+  assert.match(home,/const commit=commitForumRefreshData\(fresh,data\.activity,forumMakeAIComment/);
+  assert.match(home,/posts=commit\.posts/);
+  assert.match(home,/if\(!commit\.ok\)/);
 });
 
 
@@ -357,4 +377,13 @@ test('failed deletion and follow writes cannot falsely report success or discard
   context.toggleFollow('阿诺');
   assert.equal(context.isFollowing('阿诺'),true);
   assert.equal(renders,1);
+});
+
+test('gossip continuation rejects facts that merely extend or shorten a saved reveal',()=>{
+  const update='周二下午我去了一趟旧公寓，发现她已经把墙上的相框收进了纸箱。她没有立刻搬走，而是先给对方发了一条长消息，解释这几个月为什么一直犹豫。晚上两个人在小区门口聊了很久，最后决定先各自住一段时间，再一起处理租约。';
+  const oldFacts=['她已经决定搬离原来的公寓'];
+  const duplicate=G.validateUpdate({update,newFacts:['她已经决定搬离原来的公寓并且告诉了朋友','她已经决定搬离']},[],oldFacts);
+  assert.equal(duplicate.ok,false,'rewriting a prior reveal cannot count as two new facts');
+  const fresh=G.validateUpdate({update,newFacts:['双方决定分别租房','他们约定下周讨论租约']},[],oldFacts);
+  assert.equal(fresh.ok,true,'independent new events remain eligible');
 });

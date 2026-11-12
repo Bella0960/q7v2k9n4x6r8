@@ -72,7 +72,7 @@
     var newFacts=[];
     (Array.isArray(data&&data.newFacts)?data.newFacts:[]).forEach(function(value){
       var fact=clean(value,180),key=normalized(fact);
-      if(key.length<6||seen.has(key))return;
+      if(key.length<6||seen.has(key)||Array.from(seen).some(function(previous){return previous.length>=12&&(key.includes(previous)||previous.includes(key))}))return;
       seen.add(key);
       newFacts.push(fact);
     });
@@ -114,8 +114,13 @@
       return c&&c.source==='gossip-author'&&Number(c.gossipChapter)===n;
     }))return false;
     var next=Math.max(n,readChapter(post,store));
-    try{store.setItem(readKey(post),String(next));return true}
-    catch(error){return false}
+    // Storage can ignore writes without throwing (e.g. constrained webviews).
+    // Keep this chapter unread until the stored cursor is confirmed.
+    try{
+      var key=readKey(post);
+      store.setItem(key,String(next));
+      return typeof store.getItem==='function'&&store.getItem(key)===String(next);
+    }catch(error){return false}
   }
   function isGossipPost(post){return !!(post&&post.gossipStory&&idea(post.gossipStory.outlineId))}
   root.ForumGossip={ideas:IDEAS,idea:idea,planBatch:planBatch,storyFromOpening:storyFromOpening,

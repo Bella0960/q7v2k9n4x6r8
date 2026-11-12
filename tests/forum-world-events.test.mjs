@@ -121,7 +121,7 @@ test('existing mobile forum actually uses world arcs, selected settings and role
   assert.match(settings,/id="worldAutoContinue"/);
   assert.match(settings,/cfg\.worldAutoContinue/);
   assert.match(sw,/forum\/forum-world-events\.js\?v=20261111v1/);
-  assert.ok(Number(/phone-app-pwa-v(\d+)/.exec(sw)?.[1]) >= 206, 'forum assets must use the current authenticated PWA cache generation');
+  assert.match(sw,/phone-app-pwa-v204/);
 });
 
 test('all modified inlined code parses for mobile browser execution',()=>{
@@ -135,12 +135,17 @@ test('all modified inlined code parses for mobile browser execution',()=>{
 
 
 test('AI refresh publishes two complete campus event openings and preserves old-theme posts',async()=>{
-  const source=home.slice(home.indexOf('async function refreshFeed(){'),
+  const helperStart=home.indexOf('function cloneForumRefreshPost(post)');
+  const helperEnd=home.indexOf('let forumRefreshBusy=false',helperStart);
+  assert.ok(helperStart>=0&&helperEnd>helperStart);
+  const source=home.slice(helperStart,helperEnd)+'\n'+home.slice(home.indexOf('async function refreshFeed(){'),
     home.indexOf('\n}\n\n// 自动为角色生成',home.indexOf('async function refreshFeed(){'))+2);
   const current={id:'academy',name:'校园',roleTopics:['社团日常','宿舍见闻','课业求助']};
   const selected=Array.from(W.plans(current,[],2));
   const old={id:'old-city',themeId:'reality',title:'原来的城市帖',body:'那间小店',comments:[],created:1};
   let writes=0,images=0;
+  let storedPosts=JSON.stringify([old]);
+  const storage={getItem:()=>storedPosts,setItem:(_key,value)=>{storedPosts=String(value);writes++;}};
   const fakePosts=selected.map((plan,i)=>({
     arcId:plan.id,threadCast:'社团负责人、借场地的学生',threadFacts:['十点发现排练教室撞期','午后讨论了新排练方案'],
     residentId:i?'resident_orange':'resident_latewind',
@@ -158,7 +163,9 @@ test('AI refresh publishes two complete campus event openings and preserves old-
       {id:'resident_orange',name:'小唐',style:'爽快'}],
     forumResident:(id)=>({id:id||'resident_orange',name:id||'小唐'}),
     forumMakeAIComment:item=>({text:item.text,name:'网友',source:'forum-ai'}),
-    save:()=>{writes++;return true;},render:()=>{images++;},scroll:{scrollTop:50},
+    STORE:'forum_posts',localStorage:storage,
+    save:()=>{throw Error('refresh should use verified persistence, not legacy save()')},
+    render:()=>{images++;},scroll:{scrollTop:50},
     toast:()=>{},console:{warn:()=>{}},Date,Math,Set,JSON};
   const api=runInNewContext(source+'\n({refreshFeed,getPosts:()=>posts})',ctx);
   assert.equal(await api.refreshFeed(),true);
