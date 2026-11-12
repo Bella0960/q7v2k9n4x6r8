@@ -77,7 +77,15 @@
     var explicit=!!(options&&userAskedAboutPhone(options.userText));
     // When directly asked about the phone, include the newest stored context
     // even if older clues were already offered during previous replies.
-    var selected=explicit?events.slice(-BACKGROUND_LIMIT):fresh;
+    var asked=str(options&&options.userText,280);
+    var asksMemo=/备忘录|日记|笔记|我写的/.test(asked);
+    var asksMoments=/朋友圈|评论|动态/.test(asked);
+    var matching=events.filter(function(e){
+      if(asksMemo&&!asksMoments)return e.type==='note_created'||e.type==='note_edited';
+      if(asksMoments&&!asksMemo)return e.type==='moment_comment';
+      return true;
+    });
+    var selected=explicit?(matching.length?matching:events).slice(-BACKGROUND_LIMIT):fresh;
     var mode=explicit?'reference':'fresh';
     if(!selected.length)return {text:'',eventIds:[],mode:'none'};
     var prompt=[
