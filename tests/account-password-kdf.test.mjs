@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { pbkdf2Sync, webcrypto } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { passwordDigest, pbkdf2HmacSha256Fallback } from '../worker/lib/account-auth.js';
 
 const ROUNDS = 210000;
@@ -60,4 +61,16 @@ test('HMAC fallback rejects algorithm downgrade by producing exactly historical 
     Buffer.from(pbkdf2HmacSha256Fallback(new TextEncoder().encode(password), salt)).toString('hex'),
     await passwordDigest(password, salt.toString('base64url'))
   );
+});
+
+
+test('Workers build configurations enable native node:crypto password hashing', () => {
+  for (const configName of ['wrangler.jsonc', 'wrangler.preview.jsonc']) {
+    const raw = readFileSync(new URL('../' + configName, import.meta.url), 'utf8');
+    const source = raw.replace(/^\s*\/\/[^\n]*$/gm, '');
+    const config = JSON.parse(source);
+    assert.ok(Array.isArray(config.compatibility_flags), configName + ' must have compatibility_flags');
+    assert.ok(config.compatibility_flags.includes('nodejs_compat'), configName + ' missing nodejs_compat required by worker/lib/account-auth.js');
+    assert.ok(config.compatibility_date >= '2024-09-23', configName + ' compatibility date is too old');
+  }
 });
