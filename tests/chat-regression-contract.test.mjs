@@ -2316,3 +2316,75 @@ test('chat detail classic inline scripts parse before chat handlers are attached
   assert.ok(inlineScripts.some(([, , source]) => /async function sendMsg\(/.test(source)));
   for (const [, , source] of inlineScripts) new Function(source);
 });
+
+test('dictation uses single utterances on touch devices and releases the control on recognition errors', () => {
+  const source = detail.match(/<script id="maomao-voice-input">([\s\S]*?)<\/script>/)[1];
+  for (const touch of [true, false]) {
+    const nodes = new Map();
+    const sessions = [];
+    let textChanges = 0;
+    function node() {
+      return {
+        value: '', placeholder: '', style: {}, children: [],
+        classList: { toggle() {} },
+        getAttribute() { return null; },
+        setAttribute(key, value) { this[key] = value; },
+        addEventListener(type, handler) { this[type] = handler; },
+        dispatchEvent() { textChanges++; },
+        focus() { this.focused = true; },
+        appendChild(child) { this.children.push(child); if (child.id) nodes.set(child.id, child); }
+      };
+    }
+    const button = node();
+    const input = node();
+    nodes.set('voice-input-btn', button);
+    nodes.set('chat-input', input);
+    runInNewContext(source, {
+      window: {
+        isSecureContext: true,
+        matchMedia: () => ({ matches: touch }),
+        addEventListener() {},
+        SpeechRecognition: function () {
+          sessions.push(this);
+          this.start = () => {};
+          this.stop = () => {};
+          this.abort = () => { this.aborted = true; };
+        }
+      },
+      document: {
+        getElementById: id => nodes.get(id),
+        querySelector: () => null,
+        createElement: node,
+        body: node()
+      },
+      Event: function () {},
+      setTimeout: () => 1,
+      clearTimeout() {}
+    });
+    const tap = () => button.click({ preventDefault() {}, stopPropagation() {} });
+    tap();
+    assert.equal(sessions[0].continuous, !touch);
+    sessions[0].onstart();
+    sessions[0].onresult({ results: [Object.assign([{ transcript: '你好' }], { isFinal: false })] });
+    sessions[0].onresult({ results: [Object.assign([{ transcript: '你好' }], { isFinal: true })] });
+    sessions[0].onend();
+    assert.equal(input.value, '你好');
+    assert.equal(textChanges, 1);
+    tap();
+    sessions[1].onerror({ error: 'not-allowed' });
+    assert.equal(button['aria-pressed'], 'false');
+    assert.equal(sessions[1].aborted, true);
+    assert.match(nodes.get('voice-input-status').textContent, /权限未开启/);
+    if (touch) {
+      const fallback = nodes.get('voice-input-status').children[0];
+      assert.equal(fallback.textContent, '打开键盘');
+      fallback.click();
+      assert.equal(input.focused, true);
+    }
+    tap();
+    tap();
+    assert.equal(sessions[2].aborted, true);
+    sessions[2].onstart();
+    assert.equal(button['aria-pressed'], 'false');
+  }
+});
