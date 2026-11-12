@@ -8,6 +8,9 @@
   <script src="../shared/js/font-loader.js?v=20261102v1"></script>
   <script src="../shared/js/native-feel.js"></script>
   <script src="../shared/js/chat-beauty.js?v=20261112at1"></script>
+  <script src="../shared/js/wallpaper-store.js?v=20261026v2"></script>
+  <script src="../shared/js/atmosphere-icons.js?v=20261112i1"></script>
+  <script src="./market-expansion.js?v=20261112m1"></script>
   <link rel="stylesheet" href="../shared/css/chat-beauty-runtime.css?v=20261031v1">
   <link rel="stylesheet" href="../shared/css/mobile-fit.css">
   <style>
@@ -192,6 +195,7 @@
 .theme-art-atmosphere:before{display:none}.theme-art-atmosphere .art-bubble{background:transparent;color:#252525;border-radius:0;text-decoration:underline;text-underline-offset:4px;padding:2px 0;font-size:10px}
 .at-mini-avatar{width:19px;height:19px;align-self:center;background:linear-gradient(135deg,#bbb,#333);border-radius:50%}.at-mini-name{align-self:center;font-size:8px}
 </style>
+<link rel="stylesheet" href="./market-expansion.css?v=20261112m1">
 </head>
 <body>
   <div class="store-app">
@@ -206,15 +210,18 @@
 
     <section class="intro">
       <div class="intro-kicker">A LITTLE CHANGE, A NEW FEELING</div>
-      <h2>让每一次对话，<br>都有自己的样子。</h2>
-      <p>挑选聊天主题、气泡样式与字体。已经保存的美化预设和字体方案，会自动出现在这里。</p>
+      <h2>每一个页面，<br>都值得认真打磨。</h2>
+      <p>整套聊天主题、独立气泡、桌面小组件、原创壁纸与字体方案，都可以在这里找到。保留你已经拥有的所有主题。</p>
     </section>
 
     <nav class="category-nav" id="categoryNav" aria-label="商城分类">
-      <button class="category-tab active" data-category="themes" type="button">主题 <small>01</small></button>
-      <button class="category-tab" data-category="bubbles" type="button">聊天气泡 <small>02</small></button>
-      <button class="category-tab" data-category="fonts" type="button">字体 <small>03</small></button>
-      <button class="category-tab" data-category="mine" type="button">我的主题 <small>04</small></button>
+      <button class="category-tab active" data-category="discover" type="button">精选 <small>01</small></button>
+      <button class="category-tab" data-category="themes" type="button">主题 <small>02</small></button>
+      <button class="category-tab" data-category="bubbles" type="button">聊天气泡 <small>03</small></button>
+      <button class="category-tab" data-category="widgets" type="button">小组件 <small>04</small></button>
+      <button class="category-tab" data-category="wallpapers" type="button">壁纸 <small>05</small></button>
+      <button class="category-tab" data-category="fonts" type="button">字体 <small>06</small></button>
+      <button class="category-tab" data-category="mine" type="button">我的主题 <small>07</small></button>
     </nav>
 
     <main class="main-content" id="storeContent" aria-live="polite"></main>
@@ -230,9 +237,10 @@
     var VISUAL_KEY='beauty_visual_presets_v1';
     var DELETED_KEY='beauty_visual_presets_deleted_v1';
     var FONT_DB='maomao-font-presets', FONT_STORE='presets';
-    var categories=['themes','bubbles','fonts','mine'];
-    var categoryNames={themes:'主题',bubbles:'聊天气泡',fonts:'字体',mine:'我的主题'};
-    var currentCategory='themes';
+    var categories=['discover','themes','bubbles','widgets','wallpapers','fonts','mine'];
+    var categoryNames={discover:'精选',themes:'主题',bubbles:'聊天气泡',widgets:'小组件',wallpapers:'壁纸',fonts:'字体',mine:'我的主题'};
+    var currentCategory='discover';
+    var market=window.MAOMAOMarketExpansion;
     var mineFilter='all';
     var fontRecords=[];
     var fontPreviewUrls={};
@@ -372,7 +380,7 @@
       var active=window.ChatBeauty&&ChatBeauty.getThemePreset?ChatBeauty.getThemePreset():'default',owned=getOwned();
       var listActive=getChatListTheme()==='editorial',listOwned=owned.indexOf('messages-editorial')>=0;
       var listButtonLabel=listActive?'恢复默认':(listOwned?'应用设计':'免费获取并应用');
-      var html='<div class="section-head"><div><h3>聊天列表主题</h3></div><p>只改变聊天列表首页</p></div>'+
+      var html=(market?market.renderThemeFeature():'')+'<div class="section-head"><div><h3>聊天列表主题</h3></div><p>只改变聊天列表首页</p></div>'+
         '<div class="chat-list-theme-grid">'+
           '<article class="product-card chat-list-theme-card">'+editorialListArt()+
             '<div class="product-meta"><span class="product-eyebrow">01 / MESSAGES EDITION</span><strong class="product-title">留白 Messages</strong><span class="product-desc">中性灰白底色、克制字重与轻分隔。聊天列表独立换肤，不影响其他页面。</span></div>'+
@@ -513,10 +521,15 @@
     function render(){
       var content=document.getElementById('storeContent');
       document.querySelectorAll('.category-tab').forEach(function(button){button.classList.toggle('active',button.dataset.category===currentCategory);});
-      if(currentCategory==='themes')content.innerHTML=renderThemes();
+      if(currentCategory==='discover')content.innerHTML=market?market.renderDiscover():'';
+      else if(currentCategory==='themes')content.innerHTML=renderThemes();
       else if(currentCategory==='bubbles')content.innerHTML=renderBubbles();
+      else if(currentCategory==='widgets')content.innerHTML=market?market.renderWidgets():'';
+      else if(currentCategory==='wallpapers')content.innerHTML=market?market.renderWallpapers():'';
       else if(currentCategory==='fonts')content.innerHTML=renderFonts();
-      else content.innerHTML=renderMine();
+      else content.innerHTML=renderMine()+(market?market.renderMineExtra():'');
+      if(market&&(currentCategory==='wallpapers'||currentCategory==='discover'||currentCategory==='mine'))
+        market.loadWallpaper(function(){if(['wallpapers','discover','mine'].indexOf(currentCategory)>=0)render();});
       if(currentCategory==='bubbles')fillScope();
       if(currentCategory==='fonts')bindFontSpecimens();
       if(currentCategory==='mine')document.querySelectorAll('[data-filter]').forEach(function(button){button.classList.toggle('active',button.dataset.filter===mineFilter);});
@@ -625,6 +638,19 @@
       else if(action.dataset.action==='bubble-apply')applyBubblePreset(id);
       else if(action.dataset.action==='font-apply')applyFont(id);
       else if(action.dataset.action==='font-default')useSystemFont();
+      else if(action.dataset.action==='market-preview'&&market)market.preview('atmosphere');
+      else if(action.dataset.action==='market-apply-theme'&&market)applyTheme('atmosphere');
+      else if(action.dataset.action==='market-category')setCategory(id);
+      else if(action.dataset.action==='market-widget-open'&&market)market.widgetRoute(id);
+      else if(action.dataset.action==='market-route'&&market)market.route(id);
+      else if(action.dataset.action==='market-wallpaper-apply'&&market){
+        action.disabled=true;action.textContent='正在保存…';
+        market.applyWallpaper(id).then(function(name){
+          toast('已应用「'+name+'」到桌面壁纸');render();
+        }).catch(function(error){
+          toast(error&&error.message||'壁纸保存失败，请检查存储空间');action.disabled=false;action.textContent='重新尝试';
+        });
+      }
       else if(action.dataset.action==='open-beauty')openPage('../beauty/beauty.html');
       else if(action.dataset.action==='open-font-settings')openPage('../settings/font-settings.html');
       else if(action.dataset.action==='refresh'){refreshAll();}
@@ -650,6 +676,7 @@
       loadFonts().then(function(){render();bindFontSpecimens();});
       if(currentCategory==='bubbles'||currentCategory==='mine')render();
     }
+    document.addEventListener('maomao:market-apply-atmosphere',function(){applyTheme('atmosphere');});
     window.addEventListener('pageshow',refreshAll);
     window.addEventListener('storage',function(event){
       if(!event.key||[VISUAL_KEY,DELETED_KEY,'beauty_chat_global_v1','maomao_chat_theme_preset','active_font_preset_id',OWN_KEY,CHAT_LIST_THEME_KEY].indexOf(event.key)>=0)refreshAll();
