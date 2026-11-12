@@ -4,6 +4,8 @@
 (function () {
   'use strict';
   var shell, form, rail, nativeMore, nativePanel, observer, panelObserver, moreButton;
+  var iconKit=window.MAOMAOAtmosphereIcons;
+  var originalNativeIcons=new Map(),filterBar=null,filterMode='all',gridObserver=null;
   var mountCount = 0;
   var glyphs = {
     img: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8" cy="9" r="1.4"/><path d="m4 17 6-6 4 4 3-3 4 5"/>',
@@ -65,13 +67,82 @@
     var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', '0 0 24 24');
     svg.setAttribute('aria-hidden', 'true');
-    svg.innerHTML = glyphs[action.key];
+    if(iconKit)iconKit.apply(svg,{img:'photo',sticker:'sticker',voice:'microphone',location:'location',more:'more'}[action.key]);
+    else svg.innerHTML = glyphs[action.key];
     var caption = document.createElement('span');
     caption.textContent = action.text;
     button.append(svg, caption);
     button.addEventListener('click', function () { activateFeature(action); });
     if (action.feature && !selectedFeature(action.feature)) button.disabled = true;
     return button;
+  }
+  var featureGlyphs={
+    img:'photo',sticker:'sticker','voice-msg':'microphone',location:'location',
+    voice:'microphone',video:'video',date:'heart',regenerate:'refresh',
+    anniversary:'clock',narration:'diary','live-room':'video','music-app':'music',
+    redpacket:'gift',transfer:'share',card:'person',gift:'gift',
+    'group-poll':'diary','group-chain':'clock','group-call':'people'
+  };
+  var preferred=['img','sticker','voice-msg','location','date','anniversary',
+    'music-app','gift','voice','video'];
+  function syncNativeIcons(enabled){
+    if(!iconKit||typeof document.querySelectorAll!=='function')return;
+    if(!enabled){
+      originalNativeIcons.forEach(function(markup,button){
+        var current=button.querySelector('svg');
+        if(current)current.outerHTML=markup;
+      });
+      originalNativeIcons.clear();return;
+    }
+    document.querySelectorAll('.plus-item[data-feat]').forEach(function(button){
+      var glyph=featureGlyphs[button.getAttribute('data-feat')];
+      var svg=button.querySelector('svg');
+      if(!svg||!glyph)return;
+      if(!originalNativeIcons.has(button))originalNativeIcons.set(button,svg.outerHTML);
+      iconKit.apply(svg,glyph);
+    });
+  }
+  function applyFilter(mode){
+    filterMode=mode==='quick'?'quick':'all';
+    if(nativePanel){
+      nativePanel.setAttribute('data-at-filter',active()?filterMode:'all');
+    }
+    if(filterBar)filterBar.querySelectorAll('button').forEach(function(button){
+      var chosen=button.getAttribute('data-at-option')===filterMode;
+      button.setAttribute('aria-selected',chosen?'true':'false');
+      button.setAttribute('tabindex',chosen?'0':'-1');
+    });
+  }
+  function buildNativeFilters(){
+    if(filterBar||!nativePanel||typeof nativePanel.querySelector!=='function')return;
+    var sheet=nativePanel.querySelector('.plus-panel-sheet');
+    var grid=sheet&&sheet.querySelector('.plus-grid');
+    if(!sheet||!grid)return;
+    filterBar=document.createElement('div');
+    filterBar.className='at-feature-filters';filterBar.hidden=true;
+    filterBar.setAttribute('role','tablist');
+    filterBar.setAttribute('aria-label','更多工具分类');
+    [['quick','常用'],['all','全部功能']].forEach(function(option){
+      var btn=document.createElement('button');
+      btn.type='button';btn.className='at-feature-filter';
+      btn.textContent=option[1];btn.setAttribute('role','tab');
+      btn.setAttribute('data-at-option',option[0]);
+      btn.addEventListener('click',function(){applyFilter(option[0]);});
+      filterBar.appendChild(btn);
+    });
+    sheet.insertBefore(filterBar,grid);
+    var markPreferred=function(){
+      grid.querySelectorAll('.plus-item[data-feat]').forEach(function(button){
+        var feat=button.getAttribute('data-feat');
+        if(preferred.indexOf(feat)>=0)button.setAttribute('data-at-preferred','');
+        else button.removeAttribute('data-at-preferred');
+      });
+      syncNativeIcons(active());
+    };
+    markPreferred();
+    gridObserver=new MutationObserver(markPreferred);
+    gridObserver.observe(grid,{childList:true});
+    applyFilter('all');
   }
   function mount() {
     if (rail || !form || !form.parentNode || !nativeMore || !nativePanel) return;
@@ -81,6 +152,7 @@
     rail.setAttribute('aria-label', '常用聊天工具');
     rail.hidden = true;
     actions.forEach(function (action) { rail.appendChild(makeButton(action)); });
+    buildNativeFilters();
     form.parentNode.insertBefore(rail, form);
     // Observe the existing overlay; do not replace its controller or click handlers.
     panelObserver = new MutationObserver(syncMore);
@@ -96,7 +168,10 @@
     if (active() && !rail) mount();
     if (!rail) return;
     rail.hidden = !active();
+    if(filterBar)filterBar.hidden=!active();
     if (!active()) closeNative();
+    syncNativeIcons(active());
+    applyFilter(filterMode);
     syncMore();
   }
   function init() {
