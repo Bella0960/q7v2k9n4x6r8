@@ -5,7 +5,7 @@
 (function(global){
   'use strict';
   var MAX_EVENTS=30,MAX_AGE=30*86400000, FRESH_LIMIT=2, BACKGROUND_LIMIT=2, FOCUS_TTL=20*60000;
-  var TYPES={note_created:true,note_edited:true,moment_comment:true};
+  var TYPES={note_created:true,note_edited:true,moment_comment:true,forum_comment:true,browser_search:true};
   function str(v,n){return String(v==null?'':v).slice(0,n);}
   function key(roleId){return 'inspect_story_v1_'+encodeURIComponent(String(roleId));}
   function list(v){return Array.isArray(v)?v:[];}
@@ -45,8 +45,8 @@
     events.forEach(function(e){
       // Memo edits supersede earlier versions of the same memo.
       // Different comments on the same Moment remain separate conversations.
-      var groupId=e.type==='moment_comment'?
-        'comment:'+e.id:'note:'+(e.sourceId||e.id);
+      var groupId=e.type==='note_created'||e.type==='note_edited'?
+        'note:'+(e.sourceId||e.id):'activity:'+e.id;
       if(latest[groupId]){
         var i=result.indexOf(latest[groupId]);
         if(i>=0)result.splice(i,1);
@@ -58,7 +58,7 @@
   function quote(event) {
     var names={note_created:'有人在角色备忘录中新建了文字',
       note_edited:'有人修改了角色备忘录',
-      moment_comment:'有人评论了角色的一条朋友圈'};
+      moment_comment:'有人评论了角色的一条朋友圈',forum_comment:'有人在角色论坛帖子下发表了评论',browser_search:'有人在角色的虚构浏览器里搜索了内容'};
     // JSON string quoting keeps newlines, quotes and prompt-looking markup as data.
     var content=str(event.text,420).replace(/[\u0000-\u001f\u007f]/g,' ');
     var stamp=new Date(event.at).toLocaleString('zh-CN');
@@ -67,7 +67,7 @@
   // A focus is an explicit, short-lived user navigation intent. It does not
   // imply the fictional role read a note or liked/commented on a Moment.
   function requestFocus(data,kind,entry,now){
-    if(!data||!data.roleId||!entry||!['note','moment'].includes(kind))return null;
+    if(!data||!data.roleId||!entry||!['note','moment','forum'].includes(kind))return null;
     var at=Number(now)||Date.now(),sourceId=str(entry.sourceId,100).trim();
     var title=str(entry.title,90).trim(),excerpt=str(entry.text,600).trim();
     if(!sourceId||(!title&&!excerpt))return null;
@@ -83,12 +83,12 @@
   function activeFocus(data,now){
     var focus=data&&data.pendingChatFocus, current=Number(now)||Date.now();
     if(!focus||focus.origin!=='explicit_phone_chat_navigation'||!focus.id||
-      !['note','moment'].includes(focus.kind)||Number(focus.usedAt)||!Number(focus.at)||
+      !['note','moment','forum'].includes(focus.kind)||Number(focus.usedAt)||!Number(focus.at)||
       focus.at>current||focus.at<current-FOCUS_TTL)return null;
     return focus;
   }
   function focusQuote(f){
-    var name=f.kind==='note'?'备忘录':'朋友圈';
+    var name=f.kind==='note'?'备忘录':f.kind==='forum'?'论坛帖子':'朋友圈';
     var snippet=str(f.text,520).replace(/[\u0000-\u001f\u007f]/g,' ');
     return '【用户从角色手机主动选择的聊天话题】\n'+
       '用户刚才点了「聊聊这件事」，所选'+name+
@@ -99,7 +99,7 @@
   function userAskedAboutPhone(text){
     // Opt-in re-reference: no repeated unsolicited suggestions in ordinary chat.
     var value=str(text,280);
-    return /备忘录|日记|朋友圈|留言|评论|手机|我写的|我留的|我改的|写给你|你.{0,8}(看到|看见|发现).{0,8}(写|留|内容|那句话)/.test(value);
+    return /备忘录|日记|朋友圈|论坛|帖子|浏览器|搜索|网页|留言|评论|手机|我写的|我留的|我改的|写给你|你.{0,8}(看到|看见|发现).{0,8}(写|留|内容|那句话)/.test(value);
   }
   function buildPromptPacket(roleId,storage,now,options){
     var story=read(roleId,storage);
@@ -112,10 +112,16 @@
     // even if older clues were already offered during previous replies.
     var asked=str(options&&options.userText,280);
     var asksMemo=/备忘录|日记|笔记|我写的/.test(asked);
-    var asksMoments=/朋友圈|评论|动态/.test(asked);
+    var asksMoments=/朋友圈|动态/.test(asked);
+    var asksForum=/论坛|帖子/.test(asked);
+    var asksBrowser=/浏览器|搜索|网页/.test(asked);
     var matching=events.filter(function(e){
-      if(asksMemo&&!asksMoments)return e.type==='note_created'||e.type==='note_edited';
-      if(asksMoments&&!asksMemo)return e.type==='moment_comment';
+      var categories=[asksMemo,asksMoments,asksForum,asksBrowser].filter(Boolean).length;
+      if(categories!==1)return true;
+      if(asksMemo)return e.type==='note_created'||e.type==='note_edited';
+      if(asksMoments)return e.type==='moment_comment';
+      if(asksForum)return e.type==='forum_comment';
+      if(asksBrowser)return e.type==='browser_search';
       return true;
     });
     var selected=focus?[]:explicit?(matching.length?matching:events).slice(-BACKGROUND_LIMIT):fresh;
@@ -169,12 +175,12 @@
           }
         });
       }
-      if(focus.kind==='moment'&&list(focus.includedEventIds).length){
+      if((focus.kind==='moment'||focus.kind==='forum')&&list(focus.includedEventIds).length){
         var present=Object.create(null);
         focus.includedEventIds.forEach(function(id){present[id]=true;});
         list(story.interactions).forEach(function(e){
           if(e&&present[e.id]&&e.origin==='user_on_fictional_phone'&&
-            e.type==='moment_comment'&&e.sourceId===focus.sourceId&&
+            e.type===(focus.kind==='moment'?'moment_comment':'forum_comment')&&e.sourceId===focus.sourceId&&
             Number(e.at)<=Number(focus.at)&&!e.offeredToAIAt){
             e.offeredToAIAt=current;
           }
