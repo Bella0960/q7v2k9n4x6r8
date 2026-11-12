@@ -92,8 +92,8 @@ test('home card and personal-home copy are editable without rewriting V5 structu
 test('approved V5 source is byte-for-byte identical after removing only the two additive resource tags',()=>{
  const base=readFileSync(new URL('../theme-store/atmosphere-v5-original.html',import.meta.url),'utf8');
  const upgraded=readFileSync(new URL('../theme-store/atmosphere-v5-preserved-custom-preview.html',import.meta.url),'utf8');
- const cssRef='<link rel="stylesheet" href="./atmosphere-v5-custom.css?v=20261113v2">';
- const jsRef='<script defer src="./atmosphere-v5-custom.js?v=20261113v2"></script>';
+ const cssRef='<link rel="stylesheet" href="./atmosphere-v5-custom.css?v=20261113v3">';
+ const jsRef='<script defer src="./atmosphere-v5-custom.js?v=20261113v3"></script>';
  assert.equal(Buffer.byteLength(base,'utf8'),108145);
  assert.equal(base.split('v5-horizontal-album').length,2);
  assert.equal(upgraded.split(cssRef).length,2);
