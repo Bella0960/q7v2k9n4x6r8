@@ -112,3 +112,29 @@ test('opening preview does not apply a theme; applying requires a second explici
  assert.ok(start!==-1&&end>start);
  assert.doesNotMatch(storefrontSource.slice(start,end),/api\.applyTheme\(/);
 });
+
+
+test('expanded theme tab renders native original catalogue instead of replacing it',()=>{
+ assert.match(storefrontSource,/nativeThemes\(\)/);
+ assert.match(storefrontSource,/nativeArt\(t\)/);
+ assert.match(storefrontSource,/function themes\(\)/);
+ assert.match(html,/nativeThemes:renderThemes,\s*nativeArt:themeArt/);
+ assert.match(html,/function renderThemes\(\)/);
+ assert.match(html,/function themeArt\(theme\)/);
+ for(const id of ['wechat','qq','silver-butterfly','atmosphere']){
+  assert.match(html,new RegExp("theme\\.id==='"+id+"'"));
+ }
+ assert.match(html,/data-action=\\"theme-apply\\"/);
+ assert.match(html,/data-action=\\"chat-list-theme-toggle\\"/);
+});
+test('native legacy product details do not pretend to be a live six-screen theme',()=>{
+ const start=storefrontSource.indexOf("function detail(id)");
+ const branch=storefrontSource.indexOf("if(id!=='atmosphere')",start);
+ const end=storefrontSource.indexOf("previewTone='light'",branch);
+ assert.ok(start!==-1&&branch>start&&end>branch);
+ const snippet=storefrontSource.slice(branch,end);
+ assert.match(snippet,/sf-native-detail-art/);
+ assert.match(snippet,/nativeArt\(t\)/);
+ assert.doesNotMatch(snippet,/#sfPreview|MAOMAOStorefrontPreview\.render/);
+ assert.match(snippet,/真实聊天页面/);
+});
