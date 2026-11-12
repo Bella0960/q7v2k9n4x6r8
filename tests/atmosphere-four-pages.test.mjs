@@ -15,8 +15,8 @@ const pages={
 
 test('all four real pages share opt-in artwork assets without replacing app handlers',()=>{
  for(const [name,html] of Object.entries(pages)){
-  assert.match(html,/atmosphere-pages\.css\?v=20261112p1/,name);
-  assert.match(html,/atmosphere-pages\.js\?v=20261112p1/,name);
+  assert.match(html,/atmosphere-pages\.css\?v=20261112p2/,name);
+  assert.match(html,/atmosphere-pages\.js\?v=20261112p2/,name);
   assert.match(html,/atmosphere-icons\.js\?v=20261112i1/,name);
  }
  assert.match(pages.chats,/id="chatListContainer"/);
