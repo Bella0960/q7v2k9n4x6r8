@@ -10,7 +10,7 @@
  function icon(name,label){var b=el('button','at-icon');b.type='button';b.setAttribute('aria-label',label);b.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true">'+icons[name]+'</svg>';return b;}
  function active(){return shell&&shell.getAttribute('data-chat-theme-preset')==='atmosphere';}
  function readTone(){try{return localStorage.getItem(TONE_KEY)==='dark'?'dark':'light';}catch(e){return 'light';}}
- function syncTone(){if(!shell)return;var dark=readTone()==='dark';shell.setAttribute('data-at-tone',dark?'dark':'light');if(toneButton)toneButton.textContent=dark?'切换为浅色':'切换为深色';if(quickTone)quickTone.setAttribute('aria-label',dark?'切换为浅色':'切换为深色');}
+ function syncTone(){if(!shell)return;if(!active()){shell.removeAttribute('data-at-tone');return;}var dark=readTone()==='dark';shell.setAttribute('data-at-tone',dark?'dark':'light');if(toneButton)toneButton.textContent=dark?'切换为浅色':'切换为深色';if(quickTone)quickTone.setAttribute('aria-label',dark?'切换为浅色':'切换为深色');}
  function toggleTone(){var next=readTone()==='dark'?'light':'dark';try{localStorage.setItem(TONE_KEY,next);if(localStorage.getItem(TONE_KEY)!==next)throw Error('readback');syncTone();feedback.textContent='';}catch(e){feedback.textContent='外观保存失败，请检查存储空间后重试。';}}
  function link(label,path){var a=el('a','',label);a.href=new URL(path,base).href;return a;}
  function close(restore){if(!shell)return;shell.removeAttribute('data-at-open');if(drawer){drawer.inert=true;drawer.setAttribute('aria-hidden','true');}if(scrim)scrim.tabIndex=-1;if(opener)opener.setAttribute('aria-expanded','false');locked.forEach(function(item){item.node.inert=item.before;});locked=[];if(restore&&lastFocus&&lastFocus.isConnected)lastFocus.focus();}
