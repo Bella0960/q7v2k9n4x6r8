@@ -242,7 +242,6 @@
       expectedRaw = walletSnapshotOrigins.get(wallet);
       baselineKnown = true;
     }
-    if (!baselineKnown) return { ok: false, reason: 'snapshot-required' };
     var serialized;
     try {
       serialized = JSON.stringify(wallet);
@@ -253,6 +252,7 @@
       if (existingRaw != null && !readWalletForMutation('workData', existingRaw)) {
         return { ok: false, reason: 'invalid-store' };
       }
+      if (!baselineKnown) return { ok: false, reason: 'snapshot-required' };
       if (existingRaw !== expectedRaw) {
         return { ok: false, reason: 'stale-wallet' };
       }
