@@ -59,19 +59,23 @@
   }
   function read(roleId,now) {
     try {var data=JSON.parse(localStorage.getItem(storyKey(roleId))||'null');
+      if(data&&global.InspectPhoneAccountGuard&&!global.InspectPhoneAccountGuard.canRead(data))return null;
       if(data&&data.schema===1&&data.roleId===String(roleId)&&data.sections&&Array.isArray(data.facts)&&data.facts.length&&typeof data.sections==='object')return data;
     }catch(e){}
     return null;
   }
   function save(data) {
     try {
-      var key=storyKey(data.roleId);
+      var key=storyKey(data.roleId),guard=global.InspectPhoneAccountGuard;
+      if(guard&&guard.state().mode==='blocked')return false;
       // The chat tab may have just recorded which clue was offered to an AI
       // reply. Preserve that marker if the inspect tab still holds an older
       // in-memory copy. This merges delivery metadata, not private records
       // across roles or accounts.
       var persisted=null;
       try {persisted=JSON.parse(localStorage.getItem(key)||'null');}catch(ignore){}
+      if(guard&&persisted&&!guard.canRead(persisted))return false;
+      if(guard&&!guard.stamp(data))return false;
       if(persisted&&persisted.roleId===data.roleId&&Array.isArray(persisted.interactions)){
         var own=arr(data.interactions).slice(),byId={};
         own.forEach(function(e){if(e&&e.id)byId[e.id]=e;});
@@ -494,6 +498,14 @@
     return next;
   }
   function mount(opts) {
+    var accountGuard=global.InspectPhoneAccountGuard;
+    if(accountGuard&&accountGuard.state().mode==='blocked'){
+      if(opts.appTitle)opts.appTitle.textContent='账号会话隔离异常';
+      if(opts.appBody)opts.appBody.innerHTML='<p class="inspect-alert">当前账号作用域尚未通过服务端页面校验。请重新登录后再打开角色手机。</p>';
+      if(opts.appLayer&&opts.appLayer.classList)opts.appLayer.classList.add('open');
+      global.InspectPhoneFeature.onUnlock=function(){};
+      return global.InspectPhoneFeature;
+    }
     var role=opts.role, roleId=String(role.id!==undefined&&role.id!==null?role.id:opts.requestedId||'0');
     var now=new Date(),existing=read(roleId,now);
     var data=existing?carryForward(existing,role,roleId,now):fallback(role,roleId,now);
