@@ -175,3 +175,20 @@ test('native bottom navigation retains its original route owner and safe-area sp
  assert.match(css,/bottom:max\(10px,env\(safe-area-inset-bottom\)\)!important/);
  assert.match(css,/\.floating-nav \.nav-ico svg\{/);
 });
+
+test('detail adapter leaves original send, media and quote lifecycle alone',()=>{
+ const h=fixture('detail');
+ h.start();
+ assert.equal(h.shell.getAttribute('data-at-surface'),'detail');
+ assert.equal(h.getBar(),undefined);
+ assert.match(pages.detail,/id="chat-form"/);
+ assert.match(pages.detail,/id="chat-messages"/);
+ assert.match(pages.detail,/id="quoteBar"/);
+ assert.match(pages.detail,/id="stickerPanelOverlay"/);
+ assert.match(pages.detail,/atmosphere-composer\.js\?v=20261112c1/);
+ assert.match(css,/\[data-at-surface="detail"\] #quoteBar/);
+});
+test('moment liked action stays visually distinct in both monochrome tones',()=>{
+ assert.match(css,/\[data-at-surface="moments"\] \.action-btn\.liked\s*\{/);
+ assert.match(css,/\[data-at-surface="moments"\] \.action-btn\.liked svg\s*\{/);
+});
