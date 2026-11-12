@@ -58,7 +58,7 @@ function setup(roleId='test-note-owner',store=new Map()) {
   };
   const start=()=>{mount();window.InspectPhoneFeature.onUnlock();action('grant');action('all');action('start');};
   return {window,store,key,read,appBody,appTitle,start,mount,action,app,detail,submit,
-    failWrites(x){quota=x;},handlers};
+    failWrites(x){quota=x;},setApiResponse(fn){window.PhoneStorage.getApiConfig=()=>({apiKey:'test-only'});window.PhoneAPI={completeJSON:fn};},handlers};
 }
 
 test('备忘录可以新建，保存完整文字和角色可见事件；下一次正常AI回复可引用',()=>{
@@ -148,4 +148,29 @@ test('所有 App 列表不添加重复箭头；含 HTML 字符的用户留言只
   assert.doesNotMatch(u.appBody.innerHTML,/<img src=x onerror=/);
   assert.match(cssSource,/\.nv-tap \.nv-chevron,\.nv-chevron\{display:none!important\}/);
   assert.doesNotMatch(nativeSource,/<span class="nv-chevron" aria-hidden="true">/);
+});
+
+
+test('AI刷新不能删除用户亲手写的备忘录和朋友圈评论',async()=>{
+  const u=setup('refresh-keep-role');u.start();u.app('notes');u.action('newNote');
+  u.submit('inspectNoteEditForm',{title:'我写的不能丢',text:'这一条是访客亲自写给角色的。'});
+  const before=u.read(),generatedNotes=JSON.parse(JSON.stringify(before.sections.notes));
+  generatedNotes.notes=generatedNotes.notes.filter(x=>x.lastEditedBy!=='viewer');
+  generatedNotes.notes[0].title='AI 新剧情更新';
+  u.setApiResponse(async()=>({ok:true,data:generatedNotes}));
+  u.action('refresh');
+  for(let i=0;i<7;i++)await Promise.resolve();
+  assert.ok(u.read().sections.notes.notes.some(n=>n.title==='我写的不能丢'));
+  assert.ok(u.read().sections.notes.notes.some(n=>n.title==='AI 新剧情更新'));
+  u.app('moments');u.detail('moment',0);
+  u.submit('inspectMomentComment',{text:'这句话是我写给角色的评论'});
+  const next=u.read(),generated=JSON.parse(JSON.stringify(next.sections.moments));
+  generated.moments[0].comments=generated.moments[0].comments.filter(x=>x.origin!=='user_on_fictional_phone');
+  generated.moments[0].text+='（新内容）';
+  u.setApiResponse(async()=>({ok:true,data:generated}));
+  u.action('refresh');
+  for(let i=0;i<7;i++)await Promise.resolve();
+  const saved=u.read().sections.moments.moments;
+  assert.ok(saved.some(m=>m.comments.some(c=>c.text==='这句话是我写给角色的评论')));
+  assert.ok(saved.some(m=>m.text.includes('新内容')));
 });
