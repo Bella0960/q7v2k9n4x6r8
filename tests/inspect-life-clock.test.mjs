@@ -126,3 +126,33 @@ test('日记完整正文按角色身份处理，学生不会突然写下班经�
  assert.ok(s.sections.notes.notes.every(x=>x.text.length>40));
  assert.ok(s.sections.notes.notes.every(x=>!x.text.includes('下班后')));
 });
+
+
+test('真实页面挂载跨天以后会把累积的记录写入同一角色缓存',()=>{
+ let fakeNow=at('2026-11-01');
+ class ClockDate extends Date{
+   constructor(...args){super(...(args.length?args:[fakeNow]));}
+   static now(){return fakeNow;}
+ }
+ const storageData=new Map(),window={PhoneStorage:{getApiConfig(){return {};}}};
+ const storage={getItem:k=>storageData.get(k)||null,setItem(k,v){storageData.set(k,String(v));}};
+ function node(){return {innerHTML:'',textContent:'',classList:{add(){},remove(){}},addEventListener(){}};}
+ const document={querySelector(){return node();},getElementById(){return node();}};
+ const runtime={window,document,localStorage:storage,Date:ClockDate,Math,JSON,Number,String,Array,Object,console};
+ vm.runInNewContext(source,runtime);
+ vm.runInNewContext(feature,runtime);
+ const role={id:'integration',name:'小林',occupation:'大学生',description:'在校大学生'};
+ function mount(){window.InspectPhoneFeature.mount({role,requestedId:role.id,appBody:node(),appTitle:node(),appLayer:node()});}
+ mount();
+ const key=window.InspectPhoneFeature.storyKey('integration');
+ assert.equal(JSON.parse(storage.getItem(key)).lifeClock.episodes,0);
+ fakeNow=at('2026-11-04');mount();
+ const d=JSON.parse(storage.getItem(key));
+ assert.equal(d.lifeClock.episodes,3);
+ assert.equal(d.sections.notes.notes.filter(x=>x.origin==='autonomous_story').length,3);
+ assert.equal(d.sections.forum.posts.filter(x=>x.origin==='autonomous_story').length,3);
+ assert.equal(d.sections.chat.contacts[1].messages.filter(x=>x.origin==='autonomous_story').length,6);
+ const original=JSON.stringify(d.sections.notes.notes);
+ mount();
+ assert.equal(JSON.stringify(JSON.parse(storage.getItem(key)).sections.notes.notes),original);
+});
