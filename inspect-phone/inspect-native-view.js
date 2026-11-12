@@ -103,7 +103,7 @@
         title='备忘录';
         var text=String(note.text||'');
         body='<div class="nv-note-editor"><div class="nv-note-date">'+esc(when(note.updatedAt))+'</div><h1>'+esc(note.title)+'</h1>'+
-          paper(text)+'</div><div class="nv-edit-foot">'+esc(when(note.createdAt))+(v.kind==='note'?'<button type="button" data-action="editNote">编辑</button>':'')+'</div>';
+          paper(text)+'</div><div class="nv-edit-foot">'+esc(when(note.createdAt))+(v.kind==='note'?'<span class="nv-note-tools"><button type="button" data-action="editNote">编辑</button><button type="button" data-action="chatAboutNote">聊聊这件事</button></span>':'')+'</div>';
       } else {
         title='备忘录';
         body='<div class="nv-notes-index"><div class="nv-notes-heading"><h1>备忘录</h1><button type="button" data-action="newNote" aria-label="新建备忘录">新建</button></div><div class="nv-search">⌕　搜索备忘录</div>'+
