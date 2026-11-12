@@ -28,3 +28,12 @@ This is an implementation draft, not a visually accepted finished theme. Do not 
 ## Rollback
 
 Switch to any previous store theme. No chat, cover or bubble data is deleted or migrated. Reverting this patch removes the optional theme; the old allow-list falls back to default for its unknown ID. The tone key is harmless and can remain. No main merge, service-worker bump, production deployment, API calls or APK build occurred.
+
+
+## 2026-11-12 continuation — composer/theme CSS collision
+
+- Continued on the existing `task-THEME-ATMOSPHERE-001/monochrome-chat` branch; no new duplicate theme or replacement of the previous implementation.
+- Found the late legacy sender at the end of `chat/chat/chat-detail.html`. It created `#myFloatSend` while the original native form already had a submit button. When `atmosphere` is active, the legacy overlay is removed and the original form submit is restored. Changing to an older theme restores its original sender behavior; no chat message handler is rewritten.
+- The same page has late unscoped `!important` gray message-stage, white composer, absolute sender and extra input margin declarations. Theme-scoped, higher-specificity rules now protect both atmosphere tones, preserve a single in-flow sender, and fit the phone shell to `100dvh` when available.
+- Updated Node source/behavior assertions and Playwright acceptance to check one native submit button, no duplicate, transparent stage, dark composer, and width at mobile sizes.
+- **Verification:** repository changes and assertions have been authored; the Node and Playwright suites have **not been executed** in this connector-only session. Full-checkout build, CI runner execution, and true mobile visual review are still required. No merge, deploy or APK generated.
