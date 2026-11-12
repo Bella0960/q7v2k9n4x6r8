@@ -10,14 +10,24 @@
 
   // ---------- 通用：向聊天插入一条展示消息（不触发 AI 请求） ----------
   function insertChatMessage(msg) {
-    if (!msg || typeof msg !== 'object') return;
+    if (!msg || typeof msg !== 'object') return false;
     if (!msg.time) msg.time = Date.now();
     if (!msg.role) msg.role = 'user';
-    const list = loadMessages();
-    list.push(msg);
-    saveMessages(list);
+    // Build a fresh snapshot: a failed write must not mutate a shared history array.
+    var saved = false;
+    try {
+      var history = loadMessages();
+      if (Array.isArray(history)) saved = saveMessages(history.concat([msg])) === true;
+    } catch (error) {
+      saved = false;
+    }
+    if (!saved) {
+      if (typeof showToast === 'function') showToast('聊天记录保存失败，消息未发送');
+      return false;
+    }
     appendMessageToDOM(msg);
     if (chatMessages) chatMessages.scrollTop = chatMessages.scrollHeight;
+    return true;
   }
 
   // 隐藏指令：作为 user 消息进入 AI 上下文，但不在界面渲染气泡（sendMsg silent 模式）
@@ -132,7 +142,7 @@
       try { localStorage.setItem('myLocation', place); } catch (e) {}
       closeModal();
       // 展示：右侧位置卡片气泡
-      insertChatMessage({ role: 'user', type: 'location', location: { label: place } });
+      if (!insertChatMessage({ role: 'user', type: 'location', location: { label: place } })) return;
       // 演绎：把「我在xxx」作为隐藏消息发给 AI，由 AI 按人设回应
       sendSilentInstruction('我在' + place);
     };
@@ -180,7 +190,7 @@
       const list = lsGet(ANNIV_KEY, []);
       list.push({ id: uid(), name: name, date: date });
       lsSet(ANNIV_KEY, list);
-      insertChatMessage({ role: 'user', type: 'anniversary', anniversary: { name: name, date: date, daysText: daysUntil(date) } });
+      if (!insertChatMessage({ role: 'user', type: 'anniversary', anniversary: { name: name, date: date, daysText: daysUntil(date) } })) { renderAnniversaryList(); return; }
       sendSilentInstruction('[系统动作：我标记了一个纪念日「' + name + '」（' + date + '，' + daysUntil(date) + '）]');
       renderAnniversaryList();
     };
@@ -197,7 +207,7 @@
         const a = lsGet(ANNIV_KEY, []).find(function (x) { return x.id === id; });
         if (!a) return;
         closeModal();
-        insertChatMessage({ role: 'user', type: 'anniversary', anniversary: { name: a.name, date: a.date, daysText: daysUntil(a.date) } });
+        if (!insertChatMessage({ role: 'user', type: 'anniversary', anniversary: { name: a.name, date: a.date, daysText: daysUntil(a.date) } })) return;
         sendSilentInstruction('[系统动作：我向你提到了纪念日「' + a.name + '」（' + a.date + '，' + daysUntil(a.date) + '）]');
       };
     });
@@ -251,7 +261,7 @@
         const items = lsGet(key, []);
         if (!items.length) { showToast('暂无待办可发送'); return; }
         closeModal();
-        insertChatMessage({ role: 'user', type: 'todo', todo: { items: items } });
+        if (!insertChatMessage({ role: 'user', type: 'todo', todo: { items: items } })) return;
         const doneCount = items.filter(function (i) { return i.done; }).length;
         sendSilentInstruction('[系统动作：我 shared 了我们的待办清单（共 ' + items.length + ' 项，已完成 ' + doneCount + ' 项）：' + items.map(function (i) { return (i.done ? '✓' : '○') + i.text; }).join('、') + ']');
       };
@@ -300,14 +310,15 @@
     var raw = null;
     try { raw = sessionStorage.getItem(key); } catch (e) { return; }
     if (!raw) return;
-    try { sessionStorage.removeItem(key); } catch (e) {} // 读完即清，刷新不重复插入
     var result = null;
     try { result = JSON.parse(raw); } catch (e) { return; }
     if (!result || (result.type !== 'voice' && result.type !== 'video')) return;
     var text = result.connected
       ? '通话时长 ' + formatCallDuration(result.duration || 0)
       : '已取消';
-    insertChatMessage({ role: 'user', type: 'call', call: { type: result.type, text: text } });
+    if (!insertChatMessage({ role: 'user', type: 'call', call: { type: result.type, text: text } })) return;
+    // Keep the pending call result on write failure so a later page load can retry it.
+    try { sessionStorage.removeItem(key); } catch (e) {}
   }
   window.addEventListener('load', consumeCallResult);
 
@@ -361,7 +372,7 @@
         list.push({ id: uid(), title: title, content: content, date: date });
         lsSet(MOMENT_KEY, list);
         closeModal();
-        insertChatMessage({ role: 'user', type: 'moment', moment: { title: title, content: content, date: date } });
+        if (!insertChatMessage({ role: 'user', type: 'moment', moment: { title: title, content: content, date: date } })) return;
         sendSilentInstruction('[系统动作：我记录了一个特别时刻「' + title + '」' + (content ? '：' + content : '') + (date ? '（' + date + '）' : '') + ']');
       };
       modalBody.querySelectorAll('.mom-del').forEach(function (b) {
@@ -377,7 +388,7 @@
           const m = loadMomentList().find(function (x) { return x.id === id; });
           if (!m) return;
           closeModal();
-          insertChatMessage({ role: 'user', type: 'moment', moment: { title: m.title, content: m.content, date: m.date } });
+          if (!insertChatMessage({ role: 'user', type: 'moment', moment: { title: m.title, content: m.content, date: m.date } })) return;
           sendSilentInstruction('[系统动作：我向你分享了特别时刻「' + m.title + '」' + (m.content ? '：' + m.content : '') + ']');
         };
       });
@@ -439,7 +450,7 @@
         var r = roles[idx];
         if (!r) return;
         closeModal();
-        insertChatMessage({ role: 'user', type: 'card', card: { id: String(r.id), name: r.name || '', avatar: r.avatar || '' } });
+        if (!insertChatMessage({ role: 'user', type: 'card', card: { id: String(r.id), name: r.name || '', avatar: r.avatar || '' } })) return;
         sendSilentInstruction('[系统动作：我发了一张「' + (r.name || '') + '」的名片给你]');
       };
     });
@@ -668,7 +679,7 @@
       const t = document.getElementById('vmText').value.trim();
       if (!t) { showToast('请先写下要说的话'); return; }
       closeModal();
-      insertChatMessage({ role: 'user', type: 'voice', duration: picked, text: t });
+      if (!insertChatMessage({ role: 'user', type: 'voice', duration: picked, text: t })) return;
       sendSilentInstruction('[语音消息] ' + t);
     };
   }
@@ -771,12 +782,12 @@
       var g = GIFT_CATALOG[picked];
       var msg = (document.getElementById('giftMsg').value || '').trim();
       closeModal();
-      insertChatMessage({
+      if (!insertChatMessage({
         role: 'user', type: 'gift',
         gift: { id: g.id, name: g.name, color: g.color, wrap: g.wrap, tag: g.tag,
                 img: g.img, message: msg },
         text: '[礼物] ' + g.name
-      });
+      })) return;
       // 让 AI 惊喜地收下礼物
       var silent = '[我送了你一份礼物：' + g.name + (msg ? '，附上一句悄悄话：“' + msg + '”' : '') + '。请表现出收到礼物时的惊喜与开心，不要真的去拆，用你的反应来回应这份心意。]';
       sendSilentInstruction(silent);
@@ -942,19 +953,19 @@
     document.getElementById('vimg-send').onclick=function(){
       var title=document.getElementById('vimg-title').value.trim()||'图片';
       var desc=document.getElementById('vimg-desc').value.trim();
-      closeModal(); insertChatMessage({role:'user',type:'virtual-image',title:title,description:desc,text:'[图片] '+title+(desc?'：'+desc:'')});
+      closeModal(); if (!insertChatMessage({role:'user',type:'virtual-image',title:title,description:desc,text:'[图片] '+title+(desc?'：'+desc:'')})) return;
       sendSilentInstruction('我给你发了一张图片，图片标题是「'+title+'」'+(desc?'，画面描述：'+desc:'')+'。请自然地回应。');
     };
   }
   function featureEmoji() {
     var chars=['微笑','开心','赞','爱心','抱抱','疑问','叹气','晚安','收到','谢谢','加油','无语'];
     openModal('表情', '<div class="x-core-grid">'+chars.map(function(x){return '<button data-word="'+x+'">'+x+'</button>';}).join('')+'</div>');
-    modalBody.querySelectorAll('[data-word]').forEach(function(b){b.onclick=function(){closeModal();insertChatMessage({role:'user',type:'text',text:'['+b.dataset.word+']'});if(typeof sendMsg==='function')sendMsg('['+b.dataset.word+']');};});
+    modalBody.querySelectorAll('[data-word]').forEach(function(b){b.onclick=function(){closeModal();if (!insertChatMessage({role:'user',type:'text',text:'['+b.dataset.word+']'})) return;if(typeof sendMsg==='function')sendMsg('['+b.dataset.word+']');};});
   }
   function featureAside() {
     openModal('旁白与动作', '<div class="x-core-card"><div class="x-core-muted">写下动作、神态或场景旁白</div><textarea class="x-core-input" id="asideText" rows="4" placeholder="例如：我轻轻推开门，探头看向你。"></textarea><div class="x-core-actions"><button class="x-btn x-btn-ghost" id="asideCancel">取消</button><button class="x-btn x-btn-primary" id="asideSend">发送并让角色回应</button></div></div>');
     document.getElementById('asideCancel').onclick=closeModal;
-    document.getElementById('asideSend').onclick=function(){var t=document.getElementById('asideText').value.trim();if(!t)return;closeModal();insertChatMessage({role:'user',type:'aside',text:t});sendSilentInstruction('[旁白/动作描写] '+t);};
+    document.getElementById('asideSend').onclick=function(){var t=document.getElementById('asideText').value.trim();if(!t)return;closeModal();if (!insertChatMessage({role:'user',type:'aside',text:t})) return;sendSilentInstruction('[旁白/动作描写] '+t);};
   }
   function coreClearChat() {
     openModal('清空聊天记录','<div class="x-core-card">此操作会清除此角色当前会话的聊天记录，无法撤销。<div class="x-core-actions"><button class="x-btn x-btn-ghost" id="clearNo">取消</button><button class="x-btn x-btn-primary" id="clearYes">确认清空</button></div></div>');
