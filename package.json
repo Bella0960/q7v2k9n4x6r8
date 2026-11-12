@@ -38,6 +38,7 @@
     "test:group:ui": "node --test tests/group-ui-collapse-invite.test.mjs",
     "test:group:invite-e2e": "node --test tests/group-chat-invite-e2e.test.mjs",
     "test:wechat:browser": "node tests/wechat-theme-browser.mjs",
+    "test:atmosphere:browser": "node tests/atmosphere-five-pages-browser.mjs",
     "test:clock:palette": "node tests/clock-palette-longpress.test.mjs",
     "test:chat:isolation:browser": "node tests/chat-data-isolation-browser.mjs",
     "test:chat:bubbles": "node tests/chat-reply-bubbles-browser.mjs",
