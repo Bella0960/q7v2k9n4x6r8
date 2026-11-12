@@ -8355,6 +8355,17 @@
                     var sticker = entry.sticker;
                     var item = document.createElement('div');
                     item.className = 'sticker-panel-item';
+                    // Keep the existing send/favorite handlers. Keyboard users can
+                    // select a sticker from the new horizontal atmosphere carousel.
+                    item.setAttribute('role', 'button');
+                    item.tabIndex = 0;
+                    item.setAttribute('aria-label', '发送表情：' + String(sticker.desc || '图片表情'));
+                    item.addEventListener('keydown', function (event) {
+                        if (event.target !== item) return;
+                        if (event.key !== 'Enter' && event.key !== ' ') return;
+                        event.preventDefault();
+                        item.click();
+                    });
 
                     var stickerThumb = document.createElement('img');
                     stickerThumb.src = String(sticker.img || '');
