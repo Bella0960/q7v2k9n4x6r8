@@ -281,9 +281,9 @@ test('mobile back navigation reloads persisted chapters and a failed refresh lea
   assert.match(home,/posts=loadPosts\(\)/);
   assert.match(home,/render\(\);\s*scroll\.scrollTop=y/);
   assert.match(home,/fresh\.length!==gossipPlans\.length/);
-  assert.match(home,/const before=posts;/);
-  assert.match(home,/posts=fresh\.concat\(posts\.map\(p=>\(\{\.\.\.p,comments:/);
-  assert.match(home,/if\(!save\(\)\)\{posts=before;return false\}/);
+  assert.match(home,/const commit=commitForumRefreshData\(fresh,data\.activity,forumMakeAIComment/);
+  assert.match(home,/posts=commit\.posts/);
+  assert.match(home,/if\(!commit\.ok\)/);
 });
 
 
