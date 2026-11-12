@@ -12,7 +12,9 @@
   function read(roleId,storage){
     var local=storage||global.localStorage, story;
     try {story=JSON.parse(local.getItem(key(roleId))||'null');}catch(e){return null;}
-    return story&&String(story.roleId)===String(roleId)?story:null;
+    if(!story||String(story.roleId)!==String(roleId))return null;
+    var guard=global.InspectPhoneAccountGuard;
+    return !guard||guard.canRead(story)?story:null;
   }
   function makeEvent(type,content,sourceId){
     var now=Date.now();
@@ -22,6 +24,8 @@
   }
   function record(data,type,content,sourceId){
     if(!data||!data.roleId||!TYPES[type])return null;
+    var guard=global.InspectPhoneAccountGuard;
+    if(guard&&!guard.stamp(data))return null;
     var event=makeEvent(type,content,sourceId);
     if(!event.text.trim())return null;
     data.interactions=list(data.interactions).filter(function(x){
@@ -68,6 +72,8 @@
   // imply the fictional role read a note or liked/commented on a Moment.
   function requestFocus(data,kind,entry,now){
     if(!data||!data.roleId||!entry||!['note','moment','forum'].includes(kind))return null;
+    var guard=global.InspectPhoneAccountGuard;
+    if(guard&&!guard.stamp(data))return null;
     var at=Number(now)||Date.now(),sourceId=str(entry.sourceId,100).trim();
     var title=str(entry.title,90).trim(),excerpt=str(entry.text,600).trim();
     if(!sourceId||(!title&&!excerpt))return null;
@@ -188,6 +194,8 @@
       }
     }
     if(!changed)return true;
+    var guard=global.InspectPhoneAccountGuard;
+    if(guard&&!guard.stamp(story))return false;
     try{
       var encoded=JSON.stringify(story),k=key(roleId);
       local.setItem(k,encoded);
