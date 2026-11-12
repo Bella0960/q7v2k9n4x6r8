@@ -50,7 +50,8 @@
     "test:accounts:all": "npm run test:accounts:gate-contract && npm run test:accounts && npm run test:admin:center && npm run test:preview:config && npm run build && npm run test:cloud:push && npm run test:font:runtime && npm run test:desktop:layout && npm run test:pwa:navigation",
     "test:cloud-push:acceptance": "node scripts/run-cloud-push-acceptance.mjs",
     "test:chat:reply": "node --test tests/chat-reply-bubble-mode.test.mjs tests/chat-proactive-bubbles.test.mjs",
-    "test:chat:bubbles": "node tests/chat-reply-bubbles-browser.mjs"
+    "test:chat:bubbles": "node tests/chat-reply-bubbles-browser.mjs",
+    "test:wallet:mobile-engines": "node tests/wallet-mobile-engines.browser.mjs"
   },
   "devDependencies": {
     "playwright": "^1.64.1",
