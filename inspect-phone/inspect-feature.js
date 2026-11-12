@@ -88,6 +88,14 @@
         own.sort(function(a,b){return num(a.at,0)-num(b.at,0);});
         data.interactions=own.slice(-30);
       }
+      if(persisted&&persisted.roleId===data.roleId&&persisted.pendingChatFocus){
+        var oldFocus=persisted.pendingChatFocus,currentFocus=data.pendingChatFocus;
+        // A stale inspect tab must never resurrect an already consumed focus.
+        if(!currentFocus||num(oldFocus.at,0)>num(currentFocus.at,0)||
+          oldFocus.id===currentFocus.id&&num(oldFocus.usedAt,0)>num(currentFocus.usedAt,0)){
+          data.pendingChatFocus=Object.assign({},oldFocus);
+        }
+      }
       var encoded=JSON.stringify(data);
       localStorage.setItem(key,encoded);
       // Some embedded mobile storage implementations ignore writes without throwing.
@@ -899,10 +907,33 @@
     }
     function openRealChat() {
       var bridge=global.InspectInteractionBridge;
-      if(!bridge||typeof bridge.chatHref!=='function'){hint('聊天入口暂时不可用。');return;}
+      if(!bridge||typeof bridge.chatHref!=='function'||
+        typeof bridge.requestFocus!=='function'){hint('聊天入口暂时不可用。');return;}
+      if(!permission||selected.indexOf(current)<0||!view){hint('请先选择要查看的内容。');return;}
+      var kind,item,sourceId;
+      if(current==='notes'&&view.kind==='note'){
+        kind='note';item=arr(data.sections.notes.notes)[view.index];
+        if(item)sourceId=item.noteId||item.storyEventId||'note:'+roleId+':'+String(item.createdAt);
+      }else if(current==='moments'&&view.kind==='moment'){
+        kind='moment';item=arr(data.sections.moments.moments)[view.index];
+        if(item)sourceId=item.storyEventId||item.id||'moment:'+roleId+':'+String(item.time);
+      }
+      if(!item||!sourceId){hint('这条内容暂时无法连接到角色聊天。');return;}
       if(global.location&&/\.workers\.dev$/i.test(global.location.hostname||'')){
-        hint('互动已保存在当前预览角色中。独立预览与正式聊天不同源，合并到正式站后才能连接角色聊天。');
+        hint('当前预览与正式聊天不在同一个域名。正式站同源后才能带着这条内容进入角色聊天。');
         return;
+      }
+      var previous=data.pendingChatFocus?Object.assign({},data.pendingChatFocus):null;
+      var pending=bridge.requestFocus(data,kind,{
+        sourceId:String(sourceId),
+        title:kind==='note'?item.title:'朋友圈动态',
+        text:kind==='note'?item.text:item.text
+      });
+      if(!pending){hint('这条内容暂时无法准备为聊天话题。');return;}
+      if(!commit()){
+        if(previous)data.pendingChatFocus=previous;
+        else delete data.pendingChatFocus;
+        notice='当前存储空间不足，聊天话题没有保存。';render();return;
       }
       global.location.assign(bridge.chatHref(roleId));
     }
