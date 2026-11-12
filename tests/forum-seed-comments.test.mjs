@@ -562,7 +562,7 @@ test('forum refresh / AI 改标题重复讲同一长故事：保留旧帖并过�
   const longBody = '楼主昨天在街角花店看见熟悉的蓝色雨伞，今天同一把伞又出现在车站，旁边还放着一张写有周五日期的纸条。';
   const current = [{ id: 'old', title: '昨天的线索', body: longBody, comments: [{ name: '旧网友', text: '我记得这把伞' }] }];
   const fresh = [
-    { id: 'renamed', title: '车站的新发现', body: '  ' + longBody + '\\n', comments: [] },
+    { id: 'renamed', title: '车站的新发现', body: '  ' + longBody + String.fromCharCode(10), comments: [] },
     { id: 'new-one', title: '另一件事', body: '今天有人在小区门口整理遗失物招领，居民们逐个确认了物品归属，最后管理员把清单贴到了公告栏。', comments: [] },
     { id: 'new-two', title: '换个标题继续讲', body: '今天有人在小区门口整理遗失物招领，居民们逐个确认了物品归属，最后管理员把清单贴到了公告栏。', comments: [] }
   ];
