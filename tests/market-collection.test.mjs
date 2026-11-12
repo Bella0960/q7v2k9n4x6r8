@@ -45,3 +45,6 @@ test('new cache revision lists exact storefront resources and retains legacy the
  assert.ok(sw.includes("phone-app-pwa-v218"));
  for(const id of ['default','wechat','imessage','qq','silver-butterfly','atmosphere'])assert.ok(page.includes("id:'"+id+"'"));
 });
+test('outfit editing can narrow scope or explicitly recapture without duplicating or applying it',async()=>{
+ const x=setup();const item=await x.model.saveOutfit('first',['theme','list']);x.beauty.setThemePreset('wechat');await x.model.editOutfit(item.id,'renamed',['theme'],'global',false);assert.equal(x.model.read().outfits[0].data.theme,'default');await x.model.editOutfit(item.id,'updated',['theme','list'],'global',true);assert.equal(x.model.read().outfits.length,1);assert.equal(x.model.read().outfits[0].data.theme,'wechat');assert.equal(x.beauty.getThemePreset(),'wechat');
+});

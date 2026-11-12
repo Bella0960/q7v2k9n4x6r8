@@ -89,11 +89,26 @@
     await global.MAOMAOWallpaperStore.saveByKey(item.key,dataUrl,{requireIDB:true});
     try{mutate(v=>v.creations.push(item));}catch(error){await global.MAOMAOWallpaperStore.removeByKey(item.key).catch(()=>{});throw error;}return item;
   }
+  async function editOutfit(itemId,label,selected,scope,recapture){
+    const old=read().outfits.find(x=>x.id===itemId);if(!old)throw Error('搭配已不存在');
+    selected=selection(selected);const item={...copy(old),name:name(label),scopes:selected,updatedAt:Date.now()};
+    let imageKey='';
+    if(recapture){
+      item.data=await capture(selected,scope||old.data.bubbles?.scope||'global');
+      if(/data:image\//.test(JSON.stringify(item.data.bubbles||{})))throw Error('当前气泡含有嵌入图片，请先在聊天美化中保存素材预设');
+      if(item.data.wallpaper){imageKey='market_outfit_wallpaper_'+id();await global.MAOMAOWallpaperStore.saveByKey(imageKey,item.data.wallpaper,{requireIDB:true});item.data.wallpaper={key:imageKey};}
+    }else{
+      if(selected.some(s=>!old.scopes.includes(s)))throw Error('新增范围请使用“用当前外观更新”');
+      item.data=Object.fromEntries(selected.map(s=>[s,item.data[s]]));
+    }
+    try{mutate(v=>{const i=v.outfits.findIndex(x=>x.id===itemId);if(i<0)throw Error('搭配已不存在');v.outfits[i]=item;});}catch(error){if(imageKey)await global.MAOMAOWallpaperStore.removeByKey(imageKey).catch(()=>{});throw error;}
+    return copy(item);
+  }
   function rename(type,itemId,label){mutate(v=>{const item=v[type].find(x=>x.id===itemId);if(!item)throw Error('记录不存在');item.name=name(label);});}
   function remove(type,itemId){
     // Keep referenced image bytes for backup/recovery. Removing metadata never clears active appearance.
     mutate(v=>{v[type]=v[type].filter(x=>x.id!==itemId);});
   }
-  global.MAOMAOMarketCollection=Object.freeze({read,scopes,capture,saveOutfit,applyOutfit,addCreation,rename,remove,
+  global.MAOMAOMarketCollection=Object.freeze({read,scopes,capture,saveOutfit,applyOutfit,addCreation,editOutfit,rename,remove,
     favorite(itemId){return mutate(v=>{const i=v.favorites.indexOf(itemId);if(i<0)v.favorites.push(itemId);else v.favorites.splice(i,1);});}});
 })(window);

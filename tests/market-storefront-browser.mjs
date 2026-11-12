@@ -18,7 +18,13 @@ for(const width of [320,375,390,430,1280]){
  const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);assert.equal(overflow,false);
  const columns=await page.locator('.sf-grid').first().evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length);assert.equal(columns,2);
  const nav=await page.locator('#categoryNav').boundingBox();assert.ok(nav.y+nav.height<=845);assert.ok(nav.y>700);
- const rail=page.locator('.sf-featured');await rail.evaluate(el=>el.scrollLeft=el.clientWidth);assert.ok(await rail.evaluate(el=>el.scrollLeft>0));
+ const rail=page.locator('.sf-featured');
+ const touch=await ctx.newCDPSession(page),railBox=await rail.boundingBox();
+ const startX=railBox.x+railBox.width*.8,y=railBox.y+railBox.height*.5;
+ await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:startX,y}]});
+ for(let i=1;i<=6;i++)await touch.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:startX-i*railBox.width*.09,y}]});
+ await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+ await page.waitForTimeout(400);assert.ok(await rail.evaluate(el=>el.scrollLeft>0),'native touch rail scroll');await touch.detach();
  const before=await page.evaluate(()=>JSON.stringify({...localStorage}));
  await page.locator('[data-sf="detail"][data-id="atmosphere"]').last().click();
  for(const id of ['desktop','list','detail','moments','mine','home'])await page.locator('[data-sf="page"][data-id="'+id+'"]').click();

@@ -25,17 +25,17 @@ Application captures prior state and restores exact sparse storage on failure; a
 
 ## Executed evidence
 
-- Node `tests/market-collection.test.mjs`: **9/9 pass**, using real ChatBeauty in a VM, controlled storage failures, exact sparse rollback, role/background exclusion, no image bytes in metadata, corrupt collection rejection and exact PWA asset references.
-- Chromium `tests/market-storefront-browser.mjs`: **6/6 scenarios pass**: widths 320/375/390/430/1280 plus reduced motion. Each width checks no document overflow, two columns, bottom navigation position, rail scroll, all six preview tabs without storage mutation, all six theme setters, favorite persistence, outfit save/reload/rename/apply/delete/cancel, image upload/preview/apply using real IndexedDB and categories.
+- Node `tests/market-collection.test.mjs`: **10/10 pass**, using real ChatBeauty in a VM, controlled storage failures, exact sparse rollback, role/background exclusion, no image bytes in metadata, corrupt collection rejection and exact PWA asset references.
+- Chromium `tests/market-storefront-browser.mjs`: **6/6 scenarios pass**: widths 320/375/390/430/1280 plus reduced motion. Each width checks no document overflow, two columns, bottom navigation position, CDP native touch rail scroll, all six preview tabs without storage mutation, all six theme setters, favorite persistence, outfit save/reload/rename/apply/delete/cancel, image upload/preview/apply using real IndexedDB and categories.
 - Storefront/collection scripts parse; actual storefront page reports no JS errors in these scenarios.
 - Browser tests use generated dummy pixels and fictional data only. No real user data or AI calls.
 
 ## NOT VERIFIED / release blockers
 
 - Full repository `npm run build` and full pre-existing suites: the connector supplied a targeted source snapshot; Git clone authentication was unavailable. Do not substitute a build of stale local checkouts. Existing PWA suite cannot run without the exact full source/build manifest.
-- WebKit executable is absent; iPhone Safari and Android actual devices not available. Chromium width/touch emulation is not device acceptance. Actual drag gestures, OS safe-area/keyboard interactions and installed-PWA update/offline behavior remain pending.
+- WebKit executable is absent; iPhone Safari and Android actual devices not available. Chromium width/touch emulation is not device acceptance. Physical-device gestures, OS safe-area/keyboard interactions and installed-PWA update/offline behavior remain pending.
 - Real old-theme pages and CSS parity, long histories, actual send/quote/media and font-reload behavior are not tested by storefront setter tests. Full-page theme previews remain schematic.
-- Composite snapshot does not yet include icon preset images, uploaded theme CSS packages or independent chat-scene backgrounds. Existing managers remain the real creation/editing paths. Outfit editing currently renames records; recapture/editing of individual stored components is not yet present.
+- Composite snapshot does not yet include icon preset images, uploaded theme CSS packages or independent chat-scene backgrounds. Existing managers remain the real creation/editing paths. Outfit editing supports names, retained scopes and explicit recapture from current appearance; detailed styling continues through the existing editors.
 - End-to-end full backup export/import and multi-tab concurrent application still require tests. Deleting records retains image bytes and does not reclaim storage.
 
 Keep draft. No production deployment or main merge until remaining acceptance is completed and reviewed.
