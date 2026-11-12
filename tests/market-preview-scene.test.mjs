@@ -128,8 +128,8 @@ test('expanded theme tab renders native original catalogue instead of replacing 
   assert.ok(html.includes("theme.id==='"+id+"'"),'special original cover '+id+' is retained');
  }
  assert.match(html,/theme-art-'\+theme\.id/); // QQ/default/iMessage use the original built-in bubble artwork
- assert.match(html,/data-action=\\"theme-apply\\"/);
- assert.match(html,/data-action=\\"chat-list-theme-toggle\\"/);
+ assert.ok(html.includes('data-action="theme-apply"'),'original theme-apply control exists');
+ assert.ok(html.includes('data-action="chat-list-theme-toggle"'),'original chat-list-theme-toggle control exists');
 });
 test('native legacy product details do not pretend to be a live six-screen theme',()=>{
  const start=storefrontSource.indexOf("function detail(id)");
@@ -141,4 +141,14 @@ test('native legacy product details do not pretend to be a live six-screen theme
  assert.match(snippet,/nativeArt\(t\)/);
  assert.doesNotMatch(snippet,/#sfPreview|MAOMAOStorefrontPreview\.render/);
  assert.match(snippet,/真实聊天页面/);
+});
+
+test('named outfit preview uses original theme artwork only when theme scope is saved',()=>{
+ const start=storefrontSource.indexOf('async function recordPreview(encoded)');
+ const end=storefrontSource.indexOf('async function imageData(file)',start);
+ assert.ok(start!==-1&&end>start);
+ const preview=storefrontSource.slice(start,end);
+ assert.match(preview,/item\.scopes\.includes\('theme'\)/);
+ assert.match(preview,/nativeArt\(chosen\)/);
+ assert.doesNotMatch(preview,/host\.innerHTML=scene\(/);
 });
