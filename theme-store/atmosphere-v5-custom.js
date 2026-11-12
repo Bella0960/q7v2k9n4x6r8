@@ -14,11 +14,17 @@
  const editSvg='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14 5 5 5-10.5 10H4v-4.5L14 5Z"/><path d="m12 7 5 5"/></svg>';
  const photoSvg='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m4 17 6-6 4 4 3-3 4 5"/></svg>';
  const musicSvg='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l11-2v13"/><circle cx="6.5" cy="18.5" r="2.5"/><circle cx="17.5" cy="16.5" r="2.5"/></svg>';
+ const portraitSvg='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M4.6 20c.4-4.7 3.2-7.2 7.4-7.2s7 2.5 7.4 7.2"/></svg>';
+ const layerSvg='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="6" width="13.5" height="13.5" rx="2"/><path d="M8 4.5h11.5v11.2"/></svg>';
+ const stickerSvg='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5h8l5 5v8.8A3.2 3.2 0 0 1 15.8 20.5H6A2.5 2.5 0 0 1 3.5 18V6A2.5 2.5 0 0 1 6 3.5Z"/><path d="M14 3.5v5h5M8.2 13.2h.01m6.1 0h.01M8.5 16c1.8 1.7 3.8 1.7 5.9 0"/></svg>';
+ const customIcons={'self-avatar':portraitSvg,'contact-avatar':portraitSvg,
+  'home-cover':photoSvg,'profile-cover':photoSvg,'drawer-cover':layerSvg,
+  'music-cover':musicSvg,'music':musicSvg,'sticker':stickerSvg};
  const toast=txt=>{const n=$('#v5-custom-status');if(n){n.textContent=txt;clearTimeout(n._t);n._t=setTimeout(()=>n.textContent='',3100)}};
  const getUrl=key=>state.urls.get(key)||'';
  function focusLink(label,kind,content){
   const b=document.createElement('button');b.type='button';b.className='v5-custom-row';
-  b.dataset.v5Upload=kind;b.innerHTML='<span class="v5-custom-row-ico">'+(kind.startsWith('music')?musicSvg:photoSvg)+'</span><span class="v5-custom-copy"></span><span class="v5-custom-chevron">›</span>';
+  b.dataset.v5Upload=kind;b.innerHTML='<span class="v5-custom-row-ico">'+(customIcons[kind]||photoSvg)+'</span><span class="v5-custom-copy"></span>';
   const p=b.querySelector('.v5-custom-copy');
   const strong=document.createElement('strong'),small=document.createElement('small');
   strong.textContent=label;small.textContent=content;p.append(strong,small);
@@ -389,6 +395,7 @@
  }
  function init(){
   if(!$('.phone')||!$('.hero')||!$('#music-toggle'))return;
+  document.title='薄影 · V5 精密横滑交互预览';
   buildUI();shortcuts();
   const list=$('#conversations'),msgs=$('#messages');
   const obs=new MutationObserver(decorateAfterRerender);
