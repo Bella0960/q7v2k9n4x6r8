@@ -41,22 +41,24 @@ for(const width of [320,375,390,430,1280]){
  await page.locator('[data-sf="page"][data-id="detail"]').click();
  assert.equal(await page.evaluate(()=>JSON.stringify({...localStorage})),before,'preview must not change storage');
  await page.locator('[data-sf="close"]').click();
- // QQ and WeChat retain separate layouts, and previews do not change the active theme.
- for(const [theme,markers] of [['wechat',['sp-wx-conversation','sp-wx-msg','sp-wx-post','sp-wx-menu']],['qq',['sp-qq-list-row','sp-qq-msg','sp-qq-feed-post','sp-qq-menu']]]){
+ // Old built-in themes render their original project-owned artwork, not fake phone templates.
+ for(const theme of ['wechat','qq','imessage','silver-butterfly','default']){
   await page.locator('.sf-cover[data-id="'+theme+'"]').click();
-  for(const [i,p] of ['list','detail','moments','mine'].entries()){
-   await page.locator('[data-sf="page"][data-id="'+p+'"]').click();
-   assert.equal(await page.locator('#sfPreview .'+markers[i]).count()>0,true,theme+'/'+p+' unique layout');
-  }
-  assert.equal(await page.evaluate(()=>JSON.stringify({...localStorage})),before,'viewing legacy preview is read-only');
+  assert.equal(await page.locator('.sf-native-detail-art .theme-art-'+theme).count(),1,'original '+theme+' theme artwork');
+  assert.equal(await page.locator('#sfPreview').count(),0,'no invented six-screen presentation for '+theme);
+  assert.equal(await page.evaluate(()=>JSON.stringify({...localStorage})),before,'original theme preview is read-only');
   await page.locator('[data-sf="close"]').click();
  }
  await page.locator('[data-category="themes"]').click();
+ assert.equal(await page.locator('.product-grid .product-card').count(),6,'six original theme products stay in native catalogue');
+ assert.equal(await page.locator('.chat-list-theme-grid .product-card').count(),1,'existing independent Messages list theme stays available');
  for(const id of ['wechat','imessage','qq','silver-butterfly','atmosphere','default']){
-  await page.locator('.sf-cover[data-id="'+id+'"]').click();await page.locator('[data-sf="apply-theme"]').click();await page.locator('[data-sf="confirm-apply-theme"]').click();
+  await page.locator('.product-grid [data-sf="detail"][data-id="'+id+'"]').click();await page.locator('[data-sf="apply-theme"]').click();await page.locator('[data-sf="confirm-apply-theme"]').click();
   assert.equal(await page.evaluate(()=>ChatBeauty.getThemePreset()),id);
  }
+ await page.locator('.product-grid [data-sf="detail"][data-id="wechat"]').click();
  await page.locator('[data-sf="favorite"][data-id="wechat"]').click();
+ await page.locator('[data-sf="close"]').click();
  await page.locator('[data-category="mine"]').click();assert.equal(await page.locator('.sf-product').count(),1);
  await page.locator('[data-sf="mine-tab"][data-id="outfits"]').click();await page.locator('[data-sf="save-outfit"]').click();
  await page.locator('#sfName').fill('周末留白');for(const checkbox of await page.locator('[name="scope"]').all())await checkbox.uncheck();await page.locator('[name="scope"][value="theme"]').check();await page.locator('[data-sf="confirm-save"]').click();assert.equal(await page.locator('.sf-record').count(),1);
