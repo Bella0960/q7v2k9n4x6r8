@@ -787,3 +787,10 @@ html.dark .phone-mockup { border-color: rgba(255, 255, 255, 0.08); }
     font-size: 16px;
     font-weight: 600;
 }
+
+/* Airier main settings grouping, preserving the current palette. */
+.phone-mockup > .header { padding-bottom:34px; }
+.phone-mockup > .content .card { margin-bottom:28px; border-radius:22px; padding-block:6px; }
+.phone-mockup > .content .menu-row { padding-block:17px; }
+.phone-mockup > .content .user-row { padding-block:24px; }
+.phone-mockup > .content .menu-row:not(:last-child)::after { opacity:.3; }

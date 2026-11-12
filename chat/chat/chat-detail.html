@@ -1704,6 +1704,16 @@
         @media (prefers-reduced-motion: reduce) {
             .plus-panel-backdrop, .plus-panel-sheet, .plus-item { transition: none !important; }
         }
+
+        .bubble.bubble-voice { padding:10px 14px; min-width:106px; border-radius:16px; box-shadow:none; }
+        .voice-row { height:20px; gap:22px; justify-content:space-between; }
+        .voice-wave { align-items:center; gap:3px; }
+        .local-voice-play { min-width:24px; min-height:24px; font-size:17px; line-height:24px; }
+        .msg-voice { gap:5px; }
+        .voice-text-details { max-width:220px; padding:0 4px; }
+        .voice-text-details summary { cursor:pointer; font-size:10px; line-height:24px; color:#999; list-style:none; }
+        .voice-text-details summary::-webkit-details-marker { display:none; }
+        .voice-transcript { padding:2px 0 6px; font-size:11px; line-height:1.65; }
 </style>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
 
@@ -3511,29 +3521,29 @@
                 bubble.classList.add('bubble-voice');
                 var voiceSecs = Math.max(1, parseInt(msg.duration, 10) || 3);
                 var voiceBars = '';
-                for (var vb = 0; vb < 16; vb++) {
-                    voiceBars += '<i style="height:' + (5 + Math.round(Math.random() * 13)) + 'px"></i>';
+                for (var vb = 0; vb < 9; vb++) {
+                    voiceBars += '<i style="height:' + ([5, 9, 14, 8, 17, 11, 6, 12, 5][vb]) + 'px"></i>';
                 }
                 var isLocalSpeech = !!msg.localSpeech;
                 bubble.innerHTML = '<div class="voice-row"><span class="voice-wave" data-bars="1" aria-hidden="true">' + voiceBars + '</span>' +
-                    (isLocalSpeech ? '<button type="button" class="voice-dur local-voice-play">播放</button>' :
+                    (isLocalSpeech ? '<button type="button" class="voice-dur local-voice-play" aria-label="播放语音" aria-pressed="false">▷</button>' :
                         '<span class="voice-dur">' + voiceSecs + '"</span>') + '</div>';
                 if (isLocalSpeech) {
                     bubble.addEventListener('click', function (event) {
                         if (selectingMode || document.getElementById('msgSheetOverlay').classList.contains('active')) return;
                         event.stopPropagation();
                         var play = bubble.querySelector('.local-voice-play');
-                        if (play.textContent === '停止') {
+                        if (play.getAttribute('aria-pressed') === 'true') {
                             stopVoicePlay();
                             return;
                         }
                         stopVoicePlay();
                         var speech = window.LocalChatVoice;
                         var started = speech && speech.speak(msg.text, msg.localSpeech.preset, msg.localSpeech.language, function (failed) {
-                            play.textContent = '播放';
+                            play.textContent = '▷'; play.setAttribute('aria-pressed', 'false'); play.setAttribute('aria-label', '播放语音');
                             if (failed && typeof showToast === 'function') showToast('本机语音播放失败，仍可查看转写文字');
                         });
-                        if (started) play.textContent = '停止';
+                        if (started) { play.textContent = 'Ⅱ'; play.setAttribute('aria-pressed', 'true'); play.setAttribute('aria-label', '停止语音'); }
                         else if (typeof showToast === 'function') showToast('当前语言没有可用的本机语音');
                     });
                 }
@@ -3561,7 +3571,13 @@
                             vZh.textContent = vtZh;
                             vTranscript.appendChild(vZh);
                         }
-                        vWrap.appendChild(vTranscript);
+                        var transcriptDetails = document.createElement('details');
+                        transcriptDetails.className = 'voice-text-details';
+                        var transcriptSummary = document.createElement('summary');
+                        transcriptSummary.textContent = '转文字';
+                        transcriptDetails.appendChild(transcriptSummary);
+                        transcriptDetails.appendChild(vTranscript);
+                        vWrap.appendChild(transcriptDetails);
                     }
                     attachEl = vWrap;
                 }
