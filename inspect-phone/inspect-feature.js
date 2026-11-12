@@ -709,10 +709,24 @@
         var draft=diarySeeds[cursor%diarySeeds.length];
         var newNote={title:draft.title,text:draft.text,createdAt:now,updatedAt:now};
         section.notes.unshift(newNote);
+        // A role's older generated diary may be archived, but never silently
+        // evict notes the user wrote or edited, even after repeated refreshes.
         if(section.notes.length>5){
-          section.archive=arr(section.archive);
-          section.archive.unshift(section.notes.pop());
-          section.archive=section.archive.slice(0,18);
+          var eviction=-1;
+          for(var noteIndex=section.notes.length-1;noteIndex>=0;noteIndex--){
+            var candidate=section.notes[noteIndex];
+            if(candidate&&candidate.lastEditedBy!=='viewer'&&candidate.origin!=='user_on_fictional_phone'){
+              eviction=noteIndex;break;
+            }
+          }
+          if(eviction>=0){
+            var oldNote=section.notes.splice(eviction,1)[0];
+            section.archive=arr(section.archive);
+            section.archive.unshift(oldNote);
+            section.archive=section.archive.filter(function(n,i){
+              return i<18||n&&n.lastEditedBy==='viewer';
+            });
+          }
         }
         view={kind:'note',index:0};
       } else if(id==='forum'){
@@ -846,7 +860,17 @@
           result.notes.push(note);
         });
         result.notes.sort(function(a,b){return num(b.updatedAt,0)-num(a.updatedAt,0);});
-        result.archive=arr(oldSection.archive).concat(arr(result.archive)).slice(0,30);
+        var archive=arr(oldSection.archive).concat(arr(result.archive));
+        var unique={},dedup=[];
+        archive.forEach(function(note){
+          if(!note)return;
+          var fingerprint=note.noteId||note.storyEventId||String(note.createdAt)+'|'+String(note.title);
+          if(unique[fingerprint])return;
+          unique[fingerprint]=true;dedup.push(note);
+        });
+        result.archive=dedup.filter(function(note,i){
+          return i<30||note.lastEditedBy==='viewer'||note.origin==='user_on_fictional_phone';
+        });
         return result;
       }
       if(id==='moments'){
