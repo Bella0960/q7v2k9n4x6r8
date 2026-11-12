@@ -5,7 +5,7 @@
 (function () {
  'use strict';
  var shell, surface, bar, empty, observer, themeObserver;
- var selection='all';
+ var selection='all', originalMusicIcon=null;
  var iconKit=window.MAOMAOAtmosphereIcons||null;
  var oldIcons=new Map(),oldLabels=new Map();
  function isActive(){return !!shell&&shell.getAttribute('data-chat-theme-preset')==='atmosphere';}
@@ -258,7 +258,15 @@
      control.setAttribute('tabindex','0');
      control.setAttribute('aria-label','打开音乐播放器');
      control.setAttribute('title','打开真实音乐播放器');
+     var svg=control.querySelector('svg');
+     if(iconKit&&svg){
+       if(originalMusicIcon===null)originalMusicIcon=svg.outerHTML;
+       iconKit.apply(svg,'music');
+     }
    }else{
+     var original=control.querySelector('svg');
+     if(originalMusicIcon!==null&&original)original.outerHTML=originalMusicIcon;
+     originalMusicIcon=null;
      control.removeAttribute('role');
      control.removeAttribute('tabindex');
      control.removeAttribute('aria-label');
