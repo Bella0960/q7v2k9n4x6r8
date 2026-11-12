@@ -98,12 +98,13 @@
   }
 
   /* 图片优先进入 IndexedDB，避免和聊天记录/记忆挤占 localStorage 配额。 */
-  function saveByKey(key, dataUrl) {
+  function saveByKey(key, dataUrl, options) {
     key = String(key || WALLPAPER_KEY);
     if (typeof dataUrl !== 'string' || !/^data:image\//i.test(dataUrl)) {
       return Promise.reject(new Error('Invalid wallpaper image'));
     }
-    return writeDB(key, dataUrl).catch(function () {
+    return writeDB(key, dataUrl).catch(function (storageError) {
+      if (options && options.requireIDB) throw storageError;
       try {
         window.localStorage.setItem(key, dataUrl);
         return true;
