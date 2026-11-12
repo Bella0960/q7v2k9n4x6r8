@@ -41,6 +41,20 @@ Read these files first:
 - Report: task IDs, files changed, behavior preserved, tests run and exact results, migration/rollback behavior, known gaps, and commit/PR link.
 - If you cannot inspect or verify something, label it NOT VERIFIED. Do not infer success from a green unrelated workflow.
 
+## Continuous execution mode
+
+When the owner gives a direct implementation request (“fix”, “finish”, “complete”, “continue the project”, or equivalent):
+
+- Treat that one request as an end-to-end work package. Break it into ordered, testable subtasks and execute them on dedicated branch(es) without asking the owner to say “continue” after each small step.
+- Default to IMPLEMENT-ON-BRANCH. Use READ-ONLY mode only when the owner explicitly asks for an audit/review or says not to change code.
+- After each subtask, run the narrowest relevant checks, repair failures, update `docs/engineering/EXECUTION_LOG.md`, then advance to the next independent subtask.
+- If one item is blocked, record the exact blocker and continue other independent, authorized items. Ask the owner only when a genuine product decision, missing requirement, credential/secret, destructive operation, data-schema migration approval, or production release authorization is required.
+- Give concise progress updates during long work, but do not turn each progress update into a request for approval.
+- Never push directly to `main`; do not merge, deploy production, build/update APKs, configure secrets, or perform irreversible user-data actions without explicit owner approval.
+- A chat/session ending cannot be treated as background execution. Before stopping, write enough verified state, links, and next actions to `EXECUTION_LOG.md` so another session can resume without asking the owner to repeat the task.
+
+“Complete all” means complete all authorized subtasks within the requested scope. It does not authorize enabling deferred roadmap items or crossing the release/data-safety boundaries above.
+
 ## Definition of done
 
 A task is done only when its acceptance criteria pass, required tests/build pass, existing behavior is preserved, no user data can be lost, documentation is updated, and the patch is independently reviewable.

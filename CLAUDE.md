@@ -21,7 +21,7 @@ npm run preview   # 预览构建产物
 # 项目无构建产物依赖：任何静态服务器指向仓库根即可
 ```
 
-## 目录结构（按功能划分；2026-11-03 main 快照共 88 个 HTML 页面）
+## 目录结构（按功能划分；2026-11-11 main 快照共 89 个 HTML 页面）
 
 ```
 index.html              # ★ 入口：手机主屏/启动器（状态栏 + 应用宫格 + Dock + ~1180 行拖拽引擎）
@@ -44,7 +44,7 @@ wallet/                 # wallet / finance（记账）/ shop（商店）/ shop-a
 settings/               # settings（API 配置）/ appearance / font-settings / sound-settings
 profile/                # profile（我的）/ edit-profile
 cafe/ games/ diary/ travel/ beauty/ theme-store/ music/ library/ tools/ envelope/   # 单页 App
-apps/settings/          # ⚠️ 孤儿目录：无任何引用的旧样式副本，待清理
+apps/settings/          # 历史样式候选目录；引用与打包范围仍待 GOV-003 核验，不得据此直接删除
 ```
 
 **注意：`chat/chat/` 双层目录是重构后的真实路径，不是笔误。**
@@ -52,7 +52,7 @@ apps/settings/          # ⚠️ 孤儿目录：无任何引用的旧样式副�
 ## 入口与核心模块
 
 - **index.html** = 手机主屏：第一页默认组件优先（大时钟、图片、照片墙、待办、月历、倒数日、便签），第二/三页放应用图标，Dock 为聊天和商店。内嵌拖拽引擎（实时让位 + 跨页流转 + Dock 自由布局），布局存 `ds_layout_v13`；编辑模式 `body.home-editing` 抑制跳转。
-- **chat/chat/chat-detail.html**（4800+ 行，项目心脏）：AI 对话核心——流式响应、群聊、心形编辑器（`.bubble-heart`）、通话/图片消息、正则过滤、自动总结记忆。
+- **chat/chat/chat-detail.html**（当前 main 快照 9,463 行；编辑前须重新测量，项目核心聊天页面）：AI 对话核心——流式响应、群聊、心形编辑器（`.bubble-heart`）、通话/图片消息、正则过滤、自动总结记忆。
 - **shared/js/phone/**（AI 基础设施层，见下节）是模拟世界的"后端"。
 - 复合 App：forum/（9 页）、wallet/（4 页）、settings/（4 页）；其余为单页 App。
 
@@ -70,7 +70,7 @@ apps/settings/          # ⚠️ 孤儿目录：无任何引用的旧样式副�
 3. **phone_data_v2 不是所有数据的唯一主库**：它按 `phoneData[contactId][appId]` 保存部分角色级 App 数据。角色、群组、世界书、聊天等仍有不同的旧 key/独立域；不得假定所有数据都双读双写。
 4. **IndexedDB 已用于部分大数据**：壁纸/本地音乐、日记照片、阅读书库、字体方案，以及新建的媒体仓库均有各自数据库。
 5. **MediaRepository 尚未等于全站媒体迁移完成**：`shared/js/phone/storage/media-repository.js` 使用 `maomao-assets`（assets/blobs/refs），支持 Blob 与内容哈希去重；当前聊天图片主链路尚未完成迁移。
-6. **备份覆盖有待补齐**：当前 `settings/js/backup.js` 的 IDB_TARGETS 没有包含 `maomao-assets`；`maomao-media-store` 的 audio store 配置排除了 blob 字段。本地音乐文件是否随完整备份导出必须明确，不能静默遗漏。
+6. **MediaRepository 备份已接入，但本地音频文件仍有单独缺口**：当前 `settings/js/backup.js` 的 IDB_TARGETS 已包含 `maomao-assets` v2 的 `assets`、`blobs`、`refs`、`image_records`。Blob 使用 Base64 备份并受单条/整库体积限制；`atomicExport` 防止 Blob 超限时生成只有元数据、缺少二进制的残缺媒体库。`tests/media-backup.test.mjs` 已覆盖四个 store 的往返恢复、引用关系、字节一致性和超限整库排除，但本次仓库检查环境尚未实际运行该测试。`maomao-media-store` 的 audio store 仍排除 `blob`，本地音乐文件不在该备份目标中，见 DATA-003。
 7. **禁止破坏性迁移**：不删除旧 key、不裁剪历史、不重写角色/群组 ID。迁移必须先备份、复制、校验数量/顺序/字段/媒体引用，再切换；旧数据要保留到验证与用户确认后。
 
 ### IndexedDB 当前数据库速查
@@ -81,7 +81,7 @@ apps/settings/          # ⚠️ 孤儿目录：无任何引用的旧样式副�
 | `maomao_diary_photo_store_v1` v1 | `photos` | `diary/diary.html` | 已列入 |
 | `maomao-reading-library` v1 | `books`, `comments` | `library/library.html` | 已列入 |
 | `maomao-font-presets` v1 | `presets` | `font-loader.js`, 字体设置、主题商城 | 已列入；Blob 有体积上限 |
-| `maomao-assets` v1 | `assets`, `blobs`, `refs` | `MediaRepository` | **尚未列入当前备份清单** |
+| `maomao-assets` v2 | `assets`, `blobs`, `refs`, `image_records` | `MediaRepository` | 已列入；Blob 限额 + `atomicExport` 整库排除；往返恢复测试已编写，实际执行待验证 |
 | `maomao-restore-point` v1 | 还原点辅助 store | `settings/js/backup.js` | 内部恢复安全机制，需在备份重构时一并核对 |
 
 ### 高频 localStorage key 速查
@@ -184,5 +184,5 @@ AI 接口配置存 `api_settings`（默认 `https://api.openai.com/v1`，内置 
 - 共享脚本加载顺序惯例：`font-loader.js` → `native-feel.js` →（数据页）`phone/phone_storage.js` + `phone/phone_api.js` → 页面脚本。
 - JS 里的相对路径按**页面 URL**（而非脚本位置）解析；跨目录跳转统一用相对路径（如 characters-manager.js 的 `../../index.html`），nav.js 用动态 appBase 兼容子路径部署。PHONE_APPS 注册表的 `page` 字段是根绝对路径，但目前无任何消费方（纯元数据）。
 - 改完 HTML/CSS/JS 若走静态托管缓存，记得 bump 页面引用的 `?v=` 参数。
-- 全量备份/恢复在设置页 DATA 分组（settings/js/backup.js）：JSON 带 `__backup.schema` 版本校验（当前 1，拒收更高版本），排除 `api_call_logs`；导入前自动下载当前数据作安全备份，写入失败自动回滚。
-- 无 README、无测试、lint 为空操作；`.trae/` 是 IDE 配置（git-ignored）。`docs/audit-report.html` 是历史审计报告，其中的旧路径已因目录重构失效，仅作参考。
+- 全量备份/恢复在设置页 DATA 分组（settings/js/backup.js）：JSON 带 `__backup.schema` 版本校验（当前 2，拒收更高版本），排除 `api_call_logs`；导入前自动下载当前数据作安全备份，写入失败自动回滚。
+- 仓库包含 `docs/engineering/README.md` 工程手册与 `tests/` 测试目录；`package.json` 提供多个 Node/Playwright 测试入口。`npm run lint` 当前仍只是打印固定的 “Lint passed”，不是真正的 lint 检查。`.trae/` 是 IDE 配置（git-ignored）。`docs/audit-report.html` 是历史审计报告，其中的旧路径已因目录重构失效，仅作参考。
