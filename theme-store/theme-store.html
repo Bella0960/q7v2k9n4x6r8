@@ -488,6 +488,8 @@
     }
     function enableProductDrag(){
       var rail=document.querySelector('.product-grid');if(!rail||rail.dataset.dragReady)return;
+      // Original horizontal rail behavior is inactive in the expanded two-column shelf.
+      if(window.getComputedStyle(rail).display==='grid')return;
       rail.dataset.dragReady='1';
       rail.tabIndex=0;
       rail.setAttribute('role','region');
