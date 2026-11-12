@@ -6,6 +6,7 @@ import vm from 'node:vm';
 const previewSource=readFileSync(new URL('../theme-store/preview-scene.js',import.meta.url),'utf8');
 const storefrontSource=readFileSync(new URL('../theme-store/storefront.js',import.meta.url),'utf8');
 const css=readFileSync(new URL('../theme-store/preview-scene.css',import.meta.url),'utf8');
+const storefrontCSS=readFileSync(new URL('../theme-store/storefront.css',import.meta.url),'utf8');
 const html=readFileSync(new URL('../theme-store/theme-store.html',import.meta.url),'utf8');
 function setup(){
  const window={};vm.runInNewContext(previewSource,{window});
@@ -151,4 +152,10 @@ test('named outfit preview uses original theme artwork only when theme scope is 
  assert.match(preview,/item\.scopes\.includes\('theme'\)/);
  assert.match(preview,/nativeArt\(chosen\)/);
  assert.doesNotMatch(preview,/host\.innerHTML=scene\(/);
+});
+
+test('completed theme cards occupy a real two-column shelf, not the old swipe rail',()=>{
+ assert.match(storefrontCSS,/\.store-app \.product-grid\s*\{[\s\S]*?display:grid/);
+ assert.match(storefrontCSS,/grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+ assert.match(html,/getComputedStyle\(rail\)\.display==='grid'/);
 });
