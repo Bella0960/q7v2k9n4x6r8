@@ -413,3 +413,11 @@ Acceptance:
 - Music must use a real playback path, never a decorative toggle claimed as playback.
 
 Implementation and verification: `docs/engineering/THEME-ATMOSPHERE-001.md`.
+
+
+### THEME-MARKET-001 — Expand the existing theme storefront
+**Status:** IN PROGRESS — user-approved scope, 2026-11-12 (Asia/Shanghai).
+
+Continue PR #273 without changing old themes. Add fixed Home / Themes / Categories / Mine navigation, a touch-scroll featured rail and two-column covers; fictional six-page theme previews; real existing category routes; favorites, personal materials and named appearance combinations with selected scopes. Reuse ChatBeauty, WallpaperStore, font presets and ds_layout_v14. No purchase, membership, ads or ringtone features. Keep branch isolated and draft until Android/iPhone, actual theme pages, full build and PWA update acceptance pass.
+
+Evidence and remaining gaps: `docs/engineering/THEME-MARKET-001.md`.

@@ -8,9 +8,11 @@
   <script src="../shared/js/font-loader.js?v=20261102v1"></script>
   <script src="../shared/js/native-feel.js"></script>
   <script src="../shared/js/chat-beauty.js?v=20261112at1"></script>
-  <script src="../shared/js/wallpaper-store.js?v=20261026v2"></script>
+  <script src="../shared/js/wallpaper-store.js?v=20261112m2"></script>
   <script src="../shared/js/atmosphere-icons.js?v=20261112i1"></script>
   <script src="./market-expansion.js?v=20261112m1"></script>
+  <script src="./collection-store.js?v=20261112m2"></script>
+  <script src="./storefront.js?v=20261112m2"></script>
   <link rel="stylesheet" href="../shared/css/chat-beauty-runtime.css?v=20261031v1">
   <link rel="stylesheet" href="../shared/css/mobile-fit.css">
   <style>
@@ -196,6 +198,7 @@
 .at-mini-avatar{width:19px;height:19px;align-self:center;background:linear-gradient(135deg,#bbb,#333);border-radius:50%}.at-mini-name{align-self:center;font-size:8px}
 </style>
 <link rel="stylesheet" href="./market-expansion.css?v=20261112m1">
+<link rel="stylesheet" href="./storefront.css?v=20261112m2">
 </head>
 <body>
   <div class="store-app">
@@ -214,14 +217,11 @@
       <p>整套聊天主题、独立气泡、桌面小组件、原创壁纸与字体方案，都可以在这里找到。保留你已经拥有的所有主题。</p>
     </section>
 
-    <nav class="category-nav" id="categoryNav" aria-label="商城分类">
-      <button class="category-tab active" data-category="discover" type="button">精选 <small>01</small></button>
-      <button class="category-tab" data-category="themes" type="button">主题 <small>02</small></button>
-      <button class="category-tab" data-category="bubbles" type="button">聊天气泡 <small>03</small></button>
-      <button class="category-tab" data-category="widgets" type="button">小组件 <small>04</small></button>
-      <button class="category-tab" data-category="wallpapers" type="button">壁纸 <small>05</small></button>
-      <button class="category-tab" data-category="fonts" type="button">字体 <small>06</small></button>
-      <button class="category-tab" data-category="mine" type="button">我的主题 <small>07</small></button>
+    <nav class="category-nav" id="categoryNav" aria-label="商城主栏目">
+      <button class="category-tab active" data-category="discover" type="button">首页</button>
+      <button class="category-tab" data-category="themes" type="button">主题</button>
+      <button class="category-tab" data-category="categories" type="button">分类</button>
+      <button class="category-tab" data-category="mine" type="button">我的</button>
     </nav>
 
     <main class="main-content" id="storeContent" aria-live="polite"></main>
@@ -237,7 +237,7 @@
     var VISUAL_KEY='beauty_visual_presets_v1';
     var DELETED_KEY='beauty_visual_presets_deleted_v1';
     var FONT_DB='maomao-font-presets', FONT_STORE='presets';
-    var categories=['discover','themes','bubbles','widgets','wallpapers','fonts','mine'];
+    var categories=['discover','themes','categories','mine','bubbles','widgets','wallpapers','fonts'];
     var categoryNames={discover:'精选',themes:'主题',bubbles:'聊天气泡',widgets:'小组件',wallpapers:'壁纸',fonts:'字体',mine:'我的主题'};
     var currentCategory='discover';
     var market=window.MAOMAOMarketExpansion;
@@ -521,7 +521,9 @@
     function render(){
       var content=document.getElementById('storeContent');
       document.querySelectorAll('.category-tab').forEach(function(button){button.classList.toggle('active',button.dataset.category===currentCategory);});
-      if(currentCategory==='discover')content.innerHTML=market?market.renderDiscover():'';
+      var storefrontHTML=window.MAOMAOStorefront.render(currentCategory);
+      if(storefrontHTML!==null)content.innerHTML=storefrontHTML;
+      else if(currentCategory==='discover')content.innerHTML=market?market.renderDiscover():'';
       else if(currentCategory==='themes')content.innerHTML=renderThemes();
       else if(currentCategory==='bubbles')content.innerHTML=renderBubbles();
       else if(currentCategory==='widgets')content.innerHTML=market?market.renderWidgets():'';
@@ -533,7 +535,7 @@
       if(currentCategory==='bubbles')fillScope();
       if(currentCategory==='fonts')bindFontSpecimens();
       if(currentCategory==='mine')document.querySelectorAll('[data-filter]').forEach(function(button){button.classList.toggle('active',button.dataset.filter===mineFilter);});
-      if(currentCategory==='themes')enableProductDrag();
+
       updateOwnedCount();
     }
     function setCategory(category){
@@ -567,13 +569,14 @@
       render();
     }
     function applyTheme(id){
-      if(!window.ChatBeauty||!ChatBeauty.setThemePreset){toast('聊天主题模块暂不可用');return;}
+      if(!window.ChatBeauty||!ChatBeauty.setThemePreset){toast('聊天主题模块暂不可用');return false;}
       var owned=getOwned();
-      if(owned.indexOf(id)<0){owned.push(id);if(!setOwned(owned)){toast('收录失败，请检查本机存储空间');return;}}
-      if(!ChatBeauty.setThemePreset(id)){toast('主题应用失败');return;}
+      if(owned.indexOf(id)<0){owned.push(id);if(!setOwned(owned)){toast('收录失败，请检查本机存储空间');return false;}}
+      if(!ChatBeauty.setThemePreset(id)){toast('主题应用失败');return false;}
       try{window.dispatchEvent(new CustomEvent('maomao:chat-theme-change',{detail:{theme:id}}));}catch(e){}
       toast('已应用「'+(defaultThemes.filter(function(t){return t.id===id;})[0]||{}).name+'」');
       render();
+      return true;
     }
     function openFontDBRecord(id){
       return openFontDB().then(function(db){
@@ -658,20 +661,6 @@
     document.getElementById('storeContent').addEventListener('change',function(event){
       if(event.target&&event.target.id==='bubbleScope'){bubbleScopeValue=event.target.value||'global';render();}
     });
-    document.getElementById('storeContent').addEventListener('touchstart',function(event){
-      if(event.target.closest&&event.target.closest('.product-grid')){this._swipeX=null;this._swipeY=null;return;}
-      if(!event.touches||!event.touches.length)return;
-      this._swipeX=event.touches[0].clientX;this._swipeY=event.touches[0].clientY;
-    },{passive:true});
-    document.getElementById('storeContent').addEventListener('touchend',function(event){
-      if(this._swipeX==null||!event.changedTouches||!event.changedTouches.length)return;
-      var dx=event.changedTouches[0].clientX-this._swipeX,dy=event.changedTouches[0].clientY-this._swipeY;
-      this._swipeX=null;this._swipeY=null;
-      if(Math.abs(dx)>75&&Math.abs(dy)<55){
-        var index=categories.indexOf(currentCategory),next=index+(dx<0?1:-1);
-        if(next>=0&&next<categories.length)setCategory(categories[next]);
-      }
-    },{passive:true});
     function refreshAll(){
       loadFonts().then(function(){render();bindFontSpecimens();});
       if(currentCategory==='bubbles'||currentCategory==='mine')render();
@@ -682,6 +671,12 @@
       if(!event.key||[VISUAL_KEY,DELETED_KEY,'beauty_chat_global_v1','maomao_chat_theme_preset','active_font_preset_id',OWN_KEY,CHAT_LIST_THEME_KEY].indexOf(event.key)>=0)refreshAll();
     });
     document.addEventListener('visibilitychange',function(){if(!document.hidden)refreshAll();});
+    window.MAOMAOStorefront.init({themes:defaultThemes, market:market, render:render,
+      navigate:setCategory, applyTheme:applyTheme, toast:toast, scope:function(){return bubbleScopeValue;},
+      using:function(){var box=document.createElement('div');box.innerHTML=renderMine();box.querySelectorAll('.mine-item').forEach(function(item){if(item.querySelector('.mine-status').textContent!=='正在使用')item.remove();});box.querySelector('.mine-filter')?.remove();return box.innerHTML;}, listCard:function(){var box=document.createElement('div');box.innerHTML=renderThemes();return box.querySelector('.chat-list-theme-grid').outerHTML;}});
+    document.querySelectorAll('#categoryNav button').forEach(function(button,index){
+      button.insertAdjacentHTML('afterbegin',window.MAOMAOStorefront.svg(['home','theme','category','mine'][index]));
+    });
     loadFonts().then(function(){render();bindFontSpecimens();});
   })();
   </script>
