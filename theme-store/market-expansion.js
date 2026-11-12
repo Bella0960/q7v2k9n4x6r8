@@ -43,7 +43,7 @@
   {id:'moments',name:'动态',title:'MOMENTS',subtitle:'照片、评论与清晰时间线',
    body:'<div class="mp-mini-chat-head"><span>‹</span><strong>动态</strong><span>▢</span></div><div class="mp-mini-cover"><span>我的日常</span></div><div class="mp-mini-row"><i></i><span><b>林望</b><small>今天的阳光很好。</small></span><em>2h</em></div><div class="mp-mini-photo"><span></span><span></span><span></span></div><div class="mp-mini-meta">♡　评论　·　今天 09:41</div>'},
   {id:'mine',name:'我的',title:'PROFILE',subtitle:'个人资料与轻量功能入口',
-   body:'<div class="mp-mini-head"><span class="mp-circle"></span><strong>我的</strong><span>···</span></div><div class="mp-mini-cover small"></div><div class="mp-mini-id"><span class="mp-photo"></span><span>我的资料<small>编辑资料与头像</small></span></div><div class="mp-mini-menu">我的主页 <span>›</span></div><div class="mp-mini-menu">我的收藏 <span>›</span></div><div class="mp-mini-menu">钱包 <span>›</span></div><div class="mp-mini-menu">设置 <span>›</span></div>'},
+   body:'<div class="mp-mini-head"><span class="mp-circle"></span><strong>我的</strong><span>···</span></div><div class="mp-mini-cover small"></div><div class="mp-mini-id"><span class="mp-photo"></span><span>我的资料<small>编辑资料与头像</small></span></div><div class="mp-mini-menu">我的主页 </div><div class="mp-mini-menu">我的收藏 </div><div class="mp-mini-menu">钱包 </div><div class="mp-mini-menu">设置 </div>'},
   {id:'home',name:'我的主页',title:'MY SPACE',subtitle:'独立封面与动态照片轨道',
    body:'<div class="mp-mini-chat-head"><span>‹</span><strong>MY SPACE</strong><span>◐</span></div><div class="mp-mini-cover"></div><div class="mp-home-id"><span class="mp-photo"></span><strong>我的主页</strong><small>一句私人的注释</small></div><div class="mp-mini-stats"><span>08<small>动态</small></span><span>12<small>照片</small></span><span>32<small>喜欢</small></span></div><div class="mp-mini-gallery"><i></i><i></i><i></i><i></i></div>'}
  ];
@@ -104,7 +104,7 @@
   wallpapersSection(4)+sectionHeading('整套美化入口','每一个入口都连接已有真实功能','04','')+
   renderHub(true)+'</div>';
  }
- function renderThemeFeature(){return '<div class="market-theme-feature">'+sectionHeading('特别推荐：薄影','已适配聊天首页、聊天详情、动态、我的、我的主页','FEATURED','')+themeMiniScenes()+'<div class="market-theme-actions"><button type="button" data-action="market-preview" class="market-primary">逐页预览</button><button type="button" data-action="market-apply-theme" class="market-subtle">应用薄影主题</button></div></div>';}
+ function renderThemeFeature(){return '<div class="market-theme-feature">'+sectionHeading('特别推荐：薄影','已适配聊天首页、聊天详情、动态、我的、我的主页','FEATURED','')+themeMiniScenes()+'<div class="market-theme-actions"><button type="button" data-sf="detail" data-id="atmosphere" class="market-primary">逐页预览</button><button type="button" data-sf="apply-theme" data-id="atmosphere" class="market-subtle">应用薄影主题</button></div></div>';}
  function renderWidgets(){return '<div class="market-catalog">'+sectionHeading('桌面小组件','12 款精选入口 · 连接现有桌面挂件管理','01','')+widgetsSection()+'<p class="market-footnote">点击“添加到桌面”会打开现有挂件管理器对应条目，再选择添加。不会绕开桌面布局系统。</p><button type="button" data-action="market-route" data-id="widget-manager" class="market-secondary">打开完整挂件管理</button></div>';}
  function renderWallpapers(){return '<div class="market-catalog">'+sectionHeading('壁纸收藏','原创矢量设计 · 仅更换桌面壁纸，不动聊天、封面、角色','01','')+wallpapersSection()+'<p class="market-footnote">应用后写入项目现有的桌面壁纸存储。上传自己的照片、恢复默认或进一步调整请进入壁纸设置。</p><button type="button" data-action="market-route" data-id="appearance" class="market-secondary">上传照片 / 壁纸设置</button></div>';}
  var routes={
@@ -124,7 +124,7 @@
   ];
   if(compact)items=items.slice(0,4);
   return '<div class="market-hub-grid">'+items.map(function(x){
-   return '<button type="button" class="market-hub-item" data-action="market-route" data-id="'+x.id+'"><span class="market-hub-icon">'+ico(x.icon)+'</span><span><strong>'+x.name+'</strong><small>'+x.sub+'</small></span><span class="market-hub-arrow">›</span></button>';
+   return '<button type="button" class="market-hub-item" data-action="market-route" data-id="'+x.id+'"><span class="market-hub-icon">'+ico(x.icon)+'</span><span><strong>'+x.name+'</strong><small>'+x.sub+'</small></span></button>';
   }).join('')+'</div>';
  }
  function renderMineExtra(){
