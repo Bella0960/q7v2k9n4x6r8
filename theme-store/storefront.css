@@ -33,3 +33,34 @@
   .sf-native-cover .product-art{height:190px;min-height:190px;max-height:190px}
   .sf-native-feature .product-art{height:195px;min-height:195px}
 }
+
+
+/* The original project-owned theme cards now sit on the new two-column shop shelf.
+ * Original images, preset IDs, independent theme apply and list-theme actions remain untouched. */
+.store-app .product-grid{
+ display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+ gap:17px 11px;padding:0 0 12px;overflow:visible;
+ scroll-snap-type:none;scroll-behavior:auto;touch-action:auto;
+ cursor:default;user-select:auto;-webkit-user-select:auto;
+}
+.store-app .product-grid .product-card{
+ min-width:0;width:100%;min-height:0;flex:none;will-change:auto;
+ padding:10px;gap:9px;border-radius:15px;
+}
+.store-app .product-grid .product-art{height:117px;min-height:117px;border-radius:10px}
+.store-app .product-grid .product-title{font-size:12px;line-height:1.4}
+.store-app .product-grid .product-desc{font-size:9px;line-height:1.6}
+.store-app .product-grid .product-foot{
+ display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+ gap:6px;margin-top:auto;
+}
+.store-app .product-grid .product-price{grid-column:1 / -1}
+.store-app .product-grid .action-btn{
+ padding:4px 3px;min-height:37px;width:100%;font-size:9px;
+ white-space:normal;line-height:1.3;border-radius:12px;
+}
+@media(max-width:360px){
+ .store-app .product-grid{gap:12px 8px}
+ .store-app .product-grid .product-card{padding:8px;gap:7px}
+ .store-app .product-grid .product-art{height:105px;min-height:105px}
+}
