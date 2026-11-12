@@ -206,11 +206,24 @@
   if(sign)renderSign();
   update();
  }
+ function attachOriginAwareBack(){
+  var back=document.querySelector('.cover-nav-btn');
+  if(!back)return;
+  back.addEventListener('click',function(event){
+   if(!active()||!window.location)return;
+   var query=window.location.search||'';
+   if(!/(?:^\?|&)from=profile(?:&|$)/.test(query))return;
+   event.preventDefault();
+   event.stopImmediatePropagation();
+   window.location.href='../../profile/profile.html';
+  },true);
+ }
  function init(){
   shell=document.querySelector('.phone-mockup');
   stage=document.querySelector('.space-stage');
   panel=document.getElementById('innerPanel');
   if(!shell||!stage||!panel||!document.getElementById('coverInput'))return;
+  attachOriginAwareBack();
   makeMasthead();
   makeIdentity();
   buildAlbum();
