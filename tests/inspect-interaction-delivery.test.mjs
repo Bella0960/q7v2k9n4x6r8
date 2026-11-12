@@ -201,3 +201,38 @@ test('手机只在许可的公开日记、朋友圈详情选中话题，失败�
   assert.match(chatHtml,/inspectPhoneFocusId=inspectPhonePacket.focusId\|\|null/);
   assert.match(chatHtml,/inspectPhoneEventIds, localStorage, Date.now\(\), inspectPhoneFocusId/);
 });
+
+
+test('刚写完日记再点聊聊，成功谈过后同一篇原文不会第二次作为新线索提醒',()=>{
+  const f=fixture(),now=Date.now();
+  const event=f.bridge.record(f.data,'note_created','《我的新日记》：我想告诉你一件事','note-70');
+  f.bridge.requestFocus(f.data,'note',{sourceId:'note-70',title:'我的新日记',text:'我想告诉你一件事'},now+1);
+  f.sync();
+  const first=f.bridge.buildPromptPacket('rA',f.storage,now+2);
+  assert.equal(first.mode,'focused');
+  assert.match(first.text,/我想告诉你一件事/);
+  f.bridge.markOffered('rA',first.eventIds,f.storage,now+3,first.focusId);
+  const saved=f.persisted();
+  assert.ok(saved.interactions.find(e=>e.id===event.id).offeredToAIAt>0);
+  const next=f.bridge.buildPromptPacket('rA',f.storage,now+4,{userText:'今天天气不错'});
+  assert.equal(next.mode,'none');
+});
+
+test('点击聊聊之后新补写的日记仍是新线索，不能被旧话题确认误消耗',()=>{
+  const f=fixture(),now=Date.now();
+  const old=f.bridge.record(f.data,'note_created','修改之前的日记','note-71');
+  old.at=now-20;
+  const focus=f.bridge.requestFocus(f.data,'note',{sourceId:'note-71',title:'编辑前',text:'修改之前的日记'},now);
+  const updated=f.bridge.record(f.data,'note_edited','修改之后的新内容','note-71');
+  updated.at=now+2000;
+  f.sync();
+  const first=f.bridge.buildPromptPacket('rA',f.storage,now+4000);
+  assert.equal(first.focusId,focus.id);
+  f.bridge.markOffered('rA',[],f.storage,now+5000,focus.id);
+  const after=f.persisted();
+  assert.ok(after.interactions.find(x=>x.id===old.id).offeredToAIAt>0);
+  assert.equal(after.interactions.find(x=>x.id===updated.id).offeredToAIAt,undefined);
+  const next=f.bridge.buildPromptPacket('rA',f.storage,now+6000,{userText:'晚上好'});
+  assert.equal(next.mode,'fresh');
+  assert.match(next.text,/修改之后的新内容/);
+});
