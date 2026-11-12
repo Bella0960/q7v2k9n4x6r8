@@ -53,21 +53,26 @@
     {place:'街边面馆',cost:21,object:'一碗晚饭',photo:'小面馆靠墙的位置和冒着热气的餐盘',
      diary:'晚上没有什么做饭的心情，就在路边找了家小面馆。刚坐下的时候店里很热闹，后来慢慢安静下来。\n\n一边吃饭一边想周末的安排。阿诺之前提过想一起散步，我还没有回复确定时间。回去之后要记得给人家一个准话，不要老让别人等。',
      chatA:'今天晚饭在外面解决了，人还挺多。',chatB:'你最近忙，也别总忘记好好吃饭。',
-     post:'熟悉的小店总有点安心',postBody:'最近吃饭总在两三家店里轮换。可能是习惯，也可能是那种熟悉的感觉很难替代。'}
+     post:'熟悉的小店总有点安心',postBody:'最近吃饭总在两三家店里轮换。可能是习惯，也可能是那种熟悉的感觉很难替代。'},
+    {place:'社区小超市',cost:32,object:'几样生活用品',photo:'购物袋、便利贴与刚整理过的桌角',
+     diary:'傍晚顺路去了小超市，买了几样缺的日用品。刚进店的时候忘了自己要买什么，幸好手机备忘录里有记录。\n\n回到住处把东西一件件放好，又翻到之前答应要还的书。想起周末可能会见到小林，就先放在玄关。\n\n这些事都很小，可日子就是这么一点点往前走的。明天准备把没做完的事情继续处理。',
+     chatA:'总算把缺的东西买齐了，差点漏买一样。',chatB:'所以才说要记购物清单。',
+     post:'整理完房间以后轻松多了',postBody:'今天买了些日用品，回来收拾了一遍桌面。没想到收拾好以后，心情也会跟着清爽一点。'}
   ];
   function generate(data,role,time){
     var date=day(time),roleId=String(data.roleId||role&&role.id||'role');
     var id='life:'+roleId+':'+date;
-    var s=SCENES[hash(roleId+'|'+date)%SCENES.length],type=roleType(role);
+    // Rotate through all seven situations before repeating, regardless of hashes.
+    var cal=new Date(time),ordinal=Math.floor(Date.UTC(cal.getFullYear(),cal.getMonth(),cal.getDate())/86400000);
+    var s=SCENES[(hash(roleId)%SCENES.length+ordinal)%SCENES.length],type=roleType(role);
     var when=new Date(time);when.setHours(HOUR,MINUTE,0,0);var at=when.getTime();
-    var nick=String(role&&role.name||'我');
     var fact={id:id,storyEventId:id,origin:'autonomous_story',time:at,place:s.place,
       event:'晚间在'+s.place+'买下'+s.object,amount:-s.cost};
     var sec=data.sections;
     if(!sec||!sec.notes||!sec.chat||!sec.wallet||!sec.map||!sec.album||!sec.moments||!sec.forum)return 0;
     data.facts=list(data.facts);
     if(has(data.facts,id))return 0;
-    var journal={title:date+' · 晚间随记',text:s.diary,createdAt:at+5*60000,
+    var journal={title:date+' · 晚间随记',text:s.diary.replace(/下班后/g,type==='school'?'下课后':'下班后'),createdAt:at+5*60000,
       updatedAt:at+5*60000,origin:'autonomous_story',storyEventId:id};
     var wallet={merchant:s.place,amount:-s.cost,type:'日常消费',
       time:at,memo:s.object,origin:'autonomous_story',storyEventId:id};
@@ -105,7 +110,11 @@
     }
     data.facts.push(fact);
     data.facts.sort(function(a,b){return number(a.time,0)-number(b.time,0);});
-    while(data.facts.length>65)data.facts.shift();
+    while(data.facts.length>65){
+      var expired=data.facts.findIndex(function(f){return f.origin==='autonomous_story';});
+      if(expired<0)break;
+      data.facts.splice(expired,1);
+    }
     // Only local plot records are added. Never falsely mark them as AI output.
     ['notes','wallet','map','album','moments','forum','chat'].forEach(function(k){
       if(!data.source)data.source={};
