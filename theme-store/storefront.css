@@ -165,3 +165,26 @@
 @media(prefers-reduced-motion:reduce){
  .store-app .sf-native-cover .product-art,.store-app .sf-category-row{transition:none}
 }
+
+
+/* The installed PWA's bottom home indicator must not collide with four shop tabs. */
+.store-app .category-nav{
+ padding-bottom:calc(23px + env(safe-area-inset-bottom,0px));
+}
+.store-app .category-tab{min-height:49px;gap:6px}
+.store-app .product-grid .action-btn{min-height:43px}
+.store-app .sf-favorite{min-width:44px;min-height:44px}
+.sf-dialog{overscroll-behavior:contain}
+.sf-dialog footer .sf-button{min-height:44px}
+.store-app .sf-cover:focus-visible,
+.store-app .sf-feature:focus-visible,
+.store-app .sf-category-row:focus-visible,
+.store-app .sf-favorite:focus-visible,
+.store-app .category-tab:focus-visible,
+.sf-dialog .sf-button:focus-visible,
+.sf-dialog .sf-close:focus-visible{
+ outline:2px solid #555;outline-offset:3px;
+}
+@media(max-height:640px){
+ .store-app .category-nav{padding-bottom:calc(17px + env(safe-area-inset-bottom,0px))}
+}
