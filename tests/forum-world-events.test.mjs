@@ -123,7 +123,7 @@ test('existing mobile forum actually uses world arcs, selected settings and role
   assert.match(sw,/forum\/forum-world-events\.js\?v=20261111v1/);
   // The app shell version advances as main gains assets; require a safe minimum,
   // not an exact historical cache revision that blocks valid releases.
-  const cacheVersion = Number(sw.match(/^const CACHE_NAME = 'phone-app-pwa-v(\\d+)'/m)?.[1] || 0);
+  const cacheVersion = Number(sw.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m)?.[1] || 0);
   assert.ok(cacheVersion >= 204, 'PWA cache version must not regress below the account-auth minimum');
 });
 
