@@ -3806,11 +3806,11 @@ test('聊天、商店、外卖和钱包充值提现统一使用同一个钱包�
     assert.match(source, /MaoMaoWalletLedger\.runExclusive|ledger\.runExclusive/,
       name + ' must route balance mutations through the shared lock');
   }
-  assert.match(shopPage, /localStorage\.getItem\('workData'\) !== walletSerialized/,
+  assert.match(shopPage, /ledger\.commitWalletSnapshot\(wd, oldWalletRaw\)/,
     'shop intimacy-pay must read back the wallet debit');
-  assert.match(takeoutPage, /localStorage\.getItem\('workData'\) !== walletSerialized/,
+  assert.match(takeoutPage, /ledger\.commitWalletSnapshot\(wd, oldWalletRaw\)/,
     'takeout intimacy-pay must read back the wallet debit');
-  assert.match(walletPage, /localStorage\.getItem\('workData'\) !== serialized/,
+  assert.match(walletPage, /ledger\.commitWalletSnapshot\(wd\)/,
     'manual charge / withdrawal must read back the new balance');
   assert.match(shopPage, /wd\.balance < total/,
     'shop must not spend more than the wallet balance');
@@ -4074,7 +4074,7 @@ test('商店、外卖亲密付必须验证额度和余额，且扣款未确认�
     assert.match(source, /!walletAlreadyCommitted && !quotaAlreadyCommitted &&[\s\S]*?Number\(cp\.limit\)/,
       name + ' must revalidate quota before the first wallet or quota write, but finish a partial commit');
     assert.match(source, /wd\.balance < total/, name + ' must reject insufficient balance');
-    assert.match(source, /localStorage\.getItem\('workData'\) !== walletSerialized/,
+    assert.match(source, /ledger\.commitWalletSnapshot\(wd, oldWalletRaw\)/,
       name + ' must verify wallet write before continuing');
     assert.match(source, /closePayQuotaCommitted = true/,
       name + ' must distinguish quota commit from an incomplete transaction');
@@ -4513,18 +4513,19 @@ test('旧版合法钱包缺少 history 时保留余额，空字符串或损坏�
   const helperStart = walletPage.indexOf('  function getWorkDataForMutation()');
   const helperEnd = walletPage.indexOf('  function getWorkData()', helperStart);
   const helper = walletPage.slice(helperStart, helperEnd);
-  const legacy = { localStorage: { getItem: () => '{"balance":42.5}' } };
-  runInNewContext(helper, legacy);
-  assert.equal(legacy.getWorkDataForMutation().balance, 42.5);
-  assert.deepEqual(JSON.parse(JSON.stringify(legacy.getWorkDataForMutation().history)), []);
-
-  const empty = { localStorage: { getItem: () => '' } };
-  runInNewContext(helper, empty);
-  assert.equal(empty.getWorkDataForMutation(), null);
-
-  const malformed = { localStorage: { getItem: () => '{"balance":42,"history":{}}' } };
-  runInNewContext(helper, malformed);
-  assert.equal(malformed.getWorkDataForMutation(), null);
+  function readWithSharedLedger(raw) {
+    const localStorage = { getItem: () => raw };
+    const window = { localStorage, navigator: {} };
+    runInNewContext(walletLedgerSource, { window });
+    const sandbox = { localStorage, window };
+    runInNewContext(helper, sandbox);
+    return sandbox.getWorkDataForMutation();
+  }
+  const legacy = readWithSharedLedger('{"balance":42.5}');
+  assert.equal(legacy.balance, 42.5);
+  assert.deepEqual(JSON.parse(JSON.stringify(legacy.history)), []);
+  assert.equal(readWithSharedLedger(''), null);
+  assert.equal(readWithSharedLedger('{"balance":42,"history":{}}'), null);
 });
 
 test('offline face-to-face role card customizer exposes persisted styles and content layout controls', () => {
@@ -4778,4 +4779,65 @@ test('聊天即时收款遇到损坏的既有财务流水时保留原值，不�
   assert.match(source, /financeRaw === ''/);
   assert.match(source, /financeRaw == null/);
   assert.doesNotMatch(source, /getItem\\('finance_records'\\)\\s*\\|\\|\\s*'\\[\\]'/);
+});
+
+test('unified wallet writes: shared ledger validates commits and conditional rollbacks', () => {
+  const stored = new Map([['workData', JSON.stringify({
+    balance: 90, history: [{ type: 'expense', paymentId: 'old', amount: 10 }]
+  })]]);
+  let writeCount = 0;
+  const storage = {
+    getItem: key => stored.has(key) ? stored.get(key) : null,
+    setItem: (key, value) => { writeCount += 1; stored.set(key, String(value)); },
+    removeItem: key => { writeCount += 1; stored.delete(key); }
+  };
+  const window = { navigator: {}, localStorage: storage };
+  runInNewContext(walletLedgerSource, { window });
+  const ledger = window.MaoMaoWalletLedger;
+  const before = stored.get('workData');
+  const next = ledger.readWalletForMutation('workData');
+  next.balance = 75;
+  next.history.unshift({ type: 'expense', category: 'shop', amount: 15, paymentId: 'new' });
+  const committed = ledger.commitWalletSnapshot(next, before);
+  assert.equal(committed.ok, true);
+  assert.equal(stored.get('workData'), committed.raw);
+  assert.equal(ledger.readWalletForMutation('workData').balance, 75);
+  assert.equal(ledger.readWalletForMutation('workData').history.length, 2);
+  assert.equal(ledger.commitWalletSnapshot(next, before).reason, 'stale-wallet');
+  assert.equal(ledger.commitWalletSnapshot({ balance: Number.NaN, history: [] }).ok, false);
+  assert.equal(ledger.commitWalletSnapshot({ balance: 3, history: {} }).ok, false);
+  assert.equal(writeCount, 1, 'invalid and stale transactions must never reach storage');
+  assert.equal(ledger.restoreWalletSnapshot('wrong-version', before), false);
+  assert.equal(ledger.restoreWalletSnapshot(committed.raw, before), true);
+  assert.equal(stored.get('workData'), before);
+  assert.equal(writeCount, 2);
+  assert.equal(ledger.restoreWalletSnapshot(committed.raw, before), false, 'rollback can never apply twice');
+
+  const broken = '{invalid-wallet';
+  stored.set('workData', broken);
+  assert.equal(ledger.commitWalletSnapshot({ balance: 1000, history: [] }).reason, 'invalid-store');
+  assert.equal(stored.get('workData'), broken, 'damaged wallet remains available for recovery');
+  assert.equal(ledger.restoreWalletSnapshot(broken, '{invalid-previous'), false);
+
+  stored.delete('workData');
+  const firstUse = ledger.readWalletForMutation('workData');
+  assert.equal(firstUse.balance, 1000);
+  assert.equal(ledger.commitWalletSnapshot(firstUse, null).ok, true);
+});
+
+test('unified wallet writes: chat, shop, takeout and wallet page use the same commit API', () => {
+  for (const [name, source] of [
+    ['chat', detail], ['shop', shopPage], ['takeout', takeoutPage], ['wallet', walletPage]
+  ]) {
+    assert.match(source, /ledger\.commitWalletSnapshot\(wd/,
+      name + ' balance operations must use shared wallet commit');
+    assert.doesNotMatch(source, /localStorage\.setItem\('workData'/,
+      name + ' must not write the wallet directly');
+  }
+  assert.match(walletLedgerSource, /function restoreWalletSnapshot\(/);
+  for (const source of [shopPage, takeoutPage]) {
+    assert.match(source, /ledger\.restoreWalletSnapshot\(walletSerialized, oldWalletRaw\)/);
+    assert.match(source, /ledger\.readWalletForMutation\('workData', oldWalletRaw\)/);
+  }
+  assert.match(walletPage, /return ledger && typeof ledger\.readWalletForMutation/);
 });
