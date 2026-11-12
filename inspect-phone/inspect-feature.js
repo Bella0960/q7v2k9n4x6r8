@@ -65,7 +65,30 @@
   }
   function save(data) {
     try {
-      var key=storyKey(data.roleId),encoded=JSON.stringify(data);
+      var key=storyKey(data.roleId);
+      // The chat tab may have just recorded which clue was offered to an AI
+      // reply. Preserve that marker if the inspect tab still holds an older
+      // in-memory copy. This merges delivery metadata, not private records
+      // across roles or accounts.
+      var persisted=null;
+      try {persisted=JSON.parse(localStorage.getItem(key)||'null');}catch(ignore){}
+      if(persisted&&persisted.roleId===data.roleId&&Array.isArray(persisted.interactions)){
+        var own=arr(data.interactions).slice(),byId={};
+        own.forEach(function(e){if(e&&e.id)byId[e.id]=e;});
+        persisted.interactions.forEach(function(record){
+          if(!record||!record.id||record.origin!=='user_on_fictional_phone')return;
+          var entry=byId[record.id];
+          if(entry){
+            if(num(record.offeredToAIAt,0)>num(entry.offeredToAIAt,0))
+              entry.offeredToAIAt=record.offeredToAIAt;
+          }else {
+            own.push(record);byId[record.id]=record;
+          }
+        });
+        own.sort(function(a,b){return num(a.at,0)-num(b.at,0);});
+        data.interactions=own.slice(-30);
+      }
+      var encoded=JSON.stringify(data);
       localStorage.setItem(key,encoded);
       // Some embedded mobile storage implementations ignore writes without throwing.
       return localStorage.getItem(key)===encoded;
