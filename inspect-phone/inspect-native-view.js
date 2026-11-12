@@ -184,8 +184,8 @@
       title='浏览器';
       var pw=o.personaWeb,allHistory=arr(s.searchHistory).slice().sort(function(a,b){return n(b.time)-n(a.time);});
       var resultsQuery=v&&v.query||s.activeQuery||'';
-      var results=pw&&pw.find?pw.find(resultsQuery,o.persona):[];
-      var lookup=pw&&pw.article?pw.article.bind(pw):function(){return null;};
+      var results=pw&&pw.find?pw.find(resultsQuery,o.persona,s):[];
+      var lookup=pw&&pw.article?function(id){return pw.article(id,s);}:function(){return null;};
       function browserSearch(q){
         return '<form class="nv-web-search" id="inspectBrowserSearch">'+
           '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg>'+
@@ -198,7 +198,7 @@
       }
       if(v&&v.kind==='browser-results'){
         body='<div class="nv-browser-app">'+browserSearch(resultsQuery)+
-          '<div class="nv-web-label">搜索结果 <small>本地资料 · 非实时网页</small></div>'+
+          '<div class="nv-web-label">搜索结果 <small>'+(arr(s.aiResults).some(function(x){return x.query===String(resultsQuery).toLowerCase().trim();})?'AI 虚构资料 · 非实时网页':'本地资料 · 非实时网页')+'</small></div>'+
           (results.length?results.map(webRow).join(''):
           '<div class="nv-browser-empty">暂时没有收录与「'+esc(resultsQuery)+'」相关的本地资料。<p>没有连接真实搜索引擎，也不会编造搜索结果。可以试试“送花”“玫瑰”“阅读”或“学习”。</p></div>')+
           '</div>';
