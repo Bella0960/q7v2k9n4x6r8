@@ -65,6 +65,21 @@
      tab.addEventListener('click',function(){selection=opt[0];update();});
      tabs.append(tab);
    });
+   tabs.addEventListener('keydown',function(event){
+     var choices=Array.from(tabs.querySelectorAll('.at-filter-tab'));
+     var index=choices.indexOf(event.target);
+     if(index<0)return;
+     var next=index;
+     if(event.key==='ArrowRight')next=(index+1)%choices.length;
+     else if(event.key==='ArrowLeft')next=(index+choices.length-1)%choices.length;
+     else if(event.key==='Home')next=0;
+     else if(event.key==='End')next=choices.length-1;
+     else return;
+     event.preventDefault();
+     selection=choices[next].getAttribute('data-at-filter');
+     update();
+     choices[next].focus();
+   });
    bar.append(tabs);
    parent.insertBefore(bar,parent.querySelector('#chatListContainer,#momentsList'));
    empty=element('p','at-filter-empty','暂无符合条件的内容');
