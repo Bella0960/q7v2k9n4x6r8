@@ -766,7 +766,8 @@
       var next=source?Object.assign({},source):{createdAt:now};
       next.noteId=noteId;
       next.title=title;next.text=text;next.updatedAt=now;
-      next.lastEditedBy='viewer';next.origin=created?'user_on_fictional_phone':(source.origin||'role_story');
+      next.lastEditedBy='viewer';next.originalOrigin=source?(source.originalOrigin||source.origin||'role_story'):null;
+      next.origin='user_on_fictional_phone';
       if(source&&source.text!==text){
         next.editHistory=arr(source.editHistory).concat([{at:now,text:notePlainText(source.text,4000)}]).slice(-3);
       }
