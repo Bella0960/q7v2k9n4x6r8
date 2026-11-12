@@ -174,3 +174,31 @@ test('AI刷新不能删除用户亲手写的备忘录和朋友圈评论',async()
   assert.ok(saved.some(m=>m.comments.some(c=>c.text==='这句话是我写给角色的评论')));
   assert.ok(saved.some(m=>m.text.includes('新内容')));
 });
+
+
+test('多次离线刷新仍保存亲手编辑的日记，不把它悄悄扔出历史',()=>{
+  const u=setup('diary-archive');u.start();u.app('notes');u.detail('note',0);u.action('editNote');
+  u.submit('inspectNoteEditForm',{title:'这篇我亲手编辑过',text:'即使反复刷新也不允许消失的完整日记。'});
+  for(let i=0;i<24;i++)u.action('refresh');
+  const d=u.read(),all=d.sections.notes.notes.concat(d.sections.notes.archive||[]);
+  assert.equal(all.filter(n=>n.title==='这篇我亲手编辑过').length,1);
+  assert.ok(all.some(n=>n.text.includes('不允许消失的完整日记')));
+});
+
+test('聊天已提供给AI的状态不会被旧查手机标签页后续保存冲掉',()=>{
+  const u=setup('same-role-tabs');u.start();u.app('notes');u.action('newNote');
+  u.submit('inspectNoteEditForm',{title:'提醒只提一次',text:'角色聊天自然提起即可，不能每轮重复。'});
+  const bridge=u.window.InspectInteractionBridge;
+  const pending=bridge.buildPromptPacket('same-role-tabs',u.window.localStorage);
+  assert.equal(pending.eventIds.length,1);
+  assert.equal(bridge.markOffered('same-role-tabs',pending.eventIds,u.window.localStorage),true);
+  // The inspect page's in-memory data is now stale; edit the note and save.
+  u.action('editNote');
+  u.submit('inspectNoteEditForm',{title:'提醒只提一次',text:'更新后也不应该重复提醒。'});
+  const saved=u.read(),offered=saved.interactions.find(e=>e.id===pending.eventIds[0]);
+  assert.ok(offered.offeredToAIAt>0);
+  const latest=bridge.buildPromptPacket('same-role-tabs',u.window.localStorage);
+  assert.equal(latest.eventIds.length,1,'仅新编辑产生的线索应该待提供');
+  assert.doesNotMatch(latest.text,/角色聊天自然提起即可/);
+  assert.match(latest.text,/更新后也不应该重复提醒/);
+});
