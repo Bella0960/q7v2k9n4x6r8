@@ -47,8 +47,8 @@ test('role participation uses existing MAOMAO character and AI APIs', () => {
   assert.match(js, /PhoneStorage\.getCharacters/);
   assert.match(js, /PhoneContext\.buildPhoneRoleContext/);
   assert.match(js, /PhoneAPI\.complete/);
-  assert.match(js, /function requestRoleStart\(game\)/);
-  assert.match(js, /requestRoleStart\('抽签'\)/);
+  assert.match(js, /function requestRoleStart\(game, actorType\)/);
+  assert.match(js, /requestRoleStart\('抽签', actor\.type\)/);
   assert.match(js, /requestRoleStart\('大转盘'\)/);
   assert.match(js, /requestRoleStart\('塔罗牌'\)/);
   assert.match(js, /requestRoleStart\('今日运势'\)/);
@@ -64,7 +64,7 @@ test('random results are generated locally before character response', () => {
   assert.match(js, /function drawTarot\(\)/);
   assert.match(js, /function drawDaily\(\)/);
   assert.match(js, /reversedDraw:randomIndex\(100\)<30/);
-  assert.match(js, /function askRole\(game, detail, targetId\)/);
+  assert.match(js, /function askRole\(game, detail, targetId, actorType\)/);
   assert.ok(js.indexOf('var index = randomIndex(wheel.items.length)') < js.indexOf("askRole('大转盘'"));
 });
 
@@ -79,7 +79,7 @@ test('custom templates and history have a dedicated persistent data domain', () 
   assert.match(js, /state\.pools/);
   assert.match(js, /state\.wheels/);
   assert.match(js, /state\.history/);
-  assert.match(js, /suit:card\.suit/);
+  assert.match(js, /suit:isMajor \? '大阿卡纳' : card\.suit/);
   assert.match(html, /deleteLotPoolBtn/);
   assert.match(html, /deleteWheelBtn/);
   assert.match(js, /function saveState\(\)/);
@@ -102,7 +102,7 @@ test('lot draw actor modes support user, character, and persistent alternating t
   assert.match(js, /function getLotActor\(\)/);
   assert.match(js, /entry\.game === '抽签'/);
   assert.match(js, /requestRoleStart\('抽签', actor\.type\)/);
-  assert.match(js, /addHistory\('抽签', result, pool\.name, actor\.name\)/);
+  assert.match(js, /addHistory\('抽签', result, pool\.name, actor\)/);
   assert.match(js, /askRole\('抽签', result, 'lotRoleReaction', actor\.type\)/);
   assert.match(js, /entry\.actorName/);
 });
