@@ -1353,12 +1353,12 @@
             wd.history.unshift({ type:'expense', category:'close_pay',
               title: '外卖亲密付 · ' + cp.roleName + ' · ' + itemsDesc,
               amount: total, time: Date.now(), paymentId: transactionId });
-            walletSerialized = JSON.stringify(wd);
-            localStorage.setItem('workData', walletSerialized);
-            if (localStorage.getItem('workData') !== walletSerialized) {
+            var walletCommit = ledger.commitWalletSnapshot(wd, oldWalletRaw);
+            if (!walletCommit.ok) {
               toast('钱包扣款未能确认；再次提交会核对原交易，不会盲目重复扣款');
               return;
             }
+            walletSerialized = walletCommit.raw;
           } else {
             walletSerialized = oldWalletRaw || JSON.stringify(wd);
           }
@@ -1371,10 +1371,7 @@
             localStorage.setItem('close_pay', closePaySerialized);
             if (localStorage.getItem('close_pay') !== closePaySerialized) {
               try {
-                if (localStorage.getItem('workData') === walletSerialized) {
-                  if (oldWalletRaw == null) localStorage.removeItem('workData');
-                  else localStorage.setItem('workData', oldWalletRaw);
-                }
+                ledger.restoreWalletSnapshot(walletSerialized, oldWalletRaw);
               } catch (rollbackError) {}
               toast('亲密付额度未能保存，已尝试撤回钱包扣款；请重试核对原交易');
               return;
@@ -1402,10 +1399,7 @@
               } catch(e) {
                 if (!closePayQuotaCommitted && walletSerialized) {
                   try {
-                    if (localStorage.getItem('workData') === walletSerialized) {
-                      if (oldWalletRaw == null) localStorage.removeItem('workData');
-                      else localStorage.setItem('workData', oldWalletRaw);
-                    }
+                    ledger.restoreWalletSnapshot(walletSerialized, oldWalletRaw);
                   } catch (rollbackError) {}
                 }
                 toast('亲密付操作未能确认，订单未完成');
