@@ -154,9 +154,9 @@
             return '<div class="nv-comment">'+avatar(c.name,'small')+
               '<span><strong>'+esc(c.name)+'</strong><p>'+esc(c.text)+'</p></span></div>';
           }).join(''))+
-          '<form class="nv-moment-comment-form" id="inspectForumComment"><input name="text" maxlength="300" aria-label="论坛评论" placeholder="说说你的看法…">'+
+          (v.kind==='post'?'<form class="nv-moment-comment-form" id="inspectForumComment"><input name="text" maxlength="300" aria-label="论坛评论" placeholder="说说你的看法…">'+
           '<button type="submit">评论</button></form>'+
-          '<button class="nv-chat-handoff" type="button" data-action="chatAboutForum">和'+esc(name)+'聊聊这篇帖子</button>';
+          '<button class="nv-chat-handoff" type="button" data-action="chatAboutForum">和'+esc(name)+'聊聊这篇帖子</button>':'');
       }else{
         title='论坛';
         var mine=ownPosts.filter(function(p){return String(p.authorId||o.roleId)===String(o.roleId);});
