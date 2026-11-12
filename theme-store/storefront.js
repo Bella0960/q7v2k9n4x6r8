@@ -115,7 +115,7 @@ async function handle(action,id){
  if(action==='apply-theme'){
    const theme=api.themes.find(item=>item.id===id);
    if(!theme)throw Error('主题不存在');
-   modal('确认应用主题？','<p class="sf-caption">当前只是独立预览。确认后才会把「'+e(theme.name)+'」设为当前主题；聊天记录和头像保持不变。</p><footer>'+button('继续预览','close')+button('确认应用','confirm-apply-theme',id,'sf-button primary')+'</footer>');
+   modal('确认应用主题？','<p class="sf-caption">当前只是独立预览。确认后才会把「'+e(theme.name)+'」设为当前主题；聊天记录和头像保持不变。</p><footer>'+button('取消','close')+button('确认应用','confirm-apply-theme',id,'sf-button primary')+'</footer>');
    return;
  }
  if(action==='confirm-apply-theme'){if(!api.applyTheme(id))throw Error('主题未能保存，请检查存储空间');close();return;}
