@@ -8,7 +8,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
-assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v203'/);
+assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v222'/);
 const viteConfig = read('vite.config.js');
 
 test('build emits a manifest containing every HTML entry point', () => {
@@ -61,4 +61,38 @@ test('desktop app navigation has one valid capture-phase owner', () => {
 test('failed app navigation never falls back to the desktop index page', () => {
   assert.doesNotMatch(serviceWorker, /cached \|\| caches\.match\('\.\/index\.html'\)/);
   assert.match(serviceWorker, /status: 503/);
+});
+
+
+test('opt-in atmosphere assets are precached for the mobile PWA',()=>{
+ assert.ok(serviceWorker.includes('./shared/css/atmosphere-theme.css?v=20261112v3'));
+ assert.ok(serviceWorker.includes('./shared/js/atmosphere-theme.js?v=20261112v1'));
+ assert.ok(serviceWorker.includes('./shared/js/atmosphere-composer.js?v=20261112c1'));
+ assert.ok(serviceWorker.includes('./shared/js/atmosphere-icons.js?v=20261112i1'));
+ assert.ok(serviceWorker.includes('./shared/css/atmosphere-pages.css?v=20261112p3'));
+ assert.ok(serviceWorker.includes('./shared/js/atmosphere-pages.js?v=20261112p4'));
+ assert.ok(serviceWorker.includes('./shared/css/atmosphere-editorial-home.css?v=20261112e1'));
+ assert.ok(serviceWorker.includes('./shared/js/atmosphere-editorial-home.js?v=20261112e1'));
+ assert.ok(serviceWorker.includes('./theme-store/atmosphere-live-preview.html'));
+ assert.ok(serviceWorker.includes('./theme-store/atmosphere-v5-original.html'));
+ assert.ok(serviceWorker.includes('./theme-store/atmosphere-v5-preserved-custom-preview.html'));
+ assert.ok(serviceWorker.includes('./theme-store/atmosphere-v5-custom.css?v=20261113v3'));
+ assert.ok(serviceWorker.includes('./theme-store/atmosphere-v5-custom.js?v=20261113v3'));
+ assert.ok(serviceWorker.includes('./chat/chat/chat.html'));
+
+ assert.ok(serviceWorker.includes('./chat/moments/my-moments.html'));
+ assert.ok(serviceWorker.includes('./profile/profile.html'));
+ assert.ok(serviceWorker.includes('./shared/css/atmosphere-my-home.css?v=20261112h2'));
+ assert.ok(serviceWorker.includes('./shared/js/atmosphere-my-home.js?v=20261112h4'));
+ assert.ok(serviceWorker.includes('./theme-store/theme-store.html'));
+ assert.ok(serviceWorker.includes('./theme-store/market-expansion.js?v=20261112m1'));
+ assert.ok(serviceWorker.includes('./theme-store/market-expansion.css?v=20261112m1'));
+ assert.ok(serviceWorker.includes('./desktop/widgets.html'));
+ assert.ok(serviceWorker.includes('./settings/icon-settings.html'));
+ assert.ok(serviceWorker.includes('./settings/appearance.html'));
+ assert.ok(serviceWorker.includes('./shared/js/chat-beauty.js?v=20261112at1'));
+ assert.ok(serviceWorker.includes('./shared/js/chat-page-theme.js?v=20261105v1'));
+
+
+ assert.ok(serviceWorker.includes('./shared/js/chat-list-theme.js?v=20261112at1'));
 });

@@ -598,7 +598,7 @@ html,body{background:#f7f7f8}
   'use strict';
   var STORAGE_KEY='maomao_diary_entries_v1';
   var entries=loadEntries();
-  var currentView='home', query='', searchOpen=false, moodFilter='全部', noteTypeFilter='全部', selectedMood='平静';
+  var currentView=(window.location.hash==='#favorites'?'favorites':'home'), query='', searchOpen=false, moodFilter='全部', noteTypeFilter='全部', selectedMood='平静';
   var editId=null, activePhoto='', activePhotos=[], calendarMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1), selectedCalendarDate=todayKey();
   var cardAnimQueued=true;
   var prompts=[

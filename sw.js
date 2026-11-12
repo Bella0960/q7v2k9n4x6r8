@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v204';
+const CACHE_NAME = 'phone-app-pwa-v222';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 // v196 release: sweep orphaned role-owned media refs during avatar cleanup.
 const APP_SHELL = [
@@ -19,9 +19,21 @@ const APP_SHELL = [
   './tutorial/tutorial.js?v=20261111v3',
   './beauty/beauty.html',
   './theme-store/theme-store.html',
+  './theme-store/atmosphere-live-preview.html',
+  './theme-store/atmosphere-v5-original.html',
+  './theme-store/atmosphere-v5-preserved-custom-preview.html',
+  './theme-store/atmosphere-v5-custom.css?v=20261113v3',
+  './theme-store/atmosphere-v5-custom.js?v=20261113v3',
+  './theme-store/market-expansion.css?v=20261112m1',
+  './theme-store/market-expansion.js?v=20261112m1',
+  './desktop/widgets.html',
+  './settings/icon-settings.html',
+  './settings/appearance.html',
   './chat/chat/chat.html',
   './chat/contacts/contacts.html',
   './chat/moments/moments.html',
+  './chat/moments/my-moments.html',
+  './profile/profile.html',
   './chat/footprint/footprint.html',
   './wallet/takeout.html',
   './assets/takeout/s1-noodle.jpg',
@@ -52,7 +64,19 @@ const APP_SHELL = [
   './shared/css/silver-butterfly-theme.css?v=20261102v5',
   './shared/css/wechat-theme-refinements.css?v=20261105v2',
   './shared/css/chat-list-editorial-theme.css?v=20261104v2',
-  './shared/js/chat-list-theme.js?v=20261104v2',
+  './shared/js/chat-list-theme.js?v=20261112at1',
+  './shared/css/atmosphere-theme.css?v=20261112v3',
+  './shared/js/atmosphere-theme.js?v=20261112v1',
+  './shared/js/atmosphere-composer.js?v=20261112c1',
+  './shared/js/atmosphere-icons.js?v=20261112i1',
+  './shared/css/atmosphere-pages.css?v=20261112p3',
+  './shared/css/atmosphere-editorial-home.css?v=20261112e1',
+  './shared/js/atmosphere-editorial-home.js?v=20261112e1',
+  './shared/js/atmosphere-pages.js?v=20261112p4',
+  './shared/css/atmosphere-my-home.css?v=20261112h2',
+  './shared/js/atmosphere-my-home.js?v=20261112h4',
+  './shared/js/chat-beauty.js?v=20261112at1',
+  './shared/js/chat-page-theme.js?v=20261105v1',
   './shared/assets/silver-butterfly-photo.webp',
   './games/games.html',
   './games/cooking.html',
