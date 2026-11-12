@@ -494,7 +494,7 @@
     if(!data.source||typeof data.source!=='object')data.source={};
     if(!Array.isArray(data.secrets)||!data.secrets.length)data.secrets=fallback(role,roleId,now).secrets;
     function currentSource(){
-      var source=data.source[current]==='ai'?'AI 剧情记录':'本地剧情样例 · 未调用 AI';
+      var source=data.source[current]==='ai'?'AI 剧情记录':data.source[current]==='offline-sample'?'离线预置剧情 · 非AI生成':'本地剧情样例 · 未调用 AI';
       return source+(data.carriedFrom?' · 含 '+data.carriedFrom+' 的历史记录':'');
     }
     function hint(text){notice=clean(text,200);render();}
@@ -649,12 +649,72 @@
       if(danger.caught){current='caught';notice='角色发现有人尝试进入锁定内容，收回了查看许可。';permission=null;commit();render();}
       else hint('密码不正确。角色似乎注意到了这次尝试。');
     }
+    // Offline fixture mode is deliberately labeled as such. It makes diary/post
+    // refresh testable on a phone without silently pretending that an AI ran.
+    function refreshOffline(id) {
+      if(id!=='notes'&&id!=='forum'&&id!=='moments'){
+        hint('此应用当前展示角色剧情样例。配置 API 后才能生成新的'+(ITEMS.find(function(x){return x.id===id;})||{}).name+'记录。');
+        return;
+      }
+      var old=JSON.parse(JSON.stringify(data.sections[id])),originalSource=data.source[id];
+      var section=data.sections[id],now=Date.now(),cursor=Math.max(0,num(section.fixtureRefreshCount,0));
+      var diarySeeds=[
+        {title:'今天记录的几件小事',text:'出门前把手机找了半天，最后发现它就在外套口袋里。\n\n午饭路过熟悉的那家小店，还是坐在靠里面的位置。小林发消息说书已经拿到了，顺便问我周末有没有安排。我回了一个还不确定。\n\n回家后把照片整理了一遍，看到下午在街角拍下的路灯。奇怪的是，当时没有什么特别的心情，现在再看却记得那阵风。\n\n决定给自己留一段不急着回复消息的时间。明天把桌面收拾好。'},
+        {title:'写在没睡着之前',text:'刚刚把原本写好的消息又看了一遍。其实没有什么需要反复改的地方，但总担心自己的语气听起来很生硬。\n\n我翻了一会儿相册，发现上次出门拍的几张照片都没有发出去。照片里没有什么特别的人物，只有路边的店招和摆得很整齐的杯子。\n\n明天准备把借来的书还回去。看到那张夹在里面的收据时，又想起文具店买下的小东西。先收好吧，等合适的时候再说。'},
+        {title:'没有安排满的一天',text:'今天计划表上只写了三件事，最后做完了两件。以前遇到这种情况会有点焦躁，现在倒觉得给自己留点空白也挺好。\n\n中午那家小店的人没有上次那么多。点完餐的时候收到阿诺的消息，问有没有空出来走走。我答应下次再约。\n\n晚上把手机调成静音，读了二十多页书。读到某一段时突然想起以前的事情，就在这里记一下：有些话不必急着在同一天说完。'},
+        {title:'给明天的提醒',text:'要记得：\n\n把那本书带走；给阿川回活动报名的消息；检查耳机有没有放在包里；留一点时间走一段路。\n\n今天整理旧聊天时看见了一句很普通的问候，才发现当时自己没有回复。并不是不知道该说什么，而是那会儿正忙着处理别的事。\n\n明天如果想起来，就认真回复一句，不要为了显得自然，又把消息在输入框里删掉。'}
+      ];
+      var postSeeds=[
+        {title:'最近有一件很小但很开心的事',text:'今天回来的路上经过街角的小店，原本打算直接回去，最后还是进去坐了一会儿。\n\n店里播放的音乐很轻，窗边的位置刚好空着。我把今天要做的事情划掉了两项，突然发现这样普通的片刻也值得记下来。\n\n想问问大家最近有没有类似的小发现？',comments:[{name:'阿诺',text:'这种小事最值得记住了。'},{name:'小林',text:'店在哪里，下次带我去。'}]},
+        {title:'有没有人也喜欢把票据夹在书里',text:'整理书桌时又翻到一张旧收据，折得整整齐齐，夹在一本还没读完的书里。\n\n收据上的字快看不清了，但我居然还记得当天在店里挑东西挑了很久。\n\n有人跟我一样舍不得把这种小纸片扔掉吗？',comments:[{name:'南风',text:'我会拿来当书签。'},{name:'小乙',text:'以前攒了一整盒。'}]},
+        {title:'周末走走停停就好',text:'临时决定不要安排太满的活动。想挑一条熟悉的路慢慢走，路过书店就进去翻两页，累了就坐下来吃点东西。\n\n以前总觉得出去玩要拍很多照片才算没有白去，最近反而觉得记住一段路就够了。\n\n有没有适合一个人慢慢走的小路线？',comments:[{name:'阿蓝',text:'看看河边那条路。'}]}
+      ];
+      if(id==='notes'){
+        var draft=diarySeeds[cursor%diarySeeds.length];
+        var newNote={title:draft.title,text:draft.text,createdAt:now,updatedAt:now};
+        section.notes.unshift(newNote);
+        if(section.notes.length>5){
+          section.archive=arr(section.archive);
+          section.archive.unshift(section.notes.pop());
+          section.archive=section.archive.slice(0,18);
+        }
+        view={kind:'note',index:0};
+      } else if(id==='forum'){
+        var post=postSeeds[cursor%postSeeds.length];
+        section.posts.unshift({title:post.title,text:post.text,time:now,comments:post.comments});
+        if(section.posts.length>5){
+          section.archive=arr(section.archive);
+          section.archive.unshift(section.posts.pop());
+          section.archive=section.archive.slice(0,18);
+        }
+        view=null;
+      } else {
+        var momentsSeeds=[
+          '把最后一件待办划掉的时候，才发现窗外已经天黑了。最近要提醒自己早点休息。',
+          '路过熟悉的那家小店，买了一杯温热的饮料。拍照的时候刚好有风。',
+          '整理相册翻到了前几天的照片。平时觉得普通，过后再看倒挺喜欢。'
+        ];
+        section.moments.unshift({text:momentsSeeds[cursor%momentsSeeds.length],time:now,
+          visibility:'好友可见',hesitated:true,image:'街角的一张普通生活照',
+          comments:[{name:'阿诺',text:'等有空一起去走走。'}]});
+        if(section.moments.length>5)section.moments.pop();
+        view=null;
+      }
+      section.fixtureRefreshCount=cursor+1;
+      data.source[id]='offline-sample';
+      data.updatedAt=now;
+      if(!save(data)){
+        data.sections[id]=old;data.source[id]=originalSource;
+        notice='存储空间不足，刷新没有覆盖旧记录。';render();return;
+      }
+      notice='已切换到下一段预置的虚构剧情（离线演示，未调用 AI）。';render();
+    }
     function refreshSection() {
       if(waiting)return;
       var id=current,api=global.PhoneAPI,cfg=global.PhoneStorage&&global.PhoneStorage.getApiConfig?global.PhoneStorage.getApiConfig():{};
       if(!permission||selected.indexOf(id)<0){hint('这个板块尚未获得角色分享许可。');return;}
       if(pendingChat&&id==='chat'){hint('请先等待当前联系人的回复，避免覆盖发送中的消息。');return;}
-      if(!api||typeof api.completeJSON!=='function'||!clean(cfg.apiKey)){hint('还没有配置聊天 API。当前可查看本地剧情样例；配置后可按角色人设刷新。');return;}
+      if(!api||typeof api.completeJSON!=='function'||!clean(cfg.apiKey)){refreshOffline(id);return;}
       waiting=true;notice='正在生成当前板块，不会重写其他板块。';render();
       var requestRoleId=roleId,requestNow=Date.now();
       api.completeJSON({system:'你是一位虚构角色生活资料编剧，只返回合法 JSON，不涉及真实用户隐私。',user:promptFor(id,role,data,requestNow),timeoutMs:60000,temperature:.85}).then(function(result){
