@@ -40,6 +40,13 @@ try{
     localStorage.setItem('my_home_cover_v1',image);
     localStorage.setItem('my_home_cover_migrated_v1','1');
     localStorage.setItem('chat_list_cover_v1','chat-background-must-stay');
+    localStorage.setItem('ai_custom_characters',JSON.stringify([
+     {id:'at_person',name:'林舟'},{id:'at_another',name:'阿宁'}
+    ]));
+    localStorage.setItem('chat_history_at_person',JSON.stringify([
+     {role:'assistant',text:'明天见，最近的风很舒服',time:now-60000,mid:'at_chat_1'},
+     {role:'user',text:'好，记得带伞',time:now-40000,mid:'at_chat_2'}
+    ]));
     localStorage.setItem('moments',JSON.stringify([
      {id:'at_post_text',authorId:'me',author:'测试用户',content:'这一条只有文字',
       image:'',time:now-3e5,likes:0,comments:[]},
@@ -151,6 +158,41 @@ try{
    assert.equal(await page.locator('.my-post:not([hidden])').count(),3);
    await page.locator('.cover-nav-btn').click();
    await page.waitForURL(/\/chat\/moments\/moments\.html$/);
+
+   // Moments uses the same native posts; only the opt-in visual filter differs.
+   await page.evaluate(()=>{
+    localStorage.setItem('maomao_chat_theme_preset','atmosphere');
+    window.dispatchEvent(new Event('maomao:chat-theme-change'));
+   });
+   await page.reload({waitUntil:'domcontentloaded'});
+   await page.locator('#momentsList .moment-card').first().waitFor();
+   const momentTabs=page.locator('.at-page-filter .at-filter-tab');
+   assert.equal(await momentTabs.count(),2);
+   await page.getByRole('tab',{name:'有图'}).click();
+   assert.equal(await page.locator('#momentsList .moment-card:not([hidden])').count(),2);
+   await page.getByRole('tab',{name:'全部'}).click();
+   assert.equal(await page.locator('#momentsList .moment-card:not([hidden])').count(),3);
+   await page.screenshot({path:outDir+'/moments-'+width+'.png'});
+
+   // Chat home and detail must retain existing list, route and composer.
+   await page.goto(base+'/chat/chat/chat.html',{waitUntil:'domcontentloaded'});
+   await page.locator('#chatListContainer .chat-slim-card[data-id="at_person"]').waitFor();
+   assert.equal(await page.locator('.phone-mockup').getAttribute('data-chat-theme-preset'),'atmosphere');
+   await page.getByRole('tab',{name:'私聊'}).click();
+   assert.ok(await page.locator('#chatListContainer .chat-slim-card:not([hidden])').count()>=2);
+   await page.getByRole('tab',{name:'群聊'}).click();
+   assert.equal(await page.locator('#chatListContainer .chat-slim-card:not([hidden])').count(),0);
+   await page.getByRole('tab',{name:'全部'}).click();
+   await page.screenshot({path:outDir+'/chat-home-'+width+'.png'});
+   await page.locator('.chat-slim-card[data-id="at_person"]').click();
+   await page.waitForURL(/chat-detail\.html\?id=at_person/);
+   await page.locator('form#chat-form').waitFor();
+   assert.ok(await page.locator('.msg-bubble').count()>=1);
+   assert.equal(await page.locator('form#chat-form button[type="submit"]').count(),1);
+   const dock=await page.locator('form#chat-form').boundingBox();
+   assert.ok(dock && dock.y+dock.height<=845,
+    width+': composer must remain above the home bar');
+   await page.screenshot({path:outDir+'/chat-detail-'+width+'.png'});
 
    assert.deepEqual(errors,[],width+': unexpected uncaught page errors');
    console.log('[Thin Shadow] five-page My/Home smoke passed at '+width+'px');
