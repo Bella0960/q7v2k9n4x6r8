@@ -226,15 +226,15 @@
     ];
     searches.sort(function(a,b){return b.time-a.time;});
     var notes=[
-      {title:'这两天',text:'买纸巾；给阿诺回消息；记得把那本书还给小林。',createdAt:at(now,2,10,0),updatedAt:at(now,0,9,3)},
-      {title:'没发出去的话',text:'有些话写完又删了，不知道该怎么开头。',createdAt:at(now,1,22,18),updatedAt:Math.max(at(now,1,22,18),at(now,0,0,52))},
-      {title:'零碎',text:'午饭那家店坐窗边会比较安静。',createdAt:at(now,1,12,30),updatedAt:at(now,0,12,45)},
-      {title:'别忘了',text:'下周把活动报名的事确认一下。',createdAt:at(now,3,18,30),updatedAt:at(now,2,8,0)}
+      {title:'这两天',text:'早上出门的时候，站在门口想了半天，总觉得忘了什么。后来才记起来是昨天聊天里有一句话没说清楚。\n\n午饭去了常去的那家小店。靠窗的位置有人坐了，我就坐在里面一点，想着先把事情一件一件记下来：纸巾快用完了，答应阿诺的消息还没回，那本借来的书也该还回去了。\n\n晚上整理桌子时翻到了夹在书里的旧纸条。字写得很匆忙，倒是把当时的心情全留住了。明天要记得把书带上，别又在临出门时忘掉。',createdAt:at(now,2,10,0),updatedAt:at(now,0,9,3)},
+      {title:'没发出去的话',text:'昨晚在聊天框里打了很多字，写完又一行一行删掉。其实没什么惊天动地的大事，只是不想让别人误解我的意思。\n\n我想说的是，最近沉默不是因为不在意，也不是故意让谁猜。白天的事情一件接着一件，有时候走到回家的路口，才发现一整天都没认真听自己在想什么。\n\n那段话现在还保存在草稿里。也许过几天再看，会觉得没必要解释那么多；也许会找个合适的时间，把其中最重要的一句话好好说出来。',createdAt:at(now,1,22,18),updatedAt:Math.max(at(now,1,22,18),at(now,0,0,52))},
+      {title:'零碎',text:'小店在路口转进去第二家，招牌有点旧，菜单却写得很清楚。靠窗的位置下午会有阳光，坐那里可以看见街角文具店进进出出的人。\n\n今天带了一本书，读到中间被一句话绊住了，反复看了三遍。旁边有人谈周末安排，我听了一会儿，忽然也想出去走走。\n\n下次来试试另外一个套餐，今天这份有点咸。最好避开十二点半，人实在太多。',createdAt:at(now,1,12,30),updatedAt:at(now,0,12,45)},
+      {title:'别忘了',text:'下周待办：\n\n1. 给阿川回复活动报名的事情，别一直拖着。\n2. 把书还给小林，记得检查里面有没有夹纸条。\n3. 整理手机相册，把模糊的照片挑出来。\n4. 周末如果天气好，约阿诺出去走一走。\n\n最重要的一件事：如果心里有什么想法，尽量早点说明白，不要留到深夜再反复猜。',createdAt:at(now,3,18,30),updatedAt:at(now,2,8,0)}
     ];
     var locked=[
-      {title:'别删',text:'删掉的那一大段其实是想解释，我不是不在意，只是还没有想好该怎么说。',createdAt:at(now,2,0,35),updatedAt:at(now,0,1,55)},
-      {title:'想到什么写什么',text:'文具店那个小东西，是想送给你的；买完又担心太突然。',createdAt:at(now,1,23,12),updatedAt:at(now,0,23,12)},
-      {title:'11.09',text:'并不是所有没回的消息都意味着冷淡。那天我只是需要安静一下。',createdAt:at(now,2,23,18),updatedAt:at(now,2,23,20)}
+      {title:'别删',text:'这篇不想放在普通备忘录里。\n\n我删掉的那段话，其实是在解释自己为什么突然变得安静。别人问起来，我总说最近事情多。事情确实多，可真正让我犹豫的，是怕自己的解释听起来像借口。\n\n我记得对方最后发来一句很普通的话，我却盯着屏幕看了很久。明明可以直接回，最后还是把手机扣在桌上。\n\n如果哪天愿意说出来，我希望是用自己的话，不是靠别人从这篇日记里猜到。',createdAt:at(now,2,0,35),updatedAt:at(now,0,1,55)},
+      {title:'想到什么写什么',text:'下午在街角文具店停留得比预计久。最开始只是想买支笔，后来在靠窗的架子上看到一个不太起眼的小东西。颜色很简单，包装也不花哨。\n\n拿起来又放下好几次，最后还是结账了。收据折起来放进了书里，回家后差点把它一起扔掉。\n\n其实没必要给这份礼物安排什么特别的意义。只是刚好想到一个人，觉得对方可能会喜欢。但我还没想好什么时候交出去，卡片也只写了开头。',createdAt:at(now,1,23,12),updatedAt:at(now,0,23,12)},
+      {title:'11.09',text:'那天没有回复消息，并不是生气。\n\n回到住处时已经有点晚了，桌面还堆着白天没整理的东西。我把手机放在一边，去倒了一杯水，坐了很长一会儿才想起来还有消息没看。\n\n后来看到对方的回复，很短，也没有责备。我反倒想了很多。\n\n下次遇到这种时候，或许可以先说一句我现在需要一点时间，等想清楚再聊。这样不用让别人一直等。',createdAt:at(now,2,23,18),updatedAt:at(now,2,23,20)}
     ];
     var salary=p.level==='student'?1200:p.level==='low'?3200:high?23000:6800;
     var transactions=[
@@ -287,7 +287,7 @@
         map:{stops:mapStops,steps:steps,distanceKm:distanceKm,outHours:outHours,frequentPlace:'住处'},
         album:{photos:photos,hidden:hidden,total:456,newSevenDays:17},
         device:{screenMinutes:screenMinutes,nightMinutes:Math.min(48,screenMinutes),apps:apps,battery:76,wifi:'StoryHome-5G',model:'虚构型号 · Mobile X',storageUsedGb:54,storageTotalGb:128,pickups:pickups,focusMinutes:Math.min(84,dayMinutes),relaxMinutes:Math.min(62,dayMinutes),location:facts[facts.length-1].place},
-        forum:{posts:[{title:'今天终于买到了那本书',text:'在街角书店犹豫很久，最后还是拿走了。回去再慢慢读。',time:at(now,2,16,5),comments:[{name:'阿蓝',text:'求后续读后感'}]},{title:'午饭有什么不踩雷的选择',text:'最近总在熟悉的地方来回转，想换点新的。',time:at(now,1,12,1),comments:[{name:'小乙',text:'看看街角那家'}]},{title:'周末打算出去走走',text:'不想排满时间，就随便走走看看。',time:at(now,3,19,10),comments:[{name:'南风',text:'这样最好'}]}]}
+        forum:{posts:[{title:'今天终于买到了那本书',text:'下午路过街角书店，本来只是进去躲一会儿风。书架最下面有一本之前看过介绍的书，封面有点磨损，翻开第一页又觉得舍不得放回去。\n\n结果站在那里读了好几页，店员过来提醒快到关门时间，我才决定买下来。回家把书放在桌上，发现里面有一张不知道谁留下的书签。\n\n打算这个周末读完。先不剧透结尾，等读完再来写感想。',time:at(now,2,16,5),comments:[{name:'阿蓝',text:'求后续读后感'}]},{title:'午饭有什么不踩雷的选择',text:'最近午饭老是在两三家店之间犹豫。熟悉的地方当然省心，但菜单都快背下来了。\n\n今天本来计划去远一点的那家，走到路口又因为时间紧改了主意。坐在店里想了想，发现自己不止吃饭这样，很多事情都会习惯选最稳妥的一种。\n\n想听听大家都有哪些不踩雷的店，最好一个人也能安心坐着，吃完不会特别赶。',time:at(now,1,12,1),comments:[{name:'小乙',text:'看看街角那家'}]},{title:'周末打算出去走走',text:'这周事情有点多，休息日暂时不想安排很满。\n\n天气合适的话，打算沿着以前常走的路线散步，经过书店和那家小店，看到喜欢的地方就停一下。可能会带上相机，也可能只是随手拍几张。\n\n如果最后没去也没关系。最近学到的一件小事是：偶尔什么都不做，也不用特地给自己找理由。',time:at(now,3,19,10),comments:[{name:'南风',text:'这样最好'}]}]}
       }};
   }
   function access(role,now) {
