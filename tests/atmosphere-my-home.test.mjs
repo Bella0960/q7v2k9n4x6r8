@@ -6,6 +6,7 @@ const read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
 const source=read('shared/js/atmosphere-my-home.js');
 const styles=read('shared/css/atmosphere-my-home.css');
 const page=read('chat/moments/my-moments.html');
+const bridge=read('shared/js/atmosphere-pages.js');
 
 class N {
  constructor(tag='div',cls=''){this.tagName=tag.toUpperCase();this.className=cls;this.children=[];
@@ -104,4 +105,36 @@ test('cover action delegates to the original picker and mode uses only its visua
  h.stage.querySelector('.at-home-mode').click();
  assert.equal(h.data.maomao_atmosphere_tone_v1,'dark');
  assert.equal(h.shell.getAttribute('data-at-home-tone'),'dark');
+});
+
+test('origin-aware return respects My and Moments without altering other themes',()=>{
+ assert.match(bridge,/originalHomeHref\+'\?from=profile'/);
+ const start=source.indexOf(' function attachOriginAwareBack(){');
+ const end=source.indexOf(' function init(){',start);
+ assert.ok(start>0&&end>start);
+ const definition=source.slice(start,end);
+ function activate(search,enabled){
+  let handler,usedCapture,stopped=0,prevented=0;
+  const back={addEventListener:(name,fn,capture)=>{
+   assert.equal(name,'click');handler=fn;usedCapture=capture;
+  }};
+  const loc={search,href:'moments.html'};
+  const init=runInNewContext('(function(){'+definition+';return attachOriginAwareBack})()',{
+   window:{location:loc},document:{querySelector:q=>q==='.cover-nav-btn'?back:null},
+   active:()=>enabled
+  });
+  init();
+  handler({preventDefault(){prevented++},stopImmediatePropagation(){stopped++}});
+  return {loc,usedCapture,prevented,stopped};
+ }
+ const fromMy=activate('?from=profile',true);
+ assert.equal(fromMy.loc.href,'../../profile/profile.html');
+ assert.equal(fromMy.usedCapture,true);
+ assert.equal(fromMy.prevented,1);
+ const fromMoments=activate('',true);
+ assert.equal(fromMoments.loc.href,'moments.html');
+ assert.equal(fromMoments.prevented,0);
+ const oldTheme=activate('?from=profile',false);
+ assert.equal(oldTheme.loc.href,'moments.html');
+ assert.equal(oldTheme.stopped,0);
 });
