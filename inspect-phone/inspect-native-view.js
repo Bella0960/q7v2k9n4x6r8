@@ -27,7 +27,7 @@
   function sourceLine(source){return '<p class="nv-source">'+esc(source||'本地虚构剧情')+' · 不读取真实设备记录</p>';}
   function entry(kind,index,title,subtitle,mark){return tap(kind,index,'<span class="nv-line-copy"><strong>'+esc(title)+'</strong><small>'+esc(subtitle||'')+'</small></span>'+(mark?'<span class="nv-line-mark">'+esc(mark)+'</span>':''),'nv-row');}
   function miniIcon(id){var paths={chat:'<path d="M5 6h14v10H9l-4 3V6Z"/><path d="M9 10h6"/>',contacts:'<circle cx="9" cy="8" r="3"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M17 6v8m-4-4h8"/>',discover:'<circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2.2 4.8-4.8 2.2 2.2-4.8Z"/>',me:'<circle cx="12" cy="8" r="3"/><path d="M5 20a7 7 0 0 1 14 0"/>',moments:'<circle cx="12" cy="12" r="8"/><path d="m12 6 1.7 4.3 4.3 1.7-4.3 1.7L12 18l-1.7-4.3L6 12l4.3-1.7Z"/>',forum:'<path d="M5 4h14v12H9l-4 4V4Z"/><path d="M8 9h8m-8 3h6"/>',notes:'<rect x="6" y="3" width="12" height="18" rx="2"/><path d="M9 8h6m-6 4h6m-6 4h4"/>',settings:'<circle cx="12" cy="12" r="8"/><path d="M12 8v8m-4-4h8"/>',qr:'<rect x="4" y="4" width="6" height="6"/><rect x="14" y="4" width="6" height="6"/><rect x="4" y="14" width="6" height="6"/><path d="M14 14h2v2h-2zm4 0h2v6h-2zm-4 5h3"/>'};return '<svg class="nv-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'+(paths[id]||paths.chat)+'</svg>';}
-  function searchbar(label){return '<label class="nv-search" aria-label="'+esc(label)+'">'+miniIcon('discover')+'<input type="search" data-native-search placeholder="'+esc(label)+'" autocomplete="off"></label>';}
+  function searchbar(label){return '<label class="nv-search" aria-label="'+esc(label)+'"><svg class="nv-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg><input type="search" data-native-search placeholder="'+esc(label)+'" autocomplete="off"></label>';}
   function sheet(title,subtitle,body){return '<div class="nv-sheet"><header><span class="nv-eyebrow">'+esc(subtitle||'')+'</span><h2>'+esc(title)+'</h2></header>'+body+'</div>';}
   function paper(text){return '<div class="nv-paper-body">'+esc(text).replace(/\n/g,'<span class="nv-break"></span>')+'</div>';}
   function render(o) {
@@ -56,7 +56,7 @@
         title='发现';tab='discover';
         body='<div class="nv-wechat-discover">'+
           group('',tap('switch-moments',0,'<span class="nv-menu-icon">'+miniIcon('moments')+'</span><span class="nv-line-copy"><strong>朋友圈</strong></span>','nv-row nv-wechat-row'))+
-          group('',tap('switch-forum',0,'<span class="nv-menu-icon">'+miniIcon('forum')+'</span><span class="nv-line-copy"><strong>论坛</strong></span>','nv-row nv-wechat-row'))+
+          group('',tap('switch-forum',0,'<span class="nv-menu-icon">'+miniIcon('forum')+'</span><span class="nv-line-copy"><strong>看一看</strong></span>','nv-row nv-wechat-row'))+
           group('',tap('switch-browser',0,'<span class="nv-menu-icon">'+miniIcon('discover')+'</span><span class="nv-line-copy"><strong>搜一搜</strong></span>','nv-row nv-wechat-row'))+
           '</div>';
       } else if(v&&v.kind==='chatTab'&&v.tab==='me') {
@@ -65,8 +65,10 @@
           '<span class="nv-me-text"><strong>'+esc(name)+'</strong><small>微信号：'+esc(o.wechatId||'wx_'+String(o.roleId||'story').replace(/[^a-z0-9]/gi,'').slice(0,12))+'</small></span>'+
           '<span class="nv-profile-qr">'+miniIcon('qr')+'</span></div>'+
           group('',tap('switch-wallet',0,'<span class="nv-menu-icon">'+miniIcon('qr')+'</span><span class="nv-line-copy"><strong>服务</strong></span>','nv-row nv-wechat-row'))+
-          group('',tap('switch-moments',0,'<span class="nv-menu-icon">'+miniIcon('moments')+'</span><span class="nv-line-copy"><strong>朋友圈</strong></span>','nv-row nv-wechat-row')+
-            tap('switch-notes',0,'<span class="nv-menu-icon">'+miniIcon('notes')+'</span><span class="nv-line-copy"><strong>收藏</strong></span>','nv-row nv-wechat-row'))+
+          group('',tap('switch-browser',0,'<span class="nv-menu-icon">'+miniIcon('notes')+'</span><span class="nv-line-copy"><strong>收藏</strong></span>','nv-row nv-wechat-row')+
+            tap('switch-moments',0,'<span class="nv-menu-icon">'+miniIcon('moments')+'</span><span class="nv-line-copy"><strong>朋友圈</strong></span>','nv-row nv-wechat-row')+
+            tap('switch-wallet',0,'<span class="nv-menu-icon">'+miniIcon('qr')+'</span><span class="nv-line-copy"><strong>卡包</strong></span>','nv-row nv-wechat-row')+
+            tap('switch-album',0,'<span class="nv-menu-icon">'+miniIcon('discover')+'</span><span class="nv-line-copy"><strong>表情</strong></span>','nv-row nv-wechat-row'))+
           group('',tap('switch-device',0,'<span class="nv-menu-icon">'+miniIcon('settings')+'</span><span class="nv-line-copy"><strong>设置</strong></span>','nv-row nv-wechat-row'))+
           '</div>';
       } else {
