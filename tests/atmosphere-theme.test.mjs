@@ -84,8 +84,8 @@ test('legacy floating sender is removed only for atmosphere; native submit stays
  const end=detail.indexOf('  function sync(){',begin);
  assert.ok(begin>0&&end>begin,'legacy sender handler exists');
  const source=detail.slice(begin,end);
- const changes=[],native={style:{display:'none',removeProperty:k=>changes.push('native:'+k)}};
- const capsule={style:{marginRight:'50px',removeProperty:k=>changes.push('capsule:'+k)}};
+ const changes=[],native={style:{display:'none',removeProperty(k){changes.push('native:'+k);delete this.display;}}};
+ const capsule={style:{marginRight:'50px',removeProperty(k){changes.push('capsule:'+k);delete this.marginRight;}}};
  const extra={removed:false,remove(){this.removed=true;}};
  const form={querySelector:q=>q==='.send-icon-btn'?native:null};
  const doc={getElementById:id=>id==='chat-form'?form:id==='myFloatSend'?extra:null,querySelector:q=>
@@ -93,7 +93,8 @@ test('legacy floating sender is removed only for atmosphere; native submit stays
  runInNewContext(source+';fixAll();',{document:doc,isWechat:()=>false,HEART_ICON:'',SEND_ICON:'',window:{}});
  assert.deepEqual(changes,['capsule:margin-right','native:display']);
  assert.equal(extra.removed,true,'legacy extra button is removed, not just covered');
- assert.equal(native.style.display,'none','test stub keeps its own original state; production removeProperty restores the CSS');
+ assert.equal(native.style.display,undefined,'native button is no longer suppressed');
+ assert.equal(capsule.style.marginRight,undefined,'legacy input gutter is released');
 });
 test('atmosphere dark composer overrides legacy forced white and gray surfaces',()=>{
  const css=readFileSync(new URL('../shared/css/atmosphere-theme.css',import.meta.url),'utf8');
