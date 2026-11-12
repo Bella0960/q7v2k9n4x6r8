@@ -92,8 +92,8 @@ test('home card and personal-home copy are editable without rewriting V5 structu
 test('approved V5 source is byte-for-byte identical after removing only the two additive resource tags',()=>{
  const base=readFileSync(new URL('../theme-store/atmosphere-v5-original.html',import.meta.url),'utf8');
  const upgraded=readFileSync(new URL('../theme-store/atmosphere-v5-preserved-custom-preview.html',import.meta.url),'utf8');
- const cssRef='<link rel="stylesheet" href="./atmosphere-v5-custom.css?v=20261113v1">';
- const jsRef='<script defer src="./atmosphere-v5-custom.js?v=20261113v1"></script>';
+ const cssRef='<link rel="stylesheet" href="./atmosphere-v5-custom.css?v=20261113v2">';
+ const jsRef='<script defer src="./atmosphere-v5-custom.js?v=20261113v2"></script>';
  assert.equal(Buffer.byteLength(base,'utf8'),108145);
  assert.equal(base.split('v5-horizontal-album').length,2);
  assert.equal(upgraded.split(cssRef).length,2);
@@ -112,4 +112,13 @@ test('theme-store links to approved V5 instead of the rejected V4 preview',()=>{
  for(const name of ['atmosphere-v5-original.html','atmosphere-v5-preserved-custom-preview.html',
  'atmosphere-v5-custom.js','atmosphere-v5-custom.css'])
   assert.ok(sw.includes('./theme-store/'+name),name+' missing from offline shell');
+});
+
+test('V5 customization uses precise distinct vector icons with no right arrows',()=>{
+ assert.match(js,/const customIcons=/);
+ for(const entry of ["'self-avatar':portraitSvg","'contact-avatar':portraitSvg",
+  "'drawer-cover':layerSvg","'music-cover':musicSvg","'sticker':stickerSvg"])
+   assert.ok(js.includes(entry),entry);
+ assert.doesNotMatch(js,/v5-custom-chevron/);
+ assert.doesNotMatch(css,/v5-custom-chevron/);
 });
