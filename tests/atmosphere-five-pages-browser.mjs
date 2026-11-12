@@ -56,7 +56,6 @@ try{
    // The real My tab must open the *distinct* personal-home route.
    await page.goto(base+'/profile/profile.html',{waitUntil:'domcontentloaded'});
    const shell=page.locator('.phone-mockup');
-   await shell.locator('[data-at-surface="profile"]').count().catch(()=>{});
    await page.waitForFunction(()=>document.querySelector('.phone-mockup')
     ?.getAttribute('data-chat-theme-preset')==='atmosphere');
    const home=page.locator('.menu-row[href*="my-moments.html"]');
@@ -109,7 +108,7 @@ try{
     return m.some(p=>p.id==='at_post_photo' &&
       JSON.stringify(p).includes('真实评论测试'));
    });
-   await page.locator('#cmBackdrop').click();
+   await page.locator('#cmOverlay:not(.show)').waitFor({state:'attached'});
 
    // Real picker + browser Canvas; personal cover must remain separate.
    await page.locator('#coverInput').setInputFiles({
