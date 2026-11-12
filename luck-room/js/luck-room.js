@@ -139,6 +139,7 @@ var activeWheel = 'lunch';
 var wheelRotation = 0;
 var wheelBusy = false;
 var tarotDraw = null;
+var tarotDrawRole = null;
 var roleRequestToken = 0;
 var roleStartToken = 0;
 var toastTimer = null;
@@ -169,7 +170,11 @@ function saveState() {
   try {
     var serialized = JSON.stringify(state);
     localStorage.setItem(DATA_KEY, serialized);
-    return localStorage.getItem(DATA_KEY) === serialized;
+    if (localStorage.getItem(DATA_KEY) !== serialized) {
+      showToast('保存未成功，请检查浏览器存储空间。');
+      return false;
+    }
+    return true;
   } catch (error) {
     showToast('保存失败：浏览器空间可能不足，原有内容没有被主动清除。');
     return false;
@@ -281,6 +286,7 @@ function showToast(message) {
   toastTimer = setTimeout(function () { toast.classList.remove('show'); }, 2300);
 }
 function currentRoleId() { return selectedRole ? String(selectedRole.id) : ''; }
+function snapshotCurrentRole() { return { roleId:currentRoleId(), roleName:roleName(selectedRole) }; }
 function addHistory(game, result, detail, actor) {
   var recordedRoleId = actor && typeof actor.roleId === 'string' ? actor.roleId : currentRoleId();
   var recordedRoleName = actor && typeof actor.roleName === 'string' ? actor.roleName : roleName(selectedRole);
@@ -532,6 +538,7 @@ function spinWheel() {
   var wheel = activeWheelData();
   if (!wheel || wheel.items.length < 2) { showToast('转盘至少需要两个选项。'); return; }
   if (wheelBusy) return;
+  var runRole = snapshotCurrentRole();
   wheelBusy = true; $('spinWheelBtn').disabled = true; $('wheelResult').hidden = true;
   requestRoleStart('大转盘');
   var index = randomIndex(wheel.items.length), step = 360 / wheel.items.length;
@@ -549,8 +556,8 @@ function spinWheel() {
     wheelRotation = target; saveWheelRotation();
     $('wheelResultText').textContent = result; $('wheelResult').hidden = false;
     $('spinWheelBtn').disabled = false; wheelBusy = false;
-    addHistory('大转盘', result, wheel.name);
-    askRole('大转盘', result, 'wheelRoleReaction');
+    addHistory('大转盘', result, wheel.name, runRole);
+    if (currentRoleId() === runRole.roleId) askRole('大转盘', result, 'wheelRoleReaction');
   }
   canvas.addEventListener('transitionend', finish, { once: true });
   setTimeout(finish, 5200);
@@ -562,6 +569,8 @@ function tarotPosition(index, count) { return count === 1 ? '此刻' : ['过去'
 function drawTarot() {
   var button = $('drawTarotBtn');
   if (button.disabled) return;
+  var runRole = snapshotCurrentRole();
+  tarotDrawRole = runRole;
   button.disabled = true;
   requestRoleStart('塔罗牌');
   $('tarotDeckScene').hidden = false;
@@ -597,7 +606,7 @@ function drawTarot() {
     button.textContent = '重新洗牌抽取';
     button.disabled = false;
     renderTarotSpread();
-    addHistory('塔罗', selected.map(function (card) { return card.name + (card.reversedDraw ? '（逆位）' : '（正位）'); }).join('、'), count === 1 ? '单张牌' : '过去 / 现在 / 未来');
+    addHistory('塔罗', selected.map(function (card) { return card.name + (card.reversedDraw ? '（逆位）' : '（正位）'); }).join('、'), count === 1 ? '单张牌' : '过去 / 现在 / 未来', runRole);
   }, 780);
 }
 function renderTarotSpread() {
@@ -621,8 +630,9 @@ function renderTarotSpread() {
       card.revealed = true; renderTarotSpread(); renderTarotReadings();
       if (tarotDraw.every(function (item) { return item.revealed; })) {
         $('tarotHint').textContent = '牌面已经全部翻开。把它当作一个思考角度就好。';
-        $('tarotRoleReaction').hidden = false;
-        askRole('塔罗牌', tarotDraw.map(function (item, i) { return tarotPosition(i, tarotDraw.length) + '：' + item.name + (item.reversedDraw ? '逆位' : '正位'); }).join('；'), 'tarotRoleReaction');
+        var canReact = tarotDrawRole && currentRoleId() === tarotDrawRole.roleId && !!selectedRole;
+        $('tarotRoleReaction').hidden = !canReact;
+        if (canReact) askRole('塔罗牌', tarotDraw.map(function (item, i) { return tarotPosition(i, tarotDraw.length) + '：' + item.name + (item.reversedDraw ? '逆位' : '正位'); }).join('；'), 'tarotRoleReaction');
       }
     });
     slot.append(position, button); spread.appendChild(slot);
@@ -644,6 +654,7 @@ function renderTarotReadings() {
 function drawDaily() {
   var button = $('dailyDrawBtn');
   if (button.disabled) return;
+  var runRole = snapshotCurrentRole();
   requestRoleStart('今日运势');
   var item = DAILY[randomIndex(DAILY.length)];
   var score = 60 + randomIndex(41);
@@ -664,12 +675,12 @@ function drawDaily() {
       node.append(label, value); categories.appendChild(node);
     });
     $('dailyResult').hidden = false;
-    $('dailyRoleReaction').textContent = selectedRole ? roleFallback('今日运势') : '';
+    $('dailyRoleReaction').textContent = '';
     var resultText = score + ' · ' + item.keyword;
-    addHistory('今日运势', resultText, item.headline);
+    addHistory('今日运势', resultText, item.headline, runRole);
     button.disabled = false;
     button.textContent = '测测今天的运气';
-    askRole('今日运势', resultText + '；趣味提示：' + item.description, 'dailyRoleReaction');
+    if (currentRoleId() === runRole.roleId) askRole('今日运势', resultText + '；趣味提示：' + item.description, 'dailyRoleReaction');
   }, 560);
 }
 function renderInitial() {
@@ -687,6 +698,8 @@ $('roleSelect').addEventListener('change', function () {
   roleStartToken++;
   $('rolePrompt').hidden = true;
   $('rolePrompt').textContent = '';
+  ['lotRoleReaction', 'wheelRoleReaction', 'tarotRoleReaction', 'dailyRoleReaction'].forEach(function (id) { $(id).textContent = ''; });
+  $('tarotRoleReaction').hidden = true;
   selectedRole = roles.find(function (role) { return String(role.id) === this.value; }, this) || null;
   saveSettings(); renderRoleOptions(); renderHistory();
 });
@@ -708,8 +721,9 @@ $('lotPoolTitleInput').addEventListener('change', function () {
 $('deleteLotPoolBtn').addEventListener('click', function () {
   if (state.pools.length <= 1) return;
   state.pools = state.pools.filter(function (pool) { return pool.id !== activePool; });
-  activePool = state.pools[0].id; saveState(); renderPoolSelect(); renderLotItems();
-  $('lotResult').hidden = true; showToast('签筒已删除。');
+  activePool = state.pools[0].id; var saved = saveState(); renderPoolSelect(); renderLotItems();
+  $('lotResult').hidden = true;
+  if (saved) showToast('签筒已删除。');
 });
 $('wheelTemplateSelect').addEventListener('change', function () {
   activeWheel = this.value; renderWheelEditor(); $('wheelResult').hidden = true;
@@ -717,8 +731,8 @@ $('wheelTemplateSelect').addEventListener('change', function () {
 $('deleteWheelBtn').addEventListener('click', function () {
   if (state.wheels.length <= 1) return;
   state.wheels = state.wheels.filter(function (wheel) { return wheel.id !== activeWheel; });
-  activeWheel = state.wheels[0].id; wheelRotation = 0; saveState(); renderWheelSelect();
-  $('wheelResult').hidden = true; showToast('转盘模板已删除。');
+  activeWheel = state.wheels[0].id; wheelRotation = 0; var saved = saveState(); renderWheelSelect();
+  $('wheelResult').hidden = true; if (saved) showToast('转盘模板已删除。');
 });
 $('addLotForm').addEventListener('submit', function (event) {
   event.preventDefault(); var value = $('newLotItem').value.trim(), pool = activePoolData();
@@ -730,7 +744,7 @@ $('newLotPoolForm').addEventListener('submit', function (event) {
   if (!name) return;
   var pool = { id:createId('pool'), name:name, items:[] };
   state.pools.push(pool); activePool = pool.id; $('newLotPoolName').value = '';
-  saveState(); renderPoolSelect(); renderLotItems(); showToast('新签筒已创建。');
+  var saved = saveState(); renderPoolSelect(); renderLotItems(); if (saved) showToast('新签筒已创建。');
 });
 $('drawLotBtn').addEventListener('click', drawLot);
 $('wheelTitleInput').addEventListener('change', function () {
@@ -749,7 +763,7 @@ $('newWheelForm').addEventListener('submit', function (event) {
   if (!name) return;
   var wheel = { id:createId('wheel'), name:name, items:['选项一','选项二','选项三','选项四'] };
   state.wheels.push(wheel); activeWheel = wheel.id; $('newWheelName').value = '';
-  saveState(); renderWheelSelect(); showToast('新转盘模板已创建。');
+  var saved = saveState(); renderWheelSelect(); if (saved) showToast('新转盘模板已创建。');
 });
 $('spinWheelBtn').addEventListener('click', spinWheel);
 $('drawTarotBtn').addEventListener('click', drawTarot);
