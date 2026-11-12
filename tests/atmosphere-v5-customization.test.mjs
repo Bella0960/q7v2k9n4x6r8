@@ -88,3 +88,28 @@ test('home card and personal-home copy are editable without rewriting V5 structu
  assert.doesNotMatch(js,/\.hero\.innerHTML\s*=|\.profile-center\.innerHTML\s*=/);
  assert.match(css,/\.v5-custom-text-editor input/);
 });
+
+test('approved V5 source is byte-for-byte identical after removing only the two additive resource tags',()=>{
+ const base=readFileSync(new URL('../theme-store/atmosphere-v5-original.html',import.meta.url),'utf8');
+ const upgraded=readFileSync(new URL('../theme-store/atmosphere-v5-preserved-custom-preview.html',import.meta.url),'utf8');
+ const cssRef='<link rel="stylesheet" href="./atmosphere-v5-custom.css?v=20261113v1">';
+ const jsRef='<script defer src="./atmosphere-v5-custom.js?v=20261113v1"></script>';
+ assert.equal(Buffer.byteLength(base,'utf8'),108145);
+ assert.equal(base.split('v5-horizontal-album').length,2);
+ assert.equal(upgraded.split(cssRef).length,2);
+ assert.equal(upgraded.split(jsRef).length,2);
+ assert.equal(upgraded.replace(cssRef,'').replace(jsRef,''),base,
+  'V5 must never be redesigned as a side effect of new features');
+});
+
+test('theme-store links to approved V5 instead of the rejected V4 preview',()=>{
+ const store=readFileSync(new URL('../theme-store/theme-store.html',import.meta.url),'utf8');
+ const vite=readFileSync(new URL('../vite.config.js',import.meta.url),'utf8');
+ const sw=readFileSync(new URL('../sw.js',import.meta.url),'utf8');
+ assert.match(store,/href="\.\/atmosphere-v5-preserved-custom-preview\.html"/);
+ assert.doesNotMatch(store,/href="\.\/atmosphere-live-preview\.html"/);
+ assert.match(vite,/const htmlFiles = \{\}/);
+ for(const name of ['atmosphere-v5-original.html','atmosphere-v5-preserved-custom-preview.html',
+ 'atmosphere-v5-custom.js','atmosphere-v5-custom.css'])
+  assert.ok(sw.includes('./theme-store/'+name),name+' missing from offline shell');
+});
