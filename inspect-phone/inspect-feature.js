@@ -513,7 +513,7 @@
       if(nativePage)appBody.classList.add('native-surface');
       else appBody.classList.remove('native-surface');
       var topMore=document.getElementById('appReload');
-      if(topMore)topMore.style.visibility=nativePage?'visible':'hidden';
+      if(topMore&&topMore.style)topMore.style.visibility=nativePage?'visible':'hidden';
       appLayer.classList.add('open');
       if(nativePage&&typeof appBody.querySelector==='function'){
         var scrollable=appBody.querySelector('.nv-content');
