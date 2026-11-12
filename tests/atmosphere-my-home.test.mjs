@@ -31,7 +31,10 @@ class N {
  querySelector(q){return this.querySelectorAll(q)[0]||null;}
 }
 function fixture(){
- const watchers=[],handlers={},data={};
+ const watchers=[],handlers={},data={},timers=new Map();
+ let nextTimer=0;
+ const fakeTimeout=(callback,ms)=>{const id=++nextTimer;timers.set(id,{callback,ms});return id;};
+ const fakeClearTimeout=(id)=>timers.delete(id);
  const shell=new N('div','phone-mockup'),stage=new N('main','space-stage');
  const cover=new N('label','cover-upload-label'),hero=new N('header','profile-hero');
  const words=new N('div','profile-text-box'),name=new N('h1','profile-name');
@@ -57,12 +60,14 @@ function fixture(){
  const win={PhoneStorage:{getMyProfile:()=>({sign:'A test signature'})},
   MAOMAOAtmosphereIcons:{markup:()=>'<svg></svg>'},
   addEventListener:(k,fn)=>handlers[k]=fn,matchMedia:()=>({matches:false})};
- runInNewContext(source,{window:win,document:dom,localStorage:storage,MutationObserver:Observer});
+ runInNewContext(source,{window:win,document:dom,localStorage:storage,MutationObserver:Observer,
+  setTimeout:fakeTimeout,clearTimeout:fakeClearTimeout});
  const notify=node=>watchers.filter(w=>w.node===node).forEach(w=>w.fn([]));
  return {shell,stage,hero,feed,panel,picker,post,a,b,c,notify,storage,data,
   tabs:()=>feed.querySelector('.at-home-post-filters'),
   gallery:()=>stage.querySelector('.at-home-album'),
   masthead:()=>stage.querySelector('.at-home-masthead'),
+  flushTimers:()=>{for(const [id,item] of Array.from(timers)){timers.delete(id);item.callback();}},
   pickerCount:()=>pickerCount};
 }
 test('the actual personal homepage uses the existing theme and separate cover key',()=>{
@@ -82,6 +87,11 @@ test('photo ribbon and classifications only show/hide original posts',()=>{
  assert.equal(h.panel.children.length,3);
  h.gallery().querySelector('.at-home-photo').click();
  assert.equal(h.b.scrolled.block,'center');
+ assert.equal(h.b.getAttribute('data-at-home-selected'),'');
+ assert.equal(h.b.getAttribute('tabindex'),'-1');
+ h.flushTimers();
+ assert.equal(h.b.getAttribute('data-at-home-selected'),null);
+ assert.equal(h.b.getAttribute('tabindex'),null);
  assert.equal(h.data.my_home_cover_v1,undefined);
 });
 test('posts refresh and previous theme restores all content and hides extras',()=>{
@@ -137,4 +147,20 @@ test('origin-aware return respects My and Moments without altering other themes'
  const oldTheme=activate('?from=profile',false);
  assert.equal(oldTheme.loc.href,'moments.html');
  assert.equal(oldTheme.stopped,0);
+});
+
+test('all-photos shortcut reveals the first original photo and never creates a second feed',()=>{
+ const h=fixture(),open=h.gallery().querySelector('.at-home-album-open');
+ assert.ok(open);
+ assert.equal(open.textContent,'全部照片 02');
+ open.click();
+ assert.equal(h.b.getAttribute('data-at-home-selected'),'');
+ assert.equal(h.b.scrolled.block,'center');
+ assert.equal(h.a.hidden,true);
+ assert.equal(h.panel.children.length,3);
+ const extra=h.post('photo','data:image/png;base64,XYZ');h.notify(h.panel);
+ assert.equal(open.textContent,'全部照片 03');
+ h.shell.setAttribute('data-chat-theme-preset','wechat');h.notify(h.shell);
+ assert.equal(h.b.getAttribute('data-at-home-selected'),null);
+ assert.equal(h.gallery().hidden,true);
 });
