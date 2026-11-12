@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const detail = read('../chat/chat/chat-detail.html');
@@ -46,4 +47,51 @@ test('group calls load the saved group roster and keep participant identities', 
   assert.match(overlay, /message\.memberId/);
   assert.match(overlay, /participants:\s*isGroupCall \? groupParticipants/);
   assert.match(overlay, /群视频通话/);
+});
+
+
+test('call completion does not display an unsaved record or mutate previous history', () => {
+  const start = overlay.indexOf('    function addCallRecord() {');
+  const end = overlay.indexOf('\n    function finish() {', start);
+  assert.ok(start >= 0 && end > start, 'call completion persistence helper exists');
+
+  const history = [{ mid: 'previous', text: '已保存的消息' }];
+  const attempts = [];
+  const rendered = [];
+  const notices = [];
+  let persist = false;
+  const sandbox = {
+    currentMessages: () => [{ role: 'user', text: '你好' }],
+    callType: 'voice',
+    isGroupCall: false,
+    groupParticipants: [],
+    connected: true,
+    duration: 4,
+    formatTime: () => '00:04',
+    readHistory: () => history,
+    saveMessages: (messages) => { attempts.push(messages); return persist; },
+    appendMessageToDOM: (message) => rendered.push(message),
+    showToast: (message) => notices.push(message),
+    character: { id: 'role-one' },
+    global: {
+      document: { getElementById: () => ({ scrollHeight: 200, scrollTop: 0 }) },
+      console: { warn: () => {} }
+    }
+  };
+  runInNewContext(overlay.slice(start, end) + '\nglobalThis.finishCallRecord = addCallRecord;', sandbox);
+  assert.equal(sandbox.finishCallRecord(), false);
+  assert.equal(rendered.length, 0, 'no false delivered call card on write failure');
+  assert.equal(history.length, 1, 'previous messages remain intact');
+  assert.equal(attempts[0].length, 2);
+  assert.match(notices[0], /通话记录保存失败/);
+
+  persist = true;
+  assert.equal(sandbox.finishCallRecord(), true);
+  assert.equal(rendered.length, 1, 'a saved call card is displayed once');
+  assert.equal(rendered[0].call.messageCount, 1);
+  assert.equal(history.length, 1, 'writing must not mutate the original history snapshot');
+
+  sandbox.saveMessages = () => { throw new Error('quota exceeded'); };
+  assert.equal(sandbox.finishCallRecord(), false);
+  assert.equal(rendered.length, 1, 'exceptions must not display phantom records');
 });
