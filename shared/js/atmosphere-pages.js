@@ -126,6 +126,103 @@
      e.preventDefault();node.click();
    });
  }
+ var favoritesSheet=null, favoritesLastFocus=null, favoritesLocked=[], favoritesShowing=false;
+ function closeFavoritesSheet(restore){
+   if(!favoritesSheet||!favoritesShowing)return;
+   favoritesShowing=false;
+   favoritesSheet.classList.remove('at-visible');
+   favoritesSheet.setAttribute('aria-hidden','true');favoritesSheet.inert=true;
+   favoritesLocked.forEach(function(pair){pair.node.inert=pair.before;});
+   favoritesLocked=[];
+   if(restore!==false&&favoritesLastFocus&&favoritesLastFocus.isConnected)favoritesLastFocus.focus();
+ }
+ function openFavoritesSheet(){
+   if(!isActive())return;
+   if(!favoritesSheet)mountFavoritesSheet();
+   if(!favoritesSheet||favoritesShowing)return;
+   favoritesShowing=true;favoritesLastFocus=document.activeElement;
+   favoritesSheet.inert=false;favoritesSheet.setAttribute('aria-hidden','false');
+   Array.from(shell.children).forEach(function(node){
+     if(node===favoritesSheet||node.tagName==='SCRIPT'||node.tagName==='STYLE')return;
+     favoritesLocked.push({node:node,before:!!node.inert});node.inert=true;
+   });
+   favoritesSheet.classList.add('at-visible');
+   var close=favoritesSheet.querySelector('.at-favorites-close');
+   if(close)close.focus();
+ }
+ function mountFavoritesSheet(){
+   if(favoritesSheet||!shell||surface!=='profile')return;
+   favoritesSheet=element('div','at-favorites-overlay');
+   favoritesSheet.setAttribute('aria-hidden','true');favoritesSheet.inert=true;
+   var backdrop=element('button','at-favorites-backdrop');
+   backdrop.type='button';backdrop.setAttribute('aria-label','关闭收藏面板');
+   backdrop.addEventListener('click',function(){closeFavoritesSheet(true);});
+   var sheet=element('section','at-favorites-sheet');
+   sheet.setAttribute('role','dialog');sheet.setAttribute('aria-modal','true');
+   sheet.setAttribute('aria-label','我的收藏入口');
+   var handle=element('div','at-favorites-handle');
+   handle.setAttribute('aria-hidden','true');
+   var head=element('div','at-favorites-head');
+   var heading=element('div','at-favorites-title');
+   heading.append(element('span','at-favorites-eyebrow','YOUR COLLECTIONS'));
+   heading.append(element('h2','', '收藏'));
+   var close=element('button','at-favorites-close');
+   close.type='button';close.setAttribute('aria-label','关闭收藏入口');
+   if(iconKit)close.innerHTML=iconKit.markup('close');else close.textContent='关闭';
+   close.addEventListener('click',function(){closeFavoritesSheet(true);});
+   head.append(heading,close);
+   var intro=element('p','at-favorites-description','把喜欢的内容留在各自的应用里，这里只负责快速抵达。');
+   var list=element('nav','at-favorites-links');
+   list.setAttribute('aria-label','收藏应用');
+   [
+     ['diary','日记收藏','查看收藏的日记与备忘','../diary/diary.html#favorites'],
+     ['music','音乐收藏','前往收藏的歌曲列表','../music/music.html#favorites'],
+     ['bookmark','海报作品','浏览海报作品与收藏','../poster/poster.html']
+   ].forEach(function(row){
+     var a=element('a','at-favorites-link');
+     a.href=row[3];
+     if(iconKit)a.innerHTML=iconKit.markup(row[0]);
+     var words=element('span','at-favorites-copy');
+     words.append(element('strong','',row[1]),element('small','',row[2]));
+     a.append(words,element('span','at-favorites-chevron','›'));
+     list.append(a);
+   });
+   sheet.append(handle,head,intro,list);
+   favoritesSheet.append(backdrop,sheet);shell.append(favoritesSheet);
+   favoritesSheet.addEventListener('keydown',function(e){
+     if(!favoritesShowing)return;
+     if(e.key==='Escape'){e.preventDefault();closeFavoritesSheet(true);return;}
+     if(e.key!=='Tab')return;
+     var focusables=Array.from(sheet.querySelectorAll('a,button')).filter(function(node){
+       return !node.disabled&&node.getClientRects().length;
+     });
+     if(!focusables.length)return;
+     var first=focusables[0],last=focusables[focusables.length-1];
+     if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+     else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+   });
+   var swipe=null;
+   sheet.addEventListener('pointerdown',function(e){
+     if(e.target.closest('a,button'))return;
+     swipe={x:e.clientX,y:e.clientY};
+   },{passive:true});
+   sheet.addEventListener('pointerup',function(e){
+     if(!swipe)return;
+     var dx=e.clientX-swipe.x,dy=e.clientY-swipe.y;swipe=null;
+     if(dy>76&&Math.abs(dx)<54)closeFavoritesSheet(true);
+   },{passive:true});
+   sheet.addEventListener('pointercancel',function(){swipe=null;});
+ }
+ function attachFavoritesControl(){
+   var entry=document.getElementById('menuFavorites');
+   if(!entry)return;
+   // Capture before the legacy bubble listener that only shows "开发中".
+   // Non-atmosphere themes keep that old behavior, without duplicate UI.
+   entry.addEventListener('click',function(e){
+     if(!isActive())return;
+     e.preventDefault();e.stopImmediatePropagation();openFavoritesSheet();
+   },true);
+ }
  function mount(){
    if(surface==='chats'){
      var root=document.querySelector('.tier4-floating-stream');
@@ -148,6 +245,7 @@
      setPressable(document.getElementById('profileCover'));
      setPressable(document.getElementById('menuWallet'));
      setPressable(document.getElementById('menuFavorites'));
+     attachFavoritesControl();
    }
    if(surface==='chats'||surface==='moments'){
      var list=document.getElementById(surface==='chats'?'chatListContainer':'momentsList');
@@ -161,6 +259,7 @@
    if(!shell)return;
    var active=isActive();
    if(bar&&surface==='profile')bar.hidden=!active;
+   if(!active&&favoritesShowing)closeFavoritesSheet(false);
    if(surface==='chats'){
      setLabel('.chat-theme-copy h1','CHATS',active);
      // The existing atmosphere-theme controller owns the home-page SVGs.
@@ -209,6 +308,7 @@
    themeObserver.observe(shell,{attributes:true,attributeFilter:['data-chat-theme-preset']});
    refresh();
    window.addEventListener('pageshow',refresh);
+   window.addEventListener('pagehide',function(){closeFavoritesSheet(false);});
  }
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});
  else init();
