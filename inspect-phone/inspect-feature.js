@@ -805,6 +805,97 @@
         .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,'')
         .slice(0,max).trim();
     }
+
+    function browserSearch(form) {
+      if(!permission||current!=='browser'||selected.indexOf('browser')<0||!personaWeb)return;
+      var input=form.querySelector('[name=query]'),q=String(input&&input.value||'').trim().slice(0,120);
+      if(!q){hint('请输入搜索内容。');return;}
+      var before=JSON.stringify(data.sections.browser),beforeEvents=JSON.stringify(arr(data.interactions));
+      var section=data.sections.browser;
+      var searched=personaWeb.search(section,q,Date.now());
+      if(!searched.ok){hint(searched.error||'搜索失败');return;}
+      section.activeQuery=q;
+      if(global.InspectInteractionBridge&&global.InspectInteractionBridge.record){
+        global.InspectInteractionBridge.record(data,'browser_search','搜索：'+q,'search:'+roleId+':'+q.slice(0,60));
+      }
+      if(!commit()){
+        data.sections.browser=JSON.parse(before);
+        data.interactions=JSON.parse(beforeEvents);
+        hint('手机存储空间不足，搜索记录未保存。');return;
+      }
+      view={kind:'browser-results',query:q};notice='';render();
+    }
+    function browserOpen(kind,index) {
+      if(current!=='browser'||!permission||selected.indexOf('browser')<0||!personaWeb)return;
+      var s=data.sections.browser,article=null,query=s.activeQuery||'',old=JSON.stringify(s);
+      if(kind==='browser-history'){
+        var rec=arr(s.searchHistory)[index];if(!rec)return;
+        s.activeQuery=String(rec.query||'');
+        view={kind:'browser-results',query:s.activeQuery};notice='';render();return;
+      }
+      if(kind==='browser-result'){
+        article=personaWeb.find(query,personaWeb.persona(role))[index];
+      }else if(kind==='browser-visit'){
+        var visit=arr(s.pageViews)[index];if(!visit)return;
+        article=personaWeb.article(visit.articleId);query=visit.query||query;
+      }else if(kind==='browser-bookmark'){
+        var bk=arr(s.bookmarks)[index];if(!bk)return;
+        if(!bk.articleId){view={kind:'bookmark-legacy',index:index};notice='';render();return;}
+        article=personaWeb.article(bk.articleId);
+      }
+      if(!article)return;
+      if(!personaWeb.visit(s,article.id,query,Date.now()))return;
+      if(!commit()){
+        data.sections.browser=JSON.parse(old);
+        hint('浏览记录保存失败，原记录没有丢失。');return;
+      }
+      view={kind:'browser-article',articleId:article.id,query:query};notice='';render();
+    }
+    function bookmarkBrowser() {
+      if(current!=='browser'||!view||view.kind!=='browser-article'||!personaWeb)return;
+      var before=JSON.stringify(data.sections.browser);
+      if(!personaWeb.bookmark(data.sections.browser,view.articleId,Date.now()))return;
+      if(!commit()){
+        data.sections.browser=JSON.parse(before);
+        hint('书签保存失败，原记录没有改变。');return;
+      }
+      notice='已加入书签';render();
+    }
+    function postForumComment(form) {
+      if(current!=='forum'||!permission||selected.indexOf('forum')<0||
+        !view||view.kind!=='post')return;
+      var field=form.querySelector('[name=text]'),words=String(field&&field.value||'').trim().slice(0,300);
+      if(!words){hint('请输入评论');return;}
+      var section=data.sections.forum,post=arr(section.posts)[view.index];
+      if(!post)return;
+      var before=JSON.stringify(section),prior=JSON.stringify(arr(data.interactions)),stamp=Date.now();
+      var sourceId=post.postId||post.storyEventId||'forum:'+roleId+':'+post.time;
+      var comment={name:'我',text:words,time:stamp,origin:'user_on_fictional_phone',
+        id:'forum-comment:'+stamp+':'+Math.floor(Math.random()*100000)};
+      post.comments=arr(post.comments).concat([comment]);
+      var bridge=global.InspectInteractionBridge;
+      var event=bridge&&bridge.record?bridge.record(data,'forum_comment',
+        '在《'+String(post.title||'').slice(0,95)+'》下评论：'+words,sourceId):null;
+      if(!event){data.sections.forum=JSON.parse(before);data.interactions=JSON.parse(prior);hint('评论未保存：互动记录未就绪');return;}
+      comment.interactionId=event.id;
+      if(!commit()){
+        data.sections.forum=JSON.parse(before);data.interactions=JSON.parse(prior);
+        hint('存储空间不足，论坛评论没有发表');return;
+      }
+      notice='评论已保存';render();
+    }
+    function likeForumPost() {
+      if(current!=='forum'||!permission||!view||view.kind!=='post')return;
+      var post=arr(data.sections.forum.posts)[view.index];if(!post)return;
+      var before=JSON.stringify(post);
+      post.likes=Math.max(0,num(post.likes,0)+(post.liked?-1:1));post.liked=!post.liked;
+      if(!commit()){
+        data.sections.forum.posts[view.index]=JSON.parse(before);
+        hint('点赞状态保存失败');return;
+      }
+      notice='';render();
+    }
+
     function saveNoteEdit(form) {
       if(current!=='notes'||!permission||selected.indexOf('notes')<0||!view||view.kind!=='note-editor')return;
       var index=Number(view.index),t=form.querySelector('[name=title]'),b=form.querySelector('[name=text]');
@@ -925,6 +1016,9 @@
       }else if(current==='moments'&&view.kind==='moment'){
         kind='moment';item=arr(data.sections.moments.moments)[view.index];
         if(item)sourceId=item.storyEventId||item.id||'moment:'+roleId+':'+String(item.time);
+      }else if(current==='forum'&&view.kind==='post'){
+        kind='forum';item=arr(data.sections.forum.posts)[view.index];
+        if(item)sourceId=item.postId||item.storyEventId||'forum:'+roleId+':'+String(item.time);
       }
       if(!item||!sourceId){hint('这条内容暂时无法连接到角色聊天。');return;}
       if(global.location&&/\.workers\.dev$/i.test(global.location.hostname||'')){
@@ -933,7 +1027,7 @@
       }
       var previous=data.pendingChatFocus?Object.assign({},data.pendingChatFocus):null;
       var focusText=String(item.text||''),included=[];
-      if(kind==='moment'){
+      if(kind==='moment'||kind==='forum'){
         // Only the user's latest two comments on this exact post go with the
         // explicitly selected topic. Other Moments stay outside this handoff.
         var ownComments=arr(item.comments).filter(function(c){
@@ -946,7 +1040,7 @@
       }
       var pending=bridge.requestFocus(data,kind,{
         sourceId:String(sourceId),
-        title:kind==='note'?item.title:'朋友圈动态',
+        title:kind==='note'?item.title:kind==='forum'?item.title:'朋友圈动态',
         text:focusText,
         includedEventIds:included
       });
@@ -1021,6 +1115,12 @@
         '</div></div>');
     });
     back.addEventListener('click',function(){
+      if(current==='browser'&&view&&view.kind==='browser-article'){
+        view={kind:'browser-results',query:view.query||data.sections.browser.activeQuery||''};render();return;
+      }
+      if(current==='browser'&&view&&view.kind==='bookmark-legacy'){
+        view={kind:'browser-bookmarks'};render();return;
+      }
       if(view){view=null;render();return;}
       if(current==='caught'){close();return;}
       close();
@@ -1051,6 +1151,12 @@
       if(e.target.id==='inspectMomentComment'){
         e.preventDefault();saveMomentComment(e.target);return;
       }
+      if(e.target.id==='inspectBrowserSearch'){
+        e.preventDefault();browserSearch(e.target);return;
+      }
+      if(e.target.id==='inspectForumComment'){
+        e.preventDefault();postForumComment(e.target);return;
+      }
     });
     appBody.addEventListener('input',function(e){
       if(!e.target.matches||!e.target.matches('[data-native-search]'))return;
@@ -1077,6 +1183,9 @@
           var nextApp=kind.slice(7);
           if(!permission||selected.indexOf(nextApp)<0){chooseScreen();return;}
           current=nextApp;view=null;notice='';render();return;
+        }
+        if(current==='browser'&&/^browser-/.test(kind)){
+          browserOpen(kind,index);return;
         }
         view={kind:kind,index:index};notice='';render();return;
       }
@@ -1113,6 +1222,12 @@
       }
       if(a==='choose'){chooseScreen();return;}
       if(a==='refresh'){refreshSection();return;}
+      if(a==='browserVisits'){if(current==='browser'){view={kind:'browser-visits'};notice='';render();}return;}
+      if(a==='browserBookmarks'){if(current==='browser'){view={kind:'browser-bookmarks'};notice='';render();}return;}
+      if(a==='browserBookmark'){bookmarkBrowser();return;}
+      if(a==='forumMine'){if(current==='forum'){view={kind:'forum-mine'};notice='';render();}return;}
+      if(a==='forumAll'){if(current==='forum'){view=null;notice='';render();}return;}
+      if(a==='forumLike'){likeForumPost();return;}
       if(a==='newNote'){if(current==='notes'){view={kind:'note-editor',index:-1};notice='';render();}return;}
       if(a==='editNote'){
         if(current==='notes'&&view&&view.kind==='note'){view={kind:'note-editor',index:view.index};notice='';render();}
@@ -1121,7 +1236,7 @@
       if(a==='cancelNoteEdit'){
         view=view&&view.index>=0?{kind:'note',index:view.index}:null;notice='';render();return;
       }
-      if(a==='chatAboutNote'||a==='chatAboutMoment'){openRealChat();return;}
+      if(a==='chatAboutNote'||a==='chatAboutMoment'||a==='chatAboutForum'){openRealChat();return;}
       if(a==='notesPin'){pinView='notes';render();return;}
       if(a==='albumPin'){pinView='album';render();return;}
       if(a==='stop'){close();return;}
