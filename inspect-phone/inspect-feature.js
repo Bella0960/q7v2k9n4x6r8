@@ -357,6 +357,8 @@
       '必须：时间戳为13位毫秒且不能晚于现在；内容全部虚构，不涉及真实地址/账号/号码。',
       '不能写性格年龄职业消费能力不符的剧情；具体关系称谓不少于5人；内容包含自然的犹豫和未说出口的话，但避免无缘无故的重大反转。',
       '与未改动板块发生的事实一致，单板块刷新不能修改其他板块；每次生成新的细节，不重复旧记录。',
+      id==='forum'?'论坛要符合角色自己的职业、兴趣、年龄、关系与最近浏览主题；角色本人发帖使用 authorId='+JSON.stringify(String(data.roleId))+'、author='+JSON.stringify(clean(role.name,30))+'，其他社区成员可评论但不能假装真实人员；已有浏览和日记线索可作为发帖动机。':'',
+      id==='browser'?'浏览器记录是角色虚构的个人搜索历史，不是联网搜索。按人设生成具体搜索词；若处于恋爱关系，可合理出现“如何给女朋友买鲜花”“玫瑰和郁金香怎么选”等搜索，其他关系不能强行套用。保留已有用户搜索和浏览记录；返回 JSON 仅更新角色搜索史。':'',
       '当前板块：'+id+'。JSON结构示例：'+FIELDS[id],
       '数量：微信至少5位具名联系人(含群聊)且每位8-12条对话；朋友圈至少3条；浏览器至少5条搜索(含两次0:00-4:00深夜和删除痕迹)与2个书签；备忘录至少3条公开和2条锁定；钱包1-2笔收入、5-8笔支出；音乐至少5首和2个歌单；地图3-5停留；相册至少5张与3张隐藏；设备APP排行5项；论坛至少3帖。',
       '优先复用上述事件ID涉及的人物、地点、价格与日期。不添加与现有板块冲突的事件。只输出单个板块的JSON对象。'
@@ -957,6 +959,66 @@
       notice='评论已保存。角色之后看到这条朋友圈，就能结合你的评论接话。';render();
     }
     function preserveUserEntries(id,oldSection,newSection){
+      if(id==='browser'){
+        var resultBrowser=Object.assign({},newSection),known={};
+        resultBrowser.searchHistory=[];
+        arr(oldSection.searchHistory).concat(arr(newSection.searchHistory)).forEach(function(h){
+          if(!h||!h.query)return;
+          var key=h.searchId||String(h.time)+'|'+String(h.query);
+          if(known[key])return;
+          known[key]=true;resultBrowser.searchHistory.push(h);
+        });
+        resultBrowser.searchHistory.sort(function(a,b){return num(b.time,0)-num(a.time,0);});
+        resultBrowser.searchHistory=resultBrowser.searchHistory.slice(0,60);
+        resultBrowser.pageViews=arr(oldSection.pageViews).slice(0,50);
+        resultBrowser.bookmarks=arr(oldSection.bookmarks).slice();
+        arr(newSection.bookmarks).forEach(function(book){
+          if(!book||!book.title)return;
+          if(!resultBrowser.bookmarks.some(function(b){
+            return book.articleId&&book.articleId===b.articleId||book.title===b.title;
+          }))resultBrowser.bookmarks.push(book);
+        });
+        resultBrowser.bookmarks=resultBrowser.bookmarks.slice(0,40);
+        resultBrowser.personaSeedVersion=oldSection.personaSeedVersion||0;
+        resultBrowser.activeQuery=oldSection.activeQuery||'';
+        return resultBrowser;
+      }
+      if(id==='forum'){
+        var resultForum=Object.assign({},newSection,{posts:arr(newSection.posts).map(function(p){
+          return Object.assign({},p,{comments:arr(p.comments).slice()});
+        })});
+        var existing={};
+        resultForum.posts.forEach(function(p){
+          var key=p.postId||String(p.time)+'|'+String(p.title);existing[key]=p;
+        });
+        arr(oldSection.posts).forEach(function(oldPost){
+          if(!oldPost||!oldPost.title)return;
+          var key=oldPost.postId||String(oldPost.time)+'|'+String(oldPost.title);
+          var target=existing[key];
+          if(!target){
+            // Preserve previous role posts as actual history, not overwrite.
+            var clone=Object.assign({},oldPost,{comments:arr(oldPost.comments).slice()});
+            resultForum.posts.push(clone);existing[key]=clone;
+          }else{
+            var comments=arr(target.comments),ids={};
+            comments.forEach(function(c){ids[c.id||String(c.time)+'|'+String(c.name)+'|'+String(c.text)]=true;});
+            arr(oldPost.comments).forEach(function(c){
+              if(!c||c.origin!=='user_on_fictional_phone')return;
+              var cid=c.id||String(c.time)+'|'+String(c.name)+'|'+String(c.text);
+              if(!ids[cid])comments.push(c);
+              ids[cid]=true;
+            });
+            target.comments=comments;
+            if(oldPost.liked){target.liked=true;target.likes=Math.max(num(target.likes,0),num(oldPost.likes,0));}
+          }
+        });
+        resultForum.posts.sort(function(a,b){return num(b.time,0)-num(a.time,0);});
+        resultForum.posts=resultForum.posts.slice(0,55);
+        resultForum.personaSeedVersion=oldSection.personaSeedVersion||0;
+        resultForum.archive=arr(oldSection.archive).concat(arr(newSection.archive)).slice(0,40);
+        return resultForum;
+      }
+
       if(id==='notes'){
         var result=Object.assign({},newSection,{notes:arr(newSection.notes).slice()});
         arr(oldSection.notes).forEach(function(note){
