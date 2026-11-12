@@ -525,7 +525,7 @@
    Every glyph uses a 24x24 coordinate system at a 1.55px optical stroke. */
 .phone-mockup[data-chat-theme-preset="atmosphere"] .chat-header{
  display:grid!important;
- grid-template-columns:minmax(68px,1fr) minmax(85px,auto) minmax(102px,1fr);
+ grid-template-columns:minmax(0,1fr) minmax(85px,130px) minmax(0,1fr);
  align-items:start!important;
  column-gap:2px!important;
  padding:43px 12px 12px!important;
@@ -674,7 +674,7 @@
 }
 @media(max-width:350px){
  .phone-mockup[data-chat-theme-preset="atmosphere"] .chat-header{
-  grid-template-columns:minmax(63px,1fr) minmax(75px,auto) minmax(96px,1fr);
+  grid-template-columns:minmax(0,1fr) 106px minmax(0,1fr);
   padding-left:9px!important;padding-right:9px!important;
  }
  .phone-mockup[data-chat-theme-preset="atmosphere"] .chat-header .at-tools > .at-icon:first-child{
@@ -801,5 +801,13 @@
  }
  .phone-mockup[data-chat-theme-preset="atmosphere"] .sticker-panel-grid{
   scroll-behavior:auto!important;
+ }
+}
+
+/* On a 320px screen equal left/right columns are non-negotiable:
+   uneven intrinsic minimums can move the avatar off the true viewport axis. */
+@supports (overflow:clip) {
+ .phone-mockup[data-chat-theme-preset="atmosphere"]{
+  overflow:clip!important;
  }
 }
