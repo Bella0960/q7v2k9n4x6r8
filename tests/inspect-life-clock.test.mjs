@@ -38,6 +38,8 @@ test('三天没打开后补齐离线剧情，每一个事件跨七个板块引�
  assert.equal(r.added,3);
  assert.equal(s.facts.length,3);
  assert.equal(s.lifeClock.episodes,3);
+ assert.equal(s.sections.wallet.balance,2000+s.facts.reduce((total,x)=>total+x.amount,0));
+ assert.equal(s.sections.album.total,3);
  const ids=s.facts.map(x=>x.id);
  assert.equal(new Set(ids).size,ids.length);
  assert.ok(s.facts.every(x=>x.time<=at('2026-11-04')&&x.amount<0));
@@ -65,8 +67,9 @@ test('重复查看与刷新不产生相同情节，旧消息和锁定日记保�
  s.sections.notes.locked.push({title:'私人日记',text:'原来的秘密不能丢'});
  clock.advance(s,role,new Date(at('2026-11-01')));
  clock.advance(s,role,new Date(at('2026-11-05')));
- const old=JSON.stringify(s);
+ const old=JSON.stringify(s),walletBefore=s.sections.wallet.balance;
  const r=clock.advance(s,role,new Date(at('2026-11-05')));
+ assert.equal(s.sections.wallet.balance,walletBefore);
  assert.equal(r.added,0);
  assert.ok(s.sections.chat.contacts[0].messages.some(x=>x.origin==='player_as_role'));
  assert.equal(s.sections.notes.locked[0].text,'原来的秘密不能丢');
