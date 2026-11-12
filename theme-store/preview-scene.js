@@ -5,7 +5,7 @@
 const SCREENS=Object.freeze(['desktop','list','detail','moments','mine','home']);
 const paths=Object.freeze({
   back:'M15 18l-6-6 6-6', search:'m20 20-4-4M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0',
-  more:'M5 12h.01M12 12h.01M19 12h.01', arrow:'M5 12h14m-6-6 6 6-6 6',
+  more:'M5 12h.01M12 12h.01M19 12h.01',
   send:'m5 12 14-8-5 16-3-7-6-1z', photo:'M3 4h18v16H3zM7 9h.01M4 17l5-5 3 3 3-4 5 6',
   mic:'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM6 11a6 6 0 0 0 12 0M12 17v4M9 21h6',
   sparkle:'m12 2 1.7 7.3L21 11l-7.3 1.7L12 20l-1.7-7.3L3 11l7.3-1.7L12 2z',
@@ -71,7 +71,7 @@ function mine(){
  art('profile')+
  '<div class="sp-profile-identity">'+avatar('林','sp-large-avatar')+'<strong>林间</strong><small>在平凡的日子里，收集小小的光。</small></div>'+
  '<div class="sp-profile-metrics"><span><b>18</b><small>动态</small></span><span><b>06</b><small>收藏</small></span><span><b>03</b><small>回忆</small></span></div>'+
- '<div class="sp-mine-menu"><div><span>我的主页</span>'+icon('arrow')+'</div><div><span>我的收藏</span>'+icon('arrow')+'</div><div><span>个性装扮</span>'+icon('arrow')+'</div><div><span>设置</span>'+icon('arrow')+'</div></div>';
+ '<div class="sp-mine-menu"><div><span>我的主页</span></div><div><span>我的收藏</span></div><div><span>个性装扮</span></div><div><span>设置</span></div></div>';
 }
 function home(){
  return head('我的主页','MY STORY',true)+
@@ -82,6 +82,83 @@ function home(){
  '<div class="sp-gallery">'+art('one')+art('two')+art('three')+'</div>'+
  '<div class="sp-home-entry"><small>12 NOV 2026</small><p>想把今天的光线保存下来。<br>等到天气转凉的时候再看。</p></div>';
 }
+
+/* These are independent visual compositions for the existing WeChat/QQ themes.
+ * They never run the production page scripts or alter any saved theme setting. */
+function wxHeader(label='微信'){
+ return '<header class="sp-wx-head"><span class="sp-wx-left">'+icon('back')+'</span><strong>'+label+'</strong><span class="sp-wx-more">···</span></header>';
+}
+function wxTabs(selected){
+ return '<div class="sp-wx-tabs">'+[['微信','微信'],['通讯录','通讯录'],['发现','发现'],['我','我']].map(([label,key])=>'<span'+(key===selected?' class="selected"':'')+'>'+label+'</span>').join('')+'</div>';
+}
+function wechatList(){
+ return '<div class="sp-wx-top"><strong>微信 <em>(3)</em></strong><span>＋</span></div><div class="sp-wx-search">'+icon('search')+' 搜索</div>'+
+ '<div class="sp-wx-conversations">'+
+ '<div class="sp-wx-conversation">'+avatar('知')+'<span><strong>沈知行</strong><small>路过一家安静的书店。</small></span><time>09:41</time></div>'+
+ '<div class="sp-wx-conversation">'+avatar('望')+'<span><strong>林望</strong><small>今天的风很轻。</small></span><time>08:55</time></div>'+
+ '<div class="sp-wx-conversation">'+avatar('群')+'<span><strong>周末小组</strong><small>周六一起去看展？</small></span><time>昨天</time></div>'+
+ '</div>'+wxTabs('微信');
+}
+function wechatDetail(){
+ return wxHeader('沈知行')+'<div class="sp-wx-date">09:41</div>'+
+ '<div class="sp-wx-thread">'+
+ '<div class="sp-wx-msg">'+avatar('知')+'<span>路过一家安静的书店。</span></div>'+
+ '<div class="sp-wx-msg sp-wx-out"><span>那本书还在吗？</span>'+avatar('我')+'</div>'+
+ '<div class="sp-wx-msg">'+avatar('知')+'<span>在，帮你留着。</span></div>'+
+ '</div><div class="sp-wx-compose">'+icon('mic')+'<span>发送消息</span>＋</div>';
+}
+function wechatMoments(){
+ return '<div class="sp-wx-moments">'+wxHeader('朋友圈')+
+ '<div class="sp-wx-cover">'+art('wide')+'<strong>林间</strong>'+avatar('林')+'</div>'+
+ '<div class="sp-wx-post">'+avatar('望')+'<div><strong>林望</strong><p>今天的天气刚刚好。<br>想去常去的咖啡馆。</p>'+
+ '<div class="sp-wx-pictures">'+art('one')+art('two')+'</div>'+
+ '<small>12 分钟前　·　赞　评论</small></div></div></div>';
+}
+function wechatMine(){
+ return '<div class="sp-wx-me">'+
+ '<div class="sp-wx-profile">'+avatar('林')+'<span><strong>林间</strong><small>微信号：linjian</small></span></div>'+
+ '<div class="sp-wx-menu"><span>服务</span></div><div class="sp-wx-menu"><span>收藏</span><span>朋友圈</span><span>卡包</span></div>'+
+ '<div class="sp-wx-menu"><span>表情</span></div><div class="sp-wx-menu"><span>设置</span></div>'+
+ wxTabs('我')+'</div>';
+}
+function qqHeader(title){
+ return '<div class="sp-qq-head">'+avatar('我')+'<strong>'+title+'</strong><span>＋</span></div>';
+}
+function qqList(){
+ return '<div class="sp-qq-list">'+qqHeader('消息')+
+ '<div class="sp-qq-search">'+icon('search')+' 搜索</div>'+
+ '<div class="sp-qq-filter"><span class="active">全部</span><span>未读</span><span>群聊</span></div>'+
+ '<div class="sp-qq-list-row">'+avatar('知')+'<span><strong>沈知行</strong><small>晚一点发给你。</small></span><time>09:41</time></div>'+
+ '<div class="sp-qq-list-row">'+avatar('望')+'<span><strong>林望</strong><small>今天要不要听歌？</small></span><time>08:55</time></div>'+
+ '<div class="sp-qq-list-row">'+avatar('群')+'<span><strong>周末小组</strong><small>群成员：下午见～</small></span><time>昨天</time></div>'+
+ '<div class="sp-qq-nav"><span class="active">消息</span><span>联系人</span><span>动态</span></div></div>';
+}
+function qqDetail(){
+ return '<div class="sp-qq-conversation">'+
+ '<div class="sp-qq-chat-head">'+icon('back')+'<div><strong>沈知行</strong><small>在线</small></div><span>···</span></div>'+
+ '<div class="sp-qq-chat-date">今天 09:41</div>'+
+ '<div class="sp-qq-msg">'+avatar('知')+'<span>晚上一起听歌吗？</span></div>'+
+ '<div class="sp-qq-msg sp-qq-out"><span>好啊，你来选。</span>'+avatar('我')+'</div>'+
+ '<div class="sp-qq-msg">'+avatar('知')+'<span>那我准备一份歌单。</span></div>'+
+ '<div class="sp-qq-compose"><span>输入消息...</span>＋</div></div>';
+}
+function qqMoments(){
+ return '<div class="sp-qq-feed">'+qqHeader('好友动态')+
+ '<div class="sp-qq-feed-head">'+art('wide')+'<span>此刻，想分享的日常</span></div>'+
+ '<div class="sp-qq-feed-post">'+avatar('望')+'<span><strong>林望</strong><small>18 分钟前</small><p>给今天留下一张照片。</p>'+
+ '<div class="sp-qq-feed-image">'+art('two')+'</div><small>赞 08　评论 02</small></span></div></div>';
+}
+function qqMine(){
+ return '<div class="sp-qq-me">'+
+ '<div class="sp-qq-profile">'+avatar('林')+'<strong>林间</strong><small>天气晴，心情也刚好。</small></div>'+
+ '<div class="sp-qq-stats"><span>好友 <b>16</b></span><span>动态 <b>08</b></span><span>收藏 <b>03</b></span></div>'+
+ '<div class="sp-qq-menu"><span>我的空间</span><span>我的收藏</span><span>个性装扮</span><span>设置</span></div></div>';
+}
+const legacyView=Object.freeze({
+ wechat:Object.freeze({list:wechatList,detail:wechatDetail,moments:wechatMoments,mine:wechatMine}),
+ qq:Object.freeze({list:qqList,detail:qqDetail,moments:qqMoments,mine:qqMine})
+});
+
 const view=Object.freeze({desktop,chats,detail,moments,mine,home});
 function covered(id,page){
  if(page==='desktop')return false; // A chat theme never overrides the user's actual desktop.
@@ -93,7 +170,8 @@ function render(id,page,tone='light'){
  if(!SCREENS.includes(page))page='detail';
  const skin=covered(id,page)?id:'default';
  const label=page==='list'?'聊天首页':({desktop:'桌面',detail:'聊天详情',moments:'动态',mine:'我的',home:'我的主页'})[page];
- const inner=(page==='list'?view.chats:view[page])();
+ const independent=legacyView[skin]?.[page];
+ const inner=independent?independent():(page==='list'?view.chats:view[page])();
  const dark=skin==='atmosphere'&&tone==='dark';
  return '<section class="sf-scene sp-screen sf-'+skin+' sp-'+page+(dark?' sp-dark':'')+
  '" data-page="'+page+'" data-skin="'+skin+'" aria-label="'+label+'，虚构数据主题预览">'+
