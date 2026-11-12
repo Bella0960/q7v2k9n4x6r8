@@ -442,17 +442,27 @@ function mergeForumRefreshData(currentPosts,freshPosts,activity,normalizeComment
  const existing=Array.isArray(currentPosts)?currentPosts.map(cloneForumRefreshPost):[];
  const knownIds=new Set();
  const knownTitles=new Set();
+ const knownBodies=new Set();
+ // A repeated AI story can arrive with a different title and a new ID.
+ // Only compare substantial body text to avoid suppressing short common posts.
+ function forumRefreshBodyKey(post){
+  const body=String(post&&post.body||'').replace(/\s+/g,'').trim().toLocaleLowerCase();
+  return body.length>=40?body:'';
+ }
  existing.forEach(function(post){
   if(!post||typeof post!=='object')return;
   if(post.id!=null)knownIds.add(String(post.id));
   const title=String(post.title||'').trim().toLocaleLowerCase();
   if(title)knownTitles.add(title);
+  const body=forumRefreshBodyKey(post);
+  if(body)knownBodies.add(body);
  });
  const accepted=[];
  (Array.isArray(freshPosts)?freshPosts:[]).slice(0,3).forEach(function(post){
   if(!post||typeof post!=='object'||post.id==null)return;
   const id=String(post.id),title=String(post.title||'').trim().toLocaleLowerCase();
-  if(!id||!title||!String(post.body||'').trim()||knownIds.has(id)||knownTitles.has(title))return;
+  const body=forumRefreshBodyKey(post);
+  if(!id||!title||!String(post.body||'').trim()||knownIds.has(id)||knownTitles.has(title)||(body&&knownBodies.has(body)))return;
   const nextPost=cloneForumRefreshPost(post);
   if(Array.isArray(nextPost.comments)){
    const uniqueComments=[];
@@ -464,6 +474,7 @@ function mergeForumRefreshData(currentPosts,freshPosts,activity,normalizeComment
   accepted.push(nextPost);
   knownIds.add(id);
   knownTitles.add(title);
+  if(body)knownBodies.add(body);
  });
  const nextPosts=accepted.concat(existing);
  let activityCount=0;
