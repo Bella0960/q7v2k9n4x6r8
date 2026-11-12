@@ -71,8 +71,8 @@ function fixture(){
   pickerCount:()=>pickerCount};
 }
 test('the actual personal homepage uses the existing theme and separate cover key',()=>{
- assert.match(page,/atmosphere-my-home\.css\?v=20261112h1/);
- assert.match(page,/atmosphere-my-home\.js\?v=20261112h2/);
+ assert.match(page,/atmosphere-my-home\.css\?v=20261112h2/);
+ assert.match(page,/atmosphere-my-home\.js\?v=20261112h3/);
  assert.match(page,/chat-page-theme\.js\?v=20261105v1/);
  assert.match(page,/var MY_HOME_COVER_KEY = 'my_home_cover_v1'/);
  assert.match(page,/saveMyHomeCover\(dataUrl\)/);
