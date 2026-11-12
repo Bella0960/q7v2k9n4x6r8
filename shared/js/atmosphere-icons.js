@@ -7,6 +7,7 @@
  var paths = Object.freeze({
   back:'<path d="m14.5 18-6-6 6-6"/>',
   menu:'<path d="M4.5 8h15M4.5 16h15"/>',
+  plus:'<path d="M12 4.7v14.6M4.7 12h14.6"/>',
   close:'<path d="M6 6l12 12M18 6 6 18"/>',
   tone:'<circle cx="12" cy="12" r="8.1"/><path d="M12 3.9a8.1 8.1 0 0 1 0 16.2Z" fill="currentColor" stroke="none"/>',
   photo:'<rect x="3.2" y="3.6" width="17.6" height="16.8" rx="2.6"/><circle cx="8.8" cy="9.2" r="1.5"/><path d="m4.2 17 5-4.8 3.2 3.1 3.2-4 4.2 5.1"/>',
