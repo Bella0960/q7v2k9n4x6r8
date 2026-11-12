@@ -113,3 +113,16 @@ The owner identified visibly off-center SVGs, an awkward black orb placeholder, 
 - Browser interactions passed: select conversation, switch to dark theme, open More, filter to 4 frequent shortcuts, restore all 8, dismiss drawer, open expression quick bar, send a mock message. Browser reported no JavaScript page errors in these passes.
 - Visual review after the first screenshot uncovered an overlapping English wordmark behind the placeholder avatar. It was hidden on the chat page and the sheet heading was relaid out; all five viewport tests were run again afterward.
 - The actual MAOMAO branch's **build and real device interaction are NOT yet verified**, nor is this preview a test of a connected API or real image-picker permission. Continue to keep PR #273 Draft; do not merge or deploy before full browser + Android/iOS PWA checks.
+
+
+## 2026-11-12 — V5 horizontal interaction and 320px containment
+
+- The independent `薄影-V5-精密横滑交互预览.html` study demonstrates a horizontally scrolling illustrative album strip, local image preview (browser object URL, not uploaded to a server), a horizontal expression quick strip and a thin 5-slot composer. This standalone HTML has fictional chat state and **does not** replace the actual MAOMAO image picker or sticker data pipeline.
+- Chromium smoke-tested the **standalone preview** at 320, 375, 390, 430 and 1280px: album opening/selection/sending, local image insertion, expression selection, native demo text send, theme switching, toolbar optical center and console error check. All five viewports passed after correcting a 320px cross-axis scroll fault.
+- The fault was real: when submitting after attachment selection, focus-driven scroll of the outer `.phone` / `.pages` and inactive pages shifted the whole preview horizontally. The independent preview now uses `overflow:clip` on the outer shell/pages while retaining horizontal scrolling on the album strip and vertical scrolling in messages; browser test confirms no rail displacement.
+- The opt-in actual MAOMAO theme likewise changes its outer shell to `overflow:clip` where supported, and its chat header now uses symmetric fractional left/right tracks (including a 106px center column on screens at most 350px). This prevents the uneven 63px/96px sidebar minimums from placing an avatar off-center on narrow phones.
+- Refreshed all five theme-page stylesheet query keys to `20261112v3`, and the service-worker app-shell cache to `phone-app-pwa-v209`; updated cache assertions accordingly.
+- Reran source-derived tests in a controlled JavaScript environment: 4 SVG geometry and layout assertions, 3 real sticker strip assertions, and 5 composer behavior assertions all passed (12/12). **These are isolated test evaluations, not the complete Node test runner, Vite build or Android PWA**.
+- Additional preview-only checks passed: Escape closes the photo tray; returning to the chat list and reopening a conversation does not leave an old tray visible.
+
+**Remaining release gate:** Full repo checkout `node --test` suites, Vite build, desktop/mobile Playwright against the integrated MAOMAO pages, Android keyboard + safe area, real device photo/permission/role sticker selection, long history and cross-theme rollback. PR remains Draft; no production deployment or merge.
