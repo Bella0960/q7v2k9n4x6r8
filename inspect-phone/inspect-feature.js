@@ -737,7 +737,7 @@
         var oldSection=data.sections[id],oldSource=data.source[id],oldUpdated=data.updatedAt;
         if(JSON.stringify(result.data)===JSON.stringify(oldSection))
           throw new Error('新内容与旧记录完全相同，已保留原内容。');
-        var nextSection=id==='chat'?keepPlayerChatTurns(oldSection,result.data):result.data;
+        var nextSection=id==='chat'?keepPlayerChatTurns(oldSection,result.data):preserveUserEntries(id,oldSection,result.data);
         data.sections[id]=nextSection;data.source[id]='ai';data.updatedAt=Date.now();
         if(!save(data)){
           data.sections[id]=oldSection;data.source[id]=oldSource;data.updatedAt=oldUpdated;
@@ -746,6 +746,112 @@
         notice='当前板块已更新，其他板块没有改变。';
       }).catch(function(err){notice=clean(err&&err.message,180)||'生成失败，原记录保留。';})
       .finally(function(){waiting=false;if(current===id)render();});
+    }
+
+    function saveNoteEdit(form) {
+      if(current!=='notes'||!permission||selected.indexOf('notes')<0||!view||view.kind!=='note-editor')return;
+      var index=Number(view.index),t=form.querySelector('[name=title]'),b=form.querySelector('[name=text]');
+      var title=clean(t&&t.value,80),text=clean(b&&b.value,4000);
+      if(!title)title='未命名备忘录';
+      if(!text.trim()){hint('先写一点内容再保存。');return;}
+      var section=data.sections.notes,previous=JSON.stringify(section),beforeEvents=JSON.stringify(arr(data.interactions)),now=Date.now();
+      var created=index<0,source=index<0?null:section.notes[index];
+      if(!created&&!source){hint('找不到这篇备忘录，未保存。');return;}
+      var noteId=source&&(source.noteId||source.storyEventId)||'note:'+roleId+':'+now+':'+Math.floor(Math.random()*1e5);
+      var next=source?Object.assign({},source):{createdAt:now};
+      next.noteId=noteId;
+      next.title=title;next.text=text;next.updatedAt=now;
+      next.lastEditedBy='viewer';next.origin=created?'user_on_fictional_phone':(source.origin||'role_story');
+      if(source&&source.text!==text){
+        next.editHistory=arr(source.editHistory).concat([{at:now,text:clean(source.text,4000)}]).slice(-3);
+      }
+      if(created)section.notes.unshift(next);
+      else section.notes[index]=next;
+      var interactionType=created?'note_created':'note_edited';
+      var bridge=global.InspectInteractionBridge;
+      var event=bridge&&bridge.record?bridge.record(data,interactionType,'《'+title+'》：'+text.slice(0,900),noteId):null;
+      if(!event){
+        data.sections.notes=JSON.parse(previous);data.interactions=JSON.parse(beforeEvents);
+        hint('备忘录没有保存：互动记录未就绪。');return;
+      }
+      if(!commit()){
+        data.sections.notes=JSON.parse(previous);data.interactions=JSON.parse(beforeEvents);
+        notice='手机存储空间不足，文字未保存。';render();return;
+      }
+      view={kind:'note',index:created?0:index};
+      notice='已保存。角色下次查看自己的备忘录时，可以发现这段文字。';
+      render();
+    }
+    function saveMomentComment(form) {
+      if(current!=='moments'||!permission||selected.indexOf('moments')<0||!view||view.kind!=='moment')return;
+      var content=clean(form.querySelector('[name=text]')&&form.querySelector('[name=text]').value,300).trim();
+      if(!content){hint('先写一句评论。');return;}
+      var index=Number(view.index),item=data.sections.moments.moments[index];
+      if(!item){hint('找不到这条朋友圈动态，未发表。');return;}
+      var previous=JSON.stringify(data.sections.moments),oldEvents=JSON.stringify(arr(data.interactions)),at=Date.now();
+      var sourceId=item.storyEventId||item.id||('moment:'+roleId+':'+item.time);
+      var comment={name:'我',text:content,time:at,origin:'user_on_fictional_phone',
+        id:'comment:'+at+':'+Math.floor(Math.random()*1e6)};
+      item.comments=arr(item.comments).concat([comment]);
+      var bridge=global.InspectInteractionBridge;
+      var event=bridge&&bridge.record?bridge.record(data,'moment_comment',
+        '在《'+clean(item.text,110)+'》下评论：'+content,sourceId):null;
+      if(!event){
+        data.sections.moments=JSON.parse(previous);data.interactions=JSON.parse(oldEvents);
+        hint('评论没有保存：互动记录未就绪。');return;
+      }
+      if(!commit()){
+        data.sections.moments=JSON.parse(previous);data.interactions=JSON.parse(oldEvents);
+        notice='存储空间不足，评论没有发表。';render();return;
+      }
+      notice='评论已保存。角色之后看到这条朋友圈，就能结合你的评论接话。';render();
+    }
+    function preserveUserEntries(id,oldSection,newSection){
+      if(id==='notes'){
+        var result=Object.assign({},newSection,{notes:arr(newSection.notes).slice()});
+        arr(oldSection.notes).forEach(function(note){
+          if(!note||note.lastEditedBy!=='viewer')return;
+          result.notes=result.notes.filter(function(item){
+            return !(item&&item.noteId===note.noteId);
+          });
+          result.notes.push(note);
+        });
+        result.notes.sort(function(a,b){return num(b.updatedAt,0)-num(a.updatedAt,0);});
+        result.archive=arr(oldSection.archive).concat(arr(result.archive)).slice(0,30);
+        return result;
+      }
+      if(id==='moments'){
+        var resultMoments=Object.assign({},newSection,{moments:arr(newSection.moments).slice()});
+        arr(oldSection.moments).forEach(function(moment){
+          if(!moment||!arr(moment.comments).some(function(c){return c.origin==='user_on_fictional_phone';}))return;
+          var existing=resultMoments.moments.find(function(item){
+            return item&&(item.id&&item.id===moment.id||item.storyEventId&&item.storyEventId===moment.storyEventId||
+              item.time===moment.time&&item.text===moment.text);
+          });
+          if(!existing)resultMoments.moments.push(moment);
+          else {
+            var fingerprints={};
+            existing.comments=arr(existing.comments);
+            existing.comments.forEach(function(c){fingerprints[c.id||String(c.time)+'|'+c.text]=true;});
+            arr(moment.comments).filter(function(c){return c.origin==='user_on_fictional_phone';}).forEach(function(c){
+              var key=c.id||String(c.time)+'|'+c.text;
+              if(!fingerprints[key])existing.comments.push(c);
+              fingerprints[key]=true;
+            });
+          }
+        });
+        return resultMoments;
+      }
+      return newSection;
+    }
+    function openRealChat() {
+      var bridge=global.InspectInteractionBridge;
+      if(!bridge||typeof bridge.chatHref!=='function'){hint('聊天入口暂时不可用。');return;}
+      if(global.location&&/\.workers\.dev$/i.test(global.location.hostname||'')){
+        hint('互动已保存在当前预览角色中。独立预览与正式聊天不同源，合并到正式站后才能连接角色聊天。');
+        return;
+      }
+      global.location.assign(bridge.chatHref(roleId));
     }
     function sendAsRole(input) {
       if(pendingChat||current!=='chat'||!view||view.kind!=='chat')return;
@@ -834,6 +940,12 @@
         e.preventDefault();var inp=e.target.querySelector('[name=message]');
         sendAsRole(inp?inp.value:'');
       }
+      if(e.target.id==='inspectNoteEditForm'){
+        e.preventDefault();saveNoteEdit(e.target);return;
+      }
+      if(e.target.id==='inspectMomentComment'){
+        e.preventDefault();saveMomentComment(e.target);return;
+      }
     });
     appBody.addEventListener('input',function(e){
       if(!e.target.matches||!e.target.matches('[data-native-search]'))return;
@@ -896,6 +1008,15 @@
       }
       if(a==='choose'){chooseScreen();return;}
       if(a==='refresh'){refreshSection();return;}
+      if(a==='newNote'){if(current==='notes'){view={kind:'note-editor',index:-1};notice='';render();}return;}
+      if(a==='editNote'){
+        if(current==='notes'&&view&&view.kind==='note'){view={kind:'note-editor',index:view.index};notice='';render();}
+        return;
+      }
+      if(a==='cancelNoteEdit'){
+        view=view&&view.index>=0?{kind:'note',index:view.index}:null;notice='';render();return;
+      }
+      if(a==='chatAboutNote'||a==='chatAboutMoment'){openRealChat();return;}
       if(a==='notesPin'){pinView='notes';render();return;}
       if(a==='albumPin'){pinView='album';render();return;}
       if(a==='stop'){close();return;}
