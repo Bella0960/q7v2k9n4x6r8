@@ -36,8 +36,8 @@ if(!sourcePath){
   console.error('This is not the approved 108145-byte V5 source. No preview written.');
   process.exitCode=3;
  }else{
-  const link='<link rel="stylesheet" href="./atmosphere-v5-custom.css?v=20261113v2">';
-  const addon='<script defer src="./atmosphere-v5-custom.js?v=20261113v2"></script>';
+  const link='<link rel="stylesheet" href="./atmosphere-v5-custom.css?v=20261113v3">';
+  const addon='<script defer src="./atmosphere-v5-custom.js?v=20261113v3"></script>';
   for(const closing of ['</head>','</body>'])
    assert.equal(raw.split(closing).length-1,1,'Expected unique '+closing);
   const result=raw.replace('</head>',link+'</head>').replace('</body>',addon+'</body>');
