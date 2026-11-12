@@ -92,9 +92,16 @@
     var chatB={side:'ai',text:s.chatB,time:at+4*60000,status:'sent',
       origin:'autonomous_story',storyEventId:id};
     put(sec.notes.notes,journal,id,32);
-    put(sec.wallet.transactions,wallet,id,40);
+    var wroteWallet=put(sec.wallet.transactions,wallet,id,40);
+    if(wroteWallet&&Number.isFinite(Number(sec.wallet.balance))){
+      sec.wallet.balance=Math.round((Number(sec.wallet.balance)-s.cost)*100)/100;
+    }
     put(sec.map.stops,route,id,36);
-    put(sec.album.photos,photo,id,38);
+    if(put(sec.album.photos,photo,id,38)){
+      sec.album.total=Math.max(list(sec.album.photos).length,number(sec.album.total,0)+1);
+      sec.album.newSevenDays=Math.max(0,number(sec.album.newSevenDays,0)+1);
+    }
+    if(sec.device&&typeof sec.device==='object')sec.device.location=s.place;
     put(sec.moments.moments,moment,id,35);
     put(sec.forum.posts,forum,id,32);
     if(chat&&Array.isArray(chat.messages)&&!has(chat.messages,id)){
