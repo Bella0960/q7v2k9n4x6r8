@@ -393,7 +393,7 @@
         var label=isActive?'正在使用':(isOwned?'应用主题':'免费获取并应用');
         html+='<article class="product-card">'+themeArt(item)+'<div class="product-meta"><span class="product-eyebrow">'+item.eyebrow+'</span><strong class="product-title">'+item.name+'</strong><span class="product-desc">'+item.desc+'</span></div><div class="product-foot"><span class="product-price">'+(isOwned?'已收录':'FREE')+'</span><button type="button" class="action-btn '+(isOwned?'light':'')+'" data-action="theme-apply" data-id="'+item.id+'" '+(isActive?'disabled':'')+'>'+label+'</button></div></article>';
       });
-      html+='</div><div class="helper-row"><p>薄影现在有独立五页交互预览，使用虚构联系人，不读取或覆盖聊天记录。</p><a class="text-link" href="./atmosphere-live-preview.html" style="display:inline-flex;align-items:center;min-height:38px;padding:8px 12px;border:1px solid #d8d8d8;border-radius:5px;text-decoration:none;color:inherit;font-size:12px">查看薄影五页交互预览</a></div>'+'<div class="helper-row"><p>列表主题独立保存，只作用于聊天首页；其他整套主题仍按原有方式切换。</p><button class="text-link" data-action="open-beauty" type="button">进入聊天美化</button></div>';
+      html+='</div><div class="helper-row"><p>薄影 V5 原版布局已锁定。这里查看保留原横滑与动效、增加头像和音乐自定义的交互预览。</p><a class="text-link" href="./atmosphere-v5-preserved-custom-preview.html" style="display:inline-flex;align-items:center;min-height:38px;padding:8px 12px;border:1px solid #d8d8d8;border-radius:5px;text-decoration:none;color:inherit;font-size:12px">查看薄影 V5 原版精修预览</a></div>'+'<div class="helper-row"><p>列表主题独立保存，只作用于聊天首页；其他整套主题仍按原有方式切换。</p><button class="text-link" data-action="open-beauty" type="button">进入聊天美化</button></div>';
       return html;
     }
     function renderBubbles(){
