@@ -130,6 +130,23 @@ function createScope({ accountId, role = 'user', fetchImpl = null, caches = null
   return { window, document, local, session, openCalls, nativeIndexedDB, nativeCaches, storageListeners };
 }
 
+test('缺失或伪造的 Worker 账号元信息必须中止页面，不能回退到共享本地数据', () => {
+  for (const identity of [
+    { accountId: '', role: 'user' },
+    { accountId: '001', role: 'super_admin' },
+    { accountId: 'MAO-AAAAAAAAAAAA', role: '' },
+    { accountId: 'MAO-AAAAAAAAAAAA', role: 'administrator' }
+  ]) {
+    const scope = createScope(identity);
+    assert.equal(scope.window.stopped, true, 'invalid identity must stop the app');
+    assert.equal(scope.document.opened, true);
+    assert.match(scope.document.written, /账号身份验证失败/);
+    assert.equal(scope.window.__MAO_ACCOUNT_SCOPE__, undefined);
+    assert.equal(scope.local.getItem('ai_custom_characters'), '[{"id":"legacy-owner"}]');
+    assert.equal(scope.openCalls.length, 0, 'no IndexedDB access should be initiated');
+  }
+});
+
 test('普通 MAO 账号的 localStorage 与 sessionStorage 只读写自己的命名空间', () => {
   const a = createScope({ accountId: 'MAO-AAAAAAAAAAAA', role: 'user' });
   a.window.localStorage.setItem('ai_custom_characters', '[{"id":"account-a"}]');
