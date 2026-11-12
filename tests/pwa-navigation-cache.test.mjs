@@ -65,7 +65,7 @@ test('failed app navigation never falls back to the desktop index page', () => {
 
 
 test('opt-in atmosphere assets are precached for the mobile PWA',()=>{
- assert.match(serviceWorker, /shared\\/css\\/atmosphere-theme\\.css\\?v=20261112v1/);
- assert.match(serviceWorker, /shared\\/js\\/atmosphere-theme\\.js\\?v=20261112v1/);
- assert.match(serviceWorker, /shared\\/js\\/chat-list-theme\\.js\\?v=20261112at1/);
+ assert.ok(serviceWorker.includes('./shared/css/atmosphere-theme.css?v=20261112v1'));
+ assert.ok(serviceWorker.includes('./shared/js/atmosphere-theme.js?v=20261112v1'));
+ assert.ok(serviceWorker.includes('./shared/js/chat-list-theme.js?v=20261112at1'));
 });
