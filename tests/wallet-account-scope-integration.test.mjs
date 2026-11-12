@@ -102,15 +102,15 @@ test('MAO wallet uses the injected account namespace: A, B and creator cannot sh
   assert.equal(b.ledger.readWalletForMutation('workData').balance, 920);
   assert.equal(creator.ledger.readWalletForMutation('workData').balance, 300);
   assert.deepEqual(
-    a.ledger.readWalletForMutation('workData').history.map(row => row.paymentId),
+    Array.from(a.ledger.readWalletForMutation('workData').history, row => row.paymentId),
     ['a-shop-1']
   );
   assert.deepEqual(
-    b.ledger.readWalletForMutation('workData').history.map(row => row.paymentId),
+    Array.from(b.ledger.readWalletForMutation('workData').history, row => row.paymentId),
     ['b-shop-1']
   );
   assert.deepEqual(
-    creator.ledger.readWalletForMutation('workData').history.map(row => row.paymentId),
+    Array.from(creator.ledger.readWalletForMutation('workData').history, row => row.paymentId),
     ['creator-shop-1', 'creator-old']
   );
 
