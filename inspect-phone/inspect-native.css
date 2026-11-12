@@ -360,3 +360,6 @@
     padding-bottom:calc(9px + env(safe-area-inset-bottom,0px));
   }
 }
+
+/* Search results must really disappear even against author layout rules. */
+.nv-contact[hidden]{display:none!important}
