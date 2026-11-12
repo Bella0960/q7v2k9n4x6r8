@@ -4897,3 +4897,50 @@ test('unified wallet writes: automatic snapshots reject stale balance overwrites
   assert.equal(ledger.commitWalletSnapshot(trulyFresh).ok, true);
   assert.equal(ledger.readWalletForMutation('workData').balance, 1000);
 });
+
+
+test('chat outgoing payments reject malformed or sub-cent amounts before wallet lock', async () => {
+  const begin = extras.indexOf('  var submitPayInProgress = false;');
+  const end = extras.indexOf("  if (payConfirmBtn) payConfirmBtn.addEventListener('click', submitPayMessage)", begin);
+  assert.ok(begin >= 0 && end > begin, 'shared-wallet chat payment handler must be present');
+  const section = extras.slice(begin, end);
+  let locks = 0;
+  let reads = 0;
+  const toasts = [];
+  const sandbox = {
+    payAmountInput: { value: '' },
+    payMessageInput: { value: '' },
+    PAY_DEFAULT_MESSAGE: '',
+    showToast: text => toasts.push(text),
+    getWorkData: () => { reads++; return { balance: 100, history: [] }; },
+    saveWorkData: () => { throw new Error('unexpected wallet write'); },
+    loadMessages: () => [],
+    saveMessages: () => { throw new Error('unexpected message save'); },
+    window: {
+      MaoMaoWalletLedger: {
+        runExclusive: async () => { locks++; }
+      }
+    },
+    payConfirmBtn: { disabled: false },
+    currentCharacter: { id: 'role-test' },
+    console: { warn: () => {} }
+  };
+  runInNewContext(section + '\nglobalThis.submitOutgoingWalletTest = submitPayMessage;', sandbox);
+  for (const invalid of [
+    '', '0', '0.00', '0.001', '1.234', '12abc', '1e3', '-5',
+    'Infinity', 'NaN', '1.', '9007199254740992'
+  ]) {
+    sandbox.payAmountInput.value = invalid;
+    await sandbox.submitOutgoingWalletTest();
+    assert.equal(locks, 0, 'invalid amount must not acquire wallet lock: ' + invalid);
+    assert.equal(reads, 0, 'invalid amount must not read or mutate wallet: ' + invalid);
+    assert.equal(sandbox.payConfirmBtn.disabled, false);
+  }
+  assert.ok(toasts.length >= 12, 'invalid amounts should receive actionable feedback');
+
+  sandbox.payAmountInput.value = '12.30';
+  await sandbox.submitOutgoingWalletTest();
+  assert.equal(locks, 1, 'valid cent-precision amount reaches shared wallet lock');
+  assert.equal(reads, 0, 'mock lock does not execute a simulated transaction');
+  assert.equal(sandbox.payConfirmBtn.disabled, false);
+});
