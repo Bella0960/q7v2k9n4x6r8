@@ -76,10 +76,17 @@ function fixture(surface='chats'){
  const stage=new E('div',surface==='chats'?'tier4-floating-stream':'space-stage');
  const container=new E('div',surface==='chats'?'chatListContainer':'momentsList');
  stage.append(container);
+ const profileMain=new E('main','profile-content');
+ const originalHero=new E('section','profile-hero');
+ profileMain.append(originalHero);
+ profileMain.firstChild=originalHero;
  const nodes={'chatListContainer':surface==='chats'?container:null,
   'chat-form':surface==='detail'?new E('form'):null,
   'momentsList':surface==='moments'?container:null,
-  'profileCover':surface==='profile'?new E('div'):null};
+  'profileCover':surface==='profile'?new E('div'):null,
+  'profileAvatar':surface==='profile'?new E('div'):null,
+  'menuWallet':surface==='profile'?new E('div'):null,
+  'menuFavorites':surface==='profile'?new E('div'):null};
  const make=(cls)=>{const n=new E('article',cls);container.append(n);return n;};
  const doc={
   readyState:'complete',
@@ -89,6 +96,7 @@ function fixture(surface='chats'){
    if(q==='.phone-mockup')return shell;
    if(q==='.tier4-floating-stream'&&surface==='chats')return stage;
    if(q==='.space-stage'&&surface==='moments')return stage;
+   if(q==='.profile-content'&&surface==='profile')return profileMain;
    if(q==='.chat-theme-copy h1')return null;
    return null;
   }
@@ -97,7 +105,7 @@ function fixture(surface='chats'){
  const win={addEventListener:(k,fn)=>events[k]=fn,MAOMAOAtmosphereIcons:null};
  function start(){runInNewContext(script,{window:win,document:doc,MutationObserver:MO});}
  function flush(node){for(const watcher of observers)if(watcher.node===node)watcher.fn([]);}
- return {shell,container,stage,make,start,flush,events,observers,
+ return {shell,container,stage,make,start,flush,events,observers,nodes,profileMain,
   getBar:()=>stage.children.find(x=>x.className==='at-page-filter'),
   getEmpty:()=>stage.children.find(x=>x.className==='at-filter-empty')};
 }
@@ -137,4 +145,33 @@ test('moment photo filter updates on rerender and restores all posts when theme 
  assert.equal(plain.hidden,false);
  assert.equal(photo.hidden,false);
  assert.equal(newPhoto.hidden,false);
+});
+
+test('profile heading and accessible native menu clicks stay theme scoped',()=>{
+ const h=fixture('profile');
+ const avatar=h.nodes.profileAvatar,cover=h.nodes.profileCover,menu=h.nodes.menuWallet;
+ let hits=0;
+ [avatar,cover,menu].forEach(node=>node.addEventListener('click',()=>{hits++;}));
+ h.start();
+ const heading=h.profileMain.children[0];
+ assert.equal(heading.className,'at-profile-heading');
+ assert.equal(heading.hidden,false);
+ assert.equal(avatar.getAttribute('role'),'button');
+ assert.equal(cover.getAttribute('role'),'button');
+ assert.equal(menu.tabIndex,0);
+ const enter={target:avatar,key:'Enter',preventDefault(){}};
+ avatar.events.keydown(enter);
+ assert.equal(hits,1);
+ h.shell.setAttribute('data-chat-theme-preset','wechat');h.flush(h.shell);
+ assert.equal(heading.hidden,true);
+ avatar.events.keydown(enter);
+ assert.equal(hits,1,'old themes do not gain the extra keyboard action');
+});
+
+test('native bottom navigation retains its original route owner and safe-area spacing',()=>{
+ const nav=read('shared/js/nav.js');
+ assert.match(nav,/var TABS = \[/);
+ assert.match(css,/FOUR-PAGE NAV INTEGRATION/);
+ assert.match(css,/bottom:max\(10px,env\(safe-area-inset-bottom\)\)!important/);
+ assert.match(css,/\.floating-nav \.nav-ico svg\{/);
 });
