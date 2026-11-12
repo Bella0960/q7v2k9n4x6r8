@@ -22,9 +22,27 @@ function scene(id,page='detail'){
  return '<div class="sf-scene sf-'+active+'"><div class="sf-status">9:41 <span>••• ▰</span></div>'+body+'</div>';
 }
 function heading(title,sub){return '<div class="sf-heading"><h2>'+title+'</h2><p>'+sub+'</p></div>';}
-function card(t){const fav=model.read().favorites.includes(t.id);return '<article class="sf-product"><button class="sf-cover" data-sf="detail" data-id="'+e(t.id)+'" aria-label="预览'+e(t.name)+'">'+scene(t.id,t.id==='atmosphere'?'list':'detail')+'</button><div class="sf-product-meta"><div><strong>'+e(t.name)+'</strong><small>'+(t.id==='imessage'?'聊天详情':'整套聊天外观')+'</small></div>'+button(svg('star'),'favorite',t.id,'sf-favorite'+(fav?' selected':''))+'</div></article>';}
-function themes(){return heading('主题','保留所有原有主题 · 点击封面查看适配范围')+'<div class="sf-grid">'+api.themes.map(card).join('')+'</div>'+api.listCard();}
-function discover(){return '<div class="sf-section-line"><h2>本期精选</h2><span>左右滑动</span></div><div class="sf-featured" tabindex="0" aria-label="热门精选，可左右滑动">'+api.themes.slice(0,3).map((t,i)=>'<button class="sf-feature" data-sf="detail" data-id="'+e(t.id)+'"><div><small>精选 / 0'+(i+1)+'</small><h2>'+e(t.name)+'</h2><p>'+e(t.desc)+'</p><span>查看主题 '+'</span></div><div class="sf-feature-scene">'+scene(t.id,'list')+'</div></button>').join('')+'</div>'+heading('为日常换一页','主题、原创壁纸与桌面小组件')+'<div class="sf-grid">'+api.themes.map(card).join('')+'</div>'+api.market.renderWallpapers();}
+function nativeArt(t){return typeof api.nativeArt==='function'?api.nativeArt(t):scene(t.id,'detail');}
+function card(t){
+ const fav=model.read().favorites.includes(t.id);
+ return '<article class="sf-product"><button class="sf-cover sf-native-cover" data-sf="detail" data-id="'+e(t.id)+'" aria-label="查看原有主题「'+e(t.name)+'」">'+nativeArt(t)+'</button>'+
+ '<div class="sf-product-meta"><div><strong>'+e(t.name)+'</strong><small>已有聊天主题</small></div>'+
+ button(svg('star'),'favorite',t.id,'sf-favorite'+(fav?' selected':''))+'</div></article>';
+}
+function themes(){
+ // Native theme catalogue is the single source of truth: keep original product artwork,
+ // real buy/apply buttons, separate Messages list theme and the existing theme IDs.
+ return heading('主题','原有主题与应用功能完整保留')+
+ (typeof api.nativeThemes==='function'?api.nativeThemes():'<div class="sf-grid">'+api.themes.map(card).join('')+'</div>');
+}
+function discover(){
+ const featured=['wechat','qq','atmosphere'].map(id=>api.themes.find(t=>t.id===id)).filter(Boolean);
+ return '<div class="sf-section-line"><h2>本期精选</h2><span>左右滑动</span></div>'+
+ '<div class="sf-featured" tabindex="0" aria-label="热门精选，可左右滑动">'+
+ featured.map((t,i)=>'<button class="sf-feature" data-sf="detail" data-id="'+e(t.id)+'"><div><small>精选 / 0'+(i+1)+'</small><h2>'+e(t.name)+'</h2><p>'+e(t.desc)+'</p><span>查看原主题</span></div><div class="sf-feature-scene sf-native-feature">'+nativeArt(t)+'</div></button>').join('')+'</div>'+
+ heading('原有主题','直接接入已经完成的聊天主题')+
+ '<div class="sf-grid">'+api.themes.map(card).join('')+'</div>'+api.market.renderWallpapers();
+}
 const categories=[
  ['整套主题',[['themes','完整主题','聊天外观与适配范围']]],
  ['聊天美化',[['bubbles','聊天气泡','全局与角色独立设置'],['beauty','聊天场景','背景、透明度与自定义样式'],['list','聊天首页','留白 Messages 独立布局']]],
@@ -46,6 +64,17 @@ function close(){if(!overlay)return;overlay.remove();overlay=null;document.query
 function modal(title,body){close();focusBefore=document.activeElement;overlay=document.createElement('div');overlay.className='sf-overlay';overlay.innerHTML='<section role="dialog" aria-modal="true" aria-label="'+e(title)+'" class="sf-dialog"><header><h2>'+e(title)+'</h2>'+button(svg('close'),'close','','sf-close')+'</header>'+body+'<p class="sf-error" role="alert"></p></section>';document.body.append(overlay);document.querySelector('.store-app').inert=true;overlay.querySelector('button').focus();overlay.addEventListener('click',ev=>{if(ev.target===overlay)close();});overlay.addEventListener('keydown',ev=>{if(ev.key==='Escape')close();if(ev.key==='Tab'){const all=[...overlay.querySelectorAll('button,input,select')].filter(x=>!x.disabled&&x.getClientRects().length);const first=all[0],last=all.at(-1);if(ev.shiftKey&&document.activeElement===first){ev.preventDefault();last.focus();}else if(!ev.shiftKey&&document.activeElement===last){ev.preventDefault();first.focus();}}});}
 function detail(id){
  const t=api.themes.find(x=>x.id===id);if(!t)return;
+ if(id!=='atmosphere'){
+   // Keep the original product visual from this project's existing themeArt().
+   // No generic six-page reconstruction is presented as if it were the real QQ/
+   // WeChat/iMessage/Silver Butterfly interface.
+   modal(t.name,'<p class="sf-caption">已有主题 · 使用原商城的主题封面与说明</p>'+
+    '<div class="sf-native-detail-art">'+nativeArt(t)+'</div>'+
+    '<p class="sf-caption">'+e(t.desc)+'</p>'+
+    '<p class="sf-caption">这里只展示原有主题素材。真实聊天页面及其气泡、联系人、动态等功能，仍由原项目的主题系统控制。</p>'+
+    '<footer>'+button('收藏 / 取消收藏','favorite',id)+button('应用原主题','apply-theme',id,'sf-button primary')+'</footer>');
+   return;
+ }
  previewTone='light';previewPage='detail';
  const toneControls=id==='atmosphere'?'<div class="sf-preview-tones" role="group" aria-label="预览明暗模式">'+button('浅色','tone','light','sf-chip active')+button('深色','tone','dark','sf-chip')+'</div>':'';
  modal(t.name,'<p class="sf-caption">独立虚构示例 · 不读取聊天或个人资料</p><div class="sf-preview-tabs" aria-label="选择预览页面">'+
