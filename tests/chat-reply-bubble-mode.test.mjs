@@ -356,7 +356,7 @@ test('同一毫秒内不同回复轮次的气泡 ID 不冲突，且可安全解�
   assert.ok(allIds.every((id) => !id.includes('#')), '轮次 ID 中的 # 必须编码，不能混入旧版气泡分隔符');
 
   first.forEach((message) => {
-    assert.deepEqual(policy.parseBubbleId(message.mid), { mid: message.mid, index: 0 });
+    assert.deepEqual({ ...policy.parseBubbleId(message.mid) }, { mid: message.mid, index: 0 });
   });
 
   const repeated = policy.buildReplyMessages('第一句\n第二句', 'multi', {
@@ -517,7 +517,8 @@ test('聊天页接线：缺字段走 legacy、按模式生成、已存内容不�
   assert.match(detailSource, /function getActiveReplyBubbleMode\(\)/);
   assert.match(detailSource, /hasOwnProperty\.call\(currentCharacter, 'replyBubbleMode'\)/);
   assert.match(detailSource, /currentCharacter\.replyBubbleMode/);
-  assert.match(detailSource, /buildReplyMessages\(fullText, getActiveReplyBubbleMode\(\)/);
+  assert.match(detailSource, /const replyBubbleMode = getActiveReplyBubbleMode\(\)/);
+  assert.match(detailSource, /buildReplyMessages\(fullText, replyBubbleMode, /);
   assert.match(detailSource, /parseReplyContent\(raw, 'legacy'\)/);
   // 历史展示不得套用 5 条上限：上限只在生成侧（policy 的 legacyUncapped 守卫）生效。
   assert.ok(!/bubbles\.length > 5/.test(detailSource), '已存内容渲染不得截断到 5 条');

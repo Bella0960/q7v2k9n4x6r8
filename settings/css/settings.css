@@ -688,3 +688,109 @@ html.dark .phone-mockup { border-color: rgba(255, 255, 255, 0.08); }
     word-break: break-all;
 }
 .model-item:active { background: var(--line); transform: scale(0.98); }
+
+/* Settings home only. The API panel keeps its own header and form spacing. */
+.phone-mockup > .header,
+.phone-mockup > .content {
+    --settings-gutter: clamp(16px, 5.2vw, 22px);
+    --settings-row-inset: 16px;
+    --settings-icon-size: 30px;
+    --settings-row-gap: 14px;
+}
+
+.phone-mockup > .header {
+    flex: none;
+    padding: 42px var(--settings-gutter) 22px;
+}
+
+.phone-mockup > .header .header-left {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+}
+
+.phone-mockup > .header .back-btn {
+    width: 44px;
+    height: 44px;
+    margin-inline-start: -12px;
+}
+
+.phone-mockup > .header .header-title {
+    font-size: 38px;
+    line-height: 1.08;
+}
+
+.phone-mockup > .content {
+    min-height: 0;
+    padding: 0 var(--settings-gutter) max(28px, env(safe-area-inset-bottom));
+}
+
+.phone-mockup > .content .group-title {
+    padding: 0 4px 8px;
+    line-height: 1.4;
+    flex: none;
+}
+
+.phone-mockup > .content .card {
+    flex: none;
+    padding: 3px 0;
+    margin-bottom: 20px;
+}
+
+.phone-mockup > .content .menu-row {
+    position: relative;
+    gap: var(--settings-row-gap);
+    padding: 13px var(--settings-row-inset);
+    border-bottom: 0;
+}
+
+.phone-mockup > .content .menu-row:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    inset-inline: calc(var(--settings-row-inset) + var(--settings-icon-size) + var(--settings-row-gap)) var(--settings-row-inset);
+    bottom: 0;
+    height: 1px;
+    background-color: var(--line);
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.phone-mockup > .content .menu-icon {
+    width: var(--settings-icon-size);
+    height: var(--settings-icon-size);
+}
+
+.phone-mockup > .content .menu-title {
+    flex-wrap: wrap;
+    column-gap: 6px;
+    line-height: 1.35;
+}
+
+.phone-mockup > .content .t-en { margin-left: 0; }
+.phone-mockup > .content .menu-arrow { width: 12px; text-align: end; }
+
+.phone-mockup > .content .user-row {
+    padding-block: 16px;
+}
+
+.phone-mockup > .content .avatar {
+    width: 50px;
+    height: 50px;
+}
+
+.phone-mockup > .content .menu-info {
+    gap: 4px;
+    overflow-wrap: anywhere;
+}
+
+.phone-mockup > .content .menu-info .menu-title {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+/* Airier main settings grouping, preserving the current palette. */
+.phone-mockup > .header { padding-bottom:34px; }
+.phone-mockup > .content .card { margin-bottom:28px; border-radius:22px; padding-block:6px; }
+.phone-mockup > .content .menu-row { padding-block:17px; }
+.phone-mockup > .content .user-row { padding-block:24px; }
+.phone-mockup > .content .menu-row:not(:last-child)::after { opacity:.3; }

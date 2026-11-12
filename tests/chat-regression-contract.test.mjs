@@ -186,6 +186,81 @@ test('reply content parser preserves narration extraction and bubble splitting',
   assert.match(detail, /ChatMessagePolicy\.parseReplyContent/);
 });
 
+test('bilingual reply keeps each source and Chinese translation together in all bubble modes', () => {
+  const raw = 'Good morning!\r\n\r\n［中译：早上好！］\r\n\r\nSee you later.\r\n[中译:晚点见。\n到时候聊。]';
+  assert.equal(policy.isCompleteBilingualReply(raw, 'en'), true);
+  for (const mode of ['legacy', 'auto', 'multi']) {
+    const messages = policy.buildReplyMessages(raw, mode);
+    assert.deepEqual(Array.from(messages, (message) => message.text), ['Good morning!', 'See you later.']);
+    assert.deepEqual(Array.from(messages, (message) => message.translation), ['早上好！', '晚点见。\n到时候聊。']);
+  }
+  const [single] = policy.buildReplyMessages(raw, 'single');
+  assert.equal(single.text, 'Good morning!\nSee you later.');
+  assert.equal(single.translation, '早上好！\n晚点见。\n到时候聊。');
+});
+
+test('bilingual validation catches mixed or incomplete replies and retains already paired bubbles', () => {
+  assert.equal(policy.isCompleteBilingualReply('今日は雨だね。\n[中译:今天下雨了。]', 'ja'), true);
+  assert.equal(policy.isCompleteBilingualReply('비가 오네.\n[中译:下雨了。]', 'ko'), true);
+  for (const [language, raw] of [
+    ['en', 'Hello (你好)\n[中译:你好]'],
+    ['en', 'Hello\n你好'],
+    ['en', 'Hello\n[中译:你'],
+    ['en', 'Hello\n[中译:]'],
+    ['en', 'Hello\n[中译:Hi]'],
+    ['en', 'Hello\nHow are you?\n[中译:你好吗？]'],
+    ['ja', 'おはよう。今天好累啊。\n[中译:早上好，今天好累。]'],
+    ['ko', '안녕, 你好\n[中译:你好]']
+  ]) {
+    assert.equal(policy.isCompleteBilingualReply(raw, language), false, raw);
+  }
+  assert.equal(policy.keepCompleteBilingualBubbles('Hello\n[中译:你好]\n\nWait\n[中译:', 'en'), 'Hello\n[中译:你好]');
+});
+
+test('local voice is role-scoped, local-only, and keeps the source and translation when making a voice bubble', () => {
+  const preferences = new Map();
+  const local = { lang: 'ja-JP', localService: true };
+  const remote = { lang: 'ja-JP', localService: false, default: true };
+  let offered = [remote, local];
+  let utterance;
+  const device = {
+    localStorage: {
+      getItem: key => preferences.get(key),
+      setItem: (key, value) => preferences.set(key, value)
+    },
+    speechSynthesis: {
+      getVoices: () => offered,
+      speak: value => { utterance = value; },
+      cancel: () => {}
+    },
+    SpeechSynthesisUtterance: function (text) { this.text = text; }
+  };
+  runInNewContext(read('shared/js/phone/local-chat-voice.js'), {
+    window: device,
+    Math: { random: () => 0.1 }
+  });
+  const speech = device.LocalChatVoice;
+  const now = 100000;
+  const source = { role: 'assistant', text: '今日は雨だね。', translation: '今天下雨了。', time: now };
+  const reply = [{ ...source }];
+  assert.equal(speech.maybeApplyToReply(reply, [], 'a', 'ja', now), false);
+  assert.equal(speech.savePreferences('a', { preset: 'deep', auto: true }), true);
+  assert.equal(speech.maybeApplyToReply(reply, [], 'b', 'ja', now), false);
+  assert.equal(speech.maybeApplyToReply(reply, [], 'a', 'ja', now), true);
+  assert.equal(reply[0].type, 'voice');
+  assert.equal(reply[0].text, source.text);
+  assert.equal(reply[0].translation, source.translation);
+  assert.equal(speech.maybeApplyToReply([{ ...source }], reply, 'a', 'ja', now + 1), false);
+  assert.equal(speech.speak(reply[0].text, reply[0].localSpeech.preset, reply[0].localSpeech.language), true);
+  assert.equal(utterance.voice, local);
+  assert.equal(utterance.text, source.text);
+  assert.equal(utterance.pitch, 0.78);
+  offered = [remote];
+  assert.equal(speech.maybeApplyToReply([{ ...source }], [], 'a', 'ja', now), false);
+  assert.equal(speech.speak(source.text, 'deep', 'ja'), false);
+  speech.stop();
+});
+
 test('reply cleanup protects think/narration blocks while applying the existing cleanup callback', () => {
   assert.equal(typeof policy.cleanupReplyPreservingBlocks, 'function');
   const raw = '标点，，<think>think one!!</think>\n<narratage>旁白，</narratage>\n<think>think two??</think>正文，，';
@@ -974,10 +1049,11 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
 });
 
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
-  assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
+  assert.match(detail, /chat-message-policy\.js\?v=20261112bilingual1/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
   assert.ok(serviceWorker.includes('phone-app-pwa-v204'));
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
+  assert.match(serviceWorker, /chat-message-policy\.js\?v=20261112bilingual1/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(detail, /chat-context-policy\.js\?v=20261107vision1/);
@@ -2315,4 +2391,76 @@ test('chat detail classic inline scripts parse before chat handlers are attached
     .filter(([, attributes]) => !/\bsrc\s*=|\btype\s*=/.test(attributes));
   assert.ok(inlineScripts.some(([, , source]) => /async function sendMsg\(/.test(source)));
   for (const [, , source] of inlineScripts) new Function(source);
+});
+
+test('dictation uses single utterances on touch devices and releases the control on recognition errors', () => {
+  const source = detail.match(/<script id="maomao-voice-input">([\s\S]*?)<\/script>/)[1];
+  for (const touch of [true, false]) {
+    const nodes = new Map();
+    const sessions = [];
+    let textChanges = 0;
+    function node() {
+      return {
+        value: '', placeholder: '', style: {}, children: [],
+        classList: { toggle() {} },
+        getAttribute() { return null; },
+        setAttribute(key, value) { this[key] = value; },
+        addEventListener(type, handler) { this[type] = handler; },
+        dispatchEvent() { textChanges++; },
+        focus() { this.focused = true; },
+        appendChild(child) { this.children.push(child); if (child.id) nodes.set(child.id, child); }
+      };
+    }
+    const button = node();
+    const input = node();
+    nodes.set('voice-input-btn', button);
+    nodes.set('chat-input', input);
+    runInNewContext(source, {
+      window: {
+        isSecureContext: true,
+        matchMedia: () => ({ matches: touch }),
+        addEventListener() {},
+        SpeechRecognition: function () {
+          sessions.push(this);
+          this.start = () => {};
+          this.stop = () => {};
+          this.abort = () => { this.aborted = true; };
+        }
+      },
+      document: {
+        getElementById: id => nodes.get(id),
+        querySelector: () => null,
+        createElement: node,
+        body: node()
+      },
+      Event: function () {},
+      setTimeout: () => 1,
+      clearTimeout() {}
+    });
+    const tap = () => button.click({ preventDefault() {}, stopPropagation() {} });
+    tap();
+    assert.equal(sessions[0].continuous, !touch);
+    sessions[0].onstart();
+    sessions[0].onresult({ results: [Object.assign([{ transcript: '你好' }], { isFinal: false })] });
+    sessions[0].onresult({ results: [Object.assign([{ transcript: '你好' }], { isFinal: true })] });
+    sessions[0].onend();
+    assert.equal(input.value, '你好');
+    assert.equal(textChanges, 1);
+    tap();
+    sessions[1].onerror({ error: 'not-allowed' });
+    assert.equal(button['aria-pressed'], 'false');
+    assert.equal(sessions[1].aborted, true);
+    assert.match(nodes.get('voice-input-status').textContent, /权限未开启/);
+    if (touch) {
+      const fallback = nodes.get('voice-input-status').children[0];
+      assert.equal(fallback.textContent, '打开键盘');
+      fallback.click();
+      assert.equal(input.focused, true);
+    }
+    tap();
+    tap();
+    assert.equal(sessions[2].aborted, true);
+    sessions[2].onstart();
+    assert.equal(button['aria-pressed'], 'false');
+  }
 });
