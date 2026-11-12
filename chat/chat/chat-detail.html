@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="../../shared/css/chat-beauty-runtime.css?v=20261031v1">
     <link rel="stylesheet" href="../call/call-overlay.css?v=20261105v1">
     <script src="../../shared/js/phone/phone_storage.js"></script>
+    <script src="../../shared/js/phone/local-chat-voice.js?v=20261112a"></script>
     <script src="../../shared/js/phone/storage/repository.js"></script>
     <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
     <script src="../../shared/js/phone/role-avatar-library.js?v=20261107v14"></script>
@@ -659,6 +660,8 @@
         .voice-wave { display: flex; align-items: flex-end; gap: 2px; height: 18px; }
         .voice-wave i { width: 2px; border-radius: 1px; background: currentColor; opacity: 0.4; }
         .voice-wave i.on { opacity: 1; }
+        .local-voice-play { border: 0; padding: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+        .local-voice-play:focus-visible { outline: 1px solid currentColor; outline-offset: 3px; }
         .voice-dur { font-size: 0.688rem; opacity: 0.7; }
         .msg-voice { display: flex; flex-direction: column; gap: 4px; max-width: min(260px, 100%); }
         .msg-row.sent .msg-voice, .msg-row.right .msg-voice { align-items: flex-end; }
@@ -3511,8 +3514,29 @@
                 for (var vb = 0; vb < 16; vb++) {
                     voiceBars += '<i style="height:' + (5 + Math.round(Math.random() * 13)) + 'px"></i>';
                 }
-                bubble.innerHTML = '<div class="voice-row"><span class="voice-wave" data-bars="1">' + voiceBars + '</span>' +
-                    '<span class="voice-dur">' + voiceSecs + '"</span></div>';
+                var isLocalSpeech = !!msg.localSpeech;
+                bubble.innerHTML = '<div class="voice-row"><span class="voice-wave" data-bars="1" aria-hidden="true">' + voiceBars + '</span>' +
+                    (isLocalSpeech ? '<button type="button" class="voice-dur local-voice-play">播放</button>' :
+                        '<span class="voice-dur">' + voiceSecs + '"</span>') + '</div>';
+                if (isLocalSpeech) {
+                    bubble.addEventListener('click', function (event) {
+                        if (selectingMode || document.getElementById('msgSheetOverlay').classList.contains('active')) return;
+                        event.stopPropagation();
+                        var play = bubble.querySelector('.local-voice-play');
+                        if (play.textContent === '停止') {
+                            stopVoicePlay();
+                            return;
+                        }
+                        stopVoicePlay();
+                        var speech = window.LocalChatVoice;
+                        var started = speech && speech.speak(msg.text, msg.localSpeech.preset, msg.localSpeech.language, function (failed) {
+                            play.textContent = '播放';
+                            if (failed && typeof showToast === 'function') showToast('本机语音播放失败，仍可查看转写文字');
+                        });
+                        if (started) play.textContent = '停止';
+                        else if (typeof showToast === 'function') showToast('当前语言没有可用的本机语音');
+                    });
+                }
                 if (msg.text) {
                     var vWrap = document.createElement('div');
                     vWrap.className = 'msg-voice';
@@ -3521,10 +3545,10 @@
                     // 改为直接铺在波形气泡下面。双语模式下转写可能带 [中译:...]，
                     // 拆成「原文 + 灰色中文」两行，与正文气泡的双语渲染保持一致。
                     var vtRaw = String(msg.text);
-                    var vtMain = vtRaw, vtZh = '';
+                    var vtMain = vtRaw, vtZh = isLocalSpeech ? String(msg.translation || '') : '';
                     var vtMatch = vtRaw.match(/\[中译[:：]([\s\S]*?)\]/);
                     if (vtMatch) {
-                        vtZh = String(vtMatch[1] || '').trim();
+                        vtZh = vtZh || String(vtMatch[1] || '').trim();
                         vtMain = vtRaw.replace(vtMatch[0], '').replace(/\n{2,}/g, '\n').trim();
                     }
                     if (vtMain || vtZh) {
@@ -3831,7 +3855,7 @@
 
             // 译文小字（AI 翻译结果落库后随消息一起渲染）
             // 若 parseReplyContent 已经从 [中译:] 解析出翻译条（双语聊天模式），就不重复挂手动翻译
-            if (msg.translation && !bubble.querySelector('.msg-translation')) {
+            if (msg.translation && !(msg.type === 'voice' && msg.localSpeech) && !bubble.querySelector('.msg-translation')) {
                 const trEl = document.createElement('div');
                 trEl.className = 'msg-translation';
                 trEl.textContent = String(msg.translation);
@@ -6503,6 +6527,10 @@
                             memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined
                         }];
                     }
+                    if (streamResult.ok && !isGroupChat && !isRegen && !contextOnly && !silent &&
+                        presenceMode === 'online' && window.LocalChatVoice) {
+                        window.LocalChatVoice.maybeApplyToReply(replyMessages, historyList, aliasRoleId, replyLang, Date.now());
+                    }
                     if (fullText || aiStickerMessages.length || aiRoleGalleryMessages.length || avatarCandidates.length || avatarPairs.length) {
                         // 正文按角色气泡偏好拆分；表情与图库图片仍保留在同一回复回合中。
                         groupReplyVisible = !!fullText || aiStickerMessages.length > 0 || aiRoleGalleryMessages.length > 0;
@@ -7295,6 +7323,10 @@
                     fwd.type = 'image'; fwd.img = msg.img; fwd.desc = msg.desc || '';
                 } else if (msg.type === 'voice') {
                     fwd.type = 'voice'; fwd.duration = msg.duration || 3;
+                    if (msg.localSpeech) {
+                        fwd.localSpeech = { preset: msg.localSpeech.preset, language: msg.localSpeech.language };
+                        if (msg.translation) fwd.translation = msg.translation;
+                    }
                 } else if (msg.type === 'location' && msg.location) {
                     fwd.type = 'location'; fwd.location = msg.location;
                 } else if (msg.type === 'card' && msg.card) {
@@ -7342,10 +7374,12 @@
         var voicePlayTimer = null;
         function stopVoicePlay() {
             if (voicePlayTimer) { clearInterval(voicePlayTimer); voicePlayTimer = null; }
+            if (window.LocalChatVoice) window.LocalChatVoice.stop();
         }
+        window.addEventListener('pagehide', stopVoicePlay);
         chatMessages.addEventListener('click', function (e) {
             var vbubble = e.target.closest('.msg-bubble');
-            if (!vbubble || !vbubble.classList.contains('bubble-voice')) return;
+            if (!vbubble || !vbubble.classList.contains('bubble-voice') || vbubble.querySelector('.local-voice-play')) return;
             var wave = vbubble.querySelector('.voice-wave');
             if (!wave || wave.dataset.playing === '1') return;
             wave.dataset.playing = '1';
