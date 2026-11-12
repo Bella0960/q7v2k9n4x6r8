@@ -154,6 +154,18 @@
       focus.origin==='explicit_phone_chat_navigation'&&!focus.usedAt){
       focus.usedAt=current;
       changed=true;
+      // The selected note content was already included in the focused prompt.
+      // Do not re-offer the same text as an unrelated "new note" next turn.
+      // A newer edit made after navigation remains a genuinely new clue.
+      if(focus.kind==='note'&&focus.sourceId){
+        list(story.interactions).forEach(function(e){
+          if(e&&e.origin==='user_on_fictional_phone'&&e.sourceId===focus.sourceId&&
+            (e.type==='note_created'||e.type==='note_edited')&&
+            Number(e.at)<=Number(focus.at)&&!e.offeredToAIAt){
+            e.offeredToAIAt=current;
+          }
+        });
+      }
     }
     if(!changed)return true;
     try{
