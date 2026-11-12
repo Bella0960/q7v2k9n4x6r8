@@ -9,6 +9,7 @@ const nativeSource=readFileSync(new URL('../inspect-phone/inspect-native-view.js
 const phoneSource=readFileSync(new URL('../inspect-phone/phone.html',import.meta.url),'utf8');
 const chatSource=readFileSync(new URL('../chat/chat/chat-detail.html',import.meta.url),'utf8');
 const cssSource=readFileSync(new URL('../inspect-phone/inspect-native.css',import.meta.url),'utf8');
+const personaSource=readFileSync(new URL('../inspect-phone/inspect-persona-web.js',import.meta.url),'utf8');
 
 function setup(roleId='test-note-owner',store=new Map()) {
   const handlers={};let quota=false;
@@ -30,6 +31,7 @@ function setup(roleId='test-note-owner',store=new Map()) {
     location:{hostname:'app.mao520.com',assign(href){window.navigatedTo=href;}}};
   const context={window,document,localStorage:storage,Date,Math,JSON,Number,String,Array,Object,console};
   vm.runInNewContext(bridgeSource,context);
+  vm.runInNewContext(personaSource,context);
   vm.runInNewContext(nativeSource,context);
   vm.runInNewContext(featureSource,context);
   const role={id:roleId,name:'林禾',occupation:'图书编辑',relationship:'朋友',affection:83};
@@ -291,4 +293,92 @@ test('朋友圈去聊天精确带上本条动态最近两条本人评论，不�
   assert.equal(remaining.mode,'fresh');
   assert.match(remaining.text,/第一条旧评论/);
   assert.doesNotMatch(remaining.text,/第三条最新评论/);
+});
+
+
+test('论坛首页显示角色人设帖子，「我发的」只显示当前角色的发帖',()=>{
+  const u=setup('forum-persona');u.start();u.app('forum');
+  const d=u.read();
+  assert.ok(d.sections.forum.posts.some(p=>p.authorId==='forum-persona'));
+  assert.ok(d.sections.forum.posts.some(p=>/书|阅读/.test(p.title)));
+  assert.match(u.appBody.innerHTML,/nv-forum-card/);
+  u.action('forumMine');
+  assert.match(u.appBody.innerHTML,/我发的/);
+  assert.match(u.appBody.innerHTML,/nv-forum-row/);
+  u.action('forumAll');
+  assert.match(u.appBody.innerHTML,/正在讨论/);
+});
+
+test('角色论坛评论和点赞保存后不丢失，也可以准确带进角色聊天',()=>{
+  const u=setup('forum-comment');u.start();u.app('forum');u.detail('post',0);
+  const original=u.read().sections.forum.posts[0],before=original.comments.length;
+  u.submit('inspectForumComment',{text:'我觉得浅色玫瑰也挺不错。'});
+  let d=u.read(),post=d.sections.forum.posts[0];
+  assert.equal(post.comments.length,before+1);
+  assert.equal(post.comments.at(-1).origin,'user_on_fictional_phone');
+  assert.ok(d.interactions.some(x=>x.type==='forum_comment'));
+  const oldLikes=post.likes;
+  u.action('forumLike');
+  d=u.read();post=d.sections.forum.posts[0];
+  assert.equal(post.likes,oldLikes+1);
+  assert.equal(post.liked,true);
+  u.action('chatAboutForum');
+  d=u.read();
+  assert.equal(d.pendingChatFocus.kind,'forum');
+  assert.match(d.pendingChatFocus.text,/浅色玫瑰/);
+  assert.equal(d.pendingChatFocus.includedEventIds.length,1);
+  assert.ok(u.window.navigatedTo.includes('forum-comment'));
+  const bridge=u.window.InspectInteractionBridge;
+  const packet=bridge.buildPromptPacket('forum-comment',u.window.localStorage);
+  assert.equal(packet.mode,'focused');
+  assert.equal(bridge.markOffered('forum-comment',[],u.window.localStorage,Date.now(),packet.focusId),true);
+  const saved=u.read().interactions.find(e=>e.type==='forum_comment');
+  assert.ok(saved.offeredToAIAt>0);
+});
+
+test('浏览器能真实搜索、阅读、收藏，并分别留下搜索史和访问史',()=>{
+  const u=setup('browser-real');u.start();u.app('browser');
+  assert.match(u.appBody.innerHTML,/inspectBrowserSearch/);
+  u.submit('inspectBrowserSearch',{query:'如何给女朋友买鲜花'});
+  assert.match(u.appBody.innerHTML,/玫瑰|郁金香/);
+  assert.ok(u.read().sections.browser.searchHistory.some(x=>x.query==='如何给女朋友买鲜花'));
+  u.detail('browser-result',0);
+  assert.match(u.appBody.innerHTML,/nv-browser-article/);
+  assert.ok(u.read().sections.browser.pageViews.length>=1);
+  u.action('browserBookmark');
+  let d=u.read();
+  assert.ok(d.sections.browser.bookmarks.some(x=>x.articleId));
+  u.action('browserVisits');
+  assert.match(u.appBody.innerHTML,/浏览记录/);
+  u.action('browserBookmarks');
+  assert.match(u.appBody.innerHTML,/书签/);
+});
+
+test('API可以通过现有配置为未知查询生成虚构文章，但不能伪装实时网站',async()=>{
+  const u=setup('browser-ai');
+  u.setApiResponse(async()=>({ok:true,data:{pages:[
+    {title:'模拟工具使用完整指南',snippet:'一篇围绕普通日常搜索需求创作的独立参考文章。',
+      paragraphs:['这是模型生成的正文段落，用来帮助角色理解自己的搜索需求，不是真实搜索引擎页面。','引用时应明确它是 AI 合成参考，任何商家信息都不是实时数据。']},
+    {title:'另一个主题研究笔记',snippet:'对普通用户问题提供不同角度的原创解释文案。',
+      paragraphs:['先了解当前具体问题，找出已经确定的事实，再区分无法验证的网上信息。','如果没有实时数据，不应假装收录真实网站或者可以当场向商家下单。']}
+  ]}}));
+  u.start();u.app('browser');
+  u.submit('inspectBrowserSearch',{query:'星际快递怎么包装一颗月亮'});
+  for(let i=0;i<12;i++)await Promise.resolve();
+  const d=u.read(),pages=d.sections.browser.aiPages||[];
+  assert.equal(pages.length,2);
+  assert.ok(pages.every(x=>x.domain.includes('非实时')));
+  assert.match(u.appBody.innerHTML,/模拟工具使用完整指南/);
+  assert.equal(d.sections.browser.searchHistory[0].query,'星际快递怎么包装一颗月亮');
+});
+
+test('浏览器存储失败不假成功，搜索和 AI 页面都不污染原记录',()=>{
+  const u=setup('browser-quota');u.start();u.app('browser');
+  const before=u.read().sections.browser.searchHistory.length;
+  u.failWrites(true);
+  u.submit('inspectBrowserSearch',{query:'这条搜索不能被保存'});
+  u.failWrites(false);
+  const d=u.read();
+  assert.equal(d.sections.browser.searchHistory.length,before);
+  assert.ok(!d.sections.browser.searchHistory.some(x=>x.query==='这条搜索不能被保存'));
 });
