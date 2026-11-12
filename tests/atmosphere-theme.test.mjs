@@ -107,3 +107,23 @@ test('atmosphere dark composer overrides legacy forced white and gray surfaces',
  assert.match(css,/@media\(max-width:600px\)/);
  assert.match(css,/height:100dvh!important/);
 });
+
+test('direct tone shortcut works without opening the drawer, using isolated theme storage',()=>{
+ const h=controller();
+ const buttons=h.host.querySelectorAll('button');
+ assert.equal(buttons.length,2,'menu and quick tone must be separate controls');
+ assert.equal(buttons[1].getAttribute('aria-label'),'切换为深色');
+ buttons[1].click();
+ assert.equal(h.shell.getAttribute('data-at-tone'),'dark');
+ assert.equal(buttons[1].getAttribute('aria-label'),'切换为浅色');
+ assert.deepEqual(h.data,{maomao_atmosphere_tone_v1:'dark'});
+ assert.equal(h.shell.getAttribute('data-at-open'),null);
+});
+test('drawer keeps real navigation paths, an authored cover, and direct tone access',()=>{
+ const h=controller();
+ const drawer=h.doc.getElementById('atConversationDrawer');
+ assert.equal(drawer.querySelector('.at-cover-title').textContent,'Chats.');
+ assert.match(drawer.querySelector('.at-music-link').href,/music\/music\.html$/);
+ assert.match(drawer.querySelector('.at-drawer-nav').querySelector('a').href,/chat\/chat\/chat\.html$/);
+ assert.equal(drawer.querySelector('.at-tone').textContent,'切换为深色');
+});
