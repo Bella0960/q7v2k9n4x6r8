@@ -233,7 +233,11 @@
       if (!serialized || !readWalletForMutation('workData', serialized)) {
         return { ok: false, reason: 'invalid-wallet' };
       }
-      if (arguments.length > 1 && storage.getItem('workData') !== expectedRaw) {
+      var existingRaw = storage.getItem('workData');
+      if (existingRaw != null && !readWalletForMutation('workData', existingRaw)) {
+        return { ok: false, reason: 'invalid-store' };
+      }
+      if (arguments.length > 1 && existingRaw !== expectedRaw) {
         return { ok: false, reason: 'stale-wallet' };
       }
       storage.setItem('workData', serialized);
