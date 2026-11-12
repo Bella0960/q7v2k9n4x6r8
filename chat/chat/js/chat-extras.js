@@ -965,6 +965,14 @@
       if (typeof showToast === 'function') showToast('余额不足或钱包数据异常');
       return;
     }
+    // Do not allow a second debit while this role already has an unsettled payment.
+    if (Array.isArray(wallet.history) && wallet.history.some(function (item) {
+      return item && item.status === 'pending-chat' && String(item.roleId || '') === roleId &&
+        item.type === 'expense' && (item.category === 'redpacket' || item.category === 'transfer');
+    })) {
+      if (typeof showToast === 'function') showToast('上一笔红包或转账仍待核对，请先检查钱包记录');
+      return;
+    }
     var mode = payMode === 'transfer' ? 'transfer' : 'redpacket';
     var now = Date.now();
     var paymentId = 'out-' + uid();
