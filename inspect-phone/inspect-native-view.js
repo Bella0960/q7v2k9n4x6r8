@@ -68,8 +68,8 @@
       }).join('')+'</nav>';
     } else if(app==='notes') {
       var publicNotes=arr(s.notes),locked=arr(s.locked).slice(0,o.revealCount||0);
-      if(v&&(v.kind==='note'||v.kind==='locked-note')) {
-        var note=(v.kind==='note'?publicNotes:locked)[v.index];if(!note)return null;
+      if(v&&(v.kind==='note'||v.kind==='locked-note'||v.kind==='archived-note')) {
+        var note=(v.kind==='note'?publicNotes:v.kind==='archived-note'?arr(s.archive):locked)[v.index];if(!note)return null;
         title='备忘录';
         var text=String(note.text||'');
         body='<div class="nv-note-editor"><div class="nv-note-date">'+esc(when(note.updatedAt))+'</div><h1>'+esc(note.title)+'</h1>'+
@@ -87,7 +87,8 @@
               (o.revealCount< arr(s.locked).length?'<p class="nv-hint">其余日记尚未得到角色分享许可</p>':''):
             '<div class="nv-locked"><span>▣　私密备忘录</span><small>需要剧情密码才能查看</small>'+
             (o.pinView==='notes'?o.pinForm():o.button('输入密码','notesPin'))+'</div>')+
-          (o.unlockedNotes&&o.revealCount?'<p class="nv-hint">相册线索：剧情密码 '+esc(o.hiddenPin)+'（仅供虚构解谜）</p>':'')+'</div>';
+          (o.unlockedNotes&&o.revealCount?'<p class="nv-hint">相册线索：剧情密码 '+esc(o.hiddenPin)+'（仅供虚构解谜）</p>':'')+
+          (arr(s.archive).length?'<div class="nv-folder-label">往期记录</div>'+arr(s.archive).map(function(x,i){return tap('archived-note',i,'<span class="nv-note-copy"><strong>'+esc(x.title)+'</strong><small>'+esc(x.text).slice(0,60)+'</small></span>','nv-note-row');}).join(''):'')+'</div>';
       }
     } else if(app==='moments') {
       title='朋友圈';
@@ -106,8 +107,8 @@
       }
     } else if(app==='forum') {
       title=v&&v.kind==='post'?'帖子详情':'论坛';
-      if(v&&v.kind==='post'){
-        var post=arr(s.posts)[v.index];if(!post)return null;
+      if(v&&(v.kind==='post'||v.kind==='archived-post')){
+        var post=(v.kind==='post'?arr(s.posts):arr(s.archive))[v.index];if(!post)return null;
         body='<div class="nv-forum-article"><div class="nv-forum-author">'+avatar(name)+'<span><strong>'+esc(name)+'</strong><small>'+esc(when(post.time))+'</small></span></div>'+
           '<h1>'+esc(post.title)+'</h1>'+paper(post.text)+'</div>'+
           group('评论 · '+arr(post.comments).length,arr(post.comments).map(function(c){return '<div class="nv-comment">'+avatar(c.name,'small')+'<span><strong>'+esc(c.name)+'</strong><p>'+esc(c.text)+'</p></span></div>';}).join(''));
@@ -116,7 +117,7 @@
           var i=arr(s.posts).indexOf(p);return tap('post',i,'<div class="nv-forum-card"><div class="nv-forum-author">'+avatar(name,'small')+
           '<span><strong>'+esc(name)+'</strong><small>'+esc(when(p.time))+'</small></span></div>'+
           '<h2>'+esc(p.title)+'</h2><p>'+esc(p.text).slice(0,110)+'</p><footer>♡ 赞　　☏ '+arr(p.comments).length+' 条评论</footer></div>','nv-forum-row');
-        }).join('');
+        }).join('')+(arr(s.archive).length?'<div class="nv-folder-label">更早的帖子</div>'+arr(s.archive).map(function(p,i){return entry('archived-post',i,p.title,when(p.time));}).join(''):'');
     } else if(app==='browser'){
       title='浏览器';
       if(v&&['search','bookmark'].indexOf(v.kind)>=0){
