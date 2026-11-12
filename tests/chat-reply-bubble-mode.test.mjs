@@ -356,7 +356,10 @@ test('同一毫秒内不同回复轮次的气泡 ID 不冲突，且可安全解�
   assert.ok(allIds.every((id) => !id.includes('#')), '轮次 ID 中的 # 必须编码，不能混入旧版气泡分隔符');
 
   first.forEach((message) => {
-    assert.deepEqual(policy.parseBubbleId(message.mid), { mid: message.mid, index: 0 });
+    const parsed = policy.parseBubbleId(message.mid);
+    // ChatMessagePolicy is executed in a separate vm context; compare fields, not cross-realm object prototypes.
+    assert.equal(parsed.mid, message.mid);
+    assert.equal(parsed.index, 0);
   });
 
   const repeated = policy.buildReplyMessages('第一句\n第二句', 'multi', {
