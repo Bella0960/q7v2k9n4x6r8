@@ -25,8 +25,10 @@ function heading(title,sub){return '<div class="sf-heading"><h2>'+title+'</h2><p
 function nativeArt(t){return typeof api.nativeArt==='function'?api.nativeArt(t):scene(t.id,'detail');}
 function card(t){
  const fav=model.read().favorites.includes(t.id);
- return '<article class="sf-product"><button class="sf-cover sf-native-cover" data-sf="detail" data-id="'+e(t.id)+'" aria-label="查看原有主题「'+e(t.name)+'」">'+nativeArt(t)+'</button>'+
- '<div class="sf-product-meta"><div><strong>'+e(t.name)+'</strong><small>已有聊天主题</small></div>'+
+ const active=global.ChatBeauty?.getThemePreset?.()===t.id;
+ const scope=t.id==='imessage'?'聊天详情专属':t.id==='atmosphere'?'新主题 · 薄影':t.id==='default'?'原生聊天外观':'现有完整主题';
+ return '<article class="sf-product"><button class="sf-cover sf-native-cover" data-sf="detail" data-id="'+e(t.id)+'" aria-label="查看主题「'+e(t.name)+'」">'+nativeArt(t)+'</button>'+
+ '<div class="sf-product-meta"><div><strong>'+e(t.name)+'</strong><small>'+(active?'正在使用 · ':'')+scope+'</small></div>'+
  button(svg('star'),'favorite',t.id,'sf-favorite'+(fav?' selected':''))+'</div></article>';
 }
 function themes(){
