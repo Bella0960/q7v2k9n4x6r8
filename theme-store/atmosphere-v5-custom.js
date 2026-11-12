@@ -5,7 +5,7 @@
  */
 (() => {
  'use strict';
- const $=q=>document.querySelector(q), $$=q=>Array.from(document.querySelectorAll(q));
+ const $=q=>document.querySelector(q), all=(q,root=document)=>Array.from(root.querySelectorAll(q));
  const ns='thin-shadow-v5-custom-media', storeName='files';
  const imageLimit=8*1024*1024, audioLimit=25*1024*1024;
  const state={db:null,records:new Map(),urls:new Map(),activeContact:'lin',
@@ -90,7 +90,7 @@
  }
  function activeContact(){
   const name=$('#chat-name')?.textContent?.trim();
-  const match=$$('.conversation[data-contact]').find(x=>x.querySelector('.con-upper strong')?.textContent?.trim()===name);
+  const match=all('.conversation[data-contact]').find(x=>x.querySelector('.con-upper strong')?.textContent?.trim()===name);
   return match?.dataset.contact||state.activeContact;
  }
  function applyArtwork(){
@@ -102,8 +102,8 @@
   decorate($('.avatar-mini'),'image:me');
   const id=activeContact();state.activeContact=id;
   decorate($('#page-chat .portrait'),'image:contact:'+id);
-  $$('.conversation[data-contact]').forEach(row=>decorate(row.querySelector('.avatar'),'image:contact:'+row.dataset.contact));
-  $$('#messages .msg').forEach(msg=>decorate(msg.querySelector('.face'),msg.classList.contains('me')?'image:me':'image:contact:'+id));
+  all('.conversation[data-contact]').forEach(row=>decorate(row.querySelector('.avatar'),'image:contact:'+row.dataset.contact));
+  all('#messages .msg').forEach(msg=>decorate(msg.querySelector('.face'),msg.classList.contains('me')?'image:me':'image:contact:'+id));
  }
  function decorateAfterRerender(){
   if(state.disposed)return;
@@ -250,7 +250,7 @@
    '<div data-v5-section="stickers" class="v5-custom-section" id="v5-custom-expressions"></div></div>'+
    '<p class="v5-custom-foot">保持 V5 原布局与动效。上传素材只保存在此预览的本地空间，不同步到真实聊天。</p>'+
    '</section>';
-  $('#phone')?.append(overlay) || $('.phone')?.append(overlay);
+  $('.phone')?.append(overlay);
   state.panel=overlay;
   overlay.querySelector('.v5-custom-mask').addEventListener('click',hidePanel);
   overlay.querySelector('.v5-custom-close').addEventListener('click',hidePanel);
@@ -270,12 +270,12 @@
   stick.append(focusLink('上传自定义表情包','sticker','PNG / JPEG / GIF / WebP · 发送到当前演示会话'));
   const help=document.createElement('p');help.className='v5-custom-note';help.textContent='上传后可在聊天输入栏的表情快捷区直接点选发送。';
   stick.append(help);
-  const buttons=$$('.v5-custom-row');
+  const buttons=all('.v5-custom-row');
   buttons.forEach(b=>b.addEventListener('click',()=>chooseFile(b.dataset.v5Upload)));
   overlay.addEventListener('keydown',e=>{
    if(e.key==='Escape'){e.preventDefault();hidePanel();}
    if(e.key!=='Tab')return;
-   const focus=$$('button:not([disabled])',overlay).filter(x=>x.getClientRects().length);
+   const focus=all('button:not([disabled])',overlay).filter(x=>x.getClientRects().length);
    if(!focus.length)return;
    const first=focus[0],last=focus[focus.length-1];
    if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}
@@ -350,6 +350,7 @@
   const list=$('#conversations'),msgs=$('#messages');
   const obs=new MutationObserver(decorateAfterRerender);
   if(list)obs.observe(list,{childList:true});if(msgs)obs.observe(msgs,{childList:true});
+  const name=$('#chat-name');if(name)obs.observe(name,{childList:true,subtree:true,characterData:true});
   document.addEventListener('click',event=>{
    const chat=event.target.closest('.conversation[data-contact]');
    if(chat){state.activeContact=chat.dataset.contact;requestAnimationFrame(applyArtwork)}
