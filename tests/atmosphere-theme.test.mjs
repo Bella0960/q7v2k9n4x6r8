@@ -76,3 +76,33 @@ test('switching theme while drawer is open releases the page and removes transit
  const h=controller();h.host.querySelector('button').click();h.shell.setAttribute('data-chat-theme-preset','default');h.notify();assert.equal(h.shell.getAttribute('data-at-open'),null);assert.equal(h.host.inert,false);assert.equal(h.doc.getElementById('atPageTransitions'),null);
  h.shell.setAttribute('data-chat-theme-preset','atmosphere');h.notify();h.events.pageshow();assert.equal(h.nodes.filter(n=>n.id==='atConversationDrawer').length,1);assert.equal(h.shell.getAttribute('data-at-open'),null);
 });
+
+
+test('legacy floating sender is removed only for atmosphere; native submit stays active',()=>{
+ const detail=readFileSync(new URL('../chat/chat/chat-detail.html',import.meta.url),'utf8');
+ const begin=detail.indexOf('  function fixAll(){');
+ const end=detail.indexOf('  function sync(){',begin);
+ assert.ok(begin>0&&end>begin,'legacy sender handler exists');
+ const source=detail.slice(begin,end);
+ const changes=[],native={style:{display:'none',removeProperty:k=>changes.push('native:'+k)}};
+ const capsule={style:{marginRight:'50px',removeProperty:k=>changes.push('capsule:'+k)}};
+ const extra={removed:false,remove(){this.removed=true;}};
+ const form={querySelector:q=>q==='.send-icon-btn'?native:null};
+ const doc={getElementById:id=>id==='chat-form'?form:id==='myFloatSend'?extra:null,querySelector:q=>
+  q==='.input-capsule'?capsule:q==='.phone-mockup'?{getAttribute:()=> 'atmosphere'}:null};
+ runInNewContext(source+';fixAll();',{document:doc,isWechat:()=>false,HEART_ICON:'',SEND_ICON:'',window:{}});
+ assert.deepEqual(changes,['capsule:margin-right','native:display']);
+ assert.equal(extra.removed,true,'legacy extra button is removed, not just covered');
+ assert.equal(native.style.display,'none','test stub keeps its own original state; production removeProperty restores the CSS');
+});
+test('atmosphere dark composer overrides legacy forced white and gray surfaces',()=>{
+ const css=readFileSync(new URL('../shared/css/atmosphere-theme.css',import.meta.url),'utf8');
+ const detail=readFileSync(new URL('../chat/chat/chat-detail.html',import.meta.url),'utf8');
+ assert.match(detail,/form#chat-form \.input-capsule \{ margin-right: 48px !important;/);
+ assert.match(css,/\.phone-mockup\[data-chat-theme-preset="atmosphere"\] form#chat-form \.input-capsule\s*\{/);
+ assert.match(css,/\.phone-mockup\[data-chat-theme-preset="atmosphere"\] form#chat-form \.send-icon-btn\s*\{/);
+ assert.match(css,/\.phone-mockup\[data-chat-theme-preset="atmosphere"\] :is\(\.chat-stage,#chat-messages\)/);
+ assert.match(css,/#myFloatSend\{display:none!important;\}/);
+ assert.match(css,/@media\(max-width:600px\)/);
+ assert.match(css,/height:100dvh!important/);
+});
