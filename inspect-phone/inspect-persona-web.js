@@ -133,7 +133,7 @@ function visit(section,id,query,now){
   if(!section||!article(id,section))return false;
   section.pageViews=arr(section.pageViews);
   section.pageViews.unshift({articleId:id,title:article(id,section).title,query:str(query,120),
-    time:Number(now)||Date.now(),origin:'fictional_browsing'});
+    time:Number(now)||Date.now(),origin:'viewer_on_fictional_phone'});
   section.pageViews=section.pageViews.slice(0,50);
   return true;
 }
