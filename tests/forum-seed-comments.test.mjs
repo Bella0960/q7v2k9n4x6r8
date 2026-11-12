@@ -424,7 +424,7 @@ test('forum refresh / 并发页面更新：提交前检测到存储变化，会�
     getItem: () => {
       reads += 1;
       if (reads === 1) return initialRaw;
-      return concurrentRaw;
+      return saved || concurrentRaw;
     },
     setItem: (key, value) => { saved = String(value); }
   };
