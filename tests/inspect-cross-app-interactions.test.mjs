@@ -38,7 +38,7 @@ function setup(roleId='test-note-owner',store=new Map()) {
   const key=window.InspectPhoneFeature.storyKey(roleId);
   const read=()=>JSON.parse(store.get(key));
   const click=(scope,attr,value)=>{
-    const handler=handlers[scope+':click];assert.equal(typeof handler,'function');
+    const handler=handlers[scope+':click'];assert.equal(typeof handler,'function');
     handler({target:{closest(sel){
       if(attr==='action'&&sel==='[data-action]')return {dataset:{action:value}};
       if(attr==='app'&&sel==='[data-app]')return {dataset:{app:value}};
