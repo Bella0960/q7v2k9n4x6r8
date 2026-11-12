@@ -64,6 +64,8 @@ try {
   assert.equal(visuals.sendPosition,'relative','native sender stays in form flow');
   if(width<=600)assert.ok(Math.abs(visuals.phoneWidth-width)<2,'phone shell fills mobile viewport');
   await page.getByPlaceholder('发送消息…').fill('多行输入\n保留原生发送流程');
+  assert.equal(await page.locator('form#chat-form button[type="submit"]').isEnabled(),true,
+   'native send button must become enabled after entering text');
   const bounds=await page.locator('#chat-form').boundingBox();
   assert.ok(bounds&&bounds.y+bounds.height<=901,'composer stays within viewport');
   await page.screenshot({path:`test-results/atmosphere/detail-${width}.png`});
