@@ -172,7 +172,8 @@
 .sp-screen.sp-dark{--sp-bg:#171718;--sp-card:#252526;--sp-bubble:#29292a;--sp-out:#ececeb;--sp-out-ink:#181818;
  --sp-ink:#f1f1f0;--sp-muted:#a1a1a1;--sp-line:#3d3d3e;background:#171718!important}
 .sp-screen.sp-dark .sp-avatar{border-color:#4f4f50}
-.sp-screen.sp-dark .sp-message.sp-right{color:#ececec!important;border-color:#979797}
+.sp-screen.sf-atmosphere.sp-dark{--sp-bubble:transparent;--sp-out:transparent;--sp-out-ink:#f1f1f0}
+.sp-screen.sp-dark .sp-message.sp-right{color:var(--sp-out-ink)!important;border-color:#979797}
 .sp-screen.sp-dark .sp-art{filter:brightness(.75)}
 .sp-screen.sf-imessage{--sp-bg:#fff;--sp-card:#f3f3f7;--sp-bubble:#e7e7ec;--sp-out:#1687f8;--sp-out-ink:#fff}
 .sp-screen.sf-imessage .sp-message{border-radius:14px}
