@@ -11,7 +11,18 @@
   var accountId = idMeta && String(idMeta.content || '').trim();
   var role = roleMeta && String(roleMeta.content || '').trim();
 
-  if (!accountId || !/^MAO-[A-Z0-9]{12,24}$/.test(accountId)) return;
+  // This script runs only on Worker-authorized app documents. Missing or
+  // malformed identity metadata must never fall through to unscoped legacy data.
+  if (!/^MAO-[A-Z0-9]{12,24}$/.test(accountId || '') ||
+      (role !== 'user' && role !== 'super_admin')) {
+    try {
+      global.stop();
+      document.open();
+      document.write('<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MAO</title><body style="margin:0;padding:12vh 8vw;font:16px/1.8 -apple-system,BlinkMacSystemFont,sans-serif;color:#222;background:#f7f7f8"><h2>账号身份验证失败</h2><p>当前页面缺少有效的账号身份信息，已阻止访问本地数据。请重新登录后再试。</p></body></html>');
+      document.close();
+    } catch (error) {}
+    return;
+  }
 
   try {
     global.__MAO_ACCOUNT_SCOPE__ = Object.freeze({ accountId: accountId, role: role, ready: true });
