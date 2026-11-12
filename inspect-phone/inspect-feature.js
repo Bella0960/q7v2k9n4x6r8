@@ -851,6 +851,7 @@
         data.sections.moments=JSON.parse(previous);data.interactions=JSON.parse(oldEvents);
         hint('评论没有保存：互动记录未就绪。');return;
       }
+      comment.interactionId=event.id;
       if(!commit()){
         data.sections.moments=JSON.parse(previous);data.interactions=JSON.parse(oldEvents);
         notice='存储空间不足，评论没有发表。';render();return;
@@ -924,10 +925,23 @@
         return;
       }
       var previous=data.pendingChatFocus?Object.assign({},data.pendingChatFocus):null;
+      var focusText=String(item.text||''),included=[];
+      if(kind==='moment'){
+        // Only the user's latest two comments on this exact post go with the
+        // explicitly selected topic. Other Moments stay outside this handoff.
+        var ownComments=arr(item.comments).filter(function(c){
+          return c&&c.origin==='user_on_fictional_phone';
+        }).slice(-2);
+        ownComments.forEach(function(comment){
+          focusText+='\n我在这条动态下的评论：'+String(comment.text||'');
+          if(comment.interactionId)included.push(comment.interactionId);
+        });
+      }
       var pending=bridge.requestFocus(data,kind,{
         sourceId:String(sourceId),
         title:kind==='note'?item.title:'朋友圈动态',
-        text:kind==='note'?item.text:item.text
+        text:focusText,
+        includedEventIds:included
       });
       if(!pending){hint('这条内容暂时无法准备为聊天话题。');return;}
       if(!commit()){
