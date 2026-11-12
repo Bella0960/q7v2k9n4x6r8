@@ -125,6 +125,29 @@
  font-size:10px;color:var(--muted);line-height:1.7;
  padding:12px 6px;
 }
+.phone .v5-custom-small-heading{
+ margin:14px 3px 6px;padding-top:11px;border-top:1px solid var(--border);
+ font-size:10px;font-weight:570;letter-spacing:.1em;color:var(--muted);
+}
+.phone .v5-custom-text-editor{
+ width:100%;min-height:45px;display:grid;grid-template-columns:1fr 64px;
+ grid-template-areas:"label label" "field save";
+ gap:5px 8px;align-items:center;padding:9px 3px;
+}
+.phone .v5-custom-text-editor > span{
+ grid-area:label;color:var(--muted);font-size:10px;letter-spacing:.02em;
+}
+.phone .v5-custom-text-editor input{
+ grid-area:field;width:100%;min-width:0;height:36px;
+ padding:6px 10px;border:1px solid var(--border);border-radius:5px;
+ background:var(--glass);color:var(--ink);font-size:11px;
+ outline-offset:2px;
+}
+.phone .v5-custom-text-editor button{
+ grid-area:save;height:36px;
+ border:1px solid var(--border);border-radius:5px;
+ background:var(--tile);color:var(--ink);font-size:10px;
+}
 .phone .v5-custom-track{
  display:flex;align-items:center;gap:4px;min-height:51px;
  border-bottom:1px solid var(--border);
