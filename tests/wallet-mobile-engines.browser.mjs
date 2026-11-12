@@ -123,6 +123,17 @@ async function run(browserType, device, label, origin) {
       }), 'stale-wallet');
       assert.deepEqual(await wallet(a), { balance: 960, ids: ['a2-shop', 'a-shop'] });
       assert.equal((await wallet(b)).balance, 920);
+
+      // A corrupt wallet in B must not be replaced by the default amount,
+      // and must not block legitimate reads from A or the creator.
+      await b.evaluate(() => localStorage.setItem('workData', '{invalid-wallet-json'));
+      assert.equal(await wallet(b), null, 'corrupt wallet must fail closed');
+      assert.equal((await wallet(a)).balance, 960);
+      assert.equal((await wallet(owner)).balance, 300);
+      await a.reload({ waitUntil: 'load' });
+      assert.deepEqual(await wallet(a), { balance: 960, ids: ['a2-shop', 'a-shop'] },
+        'same-account wallet survives browser page reload');
+
       const local = (await context.storageState()).origins
         .find(x => x.origin === origin)?.localStorage || [];
       const keys = local.map(x => x.name);
