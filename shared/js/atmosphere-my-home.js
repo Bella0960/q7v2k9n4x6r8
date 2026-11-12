@@ -200,6 +200,8 @@
    shell.removeAttribute('data-at-home-tone');
   }else syncTone();
   if(masthead)masthead.hidden=!on;
+  var feedback=document.getElementById('atHomeFeedback');
+  if(feedback)feedback.hidden=!on;
   if(edit)edit.hidden=!on;
   if(sign)renderSign();
   update();
