@@ -217,6 +217,50 @@ test('bilingual validation catches mixed or incomplete replies and retains alrea
   assert.equal(policy.keepCompleteBilingualBubbles('Hello\n[中译:你好]\n\nWait\n[中译:', 'en'), 'Hello\n[中译:你好]');
 });
 
+test('local voice is role-scoped, local-only, and keeps the source and translation when making a voice bubble', () => {
+  const preferences = new Map();
+  const local = { lang: 'ja-JP', localService: true };
+  const remote = { lang: 'ja-JP', localService: false, default: true };
+  let offered = [remote, local];
+  let utterance;
+  const device = {
+    localStorage: {
+      getItem: key => preferences.get(key),
+      setItem: (key, value) => preferences.set(key, value)
+    },
+    speechSynthesis: {
+      getVoices: () => offered,
+      speak: value => { utterance = value; },
+      cancel: () => {}
+    },
+    SpeechSynthesisUtterance: function (text) { this.text = text; }
+  };
+  runInNewContext(read('shared/js/phone/local-chat-voice.js'), {
+    window: device,
+    Math: { random: () => 0.1 }
+  });
+  const speech = device.LocalChatVoice;
+  const now = 100000;
+  const source = { role: 'assistant', text: '今日は雨だね。', translation: '今天下雨了。', time: now };
+  const reply = [{ ...source }];
+  assert.equal(speech.maybeApplyToReply(reply, [], 'a', 'ja', now), false);
+  assert.equal(speech.savePreferences('a', { preset: 'deep', auto: true }), true);
+  assert.equal(speech.maybeApplyToReply(reply, [], 'b', 'ja', now), false);
+  assert.equal(speech.maybeApplyToReply(reply, [], 'a', 'ja', now), true);
+  assert.equal(reply[0].type, 'voice');
+  assert.equal(reply[0].text, source.text);
+  assert.equal(reply[0].translation, source.translation);
+  assert.equal(speech.maybeApplyToReply([{ ...source }], reply, 'a', 'ja', now + 1), false);
+  assert.equal(speech.speak(reply[0].text, reply[0].localSpeech.preset, reply[0].localSpeech.language), true);
+  assert.equal(utterance.voice, local);
+  assert.equal(utterance.text, source.text);
+  assert.equal(utterance.pitch, 0.78);
+  offered = [remote];
+  assert.equal(speech.maybeApplyToReply([{ ...source }], [], 'a', 'ja', now), false);
+  assert.equal(speech.speak(source.text, 'deep', 'ja'), false);
+  speech.stop();
+});
+
 test('reply cleanup protects think/narration blocks while applying the existing cleanup callback', () => {
   assert.equal(typeof policy.cleanupReplyPreservingBlocks, 'function');
   const raw = '标点，，<think>think one!!</think>\n<narratage>旁白，</narratage>\n<think>think two??</think>正文，，';
