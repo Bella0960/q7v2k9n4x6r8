@@ -915,7 +915,7 @@
     }
   }
 
-  function recoverOutgoingPayments() {
+  function recoverOutgoingPaymentsUnderLock() {
     if (!currentCharacter || currentCharacter.id == null) return;
     try {
       var wallet = getWorkData();
@@ -943,7 +943,7 @@
   }
 
   // Debit first with a durable pending ledger entry; only announce a send after card persistence.
-  function submitPayMessage() {
+  function submitPayMessageUnderLock() {
     if (typeof loadMessages !== 'function' || typeof saveMessages !== 'function' ||
         typeof getWorkData !== 'function' || typeof saveWorkData !== 'function') {
       if (typeof showToast === 'function') showToast('聊天或钱包暂不可用，未发送');
@@ -1036,6 +1036,59 @@
       sendSilentInstruction('[互动事件：我给你发送了 ¥' + amountNum.toFixed(2) + ' 的红包，附言为“' + safeNote + '”。请以角色人设自然回应收到红包的反应，不要把红包卡片当作普通文字复述。]');
     }
   }
+  // The virtual wallet is shared by several chat tabs. Web Locks serialize
+  // cooperating chat-payment writers; legacy shop/takeout writers still need migration.
+  var _outgoingPaymentBusy = false;
+  function runOutgoingPaymentExclusive(action, sending) {
+    if (sending && _outgoingPaymentBusy) {
+      if (typeof showToast === 'function') showToast('上一笔交易还在处理，请不要重复点击');
+      return Promise.resolve(false);
+    }
+    var locks = window.navigator && window.navigator.locks;
+    if (!locks || typeof locks.request !== 'function') {
+      if (typeof showToast === 'function') {
+        showToast('当前浏览器无法安全锁定钱包，红包和转账暂不可用；请勿重复付款');
+      }
+      return Promise.resolve(false);
+    }
+    if (sending) _outgoingPaymentBusy = true;
+    var request;
+    try {
+      request = locks.request(
+        'maomao-wallet-workData-v1',
+        sending ? { mode: 'exclusive', ifAvailable: true } : { mode: 'exclusive' },
+        function (lock) {
+          if (!lock) {
+            if (sending && typeof showToast === 'function') {
+              showToast('钱包正在另一个页面处理交易，请稍后重试');
+            }
+            return false;
+          }
+          action(); // Read balance and perform all wallet/chat writes while holding the lock.
+          return true;
+        }
+      );
+    } catch (error) {
+      if (sending) _outgoingPaymentBusy = false;
+      if (typeof showToast === 'function') showToast('钱包锁定失败，未发起新交易');
+      return Promise.resolve(false);
+    }
+    return Promise.resolve(request).catch(function () {
+      if (typeof showToast === 'function') showToast('钱包操作未完成，请检查交易记录后再尝试');
+      return false;
+    }).finally(function () {
+      if (sending) _outgoingPaymentBusy = false;
+    });
+  }
+
+  function submitPayMessage() {
+    return runOutgoingPaymentExclusive(submitPayMessageUnderLock, true);
+  }
+
+  function recoverOutgoingPayments() {
+    return runOutgoingPaymentExclusive(recoverOutgoingPaymentsUnderLock, false);
+  }
+
   window.addEventListener('load', recoverOutgoingPayments);
   if (payConfirmBtn) payConfirmBtn.addEventListener('click', submitPayMessage);
 
