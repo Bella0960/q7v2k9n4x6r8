@@ -114,8 +114,13 @@
       return c&&c.source==='gossip-author'&&Number(c.gossipChapter)===n;
     }))return false;
     var next=Math.max(n,readChapter(post,store));
-    try{store.setItem(readKey(post),String(next));return true}
-    catch(error){return false}
+    // Storage can ignore writes without throwing (e.g. constrained webviews).
+    // Keep this chapter unread until the stored cursor is confirmed.
+    try{
+      var key=readKey(post);
+      store.setItem(key,String(next));
+      return typeof store.getItem==='function'&&store.getItem(key)===String(next);
+    }catch(error){return false}
   }
   function isGossipPost(post){return !!(post&&post.gossipStory&&idea(post.gossipStory.outlineId))}
   root.ForumGossip={ideas:IDEAS,idea:idea,planBatch:planBatch,storyFromOpening:storyFromOpening,
