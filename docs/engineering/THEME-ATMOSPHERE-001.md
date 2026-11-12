@@ -162,3 +162,21 @@ A further round continued on the original **Draft PR #273** with actual code in 
 ### Next device gate
 
 Verify all four real routes at 320/375/390/430px, dark/light transitions, keyboard safe area, conversation filter selection after back navigation, avatar positioning, actual media/sticker pickers, diary/music favorites navigation, the favorites sheet when switching theme mid-close, Moment comments/likes, profile upload quality/persistence, and full PWA cache update. Retain individual background/cover isolation by page and character.
+
+## 2026-11-12 — Stop counterfeit Chat home music playback
+
+User's four-page refinement request continued on the existing Draft PR #273, without opening another branch or merging to main.
+
+### Real interaction instead of decorative toggles
+
+- Confirmed actual `chat/chat/chat.html` has a `#playToggleBtn` control whose old click handler only flips `musicState.playing`, the vinyl animation and a localStorage item; no audio is played. This was a known UI/interaction discrepancy.
+- The opt-in `shared/js/atmosphere-pages.js` adapter now intercepts that control's click **in the capture phase only while atmosphere is selected**, routes to the existing `../../music/music.html` page, and does not run the old fake playback toggle. Keyboard Enter/Space is supported via an explicit link role, focusability and accessible label. The card's secondary line says `MUSIC / OPEN PLAYER` rather than claiming a live runtime; the original text and play icon are restored when switching themes.
+- The real SVG kit supplies the new music-note icon. `shared/css/atmosphere-pages.css` gives a clean monochrome player-entry touch target (42px) and stops faux vinyl/wave animations only for the selected theme. The legacy themes' original music card remains untouched.
+- Added `tests/atmosphere-music-entry.test.mjs` to exercise actual capture-event dispatch, real routing, keyboard activation, duplicate handler protection, old-theme click and SVG restoration, and visual suppression of false playback cues.
+- Refreshed all four HTML pages to `atmosphere-pages.css/js?v=20261112p3`; the PWA app shell is now `phone-app-pwa-v212` and the dedicated PWA test asserts these exact assets.
+
+### Executed checks and unresolved release gate
+
+- Four-page isolated behavior tests **9/9**, existing My collections tests **3/3**, new music adapter tests **4/4**, static PWA version/asset consistency **9/9**. `atmosphere-pages.js` and the diary/music inline scripts also passed JavaScript parsing.
+- Tests above were executed in a controlled JavaScript fixture with source fetched from GitHub, **not** full Node/Vite checkout, E2E browser against MAOMAO, API/media integration or Android PWA. No main merge, production deployment or APK.
+- Still required: integrated browser rendering on mobile widths, real music route navigation, audio player behavior, message/image/sticker sends, dynamic post comments, profile uploads and background isolation, keyboard safe area and PWA offline update. Keep Draft until evidence exists.
