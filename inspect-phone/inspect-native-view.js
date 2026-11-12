@@ -159,7 +159,7 @@
           '<button class="nv-chat-handoff" type="button" data-action="chatAboutForum">和'+esc(name)+'聊聊这篇帖子</button>':'');
       }else{
         title='论坛';
-        var mine=ownPosts.filter(function(p){return String(p.authorId||o.roleId)===String(o.roleId);});
+        var mine=ownPosts.filter(function(p){return p.authorId?String(p.authorId)===String(o.roleId):!p.author||p.author===name;});
         var shown=filtered?mine:ownPosts.slice().sort(function(a,b){return n(b.time)-n(a.time);});
         body='<div class="nv-forum-home"><div class="nv-forum-intro"><span>社区论坛</span><h1>'+(filtered?'我的帖子':'正在讨论')+'</h1><p>'+esc(name)+'的浏览与发帖记录</p></div>'+
           '<nav class="nv-forum-switch" aria-label="论坛分区">'+
@@ -233,7 +233,7 @@
           allHistory.slice(0,20).map(function(x){
             var i=arr(s.searchHistory).indexOf(x);
             return tap('browser-history',i,'<span class="nv-web-history-icon">'+miniIcon('discover')+'</span>'+
-              '<span class="nv-line-copy"><strong>'+esc(x.query)+'</strong><small>'+esc(when(x.time))+'</small></span>','nv-row nv-web-history');
+              '<span class="nv-line-copy"><strong>'+esc(x.query)+'</strong><small>'+(x.origin==='user_on_fictional_phone'?'你刚刚搜索 · ':'角色的搜索 · ')+esc(when(x.time))+'</small></span>','nv-row nv-web-history');
           }).join('')+'</div>';
       }
     } else if(app==='wallet'){
