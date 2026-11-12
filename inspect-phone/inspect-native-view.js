@@ -15,15 +15,24 @@
   function hm(t){var d=new Date(n(t,Date.now()));return isNaN(d.getTime())?'--:--':String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
   function cash(v){return (n(v)<0?'-':'+')+'¥'+Math.abs(n(v)).toFixed(2);}
   function tap(kind,index,body,css){return '<button type="button" class="nv-tap '+(css||'')+'" data-detail="'+esc(kind)+'" data-index="'+n(index)+'">'+body+'<span class="nv-chevron" aria-hidden="true">›</span></button>';}
-  function avatar(name,size){var a=esc(String(name||'?').slice(0,1));return '<span class="nv-avatar '+(size||'')+'">'+a+'</span>';}
+  function avatar(name,size,image){
+    var label=esc(String(name||'?').slice(0,1));
+    var token=String(name||'').split('').reduce(function(a,c){return(a*31+c.charCodeAt(0))%997;},7)%6;
+    var url=String(image||'').trim();
+    var safe=/^(https?:\/\/|\/(?!\/)|\.\.\/|\.\/|data:image\/(?:png|jpeg|webp|gif);base64,)/i.test(url);
+    return '<span class="nv-avatar '+(size||'')+' tint-'+token+'">'+
+      (safe?'<img src="'+esc(url)+'" alt="" loading="lazy">':label)+'</span>';
+  }
   function group(title,body){return '<section class="nv-group">'+(title?'<h3>'+esc(title)+'</h3>':'')+body+'</section>';}
   function sourceLine(source){return '<p class="nv-source">'+esc(source||'本地虚构剧情')+' · 不读取真实设备记录</p>';}
   function entry(kind,index,title,subtitle,mark){return tap(kind,index,'<span class="nv-line-copy"><strong>'+esc(title)+'</strong><small>'+esc(subtitle||'')+'</small></span>'+(mark?'<span class="nv-line-mark">'+esc(mark)+'</span>':''),'nv-row');}
+  function miniIcon(id){var paths={chat:'<path d="M5 6h14v10H9l-4 3V6Z"/><path d="M9 10h6"/>',contacts:'<circle cx="9" cy="8" r="3"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M17 6v8m-4-4h8"/>',discover:'<circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2.2 4.8-4.8 2.2 2.2-4.8Z"/>',me:'<circle cx="12" cy="8" r="3"/><path d="M5 20a7 7 0 0 1 14 0"/>',moments:'<circle cx="12" cy="12" r="8"/><path d="m12 6 1.7 4.3 4.3 1.7-4.3 1.7L12 18l-1.7-4.3L6 12l4.3-1.7Z"/>',forum:'<path d="M5 4h14v12H9l-4 4V4Z"/><path d="M8 9h8m-8 3h6"/>',notes:'<rect x="6" y="3" width="12" height="18" rx="2"/><path d="M9 8h6m-6 4h6m-6 4h4"/>',settings:'<circle cx="12" cy="12" r="8"/><path d="M12 8v8m-4-4h8"/>',qr:'<rect x="4" y="4" width="6" height="6"/><rect x="14" y="4" width="6" height="6"/><rect x="4" y="14" width="6" height="6"/><path d="M14 14h2v2h-2zm4 0h2v6h-2zm-4 5h3"/>'};return '<svg class="nv-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'+(paths[id]||paths.chat)+'</svg>';}
+  function searchbar(label){return '<label class="nv-search" aria-label="'+esc(label)+'">'+miniIcon('discover')+'<input type="search" data-native-search placeholder="'+esc(label)+'" autocomplete="off"></label>';}
   function sheet(title,subtitle,body){return '<div class="nv-sheet"><header><span class="nv-eyebrow">'+esc(subtitle||'')+'</span><h2>'+esc(title)+'</h2></header>'+body+'</div>';}
   function paper(text){return '<div class="nv-paper-body">'+esc(text).replace(/\n/g,'<span class="nv-break"></span>')+'</div>';}
   function render(o) {
     var app=o.app, v=o.view||null,s=o.section||{},name=o.roleName||'角色';
-    var title='',body='',detail=!!v,tab='';
+    var title='',body='',detail=!!v,tab='',footer='';
     if(app==='chat') {
       if(v&&v.kind==='chat'){
         var c=arr(s.contacts)[v.index];if(!c)return null;
@@ -40,31 +49,41 @@
           '<form class="nv-compose" id="inspectCompose"><input name="message" maxlength="200" autocomplete="off" placeholder="以'+esc(name)+'的身份发消息" aria-label="聊天输入框"><button type="submit"'+(o.pendingChat?' disabled':'')+'>'+(o.pendingChat?'…':'发送')+'</button></form>';
       } else if(v&&v.kind==='chatTab'&&v.tab==='contacts') {
         title='通讯录';tab='contacts';
-        body='<div class="nv-search">⌕　搜索联系人</div>'+group('联系人',arr(s.contacts).map(function(c,i){
+        body=searchbar('搜索联系人')+group('联系人',arr(s.contacts).map(function(c,i){
           return tap('chat',i,avatar(c.avatar||c.name)+'<span class="nv-line-copy"><strong>'+esc(c.name)+'</strong><small>'+esc(c.relationship||'朋友')+'</small></span>','nv-contact');
         }).join(''));
       } else if(v&&v.kind==='chatTab'&&v.tab==='discover') {
         title='发现';tab='discover';
-        body=group('',tap('switch-moments',0,'<span class="nv-app-symbol">◎</span><span class="nv-line-copy"><strong>朋友圈</strong><small>查看'+esc(name)+'发布的动态</small></span>','nv-row')+
-          tap('switch-forum',0,'<span class="nv-app-symbol">≋</span><span class="nv-line-copy"><strong>论坛</strong><small>查看帖子与评论</small></span>','nv-row'));
+        body='<div class="nv-wechat-discover">'+
+          group('',tap('switch-moments',0,'<span class="nv-menu-icon">'+miniIcon('moments')+'</span><span class="nv-line-copy"><strong>朋友圈</strong></span>','nv-row nv-wechat-row'))+
+          group('',tap('switch-forum',0,'<span class="nv-menu-icon">'+miniIcon('forum')+'</span><span class="nv-line-copy"><strong>论坛</strong></span>','nv-row nv-wechat-row'))+
+          group('',tap('switch-browser',0,'<span class="nv-menu-icon">'+miniIcon('discover')+'</span><span class="nv-line-copy"><strong>搜一搜</strong></span>','nv-row nv-wechat-row'))+
+          '</div>';
       } else if(v&&v.kind==='chatTab'&&v.tab==='me') {
         title='我';tab='me';
-        body='<div class="nv-me">'+avatar(name,'large')+'<span><strong>'+esc(name)+'</strong><small>虚构手机主人 · 私人记录</small></span></div>'+
-          group('个人',entry('switch-moments',0,'朋友圈','自己的动态')+entry('switch-notes',0,'备忘录','只在角色允许时查看'));
+        body='<div class="nv-wechat-me"><div class="nv-me">'+avatar(name,'large',o.roleAvatar)+
+          '<span class="nv-me-text"><strong>'+esc(name)+'</strong><small>微信号：'+esc(o.wechatId||'wx_'+String(o.roleId||'story').replace(/[^a-z0-9]/gi,'').slice(0,12))+'</small></span>'+
+          '<span class="nv-profile-qr">'+miniIcon('qr')+'</span></div>'+
+          group('',tap('switch-wallet',0,'<span class="nv-menu-icon">'+miniIcon('qr')+'</span><span class="nv-line-copy"><strong>服务</strong></span>','nv-row nv-wechat-row'))+
+          group('',tap('switch-moments',0,'<span class="nv-menu-icon">'+miniIcon('moments')+'</span><span class="nv-line-copy"><strong>朋友圈</strong></span>','nv-row nv-wechat-row')+
+            tap('switch-notes',0,'<span class="nv-menu-icon">'+miniIcon('notes')+'</span><span class="nv-line-copy"><strong>收藏</strong></span>','nv-row nv-wechat-row'))+
+          group('',tap('switch-device',0,'<span class="nv-menu-icon">'+miniIcon('settings')+'</span><span class="nv-line-copy"><strong>设置</strong></span>','nv-row nv-wechat-row'))+
+          '</div>';
       } else {
         title='微信';tab='chats';
         var list=arr(s.contacts).map(function(c,i){return {c:c,i:i};}).sort(function(a,b){return n(b.c.lastTime)-n(a.c.lastTime);});
-        body='<div class="nv-search">⌕　搜索</div><div class="nv-chat-list">'+list.map(function(p){
+        body=searchbar('搜索')+'<div class="nv-chat-list">'+list.map(function(p){
           var c=p.c,last=arr(c.messages).slice(-1)[0]||{},unread=n(c.unread);
           return tap('chat',p.i,avatar(c.avatar||c.name)+
             '<span class="nv-line-copy"><strong>'+esc(c.name)+'</strong><small>'+esc(last.text||'暂无消息')+'</small></span>'+
             '<span class="nv-chat-meta"><time>'+esc(hm(c.lastTime))+'</time>'+(unread?'<em>'+unread+'</em>':'')+'</span>','nv-contact');
         }).join('')+'</div>';
       }
-      if(tab)body+='<nav class="nv-tabbar">'+[
-        ['chats','微信','chat'],['contacts','通讯录','users'],['discover','发现','compass'],['me','我','user']
+      if(tab)footer='<nav class="nv-tabbar" aria-label="微信底部导航">'+[
+        ['chats','微信','chat'],['contacts','通讯录','contacts'],['discover','发现','discover'],['me','我','me']
       ].map(function(t){
-        return '<button type="button" class="'+(tab===t[0]?'active':'')+'" data-native-tab="'+t[0]+'"><span class="nv-tab-icon">'+({chat:'▣',users:'▥',compass:'◎',user:'◯'}[t[2]])+'</span><span>'+t[1]+'</span></button>';
+        return '<button type="button" class="'+(tab===t[0]?'active':'')+'" data-native-tab="'+t[0]+'" aria-label="'+t[1]+'">'+
+          '<span class="nv-tab-icon">'+miniIcon(t[2])+'</span><span>'+t[1]+'</span></button>';
       }).join('')+'</nav>';
     } else if(app==='notes') {
       var publicNotes=arr(s.notes),locked=arr(s.locked).slice(0,o.revealCount||0);
@@ -192,7 +211,12 @@
           entry('noop',0,'设备型号',s.model)+entry('noop',0,'已用空间',n(s.storageUsedGb)+' / '+n(s.storageTotalGb)+' GB')+
           entry('noop',0,'常驻位置',s.location));
     } else return null;
-    return {title:title,body:'<div class="nv-app nv-'+app+(detail?' is-detail':'')+'">'+body+'</div>',detail:detail};
+    if(app==='chat'&&v&&v.kind==='chat'){
+      var composerStart=body.lastIndexOf('<form class="nv-compose"');
+      if(composerStart>=0){footer=body.slice(composerStart);body=body.slice(0,composerStart);}
+    }
+    return {title:title,body:'<div class="nv-app nv-'+app+(detail?' is-detail':'')+'">'+
+      '<div class="nv-content">'+body+'</div>'+footer+'</div>',detail:detail};
   }
   global.InspectPhoneNative={render:render};
 })(window);
