@@ -245,7 +245,7 @@ test('独立 Cloudflare 预览不能伪装成已联通正式聊天',()=>{
   u.action('chatAboutNote');
   assert.equal(u.window.navigatedTo,undefined);
   assert.equal(u.read().pendingChatFocus,undefined);
-  assert.match(u.appBody.innerHTML,/不同一个域名/);
+  assert.match(u.appBody.innerHTML,/不在同一个域名/);
 });
 
 test('旧手机标签页不把聊天已经消费的话题重新变成待发送',()=>{
