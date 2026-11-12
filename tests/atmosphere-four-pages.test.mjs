@@ -55,6 +55,7 @@ function fixture(surface='chats'){
   hasAttribute(k){return k in this.attrs;}
   addEventListener(k,fn){this.events[k]=fn;}
   click(){this.events.click?.({target:this});}
+  focus(){this.focused=true;}
   append(...nodes){for(const n of nodes){n.parentNode=this;this.children.push(n);}}
   insertBefore(node,ref){let at=this.children.indexOf(ref);if(at<0)throw Error('missing reference node');
    node.parentNode=this;this.children.splice(at,0,node);}
@@ -191,4 +192,20 @@ test('detail adapter leaves original send, media and quote lifecycle alone',()=>
 test('moment liked action stays visually distinct in both monochrome tones',()=>{
  assert.match(css,/\[data-at-surface="moments"\] \.action-btn\.liked\s*\{/);
  assert.match(css,/\[data-at-surface="moments"\] \.action-btn\.liked svg\s*\{/);
+});
+
+test('filter tabs support directional keyboard selection with native focus',()=>{
+ const h=fixture('chats');
+ const person=h.make('chat-slim-card'),group=h.make('chat-slim-card chat-group-card');
+ h.start();
+ const tabs=h.getBar().querySelectorAll('.at-filter-tab');
+ const groupTab=h.getBar().querySelector('.at-filter-tabs');
+ let prevented=0;
+ groupTab.events.keydown({key:'ArrowRight',target:tabs[0],preventDefault(){prevented++;}});
+ assert.equal(person.hidden,false);assert.equal(group.hidden,true);
+ assert.equal(tabs[1].focused,true);
+ groupTab.events.keydown({key:'End',target:tabs[1],preventDefault(){prevented++;}});
+ assert.equal(person.hidden,true);assert.equal(group.hidden,false);
+ assert.equal(tabs[2].focused,true);
+ assert.equal(prevented,2);
 });
