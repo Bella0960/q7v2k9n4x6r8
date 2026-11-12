@@ -2415,3 +2415,69 @@ test('chat detail: group interaction state and private-message entry require ver
   assert.match(detail, /privateSaved = privateSaved && Array\.isArray\(verifiedPrivate\)/);
   assert.match(detail, /if \(!privateSaved\)[\s\S]*?未显示已发送状态/);
 });
+
+
+test('chat extras: failed card persistence prevents misleading display and keeps prior history intact', () => {
+  const start = extras.indexOf('  function insertChatMessage(msg) {');
+  const end = extras.indexOf('\n  // 隐藏指令', start);
+  assert.ok(start >= 0 && end > start, 'extension message insertion helper must exist');
+  const history = [{ mid: 'existing', text: '已保存的旧消息' }];
+  const attempts = [];
+  const rendered = [];
+  const toasts = [];
+  let allowWrite = false;
+  const sandbox = {
+    loadMessages: () => history,
+    saveMessages: (messages) => {
+      attempts.push(messages);
+      return allowWrite;
+    },
+    appendMessageToDOM: (message) => rendered.push(message),
+    showToast: (message) => toasts.push(message),
+    chatMessages: { scrollTop: 0, scrollHeight: 120 }
+  };
+  runInNewContext(
+    extras.slice(start, end) + '\nglobalThis.insertExtensionMessage = insertChatMessage;',
+    sandbox
+  );
+
+  const card = { role: 'user', type: 'location', location: { label: '公园' } };
+  assert.equal(sandbox.insertExtensionMessage(card), false);
+  assert.equal(history.length, 1, 'failed save must not mutate existing history');
+  assert.equal(attempts[0].length, 2, 'attempt includes previous history and the new card');
+  assert.equal(rendered.length, 0, 'failed card must not be displayed as delivered');
+  assert.match(toasts[0], /保存失败.*未发送/);
+  assert.equal(sandbox.chatMessages.scrollTop, 0);
+
+  allowWrite = true;
+  assert.equal(sandbox.insertExtensionMessage(card), true);
+  assert.equal(rendered.length, 1, 'successful save displays exactly one card');
+  assert.equal(attempts[1].length, 2);
+  assert.equal(sandbox.chatMessages.scrollTop, 120);
+
+  sandbox.saveMessages = () => { throw new Error('storage blocked'); };
+  assert.equal(sandbox.insertExtensionMessage({ role: 'user', type: 'gift' }), false);
+  assert.equal(rendered.length, 1, 'thrown write errors must not render a phantom card');
+  assert.equal(history.length, 1);
+});
+
+test('chat extras: every extension card send gates AI dispatch on successful persistence', () => {
+  const helperStart = extras.indexOf('  function insertChatMessage(msg) {');
+  const helperEnd = extras.indexOf('\n  // 隐藏指令', helperStart);
+  assert.ok(helperStart >= 0 && helperEnd > helperStart);
+  const callers = extras.slice(helperEnd);
+  const writes = [...callers.matchAll(/\binsertChatMessage\(/g)];
+  assert.ok(writes.length >= 13, 'must inspect all existing extension-card send paths');
+  for (const item of writes) {
+    assert.equal(callers.slice(item.index - 5, item.index), 'if (!',
+      'an extension card call must return early before any downstream AI dispatch when unsaved');
+  }
+  const callStart = callers.indexOf('function consumeCallResult()');
+  const callEnd = callers.indexOf("window.addEventListener('load', consumeCallResult)", callStart);
+  assert.ok(callStart >= 0 && callEnd > callStart);
+  const deferredCall = callers.slice(callStart, callEnd);
+  const saveGate = deferredCall.indexOf("if (!insertChatMessage({ role: 'user', type: 'call'");
+  const clearPending = deferredCall.indexOf('sessionStorage.removeItem(key)');
+  assert.ok(saveGate >= 0 && clearPending > saveGate,
+    'pending call result must only be cleared after successful message persistence');
+});
