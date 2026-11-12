@@ -826,6 +826,34 @@
         hint('手机存储空间不足，搜索记录未保存。');return;
       }
       view={kind:'browser-results',query:q};notice='';render();
+      // A configured AI may write *fictional* reference pages for unknown
+      // queries. This is not internet browsing and never claims live merchants.
+      var cfg=global.PhoneStorage&&global.PhoneStorage.getApiConfig?
+        global.PhoneStorage.getApiConfig():{},api=global.PhoneAPI;
+      if(personaWeb.find(q,personaWeb.persona(role),section).length||
+        !cfg||!String(cfg.apiKey||'').trim()||!api||typeof api.completeJSON!=='function'||waiting)return;
+      waiting=true;notice='正在生成虚构网页资料（非实时网络搜索）';render();
+      var requestId=roleId,searchQuery=q,beforeAI=JSON.stringify(section);
+      api.completeJSON({
+        system:'你是角色私有浏览器里的虚构网页资料编辑，只创作安全、准确、日常的原创中文参考文章。不是实时联网搜索；禁止杜撰真实商家、网址、价格、联系方式或已发生的交易。必须返回 JSON 对象。',
+        user:'角色背景：'+roleContext(role).slice(0,1100)+'\n搜索词：'+searchQuery+
+          '\n仅生成完全虚构的网页参考资料，至少2条最多4条，标题与正文不能互相重复。JSON格式：{"pages":[{"title":"完整文章标题","snippet":"一句有信息量的摘要","paragraphs":["至少25字的正文段落1","至少25字的正文段落2"]}]}。无需真实链接。论坛和原始角色数据不要修改。',
+        temperature:.7,timeoutMs:45000
+      }).then(function(result){
+        if(roleId!==requestId)return;
+        if(!result||!result.ok||!personaWeb.acceptAI(section,searchQuery,result.data,Date.now()))
+          throw new Error('AI 返回的文章结构不符合要求，原有搜索历史已保留');
+        if(!commit()){
+          data.sections.browser=JSON.parse(beforeAI);
+          throw new Error('手机存储不足，AI 文章未保存；原有记录已保留');
+        }
+        notice='已生成虚构参考文章；内容不是实时网络搜索';
+      }).catch(function(error){
+        notice=clean(error&&error.message,150)||'AI 参考文章未生成，原有浏览记录已保留';
+      }).finally(function(){
+        waiting=false;
+        if(current==='browser'&&view&&view.kind==='browser-results'&&view.query===searchQuery)render();
+      });
     }
     function browserOpen(kind,index) {
       if(current!=='browser'||!permission||selected.indexOf('browser')<0||!personaWeb)return;
@@ -836,14 +864,14 @@
         view={kind:'browser-results',query:s.activeQuery};notice='';render();return;
       }
       if(kind==='browser-result'){
-        article=personaWeb.find(query,personaWeb.persona(role))[index];
+        article=personaWeb.find(query,personaWeb.persona(role),s)[index];
       }else if(kind==='browser-visit'){
         var visit=arr(s.pageViews)[index];if(!visit)return;
-        article=personaWeb.article(visit.articleId);query=visit.query||query;
+        article=personaWeb.article(visit.articleId,s);query=visit.query||query;
       }else if(kind==='browser-bookmark'){
         var bk=arr(s.bookmarks)[index];if(!bk)return;
         if(!bk.articleId){view={kind:'bookmark-legacy',index:index};notice='';render();return;}
-        article=personaWeb.article(bk.articleId);
+        article=personaWeb.article(bk.articleId,s);
       }
       if(!article)return;
       if(!personaWeb.visit(s,article.id,query,Date.now()))return;
