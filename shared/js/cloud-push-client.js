@@ -833,13 +833,15 @@
         } catch (persistError) {
           persistErrors += 1;
           deferred += 1;
-          blockedByIncompleteGroup = true;
-          break;
+          // A failed local save must not strand later unrelated messages.
+          // The server retains the unacked group for a later cursor reset.
+          offset = next;
+          continue;
         }
         if (persisted !== true) {
           deferred += 1;
-          blockedByIncompleteGroup = true;
-          break;
+          offset = next;
+          continue;
         }
         persistedCount += group.length;
 

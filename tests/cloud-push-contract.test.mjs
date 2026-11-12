@@ -560,8 +560,10 @@ test('角色上下文版本事件：仅保存事件 ID、服务器递增、重�
   assert.deepEqual(readiness.payload.autonomyExecutionBlockers, [
     'activity_executor_config_missing',
     'server_model_credentials_missing',
+    'global_autonomy_not_enabled',
     'context_sharing_not_enabled',
-    'cloud_model_scheduler_runtime_not_verified'
+    'cloud_model_scheduler_runtime_not_verified',
+    'cloud_model_generation_not_verified'
   ]);
 
   const snapshot = ctx.store.getSchedulerGateSnapshot({ userId: 'owner', characterId: 'char-a' });
