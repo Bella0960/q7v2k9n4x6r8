@@ -7,7 +7,7 @@
   <title>主题商城</title>
   <script src="../shared/js/font-loader.js?v=20261102v1"></script>
   <script src="../shared/js/native-feel.js"></script>
-  <script src="../shared/js/chat-beauty.js?v=20261102v3"></script>
+  <script src="../shared/js/chat-beauty.js?v=20261112at1"></script>
   <link rel="stylesheet" href="../shared/css/chat-beauty-runtime.css?v=20261031v1">
   <link rel="stylesheet" href="../shared/css/mobile-fit.css">
   <style>
@@ -188,7 +188,10 @@
     .editorial-mini-time{width:13px;height:2px;border-radius:3px;background:#D0D0D5}
     @media(max-width:360px){.chat-list-theme-card{grid-template-columns:100px minmax(0,1fr);gap:8px 12px}.chat-list-theme-card .product-art{min-height:124px}}
 
-  </style>
+  .theme-art-atmosphere{background:linear-gradient(180deg,#fafafa 30%,#e2e2e2);border-radius:4px;gap:6px}
+.theme-art-atmosphere:before{display:none}.theme-art-atmosphere .art-bubble{background:transparent;color:#252525;border-radius:0;text-decoration:underline;text-underline-offset:4px;padding:2px 0;font-size:10px}
+.at-mini-avatar{width:19px;height:19px;align-self:center;background:linear-gradient(135deg,#bbb,#333);border-radius:50%}.at-mini-name{align-self:center;font-size:8px}
+</style>
 </head>
 <body>
   <div class="store-app">
@@ -236,6 +239,7 @@
     var bubbleScopeValue='global';
     var toastTimer=null;
     var defaultThemes=[
+      {id:'atmosphere',name:'薄影',eyebrow:'MONOCHROME',desc:'轻薄文字、无底色消息与侧滑会话面板；支持深浅切换，保留独立气泡设置。'},
       {id:'default',name:'原生黑白',eyebrow:'01 / ORIGINAL',desc:'保留当前聊天界面的黑白基调与原有布局。'},
       {id:'imessage',name:'iMessage 短信',eyebrow:'02 / MESSAGE',desc:'短信式消息布局与经典蓝灰气泡。'},
       {id:'qq',name:'QQ 风格',eyebrow:'03 / CLASSIC',desc:'切换到项目已有的 QQ 聊天主题。'},
@@ -244,7 +248,8 @@
     ];
     var defaultOwned=['default'];
     // Bubble-only preset: it is stored with ChatBeauty.save(), never as a page theme.
-    var builtinBubblePresets=[{
+    var builtinBubblePresets=[
+      {id:'builtin-atmosphere',name:'薄影线条',builtin:true,data:window.ChatBeauty&&ChatBeauty.getAtmosphereBubbleDefaults?ChatBeauty.getAtmosphereBubbleDefaults():{}},{
       id:'builtin-wechat-bubble',name:'微信经典气泡',builtin:true,
       data:{
         avatarSize:34,avatarRadius:5,bubbleGap:13,bubbleGapX:0,bubbleMaxWidth:80,bubblePadding:9,
@@ -331,6 +336,8 @@
         '<div class="sample-row mine"><span class="sample-bubble" style="background:color-mix(in srgb,'+esc(my)+' '+myOpacity+'%,transparent);color:'+esc(myColor)+';border-radius:'+esc(myRadius)+';font-size:'+Number(myFont)+'px;padding:'+Math.max(2,Number(myPad)-.5)+'px '+(Number(myPad)+3)+'px;font-family:'+myFamily+'">有呀，等会见。</span><span class="sample-avatar">我</span></div>';
     }
     function themeArt(theme){
+      if(theme.id==='atmosphere')return '<div class="product-art theme-art-atmosphere"><span class="at-mini-avatar"></span><span class="at-mini-name">薄影</span><span class="art-bubble left">今天的风很轻。</span><span class="art-bubble right">慢慢走，我等你。</span></div>';
+
       if(theme.id==='wechat'){
         return '<div class="product-art theme-art-wechat" aria-label="微信聊天、通讯录、朋友圈和单聊四页预览">'+
           '<div class="wechat-mini-screens">'+
@@ -390,7 +397,7 @@
         html+='<div class="bubble-list">';
         presets.forEach(function(p){
           var active=isBubblePresetActive(p,bubbleScopeValue);
-          html+='<article class="bubble-card"><div class="bubble-preview"><span class="bubble-preview-label">'+(p.builtin?'BUILT-IN / WECHAT':'BUBBLE PRESET')+'</span>'+bubbleSampleMarkup(p.data)+'</div><div class="bubble-details"><strong>'+esc(p.name||'未命名预设')+'</strong><small>'+(active?'正在使用':(p.builtin?'内置预设':'已保存'))+'</small><button class="action-btn '+(active?'light':'')+'" type="button" data-action="bubble-apply" data-id="'+esc(p.id)+'" '+(active?'disabled':'')+'>'+(active?'正在使用':'应用')+'</button></div></article>';
+          html+='<article class="bubble-card"><div class="bubble-preview"><span class="bubble-preview-label">'+(p.builtin?'BUILT-IN':'BUBBLE PRESET')+'</span>'+bubbleSampleMarkup(p.data)+'</div><div class="bubble-details"><strong>'+esc(p.name||'未命名预设')+'</strong><small>'+(active?'正在使用':(p.builtin?'内置预设':'已保存'))+'</small><button class="action-btn '+(active?'light':'')+'" type="button" data-action="bubble-apply" data-id="'+esc(p.id)+'" '+(active?'disabled':'')+'>'+(active?'正在使用':'应用')+'</button></div></article>';
         });
         html+='</div>';
       }

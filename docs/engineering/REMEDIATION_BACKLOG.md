@@ -399,3 +399,17 @@ Do not parallelize:
 5. Agent E: PERF-001 — image asset inventory and safe optimization recommendations, no replacements yet.
 
 Only after these reports are reviewed should implementation tasks be assigned.
+
+### THEME-ATMOSPHERE-001 — Opt-in monochrome chat theme
+**Status:** IN PROGRESS — owner requested on 2026-11-12 (Asia/Shanghai).
+
+Scope: add 薄影 to the existing store, preserving old presets; transparent underlined message defaults, compact typography, centered detail avatar, light/dark mode, an accessible sliding conversation drawer, and progressive cross-document transitions. Existing contacts/moments/profile receive scoped neutral styling. No changes to footprint or memory pages.
+
+Acceptance:
+- Theme and independent bubble preset selectable in the existing store; old themes restore.
+- Global/character bubble overrides, page-specific covers and chat histories survive switching.
+- Drawer focus trapping, Escape, backdrop, swipe dismissal, page-return cleanup and storage-failure feedback work.
+- Real 375/390/430px and desktop visual acceptance, native send/quote/rich-message paths, keyboard behavior and Android review must pass before release.
+- Music must use a real playback path, never a decorative toggle claimed as playback.
+
+Implementation and verification: `docs/engineering/THEME-ATMOSPHERE-001.md`.
