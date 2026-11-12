@@ -160,7 +160,7 @@ test('真正的 AI 回复保存成功后，指定话题只完成一次，其他�
   assert.ok(f.persisted().pendingChatFocus.usedAt>0);
   assert.equal(f.bridge.buildPromptPacket('rA',f.storage,now+4000).mode,'fresh');
   assert.match(f.bridge.buildPrompt('rA',f.storage,now+4000),/未聊过的备忘录提醒/);
-  assert.equal(f.bridge.buildPromptPacket('rA',f.storage,now+4000).focusId,undefined);
+  assert.equal(f.bridge.buildPromptPacket('rA',f.storage,now+4000).focusId,null);
   assert.equal(f.bridge.markOffered('rA',[],f.storage,now+5000,focus.id),true);
 });
 
