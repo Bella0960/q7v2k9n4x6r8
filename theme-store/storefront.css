@@ -3,3 +3,14 @@
 @keyframes sf-float{0%,100%{transform:rotate(5deg) translateY(16px)}50%{transform:rotate(3deg) translateY(8px)}}
 @media(max-width:360px){.sf-scene{height:274px;padding:10px 8px}.sf-feature{height:184px;padding:14px 12px}.sf-feature h2{font-size:23px}.sf-feature p{font-size:9px}.sf-product-meta strong{font-size:11px}.store-app .main-content{padding-left:12px;padding-right:12px}.sf-grid{gap:18px 10px}.sf-favorite{width:30px}.sf-dialog{padding:14px}}
 @media(prefers-reduced-motion:reduce){.sf-feature-scene{animation:none}.sf-cover,.sf-button,.sf-chip{transition:none}}
+
+/* True preset thumbnails and six distinct, centred desktop app glyphs. */
+.sf-app{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0}
+.sf-app-icon{display:grid;place-items:center;width:33px;height:33px;border:1px solid #dededd;border-radius:10px;background:#ffffffb8}
+.sf-app-icon svg{width:18px;height:18px;stroke-width:1.45}
+.sf-icon-preview{margin:16px auto 8px;max-width:230px;padding:12px;background:#f7f7f7;border-radius:12px}
+.sf-icon-preview h3{font:400 12px Georgia,'Songti SC',serif;margin-bottom:12px}
+.sf-icon-gallery{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.sf-icon-tile{width:100%;aspect-ratio:1;display:grid;place-items:center;border-radius:10px;background:white;color:#aaa;overflow:hidden;border:1px solid #ededed}
+.sf-icon-tile img{width:100%;height:100%;object-fit:cover}
+.sf-icon-preview .sf-error{margin:0}
