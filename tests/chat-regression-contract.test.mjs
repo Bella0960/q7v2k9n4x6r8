@@ -4841,3 +4841,59 @@ test('unified wallet writes: chat, shop, takeout and wallet page use the same co
   }
   assert.match(walletPage, /return ledger && typeof ledger\.readWalletForMutation/);
 });
+
+
+test('unified wallet writes: automatic snapshots reject stale balance overwrites', () => {
+  const storageValues = new Map([['workData', JSON.stringify({
+    balance: 100, history: [{ paymentId: 'initial', amount: 5 }]
+  })]]);
+  let writes = 0;
+  const storage = {
+    getItem: key => storageValues.has(key) ? storageValues.get(key) : null,
+    setItem: (key, value) => { writes++; storageValues.set(key, String(value)); },
+    removeItem: key => { storageValues.delete(key); }
+  };
+  const window = { localStorage: storage, navigator: {} };
+  runInNewContext(walletLedgerSource, { window });
+  const ledger = window.MaoMaoWalletLedger;
+
+  const first = ledger.readWalletForMutation('workData');
+  const second = ledger.readWalletForMutation('workData');
+  second.balance -= 10;
+  second.history.unshift({ paymentId: 'second', amount: 10 });
+  assert.equal(ledger.commitWalletSnapshot(second).ok, true);
+  assert.equal(ledger.readWalletForMutation('workData').balance, 90);
+
+  first.balance -= 20;
+  first.history.unshift({ paymentId: 'first', amount: 20 });
+  assert.equal(ledger.commitWalletSnapshot(first).reason, 'stale-wallet',
+    'a snapshot read before a second tab wrote must not overwrite the new balance');
+  assert.equal(ledger.readWalletForMutation('workData').balance, 90);
+  assert.equal(ledger.readWalletForMutation('workData').history.length, 2);
+  assert.equal(writes, 1);
+
+  const fresh = ledger.readWalletForMutation('workData');
+  fresh.balance -= 20;
+  fresh.history.unshift({ paymentId: 'first', amount: 20 });
+  assert.equal(ledger.commitWalletSnapshot(fresh).ok, true);
+  assert.equal(ledger.readWalletForMutation('workData').balance, 70);
+  assert.equal(writes, 2);
+
+  const unsourced = { balance: 0, history: [] };
+  assert.equal(ledger.commitWalletSnapshot(unsourced).reason, 'snapshot-required',
+    'an unversioned wallet snapshot must not replace existing wallet data');
+  assert.equal(writes, 2);
+
+  const beforeMissing = ledger.readWalletForMutation('workData');
+  storageValues.delete('workData');
+  assert.equal(ledger.commitWalletSnapshot(beforeMissing).reason, 'stale-wallet',
+    'disappearing storage also invalidates the previously read version');
+  const trulyFresh = ledger.readWalletForMutation('workData');
+  assert.equal(trulyFresh.balance, 1000);
+  storageValues.set('workData', JSON.stringify({ balance: 200, history: [] }));
+  assert.equal(ledger.commitWalletSnapshot(trulyFresh).reason, 'stale-wallet',
+    'two first-use tabs must not replace whichever initialized the wallet first');
+  storageValues.delete('workData');
+  assert.equal(ledger.commitWalletSnapshot(trulyFresh).ok, true);
+  assert.equal(ledger.readWalletForMutation('workData').balance, 1000);
+});
