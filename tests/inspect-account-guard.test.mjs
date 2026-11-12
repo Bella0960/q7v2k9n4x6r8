@@ -83,7 +83,7 @@ test('手机及聊天页都在互动桥接前加载作用域守卫，Worker注�
   assert.ok(phone.indexOf('inspect_account_guard.js')<phone.indexOf('inspect_interaction_bridge.js'));
   assert.ok(chat.indexOf('inspect_account_guard.js')<chat.indexOf('inspect_interaction_bridge.js'));
   assert.match(featureSource,/accountGuard\.state\(\)\.mode==='blocked'/);
-  assert.match(featureSource,/guard&&!guard\.canRead\(persisted\)/);
+  assert.match(featureSource,/guard&&persisted&&!guard\.canRead\(persisted\)/);
   assert.match(bridgeSource,/guard&&!\s*guard\.stamp/);
 });
 test('无有效 Worker 身份的页面调用角色手机不会回退读取不受保护的旧数据',()=>{
