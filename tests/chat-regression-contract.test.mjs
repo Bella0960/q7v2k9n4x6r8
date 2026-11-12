@@ -2481,3 +2481,128 @@ test('chat extras: every extension card send gates AI dispatch on successful per
   assert.ok(saveGate >= 0 && clearPending > saveGate,
     'pending call result must only be cleared after successful message persistence');
 });
+
+
+test('chat extras: outgoing payment ledger reconciles chat write failure and page reload', () => {
+  const start = extras.indexOf('  // A wallet debit and a chat card');
+  const end = extras.indexOf("  if (payConfirmBtn) payConfirmBtn.addEventListener('click', submitPayMessage)", start);
+  assert.ok(start >= 0 && end > start, 'outgoing payment code must remain independently testable');
+  const paymentCode = extras.slice(start, end);
+
+  function fixture(options = {}) {
+    let now = 1000000;
+    let history = [{ role: 'user', mid: 'older', text: '旧消息' }];
+    const stored = new Map([['workData', JSON.stringify({
+      balance: 1000, history: options.initialEntries || []
+    })]]);
+    const effects = { walletWrites: [], chatWrites: [], toasts: [], ai: [], renders: 0, closes: 0 };
+    let failRefund = !!options.failRefund;
+    const context = {
+      payAmountInput: { value: '45.50' },
+      payMessageInput: { value: '晚饭钱' },
+      PAY_DEFAULT_MESSAGE: '你好',
+      payMode: options.mode || 'redpacket',
+      currentCharacter: { id: options.roleId || 'role-1' },
+      uid: () => 'unique-payment',
+      Date: { now: () => now },
+      localStorage: { getItem: (key) => stored.get(key) ?? null },
+      getWorkData: () => JSON.parse(stored.get('workData')),
+      saveWorkData: (wallet) => {
+        if (options.failDebit || (failRefund && wallet.history[0]?.status === 'reversed')) return false;
+        effects.walletWrites.push(JSON.parse(JSON.stringify(wallet)));
+        stored.set('workData', JSON.stringify(wallet));
+        return true;
+      },
+      loadMessages: () => history,
+      saveMessages: (next) => {
+        effects.chatWrites.push(next);
+        if (options.chatSave === 'fail') return false;
+        history = next;
+        return options.chatSave !== 'written-but-unverified';
+      },
+      closePayDrawer: () => { effects.closes++; },
+      renderAllMessages: () => { effects.renders++; },
+      appendMessageToDOM: () => { effects.renders++; },
+      sendSilentInstruction: (message) => effects.ai.push(message),
+      showToast: (message) => effects.toasts.push(message),
+      window: { addEventListener: () => {} },
+      chatMessages: { scrollTop: 0, scrollHeight: 20 }
+    };
+    runInNewContext(paymentCode +
+      '\nglobalThis.outgoingTest = { submitPayMessage, recoverOutgoingPayments, settleOutgoingPayment };', context);
+    return {
+      context, effects, actions: context.outgoingTest,
+      wallet: () => JSON.parse(stored.get('workData')),
+      history: () => history,
+      advance: (ms) => { now += ms; },
+      allowRefund: () => { failRefund = false; },
+      storeWallet: (wallet) => { stored.set('workData', JSON.stringify(wallet)); }
+    };
+  }
+
+  const success = fixture();
+  success.actions.submitPayMessage();
+  const successfulWallet = success.wallet();
+  const successfulCard = success.history()[1];
+  assert.equal(successfulWallet.balance, 954.5);
+  assert.equal(successfulWallet.history[0].status, 'sent');
+  assert.equal(successfulWallet.history[0].roleId, 'role-1');
+  assert.equal(successfulWallet.history[0].paymentId, successfulCard.mid);
+  assert.equal(successfulCard.paymentId, successfulCard.mid);
+  assert.equal(success.effects.walletWrites[0].history[0].status, 'pending-chat');
+  assert.equal(success.effects.ai.length, 1);
+  assert.equal(success.effects.renders, 1);
+  assert.equal(success.effects.closes, 1);
+
+  const failedChat = fixture({ chatSave: 'fail' });
+  failedChat.actions.submitPayMessage();
+  assert.equal(failedChat.wallet().balance, 1000, 'refund balances the failed debit');
+  assert.equal(failedChat.wallet().history[0].status, 'reversed');
+  assert.equal(failedChat.history().length, 1);
+  assert.equal(failedChat.effects.ai.length, 0);
+  assert.equal(failedChat.effects.closes, 0);
+  assert.equal(failedChat.effects.renders, 0);
+  assert.match(failedChat.effects.toasts.at(-1), /扣款已退回/);
+  assert.equal(failedChat.actions.settleOutgoingPayment('out-unique-payment', false), true);
+  assert.equal(failedChat.wallet().balance, 1000, 'a repeated compensation must not refund twice');
+
+  const noDebit = fixture({ failDebit: true });
+  noDebit.actions.submitPayMessage();
+  assert.equal(noDebit.wallet().balance, 1000);
+  assert.equal(noDebit.wallet().history.length, 0);
+  assert.equal(noDebit.effects.chatWrites.length, 0, 'no card before a verified debit');
+  assert.equal(noDebit.effects.ai.length, 0);
+
+  const uncertain = fixture({ chatSave: 'written-but-unverified' });
+  uncertain.actions.submitPayMessage();
+  assert.equal(uncertain.wallet().balance, 954.5);
+  assert.equal(uncertain.wallet().history[0].status, 'sent');
+  assert.equal(uncertain.history().length, 2);
+  assert.equal(uncertain.effects.ai.length, 0, 'uncertain card must not launch AI');
+  assert.equal(uncertain.effects.closes, 0, 'do not claim successful delivery');
+
+  const recover = fixture({ chatSave: 'fail', failRefund: true });
+  recover.actions.submitPayMessage();
+  assert.equal(recover.wallet().balance, 954.5);
+  assert.equal(recover.wallet().history[0].status, 'pending-chat');
+  assert.equal(recover.effects.ai.length, 0);
+  recover.actions.submitPayMessage();
+  assert.equal(recover.wallet().history.length, 1, 'no second debit while payment is pending');
+
+  const otherEntry = {
+    type: 'expense', category: 'transfer', status: 'pending-chat',
+    roleId: 'role-2', paymentId: 'other-role-payment', amount: 5, time: 1
+  };
+  const beforeRecovery = recover.wallet();
+  beforeRecovery.balance -= 5;
+  beforeRecovery.history.push(otherEntry);
+  recover.storeWallet(beforeRecovery);
+  recover.allowRefund();
+  recover.advance(121000);
+  recover.actions.recoverOutgoingPayments();
+  assert.equal(recover.wallet().balance, 995, 'only current role payment is refunded');
+  assert.equal(recover.wallet().history[0].status, 'reversed');
+  assert.equal(recover.wallet().history[1].status, 'pending-chat', 'other role remains untouched');
+  recover.actions.recoverOutgoingPayments();
+  assert.equal(recover.wallet().balance, 995, 'reopening cannot refund the same payment again');
+});
