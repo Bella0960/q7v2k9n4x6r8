@@ -122,3 +122,47 @@ test('V5 customization uses precise distinct vector icons with no right arrows',
  assert.doesNotMatch(js,/v5-custom-chevron/);
  assert.doesNotMatch(css,/v5-custom-chevron/);
 });
+
+test('avatar tap invokes upload directly without adjacent pencil or profile navigation',()=>{
+ const start=js.indexOf(' function bindAvatarTap(){');
+ const end=js.indexOf(' function shortcuts(){',start);
+ assert.ok(start>0&&end>start,'avatar handler exists');
+ const source=js.slice(start,end);
+ function mock(){
+  const events={},attrs={};
+  return {
+   dataset:{},
+   setAttribute:(key,value)=>{attrs[key]=value},
+   addEventListener:(event,fn)=>{events[event]=fn},
+   events,attrs
+  };
+ }
+ const contact=mock(),self=mock(),calls=[];
+ const select=q=>q==='#page-chat .chat-person .portrait'?contact:
+   q==='#page-profile .profile-pic'?self:null;
+ const bind=new Function('$','chooseFile',source+'return bindAvatarTap;')(
+  select,kind=>calls.push(kind));
+ bind();
+ assert.equal(contact.attrs.role,'button');
+ assert.equal(self.attrs.role,'button');
+ assert.equal(contact.attrs.tabindex,'0');
+ assert.equal(self.attrs.tabindex,'0');
+ let stopped=0,prevented=0;
+ const ev={preventDefault(){prevented++},stopPropagation(){stopped++}};
+ contact.events.click(ev);
+ self.events.click(ev);
+ self.events.keydown({...ev,key:'Enter'});
+ contact.events.keydown({...ev,key:' '});
+ contact.events.keydown({...ev,key:'ArrowRight'});
+ assert.deepEqual(calls,['contact-avatar','self-avatar','self-avatar','contact-avatar']);
+ assert.equal(prevented,4);
+ assert.equal(stopped,4);
+});
+test('no overlay edit controls are appended anywhere onto the approved V5 artwork',()=>{
+ assert.doesNotMatch(js,/addShortcut\(|v5-custom-trigger|data-v5-personalize/);
+ assert.doesNotMatch(css,/v5-custom-trigger|v5-custom-contact|v5-custom-self|v5-custom-home|v5-custom-music/);
+ assert.match(js,/bindAvatarTap\(\);/);
+ assert.match(js,/const body=\$\('#v2-sheet-body'\),kind=\$\('#v2-sheet-kind'\);/);
+ assert.match(js,/if\(kind\.textContent\.trim\(\)!=='MODIFY'/);
+ assert.match(css,/#page-chat \.chat-person \.portrait:focus-visible/);
+});
