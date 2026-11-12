@@ -74,3 +74,20 @@ The two user-provided original videos were reviewed again. The goal is deliberat
 ### Unfinished release gate
 
 Full repository build, real browser/Android screenshots, historical data and per-character overrides, long histories, quoted/media/pay messages, external theme switchback, PWA update/offline operation, and accessibility/gesture regression still need execution. Keep PR #273 Draft and do not merge/deploy based on prototype success.
+
+## 2026-11-12 C1 — horizontal composer rail
+
+The requested thin horizontal media/action bar is now integrated in the existing `atmosphere` chat-detail theme, rather than being a demo-only visual layer.
+
+- New `shared/js/atmosphere-composer.js` inserts one **5-action** toolbar above the original `#chat-form`: 图片, 表情, 语音消息, 位置, 更多. It is visible only while `data-chat-theme-preset="atmosphere"`; switchback hides it without changing any saved theme or chat state.
+- 图片 delegates to the existing `.plus-item[data-feat="img"]` action, including its normal image-picker/privacy path; 表情 delegates to `sticker` and the existing sticker library. 语音消息 delegates to `voice-msg` (the **existing text/duration simulation**, not recorded microphone audio). 位置 delegates to the existing **text/simulated** location action. 更多 clicks the existing `#plus-action-btn` to preserve all other features.
+- Uses the original form submit and existing AI/message handlers; no new message send/storage pipeline or direct API call is introduced. Missing feature buttons are visibly disabled rather than claiming a working feature.
+- Existing native `#plusPanelOverlay` remains the sole modal controller. The toolbar observes its class and reflects expanded status, closes it on input focus/Escape and leaves old theme behavior unchanged.
+- Scoped CSS renders a thin five-column icon/label rail, minimal 35px input/send row, compact monochrome extended function shelf, and simplified sticker panel. Focus outlines, reduced-motion alternatives and 320px mobile spacing are supplied. No high-saturation color or decorative emoji icons.
+- The detail page loads the new classic script after the atmosphere theme controller. `sw.js` precaches it and advances the PWA shell cache to `v206`.
+- Added `tests/atmosphere-composer.test.mjs` with 5 focused DOM-fixture/source tests and extended PWA cache assertions. An isolated execution of the production composer controller against a controlled DOM fixture confirmed native feature dispatch, More synchronization, focus dismissal and theme switchback.
+- A standalone **V3** interactive HTML study with fictional state demonstrates the horizontal rail, photo selection, expression shortcuts, voice/location demo and More drawer. Its Chromium smoke flow passed 320/375/390/430/1280px. This **does not** establish the integrated MAOMAO page's visual/runtime acceptance.
+
+### Outstanding before merge
+
+Run the full actual `node --test tests/atmosphere-theme.test.mjs tests/atmosphere-composer.test.mjs`, full project build and other regression suites in a complete checkout. Inspect real Android and iOS browser/PWA rendering (safe-area, software keyboard, image picker, real sticker files, theme switchback, long conversation and native overlay). No production deployment, merge, or APK is claimed.
