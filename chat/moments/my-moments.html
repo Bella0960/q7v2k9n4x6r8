@@ -891,14 +891,25 @@
       return null;
     }
     function saveMomentsSafe(list) {
-      if (_storage) { _storage.saveMoments(list); return true; }
       try {
-        localStorage.setItem(MOMENTS_KEY, JSON.stringify(list));
-        return true;
+        // The legacy PhoneStorage.saveMoments() returns undefined even if a
+        // QuotaExceededError was swallowed. Never report that as success.
+        // Prefer the existing result API with an explicit ok/error contract.
+        if (_storage && _storage.result &&
+            typeof _storage.result.saveMoments === 'function') {
+          var result = _storage.result.saveMoments(list);
+          if (result && result.ok === true) return true;
+        } else if (_storage && typeof _storage.rawSet === 'function') {
+          if (_storage.rawSet(MOMENTS_KEY, list || [])) return true;
+        } else {
+          localStorage.setItem(MOMENTS_KEY, JSON.stringify(list || []));
+          return true;
+        }
       } catch (err) {
-        alert('存储空间不足，请清理后重试');
-        return false;
+        // All failures lead to the same visible warning and no false success.
       }
+      alert('动态保存失败，请检查存储空间后重试');
+      return false;
     }
 
     /* ===== 删除 / 点赞 / 评论入口（事件委托） ===== */
