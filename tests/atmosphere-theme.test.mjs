@@ -127,3 +127,24 @@ test('drawer keeps real navigation paths, an authored cover, and direct tone acc
  assert.match(drawer.querySelector('.at-drawer-nav').querySelector('a').href,/chat\/chat\/chat\.html$/);
  assert.equal(drawer.querySelector('.at-tone').textContent,'切换为深色');
 });
+
+test('drawer quick routes reuse real MAOMAO pages, never placeholder actions',()=>{
+ const h=controller();
+ const drawer=h.doc.getElementById('atConversationDrawer');
+ const grid=drawer.querySelector('.at-quick-grid');
+ assert.ok(grid,'drawer has compact quick-route grid');
+ const routes=grid.querySelectorAll('a').map(a=>a.href);
+ assert.equal(routes.length,8);
+ assert.equal(new Set(routes).size,8);
+ for(const path of [
+  'chat/chat/chat-search.html',
+  'chat/contacts/contacts.html',
+  'chat/moments/moments.html',
+  'chat/footprint/footprint.html',
+  'diary/diary.html',
+  'worldbook/characters/characters.html',
+  'theme-store/theme-store.html',
+  'music/music.html'
+ ]) assert.ok(routes.some(url=>url.endsWith('/'+path)),path+' should use a native route');
+ assert.ok(routes.every(url=>url.startsWith('https://example.test/sub/')));
+});
