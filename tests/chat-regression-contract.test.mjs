@@ -2525,7 +2525,9 @@ test('chat extras: outgoing payment ledger reconciles chat write failure and pag
       appendMessageToDOM: () => { effects.renders++; },
       sendSilentInstruction: (message) => effects.ai.push(message),
       showToast: (message) => effects.toasts.push(message),
-      window: { addEventListener: () => {} },
+      window: { addEventListener: () => {}, navigator: {
+        locks: { request: (name, options, callback) => callback({ name }) }
+      } },
       chatMessages: { scrollTop: 0, scrollHeight: 20 }
     };
     runInNewContext(paymentCode +
@@ -2605,4 +2607,86 @@ test('chat extras: outgoing payment ledger reconciles chat write failure and pag
   assert.equal(recover.wallet().history[1].status, 'pending-chat', 'other role remains untouched');
   recover.actions.recoverOutgoingPayments();
   assert.equal(recover.wallet().balance, 995, 'reopening cannot refund the same payment again');
+});
+
+
+test('chat extras: two tabs cannot debit the same shared wallet concurrently', async () => {
+  const start = extras.indexOf('  // A wallet debit and a chat card');
+  const end = extras.indexOf("  if (payConfirmBtn) payConfirmBtn.addEventListener('click', submitPayMessage)", start);
+  assert.ok(start >= 0 && end > start);
+  const code = extras.slice(start, end);
+  let taken = false;
+  const lockRequests = [];
+  const locks = {
+    request: (name, options, callback) => {
+      lockRequests.push({ name, options });
+      if (taken && options.ifAvailable) return Promise.resolve(callback(null));
+      if (taken) return Promise.reject(new Error('unexpected waiting recovery'));
+      taken = true;
+      return Promise.resolve().then(() => callback({ name })).finally(() => { taken = false; });
+    }
+  };
+  const stored = new Map([['workData', JSON.stringify({ balance: 100, history: [] })]]);
+  let history = [{ role: 'user', mid: 'existing', text: 'previous' }];
+  const rendered = [];
+  const responses = [];
+  function tab(id) {
+    const context = {
+      payAmountInput: { value: '75' },
+      payMessageInput: { value: 'test' },
+      PAY_DEFAULT_MESSAGE: '',
+      payMode: 'transfer',
+      currentCharacter: { id: 'role-1' },
+      uid: () => id,
+      Date: { now: () => 1000000 },
+      localStorage: { getItem: (key) => stored.get(key) ?? null },
+      getWorkData: () => JSON.parse(stored.get('workData')),
+      saveWorkData: (wallet) => { stored.set('workData', JSON.stringify(wallet)); return true; },
+      loadMessages: () => history,
+      saveMessages: (next) => { history = next; return true; },
+      closePayDrawer: () => {},
+      renderAllMessages: () => { rendered.push(id); },
+      sendSilentInstruction: () => { responses.push(id); },
+      showToast: () => {},
+      window: { navigator: { locks }, addEventListener: () => {} }
+    };
+    runInNewContext(code +
+      '\nglobalThis.tabPayment = { submitPayMessage, recoverOutgoingPayments };', context);
+    return context.tabPayment;
+  }
+
+  const a = tab('tab-a');
+  const b = tab('tab-b');
+  const results = await Promise.all([a.submitPayMessage(), b.submitPayMessage()]);
+  assert.deepEqual(results, [true, false], 'only the lock holder can debit');
+  assert.equal(JSON.parse(stored.get('workData')).balance, 25);
+  assert.equal(JSON.parse(stored.get('workData')).history.length, 1);
+  assert.equal(history.length, 2);
+  assert.deepEqual(rendered, ['tab-a']);
+  assert.deepEqual(responses, ['tab-a']);
+  assert.equal(lockRequests[0].name, 'maomao-wallet-workData-v1');
+  assert.ok(lockRequests.every((req) => req.options.mode === 'exclusive'));
+});
+
+test('chat extras: unsupported lock mechanism fails closed before wallet writes', async () => {
+  const start = extras.indexOf('  // A wallet debit and a chat card');
+  const end = extras.indexOf("  if (payConfirmBtn) payConfirmBtn.addEventListener('click', submitPayMessage)", start);
+  assert.ok(start >= 0 && end > start);
+  let writes = 0;
+  let ai = 0;
+  const messages = [];
+  const sandbox = {
+    window: { addEventListener: () => {} },
+    showToast: (message) => messages.push(message),
+    getWorkData: () => { writes++; throw new Error('should not read without lock'); },
+    saveWorkData: () => { writes++; return true; },
+    sendSilentInstruction: () => { ai++; }
+  };
+  runInNewContext(extras.slice(start, end) +
+    '\nglobalThis.walletTest = { submitPayMessage, recoverOutgoingPayments };', sandbox);
+  assert.equal(await sandbox.walletTest.submitPayMessage(), false);
+  assert.equal(await sandbox.walletTest.recoverOutgoingPayments(), false);
+  assert.equal(writes, 0);
+  assert.equal(ai, 0);
+  assert.match(messages[0], /无法安全锁定钱包/);
 });
