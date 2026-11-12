@@ -269,7 +269,11 @@
    if(!shell)return;
    var active=isActive();
    if(bar&&surface==='profile')bar.hidden=!active;
-   if(!active&&favoritesShowing)closeFavoritesSheet(false);
+   if(!active&&favoritesSheet){
+     if(favoritesHideTimer){clearTimeout(favoritesHideTimer);favoritesHideTimer=0;}
+     if(favoritesShowing)closeFavoritesSheet(false);
+     favoritesSheet.hidden=true; // also when the dismiss animation was already running
+   }
    if(surface==='chats'){
      setLabel('.chat-theme-copy h1','CHATS',active);
      // The existing atmosphere-theme controller owns the home-page SVGs.
