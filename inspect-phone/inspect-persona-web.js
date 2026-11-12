@@ -101,6 +101,20 @@ function seed(role,roleId,data,now){
           {name:'南风',text:'与其跟风，不如选适合对方生活方式的。',time:nowAt(now,20,10,1)}]});
       added++;
     }
+    var nextId='persona-forum:'+roleId+':'+VERSION+':followup';
+    var followup=p.care?
+      {title:'花店包装纸也有这么多讲究吗？',text:'昨天查了一些花材搭配，今天又看了不同的包装纸。\n\n想了一圈还是觉得素色纸配简单的花更舒服。送花这件事好像越认真准备，越容易被各种选择绕晕。\n\n也许最重要的还是对方收到时觉得轻松。',topic:'生活闲聊'}:
+      p.student?{title:'终于整理好了这周的课表',text:'把最近临时增加的活动全部记到一张纸上，发现空出来的时间比想象中还要少。\n\n不过至少能分清哪些是必须完成的，哪些可以等一等。',topic:'校园日常'}:
+      p.work==='books'?{title:'昨天读到一句话，又把书翻回去看了一遍',text:'最近整理书桌时发现以前留下的一张书签。\n\n重新翻开那一页，发现自己现在的想法和当时不同。也许再过一年还会变。',topic:'阅读讨论'}:
+      p.work==='creative'?{title:'把上周的草稿重新排了一遍',text:'原来舍不得删的素材放了太多，反而挡住了真正要做的部分。\n\n今天挑出几张继续做，其余先存进资料夹。',topic:'创作交流'}:
+      {title:'周末小计划终于有个头绪',text:'把想做的几件小事写下来之后，发现不需要每件都安排在同一天。\n\n走到哪儿算哪儿，可能也不算浪费时间。',topic:'日常'};
+    if(!forum.posts.some(function(x){return x.postId===nextId;})){
+      forum.posts.push({postId:nextId,authorId:String(roleId),author:p.name,
+        title:followup.title,text:followup.text,topic:followup.topic,
+        time:nowAt(now,18,42,2),likes:8,liked:false,views:46,origin:'role_persona_sample',
+        comments:[{name:'阿诺',text:'我懂这种感觉。',time:nowAt(now,19,3,2)}]});
+      added++;
+    }
     forum.personaSeedVersion=VERSION;
   }
   return {added:added,persona:p};
