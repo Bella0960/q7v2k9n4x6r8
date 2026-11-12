@@ -6,12 +6,12 @@ import {webcrypto} from 'node:crypto';
 const source=readFileSync(new URL('../theme-store/collection-store.js',import.meta.url),'utf8');
 const beauty=readFileSync(new URL('../shared/js/chat-beauty.js',import.meta.url),'utf8');
 function setup(){
- const disk=new Map(),pictures=new Map();let failKey='',failImages=false;
+ const disk=new Map(),pictures=new Map();let failKey='',failImages=false,failImageOnce='';
  const storage={getItem:k=>disk.get(k)??null,setItem(k,v){if(k===failKey)throw Error('quota');disk.set(k,String(v));},removeItem:k=>disk.delete(k),key:i=>[...disk.keys()][i],get length(){return disk.size;}};
- const window={localStorage:storage,crypto:webcrypto,dispatchEvent(){},addEventListener(){},MAOMAOWallpaperStore:{key:'home_custom_wallpaper',get:async()=>pictures.get('home_custom_wallpaper')||'',getByKey:async k=>pictures.get(k)||'',saveByKey:async(k,v,options)=>{assert.equal(options.requireIDB,true);if(failImages)throw Error('IDB failure');pictures.set(k,v);return true;},clear:async()=>pictures.delete('home_custom_wallpaper'),removeByKey:async k=>pictures.delete(k)}};
+ const window={localStorage:storage,crypto:webcrypto,dispatchEvent(){},addEventListener(){},MAOMAOWallpaperStore:{key:'home_custom_wallpaper',get:async()=>pictures.get('home_custom_wallpaper')||'',getByKey:async k=>pictures.get(k)||'',saveByKey:async(k,v,options)=>{assert.equal(options.requireIDB,true);if(failImages||k===failImageOnce){failImageOnce='';throw Error('IDB failure');}pictures.set(k,v);return true;},clear:async()=>pictures.delete('home_custom_wallpaper'),removeByKey:async k=>pictures.delete(k)}};
  const ctx={window,localStorage:storage,document:{},console,CustomEvent:class{},setTimeout};
  vm.runInNewContext(beauty,ctx);vm.runInNewContext(source,ctx);
- return {model:window.MAOMAOMarketCollection,beauty:window.ChatBeauty,disk,pictures,setFailure:key=>{failKey=key;},imageFailure:()=>{failImages=true;}};
+ return {model:window.MAOMAOMarketCollection,beauty:window.ChatBeauty,disk,pictures,setFailure:key=>{failKey=key;},imageFailure:()=>{failImages=true;},imageFailureOnce:key=>{failImageOnce=key;}};
 }
 test('preview/capture never copies real covers, avatars, chat history or backgrounds',async()=>{
  const x=setup();x.disk.set('chat_history_A','private');x.beauty.save('A',{chatBg:'secret',avatarSize:71,myBubbleBg:'#444'});
@@ -47,4 +47,54 @@ test('new cache revision lists exact storefront resources and retains legacy the
 });
 test('outfit editing can narrow scope or explicitly recapture without duplicating or applying it',async()=>{
  const x=setup();const item=await x.model.saveOutfit('first',['theme','list']);x.beauty.setThemePreset('wechat');await x.model.editOutfit(item.id,'renamed',['theme'],'global',false);assert.equal(x.model.read().outfits[0].data.theme,'default');await x.model.editOutfit(item.id,'updated',['theme','list'],'global',true);assert.equal(x.model.read().outfits.length,1);assert.equal(x.model.read().outfits[0].data.theme,'wechat');assert.equal(x.beauty.getThemePreset(),'wechat');
+});
+
+test('icon scope stores only a named preset reference and applies it without changing themes',async()=>{
+  const x=setup(),preset={id:'icons_saved',name:'浅灰图标',appIds:['app_chat','app_music']};
+  x.disk.set('home_icon_presets_v1',JSON.stringify([preset]));
+  x.disk.set('home_icon_active_preset_v1',preset.id);
+  x.pictures.set('home_icon_preset_img_v1_icons_saved_app_chat','data:image/png;base64,CHAT');
+  x.pictures.set('home_icon_preset_img_v1_icons_saved_app_music','data:image/png;base64,MUSIC');
+  const item=await x.model.saveOutfit('图标与主题',['theme','icons']);
+  assert.equal(item.data.icons.presetId,preset.id);
+  assert.ok(!x.disk.get('maomao_market_collection_v1').includes('base64'));
+  x.disk.delete('home_icon_active_preset_v1');
+  x.pictures.set('home_icon_img_app_chat','data:image/png;base64,CURRENT');
+  x.beauty.setThemePreset('wechat');
+  await x.model.applyOutfit(item,['icons']);
+  assert.equal(x.pictures.get('home_icon_img_app_chat'),'data:image/png;base64,CHAT');
+  assert.equal(x.pictures.get('home_icon_img_app_music'),'data:image/png;base64,MUSIC');
+  assert.equal(x.disk.get('home_icon_active_preset_v1'),preset.id);
+  assert.equal(x.beauty.getThemePreset(),'wechat');
+});
+test('unsaved custom icons cannot be misrepresented as an empty saved icon scope',async()=>{
+  const x=setup();
+  x.pictures.set('home_icon_img_app_chat','data:image/png;base64,CUSTOM');
+  await assert.rejects(x.model.saveOutfit('未命名图标',['icons']),/保存当前图标套装/);
+  assert.equal(x.model.read().outfits.length,0);
+});
+test('partial icon write failure restores every original icon byte and active preset marker',async()=>{
+  const x=setup(),preset={id:'saved',name:'图标',appIds:['app_chat','app_shop']};
+  x.disk.set('home_icon_presets_v1',JSON.stringify([preset]));
+  x.disk.set('home_icon_active_preset_v1','saved');
+  x.pictures.set('home_icon_preset_img_v1_saved_app_chat','data:image/png;base64,NEW1');
+  x.pictures.set('home_icon_preset_img_v1_saved_app_shop','data:image/png;base64,NEW2');
+  const item=await x.model.saveOutfit('图标',['icons']);
+  x.disk.set('home_icon_active_preset_v1','old_custom');
+  x.pictures.set('home_icon_img_app_chat','data:image/png;base64,OLD1');
+  x.pictures.set('home_icon_img_app_shop','data:image/png;base64,OLD2');
+  x.imageFailureOnce('home_icon_img_app_shop');
+  await assert.rejects(x.model.applyOutfit(item,['icons']),/IDB failure/);
+  assert.equal(x.pictures.get('home_icon_img_app_chat'),'data:image/png;base64,OLD1');
+  assert.equal(x.pictures.get('home_icon_img_app_shop'),'data:image/png;base64,OLD2');
+  assert.equal(x.disk.get('home_icon_active_preset_v1'),'old_custom');
+});
+test('missing icon preset images are preflighted before editing any current icon',async()=>{
+  const x=setup(),preset={id:'missing',name:'缺图',appIds:['app_chat']};
+  x.disk.set('home_icon_presets_v1',JSON.stringify([preset]));
+  x.disk.set('home_icon_active_preset_v1','missing');
+  const item=await x.model.saveOutfit('缺图套装',['icons']);
+  x.pictures.set('home_icon_img_app_chat','data:image/png;base64,BEFORE');
+  await assert.rejects(x.model.applyOutfit(item,['icons']),/不完整/);
+  assert.equal(x.pictures.get('home_icon_img_app_chat'),'data:image/png;base64,BEFORE');
 });
