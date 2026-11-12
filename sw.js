@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v218';
+const CACHE_NAME = 'phone-app-pwa-v219';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 // v196 release: sweep orphaned role-owned media refs during avatar cleanup.
 const APP_SHELL = [
@@ -19,6 +19,7 @@ const APP_SHELL = [
   './tutorial/tutorial.js?v=20261111v3',
   './beauty/beauty.html',
   './theme-store/theme-store.html',
+  './theme-store/atmosphere-live-preview.html',
   './theme-store/market-expansion.css?v=20261112m1',
   './theme-store/market-expansion.js?v=20261112m1',
   './desktop/widgets.html',
@@ -65,6 +66,8 @@ const APP_SHELL = [
   './shared/js/atmosphere-composer.js?v=20261112c1',
   './shared/js/atmosphere-icons.js?v=20261112i1',
   './shared/css/atmosphere-pages.css?v=20261112p3',
+  './shared/css/atmosphere-editorial-home.css?v=20261112e1',
+  './shared/js/atmosphere-editorial-home.js?v=20261112e1',
   './shared/js/atmosphere-pages.js?v=20261112p4',
   './shared/css/atmosphere-my-home.css?v=20261112h2',
   './shared/js/atmosphere-my-home.js?v=20261112h4',
