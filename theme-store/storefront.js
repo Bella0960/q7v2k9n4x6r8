@@ -131,7 +131,8 @@ async function renderSavedIconPreview(host,saved){
  }
 }
 async function recordPreview(encoded){const {type,item}=getRecord(encoded);modal(item.name,'<div id="sfRecordPreview"></div>'+(type==='outfits'?checkboxes(item.scopes):'<p class="sf-caption">应用范围：仅桌面壁纸</p>')+'<footer>'+button('重新应用','record-apply',encoded,'sf-button primary')+'</footer>');const host=document.getElementById('sfRecordPreview');if(type==='outfits'){
- host.innerHTML=scene(item.data.theme||'default');
+ const chosen=item.scopes.includes('theme')&&api.themes.find(t=>t.id===item.data.theme);
+ host.innerHTML=chosen?'<div class="sf-native-detail-art">'+nativeArt(chosen)+'</div>':'<p class="sf-caption">此搭配没有保存整套聊天主题，只有勾选的独立美化项目。</p>';
  if(item.data.icons)await renderSavedIconPreview(host,item.data.icons);
 }const key=type==='creations'?item.key:item.data.wallpaper?.key;if(key){const url=await global.MAOMAOWallpaperStore.getByKey(key);if(host.isConnected&&url){const img=document.createElement('img');img.src=url;img.className='sf-image';img.alt=item.name;host.prepend(img);}}}
 async function imageData(file){if(!file||!/^image\/(png|jpeg|webp)$/.test(file.type))throw Error('请选择 PNG、JPEG 或 WebP 图片');if(file.size>20*1024*1024)throw Error('请选择小于 20MB 的图片');const url=URL.createObjectURL(file);try{const img=new Image();img.src=url;await img.decode();const scale=Math.min(1,1600/Math.max(img.width,img.height));const canvas=document.createElement('canvas');canvas.width=Math.round(img.width*scale);canvas.height=Math.round(img.height*scale);canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);return canvas.toDataURL('image/webp',.9);}finally{URL.revokeObjectURL(url);}}
