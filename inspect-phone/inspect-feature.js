@@ -493,6 +493,10 @@
     });
     if(!data.source||typeof data.source!=='object')data.source={};
     if(!Array.isArray(data.secrets)||!data.secrets.length)data.secrets=fallback(role,roleId,now).secrets;
+    // Storyline catch-up is pure, idempotent, role scoped and local only.
+    // It must never be described as a server-side timer: it runs on re-entry.
+    var lifeResult=global.InspectPhoneLifeClock&&global.InspectPhoneLifeClock.advance?
+      global.InspectPhoneLifeClock.advance(data,role,now):{added:0};
     function currentSource(){
       var source=data.source[current]==='ai'?'AI 剧情记录':data.source[current]==='offline-sample'?'离线预置剧情 · 非AI生成':'本地剧情样例 · 未调用 AI';
       return source+(data.carriedFrom?' · 含 '+data.carriedFrom+' 的历史记录':'');
