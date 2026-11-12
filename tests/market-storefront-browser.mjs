@@ -51,6 +51,7 @@ for(const width of [320,375,390,430,1280]){
  }
  await page.locator('[data-category="themes"]').click();
  assert.equal(await page.locator('.product-grid .product-card').count(),6,'six original theme products stay in native catalogue');
+ assert.ok(await page.locator('.product-grid').evaluate(el=>el.getBoundingClientRect().top<el.ownerDocument.querySelector('.chat-list-theme-grid').getBoundingClientRect().top),'original themes must appear before list-theme promotion');
  assert.equal(await page.locator('.product-grid').evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length),2,'original theme cards use two-column store shelf');
  assert.equal(await page.locator('.chat-list-theme-grid .product-card').count(),1,'existing independent Messages list theme stays available');
  for(const id of ['wechat','imessage','qq','silver-butterfly','atmosphere','default']){
@@ -58,10 +59,14 @@ for(const width of [320,375,390,430,1280]){
   assert.equal(await page.evaluate(()=>ChatBeauty.getThemePreset()),id);
  }
  await page.locator('.product-grid [data-sf="detail"][data-id="wechat"]').click();
- await page.locator('[data-sf="favorite"][data-id="wechat"]').click();
+ assert.equal(await page.locator('.sf-dialog [data-sf="favorite"]').getAttribute('aria-pressed'),'false');
+ await page.locator('.sf-dialog [data-sf="favorite"]').click();
+ assert.equal(await page.locator('.sf-dialog [data-sf="favorite"]').getAttribute('aria-pressed'),'true');
+ assert.match(await page.locator('.sf-dialog [data-sf="favorite"]').innerText(),/已收藏/);
  await page.locator('[data-sf="close"]').click();
  await page.locator('[data-category="mine"]').click();assert.equal(await page.locator('.sf-product').count(),1);
  await page.locator('[data-sf="mine-tab"][data-id="outfits"]').click();await page.locator('[data-sf="save-outfit"]').click();
+ assert.deepEqual(await page.locator('[name="scope"]:checked').evaluateAll(nodes=>nodes.map(el=>el.value)),['theme'],'save outfit only captures theme by default');
  await page.locator('#sfName').fill('周末留白');for(const checkbox of await page.locator('[name="scope"]').all())await checkbox.uncheck();await page.locator('[name="scope"][value="theme"]').check();await page.locator('[data-sf="confirm-save"]').click();assert.equal(await page.locator('.sf-record').count(),1);
  await page.reload();await page.locator('[data-category="mine"]').click();await page.locator('[data-sf="mine-tab"][data-id="outfits"]').click();assert.equal(await page.locator('.sf-record').count(),1);
  await page.locator('[data-sf="rename"]').click();await page.locator('#sfName').fill('新的名字');await page.locator('[data-sf="confirm-rename"]').click();assert.ok((await page.locator('.sf-record-main').innerText()).includes('新的名字'));
@@ -93,7 +98,7 @@ for(const width of [320,375,390,430,1280]){
  assert.ok(!(await page.evaluate(()=>localStorage.getItem('maomao_market_collection_v1'))).includes('base64'));
  await page.locator('[data-category="categories"]').click();assert.equal(await page.locator('.sf-category-row').count(),9);
  await page.locator('[data-sf="category"][data-id="bubbles"]').click();await page.waitForSelector('.bubble-list');
- assert.deepEqual(errors,[]);count++;console.log('PASS width '+width+': navigation, preview isolation, six themes, favorites, outfit CRUD/apply, image persistence, categories');await ctx.close();
+ assert.deepEqual(errors,[]);count++;console.log('PASS width '+width+': prioritized native themes, preview isolation, accessible favorites, safe outfit scopes, six theme setters and persistence');await ctx.close();
 }
 const ctx=await browser.newContext({viewport:{width:390,height:844},reducedMotion:'reduce'});const page=await ctx.newPage();await page.goto(base+'/theme-store/theme-store.html');await page.waitForSelector('.sf-feature-scene');assert.equal(await page.locator('.sf-feature-scene').first().evaluate(el=>getComputedStyle(el).animationName),'none');await ctx.close();console.log('PASS reduced motion');count++;
 }finally{await browser.close();await new Promise(r=>server.close(r));}
