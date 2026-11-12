@@ -105,6 +105,45 @@
   all('.conversation[data-contact]').forEach(row=>decorate(row.querySelector('.avatar'),'image:contact:'+row.dataset.contact));
   all('#messages .msg').forEach(msg=>decorate(msg.querySelector('.face'),msg.classList.contains('me')?'image:me':'image:contact:'+id));
  }
+ const textFields=[
+  ['home-title','首页卡片标题','.hero h1',44],
+  ['home-meta','首页卡片小字','.hero-meta',70],
+  ['home-note','首页卡片一句话','.hero-quote',85],
+  ['profile-title','我的主页标题','.profile-center h2',44],
+  ['profile-id','我的主页副标题','.profile-center small',60]
+ ];
+ function applyTexts(){
+  textFields.forEach(([id,,selector])=>{
+   const record=state.records.get('text:'+id),node=$(selector);
+   if(!record||!node||typeof record.value!=='string')return;
+   if((id==='home-title'||id==='home-note')&&node.firstChild?.nodeType===3)
+    node.firstChild.nodeValue=record.value+' ';
+   else node.textContent=record.value;
+  });
+ }
+ function addTextEditors(container){
+  const heading=document.createElement('h3');heading.className='v5-custom-small-heading';
+  heading.textContent='首页与个人资料文字';container.append(heading);
+  for(const [id,label,selector,max] of textFields){
+   const row=document.createElement('label');row.className='v5-custom-text-editor';
+   const name=document.createElement('span');name.textContent=label;
+   const input=document.createElement('input');input.type='text';input.maxLength=max;
+   input.dataset.v5Text=id;input.autocomplete='off';
+   input.setAttribute('aria-label',label);
+   input.placeholder=$(selector)?.textContent?.trim().slice(0,50)||'填写自定义文字';
+   const saveBtn=document.createElement('button');saveBtn.type='button';saveBtn.textContent='保存';
+   saveBtn.setAttribute('aria-label','保存'+label);
+   saveBtn.addEventListener('click',async()=>{
+    const value=input.value.trim().slice(0,max);
+    if(!value){toast('请先输入文字');return;}
+    try{
+     await save({key:'text:'+id,value,createdAt:Date.now()});
+     applyTexts();toast('已保存当前 V5 预览中的文字');
+    }catch(e){toast('保存失败，请检查本机存储空间')}
+   });
+   row.append(name,input,saveBtn);container.append(row);
+  }
+ }
  function decorateAfterRerender(){
   if(state.disposed)return;
   if(state.frame)return;
@@ -187,6 +226,9 @@
   const p=state.panel;
   p.querySelectorAll('[data-v5-tab]').forEach(b=>{const on=b.dataset.v5Tab===state.tab;b.setAttribute('aria-selected',String(on));b.classList.toggle('active',on)});
   p.querySelectorAll('[data-v5-section]').forEach(x=>x.hidden=x.dataset.v5Section!==state.tab);
+  all('.v5-custom-text-editor input',p).forEach(input=>{
+   input.value=state.records.get('text:'+input.dataset.v5Text)?.value||'';
+  });
   renderTracks();
  }
  async function handleUpload(kind,file){
@@ -264,6 +306,7 @@
    ['drawer-cover','侧栏封面','独立于聊天和主页封面'],
    ['music-cover','音乐卡片封面','保留原播放器位置']
   ])appear.append(focusLink(label,kind,sub));
+  addTextEditors(appear);
   const musicImport=focusLink('导入本地音乐','music','MP3 / M4A / WAV · 单首不超过 25MB');
   music.append(musicImport);
   const list=document.createElement('div');list.id='v5-custom-track-list';music.append(list);
@@ -342,7 +385,7 @@
    state.selectedTrack=(pref?.value&&state.records.has(pref.value))?pref.value:allTracks()[0]?.key||null;
   }catch(err){state.ephemeral=true;toast('当前浏览器不支持持久保存，仍可临时体验自定义')}
   if(state.selectedTrack)setTrack(state.selectedTrack);
-  renderStickers();applyArtwork();renderTracks();
+  renderStickers();applyArtwork();applyTexts();renderTracks();
  }
  function init(){
   if(!$('.phone')||!$('.hero')||!$('#music-toggle'))return;
