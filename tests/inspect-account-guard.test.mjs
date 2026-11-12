@@ -78,8 +78,8 @@ test('账号之间物理 key 隔离仍必须由已认证的 scope 层提供，�
   assert.equal(bob.bridge.buildPrompt('r1',bob.storage),'');
 });
 test('手机及聊天页都在互动桥接前加载作用域守卫，Worker注入缺失时不降级为跨账号读取',()=>{
-  assert.match(phone,/inspect_account_guard\.js\?v=20261112v1/);
-  assert.match(chat,/inspect_account_guard\.js\?v=20261112v1/);
+  assert.match(phone,/inspect_account_guard\.js\?v=20261112v2/);
+  assert.match(chat,/inspect_account_guard\.js\?v=20261112v2/);
   assert.ok(phone.indexOf('inspect_account_guard.js')<phone.indexOf('inspect_interaction_bridge.js'));
   assert.ok(chat.indexOf('inspect_account_guard.js')<chat.indexOf('inspect_interaction_bridge.js'));
   assert.match(featureSource,/accountGuard\.state\(\)\.mode==='blocked'/);
