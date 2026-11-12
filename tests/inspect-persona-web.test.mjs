@@ -106,8 +106,8 @@ test('不同角色的搜索、浏览与论坛帖子不会相互污染',()=>{
   assert.ok(!b.sections.forum.posts.some(x=>x.authorId==='a'));
 });
 test('手机和离线PWA真实加载人设网页模块，论坛与浏览器有完整视图',()=>{
-  assert.match(phone,/inspect-persona-web\.js\?v=20261112v1/);
-  assert.match(sw,/inspect-persona-web\.js\?v=20261112v1/);
+  assert.match(phone,/inspect-persona-web\.js\?v=20261112v2/);
+  assert.match(sw,/inspect-persona-web\.js\?v=20261112v2/);
   assert.match(feature,/personaWeb\.seed\(role,roleId,data,now\)/);
   assert.match(native,/inspectBrowserSearch/);
   assert.match(native,/nv-browser-article/);
