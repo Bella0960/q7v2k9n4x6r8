@@ -497,3 +497,40 @@
   animation:none!important;transition:none!important;
  }
 }
+
+/* AT REAL MUSIC ENTRY — no counterfeit playback animation in Chat home. */
+.phone-mockup[data-chat-theme-preset="atmosphere"][data-at-surface="chats"] .floating-music-card{
+ display:flex;gap:9px;align-items:center;min-width:0;padding:8px 10px!important;
+ background:var(--at-wash)!important;border:1px solid var(--at-line)!important;
+ border-radius:8px!important;box-shadow:none!important;backdrop-filter:none!important;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"][data-at-surface="chats"] .vinyl-disc.playing,
+.phone-mockup[data-chat-theme-preset="atmosphere"][data-at-surface="chats"] .vinyl-disc.playing .chat-home-back,
+.phone-mockup[data-chat-theme-preset="atmosphere"][data-at-surface="chats"] .sound-wave .wave-bar{
+ animation:none!important;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"][data-at-surface="chats"] .floating-music-card .m-sub{
+ font-size:9px!important;letter-spacing:.12em!important;color:var(--at-muted)!important;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"][data-at-surface="chats"] #playToggleBtn{
+ display:grid!important;place-items:center!important;
+ min-height:42px!important;min-width:42px!important;width:42px!important;
+ padding:0!important;border:1px solid var(--at-line)!important;
+ border-radius:50%!important;background:var(--at-bg)!important;color:var(--at-ink)!important;
+ cursor:pointer;transition:transform .22s cubic-bezier(.18,.82,.2,1),background .22s ease;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"][data-at-surface="chats"] #playToggleBtn svg{
+ display:block;width:19px!important;height:19px!important;stroke-width:1.55!important;
+ stroke:currentColor!important;fill:none!important;margin:auto!important;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"][data-at-surface="chats"] #playToggleBtn:active{
+ transform:scale(.93);
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"][data-at-surface="chats"] #playToggleBtn:focus-visible{
+ outline:1px solid var(--at-ink)!important;outline-offset:3px;
+}
+@media(prefers-reduced-motion:reduce){
+ .phone-mockup[data-chat-theme-preset="atmosphere"][data-at-surface="chats"] #playToggleBtn{
+  transition:none!important;
+ }
+}
