@@ -53,3 +53,24 @@ Switch to any previous store theme. No chat, cover or bubble data is deleted or 
 - Re-tested production controller source in an isolated DOM smoke harness: direct tone, drawer open, music route, drawer tone and theme-switch cleanup **passed**. Source compiled with the JavaScript function compiler.
 - Created a **separate, self-contained browser interaction preview** using fictional messages (not committed as production code). It was exercised with local Chromium at **375×812, 390×844, 430×932 and 1280×900** for switching chats, typing/sending messages, light/dark changes and horizontal overflow; those preview checks passed. This does **not** demonstrate that the full MAOMAO chat pages have passed their browser or Android verification.
 - Full `npm run build`, real project Playwright suite, device gestures, persisted conversation send/quote/long-press, legacy theme switching and production PWA upgrade remain unverified in this environment. Keep the PR **Draft**, unmerged and undeployed until those pass.
+
+## 2026-11-12 — V2 interaction reference and real drawer shortcuts
+
+The two user-provided original videos were reviewed again. The goal is deliberately *not* to recreate a foreign interface or import reference video imagery. The key requested improvements are transitions with spatial continuity, tactile press feedback, consistent thin editorial typography, more reachable functions, and every visible control having an actual outcome.
+
+### Real-project work in PR #273
+
+- The opt-in atmosphere drawer now has a compact two-row grid of eight **existing MAOMAO pages**: search, contacts, Moments, character footprint, diary, character profiles, theme store, and music. No duplicate app, dummy navigation, background data migration, or music player is introduced.
+- Each item is a native same-origin anchor built from the current script base, with fine stroke SVG artwork, accessible labels, restrained stagger-on-open animations, press-state scaling, and a reduced-motion fallback.
+- The previously added focus containment, backdrop close, swipe-to-close, edge-swipe open, quick light/dark shortcut, data-isolation safeguards, native message send, and PWA asset cache remain intact.
+- Added source regression assertions that the eight destinations are unique and resolve to their actual routes.
+
+### Separate interactive study (not production)
+
+- The owner's independent HTML prototype, `薄影-灵动交互预览-v2.html`, is a local conceptual preview using entirely **fictional in-memory messages**. It now demonstrates message search, unread/favorites/pinned filters, animated art switching, long-press reactions and contextual actions, quote/edit/save, faux gallery/voice/location cards, shared-note behavior, expandable timeline, profile tabs and keyboard-dismissable sheets.
+- Browser smoke checks were run on the **standalone prototype only** at 375, 390, 430 and 1280px; the second interaction pass exercised search, notes, quote/edit/reaction/save and overlay dismissal. This is **not** evidence that MAOMAO's integrated pages or mobile PWA have passed those same tests.
+- Real MAOMAO must reuse existing data entities, user actions, storage and native message lifecycle when selectively incorporating prototype interactions. Do **not** copy fictional message/state code from the preview into production.
+
+### Unfinished release gate
+
+Full repository build, real browser/Android screenshots, historical data and per-character overrides, long histories, quoted/media/pay messages, external theme switchback, PWA update/offline operation, and accessibility/gesture regression still need execution. Keep PR #273 Draft and do not merge/deploy based on prototype success.
