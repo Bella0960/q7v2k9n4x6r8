@@ -159,3 +159,43 @@ test('completed theme cards occupy a real two-column shelf, not the old swipe ra
  assert.match(storefrontCSS,/grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
  assert.match(html,/getComputedStyle\(rail\)\.display==='grid'/);
 });
+
+
+test('completed native themes show first and retain the independent list theme and featured product',()=>{
+ const first=html.indexOf('function renderThemes(){');
+ const end=html.indexOf('function renderBubbles()',first);
+ assert.ok(first>0&&end>first);
+ const render=html.slice(first,end);
+ const grid=render.indexOf('<div class="product-grid">');
+ const list=render.indexOf('<div class="chat-list-theme-grid">');
+ const feature=render.indexOf('market.renderThemeFeature()');
+ assert.ok(grid>0&&list>grid&&feature>list,'existing theme grid precedes secondary merchandising');
+ assert.match(render,/themeArt\(item\)/);
+ assert.match(render,/data-action="theme-apply"/);
+ assert.match(render,/data-sf="detail"/);
+});
+test('save current outfit defaults to theme only, never silently capturing icons or wallpaper',()=>{
+ assert.match(storefrontSource,/checkboxes\(Object\.keys\(model\.scopes\),\['theme'\]\)/);
+ assert.match(storefrontSource,/function checkboxes\(selected,checked=selected\)/);
+ assert.match(storefrontSource,/checked\.includes\(s\)/);
+ assert.match(storefrontSource,/默认只保存当前聊天主题/);
+});
+test('favorite controls expose their selected state and refresh open detail',()=>{
+ assert.match(storefrontSource,/aria-pressed/);
+ assert.match(storefrontSource,/model\.read\(\)\.favorites\.includes\(id\)/);
+ assert.match(storefrontSource,/overlay\?\.querySelectorAll\('\[data-sf="favorite"/);
+ assert.match(storefrontSource,/已收藏 · 点击取消/);
+});
+test('existing spotlight shares the storefront preview and confirmation, with no forward arrows',()=>{
+ const expansion=readFileSync(new URL('../theme-store/market-expansion.js',import.meta.url),'utf8');
+ assert.match(expansion,/data-sf="detail" data-id="atmosphere"/);
+ assert.match(expansion,/data-sf="apply-theme" data-id="atmosphere"/);
+ assert.doesNotMatch(expansion,/›|→|↑|market-hub-arrow/);
+ assert.match(storefrontSource,/action==='confirm-apply-theme'/);
+});
+test('native shelves, category rows and dialog controls stay usable at narrow phone widths',()=>{
+ assert.match(storefrontCSS,/@media\(max-width:360px\)/);
+ assert.match(storefrontCSS,/\.store-app \.product-grid \.action-btn/);
+ assert.match(storefrontCSS,/\.store-app \.sf-category-row/);
+ assert.match(storefrontCSS,/\.store-app \.sf-favorite/);
+});
