@@ -227,11 +227,31 @@ test('invalid or unpersisted chapters cannot be marked read and storage failure 
   assert.equal(G.markReadChapter(p,2,storage),false);
   assert.equal(G.markReadChapter(p,3,storage),false);
   assert.equal(G.markReadChapter(p,4,storage),false);
-  assert.equal(G.markReadChapter(p,1,storage),true);
+  assert.equal(G.markReadChapter(p,1,storage),false,'ignored write must not report success');
+  const saved=new Map();
+  const verified={getItem:key=>saved.get(key)??null,setItem:(key,value)=>{saved.set(key,value)}};
+  assert.equal(G.markReadChapter(p,1,verified),true);
+  assert.equal(G.readChapter(p,verified),1);
   const blocked={getItem:()=>{throw Error('unavailable')},setItem:()=>{throw Error('full')}};
   assert.equal(G.readChapter(p,blocked),0);
   assert.equal(G.markReadChapter(p,1,blocked),false);
   assert.equal(G.unreadCount({id:'other',comments:[],gossipStory:{outlineId:'unknown'}},blocked),0);
+});
+
+test('stale read cursor stays unread when storage silently ignores an advance',()=>{
+  const post={id:'fiction-read-retry',gossipStory:{outlineId:'double_life',chapter:2,maxChapters:4},
+    comments:[{source:'gossip-author',gossipChapter:1},{source:'gossip-author',gossipChapter:2}]};
+  let stored='1';
+  let drop=true;
+  const storage={getItem:()=>stored,setItem:(_key,value)=>{if(!drop)stored=value}};
+  assert.equal(G.readChapter(post,storage),1);
+  assert.equal(G.markReadChapter(post,2,storage),false);
+  assert.equal(G.readChapter(post,storage),1,'failed write must retain previously read chapter');
+  assert.equal(G.unreadCount(post,storage),1);
+  drop=false;
+  assert.equal(G.markReadChapter(post,2,storage),true,'later retry should succeed');
+  assert.equal(G.readChapter(post,storage),2);
+  assert.equal(G.unreadCount(post,storage),0);
 });
 
 test('mobile feed and detail expose unread progress and the next unread chapter',()=>{
