@@ -9,6 +9,9 @@
   var LOCK_NAME = 'maomao-wallet-ledger-v1';
   var fallbackQueue = Promise.resolve();
   var fallbackNoticeShown = false;
+  // Keep the exact raw snapshot associated with every wallet object returned by our reader.
+  // Callers must not need to remember to provide a separate optimistic version token.
+  var walletSnapshotOrigins = typeof WeakMap === 'function' ? new WeakMap() : null;
 
   function runExclusive(task, options) {
     if (typeof task !== 'function') {
@@ -197,7 +200,11 @@
       return null;
     }
 
-    if (raw == null) return { balance: 1000, history: [] };
+    if (raw == null) {
+      var firstUse = { balance: 1000, history: [] };
+      if (walletSnapshotOrigins && storageKey === 'workData') walletSnapshotOrigins.set(firstUse, null);
+      return firstUse;
+    }
 
     var wallet;
     try {
@@ -212,6 +219,7 @@
     }
     if (!Object.prototype.hasOwnProperty.call(wallet, 'history')) wallet.history = [];
     else if (!Array.isArray(wallet.history)) return null;
+    if (walletSnapshotOrigins && storageKey === 'workData') walletSnapshotOrigins.set(wallet, raw);
     return wallet;
   }
 
@@ -227,6 +235,14 @@
         wallet.balance < 0 || !Array.isArray(wallet.history)) {
       return { ok: false, reason: 'invalid-wallet' };
     }
+    // Resolve the baseline before doing any more reads: a stale snapshot must
+    // not overwrite another tab's newer balance even if it bypassed Web Locks.
+    var baselineKnown = arguments.length > 1;
+    if (!baselineKnown && walletSnapshotOrigins && walletSnapshotOrigins.has(wallet)) {
+      expectedRaw = walletSnapshotOrigins.get(wallet);
+      baselineKnown = true;
+    }
+    if (!baselineKnown) return { ok: false, reason: 'snapshot-required' };
     var serialized;
     try {
       serialized = JSON.stringify(wallet);
@@ -237,13 +253,14 @@
       if (existingRaw != null && !readWalletForMutation('workData', existingRaw)) {
         return { ok: false, reason: 'invalid-store' };
       }
-      if (arguments.length > 1 && existingRaw !== expectedRaw) {
+      if (existingRaw !== expectedRaw) {
         return { ok: false, reason: 'stale-wallet' };
       }
       storage.setItem('workData', serialized);
       if (storage.getItem('workData') !== serialized) {
         return { ok: false, reason: 'readback' };
       }
+      if (walletSnapshotOrigins) walletSnapshotOrigins.set(wallet, serialized);
       return { ok: true, raw: serialized };
     } catch (error) {
       return { ok: false, reason: 'storage-write' };
