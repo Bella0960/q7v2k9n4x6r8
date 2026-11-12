@@ -7,6 +7,7 @@ const native=readFileSync(new URL('../inspect-phone/inspect-native-view.js',impo
 const feature=readFileSync(new URL('../inspect-phone/inspect-feature.js',import.meta.url),'utf8');
 const phone=readFileSync(new URL('../inspect-phone/phone.html',import.meta.url),'utf8');
 const skin=readFileSync(new URL('../inspect-phone/inspect-native.css',import.meta.url),'utf8');
+const personaWeb=readFileSync(new URL('../inspect-phone/inspect-persona-web.js',import.meta.url),'utf8');
 
 function boot(role={id:'native-1',name:'小叶',description:'在校大学生',relationship:'朋友'}) {
   const handlers={},saved=new Map();
@@ -27,7 +28,7 @@ function boot(role={id:'native-1',name:'小叶',description:'在校大学生',re
   };
   const window={PhoneStorage:{getApiConfig(){return {};}}};
   const ctx={window,document,localStorage:storage,Date,Math,JSON,Number,String,Array,Object,console};
-  vm.runInNewContext(native,ctx);vm.runInNewContext(feature,ctx);
+  vm.runInNewContext(native,ctx);vm.runInNewContext(personaWeb,ctx);vm.runInNewContext(feature,ctx);
   window.InspectPhoneFeature.mount({role,requestedId:role.id,appLayer:layer,appBody:body,appTitle:title});
   const event=(scope,sel,kind,val)=>{
     const cb=handlers[scope+':click'];
@@ -41,11 +42,18 @@ function boot(role={id:'native-1',name:'小叶',description:'在校大学生',re
   function app(x){event(x==='chat'||x==='browser'?'dock':'grid','[data-app]','app',x);}
   function detail(kind,index=0){event('body','[data-detail]','detail',{kind,index});}
   function tab(x){event('body','[data-native-tab]','nativeTab',x);}
+  function submit(formId,values){
+    const h=handlers['body:submit'];
+    h({target:{id:formId,querySelector(sel){
+      const k=sel.match(/name=([\w-]+)/);
+      return k?{value:values[k[1]]}:null;
+    }},preventDefault(){}});
+  }
   function unlockAll(){
     window.InspectPhoneFeature.onUnlock();action('grant');action('all');action('start');
   }
   const read=()=>JSON.parse(saved.get(window.InspectPhoneFeature.storyKey(role.id)));
-  return {body,title,saved,window,unlockAll,action,app,detail,tab,read,
+  return {body,title,saved,window,unlockAll,action,app,detail,tab,submit,read,
     back(){handlers['back:click']({});},
     reload(){handlers['reload:click']({});}};
 }
@@ -113,13 +121,19 @@ test('钱包、相册、音乐、地图、浏览器各自具备可进入的详�
     ['album','photo','nv-photo-full'],
     ['music','track','nv-player'],
     ['map','stop','nv-sheet'],
-    ['browser','search','nv-browser-page'],
     ['moments','moment','nv-sheet']
   ]) {
     u.app(app);u.detail(kind,0);
     assert.match(u.body.innerHTML,new RegExp(selector),app+' 应具有详情页');
     u.back();
   }
+  u.app('browser');
+  assert.match(u.body.innerHTML,/inspectBrowserSearch/);
+  u.submit('inspectBrowserSearch',{query:'如何给女朋友买鲜花'});
+  assert.match(u.body.innerHTML,/nv-web-result-row/);
+  u.detail('browser-result',0);
+  assert.match(u.body.innerHTML,/nv-browser-article/);
+  u.back();assert.match(u.body.innerHTML,/nv-web-result-row/);
   u.app('device');assert.match(u.body.innerHTML,/nv-settings-owner/);
 });
 
