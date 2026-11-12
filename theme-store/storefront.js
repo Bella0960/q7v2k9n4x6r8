@@ -4,7 +4,7 @@
 const model=global.MAOMAOMarketCollection;
 let api,section='discover',mineTab='favorites',overlay,focusBefore;
 const e=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const icons={home:'M3 11 12 3l9 8M5 10v11h5v-7h4v7h5V10',theme:'M5 3h14v18H5zM8 7h8M8 11h5',category:'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',mine:'M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0M4 21v-2a8 8 0 0 1 16 0v2',star:'m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z',close:'m6 6 12 12M18 6 6 18',arrow:'m9 5 7 7-7 7',plus:'M12 4v16M4 12h16'};
+const icons={home:'M3 11 12 3l9 8M5 10v11h5v-7h4v7h5V10',theme:'M5 3h14v18H5zM8 7h8M8 11h5',category:'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',mine:'M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0M4 21v-2a8 8 0 0 1 16 0v2',star:'m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z',close:'m6 6 12 12M18 6 6 18',arrow:'m9 5 7 7-7 7',plus:'M12 4v16M4 12h16',chat:'M4 5h16v12H8l-4 3V5z',diary:'M5 3h14v18H5zM9 8h6M9 12h6',music:'M9 18V5l11-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0M20 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0',book:'M3 5h7a3 3 0 0 1 3 3v13a3 3 0 0 0-3-3H3zM21 5h-5a3 3 0 0 0-3 3v13a3 3 0 0 1 3-3h5z',settings:'M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0',photo:'M3 4h18v16H3zM7 9a1 1 0 1 0 .01 0M4 17l5-5 3 3 3-4 5 6'};
 const svg=n=>'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+(icons[n]||icons.theme)+'"/></svg>';
 const button=(text,action,id='',cls='sf-button')=>'<button type="button" class="'+cls+'" data-sf="'+action+'" data-id="'+e(id)+'">'+text+'</button>';
 const pages=[['desktop','桌面'],['list','聊天首页'],['detail','聊天详情'],['moments','动态'],['mine','我的'],['home','我的主页']];
@@ -17,7 +17,7 @@ function scene(id,page='detail'){
  if(page==='list')body='<h3>Chats</h3><div class="sf-music"><span>09:41</span><small>一段慢下来的时间</small></div>'+rows+'<div class="sf-person"><i>群</i><span><b>周末小组</b><small>下午一起喝咖啡。</small></span></div>';
  if(page==='moments')body='<h3>动态</h3><div class="sf-landscape"></div>'+rows.slice(0,rows.indexOf('<div class="sf-person">',10))+'<p class="sf-post">把今天留在这里。</p><div class="sf-gallery"><i></i><i></i><i></i></div>';
  if(page==='mine'||page==='home')body='<h3>'+ (page==='home'?'我的主页':'我的')+'</h3><div class="sf-landscape"></div><div class="sf-identity"><i>林</i><b>林间</b><small>记录普通日子里的小事。</small></div>'+(page==='home'?'<div class="sf-gallery"><i></i><i></i><i></i></div><p class="sf-post">今天也有值得记住的瞬间。</p>':'<p class="sf-menu">我的主页</p><p class="sf-menu">我的收藏</p><p class="sf-menu">钱包与设置</p>');
- if(page==='desktop')body='<div class="sf-clock">09:41<small>星期四 · 晴</small></div><div class="sf-apps">'+['聊天','日记','音乐','阅读','设置','相册'].map(x=>'<div>'+svg('category')+'<small>'+x+'</small></div>').join('')+'</div>';
+ if(page==='desktop')body='<div class="sf-clock">09:41<small>星期四 · 晴</small></div><div class="sf-apps">'+[['聊天','chat'],['日记','diary'],['音乐','music'],['阅读','book'],['设置','settings'],['相册','photo']].map(([label,icon])=>'<div class="sf-app"><span class="sf-app-icon">'+svg(icon)+'</span><small>'+label+'</small></div>').join('')+'</div>';
  return '<div class="sf-scene sf-'+active+'"><div class="sf-status">9:41 <span>••• ▰</span></div>'+body+'</div>';
 }
 function heading(title,sub){return '<div class="sf-heading"><h2>'+title+'</h2><p>'+sub+'</p></div>';}
@@ -48,7 +48,31 @@ function showPage(page){const host=document.getElementById('sfPreview');if(!host
 function checkboxes(selected){return '<fieldset class="sf-scopes"><legend>选择应用范围</legend>'+selected.map(s=>'<label><input type="checkbox" name="scope" value="'+s+'" checked> '+model.scopes[s]+'</label>').join('')+'</fieldset>';}
 const selected=()=>[...overlay.querySelectorAll('[name=scope]:checked')].map(x=>x.value);
 function getRecord(encoded){const [type,id]=encoded.split(':');if(!['outfits','creations'].includes(type))throw Error('记录类型无效');const item=model.read()[type].find(x=>x.id===id);if(!item)throw Error('记录已不存在');return {type,item};}
-async function recordPreview(encoded){const {type,item}=getRecord(encoded);modal(item.name,'<div id="sfRecordPreview"></div>'+(type==='outfits'?checkboxes(item.scopes):'<p class="sf-caption">应用范围：仅桌面壁纸</p>')+'<footer>'+button('重新应用','record-apply',encoded,'sf-button primary')+'</footer>');const host=document.getElementById('sfRecordPreview');if(type==='outfits'){host.innerHTML=scene(item.data.theme||'default');}const key=type==='creations'?item.key:item.data.wallpaper?.key;if(key){const url=await global.MAOMAOWallpaperStore.getByKey(key);if(host.isConnected&&url){const img=document.createElement('img');img.src=url;img.className='sf-image';img.alt=item.name;host.prepend(img);}}}
+async function renderSavedIconPreview(host,saved){
+ if(!host?.isConnected||!saved)return;
+ const pane=document.createElement('section');pane.className='sf-icon-preview';
+ const caption=document.createElement('h3');caption.textContent='桌面图标 · '+(saved.presetId?'已保存套装':'系统默认');pane.append(caption);
+ const grid=document.createElement('div');grid.className='sf-icon-gallery';pane.append(grid);host.append(pane);
+ if(!saved.presetId){const p=document.createElement('p');p.className='sf-caption';p.textContent='此搭配保存的是系统默认图标。';pane.append(p);return;}
+ let preset;
+ try{preset=JSON.parse(localStorage.getItem('home_icon_presets_v1')||'[]').find(x=>x.id===saved.presetId);}
+ catch{preset=null;}
+ if(!preset||!Array.isArray(preset.appIds)){const p=document.createElement('p');p.className='sf-error';p.textContent='已保存的图标套装不存在，暂不能重新应用。';pane.append(p);return;}
+ caption.textContent='桌面图标 · '+preset.name;
+ for(const id of preset.appIds.slice(0,8)){
+   if(!/^app_[a-z]+$/.test(id))continue;
+   const tile=document.createElement('div');tile.className='sf-icon-tile';
+   const image=await global.MAOMAOWallpaperStore.getByKey('home_icon_preset_img_v1_'+saved.presetId+'_'+id);
+   if(!host.isConnected)return;
+   if(/^data:image\/(?:png|jpeg|webp);base64,/.test(image||'')){const img=document.createElement('img');img.src=image;img.alt='';tile.append(img);}
+   else{tile.textContent='—';tile.setAttribute('aria-label','预设图标图片缺失');}
+   grid.append(tile);
+ }
+}
+async function recordPreview(encoded){const {type,item}=getRecord(encoded);modal(item.name,'<div id="sfRecordPreview"></div>'+(type==='outfits'?checkboxes(item.scopes):'<p class="sf-caption">应用范围：仅桌面壁纸</p>')+'<footer>'+button('重新应用','record-apply',encoded,'sf-button primary')+'</footer>');const host=document.getElementById('sfRecordPreview');if(type==='outfits'){
+ host.innerHTML=scene(item.data.theme||'default');
+ if(item.data.icons)await renderSavedIconPreview(host,item.data.icons);
+}const key=type==='creations'?item.key:item.data.wallpaper?.key;if(key){const url=await global.MAOMAOWallpaperStore.getByKey(key);if(host.isConnected&&url){const img=document.createElement('img');img.src=url;img.className='sf-image';img.alt=item.name;host.prepend(img);}}}
 async function imageData(file){if(!file||!/^image\/(png|jpeg|webp)$/.test(file.type))throw Error('请选择 PNG、JPEG 或 WebP 图片');if(file.size>20*1024*1024)throw Error('请选择小于 20MB 的图片');const url=URL.createObjectURL(file);try{const img=new Image();img.src=url;await img.decode();const scale=Math.min(1,1600/Math.max(img.width,img.height));const canvas=document.createElement('canvas');canvas.width=Math.round(img.width*scale);canvas.height=Math.round(img.height*scale);canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);return canvas.toDataURL('image/webp',.9);}finally{URL.revokeObjectURL(url);}}
 async function handle(action,id){
  if(action==='close')return close();
@@ -58,7 +82,7 @@ async function handle(action,id){
  if(action==='apply-theme'){if(!api.applyTheme(id))throw Error('主题未能保存，请检查存储空间');close();return;}
  if(action==='category'){if(['beauty','appearance','icons'].includes(id))return api.market.route(id);api.navigate(id==='list'?'themes':id);if(id==='list')document.querySelector('.chat-list-theme-grid')?.scrollIntoView();return;}
  if(action==='mine-tab'){mineTab=id;api.render();return;}
- if(action==='save-outfit'){modal('保存当前搭配','<label class="sf-field">搭配名称<input id="sfName" maxlength="40" placeholder="例如：周末的留白"></label>'+checkboxes(Object.keys(model.scopes))+'<p class="sf-caption">气泡使用当前所选角色；背景、头像、名片不随搭配复制。</p>'+button('保存搭配','confirm-save','','sf-button primary'));return;}
+ if(action==='save-outfit'){modal('保存当前搭配','<label class="sf-field">搭配名称<input id="sfName" maxlength="40" placeholder="例如：周末的留白"></label>'+checkboxes(Object.keys(model.scopes))+'<p class="sf-caption">气泡使用当前所选角色；图标引用「桌面图标」内已保存的套装。背景、头像、名片不随搭配复制。</p>'+button('保存搭配','confirm-save','','sf-button primary'));return;}
  if(action==='confirm-save'){await model.saveOutfit(overlay.querySelector('#sfName').value,selected(),api.scope());close();api.render();api.toast('搭配已保存');return;}
  if(action==='record-preview')return recordPreview(id);
  if(action==='record-apply'){const {type,item}=getRecord(id);if(type==='outfits')await model.applyOutfit(item,selected());else {const image=await global.MAOMAOWallpaperStore.getByKey(item.key);if(!image)throw Error('素材已缺失');await global.MAOMAOWallpaperStore.saveByKey(global.MAOMAOWallpaperStore.key,image,{requireIDB:true});}close();api.render();api.toast('已应用，返回对应页面查看');return;}
