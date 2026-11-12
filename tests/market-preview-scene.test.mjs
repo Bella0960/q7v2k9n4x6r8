@@ -75,7 +75,7 @@ test('real page includes preview resources before storefront and keeps existing 
  assert.ok(html.indexOf('preview-scene.js?v=20261113m7')<html.indexOf('storefront.js?v=20261113m12'));
  assert.match(html,/preview-scene.css\?v=20261113m7/);
  assert.match(html,/collection-store.js\?v=20261112m3/);
- assert.match(html,/market-expansion.js\?v=20261112m1/);
+ assert.match(html,/market-expansion.js\?v=20261113m2/);
 });
 
 test('QQ and WeChat retain distinct legacy layouts, not an editorial repaint',()=>{
