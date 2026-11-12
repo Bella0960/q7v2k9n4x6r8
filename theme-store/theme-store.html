@@ -346,7 +346,7 @@
         '<div class="sample-row mine"><span class="sample-bubble" style="background:color-mix(in srgb,'+esc(my)+' '+myOpacity+'%,transparent);color:'+esc(myColor)+';border-radius:'+esc(myRadius)+';font-size:'+Number(myFont)+'px;padding:'+Math.max(2,Number(myPad)-.5)+'px '+(Number(myPad)+3)+'px;font-family:'+myFamily+'">有呀，等会见。</span><span class="sample-avatar">我</span></div>';
     }
     function themeArt(theme){
-      if(theme.id==='atmosphere')return '<div class="product-art theme-art-atmosphere"><span class="at-mini-avatar"></span><span class="at-mini-name">薄影</span><span class="art-bubble left">今天的风很轻。</span><span class="art-bubble right">慢慢走，我等你。</span></div>';
+      if(theme.id==='atmosphere')return '<div class="product-art theme-art-atmosphere"><svg class="at-mini-symbol" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 49V30c0-12 8-20 18-20s18 8 18 20v19"/><path d="M22 49V30c0-7 4-12 10-12s10 5 10 12v19"/><path d="M29 49V31c0-2 1-4 3-4s3 2 3 4v18"/><path d="M10 53h44"/></svg><span class="at-mini-name">薄影</span><span class="art-bubble left">今天的风很轻。</span><span class="art-bubble right">慢慢走，我等你。</span></div>';
 
       if(theme.id==='wechat'){
         return '<div class="product-art theme-art-wechat" aria-label="微信聊天、通讯录、朋友圈和单聊四页预览">'+
@@ -387,7 +387,7 @@
       var html='<div class="section-head sf-native-section"><div><h3>原有主题</h3></div><p>六套独立外观 · 原有功能保留</p></div><div class="product-grid">';
       defaultThemes.forEach(function(item){
         var isOwned=owned.indexOf(item.id)>=0,isActive=active===item.id;
-        var label=isActive?'正在使用':(isOwned?'应用主题':'免费获取并应用');
+        var label=isActive?'正在使用':(isOwned?'应用主题':'免费应用');
         html+='<article class="product-card">'+themeArt(item)+'<div class="product-meta"><span class="product-eyebrow">'+item.eyebrow+'</span><strong class="product-title">'+item.name+'</strong><span class="product-desc">'+item.desc+'</span></div><div class="product-foot"><span class="product-price">'+(isOwned?'已收录':'FREE')+'</span><button type="button" class="action-btn light" data-sf="detail" data-id="'+item.id+'">预览</button><button type="button" class="action-btn '+(isOwned?'light':'')+'" data-action="theme-apply" data-id="'+item.id+'" '+(isActive?'disabled':'')+'>'+label+'</button></div></article>';
       });
       html+='</div>'+
