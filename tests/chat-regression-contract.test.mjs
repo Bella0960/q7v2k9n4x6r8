@@ -2541,6 +2541,7 @@ test('chat extras: outgoing payment ledger reconciles chat write failure and pag
       advance: (ms) => { now += ms; },
       allowRefund: () => { failRefund = false; },
       storeWallet: (wallet) => { stored.set('workData', JSON.stringify(wallet)); },
+      storeWalletRaw: (raw) => { stored.set('workData', raw); },
       storeChatRaw: (raw) => { stored.set('chat_history_' + (options.roleId || 'role-1'), raw); }
     };
   }
@@ -2623,6 +2624,22 @@ test('chat extras: outgoing payment ledger reconciles chat write failure and pag
   assert.equal(corruptedChat.wallet().balance, 954.5, 'reload must not refund unreadable history');
   assert.equal(corruptedChat.wallet().history[0].status, 'pending-chat');
   assert.match(corruptedChat.effects.toasts.at(-1), /聊天记录无法核实/);
+
+  const brokenWallet = fixture();
+  brokenWallet.storeWalletRaw('{invalid-wallet');
+  brokenWallet.actions.submitPayMessage();
+  assert.equal(brokenWallet.effects.chatWrites.length, 0, 'never send a card against corrupt wallet data');
+  assert.equal(brokenWallet.effects.walletWrites.length, 0, 'never overwrite damaged wallet data with a default');
+  assert.equal(brokenWallet.effects.ai.length, 0);
+  assert.match(brokenWallet.effects.toasts.at(-1), /钱包数据损坏/);
+  brokenWallet.actions.recoverOutgoingPayments();
+  assert.match(brokenWallet.effects.toasts.at(-1), /自动恢复已暂停/);
+
+  const invalidBalance = fixture();
+  invalidBalance.storeWalletRaw(JSON.stringify({ balance: '1000', history: [] }));
+  invalidBalance.actions.submitPayMessage();
+  assert.equal(invalidBalance.effects.walletWrites.length, 0, 'string-valued balance must not authorize debit');
+  assert.equal(invalidBalance.effects.chatWrites.length, 0);
 });
 
 
