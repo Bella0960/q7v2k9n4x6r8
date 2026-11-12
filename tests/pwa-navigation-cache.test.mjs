@@ -75,10 +75,11 @@ test('opt-in atmosphere assets are precached for the mobile PWA',()=>{
  assert.ok(serviceWorker.includes('./profile/profile.html'));
  assert.ok(serviceWorker.includes('./shared/css/atmosphere-my-home.css?v=20261112h2'));
  assert.ok(serviceWorker.includes('./shared/js/atmosphere-my-home.js?v=20261112h3'));
- for(const name of ['storefront.css','preview-scene.js']){
+ for(const name of ['preview-scene.js']){
    assert.ok(serviceWorker.includes('./theme-store/'+name+'?v=20261113m7'));
  }
  assert.ok(serviceWorker.includes('./theme-store/preview-scene.css?v=20261113m7'));
+ assert.ok(serviceWorker.includes('./theme-store/storefront.css?v=20261112m4'));
  assert.ok(serviceWorker.includes('./theme-store/storefront.js?v=20261113m8'))
  assert.ok(serviceWorker.includes('./theme-store/collection-store.js?v=20261112m3'));
 
