@@ -73,6 +73,9 @@
     if(!sourceId||(!title&&!excerpt))return null;
     var focus={id:'phone-focus:'+at+':'+Math.floor(Math.random()*1e7).toString(36),
       kind:kind,sourceId:sourceId,title:title,text:excerpt,at:at,
+      includedEventIds:list(entry.includedEventIds).filter(function(id){
+        return typeof id==='string'&&id.length>0&&id.length<130;
+      }).slice(-2),
       origin:'explicit_phone_chat_navigation'};
     data.pendingChatFocus=focus;
     return focus;
@@ -161,6 +164,17 @@
         list(story.interactions).forEach(function(e){
           if(e&&e.origin==='user_on_fictional_phone'&&e.sourceId===focus.sourceId&&
             (e.type==='note_created'||e.type==='note_edited')&&
+            Number(e.at)<=Number(focus.at)&&!e.offeredToAIAt){
+            e.offeredToAIAt=current;
+          }
+        });
+      }
+      if(focus.kind==='moment'&&list(focus.includedEventIds).length){
+        var present=Object.create(null);
+        focus.includedEventIds.forEach(function(id){present[id]=true;});
+        list(story.interactions).forEach(function(e){
+          if(e&&present[e.id]&&e.origin==='user_on_fictional_phone'&&
+            e.type==='moment_comment'&&e.sourceId===focus.sourceId&&
             Number(e.at)<=Number(focus.at)&&!e.offeredToAIAt){
             e.offeredToAIAt=current;
           }
