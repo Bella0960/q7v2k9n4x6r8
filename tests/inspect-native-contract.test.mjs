@@ -135,3 +135,26 @@ test('虚构角色内容始终经过 HTML 转义，不能变成脚本',()=>{
   assert.ok(escaped.body.includes('&lt;img'));
   assert.ok(!escaped.body.includes('<img'));
 });
+
+
+test('底部导航使用真实固定布局，不再作为普通内容流中间的 sticky 元素',()=>{
+  assert.match(native,/footer='<nav class="nv-tabbar"/);
+  assert.match(native,/'<div class="nv-content">'\+body\+'<\/div>'\+footer/);
+  assert.match(skin,/\.native-surface \.nv-app/);
+  assert.match(skin,/\.native-surface \.nv-content/);
+  assert.match(skin,/\.native-surface \.nv-tabbar/);
+  assert.match(skin,/position:relative;\s*flex:0 0 60px/);
+  assert.match(skin,/\.phone\{grid-template-rows:minmax\(0,1fr\)!important\}/);
+  assert.match(skin,/\.phone>\.statusbar\{display:none!important\}/);
+  assert.match(skin,/\.nv-contact\[hidden\]\{display:none!important\}/);
+});
+
+test('微信联系人显示自然昵称，并且搜索栏是可输入的而非纯装饰',()=>{
+  const u=boot();u.unlockAll();u.app('chat');
+  assert.match(u.body.innerHTML,/data-native-search/);
+  assert.match(u.body.innerHTML,/阿诺/);
+  assert.doesNotMatch(u.body.innerHTML,/>高中好友阿诺</);
+  u.tab('contacts');
+  assert.match(u.body.innerHTML,/data-native-search/);
+  assert.match(feature,/addEventListener\('input'/);
+});
