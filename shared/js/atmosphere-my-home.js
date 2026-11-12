@@ -4,8 +4,8 @@
  */
 (function(){
  'use strict';
- var shell,stage,panel,album,albumTrack,tabs,empty,sign,edit,masthead,mode,observer;
- var ready=false,choice='all',kit=window.MAOMAOAtmosphereIcons;
+ var shell,stage,panel,album,albumTrack,albumAll,tabs,empty,sign,edit,masthead,mode,observer;
+ var ready=false,choice='all',selectedPost=null,selectedTabIndex=null,selectionTimer=0,kit=window.MAOMAOAtmosphereIcons;
  var TONE_KEY='maomao_atmosphere_tone_v1';
  function el(tag,cls,text){
   var node=document.createElement(tag);
@@ -155,13 +155,45 @@
   empty.setAttribute('role','status');
   panel.after(empty);
  }
+ function clearPhotoSelection(){
+  if(selectionTimer){clearTimeout(selectionTimer);selectionTimer=0;}
+  if(selectedPost){
+   selectedPost.removeAttribute('data-at-home-selected');
+   if(selectedTabIndex===null)selectedPost.removeAttribute('tabindex');
+   else selectedPost.setAttribute('tabindex',selectedTabIndex);
+  }
+  selectedPost=null;selectedTabIndex=null;
+ }
+ function revealPost(post){
+  if(!active()||!post||!post.isConnected&&'isConnected' in post)return;
+  select('photo');
+  clearPhotoSelection();
+  selectedPost=post;
+  selectedTabIndex=post.getAttribute('tabindex');
+  post.setAttribute('tabindex','-1');
+  post.setAttribute('data-at-home-selected','');
+  var reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if(typeof post.scrollIntoView==='function')
+   post.scrollIntoView({behavior:reduce?'auto':'smooth',block:'center'});
+  if(typeof post.focus==='function'){
+   try{post.focus({preventScroll:true});}catch(e){post.focus();}
+  }
+  selectionTimer=setTimeout(clearPhotoSelection,1600);
+ }
  function buildAlbum(){
   var feed=document.querySelector('.feed');
   if(!feed)return;
   album=el('section','at-home-album');
   album.setAttribute('aria-label','我的照片');
   var title=el('div','at-home-album-heading');
-  title.append(el('span','','PHOTO NOTES'),el('span','at-home-album-label','左右滑动'));
+  albumAll=el('button','at-home-album-open','全部照片');
+  albumAll.type='button';albumAll.setAttribute('aria-label','查看全部照片动态');
+  albumAll.addEventListener('click',function(){
+   if(!active())return;
+   var first=posts().find(function(p){return !!p.querySelector('.my-post-image');});
+   if(first)revealPost(first);
+  });
+  title.append(el('span','','PHOTO NOTES'),albumAll);
   albumTrack=el('div','at-home-album-track');
   album.append(title,albumTrack);
   stage.insertBefore(album,feed);
@@ -172,6 +204,7 @@
    return !!post.querySelector('.my-post-image');
   });
   albumTrack.replaceChildren();
+  if(albumAll)albumAll.textContent='全部照片 '+String(withImages.length).padStart(2,'0');
   withImages.slice(0,12).forEach(function(post,i){
    var original=post.querySelector('.my-post-image');
    var uri=original.getAttribute('src');
@@ -181,13 +214,7 @@
    var img=el('img');
    img.src=uri;img.alt='';img.loading='lazy';img.decoding='async';
    button.append(img);
-   button.addEventListener('click',function(){
-    select('photo');
-    if(typeof post.scrollIntoView==='function'){
-     var reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-     post.scrollIntoView({behavior:reduce?'auto':'smooth',block:'center'});
-    }
-   });
+   button.addEventListener('click',function(){revealPost(post);});
    albumTrack.append(button);
   });
   album.hidden=!active()||!albumTrack.children.length;
@@ -197,6 +224,7 @@
   var on=active();
   shell.setAttribute('data-at-home-surface','personal-home');
   if(!on){
+   clearPhotoSelection();
    shell.removeAttribute('data-at-home-tone');
   }else syncTone();
   if(masthead)masthead.hidden=!on;
