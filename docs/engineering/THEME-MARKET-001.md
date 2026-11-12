@@ -63,3 +63,15 @@ GitHub Actions jobs for commit `abff7049` were reported as `failure` but both jo
 - Additional V8 live-source tests: 114 preview render/scope/parse checks and 12 icon persistence/rollback checks. These are not browser or physical-device tests.
 - `tests/market-preview-scene.test.mjs` and expanded `tests/market-storefront-browser.mjs` are committed; **new browser scenarios have not been run**, even though the initial 6/6 Chromium scenarios at `60ade716` passed. Touch gestures, scrolling under iPhone Safari, physical Android/iOS, installed PWA upgrades and legacy original-theme E2E remain blockers.
 - Safe interactive preview (exact passing version): `https://d2dabcfa.preview.mao520.com/theme-store/theme-store.html`. Branch preview alias: `https://task-theme-market-001-storefront-expansion.preview.mao520.com`. These are preview deployments only; no main merge and no production release.
+
+
+## 2026-11-13 clarification — arrows and original theme identity
+
+**Fixed user design constraint for MAOMAO (apply to future UI work, not only this storefront):** Do not use right-pointing or up-pointing arrows as controls or decorative glyphs. A **left-pointing arrow is permitted exclusively as a back/return affordance**. Use text labels, tabs, or other non-directional controls where the old design relied on forward/up arrows. Do not misinterpret this as a ban on left/back arrows.
+
+- The new storefront featured-card and category-row right arrows have been removed. The fictional phone previews have no right-arrow menu indicators and preserve the left arrow for returning from chat/profile pages.
+- **Original QQ and WeChat themes are not the same design.** Their preview structures now use independent legacy-style renderers for chat list, conversation, moments and personal page. WeChat keeps flat bars, square avatars, distinct white list panels and green message bubbles; QQ keeps lighter cool-blue layouts, pill filters, round avatars and rounded chat bubbles. Desktop and unsupported home page remain neutral because chat presets do not own those scopes.
+- This is a corrective change to the **isolated preview only**, not a rewrite of the production QQ or WeChat CSS/HTML. Original live theme files are unchanged in PR #275.
+- Opening a theme and switching preview tabs are read-only. Pressing “应用主题” first opens a confirmation dialog. Only “确认应用” calls the existing `api.applyTheme` setter; cancel makes no changes. A preview is not an actual-theme acceptance test.
+- Added Node and browser contract cases for separate QQ/WeChat preview layouts, no right/up arrows, left/back accessibility and explicit theme confirmation.
+- Preview source and styles `20261113m7`, storefront `20261113m8`, PWA cache `v223`. All full-browser, Android/iPhone and installed-PWA acceptances must be rerun for this change. No merge/production deployment.
