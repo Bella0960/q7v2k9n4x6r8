@@ -26,6 +26,34 @@
  drawer=el('aside','at-drawer');drawer.id='atConversationDrawer';drawer.setAttribute('role','dialog');drawer.setAttribute('aria-modal','true');drawer.setAttribute('aria-label','会话侧栏');drawer.setAttribute('aria-hidden','true');drawer.inert=true;
  var head=el('div','at-drawer-head');var x=icon('close','关闭侧栏');x.addEventListener('click',function(){close(true);});head.append(el('strong','','QUICK ACCESS'),x);var cover=el('div','at-drawer-cover');cover.append(el('span','at-cover-title','Chats.'),el('small','at-cover-note','A LITTLE SPACE FOR WHAT MATTERS.'));drawer.append(head,cover,el('div','at-drawer-section','RECENT MESSAGES'),el('div','at-recent'));
  var nav=el('nav','at-drawer-nav');nav.setAttribute('aria-label','聊天导航');[['聊天','chat/chat/chat.html'],['通讯录','chat/contacts/contacts.html'],['动态','chat/moments/moments.html'],['我的','profile/profile.html']].forEach(function(p){nav.append(link(p[0],p[1]));});drawer.append(nav);
+ // Eight actual MAOMAO destinations. These are native links, not duplicate pages
+ // or demo-only controls; each existing app keeps its own state and handlers.
+ var quickTitle=el('div','at-drawer-section','QUICK ROUTES');drawer.append(quickTitle);
+ var quick=el('div','at-quick-grid');quick.setAttribute('aria-label','快捷应用入口');
+ var quickIcons={
+  search:'<circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/>',
+  contacts:'<circle cx="12" cy="8" r="4"/><path d="M4 21c0-7 16-7 16 0"/>',
+  moments:'<rect x="4" y="4" width="16" height="16" rx="2"/><path d="m7 15 3-3 3 2 4-5"/>',
+  footprint:'<circle cx="12" cy="12" r="7"/><path d="M12 5v7l4 3"/>',
+  diary:'<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/>',
+  roles:'<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M5 17c0-4 8-4 8 0M15 8h4M15 12h4"/>',
+  theme:'<circle cx="12" cy="12" r="8"/><path d="M12 4v16"/>',
+  music:'<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>'
+ };
+ [
+  ['search','搜索聊天','chat/chat/chat-search.html'],
+  ['contacts','联系人','chat/contacts/contacts.html'],
+  ['moments','动态','chat/moments/moments.html'],
+  ['footprint','角色足迹','chat/footprint/footprint.html'],
+  ['diary','日记','diary/diary.html'],
+  ['roles','角色档案','worldbook/characters/characters.html'],
+  ['theme','主题商城','theme-store/theme-store.html'],
+  ['music','音乐','music/music.html']
+ ].forEach(function(item){
+  var a=link('',item[2]);a.className='at-quick-route';a.setAttribute('aria-label',item[1]);
+  var svg=el('svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');svg.innerHTML=quickIcons[item[0]];
+  a.append(svg,el('span','',item[1]));quick.append(a);
+ });drawer.append(quick);
  // Link to the actual music app rather than pretending the decorative home control plays audio.
  var music=link('音乐 · 前往播放器','music/music.html');music.className+=' at-music-link';music.append(el('small','','MUSIC / OPEN PLAYER'));drawer.append(music);
  toneButton=el('button','at-tone');toneButton.type='button';toneButton.addEventListener('click',toggleTone);drawer.append(toneButton);
