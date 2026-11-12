@@ -41,9 +41,19 @@ for(const width of [320,375,390,430,1280]){
  await page.locator('[data-sf="page"][data-id="detail"]').click();
  assert.equal(await page.evaluate(()=>JSON.stringify({...localStorage})),before,'preview must not change storage');
  await page.locator('[data-sf="close"]').click();
+ // QQ and WeChat retain separate layouts, and previews do not change the active theme.
+ for(const [theme,markers] of [['wechat',['sp-wx-conversation','sp-wx-msg','sp-wx-post','sp-wx-menu']],['qq',['sp-qq-list-row','sp-qq-msg','sp-qq-feed-post','sp-qq-menu']]]){
+  await page.locator('.sf-cover[data-id="'+theme+'"]').click();
+  for(const [i,p] of ['list','detail','moments','mine'].entries()){
+   await page.locator('[data-sf="page"][data-id="'+p+'"]').click();
+   assert.equal(await page.locator('#sfPreview .'+markers[i]).count()>0,true,theme+'/'+p+' unique layout');
+  }
+  assert.equal(await page.evaluate(()=>JSON.stringify({...localStorage})),before,'viewing legacy preview is read-only');
+  await page.locator('[data-sf="close"]').click();
+ }
  await page.locator('[data-category="themes"]').click();
  for(const id of ['wechat','imessage','qq','silver-butterfly','atmosphere','default']){
-  await page.locator('.sf-cover[data-id="'+id+'"]').click();await page.locator('[data-sf="apply-theme"]').click();
+  await page.locator('.sf-cover[data-id="'+id+'"]').click();await page.locator('[data-sf="apply-theme"]').click();await page.locator('[data-sf="confirm-apply-theme"]').click();
   assert.equal(await page.evaluate(()=>ChatBeauty.getThemePreset()),id);
  }
  await page.locator('[data-sf="favorite"][data-id="wechat"]').click();
