@@ -748,10 +748,15 @@
       .finally(function(){waiting=false;if(current===id)render();});
     }
 
+    function notePlainText(value,max) {
+      return String(value==null?'':value).replace(/\r\n?/g,'\n')
+        .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,'')
+        .slice(0,max).trim();
+    }
     function saveNoteEdit(form) {
       if(current!=='notes'||!permission||selected.indexOf('notes')<0||!view||view.kind!=='note-editor')return;
       var index=Number(view.index),t=form.querySelector('[name=title]'),b=form.querySelector('[name=text]');
-      var title=clean(t&&t.value,80),text=clean(b&&b.value,4000);
+      var title=clean(t&&t.value,80),text=notePlainText(b&&b.value,4000);
       if(!title)title='未命名备忘录';
       if(!text.trim()){hint('先写一点内容再保存。');return;}
       var section=data.sections.notes,previous=JSON.stringify(section),beforeEvents=JSON.stringify(arr(data.interactions)),now=Date.now();
@@ -763,7 +768,7 @@
       next.title=title;next.text=text;next.updatedAt=now;
       next.lastEditedBy='viewer';next.origin=created?'user_on_fictional_phone':(source.origin||'role_story');
       if(source&&source.text!==text){
-        next.editHistory=arr(source.editHistory).concat([{at:now,text:clean(source.text,4000)}]).slice(-3);
+        next.editHistory=arr(source.editHistory).concat([{at:now,text:notePlainText(source.text,4000)}]).slice(-3);
       }
       if(created)section.notes.unshift(next);
       else section.notes[index]=next;
