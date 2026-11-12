@@ -21,7 +21,12 @@ test('renders six individually composed, isolated fictional page previews',()=>{
   for(const [page,marker] of examples){
    const markup=p.render(id,page);
    assert.match(markup,new RegExp('data-page="'+page+'"'));
-   assert.ok(markup.includes(marker),id+'/'+page+' unique composition');
+   const legacyMarkers={
+    wechat:{list:'sp-wx-conversation',detail:'sp-wx-msg',moments:'sp-wx-post',mine:'sp-wx-menu'},
+    qq:{list:'sp-qq-list-row',detail:'sp-qq-msg',moments:'sp-qq-feed-post',mine:'sp-qq-menu'}
+   };
+   const uniqueMarker=legacyMarkers[id]?.[page]||marker;
+   assert.ok(markup.includes(uniqueMarker),id+'/'+page+' unique composition');
    assert.ok(markup.includes('sp-home-indicator'));
    assert.ok(!/base64,|chat_history_|beauty_chat_|home_custom_wallpaper/.test(markup));
   }
@@ -70,4 +75,40 @@ test('real page includes preview resources before storefront and keeps existing 
  assert.match(html,/preview-scene.css\?v=20261112m5/);
  assert.match(html,/collection-store.js\?v=20261112m3/);
  assert.match(html,/market-expansion.js\?v=20261112m1/);
+});
+
+test('QQ and WeChat retain distinct legacy layouts, not an editorial repaint',()=>{
+ const p=setup();
+ const markers={
+   wechat:['sp-wx-conversation','sp-wx-msg','sp-wx-post','sp-wx-menu'],
+   qq:['sp-qq-list-row','sp-qq-msg','sp-qq-feed-post','sp-qq-menu']
+ };
+ for(const page of ['list','detail','moments','mine']){
+  const index=['list','detail','moments','mine'].indexOf(page);
+  const wechat=p.render('wechat',page),qq=p.render('qq',page);
+  assert.ok(wechat.includes(markers.wechat[index]),'WeChat '+page+' keeps native-style layout');
+  assert.ok(qq.includes(markers.qq[index]),'QQ '+page+' keeps different layout');
+  assert.ok(!wechat.includes(markers.qq[index]),'WeChat cannot show QQ view');
+  assert.ok(!qq.includes(markers.wechat[index]),'QQ cannot show WeChat view');
+  assert.notEqual(wechat,qq);
+ }
+ assert.match(p.render('wechat','detail'),/sp-wx-out/);
+ assert.match(p.render('qq','detail'),/sp-qq-out/);
+});
+test('only left-facing back arrow remains; no forward or up arrows in storefront previews',()=>{
+ const p=setup();
+ assert.match(previewSource,/back:'M15 18l-6-6 6-6'/);
+ assert.doesNotMatch(previewSource,/icon\('arrow'\)|\barrow:'|icon\('up'\)/);
+ assert.doesNotMatch(storefrontSource,/svg\('arrow'\)|\barrow:'|svg\('up'\)/);
+ assert.match(p.render('wechat','detail'),/sp-wx-left/);
+ assert.match(p.render('qq','detail'),/sp-qq-chat-head/);
+});
+test('opening preview does not apply a theme; applying requires a second explicit confirmation',()=>{
+ assert.match(storefrontSource,/action==='apply-theme'/);
+ assert.match(storefrontSource,/action==='confirm-apply-theme'/);
+ assert.match(storefrontSource,/确认应用主题/);
+ const start=storefrontSource.indexOf("if(action==='apply-theme')");
+ const end=storefrontSource.indexOf("if(action==='confirm-apply-theme')",start);
+ assert.ok(start!==-1&&end>start);
+ assert.doesNotMatch(storefrontSource.slice(start,end),/api\.applyTheme\(/);
 });
