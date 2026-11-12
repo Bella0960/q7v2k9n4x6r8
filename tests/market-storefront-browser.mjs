@@ -45,6 +45,25 @@ for(const width of [320,375,390,430,1280]){
  await page.locator('[data-sf="record-preview"]').first().click();await page.locator('[data-sf="record-apply"]').click();assert.equal(await page.evaluate(()=>ChatBeauty.getThemePreset()),'default');
  await page.locator('[data-sf="delete"]').click();assert.equal(await page.evaluate(()=>MAOMAOMarketCollection.read().outfits.length),1);await page.locator('[data-sf="close"]').first().click();assert.equal(await page.locator('.sf-record').count(),1);
  await page.locator('[data-sf="delete"]').click();await page.locator('[data-sf="confirm-delete"]').click();assert.equal(await page.locator('.sf-record').count(),0);
+ // Existing icon manager preset data, not a second image library.
+ const originalTheme=await page.evaluate(()=>ChatBeauty.getThemePreset());
+ await page.evaluate(async()=>{
+  const img='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jA8sAAAAASUVORK5CYII=';
+  await MAOMAOWallpaperStore.saveByKey('home_icon_preset_img_v1_browser_pack_app_chat',img,{requireIDB:true});
+  localStorage.setItem('home_icon_presets_v1',JSON.stringify([{id:'browser_pack',name:'测试图标',appIds:['app_chat']}]));
+  localStorage.setItem('home_icon_active_preset_v1','browser_pack');
+ });
+ await page.locator('[data-sf="save-outfit"]').click();await page.locator('#sfName').fill('原生图标搭配');
+ for(const checkbox of await page.locator('[name="scope"]').all())await checkbox.uncheck();
+ await page.locator('[name="scope"][value="icons"]').check();
+ await page.locator('[data-sf="confirm-save"]').click();
+ await page.locator('[data-sf="record-preview"]').last().click();
+ assert.equal(await page.locator('.sf-icon-tile img').count(),1,'real preset image thumbnail');
+ await page.locator('[data-sf="record-apply"]').click();
+ assert.equal(await page.evaluate(()=>ChatBeauty.getThemePreset()),originalTheme,'icon scope must not change theme');
+ assert.equal(await page.evaluate(()=>localStorage.getItem('home_icon_active_preset_v1')),'browser_pack');
+ assert.equal(await page.evaluate(()=>localStorage.getItem('maomao_market_collection_v1').includes('base64')),false);
+ await page.locator('[data-sf="delete"]').click();await page.locator('[data-sf="confirm-delete"]').click();
  await page.locator('[data-sf="mine-tab"][data-id="creations"]').click();await page.locator('[data-sf="upload"]').click();await page.locator('#sfName').fill('我自己的素材');await page.locator('#sfFile').setInputFiles({name:'sample.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jA8sAAAAASUVORK5CYII=','base64')});await page.locator('[data-sf="confirm-upload"]').click();await page.waitForSelector('.sf-record');
  await page.locator('[data-sf="record-preview"]').first().click();await page.waitForSelector('.sf-image');await page.locator('[data-sf="record-apply"]').click();assert.ok((await page.evaluate(()=>MAOMAOWallpaperStore.get())).startsWith('data:image/webp;'));
  assert.ok(!(await page.evaluate(()=>localStorage.getItem('maomao_market_collection_v1'))).includes('base64'));
