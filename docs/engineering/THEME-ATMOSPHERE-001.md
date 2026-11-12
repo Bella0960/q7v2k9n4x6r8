@@ -139,3 +139,26 @@ The owner identified visibly off-center SVGs, an awkward black orb placeholder, 
 - New CSS and JS are loaded in **all four real HTML pages**, listed in `sw.js` APP_SHELL, with `phone-app-pwa-v210`. PWA contract assertions updated.
 - Source-level + isolated controller execution of `tests/atmosphere-four-pages.test.mjs`: **9/9 checks passed** (real page asset wiring, atmosphere CSS scope, chat filters, Moments filtering and rerender, keyboard-accessible profile controls, native navigation, intact detail IDs, liked-state visuals, filter keyboard navigation). Nine static PWA consistency checks also passed. These are explicitly **not** Node's full test runner or real end-to-end device tests.
 - **Release gate remains open:** run full `node --test tests/atmosphere-four-pages.test.mjs tests/atmosphere-theme.test.mjs tests/atmosphere-composer.test.mjs tests/atmosphere-svg-geometry.test.mjs tests/atmosphere-sticker-strip.test.mjs`, `npm run build`, and native Android PWA check at 320/375/390/430px. Check uploader permissions, dark-mode contrast, long chat, theme switchback, comments/likes, profile image persistence and OS keyboard safe-area. Keep PR #273 Draft; no main merge or production deployment.
+
+## 2026-11-12 — My collections and four-page interaction follow-through
+
+A further round continued on the original **Draft PR #273** with actual code in the project, not an unrelated concept preview.
+
+### Usable My collection entry
+
+- The existing `profile/profile.html` has a legacy `#menuFavorites` click handler that only displays “功能开发中”. The opt-in `atmosphere` mode now intercepts **only that click** at capture phase and opens a slender modal sheet with three real app destinations. Other themes retain the previous handler.
+- **日记收藏** → `diary/diary.html#favorites`: the existing diary app recognizes the hash and starts in its native `favorites` view. **音乐收藏** → `music/music.html#favorites`: opens the app's pre-existing `showFav()` view. **海报作品** → `poster/poster.html`: correctly labeled as a works page, not falsely as a filtered favorites list.
+- The modal has backdrop tap, Escape, downward swipe on non-interactive space, keyboard focus movement/trapping, underlying page inert locking, and a soft slide/fade exit. It is fully hidden on theme switch, including when a close animation is mid-flight, and no duplicate favorites store exists.
+- The two deep-link changes in diary/music are tiny and do not alter any saved entries, track IDs, or API workflows. The existing profile page retains its own avatar and cover keys and its existing wallet, settings and profile actions.
+
+### Regression cleanup
+
+- New focused `tests/atmosphere-favorites-sheet.test.mjs` covers opening real destinations, suppressing the old atmosphere-only placeholder, focus/Escape, and old-theme isolation. Isolated executed tests: **3/3 pass**.
+- The previously introduced `tests/atmosphere-four-pages.test.mjs` remains **9/9 pass**, including non-destructive chat/Moments filtering, keyboard, old-theme switchback and native detail lifecycle. Static PWA assertions: **9/9 pass**.
+- All four core pages now load `atmosphere-pages.css/js?v=20261112p2`; the PWA shell is `phone-app-pwa-v211`, which precaches both assets.
+- `tests/chat-regression-contract.test.mjs` had 12 stale assertions hardcoding the old `v204` app-shell name. Those broad contract assertions now check that a versioned `CACHE_NAME` exists; the dedicated `tests/pwa-navigation-cache.test.mjs` remains responsible for **exact v211** assertions. The chat-list theme script version assertion was also synchronized to `20261112at1`.
+- The latest four-page controller and diary/music inline application scripts passed JavaScript parsing in an isolated runtime. **No full Node/Vite suite, actual browser navigation of the integrated pages, Android PWA reinstall/update, upload/privacy prompt, or production deployment was executed in this connector-only round.** Keep PR #273 Draft, do not merge to main on these results alone.
+
+### Next device gate
+
+Verify all four real routes at 320/375/390/430px, dark/light transitions, keyboard safe area, conversation filter selection after back navigation, avatar positioning, actual media/sticker pickers, diary/music favorites navigation, the favorites sheet when switching theme mid-close, Moment comments/likes, profile upload quality/persistence, and full PWA cache update. Retain individual background/cover isolation by page and character.
