@@ -75,3 +75,18 @@ GitHub Actions jobs for commit `abff7049` were reported as `failure` but both jo
 - Opening a theme and switching preview tabs are read-only. Pressing “应用主题” first opens a confirmation dialog. Only “确认应用” calls the existing `api.applyTheme` setter; cancel makes no changes. A preview is not an actual-theme acceptance test.
 - Added Node and browser contract cases for separate QQ/WeChat preview layouts, no right/up arrows, left/back accessibility and explicit theme confirmation.
 - Preview source and styles `20261113m7`, storefront `20261113m8`, PWA cache `v223`. All full-browser, Android/iPhone and installed-PWA acceptances must be rerun for this change. No merge/production deployment.
+
+
+## Critical correction — built-in themes must be reused, not reconstructed (2026-11-13)
+
+User acceptance criteria clarified: **MAOMAO theme-store is an expansion of the existing product page and its completed, separately implemented themes, not an independent visual prototype.**
+
+- The previous six-page phone schematic applied a generic editorial structure to QQ, WeChat, iMessage and other completed themes. This falsely implied their real pages all shared one template; it must not be used as the primary legacy-theme preview.
+- The extended four-tab storefront now invokes `nativeThemes:renderThemes` and `nativeArt:themeArt` from the **existing** `theme-store/theme-store.html` functions. This preserves original theme IDs, source-owned theme cover art, the independent Messages list theme, the original acquisition/application buttons, bubbles and theme state. The extended theme tab uses the existing six native product cards, with a new read-only detail button. The Home featured rail and favorites show each theme's existing artwork, not six-page faux screenshots.
+- The original native theme cards are arranged as a **two-column storefront shelf**, with the old horizontal-drag hook disabled only when CSS computed layout is grid. The featured rail still supports horizontal touch scrolling.
+- The old themes' read-only detail modal uses their existing themeArt() miniature plus an explicit note that *real chat screens are controlled by the existing theme owner*; it does not show the faux six-screen phone as a genuine old-theme screenshot. Only new 薄影 retains its separate six-screen fictional visual walkthrough.
+- Saved personal outfit preview also resolves the saved theme ID against the real original catalogue and uses the source `themeArt()` cover when the 'theme' scope is present, rather than displaying a made-up generic layout.
+- Viewing or saving a preview never calls `ChatBeauty.setThemePreset`; detail application requires confirmation and ultimately invokes the existing `applyTheme` function; original native product application retains its established behavior.
+- Original live QQ, WeChat, iMessage, Silver Butterfly and other chat theme files are **not modified in PR #275**. The branch is a **draft and is not merged to main**; Cloudflare Worker preview deployments are isolated from the actual production Worker deployments.
+- Explicit release blockers remain: browser rendering/gestures in real Chromium & WebKit, physical Android/iPhone, installed PWA upgrade and true screenshot parity with each native theme. Source contracts and Cloudflare build are not substitutes for those device checks.
+- No right/up arrows in new UI, left-back arrow permitted (per prior clarified user rule). These design constraints are global to the MAOMAO project, not an instruction to edit unrelated legacy theme internals here.
