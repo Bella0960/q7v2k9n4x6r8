@@ -509,9 +509,16 @@
     function open(title,content){
       appTitle.textContent=title;
       appBody.innerHTML=content;
+      var nativePage=content.indexOf('class="nv-app ')>=0;
+      if(nativePage)appBody.classList.add('native-surface');
+      else appBody.classList.remove('native-surface');
+      var topMore=document.getElementById('appReload');
+      if(topMore)topMore.style.visibility=nativePage?'visible':'hidden';
       appLayer.classList.add('open');
-      // 手机聊天进入详情或新增消息后，默认看到最新对话。
-      appBody.scrollTop=(current==='chat'&&view&&view.kind==='chat')?appBody.scrollHeight:0;
+      if(nativePage&&typeof appBody.querySelector==='function'){
+        var scrollable=appBody.querySelector('.nv-content');
+        if(scrollable)scrollable.scrollTop=(current==='chat'&&view&&view.kind==='chat')?scrollable.scrollHeight:0;
+      }else appBody.scrollTop=0;
     }
     function close(){appLayer.classList.remove('open');current='';view=null;notice='';}
     function chooseScreen(){
@@ -550,7 +557,7 @@
           unlockedNotes:unlockedNotes,unlockedAlbum:unlockedAlbum,
           revealCount:revealCount,pinView:pinView,hiddenPin:hiddenPin(roleId,role),
           pinForm:pinForm,button:button,pendingChat:pendingChat,
-          source:currentSource()
+          source:currentSource(),roleAvatar:role.avatar||role.photo||'',roleId:roleId
         });
         if(!nativeScreen&&view){
           view=null;
@@ -559,13 +566,15 @@
             unlockedNotes:unlockedNotes,unlockedAlbum:unlockedAlbum,
             revealCount:revealCount,pinView:pinView,hiddenPin:hiddenPin(roleId,role),
             pinForm:pinForm,button:button,pendingChat:pendingChat,
-            source:currentSource()
+            source:currentSource(),roleAvatar:role.avatar||role.photo||'',roleId:roleId
           });
         }
         if(nativeScreen){
           var nativeNotice=notice?'<p class="inspect-alert" role="status">'+html(notice)+'</p>':'';
-          var sourceText=nativeScreen.detail?'':'<p class="nv-source">'+html(currentSource())+' · 虚构角色数据</p>';
-          open(nativeScreen.title,nativeNotice+nativeScreen.body+sourceText);
+          var nativeMarkup=nativeNotice?
+            nativeScreen.body.replace('<div class="nv-content">','<div class="nv-content">'+nativeNotice):
+            nativeScreen.body;
+          open(nativeScreen.title,nativeMarkup);
           return;
         }
       }
@@ -780,7 +789,22 @@
       current=b.dataset.app;view=null;notice='';switches++;render();
     });});
     var reload=document.getElementById('appReload');
-    if(reload)reload.addEventListener('click',function(){if(ITEMS.some(function(x){return x.id===current;}))refreshSection();});
+    if(reload)reload.addEventListener('click',function(){
+      if(!ITEMS.some(function(x){return x.id===current;}))return;
+      // Real phone: an app overflow menu, not an unexplained refresh glyph.
+      // Test doubles lacking DOM selectors continue to use the refresh callback.
+      if(typeof appBody.querySelector!=='function'){refreshSection();return;}
+      var existing=appBody.querySelector('[data-native-options]');
+      if(existing){existing.remove();return;}
+      appBody.insertAdjacentHTML('beforeend',
+        '<div class="nv-options-overlay" data-native-options>'+
+        '<div class="nv-options-card" role="dialog" aria-label="应用操作">'+
+        '<div class="nv-options-head">'+html((ITEMS.find(function(x){return x.id===current;})||{}).name||'应用')+'</div>'+
+        '<button type="button" data-action="refresh">刷新此应用的记录</button>'+
+        '<button type="button" data-action="choose">选择可查看的应用</button>'+
+        '<button type="button" data-action="dismissMenu">取消</button>'+
+        '</div></div>');
+    });
     back.addEventListener('click',function(){
       if(view){view=null;render();return;}
       if(current==='caught'){close();return;}
@@ -807,7 +831,17 @@
         sendAsRole(inp?inp.value:'');
       }
     });
+    appBody.addEventListener('input',function(e){
+      if(!e.target.matches||!e.target.matches('[data-native-search]'))return;
+      var query=String(e.target.value||'').trim().toLowerCase();
+      if(typeof appBody.querySelectorAll!=='function')return;
+      appBody.querySelectorAll('.nv-contact').forEach(function(item){
+        var copy=item.textContent.toLowerCase();
+        item.hidden=!!query&&copy.indexOf(query)<0;
+      });
+    });
     appBody.addEventListener('click',function(e){
+      if(e.target.classList&&e.target.classList.contains('nv-options-overlay')){e.target.remove();return;}
       var tab=e.target.closest('[data-native-tab]');
       if(tab&&current==='chat'){
         var tabId=tab.dataset.nativeTab;
@@ -827,6 +861,12 @@
       }
       var action=e.target.closest('[data-action]');if(!action)return;
       var a=action.dataset.action;
+      if(a==='dismissMenu'){
+        if(typeof appBody.querySelector==='function'){
+          var pop=appBody.querySelector('[data-native-options]');if(pop)pop.remove();
+        }
+        return;
+      }
       if(a==='close'||a==='deny'){close();return;}
       if(a==='grant'){
         var decision=access(role,new Date());
