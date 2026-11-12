@@ -215,6 +215,58 @@
     return wallet;
   }
 
+  // Central write path for the legacy workData wallet shared by chat, shop,
+  // takeout, and wallet UI. Callers must already hold runExclusive().
+  // An optional raw baseline rejects stale snapshots rather than overwriting them.
+  function commitWalletSnapshot(wallet, expectedRaw) {
+    var storage = global.localStorage;
+    if (!storage || typeof storage.getItem !== 'function' ||
+        typeof storage.setItem !== 'function') return { ok: false, reason: 'storage' };
+    if (!wallet || typeof wallet !== 'object' || Array.isArray(wallet) ||
+        typeof wallet.balance !== 'number' || !isFinite(wallet.balance) ||
+        wallet.balance < 0 || !Array.isArray(wallet.history)) {
+      return { ok: false, reason: 'invalid-wallet' };
+    }
+    var serialized;
+    try {
+      serialized = JSON.stringify(wallet);
+      if (!serialized || !readWalletForMutation('workData', serialized)) {
+        return { ok: false, reason: 'invalid-wallet' };
+      }
+      if (arguments.length > 1 && storage.getItem('workData') !== expectedRaw) {
+        return { ok: false, reason: 'stale-wallet' };
+      }
+      storage.setItem('workData', serialized);
+      if (storage.getItem('workData') !== serialized) {
+        return { ok: false, reason: 'readback' };
+      }
+      return { ok: true, raw: serialized };
+    } catch (error) {
+      return { ok: false, reason: 'storage-write' };
+    }
+  }
+
+  // Conditional rollback for multi-record checkouts. Never overwrite a wallet
+  // modified by another writer, and never roll back to malformed stored bytes.
+  function restoreWalletSnapshot(expectedWrittenRaw, previousRaw) {
+    var storage = global.localStorage;
+    if (!storage || typeof storage.getItem !== 'function') return false;
+    if (previousRaw != null && !readWalletForMutation('workData', previousRaw)) return false;
+    try {
+      if (storage.getItem('workData') !== expectedWrittenRaw) return false;
+      if (previousRaw == null) {
+        if (typeof storage.removeItem !== 'function') return false;
+        storage.removeItem('workData');
+      } else {
+        if (typeof storage.setItem !== 'function') return false;
+        storage.setItem('workData', previousRaw);
+      }
+      return storage.getItem('workData') === (previousRaw == null ? null : previousRaw);
+    } catch (error) {
+      return false;
+    }
+  }
+
   function readClosePayState(storageKey, rawOverride) {
     storageKey = String(storageKey || 'close_pay');
     var raw;
@@ -405,6 +457,8 @@
     lockName: LOCK_NAME,
     runExclusive: runExclusive,
     readWalletForMutation: readWalletForMutation,
+    commitWalletSnapshot: commitWalletSnapshot,
+    restoreWalletSnapshot: restoreWalletSnapshot,
     readClosePayState: readClosePayState,
     readClosePayForMutation: readClosePayForMutation,
     getOrCreatePendingCheckout: getOrCreatePendingCheckout,
