@@ -14,6 +14,8 @@ on:
     paths:
       - 'inspect-phone/phone.html'
       - 'inspect-phone/inspect-feature.js'
+      - 'inspect-phone/inspect-native-view.js'
+      - 'inspect-phone/inspect-native.css'
       - 'tests/inspect-feature-contract.test.mjs'
       - 'tests/inspect-phone-gesture.test.mjs'
       - 'package.json'
@@ -23,6 +25,8 @@ on:
     paths:
       - 'inspect-phone/phone.html'
       - 'inspect-phone/inspect-feature.js'
+      - 'inspect-phone/inspect-native-view.js'
+      - 'inspect-phone/inspect-native.css'
       - 'tests/inspect-feature-contract.test.mjs'
       - 'tests/inspect-phone-gesture.test.mjs'
       - 'package.json'
