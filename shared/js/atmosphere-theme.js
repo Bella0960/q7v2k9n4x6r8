@@ -27,7 +27,7 @@
  var head=el('div','at-drawer-head');var x=icon('close','关闭侧栏');x.addEventListener('click',function(){close(true);});head.append(el('strong','','QUICK ACCESS'),x);var cover=el('div','at-drawer-cover');cover.append(el('span','at-cover-title','Chats.'),el('small','at-cover-note','A LITTLE SPACE FOR WHAT MATTERS.'));drawer.append(head,cover,el('div','at-drawer-section','RECENT MESSAGES'),el('div','at-recent'));
  var nav=el('nav','at-drawer-nav');nav.setAttribute('aria-label','聊天导航');[['聊天','chat/chat/chat.html'],['通讯录','chat/contacts/contacts.html'],['动态','chat/moments/moments.html'],['我的','profile/profile.html']].forEach(function(p){nav.append(link(p[0],p[1]));});drawer.append(nav);
  // Link to the actual music app rather than pretending the decorative home control plays audio.
- var music=link('音乐 · 前往播放器','music/music.html');music.classList.add('at-music-link');music.append(el('small','','MUSIC / OPEN PLAYER'));drawer.append(music);
+ var music=link('音乐 · 前往播放器','music/music.html');music.className+=' at-music-link';music.append(el('small','','MUSIC / OPEN PLAYER'));drawer.append(music);
  toneButton=el('button','at-tone');toneButton.type='button';toneButton.addEventListener('click',toggleTone);drawer.append(toneButton);
  var details=el('details');details.append(el('summary','','更多'));var more=el('div','at-drawer-nav');more.append(link('主题商城','theme-store/theme-store.html'),link('聊天美化','beauty/beauty.html'),link('返回桌面','index.html'));
  var coverButton=el('button','at-tone','更换本页封面');coverButton.type='button';coverButton.addEventListener('click',function(){close(true);document.getElementById('coverInput')?.click();});if(document.getElementById('coverInput'))more.append(coverButton);
