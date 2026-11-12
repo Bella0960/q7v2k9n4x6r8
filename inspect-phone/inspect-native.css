@@ -345,7 +345,7 @@
 .inspect-reload{font-size:23px;line-height:1;font-weight:400;color:#242428}
 @media(max-width:480px){
   /* The Android/iOS OS bar is already real. Never draw a second fake one. */
-  .phone{grid-template-rows:0 minmax(0,1fr)!important}
+  .phone{grid-template-rows:minmax(0,1fr)!important}
   .phone>.statusbar{display:none!important}
   .main{min-height:0}
   .app-bar{height:48px;min-height:48px}
@@ -363,3 +363,6 @@
 
 /* Search results must really disappear even against author layout rules. */
 .nv-contact[hidden]{display:none!important}
+
+/* When the duplicate header is display:none, .main becomes the first grid child. */
+@media(max-width:480px){.phone>.main{grid-row:1;min-height:0;height:100%}}
