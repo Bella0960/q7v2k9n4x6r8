@@ -233,8 +233,42 @@
      e.preventDefault();e.stopImmediatePropagation();openFavoritesSheet();
    },true);
  }
+ function attachRealMusicEntry(){
+   var control=document.getElementById('playToggleBtn');
+   if(!control||control.hasAttribute('data-at-music-entry'))return;
+   control.setAttribute('data-at-music-entry','');
+   // In this opt-in theme it is a real route, never a pretend playback toggle.
+   control.addEventListener('click',function(event){
+     if(!isActive())return;
+     event.preventDefault();
+     event.stopImmediatePropagation();
+     window.location.href='../../music/music.html';
+   },true);
+   control.addEventListener('keydown',function(event){
+     if(!isActive()||(event.key!=='Enter'&&event.key!==' '))return;
+     event.preventDefault();
+     control.click();
+   });
+ }
+ function syncRealMusicEntry(enabled){
+   var control=document.getElementById('playToggleBtn');
+   if(!control)return;
+   if(enabled){
+     control.setAttribute('role','link');
+     control.setAttribute('tabindex','0');
+     control.setAttribute('aria-label','打开音乐播放器');
+     control.setAttribute('title','打开真实音乐播放器');
+   }else{
+     control.removeAttribute('role');
+     control.removeAttribute('tabindex');
+     control.removeAttribute('aria-label');
+     control.removeAttribute('title');
+   }
+   setLabel('.floating-music-card .m-sub','MUSIC / OPEN PLAYER',enabled);
+ }
  function mount(){
    if(surface==='chats'){
+     attachRealMusicEntry();
      var root=document.querySelector('.tier4-floating-stream');
      if(root)makeFilter(root,[['all','全部'],['private','私聊'],['group','群聊']],'会话分类');
    }
@@ -276,6 +310,7 @@
    }
    if(surface==='chats'){
      setLabel('.chat-theme-copy h1','CHATS',active);
+     syncRealMusicEntry(active);
      // The existing atmosphere-theme controller owns the home-page SVGs.
      // Do not race it by separately caching or rewriting the same nodes.
    }
