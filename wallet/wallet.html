@@ -754,18 +754,9 @@
   var balanceAmountEl = document.getElementById('balanceAmount');
 
   function getWorkDataForMutation() {
-    var raw = null;
-    try { raw = localStorage.getItem('workData'); } catch (error) { return null; }
-    if (raw == null) return { balance: 1000, history: [] };
-
-    var wd = null;
-    try { wd = JSON.parse(raw); } catch (error) { return null; }
-    if (!wd || typeof wd !== 'object' || Array.isArray(wd) ||
-        typeof wd.balance !== 'number' || !isFinite(wd.balance) || wd.balance < 0) return null;
-    // Older wallet snapshots may predate the history array; preserve their valid balance.
-    if (!('history' in wd)) wd.history = [];
-    else if (!Array.isArray(wd.history)) return null;
-    return wd;
+    var ledger = window.MaoMaoWalletLedger;
+    return ledger && typeof ledger.readWalletForMutation === 'function'
+      ? ledger.readWalletForMutation('workData') : null;
   }
 
   function getWorkData() {
@@ -915,15 +906,9 @@
             });
           }
 
-          var serialized = JSON.stringify(wd);
-          try {
-            localStorage.setItem('workData', serialized);
-            if (localStorage.getItem('workData') !== serialized) {
-              amountError.textContent = '钱包记录未能确认；再次确认会先核对原交易，不会盲目重复修改余额';
-              return;
-            }
-          } catch (error) {
-            amountError.textContent = '保存失败：本地存储空间不足；原交易编号已保留，可恢复确认';
+          var savedWallet = ledger.commitWalletSnapshot(wd);
+          if (!savedWallet.ok) {
+            amountError.textContent = '钱包记录未能确认；原交易编号已保留，再次确认会先核对原流水';
             return;
           }
         }
