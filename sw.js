@@ -67,7 +67,7 @@ const APP_SHELL = [
   './shared/css/atmosphere-pages.css?v=20261112p3',
   './shared/js/atmosphere-pages.js?v=20261112p4',
   './shared/css/atmosphere-my-home.css?v=20261112h2',
-  './shared/js/atmosphere-my-home.js?v=20261112h3',
+  './shared/js/atmosphere-my-home.js?v=20261112h4',
   './shared/js/chat-beauty.js?v=20261112at1',
   './shared/js/chat-page-theme.js?v=20261105v1',
   './shared/assets/silver-butterfly-photo.webp',
