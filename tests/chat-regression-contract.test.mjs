@@ -2492,9 +2492,10 @@ test('chat extras: outgoing payment ledger reconciles chat write failure and pag
   function fixture(options = {}) {
     let now = 1000000;
     let history = [{ role: 'user', mid: 'older', text: '旧消息' }];
-    const stored = new Map([['workData', JSON.stringify({
-      balance: 1000, history: options.initialEntries || []
-    })]]);
+    const stored = new Map([
+      ['workData', JSON.stringify({ balance: 1000, history: options.initialEntries || [] })],
+      ['chat_history_' + (options.roleId || 'role-1'), JSON.stringify(history)]
+    ]);
     const effects = { walletWrites: [], chatWrites: [], toasts: [], ai: [], renders: 0, closes: 0 };
     let failRefund = !!options.failRefund;
     const context = {
@@ -2518,6 +2519,7 @@ test('chat extras: outgoing payment ledger reconciles chat write failure and pag
         effects.chatWrites.push(next);
         if (options.chatSave === 'fail') return false;
         history = next;
+        stored.set('chat_history_' + (options.roleId || 'role-1'), JSON.stringify(next));
         return options.chatSave !== 'written-but-unverified';
       },
       closePayDrawer: () => { effects.closes++; },
@@ -2538,7 +2540,8 @@ test('chat extras: outgoing payment ledger reconciles chat write failure and pag
       history: () => history,
       advance: (ms) => { now += ms; },
       allowRefund: () => { failRefund = false; },
-      storeWallet: (wallet) => { stored.set('workData', JSON.stringify(wallet)); }
+      storeWallet: (wallet) => { stored.set('workData', JSON.stringify(wallet)); },
+      storeChatRaw: (raw) => { stored.set('chat_history_' + (options.roleId || 'role-1'), raw); }
     };
   }
 
@@ -2607,6 +2610,19 @@ test('chat extras: outgoing payment ledger reconciles chat write failure and pag
   assert.equal(recover.wallet().history[1].status, 'pending-chat', 'other role remains untouched');
   recover.actions.recoverOutgoingPayments();
   assert.equal(recover.wallet().balance, 995, 'reopening cannot refund the same payment again');
+
+  const corruptedChat = fixture({ chatSave: 'fail' });
+  corruptedChat.storeChatRaw('{invalid-json');
+  corruptedChat.actions.submitPayMessage();
+  assert.equal(corruptedChat.wallet().balance, 954.5);
+  assert.equal(corruptedChat.wallet().history[0].status, 'pending-chat',
+    'unreadable history cannot prove the card is absent, so no automatic refund');
+  assert.equal(corruptedChat.effects.ai.length, 0);
+  corruptedChat.advance(121000);
+  corruptedChat.actions.recoverOutgoingPayments();
+  assert.equal(corruptedChat.wallet().balance, 954.5, 'reload must not refund unreadable history');
+  assert.equal(corruptedChat.wallet().history[0].status, 'pending-chat');
+  assert.match(corruptedChat.effects.toasts.at(-1), /聊天记录无法核实/);
 });
 
 
