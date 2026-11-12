@@ -39,7 +39,7 @@ function fixture(){
    if(!stopped)this.events.click?.(e);
   }
   focus(){document.activeElement=this}
-  matches(selector){if(selector[0]==='.')return this._flags.has(selector.slice(1));
+  matches(selector){if(selector[0]==='.')return this._flags.has(selector.slice(1))||this.className.split(/\s+/).includes(selector.slice(1));
    return this.tagName.toLowerCase()===selector}
   querySelectorAll(query){
    const parts=query.split(',').map(x=>x.trim()),found=[];
@@ -88,6 +88,7 @@ test('My collections opens native destinations instead of the old fake toast',()
  assert.equal(modal.hidden,false);
  assert.equal(modal.getAttribute('aria-hidden'),'false');
  assert.equal(modal.querySelector('.at-favorites-sheet').getAttribute('role'),'dialog');
+ assert.equal(h.document.activeElement,modal.querySelector('.at-favorites-close'), 'focus moves into the modal');
  const links=modal.querySelectorAll('a');
  assert.deepEqual(links.map(a=>a.href),[
   '../diary/diary.html#favorites','../music/music.html#favorites','../poster/poster.html'
