@@ -393,7 +393,7 @@
       defaultThemes.forEach(function(item){
         var isOwned=owned.indexOf(item.id)>=0,isActive=active===item.id;
         var label=isActive?'正在使用':(isOwned?'应用主题':'免费获取并应用');
-        html+='<article class="product-card">'+themeArt(item)+'<div class="product-meta"><span class="product-eyebrow">'+item.eyebrow+'</span><strong class="product-title">'+item.name+'</strong><span class="product-desc">'+item.desc+'</span></div><div class="product-foot"><span class="product-price">'+(isOwned?'已收录':'FREE')+'</span><button type="button" class="action-btn '+(isOwned?'light':'')+'" data-action="theme-apply" data-id="'+item.id+'" '+(isActive?'disabled':'')+'>'+label+'</button></div></article>';
+        html+='<article class="product-card">'+themeArt(item)+'<div class="product-meta"><span class="product-eyebrow">'+item.eyebrow+'</span><strong class="product-title">'+item.name+'</strong><span class="product-desc">'+item.desc+'</span></div><div class="product-foot"><span class="product-price">'+(isOwned?'已收录':'FREE')+'</span><button type="button" class="action-btn light" data-sf="detail" data-id="'+item.id+'">预览</button><button type="button" class="action-btn '+(isOwned?'light':'')+'" data-action="theme-apply" data-id="'+item.id+'" '+(isActive?'disabled':'')+'>'+label+'</button></div></article>';
       });
       html+='</div><div class="helper-row"><p>列表主题独立保存，只作用于聊天首页；其他整套主题仍按原有方式切换。</p><button class="text-link" data-action="open-beauty" type="button">进入聊天美化</button></div>';
       return html;
@@ -675,7 +675,7 @@
     document.addEventListener('visibilitychange',function(){if(!document.hidden)refreshAll();});
     window.MAOMAOStorefront.init({themes:defaultThemes, market:market, render:render,
       navigate:setCategory, applyTheme:applyTheme, toast:toast, scope:function(){return bubbleScopeValue;},
-      using:function(){var box=document.createElement('div');box.innerHTML=renderMine();box.querySelectorAll('.mine-item').forEach(function(item){if(item.querySelector('.mine-status').textContent!=='正在使用')item.remove();});box.querySelector('.mine-filter')?.remove();return box.innerHTML;}, listCard:function(){var box=document.createElement('div');box.innerHTML=renderThemes();return box.querySelector('.chat-list-theme-grid').outerHTML;}});
+      using:function(){var box=document.createElement('div');box.innerHTML=renderMine();box.querySelectorAll('.mine-item').forEach(function(item){if(item.querySelector('.mine-status').textContent!=='正在使用')item.remove();});box.querySelector('.mine-filter')?.remove();return box.innerHTML;}, nativeThemes:renderThemes, nativeArt:themeArt, listCard:function(){var box=document.createElement('div');box.innerHTML=renderThemes();return box.querySelector('.chat-list-theme-grid').outerHTML;}});
     document.querySelectorAll('#categoryNav button').forEach(function(button,index){
       button.insertAdjacentHTML('afterbegin',window.MAOMAOStorefront.svg(['home','theme','category','mine'][index]));
     });
