@@ -491,18 +491,25 @@
       };
       try {
         var history = readHistory();
-        history.push(record);
-        if (typeof saveMessages === 'function') saveMessages(history);
+        // Never mutate a potentially shared history array before persistence succeeds.
+        var next = Array.isArray(history) ? history.concat([record]) : null;
+        if (!next || typeof saveMessages !== 'function' || saveMessages(next) !== true) {
+          if (typeof showToast === 'function') showToast('通话已结束，但通话记录保存失败');
+          return false;
+        }
         if (typeof appendMessageToDOM === 'function') appendMessageToDOM(record);
         else global.dispatchEvent(new CustomEvent('maomao:followup-message', {
           detail: { contactId: String(character.id) }
         }));
         var chatList = global.document.getElementById('chat-messages');
         if (chatList) chatList.scrollTop = chatList.scrollHeight;
+        return true;
       } catch (error) {
         if (global.console && typeof global.console.warn === 'function') {
           global.console.warn('[MAOMAO call] call record was not saved', error);
         }
+        if (typeof showToast === 'function') showToast('通话已结束，但通话记录保存失败');
+        return false;
       }
     }
 
