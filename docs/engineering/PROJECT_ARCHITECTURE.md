@@ -158,7 +158,7 @@ Important limitation: having a ConversationRepository does not mean conversation
 
 ## 7. Important codebase caveats
 
-- CLAUDE.md still contains historical statements about 48 HTML pages and disabled service-worker registration; both conflict with the current tree/source.
+- CLAUDE.md's former page-count and disabled-Service-Worker statements have been corrected against the 2026-11-11 main snapshot. Recheck the current tree before relying on page counts in future work.
 - CLAUDE.md's old “only localStorage” storage statement is not accurate now that multiple IndexedDB databases are in use.
 - apps/settings was previously labeled orphaned; verify all references before deleting it.
 - chat-detail.html is a very large file. Historical audit measured roughly 7,181 lines at its time; re-measure before relying on the count.
