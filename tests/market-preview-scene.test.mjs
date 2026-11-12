@@ -71,8 +71,8 @@ test('large preview and reduced motion declarations preserve phone accessibility
  assert.match(storefrontSource,/aria-pressed/);
 });
 test('real page includes preview resources before storefront and keeps existing systems',()=>{
- assert.ok(html.indexOf('preview-scene.js?v=20261112m4')<html.indexOf('storefront.js?v=20261112m4'));
- assert.match(html,/preview-scene.css\?v=20261112m5/);
+ assert.ok(html.indexOf('preview-scene.js?v=20261113m7')<html.indexOf('storefront.js?v=20261113m7'));
+ assert.match(html,/preview-scene.css\?v=20261113m7/);
  assert.match(html,/collection-store.js\?v=20261112m3/);
  assert.match(html,/market-expansion.js\?v=20261112m1/);
 });
