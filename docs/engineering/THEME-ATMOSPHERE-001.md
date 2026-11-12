@@ -27,7 +27,7 @@ This is an implementation draft, not a visually accepted finished theme. Do not 
 
 ## Rollback
 
-Switch to any previous store theme. No chat, cover or bubble data is deleted or migrated. Reverting this patch removes the optional theme; the old allow-list falls back to default for its unknown ID. The tone key is harmless and can remain. No main merge, service-worker bump, production deployment, API calls or APK build occurred.
+Switch to any previous store theme. No chat, cover or bubble data is deleted or migrated. Reverting this patch removes the optional theme; the old allow-list falls back to default for its unknown ID. The tone key is harmless and can remain. No main merge, production deployment, API calls or APK build occurred. For this draft, the PWA service-worker shell is bumped from v204 to v205 to precache the new theme CSS/JS; offline update still requires device testing.
 
 
 ## 2026-11-12 continuation — composer/theme CSS collision
@@ -37,3 +37,10 @@ Switch to any previous store theme. No chat, cover or bubble data is deleted or 
 - The same page has late unscoped `!important` gray message-stage, white composer, absolute sender and extra input margin declarations. Theme-scoped, higher-specificity rules now protect both atmosphere tones, preserve a single in-flow sender, and fit the phone shell to `100dvh` when available.
 - Updated Node source/behavior assertions and Playwright acceptance to check one native submit button, no duplicate, transparent stage, dark composer, and width at mobile sizes.
 - **Verification:** repository changes and assertions have been authored; the Node and Playwright suites have **not been executed** in this connector-only session. Full-checkout build, CI runner execution, and true mobile visual review are still required. No merge, deploy or APK generated.
+
+
+## 2026-11-12 PWA continuation
+
+- Added the opt-in atmosphere CSS/controller and the new chat-list theme loader URL to the existing `sw.js` app shell; changed shell name to `phone-app-pwa-v205` so an installed Android PWA can receive a new cache instead of relying only on opportunistic fetches.
+- Updated the PWA navigation contract to recognize v205 and assert the new resources are present in the precache list.
+- **Offline and upgrade behavior remains unverified** until a full build and real PWA install/update test. This change does not imply production deployment.
