@@ -6,7 +6,7 @@ let api,section='discover',mineTab='favorites',overlay,focusBefore,previewTone='
 const e=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icons={home:'M3 11 12 3l9 8M5 10v11h5v-7h4v7h5V10',theme:'M5 3h14v18H5zM8 7h8M8 11h5',category:'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',mine:'M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0M4 21v-2a8 8 0 0 1 16 0v2',star:'m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z',close:'m6 6 12 12M18 6 6 18',back:'M15 18l-6-6 6-6',plus:'M12 4v16M4 12h16',chat:'M4 5h16v12H8l-4 3V5z',diary:'M5 3h14v18H5zM9 8h6M9 12h6',music:'M9 18V5l11-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0M20 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0',book:'M3 5h7a3 3 0 0 1 3 3v13a3 3 0 0 0-3-3H3zM21 5h-5a3 3 0 0 0-3 3v13a3 3 0 0 1 3-3h5z',settings:'M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0',photo:'M3 4h18v16H3zM7 9a1 1 0 1 0 .01 0M4 17l5-5 3 3 3-4 5 6'};
 const svg=n=>'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+(icons[n]||icons.theme)+'"/></svg>';
-const button=(text,action,id='',cls='sf-button')=>'<button type="button" class="'+cls+'" data-sf="'+action+'" data-id="'+e(id)+'">'+text+'</button>';
+const button=(text,action,id='',cls='sf-button')=>'<button type="button" class="'+cls+'" data-sf="'+action+'" data-id="'+e(id)+'"'+(action==='favorite'?' aria-label="'+(model.read().favorites.includes(id)?'取消收藏':'收藏')+'" aria-pressed="'+model.read().favorites.includes(id)+'"':'')+'>'+text+'</button>';
 const pages=[['desktop','桌面'],['list','聊天首页'],['detail','聊天详情'],['moments','动态'],['mine','我的'],['home','我的主页']];
 function covered(id,page){if(page==='desktop')return false;if(page==='home')return id==='atmosphere';if(id==='imessage')return page==='detail';return true;}
 function scene(id,page='detail'){
@@ -72,7 +72,7 @@ function detail(id){
     '<div class="sf-native-detail-art">'+nativeArt(t)+'</div>'+
     '<p class="sf-caption">'+e(t.desc)+'</p>'+
     '<p class="sf-caption">这里只展示原有主题素材。真实聊天页面及其气泡、联系人、动态等功能，仍由原项目的主题系统控制。</p>'+
-    '<footer>'+button('收藏 / 取消收藏','favorite',id)+button('应用原主题','apply-theme',id,'sf-button primary')+'</footer>');
+    '<footer>'+button(model.read().favorites.includes(id)?'已收藏 · 点击取消':'收藏主题','favorite',id)+button('应用原主题','apply-theme',id,'sf-button primary')+'</footer>');
    return;
  }
  previewTone='light';previewPage='detail';
@@ -81,7 +81,7 @@ function detail(id){
  pages.map(([p,label])=>button(label,'page',p,'sf-chip')).join('')+
  '</div>'+toneControls+'<div id="sfPreview" tabindex="0" aria-label="手机预览，左右滑动切换页面" data-theme="'+e(id)+'"></div>'+
  '<p class="sf-preview-help">左右滑动预览，或点击上方页面名称</p><p id="sfScope" class="sf-caption" aria-live="polite"></p>'+
- '<footer>'+button('收藏 / 取消收藏','favorite',id)+button('应用主题','apply-theme',id,'sf-button primary')+'</footer>');
+ '<footer>'+button(model.read().favorites.includes(id)?'已收藏 · 点击取消':'收藏主题','favorite',id)+button('应用主题','apply-theme',id,'sf-button primary')+'</footer>');
  showPage('detail');
  const pane=overlay?.querySelector('#sfPreview');
  if(!pane)return;
@@ -106,7 +106,7 @@ function showPage(page){
  overlay.querySelectorAll('[data-sf="page"]').forEach(b=>{const active=b.dataset.id===page;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));if(active)b.scrollIntoView({inline:'nearest',block:'nearest'});});
  overlay.querySelectorAll('[data-sf="tone"]').forEach(b=>{const active=b.dataset.id===previewTone;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));});
 }
-function checkboxes(selected){return '<fieldset class="sf-scopes"><legend>选择应用范围</legend>'+selected.map(s=>'<label><input type="checkbox" name="scope" value="'+s+'" checked> '+model.scopes[s]+'</label>').join('')+'</fieldset>';}
+function checkboxes(selected,checked=selected){return '<fieldset class="sf-scopes"><legend>选择应用范围</legend>'+selected.map(s=>'<label><input type="checkbox" name="scope" value="'+s+'"'+(checked.includes(s)?' checked':'')+'> '+model.scopes[s]+'</label>').join('')+'</fieldset>';}
 const selected=()=>[...overlay.querySelectorAll('[name=scope]:checked')].map(x=>x.value);
 function getRecord(encoded){const [type,id]=encoded.split(':');if(!['outfits','creations'].includes(type))throw Error('记录类型无效');const item=model.read()[type].find(x=>x.id===id);if(!item)throw Error('记录已不存在');return {type,item};}
 async function renderSavedIconPreview(host,saved){
@@ -141,17 +141,28 @@ async function handle(action,id){
  if(action==='detail')return detail(id);
  if(action==='page')return showPage(id);
  if(action==='tone'){previewTone=id==='dark'?'dark':'light';return showPage(previewPage);}
- if(action==='favorite'){model.favorite(id);api.render();return;}
+ if(action==='favorite'){
+   model.favorite(id);
+   // Keep the open detail's favorite button and screen reader state in sync.
+   const isFavorite=model.read().favorites.includes(id);
+   overlay?.querySelectorAll('[data-sf="favorite"][data-id="'+id+'"]').forEach(b=>{
+     b.textContent=isFavorite?'已收藏 · 点击取消':'收藏主题';
+     b.setAttribute('aria-label',isFavorite?'取消收藏':'收藏');
+     b.setAttribute('aria-pressed',String(isFavorite));
+   });
+   api.render();
+   return;
+ }
  if(action==='apply-theme'){
    const theme=api.themes.find(item=>item.id===id);
    if(!theme)throw Error('主题不存在');
-   modal('确认应用主题？','<p class="sf-caption">当前只是独立预览。确认后才会把「'+e(theme.name)+'」设为当前主题；聊天记录和头像保持不变。</p><footer>'+button('取消','close')+button('确认应用','confirm-apply-theme',id,'sf-button primary')+'</footer>');
+   modal('确认应用主题？','<p class="sf-caption">当前只是独立预览。确认后才会把「'+e(theme.name)+'」设为当前主题；聊天记录和头像保持不变。</p><footer>'+button('继续查看','detail',id)+button('确认应用','confirm-apply-theme',id,'sf-button primary')+'</footer>');
    return;
  }
  if(action==='confirm-apply-theme'){if(!api.applyTheme(id))throw Error('主题未能保存，请检查存储空间');close();return;}
  if(action==='category'){if(['beauty','appearance','icons'].includes(id))return api.market.route(id);api.navigate(id==='list'?'themes':id);if(id==='list')document.querySelector('.chat-list-theme-grid')?.scrollIntoView();return;}
  if(action==='mine-tab'){mineTab=id;api.render();return;}
- if(action==='save-outfit'){modal('保存当前搭配','<label class="sf-field">搭配名称<input id="sfName" maxlength="40" placeholder="例如：周末的留白"></label>'+checkboxes(Object.keys(model.scopes))+'<p class="sf-caption">气泡使用当前所选角色；图标引用「桌面图标」内已保存的套装。背景、头像、名片不随搭配复制。</p>'+button('保存搭配','confirm-save','','sf-button primary'));return;}
+ if(action==='save-outfit'){modal('保存当前搭配','<label class="sf-field">搭配名称<input id="sfName" maxlength="40" placeholder="例如：周末的留白"></label>'+checkboxes(Object.keys(model.scopes),['theme'])+'<p class="sf-caption">默认只保存当前聊天主题。其他范围按需勾选；气泡使用当前所选角色；图标引用「桌面图标」内已保存的套装.背景、头像、名片不随搭配复制。</p>'+button('保存搭配','confirm-save','','sf-button primary'));return;}
  if(action==='confirm-save'){await model.saveOutfit(overlay.querySelector('#sfName').value,selected(),api.scope());close();api.render();api.toast('搭配已保存');return;}
  if(action==='record-preview')return recordPreview(id);
  if(action==='record-apply'){const {type,item}=getRecord(id);if(type==='outfits')await model.applyOutfit(item,selected());else {const image=await global.MAOMAOWallpaperStore.getByKey(item.key);if(!image)throw Error('素材已缺失');await global.MAOMAOWallpaperStore.saveByKey(global.MAOMAOWallpaperStore.key,image,{requireIDB:true});}close();api.render();api.toast('已应用，返回对应页面查看');return;}
