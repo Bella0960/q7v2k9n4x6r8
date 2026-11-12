@@ -131,3 +131,23 @@ test('all 22 Major Arcana have correct glyph and dedicated reversed interpretati
   assert.match(js, /reversed:isMajor \? TAROT_MAJOR_REVERSED\[card\[1\]\] : card\.reversed/);
   assert.match(js, /glyph:isMajor \? card\[6\] : card\.glyph/);
 });
+
+
+test('role changes during wheel, tarot, and daily animations cannot reassign results', () => {
+  assert.match(js, /function snapshotCurrentRole\(\)/);
+  assert.match(js, /addHistory\('大转盘', result, wheel\.name, runRole\)/);
+  assert.match(js, /if \(currentRoleId\(\) === runRole\.roleId\) askRole\('大转盘'/);
+  assert.match(js, /addHistory\('塔罗', [\s\S]*?'过去 \/ 现在 \/ 未来', runRole\)/);
+  assert.match(js, /currentRoleId\(\) === tarotDrawRole\.roleId/);
+  assert.match(js, /addHistory\('今日运势', resultText, item\.headline, runRole\)/);
+  assert.match(js, /if \(currentRoleId\(\) === runRole\.roleId\) askRole\('今日运势'/);
+  assert.match(js, /\['lotRoleReaction', 'wheelRoleReaction', 'tarotRoleReaction', 'dailyRoleReaction'\]\.forEach/);
+});
+
+test('storage failures are reported rather than followed by false success toasts', () => {
+  assert.match(js, /localStorage\.getItem\(DATA_KEY\) !== serialized/);
+  assert.match(js, /if \(saved\) showToast\('新签筒已创建。'\)/);
+  assert.match(js, /if \(saved\) showToast\('新转盘模板已创建。'\)/);
+  assert.match(js, /if \(saved\) showToast\('签筒已删除。'\)/);
+  assert.match(js, /if \(saved\) showToast\('转盘模板已删除。'\)/);
+});
