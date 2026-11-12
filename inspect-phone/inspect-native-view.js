@@ -139,28 +139,103 @@
           }).join('')+'</div>';
       }
     } else if(app==='forum') {
-      title=v&&v.kind==='post'?'帖子详情':'论坛';
+      var ownPosts=arr(s.posts),filtered=v&&v.kind==='forum-mine';
       if(v&&(v.kind==='post'||v.kind==='archived-post')){
-        var post=(v.kind==='post'?arr(s.posts):arr(s.archive))[v.index];if(!post)return null;
-        body='<div class="nv-forum-article"><div class="nv-forum-author">'+avatar(name)+'<span><strong>'+esc(name)+'</strong><small>'+esc(when(post.time))+'</small></span></div>'+
-          '<h1>'+esc(post.title)+'</h1>'+paper(post.text)+'</div>'+
-          group('评论 · '+arr(post.comments).length,arr(post.comments).map(function(c){return '<div class="nv-comment">'+avatar(c.name,'small')+'<span><strong>'+esc(c.name)+'</strong><p>'+esc(c.text)+'</p></span></div>';}).join(''));
-      } else body='<div class="nv-forum-top"><h1>社区</h1><small>最新 · 关注 · 热门</small></div>'+
-        arr(s.posts).slice().sort(function(a,b){return n(b.time)-n(a.time);}).map(function(p){
-          var i=arr(s.posts).indexOf(p);return tap('post',i,'<div class="nv-forum-card"><div class="nv-forum-author">'+avatar(name,'small')+
-          '<span><strong>'+esc(name)+'</strong><small>'+esc(when(p.time))+'</small></span></div>'+
-          '<h2>'+esc(p.title)+'</h2><p>'+esc(p.text).slice(0,110)+'</p><footer>♡ 赞　　☏ '+arr(p.comments).length+' 条评论</footer></div>','nv-forum-row');
-        }).join('')+(arr(s.archive).length?'<div class="nv-folder-label">更早的帖子</div>'+arr(s.archive).map(function(p,i){return entry('archived-post',i,p.title,when(p.time));}).join(''):'');
+        var post=v.kind==='post'?ownPosts[v.index]:arr(s.archive)[v.index];
+        if(!post)return null;
+        title='帖子详情';
+        body='<article class="nv-forum-article">'+
+          '<div class="nv-forum-author">'+avatar(post.author||name)+
+          '<span><strong>'+esc(post.author||name)+'</strong><small>'+esc(when(post.time))+' · '+esc(post.topic||'日常')+'</small></span></div>'+
+          '<h1>'+esc(post.title)+'</h1>'+paper(post.text)+
+          '<div class="nv-post-actions"><span>'+n(post.views||30)+' 次浏览</span>'+
+          '<button type="button" data-action="forumLike">'+(post.liked?'已赞':'点赞')+' · '+n(post.likes||0)+'</button></div></article>'+
+          group('评论 · '+arr(post.comments).length,arr(post.comments).map(function(c){
+            return '<div class="nv-comment">'+avatar(c.name,'small')+
+              '<span><strong>'+esc(c.name)+'</strong><p>'+esc(c.text)+'</p></span></div>';
+          }).join(''))+
+          '<form class="nv-moment-comment-form" id="inspectForumComment"><input name="text" maxlength="300" aria-label="论坛评论" placeholder="说说你的看法…">'+
+          '<button type="submit">评论</button></form>'+
+          '<button class="nv-chat-handoff" type="button" data-action="chatAboutForum">和'+esc(name)+'聊聊这篇帖子</button>';
+      }else{
+        title='论坛';
+        var mine=ownPosts.filter(function(p){return String(p.authorId||o.roleId)===String(o.roleId);});
+        var shown=filtered?mine:ownPosts.slice().sort(function(a,b){return n(b.time)-n(a.time);});
+        body='<div class="nv-forum-home"><div class="nv-forum-intro"><span>社区论坛</span><h1>'+(filtered?'我的帖子':'正在讨论')+'</h1><p>'+esc(name)+'的浏览与发帖记录</p></div>'+
+          '<nav class="nv-forum-switch" aria-label="论坛分区">'+
+          '<button type="button" data-action="forumAll"'+(filtered?'':' class="active"')+'>最新</button>'+
+          '<button type="button" data-action="forumMine"'+(filtered?' class="active"':'')+'>我发的</button></nav>'+
+          '<div class="nv-forum-feed">'+shown.map(function(p){
+            var i=ownPosts.indexOf(p);
+            return tap('post',i,'<article class="nv-forum-card">'+
+              '<div class="nv-forum-author">'+avatar(p.author||name,'small')+
+              '<span><strong>'+esc(p.author||name)+'</strong><small>'+esc(when(p.time))+
+              ' · '+esc(p.topic||'生活')+'</small></span></div>'+
+              '<h2>'+esc(p.title)+'</h2><p>'+esc(p.text).slice(0,120)+'</p>'+
+              '<footer>'+n(p.likes||0)+' 赞　·　'+arr(p.comments).length+' 评论</footer>'+
+              '</article>','nv-forum-row');
+          }).join('')+'</div>'+
+          (filtered&&!shown.length?'<p class="nv-browser-empty">还没有公开发帖</p>':'')+
+          (arr(s.archive).length&&!filtered?group('更早的帖子',arr(s.archive).map(function(p,i){
+            return entry('archived-post',i,p.title,when(p.time));
+          }).join('')):'')+'</div>';
+      }
     } else if(app==='browser'){
       title='浏览器';
-      if(v&&['search','bookmark'].indexOf(v.kind)>=0){
-        var rec=v.kind==='search'?arr(s.searchHistory)[v.index]:arr(s.bookmarks)[v.index];if(!rec)return null;
-        body='<div class="nv-browser-page"><div class="nv-address">▣　local.story / '+esc(v.kind)+'</div><h1>'+esc(rec.query||rec.title)+'</h1>'+
-        '<div class="nv-browser-abstract">'+esc(rec.summary||'这是一条保存在虚构角色手机里的搜索记录，页面不会连接真实搜索服务。')+'</div>'+
-        '<p class="nv-hint">'+esc(rec.time?when(rec.time):'已收藏')+'</p></div>';
-      } else body='<div class="nv-browser-app"><div class="nv-browser-hero">搜索或输入网址</div><div class="nv-address">⌕　搜索或输入网站名称</div>'+
-        group('历史记录',arr(s.searchHistory).map(function(x,i){return entry('search',i,x.query,when(x.time),x.deleted?'已清除':'');}).join(''))+
-        group('个人收藏',arr(s.bookmarks).map(function(x,i){return entry('bookmark',i,x.title,x.summary);}).join(''))+'</div>';
+      var pw=o.personaWeb,allHistory=arr(s.searchHistory).slice().sort(function(a,b){return n(b.time)-n(a.time);});
+      var resultsQuery=v&&v.query||s.activeQuery||'';
+      var results=pw&&pw.find?pw.find(resultsQuery,o.persona):[];
+      var lookup=pw&&pw.article?pw.article.bind(pw):function(){return null;};
+      function browserSearch(q){
+        return '<form class="nv-web-search" id="inspectBrowserSearch">'+
+          '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg>'+
+          '<input type="search" name="query" maxlength="120" value="'+esc(q||'')+'" placeholder="搜索或输入网址" aria-label="浏览器搜索">'+
+          '<button type="submit">搜索</button></form>';
+      }
+      function webRow(p,i){
+        return tap('browser-result',i,'<span class="nv-web-result"><small>'+esc(p.domain)+'</small><strong>'+esc(p.title)+'</strong>'+
+          '<span>'+esc(p.snippet)+'</span></span>','nv-web-result-row');
+      }
+      if(v&&v.kind==='browser-results'){
+        body='<div class="nv-browser-app">'+browserSearch(resultsQuery)+
+          '<div class="nv-web-label">搜索结果 <small>本地资料 · 非实时网页</small></div>'+
+          (results.length?results.map(webRow).join(''):
+          '<div class="nv-browser-empty">暂时没有收录与「'+esc(resultsQuery)+'」相关的本地资料。<p>没有连接真实搜索引擎，也不会编造搜索结果。可以试试“送花”“玫瑰”“阅读”或“学习”。</p></div>')+
+          '</div>';
+      }else if(v&&v.kind==='browser-article'){
+        var article=lookup(v.articleId);
+        if(!article)return null;
+        body='<article class="nv-browser-article"><div class="nv-browser-domain">'+esc(article.domain)+'</div>'+
+          '<h1>'+esc(article.title)+'</h1><p class="nv-browser-lead">'+esc(article.snippet)+'</p>'+
+          arr(article.paragraphs).map(function(x){return '<p>'+esc(x)+'</p>';}).join('')+
+          '<footer><span>虚构角色手机 · 离线原创资料</span>'+
+          '<button type="button" data-action="browserBookmark">收藏本文</button></footer></article>';
+      }else if(v&&v.kind==='browser-visits'){
+        body='<div class="nv-browser-app"><div class="nv-web-label">浏览记录</div>'+
+          arr(s.pageViews).map(function(h,i){
+            return tap('browser-visit',i,'<span class="nv-web-result"><small>'+esc(when(h.time))+'</small><strong>'+esc(h.title)+'</strong><span>'+esc(h.query||'已打开页面')+'</span></span>','nv-web-result-row');
+          }).join('')+'</div>';
+      }else if(v&&v.kind==='browser-bookmarks'){
+        body='<div class="nv-browser-app"><div class="nv-web-label">书签</div>'+
+          arr(s.bookmarks).map(function(b,i){
+            return entry('browser-bookmark',i,b.title,b.summary||'已收藏');
+          }).join('')+'</div>';
+      }else if(v&&v.kind==='bookmark-legacy'){
+        var bm=arr(s.bookmarks)[v.index];if(!bm)return null;
+        body='<article class="nv-browser-article"><small>收藏的资料</small><h1>'+esc(bm.title)+'</h1>'+
+          '<p>'+esc(bm.summary||'暂无正文')+'</p></article>';
+      }else{
+        body='<div class="nv-browser-app"><div class="nv-browser-hero"><small>PRIVATE BROWSER</small><h1>搜索与浏览</h1><p>最近看过的内容和保存的网页</p></div>'+
+          browserSearch('')+
+          '<div class="nv-web-shortcuts"><button type="button" data-action="browserVisits">浏览记录 · '+arr(s.pageViews).length+'</button>'+
+          '<button type="button" data-action="browserBookmarks">书签 · '+arr(s.bookmarks).length+'</button></div>'+
+          '<div class="nv-web-label">最近搜索</div>'+
+          allHistory.slice(0,20).map(function(x){
+            var i=arr(s.searchHistory).indexOf(x);
+            return tap('browser-history',i,'<span class="nv-web-history-icon">'+miniIcon('discover')+'</span>'+
+              '<span class="nv-line-copy"><strong>'+esc(x.query)+'</strong><small>'+esc(when(x.time))+'</small></span>','nv-row nv-web-history');
+          }).join('')+'</div>';
+      }
     } else if(app==='wallet'){
       title='钱包';
       if(v&&v.kind==='transaction'){
