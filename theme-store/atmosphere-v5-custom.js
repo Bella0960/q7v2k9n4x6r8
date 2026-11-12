@@ -331,13 +331,6 @@
    else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}
   });
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!overlay.hidden)hidePanel()});
-  document.addEventListener('click',e=>{
-   const b=e.target.closest('[data-v5-personalize]');if(!b)return;
-   e.preventDefault();e.stopPropagation();
-   if(b.dataset.v5Personalize==='current-avatar')showPanel('appearance');
-   else if(b.dataset.v5Personalize==='music')showPanel('music');
-   else showPanel('appearance');
-  },true);
   const status=document.createElement('p');status.id='v5-custom-status';status.className='v5-custom-status';status.setAttribute('role','status');
   $('.phone').append(status);
  }
@@ -346,18 +339,38 @@
   input.accept=kind==='music'?'audio/*,.mp3,.wav,.ogg,.m4a,.aac':'image/png,image/jpeg,image/webp,image/gif';
   input.click();
  }
- function addShortcut(host,label,cls,kind){
-  if(!host||host.querySelector('.'+cls))return;
-  const el=btn(label,'v5-custom-trigger '+cls);
-  el.dataset.v5Personalize=kind;host.append(el);
+ function bindAvatarTap(){
+  // V5 visual lock: the avatar itself is the upload target. Never add a
+  // floating pencil or any control next to it.
+  const avatar=$('#page-chat .chat-person .portrait');
+  const self=$('#page-profile .profile-pic');
+  for(const [node,kind,label] of [
+   [avatar,'contact-avatar','点击头像更换当前联系人照片'],
+   [self,'self-avatar','点击头像更换我的照片']
+  ]){
+   if(!node)return;
+   node.setAttribute('role','button');
+   node.setAttribute('tabindex','0');
+   node.setAttribute('aria-label',label);
+   node.setAttribute('title',label);
+   node.dataset.v5AvatarUpload=kind;
+   node.addEventListener('click',event=>{
+    event.preventDefault();
+    event.stopPropagation(); // avoid the chat-header's existing profile opener
+    chooseFile(kind);
+   });
+   node.addEventListener('keydown',event=>{
+    if(event.key!=='Enter'&&event.key!==' ')return;
+    event.preventDefault();
+    event.stopPropagation();
+    chooseFile(kind);
+   });
+  }
  }
  function shortcuts(){
-  // Every edit affordance is layered on original V5 artwork; its existing
-  // click-to-switch-image and contact-sheet behavior is not rewritten.
-  addShortcut($('.hero'),'自定义首页卡片图片','v5-custom-home','home');
-  addShortcut($('.profile-center'),'自定义我的头像与主页','v5-custom-self','appearance');
-  addShortcut($('.chat-person'),'上传此联系人的头像','v5-custom-contact','current-avatar');
-  addShortcut($('.mini-music'),'导入音乐与替换封面','v5-custom-music','music');
+  bindAvatarTap();
+  // The original V5 "Modify" control remains the unobtrusive entry for
+  // cards, covers and imported music. No additional overlay edit buttons.
   const pop=$('#at-preview-sticker-pop');
   if(pop&&!pop.querySelector('.v5-custom-sticker-tools')){
    const panel=document.createElement('div');panel.className='v5-custom-sticker-tools';
