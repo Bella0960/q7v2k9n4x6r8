@@ -199,3 +199,16 @@ test('native shelves, category rows and dialog controls stay usable at narrow ph
  assert.match(storefrontCSS,/\.store-app \.sf-category-row/);
  assert.match(storefrontCSS,/\.store-app \.sf-favorite/);
 });
+
+
+test('native theme artwork avoids the gray-orb thumbnail and every narrow CTA stays short',()=>{
+ const start=html.indexOf('function themeArt(theme)');
+ const end=html.indexOf('function editorialListArt()',start);
+ const art=html.slice(start,end);
+ assert.ok(art.includes('class="at-mini-symbol"'));
+ assert.ok(!art.includes('class="at-mini-avatar"'));
+ assert.match(art,/stroke-width="1\.15"/);
+ const render=html.slice(html.indexOf('function renderThemes()'),html.indexOf('function renderBubbles()'));
+ assert.match(render,/isOwned\?'应用主题':'免费应用'/);
+ assert.doesNotMatch(render,/isOwned\?'应用主题':'免费获取并应用'/);
+});
