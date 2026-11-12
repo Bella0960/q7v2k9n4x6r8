@@ -719,9 +719,14 @@
   async function submitPayMessage() {
     if (submitPayInProgress) return;
     var amountStr = String((payAmountInput && payAmountInput.value) || '').trim();
-    var amountNum = parseFloat(amountStr);
-    if (!amountStr || !isFinite(amountNum) || amountNum <= 0) {
-      if (typeof showToast === 'function') showToast('请输入金额');
+    // parseFloat('12abc') and amounts rounded down to zero must never be charged.
+    if (!/^\d+(?:\.\d{1,2})?$/.test(amountStr)) {
+      if (typeof showToast === 'function') showToast('请输入有效金额（最多两位小数）');
+      return;
+    }
+    var amountNum = Number(amountStr);
+    if (!isFinite(amountNum) || amountNum <= 0 || !Number.isSafeInteger(Math.round(amountNum * 100))) {
+      if (typeof showToast === 'function') showToast('金额超出有效范围，未发送');
       return;
     }
     amountNum = Math.round(amountNum * 100) / 100;
