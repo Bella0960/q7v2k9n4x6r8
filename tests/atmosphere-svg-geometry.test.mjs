@@ -42,8 +42,10 @@ test('chat detail loads icon kit before both theme and native composer adapters'
 });
 
 test('header identity is center column and mobile action icons share real center alignment',()=>{
- assert.match(styles,/grid-template-columns:minmax\(68px,1fr\) minmax\(85px,auto\) minmax\(102px,1fr\)/);
+ assert.match(styles,/grid-template-columns:minmax\(0,1fr\) minmax\(85px,130px\) minmax\(0,1fr\)/);
  assert.match(styles,/\.chat-title-box\{[\s\S]*?grid-column:2;position:static!important/);
+ assert.match(styles,/grid-template-columns:minmax\\(0,1fr\\) 106px minmax\\(0,1fr\\)/);
+ assert.match(styles,/overflow:clip!important/);
  assert.match(styles,/\.chat-header-avatar\{[\s\S]*?place-items:center!important/);
  assert.match(styles,/\.chat-header \.at-quick-tone\{[\s\S]*?place-items:center!important/);
  assert.match(styles,/\.at-rail-action\{[\s\S]*?grid-template-rows:23px 13px!important/);
