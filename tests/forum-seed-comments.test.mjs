@@ -467,7 +467,7 @@ test('forum refresh / 存储写入失败：不改写旧帖快照，也不报告�
 test('forum refresh / 页面入口：刷新流程使用最新存储快照合并，而不是浅拷贝回滚', () => {
   assert.ok(forumHome.includes('function mergeForumRefreshData('));
   assert.ok(forumHome.includes('function commitForumRefreshData('));
-  assert.ok(forumHome.includes('const commit=commitForumRefreshData(fresh,data.activity,forumMakeAIComment)'));
+  assert.ok(forumHome.includes('const commit=commitForumRefreshData(fresh,data.activity,forumMakeAIComment,undefined,visibleInCurrentTheme)'));
   assert.equal(forumHome.includes('const before=posts.slice()'), false);
   assert.ok(forumHome.includes('posts=commit.posts'));
 });
