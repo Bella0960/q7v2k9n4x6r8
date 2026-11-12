@@ -986,7 +986,7 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261111cloudbubble1/);
   assert.match(search, /chat-message-policy\.js\?v=20261111cloudbubble1/);
-  assert.ok(serviceWorker.includes('phone-app-pwa-v218'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v219'));
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261111cloudbubble1/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
@@ -1300,7 +1300,7 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
   assert.match(detail, /chat-presence-policy\.js\?v=20261111firstcontact1/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v218/);
+  assert.match(serviceWorker, /phone-app-pwa-v219/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261111firstcontact1/);
 });
 
@@ -1422,7 +1422,7 @@ test('chat detail persists voice habits per character and per group session with
   assert.match(detail, /buildVoiceHabitPrompt\(voiceHabitProfile\)/);
   assert.match(detail, /buildEmotionContinuityPrompt/);
   assert.match(detail, /maxScan: 24/);
-  assert.match(serviceWorker, /phone-app-pwa-v218/);
+  assert.match(serviceWorker, /phone-app-pwa-v219/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261111firstcontact1/);
 });
 
@@ -1609,7 +1609,7 @@ test('chat detail injects the role autonomy prompt and precaches the updated pol
   assert.ok(detail.includes('maxNotes: 3'));
   assert.ok(detail.includes('maxTurns: 4'));
   assert.ok(detail.includes('chat-presence-policy.js?v=20261111firstcontact1'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v218'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v219'));
   assert.ok(serviceWorker.includes('chat-presence-policy.js?v=20261111firstcontact1'));
 });
 
@@ -1932,7 +1932,7 @@ test('proactive contact notifier is loaded on home and navigation pages and prec
   assert.match(detail, /chat-notifier\.js\?v=20261111cloudpush1/);
   assert.match(detail, /cloud-push-client\.js\?v=20261111cloudpush1/);
   assert.match(detail, /chat-presence-policy\.js\?v=20261111firstcontact1/);
-  assert.match(serviceWorker, /phone-app-pwa-v218/);
+  assert.match(serviceWorker, /phone-app-pwa-v219/);
   assert.match(serviceWorker, /chat-notifier\.js\?v=20261111cloudpush1/);
   assert.match(serviceWorker, /cloud-push-client\.js\?v=20261111cloudpush1/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261111firstcontact1/);
@@ -1989,7 +1989,7 @@ test('chat, group chat and Moments prompts consume the same public timeline with
   assert.ok(detail.includes('PhoneStorage.getMoments()'));
   assert.ok(momentsPage.includes('role-public-timeline.js?v=20261102v1'));
   assert.ok(momentsPage.includes('RolePublicTimeline.buildRolePrompt'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v218'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v219'));
   assert.ok(serviceWorker.includes('role-public-timeline.js?v=20261102v1'));
 });
   
@@ -2030,7 +2030,7 @@ test('Messages chat-list theme is isolated, cache-busted, grayscale and hides in
 
   assert.ok(chatHome.includes('chat-list-editorial-theme.css?v=20261104v2'));
   assert.ok(chatHome.includes('chat-list-theme.js?v=20261104v2'));
-  assert.match(serviceWorker, /phone-app-pwa-v218/);
+  assert.match(serviceWorker, /phone-app-pwa-v219/);
   assert.ok(serviceWorker.includes('./shared/css/chat-list-editorial-theme.css?v=20261104v2'));
   assert.ok(serviceWorker.includes('./shared/js/chat-list-theme.js?v=20261104v2'));
 
@@ -2172,7 +2172,7 @@ test('whole-chat theme is refreshed when a chat page is restored from browser hi
   ]) {
     assert.ok(read(path).includes('chat-page-theme.js?v=20261105v1'), path + ' should load the refreshed theme bridge');
   }
-  assert.match(serviceWorker, /phone-app-pwa-v218/, 'the PhoneAPI and settings changes require the refreshed PWA cache');
+  assert.match(serviceWorker, /phone-app-pwa-v219/, 'the PhoneAPI and settings changes require the refreshed PWA cache');
 });
 
 
@@ -2327,7 +2327,7 @@ test('WeChat page refinements load on all five core pages and stay isolated from
     'message bubbles must remain under ChatBeauty customization'
   );
   assert.ok(serviceWorker.includes("'./shared/css/wechat-theme-refinements.css?v=20261105v2'"));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v218'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v219'));
   assert.ok(
     wechatThemeCss.includes('.floating-nav .nav-tab > span:nth-of-type(2)::after'),
     'WeChat labels must attach to the second span, not the optional unread badge'
@@ -3372,7 +3372,7 @@ test('聊天详情页的多气泡呈现队列只声明一次', () => {
 });
 
 test('亲属卡所有状态变更与商店外卖消费共用钱包锁', async () => {
-  assert.match(familyCardsPage, /wallet-ledger\.js\?v=20261110v9/);
+  assert.match(familyCardsPage, /wallet-ledger\.js\?v=20261110v10/);
   assert.match(familyCardsPage, /async function runAction\(action, id\)/);
   assert.match(familyCardsPage, /await ledger\.runExclusive\(function \(\)/);
   assert.match(familyCardsPage, /api\.update\(id, action\)/);
@@ -3801,7 +3801,7 @@ test('聊天、商店、外卖和钱包充值提现统一使用同一个钱包�
     ['takeout', takeoutPage],
     ['wallet', walletPage]
   ]) {
-    assert.match(source, /wallet-ledger\.js\?v=20261110v9/,
+    assert.match(source, /wallet-ledger\.js\?v=20261110v10/,
       name + ' must load the shared wallet ledger coordinator');
     assert.match(source, /MaoMaoWalletLedger\.runExclusive|ledger\.runExclusive/,
       name + ' must route balance mutations through the shared lock');
@@ -3820,7 +3820,7 @@ test('聊天、商店、外卖和钱包充值提现统一使用同一个钱包�
 
 
 test('亲密付额度、对象和开关设置也与商店及外卖结算共用钱包锁', () => {
-  assert.match(closePayPage, /wallet-ledger\.js\?v=20261110v9/);
+  assert.match(closePayPage, /wallet-ledger\.js\?v=20261110v10/);
   assert.match(closePayPage, /async function mutateData\(mutator\)/);
   assert.match(closePayPage, /ledger\.runExclusive\(function \(\)/);
   assert.match(closePayPage, /localStorage\.getItem\(KEY\) !== serialized/,
@@ -4150,7 +4150,7 @@ test('用户发出的红包/转账在钱包扣款后聊天保存失败时可恢�
 });
 
 test('用户红包/转账发送入口也使用共享钱包锁并刷新 chat-extras 脚本', () => {
-  assert.match(detail, /wallet-ledger\.js\?v=20261110v9/);
+  assert.match(detail, /wallet-ledger\.js\?v=20261110v10/);
   assert.match(detail, /chat-extras\.js\?t=20261107wallet2/);
   assert.match(chatExtrasSource, /ledger\.runExclusive\(function \(\)/);
   assert.match(chatExtrasSource, /paymentId: paymentId/);
@@ -4663,7 +4663,7 @@ test('亲属卡页面只加载一个共享钱包锁实例，避免重复初始�
 });
 
 test('记账页面实际加载共享钱包锁模块，财务写入与订单结算使用同一模块', () => {
-  assert.match(financePage, /wallet-ledger\.js\?v=20261110v9/);
+  assert.match(financePage, /wallet-ledger\.js\?v=20261110v10/);
   assert.match(shopPage, /recordFinanceLines\(transactionId, financeRows, 'finance_records'\)/);
   assert.match(takeoutPage, /recordFinanceLines\(transactionId, financeRows, 'finance_records'\)/);
   assert.doesNotMatch(shopPage, /JSON\.parse\(localStorage\.getItem\('finance_records'\) \|\| '\[\]'\)/);
