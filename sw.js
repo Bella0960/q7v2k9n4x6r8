@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v219';
+const CACHE_NAME = 'phone-app-pwa-v220';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 // v179 release: resume visible-bubble read observation after foreground restore.
 const APP_SHELL = [
@@ -66,7 +66,7 @@ const APP_SHELL = [
   './chat/date/date.html',
   './chat/date/journey.html',
   './chat/chat/chat-detail.html',
-  './chat/chat/js/chat-extras.js?t=20261107wallet2',
+  './chat/chat/js/chat-extras.js?t=20261112wallet3',
   './travel/dream-travel.html',
   './novel/novel.html',
   './novel/novel-detail.html',
