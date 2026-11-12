@@ -15,6 +15,7 @@
   function hm(t){var d=new Date(n(t,Date.now()));return isNaN(d.getTime())?'--:--':String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
   function cash(v){return (n(v)<0?'-':'+')+'¥'+Math.abs(n(v)).toFixed(2);}
   function tap(kind,index,body,css){return '<button type="button" class="nv-tap '+(css||'')+'" data-detail="'+esc(kind)+'" data-index="'+n(index)+'">'+body+'<span class="nv-chevron" aria-hidden="true">›</span></button>';}
+  function displayName(name){var full=String(name||'');return full.replace(/^(高中好友|社团伙伴|同事|室友|表姐|表哥|表弟|表妹|好友|邻居)/,'')||full;}
   function avatar(name,size,image){
     var label=esc(String(name||'?').slice(0,1));
     var token=String(name||'').split('').reduce(function(a,c){return(a*31+c.charCodeAt(0))%997;},7)%6;
@@ -36,7 +37,7 @@
     if(app==='chat') {
       if(v&&v.kind==='chat'){
         var c=arr(s.contacts)[v.index];if(!c)return null;
-        title=c.name;
+        title=displayName(c.name);
         body='<div class="nv-chat-detail"><div class="nv-chat-stamp">对话记录 · '+esc(when(c.lastTime))+'</div>'+
           '<div class="nv-bubbles">'+arr(c.messages).map(function(m) {
             if(m.side==='system')return '<div class="nv-recall">'+esc(m.text)+'</div>';
@@ -50,7 +51,7 @@
       } else if(v&&v.kind==='chatTab'&&v.tab==='contacts') {
         title='通讯录';tab='contacts';
         body=searchbar('搜索联系人')+group('联系人',arr(s.contacts).map(function(c,i){
-          return tap('chat',i,avatar(c.avatar||c.name)+'<span class="nv-line-copy"><strong>'+esc(c.name)+'</strong><small>'+esc(c.relationship||'朋友')+'</small></span>','nv-contact');
+          return tap('chat',i,avatar(c.avatar||c.name)+'<span class="nv-line-copy"><strong>'+esc(displayName(c.name))+'</strong><small>'+esc(c.relationship||'朋友')+'</small></span>','nv-contact');
         }).join(''));
       } else if(v&&v.kind==='chatTab'&&v.tab==='discover') {
         title='发现';tab='discover';
@@ -77,7 +78,7 @@
         body=searchbar('搜索')+'<div class="nv-chat-list">'+list.map(function(p){
           var c=p.c,last=arr(c.messages).slice(-1)[0]||{},unread=n(c.unread);
           return tap('chat',p.i,avatar(c.avatar||c.name)+
-            '<span class="nv-line-copy"><strong>'+esc(c.name)+'</strong><small>'+esc(last.text||'暂无消息')+'</small></span>'+
+            '<span class="nv-line-copy"><strong>'+esc(displayName(c.name))+'</strong><small>'+esc(last.text||'暂无消息')+'</small></span>'+
             '<span class="nv-chat-meta"><time>'+esc(hm(c.lastTime))+'</time>'+(unread?'<em>'+unread+'</em>':'')+'</span>','nv-contact');
         }).join('')+'</div>';
       }
