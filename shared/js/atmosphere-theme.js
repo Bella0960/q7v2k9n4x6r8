@@ -87,7 +87,9 @@
   var targets=[
    ['.chat-header > a.nav-circle-btn','back'],
    ['#btn-header-video','video'],
-   ['#btn-more-menu','more']
+   ['#btn-more-menu','more'],
+   ['#chatHomeSearch','search'],
+   ['#silverGroupEntryBtn','plus']
   ];
   targets.forEach(function(entry){
    var button=document.querySelector(entry[0]);
