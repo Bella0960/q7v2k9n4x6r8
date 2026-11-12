@@ -29,7 +29,7 @@ test('all four real pages share opt-in artwork assets without replacing app hand
 test('every new visual rule stays within the opt-in atmosphere preset',()=>{
  const rules=css.match(/(?:^|})\s*[^{}]+\{/gm)||[];
  for(const rule of rules){
-  const select=rule.replace(/\{$/,'').trim();
+  const select=rule.replace(/\{$/,'').replace(/^\s*}\s*/,'').trim();
   if(select.startsWith('@')||select.startsWith('from')||select.startsWith('to'))continue;
   assert.ok(select.includes('data-chat-theme-preset="atmosphere"'),
    'unscoped CSS rule: '+select.slice(0,160));
