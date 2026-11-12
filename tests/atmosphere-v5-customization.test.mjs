@@ -76,3 +76,15 @@ test('addon registers without interfering with the preexisting V5 event lifecycl
  assert.equal(typeof events.DOMContentLoaded,'function');
  assert.doesNotMatch(js,/\.hero\.replaceChildren\(|\.dock\.replaceChildren\(|\.messages\.replaceChildren\(/);
 });
+
+test('home card and personal-home copy are editable without rewriting V5 structure',()=>{
+ const entries=['home-title','home-meta','home-note','profile-title','profile-id'];
+ for(const id of entries)assert.ok(js.includes("'"+id+"'"),id+' editor is present');
+ assert.match(js,/function addTextEditors\(container\)/);
+ assert.match(js,/input\.maxLength=max/);
+ assert.match(js,/state\.records\.get\('text:'\+id\)/);
+ assert.match(js,/await save\(\{key:'text:'\+id,value,createdAt:Date\.now\(\)\}\)/);
+ assert.match(js,/applyTexts\(\);renderTracks\(\)/);
+ assert.doesNotMatch(js,/\.hero\.innerHTML\s*=|\.profile-center\.innerHTML\s*=/);
+ assert.match(css,/\.v5-custom-text-editor input/);
+});
