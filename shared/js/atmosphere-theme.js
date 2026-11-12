@@ -4,10 +4,12 @@
  var script=document.currentScript;
  var base=new URL('../../',script.src);
  var TONE_KEY='maomao_atmosphere_tone_v1';
+ var iconKit=window.MAOMAOAtmosphereIcons;
+ var headerIconCache=new Map();
  var shell,drawer,scrim,opener,lastFocus,observer,locked=[],toneButton,quickTone,feedback;
  var icons={menu:'<path d="M4 7h16M4 12h11M4 17h16"/>',close:'<path d="m6 6 12 12M18 6 6 18"/>',tone:'<circle cx="12" cy="12" r="8"/><path d="M12 4v16"/>'};
  function el(tag,cls,text){var n=document.createElement(tag);if(cls)n.className=cls;if(text!=null)n.textContent=text;return n;}
- function icon(name,label){var b=el('button','at-icon');b.type='button';b.setAttribute('aria-label',label);b.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true">'+icons[name]+'</svg>';return b;}
+ function icon(name,label){var b=el('button','at-icon');b.type='button';b.setAttribute('aria-label',label);b.innerHTML=iconKit?iconKit.markup(name):'<svg viewBox="0 0 24 24" aria-hidden="true">'+icons[name]+'</svg>';return b;}
  function active(){return shell&&shell.getAttribute('data-chat-theme-preset')==='atmosphere';}
  function readTone(){try{return localStorage.getItem(TONE_KEY)==='dark'?'dark':'light';}catch(e){return 'light';}}
  function syncTone(){if(!shell)return;if(!active()){shell.removeAttribute('data-at-tone');return;}var dark=readTone()==='dark';shell.setAttribute('data-at-tone',dark?'dark':'light');if(toneButton)toneButton.textContent=dark?'切换为浅色':'切换为深色';if(quickTone)quickTone.setAttribute('aria-label',dark?'切换为浅色':'切换为深色');}
@@ -51,7 +53,7 @@
   ['music','音乐','music/music.html']
  ].forEach(function(item){
   var a=link('',item[2]);a.className='at-quick-route';a.setAttribute('aria-label',item[1]);
-  var svg=el('svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');svg.innerHTML=quickIcons[item[0]];
+  var svg=el('svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');svg.innerHTML=iconKit?(iconKit.paths[({contacts:'people',footprint:'clock',roles:'person',theme:'tone'})[item[0]]||item[0]]||quickIcons[item[0]]):quickIcons[item[0]];svg.setAttribute('stroke','currentColor');svg.setAttribute('stroke-width','1.55');svg.setAttribute('fill','none');svg.setAttribute('stroke-linecap','round');svg.setAttribute('stroke-linejoin','round');
   a.append(svg,el('span','',item[1]));quick.append(a);
  });drawer.append(quick);
  // Link to the actual music app rather than pretending the decorative home control plays audio.
@@ -80,9 +82,31 @@
  shell.addEventListener('pointercancel',function(){edgeStart=null;});
  syncTone();
  }
+ function syncHeaderIcons(enabled){
+  if(!iconKit)return;
+  var targets=[
+   ['.chat-header > a.nav-circle-btn','back'],
+   ['#btn-header-video','video'],
+   ['#btn-more-menu','more']
+  ];
+  targets.forEach(function(entry){
+   var button=document.querySelector(entry[0]);
+   if(!button)return;
+   var svg=button.querySelector('svg');
+   if(!svg)return;
+   if(enabled){
+    if(!headerIconCache.has(button))headerIconCache.set(button,svg.outerHTML);
+    iconKit.apply(svg,entry[1]);
+   }else if(headerIconCache.has(button)){
+    svg.outerHTML=headerIconCache.get(button);
+    headerIconCache.delete(button);
+   }
+  });
+ }
  function refresh(){
   if(!shell)return;
   var transition=document.getElementById('atPageTransitions');
+  syncHeaderIcons(active());
   if(active()){
    mount();syncTone();
    if(!transition){transition=el('style');transition.id='atPageTransitions';transition.textContent='@view-transition{navigation:auto} ::view-transition-old(root),::view-transition-new(root){animation-duration:.24s;animation-timing-function:cubic-bezier(.22,.7,.16,1)} @media(prefers-reduced-motion:reduce){::view-transition-group(*),::view-transition-old(*),::view-transition-new(*){animation:none!important}}';document.head.append(transition);}
