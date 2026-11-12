@@ -421,6 +421,167 @@ scroll.addEventListener('touchend',()=>{
   }else if(el.classList.contains('show')){el.classList.remove('show');el.style.height=''}
   prPulling=false;prReady=false;
 },{passive:true});
+
+function cloneForumRefreshPost(post){
+ if(!post||typeof post!=='object')return post;
+ const copy=Object.assign({},post);
+ if(Array.isArray(post.comments)){
+  copy.comments=post.comments.map(function(comment){
+   if(!comment||typeof comment!=='object')return comment;
+   const next=Object.assign({},comment);
+   if(Array.isArray(comment.replies)){
+    next.replies=comment.replies.map(function(reply){
+     return reply&&typeof reply==='object'?Object.assign({},reply):reply;
+    });
+   }
+   return next;
+  });
+ }
+ return copy;
+}
+
+/* Stable identity for AI-generated comments and replies. A repeated root comment
+ * may still carry new nested replies, so dedupe the root without discarding its delta.
+ */
+function forumRefreshCommentKey(item){
+ if(!item||typeof item!=='object')return '';
+ const author=String(item.residentId||item.name||'').trim();
+ const text=String(item.text||'').trim().toLocaleLowerCase();
+ if(!author||!text)return '';
+ return JSON.stringify([String(item.source||'forum-ai'),author,text]);
+}
+function mergeForumRefreshReplies(existingReplies,incomingReplies){
+ const replies=Array.isArray(existingReplies)?existingReplies.map(function(reply){
+  return reply&&typeof reply==='object'?Object.assign({},reply):reply;
+ }):[];
+ const known=new Set();
+ replies.forEach(function(reply){
+  const key=forumRefreshCommentKey(reply);
+  if(key)known.add(key);
+ });
+ let added=0;
+ (Array.isArray(incomingReplies)?incomingReplies:[]).forEach(function(reply){
+  const key=forumRefreshCommentKey(reply);
+  if(!key||known.has(key))return;
+  replies.push(Object.assign({},reply));
+  known.add(key);
+  added++;
+ });
+ return {replies:replies,added:added};
+}
+function appendForumRefreshComment(comments,incoming){
+ if(!Array.isArray(comments)||!incoming||typeof incoming!=='object')return 0;
+ const key=forumRefreshCommentKey(incoming);
+ if(!key)return 0;
+ const existing=comments.find(function(comment){return forumRefreshCommentKey(comment)===key});
+ if(!existing){
+  const next=Object.assign({},incoming);
+  const nested=mergeForumRefreshReplies([],incoming.replies);
+  if(Array.isArray(incoming.replies))next.replies=nested.replies;
+  comments.push(next);
+  return 1+nested.added;
+ }
+ const nested=mergeForumRefreshReplies(existing.replies,incoming.replies);
+ if(nested.added){
+  existing.replies=nested.replies;
+ }
+ return nested.added;
+}
+
+/* Merge new forum activity into the latest snapshot without mutating existing posts.
+ * This is deliberately pure so preservation and duplicate handling can be tested.
+ */
+function mergeForumRefreshData(currentPosts,freshPosts,activity,normalizeComment,acceptPost){
+ const existing=Array.isArray(currentPosts)?currentPosts.map(cloneForumRefreshPost):[];
+ const knownIds=new Set();
+ const knownTitles=new Set();
+ const knownBodies=new Set();
+ // A repeated AI story can arrive with a different title and a new ID.
+ // Only compare substantial body text to avoid suppressing short common posts.
+ function forumRefreshBodyKey(post){
+  const body=String(post&&post.body||'').replace(/\s+/g,'').trim().toLocaleLowerCase();
+  return body.length>=40?body:'';
+ }
+ existing.forEach(function(post){
+  if(!post||typeof post!=='object')return;
+  if(post.id!=null)knownIds.add(String(post.id));
+  const title=String(post.title||'').trim().toLocaleLowerCase();
+  if(title)knownTitles.add(title);
+  const body=forumRefreshBodyKey(post);
+  if(body)knownBodies.add(body);
+ });
+ const accepted=[];
+ (Array.isArray(freshPosts)?freshPosts:[]).slice(0,3).forEach(function(post){
+  if(!post||typeof post!=='object'||post.id==null)return;
+  const id=String(post.id),title=String(post.title||'').trim().toLocaleLowerCase();
+  const body=forumRefreshBodyKey(post);
+  if(!id||!title||!String(post.body||'').trim()||knownIds.has(id)||knownTitles.has(title)||(body&&knownBodies.has(body)))return;
+  const nextPost=cloneForumRefreshPost(post);
+  if(Array.isArray(nextPost.comments)){
+   const uniqueComments=[];
+   nextPost.comments.forEach(function(comment){
+    appendForumRefreshComment(uniqueComments,comment);
+   });
+   nextPost.comments=uniqueComments;
+  }
+  accepted.push(nextPost);
+  knownIds.add(id);
+  knownTitles.add(title);
+  if(body)knownBodies.add(body);
+ });
+ const nextPosts=accepted.concat(existing);
+ let activityCount=0;
+ (Array.isArray(activity)?activity:[]).slice(0,2).forEach(function(entry){
+  if(!entry||entry.postId==null||!Array.isArray(entry.comments))return;
+  const target=nextPosts.find(function(post){return post&&String(post.id)===String(entry.postId)});
+  if(!target||!Array.isArray(target.comments)||(typeof acceptPost==='function'&&!acceptPost(target)))return;
+  entry.comments.slice(0,2).forEach(function(item,index){
+   if(typeof normalizeComment!=='function')return;
+   const normalized=normalizeComment(item,index);
+   if(!normalized||!String(normalized.text||'').trim())return;
+   activityCount+=appendForumRefreshComment(target.comments,normalized);
+  });
+ });
+ return {
+  posts:nextPosts,
+  addedPostCount:accepted.length,
+  activityCount:activityCount,
+  changed:accepted.length>0||activityCount>0
+ };
+}
+
+/* Persist against the newest local snapshot. If another forum page writes while
+ * the AI request is in flight, retry the merge instead of overwriting that edit.
+ * localStorage.setItem is the single atomic persistence operation for the snapshot.
+ */
+function commitForumRefreshData(freshPosts,activity,normalizeComment,storage,acceptPost){
+ const targetStorage=storage||localStorage;
+ for(let attempt=0;attempt<3;attempt++){
+  let raw,current;
+  try{
+   raw=targetStorage.getItem(STORE);
+   current=raw===null?[]:JSON.parse(raw);
+  }catch(error){
+   return {ok:false,reason:'storage-read'};
+  }
+  if(!Array.isArray(current))return {ok:false,reason:'invalid-store'};
+  const merged=mergeForumRefreshData(current,freshPosts,activity,normalizeComment,acceptPost);
+  if(!merged.changed){
+   return Object.assign({ok:true,changed:false},merged);
+  }
+  try{
+   if(targetStorage.getItem(STORE)!==raw)continue;
+   const serialized=JSON.stringify(merged.posts);
+   targetStorage.setItem(STORE,serialized);
+   if(targetStorage.getItem(STORE)!==serialized)return {ok:false,reason:'storage-unverified'};
+   return Object.assign({ok:true},merged);
+  }catch(error){
+   return {ok:false,reason:'storage-write'};
+  }
+ }
+ return {ok:false,reason:'storage-conflict'};
+}
+
 let forumRefreshBusy=false;
 async function refreshFeed(){
  if(forumRefreshBusy)return false;
@@ -478,25 +639,24 @@ async function refreshFeed(){
    if(gossipMode)usedGossipPlans.add(gossipPlan.id);
    if(eventPlan)usedEventPlans.add(eventPlan.id);
   });
-  if(!fresh.length)throw new Error('这次没有生成新的帖子，请稍后再刷新');
+  if(!fresh.length&&!(Array.isArray(data.activity)&&data.activity.length))throw new Error('这次没有生成新的帖子或评论，请稍后再刷新');
   if(gossipMode&&fresh.length!==gossipPlans.length)throw new Error('三篇故事没有全部生成成功，本次不会发布残缺连载');
   if(eventMode&&usedEventPlans.size!==eventPlans.length)throw new Error('本主题事件没有完整生成，保留旧帖后请重试');
-  // The activity pass must not mutate existing post objects until the full batch saves.
-  const before=posts;
-  posts=fresh.concat(posts.map(p=>({...p,comments:Array.isArray(p.comments)?p.comments.slice():p.comments})));
-  let activityCount=0;
-  (Array.isArray(data.activity)?data.activity:[]).slice(0,2).forEach(entry=>{
-   const target=posts.find(p=>String(p.id)===String(entry.postId));
-   if(!target||!visibleInCurrentTheme(target)||!Array.isArray(entry.comments))return;
-   if(!Array.isArray(target.comments)){target.comments=[]}
-   entry.comments.slice(0,2).forEach((c,j)=>{
-    const normalized=forumMakeAIComment(c,j);
-    if(normalized&&!target.comments.some(old=>old.source==='forum-ai'&&old.text===normalized.text)){target.comments.push(normalized);activityCount++}
-   });
-  });
-  if(!save()){posts=before;return false}
+  // Refresh against the latest persisted posts so long-running AI calls cannot overwrite reader activity.
+  const commit=commitForumRefreshData(fresh,data.activity,forumMakeAIComment,undefined,visibleInCurrentTheme);
+  if(!commit.ok){
+   toast(commit.reason==='storage-conflict'?'论坛刚刚有其他页面更新，请再刷新一次':
+     '本次帖子或评论没有可靠保存，请检查本机存储空间');
+   return false;
+  }
+  posts=commit.posts;
+  if(!commit.changed){
+   render();
+   toast('这次没有新的帖子或回复，再试一次看看');
+   return false;
+  }
   render();scroll.scrollTop=0;
-  toast('社区又有 '+fresh.length+' 篇新帖'+(activityCount?'，旧帖也有新回复':''));
+  toast('社区又有 '+commit.addedPostCount+' 篇新帖'+(commit.activityCount?'，旧帖也有新回复':''));
   return true;
  }catch(error){
   console.warn('[Forum] 社区增量刷新失败',error);
