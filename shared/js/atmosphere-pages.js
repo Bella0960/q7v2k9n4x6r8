@@ -5,7 +5,7 @@
 (function () {
  'use strict';
  var shell, surface, bar, empty, observer, themeObserver;
- var selection='all', originalMusicIcon=null;
+ var selection='all', originalMusicIcon=null, originalHomeHref=null;
  var iconKit=window.MAOMAOAtmosphereIcons||null;
  var oldIcons=new Map(),oldLabels=new Map();
  function isActive(){return !!shell&&shell.getAttribute('data-chat-theme-preset')==='atmosphere';}
@@ -331,6 +331,17 @@
      icon('#btnSendComment','send',active);
    }
    if(surface==='profile'){
+     // Keep return navigation faithful to the page that opened My Homepage.
+     var homeLink=document.querySelector('.menu-row[href*="my-moments.html"]');
+     if(homeLink){
+       if(active){
+         if(originalHomeHref===null)originalHomeHref=homeLink.getAttribute('href');
+         homeLink.setAttribute('href',originalHomeHref+'?from=profile');
+       }else if(originalHomeHref!==null){
+         homeLink.setAttribute('href',originalHomeHref);
+         originalHomeHref=null;
+       }
+     }
      icon('.profile-cover','photo',active);
      var destinations=[
        ['.menu-row[href*="my-moments.html"]','home'],
