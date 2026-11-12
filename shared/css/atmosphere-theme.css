@@ -109,3 +109,44 @@
 [data-chat-theme-preset="atmosphere"] .menu-card{background:transparent!important;box-shadow:none!important;border:0!important;border-radius:0!important;}
 [data-chat-theme-preset="atmosphere"] .menu-divider{background:transparent!important;}
 [data-chat-theme-preset="atmosphere"] :is(.profile-sign,.menu-icon,.menu-arrow,.profile-edit-btn){color:var(--at-muted)!important;}
+
+/* THEME-ATMOSPHERE-001: legacy composer isolation.
+   The detail page has later !important legacy rules for #chat-form and
+   #chat-messages. These more-specific theme-only selectors prevent that
+   default styling from leaking into the opt-in light/dark atmosphere UI. */
+.phone-mockup[data-chat-theme-preset="atmosphere"] :is(.chat-stage,#chat-messages){
+ background:transparent!important;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] form#chat-form.input-dock{
+ display:flex!important;align-items:flex-end;gap:8px;
+ padding:10px 14px max(14px,env(safe-area-inset-bottom))!important;
+ background:transparent!important;border:0!important;box-shadow:none!important;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] form#chat-form .input-capsule{
+ flex:1 1 auto;min-width:0;margin:0!important;
+ background:var(--at-wash)!important;border:1px solid var(--at-line)!important;
+ border-radius:22px!important;box-shadow:none!important;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] form#chat-form .send-icon-btn{
+ display:flex!important;position:relative!important;inset:auto!important;
+ width:38px!important;min-width:38px!important;height:38px!important;
+ flex:0 0 38px;border-radius:19px!important;
+ background:var(--at-ink)!important;color:var(--at-bg)!important;
+ border:0!important;box-shadow:none!important;align-self:flex-end;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] form#chat-form .send-icon-btn svg{
+ color:inherit!important;stroke:currentColor!important;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] form#chat-form .send-icon-btn.disabled{
+ opacity:.4!important;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] #myFloatSend{display:none!important;}
+/* Make this theme genuinely edge-to-edge on a phone, without changing
+   the desktop phone preview or any other theme. */
+@media(max-width:600px){
+ .phone-mockup[data-chat-theme-preset="atmosphere"]{
+  width:100vw!important;height:100vh!important;height:100dvh!important;
+  max-width:none!important;max-height:none!important;
+  margin:0!important;border:0!important;border-radius:0!important;box-shadow:none!important;
+ }
+}
