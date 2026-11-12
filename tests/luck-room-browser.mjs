@@ -44,7 +44,8 @@ async function main() {
   await page.addInitScript(() => {
     const avatar = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Ccircle cx=%2212%22 cy=%2212%22 r=%2210%22 fill=%22%23111%22/%3E%3C/svg%3E';
     localStorage.setItem('ai_custom_characters', JSON.stringify([
-      { id: 'luck-room-smoke-role', name: '测试角色', avatar: avatar }
+      { id: 'luck-room-smoke-role', name: '测试角色', avatar: avatar },
+      { id: 'luck-room-smoke-role-2', name: '第二测试角色', avatar: avatar }
     ]));
   });
 
@@ -141,6 +142,54 @@ async function main() {
   assert((await page.locator('#dailyRoleReaction').textContent()).includes('测试角色'), 'Character should respond after daily luck is revealed');
   assert((await page.locator('#dailyResult .disclaimer').textContent()).trim() === '以上内容均为娱乐体验，不具备预测未来或指导现实决策的作用，请勿当真，一切仅供娱乐参考。', 'Daily luck disclaimer mismatch');
   await page.screenshot({ path: path.join(artifactDir, 'luck-room-daily.png'), fullPage: true });
+
+  // Asynchronous game results must remain with the role chosen at the start, not the next selected role.
+  await page.locator('#roleSelect').selectOption('luck-room-smoke-role');
+  await page.locator('[data-tab="wheel"]').click();
+  await page.locator('#spinWheelBtn').click();
+  await page.locator('#roleSelect').selectOption('luck-room-smoke-role-2');
+  await page.locator('#wheelResult').waitFor({ state: 'visible', timeout: 8500 });
+  assert((await page.locator('#wheelRoleReaction').textContent()).trim() === '', 'A new role must not receive the previous role wheel reply');
+
+  await page.locator('#historyToggle').click();
+  assert(await page.locator('#historyList .history-entry').count() === 0, 'Switching roles mid-spin must not reassign wheel history');
+  await page.locator('#closeHistory').click();
+  await page.locator('#roleSelect').selectOption('luck-room-smoke-role');
+  await page.locator('#historyToggle').click();
+  assert((await page.locator('#historyList .history-entry').allTextContents()).filter((entry) => entry.includes('大转盘')).length === 2, 'Both wheel results should remain with their original role');
+  await page.locator('#closeHistory').click();
+
+  await page.locator('[data-tab="tarot"]').click();
+  await page.locator('#tarotSpreadSelect').selectOption('1');
+  await page.locator('#drawTarotBtn').click();
+  await page.locator('#roleSelect').selectOption('luck-room-smoke-role-2');
+  await page.waitForFunction(() => !document.getElementById('drawTarotBtn').disabled);
+  assert(await page.locator('.tarot-crystal-card').count() === 1, 'Single tarot draw must finish after role switch');
+  await page.locator('.tarot-crystal-card').click();
+  assert(await page.locator('#tarotRoleReaction').isHidden(), 'The new role must not comment on an old-role tarot draw');
+  await page.locator('#historyToggle').click();
+  assert(await page.locator('#historyList .history-entry').count() === 0, 'Switching roles mid-shuffle must not reassign tarot history');
+  await page.locator('#closeHistory').click();
+
+  await page.locator('#roleSelect').selectOption('luck-room-smoke-role');
+  await page.locator('[data-tab="daily"]').click();
+  await page.locator('#dailyDrawBtn').click();
+  await page.locator('#roleSelect').selectOption('luck-room-smoke-role-2');
+  await page.locator('#dailyResult').waitFor({ state: 'visible', timeout: 3000 });
+  assert((await page.locator('#dailyRoleReaction').textContent()).trim() === '', 'The new role must not receive an old-role daily response');
+  await page.locator('#historyToggle').click();
+  assert(await page.locator('#historyList .history-entry').count() === 0, 'Switching roles during daily reveal must not reassign history');
+  await page.locator('#closeHistory').click();
+
+  await page.locator('#roleSelect').selectOption('luck-room-smoke-role');
+  await page.locator('[data-tab="lots"]').click();
+  await page.locator('#drawLotBtn').click();
+  await page.locator('#roleSelect').selectOption('luck-room-smoke-role-2');
+  await page.locator('#lotResult').waitFor({ state: 'visible', timeout: 4000 });
+  assert((await page.locator('#lotRoleReaction').textContent()).trim() === '', 'The new role must not receive an old-role lot reply');
+  await page.locator('#historyToggle').click();
+  assert(await page.locator('#historyList .history-entry').count() === 0, 'Switching roles during lot shaking must not reassign history');
+  await page.locator('#closeHistory').click();
 
   assert(pageErrors.length === 0, 'Browser console errors: ' + pageErrors.join(' | '));
   console.log('Luck room mobile browser smoke test passed: lots, wheel, crystal tarot, daily luck.');
