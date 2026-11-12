@@ -27,7 +27,18 @@ for(const width of [320,375,390,430,1280]){
  await page.waitForTimeout(400);assert.ok(await rail.evaluate(el=>el.scrollLeft>0),'native touch rail scroll');await touch.detach();
  const before=await page.evaluate(()=>JSON.stringify({...localStorage}));
  await page.locator('[data-sf="detail"][data-id="atmosphere"]').last().click();
- for(const id of ['desktop','list','detail','moments','mine','home'])await page.locator('[data-sf="page"][data-id="'+id+'"]').click();
+ for(const id of ['desktop','list','detail','moments','mine','home']){
+  await page.locator('[data-sf="page"][data-id="'+id+'"]').click();
+  assert.equal(await page.locator('#sfPreview .sp-screen').getAttribute('data-page'),id,'six distinct preview layouts');
+  assert.ok(await page.locator('#sfPreview .sp-home-indicator').count());
+ }
+ await page.locator('[data-sf="tone"][data-id="dark"]').click();
+ assert.ok(await page.locator('#sfPreview .sp-screen').evaluate(el=>el.classList.contains('sp-dark')));
+ await page.locator('#sfPreview').focus();await page.keyboard.press('ArrowLeft');
+ assert.equal(await page.locator('#sfPreview .sp-screen').getAttribute('data-page'),'mine');
+ await page.locator('[data-sf="tone"][data-id="light"]').click();
+ assert.equal(await page.locator('#sfPreview .sp-dark').count(),0);
+ await page.locator('[data-sf="page"][data-id="detail"]').click();
  assert.equal(await page.evaluate(()=>JSON.stringify({...localStorage})),before,'preview must not change storage');
  await page.locator('[data-sf="close"]').click();
  await page.locator('[data-category="themes"]').click();
