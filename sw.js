@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v205';
+const CACHE_NAME = 'phone-app-pwa-v206';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 // v196 release: sweep orphaned role-owned media refs during avatar cleanup.
 const APP_SHELL = [
@@ -55,6 +55,7 @@ const APP_SHELL = [
   './shared/js/chat-list-theme.js?v=20261112at1',
   './shared/css/atmosphere-theme.css?v=20261112v1',
   './shared/js/atmosphere-theme.js?v=20261112v1',
+  './shared/js/atmosphere-composer.js?v=20261112c1',
   './shared/assets/silver-butterfly-photo.webp',
   './games/games.html',
   './games/cooking.html',
