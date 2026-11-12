@@ -64,3 +64,104 @@
  .store-app .product-grid .product-card{padding:8px;gap:7px}
  .store-app .product-grid .product-art{height:105px;min-height:105px}
 }
+
+
+/* Market polish 2026-11-13: product hierarchy, tactile detail and compact mobile flow.
+   Preset-specific theme artwork remains controlled by the original project. */
+.store-app .sf-section-line{margin:16px 0 15px}
+.store-app .sf-section-line h2{font:400 21px/1.2 Georgia,'Songti SC',serif;letter-spacing:-.035em}
+.store-app .sf-featured{gap:10px;padding-bottom:10px}
+.store-app .sf-feature{
+ background:linear-gradient(135deg,#f5f5f4,#eaeae8);
+ border:1px solid #efefee;
+ border-radius:17px;
+ grid-template-columns:minmax(0,1fr) 43%;
+ padding:19px 16px;
+}
+.store-app .sf-feature::before{
+ content:"";position:absolute;left:15px;right:15px;top:11px;height:1px;
+ background:#ffffffb5;pointer-events:none;
+}
+.store-app .sf-feature>div:first-child{display:flex;flex-direction:column;align-items:flex-start;min-width:0}
+.store-app .sf-feature h2{margin:20px 0 8px;font-size:27px;line-height:1.15}
+.store-app .sf-feature p{max-width:174px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.store-app .sf-feature span{margin-top:auto;font-size:10px;padding-top:6px;border-bottom:1px solid #b9b9b5;padding-bottom:4px}
+.store-app .sf-feature-scene{min-width:0;align-self:stretch}
+.store-app .sf-feature-scene .product-art{
+ height:205px;min-height:205px;border:1px solid #e5e5e5;
+ background-color:#fff;border-radius:12px;
+}
+.store-app .sf-heading{margin:23px 0 15px}
+.store-app .sf-heading h2{font:400 23px/1.2 Georgia,'Songti SC',serif}
+.store-app .sf-heading p{margin-top:7px;font-size:10px;line-height:1.6}
+.store-app .sf-grid{gap:22px 11px}
+.store-app .sf-native-cover{
+ border:1px solid #eaeaea;border-radius:15px;
+ background:#f7f7f7;
+}
+.store-app .sf-native-cover .product-art{
+ height:232px;min-height:232px;max-height:232px;
+ border-radius:14px;transition:transform .24s ease;
+}
+@media(hover:hover) and (pointer:fine){
+ .store-app .sf-native-cover:hover .product-art{transform:scale(1.025)}
+}
+.store-app .sf-product-meta{padding-top:10px;align-items:flex-start}
+.store-app .sf-product-meta strong{font:500 12px/1.35 -apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif}
+.store-app .sf-product-meta small{font-size:9px;line-height:1.5;max-width:150px}
+.store-app .sf-favorite{min-height:40px;min-width:40px;margin-top:-4px}
+.store-app .sf-favorite svg{width:18px;height:18px;stroke-width:1.4}
+.store-app .sf-native-section{margin:10px 0 17px}
+.store-app .sf-native-section h3,.store-app .sf-list-theme-section h3{
+ font:400 19px/1.2 Georgia,'Songti SC',serif;letter-spacing:-.02em;
+}
+.store-app .sf-native-section p,.store-app .sf-list-theme-section p{font-size:9px}
+.store-app .product-grid{gap:15px 11px}
+.store-app .product-grid .product-card{
+ padding:10px;background:#fafafa;
+ border:1px solid #f0f0f0;border-radius:15px;
+ gap:8px;box-shadow:none;
+}
+.store-app .product-grid .product-art{height:144px;min-height:144px;border-radius:11px}
+.store-app .product-grid .product-meta{display:flex;flex-direction:column;min-width:0}
+.store-app .product-grid .product-eyebrow{font-size:8px;letter-spacing:.08em}
+.store-app .product-grid .product-title{font-size:13px;font-weight:500;line-height:1.35}
+.store-app .product-grid .product-desc{
+ display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;
+ overflow:hidden;font-size:9px;line-height:1.6;min-height:28px;
+}
+.store-app .product-grid .product-foot{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.store-app .product-grid .action-btn{min-height:39px;border-radius:11px;font-size:10px}
+.store-app .sf-list-theme-section{margin:27px 0 12px}
+.store-app .market-theme-feature{margin-top:28px}
+.store-app .sf-category{margin:21px 0 24px}
+.store-app .sf-category h3{margin:0 0 11px;font:400 19px/1.25 Georgia,'Songti SC',serif}
+.store-app .sf-category-row{
+ padding:13px 14px;margin:0 0 6px;
+ border:1px solid #f0f0f0;border-radius:11px;
+ background:#fafafa;transition:background .2s ease;
+ min-height:57px;
+}
+.store-app .sf-category-row:active{background:#ededed}
+.store-app .sf-category-row strong{font-size:12px}
+.store-app .sf-category-row small{font-size:9px;line-height:1.5}
+.store-app .sf-record{border-bottom:0;border-radius:13px;background:#fafafa;padding:15px;margin-bottom:12px}
+.store-app .sf-record-main{max-width:100%;word-break:break-word}
+.store-app .sf-record>div{display:flex;flex-wrap:wrap;gap:5px}
+.store-app .sf-record>div .sf-button{margin:0;min-height:37px}
+.store-app .sf-dialog{border-radius:18px;overscroll-behavior:contain}
+.store-app .sf-native-detail-art .product-art{min-height:220px}
+.store-app .sf-scopes label{padding:4px 0;min-height:36px}
+.sf-visually-hidden{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@media(max-width:360px){
+ .store-app .sf-feature{padding:15px 12px}
+ .store-app .sf-feature h2{font-size:23px}
+ .store-app .sf-feature p{-webkit-line-clamp:2;font-size:9px}
+ .store-app .sf-native-cover .product-art{height:194px;min-height:194px;max-height:194px}
+ .store-app .product-grid .product-art{height:113px;min-height:113px}
+ .store-app .product-grid .product-card{padding:8px}
+ .store-app .product-grid .action-btn{font-size:9px}
+}
+@media(prefers-reduced-motion:reduce){
+ .store-app .sf-native-cover .product-art,.store-app .sf-category-row{transition:none}
+}
