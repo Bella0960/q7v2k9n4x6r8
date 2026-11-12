@@ -148,8 +148,8 @@
    if(bar&&surface==='profile')bar.hidden=!active;
    if(surface==='chats'){
      setLabel('.chat-theme-copy h1','CHATS',active);
-     icon('#chatHomeSearch','search',active);
-     icon('#silverGroupEntryBtn','plus',active);
+     // The existing atmosphere-theme controller owns the home-page SVGs.
+     // Do not race it by separately caching or rewriting the same nodes.
    }
    if(surface==='moments'){
      setLabel('.wechat-moments-toolbar strong','动态',active);
