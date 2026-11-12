@@ -42,7 +42,7 @@
     "test:chat:isolation:browser": "node tests/chat-data-isolation-browser.mjs",
     "test:chat:bubbles": "node tests/chat-reply-bubbles-browser.mjs",
     "test:icons:presets": "node --test tests/icon-presets-contract.test.mjs",
-    "test:theme:market": "node --check theme-store/collection-store.js && node --check theme-store/storefront.js && node --test tests/market-collection.test.mjs tests/pwa-navigation-cache.test.mjs tests/icon-presets-contract.test.mjs",
+    "test:theme:market": "node --check theme-store/collection-store.js && node --check theme-store/preview-scene.js && node --check theme-store/storefront.js && node --test tests/market-collection.test.mjs tests/market-preview-scene.test.mjs tests/pwa-navigation-cache.test.mjs tests/icon-presets-contract.test.mjs",
     "test:theme:market:browser": "node tests/market-storefront-browser.mjs",
     "test:images": "node --test tests/image-generation-pipeline.test.mjs",
     "test:role:avatars": "node --test tests/role-avatar-library.test.mjs",
