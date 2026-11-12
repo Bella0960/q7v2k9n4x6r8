@@ -186,6 +186,37 @@ test('reply content parser preserves narration extraction and bubble splitting',
   assert.match(detail, /ChatMessagePolicy\.parseReplyContent/);
 });
 
+test('bilingual reply keeps each source and Chinese translation together in all bubble modes', () => {
+  const raw = 'Good morning!\r\n\r\n［中译：早上好！］\r\n\r\nSee you later.\r\n[中译:晚点见。\n到时候聊。]';
+  assert.equal(policy.isCompleteBilingualReply(raw, 'en'), true);
+  for (const mode of ['legacy', 'auto', 'multi']) {
+    const messages = policy.buildReplyMessages(raw, mode);
+    assert.deepEqual(Array.from(messages, (message) => message.text), ['Good morning!', 'See you later.']);
+    assert.deepEqual(Array.from(messages, (message) => message.translation), ['早上好！', '晚点见。\n到时候聊。']);
+  }
+  const [single] = policy.buildReplyMessages(raw, 'single');
+  assert.equal(single.text, 'Good morning!\nSee you later.');
+  assert.equal(single.translation, '早上好！\n晚点见。\n到时候聊。');
+});
+
+test('bilingual validation catches mixed or incomplete replies and retains already paired bubbles', () => {
+  assert.equal(policy.isCompleteBilingualReply('今日は雨だね。\n[中译:今天下雨了。]', 'ja'), true);
+  assert.equal(policy.isCompleteBilingualReply('비가 오네.\n[中译:下雨了。]', 'ko'), true);
+  for (const [language, raw] of [
+    ['en', 'Hello (你好)\n[中译:你好]'],
+    ['en', 'Hello\n你好'],
+    ['en', 'Hello\n[中译:你'],
+    ['en', 'Hello\n[中译:]'],
+    ['en', 'Hello\n[中译:Hi]'],
+    ['en', 'Hello\nHow are you?\n[中译:你好吗？]'],
+    ['ja', 'おはよう。今天好累啊。\n[中译:早上好，今天好累。]'],
+    ['ko', '안녕, 你好\n[中译:你好]']
+  ]) {
+    assert.equal(policy.isCompleteBilingualReply(raw, language), false, raw);
+  }
+  assert.equal(policy.keepCompleteBilingualBubbles('Hello\n[中译:你好]\n\nWait\n[中译:', 'en'), 'Hello\n[中译:你好]');
+});
+
 test('reply cleanup protects think/narration blocks while applying the existing cleanup callback', () => {
   assert.equal(typeof policy.cleanupReplyPreservingBlocks, 'function');
   const raw = '标点，，<think>think one!!</think>\n<narratage>旁白，</narratage>\n<think>think two??</think>正文，，';
@@ -974,10 +1005,11 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
 });
 
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
-  assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
+  assert.match(detail, /chat-message-policy\.js\?v=20261112bilingual1/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
   assert.ok(serviceWorker.includes('phone-app-pwa-v204'));
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
+  assert.match(serviceWorker, /chat-message-policy\.js\?v=20261112bilingual1/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(detail, /chat-context-policy\.js\?v=20261107vision1/);

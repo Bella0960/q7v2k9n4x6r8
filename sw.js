@@ -94,6 +94,7 @@ const APP_SHELL = [
   'shared/js/phone/phone_storage.js',
   './shared/js/phone/phone_context.js?v=20261102npc1',
   'shared/js/phone/chat-message-policy.js?v=20261029v5',
+  'shared/js/phone/chat-message-policy.js?v=20261112bilingual1',
   './shared/js/phone/chat-image-vision.js?v=20261107v5',
   'shared/js/phone/chat-send-policy.js?v=20261029v2',
   'shared/js/phone/chat-context-policy.js?v=20261107vision1',
