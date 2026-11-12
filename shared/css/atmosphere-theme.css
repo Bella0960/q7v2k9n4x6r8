@@ -355,3 +355,168 @@
 @media(prefers-reduced-motion:reduce){
  [data-chat-theme-preset="atmosphere"] .at-quick-grid .at-quick-route{animation:none!important;transition:none!important;}
 }
+
+/* THIN SHADOW COMPOSER / C1. Only the opt-in atmosphere chat detail.
+   This is an adapter over the native plus panel and message form. */
+.phone-mockup[data-chat-theme-preset="atmosphere"] .at-composer-rail {
+ display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr));
+ gap:3px;align-items:center;flex:none;min-height:43px;
+ padding:4px 12px 2px;margin:0 0 2px;
+ background:transparent;color:var(--at-ink);
+ border-top:1px solid var(--at-line);z-index:9;
+ animation:at-rail-appear .26s var(--at-ease) both;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] .at-composer-rail[hidden]{
+ display:none!important;
+}
+@keyframes at-rail-appear {
+ from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] .at-rail-action{
+ position:relative;display:flex;min-width:0;min-height:39px;align-items:center;
+ flex-direction:column;justify-content:center;gap:3px;border:0;border-radius:7px;
+ background:transparent;color:var(--at-muted);font-family:inherit;
+ cursor:pointer;touch-action:manipulation;
+ transition:color .2s ease,transform .2s var(--at-ease),background .2s ease;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] .at-rail-action svg{
+ width:17px;height:17px;stroke:currentColor;stroke-width:1.35;
+ fill:none;stroke-linecap:round;stroke-linejoin:round;
+ transition:transform .24s var(--at-ease);
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] .at-rail-action span{
+ font-size:9px;line-height:1.1;letter-spacing:.035em;white-space:nowrap;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] .at-rail-action:active{
+ background:var(--at-wash);transform:scale(.91);color:var(--at-ink);
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] .at-rail-action:disabled{
+ opacity:.35;cursor:not-allowed;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] .at-rail-action[aria-expanded="true"]{
+ background:var(--at-panel);color:var(--at-ink);
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] .at-rail-more[aria-expanded="true"] svg{
+ transform:rotate(45deg);
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] form#chat-form.input-dock{
+ position:relative!important;display:flex!important;align-items:flex-end!important;
+ flex-shrink:0!important;gap:8px!important;
+ padding:6px 14px max(12px,env(safe-area-inset-bottom))!important;
+ background:transparent!important;box-shadow:none!important;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] form#chat-form #plus-action-btn{
+ display:none!important;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] form#chat-form .input-capsule{
+ min-height:35px!important;border-radius:19px!important;
+ padding:0 7px!important;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] form#chat-form .real-input{
+ min-height:34px!important;padding:7px 7px!important;
+ font-size:12px!important;letter-spacing:.01em!important;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] form#chat-form .send-icon-btn{
+ width:35px!important;min-width:35px!important;height:35px!important;flex-basis:35px!important;
+ border-radius:50%!important;transition:transform .19s var(--at-ease),opacity .2s ease!important;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] form#chat-form .send-icon-btn .default-send-svg{
+ display:none!important;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] form#chat-form .send-icon-btn .imessage-send-svg{
+ display:block!important;width:15px!important;height:15px!important;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] form#chat-form .send-icon-btn:not(:disabled):active{
+ transform:scale(.89);
+}
+/* The original action panel becomes a low two-dimensional shelf rather
+   than a floating side menu, while retaining every native feature button. */
+.phone-mockup[data-chat-theme-preset="atmosphere"] .plus-panel-overlay .plus-panel-backdrop{
+ background:rgba(0,0,0,.16)!important;
+ backdrop-filter:blur(2px)!important;
+ -webkit-backdrop-filter:blur(2px)!important;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] .plus-panel-overlay .plus-panel-sheet{
+ left:12px!important;right:12px!important;width:calc(100% - 24px)!important;
+ bottom:calc(105px + env(safe-area-inset-bottom))!important;
+ max-height:min(37vh,255px)!important;
+ border-radius:12px!important;padding:12px 10px!important;
+ background:var(--at-bg)!important;color:var(--at-ink)!important;
+ border:1px solid var(--at-line)!important;
+ box-shadow:0 12px 30px #00000019!important;
+ backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+ transform:translateY(13px) scale(.98)!important;opacity:0!important;
+ transition:transform .3s var(--at-ease),opacity .25s ease!important;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] .plus-panel-overlay.active .plus-panel-sheet{
+ transform:translateY(0) scale(1)!important;opacity:1!important;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] .plus-panel-head{
+ color:var(--at-ink)!important;padding:0 1px 8px!important;margin-bottom:8px!important;
+ border-bottom:1px solid var(--at-line)!important;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] .plus-panel-title{
+ font-size:12px!important;font-weight:550!important;color:var(--at-ink)!important;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] .plus-panel-kicker{
+ font-size:8px!important;color:var(--at-muted)!important;letter-spacing:.12em;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] .plus-grid{
+ display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;
+ gap:5px 2px!important;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] .plus-grid .plus-item{
+ display:flex!important;min-height:50px!important;flex-direction:column!important;
+ align-items:center!important;justify-content:center!important;gap:4px!important;
+ padding:4px 1px!important;background:transparent!important;
+ color:var(--at-ink)!important;border:0!important;border-radius:7px!important;
+ transition:background .18s ease,transform .2s var(--at-ease)!important;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] .plus-grid .plus-item:active{
+ background:var(--at-panel)!important;transform:scale(.93)!important;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] .plus-grid .plus-item[style*="display: none"]{
+ display:none!important;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] .plus-grid .plus-icon-circle{
+ width:23px!important;height:23px!important;border:0!important;border-radius:3px!important;
+ background:var(--at-wash)!important;box-shadow:none!important;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] .plus-grid .plus-icon-circle svg{
+ width:15px!important;height:15px!important;
+ stroke:var(--at-ink)!important;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] .plus-grid .plus-label{
+ color:var(--at-ink)!important;font-size:9px!important;line-height:1.3!important;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] .sticker-panel-overlay .sticker-panel{
+ background:var(--at-bg)!important;color:var(--at-ink)!important;
+ border-radius:12px 12px 0 0!important;box-shadow:0 -10px 36px #00000014!important;
+ max-height:52vh;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] .sticker-panel .sticker-panel-heading-title{
+ color:var(--at-ink)!important;font-size:13px!important;font-weight:550!important;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] .sticker-panel .sticker-panel-heading-sub{
+ color:var(--at-muted)!important;font-size:10px!important;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] .sticker-panel .sticker-panel-tab{
+ border:1px solid var(--at-line)!important;border-radius:4px!important;
+ background:var(--at-wash)!important;color:var(--at-muted)!important;
+}
+.phone-mockup[data-chat-theme-preset="atmosphere"] .sticker-panel .sticker-panel-tab.is-active{
+ background:var(--at-ink)!important;color:var(--at-bg)!important;
+}
+@media(max-width:350px){
+ .phone-mockup[data-chat-theme-preset="atmosphere"] .at-composer-rail{
+  padding-left:7px;padding-right:7px;gap:1px;
+ }
+ .phone-mockup[data-chat-theme-preset="atmosphere"] .at-rail-action span{font-size:8px;}
+}
+@media(prefers-reduced-motion:reduce){
+ .phone-mockup[data-chat-theme-preset="atmosphere"] .at-composer-rail,
+ .phone-mockup[data-chat-theme-preset="atmosphere"] .at-rail-action,
+ .phone-mockup[data-chat-theme-preset="atmosphere"] .plus-panel-sheet{
+  animation:none!important;transition:none!important;
+ }
+}
