@@ -14,6 +14,7 @@ export async function listAllDurableObjectNamespaces({ accountId, token, request
   const inventory = [];
   const ids = new Set();
   let expectedPages = null;
+  let expectedTotalCount = null;
   for (let page = 1; page <= maxPages; page++) {
     const url = 'https://api.cloudflare.com/client/v4/accounts/' + accountId +
       '/workers/durable_objects/namespaces?per_page=100&page=' + page;
@@ -39,10 +40,12 @@ export async function listAllDurableObjectNamespaces({ accountId, token, request
         totalPages !== declaredTotalPages || totalPages > maxPages ||
         currentPage !== page ||
         (expectedPages !== null && totalPages !== expectedPages) ||
+        (expectedTotalCount !== null && totalCount !== expectedTotalCount) ||
         rows.length !== expectedCount) {
       throw new Error('Incomplete or inconsistent Durable Object namespace inventory');
     }
     expectedPages = totalPages;
+    expectedTotalCount = totalCount;
     for (const entry of rows) {
       if (!entry || typeof entry.id !== 'string' || !entry.id || ids.has(entry.id)) {
         throw new Error('Invalid or duplicated Durable Object namespace ID');
