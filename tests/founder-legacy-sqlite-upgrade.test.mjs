@@ -1,6 +1,6 @@
 /**
  * Prove that an existing, locally authenticated founder 001 created on the
- * historical 0001..0016 SQLite schema survives adding social migration 0017.
+ * historical 0001..0016 SQLite schema survives the social and cloud migrations through 0020.
  *
  * This runs ONLY on an in-memory disposable node:sqlite database and uses
  * entirely synthetic credentials. No real 001 data, password hashes, or
@@ -20,7 +20,7 @@ const founderPassword = 'synthetic-upgrade-safety-passphrase-2026';
 
 function applyOldMigrations(exec, now) {
   exec('CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)');
-  const old = MIGRATIONS.filter(m => !['0017_mao_social','0018_mao_social_e2ee','0019_mao_social_e2ee_media'].includes(m.version));
+  const old = MIGRATIONS.filter(m => Number(m.version.slice(0, 4)) <= 16);
   assert.equal(old.length, 16, 'must rehearse exactly the original 16 migrations');
   for (const migration of old) {
     exec('BEGIN IMMEDIATE');
@@ -35,7 +35,7 @@ function applyOldMigrations(exec, now) {
   }
 }
 
-test('real SQLite 001 legacy -> social 0017: founder credentials, permanent ID and session survive', async t => {
+test('real SQLite 001 legacy -> cloud 0020: founder credentials, permanent ID and session survive', async t => {
   const testDb = openTestDb();
   t.after(() => testDb.db.close());
   const { exec, query } = testDb;
@@ -82,8 +82,10 @@ test('real SQLite 001 legacy -> social 0017: founder credentials, permanent ID a
   };
   const app = setupTestStore(testDb, env);
   const versions = query('SELECT version FROM schema_migrations ORDER BY version').map(row => row.version);
-  assert.equal(versions.length, 19);
-  assert.equal(versions.at(-1), '0019_mao_social_e2ee_media');
+  assert.equal(versions.length, 20);
+  assert.equal(versions.at(-1), '0020_cloud_autonomous_context');
+  assert.equal(query('SELECT COUNT(*) AS n FROM user_context_sharing')[0].n, 0);
+  assert.ok(query("SELECT name FROM sqlite_master WHERE name = 'character_context_snapshots'").length);
   assert.deepEqual(query(
     'SELECT id, username, username_key, password_salt, password_hash, role, status FROM mao_accounts WHERE id = ?',
     founderId
@@ -124,12 +126,12 @@ test('real SQLite 001 legacy -> social 0017: founder credentials, permanent ID a
 test('social schema upgrade uses additive DDL only; original migrations are unchanged', () => {
   const social = MIGRATIONS.find(m => m.version === '0017_mao_social');
   const keys = MIGRATIONS.find(m => m.version === '0018_mao_social_e2ee');
-  const latest = MIGRATIONS.at(-1);
-  assert.equal(latest?.version, '0019_mao_social_e2ee_media');
+  const latest = MIGRATIONS.find(m => m.version === '0019_mao_social_e2ee_media');
+  assert.equal(MIGRATIONS.at(-1)?.version, '0020_cloud_autonomous_context');
   for(const migration of [social,keys,latest])assert.doesNotMatch(migration.sql, /\b(?:DROP|DELETE|UPDATE|REPLACE|ALTER)\b/i);
   assert.match(social.sql, /CREATE TABLE IF NOT EXISTS mao_social_requests/);
   assert.match(social.sql, /CREATE TABLE IF NOT EXISTS mao_social_friends/);
   assert.match(keys.sql, /CREATE TABLE IF NOT EXISTS mao_social_e2ee_keys/);
   assert.match(latest.sql, /CREATE TABLE IF NOT EXISTS mao_social_e2ee_media/);
-  assert.equal(new Set(MIGRATIONS.map(x => x.version)).size, 19);
+  assert.equal(new Set(MIGRATIONS.map(x => x.version)).size, MIGRATIONS.length);
 });
