@@ -2813,25 +2813,38 @@
             return cleaned;
         }
 
+        // A damaged history must never be silently replaced with a welcome message.
+        // Keep its raw bytes for explicit backup/recovery rather than "repairing" on read.
+        var _chatHistoryUnreadable = false;
         function loadMessages() {
             if (_storage) {
-                var arr = _storage.getChatHistory(currentCharacter.id);
-                if (arr && arr.length) return removeLegacyStickerCaptions(arr);
+                try {
+                    var arr = _storage.getChatHistory(currentCharacter.id);
+                    if (Array.isArray(arr) && arr.length) return removeLegacyStickerCaptions(arr);
+                } catch (err) {
+                    _chatHistoryUnreadable = true;
+                    console.warn('读取历史聊天记录失败:', err);
+                    return [];
+                }
             }
             try {
                 const raw = localStorage.getItem(storageKey);
-                if (raw) {
+                if (raw !== null) {
                     const parsed = JSON.parse(raw);
-                    if (Array.isArray(parsed) && parsed.length > 0) {
-                        return removeLegacyStickerCaptions(parsed);
-                    }
+                    if (!Array.isArray(parsed)) throw new Error('chat history is not an array');
+                    _chatHistoryUnreadable = false;
+                    return removeLegacyStickerCaptions(parsed);
                 }
             } catch (err) {
-                console.warn('读取历史聊天记录失败:', err);
+                _chatHistoryUnreadable = true;
+                console.warn('读取历史聊天记录失败，已暂停写入以保护原始数据:', err);
+                if (typeof showToast === 'function') showToast('聊天记录读取异常，已暂停保存以防覆盖原始数据');
+                return [];
             }
 
+            if (_chatHistoryUnreadable) return [];
             const initial = getInitialMessages();
-            saveMessages(initial);
+            if (!saveMessages(initial)) return [];
             return initial;
         }
 
@@ -2929,6 +2942,12 @@
         }
 
         function saveMessages(list) {
+            if (_chatHistoryUnreadable) {
+                if (typeof showToast === 'function' && _shouldWarnAgain('chat-corrupt')) {
+                    showToast('聊天记录异常，未覆盖原始数据；请先备份并修复存储');
+                }
+                return false;
+            }
             var wrote = false;
             if (_storage) {
                 try {
