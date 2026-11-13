@@ -20,7 +20,7 @@ const founderPassword = 'synthetic-upgrade-safety-passphrase-2026';
 
 function applyOldMigrations(exec, now) {
   exec('CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)');
-  const old = MIGRATIONS.filter(m => !['0017_mao_social','0018_mao_social_e2ee'].includes(m.version));
+  const old = MIGRATIONS.filter(m => !['0017_mao_social','0018_mao_social_e2ee','0019_mao_social_e2ee_media'].includes(m.version));
   assert.equal(old.length, 16, 'must rehearse exactly the original 16 migrations');
   for (const migration of old) {
     exec('BEGIN IMMEDIATE');
@@ -82,8 +82,8 @@ test('real SQLite 001 legacy -> social 0017: founder credentials, permanent ID a
   };
   const app = setupTestStore(testDb, env);
   const versions = query('SELECT version FROM schema_migrations ORDER BY version').map(row => row.version);
-  assert.equal(versions.length, 18);
-  assert.equal(versions.at(-1), '0018_mao_social_e2ee');
+  assert.equal(versions.length, 19);
+  assert.equal(versions.at(-1), '0019_mao_social_e2ee_media');
   assert.deepEqual(query(
     'SELECT id, username, username_key, password_salt, password_hash, role, status FROM mao_accounts WHERE id = ?',
     founderId
@@ -94,6 +94,7 @@ test('real SQLite 001 legacy -> social 0017: founder credentials, permanent ID a
   assert.ok(query("SELECT name FROM sqlite_master WHERE name = 'mao_social_requests'").length);
   assert.ok(query("SELECT name FROM sqlite_master WHERE name = 'mao_social_friends'").length);
   assert.ok(query("SELECT name FROM sqlite_master WHERE name = 'mao_social_e2ee_keys'").length);
+  assert.ok(query("SELECT name FROM sqlite_master WHERE name = 'mao_social_e2ee_media'").length);
 
   const active = await app.asJson('/api/accounts/me', {
     headers: { cookie: 'MAO_SESSION=' + token }
@@ -122,11 +123,13 @@ test('real SQLite 001 legacy -> social 0017: founder credentials, permanent ID a
 
 test('social schema upgrade uses additive DDL only; original migrations are unchanged', () => {
   const social = MIGRATIONS.find(m => m.version === '0017_mao_social');
+  const keys = MIGRATIONS.find(m => m.version === '0018_mao_social_e2ee');
   const latest = MIGRATIONS.at(-1);
-  assert.equal(latest?.version, '0018_mao_social_e2ee');
-  for(const migration of [social,latest])assert.doesNotMatch(migration.sql, /\b(?:DROP|DELETE|UPDATE|REPLACE|ALTER)\b/i);
+  assert.equal(latest?.version, '0019_mao_social_e2ee_media');
+  for(const migration of [social,keys,latest])assert.doesNotMatch(migration.sql, /\b(?:DROP|DELETE|UPDATE|REPLACE|ALTER)\b/i);
   assert.match(social.sql, /CREATE TABLE IF NOT EXISTS mao_social_requests/);
   assert.match(social.sql, /CREATE TABLE IF NOT EXISTS mao_social_friends/);
-  assert.match(latest.sql, /CREATE TABLE IF NOT EXISTS mao_social_e2ee_keys/);
-  assert.equal(new Set(MIGRATIONS.map(x => x.version)).size, 18);
+  assert.match(keys.sql, /CREATE TABLE IF NOT EXISTS mao_social_e2ee_keys/);
+  assert.match(latest.sql, /CREATE TABLE IF NOT EXISTS mao_social_e2ee_media/);
+  assert.equal(new Set(MIGRATIONS.map(x => x.version)).size, 19);
 });

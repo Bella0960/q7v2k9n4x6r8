@@ -5,6 +5,8 @@ import {webcrypto} from 'node:crypto';
 import {createMaoSocialE2EE} from '../worker/lib/mao-social-e2ee.js';
 import {SQL as SOCIAL_SQL} from '../worker/migrations/0017_mao_social.js';
 import {SQL as E2EE_SQL} from '../worker/migrations/0018_mao_social_e2ee.js';
+import {SQL as MEDIA_SQL} from '../worker/migrations/0019_mao_social_e2ee_media.js';
+import {MAX_MEDIA_BYTES,encryptMedia,decryptMedia,makeMediaMarker,parseMediaMarker} from '../chat/contacts/real-chat-media.mjs';
 import {createDeviceIdentity,conversationKey,encryptText,decryptText,idForPublicKey}
   from '../chat/contacts/real-chat-crypto.mjs';
 
@@ -24,7 +26,7 @@ function setup({enabled=true}={}){
     db.prepare('INSERT INTO mao_accounts VALUES(?,?,?,?,?)').run(id,name,'user','active',TIME);
     db.prepare('INSERT INTO mao_account_sessions VALUES(?,?,?,NULL)').run(id+'-session',id,TIME+86400000);
   }
-  db.exec(SOCIAL_SQL);db.exec(E2EE_SQL);
+  db.exec(SOCIAL_SQL);db.exec(E2EE_SQL);db.exec(MEDIA_SQL);
   db.prepare("INSERT INTO mao_social_requests (id,requester_id,recipient_id,pair_low,pair_high,status,note,submitted_code_hash,created_at,updated_at) VALUES(?,?,?,?,?,'approved','','hash',?,?)").run(F,A,B,A,B,TIME,TIME);
   db.prepare("INSERT INTO mao_social_friends(pair_low,pair_high,source_request_id,status,updated_at) VALUES(?,?,?,'accepted',?)").run(A,B,F,TIME);
   const exec=(sql,...args)=>{
@@ -142,4 +144,106 @@ test('one new independent chat page is wired into approved friends, without AI A
   assert.match(page,/清除网站数据/);
   assert.match(backend,/E2EE_PLAINTEXT_REJECTED/);
   assert.doesNotMatch(page,/\/api\/ai\//);
+});
+
+
+test('image and recorded voice travel as separate ciphertext blobs scoped to approved E2EE friendship',async t=>{
+  const x=setup();t.after(x.close);
+  const alice=await createDeviceIdentity(subtle),bob=await createDeviceIdentity(subtle);
+  assert.equal((await x.call(A,K,'POST',{publicKey:alice.publicKey})).status,200);
+  assert.equal((await x.call(B,K,'POST',{publicKey:bob.publicKey})).status,200);
+  const outbound=await conversationKey(alice.privateKey,bob.publicKey,F,A,B,subtle);
+  const inbound=await conversationKey(bob.privateKey,alice.publicKey,F,B,A,subtle);
+  const cases=[
+    {kind:'image',mime:'image/jpeg',bytes:new TextEncoder().encode('SYNTHETIC_JPEG_PRIVATE_IMAGE_BYTES')},
+    {kind:'voice',mime:'audio/mp4',bytes:new TextEncoder().encode('SYNTHETIC_M4A_VOICE_PRIVATE_BYTES')},
+    {kind:'voice',mime:'audio/webm',bytes:new TextEncoder().encode('SYNTHETIC_WEBM_VOICE_PRIVATE_BYTES')}
+  ];
+  for(let i=0;i<cases.length;i++){
+    const item=cases[i];
+    const mediaId='med_example_attachment_'+String(i).padStart(16,'0');
+    const clientMessageId='msg_media_unit_test_'+String(i).padStart(8,'0');
+    const meta={friendshipId:F,senderId:A,recipientId:B,clientMessageId,
+      mediaId,kind:item.kind,mime:item.mime,sk:alice.keyId,rk:bob.keyId};
+    const attachment=await encryptMedia(item.bytes,outbound,meta,subtle,webcrypto.getRandomValues.bind(webcrypto));
+    const envelope=await encryptText(makeMediaMarker(mediaId,item.kind),outbound,meta,subtle,webcrypto.getRandomValues.bind(webcrypto));
+    const path='/api/social/e2ee/chats/'+B+'/media';
+    const body={clientMessageId,friendshipId:F,envelope,attachment};
+    const accepted=await x.call(A,path,'POST',body);
+    assert.equal(accepted.status,200,JSON.stringify(accepted.body));
+    assert.equal(accepted.body.mediaId,mediaId);
+    const received=await x.call(B,'/api/social/e2ee/chats/'+A+'/media/'+mediaId);
+    assert.equal(received.status,200,JSON.stringify(received.body));
+    assert.equal(received.body.friendshipId,F);
+    assert.equal(received.body.clientMessageId,clientMessageId);
+    const decoded=await decryptMedia(received.body.attachment,inbound,meta,subtle);
+    assert.deepEqual(decoded,item.bytes);
+    const stored=x.db.prepare('SELECT ciphertext FROM mao_social_e2ee_media WHERE id=?').get(mediaId);
+    assert.equal(stored.ciphertext,attachment.ct);
+    assert.ok(!stored.ciphertext.includes('PRIVATE'));
+    const repeat=await x.call(A,path,'POST',body);
+    assert.equal(repeat.status,200);
+    assert.equal(repeat.body.replay,true);
+    const forged=await x.call(A,path,'POST',{...body,attachment:{...attachment,iv:'AAAAAAAAAAAAAAAA'}});
+    assert.equal(forged.status,409,'same message ID must not accept different encrypted media');
+    const unauthorized=await x.call(C,'/api/social/e2ee/chats/'+A+'/media/'+mediaId);
+    assert.equal(unauthorized.status,403);
+    await assert.rejects(decryptMedia(received.body.attachment,inbound,{...meta,recipientId:C},subtle));
+    assert.equal(parseMediaMarker(await decryptText(envelope,inbound,meta,subtle)).id,mediaId);
+  }
+  assert.equal(x.db.prepare('SELECT COUNT(*) AS n FROM mao_social_e2ee_media').get().n,3);
+  assert.equal(x.db.prepare('SELECT COUNT(*) AS n FROM mao_social_messages').get().n,3);
+  const history=await x.call(B,'/api/social/e2ee/chats/'+A+'/messages?after=0');
+  assert.equal(history.body.messages.length,3);
+  assert.ok(history.body.messages.every(m=>!('attachment' in m) && !('text' in m)),
+    'regular conversation polling must not carry large ciphertext blobs');
+
+  x.exec("UPDATE mao_social_friends SET status='removed' WHERE pair_low=? AND pair_high=?",A,B);
+  assert.equal((await x.call(B,'/api/social/e2ee/chats/'+A+'/media/'+
+    'med_example_attachment_0000000000000000')).status,403);
+});
+
+test('media upload rejects plaintext, unsupported types, invalid size and stolen ciphertext identity',async t=>{
+  const x=setup();t.after(x.close);
+  const alice=await createDeviceIdentity(subtle),bob=await createDeviceIdentity(subtle);
+  await x.call(A,K,'POST',{publicKey:alice.publicKey});
+  await x.call(B,K,'POST',{publicKey:bob.publicKey});
+  const key=await conversationKey(alice.privateKey,bob.publicKey,F,A,B,subtle);
+  const meta={friendshipId:F,senderId:A,recipientId:B,clientMessageId:'msg_bad_media_payload_0001',
+    mediaId:'med_invalid_file_0000000000000001',kind:'image',mime:'image/jpeg',
+    sk:alice.keyId,rk:bob.keyId};
+  const attachment=await encryptMedia(new Uint8Array([1,2,3,4,5]),key,meta,
+    subtle,webcrypto.getRandomValues.bind(webcrypto));
+  const envelope=await encryptText(makeMediaMarker(meta.mediaId,'image'),key,meta,subtle,
+    webcrypto.getRandomValues.bind(webcrypto));
+  const path='/api/social/e2ee/chats/'+B+'/media';
+  const plain=await x.call(A,path,'POST',{clientMessageId:meta.clientMessageId,friendshipId:F,
+    envelope,attachment,bytes:'rawPhoto'});
+  assert.equal(plain.status,400);
+  assert.equal(plain.body.error.code,'E2EE_PLAINTEXT_REJECTED');
+  const badMime=await x.call(A,path,'POST',{clientMessageId:meta.clientMessageId,friendshipId:F,
+    envelope,attachment:{...attachment,mime:'image/svg+xml'}});
+  assert.equal(badMime.status,400);
+  const badKeys=await x.call(A,path,'POST',{clientMessageId:meta.clientMessageId,friendshipId:F,
+    envelope,attachment:{...attachment,sk:'0'.repeat(32)}});
+  assert.equal(badKeys.status,409);
+  await assert.rejects(encryptMedia(new Uint8Array(MAX_MEDIA_BYTES+1),key,meta,
+    subtle,webcrypto.getRandomValues.bind(webcrypto)));
+  assert.equal(x.db.prepare('SELECT COUNT(*) AS n FROM mao_social_e2ee_media').get().n,0);
+});
+
+test('only two compact image and microphone controls are added to the existing private chat footer',async()=>{
+  const {readFileSync}=await import('node:fs');
+  const source=readFileSync(new URL('../chat/contacts/real-chat.html',import.meta.url),'utf8');
+  const server=readFileSync(new URL('../worker/lib/mao-social-e2ee.js',import.meta.url),'utf8');
+  for(const id of ['photoBtn','voiceBtn','photoInput'])assert.match(source,new RegExp('id="'+id+'"'));
+  assert.match(source,/getUserMedia/);
+  assert.match(source,/MediaRecorder/);
+  assert.match(source,/encryptMedia/);
+  assert.match(source,/decryptMedia/);
+  assert.match(source,/image\/jpeg/);
+  assert.match(source,/recorder\.start/);
+  assert.match(source,/MAX_MEDIA_BYTES/);
+  assert.doesNotMatch(source,/\/api\/ai\//);
+  assert.match(server,/E2EE_PLAINTEXT_REJECTED/);
 });
