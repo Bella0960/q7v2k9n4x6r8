@@ -5,10 +5,29 @@
 (function () {
   'use strict';
 
-  var GUIDE_VERSION = '2026.11.11 · v2';
+  var GUIDE_VERSION = '2026.11.13 · 001 测试版';
   var STORAGE_KEY = 'maomao_tutorial_progress_v1';
 
   var GUIDE_UPDATES = [
+    {
+      date: '2026-11-13',
+      title: '原管理员 001 已完成手机登录 · 本轮测试入口',
+      items: [
+        '本人已在原 11 月 11 日的「小猫」账号环境成功登录；原永久 ID、4 个账号与 4 条会话保留。仅这条测试预览升级，不代表正式 app.mao520.com 已切换。',
+        '下一步查看「管理中心」的账号、邀请码记录和操作审计；添加好友、建群与扫一扫都收在聊天首页音乐卡片的爱心菜单里，不再占用通讯录页面。',
+        '已审批真人好友会直接出现在聊天首页原来的会话列表中。点击「小鱼」就能进入之前的加密文字、图片、语音聊天，不用反复进入好友管理页。列表不混入 AI 角色存储，不需要 AI API。',
+        '在教程测试项中直接打开页面、勾选结果或记录问题；备注里不要填写密码、完整邀请码、API Key 或私人聊天。'
+      ]
+    },
+    {
+      date: '2026-11-11',
+      title: '账号整合测试中 · 尚未发布',
+      items: [
+        '新的统一登录、邀请码和创始管理员 001 正在独立分支验证；原有手机入口尚未切换。',
+        '普通账号可以从设置查看自己的 MAO 账号；创始管理员登录后才会在桌面看到「管理中心」。',
+        '实际手机登录、首次初始化和跨账号隔离必须验收后才能标记为已完成。'
+      ]
+    },
     {
       date: '2026-11-11',
       title: '教程全面补全',
@@ -30,6 +49,50 @@
   ];
 
   var GUIDES = [
+    {
+      id: 'qa-001-admin', category: '设置', title: '本轮 ① 管理员后台核对',
+      summary: '001 本人手机登录已完成；继续验收管理中心是否按原账号权限展示，不执行破坏性操作。',
+      location: '桌面 → 管理中心。',
+      steps: [
+        '确认桌面出现「管理中心」，点进去后核对顶部 001 管理员身份。',
+        '进入账号列表，确认能看到原有账号，不创建第二个创始人；当前原数据库共有 4 个账号。',
+        '打开邀请码管理，只查看已有邀请记录和状态，不生成、不撤销邀请码。',
+        '进入操作审计，确认列表可加载且有实际的服务端记录。',
+        '返回桌面，再次进入后台，检查导航、内容和身份没有丢失。'
+      ],
+      test: '001 能查看管理中心、账号列表、邀请码记录、审计；不会被要求再次注册或输入邀请码。',
+      href: '../admin/admin-center.html', action: '打开管理中心'
+    },
+    {
+      id: 'qa-001-social', category: '社交', title: '本轮 ② 真人好友和 001 审批',
+      summary: '双方同意＋001 审批后，同一个加密对话里可发送文字、相册照片和麦克风语音；不需要 AI API。当前为单浏览器设备密钥测试版。',
+      location: '桌面 → 聊天 → 音乐卡片右侧爱心 → 添加好友 / 扫一扫。',
+      steps: [
+        '从聊天首页音乐卡片右侧点爱心，打开原有的浮动操作菜单；确认有切换背景、添加好友、添加群聊、扫一扫四项。',
+        '点「添加好友」，确认进入真人好友页面；查看收到和发出的申请并刷新。无申请时空列表正常。',
+        '回到爱心菜单点「扫一扫」，试相机扫码或相册选图；不支持网页扫码的浏览器按提示使用系统相机，或粘贴链接。',
+        '回到真人好友页面，查看 001 审批区域；若已有两位获授权的测试账号，双方同意后再审批，没有申请时无需新注册。',
+        '批准好友后回到聊天首页，在原来的会话列表中找到对方（例如「小鱼」），直接点击进入私人加密聊天；退出后再进首页，确认依然能找到对方。',
+        '两部手机分别打开「聊天」页面等待设备密钥就绪，先互发一条文字。点击输入框左边的图片图标，从相册选择一张非隐私照片，检查另一端收到图片。',
+        '点击麦克风，允许浏览器使用麦克风，录一句语音后再点一次结束并发送；另一台手机点语音播放。每段录音最多 20 秒；在不支持网页录音的浏览器会提示，不会暗中启用 AI API。'
+      ],
+      test: '安卓和苹果分别在聊天首页直接看到当前已审批好友，点人名可进入加密文字＋图片＋语音；不显示未审批或屏蔽的人。媒体无需 AI API、后台无系统推送。清除浏览器数据后旧消息无法恢复。',
+      href: '../chat/contacts/real-friends.html', action: '打开真人好友'
+    },
+    {
+      id: 'qa-001-chat-save', category: '聊天', title: '本轮 ③ 聊天记录保存与角色隔离',
+      summary: '优先验收消息保存、切换角色及刷新后的持久化；多气泡和主动消息需要区分 API 依赖。',
+      location: '桌面 Dock → 聊天。',
+      steps: [
+        '打开一个已有角色会话，只发送一条没有私人信息的短测试消息。',
+        '返回聊天列表，再重新打开这个角色，检查刚才的消息是否保留。',
+        '切到另一位角色，检查测试消息不会出现在错误角色中。',
+        '重新刷新小手机页面，再进入第一位角色，确认同一条消息仍可见。',
+        '如果已配置 API，可另外试自动多气泡；未配置 API 时只判断消息保存。'
+      ],
+      test: '测试消息返回、跨角色切换及刷新之后都不丢失、不串号；如出现异常记录角色、页面与步骤。',
+      href: '../chat/chat/chat.html', action: '打开聊天'
+    },
     {
       id: 'desktop', category: '入门', title: '桌面、翻页与应用入口',
       summary: '先认识桌面图标、页面翻页和编辑模式。新应用会自动出现在桌面，不需要重新摆放旧图标。',
@@ -321,7 +384,24 @@
       href:'../chat/chat/chat.html', action:'打开聊天'
     },
 
-    // 桌面 29 个应用逐项说明：以每个应用当前真实页面结构为准。
+    {
+      id:'account-access', category:'设置', title:'统一账号与邀请码：普通用户如何进入',
+      summary:'登录、注册都从相同入口进入；普通注册不会获得管理员身份。完成注册后需要对应邀请码授权。',
+      location:'小手机统一入口 → 注册或登录 → 邀请码验证；登录后可从「设置」进入账号管理。',
+      steps:[
+        '已有账号直接登录，不要重复注册。',
+        '普通用户第一次创建账号后，根据提示输入创作者发放的专属邀请码。',
+        '邀请码与目标账号绑定，不要把自己的密码或邀请码发到公开论坛。',
+        '获得授权后进入原来的小手机桌面；普通用户看不到「管理中心」。',
+        '遇到域名跳转异常时停止输入凭据并记录地址栏域名。'
+      ],
+      test:'验证普通账号被要求完成邀请码授权，进入桌面后没有管理员中心。不要提交真实凭据到教程测试备注。',
+      href:'../account/manage.html', action:'打开账号管理',
+      issue:true, defaultNote:'原始小猫 001 已由本人在手机预览登录；仍需验收普通账号邀请码授权与跨设备隔离。'
+    },
+
+    // 桌面 29 个普通应用逐项说明；唯一创始者另外有专属管理中心。
+
     {id:'app-tutorial',category:'入门',title:'教程',summary:'从这里查功能入口、一步一步跟着真实页面操作，并保存测试记录。',location:'桌面 → 教程。',steps:['打开教程，先看「最近更新」了解当前版本增加了什么。','通过分类或搜索找到功能，点「一步一步跟着做」进入单步引导。','每一步可以打开真实页面，在新标签页完成操作后切回教程继续。','测试后勾选「我已经在手机上实际测试过这一项」，遇到问题写备注并导出测试记录。'],test:'启动任意一项分步教程，前进和后退，再勾选一条测试状态，刷新页面确认进度保留。',href:'../tutorial/tutorial.html',action:'打开教程'},
     {id:'app-inspect',category:'应用',title:'查手机',summary:'查看虚构角色的微信、朋友圈、浏览器、备忘录、钱包、音乐、地图、相册与设备剧情。支持角色许可、选择板块、单独刷新和剧情密码。',location:'桌面 → 查手机。',steps:['打开「查手机」后先选角色，进入该角色的虚构手机。','按照锁屏提示上滑或轻点，阅读角色的同意、犹豫或拒绝反馈；拒绝时不能强行进入。','勾选需要查看的板块，点「开始查看已选板块」，回到手机桌面后打开相应应用。','微信可以看具名联系人、撤回和已读未回，也可以以角色身份发送虚构消息；只有配置聊天 API 才会生成联系人回复。','在某个板块右上角点「刷新本板块」只更新该板块。未设置 API 时显示明确标记的本地剧情样例。','备忘录锁定区的剧情密码默认为111111，隐藏相册使用角色专属密码，能看到的内容随角色关系进度变化。','切换另一个角色检查聊天、秘密、相册与消费记录是否完全隔离；历史记录不会因自然跨天而直接清空。'],test:'选择两个角色分别打开，检查角色许可、5位以上联系人、10个板块、独立刷新、错误结果保留及跨角色记录隔离。此功能不读取真实通讯录、GPS 或支付记录。',href:'../inspect-phone/select.html',action:'打开查手机'},
     {id:'app-worldbook',category:'应用',title:'世界书',summary:'用于管理故事世界设定和可供角色引用的资料条目。',location:'桌面 → 世界书。',steps:['打开「世界书」，查看现有世界设定列表。','新增或编辑条目时，先写清条目标题、背景内容和触发线索，再保存。','返回角色聊天，用条目中明确的关键词验证上下文是否能引用该设定。'],test:'新增一条无敏感内容的测试设定，保存后重新进入世界书确认仍存在。',href:'../worldbook/worldbook/worldbook.html',action:'打开世界书'},
@@ -398,6 +478,29 @@
     ['聊天', 'chat/chat/chat.html', '聊天列表与角色会话'],
     ['店铺', 'wallet/shop.html', '应用内商店']
   ];
+
+  // The server injects this meta after a successful session check. The public
+  // script must never decide admin permissions from names, URLs or localStorage.
+  var founderRole = document.querySelector('meta[name="mao-account-role"]');
+  var isFounder = !!(founderRole && founderRole.content === 'super_admin');
+  if (isFounder) {
+    GUIDES.push({
+      id:'app-admin', category:'设置', title:'管理中心（唯一创始管理员 001）',
+      summary:'只对登录后经服务器确认的创始管理员展示；编号 001 是身份标记，不是注册或提权密码。',
+      location:'同一个小手机入口登录 → 桌面 → 管理中心。',
+      steps:[
+        '从唯一的小手机入口登录自己的原始创始管理员账号，不另建普通账号。',
+        '回到桌面，确认「设置」附近出现「管理中心」，普通用户桌面没有该入口。',
+        '打开管理中心，核对创始管理员标识 001。',
+        '在「用户管理」查看普通账号，在「邀请码管理」为指定账号生成或撤销邀请码。',
+        '完成后检查操作审计；不要公开初始化密钥、管理员密码或完整邀请码。'
+      ],
+      test:'创始账号能打开管理中心，普通账号不能打开或调用管理员 API，既有聊天和桌面数据保持不变。',
+      href:'../admin/admin-center.html', action:'进入管理中心', issue:true,
+      defaultNote:'原小猫 001 已由本人在原预览登录；管理中心权限与账号管理仍需逐项验收。'
+    });
+    APPS.push(['管理中心', 'admin/admin-center.html', '仅唯一创始管理员 001 可见']);
+  }
 
   var categories = ['全部', '入门', '聊天', '角色', '图片', '设置', '外观', '社交', '应用'];
   var activeCategory = '全部';
@@ -597,17 +700,46 @@
     renderGuides();
   }
 
-  function exportProgress() {
-    var lines = ['MAOMAO 手机测试记录', '指南版本：' + GUIDE_VERSION, '导出时间：' + new Date().toLocaleString(), ''];
+  function buildTestReport(onlyTouched) {
+    // Only share explicitly written testing notes and non-secret device context.
+    // Never inspect chat history, API settings, local files or account identifiers.
+    var standalone = Boolean(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+      Boolean(navigator.standalone);
+    var swControlled = Boolean(navigator.serviceWorker && navigator.serviceWorker.controller);
+    var width = document.documentElement.clientWidth || window.innerWidth || 0;
+    var height = window.innerHeight || 0;
+    var lines = [
+      'MAOMAO 手机测试记录',
+      '指南版本：' + GUIDE_VERSION,
+      '记录时间：' + new Date().toLocaleString(),
+      '测试站点：' + window.location.origin,
+      '屏幕视口：' + width + ' × ' + height,
+      '显示比例：' + (window.devicePixelRatio || 1),
+      '运行方式：' + (standalone ? '桌面 PWA' : '浏览器网页'),
+      'Service Worker：' + (swControlled ? '正在控制页面' : '未控制当前页面'),
+      '网络状态：' + (navigator.onLine === false ? '浏览器报告离线' : '浏览器未报告离线（不代表服务器可用）'),
+      '浏览器：' + navigator.userAgent,
+      '',
+      '注意：以上信息仅通过主动点击复制/导出提供；不包含账号密码、聊天记录或 API Key。',
+      ''
+    ];
+    var reported = 0;
     GUIDES.forEach(function (guide) {
       var state = progress[guide.id] || {};
+      if (onlyTouched && !state.done && !String(state.note || '').trim()) return;
+      reported += 1;
       lines.push((state.done ? '[已测试] ' : '[待测试] ') + guide.title);
       lines.push('入口：' + guide.location);
       if (state.note) lines.push('备注：' + state.note);
-      if (guide.issue) lines.push('状态：待真机复测（已加导航兜底，尚未验证结果）');
+      if (guide.issue) lines.push('状态：待真机复测（尚未验证结果）');
       lines.push('');
     });
-    var blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+    if (onlyTouched && !reported) lines.push('尚未记录测试项；请先在对应功能填写备注。');
+    return lines.join('\n');
+  }
+
+  function exportProgress() {
+    var blob = new Blob([buildTestReport()], { type: 'text/plain;charset=utf-8' });
     var url = URL.createObjectURL(blob);
     var anchor = document.createElement('a');
     anchor.href = url;
@@ -616,6 +748,29 @@
     anchor.click();
     anchor.remove();
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  async function copyProgress() {
+    var button = $('copyTests');
+    var hint = $('copyTestsHint');
+    var report = buildTestReport(true);
+    button.disabled = true;
+    try {
+      if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
+        throw new Error('CLIPBOARD_UNAVAILABLE');
+      }
+      await navigator.clipboard.writeText(report);
+      hint.textContent = '测试报告已复制。现在可以直接粘贴给开发者，不必下载文件。';
+    } catch (error) {
+      // Clipboard access is frequently restricted in mobile embedded browsers.
+      // Keep an accessible copyable fallback rather than falsely claiming success.
+      if (typeof window.prompt === 'function') {
+        window.prompt('未能自动复制，请长按选择并复制报告内容：', report);
+      }
+      hint.textContent = '未获得系统剪贴板权限；已尝试打开手动复制窗口。若未显示，请使用「导出测试记录」。';
+    } finally {
+      button.disabled = false;
+    }
   }
 
   $('guideFilters').addEventListener('click', function (event) {
@@ -671,6 +826,7 @@
     entryState(note.getAttribute('data-note')).note = note.value;
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(progress)); } catch (error) {}
   });
+  $('copyTests').addEventListener('click', copyProgress);
   $('exportTests').addEventListener('click', exportProgress);
   $('resetTests').addEventListener('click', function () { $('resetModal').hidden = false; });
   $('cancelReset').addEventListener('click', function () { $('resetModal').hidden = true; });

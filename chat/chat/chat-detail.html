@@ -2058,6 +2058,7 @@
 <script src="../../shared/js/chat-page-theme.js?v=20261105v1"></script>
 <link rel="stylesheet" href="../../shared/css/silver-butterfly-theme.css?v=20261102v5">
 <link rel="stylesheet" href="../../shared/css/wechat-theme-refinements.css?v=20261105v2">
+    <script src="../../shared/js/cloud-push-client.js?v=20261114v7"></script>
 </head>
 <body>
     <div class="phone-mockup">
@@ -2967,6 +2968,83 @@
             }
             if (wrote && _verifyHistoryRoundTrip(list)) {
                 _resetWarnCooldown('chat-save');
+
+                // The local history has passed write/read-back verification.
+                // The cloud client checks the separate account consent before it
+                // sends any role profile or recent text; without consent it sends
+                // only the old content-free context revision event.
+                if (!isGroupChat && window.MaomaoCloud &&
+                    typeof window.MaomaoCloud.noteCharacterContextChanged === 'function') {
+                    try {
+                        var cloudSnapshot = (function buildBoundedCloudContextSnapshot(history) {
+                            if (!Array.isArray(history) || !currentCharacter) return null;
+                            function messageTimestamp(message) {
+                                var raw = message && (message.time != null ? message.time :
+                                    (message.timestamp != null ? message.timestamp : message.createdAt));
+                                if (typeof raw === 'number' && Number.isSafeInteger(raw) && raw > 0) return raw;
+                                if (typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(raw)) {
+                                    var parsed = Date.parse(raw);
+                                    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0;
+                                }
+                                return 0;
+                            }
+                            var latestUser = null;
+                            for (var i = history.length - 1; i >= 0; i -= 1) {
+                                var candidate = history[i];
+                                if (!candidate || typeof candidate !== 'object') continue;
+                                var candidateRole = String(candidate.role || '');
+                                if (candidateRole === 'sent' || candidateRole === 'user') {
+                                    var candidateText = String(candidate.text != null ? candidate.text : (candidate.content || '')).trim();
+                                    var candidateTime = messageTimestamp(candidate);
+                                    if (candidateText && candidateTime) {
+                                        latestUser = { content: candidateText, time: candidateTime };
+                                        break;
+                                    }
+                                }
+                            }
+                            if (!latestUser) return null;
+
+                            var recent = [];
+                            for (var j = Math.max(0, history.length - 40); j < history.length; j += 1) {
+                                var item = history[j];
+                                if (!item || typeof item !== 'object') continue;
+                                var type = String(item.type || 'text').toLowerCase();
+                                if (['image', 'virtual-image', 'sticker', 'voice', 'audio', 'video', 'file',
+                                    'image-pending', 'system', 'transfer', 'red-envelope'].indexOf(type) !== -1) continue;
+                                if (item.attachments || item.image || item.file || item.audio || item.video) continue;
+                                var role = String(item.role || '');
+                                var speaker = (role === 'sent' || role === 'user') ? 'user' :
+                                    (role === 'received' || role === 'assistant' || role === 'character') ? 'assistant' : '';
+                                if (!speaker) continue;
+                                var content = String(item.text != null ? item.text : (item.content || '')).trim();
+                                if (!content) continue;
+                                recent.push({ role: speaker, content: content.slice(0, 600) });
+                            }
+                            var personaParts = [
+                                currentCharacter.persona,
+                                currentCharacter.prompt,
+                                currentCharacter.systemPrompt,
+                                currentCharacter.speechStyle,
+                                currentCharacter.relationship
+                            ].filter(function (part) { return typeof part === 'string' && part.trim(); });
+                            return {
+                                characterName: String(currentCharacter.name || currentCharacter.nickname || ''),
+                                personaText: personaParts.join('\n').slice(0, 5000),
+                                recentMessages: recent.slice(-12),
+                                lastUserMessageAt: latestUser.time
+                            };
+                        })(list);
+                        window.MaomaoCloud.noteCharacterContextChanged(
+                            String(currentCharacter.id || currentRoleId || ''),
+                            list,
+                            cloudSnapshot
+                        ).catch(function (error) {
+                            console.warn('[cloud] 角色上下文同步待重试', error && error.message || error);
+                        });
+                    } catch (error) {
+                        console.warn('[cloud] 角色上下文同步待重试', error && error.message || error);
+                    }
+                }
                 return true;
             }
             if (_shouldWarnAgain('chat-save') && typeof showToast === 'function') {
@@ -2974,6 +3052,304 @@
             }
             return false;
         }
+
+        // A matching server ID alone is not proof that the local copy is durable.
+        // Refuse ACK when the row is duplicated, has the wrong role, or its body
+        // differs from the immutable cloud envelope; otherwise a damaged local
+        // row could silently consume the only recoverable server copy.
+        function inspectCloudOutboundHistory(history, serverMessageId, expectedText) {
+            if (!Array.isArray(history)) return 'conflict';
+            var matches = [];
+            for (var i = 0; i < history.length; i += 1) {
+                var item = history[i];
+                if (item && String(item.serverMessageId || '') === serverMessageId) {
+                    matches.push(item);
+                }
+            }
+            if (!matches.length) return 'missing';
+            if (matches.length !== 1) return 'conflict';
+            var existing = matches[0];
+            var existingText = typeof existing.text === 'string'
+                ? existing.text
+                : (typeof existing.content === 'string' ? existing.content : null);
+            return existing.role === 'assistant' && existingText === expectedText
+                ? 'match'
+                : 'conflict';
+        }
+
+        // 云端主动消息进入现有聊天历史：只接收纯文字，serverMessageId 是本地幂等键。
+        // 本地写入并读回验证成功之前，绝不向云端 ACK。
+        async function persistCloudOutboundMessage(payload, envelope) {
+            if (document.visibilityState === 'hidden' || isGroupChat) return false;
+            var payloads = Array.isArray(payload) ? payload : [payload];
+            var envelopes = Array.isArray(envelope) ? envelope : [envelope];
+            if (!payloads.length || payloads.length > 4 || envelopes.length !== payloads.length) return false;
+
+            var firstGroupId = String(envelopes[0] && envelopes[0].groupId || '');
+            if (firstGroupId && payloads.length !== Number(envelopes[0].groupCount)) return false;
+            var prepared = [];
+            for (var index = 0; index < payloads.length; index += 1) {
+                var itemPayload = payloads[index];
+                var itemEnvelope = envelopes[index];
+                var serverMessageId = String(itemEnvelope && itemEnvelope.serverMessageId || '');
+                if (!/^[A-Za-z0-9_-]{16,128}$/.test(serverMessageId) ||
+                    !itemPayload || typeof itemPayload !== 'object' || Array.isArray(itemPayload) ||
+                    String(itemPayload.type || 'text') !== 'text' ||
+                    typeof itemPayload.text !== 'string') return false;
+                if (firstGroupId && (
+                    String(itemEnvelope.groupId || '') !== firstGroupId ||
+                    Number(itemEnvelope.groupCount) !== payloads.length ||
+                    Number(itemEnvelope.groupIndex) !== index + 1
+                )) return false;
+                var messageText = itemPayload.text.trim();
+                if (!messageText || messageText.length > 10000) return false;
+                prepared.push({
+                    serverMessageId: serverMessageId,
+                    text: messageText,
+                    createdAt: Number(itemEnvelope.createdAt)
+                });
+            }
+
+            var history = loadMessages();
+            if (!Array.isArray(history)) return false;
+            var toAppend = [];
+            for (var checkIndex = 0; checkIndex < prepared.length; checkIndex += 1) {
+                var entry = prepared[checkIndex];
+                var existingState = inspectCloudOutboundHistory(history, entry.serverMessageId, entry.text);
+                if (existingState === 'match') continue;
+                if (existingState === 'conflict') return false;
+                if (existingState === 'missing') {
+                    var createdAt = Number.isSafeInteger(entry.createdAt) && entry.createdAt > 0
+                        ? entry.createdAt : Date.now();
+                    var message = {
+                        role: 'assistant',
+                        text: entry.text,
+                        time: createdAt,
+                        mid: 'cloud_' + entry.serverMessageId,
+                        serverMessageId: entry.serverMessageId,
+                        source: 'cloud_autonomous'
+                    };
+                    ensureMid(message);
+                    toAppend.push(message);
+                }
+            }
+            if (!toAppend.length) return true;
+
+            var wasNearBottom = !chatMessages ||
+                (chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight <= 120);
+            // Write all bubbles in a group in one history transaction before
+            // rendering or acknowledging any individual cloud row.
+            toAppend.forEach(function (message) { history.push(message); });
+            if (!saveMessages(history)) return false;
+
+            function allMessagesAreSaved(candidateHistory) {
+                return prepared.every(function (entry) {
+                    return inspectCloudOutboundHistory(candidateHistory, entry.serverMessageId, entry.text) === 'match';
+                });
+            }
+            var firstReadBack = loadMessages();
+            if (!allMessagesAreSaved(firstReadBack)) return false;
+
+            // Render each independent bubble, preserving the authored spacing
+            // and normal chat pacing after the complete group is durable.
+            try {
+                if (_vl) {
+                    vlRefresh();
+                    if (wasNearBottom) scrollToBottom(true);
+                } else if (chatMessages) {
+                    var appendIndex = chatMessages.querySelectorAll('.msg-row[data-idx]').length;
+                    for (var renderIndex = 0; renderIndex < toAppend.length; renderIndex += 1) {
+                        await appendAiMessageWithPacing(
+                            toAppend[renderIndex],
+                            appendIndex + renderIndex,
+                            { scrollToBottom: wasNearBottom && renderIndex === toAppend.length - 1 }
+                        );
+                    }
+                }
+            } catch (renderError) {
+                console.warn('[cloud] 多气泡已写入本地，但界面刷新暂未完成', renderError && renderError.message || renderError);
+            }
+
+            // A sibling tab may race the renderer with an older history write.
+            // Merge the whole missing subset once, verify all IDs, then ACK all.
+            var postRenderHistory = loadMessages();
+            if (!Array.isArray(postRenderHistory)) return false;
+            var repair = [];
+            for (var repairIndex = 0; repairIndex < prepared.length; repairIndex += 1) {
+                var repairEntry = prepared[repairIndex];
+                var repairState = inspectCloudOutboundHistory(
+                    postRenderHistory, repairEntry.serverMessageId, repairEntry.text
+                );
+                if (repairState === 'conflict') return false;
+                if (repairState === 'missing') {
+                    var repairMessage = toAppend.find(function (item) {
+                        return item.serverMessageId === repairEntry.serverMessageId;
+                    });
+                    if (!repairMessage) return false;
+                    repair.push(repairMessage);
+                }
+            }
+            if (repair.length) {
+                repair.forEach(function (message) { postRenderHistory.push(message); });
+                if (!saveMessages(postRenderHistory)) return false;
+            }
+            var confirmedHistory = loadMessages();
+            if (!allMessagesAreSaved(confirmedHistory)) return false;
+
+            // Broadcast identifiers only. Other tabs reread the already saved
+            // full group from local storage; chat text never enters the notice.
+            try {
+                localStorage.setItem(
+                    'cloud_outbound_notice_v1:' + String(currentCharacter.id || currentRoleId),
+                    JSON.stringify({
+                        serverMessageIds: prepared.map(function (entry) { return entry.serverMessageId; }),
+                        at: Date.now()
+                    })
+                );
+            } catch (error) {}
+            return true;
+        }
+
+        // 同一角色优先用 Web Locks 串行接收；旧浏览器用短期 localStorage 租约尽量减少碰撞。
+        // localStorage 没有原子 CAS，因此降级租约不是 Web Locks 的等价强保证。
+        (function startCloudOutboundSyncForActiveRole() {
+            var cloud = window.MaomaoCloud;
+            if (!cloud || isGroupChat || !currentRoleId ||
+                typeof cloud.receiveCharacterOutboundMessages !== 'function') return;
+
+            function hasDeviceCredentials() {
+                return !!(cloud._internal &&
+                    typeof cloud._internal.readDevice === 'function' &&
+                    cloud._internal.readDevice());
+            }
+
+            var roleId = String(currentCharacter.id || currentRoleId);
+            var lockName = 'maomao-cloud-outbound:' + roleId;
+            var storageLockKey = 'cloud_outbound_lock_v1:' + roleId;
+            var noticeKey = 'cloud_outbound_notice_v1:' + roleId;
+            var active = false;
+            var running = false;
+            var intervalId = null;
+            var warned = false;
+
+            function randomLockToken() {
+                var bytes = new Uint8Array(12);
+                try {
+                    window.crypto.getRandomValues(bytes);
+                    return Array.prototype.map.call(bytes, function (value) {
+                        return value.toString(16).padStart(2, '0');
+                    }).join('');
+                } catch (error) {
+                    return Date.now().toString(36) + Math.random().toString(36).slice(2);
+                }
+            }
+
+            function runWithStorageLease(work) {
+                var token = randomLockToken();
+                var now = Date.now();
+                try {
+                    var current = JSON.parse(localStorage.getItem(storageLockKey) || 'null');
+                    if (current && Number(current.expiresAt) > now) return Promise.resolve(null);
+                    localStorage.setItem(storageLockKey, JSON.stringify({
+                        token: token,
+                        expiresAt: now + 120000
+                    }));
+                    var confirmed = JSON.parse(localStorage.getItem(storageLockKey) || 'null');
+                    if (!confirmed || confirmed.token !== token) return Promise.resolve(null);
+                } catch (error) {
+                    // Lock state unavailable: fail closed rather than risk duplicate cross-tab writes.
+                    return Promise.resolve(null);
+                }
+
+                return Promise.resolve().then(work).finally(function () {
+                    try {
+                        var owner = JSON.parse(localStorage.getItem(storageLockKey) || 'null');
+                        if (owner && owner.token === token) localStorage.removeItem(storageLockKey);
+                    } catch (error) {}
+                });
+            }
+
+            function runWithRoleLock(work) {
+                if (navigator.locks && typeof navigator.locks.request === 'function') {
+                    return navigator.locks.request(lockName, {
+                        mode: 'exclusive',
+                        ifAvailable: true
+                    }, function (lock) {
+                        return lock ? work() : null;
+                    });
+                }
+                return runWithStorageLease(work);
+            }
+
+            function syncNow() {
+                // Avoid polling while the browser explicitly reports offline; the online event below retries immediately.
+                if (!active || running || document.visibilityState === 'hidden' || !hasDeviceCredentials() || navigator.onLine === false) return;
+                running = true;
+                runWithRoleLock(function () {
+                    return cloud.receiveCharacterOutboundMessages(roleId, persistCloudOutboundMessage, 10);
+                }).catch(function (error) {
+                    if (!warned) {
+                        warned = true;
+                        console.warn('[cloud] 角色主动消息同步暂未完成，页面会继续重试', error && error.message || error);
+                    }
+                }).then(function (result) {
+                    if (result) warned = false;
+                    running = false;
+                });
+            }
+
+            function activate() {
+                if (active || document.visibilityState === 'hidden' || !hasDeviceCredentials()) return;
+                active = true;
+                syncNow();
+                intervalId = window.setInterval(syncNow, 15000);
+            }
+
+            function pause() {
+                active = false;
+                if (intervalId != null) window.clearInterval(intervalId);
+                intervalId = null;
+            }
+
+            function refreshHistoryFromOtherTab() {
+                if (!chatMessages || typeof renderAllMessages !== 'function') return;
+                var oldScrollTop = chatMessages.scrollTop;
+                var wasNearBottom = chatMessages.scrollHeight - oldScrollTop - chatMessages.clientHeight <= 120;
+                renderAllMessages();
+                // Do not yank someone away from an older part of the conversation.
+                if (!wasNearBottom) chatMessages.scrollTop = oldScrollTop;
+            }
+
+            function onVisibilityChange() {
+                if (document.visibilityState === 'hidden') pause();
+                else {
+                    refreshHistoryFromOtherTab();
+                    activate();
+                }
+            }
+
+            function onPageShow(event) {
+                // A normal first load already renders loadMessages(); only BFCache
+                // restoration needs a second read of history saved by sibling tabs.
+                if (document.visibilityState !== 'hidden' && event && event.persisted) {
+                    refreshHistoryFromOtherTab();
+                }
+                activate();
+            }
+
+            function onOtherTabNotice(event) {
+                if (event && event.key === noticeKey && document.visibilityState !== 'hidden') {
+                    refreshHistoryFromOtherTab();
+                }
+            }
+
+            document.addEventListener('visibilitychange', onVisibilityChange);
+            window.addEventListener('online', syncNow);
+            window.addEventListener('pageshow', onPageShow);
+            window.addEventListener('pagehide', pause);
+            window.addEventListener('storage', onOtherTabNotice);
+            activate();
+        })();
 
         // /photo 为用户显式触发，不自动判断意图、不随机生成；仅支持单人角色聊天。
         var _chatImageGenerationRunning = false;
@@ -7682,6 +8058,51 @@
         syncChatThemeLayout();
 
         renderAllMessages();
+
+        // Empty chats contain one local welcome placeholder for the UI. It is
+        // not a user conversation and must not be uploaded as fabricated history.
+        function queueCloudInitialContactForEmptyChat() {
+            if (isGroupChat || !currentCharacter || !currentCharacter.id ||
+                !window.MaomaoCloud ||
+                typeof window.MaomaoCloud.noteCharacterContextChanged !== 'function') return;
+            var history = loadMessages();
+            var untouchedWelcome = Array.isArray(history) && history.length === 1 &&
+                history[0] && history[0].role === 'received' &&
+                String(history[0].text || history[0].content || '') ===
+                    ('你好，我是' + String(contactName || '') + '！很高兴和你聊天。');
+            var genuinelyEmpty = Array.isArray(history) && history.length === 0;
+            if (!untouchedWelcome && !genuinelyEmpty) return;
+
+            var personaParts = [
+                currentCharacter.persona,
+                currentCharacter.prompt,
+                currentCharacter.systemPrompt,
+                currentCharacter.speechStyle,
+                currentCharacter.relationship
+            ].filter(function (part) { return typeof part === 'string' && part.trim(); });
+            var snapshot = {
+                characterName: String(currentCharacter.name || currentCharacter.nickname || contactName || ''),
+                personaText: personaParts.join('\n').slice(0, 5000),
+                recentMessages: [],
+                lastUserMessageAt: 0,
+                initialContact: true
+            };
+            window.MaomaoCloud.noteCharacterContextChanged(
+                String(currentCharacter.id || currentRoleId || ''),
+                history,
+                snapshot
+            ).then(function (result) {
+                if (result && result.payload && result.payload.queueReason &&
+                    result.payload.queueReason !== 'queued_initial_contact' &&
+                    result.payload.queueReason !== 'initial_contact_already_queued' &&
+                    result.payload.queueReason !== 'initial_contact_already_used') {
+                    console.info('[cloud] 首次主动联系暂未排队：', result.payload.queueReason);
+                }
+            }).catch(function (error) {
+                console.warn('[cloud] 首次主动联系上下文同步待重试', error && error.message || error);
+            });
+        }
+        queueCloudInitialContactForEmptyChat();
         highlightMessageFromUrl();
 
         // 美化中心保存后，页面从返回缓存恢复时重新读取最新配置。

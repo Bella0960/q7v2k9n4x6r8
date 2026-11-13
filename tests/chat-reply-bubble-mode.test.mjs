@@ -367,8 +367,8 @@ test('同一毫秒内不同回复轮次的气泡 ID 不冲突，且可安全解�
     turnId: 'turn/a#one'
   });
   assert.deepEqual(
-    repeated.map((message) => message.mid),
-    first.map((message) => message.mid),
+    Array.from(repeated, (message) => message.mid),
+    Array.from(first, (message) => message.mid),
     '同一轮次的相同输入应生成可复现的消息身份'
   );
 });
