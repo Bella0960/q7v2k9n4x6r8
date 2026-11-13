@@ -102,8 +102,14 @@ test('encrypted real-user conversation is deployed and never rendered as AI chat
   assert.ok(manifest.includes(page),'E2EE chat page must be in built manifest');
   const file=readFileSync(dist(page),'utf8');
   assert.match(file,/双人加密聊天/);
-  assert.match(file,/real-chat-crypto/);
-  assert.match(file,/api\/social\/e2ee\/chats/);
-  assert.doesNotMatch(file,/\/api\/ai\//);
-  assert.ok(existsSync(dist('chat/contacts/real-chat-crypto.mjs')),'browser crypto module must be deployed');
+  // Vite bundles the source module into a hashed assets chunk; don't
+  // require its prebuild filename to survive optimization.
+  const entry=file.match(/src="(\/assets\/[^"]+\.js)"/)?.[1];
+  assert.ok(entry,'encrypted chat must have a bundled executable module');
+  assert.ok(existsSync(dist(entry.slice(1))),'Vite-generated E2EE module must be deployed');
+  const entryContent=readFileSync(dist(entry.slice(1)),'utf8');
+  assert.match(entryContent,/api\/social\/e2ee\/chats/);
+  assert.doesNotMatch(entryContent,/\/api\/ai\//);
+  const original=readFileSync(resolve(root,'chat/contacts/real-chat.html'),'utf8');
+  assert.match(original,/real-chat-crypto\.mjs/);
 });
