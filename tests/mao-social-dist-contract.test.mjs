@@ -107,11 +107,14 @@ test('encrypted real-user conversation is deployed and never rendered as AI chat
   // Vite may emit a relative hashed module, inline a module wrapper or
   // hoist crypto into a shared chunk. Assert the compiled crypto exists,
   // instead of hardcoding its URL or versioned filename.
-  const chunks = readdirSync(dist('assets')).filter(name=>name.endsWith('.js'));
-  assert.ok(chunks.length,'Vite JS chunks must be emitted');
-  const encryptedRuntime = chunks.some(name=>
-    readFileSync(dist('assets/'+name),'utf8').includes('MAO-E2EE-v1'));
-  assert.ok(encryptedRuntime,'encrypted browser crypto must exist in compiled assets');
+  // This MPA build keeps relative route directories inside assets:
+  // assets/chat/contacts/real-chat-<hash>.js, not assets/<hash>.js.
+  const scripts = readdirSync(dist('assets/chat/contacts'))
+    .filter(name=>/^real-chat-[A-Za-z0-9_-]+\.js$/.test(name));
+  assert.ok(scripts.length>0,'compiled real chat entry script must be deployed');
+  const encryptedRuntime = scripts.some(name=>
+    readFileSync(dist('assets/chat/contacts/'+name),'utf8').includes('MAO-E2EE-v1'));
+  assert.ok(encryptedRuntime,'encrypted browser crypto must exist in compiled chat entry');
   const original=readFileSync(resolve(root,'chat/contacts/real-chat.html'),'utf8');
   assert.match(original,/real-chat-crypto\.mjs/);
   assert.match(original,/api\/social\/e2ee\/chats/);
