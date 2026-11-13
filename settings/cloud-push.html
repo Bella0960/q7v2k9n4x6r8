@@ -441,6 +441,8 @@
                         </select>
                     </div>
                     <button id="cloudRoleAutonomySave" class="cloud-button" type="button">保存角色授权</button>
+                    <button id="cloudRoleInitialTest" class="cloud-button" type="button">排队测试角色首次联系</button>
+                    <p id="cloudRoleInitialTestStatus" class="cloud-hint" role="status" aria-live="polite">请选择新建测试角色。此测试只发送角色名称和固定开场指令。</p>
                     <p id="cloudRoleSaveStatus" class="cloud-hint" role="status" aria-live="polite"></p>
                     <p class="cloud-hint">角色名称默认只从本机读取；只有单独开启上方上下文共享后，才会同步有限角色设定与近期文字。</p>
                 </div>
@@ -547,18 +549,18 @@
                 </div>
                 <div class="cloud-guide-status-item">
                     <strong>关闭应用后生成</strong>
-                    <p>当前阶段优先验证系统通知：在这台设备开启通知后，可发送一条测试提醒。角色主动生成需要服务端 AI 模型配置与授权，尚未在此页面启用。</p>
+                    <p>聊天同步后可提前排队。到期后，云端会核对授权和角色作息，并使用已同意共享的文字快照生成消息。此功能需要云端模型启用。</p>
                 </div>
                 <div class="cloud-guide-status-item">
                     <strong>真实设备验收</strong>
-                    <p>手机收到测试通知后，仍需检查锁屏、浏览器后台及设备切换；主动 AI 消息需另外通过云端任务与模型验证。</p>
+                    <p>安卓锁屏已收到云端测试通知。角色消息仍需验证定时生成、锁屏送达与聊天入库。</p>
                 </div>
             </div>
         </section>
     </main>
 </div>
 
-<script src="../shared/js/cloud-push-client.js?v=20261114v6"></script>
+<script src="../shared/js/cloud-push-client.js?v=20261114v8"></script>
 <script>
 (function () {
     if (window.MaomaoCloud && window.MaomaoCloud.mountSettings) {

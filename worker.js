@@ -1,9 +1,9 @@
 /**
  * Cloudflare Worker 入口（与静态资源同域共存）。
  *
- *  - /api/*          → Durable Object（SQLite 存储）中的 Milestone 1 云接口
- *  - 其他路径        → 交给 env.ASSETS（即现有 dist 静态站点，行为不变）
- *  - scheduled       → 清理过期订阅（Cron Trigger）
+ *  - /api/*          → Durable Object（SQLite 存储）中的账号、设备、聊天出站与推送 API
+ *  - 其他路径        → 交给 env.ASSETS（即现有 dist 静态站点）
+ *  - scheduled       → 维护订阅/上下文、执行到期云端主动联系并派发 Web Push
  *
  * 这里不使用 D1：见 docs/engineering/CLOUD_PUSH.md 的选型说明
  * （静态站部署目前不需要任何账号级资源，引入 D1 需要先创建数据库并回填
@@ -14,6 +14,7 @@
 import { createApp, dispatchPendingOutboundPushes } from './worker/lib/app.js';
 import { createStore } from './worker/lib/store.js';
 import { applyMigrations } from './worker/lib/migrations.js';
+import { runCloudModelTick } from './worker/lib/cloud-model-scheduler.js';
 import { runTick } from './worker/lib/scheduler.js';
 import { createSchedulerGate } from './worker/lib/scheduler-gate.js';
 
@@ -58,28 +59,20 @@ async function injectAccountScope(response, account) {
   });
 }
 
-/**
- * 调度参数全部来自显式环境配置，不设产品默认值。
- * 缺失时 runTick 会 fail-closed 并写入 missing_config 日志。
- */
+
+// Legacy foreground-owner path and cloud-owned model path are separate executors.
+// Preserve the original scheduling API when adding autonomous server generation.
 function readSchedulerConfig(env) {
   const config = {};
   if (env?.AUTONOMY_LEASE_MS != null) config.leaseMs = Number(env.AUTONOMY_LEASE_MS);
   if (env?.AUTONOMY_TICK_LIMIT != null) config.tickLimit = Number(env.AUTONOMY_TICK_LIMIT);
   if (env?.AUTONOMY_RETRY_BACKOFF_MS != null) {
     config.retryBackoffMs = String(env.AUTONOMY_RETRY_BACKOFF_MS)
-      .split(',')
-      .map(value => value.trim())
-      .filter(Boolean)
-      .map(Number);
+      .split(',').map(value => value.trim()).filter(Boolean).map(Number);
   }
   return config;
 }
 
-/**
- * M2.1 time/presence parameters remain explicit operator configuration.
- * Missing values are not replaced with guessed product defaults.
- */
 function readSchedulePolicyConfig(env) {
   const config = {};
   const readPositive = name => {
@@ -94,7 +87,6 @@ function readSchedulePolicyConfig(env) {
     const value = Number(raw);
     return Number.isSafeInteger(value) && value >= 0 ? value : NaN;
   };
-
   const heartbeatTtlMs = readPositive('AUTONOMY_HEARTBEAT_TTL_MS');
   const leaseDurationMs = readPositive('AUTONOMY_DEVICE_LEASE_MS');
   const graceMs = readNonNegative('AUTONOMY_DEVICE_GRACE_MS');
@@ -123,9 +115,36 @@ export class CloudDatabase {
     });
   }
 
+  async ensurePreviewAlarm() {
+    if (this.env.AUTONOMY_PREVIEW_ALARM_ENABLED !== 'true') return;
+    await this.ctx.storage.transaction(async storage => {
+      if ((await storage.getAlarm()) === null) {
+        await storage.setAlarm(Date.now() + 60_000);
+      }
+    });
+  }
+
+  async alarm() {
+    if (this.env.AUTONOMY_PREVIEW_ALARM_ENABLED !== 'true') return;
+    // Re-arm before running the tick so a failed model or push does not stop
+    // the next pass. Cloud task leases fence concurrent or retried alarms.
+    await this.ensurePreviewAlarm();
+    const response = await this.fetch(new Request(
+      'https://maomao.internal/internal/tick', { method: 'POST' }
+    ));
+    if (!response.ok) throw new Error('cloud_preview_tick_http_' + response.status);
+  }
+
   async fetch(request) {
     const url = new URL(request.url);
-    if (url.pathname.startsWith('/api/')) return this.handleApi(request);
+    if (url.pathname.startsWith('/api/')) {
+      const response = await this.handleApi(request);
+      if (response.ok && request.method === 'POST' &&
+          /^\/api\/characters\/[^/]+\/context-snapshot$/.test(url.pathname)) {
+        await this.ensurePreviewAlarm();
+      }
+      return response;
+    }
     if (url.pathname === '/internal/maintenance' && request.method === 'POST') {
       const timestamp = Date.now();
       const removed = this.store.cleanupSubscriptions(timestamp);
@@ -146,7 +165,7 @@ export class CloudDatabase {
         pushDispatch = await dispatchPendingOutboundPushes({
           store: this.store,
           env: this.env,
-          now: timestamp,
+          now: Date.now,
           fetchImpl: fetch,
           limit: 50
         });
@@ -164,19 +183,46 @@ export class CloudDatabase {
       });
     }
     if (url.pathname === '/internal/tick' && request.method === 'POST') {
-      // 真实 gate 已接入；缺少显式授权/作息/lease 配置或可信上下文版本时仍 fail-closed。
-      const timestamp = Date.now();
-      const result = runTick({
-        store: this.store,
-        now: timestamp,
-        config: readSchedulerConfig(this.env),
-        gate: createSchedulerGate({
+      // Do not replace the existing foreground/device-owned scheduler.
+      // Cloud tasks are independently filtered by executionMode='cloud'.
+      const foregroundNow = Date.now();
+      let foregroundResult;
+      try {
+        foregroundResult = runTick({
           store: this.store,
-          now: () => timestamp,
-          config: readSchedulePolicyConfig(this.env)
-        })
+          now: foregroundNow,
+          config: readSchedulerConfig(this.env),
+          gate: createSchedulerGate({
+            store: this.store,
+            now: () => foregroundNow,
+            config: readSchedulePolicyConfig(this.env)
+          })
+        });
+      } catch {
+        // Fail independently: one executor must not starve the other.
+        foregroundResult = { ok: false, reason: 'foreground_tick_failed' };
+      }
+      const cloudResult = await runCloudModelTick({
+        store: this.store,
+        env: this.env,
+        // Pass the clock, not a Cron-start snapshot: the model call may
+        // outlive its lease and the executor must recheck real wall time.
+        now: Date.now,
+        fetchImpl: fetch
       });
-      return Response.json({ ok: true, result });
+      let pushDispatch;
+      try {
+        pushDispatch = await dispatchPendingOutboundPushes({
+          store: this.store,
+          env: this.env,
+          now: Date.now,
+          fetchImpl: fetch,
+          limit: 50
+        });
+      } catch (error) {
+        pushDispatch = { configured: false, reason: 'dispatch_deferred' };
+      }
+      return Response.json({ ok: true, result: foregroundResult, cloudResult, pushDispatch });
     }
     return new Response('Not found', { status: 404 });
   }
@@ -253,8 +299,23 @@ export default {
     if (!env.CLOUD_DB) return;
     ctx.waitUntil((async () => {
       const stub = env.CLOUD_DB.get(env.CLOUD_DB.idFromName(INSTANCE_NAME));
-      await stub.fetch(new Request('https://maomao.internal/internal/maintenance', { method: 'POST' }));
-      await stub.fetch(new Request('https://maomao.internal/internal/tick', { method: 'POST' }));
+      let maintenanceError = null;
+      try {
+        const response = await stub.fetch(new Request(
+          'https://maomao.internal/internal/maintenance', { method: 'POST' }
+        ));
+        if (!response.ok) maintenanceError = new Error('cloud_maintenance_http_' + response.status);
+      } catch {
+        maintenanceError = new Error('cloud_maintenance_transport_failed');
+      }
+
+      // A transient maintenance failure must not starve proactive contacts.
+      // Always attempt the cloud model tick before reporting either error.
+      const tickResponse = await stub.fetch(new Request(
+        'https://maomao.internal/internal/tick', { method: 'POST' }
+      ));
+      if (!tickResponse.ok) throw new Error('cloud_tick_http_' + tickResponse.status);
+      if (maintenanceError) throw maintenanceError;
     })());
   }
 };
