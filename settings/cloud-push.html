@@ -547,18 +547,18 @@
                 </div>
                 <div class="cloud-guide-status-item">
                     <strong>关闭应用后生成</strong>
-                    <p>当前阶段优先验证系统通知：在这台设备开启通知后，可发送一条测试提醒。角色主动生成需要服务端 AI 模型配置与授权，尚未在此页面启用。</p>
+                    <p>测试分支已接入每 5 分钟运行的 Worker 定时器：聊天保存后提前排队，到期后云端读取授权、角色作息与已同意共享的文字快照，再调用服务端模型生成。仍需合并、部署 Worker、配置 Worker Secret 与模型白名单，才能在正式环境使用。</p>
                 </div>
                 <div class="cloud-guide-status-item">
                     <strong>真实设备验收</strong>
-                    <p>手机收到测试通知后，仍需检查锁屏、浏览器后台及设备切换；主动 AI 消息需另外通过云端任务与模型验证。</p>
+                    <p>安卓锁屏已收到云端测试通知。角色消息仍需验证定时生成、锁屏送达与聊天入库。</p>
                 </div>
             </div>
         </section>
     </main>
 </div>
 
-<script src="../shared/js/cloud-push-client.js?v=20261114v6"></script>
+<script src="../shared/js/cloud-push-client.js?v=20261114v7"></script>
 <script>
 (function () {
     if (window.MaomaoCloud && window.MaomaoCloud.mountSettings) {

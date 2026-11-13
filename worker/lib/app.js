@@ -7,11 +7,12 @@ import {
   base64UrlToBytes, randomToken, sha256Hex, timingSafeEqualHex
 } from './crypto.js';
 import {
-  PushConfigError, parseVapidKeys, sendWebPush
+  PUSH_SEND_TIMEOUT_MS, PushConfigError, parseVapidKeys, sendWebPush
 } from './webpush.js';
 import '../../shared/js/phone/character-schedule-policy.js';
 import { planTask, nextRetryAt } from './scheduler-policy.js';
 import { createSchedulerGate } from './scheduler-gate.js';
+import { readAutonomyModelConfig } from './model-executor.js';
 
 const DEVICE_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
 const DEVICE_SECRET_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
@@ -226,23 +227,32 @@ function validateScheduleInput(body) {
  * Build a privacy-safe notification for an already-persisted chat outbox row.
  * Message text is intentionally omitted so lock-screen previews reveal no chat content.
  */
-export function buildOutboundPushPayload({ characterId, serverMessageId, timestamp, accountId = OWNER_USER_ID }) {
+export function buildOutboundPushPayload({
+  characterId, serverMessageId, groupId, messageCount, characterName,
+  timestamp, accountId = OWNER_USER_ID
+}) {
   const roleId = String(characterId || '');
   const messageId = String(serverMessageId || '');
+  const group = String(groupId || messageId);
   const maoAccountId = String(accountId || OWNER_USER_ID);
+  const count = Math.max(1, Math.min(4, Math.floor(Number(messageCount) || 1)));
+  const name = String(characterName || '').replace(/[<>\u0000-\u001F]/g, '').trim().slice(0, 48) || '角色';
   if (!roleId || roleId.length > 96 ||
       !/^[A-Za-z0-9_-]{16,128}$/.test(messageId) ||
+      !/^[A-Za-z0-9_-]{16,128}$/.test(group) ||
       !(maoAccountId === OWNER_USER_ID || /^MAO-[A-Z0-9]{12,24}$/.test(maoAccountId))) {
     throw new TypeError('outbound push target is invalid');
   }
   return {
     type: 'chat_message',
     accountId: maoAccountId,
-    title: '新消息',
-    body: '有一位角色刚刚联系你，打开聊天查看。',
+    title: name,
+    body: count > 1
+      ? '刚刚发来 ' + count + ' 条消息，打开聊天查看。'
+      : '刚刚发来一条消息，打开聊天查看。',
     url: './chat/chat/chat-detail.html?id=' + encodeURIComponent(roleId),
-    tag: 'maomao-chat-' + messageId,
-    dedupeKey: ('outbound:' + messageId).slice(0, 96),
+    tag: 'maomao-chat-' + group,
+    dedupeKey: (groupId ? 'outbound-group:' + group : 'outbound:' + messageId).slice(0, 120),
     timestamp: Number(timestamp)
   };
 }
@@ -255,11 +265,16 @@ export function buildOutboundPushPayload({ characterId, serverMessageId, timesta
 export async function dispatchPendingOutboundPushes({
   store,
   env = {},
-  now = Date.now(),
+  now = Date.now,
   fetchImpl = fetch,
   limit = 50
 } = {}) {
-  const timestamp = Number(typeof now === 'function' ? now() : now);
+  const clock = typeof now === 'function' ? now : () => Number(now);
+  const readTimestamp = () => {
+    const value = Number(clock());
+    return Number.isSafeInteger(value) && value > 0 ? value : null;
+  };
+  const timestamp = readTimestamp();
   if (!Number.isSafeInteger(timestamp) || timestamp <= 0 || !store ||
       typeof store.listOutboundPushCandidates !== 'function') {
     return { configured: false, reason: 'dispatcher_unavailable', attempted: 0, sent: 0, failed: 0 };
@@ -272,6 +287,17 @@ export async function dispatchPendingOutboundPushes({
     return {
       configured: false,
       reason: error instanceof PushConfigError ? 'push_not_configured' : 'push_configuration_error',
+      attempted: 0,
+      sent: 0,
+      failed: 0
+    };
+  }
+
+  const deliveryLeaseMs = 60000;
+  if (deliveryLeaseMs <= PUSH_SEND_TIMEOUT_MS + 1000) {
+    return {
+      configured: false,
+      reason: 'push_timeout_exceeds_delivery_lease',
       attempted: 0,
       sent: 0,
       failed: 0
@@ -292,11 +318,17 @@ export async function dispatchPendingOutboundPushes({
     retryExhausted: 0
   };
   const maxDeliveryAttempts = 5;
-  const deliveryLeaseMs = 60000;
 
   for (const candidate of candidates) {
-    const deliveryTimestamp = Number(typeof now === 'function' ? now() : timestamp);
-    const dedupeKey = 'outbound:' + String(candidate.server_message_id);
+    const deliveryTimestamp = readTimestamp();
+    if (deliveryTimestamp == null) {
+      summary.failed += 1;
+      continue;
+    }
+    const groupId = candidate.group_id ? String(candidate.group_id) : null;
+    const dedupeKey = groupId
+      ? 'outbound-group:' + groupId
+      : 'outbound:' + String(candidate.server_message_id);
     const deliveryOwner = randomToken(12);
     const claim = store.claimDelivery({
       id: randomToken(12),
@@ -313,7 +345,7 @@ export async function dispatchPendingOutboundPushes({
       const existing = store.findDelivery(dedupeKey, candidate.subscription_id);
       if (existing?.status === 'sending') summary.inProgress += 1;
       else if (existing?.status === 'error' &&
-               Number(existing.next_attempt_at || 0) > timestamp) summary.retryDeferred += 1;
+               Number(existing.next_attempt_at || 0) > (readTimestamp() ?? timestamp)) summary.retryDeferred += 1;
       else if (existing?.status === 'failed' ||
                Number(existing?.attempt_count || 0) >= maxDeliveryAttempts) summary.retryExhausted += 1;
       else summary.skipped += 1;
@@ -327,6 +359,9 @@ export async function dispatchPendingOutboundPushes({
         accountId: candidate.target_account_id || OWNER_USER_ID,
         characterId: candidate.character_id,
         serverMessageId: candidate.server_message_id,
+        groupId,
+        messageCount: candidate.group_count || 1,
+        characterName: candidate.character_name,
         timestamp: Number(candidate.created_at || timestamp)
       });
       outcome = await sendWebPush(
@@ -355,7 +390,11 @@ export async function dispatchPendingOutboundPushes({
     }
 
     if (outcome.skipped) {
-      const finishedAt = Number(typeof now === 'function' ? now() : timestamp);
+      const finishedAt = readTimestamp();
+      if (finishedAt == null) {
+        summary.failed += 1;
+        continue;
+      }
       const finalized = store.finishDelivery({
         dedupeKey,
         subscriptionId: candidate.subscription_id,
@@ -375,7 +414,7 @@ export async function dispatchPendingOutboundPushes({
         deviceId: candidate.device_id,
         kind: 'outbound_push',
         status: finalized ? 'skipped' : 'failed',
-        reasonCode: 'subscription_unavailable_before_send',
+        reasonCode: finalized ? 'subscription_unavailable_before_send' : 'delivery_lease_lost',
         detail: {
           outboundMessageId: candidate.outbound_message_id,
           serverMessageId: candidate.server_message_id,
@@ -405,7 +444,11 @@ export async function dispatchPendingOutboundPushes({
       6 * 60 * 60 * 1000,
       30000 * (2 ** Math.max(0, Number(claim.attempt_count) - 1))
     );
-    const finishedAt = Number(typeof now === 'function' ? now() : timestamp);
+    const finishedAt = readTimestamp();
+    if (finishedAt == null) {
+      summary.failed += 1;
+      continue;
+    }
     const nextAttemptAt = canRetry ? finishedAt + retryDelayMs : null;
     const finalized = store.finishDelivery({
       dedupeKey,
@@ -419,13 +462,29 @@ export async function dispatchPendingOutboundPushes({
 
     if (!finalized) {
       summary.failed += 1;
+      await store.logExecution({
+        id: randomToken(12),
+        deviceId: candidate.device_id,
+        kind: 'outbound_push',
+        status: 'failed',
+        reasonCode: 'delivery_lease_lost',
+        detail: {
+          outboundMessageId: candidate.outbound_message_id,
+          serverMessageId: candidate.server_message_id,
+          subscriptionId: candidate.subscription_id,
+          httpStatus: Number.isFinite(statusCode) ? statusCode : 0,
+          retryScheduled: false
+        },
+        now: finishedAt
+      });
       continue;
     }
     if (outcome.ok) {
       summary.sent += 1;
       store.markPushSuccess(candidate.subscription_id, finishedAt);
-      store.markOutboundPushAccepted({
-        serverMessageId: candidate.server_message_id,
+      store.markOutboundGroupPushAccepted({
+        groupId: candidate.group_id,
+        fallbackMessageId: candidate.server_message_id,
         now: finishedAt
       });
     } else if (outcome.gone) {
@@ -1091,12 +1150,43 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const contextVersionSummary = await store.getCharacterContextVersionSummary(userId);
     const contextVersionReady = contextVersionSummary.roleCount > 0;
     const activityExecutorConfigured = readActivityExecutionConfig(env) !== null;
+    const serverModelConfigured = Boolean(readAutonomyModelConfig(env));
+    const contextSharing = await store.getUserContextSharing(userId);
+    const contextSharingEnabled = Boolean(contextSharing && Number(contextSharing.enabled) === 1);
     const activityQueue = await store.getActivityQueueSummary({ userId });
     const timestamp = now();
     const recentSchedulerReasons = await store.getRecentAutonomyReasonSummary({
       userId,
       since: timestamp - 86400000
     });
+    const recentPushReasons = await store.getRecentPushReasonSummary({
+      userId,
+      deviceId: device.id,
+      since: timestamp - 86400000
+    });
+    const latestCloudTick = await store.getLatestCloudAutonomyTick();
+    const cloudSchedulerLastRunAt = latestCloudTick ? Number(latestCloudTick.createdAt) : null;
+    const cloudSchedulerRuntimeVerified = Boolean(
+      latestCloudTick &&
+      ['success', 'degraded', 'skipped'].includes(String(latestCloudTick.status)) &&
+      Number.isSafeInteger(cloudSchedulerLastRunAt) &&
+      cloudSchedulerLastRunAt <= timestamp &&
+      timestamp - cloudSchedulerLastRunAt <= 15 * 60 * 1000
+    );
+    const cloudModelLastGeneratedAt = await store.getLatestCloudAutonomyGeneration({ userId });
+    const cloudModelGenerationVerified = Number.isSafeInteger(Number(cloudModelLastGeneratedAt)) &&
+      Number(cloudModelLastGeneratedAt) > 0 &&
+      Number(cloudModelLastGeneratedAt) <= timestamp &&
+      timestamp - Number(cloudModelLastGeneratedAt) <= 30 * 24 * 60 * 60 * 1000;
+    const cloudPushLastAcceptedAt = await store.getLatestAutonomyPushAcceptance({
+      userId,
+      deviceId: device.id,
+      now: timestamp
+    });
+    const cloudPushAcceptanceVerified = Number.isSafeInteger(Number(cloudPushLastAcceptedAt)) &&
+      Number(cloudPushLastAcceptedAt) > 0 &&
+      Number(cloudPushLastAcceptedAt) <= timestamp &&
+      timestamp - Number(cloudPushLastAcceptedAt) <= 30 * 24 * 60 * 60 * 1000;
     const presenceSummary = presenceConfig
       ? await store.getPresenceSummary({
           userId,
@@ -1105,6 +1195,25 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
           graceMs: presenceConfig.graceMs
         })
       : null;
+
+    const autonomyExecutionBlockers = [
+      ...(activityExecutorConfigured ? [] : ['activity_executor_config_missing']),
+      ...(serverModelConfigured ? [] : ['server_model_credentials_missing']),
+      ...(globalAutonomy?.enabled === 1 ? [] : ['global_autonomy_not_enabled']),
+      ...(contextSharingEnabled ? [] : ['context_sharing_not_enabled']),
+      ...(contextVersionReady ? [] : ['context_version_unavailable']),
+      ...(cloudSchedulerRuntimeVerified ? [] : ['cloud_model_scheduler_runtime_not_verified']),
+      ...(cloudModelGenerationVerified ? [] : ['cloud_model_generation_not_verified'])
+    ];
+    const pushDeliveryBlockers = [
+      ...(vapid.configured ? [] : ['web_push_keys_not_configured']),
+      ...(activeSubscriptions.length > 0 ? [] : ['current_device_push_subscription_missing']),
+      ...(cloudPushAcceptanceVerified ? [] : ['cloud_push_provider_acceptance_not_verified'])
+    ];
+    const autonomousMessageGenerationReady = autonomyExecutionBlockers.length === 0;
+    const pushDeliveryReady = pushDeliveryBlockers.length === 0;
+    const autonomousContactAndPushReady = autonomousMessageGenerationReady && pushDeliveryReady;
+
     return ok({
       deviceAuthorized: true,
       deviceAuthConfigured: pepper.length >= 32,
@@ -1118,6 +1227,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       globalAutonomyEnabled: globalAutonomy?.enabled === 1,
       activityQueue,
       recentSchedulerReasons,
+      recentPushReasons,
       schedulerDiagnosticsWindowMs: 86400000,
       // This account-level aggregate does not replace the exact per-character
       // version check performed by scheduler-gate for every context task.
@@ -1125,18 +1235,25 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       contextVersionTrackedRoles: contextVersionSummary.roleCount,
       contextVersionMaxObserved: contextVersionSummary.maxVersion,
       contextVersionLatestUpdatedAt: contextVersionSummary.latestUpdatedAt,
-      activityExecutorAvailable: activityExecutorConfigured,
-      deviceLocalModelRequired: true,
-      autonomousMessageGenerationReady: false,
-      autonomyExecutionBlockers: [
-        ...(activityExecutorConfigured ? [] : ['activity_executor_config_missing']),
-        'device_local_model_runtime_not_verified',
-        ...(contextVersionReady ? [] : ['context_version_unavailable'])
-      ],
-      note: '云端只保存活动元数据与生成后的出站文字；生成由已配对前台设备调用本机 PhoneAPI 和本地 API 配置完成。聊天正文、角色设定和 API Key 不上传。应用关闭或页面后台时不会继续生成；完整运行与真机链路尚未验收。'
+      activityExecutorAvailable: activityExecutorConfigured && serverModelConfigured,
+      serverModelConfigured,
+      contextSharingEnabled,
+      cloudSchedulerRuntimeVerified,
+      cloudSchedulerLastRunAt,
+      cloudSchedulerLastRunStatus: latestCloudTick?.status || null,
+      cloudModelGenerationVerified,
+      cloudModelLastGeneratedAt: cloudModelLastGeneratedAt || null,
+      cloudPushAcceptanceVerified,
+      cloudPushLastAcceptedAt,
+      deviceLocalModelRequired: false,
+      autonomousMessageGenerationReady,
+      autonomyExecutionBlockers,
+      pushDeliveryReady,
+      pushDeliveryBlockers,
+      autonomousContactAndPushReady,
+      note: '云端后台任务由 Worker 定时处理，不要求小手机保持前台。只有单独开启上下文共享后，角色称呼、角色设定和最多 12 条文字消息才会同步到云端并交给服务端模型；图片、语音、附件及手机 API Key 不会上传。主动消息生成与当前设备 Push 采用独立验收状态：前者看最近 15 分钟调度及最近 30 天真实模型出站入库，后者看 VAPID 配置、当前设备订阅和最近 30 天服务端接受回执。HTTP 成功只表示推送服务接受请求，不表示 Android 一定显示通知；锁屏展示仍需真机验收。'
     });
   }
-
   async function getGlobalAutonomy(request) {
     const device = await authenticate(request);
     const row = await store.getUserAutonomy(device.user_id || OWNER_USER_ID);
@@ -1233,6 +1350,267 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     });
   }
 
+  async function getContextSharing(request) {
+    const device = await authenticate(request);
+    const row = await store.getUserContextSharing(device.user_id || OWNER_USER_ID);
+    return ok({ enabled: Boolean(row && Number(row.enabled) === 1), configured: Boolean(row) });
+  }
+
+  async function setContextSharing(request) {
+    const device = await authenticate(request);
+    const body = await readJsonBody(request);
+    if (!body || typeof body !== 'object' || Array.isArray(body) ||
+        Object.keys(body).length !== 1 || typeof body.enabled !== 'boolean') {
+      throw new ApiError(400, 'INVALID_CONTEXT_SHARING', '请求只允许包含布尔值 enabled');
+    }
+    const row = await store.setUserContextSharing({
+      userId: device.user_id || OWNER_USER_ID,
+      enabled: body.enabled,
+      deviceId: device.id,
+      now: now()
+    });
+    if (!row) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销');
+    return ok({ enabled: Number(row.enabled) === 1, deletedSnapshots: body.enabled ? 0 : true });
+  }
+
+  function normalizeSnapshotText(value, maxLength, field) {
+    if (typeof value !== 'string') throw new ApiError(400, 'INVALID_CONTEXT_SNAPSHOT', field + ' 必须是文字');
+    let result = value
+      .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, '[私钥已省略]')
+      .replace(/\b(?:sk-[A-Za-z0-9_-]{16,}|AIza[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{20,})\b/g, '[密钥已省略]')
+      .replace(/\bBearer\s+[A-Za-z0-9._~+/-]{12,}/gi, 'Bearer [凭据已省略]')
+      .replace(/\b(?:api[_-]?key|access[_-]?token|secret|password|token)\s*[:=]\s*[\w.+/-]{12,}/gi, '[凭据已省略]')
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ' ')
+      .replace(/https?:\/\/\S+/gi, '[链接已省略]')
+      .replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g, '[邮箱已省略]')
+      .replace(/(?<!\d)(?:\+?\d[\s().-]?){8,15}(?!\d)/g, '[号码已省略]')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (Array.from(result).length > maxLength) result = Array.from(result).slice(0, maxLength).join('');
+    return result;
+  }
+
+  async function saveCharacterContextSnapshot(request, characterId) {
+    const device = await authenticate(request);
+    const body = await readJsonBody(request);
+    const required = ['eventId', 'characterName', 'personaText', 'recentMessages', 'lastUserMessageAt'];
+    const allowed = new Set([...required, 'initialContact']);
+    if (!body || typeof body !== 'object' || Array.isArray(body) ||
+        required.some(key => !Object.prototype.hasOwnProperty.call(body, key)) ||
+        Object.keys(body).some(key => !allowed.has(key)) ||
+        (Object.prototype.hasOwnProperty.call(body, 'initialContact') &&
+         typeof body.initialContact !== 'boolean')) {
+      throw new ApiError(400, 'INVALID_CONTEXT_SNAPSHOT', '上下文快照字段不完整或包含未允许的数据');
+    }
+    const initialContact = body.initialContact === true;
+    const suppliedEventId = String(body.eventId || '').trim();
+    if (!CONTEXT_EVENT_ID_PATTERN.test(suppliedEventId)) {
+      throw new ApiError(400, 'INVALID_CONTEXT_SNAPSHOT', 'eventId 格式无效');
+    }
+
+    const userId = device.user_id || OWNER_USER_ID;
+    const sharing = await store.getUserContextSharing(userId);
+    if (!sharing || Number(sharing.enabled) !== 1) return ok({ disabled: true, saved: false });
+
+    const characterName = normalizeSnapshotText(body.characterName, 80, 'characterName');
+    const personaText = normalizeSnapshotText(body.personaText, 5000, 'personaText');
+    if (!Array.isArray(body.recentMessages) || body.recentMessages.length > 12) {
+      throw new ApiError(400, 'INVALID_CONTEXT_SNAPSHOT', 'recentMessages 最多包含 12 条文字消息');
+    }
+    const recentMessages = body.recentMessages.map((item, index) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item) ||
+          Object.keys(item).length !== 2 ||
+          Object.keys(item).some(key => !['role', 'content'].includes(key)) ||
+          !['user', 'assistant'].includes(item.role)) {
+        throw new ApiError(400, 'INVALID_CONTEXT_SNAPSHOT', 'recentMessages[' + index + '] 格式无效');
+      }
+      return {
+        role: item.role,
+        content: normalizeSnapshotText(item.content, 600, 'recentMessages[' + index + '].content')
+      };
+    });
+    const totalChars = Array.from(personaText).length + Array.from(characterName).length +
+      recentMessages.reduce((sum, item) => sum + Array.from(item.content).length, 0);
+    if (totalChars > 11000) throw new ApiError(413, 'CONTEXT_SNAPSHOT_TOO_LARGE', '角色上下文超过允许的总长度');
+
+    const timestamp = now();
+    const lastUserMessageAt = Number(body.lastUserMessageAt);
+    if (!Number.isSafeInteger(lastUserMessageAt)) {
+      throw new ApiError(400, 'INVALID_CONTEXT_SNAPSHOT_TIME', '最后一条用户消息时间无效');
+    }
+    if (initialContact) {
+      if (body.lastUserMessageAt !== 0 || lastUserMessageAt !== 0 || recentMessages.length !== 0) {
+        throw new ApiError(400, 'INVALID_INITIAL_CONTACT_SNAPSHOT',
+          '首次主动开场必须使用空消息列表和 lastUserMessageAt=0');
+      }
+    } else if (lastUserMessageAt <= 0 ||
+        lastUserMessageAt > timestamp + 60000 ||
+        lastUserMessageAt < timestamp - 30 * 86400000) {
+      throw new ApiError(400, 'INVALID_CONTEXT_SNAPSHOT_TIME', '最后一条用户消息时间无效');
+    }
+
+    let previousSnapshot = await store.getLatestCharacterContextSnapshot({ userId, characterId });
+    let result;
+    if (initialContact && previousSnapshot && Number(previousSnapshot.last_user_message_at) > 0) {
+      return ok({
+        saved: false, duplicate: true, queued: false, scheduledAt: null,
+        queueReason: 'conversation_already_exists'
+      });
+    }
+
+    if (initialContact && previousSnapshot && Number(previousSnapshot.last_user_message_at) === 0) {
+      result = { saved: true, duplicate: true, contextVersion: Number(previousSnapshot.context_version) };
+    } else {
+      const eventId = initialContact
+        ? 'initial_' + (await sha256Hex(
+          userId + '|' + characterId + '|' + String(sharing.updated_at || 0)
+        )).slice(0, 40)
+        : suppliedEventId;
+      result = await store.recordCharacterContextSnapshot({
+        userId, characterId, eventId, deviceId: device.id,
+        characterName, personaText, recentMessages, lastUserMessageAt,
+        now: timestamp, eventLimit: 600, windowStart: timestamp - 3600000
+      });
+      if (result.conflict && initialContact) {
+        const racedSnapshot = await store.getLatestCharacterContextSnapshot({ userId, characterId });
+        if (racedSnapshot && Number(racedSnapshot.last_user_message_at) === 0 &&
+            racedSnapshot.character_name === characterName &&
+            racedSnapshot.persona_text === personaText &&
+            racedSnapshot.recent_messages_json === '[]') {
+          previousSnapshot = racedSnapshot;
+          result = {
+            saved: true, duplicate: true, contextVersion: Number(racedSnapshot.context_version)
+          };
+        }
+      }
+    }
+
+    if (result.revoked) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销');
+    if (result.limited) throw new ApiError(429, 'CONTEXT_VERSION_RATE_LIMITED', '上下文同步过于频繁，请稍后重试');
+    if (result.conflict) throw new ApiError(409, 'CONTEXT_SNAPSHOT_CONFLICT', '上下文版本已存在不同快照，请重新保存聊天记录');
+    if (result.disabled || !result.saved) return ok({ disabled: true, saved: false });
+
+    let queued = false;
+    let scheduledAt = null;
+    let queueReason = 'autonomy_not_enabled';
+    const globalAutonomy = await store.getUserAutonomy(userId);
+    const roleAutonomy = await store.getCharacterAutonomy(userId, characterId);
+    const roleEnabled = roleAutonomy?.enabled == null
+      ? globalAutonomy?.enabled === 1 : roleAutonomy.enabled === 1;
+    const executionConfig = readActivityExecutionConfig(env);
+
+    if (initialContact) {
+      const initialDedupeKey = [
+        'cloud-initial-contact-v1',
+        encodeURIComponent(userId),
+        encodeURIComponent(characterId)
+      ].join(':');
+      const existingInitialTask = await store.getActivityByDedupeKey(initialDedupeKey);
+      if (existingInitialTask) {
+        const status = String(existingInitialTask.status || '');
+        queued = ['waiting', 'retry', 'running'].includes(status);
+        scheduledAt = Number(existingInitialTask.scheduled_at) || null;
+        queueReason = queued ? 'initial_contact_already_queued' : 'initial_contact_already_used';
+      } else if (globalAutonomy?.enabled !== 1 || !roleEnabled) {
+        queueReason = 'autonomy_not_enabled';
+      } else if (!executionConfig) {
+        queueReason = 'activity_schedule_not_configured';
+      } else if (await store.countPendingActivitiesForCharacter(userId, characterId) >= 5) {
+        queueReason = 'activity_queue_full';
+      } else {
+        const snapshotSource = previousSnapshot && Number(previousSnapshot.last_user_message_at) === 0
+          ? previousSnapshot.source_device_id
+          : device.id;
+        const usableSnapshot = store.getCharacterContextSnapshot({
+          userId, characterId, contextVersion: result.contextVersion
+        });
+        if (!usableSnapshot || usableSnapshot.source_device_id !== snapshotSource ||
+            !store.isActiveAccountDevice(userId, snapshotSource)) {
+          queueReason = 'initial_snapshot_source_unavailable';
+        } else {
+          scheduledAt = timestamp + 2 * 60 * 1000;
+          const enqueue = await store.enqueueActivity({
+            id: randomToken(16),
+            deviceId: snapshotSource,
+            characterId,
+            kind: 'contact',
+            scheduledAt,
+            maxAttempts: executionConfig.maxAttempts,
+            payload: {
+              contextVersion: result.contextVersion,
+              sourceDeviceId: snapshotSource,
+              executionMode: 'cloud',
+              triggerType: 'initial_contact'
+            },
+            dedupeKey: initialDedupeKey,
+            now: timestamp,
+            userId,
+            requireActiveDevice: true
+          });
+          if (enqueue.revoked) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销');
+          if (enqueue.conflict) throw new ApiError(409, 'ACTIVITY_IDEMPOTENCY_CONFLICT', '首次主动联系任务幂等冲突');
+          queued = Boolean(enqueue.inserted || enqueue.duplicate);
+          queueReason = queued ? 'queued_initial_contact' : 'not_queued';
+        }
+      }
+    } else {
+      const minIdleMs = parsePositiveEnv(env, 'AUTONOMY_MIN_IDLE_MS');
+      const isNewUserTurn = !previousSnapshot ||
+        lastUserMessageAt > Number(previousSnapshot.last_user_message_at || 0);
+
+      if (globalAutonomy?.enabled === 1 && roleEnabled) {
+        if (!executionConfig || minIdleMs == null) {
+          queueReason = 'activity_schedule_not_configured';
+        } else {
+          scheduledAt = Math.max(timestamp, lastUserMessageAt + minIdleMs);
+          const dedupeKey = [
+            'cloud-contact-v1', encodeURIComponent(userId),
+            encodeURIComponent(characterId), String(lastUserMessageAt)
+          ].join(':');
+          if (isNewUserTurn) {
+            await store.supersedePendingContactActivities({ userId, characterId, now: timestamp });
+            if (await store.countPendingActivitiesForCharacter(userId, characterId) >= 5) {
+              queueReason = 'activity_queue_full';
+            } else {
+              const enqueue = await store.enqueueActivity({
+                id: randomToken(16), deviceId: device.id, characterId, kind: 'contact',
+                scheduledAt, maxAttempts: executionConfig.maxAttempts,
+                payload: {
+                  contextVersion: result.contextVersion,
+                  sourceDeviceId: device.id,
+                  executionMode: 'cloud'
+                },
+                dedupeKey, now: timestamp, userId, requireActiveDevice: true
+              });
+              if (enqueue.revoked) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销');
+              if (enqueue.conflict) throw new ApiError(409, 'ACTIVITY_IDEMPOTENCY_CONFLICT', '主动联系任务幂等冲突');
+              queued = Boolean(enqueue.inserted || enqueue.duplicate);
+              queueReason = queued ? 'queued' : 'not_queued';
+            }
+          } else {
+            const refreshed = await store.refreshPendingContactActivityContext({
+              deviceId: device.id, characterId, dedupeKey,
+              contextVersion: result.contextVersion, now: timestamp
+            });
+            queued = Boolean(refreshed);
+            queueReason = queued ? 'pending_task_context_refreshed' : 'same_user_turn_no_pending_task';
+          }
+        }
+      }
+    }
+
+    return ok({
+      saved: true,
+      duplicate: result.duplicate === true,
+      contextVersion: result.contextVersion,
+      queued,
+      scheduledAt,
+      queueReason,
+      initialContact
+    });
+  }
+
   async function listCharacterOutboundMessages(request, characterId, url) {
     const device = await authenticate(request);
     const rawLimit = url.searchParams.get('limit');
@@ -1270,7 +1648,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     } catch (error) {
       // Recovery is best-effort; a repair failure must not block older inbox rows.
     }
-    const rows = await store.listPendingOutboundMessages({
+    const fetchedRows = await store.listPendingOutboundMessages({
       userId,
       deviceId: device.id,
       characterId,
@@ -1278,6 +1656,26 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       afterCreatedAt,
       afterId
     });
+    // Store reads up to three extra rows. Only include that overflow when it
+    // completes the final group at this page boundary; legacy rows retain the
+    // original requested page size and cursor behavior.
+    const rows = fetchedRows.slice(0, limit);
+    if (rows.length === limit) {
+      const boundary = rows[rows.length - 1];
+      const boundaryGroupId = boundary && boundary.group_id;
+      if (boundaryGroupId) {
+        const expectedCount = Number(boundary.group_count || 1);
+        while (
+          rows.length < fetchedRows.length &&
+          fetchedRows[rows.length] &&
+          fetchedRows[rows.length].group_id === boundaryGroupId &&
+          Number(fetchedRows[rows.length].group_index) <= expectedCount
+        ) {
+          rows.push(fetchedRows[rows.length]);
+          if (Number(rows[rows.length - 1].group_index) >= expectedCount) break;
+        }
+      }
+    }
     const messages = rows.map(row => {
       let payload;
       let payloadError = null;
@@ -1292,6 +1690,11 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       const envelope = {
         serverMessageId: row.server_message_id,
         characterId: row.character_id,
+        groupId: row.group_id || null,
+        groupIndex: Number(row.group_index || 1),
+        groupCount: Number(row.group_count || 1),
+        cursorId: String(row.id),
+        cursorCreatedAt: Number(row.created_at),
         createdAt: Number(row.created_at),
         lifecycle: {
           pushAcceptedAt: row.push_accepted_at == null ? null : Number(row.push_accepted_at),
@@ -1310,7 +1713,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       if (payloadError) envelope.payloadError = payloadError;
       return envelope;
     });
-    const lastRow = rows.length === limit ? rows[rows.length - 1] : null;
+    const lastRow = rows.length >= limit ? rows[rows.length - 1] : null;
     const nextCursor = lastRow
       ? { createdAt: Number(lastRow.created_at), id: String(lastRow.id) }
       : null;
@@ -1502,11 +1905,22 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     } catch (error) {
       // Keep claiming other eligible work even if one staged outbox needs repair.
     }
-    const tasks = await store.listDueActivitiesForUser({
+    const tasks = (await store.listDueActivitiesForUser({
       userId,
       characterId,
       now: timestamp,
       limit: Math.min(config.tickLimit, 20)
+    })).filter(task => {
+      // Cloud-owned contact tasks must never be claimed by a foreground
+      // phone executor; only the Worker model scheduler can execute them.
+      try {
+        const payload = JSON.parse(String(task.payload_json || '{}'));
+        return payload.executionMode !== 'cloud';
+      } catch {
+        // Preserve the existing device-side validation/failure path for
+        // malformed legacy payloads rather than silently hiding them.
+        return true;
+      }
     });
 
     let blockedReason = 'no_due_activity';
@@ -1642,7 +2056,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         let pushDispatch = null;
         try {
           pushDispatch = await dispatchPendingOutboundPushes({
-            store, env, now: timestamp, fetchImpl, limit: 10
+            store, env, now, fetchImpl, limit: 10
           });
         } catch (error) {
           pushDispatch = { configured: false, reason: 'dispatch_deferred' };
@@ -1732,7 +2146,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     let pushDispatch = null;
     try {
       pushDispatch = await dispatchPendingOutboundPushes({
-        store, env, now: timestamp, fetchImpl, limit: 10
+        store, env, now, fetchImpl, limit: 10
       });
     } catch (error) {
       // The durable outbox is already committed. Push failure must never
@@ -2050,6 +2464,8 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       if (path === '/api/devices/pairing-token' && method === 'POST') return await createDevicePairingToken(request);
       if (path === '/api/devices/revoke' && method === 'POST') return await revokeDevice(request);
       if (path === '/api/autonomy/readiness' && method === 'GET') return await getAutonomyReadiness(request);
+      if (path === '/api/autonomy/context-sharing' && method === 'GET') return await getContextSharing(request);
+      if (path === '/api/autonomy/context-sharing' && method === 'PUT') return await setContextSharing(request);
       if (path === '/api/autonomy/global' && method === 'GET') return await getGlobalAutonomy(request);
       if (path === '/api/autonomy/global' && method === 'PUT') return await setGlobalAutonomy(request);
 
@@ -2058,6 +2474,11 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         const characterId = readCharacterId(characterAutonomyMatch[1]);
         if (method === 'GET') return await getCharacterAutonomy(request, characterId);
         if (method === 'PUT') return await setCharacterAutonomy(request, characterId);
+      }
+
+      const characterContextSnapshotMatch = /^\/api\/characters\/([^/]+)\/context-snapshot$/.exec(path);
+      if (characterContextSnapshotMatch && readCharacterId(characterContextSnapshotMatch[1]) && method === 'POST') {
+        return await saveCharacterContextSnapshot(request, readCharacterId(characterContextSnapshotMatch[1]));
       }
 
       const characterContextVersionMatch = /^\/api\/characters\/([^/]+)\/context-version$/.exec(path);
