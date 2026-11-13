@@ -780,6 +780,9 @@ function renderRoleProfile() {
         '<section class="avatar-library-section" aria-labelledby="avatarLibraryTitle">' +
             '<div class="avatar-library-heading"><div><div class="avatar-library-kicker">PORTRAIT ARCHIVE / PRIVATE COLLECTION</div><h3 id="avatarLibraryTitle">头像收藏</h3><p>每个角色独立保存，互不混用。</p></div>' +
             '<button class="avatar-library-add" type="button" data-profile-action="avatar-add"><span aria-hidden="true">＋</span> 添加头像</button></div>' +
+            '<div class="avatar-library-autonomy"><div class="avatar-library-autonomy-copy"><strong>自主更换头像</strong><span>允许 TA 从自己的头像收藏中挑选；不会影响你的头像。</span></div>' +
+                '<button class="avatar-library-autonomy-toggle" type="button" data-profile-action="avatar-autonomy" aria-pressed="' + (role.avatarAutonomyEnabled !== false ? 'true' : 'false') + '">' +
+                (role.avatarAutonomyEnabled !== false ? '已开启' : '已关闭') + '</button></div>' +
             '<div class="avatar-library-status" id="avatarLibraryStatus" aria-live="polite" role="status"></div>' +
             '<div class="avatar-pair-heading"><h4>配对头像</h4><p>识别为一组的两张图片会并排关联保存，也可以手动选择。</p></div>' +
             '<div id="avatarPairBuilder" class="avatar-pair-builder"></div>' +
@@ -830,6 +833,21 @@ function renderRoleProfile() {
         if (!button) return;
         const action = button.getAttribute('data-profile-action');
         if (action === 'avatar-add') openAvatarLibraryUpload();
+        if (action === 'avatar-autonomy') {
+            const active = getActiveProfileRole();
+            const enabled = !!active && active.avatarAutonomyEnabled !== false;
+            const saved = saveActiveRoleMutation(function (target) {
+                target.avatarAutonomyEnabled = !enabled;
+            });
+            if (saved) {
+                renderRoleProfile();
+                setAvatarLibraryStatus(enabled
+                    ? '已关闭 TA 的自主换头像，原头像与收藏没有变化。'
+                    : '已允许 TA 自主从自己的头像收藏中选择。', 'success');
+            } else {
+                setAvatarLibraryStatus('设置未保存成功，原有选项没有变化。', 'error');
+            }
+        }
         if (action === 'basic') openMainRoleEditor(false);
         if (action === 'tone') openMainRoleEditor(true);
         if (action === 'relationships') showAppView('relationshipView');
