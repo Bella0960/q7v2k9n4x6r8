@@ -15,6 +15,7 @@
   // AUTONOMY_MODEL_BACKEND is explicitly set to workers_ai.
   "ai": { "binding": "AI" },
   "vars": {
+    "DEVICE_PAIRING_TOKEN_TTL_MS": "300000",
     "AUTONOMY_MIN_IDLE_MS": "1800000",
     "AUTONOMY_LEASE_MS": "60000",
     "AUTONOMY_TICK_LIMIT": "10",
