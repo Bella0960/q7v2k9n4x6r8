@@ -128,6 +128,14 @@
         return 'none';
     }
 
+    function requestsAvatarChange(userText) {
+        var text = String(userText || '');
+        if (classifyAvatarIntent(text) !== 'single') return false;
+        // Collection, questions and user-profile edits do not authorize changing TA.
+        if (/(?:不要|别|暂不|先不|不用|不想|不换|不改|不设|只.*(?:收藏|保存)|我的头像|给我换|帮我换|my\s+(?:avatar|profile)|\b(?:not|don't|dont|never)\b)/i.test(text)) return false;
+        return /(?:换|更换|替换|设为|设置为|设成|设置成|用作|作为|当作)[^。！？!?；;\n]{0,20}头像|(?:set|use|change)[^。！？!?；;\n]{0,30}(?:your\s+(?:avatar|profile\s+picture))/i.test(text);
+    }
+
     function buildAvatarCandidatePrompt(images, userText) {
         if (!Array.isArray(images) || !images.length) return '';
         var intent = classifyAvatarIntent(userText);
@@ -219,7 +227,9 @@
         stripAvatarCandidateMarker: stripAvatarCandidateMarker,
         parseAvatarCandidateReply: parseAvatarCandidateReply,
         classifyAvatarIntent: classifyAvatarIntent,
+        requestsAvatarChange: requestsAvatarChange,
         isValidImageDataUrl: isValidImageDataUrl,
         _normalizeIds: normalizeIds
     };
 })(window);
+

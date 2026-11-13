@@ -391,7 +391,7 @@ async function renderAvatarLibrary(roleId) {
             const secondLabel = escapeHtml(second.label || '头像 B');
             return '<article class="avatar-pair-card">' +
                 '<div class="avatar-pair-card-head"><input class="avatar-pair-label-input" type="text" maxlength="36" value="' + escapeHtml(pair.label || '配对头像') + '" data-saved-value="' + escapeHtml(pair.label || '配对头像') + '" aria-label="配对名称" data-avatar-pair-label-input="' + pairId + '">' +
-                '<div class="avatar-pair-actions"><button class="avatar-pair-rename" type="button" data-avatar-pair-action="rename" data-pair-id="' + pairId + '">保存名称</button>' +
+                '<div class="avatar-pair-actions"><button type="button" data-avatar-pair-action="apply-both" data-pair-id="' + pairId + '">双方使用</button><button class="avatar-pair-rename" type="button" data-avatar-pair-action="rename" data-pair-id="' + pairId + '">保存名称</button>' +
                 '<button class="avatar-pair-swap" type="button" data-avatar-pair-action="swap" data-pair-id="' + pairId + '">交换 A/B</button>' +
                 '<button class="avatar-pair-unlink" type="button" data-avatar-pair-action="unlink" data-pair-id="' + pairId + '">解除配对</button></div></div>' +
                 '<div class="avatar-pair-photos">' +
@@ -566,6 +566,25 @@ async function renameRoleAvatarPair(pairId, label) {
     }
     await renderAvatarLibrary(roleId);
     setAvatarLibraryStatus('配对名称已更新。', 'success');
+}
+
+async function applyRoleAvatarPairToChat(pairId) {
+    const roleId = String(currentProfileRoleId || '');
+    const library = window.RoleAvatarLibrary;
+    if (!roleId || !library || typeof library.applyPairToChat !== 'function') return;
+    setAvatarLibraryStatus('正在为双方分配头像…', 'info');
+    const result = await library.applyPairToChat(roleId, pairId, {
+        isCurrent: function () { return String(currentProfileRoleId || '') === roleId; }
+    });
+    if (!result || !result.ok) {
+        const code = result && result.error && result.error.code;
+        setAvatarLibraryStatus(code === 'PARTIAL_ROLLBACK'
+            ? '头像保存未完全恢复，请检查头像档案和聊天页面。'
+            : '双方头像未能同时保存，之前的头像已保留。', 'error');
+        return;
+    }
+    renderRoleProfile();
+    setAvatarLibraryStatus('双方头像已应用：A 给角色，B 仅用于和 TA 的聊天，不影响你的全局头像。', 'success');
 }
 
 async function swapRoleAvatarPair(pairId) {
@@ -786,6 +805,7 @@ function renderRoleProfile() {
             const pairAction = pairButton.getAttribute('data-avatar-pair-action');
             if (pairAction === 'unlink') unlinkRoleAvatarPair(pairButton.getAttribute('data-pair-id'));
             if (pairAction === 'swap') swapRoleAvatarPair(pairButton.getAttribute('data-pair-id'));
+            if (pairAction === 'apply-both') applyRoleAvatarPairToChat(pairButton.getAttribute('data-pair-id'));
             if (pairAction === 'rename') {
                 const pairId = pairButton.getAttribute('data-pair-id');
                 const labelInput = content.querySelector('[data-avatar-pair-label-input="' + pairId + '"]');

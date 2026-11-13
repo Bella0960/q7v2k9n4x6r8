@@ -10,14 +10,24 @@
 
   // ---------- 通用：向聊天插入一条展示消息（不触发 AI 请求） ----------
   function insertChatMessage(msg) {
-    if (!msg || typeof msg !== 'object') return;
+    if (!msg || typeof msg !== 'object') return false;
     if (!msg.time) msg.time = Date.now();
     if (!msg.role) msg.role = 'user';
-    const list = loadMessages();
-    list.push(msg);
-    saveMessages(list);
+    // Build a fresh snapshot: a failed write must not mutate a shared history array.
+    var saved = false;
+    try {
+      var history = loadMessages();
+      if (Array.isArray(history)) saved = saveMessages(history.concat([msg])) === true;
+    } catch (error) {
+      saved = false;
+    }
+    if (!saved) {
+      if (typeof showToast === 'function') showToast('聊天记录保存失败，消息未发送');
+      return false;
+    }
     appendMessageToDOM(msg);
     if (chatMessages) chatMessages.scrollTop = chatMessages.scrollHeight;
+    return true;
   }
 
   // 隐藏指令：作为 user 消息进入 AI 上下文，但不在界面渲染气泡（sendMsg silent 模式）
@@ -132,7 +142,7 @@
       try { localStorage.setItem('myLocation', place); } catch (e) {}
       closeModal();
       // 展示：右侧位置卡片气泡
-      insertChatMessage({ role: 'user', type: 'location', location: { label: place } });
+      if (!insertChatMessage({ role: 'user', type: 'location', location: { label: place } })) return;
       // 演绎：把「我在xxx」作为隐藏消息发给 AI，由 AI 按人设回应
       sendSilentInstruction('我在' + place);
     };
@@ -180,7 +190,7 @@
       const list = lsGet(ANNIV_KEY, []);
       list.push({ id: uid(), name: name, date: date });
       lsSet(ANNIV_KEY, list);
-      insertChatMessage({ role: 'user', type: 'anniversary', anniversary: { name: name, date: date, daysText: daysUntil(date) } });
+      if (!insertChatMessage({ role: 'user', type: 'anniversary', anniversary: { name: name, date: date, daysText: daysUntil(date) } })) { renderAnniversaryList(); return; }
       sendSilentInstruction('[系统动作：我标记了一个纪念日「' + name + '」（' + date + '，' + daysUntil(date) + '）]');
       renderAnniversaryList();
     };
@@ -197,7 +207,7 @@
         const a = lsGet(ANNIV_KEY, []).find(function (x) { return x.id === id; });
         if (!a) return;
         closeModal();
-        insertChatMessage({ role: 'user', type: 'anniversary', anniversary: { name: a.name, date: a.date, daysText: daysUntil(a.date) } });
+        if (!insertChatMessage({ role: 'user', type: 'anniversary', anniversary: { name: a.name, date: a.date, daysText: daysUntil(a.date) } })) return;
         sendSilentInstruction('[系统动作：我向你提到了纪念日「' + a.name + '」（' + a.date + '，' + daysUntil(a.date) + '）]');
       };
     });
@@ -251,7 +261,7 @@
         const items = lsGet(key, []);
         if (!items.length) { showToast('暂无待办可发送'); return; }
         closeModal();
-        insertChatMessage({ role: 'user', type: 'todo', todo: { items: items } });
+        if (!insertChatMessage({ role: 'user', type: 'todo', todo: { items: items } })) return;
         const doneCount = items.filter(function (i) { return i.done; }).length;
         sendSilentInstruction('[系统动作：我 shared 了我们的待办清单（共 ' + items.length + ' 项，已完成 ' + doneCount + ' 项）：' + items.map(function (i) { return (i.done ? '✓' : '○') + i.text; }).join('、') + ']');
       };
@@ -300,14 +310,15 @@
     var raw = null;
     try { raw = sessionStorage.getItem(key); } catch (e) { return; }
     if (!raw) return;
-    try { sessionStorage.removeItem(key); } catch (e) {} // 读完即清，刷新不重复插入
     var result = null;
     try { result = JSON.parse(raw); } catch (e) { return; }
     if (!result || (result.type !== 'voice' && result.type !== 'video')) return;
     var text = result.connected
       ? '通话时长 ' + formatCallDuration(result.duration || 0)
       : '已取消';
-    insertChatMessage({ role: 'user', type: 'call', call: { type: result.type, text: text } });
+    if (!insertChatMessage({ role: 'user', type: 'call', call: { type: result.type, text: text } })) return;
+    // Keep the pending call result on write failure so a later page load can retry it.
+    try { sessionStorage.removeItem(key); } catch (e) {}
   }
   window.addEventListener('load', consumeCallResult);
 
@@ -361,7 +372,7 @@
         list.push({ id: uid(), title: title, content: content, date: date });
         lsSet(MOMENT_KEY, list);
         closeModal();
-        insertChatMessage({ role: 'user', type: 'moment', moment: { title: title, content: content, date: date } });
+        if (!insertChatMessage({ role: 'user', type: 'moment', moment: { title: title, content: content, date: date } })) return;
         sendSilentInstruction('[系统动作：我记录了一个特别时刻「' + title + '」' + (content ? '：' + content : '') + (date ? '（' + date + '）' : '') + ']');
       };
       modalBody.querySelectorAll('.mom-del').forEach(function (b) {
@@ -377,7 +388,7 @@
           const m = loadMomentList().find(function (x) { return x.id === id; });
           if (!m) return;
           closeModal();
-          insertChatMessage({ role: 'user', type: 'moment', moment: { title: m.title, content: m.content, date: m.date } });
+          if (!insertChatMessage({ role: 'user', type: 'moment', moment: { title: m.title, content: m.content, date: m.date } })) return;
           sendSilentInstruction('[系统动作：我向你分享了特别时刻「' + m.title + '」' + (m.content ? '：' + m.content : '') + ']');
         };
       });
@@ -439,7 +450,7 @@
         var r = roles[idx];
         if (!r) return;
         closeModal();
-        insertChatMessage({ role: 'user', type: 'card', card: { id: String(r.id), name: r.name || '', avatar: r.avatar || '' } });
+        if (!insertChatMessage({ role: 'user', type: 'card', card: { id: String(r.id), name: r.name || '', avatar: r.avatar || '' } })) return;
         sendSilentInstruction('[系统动作：我发了一张「' + (r.name || '') + '」的名片给你]');
       };
     });
@@ -668,7 +679,7 @@
       const t = document.getElementById('vmText').value.trim();
       if (!t) { showToast('请先写下要说的话'); return; }
       closeModal();
-      insertChatMessage({ role: 'user', type: 'voice', duration: picked, text: t });
+      if (!insertChatMessage({ role: 'user', type: 'voice', duration: picked, text: t })) return;
       sendSilentInstruction('[语音消息] ' + t);
     };
   }
@@ -771,12 +782,12 @@
       var g = GIFT_CATALOG[picked];
       var msg = (document.getElementById('giftMsg').value || '').trim();
       closeModal();
-      insertChatMessage({
+      if (!insertChatMessage({
         role: 'user', type: 'gift',
         gift: { id: g.id, name: g.name, color: g.color, wrap: g.wrap, tag: g.tag,
                 img: g.img, message: msg },
         text: '[礼物] ' + g.name
-      });
+      })) return;
       // 让 AI 惊喜地收下礼物
       var silent = '[我送了你一份礼物：' + g.name + (msg ? '，附上一句悄悄话：“' + msg + '”' : '') + '。请表现出收到礼物时的惊喜与开心，不要真的去拆，用你的反应来回应这份心意。]';
       sendSilentInstruction(silent);
@@ -851,64 +862,282 @@
   }
   if (payBackdrop) payBackdrop.addEventListener('click', closePayDrawer);
 
-  // 提交：构造特殊格式消息直接入历史，不走 sendMsg / 不发任何 API
-  function submitPayMessage() {
-    if (typeof loadMessages !== 'function' || typeof saveMessages !== 'function') return;
-    var amountStr = String((payAmountInput && payAmountInput.value) || '').trim();
-    var amountNum = parseFloat(amountStr);
-    if (!amountStr || isNaN(amountNum) || amountNum <= 0) {
-      if (typeof showToast === 'function') showToast('请输入金额');
-      return;
-    }
-    var msgText = String((payMessageInput && payMessageInput.value) || PAY_DEFAULT_MESSAGE).trim();
-    // 发送即扣款（修复资金漏洞）：余额不足阻止发送，绝不先发红包后扣款
-    if (typeof getWorkData !== 'function' || typeof saveWorkData !== 'function') {
-      if (typeof showToast === 'function') showToast('钱包暂不可用，未发送');
-      return;
-    }
-    var wd = getWorkData();
-    if (!wd || !(Number(wd.balance) >= amountNum)) {
-      if (typeof showToast === 'function') showToast('余额不足');
-      return; // 不写消息、不关抽屉、不扣款
-    }
-    wd.balance = Math.round((Number(wd.balance) - amountNum) * 100) / 100; // 保留两位防浮点误差
-    // 交易明细：支出记录（amountNum 已是 parseFloat 后的数字，与扣款同一次写入原子落盘）
-    if (!Array.isArray(wd.history)) wd.history = [];
-    wd.history.unshift({
-      type: 'expense',
-      category: payMode,                              // 'redpacket' | 'transfer'
-      title: payMode === 'transfer' ? '发起转账' : '发出红包',
-      amount: amountNum,
-      time: Date.now()
+  // A wallet debit and a chat card live in separate storage records. Use a stable
+  // payment ID and a recoverable ledger state, rather than claiming both writes are atomic.
+  function outgoingPaymentInHistory(history, paymentId) {
+    return Array.isArray(history) && history.some(function (item) {
+      return item && item.role === 'user' &&
+        String(item.paymentId || item.mid || '') === String(paymentId);
     });
-    if (!saveWorkData(wd)) return; // 扣款保存失败则中止发送
+  }
+
+  // loadMessages() can synthesize a welcome message when storage is unreadable.
+  // Never interpret that synthetic fallback as proof that a payment card is absent.
+  function readOutgoingHistorySnapshot(roleId) {
+    if (!roleId) return null;
+    try {
+      var raw = localStorage.getItem('chat_history_' + String(roleId));
+      if (raw == null) return null;
+      var history = JSON.parse(raw);
+      return Array.isArray(history) ? history : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  // Legacy getWorkData() silently replaces corrupt records with a default balance.
+  // Keep that compatibility elsewhere, but do not authorize new payments or refunds
+  // against a synthetic balance when a stored wallet record is unreadable.
+  function outgoingWalletRecordValid() {
+    try {
+      var raw = localStorage.getItem('workData');
+      if (raw == null) return true; // Brand-new local wallet: legacy default applies.
+      var stored = JSON.parse(raw);
+      return !!stored && typeof stored === 'object' && !Array.isArray(stored) &&
+        typeof stored.balance === 'number' && isFinite(stored.balance) &&
+        stored.balance >= 0 &&
+        (stored.history == null || Array.isArray(stored.history));
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function persistOutgoingWallet(wallet, paymentId, expectedStatus) {
+    try {
+      if (saveWorkData(wallet) !== true) return false;
+      // Check actual stored bytes: getWorkData's default balance can mask a failed read.
+      var raw = localStorage.getItem('workData');
+      if (!raw) return false;
+      var stored = JSON.parse(raw);
+      var entry = stored && Array.isArray(stored.history) && stored.history.find(function (item) {
+        return item && String(item.paymentId || '') === String(paymentId);
+      });
+      return !!entry && entry.status === expectedStatus &&
+        Number(stored.balance) === Number(wallet.balance);
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function settleOutgoingPayment(paymentId, hasChatCard) {
+    try {
+      if (!outgoingWalletRecordValid()) return false;
+      var wallet = getWorkData();
+      if (!wallet || !Array.isArray(wallet.history)) return false;
+      var entry = wallet.history.find(function (item) {
+        return item && String(item.paymentId || '') === String(paymentId) &&
+          item.type === 'expense' && (item.category === 'redpacket' || item.category === 'transfer');
+      });
+      if (!entry) return false;
+      var targetStatus = hasChatCard ? 'sent' : 'reversed';
+      if (entry.status === targetStatus) return true; // Repeat recovery must never refund twice.
+      if (entry.status !== 'pending-chat') return false;
+      var amount = Number(entry.amount);
+      if (!isFinite(amount) || amount <= 0 || !isFinite(Number(wallet.balance))) return false;
+      if (!hasChatCard) {
+        wallet.balance = Math.round((Number(wallet.balance) + amount) * 100) / 100;
+        entry.reversedAt = Date.now();
+      } else {
+        entry.sentAt = Date.now();
+      }
+      entry.status = targetStatus;
+      return persistOutgoingWallet(wallet, paymentId, targetStatus);
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function recoverOutgoingPaymentsUnderLock() {
+    if (!currentCharacter || currentCharacter.id == null) return;
+    try {
+      if (!outgoingWalletRecordValid()) {
+        if (typeof showToast === 'function') showToast('钱包数据无法核实，自动恢复已暂停');
+        return;
+      }
+      var wallet = getWorkData();
+      if (!wallet || !Array.isArray(wallet.history)) return;
+      var roleId = String(currentCharacter.id);
+      var oldPending = wallet.history.filter(function (entry) {
+        return entry && entry.status === 'pending-chat' &&
+          entry.type === 'expense' && String(entry.roleId || '') === roleId &&
+          (entry.category === 'redpacket' || entry.category === 'transfer') &&
+          Number(entry.time) > 0 && Date.now() - Number(entry.time) >= 2 * 60 * 1000;
+      });
+      if (!oldPending.length) return;
+      var messages = readOutgoingHistorySnapshot(roleId);
+      if (!messages) {
+        if (typeof showToast === 'function') showToast('聊天记录无法核实，钱包待恢复交易已保留；请勿重复付款');
+        return;
+      }
+      oldPending.forEach(function (entry) {
+        var id = String(entry.paymentId || '');
+        if (!id) return;
+        var cardExists = outgoingPaymentInHistory(messages, id);
+        if (!settleOutgoingPayment(id, cardExists) && typeof showToast === 'function') {
+          showToast('有一笔红包或转账账目等待恢复，请检查钱包记录');
+        }
+      });
+    } catch (error) {
+      if (typeof showToast === 'function') showToast('钱包记录恢复失败，请检查本地存储');
+    }
+  }
+
+  // Debit first with a durable pending ledger entry; only announce a send after card persistence.
+  function submitPayMessageUnderLock() {
+    if (typeof loadMessages !== 'function' || typeof saveMessages !== 'function' ||
+        typeof getWorkData !== 'function' || typeof saveWorkData !== 'function') {
+      if (typeof showToast === 'function') showToast('聊天或钱包暂不可用，未发送');
+      return;
+    }
+    var amountStr = String((payAmountInput && payAmountInput.value) || '').trim();
+    var amountNum = Number(amountStr);
+    if (!/^\d+(?:\.\d{1,2})?$/.test(amountStr) || !isFinite(amountNum) || amountNum <= 0) {
+      if (typeof showToast === 'function') showToast('请输入有效金额（最多两位小数）');
+      return;
+    }
+    var roleId = currentCharacter && currentCharacter.id != null ? String(currentCharacter.id) : '';
+    if (!roleId) {
+      if (typeof showToast === 'function') showToast('角色信息不可用，未发送');
+      return;
+    }
+    if (!outgoingWalletRecordValid()) {
+      if (typeof showToast === 'function') showToast('钱包数据损坏或余额异常，未扣款；请先恢复钱包数据');
+      return;
+    }
+    var wallet = getWorkData();
+    if (!wallet || !isFinite(Number(wallet.balance)) || Number(wallet.balance) < amountNum) {
+      if (typeof showToast === 'function') showToast('余额不足或钱包数据异常');
+      return;
+    }
+    // Do not allow a second debit while this role already has an unsettled payment.
+    if (Array.isArray(wallet.history) && wallet.history.some(function (item) {
+      return item && item.status === 'pending-chat' && String(item.roleId || '') === roleId &&
+        item.type === 'expense' && (item.category === 'redpacket' || item.category === 'transfer');
+    })) {
+      if (typeof showToast === 'function') showToast('上一笔红包或转账仍待核对，请先检查钱包记录');
+      return;
+    }
+    var mode = payMode === 'transfer' ? 'transfer' : 'redpacket';
+    var now = Date.now();
+    var paymentId = 'out-' + uid();
+    var msgText = String((payMessageInput && payMessageInput.value) || PAY_DEFAULT_MESSAGE).trim();
+    wallet.balance = Math.round((Number(wallet.balance) - amountNum) * 100) / 100;
+    if (!Array.isArray(wallet.history)) wallet.history = [];
+    wallet.history.unshift({
+      type: 'expense', category: mode,
+      title: mode === 'transfer' ? '发起转账' : '发出红包',
+      amount: amountNum, time: now, roleId: roleId,
+      paymentId: paymentId, status: 'pending-chat'
+    });
+    if (!persistOutgoingWallet(wallet, paymentId, 'pending-chat')) {
+      if (typeof showToast === 'function') {
+        showToast('钱包扣款状态无法确认，未发送消息；请先检查钱包记录');
+      }
+      return;
+    }
+
     var specialMsg = {
-      role: 'user',
-      type: payMode,                    // 'redpacket' 或 'transfer'
-      amount: amountNum.toFixed(2),     // 统一两位小数，如 '100.00'
-      message: msgText,                 // 留言内容
-      status: 'unopened',               // 初始状态为未领取
-      timestamp: Date.now()
+      role: 'user', type: mode, amount: amountNum.toFixed(2),
+      message: msgText, status: 'unopened',
+      paymentId: paymentId, mid: paymentId, time: now, timestamp: now
     };
-    var list = loadMessages();
-    list.push(specialMsg);
-    saveMessages(list);
+    var history;
+    var cardSaved = false;
+    try {
+      history = loadMessages();
+      if (Array.isArray(history)) cardSaved = saveMessages(history.concat([specialMsg])) === true;
+    } catch (error) {
+      cardSaved = false;
+    }
+    if (!cardSaved) {
+      // A failed readback might still have written the card; only refund when
+      // the raw role history is legible and confirms the card is absent.
+      var storedHistory = readOutgoingHistorySnapshot(roleId);
+      var readable = Array.isArray(storedHistory);
+      var storedCard = readable && outgoingPaymentInHistory(storedHistory, paymentId);
+      var recovered = readable && settleOutgoingPayment(paymentId, storedCard);
+      if (typeof showToast === 'function') {
+        showToast(!readable
+          ? '聊天记录无法核实，扣款待恢复；请检查存储，暂勿重复发送'
+          : storedCard
+            ? '聊天卡片保存状态不确定，请刷新检查，暂未通知角色'
+            : recovered
+              ? '聊天卡片保存失败，扣款已退回，消息未发送'
+              : '聊天保存失败，扣款等待恢复；请检查钱包记录，暂勿重复发送');
+      }
+      return;
+    }
+    // If this acknowledgement fails, the pending ledger can be finalized on a later page load.
+    if (!settleOutgoingPayment(paymentId, true) && typeof showToast === 'function') {
+      showToast('消息已保存，钱包账目待核对；请检查钱包记录');
+    }
     closePayDrawer();
-    // 立刻刷新聊天列表，让新消息以 [红包]/[转账] 占位文本渲染出来
-    if (typeof renderAllMessages === 'function') {
-      renderAllMessages();
-    } else if (typeof appendMessageToDOM === 'function') {
+    if (typeof renderAllMessages === 'function') renderAllMessages();
+    else if (typeof appendMessageToDOM === 'function') {
       appendMessageToDOM(specialMsg);
       if (chatMessages) chatMessages.scrollTop = chatMessages.scrollHeight;
     }
-    // 支付卡片本身不重复显示为文字；用隐藏上下文触发角色按人设回应。
     var safeNote = msgText.replace(/[\r\n]+/g, ' ').slice(0, 160);
-    if (payMode === 'transfer') {
+    if (mode === 'transfer') {
       sendSilentInstruction('[互动事件：我刚刚向你转账 ¥' + amountNum.toFixed(2) + '，附言为“' + safeNote + '”。请根据你自己的性格、关系和经济观念自然决定是否收下。若决定收下，请在回复中附加标记 [收下转账:' + amountNum.toFixed(2) + ']；若决定拒绝并退还，请自然说明原因并附加 [转账:' + amountNum.toFixed(2) + ':退回转账]。两种标记只能二选一；没有决定时不要编造交易，不得改变金额。]');
     } else {
       sendSilentInstruction('[互动事件：我给你发送了 ¥' + amountNum.toFixed(2) + ' 的红包，附言为“' + safeNote + '”。请以角色人设自然回应收到红包的反应，不要把红包卡片当作普通文字复述。]');
     }
   }
+  // The virtual wallet is shared by several chat tabs. Web Locks serialize
+  // cooperating chat-payment writers; legacy shop/takeout writers still need migration.
+  var _outgoingPaymentBusy = false;
+  function runOutgoingPaymentExclusive(action, sending) {
+    if (sending && _outgoingPaymentBusy) {
+      if (typeof showToast === 'function') showToast('上一笔交易还在处理，请不要重复点击');
+      return Promise.resolve(false);
+    }
+    var locks = window.navigator && window.navigator.locks;
+    if (!locks || typeof locks.request !== 'function') {
+      if (typeof showToast === 'function') {
+        showToast('当前浏览器无法安全锁定钱包，红包和转账暂不可用；请勿重复付款');
+      }
+      return Promise.resolve(false);
+    }
+    if (sending) _outgoingPaymentBusy = true;
+    var request;
+    try {
+      request = locks.request(
+        'maomao-wallet-workData-v1',
+        sending ? { mode: 'exclusive', ifAvailable: true } : { mode: 'exclusive' },
+        function (lock) {
+          if (!lock) {
+            if (sending && typeof showToast === 'function') {
+              showToast('钱包正在另一个页面处理交易，请稍后重试');
+            }
+            return false;
+          }
+          action(); // Read balance and perform all wallet/chat writes while holding the lock.
+          return true;
+        }
+      );
+    } catch (error) {
+      if (sending) _outgoingPaymentBusy = false;
+      if (typeof showToast === 'function') showToast('钱包锁定失败，未发起新交易');
+      return Promise.resolve(false);
+    }
+    return Promise.resolve(request).catch(function () {
+      if (typeof showToast === 'function') showToast('钱包操作未完成，请检查交易记录后再尝试');
+      return false;
+    }).finally(function () {
+      if (sending) _outgoingPaymentBusy = false;
+    });
+  }
+
+  function submitPayMessage() {
+    return runOutgoingPaymentExclusive(submitPayMessageUnderLock, true);
+  }
+
+  function recoverOutgoingPayments() {
+    return runOutgoingPaymentExclusive(recoverOutgoingPaymentsUnderLock, false);
+  }
+
+  window.addEventListener('load', recoverOutgoingPayments);
   if (payConfirmBtn) payConfirmBtn.addEventListener('click', submitPayMessage);
 
   function featRedpacket() { openPayDrawer('redpacket'); }
@@ -942,19 +1171,19 @@
     document.getElementById('vimg-send').onclick=function(){
       var title=document.getElementById('vimg-title').value.trim()||'图片';
       var desc=document.getElementById('vimg-desc').value.trim();
-      closeModal(); insertChatMessage({role:'user',type:'virtual-image',title:title,description:desc,text:'[图片] '+title+(desc?'：'+desc:'')});
+      closeModal(); if (!insertChatMessage({role:'user',type:'virtual-image',title:title,description:desc,text:'[图片] '+title+(desc?'：'+desc:'')})) return;
       sendSilentInstruction('我给你发了一张图片，图片标题是「'+title+'」'+(desc?'，画面描述：'+desc:'')+'。请自然地回应。');
     };
   }
   function featureEmoji() {
     var chars=['微笑','开心','赞','爱心','抱抱','疑问','叹气','晚安','收到','谢谢','加油','无语'];
     openModal('表情', '<div class="x-core-grid">'+chars.map(function(x){return '<button data-word="'+x+'">'+x+'</button>';}).join('')+'</div>');
-    modalBody.querySelectorAll('[data-word]').forEach(function(b){b.onclick=function(){closeModal();insertChatMessage({role:'user',type:'text',text:'['+b.dataset.word+']'});if(typeof sendMsg==='function')sendMsg('['+b.dataset.word+']');};});
+    modalBody.querySelectorAll('[data-word]').forEach(function(b){b.onclick=function(){closeModal();if (!insertChatMessage({role:'user',type:'text',text:'['+b.dataset.word+']'})) return;if(typeof sendMsg==='function')sendMsg('['+b.dataset.word+']');};});
   }
   function featureAside() {
     openModal('旁白与动作', '<div class="x-core-card"><div class="x-core-muted">写下动作、神态或场景旁白</div><textarea class="x-core-input" id="asideText" rows="4" placeholder="例如：我轻轻推开门，探头看向你。"></textarea><div class="x-core-actions"><button class="x-btn x-btn-ghost" id="asideCancel">取消</button><button class="x-btn x-btn-primary" id="asideSend">发送并让角色回应</button></div></div>');
     document.getElementById('asideCancel').onclick=closeModal;
-    document.getElementById('asideSend').onclick=function(){var t=document.getElementById('asideText').value.trim();if(!t)return;closeModal();insertChatMessage({role:'user',type:'aside',text:t});sendSilentInstruction('[旁白/动作描写] '+t);};
+    document.getElementById('asideSend').onclick=function(){var t=document.getElementById('asideText').value.trim();if(!t)return;closeModal();if (!insertChatMessage({role:'user',type:'aside',text:t})) return;sendSilentInstruction('[旁白/动作描写] '+t);};
   }
   function coreClearChat() {
     openModal('清空聊天记录','<div class="x-core-card">此操作会清除此角色当前会话的聊天记录，无法撤销。<div class="x-core-actions"><button class="x-btn x-btn-ghost" id="clearNo">取消</button><button class="x-btn x-btn-primary" id="clearYes">确认清空</button></div></div>');
