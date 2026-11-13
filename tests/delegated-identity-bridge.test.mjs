@@ -14,7 +14,8 @@ const founderId = 'MAO-AAAAAAAAAAAA';
 const founderPass = 'local-test-founder-passphrase-123';
 const issuerOpts = {
   MAO_IDENTITY_ISSUER_ENABLED: 'true',
-  MAO_IDENTITY_BRIDGE_SECRET: secret
+  MAO_IDENTITY_BRIDGE_SECRET: secret,
+  MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: 'test-only-original-founder-setup-secret-2026'
 };
 const previewOpts = {
   MAO_IDENTITY_MODE: 'delegated_preview',
