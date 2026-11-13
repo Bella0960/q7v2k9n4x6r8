@@ -311,3 +311,81 @@ test('云端模型响应超过执行租约后，提交必须使用新的真实�
   assert.ok(logs.some(entry => entry.reasonCode === 'outbound_group_commit_fenced'));
   assert.ok(logs.some(entry => entry.kind === 'autonomy_cloud_tick' && entry.status === 'success'));
 });
+
+
+test('Workers AI is dormant unless explicitly selected and bound', () => {
+  const AI = { run: async () => ({ response: '{"send":false}' }) };
+  assert.equal(readAutonomyModelConfig({ AI }), null,
+    'binding alone must never incur inference charges');
+  assert.equal(readAutonomyModelConfig({ AUTONOMY_MODEL_BACKEND: 'workers_ai' }), null);
+  assert.equal(readAutonomyModelConfig({ AUTONOMY_MODEL_BACKEND: 'unrecognized', AI }), null);
+  const config = readAutonomyModelConfig({ AUTONOMY_MODEL_BACKEND: 'workers_ai', AI });
+  assert.ok(config);
+  assert.equal(config.backend, 'workers_ai');
+  assert.equal(config.model, '@cf/zai-org/glm-4.7-flash');
+  assert.equal(config.timeoutMs, 20000);
+  assert.equal(config.apiKey, undefined);
+});
+
+test('Workers AI runs under explicit selection without another API token or HTTP fetch', async () => {
+  const calls = [];
+  const env = {
+    AUTONOMY_MODEL_BACKEND: 'workers_ai',
+    AI: {
+      async run(model, options) {
+        calls.push({ model, options });
+        return { response: JSON.stringify({ send: true, messages: ['今天想分享一个小发现。', '你那边还好吗？'] }) };
+      }
+    }
+  };
+  const snapshot = {
+    character_name: '测试角色',
+    persona_text: '安静、有好奇心。',
+    recent_messages_json: '[{"role":"user","content":"你今天忙吗？"}]'
+  };
+  const reply = await generateAutonomousMessages({
+    env, snapshot,
+    fetchImpl: async () => { throw new Error('Workers AI must not call external HTTP'); }
+  });
+  assert.equal(reply.ok, true);
+  assert.equal(reply.send, true);
+  assert.deepEqual(reply.messages, ['今天想分享一个小发现。', '你那边还好吗？']);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].model, '@cf/zai-org/glm-4.7-flash');
+  assert.equal(calls[0].options.stream, false);
+  assert.equal(calls[0].options.messages[0].role, 'system');
+  assert.equal(calls[0].options.messages[1].role, 'user');
+  assert.ok(calls[0].options.messages[1].content.includes('你今天忙吗？'));
+  assert.equal(JSON.stringify(calls).includes('AUTONOMY_MODEL_API_KEY'), false);
+});
+
+test('invalid Workers AI output fails closed and never sends messages', async () => {
+  const env = {
+    AUTONOMY_MODEL_BACKEND: 'workers_ai',
+    AI: { run: async () => ({ response: 'not JSON' }) }
+  };
+  const snapshot = { character_name: '测试角色', persona_text: '', recent_messages_json: '[]' };
+  const invalid = await generateAutonomousMessages({
+    env, snapshot,
+    fetchImpl: async () => { throw new Error('HTTP fallback forbidden'); }
+  });
+  assert.equal(invalid.ok, false);
+  assert.equal(invalid.reason, 'invalid_model_json');
+  env.AI.run = async () => { throw new Error('provider unavailable'); };
+  const failure = await generateAutonomousMessages({ env, snapshot });
+  assert.equal(failure.ok, false);
+  assert.equal(failure.reason, 'model_network_error');
+});
+
+test('Workers AI respects explicit timeout configuration and never auto-enables', () => {
+  const AI = { run: async () => ({ response: '{"send":false}' }) };
+  assert.equal(readAutonomyModelConfig({
+    AUTONOMY_MODEL_BACKEND: 'workers_ai', AI, AUTONOMY_MODEL_TIMEOUT_MS: 'not-a-timeout'
+  }), null);
+  assert.equal(readAutonomyModelConfig({
+    AUTONOMY_MODEL_BACKEND: 'workers_ai', AI, AUTONOMY_MODEL_TIMEOUT_MS: '70000'
+  }), null);
+  const legacy = readAutonomyModelConfig(MODEL_ENV);
+  assert.equal(legacy.backend, 'openai_compatible');
+  assert.equal(legacy.model, MODEL_ENV.AUTONOMY_MODEL_NAME);
+});
