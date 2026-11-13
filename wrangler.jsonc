@@ -22,7 +22,8 @@
   "previews": {
     "vars": {
       "MAO_SOCIAL_ENABLED": "true",
-      "MAO_SOCIAL_CHAT_ENABLED": "false"
+      "MAO_SOCIAL_CHAT_ENABLED": "false",
+      "MAO_IDENTITY_MODE": "delegated_preview"
     },
     "durable_objects": {
       "bindings": [

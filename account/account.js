@@ -6,6 +6,8 @@
   let currentAccount = null;
   let viewRevision = 0;
   let authBusy = false;
+  let delegatedIdentity = false;
+  let delegatedSignInReady = true;
 
   function setAuthBusy(value) {
     authBusy = value;
@@ -127,6 +129,11 @@
       return;
     }
     if (account.status === 'pending_invite') {
+      if (delegatedIdentity) {
+        showPanel('loginPanel');
+        setError('loginError', '当前测试版沿用统一账号，不需要邀请码；请使用已获授权的原账号登录。');
+        return;
+      }
       byId('pendingAccountId').textContent = account.id || '—';
       showPanel('invitePanel');
       return;
@@ -163,7 +170,14 @@
       setError('registerError');
       setError('loginError');
       setError('inviteError');
+      if (delegatedIdentity && (button.dataset.show === 'registerPanel' || button.dataset.show === 'invitePanel')) {
+        showPanel('loginPanel');
+        return;
+      }
       showPanel(button.dataset.show);
+      if (delegatedIdentity && !delegatedSignInReady) {
+        setError('loginError', '统一身份验证尚未接通，暂时不要输入管理员密码，也不需要邀请码或重新注册。');
+      }
     });
   });
 
@@ -340,7 +354,24 @@
     if (!link) return;
     try {
       const status = await api('/api/admin/bootstrap/status');
-      link.hidden = Boolean(status.initialized);
+      delegatedIdentity = status.identityMode === 'delegated';
+      link.hidden = delegatedIdentity || status.bootstrapAllowed === false || Boolean(status.initialized);
+      if (delegatedIdentity) {
+        document.querySelectorAll('[data-show="registerPanel"]').forEach(button => { button.hidden = true; });
+        const subtitle = byId('loginPanel')?.querySelector('.lead');
+        if (subtitle) subtitle.textContent = '用你原来的 MAO 账号登录。管理员 001 不需要邀请码，也不需要重复注册。';
+        delegatedSignInReady = status.signInReady === true;
+        const unavailable = !delegatedSignInReady;
+        const loginForm = byId('loginForm');
+        if (loginForm) {
+          loginForm.querySelectorAll('input, button[type="submit"]').forEach(node => {
+            node.disabled = unavailable;
+          });
+        }
+        if (unavailable) {
+          setError('loginError', '统一身份验证尚未接通。本测试版不会要求你重新注册，请暂时不要输入管理员密码。');
+        }
+      }
     } catch {
       link.hidden = true;
     }
@@ -349,7 +380,7 @@
   (async function restoreSession() {
     const revision = viewRevision;
     const params = new URLSearchParams(window.location.search);
-    checkCreatorBootstrapEntry();
+    await checkCreatorBootstrapEntry();
     if (params.get('disabled') === '1') {
       showPanel('blockedPanel');
       return;
@@ -361,7 +392,7 @@
     } catch (error) {
       if (revision !== viewRevision) return;
       if (error.code === 'ACCOUNT_DISABLED') showPanel('blockedPanel');
-      else showPanel(params.get('admin') === '1' ? 'loginPanel' : 'welcomePanel');
+      else showPanel(delegatedIdentity || params.get('admin') === '1' ? 'loginPanel' : 'welcomePanel');
     }
   })();
 })();

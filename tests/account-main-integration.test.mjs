@@ -91,7 +91,9 @@ test('founder sign-up readiness is a non-secret boolean and blocks unavailable P
   const backend = read('worker/lib/account-auth.js');
   const html = read('account/bootstrap.html');
   const entry = read('account/bootstrap.js');
-  assert.match(backend, /(?:configured:|const configured =)\s*String\(env\.MAO_SUPER_ADMIN_BOOTSTRAP_SECRET \|\| ''\)\.length >= 32/);
+  assert.match(backend, /configured:\s*!delegated\s*&&\s*String\(env\.MAO_SUPER_ADMIN_BOOTSTRAP_SECRET \|\| ''\)\.length >= 32/);
+  assert.match(backend, /bootstrapAllowed:\s*!delegated/);
+  assert.match(backend, /path === '\/api\/internal\/identity\/authenticate'/);
   assert.match(backend, /String\(env\.DEVICE_SECRET_PEPPER \|\| ''\)\.length >= 32/);
   assert.match(html, /id="bootstrapSetupHelp"/);
   assert.match(html, /npx wrangler preview secret put DEVICE_SECRET_PEPPER/);

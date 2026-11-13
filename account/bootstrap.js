@@ -79,6 +79,15 @@
 
     try {
       const status = await request('/api/admin/bootstrap/status');
+      if (status.identityMode === 'delegated' || status.bootstrapAllowed === false) {
+        form.hidden = true;
+        statusNode.hidden = false;
+        statusNode.textContent = '这不是新管理员注册入口。当前测试版与统一账号共用身份，请返回登录页，使用你原来的管理员账号 001；无需邀请码或重新初始化。';
+        retryButton.hidden = true;
+        if (setupHelp) setupHelp.hidden = true;
+        errorNode.textContent = '';
+        return;
+      }
       if (status.initialized) {
         showInitialized();
         return;

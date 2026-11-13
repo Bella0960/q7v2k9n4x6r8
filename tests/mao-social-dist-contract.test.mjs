@@ -51,6 +51,10 @@ test('social preview enables only friendship QA; production and private chat sta
   assert.equal(config.vars?.MAO_SOCIAL_CHAT_ENABLED, undefined);
   assert.equal(config.previews?.vars?.MAO_SOCIAL_ENABLED, 'true');
   assert.equal(config.previews?.vars?.MAO_SOCIAL_CHAT_ENABLED, 'false');
+  assert.equal(config.previews?.vars?.MAO_IDENTITY_MODE, 'delegated_preview',
+    'preview cannot issue a second founder 001 or require a new invitation');
+  assert.equal(config.vars?.MAO_IDENTITY_MODE, undefined,
+    'production identity must never silently bind to an old preview authority');
   assert.equal(config.previews?.durable_objects?.bindings?.[0]?.name, 'CLOUD_DB');
   const server = readFileSync(resolve(root, 'worker/lib/mao-social.js'), 'utf8');
   assert.match(server, /env\.MAO_SOCIAL_ENABLED !== 'true'/);
