@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const VARS_PATH = path.join(ROOT, '.dev.vars');
 const PASSWORD = 'Temp-account-test-123456!';
-const WRANGLER_VERSION = '4.135.0';
+const WRANGLER_VERSION = '4.161.0';
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
