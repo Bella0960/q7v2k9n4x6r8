@@ -6296,11 +6296,14 @@
             if (!isGroupChat && !isRegen && !contextOnly && !silent &&
                 presenceMode === 'online' && !avatarCandidateImages.length &&
                 window.RoleAvatarChoice && window.RoleAvatarLibrary) {
+                // Read the latest role state, not the snapshot captured when this
+                // chat tab opened: a profile toggle in another tab must apply now.
+                var liveAvatarChoiceRole = getRoleById(aliasRoleId || currentCharacter.id);
                 roleAvatarChoicePlan = window.RoleAvatarChoice.prepare(
                     aliasRoleId || currentCharacter.id,
                     window.RoleAvatarLibrary,
                     text,
-                    { enabled: currentCharacter.avatarAutonomyEnabled !== false }
+                    { enabled: !!liveAvatarChoiceRole && liveAvatarChoiceRole.avatarAutonomyEnabled !== false }
                 );
                 if (roleAvatarChoicePlan.prompt) {
                     apiMessages[0].content += '\n\n' + roleAvatarChoicePlan.prompt;
@@ -6754,11 +6757,14 @@
                             }
                         }
                         if (replySaved && !isGroupChat && parsedRoleAvatarChoice.avatarId &&
+                            getRoleById(avatarRoleId)?.avatarAutonomyEnabled !== false &&
                             window.RoleAvatarLibrary && typeof window.RoleAvatarLibrary.applyToCharacter === 'function') {
                             var autonomousApplied = await window.RoleAvatarLibrary.applyToCharacter(
                                 avatarRoleId, parsedRoleAvatarChoice.avatarId, {
                                     isCurrent: function () {
-                                        return String(aliasRoleId || currentCharacter.id) === String(avatarRoleId);
+                                        var liveRole = getRoleById(avatarRoleId);
+                                        return String(aliasRoleId || currentCharacter.id) === String(avatarRoleId) &&
+                                            !!liveRole && liveRole.avatarAutonomyEnabled !== false;
                                     }
                                 }
                             );
