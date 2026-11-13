@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { webcrypto } from 'node:crypto';
-import { PushConfigError, PushSendError, sendWebPush } from '../worker/lib/webpush.js';
+import { webcrypto, createECDH, createDecipheriv, hkdfSync, randomBytes } from 'node:crypto';
+import { PushConfigError, PushSendError, sendWebPush, encryptPayload } from '../worker/lib/webpush.js';
 
 if (!globalThis.crypto) globalThis.crypto = webcrypto;
 
@@ -104,4 +104,46 @@ test('transport TypeError surfaces only a fixed code, not sensitive provider dia
       err.phase === 'transport' &&
       err.diagnosticCode === 'request_body' &&
       !String(err.message).includes('PRIVATE'));
+});
+
+
+test('encrypted Web Push payload roundtrips with independent Node RFC8291 decryption', async () => {
+  // A 201 from FCM does not prove that Chrome can decrypt the encrypted body.
+  // This test independently recreates the subscriber from Node's OpenSSL
+  // implementation instead of reusing the project's WebCrypto helpers.
+  const recipient = createECDH('prime256v1');
+  recipient.generateKeys();
+  const receiverKey = recipient.getPublicKey(null, 'uncompressed');
+  const authSecret = randomBytes(16);
+  const original = JSON.stringify({
+    type: 'test', accountId: 'MAO-ABCDEFGHIJKLMNO', title: 'MAOMAO test',
+    body: 'verify utf8 message 你好'
+  });
+  const encrypted = Buffer.from(await encryptPayload({
+    p256dh: b64(receiverKey),
+    auth: b64(authSecret)
+  }, original));
+  const salt = encrypted.subarray(0, 16);
+  const recordSize = encrypted.readUInt32BE(16);
+  const keyIdLen = encrypted[20];
+  const senderKey = encrypted.subarray(21, 21 + keyIdLen);
+  const encryptedData = encrypted.subarray(21 + keyIdLen);
+  assert.equal(recordSize, 4096);
+  assert.equal(keyIdLen, 65);
+
+  const sharedSecret = recipient.computeSecret(senderKey);
+  const ikm = Buffer.from(hkdfSync('sha256', sharedSecret, authSecret,
+    Buffer.concat([Buffer.from('WebPush: info\0'), receiverKey, senderKey]), 32));
+  const cek = Buffer.from(hkdfSync('sha256', ikm, salt,
+    Buffer.from('Content-Encoding: aes128gcm\0'), 16));
+  const nonce = Buffer.from(hkdfSync('sha256', ikm, salt,
+    Buffer.from('Content-Encoding: nonce\0'), 12));
+  const cipher = createDecipheriv('aes-128-gcm', cek, nonce);
+  cipher.setAuthTag(encryptedData.subarray(-16));
+  const decoded = Buffer.concat([
+    cipher.update(encryptedData.subarray(0, -16)),
+    cipher.final()
+  ]);
+  assert.equal(decoded.at(-1), 2);
+  assert.equal(decoded.subarray(0, -1).toString('utf8'), original);
 });
