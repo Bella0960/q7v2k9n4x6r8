@@ -34,6 +34,19 @@ function parseEndpoint(raw, allowedHosts) {
 }
 
 export function readAutonomyModelConfig(env = {}) {
+  const backend = String(env.AUTONOMY_MODEL_BACKEND || '').trim();
+  const timeoutMs = Number(env.AUTONOMY_MODEL_TIMEOUT_MS || 20000);
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 3000 || timeoutMs > 60000) return null;
+
+  // Optional zero-API-key provider. Merely adding an AI binding does not
+  // activate inference: it also needs an explicit backend selection and
+  // the existing account/character opt-in + scheduler gates.
+  if (backend === 'workers_ai') {
+    if (!env.AI || typeof env.AI.run !== 'function') return null;
+    return { backend: 'workers_ai', model: '@cf/zai-org/glm-4.7-flash', timeoutMs };
+  }
+  if (backend && backend !== 'openai_compatible') return null;
+
   const apiKey = String(env.AUTONOMY_MODEL_API_KEY || '').trim();
   const model = String(env.AUTONOMY_MODEL_NAME || '').trim();
   const endpointRaw = String(env.AUTONOMY_MODEL_API_URL || '').trim();
@@ -44,14 +57,12 @@ export function readAutonomyModelConfig(env = {}) {
       .filter(Boolean)
   );
   const endpoint = parseEndpoint(endpointRaw, allowedHosts);
-  const timeoutMs = Number(env.AUTONOMY_MODEL_TIMEOUT_MS || 20000);
   if (
     apiKey.length < 16 || apiKey.length > 4096 ||
     !/^[A-Za-z0-9._:-]{1,120}$/.test(model) ||
-    !endpoint ||
-    !Number.isSafeInteger(timeoutMs) || timeoutMs < 3000 || timeoutMs > 60000
+    !endpoint
   ) return null;
-  return { apiKey, model, endpoint, timeoutMs };
+  return { backend: 'openai_compatible', apiKey, model, endpoint, timeoutMs };
 }
 
 function validateMessages(value) {
@@ -146,6 +157,37 @@ export async function generateAutonomousMessages({
     timeoutId = setTimeout(() => controller.abort(), config.timeoutMs);
   }
   try {
+    if (config.backend === 'workers_ai') {
+      // Avoid provider tokens in the client and never fall back to HTTP when
+      // Workers AI fails. Inference is billable under the Cloudflare account,
+      // so the backend must be explicitly enabled by its operator.
+      const call = Promise.resolve().then(() => env.AI.run(config.model, {
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        stream: false,
+        temperature: 0.78,
+        max_tokens: 700
+      }));
+      let timerId;
+      const deadline = typeof setTimeout === 'function'
+        ? new Promise((resolve) => {
+            timerId = setTimeout(() => resolve({ __timedOut: true }), config.timeoutMs);
+          })
+        : null;
+      let data;
+      try {
+        data = deadline ? await Promise.race([call, deadline]) : await call;
+      } finally {
+        if (timerId != null) clearTimeout(timerId);
+      }
+      if (data?.__timedOut === true) return { ok: false, reason: 'model_timeout' };
+      const content = typeof data?.response === 'string' ? data.response
+        : data?.choices?.[0]?.message?.content;
+      return parseModelResult(content);
+    }
+
     const response = await fetchImpl(config.endpoint, {
       method: 'POST',
       redirect: 'error',
