@@ -20,7 +20,11 @@ const example = () => ({
   ],
   domains: [{ hostname: 'app.mao520.com', service: 'mao', environment: 'production', enabled: true }],
   hostname: 'app.mao520.com',
-  online: { httpStatus: 200, body: { configured: true, initialized: true } }
+  online: { httpStatus: 200, body: { configured: true, initialized: true } },
+  namespaces: [
+    { id: 'production_unique_id', name: 'mao_CloudDatabase', script: 'mao', class: 'CloudDatabase' },
+    { id: 'preview_unique_id', name: 'mao-auth-preview_CloudDatabase', script: 'mao-auth-preview', class: 'CloudDatabase' }
+  ]
 });
 
 test('ready production only passes with distinct SQLite namespace and initialized 001', () => {
@@ -118,4 +122,42 @@ test('disabled custom-domain record cannot count as a production mapping', () =>
   const data = example();
   data.domains[0].enabled = false;
   assert.ok(auditProductionAccountReadiness(data).includes('PRODUCTION_DOMAIN_TARGET_MISMATCH'));
+});
+
+test('historical branch QA namespace must not qualify as the production database', () => {
+  const data = example();
+  data.production.bindings[1].namespace_id = 'old_qa_id';
+  data.namespaces.push({
+    id: 'old_qa_id',
+    name: 'mao_integration-account-001-current-main-20261111_CloudDatabase',
+    script: 'mao',
+    class: 'CloudDatabase'
+  });
+  assert.ok(auditProductionAccountReadiness(data).includes('PROD_NAMESPACE_NOT_CANONICAL'));
+});
+
+test('cross-Worker binding cannot pose as an independent production SQLite database', () => {
+  const data = example();
+  data.production.bindings[1].script_name = 'mao-auth-preview';
+  assert.ok(auditProductionAccountReadiness(data).includes('PROD_CLOUD_DB_NOT_READY'));
+});
+
+test('unknown and mismatched inventories must block production rollout', () => {
+  const absent = example();
+  delete absent.namespaces;
+  assert.ok(auditProductionAccountReadiness(absent).includes('PROD_NAMESPACE_INVENTORY_UNAVAILABLE'));
+  const mismatch = example();
+  mismatch.namespaces[1].script = 'mao';
+  assert.ok(auditProductionAccountReadiness(mismatch).includes('PREVIEW_NAMESPACE_INVENTORY_MISMATCH'));
+});
+
+test('duplicate canonical namespace names fail closed, even when one ID matches', () => {
+  const data = example();
+  data.namespaces.push({
+    id: 'other_production_id',
+    name: 'mao_CloudDatabase',
+    script: 'mao',
+    class: 'CloudDatabase'
+  });
+  assert.ok(auditProductionAccountReadiness(data).includes('PROD_NAMESPACE_NOT_CANONICAL'));
 });
