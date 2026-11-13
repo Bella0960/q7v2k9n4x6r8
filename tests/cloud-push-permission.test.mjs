@@ -58,3 +58,17 @@ test('existing granted permission does not prompt again', async () => {
   await assert.rejects(browser.cloud.enablePush(), /MOCK_STOP_AFTER_NETWORK/);
   assert.deepEqual(browser.calls, ['network']);
 });
+
+
+test('the latest cloud push client is versioned on the settings page and PWA cache', () => {
+  const settings = fs.readFileSync(path.join(process.cwd(), 'settings/cloud-push.html'), 'utf8');
+  const sw = fs.readFileSync(path.join(process.cwd(), 'sw.js'), 'utf8');
+  assert.ok(settings.includes('cloud-push-client.js?v=20261113v1'));
+  assert.ok(sw.includes('cloud-push-client.js?v=20261113v1'));
+  assert.ok(sw.includes("phone-app-pwa-v224"));
+});
+
+test('unsupported mobile push environments offer actionable browser guidance', () => {
+  assert.match(source, /iPhone\/iPad 请用 Safari 打开并添加到主屏幕/);
+  assert.match(source, /安卓浏览器不支持 Web Push，请用最新版 Chrome 或 Edge/);
+});
