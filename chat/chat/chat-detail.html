@@ -13,7 +13,8 @@
     <script src="../../shared/js/phone/phone_storage.js"></script>
     <script src="../../shared/js/phone/storage/repository.js"></script>
     <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
-    <script src="../../shared/js/phone/role-avatar-library.js?v=20261113v1"></script>
+    <script src="../../shared/js/phone/role-avatar-library.js?v=20261113v2"></script>
+    <script src="../../shared/js/phone/role-avatar-choice.js?v=20261113v1"></script>
     <script src="../../shared/js/phone/role-sticker-library.js?v=20261107v2"></script>
     <script src="../../shared/js/phone/chat-image-vision.js?v=20261113v1"></script>
     <script src="../../shared/js/phone/phone_api.js?v=20261106v1"></script>
@@ -6289,6 +6290,23 @@
                 if (avatarCandidatePrompt) apiMessages[0].content += '\n\n' + avatarCandidatePrompt;
             }
 
+            // Same AI call: the character may select an existing portrait from labels only.
+            // Image bytes stay in IndexedDB; never upload the avatar library to the model.
+            var roleAvatarChoicePlan = null;
+            if (!isGroupChat && !isRegen && !contextOnly && !silent &&
+                presenceMode === 'online' && !avatarCandidateImages.length &&
+                window.RoleAvatarChoice && window.RoleAvatarLibrary) {
+                roleAvatarChoicePlan = window.RoleAvatarChoice.prepare(
+                    aliasRoleId || currentCharacter.id,
+                    window.RoleAvatarLibrary,
+                    text,
+                    { enabled: currentCharacter.avatarAutonomyEnabled !== false }
+                );
+                if (roleAvatarChoicePlan.prompt) {
+                    apiMessages[0].content += '\n\n' + roleAvatarChoicePlan.prompt;
+                }
+            }
+
             if (window.ChatContextPolicy && typeof window.ChatContextPolicy.mapHistoryToApiMessages === 'function') {
                 apiMessages.push.apply(apiMessages, window.ChatContextPolicy.mapHistoryToApiMessages(recentHistory, stripInternalReasoning, {
                     isGroupChat: isGroupChat,
@@ -6396,6 +6414,9 @@
                         if (window.ChatImageVision && typeof window.ChatImageVision.stripAvatarCandidateMarker === 'function') {
                             snapshotText = window.ChatImageVision.stripAvatarCandidateMarker(snapshotText);
                         }
+                        if (window.RoleAvatarChoice && typeof window.RoleAvatarChoice.strip === 'function') {
+                            snapshotText = window.RoleAvatarChoice.strip(snapshotText);
+                        }
                         return snapshotText;
                     })(),
                     voiceMode: presenceMode || 'online',
@@ -6417,6 +6438,9 @@
                 }
                 if (window.ChatImageVision && typeof window.ChatImageVision.stripAvatarCandidateMarker === 'function') {
                     tmpText = window.ChatImageVision.stripAvatarCandidateMarker(tmpText);
+                }
+                if (window.RoleAvatarChoice && typeof window.RoleAvatarChoice.strip === 'function') {
+                    tmpText = window.RoleAvatarChoice.strip(tmpText);
                 }
                 if (!tmpText) return;
 
@@ -6550,6 +6574,15 @@
                         );
                         fullText = parsedRoleSticker.text;
                     }
+                    var parsedRoleAvatarChoice = { text: fullText, avatarId: '' };
+                    if (window.RoleAvatarChoice && typeof window.RoleAvatarChoice.parseReply === 'function') {
+                        parsedRoleAvatarChoice = window.RoleAvatarChoice.parseReply(
+                            fullText, roleAvatarChoicePlan,
+                            streamResult.ok && !isGroupChat && !isRegen && !contextOnly &&
+                            !silent && presenceMode === 'online'
+                        );
+                        fullText = parsedRoleAvatarChoice.text;
+                    }
                     var parsedAvatarCandidate = { text: fullText, candidates: [], pairs: [] };
                     if (window.ChatImageVision && typeof window.ChatImageVision.parseAvatarCandidateReply === 'function') {
                         var avatarCandidateLimit = streamResult.ok && !isGroupChat && !isRegen &&
@@ -6642,6 +6675,7 @@
                         }];
                     }
                     if (fullText || aiStickerMessages.length || aiRoleGalleryMessages.length || avatarCandidates.length || avatarPairs.length ||
+                        parsedRoleAvatarChoice.avatarId ||
                         (parsedTransferDecision.amounts && parsedTransferDecision.amounts.length)) {
                         // 正文按角色气泡偏好拆分；表情与图库图片仍保留在同一回复回合中。
                         groupReplyVisible = !!fullText || aiStickerMessages.length > 0 || aiRoleGalleryMessages.length > 0;
@@ -6702,6 +6736,9 @@
                                                 updatedAvatarImage.alt = '';
                                                 chatHeaderAvatar.replaceChildren(updatedAvatarImage);
                                             }
+                                            if (window.RoleAvatarChoice && typeof window.RoleAvatarChoice.recordApplied === 'function') {
+                                                window.RoleAvatarChoice.recordApplied(avatarRoleId);
+                                            }
                                             if (typeof showToast === 'function') showToast('TA 已换上这张头像');
                                         } else if (typeof showToast === 'function') {
                                             showToast(avatarApplied && avatarApplied.error && avatarApplied.error.code === 'PARTIAL_ROLLBACK'
@@ -6714,6 +6751,32 @@
                                 } else if (typeof showToast === 'function') {
                                     showToast('头像候选保存失败，原头像没有变化');
                                 }
+                            }
+                        }
+                        if (replySaved && !isGroupChat && parsedRoleAvatarChoice.avatarId &&
+                            window.RoleAvatarLibrary && typeof window.RoleAvatarLibrary.applyToCharacter === 'function') {
+                            var autonomousApplied = await window.RoleAvatarLibrary.applyToCharacter(
+                                avatarRoleId, parsedRoleAvatarChoice.avatarId, {
+                                    isCurrent: function () {
+                                        return String(aliasRoleId || currentCharacter.id) === String(avatarRoleId);
+                                    }
+                                }
+                            );
+                            if (autonomousApplied && autonomousApplied.ok) {
+                                currentCharacter.avatar = autonomousApplied.value.avatar;
+                                currentCharacter.avatarAssetId = autonomousApplied.value.avatarAssetId;
+                                if (chatHeaderAvatar) {
+                                    var chosenImage = document.createElement('img');
+                                    chosenImage.src = autonomousApplied.value.avatar;
+                                    chosenImage.alt = '';
+                                    chatHeaderAvatar.replaceChildren(chosenImage);
+                                }
+                                if (window.RoleAvatarChoice && typeof window.RoleAvatarChoice.recordApplied === 'function') {
+                                    window.RoleAvatarChoice.recordApplied(avatarRoleId);
+                                }
+                                if (typeof showToast === 'function') showToast('TA 从自己的头像收藏中换了一张头像');
+                            } else if (typeof showToast === 'function') {
+                                showToast('TA 选择了头像，但保存没有成功，原头像已保留');
                             }
                         }
                         if (!replySaved) {
