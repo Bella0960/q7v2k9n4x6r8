@@ -147,3 +147,33 @@ test('encrypted Web Push payload roundtrips with independent Node RFC8291 decryp
   assert.equal(decoded.at(-1), 2);
   assert.equal(decoded.subarray(0, -1).toString('utf8'), original);
 });
+
+
+test('empty remote Web Push sends a signed no-payload request without encryption headers', async () => {
+  const { subscription, keys } = await fixture();
+  let sent = 0;
+  const result = await sendWebPush(subscription, '', keys, {
+    fetchImpl: async (_, request) => {
+      sent++;
+      assert.equal(request.body, undefined);
+      assert.equal(request.headers['Content-Encoding'], undefined);
+      assert.equal(request.headers['Content-Type'], undefined);
+      assert.match(request.headers.Authorization, /^vapid /);
+      assert.equal(request.headers.TTL, '3600');
+      return { status: 201 };
+    }
+  });
+  assert.equal(result.ok, true);
+  assert.equal(sent, 1);
+});
+
+test('async revocation guard is awaited and blocks sending for revoked subscriptions', async () => {
+  const { subscription, keys } = await fixture();
+  let attempted = false;
+  const result = await sendWebPush(subscription, '', keys, {
+    beforeSend: async () => false,
+    fetchImpl: async () => { attempted = true; return { status: 201 }; }
+  });
+  assert.equal(result.skipped, true);
+  assert.equal(attempted, false);
+});
