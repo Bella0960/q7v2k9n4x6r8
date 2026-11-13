@@ -2052,3 +2052,11 @@ html[data-wallpaper-tone="dark"] body.maomao-home .gesture-bar {
 .maomao-home #gridPage0 > [data-drag]:nth-child(9) { grid-column: 4 !important; grid-row: 5 !important; }
 .maomao-home #gridPage0 > [data-drag]:nth-child(10) { grid-column: 3 !important; grid-row: 6 !important; }
 .maomao-home #gridPage0 > [data-drag]:nth-child(11) { grid-column: 4 !important; grid-row: 6 !important; }
+
+
+/* The creator-only tile must stay invisible to ordinary accounts even where
+   desktop grid rules set display:flex!important. JavaScript only removes the
+   hidden attribute after the server has confirmed the super-admin role. */
+.app-tile[data-drag="app_admin_center"][hidden] {
+  display: none !important;
+}

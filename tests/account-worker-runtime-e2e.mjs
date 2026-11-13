@@ -1,0 +1,399 @@
+/**
+ * E2E against a locally isolated Wrangler Durable Object, not production.
+ *
+ * Run AFTER npm run build:
+ *   node tests/account-worker-runtime-e2e.mjs
+ *
+ * Uses Wrangler's local SQLite storage in a fresh temporary directory.
+ * Generates disposable credentials and never logs or commits their values.
+ * No public Worker deployment or production Cloudflare bindings are involved.
+ */
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import net from 'node:net';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const VARS_PATH = path.join(ROOT, '.dev.vars');
+const PASSWORD = 'Temp-account-test-123456!';
+const WRANGLER_VERSION = '4.161.0';
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function freePort() {
+  const server = net.createServer();
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const port = server.address().port;
+  await new Promise(resolve => server.close(resolve));
+  return port;
+}
+
+function cookieHeader(response) {
+  const value = response.headers.get('set-cookie') || '';
+  const cookie = value.split(';')[0];
+  assert.match(cookie, /^MAO_SESSION=[A-Za-z0-9_-]{32,128}$/);
+  return cookie;
+}
+
+async function main() {
+  if (existsSync(VARS_PATH)) {
+    throw new Error('Refusing to overwrite existing .dev.vars; run from an isolated checkout.');
+  }
+  if (!existsSync(path.join(ROOT, 'dist', 'index.html'))) {
+    throw new Error('Missing dist/index.html; run npm run build before this test.');
+  }
+  const secret = randomBytes(40).toString('base64url');
+  const pepper = randomBytes(40).toString('base64url');
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), 'maomao-auth-e2e-'));
+  let child = null;
+  const stopWorker = async () => {
+    if (!child) return;
+    const previous = child;
+    const terminate = signal => {
+      try {
+        if (process.platform !== 'win32' && previous.pid) process.kill(-previous.pid, signal);
+        else if (previous.exitCode === null && previous.signalCode == null) previous.kill(signal);
+      } catch {}
+    };
+    terminate('SIGTERM');
+    await Promise.race([
+      new Promise(resolve => previous.once('close', resolve)),
+      sleep(3000)
+    ]);
+    if (previous.exitCode === null && previous.signalCode == null) {
+      terminate('SIGKILL');
+      await Promise.race([
+        new Promise(resolve => previous.once('close', resolve)),
+        sleep(1500)
+      ]);
+    }
+    previous.stdout?.destroy();
+    previous.stderr?.destroy();
+    child = null;
+  };
+  const checks = [];
+  try {
+    await writeFile(VARS_PATH,
+      'MAO_SUPER_ADMIN_BOOTSTRAP_SECRET=' + secret + '\n' +
+      'DEVICE_SECRET_PEPPER=' + pepper + '\n',
+      { mode: 0o600, flag: 'wx' });
+    const port = await freePort();
+    const base = 'http://127.0.0.1:' + port;
+    let output = '';
+    const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+    const launchWorker = () => {
+      output = '';
+      child = spawn(npx, [
+        '--yes', 'wrangler@' + WRANGLER_VERSION,
+        'dev', '--config', 'wrangler.preview.jsonc',
+        '--local', '--ip', '127.0.0.1', '--port', String(port),
+        '--persist-to', stateDir
+      ], {
+        cwd: ROOT,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: process.platform !== 'win32',
+        env: { ...process.env, CI: 'true', WRANGLER_SEND_METRICS: 'false' }
+      });
+      for (const stream of [child.stdout, child.stderr]) {
+        stream.setEncoding('utf8');
+        stream.on('data', line => { output = (output + line).slice(-12000); });
+      }
+    };
+    const awaitStatus = async () => {
+      for (let attempt = 0; attempt < 120; attempt += 1) {
+        if (child.exitCode !== null || child.signalCode != null) break;
+        try {
+          const response = await fetch(base + '/api/admin/bootstrap/status',
+            { signal: AbortSignal.timeout(2000) });
+          if (response.status === 200) {
+            return { response, body: await response.json() };
+          }
+        } catch {}
+        await sleep(500);
+      }
+      const safeOutput = output.replaceAll(secret, '[redacted]').replaceAll(pepper, '[redacted]');
+      throw new Error('Local Wrangler worker did not become ready: ' + safeOutput.slice(-1800));
+    };
+    launchWorker();
+    const status = await awaitStatus();
+
+    function pass(name) {
+      checks.push(name);
+      console.log('PASS - ' + name);
+    }
+    async function request(endpoint, { method = 'GET', body, cookie, accountId, follow = false } = {}) {
+      const headers = { accept: 'application/json' };
+      if (method !== 'GET') {
+        headers.origin = base;
+        headers['sec-fetch-site'] = 'same-origin';
+        headers['content-type'] = 'application/json';
+      }
+      if (cookie) headers.cookie = cookie;
+      if (accountId) headers['x-mao-account-context'] = accountId;
+      const response = await fetch(base + endpoint, {
+        method, headers, redirect: follow ? 'follow' : 'manual',
+        ...(body ? { body: JSON.stringify(body) } : {}),
+        signal: AbortSignal.timeout(15000)
+      });
+      const contentType = response.headers.get('content-type') || '';
+      const payload = contentType.includes('application/json')
+        ? await response.json()
+        : await response.text();
+      return { response, status: response.status, payload };
+    }
+    const post = (endpoint, body, auth = {}) => request(endpoint, { method: 'POST', body, ...auth });
+
+    assert.equal(status.body.configured, true, 'local test secrets must be configured');
+    assert.equal(status.body.initialized, false, 'fresh isolated database must be uninitialized');
+    pass('isolated sqlite Durable Object starts without a founder and with disposable secrets');
+
+    const anonymous = await request('/index.html');
+    assert.equal(anonymous.status, 302);
+    assert.equal(new URL(anonymous.response.headers.get('location'), base).pathname, '/account/index.html');
+    pass('anonymous visitors cannot open private app HTML');
+
+    const founder = await post('/api/admin/bootstrap', {
+      bootstrapSecret: secret, username: 'qa_founder',
+      password: PASSWORD, confirmPassword: PASSWORD
+    });
+    assert.equal(founder.status, 200, 'bootstrap failed: ' + JSON.stringify(founder.payload));
+    assert.equal(founder.payload.account.role, 'super_admin');
+    assert.equal(founder.payload.account.founderNumber, '001');
+    const founderId = founder.payload.account.id;
+    const founderCookie = cookieHeader(founder.response);
+    pass('founder bootstrap returns one server-authorized 001 session');
+
+    const duplicateBootstrap = await post('/api/admin/bootstrap', {
+      bootstrapSecret: secret, username: 'another_admin',
+      password: PASSWORD, confirmPassword: PASSWORD
+    });
+    assert.equal(duplicateBootstrap.status, 409);
+    pass('second founder bootstrap is forbidden');
+
+    const registrations = [];
+    for (const username of ['qa_alice', 'qa_bob']) {
+      const result = await post('/api/accounts/register', {
+        username, password: PASSWORD, confirmPassword: PASSWORD
+      });
+      assert.equal(result.status, 201, username + ': ' + JSON.stringify(result.payload));
+      assert.equal(result.payload.account.role, 'user');
+      assert.equal(result.payload.account.status, 'pending_invite');
+      assert.equal(Object.hasOwn(result.payload.account, 'founderNumber'), false);
+      registrations.push(result.payload.account);
+    }
+    const [alice, bob] = registrations;
+    assert.notEqual(alice.id, bob.id);
+    pass('two different users register as pending, neither can claim founder 001');
+
+    const userCookies = [];
+    for (const username of ['qa_alice', 'qa_bob']) {
+      const login = await post('/api/accounts/login', { identifier: username, password: PASSWORD });
+      assert.equal(login.status, 200, username + ': ' + JSON.stringify(login.payload));
+      userCookies.push(cookieHeader(login.response));
+    }
+    const [aliceCookie, bobCookie] = userCookies;
+    const aliceMe = await request('/api/accounts/me', { cookie: aliceCookie, accountId: alice.id });
+    const bobMe = await request('/api/accounts/me', { cookie: bobCookie, accountId: bob.id });
+    assert.equal(aliceMe.status, 200);
+    assert.equal(bobMe.status, 200);
+    assert.equal(aliceMe.payload.account.id, alice.id);
+    assert.equal(bobMe.payload.account.id, bob.id);
+    pass('separate login cookies each resolve to their own durable account identity');
+
+    const switchedContext = await request('/api/accounts/me', { cookie: bobCookie, accountId: alice.id });
+    assert.equal(switchedContext.status, 409);
+    assert.equal(switchedContext.payload.error.code, 'ACCOUNT_CONTEXT_CHANGED');
+    const switchedSecurity = await request('/api/accounts/security', { cookie: bobCookie, accountId: alice.id });
+    assert.equal(switchedSecurity.status, 409);
+    pass('stale account A tab under B session cannot read account A or security data');
+
+    const aliceBeforeInvite = await request('/index.html', { cookie: aliceCookie });
+    assert.equal(aliceBeforeInvite.status, 302);
+    pass('uninvited registered account cannot enter the private app');
+
+    const invite = await post('/api/admin/invites', { targetAccountId: alice.id, ttlHours: 1 },
+      { cookie: founderCookie, accountId: founderId });
+    assert.equal(invite.status, 201, 'invite creation failed: ' + JSON.stringify(invite.payload));
+    assert.match(invite.payload.invite.code, /^[A-Za-z0-9_-]{32,128}$/);
+    const redeem = await post('/api/accounts/invites/redeem',
+      { inviteCode: invite.payload.invite.code },
+      { cookie: aliceCookie, accountId: alice.id });
+    assert.equal(redeem.status, 200, 'invite redemption failed: ' + JSON.stringify(redeem.payload));
+    assert.equal(redeem.payload.account.status, 'active');
+    pass('admin issues one-time targeted invite, only alice becomes active');
+
+    const bobReuse = await post('/api/accounts/invites/redeem',
+      { inviteCode: invite.payload.invite.code },
+      { cookie: bobCookie, accountId: bob.id });
+    assert.equal(bobReuse.status, 403);
+    const bobBlocked = await request('/index.html', { cookie: bobCookie });
+    assert.equal(bobBlocked.status, 302);
+    pass('bob cannot redeem alice invite or access private app before authorization');
+
+    const aliceIndex = await request('/index.html', { cookie: aliceCookie });
+    assert.equal(aliceIndex.status, 200);
+    assert.match(aliceIndex.payload, new RegExp('meta name="mao-account-id" content="' + alice.id + '"'));
+    assert.match(aliceIndex.payload, /meta name="mao-account-role" content="user"/);
+    assert.equal(aliceIndex.response.headers.get('cache-control'), 'private, no-store, max-age=0');
+    pass('active alice receives account-scoped HTML without shared caching');
+
+    const userAdmin = await request('/admin/admin-center.html', { cookie: aliceCookie });
+    assert.equal(userAdmin.status, 302);
+    const founderAdmin = await request('/admin/admin-center.html', { cookie: founderCookie });
+    assert.equal(founderAdmin.status, 200);
+    assert.match(founderAdmin.payload, /meta name="mao-account-role" content="super_admin"/);
+    pass('admin HTML is server-gated to authenticated super_admin');
+
+    const userDirectory = await request('/api/admin/accounts',
+      { cookie: aliceCookie, accountId: alice.id });
+    assert.equal(userDirectory.status, 403);
+    assert.equal(userDirectory.payload.error.code, 'ADMIN_ONLY');
+    const founderDirectory = await request('/api/admin/accounts',
+      { cookie: founderCookie, accountId: founderId });
+    assert.equal(founderDirectory.status, 200);
+    pass('regular users cannot call the administrator account directory API');
+
+    // Unlike a fresh SQLite fixture, a real account must survive a full Worker
+    // shutdown and restart with the same persistent Durable Object storage.
+    // This exercises the most important existing-user production upgrade risk.
+    await stopWorker();
+    launchWorker();
+    const restoredStatus = await awaitStatus();
+    assert.equal(restoredStatus.body.initialized, true, 'founder must still exist after Worker restart');
+    assert.equal(restoredStatus.body.configured, true);
+    pass('restart reopens persisted Durable Object without losing founder 001');
+
+    const restoredFounder = await request('/api/accounts/me',
+      { cookie: founderCookie, accountId: founderId });
+    assert.equal(restoredFounder.status, 200, JSON.stringify(restoredFounder.payload));
+    assert.equal(restoredFounder.payload.account.id, founderId);
+    assert.equal(restoredFounder.payload.account.role, 'super_admin');
+    assert.equal(restoredFounder.payload.account.founderNumber, '001');
+    pass('founder session and server-authorized 001 identity persist across Worker restart');
+
+    const restoredAlice = await request('/api/accounts/me',
+      { cookie: aliceCookie, accountId: alice.id });
+    const restoredBob = await request('/api/accounts/me',
+      { cookie: bobCookie, accountId: bob.id });
+    assert.equal(restoredAlice.status, 200);
+    assert.equal(restoredAlice.payload.account.id, alice.id);
+    assert.equal(restoredAlice.payload.account.status, 'active');
+    assert.equal(restoredBob.status, 200);
+    assert.equal(restoredBob.payload.account.id, bob.id);
+    assert.equal(restoredBob.payload.account.status, 'pending_invite');
+    pass('existing active and pending users retain distinct sessions and permissions after restart');
+
+    const restoredAlicePage = await request('/index.html', { cookie: aliceCookie });
+    const restoredBobPage = await request('/index.html', { cookie: bobCookie });
+    assert.equal(restoredAlicePage.status, 200);
+    assert.equal(restoredBobPage.status, 302);
+    const restoredContextMismatch = await request('/api/accounts/me',
+      { cookie: bobCookie, accountId: alice.id });
+    assert.equal(restoredContextMismatch.status, 409);
+    pass('account HTML gate and stale-tab isolation remain enforced after restart');
+
+    const founderRelogin = await post('/api/accounts/login',
+      { identifier: 'qa_founder', password: PASSWORD });
+    assert.equal(founderRelogin.status, 200, JSON.stringify(founderRelogin.payload));
+    assert.equal(founderRelogin.payload.account.id, founderId);
+    assert.equal(founderRelogin.payload.account.role, 'super_admin');
+    pass('historical 210000-round founder password hash remains usable after Worker restart');
+
+    // Cross-device safety: a second login creates a distinct session. Revoking
+    // it on the original device must not invalidate the primary session.
+    const aliceSecondLogin = await post('/api/accounts/login',
+      { identifier: 'qa_alice', password: PASSWORD });
+    assert.equal(aliceSecondLogin.status, 200);
+    const aliceSecondCookie = cookieHeader(aliceSecondLogin.response);
+    assert.notEqual(aliceSecondCookie, aliceCookie);
+    const aliceOtherSecurity = await request('/api/accounts/security',
+      { cookie: aliceSecondCookie, accountId: alice.id });
+    assert.equal(aliceOtherSecurity.status, 200, JSON.stringify(aliceOtherSecurity.payload));
+    const otherSessionId = aliceOtherSecurity.payload.currentSessionId;
+    assert.match(otherSessionId, /^[A-Za-z0-9_-]{16,64}$/);
+    const aliceMainSecurity = await request('/api/accounts/security',
+      { cookie: aliceCookie, accountId: alice.id });
+    assert.equal(aliceMainSecurity.status, 200);
+    assert.notEqual(otherSessionId, aliceMainSecurity.payload.currentSessionId);
+    assert.ok(aliceMainSecurity.payload.sessions.some(item => item.id === otherSessionId));
+    pass('separate devices create distinct server-visible account sessions');
+
+    const wrongOwnerRevoke = await post('/api/accounts/sessions/' + otherSessionId + '/revoke',
+      {}, { cookie: bobCookie, accountId: bob.id });
+    assert.equal(wrongOwnerRevoke.status, 401);
+    const stillSecond = await request('/api/accounts/me',
+      { cookie: aliceSecondCookie, accountId: alice.id });
+    assert.equal(stillSecond.status, 200);
+    pass('another account cannot revoke someone else\'s session');
+
+    const revokeOther = await post('/api/accounts/sessions/' + otherSessionId + '/revoke',
+      {}, { cookie: aliceCookie, accountId: alice.id });
+    assert.equal(revokeOther.status, 200, JSON.stringify(revokeOther.payload));
+    assert.equal(revokeOther.payload.revoked, true);
+    const rejectedSecond = await request('/api/accounts/me',
+      { cookie: aliceSecondCookie, accountId: alice.id });
+    assert.equal(rejectedSecond.status, 401);
+    const survivingMain = await request('/api/accounts/me',
+      { cookie: aliceCookie, accountId: alice.id });
+    assert.equal(survivingMain.status, 200);
+    pass('remote session revoke immediately removes other device access but keeps current login');
+
+    const aliceThirdLogin = await post('/api/accounts/login',
+      { identifier: 'qa_alice', password: PASSWORD });
+    assert.equal(aliceThirdLogin.status, 200);
+    const aliceThirdCookie = cookieHeader(aliceThirdLogin.response);
+    const changedPassword = 'New-QA-password-after-restart-123456!';
+    const changed = await post('/api/accounts/password/change', {
+      currentPassword: PASSWORD,
+      newPassword: changedPassword,
+      confirmPassword: changedPassword
+    }, { cookie: aliceCookie, accountId: alice.id });
+    assert.equal(changed.status, 200, JSON.stringify(changed.payload));
+    assert.equal(changed.payload.changed, true);
+    assert.equal(changed.payload.sessionsRevoked, true);
+    const thirdAfterChange = await request('/api/accounts/me',
+      { cookie: aliceThirdCookie, accountId: alice.id });
+    assert.equal(thirdAfterChange.status, 401);
+    const firstAfterChange = await request('/api/accounts/me',
+      { cookie: aliceCookie, accountId: alice.id });
+    assert.equal(firstAfterChange.status, 200);
+    pass('password change revokes all other device sessions but keeps originating session');
+
+    const obsoletePassword = await post('/api/accounts/login',
+      { identifier: 'qa_alice', password: PASSWORD });
+    assert.equal(obsoletePassword.status, 401);
+    const newPasswordLogin = await post('/api/accounts/login',
+      { identifier: 'qa_alice', password: changedPassword });
+    assert.equal(newPasswordLogin.status, 200, JSON.stringify(newPasswordLogin.payload));
+    assert.equal(newPasswordLogin.payload.account.id, alice.id);
+    pass('old password is rejected and replacement password authenticates after change');
+
+    const unaffectedBob = await request('/api/accounts/me',
+      { cookie: bobCookie, accountId: bob.id });
+    const unaffectedFounder = await request('/api/admin/accounts',
+      { cookie: founderCookie, accountId: founderId });
+    assert.equal(unaffectedBob.status, 200);
+    assert.equal(unaffectedFounder.status, 200);
+    pass('password change in one account cannot revoke unrelated user or founder sessions');
+
+    console.log('ALL PASS: ' + checks.length + ' isolated Wrangler/SQLite Worker runtime assertions');
+  } finally {
+    await stopWorker();
+    await rm(VARS_PATH, { force: true });
+    await rm(stateDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
+  }
+}
+
+main().catch(error => {
+  const message = String(error?.stack || error?.message || error).replace(/MAO_SESSION=[A-Za-z0-9_-]+/g, 'MAO_SESSION=[redacted]');
+  console.error('FAIL - isolated account Worker runtime: ' + message.slice(0, 5000));
+  process.exitCode = 1;
+});

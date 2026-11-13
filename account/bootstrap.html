@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#F7F7F8">
+  <title>MAO · 创作者初始化</title>
+  <link rel="stylesheet" href="./account.css?v=20261111-nav1">
+  <style>
+    .bootstrap-warning{padding:13px 14px;border:1px solid #D0D0D5;border-radius:13px;background:#F7F7F9;color:#555;font-size:11px;line-height:1.7;margin:0 0 18px}
+    .bootstrap-link{display:block;text-align:center;margin-top:18px;color:#777b83;text-decoration:underline;font-size:12px}
+    .bootstrap-state{padding:14px;border:1px solid #e4e5e8;border-radius:13px;background:#fff;color:#626771;font-size:12px;line-height:1.8}
+    .bootstrap-retry{display:block;min-height:44px;margin-top:12px;padding:0 15px;border:1px solid #dfe1e5;border-radius:11px;background:#fff;color:#555a63;font-size:12px}
+    .bootstrap-retry:disabled{opacity:.5;cursor:wait}
+    .bootstrap-setup-help{padding:15px 16px;margin:14px 0 18px;border:1px solid #dfd3c9;border-radius:14px;background:#fffaf7;color:#695d55;font-size:12px;line-height:1.8}
+    .bootstrap-setup-help strong{display:block;font-size:13px;color:#51463f;margin-bottom:5px}
+    .bootstrap-setup-help code{overflow-wrap:anywhere;word-break:break-all;font-size:11px}
+    .bootstrap-setup-help a{color:#66544a;text-underline-offset:3px}
+    .bootstrap-setup-help p{margin:6px 0}
+    .bootstrap-setup-help[hidden]{display:none!important}
+  </style>
+  <script src="./bootstrap.js?v=20261111-net2" defer></script>
+</head>
+<body>
+  <main class="account-shell">
+    <header class="brand-row">
+      <span class="brand-mark" aria-hidden="true">M</span>
+      <span class="brand-name">MAO</span>
+      <span class="brand-caption">CREATOR SETUP</span>
+    </header>
+    <section class="panel form-panel">
+      <a class="back-button" href="./index.html" aria-label="返回账号入口" style="display:grid;place-items:center;text-decoration:none">←</a>
+      <div class="eyebrow">ONE-TIME INITIALIZATION</div>
+      <h1>创作者初始化</h1>
+      <p class="lead">首次部署时创建唯一超级管理员。初始化成功后，此入口永久关闭。</p>
+      <div class="bootstrap-warning">此操作仅适用于 MAO 创作者本人。初始化前，需在 Cloudflare Worker Secrets 中配置 MAO_SUPER_ADMIN_BOOTSTRAP_SECRET（至少 32 位），并确认 DEVICE_SECRET_PEPPER（至少 32 位）已配置。此页面不会显示或保存服务器密钥，切勿将密钥发给其他人。</div>
+      <div class="bootstrap-state" id="bootstrapStatus" role="status" aria-live="polite">正在确认服务器初始化状态…</div>
+      <button class="bootstrap-retry" id="retryBootstrapCheck" type="button" hidden>重新检查</button>
+      <aside class="bootstrap-setup-help" id="bootstrapSetupHelp" hidden aria-live="polite">
+        <strong>还差一步，就可以创建管理员 001</strong>
+        <p>在 Cloudflare 控制台找到 Worker <b>mao</b> 的当前账号测试 Preview，添加两项类型为 <b>Secret</b> 的变量：</p>
+        <p><code>DEVICE_SECRET_PEPPER</code> — 独立随机值，至少 32 个字符。</p>
+        <p><code>MAO_SUPER_ADMIN_BOOTSTRAP_SECRET</code> — 另一组独立随机值，至少 32 个字符；创建管理员时要填这一组。</p>
+        <p>不要把密钥写进 GitHub、公开聊天或截图里，也不要改正式 Production 的密钥。当前 Preview 已经创建，Cloudflare 的 Previews Base 设置只会影响以后新建的 Preview。</p>
+        <details><summary>当前测试 Preview 的准确配置命令</summary>
+          <p>在已登录 Cloudflare 的 Wrangler 环境中依次运行，下列命令会交互式询问密钥值：</p>
+          <p><code>npx wrangler preview secret put DEVICE_SECRET_PEPPER --worker-name mao --name integration/account-001-current-main-20261111</code></p>
+          <p><code>npx wrangler preview secret put MAO_SUPER_ADMIN_BOOTSTRAP_SECRET --worker-name mao --name integration/account-001-current-main-20261111</code></p>
+          <p>输入值请使用下方本机生成的不同密钥。完成后点击上方「重新检查」，不要在公开终端命令里直接写密钥值。</p>
+        </details>
+        <button class="bootstrap-retry" id="bootstrapMakeSecrets" type="button">在本机生成两组安全密钥</button>
+        <div id="bootstrapSecretTools" hidden>
+          <p>生成后分别复制到 Cloudflare 的对应 Secret。只保存在当前页面内存，关闭或刷新就会消失；请勿公开。</p>
+          <label>第一组：设备安全密钥 <input id="bootstrapPepperValue" type="password" readonly autocomplete="off" aria-label="本机生成的设备安全密钥"></label>
+          <button class="bootstrap-retry" type="button" data-bootstrap-copy="pepper">复制设备安全密钥</button>
+          <label>第二组：管理员首次初始化密钥 <input id="bootstrapFounderValue" type="password" readonly autocomplete="off" aria-label="本机生成的管理员初始化密钥"></label>
+          <button class="bootstrap-retry" type="button" data-bootstrap-copy="founder">复制初始化密钥</button>
+          <p role="status" id="bootstrapCopyStatus" aria-live="polite"></p>
+        </div>
+        <a href="https://dash.cloudflare.com/" target="_blank" rel="noopener noreferrer">打开 Cloudflare 控制台</a>
+      </aside>
+      <form id="bootstrapForm" hidden>
+        <label>初始化密钥<input name="bootstrapSecret" type="password" autocomplete="off" minlength="32" required placeholder="输入部署时设置的 Worker Secret"></label>
+        <label>管理员用户名<input name="username" autocomplete="username" minlength="2" maxlength="24" required placeholder="设置创作者账号名"></label>
+        <label>管理员密码<input name="password" type="password" autocomplete="new-password" minlength="10" maxlength="128" required placeholder="至少 10 位"></label>
+        <label>确认密码<input name="confirmPassword" type="password" autocomplete="new-password" minlength="10" maxlength="128" required placeholder="再次输入密码"></label>
+        <label>QQ 邮箱 <span class="optional">选填</span><input name="qqEmail" type="email" autocomplete="email" placeholder="邮箱验证功能后续接入"></label>
+        <button class="bootstrap-retry" id="bootstrapTestConnection" type="button">检查服务器连接（不会提交资料）</button>
+        <p class="bootstrap-state" id="bootstrapConnectionStatus" role="status" aria-live="polite" hidden></p>
+        <button class="primary-button" type="submit">创建唯一超级管理员</button>
+        <p class="form-error" id="bootstrapError" role="alert" aria-live="polite"></p>
+      </form>
+      <div class="bootstrap-state" id="bootstrapComplete" hidden>超级管理员已经初始化。此入口不能再次使用，请返回 MAO 账号登录。</div>
+      <a class="bootstrap-link" href="./index.html">返回 MAO 账号入口</a>
+    </section>
+    <footer class="page-footer">MAO · CREATOR AUTHORIZATION</footer>
+  </main>
+</body>
+</html>
