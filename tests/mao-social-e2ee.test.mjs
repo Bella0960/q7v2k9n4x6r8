@@ -11,9 +11,8 @@ import {createDeviceIdentity,conversationKey,encryptText,decryptText,idForPublic
 const subtle=webcrypto.subtle;
 const A='MAO-AAAAAAAAAAAA',B='MAO-BBBBBBBBBBBB',C='MAO-CCCCCCCCCCCC';
 const F='request_generation_0001',TIME=1794530000000;
-const oldCrypto=globalThis.crypto;
-globalThis.crypto=webcrypto;
-test.after(()=>{if(oldCrypto===undefined)delete globalThis.crypto;else globalThis.crypto=oldCrypto});
+// Modern Node exposes WebCrypto as a read-only global; browser helpers accept
+// an explicit subtle object for deterministic two-device testing.
 
 function setup({enabled=true}={}){
   const db=new DatabaseSync(':memory:');
