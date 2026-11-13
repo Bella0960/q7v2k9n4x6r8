@@ -763,3 +763,13 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - 已将预览流量回退到最后同时保有 `ASSETS`、`CLOUD_DB`、VAPID 和完整设备配对配置的可用版本。这个回退**只针对预览 Worker**；正式 `mao` 未更改。该回退版本是 Web Push 测试底座，不能宣称云端模型生成已上线。
 - 后续部署必须通过 `wrangler.jsonc` **一次性**提供静态资源、数据库、AI、Cron、服务端秘钥名称与现有账号范围；保留旧数据和设备凭据。上传后逐版本读取 Cloudflare `resources.bindings`，仅当 `ASSETS` + `CLOUD_DB` + `AI` + `VAPID_PRIVATE_KEY` 同时存在且现有账号/推送 API 冒烟测试成功，才能切换流量。禁止仅根据 `GET /settings` 的全局绑定列表推断某个版本实际拥有的资源。
 - 云端模型实际启用必须由维护者确认费用/配额并显式选择 `AUTONOMY_MODEL_BACKEND=workers_ai`；没有启用时不产生模型推理调用。用户账号与角色授权、上下文共享、作息和设备隔离仍然是必要门禁。
+
+
+## 2026-11-13 登录预览环境与统一账号阻断
+
+- **已复现真实阻断**：\`mao-auth-preview\` 的 \`CLOUD_DB\` 保存了另一组测试身份。创作者当前使用的永久 MAO ID 不在这组数据库中，因此页面反馈的泛化错误「账号或密码不正确」不能被当作用户忘记密码。不要指示重置、重新注册、重建超级管理员或复制账号密码哈希。
+- **唯一有效身份来源（本次核验）**：Cloudflare 已存在 \`qa/phone-founder-001-keyreset-20261111\` Preview，其 \`CLOUD_DB\` 持有当前唯一原管理员身份，账号状态 \`active\`，角色 \`super_admin\`。保留原永久 ID、账号库、会话权限、安全 Pepper 和所有既有审计日志；不要把另一个预览库的超级管理员覆盖过来。
+- **已经证实的域名/数据源边界**：Cloud Push Worker 与上述创作者 QA Preview 使用不同 Durable Object namespace 和不同 cookie origin。登录成功的 HttpOnly cookie 不能跨两个 Worker 域名直接复用；不能把「在 A 站点登录了」当作 B 站点订阅推送已授权。
+- **安全整合方向**：需在云端推送目标站点接通同一份权威账号库或经过验证的服务端身份委派。仓库已有 \`worker/lib/identity-bridge.js\`（位于 QA 账号分支），支持可选受约束的 Worker Service Binding 委派；集成时必须保留账号状态、权限、回收、登录限流与会话隔离的整套逻辑。不得通过额外注册、复制密码哈希或浏览器明文转发 session 捷径。
+- **真实推送验收顺序**：同一域名登录到权威账户 → 浏览器在用户点击时授权系统通知 → 同一 Service Worker scope 创建/上传 push subscription → 服务端按当前账号、设备和角色授权投递测试通知 → Android/iOS 前后台及锁屏真实确认 → 最后验收 AI 自动生成。0 条订阅时绝不能声称“已推送成功”。
+- **部署保护**：只操作隔离 Preview，任何 Cloudflare 候选版本需同时保留 \`ASSETS\`、权威 \`CLOUD_DB\`、\`VAPID_PRIVATE_KEY\`，启用模型时还需 \`AI\`。在这些条件和 Node/浏览器测试满足前，不修改生产站点或把 Draft PR 合入 main。
