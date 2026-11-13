@@ -722,7 +722,9 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 
 ### 26.2 隐私与凭据配置
 
-- `AUTONOMY_MODEL_API_KEY` 必须配置为 Cloudflare Worker Secret；不得写入仓库、`wrangler.jsonc` 普通变量、前端代码、设备 localStorage 或聊天消息，也不得让用户在聊天中发送密钥。
+- **后端为可选二选一，默认不会自动调用 Workers AI**：`AUTONOMY_MODEL_BACKEND` 未设置或设为 `openai_compatible` 时保持原有 HTTP 模型接口逻辑；只有维护者显式设为 `workers_ai`、部署环境存在 `AI` binding，且账号/角色云端授权、上下文共享和调度门禁均通过时，才允许使用 Cloudflare Workers AI。绑定写入分支 `wrangler.jsonc` 只表示预留入口，不会触发推理。模型锁定为 `@cf/zai-org/glm-4.7-flash`，不接受客户端自定义模型或密钥；此路径不需要额外模型 API Key，但**仍需另外配置 Web Push 的 VAPID、设备凭据与 Durable Object、Cron**。
+- **费用边界**：Workers AI 使用 Cloudflare 账号配额；截至 2026-11-12，官方价格说明含每天 10,000 Neurons 免费用量，Workers Paid 超出后按量计费。部署人员必须先明确选择并核查费用与配额，不能默认启用、不能把“无需 API Key”等同“无限免费”。资料：<https://developers.cloudflare.com/workers-ai/platform/pricing/>、<https://developers.cloudflare.com/workers-ai/models/glm-4.7-flash/>。
+- **选择旧的 HTTP 后端时**，`AUTONOMY_MODEL_API_KEY` 必须配置为 Cloudflare Worker Secret；不得写入仓库、`wrangler.jsonc` 普通变量、前端代码、设备 localStorage 或聊天消息，也不得让用户在聊天中发送密钥。
 - `AUTONOMY_MODEL_API_URL`、`AUTONOMY_MODEL_NAME` 由部署维护者在 Worker 环境变量中配置。模型接口采用 OpenAI-compatible Chat Completions 格式；URL 必须为 HTTPS，且主机必须精确命中 `AUTONOMY_MODEL_ALLOWED_HOSTS` 白名单。默认白名单为 `api.openai.com`。
 - 可选变量 `AUTONOMY_MODEL_ALLOWED_HOSTS` 用逗号分隔精确主机名；`AUTONOMY_MODEL_TIMEOUT_MS` 默认为 20,000，允许范围 3,000–60,000 毫秒。执行租约 `AUTONOMY_LEASE_MS` 必须比模型超时至少多 1,000 毫秒；不满足时 Worker 会跳过执行并记录原因，不会让过期模型结果落库。
 - 非密钥调度默认值位于测试分支 `wrangler.jsonc`：租约 60 秒、每次 tick 最多 10 个任务、失败退避 60 秒/5 分钟/15 分钟/30 分钟、心跳 TTL 90 秒、设备租约 120 秒、设备 grace 0、用户消息空闲门槛 30 分钟。它们是待验收的配置，不是容量承诺。
@@ -734,8 +736,8 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - 新增 `tests/cloud-autonomous-model.test.mjs`，覆盖服务端凭据、HTTPS/主机白名单、限量上下文、1–4 条输出、无发送结果、无凭据 fail-closed，以及模型响应超过租约后禁止提交。
 - 扩展 `tests/cloud-push-contract.test.mjs`，覆盖迁移 0017、共享默认关闭、上下文脱敏/删除、多气泡分组恢复、部分 ACK 后整组重拉、单组单通知及组级 Push 回执，并增加云端任务先过滤再限批、模型与 Push 投递租约过期保护、运行/生成状态 fail-closed、Push 服务端接受回执按当前账号与设备隔离且忽略已停用/过期订阅的断言。
 - 上述测试已写入仓库，但当前工作环境没有运行 MAOMAO 的 Node/SQLite 测试与 Vite 构建；结果仍为 **NOT RUN**。真实模型供应商调用、Cloudflare 定时任务、系统通知横幅、Android 退出应用后的端到端表现仍为 **NOT VERIFIED**。
-- 本轮可靠性修复位于独立 Draft PR 的分支 `fix/cloud-autonomy-background-reliability-20261111-final`，叠加在 PR #239 当前代码之上，不重置其首次开场和用户发言取消开场逻辑。没有修改 `main`，没有合并 PR #148/#239，没有更新生产 Worker `mao`，没有部署，也没有生成/更新 APK。
-- 尚未配置任何服务端模型 Secret。即使代码合并，只有部署环境单独配置服务端密钥、模型 URL/名称并完成真机验收后，云端自主生成才会真正启用。
+- 可靠性修复原由 PR #252 提交，已于 2026-11-13 合并到其上游 PR #239 开发分支；PR #148/#239 仍为 Draft，尚未进入 `main`。没有因此更新生产 Worker `mao`、部署模型或生成 APK。
+- 当前正式 Worker 的云端数据绑定、Cron 与推送凭据仍未配置到位。旧 HTTP 模型后端需要服务端 Secret 与模型参数；可选 Workers AI 后端不需要额外模型密钥，但必须经维护者明确开启并完成费用审查。两条路线均须部署、完成用户授权及真机验收后才能宣称可用。
 
 ## 27. 空聊天云端首次主动开场（2026-11-11 follow-up）
 
@@ -750,5 +752,5 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 
 - 已加入模型提示测试、API 一次性任务/重复打开/非法快照测试、真实用户消息取消旧首条任务测试，以及 Worker 模型生成后写入两条同组 outbox 消息的集成契约。
 - 测试源码已提交；当前环境没有成功执行 MAOMAO Node/SQLite 测试套件。GitHub Actions 对应运行返回失败，但 job step、日志附件均不可读取，不能将其归因于本次改动，也不能声称测试通过。
-- Worker 仍每 5 分钟运行 cron；两分钟是任务最早执行时间，不代表两分钟准时送达。真实模型密钥、D1/DO 迁移、部署 Worker、Web Push 订阅、锁屏/退出应用和另一设备收件仍须部署后验收。
+- 分支 `wrangler.jsonc` **计划**每 5 分钟 Cron 触发一次；截至 2026-11-13 的 Cloudflare 正式 `mao` Worker 配置仍没有 Cron，不能写成“正在运行”。两分钟是任务最早执行时间，不代表两分钟准时送达。DO 迁移、模型后端实际启用、Web Push 订阅、锁屏/退出应用和另一设备收件仍须部署后验收。
 - 这项功能目前只在 `feat/cloud-autonomous-server-model`（PR #239，基于 PR #148）中；尚未合并 `main`、未部署生产 Worker、未配置生产 Secret、未验证真机推送。
