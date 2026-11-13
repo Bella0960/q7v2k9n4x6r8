@@ -48,7 +48,7 @@ button{cursor:pointer}
  <header class="top">
   <button class="back" type="button" id="back" aria-label="返回真人好友"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
   <div class="headline"><h1 id="peerTitle">私人对话</h1><p id="peerState">ENCRYPTED / CONNECTING</p></div>
-  <div class="header-right">MAO.</div>
+  <div class="header-right">PRIVATE</div>
  </header>
  <div class="rule"></div>
  <p class="notice"><strong>双人加密聊天</strong> · 只在双方手机上解密，服务器不保存文字明文。</p>
@@ -104,7 +104,7 @@ async function api(path,{method='GET',body}={}){
   return data;
 }
 async function setupDevice(){
-  if(!crypto?.subtle||!indexedDB||!isSecureContext)
+  if(!globalThis.crypto?.subtle||!globalThis.indexedDB||!globalThis.isSecureContext)
     throw new Error('该浏览器不支持网页加密存储，请使用更新的 HTTPS 浏览器。');
   db=await openDeviceKeyStore();
   let local=await loadDeviceIdentity(db,owner.id);
