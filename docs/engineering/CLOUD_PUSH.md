@@ -64,7 +64,7 @@
 
    `DEVICE_SECRET_PEPPER` 必须至少 32 字符；缺失或过短时，设备注册与鉴权都会 fail-closed。
 
-   另外必须显式配置正整数 Worker 变量 `DEVICE_PAIRING_TOKEN_TTL_MS`（一次性配对码有效期，毫秒）；缺失时服务端不会签发配对码。不要把 `ENROLLMENT_TOKEN` 写入仓库、前端或公开日志。
+   一次性设备配对码有效期由 `DEVICE_PAIRING_TOKEN_TTL_MS`（毫秒）控制；当前开发分支 `wrangler.jsonc` 已显式设置 `300000`（5 分钟）。缺失或非法时服务端仍会拒绝签发，防止无期限配对码。不要把 `ENROLLMENT_TOKEN` 写入仓库、前端或公开日志。
 
 3. 部署：现有 `deploy-cloudflare-worker.yml` 在 `main` 推送时先 `npm run build` 再 `wrangler deploy`。`worker.js` 已设为 `main`，Durable Object 随部署自动创建。
 
