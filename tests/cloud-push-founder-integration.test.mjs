@@ -62,3 +62,27 @@ test('preview device token expiry is explicit; production identity settings stay
   assert.equal(wrangler.previews.vars.MAO_SOCIAL_E2EE_ENABLED, 'true');
   assert.equal(wrangler.vars, undefined);
 });
+
+
+test('test push action is visible beside the notification toggle and no longer buried under the device panel', () => {
+  assert.match(pushPage, /id="cloudPushResult"/);
+  assert.match(pushPage, /id="cloudRoleSaveStatus"/);
+  assert.ok(pushPage.indexOf('id="cloudTestRow"') < pushPage.indexOf('CHARACTER ACTIVITY'));
+  assert.equal((pushPage.match(/id="cloudTestRow"/g) || []).length, 1);
+  assert.match(client, /测试通知未送达/);
+  assert.match(client, /服务器 VAPID 签名错误/);
+  assert.match(client, /服务器消息加密错误/);
+  assert.match(client, /服务器连接推送服务失败/);
+  assert.match(client, /角色授权已保存（不代表推送已发出）/);
+});
+
+test('test delivery logs preserve actionable safe failure stage instead of one anonymous HTTP zero', () => {
+  assert.match(app, /failurePhases/);
+  assert.match(app, /failurePhase: phase/);
+  assert.match(app, /failureKind: outcome\.failureKind \|\| null/);
+  assert.match(app, /cryptoFailed/);
+  const push = read('worker/lib/webpush.js');
+  assert.match(push, /tagged\.phase = 'vapid'/);
+  assert.match(push, /tagged\.phase = 'encrypt'/);
+  assert.match(push, /tagged\.phase = 'transport'/);
+});
