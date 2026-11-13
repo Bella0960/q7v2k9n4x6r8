@@ -146,5 +146,6 @@ test('approved real-user chats appear in the existing built chat list, not a new
   assert.match(source, /\/api\/social\/e2ee\/conversations/);
   assert.match(source, /credentials:'same-origin'/);
   assert.match(source, /cache:'no-store'/);
-  assert.doesNotMatch(source, /localStorage|sessionStorage/);
+  assert.doesNotMatch(source, /\b(?:window\.)?(?:localStorage|sessionStorage|indexedDB)\s*(?:\.|\[)/,
+    'real-account list must never persist peer data in browser storage');
 });
