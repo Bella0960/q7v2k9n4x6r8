@@ -64,7 +64,7 @@
     "test:accounts:delegated": "node --test tests/delegated-identity-bridge.test.mjs",
     "test:accounts:legacy-upgrade": "node --test tests/founder-legacy-sqlite-upgrade.test.mjs",
     "test:social:legacy-mobile": "node --test tests/mao-social-mobile-runtime.test.mjs",
-    "test:cloud:founder": "node --test tests/cloud-push-founder-integration.test.mjs tests/cloud-webpush-transport.test.mjs"
+    "test:cloud:founder": "node --test tests/cloud-push-founder-integration.test.mjs tests/cloud-webpush-transport.test.mjs tests/cloud-push-service-worker-display.test.mjs"
   },
   "devDependencies": {
     "playwright": "^1.64.1",
