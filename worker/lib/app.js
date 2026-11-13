@@ -862,6 +862,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     let retryDeferred = 0;
     let retryScheduled = 0;
     let retryExhausted = 0;
+    const failurePhases = {};
 
     for (const subscription of subscriptions) {
       const deliveryOwner = randomToken(12);
@@ -927,7 +928,14 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
           statusCode: error instanceof PushConfigError
             ? 400
             : Number(error?.statusCode || 0),
-          gone: false
+          gone: false,
+          // Only allow fixed, non-sensitive classifications in records and UI.
+          failurePhase: ['vapid', 'encrypt', 'transport'].includes(error?.phase)
+            ? error.phase : 'unknown',
+          failureKind: [
+            'TypeError', 'DataError', 'OperationError', 'NotSupportedError',
+            'InvalidAccessError', 'AbortError', 'NetworkError', 'Error'
+          ].includes(error?.causeName) ? error.causeName : 'OtherError'
         };
       }
 
@@ -953,7 +961,8 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       }
 
       const statusCode = Number(outcome.statusCode || 0);
-      const retryable = !outcome.ok && !outcome.gone && (
+      const cryptoFailed = outcome.failurePhase === 'vapid' || outcome.failurePhase === 'encrypt';
+      const retryable = !cryptoFailed && !outcome.ok && !outcome.gone && (
         statusCode === 0 ||
         statusCode === 408 ||
         statusCode === 425 ||
@@ -1012,10 +1021,15 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         failed += 1;
         await store.markPushFailure(subscription.id);
         if (canRetry) retryScheduled += 1;
+        const phase = outcome.failurePhase ||
+          (statusCode ? 'provider_http' : 'unknown');
+        failurePhases[phase] = (failurePhases[phase] || 0) + 1;
         results.push({
           subscriptionId: subscription.id,
           status: canRetry ? 'retry_scheduled' : 'failed',
           httpStatus: statusCode,
+          failurePhase: phase,
+          failureKind: outcome.failureKind || null,
           nextAttemptAt
         });
       }
@@ -1027,13 +1041,13 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       kind: 'test_push',
       status: sent > 0 ? 'success' : 'failed',
       reasonCode: sent > 0 ? 'delivered' : 'no_delivery',
-      detail: { sent, skipped, failed, gone, inProgress, retryDeferred, retryScheduled, retryExhausted },
+      detail: { sent, skipped, failed, gone, inProgress, retryDeferred, retryScheduled, retryExhausted, failurePhases },
       durationMs: Math.max(0, now() - startedAt),
       now: timestamp
     });
     await store.cleanupSubscriptions(timestamp);
 
-    return ok({ dedupeKey, results, summary: { sent, skipped, failed, gone, inProgress, retryDeferred, retryScheduled, retryExhausted } });
+    return ok({ dedupeKey, results, summary: { sent, skipped, failed, gone, inProgress, retryDeferred, retryScheduled, retryExhausted, failurePhases } });
   }
 
   async function revokeDevice(request) {
