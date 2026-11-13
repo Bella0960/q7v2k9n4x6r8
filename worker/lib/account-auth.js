@@ -186,7 +186,10 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     if (session.status === 'disabled' || session.status === 'revoked') {
       throw new ApiError(403, 'ACCOUNT_DISABLED', '您的账号已被禁用');
     }
-    if (session.session_revoked_at || Number(session.expires_at) <= timestamp) return null;
+    // Corrupt or out-of-range expiry values must never turn an expired session
+    // into an indefinitely valid one (NaN <= now is false).
+    const expiresAt = Number(session.expires_at);
+    if (session.session_revoked_at || !Number.isSafeInteger(expiresAt) || expiresAt <= timestamp) return null;
     // Preview cookies are local and never authorize a founder on their own.
     // Revalidate the real account role/status with the central issuer on every
     // authenticated preview request; failures fail closed.
