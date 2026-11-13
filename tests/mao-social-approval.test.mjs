@@ -246,7 +246,10 @@ test('integration keeps MAO account identity, origin checks and AI chat isolated
   assert.match(social, /MAO_SOCIAL_ENABLED !== 'true'/);
   assert.doesNotMatch(social, /REAL_USER_AUTH_ENABLED|REAL_USER_FRIENDS_ENABLED|D1|real_user_sessions/);
   assert.match(migrations, /0017_mao_social/);
-  assert.match(contacts, /href="\.\/real-friends\.html"/);
+  const chatHome = fs.readFileSync(path.join(root, 'chat/chat/chat.html'), 'utf8');
+  assert.doesNotMatch(contacts, /id="goRealFriends"/, 'real-friends must not clutter the contact list');
+  assert.match(chatHome, /id="menuFriend"/, 'the original heart menu owns friend entry');
+  assert.match(chatHome, /\.\.\/contacts\/real-friends\.html/, 'heart menu routes to the existing social page');
   assert.match(mobile, /\/api\/accounts\/me/);
   assert.match(mobile, /if\(authContext\)headers\['X-MAO-Account-Context'\]=authContext;/);
   assert.match(mobile, /var session=await api\('\/api\/accounts\/me'\)/);
