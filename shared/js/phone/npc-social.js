@@ -26,8 +26,11 @@
     } catch (error) { return null; }
   }
   function writeJson(key, value) {
-    try { localStorage.setItem(key, JSON.stringify(value)); return true; }
-    catch (error) { return false; }
+    try {
+      var serialized = JSON.stringify(value);
+      localStorage.setItem(key, serialized);
+      return localStorage.getItem(key) === serialized;
+    } catch (error) { return false; }
   }
   function activeRoleId() {
     var roleId = '';
