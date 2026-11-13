@@ -89,3 +89,31 @@ export async function callIdentityAuthority(env, operation, body) {
   }
   return validateAuthorityAccount(payload.account);
 }
+
+/**
+ * Read-only probe of the EXISTING account Worker, without creating a session,
+ * supplying credentials, changing a founder, or sharing any account data.
+ * A Worker Preview's Service Binding targets the authority's deployed Worker.
+ */
+export async function probeExistingIdentityAuthority(env) {
+  if (!usesDelegatedIdentity(env) || typeof env.MAO_IDENTITY_AUTHORITY?.fetch !== 'function') {
+    return { connected: false, initialized: false, configured: false };
+  }
+  try {
+    const response = await env.MAO_IDENTITY_AUTHORITY.fetch(
+      new Request('https://mao520.com/api/admin/bootstrap/status', {
+        method: 'GET', headers: { accept: 'application/json' }
+      })
+    );
+    if (!response.ok) return { connected: false, initialized: false, configured: false };
+    const data = await response.json();
+    if (data?.ok !== true ||
+        typeof data.initialized !== 'boolean' ||
+        typeof data.configured !== 'boolean') {
+      return { connected: false, initialized: false, configured: false };
+    }
+    return { connected: true, initialized: data.initialized, configured: data.configured };
+  } catch {
+    return { connected: false, initialized: false, configured: false };
+  }
+}
