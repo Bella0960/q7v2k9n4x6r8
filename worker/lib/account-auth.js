@@ -423,12 +423,29 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       passwordHash: await sha256Hex('mao-delegated-no-password|' + randomToken(32)),
       now: now()
     });
+    const undoUnusedAuthoritySession = async () => {
+      if (usesExistingAccountAuthority(env) && authority.authoritySessionToken) {
+        // No browser received this token when local admission fails.
+        // Revoke the just-issued central session rather than leave it orphaned.
+        try {
+          await callIdentityAuthority(env, 'logout', {
+            sessionToken: authority.authoritySessionToken
+          });
+        } catch {}
+      }
+    };
     if (!imported) {
+      await undoUnusedAuthoritySession();
       throw new ApiError(409, 'DELEGATED_IDENTITY_CONFLICT', '测试库已有冲突身份，已拒绝覆盖，请联系管理员修复');
     }
     // Same authoritative session, different host-only HttpOnly cookie.
     // This session remains valid only while the central Worker accepts it.
-    return await createSession(imported, request, authority.authoritySessionToken || null);
+    try {
+      return await createSession(imported, request, authority.authoritySessionToken || null);
+    } catch (error) {
+      await undoUnusedAuthoritySession();
+      throw error;
+    }
   }
 
   async function issuerAuthenticate(request) {

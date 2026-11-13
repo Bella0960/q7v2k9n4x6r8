@@ -368,3 +368,27 @@ test('existing Worker binding uses verified authority host and same-origin POST,
   assert.equal(identity.authoritySessionToken, token);
   assert.equal(identity.role, 'super_admin');
 });
+
+test('conflicting preview founder revokes the authority session issued by a refused login', async t => {
+  const pair = await makePair({ existingWorker: true });
+  t.after(pair.close);
+  const { preview, issuer } = pair;
+  assert.equal(preview.store.createMaoSuperAdminAccountIfEmpty({
+    id: 'MAO-CCCCCCCCCCCC',
+    username: 'OtherFounder', usernameKey: 'otherfounder',
+    passwordSalt: randomToken(16),
+    passwordHash: '0'.repeat(64),
+    now: Date.now()
+  }), true);
+  const result = await preview.asJson('/api/accounts/login', {
+    method: 'POST', body: { identifier: 'CentralOwner', password: founderPass }
+  });
+  assert.equal(result.status, 409);
+  assert.equal(result.payload.error.code, 'DELEGATED_IDENTITY_CONFLICT');
+  assert.equal(preview.query('SELECT COUNT(*) AS n FROM mao_account_sessions')[0].n, 0);
+  assert.equal(
+    issuer.query('SELECT COUNT(*) AS n FROM mao_account_sessions WHERE revoked_at IS NOT NULL')[0].n,
+    1,
+    'refused preview login must not leave an active central session'
+  );
+});
