@@ -40,8 +40,9 @@ test('valid ECDH and VAPID inputs generate actual encrypted aes128gcm request an
       assert.match(req.headers.Authorization, /^vapid t=.+, k=[\w-]+$/);
       assert.equal(req.headers['Content-Encoding'], 'aes128gcm');
       assert.equal(req.headers.TTL, '3600');
-      assert.ok(req.body instanceof Uint8Array);
-      assert.ok(req.body.length > 100);
+      assert.ok(req.body instanceof ArrayBuffer);
+      assert.ok(req.body.byteLength > 100);
+      assert.equal(req.redirect, 'manual');
       return { status: 201 };
     }
   });
@@ -80,4 +81,27 @@ test('invalid VAPID signature key is classified at signing step, before provider
     }),
     e => e instanceof PushSendError && e.phase === 'vapid'
   );
+});
+
+
+test('a redirect response is reported as provider HTTP failure rather than hidden TypeError', async () => {
+  const { subscription, keys } = await fixture();
+  const result = await sendWebPush(subscription, 'fixture', keys, {
+    fetchImpl: async (url, opts) => {
+      assert.equal(opts.redirect, 'manual');
+      assert.ok(opts.body instanceof ArrayBuffer);
+      return { status: 302 };
+    }
+  });
+  assert.deepEqual(result, { ok: false, statusCode: 302, gone: false });
+});
+
+test('transport TypeError surfaces only a fixed code, not sensitive provider diagnostic text', async () => {
+  const { subscription, keys } = await fixture();
+  await assert.rejects(sendWebPush(subscription, 'fixture', keys, {
+    fetchImpl: async () => { throw new TypeError('Request body must be an ArrayBuffer; endpoint was PRIVATE-DO-NOT-LOG'); }
+  }), err => err instanceof PushSendError &&
+      err.phase === 'transport' &&
+      err.diagnosticCode === 'request_body' &&
+      !String(err.message).includes('PRIVATE'));
 });
