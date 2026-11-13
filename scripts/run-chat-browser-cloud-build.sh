@@ -33,6 +33,7 @@ trap 'rm -rf "$LIB_DIR"' EXIT
     libxdamage1 \
     libxfixes3 \
     libxrandr2 \
+    libxi6 \
     libxkbcommon0 \
     libasound2t64 \
     libatspi2.0-0t64
