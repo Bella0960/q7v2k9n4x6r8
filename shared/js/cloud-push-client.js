@@ -1410,6 +1410,7 @@
   async function mountSettings() {
     var toggle = document.getElementById('cloudPushToggle');
     var testRow = document.getElementById('cloudTestRow');
+    var localTestRow = document.getElementById('cloudLocalTestRow');
     var readinessRow = document.getElementById('cloudReadinessCheck');
     var readinessResult = document.getElementById('cloudReadinessResult');
     var contextSharingToggle = document.getElementById('cloudContextSharingToggle');
@@ -1793,6 +1794,45 @@
           setStatusText('读取云端准备情况失败');
         } finally {
           readinessRow.removeAttribute('aria-disabled');
+        }
+      });
+    }
+
+    if (localTestRow) {
+      localTestRow.addEventListener('click', async function () {
+        var resultEl = document.getElementById('cloudLocalResult');
+        function report(message) {
+          if (resultEl) resultEl.textContent = message;
+        }
+        localTestRow.disabled = true;
+        report('正在检查当前浏览器的系统通知能力…');
+        try {
+          if (!isSupported()) throw new Error(pushSupportMessage());
+          if (Notification.permission !== 'granted') {
+            throw new Error('网站通知权限未允许，请先在浏览器中开启');
+          }
+          var registration = await getRegistration();
+          if (!registration || !registration.active || typeof registration.showNotification !== 'function') {
+            throw new Error('当前浏览器的 Service Worker 没有正常激活');
+          }
+          var tag = 'maomao-local-' + Date.now();
+          await registration.showNotification('MAOMAO · 本机通知自检', {
+            body: '这条通知由当前浏览器生成，不依赖云端服务器。',
+            tag: tag,
+            silent: false
+          });
+          var listed = [];
+          if (typeof registration.getNotifications === 'function') {
+            listed = await registration.getNotifications({ tag: tag });
+          }
+          report(listed.length > 0
+            ? '浏览器已登记本机系统通知。请查看手机通知栏；如果没有显示，问题在浏览器或安卓系统通知展示。'
+            : '本机显示请求已提交，但未能确认系统登记通知；请检查浏览器通知渠道。');
+        } catch (error) {
+          report('本机通知自检失败：' + (error?.name || 'Error') + '，' +
+            (error?.message || '未知错误'));
+        } finally {
+          localTestRow.disabled = false;
         }
       });
     }
