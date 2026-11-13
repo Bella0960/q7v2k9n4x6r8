@@ -15,6 +15,8 @@ import { createApp, dispatchPendingOutboundPushes } from './worker/lib/app.js';
 import { createStore } from './worker/lib/store.js';
 import { applyMigrations } from './worker/lib/migrations.js';
 import { runCloudModelTick } from './worker/lib/cloud-model-scheduler.js';
+import { runTick } from './worker/lib/scheduler.js';
+import { createSchedulerGate } from './worker/lib/scheduler-gate.js';
 
 const INSTANCE_NAME = 'maomao-global';
 
@@ -55,6 +57,43 @@ async function injectAccountScope(response, account) {
     statusText: response.statusText,
     headers
   });
+}
+
+
+// Legacy foreground-owner path and cloud-owned model path are separate executors.
+// Preserve the original scheduling API when adding autonomous server generation.
+function readSchedulerConfig(env) {
+  const config = {};
+  if (env?.AUTONOMY_LEASE_MS != null) config.leaseMs = Number(env.AUTONOMY_LEASE_MS);
+  if (env?.AUTONOMY_TICK_LIMIT != null) config.tickLimit = Number(env.AUTONOMY_TICK_LIMIT);
+  if (env?.AUTONOMY_RETRY_BACKOFF_MS != null) {
+    config.retryBackoffMs = String(env.AUTONOMY_RETRY_BACKOFF_MS)
+      .split(',').map(value => value.trim()).filter(Boolean).map(Number);
+  }
+  return config;
+}
+
+function readSchedulePolicyConfig(env) {
+  const config = {};
+  const readPositive = name => {
+    const raw = env?.[name];
+    if (raw == null || String(raw).trim() === '') return undefined;
+    const value = Number(raw);
+    return Number.isSafeInteger(value) && value > 0 ? value : NaN;
+  };
+  const readNonNegative = name => {
+    const raw = env?.[name];
+    if (raw == null || String(raw).trim() === '') return undefined;
+    const value = Number(raw);
+    return Number.isSafeInteger(value) && value >= 0 ? value : NaN;
+  };
+  const heartbeatTtlMs = readPositive('AUTONOMY_HEARTBEAT_TTL_MS');
+  const leaseDurationMs = readPositive('AUTONOMY_DEVICE_LEASE_MS');
+  const graceMs = readNonNegative('AUTONOMY_DEVICE_GRACE_MS');
+  if (heartbeatTtlMs !== undefined) config.heartbeatTtlMs = heartbeatTtlMs;
+  if (leaseDurationMs !== undefined) config.leaseDurationMs = leaseDurationMs;
+  if (graceMs !== undefined) config.graceMs = graceMs;
+  return config;
 }
 
 export class CloudDatabase {
@@ -117,7 +156,26 @@ export class CloudDatabase {
       });
     }
     if (url.pathname === '/internal/tick' && request.method === 'POST') {
-      const result = await runCloudModelTick({
+      // Do not replace the existing foreground/device-owned scheduler.
+      // Cloud tasks are independently filtered by executionMode='cloud'.
+      const foregroundNow = Date.now();
+      let foregroundResult;
+      try {
+        foregroundResult = runTick({
+          store: this.store,
+          now: foregroundNow,
+          config: readSchedulerConfig(this.env),
+          gate: createSchedulerGate({
+            store: this.store,
+            now: () => foregroundNow,
+            config: readSchedulePolicyConfig(this.env)
+          })
+        });
+      } catch {
+        // Fail independently: one executor must not starve the other.
+        foregroundResult = { ok: false, reason: 'foreground_tick_failed' };
+      }
+      const cloudResult = await runCloudModelTick({
         store: this.store,
         env: this.env,
         // Pass the clock, not a Cron-start snapshot: the model call may
@@ -137,7 +195,7 @@ export class CloudDatabase {
       } catch (error) {
         pushDispatch = { configured: false, reason: 'dispatch_deferred' };
       }
-      return Response.json({ ok: true, result, pushDispatch });
+      return Response.json({ ok: true, result: foregroundResult, cloudResult, pushDispatch });
     }
     return new Response('Not found', { status: 404 });
   }
