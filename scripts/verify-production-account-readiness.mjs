@@ -10,7 +10,7 @@ import { listAllDurableObjectNamespaces, isCanonicalWorkerNamespace } from './li
 
 export const PRODUCTION_SCRIPT = 'mao';
 export const PREVIEW_SCRIPT = 'mao-auth-preview';
-const REQUIRED_SECRETS = ['DEVICE_SECRET_PEPPER', 'MAO_SUPER_ADMIN_BOOTSTRAP_SECRET', 'MAO_CANONICAL_FOUNDER_ID'];
+const REQUIRED_SECRETS = ['DEVICE_SECRET_PEPPER', 'MAO_SUPER_ADMIN_BOOTSTRAP_SECRET', 'MAO_CANONICAL_FOUNDER_ID', 'MAO_CANONICAL_FOUNDER_CREATED_AT'];
 
 /** Never accept a founder from the wrong Durable Object just because its display badge is 001. */
 export function auditCanonicalFounderEvidence({ expectedId, expectedCreatedAt, rows }) {
@@ -43,6 +43,13 @@ export function auditProductionAccountReadiness({ production, preview, secrets, 
   const previewBindings = Array.isArray(preview?.bindings) ? preview.bindings : [];
   const prodDb = prodBindings.find(item => item.name === 'CLOUD_DB');
   const previewDb = previewBindings.find(item => item.name === 'CLOUD_DB');
+  // Runtime pinning is optional for synthetic QA, but mandatory in production.
+  // Presence of the secrets alone does not activate strict enforcement.
+  const strictPins = prodBindings.filter(item => item?.name === 'MAO_CANONICAL_FOUNDER_REQUIRED');
+  if (strictPins.length !== 1 || strictPins[0].type !== 'plain_text' ||
+      strictPins[0].text !== 'true') {
+    failures.push('PROD_FOUNDER_GUARD_NOT_REQUIRED');
+  }
 
   if (!prodBindings.some(item => item.name === 'ASSETS' && item.type === 'assets')) {
     failures.push('PROD_ASSETS_MISSING');
@@ -168,6 +175,12 @@ async function readFounderSqlEvidence({ accountId, token, namespaceId }) {
  * A schema-only inventory is NOT a backup. Only independently restored and
  * read-back-verified encrypted/controlled snapshots can release production.
  */
+function isVerifiedTimestamp(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) return false;
+  const time = Date.parse(value);
+  return Number.isFinite(time) && new Date(time).toISOString() === value;
+}
+
 export function auditBackupEvidence({ backup, expectedId, expectedCreatedAt, sourceNamespace }) {
   const failures = [];
   if (!backup || backup.status !== 'verified' ||
@@ -175,7 +188,7 @@ export function auditBackupEvidence({ backup, expectedId, expectedCreatedAt, sou
       !Number.isSafeInteger(Number(backup.table_count)) || Number(backup.table_count) < 1 ||
       !Number.isSafeInteger(Number(backup.row_count)) || Number(backup.row_count) < 1 ||
       !/^[a-f0-9]{64}$/.test(String(backup.content_digest || '')) ||
-      !/^[0-9]{4}-[0-9]{2}-[0-9]{2}T/.test(String(backup.verified_at || ''))) {
+      !isVerifiedTimestamp(backup.verified_at)) {
     failures.push('RESTORABLE_BACKUP_NOT_VERIFIED');
   }
   if (!/^[a-f0-9]{32}$/.test(String(sourceNamespace || '')) ||
@@ -292,3 +305,4 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     process.exitCode = 1;
   });
 }
+

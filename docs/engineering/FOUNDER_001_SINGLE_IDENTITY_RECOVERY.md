@@ -100,3 +100,14 @@ An attempted batch transfer of private account/social row content through the av
 - Only after actual readback + restoration succeeds may the vault snapshot status become `verified`. Until then the production release gate will remain blocked.
 - Separately back up browser-origin `localStorage` and IndexedDB assets; an account SQLite snapshot alone does not include them.
 - **Do not deploy, change `app.mao520.com`, merge main, delete the older founder DB, or claim that the complete backup exists yet.**
+
+
+## 2026-11-13 follow-up: executed Node checks and production guard configuration
+
+- Production readiness now requires the private `MAO_CANONICAL_FOUNDER_CREATED_AT` secret name as well as the founder ID, and exactly one plain-text `MAO_CANONICAL_FOUNDER_REQUIRED=true` binding. Merely defining an ID secret is not proof that strict runtime enforcement is configured. Secret values are not read.
+- Backup verification timestamps must be valid, round-trippable UTC ISO timestamps. Truncated strings and impossible calendar dates no longer pass.
+- Actual local Node v24.22.1 execution against files retrieved at `f0220c8`, plus the two changed gate/test files: production deployment guard **23/23**, founder provenance and PITR authorization **11/11**, social approval/E2EE/session expiry **23/23**. Total **57 passed, 0 failed, 0 skipped** across the final runs. SQLite fixtures are synthetic in-memory databases; no owner data was copied.
+- The first social regression run failed because this partial local source checkout lacked fixture source files. Those exact files were fetched from the same commit and the unchanged tests then passed. No assertions were weakened.
+- This is targeted Node regression evidence, not a full Vite build, complete release suite, physical-phone acceptance, or real backup restoration.
+- The original database was not written, no deployment binding was changed, and no production/main cutover was performed. The existing schema-only vault remains **not recoverable**; no verified backup claim is made.
+- The previous connector rejection of bulk sensitive-row transfer remains a blocker. Do not reattempt through split queries, raw endpoints, logs, or intermediary storage to bypass that restriction. A separately authorized, supported secure backup path is still required before independent restore validation and release.
