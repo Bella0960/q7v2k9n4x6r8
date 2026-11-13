@@ -341,3 +341,30 @@ test('missing or unauthenticated Worker cookie prevents session minting', async 
   assert.equal(response.payload.error.code, 'IDENTITY_AUTHORITY_SESSION_INVALID');
   assert.equal(previewDB.query('SELECT COUNT(*) AS n FROM mao_accounts')[0].n, 0);
 });
+
+test('existing Worker binding uses verified authority host and same-origin POST, not public fetch', async () => {
+  const token = 'a'.repeat(43);
+  let forwarded;
+  const env = {
+    MAO_IDENTITY_MODE: 'delegated_preview',
+    MAO_IDENTITY_AUTHORITY_MODE: 'existing_worker',
+    MAO_IDENTITY_AUTHORITY: { async fetch(request) {
+      forwarded = request;
+      return Response.json({ ok: true, account: {
+        id: founderId, username: 'CentralOwner', role: 'super_admin',
+        status: 'active', founderNumber: '001'
+      } }, {
+        headers: { 'set-cookie': 'MAO_SESSION=' + token +
+          '; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000; Secure' }
+      });
+    }}
+  };
+  const identity = await callIdentityAuthority(env, 'authenticate', {
+    identifier: 'CentralOwner', password: founderPass
+  });
+  assert.equal(new URL(forwarded.url).origin, 'https://mao520.com');
+  assert.equal(forwarded.headers.get('origin'), 'https://mao520.com');
+  assert.equal(forwarded.headers.get('content-type'), 'application/json');
+  assert.equal(identity.authoritySessionToken, token);
+  assert.equal(identity.role, 'super_admin');
+});
