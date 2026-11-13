@@ -89,3 +89,9 @@ node scripts/run-account-auth-gate.mjs
 该命令依次执行 `npm ci`、全部已追踪 JS 文件语法检查、`npm run build`（带 prebuild/postbuild 回归）和真正的本地 Wrangler + SQLite 账号接口 E2E。测试的密钥和账号为临时生成，SQL 数据存储在独立临时目录；如果项目根目录已有 `.dev.vars`，测试会明确拒绝，防止覆盖私人密钥。Wrapper 要求 Node 22.16+ 的 22.x 版本。Wrangler 首次运行可能需要 npm 联网下载，不依赖 GitHub Actions/Cloudflare 自动构建额度。
 
 此本机入口**不代表**真实域名部署、管理员本人身份绑定、安卓/苹果实机或注册线上 POST 已通过；上述项目继续单独保留发布门禁。
+
+### 2026-11-13 补丁：生产发布门禁必须验证 SQLite 所有权
+
+历史分支会在 Cloudflare 下留下大量 `CloudDatabase` 命名空间，不能只比较生产和预览命名空间 ID。生产硬门禁现在与预发布门禁采用同一套严格验证：目标库必须是 `mao_CloudDatabase` 且归属 `mao`，预览库必须归属 `mao-auth-preview`，并明确拒绝 `script_name` 跨 Worker 绑定。对于同名重复命名空间、缺失库存信息也保持 fail-closed。
+
+Cloudflare 命名空间 API 每页最多 100 条。本次将库存读取改为分页，并针对分页元数据缺失、不一致、漏页、重复 ID、越过安全页数上限等情况拒绝放行。对应单元测试接入 `npm run build` 的构建前门禁。没有执行线上密钥值读取、数据库写入或域名切换。
