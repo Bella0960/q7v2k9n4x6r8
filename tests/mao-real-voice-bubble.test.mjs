@@ -33,10 +33,15 @@ function node(tag) {
   };
   return target;
 }
-function session(){
+function session(audioDuration=2){
   const nodes={log:node('div')},all=[];
   const document={
-    createElement(tag){const result=node(tag);all.push(result);return result},
+    createElement(tag){
+      const result=node(tag);
+      if(tag==='audio')result.duration=audioDuration;
+      all.push(result);
+      return result;
+    },
     createElementNS(_ns,tag){return node(tag)}
   };
   const sandbox={document,console,
@@ -165,7 +170,7 @@ test('trusted encrypted recording duration displays immediately when Safari repo
 });
 
 test('unknown-duration historical voice no longer displays a literal voice label',()=>{
-  const {api}=session();
+  const {api}=session(Infinity);
   const bubble=node('div');
   api.mountVoicePlayer(bubble,'blob:https://mao.test/oldvoice',{
     id:'oldvoice',senderId:'MAO-BBBBBBBBBBBB'
