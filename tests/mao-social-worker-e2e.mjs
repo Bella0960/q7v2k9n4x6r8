@@ -17,6 +17,8 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { webcrypto } from 'node:crypto';
+import { createDeviceIdentity, conversationKey, encryptText, decryptText } from '../chat/contacts/real-chat-crypto.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const VARS_PATH = path.join(ROOT, '.dev.vars');
@@ -60,7 +62,8 @@ async function main() {
       'MAO_SUPER_ADMIN_BOOTSTRAP_SECRET=' + secret + '\n' +
       'DEVICE_SECRET_PEPPER=' + pepper + '\n' +
       'MAO_SOCIAL_ENABLED=true\n' +
-      'MAO_SOCIAL_CHAT_ENABLED=false\n',
+      'MAO_SOCIAL_CHAT_ENABLED=false\n' +
+      'MAO_SOCIAL_E2EE_ENABLED=true\n',
       { mode: 0o600, flag: 'wx' });
     const port = await freePort();
     const base = 'http://127.0.0.1:' + port;
@@ -316,9 +319,66 @@ async function main() {
     assert.equal(disabledChat.payload.error.code, 'SOCIAL_CHAT_NOT_ENABLED');
     pass('plaintext social chat stays disabled until real E2EE is accepted');
 
+    // End-to-end encrypted mobile transport uses the same actual Wrangler
+    // account identities and DO. No AI API, no plaintext message endpoints.
+    const aKey = await createDeviceIdentity(webcrypto.subtle);
+    const bKey = await createDeviceIdentity(webcrypto.subtle);
+    const aliceRegister = await post('/api/social/e2ee/keys',{publicKey:aKey.publicKey},
+      {cookie:aliceCookie,accountId:alice.id});
+    const bobRegister = await post('/api/social/e2ee/keys',{publicKey:bKey.publicKey},
+      {cookie:bobCookie,accountId:bob.id});
+    assert.equal(aliceRegister.status,200,JSON.stringify(aliceRegister.payload));
+    assert.equal(bobRegister.status,200,JSON.stringify(bobRegister.payload));
+    assert.equal(aliceRegister.payload.keyId,aKey.keyId);
+    assert.equal(bobRegister.payload.keyId,bKey.keyId);
+    pass('both authorized phone accounts register distinct ECDH device public keys');
+
+    const targetKey = await request('/api/social/e2ee/keys/'+bob.id,
+      {cookie:aliceCookie,accountId:alice.id});
+    assert.equal(targetKey.status,200);
+    assert.equal(targetKey.payload.key.keyId,bKey.keyId);
+    const metadata={friendshipId:requestId,senderId:alice.id,recipientId:bob.id,
+      clientMessageId:'qa_encrypted_message_0001',sk:aKey.keyId,rk:bKey.keyId};
+    const outbound = await conversationKey(aKey.privateKey,bKey.publicKey,requestId,alice.id,bob.id,
+      webcrypto.subtle);
+    const envelope=await encryptText('Encrypted from Android to iPhone',outbound,metadata,
+      webcrypto.subtle,webcrypto.getRandomValues.bind(webcrypto));
+    const sent=await post('/api/social/e2ee/chats/'+bob.id+'/messages',
+      {friendshipId:requestId,clientMessageId:metadata.clientMessageId,envelope},
+      {cookie:aliceCookie,accountId:alice.id});
+    assert.equal(sent.status,200,JSON.stringify(sent.payload));
+    assert.equal(sent.payload.message.text,undefined);
+    const delivered=await request('/api/social/e2ee/chats/'+alice.id+'/messages?after=0',
+      {cookie:bobCookie,accountId:bob.id});
+    assert.equal(delivered.status,200,JSON.stringify(delivered.payload));
+    assert.equal(delivered.payload.messages.length,1);
+    assert.equal(delivered.payload.messages[0].envelope.ct,envelope.ct);
+    assert.ok(!JSON.stringify(delivered.payload).includes('Encrypted from Android'));
+    const inbound=await conversationKey(bKey.privateKey,aKey.publicKey,requestId,bob.id,alice.id,
+      webcrypto.subtle);
+    const decrypted=await decryptText(delivered.payload.messages[0].envelope,inbound,metadata,
+      webcrypto.subtle);
+    assert.equal(decrypted,'Encrypted from Android to iPhone');
+    const duplicated=await post('/api/social/e2ee/chats/'+bob.id+'/messages',
+      {friendshipId:requestId,clientMessageId:metadata.clientMessageId,envelope},
+      {cookie:aliceCookie,accountId:alice.id});
+    assert.equal(duplicated.payload.replay,true);
+    const rejectedPlaintext=await post('/api/social/e2ee/chats/'+bob.id+'/messages',
+      {friendshipId:requestId,clientMessageId:'qa_plaintext_forbidden',envelope,text:'hello'},
+      {cookie:aliceCookie,accountId:alice.id});
+    assert.equal(rejectedPlaintext.status,400);
+    assert.equal(rejectedPlaintext.payload.error.code,'E2EE_PLAINTEXT_REJECTED');
+    pass('real Wrangler SQLite relays ciphertext only; two devices decrypt; retry is idempotent; plaintext rejected');
+
+
     const blocked = await post('/api/social/friends/' + bob.id + '/block', {},
       { cookie: aliceCookie, accountId: alice.id });
     assert.equal(blocked.status, 200);
+    const blockedCipher = await request('/api/social/e2ee/chats/' + alice.id + '/messages?after=0',
+      {cookie:bobCookie,accountId:bob.id});
+    assert.equal(blockedCipher.status,403);
+    pass('blocked friend immediately loses access to encrypted conversation history');
+
     const afterBlock = await request('/api/social/friends',
       { cookie: bobCookie, accountId: bob.id });
     assert.equal(afterBlock.status, 200);
