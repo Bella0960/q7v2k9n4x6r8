@@ -1307,6 +1307,8 @@
       permission: 'Notification' in global ? Notification.permission : 'unsupported',
       deviceRegistered: Boolean(readDevice()),
       subscriptionCount: 0,
+      currentBrowserHasSubscription: null,
+      currentBrowserMatched: null,
       serverReachable: false,
       vapidConfigured: false,
       message: ''
@@ -1329,9 +1331,24 @@
     if (device) {
       try {
         var payload = await requestJson('/api/push/subscriptions', { device: device });
-        status.subscriptionCount = (payload.subscriptions || []).filter(function (item) {
+        var activeSubscriptions = (payload.subscriptions || []).filter(function (item) {
           return !item.disabledAt;
-        }).length;
+        });
+        status.subscriptionCount = activeSubscriptions.length;
+        // Other browser profiles and stale registrations can contribute to the
+        // server's count. Only a matching local endpoint represents THIS browser.
+        try {
+          var browserReg = await navigator.serviceWorker.getRegistration(apiPath('/'));
+          var localSub = browserReg && browserReg.pushManager
+            ? await browserReg.pushManager.getSubscription() : null;
+          status.currentBrowserHasSubscription = Boolean(localSub);
+          status.currentBrowserMatched = Boolean(localSub && activeSubscriptions.some(function (item) {
+            return item.endpoint === localSub.endpoint;
+          }));
+        } catch (error) {
+          status.currentBrowserHasSubscription = null;
+          status.currentBrowserMatched = null;
+        }
       } catch (error) {
         status.message = error.code === 'DEVICE_REVOKED'
           ? '设备授权已撤销，请重新配对'
@@ -1344,7 +1361,15 @@
       if (!status.vapidConfigured) status.message = '云端尚未配置 VAPID 密钥';
       else if (!device) status.message = '设备尚未连接，开启推送后自动注册';
       else if (status.permission === 'denied') status.message = '通知权限被拒绝，请在系统设置中允许';
-      else if (status.subscriptionCount > 0) status.message = '已连接 · ' + status.subscriptionCount + ' 个有效订阅';
+      else if (status.subscriptionCount > 0 && status.currentBrowserMatched === false) {
+        status.message = status.currentBrowserHasSubscription
+          ? '云端存有 ' + status.subscriptionCount + ' 条订阅，但当前浏览器的订阅未同步'
+          : '云端存有 ' + status.subscriptionCount + ' 条订阅，但当前浏览器没有本地订阅';
+      }
+      else if (status.currentBrowserMatched === true) {
+        status.message = '已登记 · 当前浏览器订阅匹配（云端共 ' + status.subscriptionCount + ' 条；不代表通知已显示）';
+      }
+      else if (status.subscriptionCount > 0) status.message = '云端存有 ' + status.subscriptionCount + ' 条订阅，当前浏览器状态待确认';
       else status.message = '已连接，但当前设备尚未订阅推送';
     }
     return status;
