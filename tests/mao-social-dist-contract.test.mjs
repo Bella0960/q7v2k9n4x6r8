@@ -38,3 +38,21 @@ test('the social mobile HTML remains protected by the Worker login gate', () => 
   assert.match(worker, /if \(isHtmlDocument && !isPublicAccountDocument\)/);
   assert.match(worker, /\/api\/accounts\/me/);
 });
+
+// Only the isolated social Preview may exercise friend consent + 001 approval.
+// The app.mao520.com production Worker must stay opt-in disabled, and
+// plaintext messaging must never be offered as a real E2EE product.
+test('social preview enables only friendship QA; production and private chat stay off', () => {
+  const raw = readFileSync(resolve(root, 'wrangler.jsonc'), 'utf8')
+    .replace(/^\s*\/\/.*$/gm, '');
+  const config = JSON.parse(raw);
+  assert.equal(config.name, 'mao');
+  assert.equal(config.vars?.MAO_SOCIAL_ENABLED, undefined);
+  assert.equal(config.vars?.MAO_SOCIAL_CHAT_ENABLED, undefined);
+  assert.equal(config.previews?.vars?.MAO_SOCIAL_ENABLED, 'true');
+  assert.equal(config.previews?.vars?.MAO_SOCIAL_CHAT_ENABLED, 'false');
+  assert.equal(config.previews?.durable_objects?.bindings?.[0]?.name, 'CLOUD_DB');
+  const server = readFileSync(resolve(root, 'worker/lib/mao-social.js'), 'utf8');
+  assert.match(server, /env\.MAO_SOCIAL_ENABLED !== 'true'/);
+  assert.match(server, /env\.MAO_SOCIAL_CHAT_ENABLED !== 'true'/);
+});
