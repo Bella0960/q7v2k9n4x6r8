@@ -860,6 +860,13 @@
         .avatar-library-add { display:inline-flex; align-items:center; gap:5px; flex-shrink:0; min-height:33px; padding:0 10px; border:1px solid #D8D8D3; border-radius:0; background:#fff; color:#222; font:inherit; font-size:10px; cursor:pointer; }
         .avatar-library-add span { font-size:15px; line-height:1; }
         .avatar-library-add:active { background:#F4F4F2; }
+        .avatar-library-autonomy { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:15px; padding:12px 0 10px; }
+        .avatar-library-autonomy-copy { flex:1; min-width:0; display:flex; flex-direction:column; gap:4px; }
+        .avatar-library-autonomy-copy strong { color:#242424; font-size:12px; font-weight:500; letter-spacing:-.01em; }
+        .avatar-library-autonomy-copy span { color:#999; font-size:10px; line-height:1.5; }
+        .avatar-library-autonomy-toggle { flex-shrink:0; min-width:62px; min-height:32px; padding:0 10px; border:1px solid #303030; border-radius:0; background:#111; color:#fff; font-size:10px; cursor:pointer; }
+        .avatar-library-autonomy-toggle[aria-pressed="false"] { background:#fff; color:#666; border-color:#D8D8D3; }
+        .avatar-library-autonomy-toggle:focus-visible { outline:2px solid #666; outline-offset:3px; }
         .avatar-library-status { min-height:16px; padding-top:9px; color:#999; font-size:9px; line-height:1.5; }
         .avatar-library-status[data-state="error"] { color:#777; }
         .avatar-library-status[data-state="success"] { color:#555; }
@@ -1208,7 +1215,7 @@
     <script src="../../shared/js/phone/storage/repository.js"></script>
     <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
     <script src="../../shared/js/phone/role-avatar-library.js?v=20261113v2"></script>
-    <script src="js/characters-manager.js?v=20261113v1"></script>
+    <script src="js/characters-manager.js?v=20261113v2"></script>
     <script src="../../shared/js/nav.js"></script>
 <script src="../../shared/js/statusbar-control.js"></script>
 </body>
