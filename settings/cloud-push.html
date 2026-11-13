@@ -441,6 +441,8 @@
                         </select>
                     </div>
                     <button id="cloudRoleAutonomySave" class="cloud-button" type="button">保存角色授权</button>
+                    <button id="cloudRoleInitialTest" class="cloud-button" type="button">排队测试角色首次联系</button>
+                    <p id="cloudRoleInitialTestStatus" class="cloud-hint" role="status" aria-live="polite">请选择新建测试角色。此测试只发送角色名称和固定开场指令。</p>
                     <p id="cloudRoleSaveStatus" class="cloud-hint" role="status" aria-live="polite"></p>
                     <p class="cloud-hint">角色名称默认只从本机读取；只有单独开启上方上下文共享后，才会同步有限角色设定与近期文字。</p>
                 </div>
@@ -558,7 +560,7 @@
     </main>
 </div>
 
-<script src="../shared/js/cloud-push-client.js?v=20261114v7"></script>
+<script src="../shared/js/cloud-push-client.js?v=20261114v8"></script>
 <script>
 (function () {
     if (window.MaomaoCloud && window.MaomaoCloud.mountSettings) {

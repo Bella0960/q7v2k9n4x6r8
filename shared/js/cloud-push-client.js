@@ -1631,6 +1631,60 @@
       });
     }
 
+    var initialTest = document.getElementById('cloudRoleInitialTest');
+    var initialTestStatus = document.getElementById('cloudRoleInitialTestStatus');
+    if (initialTest && initialTestStatus) {
+      initialTest.addEventListener('click', async function () {
+        var roleId = roleSelect && roleSelect.value;
+        var role = localCharacters().find(function (item) {
+          return item && String(item.id) === roleId;
+        });
+        if (!role) {
+          initialTestStatus.textContent = '请先选择新建的测试角色。';
+          return;
+        }
+        initialTest.disabled = true;
+        initialTestStatus.textContent = '正在向云端确认角色任务…';
+        try {
+          var sharing = await getContextSharing();
+          if (!sharing.enabled) throw new Error('请先开启允许云端使用角色上下文');
+          var schedule = await getCharacterSchedule(roleId);
+          if (!schedule || !schedule.timeZone || !schedule.schedule ||
+              !Array.isArray(schedule.schedule.active) || !schedule.schedule.active.length) {
+            throw new Error('请先保存这个角色的时区和允许主动联系的时段');
+          }
+          var result = await requestDeviceMetadata(
+            '/api/characters/' + characterPath(roleId) + '/context-snapshot',
+            'POST',
+            {
+              eventId: randomBase64Url(18),
+              characterName: Array.from(String(role.name || role.nickname || '测试角色')).slice(0, 80).join(''),
+              personaText: '用简短、自然的话打招呼。',
+              recentMessages: [],
+              lastUserMessageAt: 0,
+              initialContact: true
+            }
+          );
+          if (result.queued) {
+            initialTestStatus.textContent = '已排队，可以锁屏。预计 ' +
+              new Date(result.scheduledAt).toLocaleTimeString() + ' 后开始生成。';
+            return;
+          }
+          var reasons = {
+            autonomy_not_enabled: '请开启云端自主活动，并保存此角色的授权',
+            activity_schedule_not_configured: '预览站的调度配置不完整',
+            initial_contact_already_used: '该角色的首次联系任务已执行过，请检查聊天',
+            conversation_already_exists: '该角色已有云端聊天上下文，请选择新建测试角色'
+          };
+          initialTestStatus.textContent = '未排队：' + (reasons[result.queueReason] || result.queueReason || '请检查云端上下文授权');
+        } catch (error) {
+          initialTestStatus.textContent = '排队失败：' + (error.message || '未知错误');
+        } finally {
+          initialTest.disabled = false;
+        }
+      });
+    }
+
     function readOptionalWindow(startInput, endInput, label) {
       var start = startInput && startInput.value.trim();
       var end = endInput && endInput.value.trim();
