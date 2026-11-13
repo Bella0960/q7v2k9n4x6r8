@@ -412,3 +412,19 @@ test('cloud Cron preserves the existing foreground executor and its API result',
   assert.ok(worker.includes("reason: 'foreground_tick_failed'"),
     'cloud path must still execute if foreground scheduler throws');
 });
+
+
+test('Wrangler must retain assets, database and AI bindings together', () => {
+  const config = fs.readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
+  const raw = config.replace(/^\s*\/\/.*$/gm, '').replace(/,\s*([}\]])/g, '$1');
+  const parsed = JSON.parse(raw);
+  assert.equal(parsed.assets?.binding, 'ASSETS',
+    'dropping ASSETS breaks login and the mobile push settings page');
+  assert.equal(parsed.durable_objects?.bindings?.[0]?.name, 'CLOUD_DB',
+    'dropping CLOUD_DB breaks device auth, subscription and outbox persistence');
+  assert.equal(parsed.durable_objects?.bindings?.[0]?.class_name, 'CloudDatabase');
+  assert.equal(parsed.ai?.binding, 'AI',
+    'optional keyless model backend requires the AI binding');
+  assert.ok(parsed.triggers?.crons?.length > 0,
+    'cloud tasks require a configured scheduled handler');
+});
