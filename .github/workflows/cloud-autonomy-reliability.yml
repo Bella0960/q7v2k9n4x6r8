@@ -1,0 +1,135 @@
+name: Cloud Autonomy Reliability
+
+on:
+  pull_request:
+    paths:
+      - 'worker/**'
+      - 'worker.js'
+      - 'shared/js/cloud-push-client.js'
+      - 'settings/cloud-push.html'
+      - 'chat/chat/chat-detail.html'
+      - 'sw.js'
+      - 'tests/cloud-*.test.mjs'
+      - 'tests/character-schedule-policy.test.mjs'
+      - 'tests/autonomy-scheduler.test.mjs'
+      - 'docs/engineering/CLOUD_PUSH.md'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/cloud-autonomy-reliability.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cloud-autonomy-reliability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Create diagnostic log directory
+        run: mkdir -p .ci-logs
+
+      - name: Install dependencies
+        id: install
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm ci 2>&1 | tee .ci-logs/npm-ci.log
+
+      - name: Check tracked JavaScript syntax
+        id: syntax
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run check:syntax 2>&1 | tee .ci-logs/check-syntax.log
+
+      - name: Run cloud model and push contracts
+        id: cloud
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run test:cloud:push 2>&1 | tee .ci-logs/test-cloud-push.log
+
+      - name: Run character schedule policy tests
+        id: schedule
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run test:schedule 2>&1 | tee .ci-logs/test-schedule.log
+
+      - name: Run autonomous activity scheduler tests
+        id: autonomy
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run test:autonomy 2>&1 | tee .ci-logs/test-autonomy.log
+
+      - name: Run production build
+        id: build
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee .ci-logs/build.log
+
+      - name: Write CI result summary
+        if: always()
+        env:
+          INSTALL_RESULT: ${{ steps.install.outcome }}
+          SYNTAX_RESULT: ${{ steps.syntax.outcome }}
+          CLOUD_RESULT: ${{ steps.cloud.outcome }}
+          SCHEDULE_RESULT: ${{ steps.schedule.outcome }}
+          AUTONOMY_RESULT: ${{ steps.autonomy.outcome }}
+          BUILD_RESULT: ${{ steps.build.outcome }}
+        run: |
+          {
+            echo "## Cloud autonomy reliability"
+            echo
+            echo "| Gate | Result |"
+            echo "| --- | --- |"
+            echo "| npm ci | ${INSTALL_RESULT} |"
+            echo "| JavaScript syntax | ${SYNTAX_RESULT:-not run} |"
+            echo "| Cloud model and Push contracts | ${CLOUD_RESULT:-not run} |"
+            echo "| Character schedule policy | ${SCHEDULE_RESULT:-not run} |"
+            echo "| Autonomous scheduler | ${AUTONOMY_RESULT:-not run} |"
+            echo "| Vite production build | ${BUILD_RESULT:-not run} |"
+          } | tee .ci-logs/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload cloud reliability diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloud-autonomy-reliability-logs
+          path: .ci-logs/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Fail if any reliability gate failed
+        if: always()
+        env:
+          INSTALL_RESULT: ${{ steps.install.outcome }}
+          SYNTAX_RESULT: ${{ steps.syntax.outcome }}
+          CLOUD_RESULT: ${{ steps.cloud.outcome }}
+          SCHEDULE_RESULT: ${{ steps.schedule.outcome }}
+          AUTONOMY_RESULT: ${{ steps.autonomy.outcome }}
+          BUILD_RESULT: ${{ steps.build.outcome }}
+        run: |
+          test "$INSTALL_RESULT" = "success" &&
+          test "$SYNTAX_RESULT" = "success" &&
+          test "$CLOUD_RESULT" = "success" &&
+          test "$SCHEDULE_RESULT" = "success" &&
+          test "$AUTONOMY_RESULT" = "success" &&
+          test "$BUILD_RESULT" = "success"

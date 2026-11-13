@@ -17,6 +17,7 @@ import {
 import { applyMigrations, MIGRATIONS, splitSql } from '../worker/lib/migrations.js';
 import { createStore } from '../worker/lib/store.js';
 import { buildOutboundPushPayload, dispatchPendingOutboundPushes } from '../worker/lib/app.js';
+import { runCloudModelTick } from '../worker/lib/cloud-model-scheduler.js';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -92,7 +93,7 @@ async function subscribeDevice(ctx, device, subscription) {
 
 /* ------------------------------------------------------------------ */
 
-test('迁移 0001–0016 建立云推送、活动幂等、上下文来源与多设备消息回执结构', async () => {
+test('迁移 0001–0017 建立云推送、活动幂等、上下文共享快照与多设备消息回执结构', async () => {
   const testDb = openTestDb();
   applyMigrations(testDb.exec);
   const tables = testDb.query("SELECT name FROM sqlite_master WHERE type = 'table'")
@@ -114,7 +115,9 @@ test('迁移 0001–0016 建立云推送、活动幂等、上下文来源与多�
     'device_pairing_tokens',
     'device_bootstrap',
     'character_context_versions',
-    'character_context_events'
+    'character_context_events',
+    'user_context_sharing',
+    'character_context_snapshots'
   ]) {
     assert.ok(tables.includes(expected), `缺少表 ${expected}`);
   }
@@ -136,15 +139,17 @@ test('迁移 0001–0016 建立云推送、活动幂等、上下文来源与多�
   assert.ok(indexes.includes('idx_outbound_pending_device_character'), '出站收件箱必须按目标设备、角色与状态建立索引');
   assert.ok(indexes.includes('idx_activity_dedupe'), '自主活动必须按账号/角色/上下文幂等键唯一');
   assert.ok(indexes.includes('idx_activity_recipient_due'), '自主活动必须支持按角色与到期状态查询');
+  assert.ok(indexes.includes('idx_context_snapshots_latest'), '角色上下文快照必须支持按账号/角色读取最新版本');
+  assert.ok(indexes.includes('idx_outbound_group'), '多气泡出站消息必须支持按组顺序恢复');
   const activityColumns = testDb.query("PRAGMA table_info('activity_queue')").map(row => String(row.name));
   assert.ok(activityColumns.includes('dedupe_key'), '活动队列必须保存稳定幂等键');
-  for (const column of ['result_json', 'result_server_message_id', 'result_dedupe_key']) {
+  for (const column of ['result_json', 'result_server_message_id', 'result_dedupe_key', 'result_group_id', 'result_message_count']) {
     assert.ok(activityColumns.includes(column), `活动队列必须保存不可变生成结果字段 ${column}`);
   }
   const contextVersionColumns = testDb.query("PRAGMA table_info('character_context_versions')").map(row => String(row.name));
   assert.ok(contextVersionColumns.includes('updated_by_device_id'), '上下文版本必须记录最后更新设备');
   const outboundColumns = testDb.query("PRAGMA table_info('outbound_messages')").map(row => String(row.name));
-  for (const column of ['push_accepted_at', 'device_received_at', 'local_saved_at', 'read_at', 'read_by_device_id']) {
+  for (const column of ['push_accepted_at', 'device_received_at', 'local_saved_at', 'read_at', 'read_by_device_id', 'group_id', 'group_index', 'group_count']) {
     assert.ok(outboundColumns.includes(column), `出站消息缺少生命周期字段 ${column}`);
   }
   const receiptColumns = testDb.query("PRAGMA table_info('outbound_device_receipts')").map(row => String(row.name));
@@ -160,7 +165,7 @@ test('迁移 0001–0016 建立云推送、活动幂等、上下文来源与多�
   const applied = applyMigrations(testDb.exec);
   assert.deepEqual(applied, []);
   const versions = testDb.query('SELECT version FROM schema_migrations');
-  assert.equal(versions.length, 16);
+  assert.equal(versions.length, 17);
   assert.deepEqual(versions.map(row => row.version).sort(), [
     '0001_init',
     '0002_autonomy_metadata',
@@ -177,7 +182,8 @@ test('迁移 0001–0016 建立云推送、活动幂等、上下文来源与多�
     '0013_mao_account_restore_state',
     '0014_mao_admin_directory_indexes',
     '0015_mao_account_audit_cursor',
-    '0016_mao_global_audit_cursor'
+    '0016_mao_global_audit_cursor',
+    '0017_cloud_autonomous_context'
   ]);
 });
 
@@ -553,7 +559,11 @@ test('角色上下文版本事件：仅保存事件 ID、服务器递增、重�
   assert.equal(readiness.payload.autonomousMessageGenerationReady, false);
   assert.deepEqual(readiness.payload.autonomyExecutionBlockers, [
     'activity_executor_config_missing',
-    'device_local_model_runtime_not_verified'
+    'server_model_credentials_missing',
+    'global_autonomy_not_enabled',
+    'context_sharing_not_enabled',
+    'cloud_model_scheduler_runtime_not_verified',
+    'cloud_model_generation_not_verified'
   ]);
 
   const snapshot = ctx.store.getSchedulerGateSnapshot({ userId: 'owner', characterId: 'char-a' });
@@ -1492,6 +1502,200 @@ test('单设备每小时配对签发上限包含已消费配对码且由原子�
   assert.equal(ctx.query('SELECT COUNT(*) AS total FROM device_pairing_tokens')[0].total, 5);
 });
 
+test('云端活动查询先筛选 cloud-owned 任务再应用批次限制', async () => {
+  const ctx = setupTestStore(openTestDb());
+  const device = makeDevice();
+  await registerDevice(ctx, device);
+  const base = Date.now();
+
+  const enqueue = (id, executionMode, scheduledAt) => ctx.store.enqueueActivity({
+    id,
+    deviceId: device.deviceId,
+    characterId: 'cloud-role-1',
+    kind: 'contact',
+    scheduledAt,
+    maxAttempts: 3,
+    now: base,
+    payload: {
+      contextVersion: 1,
+      sourceDeviceId: device.deviceId,
+      executionMode
+    }
+  });
+
+  enqueue('foreground-due-1', 'foreground', base - 5000);
+  enqueue('foreground-due-2', 'foreground', base - 4000);
+  enqueue('cloud-due-1', 'cloud', base - 3000);
+  enqueue('cloud-due-2', 'cloud', base - 2000);
+  enqueue('cloud-future', 'cloud', base + 60_000);
+
+  const legacyBatch = ctx.store.listDueActivities(base, 2);
+  assert.deepEqual(legacyBatch.map(row => row.id), [
+    'foreground-due-1', 'foreground-due-2'
+  ]);
+
+  const cloudBatch = ctx.store.listDueCloudActivities(base, 2);
+  assert.deepEqual(cloudBatch.map(row => row.id), [
+    'cloud-due-1', 'cloud-due-2'
+  ]);
+  assert.ok(cloudBatch.every(row => {
+    const payload = JSON.parse(row.payload_json);
+    return payload.executionMode === 'cloud';
+  }));
+});
+
+
+
+test('主动消息 Push 成功回执按账号和当前设备隔离，且只认服务端成功状态', async () => {
+  const ctx = setupTestStore(openTestDb());
+  const ownerDevice = makeDevice();
+  await registerDevice(ctx, ownerDevice);
+  const otherDevice = makeDevice();
+  ctx.store.insertDevice({
+    id: otherDevice.deviceId,
+    userId: 'another-user',
+    secretHash: 'synthetic-other-user-device-hash',
+    now: Date.now()
+  });
+  const base = Date.now();
+  const ownerSubscription = ctx.store.upsertSubscription({
+    id: 'push-sub-owner-active',
+    deviceId: ownerDevice.deviceId,
+    endpoint: 'https://push.example.invalid/owner-active',
+    p256dh: 'owner-p256dh',
+    authKey: 'owner-auth',
+    now: base,
+    expirationTime: base + 120_000
+  }, { maxSubscriptions: 3 });
+  const disabledOwnerSubscription = ctx.store.upsertSubscription({
+    id: 'push-sub-owner-disabled',
+    deviceId: ownerDevice.deviceId,
+    endpoint: 'https://push.example.invalid/owner-disabled',
+    p256dh: 'old-p256dh',
+    authKey: 'old-auth',
+    now: base,
+    expirationTime: base + 120_000
+  }, { maxSubscriptions: 3 });
+  const otherSubscription = ctx.store.upsertSubscription({
+    id: 'push-sub-other-active',
+    deviceId: otherDevice.deviceId,
+    endpoint: 'https://push.example.invalid/other-active',
+    p256dh: 'other-p256dh',
+    authKey: 'other-auth',
+    now: base,
+    expirationTime: base + 120_000
+  }, { maxSubscriptions: 3 });
+  assert.equal(ownerSubscription.id, 'push-sub-owner-active');
+  assert.equal(disabledOwnerSubscription.id, 'push-sub-owner-disabled');
+  assert.equal(otherSubscription.id, 'push-sub-other-active');
+  const expiredOwnerSubscription = ctx.store.upsertSubscription({
+    id: 'push-sub-owner-expired',
+    deviceId: ownerDevice.deviceId,
+    endpoint: 'https://push.example.invalid/owner-expired',
+    p256dh: 'expired-p256dh',
+    authKey: 'expired-auth',
+    now: base,
+    expirationTime: base - 1
+  }, { maxSubscriptions: 3 });
+  assert.equal(expiredOwnerSubscription.id, 'push-sub-owner-expired');
+
+  ctx.store.logExecution({
+    id: 'push-accept-owner-ok',
+    deviceId: ownerDevice.deviceId,
+    kind: 'outbound_push',
+    status: 'success',
+    reasonCode: 'delivered',
+    detail: { messageCount: 2, subscriptionId: ownerSubscription.id },
+    now: base
+  });
+  ctx.store.logExecution({
+    id: 'push-accept-owner-disabled-sub-ok',
+    deviceId: ownerDevice.deviceId,
+    kind: 'outbound_push',
+    status: 'success',
+    reasonCode: 'delivered',
+    detail: { subscriptionId: disabledOwnerSubscription.id },
+    now: base + 2
+  });
+  ctx.store.disableSubscriptionById(disabledOwnerSubscription.id, 'user', base + 3);
+  ctx.store.logExecution({
+    id: 'push-accept-owner-expired-sub-ok',
+    deviceId: ownerDevice.deviceId,
+    kind: 'outbound_push',
+    status: 'success',
+    reasonCode: 'delivered',
+    detail: { subscriptionId: expiredOwnerSubscription.id },
+    now: base + 6
+  });
+  ctx.store.logExecution({
+    id: 'push-accept-owner-failed',
+    deviceId: ownerDevice.deviceId,
+    kind: 'outbound_push',
+    status: 'failed',
+    reasonCode: 'push_delivery_failed',
+    detail: { subscriptionId: ownerSubscription.id },
+    now: base + 4
+  });
+  ctx.store.logExecution({
+    id: 'push-accept-other-ok',
+    deviceId: otherDevice.deviceId,
+    kind: 'outbound_push',
+    status: 'success',
+    reasonCode: 'delivered',
+    detail: { subscriptionId: otherSubscription.id },
+    now: base + 5
+  });
+
+  assert.equal(ctx.store.getLatestAutonomyPushAcceptance({
+    userId: 'owner',
+    deviceId: ownerDevice.deviceId,
+    now: base + 10
+  }), base);
+  assert.equal(ctx.store.getLatestAutonomyPushAcceptance({
+    userId: 'owner',
+    deviceId: otherDevice.deviceId,
+    now: base + 10
+  }), null);
+  assert.equal(ctx.store.getLatestAutonomyPushAcceptance({
+    userId: 'another-user',
+    deviceId: otherDevice.deviceId,
+    now: base + 10
+  }), base + 5);
+
+  const renewed = ctx.store.upsertSubscription({
+    id: 'unused-id-on-renewal',
+    deviceId: ownerDevice.deviceId,
+    endpoint: 'https://push.example.invalid/owner-active',
+    p256dh: 'renewed-p256dh',
+    authKey: 'renewed-auth',
+    now: base + 10,
+    expirationTime: base + 120_000
+  }, { maxSubscriptions: 3 });
+  assert.equal(renewed.id, ownerSubscription.id);
+  assert.equal(ctx.store.getLatestAutonomyPushAcceptance({
+    userId: 'owner',
+    deviceId: ownerDevice.deviceId,
+    now: base + 11
+  }), null, '重新订阅后旧接受回执不能被当成新订阅的验收结果');
+
+  ctx.store.logExecution({
+    id: 'push-accept-owner-renewed-ok',
+    deviceId: ownerDevice.deviceId,
+    kind: 'outbound_push',
+    status: 'success',
+    reasonCode: 'delivered',
+    detail: { subscriptionId: ownerSubscription.id },
+    now: base + 12
+  });
+  assert.equal(ctx.store.getLatestAutonomyPushAcceptance({
+    userId: 'owner',
+    deviceId: ownerDevice.deviceId,
+    now: base + 13
+  }), base + 12);
+});
+
+
+
 test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设备鉴权', async () => {
   const ctx = setupTestStore(openTestDb(), {
     DEVICE_SECRET_PEPPER: 'test-device-secret-pepper-for-contract-tests-32chars',
@@ -1552,6 +1756,24 @@ test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设
     now: base
   });
   ctx.store.logExecution({
+    id: 'readiness-own-cloud-reason',
+    deviceId: device.deviceId,
+    kind: 'autonomy_cloud_tick',
+    status: 'deferred',
+    reasonCode: 'foreground_lease_held',
+    detail: {},
+    now: base + 1
+  });
+  ctx.store.logExecution({
+    id: 'readiness-own-push-failure',
+    deviceId: device.deviceId,
+    kind: 'outbound_push',
+    status: 'failed',
+    reasonCode: 'delivery_lease_lost',
+    detail: { serverMessageId: 'private-push-message-id' },
+    now: base + 2
+  });
+  ctx.store.logExecution({
     id: 'readiness-own-success',
     deviceId: device.deviceId,
     kind: 'autonomy_tick',
@@ -1576,6 +1798,24 @@ test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设
     status: 'deferred',
     reasonCode: 'another_users_reason',
     detail: { taskId: 'another-private-task-id' },
+    now: base
+  });
+  ctx.store.logExecution({
+    id: 'readiness-other-push-failure',
+    deviceId: otherDevice.deviceId,
+    kind: 'outbound_push',
+    status: 'failed',
+    reasonCode: 'other_users_push_failure',
+    detail: {},
+    now: base + 2
+  });
+  ctx.store.logExecution({
+    id: 'readiness-other-cloud-reason',
+    deviceId: otherDevice.deviceId,
+    kind: 'autonomy_cloud_tick',
+    status: 'deferred',
+    reasonCode: 'other_cloud_reason',
+    detail: {},
     now: base
   });
 
@@ -1644,11 +1884,25 @@ test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设
   assert.equal(readiness.payload.autonomousMessageGenerationReady, false);
   assert.deepEqual(readiness.payload.autonomyExecutionBlockers, [
     'activity_executor_config_missing',
-    'device_local_model_runtime_not_verified',
-    'context_version_unavailable'
+    'server_model_credentials_missing',
+    'global_autonomy_not_enabled',
+    'context_sharing_not_enabled',
+    'context_version_unavailable',
+    'cloud_model_scheduler_runtime_not_verified',
+    'cloud_model_generation_not_verified'
   ]);
+  assert.deepEqual(readiness.payload.pushDeliveryBlockers, [
+    'current_device_push_subscription_missing',
+    'cloud_push_provider_acceptance_not_verified'
+  ]);
+  assert.equal(readiness.payload.pushDeliveryReady, false);
+  assert.equal(readiness.payload.autonomousContactAndPushReady, false);
   assert.deepEqual(readiness.payload.recentSchedulerReasons, [
-    { reasonCode: 'context_version_unavailable', count: 1 }
+    { reasonCode: 'context_version_unavailable', count: 1 },
+    { reasonCode: 'foreground_lease_held', count: 1 }
+  ]);
+  assert.deepEqual(readiness.payload.recentPushReasons, [
+    { reasonCode: 'delivery_lease_lost', count: 1 }
   ]);
   assert.equal(readiness.payload.schedulerDiagnosticsWindowMs, 86400000);
   const readinessJson = JSON.stringify(readiness.payload);
@@ -1658,7 +1912,10 @@ test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设
   assert.equal(readinessJson.includes('another-private-character'), false);
   assert.equal(readinessJson.includes('other-user-private-payload'), false);
   assert.equal(readinessJson.includes('another_users_reason'), false);
+  assert.equal(readinessJson.includes('other_cloud_reason'), false);
   assert.equal(readinessJson.includes('private-task-id'), false);
+  assert.equal(readinessJson.includes('private-push-message-id'), false);
+  assert.equal(readinessJson.includes('other_users_push_failure'), false);
   assert.deepEqual(ctx.store.getActivityQueueSummary({ userId: 'another-user' }), {
     total: 1, waiting: 1, retry: 0, running: 0,
     completed: 0, failed: 0, superseded: 0, other: 0
@@ -1666,7 +1923,16 @@ test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设
   assert.deepEqual(ctx.store.getRecentAutonomyReasonSummary({
     userId: 'another-user',
     since: base - 86400000
-  }), [{ reasonCode: 'another_users_reason', count: 1 }]);
+  }), [
+    { reasonCode: 'another_users_reason', count: 1 },
+    { reasonCode: 'other_cloud_reason', count: 1 }
+  ]);
+
+  assert.deepEqual(ctx.store.getRecentPushReasonSummary({
+    userId: 'another-user',
+    deviceId: otherDevice.deviceId,
+    since: base - 86400000
+  }), [{ reasonCode: 'other_users_push_failure', count: 1 }]);
 
   const anonymous = await ctx.asJson('/api/autonomy/readiness');
   assert.equal(anonymous.status, 401);
@@ -3685,16 +3951,18 @@ test('客户端只在消息持久化回调确认成功后才确认云端出站�
   const end = clientSource.indexOf('  function flushCharacterContextVersion(', start);
   assert.ok(start >= 0 && end > start, '客户端必须提供独立的出站接收处理器');
   const receiver = clientSource.slice(start, end);
-  const receiptIndex = receiver.indexOf('await markCharacterOutboundReceived(characterId, message.serverMessageId)');
-  const persistIndex = receiver.indexOf('await persistMessage(message.payload, message)');
+  const receiptIndex = receiver.indexOf('await markCharacterOutboundReceived(characterId, group[receivedIndex].serverMessageId)');
+  const persistIndex = receiver.indexOf('await persistMessage(payloads, group)');
   const guardIndex = receiver.indexOf('if (persisted !== true)');
-  const ackIndex = receiver.indexOf('await acknowledgeCharacterOutboundMessage(characterId, message.serverMessageId)');
+  const ackIndex = receiver.indexOf('await acknowledgeCharacterOutboundMessage(characterId, group[ackIndex].serverMessageId)');
   assert.ok(receiptIndex >= 0 && persistIndex > receiptIndex && guardIndex > persistIndex && ackIndex > guardIndex,
-    '顺序必须是设备收到回执、本地持久化、成功检查，最后才是本地保存 ACK');
+    '顺序必须是整组设备收到回执、一次性本地持久化、成功检查，最后逐条 ACK');
   assert.ok(receiver.includes('deferred += 1'), '本地保存失败时必须保留云端待确认消息');
-  assert.ok(receiver.includes('catch (persistError)'), '单条持久化异常必须被隔离，不能中断整批接收');
-  assert.ok(receiver.includes('catch (ackError)'), '单条 ACK 网络异常必须被隔离，后续消息仍应继续处理');
+  assert.ok(receiver.includes('catch (persistError)'), '整组持久化异常必须被隔离，不能中断轮询');
+  assert.ok(receiver.includes('catch (ackError)'), '逐条 ACK 网络异常必须被隔离，未完成组会在下一轮重试');
   assert.ok(receiver.includes('persisted: persistedCount'), '应区分本地已保存与云端 ACK 已确认');
+  assert.ok(receiver.includes('group.length !== expectedCount'), '不完整气泡组不得写入或确认');
+  assert.ok(receiver.includes('blockedByIncompleteGroup'), '组消息失败时必须停止推进游标');
   assert.ok(receiver.includes('ackDeferred: ackDeferred'), 'ACK 失败应单独报告以便后续重试');
   assert.ok(receiver.includes('persistErrors: persistErrors'), '本地存储异常应单独计数');
   assert.ok(clientSource.includes('getCharacterOutboundMessages: getCharacterOutboundMessages'));
@@ -3716,7 +3984,7 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
     '聊天页必须有写入现有消息历史的适配器');
   assert.ok(chat.includes("item && String(item.serverMessageId || '') === serverMessageId"),
     '重复投递必须先按稳定 serverMessageId 查重');
-  assert.ok(chat.includes("mid: 'cloud_' + serverMessageId"),
+  assert.ok(chat.includes("mid: 'cloud_' + entry.serverMessageId"),
     '云端消息必须有稳定本地 mid');
   assert.ok(chat.includes("msg.serverMessageId != null"),
     '写后读回校验必须包含云端服务端消息 ID');
@@ -3769,11 +4037,11 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
   assert.ok(saveIndex >= 0 && renderIndex > saveIndex &&
     pacedRenderIndex > renderIndex,
     '必须先验证本地保存成功，再走任一消息渲染分支');
-  assert.ok(adapter.includes('if (document.visibilityState === \'hidden\') return false'),
+  assert.ok(adapter.includes("document.visibilityState === 'hidden'") && adapter.includes('isGroupChat'),
     '页面隐藏后，迟到的拉取响应不能再写入聊天历史');
-  assert.ok(adapter.includes('if (isGroupChat'),
+  assert.ok(adapter.includes('|| isGroupChat'),
     '群聊不得误接单角色的出站收件箱');
-  assert.ok(adapter.includes('payloadType !== \'text\''),
+  assert.ok(adapter.includes("String(itemPayload.type || 'text') !== 'text'"),
     '未知载荷类型必须保持未确认，不能误写成普通文字');
 
   const syncStart = chat.indexOf('(function startCloudOutboundSyncForActiveRole()');
@@ -3798,7 +4066,7 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
 
   const serviceWorkerCacheVersion = serviceWorker.match(/const CACHE_NAME = ['"]phone-app-pwa-v(\d+)['"]/);
   assert.ok(serviceWorkerCacheVersion &&
-    Number(serviceWorkerCacheVersion[1]) >= 179,
+    Number(serviceWorkerCacheVersion[1]) >= 219,
     'PWA 缓存版本不得回退到可见区域已读观察修复之前');
   assert.ok(serviceWorker.includes("'./chat/chat/chat-detail.html'"),
     'PWA shell 应继续预缓存现有聊天详情页');
@@ -4336,7 +4604,8 @@ test('本机主动消息完成后会立即发送不含正文的角色聊天 Push
     serverMessageId,
     timestamp: now
   }), /outbound push target is invalid/);
-  assert.match(notification.body, /有一位角色刚刚联系你/);
+  assert.equal(notification.title, '角色');
+  assert.equal(notification.body, '刚刚发来一条消息，打开聊天查看。');
   assert.equal(notification.body.includes('我刚刚想到'), false,
     '锁屏通知不得暴露主动消息正文');
   assert.equal(notification.dedupeKey, 'outbound:' + serverMessageId);
@@ -4410,6 +4679,81 @@ test('聊天 Push 失败会写入退避记录，并由后续维护重试同一�
   assert.equal(delivery.status, 'sent');
   assert.equal(delivery.attempt_count, 2);
 });
+
+
+test('Push 请求超过投递租约后，旧发送者不得确认成功或覆盖新租约', async () => {
+  const base = 1800000000000;
+  let clock = base;
+  let leaseUntil = 0;
+  let finishAt = 0;
+  let accepted = 0;
+  const keys = makeVapidKeys();
+  const subscription = await makeBrowserSubscription();
+  const candidate = {
+    subscription_id: 'subscription-lease-test',
+    outbound_message_id: 'out_push_lease_message_123456',
+    server_message_id: 'push_lease_message_123456',
+    group_id: null,
+    target_account_id: 'owner',
+    character_id: 'char-push-lease',
+    group_count: 1,
+    character_name: '角色甲',
+    created_at: base,
+    endpoint: subscription.endpoint,
+    p256dh: subscription.p256dh,
+    auth_key: subscription.auth,
+    device_id: 'device_push_lease_123456'
+  };
+  const store = {
+    listOutboundPushCandidates({ now, limit }) {
+      assert.equal(now, base);
+      assert.equal(limit, 10);
+      return [candidate];
+    },
+    claimDelivery(args) {
+      leaseUntil = args.leaseUntil;
+      return { attempt_count: 1, lease_until: args.leaseUntil };
+    },
+    isActivePushSubscription() {
+      return true;
+    },
+    finishDelivery(args) {
+      finishAt = args.now;
+      return args.now < leaseUntil ? { status: args.status } : null;
+    },
+    markPushSuccess() {
+      accepted += 1;
+    },
+    markOutboundGroupPushAccepted() {
+      accepted += 1;
+    },
+    logExecution() {}
+  };
+  const fetchImpl = async () => {
+    // Simulate a provider response arriving after the 60-second delivery lease.
+    clock = base + 60_001;
+    return new Response('', { status: 201 });
+  };
+  const result = await dispatchPendingOutboundPushes({
+    store,
+    env: {
+      VAPID_PUBLIC_KEY: keys.publicB64,
+      VAPID_PRIVATE_KEY: keys.privateB64,
+      VAPID_SUBJECT: 'mailto:test@maomao.dev'
+    },
+    now: () => clock,
+    fetchImpl,
+    limit: 10
+  });
+
+  assert.equal(leaseUntil, base + 60_000);
+  assert.ok(finishAt > leaseUntil);
+  assert.equal(result.attempted, 1);
+  assert.equal(result.sent, 0);
+  assert.equal(result.failed, 1);
+  assert.equal(accepted, 0, '过期租约不得记录 Push 已接受');
+});
+
 
 
 test('聊天 Push 面向同账号所有有效设备，排除跨账号和已撤销设备', async () => {
@@ -4680,6 +5024,49 @@ test('一台设备已保存消息后，其他尚未保存设备仍能获得 Push
   );
 });
 
+test('Cron 维护失败后仍必须执行云端模型 tick，并明确报告失败', async () => {
+  const { default: workerEntry } = await import('../worker.js');
+  for (const scenario of [
+    { maintenanceThrows: true, expectedError: /cloud_maintenance_transport_failed/ },
+    { maintenanceStatus: 503, expectedError: /cloud_maintenance_http_503/ }
+  ]) {
+    const calls = [];
+    let pending = null;
+    const env = {
+      CLOUD_DB: {
+        idFromName(name) {
+          assert.equal(name, 'maomao-global');
+          return 'test-durable-object-id';
+        },
+        get(id) {
+          assert.equal(id, 'test-durable-object-id');
+          return {
+            async fetch(request) {
+              const route = new URL(request.url).pathname;
+              calls.push(route);
+              if (route === '/internal/maintenance') {
+                if (scenario.maintenanceThrows) throw new Error('synthetic transport failure');
+                return new Response('maintenance failure', { status: scenario.maintenanceStatus });
+              }
+              return Response.json({ ok: true });
+            }
+          };
+        }
+      }
+    };
+    const ctx = {
+      waitUntil(promise) {
+        pending = promise;
+      }
+    };
+    await workerEntry.scheduled({}, env, ctx);
+    assert.ok(pending, 'Cron 必须注册后台执行');
+    await assert.rejects(pending, scenario.expectedError);
+    assert.deepEqual(calls, ['/internal/maintenance', '/internal/tick'],
+      '维护失败也必须执行后续主动联系 tick');
+  }
+});
+
 test('Worker scheduled maintenance 会持续扫描并重试待送达的聊天 Push', () => {
   const workerSource = fs.readFileSync(path.join(rootDir, 'worker.js'), 'utf8');
   assert.match(workerSource, /import \{ createApp, dispatchPendingOutboundPushes \} from '\.\/worker\/lib\/app\.js'/);
@@ -4702,6 +5089,30 @@ test('Worker scheduled maintenance 会持续扫描并重试待送达的聊天 Pu
   const dispatchIndex = maintenanceHandler.indexOf('dispatchPendingOutboundPushes');
   assert.ok(recoveryIndex >= 0 && dispatchIndex > recoveryIndex,
     '定时维护必须先恢复暂存收件箱，再发送对应 Push');
+  assert.match(
+    maintenanceHandler,
+    /dispatchPendingOutboundPushes\([\s\S]{0,220}now:\s*Date\.now/
+  );
+  const tickStart = workerSource.indexOf(
+    "if (url.pathname === '/internal/tick' && request.method === 'POST') {"
+  );
+  const tickEnd = workerSource.indexOf("return new Response('Not found'", tickStart);
+  assert.ok(tickStart >= 0 && tickEnd > tickStart, 'Worker 必须存在独立的 internal tick 处理分支');
+  const tickHandler = workerSource.slice(tickStart, tickEnd);
+  assert.match(
+    tickHandler,
+    /dispatchPendingOutboundPushes\([\s\S]{0,220}now:\s*Date\.now/
+  );
+
+  const appSource = fs.readFileSync(path.join(rootDir, 'worker/lib/app.js'), 'utf8');
+  const liveClockImmediateDispatches = appSource.match(
+    /dispatchPendingOutboundPushes\(\{\s*store,\s*env,\s*now,\s*fetchImpl,\s*limit:\s*10\s*\}\)/g
+  ) || [];
+  assert.equal(liveClockImmediateDispatches.length, 2,
+    '活动完成后的两条即时 Push 路径都必须传入实时钟函数');
+  assert.doesNotMatch(appSource,
+    /dispatchPendingOutboundPushes\(\{\s*store,\s*env,\s*now:\s*timestamp/,
+    '即时 Push 不得继续传入固定请求开始时间');
 });
 
 
@@ -4919,4 +5330,432 @@ test('生命周期回执支持同账号跨设备恢复，但不能跨账号或�
     { method: 'POST', device: otherAccount, headers: { cookie: 'MAO_SESSION=' + foreignSessionToken } }
   );
   assert.equal(forgedAck.status, 404);
+});
+
+
+
+test('云端角色上下文共享默认关闭、内容有界且关闭后删除快照', async () => {
+  const now = 1800000000000;
+  const ctx = setupTestStore(openTestDb());
+  ctx.timestamps.push(now);
+  const device = makeDevice();
+  await registerDevice(ctx, device);
+
+  const initial = await ctx.asJson('/api/autonomy/context-sharing', { device });
+  assert.equal(initial.status, 200);
+  assert.equal(initial.payload.enabled, false);
+
+  const eventId = randomToken(20);
+  const snapshotBody = {
+    eventId,
+    characterName: '测试角色',
+    personaText: '角色设定包含邮箱 person@example.com、网址 https://example.com、号码 12345678901、sk-proj-12345678901234567890、Bearer abcdefghijklmnopqrstuvwxyz123456 和 -----BEGIN PRIVATE KEY-----secret-material-----END PRIVATE KEY-----。',
+    recentMessages: [
+      { role: 'user', content: '这是一条测试消息。' },
+      { role: 'assistant', content: '收到，我会记住本轮的简短上下文。' }
+    ],
+    lastUserMessageAt: now - 1000
+  };
+  const denied = await ctx.asJson('/api/characters/char-context/context-snapshot', {
+    method: 'POST', device, body: snapshotBody
+  });
+  assert.equal(denied.status, 200);
+  assert.equal(denied.payload.disabled, true);
+  assert.equal(ctx.query('SELECT * FROM character_context_snapshots').length, 0);
+
+  const enabled = await ctx.asJson('/api/autonomy/context-sharing', {
+    method: 'PUT', device, body: { enabled: true }
+  });
+  assert.equal(enabled.status, 200);
+  assert.equal(enabled.payload.enabled, true);
+
+  const saved = await ctx.asJson('/api/characters/char-context/context-snapshot', {
+    method: 'POST', device, body: snapshotBody
+  });
+  assert.equal(saved.status, 200);
+  assert.equal(saved.payload.saved, true);
+  const stored = ctx.store.getLatestCharacterContextSnapshot({
+    userId: 'owner', characterId: 'char-context'
+  });
+  assert.ok(stored);
+  assert.equal(stored.character_name, '测试角色');
+  assert.equal(stored.recent_messages_json.includes('这是一条测试消息'), true);
+  assert.equal(stored.persona_text.includes('person@example.com'), false);
+  assert.equal(stored.persona_text.includes('https://example.com'), false);
+  assert.equal(stored.persona_text.includes('12345678901'), false);
+  assert.equal(stored.persona_text.includes('sk-proj-12345678901234567890'), false);
+  assert.equal(stored.persona_text.includes('abcdefghijklmnopqrstuvwxyz123456'), false);
+  assert.equal(stored.persona_text.includes('secret-material'), false);
+
+  const disabled = await ctx.asJson('/api/autonomy/context-sharing', {
+    method: 'PUT', device, body: { enabled: false }
+  });
+  assert.equal(disabled.status, 200);
+  assert.equal(disabled.payload.enabled, false);
+  assert.equal(ctx.query('SELECT * FROM character_context_snapshots').length, 0);
+});
+
+test('云端多气泡按组暂存、整组恢复，并在另一设备逐条 ACK 前保持整组可取', async () => {
+  const now = 1800000000000;
+  const ctx = setupTestStore(openTestDb(), {
+    AUTONOMY_LEASE_MS: '60000',
+    AUTONOMY_TICK_LIMIT: '10',
+    AUTONOMY_RETRY_BACKOFF_MS: '60000,300000',
+    AUTONOMY_HEARTBEAT_TTL_MS: '90000',
+    AUTONOMY_DEVICE_LEASE_MS: '120000',
+    AUTONOMY_DEVICE_GRACE_MS: '0'
+  });
+  ctx.timestamps.push(now);
+  const device = makeDevice();
+  await registerDevice(ctx, device);
+
+  const consent = await ctx.asJson('/api/autonomy/context-sharing', {
+    method: 'PUT', device, body: { enabled: true }
+  });
+  assert.equal(consent.status, 200);
+  const snapshot = await ctx.asJson('/api/characters/char-group/context-snapshot', {
+    method: 'POST',
+    device,
+    body: {
+      eventId: randomToken(20),
+      characterName: '分组测试角色',
+      personaText: '自然、简洁、友善。',
+      recentMessages: [{ role: 'user', content: '测试整组消息恢复。' }],
+      lastUserMessageAt: now - 1000
+    }
+  });
+  assert.equal(snapshot.status, 200);
+  assert.equal(snapshot.payload.contextVersion, 1);
+
+  const taskId = randomToken(20);
+  const queued = ctx.store.enqueueActivity({
+    id: taskId,
+    deviceId: device.deviceId,
+    userId: 'owner',
+    characterId: 'char-group',
+    kind: 'contact',
+    scheduledAt: now - 500,
+    maxAttempts: 3,
+    payload: { contextVersion: 1, sourceDeviceId: device.deviceId, executionMode: 'cloud' },
+    dedupeKey: 'test-cloud-group:' + taskId,
+    now,
+    requireActiveDevice: true
+  });
+  assert.equal(queued.inserted, true);
+
+  const phoneClaim = await ctx.asJson(
+    '/api/autonomy/characters/char-group/activities/claim',
+    { method: 'POST', device, body: {} }
+  );
+  assert.equal(phoneClaim.status, 200);
+  assert.equal(phoneClaim.payload.activity, null,
+    '标记为 cloud 的活动只能由 Worker 模型执行器认领');
+
+  const claimed = ctx.store.claimActivity({
+    id: taskId,
+    expectedAttemptCount: 0,
+    expectedStatus: 'waiting',
+    owner: 'cloud_model_executor',
+    leaseUntil: now + 60000,
+    now
+  });
+  assert.ok(claimed);
+
+  const groupId = 'cloudgrp_' + randomToken(18) + '_1';
+  const messages = [
+    '第一条独立气泡。',
+    '第二条独立气泡。',
+    '第三条独立气泡。'
+  ].map((text, index) => ({
+    serverMessageId: groupId + '_' + String(index + 1).padStart(2, '0'),
+    dedupeKey: groupId + ':' + String(index + 1),
+    payload: { type: 'text', text }
+  }));
+  const completed = ctx.store.completeCloudActivityWithOutboundGroup({
+    id: taskId,
+    owner: 'cloud_model_executor',
+    attemptCount: 1,
+    now,
+    groupId,
+    contextVersion: 1,
+    sourceDeviceId: device.deviceId,
+    messages
+  });
+  assert.equal(completed.completed, true);
+  assert.equal(completed.messageCount, 3);
+
+  // 模拟 Worker 在 outbox 部分写入后被中断，设备收件箱读取必须补齐缺失行。
+  ctx.store.exec('DELETE FROM outbound_messages WHERE group_id = ? AND group_index = 3', groupId);
+  assert.equal(ctx.store.getOutboundMessage(messages[2].serverMessageId), null);
+  const pulled = await ctx.asJson('/api/characters/char-group/outbound?limit=2', { device });
+  assert.equal(pulled.status, 200);
+  assert.equal(pulled.payload.messages.length, 3);
+  assert.deepEqual(pulled.payload.messages.map(item => item.groupIndex), [1, 2, 3]);
+  assert.ok(pulled.payload.messages.every(item => item.groupId === groupId));
+  assert.equal(ctx.store.getOutboundMessage(messages[2].serverMessageId).group_count, 3);
+
+  const firstAck = await ctx.asJson(
+    '/api/characters/char-group/outbound/' + messages[0].serverMessageId + '/ack',
+    { method: 'POST', device }
+  );
+  assert.equal(firstAck.status, 200);
+  const afterPartialAck = await ctx.asJson('/api/characters/char-group/outbound?limit=2', { device });
+  assert.equal(afterPartialAck.status, 200);
+  assert.equal(afterPartialAck.payload.messages.length, 3,
+    '部分 ACK 失败后必须重新拉取完整消息组');
+
+  for (const item of messages) {
+    const ack = await ctx.asJson(
+      '/api/characters/char-group/outbound/' + item.serverMessageId + '/ack',
+      { method: 'POST', device }
+    );
+    assert.equal(ack.status, 200);
+  }
+  const afterAllAck = await ctx.asJson('/api/characters/char-group/outbound', { device });
+  assert.equal(afterAllAck.status, 200);
+  assert.equal(afterAllAck.payload.messages.length, 0);
+});
+
+
+
+test('多气泡组只发送一条不含正文的角色通知，并将 Push 回执标到整组', async () => {
+  const now = 1800000000000;
+  const keys = makeVapidKeys();
+  const pushFetch = createFakePushFetch(201);
+  const ctx = setupTestStore(openTestDb(), {
+    VAPID_PUBLIC_KEY: keys.publicB64,
+    VAPID_PRIVATE_KEY: keys.privateB64,
+    VAPID_SUBJECT: 'mailto:test@maomao.dev',
+    fetchImpl: pushFetch
+  });
+  const device = makeDevice();
+  await registerDevice(ctx, device);
+  const subscription = await makeBrowserSubscription();
+  const subscribed = await subscribeDevice(ctx, device, subscription);
+  assert.equal(subscribed.status, 200);
+
+  const groupId = 'pushgrp_' + randomToken(20);
+  const messages = [
+    '第一条不应显示在锁屏的正文。',
+    '第二条也不应显示在锁屏的正文。',
+    '第三条也不应显示在锁屏的正文。'
+  ];
+  for (let index = 0; index < messages.length; index += 1) {
+    const result = ctx.store.enqueueOutboundMessage({
+      id: 'out_' + groupId + '_' + index,
+      deviceId: device.deviceId,
+      userId: 'owner',
+      characterId: 'char-group-push',
+      serverMessageId: groupId + '_' + String(index + 1).padStart(2, '0'),
+      dedupeKey: groupId + ':' + (index + 1),
+      payload: { type: 'text', text: messages[index] },
+      groupId,
+      groupIndex: index + 1,
+      groupCount: messages.length,
+      now
+    });
+    assert.equal(result.inserted, true);
+  }
+
+  const sent = await dispatchPendingOutboundPushes({
+    store: ctx.store,
+    env: {
+      VAPID_PUBLIC_KEY: keys.publicB64,
+      VAPID_PRIVATE_KEY: keys.privateB64,
+      VAPID_SUBJECT: 'mailto:test@maomao.dev'
+    },
+    now,
+    fetchImpl: pushFetch,
+    limit: 50
+  });
+  assert.equal(sent.sent, 1);
+  assert.equal(pushFetch.calls.length, 1);
+  const delivery = ctx.store.findDelivery('outbound-group:' + groupId, subscribed.payload.subscription.id);
+  assert.equal(delivery.status, 'sent');
+
+  for (let index = 0; index < messages.length; index += 1) {
+    const row = ctx.store.getOutboundMessage(groupId + '_' + String(index + 1).padStart(2, '0'));
+    assert.ok(row.push_accepted_at, '整组中的每条消息都应记录 Push 已接受');
+  }
+
+  const notification = buildOutboundPushPayload({
+    characterId: 'char-group-push',
+    serverMessageId: groupId + '_01',
+    groupId,
+    messageCount: 3,
+    characterName: '角色甲',
+    timestamp: now
+  });
+  assert.equal(notification.title, '角色甲');
+  assert.match(notification.body, /3 条消息/);
+  assert.equal(notification.body.includes(messages[0]), false);
+  assert.equal(notification.dedupeKey, 'outbound-group:' + groupId);
+});
+
+
+test('空聊天首次主动联系在授权后只排队一次，模型生成云端分组，用户消息会取消旧开场', async () => {
+  const now = 1800000000000;
+  const env = {
+    AUTONOMY_LEASE_MS: '60000',
+    AUTONOMY_TICK_LIMIT: '10',
+    AUTONOMY_RETRY_BACKOFF_MS: '60000,300000',
+    AUTONOMY_MIN_IDLE_MS: '86400000',
+    AUTONOMY_HEARTBEAT_TTL_MS: '90000',
+    AUTONOMY_DEVICE_LEASE_MS: '120000',
+    AUTONOMY_DEVICE_GRACE_MS: '0',
+    AUTONOMY_MODEL_API_KEY: 'server-only-initial-test-key-1234567890',
+    AUTONOMY_MODEL_NAME: 'gpt-4.1-mini',
+    AUTONOMY_MODEL_API_URL: 'https://api.openai.com/v1/chat/completions',
+    AUTONOMY_MODEL_TIMEOUT_MS: '5000'
+  };
+  const ctx = setupTestStore(openTestDb(), env);
+  ctx.timestamps.push(now);
+  const device = makeDevice();
+  await registerDevice(ctx, device);
+  const characterId = 'char-first-contact';
+
+  const consent = await ctx.asJson('/api/autonomy/context-sharing', {
+    method: 'PUT', device, body: { enabled: true }
+  });
+  assert.equal(consent.status, 200);
+  assert.equal(ctx.store.setUserAutonomy('owner', true, now, device.deviceId).enabled, 1);
+  assert.equal(ctx.store.setCharacterAutonomy('owner', characterId, true, now, device.deviceId).enabled, 1);
+  ctx.store.setCharacterSchedule('owner', characterId, 'UTC', {
+    active: [{ start: '00:00', end: '24:00' }],
+    busy: [], asleep: [], away: false
+  }, now, device.deviceId);
+
+  const initialBody = {
+    eventId: randomToken(20),
+    characterName: '测试角色',
+    personaText: '喜欢阅读，表达友善而简洁。',
+    recentMessages: [],
+    lastUserMessageAt: 0,
+    initialContact: true
+  };
+  const first = await ctx.asJson('/api/characters/' + characterId + '/context-snapshot', {
+    method: 'POST', device, body: initialBody
+  });
+  assert.equal(first.status, 200);
+  assert.equal(first.payload.saved, true);
+  assert.equal(first.payload.initialContact, true);
+  assert.equal(first.payload.queued, true);
+  assert.equal(first.payload.queueReason, 'queued_initial_contact');
+  assert.equal(first.payload.scheduledAt, now + 120000);
+
+  const snapshot = ctx.store.getLatestCharacterContextSnapshot({ userId: 'owner', characterId });
+  assert.ok(snapshot);
+  assert.equal(Number(snapshot.last_user_message_at), 0);
+  assert.equal(snapshot.recent_messages_json, '[]');
+
+  const initialDedupeKey = 'cloud-initial-contact-v1:owner:' + characterId;
+  const initialTask = ctx.store.getActivityByDedupeKey(initialDedupeKey);
+  assert.ok(initialTask);
+  assert.equal(initialTask.status, 'waiting');
+  const taskPayload = JSON.parse(initialTask.payload_json);
+  assert.equal(taskPayload.triggerType, 'initial_contact');
+  assert.equal(taskPayload.executionMode, 'cloud');
+  assert.equal(taskPayload.contextVersion, first.payload.contextVersion);
+
+  const reopened = await ctx.asJson('/api/characters/' + characterId + '/context-snapshot', {
+    method: 'POST', device, body: { ...initialBody, eventId: randomToken(20) }
+  });
+  assert.equal(reopened.status, 200);
+  assert.equal(reopened.payload.duplicate, true);
+  assert.equal(reopened.payload.contextVersion, first.payload.contextVersion);
+  assert.equal(reopened.payload.queueReason, 'initial_contact_already_queued');
+  assert.equal(ctx.query(
+    'SELECT id FROM activity_queue WHERE dedupe_key = ?', initialDedupeKey
+  ).length, 1);
+  assert.equal(ctx.query(
+    'SELECT context_version FROM character_context_snapshots WHERE user_id = ? AND character_id = ?',
+    'owner', characterId
+  ).length, 1);
+
+  const malformed = await ctx.asJson('/api/characters/' + characterId + '/context-snapshot', {
+    method: 'POST',
+    device,
+    body: {
+      ...initialBody,
+      eventId: randomToken(20),
+      recentMessages: [{ role: 'user', content: '不能把有历史的聊天伪装成首次开场。' }]
+    }
+  });
+  assert.equal(malformed.status, 400);
+  assert.equal(malformed.payload.error.code, 'INVALID_INITIAL_CONTACT_SNAPSHOT');
+
+  // A genuine user turn arriving before the initial task is claimed supersedes it.
+  ctx.timestamps.push(now + 3000);
+  const conversation = await ctx.asJson('/api/characters/' + characterId + '/context-snapshot', {
+    method: 'POST',
+    device,
+    body: {
+      eventId: randomToken(20),
+      characterName: '测试角色',
+      personaText: '喜欢阅读，表达友善而简洁。',
+      recentMessages: [
+        { role: 'user', content: '你好，我今天读完一本书。' },
+        { role: 'assistant', content: '听起来很不错。' }
+      ],
+      lastUserMessageAt: now + 2000
+    }
+  });
+  assert.equal(conversation.status, 200);
+  assert.equal(conversation.payload.contextVersion, first.payload.contextVersion + 1);
+  const savedConversation = ctx.store.getLatestCharacterContextSnapshot({ userId: 'owner', characterId });
+  assert.ok(Number(savedConversation.last_user_message_at) > 0);
+  const supersededInitialTask = ctx.store.getActivityByDedupeKey(initialDedupeKey);
+  assert.equal(supersededInitialTask.status, 'superseded');
+
+  // A second, still-empty role demonstrates the full cloud model -> grouped outbox path.
+  const cloudCharacterId = 'char-first-cloud-model';
+  ctx.store.setCharacterSchedule('owner', cloudCharacterId, 'UTC', {
+    active: [{ start: '00:00', end: '24:00' }],
+    busy: [], asleep: [], away: false
+  }, now + 3000, device.deviceId);
+  const cloudInitial = await ctx.asJson('/api/characters/' + cloudCharacterId + '/context-snapshot', {
+    method: 'POST',
+    device,
+    body: { ...initialBody, eventId: randomToken(20) }
+  });
+  assert.equal(cloudInitial.status, 200);
+  assert.equal(cloudInitial.payload.queued, true);
+  const cloudInitialDedupeKey = 'cloud-initial-contact-v1:owner:' + cloudCharacterId;
+
+  let modelRequest;
+  const modelFetch = async (url, init) => {
+    modelRequest = { url, init };
+    return new Response(JSON.stringify({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            send: true,
+            messages: ['你好，想和你分享一个有趣的小发现。', '你今天有什么想聊的话题吗？']
+          })
+        }
+      }]
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+  ctx.timestamps.push(now + 123000);
+  const tick = await runCloudModelTick({
+    store: ctx.store,
+    env,
+    now: now + 123000,
+    fetchImpl: modelFetch
+  });
+  assert.equal(tick.ok, true);
+  assert.equal(tick.generatedGroups, 1);
+  assert.equal(tick.generatedMessages, 2);
+  const prompt = JSON.parse(modelRequest.init.body);
+  assert.match(prompt.messages[0].content, /first opening in a chat/);
+  assert.match(prompt.messages[1].content, /"initialContact":true/);
+  const outbox = ctx.query(
+    'SELECT group_id, group_index, group_count, payload_json FROM outbound_messages WHERE character_id = ? ORDER BY group_index',
+    cloudCharacterId
+  );
+  assert.equal(outbox.length, 2);
+  assert.equal(outbox[0].group_id, outbox[1].group_id);
+  assert.deepEqual(outbox.map(row => Number(row.group_index)), [1, 2]);
+  assert.deepEqual(outbox.map(row => Number(row.group_count)), [2, 2]);
+  assert.equal(ctx.store.getActivityByDedupeKey(cloudInitialDedupeKey).status, 'completed');
 });

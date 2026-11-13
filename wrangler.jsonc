@@ -11,6 +11,19 @@
     "not_found_handling": "none",
     "run_worker_first": true
   },
+  // Optional Workers AI binding. No inference occurs unless
+  // AUTONOMY_MODEL_BACKEND is explicitly set to workers_ai.
+  "ai": { "binding": "AI" },
+  "vars": {
+    "DEVICE_PAIRING_TOKEN_TTL_MS": "300000",
+    "AUTONOMY_MIN_IDLE_MS": "1800000",
+    "AUTONOMY_LEASE_MS": "60000",
+    "AUTONOMY_TICK_LIMIT": "10",
+    "AUTONOMY_RETRY_BACKOFF_MS": "60000,300000,900000,1800000",
+    "AUTONOMY_HEARTBEAT_TTL_MS": "90000",
+    "AUTONOMY_DEVICE_LEASE_MS": "120000",
+    "AUTONOMY_DEVICE_GRACE_MS": "0"
+  },
   "durable_objects": {
     "bindings": [
       {
@@ -26,7 +39,7 @@
     }
   ],
   "triggers": {
-    "crons": ["17 3 * * *"]
+    "crons": ["*/5 * * * *"]
   },
   "previews": {}
 }

@@ -1,7 +1,8 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v217';
+const CACHE_NAME = 'phone-app-pwa-v224';
+// v224 release: mobile push-permission gesture and browser-support fixes.
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 // v179 release: resume visible-bubble read observation after foreground restore.
 const APP_SHELL = [
@@ -104,7 +105,7 @@ const APP_SHELL = [
   'shared/js/phone/memory_recall.js?v=20261024v2',
   'shared/js/phone/memory_space_v2.js?v=20261024v1',
   './shared/js/chat-notifier.js?v=20261107v7',
-  './shared/js/cloud-push-client.js?v=20261107v2',
+  './shared/js/cloud-push-client.js?v=20261113v1',
   'shared/js/phone/storage/repository.js',
   'shared/js/phone/storage/media-repository.js?v=20261106v1',
   'shared/js/phone/phone_api.js?v=20261106v1',

@@ -2918,20 +2918,80 @@
             if (wrote && _verifyHistoryRoundTrip(list)) {
                 _resetWarnCooldown('chat-save');
 
-                // After the local history round-trip succeeds, notify the cloud
-                // with a random event ID only. The history list is fingerprinted
-                // locally and is never passed into a network request.
+                // The local history has passed write/read-back verification.
+                // The cloud client checks the separate account consent before it
+                // sends any role profile or recent text; without consent it sends
+                // only the old content-free context revision event.
                 if (!isGroupChat && window.MaomaoCloud &&
                     typeof window.MaomaoCloud.noteCharacterContextChanged === 'function') {
                     try {
+                        var cloudSnapshot = (function buildBoundedCloudContextSnapshot(history) {
+                            if (!Array.isArray(history) || !currentCharacter) return null;
+                            function messageTimestamp(message) {
+                                var raw = message && (message.time != null ? message.time :
+                                    (message.timestamp != null ? message.timestamp : message.createdAt));
+                                if (typeof raw === 'number' && Number.isSafeInteger(raw) && raw > 0) return raw;
+                                if (typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(raw)) {
+                                    var parsed = Date.parse(raw);
+                                    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0;
+                                }
+                                return 0;
+                            }
+                            var latestUser = null;
+                            for (var i = history.length - 1; i >= 0; i -= 1) {
+                                var candidate = history[i];
+                                if (!candidate || typeof candidate !== 'object') continue;
+                                var candidateRole = String(candidate.role || '');
+                                if (candidateRole === 'sent' || candidateRole === 'user') {
+                                    var candidateText = String(candidate.text != null ? candidate.text : (candidate.content || '')).trim();
+                                    var candidateTime = messageTimestamp(candidate);
+                                    if (candidateText && candidateTime) {
+                                        latestUser = { content: candidateText, time: candidateTime };
+                                        break;
+                                    }
+                                }
+                            }
+                            if (!latestUser) return null;
+
+                            var recent = [];
+                            for (var j = Math.max(0, history.length - 40); j < history.length; j += 1) {
+                                var item = history[j];
+                                if (!item || typeof item !== 'object') continue;
+                                var type = String(item.type || 'text').toLowerCase();
+                                if (['image', 'virtual-image', 'sticker', 'voice', 'audio', 'video', 'file',
+                                    'image-pending', 'system', 'transfer', 'red-envelope'].indexOf(type) !== -1) continue;
+                                if (item.attachments || item.image || item.file || item.audio || item.video) continue;
+                                var role = String(item.role || '');
+                                var speaker = (role === 'sent' || role === 'user') ? 'user' :
+                                    (role === 'received' || role === 'assistant' || role === 'character') ? 'assistant' : '';
+                                if (!speaker) continue;
+                                var content = String(item.text != null ? item.text : (item.content || '')).trim();
+                                if (!content) continue;
+                                recent.push({ role: speaker, content: content.slice(0, 600) });
+                            }
+                            var personaParts = [
+                                currentCharacter.persona,
+                                currentCharacter.prompt,
+                                currentCharacter.systemPrompt,
+                                currentCharacter.speechStyle,
+                                currentCharacter.relationship
+                            ].filter(function (part) { return typeof part === 'string' && part.trim(); });
+                            return {
+                                characterName: String(currentCharacter.name || currentCharacter.nickname || ''),
+                                personaText: personaParts.join('\n').slice(0, 5000),
+                                recentMessages: recent.slice(-12),
+                                lastUserMessageAt: latestUser.time
+                            };
+                        })(list);
                         window.MaomaoCloud.noteCharacterContextChanged(
                             String(currentCharacter.id || currentRoleId || ''),
-                            list
+                            list,
+                            cloudSnapshot
                         ).catch(function (error) {
-                            console.warn('[cloud] 角色上下文版本待同步', error && error.message || error);
+                            console.warn('[cloud] 角色上下文同步待重试', error && error.message || error);
                         });
                     } catch (error) {
-                        console.warn('[cloud] 角色上下文版本待同步', error && error.message || error);
+                        console.warn('[cloud] 角色上下文同步待重试', error && error.message || error);
                     }
                 }
                 return true;
@@ -2969,77 +3029,131 @@
         // 云端主动消息进入现有聊天历史：只接收纯文字，serverMessageId 是本地幂等键。
         // 本地写入并读回验证成功之前，绝不向云端 ACK。
         async function persistCloudOutboundMessage(payload, envelope) {
-            if (document.visibilityState === 'hidden') return false;
-            if (isGroupChat || !payload || typeof payload !== 'object' || Array.isArray(payload)) return false;
-            var serverMessageId = String(envelope && envelope.serverMessageId || '');
-            if (!/^[A-Za-z0-9_-]{16,128}$/.test(serverMessageId)) return false;
+            if (document.visibilityState === 'hidden' || isGroupChat) return false;
+            var payloads = Array.isArray(payload) ? payload : [payload];
+            var envelopes = Array.isArray(envelope) ? envelope : [envelope];
+            if (!payloads.length || payloads.length > 4 || envelopes.length !== payloads.length) return false;
 
-            // 第一阶段仅开放纯文字角色消息；未知载荷类型继续留在云端待处理。
-            var payloadType = String(payload.type || 'text');
-            if (payloadType !== 'text' || typeof payload.text !== 'string') return false;
-            var messageText = payload.text.trim();
-            if (!messageText || messageText.length > 10000) return false;
+            var firstGroupId = String(envelopes[0] && envelopes[0].groupId || '');
+            if (firstGroupId && payloads.length !== Number(envelopes[0].groupCount)) return false;
+            var prepared = [];
+            for (var index = 0; index < payloads.length; index += 1) {
+                var itemPayload = payloads[index];
+                var itemEnvelope = envelopes[index];
+                var serverMessageId = String(itemEnvelope && itemEnvelope.serverMessageId || '');
+                if (!/^[A-Za-z0-9_-]{16,128}$/.test(serverMessageId) ||
+                    !itemPayload || typeof itemPayload !== 'object' || Array.isArray(itemPayload) ||
+                    String(itemPayload.type || 'text') !== 'text' ||
+                    typeof itemPayload.text !== 'string') return false;
+                if (firstGroupId && (
+                    String(itemEnvelope.groupId || '') !== firstGroupId ||
+                    Number(itemEnvelope.groupCount) !== payloads.length ||
+                    Number(itemEnvelope.groupIndex) !== index + 1
+                )) return false;
+                var messageText = itemPayload.text.trim();
+                if (!messageText || messageText.length > 10000) return false;
+                prepared.push({
+                    serverMessageId: serverMessageId,
+                    text: messageText,
+                    createdAt: Number(itemEnvelope.createdAt)
+                });
+            }
 
             var history = loadMessages();
             if (!Array.isArray(history)) return false;
-            var existingState = inspectCloudOutboundHistory(history, serverMessageId, messageText);
-            // 本地已经保存但上一次 ACK 断网：只有角色和完整正文都匹配时才补 ACK。
-            if (existingState === 'match') return true;
-            // 同一 ID 对应的本地行若损坏/冲突，不能追加重复气泡，也不能误 ACK。
-            if (existingState === 'conflict') return false;
-
-            var createdAt = Number(envelope && envelope.createdAt);
-            if (!Number.isSafeInteger(createdAt) || createdAt <= 0) createdAt = Date.now();
-            var message = {
-                role: 'assistant',
-                text: messageText,
-                time: createdAt,
-                mid: 'cloud_' + serverMessageId,
-                serverMessageId: serverMessageId,
-                source: 'cloud_autonomous'
-            };
-            ensureMid(message);
+            var toAppend = [];
+            for (var checkIndex = 0; checkIndex < prepared.length; checkIndex += 1) {
+                var entry = prepared[checkIndex];
+                var existingState = inspectCloudOutboundHistory(history, entry.serverMessageId, entry.text);
+                if (existingState === 'match') continue;
+                if (existingState === 'conflict') return false;
+                if (existingState === 'missing') {
+                    var createdAt = Number.isSafeInteger(entry.createdAt) && entry.createdAt > 0
+                        ? entry.createdAt : Date.now();
+                    var message = {
+                        role: 'assistant',
+                        text: entry.text,
+                        time: createdAt,
+                        mid: 'cloud_' + entry.serverMessageId,
+                        serverMessageId: entry.serverMessageId,
+                        source: 'cloud_autonomous'
+                    };
+                    ensureMid(message);
+                    toAppend.push(message);
+                }
+            }
+            if (!toAppend.length) return true;
 
             var wasNearBottom = !chatMessages ||
                 (chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight <= 120);
-            history.push(message);
-            if (!saveMessages(history)) {
-                history.pop();
-                return false;
-            }
+            // Write all bubbles in a group in one history transaction before
+            // rendering or acknowledging any individual cloud row.
+            toAppend.forEach(function (message) { history.push(message); });
+            if (!saveMessages(history)) return false;
 
-            // 只有已经通过 PhoneStorage/localStorage 写后读回验证才刷新现有聊天 UI。
-            if (_vl) {
-                vlRefresh();
-                if (wasNearBottom) scrollToBottom(true);
-            } else {
-                // History is durable before the serialized visual pacing begins.
-                var appendIndex = chatMessages.querySelectorAll('.msg-row[data-idx]').length;
-                await appendAiMessageWithPacing(message, appendIndex, { scrollToBottom: wasNearBottom });
-            }
-
-            // 气泡呈现期间其他标签页可能写回较旧历史。ACK 前再读一次，
-            // 若云端消息被覆盖，则合并回最新历史并再次写后读回验证。
-            var postRenderHistory = loadMessages();
-            var stillSaved = Array.isArray(postRenderHistory) && postRenderHistory.some(function (item) {
-                return item && String(item.serverMessageId || '') === serverMessageId;
-            });
-            if (!stillSaved) {
-                if (!Array.isArray(postRenderHistory)) return false;
-                postRenderHistory.push(message);
-                if (!saveMessages(postRenderHistory)) return false;
-                var confirmedHistory = loadMessages();
-                var confirmed = Array.isArray(confirmedHistory) && confirmedHistory.some(function (item) {
-                    return item && String(item.serverMessageId || '') === serverMessageId;
+            function allMessagesAreSaved(candidateHistory) {
+                return prepared.every(function (entry) {
+                    return inspectCloudOutboundHistory(candidateHistory, entry.serverMessageId, entry.text) === 'match';
                 });
-                if (!confirmed) return false;
+            }
+            var firstReadBack = loadMessages();
+            if (!allMessagesAreSaved(firstReadBack)) return false;
+
+            // Render each independent bubble, preserving the authored spacing
+            // and normal chat pacing after the complete group is durable.
+            try {
+                if (_vl) {
+                    vlRefresh();
+                    if (wasNearBottom) scrollToBottom(true);
+                } else if (chatMessages) {
+                    var appendIndex = chatMessages.querySelectorAll('.msg-row[data-idx]').length;
+                    for (var renderIndex = 0; renderIndex < toAppend.length; renderIndex += 1) {
+                        await appendAiMessageWithPacing(
+                            toAppend[renderIndex],
+                            appendIndex + renderIndex,
+                            { scrollToBottom: wasNearBottom && renderIndex === toAppend.length - 1 }
+                        );
+                    }
+                }
+            } catch (renderError) {
+                console.warn('[cloud] 多气泡已写入本地，但界面刷新暂未完成', renderError && renderError.message || renderError);
             }
 
-            // 只广播消息 ID，不广播消息正文；其他标签页从本地持久化历史重新读取。
+            // A sibling tab may race the renderer with an older history write.
+            // Merge the whole missing subset once, verify all IDs, then ACK all.
+            var postRenderHistory = loadMessages();
+            if (!Array.isArray(postRenderHistory)) return false;
+            var repair = [];
+            for (var repairIndex = 0; repairIndex < prepared.length; repairIndex += 1) {
+                var repairEntry = prepared[repairIndex];
+                var repairState = inspectCloudOutboundHistory(
+                    postRenderHistory, repairEntry.serverMessageId, repairEntry.text
+                );
+                if (repairState === 'conflict') return false;
+                if (repairState === 'missing') {
+                    var repairMessage = toAppend.find(function (item) {
+                        return item.serverMessageId === repairEntry.serverMessageId;
+                    });
+                    if (!repairMessage) return false;
+                    repair.push(repairMessage);
+                }
+            }
+            if (repair.length) {
+                repair.forEach(function (message) { postRenderHistory.push(message); });
+                if (!saveMessages(postRenderHistory)) return false;
+            }
+            var confirmedHistory = loadMessages();
+            if (!allMessagesAreSaved(confirmedHistory)) return false;
+
+            // Broadcast identifiers only. Other tabs reread the already saved
+            // full group from local storage; chat text never enters the notice.
             try {
                 localStorage.setItem(
                     'cloud_outbound_notice_v1:' + String(currentCharacter.id || currentRoleId),
-                    JSON.stringify({ serverMessageId: serverMessageId, at: Date.now() })
+                    JSON.stringify({
+                        serverMessageIds: prepared.map(function (entry) { return entry.serverMessageId; }),
+                        at: Date.now()
+                    })
                 );
             } catch (error) {}
             return true;
@@ -4215,11 +4329,6 @@
             }
         }
 
-        // 多气泡回复逐条呈现。消息已完整落库；队列只控制当前页面显示节奏。
-        // 普通 AI 回复与云端主动消息共用队列，避免多条消息的气泡动画互相取消。
-        // 全量重绘只递增 generation，即可取消当前及排队中的旧节点。
-        let aiBubblePacingRunId = 0;
-        let aiBubblePacingQueue = Promise.resolve();
         // 单条 AI 回复、逐条落库的多气泡回复、云端主动消息共用同一呈现队列。
         // 全量重绘会递增 generation，从而取消还未呈现的旧节点。
         let aiBubblePacingRunId = 0;
@@ -7782,6 +7891,51 @@
         syncChatThemeLayout();
 
         renderAllMessages();
+
+        // Empty chats contain one local welcome placeholder for the UI. It is
+        // not a user conversation and must not be uploaded as fabricated history.
+        function queueCloudInitialContactForEmptyChat() {
+            if (isGroupChat || !currentCharacter || !currentCharacter.id ||
+                !window.MaomaoCloud ||
+                typeof window.MaomaoCloud.noteCharacterContextChanged !== 'function') return;
+            var history = loadMessages();
+            var untouchedWelcome = Array.isArray(history) && history.length === 1 &&
+                history[0] && history[0].role === 'received' &&
+                String(history[0].text || history[0].content || '') ===
+                    ('你好，我是' + String(contactName || '') + '！很高兴和你聊天。');
+            var genuinelyEmpty = Array.isArray(history) && history.length === 0;
+            if (!untouchedWelcome && !genuinelyEmpty) return;
+
+            var personaParts = [
+                currentCharacter.persona,
+                currentCharacter.prompt,
+                currentCharacter.systemPrompt,
+                currentCharacter.speechStyle,
+                currentCharacter.relationship
+            ].filter(function (part) { return typeof part === 'string' && part.trim(); });
+            var snapshot = {
+                characterName: String(currentCharacter.name || currentCharacter.nickname || contactName || ''),
+                personaText: personaParts.join('\n').slice(0, 5000),
+                recentMessages: [],
+                lastUserMessageAt: 0,
+                initialContact: true
+            };
+            window.MaomaoCloud.noteCharacterContextChanged(
+                String(currentCharacter.id || currentRoleId || ''),
+                history,
+                snapshot
+            ).then(function (result) {
+                if (result && result.payload && result.payload.queueReason &&
+                    result.payload.queueReason !== 'queued_initial_contact' &&
+                    result.payload.queueReason !== 'initial_contact_already_queued' &&
+                    result.payload.queueReason !== 'initial_contact_already_used') {
+                    console.info('[cloud] 首次主动联系暂未排队：', result.payload.queueReason);
+                }
+            }).catch(function (error) {
+                console.warn('[cloud] 首次主动联系上下文同步待重试', error && error.message || error);
+            });
+        }
+        queueCloudInitialContactForEmptyChat();
         highlightMessageFromUrl();
 
         // 美化中心保存后，页面从返回缓存恢复时重新读取最新配置。

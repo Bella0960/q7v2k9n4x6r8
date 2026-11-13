@@ -18,6 +18,8 @@
   var DEVICE_STORAGE_KEY = 'cloud_device_v1';
   var CONTEXT_FINGERPRINT_PREFIX = 'cloud_context_fingerprint_v1:';
   var CONTEXT_PENDING_PREFIX = 'cloud_context_pending_v1:';
+  var CONTEXT_SNAPSHOT_PENDING_PREFIX = 'cloud_context_snapshot_pending_v1:';
+  var contextSharingEnabledCache = null;
   var contextSyncPromises = Object.create(null);
   var activeContextEventIds = Object.create(null);
   var localContextFingerprints = Object.create(null);
@@ -133,6 +135,22 @@
     );
   }
 
+  function pushSupportMessage() {
+    var agent = String(navigator.userAgent || '');
+    var isiOS = /iPad|iPhone|iPod/i.test(agent) ||
+      (/Macintosh/i.test(agent) && typeof navigator.maxTouchPoints === 'number' && navigator.maxTouchPoints > 1);
+    if (isiOS) {
+      var standalone = Boolean(navigator.standalone);
+      try {
+        standalone = standalone || Boolean(global.matchMedia && global.matchMedia('(display-mode: standalone)').matches);
+      } catch (error) {}
+      if (!standalone) return 'iPhone/iPad 请用 Safari 打开并添加到主屏幕，再从桌面图标启动后开启通知';
+      return '此 iOS 环境不支持 Web Push，请确认系统版本及主屏幕应用权限';
+    }
+    if (/Android/i.test(agent)) return '当前安卓浏览器不支持 Web Push，请用最新版 Chrome 或 Edge 打开小手机';
+    return '当前浏览器不支持 Web Push，请使用支持系统通知的浏览器';
+  }
+
   function registerServiceWorker() {
     if (!('serviceWorker' in navigator)) return Promise.reject(new Error('当前环境不支持 Service Worker'));
     return navigator.serviceWorker.register(apiPath('/sw.js'), { updateViaCache: 'none' });
@@ -182,17 +200,25 @@
     }
   }
 
-  async function enablePush(userInitiated, enrollmentToken) {
-    if (!isSupported()) throw new Error('当前浏览器不支持 Web Push');
-    var device = await registerDeviceForCurrentAccount(enrollmentToken);
-
-    if (userInitiated && 'Notification' in global && Notification.permission === 'default') {
+  // The permission prompt must start in the direct click gesture. Doing a
+  // network request first loses transient user activation on some browsers.
+  async function requestPushPermissionFromGesture() {
+    if (!isSupported()) throw new Error(pushSupportMessage());
+    if (Notification.permission === 'default') {
       await Notification.requestPermission();
     }
     if (Notification.permission !== 'granted') {
       throw new Error('通知权限未开启，请在系统或浏览器设置中允许通知');
     }
+  }
 
+  async function enablePush(userInitiated, enrollmentToken) {
+    if (!isSupported()) throw new Error(pushSupportMessage());
+    if (userInitiated) await requestPushPermissionFromGesture();
+    if (Notification.permission !== 'granted') {
+      throw new Error('通知权限未开启，请在系统或浏览器设置中允许通知');
+    }
+    var device = await registerDeviceForCurrentAccount(enrollmentToken);
     var publicKey = await fetchPublicKey();
     var registration = await getRegistration();
     var existing = await registration.pushManager.getSubscription();
@@ -247,6 +273,16 @@
     if (code.length < 32 || code.length > 512) {
       throw new Error('请输入有效的一次性配对码');
     }
+    // Ask while this function is still in the click event. A failed prompt
+    // must not erase a successfully registered device; report both outcomes.
+    var permissionError = null;
+    if (isSupported()) {
+      try {
+        await requestPushPermissionFromGesture();
+      } catch (error) {
+        permissionError = error;
+      }
+    }
     var device = ensureDevice();
     try {
       await registerDevice(device, code);
@@ -264,7 +300,8 @@
       return { deviceRegistered: true, pushSupported: false, pushEnabled: false };
     }
     try {
-      await enablePush(true);
+      if (permissionError) throw permissionError;
+      await enablePush(false);
       return { deviceRegistered: true, pushSupported: true, pushEnabled: true };
     } catch (error) {
       // 配对已成功；推送权限/订阅失败不撤销设备身份。
@@ -311,6 +348,43 @@
   function setGlobalAutonomy(enabled) {
     if (typeof enabled !== 'boolean') return Promise.reject(new Error('enabled 必须是布尔值'));
     return requestDeviceMetadata('/api/autonomy/global', 'PUT', { enabled: enabled });
+  }
+
+  function getContextSharing() {
+    return requestDeviceMetadata('/api/autonomy/context-sharing', 'GET').then(function (payload) {
+      contextSharingEnabledCache = Boolean(payload && payload.enabled);
+      return { enabled: contextSharingEnabledCache };
+    });
+  }
+
+  function setContextSharing(enabled) {
+    if (typeof enabled !== 'boolean') return Promise.reject(new Error('enabled 必须是布尔值'));
+    return requestDeviceMetadata('/api/autonomy/context-sharing', 'PUT', { enabled: enabled }).then(function (payload) {
+      contextSharingEnabledCache = Boolean(payload && payload.enabled);
+      // Re-consent always starts from the next verified local save; never
+      // replay a context snapshot queued under an earlier consent session.
+      clearLocalContextMetadata(CONTEXT_FINGERPRINT_PREFIX);
+      clearLocalContextMetadata(CONTEXT_SNAPSHOT_PENDING_PREFIX);
+      return payload;
+    });
+  }
+
+  function clearLocalContextMetadata(prefix) {
+    try {
+      var keys = [];
+      for (var index = 0; index < localStorage.length; index += 1) {
+        var key = localStorage.key(index);
+        if (key && key.indexOf(prefix) === 0) keys.push(key);
+      }
+      keys.forEach(function (key) { localStorage.removeItem(key); });
+    } catch (error) {}
+    if (prefix === CONTEXT_SNAPSHOT_PENDING_PREFIX || prefix === CONTEXT_FINGERPRINT_PREFIX) {
+      var cache = prefix === CONTEXT_FINGERPRINT_PREFIX
+        ? localContextFingerprints : localContextPendingEvents;
+      Object.keys(cache).forEach(function (key) {
+        if (key.indexOf(prefix) === 0) delete cache[key];
+      });
+    }
   }
 
   function getCharacterAutonomy(characterId) {
@@ -712,15 +786,12 @@
     var receivedDeferred = 0;
     var persistedCount = 0;
     var saved = 0;
+    var groupsSaved = 0;
     var ackDeferred = 0;
     var persistErrors = 0;
     var deferred = 0;
     var pagesProcessed = 0;
 
-    // A stable keyset cursor lets us move past a repeatedly failing envelope.
-    // The cursor is per role + device and survives page reloads. It never ACKs
-    // or deletes failed messages; reaching the end clears it so old failures
-    // are revisited on the next polling cycle.
     while (pagesProcessed < maxPages) {
       var page = await getCharacterOutboundPage(characterId, safeLimit, cursor);
       var messages = page.messages;
@@ -735,41 +806,114 @@
       }
 
       receivedCount += messages.length;
-      for (var index = 0; index < messages.length; index += 1) {
-        var message = messages[index];
-        // Device-received and local-save receipts remain independent.
-        try {
-          await markCharacterOutboundReceived(characterId, message.serverMessageId);
-          receivedMarked += 1;
-        } catch (receiveError) {
-          receivedDeferred += 1;
+      var offset = 0;
+      var blockedByIncompleteGroup = false;
+      while (offset < messages.length) {
+        var first = messages[offset];
+        var groupId = String(first && first.groupId || '');
+        var expectedCount = groupId ? Number(first.groupCount) : 1;
+        if (!Number.isSafeInteger(expectedCount) || expectedCount < 1 || expectedCount > 4) {
+          deferred += 1;
+          blockedByIncompleteGroup = true;
+          break;
         }
 
+        var group = [];
+        var next = offset;
+        var groupKey = groupId || ('single:' + String(first && first.serverMessageId || ''));
+        while (next < messages.length) {
+          var candidate = messages[next];
+          var candidateKey = String(candidate && candidate.groupId || '') ||
+            ('single:' + String(candidate && candidate.serverMessageId || ''));
+          if (candidateKey !== groupKey) break;
+          group.push(candidate);
+          next += 1;
+        }
+        if (group.length !== expectedCount) {
+          // The server over-fetches up to three extra rows so a 1..4 bubble
+          // group is never cut by a page boundary. Do not cursor past a short group.
+          deferred += 1;
+          blockedByIncompleteGroup = true;
+          break;
+        }
+        var validGroup = group.every(function (item, index) {
+          return item && item.serverMessageId &&
+            (!groupId || (
+              String(item.groupId || '') === groupId &&
+              Number(item.groupCount) === expectedCount &&
+              Number(item.groupIndex) === index + 1
+            ));
+        });
+        if (!validGroup) {
+          deferred += 1;
+          blockedByIncompleteGroup = true;
+          break;
+        }
+
+        for (var receivedIndex = 0; receivedIndex < group.length; receivedIndex += 1) {
+          try {
+            await markCharacterOutboundReceived(characterId, group[receivedIndex].serverMessageId);
+            receivedMarked += 1;
+          } catch (receiveError) {
+            receivedDeferred += 1;
+          }
+        }
+
+        var payloads = group.map(function (item) { return item.payload; });
         var persisted = false;
         try {
-          persisted = await persistMessage(message.payload, message);
+          persisted = group.length === 1
+            ? await persistMessage(payloads[0], group[0])
+            : await persistMessage(payloads, group);
         } catch (persistError) {
-          // Keep the cloud row pending, but continue through this page and later pages.
           persistErrors += 1;
           deferred += 1;
+          // A failed local save must not strand later unrelated messages.
+          // The server retains the unacked group for a later cursor reset.
+          offset = next;
           continue;
         }
         if (persisted !== true) {
           deferred += 1;
+          offset = next;
           continue;
         }
-        persistedCount += 1;
+        persistedCount += group.length;
 
-        try {
-          await acknowledgeCharacterOutboundMessage(characterId, message.serverMessageId);
-          saved += 1;
-        } catch (ackError) {
-          // A later scan sees the same serverMessageId and retries ACK without reinserting.
-          ackDeferred += 1;
+        var groupAckOk = true;
+        for (var ackIndex = 0; ackIndex < group.length; ackIndex += 1) {
+          try {
+            await acknowledgeCharacterOutboundMessage(characterId, group[ackIndex].serverMessageId);
+            saved += 1;
+          } catch (ackError) {
+            ackDeferred += 1;
+            groupAckOk = false;
+          }
         }
+        if (!groupAckOk) {
+          // Keep the cursor before this group. The inbox query returns every
+          // row of a partially acknowledged group so all ACKs can be retried.
+          blockedByIncompleteGroup = true;
+          break;
+        }
+
+        groupsSaved += 1;
+        var last = group[group.length - 1];
+        var groupCursor = {
+          createdAt: Number(last.cursorCreatedAt != null ? last.cursorCreatedAt : last.createdAt),
+          id: String(last.cursorId || '')
+        };
+        if (Number.isSafeInteger(groupCursor.createdAt) && groupCursor.createdAt >= 0 &&
+            isValidOutboundCursorId(groupCursor.id)) {
+          cursor = groupCursor;
+          writeOutboundCursor(cursorKey, cursor);
+        }
+        offset = next;
       }
 
       pagesProcessed += 1;
+      if (blockedByIncompleteGroup) break;
+      if (offset !== messages.length) break;
       cursor = page.nextCursor;
       writeOutboundCursor(cursorKey, cursor);
       if (!cursor) break;
@@ -782,6 +926,7 @@
       receivedDeferred: receivedDeferred,
       persisted: persistedCount,
       saved: saved,
+      groupsSaved: groupsSaved,
       ackDeferred: ackDeferred,
       persistErrors: persistErrors,
       deferred: deferred
@@ -795,17 +940,46 @@
     if (contextSyncPromises[key]) return contextSyncPromises[key];
 
     var pendingKey = contextMetadataKey(CONTEXT_PENDING_PREFIX, value);
+    var snapshotPendingKey = contextMetadataKey(CONTEXT_SNAPSHOT_PENDING_PREFIX, value);
     var eventId = readContextMetadata(pendingKey, localContextPendingEvents);
     if (!eventId) return Promise.resolve(null);
 
     activeContextEventIds[key] = eventId;
-    var promise = requestDeviceMetadata(
-      '/api/characters/' + characterPath(value) + '/context-version',
-      'POST',
-      { eventId: eventId }
-    ).then(function (payload) {
+    var pendingSnapshot = readContextMetadata(snapshotPendingKey, localContextPendingEvents);
+    var snapshotPayload = null;
+    if (pendingSnapshot) {
+      try { snapshotPayload = JSON.parse(pendingSnapshot); } catch (error) { snapshotPayload = null; }
+      if (!snapshotPayload || snapshotPayload.eventId !== eventId) snapshotPayload = null;
+    }
+
+    var submit = snapshotPayload
+      ? getContextSharing().then(function (sharing) {
+          if (sharing.enabled) {
+            return requestDeviceMetadata(
+              '/api/characters/' + characterPath(value) + '/context-snapshot',
+              'POST',
+              snapshotPayload
+            );
+          }
+          writeContextMetadata(snapshotPendingKey, null, localContextPendingEvents);
+          return requestDeviceMetadata(
+            '/api/characters/' + characterPath(value) + '/context-version',
+            'POST',
+            { eventId: eventId }
+          );
+        })
+      : requestDeviceMetadata(
+          '/api/characters/' + characterPath(value) + '/context-version',
+          'POST',
+          { eventId: eventId }
+        );
+
+    var promise = submit.then(function (payload) {
       if (readContextMetadata(pendingKey, localContextPendingEvents) === eventId) {
         writeContextMetadata(pendingKey, null, localContextPendingEvents);
+      }
+      if (readContextMetadata(snapshotPendingKey, localContextPendingEvents)) {
+        writeContextMetadata(snapshotPendingKey, null, localContextPendingEvents);
       }
       return payload;
     }).finally(function () {
@@ -820,32 +994,68 @@
     return promise;
   }
 
-  function noteCharacterContextChanged(characterId, history) {
+  function noteCharacterContextChanged(characterId, history, snapshot) {
     var value = String(characterId || '');
     if (!value) return Promise.reject(new Error('角色 ID 无效'));
     var fingerprint = fingerprintCharacterHistory(history);
     if (fingerprint == null) return Promise.resolve({ changed: false });
+    var initialContact = Boolean(snapshot && snapshot.initialContact === true);
 
     var fingerprintKey = contextMetadataKey(CONTEXT_FINGERPRINT_PREFIX, value);
     var pendingKey = contextMetadataKey(CONTEXT_PENDING_PREFIX, value);
-    var previous = readContextMetadata(fingerprintKey, localContextFingerprints);
-    if (previous === fingerprint) {
+    var snapshotPendingKey = contextMetadataKey(CONTEXT_SNAPSHOT_PENDING_PREFIX, value);
+
+    function queueContentFreeVersion() {
+      var previous = readContextMetadata(fingerprintKey, localContextFingerprints);
+      if (previous === fingerprint) {
+        return flushCharacterContextVersion(value).then(function (payload) {
+          return { changed: false, synced: Boolean(payload), payload: payload };
+        });
+      }
+      writeContextMetadata(fingerprintKey, fingerprint, localContextFingerprints);
+      writeContextMetadata(pendingKey, randomBase64Url(18), localContextPendingEvents);
+      writeContextMetadata(snapshotPendingKey, null, localContextPendingEvents);
       return flushCharacterContextVersion(value).then(function (payload) {
-        return { changed: false, synced: Boolean(payload), payload: payload };
+        return { changed: true, synced: Boolean(payload), payload: payload };
       });
     }
 
-    // Every distinct saved-history fingerprint gets a fresh event ID. This
-    // matters across tabs: a token already in flight in another page must not
-    // be reused for a later history change. Offline edits replace the pending
-    // token, so the latest saved state is represented by one eventual bump.
-    var pendingEventId = randomBase64Url(18);
+    if (!snapshot || typeof snapshot !== 'object') return queueContentFreeVersion();
 
-    writeContextMetadata(fingerprintKey, fingerprint, localContextFingerprints);
-    writeContextMetadata(pendingKey, pendingEventId, localContextPendingEvents);
-
-    return flushCharacterContextVersion(value).then(function (payload) {
-      return { changed: true, synced: Boolean(payload), payload: payload };
+    // Never send the snapshot body until the authenticated server confirms
+    // that this account's separate context-sharing switch is enabled.
+    return getContextSharing().then(function (sharing) {
+      if (!sharing.enabled) return queueContentFreeVersion();
+      var previous = readContextMetadata(fingerprintKey, localContextFingerprints);
+      if (previous === fingerprint && !initialContact) {
+        return flushCharacterContextVersion(value).then(function (payload) {
+          return { changed: false, shared: true, synced: Boolean(payload), payload: payload };
+        });
+      }
+      var eventId = randomBase64Url(18);
+      var body = {
+        eventId: eventId,
+        characterName: String(snapshot.characterName || ''),
+        personaText: String(snapshot.personaText || ''),
+        recentMessages: Array.isArray(snapshot.recentMessages) ? snapshot.recentMessages.slice(-12) : [],
+        lastUserMessageAt: Number(snapshot.lastUserMessageAt)
+      };
+      if (initialContact) body.initialContact = true;
+      writeContextMetadata(fingerprintKey, fingerprint, localContextFingerprints);
+      writeContextMetadata(pendingKey, eventId, localContextPendingEvents);
+      writeContextMetadata(snapshotPendingKey, JSON.stringify(body), localContextPendingEvents);
+      return flushCharacterContextVersion(value).then(function (payload) {
+        return { changed: true, shared: true, synced: Boolean(payload), payload: payload };
+      });
+    }).catch(function (error) {
+      // A failed preference read never falls back to uploading content.
+      if (snapshot) {
+        return queueContentFreeVersion().then(function (result) {
+          result.contextSharingCheckFailed = true;
+          return result;
+        });
+      }
+      throw error;
     });
   }
 
@@ -1102,7 +1312,7 @@
       message: ''
     };
     if (!status.supported) {
-      status.message = '当前浏览器不支持 Web Push';
+      status.message = pushSupportMessage();
       return status;
     }
     try {
@@ -1165,6 +1375,20 @@
       subscribed = Boolean(await registration.pushManager.getSubscription());
     }
     setToggle(subscribed);
+    var contextSharingToggle = document.getElementById('cloudContextSharingToggle');
+    if (contextSharingToggle) {
+      contextSharingToggle.disabled = true;
+      contextSharingToggle.checked = false;
+      if (readDevice()) {
+        try {
+          var contextSharing = await getContextSharing();
+          contextSharingToggle.checked = Boolean(contextSharing.enabled);
+          contextSharingToggle.disabled = false;
+        } catch (error) {
+          // Sharing remains disabled when its server state cannot be verified.
+        }
+      }
+    }
     var autonomyToggle = document.getElementById('cloudAutonomyToggle');
     if (autonomyToggle) {
       autonomyToggle.disabled = true;
@@ -1188,6 +1412,7 @@
     var testRow = document.getElementById('cloudTestRow');
     var readinessRow = document.getElementById('cloudReadinessCheck');
     var readinessResult = document.getElementById('cloudReadinessResult');
+    var contextSharingToggle = document.getElementById('cloudContextSharingToggle');
     var revokeRow = document.getElementById('cloudRevokeRow');
     var pairCreateRow = document.getElementById('cloudPairCreateRow');
     var pairCodeInput = document.getElementById('cloudPairCodeInput');
@@ -1208,7 +1433,7 @@
     var roleAway = document.getElementById('cloudRoleAway');
     var roleScheduleSave = document.getElementById('cloudRoleScheduleSave');
     if (!toggle && !testRow && !readinessRow && !revokeRow && !pairCreateRow && !pairConnectButton &&
-        !autonomyToggle && !roleSelect && !roleAutonomySave && !roleScheduleSave) return;
+        !autonomyToggle && !contextSharingToggle && !roleSelect && !roleAutonomySave && !roleScheduleSave) return;
 
     function localCharacters() {
       try {
@@ -1328,6 +1553,25 @@
           setStatusText('保存授权失败：' + (error.message || '未知错误'));
         } finally {
           autonomyToggle.disabled = false;
+        }
+      });
+    }
+
+    if (contextSharingToggle) {
+      contextSharingToggle.addEventListener('change', async function () {
+        var desired = contextSharingToggle.checked;
+        contextSharingToggle.disabled = true;
+        setStatusText(desired ? '正在开启上下文共享…' : '正在关闭并删除云端上下文…');
+        try {
+          await setContextSharing(desired);
+          setStatusText(desired
+            ? '上下文共享已开启；从下一次成功保存聊天记录开始同步有限文字'
+            : '上下文共享已关闭，云端角色快照已删除');
+        } catch (error) {
+          contextSharingToggle.checked = !desired;
+          setStatusText('保存上下文共享设置失败：' + (error.message || '未知错误'));
+        } finally {
+          contextSharingToggle.disabled = false;
         }
       });
     }
@@ -1458,6 +1702,26 @@
               ' / 已作废 ' + Number(ready.activityQueue && ready.activityQueue.superseded || 0) +
               ' / 其他 ' + Number(ready.activityQueue && ready.activityQueue.other || 0) + '）',
             '云端执行器：' + (ready.activityExecutorAvailable ? '已接入' : '尚未接入，任务不会被实际执行'),
+            '服务端模型凭据：' + (ready.serverModelConfigured ? '已配置' : '未配置'),
+            '角色上下文共享：' + (ready.contextSharingEnabled ? '已开启' : '默认关闭'),
+            '云端定时调度：' + (ready.cloudSchedulerRuntimeVerified ? '最近 15 分钟内有运行记录' : '最近 15 分钟内没有运行记录'),
+            '最近一次云端调度：' + (ready.cloudSchedulerLastRunAt ? new Date(ready.cloudSchedulerLastRunAt).toLocaleString() + '（' + String(ready.cloudSchedulerLastRunStatus || '未知') + '）' : '暂无记录'),
+            '真实模型生成验收：' + (ready.cloudModelGenerationVerified ? '最近 30 天内有成功出站记录' : '最近 30 天内没有成功生成记录'),
+            '最近一次真实模型出站：' + (ready.cloudModelLastGeneratedAt ? new Date(ready.cloudModelLastGeneratedAt).toLocaleString() : '暂无记录'),
+            '当前设备 Web Push 服务端回执：' + (ready.cloudPushAcceptanceVerified ? '最近 30 天内有 HTTP 成功接受记录' : '最近 30 天内没有 HTTP 成功接受记录'),
+            '当前设备最近 Push 接受：' + (ready.cloudPushLastAcceptedAt ? new Date(ready.cloudPushLastAcceptedAt).toLocaleString() : '暂无记录'),
+            '当前设备最近 24 小时推送异常：' + (Array.isArray(ready.recentPushReasons) && ready.recentPushReasons.length
+              ? ready.recentPushReasons.map(function (item) {
+                  var labels = {
+                    push_delivery_failed: '推送服务请求失败（按策略重试或终止）',
+                    subscription_gone: '推送订阅已被服务端判定失效',
+                    subscription_unavailable_before_send: '发送前订阅已撤销或失效',
+                    delivery_lease_lost: '投递租约已过期或被其他执行者接管'
+                  };
+                  return (labels[item.reasonCode] || item.reasonCode) + ' × ' + Number(item.count || 0);
+                }).join('、')
+              : '暂无记录'),
+            '说明：服务端接受不等于系统已显示通知；Android 锁屏横幅仍需真机验收。',
             '最近 24 小时调度阻塞原因：' + (Array.isArray(ready.recentSchedulerReasons) && ready.recentSchedulerReasons.length
               ? ready.recentSchedulerReasons.map(function (item) {
                   var labels = {
@@ -1487,12 +1751,41 @@
               : '暂无记录'),
             '角色聊天版本计数：' + (ready.contextVersionReady ? '已有记录' : '尚未记录'),
             '已跟踪角色数：' + Number(ready.contextVersionTrackedRoles || 0),
-            'AI 主动消息生成：' + (ready.autonomousMessageGenerationReady ? '已就绪' : '未就绪'),
+            '主动联系/推送未完成项：' + (Array.isArray(ready.autonomyExecutionBlockers) && ready.autonomyExecutionBlockers.concat(Array.isArray(ready.pushDeliveryBlockers) ? ready.pushDeliveryBlockers : []).length
+              ? ready.autonomyExecutionBlockers.concat(Array.isArray(ready.pushDeliveryBlockers) ? ready.pushDeliveryBlockers : []).map(function (reason) {
+                  var labels = {
+                    web_push_keys_not_configured: '未配置 Web Push 密钥',
+                    current_device_push_subscription_missing: '当前设备没有有效推送订阅',
+                    activity_executor_config_missing: '云端活动执行参数缺失',
+                    server_model_credentials_missing: '未配置服务端模型凭据',
+                    global_autonomy_not_enabled: '账号级主动联系总开关未开启',
+                    context_sharing_not_enabled: '尚未同意云端上下文共享',
+                    context_version_unavailable: '尚无可信聊天上下文版本',
+                    cloud_model_scheduler_runtime_not_verified: '最近 15 分钟没有云端调度运行记录',
+                    cloud_model_generation_not_verified: '最近 30 天没有成功的模型出站入库记录',
+                    cloud_push_provider_acceptance_not_verified: '当前设备最近 30 天没有 Web Push 服务端成功接受回执'
+                  };
+                  return labels[reason] || reason;
+                }).join('；')
+              : '暂无'),
+            '云端主动生成：' + (ready.autonomousMessageGenerationReady ? '已通过近期运行验收' : '未就绪'),
+            '当前设备推送：' + (ready.pushDeliveryReady ? '已通过近期服务端接受验收' : '未就绪'),
+            '主动联系＋推送闭环：' + (ready.autonomousContactAndPushReady ? '已就绪' : '未完成'),
             '',
             ready.note || '此检查只读取配置与匿名队列汇总，不会发送通知。'
           ];
           if (readinessResult) readinessResult.textContent = lines.join('\n');
-          setStatusText(ready.testPushReady ? '云端推送配置已具备测试条件' : '云端仍有配置未完成');
+          setStatusText(ready.autonomousContactAndPushReady
+            ? '主动联系与当前设备推送均已通过近期验收'
+            : ready.autonomousMessageGenerationReady && ready.pushDeliveryReady
+              ? '云端主动生成与当前设备推送已通过独立验收'
+              : ready.autonomousMessageGenerationReady && ready.testPushReady
+                ? '云端主动生成已就绪；推送通道可测试，但近期接受回执尚未通过'
+                : ready.autonomousMessageGenerationReady
+                  ? '云端主动生成已就绪；当前设备推送仍有配置或验收项目未完成'
+                  : ready.testPushReady
+                    ? '当前设备推送可进行测试；云端主动生成仍有配置或运行验收项目未完成'
+                    : '云端仍有配置未完成');
         } catch (error) {
           if (readinessResult) readinessResult.textContent = '检查失败：' + (error.message || '未知错误');
           setStatusText('读取云端准备情况失败');
@@ -1565,7 +1858,7 @@
           if (pairCodeInput) pairCodeInput.value = '';
           setStatusText(connection.pushEnabled
             ? '设备已配对，推送订阅已连接'
-            : '设备已配对；当前浏览器不支持 Web Push');
+            : '设备已配对，但' + pushSupportMessage());
           await refreshSettings();
           populateLocalCharacters();
         } catch (error) {
@@ -1598,7 +1891,7 @@
     var supported = isSupported();
     if (!supported) {
       setToggle(false);
-      setStatusText('当前浏览器不支持 Web Push');
+      setStatusText(pushSupportMessage());
       // Web Push 不可用不应阻止设备配对状态与自主活动元数据读取。
       refreshSettings();
       return;
@@ -1620,6 +1913,8 @@
     getCharacterSchedule: getCharacterSchedule,
     setCharacterSchedule: setCharacterSchedule,
     getCharacterContextVersion: getCharacterContextVersion,
+    getContextSharing: getContextSharing,
+    setContextSharing: setContextSharing,
     enqueueAutonomyActivity: enqueueAutonomyActivity,
     claimAutonomyActivity: claimAutonomyActivity,
     completeAutonomyActivity: completeAutonomyActivity,

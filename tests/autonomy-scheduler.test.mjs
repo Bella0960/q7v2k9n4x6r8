@@ -71,7 +71,8 @@ test('到期判定：未到点、到期边界、租约未过期与终态', () =>
   assert.deepEqual(evaluateTask(waiting, { now: NOW }), { due: false, reason: REASON_CODES.NOT_DUE });
   assert.deepEqual(evaluateTask({ ...waiting, scheduled_at: NOW }, { now: NOW }), {
     due: true,
-    reason: REASON_CODES.CLAIMED
+    reason: REASON_CODES.CLAIMED,
+    reclaimingExpiredRun: false
   });
   assert.deepEqual(
     evaluateTask({ ...waiting, locked_until: NOW + 1 }, { now: NOW }),
@@ -79,7 +80,7 @@ test('到期判定：未到点、到期边界、租约未过期与终态', () =>
   );
   assert.deepEqual(
     evaluateTask({ ...waiting, scheduled_at: NOW, locked_until: NOW }, { now: NOW }),
-    { due: true, reason: REASON_CODES.CLAIMED }
+    { due: true, reason: REASON_CODES.CLAIMED, reclaimingExpiredRun: false }
   );
   assert.deepEqual(
     evaluateTask({ ...waiting, status: 'running' }, { now: NOW }),
@@ -95,6 +96,7 @@ test('重试次数耗尽后不再到期', () => {
   const task = { id: 'a', status: 'retry', scheduled_at: NOW, attempt_count: 3, max_attempts: 3 };
   assert.deepEqual(evaluateTask(task, { now: NOW }), {
     due: false,
+    terminal: true,
     reason: REASON_CODES.RETRY_EXHAUSTED
   });
 });
@@ -250,7 +252,7 @@ test('失败后按退避进入 retry，耗尽后进入 failed', () => {
     expectedAttemptCount: 1,
     expectedStatus: 'retry',
     owner: 'cloud',
-    leaseUntil: NOW + CONFIG.leaseMs,
+    leaseUntil: NOW + 60_000 + CONFIG.leaseMs,
     now: NOW + 60_000
   });
   const exhausted = nextRetryAt({
@@ -807,6 +809,8 @@ test('runTick 真实调用 scheduler gate；仅合成且合格的同版本任务
   });
   enqueue(store, {
     id: 'act_gate_integration',
+    scheduledAt: GATE_NOW,
+    now: GATE_NOW,
     kind: 'contact',
     payload: { contextVersion: 7, synthetic: true }
   });
@@ -840,6 +844,8 @@ test('runTick 将 context version 变化的任务标记 superseded，不认领',
   });
   enqueue(store, {
     id: 'act_gate_stale',
+    scheduledAt: GATE_NOW,
+    now: GATE_NOW,
     kind: 'contact',
     payload: { contextVersion: 7, synthetic: true }
   });
@@ -1048,6 +1054,9 @@ test('真实 SQLite 角色上下文版本接入 gate：同版本允许、旧版�
   assert.equal(stale.supersede, true);
   assert.equal(stale.reasonCode, REASON_CODES.STALE_CONTEXT);
 
+  store.setCharacterSchedule('owner', 'character-b', 'UTC', {
+    active: [{ startMinute: 0, endMinute: 1440 }], busy: [], asleep: []
+  }, GATE_NOW);
   const untrackedRole = gate(contactTask({
     character_id: 'character-b',
     payload_json: JSON.stringify({ contextVersion: 1 })
@@ -1268,6 +1277,8 @@ test('全局维护可从不可变暂存结果恢复收件箱，且不会恢复�
     now: NOW
   });
 
+  const originalEnqueue = store.enqueueOutboundMessage.bind(store);
+  store.enqueueOutboundMessage = () => ({ inserted: false, unavailable: true });
   const prepareStaged = (id, deviceId, characterId, messageText) => {
     const queued = store.enqueueActivity({
       id,
@@ -1298,7 +1309,9 @@ test('全局维护可从不可变暂存结果恢复收件箱，且不会恢复�
       dedupeKey: 'autonomy:' + id + ':1',
       payload: { type: 'text', text: messageText }
     });
-    assert.equal(staged.completed, true);
+    assert.equal(staged, null);
+    assert.equal(store.getActivity(id).status, 'completed');
+    assert.equal(JSON.parse(store.getActivity(id).result_json).text, messageText);
   };
 
   prepareStaged('act_maintenance_recovery_01', 'device_maintenance_123', 'char-maintenance',
@@ -1306,10 +1319,16 @@ test('全局维护可从不可变暂存结果恢复收件箱，且不会恢复�
   prepareStaged('act_revoked_recovery_01', 'device_revoked_456', 'char-revoked',
     '撤销设备的消息不得重新出站。');
 
+  assert.equal(query('SELECT COUNT(*) AS total FROM outbound_messages')[0].total, 0);
+  store.enqueueOutboundMessage = originalEnqueue;
   store.revokeDevice('device_revoked_456', NOW + 2);
   const recovery = store.repairAllStagedActivityOutboxes({ now: NOW + 3, limit: 20 });
   assert.deepEqual(recovery, { scanned: 1, repaired: 1, deferred: 0 });
   assert.equal(query('SELECT COUNT(*) AS total FROM outbound_messages')[0].total, 1);
   assert.equal(store.getOutboundMessage('autonomy_act_maintenance_recovery_01_1').server_message_id,
     'autonomy_act_maintenance_recovery_01_1');
+  assert.equal(store.getOutboundMessage('autonomy_act_revoked_recovery_01_1'), null);
+  assert.deepEqual(store.repairAllStagedActivityOutboxes({ now: NOW + 4, limit: 20 }),
+    { scanned: 0, repaired: 0, deferred: 0 });
 });
+
