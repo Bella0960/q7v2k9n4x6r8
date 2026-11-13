@@ -18,7 +18,8 @@ export function auditProductionAccountReadiness({ production, preview, secrets, 
   if (mapping.length !== 1 || typeof hostname !== 'string' || !hostname) {
     failures.push('PRODUCTION_DOMAIN_MAPPING_NOT_UNIQUE');
   } else if (mapping[0].service !== PRODUCTION_SCRIPT ||
-             mapping[0].environment !== 'production') {
+             mapping[0].environment !== 'production' ||
+             mapping[0].enabled !== true) {
     failures.push('PRODUCTION_DOMAIN_TARGET_MISMATCH');
   }
   const prodBindings = Array.isArray(production?.bindings) ? production.bindings : [];
