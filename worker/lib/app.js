@@ -459,7 +459,7 @@ export async function dispatchPendingOutboundPushes({
   return summary;
 }
 
-export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl = fetch }) {
+export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl = fetch, storage = null }) {
   const accountAuth = createAccountAuth({ store, env, now });
   const maoSocial = createMaoSocial({ store, accountAuth, env, now });
 
@@ -2007,6 +2007,23 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       await assertAccountPageContext(request, path);
       const accountResponse = await accountAuth.handle(request, path, method);
       if (accountResponse) return accountResponse;
+      // PITR is a limited 30-day safety net for this *same* Durable Object.
+      // A bookmark cannot copy a database. Never expose restoration as a
+      // browser operation: onNextSessionRestoreBookmark is destructive.
+      if (path === '/api/admin/data-protection/bookmark' && method === 'GET') {
+        const actor = await accountAuth.getAuthenticatedAccount(request);
+        if (!actor || actor.role !== 'super_admin' || actor.status !== 'active') {
+          throw new ApiError(403, 'ADMIN_ONLY', '仅有效管理员可读取数据库恢复书签');
+        }
+        if (typeof storage?.getCurrentBookmark !== 'function') {
+          throw new ApiError(503, 'PITR_UNAVAILABLE', '此数据库环境暂不支持时间点恢复书签');
+        }
+        const bookmark = await storage.getCurrentBookmark();
+        if (typeof bookmark !== 'string' || !/^[0-9A-Za-z-]{16,256}$/.test(bookmark)) {
+          throw new ApiError(503, 'PITR_BOOKMARK_INVALID', '数据库未能生成有效恢复书签');
+        }
+        return ok({ bookmark, createdAt: now(), retentionDays: 30, scope: 'same-durable-object' });
+      }
       // Same MAO account, cookie and durable object; never legacy D1 auth.
       const socialResponse = await maoSocial.handle(request, path, method);
       if (socialResponse) return socialResponse;
