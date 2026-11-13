@@ -101,30 +101,51 @@
 
   /* 弹出菜单：白色背景，小巧精致 */
   .wechat-menu {
-    position: absolute;
-    background: #ffffff;
-    border-radius: 10px;
-    padding: 4px 0;
-    z-index: 100;
-    min-width: 110px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+    position: fixed;
+    background: #fff;
+    border: 1px solid rgba(17,17,17,.055);
+    border-radius: 15px;
+    padding: 6px;
+    z-index: 120;
+    width: 170px;
+    box-shadow: 0 10px 36px rgba(0,0,0,.105);
   }
   .wechat-menu .menu-item {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 7px 12px;
-    color: #111;
+    gap: 11px;
+    width: 100%;
+    min-height: 41px;
+    border: none;
+    border-radius: 9px;
+    padding: 0 11px;
+    background: transparent;
+    color: #252525;
+    font: inherit;
     font-size: 12px;
+    font-weight: 400;
+    text-align: left;
     cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
   }
-  .wechat-menu .menu-item:hover {
-    background: #f5f5f5;
-  }
+  .wechat-menu .menu-item:hover,
+  .wechat-menu .menu-item:focus-visible { background: #f5f5f6; outline: none; }
+  .wechat-menu .menu-item:active { background: #eeeef0; }
   .wechat-menu .menu-icon {
-    font-size: 13px;
-    width: 16px;
-    text-align: center;
+    display: grid;
+    place-items: center;
+    width: 17px;
+    height: 17px;
+    flex: 0 0 17px;
+  }
+  .wechat-menu .menu-icon svg {
+    width: 17px;
+    height: 17px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.45;
+    stroke-linecap: round;
+    stroke-linejoin: round;
   }
 
   /* 只有顶部封面区域响应点击上传，透明卡片区域不抢交互 */
@@ -782,15 +803,23 @@
       <div class="cover-click-area" id="coverClickArea" aria-label="更换封面"></div>
 
       <!-- 右上角弹出菜单 -->
-      <div class="wechat-menu" id="wechatMenu" style="display:none;">
-        <div class="menu-item" id="menuBgToggle">
-          <span class="menu-icon">◐</span>
+      <div class="wechat-menu" id="wechatMenu" role="menu" aria-label="聊天操作" style="display:none;">
+        <button class="menu-item" type="button" role="menuitem" id="menuBgToggle">
+          <span class="menu-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="M12 3.5v17M6.5 15l3-3 2 2"/></svg></span>
           <span class="menu-text">切换背景</span>
-        </div>
-        <div class="menu-item" id="menuGroup">
-          <span class="menu-icon">＋</span>
+        </button>
+        <button class="menu-item" type="button" role="menuitem" id="menuFriend">
+          <span class="menu-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.3"/><path d="M3.5 20v-2c0-3 2.4-4.8 5.5-4.8 1.6 0 2.9.5 3.8 1.5M18 11v8M14 15h8"/></svg></span>
+          <span class="menu-text">添加好友</span>
+        </button>
+        <button class="menu-item" type="button" role="menuitem" id="menuGroup">
+          <span class="menu-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="8" cy="8" r="3"/><path d="M2.5 19v-1.5c0-3 2.2-4.4 5.5-4.4 2.8 0 4.3 1.2 4.8 3M18 5v8M14 9h8M16 19h6"/></svg></span>
           <span class="menu-text">添加群聊</span>
-        </div>
+        </button>
+        <button class="menu-item" type="button" role="menuitem" id="menuScan">
+          <span class="menu-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4M7 12h10"/></svg></span>
+          <span class="menu-text">扫一扫</span>
+        </button>
       </div>
       <div class="wechat-home-header">
         <h1>微信</h1>
@@ -845,7 +874,7 @@
             </div>
 
             <div class="music-right">
-              <button class="group-entry-btn" id="groupEntryBtn" type="button" aria-label="创建群聊">
+              <button class="group-entry-btn" id="groupEntryBtn" type="button" aria-label="更多操作：添加好友、建群与扫一扫">
                 <svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
               </button>
               <div class="sound-wave playing" id="soundWave">
@@ -1045,10 +1074,32 @@
 
     // ===== 右上角弹出菜单 + 背景模式切换 =====
     (function () {
-      var menuBtn = document.getElementById('wechatGroupEntryBtn');
       var menu = document.getElementById('wechatMenu');
       var coverBox = document.getElementById('coverBox');
-      if (!menuBtn || !menu) return;
+      var togglers = ['groupEntryBtn','wechatGroupEntryBtn','silverGroupEntryBtn']
+        .map(function (id) { return document.getElementById(id); }).filter(Boolean);
+      if (!menu || !togglers.length) return;
+
+      function closeMenu() {
+        menu.style.display = 'none';
+        togglers.forEach(function (button) { button.setAttribute('aria-expanded', 'false'); });
+      }
+      function toggleMenu(e) {
+        e.stopPropagation();
+        var btn = e.currentTarget;
+        if (menu.style.display !== 'none' && menu.style.display !== '') {
+          closeMenu();
+          return;
+        }
+        menu.style.display = 'block';
+        var bounds = document.querySelector('.phone-mockup').getBoundingClientRect();
+        var rect = btn.getBoundingClientRect();
+        var width = menu.offsetWidth;
+        var height = menu.offsetHeight;
+        menu.style.left = Math.max(bounds.left + 10, Math.min(rect.right - width, bounds.right - width - 10)) + 'px';
+        menu.style.top = Math.max(bounds.top + 8, Math.min(rect.bottom + 8, bounds.bottom - height - 10)) + 'px';
+        togglers.forEach(function (button) { button.setAttribute('aria-expanded', button === btn ? 'true' : 'false'); });
+      }
 
       // 读取保存的背景模式
       var saved = localStorage.getItem('chat_bg_mode') || 'gradient';
@@ -1062,19 +1113,20 @@
         }
       }
 
-      // 点击 + 号弹出菜单
-      menuBtn.addEventListener('click', function (e) {
-        e.stopPropagation();
-        menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+      // The heart on the music card and both theme-specific plus buttons
+      // share exactly one restrained menu, instead of adding another tile.
+      togglers.forEach(function (button) {
+        button.setAttribute('aria-haspopup', 'menu');
+        button.setAttribute('aria-expanded', 'false');
+        button.addEventListener('click', toggleMenu);
       });
-
-      // 点外面关闭菜单
-      document.addEventListener('click', function () {
-        menu.style.display = 'none';
+      document.addEventListener('click', closeMenu);
+      document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') closeMenu();
       });
-      menu.addEventListener('click', function (e) {
-        e.stopPropagation();
-      });
+      window.addEventListener('resize', closeMenu);
+      document.querySelector('.main-stage').addEventListener('scroll', closeMenu, { passive:true });
+      menu.addEventListener('click', function (event) { event.stopPropagation(); });
 
       // 菜单选项：切换背景
       document.getElementById('menuBgToggle').addEventListener('click', function () {
@@ -1082,13 +1134,21 @@
         var next = current === 'gradient' ? 'transparent' : 'gradient';
         localStorage.setItem('chat_bg_mode', next);
         applyMode(next);
-        menu.style.display = 'none';
+        closeMenu();
       });
-
-      // 菜单选项：添加群聊
+      // Keep the existing friend interface and group creator; don't duplicate
+      // either feature in the chat list or on the contacts screen.
+      document.getElementById('menuFriend').addEventListener('click', function () {
+        closeMenu();
+        window.location.href = '../contacts/real-friends.html';
+      });
       document.getElementById('menuGroup').addEventListener('click', function () {
-        menu.style.display = 'none';
-        document.getElementById('groupEntryBtn').click();
+        closeMenu();
+        document.dispatchEvent(new Event('maomao:open-chat-group'));
+      });
+      document.getElementById('menuScan').addEventListener('click', function () {
+        closeMenu();
+        window.location.href = '../contacts/scan-friend.html';
       });
     })();
 
@@ -1536,19 +1596,7 @@
         backdrop.classList.remove('show');
       }
 
-      document.getElementById('groupEntryBtn').addEventListener('click', function(e) {
-        e.stopPropagation();
-        var menu = document.getElementById('wechatMenu');
-        var btnRect = e.currentTarget.getBoundingClientRect();
-        var parentRect = menu.parentElement.getBoundingClientRect();
-
-        // 定位到按钮正下方
-        menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
-        if (menu.style.display === 'block') {
-          menu.style.left = (btnRect.left - parentRect.left - 50) + 'px';
-          menu.style.top = (btnRect.bottom - parentRect.top + 8) + 'px';
-        }
-      });
+      document.addEventListener('maomao:open-chat-group', openModal);
       document.getElementById('groupModalCancel').addEventListener('click', closeModal);
       backdrop.addEventListener('click', function(e) {
         if (e.target === backdrop) closeModal();
