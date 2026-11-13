@@ -72,3 +72,31 @@ The following changes are made **only in the existing PR #265 development branch
 The currently deployed `mao` and `curly-dream-324c` Workers both expose only `ASSETS` bindings. `app.mao520.com` still maps to `curly-dream-324c`. `mao-auth-preview` does have `CLOUD_DB`, but this is **the wrong November 10 founder** and cannot be used for the new login authority. This confirms that PR code changes alone do not constitute a safe production cutover.
 
 **Release status: blocked pending protected migration, full tests and phone acceptance.**
+
+## 2026-11-13 protection implementation: schema inventory only, full backup still required
+
+**Original owner-selected storage is untouched.** A Cloudflare Durable Object SQL read-only audit of `mao_qa-phone-founder-001-keyreset-20261111_CloudDatabase` found:
+
+- `PRAGMA quick_check`: `ok` (this checks SQLite structural consistency, not recoverability).
+- 29 user-defined SQL tables, 77 non-internal table/index definitions, 56 current SQL rows; account/friend/message/media counts are preserved in the private inventory.
+- Every original DO query returned `rows_written=0`.
+- Verified the active founder row by exact permanent MAO ID and its original creation timestamp; do not adopt `mao-auth-preview` or its older founder.
+
+A **new private D1 inventory vault** `maomao-founder-001-vault-20261113` was created in the owner's Cloudflare account. Database ID: `4cc962a0-fe37-4a28-993c-52c2e6f1a01f`. It stores all 77 SQL schema statements and the 29-table/56-record **counts only**, and remains unbound to any public Worker. Its snapshot ID is `vault-20261113-founder-original-001`. Status is intentionally `schema_only_not_recoverable`, with `verified_at=NULL`, **not** `verified`.
+
+An attempted batch transfer of private account/social row content through the available Cloudflare connector was **blocked by the connector's security check**. Do not split or route around the block. No password verifier, session token, friend message or E2EE ciphertext has been copied to the D1 vault. This inventory is **NOT a backup** and cannot restore the real account.
+
+### Active protections added to this development branch
+
+1. `worker/lib/founder-provenance.js`: the existing server-side guard now requires **both** `MAO_CANONICAL_FOUNDER_ID` and `MAO_CANONICAL_FOUNDER_CREATED_AT` from the protected Worker environment. An incorrect founder ID, original registration timestamp or delegated-preview connection fails closed **before any account/social API action**. These values are not embedded in generic frontend code. The selected Worker must also configure `MAO_CANONICAL_FOUNDER_REQUIRED=true` for strict enforcement.
+2. `worker.js` and `worker/lib/app.js`: a read-only `GET /api/admin/data-protection/bookmark` endpoint (not yet deployed) is restricted to a valid `super_admin` cookie and matching account page context, and uses `ctx.storage.getCurrentBookmark()`. It does not provide or call `onNextSessionRestoreBookmark`. Native DO PITR supports recovery within approximately 30 days and includes SQL + KV, but bookmarks **are not** independent, long-term backups.
+3. `scripts/verify-production-account-readiness.mjs`: release refuses unverified backups, foreign founder identities, missing digest, or schema-only inventories. The operator must supply the original namespace and private vault database ID via `MAO_ORIGINAL_FOUNDER_NAMESPACE_ID` and `MAOMAO_BACKUP_VAULT_D1_ID`. A backup is acceptable only when it has a verified readback, data digest, matching founder provenance and `verified_at`.
+4. Added synthetic Node SQLite regression tests for founder ID/timestamp pinning, PITR bookmark authorization and backup-release blocking. No test touches the owner's real Cloudflare data. Full Node/Vite and physical-device tests are **not yet executed**.
+
+### Next release-blocking work
+
+- Create a **genuine encrypted, independently stored full database copy** through an owner-controlled trusted backup mechanism with proper access control, preserving password verifier, sessions, invitations, audit, friend links, E2EE keys/ciphertexts and media; include the Durable Object KV state if used. Never output the private backup into logs, GitHub, chat or an unencrypted file.
+- Verify copy completeness with table-by-table record counts and a digest, then restore **only into disposable isolated storage** and validate the original founder, all relationships, messages, media and account isolation. Do **not** restore into or reset the original.
+- Only after actual readback + restoration succeeds may the vault snapshot status become `verified`. Until then the production release gate will remain blocked.
+- Separately back up browser-origin `localStorage` and IndexedDB assets; an account SQLite snapshot alone does not include them.
+- **Do not deploy, change `app.mao520.com`, merge main, delete the older founder DB, or claim that the complete backup exists yet.**
