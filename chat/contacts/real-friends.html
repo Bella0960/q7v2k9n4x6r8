@@ -67,7 +67,7 @@ textarea{min-height:70px;resize:vertical}
 <div id="messages" role="log" aria-live="polite"></div>
 <form id="chatForm"><textarea id="chatText" maxlength="2000" placeholder="输入消息…" required></textarea><button class="primary" type="submit" id="chatSend">发送</button></form>
 </section>
-<p class="fine">安全测试版 · 不支持真人转账、红包、礼物；不会读取 AI 角色聊天记录。</p>
+<p class="fine">真人聊天不需要 AI API。当前为双方设备加密的文字测试版，不支持真人转账、红包或礼物；不会读取 AI 角色聊天记录。</p>
 </main>
 <script src="../../shared/js/phone/qrcode-generator.js?v=20261112social1"></script>
 <script>
@@ -228,7 +228,7 @@ list[2].friends.forEach(function(f){
 if(!idPattern.test(f.id))return;
 var div=make('div','','item');div.appendChild(make('div',f.displayName||f.id,'item-title'));
 div.appendChild(make('div',f.id,'item-sub'));var bar=make('div','','row');
-action(bar,'聊天',async()=>{await openChat(f)},true);
+action(bar,'聊天',async()=>{window.location.href='./real-chat.html?peer='+encodeURIComponent(f.id)},true);
 action(bar,'删除',async()=>{if(!confirm('删除真人好友？'))return;await mutate('/api/social/friends/'+f.id,'DELETE')});
 action(bar,'屏蔽',async()=>{if(!confirm('屏蔽后将解除好友关系，确定吗？'))return;await mutate('/api/social/friends/'+f.id+'/block')});
 div.appendChild(bar);peers.appendChild(div);

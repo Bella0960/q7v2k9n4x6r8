@@ -67,7 +67,7 @@ test('the social mobile HTML remains protected by the Worker login gate', () => 
 // Only the isolated social Preview may exercise friend consent + 001 approval.
 // The app.mao520.com production Worker must stay opt-in disabled, and
 // plaintext messaging must never be offered as a real E2EE product.
-test('social preview enables only friendship QA; production and private chat stay off', () => {
+test('social QA preview opens only E2EE message transport while production and plaintext chat remain off', () => {
   const raw = readFileSync(resolve(root, 'wrangler.jsonc'), 'utf8')
     .replace(/^\s*\/\/.*$/gm, '');
   const config = JSON.parse(raw);
@@ -76,6 +76,8 @@ test('social preview enables only friendship QA; production and private chat sta
   assert.equal(config.vars?.MAO_SOCIAL_CHAT_ENABLED, undefined);
   assert.equal(config.previews?.vars?.MAO_SOCIAL_ENABLED, 'true');
   assert.equal(config.previews?.vars?.MAO_SOCIAL_CHAT_ENABLED, 'false');
+  assert.equal(config.previews?.vars?.MAO_SOCIAL_E2EE_ENABLED, 'true');
+  assert.equal(config.vars?.MAO_SOCIAL_E2EE_ENABLED, undefined);
   assert.equal(config.previews?.vars?.MAO_IDENTITY_MODE, undefined,
     'this isolated migration rehearsal exercises preexisting local identities without delegated login');
   assert.equal(config.previews?.vars?.MAO_IDENTITY_AUTHORITY_MODE, undefined,
@@ -92,4 +94,16 @@ test('social preview enables only friendship QA; production and private chat sta
   const server = readFileSync(resolve(root, 'worker/lib/mao-social.js'), 'utf8');
   assert.match(server, /env\.MAO_SOCIAL_ENABLED !== 'true'/);
   assert.match(server, /env\.MAO_SOCIAL_CHAT_ENABLED !== 'true'/);
+});
+
+test('encrypted real-user conversation is deployed and never rendered as AI chat', () => {
+  const page='chat/contacts/real-chat.html';
+  const manifest=JSON.parse(readFileSync(dist('pwa-pages.json'),'utf8'));
+  assert.ok(manifest.includes(page),'E2EE chat page must be in built manifest');
+  const file=readFileSync(dist(page),'utf8');
+  assert.match(file,/双人加密聊天/);
+  assert.match(file,/real-chat-crypto/);
+  assert.match(file,/api\/social\/e2ee\/chats/);
+  assert.doesNotMatch(file,/\/api\/ai\//);
+  assert.ok(existsSync(dist('chat/contacts/real-chat-crypto.mjs')),'browser crypto module must be deployed');
 });
