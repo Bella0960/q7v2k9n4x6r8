@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v230';
+const CACHE_NAME = 'phone-app-pwa-v231';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 // v196 release: sweep orphaned role-owned media refs during avatar cleanup.
 const APP_SHELL = [
@@ -389,6 +389,17 @@ self.addEventListener('push', event => {
   }
 
   event.waitUntil((async function () {
+    // An empty Web Push has no encrypted content, so it isolates FCM -> Chrome
+    // delivery from aes128gcm decryption. Only this generic string is shown.
+    if (!event.data) {
+      await self.registration.showNotification('MAOMAO · 远程空载通知', {
+        body: 'FCM 已唤醒 Chrome；这条通知不包含加密消息。',
+        tag: 'maomao-remote-empty-' + Date.now(),
+        data: { url: pushTargetUrl('./settings/cloud-push.html'), type: 'test' },
+        silent: false
+      });
+      return;
+    }
     // This button sends only an explicit, non-sensitive diagnostic. Never
     // require an HttpOnly session fetch to display this harmless test message:
     // Android may have stopped the page/session while Chrome delivers a push.
