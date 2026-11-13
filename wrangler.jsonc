@@ -29,6 +29,9 @@
       "bindings": [
         { "name": "CLOUD_DB", "class_name": "CloudDatabase" }
       ]
-    }
+    },
+    "services": [
+      { "binding": "MAO_IDENTITY_AUTHORITY", "service": "mao-auth-preview" }
+    ]
   }
 }

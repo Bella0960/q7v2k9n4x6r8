@@ -56,6 +56,11 @@ test('social preview enables only friendship QA; production and private chat sta
   assert.equal(config.vars?.MAO_IDENTITY_MODE, undefined,
     'production identity must never silently bind to an old preview authority');
   assert.equal(config.previews?.durable_objects?.bindings?.[0]?.name, 'CLOUD_DB');
+  assert.equal(config.services, undefined, 'production must not call old auth service');
+  assert.deepEqual(config.previews?.services, [
+    { binding: 'MAO_IDENTITY_AUTHORITY', service: 'mao-auth-preview' }
+  ], 'only the isolated preview may probe the existing official account Worker');
+
   const server = readFileSync(resolve(root, 'worker/lib/mao-social.js'), 'utf8');
   assert.match(server, /env\.MAO_SOCIAL_ENABLED !== 'true'/);
   assert.match(server, /env\.MAO_SOCIAL_CHAT_ENABLED !== 'true'/);

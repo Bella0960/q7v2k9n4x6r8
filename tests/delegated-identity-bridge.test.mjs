@@ -186,3 +186,43 @@ test('authority calls reject unsupported operations without making any network r
   await assert.rejects(callIdentityAuthority(env, 'bootstrap', {}), /统一身份认证未就绪/);
   assert.equal(requests.length, 0);
 });
+
+test('read-only authority probe finds the real founder without creating a preview founder', async t => {
+  const db = openTestDb();
+  t.after(() => db.db.close());
+  let observed;
+  const app = setupTestStore(db, {
+    MAO_IDENTITY_MODE: 'delegated_preview',
+    MAO_IDENTITY_AUTHORITY: {
+      async fetch(request) {
+        observed = { path: new URL(request.url).pathname, method: request.method };
+        return Response.json({ ok: true, initialized: true, configured: true });
+      }
+    }
+  });
+  const status = await app.asJson('/api/admin/bootstrap/status');
+  assert.equal(status.status, 200);
+  assert.equal(status.payload.initialized, true);
+  assert.equal(status.payload.bootstrapAllowed, false);
+  assert.equal(status.payload.identityAuthorityConnected, true);
+  assert.equal(status.payload.identityAuthorityInitialized, true);
+  assert.equal(status.payload.signInReady, false, 'read-only connection alone does not enable password prompts');
+  assert.deepEqual(observed, { path: '/api/admin/bootstrap/status', method: 'GET' });
+  assert.equal(app.query('SELECT COUNT(*) AS n FROM mao_accounts')[0].n, 0);
+});
+
+test('malformed or unreachable authority never causes a founder bootstrap or login-ready claim', async t => {
+  const db = openTestDb();
+  t.after(() => db.db.close());
+  const preview = setupTestStore(db, {
+    MAO_IDENTITY_MODE: 'delegated_preview',
+    MAO_IDENTITY_AUTHORITY: { async fetch() {
+      return Response.json({ ok: true, initialized: 'yes', configured: true });
+    }},
+    MAO_IDENTITY_BRIDGE_SECRET: secret
+  });
+  const status = await preview.asJson('/api/admin/bootstrap/status');
+  assert.equal(status.payload.identityAuthorityConnected, false);
+  assert.equal(status.payload.signInReady, false);
+  assert.equal(status.payload.bootstrapAllowed, false);
+});

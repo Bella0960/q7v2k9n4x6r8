@@ -3,7 +3,7 @@ import { ApiError, ok, json, readJsonBody } from './http.js';
 import { randomToken, sha256Hex, base64UrlToBytes, timingSafeEqualHex } from './crypto.js';
 import {
   usesDelegatedIdentity, callIdentityAuthority,
-  assertTrustedIdentityIssuerRequest
+  assertTrustedIdentityIssuerRequest, probeExistingIdentityAuthority
 } from './identity-bridge.js';
 
 const SESSION_COOKIE = 'MAO_SESSION';
@@ -905,8 +905,12 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       // founder form without accepting or logging any credentials.
       if ((path === '/api/admin/bootstrap/status' && method === 'GET') ||
           (path === '/api/admin/bootstrap/preflight' && method === 'POST')) {
-        // Never advertise founder bootstrap in delegated previews.
-        const initialized = store.hasMaoSuperAdminAccount();
+        // The Preview does not own the founder. Inspect only the authority's
+        // public, read-only setup status; never mutate the real account store.
+        const authority = delegated
+          ? await probeExistingIdentityAuthority(env)
+          : null;
+        const initialized = delegated ? authority.initialized : store.hasMaoSuperAdminAccount();
         return ok({
           initialized,
           configured: !delegated &&
@@ -914,7 +918,10 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
             String(env.DEVICE_SECRET_PEPPER || '').length >= 32,
           identityMode: delegated ? 'delegated' : 'local',
           bootstrapAllowed: !delegated,
+          identityAuthorityConnected: delegated ? authority.connected : undefined,
+          identityAuthorityInitialized: delegated ? authority.initialized : undefined,
           signInReady: !delegated || (
+            authority.connected && authority.initialized &&
             typeof env.MAO_IDENTITY_AUTHORITY?.fetch === 'function' &&
             String(env.MAO_IDENTITY_BRIDGE_SECRET || '').length >= 32
           )
