@@ -213,6 +213,9 @@ export async function sendWebPush(
     return { ok: false, statusCode: 0, gone: false, skipped: true };
   }
 
+  // Workers use Fetch BodyInit; use an exact ArrayBuffer rather than a typed-array
+  // view so encrypted bytes are accepted consistently in workerd and browsers.
+  const uploadBody = body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength);
   let response;
   const controller = typeof AbortController === 'function' ? new AbortController() : null;
   let timeoutId = null;
@@ -222,7 +225,10 @@ export async function sendWebPush(
     }
     response = await fetchImpl(endpoint, {
       method: 'POST',
-      redirect: 'error',
+      // Do not follow provider redirects (which could disclose encrypted bytes or
+      // the Authorization header to an unintended origin). Return HTTP 3xx for
+      // diagnosis instead of turning it into an opaque TypeError.
+      redirect: 'manual',
       headers: {
         Authorization: authorization,
         'Content-Encoding': 'aes128gcm',
@@ -230,13 +236,23 @@ export async function sendWebPush(
         TTL: String(PUSH_TTL_SECONDS),
         Urgency: 'normal'
       },
-      body,
+      body: uploadBody,
       signal: controller?.signal
     });
   } catch (error) {
     const tagged = new PushSendError(0, '推送服务网络请求失败');
     tagged.phase = 'transport';
     tagged.causeName = String(error?.name || 'Error').slice(0, 40);
+    // Only fixed diagnostic codes, never raw provider URLs, tokens or error text.
+    const detail = String(error?.message || '').slice(0, 350);
+    tagged.diagnosticCode = /redirect/i.test(detail) ? 'redirect_rejected'
+      : /(?:body|arraybuffer|typedarray|buffer|stream)/i.test(detail) ? 'request_body'
+      : /(?:dns|resolve|name lookup)/i.test(detail) ? 'dns'
+      : /(?:tls|ssl|certificate|handshake)/i.test(detail) ? 'tls'
+      : /(?:blocked|restricted|disallowed|forbidden|permission)/i.test(detail) ? 'network_policy'
+      : /(?:timed?\s*out|abort)/i.test(detail) ? 'timeout'
+      : /(?:fetch|connection|connect|network)/i.test(detail) ? 'fetch_failure'
+      : 'unknown_transport';
     throw tagged;
   } finally {
     if (timeoutId != null && typeof clearTimeout === 'function') clearTimeout(timeoutId);
