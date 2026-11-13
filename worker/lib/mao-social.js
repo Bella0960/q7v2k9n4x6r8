@@ -1,5 +1,6 @@
 import { ApiError, ok, readJsonBody } from './http.js';
 import { randomToken, sha256Hex } from './crypto.js';
+import { createMaoSocialE2EE } from './mao-social-e2ee.js';
 
 const ID = /^MAO-[A-Z0-9]{12,24}$/;
 const REQUEST_ID = /^[A-Za-z0-9_-]{8,96}$/;
@@ -18,6 +19,7 @@ export function createMaoSocial({ store, accountAuth, env = {}, now = () => Date
   const rows = (sql, ...args) => store.exec(sql, ...args);
   const one = (sql, ...args) => rows(sql, ...args)[0] || null;
   const transaction = fn => store.transaction(fn);
+  const secureChat = createMaoSocialE2EE({store,env,now});
 
   function assertSession(actor, time) {
     if (!one("SELECT s.id FROM mao_account_sessions s JOIN mao_accounts a ON a.id = s.account_id " +
@@ -324,6 +326,7 @@ export function createMaoSocial({ store, accountAuth, env = {}, now = () => Date
       throw new ApiError(503, 'SOCIAL_NOT_ENABLED', '真人好友服务尚未通过完整验收');
     }
     const actor = await actorOf(request);
+    if (path.startsWith('/api/social/e2ee/')) return secureChat.handle(request,path,method,actor);
     if (path === '/api/social/friend-codes' && method === 'POST') return rotate(actor);
     if (path === '/api/social/friend-requests' && method === 'POST') return apply(request, actor);
     if (path === '/api/social/friend-requests' && method === 'GET') {
