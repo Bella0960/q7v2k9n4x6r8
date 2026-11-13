@@ -1824,7 +1824,9 @@
             };
             var reason = reasons[item.failurePhase] || reasons.unknown;
             var classification = item.failureKind ? '，异常类型 ' + item.failureKind : '';
-            report('测试通知未送达：' + reason + classification + '。不需要重置账号或重复开启权限。');
+            var diagnostic = item.failureDiagnostic
+              ? '，诊断码 ' + item.failureDiagnostic : '';
+            report('测试通知未送达：' + reason + classification + diagnostic + '。不需要重置账号或重复开启权限。');
           } else if (summary.skipped) {
             report('本次通知被去重或延迟，尚未确认送达。');
           } else {
