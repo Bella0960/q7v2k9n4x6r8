@@ -212,6 +212,19 @@
             font-size: 13px;
             cursor: pointer;
         }
+        #cloudTestRow {
+            width: 100%;
+            margin: 13px 0 0;
+            padding: 0 14px;
+            justify-content: center;
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            background: var(--card);
+            font: 600 13px/1.5 inherit;
+            font-family: inherit;
+        }
+        #cloudTestRow::after { content: none; }
+        #cloudTestRow:disabled { opacity: .55; cursor: default; }
         .cloud-action:last-of-type { border-bottom: 0; }
         .cloud-action::after { content: '›'; color: var(--aux); font-size: 19px; }
         .cloud-action[aria-disabled="true"] { opacity: .55; pointer-events: none; }
