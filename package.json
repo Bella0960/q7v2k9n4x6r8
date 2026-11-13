@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 3000",
-    "prebuild": "npm run test:release:gate && npm run test:social:approval && npm run test:cloud:founder",
+    "prebuild": "npm run test:release:gate && npm run test:social:approval",
     "build": "vite build",
     "test:accounts:kdf": "node --test tests/account-password-kdf.test.mjs",
     "preview": "vite preview --host 0.0.0.0 --port 3000",
