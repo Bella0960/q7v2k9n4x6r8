@@ -19,6 +19,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { webcrypto } from 'node:crypto';
 import { createDeviceIdentity, conversationKey, encryptText, decryptText } from '../chat/contacts/real-chat-crypto.mjs';
+import { encryptMedia, decryptMedia, makeMediaMarker } from '../chat/contacts/real-chat-media.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const VARS_PATH = path.join(ROOT, '.dev.vars');
@@ -370,6 +371,41 @@ async function main() {
     assert.equal(rejectedPlaintext.payload.error.code,'E2EE_PLAINTEXT_REJECTED');
     pass('real Wrangler SQLite relays ciphertext only; two devices decrypt; retry is idempotent; plaintext rejected');
 
+    for(const [index,item] of [
+      {kind:'image',mime:'image/jpeg',bytes:new Uint8Array(360*1024).fill(173)},
+      {kind:'voice',mime:'audio/mp4',bytes:new TextEncoder().encode('synthetic_private_voice_data')}
+    ].entries()){
+      const mediaId='med_worker_media_'+String(index).padStart(20,'0');
+      const clientMessageId='qa_encrypted_media_msg_'+String(index).padStart(12,'0');
+      const mediaMeta={friendshipId:requestId,senderId:alice.id,recipientId:bob.id,
+        clientMessageId,mediaId,kind:item.kind,mime:item.mime,sk:aKey.keyId,rk:bKey.keyId};
+      const attachment=await encryptMedia(item.bytes,outbound,mediaMeta,
+        webcrypto.subtle,webcrypto.getRandomValues.bind(webcrypto));
+      const messageEnvelope=await encryptText(makeMediaMarker(mediaId,item.kind),outbound,
+        mediaMeta,webcrypto.subtle,webcrypto.getRandomValues.bind(webcrypto));
+      const body={clientMessageId,friendshipId:requestId,attachment,envelope:messageEnvelope};
+      const upload=await post('/api/social/e2ee/chats/'+bob.id+'/media',body,
+        {cookie:aliceCookie,accountId:alice.id});
+      assert.equal(upload.status,200,JSON.stringify(upload.payload).slice(0,300));
+      assert.equal(upload.payload.mediaId,mediaId);
+      assert.equal(upload.payload.message.text,undefined);
+      const download=await request('/api/social/e2ee/chats/'+alice.id+'/media/'+mediaId,
+        {cookie:bobCookie,accountId:bob.id});
+      assert.equal(download.status,200,JSON.stringify(download.payload).slice(0,300));
+      assert.equal(download.payload.attachment.ct,attachment.ct);
+      assert.ok(!JSON.stringify(download.payload).includes('synthetic_private'));
+      const decoded=await decryptMedia(download.payload.attachment,inbound,mediaMeta,webcrypto.subtle);
+      assert.deepEqual(decoded,item.bytes);
+      const replay=await post('/api/social/e2ee/chats/'+bob.id+'/media',body,
+        {cookie:aliceCookie,accountId:alice.id});
+      assert.equal(replay.status,200);
+      assert.equal(replay.payload.replay,true);
+      pass(item.kind==='image'
+        ? 'actual Wrangler store relays encrypted JPEG only and other phone decrypts image bytes'
+        : 'actual Wrangler store relays encrypted voice only and other phone decrypts audio bytes');
+    }
+
+
 
     const blocked = await post('/api/social/friends/' + bob.id + '/block', {},
       { cookie: aliceCookie, accountId: alice.id });
@@ -377,6 +413,10 @@ async function main() {
     const blockedCipher = await request('/api/social/e2ee/chats/' + alice.id + '/messages?after=0',
       {cookie:bobCookie,accountId:bob.id});
     assert.equal(blockedCipher.status,403);
+    const blockedMedia = await request('/api/social/e2ee/chats/' + alice.id +
+      '/media/med_worker_media_00000000000000000000',
+      {cookie:bobCookie,accountId:bob.id});
+    assert.equal(blockedMedia.status,403);
     pass('blocked friend immediately loses access to encrypted conversation history');
 
     const afterBlock = await request('/api/social/friends',

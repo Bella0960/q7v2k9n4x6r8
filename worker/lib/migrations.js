@@ -15,6 +15,7 @@ import { SQL as MAO_ACCOUNT_AUDIT_CURSOR_SQL, VERSION as MAO_ACCOUNT_AUDIT_CURSO
 import { SQL as MAO_GLOBAL_AUDIT_CURSOR_SQL, VERSION as MAO_GLOBAL_AUDIT_CURSOR_VERSION } from '../migrations/0016_mao_global_audit_cursor.js';
 import { SQL as MAO_SOCIAL_SQL, VERSION as MAO_SOCIAL_VERSION } from '../migrations/0017_mao_social.js';
 import { SQL as MAO_SOCIAL_E2EE_SQL, VERSION as MAO_SOCIAL_E2EE_VERSION } from '../migrations/0018_mao_social_e2ee.js';
+import { SQL as MAO_SOCIAL_MEDIA_SQL, VERSION as MAO_SOCIAL_MEDIA_VERSION } from '../migrations/0019_mao_social_e2ee_media.js';
 import { SQL as OUTBOUND_INBOX_SQL, VERSION as OUTBOUND_INBOX_VERSION } from '../migrations/0006_outbound_inbox_index.js';
 
 /**
@@ -39,7 +40,8 @@ export const MIGRATIONS = [
   { version: MAO_ACCOUNT_AUDIT_CURSOR_VERSION, sql: MAO_ACCOUNT_AUDIT_CURSOR_SQL },
   { version: MAO_GLOBAL_AUDIT_CURSOR_VERSION, sql: MAO_GLOBAL_AUDIT_CURSOR_SQL },
   { version: MAO_SOCIAL_VERSION, sql: MAO_SOCIAL_SQL },
-  { version: MAO_SOCIAL_E2EE_VERSION, sql: MAO_SOCIAL_E2EE_SQL }
+  { version: MAO_SOCIAL_E2EE_VERSION, sql: MAO_SOCIAL_E2EE_SQL },
+  { version: MAO_SOCIAL_MEDIA_VERSION, sql: MAO_SOCIAL_MEDIA_SQL }
 ];
 
 /** 以单引号感知的方式拆分多条语句，避免把字符串里的分号切坏。 */

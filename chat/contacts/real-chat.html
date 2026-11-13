@@ -39,6 +39,17 @@ button{cursor:pointer}
 .compose textarea::placeholder{color:#aaa}
 .compose button{border:0;background:#222;color:white;border-radius:12px;min-width:59px;min-height:38px;padding:0 13px;font-size:12px}
 .compose button:disabled,.compose textarea:disabled{opacity:.45}
+.compose button.media-action{background:transparent;color:#444;border:0;min-width:33px;width:33px;height:37px;min-height:37px;padding:0;border-radius:9px;display:grid;place-items:center;flex-shrink:0}
+.compose button.media-action svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.55;stroke-linecap:round;stroke-linejoin:round}
+.compose button.media-action[aria-pressed="true"]{background:#272727;color:white}
+.compose button.media-action:focus-visible{outline:2px solid #777;outline-offset:2px}
+.bubble.media-photo{padding:4px;overflow:hidden;max-width:min(75%,260px)}
+.bubble.media-photo img{display:block;max-width:100%;max-height:310px;border-radius:9px;object-fit:contain;cursor:zoom-in}
+.bubble.media-voice{padding:9px 11px;min-width:180px}
+.bubble.media-voice audio{display:block;width:min(230px,60vw);max-width:100%;height:37px}
+.voice-state{margin:8px 3px 0;font-size:11px;letter-spacing:.025em;color:#565656}
+.voice-state:before{content:"";display:inline-block;width:6px;height:6px;margin-right:7px;border-radius:50%;background:#555}
+.retry-media{border:1px solid #d8d8d8;background:white;border-radius:10px;padding:8px 12px;color:#444;font-size:11px;display:block;margin:8px auto 0}
 .security-note{font-size:10px;color:#a7a7a7;line-height:1.55;text-align:center;margin:10px auto 0;max-width:370px}
 [hidden]{display:none!important}
 </style>
@@ -51,15 +62,24 @@ button{cursor:pointer}
   <div class="header-right">PRIVATE</div>
  </header>
  <div class="rule"></div>
- <p class="notice"><strong>双人加密聊天</strong> · 只在双方手机上解密，服务器不保存文字明文。</p>
+ <p class="notice"><strong>双人加密聊天</strong> · 文字、照片和语音都在手机加密，服务器不保存原始内容。</p>
  <div class="status" id="status" role="status" aria-live="polite">正在确认双方账号与加密设备…</div>
  <div class="log" id="log" role="log" aria-live="polite"><p class="empty" id="empty">正在连接聊天…</p></div>
  <div class="rule"></div>
  <footer class="footer">
    <form class="compose" id="compose">
+     <button type="button" class="media-action" id="photoBtn" aria-label="发送图片" title="发送图片" disabled>
+       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.8" y="3.7" width="18.4" height="16.6" rx="3"/><circle cx="8.5" cy="9.2" r="1.5"/><path d="m4.5 17 4.6-4.6 3.5 3 3.2-3.8 4.3 5"/></svg>
+     </button>
+     <button type="button" class="media-action" id="voiceBtn" aria-label="录制语音" title="录制语音" aria-pressed="false" disabled>
+       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4M8.5 21h7"/></svg>
+     </button>
+     <input type="file" id="photoInput" accept="image/*" hidden aria-label="选择图片">
      <textarea id="input" placeholder="发送消息…" rows="1" maxlength="280" disabled aria-label="输入加密聊天消息"></textarea>
      <button type="submit" id="send" disabled>发送</button>
    </form>
+   <p class="voice-state" id="voiceState" hidden aria-live="polite">录音中 · 00:00 · 再点麦克风发送（最多 20 秒）</p>
+   <button type="button" class="retry-media" id="retryMedia" hidden>重新发送未确认的图片或语音</button>
    <p class="security-note">聊天密钥只保留在当前浏览器。清除网站数据或换设备后，暂时无法恢复旧消息。首次交换公钥仍需信任服务器。</p>
  </footer>
 </main>
@@ -69,6 +89,8 @@ import {
   encryptText, decryptText, openDeviceKeyStore,
   loadDeviceIdentity, saveDeviceIdentity
 } from './real-chat-crypto.mjs';
+import {MAX_MEDIA_BYTES,validateMediaKind,encryptMedia,decryptMedia,makeMediaMarker,parseMediaMarker}
+  from './real-chat-media.mjs';
 
 const $=id=>document.getElementById(id);
 const ID=/^MAO-[A-Z0-9]{12,24}$/;
@@ -76,11 +98,17 @@ const peer=new URLSearchParams(location.search).get('peer');
 let owner=null,device=null,peerKey=null,db=null,key=null,friendshipId=null;
 let cursor=0,seen=new Set(),polling=false,sending=false,closed=false,pending=null;
 let friendLabel='',timer=null,identityEpoch=0;
+let pendingMedia=null,recording=null,recordingStopping=false,activeUrls=new Set();
 const setStatus=(msg,error=false)=>{$('status').textContent=msg;$('status').classList.toggle('error',!!error);};
 const reqId=()=> 'e2e_'+crypto.randomUUID().replace(/-/g,'');
 function resetVisible() {
+  discardRecording();
+  for(const url of activeUrls)URL.revokeObjectURL(url);
+  activeUrls.clear();
   $('log').textContent='';$('input').value='';$('input').disabled=true;$('send').disabled=true;
-  cursor=0;seen.clear();friendshipId=null;key=null;pending=null;
+  $('photoBtn').disabled=true;$('voiceBtn').disabled=true;
+  $('retryMedia').hidden=true;
+  cursor=0;seen.clear();friendshipId=null;key=null;pending=null;pendingMedia=null;
 }
 function stop() {
   closed=true;identityEpoch++;if(timer){clearInterval(timer);timer=null;}
@@ -155,7 +183,10 @@ async function fetchMessages(){
     friendshipId=result.friendshipId;
     if(!key)key=await conversationKey(device.privateKey,peerKey.publicKey,friendshipId,owner.id,peer);
     if(closed||epoch!==identityEpoch)return;
-    $('input').disabled=false;$('send').disabled=false;
+    $('input').disabled=false;
+    $('send').disabled=sending;
+    $('photoBtn').disabled=sending||!!recording;
+    $('voiceBtn').disabled=sending||recordingStopping;
     if(!Array.isArray(result.messages)||!Number.isSafeInteger(result.nextCursor)||result.nextCursor<cursor)
       throw new Error('聊天记录格式异常');
     for(const message of result.messages){
@@ -180,7 +211,12 @@ async function fetchMessages(){
       if($('empty'))$('empty').remove();
       const wrap=document.createElement('div');
       wrap.className='bubble-wrap'+(own?' mine':'');
-      const bubble=document.createElement('div');bubble.className='bubble';bubble.textContent=plain;
+      const bubble=document.createElement('div');bubble.className='bubble';
+      const mediaMarker=parseMediaMarker(plain);
+      if(mediaMarker){
+        bubble.textContent=mediaMarker.kind==='image'?'正在解密图片…':'正在解密语音…';
+        loadMediaForBubble(mediaMarker,message,bubble,epoch,friendshipId,key);
+      }else bubble.textContent=plain;
       const time=document.createElement('span');time.className='time';
       time.textContent=Number.isFinite(message.createdAt)?
         new Date(message.createdAt).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}):'';
@@ -194,6 +230,284 @@ async function fetchMessages(){
     if(!closed)setStatus(e.message||'加载加密消息失败',true);
   } finally{polling=false;}
 }
+// The attachment fetch is authorized again on every media request, and its
+// account, friendship generation, sender and client-message binding are checked
+// before using a local blob URL. No third-party media URL or AI call is used.
+async function loadMediaForBubble(marker,message,bubble,epoch,relation,conversation){
+  try{
+    const data=await api('/api/social/e2ee/chats/'+encodeURIComponent(peer)+
+      '/media/'+encodeURIComponent(marker.id));
+    if(closed||epoch!==identityEpoch||relation!==friendshipId)return;
+    const item=data.attachment;
+    if(data.ownerAccountId!==owner.id||data.peerId!==peer||data.friendshipId!==relation||
+       data.senderId!==message.senderId||data.recipientId!==message.recipientId||
+       data.clientMessageId!==message.clientMessageId||item?.id!==marker.id||
+       item.kind!==marker.kind||
+       (item.sk!==(message.senderId===owner.id?device.keyId:peerKey.keyId))||
+       (item.rk!==(message.senderId===owner.id?peerKey.keyId:device.keyId))){
+      throw new Error('媒体所属账号、密钥或好友关系不匹配');
+    }
+    const bytes=await decryptMedia(item,conversation,{
+      friendshipId:relation,senderId:message.senderId,
+      recipientId:message.recipientId,clientMessageId:message.clientMessageId,
+      mediaId:item.id,kind:item.kind,mime:item.mime,sk:item.sk,rk:item.rk
+    });
+    if(closed||epoch!==identityEpoch||relation!==friendshipId)return;
+    const url=URL.createObjectURL(new Blob([bytes],{type:item.mime}));
+    activeUrls.add(url);
+    const element=document.createElement(item.kind==='image'?'img':'audio');
+    element.src=url;
+    if(item.kind==='image'){
+      element.alt='好友发送的图片';
+      element.loading='lazy';
+      bubble.classList.add('media-photo');
+    }else{
+      element.controls=true;element.preload='none';
+      element.setAttribute('aria-label','好友发送的语音消息');
+      bubble.classList.add('media-voice');
+    }
+    bubble.replaceChildren(element);
+  }catch(error){
+    if(!closed&&epoch===identityEpoch&&relation===friendshipId){
+      bubble.textContent=marker.kind==='image'?'图片暂时无法加载':'语音暂时无法播放';
+      bubble.title=String(error?.message||'解密失败').slice(0,130);
+    }
+  }
+}
+
+function mediaReady(){
+  return !closed&&!sending&&!recordingStopping&&!!owner&&!!device&&!!peerKey&&!!key&&
+    !!friendshipId;
+}
+
+function updateMediaBusy(busy){
+  $('photoBtn').disabled=busy||!mediaReady()||!!recording;
+  $('voiceBtn').disabled=busy||!key||closed||recordingStopping;
+  $('send').disabled=busy||!key||closed;
+}
+
+async function transmitMedia(){
+  if(!pendingMedia||closed||sending)return;
+  const task=pendingMedia;
+  sending=true;updateMediaBusy(true);
+  try{
+    const response=await api('/api/social/e2ee/chats/'+encodeURIComponent(peer)+'/media',{
+      method:'POST',body:task.payload
+    });
+    if(response.friendshipId!==task.friendshipId||response.mediaId!==task.mediaId||
+       response.message?.clientMessageId!==task.clientMessageId||
+       response.message?.senderId!==task.senderId||
+       response.message?.recipientId!==peer||
+       JSON.stringify(response.message?.envelope)!==JSON.stringify(task.payload.envelope)){
+      throw new Error('服务器没有返回完整的加密媒体发送回执');
+    }
+    if(closed||task.epoch!==identityEpoch||friendshipId!==task.friendshipId||
+       owner?.id!==task.senderId)return;
+    pendingMedia=null;
+    $('retryMedia').hidden=true;
+    setStatus('图片或语音已安全送达服务器。');
+    await fetchMessages();
+  }catch(error){
+    if(!closed){
+      $('retryMedia').hidden=false;
+      setStatus('发送尚未确认：'+String(error?.message||'网络错误')+'，可点击重试。',true);
+    }
+  }finally{
+    sending=false;
+    if(!closed)updateMediaBusy(false);
+  }
+}
+
+async function sendMediaBlob(blob,kind,mime){
+  if(!mediaReady())throw new Error('请先等待双方加密聊天连接完成');
+  if(pendingMedia)throw new Error('还有一条未确认的媒体消息，请先点击重试');
+  if(!validateMediaKind(kind,mime))throw new Error('当前浏览器输出的语音格式不受支持');
+  if(blob.size===0||blob.size>MAX_MEDIA_BYTES)
+    throw new Error('语音或图片超过当前测试限制，请缩短录音或换一张图片');
+  const senderId=owner.id,relation=friendshipId,epoch=identityEpoch;
+  const clientMessageId=reqId();
+  const mediaId='med_'+crypto.randomUUID().replace(/-/g,'');
+  const meta={friendshipId:relation,senderId,recipientId:peer,clientMessageId,
+    mediaId,kind,mime,sk:device.keyId,rk:peerKey.keyId};
+  const bytes=new Uint8Array(await blob.arrayBuffer());
+  const attachment=await encryptMedia(bytes,key,meta);
+  const envelope=await encryptText(makeMediaMarker(mediaId,kind),key,meta);
+  if(closed||epoch!==identityEpoch||relation!==friendshipId||owner?.id!==senderId)return;
+  pendingMedia={mediaId,clientMessageId,senderId,friendshipId:relation,epoch,
+    payload:{friendshipId:relation,clientMessageId,attachment,envelope}};
+  await transmitMedia();
+}
+
+function canvasBlob(canvas,quality){
+  return new Promise((resolve,reject)=>{
+    canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('手机未能压缩这张照片')),
+      'image/jpeg',quality);
+  });
+}
+
+async function makeSafePhoto(file){
+  if(!file||!file.type.startsWith('image/')||file.size>15*1024*1024)
+    throw new Error('请选择 15 MB 以内的相册图片');
+  const source=URL.createObjectURL(file);
+  try{
+    const image=new Image();
+    await new Promise((resolve,reject)=>{
+      image.onload=resolve;
+      image.onerror=()=>reject(new Error('图片无法在当前手机中读取'));
+      image.src=source;
+    });
+    if(!image.naturalWidth||!image.naturalHeight)throw new Error('图片尺寸无效');
+    let scale=Math.min(1,1400/Math.max(image.naturalWidth,image.naturalHeight));
+    for(const quality of [.8,.7,.59,.48,.38]){
+      const w=Math.max(1,Math.round(image.naturalWidth*scale));
+      const h=Math.max(1,Math.round(image.naturalHeight*scale));
+      const canvas=document.createElement('canvas');
+      canvas.width=w;canvas.height=h;
+      const context=canvas.getContext('2d',{alpha:false});
+      if(!context)throw new Error('当前手机不支持图片压缩');
+      context.fillStyle='#fff';context.fillRect(0,0,w,h);
+      context.drawImage(image,0,0,w,h);
+      const output=await canvasBlob(canvas,quality);
+      canvas.width=0;canvas.height=0;
+      if(output.size>0&&output.size<=MAX_MEDIA_BYTES)return output;
+      scale*=.78;
+    }
+    throw new Error('这张图片压缩后仍然过大，请选另一张');
+  }finally{URL.revokeObjectURL(source);}
+}
+
+$('photoBtn').addEventListener('click',()=>{
+  if(!mediaReady())return;
+  if(pendingMedia){setStatus('请先重试上一条未确认的图片或语音。',true);return;}
+  $('photoInput').click();
+});
+$('photoInput').addEventListener('change',async(event)=>{
+  const file=event.target.files?.[0];event.target.value='';
+  if(!file||!mediaReady())return;
+  $('photoBtn').disabled=true;
+  try{
+    setStatus('正在本机压缩并加密照片…');
+    await sendMediaBlob(await makeSafePhoto(file),'image','image/jpeg');
+  }catch(error){
+    if(!closed)setStatus(String(error?.message||'图片发送失败'),true);
+  }finally{if(!closed)updateMediaBusy(false);}
+});
+
+function clearRecordingUI(){
+  $('voiceState').hidden=true;
+  $('voiceBtn').setAttribute('aria-pressed','false');
+  $('voiceBtn').setAttribute('aria-label','录制语音');
+  $('voiceBtn').title='录制语音';
+}
+
+function discardRecording(){
+  const record=recording;recording=null;
+  if(record){
+    record.discard=true;
+    clearInterval(record.ticker);clearTimeout(record.deadline);
+    if(record.recorder.state!=='inactive')record.recorder.stop();
+    record.stream.getTracks().forEach(track=>track.stop());
+  }
+  clearRecordingUI();
+  recordingStopping=false;
+}
+
+async function startRecording(){
+  if(!mediaReady())return;
+  if(pendingMedia){setStatus('请先处理未确认的媒体消息。',true);return;}
+  if(!navigator.mediaDevices?.getUserMedia||typeof MediaRecorder!=='function'){
+    setStatus('当前浏览器不支持网页录音，请换支持麦克风的 HTTPS 浏览器。',true);
+    return;
+  }
+  $('voiceBtn').disabled=true;
+  let stream;
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({
+      audio:{echoCancellation:true,noiseSuppression:true},video:false
+    });
+    if(closed||!mediaReady()){
+      stream.getTracks().forEach(track=>track.stop());return;
+    }
+    const kinds=['audio/mp4','audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus'];
+    const mime=kinds.find(kind=>MediaRecorder.isTypeSupported?.(kind));
+    const recorder=new MediaRecorder(stream,{
+      ...(mime?{mimeType:mime}:{}),audioBitsPerSecond:24000
+    });
+    const state={stream,recorder,parts:[],start:Date.now(),discard:false,ticker:null,deadline:null};
+    recording=state;
+    recorder.addEventListener('dataavailable',event=>{if(event.data?.size)state.parts.push(event.data);});
+    recorder.addEventListener('error',()=>{
+      if(!closed)setStatus('录音过程发生错误，请再试一次。',true);
+      discardRecording();
+    });
+    recorder.addEventListener('stop',async()=>{
+      clearInterval(state.ticker);clearTimeout(state.deadline);
+      stream.getTracks().forEach(track=>track.stop());
+      if(recording===state)recording=null;
+      clearRecordingUI();
+      if(state.discard||closed){recordingStopping=false;return;}
+      recordingStopping=true;
+      try{
+        const captured=new Blob(state.parts,{type:recorder.mimeType||state.parts[0]?.type||''});
+        const type=captured.type.split(';')[0].toLowerCase();
+        if(!validateMediaKind('voice',type))
+          throw new Error('此浏览器生成的录音格式暂不兼容，请尝试 Safari 或 Chrome。');
+        setStatus('录音完成，正在加密发送…');
+        // Stop callbacks run after the recorder goes inactive; no raw audio
+        // bytes ever leave the browser before encryption.
+        recordingStopping=false;
+        await sendMediaBlob(captured,'voice',type);
+      }catch(error){
+        if(!closed)setStatus(String(error?.message||'语音发送失败'),true);
+      }finally{
+        recordingStopping=false;
+        if(!closed)updateMediaBusy(false);
+      }
+    });
+    recorder.start(600);
+    $('voiceBtn').disabled=false;
+    $('voiceBtn').setAttribute('aria-pressed','true');
+    $('voiceBtn').setAttribute('aria-label','结束并发送语音');
+    $('voiceBtn').title='结束并发送语音';
+    $('voiceState').hidden=false;
+    const showTime=()=>{
+      const seconds=Math.min(20,Math.floor((Date.now()-state.start)/1000));
+      $('voiceState').textContent='录音中 · 00:'+String(seconds).padStart(2,'0')+
+        ' · 再点麦克风发送（最多 20 秒）';
+    };
+    showTime();
+    state.ticker=setInterval(showTime,300);
+    state.deadline=setTimeout(()=>stopRecording(false),20000);
+    setStatus('正在录音，点击麦克风结束并发送。');
+    $('photoBtn').disabled=true;
+  }catch(error){
+    if(stream)stream.getTracks().forEach(track=>track.stop());
+    if(recording)discardRecording();
+    if(!closed)setStatus(error?.name==='NotAllowedError'?
+      '麦克风权限未开启，请在浏览器设置中允许录音。':
+      '无法启动录音：'+String(error?.message||'请检查麦克风权限'),true);
+  }finally{if(!closed&& !recording)updateMediaBusy(false);}
+}
+
+function stopRecording(discard){
+  const state=recording;
+  if(!state)return;
+  recording=null;
+  state.discard=!!discard;
+  recordingStopping=!discard;
+  clearInterval(state.ticker);clearTimeout(state.deadline);
+  clearRecordingUI();
+  if(state.recorder.state!=='inactive')state.recorder.stop();
+  state.stream.getTracks().forEach(track=>track.stop());
+  $('voiceBtn').disabled=!discard;
+}
+
+$('voiceBtn').addEventListener('click',()=>{
+  if(recording)stopRecording(false);
+  else if(!recordingStopping)startRecording();
+});
+$('retryMedia').addEventListener('click',()=>{if(pendingMedia)transmitMedia();});
+
 async function start(){
   try{
     if(!ID.test(peer))throw new Error('未选择有效的真人好友');
