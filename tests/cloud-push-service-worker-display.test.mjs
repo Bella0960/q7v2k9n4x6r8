@@ -43,7 +43,7 @@ function workerFixture(authenticated = true) {
   const runPush = async payload => {
     let until;
     handlers.push({
-      data: { json: () => payload },
+      data: payload == null ? null : { json: () => payload },
       waitUntil(promise) { until = promise; }
     });
     assert.ok(until);
@@ -100,4 +100,15 @@ test('clicking non-private diagnostic notification opens the sign-in guarded sit
   assert.equal(fixture.opened.length, 1);
   assert.equal(fixture.opened[0], 'https://founder.example/settings/cloud-push.html');
   assert.equal(fixture.requests.length, 0);
+});
+
+
+test('remote empty-payload push triggers a generic system notification without private content', async () => {
+  const fixture = workerFixture(false);
+  await fixture.runPush(null);
+  assert.equal(fixture.requests.length, 0);
+  assert.equal(fixture.shown.length, 1);
+  assert.equal(fixture.shown[0].title, 'MAOMAO · 远程空载通知');
+  assert.match(fixture.shown[0].options.body, /FCM/);
+  assert.equal(fixture.shown[0].options.data.type, 'test');
 });
