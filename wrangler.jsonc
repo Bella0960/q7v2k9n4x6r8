@@ -20,7 +20,17 @@
     { "tag": "v1", "new_sqlite_classes": ["CloudDatabase"] }
   ],
   "previews": {
+    "ai": { "binding": "AI" },
     "vars": {
+      "DEVICE_PAIRING_TOKEN_TTL_MS": "300000",
+      "AUTONOMY_PREVIEW_ALARM_ENABLED": "true",
+      "AUTONOMY_MIN_IDLE_MS": "1800000",
+      "AUTONOMY_LEASE_MS": "60000",
+      "AUTONOMY_TICK_LIMIT": "10",
+      "AUTONOMY_RETRY_BACKOFF_MS": "60000,300000,900000",
+      "AUTONOMY_HEARTBEAT_TTL_MS": "90000",
+      "AUTONOMY_DEVICE_LEASE_MS": "120000",
+      "AUTONOMY_DEVICE_GRACE_MS": "0",
       "MAO_SOCIAL_ENABLED": "true",
       "MAO_SOCIAL_CHAT_ENABLED": "false",
       "MAO_SOCIAL_E2EE_ENABLED": "true"
