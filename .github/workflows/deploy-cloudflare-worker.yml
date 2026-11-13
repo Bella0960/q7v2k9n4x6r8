@@ -48,6 +48,13 @@ jobs:
       - name: Verify PWA navigation fallback
         run: npm run test:pwa:navigation
 
+      - name: Block unprepared production account deployment
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          MAOMAO_PRODUCTION_ORIGIN: https://app.mao520.com
+        run: node scripts/verify-production-account-readiness.mjs
+
       - name: Deploy Cloudflare Worker
         uses: cloudflare/wrangler-action@v3
         with:
