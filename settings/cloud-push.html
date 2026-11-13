@@ -394,6 +394,8 @@
             <p class="cloud-hint" id="cloudPushResult" role="status" aria-live="polite">测试通知不需要角色或 API。请先开启上方推送。</p>
             <button id="cloudLocalTestRow" type="button" class="cloud-local-test">本机通知自检</button>
             <p class="cloud-hint" id="cloudLocalResult" role="status" aria-live="polite">本机自检不经过服务器，用来确认当前浏览器能否显示系统通知。</p>
+            <button id="cloudEmptyPushRow" type="button" class="cloud-local-test">远程空载测试（排除加密问题）</button>
+            <p class="cloud-hint" id="cloudEmptyPushResult" role="status" aria-live="polite">这是无私人内容的 FCM 远程唤醒；不需要角色或 AI。</p>
         </section>
 
         <section aria-labelledby="autonomyTitle">
@@ -556,7 +558,7 @@
     </main>
 </div>
 
-<script src="../shared/js/cloud-push-client.js?v=20261114v5"></script>
+<script src="../shared/js/cloud-push-client.js?v=20261114v6"></script>
 <script>
 (function () {
     if (window.MaomaoCloud && window.MaomaoCloud.mountSettings) {
