@@ -5405,6 +5405,26 @@
                 // contextOnly 只发起 AI 回合，不创建普通用户文字消息。
             } else {
                 historyList = loadMessages();
+                if (opts && opts.regenTargetMid) {
+                    // Filter the old turn from the AI prompt, but never persist its deletion.
+                    // The existing stored turn remains intact through network/API failures.
+                    var regenTargetId = String(opts.regenTargetMid);
+                    var regenBefore = historyList.slice();
+                    if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.removeTurnFromHistory === 'function') {
+                        historyList = window.ChatMessagePolicy.removeTurnFromHistory(historyList, regenTargetId);
+                    } else {
+                        var regenParsed = window.ChatMessagePolicy && typeof window.ChatMessagePolicy.parseBubbleId === 'function'
+                            ? window.ChatMessagePolicy.parseBubbleId(regenTargetId)
+                            : { mid: regenTargetId.split('#')[0] };
+                        historyList = historyList.filter(function (message) {
+                            return ensureMid(message) !== regenParsed.mid;
+                        });
+                    }
+                    if (historyList.length === regenBefore.length) {
+                        if (typeof showToast === 'function') showToast('旧回复已变化，重新生成已取消，请刷新聊天');
+                        return;
+                    }
+                }
             }
 
             // ===== R2 字符预算：上下文各段落设上限，超长静默截断降级（防 400 context_length_exceeded） =====
@@ -6457,6 +6477,23 @@
                 logApiCall(apiModel, 'success', apiCallStart);
             }
 
+            // Regeneration is replacement, not deletion: a failed/empty AI turn must
+            // never overwrite the saved old reply with the filtered prompt history.
+            if (isRegen && (!streamResult.ok || !String(fullText || '').trim())) {
+                for (var regenNode = 0; regenNode < streamNodes.length; regenNode++) {
+                    if (streamNodes[regenNode] && streamNodes[regenNode].parentNode) {
+                        streamNodes[regenNode].parentNode.removeChild(streamNodes[regenNode]);
+                    }
+                }
+                streamNodes = [];
+                if (_vl) _vl.streaming = false;
+                aiSending = false;
+                if (chatTitleEl) chatTitleEl.textContent = originalTitleText;
+                if (_vl) vlRefresh(); else renderAllMessages();
+                if (typeof showToast === 'function') showToast('重新生成未成功，原回复已保留');
+                return;
+            }
+
             // 重试后 API 失败：先把同一条用户消息重新标记为失败并落库，
             // 再按既有 _isRepeatedSystemError 去重规则处理错误提示。
             var retryRemarked = false;
@@ -6635,7 +6672,11 @@
                             replyMessages = [];
                             aiStickerMessages = [];
                             aiRoleGalleryMessages = [];
-                            try { saveMessages(historyList); } catch (rollbackError) {}
+                            // Regeneration never deleted the saved old turn, so a
+                            // failed replacement write must not retry a filtered history.
+                            if (!isRegen) {
+                                try { saveMessages(historyList); } catch (rollbackError) {}
+                            }
                             if (streamBubble && fullText) streamBubble.textContent = fullText;
                             if (typeof showToast === 'function') showToast('AI 回复尚未保存。上方文字暂留在当前页面，请先复制保留，再检查存储空间。');
                         } else {
@@ -6875,23 +6916,11 @@
                 return;
             }
             // 改写以「整轮回复」为单位：同 turnId 的所有气泡一起移除；老记录无 turnId 时只删该条消息。
-            var previousHistory = list.slice();
+            // Keep the last saved reply visible and durable while AI generates a replacement.
+            // sendMsg filters this turn from its *in-memory prompt context* only; it
+            // commits the replacement in one verified history write after AI succeeds.
             var targetBubbleId = mid || ensureMid(list[targetIdx]);
-            if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.removeTurnFromHistory === 'function') {
-                list = window.ChatMessagePolicy.removeTurnFromHistory(list, targetBubbleId);
-            } else {
-                list.splice(targetIdx, 1);
-            }
-            if (!saveMessages(list)) {
-                // 未能保存删除操作时恢复原回复，不能先从界面移除再继续重新生成。
-                saveMessages(previousHistory);
-                rerenderFromList(previousHistory);
-                if (typeof showToast === 'function') showToast('原回复没有删除成功，已保留原消息；暂未开始重新生成');
-                return;
-            }
-            rerenderFromList(list);
-            // 只有整轮旧回复已成功移除，才开始重新生成。
-            sendMsg({ isRegenerate: true, regenDirection: direction || '' });
+            sendMsg({ isRegenerate: true, regenDirection: direction || '', regenTargetMid: targetBubbleId });
         };
 
         // 改写指定的某条 AI 消息（由消息操作面板调用）

@@ -2366,7 +2366,16 @@ test('chat detail: multi-bubble history readback verifies behavior-bearing state
   assert.match(detail, /msg\.poll && typeof msg\.poll === 'object' \? JSON\.stringify\(msg\.poll\)/);
   assert.match(detail, /msg\.chain && typeof msg\.chain === 'object' \? JSON\.stringify\(msg\.chain\)/);
   assert.match(detail, /msg\.call && typeof msg\.call === 'object' \? JSON\.stringify\(msg\.call\)/);
-  assert.match(detail, /if \(!saveMessages\(list\)\)[\s\S]*?原回复没有删除成功[\s\S]*?return[\s\S]*?sendMsg\(\{ isRegenerate: true/);
+  const regenStart = detail.indexOf('window.regenerateReply = function');
+  const regenEnd = detail.indexOf('// 改写指定的某条 AI 消息', regenStart);
+  assert.ok(regenStart >= 0 && regenEnd > regenStart);
+  const regenHandler = detail.slice(regenStart, regenEnd);
+  assert.doesNotMatch(regenHandler, /saveMessages\(/, 'regenerate must not delete persisted old reply before AI success');
+  assert.match(regenHandler, /sendMsg\(\{ isRegenerate: true, regenDirection: direction \|\| '', regenTargetMid: targetBubbleId \}\)/);
+  assert.match(detail, /historyList = window\.ChatMessagePolicy\.removeTurnFromHistory\(historyList, regenTargetId\)/);
+  assert.match(detail, /if \(isRegen && \(!streamResult\.ok \|\| !String\(fullText \|\| ''\)\.trim\(\)\)\)/);
+  assert.match(detail, /重新生成未成功，原回复已保留/);
+  assert.match(detail, /if \(!isRegen\) \{\s*try \{ saveMessages\(historyList\); \} catch \(rollbackError\) \{\}/);
 });
 
 
