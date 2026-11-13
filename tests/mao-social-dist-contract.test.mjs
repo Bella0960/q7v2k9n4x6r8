@@ -149,3 +149,22 @@ test('approved real-user chats appear in the existing built chat list, not a new
   assert.doesNotMatch(source, /\b(?:window\.)?(?:localStorage|sessionStorage|indexedDB)\s*(?:\.|\[)/,
     'real-account list must never persist peer data in browser storage');
 });
+
+
+test('built real-person voice message uses custom monochrome pill without stock audio controls',()=>{
+  const page=readFileSync(dist('chat/contacts/real-chat.html'),'utf8');
+  const scripts=readdirSync(dist('assets/chat/contacts'))
+    .filter(name=>/^real-chat-[A-Za-z0-9_-]+\.js$/.test(name));
+  assert.ok(scripts.length,'compiled mobile chat bundle must be present');
+  const compiled=scripts.map(name=>readFileSync(dist('assets/chat/contacts/'+name),'utf8')).join('');
+  assert.match(page,/\.bubble-wrap\.mine \.bubble\.media-voice\{background:#111;color:#fff/);
+  assert.match(page,/\.bubble\.media-voice\{[^}]*background:#fff/);
+  assert.match(page,/\.voice-play\[data-state="playing"\]/);
+  assert.match(compiled,/voice-wave/);
+  assert.match(compiled,/loadedmetadata/);
+  assert.match(compiled,/voice-unread/);
+  assert.doesNotMatch(page,/audio\.controls=true|<audio[^>]*controls/);
+  for(const id of ['photoBtn','voiceBtn','photoInput','input','send','compose']) {
+    assert.match(page,new RegExp('id="'+id+'"'));
+  }
+});

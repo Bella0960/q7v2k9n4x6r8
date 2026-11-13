@@ -45,8 +45,26 @@ button{cursor:pointer}
 .compose button.media-action:focus-visible{outline:2px solid #777;outline-offset:2px}
 .bubble.media-photo{padding:4px;overflow:hidden;max-width:min(75%,260px)}
 .bubble.media-photo img{display:block;max-width:100%;max-height:310px;border-radius:9px;object-fit:contain;cursor:zoom-in}
-.bubble.media-voice{padding:9px 11px;min-width:180px}
-.bubble.media-voice audio{display:block;width:min(230px,60vw);max-width:100%;height:37px}
+.bubble.media-voice{padding:0;min-width:0;max-width:min(72vw,225px);position:relative;white-space:normal;background:#fff;border:1px solid #e5e5e6;color:#242424;box-shadow:0 1px 3px rgba(0,0,0,.025)}
+.bubble-wrap.mine .bubble.media-voice{background:#111;color:#fff;border:1px solid #111;box-shadow:none}
+.voice-play{appearance:none;border:0;background:transparent;color:inherit;display:flex;align-items:center;gap:10px;width:var(--voice-width,105px);max-width:100%;height:42px;padding:0 12px;cursor:pointer;text-align:left;border-radius:inherit;outline-offset:3px;-webkit-tap-highlight-color:transparent}
+.voice-play:focus-visible{outline:2px solid #777}
+.voice-play:disabled{opacity:.72;cursor:default}
+.bubble-wrap.mine .voice-play{flex-direction:row-reverse}
+.voice-play .voice-wave{width:22px;height:22px;flex:0 0 22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.bubble-wrap.mine .voice-wave{transform:scaleX(-1)}
+.voice-play .voice-seconds{font-size:12px;white-space:nowrap;font-variant-numeric:tabular-nums;font-weight:500;letter-spacing:.015em}
+.voice-unread{position:absolute;right:-12px;top:50%;transform:translateY(-50%);width:5px;height:5px;border-radius:50%;background:#777}
+.voice-wave .voice-arc-middle,.voice-wave .voice-arc-outer{opacity:1}
+.voice-play[data-state="playing"] .voice-arc-middle{animation:mao-voice-mid .95s linear infinite}
+.voice-play[data-state="playing"] .voice-arc-outer{animation:mao-voice-out .95s linear infinite}
+.voice-play[data-state="sending"] .voice-wave{animation:mao-voice-send 1s ease-in-out infinite}
+.voice-play[data-state="failed"] .voice-seconds{text-decoration:underline;text-underline-offset:3px}
+.voice-play .voice-audio{display:none!important}
+@keyframes mao-voice-mid{0%,25%{opacity:.12}40%,100%{opacity:1}}
+@keyframes mao-voice-out{0%,50%{opacity:.12}65%,100%{opacity:1}}
+@keyframes mao-voice-send{0%,100%{opacity:.48}50%{opacity:1}}
+@media(prefers-reduced-motion:reduce){.voice-play[data-state] .voice-wave,.voice-play[data-state] .voice-arc-middle,.voice-play[data-state] .voice-arc-outer{animation:none!important;opacity:1}}
 .voice-state{margin:8px 3px 0;font-size:11px;letter-spacing:.025em;color:#565656}
 .voice-state:before{content:"";display:inline-block;width:6px;height:6px;margin-right:7px;border-radius:50%;background:#555}
 .retry-media{border:1px solid #d8d8d8;background:white;border-radius:10px;padding:8px 12px;color:#444;font-size:11px;display:block;margin:8px auto 0}
@@ -99,10 +117,17 @@ let owner=null,device=null,peerKey=null,db=null,key=null,friendshipId=null;
 let cursor=0,seen=new Set(),polling=false,sending=false,closed=false,pending=null;
 let friendLabel='',timer=null,identityEpoch=0;
 let pendingMedia=null,recording=null,recordingStopping=false,activeUrls=new Set();
+let activeVoicePlayers=new Set(),playingVoice=null,voicePlayed=new Set(),pendingVoiceWrap=null;
 const setStatus=(msg,error=false)=>{$('status').textContent=msg;$('status').classList.toggle('error',!!error);};
 const reqId=()=> 'e2e_'+crypto.randomUUID().replace(/-/g,'');
 function resetVisible() {
   discardRecording();
+  // Pause and detach every decrypted player before freeing private blob URLs.
+  if(playingVoice){playingVoice.pause();playingVoice=null;}
+  activeVoicePlayers.forEach(player=>{player.pause();player.removeAttribute('src');});
+  activeVoicePlayers.clear();
+  voicePlayed.clear();
+  pendingVoiceWrap=null;
   for(const url of activeUrls)URL.revokeObjectURL(url);
   activeUrls.clear();
   $('log').textContent='';$('input').value='';$('input').disabled=true;$('send').disabled=true;
@@ -230,6 +255,144 @@ async function fetchMessages(){
     if(!closed)setStatus(e.message||'加载加密消息失败',true);
   } finally{polling=false;}
 }
+// Voice messages share the existing text/photo bubble pipeline, but render as
+// compact WeChat-style controls. Media never leaves the E2EE path or reaches AI.
+const voiceSvgNS='http://www.w3.org/2000/svg';
+function voiceGlyph(){
+  const svg=document.createElementNS(voiceSvgNS,'svg');
+  svg.setAttribute('viewBox','0 0 24 24');
+  svg.classList.add('voice-wave');
+  svg.setAttribute('aria-hidden','true');
+  const dot=document.createElementNS(voiceSvgNS,'circle');
+  dot.setAttribute('cx','6.7');dot.setAttribute('cy','12');dot.setAttribute('r','1.4');
+  const arcs=[
+    ['M10.3 8.2a5.2 5.2 0 0 1 0 7.6','voice-arc-middle'],
+    ['M14.2 4.9a9.5 9.5 0 0 1 0 14.2','voice-arc-outer']
+  ];
+  svg.appendChild(dot);
+  arcs.forEach(([d,klass])=>{
+    const arc=document.createElementNS(voiceSvgNS,'path');
+    arc.setAttribute('d',d);arc.classList.add(klass);svg.appendChild(arc);
+  });
+  return svg;
+}
+function voiceSeconds(value){
+  return Number.isFinite(value)&&value>0
+    ? Math.max(1,Math.min(59,Math.ceil(value)))+'″'
+    : '语音';
+}
+function setVoiceLength(pill,secondsElement,value){
+  secondsElement.textContent=voiceSeconds(value);
+  if(Number.isFinite(value)&&value>0){
+    const secs=Math.max(1,Math.min(30,Math.ceil(value)));
+    pill.style.setProperty('--voice-width',(99+secs*4)+'px');
+    pill.setAttribute('aria-label','播放 '+secs+' 秒语音');
+  }
+}
+function makeVoicePill({mine=false,sending=false}={}){
+  const pill=document.createElement('button');
+  pill.type='button';pill.className='voice-play';
+  pill.dataset.state=sending?'sending':'unplayed';
+  const wave=voiceGlyph();
+  const seconds=document.createElement('span');
+  seconds.className='voice-seconds';
+  seconds.textContent=sending?'发送中':'语音';
+  pill.append(wave,seconds);
+  pill.setAttribute('aria-label',sending?'语音发送中':'播放语音');
+  if(sending){pill.disabled=true;pill.setAttribute('aria-busy','true');}
+  return {pill,seconds};
+}
+function showPendingVoice(messageId){
+  if(closed||pendingVoiceWrap)return;
+  const wrap=document.createElement('div');
+  wrap.className='bubble-wrap mine';
+  wrap.dataset.pendingVoice=messageId;
+  const bubble=document.createElement('div');
+  bubble.className='bubble media-voice';
+  const {pill,seconds}=makeVoicePill({mine:true,sending:true});
+  bubble.appendChild(pill);
+  const time=document.createElement('span');
+  time.className='time';time.textContent='发送中';
+  wrap.append(bubble,time);
+  $('log').appendChild(wrap);
+  $('log').scrollTop=$('log').scrollHeight;
+  pendingVoiceWrap={wrap,pill,seconds,time,id:messageId};
+}
+function pendingVoiceStatus(state){
+  const view=pendingVoiceWrap;
+  if(!view)return;
+  if(state==='sent'){
+    view.wrap.remove();pendingVoiceWrap=null;return;
+  }
+  view.pill.dataset.state=state;
+  view.pill.disabled=state==='sending';
+  view.pill.setAttribute('aria-busy',state==='sending'?'true':'false');
+  view.seconds.textContent=state==='failed'?'重试':'发送中';
+  view.time.textContent=state==='failed'?'发送失败':'发送中';
+  view.pill.setAttribute('aria-label',state==='failed'?'语音发送失败，点击重试':'语音发送中');
+  if(state==='failed')view.pill.onclick=()=>{if(pendingMedia)transmitMedia();};
+}
+function mountVoicePlayer(bubble,url,message){
+  const mine=message.senderId===owner.id;
+  const {pill,seconds}=makeVoicePill({mine});
+  const unread=document.createElement('span');
+  unread.className='voice-unread';
+  unread.setAttribute('aria-label','未播放');
+  unread.hidden=mine||voicePlayed.has(message.id);
+  // An invisible native audio element is retained only as the codec engine.
+  // It never exposes the browser's stock controls, scrub bar or more menu.
+  const audio=document.createElement('audio');
+  audio.className='voice-audio';
+  audio.hidden=true;audio.controls=false;audio.preload='metadata';audio.src=url;
+  activeVoicePlayers.add(audio);
+  const state=value=>{
+    pill.dataset.state=value;
+    pill.setAttribute('aria-pressed',value==='playing'?'true':'false');
+  };
+  const refreshDuration=()=>{
+    if(Number.isFinite(audio.duration)&&audio.duration>0){
+      setVoiceLength(pill,seconds,audio.duration);
+      if(!audio.paused)pill.setAttribute('aria-label','暂停语音');
+    }
+  };
+  audio.addEventListener('loadedmetadata',refreshDuration);
+  audio.addEventListener('durationchange',refreshDuration);
+  audio.addEventListener('play',()=>{
+    if(playingVoice&&playingVoice!==audio)playingVoice.pause();
+    playingVoice=audio;
+    state('playing');
+    voicePlayed.add(message.id);
+    unread.hidden=true;
+    pill.setAttribute('aria-label','暂停语音');
+  });
+  audio.addEventListener('pause',()=>{
+    state('unplayed');
+    if(playingVoice===audio)playingVoice=null;
+    refreshDuration();
+  });
+  audio.addEventListener('ended',()=>{
+    state('unplayed');
+    if(playingVoice===audio)playingVoice=null;
+    refreshDuration();
+  });
+  audio.addEventListener('error',()=>{
+    state('failed');
+    pill.setAttribute('aria-label','语音播放出错，请重试');
+  });
+  pill.addEventListener('click',()=>{
+    if(closed)return;
+    if(!audio.paused){audio.pause();return;}
+    if(playingVoice&&playingVoice!==audio)playingVoice.pause();
+    // Must start directly inside a user gesture for iOS Safari.
+    const result=audio.play();
+    if(result&&typeof result.catch==='function'){
+      result.catch(()=>{state('failed');setStatus('语音暂时无法播放，请检查手机音量或录音格式。',true);});
+    }
+  });
+  bubble.classList.add('media-voice');
+  bubble.replaceChildren(pill,unread,audio);
+  try{audio.load();}catch{}
+}
 // The attachment fetch is authorized again on every media request, and its
 // account, friendship generation, sender and client-message binding are checked
 // before using a local blob URL. No third-party media URL or AI call is used.
@@ -255,18 +418,16 @@ async function loadMediaForBubble(marker,message,bubble,epoch,relation,conversat
     if(closed||epoch!==identityEpoch||relation!==friendshipId)return;
     const url=URL.createObjectURL(new Blob([bytes],{type:item.mime}));
     activeUrls.add(url);
-    const element=document.createElement(item.kind==='image'?'img':'audio');
-    element.src=url;
     if(item.kind==='image'){
-      element.alt='好友发送的图片';
-      element.loading='lazy';
+      const image=document.createElement('img');
+      image.src=url;
+      image.alt='好友发送的图片';
+      image.loading='lazy';
       bubble.classList.add('media-photo');
+      bubble.replaceChildren(image);
     }else{
-      element.controls=true;element.preload='none';
-      element.setAttribute('aria-label','好友发送的语音消息');
-      bubble.classList.add('media-voice');
+      mountVoicePlayer(bubble,url,message);
     }
-    bubble.replaceChildren(element);
   }catch(error){
     if(!closed&&epoch===identityEpoch&&relation===friendshipId){
       bubble.textContent=marker.kind==='image'?'图片暂时无法加载':'语音暂时无法播放';
@@ -290,6 +451,7 @@ async function transmitMedia(){
   if(!pendingMedia||closed||sending)return;
   const task=pendingMedia;
   sending=true;updateMediaBusy(true);
+  if(task.payload.attachment.kind==='voice')pendingVoiceStatus('sending');
   try{
     const response=await api('/api/social/e2ee/chats/'+encodeURIComponent(peer)+'/media',{
       method:'POST',body:task.payload
@@ -304,11 +466,13 @@ async function transmitMedia(){
     if(closed||task.epoch!==identityEpoch||friendshipId!==task.friendshipId||
        owner?.id!==task.senderId)return;
     pendingMedia=null;
+    if(task.payload.attachment.kind==='voice')pendingVoiceStatus('sent');
     $('retryMedia').hidden=true;
     setStatus('图片或语音已安全送达服务器。');
     await fetchMessages();
   }catch(error){
     if(!closed){
+      if(task.payload.attachment.kind==='voice')pendingVoiceStatus('failed');
       $('retryMedia').hidden=false;
       setStatus('发送尚未确认：'+String(error?.message||'网络错误')+'，可点击重试。',true);
     }
@@ -335,6 +499,7 @@ async function sendMediaBlob(blob,kind,mime){
   if(closed||epoch!==identityEpoch||relation!==friendshipId||owner?.id!==senderId)return;
   pendingMedia={mediaId,clientMessageId,senderId,friendshipId:relation,epoch,
     payload:{friendshipId:relation,clientMessageId,attachment,envelope}};
+  if(kind==='voice')showPendingVoice(clientMessageId);
   await transmitMedia();
 }
 
