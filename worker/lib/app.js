@@ -1,4 +1,5 @@
 import { createAccountAuth } from './account-auth.js';
+import { createMaoSocial } from './mao-social.js';
 import {
   ApiError, fail, ok, readJsonBody
 } from './http.js';
@@ -459,6 +460,7 @@ export async function dispatchPendingOutboundPushes({
 
 export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl = fetch }) {
   const accountAuth = createAccountAuth({ store, env, now });
+  const maoSocial = createMaoSocial({ store, accountAuth, env, now });
 
   async function authenticate(request) {
     const parsed = deviceAuthHeader(request);
@@ -2001,6 +2003,9 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       await assertAccountPageContext(request, path);
       const accountResponse = await accountAuth.handle(request, path, method);
       if (accountResponse) return accountResponse;
+      // Same MAO account, cookie and durable object; never legacy D1 auth.
+      const socialResponse = await maoSocial.handle(request, path, method);
+      if (socialResponse) return socialResponse;
 
       if (path === '/api/health' && method === 'GET') {
         const counts = await store.counts();
