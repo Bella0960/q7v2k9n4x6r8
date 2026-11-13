@@ -12,7 +12,10 @@ export const DELEGATED_IDENTITY_MODE = 'delegated_preview';
 export const BRIDGE_AUTH_HEADER = 'x-mao-identity-bridge';
 const ACCOUNT_ID = /^MAO-[A-Z0-9]{12,24}$/;
 const USERNAME = /^[\p{L}\p{N}_-]{2,24}$/u;
-const INTERNAL_ORIGIN = 'https://mao-identity-bridge.internal';
+// This URL is ONLY passed to a Worker Service Binding (never fetch()). Cloudflare
+// routes directly to mao-auth-preview, bypassing public DNS and the browser.
+// Match the already verified read-only probe's origin for POST Origin checks.
+const INTERNAL_ORIGIN = 'https://mao520.com';
 const ALLOWED_OPERATIONS = new Set(['authenticate', 'status']);
 
 export function usesDelegatedIdentity(env = {}) {
