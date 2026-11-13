@@ -399,3 +399,16 @@ test('Wrangler config explicitly sets pairing TTL but does not auto-enable AI sp
   assert.doesNotMatch(config, /"AUTONOMY_MODEL_BACKEND"\s*:\s*"workers_ai"/,
     'AI inference must require an explicit, separately approved activation');
 });
+
+
+test('cloud Cron preserves the existing foreground executor and its API result', () => {
+  const worker = fs.readFileSync(new URL('../worker.js', import.meta.url), 'utf8');
+  assert.ok(worker.includes("import { runTick } from './worker/lib/scheduler.js'"));
+  assert.ok(worker.includes("import { createSchedulerGate } from './worker/lib/scheduler-gate.js'"));
+  assert.ok(worker.includes('const foregroundNow = Date.now()'));
+  assert.ok(worker.includes('foregroundResult = runTick({'));
+  assert.ok(worker.includes('const cloudResult = await runCloudModelTick({'));
+  assert.ok(worker.includes('result: foregroundResult, cloudResult, pushDispatch'));
+  assert.ok(worker.includes("reason: 'foreground_tick_failed'"),
+    'cloud path must still execute if foreground scheduler throws');
+});
