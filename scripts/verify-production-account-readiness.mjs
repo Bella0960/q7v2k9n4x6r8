@@ -11,8 +11,16 @@ export const PRODUCTION_SCRIPT = 'mao';
 export const PREVIEW_SCRIPT = 'mao-auth-preview';
 const REQUIRED_SECRETS = ['DEVICE_SECRET_PEPPER', 'MAO_SUPER_ADMIN_BOOTSTRAP_SECRET'];
 
-export function auditProductionAccountReadiness({ production, preview, secrets, online }) {
+export function auditProductionAccountReadiness({ production, preview, secrets, online, domains, hostname }) {
   const failures = [];
+  const customDomains = Array.isArray(domains) ? domains : [];
+  const mapping = customDomains.filter(domain => domain?.hostname === hostname);
+  if (mapping.length !== 1 || typeof hostname !== 'string' || !hostname) {
+    failures.push('PRODUCTION_DOMAIN_MAPPING_NOT_UNIQUE');
+  } else if (mapping[0].service !== PRODUCTION_SCRIPT ||
+             mapping[0].environment !== 'production') {
+    failures.push('PRODUCTION_DOMAIN_TARGET_MISMATCH');
+  }
   const prodBindings = Array.isArray(production?.bindings) ? production.bindings : [];
   const previewBindings = Array.isArray(preview?.bindings) ? preview.bindings : [];
   const prodDb = prodBindings.find(item => item.name === 'CLOUD_DB');
@@ -73,10 +81,11 @@ async function verify() {
   }
   const endpoint = 'https://api.cloudflare.com/client/v4/accounts/' + accountId
     + '/workers/scripts/';
-  const [production, preview, secrets] = await Promise.all([
+  const [production, preview, secrets, domains] = await Promise.all([
     getJson(endpoint + PRODUCTION_SCRIPT + '/settings', token),
     getJson(endpoint + PREVIEW_SCRIPT + '/settings', token),
-    getJson(endpoint + PRODUCTION_SCRIPT + '/secrets', token)
+    getJson(endpoint + PRODUCTION_SCRIPT + '/secrets', token),
+    getJson('https://api.cloudflare.com/client/v4/accounts/' + accountId + '/workers/domains', token)
   ]);
   // No registration POST, login credentials, secret values or admin privileges.
   // The active existing production origin must ALREADY have server-authorized 001.
@@ -89,13 +98,14 @@ async function verify() {
     try { body = await response.json(); } catch {}
   }
   const failures = auditProductionAccountReadiness({
-    production, preview, secrets, online: { httpStatus: response.status, body }
+    production, preview, secrets, domains, hostname: new URL(origin).hostname,
+    online: { httpStatus: response.status, body }
   });
   if (failures.length) {
     for (const failure of failures) console.error('BLOCKED: ' + failure);
     throw new Error('Production account release gate failed: ' + failures.length + ' unmet condition(s)');
   }
-  console.log('PASS: production Worker has isolated DB, required secret bindings, native crypto and initialized founder 001');
+  console.log('PASS: production domain maps to expected Worker, isolated DB, required secrets, native crypto, initialized founder 001');
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

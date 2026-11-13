@@ -18,6 +18,8 @@ const example = () => ({
     { name: 'DEVICE_SECRET_PEPPER' },
     { name: 'MAO_SUPER_ADMIN_BOOTSTRAP_SECRET' }
   ],
+  domains: [{ hostname: 'app.mao520.com', service: 'mao', environment: 'production' }],
+  hostname: 'app.mao520.com',
   online: { httpStatus: 200, body: { configured: true, initialized: true } }
 });
 
@@ -86,4 +88,28 @@ test('secret binding names are required but no secret values are accessed', () =
   data.secrets = [{ name: 'DEVICE_SECRET_PEPPER' }];
   const errors = auditProductionAccountReadiness(data);
   assert.ok(errors.includes('PROD_SECRET_MISSING_MAO_SUPER_ADMIN_BOOTSTRAP_SECRET'));
+});
+
+
+test('production custom domain cannot point at an unrelated Worker', () => {
+  const data = example();
+  data.domains[0].service = 'curly-dream-324c';
+  assert.ok(auditProductionAccountReadiness(data).includes('PRODUCTION_DOMAIN_TARGET_MISMATCH'));
+});
+
+test('missing or duplicate custom-domain assignment blocks risky production rollout', () => {
+  const data = example();
+  data.domains = [];
+  assert.ok(auditProductionAccountReadiness(data).includes('PRODUCTION_DOMAIN_MAPPING_NOT_UNIQUE'));
+  data.domains = [
+    { hostname: 'app.mao520.com', service: 'mao', environment: 'production' },
+    { hostname: 'app.mao520.com', service: 'mao', environment: 'production' }
+  ];
+  assert.ok(auditProductionAccountReadiness(data).includes('PRODUCTION_DOMAIN_MAPPING_NOT_UNIQUE'));
+});
+
+test('even the right script with a non-production route is blocked', () => {
+  const data = example();
+  data.domains[0].environment = 'preview';
+  assert.ok(auditProductionAccountReadiness(data).includes('PRODUCTION_DOMAIN_TARGET_MISMATCH'));
 });

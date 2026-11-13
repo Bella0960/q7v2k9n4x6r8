@@ -48,6 +48,7 @@ jobs:
       - name: Verify PWA navigation fallback
         run: npm run test:pwa:navigation
 
+      # Verify actual custom-domain ownership, not just the Worker configured in wrangler.jsonc.
       - name: Block unprepared production account deployment
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
