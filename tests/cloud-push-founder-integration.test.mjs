@@ -19,8 +19,8 @@ test('founder 001 settings shows a real push route with a versioned connected cl
   assert.match(pushPage, /id="cloudPushToggle"/);
   assert.match(pushPage, /id="cloudTestRow"/);
   assert.match(pushPage, /MaomaoCloud\.mountSettings\(\)/);
-  assert.match(pushPage, /cloud-push-client\.js\?v=20261114v5/);
-  assert.match(sw, /phone-app-pwa-v230/);
+  assert.match(pushPage, /cloud-push-client\.js\?v=20261114v6/);
+  assert.match(sw, /phone-app-pwa-v231/);
   assert.match(sw, /settings\/cloud-push\.html/);
 });
 
@@ -113,4 +113,16 @@ test('device status identifies the current browser subscription instead of blind
   assert.match(client, /localSub\.endpoint/);
   assert.match(client, /item\.endpoint === localSub\.endpoint/);
   assert.match(client, /当前浏览器没有本地订阅/);
+});
+
+
+test('encrypted and no-payload Web Push diagnostics use the existing authorized endpoint', () => {
+  assert.match(pushPage, /id="cloudEmptyPushRow"/);
+  assert.match(pushPage, /id="cloudEmptyPushResult"/);
+  assert.match(client, /async function sendTestPush\(deliveryMode\)/);
+  assert.match(client, /deliveryMode === 'no_payload'/);
+  assert.match(app, /const noPayloadDiagnostic = body\.deliveryMode === 'no_payload'/);
+  assert.match(app, /const payload = noPayloadDiagnostic \? '' : JSON\.stringify/);
+  assert.match(sw, /if \(!event\.data\)/);
+  assert.match(sw, /MAOMAO · 远程空载通知/);
 });
