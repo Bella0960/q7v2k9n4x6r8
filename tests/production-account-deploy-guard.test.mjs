@@ -18,7 +18,7 @@ const example = () => ({
     { name: 'DEVICE_SECRET_PEPPER' },
     { name: 'MAO_SUPER_ADMIN_BOOTSTRAP_SECRET' }
   ],
-  domains: [{ hostname: 'app.mao520.com', service: 'mao', environment: 'production' }],
+  domains: [{ hostname: 'app.mao520.com', service: 'mao', environment: 'production', enabled: true }],
   hostname: 'app.mao520.com',
   online: { httpStatus: 200, body: { configured: true, initialized: true } }
 });
@@ -111,5 +111,11 @@ test('missing or duplicate custom-domain assignment blocks risky production roll
 test('even the right script with a non-production route is blocked', () => {
   const data = example();
   data.domains[0].environment = 'preview';
+  assert.ok(auditProductionAccountReadiness(data).includes('PRODUCTION_DOMAIN_TARGET_MISMATCH'));
+});
+
+test('disabled custom-domain record cannot count as a production mapping', () => {
+  const data = example();
+  data.domains[0].enabled = false;
   assert.ok(auditProductionAccountReadiness(data).includes('PRODUCTION_DOMAIN_TARGET_MISMATCH'));
 });
