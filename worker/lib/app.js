@@ -935,7 +935,11 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
           failureKind: [
             'TypeError', 'DataError', 'OperationError', 'NotSupportedError',
             'InvalidAccessError', 'AbortError', 'NetworkError', 'Error'
-          ].includes(error?.causeName) ? error.causeName : 'OtherError'
+          ].includes(error?.causeName) ? error.causeName : 'OtherError',
+          failureDiagnostic: [
+            'redirect_rejected', 'request_body', 'dns', 'tls',
+            'network_policy', 'timeout', 'fetch_failure', 'unknown_transport'
+          ].includes(error?.diagnosticCode) ? error.diagnosticCode : null
         };
       }
 
@@ -1030,6 +1034,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
           httpStatus: statusCode,
           failurePhase: phase,
           failureKind: outcome.failureKind || null,
+          failureDiagnostic: outcome.failureDiagnostic || null,
           nextAttemptAt
         });
       }
