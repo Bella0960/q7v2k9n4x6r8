@@ -53,16 +53,16 @@ test('social preview enables only friendship QA; production and private chat sta
   assert.equal(config.previews?.vars?.MAO_SOCIAL_CHAT_ENABLED, 'false');
   assert.equal(config.previews?.vars?.MAO_IDENTITY_MODE, 'delegated_preview',
     'preview cannot issue a second founder 001 or require a new invitation');
-  assert.equal(config.previews?.vars?.MAO_IDENTITY_AUTHORITY_MODE, 'existing_worker');
+  assert.equal(config.previews?.vars?.MAO_IDENTITY_AUTHORITY_MODE, undefined,
+    'wrong founder database must never be treated as the actual creator authority');
   assert.equal(config.vars?.MAO_IDENTITY_AUTHORITY_MODE, undefined,
     'production cannot delegate its identity to the old auth preview');
   assert.equal(config.vars?.MAO_IDENTITY_MODE, undefined,
     'production identity must never silently bind to an old preview authority');
   assert.equal(config.previews?.durable_objects?.bindings?.[0]?.name, 'CLOUD_DB');
   assert.equal(config.services, undefined, 'production must not call old auth service');
-  assert.deepEqual(config.previews?.services, [
-    { binding: 'MAO_IDENTITY_AUTHORITY', service: 'mao-auth-preview' }
-  ], 'only the isolated preview may probe the existing official account Worker');
+  assert.equal(config.previews?.services, undefined,
+    'until the original 2026-11-11 founder database is safely connected, no preview may request creator credentials');
 
   const server = readFileSync(resolve(root, 'worker/lib/mao-social.js'), 'utf8');
   assert.match(server, /env\.MAO_SOCIAL_ENABLED !== 'true'/);
