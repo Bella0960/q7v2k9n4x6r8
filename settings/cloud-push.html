@@ -359,6 +359,8 @@
                     </label>
                 </div>
             </div>
+            <div class="cloud-action" id="cloudTestRow" role="button" tabindex="0" aria-label="发送一条不需要 AI 或角色的手机系统测试通知">发送测试通知</div>
+            <p class="cloud-hint" id="cloudPushResult" role="status" aria-live="polite">测试通知不需要角色或 API。请先开启上方推送。</p>
         </section>
 
         <section aria-labelledby="autonomyTitle">
@@ -404,6 +406,7 @@
                         </select>
                     </div>
                     <button id="cloudRoleAutonomySave" class="cloud-button" type="button">保存角色授权</button>
+                    <p id="cloudRoleSaveStatus" class="cloud-hint" role="status" aria-live="polite"></p>
                     <p class="cloud-hint">角色名称默认只从本机读取；只有单独开启上方上下文共享后，才会同步有限角色设定与近期文字。</p>
                 </div>
             </div>
@@ -469,7 +472,6 @@
                         <input class="cloud-input" id="cloudPairCodeInput" type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="输入一次性配对码" aria-label="输入一次性配对码">
                         <button class="cloud-button primary" id="cloudPairConnectButton" type="button">连接</button>
                     </div>
-                    <div class="cloud-action" id="cloudTestRow" role="button" tabindex="0">发送测试推送</div>
                     <div class="cloud-action" id="cloudReadinessCheck" role="button" tabindex="0">检查云端准备情况</div>
                     <div id="cloudReadinessResult" class="cloud-result" role="status" aria-live="polite"></div>
                     <div class="cloud-action cloud-danger" id="cloudRevokeRow" role="button" tabindex="0">断开云连接</div>
