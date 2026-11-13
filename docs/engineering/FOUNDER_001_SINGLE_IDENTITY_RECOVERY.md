@@ -47,3 +47,28 @@ Read-only snapshot of the **canonical** database: 4 account records, 1 friend-re
 4. Future Worker and domain cutovers must verify the account ID and original namespace *before and after* migration with authenticated session continuity and backed-up data. Cloudflare version/Worker rollback alone does not restore SQL state.
 5. Do **not** hardcode a user's personal permanent ID into generic registration, role assignment or application UI logic. Use server-side provenance checks and read-only migration gates. All other new accounts retain their normal distinct IDs.
 6. This confirmation is **not** a production-release approval: PR #262/#265 remain Draft; `main`, `app.mao520.com`, Cloudflare route bindings, and both Durable Object databases are untouched by this documentation change.
+
+## Canonical-founder code gate (2026-11-13)
+
+The following changes are made **only in the existing PR #265 development branch**, without changing main or any deployed Worker/DO namespace.
+
+- `worker/lib/founder-provenance.js`: optional, fail-closed runtime guard for a **selected account database**. Once configured, every API call checks that `CLOUD_DB` contains an active `super_admin` row with the exact canonical ID. A wrong namespace, a missing ID, malformed ID or delegated-preview mode is rejected **before login, friend/chat access or writes**. Never infer identity from the display name `小猫` or badge `001`.
+- `worker/lib/app.js`: calls the guard in the existing API pipeline; the real friend/voice UI is unchanged.
+- Per-environment Worker setting `MAO_CANONICAL_FOUNDER_ID` is deliberately **not** embedded into generic frontend code. At the selected canonical Worker environment, configure its **exact** value as `MAO-OXHBDBWCOIHPBBYN`, preferably as a Worker secret. Set `MAO_CANONICAL_FOUNDER_REQUIRED=true` if the deployment must fail even when the pin is absent. Do not apply this pin across every unrelated QA Preview: it would intentionally block synthetic test accounts.
+- `tests/founder-provenance.test.mjs` checks the correct synthetic ID, wrong ID, missing pin, delegated mode, and unchanged unpinned sandboxes, using isolated SQLite fixtures. Included in `test:release:accounts` (and therefore prebuild).
+- Production release hard gate `scripts/verify-production-account-readiness.mjs` now requires a bound `MAO_CANONICAL_FOUNDER_ID` secret **and** independently queries existing production DO SQLite for exactly one founder row matching the selected ID, role, active status and original `created_at`. The operator sets `MAO_CANONICAL_FOUNDER_ID` and `MAO_CANONICAL_FOUNDER_CREATED_AT=1794416935305` in the release-check *process environment*. The query is a fixed **SELECT**, not a data migration. It never reads password verifiers or tokens.
+- The original 001 namespace currently contains account/friend/message/media data. A *new empty* `mao_CloudDatabase` cannot qualify as the original identity, even if someone initializes another `001` on it.
+
+### Required remaining sequence
+
+1. Back up the **original** `mao_qa-phone-founder-001-keyreset-20261111_CloudDatabase` (and app-origin local/IndexedDB data); preserve an independently verified rollback copy, including private records not included in public audit logs.
+2. Validate an add-only migration and friend/chat/media integrity against a disposable copy **with no changes to the original QA namespace**. Preserve the founder row's ID, `created_at`, password verifier, and sessions, and verify account/friend/message/media record continuity and E2EE compatibility.
+3. Run full Node build/SQLite tests and Android + iOS login/chats on a properly isolated integration Worker. Avoid rerunning the already accepted media UI redesign.
+4. Configure the final Worker secret pin and prove its production Durable Object contains the selected founder before any domain mapping. The existing `app.mao520.com` Worker remains unchanged until explicitly approved.
+5. No deletion of the older `mao-auth-preview_CloudDatabase`; it is merely **excluded** from authority selection. Its historical content is not part of the owner-selected account.
+
+### Read-only infrastructure check on 2026-11-13
+
+The currently deployed `mao` and `curly-dream-324c` Workers both expose only `ASSETS` bindings. `app.mao520.com` still maps to `curly-dream-324c`. `mao-auth-preview` does have `CLOUD_DB`, but this is **the wrong November 10 founder** and cannot be used for the new login authority. This confirms that PR code changes alone do not constitute a safe production cutover.
+
+**Release status: blocked pending protected migration, full tests and phone acceptance.**
