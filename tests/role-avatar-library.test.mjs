@@ -34,7 +34,7 @@ function createLibrary(seed, options = {}) {
       return values.has(key) ? values.get(key) : null;
     },
     setItem(key, value) {
-      if (options.failWrites) throw new Error('storage quota');
+      if (options.failWrites || (options.failCharacterWrite && key === 'ai_custom_characters')) throw new Error('storage quota');
       values.set(key, String(value));
     },
     removeItem(key) {
@@ -603,7 +603,7 @@ test('character profile loads the shared media stack before the avatar library a
   const storage = characterPage.indexOf('phone_storage.js');
   const repository = characterPage.indexOf('storage/repository.js');
   const media = characterPage.indexOf('storage/media-repository.js');
-  const avatars = characterPage.indexOf('role-avatar-library.js?v=20261107v14');
+  const avatars = characterPage.indexOf('role-avatar-library.js?v=20261113v1');
   const manager = characterPage.indexOf('js/characters-manager.js?v=20261107v11');
   assert.ok(storage >= 0 && repository > storage && media > repository && avatars > media && manager > avatars);
   assert.ok(characterPage.includes('id="avatarLibraryFileInput"'));
@@ -663,7 +663,7 @@ test('PWA shell caches the role portrait archive and its runtime', () => {
   assert.ok(currentCacheVersion >= 203, 'PWA app shell must not regress below feature minimum v203');
   assert.ok(serviceWorker.includes("'./worldbook/characters/characters.html'"));
   assert.ok(serviceWorker.includes("'./worldbook/characters/js/characters-manager.js?v=20261107v11'"));
-  assert.ok(serviceWorker.includes("'./shared/js/phone/role-avatar-library.js?v=20261107v14'"));
+  assert.ok(serviceWorker.includes("'./shared/js/phone/role-avatar-library.js?v=20261113v1'"));
 });
 
 
@@ -1129,4 +1129,43 @@ test('role deletion reports incomplete rollback and still restores every other r
   assert.equal(refs.has(second.value.assetId + '|role-avatar|role-a'), false);
   assert.equal(refs.has(third.value.assetId + '|role-avatar|role-a'), false);
   assert.equal(values.has(api._storageKey('role-a')), false);
+});
+
+
+test('chat avatar application persists only the selected role and active portrait', async () => {
+  const original = [{ id: 'role-a', avatar: 'old', persona: 'keep' }, { id: 'role-b', avatar: 'other' }];
+  const { api, values } = createLibrary({ ai_custom_characters: JSON.stringify(original) });
+  const added = await api.add('role-a', 'data:image/jpeg;base64,NEW');
+  const applied = await api.applyToCharacter('role-a', added.value.id);
+  assert.equal(applied.ok, true);
+  const roles = JSON.parse(values.get('ai_custom_characters'));
+  assert.equal(roles[0].avatarAssetId, added.value.assetId);
+  assert.equal(roles[0].persona, 'keep');
+  assert.deepEqual(roles[1], original[1]);
+  assert.equal(api.getActive('role-a').id, added.value.id);
+  assert.equal((await api.applyToCharacter('role-b', added.value.id)).ok, false);
+});
+
+test('late avatar reads cannot overwrite newer role edits or an invalidated chat', async () => {
+  const { api, values } = createLibrary({ ai_custom_characters: JSON.stringify([{ id: 'role-a', avatar: 'old' }]) });
+  const added = await api.add('role-a', 'data:image/jpeg;base64,NEW');
+  const pending = api.applyToCharacter('role-a', added.value.id);
+  const newer = JSON.stringify([{ id: 'role-a', avatar: 'newer' }]);
+  values.set('ai_custom_characters', newer);
+  assert.equal((await pending).error.code, 'STALE_SELECTION');
+  assert.equal(values.get('ai_custom_characters'), newer);
+  assert.equal(api.getActive('role-a'), null);
+  assert.equal((await api.applyToCharacter('role-a', added.value.id, { isCurrent: () => false })).ok, false);
+});
+
+test('failed character persistence restores the previous active portrait', async () => {
+  const options = {};
+  const original = JSON.stringify([{ id: 'role-a', avatar: 'old' }]);
+  const { api, values } = createLibrary({ ai_custom_characters: original }, options);
+  const added = await api.add('role-a', 'data:image/jpeg;base64,NEW');
+  options.failCharacterWrite = true;
+  const result = await api.applyToCharacter('role-a', added.value.id);
+  assert.equal(result.error.code, 'STORAGE_FAILED');
+  assert.equal(values.get('ai_custom_characters'), original);
+  assert.equal(api.getActive('role-a'), null);
 });

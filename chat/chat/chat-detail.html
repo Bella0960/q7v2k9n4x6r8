@@ -13,9 +13,9 @@
     <script src="../../shared/js/phone/phone_storage.js"></script>
     <script src="../../shared/js/phone/storage/repository.js"></script>
     <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
-    <script src="../../shared/js/phone/role-avatar-library.js?v=20261107v14"></script>
+    <script src="../../shared/js/phone/role-avatar-library.js?v=20261113v1"></script>
     <script src="../../shared/js/phone/role-sticker-library.js?v=20261107v2"></script>
-    <script src="../../shared/js/phone/chat-image-vision.js?v=20261107v5"></script>
+    <script src="../../shared/js/phone/chat-image-vision.js?v=20261113v1"></script>
     <script src="../../shared/js/phone/phone_api.js?v=20261106v1"></script>
     <script src="../../shared/js/phone/image-generation.js?v=20261106v1"></script>
     <script src="../../shared/js/phone/role-gallery-image-autonomy.js?v=20261111v2"></script>
@@ -6652,7 +6652,34 @@
                                     { source: 'chat', label: '聊天候选头像' }
                                 );
                                 if (candidateResult && candidateResult.ok) {
-                                    if (typeof showToast === 'function') showToast('TA 把这张图片加入了头像收藏，当前头像没有改变');
+                                    var changeRequested = window.ChatImageVision.requestsAvatarChange &&
+                                        window.ChatImageVision.requestsAvatarChange(text);
+                                    if (changeRequested && window.RoleAvatarLibrary.applyToCharacter) {
+                                        var avatarApplied = await window.RoleAvatarLibrary.applyToCharacter(
+                                            avatarRoleId, candidateResult.value.id, {
+                                                isCurrent: function () {
+                                                    return String(aliasRoleId || currentCharacter.id) === String(avatarRoleId);
+                                                }
+                                            }
+                                        );
+                                        if (avatarApplied && avatarApplied.ok) {
+                                            currentCharacter.avatar = avatarApplied.value.avatar;
+                                            currentCharacter.avatarAssetId = avatarApplied.value.avatarAssetId;
+                                            if (chatHeaderAvatar) {
+                                                var updatedAvatarImage = document.createElement('img');
+                                                updatedAvatarImage.src = avatarApplied.value.avatar;
+                                                updatedAvatarImage.alt = '';
+                                                chatHeaderAvatar.replaceChildren(updatedAvatarImage);
+                                            }
+                                            if (typeof showToast === 'function') showToast('TA 已换上这张头像');
+                                        } else if (typeof showToast === 'function') {
+                                            showToast(avatarApplied && avatarApplied.error && avatarApplied.error.code === 'PARTIAL_ROLLBACK'
+                                                ? '头像切换未完成，请到头像档案检查当前标记'
+                                                : '图片已收藏，头像切换未成功');
+                                        }
+                                    } else if (typeof showToast === 'function') {
+                                        showToast('TA 把这张图片加入了头像收藏，当前头像没有改变');
+                                    }
                                 } else if (typeof showToast === 'function') {
                                     showToast('头像候选保存失败，原头像没有变化');
                                 }
@@ -9754,3 +9781,4 @@ form#chat-form .send-icon-btn { display: flex !important; visibility: visible !i
 }
 </style>
 </body></html>
+
