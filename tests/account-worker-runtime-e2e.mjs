@@ -72,6 +72,7 @@ async function main() {
     ], {
       cwd: ROOT,
       stdio: ['ignore', 'pipe', 'pipe'],
+      detached: process.platform !== 'win32', // kill the whole npx -> Wrangler -> workerd process group
       env: { ...process.env, CI: 'true', WRANGLER_SEND_METRICS: 'false' }
     });
     for (const stream of [child.stdout, child.stderr]) {
@@ -235,7 +236,24 @@ async function main() {
 
     console.log('ALL PASS: ' + checks.length + ' isolated Wrangler/SQLite Worker runtime assertions');
   } finally {
-    if (child && child.exitCode === null) child.kill('SIGTERM');
+    if (child) {
+      // Wrangler starts workerd below npx. Closing npx alone can leave pipes
+      // open and keep a completed CI build running indefinitely.
+      const terminate = signal => {
+        try {
+          if (process.platform !== 'win32' && child.pid) process.kill(-child.pid, signal);
+          else if (child.exitCode === null) child.kill(signal);
+        } catch {}
+      };
+      terminate('SIGTERM');
+      await Promise.race([
+        new Promise(resolve => child.once('close', resolve)),
+        sleep(2000)
+      ]);
+      if (child.exitCode === null) terminate('SIGKILL');
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+    }
     await rm(VARS_PATH, { force: true });
     await rm(stateDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
   }
