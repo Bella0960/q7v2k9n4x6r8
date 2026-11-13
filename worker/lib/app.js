@@ -805,6 +805,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
   async function testPush(request) {
     const device = await authenticate(request);
     const body = await readJsonBody(request);
+    const noPayloadDiagnostic = body.deliveryMode === 'no_payload';
     const timestamp = now();
     let keys;
     try {
@@ -838,7 +839,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     }
 
     const dedupeKey = String(body.dedupeKey || `test:${device.id}:${timestamp}`).slice(0, 96);
-    const payload = JSON.stringify({
+    const payload = noPayloadDiagnostic ? '' : JSON.stringify({
       type: 'test',
       accountId: String(device.user_id || OWNER_USER_ID),
       title: 'MAOMAO 云端连接测试',
@@ -1046,13 +1047,13 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       kind: 'test_push',
       status: sent > 0 ? 'success' : 'failed',
       reasonCode: sent > 0 ? 'delivered' : 'no_delivery',
-      detail: { sent, skipped, failed, gone, inProgress, retryDeferred, retryScheduled, retryExhausted, failurePhases },
+      detail: { sent, skipped, failed, gone, inProgress, retryDeferred, retryScheduled, retryExhausted, failurePhases, diagnosticMode: noPayloadDiagnostic ? 'no_payload' : 'encrypted' },
       durationMs: Math.max(0, now() - startedAt),
       now: timestamp
     });
     await store.cleanupSubscriptions(timestamp);
 
-    return ok({ dedupeKey, results, summary: { sent, skipped, failed, gone, inProgress, retryDeferred, retryScheduled, retryExhausted, failurePhases } });
+    return ok({ dedupeKey, results, summary: { sent, skipped, failed, gone, inProgress, retryDeferred, retryScheduled, retryExhausted, failurePhases, diagnosticMode: noPayloadDiagnostic ? 'no_payload' : 'encrypted' } });
   }
 
   async function revokeDevice(request) {
