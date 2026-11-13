@@ -8,7 +8,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
-assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v205'/);
+assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v206'/);
 const viteConfig = read('vite.config.js');
 
 test('build emits a manifest containing every HTML entry point', () => {
@@ -44,11 +44,16 @@ test('service worker stores public login pages but never precaches account-owned
   assert.match(serviceWorker, /cache\.add\(url\)/);
 });
 
-test('private navigation reaches the Worker identity gate and cannot use cached app HTML', () => {
-  assert.match(serviceWorker, /if \(req\.mode === 'navigate' && !isPublicAccountPage\)/);
-  assert.match(serviceWorker, /return await fetch\(req\)/);
-  assert.match(serviceWorker, /var fresh = await networkPromise;/);
-  assert.match(serviceWorker, /event\.waitUntil\(updatePromise/);
+test('private navigation goes directly to Worker and never reuses cached protected HTML', () => {
+  const start = serviceWorker.indexOf("if (req.mode === 'navigate' && !isPublicAccountPage)");
+  const end = serviceWorker.indexOf("if (req.mode === 'navigate' && isPublicAccountPage)", start);
+  assert.ok(start >= 0 && end > start, 'public and private navigation must use distinct paths');
+  const privateRoute = serviceWorker.slice(start, end);
+  assert.match(privateRoute, /return await fetch\(req\)/);
+  assert.match(privateRoute, /new URL\('account\/index\.html'/, 'offline fallback must point only to the public login page');
+  assert.match(privateRoute, /caches\.match\(entry\.href\)/, 'offline login is allowed');
+  assert.doesNotMatch(privateRoute, /caches\.match\(req\)|caches\.open|event\.waitUntil/,
+    'a protected HTML request itself must never be cached or served from cache');
 });
 
 test('desktop app navigation has one valid capture-phase owner', () => {

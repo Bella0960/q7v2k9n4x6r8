@@ -21,11 +21,17 @@ const steps = [
   },
   {
     name: 'Check tracked JavaScript syntax',
-    args: ['run', 'check:syntax']
+    command: process.execPath,
+    args: ['scripts/check-syntax.mjs']
   },
   {
-    name: 'Run complete MAO account-auth gate',
-    args: ['run', 'test:accounts:all']
+    name: 'Run complete release checks and build (prebuild + postbuild)',
+    args: ['run', 'build']
+  },
+  {
+    name: 'Run real local Worker and isolated SQLite account integration',
+    command: process.execPath,
+    args: ['tests/account-worker-runtime-e2e.mjs']
   }
 ];
 
@@ -42,10 +48,10 @@ for (let index = 0; index < steps.length; index += 1) {
     ': ' + step.name + '\n'
   );
 
-  const result = spawnSync(npmCommand, step.args, {
+  const result = spawnSync(step.command || npmCommand, step.args, {
     cwd: repositoryRoot,
     stdio: 'inherit',
-    shell: process.platform === 'win32'
+    shell: process.platform === 'win32' && !step.command
   });
 
   if (result.error) {
@@ -67,5 +73,6 @@ for (let index = 0; index < steps.length; index += 1) {
 
 process.stdout.write(
   '\n[account-auth-local] ALL LOCAL GATES PASSED.\n' +
-  '[account-auth-local] This does not replace independent preview deployment and phone acceptance.\n'
+  '[account-auth-local] Tests use disposable credentials and isolated local SQLite.\n' +
+  '[account-auth-local] Preview deployment and Android/iOS acceptance are still required.\n'
 );

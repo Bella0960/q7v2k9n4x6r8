@@ -42,3 +42,56 @@
 - 尚未把唯一真实管理员身份绑定到用户本人；数据库唯一索引仅保证最多一个。
 - 尚未迁移正式 `app` 入口，未变更 `main`，也没有在真机上验证。
 - `mao520.com` 跳到外站的问题仍未复现定位，不能视为已修复。
+
+## 2026-11-13 二阶段上线补充（以 Cloudflare 实际读数为准）
+
+本次复核发现以下**可验证的发布前状态**（不是正式上线完成）：
+
+| 检查项 | 2026-11-13 实际状态 |
+|---|---|
+| `app.mao520.com` | `curly-dream-324c`，仅 `ASSETS`，绑定已启用 |
+| `preview.mao520.com` | `mao`，Custom Domain 绑定已停用 |
+| `mao520.com`、`admin.mao520.com` | `mao-auth-preview`，绑定已启用，具独立 `CLOUD_DB` 和 secrets |
+| `mao` Worker（拟作为正式账号 Worker） | `ASSETS` only；缺 `CLOUD_DB`、`nodejs_compat`、两项账号 secrets；workers.dev 入口已启用 |
+| SQLite Durable Object 命名空间 | 当前共有 36 个 `CloudDatabase`，包含历史分支/QA；尚未出现唯一目标 `mao_CloudDatabase` |
+
+**不要把 `mao_integration-...` 等分支命名空间误认作正式账号数据库，也不要清理它们。** 验证命名空间时不仅比对 ID，还检查 `script`、`class` 和完整 `name`。
+
+### 第一阶段：隔离准备和测试，不切换正式域名
+
+1. 使用 PR #262 当前账号整合代码及最新 `main` 功能，在 `mao` Worker 的独立测试入口构建/部署，明确由 `mao` 自己拥有 `CloudDatabase`，采用独立 `mao_CloudDatabase` SQLite 命名空间，不跨 Worker 绑定 `mao-auth-preview`，也不复用任何历史 QA 命名空间。
+2. 确认在 `mao` 上存在 `nodejs_compat`、`DEVICE_SECRET_PEPPER`、`MAO_SUPER_ADMIN_BOOTSTRAP_SECRET` 的正确**绑定名称**；密钥值绝不进入 GitHub、日志或对话。密钥值本身的正确性不能仅凭“名称存在”通过。
+3. 在 #262 的安全配置环境中执行 `npm run verify:accounts:staging`。该命令仅通过 Cloudflare GET 请求验证 Worker、域名未切换、绑定、密钥名称和 SQLite 命名空间的归属。**它不会部署、注册、初始化管理员或切换域名。**
+4. 通过独立测试入口完成安全初始化和验证创始管理员 `001`（必须由本人授权的服务器端步骤执行），随后用虚构普通账号验证注册、邀请码、管理员审批、跨账号隔离、会话撤销和聊天保存。PR #265 的好友功能需在同一账号架构下按范围验证。
+5. 用 Android / iOS 浏览器实际验证整个入口、缓存与私人本机数据迁移；在此之前不认定上线完成。切换前必须备份浏览器本机记录（含 IndexedDB）、记录 Cloudflare 现有 Worker 版本与域名配置，并预先验证可执行的代码/域名回滚。
+
+### 第二阶段：受控切换与发布后复核
+
+1. 只有第一阶段通过、管理员身份归属和生产数据策略确认、用户明确同意后，才将 `app.mao520.com` 从 `curly-dream-324c` 切到已验证的 `mao` Worker。
+2. 此后运行已有严格的 `scripts/verify-production-account-readiness.mjs`，检查**真正的** `app.mao520.com` 当前绑定、数据库隔离、生产密钥绑定与公开的创始管理员初始化状态。首次部署之前的 `app` 仍是静态站点，所以此严格检查**预期不通过**；这正是要分成两个阶段的原因，不能添加跳过检查的环境变量放行生产。
+3. 再做 `app` 域名下的真实注册 POST、普通账号和 `001` 权限、安卓及苹果浏览器操作、照片和聊天保留等最终验收，再讨论 PR 合并和后续 `main` 自动发布。
+4. 如果发布后失败，可以回滚 Worker 代码与域名路由，但**不能把代码回滚等同于数据库回滚**。切换后产生的新账号/消息写入需先妥善保全，避免切回静态站点造成数据分裂。不得误删旧命名空间或覆盖正式数据。
+
+### 代码保护
+
+- `scripts/verify-account-staging-readiness.mjs`：第一阶段只读审计。新的 `tests/account-staging-readiness.test.mjs` 已进入 `test:release:accounts`（进而由 `prebuild` 调用）。
+- `scripts/verify-production-account-readiness.mjs`：第二阶段严格发布门禁，新增明确校验域名绑定必须 `enabled === true`。
+- 本补充仅属于 PR #262 的代码与文档，不修改 `main`、正式域名/Worker、Cloudflare 数据库及任何 secrets。
+
+### 离线/本机完整账号测试入口（无需 GitHub Actions）
+
+独立检出当前账号整合分支，使用 Node 22.16+（22.x），安装 Git、Node 和 npm 后执行：
+
+```bash
+node scripts/run-account-auth-gate.mjs
+```
+
+该命令依次执行 `npm ci`、全部已追踪 JS 文件语法检查、`npm run build`（带 prebuild/postbuild 回归）和真正的本地 Wrangler + SQLite 账号接口 E2E。测试的密钥和账号为临时生成，SQL 数据存储在独立临时目录；如果项目根目录已有 `.dev.vars`，测试会明确拒绝，防止覆盖私人密钥。Wrapper 要求 Node 22.16+ 的 22.x 版本。Wrangler 首次运行可能需要 npm 联网下载，不依赖 GitHub Actions/Cloudflare 自动构建额度。
+
+此本机入口**不代表**真实域名部署、管理员本人身份绑定、安卓/苹果实机或注册线上 POST 已通过；上述项目继续单独保留发布门禁。
+
+### 2026-11-13 补丁：生产发布门禁必须验证 SQLite 所有权
+
+历史分支会在 Cloudflare 下留下大量 `CloudDatabase` 命名空间，不能只比较生产和预览命名空间 ID。生产硬门禁现在与预发布门禁采用同一套严格验证：目标库必须是 `mao_CloudDatabase` 且归属 `mao`，预览库必须归属 `mao-auth-preview`，并明确拒绝 `script_name` 跨 Worker 绑定。对于同名重复命名空间、缺失库存信息也保持 fail-closed。
+
+Cloudflare 命名空间 API 每页最多 100 条。本次将库存读取改为分页，并针对分页元数据缺失、不一致、漏页、重复 ID、越过安全页数上限等情况拒绝放行。对应单元测试接入 `npm run build` 的构建前门禁。没有执行线上密钥值读取、数据库写入或域名切换。

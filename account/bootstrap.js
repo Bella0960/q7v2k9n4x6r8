@@ -27,7 +27,7 @@
       try { payload = await response.json(); } catch {}
       if (!response.ok || !payload || payload.ok !== true) {
         const error = new Error(payload?.error?.message || '服务器返回异常，请检查连接后重试');
-        error.code = payload?.error?.code || ('HTTP_' + response.status);
+        error.code = payload?.error?.code || 'REQUEST_FAILED';
         error.status = response.status;
         throw error;
       }
@@ -79,6 +79,15 @@
 
     try {
       const status = await request('/api/admin/bootstrap/status');
+      if (status.identityMode === 'delegated' || status.bootstrapAllowed === false) {
+        form.hidden = true;
+        statusNode.hidden = false;
+        statusNode.textContent = '这不是新管理员注册入口。当前测试版与统一账号共用身份，请返回登录页，使用你原来的管理员账号 001；无需邀请码或重新初始化。';
+        retryButton.hidden = true;
+        if (setupHelp) setupHelp.hidden = true;
+        errorNode.textContent = '';
+        return;
+      }
       if (status.initialized) {
         showInitialized();
         return;
@@ -163,10 +172,8 @@
           connectionStatus.textContent = '服务器已创建管理员，请返回账号入口登录。';
         } else if (result.configured === false) {
           connectionStatus.textContent = '服务器安全密钥未配置完整，尚不能注册管理员。';
-        } else if (result.cryptoReady === true) {
-          connectionStatus.textContent = '连接与密码保护自检均已通过。未提交真实密码，也没有创建账号。';
         } else {
-          connectionStatus.textContent = '连接成功，但服务器尚未确认密码保护模块可用。先不要提交管理员资料。';
+          connectionStatus.textContent = '连接检查通过。服务器已接收测试请求，没有提交密码或创建账号。';
         }
       } catch (error) {
         connectionStatus.textContent = '连接检查失败（' +
@@ -209,10 +216,6 @@
         errorNode.textContent = '服务器安全配置尚未就绪，尚未提交管理员资料。';
         return;
       }
-      if (probe.cryptoReady !== true) {
-        errorNode.textContent = '服务器未确认密码保护模块可用，管理员资料尚未提交。请先点击连接检查。';
-        return;
-      }
       attemptedCreate = true;
       await request('/api/admin/bootstrap', 'POST', body);
       // The bootstrap endpoint establishes the new super-admin's HttpOnly session.
@@ -247,10 +250,8 @@
             showInitialized();
             return;
           }
-          const safeCode = String(error.code || 'UNKNOWN').replace(/[^A-Z0-9_]/g, '').slice(0, 60);
-          const serverStatus = typeof error.status === 'number' ? ' / HTTP ' + error.status : '';
-          errorNode.textContent = '管理员尚未创建。服务器反馈：' + safeCode + serverStatus +
-            '。请把这个错误代号反馈给开发者；先不要再次提交。';
+          errorNode.textContent = '刚才的提交没有获得成功回执，目前也未查到管理员。请检查连接后再操作，不要连续点击创建。' +
+            (error.code ? '（' + error.code + '）' : '');
         } catch {
           errorNode.textContent = '提交时网络中断，且暂时无法确认结果。请不要重复提交，稍后刷新页面检查初始化状态。';
         }

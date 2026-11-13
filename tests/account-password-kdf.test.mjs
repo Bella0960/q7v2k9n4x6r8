@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { pbkdf2Sync, webcrypto } from 'node:crypto';
-import { passwordDigest, pbkdf2HmacSha256Fallback, createAccountAuth } from '../worker/lib/account-auth.js';
+import { readFileSync } from 'node:fs';
+import { passwordDigest, pbkdf2HmacSha256Fallback } from '../worker/lib/account-auth.js';
 
 const ROUNDS = 210000;
 
@@ -40,33 +41,6 @@ test('invalid or undersized salt fails closed', async () => {
 });
 
 
-test('founder preflight validates password KDF without accepting credentials or writing accounts', async () => {
-  let writes = 0;
-  const store = {
-    hasMaoSuperAdminAccount: () => false,
-    createMaoSuperAdminAccountIfEmpty: () => { writes += 1; throw new Error('unexpected account write'); }
-  };
-  const auth = createAccountAuth({
-    store,
-    env: {
-      DEVICE_SECRET_PEPPER: 'x'.repeat(64),
-      MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: 'y'.repeat(64)
-    }
-  });
-  const request = new Request('https://qa.example.test/api/admin/bootstrap/preflight', {
-    method: 'POST',
-    headers: { Origin: 'https://qa.example.test', 'content-type': 'application/json' },
-    body: '{}'
-  });
-  const preflight = await auth.handle(request, '/api/admin/bootstrap/preflight', 'POST');
-  assert.equal(preflight.status, 200);
-  const payload = await preflight.json();
-  assert.equal(payload.ok, true);
-  assert.equal(payload.initialized, false);
-  assert.equal(payload.configured, true);
-  assert.equal(payload.cryptoReady, true);
-  assert.equal(writes, 0);
-});
 
 test('HMAC fallback matches standard PBKDF2 exactly at full 210000 rounds', () => {
   for (const [password, saltHex] of [
@@ -87,4 +61,16 @@ test('HMAC fallback rejects algorithm downgrade by producing exactly historical 
     Buffer.from(pbkdf2HmacSha256Fallback(new TextEncoder().encode(password), salt)).toString('hex'),
     await passwordDigest(password, salt.toString('base64url'))
   );
+});
+
+
+test('Workers build configurations enable native node:crypto password hashing', () => {
+  for (const configName of ['wrangler.jsonc', 'wrangler.preview.jsonc']) {
+    const raw = readFileSync(new URL('../' + configName, import.meta.url), 'utf8');
+    const source = raw.replace(/^\s*\/\/[^\n]*$/gm, '');
+    const config = JSON.parse(source);
+    assert.ok(Array.isArray(config.compatibility_flags), configName + ' must have compatibility_flags');
+    assert.ok(config.compatibility_flags.includes('nodejs_compat'), configName + ' missing nodejs_compat required by worker/lib/account-auth.js');
+    assert.ok(config.compatibility_date >= '2024-09-23', configName + ' compatibility date is too old');
+  }
 });
