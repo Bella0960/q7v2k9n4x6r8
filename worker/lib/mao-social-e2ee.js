@@ -7,6 +7,12 @@ const PUBLIC_KEY = /^B[A-Za-z0-9_-]{86}$/;
 const KEY_ID = /^[a-f0-9]{32}$/;
 const IV = /^[A-Za-z0-9_-]{16}$/;
 const CIPHER = /^[A-Za-z0-9_-]{22,1800}$/;
+const MEDIA_ID = /^med_[A-Za-z0-9_-]{16,64}$/;
+const MEDIA_CIPHER = /^[A-Za-z0-9_-]{24,560000}$/;
+const MEDIA_MIME = {
+  image: new Set(['image/jpeg']),
+  voice: new Set(['audio/mp4','audio/webm','audio/ogg','audio/aac','audio/wav'])
+};
 
 const one = (store, sql, ...args) => store.exec(sql, ...args)[0] || null;
 const pair = (a,b) => a < b ? [a,b] : [b,a];
@@ -41,6 +47,21 @@ function validateEnvelope(value) {
   const data=JSON.stringify(value);
   if(data.length>1900) throw new ApiError(413,'E2EE_MESSAGE_TOO_LONG','加密消息过长，请拆分发送');
   return data;
+}
+
+function validateMedia(value) {
+  if (!value || typeof value!=='object' || Array.isArray(value) ||
+      Object.keys(value).sort().join(',')!=='ct,id,iv,kind,mime,rk,sk,v' ||
+      value.v!==1) reject('E2EE_MEDIA_INVALID','仅接受加密图片和语音');
+  requireString(value.id,MEDIA_ID,'E2EE_MEDIA_ID_INVALID');
+  requireString(value.iv,IV,'E2EE_MEDIA_IV_INVALID');
+  requireString(value.ct,MEDIA_CIPHER,'E2EE_MEDIA_CIPHERTEXT_INVALID');
+  requireString(value.sk,KEY_ID,'E2EE_MEDIA_SENDER_KEY_INVALID');
+  requireString(value.rk,KEY_ID,'E2EE_MEDIA_RECIPIENT_KEY_INVALID');
+  if(!MEDIA_MIME[value.kind]?.has(value.mime)) {
+    reject('E2EE_MEDIA_TYPE_INVALID','只允许加密 JPEG 图片和语音文件');
+  }
+  return value;
 }
 
 export function createMaoSocialE2EE({store,env={},now=()=>Date.now()}) {
@@ -172,6 +193,91 @@ export function createMaoSocialE2EE({store,env={},now=()=>Date.now()}) {
     });
   }
 
+  // One atomic SQLite transaction creates the encrypted marker message and
+  // ciphertext attachment, so failed uploads cannot publish an orphaned item.
+  async function sendMedia(request,actor,peer) {
+    const body=await readJsonBody(request,600000);
+    if('text' in body || 'plaintext' in body || 'bytes' in body) {
+      reject('E2EE_PLAINTEXT_REJECTED','服务器只接收加密后的媒体');
+    }
+    const clientMessageId=requireString(body.clientMessageId,CLIENT_MESSAGE_ID,'SOCIAL_MESSAGE_ID_INVALID');
+    const expectedFriendshipId=requireString(body.friendshipId,CLIENT_MESSAGE_ID,'SOCIAL_FRIENDSHIP_ID_REQUIRED');
+    const envelope=validateEnvelope(body.envelope);
+    const attachment=validateMedia(body.attachment);
+    return transaction(()=>{
+      const time=now();
+      assertSession(actor,time);
+      const {low,high,friendshipId}=relation(actor,peer);
+      if(friendshipId!==expectedFriendshipId) {
+        throw new ApiError(409,'SOCIAL_FRIENDSHIP_CHANGED','好友关系已更新，请重新打开聊天');
+      }
+      const sender=query('SELECT key_id FROM mao_social_e2ee_keys WHERE account_id=?',actor.account_id);
+      const recipient=query('SELECT key_id FROM mao_social_e2ee_keys WHERE account_id=?',peer);
+      if(!sender||!recipient)throw new ApiError(409,'E2EE_PEER_NOT_READY','双方设备尚未登记加密密钥');
+      if(attachment.sk!==sender.key_id||attachment.rk!==recipient.key_id||
+         body.envelope.sk!==sender.key_id||body.envelope.rk!==recipient.key_id){
+        throw new ApiError(409,'E2EE_KEY_CHANGED','媒体加密密钥与双方账号不一致');
+      }
+      const existing=query('SELECT * FROM mao_social_messages WHERE sender_id=? AND client_message_id=?',
+        actor.account_id,clientMessageId);
+      if(existing){
+        const media=query('SELECT * FROM mao_social_e2ee_media WHERE message_id=?',existing.id);
+        if(!media||existing.recipient_id!==peer||existing.source_request_id!==friendshipId||
+           existing.body!==envelope||media.id!==attachment.id||media.kind!==attachment.kind||
+           media.mime!==attachment.mime||media.iv!==attachment.iv||
+           media.ciphertext!==attachment.ct||media.sender_key_id!==attachment.sk||
+           media.recipient_key_id!==attachment.rk){
+          throw new ApiError(409,'SOCIAL_MESSAGE_ID_REUSED','这条消息编号已被另一条消息占用');
+        }
+        return ok({friendshipId,replay:true,message:{
+          id:existing.id,seq:Number(existing.seq),clientMessageId,
+          senderId:actor.account_id,recipientId:peer,envelope:body.envelope,
+          createdAt:Number(existing.created_at)},mediaId:attachment.id});
+      }
+      if(query('SELECT id FROM mao_social_e2ee_media WHERE id=?',attachment.id)){
+        throw new ApiError(409,'E2EE_MEDIA_ID_REUSED','该媒体编号已经使用');
+      }
+      const minute=query('SELECT COUNT(*) AS n FROM mao_social_messages WHERE sender_id=? AND created_at>?',
+        actor.account_id,time-60000);
+      if(Number(minute.n)>=60)throw new ApiError(429,'SOCIAL_MESSAGE_RATE_LIMIT','发送过于频繁');
+      const mediaMinute=query('SELECT COUNT(*) AS n FROM mao_social_e2ee_media WHERE sender_id=? AND created_at>?',
+        actor.account_id,time-60000);
+      if(Number(mediaMinute.n)>=8)throw new ApiError(429,'E2EE_MEDIA_RATE_LIMIT','图片或语音发送过于频繁');
+      const monthly=query('SELECT COUNT(*) AS n FROM mao_social_e2ee_media WHERE sender_id=? AND created_at>?',
+        actor.account_id,time-30*86400000);
+      if(Number(monthly.n)>=200)throw new ApiError(429,'E2EE_MEDIA_QUOTA','当前测试版每月最多发送 200 条图片或语音');
+      const id='msg_'+randomToken(18);
+      const saved=rows('INSERT INTO mao_social_messages '+
+        '(id,pair_low,pair_high,source_request_id,sender_id,recipient_id,client_message_id,body,created_at) '+
+        'VALUES(?,?,?,?,?,?,?,?,?) RETURNING seq',
+        id,low,high,friendshipId,actor.account_id,peer,clientMessageId,envelope,time);
+      rows('INSERT INTO mao_social_e2ee_media '+
+        '(id,message_id,pair_low,pair_high,source_request_id,sender_id,recipient_id,client_message_id,'+
+        'kind,mime,iv,ciphertext,sender_key_id,recipient_key_id,created_at) '+
+        'VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        attachment.id,id,low,high,friendshipId,actor.account_id,peer,clientMessageId,
+        attachment.kind,attachment.mime,attachment.iv,attachment.ct,attachment.sk,attachment.rk,time);
+      return ok({friendshipId,mediaId:attachment.id,message:{
+        id,seq:Number(saved[0].seq),clientMessageId,senderId:actor.account_id,
+        recipientId:peer,envelope:body.envelope,createdAt:time}});
+    });
+  }
+
+  function getMedia(actor,peer,mediaId){
+    return transaction(()=>{
+      assertSession(actor,now());
+      const {low,high,friendshipId}=relation(actor,peer);
+      const row=query('SELECT * FROM mao_social_e2ee_media WHERE id=? AND pair_low=? AND pair_high=? '+
+        'AND source_request_id=?',mediaId,low,high,friendshipId);
+      if(!row)throw new ApiError(404,'E2EE_MEDIA_NOT_FOUND','媒体不存在或不属于当前好友关系');
+      return ok({ownerAccountId:actor.account_id,peerId:peer,friendshipId,
+        senderId:row.sender_id,recipientId:row.recipient_id,
+        clientMessageId:row.client_message_id,
+        attachment:{v:1,id:row.id,kind:row.kind,mime:row.mime,
+          iv:row.iv,ct:row.ciphertext,sk:row.sender_key_id,rk:row.recipient_key_id}});
+    });
+  }
+
   return {
     handle:async(request,path,method,actor)=>{
       if(!path.startsWith('/api/social/e2ee/'))return null;
@@ -187,6 +293,10 @@ export function createMaoSocialE2EE({store,env={},now=()=>Date.now()}) {
       if(peerKey&&method==='GET')return transaction(()=>{
         assertSession(actor,now());relation(actor,peerKey[1]);return publicKey(actor,peerKey[1]);
       });
+      const upload=/^\/api\/social\/e2ee\/chats\/(MAO-[A-Z0-9]{12,24})\/media$/.exec(path);
+      if(upload&&method==='POST')return sendMedia(request,actor,upload[1]);
+      const media=/^\/api\/social\/e2ee\/chats\/(MAO-[A-Z0-9]{12,24})\/media\/(med_[A-Za-z0-9_-]{16,64})$/.exec(path);
+      if(media&&method==='GET')return getMedia(actor,media[1],media[2]);
       const chat=/^\/api\/social\/e2ee\/chats\/(MAO-[A-Z0-9]{12,24})\/messages$/.exec(path);
       if(chat&&method==='GET')return messages(request,actor,chat[1],method);
       if(chat&&method==='POST')return send(request,actor,chat[1]);
