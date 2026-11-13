@@ -26,7 +26,11 @@ function fixture() {
       { name: 'MAO_SUPER_ADMIN_BOOTSTRAP_SECRET', type: 'secret_text' }
     ],
     subdomain: { enabled: true },
-    domains: [{ hostname: LIVE_HOSTNAME, service: CURRENT_LIVE_SCRIPT, environment: 'production', enabled: true }]
+    domains: [{ hostname: LIVE_HOSTNAME, service: CURRENT_LIVE_SCRIPT, environment: 'production', enabled: true }],
+    namespaces: [
+      { id: 'new_account_namespace', name: 'mao_CloudDatabase', script: 'mao', class: 'CloudDatabase' },
+      { id: 'old_preview_namespace', name: 'mao-auth-preview_CloudDatabase', script: 'mao-auth-preview', class: 'CloudDatabase' }
+    ]
   };
 }
 
@@ -84,4 +88,25 @@ test('missing and duplicate production mappings cannot pass staging audit', () =
   assert.ok(auditAccountStagingInfrastructure(input).includes('LIVE_DOMAIN_MAPPING_AMBIGUOUS'));
   input.domains = [fixture().domains[0], fixture().domains[0]];
   assert.ok(auditAccountStagingInfrastructure(input).includes('LIVE_DOMAIN_MAPPING_AMBIGUOUS'));
+});
+
+test('staging cannot point at historical branch-preview namespace even when its ID is different', () => {
+  const input = fixture();
+  input.staging.bindings[1].namespace_id = 'qa_branch_namespace';
+  input.namespaces.push({
+    id: 'qa_branch_namespace',
+    name: 'mao_integration-account-001-current-main-20261111_CloudDatabase',
+    script: 'mao',
+    class: 'CloudDatabase'
+  });
+  assert.ok(auditAccountStagingInfrastructure(input).includes('STAGING_NAMESPACE_NOT_CANONICAL'));
+});
+
+test('missing inventory and misidentified preview namespace block readiness', () => {
+  const missing = fixture();
+  delete missing.namespaces;
+  assert.ok(auditAccountStagingInfrastructure(missing).includes('STAGING_NAMESPACE_INVENTORY_UNAVAILABLE'));
+  const mismatch = fixture();
+  mismatch.namespaces[1].script = 'mao';
+  assert.ok(auditAccountStagingInfrastructure(mismatch).includes('PREVIEW_NAMESPACE_INVENTORY_MISMATCH'));
 });
