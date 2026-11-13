@@ -20,7 +20,7 @@ test('founder 001 settings shows a real push route with a versioned connected cl
   assert.match(pushPage, /id="cloudTestRow"/);
   assert.match(pushPage, /MaomaoCloud\.mountSettings\(\)/);
   assert.match(pushPage, /cloud-push-client\.js\?v=20261114v2/);
-  assert.match(sw, /phone-app-pwa-v226/);
+  assert.match(sw, /phone-app-pwa-v227/);
   assert.match(sw, /settings\/cloud-push\.html/);
 });
 
