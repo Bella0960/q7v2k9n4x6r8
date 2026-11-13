@@ -176,8 +176,34 @@ export async function sendWebPush(
   { nowMs = Date.now(), fetchImpl = fetch, beforeSend = null } = {}
 ) {
   const endpoint = subscription.endpoint;
-  const authorization = await buildVapidAuthorization(endpoint, keys, nowMs);
-  const body = await encryptPayload(subscription, payloadText);
+  // Tag failures by phase without logging endpoints, payloads, or VAPID secrets.
+  // Push providers return HTTP statuses only after these cryptographic stages.
+  let authorization;
+  let body;
+  try {
+    authorization = await buildVapidAuthorization(endpoint, keys, nowMs);
+  } catch (error) {
+    if (error instanceof PushConfigError) {
+      error.phase = 'vapid';
+      throw error;
+    }
+    const tagged = new PushSendError(0, 'VAPID 签名失败');
+    tagged.phase = 'vapid';
+    tagged.causeName = String(error?.name || 'Error').slice(0, 40);
+    throw tagged;
+  }
+  try {
+    body = await encryptPayload(subscription, payloadText);
+  } catch (error) {
+    if (error instanceof PushConfigError) {
+      error.phase = 'encrypt';
+      throw error;
+    }
+    const tagged = new PushSendError(0, '推送载荷加密失败');
+    tagged.phase = 'encrypt';
+    tagged.causeName = String(error?.name || 'Error').slice(0, 40);
+    throw tagged;
+  }
 
   // This callback must be synchronous: it runs after asynchronous crypto work
   // and immediately before fetchImpl is invoked, with no intervening await.
@@ -208,7 +234,10 @@ export async function sendWebPush(
       signal: controller?.signal
     });
   } catch (error) {
-    throw new PushSendError(0, `推送网络请求失败: ${error?.message || error}`);
+    const tagged = new PushSendError(0, '推送服务网络请求失败');
+    tagged.phase = 'transport';
+    tagged.causeName = String(error?.name || 'Error').slice(0, 40);
+    throw tagged;
   } finally {
     if (timeoutId != null && typeof clearTimeout === 'function') clearTimeout(timeoutId);
   }
