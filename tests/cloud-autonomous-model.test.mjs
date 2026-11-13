@@ -7,6 +7,7 @@ import {
   parseModelResult,
   validateMessages
 } from '../worker/lib/model-executor.js';
+import { runCloudModelTick } from '../worker/lib/cloud-model-scheduler.js';
 
 const MODEL_ENV = Object.freeze({
   AUTONOMY_MODEL_API_KEY: 'server-only-test-key-1234567890',
@@ -170,4 +171,143 @@ test('云端模型首次开场只读取空历史并明确禁止虚构过往互�
   });
   assert.deepEqual(invalid, { ok: false, reason: 'initial_contact_context_invalid' });
   assert.equal(invalidCalls, 0);
+});
+
+test('云端模型响应超过执行租约后，提交必须使用新的真实时间并被拒绝', async () => {
+  const env = {
+    ...MODEL_ENV,
+    AUTONOMY_LEASE_MS: '60000',
+    AUTONOMY_TICK_LIMIT: '10',
+    AUTONOMY_RETRY_BACKOFF_MS: '60000,300000',
+    AUTONOMY_HEARTBEAT_TTL_MS: '60000',
+    AUTONOMY_DEVICE_LEASE_MS: '60000',
+    AUTONOMY_DEVICE_GRACE_MS: '0'
+  };
+  const base = 1_800_000_000_000;
+  let clockNow = base;
+  let claimedLeaseUntil = 0;
+  let commitNow = 0;
+  const logs = [];
+  const task = {
+    id: 'cloud-task-0001',
+    device_id: 'device-1',
+    user_id: 'owner',
+    character_id: 'char-1',
+    kind: 'contact',
+    payload_json: JSON.stringify({
+      contextVersion: 1,
+      sourceDeviceId: 'device-1',
+      executionMode: 'cloud'
+    }),
+    status: 'waiting',
+    scheduled_at: base - 1000,
+    next_attempt_at: null,
+    locked_until: null,
+    attempt_count: 0,
+    max_attempts: 3
+  };
+  const store = {
+    listDueCloudActivities(now, limit) {
+      assert.equal(now, base);
+      assert.equal(limit, 10);
+      return [task];
+    },
+    listDueActivities() {
+      throw new Error('云端调度器不得先查询混合队列再在内存中过滤');
+    },
+    getSchedulerGateSnapshot({ userId, characterId }) {
+      assert.equal(userId, 'owner');
+      assert.equal(characterId, 'char-1');
+      return {
+        userId,
+        characterId,
+        timeZone: 'UTC',
+        schedule: { active: [{ start: '00:00', end: '24:00' }] },
+        authorization: {
+          globalAutonomyEnabled: true,
+          characterAutonomyEnabled: null
+        },
+        presence: {
+          devices: [{
+            deviceId: 'device-1',
+            userId: 'owner',
+            authorized: true,
+            foregroundActive: false,
+            lastHeartbeatAt: 0
+          }],
+          leases: []
+        },
+        contextVersion: 1,
+        contextSourceDeviceId: 'device-1'
+      };
+    },
+    claimActivity(args) {
+      claimedLeaseUntil = args.leaseUntil;
+      return {
+        ...task,
+        status: 'running',
+        locked_by: args.owner,
+        locked_until: args.leaseUntil,
+        attempt_count: 1
+      };
+    },
+    getCharacterContextSnapshot() {
+      return {
+        source_device_id: 'device-1',
+        character_name: '测试角色',
+        persona_text: '日常、自然地分享生活。',
+        last_user_message_at: base - 30 * 60_000,
+        recent_messages_json: JSON.stringify([
+          { role: 'user', content: '最近怎么样？' }
+        ])
+      };
+    },
+    getCharacterContextVersion() {
+      return { version: 1, updated_by_device_id: 'device-1' };
+    },
+    getUserContextSharing() {
+      return { enabled: 1 };
+    },
+    completeCloudActivityWithOutboundGroup(args) {
+      commitNow = args.now;
+      return args.now < claimedLeaseUntil ? { completed: true } : null;
+    },
+    supersedeActivity() {
+      return false;
+    },
+    logExecution(entry) {
+      logs.push(entry);
+    }
+  };
+  const fetchImpl = async () => {
+    // Simulate a provider response arriving after the 60-second executor lease.
+    clockNow = base + 60_001;
+    return new Response(JSON.stringify({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            send: true,
+            messages: ['今天有件小事想和你分享。']
+          })
+        }
+      }]
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  };
+
+  const summary = await runCloudModelTick({
+    store,
+    env,
+    now: () => clockNow,
+    fetchImpl
+  });
+
+  assert.equal(claimedLeaseUntil, base + 60_000);
+  assert.ok(commitNow > claimedLeaseUntil);
+  assert.equal(summary.generatedGroups, 0);
+  assert.equal(summary.deferred, 1);
+  assert.ok(logs.some(entry => entry.reasonCode === 'outbound_group_commit_fenced'));
+  assert.ok(logs.some(entry => entry.kind === 'autonomy_cloud_tick' && entry.status === 'success'));
 });

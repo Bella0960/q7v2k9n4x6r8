@@ -335,7 +335,7 @@
     <main class="content">
         <div class="cloud-intro">
             <p>设备推送负责把云端通知送到这台设备；角色自主活动负责按角色授权和作息安排主动联系。两项设置彼此独立。</p>
-            <p>当前生成仍由已配对且前台运行的小手机调用本机 API 配置和聊天上下文完成。云端负责排队、授权检查与去重；应用关闭或处于后台时不会继续生成。</p>
+            <p>聊天保存并完成授权的上下文同步后，云端 Worker 会按角色作息和空闲门槛独立执行主动联系；不要求小手机保持前台或重新打开应用。服务端模型凭据只存放在 Worker Secret，手机 API Key 不会上传。</p>
         </div>
 
         <section aria-labelledby="deviceTitle">
@@ -488,7 +488,7 @@
                 </div>
                 <div class="cloud-guide-item">
                     <strong>角色主动联系</strong>
-                    <p>给角色授权后，系统才会参考全局开关、该角色的授权方式和作息，判断角色是否可以主动联系。允许时段之外、忙碌或休息时段，以及设为外出的角色，不应按普通主动联系时段调度。</p>
+                    <p>给角色授权后，云端会根据全局开关、该角色的授权方式和作息判断是否可以主动联系。聊天记录在本机保存成功后才会形成待执行任务；到达空闲门槛时，即使 MAOMAO 没有打开，Worker 也会在云端检查任务。允许时段之外、忙碌或休息时段，以及设为外出的角色，不会按普通主动联系时段发送。</p>
                 </div>
                 <div class="cloud-guide-item">
                     <strong>设备配对</strong>
@@ -500,21 +500,21 @@
                 </div>
             </div>
 
-            <p class="cloud-guide-limit"><strong>目前需要知道的限制：</strong>云端后台生成还要求单独开启上下文共享、配置服务端模型凭据，并完成调度与真机验收。服务端凭据与手机 API Key 完全分离；上下文共享默认关闭，关闭后会删除云端快照。</p>
+            <p class="cloud-guide-limit"><strong>目前需要知道的限制：</strong>这里并不承诺“24 小时自动发消息”。关闭应用后生成需要先满足这些条件：聊天上下文已成功同步、单独开启了上下文共享、全局及角色授权有效、角色作息已配置，且部署端已配置服务端模型凭据。服务端凭据与手机 API Key 完全分离；上下文共享默认关闭，关闭后会删除云端快照。推送订阅只负责把提醒送到设备，不决定是否生成消息。</p>
 
             <div class="cloud-guide-status" aria-label="当前功能进度">
                 <h3 class="cloud-guide-status-title">当前进度</h3>
                 <div class="cloud-guide-status-item">
                     <strong>前台主动联系</strong>
-                    <p>已接入代码路径。设备前台运行且授权、角色作息和本机 API 均满足条件时，才会尝试生成并投递角色消息。</p>
+                    <p>保留已有的前台执行路径；云端任务与前台任务分开认领，前台设备不会抢走标记为云端执行的任务。</p>
                 </div>
                 <div class="cloud-guide-status-item">
                     <strong>关闭应用后生成</strong>
-                    <p>正在测试分支接入服务端模型执行器；需要部署端单独配置 Worker Secret 与模型白名单，并完成运行验收后才能使用。当前正式 Worker 尚未具备此能力。</p>
+                    <p>测试分支已接入每 5 分钟运行的 Worker 定时器：聊天保存后提前排队，到期后云端读取授权、角色作息与已同意共享的文字快照，再调用服务端模型生成。仍需合并、部署 Worker、配置 Worker Secret 与模型白名单，才能在正式环境使用。</p>
                 </div>
                 <div class="cloud-guide-status-item">
                     <strong>真实设备验收</strong>
-                    <p>尚未完成。Cloudflare 实际部署、Android 锁屏通知和两台真实设备之间的切换，仍需要单独测试确认。</p>
+                    <p>尚未完成。Cloudflare 实际部署后的 Cron 运行、模型供应商请求、Android 退出应用后的锁屏通知、整组多气泡入库与两台设备之间的切换，仍需要部署后逐项验证。</p>
                 </div>
             </div>
         </section>

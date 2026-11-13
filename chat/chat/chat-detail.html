@@ -3065,6 +3065,7 @@
             for (var checkIndex = 0; checkIndex < prepared.length; checkIndex += 1) {
                 var entry = prepared[checkIndex];
                 var existingState = inspectCloudOutboundHistory(history, entry.serverMessageId, entry.text);
+                if (existingState === 'match') continue;
                 if (existingState === 'conflict') return false;
                 if (existingState === 'missing') {
                     var createdAt = Number.isSafeInteger(entry.createdAt) && entry.createdAt > 0

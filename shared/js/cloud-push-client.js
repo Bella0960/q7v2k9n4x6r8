@@ -833,13 +833,15 @@
         } catch (persistError) {
           persistErrors += 1;
           deferred += 1;
-          blockedByIncompleteGroup = true;
-          break;
+          // A failed local save must not strand later unrelated messages.
+          // The server retains the unacked group for a later cursor reset.
+          offset = next;
+          continue;
         }
         if (persisted !== true) {
           deferred += 1;
-          blockedByIncompleteGroup = true;
-          break;
+          offset = next;
+          continue;
         }
         persistedCount += group.length;
 
@@ -1667,6 +1669,24 @@
             '云端执行器：' + (ready.activityExecutorAvailable ? '已接入' : '尚未接入，任务不会被实际执行'),
             '服务端模型凭据：' + (ready.serverModelConfigured ? '已配置' : '未配置'),
             '角色上下文共享：' + (ready.contextSharingEnabled ? '已开启' : '默认关闭'),
+            '云端定时调度：' + (ready.cloudSchedulerRuntimeVerified ? '最近 15 分钟内有运行记录' : '最近 15 分钟内没有运行记录'),
+            '最近一次云端调度：' + (ready.cloudSchedulerLastRunAt ? new Date(ready.cloudSchedulerLastRunAt).toLocaleString() + '（' + String(ready.cloudSchedulerLastRunStatus || '未知') + '）' : '暂无记录'),
+            '真实模型生成验收：' + (ready.cloudModelGenerationVerified ? '最近 30 天内有成功出站记录' : '最近 30 天内没有成功生成记录'),
+            '最近一次真实模型出站：' + (ready.cloudModelLastGeneratedAt ? new Date(ready.cloudModelLastGeneratedAt).toLocaleString() : '暂无记录'),
+            '当前设备 Web Push 服务端回执：' + (ready.cloudPushAcceptanceVerified ? '最近 30 天内有 HTTP 成功接受记录' : '最近 30 天内没有 HTTP 成功接受记录'),
+            '当前设备最近 Push 接受：' + (ready.cloudPushLastAcceptedAt ? new Date(ready.cloudPushLastAcceptedAt).toLocaleString() : '暂无记录'),
+            '当前设备最近 24 小时推送异常：' + (Array.isArray(ready.recentPushReasons) && ready.recentPushReasons.length
+              ? ready.recentPushReasons.map(function (item) {
+                  var labels = {
+                    push_delivery_failed: '推送服务请求失败（按策略重试或终止）',
+                    subscription_gone: '推送订阅已被服务端判定失效',
+                    subscription_unavailable_before_send: '发送前订阅已撤销或失效',
+                    delivery_lease_lost: '投递租约已过期或被其他执行者接管'
+                  };
+                  return (labels[item.reasonCode] || item.reasonCode) + ' × ' + Number(item.count || 0);
+                }).join('、')
+              : '暂无记录'),
+            '说明：服务端接受不等于系统已显示通知；Android 锁屏横幅仍需真机验收。',
             '最近 24 小时调度阻塞原因：' + (Array.isArray(ready.recentSchedulerReasons) && ready.recentSchedulerReasons.length
               ? ready.recentSchedulerReasons.map(function (item) {
                   var labels = {
@@ -1696,12 +1716,41 @@
               : '暂无记录'),
             '角色聊天版本计数：' + (ready.contextVersionReady ? '已有记录' : '尚未记录'),
             '已跟踪角色数：' + Number(ready.contextVersionTrackedRoles || 0),
-            'AI 主动消息生成：' + (ready.autonomousMessageGenerationReady ? '已就绪' : '未就绪'),
+            '主动联系/推送未完成项：' + (Array.isArray(ready.autonomyExecutionBlockers) && ready.autonomyExecutionBlockers.concat(Array.isArray(ready.pushDeliveryBlockers) ? ready.pushDeliveryBlockers : []).length
+              ? ready.autonomyExecutionBlockers.concat(Array.isArray(ready.pushDeliveryBlockers) ? ready.pushDeliveryBlockers : []).map(function (reason) {
+                  var labels = {
+                    web_push_keys_not_configured: '未配置 Web Push 密钥',
+                    current_device_push_subscription_missing: '当前设备没有有效推送订阅',
+                    activity_executor_config_missing: '云端活动执行参数缺失',
+                    server_model_credentials_missing: '未配置服务端模型凭据',
+                    global_autonomy_not_enabled: '账号级主动联系总开关未开启',
+                    context_sharing_not_enabled: '尚未同意云端上下文共享',
+                    context_version_unavailable: '尚无可信聊天上下文版本',
+                    cloud_model_scheduler_runtime_not_verified: '最近 15 分钟没有云端调度运行记录',
+                    cloud_model_generation_not_verified: '最近 30 天没有成功的模型出站入库记录',
+                    cloud_push_provider_acceptance_not_verified: '当前设备最近 30 天没有 Web Push 服务端成功接受回执'
+                  };
+                  return labels[reason] || reason;
+                }).join('；')
+              : '暂无'),
+            '云端主动生成：' + (ready.autonomousMessageGenerationReady ? '已通过近期运行验收' : '未就绪'),
+            '当前设备推送：' + (ready.pushDeliveryReady ? '已通过近期服务端接受验收' : '未就绪'),
+            '主动联系＋推送闭环：' + (ready.autonomousContactAndPushReady ? '已就绪' : '未完成'),
             '',
             ready.note || '此检查只读取配置与匿名队列汇总，不会发送通知。'
           ];
           if (readinessResult) readinessResult.textContent = lines.join('\n');
-          setStatusText(ready.testPushReady ? '云端推送配置已具备测试条件' : '云端仍有配置未完成');
+          setStatusText(ready.autonomousContactAndPushReady
+            ? '主动联系与当前设备推送均已通过近期验收'
+            : ready.autonomousMessageGenerationReady && ready.pushDeliveryReady
+              ? '云端主动生成与当前设备推送已通过独立验收'
+              : ready.autonomousMessageGenerationReady && ready.testPushReady
+                ? '云端主动生成已就绪；推送通道可测试，但近期接受回执尚未通过'
+                : ready.autonomousMessageGenerationReady
+                  ? '云端主动生成已就绪；当前设备推送仍有配置或验收项目未完成'
+                  : ready.testPushReady
+                    ? '当前设备推送可进行测试；云端主动生成仍有配置或运行验收项目未完成'
+                    : '云端仍有配置未完成');
         } catch (error) {
           if (readinessResult) readinessResult.textContent = '检查失败：' + (error.message || '未知错误');
           setStatusText('读取云端准备情况失败');
