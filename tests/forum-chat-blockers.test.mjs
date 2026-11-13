@@ -271,6 +271,9 @@ function runMissingApiKeyBranch(options) {
     contextOnly: !!options.contextOnly,
     silent: !!options.silent,
     text: '未发送原文',
+    // sendMsg declares this in its surrounding scope; the extracted branch
+    // needs the same variable supplied explicitly by its isolated VM fixture.
+    visionImageMids: [],
     isGroupChat: false,
     pendingQuote: options.pendingQuote === undefined ? { mid: 'q1', text: '被引用的原文' } : options.pendingQuote,
     lastGroupUserSend: { text: 'previous', time: 1 },
