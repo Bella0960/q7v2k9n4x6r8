@@ -609,6 +609,19 @@
     height: 100%;
     object-fit: cover;
   }
+  /* Real chats use the original conversation-card rhythm, not a new tile. */
+  .chat-real-card .chat-avatar {
+    background: #E7E7E9;
+    color: #555;
+    font-size: 12px;
+    font-weight: 400;
+  }
+  .chat-real-card .chat-last-msg {
+    color: #808080;
+  }
+  .chat-real-card .chat-name {
+    font-weight: 600;
+  }
 
   /* 群聊头像：成员小网格 */
   .chat-avatar.group-avatar {
@@ -792,6 +805,7 @@
 <link rel="stylesheet" href="../../shared/css/chat-list-editorial-theme.css?v=20261104v2">
 <script src="../../shared/js/chat-list-theme.js?v=20261104v2"></script>
 <script src="../../shared/js/chat-action-menu.js?v=20261113v1"></script>
+<script src="../../shared/js/social-chat-list.js?v=20261113v1"></script>
 </head>
 <body>
 
@@ -1411,7 +1425,10 @@
         return cachedMeta(b.id,b.name||'群聊').time - cachedMeta(a.id,a.name||'群聊').time;
       });
 
-      if (roles.length === 0 && groups.length === 0) {
+      var realChats = window.MAOMAORealChatList
+        ? window.MAOMAORealChatList.getRows()
+        : [];
+      if (roles.length === 0 && groups.length === 0 && realChats.length === 0) {
         container.innerHTML = '<div class="empty-tip">暂无聊天消息</div>';
         return;
       }
@@ -1475,7 +1492,33 @@
           '</div>';
       }).join('');
 
-      container.innerHTML = groupsHTML + rolesHTML;
+      // The first entries are already-approved real conversations. They share
+      // the same slim card style and are never mixed into AI-role storage.
+      var realHTML = realChats.map(function (conversation) {
+        var name = String(conversation.displayName || conversation.id);
+        var hasMessages = conversation.lastMessageAt !== null;
+        return '' +
+          '<div class="chat-slim-card chat-real-card" data-real-peer="' + escapeHtml(conversation.id) + '">' +
+            '<div class="chat-avatar">' + escapeHtml(Array.from(name)[0] || '?') + '</div>' +
+            '<div class="chat-meta">' +
+              '<div class="chat-title-row">' +
+                '<span class="chat-name">' + escapeHtml(name) + '</span>' +
+                '<span class="chat-time">' + escapeHtml(formatConversationTime(conversation.lastMessageAt)) + '</span>' +
+              '</div>' +
+              '<div class="chat-last-msg">' + (hasMessages ? '真人 · 加密聊天' : '真人 · 开始聊天') + '</div>' +
+            '</div>' +
+          '</div>';
+      }).join('');
+
+      container.innerHTML = realHTML + groupsHTML + rolesHTML;
+      container.querySelectorAll('.chat-real-card').forEach(function (item) {
+        item.addEventListener('click', function () {
+          var peer = item.getAttribute('data-real-peer');
+          if (/^MAO-[A-Z0-9]{12,24}$/.test(peer || '')) {
+            window.location.href = '../contacts/real-chat.html?peer=' + encodeURIComponent(peer);
+          }
+        });
+      });
 
       /* 群聊点击：进入群聊聊天界面（复用 chat-detail 群聊模式） */
       container.querySelectorAll('.chat-group-card').forEach(function (item) {
@@ -1488,7 +1531,7 @@
       });
 
       /* 原有跳转逻辑：带 roleId 进入聊天详情页 */
-      container.querySelectorAll('.chat-slim-card:not(.chat-group-card)').forEach(function (item) {
+      container.querySelectorAll('.chat-slim-card:not(.chat-group-card):not(.chat-real-card)').forEach(function (item) {
         item.addEventListener('click', function () {
           var roleId = item.getAttribute('data-id');
           if (roleId) {
@@ -1502,10 +1545,21 @@
     renderProfile();
     applyMusicState(musicState);
     renderChatList();
-    
-    // 页面重新显示时（从设置页返回），重新渲染列表，置顶生效
+    if (window.MAOMAORealChatList) {
+      window.MAOMAORealChatList.subscribe(renderChatList);
+      window.MAOMAORealChatList.refresh();
+    }
+
+    // 进出聊天、切换账号、批准/屏蔽好友后均从服务器重读会话。
+    // No real-user names or session metadata are persisted into localStorage.
     window.addEventListener('pageshow', function() {
       renderChatList();
+      if (window.MAOMAORealChatList) window.MAOMAORealChatList.refresh();
+    });
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible' && window.MAOMAORealChatList) {
+        window.MAOMAORealChatList.refresh();
+      }
     });
   </script>
 <script src="../../shared/js/statusbar-control.js"></script>
