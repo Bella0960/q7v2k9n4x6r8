@@ -913,7 +913,11 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
             String(env.MAO_SUPER_ADMIN_BOOTSTRAP_SECRET || '').length >= 32 &&
             String(env.DEVICE_SECRET_PEPPER || '').length >= 32,
           identityMode: delegated ? 'delegated' : 'local',
-          bootstrapAllowed: !delegated
+          bootstrapAllowed: !delegated,
+          signInReady: !delegated || (
+            typeof env.MAO_IDENTITY_AUTHORITY?.fetch === 'function' &&
+            String(env.MAO_IDENTITY_BRIDGE_SECRET || '').length >= 32
+          )
         });
       }
       if (path === '/api/internal/identity/authenticate' && method === 'POST') return await issuerAuthenticate(request);
