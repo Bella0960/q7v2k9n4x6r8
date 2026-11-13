@@ -313,6 +313,19 @@ async function main() {
     assert.ok(aliceFriends.payload.friends.some(item => item.id === bob.id));
     assert.ok(bobFriends.payload.friends.some(item => item.id === alice.id));
     pass('approved relationship becomes visible on both real account sessions');
+    const listAlice = await request('/api/social/e2ee/conversations',
+      {cookie:aliceCookie,accountId:alice.id});
+    const listBob = await request('/api/social/e2ee/conversations',
+      {cookie:bobCookie,accountId:bob.id});
+    assert.equal(listAlice.status,200);
+    assert.equal(listBob.status,200);
+    assert.equal(listAlice.payload.ownerAccountId,alice.id);
+    assert.equal(listBob.payload.ownerAccountId,bob.id);
+    assert.deepEqual(listAlice.payload.conversations.map(item=>item.id),[bob.id]);
+    assert.deepEqual(listBob.payload.conversations.map(item=>item.id),[alice.id]);
+    assert.equal(listAlice.payload.conversations[0].lastMessageAt,null);
+    pass('real account chat list contains only server-approved peer, before first message');
+
 
     const disabledChat = await request('/api/social/chats/' + bob.id + '/messages',
       { cookie: aliceCookie, accountId: alice.id });
@@ -370,6 +383,14 @@ async function main() {
     assert.equal(rejectedPlaintext.status,400);
     assert.equal(rejectedPlaintext.payload.error.code,'E2EE_PLAINTEXT_REJECTED');
     pass('real Wrangler SQLite relays ciphertext only; two devices decrypt; retry is idempotent; plaintext rejected');
+    const listUpdated=await request('/api/social/e2ee/conversations',
+      {cookie:bobCookie,accountId:bob.id});
+    assert.equal(listUpdated.status,200);
+    assert.ok(listUpdated.payload.conversations[0].lastMessageAt>0);
+    assert.ok(!JSON.stringify(listUpdated.payload).includes(envelope.ct));
+    assert.ok(!JSON.stringify(listUpdated.payload).includes('Encrypted from Android'));
+    pass('chat list orders by message time without leaking encrypted bodies or private keys');
+
 
     for(const [index,item] of [
       {kind:'image',mime:'image/jpeg',bytes:new Uint8Array(360*1024).fill(173)},
@@ -418,6 +439,12 @@ async function main() {
       {cookie:bobCookie,accountId:bob.id});
     assert.equal(blockedMedia.status,403);
     pass('blocked friend immediately loses access to encrypted conversation history');
+    const blockedList=await request('/api/social/e2ee/conversations',
+      {cookie:bobCookie,accountId:bob.id});
+    assert.equal(blockedList.status,200);
+    assert.deepEqual(blockedList.payload.conversations,[]);
+    pass('blocked friend disappears from other phone chat list immediately after refresh');
+
 
     const afterBlock = await request('/api/social/friends',
       { cookie: bobCookie, accountId: bob.id });
