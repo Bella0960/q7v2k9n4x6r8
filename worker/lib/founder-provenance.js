@@ -29,8 +29,17 @@ export function assertCanonicalFounderStore(store, env = {}) {
       '当前测试环境未连接原始管理员数据库，已阻止错误账号接入');
   }
 
+  // An exact permanent ID alone is not enough: a disposable or wrongly
+  // imported database could contain a cloned row. Bind the creation timestamp
+  // taken from the owner's *original* database as a second provenance check.
+  const createdAt = Number(env.MAO_CANONICAL_FOUNDER_CREATED_AT);
+  if (!Number.isSafeInteger(createdAt) || createdAt <= 0) {
+    throw new ApiError(503, 'CANONICAL_FOUNDER_TIMESTAMP_NOT_CONFIGURED',
+      '原始管理员注册时间校验未配置，已暂停数据访问');
+  }
   const account = store.getMaoAccountById(expected);
-  if (!account || account.role !== 'super_admin' || account.status !== 'active') {
+  if (!account || account.role !== 'super_admin' || account.status !== 'active' ||
+      Number(account.created_at) !== createdAt) {
     throw new ApiError(503, 'CANONICAL_FOUNDER_MISMATCH',
       '当前数据库不属于已确认的唯一 001 管理员，已保护原账号数据');
   }
