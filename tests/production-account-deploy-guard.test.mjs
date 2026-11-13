@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { auditProductionAccountReadiness, auditCanonicalFounderEvidence } from '../scripts/verify-production-account-readiness.mjs';
+import { auditProductionAccountReadiness, auditCanonicalFounderEvidence, auditBackupEvidence } from '../scripts/verify-production-account-readiness.mjs';
 
 const example = () => ({
   production: {
@@ -188,4 +188,43 @@ test('database proof accepts only the exact original ID, role, status and creati
   }
   assert.ok(auditCanonicalFounderEvidence({ ...evidence, expectedId: '' }).includes('FOUNDER_ORIGIN_PIN_INVALID'));
   assert.ok(auditCanonicalFounderEvidence({ ...evidence, expectedCreatedAt: 'NaN' }).includes('FOUNDER_ORIGIN_PIN_INVALID'));
+});
+
+test('original founder database requires verified independent restorable backup before production', () => {
+  const originalId = 'MAO-AAAAAAAAAAAA'; // Synthetic, not actual user data.
+  const sourceNamespace = 'a'.repeat(32);
+  const expectedCreatedAt = 1770000000000;
+  const verified = {
+    status: 'verified',
+    schema_count: 77,
+    table_count: 29,
+    row_count: 56,
+    content_digest: 'f'.repeat(64),
+    verified_at: '2026-11-13T12:00:00.000Z',
+    source_namespace: sourceNamespace,
+    founder_id: originalId,
+    founder_created_at: expectedCreatedAt
+  };
+  const audit = backup => auditBackupEvidence({
+    backup, expectedId: originalId, expectedCreatedAt, sourceNamespace
+  });
+  assert.deepEqual(audit(verified), []);
+  for (const invalid of [
+    null,
+    {...verified,status:'schema_only_not_recoverable'},
+    {...verified,status:'copied_pending_independent_readback'},
+    {...verified,content_digest:''},
+    {...verified,verified_at:null},
+    {...verified,row_count:0},
+    {...verified,table_count:0}
+  ]) {
+    assert.ok(audit(invalid).includes('RESTORABLE_BACKUP_NOT_VERIFIED'));
+  }
+  for (const invalid of [
+    {...verified,source_namespace:'b'.repeat(32)},
+    {...verified,founder_id:'MAO-BBBBBBBBBBBB'},
+    {...verified,founder_created_at:expectedCreatedAt-86400000}
+  ]) {
+    assert.ok(audit(invalid).includes('BACKUP_ORIGIN_MISMATCH'));
+  }
 });
