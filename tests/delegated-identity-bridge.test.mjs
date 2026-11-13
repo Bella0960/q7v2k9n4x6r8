@@ -69,6 +69,8 @@ test('without binding/secrets, delegated login fails closed before any local acc
   const db = openTestDb();
   t.after(() => db.db.close());
   const preview = setupTestStore(db, { MAO_IDENTITY_MODE: 'delegated_preview' });
+  const status = await preview.asJson('/api/admin/bootstrap/status');
+  assert.equal(status.payload.signInReady, false);
   const response = await preview.asJson('/api/accounts/login', {
     method: 'POST', body: { identifier: 'CentralOwner', password: founderPass }
   });
@@ -85,6 +87,7 @@ test('only server-confirmed central 001 can log into a preview, without an invit
   const bootstrap = await preview.asJson('/api/admin/bootstrap/status');
   assert.equal(bootstrap.payload.identityMode, 'delegated');
   assert.equal(bootstrap.payload.bootstrapAllowed, false);
+  assert.equal(bootstrap.payload.signInReady, true);
   assert.equal(bootstrap.payload.initialized, false);
   const register = await preview.asJson('/api/accounts/register', {
     method: 'POST', body: { username: 'another', password: founderPass, confirmPassword: founderPass }
