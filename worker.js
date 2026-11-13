@@ -117,7 +117,7 @@ export class CloudDatabase {
       : null;
     const store = createStore(this.exec, this.transaction);
     this.store = store;
-    this.handleApi = createApp({ store, env });
+    this.handleApi = createApp({ store, env, storage: ctx.storage });
     ctx.blockConcurrencyWhile(async () => {
       applyMigrations(this.exec, Date.now(), this.transaction);
     });
