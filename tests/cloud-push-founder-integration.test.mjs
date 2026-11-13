@@ -19,8 +19,8 @@ test('founder 001 settings shows a real push route with a versioned connected cl
   assert.match(pushPage, /id="cloudPushToggle"/);
   assert.match(pushPage, /id="cloudTestRow"/);
   assert.match(pushPage, /MaomaoCloud\.mountSettings\(\)/);
-  assert.match(pushPage, /cloud-push-client\.js\?v=20261114v3/);
-  assert.match(sw, /phone-app-pwa-v227/);
+  assert.match(pushPage, /cloud-push-client\.js\?v=20261114v4/);
+  assert.match(sw, /phone-app-pwa-v229/);
   assert.match(sw, /settings\/cloud-push\.html/);
 });
 
@@ -87,4 +87,21 @@ test('test delivery logs preserve actionable safe failure stage instead of one a
   assert.match(push, /tagged\.phase = 'vapid'/);
   assert.match(push, /tagged\.phase = 'encrypt'/);
   assert.match(push, /tagged\.phase = 'transport'/);
+});
+
+
+test('local notification self-check is visible and independent of remote FCM delivery', () => {
+  assert.match(pushPage, /id="cloudLocalTestRow"/);
+  assert.match(pushPage, /id="cloudLocalResult"/);
+  assert.match(client, /registration\.showNotification\('MAOMAO · 本机通知自检'/);
+  assert.match(client, /registration\.getNotifications\(\{ tag: tag \}\)/);
+  assert.ok(pushPage.indexOf('id="cloudLocalTestRow"') < pushPage.indexOf('CHARACTER ACTIVITY'));
+  assert.equal((pushPage.match(/id="cloudLocalTestRow"/g) || []).length, 1);
+});
+
+test('non-private cloud test notifications do not depend on background session cookies', () => {
+  assert.match(sw, /if \(payload\.type === 'test'\)/);
+  assert.match(sw, /await self\.registration\.showNotification\('MAOMAO · 云端测试通知'/);
+  assert.match(sw, /if \(notificationData\.type === 'test'\)/);
+  assert.match(sw, /if \(!authResponse \|\| !authResponse\.ok\) return/);
 });
