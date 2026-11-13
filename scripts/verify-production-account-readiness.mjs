@@ -164,6 +164,55 @@ async function readFounderSqlEvidence({ accountId, token, namespaceId }) {
   );
 }
 
+/**
+ * A schema-only inventory is NOT a backup. Only independently restored and
+ * read-back-verified encrypted/controlled snapshots can release production.
+ */
+export function auditBackupEvidence({ backup, expectedId, expectedCreatedAt, sourceNamespace }) {
+  const failures = [];
+  if (!backup || backup.status !== 'verified' ||
+      !Number.isSafeInteger(Number(backup.schema_count)) || Number(backup.schema_count) < 1 ||
+      !Number.isSafeInteger(Number(backup.table_count)) || Number(backup.table_count) < 1 ||
+      !Number.isSafeInteger(Number(backup.row_count)) || Number(backup.row_count) < 1 ||
+      !/^[a-f0-9]{64}$/.test(String(backup.content_digest || '')) ||
+      !/^[0-9]{4}-[0-9]{2}-[0-9]{2}T/.test(String(backup.verified_at || ''))) {
+    failures.push('RESTORABLE_BACKUP_NOT_VERIFIED');
+  }
+  if (!/^[a-f0-9]{32}$/.test(String(sourceNamespace || '')) ||
+      backup?.source_namespace !== sourceNamespace ||
+      backup?.founder_id !== expectedId ||
+      Number(backup?.founder_created_at) !== Number(expectedCreatedAt)) {
+    failures.push('BACKUP_ORIGIN_MISMATCH');
+  }
+  return failures;
+}
+
+async function fetchVaultBackupEvidence({ accountId, token, databaseId }) {
+  if (!/^[a-f0-9-]{36}$/.test(String(databaseId || ''))) {
+    throw new Error('Release blocked: verified backup database reference is required');
+  }
+  const response = await fetch('https://api.cloudflare.com/client/v4/accounts/' + accountId +
+    '/d1/database/' + databaseId + '/query', {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer ' + token, Accept: 'application/json',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      sql: "SELECT source_namespace,founder_id,founder_created_at,status,schema_count,table_count,row_count,content_digest,verified_at FROM vault_snapshots WHERE status='verified' ORDER BY verified_at DESC LIMIT 1"
+    }),
+    cache: 'no-store',
+    signal: AbortSignal.timeout(15000)
+  });
+  if (!response.ok) throw new Error('Release blocked: private backup verification is unavailable');
+  const payload = await response.json();
+  if (payload?.success !== true ||
+      payload.result?.length !== 1 || payload.result[0]?.success !== true) {
+    throw new Error('Release blocked: backup evidence query failed');
+  }
+  return payload.result[0]?.results?.[0] || null;
+}
+
 async function verify() {
   const accountId = String(process.env.CLOUDFLARE_ACCOUNT_ID || '').trim();
   const token = String(process.env.CLOUDFLARE_API_TOKEN || '').trim();
@@ -172,6 +221,8 @@ async function verify() {
   // These values are compared to actual SQLite rows; neither is a credential.
   const expectedId = String(process.env.MAO_CANONICAL_FOUNDER_ID || '').trim();
   const expectedCreatedAt = Number(process.env.MAO_CANONICAL_FOUNDER_CREATED_AT || NaN);
+  const originalNamespace = String(process.env.MAO_ORIGINAL_FOUNDER_NAMESPACE_ID || '').trim();
+  const backupVaultId = String(process.env.MAOMAO_BACKUP_VAULT_D1_ID || '').trim();
   if (!/^MAO-[A-Z0-9]{12,24}$/.test(expectedId) ||
       !Number.isSafeInteger(expectedCreatedAt) || expectedCreatedAt <= 0) {
     throw new Error('Release blocked: exact original founder ID and registration timestamp are required');
@@ -218,6 +269,19 @@ async function verify() {
     for (const failure of founderErrors) console.error('BLOCKED: ' + failure);
     throw new Error('Release blocked: production SQLite does not contain the selected original founder');
   }
+  // Never allow a point-in-time bookmark or schema-only inventory to masquerade
+  // as an independent restorable backup. No verified snapshot => no release.
+  const evidence = await fetchVaultBackupEvidence({
+    accountId, token, databaseId: backupVaultId
+  });
+  const backupFailures = auditBackupEvidence({
+    backup: evidence, expectedId, expectedCreatedAt, sourceNamespace: originalNamespace
+  });
+  if (backupFailures.length) {
+    for (const issue of backupFailures) console.error('BLOCKED: ' + issue);
+    throw new Error('Release blocked: original founder database has no verified restorable backup');
+  }
+  console.log('PASS: original founder backup provenance and independent readback are verified');
   console.log('PASS: production namespace includes the exact original 001 identity and creation time, without SQL writes');
   console.log('PASS: production domain maps to expected Worker, isolated DB, required secrets, native crypto, initialized founder 001');
 }
