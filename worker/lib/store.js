@@ -2123,7 +2123,7 @@ class CloudStore {
    */
   importMaoDelegatedAccount(identity) {
     if (!/^MAO-[A-Z0-9]{12,24}$/.test(identity?.id || '') ||
-        !/^[\\p{L}\\p{N}_-]{2,24}$/u.test(identity?.username || '') ||
+        !/^[\p{L}\p{N}_-]{2,24}$/u.test(identity?.username || '') ||
         !['user', 'super_admin'].includes(identity?.role) ||
         !Number.isSafeInteger(identity?.now) || identity.now <= 0 ||
         typeof identity.passwordSalt !== 'string' ||
