@@ -77,3 +77,15 @@
 - `scripts/verify-account-staging-readiness.mjs`：第一阶段只读审计。新的 `tests/account-staging-readiness.test.mjs` 已进入 `test:release:accounts`（进而由 `prebuild` 调用）。
 - `scripts/verify-production-account-readiness.mjs`：第二阶段严格发布门禁，新增明确校验域名绑定必须 `enabled === true`。
 - 本补充仅属于 PR #262 的代码与文档，不修改 `main`、正式域名/Worker、Cloudflare 数据库及任何 secrets。
+
+### 离线/本机完整账号测试入口（无需 GitHub Actions）
+
+独立检出当前账号整合分支，使用 Node 22.16+（22.x），安装 Git、Node 和 npm 后执行：
+
+```bash
+node scripts/run-account-auth-gate.mjs
+```
+
+该命令依次执行 `npm ci`、全部已追踪 JS 文件语法检查、`npm run build`（带 prebuild/postbuild 回归）和真正的本地 Wrangler + SQLite 账号接口 E2E。测试的密钥和账号为临时生成，SQL 数据存储在独立临时目录；如果项目根目录已有 `.dev.vars`，测试会明确拒绝，防止覆盖私人密钥。Wrapper 要求 Node 22.16+ 的 22.x 版本。Wrangler 首次运行可能需要 npm 联网下载，不依赖 GitHub Actions/Cloudflare 自动构建额度。
+
+此本机入口**不代表**真实域名部署、管理员本人身份绑定、安卓/苹果实机或注册线上 POST 已通过；上述项目继续单独保留发布门禁。
