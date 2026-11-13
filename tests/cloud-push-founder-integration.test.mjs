@@ -80,6 +80,8 @@ test('test delivery logs preserve actionable safe failure stage instead of one a
   assert.match(app, /failurePhases/);
   assert.match(app, /failurePhase: phase/);
   assert.match(app, /failureKind: outcome\.failureKind \|\| null/);
+  assert.match(app, /failureDiagnostic: outcome\.failureDiagnostic \|\| null/);
+  assert.match(client, /item\.failureDiagnostic/);
   assert.match(app, /cryptoFailed/);
   const push = read('worker/lib/webpush.js');
   assert.match(push, /tagged\.phase = 'vapid'/);
