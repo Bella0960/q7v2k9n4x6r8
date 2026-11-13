@@ -184,17 +184,25 @@
     }
   }
 
-  async function enablePush(userInitiated, enrollmentToken) {
+  // The permission prompt must start in the direct click gesture. Doing a
+  // network request first loses transient user activation on some browsers.
+  async function requestPushPermissionFromGesture() {
     if (!isSupported()) throw new Error('当前浏览器不支持 Web Push');
-    var device = await registerDeviceForCurrentAccount(enrollmentToken);
-
-    if (userInitiated && 'Notification' in global && Notification.permission === 'default') {
+    if (Notification.permission === 'default') {
       await Notification.requestPermission();
     }
     if (Notification.permission !== 'granted') {
       throw new Error('通知权限未开启，请在系统或浏览器设置中允许通知');
     }
+  }
 
+  async function enablePush(userInitiated, enrollmentToken) {
+    if (!isSupported()) throw new Error('当前浏览器不支持 Web Push');
+    if (userInitiated) await requestPushPermissionFromGesture();
+    if (Notification.permission !== 'granted') {
+      throw new Error('通知权限未开启，请在系统或浏览器设置中允许通知');
+    }
+    var device = await registerDeviceForCurrentAccount(enrollmentToken);
     var publicKey = await fetchPublicKey();
     var registration = await getRegistration();
     var existing = await registration.pushManager.getSubscription();
@@ -249,6 +257,16 @@
     if (code.length < 32 || code.length > 512) {
       throw new Error('请输入有效的一次性配对码');
     }
+    // Ask while this function is still in the click event. A failed prompt
+    // must not erase a successfully registered device; report both outcomes.
+    var permissionError = null;
+    if (isSupported()) {
+      try {
+        await requestPushPermissionFromGesture();
+      } catch (error) {
+        permissionError = error;
+      }
+    }
     var device = ensureDevice();
     try {
       await registerDevice(device, code);
@@ -266,7 +284,8 @@
       return { deviceRegistered: true, pushSupported: false, pushEnabled: false };
     }
     try {
-      await enablePush(true);
+      if (permissionError) throw permissionError;
+      await enablePush(false);
       return { deviceRegistered: true, pushSupported: true, pushEnabled: true };
     } catch (error) {
       // 配对已成功；推送权限/订阅失败不撤销设备身份。
