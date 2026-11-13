@@ -13,21 +13,62 @@ const scanner = get('chat/contacts/scan-friend.html');
 const origin = 'https://qa-phone-founder-001-keyreset-20261111.preview.mao520.com';
 const code = 'af'.repeat(32);
 
-test('heart keeps its existing music-card placement and hosts one restrained action menu', () => {
+test('heart menu is a registry, not a fixed list wired into chat HTML', () => {
+  const source = get('shared/js/chat-action-menu.js');
   assert.match(chat, /id="groupEntryBtn"[^>]*aria-label="更多操作/);
   assert.match(chat, /id="wechatMenu" role="menu"/);
-  assert.match(chat, /id="menuBgToggle"/);
-  assert.match(chat, /id="menuFriend"/);
-  assert.match(chat, /id="menuGroup"/);
-  assert.match(chat, /id="menuScan"/);
-  assert.match(chat, /'groupEntryBtn','wechatGroupEntryBtn','silverGroupEntryBtn'/);
-  assert.match(chat, /document\.getElementById\('menuFriend'\)\.addEventListener\('click'/);
-  assert.match(chat, /window\.location\.href = '\.\.\/contacts\/real-friends\.html'/);
-  assert.match(chat, /window\.location\.href = '\.\.\/contacts\/scan-friend\.html'/);
-  assert.match(chat, /document\.dispatchEvent\(new Event\('maomao:open-chat-group'\)\)/);
+  assert.match(chat, /MAOMAOChatActions\.mount\(menu,/);
+  assert.match(chat, /chat-action-menu\.js/);
+  assert.doesNotMatch(chat, /id="menuFriend"|id="menuGroup"|id="menuScan"/,
+    'menu buttons must be generated from the registry, not hardcoded into the page');
+  assert.match(source, /MAOMAOChatActions = Object\.freeze/);
+  assert.match(source, /function register\(descriptor\)/);
+  assert.match(source, /mounted\.forEach\(render\)/,
+    'new actions must be rendered on existing pages without rewriting the HTML');
+  assert.match(source, /id: 'friend'/);
+  assert.match(source, /id: 'group'/);
+  assert.match(source, /id: 'scan'/);
+  assert.match(source, /id: 'background'/);
   assert.match(chat, /document\.addEventListener\('maomao:open-chat-group', openModal\)/);
   assert.doesNotMatch(chat, /document\.getElementById\('groupEntryBtn'\)\.click\(\)/,
-    'group menu must not reopen the heart menu instead of creating a group');
+    'group action must open the real modal and never reopen the menu');
+});
+
+test('an additional feature can be registered and clicked without editing the existing markup', async () => {
+  const {runInNewContext} = await import('node:vm');
+  const source = get('shared/js/chat-action-menu.js');
+  const makeNode = (tag) => ({
+    tag, children:[], attributes:{}, dataset:{},
+    setAttribute(k,v){this.attributes[k]=v},
+    appendChild(v){this.children.push(v)},
+    replaceChildren(fragment){this.children = fragment.children.slice()},
+    addEventListener(type,fn){this['on_'+type]=fn}
+  });
+  const document = {
+    createElement:makeNode,
+    createElementNS:(_ns,tag)=>makeNode(tag),
+    createDocumentFragment:()=>makeNode('fragment'),
+    dispatchEvent(){}
+  };
+  const window={location:{href:'https://example.test/chat/chat/chat.html'}};
+  runInNewContext(source,{window,document,Event:class{}});
+  const registry=window.MAOMAOChatActions;
+  const menu=makeNode('menu'),ctx={closeMenu(){},toggleBackground(){}};
+  registry.mount(menu,ctx);
+  const before=menu.children.length;
+  assert.ok(before>=4);
+  assert.ok(registry.list().includes('friend'));
+  const remove=registry.register({id:'test-extension',label:'扩展功能',
+    icon:'scan',order:99,href:'/forum/forum.html'});
+  assert.equal(menu.children.length,before+1);
+  const entry=menu.children.find(node=>node.dataset.action==='test-extension');
+  assert.ok(entry);
+  entry['on_click']();
+  assert.equal(window.location.href,'/forum/forum.html');
+  remove();
+  assert.equal(menu.children.length,before);
+  assert.throws(()=>registry.register({id:'untrusted',label:'Bad',
+    href:'https://evil.example/steal.html'}),/Invalid/);
 });
 
 test('contacts restores its uncluttered AI-role entry without a duplicate real-friends tile', () => {

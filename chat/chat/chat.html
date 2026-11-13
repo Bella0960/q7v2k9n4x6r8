@@ -108,6 +108,9 @@
     padding: 6px;
     z-index: 120;
     width: 170px;
+    max-height: min(67vh, 440px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
     box-shadow: 0 10px 36px rgba(0,0,0,.105);
   }
   .wechat-menu .menu-item {
@@ -788,6 +791,7 @@
 <link rel="stylesheet" href="../../shared/css/wechat-theme-refinements.css?v=20261105v2">
 <link rel="stylesheet" href="../../shared/css/chat-list-editorial-theme.css?v=20261104v2">
 <script src="../../shared/js/chat-list-theme.js?v=20261104v2"></script>
+<script src="../../shared/js/chat-action-menu.js?v=20261113v1"></script>
 </head>
 <body>
 
@@ -803,24 +807,8 @@
       <div class="cover-click-area" id="coverClickArea" aria-label="更换封面"></div>
 
       <!-- 右上角弹出菜单 -->
-      <div class="wechat-menu" id="wechatMenu" role="menu" aria-label="聊天操作" style="display:none;">
-        <button class="menu-item" type="button" role="menuitem" id="menuBgToggle">
-          <span class="menu-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="M12 3.5v17M6.5 15l3-3 2 2"/></svg></span>
-          <span class="menu-text">切换背景</span>
-        </button>
-        <button class="menu-item" type="button" role="menuitem" id="menuFriend">
-          <span class="menu-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.3"/><path d="M3.5 20v-2c0-3 2.4-4.8 5.5-4.8 1.6 0 2.9.5 3.8 1.5M18 11v8M14 15h8"/></svg></span>
-          <span class="menu-text">添加好友</span>
-        </button>
-        <button class="menu-item" type="button" role="menuitem" id="menuGroup">
-          <span class="menu-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="8" cy="8" r="3"/><path d="M2.5 19v-1.5c0-3 2.2-4.4 5.5-4.4 2.8 0 4.3 1.2 4.8 3M18 5v8M14 9h8M16 19h6"/></svg></span>
-          <span class="menu-text">添加群聊</span>
-        </button>
-        <button class="menu-item" type="button" role="menuitem" id="menuScan">
-          <span class="menu-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4M7 12h10"/></svg></span>
-          <span class="menu-text">扫一扫</span>
-        </button>
-      </div>
+      <!-- The first-party action registry renders items here; more actions need no HTML edits. -->
+      <div class="wechat-menu" id="wechatMenu" role="menu" aria-label="聊天操作" style="display:none;"></div>
       <div class="wechat-home-header">
         <h1>微信</h1>
         <div class="wechat-home-actions">
@@ -1128,28 +1116,22 @@
       document.querySelector('.main-stage').addEventListener('scroll', closeMenu, { passive:true });
       menu.addEventListener('click', function (event) { event.stopPropagation(); });
 
-      // 菜单选项：切换背景
-      document.getElementById('menuBgToggle').addEventListener('click', function () {
-        var current = localStorage.getItem('chat_bg_mode') || 'gradient';
-        var next = current === 'gradient' ? 'transparent' : 'gradient';
-        localStorage.setItem('chat_bg_mode', next);
-        applyMode(next);
-        closeMenu();
-      });
-      // Keep the existing friend interface and group creator; don't duplicate
-      // either feature in the chat list or on the contacts screen.
-      document.getElementById('menuFriend').addEventListener('click', function () {
-        closeMenu();
-        window.location.href = '../contacts/real-friends.html';
-      });
-      document.getElementById('menuGroup').addEventListener('click', function () {
-        closeMenu();
-        document.dispatchEvent(new Event('maomao:open-chat-group'));
-      });
-      document.getElementById('menuScan').addEventListener('click', function () {
-        closeMenu();
-        window.location.href = '../contacts/scan-friend.html';
-      });
+      // One config-driven registry owns the menu structure, icons and actions.
+      // Future features register a new action, without modifying this page.
+      if (window.MAOMAOChatActions) {
+        window.MAOMAOChatActions.mount(menu, {
+          closeMenu: closeMenu,
+          toggleBackground: function () {
+            var current = localStorage.getItem('chat_bg_mode') || 'gradient';
+            var next = current === 'gradient' ? 'transparent' : 'gradient';
+            localStorage.setItem('chat_bg_mode', next);
+            applyMode(next);
+          }
+        });
+      } else {
+        console.error('[chat] Action menu registry did not load');
+        togglers.forEach(function (button) { button.disabled = true; });
+      }
     })();
 
     /* ================= 上传绑定 ================= */

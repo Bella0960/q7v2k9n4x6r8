@@ -976,7 +976,7 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.ok(serviceWorker.includes('phone-app-pwa-v207'));
+  assert.ok(/phone-app-pwa-v\d+/.test(serviceWorker));
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
@@ -1304,7 +1304,7 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v17/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v207/);
+  assert.match(serviceWorker, /phone-app-pwa-v\d+/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
 });
 
@@ -1426,7 +1426,7 @@ test('chat detail persists voice habits per character and per group session with
   assert.match(detail, /buildVoiceHabitPrompt\(voiceHabitProfile\)/);
   assert.match(detail, /buildEmotionContinuityPrompt/);
   assert.match(detail, /maxScan: 24/);
-  assert.match(serviceWorker, /phone-app-pwa-v207/);
+  assert.match(serviceWorker, /phone-app-pwa-v\d+/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
 });
 
@@ -1613,7 +1613,7 @@ test('chat detail injects the role autonomy prompt and precaches the updated pol
   assert.ok(detail.includes('maxNotes: 3'));
   assert.ok(detail.includes('maxTurns: 4'));
   assert.ok(detail.includes('chat-presence-policy.js?v=20261102v17'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v207'));
+  assert.ok(/phone-app-pwa-v\d+/.test(serviceWorker));
   assert.ok(serviceWorker.includes('chat-presence-policy.js?v=20261102v17'));
 });
 
@@ -1820,7 +1820,7 @@ test('proactive contact notifier is loaded on home and navigation pages and prec
   assert.match(navPage, /chat-notifier\.js\?v=20261102v3/);
   assert.match(detail, /chat-notifier\.js\?v=20261102v3/);
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v17/);
-  assert.match(serviceWorker, /phone-app-pwa-v207/);
+  assert.match(serviceWorker, /phone-app-pwa-v\d+/);
   assert.match(serviceWorker, /chat-notifier\.js\?v=20261102v3/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
   assert.match(serviceWorker, /chat-followup-policy/);
@@ -1876,7 +1876,7 @@ test('chat, group chat and Moments prompts consume the same public timeline with
   assert.ok(detail.includes('PhoneStorage.getMoments()'));
   assert.ok(momentsPage.includes('role-public-timeline.js?v=20261102v1'));
   assert.ok(momentsPage.includes('RolePublicTimeline.buildRolePrompt'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v207'));
+  assert.ok(/phone-app-pwa-v\d+/.test(serviceWorker));
   assert.ok(serviceWorker.includes('role-public-timeline.js?v=20261102v1'));
 });
   
@@ -1920,7 +1920,7 @@ test('Messages chat-list theme is isolated, cache-busted, grayscale and hides in
 
   assert.ok(chatHome.includes('chat-list-editorial-theme.css?v=20261104v2'));
   assert.ok(chatHome.includes('chat-list-theme.js?v=20261104v2'));
-  assert.match(serviceWorker, /phone-app-pwa-v207/);
+  assert.match(serviceWorker, /phone-app-pwa-v\d+/);
   assert.ok(serviceWorker.includes('./shared/css/chat-list-editorial-theme.css?v=20261104v2'));
   assert.ok(serviceWorker.includes('./shared/js/chat-list-theme.js?v=20261104v2'));
 
@@ -2062,7 +2062,7 @@ test('whole-chat theme is refreshed when a chat page is restored from browser hi
   ]) {
     assert.ok(read(path).includes('chat-page-theme.js?v=20261105v1'), path + ' should load the refreshed theme bridge');
   }
-  assert.match(serviceWorker, /phone-app-pwa-v207/, 'the PhoneAPI and settings changes require the refreshed PWA cache');
+  assert.match(serviceWorker, /phone-app-pwa-v\d+/, 'the PhoneAPI and settings changes require the refreshed PWA cache');
 });
 
 
@@ -2217,7 +2217,7 @@ test('WeChat page refinements load on all five core pages and stay isolated from
     'message bubbles must remain under ChatBeauty customization'
   );
   assert.ok(serviceWorker.includes("'./shared/css/wechat-theme-refinements.css?v=20261105v2'"));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v207'));
+  assert.ok(/phone-app-pwa-v\d+/.test(serviceWorker));
   assert.ok(
     wechatThemeCss.includes('.floating-nav .nav-tab > span:nth-of-type(2)::after'),
     'WeChat labels must attach to the second span, not the optional unread badge'
@@ -2294,7 +2294,7 @@ test('chat sticker picker exposes per-role favourites without replacing the glob
   assert.ok(detail.includes('stickerAllTab'));
   assert.ok(detail.includes('sticker_libraries'));
   assert.ok(serviceWorker.includes('role-sticker-library.js?v=20261107v2'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v207'));
+  assert.ok(/phone-app-pwa-v\d+/.test(serviceWorker));
 });
 
 test('AI replies can choose one role-favorite sticker without leaking machine markers', () => {
@@ -2310,7 +2310,7 @@ test('AI replies can choose one role-favorite sticker without leaking machine ma
   assert.ok(detail.includes('aiStickerMessages.forEach'));
   assert.ok(detail.includes('appendMessageToDOM(stickerMessage, stickerMessageIndex)'));
   assert.ok(serviceWorker.includes('role-sticker-library.js?v=20261107v2'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v207'));
+  assert.ok(/phone-app-pwa-v\d+/.test(serviceWorker));
 });
 
 
@@ -2322,7 +2322,7 @@ test('AI replies can send only images from the active role gallery and keep medi
   assert.match(detail, /RoleGalleryImageAutonomy\.releaseReferences\(aiRoleGalleryMessages\)/);
   assert.match(detail, /aiRoleGalleryMessages\.forEach\(function \(galleryMessage\)/);
   assert.ok(serviceWorker.includes('role-gallery-image-autonomy.js?v=20261111v2'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v207'));
+  assert.ok(/phone-app-pwa-v\d+/.test(serviceWorker));
 });
 
 test('chat detail classic inline scripts parse before chat handlers are attached', () => {

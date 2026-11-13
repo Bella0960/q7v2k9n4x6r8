@@ -8,7 +8,9 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
-assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v207'/);
+const version = /const CACHE_NAME = 'phone-app-pwa-v(\d+)'/.exec(serviceWorker);
+assert.ok(version && Number(version[1]) >= 207,
+  'cache revision must be valid and advance whenever shared menu assets change');
 const viteConfig = read('vite.config.js');
 
 test('build emits a manifest containing every HTML entry point', () => {

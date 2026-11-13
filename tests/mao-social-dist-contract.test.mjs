@@ -42,6 +42,17 @@ test('camera scanner remains inside authenticated original MAO preview and build
   assert.doesNotMatch(html, /https:\/\/[^"]+\.js/);
 });
 
+test('chat menu can grow through one registry file and is shipped in actual PWA assets', () => {
+  const menuFile = 'shared/js/chat-action-menu.js';
+  assert.ok(existsSync(dist(menuFile)), 'menu extension registry must be deployed');
+  const built = readFileSync(dist('chat/chat/chat.html'), 'utf8');
+  assert.match(built, /chat-action-menu\.js/);
+  assert.match(built, /MAOMAOChatActions\.mount/);
+  const source = readFileSync(dist(menuFile), 'utf8');
+  assert.match(source, /MAOMAOChatActions/);
+  assert.match(source, /register/);
+});
+
 test('the social mobile HTML remains protected by the Worker login gate', () => {
   const worker = readFileSync(resolve(root, 'worker.js'), 'utf8');
   const start = worker.indexOf('const isPublicAccountDocument =');
