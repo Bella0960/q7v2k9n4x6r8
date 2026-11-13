@@ -50,7 +50,8 @@
     return !!action && /^[a-z][a-z0-9-]{0,40}$/.test(action.id || '') &&
       typeof action.label === 'string' && action.label.trim().length > 0 &&
       action.label.length <= 36 &&
-      ((typeof action.href === 'string' && /^\.\.\/[a-z0-9_./-]+\.html(?:\?[a-z0-9_=&-]+)?$/i.test(action.href)) ||
+      ((typeof action.href === 'string' && /^(?:\/|\.\.\/|\.\/)[a-z0-9_./-]+\.html(?:\?[a-z0-9_=&-]+)?$/i.test(action.href) &&
+        !action.href.includes('//') && !action.href.includes('/../')) ||
        (typeof action.event === 'string' && /^maomao:[a-z0-9-]+$/.test(action.event)) ||
        typeof action.onSelect === 'function');
   }
