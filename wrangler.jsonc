@@ -11,6 +11,9 @@
     "not_found_handling": "none",
     "run_worker_first": true
   },
+  // Optional Workers AI binding. No inference occurs unless
+  // AUTONOMY_MODEL_BACKEND is explicitly set to workers_ai.
+  "ai": { "binding": "AI" },
   "vars": {
     "AUTONOMY_MIN_IDLE_MS": "1800000",
     "AUTONOMY_LEASE_MS": "60000",
