@@ -28,6 +28,20 @@ test('friend QR generator is self-hosted and bundled for mobile share links', ()
   assert.match(page, /#mao-friend=/, 'share URL must keep one-time code in the URL fragment');
 });
 
+test('camera scanner remains inside authenticated original MAO preview and builds with QR parsing module', () => {
+  const name = 'chat/contacts/scan-friend.html';
+  const htmlFile = dist(name);
+  assert.ok(existsSync(htmlFile), 'heart scan route must be present in deployed assets');
+  const manifest = JSON.parse(readFileSync(dist('pwa-pages.json'), 'utf8'));
+  assert.ok(manifest.includes(name), 'scanner page should be discoverable in the Vite route manifest');
+  const html = readFileSync(htmlFile, 'utf8');
+  assert.match(html, /<title>扫一扫 · 好友<\/title>/);
+  assert.match(html, /打开相机/);
+  assert.match(html, /从相册选择/);
+  assert.match(html, /好友码 \/ 邀请链接/);
+  assert.doesNotMatch(html, /https:\/\/[^"]+\.js/);
+});
+
 test('the social mobile HTML remains protected by the Worker login gate', () => {
   const worker = readFileSync(resolve(root, 'worker.js'), 'utf8');
   const start = worker.indexOf('const isPublicAccountDocument =');
