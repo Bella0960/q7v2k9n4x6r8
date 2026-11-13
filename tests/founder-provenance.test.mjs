@@ -4,6 +4,7 @@ import { openTestDb, setupTestStore } from './helpers/cloud-helpers.mjs';
 
 const canonicalId = 'MAO-AAAAAAAAAAAA'; // Synthetic fixture, not the owner's personal ID.
 const unrelatedId = 'MAO-BBBBBBBBBBBB';
+const syntheticCreationTime = 1770000000000;
 
 function fixture(env = {}, id = canonicalId) {
   const db = openTestDb();
@@ -11,7 +12,7 @@ function fixture(env = {}, id = canonicalId) {
   const created = app.store.createMaoSuperAdminAccountIfEmpty({
     id, username: 'TestFounder', usernameKey: 'testfounder',
     passwordSalt: 'AAAAAAAAAAAAAAAAAAAAAA',
-    passwordHash: '0'.repeat(64), qqEmail: null, now: Date.now()
+    passwordHash: '0'.repeat(64), qqEmail: null, now: syntheticCreationTime
   });
   assert.equal(created, true);
   return { db, app };
@@ -20,7 +21,8 @@ function fixture(env = {}, id = canonicalId) {
 test('selected original account ID permits normal read-only account status, without re-bootstrap', async t => {
   const { db, app } = fixture({
     MAO_CANONICAL_FOUNDER_REQUIRED: 'true',
-    MAO_CANONICAL_FOUNDER_ID: canonicalId
+    MAO_CANONICAL_FOUNDER_ID: canonicalId,
+    MAO_CANONICAL_FOUNDER_CREATED_AT: String(syntheticCreationTime)
   });
   t.after(() => db.db.close());
   const status = await app.asJson('/api/admin/bootstrap/status');
@@ -32,7 +34,8 @@ test('selected original account ID permits normal read-only account status, with
 test('a different founder in a different namespace fails closed before login or data writes', async t => {
   const { db, app } = fixture({
     MAO_CANONICAL_FOUNDER_REQUIRED: 'true',
-    MAO_CANONICAL_FOUNDER_ID: canonicalId
+    MAO_CANONICAL_FOUNDER_ID: canonicalId,
+    MAO_CANONICAL_FOUNDER_CREATED_AT: String(syntheticCreationTime)
   }, unrelatedId);
   t.after(() => db.db.close());
   const cases = [
@@ -84,4 +87,28 @@ test('preexisting unrelated test environments remain unchanged when no pin was c
   const status = await app.asJson('/api/admin/bootstrap/status');
   assert.equal(status.status, 200);
   assert.equal(status.payload.initialized, true);
+});
+
+test('matching ID but wrong registration timestamp is blocked before all API reads', async t => {
+  const { db, app } = fixture({
+    MAO_CANONICAL_FOUNDER_REQUIRED: 'true',
+    MAO_CANONICAL_FOUNDER_ID: canonicalId,
+    MAO_CANONICAL_FOUNDER_CREATED_AT: String(syntheticCreationTime - 60000)
+  });
+  t.after(() => db.db.close());
+  const response = await app.asJson('/api/admin/bootstrap/status');
+  assert.equal(response.status, 503);
+  assert.equal(response.payload.error.code, 'CANONICAL_FOUNDER_MISMATCH');
+  assert.equal(app.query('SELECT COUNT(*) AS n FROM mao_accounts')[0].n, 1);
+});
+
+test('a matching founder ID with no original creation timestamp is also rejected', async t => {
+  const { db, app } = fixture({
+    MAO_CANONICAL_FOUNDER_REQUIRED: 'true',
+    MAO_CANONICAL_FOUNDER_ID: canonicalId
+  });
+  t.after(() => db.db.close());
+  const response = await app.asJson('/api/admin/bootstrap/status');
+  assert.equal(response.status, 503);
+  assert.equal(response.payload.error.code, 'CANONICAL_FOUNDER_TIMESTAMP_NOT_CONFIGURED');
 });
