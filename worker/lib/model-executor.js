@@ -167,8 +167,10 @@ export async function generateAutonomousMessages({
           { role: 'user', content: userPrompt }
         ],
         stream: false,
-        temperature: 0.78,
-        max_tokens: 700
+        temperature: 0.5,
+        max_completion_tokens: 1000,
+        chat_template_kwargs: { enable_thinking: false },
+        response_format: { type: 'json_object' }
       }));
       let timerId;
       const deadline = typeof setTimeout === 'function'

@@ -335,7 +335,7 @@ test('Workers AI runs under explicit selection without another API token or HTTP
     AI: {
       async run(model, options) {
         calls.push({ model, options });
-        return { response: JSON.stringify({ send: true, messages: ['今天想分享一个小发现。', '你那边还好吗？'] }) };
+        return { choices: [{ finish_reason: 'stop', message: { content: JSON.stringify({ send: true, messages: ['今天想分享一个小发现。', '你那边还好吗？'] }) } }] };
       }
     }
   };
@@ -354,6 +354,8 @@ test('Workers AI runs under explicit selection without another API token or HTTP
   assert.equal(calls.length, 1);
   assert.equal(calls[0].model, '@cf/zai-org/glm-4.7-flash');
   assert.equal(calls[0].options.stream, false);
+  assert.equal(calls[0].options.response_format.type, 'json_object');
+  assert.equal(calls[0].options.chat_template_kwargs.enable_thinking, false);
   assert.equal(calls[0].options.messages[0].role, 'system');
   assert.equal(calls[0].options.messages[1].role, 'user');
   assert.ok(calls[0].options.messages[1].content.includes('你今天忙吗？'));
