@@ -59,3 +59,11 @@ test('rejects duplicate canonical names, wrong owner or wrong namespace ID', () 
   assert.equal(isCanonicalWorkerNamespace([ns('prod'), ns('dup')], 'prod', 'mao'), false);
   assert.equal(isCanonicalWorkerNamespace([ns('prod', 'other', 'mao_CloudDatabase')], 'prod', 'mao'), false);
 });
+
+test('rejects changing total_count mid-enumeration even if page count stays the same', async () => {
+  const fullPage = Array.from({ length: 100 }, (_, i) => ns('qa-' + i, 'mao', 'mao_qa-' + i + '_CloudDatabase'));
+  await assert.rejects(load([
+    response(1, 101, fullPage),
+    response(2, 102, [ns('p'), ns('q')])
+  ]), /Incomplete or inconsistent/);
+});
