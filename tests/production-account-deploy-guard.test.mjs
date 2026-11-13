@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { auditProductionAccountReadiness } from '../scripts/verify-production-account-readiness.mjs';
+import { auditProductionAccountReadiness, auditCanonicalFounderEvidence } from '../scripts/verify-production-account-readiness.mjs';
 
 const example = () => ({
   production: {
@@ -16,7 +16,8 @@ const example = () => ({
   },
   secrets: [
     { name: 'DEVICE_SECRET_PEPPER' },
-    { name: 'MAO_SUPER_ADMIN_BOOTSTRAP_SECRET' }
+    { name: 'MAO_SUPER_ADMIN_BOOTSTRAP_SECRET' },
+    { name: 'MAO_CANONICAL_FOUNDER_ID' }
   ],
   domains: [{ hostname: 'app.mao520.com', service: 'mao', environment: 'production', enabled: true }],
   hostname: 'app.mao520.com',
@@ -160,4 +161,31 @@ test('duplicate canonical namespace names fail closed, even when one ID matches'
     class: 'CloudDatabase'
   });
   assert.ok(auditProductionAccountReadiness(data).includes('PROD_NAMESPACE_NOT_CANONICAL'));
+});
+
+test('production must expose a configured server-only canonical founder pin', () => {
+  const data = example();
+  data.secrets = data.secrets.filter(item => item.name !== 'MAO_CANONICAL_FOUNDER_ID');
+  assert.ok(auditProductionAccountReadiness(data).includes('PROD_SECRET_MISSING_MAO_CANONICAL_FOUNDER_ID'));
+});
+
+test('database proof accepts only the exact original ID, role, status and creation timestamp', () => {
+  const evidence = {
+    expectedId: 'MAO-AAAAAAAAAAAA',
+    expectedCreatedAt: 1794416935305,
+    rows: [{ id: 'MAO-AAAAAAAAAAAA', role: 'super_admin', status: 'active', created_at: 1794416935305 }]
+  };
+  assert.deepEqual(auditCanonicalFounderEvidence(evidence), []);
+  for (const change of [
+    { rows: [{ ...evidence.rows[0], id: 'MAO-BBBBBBBBBBBB' }] },
+    { rows: [{ ...evidence.rows[0], role: 'user' }] },
+    { rows: [{ ...evidence.rows[0], created_at: 1794338978643 }] },
+    { rows: [{ ...evidence.rows[0], status: 'revoked' }] },
+    { rows: [] },
+    { rows: [evidence.rows[0], evidence.rows[0]] }
+  ]) {
+    assert.ok(auditCanonicalFounderEvidence({ ...evidence, ...change }).includes('FOUNDER_ORIGIN_MISMATCH'));
+  }
+  assert.ok(auditCanonicalFounderEvidence({ ...evidence, expectedId: '' }).includes('FOUNDER_ORIGIN_PIN_INVALID'));
+  assert.ok(auditCanonicalFounderEvidence({ ...evidence, expectedCreatedAt: 'NaN' }).includes('FOUNDER_ORIGIN_PIN_INVALID'));
 });
