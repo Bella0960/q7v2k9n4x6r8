@@ -1,12 +1,12 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v228';
+const CACHE_NAME = 'phone-app-pwa-v229';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 // v196 release: sweep orphaned role-owned media refs during avatar cleanup.
 const APP_SHELL = [
   './settings/cloud-push.html',
-  './shared/js/cloud-push-client.js?v=20261114v3',
+  './shared/js/cloud-push-client.js?v=20261114v4',
   './',
   './index.html',
   './shared/js/mao-account-scope.js?v=2',
