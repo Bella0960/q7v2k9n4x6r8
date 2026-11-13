@@ -296,3 +296,33 @@ test('home chat list is scoped to approved friends, sorted by latest encrypted-m
   const off=await x.call(A,route);
   assert.equal(off.status,401,'disabled account must not enumerate former friendships');
 });
+
+
+test('new voice durations are encrypted inside marker; all historical media markers remain readable',async()=>{
+  const id='med_test_duration_0000000000000001';
+  const oldVoice=makeMediaMarker(id,'voice');
+  const oldImage=makeMediaMarker(id,'image');
+  assert.deepEqual(parseMediaMarker(oldVoice),{kind:'voice',id});
+  assert.deepEqual(parseMediaMarker(oldImage),{kind:'image',id});
+  const marker=makeMediaMarker(id,'voice',2);
+  assert.equal(marker,'MAO_MEDIA:voice:'+id+':2');
+  assert.deepEqual(parseMediaMarker(marker),{kind:'voice',id,durationSeconds:2});
+  assert.deepEqual(parseMediaMarker(makeMediaMarker(id,'voice',20)),{kind:'voice',id,durationSeconds:20});
+  assert.throws(()=>makeMediaMarker(id,'image',2));
+  assert.throws(()=>makeMediaMarker(id,'voice',0));
+  assert.throws(()=>makeMediaMarker(id,'voice',2.3));
+  assert.equal(parseMediaMarker('MAO_MEDIA:image:'+id+':2'),null);
+  assert.equal(parseMediaMarker('MAO_MEDIA:voice:'+id+':999'),null);
+  const alice=await createDeviceIdentity(subtle);
+  const bob=await createDeviceIdentity(subtle);
+  const shared=await conversationKey(alice.privateKey,bob.publicKey,F,A,B,subtle);
+  const idempotency='voice_recording_seconds_000001';
+  const meta={friendshipId:F,senderId:A,recipientId:B,clientMessageId:idempotency,
+    sk:alice.keyId,rk:bob.keyId};
+  const encrypted=await encryptText(marker,shared,meta,subtle,webcrypto.getRandomValues.bind(webcrypto));
+  assert.ok(!JSON.stringify(encrypted).includes('MAO_MEDIA:'));
+  const received=await conversationKey(bob.privateKey,alice.publicKey,F,B,A,subtle);
+  const decoded=parseMediaMarker(await decryptText(encrypted,received,meta,subtle));
+  assert.equal(decoded.durationSeconds,2);
+  assert.equal(decoded.id,id);
+});

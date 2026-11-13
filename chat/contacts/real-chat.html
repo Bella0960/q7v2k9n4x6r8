@@ -277,9 +277,10 @@ function voiceGlyph(){
   return svg;
 }
 function voiceSeconds(value){
-  return Number.isFinite(value)&&value>0
-    ? Math.max(1,Math.min(59,Math.ceil(value)))+'″'
-    : '语音';
+  if(!Number.isFinite(value)||value<=0)return '00:00';
+  const total=Math.min(3599,Math.max(1,Math.ceil(value)));
+  return String(Math.floor(total/60)).padStart(2,'0')+':'+
+    String(total%60).padStart(2,'0');
 }
 function setVoiceLength(pill,secondsElement,value){
   secondsElement.textContent=voiceSeconds(value);
@@ -296,7 +297,7 @@ function makeVoicePill({mine=false,sending=false}={}){
   const wave=voiceGlyph();
   const seconds=document.createElement('span');
   seconds.className='voice-seconds';
-  seconds.textContent=sending?'发送中':'语音';
+  seconds.textContent=sending?'发送中':'00:00';
   pill.append(wave,seconds);
   pill.setAttribute('aria-label',sending?'语音发送中':'播放语音');
   if(sending){pill.disabled=true;pill.setAttribute('aria-busy','true');}
@@ -332,9 +333,28 @@ function pendingVoiceStatus(state){
   view.pill.setAttribute('aria-label',state==='failed'?'语音发送失败，点击重试':'语音发送中');
   if(state==='failed')view.pill.onclick=()=>{if(pendingMedia)transmitMedia();};
 }
-function mountVoicePlayer(bubble,url,message){
+async function recoverLegacyVoiceDuration(bytes){
+  const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+  if(!AudioContextClass)return null;
+  let context;
+  try{
+    context=new AudioContextClass();
+    const data=bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength);
+    const audio=await context.decodeAudioData(data);
+    return Number.isFinite(audio.duration)&&audio.duration>0?audio.duration:null;
+  }catch{return null}
+  finally{
+    if(context && typeof context.close==='function')context.close().catch(()=>{});
+  }
+}
+function mountVoicePlayer(bubble,url,message,recordedSeconds=null,legacyBytes=null){
   const mine=message.senderId===owner.id;
   const {pill,seconds}=makeVoicePill({mine});
+  // New messages carry authenticated recording duration inside the E2EE marker.
+  // Some mobile WebM/M4A recordings report audio.duration=Infinity; do not
+  // replace a known real recording duration with that browser metadata.
+  const knownDuration=Number.isInteger(recordedSeconds)&&recordedSeconds>0?recordedSeconds:null;
+  if(knownDuration)setVoiceLength(pill,seconds,knownDuration);
   const unread=document.createElement('span');
   unread.className='voice-unread';
   unread.setAttribute('aria-label','未播放');
@@ -349,14 +369,29 @@ function mountVoicePlayer(bubble,url,message){
     pill.dataset.state=value;
     pill.setAttribute('aria-pressed',value==='playing'?'true':'false');
   };
+  let lastPlayedPosition=0;
   const refreshDuration=()=>{
-    if(Number.isFinite(audio.duration)&&audio.duration>0){
+    if(!knownDuration && Number.isFinite(audio.duration)&&audio.duration>0){
       setVoiceLength(pill,seconds,audio.duration);
-      if(!audio.paused)pill.setAttribute('aria-label','暂停语音');
     }
+    if(!audio.paused)pill.setAttribute('aria-label','暂停语音');
   };
   audio.addEventListener('loadedmetadata',refreshDuration);
   audio.addEventListener('durationchange',refreshDuration);
+  audio.addEventListener('loadeddata',refreshDuration);
+  audio.addEventListener('timeupdate',()=>{
+    if(Number.isFinite(audio.currentTime))
+      lastPlayedPosition=Math.max(lastPlayedPosition,audio.currentTime);
+  });
+  // Old recordings had no encrypted duration marker. Web Audio can often
+  // recover the duration when a phone's native media element says Infinity.
+  if(!knownDuration && legacyBytes){
+    recoverLegacyVoiceDuration(legacyBytes).then(duration=>{
+      if(!closed && bubble.contains(pill) && duration>0){
+        setVoiceLength(pill,seconds,duration);
+      }
+    });
+  }
   audio.addEventListener('play',()=>{
     if(playingVoice&&playingVoice!==audio)playingVoice.pause();
     playingVoice=audio;
@@ -374,6 +409,8 @@ function mountVoicePlayer(bubble,url,message){
     state('unplayed');
     if(playingVoice===audio)playingVoice=null;
     refreshDuration();
+    if(!knownDuration && seconds.textContent==='00:00' && lastPlayedPosition>0)
+      setVoiceLength(pill,seconds,lastPlayedPosition);
   });
   audio.addEventListener('error',()=>{
     state('failed');
@@ -426,7 +463,8 @@ async function loadMediaForBubble(marker,message,bubble,epoch,relation,conversat
       bubble.classList.add('media-photo');
       bubble.replaceChildren(image);
     }else{
-      mountVoicePlayer(bubble,url,message);
+      mountVoicePlayer(bubble,url,message,marker.durationSeconds,
+        marker.durationSeconds?null:bytes);
     }
   }catch(error){
     if(!closed&&epoch===identityEpoch&&relation===friendshipId){
@@ -482,7 +520,7 @@ async function transmitMedia(){
   }
 }
 
-async function sendMediaBlob(blob,kind,mime){
+async function sendMediaBlob(blob,kind,mime,recordedDuration=null){
   if(!mediaReady())throw new Error('请先等待双方加密聊天连接完成');
   if(pendingMedia)throw new Error('还有一条未确认的媒体消息，请先点击重试');
   if(!validateMediaKind(kind,mime))throw new Error('当前浏览器输出的语音格式不受支持');
@@ -495,7 +533,9 @@ async function sendMediaBlob(blob,kind,mime){
     mediaId,kind,mime,sk:device.keyId,rk:peerKey.keyId};
   const bytes=new Uint8Array(await blob.arrayBuffer());
   const attachment=await encryptMedia(bytes,key,meta);
-  const envelope=await encryptText(makeMediaMarker(mediaId,kind),key,meta);
+  const seconds=kind==='voice'&&Number.isFinite(recordedDuration)&&recordedDuration>0
+    ? Math.max(1,Math.min(60,Math.ceil(recordedDuration))):null;
+  const envelope=await encryptText(makeMediaMarker(mediaId,kind,seconds),key,meta);
   if(closed||epoch!==identityEpoch||relation!==friendshipId||owner?.id!==senderId)return;
   pendingMedia={mediaId,clientMessageId,senderId,friendshipId:relation,epoch,
     payload:{friendshipId:relation,clientMessageId,attachment,envelope}};
@@ -621,7 +661,10 @@ async function startRecording(){
         // Stop callbacks run after the recorder goes inactive; no raw audio
         // bytes ever leave the browser before encryption.
         recordingStopping=false;
-        await sendMediaBlob(captured,'voice',type);
+        // Use recorder wall-clock duration: reliable on Android and Safari,
+        // including audio containers with Infinity/NaN native duration.
+        const recordedSeconds=Math.max(.01,(Date.now()-state.start)/1000);
+        await sendMediaBlob(captured,'voice',type,recordedSeconds);
       }catch(error){
         if(!closed)setStatus(String(error?.message||'语音发送失败'),true);
       }finally{

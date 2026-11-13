@@ -84,12 +84,22 @@ export async function decryptMedia(attachment,key,meta,subtle=crypto.subtle){
 }
 
 export const MEDIA_MARKER = 'MAO_MEDIA:';
-export function makeMediaMarker(id,kind) {
+// Voice duration travels inside the existing encrypted message marker.
+ // Previous markers without a duration remain readable; nothing changes on
+ // the Worker or to the media ciphertext/authorization protocol.
+export function makeMediaMarker(id,kind,durationSeconds=null) {
   if(!ID.test(id)||!['image','voice'].includes(kind))throw new Error('媒体编号无效');
-  return MEDIA_MARKER+kind+':'+id;
+  if(durationSeconds===null||durationSeconds===undefined)return MEDIA_MARKER+kind+':'+id;
+  if(kind!=='voice'||!Number.isInteger(durationSeconds)||
+     durationSeconds<1||durationSeconds>60)throw new Error('语音时长无效');
+  return MEDIA_MARKER+kind+':'+id+':'+durationSeconds;
 }
 export function parseMediaMarker(text) {
   if(typeof text!=='string'||!text.startsWith(MEDIA_MARKER))return null;
-  const match=/^MAO_MEDIA:(image|voice):(med_[A-Za-z0-9_-]{16,64})$/.exec(text);
-  return match?{kind:match[1],id:match[2]}:null;
+  const match=/^MAO_MEDIA:(image|voice):(med_[A-Za-z0-9_-]{16,64})(?::([1-9][0-9]?))?$/.exec(text);
+  if(!match)return null;
+  if(match[3]&& (match[1]!=='voice'||Number(match[3])>60))return null;
+  return match[3]
+    ? {kind:match[1],id:match[2],durationSeconds:Number(match[3])}
+    : {kind:match[1],id:match[2]};
 }

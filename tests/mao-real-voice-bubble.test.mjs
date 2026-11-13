@@ -25,6 +25,7 @@ function node(tag) {
     handlers:{},
     emit(event){for(const cb of target.handlers[event]||[])cb()},
     remove(){target.removed=true},
+    contains(child){return target.children.includes(child)},
     play(){target.paused=false;target.emit('play');return Promise.resolve()},
     pause(){target.paused=true;target.emit('pause')},
     load(){target.emit('loadedmetadata')},
@@ -32,10 +33,15 @@ function node(tag) {
   };
   return target;
 }
-function session(){
+function session(audioDuration=2){
   const nodes={log:node('div')},all=[];
   const document={
-    createElement(tag){const result=node(tag);all.push(result);return result},
+    createElement(tag){
+      const result=node(tag);
+      if(tag==='audio')result.duration=audioDuration;
+      all.push(result);
+      return result;
+    },
     createElementNS(_ns,tag){return node(tag)}
   };
   const sandbox={document,console,
@@ -78,7 +84,7 @@ test('actual audio codec is hidden; tapping the bubble plays, pauses and clears 
   assert.equal(dot.hidden,false,'incoming unplayed message should have subtle dot');
   assert.equal(audio.controls,false);
   assert.equal(audio.hidden,true);
-  assert.equal(button.children[1].textContent,'2″');
+  assert.equal(button.children[1].textContent,'00:02');
   assert.equal(button.style.values['--voice-width'],'107px');
   await button.handlers.click[0]();
   assert.equal(button.dataset.state,'playing');
@@ -136,13 +142,58 @@ test('sending bubble has loading state, failed state can retry, successful ack r
 
 test('voice length grows naturally but is capped, with safe fallback when metadata is absent',()=>{
   const {api}=session();
-  assert.equal(api.voiceSeconds(2),'2″');
-  assert.equal(api.voiceSeconds(20),'20″');
-  assert.equal(api.voiceSeconds(Number.POSITIVE_INFINITY),'语音');
+  assert.equal(api.voiceSeconds(2),'00:02');
+  assert.equal(api.voiceSeconds(20),'00:20');
+  assert.equal(api.voiceSeconds(Number.POSITIVE_INFINITY),'00:00');
   const {pill,seconds}=api.makeVoicePill();
   api.setVoiceLength(pill,seconds,20);
-  assert.equal(seconds.textContent,'20″');
+  assert.equal(seconds.textContent,'00:20');
   assert.equal(pill.style.values['--voice-width'],'179px');
   api.setVoiceLength(pill,seconds,100);
   assert.equal(pill.style.values['--voice-width'],'219px');
+});
+
+
+test('trusted encrypted recording duration displays immediately when Safari reports Infinity',async()=>{
+  const {api}=session();
+  const bubble=node('div');
+  const message={id:'voice_inf',senderId:'MAO-AAAAAAAAAAAA'};
+  api.mountVoicePlayer(bubble,'blob:https://mao.test/voice',message,2);
+  const [button,,audio]=bubble.children;
+  assert.equal(button.children[1].textContent,'00:02');
+  audio.duration=Infinity;
+  audio.emit('durationchange');
+  assert.equal(button.children[1].textContent,'00:02','browser Infinity must not erase real recorded seconds');
+  audio.duration=NaN;
+  audio.emit('loadedmetadata');
+  assert.equal(button.children[1].textContent,'00:02');
+});
+
+test('unknown-duration historical voice no longer displays a literal voice label',()=>{
+  const {api}=session(Infinity);
+  const bubble=node('div');
+  api.mountVoicePlayer(bubble,'blob:https://mao.test/oldvoice',{
+    id:'oldvoice',senderId:'MAO-BBBBBBBBBBBB'
+  });
+  const [button,,audio]=bubble.children;
+  audio.duration=Infinity;
+  audio.emit('durationchange');
+  assert.equal(button.children[1].textContent,'00:00');
+  audio.duration=2;
+  audio.emit('durationchange');
+  assert.equal(button.children[1].textContent,'00:02');
+  audio.duration=Infinity;
+  audio.currentTime=2;
+  audio.emit('timeupdate');
+  audio.emit('ended');
+  assert.equal(button.children[1].textContent,'00:02');
+});
+
+test('real client records elapsed seconds and stores them inside encrypted media marker',()=>{
+  assert.match(page,/const recordedSeconds=Math\.max\(\.01,\(Date\.now\(\)-state\.start\)\/1000\)/);
+  assert.match(page,/sendMediaBlob\(captured,'voice',type,recordedSeconds\)/);
+  assert.match(page,/makeMediaMarker\(mediaId,kind,seconds\)/);
+  assert.match(page,/mountVoicePlayer\(bubble,url,message,marker\.durationSeconds/);
+  assert.match(page,/recoverLegacyVoiceDuration\(legacyBytes\)/);
+  assert.doesNotMatch(page,/seconds\.textContent=sending\?'发送中':'语音'/);
 });
