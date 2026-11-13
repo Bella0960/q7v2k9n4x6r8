@@ -123,12 +123,12 @@ test('encrypted real-user conversation is deployed and never rendered as AI chat
 
 test('photo and voice E2EE are bundled into the private chat only', () => {
   const scripts=readdirSync(dist('assets/chat/contacts'))
-    .filter(name=>/^real-chat-[A-Za-z0-9_-]+\\.js$/.test(name));
+    .filter(name=>/^real-chat-[A-Za-z0-9_-]+\.js$/.test(name));
   assert.ok(scripts.length>0);
   const bundle=scripts.map(name=>readFileSync(dist('assets/chat/contacts/'+name),'utf8')).join('');
   assert.match(bundle,/MAO-E2EE-media-v1/);
   assert.match(bundle,/MediaRecorder/);
-  assert.match(bundle,/image\\/jpeg/);
+  assert.match(bundle,/image\/jpeg/);
   const page=readFileSync(dist('chat/contacts/real-chat.html'),'utf8');
   assert.match(page,/id="photoBtn"/);
   assert.match(page,/id="voiceBtn"/);
