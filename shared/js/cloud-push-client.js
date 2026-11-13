@@ -310,13 +310,16 @@
     }
   }
 
-  async function sendTestPush() {
+  async function sendTestPush(deliveryMode) {
     var device = readDevice();
     if (!device) throw new Error('设备尚未连接');
     return requestJson('/api/push/test', {
       method: 'POST',
       device: device,
-      body: { dedupeKey: 'test:' + device.deviceId + ':' + Date.now() }
+      body: {
+        dedupeKey: 'test:' + (deliveryMode === 'no_payload' ? 'empty:' : 'encrypted:') + device.deviceId + ':' + Date.now(),
+        deliveryMode: deliveryMode === 'no_payload' ? 'no_payload' : 'encrypted'
+      }
     });
   }
 
@@ -1435,6 +1438,7 @@
   async function mountSettings() {
     var toggle = document.getElementById('cloudPushToggle');
     var testRow = document.getElementById('cloudTestRow');
+    var emptyPushRow = document.getElementById('cloudEmptyPushRow');
     var localTestRow = document.getElementById('cloudLocalTestRow');
     var readinessRow = document.getElementById('cloudReadinessCheck');
     var readinessResult = document.getElementById('cloudReadinessResult');
@@ -1859,6 +1863,27 @@
         } finally {
           localTestRow.disabled = false;
         }
+      });
+    }
+
+    if (emptyPushRow) {
+      emptyPushRow.addEventListener('click', async function () {
+        var status = document.getElementById('cloudEmptyPushResult');
+        function report(message) { if (status) status.textContent = message; }
+        emptyPushRow.disabled = true;
+        report('正在发送无加密内容的远程唤醒测试…');
+        try {
+          var result = await sendTestPush('no_payload');
+          var summary = result.summary || {};
+          if (Number(summary.sent) > 0) {
+            report('FCM 已接受空载远程推送。请查看通知栏是否出现“远程空载通知”；这仍不是手机已收到的证明。');
+          } else {
+            report('空载远程测试未确认发送：' + (Number(summary.failed) > 0
+              ? '服务器投递失败' : '请求被去重、限流或延迟') + '。');
+          }
+        } catch (error) {
+          report('空载远程测试失败：' + (error?.message || '未知错误'));
+        } finally { emptyPushRow.disabled = false; }
       });
     }
 
