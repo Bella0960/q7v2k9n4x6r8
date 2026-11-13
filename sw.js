@@ -28,7 +28,7 @@ const APP_SHELL = [
   './inspect-phone/select.html',
   './inspect-phone/phone.html',
   './inspect-phone/inspect-feature.js?v=20261111v1',
-  './tutorial/tutorial.js?v=20261111v4',
+  './tutorial/tutorial.js?v=20261113qa1',
   './beauty/beauty.html',
   './theme-store/theme-store.html',
   './chat/chat/chat.html',

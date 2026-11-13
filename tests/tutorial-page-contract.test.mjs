@@ -89,6 +89,16 @@ test('all 30 desktop app shortcuts have a matching guide; creator-only tutorial 
   assert.match(guideScript, /id:'app-admin'/);
 });
 
+test('current founder QA guide links to real admin, social and chat screens without claiming unverified features', () => {
+  assert.match(guideScript, /id: 'qa-001-admin'/);
+  assert.match(guideScript, /id: 'qa-001-social'/);
+  assert.match(guideScript, /id: 'qa-001-chat-save'/);
+  assert.match(guideScript, /原管理员 001 已完成手机登录/);
+  assert.match(guideScript, /href: '\.\.\/chat\/contacts\/real-friends\.html'/);
+  assert.match(guideScript, /真人私聊暂时关闭/);
+  assert.match(guideScript, /不要填写密码/);
+});
+
 test('all tutorial guide deep links resolve to real HTML pages', () => {
   const guideRoutes = [...guideScript.matchAll(/href:\s*'\.\.\/([^']+\.html)'/g)].map((match) => match[1]);
   assert.ok(guideRoutes.length >= 50, 'expected route links throughout the complete guide catalog');
@@ -138,7 +148,7 @@ test('tutorial workflow enforces a guide update when user-facing app pages chang
 test('PWA app shell caches the full guide bundle and has a matching test command', () => {
   assert.ok(Number(/phone-app-pwa-v(\d+)/.exec(serviceWorker)?.[1]) >= 206, 'tutorial update must ship with the newer authenticated PWA cache');
   assert.ok(serviceWorker.includes("'./tutorial/tutorial.html'"));
-  assert.ok(serviceWorker.includes("'./tutorial/tutorial.js?v=20261111v4'"));
+  assert.ok(serviceWorker.includes("'./tutorial/tutorial.js?v=20261113qa1'"));
   assert.equal(packageJson.scripts['test:tutorial'], 'node --test tests/tutorial-page-contract.test.mjs');
 });
 
