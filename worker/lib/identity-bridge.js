@@ -53,8 +53,106 @@ export function validateAuthorityAccount(raw) {
   return { id: raw.id, username: raw.username, role: raw.role, status: 'active' };
 }
 
+/**
+ * Existing MAO account Worker adapter. Unlike a new issuer protocol this
+ * reuses the already deployed /api/accounts/login and /api/accounts/me.
+ * The caller is a Worker Service Binding, never the user's browser.
+ *
+ * A founder password is forwarded only on explicit login. The authority
+ * creates a session; that same opaque session token is mirrored as an
+ * HttpOnly host-only Preview cookie. Only the SHA-256 token hash is kept in
+ * the preview SQLite. Every protected request is checked with the authority,
+ * so revoking/expiring the central session immediately denies the preview.
+ */
+export const EXISTING_AUTHORITY_MODE = 'existing_worker';
+const SESSION_TOKEN_RE = /^[A-Za-z0-9_-]{32,128}$/;
+
+export function usesExistingAccountAuthority(env = {}) {
+  return usesDelegatedIdentity(env) &&
+    env.MAO_IDENTITY_AUTHORITY_MODE === EXISTING_AUTHORITY_MODE;
+}
+
+function parseAuthoritySessionCookie(response) {
+  const cookie = String(response.headers.get('set-cookie') || '');
+  const match = /^MAO_SESSION=([A-Za-z0-9_-]{32,128})(?:;|$)/.exec(cookie);
+  if (!match ||
+      !/(?:^|;)\s*HttpOnly(?:;|$)/i.test(cookie) ||
+      !/(?:^|;)\s*Secure(?:;|$)/i.test(cookie) ||
+      !/(?:^|;)\s*SameSite=Lax(?:;|$)/i.test(cookie)) {
+    throw new ApiError(503, 'IDENTITY_AUTHORITY_SESSION_INVALID', '原账号服务未签发可信安全会话');
+  }
+  return match[1];
+}
+
+async function callExistingAccountWorker(env, operation, body) {
+  const binding = env.MAO_IDENTITY_AUTHORITY;
+  if (typeof binding?.fetch !== 'function') {
+    throw new ApiError(503, 'IDENTITY_BRIDGE_NOT_READY', '尚未接通唯一 MAO 账号服务');
+  }
+  if (!['authenticate', 'status', 'logout'].includes(operation)) {
+    throw new ApiError(503, 'IDENTITY_BRIDGE_NOT_READY', '不支持的统一身份操作');
+  }
+  const pathname = operation === 'authenticate' ? '/api/accounts/login' :
+    operation === 'status' ? '/api/accounts/me' : '/api/accounts/logout';
+  const token = String(body?.sessionToken || '');
+  if (operation !== 'authenticate' && !SESSION_TOKEN_RE.test(token)) {
+    throw new ApiError(401, 'LOGIN_REQUIRED', '原管理员登录会话无效，请重新登录');
+  }
+  const headers = operation === 'authenticate'
+    ? { 'content-type': 'application/json', origin: INTERNAL_ORIGIN }
+    : operation === 'logout'
+      ? { authorization: 'Bearer ' + token, origin: INTERNAL_ORIGIN }
+      : { authorization: 'Bearer ' + token };
+  const request = new Request(INTERNAL_ORIGIN + pathname, {
+    method: operation === 'status' ? 'GET' : 'POST',
+    headers,
+    ...(operation === 'authenticate' ? {
+      body: JSON.stringify({
+        identifier: String(body?.identifier || '').trim(),
+        password: String(body?.password || '')
+      })
+    } : {})
+  });
+  let response;
+  try {
+    response = await binding.fetch(request);
+  } catch {
+    throw new ApiError(503, 'IDENTITY_AUTHORITY_OFFLINE', '原账号认证服务暂时无法连接');
+  }
+  let payload;
+  try { payload = await response.json(); } catch {}
+  if (!response.ok || payload?.ok !== true) {
+    if (response.status === 401) {
+      throw new ApiError(401, operation === 'authenticate' ? 'LOGIN_FAILED' : 'LOGIN_REQUIRED',
+        operation === 'authenticate' ? '账号或密码不正确' : '原账号登录会话已失效');
+    }
+    if (response.status === 403 &&
+        ['ACCOUNT_DISABLED', 'INVITE_REQUIRED'].includes(payload?.error?.code)) {
+      throw new ApiError(403, payload.error.code,
+        payload.error.code === 'ACCOUNT_DISABLED' ? '该账号已被停用' : '原账号尚未获得使用授权');
+    }
+    throw new ApiError(503, 'IDENTITY_AUTHORITY_UNAVAILABLE', '原账号服务未能确认登录状态');
+  }
+  if (operation === 'logout') return { loggedOut: true };
+  const account = validateAuthorityAccount(payload.account);
+  if (operation === 'status') {
+    if (account.id !== body?.accountId) {
+      throw new ApiError(403, 'IDENTITY_AUTHORITY_CHANGED', '唯一账号身份已改变');
+    }
+    return account;
+  }
+  const authoritySessionToken = parseAuthoritySessionCookie(response);
+  return { ...account, authoritySessionToken };
+}
+
 export async function callIdentityAuthority(env, operation, body) {
-  if (!usesDelegatedIdentity(env) || !ALLOWED_OPERATIONS.has(operation)) {
+  if (!usesDelegatedIdentity(env)) {
+    throw new ApiError(503, 'IDENTITY_BRIDGE_NOT_READY', '统一身份认证未就绪');
+  }
+  if (usesExistingAccountAuthority(env)) {
+    return callExistingAccountWorker(env, operation, body);
+  }
+  if (!ALLOWED_OPERATIONS.has(operation)) {
     throw new ApiError(503, 'IDENTITY_BRIDGE_NOT_READY', '统一身份认证未就绪');
   }
   const secret = String(env.MAO_IDENTITY_BRIDGE_SECRET || '');

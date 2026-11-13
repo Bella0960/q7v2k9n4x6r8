@@ -23,7 +23,8 @@
     "vars": {
       "MAO_SOCIAL_ENABLED": "true",
       "MAO_SOCIAL_CHAT_ENABLED": "false",
-      "MAO_IDENTITY_MODE": "delegated_preview"
+      "MAO_IDENTITY_MODE": "delegated_preview",
+      "MAO_IDENTITY_AUTHORITY_MODE": "existing_worker"
     },
     "durable_objects": {
       "bindings": [

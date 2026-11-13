@@ -3,7 +3,8 @@ import { ApiError, ok, json, readJsonBody } from './http.js';
 import { randomToken, sha256Hex, base64UrlToBytes, timingSafeEqualHex } from './crypto.js';
 import {
   usesDelegatedIdentity, callIdentityAuthority,
-  assertTrustedIdentityIssuerRequest, probeExistingIdentityAuthority
+  assertTrustedIdentityIssuerRequest, probeExistingIdentityAuthority,
+  usesExistingAccountAuthority
 } from './identity-bridge.js';
 
 const SESSION_COOKIE = 'MAO_SESSION';
@@ -153,8 +154,10 @@ function publicAccount(account) {
 export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
   const delegated = usesDelegatedIdentity(env);
 
-  async function createSession(account, request) {
-    const token = randomToken(32);
+  async function createSession(account, request, centralToken = null) {
+    // The existing account authority supplies the token only through a
+    // server-only Worker binding. Never accept a browser-selected token.
+    const token = centralToken || randomToken(32);
     const timestamp = now();
     const inserted = store.createMaoAccountSession({
       id: randomToken(12),
@@ -189,7 +192,8 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     // authenticated preview request; failures fail closed.
     if (delegated) {
       const authority = await callIdentityAuthority(env, 'status', {
-        accountId: session.account_id
+        accountId: session.account_id,
+        sessionToken: token
       });
       if (authority.id !== session.account_id ||
           authority.role !== session.role ||
@@ -422,7 +426,9 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     if (!imported) {
       throw new ApiError(409, 'DELEGATED_IDENTITY_CONFLICT', '测试库已有冲突身份，已拒绝覆盖，请联系管理员修复');
     }
-    return await createSession(imported, request);
+    // Same authoritative session, different host-only HttpOnly cookie.
+    // This session remains valid only while the central Worker accepts it.
+    return await createSession(imported, request, authority.authoritySessionToken || null);
   }
 
   async function issuerAuthenticate(request) {
@@ -562,6 +568,16 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     if (token) {
       const session = store.getMaoAccountSession(await sha256Hex(token));
       if (session) store.revokeMaoAccountSession(session.session_id, now());
+      if (usesExistingAccountAuthority(env)) {
+        // Local logout succeeds even if the authority is unavailable.
+        // Never claim global revocation when it wasn't confirmed.
+        try {
+          await callIdentityAuthority(env, 'logout', { sessionToken: token });
+          return clearSessionCookie(ok({ loggedOut: true, authoritySessionRevoked: true }), request);
+        } catch {
+          return clearSessionCookie(ok({ loggedOut: true, authoritySessionRevoked: false }), request);
+        }
+      }
     }
     return clearSessionCookie(ok({ loggedOut: true }), request);
   }
@@ -921,9 +937,10 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
           identityAuthorityConnected: delegated ? authority.connected : undefined,
           identityAuthorityInitialized: delegated ? authority.initialized : undefined,
           signInReady: !delegated || (
-            authority.connected && authority.initialized &&
+            authority.connected && authority.initialized && authority.configured &&
             typeof env.MAO_IDENTITY_AUTHORITY?.fetch === 'function' &&
-            String(env.MAO_IDENTITY_BRIDGE_SECRET || '').length >= 32
+            (usesExistingAccountAuthority(env) ||
+              String(env.MAO_IDENTITY_BRIDGE_SECRET || '').length >= 32)
           )
         });
       }
