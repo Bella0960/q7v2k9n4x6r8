@@ -425,6 +425,6 @@ test('Wrangler must retain assets, database and AI bindings together', () => {
   assert.equal(parsed.durable_objects?.bindings?.[0]?.class_name, 'CloudDatabase');
   assert.equal(parsed.previews?.ai?.binding, 'AI',
     'optional keyless model backend requires the AI binding');
-  assert.ok(parsed.triggers?.crons?.length > 0,
-    'cloud tasks require a configured scheduled handler');
+  assert.equal(parsed.previews?.vars?.AUTONOMY_PREVIEW_ALARM_ENABLED, 'true');
+  assert.match(fs.readFileSync(new URL('../worker.js', import.meta.url), 'utf8'), /async alarm\(\)/);
 });

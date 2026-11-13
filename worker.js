@@ -115,9 +115,36 @@ export class CloudDatabase {
     });
   }
 
+  async ensurePreviewAlarm() {
+    if (this.env.AUTONOMY_PREVIEW_ALARM_ENABLED !== 'true') return;
+    await this.ctx.storage.transaction(async storage => {
+      if ((await storage.getAlarm()) === null) {
+        await storage.setAlarm(Date.now() + 60_000);
+      }
+    });
+  }
+
+  async alarm() {
+    if (this.env.AUTONOMY_PREVIEW_ALARM_ENABLED !== 'true') return;
+    // Re-arm before running the tick so a failed model or push does not stop
+    // the next pass. Cloud task leases fence concurrent or retried alarms.
+    await this.ensurePreviewAlarm();
+    const response = await this.fetch(new Request(
+      'https://maomao.internal/internal/tick', { method: 'POST' }
+    ));
+    if (!response.ok) throw new Error('cloud_preview_tick_http_' + response.status);
+  }
+
   async fetch(request) {
     const url = new URL(request.url);
-    if (url.pathname.startsWith('/api/')) return this.handleApi(request);
+    if (url.pathname.startsWith('/api/')) {
+      const response = await this.handleApi(request);
+      if (response.ok && request.method === 'POST' &&
+          /^\/api\/characters\/[^/]+\/context-snapshot$/.test(url.pathname)) {
+        await this.ensurePreviewAlarm();
+      }
+      return response;
+    }
     if (url.pathname === '/internal/maintenance' && request.method === 'POST') {
       const timestamp = Date.now();
       const removed = this.store.cleanupSubscriptions(timestamp);

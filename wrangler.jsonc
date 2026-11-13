@@ -19,11 +19,11 @@
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["CloudDatabase"] }
   ],
-  "triggers": { "crons": ["*/5 * * * *"] },
   "previews": {
     "ai": { "binding": "AI" },
     "vars": {
       "DEVICE_PAIRING_TOKEN_TTL_MS": "300000",
+      "AUTONOMY_PREVIEW_ALARM_ENABLED": "true",
       "AUTONOMY_MIN_IDLE_MS": "1800000",
       "AUTONOMY_LEASE_MS": "60000",
       "AUTONOMY_TICK_LIMIT": "10",
