@@ -372,7 +372,7 @@ async function main() {
     pass('real Wrangler SQLite relays ciphertext only; two devices decrypt; retry is idempotent; plaintext rejected');
 
     for(const [index,item] of [
-      {kind:'image',mime:'image/jpeg',bytes:new TextEncoder().encode('synthetic_private_photo_data')},
+      {kind:'image',mime:'image/jpeg',bytes:new Uint8Array(360*1024).fill(173)},
       {kind:'voice',mime:'audio/mp4',bytes:new TextEncoder().encode('synthetic_private_voice_data')}
     ].entries()){
       const mediaId='med_worker_media_'+String(index).padStart(20,'0');

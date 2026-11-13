@@ -62,7 +62,7 @@ button{cursor:pointer}
   <div class="header-right">PRIVATE</div>
  </header>
  <div class="rule"></div>
- <p class="notice"><strong>双人加密聊天</strong> · 只在双方手机上解密，服务器不保存文字明文。</p>
+ <p class="notice"><strong>双人加密聊天</strong> · 文字、照片和语音都在手机加密，服务器不保存原始内容。</p>
  <div class="status" id="status" role="status" aria-live="polite">正在确认双方账号与加密设备…</div>
  <div class="log" id="log" role="log" aria-live="polite"><p class="empty" id="empty">正在连接聊天…</p></div>
  <div class="rule"></div>
@@ -183,8 +183,10 @@ async function fetchMessages(){
     friendshipId=result.friendshipId;
     if(!key)key=await conversationKey(device.privateKey,peerKey.publicKey,friendshipId,owner.id,peer);
     if(closed||epoch!==identityEpoch)return;
-    $('input').disabled=false;$('send').disabled=false;
-    $('photoBtn').disabled=false;$('voiceBtn').disabled=recordingStopping;
+    $('input').disabled=false;
+    $('send').disabled=sending;
+    $('photoBtn').disabled=sending||!!recording;
+    $('voiceBtn').disabled=sending||recordingStopping;
     if(!Array.isArray(result.messages)||!Number.isSafeInteger(result.nextCursor)||result.nextCursor<cursor)
       throw new Error('聊天记录格式异常');
     for(const message of result.messages){
@@ -441,6 +443,8 @@ async function startRecording(){
     recorder.addEventListener('stop',async()=>{
       clearInterval(state.ticker);clearTimeout(state.deadline);
       stream.getTracks().forEach(track=>track.stop());
+      if(recording===state)recording=null;
+      clearRecordingUI();
       if(state.discard||closed){recordingStopping=false;return;}
       recordingStopping=true;
       try{
@@ -478,6 +482,7 @@ async function startRecording(){
     $('photoBtn').disabled=true;
   }catch(error){
     if(stream)stream.getTracks().forEach(track=>track.stop());
+    if(recording)discardRecording();
     if(!closed)setStatus(error?.name==='NotAllowedError'?
       '麦克风权限未开启，请在浏览器设置中允许录音。':
       '无法启动录音：'+String(error?.message||'请检查麦克风权限'),true);
