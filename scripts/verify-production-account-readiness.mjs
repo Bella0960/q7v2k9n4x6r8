@@ -10,7 +10,23 @@ import { listAllDurableObjectNamespaces, isCanonicalWorkerNamespace } from './li
 
 export const PRODUCTION_SCRIPT = 'mao';
 export const PREVIEW_SCRIPT = 'mao-auth-preview';
-const REQUIRED_SECRETS = ['DEVICE_SECRET_PEPPER', 'MAO_SUPER_ADMIN_BOOTSTRAP_SECRET'];
+const REQUIRED_SECRETS = ['DEVICE_SECRET_PEPPER', 'MAO_SUPER_ADMIN_BOOTSTRAP_SECRET', 'MAO_CANONICAL_FOUNDER_ID'];
+
+/** Never accept a founder from the wrong Durable Object just because its display badge is 001. */
+export function auditCanonicalFounderEvidence({ expectedId, expectedCreatedAt, rows }) {
+  const errors = [];
+  if (!/^MAO-[A-Z0-9]{12,24}$/.test(expectedId || '') ||
+      !Number.isSafeInteger(Number(expectedCreatedAt)) || Number(expectedCreatedAt) <= 0) {
+    errors.push('FOUNDER_ORIGIN_PIN_INVALID');
+  }
+  if (!Array.isArray(rows) || rows.length !== 1 ||
+      rows[0]?.id !== expectedId || rows[0]?.role !== 'super_admin' ||
+      rows[0]?.status !== 'active' || Number(rows[0]?.created_at) !== Number(expectedCreatedAt)) {
+    errors.push('FOUNDER_ORIGIN_MISMATCH');
+  }
+  return errors;
+}
+
 
 export function auditProductionAccountReadiness({ production, preview, secrets, online, domains, hostname, namespaces }) {
   const failures = [];
@@ -97,10 +113,69 @@ async function getEnvelope(url, token) {
   return body;
 }
 
+/**
+ * Cloudflare DO SQL Query v2 is a POST transport, but the only SQL we ever
+ * send here is this fixed SELECT. No secrets, password hashes or session
+ * tokens are retrieved. Query the existing stored object ID; never create one.
+ */
+async function readFounderSqlEvidence({ accountId, token, namespaceId }) {
+  if (!/^[a-f0-9]{32}$/.test(String(namespaceId || ''))) {
+    throw new Error('FOUNDER_NAMESPACE_ID_INVALID');
+  }
+  const base = 'https://api.cloudflare.com/client/v4/accounts/' + accountId
+    + '/workers/durable_objects/namespaces/' + namespaceId;
+  const objects = await getJson(base + '/objects?limit=100', token);
+  if (!Array.isArray(objects) || objects.length !== 1 ||
+      objects[0]?.hasStoredData !== true ||
+      !/^[a-f0-9]{64}$/.test(String(objects[0].id || ''))) {
+    throw new Error('FOUNDER_NAMESPACE_OBJECT_NOT_UNIQUE');
+  }
+  const response = await fetch(base + '/query/v2', {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer ' + token, Accept: 'application/json',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      durable_object_id: objects[0].id,
+      queries: [{
+        sql: "SELECT id, role, status, created_at FROM mao_accounts WHERE role = 'super_admin' LIMIT 2"
+      }]
+    }),
+    cache: 'no-store',
+    signal: AbortSignal.timeout(15000)
+  });
+  if (!response.ok) throw new Error('FOUNDER_SQL_AUDIT_HTTP_' + response.status);
+  const payload = await response.json();
+  if (payload?.success !== true || payload.result?.error ||
+      !Array.isArray(payload.result?.results) ||
+      payload.result.results.length !== 1) {
+    throw new Error('FOUNDER_SQL_AUDIT_FAILED');
+  }
+  const result = payload.result.results[0];
+  const columns = result.columns;
+  if (!Array.isArray(columns) || !Array.isArray(result.rows) ||
+      !['id', 'role', 'status', 'created_at'].every(key => columns.includes(key)) ||
+      result.meta?.rows_written !== 0) {
+    throw new Error('FOUNDER_SQL_EVIDENCE_INVALID');
+  }
+  return result.rows.map(row =>
+    Object.fromEntries(columns.map((key, index) => [key, row[index]]))
+  );
+}
+
 async function verify() {
   const accountId = String(process.env.CLOUDFLARE_ACCOUNT_ID || '').trim();
   const token = String(process.env.CLOUDFLARE_API_TOKEN || '').trim();
   const origin = String(process.env.MAOMAO_PRODUCTION_ORIGIN || '').trim();
+  // Operator-approved snapshot of the ORIGINAL account, not a fresh account.
+  // These values are compared to actual SQLite rows; neither is a credential.
+  const expectedId = String(process.env.MAO_CANONICAL_FOUNDER_ID || '').trim();
+  const expectedCreatedAt = Number(process.env.MAO_CANONICAL_FOUNDER_CREATED_AT || NaN);
+  if (!/^MAO-[A-Z0-9]{12,24}$/.test(expectedId) ||
+      !Number.isSafeInteger(expectedCreatedAt) || expectedCreatedAt <= 0) {
+    throw new Error('Release blocked: exact original founder ID and registration timestamp are required');
+  }
   if (!/^[a-f0-9]{32}$/.test(accountId) || !token || !/^https:\/\/[^/?#]+$/.test(origin)) {
     throw new Error('Release blocked: Cloudflare read-only credentials or explicit production origin are missing');
   }
@@ -131,6 +206,19 @@ async function verify() {
     for (const failure of failures) console.error('BLOCKED: ' + failure);
     throw new Error('Production account release gate failed: ' + failures.length + ' unmet condition(s)');
   }
+  // Infrastructure + public initialized=true alone is not identity proof.
+  // Only the original ID AND original registration timestamp may pass.
+  const prodDb = (Array.isArray(production?.bindings) ? production.bindings : [])
+    .find(binding => binding?.name === 'CLOUD_DB');
+  const rows = await readFounderSqlEvidence({
+    accountId, token, namespaceId: prodDb?.namespace_id
+  });
+  const founderErrors = auditCanonicalFounderEvidence({ expectedId, expectedCreatedAt, rows });
+  if (founderErrors.length) {
+    for (const failure of founderErrors) console.error('BLOCKED: ' + failure);
+    throw new Error('Release blocked: production SQLite does not contain the selected original founder');
+  }
+  console.log('PASS: production namespace includes the exact original 001 identity and creation time, without SQL writes');
   console.log('PASS: production domain maps to expected Worker, isolated DB, required secrets, native crypto, initialized founder 001');
 }
 
