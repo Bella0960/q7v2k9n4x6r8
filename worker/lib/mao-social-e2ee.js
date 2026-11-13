@@ -99,6 +99,36 @@ export function createMaoSocialE2EE({store,env={},now=()=>Date.now()}) {
     return {low,high,friendshipId:friend.source_request_id};
   }
 
+  // Server-authoritative chat list: approved, active, unblocked friends only.
+  // Return metadata, NEVER message bodies, key material or old approvals.
+  // The friendship generation in this query also prevents old conversations
+  // from resurfacing after remove + re-approve.
+  function conversations(actor) {
+    return transaction(()=>{
+      assertSession(actor,now());
+      const list=rows(
+        "SELECT peer.id AS id, peer.username AS display_name, "+
+        "(SELECT MAX(m.created_at) FROM mao_social_messages m "+
+        " WHERE m.pair_low=f.pair_low AND m.pair_high=f.pair_high "+
+        " AND m.source_request_id=f.source_request_id) AS last_at "+
+        "FROM mao_social_friends f "+
+        "JOIN mao_accounts peer ON peer.id=CASE WHEN f.pair_low=? THEN f.pair_high ELSE f.pair_low END "+
+        "WHERE (f.pair_low=? OR f.pair_high=?) AND f.status='accepted' "+
+        "AND peer.status='active' AND (peer.role='super_admin' OR peer.authorized_at IS NOT NULL) "+
+        "AND NOT EXISTS (SELECT 1 FROM mao_social_blocks b WHERE "+
+        "(b.blocker_id=f.pair_low AND b.blocked_id=f.pair_high) OR "+
+        "(b.blocker_id=f.pair_high AND b.blocked_id=f.pair_low)) "+
+        "ORDER BY (last_at IS NULL),last_at DESC,peer.username COLLATE NOCASE LIMIT 100",
+        actor.account_id,actor.account_id,actor.account_id
+      );
+      return ok({ownerAccountId:actor.account_id,
+        conversations:list.map(row=>({
+          id:row.id,displayName:row.display_name,
+          lastMessageAt:row.last_at===null?null:Number(row.last_at)
+        }))});
+    });
+  }
+
   function publicKey(actor,id) {
     const record=query('SELECT account_id,public_key,key_id,created_at FROM mao_social_e2ee_keys WHERE account_id=?',id);
     return ok({ownerAccountId:actor.account_id,accountId:id,
@@ -284,6 +314,7 @@ export function createMaoSocialE2EE({store,env={},now=()=>Date.now()}) {
       if(env.MAO_SOCIAL_E2EE_ENABLED!=='true'){
         throw new ApiError(503,'E2EE_CHAT_NOT_ENABLED','加密真人聊天仍处于测试关闭状态');
       }
+      if(path==='/api/social/e2ee/conversations' && method==='GET')return conversations(actor);
       const k='/api/social/e2ee/keys';
       if(path===k && method==='GET')return transaction(()=>{
         assertSession(actor,now());return publicKey(actor,actor.account_id);
