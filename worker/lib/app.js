@@ -1,4 +1,5 @@
 import { createAccountAuth } from './account-auth.js';
+import { assertCanonicalFounderStore } from './founder-provenance.js';
 import { createMaoSocial } from './mao-social.js';
 import {
   ApiError, fail, ok, readJsonBody
@@ -2000,6 +2001,9 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const method = request.method.toUpperCase();
     try {
       assertSameOriginMutation(request);
+      // Before touching an account, friendship or message, prove this is the
+      // owner's selected original SQLite authority (when pinned for cutover).
+      assertCanonicalFounderStore(store, env);
       await assertAccountPageContext(request, path);
       const accountResponse = await accountAuth.handle(request, path, method);
       if (accountResponse) return accountResponse;
