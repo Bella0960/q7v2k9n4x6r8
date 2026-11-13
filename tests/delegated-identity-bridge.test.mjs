@@ -88,7 +88,10 @@ test('only server-confirmed central 001 can log into a preview, without an invit
   assert.equal(bootstrap.payload.identityMode, 'delegated');
   assert.equal(bootstrap.payload.bootstrapAllowed, false);
   assert.equal(bootstrap.payload.signInReady, true);
-  assert.equal(bootstrap.payload.initialized, false);
+  assert.equal(bootstrap.payload.initialized, true, 'status mirrors the existing central founder');
+  assert.equal(bootstrap.payload.identityAuthorityConnected, true);
+  assert.equal(preview.query('SELECT COUNT(*) AS n FROM mao_accounts')[0].n, 0,
+    'read-only status must not clone a founder into the preview');
   const register = await preview.asJson('/api/accounts/register', {
     method: 'POST', body: { username: 'another', password: founderPass, confirmPassword: founderPass }
   });
