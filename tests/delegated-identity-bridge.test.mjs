@@ -21,9 +21,11 @@ const previewOpts = {
   MAO_IDENTITY_BRIDGE_SECRET: secret
 };
 
-async function makePair() {
+async function makePair({ existingWorker = false } = {}) {
   const issuerDB = openTestDb();
-  const issuer = setupTestStore(issuerDB, issuerOpts);
+  const issuer = setupTestStore(issuerDB, existingWorker
+    ? { ...issuerOpts, MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: 'test-only-initialized-founder-secret-2026-01-01' }
+    : issuerOpts);
   const passwordSalt = randomToken(16);
   const passwordHash = await passwordDigest(founderPass, passwordSalt);
   const created = issuer.store.createMaoSuperAdminAccountIfEmpty({
@@ -42,7 +44,9 @@ async function makePair() {
     }
   };
   const preview = setupTestStore(previewDB, {
-    ...previewOpts, MAO_IDENTITY_AUTHORITY: authorityBinding
+    ...previewOpts,
+    ...(existingWorker ? { MAO_IDENTITY_AUTHORITY_MODE: 'existing_worker' } : {}),
+    MAO_IDENTITY_AUTHORITY: authorityBinding
   });
   const close = () => { issuerDB.db.close(); previewDB.db.close(); };
   return { issuer, preview, issuerDB, previewDB, close, get calls() { return calls; } };
@@ -228,4 +232,111 @@ test('malformed or unreachable authority never causes a founder bootstrap or log
   assert.equal(status.payload.identityAuthorityConnected, false);
   assert.equal(status.payload.signInReady, false);
   assert.equal(status.payload.bootstrapAllowed, false);
+});
+
+test('same founder 001 logs into the isolated preview using EXISTING authority Worker login and session', async t => {
+  const pair = await makePair({ existingWorker: true });
+  t.after(pair.close);
+  const { issuer, preview } = pair;
+  const status = await preview.asJson('/api/admin/bootstrap/status');
+  assert.equal(status.status, 200);
+  assert.equal(status.payload.identityAuthorityConnected, true);
+  assert.equal(status.payload.identityAuthorityInitialized, true);
+  assert.equal(status.payload.bootstrapAllowed, false);
+  assert.equal(status.payload.signInReady, true);
+  assert.equal(preview.query('SELECT COUNT(*) AS n FROM mao_accounts')[0].n, 0);
+
+  const response = await preview.fetchTo('/api/accounts/login', {
+    method: 'POST', body: { identifier: 'CentralOwner', password: founderPass }
+  });
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.account.id, founderId);
+  assert.equal(payload.account.founderNumber, '001');
+  assert.equal(payload.account.role, 'super_admin');
+  const cookie = response.headers.get('set-cookie');
+  assert.match(cookie, /^MAO_SESSION=[A-Za-z0-9_-]{32,128};/);
+  assert.match(cookie, /; HttpOnly;/);
+  assert.match(cookie, /; Secure/);
+  assert.equal(preview.query("SELECT COUNT(*) AS n FROM mao_accounts WHERE role = 'super_admin'")[0].n, 1);
+  assert.equal(issuer.query('SELECT COUNT(*) AS n FROM mao_account_sessions')[0].n, 1);
+  assert.equal(preview.query('SELECT COUNT(*) AS n FROM mao_account_sessions')[0].n, 1);
+  assert.equal(
+    issuer.query('SELECT token_hash FROM mao_account_sessions')[0].token_hash,
+    preview.query('SELECT token_hash FROM mao_account_sessions')[0].token_hash,
+    'Preview session must be the actual authority session, never a second standalone login'
+  );
+  assert.notEqual(
+    issuer.query('SELECT password_hash FROM mao_accounts WHERE id = ?', founderId)[0].password_hash,
+    preview.query('SELECT password_hash FROM mao_accounts WHERE id = ?', founderId)[0].password_hash,
+    'Never copy the official password hash into a test database'
+  );
+
+  const me = await preview.asJson('/api/accounts/me', { headers: { cookie } });
+  assert.equal(me.status, 200);
+  assert.equal(me.payload.account.founderNumber, '001');
+
+  const loggedOut = await preview.asJson('/api/accounts/logout', {
+    method: 'POST', headers: { cookie }
+  });
+  assert.equal(loggedOut.status, 200);
+  assert.equal(loggedOut.payload.authoritySessionRevoked, true);
+  assert.equal(issuer.query('SELECT COUNT(*) AS n FROM mao_account_sessions WHERE revoked_at IS NOT NULL')[0].n, 1);
+  const refused = await preview.asJson('/api/accounts/me', { headers: { cookie } });
+  assert.equal(refused.status, 401);
+});
+
+test('existing authority wrong password cannot create an account in a Preview', async t => {
+  const pair = await makePair({ existingWorker: true });
+  t.after(pair.close);
+  const { preview, issuer } = pair;
+  const failed = await preview.asJson('/api/accounts/login', {
+    method: 'POST', body: { identifier: 'CentralOwner', password: 'wrong-passphrase' }
+  });
+  assert.equal(failed.status, 401);
+  assert.equal(preview.query('SELECT COUNT(*) AS n FROM mao_accounts')[0].n, 0);
+  assert.equal(issuer.query('SELECT COUNT(*) AS n FROM mao_account_sessions')[0].n, 0);
+});
+
+test('revoking the ORIGINAL session immediately revokes preview access', async t => {
+  const pair = await makePair({ existingWorker: true });
+  t.after(pair.close);
+  const { preview, issuer, issuerDB } = pair;
+  const response = await preview.fetchTo('/api/accounts/login', {
+    method: 'POST', body: { identifier: 'CentralOwner', password: founderPass }
+  });
+  assert.equal(response.status, 200);
+  const cookie = response.headers.get('set-cookie');
+  const first = await preview.asJson('/api/accounts/me', { headers: { cookie } });
+  assert.equal(first.status, 200);
+  issuerDB.exec('UPDATE mao_account_sessions SET revoked_at = ? WHERE account_id = ?',
+    Date.now(), founderId);
+  const denied = await preview.asJson('/api/accounts/me', { headers: { cookie } });
+  assert.equal(denied.status, 401);
+  assert.equal(denied.payload.error.code, 'LOGIN_REQUIRED');
+});
+
+test('missing or unauthenticated Worker cookie prevents session minting', async t => {
+  const issuerDB = openTestDb(), previewDB = openTestDb();
+  t.after(() => { issuerDB.db.close(); previewDB.db.close(); });
+  const preview = setupTestStore(previewDB, {
+    MAO_IDENTITY_MODE: 'delegated_preview',
+    MAO_IDENTITY_AUTHORITY_MODE: 'existing_worker',
+    MAO_IDENTITY_AUTHORITY: { async fetch(request) {
+      const path = new URL(request.url).pathname;
+      if (path === '/api/admin/bootstrap/status') {
+        return Response.json({ ok: true, initialized: true, configured: true });
+      }
+      return Response.json({ ok: true, account: {
+        id: founderId, username: 'CentralOwner', role: 'super_admin',
+        status: 'active', founderNumber: '001'
+      } });
+    } }
+  });
+  const response = await preview.asJson('/api/accounts/login', {
+    method: 'POST', body: { identifier: 'CentralOwner', password: founderPass }
+  });
+  assert.equal(response.status, 503);
+  assert.equal(response.payload.error.code, 'IDENTITY_AUTHORITY_SESSION_INVALID');
+  assert.equal(previewDB.query('SELECT COUNT(*) AS n FROM mao_accounts')[0].n, 0);
 });
