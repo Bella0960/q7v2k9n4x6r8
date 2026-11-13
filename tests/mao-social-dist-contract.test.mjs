@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const root = process.cwd();
@@ -67,7 +67,7 @@ test('the social mobile HTML remains protected by the Worker login gate', () => 
 // Only the isolated social Preview may exercise friend consent + 001 approval.
 // The app.mao520.com production Worker must stay opt-in disabled, and
 // plaintext messaging must never be offered as a real E2EE product.
-test('social preview enables only friendship QA; production and private chat stay off', () => {
+test('social QA preview opens only E2EE message transport while production and plaintext chat remain off', () => {
   const raw = readFileSync(resolve(root, 'wrangler.jsonc'), 'utf8')
     .replace(/^\s*\/\/.*$/gm, '');
   const config = JSON.parse(raw);
@@ -76,6 +76,8 @@ test('social preview enables only friendship QA; production and private chat sta
   assert.equal(config.vars?.MAO_SOCIAL_CHAT_ENABLED, undefined);
   assert.equal(config.previews?.vars?.MAO_SOCIAL_ENABLED, 'true');
   assert.equal(config.previews?.vars?.MAO_SOCIAL_CHAT_ENABLED, 'false');
+  assert.equal(config.previews?.vars?.MAO_SOCIAL_E2EE_ENABLED, 'true');
+  assert.equal(config.vars?.MAO_SOCIAL_E2EE_ENABLED, undefined);
   assert.equal(config.previews?.vars?.MAO_IDENTITY_MODE, undefined,
     'this isolated migration rehearsal exercises preexisting local identities without delegated login');
   assert.equal(config.previews?.vars?.MAO_IDENTITY_AUTHORITY_MODE, undefined,
@@ -92,4 +94,29 @@ test('social preview enables only friendship QA; production and private chat sta
   const server = readFileSync(resolve(root, 'worker/lib/mao-social.js'), 'utf8');
   assert.match(server, /env\.MAO_SOCIAL_ENABLED !== 'true'/);
   assert.match(server, /env\.MAO_SOCIAL_CHAT_ENABLED !== 'true'/);
+});
+
+test('encrypted real-user conversation is deployed and never rendered as AI chat', () => {
+  const page='chat/contacts/real-chat.html';
+  const manifest=JSON.parse(readFileSync(dist('pwa-pages.json'),'utf8'));
+  assert.ok(manifest.includes(page),'E2EE chat page must be in built manifest');
+  const file=readFileSync(dist(page),'utf8');
+  assert.match(file,/双人加密聊天/);
+  // Vite bundles the source module into a hashed assets chunk; don't
+  // require its prebuild filename to survive optimization.
+  // Vite may emit a relative hashed module, inline a module wrapper or
+  // hoist crypto into a shared chunk. Assert the compiled crypto exists,
+  // instead of hardcoding its URL or versioned filename.
+  // This MPA build keeps relative route directories inside assets:
+  // assets/chat/contacts/real-chat-<hash>.js, not assets/<hash>.js.
+  const scripts = readdirSync(dist('assets/chat/contacts'))
+    .filter(name=>/^real-chat-[A-Za-z0-9_-]+\.js$/.test(name));
+  assert.ok(scripts.length>0,'compiled real chat entry script must be deployed');
+  const encryptedRuntime = scripts.some(name=>
+    readFileSync(dist('assets/chat/contacts/'+name),'utf8').includes('MAO-E2EE-v1'));
+  assert.ok(encryptedRuntime,'encrypted browser crypto must exist in compiled chat entry');
+  const original=readFileSync(resolve(root,'chat/contacts/real-chat.html'),'utf8');
+  assert.match(original,/real-chat-crypto\.mjs/);
+  assert.match(original,/api\/social\/e2ee\/chats/);
+  assert.doesNotMatch(original,/\/api\/ai\//);
 });

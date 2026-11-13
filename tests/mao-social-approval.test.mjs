@@ -416,7 +416,7 @@ test('release build retains the original whole-app gate before social acceptance
     assert.ok(pkg.scripts['test:release:gate'].includes('test:release:' + suite));
   }
   assert.match(pkg.scripts['test:social:approval'], /tests\/mao-social-approval\.test\.mjs/);
-  assert.match(pkg.scripts['test:social:approval'], /tests\/mao-social-mobile-runtime\.test\.mjs/);
+  assert.match(pkg.scripts['test:social:approval'], /tests\/mao-social-e2ee\.test\.mjs/);
 });
 
 test('social chat remains unavailable without a separate E2EE QA opt-in', async () => {

@@ -95,7 +95,8 @@ test('current founder QA guide links to real admin, social and chat screens with
   assert.match(guideScript, /id: 'qa-001-chat-save'/);
   assert.match(guideScript, /原管理员 001 已完成手机登录/);
   assert.match(guideScript, /href: '\.\.\/chat\/contacts\/real-friends\.html'/);
-  assert.match(guideScript, /真人私聊暂时关闭/);
+  assert.match(guideScript, /真人双机加密文字聊天/);
+  assert.match(guideScript, /不需要 AI API/);
   assert.match(guideScript, /不要填写密码/);
 });
 
@@ -148,7 +149,7 @@ test('tutorial workflow enforces a guide update when user-facing app pages chang
 test('PWA app shell caches the full guide bundle and has a matching test command', () => {
   assert.ok(Number(/phone-app-pwa-v(\d+)/.exec(serviceWorker)?.[1]) >= 206, 'tutorial update must ship with the newer authenticated PWA cache');
   assert.ok(serviceWorker.includes("'./tutorial/tutorial.html'"));
-  assert.ok(serviceWorker.includes("'./tutorial/tutorial.js?v=20261113qa1'"));
+  assert.ok(serviceWorker.includes("'./tutorial/tutorial.js?v=20261113e2ee1'"));
   assert.equal(packageJson.scripts['test:tutorial'], 'node --test tests/tutorial-page-contract.test.mjs');
 });
 
