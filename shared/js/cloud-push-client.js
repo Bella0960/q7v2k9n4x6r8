@@ -1590,9 +1590,11 @@
         roleAutonomySave.disabled = true;
         try {
           await setCharacterAutonomy(roleId, enabled);
-          setStatusText('角色授权已保存');
+          var roleSaved = document.getElementById('cloudRoleSaveStatus');
+          if (roleSaved) roleSaved.textContent = '角色授权已保存（不代表推送已发出）';
         } catch (error) {
-          setStatusText('保存角色授权失败：' + (error.message || '未知错误'));
+          var roleError = document.getElementById('cloudRoleSaveStatus');
+          if (roleError) roleError.textContent = '保存角色授权失败：' + (error.message || '未知错误');
         } finally {
           roleAutonomySave.disabled = false;
         }
@@ -1797,17 +1799,41 @@
 
     if (testRow) {
       testRow.addEventListener('click', async function () {
-        setStatusText('正在发送测试推送…');
+        var pushResult = document.getElementById('cloudPushResult');
+        function report(message) {
+          if (pushResult) pushResult.textContent = message;
+          setStatusText(message);
+        }
+        testRow.disabled = true;
+        report('正在请求发送一条系统测试通知…');
         try {
           var result = await sendTestPush();
           var summary = result.summary || {};
-          if (!summary.sent && summary.skipped) {
-            setStatusText('这条测试通知刚刚已经发送过（已去重）');
+          if (Number(summary.sent) > 0) {
+            report('推送服务已接受测试通知。请检查系统通知栏；收到通知才算手机验收通过。');
+          } else if (Number(summary.failed) > 0) {
+            var item = (result.results || []).find(function (entry) {
+              return entry.status === 'failed' || entry.status === 'retry_scheduled' || entry.status === 'gone';
+            }) || {};
+            var reasons = {
+              vapid: '服务器 VAPID 签名错误',
+              encrypt: '服务器消息加密错误',
+              transport: '服务器连接推送服务失败',
+              provider_http: '推送服务拒绝了请求（HTTP ' + (item.httpStatus || '?') + '）',
+              unknown: '服务端发送失败，需查看云端诊断'
+            };
+            var reason = reasons[item.failurePhase] || reasons.unknown;
+            var classification = item.failureKind ? '，异常类型 ' + item.failureKind : '';
+            report('测试通知未送达：' + reason + classification + '。不需要重置账号或重复开启权限。');
+          } else if (summary.skipped) {
+            report('本次通知被去重或延迟，尚未确认送达。');
           } else {
-            setStatusText('测试推送已发送：成功 ' + (summary.sent || 0) + '，失败 ' + (summary.failed || 0));
+            report('服务器未确认任何通知送达，请检查设备订阅与推送日志。');
           }
         } catch (error) {
-          setStatusText('测试推送失败：' + (error.message || '未知错误'));
+          report('测试通知未发出：' + (error.message || '未知错误'));
+        } finally {
+          testRow.disabled = false;
         }
       });
     }
