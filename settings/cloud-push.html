@@ -227,6 +227,22 @@
         }
         #cloudTestRow::after { content: none; }
         #cloudTestRow:disabled { opacity: .55; cursor: default; }
+        .cloud-local-test {
+            margin: 8px 0 0;
+            padding: 7px 0;
+            min-height: 36px;
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+            color: #555;
+            font: inherit;
+            font-size: 12px;
+            text-decoration: underline;
+            text-underline-offset: 4px;
+            cursor: pointer;
+        }
+        .cloud-local-test:disabled { opacity: .55; }
+
         .cloud-action:last-of-type { border-bottom: 0; }
         .cloud-action::after { content: '›'; color: var(--aux); font-size: 19px; }
         .cloud-action[aria-disabled="true"] { opacity: .55; pointer-events: none; }
@@ -376,6 +392,8 @@
             </div>
             <button class="cloud-action" id="cloudTestRow" type="button" aria-label="发送一条不需要 AI 或角色的手机系统测试通知">发送测试通知</button>
             <p class="cloud-hint" id="cloudPushResult" role="status" aria-live="polite">测试通知不需要角色或 API。请先开启上方推送。</p>
+            <button id="cloudLocalTestRow" type="button" class="cloud-local-test">本机通知自检</button>
+            <p class="cloud-hint" id="cloudLocalResult" role="status" aria-live="polite">本机自检不经过服务器，用来确认当前浏览器能否显示系统通知。</p>
         </section>
 
         <section aria-labelledby="autonomyTitle">
@@ -538,7 +556,7 @@
     </main>
 </div>
 
-<script src="../shared/js/cloud-push-client.js?v=20261114v3"></script>
+<script src="../shared/js/cloud-push-client.js?v=20261114v4"></script>
 <script>
 (function () {
     if (window.MaomaoCloud && window.MaomaoCloud.mountSettings) {
