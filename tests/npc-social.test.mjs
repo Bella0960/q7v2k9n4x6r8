@@ -452,3 +452,31 @@ test('NPC acceptance stays pending until the first greeting is durable, then ret
   h.context.NPCSocial.reconcileAccepted();
   assert.equal(h.histories[accepted.roleId].length, 1, 'reconciliation must not duplicate the greeting');
 });
+
+test('NPC settings reject silently ignored storage writes without reporting success', () => {
+  const h = createHarness();
+  const originalSet = h.context.localStorage.setItem;
+  const key = 'npc_friend_discovery_settings_v2_main-role';
+  const before = h.data.get(key);
+  h.context.localStorage.setItem = (name, value) => {
+    if (name !== key) originalSet(name, value);
+  };
+  assert.throws(() => h.context.NPCSocial.setSettings({ enabled: true }), /设置保存失败/);
+  assert.equal(h.data.get(key), before, 'failed write must not change stored settings');
+  assert.equal(h.context.NPCSocial.getSettings().enabled, false);
+});
+
+test('NPC request migration refuses silent storage failures and keeps legacy backup', () => {
+  const h = createHarness();
+  const key = 'npc_friend_requests_v2_main-role';
+  const legacy = [{ id: 'legacy-safe', mainRoleId: 'main-role', status: 'pending', npc: { id: 'npc-safe', name: '旧朋友' } }];
+  h.data.set('npc_friend_requests_v1', JSON.stringify(legacy));
+  h.data.delete(key);
+  const originalSet = h.context.localStorage.setItem;
+  h.context.localStorage.setItem = (name, value) => {
+    if (name !== key) originalSet(name, value);
+  };
+  assert.throws(() => h.context.NPCSocial.getRequests(), /迁移保存失败/);
+  assert.equal(h.data.has(key), false, 'no unsaved migration should be reported as complete');
+  assert.equal(h.data.get('npc_friend_requests_v1'), JSON.stringify(legacy));
+});
