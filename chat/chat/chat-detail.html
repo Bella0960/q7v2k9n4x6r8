@@ -6756,8 +6756,9 @@
                                 }
                             }
                         }
+                        var currentAvatarChoiceRole = getRoleById(avatarRoleId);
                         if (replySaved && !isGroupChat && parsedRoleAvatarChoice.avatarId &&
-                            getRoleById(avatarRoleId)?.avatarAutonomyEnabled !== false &&
+                            currentAvatarChoiceRole && currentAvatarChoiceRole.avatarAutonomyEnabled !== false &&
                             window.RoleAvatarLibrary && typeof window.RoleAvatarLibrary.applyToCharacter === 'function') {
                             var autonomousApplied = await window.RoleAvatarLibrary.applyToCharacter(
                                 avatarRoleId, parsedRoleAvatarChoice.avatarId, {
