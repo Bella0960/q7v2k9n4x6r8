@@ -6675,6 +6675,7 @@
                         }];
                     }
                     if (fullText || aiStickerMessages.length || aiRoleGalleryMessages.length || avatarCandidates.length || avatarPairs.length ||
+                        parsedRoleAvatarChoice.avatarId ||
                         (parsedTransferDecision.amounts && parsedTransferDecision.amounts.length)) {
                         // 正文按角色气泡偏好拆分；表情与图库图片仍保留在同一回复回合中。
                         groupReplyVisible = !!fullText || aiStickerMessages.length > 0 || aiRoleGalleryMessages.length > 0;
@@ -6734,6 +6735,9 @@
                                                 updatedAvatarImage.src = avatarApplied.value.avatar;
                                                 updatedAvatarImage.alt = '';
                                                 chatHeaderAvatar.replaceChildren(updatedAvatarImage);
+                                            }
+                                            if (window.RoleAvatarChoice && typeof window.RoleAvatarChoice.recordApplied === 'function') {
+                                                window.RoleAvatarChoice.recordApplied(avatarRoleId);
                                             }
                                             if (typeof showToast === 'function') showToast('TA 已换上这张头像');
                                         } else if (typeof showToast === 'function') {
