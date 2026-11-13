@@ -93,3 +93,18 @@ test('chat saves the assistant response before applying a role-scoped selection'
   assert.ok(detail.includes('tmpText = window.RoleAvatarChoice.strip(tmpText)'));
   assert.ok(shell.includes("'./shared/js/phone/role-avatar-choice.js?v=20261113v1'"));
 });
+
+
+test('character profile keeps an explicit role-scoped opt-out across open chat tabs', () => {
+  const manager = fs.readFileSync(path.join(root, 'worldbook/characters/js/characters-manager.js'), 'utf8');
+  const characterPage = fs.readFileSync(path.join(root, 'worldbook/characters/characters.html'), 'utf8');
+  assert.ok(manager.includes('data-profile-action="avatar-autonomy"'));
+  assert.ok(manager.includes("target.avatarAutonomyEnabled = !enabled"));
+  assert.ok(manager.includes('if (saved) {'));
+  assert.ok(manager.includes('renderRoleProfile();'));
+  assert.ok(characterPage.includes('.avatar-library-autonomy-toggle'));
+  assert.ok(detail.includes('var liveAvatarChoiceRole = getRoleById(aliasRoleId || currentCharacter.id)'));
+  assert.ok(detail.includes('currentAvatarChoiceRole && currentAvatarChoiceRole.avatarAutonomyEnabled !== false'));
+  assert.ok(detail.includes('var liveRole = getRoleById(avatarRoleId)'));
+  assert.ok(detail.includes('!!liveRole && liveRole.avatarAutonomyEnabled !== false'));
+});
