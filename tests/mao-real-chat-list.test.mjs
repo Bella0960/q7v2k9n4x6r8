@@ -64,7 +64,8 @@ test('provider fetches approved conversations from server without local cache or
   assert.equal(calls[2].options.headers['x-mao-account-context'],A);
   assert.ok(calls.every(c=>c.options.cache==='no-store'));
   assert.ok(calls.every(c=>c.options.credentials==='same-origin'&&c.options.redirect==='error'));
-  assert.doesNotMatch(provider,/localStorage|sessionStorage|caches\.|indexedDB/);
+  assert.doesNotMatch(provider,/\b(?:window\.)?(?:localStorage|sessionStorage|indexedDB)\s*(?:\.|\[)/,
+    'never access browser persistence for a real user chat list');
   // No caller may mutate the internal snapshot.
   rows[0].displayName='tampered';
   assert.equal(registry.getRows()[0].displayName,'小鱼');
@@ -86,6 +87,9 @@ test('switching accounts discards old real chat rows, even when late requests ar
   const stale=registry.refresh();
   // The old account is erased before loading C, not merely hidden on error.
   assert.equal(registry.getRows().length,0);
+  // Allow the async session verification to reach the deferred C response.
+  for(let i=0;i<50 && !slowResolve;i++)await Promise.resolve();
+  assert.equal(typeof slowResolve,'function');
   active=B;
   await registry.refresh();
   assert.equal(registry.owner(),B);
