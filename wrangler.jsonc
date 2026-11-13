@@ -20,6 +20,13 @@
     { "tag": "v1", "new_sqlite_classes": ["CloudDatabase"] }
   ],
   "previews": {
+    // Branch-specific QA only. Do NOT enable unencrypted person-to-person chat.
+    // Production Worker has no social feature flags; this block does not
+    // touch app.mao520.com or preview resources from other Git branches.
+    "vars": {
+      "MAO_SOCIAL_ENABLED": "true",
+      "MAO_SOCIAL_CHAT_ENABLED": "false"
+    },
     "durable_objects": {
       "bindings": [
         { "name": "CLOUD_DB", "class_name": "CloudDatabase" }
