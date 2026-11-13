@@ -134,3 +134,17 @@ test('photo and voice E2EE are bundled into the private chat only', () => {
   assert.match(page,/id="voiceBtn"/);
   assert.doesNotMatch(page,/id="videoBtn"|id="giftBtn"|id="payBtn"/);
 });
+
+test('approved real-user chats appear in the existing built chat list, not a new contacts tile', () => {
+  const page=readFileSync(dist('chat/chat/chat.html'),'utf8');
+  const filename='shared/js/social-chat-list.js';
+  assert.ok(existsSync(dist(filename)), 'server-backed real chat provider must be deployed');
+  assert.match(page, /social-chat-list\\.js/);
+  assert.match(page, /chat-real-card/);
+  assert.match(page, /realHTML \\+ groupsHTML \\+ rolesHTML/);
+  const source=readFileSync(dist(filename),'utf8');
+  assert.match(source, /\/api\/social\/e2ee\/conversations/);
+  assert.match(source, /credentials:'same-origin'/);
+  assert.match(source, /cache:'no-store'/);
+  assert.doesNotMatch(source, /localStorage|sessionStorage/);
+});
