@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 3000",
-    "prebuild": "npm run test:release:gate && npm run test:social:approval",
+    "prebuild": "npm run test:release:gate && npm run test:social:approval && npm run test:cloud:founder",
     "build": "vite build",
     "test:accounts:kdf": "node --test tests/account-password-kdf.test.mjs",
     "preview": "vite preview --host 0.0.0.0 --port 3000",
@@ -63,7 +63,8 @@
     "test:accounts:staging": "node --test tests/account-staging-readiness.test.mjs",
     "test:accounts:delegated": "node --test tests/delegated-identity-bridge.test.mjs",
     "test:accounts:legacy-upgrade": "node --test tests/founder-legacy-sqlite-upgrade.test.mjs",
-    "test:social:legacy-mobile": "node --test tests/mao-social-mobile-runtime.test.mjs"
+    "test:social:legacy-mobile": "node --test tests/mao-social-mobile-runtime.test.mjs",
+    "test:cloud:founder": "node --test tests/cloud-push-founder-integration.test.mjs"
   },
   "devDependencies": {
     "playwright": "^1.64.1",
