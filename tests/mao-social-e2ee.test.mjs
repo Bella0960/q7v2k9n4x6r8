@@ -247,3 +247,52 @@ test('only two compact image and microphone controls are added to the existing p
   assert.doesNotMatch(source,/\/api\/ai\//);
   assert.match(server,/E2EE_PLAINTEXT_REJECTED/);
 });
+
+
+test('home chat list is scoped to approved friends, sorted by latest encrypted-message metadata only',async t=>{
+  const x=setup();t.after(x.close);
+  const route='/api/social/e2ee/conversations';
+  const first=await x.call(A,route);
+  assert.equal(first.status,200,JSON.stringify(first.body));
+  assert.equal(first.body.ownerAccountId,A);
+  assert.deepEqual(first.body.conversations.map(r=>r.id),[B]);
+  assert.equal(first.body.conversations[0].lastMessageAt,null);
+  assert.deepEqual((await x.call(C,route)).body.conversations,[],
+    'stranger may not see approved conversations');
+  const a=await createDeviceIdentity(subtle);
+  const b=await createDeviceIdentity(subtle);
+  await x.call(A,K,'POST',{publicKey:a.publicKey});
+  await x.call(B,K,'POST',{publicKey:b.publicKey});
+  const key=await conversationKey(a.privateKey,b.publicKey,F,A,B,subtle);
+  const mid='msg_home_chat_list_0000001';
+  const envelope=await encryptText('不应出现在列表里的真实消息明文',key,{
+    friendshipId:F,senderId:A,recipientId:B,clientMessageId:mid,sk:a.keyId,rk:b.keyId
+  },subtle,webcrypto.getRandomValues.bind(webcrypto));
+  const posted=await x.call(A,M,'POST',{friendshipId:F,clientMessageId:mid,envelope});
+  assert.equal(posted.status,200);
+  const updated=await x.call(B,route);
+  assert.equal(updated.status,200);
+  assert.equal(updated.body.ownerAccountId,B);
+  assert.deepEqual(updated.body.conversations.map(r=>r.id),[A]);
+  assert.equal(updated.body.conversations[0].lastMessageAt,TIME);
+  const payload=JSON.stringify(updated.body);
+  assert.ok(!payload.includes('不应出现在列表里'));
+  assert.ok(!payload.includes(envelope.ct));
+  assert.ok(!payload.includes('publicKey'));
+  assert.equal((await x.call(C,route)).body.conversations.length,0);
+  x.exec('UPDATE mao_social_friends SET status=? WHERE pair_low=? AND pair_high=?','removed',A,B);
+  assert.deepEqual((await x.call(B,route)).body.conversations,[],
+    'removed friendship must disappear regardless of old messages');
+  x.exec('UPDATE mao_social_friends SET status=? WHERE pair_low=? AND pair_high=?','accepted',A,B);
+  x.exec('INSERT INTO mao_social_blocks(blocker_id,blocked_id,created_at) VALUES(?,?,?)',A,B,TIME);
+  assert.deepEqual((await x.call(B,route)).body.conversations,[],
+    'blocked peer must not remain visible');
+  x.exec('DELETE FROM mao_social_blocks');
+  x.exec('UPDATE mao_accounts SET status=? WHERE id=?','disabled',B);
+  assert.deepEqual((await x.call(A,route)).body.conversations,[],
+    'disabled friend must not remain visible');
+  x.exec('UPDATE mao_accounts SET status=? WHERE id=?','active',B);
+  x.exec('UPDATE mao_accounts SET status=? WHERE id=?','disabled',A);
+  const off=await x.call(A,route);
+  assert.equal(off.status,401,'disabled account must not enumerate former friendships');
+});
