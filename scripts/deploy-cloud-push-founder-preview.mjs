@@ -42,7 +42,7 @@ wrangler(['preview', '--config', 'wrangler.jsonc', '--name', expected.name]);
 for (const [name, key] of envVars) {
   // Never log secrets and do not pass them on the command line.
   wrangler(['preview', 'secret', 'put', name,
-    '--config', 'wrangler.jsonc', '--name', expected.name, '--skip-confirmation'],
+    '--config', 'wrangler.jsonc', '--name', expected.name],
     process.env[key].trim() + '\n');
 }
 console.log('All push secrets were set on the existing founder Preview (not production).');
