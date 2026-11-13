@@ -19,8 +19,8 @@ test('founder 001 settings shows a real push route with a versioned connected cl
   assert.match(pushPage, /id="cloudPushToggle"/);
   assert.match(pushPage, /id="cloudTestRow"/);
   assert.match(pushPage, /MaomaoCloud\.mountSettings\(\)/);
-  assert.match(pushPage, /cloud-push-client\.js\?v=20261114v4/);
-  assert.match(sw, /phone-app-pwa-v229/);
+  assert.match(pushPage, /cloud-push-client\.js\?v=20261114v5/);
+  assert.match(sw, /phone-app-pwa-v230/);
   assert.match(sw, /settings\/cloud-push\.html/);
 });
 
@@ -104,4 +104,13 @@ test('non-private cloud test notifications do not depend on background session c
   assert.match(sw, /await self\.registration\.showNotification\('MAOMAO · 云端测试通知'/);
   assert.match(sw, /if \(notificationData\.type === 'test'\)/);
   assert.match(sw, /if \(!authResponse \|\| !authResponse\.ok\) return/);
+});
+
+
+test('device status identifies the current browser subscription instead of blindly trusting global subscription count', () => {
+  assert.match(client, /currentBrowserMatched/);
+  assert.match(client, /currentBrowserHasSubscription/);
+  assert.match(client, /localSub\.endpoint/);
+  assert.match(client, /item\.endpoint === localSub\.endpoint/);
+  assert.match(client, /当前浏览器没有本地订阅/);
 });
