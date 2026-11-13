@@ -193,7 +193,7 @@ export async function sendWebPush(
     throw tagged;
   }
   try {
-    body = await encryptPayload(subscription, payloadText);
+    body = payloadText === '' ? null : await encryptPayload(subscription, payloadText);
   } catch (error) {
     if (error instanceof PushConfigError) {
       error.phase = 'encrypt';
@@ -205,17 +205,18 @@ export async function sendWebPush(
     throw tagged;
   }
 
-  // This callback must be synchronous: it runs after asynchronous crypto work
-  // and immediately before fetchImpl is invoked, with no intervening await.
-  // Callers use it to close the gap where a device/subscription is revoked
-  // while VAPID signing and payload encryption are in progress.
-  if (typeof beforeSend === 'function' && !beforeSend()) {
+  // The Durable Object ownership check may be async. Await it before
+  // dispatching the push, otherwise a Promise would be treated as truthy and
+  // revoked subscriptions might still be sent.
+  if (typeof beforeSend === 'function' && !(await beforeSend())) {
     return { ok: false, statusCode: 0, gone: false, skipped: true };
   }
 
   // Workers use Fetch BodyInit; use an exact ArrayBuffer rather than a typed-array
   // view so encrypted bytes are accepted consistently in workerd and browsers.
-  const uploadBody = body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength);
+  const uploadBody = body
+    ? body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength)
+    : undefined;
   let response;
   const controller = typeof AbortController === 'function' ? new AbortController() : null;
   let timeoutId = null;
@@ -231,10 +232,12 @@ export async function sendWebPush(
       redirect: 'manual',
       headers: {
         Authorization: authorization,
-        'Content-Encoding': 'aes128gcm',
-        'Content-Type': 'application/octet-stream',
         TTL: String(PUSH_TTL_SECONDS),
-        Urgency: 'normal'
+        Urgency: 'normal',
+        ...(uploadBody ? {
+          'Content-Encoding': 'aes128gcm',
+          'Content-Type': 'application/octet-stream'
+        } : {})
       },
       body: uploadBody,
       signal: controller?.signal
