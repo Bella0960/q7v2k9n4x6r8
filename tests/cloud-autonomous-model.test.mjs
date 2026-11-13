@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 
 import {
   readAutonomyModelConfig,
@@ -388,4 +389,13 @@ test('Workers AI respects explicit timeout configuration and never auto-enables'
   const legacy = readAutonomyModelConfig(MODEL_ENV);
   assert.equal(legacy.backend, 'openai_compatible');
   assert.equal(legacy.model, MODEL_ENV.AUTONOMY_MODEL_NAME);
+});
+
+
+test('Wrangler config explicitly sets pairing TTL but does not auto-enable AI spending', () => {
+  const config = fs.readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
+  assert.match(config, /"DEVICE_PAIRING_TOKEN_TTL_MS"\s*:\s*"300000"/);
+  assert.match(config, /"ai"\s*:\s*\{\s*"binding"\s*:\s*"AI"\s*\}/);
+  assert.doesNotMatch(config, /"AUTONOMY_MODEL_BACKEND"\s*:\s*"workers_ai"/,
+    'AI inference must require an explicit, separately approved activation');
 });
