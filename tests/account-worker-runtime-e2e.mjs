@@ -307,6 +307,83 @@ async function main() {
     assert.equal(founderRelogin.payload.account.role, 'super_admin');
     pass('historical 210000-round founder password hash remains usable after Worker restart');
 
+    // Cross-device safety: a second login creates a distinct session. Revoking
+    // it on the original device must not invalidate the primary session.
+    const aliceSecondLogin = await post('/api/accounts/login',
+      { identifier: 'qa_alice', password: PASSWORD });
+    assert.equal(aliceSecondLogin.status, 200);
+    const aliceSecondCookie = cookieHeader(aliceSecondLogin.response);
+    assert.notEqual(aliceSecondCookie, aliceCookie);
+    const aliceOtherSecurity = await request('/api/accounts/security',
+      { cookie: aliceSecondCookie, accountId: alice.id });
+    assert.equal(aliceOtherSecurity.status, 200, JSON.stringify(aliceOtherSecurity.payload));
+    const otherSessionId = aliceOtherSecurity.payload.currentSessionId;
+    assert.match(otherSessionId, /^[A-Za-z0-9_-]{16,64}$/);
+    const aliceMainSecurity = await request('/api/accounts/security',
+      { cookie: aliceCookie, accountId: alice.id });
+    assert.equal(aliceMainSecurity.status, 200);
+    assert.notEqual(otherSessionId, aliceMainSecurity.payload.currentSessionId);
+    assert.ok(aliceMainSecurity.payload.sessions.some(item => item.id === otherSessionId));
+    pass('separate devices create distinct server-visible account sessions');
+
+    const wrongOwnerRevoke = await post('/api/accounts/sessions/' + otherSessionId + '/revoke',
+      {}, { cookie: bobCookie, accountId: bob.id });
+    assert.equal(wrongOwnerRevoke.status, 401);
+    const stillSecond = await request('/api/accounts/me',
+      { cookie: aliceSecondCookie, accountId: alice.id });
+    assert.equal(stillSecond.status, 200);
+    pass('another account cannot revoke someone else\'s session');
+
+    const revokeOther = await post('/api/accounts/sessions/' + otherSessionId + '/revoke',
+      {}, { cookie: aliceCookie, accountId: alice.id });
+    assert.equal(revokeOther.status, 200, JSON.stringify(revokeOther.payload));
+    assert.equal(revokeOther.payload.revoked, true);
+    const rejectedSecond = await request('/api/accounts/me',
+      { cookie: aliceSecondCookie, accountId: alice.id });
+    assert.equal(rejectedSecond.status, 401);
+    const survivingMain = await request('/api/accounts/me',
+      { cookie: aliceCookie, accountId: alice.id });
+    assert.equal(survivingMain.status, 200);
+    pass('remote session revoke immediately removes other device access but keeps current login');
+
+    const aliceThirdLogin = await post('/api/accounts/login',
+      { identifier: 'qa_alice', password: PASSWORD });
+    assert.equal(aliceThirdLogin.status, 200);
+    const aliceThirdCookie = cookieHeader(aliceThirdLogin.response);
+    const changedPassword = 'New-QA-password-after-restart-123456!';
+    const changed = await post('/api/accounts/password/change', {
+      currentPassword: PASSWORD,
+      newPassword: changedPassword,
+      confirmPassword: changedPassword
+    }, { cookie: aliceCookie, accountId: alice.id });
+    assert.equal(changed.status, 200, JSON.stringify(changed.payload));
+    assert.equal(changed.payload.changed, true);
+    assert.equal(changed.payload.sessionsRevoked, true);
+    const thirdAfterChange = await request('/api/accounts/me',
+      { cookie: aliceThirdCookie, accountId: alice.id });
+    assert.equal(thirdAfterChange.status, 401);
+    const firstAfterChange = await request('/api/accounts/me',
+      { cookie: aliceCookie, accountId: alice.id });
+    assert.equal(firstAfterChange.status, 200);
+    pass('password change revokes all other device sessions but keeps originating session');
+
+    const obsoletePassword = await post('/api/accounts/login',
+      { identifier: 'qa_alice', password: PASSWORD });
+    assert.equal(obsoletePassword.status, 401);
+    const newPasswordLogin = await post('/api/accounts/login',
+      { identifier: 'qa_alice', password: changedPassword });
+    assert.equal(newPasswordLogin.status, 200, JSON.stringify(newPasswordLogin.payload));
+    assert.equal(newPasswordLogin.payload.account.id, alice.id);
+    pass('old password is rejected and replacement password authenticates after change');
+
+    const unaffectedBob = await request('/api/accounts/me',
+      { cookie: bobCookie, accountId: bob.id });
+    const unaffectedFounder = await request('/api/admin/accounts',
+      { cookie: founderCookie, accountId: founderId });
+    assert.equal(unaffectedBob.status, 200);
+    assert.equal(unaffectedFounder.status, 200);
+    pass('password change in one account cannot revoke unrelated user or founder sessions');
+
     console.log('ALL PASS: ' + checks.length + ' isolated Wrangler/SQLite Worker runtime assertions');
   } finally {
     await stopWorker();
