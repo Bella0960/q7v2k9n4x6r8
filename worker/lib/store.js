@@ -2116,6 +2116,47 @@ class CloudStore {
     )[0] || null;
   }
 
+  /**
+   * Mirror only the server-verified identity into an isolated preview's data
+   * namespace. Never copy an authority password hash, email, devices or session.
+   * Conflicting local registrations / another founder are not adopted.
+   */
+  importMaoDelegatedAccount(identity) {
+    if (!/^MAO-[A-Z0-9]{12,24}$/.test(identity?.id || '') ||
+        !/^[\\p{L}\\p{N}_-]{2,24}$/u.test(identity?.username || '') ||
+        !['user', 'super_admin'].includes(identity?.role) ||
+        !Number.isSafeInteger(identity?.now) || identity.now <= 0 ||
+        typeof identity.passwordSalt !== 'string' ||
+        typeof identity.passwordHash !== 'string') {
+      throw new Error('INVALID_DELEGATED_IDENTITY');
+    }
+    return this.transaction(() => {
+      const found = this.getMaoAccountById(identity.id);
+      if (found) {
+        // Fail closed on a stale or unrelated identity; never rewrite role.
+        if (found.username !== identity.username ||
+            found.role !== identity.role ||
+            found.status !== 'active') return null;
+        return found;
+      }
+      const owner = this.getMaoAccountByIdentifier(identity.username);
+      if (owner || (identity.role === 'super_admin' && this.hasMaoSuperAdminAccount())) return null;
+      this.exec(
+        "INSERT INTO mao_accounts (id, username, username_key, password_salt, password_hash, role, status, created_at, updated_at, authorized_at) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)",
+        identity.id, identity.username, identity.username.toLocaleLowerCase('en-US'),
+        identity.passwordSalt, identity.passwordHash, identity.role,
+        identity.now, identity.now, identity.now
+      );
+      this.exec(
+        "INSERT INTO mao_account_audit (id, actor_account_id, target_account_id, action, detail_json, created_at) VALUES (?, NULL, ?, 'identity_authority_import', ?, ?)",
+        'audit_' + crypto.randomUUID(), identity.id,
+        serializeStoreJson({ source: 'trusted_worker_service_binding', passwordCopied: false }, 2048, 'delegated identity audit detail'),
+        identity.now
+      );
+      return this.getMaoAccountById(identity.id);
+    });
+  }
+
   createMaoAccount(account) {
     return this.transaction(() => {
       const inserted = this.exec(
