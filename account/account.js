@@ -356,6 +356,16 @@
         document.querySelectorAll('[data-show="registerPanel"]').forEach(button => { button.hidden = true; });
         const subtitle = byId('loginPanel')?.querySelector('.lead');
         if (subtitle) subtitle.textContent = '用你原来的 MAO 账号登录。管理员 001 不需要邀请码，也不需要重复注册。';
+        const unavailable = status.signInReady !== true;
+        const loginForm = byId('loginForm');
+        if (loginForm) {
+          loginForm.querySelectorAll('input, button[type="submit"]').forEach(node => {
+            node.disabled = unavailable;
+          });
+        }
+        if (unavailable) {
+          setError('loginError', '统一身份验证尚未接通。本测试版不会要求你重新注册，请暂时不要输入管理员密码。');
+        }
       }
     } catch {
       link.hidden = true;
