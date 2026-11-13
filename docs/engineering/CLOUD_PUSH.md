@@ -754,3 +754,12 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - 测试源码已提交；当前环境没有成功执行 MAOMAO Node/SQLite 测试套件。GitHub Actions 对应运行返回失败，但 job step、日志附件均不可读取，不能将其归因于本次改动，也不能声称测试通过。
 - 分支 `wrangler.jsonc` **计划**每 5 分钟 Cron 触发一次；截至 2026-11-13 的 Cloudflare 正式 `mao` Worker 配置仍没有 Cron，不能写成“正在运行”。两分钟是任务最早执行时间，不代表两分钟准时送达。DO 迁移、模型后端实际启用、Web Push 订阅、锁屏/退出应用和另一设备收件仍须部署后验收。
 - 这项功能目前只在 `feat/cloud-autonomous-server-model`（PR #239，基于 PR #148）中；尚未合并 `main`、未部署生产 Worker、未配置生产 Secret、未验证真机推送。
+
+
+## 2026-11-13 预览部署完整性哨兵
+
+- 当前 `mao-auth-preview` 的 Web Push 底座已有账号绑定设备、VAPID 密钥与 Durable Object。能发系统通知的必要条件是用户设备自己授予浏览器通知权限并建立 `push_subscriptions` 记录；2026-11-13 23:12（北京时间）核查时订阅数仍为 **0**。无法通过创建虚假的 endpoint 或服务端模拟代替真机订阅。
+- 发生过分裂部署：Worker 新上传版本包含 `AI`，却丢掉 `ASSETS` 和 `CLOUD_DB`；另一上传版本有 `ASSETS`、`CLOUD_DB` 和模型源码，却没有 `AI`。二者不可拆分为两个流量版本；缺 `CLOUD_DB` 会破坏账号/消息，缺 `ASSETS` 会影响网页资源，缺 `AI` 则模型启动会 fail-closed。
+- 已将预览流量回退到最后同时保有 `ASSETS`、`CLOUD_DB`、VAPID 和完整设备配对配置的可用版本。这个回退**只针对预览 Worker**；正式 `mao` 未更改。该回退版本是 Web Push 测试底座，不能宣称云端模型生成已上线。
+- 后续部署必须通过 `wrangler.jsonc` **一次性**提供静态资源、数据库、AI、Cron、服务端秘钥名称与现有账号范围；保留旧数据和设备凭据。上传后逐版本读取 Cloudflare `resources.bindings`，仅当 `ASSETS` + `CLOUD_DB` + `AI` + `VAPID_PRIVATE_KEY` 同时存在且现有账号/推送 API 冒烟测试成功，才能切换流量。禁止仅根据 `GET /settings` 的全局绑定列表推断某个版本实际拥有的资源。
+- 云端模型实际启用必须由维护者确认费用/配额并显式选择 `AUTONOMY_MODEL_BACKEND=workers_ai`；没有启用时不产生模型推理调用。用户账号与角色授权、上下文共享、作息和设备隔离仍然是必要门禁。
