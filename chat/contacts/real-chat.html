@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#fafafa">
+<title>真人聊天 · MAOMAO</title>
+<style>
+:root{color-scheme:light;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;color:#171717;background:#fafafa}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0}
+body{font-size:13px}
+button,textarea{font:inherit}
+button{cursor:pointer}
+.app{height:100dvh;max-width:640px;margin:auto;background:#fafafa;display:flex;flex-direction:column;overflow:hidden}
+.top{padding:calc(13px + env(safe-area-inset-top)) 19px 13px;background:#fafafa;display:flex;align-items:center;gap:13px}
+.back{border:0;background:transparent;padding:7px 0;display:flex;align-items:center;justify-content:center;width:25px;color:#242424;flex-shrink:0}
+.back svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.45}
+.headline{min-width:0;flex:1}
+.headline h1{font-family:Georgia,"Songti SC",serif;letter-spacing:-.04em;font-size:22px;font-weight:400;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.headline p{font-size:10px;color:#999;letter-spacing:.08em;margin:5px 0 0}
+.header-right{color:#aaa;letter-spacing:.2em;font-size:9px}
+.rule{height:1px;background:linear-gradient(90deg,transparent,#e6e6e6 20%,#e6e6e6 80%,transparent)}
+.notice{margin:16px 20px 0;line-height:1.7;font-size:11px;color:#818181;text-align:center;flex-shrink:0}
+.notice strong{font-weight:500;color:#424242}
+.status{min-height:26px;line-height:1.6;padding:7px 20px 2px;color:#888;text-align:center;font-size:11px;flex-shrink:0}
+.status.error{color:#555}
+.log{flex:1;overflow-y:auto;overscroll-behavior:contain;padding:17px 20px 22px;scrollbar-width:none;min-height:0}
+.log::-webkit-scrollbar{display:none}
+.empty{color:#a0a0a0;font-size:12px;text-align:center;line-height:2.1;padding-top:23vh}
+.bubble-wrap{display:flex;flex-direction:column;margin:11px 0;align-items:flex-start}
+.bubble-wrap.mine{align-items:flex-end}
+.bubble{max-width:85%;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.65;font-size:12px;padding:9px 13px;background:#ececee;color:#222;border-radius:12px 12px 12px 3px}
+.bubble-wrap.mine .bubble{background:#242424;color:#fff;border-radius:12px 12px 3px 12px}
+.time{font-size:9px;color:#aaa;margin:5px 3px 0;letter-spacing:.02em}
+.footer{background:#fafafa;padding:11px 16px calc(14px + env(safe-area-inset-bottom))}
+.compose{display:flex;gap:8px;align-items:flex-end;border:1px solid #e6e6e6;background:#fff;border-radius:17px;padding:6px 6px 6px 13px}
+.compose textarea{border:0;outline:none;min-width:0;flex:1;resize:none;min-height:31px;max-height:96px;line-height:1.55;padding:6px 0;font-size:12px;background:transparent;color:#222}
+.compose textarea::placeholder{color:#aaa}
+.compose button{border:0;background:#222;color:white;border-radius:12px;min-width:59px;min-height:38px;padding:0 13px;font-size:12px}
+.compose button:disabled,.compose textarea:disabled{opacity:.45}
+.security-note{font-size:10px;color:#a7a7a7;line-height:1.55;text-align:center;margin:10px auto 0;max-width:370px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main class="app">
+ <header class="top">
+  <button class="back" type="button" id="back" aria-label="返回真人好友"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+  <div class="headline"><h1 id="peerTitle">私人对话</h1><p id="peerState">ENCRYPTED / CONNECTING</p></div>
+  <div class="header-right">MAO.</div>
+ </header>
+ <div class="rule"></div>
+ <p class="notice"><strong>双人加密聊天</strong> · 只在双方手机上解密，服务器不保存文字明文。</p>
+ <div class="status" id="status" role="status" aria-live="polite">正在确认双方账号与加密设备…</div>
+ <div class="log" id="log" role="log" aria-live="polite"><p class="empty" id="empty">正在连接聊天…</p></div>
+ <div class="rule"></div>
+ <footer class="footer">
+   <form class="compose" id="compose">
+     <textarea id="input" placeholder="发送消息…" rows="1" maxlength="280" disabled aria-label="输入加密聊天消息"></textarea>
+     <button type="submit" id="send" disabled>发送</button>
+   </form>
+   <p class="security-note">聊天密钥只保留在当前浏览器。清除网站数据或换设备后，暂时无法恢复旧消息。首次交换公钥仍需信任服务器。</p>
+ </footer>
+</main>
+<script type="module">
+import {
+  createDeviceIdentity, idForPublicKey, conversationKey,
+  encryptText, decryptText, openDeviceKeyStore,
+  loadDeviceIdentity, saveDeviceIdentity
+} from './real-chat-crypto.mjs';
+
+const $=id=>document.getElementById(id);
+const ID=/^MAO-[A-Z0-9]{12,24}$/;
+const peer=new URLSearchParams(location.search).get('peer');
+let owner=null,device=null,peerKey=null,db=null,key=null,friendshipId=null;
+let cursor=0,seen=new Set(),polling=false,sending=false,closed=false,pending=null;
+let friendLabel='',timer=null,identityEpoch=0;
+const setStatus=(msg,error=false)=>{$('status').textContent=msg;$('status').classList.toggle('error',!!error);};
+const reqId=()=> 'e2e_'+crypto.randomUUID().replace(/-/g,'');
+function resetVisible() {
+  $('log').textContent='';$('input').value='';$('input').disabled=true;$('send').disabled=true;
+  cursor=0;seen.clear();friendshipId=null;key=null;pending=null;
+}
+function stop() {
+  closed=true;identityEpoch++;if(timer){clearInterval(timer);timer=null;}
+  resetVisible();owner=null;device=null;peerKey=null;db?.close();db=null;
+}
+async function api(path,{method='GET',body}={}){
+  const headers={accept:'application/json'};
+  if(owner)headers['x-mao-account-context']=owner.id;
+  if(body)headers['content-type']='application/json';
+  const res=await fetch(path,{method,headers,credentials:'same-origin',
+    cache:'no-store',redirect:'error',...(body?{body:JSON.stringify(body)}:{})});
+  const data=await res.json().catch(()=>null);
+  if(!res.ok||data?.ok!==true){
+    const code=data?.error?.code||'NETWORK_ERROR';
+    if(['ACCOUNT_CONTEXT_CHANGED','ACCOUNT_DISABLED','LOGIN_REQUIRED','SOCIAL_SESSION_EXPIRED',
+      'SOCIAL_NOT_APPROVED','SOCIAL_BLOCKED','SOCIAL_ACCOUNT_NOT_ACTIVE'].includes(code)){
+      stop();setStatus('登录或好友关系已变化，请返回好友列表核对。',true);
+    }
+    throw new Error(data?.error?.message||'聊天服务器暂不可用');
+  }
+  return data;
+}
+async function setupDevice(){
+  if(!crypto?.subtle||!indexedDB||!isSecureContext)
+    throw new Error('该浏览器不支持网页加密存储，请使用更新的 HTTPS 浏览器。');
+  db=await openDeviceKeyStore();
+  let local=await loadDeviceIdentity(db,owner.id);
+  const issued=await api('/api/social/e2ee/keys');
+  if(issued.ownerAccountId!==owner.id)throw new Error('服务器返回的密钥所属账号不符');
+  if(issued.key){
+    if(!local||local.publicKey!==issued.key.publicKey||local.keyId!==issued.key.keyId)
+      throw new Error('此账号的聊天密钥位于原先启用的浏览器。本设备不能覆盖它或读取旧消息。');
+  } else {
+    if(!local){
+      local=await createDeviceIdentity();
+      await saveDeviceIdentity(db,owner.id,local);
+    }
+    const reg=await api('/api/social/e2ee/keys',{method:'POST',body:{publicKey:local.publicKey}});
+    if(reg.keyId!==local.keyId)throw new Error('设备密钥登记结果与本机不一致');
+  }
+  device=local;
+}
+async function ensurePeerKey(){
+  if(peerKey)return true;
+  const result=await api('/api/social/e2ee/keys/'+encodeURIComponent(peer));
+  if(result.ownerAccountId!==owner.id||result.accountId!==peer)
+    throw new Error('对方密钥对应账号不一致');
+  if(!result.key){
+    $('peerState').textContent='WAITING FOR PEER';
+    setStatus('等待对方在自己的手机上进入聊天，完成首次加密准备。');
+    return false;
+  }
+  if(await idForPublicKey(result.key.publicKey)!==result.key.keyId)
+    throw new Error('无法验证好友加密密钥');
+  peerKey=result.key;
+  $('peerState').textContent='ENCRYPTED / CONNECTED';
+  return true;
+}
+async function fetchMessages(){
+  if(closed||!owner||!device||polling)return;
+  polling=true;
+  const epoch=identityEpoch;
+  try{
+    if(!await ensurePeerKey())return;
+    const result=await api('/api/social/e2ee/chats/'+encodeURIComponent(peer)+'/messages?after='+cursor);
+    if(closed||epoch!==identityEpoch)return;
+    if(result.ownerAccountId!==owner.id||result.peerId!==peer||!/^[A-Za-z0-9_-]{8,96}$/.test(result.friendshipId))
+      throw new Error('返回的聊天范围不正确');
+    if(friendshipId&&friendshipId!==result.friendshipId){
+      resetVisible();setStatus('好友关系已更新，旧聊天已隔离。');
+    }
+    friendshipId=result.friendshipId;
+    if(!key)key=await conversationKey(device.privateKey,peerKey.publicKey,friendshipId,owner.id,peer);
+    if(closed||epoch!==identityEpoch)return;
+    $('input').disabled=false;$('send').disabled=false;
+    if(!Array.isArray(result.messages)||!Number.isSafeInteger(result.nextCursor)||result.nextCursor<cursor)
+      throw new Error('聊天记录格式异常');
+    for(const message of result.messages){
+      if(!Number.isSafeInteger(message.seq)||message.seq<=0||seen.has(message.seq))continue;
+      if(message.senderId!==peer&&message.senderId!==owner.id)
+        throw new Error('聊天收件人和发送人不属于当前会话');
+      if(message.recipientId!==peer&&message.recipientId!==owner.id)
+        throw new Error('聊天记录越界');
+      const own=message.senderId===owner.id;
+      if((own?device.keyId:peerKey.keyId)!==message.envelope?.sk||
+         (own?peerKey.keyId:device.keyId)!==message.envelope?.rk)
+        throw new Error('这条消息的密钥身份与当前好友不一致');
+      let plain;
+      try{
+        plain=await decryptText(message.envelope,key,{friendshipId,
+          senderId:message.senderId,recipientId:message.recipientId,
+          clientMessageId:message.clientMessageId});
+      }catch{
+        plain='此条消息暂时无法在当前设备上解密';
+      }
+      if(closed||epoch!==identityEpoch)return;
+      if($('empty'))$('empty').remove();
+      const wrap=document.createElement('div');
+      wrap.className='bubble-wrap'+(own?' mine':'');
+      const bubble=document.createElement('div');bubble.className='bubble';bubble.textContent=plain;
+      const time=document.createElement('span');time.className='time';
+      time.textContent=Number.isFinite(message.createdAt)?
+        new Date(message.createdAt).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}):'';
+      wrap.append(bubble,time);$('log').appendChild(wrap);
+      seen.add(message.seq);
+    }
+    cursor=Math.max(cursor,result.nextCursor);
+    $('log').scrollTop=$('log').scrollHeight;
+    setStatus('已连接 · 仅双方设备可解密 · 前台约每 3 秒检查新消息');
+  } catch(e){
+    if(!closed)setStatus(e.message||'加载加密消息失败',true);
+  } finally{polling=false;}
+}
+async function start(){
+  try{
+    if(!ID.test(peer))throw new Error('未选择有效的真人好友');
+    const session=await api('/api/accounts/me');
+    owner=session.account;
+    if(!owner||!ID.test(owner.id)||owner.status!=='active'||owner.id===peer)
+      throw new Error('当前账号无权进入该会话');
+    const list=await api('/api/social/friends');
+    if(list.ownerAccountId!==owner.id||!Array.isArray(list.friends))throw new Error('好友列表身份异常');
+    const person=list.friends.find(item=>item.id===peer);
+    if(!person)throw new Error('只有双方同意并经过 001 审批的好友才能聊天');
+    friendLabel=person.displayName||peer;
+    $('peerTitle').textContent=friendLabel;
+    await setupDevice();
+    await fetchMessages();
+    if(!closed)timer=setInterval(()=>{
+      if(document.visibilityState==='visible')fetchMessages();
+    },3000);
+  }catch(e){if(!closed)setStatus(e.message||'聊天初始化失败',true);}
+}
+$('back').addEventListener('click',()=>{stop();location.assign('./real-friends.html');});
+$('compose').addEventListener('submit',async e=>{
+  e.preventDefault();
+  if(closed||sending||!owner||!peerKey||!key||!friendshipId)return;
+  const text=$('input').value.trim();if(!text)return;
+  sending=true;$('send').disabled=true;
+  const stamp=identityEpoch,ownerId=owner.id,relation=friendshipId;
+  try{
+    if(!pending||pending.text!==text||pending.friendshipId!==relation){
+      const clientMessageId=reqId();
+      const envelope=await encryptText(text,key,{friendshipId:relation,
+        senderId:ownerId,recipientId:peer,clientMessageId,
+        sk:device.keyId,rk:peerKey.keyId});
+      pending={text,friendshipId:relation,clientMessageId,envelope};
+    }
+    const result=await api('/api/social/e2ee/chats/'+encodeURIComponent(peer)+'/messages',
+      {method:'POST',body:{clientMessageId:pending.clientMessageId,
+        friendshipId:relation,envelope:pending.envelope}});
+    if(result.friendshipId!==relation||
+       result.message?.clientMessageId!==pending.clientMessageId||
+       result.message?.senderId!==ownerId||result.message?.recipientId!==peer||
+       JSON.stringify(result.message?.envelope)!==JSON.stringify(pending.envelope))
+      throw new Error('服务器发送回执不明确，已保留草稿供你核对');
+    if(closed||identityEpoch!==stamp||owner?.id!==ownerId||friendshipId!==relation)return;
+    pending=null;if($('input').value.trim()===text)$('input').value='';
+    await fetchMessages();
+  }catch(e){if(!closed)setStatus('消息未确认：'+(e.message||'发送失败'),true);}
+  finally{sending=false;if(!closed)$('send').disabled=!key;}
+});
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible'&&!closed)fetchMessages();
+});
+window.addEventListener('pagehide',stop);
+start();
+</script>
+</body>
+</html>
