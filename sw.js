@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v227';
+const CACHE_NAME = 'phone-app-pwa-v228';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 // v196 release: sweep orphaned role-owned media refs during avatar cleanup.
 const APP_SHELL = [
@@ -389,6 +389,19 @@ self.addEventListener('push', event => {
   }
 
   event.waitUntil((async function () {
+    // This button sends only an explicit, non-sensitive diagnostic. Never
+    // require an HttpOnly session fetch to display this harmless test message:
+    // Android may have stopped the page/session while Chrome delivers a push.
+    // Personal role messages still require a current active account below.
+    if (payload.type === 'test') {
+      await self.registration.showNotification('MAOMAO · 云端测试通知', {
+        body: '这条通知由云端推送到当前浏览器。',
+        tag: 'maomao-test-' + String(payload.dedupeKey || Date.now()).slice(-36),
+        data: { url: pushTargetUrl('./settings/cloud-push.html'), type: 'test' },
+        silent: false
+      });
+      return;
+    }
     // Notifications are private to the MAO account that owns the target device.
     // Re-check the HttpOnly session at display time so a logged-out or switched
     // browser cannot show another account's previously queued push.
@@ -445,6 +458,12 @@ self.addEventListener('notificationclick', event => {
   const accountId = String(notificationData.accountId || '');
 
   event.waitUntil((async function () {
+    // Diagnostic notifications contain no private content and can be opened
+    // without an active MAO session; the destination still enforces login.
+    if (notificationData.type === 'test') {
+      if (self.clients.openWindow) return self.clients.openWindow(targetUrl);
+      return;
+    }
     // A notification may remain in the OS tray after logout or account switch.
     // Re-validate the account when clicked; old unbound notifications fail closed.
     if (!/^MAO-[A-Z0-9]{12,24}$/.test(accountId)) return;
