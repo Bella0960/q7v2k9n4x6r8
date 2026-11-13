@@ -54,6 +54,31 @@ async function main() {
   const pepper = randomBytes(40).toString('base64url');
   const stateDir = await mkdtemp(path.join(os.tmpdir(), 'maomao-auth-e2e-'));
   let child = null;
+  const stopWorker = async () => {
+    if (!child) return;
+    const previous = child;
+    const terminate = signal => {
+      try {
+        if (process.platform !== 'win32' && previous.pid) process.kill(-previous.pid, signal);
+        else if (previous.exitCode === null && previous.signalCode == null) previous.kill(signal);
+      } catch {}
+    };
+    terminate('SIGTERM');
+    await Promise.race([
+      new Promise(resolve => previous.once('close', resolve)),
+      sleep(3000)
+    ]);
+    if (previous.exitCode === null && previous.signalCode == null) {
+      terminate('SIGKILL');
+      await Promise.race([
+        new Promise(resolve => previous.once('close', resolve)),
+        sleep(1500)
+      ]);
+    }
+    previous.stdout?.destroy();
+    previous.stderr?.destroy();
+    child = null;
+  };
   const checks = [];
   try {
     await writeFile(VARS_PATH,
@@ -64,39 +89,41 @@ async function main() {
     const base = 'http://127.0.0.1:' + port;
     let output = '';
     const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-    child = spawn(npx, [
-      '--yes', 'wrangler@' + WRANGLER_VERSION,
-      'dev', '--config', 'wrangler.preview.jsonc',
-      '--local', '--ip', '127.0.0.1', '--port', String(port),
-      '--persist-to', stateDir
-    ], {
-      cwd: ROOT,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      detached: process.platform !== 'win32', // kill the whole npx -> Wrangler -> workerd process group
-      env: { ...process.env, CI: 'true', WRANGLER_SEND_METRICS: 'false' }
-    });
-    for (const stream of [child.stdout, child.stderr]) {
-      stream.setEncoding('utf8');
-      stream.on('data', text => { output = (output + text).slice(-12000); });
-    }
-    let status = null;
-    for (let attempt = 0; attempt < 120; attempt += 1) {
-      if (child.exitCode !== null) break;
-      try {
-        const response = await fetch(base + '/api/admin/bootstrap/status',
-          { signal: AbortSignal.timeout(2000) });
-        if (response.status === 200) {
-          status = { response, body: await response.json() };
-          break;
-        }
-      } catch {}
-      await sleep(500);
-    }
-    if (!status) {
-      // Keep log excerpts short and remove any randomly generated test keys.
+    const launchWorker = () => {
+      output = '';
+      child = spawn(npx, [
+        '--yes', 'wrangler@' + WRANGLER_VERSION,
+        'dev', '--config', 'wrangler.preview.jsonc',
+        '--local', '--ip', '127.0.0.1', '--port', String(port),
+        '--persist-to', stateDir
+      ], {
+        cwd: ROOT,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: process.platform !== 'win32',
+        env: { ...process.env, CI: 'true', WRANGLER_SEND_METRICS: 'false' }
+      });
+      for (const stream of [child.stdout, child.stderr]) {
+        stream.setEncoding('utf8');
+        stream.on('data', line => { output = (output + line).slice(-12000); });
+      }
+    };
+    const awaitStatus = async () => {
+      for (let attempt = 0; attempt < 120; attempt += 1) {
+        if (child.exitCode !== null || child.signalCode != null) break;
+        try {
+          const response = await fetch(base + '/api/admin/bootstrap/status',
+            { signal: AbortSignal.timeout(2000) });
+          if (response.status === 200) {
+            return { response, body: await response.json() };
+          }
+        } catch {}
+        await sleep(500);
+      }
       const safeOutput = output.replaceAll(secret, '[redacted]').replaceAll(pepper, '[redacted]');
       throw new Error('Local Wrangler worker did not become ready: ' + safeOutput.slice(-1800));
-    }
+    };
+    launchWorker();
+    const status = await awaitStatus();
 
     function pass(name) {
       checks.push(name);
@@ -234,26 +261,55 @@ async function main() {
     assert.equal(founderDirectory.status, 200);
     pass('regular users cannot call the administrator account directory API');
 
+    // Unlike a fresh SQLite fixture, a real account must survive a full Worker
+    // shutdown and restart with the same persistent Durable Object storage.
+    // This exercises the most important existing-user production upgrade risk.
+    await stopWorker();
+    launchWorker();
+    const restoredStatus = await awaitStatus();
+    assert.equal(restoredStatus.body.initialized, true, 'founder must still exist after Worker restart');
+    assert.equal(restoredStatus.body.configured, true);
+    pass('restart reopens persisted Durable Object without losing founder 001');
+
+    const restoredFounder = await request('/api/accounts/me',
+      { cookie: founderCookie, accountId: founderId });
+    assert.equal(restoredFounder.status, 200, JSON.stringify(restoredFounder.payload));
+    assert.equal(restoredFounder.payload.account.id, founderId);
+    assert.equal(restoredFounder.payload.account.role, 'super_admin');
+    assert.equal(restoredFounder.payload.account.founderNumber, '001');
+    pass('founder session and server-authorized 001 identity persist across Worker restart');
+
+    const restoredAlice = await request('/api/accounts/me',
+      { cookie: aliceCookie, accountId: alice.id });
+    const restoredBob = await request('/api/accounts/me',
+      { cookie: bobCookie, accountId: bob.id });
+    assert.equal(restoredAlice.status, 200);
+    assert.equal(restoredAlice.payload.account.id, alice.id);
+    assert.equal(restoredAlice.payload.account.status, 'active');
+    assert.equal(restoredBob.status, 200);
+    assert.equal(restoredBob.payload.account.id, bob.id);
+    assert.equal(restoredBob.payload.account.status, 'pending_invite');
+    pass('existing active and pending users retain distinct sessions and permissions after restart');
+
+    const restoredAlicePage = await request('/index.html', { cookie: aliceCookie });
+    const restoredBobPage = await request('/index.html', { cookie: bobCookie });
+    assert.equal(restoredAlicePage.status, 200);
+    assert.equal(restoredBobPage.status, 302);
+    const restoredContextMismatch = await request('/api/accounts/me',
+      { cookie: bobCookie, accountId: alice.id });
+    assert.equal(restoredContextMismatch.status, 409);
+    pass('account HTML gate and stale-tab isolation remain enforced after restart');
+
+    const founderRelogin = await post('/api/accounts/login',
+      { identifier: 'qa_founder', password: PASSWORD });
+    assert.equal(founderRelogin.status, 200, JSON.stringify(founderRelogin.payload));
+    assert.equal(founderRelogin.payload.account.id, founderId);
+    assert.equal(founderRelogin.payload.account.role, 'super_admin');
+    pass('historical 210000-round founder password hash remains usable after Worker restart');
+
     console.log('ALL PASS: ' + checks.length + ' isolated Wrangler/SQLite Worker runtime assertions');
   } finally {
-    if (child) {
-      // Wrangler starts workerd below npx. Closing npx alone can leave pipes
-      // open and keep a completed CI build running indefinitely.
-      const terminate = signal => {
-        try {
-          if (process.platform !== 'win32' && child.pid) process.kill(-child.pid, signal);
-          else if (child.exitCode === null) child.kill(signal);
-        } catch {}
-      };
-      terminate('SIGTERM');
-      await Promise.race([
-        new Promise(resolve => child.once('close', resolve)),
-        sleep(2000)
-      ]);
-      if (child.exitCode === null) terminate('SIGKILL');
-      child.stdout?.destroy();
-      child.stderr?.destroy();
-    }
+    await stopWorker();
     await rm(VARS_PATH, { force: true });
     await rm(stateDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
   }
