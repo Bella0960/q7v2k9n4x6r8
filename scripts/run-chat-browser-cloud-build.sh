@@ -14,8 +14,19 @@ LIB_DIR="$(mktemp -d -t maomao-chromium-libs-XXXXXXXX)"
 trap 'rm -rf "$LIB_DIR"' EXIT
 (
   cd "$LIB_DIR"
-  # Ubuntu Noble package names; apt-get download is unprivileged and never changes system state.
-  apt-get download \
+  # Cloudflare's base image has no APT package indexes. Fetch signed Ubuntu
+  # Noble metadata into a private, writable directory without sudo/root.
+  mkdir -p "$LIB_DIR/apt/lists/partial"
+  printf 'deb https://archive.ubuntu.com/ubuntu noble main universe\n' > "$LIB_DIR/ubuntu.sources.list"
+  APT_OPTIONS=(
+    -o "Dir::State::lists=$LIB_DIR/apt/lists"
+    -o "Dir::Etc::sourcelist=$LIB_DIR/ubuntu.sources.list"
+    -o "Dir::Etc::sourceparts=-"
+    -o "Debug::NoLocking=1"
+  )
+  apt-get "${APT_OPTIONS[@]}" update
+  # Download signed-repository packages and unpack in the disposable folder.
+  apt-get "${APT_OPTIONS[@]}" download \
     libatk1.0-0t64 \
     libatk-bridge2.0-0t64 \
     libxcomposite1 \
