@@ -51,8 +51,8 @@ test('social preview enables only friendship QA; production and private chat sta
   assert.equal(config.vars?.MAO_SOCIAL_CHAT_ENABLED, undefined);
   assert.equal(config.previews?.vars?.MAO_SOCIAL_ENABLED, 'true');
   assert.equal(config.previews?.vars?.MAO_SOCIAL_CHAT_ENABLED, 'false');
-  assert.equal(config.previews?.vars?.MAO_IDENTITY_MODE, 'delegated_preview',
-    'preview cannot issue a second founder 001 or require a new invitation');
+  assert.equal(config.previews?.vars?.MAO_IDENTITY_MODE, undefined,
+    'this isolated migration rehearsal exercises preexisting local identities without delegated login');
   assert.equal(config.previews?.vars?.MAO_IDENTITY_AUTHORITY_MODE, undefined,
     'wrong founder database must never be treated as the actual creator authority');
   assert.equal(config.vars?.MAO_IDENTITY_AUTHORITY_MODE, undefined,
