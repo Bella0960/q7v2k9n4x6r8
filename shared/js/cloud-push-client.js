@@ -135,6 +135,22 @@
     );
   }
 
+  function pushSupportMessage() {
+    var agent = String(navigator.userAgent || '');
+    var isiOS = /iPad|iPhone|iPod/i.test(agent) ||
+      (/Macintosh/i.test(agent) && typeof navigator.maxTouchPoints === 'number' && navigator.maxTouchPoints > 1);
+    if (isiOS) {
+      var standalone = Boolean(navigator.standalone);
+      try {
+        standalone = standalone || Boolean(global.matchMedia && global.matchMedia('(display-mode: standalone)').matches);
+      } catch (error) {}
+      if (!standalone) return 'iPhone/iPad 请用 Safari 打开并添加到主屏幕，再从桌面图标启动后开启通知';
+      return '此 iOS 环境不支持 Web Push，请确认系统版本及主屏幕应用权限';
+    }
+    if (/Android/i.test(agent)) return '当前安卓浏览器不支持 Web Push，请用最新版 Chrome 或 Edge 打开小手机';
+    return '当前浏览器不支持 Web Push，请使用支持系统通知的浏览器';
+  }
+
   function registerServiceWorker() {
     if (!('serviceWorker' in navigator)) return Promise.reject(new Error('当前环境不支持 Service Worker'));
     return navigator.serviceWorker.register(apiPath('/sw.js'), { updateViaCache: 'none' });
@@ -187,7 +203,7 @@
   // The permission prompt must start in the direct click gesture. Doing a
   // network request first loses transient user activation on some browsers.
   async function requestPushPermissionFromGesture() {
-    if (!isSupported()) throw new Error('当前浏览器不支持 Web Push');
+    if (!isSupported()) throw new Error(pushSupportMessage());
     if (Notification.permission === 'default') {
       await Notification.requestPermission();
     }
@@ -197,7 +213,7 @@
   }
 
   async function enablePush(userInitiated, enrollmentToken) {
-    if (!isSupported()) throw new Error('当前浏览器不支持 Web Push');
+    if (!isSupported()) throw new Error(pushSupportMessage());
     if (userInitiated) await requestPushPermissionFromGesture();
     if (Notification.permission !== 'granted') {
       throw new Error('通知权限未开启，请在系统或浏览器设置中允许通知');
@@ -1296,7 +1312,7 @@
       message: ''
     };
     if (!status.supported) {
-      status.message = '当前浏览器不支持 Web Push';
+      status.message = pushSupportMessage();
       return status;
     }
     try {
@@ -1842,7 +1858,7 @@
           if (pairCodeInput) pairCodeInput.value = '';
           setStatusText(connection.pushEnabled
             ? '设备已配对，推送订阅已连接'
-            : '设备已配对；当前浏览器不支持 Web Push');
+            : '设备已配对，但' + pushSupportMessage());
           await refreshSettings();
           populateLocalCharacters();
         } catch (error) {
@@ -1875,7 +1891,7 @@
     var supported = isSupported();
     if (!supported) {
       setToggle(false);
-      setStatusText('当前浏览器不支持 Web Push');
+      setStatusText(pushSupportMessage());
       // Web Push 不可用不应阻止设备配对状态与自主活动元数据读取。
       refreshSettings();
       return;
