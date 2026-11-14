@@ -2817,6 +2817,24 @@
         // Keep its raw bytes for explicit backup/recovery rather than "repairing" on read.
         var _chatHistoryUnreadable = false;
         function loadMessages() {
+            // The primary per-role key is authoritative. PhoneStorage's legacy getter
+            // returns [] for malformed JSON and may fall back to a v2 duplicate.
+            // Validate the primary bytes first, even if that duplicate is nonempty:
+            // otherwise a corrupt conversation can be hidden and overwritten.
+            try {
+                var primaryRaw = localStorage.getItem(storageKey);
+                if (primaryRaw !== null) {
+                    var primaryHistory = JSON.parse(primaryRaw);
+                    if (!Array.isArray(primaryHistory)) throw new Error('chat history is not an array');
+                    _chatHistoryUnreadable = false;
+                    return removeLegacyStickerCaptions(primaryHistory);
+                }
+            } catch (err) {
+                _chatHistoryUnreadable = true;
+                console.warn('读取主聊天记录失败，已暂停写入以保护原始数据:', err);
+                if (typeof showToast === 'function') showToast('聊天记录读取异常，已暂停保存以防覆盖原始数据');
+                return [];
+            }
             if (_storage) {
                 try {
                     var arr = _storage.getChatHistory(currentCharacter.id);
