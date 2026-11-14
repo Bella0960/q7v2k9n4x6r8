@@ -10,7 +10,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { openTestDb, setupTestStore } from './helpers/cloud-helpers.mjs';
 import { MIGRATIONS, splitSql } from '../worker/lib/migrations.js';
-import { createStore } from '../worker/lib/store.js';
 import { passwordDigest } from '../worker/lib/account-auth.js';
 import { randomToken, sha256Hex } from '../worker/lib/crypto.js';
 
@@ -45,11 +44,20 @@ test('real SQLite 001 legacy -> social 0017: founder credentials, permanent ID a
 
   const salt = randomToken(16);
   const passwordHash = await passwordDigest(founderPassword, salt);
-  const created = createStore(exec).createMaoSuperAdminAccountIfEmpty({
-    id: founderId, username: founderUsername, usernameKey: founderUsername,
-    passwordSalt: salt, passwordHash, qqEmail: null, now: timestamp
-  });
-  assert.equal(created, true);
+  // Reconstruct what the historical v0012–v0016 account bootstrap stored.
+  // The *current* CloudStore.createMaoSuperAdminAccountIfEmpty also touches
+  // tables added in 0020, and cannot be called before that migration exists.
+  // Otherwise this test does not actually rehearse a legacy database.
+  assert.equal(query("SELECT COUNT(*) AS n FROM mao_accounts WHERE role = 'super_admin'")[0].n, 0);
+  exec(
+    `INSERT INTO mao_accounts
+      (id, username, username_key, password_salt, password_hash, role,
+       status, qq_email, qq_email_verified_at, created_at, updated_at, authorized_at)
+     VALUES (?, ?, ?, ?, ?, 'super_admin', 'active', NULL, NULL, ?, ?, ?)`,
+    founderId, founderUsername, founderUsername, salt, passwordHash,
+    timestamp, timestamp, timestamp
+  );
+  assert.equal(query("SELECT COUNT(*) AS n FROM mao_accounts WHERE role = 'super_admin'")[0].n, 1);
   // Two more synthetic accounts prove this is an upgrade, not a reset.
   for (const [id, username] of [
     ['MAO-ALICE0000001', 'AliceLegacy'],
