@@ -131,12 +131,29 @@
     // 快照：{ key: 原始字符串值 }
     // @param {Boolean} dropCaches   为 true 时跳过临时缓存（EXCLUDE_KEYS）
     // @param {Boolean} dropSecrets  为 true 时跳过敏感凭据（SECRET_KEYS）
+    // Never export login sessions, account passwords or identity tokens,
+    // even if the optional API-key export checkbox is enabled.
+    function neverBackupKey(key) {
+        return /^(access_token|refresh_token|session_token|auth_token|password|api_key|private_key)$/i.test(key) ||
+            /^(mao|maomao)[_-].*(?:auth[_-]?token|session[_-]?token|refresh[_-]?token|password|secret|private[_-]?key)$/i.test(key);
+    }
+    function backupRegistry() {
+        return (typeof window !== 'undefined' && window.MAOMAOBackupRegistry) || null;
+    }
+    function backupTargets(scope) {
+        var registry = backupRegistry();
+        if (!registry) return scope ? [] : IDB_TARGETS.slice();
+        return scope ? registry.databasesFor(scope, IDB_TARGETS)
+            : registry.allDatabases(IDB_TARGETS);
+    }
+
     function snapshot(dropCaches, dropSecrets) {
         var out = {};
         var keys = [];
         try { keys = Object.keys(localStorage); } catch (e) {}
         keys.forEach(function (k) {
             if (dropCaches && EXCLUDE_KEYS.indexOf(k) !== -1) return;
+            if (typeof neverBackupKey === 'function' && neverBackupKey(k)) return;
             if (dropSecrets && SECRET_KEYS.indexOf(k) !== -1) return;
             try { out[k] = localStorage.getItem(k); } catch (e) {}
         });
@@ -235,10 +252,15 @@
         return '{' + dbParts.join(',') + '}';
     }
 
-    async function doExport() {
+    async function doExport(sectionId) {
         try {
+            var registry = typeof backupRegistry === 'function' ? backupRegistry() : null;
+            var scope = typeof sectionId === 'string' && registry && registry.get(sectionId) ? sectionId : '';
+            if (typeof sectionId === 'string' && sectionId && !scope) {
+                toast('该备份模块尚未注册，请更新应用'); return;
+            }
             // 默认剥掉密钥；只有用户显式勾选 + confirm 二次确认才打包
-            var withSecrets = includeSecretsEnabled();
+            var withSecrets = !scope && includeSecretsEnabled();
             if (withSecrets) {
                 var goOn = confirm('本次导出将包含明文 API Key。\n\n' +
                     '任何拿到这个文件的人都能直接使用你的 API 额度。\n' +
@@ -246,6 +268,7 @@
                 if (!goOn) return;
             }
             var snap = snapshot(true, !withSecrets);
+            if (scope) snap = registry.selectSnapshot(scope, snap);
 
             // 顺序 dump 所有 IndexedDB；每个库失败都 catch 成 null，不阻断整体导出
             var dbData = {};     // <dbName>: { data: { store: records[] }, skipped: [...] }
@@ -255,8 +278,9 @@
             var dbTotal = 0;
             var hasAudioMeta = false;
 
-            for (var i = 0; i < IDB_TARGETS.length; i++) {
-                var tgt = IDB_TARGETS[i];
+            var exportTargets = typeof backupTargets === 'function' ? backupTargets(scope) : IDB_TARGETS;
+            for (var i = 0; i < exportTargets.length; i++) {
+                var tgt = exportTargets[i];
                 var part = await dumpDatabase(tgt.db, tgt.version, tgt.stores);
                 if (part === null) {
                     dbWarnings.push(tgt.db + '（读取失败）');
@@ -325,7 +349,11 @@
                     schema: BACKUP_SCHEMA,
                     exportedAt: new Date().toISOString(),
                     count: Object.keys(snap).length,
-                    indexedDB: dbOverview
+                    indexedDB: dbOverview,
+                    ...(scope ? { scope: scope, moduleLabel: registry.get(scope).label,
+                        sharedMedia: exportTargets.some(function(t) {
+                            return t.db === 'maomao-assets' || t.db === 'maomao-media-store';
+                        }) } : {})
                 },
                 data: snap
             };
@@ -339,6 +367,7 @@
             function p2(n) { return n < 10 ? '0' + n : '' + n; }
             var name = 'phone-app-backup-' + d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate())
                 + '-' + p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds())
+                + (scope ? '-' + scope : '')
                 + (withSecrets ? '-with-secrets' : '') + '.json';
             var blob = new Blob([bodyStr], { type: 'application/json' });
             var url = URL.createObjectURL(blob);
@@ -355,6 +384,7 @@
             if (Object.keys(snap).length) parts.push('localStorage ' + Object.keys(snap).length + ' 项');
             if (dbTotal) parts.push('IndexedDB ' + dbTotal + ' 项');
             var msg = parts.join('、');
+            if (scope) msg += '（' + registry.get(scope).label + '分类备份）';
             if (withSecrets) msg += '，含 API 密钥';
             if (dbWarnings.length) msg += '（' + dbWarnings.length + ' 个 IndexedDB 库读取失败已跳过）';
             if (hasAudioMeta) msg += '（本地音频元数据已包含，音频文件本身未打包）';
