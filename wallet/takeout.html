@@ -1245,6 +1245,11 @@
         toast('钱包保护模块尚未加载，请刷新页面后重试');
         return;
       }
+      if (typeof ledger.supportsCrossTabLock !== 'function' ||
+          !ledger.supportsCrossTabLock()) {
+        toast('当前浏览器不支持跨页面钱包锁，外卖结算已暂停，未扣款');
+        return;
+      }
       await ledger.runExclusive(function () {
         
             var items = cartItems();
