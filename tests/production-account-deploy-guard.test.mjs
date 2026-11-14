@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { auditProductionAccountReadiness, selectActiveDeploymentVersionId } from '../scripts/verify-production-account-readiness.mjs';
+import { auditProductionAccountReadiness, auditOfficialAutoDeployTrigger, selectActiveDeploymentVersionId } from '../scripts/verify-production-account-readiness.mjs';
 
 const example = () => ({
   production: {
@@ -205,6 +205,7 @@ test('missing, empty, partial, or split traffic deployments block founder releas
 test('official app gateway qualifies ONLY when its deployed code delegates the whole origin to mao', () => {
   const s = example();
   s.domains[0].service = 'curly-dream-324c';
+  s.autoDeployTriggers = [{branch_includes:['main'],deploy_command:'npx wrangler deploy --config wrangler.app.cutover.jsonc --keep-vars'}];
   s.appGateway = {
     main_module: 'worker-app-cutover.js',
     bindings: [
@@ -220,6 +221,7 @@ test('official app gateway qualifies ONLY when its deployed code delegates the w
 test('static Worker, inactive flag, QA backend and untrusted scripts cannot bypass release gate', () => {
   const s = example();
   s.domains[0].service = 'curly-dream-324c';
+  s.autoDeployTriggers = [{branch_includes:['main'],deploy_command:'npx wrangler deploy --config wrangler.app.cutover.jsonc --keep-vars'}];
   s.appGateway = {
     main_module: 'worker-app-cutover.js',
     bindings: [
@@ -246,4 +248,18 @@ test('static Worker, inactive flag, QA backend and untrusted scripts cannot bypa
   }
   assert.ok(auditProductionAccountReadiness({ ...s, appGateway: null })
     .includes('PRODUCTION_GATEWAY_NOT_VERIFIED'));
+});
+
+test('official gateway release is blocked if Cloudflare still automatically deploys the old static app', () => {
+  const correct=[{branch_includes:['main'], deploy_command:'npx wrangler deploy --config wrangler.app.cutover.jsonc --keep-vars'}];
+  assert.deepEqual(auditOfficialAutoDeployTrigger(correct),[]);
+  for (const bad of [
+    null,[],[...correct,...correct],
+    [...correct,{branch_includes:['*'],deploy_command:'npx wrangler deploy --config wrangler.app.jsonc --keep-vars'}],
+    [{branch_includes:['main'],deploy_command:'npx wrangler deploy --config wrangler.app.jsonc --keep-vars'}],
+    [{branch_includes:['main'],deploy_command:'echo npx wrangler deploy --config wrangler.app.cutover.jsonc --keep-vars'}],
+    [{branch_includes:['integration/release-features-20261114'],deploy_command:correct[0].deploy_command}]
+  ]) {
+    assert.ok(auditOfficialAutoDeployTrigger(bad).length > 0);
+  }
 });
