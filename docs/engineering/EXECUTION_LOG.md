@@ -171,3 +171,11 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - Ran the project's actual `auditProductionAccountReadiness` with those read-only observations for configured release origin app.mao520.com. Result: `releaseReady=false`; failures `PRODUCTION_DOMAIN_TARGET_MISMATCH` and `LIVE_ACCOUNT_STATUS_NOT_200`. app.mao520.com still maps to ASSETS-only curly-dream-324c and account bootstrap status/push config are both 404. mao520.com is a separate live mao-auth-preview account service with working status/config; it is not evidence of same-origin readiness on app.mao520.com.
 - 001 account/invitation/audit management remains centrally unavailable. Real founder/browser data continuity and recoverable live backup/restore are not verified by this task; iPhone hardware push remains pending. Prior Android notification acceptance does not resolve these gaps.
 - No formal merge, production deployment, domain/account/data mutation or recovery attempted. Existing working QA retained. Detailed evidence and next release prerequisites appended to QA_ACCOUNT_PUSH_ACCEPTANCE_20261114.md; raw safe read-only result in `/workspace/maomao-acceptance/production-readiness-result.json`.
+
+## GOV-004 — 2026-11-15 app.mao520.com 静态 Worker 切换候选
+
+- **准确原因（Cloudflare 只读）**：`app.mao520.com → curly-dream-324c`，目标仅有 `ASSETS` 绑定，源文件 `worker-app.js` 只透传静态资源，无法实现 `/api/accounts/*` / `/api/push/*`。
+- **实际提交**：专用 `GOV-004/app-domain-safe-cutover-20261115` 分支，PR #292 基于 #285 候选头。新增默认关闭的 `worker-app-cutover.js` 与 `wrangler.app.cutover.jsonc`，正式 Worker 名保持 `curly-dream-324c`，绑定已经存在的 `mao` 后端，不新增用户数据库、会话或存储迁移，保留现有静态发布配置和回退通道。
+- **专项测试**：Node 22 使用本地候选源镜像执行 5/5 通过，入口语法检查通过；新测试已加入 release gate。完整仓库 build / release gate、Cloudflare Service Binding 真正部署验收和两端真机 **NOT VERIFIED**。
+- **部署边界**：本次没有调用正式部署/域名写接口，生产 Worker、域名、数据库、密钥均未改。候选开关严格 `false`；不能因代码已提交就宣称 API 404 线上已消失。
+- **最大阻断**：目标生产 `mao` 权威管理员数据库与永久创始账号 `MAO-OXHBDBWCOIHPBBYN` 的连续性未验证；`mao520.com` 旧用户、原密码、管理员管理权限、可恢复数据库备份、Android/iPhone 与回滚均需通过，禁止将 QA 库或其他 ID 顶替。具体见 `docs/engineering/APP_DOMAIN_CUTOVER_20261115.md`。
