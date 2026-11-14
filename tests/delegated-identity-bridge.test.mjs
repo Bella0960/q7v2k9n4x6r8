@@ -22,7 +22,7 @@ const previewOpts = {
   MAO_IDENTITY_BRIDGE_SECRET: secret
 };
 
-async function makePair({ existingWorker = false } = {}) {
+async function makePair({ existingWorker = false, canonicalAdminId = null } = {}) {
   const issuerDB = openTestDb();
   const issuer = setupTestStore(issuerDB, existingWorker
     ? { ...issuerOpts, MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: 'test-only-initialized-founder-secret-2026-01-01' }
@@ -47,6 +47,10 @@ async function makePair({ existingWorker = false } = {}) {
   const preview = setupTestStore(previewDB, {
     ...previewOpts,
     ...(existingWorker ? { MAO_IDENTITY_AUTHORITY_MODE: 'existing_worker' } : {}),
+    ...(canonicalAdminId ? {
+      MAO_IDENTITY_CANONICAL_ADMIN_REQUIRED: 'true',
+      MAO_EXPECTED_FOUNDER_ID: canonicalAdminId
+    } : {}),
     MAO_IDENTITY_AUTHORITY: authorityBinding
   });
   const close = () => { issuerDB.db.close(); previewDB.db.close(); };
@@ -395,11 +399,9 @@ test('conflicting preview founder revokes the authority session issued by a refu
 
 
 test('canonical admin lock rejects any other existing founder without creating an alternative 001',async t=>{
-  const pair=await makePair({existingWorker:true});t.after(pair.close);
-  const {preview,issuer}=pair;
   // The authority's existing fixture founder is deliberately NOT the approved ID.
-  preview.env.MAO_IDENTITY_CANONICAL_ADMIN_REQUIRED='true';
-  preview.env.MAO_EXPECTED_FOUNDER_ID='MAO-OXHBDBWCOIHPBBYN';
+  const pair=await makePair({existingWorker:true,canonicalAdminId:'MAO-OXHBDBWCOIHPBBYN'});t.after(pair.close);
+  const {preview,issuer}=pair;
   const result=await preview.asJson('/api/accounts/login',{
     method:'POST',body:{identifier:'CentralOwner',password:founderPass}
   });
