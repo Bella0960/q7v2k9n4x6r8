@@ -1912,10 +1912,10 @@ test('Messages chat-list theme is isolated, cache-busted, grayscale and hides in
   const listThemeScript = read('shared/js/chat-list-theme.js');
 
   assert.ok(chatHome.includes('chat-list-editorial-theme.css?v=20261104v2'));
-  assert.ok(chatHome.includes('chat-list-theme.js?v=20261104v2'));
+  assert.ok(chatHome.includes('chat-list-theme.js?v=20261112at1'));
   assert.ok(pwaCacheAtLeast(237));
   assert.ok(serviceWorker.includes('./shared/css/chat-list-editorial-theme.css?v=20261104v2'));
-  assert.ok(serviceWorker.includes('./shared/js/chat-list-theme.js?v=20261104v2'));
+  assert.ok(serviceWorker.includes('./shared/js/chat-list-theme.js?v=20261112at1'));
 
   for (const value of ['#F7F7F9', '#F0F0F3', '#FFFFFF', '#333333', '#777777', '#999999']) {
     assert.ok(listThemeCss.toUpperCase().includes(value), 'missing neutral token: ' + value);
