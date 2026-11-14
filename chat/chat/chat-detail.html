@@ -7282,7 +7282,8 @@
                             if (typeof showToast === 'function') showToast('AI 回复尚未保存。上方文字暂留在当前页面，请先复制保留，再检查存储空间。');
                         } else {
                             // Only after a real response has been saved: mark notes
-                            // offered to the model, without inventing chat messages.
+                            // offered to the model. This is NOT a fictional "read receipt";
+                            // no chat message or read receipt is fabricated.
                             if (!isGroupChat && (inspectPhoneEventIds.length || inspectPhoneFocusId) &&
                                 window.InspectInteractionBridge &&
                                 typeof window.InspectInteractionBridge.markOffered === 'function') {
