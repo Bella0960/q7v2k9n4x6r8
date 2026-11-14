@@ -4842,6 +4842,11 @@
                 if (typeof showToast === 'function') showToast('钱包保护模块未加载，亲属卡变更已暂停，请刷新页面重试');
                 return false;
             }
+            if (typeof ledger.supportsCrossTabLock !== 'function' ||
+                !ledger.supportsCrossTabLock()) {
+                if (typeof showToast === 'function') showToast('当前浏览器不支持跨页面钱包锁，亲属卡变更已暂停，未修改数据');
+                return false;
+            }
             var roleId = String(aliasRoleId || currentRoleId || (currentCharacter && currentCharacter.id) || '');
             try {
                 return await ledger.runExclusive(function () {
@@ -4874,6 +4879,11 @@
             var ledger = window.MaoMaoWalletLedger;
             if (!ledger || typeof ledger.runExclusive !== 'function') {
                 if (typeof showToast === 'function') showToast('钱包保护模块未加载，亲属卡发放已暂停，请刷新页面重试');
+                return false;
+            }
+            if (typeof ledger.supportsCrossTabLock !== 'function' ||
+                !ledger.supportsCrossTabLock()) {
+                if (typeof showToast === 'function') showToast('当前浏览器不支持跨页面钱包锁，亲属卡发放已暂停，未修改数据');
                 return false;
             }
             var roleId = String(aliasRoleId || currentRoleId || (currentCharacter && currentCharacter.id) || '');
@@ -4969,6 +4979,11 @@
             var ledger = window.MaoMaoWalletLedger;
             if (!ledger || typeof ledger.runExclusive !== 'function') {
                 if (typeof showToast === 'function') showToast('钱包保护模块未加载，亲属卡操作已暂停，请刷新页面重试');
+                return;
+            }
+            if (typeof ledger.supportsCrossTabLock !== 'function' ||
+                !ledger.supportsCrossTabLock()) {
+                if (typeof showToast === 'function') showToast('当前浏览器不支持跨页面钱包锁，亲属卡操作已暂停，未修改数据');
                 return;
             }
             pendingRoleFamilyCardActions.add(actionKey);
