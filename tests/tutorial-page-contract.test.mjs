@@ -119,7 +119,7 @@ test('2026-11-14 QA guide is inside the real desktop app and gates unverified se
   assert.match(guideScript, /health\.vapidConfigured === true/);
   assert.match(guideScript, /account\.identityAuthorityConnected === true/);
   assert.match(guideScript, /checkQaReadiness\(\)/);
-  assert.match(guideScript, /不能把旧预览的 001 登录当成当前成功/);
+  assert.match(guideScript, /不要把旧预览的 001 登录当成当前成功/);
 });
 
 test('all tutorial guide deep links resolve to real HTML pages', () => {
