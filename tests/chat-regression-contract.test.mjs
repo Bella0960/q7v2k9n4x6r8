@@ -5141,3 +5141,67 @@ test('无跨标签 Web Locks 时发送红包和修改亲密付均不写入', asy
   assert.equal(values.get('close_pay'), original);
   assert.match(settings.mutationErrorMessage(result.reason), /不支持跨页面钱包锁/);
 });
+
+
+test('商店外卖与钱包余额操作缺少 Web Locks 时在交易前失败关闭', async () => {
+  for (const [name, page, busyFlag] of [
+    ['shop', shopPage, 'shopPaymentInProgress'],
+    ['takeout', takeoutPage, 'takeoutPaymentInProgress']
+  ]) {
+    const start = page.indexOf('  async function doPay()');
+    assert.ok(start >= 0);
+    const match = /^  async function doPay\(\) \{[\s\S]*?\n  \}/.exec(page.slice(start));
+    assert.ok(match, name + ' payment handler must be extractable');
+    let attemptedLocks = 0;
+    const toasts = [];
+    const sandbox = {
+      window: {
+        MaoMaoWalletLedger: {
+          runExclusive: () => { attemptedLocks++; throw new Error('unsafe lock fallback'); },
+          supportsCrossTabLock: () => false
+        }
+      },
+      console: { warn: () => {} },
+      showToast: text => toasts.push(text),
+      toast: text => toasts.push(text)
+    };
+    runInNewContext('var ' + busyFlag + ' = false;\n' + match[0] + '\n' +
+      'globalThis.triggerPayment = doPay;', sandbox);
+    await sandbox.triggerPayment();
+    assert.equal(attemptedLocks, 0, name + ' must not enter any checkout writer');
+    assert.match(toasts.at(-1), /不支持跨页面钱包锁.*未扣款/,
+      name + ' must explain that no balance has been deducted');
+  }
+
+  const start = walletPage.indexOf('  var walletAmountMutationInProgress = false;');
+  assert.ok(start >= 0);
+  const match = /^  var walletAmountMutationInProgress = false;[\s\S]*?\n  \}\);/.exec(walletPage.slice(start));
+  assert.ok(match, 'wallet amount handler must be extractable');
+  let handler;
+  let attemptedLocks = 0;
+  const button = {
+    disabled: false,
+    addEventListener: (_type, callback) => { handler = callback; }
+  };
+  const amountError = { textContent: '' };
+  const sandbox = {
+    window: {
+      MaoMaoWalletLedger: {
+        supportsCrossTabLock: () => false,
+        getOrCreatePendingCheckout: () => { throw new Error('unexpected checkout'); },
+        runExclusive: () => { attemptedLocks++; throw new Error('unsafe lock fallback'); }
+      }
+    },
+    amountConfirm: button,
+    amountInput: { value: '5.00' },
+    amountMode: 'charge',
+    amountError,
+    console: { warn: () => {} }
+  };
+  runInNewContext(match[0], sandbox);
+  assert.equal(typeof handler, 'function');
+  await handler();
+  assert.equal(attemptedLocks, 0, 'wallet top-up or withdrawal must not enter a writer');
+  assert.equal(button.disabled, false, 'blocked wallet submit should restore the button');
+  assert.match(amountError.textContent, /不支持跨页面钱包锁.*未修改余额/);
+});
