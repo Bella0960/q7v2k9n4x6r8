@@ -4113,7 +4113,8 @@ test('用户发出的红包/转账在钱包扣款后聊天保存失败时可恢�
   const sandbox = {
     window: {
       MaoMaoWalletLedger: {
-        runExclusive: (task) => Promise.resolve().then(task)
+        runExclusive: (task) => Promise.resolve().then(task),
+        supportsCrossTabLock: () => true
       }
     },
     payAmountInput: { value: '12.50' },
@@ -4165,7 +4166,7 @@ test('用户发出的红包/转账在钱包扣款后聊天保存失败时可恢�
 
 test('用户红包/转账发送入口也使用共享钱包锁并刷新 chat-extras 脚本', () => {
   assert.match(detail, /wallet-ledger\.js\?v=20261110v10/);
-  assert.match(detail, /chat-extras\.js\?t=20261112wallet3/);
+  assert.match(detail, /chat-extras\.js\?t=20261114wallet-lock4/);
   assert.match(chatExtrasSource, /ledger\.runExclusive\(function \(\)/);
   assert.match(chatExtrasSource, /paymentId: paymentId/);
   assert.match(chatExtrasSource, /pendingChatMessage: specialMsg/);
@@ -5086,4 +5087,57 @@ test('售后申请在缺少跨标签 Web Locks 时拒绝修改订单与财务流
     assert.equal(records.get('shop_orders'), originalOrders);
     assert.equal(records.get('finance_records'), originalFinance);
   }
+});
+
+
+test('无跨标签 Web Locks 时发送红包和修改亲密付均不写入', async () => {
+  const start = chatExtrasSource.indexOf('  var submitPayInProgress = false;');
+  const end = chatExtrasSource.indexOf("  if (payConfirmBtn) payConfirmBtn.addEventListener('click', submitPayMessage);", start);
+  assert.ok(start >= 0 && end > start);
+  const effects = { reads: 0, wallet: 0, chat: 0, lock: 0, ai: 0, toasts: [] };
+  const sandbox = {
+    window: { MaoMaoWalletLedger: {
+      runExclusive: () => { effects.lock++; return Promise.resolve(); },
+      supportsCrossTabLock: () => false
+    } },
+    payAmountInput: { value: '12.50' },
+    payMessageInput: { value: '测试' }, payConfirmBtn: { disabled: false },
+    PAY_DEFAULT_MESSAGE: '', payMode: 'redpacket',
+    currentCharacter: { id: 'role-1' },
+    getWorkData: () => { effects.reads++; return { balance: 100, history: [] }; },
+    saveWorkData: () => { effects.wallet++; return true; },
+    loadMessages: () => { effects.reads++; return []; },
+    saveMessages: () => { effects.chat++; return true; },
+    sendSilentInstruction: () => { effects.ai++; },
+    showToast: text => effects.toasts.push(text)
+  };
+  runInNewContext(chatExtrasSource.slice(start, end), sandbox);
+  await sandbox.submitPayMessage();
+  assert.deepEqual([effects.reads, effects.wallet, effects.chat, effects.lock, effects.ai], [0,0,0,0,0]);
+  assert.equal(sandbox.payConfirmBtn.disabled, false);
+  assert.match(effects.toasts.at(-1), /不支持跨页面钱包锁.*未扣款/);
+
+  const original = JSON.stringify({
+    enabled: true, roleId: 'role-1', roleName: '角色',
+    limit: 500, used: 0, history: []
+  });
+  const values = new Map([['close_pay', original]]);
+  let writes = 0;
+  const localStorage = {
+    getItem: key => values.has(key) ? values.get(key) : null,
+    setItem: (key, value) => { writes++; values.set(key, String(value)); }
+  };
+  const window = { navigator: {}, localStorage };
+  runInNewContext(walletLedgerSource, { window });
+  const pageStart = closePayPage.indexOf("var KEY = 'close_pay';");
+  const pageEnd = closePayPage.indexOf('function getCharacters()', pageStart);
+  assert.ok(pageStart >= 0 && pageEnd > pageStart);
+  const settings = { window, localStorage, console: { warn: () => {} }, toast: () => {} };
+  runInNewContext(closePayPage.slice(pageStart, pageEnd), settings);
+  const result = await settings.mutateData(data => { data.limit = 1; return true; });
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'cross-tab-lock-unavailable');
+  assert.equal(writes, 0);
+  assert.equal(values.get('close_pay'), original);
+  assert.match(settings.mutationErrorMessage(result.reason), /不支持跨页面钱包锁/);
 });
