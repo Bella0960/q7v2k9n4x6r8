@@ -67,10 +67,12 @@ test('QA founder alone must not authorize production before root 001 exists',()=
  assert.ok(auditCanonicalRootReadiness(x).blockers.includes('FOUNDER_001_NOT_YET_AUTHORITATIVE'));
 });
 test('existing users, verifiers and session integrity must all survive',()=>{
- const x=fixtures();x.rootCounts.members=0;x.rootCounts.accounts=1;x.rootCounts.verifiers=0;x.rootCounts.orphanSessions=1;
+ const x=fixtures();x.rootCounts.members=0;x.rootCounts.accounts=1;x.rootCounts.verifiers=1;x.rootCounts.orphanSessions=1;
  const a=auditCanonicalRootReadiness(x);
- for(const code of ['ROOT_ACCOUNT_INVENTORY_UNVERIFIED','EXISTING_LIVE_MEMBER_MISSING','LIVE_SESSION_INTEGRITY_FAILED'])
+ for(const code of ['EXISTING_LIVE_MEMBER_MISSING','LIVE_SESSION_INTEGRITY_FAILED'])
   assert.ok(a.blockers.includes(code),code);
+ const y=fixtures();y.rootCounts.verifiers=0;
+ assert.ok(auditCanonicalRootReadiness(y).blockers.includes('ROOT_ACCOUNT_INVENTORY_UNVERIFIED'));
 });
 test('missing PITR success and independent restore must always block release',()=>{
  const x=fixtures();x.backupReceipt={ok:false,code:'invalid_acknowledgement'};
