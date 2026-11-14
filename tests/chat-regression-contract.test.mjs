@@ -4224,6 +4224,15 @@ test('钱包结算编号跨页面刷新复用，支付方式不能在未完成�
     'repeating cancellation after the pending row is gone is idempotent');
   assert.equal(secondLedger.cancelPendingCheckout(firstId), false,
     'a completed transaction must not be cancellable');
+  assert.equal(secondLedger.completePendingCheckout(firstId), true,
+    'repeating confirmation is idempotent only for a persisted completed receipt');
+  const ledgerBeforeMissing = storage.getItem('maomao_wallet_pending_checkouts_v1');
+  assert.equal(secondLedger.completePendingCheckout('missing-checkout-id'), false,
+    'a missing checkout receipt must not be reported as completed');
+  assert.equal(secondLedger.completePendingCheckout(cancelledId), false,
+    'a cancelled unfinished checkout cannot later be confirmed as successful');
+  assert.equal(storage.getItem('maomao_wallet_pending_checkouts_v1'), ledgerBeforeMissing,
+    'failed confirmation must not mutate other checkout receipts');
 
   const blockedStorage = {
     getItem: () => '',
