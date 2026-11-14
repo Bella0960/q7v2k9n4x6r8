@@ -54,7 +54,9 @@ function loadAccountPage(nativeLocal, accountId, role = 'user') {
       async delete() { return true; },
       async has() { return false; }
     },
-    navigator: {},
+    navigator: {
+      locks: { request: (_name, _options, callback) => Promise.resolve().then(callback) }
+    },
     addEventListener() {},
     stop() {}
   };
@@ -129,7 +131,7 @@ test('MAO wallet uses the injected account namespace: A, B and creator cannot sh
     'other accounts and creator keys must be hidden in localStorage enumeration');
 });
 
-test('MAO wallet scopes pending receipts, finance lines and damaged data to one account', () => {
+test('MAO wallet scopes pending receipts, finance lines and damaged data to one account', async () => {
   const nativeLocal = nativeStorage();
   const a = loadAccountPage(nativeLocal, 'MAO-AAAAAAAAAAAA');
   const b = loadAccountPage(nativeLocal, 'MAO-BBBBBBBBBBBB');
@@ -150,7 +152,8 @@ test('MAO wallet scopes pending receipts, finance lines and damaged data to one 
     amount: 12, type: 'expense', category: '购物', note: '测试物品',
     time: '11月12日', paymentLineIndex: 0
   }];
-  assert.equal(a.ledger.recordFinanceLines('a-purchase', lines, 'finance_records').ok, true);
+  assert.equal((await a.ledger.runExclusive(() =>
+    a.ledger.recordFinanceLines('a-purchase', lines, 'finance_records'))).ok, true);
   assert.equal(b.window.localStorage.getItem('finance_records'), null);
   assert.equal(creator.window.localStorage.getItem('finance_records'), null);
   assert.equal(JSON.parse(a.window.localStorage.getItem('finance_records'))[0].paymentId, 'a-purchase');
