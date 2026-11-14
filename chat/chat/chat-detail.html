@@ -3035,7 +3035,7 @@
                 // The cloud client checks the separate account consent before it
                 // sends any role profile or recent text; without consent it sends
                 // only the old content-free context revision event.
-                if (!isGroupChat && window.MaomaoCloud &&
+                if (typeof window !== 'undefined' && window.MaomaoCloud && !isGroupChat &&
                     typeof window.MaomaoCloud.noteCharacterContextChanged === 'function') {
                     try {
                         var cloudSnapshot = (function buildBoundedCloudContextSnapshot(history) {
@@ -3275,6 +3275,7 @@
         // 同一角色优先用 Web Locks 串行接收；旧浏览器用短期 localStorage 租约尽量减少碰撞。
         // localStorage 没有原子 CAS，因此降级租约不是 Web Locks 的等价强保证。
         (function startCloudOutboundSyncForActiveRole() {
+            if (typeof window === 'undefined') return;
             var cloud = window.MaomaoCloud;
             if (!cloud || isGroupChat || !currentRoleId ||
                 typeof cloud.receiveCharacterOutboundMessages !== 'function') return;
