@@ -3381,7 +3381,7 @@ test('聊天详情页的多气泡呈现队列只声明一次', () => {
 });
 
 test('亲属卡所有状态变更与商店外卖消费共用钱包锁', async () => {
-  assert.match(familyCardsPage, /wallet-ledger\.js\?v=20261110v10/);
+  assert.match(familyCardsPage, /wallet-ledger\.js\?v=20261114v12/);
   assert.match(familyCardsPage, /async function runAction\(action, id\)/);
   assert.match(familyCardsPage, /await ledger\.runExclusive\(function \(\)/);
   assert.match(familyCardsPage, /api\.update\(id, action\)/);
@@ -3812,7 +3812,7 @@ test('聊天、商店、外卖和钱包充值提现统一使用同一个钱包�
     ['takeout', takeoutPage],
     ['wallet', walletPage]
   ]) {
-    assert.match(source, /wallet-ledger\.js\?v=20261110v10/,
+    assert.match(source, /wallet-ledger\.js\?v=20261114v12/,
       name + ' must load the shared wallet ledger coordinator');
     assert.match(source, /MaoMaoWalletLedger\.runExclusive|ledger\.runExclusive/,
       name + ' must route balance mutations through the shared lock');
@@ -3831,7 +3831,7 @@ test('聊天、商店、外卖和钱包充值提现统一使用同一个钱包�
 
 
 test('亲密付额度、对象和开关设置也与商店及外卖结算共用钱包锁', () => {
-  assert.match(closePayPage, /wallet-ledger\.js\?v=20261110v10/);
+  assert.match(closePayPage, /wallet-ledger\.js\?v=20261114v12/);
   assert.match(closePayPage, /async function mutateData\(mutator\)/);
   assert.match(closePayPage, /ledger\.runExclusive\(function \(\)/);
   assert.match(closePayPage, /localStorage\.getItem\(KEY\) !== serialized/,
@@ -4162,7 +4162,7 @@ test('用户发出的红包/转账在钱包扣款后聊天保存失败时可恢�
 });
 
 test('用户红包/转账发送入口也使用共享钱包锁并刷新 chat-extras 脚本', () => {
-  assert.match(detail, /wallet-ledger\.js\?v=20261110v10/);
+  assert.match(detail, /wallet-ledger\.js\?v=20261114v12/);
   assert.match(detail, /chat-extras\.js\?t=20261114wallet-lock4/);
   assert.match(chatExtrasSource, /ledger\.runExclusive\(function \(\)/);
   assert.match(chatExtrasSource, /paymentId: paymentId/);
@@ -4684,7 +4684,7 @@ test('亲属卡页面只加载一个共享钱包锁实例，避免重复初始�
 });
 
 test('记账页面实际加载共享钱包锁模块，财务写入与订单结算使用同一模块', () => {
-  assert.match(financePage, /wallet-ledger\.js\?v=20261110v10/);
+  assert.match(financePage, /wallet-ledger\.js\?v=20261114v12/);
   assert.match(shopPage, /recordFinanceLines\(transactionId, financeRows, 'finance_records'\)/);
   assert.match(takeoutPage, /recordFinanceLines\(transactionId, financeRows, 'finance_records'\)/);
   assert.doesNotMatch(shopPage, /JSON\.parse\(localStorage\.getItem\('finance_records'\) \|\| '\[\]'\)/);
