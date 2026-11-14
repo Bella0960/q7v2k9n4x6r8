@@ -5371,3 +5371,66 @@ test('共享财务流水写入 API 不可绕过锁，持锁重试只保存一份
   assert.equal(JSON.parse(values.get('finance_records')).length, 1);
   assert.equal(ledger.hasActiveMutationLock(), false);
 });
+
+
+test('钱包所有底层写口必须持有 Web Lock：余额、回滚、待结算与恢复幂等', async () => {
+  const values = new Map();
+  let writes = 0;
+  const storage = {
+    getItem: key => values.has(key) ? values.get(key) : null,
+    setItem: (key, value) => { writes++; values.set(key, String(value)); },
+    removeItem: key => { writes++; values.delete(key); }
+  };
+  const window = { navigator: {}, localStorage: storage };
+  runInNewContext(walletLedgerSource, { window });
+  const ledger = window.MaoMaoWalletLedger;
+  const direct = ledger.readWalletForMutation('workData');
+  direct.balance = 900;
+  assert.equal(ledger.commitWalletSnapshot(direct).reason, 'mutation-lock-required');
+  assert.equal(ledger.restoreWalletSnapshot('old-write', null), false);
+  assert.equal(ledger.getOrCreatePendingCheckout('shop', 'cart-a', 'normal'), null);
+  assert.equal(writes, 0, 'missing Web Locks must not write any wallet or checkout store');
+  let executed = 0;
+  await assert.rejects(ledger.runExclusive(() => { executed++; }),
+    error => error.code === 'cross-tab-lock-unavailable');
+  assert.equal(executed, 0);
+
+  window.navigator.locks = {
+    request: (_name, options, task) => {
+      assert.equal(options.mode, 'exclusive');
+      return Promise.resolve().then(task);
+    }
+  };
+  assert.equal(ledger.commitWalletSnapshot(direct).reason, 'mutation-lock-required',
+    'Web Locks availability is not permission to write without holding one');
+  const id = await ledger.runExclusive(() =>
+    ledger.getOrCreatePendingCheckout('shop', 'cart-a', 'normal'));
+  assert.ok(id);
+  assert.equal(ledger.isPendingCheckout(id), true);
+  const next = ledger.readWalletForMutation('workData');
+  next.balance = 900;
+  next.history.push({ paymentId: id, type: 'expense', amount: 100 });
+  const committed = await ledger.runExclusive(() => ledger.commitWalletSnapshot(next));
+  assert.equal(committed.ok, true);
+  assert.equal(ledger.readWalletForMutation('workData').balance, 900);
+  assert.equal(await ledger.runExclusive(() =>
+    ledger.restoreWalletSnapshot('invalid-baseline', null)), false);
+  assert.equal(await ledger.runExclusive(() => ledger.completePendingCheckout(id)), true);
+  assert.equal(await ledger.runExclusive(() => ledger.completePendingCheckout(id)), true,
+    'repeated confirmation of a persisted receipt is idempotent');
+  assert.equal(ledger.isPendingCheckout(id), false);
+  assert.equal(ledger.readWalletForMutation('workData').balance, 900,
+    'repeated confirmation must not change the wallet balance');
+  assert.equal(await ledger.runExclusive(() =>
+    ledger.restoreWalletSnapshot(committed.raw, null)), true);
+  assert.equal(localStorage.getItem('workData'), null,
+    'conditional rollback can restore the original first-use wallet state');
+
+  const cancelledId = await ledger.runExclusive(() =>
+    ledger.getOrCreatePendingCheckout('takeout', 'cart-b', 'normal'));
+  assert.ok(cancelledId);
+  assert.equal(await ledger.runExclusive(() =>
+    ledger.cancelPendingCheckout(cancelledId)), true);
+  assert.equal(ledger.isPendingCheckout(cancelledId), false);
+  assert.equal(ledger.hasActiveMutationLock(), false, 'no active lease may leak');
+});
