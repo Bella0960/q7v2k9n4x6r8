@@ -97,6 +97,35 @@ async function getEnvelope(url, token) {
   return body;
 }
 
+// Cloudflare /scripts/:name/settings and /secrets represent the MOST RECENTLY
+// UPLOADED version, not necessarily the one receiving real traffic. A staged
+// checkpoint probe or incomplete candidate must never be treated as live.
+export function selectActiveDeploymentVersionId(data) {
+  const deployment = Array.isArray(data?.deployments) ? data.deployments[0] : null;
+  const versions = deployment?.versions;
+  if (!Array.isArray(versions) || versions.length !== 1 ||
+      versions[0]?.percentage !== 100 ||
+      !/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(versions[0]?.version_id || '')) {
+    throw new Error('Release blocked: no single fully deployed Worker version');
+  }
+  return versions[0].version_id;
+}
+
+async function getActiveWorkerVersion({ accountId, scriptName, token }) {
+  const base = 'https://api.cloudflare.com/client/v4/accounts/' + accountId;
+  const deployments = await getJson(base + '/workers/scripts/' + scriptName +
+    '/deployments?page=1&per_page=1', token);
+  const id = selectActiveDeploymentVersionId(deployments);
+  // The v2 version endpoint includes *version-specific* bindings and runtime
+  // compatibility flags. It does not reveal encrypted secret values.
+  const version = await getJson(base + '/workers/workers/' + scriptName +
+    '/versions/' + id, token);
+  if (version?.id !== id || !Array.isArray(version.bindings) || !version.main_module) {
+    throw new Error('Release blocked: active Worker version metadata unavailable');
+  }
+  return version;
+}
+
 async function verify() {
   const accountId = String(process.env.CLOUDFLARE_ACCOUNT_ID || '').trim();
   const token = String(process.env.CLOUDFLARE_API_TOKEN || '').trim();
@@ -104,15 +133,13 @@ async function verify() {
   if (!/^[a-f0-9]{32}$/.test(accountId) || !token || !/^https:\/\/[^/?#]+$/.test(origin)) {
     throw new Error('Release blocked: Cloudflare read-only credentials or explicit production origin are missing');
   }
-  const endpoint = 'https://api.cloudflare.com/client/v4/accounts/' + accountId
-    + '/workers/scripts/';
-  const [production, preview, secrets, domains, namespaces] = await Promise.all([
-    getJson(endpoint + PRODUCTION_SCRIPT + '/settings', token),
-    getJson(endpoint + PREVIEW_SCRIPT + '/settings', token),
-    getJson(endpoint + PRODUCTION_SCRIPT + '/secrets', token),
+  const [production, preview, domains, namespaces] = await Promise.all([
+    getActiveWorkerVersion({ accountId, scriptName: PRODUCTION_SCRIPT, token }),
+    getActiveWorkerVersion({ accountId, scriptName: PREVIEW_SCRIPT, token }),
     getJson('https://api.cloudflare.com/client/v4/accounts/' + accountId + '/workers/domains', token),
     listAllDurableObjectNamespaces({ accountId, token, requestJson: getEnvelope })
   ]);
+  const secrets = production.bindings.filter(item => item.type === 'secret_text');
   // No registration POST, login credentials, secret values or admin privileges.
   // The active existing production origin must ALREADY have server-authorized 001.
   const response = await fetch(origin + '/api/admin/bootstrap/status', {
