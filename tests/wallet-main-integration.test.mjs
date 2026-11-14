@@ -109,7 +109,32 @@ test('after-sales request is never duplicated and blocked when unsafe', async ()
 
 test('main-based wallet scripts are versioned for PWA refresh', () => {
   const sw = source('sw.js');
-  assert.match(sw, /phone-app-pwa-v206/);
+  assert.match(sw, /phone-app-pwa-v207/);
   assert.match(sw, /wallet-ledger\.js\?v=20261114v12/);
   assert.match(sw, /role_family_cards\.js\?v=20261114v4/);
+});
+
+
+test('latest main chat and commerce retain current features and share the wallet lock', () => {
+  const detail = source('chat/chat/chat-detail.html');
+  const extras = source('chat/chat/js/chat-extras.js');
+  const shop = source('wallet/shop.html');
+  const takeout = source('wallet/takeout.html');
+  assert.ok(detail.includes('wallet-ledger.js?v=20261114v12'));
+  assert.ok(detail.includes('role-gallery-image-autonomy.js'));
+  assert.ok(detail.includes('chat-image-vision.js'));
+  assert.ok(detail.includes('pendingPaymentOperations = new Set()'));
+  assert.ok(detail.includes('await applyRoleFamilyCardChanges('));
+  assert.ok(detail.includes('await insertRoleFamilyCardInvitations('));
+  assert.ok(extras.includes('ledger.runExclusive('));
+  assert.ok(!extras.includes('maomao-wallet-workData-v1'));
+  for (const page of [shop, takeout]) {
+    assert.ok(page.includes('getOrCreatePendingCheckout('));
+    assert.ok(page.includes('completePendingCheckout('));
+    assert.ok(page.includes('MaoMaoOrderAfterSales'));
+    assert.ok(page.includes('function appendChatHistoryMessage('));
+    assert.ok(page.includes('chatNoticeFailed'));
+  }
+  assert.ok(shop.includes('function sendGiftToRole('));
+  assert.ok(takeout.includes('转发失败：聊天记录没有保存成功'));
 });
