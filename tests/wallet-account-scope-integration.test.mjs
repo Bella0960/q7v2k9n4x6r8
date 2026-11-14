@@ -34,6 +34,9 @@ function loadAccountPage(nativeLocal, accountId, role = 'user') {
     hidden: false
   };
   const window = {
+    // The authenticated account-scope bootstrap requires these browser
+    // constructors on window, not merely on the VM's outer global.
+    Headers, URL,
     location: {
       origin: 'https://mao.test',
       href: 'https://mao.test/wallet/wallet.html',
