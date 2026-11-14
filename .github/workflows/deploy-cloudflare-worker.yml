@@ -1,25 +1,9 @@
 name: Deploy MAOMAO to Cloudflare Workers
 
+# Keep production deployment manual while preserving original account recovery.
+# The account continuity gate must pass before release; do not auto-publish
+# old static assets or cutover settings on a branch merge.
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - '.github/workflows/deploy-cloudflare-worker.yml'
-      - 'diary/**'
-      - '**/*.html'
-      - '**/*.js'
-      - '**/*.css'
-      - '**/*.json'
-      - 'assets/**'
-      - 'games/assets/**'
-      - 'shared/**'
-      - 'apps/**'
-      - 'vite.config.js'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'wrangler.jsonc'
-      - 'tests/production-worker-navigation.browser.mjs'
   workflow_dispatch:
 
 permissions:
