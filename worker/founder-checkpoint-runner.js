@@ -52,9 +52,17 @@ export async function runPrivateFounderCheckpoint({ env, now = Date.now }) {
     }));
     if (!response.ok) return { ok: false, code: 'checkpoint_failed' };
     const result = await response.json();
+    // The DO records its timestamp AFTER the request starts. Comparing the
+    // acknowledgement with the pre-fetch clock rejects a valid first write.
+    // Recheck the clock after the response; allow at most 2s of clock skew
+    // across Worker isolates, and reject records older than the 15m lease.
+    const receivedAt = now();
     if (result?.ok !== true || result?.recorded !== true ||
         !Number.isSafeInteger(result.recordedAt) ||
-        result.recordedAt <= 0 || result.recordedAt > time) {
+        !Number.isSafeInteger(receivedAt) ||
+        result.recordedAt <= 0 ||
+        result.recordedAt > receivedAt + 2000 ||
+        receivedAt - result.recordedAt > 15 * 60 * 1000) {
       return { ok: false, code: 'invalid_acknowledgement' };
     }
     return { ok: true, code: SUCCESS, recordedAt: result.recordedAt };
