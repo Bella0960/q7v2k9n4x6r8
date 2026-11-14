@@ -182,6 +182,34 @@
             </section>
             <input type="file" id="importFileInput" accept=".json,application/json" style="display:none;">
 
+            <!-- 单功能备份：在备份注册表中登记后自动出现在列表里 -->
+            <div class="group-title">MODULE BACKUP</div>
+            <section class="card">
+                <div style="padding:14px 16px 10px;">
+                    <label for="backupModuleSelect" style="display:block;font-size:12px;color:var(--ink,#111);margin-bottom:9px;">按模块备份</label>
+                    <select id="backupModuleSelect" aria-label="选择备份模块"
+                        style="width:100%;padding:10px 12px;background:var(--card-2,#f7f7f9);color:var(--ink,#111);border:1px solid #dedee2;border-radius:12px;font-size:13px;">
+                    </select>
+                    <p style="font-size:11px;line-height:1.7;color:var(--aux,#888);margin:10px 0 0;">聊天、主题、角色、书架等分别导出；共享图片会随对应模块保存。分类导入不清空其他模块。</p>
+                </div>
+                <div class="menu-row" id="rowExportModule" role="button" tabindex="0">
+                    <div class="menu-title"><span class="t-cn">导出所选模块</span><span class="t-en">Module backup</span></div>
+                    <div class="menu-arrow">›</div>
+                </div>
+                <div class="menu-row" id="rowImportModule" role="button" tabindex="0">
+                    <div class="menu-title"><span class="t-cn">恢复所选模块</span><span class="t-en">Module restore</span></div>
+                    <div class="menu-arrow">›</div>
+                </div>
+            </section>
+            <input type="file" id="importModuleFileInput" accept=".json,application/json" style="display:none;">
+
+            <div class="group-title">SECURE ACCOUNT</div>
+            <section class="card" style="padding:14px 16px;">
+                <div style="font-size:13px;font-weight:600;color:var(--ink,#111);">账号与管理员机密备份</div>
+                <p style="font-size:11px;line-height:1.85;color:var(--aux,#888);margin:8px 0 0;">非常非常机密，一定要妥善保存。管理员永久 ID、账号密码校验资料和云端会话由服务器独立保护，不随本机全部备份或分类备份导出。不要把含 API 密钥的备份分享给别人、上传公开仓库。</p>
+                <p style="font-size:11px;line-height:1.7;color:var(--aux,#888);margin:8px 0 0;">云端账号的可恢复备份尚需独立验收。本机导出成功，不代表云端账号已备份。</p>
+            </section>
+
             <div class="footnote">极简黑白灰 · Monochrome Minimal</div>
         </main>
 
@@ -342,6 +370,7 @@
         </div>
     </div>
     <script src="js/settings.js"></script>
+    <script src="js/backup-modules.js"></script>
     <script src="js/backup.js"></script>
     <script>
     // 设置页用户卡片 + 深色模式开关
