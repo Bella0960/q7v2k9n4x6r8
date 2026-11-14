@@ -391,9 +391,10 @@ test('封面：两套独立封面都存在时，编辑 myProfile.cover 不改变
 /* ---------- 名片：真实执行 chat-detail.html 的历史读写函数 ---------- */
 
 function loadHistoryFunctions(storageSlots) {
+  const localStorage = createLocalStorage();
   const sandbox = {
     console,
-    localStorage: createLocalStorage(),
+    localStorage,
     currentCharacter: { id: 'roleA' },
     _chatHistoryUnreadable: false,
     removeLegacyStickerCaptions: (list) => list,
@@ -407,7 +408,9 @@ function loadHistoryFunctions(storageSlots) {
         return Array.isArray(slot) ? slot.slice() : [];
       },
       saveChatHistory(contactId, list) {
-        storageSlots[contactId] = JSON.parse(JSON.stringify(list));
+        const copy = JSON.parse(JSON.stringify(list));
+        localStorage.setItem('chat_history_' + contactId, JSON.stringify(copy));
+        storageSlots[contactId] = copy;
         return true;
       }
     }
@@ -446,7 +449,8 @@ test('名片：卡片快照只写入当前会话历史，不在其他会话出�
   sandbox.currentCharacter = { id: 'roleB' };
   assert.deepEqual(sandbox.loadMessages(), []);
   assert.equal(JSON.stringify(slots.roleB || []).includes('卡片甲'), false);
-  assert.equal(sandbox.localStorage.getItem('chat_history_roleB'), null);
+  assert.deepEqual(JSON.parse(sandbox.localStorage.getItem('chat_history_roleB')), []);
+  assert.equal(JSON.stringify(JSON.parse(sandbox.localStorage.getItem('chat_history_roleB'))).includes('卡片甲'), false);
 });
 
 test('名片：刷新后仍只从所属会话读回，不与其他角色共享存储槽', () => {
