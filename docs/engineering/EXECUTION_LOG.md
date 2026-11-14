@@ -2,6 +2,13 @@
 
 This is the durable checkpoint for owner-assigned, multi-step work. Update it after meaningful milestones and before ending a session.
 
+## Cloud push release checkpoint — 2026-11-14
+
+- Merged #280 into #279, then #279 into the founder QA branch. Merge `6b95c045` has no file differences from the Android-verified `8e188711` deployment.
+- Android verified the encrypted lock-screen test and the first-contact role notification. The scheduled cloud model generated two messages at 03:49:05 Asia/Shanghai; both messages were acknowledged as persisted on the device at 03:49:33.
+- The original founder Preview remains on deployment `9a942283`, with its original database and Workers AI enabled. Cloudflare build `d4845f36` succeeded; 38 focused Node tests passed. GitHub's tutorial/chat/performance jobs show failures with no steps and a job log download returned BlobNotFound; the full suite is not verified.
+- Pending: iPhone Home Screen Web Push, subsequent idle-based role contact, and production cutover. Main is 25 commits ahead of the QA merge base and needs reconciliation. The live app hostname routes to `curly-dream-324c` while the release guard expects `mao`; production `mao` has only ASSETS, no account Durable Object binding or secrets, and the live founder status route returns HTTP 404. The preview database must not be reused as the production database.
+
 ## Current work package
 
 - **Owner request:** Identify remaining MAOMAO work, start with low-risk items, and adopt end-to-end execution so the owner does not need to repeatedly say “continue”.

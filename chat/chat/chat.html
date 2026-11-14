@@ -6,7 +6,7 @@
 <title>聊天 · 小手机</title>
 <script src="../../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../../shared/js/native-feel.js"></script>
-<script src="../../shared/js/chat-beauty.js?v=20261102v3"></script>
+<script src="../../shared/js/chat-beauty.js?v=20261112at1"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
 <style>
   * {
@@ -101,30 +101,54 @@
 
   /* 弹出菜单：白色背景，小巧精致 */
   .wechat-menu {
-    position: absolute;
-    background: #ffffff;
-    border-radius: 10px;
-    padding: 4px 0;
-    z-index: 100;
-    min-width: 110px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+    position: fixed;
+    background: #fff;
+    border: 1px solid rgba(17,17,17,.055);
+    border-radius: 15px;
+    padding: 6px;
+    z-index: 120;
+    width: 170px;
+    max-height: min(67vh, 440px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    box-shadow: 0 10px 36px rgba(0,0,0,.105);
   }
   .wechat-menu .menu-item {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 7px 12px;
-    color: #111;
+    gap: 11px;
+    width: 100%;
+    min-height: 41px;
+    border: none;
+    border-radius: 9px;
+    padding: 0 11px;
+    background: transparent;
+    color: #252525;
+    font: inherit;
     font-size: 12px;
+    font-weight: 400;
+    text-align: left;
     cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
   }
-  .wechat-menu .menu-item:hover {
-    background: #f5f5f5;
-  }
+  .wechat-menu .menu-item:hover,
+  .wechat-menu .menu-item:focus-visible { background: #f5f5f6; outline: none; }
+  .wechat-menu .menu-item:active { background: #eeeef0; }
   .wechat-menu .menu-icon {
-    font-size: 13px;
-    width: 16px;
-    text-align: center;
+    display: grid;
+    place-items: center;
+    width: 17px;
+    height: 17px;
+    flex: 0 0 17px;
+  }
+  .wechat-menu .menu-icon svg {
+    width: 17px;
+    height: 17px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.45;
+    stroke-linecap: round;
+    stroke-linejoin: round;
   }
 
   /* 只有顶部封面区域响应点击上传，透明卡片区域不抢交互 */
@@ -585,6 +609,19 @@
     height: 100%;
     object-fit: cover;
   }
+  /* Real chats use the original conversation-card rhythm, not a new tile. */
+  .chat-real-card .chat-avatar {
+    background: #E7E7E9;
+    color: #555;
+    font-size: 12px;
+    font-weight: 400;
+  }
+  .chat-real-card .chat-last-msg {
+    color: #808080;
+  }
+  .chat-real-card .chat-name {
+    font-weight: 600;
+  }
 
   /* 群聊头像：成员小网格 */
   .chat-avatar.group-avatar {
@@ -766,7 +803,16 @@
 <link rel="stylesheet" href="../../shared/css/silver-butterfly-theme.css?v=20261102v5">
 <link rel="stylesheet" href="../../shared/css/wechat-theme-refinements.css?v=20261105v2">
 <link rel="stylesheet" href="../../shared/css/chat-list-editorial-theme.css?v=20261104v2">
-<script src="../../shared/js/chat-list-theme.js?v=20261104v2"></script>
+<script src="../../shared/js/chat-list-theme.js?v=20261112at1"></script>
+<link rel="stylesheet" href="../../shared/css/atmosphere-theme.css?v=20261112v3">
+<link rel="stylesheet" href="../../shared/css/atmosphere-pages.css?v=20261112p3">
+<link rel="stylesheet" href="../../shared/css/atmosphere-editorial-home.css?v=20261112e1">
+<script src="../../shared/js/atmosphere-icons.js?v=20261112i1"></script>
+<script defer src="../../shared/js/atmosphere-theme.js?v=20261112v1"></script>
+<script defer src="../../shared/js/atmosphere-pages.js?v=20261112p4"></script>
+<script defer src="../../shared/js/atmosphere-editorial-home.js?v=20261112e1"></script>
+<script src="../../shared/js/chat-action-menu.js?v=20261113v1"></script>
+<script src="../../shared/js/social-chat-list.js?v=20261113v1"></script>
 </head>
 <body>
 
@@ -782,16 +828,8 @@
       <div class="cover-click-area" id="coverClickArea" aria-label="更换封面"></div>
 
       <!-- 右上角弹出菜单 -->
-      <div class="wechat-menu" id="wechatMenu" style="display:none;">
-        <div class="menu-item" id="menuBgToggle">
-          <span class="menu-icon">◐</span>
-          <span class="menu-text">切换背景</span>
-        </div>
-        <div class="menu-item" id="menuGroup">
-          <span class="menu-icon">＋</span>
-          <span class="menu-text">添加群聊</span>
-        </div>
-      </div>
+      <!-- The first-party action registry renders items here; more actions need no HTML edits. -->
+      <div class="wechat-menu" id="wechatMenu" role="menu" aria-label="聊天操作" style="display:none;"></div>
       <div class="wechat-home-header">
         <h1>微信</h1>
         <div class="wechat-home-actions">
@@ -845,7 +883,7 @@
             </div>
 
             <div class="music-right">
-              <button class="group-entry-btn" id="groupEntryBtn" type="button" aria-label="创建群聊">
+              <button class="group-entry-btn" id="groupEntryBtn" type="button" aria-label="更多操作：添加好友、建群与扫一扫">
                 <svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
               </button>
               <div class="sound-wave playing" id="soundWave">
@@ -1045,10 +1083,32 @@
 
     // ===== 右上角弹出菜单 + 背景模式切换 =====
     (function () {
-      var menuBtn = document.getElementById('wechatGroupEntryBtn');
       var menu = document.getElementById('wechatMenu');
       var coverBox = document.getElementById('coverBox');
-      if (!menuBtn || !menu) return;
+      var togglers = ['groupEntryBtn','wechatGroupEntryBtn','silverGroupEntryBtn']
+        .map(function (id) { return document.getElementById(id); }).filter(Boolean);
+      if (!menu || !togglers.length) return;
+
+      function closeMenu() {
+        menu.style.display = 'none';
+        togglers.forEach(function (button) { button.setAttribute('aria-expanded', 'false'); });
+      }
+      function toggleMenu(e) {
+        e.stopPropagation();
+        var btn = e.currentTarget;
+        if (menu.style.display !== 'none' && menu.style.display !== '') {
+          closeMenu();
+          return;
+        }
+        menu.style.display = 'block';
+        var bounds = document.querySelector('.phone-mockup').getBoundingClientRect();
+        var rect = btn.getBoundingClientRect();
+        var width = menu.offsetWidth;
+        var height = menu.offsetHeight;
+        menu.style.left = Math.max(bounds.left + 10, Math.min(rect.right - width, bounds.right - width - 10)) + 'px';
+        menu.style.top = Math.max(bounds.top + 8, Math.min(rect.bottom + 8, bounds.bottom - height - 10)) + 'px';
+        togglers.forEach(function (button) { button.setAttribute('aria-expanded', button === btn ? 'true' : 'false'); });
+      }
 
       // 读取保存的背景模式
       var saved = localStorage.getItem('chat_bg_mode') || 'gradient';
@@ -1062,34 +1122,37 @@
         }
       }
 
-      // 点击 + 号弹出菜单
-      menuBtn.addEventListener('click', function (e) {
-        e.stopPropagation();
-        menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+      // The heart on the music card and both theme-specific plus buttons
+      // share exactly one restrained menu, instead of adding another tile.
+      togglers.forEach(function (button) {
+        button.setAttribute('aria-haspopup', 'menu');
+        button.setAttribute('aria-expanded', 'false');
+        button.addEventListener('click', toggleMenu);
       });
+      document.addEventListener('click', closeMenu);
+      document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') closeMenu();
+      });
+      window.addEventListener('resize', closeMenu);
+      document.querySelector('.main-stage').addEventListener('scroll', closeMenu, { passive:true });
+      menu.addEventListener('click', function (event) { event.stopPropagation(); });
 
-      // 点外面关闭菜单
-      document.addEventListener('click', function () {
-        menu.style.display = 'none';
-      });
-      menu.addEventListener('click', function (e) {
-        e.stopPropagation();
-      });
-
-      // 菜单选项：切换背景
-      document.getElementById('menuBgToggle').addEventListener('click', function () {
-        var current = localStorage.getItem('chat_bg_mode') || 'gradient';
-        var next = current === 'gradient' ? 'transparent' : 'gradient';
-        localStorage.setItem('chat_bg_mode', next);
-        applyMode(next);
-        menu.style.display = 'none';
-      });
-
-      // 菜单选项：添加群聊
-      document.getElementById('menuGroup').addEventListener('click', function () {
-        menu.style.display = 'none';
-        document.getElementById('groupEntryBtn').click();
-      });
+      // One config-driven registry owns the menu structure, icons and actions.
+      // Future features register a new action, without modifying this page.
+      if (window.MAOMAOChatActions) {
+        window.MAOMAOChatActions.mount(menu, {
+          closeMenu: closeMenu,
+          toggleBackground: function () {
+            var current = localStorage.getItem('chat_bg_mode') || 'gradient';
+            var next = current === 'gradient' ? 'transparent' : 'gradient';
+            localStorage.setItem('chat_bg_mode', next);
+            applyMode(next);
+          }
+        });
+      } else {
+        console.error('[chat] Action menu registry did not load');
+        togglers.forEach(function (button) { button.disabled = true; });
+      }
     })();
 
     /* ================= 上传绑定 ================= */
@@ -1369,7 +1432,10 @@
         return cachedMeta(b.id,b.name||'群聊').time - cachedMeta(a.id,a.name||'群聊').time;
       });
 
-      if (roles.length === 0 && groups.length === 0) {
+      var realChats = window.MAOMAORealChatList
+        ? window.MAOMAORealChatList.getRows()
+        : [];
+      if (roles.length === 0 && groups.length === 0 && realChats.length === 0) {
         container.innerHTML = '<div class="empty-tip">暂无聊天消息</div>';
         return;
       }
@@ -1433,7 +1499,33 @@
           '</div>';
       }).join('');
 
-      container.innerHTML = groupsHTML + rolesHTML;
+      // The first entries are already-approved real conversations. They share
+      // the same slim card style and are never mixed into AI-role storage.
+      var realHTML = realChats.map(function (conversation) {
+        var name = String(conversation.displayName || conversation.id);
+        var hasMessages = conversation.lastMessageAt !== null;
+        return '' +
+          '<div class="chat-slim-card chat-real-card" data-real-peer="' + escapeHtml(conversation.id) + '">' +
+            '<div class="chat-avatar">' + escapeHtml(Array.from(name)[0] || '?') + '</div>' +
+            '<div class="chat-meta">' +
+              '<div class="chat-title-row">' +
+                '<span class="chat-name">' + escapeHtml(name) + '</span>' +
+                '<span class="chat-time">' + escapeHtml(formatConversationTime(conversation.lastMessageAt)) + '</span>' +
+              '</div>' +
+              '<div class="chat-last-msg">' + (hasMessages ? '真人 · 加密聊天' : '真人 · 开始聊天') + '</div>' +
+            '</div>' +
+          '</div>';
+      }).join('');
+
+      container.innerHTML = realHTML + groupsHTML + rolesHTML;
+      container.querySelectorAll('.chat-real-card').forEach(function (item) {
+        item.addEventListener('click', function () {
+          var peer = item.getAttribute('data-real-peer');
+          if (/^MAO-[A-Z0-9]{12,24}$/.test(peer || '')) {
+            window.location.href = '../contacts/real-chat.html?peer=' + encodeURIComponent(peer);
+          }
+        });
+      });
 
       /* 群聊点击：进入群聊聊天界面（复用 chat-detail 群聊模式） */
       container.querySelectorAll('.chat-group-card').forEach(function (item) {
@@ -1446,7 +1538,7 @@
       });
 
       /* 原有跳转逻辑：带 roleId 进入聊天详情页 */
-      container.querySelectorAll('.chat-slim-card:not(.chat-group-card)').forEach(function (item) {
+      container.querySelectorAll('.chat-slim-card:not(.chat-group-card):not(.chat-real-card)').forEach(function (item) {
         item.addEventListener('click', function () {
           var roleId = item.getAttribute('data-id');
           if (roleId) {
@@ -1460,10 +1552,21 @@
     renderProfile();
     applyMusicState(musicState);
     renderChatList();
-    
-    // 页面重新显示时（从设置页返回），重新渲染列表，置顶生效
+    if (window.MAOMAORealChatList) {
+      window.MAOMAORealChatList.subscribe(renderChatList);
+      window.MAOMAORealChatList.refresh();
+    }
+
+    // 进出聊天、切换账号、批准/屏蔽好友后均从服务器重读会话。
+    // No real-user names or session metadata are persisted into localStorage.
     window.addEventListener('pageshow', function() {
       renderChatList();
+      if (window.MAOMAORealChatList) window.MAOMAORealChatList.refresh();
+    });
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible' && window.MAOMAORealChatList) {
+        window.MAOMAORealChatList.refresh();
+      }
     });
   </script>
 <script src="../../shared/js/statusbar-control.js"></script>
@@ -1536,19 +1639,7 @@
         backdrop.classList.remove('show');
       }
 
-      document.getElementById('groupEntryBtn').addEventListener('click', function(e) {
-        e.stopPropagation();
-        var menu = document.getElementById('wechatMenu');
-        var btnRect = e.currentTarget.getBoundingClientRect();
-        var parentRect = menu.parentElement.getBoundingClientRect();
-
-        // 定位到按钮正下方
-        menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
-        if (menu.style.display === 'block') {
-          menu.style.left = (btnRect.left - parentRect.left - 50) + 'px';
-          menu.style.top = (btnRect.bottom - parentRect.top + 8) + 'px';
-        }
-      });
+      document.addEventListener('maomao:open-chat-group', openModal);
       document.getElementById('groupModalCancel').addEventListener('click', closeModal);
       backdrop.addEventListener('click', function(e) {
         if (e.target === backdrop) closeModal();
@@ -1586,3 +1677,4 @@
 <script src="../../shared/js/custom-css.js"></script>
 </body>
 </html>
+

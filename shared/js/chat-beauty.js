@@ -204,7 +204,7 @@
         try {
             if (localStorage.getItem(CHAT_THEME_MIGRATED_FLAG) === '1') return;
             var saved = localStorage.getItem(CHAT_THEME_KEY);
-            if (saved !== 'default' && saved !== 'imessage' && saved !== 'qq' && saved !== 'silver-butterfly' && saved !== 'wechat' &&
+            if (saved !== 'default' && saved !== 'imessage' && saved !== 'qq' && saved !== 'silver-butterfly' && saved !== 'wechat' && saved !== 'atmosphere' &&
                 readScope('global').themePreset === 'imessage') {
                 localStorage.setItem(CHAT_THEME_KEY, 'imessage');
             }
@@ -215,13 +215,13 @@
     NS.getThemePreset = function () {
         try {
             var saved = localStorage.getItem(CHAT_THEME_KEY);
-            if (saved === 'default' || saved === 'imessage' || saved === 'qq' || saved === 'silver-butterfly' || saved === 'wechat') return saved;
+            if (saved === 'default' || saved === 'imessage' || saved === 'qq' || saved === 'silver-butterfly' || saved === 'wechat' || saved === 'atmosphere') return saved;
         } catch (e) {}
         var legacy = readScope('global').themePreset;
         return legacy === 'imessage' ? 'imessage' : 'default';
     };
     NS.setThemePreset = function (theme) {
-        if (theme !== 'imessage' && theme !== 'qq' && theme !== 'silver-butterfly' && theme !== 'wechat') theme = 'default';
+        if (theme !== 'imessage' && theme !== 'qq' && theme !== 'silver-butterfly' && theme !== 'wechat' && theme !== 'atmosphere') theme = 'default';
         cleanupLegacyThemeValues();
         try {
             localStorage.setItem(CHAT_THEME_KEY, theme);
@@ -342,6 +342,30 @@
         rootEl.__chatBeautyObserver.observe(rootEl, { childList: true, subtree: true });
     }
 
+
+    // Theme defaults remain below explicit global and character overrides.
+    var ATMOSPHERE_BUBBLE_DEFAULTS = {
+        avatarSize: 28, avatarRadius: 3, avatarBorderWidth: 0,
+        bubbleGap: 17, bubbleMaxWidth: 82, bubblePadding: 2,
+        myBubblePadding: 2, partnerBubblePadding: 2,
+        myBubbleBg: '#FFFFFF', partnerBubbleBg: '#FFFFFF',
+        myBubbleOpacity: 0, partnerBubbleOpacity: 0,
+        myBubbleColor: 'var(--at-ink, #202020)', partnerBubbleColor: 'var(--at-ink, #202020)',
+        myBubbleRadius: '0px', partnerBubbleRadius: '0px',
+        myBubbleRadiusTL: 0, myBubbleRadiusTR: 0, myBubbleRadiusBR: 0, myBubbleRadiusBL: 0,
+        partnerBubbleRadiusTL: 0, partnerBubbleRadiusTR: 0, partnerBubbleRadiusBR: 0, partnerBubbleRadiusBL: 0,
+        myBubbleBorderWidth: 0, partnerBubbleBorderWidth: 0,
+        myBubbleFontSize: 13, partnerBubbleFontSize: 13,
+        myBubbleLineHeight: 1.85, partnerBubbleLineHeight: 1.85,
+        messageTimeVisible: true, messageTimeSize: 9, messageTimeColor: 'var(--at-muted, #737373)',
+        imageBubbleRadius: 3, transferBg: 'var(--at-panel, #eeeeee)',
+        transferTextColor: 'var(--at-ink, #202020)', transferBorderWidth: 0
+    };
+
+    NS.getAtmosphereBubbleDefaults = function () {
+        return Object.assign({}, ATMOSPHERE_BUBBLE_DEFAULTS);
+    };
+
     /* ========== 读取与合并 ========== */
 
     // 最终参数 = 内置默认 < 全局 < 单聊；null / 空串视为"未设置"，继续下沉
@@ -352,7 +376,8 @@
         // A page theme supplies default bubble values only. Explicit global and per-role
         // bubble customizations are then layered over it, preserving the editor's purpose.
         var pageBubbleDefaults = activeThemePreset === 'imessage' ? IMESSAGE_BUBBLE_DEFAULTS :
-            (activeThemePreset === 'silver-butterfly' ? SILVER_BUTTERFLY_BUBBLE_DEFAULTS : null);
+            (activeThemePreset === 'silver-butterfly' ? SILVER_BUTTERFLY_BUBBLE_DEFAULTS :
+            (activeThemePreset === 'atmosphere' ? ATMOSPHERE_BUBBLE_DEFAULTS : null));
         if (pageBubbleDefaults) {
             for (var themeKey in pageBubbleDefaults) {
                 if (themeKey in DEFAULTS) out[themeKey] = pageBubbleDefaults[themeKey];
@@ -379,9 +404,10 @@
         var s = rootEl.style;
         // The page shell and the message stage share the same built-in theme.
         // This lets iMessage update the header/composer together with the bubbles.
-        var activeThemePreset = (v.themePreset === 'imessage' || v.themePreset === 'qq' || v.themePreset === 'silver-butterfly' || v.themePreset === 'wechat') ? v.themePreset : 'default';
+        var activeThemePreset = (v.themePreset === 'imessage' || v.themePreset === 'qq' || v.themePreset === 'silver-butterfly' || v.themePreset === 'wechat' || v.themePreset === 'atmosphere') ? v.themePreset : 'default';
         try {
             rootEl.setAttribute('data-chat-theme-preset', activeThemePreset);
+            rootEl.setAttribute('data-at-lines', activeThemePreset === 'atmosphere' && Number(v.myBubbleOpacity) === 0 && Number(v.partnerBubbleOpacity) === 0 ? 'true' : 'false');
             var phoneShell = rootEl.closest ? rootEl.closest('.phone-mockup') : null;
             if (phoneShell) phoneShell.setAttribute('data-chat-theme-preset', activeThemePreset);
         } catch (e) {}
@@ -746,3 +772,4 @@
         } catch (e) {}
     })();
 })(window);
+

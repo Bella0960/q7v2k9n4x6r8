@@ -14,7 +14,9 @@ test('custom font files are warmed into a dedicated persistent cache', () => {
   assert.match(loader, /function cacheFontBlob\(id, blob, format\)/);
   assert.match(loader, /cache\.put\(url, response\)/);
   assert.match(loader, /FONT_CACHE_FORMAT_PREFIX \+ id/);
-  assert.match(loader, /new URL\('\.\.\/\.\.\/__maomao_fonts\//);
+  assert.ok(loader.includes("var fontAssetPath = '../../__maomao_fonts/';"), 'font URLs remain same-origin');
+  assert.ok(loader.includes("fontAssetPath += encodeURIComponent(maoScope.accountId) + '/'"), 'ordinary accounts must use account-qualified font URLs');
+  assert.ok(loader.includes('new URL(fontAssetPath,'), 'font loader must resolve scoped paths through its own script URL');
 });
 
 test('cached font presets bypass repeated IndexedDB Blob reads on controlled app pages', () => {
@@ -41,11 +43,14 @@ test('service worker serves cached font assets from a same-origin route', () => 
   assert.match(serviceWorker, /const FONT_ASSET_CACHE = 'maomao-font-assets-v1'/);
   assert.match(serviceWorker, /new URL\('__maomao_fonts\/', self\.registration\.scope\)/);
   assert.match(serviceWorker, /cache\.match\(req\)/);
-  assert.match(serviceWorker, /return cached \|\| new Response\('', \{/);
+  assert.ok(serviceWorker.includes("fetch('/api/accounts/me'"), 'cached font access must verify the HttpOnly account session');
+  assert.ok(serviceWorker.includes("requestedAccountId !== account.id"), 'cross-account font path requests must fail closed');
+  assert.ok(serviceWorker.includes("cacheName = '__mao_account_v1__' + encodeURIComponent(account.id)"), 'ordinary fonts must use private CacheStorage');
+  assert.ok(serviceWorker.includes("cache.match(req) || new Response('',"), 'unavailable fonts must return 404 and never another account font');
 });
 
 test('font asset cache survives app-shell version upgrades', () => {
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v203'/);
+  assert.ok(Number(/phone-app-pwa-v(\d+)/.exec(serviceWorker)?.[1]) >= 206, 'current account-isolated PWA cache should be in use');
   assert.match(serviceWorker, /keys\.filter\(key => key\.startsWith\('phone-app-'\) && key !== CACHE_NAME\)/);
   assert.doesNotMatch(serviceWorker, /key\.startsWith\('maomao-font-assets/);
 });

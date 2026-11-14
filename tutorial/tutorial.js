@@ -5,10 +5,40 @@
 (function () {
   'use strict';
 
-  var GUIDE_VERSION = '2026.11.11 · v2';
+  var GUIDE_VERSION = '2026.11.14 · 工程集成测试版';
   var STORAGE_KEY = 'maomao_tutorial_progress_v1';
 
   var GUIDE_UPDATES = [
+    {
+      date: '2026-11-14',
+      title: '本次真工程预览：按顺序测试，不混用正式账号数据',
+      items: [
+        '当前是 QA-001 集成分支的真正小手机页面，使用独立 SQLite 测试库。桌面、聊天、论坛、查手机、主题商城均是项目原入口，不另开演示站。',
+        '请先看下方实时只读检查。管理员身份以服务器返回为准；过去其他预览的 001 登录记录不能证明本预览已经接通。',
+        '推荐依序测试：聊天保存与角色隔离 → 多气泡和角色图片 → 真人好友加密对话 → 论坛 → 查手机 → 主题商城与钱包。',
+        'Web Push 仅在显示已配置服务端密钥后才进入手机订阅和锁屏测试；安卓旧正式环境曾收到通知，不等于本预览或 iPhone 通过。',
+        '每项可在教程里打开真正页面、记录结果并复制测试报告。不用重新注册旧管理员，也不要在备注中填写密码、邀请码或 API Key。'
+      ]
+    },
+    {
+      date: '2026-11-13',
+      title: '历史预览记录：原管理员 001 已完成手机登录（非本次独立 QA 库）',
+      items: [
+        '本人已在原 11 月 11 日的「小猫」账号环境成功登录；原永久 ID、4 个账号与 4 条会话保留。仅这条测试预览升级，不代表正式 app.mao520.com 已切换。',
+        '下一步查看「管理中心」的账号、邀请码记录和操作审计；添加好友、建群与扫一扫都收在聊天首页音乐卡片的爱心菜单里，不再占用通讯录页面。',
+        '已审批真人好友会直接出现在聊天首页原来的会话列表中。点击「小鱼」就能进入之前的加密文字、图片、语音聊天，不用反复进入好友管理页。列表不混入 AI 角色存储，不需要 AI API。',
+        '在教程测试项中直接打开页面、勾选结果或记录问题；备注里不要填写密码、完整邀请码、API Key 或私人聊天。'
+      ]
+    },
+    {
+      date: '2026-11-11',
+      title: '账号整合测试中 · 尚未发布',
+      items: [
+        '新的统一登录、邀请码和创始管理员 001 正在独立分支验证；原有手机入口尚未切换。',
+        '普通账号可以从设置查看自己的 MAO 账号；创始管理员登录后才会在桌面看到「管理中心」。',
+        '实际手机登录、首次初始化和跨账号隔离必须验收后才能标记为已完成。'
+      ]
+    },
     {
       date: '2026-11-11',
       title: '教程全面补全',
@@ -30,6 +60,129 @@
   ];
 
   var GUIDES = [
+    {
+      id: 'qa-20261114-quickstart', category: '入门', title: '今日第一站 · 集成测试入口与数据隔离',
+      summary: '这是 MAOMAO 原项目的 QA-001 真正部署页面，不是静态截图；预览使用独立数据库，不会带出正式账号和聊天。',
+      location: '本页上方「本次测试环境」→ 桌面 → 教程。',
+      steps: [
+        '先查看「云端 API / 登录与权限 / Web Push」三个实时状态；有一项未就绪，就跳过依赖该项的测试，不要猜测已经接通。',
+        '从这里点「打开小手机桌面」，检查桌面图标和底部导航，旧版功能不应突然消失。',
+        '进入聊天，用一条没有隐私内容的短消息检验保存；返回桌面再进入，确保不会串到其他角色。',
+        '再按下面每一张本轮测试卡依次测试。每一项记录一次通过或失败，最后点击「复制测试报告」。'
+      ],
+      test: '本页能显示真实接口状态，桌面和教程正常打开，测试进度刷新后保留；不要求填写旧管理员密钥。',
+      href: '../index.html', action: '打开小手机桌面'
+    },
+    {
+      id: 'qa-20261114-push', category: '聊天', title: '云端主动消息与锁屏推送 · 区分两端',
+      summary: '角色云端生成消息与系统 Web Push 是两条不同链路。当前预览是否有 VAPID 密钥要看上方实时诊断，不能拿旧安卓通知代替验证。',
+      location: '桌面 → 设置 → 云端主动联系与推送；角色聊天 → 对话设置。',
+      steps: [
+        '先看上方 Web Push 状态：如果写着未配置，就停止这项测试并记录「服务端未就绪」，不要反复授权或安装。',
+        '若状态显示已配置，在账号已登录且设备已注册的前提下，进入云端推送页面查看订阅状态。',
+        '安卓先用同一浏览器在前台测试、再锁屏测试，分别记录是否收到系统通知，以及点通知能否进入正确的角色聊天。',
+        '苹果手机只能以符合条件的 Safari 主屏幕网页 App 实际测试推送；普通网页标签页不能证明 iPhone 后台推送成功。',
+        '不要为了测试把原正式环境设备订阅或聊天记录全部清空。'
+      ],
+      test: '分别记录云端 API、推送配置、安卓前台、安卓锁屏和 iPhone 主屏幕 App 的结果；任何未实测项不标记为通过。',
+      href: '../settings/cloud-push.html', action: '打开云端推送', issue: true
+    },
+    {
+      id: 'qa-20261114-forum', category: '社交', title: '论坛八卦剧情与刷新防重复',
+      summary: '测试角色评论、楼主按既定大纲续写、刷新追加和旧帖保存；缺少 AI API 时只验证已有内容和保存，不把示例当成云端续写。',
+      location: '桌面 → 论坛 → 选一条八卦帖子。',
+      steps: [
+        '打开论坛现有帖子并查看原来的评论和楼主更新，记录最后一条内容。',
+        '按页面的真实刷新入口更新一次，核对旧帖和既有评论没有被清空。',
+        '若该帖子支持 AI 续写且已配置 API，再观察下一段是否延续同一大纲、是否重复讲已经出现的情节。',
+        '返回列表再进入同一帖子，确认时间线顺序和已保存的更新仍在。'
+      ],
+      test: '旧帖不丢失、剧情不重复、角色评论能够加载；没有 AI API 时不要把自动续写记为通过。',
+      href: '../forum/forum.html', action: '打开论坛', issue: true
+    },
+    {
+      id: 'qa-20261114-inspect', category: '角色', title: '查手机 · 备忘录与朋友圈跨角色隔离',
+      summary: '只读取虚构角色手机数据，测试备忘录、朋友圈、浏览历史以及与聊天的联动，不触及真实手机通讯录。',
+      location: '桌面 → 查手机 → 选角色。',
+      steps: [
+        '进入第一位角色虚构手机，打开浏览器历史、备忘录和朋友圈，检查已有内容能加载。',
+        '在允许编辑的备忘录位置录入一条非隐私测试便签，返回后重新打开检查是否保存。',
+        '切换第二位角色，确认第一位角色的便签、朋友圈和浏览记录不会串过去。',
+        '如角色可在聊天中自然提到便签内容，核对上下文；没接 API 时只记录本地保存结果。'
+      ],
+      test: '角色内容分开、可编辑内容不丢失；AI 联动单独验收，不等于查看真实手机。',
+      href: '../inspect-phone/select.html', action: '打开查手机'
+    },
+    {
+      id: 'qa-20261114-theme', category: '外观', title: '主题商城 · 真实主题预览与切换',
+      summary: '直接在原主题商城测试，现有聊天主题和聊天气泡要分别保存；不要以独立演示页代替真正聊天页面。',
+      location: '桌面 → 主题商城 → 主题 / 分类 / 我的。',
+      steps: [
+        '在主题商城打开已存在的主题详情，切换聊天首页与聊天详情预览。',
+        '只在测试环境应用一种主题，返回原聊天首页和详情检查字号、留白、图标、气泡大小。',
+        '在气泡分类单独试一种气泡样式，确认不会把其他页面主题强制替换。',
+        '退出浏览器再重进，检查选择是否保存；如遇未完工商品直接记录，不要当成已合并的完整版。'
+      ],
+      test: '商城入口能用，预览不修改真实聊天数据；已可用主题实际生效且刷新后保持。',
+      href: '../theme-store/theme-store.html', action: '打开主题商城', issue: true
+    },
+    {
+      id: 'qa-20261114-wallet', category: '应用', title: '钱包 · 模拟账本与失败恢复',
+      summary: '只测小手机内部的虚拟账本，先读账单再执行非真实的小额演示；不输入银行卡、不进行真实支付。',
+      location: '桌面 → 钱包 → 交易记录。',
+      steps: [
+        '打开钱包查看当前虚拟余额、历史记录和亲属卡相关入口是否正常加载。',
+        '如果环境有安全的模拟交易入口，只做一次明显标记的测试操作，记录交易编号。',
+        '刷新或重新打开账单，检查交易没有重复入账；如果操作失败，不应留下成功的假记录。',
+        '没有模拟交易入口时，只完成只读账单验收，不尝试真实付款。'
+      ],
+      test: '账单加载和角色／账号隔离正确，重复写入或失败恢复需要单独实际验证。',
+      href: '../wallet/wallet.html', action: '打开钱包', issue: true
+    },
+    {
+      id: 'qa-001-admin', category: '设置', title: '本轮 ① 管理员后台核对',
+      summary: '管理员 001 只认云端签发的权限。本次是独立测试库；如果实时诊断显示登录未就绪，跳过此项，不要把旧预览的 001 登录当成当前成功。',
+      location: '桌面 → 管理中心。',
+      steps: [
+        '确认桌面出现「管理中心」，点进去后核对顶部 001 管理员身份。',
+        '只有服务器确认当前账号为 super_admin 后才打开账号列表；本次独立预览不应显示其他数据库的历史账号。',
+        '打开邀请码管理，只查看已有邀请记录和状态，不生成、不撤销邀请码。',
+        '进入操作审计，确认列表可加载且有实际的服务端记录。',
+        '返回桌面，再次进入后台，检查导航、内容和身份没有丢失。'
+      ],
+      test: '登录就绪且云端确认管理员后，001 才能看到管理中心；未就绪时要如实记录阻碍，不注册第二个创始人。',
+      href: '../admin/admin-center.html', action: '打开管理中心'
+    },
+    {
+      id: 'qa-001-social', category: '社交', title: '本轮 ② 真人好友和 001 审批',
+      summary: '双方同意＋001 审批后，同一个加密对话里可发送文字、相册照片和麦克风语音；不需要 AI API。当前为单浏览器设备密钥测试版。',
+      location: '桌面 → 聊天 → 音乐卡片右侧爱心 → 添加好友 / 扫一扫。',
+      steps: [
+        '从聊天首页音乐卡片右侧点爱心，打开原有的浮动操作菜单；确认有切换背景、添加好友、添加群聊、扫一扫四项。',
+        '点「添加好友」，确认进入真人好友页面；查看收到和发出的申请并刷新。无申请时空列表正常。',
+        '回到爱心菜单点「扫一扫」，试相机扫码或相册选图；不支持网页扫码的浏览器按提示使用系统相机，或粘贴链接。',
+        '回到真人好友页面，查看 001 审批区域；若已有两位获授权的测试账号，双方同意后再审批，没有申请时无需新注册。',
+        '批准好友后回到聊天首页，在原来的会话列表中找到对方（例如「小鱼」），直接点击进入私人加密聊天；退出后再进首页，确认依然能找到对方。',
+        '两部手机分别打开「聊天」页面等待设备密钥就绪，先互发一条文字。点击输入框左边的图片图标，从相册选择一张非隐私照片，检查另一端收到图片。',
+        '点击麦克风，允许浏览器使用麦克风，录一句语音后再点一次结束并发送；另一台手机点语音播放。每段录音最多 20 秒；在不支持网页录音的浏览器会提示，不会暗中启用 AI API。'
+      ],
+      test: '安卓和苹果分别在聊天首页直接看到当前已审批好友，点人名可进入加密文字＋图片＋语音；不显示未审批或屏蔽的人。媒体无需 AI API、后台无系统推送。清除浏览器数据后旧消息无法恢复。',
+      href: '../chat/contacts/real-friends.html', action: '打开真人好友'
+    },
+    {
+      id: 'qa-001-chat-save', category: '聊天', title: '本轮 ③ 聊天记录保存与角色隔离',
+      summary: '优先验收消息保存、切换角色及刷新后的持久化；多气泡和主动消息需要区分 API 依赖。',
+      location: '桌面 Dock → 聊天。',
+      steps: [
+        '打开一个已有角色会话，只发送一条没有私人信息的短测试消息。',
+        '返回聊天列表，再重新打开这个角色，检查刚才的消息是否保留。',
+        '切到另一位角色，检查测试消息不会出现在错误角色中。',
+        '重新刷新小手机页面，再进入第一位角色，确认同一条消息仍可见。',
+        '如果已配置 API，可另外试自动多气泡；未配置 API 时只判断消息保存。'
+      ],
+      test: '测试消息返回、跨角色切换及刷新之后都不丢失、不串号；如出现异常记录角色、页面与步骤。',
+      href: '../chat/chat/chat.html', action: '打开聊天'
+    },
     {
       id: 'desktop', category: '入门', title: '桌面、翻页与应用入口',
       summary: '先认识桌面图标、页面翻页和编辑模式。新应用会自动出现在桌面，不需要重新摆放旧图标。',
@@ -321,7 +474,24 @@
       href:'../chat/chat/chat.html', action:'打开聊天'
     },
 
-    // 桌面 29 个应用逐项说明：以每个应用当前真实页面结构为准。
+    {
+      id:'account-access', category:'设置', title:'统一账号与邀请码：普通用户如何进入',
+      summary:'登录、注册都从相同入口进入；普通注册不会获得管理员身份。完成注册后需要对应邀请码授权。',
+      location:'小手机统一入口 → 注册或登录 → 邀请码验证；登录后可从「设置」进入账号管理。',
+      steps:[
+        '已有账号直接登录，不要重复注册。',
+        '普通用户第一次创建账号后，根据提示输入创作者发放的专属邀请码。',
+        '邀请码与目标账号绑定，不要把自己的密码或邀请码发到公开论坛。',
+        '获得授权后进入原来的小手机桌面；普通用户看不到「管理中心」。',
+        '遇到域名跳转异常时停止输入凭据并记录地址栏域名。'
+      ],
+      test:'验证普通账号被要求完成邀请码授权，进入桌面后没有管理员中心。不要提交真实凭据到教程测试备注。',
+      href:'../account/manage.html', action:'打开账号管理',
+      issue:true, defaultNote:'原始小猫 001 已由本人在手机预览登录；仍需验收普通账号邀请码授权与跨设备隔离。'
+    },
+
+    // 桌面 29 个普通应用逐项说明；唯一创始者另外有专属管理中心。
+
     {id:'app-tutorial',category:'入门',title:'教程',summary:'从这里查功能入口、一步一步跟着真实页面操作，并保存测试记录。',location:'桌面 → 教程。',steps:['打开教程，先看「最近更新」了解当前版本增加了什么。','通过分类或搜索找到功能，点「一步一步跟着做」进入单步引导。','每一步可以打开真实页面，在新标签页完成操作后切回教程继续。','测试后勾选「我已经在手机上实际测试过这一项」，遇到问题写备注并导出测试记录。'],test:'启动任意一项分步教程，前进和后退，再勾选一条测试状态，刷新页面确认进度保留。',href:'../tutorial/tutorial.html',action:'打开教程'},
     {id:'app-inspect',category:'应用',title:'查手机',summary:'查看虚构角色的微信、朋友圈、浏览器、备忘录、钱包、音乐、地图、相册与设备剧情。支持角色许可、选择板块、单独刷新和剧情密码。',location:'桌面 → 查手机。',steps:['打开「查手机」后先选角色，进入该角色的虚构手机。','按照锁屏提示上滑或轻点，阅读角色的同意、犹豫或拒绝反馈；拒绝时不能强行进入。','勾选需要查看的板块，点「开始查看已选板块」，回到手机桌面后打开相应应用。','微信可以看具名联系人、撤回和已读未回，也可以以角色身份发送虚构消息；只有配置聊天 API 才会生成联系人回复。','在某个板块右上角点「刷新本板块」只更新该板块。未设置 API 时显示明确标记的本地剧情样例。','备忘录锁定区的剧情密码默认为111111，隐藏相册使用角色专属密码，能看到的内容随角色关系进度变化。','切换另一个角色检查聊天、秘密、相册与消费记录是否完全隔离；历史记录不会因自然跨天而直接清空。'],test:'选择两个角色分别打开，检查角色许可、5位以上联系人、10个板块、独立刷新、错误结果保留及跨角色记录隔离。此功能不读取真实通讯录、GPS 或支付记录。',href:'../inspect-phone/select.html',action:'打开查手机'},
     {id:'app-worldbook',category:'应用',title:'世界书',summary:'用于管理故事世界设定和可供角色引用的资料条目。',location:'桌面 → 世界书。',steps:['打开「世界书」，查看现有世界设定列表。','新增或编辑条目时，先写清条目标题、背景内容和触发线索，再保存。','返回角色聊天，用条目中明确的关键词验证上下文是否能引用该设定。'],test:'新增一条无敏感内容的测试设定，保存后重新进入世界书确认仍存在。',href:'../worldbook/worldbook/worldbook.html',action:'打开世界书'},
@@ -398,6 +568,29 @@
     ['聊天', 'chat/chat/chat.html', '聊天列表与角色会话'],
     ['店铺', 'wallet/shop.html', '应用内商店']
   ];
+
+  // The server injects this meta after a successful session check. The public
+  // script must never decide admin permissions from names, URLs or localStorage.
+  var founderRole = document.querySelector('meta[name="mao-account-role"]');
+  var isFounder = !!(founderRole && founderRole.content === 'super_admin');
+  if (isFounder) {
+    GUIDES.push({
+      id:'app-admin', category:'设置', title:'管理中心（唯一创始管理员 001）',
+      summary:'只对登录后经服务器确认的创始管理员展示；编号 001 是身份标记，不是注册或提权密码。',
+      location:'同一个小手机入口登录 → 桌面 → 管理中心。',
+      steps:[
+        '从唯一的小手机入口登录自己的原始创始管理员账号，不另建普通账号。',
+        '回到桌面，确认「设置」附近出现「管理中心」，普通用户桌面没有该入口。',
+        '打开管理中心，核对创始管理员标识 001。',
+        '在「用户管理」查看普通账号，在「邀请码管理」为指定账号生成或撤销邀请码。',
+        '完成后检查操作审计；不要公开初始化密钥、管理员密码或完整邀请码。'
+      ],
+      test:'创始账号能打开管理中心，普通账号不能打开或调用管理员 API，既有聊天和桌面数据保持不变。',
+      href:'../admin/admin-center.html', action:'进入管理中心', issue:true,
+      defaultNote:'原小猫 001 已由本人在原预览登录；管理中心权限与账号管理仍需逐项验收。'
+    });
+    APPS.push(['管理中心', 'admin/admin-center.html', '仅唯一创始管理员 001 可见']);
+  }
 
   var categories = ['全部', '入门', '聊天', '角色', '图片', '设置', '外观', '社交', '应用'];
   var activeCategory = '全部';
@@ -597,17 +790,46 @@
     renderGuides();
   }
 
-  function exportProgress() {
-    var lines = ['MAOMAO 手机测试记录', '指南版本：' + GUIDE_VERSION, '导出时间：' + new Date().toLocaleString(), ''];
+  function buildTestReport(onlyTouched) {
+    // Only share explicitly written testing notes and non-secret device context.
+    // Never inspect chat history, API settings, local files or account identifiers.
+    var standalone = Boolean(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+      Boolean(navigator.standalone);
+    var swControlled = Boolean(navigator.serviceWorker && navigator.serviceWorker.controller);
+    var width = document.documentElement.clientWidth || window.innerWidth || 0;
+    var height = window.innerHeight || 0;
+    var lines = [
+      'MAOMAO 手机测试记录',
+      '指南版本：' + GUIDE_VERSION,
+      '记录时间：' + new Date().toLocaleString(),
+      '测试站点：' + window.location.origin,
+      '屏幕视口：' + width + ' × ' + height,
+      '显示比例：' + (window.devicePixelRatio || 1),
+      '运行方式：' + (standalone ? '桌面 PWA' : '浏览器网页'),
+      'Service Worker：' + (swControlled ? '正在控制页面' : '未控制当前页面'),
+      '网络状态：' + (navigator.onLine === false ? '浏览器报告离线' : '浏览器未报告离线（不代表服务器可用）'),
+      '浏览器：' + navigator.userAgent,
+      '',
+      '注意：以上信息仅通过主动点击复制/导出提供；不包含账号密码、聊天记录或 API Key。',
+      ''
+    ];
+    var reported = 0;
     GUIDES.forEach(function (guide) {
       var state = progress[guide.id] || {};
+      if (onlyTouched && !state.done && !String(state.note || '').trim()) return;
+      reported += 1;
       lines.push((state.done ? '[已测试] ' : '[待测试] ') + guide.title);
       lines.push('入口：' + guide.location);
       if (state.note) lines.push('备注：' + state.note);
-      if (guide.issue) lines.push('状态：待真机复测（已加导航兜底，尚未验证结果）');
+      if (guide.issue) lines.push('状态：待真机复测（尚未验证结果）');
       lines.push('');
     });
-    var blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+    if (onlyTouched && !reported) lines.push('尚未记录测试项；请先在对应功能填写备注。');
+    return lines.join('\n');
+  }
+
+  function exportProgress() {
+    var blob = new Blob([buildTestReport()], { type: 'text/plain;charset=utf-8' });
     var url = URL.createObjectURL(blob);
     var anchor = document.createElement('a');
     anchor.href = url;
@@ -616,6 +838,29 @@
     anchor.click();
     anchor.remove();
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  async function copyProgress() {
+    var button = $('copyTests');
+    var hint = $('copyTestsHint');
+    var report = buildTestReport(true);
+    button.disabled = true;
+    try {
+      if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
+        throw new Error('CLIPBOARD_UNAVAILABLE');
+      }
+      await navigator.clipboard.writeText(report);
+      hint.textContent = '测试报告已复制。现在可以直接粘贴给开发者，不必下载文件。';
+    } catch (error) {
+      // Clipboard access is frequently restricted in mobile embedded browsers.
+      // Keep an accessible copyable fallback rather than falsely claiming success.
+      if (typeof window.prompt === 'function') {
+        window.prompt('未能自动复制，请长按选择并复制报告内容：', report);
+      }
+      hint.textContent = '未获得系统剪贴板权限；已尝试打开手动复制窗口。若未显示，请使用「导出测试记录」。';
+    } finally {
+      button.disabled = false;
+    }
   }
 
   $('guideFilters').addEventListener('click', function (event) {
@@ -671,6 +916,7 @@
     entryState(note.getAttribute('data-note')).note = note.value;
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(progress)); } catch (error) {}
   });
+  $('copyTests').addEventListener('click', copyProgress);
   $('exportTests').addEventListener('click', exportProgress);
   $('resetTests').addEventListener('click', function () { $('resetModal').hidden = false; });
   $('cancelReset').addEventListener('click', function () { $('resetModal').hidden = true; });
@@ -685,8 +931,61 @@
     if (event.target === $('resetModal')) $('resetModal').hidden = true;
   });
 
+  // Only public, read-only endpoints. Never infer push delivery from the
+  // presence of a VAPID public key, or infer founder authority from a prior QA.
+  var qaChecking = false;
+  async function qaRead(url) {
+    try {
+      var response = await fetch(url, {
+        method: 'GET', credentials: 'same-origin', cache: 'no-store',
+        headers: { accept: 'application/json' }
+      });
+      if (!response.ok) return null;
+      var data = await response.json();
+      return data && data.ok === true ? data : null;
+    } catch (error) { return null; }
+  }
+  async function checkQaReadiness() {
+    if (qaChecking) return;
+    qaChecking = true;
+    $('qaRecheck').disabled = true;
+    $('qaCloudStatus').textContent = '检测中…';
+    $('qaAccountStatus').textContent = '检测中…';
+    $('qaPushStatus').textContent = '检测中…';
+    try {
+      var responses = await Promise.all([
+        qaRead('/api/health'),
+        qaRead('/api/admin/bootstrap/status')
+      ]);
+      var health = responses[0], account = responses[1];
+      var apiReady = health && health.storage === 'durable-object-sqlite';
+      $('qaCloudStatus').textContent = apiReady
+        ? '已连接独立云端 SQLite；尚需手机实际验证功能'
+        : '当前接口不可用，先记录问题，不要测试云端写入';
+      if (!account) {
+        $('qaAccountStatus').textContent = '暂不可用；先测试不依赖账号的入口';
+      } else if (account.identityMode === 'delegated') {
+        $('qaAccountStatus').textContent = account.signInReady === true && account.identityAuthorityConnected === true
+          ? '统一原账号服务已连接；仍需实际登录确认身份'
+          : '统一原账号暂未就绪；不要在预览重复注册';
+      } else if (account.initialized === true) {
+        $('qaAccountStatus').textContent = '独立测试库已有账号；仅用这套环境的账号登录';
+      } else {
+        $('qaAccountStatus').textContent = '测试账号尚未就绪；管理员 001 此项暂缓';
+      }
+      $('qaPushStatus').textContent = apiReady && health.vapidConfigured === true
+        ? '已配置服务端密钥；仍须订阅和安卓／苹果锁屏验收'
+        : '本测试环境尚未就绪；不要把其他环境的通知算进来';
+    } finally {
+      qaChecking = false;
+      $('qaRecheck').disabled = false;
+    }
+  }
+  $('qaRecheck').addEventListener('click', checkQaReadiness);
+
   renderUpdates();
   renderFilters();
   renderGuides();
   renderApps();
+  checkQaReadiness();
 })();

@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>扫一扫 · 好友</title>
+<style>
+:root{color-scheme:light;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Microsoft Yahei",sans-serif;color:#171717;background:#fafafa}
+*{box-sizing:border-box}
+body{margin:0;min-height:100dvh;background:#fafafa}
+button,input{font:inherit}
+button{cursor:pointer;-webkit-tap-highlight-color:transparent}
+.wrap{width:100%;max-width:480px;min-height:100dvh;margin:auto;padding:calc(16px + env(safe-area-inset-top)) 24px calc(26px + env(safe-area-inset-bottom));background:#fafafa}
+.top{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:58px}
+.back{appearance:none;border:0;background:transparent;color:#222;padding:8px 0;display:inline-flex;align-items:center;gap:8px;font-size:13px}
+.back svg{width:18px;height:18px;stroke-width:1.5;stroke:currentColor;fill:none}
+.kicker{font-size:10px;letter-spacing:.19em;color:#999}
+h1{font-family:Georgia,"Noto Serif SC","Songti SC",serif;font-size:33px;font-weight:400;letter-spacing:-.035em;margin:0 0 10px}
+.lead{font-size:12px;line-height:1.9;color:#777;margin:0 0 25px}
+.scan-window{position:relative;aspect-ratio:1/1;width:100%;background:#efeff0;border-radius:20px;display:grid;place-items:center;overflow:hidden;isolation:isolate}
+.scan-window video{display:none;position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#111}
+.scan-window.active video{display:block}
+.frame{position:absolute;inset:12%;pointer-events:none;z-index:1}
+.corner{position:absolute;width:27px;height:27px;border:1.5px solid #333}
+.tl{top:0;left:0;border-right:0;border-bottom:0;border-top-left-radius:8px}
+.tr{top:0;right:0;border-left:0;border-bottom:0;border-top-right-radius:8px}
+.bl{bottom:0;left:0;border-right:0;border-top:0;border-bottom-left-radius:8px}
+.br{bottom:0;right:0;border-left:0;border-top:0;border-bottom-right-radius:8px}
+.placeholder{display:grid;place-items:center;gap:12px;text-align:center;padding:32px;color:#888}
+.placeholder svg{width:42px;height:42px;stroke:#999;stroke-width:1.1;fill:none}
+.placeholder p{font-size:12px;margin:0;line-height:1.7}
+.scan-window.active .placeholder{display:none}
+.controls{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:17px 0 10px}
+.action{appearance:none;border:1px solid #dedee0;border-radius:12px;background:#fff;color:#222;padding:13px 10px;min-height:48px;display:flex;align-items:center;justify-content:center;gap:9px;font-size:12px}
+.action svg{width:17px;height:17px;stroke:currentColor;stroke-width:1.5;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.action.primary{background:#171717;color:#fff;border-color:#171717}
+.action:disabled{opacity:.45;cursor:default}
+#photo{display:none}
+#scanStatus{font-size:12px;line-height:1.7;color:#777;min-height:26px;margin:4px 0 20px}
+.subtle{margin-top:25px;border-top:1px solid #e8e8e8;padding-top:24px}
+.subtle h2{font-size:12px;font-weight:500;letter-spacing:.02em;margin:0 0 12px}
+.code-form{display:flex;gap:8px}
+.code-form input{flex:1;min-width:0;border:1px solid #e4e4e5;border-radius:10px;padding:12px;background:white;color:#222;font-size:12px;outline-offset:2px;user-select:text;-webkit-user-select:text}
+.code-form button{border:0;border-radius:10px;background:#222;color:white;padding:0 15px;font-size:12px}
+.note{font-size:11px;color:#999;line-height:1.8;margin-top:13px}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header class="top">
+    <button type="button" id="back" class="back" aria-label="返回聊天首页"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>返回</button>
+    <span class="kicker">ADD FRIEND / SCAN</span>
+  </header>
+  <h1>扫一扫</h1>
+  <p class="lead">扫描好友二维码，或从相册选择二维码截图。<br>只识别当前小手机站点的好友邀请。</p>
+  <div class="scan-window" id="scanWindow">
+    <video id="video" playsinline muted autoplay aria-label="二维码扫描画面"></video>
+    <div class="placeholder" id="placeholder">
+      <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M7 20V8h13M28 8h13v12M41 28v13H28M20 41H7V28"/><path d="M14 16h7v7h-7zM27 16h7v7h-7zM14 29h7v7h-7zM29 30v6h6"/></svg>
+      <p>摄像头仅用于本机识别<br>不会上传照片或视频</p>
+    </div>
+    <div class="frame" aria-hidden="true"><span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span></div>
+  </div>
+  <div class="controls">
+    <button id="camera" type="button" class="action primary"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h4l2-3h4l2 3h4v13H4z"/><circle cx="12" cy="13" r="4"/></svg><span id="cameraLabel">打开相机</span></button>
+    <button id="album" type="button" class="action"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8" cy="8" r="1.5"/><path d="m4 18 5-5 3 3 4-5 4 4"/></svg>从相册选择</button>
+  </div>
+  <input type="file" id="photo" accept="image/*" aria-label="选择二维码截图">
+  <p id="scanStatus" role="status" aria-live="polite">点击打开相机开始扫描。</p>
+  <section class="subtle">
+    <h2>或者粘贴好友邀请链接</h2>
+    <form class="code-form" id="codeForm">
+      <input id="code" type="text" autocomplete="off" spellcheck="false" placeholder="好友码 / 邀请链接" aria-label="好友码或邀请链接" required>
+      <button type="submit">确认</button>
+    </form>
+    <p class="note">不支持的浏览器可以直接使用手机系统相机扫描二维码，再从链接打开好友申请。邀请码有效期为 15 分钟。</p>
+  </section>
+</main>
+<script type="module">
+import {parseFriendQr, friendRequestUrl} from './friend-qr-scan.mjs';
+
+const $ = id => document.getElementById(id);
+const video = $('video'), status = $('scanStatus'), camera = $('camera'), imageInput = $('photo');
+let stream = null, detector = null, scanGeneration = 0, scanTimer = null, navigating = false;
+function setStatus(message) { status.textContent = message; }
+function stopCamera() {
+  scanGeneration++;
+  if (scanTimer !== null) { clearTimeout(scanTimer); scanTimer = null; }
+  if (stream) { stream.getTracks().forEach(track => track.stop()); stream = null; }
+  video.pause();
+  video.srcObject = null;
+  $('scanWindow').classList.remove('active');
+  $('cameraLabel').textContent = '打开相机';
+}
+function finish(value) {
+  const code = parseFriendQr(value, location.origin);
+  if (!code) {
+    setStatus('未识别到当前小手机的有效好友二维码，请检查链接或重新扫描。');
+    return false;
+  }
+  navigating = true;
+  stopCamera();
+  location.assign(friendRequestUrl(code));
+  return true;
+}
+async function getDetector() {
+  if (!('BarcodeDetector' in window)) return null;
+  try {
+    const formats = await window.BarcodeDetector.getSupportedFormats?.();
+    if (formats && !formats.includes('qr_code')) return null;
+    return new window.BarcodeDetector({formats:['qr_code']});
+  } catch { return null; }
+}
+async function scanFrame(generation) {
+  if (generation !== scanGeneration || !stream || navigating) return;
+  try {
+    if (video.readyState >= 2) {
+      const codes = await detector.detect(video);
+      for (const code of codes) {
+        if (finish(code.rawValue)) return;
+      }
+    }
+  } catch { /* transient camera frame; keep scanning */ }
+  if (generation === scanGeneration && !navigating) {
+    scanTimer = setTimeout(() => scanFrame(generation), 250);
+  }
+}
+camera.addEventListener('click', async () => {
+  if (stream) { stopCamera(); setStatus('扫描已停止。'); return; }
+  camera.disabled = true;
+  try {
+    detector = await getDetector();
+    if (!detector) {
+      setStatus('此浏览器不支持网页内二维码识别。可以使用手机系统相机扫一扫，或粘贴好友链接。');
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setStatus('当前浏览器无法启用摄像头。请用手机系统相机或相册中的邀请链接。');
+      return;
+    }
+    const generation = ++scanGeneration;
+    const created = await navigator.mediaDevices.getUserMedia({
+      audio:false, video:{facingMode:{ideal:'environment'}}
+    });
+    if (generation !== scanGeneration || navigating) {
+      created.getTracks().forEach(track => track.stop());
+      return;
+    }
+    stream = created;
+    video.srcObject = stream;
+    await video.play();
+    $('scanWindow').classList.add('active');
+    $('cameraLabel').textContent = '停止扫描';
+    setStatus('请将好友二维码放入取景框。');
+    scanFrame(generation);
+  } catch (error) {
+    stopCamera();
+    setStatus(error?.name === 'NotAllowedError'
+      ? '摄像头权限未开启。可在浏览器设置中允许相机，或使用系统相机扫描。'
+      : '暂时无法打开摄像头。请尝试相册识别或粘贴邀请链接。');
+  } finally { camera.disabled = false; }
+});
+$('album').addEventListener('click', () => imageInput.click());
+imageInput.addEventListener('change', async () => {
+  const file = imageInput.files?.[0];
+  imageInput.value = '';
+  if (!file) return;
+  if (!file.type.startsWith('image/') || file.size > 15 * 1024 * 1024) {
+    setStatus('请选取 15 MB 以内的二维码图片。'); return;
+  }
+  const scanner = await getDetector();
+  if (!scanner) {
+    setStatus('此浏览器暂不支持相册二维码识别。请用系统相机扫描，或粘贴邀请链接。');
+    return;
+  }
+  stopCamera();
+  let src = null;
+  try {
+    src = URL.createObjectURL(file);
+    const img = new Image();
+    img.src = src;
+    await img.decode();
+    const codes = await scanner.detect(img);
+    if (!codes.some(item => finish(item.rawValue))) setStatus('照片中未发现有效的好友二维码，请重新选择清晰截图。');
+  } catch {
+    setStatus('无法读取这张二维码图片，请使用清晰截图或粘贴邀请链接。');
+  } finally {
+    if (src) URL.revokeObjectURL(src);
+  }
+});
+$('codeForm').addEventListener('submit', event => {
+  event.preventDefault();
+  if (!finish($('code').value)) $('code').focus();
+});
+$('back').addEventListener('click', () => { stopCamera(); location.assign('../chat/chat.html'); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) stopCamera(); });
+window.addEventListener('pagehide', stopCamera);
+</script>
+</body>
+</html>

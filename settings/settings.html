@@ -44,7 +44,7 @@
             <!-- ACCOUNT 分组 -->
             <div class="group-title">ACCOUNT</div>
             <section class="card">
-                <div class="menu-row user-row" style="cursor:default;">
+                <div class="menu-row user-row" style="cursor:pointer;" role="link" tabindex="0" aria-label="打开 MAO 账号管理">
                     <div class="avatar" id="settingsAvatar">简</div>
                     <div class="menu-info">
                         <div class="menu-title" id="settingsName">未设置昵称</div>
@@ -60,6 +60,11 @@
                 <div class="menu-row" onclick="document.getElementById('api-panel').style.display='flex'" role="button" tabindex="0">
                     <div class="menu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a7 7 0 0 0-4 12.7V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.3A7 7 0 0 0 12 2z"/><path d="M9 21h6"/></svg></div>
                     <div class="menu-title"><span class="t-cn">API 设置</span><span class="t-en">API</span></div>
+                    <div class="menu-arrow">›</div>
+                </div>
+                <div class="menu-row" onclick="window.location.href='cloud-push.html'" role="button" tabindex="0" aria-label="打开云端推送设置">
+                    <div class="menu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg></div>
+                    <div class="menu-title"><span class="t-cn">云端推送</span><span class="t-en">Notifications</span></div>
                     <div class="menu-arrow">›</div>
                 </div>
                 <div class="menu-row" onclick="window.location.href='image-generation.html'" role="button" tabindex="0">
@@ -455,5 +460,6 @@
         }
     })();
     </script>
+    <script src="../account/settings-link.js?v=1" defer></script>
 </body>
 </html>

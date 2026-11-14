@@ -65,21 +65,61 @@ test('guide documents the merged chat features and correctly separates unverifie
   assert.match(guideScript, /此前的手机打不开反馈仍需在安装版和普通浏览器分别实测/);
 });
 
-test('all 29 desktop app shortcuts have a matching app guide and quick-open entry', () => {
+test('all 30 desktop app shortcuts have a matching guide; creator-only tutorial is role-gated', () => {
   const tiles = [...home.matchAll(/data-href="([^"]+)" data-drag="(app_[^"]+)" data-name="([^"]+)"/g)]
     .map((match) => ({ path: match[1], id: match[2], name: match[3] }))
     .filter((item) => item.id.startsWith('app_'));
   const appGuideIds = [...guideScript.matchAll(/id:'(app-[^']+)'/g)].map((match) => match[1]);
   const appEntries = [...guideScript.matchAll(/\['([^']+)',\s*'([^']+\.html)',\s*'[^']+'\]/g)]
     .map((match) => ({ name: match[1], path: match[2] }));
-  assert.equal(tiles.length, 29, 'expected all desktop app tiles, including Tutorial');
-  assert.equal(appGuideIds.length, 29, 'every app must have its own step-by-step guide');
-  assert.equal(appEntries.length, 29, 'every app must appear in the quick-open directory');
+  assert.equal(tiles.length, 30, 'expected 29 ordinary tiles plus the creator-only manager');
+  assert.equal(appGuideIds.length, 30, 'the founder-only app also needs a guide');
+  assert.equal(appEntries.length, 30, 'the founder-only app also needs a directory entry');
   tiles.forEach((tile) => {
     assert.ok(guideScript.includes("href:'../" + tile.path + "'"), 'missing app guide route for ' + tile.name);
     assert.ok(appEntries.some((entry) => entry.path === tile.path), 'missing quick-open entry for ' + tile.name);
     assert.ok(existsSync(resolve(root, tile.path)), 'missing app page for ' + tile.name + ': ' + tile.path);
   });
+  assert.ok(tiles.some(tile => tile.id === 'app_admin_center' && tile.path === 'admin/admin-center.html'));
+  assert.match(guideScript, /founderRole\.content === 'super_admin'/);
+  assert.match(guideScript, /if \(isFounder\) \{/);
+  assert.match(guideScript, /GUIDES\.push\(\{/);
+  assert.match(guideScript, /APPS\.push\(\['管理中心'/);
+  assert.match(guideScript, /id:'account-access'/);
+  assert.match(guideScript, /id:'app-admin'/);
+});
+
+test('current founder QA guide links to real admin, social and chat screens without claiming unverified features', () => {
+  assert.match(guideScript, /id: 'qa-001-admin'/);
+  assert.match(guideScript, /id: 'qa-001-social'/);
+  assert.match(guideScript, /id: 'qa-001-chat-save'/);
+  assert.match(guideScript, /原管理员 001 已完成手机登录/);
+  assert.match(guideScript, /href: '\.\.\/chat\/contacts\/real-friends\.html'/);
+  assert.match(guideScript, /已审批真人好友会直接出现在聊天首页/);
+  assert.match(guideScript, /麦克风/);
+  assert.match(guideScript, /相册照片/);
+  assert.match(guideScript, /不需要 AI API/);
+  assert.match(guideScript, /不要填写密码/);
+});
+
+test('2026-11-14 QA guide is inside the real desktop app and gates unverified server claims', () => {
+  assert.match(guideHtml, /id="qaReadinessTitle"/);
+  assert.match(guideHtml, /id="qaCloudStatus"/);
+  assert.match(guideHtml, /id="qaAccountStatus"/);
+  assert.match(guideHtml, /id="qaPushStatus"/);
+  assert.match(guideHtml, /id="qaRecheck"/);
+  assert.match(guideHtml, /tutorial\.js\?v=20261114qa1/);
+  assert.match(guideScript, /id: 'qa-20261114-quickstart'/);
+  for (const id of ['qa-20261114-push', 'qa-20261114-forum',
+    'qa-20261114-inspect', 'qa-20261114-theme', 'qa-20261114-wallet']) {
+    assert.ok(guideScript.includes("id: '" + id + "'"), 'missing staged QA guide ' + id);
+  }
+  assert.match(guideScript, /qaRead\('\/api\/health'\)/);
+  assert.match(guideScript, /qaRead\('\/api\/admin\/bootstrap\/status'\)/);
+  assert.match(guideScript, /health\.vapidConfigured === true/);
+  assert.match(guideScript, /account\.identityAuthorityConnected === true/);
+  assert.match(guideScript, /checkQaReadiness\(\)/);
+  assert.match(guideScript, /不要把旧预览的 001 登录当成当前成功/);
 });
 
 test('all tutorial guide deep links resolve to real HTML pages', () => {
@@ -129,9 +169,9 @@ test('tutorial workflow enforces a guide update when user-facing app pages chang
 });
 
 test('PWA app shell caches the full guide bundle and has a matching test command', () => {
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v203'/);
+  assert.ok(Number(/phone-app-pwa-v(\d+)/.exec(serviceWorker)?.[1]) >= 206, 'tutorial update must ship with the newer authenticated PWA cache');
   assert.ok(serviceWorker.includes("'./tutorial/tutorial.html'"));
-  assert.ok(serviceWorker.includes("'./tutorial/tutorial.js?v=20261111v3'"));
+  assert.ok(serviceWorker.includes("'./tutorial/tutorial.js?v=20261114qa1'"));
   assert.equal(packageJson.scripts['test:tutorial'], 'node --test tests/tutorial-page-contract.test.mjs');
 });
 
@@ -140,4 +180,16 @@ test('chat detail scripts parse so the conversation settings handler can bind', 
     .filter(([, attributes]) => !/\bsrc\s*=|\btype\s*=/.test(attributes));
   assert.ok(scripts.some(([, , source]) => /async function sendMsg\(/.test(source)));
   for (const [, , source] of scripts) new Function(source);
+});
+
+test('mobile bug report is copyable, compact and only collects declared test notes', () => {
+  assert.match(guideHtml, /id="copyTests"/);
+  assert.match(guideHtml, /id="copyTestsHint"/);
+  assert.match(guideScript, /function buildTestReport\(onlyTouched\)/);
+  assert.match(guideScript, /if \(onlyTouched && !state\.done && !String\(state\.note \|\| ''\)\.trim\(\)\) return/);
+  assert.match(guideScript, /var report = buildTestReport\(true\)/);
+  assert.match(guideScript, /navigator\.clipboard\.writeText\(report\)/);
+  assert.match(guideScript, /window\.prompt\('未能自动复制/);
+  assert.match(guideScript, /'屏幕视口：' \+ width/);
+  assert.doesNotMatch(guideScript.slice(guideScript.indexOf('function buildTestReport('), guideScript.indexOf('function exportProgress(')), /chat_history|api_key|localStorage\.getItem|document\.cookie/i);
 });
