@@ -59,26 +59,28 @@ export function parseAggregateResults(payload) {
     throw Error('ACCOUNT_INVENTORY_CONTRADICTORY');
   return Object.freeze(output);
 }
+/**
+ * SINGLE-authority inventory audit. mao520.com (historical Worker name
+ * mao-auth-preview) is canonical production. app.mao520.com uses isolated QA.
+ * The old integrated mao and separate identity-core namespaces are not
+ * required to contain cloned users or to become extra account authorities.
+ * Counts alone NEVER prove password, member ID, restore or session continuity.
+ */
 export function auditLiveContinuity(stores) {
   const issues = [];
-  const old = stores?.existingMembers;
+  const root = stores?.existingMembers;
   const qa = stores?.isolatedQA;
-  const prod = stores?.integratedBackend;
-  const identity = stores?.permanentIdentity;
-  if (!old || !qa || !prod || !identity) return ['ACCOUNT_STORES_INCOMPLETE'];
-  if (old.accounts < 1 || old.members < 1) issues.push('EXISTING_LIVE_MEMBER_NOT_VERIFIED');
-  if (old.admins !== 1) issues.push('OLD_AUTHORITY_ADMIN_STATE_UNEXPECTED');
-  if (old.admins === 1 && old.selected_admin !== 1)
-    issues.push('OLD_AUTHORITY_HAS_DIFFERENT_FOUNDER');
+  if (!root || !qa) return ['ACCOUNT_STORES_INCOMPLETE'];
+  if (root.accounts < 2 || root.members < 1)
+    issues.push('EXISTING_LIVE_MEMBER_NOT_VERIFIED');
+  if (root.admins !== 1)
+    issues.push('ROOT_AUTHORITY_ADMIN_STATE_UNEXPECTED');
+  if (root.admins === 1 && root.selected_admin !== 1)
+    issues.push('ROOT_FOUNDER_CUTOVER_NOT_READY');
   if (qa.admins !== 1 || qa.selected_admin !== 1)
     issues.push('SELECTED_FOUNDER_QA_NOT_CONFIRMED');
-  if (prod.admins !== 1 || prod.selected_admin !== 1)
-    issues.push('INTEGRATED_BACKEND_FOUNDER_NOT_READY');
-  if (identity.admins !== 1 || identity.selected_admin !== 1)
-    issues.push('PERMANENT_IDENTITY_NOT_READY');
-  if (prod.members < old.members)
-    issues.push('EXISTING_MEMBERS_NOT_CONTINUOUS_IN_BACKEND');
-  // Aggregate continuity is a necessary, never sufficient, release condition.
+  // Unlike the obsolete multi-authority release plan, do NOT require
+  // cloning production accounts into mao or maomao-identity-core.
   return Object.freeze(issues);
 }
 
