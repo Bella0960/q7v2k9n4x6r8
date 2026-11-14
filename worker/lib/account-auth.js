@@ -1,4 +1,5 @@
 import { pbkdf2 as nativePbkdf2, createHmac } from 'node:crypto';
+import { isDelegatedAdminManagementRoute } from './delegated-admin-routes.js';
 import { ApiError, ok, json, readJsonBody } from './http.js';
 import { randomToken, sha256Hex, base64UrlToBytes, timingSafeEqualHex } from './crypto.js';
 import {
@@ -945,6 +946,76 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     return ok({ revoked: true });
   }
 
+  async function delegatedAdminManagement(request) {
+    // This permission checks the real central founder on EVERY operation.
+    // Preview-only session IDs, cookies and front-end 001 labels do not grant
+    // admin rights. Both Workers independently verify the original session.
+    const actor = await requireActiveAdmin(request);
+    if (env.MAO_DELEGATED_ADMIN_MANAGEMENT_ENABLED !== 'true' ||
+        !usesExistingAccountAuthority(env)) {
+      throw new ApiError(403, 'DELEGATED_ACCOUNT_MANAGED_CENTRALLY',
+        '账号和管理员身份只能在统一账号系统中管理');
+    }
+    if (actor.role !== 'super_admin' ||
+        (env.MAO_IDENTITY_CANONICAL_ADMIN_REQUIRED === 'true' &&
+          actor.account_id !== String(env.MAO_EXPECTED_FOUNDER_ID || ''))) {
+      throw new ApiError(403, 'ADMIN_ONLY', '当前身份不是唯一 001 管理员');
+    }
+    const binding = env.MAO_IDENTITY_AUTHORITY;
+    const secret = activeAuthoritySecret(env);
+    if (typeof binding?.fetch !== 'function' || secret.length < 32) {
+      throw new ApiError(503, 'IDENTITY_BRIDGE_NOT_READY', '统一管理后台尚未连接');
+    }
+    const sessionToken = cookieValue(request);
+    if (!/^[A-Za-z0-9_-]{32,128}$/.test(sessionToken)) {
+      throw new ApiError(401, 'ACCOUNT_SESSION_REQUIRED', '原管理员登录会话无效');
+    }
+    const originalUrl = new URL(request.url);
+    const method = request.method.toUpperCase();
+    if (!isDelegatedAdminManagementRoute(method, originalUrl.pathname)) {
+      throw new ApiError(404, 'ADMIN_ROUTE_NOT_FOUND', '管理接口不存在');
+    }
+    const headers = new Headers({
+      'authorization': 'Bearer ' + sessionToken,
+      'x-mao-identity-bridge': secret,
+      'accept': 'application/json'
+    });
+    let body;
+    if (method === 'POST') {
+      if (!/^application\/json(?:;|$)/i.test(request.headers.get('content-type') || '')) {
+        throw new ApiError(415, 'INVALID_CONTENT_TYPE', '仅允许 JSON 管理请求');
+      }
+      body = await request.text();
+      if (body.length > 65536) {
+        throw new ApiError(413, 'REQUEST_TOO_LARGE', '管理操作内容过大');
+      }
+      headers.set('content-type', 'application/json');
+    }
+    const targetUrl = 'https://mao520.com' +
+      originalUrl.pathname + originalUrl.search;
+    let upstream;
+    try {
+      upstream = await binding.fetch(new Request(targetUrl, {
+        method, headers, ...(body === undefined ? {} : { body }),
+        redirect: 'manual'
+      }));
+    } catch {
+      throw new ApiError(503, 'IDENTITY_AUTHORITY_OFFLINE', '原账号管理服务暂时不可用');
+    }
+    if (upstream.status >= 300 && upstream.status < 400 ||
+        !/application\/json/i.test(upstream.headers.get('content-type') || '')) {
+      throw new ApiError(503, 'IDENTITY_AUTHORITY_UNAVAILABLE', '原账号后台返回异常');
+    }
+    // Never forward upstream Set-Cookie, CORS, secrets or cacheable responses.
+    return new Response(upstream.body, {
+      status: upstream.status,
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+        'cache-control': 'no-store'
+      }
+    });
+  }
+
   return {
     getAuthenticatedAccount,
     handle: async (request, path, method) => {
@@ -980,6 +1051,9 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       if (path === '/api/internal/identity/status' && method === 'POST') return await issuerStatus(request);
       // Preview account settings are read from the central identity authority.
       // Social testing remains local; account registration/management does not.
+      if (delegated && isDelegatedAdminManagementRoute(method, path)) {
+        return await delegatedAdminManagement(request);
+      }
       if (delegated && (
         path === '/api/accounts/register' ||
         path === '/api/accounts/invites/redeem' ||
