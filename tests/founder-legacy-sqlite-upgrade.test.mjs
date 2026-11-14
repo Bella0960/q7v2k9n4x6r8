@@ -20,7 +20,7 @@ const founderPassword = 'synthetic-upgrade-safety-passphrase-2026';
 
 function applyOldMigrations(exec, now) {
   exec('CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)');
-  const old = MIGRATIONS.filter(m => !['0017_mao_social','0018_mao_social_e2ee','0019_mao_social_e2ee_media'].includes(m.version));
+  const old = MIGRATIONS.filter(m => Number(m.version.slice(0, 4)) <= 16);
   assert.equal(old.length, 16, 'must rehearse exactly the original 16 migrations');
   for (const migration of old) {
     exec('BEGIN IMMEDIATE');
@@ -82,8 +82,8 @@ test('real SQLite 001 legacy -> social 0017: founder credentials, permanent ID a
   };
   const app = setupTestStore(testDb, env);
   const versions = query('SELECT version FROM schema_migrations ORDER BY version').map(row => row.version);
-  assert.equal(versions.length, 19);
-  assert.equal(versions.at(-1), '0019_mao_social_e2ee_media');
+  assert.equal(versions.length, 20);
+  assert.equal(versions.at(-1), '0020_cloud_autonomous_context');
   assert.deepEqual(query(
     'SELECT id, username, username_key, password_salt, password_hash, role, status FROM mao_accounts WHERE id = ?',
     founderId
@@ -95,6 +95,10 @@ test('real SQLite 001 legacy -> social 0017: founder credentials, permanent ID a
   assert.ok(query("SELECT name FROM sqlite_master WHERE name = 'mao_social_friends'").length);
   assert.ok(query("SELECT name FROM sqlite_master WHERE name = 'mao_social_e2ee_keys'").length);
   assert.ok(query("SELECT name FROM sqlite_master WHERE name = 'mao_social_e2ee_media'").length);
+  assert.ok(query("SELECT name FROM sqlite_master WHERE name = 'user_context_sharing'").length);
+  assert.ok(query("SELECT name FROM sqlite_master WHERE name = 'character_context_snapshots'").length);
+  assert.equal(query('SELECT COUNT(*) AS n FROM user_context_sharing')[0].n, 0,
+    'new cloud context consent must default OFF and never silently opt existing users in');
 
   const active = await app.asJson('/api/accounts/me', {
     headers: { cookie: 'MAO_SESSION=' + token }
@@ -121,15 +125,35 @@ test('real SQLite 001 legacy -> social 0017: founder credentials, permanent ID a
   assert.equal(query("SELECT COUNT(*) AS n FROM mao_accounts WHERE role = 'super_admin'")[0].n, 1);
 });
 
-test('social schema upgrade uses additive DDL only; original migrations are unchanged', () => {
+test('social and cloud context upgrades are additive; original founder migrations remain unchanged', () => {
   const social = MIGRATIONS.find(m => m.version === '0017_mao_social');
   const keys = MIGRATIONS.find(m => m.version === '0018_mao_social_e2ee');
-  const latest = MIGRATIONS.at(-1);
-  assert.equal(latest?.version, '0019_mao_social_e2ee_media');
-  for(const migration of [social,keys,latest])assert.doesNotMatch(migration.sql, /\b(?:DROP|DELETE|UPDATE|REPLACE|ALTER)\b/i);
+  const media = MIGRATIONS.find(m => m.version === '0019_mao_social_e2ee_media');
+  const cloud = MIGRATIONS.at(-1);
+  assert.equal(cloud?.version, '0020_cloud_autonomous_context');
+
+  // The 0017–0019 migrations only create separate tables/indexes; never
+  // rewrite or drop the founder's accounts or existing encrypted chats.
+  for (const migration of [social, keys, media]) {
+    assert.doesNotMatch(migration.sql, /\b(?:DROP|DELETE|UPDATE|REPLACE|ALTER)\b/i);
+  }
   assert.match(social.sql, /CREATE TABLE IF NOT EXISTS mao_social_requests/);
   assert.match(social.sql, /CREATE TABLE IF NOT EXISTS mao_social_friends/);
   assert.match(keys.sql, /CREATE TABLE IF NOT EXISTS mao_social_e2ee_keys/);
-  assert.match(latest.sql, /CREATE TABLE IF NOT EXISTS mao_social_e2ee_media/);
-  assert.equal(new Set(MIGRATIONS.map(x => x.version)).size, 19);
+  assert.match(media.sql, /CREATE TABLE IF NOT EXISTS mao_social_e2ee_media/);
+
+  // 0020 is an explicitly additive schema extension. ALTER is allowed only
+  // for adding columns, not for renaming, dropping or replacing user data.
+  assert.doesNotMatch(cloud.sql, /\b(?:DROP|DELETE|UPDATE|REPLACE|RENAME)\b/i);
+  for (const statement of splitSql(cloud.sql)) {
+    if (/^ALTER\s+TABLE\b/i.test(statement)) {
+      assert.match(statement, /^ALTER\s+TABLE\s+\w+\s+ADD\s+COLUMN\s+\w+/i);
+    } else {
+      assert.match(statement, /^CREATE\s+(?:TABLE|INDEX)\s+IF\s+NOT\s+EXISTS\b/i);
+    }
+  }
+  assert.match(cloud.sql, /CREATE TABLE IF NOT EXISTS user_context_sharing/);
+  assert.match(cloud.sql, /enabled INTEGER NOT NULL DEFAULT 0/);
+  assert.match(cloud.sql, /CREATE TABLE IF NOT EXISTS character_context_snapshots/);
+  assert.equal(new Set(MIGRATIONS.map(x => x.version)).size, 20);
 });
