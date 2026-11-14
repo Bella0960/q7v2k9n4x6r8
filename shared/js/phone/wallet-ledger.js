@@ -445,6 +445,12 @@
   // Called only while runExclusive() is held. Missing storage is first-use;
   // empty, malformed, or conflicting existing data is never reset.
   function recordFinanceLines(transactionId, expectedRows, storageKey) {
+    // This public helper is used by shop and takeout and may be called by new
+    // modules. Never let it silently bypass the shared Web Lock and overwrite
+    // a concurrent manual entry or after-sales annotation.
+    if (activeMutationLocks === 0) {
+      return { ok: false, reason: 'mutation-lock-required' };
+    }
     transactionId = String(transactionId || '');
     storageKey = String(storageKey || 'finance_records');
     if (!transactionId || transactionId.length > 160) return { ok: false, reason: 'invalid-transaction' };
