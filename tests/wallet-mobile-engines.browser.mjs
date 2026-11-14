@@ -70,11 +70,14 @@ async function wallet(page) {
 }
 async function spend(page, id, amount) {
   return page.evaluate(({ id, amount }) => {
-    const ledger = window.MaoMaoWalletLedger, w = ledger.readWalletForMutation('workData');
-    if (!w || w.balance < amount) return { ok: false };
-    w.balance = Math.round((w.balance - amount) * 100) / 100;
-    w.history.unshift({ type: 'expense', paymentId: id, amount, time: Date.now() });
-    return ledger.commitWalletSnapshot(w);
+    const ledger = window.MaoMaoWalletLedger;
+    return ledger.runExclusive(() => {
+      const w = ledger.readWalletForMutation('workData');
+      if (!w || w.balance < amount) return { ok: false };
+      w.balance = Math.round((w.balance - amount) * 100) / 100;
+      w.history.unshift({ type: 'expense', paymentId: id, amount, time: Date.now() });
+      return ledger.commitWalletSnapshot(w);
+    });
   }, { id, amount });
 }
 
@@ -102,8 +105,8 @@ async function run(browserType, device, label, origin) {
       assert.deepEqual(await wallet(b), { balance: 920, ids: ['b-shop'] });
       assert.deepEqual(await wallet(owner), { balance: 300, ids: ['owner-shop', 'old-owner'] });
 
-      const receipt = await a.evaluate(() => window.MaoMaoWalletLedger
-        .getOrCreatePendingCheckout('shop', 'cart-a', 'normal'));
+      const receipt = await a.evaluate(() => window.MaoMaoWalletLedger.runExclusive(() =>
+        window.MaoMaoWalletLedger.getOrCreatePendingCheckout('shop', 'cart-a', 'normal')));
       assert.ok(receipt);
       assert.equal(await b.evaluate(() => window.MaoMaoWalletLedger.getPendingCheckout('shop')), undefined);
       const finance = await a.evaluate(() => window.MaoMaoWalletLedger.runExclusive(() =>
@@ -116,12 +119,12 @@ async function run(browserType, device, label, origin) {
       const a2 = await openPage(context, origin, ids.a);
       await a.evaluate(() => { window.__oldWallet = window.MaoMaoWalletLedger.readWalletForMutation('workData'); });
       assert.equal((await spend(a2, 'a2-shop', 15)).ok, true);
-      assert.equal(await a.evaluate(() => {
+      assert.equal(await a.evaluate(() => window.MaoMaoWalletLedger.runExclusive(() => {
         const stale = window.__oldWallet;
         stale.balance -= 30;
         stale.history.push({ paymentId: 'stale' });
         return window.MaoMaoWalletLedger.commitWalletSnapshot(stale).reason;
-      }), 'stale-wallet');
+      })), 'stale-wallet');
       assert.deepEqual(await wallet(a), { balance: 960, ids: ['a2-shop', 'a-shop'] });
       assert.equal((await wallet(b)).balance, 920);
 
