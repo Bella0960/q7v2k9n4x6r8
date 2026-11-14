@@ -44,6 +44,11 @@ test('QA Worker is isolated from production and never aliases old account previe
   assert.equal(config.vars.MAO_SOCIAL_ENABLED, 'true');
   assert.equal(config.vars.MAO_SOCIAL_CHAT_ENABLED, 'false');
   assert.equal(config.vars.MAO_SOCIAL_E2EE_ENABLED, 'true');
+  assert.equal(config.vars.MAO_DELEGATED_ADMIN_MANAGEMENT_ENABLED, 'true',
+    'admin authority proxy is enabled only after the private gateway is upgraded');
+  const prod=JSON.parse(readFileSync(new URL('../wrangler.jsonc', import.meta.url),'utf8'));
+  assert.equal(prod.vars?.MAO_DELEGATED_ADMIN_MANAGEMENT_ENABLED, undefined,
+    'never enable delegated QA management implicitly in production');
   assert.ok(!JSON.stringify(config).includes('MAO-OXHBDBWCOIHPBBYN'),
     'permanent founder account ID belongs in a secret, not public repository config');
   assert.ok(!('MAO_IDENTITY_BRIDGE_SECRET' in config.vars));
