@@ -5,10 +5,21 @@
 (function () {
   'use strict';
 
-  var GUIDE_VERSION = '2026.11.13 · 001 测试版';
+  var GUIDE_VERSION = '2026.11.14 · 001 集中验收';
   var STORAGE_KEY = 'maomao_tutorial_progress_v1';
 
   var GUIDE_UPDATES = [
+    {
+      date: '2026-11-14',
+      title: '原001真机环境 · 最后一轮集中验收（保留昨日成果）',
+      items: [
+        '昨天已实际验收的管理员登录、真人好友聊天和安卓锁屏通知，不需要重新注册、清空数据或反复申请通知权限。',
+        '本页新增统一验收顺序与只读环境诊断；所有入口仍然是这套小手机真实应用，不会切到新建的空账号数据库。',
+        '重点验证新旧功能整合后的聊天保存、多气泡、角色主动消息、论坛、查手机、商城和虚拟钱包；尚在单独 PR 的新版界面不得冒充已经包含。',
+        '每项只测一次并记录结果。报告可直接复制；不要在备注中填写账号密码、完整邀请码、API Key 或私人聊天内容。'
+      ]
+    },
+
     {
       date: '2026-11-13',
       title: '原管理员 001 已完成手机登录 · 本轮测试入口',
@@ -49,6 +60,83 @@
   ];
 
   var GUIDES = [
+    {
+      id: 'qa-final-20261114-overview', category: '入门', title: '最终验收从这里开始 · 保留昨天已完成的成果',
+      summary: '原管理员 001 测试库、真人好友和已有安卓通知订阅都保留。先做新增功能联动，别重新注册、删除订阅或清空聊天。',
+      location: '本页 → 云端状态 → 桌面 → 对应原生应用。',
+      steps: [
+        '先看本页的云端 API、001 登录配置和 Web Push 状态。这里检查的是当前打开的原管理员测试环境，不是另一个空测试库。',
+        '已有真机验收的管理员身份、真人文字图片语音和安卓锁屏推送先保留原记录，不要求重新做一遍。',
+        '依序完成：聊天保存与多气泡 → 角色云端主动联系 → 论坛与查手机 → 商城和钱包；只在需要验证新联动时复核旧功能。',
+        '每完成一张卡，在本页记录通过/失败，最后点「复制测试报告」；只把实际失败的步骤交回来修。'
+      ],
+      test: '原管理员登录仍有效；原联系人与聊天还在；本页记录结果正常保存。旧数据和订阅没有被重置。',
+      href: '../index.html', action: '进入原小手机'
+    },
+    {
+      id: 'qa-final-20261114-role-cloud', category: '聊天', title: '角色云端自主联系 · 不是固定测试通知',
+      summary: '只验证已经启用的角色主动联系：真实模型生成、消息入库、重复通知防护与点击进入对应角色。Web Push 已验收不代表此链路自动通过。',
+      location: '桌面 → 设置 → 云端推送；聊天 → 角色会话。',
+      steps: [
+        '在本页确认云端 API 和 Web Push 密钥仍然就绪；不需要重新申请昨天已经授予的系统通知权限。',
+        '进入设置的云端推送页，检查角色主动联系授权、上下文共享和角色选择是否有可用入口；没有就记录「入口缺失」。',
+        '若已配置角色模型、启用该角色且云端任务实际触发，观察角色自然生成的消息是否在原聊天会话中出现，而不是固定的测试推送文字。',
+        '回到列表刷新，再进同一个角色核对消息不重复、不串到其他账号；收到通知时点击进入对应聊天。没有真实模型消息就记录「未完成」，不要用系统通知代替。'
+      ],
+      test: '单独记录云端模型生成、入库、原生会话显示、安卓通知点击和 iPhone 主屏幕 App；未实测的不勾选通过。',
+      href: '../settings/cloud-push.html', action: '打开云端设置', issue: true
+    },
+    {
+      id: 'qa-final-20261114-forum', category: '社交', title: '论坛八卦 · 继续剧情且不重复',
+      summary: '原论坛真实入口；区分既有帖子加载与模型自主续写。刷新时旧帖、评论、情节顺序都要保存。',
+      location: '桌面 → 论坛 → 八卦帖子。',
+      steps: [
+        '打开一条已有八卦帖子，记住楼主最后一条剧情更新和评论。',
+        '使用论坛真实刷新入口检查旧帖未丢失，楼主新增内容与原大纲连续、不重复。',
+        '退回列表再点进同一帖，看评论、阅读记录与时间线是否仍然存在。没有接 AI API 时不要把生成续写算作通过。'
+      ],
+      test: '已读内容不丢失、已有评论保留、楼主续写不重复；AI 没接通就如实记录。',
+      href: '../forum/forum.html', action: '打开论坛', issue: true
+    },
+    {
+      id: 'qa-final-20261114-inspect', category: '角色', title: '查手机 · 备忘录与角色生活记录',
+      summary: '在原查手机里验证虚构角色备忘录、朋友圈、论坛与浏览记录；独立 PR 的新版手机内页尚未全量集成。',
+      location: '桌面 → 查手机 → 选角色。',
+      steps: [
+        '进入第一位角色的手机，查看备忘录、浏览记录和朋友圈。',
+        '在确实允许编辑的备忘录里写一条无隐私的便签，返回重新打开，检查保存。',
+        '切换另一个角色，确保便签和历史记录不会串号；返回聊天验证有 API 时的自然联动。',
+        '若你期待的新版微信详情、日记全文等页面不存在，就标记「新版待整合」，不把旧版打开算作新版通过。'
+      ],
+      test: '检查当前功能保存与角色隔离；新版查手机要等 #272 合入同一工程后再验收。',
+      href: '../inspect-phone/select.html', action: '打开查手机', issue: true
+    },
+    {
+      id: 'qa-final-20261114-theme', category: '外观', title: '主题商城 · 真正应用主题到聊天',
+      summary: '只验收原项目现有商城与主题。四栏完整扩建 #275 和薄影主题 #273 还在独立分支，不能当作已上线。',
+      location: '桌面 → 主题商城 → 主题详情 → 聊天。',
+      steps: [
+        '打开一个现有商品，切换不同预览，确认没有修改真实角色和消息。',
+        '在测试环境应用已支持的主题，然后进聊天首页和聊天详情检查真实效果。',
+        '单独切换现有聊天气泡后刷新，确认样式保留且不影响其他主题配置。',
+        '如果四栏商城或新主题尚未出现，就标记「待整合」，不要求你反复重装。'
+      ],
+      test: '原商城操作正常；#275 与 #273 新版只有实际整合后才可标记完成。',
+      href: '../theme-store/theme-store.html', action: '打开主题商城', issue: true
+    },
+    {
+      id: 'qa-final-20261114-wallet', category: '应用', title: '钱包 · 账单与亲属卡安全',
+      summary: '这轮只做原有虚拟账本只读检查。统一账本新 PR #283 未完结，红包、外卖、亲属卡支付一律不以正式通过论。',
+      location: '桌面 → 钱包 → 财务 / 亲属卡。',
+      steps: [
+        '打开钱包、财务和亲属卡的已有页面，查看虚拟账单能否加载。',
+        '返回和刷新，核对既有记录是否还在，不发生账户或角色混账。',
+        '不要做任何真实付款，也先不要人为制造重复红包或失败交易。统一账本的安全整合需要代码层先验收。',
+        '将缺失的统一账本、红包或外卖支付联动标记「待整合」，保留测试记录即可。'
+      ],
+      test: '当前只读账单与导航可测；真正统一交易入口、幂等和失败恢复须等 #283 完成集成后验收。',
+      href: '../wallet/wallet.html', action: '打开钱包', issue: true
+    },
     {
       id: 'qa-001-admin', category: '设置', title: '本轮 ① 管理员后台核对',
       summary: '001 本人手机登录已完成；继续验收管理中心是否按原账号权限展示，不执行破坏性操作。',
@@ -841,8 +929,53 @@
     if (event.target === $('resetModal')) $('resetModal').hidden = true;
   });
 
+  // Always inspect the CURRENT origin. These are only public, read-only
+  // status endpoints; never auto-register a founder or request push permission.
+  async function readPublicStatus(url) {
+    try {
+      var response = await fetch(url, { method: 'GET', credentials: 'same-origin',
+        cache: 'no-store', headers: { Accept: 'application/json' } });
+      if (!response.ok) return null;
+      var body = await response.json();
+      return body && body.ok === true ? body : null;
+    } catch (_) { return null; }
+  }
+  var checkingReadiness = false;
+  async function updateFinalReadiness() {
+    if (checkingReadiness) return;
+    checkingReadiness = true;
+    $('finalQaRecheck').disabled = true;
+    try {
+      var statuses = await Promise.all([readPublicStatus('/api/health'),
+        readPublicStatus('/api/admin/bootstrap/status')]);
+      var health = statuses[0], account = statuses[1];
+      var healthy = health && health.storage === 'durable-object-sqlite';
+      $('finalQaCloud').textContent = healthy ? '当前账号库在线（不代表已做恢复演练）'
+        : '云端接口不可用，请记录后暂停云端写入';
+      if (!account) {
+        $('finalQaAccount').textContent = '状态未知；保持现有登录，不要重新注册';
+      } else if (account.identityMode === 'delegated') {
+        $('finalQaAccount').textContent = account.signInReady && account.identityAuthorityConnected
+          ? '统一账号服务可连接；仍以当前实际会话为准'
+          : '账号连接异常；不要重新初始化';
+      } else {
+        $('finalQaAccount').textContent = account.initialized && account.signInReady
+          ? '原账号系统已初始化（无需重复注册 001）'
+          : '原账号尚未就绪；不要新建第二个管理员';
+      }
+      $('finalQaPush').textContent = healthy && health.vapidConfigured === true
+        ? 'Web Push 服务端密钥就绪；保留昨天的真机验收'
+        : '当前环境推送配置异常，先记录问题';
+    } finally {
+      checkingReadiness = false;
+      $('finalQaRecheck').disabled = false;
+    }
+  }
+  $('finalQaRecheck').addEventListener('click', updateFinalReadiness);
+
   renderUpdates();
   renderFilters();
   renderGuides();
   renderApps();
+  updateFinalReadiness();
 })();
