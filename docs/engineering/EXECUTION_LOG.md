@@ -152,3 +152,9 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - HTTPS deployed JS/CSS byte-match the tested source. Original identity authority remains connected and sign-in-ready, bootstrap remains disabled, push public config ready and anonymous management page still protected. QA namespace `4a24ce58079f468c87c2f75e107c4d1c`, identity service and existing secret bindings retained.
 - Production `mao` deployment/version unchanged before/after this task: `f6598f9b-c371-4405-9184-624dcf79d979` / `d6c0e2c7-c8f2-4533-89fd-d503633413db`.
 - Next: owner can reopen the QA administrator center to verify the redirect fix with the real Android session. Central account administration still intentionally unavailable; Android/iPhone push remains deferred. Safe raw deploy checks saved to `/workspace/maomao-acceptance/deployment-check.json`.
+
+### Owner hardware evidence — Android remote test notification PASS
+
+- Owner reports the test works and supplies an Android system notification-center screenshot showing Chrome, the isolated QA host, “MAOMAO · 云端测试通知” and “这条通知由云端推送到当前浏览器”. Android remote test notification OS display is now PASS.
+- This supersedes the earlier deferred/NOT VERIFIED status for Android remote test display only. iPhone delivery, notification-click routing, long-running background reliability and full central administrator operations remain unverified/unavailable. Do not infer them from the screenshot.
+- Do not commit the screenshot: it includes unrelated private notifications. Record only the minimal QA acceptance evidence in this log and the detailed acceptance report.
