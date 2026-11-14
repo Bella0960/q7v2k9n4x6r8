@@ -28,10 +28,7 @@
     "AUTONOMY_RETRY_BACKOFF_MS": "60000,300000,900000",
     "AUTONOMY_HEARTBEAT_TTL_MS": "90000",
     "AUTONOMY_DEVICE_LEASE_MS": "120000",
-    "AUTONOMY_DEVICE_GRACE_MS": "0",
-    "MAO_SOCIAL_ENABLED": "true",
-    "MAO_SOCIAL_CHAT_ENABLED": "false",
-    "MAO_SOCIAL_E2EE_ENABLED": "true"
+    "AUTONOMY_DEVICE_GRACE_MS": "0"
   },
   "previews": {
     "ai": { "binding": "AI" },
