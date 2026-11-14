@@ -11,6 +11,8 @@
     <link rel="stylesheet" href="../../shared/css/chat-beauty-runtime.css?v=20261031v1">
     <link rel="stylesheet" href="../call/call-overlay.css?v=20261105v1">
     <script src="../../shared/js/phone/phone_storage.js"></script>
+    <script src="../../shared/js/phone/inspect_account_guard.js?v=20261112v2"></script>
+    <script src="../../shared/js/phone/inspect_interaction_bridge.js?v=20261112v5"></script>
     <script src="../../shared/js/phone/storage/repository.js"></script>
     <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
     <script src="../../shared/js/phone/role-avatar-library.js?v=20261113v1"></script>
@@ -6661,6 +6663,31 @@
             }
             if (sharedTimelinePrompt) systemPrompt += '\n\n' + sharedTimelinePrompt;
 
+            // 真正的跨应用互动：用户在角色手机的备忘录/朋友圈留下内容，
+            // 不造一条“角色已回复”的假消息，也不修改聊天历史；
+            // 同账号同域本地故事由本角色下一次正常 AI 回复作为可选话题读取。
+            var inspectPhoneEventIds=[],inspectPhoneFocusId=null;
+            if (!isGroupChat && !silent && !contextOnly && !isRegen &&
+                presenceMode === 'online' &&
+                window.InspectInteractionBridge &&
+                typeof window.InspectInteractionBridge.buildPromptPacket === 'function') {
+                try {
+                    var inspectPhonePacket=window.InspectInteractionBridge.buildPromptPacket(
+                        String(currentRoleId || currentCharacter.id || ''),
+                        localStorage,
+                        Date.now(),
+                        {userText:text}
+                    );
+                    if (inspectPhonePacket && inspectPhonePacket.text) {
+                        systemPrompt += '\n\n' + inspectPhonePacket.text;
+                        inspectPhoneEventIds=inspectPhonePacket.eventIds||[];
+                        inspectPhoneFocusId=inspectPhonePacket.focusId||null;
+                    }
+                } catch (inspectPhoneContextError) {
+                    // 隔离查手机数据出错时不影响正常聊天。
+                }
+            }
+
             // 只在单人线上聊天、普通可见回复中提供本角色已收藏的表情目录。
             // 群聊、旁白、静默任务、重玩和后台 context-only 回合都不触发自动表情。
             var roleStickerCatalog = [];
@@ -7248,6 +7275,18 @@
                             if (streamBubble && fullText) streamBubble.textContent = fullText;
                             if (typeof showToast === 'function') showToast('AI 回复尚未保存。上方文字暂留在当前页面，请先复制保留，再检查存储空间。');
                         } else {
+                            // Only after a real response has been saved: mark notes
+                            // offered to the model, without inventing chat messages.
+                            if (!isGroupChat && (inspectPhoneEventIds.length || inspectPhoneFocusId) &&
+                                window.InspectInteractionBridge &&
+                                typeof window.InspectInteractionBridge.markOffered === 'function') {
+                                try {
+                                    window.InspectInteractionBridge.markOffered(
+                                        String(currentRoleId || currentCharacter.id || ''),
+                                        inspectPhoneEventIds, localStorage, Date.now(), inspectPhoneFocusId
+                                    );
+                                } catch (inspectPhoneMarkError) {}
+                            }
                             var lastVisibleMessage = aiRoleGalleryMessages.length
                                 ? aiRoleGalleryMessages[aiRoleGalleryMessages.length - 1]
                                 : (aiStickerMessages.length
