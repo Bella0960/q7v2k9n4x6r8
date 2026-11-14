@@ -36,7 +36,7 @@ export function auditAccountCutover(evidence, expectedFounderId) {
   if (!route || route.host!=='app.mao520.com' ||
       route.sameOriginAccountApiVerified!==true ||
       route.privateHtmlGated!==true ||
-      route.activeAccountAuthorityMatches===false) {
+      route.activeAccountAuthorityMatches!==true) {
     failures.push('APP_DOMAIN_SAME_ORIGIN_AUTH_NOT_VERIFIED');
   }
   if (evidence?.passwordAndOldSessionsContinuityVerified!==true)
