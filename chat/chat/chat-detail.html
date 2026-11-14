@@ -7,9 +7,11 @@
     <script src="../../shared/js/native-feel.js"></script>
     <script src="../../shared/js/custom-css.js"></script>
     <script src="../../shared/js/wallpaper-store.js?v=20261026v2"></script>
-    <script src="../../shared/js/chat-beauty.js?v=20261102v3"></script>
+    <script src="../../shared/js/chat-beauty.js?v=20261112at1"></script>
     <link rel="stylesheet" href="../../shared/css/chat-beauty-runtime.css?v=20261031v1">
     <link rel="stylesheet" href="../call/call-overlay.css?v=20261105v1">
+    <script src="../../shared/js/phone/inspect_account_guard.js?v=20261112v2"></script>
+    <script src="../../shared/js/phone/inspect_interaction_bridge.js?v=20261112v5"></script>
     <script src="../../shared/js/phone/phone_storage.js"></script>
     <script src="../../shared/js/phone/storage/repository.js"></script>
     <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
@@ -2059,6 +2061,12 @@
 <script src="../../shared/js/chat-page-theme.js?v=20261105v1"></script>
 <link rel="stylesheet" href="../../shared/css/silver-butterfly-theme.css?v=20261102v5">
 <link rel="stylesheet" href="../../shared/css/wechat-theme-refinements.css?v=20261105v2">
+<link rel="stylesheet" href="../../shared/css/atmosphere-theme.css?v=20261112v3">
+<link rel="stylesheet" href="../../shared/css/atmosphere-pages.css?v=20261112p3">
+<script src="../../shared/js/atmosphere-icons.js?v=20261112i1"></script>
+<script defer src="../../shared/js/atmosphere-theme.js?v=20261112v1"></script>
+<script defer src="../../shared/js/atmosphere-pages.js?v=20261112p4"></script>
+<script defer src="../../shared/js/atmosphere-composer.js?v=20261112c1"></script>
 </head>
 <body>
     <div class="phone-mockup">
@@ -6251,6 +6259,31 @@
             }
             if (sharedTimelinePrompt) systemPrompt += '\n\n' + sharedTimelinePrompt;
 
+            // 真正的跨应用互动：用户在角色手机的备忘录/朋友圈留下内容，
+            // 不造一条“角色已回复”的假消息，也不修改聊天历史；
+            // 同账号同域本地故事由本角色下一次正常 AI 回复作为可选话题读取。
+            var inspectPhoneEventIds=[],inspectPhoneFocusId=null;
+            if (!isGroupChat && !silent && !contextOnly && !isRegen &&
+                presenceMode === 'online' &&
+                window.InspectInteractionBridge &&
+                typeof window.InspectInteractionBridge.buildPromptPacket === 'function') {
+                try {
+                    var inspectPhonePacket=window.InspectInteractionBridge.buildPromptPacket(
+                        String(currentRoleId || currentCharacter.id || ''),
+                        localStorage,
+                        Date.now(),
+                        {userText:text}
+                    );
+                    if (inspectPhonePacket && inspectPhonePacket.text) {
+                        systemPrompt += '\n\n' + inspectPhonePacket.text;
+                        inspectPhoneEventIds=inspectPhonePacket.eventIds||[];
+                        inspectPhoneFocusId=inspectPhonePacket.focusId||null;
+                    }
+                } catch (inspectPhoneContextError) {
+                    // 隔离查手机数据出错时不影响正常聊天。
+                }
+            }
+
             // 只在单人线上聊天、普通可见回复中提供本角色已收藏的表情目录。
             // 群聊、旁白、静默任务、重玩和后台 context-only 回合都不触发自动表情。
             var roleStickerCatalog = [];
@@ -6838,6 +6871,18 @@
                             if (streamBubble && fullText) streamBubble.textContent = fullText;
                             if (typeof showToast === 'function') showToast('AI 回复尚未保存。上方文字暂留在当前页面，请先复制保留，再检查存储空间。');
                         } else {
+                            // A successful saved AI reply may acknowledge offered fictional-phone context.
+                            // This never fabricates a character reply or read receipt.
+                            if (!isGroupChat && (inspectPhoneEventIds.length || inspectPhoneFocusId) &&
+                                window.InspectInteractionBridge &&
+                                typeof window.InspectInteractionBridge.markOffered === 'function') {
+                                try {
+                                    window.InspectInteractionBridge.markOffered(
+                                        String(currentRoleId || currentCharacter.id || ''),
+                                        inspectPhoneEventIds, localStorage, Date.now(), inspectPhoneFocusId
+                                    );
+                                } catch (inspectPhoneMarkError) {}
+                            }
                             var lastVisibleMessage = aiRoleGalleryMessages.length
                                 ? aiRoleGalleryMessages[aiRoleGalleryMessages.length - 1]
                                 : (aiStickerMessages.length
@@ -8992,6 +9037,17 @@
                     var sticker = entry.sticker;
                     var item = document.createElement('div');
                     item.className = 'sticker-panel-item';
+                    // Keep the existing send/favorite handlers. Keyboard users can
+                    // select a sticker from the new horizontal atmosphere carousel.
+                    item.setAttribute('role', 'button');
+                    item.tabIndex = 0;
+                    item.setAttribute('aria-label', '发送表情：' + String(sticker.desc || '图片表情'));
+                    item.addEventListener('keydown', function (event) {
+                        if (event.target !== item) return;
+                        if (event.key !== 'Enter' && event.key !== ' ') return;
+                        event.preventDefault();
+                        item.click();
+                    });
 
                     var stickerThumb = document.createElement('img');
                     stickerThumb.src = String(sticker.img || '');
@@ -10067,11 +10123,21 @@ form#chat-form .send-icon-btn { display: flex !important; visibility: visible !i
     var d = document.getElementById('chat-form');
     var cap = document.querySelector('.input-capsule');
     var wechat = isWechat();
-    if(cap) cap.style.marginRight = '50px';
+    var shell = document.querySelector('.phone-mockup');
+    var atmosphere = !!(shell && shell.getAttribute('data-chat-theme-preset') === 'atmosphere');
     if(!d) return;
     var old = d.querySelector('.send-icon-btn');
-    if(old) old.style.display = 'none';
     var b = document.getElementById('myFloatSend');
+    // Thin Shadow uses the original form submit button. Never add a second
+    // visual send control or bypass the native send/validation handlers.
+    if(atmosphere){
+      if(cap) cap.style.removeProperty('margin-right');
+      if(old) old.style.removeProperty('display');
+      if(b) b.remove();
+      return;
+    }
+    if(cap) cap.style.marginRight = '50px';
+    if(old) old.style.display = 'none';
     if(!b){
       b = document.createElement('button');
       b.id = 'myFloatSend';
@@ -10092,6 +10158,12 @@ form#chat-form .send-icon-btn { display: flex !important; visibility: visible !i
   window.addEventListener('storage', function(event){
     if(!event || event.key === 'maomao_chat_theme_preset') setTimeout(sync, 0);
   });
+  // Theme class can arrive after DOMContentLoaded; catch the actual shell
+  // attribute change instead of relying on a second page refresh.
+  var shell = document.querySelector('.phone-mockup');
+  if(shell && window.MutationObserver){
+    new MutationObserver(sync).observe(shell,{attributes:true,attributeFilter:['data-chat-theme-preset']});
+  }
 })();</script>
 <style id="maomao-quote-reply-fix">
 .msg-quoted-preview {
