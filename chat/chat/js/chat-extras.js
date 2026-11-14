@@ -1092,36 +1092,37 @@
       if (typeof showToast === 'function') showToast('上一笔交易还在处理，请不要重复点击');
       return Promise.resolve(false);
     }
-    var locks = window.navigator && window.navigator.locks;
-    if (!locks || typeof locks.request !== 'function') {
-      if (typeof showToast === 'function') {
-        showToast('当前浏览器无法安全锁定钱包，红包和转账暂不可用；请勿重复付款');
-      }
+    // All payment writers (chat, wallet, shop, takeout and family cards) must
+    // acquire this one shared lock. The old chat-only lock name did not protect
+    // against checkout in another tab, even in browsers with Web Locks.
+    var ledger = window.MaoMaoWalletLedger;
+    if (!ledger || typeof ledger.runExclusive !== 'function' ||
+        typeof ledger.supportsCrossTabLock !== 'function') {
+      if (typeof showToast === 'function') showToast('统一钱包保护模块未加载，红包和转账已暂停');
+      return Promise.resolve(false);
+    }
+    if (!ledger.supportsCrossTabLock()) {
+      if (typeof showToast === 'function') showToast('当前浏览器不支持跨页面钱包锁，红包和转账已暂停，未扣款');
       return Promise.resolve(false);
     }
     if (sending) _outgoingPaymentBusy = true;
     var request;
     try {
-      request = locks.request(
-        'maomao-wallet-workData-v1',
-        sending ? { mode: 'exclusive', ifAvailable: true } : { mode: 'exclusive' },
-        function (lock) {
-          if (!lock) {
-            if (sending && typeof showToast === 'function') {
-              showToast('钱包正在另一个页面处理交易，请稍后重试');
-            }
-            return false;
-          }
-          action(); // Read balance and perform all wallet/chat writes while holding the lock.
-          return true;
-        }
-      );
+      request = ledger.runExclusive(function () {
+        action(); // Balance and chat-card reads/writes are one serialized operation.
+        return true;
+      }, { ifAvailable: !!sending });
     } catch (error) {
       if (sending) _outgoingPaymentBusy = false;
       if (typeof showToast === 'function') showToast('钱包锁定失败，未发起新交易');
       return Promise.resolve(false);
     }
-    return Promise.resolve(request).catch(function () {
+    return Promise.resolve(request).then(function (processed) {
+      if (!processed && sending && typeof showToast === 'function') {
+        showToast('钱包正在另一个页面处理交易，请稍后重试，未扣款');
+      }
+      return processed;
+    }).catch(function () {
       if (typeof showToast === 'function') showToast('钱包操作未完成，请检查交易记录后再尝试');
       return false;
     }).finally(function () {

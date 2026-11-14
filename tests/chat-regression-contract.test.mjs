@@ -2546,6 +2546,9 @@ test('chat extras: outgoing payment ledger reconciles chat write failure and pag
       showToast: (message) => effects.toasts.push(message),
       window: { addEventListener: () => {}, navigator: {
         locks: { request: (name, options, callback) => callback({ name }) }
+      }, MaoMaoWalletLedger: {
+        supportsCrossTabLock: () => true,
+        runExclusive: (task) => task()
       } },
       chatMessages: { scrollTop: 0, scrollHeight: 20 }
     };
@@ -2698,7 +2701,16 @@ test('chat extras: two tabs cannot debit the same shared wallet concurrently', a
       renderAllMessages: () => { rendered.push(id); },
       sendSilentInstruction: () => { responses.push(id); },
       showToast: () => {},
-      window: { navigator: { locks }, addEventListener: () => {} }
+      window: { navigator: { locks }, addEventListener: () => {},
+        MaoMaoWalletLedger: {
+          supportsCrossTabLock: () => true,
+          runExclusive: (task, options) => locks.request(
+            'maomao-wallet-ledger-v1',
+            { mode: 'exclusive', ifAvailable: !!(options && options.ifAvailable) },
+            lock => lock ? task() : false
+          )
+        }
+      }
     };
     runInNewContext(code +
       '\nglobalThis.tabPayment = { submitPayMessage, recoverOutgoingPayments };', context);
@@ -2714,7 +2726,7 @@ test('chat extras: two tabs cannot debit the same shared wallet concurrently', a
   assert.equal(history.length, 2);
   assert.deepEqual(rendered, ['tab-a']);
   assert.deepEqual(responses, ['tab-a']);
-  assert.equal(lockRequests[0].name, 'maomao-wallet-workData-v1');
+  assert.equal(lockRequests[0].name, 'maomao-wallet-ledger-v1');
   assert.ok(lockRequests.every((req) => req.options.mode === 'exclusive'));
 });
 
@@ -2726,7 +2738,12 @@ test('chat extras: unsupported lock mechanism fails closed before wallet writes'
   let ai = 0;
   const messages = [];
   const sandbox = {
-    window: { addEventListener: () => {} },
+    window: { addEventListener: () => {},
+      MaoMaoWalletLedger: {
+        supportsCrossTabLock: () => false,
+        runExclusive: () => { throw new Error('unsafe lock must not be used'); }
+      }
+    },
     showToast: (message) => messages.push(message),
     getWorkData: () => { writes++; throw new Error('should not read without lock'); },
     saveWorkData: () => { writes++; return true; },
@@ -2738,5 +2755,5 @@ test('chat extras: unsupported lock mechanism fails closed before wallet writes'
   assert.equal(await sandbox.walletTest.recoverOutgoingPayments(), false);
   assert.equal(writes, 0);
   assert.equal(ai, 0);
-  assert.match(messages[0], /无法安全锁定钱包/);
+  assert.match(messages[0], /不支持跨页面钱包锁/);
 });
