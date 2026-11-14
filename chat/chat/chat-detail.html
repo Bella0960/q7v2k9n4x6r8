@@ -2814,25 +2814,45 @@
             return cleaned;
         }
 
+        var _chatHistoryUnreadable = false;
         function loadMessages() {
-            if (_storage) {
-                var arr = _storage.getChatHistory(currentCharacter.id);
-                if (arr && arr.length) return removeLegacyStickerCaptions(arr);
+            // The view is bound to the opened conversation, never a later global role.
+            if (!currentCharacter || storageKey !== 'chat_history_' + currentCharacter.id) {
+                _chatHistoryUnreadable = true;
+                console.warn('当前会话标识已改变，禁止跨角色读取聊天');
+                return [];
             }
+            // Read the authoritative bytes BEFORE a PhoneStorage legacy/v2 fallback.
+            // A corrupt primary key must not be disguised by an older duplicate.
             try {
-                const raw = localStorage.getItem(storageKey);
-                if (raw) {
-                    const parsed = JSON.parse(raw);
-                    if (Array.isArray(parsed) && parsed.length > 0) {
-                        return removeLegacyStickerCaptions(parsed);
-                    }
+                var primaryRaw = localStorage.getItem(storageKey);
+                if (primaryRaw !== null) {
+                    var primary = JSON.parse(primaryRaw);
+                    if (!Array.isArray(primary)) throw new Error('primary history is not an array');
+                    _chatHistoryUnreadable = false;
+                    return removeLegacyStickerCaptions(primary);
                 }
             } catch (err) {
-                console.warn('读取历史聊天记录失败:', err);
+                _chatHistoryUnreadable = true;
+                console.warn('聊天主记录损坏，已保持原始字节不变:', err);
+                if (typeof showToast === 'function') showToast('聊天记录读取异常，已暂停保存以保护原始数据');
+                return [];
             }
-
+            // Only a genuinely ABSENT primary key may read the older channel.
+            if (_storage) {
+                try {
+                    var legacy = _storage.getChatHistory(currentCharacter.id);
+                    if (!Array.isArray(legacy)) throw new Error('legacy history is not an array');
+                    if (legacy.length) return removeLegacyStickerCaptions(legacy);
+                } catch (err) {
+                    _chatHistoryUnreadable = true;
+                    console.warn('历史聊天读取失败，已暂停写入:', err);
+                    return [];
+                }
+            }
+            if (_chatHistoryUnreadable) return [];
             const initial = getInitialMessages();
-            saveMessages(initial);
+            if (!saveMessages(initial)) return [];
             return initial;
         }
 
@@ -2856,22 +2876,27 @@
         // 逐条按 角色 / 标识(mid|time) / 正文 做归属校验；读不回来、长度不一致、
         // 任意一条不一致或抛异常，都视为保存失败。
         function _readBackHistory() {
-            if (_storage) {
+            // Never treat a stale phone_data_v2 copy as proof of the current write.
+            if (typeof localStorage !== 'undefined' && typeof localStorage.getItem === 'function') {
                 try {
-                    var stored = _storage.getChatHistory(currentCharacter.id);
-                    return Array.isArray(stored) ? stored : null;
+                    var raw = localStorage.getItem(storageKey);
+                    if (raw === null) return null;
+                    var parsed = JSON.parse(raw);
+                    return Array.isArray(parsed) ? parsed : null;
                 } catch (err) {
                     return null;
                 }
             }
-            try {
-                const raw = localStorage.getItem(storageKey);
-                if (raw == null) return null;
-                const parsed = JSON.parse(raw);
-                return Array.isArray(parsed) ? parsed : null;
-            } catch (err) {
-                return null;
+            // Only useful for older isolated callers without a localStorage API.
+            if (_storage) {
+                try {
+                    var legacy = _storage.getChatHistory(currentCharacter.id);
+                    return Array.isArray(legacy) ? legacy : null;
+                } catch (err) {
+                    return null;
+                }
             }
+            return null;
         }
 
         function _messageIdentity(msg) {
@@ -2892,6 +2917,32 @@
         }
 
         function saveMessages(list) {
+            if (_chatHistoryUnreadable) {
+                if (typeof showToast === 'function' && _shouldWarnAgain('chat-corrupt')) {
+                    showToast('聊天记录异常，未覆盖原始数据；请先备份并修复存储');
+                }
+                return false;
+            }
+            if (!currentCharacter || storageKey !== 'chat_history_' + currentCharacter.id) {
+                console.warn('当前会话已改变，禁止跨角色写入');
+                if (typeof showToast === 'function') showToast('会话已切换，请重新进入聊天后再发送');
+                return false;
+            }
+            // Another tab may corrupt the primary record after this page loaded.
+            // Never overwrite bytes that could still be recovered from a backup.
+            if (typeof localStorage !== 'undefined' && typeof localStorage.getItem === 'function') {
+                try {
+                    var primaryRaw = localStorage.getItem(storageKey);
+                    if (primaryRaw !== null && !Array.isArray(JSON.parse(primaryRaw))) {
+                        throw new Error('primary history is not an array');
+                    }
+                } catch (err) {
+                    _chatHistoryUnreadable = true;
+                    console.warn('聊天记录写前校验失败，未覆盖旧数据:', err);
+                    if (typeof showToast === 'function') showToast('聊天记录读取异常，已暂停保存以保护原始数据');
+                    return false;
+                }
+            }
             var wrote = false;
             if (_storage) {
                 try {
