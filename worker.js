@@ -16,6 +16,7 @@ import { createStore } from './worker/lib/store.js';
 import { applyMigrations } from './worker/lib/migrations.js';
 import { runTick } from './worker/lib/scheduler.js';
 import { createSchedulerGate } from './worker/lib/scheduler-gate.js';
+import { inspectAccountPersistence, inspectPitrReadiness } from './worker/lib/account-persistence.js';
 
 const INSTANCE_NAME = 'maomao-global';
 
@@ -126,6 +127,20 @@ export class CloudDatabase {
   async fetch(request) {
     const url = new URL(request.url);
     if (url.pathname.startsWith('/api/')) return this.handleApi(request);
+    // Only callable on the DO stub; public Worker never forwards /internal/*.
+    if (url.pathname === '/internal/account-persistence' && request.method === 'GET') {
+      try {
+        const accounts = inspectAccountPersistence(this.store);
+        const pitr = await inspectPitrReadiness(this.ctx.storage);
+        return Response.json({
+          ok:accounts.metadataHealthy && pitr.available,
+          accounts,pitr,offsiteBackupVerified:false
+        },{headers:{'cache-control':'no-store'}});
+      } catch {
+        return Response.json({ok:false,error:{code:'ACCOUNT_PERSISTENCE_PROBE_FAILED'}},
+          {status:503,headers:{'cache-control':'no-store'}});
+      }
+    }
     if (url.pathname === '/internal/maintenance' && request.method === 'POST') {
       const timestamp = Date.now();
       const removed = this.store.cleanupSubscriptions(timestamp);
