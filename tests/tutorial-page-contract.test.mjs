@@ -102,6 +102,28 @@ test('current founder QA guide links to real admin, social and chat screens with
   assert.match(guideScript, /不要填写密码/);
 });
 
+test('original founder QA phone has one-stop final acceptance and read-only environment diagnostics', () => {
+  for (const id of ['qa-final-20261114-overview','qa-final-20261114-role-cloud',
+    'qa-final-20261114-forum','qa-final-20261114-inspect',
+    'qa-final-20261114-theme','qa-final-20261114-wallet']) {
+    assert.ok(guideScript.includes("id: '" + id + "'"), 'missing final acceptance card: ' + id);
+  }
+  for (const id of ['finalQaTitle','finalQaRecheck','finalQaCloud','finalQaAccount','finalQaPush']) {
+    assert.ok(guideHtml.includes('id="' + id + '"'), 'missing final diagnostics: ' + id);
+  }
+  assert.match(guideScript, /readPublicStatus\('\/api\/health'\)/);
+  assert.match(guideScript, /readPublicStatus\('\/api\/admin\/bootstrap\/status'\)/);
+  assert.match(guideScript, /health\.vapidConfigured === true/);
+  assert.match(guideScript, /account\.identityMode === 'delegated'/);
+  assert.match(guideHtml, /tutorial\.js\?v=20261114founder-accept1/);
+  assert.match(guideScript, /昨天已实际验收的管理员登录、真人好友聊天和安卓锁屏通知/);
+  assert.match(guideScript, /统一账本新 PR #283 未完结/);
+  assert.match(guideScript, /四栏完整扩建 #275/);
+  assert.match(guideScript, /新版查手机要等 #272/);
+  assert.match(guideScript, /不要求你反复重装/);
+  assert.match(guideScript, /从未实测的不勾选通过|未实测的不勾选通过/);
+});
+
 test('all tutorial guide deep links resolve to real HTML pages', () => {
   const guideRoutes = [...guideScript.matchAll(/href:\s*'\.\.\/([^']+\.html)'/g)].map((match) => match[1]);
   assert.ok(guideRoutes.length >= 50, 'expected route links throughout the complete guide catalog');
@@ -151,7 +173,7 @@ test('tutorial workflow enforces a guide update when user-facing app pages chang
 test('PWA app shell caches the full guide bundle and has a matching test command', () => {
   assert.ok(Number(/phone-app-pwa-v(\d+)/.exec(serviceWorker)?.[1]) >= 206, 'tutorial update must ship with the newer authenticated PWA cache');
   assert.ok(serviceWorker.includes("'./tutorial/tutorial.html'"));
-  assert.ok(serviceWorker.includes("'./tutorial/tutorial.js?v=20261113chats1'"));
+  assert.ok(serviceWorker.includes("'./tutorial/tutorial.js?v=20261114founder-accept1'"));
   assert.equal(packageJson.scripts['test:tutorial'], 'node --test tests/tutorial-page-contract.test.mjs');
 });
 
