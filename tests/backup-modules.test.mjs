@@ -115,6 +115,27 @@ test('downloadable snapshots exclude secret tokens by default and even when API 
   const localRecovery=tools.snapshot(false,false,true);
   assert.equal(localRecovery.mao_session_token,'secret-session');
 });
+test('separate music backup captures audio blobs while old full-backup format stays compatible',()=>{
+  const {tools}=browser();
+  const full=tools.backupTargets().find(x=>x.db==='maomao-media-store');
+  const music=tools.backupTargets('music').find(x=>x.db==='maomao-media-store');
+  const fullAudio=full.stores.find(x=>x.store==='audio');
+  const musicAudio=music.stores.find(x=>x.store==='audio');
+  assert.ok(fullAudio.excludeFields.includes('blob'));
+  assert.deepEqual(Array.from(musicAudio.blobFields),['blob']);
+  assert.ok(musicAudio.blobMaxBytes>0);
+  assert.ok(musicAudio.blobStoreMaxBytes>=musicAudio.blobMaxBytes);
+});
+test('new modules include forum, moments, café, games and unclassified local keys',()=>{
+  const {reg}=browser();
+  assert.ok(reg.belongsTo('forum','forum_config'));
+  assert.ok(reg.belongsTo('cafe','maomao_cafe_state_v1'));
+  assert.ok(reg.belongsTo('games','maomao_detective_progress_v1'));
+  assert.ok(reg.belongsTo('moments','moments_notifications'));
+  assert.ok(reg.belongsTo('music','music_recent'));
+  assert.ok(reg.belongsTo('other','future_feature_v42'));
+  assert.ok(!reg.belongsTo('other','mao_session_token'));
+});
 test('scoped IndexedDB restore merges without deleting other media, while full restore retains old clear behavior',async()=>{
   const {tools}=browser();
   async function restore(mergeOnly) {
