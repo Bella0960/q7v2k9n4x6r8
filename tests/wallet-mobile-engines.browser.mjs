@@ -106,9 +106,10 @@ async function run(browserType, device, label, origin) {
         .getOrCreatePendingCheckout('shop', 'cart-a', 'normal'));
       assert.ok(receipt);
       assert.equal(await b.evaluate(() => window.MaoMaoWalletLedger.getPendingCheckout('shop')), undefined);
-      const finance = await a.evaluate(() => window.MaoMaoWalletLedger.recordFinanceLines(
-        'a-payment', [{ paymentLineIndex: 0, type: 'expense', category: '购物', amount: 25 }],
-        'finance_records'));
+      const finance = await a.evaluate(() => window.MaoMaoWalletLedger.runExclusive(() =>
+        window.MaoMaoWalletLedger.recordFinanceLines(
+          'a-payment', [{ paymentLineIndex: 0, type: 'expense', category: '购物', amount: 25 }],
+          'finance_records')));
       assert.equal(finance.ok, true);
       assert.equal(await b.evaluate(() => localStorage.getItem('finance_records')), null);
 
