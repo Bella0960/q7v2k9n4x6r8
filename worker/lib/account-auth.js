@@ -501,7 +501,7 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
         expiresAt: Number(session.expires_at),
         lastUsedAt: Number(session.last_used_at),
         revokedAt: session.revoked_at == null ? null : Number(session.revoked_at),
-        expired: session.revoked_at == null && Number(session.expires_at) <= timestamp,
+        expired: session.revoked_at == null && (!Number.isSafeInteger(Number(session.expires_at)) || Number(session.expires_at) <= timestamp),
         current: session.id === actor.session_id
       }))
     });
