@@ -175,3 +175,56 @@ test('revoked session cannot pass final authorization after a stale session look
     error => error.status === 401 && error.code === 'LOGIN_REQUIRED');
   assert.equal(touchAttempts, 2);
 });
+
+// Exercise the real SQL store with an in-memory database, not a mocked
+// revoke method. There are no production credentials or persistent writes.
+test('real sqlite session touch rejects revoked, expired and disabled sessions', async () => {
+  const { DatabaseSync } = await import('node:sqlite');
+  const { createStore } = await import('../worker/lib/store.js');
+  const now = 1_800_000_000_000;
+  const db = new DatabaseSync(':memory:');
+  try {
+    db.exec(`
+      CREATE TABLE mao_accounts (id TEXT PRIMARY KEY, status TEXT NOT NULL);
+      CREATE TABLE mao_account_sessions (
+        id TEXT PRIMARY KEY, account_id TEXT NOT NULL,
+        last_used_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
+        revoked_at INTEGER
+      );
+    `);
+    const insertAccount = db.prepare('INSERT INTO mao_accounts (id, status) VALUES (?, ?)');
+    const insertSession = db.prepare(
+      'INSERT INTO mao_account_sessions (id, account_id, last_used_at, expires_at, revoked_at) VALUES (?, ?, ?, ?, ?)'
+    );
+    insertAccount.run('owner', 'active');
+    insertAccount.run('other', 'active');
+    insertAccount.run('pending', 'pending_invite');
+    insertAccount.run('disabled', 'disabled');
+    insertSession.run('valid', 'owner', 0, now + 60000, null);
+    insertSession.run('remote-revoked', 'owner', 0, now + 60000, now - 1);
+    insertSession.run('expired', 'owner', 0, now - 1, null);
+    insertSession.run('other-account', 'other', 0, now + 60000, null);
+    insertSession.run('pending-invite', 'pending', 0, now + 60000, null);
+    insertSession.run('disabled-account', 'disabled', 0, now + 60000, null);
+    const exec = (query, ...params) => db.prepare(query).all(...params);
+    const store = createStore(exec);
+    assert.equal(store.touchMaoAccountSession('valid', now), true);
+    assert.equal(store.touchMaoAccountSession('remote-revoked', now), false);
+    assert.equal(store.touchMaoAccountSession('expired', now), false);
+    assert.equal(store.touchMaoAccountSession('other-account', now), true);
+    assert.equal(store.touchMaoAccountSession('pending-invite', now), true);
+    assert.equal(store.touchMaoAccountSession('disabled-account', now), false);
+    // Revoking the session after the initial lookup must block a stale request
+    // at the last conditional UPDATE, without updating last_used_at.
+    db.prepare('UPDATE mao_account_sessions SET revoked_at = ? WHERE id = ?').run(now, 'valid');
+    assert.equal(store.touchMaoAccountSession('valid', now + 1), false);
+    assert.equal(db.prepare('SELECT last_used_at FROM mao_account_sessions WHERE id = ?').get('valid').last_used_at, now);
+    db.prepare("UPDATE mao_accounts SET status = 'disabled' WHERE id = 'other'").run();
+    assert.equal(store.touchMaoAccountSession('other-account', now + 1), false);
+    assert.equal(db.prepare('SELECT last_used_at FROM mao_account_sessions WHERE id = ?').get('other-account').last_used_at, now);
+    assert.equal(store.touchMaoAccountSession('missing', now), false);
+    assert.equal(store.touchMaoAccountSession('pending-invite', Number.MAX_SAFE_INTEGER + 1), false);
+  } finally {
+    db.close();
+  }
+});
