@@ -223,3 +223,55 @@ test('failed scheduled check persists only sanitized failure receipt', async () 
   assert.deepEqual(receipts.get('founder-checkpoint:last-attempt')?.code, 'disabled');
   assert.equal(receipts.has('founder-checkpoint:success'), false);
 });
+
+test('prewarmed Cron reads short private KV window without deploying new secrets', async () => {
+  const { env, calls, setResponse } = setup();
+  const now=Date.now();
+  env.FOUNDER_RUN_ENABLED=undefined;
+  env.FOUNDER_RUN_NOT_BEFORE_MS=undefined;
+  env.FOUNDER_RUN_NOT_AFTER_MS=undefined;
+  setResponse(Response.json({ok:true,recorded:true,recordedAt:now-100}));
+  const receipts=new Map();
+  env.RELEASE_AUDIT={
+    async get(key, options) {
+      assert.equal(key,'founder-checkpoint:activation');
+      assert.equal(options.type,'json');
+      return {v:1,target:'mao-auth-preview',origin:'https://mao520.com',
+        mode:'acknowledge-single-use-live-checkpoint',
+        from:String(now-1000),until:String(now+60000)};
+    },
+    async put(key, value) { receipts.set(key,JSON.parse(value)); }
+  };
+  let pending;
+  await operator.scheduled({},env,{waitUntil(p){pending=p;}});
+  await pending;
+  assert.equal(calls.some(c=>c[0]==='fetch'),true);
+  assert.equal(receipts.get('founder-checkpoint:success')?.ok,true);
+});
+
+test('KV activation for another domain or an expired window cannot contact live DO', async () => {
+  for(const mutate of [
+    x=>{x.origin='https://app.mao520.com';},
+    x=>{x.target='mao';},
+    x=>{x.mode='elevate-admin';},
+    x=>{x.until=String(Date.now()-1000);},
+    x=>{x.until=String(Date.now()+300000);}
+  ]) {
+    const {env,calls}=setup();
+    env.FOUNDER_RUN_ENABLED=undefined;
+    env.FOUNDER_RUN_NOT_BEFORE_MS=undefined;
+    env.FOUNDER_RUN_NOT_AFTER_MS=undefined;
+    const now=Date.now();
+    const metadata={v:1,target:'mao-auth-preview',origin:'https://mao520.com',
+      mode:'acknowledge-single-use-live-checkpoint',from:String(now-1000),until:String(now+60000)};
+    mutate(metadata);
+    env.RELEASE_AUDIT={
+      async get(){return metadata;},
+      async put(){}
+    };
+    let pending;
+    await operator.scheduled({},env,{waitUntil(p){pending=p;}});
+    await assert.rejects(pending,/private_checkpoint_(disabled|window_closed)/);
+    assert.equal(calls.length,0);
+  }
+});
