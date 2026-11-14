@@ -950,12 +950,12 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     // This permission checks the real central founder on EVERY operation.
     // Preview-only session IDs, cookies and front-end 001 labels do not grant
     // admin rights. Both Workers independently verify the original session.
-    const actor = await requireActiveAdmin(request);
     if (env.MAO_DELEGATED_ADMIN_MANAGEMENT_ENABLED !== 'true' ||
         !usesExistingAccountAuthority(env)) {
       throw new ApiError(403, 'DELEGATED_ACCOUNT_MANAGED_CENTRALLY',
         '账号和管理员身份只能在统一账号系统中管理');
     }
+    const actor = await requireActiveAdmin(request);
     if (actor.role !== 'super_admin' ||
         (env.MAO_IDENTITY_CANONICAL_ADMIN_REQUIRED === 'true' &&
           actor.account_id !== String(env.MAO_EXPECTED_FOUNDER_ID || ''))) {
