@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v234';
+const CACHE_NAME = 'phone-app-pwa-v237';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 // v196 release: sweep orphaned role-owned media refs during avatar cleanup.
 const APP_SHELL = [
@@ -29,10 +29,30 @@ const APP_SHELL = [
   './forum/forum-world-events.js?v=20261111v1',
   './inspect-phone/select.html',
   './inspect-phone/phone.html',
-  './inspect-phone/inspect-feature.js?v=20261111v1',
+  './inspect-phone/inspect-native.css?v=20261112v5',
+  './inspect-phone/inspect-persona-web.js?v=20261112v3',
+  './inspect-phone/inspect-life-clock.js?v=20261112v1',
+  './inspect-phone/inspect-native-view.js?v=20261112v6',
+  './inspect-phone/inspect-feature.js?v=20261112v8',
+  './shared/js/phone/inspect_account_guard.js?v=20261112v2',
+  './shared/js/phone/inspect_interaction_bridge.js?v=20261112v5',
   './tutorial/tutorial.js?v=20261114qa1',
   './beauty/beauty.html',
+  './theme-store/preview-scene.js?v=20261113m7',
+  './theme-store/preview-scene.css?v=20261113m7',
+  './theme-store/storefront.js?v=20261113m12',
+  './theme-store/storefront.css?v=20261113m13',
+  './theme-store/collection-store.js?v=20261112m3',
+  './theme-store/market-expansion.js?v=20261113m2',
+  './theme-store/market-expansion.css?v=20261113m2',
   './theme-store/theme-store.html',
+  './shared/js/atmosphere-theme.js?v=20261112v1',
+  './shared/js/atmosphere-pages.js?v=20261112p4',
+  './shared/js/atmosphere-editorial-home.js?v=20261112e1',
+  './shared/css/atmosphere-theme.css?v=20261112v3',
+  './shared/css/atmosphere-pages.css?v=20261112p3',
+  './shared/js/atmosphere-icons.js?v=20261112i1',
+  './shared/js/phone/wallet-ledger.js?v=20261114v12',
   './chat/chat/chat.html',
   './shared/js/chat-action-menu.js?v=20261113v1',
   './shared/js/social-chat-list.js?v=20261113v1',
