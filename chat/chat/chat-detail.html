@@ -8039,6 +8039,18 @@
         async function handlePayCardClick(event) {
             const cardEl = event && event.currentTarget;
             if (!cardEl) return;
+            const receiptLedger = window.MaoMaoWalletLedger;
+            if (!receiptLedger || typeof receiptLedger.runExclusive !== 'function' ||
+                typeof receiptLedger.supportsCrossTabLock !== 'function') {
+                showToast('钱包保护模块尚未加载，红包和转账收款已暂停');
+                return;
+            }
+            // The fallback queue only protects this page. A second tab could
+            // credit the same paymentId before either tab sees the other write.
+            if (!receiptLedger.supportsCrossTabLock()) {
+                showToast('当前浏览器不支持跨页面钱包锁，红包和转账收款已暂停，未入账');
+                return;
+            }
             const mid = cardEl.getAttribute('data-mid') || '';
             const indexStr = cardEl.getAttribute('data-index');
 
