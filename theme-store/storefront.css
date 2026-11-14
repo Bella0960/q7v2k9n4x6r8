@@ -1,0 +1,190 @@
+/* Store-only composition; existing theme CSS is never modified. */
+.store-app{max-width:640px}.store-app .intro,.store-app .store-foot{display:none}.store-app .topbar{flex:none;padding:calc(14px + env(safe-area-inset-top,0px)) 18px 14px}.store-app .top-title h1{font-size:23px}.store-app .main-content{padding:0 16px 24px;order:1}.store-app .category-nav{order:2;flex:none;display:grid;grid-template-columns:repeat(4,1fr);gap:0;padding:5px 8px calc(5px + env(safe-area-inset-bottom,0px));background:#fff;box-shadow:0 -4px 18px #00000004;overflow:visible}.store-app .category-tab{min-height:54px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;font-size:10px;color:#929292}.category-tab svg{height:20px;width:20px}.store-app .category-tab.active{color:#111}.store-app .category-tab.active:after{display:none}.sf-section-line{display:flex;align-items:center;justify-content:space-between;margin:10px 0 12px}.sf-section-line h2{font:400 20px Georgia,'Songti SC',serif}.sf-section-line span{font-size:9px;color:#999}.sf-featured{display:flex;gap:12px;overflow:auto;scroll-snap-type:x mandatory;scrollbar-width:none;padding:0 0 8px;touch-action:pan-x pan-y}.sf-feature{flex:0 0 92%;min-width:0;height:195px;scroll-snap-align:start;border:0;background:#f1f1f0;border-radius:16px;text-align:left;display:grid;grid-template-columns:1fr 42%;padding:18px 15px;gap:8px;overflow:hidden;position:relative}.sf-feature>div:first-child{position:relative;z-index:1}.sf-feature small{font-size:8px;color:#888}.sf-feature h2{font:400 26px Georgia,'Songti SC',serif;margin:15px 0 9px;letter-spacing:-1px}.sf-feature p{font-size:10px;line-height:1.8;color:#777;max-width:180px}.sf-feature span{display:flex;align-items:center;margin-top:11px;font-size:9px}.sf-feature svg{width:12px;height:12px}.sf-feature-scene{transform:rotate(5deg) translateY(16px);animation:sf-float 5s ease-in-out infinite}.sf-feature-scene .sf-scene{height:240px!important;font-size:8px;box-shadow:0 10px 20px #0000000a}.sf-heading{margin:23px 0 15px}.sf-heading h2{font:400 24px Georgia,'Songti SC',serif;letter-spacing:-.6px}.sf-heading p{font-size:10px;color:#999;line-height:1.7;margin-top:6px}.sf-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px 12px}.sf-product{min-width:0}.sf-cover{display:block;width:100%;border:0;background:#f5f5f5;border-radius:15px;overflow:hidden;text-align:left;padding:0;cursor:pointer}.sf-cover:active{transform:scale(.98)}.sf-product-meta{display:flex;align-items:center;justify-content:space-between;gap:4px;padding:9px 0 0}.sf-product-meta strong{font-size:12px;font-weight:500}.sf-product-meta small{display:block;font-size:9px;color:#999;margin-top:5px}.sf-favorite{display:grid;place-items:center;width:36px;height:40px;flex-shrink:0;border:0;background:none;color:#aaa}.sf-favorite.selected{color:#111}.sf-favorite.selected svg{fill:#ddd}.sf-favorite svg{width:19px;height:19px}.sf-scene{height:310px;background:#fafafa;color:#222;padding:12px 10px;position:relative;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif}.sf-status{display:flex;justify-content:space-between;font-size:7px;margin-bottom:18px}.sf-scene h3{font:500 19px Georgia,'Songti SC',serif;margin:9px 0 17px}.sf-person{display:flex;align-items:center;gap:7px;margin:14px 0;min-width:0}.sf-person i,.sf-identity i{display:grid;place-items:center;font:10px Georgia,serif;width:26px;height:26px;border-radius:50%;background:#e3e3e2;color:#888;flex-shrink:0}.sf-person span{flex:1;min-width:0}.sf-person b{font-size:9px;font-weight:500}.sf-person small{display:block;font-size:7px;color:#999;margin-top:4px;white-space:nowrap}.sf-person time{font-size:6px;color:#aaa}.sf-chat-title{flex-direction:column;gap:6px;margin-bottom:18px}.sf-date{display:block;text-align:center;font-size:6px;color:#aaa;margin-bottom:15px}.sf-bubble{font-size:8px;line-height:1.8;background:#efefef;border-radius:9px 9px 9px 2px;padding:7px;width:fit-content;max-width:90%;margin-bottom:12px}.sf-bubble.right{margin-left:auto;background:#252525;color:#fff;border-radius:9px 9px 2px 9px}.sf-input{position:absolute;left:10px;right:10px;bottom:15px;font-size:7px;color:#aaa;background:#fff;padding:9px;border-radius:8px}.sf-input span{float:right}.sf-atmosphere{background:#f8f8f7}.sf-atmosphere h3{font-style:italic}.sf-atmosphere .sf-bubble{background:transparent;color:#333;border-radius:0;border-bottom:1px solid #d7d7d7;padding:6px 1px}.sf-imessage{background:#fff}.sf-imessage .sf-bubble.right{background:#1687f8}.sf-imessage .sf-bubble{background:#e4e4e9;border-radius:14px}.sf-wechat{background:#ededed}.sf-wechat .sf-bubble{background:#fff;border-radius:4px}.sf-wechat .sf-bubble.right{background:#95ec69;color:#111}.sf-wechat .sf-person i{border-radius:4px}.sf-qq{background:#f5f5f8}.sf-qq .sf-bubble.right{background:#b7b7bc;color:#111}.sf-silver-butterfly{background:#efeff1 url('../shared/assets/silver-butterfly-photo.webp') 80% 45%/auto 75% no-repeat}.sf-silver-butterfly .sf-bubble{background:#ffffffc9;color:#333;border:1px solid #fff}.sf-silver-butterfly .sf-bubble.right{background:#dedee4d9}.sf-music{padding:12px 5px;background:#ededec;margin-bottom:18px}.sf-music span{font:24px Georgia,serif}.sf-music small{display:block;font-size:7px;color:#999;margin-top:7px}.sf-landscape{height:80px;background:linear-gradient(140deg,#e5e5e5 45%,#bbb 45%,#dedede 80%);border-radius:4px}.sf-identity{display:flex;align-items:center;flex-direction:column;gap:7px;margin:10px 0 17px}.sf-identity b{font-size:10px}.sf-identity small{font-size:7px;color:#999}.sf-gallery{display:flex;gap:4px}.sf-gallery i{width:33%;height:45px;background:#d6d6d6}.sf-gallery i:nth-child(2){background:#ededed}.sf-menu,.sf-post{font-size:8px;margin:14px 0}.sf-clock{font:38px Georgia,serif;margin:30px 0}.sf-clock small{display:block;font-size:8px;margin-top:8px}.sf-apps{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.sf-apps svg{width:24px;height:24px}.sf-apps small{display:block;font-size:7px}.sf-category{margin:24px 0}.sf-category h3{font:400 19px Georgia,'Songti SC',serif;margin-bottom:6px}.sf-category-row{width:100%;border:0;background:none;display:flex;align-items:center;justify-content:space-between;padding:16px 2px;text-align:left}.sf-category-row strong{font-weight:500;font-size:12px}.sf-category-row small{display:block;margin-top:5px;color:#999;font-size:10px}.sf-category-row svg{width:15px;height:15px;color:#aaa}.sf-mine-tabs,.sf-preview-tabs{display:flex;gap:7px;overflow:auto;scrollbar-width:none;margin:12px 0 19px}.sf-chip{border:0;background:#f4f4f4;border-radius:20px;padding:10px 12px;white-space:nowrap;font-size:10px;min-height:40px}.sf-chip.active{background:#222;color:#fff}.sf-button{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid #ddd;background:#fff;border-radius:8px;padding:11px 12px;font-size:11px;min-height:42px;margin:3px 5px 3px 0}.sf-button svg{width:15px;height:15px}.sf-button.primary{background:#222;color:white;border-color:#222}.sf-button:disabled{opacity:.5}.sf-empty{font-size:12px;color:#999;text-align:center;line-height:1.8;margin:45px 20px}.sf-record{padding:18px 0;border-bottom:1px solid #f1f1f1}.sf-record-main{display:block;text-align:left;background:none;border:0;margin-bottom:10px}.sf-record-main strong{font:18px Georgia,'Songti SC',serif}.sf-record-main small{display:block;color:#999;font-size:10px;margin-top:8px;line-height:1.7}.sf-overlay{position:fixed;inset:0;background:#0006;z-index:100;display:grid;place-items:center;padding:14px}.sf-dialog{width:min(100%,440px);max-height:calc(100dvh - 28px);overflow:auto;background:#fff;border-radius:18px;padding:18px;box-shadow:0 12px 55px #0002}.sf-dialog header{display:flex;justify-content:space-between;align-items:center}.sf-dialog header h2{font:400 23px Georgia,'Songti SC',serif}.sf-close{display:grid;place-items:center;width:40px;height:40px;background:none;border:0}.sf-close svg{width:20px;height:20px}.sf-dialog .sf-scene{width:230px;max-width:100%;height:390px;margin:0 auto;border:1px solid #eee;border-radius:14px;padding:16px}.sf-dialog .sf-scene .sf-bubble{font-size:11px;margin-bottom:18px}.sf-dialog .sf-scene .sf-person b{font-size:11px}.sf-dialog .sf-caption{color:#888;font-size:10px;line-height:1.8;margin:10px 0}.sf-dialog footer{display:flex;justify-content:flex-end;flex-wrap:wrap;margin-top:10px}.sf-field{display:flex;flex-direction:column;font-size:12px;gap:10px;margin:20px 0}.sf-field input{font:inherit;min-height:44px;max-width:100%;border:1px solid #ddd;border-radius:8px;padding:10px}.sf-scopes{border:0;margin:20px 0;display:grid;gap:12px}.sf-scopes legend{font-size:12px;margin-bottom:12px}.sf-scopes label{font-size:12px;display:flex;gap:8px;align-items:center;min-height:26px}.sf-scopes input{accent-color:#222;width:17px;height:17px}.sf-error{font-size:11px;color:#a22;line-height:1.7;margin:10px 0}.sf-image{display:block;width:100%;max-height:330px;object-fit:contain;margin:15px auto}.toast{bottom:90px}.sf-cover,.sf-button,.sf-chip{transition:transform .18s,background .18s}.sf-button:active,.sf-chip:active{transform:scale(.97)}
+@keyframes sf-float{0%,100%{transform:rotate(5deg) translateY(16px)}50%{transform:rotate(3deg) translateY(8px)}}
+@media(max-width:360px){.sf-scene{height:274px;padding:10px 8px}.sf-feature{height:184px;padding:14px 12px}.sf-feature h2{font-size:23px}.sf-feature p{font-size:9px}.sf-product-meta strong{font-size:11px}.store-app .main-content{padding-left:12px;padding-right:12px}.sf-grid{gap:18px 10px}.sf-favorite{width:30px}.sf-dialog{padding:14px}}
+@media(prefers-reduced-motion:reduce){.sf-feature-scene{animation:none}.sf-cover,.sf-button,.sf-chip{transition:none}}
+
+/* True preset thumbnails and six distinct, centred desktop app glyphs. */
+.sf-app{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0}
+.sf-app-icon{display:grid;place-items:center;width:33px;height:33px;border:1px solid #dededd;border-radius:10px;background:#ffffffb8}
+.sf-app-icon svg{width:18px;height:18px;stroke-width:1.45}
+.sf-icon-preview{margin:16px auto 8px;max-width:230px;padding:12px;background:#f7f7f7;border-radius:12px}
+.sf-icon-preview h3{font:400 12px Georgia,'Songti SC',serif;margin-bottom:12px}
+.sf-icon-gallery{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.sf-icon-tile{width:100%;aspect-ratio:1;display:grid;place-items:center;border-radius:10px;background:white;color:#aaa;overflow:hidden;border:1px solid #ededed}
+.sf-icon-tile img{width:100%;height:100%;object-fit:cover}
+.sf-icon-preview .sf-error{margin:0}
+
+
+/* MAOMAO's original built-in themes own their merchandise artwork. Keep the native
+ * themeArt composition instead of repackaging old themes as generic six-page screens. */
+.sf-native-cover .product-art{height:230px;min-height:230px;max-height:230px;margin:0;border-radius:15px}
+.sf-native-cover .theme-art-wechat,.sf-native-cover .theme-art-silver-butterfly{padding:11px}
+.sf-native-cover .wechat-mini-screens,.sf-native-cover .silver-mini-screens{min-height:0;height:100%}
+.sf-native-feature{display:flex;align-items:flex-start;justify-content:center;min-width:0}
+.sf-native-feature .product-art{width:100%;height:220px;min-height:220px;border-radius:12px}
+.sf-native-detail-art{max-width:360px;margin:14px auto 16px}
+.sf-native-detail-art .product-art{width:100%;height:215px;min-height:215px;border-radius:12px}
+.sf-native-detail-art .wechat-mini-screens,.sf-native-detail-art .silver-mini-screens{height:100%}
+.sf-native-detail-art+.sf-caption{font-size:11px;line-height:1.9}
+.store-app .product-foot{gap:7px}
+.store-app .product-foot .action-btn{flex:1;min-width:0;white-space:normal}
+@media(max-width:360px){
+  .sf-native-cover .product-art{height:190px;min-height:190px;max-height:190px}
+  .sf-native-feature .product-art{height:195px;min-height:195px}
+}
+
+
+/* The original project-owned theme cards now sit on the new two-column shop shelf.
+ * Original images, preset IDs, independent theme apply and list-theme actions remain untouched. */
+.store-app .product-grid{
+ display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+ gap:17px 11px;padding:0 0 12px;overflow:visible;
+ scroll-snap-type:none;scroll-behavior:auto;touch-action:auto;
+ cursor:default;user-select:auto;-webkit-user-select:auto;
+}
+.store-app .product-grid .product-card{
+ min-width:0;width:100%;min-height:0;flex:none;will-change:auto;
+ padding:10px;gap:9px;border-radius:15px;
+}
+.store-app .product-grid .product-art{height:117px;min-height:117px;border-radius:10px}
+.store-app .product-grid .product-title{font-size:12px;line-height:1.4}
+.store-app .product-grid .product-desc{font-size:9px;line-height:1.6}
+.store-app .product-grid .product-foot{
+ display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+ gap:6px;margin-top:auto;
+}
+.store-app .product-grid .product-price{grid-column:1 / -1}
+.store-app .product-grid .action-btn{
+ padding:4px 3px;min-height:37px;width:100%;font-size:9px;
+ white-space:normal;line-height:1.3;border-radius:12px;
+}
+@media(max-width:360px){
+ .store-app .product-grid{gap:12px 8px}
+ .store-app .product-grid .product-card{padding:8px;gap:7px}
+ .store-app .product-grid .product-art{height:105px;min-height:105px}
+}
+
+
+/* Market polish 2026-11-13: product hierarchy, tactile detail and compact mobile flow.
+   Preset-specific theme artwork remains controlled by the original project. */
+.store-app .sf-section-line{margin:16px 0 15px}
+.store-app .sf-section-line h2{font:400 21px/1.2 Georgia,'Songti SC',serif;letter-spacing:-.035em}
+.store-app .sf-featured{gap:10px;padding-bottom:10px}
+.store-app .sf-feature{
+ background:linear-gradient(135deg,#f5f5f4,#eaeae8);
+ border:1px solid #efefee;
+ border-radius:17px;
+ grid-template-columns:minmax(0,1fr) 43%;
+ padding:19px 16px;
+}
+.store-app .sf-feature::before{
+ content:"";position:absolute;left:15px;right:15px;top:11px;height:1px;
+ background:#ffffffb5;pointer-events:none;
+}
+.store-app .sf-feature>div:first-child{display:flex;flex-direction:column;align-items:flex-start;min-width:0}
+.store-app .sf-feature h2{margin:20px 0 8px;font-size:27px;line-height:1.15}
+.store-app .sf-feature p{max-width:174px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.store-app .sf-feature span{margin-top:auto;font-size:10px;padding-top:6px;border-bottom:1px solid #b9b9b5;padding-bottom:4px}
+.store-app .sf-feature-scene{min-width:0;align-self:stretch}
+.store-app .sf-feature-scene .product-art{
+ height:205px;min-height:205px;border:1px solid #e5e5e5;
+ background-color:#fff;border-radius:12px;
+}
+.store-app .sf-heading{margin:23px 0 15px}
+.store-app .sf-heading h2{font:400 23px/1.2 Georgia,'Songti SC',serif}
+.store-app .sf-heading p{margin-top:7px;font-size:10px;line-height:1.6}
+.store-app .sf-grid{gap:22px 11px}
+.store-app .sf-native-cover{
+ border:1px solid #eaeaea;border-radius:15px;
+ background:#f7f7f7;
+}
+.store-app .sf-native-cover .product-art{
+ height:232px;min-height:232px;max-height:232px;
+ border-radius:14px;transition:transform .24s ease;
+}
+@media(hover:hover) and (pointer:fine){
+ .store-app .sf-native-cover:hover .product-art{transform:scale(1.025)}
+}
+.store-app .sf-product-meta{padding-top:10px;align-items:flex-start}
+.store-app .sf-product-meta strong{font:500 12px/1.35 -apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif}
+.store-app .sf-product-meta small{font-size:9px;line-height:1.5;max-width:150px}
+.store-app .sf-favorite{min-height:40px;min-width:40px;margin-top:-4px}
+.store-app .sf-favorite svg{width:18px;height:18px;stroke-width:1.4}
+.store-app .sf-native-section{margin:10px 0 17px}
+.store-app .sf-native-section h3,.store-app .sf-list-theme-section h3{
+ font:400 19px/1.2 Georgia,'Songti SC',serif;letter-spacing:-.02em;
+}
+.store-app .sf-native-section p,.store-app .sf-list-theme-section p{font-size:9px}
+.store-app .product-grid{gap:15px 11px}
+.store-app .product-grid .product-card{
+ padding:10px;background:#fafafa;
+ border:1px solid #f0f0f0;border-radius:15px;
+ gap:8px;box-shadow:none;
+}
+.store-app .product-grid .product-art{height:144px;min-height:144px;border-radius:11px}
+.store-app .product-grid .product-meta{display:flex;flex-direction:column;min-width:0}
+.store-app .product-grid .product-eyebrow{font-size:8px;letter-spacing:.08em}
+.store-app .product-grid .product-title{font-size:13px;font-weight:500;line-height:1.35}
+.store-app .product-grid .product-desc{
+ display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;
+ overflow:hidden;font-size:9px;line-height:1.6;min-height:28px;
+}
+.store-app .product-grid .product-foot{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.store-app .product-grid .action-btn{min-height:39px;border-radius:11px;font-size:10px}
+.store-app .sf-list-theme-section{margin:27px 0 12px}
+.store-app .market-theme-feature{margin-top:28px}
+.store-app .sf-category{margin:21px 0 24px}
+.store-app .sf-category h3{margin:0 0 11px;font:400 19px/1.25 Georgia,'Songti SC',serif}
+.store-app .sf-category-row{
+ padding:13px 14px;margin:0 0 6px;
+ border:1px solid #f0f0f0;border-radius:11px;
+ background:#fafafa;transition:background .2s ease;
+ min-height:57px;
+}
+.store-app .sf-category-row:active{background:#ededed}
+.store-app .sf-category-row strong{font-size:12px}
+.store-app .sf-category-row small{font-size:9px;line-height:1.5}
+.store-app .sf-record{border-bottom:0;border-radius:13px;background:#fafafa;padding:15px;margin-bottom:12px}
+.store-app .sf-record-main{max-width:100%;word-break:break-word}
+.store-app .sf-record>div{display:flex;flex-wrap:wrap;gap:5px}
+.store-app .sf-record>div .sf-button{margin:0;min-height:37px}
+.store-app .sf-dialog{border-radius:18px;overscroll-behavior:contain}
+.store-app .sf-native-detail-art .product-art{min-height:220px}
+.store-app .sf-scopes label{padding:4px 0;min-height:36px}
+.sf-visually-hidden{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@media(max-width:360px){
+ .store-app .sf-feature{padding:15px 12px}
+ .store-app .sf-feature h2{font-size:23px}
+ .store-app .sf-feature p{-webkit-line-clamp:2;font-size:9px}
+ .store-app .sf-native-cover .product-art{height:194px;min-height:194px;max-height:194px}
+ .store-app .product-grid .product-art{height:113px;min-height:113px}
+ .store-app .product-grid .product-card{padding:8px}
+ .store-app .product-grid .action-btn{font-size:9px}
+}
+@media(prefers-reduced-motion:reduce){
+ .store-app .sf-native-cover .product-art,.store-app .sf-category-row{transition:none}
+}
+
+
+/* The installed PWA's bottom home indicator must not collide with four shop tabs. */
+.store-app .category-nav{
+ padding-bottom:calc(23px + env(safe-area-inset-bottom,0px));
+}
+.store-app .category-tab{min-height:49px;gap:6px}
+.store-app .product-grid .action-btn{min-height:43px}
+.store-app .sf-favorite{min-width:44px;min-height:44px}
+.sf-dialog{overscroll-behavior:contain}
+.sf-dialog footer .sf-button{min-height:44px}
+.store-app .sf-cover:focus-visible,
+.store-app .sf-feature:focus-visible,
+.store-app .sf-category-row:focus-visible,
+.store-app .sf-favorite:focus-visible,
+.store-app .category-tab:focus-visible,
+.sf-dialog .sf-button:focus-visible,
+.sf-dialog .sf-close:focus-visible{
+ outline:2px solid #555;outline-offset:3px;
+}
+@media(max-height:640px){
+ .store-app .category-nav{padding-bottom:calc(17px + env(safe-area-inset-bottom,0px))}
+}

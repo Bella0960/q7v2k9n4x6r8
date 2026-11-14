@@ -59,13 +59,48 @@
   }
   function read(roleId,now) {
     try {var data=JSON.parse(localStorage.getItem(storyKey(roleId))||'null');
+      if(data&&global.InspectPhoneAccountGuard&&!global.InspectPhoneAccountGuard.canRead(data))return null;
       if(data&&data.schema===1&&data.roleId===String(roleId)&&data.sections&&Array.isArray(data.facts)&&data.facts.length&&typeof data.sections==='object')return data;
     }catch(e){}
     return null;
   }
   function save(data) {
     try {
-      var key=storyKey(data.roleId),encoded=JSON.stringify(data);
+      var key=storyKey(data.roleId),guard=global.InspectPhoneAccountGuard;
+      if(guard&&guard.state().mode==='blocked')return false;
+      // The chat tab may have just recorded which clue was offered to an AI
+      // reply. Preserve that marker if the inspect tab still holds an older
+      // in-memory copy. This merges delivery metadata, not private records
+      // across roles or accounts.
+      var persisted=null;
+      try {persisted=JSON.parse(localStorage.getItem(key)||'null');}catch(ignore){}
+      if(guard&&persisted&&!guard.canRead(persisted))return false;
+      if(guard&&!guard.stamp(data))return false;
+      if(persisted&&persisted.roleId===data.roleId&&Array.isArray(persisted.interactions)){
+        var own=arr(data.interactions).slice(),byId={};
+        own.forEach(function(e){if(e&&e.id)byId[e.id]=e;});
+        persisted.interactions.forEach(function(record){
+          if(!record||!record.id||record.origin!=='user_on_fictional_phone')return;
+          var entry=byId[record.id];
+          if(entry){
+            if(num(record.offeredToAIAt,0)>num(entry.offeredToAIAt,0))
+              entry.offeredToAIAt=record.offeredToAIAt;
+          }else {
+            own.push(record);byId[record.id]=record;
+          }
+        });
+        own.sort(function(a,b){return num(a.at,0)-num(b.at,0);});
+        data.interactions=own.slice(-30);
+      }
+      if(persisted&&persisted.roleId===data.roleId&&persisted.pendingChatFocus){
+        var oldFocus=persisted.pendingChatFocus,currentFocus=data.pendingChatFocus;
+        // A stale inspect tab must never resurrect an already consumed focus.
+        if(!currentFocus||num(oldFocus.at,0)>num(currentFocus.at,0)||
+          oldFocus.id===currentFocus.id&&num(oldFocus.usedAt,0)>num(currentFocus.usedAt,0)){
+          data.pendingChatFocus=Object.assign({},oldFocus);
+        }
+      }
+      var encoded=JSON.stringify(data);
       localStorage.setItem(key,encoded);
       // Some embedded mobile storage implementations ignore writes without throwing.
       return localStorage.getItem(key)===encoded;
@@ -226,15 +261,15 @@
     ];
     searches.sort(function(a,b){return b.time-a.time;});
     var notes=[
-      {title:'这两天',text:'买纸巾；给阿诺回消息；记得把那本书还给小林。',createdAt:at(now,2,10,0),updatedAt:at(now,0,9,3)},
-      {title:'没发出去的话',text:'有些话写完又删了，不知道该怎么开头。',createdAt:at(now,1,22,18),updatedAt:Math.max(at(now,1,22,18),at(now,0,0,52))},
-      {title:'零碎',text:'午饭那家店坐窗边会比较安静。',createdAt:at(now,1,12,30),updatedAt:at(now,0,12,45)},
-      {title:'别忘了',text:'下周把活动报名的事确认一下。',createdAt:at(now,3,18,30),updatedAt:at(now,2,8,0)}
+      {title:'这两天',text:'早上出门的时候，站在门口想了半天，总觉得忘了什么。后来才记起来是昨天聊天里有一句话没说清楚。\n\n午饭去了常去的那家小店。靠窗的位置有人坐了，我就坐在里面一点，想着先把事情一件一件记下来：纸巾快用完了，答应阿诺的消息还没回，那本借来的书也该还回去了。\n\n晚上整理桌子时翻到了夹在书里的旧纸条。字写得很匆忙，倒是把当时的心情全留住了。明天要记得把书带上，别又在临出门时忘掉。',createdAt:at(now,2,10,0),updatedAt:at(now,0,9,3)},
+      {title:'没发出去的话',text:'昨晚在聊天框里打了很多字，写完又一行一行删掉。其实没什么惊天动地的大事，只是不想让别人误解我的意思。\n\n我想说的是，最近沉默不是因为不在意，也不是故意让谁猜。白天的事情一件接着一件，有时候走到回家的路口，才发现一整天都没认真听自己在想什么。\n\n那段话现在还保存在草稿里。也许过几天再看，会觉得没必要解释那么多；也许会找个合适的时间，把其中最重要的一句话好好说出来。',createdAt:at(now,1,22,18),updatedAt:Math.max(at(now,1,22,18),at(now,0,0,52))},
+      {title:'零碎',text:'小店在路口转进去第二家，招牌有点旧，菜单却写得很清楚。靠窗的位置下午会有阳光，坐那里可以看见街角文具店进进出出的人。\n\n今天带了一本书，读到中间被一句话绊住了，反复看了三遍。旁边有人谈周末安排，我听了一会儿，忽然也想出去走走。\n\n下次来试试另外一个套餐，今天这份有点咸。最好避开十二点半，人实在太多。',createdAt:at(now,1,12,30),updatedAt:at(now,0,12,45)},
+      {title:'别忘了',text:'下周待办：\n\n1. 给阿川回复活动报名的事情，别一直拖着。\n2. 把书还给小林，记得检查里面有没有夹纸条。\n3. 整理手机相册，把模糊的照片挑出来。\n4. 周末如果天气好，约阿诺出去走一走。\n\n最重要的一件事：如果心里有什么想法，尽量早点说明白，不要留到深夜再反复猜。',createdAt:at(now,3,18,30),updatedAt:at(now,2,8,0)}
     ];
     var locked=[
-      {title:'别删',text:'删掉的那一大段其实是想解释，我不是不在意，只是还没有想好该怎么说。',createdAt:at(now,2,0,35),updatedAt:at(now,0,1,55)},
-      {title:'想到什么写什么',text:'文具店那个小东西，是想送给你的；买完又担心太突然。',createdAt:at(now,1,23,12),updatedAt:at(now,0,23,12)},
-      {title:'11.09',text:'并不是所有没回的消息都意味着冷淡。那天我只是需要安静一下。',createdAt:at(now,2,23,18),updatedAt:at(now,2,23,20)}
+      {title:'别删',text:'这篇不想放在普通备忘录里。\n\n我删掉的那段话，其实是在解释自己为什么突然变得安静。别人问起来，我总说最近事情多。事情确实多，可真正让我犹豫的，是怕自己的解释听起来像借口。\n\n我记得对方最后发来一句很普通的话，我却盯着屏幕看了很久。明明可以直接回，最后还是把手机扣在桌上。\n\n如果哪天愿意说出来，我希望是用自己的话，不是靠别人从这篇日记里猜到。',createdAt:at(now,2,0,35),updatedAt:at(now,0,1,55)},
+      {title:'想到什么写什么',text:'下午在街角文具店停留得比预计久。最开始只是想买支笔，后来在靠窗的架子上看到一个不太起眼的小东西。颜色很简单，包装也不花哨。\n\n拿起来又放下好几次，最后还是结账了。收据折起来放进了书里，回家后差点把它一起扔掉。\n\n其实没必要给这份礼物安排什么特别的意义。只是刚好想到一个人，觉得对方可能会喜欢。但我还没想好什么时候交出去，卡片也只写了开头。',createdAt:at(now,1,23,12),updatedAt:at(now,0,23,12)},
+      {title:'11.09',text:'那天没有回复消息，并不是生气。\n\n回到住处时已经有点晚了，桌面还堆着白天没整理的东西。我把手机放在一边，去倒了一杯水，坐了很长一会儿才想起来还有消息没看。\n\n后来看到对方的回复，很短，也没有责备。我反倒想了很多。\n\n下次遇到这种时候，或许可以先说一句我现在需要一点时间，等想清楚再聊。这样不用让别人一直等。',createdAt:at(now,2,23,18),updatedAt:at(now,2,23,20)}
     ];
     var salary=p.level==='student'?1200:p.level==='low'?3200:high?23000:6800;
     var transactions=[
@@ -287,7 +322,7 @@
         map:{stops:mapStops,steps:steps,distanceKm:distanceKm,outHours:outHours,frequentPlace:'住处'},
         album:{photos:photos,hidden:hidden,total:456,newSevenDays:17},
         device:{screenMinutes:screenMinutes,nightMinutes:Math.min(48,screenMinutes),apps:apps,battery:76,wifi:'StoryHome-5G',model:'虚构型号 · Mobile X',storageUsedGb:54,storageTotalGb:128,pickups:pickups,focusMinutes:Math.min(84,dayMinutes),relaxMinutes:Math.min(62,dayMinutes),location:facts[facts.length-1].place},
-        forum:{posts:[{title:'今天终于买到了那本书',text:'在街角书店犹豫很久，最后还是拿走了。回去再慢慢读。',time:at(now,2,16,5),comments:[{name:'阿蓝',text:'求后续读后感'}]},{title:'午饭有什么不踩雷的选择',text:'最近总在熟悉的地方来回转，想换点新的。',time:at(now,1,12,1),comments:[{name:'小乙',text:'看看街角那家'}]},{title:'周末打算出去走走',text:'不想排满时间，就随便走走看看。',time:at(now,3,19,10),comments:[{name:'南风',text:'这样最好'}]}]}
+        forum:{posts:[{title:'今天终于买到了那本书',text:'下午路过街角书店，本来只是进去躲一会儿风。书架最下面有一本之前看过介绍的书，封面有点磨损，翻开第一页又觉得舍不得放回去。\n\n结果站在那里读了好几页，店员过来提醒快到关门时间，我才决定买下来。回家把书放在桌上，发现里面有一张不知道谁留下的书签。\n\n打算这个周末读完。先不剧透结尾，等读完再来写感想。',time:at(now,2,16,5),comments:[{name:'阿蓝',text:'求后续读后感'}]},{title:'午饭有什么不踩雷的选择',text:'最近午饭老是在两三家店之间犹豫。熟悉的地方当然省心，但菜单都快背下来了。\n\n今天本来计划去远一点的那家，走到路口又因为时间紧改了主意。坐在店里想了想，发现自己不止吃饭这样，很多事情都会习惯选最稳妥的一种。\n\n想听听大家都有哪些不踩雷的店，最好一个人也能安心坐着，吃完不会特别赶。',time:at(now,1,12,1),comments:[{name:'小乙',text:'看看街角那家'}]},{title:'周末打算出去走走',text:'这周事情有点多，休息日暂时不想安排很满。\n\n天气合适的话，打算沿着以前常走的路线散步，经过书店和那家小店，看到喜欢的地方就停一下。可能会带上相机，也可能只是随手拍几张。\n\n如果最后没去也没关系。最近学到的一件小事是：偶尔什么都不做，也不用特地给自己找理由。',time:at(now,3,19,10),comments:[{name:'南风',text:'这样最好'}]}]}
       }};
   }
   function access(role,now) {
@@ -326,6 +361,8 @@
       '必须：时间戳为13位毫秒且不能晚于现在；内容全部虚构，不涉及真实地址/账号/号码。',
       '不能写性格年龄职业消费能力不符的剧情；具体关系称谓不少于5人；内容包含自然的犹豫和未说出口的话，但避免无缘无故的重大反转。',
       '与未改动板块发生的事实一致，单板块刷新不能修改其他板块；每次生成新的细节，不重复旧记录。',
+      id==='forum'?'论坛要符合角色自己的职业、兴趣、年龄、关系与最近浏览主题；角色本人发帖使用 authorId='+JSON.stringify(String(data.roleId))+'、author='+JSON.stringify(clean(role.name,30))+'，其他社区成员可评论但不能假装真实人员；已有浏览和日记线索可作为发帖动机。':'',
+      id==='browser'?'浏览器记录是角色虚构的个人搜索历史，不是联网搜索。按人设生成具体搜索词；若处于恋爱关系，可合理出现“如何给女朋友买鲜花”“玫瑰和郁金香怎么选”等搜索，其他关系不能强行套用。保留已有用户搜索和浏览记录；返回 JSON 仅更新角色搜索史。':'',
       '当前板块：'+id+'。JSON结构示例：'+FIELDS[id],
       '数量：微信至少5位具名联系人(含群聊)且每位8-12条对话；朋友圈至少3条；浏览器至少5条搜索(含两次0:00-4:00深夜和删除痕迹)与2个书签；备忘录至少3条公开和2条锁定；钱包1-2笔收入、5-8笔支出；音乐至少5首和2个歌单；地图3-5停留；相册至少5张与3张隐藏；设备APP排行5项；论坛至少3帖。',
       '优先复用上述事件ID涉及的人物、地点、价格与日期。不添加与现有板块冲突的事件。只输出单个板块的JSON对象。'
@@ -461,6 +498,14 @@
     return next;
   }
   function mount(opts) {
+    var accountGuard=global.InspectPhoneAccountGuard;
+    if(accountGuard&&accountGuard.state().mode==='blocked'){
+      if(opts.appTitle)opts.appTitle.textContent='账号会话隔离异常';
+      if(opts.appBody)opts.appBody.innerHTML='<p class="inspect-alert">当前账号作用域尚未通过服务端页面校验。请重新登录后再打开角色手机。</p>';
+      if(opts.appLayer&&opts.appLayer.classList)opts.appLayer.classList.add('open');
+      global.InspectPhoneFeature.onUnlock=function(){};
+      return global.InspectPhoneFeature;
+    }
     var role=opts.role, roleId=String(role.id!==undefined&&role.id!==null?role.id:opts.requestedId||'0');
     var now=new Date(),existing=read(roleId,now);
     var data=existing?carryForward(existing,role,roleId,now):fallback(role,roleId,now);
@@ -493,8 +538,17 @@
     });
     if(!data.source||typeof data.source!=='object')data.source={};
     if(!Array.isArray(data.secrets)||!data.secrets.length)data.secrets=fallback(role,roleId,now).secrets;
+    // Storyline catch-up is pure, idempotent, role scoped and local only.
+    // It must never be described as a server-side timer: it runs on re-entry.
+    var lifeResult=global.InspectPhoneLifeClock&&global.InspectPhoneLifeClock.advance?
+      global.InspectPhoneLifeClock.advance(data,role,now):{added:0};
+    // Persona-based fictional web/forum details extend legacy samples without
+    // erasing the role's existing posts, searches or previously saved comments.
+    var personaWeb=global.InspectPersonaWeb;
+    var webSeed=personaWeb&&personaWeb.seed?
+      personaWeb.seed(role,roleId,data,now):{added:0};
     function currentSource(){
-      var source=data.source[current]==='ai'?'AI 剧情记录':'本地剧情样例 · 未调用 AI';
+      var source=data.source[current]==='ai'?'AI 剧情记录':data.source[current]==='offline-sample'?'离线预置剧情 · 非AI生成':'本地剧情样例 · 未调用 AI';
       return source+(data.carriedFrom?' · 含 '+data.carriedFrom+' 的历史记录':'');
     }
     function hint(text){notice=clean(text,200);render();}
@@ -509,9 +563,16 @@
     function open(title,content){
       appTitle.textContent=title;
       appBody.innerHTML=content;
+      var nativePage=content.indexOf('class="nv-app ')>=0;
+      if(nativePage)appBody.classList.add('native-surface');
+      else appBody.classList.remove('native-surface');
+      var topMore=document.getElementById('appReload');
+      if(topMore&&topMore.style)topMore.style.visibility=nativePage?'visible':'hidden';
       appLayer.classList.add('open');
-      // 手机聊天进入详情或新增消息后，默认看到最新对话。
-      appBody.scrollTop=(current==='chat'&&view&&view.kind==='chat')?appBody.scrollHeight:0;
+      if(nativePage&&typeof appBody.querySelector==='function'){
+        var scrollable=appBody.querySelector('.nv-content');
+        if(scrollable)scrollable.scrollTop=(current==='chat'&&view&&view.kind==='chat')?scrollable.scrollHeight:0;
+      }else appBody.scrollTop=0;
     }
     function close(){appLayer.classList.remove('open');current='';view=null;notice='';}
     function chooseScreen(){
@@ -542,6 +603,37 @@
         '<p class="inspect-muted">之后角色会更谨慎。请尊重其决定。</p>'+button('结束查看','stop','primary'));return;}
       if(!current)return;
       var body='',section=data.sections[current]||{};
+      // Native app pages share the same data, role permissions, caches and AI writer.
+      // The legacy flat renderer below remains a no-op fallback for old cached clients.
+      if(global.InspectPhoneNative && typeof global.InspectPhoneNative.render==='function'){
+        var nativeScreen=global.InspectPhoneNative.render({
+          app:current,view:view,section:section,roleName:role.name,
+          unlockedNotes:unlockedNotes,unlockedAlbum:unlockedAlbum,
+          revealCount:revealCount,pinView:pinView,hiddenPin:hiddenPin(roleId,role),
+          pinForm:pinForm,button:button,pendingChat:pendingChat,
+          source:currentSource(),roleAvatar:role.avatar||role.photo||'',roleId:roleId,
+          personaWeb:personaWeb,persona:personaWeb&&personaWeb.persona?personaWeb.persona(role):null
+        });
+        if(!nativeScreen&&view){
+          view=null;
+          nativeScreen=global.InspectPhoneNative.render({
+            app:current,view:null,section:section,roleName:role.name,
+            unlockedNotes:unlockedNotes,unlockedAlbum:unlockedAlbum,
+            revealCount:revealCount,pinView:pinView,hiddenPin:hiddenPin(roleId,role),
+            pinForm:pinForm,button:button,pendingChat:pendingChat,
+            source:currentSource(),roleAvatar:role.avatar||role.photo||'',roleId:roleId,
+            personaWeb:personaWeb,persona:personaWeb&&personaWeb.persona?personaWeb.persona(role):null
+          });
+        }
+        if(nativeScreen){
+          var nativeNotice=notice?'<p class="inspect-alert" role="status">'+html(notice)+'</p>':'';
+          var nativeMarkup=nativeNotice?
+            nativeScreen.body.replace('<div class="nv-content">','<div class="nv-content">'+nativeNotice):
+            nativeScreen.body;
+          open(nativeScreen.title,nativeMarkup);
+          return;
+        }
+      }
       if(current==='chat'){
         if(view&&view.kind==='chat'){
           var c=section.contacts[view.index];
@@ -622,12 +714,86 @@
       if(danger.caught){current='caught';notice='角色发现有人尝试进入锁定内容，收回了查看许可。';permission=null;commit();render();}
       else hint('密码不正确。角色似乎注意到了这次尝试。');
     }
+    // Offline fixture mode is deliberately labeled as such. It makes diary/post
+    // refresh testable on a phone without silently pretending that an AI ran.
+    function refreshOffline(id) {
+      if(id!=='notes'&&id!=='forum'&&id!=='moments'){
+        hint('此应用当前展示角色剧情样例。配置 API 后才能生成新的'+(ITEMS.find(function(x){return x.id===id;})||{}).name+'记录。');
+        return;
+      }
+      var old=JSON.parse(JSON.stringify(data.sections[id])),originalSource=data.source[id];
+      var section=data.sections[id],now=Date.now(),cursor=Math.max(0,num(section.fixtureRefreshCount,0));
+      var diarySeeds=[
+        {title:'今天记录的几件小事',text:'出门前把手机找了半天，最后发现它就在外套口袋里。\n\n午饭路过熟悉的那家小店，还是坐在靠里面的位置。小林发消息说书已经拿到了，顺便问我周末有没有安排。我回了一个还不确定。\n\n回家后把照片整理了一遍，看到下午在街角拍下的路灯。奇怪的是，当时没有什么特别的心情，现在再看却记得那阵风。\n\n决定给自己留一段不急着回复消息的时间。明天把桌面收拾好。'},
+        {title:'写在没睡着之前',text:'刚刚把原本写好的消息又看了一遍。其实没有什么需要反复改的地方，但总担心自己的语气听起来很生硬。\n\n我翻了一会儿相册，发现上次出门拍的几张照片都没有发出去。照片里没有什么特别的人物，只有路边的店招和摆得很整齐的杯子。\n\n明天准备把借来的书还回去。看到那张夹在里面的收据时，又想起文具店买下的小东西。先收好吧，等合适的时候再说。'},
+        {title:'没有安排满的一天',text:'今天计划表上只写了三件事，最后做完了两件。以前遇到这种情况会有点焦躁，现在倒觉得给自己留点空白也挺好。\n\n中午那家小店的人没有上次那么多。点完餐的时候收到阿诺的消息，问有没有空出来走走。我答应下次再约。\n\n晚上把手机调成静音，读了二十多页书。读到某一段时突然想起以前的事情，就在这里记一下：有些话不必急着在同一天说完。'},
+        {title:'给明天的提醒',text:'要记得：\n\n把那本书带走；给阿川回活动报名的消息；检查耳机有没有放在包里；留一点时间走一段路。\n\n今天整理旧聊天时看见了一句很普通的问候，才发现当时自己没有回复。并不是不知道该说什么，而是那会儿正忙着处理别的事。\n\n明天如果想起来，就认真回复一句，不要为了显得自然，又把消息在输入框里删掉。'}
+      ];
+      var postSeeds=[
+        {title:'最近有一件很小但很开心的事',text:'今天回来的路上经过街角的小店，原本打算直接回去，最后还是进去坐了一会儿。\n\n店里播放的音乐很轻，窗边的位置刚好空着。我把今天要做的事情划掉了两项，突然发现这样普通的片刻也值得记下来。\n\n想问问大家最近有没有类似的小发现？',comments:[{name:'阿诺',text:'这种小事最值得记住了。'},{name:'小林',text:'店在哪里，下次带我去。'}]},
+        {title:'有没有人也喜欢把票据夹在书里',text:'整理书桌时又翻到一张旧收据，折得整整齐齐，夹在一本还没读完的书里。\n\n收据上的字快看不清了，但我居然还记得当天在店里挑东西挑了很久。\n\n有人跟我一样舍不得把这种小纸片扔掉吗？',comments:[{name:'南风',text:'我会拿来当书签。'},{name:'小乙',text:'以前攒了一整盒。'}]},
+        {title:'周末走走停停就好',text:'临时决定不要安排太满的活动。想挑一条熟悉的路慢慢走，路过书店就进去翻两页，累了就坐下来吃点东西。\n\n以前总觉得出去玩要拍很多照片才算没有白去，最近反而觉得记住一段路就够了。\n\n有没有适合一个人慢慢走的小路线？',comments:[{name:'阿蓝',text:'看看河边那条路。'}]}
+      ];
+      if(id==='notes'){
+        var draft=diarySeeds[cursor%diarySeeds.length];
+        var newNote={title:draft.title,text:draft.text,createdAt:now,updatedAt:now};
+        section.notes.unshift(newNote);
+        // A role's older generated diary may be archived, but never silently
+        // evict notes the user wrote or edited, even after repeated refreshes.
+        if(section.notes.length>5){
+          var eviction=-1;
+          for(var noteIndex=section.notes.length-1;noteIndex>=0;noteIndex--){
+            var candidate=section.notes[noteIndex];
+            if(candidate&&candidate.lastEditedBy!=='viewer'&&candidate.origin!=='user_on_fictional_phone'){
+              eviction=noteIndex;break;
+            }
+          }
+          if(eviction>=0){
+            var oldNote=section.notes.splice(eviction,1)[0];
+            section.archive=arr(section.archive);
+            section.archive.unshift(oldNote);
+            section.archive=section.archive.filter(function(n,i){
+              return i<18||n&&n.lastEditedBy==='viewer';
+            });
+          }
+        }
+        view={kind:'note',index:0};
+      } else if(id==='forum'){
+        var post=postSeeds[cursor%postSeeds.length];
+        section.posts.unshift({title:post.title,text:post.text,time:now,comments:post.comments});
+        if(section.posts.length>5){
+          section.archive=arr(section.archive);
+          section.archive.unshift(section.posts.pop());
+          section.archive=section.archive.slice(0,18);
+        }
+        view=null;
+      } else {
+        var momentsSeeds=[
+          '把最后一件待办划掉的时候，才发现窗外已经天黑了。最近要提醒自己早点休息。',
+          '路过熟悉的那家小店，买了一杯温热的饮料。拍照的时候刚好有风。',
+          '整理相册翻到了前几天的照片。平时觉得普通，过后再看倒挺喜欢。'
+        ];
+        section.moments.unshift({text:momentsSeeds[cursor%momentsSeeds.length],time:now,
+          visibility:'好友可见',hesitated:true,image:'街角的一张普通生活照',
+          comments:[{name:'阿诺',text:'等有空一起去走走。'}]});
+        if(section.moments.length>5)section.moments.pop();
+        view=null;
+      }
+      section.fixtureRefreshCount=cursor+1;
+      data.source[id]='offline-sample';
+      data.updatedAt=now;
+      if(!save(data)){
+        data.sections[id]=old;data.source[id]=originalSource;
+        notice='存储空间不足，刷新没有覆盖旧记录。';render();return;
+      }
+      notice='已切换到下一段预置的虚构剧情（离线演示，未调用 AI）。';render();
+    }
     function refreshSection() {
       if(waiting)return;
       var id=current,api=global.PhoneAPI,cfg=global.PhoneStorage&&global.PhoneStorage.getApiConfig?global.PhoneStorage.getApiConfig():{};
       if(!permission||selected.indexOf(id)<0){hint('这个板块尚未获得角色分享许可。');return;}
       if(pendingChat&&id==='chat'){hint('请先等待当前联系人的回复，避免覆盖发送中的消息。');return;}
-      if(!api||typeof api.completeJSON!=='function'||!clean(cfg.apiKey)){hint('还没有配置聊天 API。当前可查看本地剧情样例；配置后可按角色人设刷新。');return;}
+      if(!api||typeof api.completeJSON!=='function'||!clean(cfg.apiKey)){refreshOffline(id);return;}
       waiting=true;notice='正在生成当前板块，不会重写其他板块。';render();
       var requestRoleId=roleId,requestNow=Date.now();
       api.completeJSON({system:'你是一位虚构角色生活资料编剧，只返回合法 JSON，不涉及真实用户隐私。',user:promptFor(id,role,data,requestNow),timeoutMs:60000,temperature:.85}).then(function(result){
@@ -637,7 +803,7 @@
         var oldSection=data.sections[id],oldSource=data.source[id],oldUpdated=data.updatedAt;
         if(JSON.stringify(result.data)===JSON.stringify(oldSection))
           throw new Error('新内容与旧记录完全相同，已保留原内容。');
-        var nextSection=id==='chat'?keepPlayerChatTurns(oldSection,result.data):result.data;
+        var nextSection=id==='chat'?keepPlayerChatTurns(oldSection,result.data):preserveUserEntries(id,oldSection,result.data);
         data.sections[id]=nextSection;data.source[id]='ai';data.updatedAt=Date.now();
         if(!save(data)){
           data.sections[id]=oldSection;data.source[id]=oldSource;data.updatedAt=oldUpdated;
@@ -646,6 +812,347 @@
         notice='当前板块已更新，其他板块没有改变。';
       }).catch(function(err){notice=clean(err&&err.message,180)||'生成失败，原记录保留。';})
       .finally(function(){waiting=false;if(current===id)render();});
+    }
+
+    function notePlainText(value,max) {
+      return String(value==null?'':value).replace(/\r\n?/g,'\n')
+        .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,'')
+        .slice(0,max).trim();
+    }
+
+    function browserSearch(form) {
+      if(!permission||current!=='browser'||selected.indexOf('browser')<0||!personaWeb)return;
+      var input=form.querySelector('[name=query]'),q=String(input&&input.value||'').trim().slice(0,120);
+      if(!q){hint('请输入搜索内容。');return;}
+      var before=JSON.stringify(data.sections.browser),beforeEvents=JSON.stringify(arr(data.interactions));
+      var section=data.sections.browser;
+      var searched=personaWeb.search(section,q,Date.now());
+      if(!searched.ok){hint(searched.error||'搜索失败');return;}
+      section.activeQuery=q;
+      if(global.InspectInteractionBridge&&global.InspectInteractionBridge.record){
+        global.InspectInteractionBridge.record(data,'browser_search','搜索：'+q,'search:'+roleId+':'+q.slice(0,60));
+      }
+      if(!commit()){
+        data.sections.browser=JSON.parse(before);
+        data.interactions=JSON.parse(beforeEvents);
+        hint('手机存储空间不足，搜索记录未保存。');return;
+      }
+      view={kind:'browser-results',query:q};notice='';render();
+      // A configured AI may write *fictional* reference pages for unknown
+      // queries. This is not internet browsing and never claims live merchants.
+      var cfg=global.PhoneStorage&&global.PhoneStorage.getApiConfig?
+        global.PhoneStorage.getApiConfig():{},api=global.PhoneAPI;
+      if(personaWeb.find(q,personaWeb.persona(role),section).length||
+        !cfg||!String(cfg.apiKey||'').trim()||!api||typeof api.completeJSON!=='function'||waiting)return;
+      waiting=true;notice='正在生成虚构网页资料（非实时网络搜索）';render();
+      var requestId=roleId,searchQuery=q,beforeAI=JSON.stringify(section);
+      api.completeJSON({
+        system:'你是角色私有浏览器里的虚构网页资料编辑，只创作安全、准确、日常的原创中文参考文章。不是实时联网搜索；禁止杜撰真实商家、网址、价格、联系方式或已发生的交易。必须返回 JSON 对象。',
+        user:'角色背景：'+roleContext(role).slice(0,1100)+'\n搜索词：'+searchQuery+
+          '\n仅生成完全虚构的网页参考资料，至少2条最多4条，标题与正文不能互相重复。JSON格式：{"pages":[{"title":"完整文章标题","snippet":"一句有信息量的摘要","paragraphs":["至少25字的正文段落1","至少25字的正文段落2"]}]}。无需真实链接。论坛和原始角色数据不要修改。',
+        temperature:.7,timeoutMs:45000
+      }).then(function(result){
+        if(roleId!==requestId)return;
+        if(!result||!result.ok||!personaWeb.acceptAI(section,searchQuery,result.data,Date.now()))
+          throw new Error('AI 返回的文章结构不符合要求，原有搜索历史已保留');
+        if(!commit()){
+          data.sections.browser=JSON.parse(beforeAI);
+          throw new Error('手机存储不足，AI 文章未保存；原有记录已保留');
+        }
+        notice='已生成虚构参考文章；内容不是实时网络搜索';
+      }).catch(function(error){
+        notice=clean(error&&error.message,150)||'AI 参考文章未生成，原有浏览记录已保留';
+      }).finally(function(){
+        waiting=false;
+        if(current==='browser'&&view&&view.kind==='browser-results'&&view.query===searchQuery)render();
+      });
+    }
+    function browserOpen(kind,index) {
+      if(current!=='browser'||!permission||selected.indexOf('browser')<0||!personaWeb)return;
+      var s=data.sections.browser,article=null,query=s.activeQuery||'',old=JSON.stringify(s);
+      if(kind==='browser-history'){
+        var rec=arr(s.searchHistory)[index];if(!rec)return;
+        s.activeQuery=String(rec.query||'');
+        view={kind:'browser-results',query:s.activeQuery};notice='';render();return;
+      }
+      if(kind==='browser-result'){
+        article=personaWeb.find(query,personaWeb.persona(role),s)[index];
+      }else if(kind==='browser-visit'){
+        var visit=arr(s.pageViews)[index];if(!visit)return;
+        article=personaWeb.article(visit.articleId,s);query=visit.query||query;
+      }else if(kind==='browser-bookmark'){
+        var bk=arr(s.bookmarks)[index];if(!bk)return;
+        if(!bk.articleId){view={kind:'bookmark-legacy',index:index};notice='';render();return;}
+        article=personaWeb.article(bk.articleId,s);
+      }
+      if(!article)return;
+      if(!personaWeb.visit(s,article.id,query,Date.now()))return;
+      if(!commit()){
+        data.sections.browser=JSON.parse(old);
+        hint('浏览记录保存失败，原记录没有丢失。');return;
+      }
+      view={kind:'browser-article',articleId:article.id,query:query};notice='';render();
+    }
+    function bookmarkBrowser() {
+      if(current!=='browser'||!view||view.kind!=='browser-article'||!personaWeb)return;
+      var before=JSON.stringify(data.sections.browser);
+      if(!personaWeb.bookmark(data.sections.browser,view.articleId,Date.now()))return;
+      if(!commit()){
+        data.sections.browser=JSON.parse(before);
+        hint('书签保存失败，原记录没有改变。');return;
+      }
+      notice='已加入书签';render();
+    }
+    function postForumComment(form) {
+      if(current!=='forum'||!permission||selected.indexOf('forum')<0||
+        !view||view.kind!=='post')return;
+      var field=form.querySelector('[name=text]'),words=String(field&&field.value||'').trim().slice(0,300);
+      if(!words){hint('请输入评论');return;}
+      var section=data.sections.forum,post=arr(section.posts)[view.index];
+      if(!post)return;
+      var before=JSON.stringify(section),prior=JSON.stringify(arr(data.interactions)),stamp=Date.now();
+      var sourceId=post.postId||post.storyEventId||'forum:'+roleId+':'+post.time;
+      var comment={name:'我',text:words,time:stamp,origin:'user_on_fictional_phone',
+        id:'forum-comment:'+stamp+':'+Math.floor(Math.random()*100000)};
+      post.comments=arr(post.comments).concat([comment]);
+      var bridge=global.InspectInteractionBridge;
+      var event=bridge&&bridge.record?bridge.record(data,'forum_comment',
+        '在《'+String(post.title||'').slice(0,95)+'》下评论：'+words,sourceId):null;
+      if(!event){data.sections.forum=JSON.parse(before);data.interactions=JSON.parse(prior);hint('评论未保存：互动记录未就绪');return;}
+      comment.interactionId=event.id;
+      if(!commit()){
+        data.sections.forum=JSON.parse(before);data.interactions=JSON.parse(prior);
+        hint('存储空间不足，论坛评论没有发表');return;
+      }
+      notice='评论已保存';render();
+    }
+    function likeForumPost() {
+      if(current!=='forum'||!permission||!view||view.kind!=='post')return;
+      var post=arr(data.sections.forum.posts)[view.index];if(!post)return;
+      var before=JSON.stringify(post);
+      post.likes=Math.max(0,num(post.likes,0)+(post.liked?-1:1));post.liked=!post.liked;
+      if(!commit()){
+        data.sections.forum.posts[view.index]=JSON.parse(before);
+        hint('点赞状态保存失败');return;
+      }
+      notice='';render();
+    }
+
+    function saveNoteEdit(form) {
+      if(current!=='notes'||!permission||selected.indexOf('notes')<0||!view||view.kind!=='note-editor')return;
+      var index=Number(view.index),t=form.querySelector('[name=title]'),b=form.querySelector('[name=text]');
+      var title=clean(t&&t.value,80),text=notePlainText(b&&b.value,4000);
+      if(!title)title='未命名备忘录';
+      if(!text.trim()){hint('先写一点内容再保存。');return;}
+      var section=data.sections.notes,previous=JSON.stringify(section),beforeEvents=JSON.stringify(arr(data.interactions)),now=Date.now();
+      var created=index<0,source=index<0?null:section.notes[index];
+      if(!created&&!source){hint('找不到这篇备忘录，未保存。');return;}
+      var noteId=source&&(source.noteId||source.storyEventId)||'note:'+roleId+':'+now+':'+Math.floor(Math.random()*1e5);
+      var next=source?Object.assign({},source):{createdAt:now};
+      next.noteId=noteId;
+      next.title=title;next.text=text;next.updatedAt=now;
+      next.lastEditedBy='viewer';next.originalOrigin=source?(source.originalOrigin||source.origin||'role_story'):null;
+      next.origin='user_on_fictional_phone';
+      if(source&&source.text!==text){
+        next.editHistory=arr(source.editHistory).concat([{at:now,text:notePlainText(source.text,4000)}]).slice(-3);
+      }
+      if(created)section.notes.unshift(next);
+      else section.notes[index]=next;
+      var interactionType=created?'note_created':'note_edited';
+      var bridge=global.InspectInteractionBridge;
+      var event=bridge&&bridge.record?bridge.record(data,interactionType,'《'+title+'》：'+text.slice(0,900),noteId):null;
+      if(!event){
+        data.sections.notes=JSON.parse(previous);data.interactions=JSON.parse(beforeEvents);
+        hint('备忘录没有保存：互动记录未就绪。');return;
+      }
+      if(!commit()){
+        data.sections.notes=JSON.parse(previous);data.interactions=JSON.parse(beforeEvents);
+        notice='手机存储空间不足，文字未保存。';render();return;
+      }
+      view={kind:'note',index:created?0:index};
+      notice='已保存。角色下次查看自己的备忘录时，可以发现这段文字。';
+      render();
+    }
+    function saveMomentComment(form) {
+      if(current!=='moments'||!permission||selected.indexOf('moments')<0||!view||view.kind!=='moment')return;
+      var content=clean(form.querySelector('[name=text]')&&form.querySelector('[name=text]').value,300).trim();
+      if(!content){hint('先写一句评论。');return;}
+      var index=Number(view.index),item=data.sections.moments.moments[index];
+      if(!item){hint('找不到这条朋友圈动态，未发表。');return;}
+      var previous=JSON.stringify(data.sections.moments),oldEvents=JSON.stringify(arr(data.interactions)),at=Date.now();
+      var sourceId=item.storyEventId||item.id||('moment:'+roleId+':'+item.time);
+      var comment={name:'我',text:content,time:at,origin:'user_on_fictional_phone',
+        id:'comment:'+at+':'+Math.floor(Math.random()*1e6)};
+      item.comments=arr(item.comments).concat([comment]);
+      var bridge=global.InspectInteractionBridge;
+      var event=bridge&&bridge.record?bridge.record(data,'moment_comment',
+        '在《'+clean(item.text,110)+'》下评论：'+content,sourceId):null;
+      if(!event){
+        data.sections.moments=JSON.parse(previous);data.interactions=JSON.parse(oldEvents);
+        hint('评论没有保存：互动记录未就绪。');return;
+      }
+      comment.interactionId=event.id;
+      if(!commit()){
+        data.sections.moments=JSON.parse(previous);data.interactions=JSON.parse(oldEvents);
+        notice='存储空间不足，评论没有发表。';render();return;
+      }
+      notice='评论已保存。角色之后看到这条朋友圈，就能结合你的评论接话。';render();
+    }
+    function preserveUserEntries(id,oldSection,newSection){
+      if(id==='browser'){
+        var resultBrowser=Object.assign({},newSection),known={};
+        resultBrowser.searchHistory=[];
+        arr(oldSection.searchHistory).concat(arr(newSection.searchHistory)).forEach(function(h){
+          if(!h||!h.query)return;
+          var key=h.searchId||String(h.time)+'|'+String(h.query);
+          if(known[key])return;
+          known[key]=true;resultBrowser.searchHistory.push(h);
+        });
+        resultBrowser.searchHistory.sort(function(a,b){return num(b.time,0)-num(a.time,0);});
+        resultBrowser.searchHistory=resultBrowser.searchHistory.slice(0,60);
+        resultBrowser.pageViews=arr(oldSection.pageViews).slice(0,50);
+        resultBrowser.bookmarks=arr(oldSection.bookmarks).slice();
+        arr(newSection.bookmarks).forEach(function(book){
+          if(!book||!book.title)return;
+          if(!resultBrowser.bookmarks.some(function(b){
+            return book.articleId&&book.articleId===b.articleId||book.title===b.title;
+          }))resultBrowser.bookmarks.push(book);
+        });
+        resultBrowser.bookmarks=resultBrowser.bookmarks.slice(0,40);
+        resultBrowser.personaSeedVersion=oldSection.personaSeedVersion||0;
+        resultBrowser.activeQuery=oldSection.activeQuery||'';
+        return resultBrowser;
+      }
+      if(id==='forum'){
+        var resultForum=Object.assign({},newSection,{posts:arr(newSection.posts).map(function(p){
+          return Object.assign({},p,{comments:arr(p.comments).slice()});
+        })});
+        var existing={};
+        resultForum.posts.forEach(function(p){
+          var key=p.postId||String(p.time)+'|'+String(p.title);existing[key]=p;
+        });
+        arr(oldSection.posts).forEach(function(oldPost){
+          if(!oldPost||!oldPost.title)return;
+          var key=oldPost.postId||String(oldPost.time)+'|'+String(oldPost.title);
+          var target=existing[key];
+          if(!target){
+            // Preserve previous role posts as actual history, not overwrite.
+            var clone=Object.assign({},oldPost,{comments:arr(oldPost.comments).slice()});
+            resultForum.posts.push(clone);existing[key]=clone;
+          }else{
+            var comments=arr(target.comments),ids={};
+            comments.forEach(function(c){ids[c.id||String(c.time)+'|'+String(c.name)+'|'+String(c.text)]=true;});
+            arr(oldPost.comments).forEach(function(c){
+              if(!c||c.origin!=='user_on_fictional_phone')return;
+              var cid=c.id||String(c.time)+'|'+String(c.name)+'|'+String(c.text);
+              if(!ids[cid])comments.push(c);
+              ids[cid]=true;
+            });
+            target.comments=comments;
+            if(oldPost.liked){target.liked=true;target.likes=Math.max(num(target.likes,0),num(oldPost.likes,0));}
+          }
+        });
+        resultForum.posts.sort(function(a,b){return num(b.time,0)-num(a.time,0);});
+        resultForum.posts=resultForum.posts.slice(0,55);
+        resultForum.personaSeedVersion=oldSection.personaSeedVersion||0;
+        resultForum.archive=arr(oldSection.archive).concat(arr(newSection.archive)).slice(0,40);
+        return resultForum;
+      }
+
+      if(id==='notes'){
+        var result=Object.assign({},newSection,{notes:arr(newSection.notes).slice()});
+        arr(oldSection.notes).forEach(function(note){
+          if(!note||note.lastEditedBy!=='viewer')return;
+          result.notes=result.notes.filter(function(item){
+            return !(item&&item.noteId===note.noteId);
+          });
+          result.notes.push(note);
+        });
+        result.notes.sort(function(a,b){return num(b.updatedAt,0)-num(a.updatedAt,0);});
+        var archive=arr(oldSection.archive).concat(arr(result.archive));
+        var unique={},dedup=[];
+        archive.forEach(function(note){
+          if(!note)return;
+          var fingerprint=note.noteId||note.storyEventId||String(note.createdAt)+'|'+String(note.title);
+          if(unique[fingerprint])return;
+          unique[fingerprint]=true;dedup.push(note);
+        });
+        result.archive=dedup.filter(function(note,i){
+          return i<30||note.lastEditedBy==='viewer'||note.origin==='user_on_fictional_phone';
+        });
+        return result;
+      }
+      if(id==='moments'){
+        var resultMoments=Object.assign({},newSection,{moments:arr(newSection.moments).slice()});
+        arr(oldSection.moments).forEach(function(moment){
+          if(!moment||!arr(moment.comments).some(function(c){return c.origin==='user_on_fictional_phone';}))return;
+          var existing=resultMoments.moments.find(function(item){
+            return item&&(item.id&&item.id===moment.id||item.storyEventId&&item.storyEventId===moment.storyEventId||
+              item.time===moment.time&&item.text===moment.text);
+          });
+          if(!existing)resultMoments.moments.push(moment);
+          else {
+            var fingerprints={};
+            existing.comments=arr(existing.comments);
+            existing.comments.forEach(function(c){fingerprints[c.id||String(c.time)+'|'+c.text]=true;});
+            arr(moment.comments).filter(function(c){return c.origin==='user_on_fictional_phone';}).forEach(function(c){
+              var key=c.id||String(c.time)+'|'+c.text;
+              if(!fingerprints[key])existing.comments.push(c);
+              fingerprints[key]=true;
+            });
+          }
+        });
+        return resultMoments;
+      }
+      return newSection;
+    }
+    function openRealChat() {
+      var bridge=global.InspectInteractionBridge;
+      if(!bridge||typeof bridge.chatHref!=='function'||
+        typeof bridge.requestFocus!=='function'){hint('聊天入口暂时不可用。');return;}
+      if(!permission||selected.indexOf(current)<0||!view){hint('请先选择要查看的内容。');return;}
+      var kind,item,sourceId;
+      if(current==='notes'&&view.kind==='note'){
+        kind='note';item=arr(data.sections.notes.notes)[view.index];
+        if(item)sourceId=item.noteId||item.storyEventId||'note:'+roleId+':'+String(item.createdAt);
+      }else if(current==='moments'&&view.kind==='moment'){
+        kind='moment';item=arr(data.sections.moments.moments)[view.index];
+        if(item)sourceId=item.storyEventId||item.id||'moment:'+roleId+':'+String(item.time);
+      }else if(current==='forum'&&view.kind==='post'){
+        kind='forum';item=arr(data.sections.forum.posts)[view.index];
+        if(item)sourceId=item.postId||item.storyEventId||'forum:'+roleId+':'+String(item.time);
+      }
+      if(!item||!sourceId){hint('这条内容暂时无法连接到角色聊天。');return;}
+      if(global.location&&/\.workers\.dev$/i.test(global.location.hostname||'')){
+        hint('当前预览与正式聊天不在同一个域名。正式站同源后才能带着这条内容进入角色聊天。');
+        return;
+      }
+      var previous=data.pendingChatFocus?Object.assign({},data.pendingChatFocus):null;
+      var focusText=String(item.text||''),included=[];
+      if(kind==='moment'||kind==='forum'){
+        // Only the user's latest two comments on this exact post go with the
+        // explicitly selected topic. Other Moments stay outside this handoff.
+        var ownComments=arr(item.comments).filter(function(c){
+          return c&&c.origin==='user_on_fictional_phone';
+        }).slice(-2);
+        ownComments.forEach(function(comment){
+          focusText+='\n我在这条动态下的评论：'+String(comment.text||'');
+          if(comment.interactionId)included.push(comment.interactionId);
+        });
+      }
+      var pending=bridge.requestFocus(data,kind,{
+        sourceId:String(sourceId),
+        title:kind==='note'?item.title:kind==='forum'?item.title:'朋友圈动态',
+        text:focusText,
+        includedEventIds:included
+      });
+      if(!pending){hint('这条内容暂时无法准备为聊天话题。');return;}
+      if(!commit()){
+        if(previous)data.pendingChatFocus=previous;
+        else delete data.pendingChatFocus;
+        notice='当前存储空间不足，聊天话题没有保存。';render();return;
+      }
+      global.location.assign(bridge.chatHref(roleId));
     }
     function sendAsRole(input) {
       if(pendingChat||current!=='chat'||!view||view.kind!=='chat')return;
@@ -692,7 +1199,30 @@
       if(selected.indexOf(b.dataset.app)<0){chooseScreen();return;}
       current=b.dataset.app;view=null;notice='';switches++;render();
     });});
+    var reload=document.getElementById('appReload');
+    if(reload)reload.addEventListener('click',function(){
+      if(!ITEMS.some(function(x){return x.id===current;}))return;
+      // Real phone: an app overflow menu, not an unexplained refresh glyph.
+      // Test doubles lacking DOM selectors continue to use the refresh callback.
+      if(typeof appBody.querySelector!=='function'){refreshSection();return;}
+      var existing=appBody.querySelector('[data-native-options]');
+      if(existing){existing.remove();return;}
+      appBody.insertAdjacentHTML('beforeend',
+        '<div class="nv-options-overlay" data-native-options>'+
+        '<div class="nv-options-card" role="dialog" aria-label="应用操作">'+
+        '<div class="nv-options-head">'+html((ITEMS.find(function(x){return x.id===current;})||{}).name||'应用')+'</div>'+
+        '<button type="button" data-action="refresh">刷新此应用的记录</button>'+
+        '<button type="button" data-action="choose">选择可查看的应用</button>'+
+        '<button type="button" data-action="dismissMenu">取消</button>'+
+        '</div></div>');
+    });
     back.addEventListener('click',function(){
+      if(current==='browser'&&view&&view.kind==='browser-article'){
+        view={kind:'browser-results',query:view.query||data.sections.browser.activeQuery||''};render();return;
+      }
+      if(current==='browser'&&view&&view.kind==='bookmark-legacy'){
+        view={kind:'browser-bookmarks'};render();return;
+      }
       if(view){view=null;render();return;}
       if(current==='caught'){close();return;}
       close();
@@ -717,12 +1247,58 @@
         e.preventDefault();var inp=e.target.querySelector('[name=message]');
         sendAsRole(inp?inp.value:'');
       }
+      if(e.target.id==='inspectNoteEditForm'){
+        e.preventDefault();saveNoteEdit(e.target);return;
+      }
+      if(e.target.id==='inspectMomentComment'){
+        e.preventDefault();saveMomentComment(e.target);return;
+      }
+      if(e.target.id==='inspectBrowserSearch'){
+        e.preventDefault();browserSearch(e.target);return;
+      }
+      if(e.target.id==='inspectForumComment'){
+        e.preventDefault();postForumComment(e.target);return;
+      }
+    });
+    appBody.addEventListener('input',function(e){
+      if(!e.target.matches||!e.target.matches('[data-native-search]'))return;
+      var query=String(e.target.value||'').trim().toLowerCase();
+      if(typeof appBody.querySelectorAll!=='function')return;
+      appBody.querySelectorAll('.nv-contact').forEach(function(item){
+        var copy=item.textContent.toLowerCase();
+        item.hidden=!!query&&copy.indexOf(query)<0;
+      });
     });
     appBody.addEventListener('click',function(e){
+      if(e.target.classList&&e.target.classList.contains('nv-options-overlay')){e.target.remove();return;}
+      var tab=e.target.closest('[data-native-tab]');
+      if(tab&&current==='chat'){
+        var tabId=tab.dataset.nativeTab;
+        view=tabId==='chats'?null:{kind:'chatTab',tab:tabId};
+        notice='';render();return;
+      }
       var detail=e.target.closest('[data-detail]');
-      if(detail){view={kind:detail.dataset.detail,index:Number(detail.dataset.index)};notice='';render();return;}
+      if(detail){
+        var kind=detail.dataset.detail,index=Number(detail.dataset.index);
+        if(kind==='noop')return;
+        if(kind.indexOf('switch-')===0){
+          var nextApp=kind.slice(7);
+          if(!permission||selected.indexOf(nextApp)<0){chooseScreen();return;}
+          current=nextApp;view=null;notice='';render();return;
+        }
+        if(current==='browser'&&/^browser-/.test(kind)){
+          browserOpen(kind,index);return;
+        }
+        view={kind:kind,index:index};notice='';render();return;
+      }
       var action=e.target.closest('[data-action]');if(!action)return;
       var a=action.dataset.action;
+      if(a==='dismissMenu'){
+        if(typeof appBody.querySelector==='function'){
+          var pop=appBody.querySelector('[data-native-options]');if(pop)pop.remove();
+        }
+        return;
+      }
       if(a==='close'||a==='deny'){close();return;}
       if(a==='grant'){
         var decision=access(role,new Date());
@@ -748,6 +1324,21 @@
       }
       if(a==='choose'){chooseScreen();return;}
       if(a==='refresh'){refreshSection();return;}
+      if(a==='browserVisits'){if(current==='browser'){view={kind:'browser-visits'};notice='';render();}return;}
+      if(a==='browserBookmarks'){if(current==='browser'){view={kind:'browser-bookmarks'};notice='';render();}return;}
+      if(a==='browserBookmark'){bookmarkBrowser();return;}
+      if(a==='forumMine'){if(current==='forum'){view={kind:'forum-mine'};notice='';render();}return;}
+      if(a==='forumAll'){if(current==='forum'){view=null;notice='';render();}return;}
+      if(a==='forumLike'){likeForumPost();return;}
+      if(a==='newNote'){if(current==='notes'){view={kind:'note-editor',index:-1};notice='';render();}return;}
+      if(a==='editNote'){
+        if(current==='notes'&&view&&view.kind==='note'){view={kind:'note-editor',index:view.index};notice='';render();}
+        return;
+      }
+      if(a==='cancelNoteEdit'){
+        view=view&&view.index>=0?{kind:'note',index:view.index}:null;notice='';render();return;
+      }
+      if(a==='chatAboutNote'||a==='chatAboutMoment'||a==='chatAboutForum'){openRealChat();return;}
       if(a==='notesPin'){pinView='notes';render();return;}
       if(a==='albumPin'){pinView='album';render();return;}
       if(a==='stop'){close();return;}
