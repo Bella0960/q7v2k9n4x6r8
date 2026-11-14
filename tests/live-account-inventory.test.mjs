@@ -46,18 +46,16 @@ test('actual live account state must block cutover while QA founder and live mem
     audit_events:4,sessions:3,invitations:0,migrations:17
   });
   assert.deepEqual(auditLiveContinuity(state),[
-    'OLD_AUTHORITY_HAS_DIFFERENT_FOUNDER',
-    'INTEGRATED_BACKEND_FOUNDER_NOT_READY',
-    'PERMANENT_IDENTITY_NOT_READY',
-    'EXISTING_MEMBERS_NOT_CONTINUOUS_IN_BACKEND'
+    'ROOT_FOUNDER_CUTOVER_NOT_READY'
   ]);
 });
 
 test('even a matching account inventory is NOT a backup, a real-device check or a release approval', () => {
   const state=stores();
   state.existingMembers = parseAggregateResults(fake({accounts:2,admins:1,members:1,selected_admin:1,selected_exists:1}));
-  state.integratedBackend = parseAggregateResults(fake({accounts:2,admins:1,members:1,selected_admin:1,selected_exists:1}));
-  state.permanentIdentity = parseAggregateResults(fake({accounts:1,admins:1,selected_admin:1,selected_exists:1}));
+  // The old empty staging and identity-core databases stay empty; never clone users.
+  assert.equal(state.integratedBackend.accounts, 0);
+  assert.equal(state.permanentIdentity.accounts, 0);
   assert.deepEqual(auditLiveContinuity(state),[]);
   assert.equal('releaseApproved' in state,false,'inventory must not authorize a release');
 });
@@ -91,9 +89,9 @@ test('rejects contradictory, negative, fractional, and duplicate selected-founde
 
 test('missing one store or loss of previous real members must always block',()=>{
   const state=stores();
-  delete state.permanentIdentity;
+  delete state.isolatedQA;
   assert.deepEqual(auditLiveContinuity(state),['ACCOUNT_STORES_INCOMPLETE']);
-  state.permanentIdentity=parseAggregateResults(fake());
+  state.isolatedQA=parseAggregateResults(fake({accounts:1,admins:1,selected_admin:1,selected_exists:1}));
   state.existingMembers=parseAggregateResults(fake());
   assert.ok(auditLiveContinuity(state).includes('EXISTING_LIVE_MEMBER_NOT_VERIFIED'));
 });
