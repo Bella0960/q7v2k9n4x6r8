@@ -40,7 +40,7 @@ test('release workflow is manual only, deploys original official service and che
   assert.doesNotMatch(workflow, /^\s+push:\s*$/m);
   assert.match(workflow, /MAOMAO_PRODUCTION_ORIGIN: https:\/\/mao520\.com/);
   assert.match(workflow, /deploy --config wrangler\.production\.jsonc --keep-vars/);
-  assert.match(workflow, /node scripts\/verify-production-account-readiness\.mjs/);
+  assert.match(workflow, /node scripts\/release\/verify-canonical-root-readiness\.mjs/);
   assert.match(workflow, /node tests\/production-official-auth-smoke\.browser\.mjs/);
   assert.doesNotMatch(workflow, /deploy --config wrangler\.app\.jsonc/);
 });
