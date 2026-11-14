@@ -24,7 +24,8 @@ export function auditOfficialAutoDeployTrigger(triggers) {
     t.branch_includes.includes('main'));
   if (activeMain.length !== 1) return ['OFFICIAL_AUTO_DEPLOY_UNVERIFIED'];
   const cmd = String(activeMain[0].deploy_command || '').trim();
-  if (!/(?:^|\\s)wrangler deploy --config wrangler\\.app\\.cutover\\.jsonc --keep-vars(?:\\s|$)/.test(cmd))
+  if (cmd !== 'npx wrangler deploy --config wrangler.app.cutover.jsonc --keep-vars' &&
+      cmd !== 'wrangler deploy --config wrangler.app.cutover.jsonc --keep-vars')
     return ['OFFICIAL_AUTO_DEPLOY_REVERTS_STATIC'];
   return [];
 }
