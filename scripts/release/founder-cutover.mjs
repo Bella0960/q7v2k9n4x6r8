@@ -1,6 +1,8 @@
+import { consumeFounderCheckpointProof } from './founder-checkpoint.mjs';
+
 // Operator-only helper. Invoke inside the target Durable Object's SQLite
 // transactionSync boundary, after taking a verified recovery checkpoint.
-export function cutoverFounder({ exec, transaction, expectedCurrentId, chosen, now }) {
+export function cutoverFounder({ exec, transaction, expectedCurrentId, chosen, now, storage, checkpointProof }) {
   if (typeof exec !== 'function' || typeof transaction !== 'function' ||
       !/^MAO-[A-Z0-9]{12,24}$/.test(expectedCurrentId || '') ||
       !/^MAO-[A-Z0-9]{12,24}$/.test(chosen?.id || '') ||
@@ -10,6 +12,11 @@ export function cutoverFounder({ exec, transaction, expectedCurrentId, chosen, n
       !Number.isSafeInteger(now) || now <= 0) {
     throw new Error('Invalid founder cutover input');
   }
+
+  // Fail closed before any identity write unless this exact DO storage has a
+  // recent checkpoint. The proof is single-use, including after a failed SQL
+  // transaction; an operator must re-read the stored checkpoint to retry.
+  consumeFounderCheckpointProof({ storage, proof: checkpointProof, now });
 
   return transaction(() => {
     const founders = exec("SELECT id, status FROM mao_accounts WHERE role = 'super_admin'");
