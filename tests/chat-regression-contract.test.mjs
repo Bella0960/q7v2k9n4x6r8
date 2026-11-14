@@ -1223,7 +1223,7 @@ test('takeout cart stays bound to one restaurant and checkout uses the cart rest
   assert.match(takeout, /cartShopId !== currentShop\.id/);
   assert.match(takeout, /window\.confirm\(/);
   assert.match(takeout, /var orderShop = getCartShop\(\)/);
-  assert.match(takeout, /shop: orderShop\.name, shopId: orderShop\.id/);
+  assert.match(takeout, /shop:\s*orderShop\.name,\s*shopId:\s*orderShop\.id/);
   assert.match(takeout, /function clearCart\(\)/);
   assert.match(takeout, /if \(currentShop\) renderDishes\(\);\s*else updateCartUI\(\)/);
 });
@@ -1919,10 +1919,10 @@ test('Messages chat-list theme is isolated, cache-busted, grayscale and hides in
   const listThemeScript = read('shared/js/chat-list-theme.js');
 
   assert.ok(chatHome.includes('chat-list-editorial-theme.css?v=20261104v2'));
-  assert.ok(chatHome.includes('chat-list-theme.js?v=20261104v2'));
+  assert.ok(chatHome.includes('chat-list-theme.js?v=20261112at1'));
   assert.match(serviceWorker, /phone-app-pwa-v\d+/);
   assert.ok(serviceWorker.includes('./shared/css/chat-list-editorial-theme.css?v=20261104v2'));
-  assert.ok(serviceWorker.includes('./shared/js/chat-list-theme.js?v=20261104v2'));
+  assert.ok(serviceWorker.includes('./shared/js/chat-list-theme.js?v=20261112at1'));
 
   for (const value of ['#F7F7F9', '#F0F0F3', '#FFFFFF', '#333333', '#777777', '#999999']) {
     assert.ok(listThemeCss.toUpperCase().includes(value), 'missing neutral token: ' + value);
@@ -2330,4 +2330,445 @@ test('chat detail classic inline scripts parse before chat handlers are attached
     .filter(([, attributes]) => !/\bsrc\s*=|\btype\s*=/.test(attributes));
   assert.ok(inlineScripts.some(([, , source]) => /async function sendMsg\(/.test(source)));
   for (const [, , source] of inlineScripts) new Function(source);
+});
+
+
+
+test('chat detail: generated cards and manual stickers render only after history persistence succeeds', () => {
+  assert.match(detail, /function insertIncomingCallCard\(historyList\)[\s\S]*?if \(!saveMessages\(historyList\)\)[\s\S]*?return false[\s\S]*?return true/);
+  assert.match(detail, /if \(insertIncomingCallCard\(historyList\)\) maybeAutoIncomingCall\(\)/);
+  assert.match(detail, /function insertVImageCards\(historyList, descs\)[\s\S]*?if \(!saveMessages\(historyList\)\)[\s\S]*?historyList\.length = previousLength[\s\S]*?return false/);
+  assert.match(detail, /function insertPayCards\(historyList, items\)[\s\S]*?if \(!saveMessages\(historyList\)\)[\s\S]*?previousTransferStates\.forEach/);
+  assert.match(detail, /if \(!saveMessages\(list\)\)[\s\S]*?表情没有保存到聊天记录[\s\S]*?return false[\s\S]*?sendMsg\(/);
+});
+
+test('chat detail: a failed AI reply save leaves copyable on-screen text but not a false sent record', () => {
+  assert.match(detail, /var replySaveFailed = !replySaved/);
+  assert.match(detail, /AI 回复尚未保存。上方文字暂留在当前页面，请先复制保留/);
+  assert.match(detail, /data-unsaved-reply/);
+  assert.match(detail, /尚未保存 · 请复制保留/);
+  assert.match(detail, /if \(replySaveFailed && tempRow && fullText\)/);
+});
+
+test('chat detail: payment ledger success is independent from chat-card status persistence', () => {
+  assert.match(detail, /if \(!saveWorkData\(wd\)\) return/);
+  assert.match(detail, /function persistReceiptStatus\(\)[\s\S]*?if \(!saveMessages\(list\)\)/);
+  assert.match(detail, /款项已入账，但聊天卡片状态未同步/);
+  assert.match(detail, /if \(existingPayment\)[\s\S]*?receiptStatusRepair = persistReceiptStatus\(\)/);
+  assert.match(detail, /var targetStatus = isRed \? 'opened' : 'received'/);
+});
+
+test('chat detail: group private messages require both the target history and group entry to persist', () => {
+  assert.match(detail, /privateSaved = window\.PhoneStorage\.saveChatHistory\(targetId, privateHistory\) === true/);
+  assert.match(detail, /verifiedPrivate\.length === privateHistory\.length/);
+  assert.match(detail, /if \(!privateSaved\)[\s\S]*?未显示已发送状态[\s\S]*?return ''/);
+  assert.match(detail, /if \(!saveMessages\(historyList\)\)[\s\S]*?群聊中的私聊入口没有保存成功/);
+  assert.match(detail, /showGroupPrivatePopup\(displayName, targetId, privateMessageText\)/);
+});
+
+test('chat detail: group poll and chain mutations roll back rather than showing false success', () => {
+  assert.match(detail, /if \(!saveMessages\(history\)\)[\s\S]*?群投票没有保存成功[\s\S]*?return/);
+  assert.match(detail, /if \(!saveMessages\(chainHistory\)\)[\s\S]*?群接龙没有保存成功[\s\S]*?return/);
+  assert.match(detail, /if \(!saveMessages\(joinHistory\)\)[\s\S]*?targetChain\.entries = previousEntries/);
+  assert.match(detail, /if \(!saveMessages\(history\)\)[\s\S]*?poll\.votes = previousVotes/);
+  assert.match(detail, /if \(!saveMessages\(pollHistory\)\)[\s\S]*?pollToClose\.poll\.closed = false/);
+  assert.match(detail, /if \(!saveMessages\(closeHistory\)\)[\s\S]*?chainToClose\.chain\.closed = false/);
+});
+
+test('chat detail: multi-bubble history readback verifies behavior-bearing state and reroll is gated', () => {
+  assert.match(detail, /msg\.type \|\| ''/);
+  assert.match(detail, /msg\.status \|\| ''/);
+  assert.match(detail, /msg\.poll && typeof msg\.poll === 'object' \? JSON\.stringify\(msg\.poll\)/);
+  assert.match(detail, /msg\.chain && typeof msg\.chain === 'object' \? JSON\.stringify\(msg\.chain\)/);
+  assert.match(detail, /msg\.call && typeof msg\.call === 'object' \? JSON\.stringify\(msg\.call\)/);
+  const regenStart = detail.indexOf('window.regenerateReply = function');
+  const regenEnd = detail.indexOf('// 改写指定的某条 AI 消息', regenStart);
+  assert.ok(regenStart >= 0 && regenEnd > regenStart);
+  const regenHandler = detail.slice(regenStart, regenEnd);
+  assert.doesNotMatch(regenHandler, /saveMessages\(/, 'regenerate must not delete persisted old reply before AI success');
+  assert.match(regenHandler, /sendMsg\(\{ isRegenerate: true, regenDirection: direction \|\| '', regenTargetMid: targetBubbleId \}\)/);
+  assert.match(detail, /historyList = window\.ChatMessagePolicy\.removeTurnFromHistory\(historyList, regenTargetId\)/);
+  assert.match(detail, /if \(isRegen && \(!streamResult\.ok \|\| !String\(fullText \|\| ''\)\.trim\(\)\)\)/);
+  assert.match(detail, /重新生成未成功，原回复已保留/);
+  assert.match(detail, /if \(!isRegen\) \{\s*try \{ saveMessages\(historyList\); \} catch \(rollbackError\) \{\}/);
+});
+
+
+test('chat detail: history identity includes message state, not only role/time/text', () => {
+  const start = detail.indexOf('function _messageIdentity(msg)');
+  const end = detail.indexOf('\n        function _verifyHistoryRoundTrip', start);
+  assert.ok(start >= 0 && end > start, 'message identity helper should remain independently testable');
+  const source = detail.slice(start, end);
+  const sandbox = {};
+  runInNewContext(source + '\nglobalThis.identity = _messageIdentity;', sandbox);
+  const base = { role: 'assistant', mid: 'm1', text: '转账', type: 'transfer', amount: 20, status: 'unopened' };
+  const identity = sandbox.identity(base);
+
+  assert.notEqual(sandbox.identity({ ...base, status: 'received' }), identity);
+  assert.notEqual(sandbox.identity({ ...base, amount: 30 }), identity);
+  assert.notEqual(sandbox.identity({ ...base, imageRecordId: 'image_1' }), identity);
+  assert.notEqual(sandbox.identity({ ...base, img: 'data:image/png;base64,first-payload' }), identity);
+  assert.notEqual(sandbox.identity({ ...base, poll: { votes: { a: 0 } } }), identity);
+  assert.notEqual(sandbox.identity({ ...base, chain: { closed: true } }), identity);
+  assert.notEqual(sandbox.identity({ ...base, call: { connected: true } }), identity);
+});
+
+test('chat detail: transfer decision markers roll back when the main reply cannot be saved', () => {
+  const start = detail.indexOf('function applyTransferDecisionMarkers(historyList, amounts)');
+  const end = detail.indexOf('\n        // ---- 角色赠予亲属卡/亲密付', start);
+  assert.ok(start >= 0 && end > start, 'transfer decision helper should be present');
+  const source = detail.slice(start, end);
+  const sandbox = {
+    history: [{ role: 'user', type: 'transfer', amount: 25 }],
+    snapshots: null
+  };
+  runInNewContext(
+    source + '\nsnapshots = applyTransferDecisionMarkers(history, [25]);',
+    sandbox
+  );
+  assert.equal(sandbox.history[0].status, 'accepted');
+  assert.equal(sandbox.history[0].acceptedAt > 0, true);
+  runInNewContext(source + '\nrollbackTransferDecisionMarkers(snapshots);', sandbox);
+  assert.equal(sandbox.history[0].status, undefined);
+  assert.equal(sandbox.history[0].acceptedAt, undefined);
+});
+
+test('chat detail: AI transfer-decision state is committed with its reply and rolled back on failure', () => {
+  assert.match(detail, /var transferDecisionSnapshots = \[\]/);
+  assert.match(detail, /transferDecisionSnapshots = applyTransferDecisionMarkers\(historyList, parsedTransferDecision\.amounts\)/);
+  assert.match(detail, /rollbackTransferDecisionMarkers\(transferDecisionSnapshots\)/);
+  assert.match(detail, /\(parsedTransferDecision\.amounts && parsedTransferDecision\.amounts\.length\)/);
+});
+
+test('chat detail: group interaction state and private-message entry require verified persistence', () => {
+  assert.match(detail, /groupHistoryRollback\.push\(\{[\s\S]*?kind: 'votes'/);
+  assert.match(detail, /groupHistoryRollback\.push\(\{[\s\S]*?kind: 'entries'/);
+  assert.match(detail, /if \(changedHistory && !saveMessages\(historyList\)\)[\s\S]*?groupHistoryRollback\.forEach/);
+  assert.match(detail, /privateSaved = privateSaved && Array\.isArray\(verifiedPrivate\)/);
+  assert.match(detail, /if \(!privateSaved\)[\s\S]*?未显示已发送状态/);
+});
+
+
+test('chat extras: failed card persistence prevents misleading display and keeps prior history intact', () => {
+  const start = extras.indexOf('  function insertChatMessage(msg) {');
+  const end = extras.indexOf('\n  // 隐藏指令', start);
+  assert.ok(start >= 0 && end > start, 'extension message insertion helper must exist');
+  const history = [{ mid: 'existing', text: '已保存的旧消息' }];
+  const attempts = [];
+  const rendered = [];
+  const toasts = [];
+  let allowWrite = false;
+  const sandbox = {
+    loadMessages: () => history,
+    saveMessages: (messages) => {
+      attempts.push(messages);
+      return allowWrite;
+    },
+    appendMessageToDOM: (message) => rendered.push(message),
+    showToast: (message) => toasts.push(message),
+    chatMessages: { scrollTop: 0, scrollHeight: 120 }
+  };
+  runInNewContext(
+    extras.slice(start, end) + '\nglobalThis.insertExtensionMessage = insertChatMessage;',
+    sandbox
+  );
+
+  const card = { role: 'user', type: 'location', location: { label: '公园' } };
+  assert.equal(sandbox.insertExtensionMessage(card), false);
+  assert.equal(history.length, 1, 'failed save must not mutate existing history');
+  assert.equal(attempts[0].length, 2, 'attempt includes previous history and the new card');
+  assert.equal(rendered.length, 0, 'failed card must not be displayed as delivered');
+  assert.match(toasts[0], /保存失败.*未发送/);
+  assert.equal(sandbox.chatMessages.scrollTop, 0);
+
+  allowWrite = true;
+  assert.equal(sandbox.insertExtensionMessage(card), true);
+  assert.equal(rendered.length, 1, 'successful save displays exactly one card');
+  assert.equal(attempts[1].length, 2);
+  assert.equal(sandbox.chatMessages.scrollTop, 120);
+
+  sandbox.saveMessages = () => { throw new Error('storage blocked'); };
+  assert.equal(sandbox.insertExtensionMessage({ role: 'user', type: 'gift' }), false);
+  assert.equal(rendered.length, 1, 'thrown write errors must not render a phantom card');
+  assert.equal(history.length, 1);
+});
+
+test('chat extras: every extension card send gates AI dispatch on successful persistence', () => {
+  const helperStart = extras.indexOf('  function insertChatMessage(msg) {');
+  const helperEnd = extras.indexOf('\n  // 隐藏指令', helperStart);
+  assert.ok(helperStart >= 0 && helperEnd > helperStart);
+  const callers = extras.slice(helperEnd);
+  const writes = [...callers.matchAll(/\binsertChatMessage\(/g)];
+  assert.ok(writes.length >= 13, 'must inspect all existing extension-card send paths');
+  for (const item of writes) {
+    assert.equal(callers.slice(item.index - 5, item.index), 'if (!',
+      'an extension card call must return early before any downstream AI dispatch when unsaved');
+  }
+  const callStart = callers.indexOf('function consumeCallResult()');
+  const callEnd = callers.indexOf("window.addEventListener('load', consumeCallResult)", callStart);
+  assert.ok(callStart >= 0 && callEnd > callStart);
+  const deferredCall = callers.slice(callStart, callEnd);
+  const saveGate = deferredCall.indexOf("if (!insertChatMessage({ role: 'user', type: 'call'");
+  const clearPending = deferredCall.indexOf('sessionStorage.removeItem(key)');
+  assert.ok(saveGate >= 0 && clearPending > saveGate,
+    'pending call result must only be cleared after successful message persistence');
+});
+
+
+test('chat extras: outgoing payment ledger reconciles chat write failure and page reload', () => {
+  const start = extras.indexOf('  // A wallet debit and a chat card');
+  const end = extras.indexOf("  if (payConfirmBtn) payConfirmBtn.addEventListener('click', submitPayMessage)", start);
+  assert.ok(start >= 0 && end > start, 'outgoing payment code must remain independently testable');
+  const paymentCode = extras.slice(start, end);
+
+  function fixture(options = {}) {
+    let now = 1000000;
+    let history = [{ role: 'user', mid: 'older', text: '旧消息' }];
+    const stored = new Map([
+      ['workData', JSON.stringify({ balance: 1000, history: options.initialEntries || [] })],
+      ['chat_history_' + (options.roleId || 'role-1'), JSON.stringify(history)]
+    ]);
+    const effects = { walletWrites: [], chatWrites: [], toasts: [], ai: [], renders: 0, closes: 0 };
+    let failRefund = !!options.failRefund;
+    const context = {
+      payAmountInput: { value: '45.50' },
+      payMessageInput: { value: '晚饭钱' },
+      PAY_DEFAULT_MESSAGE: '你好',
+      payMode: options.mode || 'redpacket',
+      currentCharacter: { id: options.roleId || 'role-1' },
+      uid: () => 'unique-payment',
+      Date: { now: () => now },
+      localStorage: { getItem: (key) => stored.get(key) ?? null },
+      getWorkData: () => JSON.parse(stored.get('workData')),
+      saveWorkData: (wallet) => {
+        if (options.failDebit || (failRefund && wallet.history[0]?.status === 'reversed')) return false;
+        effects.walletWrites.push(JSON.parse(JSON.stringify(wallet)));
+        stored.set('workData', JSON.stringify(wallet));
+        return true;
+      },
+      loadMessages: () => history,
+      saveMessages: (next) => {
+        effects.chatWrites.push(next);
+        if (options.chatSave === 'fail') return false;
+        history = next;
+        stored.set('chat_history_' + (options.roleId || 'role-1'), JSON.stringify(next));
+        return options.chatSave !== 'written-but-unverified';
+      },
+      closePayDrawer: () => { effects.closes++; },
+      renderAllMessages: () => { effects.renders++; },
+      appendMessageToDOM: () => { effects.renders++; },
+      sendSilentInstruction: (message) => effects.ai.push(message),
+      showToast: (message) => effects.toasts.push(message),
+      window: { addEventListener: () => {}, navigator: {
+        locks: { request: (name, options, callback) => callback({ name }) }
+      }, MaoMaoWalletLedger: {
+        supportsCrossTabLock: () => true,
+        runExclusive: (task) => task()
+      } },
+      chatMessages: { scrollTop: 0, scrollHeight: 20 }
+    };
+    runInNewContext(paymentCode +
+      '\nglobalThis.outgoingTest = { submitPayMessage, recoverOutgoingPayments, settleOutgoingPayment };', context);
+    return {
+      context, effects, actions: context.outgoingTest,
+      wallet: () => JSON.parse(stored.get('workData')),
+      history: () => history,
+      advance: (ms) => { now += ms; },
+      allowRefund: () => { failRefund = false; },
+      storeWallet: (wallet) => { stored.set('workData', JSON.stringify(wallet)); },
+      storeWalletRaw: (raw) => { stored.set('workData', raw); },
+      storeChatRaw: (raw) => { stored.set('chat_history_' + (options.roleId || 'role-1'), raw); }
+    };
+  }
+
+  const success = fixture();
+  success.actions.submitPayMessage();
+  const successfulWallet = success.wallet();
+  const successfulCard = success.history()[1];
+  assert.equal(successfulWallet.balance, 954.5);
+  assert.equal(successfulWallet.history[0].status, 'sent');
+  assert.equal(successfulWallet.history[0].roleId, 'role-1');
+  assert.equal(successfulWallet.history[0].paymentId, successfulCard.mid);
+  assert.equal(successfulCard.paymentId, successfulCard.mid);
+  assert.equal(success.effects.walletWrites[0].history[0].status, 'pending-chat');
+  assert.equal(success.effects.ai.length, 1);
+  assert.equal(success.effects.renders, 1);
+  assert.equal(success.effects.closes, 1);
+
+  const failedChat = fixture({ chatSave: 'fail' });
+  failedChat.actions.submitPayMessage();
+  assert.equal(failedChat.wallet().balance, 1000, 'refund balances the failed debit');
+  assert.equal(failedChat.wallet().history[0].status, 'reversed');
+  assert.equal(failedChat.history().length, 1);
+  assert.equal(failedChat.effects.ai.length, 0);
+  assert.equal(failedChat.effects.closes, 0);
+  assert.equal(failedChat.effects.renders, 0);
+  assert.match(failedChat.effects.toasts.at(-1), /扣款已退回/);
+  assert.equal(failedChat.actions.settleOutgoingPayment('out-unique-payment', false), true);
+  assert.equal(failedChat.wallet().balance, 1000, 'a repeated compensation must not refund twice');
+
+  const noDebit = fixture({ failDebit: true });
+  noDebit.actions.submitPayMessage();
+  assert.equal(noDebit.wallet().balance, 1000);
+  assert.equal(noDebit.wallet().history.length, 0);
+  assert.equal(noDebit.effects.chatWrites.length, 0, 'no card before a verified debit');
+  assert.equal(noDebit.effects.ai.length, 0);
+
+  const uncertain = fixture({ chatSave: 'written-but-unverified' });
+  uncertain.actions.submitPayMessage();
+  assert.equal(uncertain.wallet().balance, 954.5);
+  assert.equal(uncertain.wallet().history[0].status, 'sent');
+  assert.equal(uncertain.history().length, 2);
+  assert.equal(uncertain.effects.ai.length, 0, 'uncertain card must not launch AI');
+  assert.equal(uncertain.effects.closes, 0, 'do not claim successful delivery');
+
+  const recover = fixture({ chatSave: 'fail', failRefund: true });
+  recover.actions.submitPayMessage();
+  assert.equal(recover.wallet().balance, 954.5);
+  assert.equal(recover.wallet().history[0].status, 'pending-chat');
+  assert.equal(recover.effects.ai.length, 0);
+  recover.actions.submitPayMessage();
+  assert.equal(recover.wallet().history.length, 1, 'no second debit while payment is pending');
+
+  const otherEntry = {
+    type: 'expense', category: 'transfer', status: 'pending-chat',
+    roleId: 'role-2', paymentId: 'other-role-payment', amount: 5, time: 1
+  };
+  const beforeRecovery = recover.wallet();
+  beforeRecovery.balance -= 5;
+  beforeRecovery.history.push(otherEntry);
+  recover.storeWallet(beforeRecovery);
+  recover.allowRefund();
+  recover.advance(121000);
+  recover.actions.recoverOutgoingPayments();
+  assert.equal(recover.wallet().balance, 995, 'only current role payment is refunded');
+  assert.equal(recover.wallet().history[0].status, 'reversed');
+  assert.equal(recover.wallet().history[1].status, 'pending-chat', 'other role remains untouched');
+  recover.actions.recoverOutgoingPayments();
+  assert.equal(recover.wallet().balance, 995, 'reopening cannot refund the same payment again');
+
+  const corruptedChat = fixture({ chatSave: 'fail' });
+  corruptedChat.storeChatRaw('{invalid-json');
+  corruptedChat.actions.submitPayMessage();
+  assert.equal(corruptedChat.wallet().balance, 954.5);
+  assert.equal(corruptedChat.wallet().history[0].status, 'pending-chat',
+    'unreadable history cannot prove the card is absent, so no automatic refund');
+  assert.equal(corruptedChat.effects.ai.length, 0);
+  corruptedChat.advance(121000);
+  corruptedChat.actions.recoverOutgoingPayments();
+  assert.equal(corruptedChat.wallet().balance, 954.5, 'reload must not refund unreadable history');
+  assert.equal(corruptedChat.wallet().history[0].status, 'pending-chat');
+  assert.match(corruptedChat.effects.toasts.at(-1), /聊天记录无法核实/);
+
+  const brokenWallet = fixture();
+  brokenWallet.storeWalletRaw('{invalid-wallet');
+  brokenWallet.actions.submitPayMessage();
+  assert.equal(brokenWallet.effects.chatWrites.length, 0, 'never send a card against corrupt wallet data');
+  assert.equal(brokenWallet.effects.walletWrites.length, 0, 'never overwrite damaged wallet data with a default');
+  assert.equal(brokenWallet.effects.ai.length, 0);
+  assert.match(brokenWallet.effects.toasts.at(-1), /钱包数据损坏/);
+  brokenWallet.actions.recoverOutgoingPayments();
+  assert.match(brokenWallet.effects.toasts.at(-1), /自动恢复已暂停/);
+
+  const invalidBalance = fixture();
+  invalidBalance.storeWalletRaw(JSON.stringify({ balance: '1000', history: [] }));
+  invalidBalance.actions.submitPayMessage();
+  assert.equal(invalidBalance.effects.walletWrites.length, 0, 'string-valued balance must not authorize debit');
+  assert.equal(invalidBalance.effects.chatWrites.length, 0);
+});
+
+
+test('chat extras: two tabs cannot debit the same shared wallet concurrently', async () => {
+  const start = extras.indexOf('  // A wallet debit and a chat card');
+  const end = extras.indexOf("  if (payConfirmBtn) payConfirmBtn.addEventListener('click', submitPayMessage)", start);
+  assert.ok(start >= 0 && end > start);
+  const code = extras.slice(start, end);
+  let taken = false;
+  const lockRequests = [];
+  const locks = {
+    request: (name, options, callback) => {
+      lockRequests.push({ name, options });
+      if (taken && options.ifAvailable) return Promise.resolve(callback(null));
+      if (taken) return Promise.reject(new Error('unexpected waiting recovery'));
+      taken = true;
+      return Promise.resolve().then(() => callback({ name })).finally(() => { taken = false; });
+    }
+  };
+  const stored = new Map([['workData', JSON.stringify({ balance: 100, history: [] })]]);
+  let history = [{ role: 'user', mid: 'existing', text: 'previous' }];
+  const rendered = [];
+  const responses = [];
+  function tab(id) {
+    const context = {
+      payAmountInput: { value: '75' },
+      payMessageInput: { value: 'test' },
+      PAY_DEFAULT_MESSAGE: '',
+      payMode: 'transfer',
+      currentCharacter: { id: 'role-1' },
+      uid: () => id,
+      Date: { now: () => 1000000 },
+      localStorage: { getItem: (key) => stored.get(key) ?? null },
+      getWorkData: () => JSON.parse(stored.get('workData')),
+      saveWorkData: (wallet) => { stored.set('workData', JSON.stringify(wallet)); return true; },
+      loadMessages: () => history,
+      saveMessages: (next) => { history = next; return true; },
+      closePayDrawer: () => {},
+      renderAllMessages: () => { rendered.push(id); },
+      sendSilentInstruction: () => { responses.push(id); },
+      showToast: () => {},
+      window: { navigator: { locks }, addEventListener: () => {},
+        MaoMaoWalletLedger: {
+          supportsCrossTabLock: () => true,
+          runExclusive: (task, options) => locks.request(
+            'maomao-wallet-ledger-v1',
+            { mode: 'exclusive', ifAvailable: !!(options && options.ifAvailable) },
+            lock => lock ? task() : false
+          )
+        }
+      }
+    };
+    runInNewContext(code +
+      '\nglobalThis.tabPayment = { submitPayMessage, recoverOutgoingPayments };', context);
+    return context.tabPayment;
+  }
+
+  const a = tab('tab-a');
+  const b = tab('tab-b');
+  const results = await Promise.all([a.submitPayMessage(), b.submitPayMessage()]);
+  assert.deepEqual(results, [true, false], 'only the lock holder can debit');
+  assert.equal(JSON.parse(stored.get('workData')).balance, 25);
+  assert.equal(JSON.parse(stored.get('workData')).history.length, 1);
+  assert.equal(history.length, 2);
+  assert.deepEqual(rendered, ['tab-a']);
+  assert.deepEqual(responses, ['tab-a']);
+  assert.equal(lockRequests[0].name, 'maomao-wallet-ledger-v1');
+  assert.ok(lockRequests.every((req) => req.options.mode === 'exclusive'));
+});
+
+test('chat extras: unsupported lock mechanism fails closed before wallet writes', async () => {
+  const start = extras.indexOf('  // A wallet debit and a chat card');
+  const end = extras.indexOf("  if (payConfirmBtn) payConfirmBtn.addEventListener('click', submitPayMessage)", start);
+  assert.ok(start >= 0 && end > start);
+  let writes = 0;
+  let ai = 0;
+  const messages = [];
+  const sandbox = {
+    window: { addEventListener: () => {},
+      MaoMaoWalletLedger: {
+        supportsCrossTabLock: () => false,
+        runExclusive: () => { throw new Error('unsafe lock must not be used'); }
+      }
+    },
+    showToast: (message) => messages.push(message),
+    getWorkData: () => { writes++; throw new Error('should not read without lock'); },
+    saveWorkData: () => { writes++; return true; },
+    sendSilentInstruction: () => { ai++; }
+  };
+  runInNewContext(extras.slice(start, end) +
+    '\nglobalThis.walletTest = { submitPayMessage, recoverOutgoingPayments };', sandbox);
+  assert.equal(await sandbox.walletTest.submitPayMessage(), false);
+  assert.equal(await sandbox.walletTest.recoverOutgoingPayments(), false);
+  assert.equal(writes, 0);
+  assert.equal(ai, 0);
+  assert.match(messages[0], /不支持跨页面钱包锁/);
 });
