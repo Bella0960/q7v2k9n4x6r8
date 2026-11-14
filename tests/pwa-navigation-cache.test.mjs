@@ -90,7 +90,8 @@ test('non-navigation HTML fetches bypass shared cache and revalidate account at 
   assert.ok(start >= 0 && end > start);
   const protectedFetch = serviceWorker.slice(start, end);
   assert.match(protectedFetch, /!isPublicAccountPage/);
-  assert.match(protectedFetch, /url\.pathname === '\/' \|\| \/\\\.html\$\/i\.test\(url\.pathname\)/);
+  assert.match(protectedFetch, /url\.pathname === '\/'/);
+  assert.match(protectedFetch, /html\$/);
   assert.match(protectedFetch, /event\.respondWith\(fetch\(req\)\)/);
   assert.doesNotMatch(protectedFetch, /caches\.match|caches\.open|cache\.put/);
 });
