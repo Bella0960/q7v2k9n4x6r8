@@ -6,6 +6,9 @@
   "workers_dev": false,
   "preview_urls": false,
   "triggers": { "crons": [] },
+  "kv_namespaces": [
+    { "binding": "RELEASE_AUDIT", "id": "54544f9f1ce54220957d8fc9c49ccc7c" }
+  ],
   "durable_objects": {
     "bindings": [
       {
