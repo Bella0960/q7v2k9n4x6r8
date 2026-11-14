@@ -12,6 +12,7 @@ export { CloudDatabase };
 const AUTHORITY_ORIGIN = 'https://mao520.com';
 const BRIDGE_HEADER = 'x-mao-identity-bridge';
 const OBJECT_NAME = 'maomao-global';
+const FOUNDER_TRANSFER_ROUTE = 'POST /__internal/preserve-founder';
 const ROUTES = new Set([
   'GET /api/admin/bootstrap/status',
   'POST /api/accounts/login',
@@ -45,8 +46,26 @@ export async function handlePermanentIdentityRequest(request, env) {
   if (typeof storage?.idFromName !== 'function' || typeof storage?.get !== 'function') {
     return deny(503, 'IDENTITY_STORAGE_UNAVAILABLE');
   }
-  if (url.origin !== AUTHORITY_ORIGIN || url.search || !ROUTES.has(route)) {
+  if (url.origin !== AUTHORITY_ORIGIN || url.search ||
+      (!ROUTES.has(route) && route !== FOUNDER_TRANSFER_ROUTE)) {
     return deny(404, 'IDENTITY_ROUTE_DENIED');
+  }
+  if (route === FOUNDER_TRANSFER_ROUTE) {
+    if (env.MAO_PERMANENT_IDENTITY_CORE !== 'true' ||
+        env.MAO_FOUNDER_TRANSFER_ENABLED !== 'true')
+      return deny(404,'FOUNDER_TRANSFER_DISABLED');
+    const supplied=String(request.headers.get('x-mao-founder-transfer')||'');
+    const expectedSecret=String(env.MAO_FOUNDER_TRANSFER_SECRET||'');
+    if(!await acceptsSecret(expectedSecret,supplied))
+      return deny(403,'FOUNDER_TRANSFER_FORBIDDEN');
+    const body=await request.text();
+    if(body.length>4096)return deny(413,'FOUNDER_TRANSFER_BODY_TOO_LARGE');
+    return storage.get(storage.idFromName(OBJECT_NAME)).fetch(new Request(
+      AUTHORITY_ORIGIN+'/internal/identity/preserve-founder',{
+        method:'POST',
+        headers:{'content-type':'application/json','x-mao-founder-transfer':supplied},
+        body
+      }));
   }
   const supplied = String(request.headers.get(BRIDGE_HEADER) || '');
   const expected = String(env.MAO_IDENTITY_BRIDGE_SECRET || '');

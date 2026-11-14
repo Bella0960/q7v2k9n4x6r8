@@ -420,6 +420,40 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       identifier: String(body.identifier || '').trim(),
       password: String(body.password || '')
     });
+    // Explicitly gated migration on an actual original-authority login.
+    // Never send the central session token or password verifier to new storage.
+    if (env.MAO_PRESERVE_FOUNDER_ON_LOGIN === 'true' && authority.role === 'super_admin') {
+      const expectedId=String(env.MAO_EXPECTED_FOUNDER_ID||'');
+      const transferSecret=String(env.MAO_FOUNDER_TRANSFER_SECRET||'');
+      const binding=env.MAO_PERSISTENT_IDENTITY_AUTHORITY;
+      try {
+        if (authority.id !== expectedId || transferSecret.length < 32 ||
+            typeof binding?.fetch !== 'function') {
+          throw new Error('founder transfer not configured');
+        }
+        const response=await binding.fetch(new Request(
+          'https://mao520.com/__internal/preserve-founder',{
+            method:'POST',
+            headers:{'content-type':'application/json',
+              'x-mao-founder-transfer':transferSecret},
+            body:JSON.stringify({identity:{
+              id:authority.id,username:authority.username,
+              role:authority.role,status:authority.status,founderNumber:'001'
+            },password:String(body.password||'')})
+          }));
+        const result=await response.json().catch(()=>null);
+        if(!response.ok || result?.ok!==true || result.sameId!==expectedId)
+          throw new Error('founder transfer unverified');
+      } catch {
+        if(authority.authoritySessionToken) {
+          try { await callIdentityAuthority(env,'logout',{
+            sessionToken:authority.authoritySessionToken
+          }); } catch {}
+        }
+        throw new ApiError(503,'FOUNDER_TRANSFER_UNVERIFIED',
+          '原管理员长期保存尚未确认，未切换账号身份');
+      }
+    }
     // The authority never exports the real password hash, email or session.
     // This unguessable local password placeholder cannot be used to sign in.
     const imported = store.importMaoDelegatedAccount({

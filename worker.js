@@ -16,6 +16,7 @@ import { createStore } from './worker/lib/store.js';
 import { applyMigrations } from './worker/lib/migrations.js';
 import { runTick } from './worker/lib/scheduler.js';
 import { createSchedulerGate } from './worker/lib/scheduler-gate.js';
+import { preserveVerifiedFounder } from './worker/lib/permanent-founder.js';
 
 const INSTANCE_NAME = 'maomao-global';
 
@@ -126,6 +127,39 @@ export class CloudDatabase {
   async fetch(request) {
     const url = new URL(request.url);
     if (url.pathname.startsWith('/api/')) return this.handleApi(request);
+    if (url.pathname === '/internal/identity/preserve-founder' && request.method === 'POST') {
+      if (this.env.MAO_PERMANENT_IDENTITY_CORE !== 'true' ||
+          this.env.MAO_FOUNDER_TRANSFER_ENABLED !== 'true') {
+        return Response.json({ok:false,error:{code:'FOUNDER_TRANSFER_DISABLED'}},{status:404});
+      }
+      const provided = String(request.headers.get('x-mao-founder-transfer') || '');
+      const expected = String(this.env.MAO_FOUNDER_TRANSFER_SECRET || '');
+      if (provided.length < 32 || expected.length < 32) {
+        return Response.json({ok:false,error:{code:'FOUNDER_TRANSFER_FORBIDDEN'}},{status:403});
+      }
+      const encoder = new TextEncoder();
+      const digest = s => crypto.subtle.digest('SHA-256',encoder.encode('maomao-founder-transfer|'+s));
+      const [a,b] = await Promise.all([digest(provided),digest(expected)]);
+      const left = new Uint8Array(a),right = new Uint8Array(b);
+      let difference=0;
+      for(let i=0;i<left.length;i++)difference|=left[i]^right[i];
+      if(difference)return Response.json({ok:false,error:{code:'FOUNDER_TRANSFER_FORBIDDEN'}},{status:403});
+      let body;
+      try { body=await request.json(); } catch {
+        return Response.json({ok:false,error:{code:'FOUNDER_TRANSFER_INVALID'}},{status:400});
+      }
+      try {
+        const result = await preserveVerifiedFounder({
+          store:this.store,env:this.env,identity:body?.identity,
+          password:body?.password,now:Date.now()
+        });
+        return Response.json(result,{headers:{'cache-control':'no-store'}});
+      } catch(e) {
+        return Response.json({ok:false,error:{code:String(e?.code||'FOUNDER_TRANSFER_FAILED')}},{
+          status:Number(e?.status)||503,headers:{'cache-control':'no-store'}
+        });
+      }
+    }
     if (url.pathname === '/internal/maintenance' && request.method === 'POST') {
       const timestamp = Date.now();
       const removed = this.store.cleanupSubscriptions(timestamp);
