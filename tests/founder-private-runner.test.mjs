@@ -121,6 +121,14 @@ test('upstream failure and malformed acknowledgements never expose sensitive res
   }
 });
 
+test('private DO acknowledgement after request start is accepted within response clock skew', async () => {
+  const { env, setResponse } = setup();
+  setResponse(Response.json({ ok: true, recorded: true, recordedAt: NOW + 15 }));
+  const actual = await runPrivateFounderCheckpoint({ env, now: () => NOW });
+  assert.equal(actual.ok, true);
+  assert.equal(actual.recordedAt, NOW + 15);
+});
+
 test('public fetch is unavailable even if the scheduled Worker has been deployed', async () => {
   for (const method of ['GET', 'POST']) {
     const response = await operator.fetch(new Request('https://example.test/internal/release/checkpoint', { method }));
