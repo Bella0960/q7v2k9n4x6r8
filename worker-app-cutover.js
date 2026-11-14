@@ -12,7 +12,7 @@
  */
 import staticApp from './worker-app.js';
 
-const OFFICIAL_HOST = 'app.mao520.com';
+const TRIAL_HOST = 'app.mao520.com';
 
 function unavailable(code, message) {
   return Response.json(
@@ -30,13 +30,13 @@ export default {
     }
 
     const url = new URL(request.url);
-    if (url.protocol !== 'https:' || url.hostname !== OFFICIAL_HOST) {
+    if (url.protocol !== 'https:' || url.hostname !== TRIAL_HOST) {
       return new Response('Not found', {
         status: 404, headers: { 'cache-control': 'no-store' }
       });
     }
     if (typeof env?.MAO_APP_BACKEND?.fetch !== 'function') {
-      return unavailable('APP_BACKEND_NOT_READY', '正式手机后台尚未完成连接');
+      return unavailable('APP_BACKEND_NOT_READY', '试玩版后台尚未完成连接');
     }
 
     // Forward the ORIGINAL request, origin and cookies. The integrated
@@ -47,7 +47,7 @@ export default {
       return await env.MAO_APP_BACKEND.fetch(request);
     } catch {
       // Fail closed. Do not serve ungated private pages from static assets.
-      return unavailable('APP_BACKEND_UNAVAILABLE', '正式手机后台暂时无法连接');
+      return unavailable('APP_BACKEND_UNAVAILABLE', '试玩版后台暂时无法连接');
     }
   }
 };
