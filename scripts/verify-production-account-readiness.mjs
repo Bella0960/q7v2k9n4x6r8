@@ -10,17 +10,36 @@ import { listAllDurableObjectNamespaces, isCanonicalWorkerNamespace } from './li
 
 export const PRODUCTION_SCRIPT = 'mao';
 export const PREVIEW_SCRIPT = 'mao-auth-preview';
+export const OFFICIAL_EDGE_SCRIPT = 'curly-dream-324c';
 const REQUIRED_SECRETS = ['DEVICE_SECRET_PEPPER', 'MAO_SUPER_ADMIN_BOOTSTRAP_SECRET'];
 
-export function auditProductionAccountReadiness({ production, preview, secrets, online, domains, hostname, namespaces }) {
+export function auditProductionAccountReadiness({ production, preview, appGateway = null, secrets, online, domains, hostname, namespaces }) {
   const failures = [];
   const customDomains = Array.isArray(domains) ? domains : [];
   const mapping = customDomains.filter(domain => domain?.hostname === hostname);
   if (mapping.length !== 1 || typeof hostname !== 'string' || !hostname) {
     failures.push('PRODUCTION_DOMAIN_MAPPING_NOT_UNIQUE');
-  } else if (mapping[0].service !== PRODUCTION_SCRIPT ||
-             mapping[0].environment !== 'production' ||
-             mapping[0].enabled !== true) {
+  } else if (mapping[0].environment !== 'production' || mapping[0].enabled !== true) {
+    failures.push('PRODUCTION_DOMAIN_TARGET_MISMATCH');
+  } else if (mapping[0].service === OFFICIAL_EDGE_SCRIPT) {
+    // The paid app hostname can retain its original Worker name when it
+    // delegates the WHOLE authenticated origin to the verified full backend.
+    // Inspect the 100%-deployed *version*, never a staged settings upload.
+    const bindings = Array.isArray(appGateway?.bindings) ? appGateway.bindings : [];
+    const service = bindings.filter(item => item?.type === 'service');
+    const switchBinding = bindings.find(item => item?.name === 'MAO_APP_CUTOVER_ENABLED');
+    if (appGateway?.main_module !== 'worker-app-cutover.js' ||
+        switchBinding?.type !== 'plain_text' || switchBinding?.text !== 'true' ||
+        service.length !== 1 ||
+        service[0]?.name !== 'MAO_APP_BACKEND' ||
+        service[0]?.service !== PRODUCTION_SCRIPT ||
+        (service[0]?.environment && service[0].environment !== 'production') ||
+        !bindings.some(item => item.name === 'ASSETS' && item.type === 'assets') ||
+        bindings.some(item => item.type === 'durable_object_namespace')) {
+      failures.push('PRODUCTION_GATEWAY_NOT_VERIFIED');
+      failures.push('PRODUCTION_DOMAIN_TARGET_MISMATCH');
+    }
+  } else if (mapping[0].service !== PRODUCTION_SCRIPT) {
     failures.push('PRODUCTION_DOMAIN_TARGET_MISMATCH');
   }
   const prodBindings = Array.isArray(production?.bindings) ? production.bindings : [];
@@ -139,6 +158,24 @@ async function verify() {
     getJson('https://api.cloudflare.com/client/v4/accounts/' + accountId + '/workers/domains', token),
     listAllDurableObjectNamespaces({ accountId, token, requestJson: getEnvelope })
   ]);
+  const liveHost = new URL(origin).hostname;
+  const appGateway = domains.some(d => d?.hostname === liveHost && d?.service === OFFICIAL_EDGE_SCRIPT)
+    ? await getActiveWorkerVersion({ accountId, scriptName: OFFICIAL_EDGE_SCRIPT, token })
+    : null;
+  // Production cannot pass merely because some *other* administrator has
+  // initialized the backend. The four live stores must retain the selected
+  // 001 and every existing member; query only aggregate counts on the actual
+  // deployed Durable Object namespaces (never a staged/Preview upload).
+  const { auditCloudflareAccounts } = await import('./release/audit-live-account-inventory.mjs');
+  const inventory = await auditCloudflareAccounts({
+    accountId, token, founderId: String(process.env.MAO_EXPECTED_FOUNDER_ID || '')
+  });
+  if (inventory.inventoryIssues.length) {
+    for (const issue of inventory.inventoryIssues)
+      console.error('BLOCKED: ' + issue);
+    throw new Error('Live account continuity not ready: ' +
+      inventory.inventoryIssues.length + ' unmet condition(s)');
+  }
   const secrets = production.bindings.filter(item => item.type === 'secret_text');
   // No registration POST, login credentials, secret values or admin privileges.
   // The active existing production origin must ALREADY have server-authorized 001.
@@ -151,14 +188,14 @@ async function verify() {
     try { body = await response.json(); } catch {}
   }
   const failures = auditProductionAccountReadiness({
-    production, preview, secrets, domains, namespaces, hostname: new URL(origin).hostname,
+    production, preview, appGateway, secrets, domains, namespaces, hostname: liveHost,
     online: { httpStatus: response.status, body }
   });
   if (failures.length) {
     for (const failure of failures) console.error('BLOCKED: ' + failure);
     throw new Error('Production account release gate failed: ' + failures.length + ' unmet condition(s)');
   }
-  console.log('PASS: production domain maps to expected Worker, isolated DB, required secrets, native crypto, initialized founder 001');
+  console.log('PASS: deployed official domain uses a verified full backend (direct or guarded gateway); isolated DB, required secrets, native crypto, initialized founder 001');
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

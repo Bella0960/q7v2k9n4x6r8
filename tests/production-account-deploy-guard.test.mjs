@@ -201,3 +201,49 @@ test('missing, empty, partial, or split traffic deployments block founder releas
       /no single fully deployed Worker version/);
   }
 });
+
+test('official app gateway qualifies ONLY when its deployed code delegates the whole origin to mao', () => {
+  const s = example();
+  s.domains[0].service = 'curly-dream-324c';
+  s.appGateway = {
+    main_module: 'worker-app-cutover.js',
+    bindings: [
+      { name: 'ASSETS', type: 'assets' },
+      { name: 'MAO_APP_BACKEND', type: 'service', service: 'mao', environment: 'production' },
+      { name: 'MAO_APP_CUTOVER_ENABLED', type: 'plain_text', text: 'true' }
+    ]
+  };
+  assert.deepEqual(auditProductionAccountReadiness(s), [],
+    'verified active gateway is an accepted alternative to direct mao domain mapping');
+});
+
+test('static Worker, inactive flag, QA backend and untrusted scripts cannot bypass release gate', () => {
+  const s = example();
+  s.domains[0].service = 'curly-dream-324c';
+  s.appGateway = {
+    main_module: 'worker-app-cutover.js',
+    bindings: [
+      { name: 'ASSETS', type: 'assets' },
+      { name: 'MAO_APP_BACKEND', type: 'service', service: 'mao' },
+      { name: 'MAO_APP_CUTOVER_ENABLED', type: 'plain_text', text: 'true' }
+    ]
+  };
+  const mutations = [
+    g => { g.main_module = 'worker-app.js'; },
+    g => { g.bindings.find(b => b.name === 'MAO_APP_CUTOVER_ENABLED').text = 'false'; },
+    g => { g.bindings.find(b => b.name === 'MAO_APP_BACKEND').service = 'maomao-aw-qa-20261114'; },
+    g => { g.bindings.find(b => b.name === 'MAO_APP_BACKEND').environment = 'preview'; },
+    g => { g.bindings.push({ name: 'CLOUD_DB', type: 'durable_object_namespace', namespace_id: 'preview_id' }); },
+    g => { g.bindings.push({ name: 'UNREVIEWED', type: 'service', service: 'mao-auth-preview' }); },
+    g => { g.bindings = g.bindings.filter(b => b.name !== 'ASSETS'); }
+  ];
+  for (const corrupt of mutations) {
+    const sample = structuredClone(s);
+    corrupt(sample.appGateway);
+    const failures = auditProductionAccountReadiness(sample);
+    assert.ok(failures.includes('PRODUCTION_GATEWAY_NOT_VERIFIED'), JSON.stringify(sample.appGateway));
+    assert.ok(failures.includes('PRODUCTION_DOMAIN_TARGET_MISMATCH'));
+  }
+  assert.ok(auditProductionAccountReadiness({ ...s, appGateway: null })
+    .includes('PRODUCTION_GATEWAY_NOT_VERIFIED'));
+});
