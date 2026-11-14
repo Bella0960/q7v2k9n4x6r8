@@ -95,7 +95,30 @@ export default {
       if (typeof audit?.put !== 'function') {
         throw new Error('private_checkpoint_receipt_binding_required');
       }
-      const result = await runPrivateFounderCheckpoint({ env });
+      // KV activation is private, expiring metadata only — NOT a password,
+      // operator secret or PITR bookmark. This avoids redeploying the Worker
+      // for a two-minute window (Cron propagation may take up to 15 minutes).
+      let activation = null;
+      if (typeof audit.get === 'function') {
+        try {
+          const candidate = await audit.get('founder-checkpoint:activation', { type: 'json' });
+          if (candidate?.v === 1 &&
+              candidate?.target === TARGET_SCRIPT &&
+              candidate?.origin === TARGET_ORIGIN &&
+              candidate?.mode === 'acknowledge-single-use-live-checkpoint') {
+            activation = candidate;
+          }
+        } catch {
+          activation = null;
+        }
+      }
+      const runtimeEnv = activation ? {
+        ...env,
+        FOUNDER_RUN_ENABLED: activation.mode,
+        FOUNDER_RUN_NOT_BEFORE_MS: activation.from,
+        FOUNDER_RUN_NOT_AFTER_MS: activation.until
+      } : env;
+      const result = await runPrivateFounderCheckpoint({ env: runtimeEnv });
       const receipt = {
         code: result.code,
         ok: result.ok === true,
