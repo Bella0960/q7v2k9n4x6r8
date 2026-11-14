@@ -1223,7 +1223,7 @@ test('takeout cart stays bound to one restaurant and checkout uses the cart rest
   assert.match(takeout, /cartShopId !== currentShop\.id/);
   assert.match(takeout, /window\.confirm\(/);
   assert.match(takeout, /var orderShop = getCartShop\(\)/);
-  assert.match(takeout, /shop: orderShop\.name, shopId: orderShop\.id/);
+  assert.match(takeout, /shop:\s*orderShop\.name,\s*shopId:\s*orderShop\.id/);
   assert.match(takeout, /function clearCart\(\)/);
   assert.match(takeout, /if \(currentShop\) renderDishes\(\);\s*else updateCartUI\(\)/);
 });
@@ -1919,10 +1919,10 @@ test('Messages chat-list theme is isolated, cache-busted, grayscale and hides in
   const listThemeScript = read('shared/js/chat-list-theme.js');
 
   assert.ok(chatHome.includes('chat-list-editorial-theme.css?v=20261104v2'));
-  assert.ok(chatHome.includes('chat-list-theme.js?v=20261104v2'));
+  assert.ok(chatHome.includes('chat-list-theme.js?v=20261112at1'));
   assert.match(serviceWorker, /phone-app-pwa-v\d+/);
   assert.ok(serviceWorker.includes('./shared/css/chat-list-editorial-theme.css?v=20261104v2'));
-  assert.ok(serviceWorker.includes('./shared/js/chat-list-theme.js?v=20261104v2'));
+  assert.ok(serviceWorker.includes('./shared/js/chat-list-theme.js?v=20261112at1'));
 
   for (const value of ['#F7F7F9', '#F0F0F3', '#FFFFFF', '#333333', '#777777', '#999999']) {
     assert.ok(listThemeCss.toUpperCase().includes(value), 'missing neutral token: ' + value);
@@ -2352,10 +2352,10 @@ test('chat detail: a failed AI reply save leaves copyable on-screen text but not
 
 test('chat detail: payment ledger success is independent from chat-card status persistence', () => {
   assert.match(detail, /if \(!saveWorkData\(wd\)\) return/);
-  assert.match(detail, /var chatStatusSaved = saveMessages\(list\)/);
-  assert.match(detail, /款项已入账，但聊天卡片状态没有保存/);
-  assert.match(detail, /duplicateStatusSaved\s*\? '这笔款项已经入账'/);
-  assert.match(detail, /msg\.status = isRed \? 'opened' : 'received'/);
+  assert.match(detail, /function persistReceiptStatus\(\)[\s\S]*?if \(!saveMessages\(list\)\)/);
+  assert.match(detail, /款项已入账，但聊天卡片状态未同步/);
+  assert.match(detail, /if \(existingPayment\)[\s\S]*?receiptStatusRepair = persistReceiptStatus\(\)/);
+  assert.match(detail, /var targetStatus = isRed \? 'opened' : 'received'/);
 });
 
 test('chat detail: group private messages require both the target history and group entry to persist', () => {
