@@ -239,6 +239,13 @@ export class CloudDatabase {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    // Private DO controls must never fall through to static asset routing,
+    // even if a future asset configuration adds an SPA fallback.
+    if (url.pathname.startsWith('/internal/')) {
+      return new Response('Not found', {
+        status: 404, headers: { 'cache-control': 'no-store' }
+      });
+    }
     if (url.pathname.startsWith('/api/')) {
       if (!env.CLOUD_DB) {
         return Response.json(
