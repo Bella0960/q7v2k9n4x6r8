@@ -53,6 +53,7 @@ const APP_SHELL = [
   './shared/css/atmosphere-pages.css?v=20261112p3',
   './shared/js/atmosphere-icons.js?v=20261112i1',
   './shared/js/phone/wallet-ledger.js?v=20261114v12',
+  './shared/js/phone/role_family_cards.js?v=20261114v4',
   './chat/chat/chat.html',
   './shared/js/chat-action-menu.js?v=20261113v1',
   './shared/js/social-chat-list.js?v=20261113v1',
