@@ -143,3 +143,51 @@ test('retry cannot overwrite the first recoverable bookmark or silently rotate a
   assert.equal(bookmarkCalls, 1);
   assert.equal(writes, 1);
 });
+
+test('private execution receipts are persisted without bookmark, secret or account data', async () => {
+  const { env, calls } = setup();
+  const receipts = new Map();
+  env.RELEASE_AUDIT = {
+    async put(key, value, options) {
+      assert.ok(options.expirationTtl <= 60 * 60 * 24 * 3);
+      receipts.set(key, JSON.parse(value));
+    }
+  };
+  let scheduled;
+  await operator.scheduled({}, env, { waitUntil(promise) { scheduled = promise; } });
+  await scheduled;
+  assert.equal(calls.some(call => call[0] === 'fetch'), true);
+  for (const [key, receipt] of receipts) {
+    assert.equal(receipt.code, 'checkpoint_recorded');
+    assert.equal(receipt.ok, true);
+    assert.equal(receipt.recordedAt, NOW - 5000);
+    assert.equal(Number.isSafeInteger(receipt.executedAt), true);
+    assert.ok(!JSON.stringify(receipt).includes(SECRET));
+    assert.doesNotMatch(JSON.stringify(receipt), /bookmark|password|hash|MAO-/);
+    assert.match(key, /^founder-checkpoint:/);
+  }
+  assert.equal(receipts.has('founder-checkpoint:success'), true);
+});
+
+test('missing private receipt binding blocks scheduled access to the live DO', async () => {
+  const { env, calls } = setup();
+  let scheduled;
+  await operator.scheduled({}, env, { waitUntil(promise) { scheduled = promise; } });
+  await assert.rejects(scheduled, /private_checkpoint_receipt_binding_required/);
+  assert.equal(calls.length, 0);
+});
+
+test('failed scheduled check persists only sanitized failure receipt', async () => {
+  const { env, calls } = setup();
+  const receipts = new Map();
+  env.FOUNDER_RUN_ENABLED = undefined;
+  env.RELEASE_AUDIT = {
+    async put(key, value) { receipts.set(key, JSON.parse(value)); }
+  };
+  let scheduled;
+  await operator.scheduled({}, env, { waitUntil(promise) { scheduled = promise; } });
+  await assert.rejects(scheduled, /private_checkpoint_disabled/);
+  assert.equal(calls.length, 0);
+  assert.deepEqual(receipts.get('founder-checkpoint:last-attempt')?.code, 'disabled');
+  assert.equal(receipts.has('founder-checkpoint:success'), false);
+});
