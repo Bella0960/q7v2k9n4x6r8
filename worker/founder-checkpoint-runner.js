@@ -50,7 +50,16 @@ export async function runPrivateFounderCheckpoint({ env, now = Date.now }) {
       method: 'POST',
       headers: { 'x-maomao-release-secret': secret }
     }));
-    if (!response.ok) return { ok: false, code: 'checkpoint_failed' };
+    if (!response.ok) {
+      // HTTP status only; never expose the internal response, bookmark or secret.
+      const code = {
+        403: 'checkpoint_operator_secret_rejected',
+        404: 'checkpoint_handler_not_active',
+        409: 'checkpoint_rotation_requires_review',
+        503: 'checkpoint_storage_unavailable'
+      }[response.status] || 'checkpoint_failed';
+      return { ok: false, code };
+    }
     const result = await response.json();
     // The DO records its timestamp AFTER the request starts. Comparing the
     // acknowledgement with the pre-fetch clock rejects a valid first write.
