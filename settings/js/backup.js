@@ -135,6 +135,8 @@
     // even if the optional API-key export checkbox is enabled.
     function neverBackupKey(key) {
         return /^(access_token|refresh_token|session_token|auth_token|password|api_key|private_key)$/i.test(key) ||
+            /(?:^|[_-])(?:session|auth|access|refresh)[_-]?token(?:$|[_-])/i.test(key) ||
+            /(?:^|[_-])(?:password|private[_-]?key|secret)(?:$|[_-])/i.test(key) ||
             /^(mao|maomao)[_-].*(?:auth[_-]?token|session[_-]?token|refresh[_-]?token|password|secret|private[_-]?key)$/i.test(key);
     }
     function backupRegistry() {
@@ -1139,7 +1141,7 @@
             }
 
             // 4.5 字体兜底：active_font_preset_id 指向的预设可能因跳过 / 解码失败不存在了 → 清掉悬空 id
-            var fontOrphanCleaned = await checkFontPresetOrphan();
+            var fontOrphanCleaned = (!scope || scope === 'themes') ? await checkFontPresetOrphan() : false;
 
             // 5. 成功路径：清掉本机恢复点（已无需保留）
             rpDeleteRole(RP_ROLE_PRE);
