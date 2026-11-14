@@ -3,7 +3,9 @@
   "name": "maomao-aw-qa-20261114",
   "main": "worker.js",
   "compatibility_date": "2026-10-27",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "workers_dev": true,
   "preview_urls": false,
   "assets": {
@@ -15,10 +17,29 @@
   },
   "durable_objects": {
     "bindings": [
-      { "name": "CLOUD_DB", "class_name": "CloudDatabase" }
+      {
+        "name": "CLOUD_DB",
+        "class_name": "CloudDatabase"
+      }
     ]
   },
   "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["CloudDatabase"] }
-  ]
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "CloudDatabase"
+      ]
+    }
+  ],
+  "services": [
+    {
+      "binding": "MAO_IDENTITY_AUTHORITY",
+      "service": "maomao-001-identity-gateway-20261114"
+    }
+  ],
+  "vars": {
+    "MAO_IDENTITY_MODE": "delegated_preview",
+    "MAO_IDENTITY_AUTHORITY_MODE": "existing_worker",
+    "MAO_IDENTITY_CANONICAL_ADMIN_REQUIRED": "true"
+  }
 }

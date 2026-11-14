@@ -392,3 +392,19 @@ test('conflicting preview founder revokes the authority session issued by a refu
     'refused preview login must not leave an active central session'
   );
 });
+
+
+test('canonical admin lock rejects any other existing founder without creating an alternative 001',async t=>{
+  const pair=await makePair({existingWorker:true});t.after(pair.close);
+  const {preview,issuer}=pair;
+  // The authority's existing fixture founder is deliberately NOT the approved ID.
+  preview.env.MAO_IDENTITY_CANONICAL_ADMIN_REQUIRED='true';
+  preview.env.MAO_EXPECTED_FOUNDER_ID='MAO-OXHBDBWCOIHPBBYN';
+  const result=await preview.asJson('/api/accounts/login',{
+    method:'POST',body:{identifier:'CentralOwner',password:founderPass}
+  });
+  assert.equal(result.status,403);
+  assert.equal(result.payload.error.code,'CANONICAL_ADMIN_MISMATCH');
+  assert.equal(preview.query('SELECT COUNT(*) AS n FROM mao_accounts')[0].n,0);
+  assert.equal(issuer.query('SELECT COUNT(*) AS n FROM mao_account_sessions WHERE revoked_at IS NULL')[0].n,0);
+});

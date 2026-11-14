@@ -106,6 +106,8 @@ async function callExistingAccountWorker(env, operation, body) {
     : operation === 'logout'
       ? { authorization: 'Bearer ' + token, origin: INTERNAL_ORIGIN }
       : { authorization: 'Bearer ' + token };
+  const bridgeSecret=String(env.MAO_IDENTITY_BRIDGE_SECRET || '');
+  if(bridgeSecret.length >= 32) headers[BRIDGE_AUTH_HEADER]=bridgeSecret;
   const request = new Request(INTERNAL_ORIGIN + pathname, {
     method: operation === 'status' ? 'GET' : 'POST',
     headers,
@@ -153,7 +155,21 @@ export async function callIdentityAuthority(env, operation, body) {
     throw new ApiError(503, 'IDENTITY_BRIDGE_NOT_READY', '统一身份认证未就绪');
   }
   if (usesExistingAccountAuthority(env)) {
-    return callExistingAccountWorker(env, operation, body);
+    const result=await callExistingAccountWorker(env,operation,body);
+    if(env.MAO_IDENTITY_CANONICAL_ADMIN_REQUIRED === 'true' && operation !== 'logout'){
+      const expected=String(env.MAO_EXPECTED_FOUNDER_ID || '');
+      const mismatch=!ACCOUNT_ID.test(expected) ||
+        (result.role === 'super_admin' && result.id !== expected);
+      if(mismatch){
+        // No rejected administrator login may leave an orphan central session.
+        if(operation === 'authenticate' && result.authoritySessionToken){
+          try{await callExistingAccountWorker(env,'logout',{sessionToken:result.authoritySessionToken})}catch{}
+        }
+        throw new ApiError(403,'CANONICAL_ADMIN_MISMATCH',
+          '当前服务器未确认唯一管理员身份，禁止创建或切换管理员');
+      }
+    }
+    return result;
   }
   if (!ALLOWED_OPERATIONS.has(operation)) {
     throw new ApiError(503, 'IDENTITY_BRIDGE_NOT_READY', '统一身份认证未就绪');
@@ -203,7 +219,11 @@ export async function probeExistingIdentityAuthority(env) {
   try {
     const response = await env.MAO_IDENTITY_AUTHORITY.fetch(
       new Request('https://mao520.com/api/admin/bootstrap/status', {
-        method: 'GET', headers: { accept: 'application/json' }
+        method: 'GET', headers: {
+          accept: 'application/json',
+          ...(String(env.MAO_IDENTITY_BRIDGE_SECRET || '').length >= 32
+            ? {[BRIDGE_AUTH_HEADER]: String(env.MAO_IDENTITY_BRIDGE_SECRET)} : {})
+        }
       })
     );
     if (!response.ok) return { connected: false, initialized: false, configured: false };

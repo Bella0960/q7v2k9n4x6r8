@@ -961,8 +961,9 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
           signInReady: !delegated || (
             authority.connected && authority.initialized && authority.configured &&
             typeof env.MAO_IDENTITY_AUTHORITY?.fetch === 'function' &&
-            (usesExistingAccountAuthority(env) ||
-              String(env.MAO_IDENTITY_BRIDGE_SECRET || '').length >= 32)
+            String(env.MAO_IDENTITY_BRIDGE_SECRET || '').length >= 32 &&
+            (env.MAO_IDENTITY_CANONICAL_ADMIN_REQUIRED !== 'true' ||
+              /^MAO-[A-Z0-9]{12,24}$/.test(String(env.MAO_EXPECTED_FOUNDER_ID || '')))
           )
         });
       }

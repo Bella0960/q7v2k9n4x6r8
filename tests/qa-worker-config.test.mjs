@@ -26,5 +26,16 @@ test('QA Worker is isolated from production and never aliases old account previe
   assert.ok(!('routes' in config), 'QA must never bind production routes');
   assert.ok(!('route' in config), 'QA must never bind a production route');
   assert.ok(!('zone_id' in config), 'QA must never attach a production zone');
-  assert.ok(!('vars' in config), 'QA must not contain real credentials');
+  assert.deepEqual(config.services, [
+    { binding: 'MAO_IDENTITY_AUTHORITY', service: 'maomao-001-identity-gateway-20261114' }
+  ], 'QA must use the private identity gateway rather than an old account Preview');
+  assert.deepEqual(config.vars, {
+    MAO_IDENTITY_MODE: 'delegated_preview',
+    MAO_IDENTITY_AUTHORITY_MODE: 'existing_worker',
+    MAO_IDENTITY_CANONICAL_ADMIN_REQUIRED: 'true'
+  });
+  assert.ok(!JSON.stringify(config).includes('MAO-OXHBDBWCOIHPBBYN'),
+    'permanent founder account ID belongs in a secret, not public repository config');
+  assert.ok(!('MAO_IDENTITY_BRIDGE_SECRET' in config.vars));
+  assert.ok(!('MAO_EXPECTED_FOUNDER_ID' in config.vars));
 });
