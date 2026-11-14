@@ -39,3 +39,4 @@ fi
 
 cd "$ROOT"
 npm run test:accounts:browser
+node tests/wallet-browser-qa.mjs
