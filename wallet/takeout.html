@@ -9,7 +9,7 @@
 <script src="../shared/js/phone/phone_storage.js"></script>
 <script src="../shared/js/phone/role_family_cards.js?v=20261107v3"></script>
 <script src="../shared/js/phone/wallet-ledger.js?v=20261110v10"></script>
-<script src="../shared/js/phone/order-after-sales.js?v=20261107v2"></script>
+<script src="../shared/js/phone/order-after-sales.js?v=20261114v3"></script>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -767,7 +767,8 @@
         'order-payment-conflict': '订单支付信息与原流水不一致，已停止申请',
         'finance-invalid': '财务记录异常，已停止申请',
         'finance-missing': '找不到财务记录，已停止申请',
-        'request-conflict': '已有售后申请与当前信息冲突'
+        'request-conflict': '已有售后申请与当前信息冲突',
+        'cross-tab-lock-unavailable': '当前浏览器不支持安全的跨页面钱包锁，已暂停售后申请，未修改账目'
       };
       toast(messages[result.reason] || '申请暂未同步成功，可再次点击恢复');
     } else {
