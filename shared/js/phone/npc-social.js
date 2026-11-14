@@ -599,6 +599,10 @@
   NS.reject = function (requestId, blocked) {
     var roleId = activeRoleId();
     var requests = readRequests(roleId);
+    var candidate = requests.find(function (row) { return row && String(row.id) === String(requestId); });
+    if (!candidate || String(candidate.mainRoleId || '') !== roleId) {
+      throw new Error('这条好友申请不属于当前主角色，未修改申请状态。');
+    }
     var request = setStatus(requests, requestId, blocked ? 'blocked' : 'declined');
     if (!writeRequests(requests, roleId)) throw new Error('申请处理状态保存失败，请重试。');
     return { ok: true, request: request };
