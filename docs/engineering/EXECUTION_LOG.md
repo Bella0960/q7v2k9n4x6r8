@@ -123,3 +123,22 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 5. Break cloud-push work into small, reviewable milestones. A code-only PR is not proof of scheduled execution, server model response, OS push delivery, or two-device message persistence.
 6. No merge to main, production deployment, APK update, Worker secret configuration, or destructive user-data operation without explicit owner approval.
 7. This conversation cannot run after the chat/session is closed. Leave this checkpoint so the next session can resume without asking the owner to repeat the task.
+
+## GOV-004 — PR #285 原账号、001、双端推送验收（2026-11-14 UTC）
+
+- Branch: `GOV-004/qa-account-push-acceptance-20261114`, based on exact PR #285 head `071caffe9a35fca812404e1356eb8bb0ff490dab`.
+- Scope: acceptance only. Application code, remote branches, account records, secrets and deployments unchanged.
+- QA bootstrap/status confirms delegated original authority connected/initialized and signInReady=true; bootstrapAllowed=false. Push public configuration HTTP 200; SW v240. Anonymous private pages redirect, account/social/push queries deny access, backend entry returns 404.
+- 11 focused Node test files pass, zero failures. Live unauthenticated Chromium at 390/430px shows login form, no horizontal overflow or page errors. This is not phone push acceptance or proof of authenticated founder identity.
+- User confirms Android login succeeds, but opening administrator center returns to login. **FAIL**. Live account/invite/audit admin APIs return 403 DELEGATED_ACCOUNT_MANAGED_CENTRALLY; `admin/admin-center.js` treats this 403 as login failure. Do not report 001 full management permissions passed or infer founder identity loss.
+- User only has Android now and explicitly defers push retesting; reports last night's successful push test. Record as historical user evidence, not this run's Android/iPhone delivery pass.
+- Detailed evidence and pending matrix: `docs/engineering/QA_ACCOUNT_PUSH_ACCEPTANCE_20261114.md`. Local raw safe probe results, script and screenshots are in `/workspace/maomao-acceptance/`; Node runner log in `/tmp/maomao-acceptance-tests.log`.
+- Next: handle delegated administrator UI/API contract and correct authority management route. Preserve identity boundaries; do not bypass delegated restrictions or create/copy administrator credentials. Resume hardware push acceptance when user is ready.
+
+### User-authorized continuation — delegated admin redirect fix
+
+- Shared `handleAdminAccessError` distinguishes centrally managed account APIs from expired/forbidden sessions after verifying active super_admin. Known delegated restriction keeps page/session, shows 001 and an accurate unavailable message, hides unavailable management controls and closes stale details/code/confirmation. Retry revalidates identity and restores controls only after successful reads.
+- All five error consumers (initialization/actions/details/account audit/global audit) use this handler. Genuine auth/role rejection remains protected. Versioned HTML JS/CSS references avoid executing stale cached assets.
+- Node admin UI tests 20/20; synthetic Chromium browser scenarios 9/9 at mobile and desktop widths; full npm build/release gate/postbuild passed. No Worker/gateway/data/secret changes. This fixes the redirect bug, not the missing central administration service.
+- Changes prepared on `GOV-004/qa-account-push-acceptance-20261114` for review and isolated QA publication. Push delivery testing remains deferred at the owner's request.
+- Local commit created and full build passed again after final cache-version edits. Remote publication is BLOCKED: automatic approval review rejected the combined commit/push command because it did not consider the specific repository destination explicitly authorized for publishing code and acceptance documents. The rejected command did not execute. A subsequent local-only commit succeeded; no push, PR creation, build-trigger mutation or QA deployment occurred. Request explicit approval to publish this fix branch to Bella0960/MAOMAO and update the isolated QA. Do not bypass the rejection using another upload route.

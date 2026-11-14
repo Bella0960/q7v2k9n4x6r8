@@ -42,6 +42,7 @@
   let generatedCode = '';
   let busy = false;
   let initializing = false;
+  let verifiedAdmin = false;
   const busyButtonState = new WeakMap();
 
   async function api(path, method = 'GET', body = null) {
@@ -139,6 +140,39 @@
     if (node) node.remove();
   }
 
+  function setManagementUnavailable(unavailable) {
+    document.querySelector('.stats-grid').hidden = unavailable;
+    document.querySelector('.admin-tabs').hidden = unavailable;
+    if (unavailable) {
+      document.querySelectorAll('.admin-view').forEach(view => { view.hidden = true; });
+      closeDetail();
+      $('inviteCodeSheet').hidden = true;
+      generatedCode = '';
+      $('generatedCode').textContent = '';
+      if ($('adminConfirmDialog')?.open) closeAdminConfirmation();
+    } else {
+      activateTab('users');
+    }
+  }
+
+  function handleAdminAccessError(error) {
+    // A delegated management restriction does not invalidate a verified session.
+    if (verifiedAdmin && error.code === 'DELEGATED_ACCOUNT_MANAGED_CENTRALLY') {
+      setManagementUnavailable(true);
+      showError('你仍以管理员 001 身份登录。当前测试版尚未接通统一账号系统的管理功能，暂不能查看或修改账号、邀请码和审计记录。无需重复登录。', () => init());
+      return true;
+    }
+    if (error.code === 'ACCOUNT_DISABLED') {
+      window.location.replace('/account/index.html?disabled=1');
+      return true;
+    }
+    if (error.status === 401 || error.status === 403 || error.code === 'ADMIN_ONLY') {
+      window.location.replace('/account/index.html?admin=1');
+      return true;
+    }
+    return false;
+  }
+
   function statusText(status) {
     return ({
       pending_invite: '待授权',
@@ -177,14 +211,7 @@
     try {
       await action();
     } catch (error) {
-      if (error.code === 'ACCOUNT_DISABLED') {
-        window.location.replace('/account/index.html?disabled=1');
-        return;
-      }
-      if (error.status === 401 || error.status === 403 || error.code === 'ADMIN_ONLY') {
-        window.location.replace('/account/index.html?admin=1');
-        return;
-      }
+      if (handleAdminAccessError(error)) return;
       const stateConflictCodes = [
         'ACCOUNT_ACTION_REJECTED',
         'INVITE_ALREADY_ACTIVE',
@@ -523,14 +550,7 @@
     } catch (error) {
       if (selectedAccountId !== accountId ||
           detailRequestSequence !== accountDetailRequestSequence) return;
-      if (error.code === 'ACCOUNT_DISABLED') {
-        window.location.replace('/account/index.html?disabled=1');
-        return;
-      }
-      if (error.status === 401 || error.status === 403 || error.code === 'ADMIN_ONLY') {
-        window.location.replace('/account/index.html?admin=1');
-        return;
-      }
+      if (handleAdminAccessError(error)) return;
       $('detailUsername').textContent = '账号状态暂时无法核对';
       inviteStatus.hidden = false;
       inviteStatus.replaceChildren(
@@ -718,14 +738,7 @@
       $('loadMoreAudit').hidden = !auditHasMore;
     } catch (error) {
       if (selectedAccountId !== accountId || requestSequence !== auditRequestSequence) return;
-      if (error.code === 'ACCOUNT_DISABLED') {
-        window.location.replace('/account/index.html?disabled=1');
-        return;
-      }
-      if (error.status === 401 || error.status === 403 || error.code === 'ADMIN_ONLY') {
-        window.location.replace('/account/index.html?admin=1');
-        return;
-      }
+      if (handleAdminAccessError(error)) return;
       const message = el('p', 'empty-note', error.message || '管理记录暂时无法读取。');
       const retryButton = el('button', 'audit-retry', '重试读取');
       retryButton.type = 'button';
@@ -851,14 +864,7 @@
       if (busy) setButtonsDisabled(true);
     } catch (error) {
       if (requestSequence !== globalAuditRequestSequence) return;
-      if (error.code === 'ACCOUNT_DISABLED') {
-        window.location.replace('/account/index.html?disabled=1');
-        return;
-      }
-      if (error.status === 401 || error.status === 403 || error.code === 'ADMIN_ONLY') {
-        window.location.replace('/account/index.html?admin=1');
-        return;
-      }
+      if (handleAdminAccessError(error)) return;
       const message = el('p', 'empty-note', error.message || '全局审计记录暂时无法读取。');
       const retry = el('button', 'audit-retry', '重新读取');
       retry.type = 'button';
@@ -1063,23 +1069,19 @@
     if (initializing) return;
     initializing = true;
     try {
+      verifiedAdmin = false;
       const me = await api('/api/accounts/me');
       if (!me.account || me.account.role !== 'super_admin' || me.account.status !== 'active') {
         window.location.replace('/account/index.html?admin=1');
         return;
       }
+      verifiedAdmin = true;
       await refreshAll();
+      setManagementUnavailable(false);
       if (new URLSearchParams(window.location.search).get('tab') === 'invites') activateTab('invites');
       hideError();
     } catch (error) {
-      if (error.code === 'ACCOUNT_DISABLED') {
-        window.location.replace('/account/index.html?disabled=1');
-        return;
-      }
-      if (error.status === 401 || error.status === 403 || error.code === 'ADMIN_ONLY') {
-        window.location.replace('/account/index.html?admin=1');
-        return;
-      }
+      if (handleAdminAccessError(error)) return;
       $('accountsList').replaceChildren(el('p', 'empty-note', '账号数据暂未加载，请重新检查。'));
       $('invitesList').replaceChildren(el('p', 'empty-note', '邀请码数据暂未加载，请重新检查。'));
       showError(
