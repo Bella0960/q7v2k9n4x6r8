@@ -9,6 +9,7 @@ const workerSource = fs.readFileSync(root + '/worker.js', 'utf8');
 const appSource = fs.readFileSync(root + '/worker/lib/app.js', 'utf8');
 const serviceWorkerSource = fs.readFileSync(root + '/sw.js', 'utf8');
 const fontLoaderSource = fs.readFileSync(root + '/shared/js/font-loader.js', 'utf8');
+const walletLedgerSource = fs.readFileSync(root + '/shared/js/phone/wallet-ledger.js', 'utf8');
 
 function makeStorage(seed = {}) {
   const values = new Map(Object.entries(seed));
@@ -64,8 +65,8 @@ function createNativeCacheStorage() {
   return storage;
 }
 
-function createScope({ accountId, role = 'user', fetchImpl = null, caches = null }) {
-  const local = makeStorage({ ai_custom_characters: '[{"id":"legacy-owner"}]' });
+function createScope({ accountId, role = 'user', fetchImpl = null, caches = null, localStorageBacking = null }) {
+  const local = localStorageBacking || makeStorage({ ai_custom_characters: '[{"id":"legacy-owner"}]' });
   const session = makeStorage({ active_tab: 'home' });
   const openCalls = [];
   const nativeCaches = caches || createNativeCacheStorage();
@@ -386,4 +387,69 @@ test('管理中心桌面入口只为超级管理员加入个人布局', () => {
   assert.match(home, /roleMeta\.content === 'super_admin'/);
   assert.match(home, /currentLayout\.pages\[pageIndex\]\.splice/);
   assert.match(home, /currentLayout\.pages = \(currentLayout\.pages \|\| \[\]\)\.map/);
+});
+
+
+test('两账号同源钱包真实账本与订单/亲属卡命名空间隔离，001 旧账本不被覆盖', async () => {
+  // Both users physically share the same origin storage, just like switching
+  // accounts inside one installed PWA. The creator retains its legacy wallet.
+  const founderRaw = JSON.stringify({ balance: 735, history: [] });
+  const shared = makeStorage({
+    workData: founderRaw,
+    finance_records: JSON.stringify([{ paymentId: 'founder-only', amount: 3 }])
+  });
+  const a = createScope({ accountId: 'MAO-AAAAAAAAAAAA', localStorageBacking: shared });
+  const b = createScope({ accountId: 'MAO-BBBBBBBBBBBB', localStorageBacking: shared });
+  const admin = createScope({ accountId: 'MAO-CCCCCCCCCCCC', role: 'super_admin', localStorageBacking: shared });
+
+  const makeWallet = entry => {
+    entry.window.navigator = {
+      locks: {
+        request(name, options, callback) {
+          assert.equal(name, 'maomao-wallet-ledger-v1');
+          assert.equal(options.mode, 'exclusive');
+          return Promise.resolve(callback({ name }));
+        }
+      }
+    };
+    vm.runInNewContext(walletLedgerSource, {
+      window: entry.window,
+      localStorage: entry.window.localStorage
+    });
+    return entry.window.MaoMaoWalletLedger;
+  };
+
+  const walletA = makeWallet(a);
+  const walletB = makeWallet(b);
+  const first = walletA.readWalletForMutation('workData');
+  assert.equal(first.balance, 1000, 'ordinary account never inherits the creator wallet');
+  first.balance = 820;
+  first.history.push({ type: 'expense', amount: 180, paymentId: 'a-only' });
+  const committed = await walletA.runExclusive(() => walletA.commitWalletSnapshot(first));
+  assert.equal(committed.ok, true);
+  assert.equal(walletA.readWalletForMutation('workData').balance, 820);
+  assert.equal(walletB.readWalletForMutation('workData').balance, 1000);
+
+  const keys = [
+    'maomao_wallet_pending_checkouts_v1',
+    'maomao_role_family_cards_v1',
+    'close_pay',
+    'finance_records',
+    'shop_orders',
+    'takeout_orders'
+  ];
+  for (const key of keys) {
+    a.window.localStorage.setItem(key, 'account-a-' + key);
+    b.window.localStorage.setItem(key, 'account-b-' + key);
+    assert.equal(a.window.localStorage.getItem(key), 'account-a-' + key);
+    assert.equal(b.window.localStorage.getItem(key), 'account-b-' + key);
+    assert.equal(shared.getItem(key), key === 'finance_records'
+      ? JSON.stringify([{ paymentId: 'founder-only', amount: 3 }]) : null,
+      'ordinary users must not overwrite unqualified creator storage: ' + key);
+  }
+  assert.equal(admin.window.localStorage.getItem('workData'), founderRaw);
+  assert.equal(JSON.parse(admin.window.localStorage.getItem('workData')).balance, 735);
+  assert.equal(shared.getItem('__mao_account_v1__MAO-AAAAAAAAAAAA__workData'), committed.raw);
+  assert.equal(shared.getItem('__mao_account_v1__MAO-BBBBBBBBBBBB__workData'), null);
+  assert.equal(walletB.hasActiveMutationLock(), false);
 });
