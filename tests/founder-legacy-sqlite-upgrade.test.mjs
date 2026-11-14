@@ -10,7 +10,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { openTestDb, setupTestStore } from './helpers/cloud-helpers.mjs';
 import { MIGRATIONS, splitSql } from '../worker/lib/migrations.js';
-import { createStore } from '../worker/lib/store.js';
 import { passwordDigest } from '../worker/lib/account-auth.js';
 import { randomToken, sha256Hex } from '../worker/lib/crypto.js';
 
@@ -45,11 +44,14 @@ test('real SQLite 001 legacy -> cloud 0020: founder credentials, permanent ID an
 
   const salt = randomToken(16);
   const passwordHash = await passwordDigest(founderPassword, salt);
-  const created = createStore(exec).createMaoSuperAdminAccountIfEmpty({
-    id: founderId, username: founderUsername, usernameKey: founderUsername,
-    passwordSalt: salt, passwordHash, qqEmail: null, now: timestamp
-  });
-  assert.equal(created, true);
+  // Seed the historical schema directly. The current bootstrap writes to
+  // cloud context tables that do not exist until migration 0020.
+  exec(
+    `INSERT INTO mao_accounts
+     (id, username, username_key, password_salt, password_hash, role, status, created_at, updated_at, authorized_at)
+     VALUES (?, ?, ?, ?, ?, 'super_admin', 'active', ?, ?, ?)`,
+    founderId, founderUsername, founderUsername, salt, passwordHash, timestamp, timestamp, timestamp
+  );
   // Two more synthetic accounts prove this is an upgrade, not a reset.
   for (const [id, username] of [
     ['MAO-ALICE0000001', 'AliceLegacy'],
