@@ -167,7 +167,8 @@
         return targets;
     }
 
-    function snapshot(dropCaches, dropSecrets, includePrivateLocalKeys) {
+    function snapshot(dropCaches, dropSecrets) {
+        var includePrivateLocalKeys = arguments[2] === true;
         var out = {};
         var keys = [];
         try { keys = Object.keys(localStorage); } catch (e) {}
@@ -272,7 +273,8 @@
         return '{' + dbParts.join(',') + '}';
     }
 
-    async function doExport(sectionId) {
+    async function doExport() {
+        var sectionId = arguments[0];
         try {
             var registry = typeof backupRegistry === 'function' ? backupRegistry() : null;
             var scope = typeof sectionId === 'string' && registry && registry.get(sectionId) ? sectionId : '';
@@ -844,7 +846,8 @@
     // 记录损坏（缺少必要字段）时静默跳过，不 throw。
     // 返回 Promise<{ written: number, skipped: number }>：实际写进 DB 的条数 / 跳过的条数。
     // clearOnRestore: 空数组时也执行 clear()，确保恢复后 store 与备份状态完全一致。
-    function restoreStore(db, storeDef, records, clearOnRestore, mergeOnly) {
+    function restoreStore(db, storeDef, records, clearOnRestore) {
+        var mergeOnly = arguments[4] === true;
         var blobFields = storeDef.blobFields || [];
         return new Promise(function (resolve, reject) {
             // 无 clearOnRestore 且记录为空 → 跳过（原有行为，不影响非媒体库）
@@ -918,7 +921,8 @@
     // 恢复一个 DB：顺序处理备份里有的 store，一个 store 一个事务。
     // 备份里有我们没登记的 store（兼容性/未来字段）→ 静默跳过。
     // 返回 Promise<{ written: number, skipped: number, dbRestored: boolean }>
-    function restoreDatabase(dbName, version, storeDefs, incomingDb, mergeOnly) {
+    function restoreDatabase(dbName, version, storeDefs, incomingDb) {
+        var mergeOnly = arguments[4] === true;
         if (!incomingDb || typeof incomingDb !== 'object') return Promise.resolve({ written: 0, skipped: 0, dbRestored: true });
         var db = null;
         // 已登记的扩展数据库和内置数据库使用同样的恢复语义。
@@ -1019,7 +1023,8 @@
         }
     }
 
-    function handleImportFile(file, requestedScope) {
+    function handleImportFile(file) {
+        var requestedScope = arguments[1];
         if (!file) return;
         var reader = new FileReader();
         reader.onload = async function (ev) {
