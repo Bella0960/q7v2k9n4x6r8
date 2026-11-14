@@ -67,7 +67,7 @@ function loadAccountPage(nativeLocal, accountId, role = 'user') {
   return { window, ledger: window.MaoMaoWalletLedger };
 }
 
-function walletSpend(page, paymentId, amount) {
+async function walletSpend(page, paymentId, amount) {
   const wallet = page.ledger.readWalletForMutation('workData');
   assert.ok(wallet);
   assert.ok(wallet.balance >= amount);
@@ -75,10 +75,10 @@ function walletSpend(page, paymentId, amount) {
   wallet.history.unshift({
     type: 'expense', category: 'shop', paymentId, amount, time: 100
   });
-  return page.ledger.commitWalletSnapshot(wallet);
+  return page.ledger.runExclusive(() => page.ledger.commitWalletSnapshot(wallet));
 }
 
-test('MAO wallet uses the injected account namespace: A, B and creator cannot share balances', () => {
+test('MAO wallet uses the injected account namespace: A, B and creator cannot share balances', async () => {
   const creatorOriginal = JSON.stringify({
     balance: 340, history: [{ paymentId: 'creator-old', amount: 60 }]
   });
@@ -96,9 +96,9 @@ test('MAO wallet uses the injected account namespace: A, B and creator cannot sh
   assert.equal(a.window.localStorage.getItem('workData'), null);
   assert.equal(b.window.localStorage.getItem('workData'), null);
 
-  assert.equal(walletSpend(a, 'a-shop-1', 25).ok, true);
-  assert.equal(walletSpend(b, 'b-shop-1', 80).ok, true);
-  assert.equal(walletSpend(creator, 'creator-shop-1', 40).ok, true);
+  assert.equal((await walletSpend(a, 'a-shop-1', 25)).ok, true);
+  assert.equal((await walletSpend(b, 'b-shop-1', 80)).ok, true);
+  assert.equal((await walletSpend(creator, 'creator-shop-1', 40)).ok, true);
 
   assert.equal(a.ledger.readWalletForMutation('workData').balance, 975);
   assert.equal(b.ledger.readWalletForMutation('workData').balance, 920);
@@ -139,11 +139,11 @@ test('MAO wallet scopes pending receipts, finance lines and damaged data to one 
 
   // Identical channel and signature must not cause a receipt to escape to
   // another account. Every ledger call uses the account-scoped storage proxy.
-  const receiptA = a.ledger.getOrCreatePendingCheckout('shop', 'same-cart', 'normal');
+  const receiptA = await a.ledger.runExclusive(() => a.ledger.getOrCreatePendingCheckout('shop', 'same-cart', 'normal'));
   assert.ok(receiptA);
   assert.equal(b.ledger.getPendingCheckout('shop'), undefined);
   assert.equal(creator.ledger.getPendingCheckout('shop'), undefined);
-  const receiptB = b.ledger.getOrCreatePendingCheckout('shop', 'same-cart', 'normal');
+  const receiptB = await b.ledger.runExclusive(() => b.ledger.getOrCreatePendingCheckout('shop', 'same-cart', 'normal'));
   assert.ok(receiptB);
   assert.equal(a.ledger.getPendingCheckout('shop').id, receiptA);
   assert.equal(b.ledger.getPendingCheckout('shop').id, receiptB);
@@ -161,14 +161,14 @@ test('MAO wallet scopes pending receipts, finance lines and damaged data to one 
   const aCorrupt = a.window.localStorage.getItem('workData');
   b.window.localStorage.setItem('workData', '{broken-wallet');
   assert.equal(b.ledger.readWalletForMutation('workData'), null);
-  assert.equal(walletSpend(a, 'a-shop-2', 20).ok, true);
+  assert.equal((await walletSpend(a, 'a-shop-2', 20)).ok, true);
   assert.equal(a.ledger.readWalletForMutation('workData').balance, 980);
   assert.equal(b.window.localStorage.getItem('workData'), '{broken-wallet');
   assert.equal(creator.ledger.readWalletForMutation('workData').balance, 1000);
   assert.equal(aCorrupt, null, 'account A legitimately began with no wallet');
 });
 
-test('MAO two-tab wallet snapshots reject stale updates within one account only', () => {
+test('MAO two-tab wallet snapshots reject stale updates within one account only', async () => {
   const nativeLocal = nativeStorage();
   const a1 = loadAccountPage(nativeLocal, 'MAO-AAAAAAAAAAAA');
   const a2 = loadAccountPage(nativeLocal, 'MAO-AAAAAAAAAAAA');
