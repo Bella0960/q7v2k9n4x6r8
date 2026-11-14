@@ -121,6 +121,21 @@ test('upstream failure and malformed acknowledgements never expose sensitive res
   }
 });
 
+test('private checkpoint HTTP errors are distinguished safely without raw response leakage', async () => {
+  const { env, setResponse } = setup();
+  for (const [status,code] of [
+    [403,'checkpoint_operator_secret_rejected'],
+    [404,'checkpoint_handler_not_active'],
+    [409,'checkpoint_rotation_requires_review'],
+    [503,'checkpoint_storage_unavailable']
+  ]) {
+    setResponse(new Response('PRIVATE_1234567890_BOOKMARK_CREDENTIAL', { status }));
+    const result = await runPrivateFounderCheckpoint({ env, now: () => NOW });
+    assert.deepEqual(result, { ok: false, code });
+    assert.doesNotMatch(JSON.stringify(result), /BOOKMARK|CREDENTIAL|PRIVATE/);
+  }
+});
+
 test('private DO acknowledgement after request start is accepted within response clock skew', async () => {
   const { env, setResponse } = setup();
   setResponse(Response.json({ ok: true, recorded: true, recordedAt: NOW + 15 }));
