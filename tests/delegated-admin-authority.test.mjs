@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { randomToken } from '../worker/lib/crypto.js';
 import { passwordDigest } from '../worker/lib/account-auth.js';
@@ -160,4 +161,18 @@ test('unauthenticated requests never reach original owner admin source when mana
   const result = await pair.preview.asJson('/api/admin/accounts', { headers: {} });
   assert.equal(result.status, 401);
   assert.equal(pair.outbound.filter(x => x.path.startsWith('/api/admin/')).length, before);
+});
+
+test('private gateway deployment config cannot become a public login or overwrite the QA Worker', () => {
+  const cfg=JSON.parse(readFileSync(new URL('../wrangler.identity-gateway.jsonc', import.meta.url),'utf8'));
+  assert.equal(cfg.name,'maomao-001-identity-gateway-20261114');
+  assert.equal(cfg.main,'worker/identity-authority-gateway.js');
+  assert.equal(cfg.workers_dev,false);
+  assert.equal(cfg.preview_urls,false);
+  assert.equal(cfg.keep_vars,true);
+  assert.equal(cfg.routes,undefined);
+  assert.equal(cfg.route,undefined);
+  assert.equal(cfg.vars,undefined);
+  assert.equal(cfg.assets,undefined);
+  assert.equal(cfg.durable_objects,undefined);
 });
