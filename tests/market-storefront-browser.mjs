@@ -95,7 +95,7 @@ for(const width of [320,375,390,430,1280]){
  assert.equal(await page.evaluate(()=>localStorage.getItem('maomao_market_collection_v1').includes('base64')),false);
  await page.locator('[data-sf="delete"]').click();await page.locator('[data-sf="confirm-delete"]').click();
  await page.locator('[data-sf="mine-tab"][data-id="creations"]').click();await page.locator('[data-sf="upload"]').click();await page.locator('#sfName').fill('我自己的素材');await page.locator('#sfFile').setInputFiles({name:'sample.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jA8sAAAAASUVORK5CYII=','base64')});await page.locator('[data-sf="confirm-upload"]').click();await page.waitForSelector('.sf-record');
- await page.locator('[data-sf="record-preview"]').first().click();await page.waitForSelector('.sf-image');await page.locator('[data-sf="record-apply"]').click();assert.ok((await page.evaluate(()=>MAOMAOWallpaperStore.get())).startsWith('data:image/webp;'));
+ await page.locator('[data-sf="record-preview"]').first().click();await page.waitForSelector('.sf-image');await page.locator('[data-sf="record-apply"]').click();await page.waitForFunction(async()=>String(await MAOMAOWallpaperStore.get()).startsWith('data:image/webp;'),null,{timeout:6000});
  assert.ok(!(await page.evaluate(()=>localStorage.getItem('maomao_market_collection_v1'))).includes('base64'));
  await page.locator('[data-category="categories"]').click();assert.equal(await page.locator('.sf-category-row').count(),9);
  await page.locator('[data-sf="category"][data-id="bubbles"]').click();await page.waitForSelector('.bubble-list');
