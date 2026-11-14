@@ -60,7 +60,10 @@ test('preview device token expiry is explicit; production identity settings stay
   assert.equal(wrangler.durable_objects.bindings[0].name, 'CLOUD_DB');
   assert.equal(wrangler.previews.vars.DEVICE_PAIRING_TOKEN_TTL_MS, '300000');
   assert.equal(wrangler.previews.vars.MAO_SOCIAL_E2EE_ENABLED, 'true');
-  assert.equal(wrangler.vars, undefined);
+  // Production can have non-social scheduler settings, but QA-only friend switches must never leak.
+  for (const name of ['MAO_SOCIAL_ENABLED', 'MAO_SOCIAL_CHAT_ENABLED', 'MAO_SOCIAL_E2EE_ENABLED']) {
+    assert.equal(Object.hasOwn(wrangler.vars || {}, name), false, `${name} is QA-only`);
+  }
 });
 
 
