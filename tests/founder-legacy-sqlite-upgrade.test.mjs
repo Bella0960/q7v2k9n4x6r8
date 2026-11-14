@@ -149,7 +149,7 @@ test('installed cloud 0017 upgrades through social migrations and cloud 0020 wit
   assert.deepEqual(applyMigrations(exec, 2), [
     '0017_mao_social', '0018_mao_social_e2ee', '0019_mao_social_e2ee_media', cloud.version
   ]);
-  assert.deepEqual(query('SELECT user_id, enabled FROM user_context_sharing'), [
+  assert.deepEqual(query('SELECT user_id, enabled FROM user_context_sharing').map(row => ({ ...row })), [
     { user_id: founderId, enabled: 1 }
   ]);
   assert.deepEqual(applyMigrations(exec, 3), []);
