@@ -1,14 +1,13 @@
 /**
- * Official app-domain cutover adapter.
+ * Single app.mao520.com trial-domain adapter, not the official product.
  *
- * This is an OPTIONAL release candidate, not the live static entrypoint.
- * Disabled by default: serve the existing app exactly as worker-app.js does.
- * After account continuity, rollback and real-device gates pass, a Cloudflare
- * *server-side* flag switches the entire origin (HTML + API + SW + assets)
- * to the existing fully integrated backend via a Worker Service Binding.
+ * mao520.com remains the ONE official site with the original account data.
+ * Trial traffic may use only the isolated QA Worker service binding.
  *
- * No browser-visible backend hostname, QA database, copied password,
- * CORS proxy, cookie rewriting, or second account system.
+ * The server-side switch defaults to false: preserve existing trial UI
+ * until QA accounts, private-page gates and mobile checks are verified.
+ * When enabled, forward the complete origin (HTML, APIs and service worker)
+ * without copying passwords or sessions into the official database.
  */
 import staticApp from './worker-app.js';
 
