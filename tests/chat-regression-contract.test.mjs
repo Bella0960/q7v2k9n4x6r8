@@ -2691,7 +2691,10 @@ test('钱包流水已落库但聊天状态写入失败时，下一次点击只�
     },
     currentCharacter: { name: '角色' }
   };
-  const walletWindow = { navigator: {}, localStorage: sandbox.localStorage };
+  const walletWindow = {
+    navigator: { locks: { request: (_name, _options, callback) => Promise.resolve().then(callback) } },
+    localStorage: sandbox.localStorage
+  };
   runInNewContext(walletLedgerSource, { window: walletWindow });
   sandbox.window = walletWindow;
   runInNewContext(handlerSource, sandbox);
@@ -2782,7 +2785,7 @@ test('退回卡按 returnOfPaymentId 更新原转账，等额的另一笔转账�
   ];
   let finance = '[]';
   const sandbox = {
-    window: { MaoMaoWalletLedger: { runExclusive: task => task() } },
+    window: { MaoMaoWalletLedger: { runExclusive: task => task(), supportsCrossTabLock: () => true } },
     loadMessages: () => clone(persisted),
     ensureMid: message => message.mid,
     getWorkData: () => clone(wallet),
@@ -2829,7 +2832,7 @@ test('旧退回卡缺少原交易编号且有多笔等额候选时，必须停�
   let finance = '[]';
   const toasts = [];
   const sandbox = {
-    window: { MaoMaoWalletLedger: { runExclusive: task => task() } },
+    window: { MaoMaoWalletLedger: { runExclusive: task => task(), supportsCrossTabLock: () => true } },
     loadMessages: () => clone(persisted),
     ensureMid: message => message.mid,
     getWorkData: () => clone(wallet),
@@ -3261,16 +3264,18 @@ test('多个标签页并发领取时，全局钱包锁串行化不同交易并�
   assert.equal(renders, 2);
 });
 
-test('浏览器不支持 Web Locks 时保留本页防连点，并明确提醒跨页面限制', async () => {
+test('浏览器不支持 Web Locks 时红包收款直接拒绝且不访问钱包', async () => {
   const start = detail.indexOf('const pendingPaymentOperations = new Set();');
   const end = detail.indexOf('// ===== 群投票', start);
   let walletReads = 0;
+  let walletWrites = 0;
+  let chatWrites = 0;
   const sandbox = {
     loadMessages: () => [{ role: 'assistant', type: 'redpacket', amount: '1.00', status: 'unopened', mid: 'fallback-pay' }],
     ensureMid: (message) => message.mid,
     getWorkData: () => { walletReads += 1; return { balance: 0, history: [] }; },
-    saveWorkData: () => true,
-    saveMessages: () => true,
+    saveWorkData: () => { walletWrites++; return true; },
+    saveMessages: () => { chatWrites++; return true; },
     showToast: (message) => { sandbox.toasts.push(message); },
     renderAllMessages: () => {},
     openPayResult: () => {},
@@ -3288,7 +3293,10 @@ test('浏览器不支持 Web Locks 时保留本页防连点，并明确提醒跨
     sandbox.handlePayCardClick(event)
   ]);
   assert.match(sandbox.toasts[0], /不支持跨页面钱包锁/);
-  assert.equal(walletReads, 2, 'the second same-page click must be blocked before it can read or mutate the wallet');
+  assert.equal(walletReads, 0, 'no wallet read may start without cross-tab locking');
+  assert.equal(walletWrites, 0, 'no balance credit is allowed');
+  assert.equal(chatWrites, 0, 'no chat receipt acknowledgement is allowed');
+  assert.equal(sandbox.toasts.length, 2, 'both attempts explain the safe block');
 });
 
 
