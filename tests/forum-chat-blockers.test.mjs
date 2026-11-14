@@ -15,7 +15,7 @@ const chatDetail = read('chat/chat/chat-detail.html');
 test('forum detail loads the same theme-aware seeded posts as the list and persists first initialization', () => {
   assert.match(forumHome, /function getSeededPosts\(themeOverride\)/);
   assert.match(forumDetail, /function getSeededPosts\(themeOverride\)/);
-  assert.match(forumDetail, /const seeded=\[/);
+  assert.match(forumDetail, /function getSeededPosts\(themeOverride\)\{return \[\]\}/);
   assert.match(forumHome, /localStorage\.setItem\(STORE,JSON\.stringify\(seedPosts\)\)/);
   assert.match(forumDetail, /if \(raw === null\)[\s\S]*?savePosts\(seedPosts\)/);
   assert.match(forumDetail, /function loadPosts\(\)[\s\S]*?mergeForumPosts\(stored, seedPosts, buildPreviousSeedSets\(stored, seedIds\)\)/);
@@ -95,6 +95,7 @@ function createSandboxBase() {
   return {
     currentCharacter: { id: 'role-1' },
     storageKey: 'chat_history_role-1',
+    _chatHistoryUnreadable: false,
     showToast: () => {},
     _resetWarnCooldown: () => {},
     _shouldWarnAgain: () => false,
@@ -657,7 +658,8 @@ function createForumEnv(initialStore) {
     },
     toast(message) { toasts.push(String(message)); },
     Map,
-    Set
+    Set,
+    post: null
   };
   env.forum = {
     data,
@@ -1101,7 +1103,7 @@ test('sharePost degrades to the no-contact prompt and logs the unreadable charac
   env.alert = (message) => alerts.push(String(message));
   const before = env.forum.warns.length;
   loadSharePost(env)();
-  assert.deepEqual(alerts, ['还没有联系人，先去加好友吧'], '解析失败仍按无联系人处理');
+  assert.deepEqual(alerts, ['联系人列表暂时无法读取，请重试'], '损坏角色缓存必须显式报错');
   assert.equal(env.forum.warns.length, before + 1);
   assert.ok(env.forum.warns[before].includes('sharePost'));
   assert.ok(env.forum.warns[before].includes('ai_custom_characters'));
