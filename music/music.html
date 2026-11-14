@@ -1647,6 +1647,9 @@
         : `<div style="height:12px;"></div>`
     ).join('');
   })();
+  // Navigate straight to the existing collected tracks from My > 收藏.
+  // No separate favorites collection or localStorage key is introduced.
+  if (window.location.hash === '#favorites') showFav();
 </script>
 <script src="../shared/js/home-indicator.js?v=20261023v1"></script>
 </body>

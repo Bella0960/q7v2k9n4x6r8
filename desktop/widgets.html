@@ -9,6 +9,8 @@
     <title>挂件管理</title>
     <style>
       /* ===== 挂件管理页：黑白灰杂志风 ===== */
+      .widget-item.is-store-target{outline:1px solid #555;outline-offset:2px;background:#fff!important;}
+      .widget-item.is-store-target .w-name{color:#111!important;}
       * { box-sizing: border-box; scrollbar-width: none; -ms-overflow-style: none; }
       *::-webkit-scrollbar { display: none; width: 0; height: 0; }
       html, body { margin: 0; padding: 0; background: #F7F7F9; color: #111; }
@@ -259,6 +261,7 @@
             var on = isOnDesktop(layout, w.id);
             var li = document.createElement('li');
             li.className = 'widget-item' + (on ? ' is-on' : '');
+            li.dataset.widgetId = w.id;
 
             var glyph = document.createElement('span');
             glyph.className = 'w-glyph';
@@ -296,6 +299,23 @@
         }
 
         render();
+        // Theme Store can spotlight a real existing widget, but does not auto-edit
+        // the desktop layout. The user still explicitly presses the native Add.
+        var focusId='';
+        try{focusId=new URLSearchParams(window.location.search).get('widget')||'';}catch(e){}
+        if(focusId&&CATALOG.some(function(item){return item.id===focusId;})){
+          var target=Array.from(listEl.children).filter(function(item){
+            return item.dataset.widgetId===focusId;
+          })[0];
+          if(target){
+            target.classList.add('is-store-target');
+            if(typeof target.scrollIntoView==='function')target.scrollIntoView({block:'center'});
+            var button=target.querySelector('button');
+            if(button){
+              try{button.focus({preventScroll:true});}catch(e){button.focus();}
+            }
+          }
+        }
       })();
     </script>
   <script src="../shared/js/home-indicator.js?v=20261023v1"></script>
