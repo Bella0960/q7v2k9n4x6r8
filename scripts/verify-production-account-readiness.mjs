@@ -13,7 +13,23 @@ export const PREVIEW_SCRIPT = 'mao-auth-preview';
 export const OFFICIAL_EDGE_SCRIPT = 'curly-dream-324c';
 const REQUIRED_SECRETS = ['DEVICE_SECRET_PEPPER', 'MAO_SUPER_ADMIN_BOOTSTRAP_SECRET'];
 
-export function auditProductionAccountReadiness({ production, preview, appGateway = null, secrets, online, domains, hostname, namespaces }) {
+/**
+ * A verified gateway is not a durable release if the next automatic push
+ * silently overwrites it with the old static Worker. Check actual remote
+ * Cloudflare Build triggers, not a repository comment or plan.
+ */
+export function auditOfficialAutoDeployTrigger(triggers) {
+  if (!Array.isArray(triggers)) return ['OFFICIAL_AUTO_DEPLOY_UNVERIFIED'];
+  const activeMain = triggers.filter(t => Array.isArray(t?.branch_includes) &&
+    t.branch_includes.includes('main'));
+  if (activeMain.length !== 1) return ['OFFICIAL_AUTO_DEPLOY_UNVERIFIED'];
+  const cmd = String(activeMain[0].deploy_command || '').trim();
+  if (!/(?:^|\\s)wrangler deploy --config wrangler\\.app\\.cutover\\.jsonc --keep-vars(?:\\s|$)/.test(cmd))
+    return ['OFFICIAL_AUTO_DEPLOY_REVERTS_STATIC'];
+  return [];
+}
+
+export function auditProductionAccountReadiness({ production, preview, appGateway = null, autoDeployTriggers = null, secrets, online, domains, hostname, namespaces }) {
   const failures = [];
   const customDomains = Array.isArray(domains) ? domains : [];
   const mapping = customDomains.filter(domain => domain?.hostname === hostname);
@@ -39,6 +55,7 @@ export function auditProductionAccountReadiness({ production, preview, appGatewa
       failures.push('PRODUCTION_GATEWAY_NOT_VERIFIED');
       failures.push('PRODUCTION_DOMAIN_TARGET_MISMATCH');
     }
+    failures.push(...auditOfficialAutoDeployTrigger(autoDeployTriggers));
   } else if (mapping[0].service !== PRODUCTION_SCRIPT) {
     failures.push('PRODUCTION_DOMAIN_TARGET_MISMATCH');
   }
@@ -130,6 +147,18 @@ export function selectActiveDeploymentVersionId(data) {
   return versions[0].version_id;
 }
 
+async function getOfficialBuildTriggers({ accountId, token }) {
+  const workers = await getJson(
+    'https://api.cloudflare.com/client/v4/accounts/' + accountId + '/workers/scripts',
+    token
+  );
+  const edge = Array.isArray(workers) ? workers.find(w => w?.id === OFFICIAL_EDGE_SCRIPT) : null;
+  if (!/^[a-f0-9]{32}$/i.test(edge?.tag || ''))
+    throw new Error('Release blocked: official Worker build target unavailable');
+  return getJson('https://api.cloudflare.com/client/v4/accounts/' + accountId +
+    '/builds/workers/' + edge.tag + '/triggers', token);
+}
+
 async function getActiveWorkerVersion({ accountId, scriptName, token }) {
   const base = 'https://api.cloudflare.com/client/v4/accounts/' + accountId;
   const deployments = await getJson(base + '/workers/scripts/' + scriptName +
@@ -159,9 +188,16 @@ async function verify() {
     listAllDurableObjectNamespaces({ accountId, token, requestJson: getEnvelope })
   ]);
   const liveHost = new URL(origin).hostname;
-  const appGateway = domains.some(d => d?.hostname === liveHost && d?.service === OFFICIAL_EDGE_SCRIPT)
-    ? await getActiveWorkerVersion({ accountId, scriptName: OFFICIAL_EDGE_SCRIPT, token })
-    : null;
+  const usesOfficialGateway = domains.some(d => d?.hostname === liveHost &&
+    d?.service === OFFICIAL_EDGE_SCRIPT);
+  const [appGateway, autoDeployTriggers] = await Promise.all([
+    usesOfficialGateway
+      ? getActiveWorkerVersion({ accountId, scriptName: OFFICIAL_EDGE_SCRIPT, token })
+      : Promise.resolve(null),
+    usesOfficialGateway
+      ? getOfficialBuildTriggers({ accountId, token })
+      : Promise.resolve(null)
+  ]);
   // Production cannot pass merely because some *other* administrator has
   // initialized the backend. The four live stores must retain the selected
   // 001 and every existing member; query only aggregate counts on the actual
@@ -188,7 +224,7 @@ async function verify() {
     try { body = await response.json(); } catch {}
   }
   const failures = auditProductionAccountReadiness({
-    production, preview, appGateway, secrets, domains, namespaces, hostname: liveHost,
+    production, preview, appGateway, autoDeployTriggers, secrets, domains, namespaces, hostname: liveHost,
     online: { httpStatus: response.status, body }
   });
   if (failures.length) {
