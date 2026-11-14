@@ -175,13 +175,13 @@ test('MAO two-tab wallet snapshots reject stale updates within one account only'
   const b = loadAccountPage(nativeLocal, 'MAO-BBBBBBBBBBBB');
 
   const before = a1.ledger.readWalletForMutation('workData');
-  assert.equal(walletSpend(a2, 'a2-first', 10).ok, true);
+  assert.equal((await walletSpend(a2, 'a2-first', 10)).ok, true);
   before.balance = 970;
   before.history.push({ paymentId: 'a1-stale', amount: 30 });
-  assert.equal(a1.ledger.commitWalletSnapshot(before).reason, 'stale-wallet');
+  assert.equal((await a1.ledger.runExclusive(() => a1.ledger.commitWalletSnapshot(before))).reason, 'stale-wallet');
   assert.equal(a1.ledger.readWalletForMutation('workData').balance, 990);
 
-  assert.equal(walletSpend(b, 'b-independent', 15).ok, true);
+  assert.equal((await walletSpend(b, 'b-independent', 15)).ok, true);
   assert.equal(b.ledger.readWalletForMutation('workData').balance, 985);
   assert.equal(a1.ledger.readWalletForMutation('workData').balance, 990);
 });
