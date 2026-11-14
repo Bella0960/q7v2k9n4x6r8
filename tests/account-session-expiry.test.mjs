@@ -17,7 +17,7 @@ test('invalid, non-finite, unsafe and expired session timestamps fail closed', a
   let touches = 0;
   const store = {
     getMaoAccountSession() { return { ...session }; },
-    touchMaoAccountSession() { touches += 1; }
+    touchMaoAccountSession() { touches += 1; return true; }
   };
   const auth = createAccountAuth({ store, now: () => now });
   const request = new Request('https://mao.test/api/accounts/me', {
@@ -65,7 +65,7 @@ test('security session list flags malformed expiry as expired without exposing a
         session_revoked_at: null
       };
     },
-    touchMaoAccountSession() {},
+    touchMaoAccountSession() { return true; },
     listMaoAccountDevices() { return []; },
     listMaoAccountSessions() { return rows; }
   };
@@ -107,7 +107,7 @@ test('revoking a second device immediately invalidates its server authorization 
       const row = sessions.find(item => item.tokenHash === hash);
       return row ? { ...row } : null;
     },
-    touchMaoAccountSession() {},
+    touchMaoAccountSession() { return true; },
     revokeMaoAccountSessionForAccount(accountId, sessionId, timestamp) {
       const row = sessions.find(item => item.account_id === accountId &&
         item.session_id === sessionId && item.session_revoked_at == null);
