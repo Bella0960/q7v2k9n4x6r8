@@ -4953,3 +4953,74 @@ test('chat outgoing payments reject malformed or sub-cent amounts before wallet 
   assert.equal(reads, 0, 'mock lock does not execute a simulated transaction');
   assert.equal(sandbox.payConfirmBtn.disabled, false);
 });
+
+
+test('聊天收款遇到重复或冲突的 paymentId 必须停止修复卡片和财务流水', async () => {
+  const start = detail.indexOf('const pendingPaymentOperations = new Set();');
+  const end = detail.indexOf('// ===== 群投票', start);
+  assert.ok(start >= 0 && end > start);
+  const handlerSource = detail.slice(start, end);
+  const baseRow = {
+    paymentId: 'same-receipt-id', type: 'income',
+    category: 'redpacket', amount: 12
+  };
+  const conflicts = [
+    ['amount mismatch', [{ ...baseRow, amount: 9 }]],
+    ['duplicate receipt ID', [{ ...baseRow }, { ...baseRow }]],
+    ['outgoing row', [{ ...baseRow, type: 'expense' }]],
+    ['wrong category', [{ ...baseRow, category: 'transfer' }]]
+  ];
+  for (const [caseName, rows] of conflicts) {
+    const before = { balance: 112, history: rows };
+    let wallet = JSON.parse(JSON.stringify(before));
+    let history = [{
+      role: 'assistant', type: 'redpacket', amount: '12.00',
+      status: 'unopened', mid: 'same-receipt-id'
+    }];
+    const toasts = [];
+    let walletWrites = 0;
+    let messageWrites = 0;
+    let financeWrites = 0;
+    let popups = 0;
+    const localStorage = {
+      getItem: key => key === 'finance_records' ? '[]' : null,
+      setItem: key => { if (key === 'finance_records') financeWrites++; }
+    };
+    const walletWindow = {
+      navigator: {
+        locks: { request: (_name, _options, callback) => Promise.resolve().then(callback) }
+      },
+      localStorage
+    };
+    runInNewContext(walletLedgerSource, { window: walletWindow });
+    const sandbox = {
+      window: walletWindow,
+      localStorage,
+      loadMessages: () => JSON.parse(JSON.stringify(history)),
+      ensureMid: msg => msg.mid,
+      getWorkData: () => JSON.parse(JSON.stringify(wallet)),
+      saveWorkData: next => { walletWrites++; wallet = next; return true; },
+      saveMessages: next => { messageWrites++; history = next; return true; },
+      showToast: message => toasts.push(message),
+      renderAllMessages: () => {},
+      openPayResult: () => { popups++; },
+      currentCharacter: { name: '角色' },
+      console: { warn: () => {} }
+    };
+    runInNewContext(handlerSource, sandbox);
+    await sandbox.handlePayCardClick({
+      currentTarget: {
+        getAttribute: name => name === 'data-mid' ? 'same-receipt-id' : null,
+        setAttribute: () => {},
+        removeAttribute: () => {}
+      }
+    });
+    assert.equal(walletWrites, 0, caseName + ': no new income or overwrite');
+    assert.equal(messageWrites, 0, caseName + ': no false received status');
+    assert.equal(financeWrites, 0, caseName + ': no false finance entry');
+    assert.equal(popups, 0, caseName + ': no success popup');
+    assert.equal(history[0].status, 'unopened');
+    assert.deepEqual(wallet, before);
+    assert.match(toasts.at(-1), /重复或金额、类型冲突/, caseName);
+  }
+});
