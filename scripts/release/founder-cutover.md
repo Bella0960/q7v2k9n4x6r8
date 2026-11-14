@@ -49,3 +49,43 @@ public `/internal/*` requests are not forwarded (regression-tested).
   from the real `mao520.com` database. A new, securely reviewed execution
   mechanism and explicit rollback/restore operator procedure remain mandatory
   before any live account or domain change.
+
+## One-time internal scheduler caller (source prepared, execution disabled)
+
+To avoid a public operator URL, `worker/founder-checkpoint-runner.js` and
+`wrangler.release-checkpoint.jsonc` define a separate *release-only* Worker.
+Its sole purpose is to call the verified live `mao-auth-preview` Worker
+through a cross-Worker `LIVE_CLOUD_DB` binding (class `CloudDatabase`,
+instance `maomao-global`). It has no public fetch action, no
+`workers_dev` URL, no preview URLs, **no routes**, and **no Cron schedule**
+in its committed configuration.
+
+The caller fails closed unless all conditions hold simultaneously:
+- `FOUNDER_RUN_ENABLED` must be explicitly provisioned as
+  `acknowledge-single-use-live-checkpoint` on the release-only Worker,
+  never in Git or the main Worker.
+- `FOUNDER_TARGET_SCRIPT` equals `mao-auth-preview` and
+  `FOUNDER_TARGET_ORIGIN` equals `https://mao520.com`.
+- The separately provisioned 13-digit UTC-millisecond
+  `FOUNDER_RUN_NOT_BEFORE_MS` and `FOUNDER_RUN_NOT_AFTER_MS` define a
+  **maximum two-minute** maintenance interval containing the actual execution.
+- `FOUNDER_RELEASE_OPERATOR_SECRET` matches the separate secret on
+  the live target Worker (48–256 URL-safe characters). Do not reuse the
+  bootstrap secret, device pepper, VAPID keys, user login or QA secret.
+- The private binding exists and returns an explicit success acknowledgement.
+
+Deployment alone **cannot run this job** because the committed Cron list is
+empty. A separately reviewed operator must provision both sides and enable
+a temporary scheduled trigger for the approved window; remove it immediately
+after use. Never attach this task to the normal MAOMAO daily build, user
+traffic, or the live Worker Cron. The caller never receives the bookmark; the
+target DO retains the bookmark privately. Repeat ticks reuse the first
+recent checkpoint and cannot silently replace a stale one; a rotated
+checkpoint needs an explicitly reviewed manual recovery procedure.
+
+**Cloudflare limitation:** local Wrangler remote bindings do not support
+direct remote Durable Object access. A synthetic or `--dry-run` test is not
+proof of remote binding resolution or successful live PITR capture.
+Do not claim a production checkpoint until the isolated operation has run
+under the real target binding and its independent restore procedure has been
+validated. Never run a live restore or founder cutover as part of a test build.
