@@ -3121,7 +3121,11 @@ test('亲属卡写入接口在存储正常时也拒绝无效的新数据载荷',
     getItem: () => stored,
     setItem: (key, value) => { writes += 1; stored = String(value); }
   };
-  const sandbox = { window: {}, localStorage: storage };
+  const sandbox = { window: {
+      // Unit fixture: simulate the shared lock already held. An integration
+      // test below exercises the actual Web Locks coordination.
+      MaoMaoWalletLedger: { hasActiveMutationLock: () => true }
+    }, localStorage: storage };
   runInNewContext(roleFamilyCardsSource, sandbox);
   const api = sandbox.window.RoleFamilyCards;
 
@@ -3155,7 +3159,11 @@ test('亲属卡状态变更必须通过本地存储写后读回确认', () => {
   let stored = '[]';
   let silentlyDropWrites = false;
   const sandbox = {
-    window: {},
+    window: {
+      // Unit fixture: simulate the shared lock already held. An integration
+      // test below exercises the actual Web Locks coordination.
+      MaoMaoWalletLedger: { hasActiveMutationLock: () => true }
+    },
     localStorage: {
       getItem: () => stored,
       setItem: (key, value) => {
@@ -3561,12 +3569,13 @@ test('亲属卡实际消费与卡包暂停操作不会互相覆盖记录', async
   runInNewContext(walletLedgerSource, sandbox);
   runInNewContext(roleFamilyCardsSource, sandbox);
   const api = window.RoleFamilyCards;
-  const card = api.createInvite({
+  const card = await window.MaoMaoWalletLedger.runExclusive(() => api.createInvite({
     roleId: 'role-1', roleName: '角色',
     kind: 'family', monthlyLimit: 100, singleLimit: 50
-  });
+  }));
   assert.ok(card);
-  assert.equal(api.update(card.id, 'accept').ok, true);
+  assert.equal((await window.MaoMaoWalletLedger.runExclusive(() =>
+    api.update(card.id, 'accept'))).ok, true);
 
   const actionStart = familyCardsPage.indexOf('var pendingCardActions = new Set();');
   const actionEnd = familyCardsPage.indexOf("\n\n  document.querySelector('.filters')", actionStart);
@@ -4278,32 +4287,37 @@ test('钱包结算编号跨页面刷新复用，支付方式不能在未完成�
   );
 });
 
-test('亲属卡按交易编号幂等消费，重试不会再次占用额度', () => {
+test('亲属卡按交易编号幂等消费，重试不会再次占用额度', async () => {
   const values = new Map();
   const storage = {
     getItem: (key) => values.has(key) ? values.get(key) : null,
     setItem: (key, value) => { values.set(key, String(value)); },
     removeItem: (key) => { values.delete(key); }
   };
-  const cardWindow = {};
+  const cardWindow = {
+    navigator: { locks: { request: (_name, _opts, callback) => Promise.resolve().then(callback) } },
+    localStorage: storage
+  };
+  runInNewContext(walletLedgerSource, { window: cardWindow });
   runInNewContext(roleFamilyCardsSource, { window: cardWindow, localStorage: storage });
   const api = cardWindow.RoleFamilyCards;
-  const invite = api.createInvite({
+  const ledger = cardWindow.MaoMaoWalletLedger;
+  const invite = await ledger.runExclusive(() => api.createInvite({
     roleId: 'role-1', roleName: '角色', monthlyLimit: 50, singleLimit: 20
-  });
+  }));
   assert.ok(invite);
-  assert.equal(api.update(invite.id, 'accept').ok, true);
+  assert.equal((await ledger.runExclusive(() => api.update(invite.id, 'accept'))).ok, true);
 
-  const first = api.consume(invite.id, 12, '商店 · 商品', 'shop', 'checkout-1');
+  const first = await ledger.runExclusive(() => api.consume(invite.id, 12, '商店 · 商品', 'shop', 'checkout-1'));
   assert.equal(first.ok, true);
   assert.equal(first.replayed, false);
-  const replay = api.consume(invite.id, 12, '商店 · 商品', 'shop', 'checkout-1');
+  const replay = await ledger.runExclusive(() => api.consume(invite.id, 12, '商店 · 商品', 'shop', 'checkout-1'));
   assert.equal(replay.ok, true);
   assert.equal(replay.replayed, true);
   assert.equal(api.find(invite.id).history.length, 1);
   assert.equal(api.usedThisMonth(api.find(invite.id)), 12);
 
-  const conflict = api.consume(invite.id, 15, '商店 · 商品', 'shop', 'checkout-1');
+  const conflict = await ledger.runExclusive(() => api.consume(invite.id, 15, '商店 · 商品', 'shop', 'checkout-1'));
   assert.equal(conflict.ok, false);
   assert.equal(conflict.reason, 'transaction-conflict');
   assert.equal(api.find(invite.id).history.length, 1);
