@@ -95,6 +95,7 @@ function createSandboxBase() {
   return {
     currentCharacter: { id: 'role-1' },
     storageKey: 'chat_history_role-1',
+    _chatHistoryUnreadable: false,
     showToast: () => {},
     _resetWarnCooldown: () => {},
     _shouldWarnAgain: () => false,
