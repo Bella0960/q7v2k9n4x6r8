@@ -214,9 +214,15 @@ test('real sqlite session touch rejects revoked, expired and disabled sessions',
     assert.equal(store.touchMaoAccountSession('other-account', now), true);
     assert.equal(store.touchMaoAccountSession('pending-invite', now), true);
     assert.equal(store.touchMaoAccountSession('disabled-account', now), false);
+    // The real account-scoped revoke SQL must reject attempts to revoke a
+    // second account's session; it must leave that other session authorized.
+    assert.equal(store.revokeMaoAccountSessionForAccount('owner', 'other-account', now), false);
+    assert.equal(store.touchMaoAccountSession('other-account', now + 1), true);
     // Revoking the session after the initial lookup must block a stale request
     // at the last conditional UPDATE, without updating last_used_at.
-    db.prepare('UPDATE mao_account_sessions SET revoked_at = ? WHERE id = ?').run(now, 'valid');
+    assert.equal(store.revokeMaoAccountSessionForAccount('owner', 'valid', now), true);
+    assert.equal(store.revokeMaoAccountSessionForAccount('owner', 'valid', now), false,
+      'repeated revocation does not perform another state change');
     assert.equal(store.touchMaoAccountSession('valid', now + 1), false);
     assert.equal(db.prepare('SELECT last_used_at FROM mao_account_sessions WHERE id = ?').get('valid').last_used_at, now);
     db.prepare("UPDATE mao_accounts SET status = 'disabled' WHERE id = 'other'").run();
