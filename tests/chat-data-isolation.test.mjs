@@ -446,11 +446,11 @@ test('名片：卡片快照只写入当前会话历史，不在其他会话出�
   const listA = sandbox.loadMessages();
   listA.push(card);
   assert.equal(sandbox.saveMessages(listA), true);
-  assert.deepEqual(sandbox.loadMessages(), [card]);
+  assert.deepEqual(JSON.parse(JSON.stringify(sandbox.loadMessages())), [card]);
   assert.match(JSON.stringify(slots.roleA), /卡片甲/);
 
   sandbox.currentCharacter = { id: 'roleB' };
-  assert.deepEqual(sandbox.loadMessages(), []);
+  assert.equal(sandbox.loadMessages().length, 0);
   assert.equal(JSON.stringify(slots.roleB || []).includes('卡片甲'), false);
   assert.deepEqual(JSON.parse(sandbox.localStorage.getItem('chat_history_roleB')), []);
   assert.equal(JSON.stringify(JSON.parse(sandbox.localStorage.getItem('chat_history_roleB'))).includes('卡片甲'), false);
