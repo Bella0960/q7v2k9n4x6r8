@@ -5,13 +5,24 @@
 (function () {
   'use strict';
 
-  var GUIDE_VERSION = '2026.11.13 · 001 测试版';
+  var GUIDE_VERSION = '2026.11.14 · 工程集成测试版';
   var STORAGE_KEY = 'maomao_tutorial_progress_v1';
 
   var GUIDE_UPDATES = [
     {
+      date: '2026-11-14',
+      title: '本次真工程预览：按顺序测试，不混用正式账号数据',
+      items: [
+        '当前是 QA-001 集成分支的真正小手机页面，使用独立 SQLite 测试库。桌面、聊天、论坛、查手机、主题商城均是项目原入口，不另开演示站。',
+        '请先看下方实时只读检查。管理员身份以服务器返回为准；过去其他预览的 001 登录记录不能证明本预览已经接通。',
+        '推荐依序测试：聊天保存与角色隔离 → 多气泡和角色图片 → 真人好友加密对话 → 论坛 → 查手机 → 主题商城与钱包。',
+        'Web Push 仅在显示已配置服务端密钥后才进入手机订阅和锁屏测试；安卓旧正式环境曾收到通知，不等于本预览或 iPhone 通过。',
+        '每项可在教程里打开真正页面、记录结果并复制测试报告。不用重新注册旧管理员，也不要在备注中填写密码、邀请码或 API Key。'
+      ]
+    },
+    {
       date: '2026-11-13',
-      title: '原管理员 001 已完成手机登录 · 本轮测试入口',
+      title: '历史预览记录：原管理员 001 已完成手机登录（非本次独立 QA 库）',
       items: [
         '本人已在原 11 月 11 日的「小猫」账号环境成功登录；原永久 ID、4 个账号与 4 条会话保留。仅这条测试预览升级，不代表正式 app.mao520.com 已切换。',
         '下一步查看「管理中心」的账号、邀请码记录和操作审计；添加好友、建群与扫一扫都收在聊天首页音乐卡片的爱心菜单里，不再占用通讯录页面。',
@@ -50,17 +61,96 @@
 
   var GUIDES = [
     {
+      id: 'qa-20261114-quickstart', category: '入门', title: '今日第一站 · 集成测试入口与数据隔离',
+      summary: '这是 MAOMAO 原项目的 QA-001 真正部署页面，不是静态截图；预览使用独立数据库，不会带出正式账号和聊天。',
+      location: '本页上方「本次测试环境」→ 桌面 → 教程。',
+      steps: [
+        '先查看「云端 API / 登录与权限 / Web Push」三个实时状态；有一项未就绪，就跳过依赖该项的测试，不要猜测已经接通。',
+        '从这里点「打开小手机桌面」，检查桌面图标和底部导航，旧版功能不应突然消失。',
+        '进入聊天，用一条没有隐私内容的短消息检验保存；返回桌面再进入，确保不会串到其他角色。',
+        '再按下面每一张本轮测试卡依次测试。每一项记录一次通过或失败，最后点击「复制测试报告」。'
+      ],
+      test: '本页能显示真实接口状态，桌面和教程正常打开，测试进度刷新后保留；不要求填写旧管理员密钥。',
+      href: '../index.html', action: '打开小手机桌面'
+    },
+    {
+      id: 'qa-20261114-push', category: '聊天', title: '云端主动消息与锁屏推送 · 区分两端',
+      summary: '角色云端生成消息与系统 Web Push 是两条不同链路。当前预览是否有 VAPID 密钥要看上方实时诊断，不能拿旧安卓通知代替验证。',
+      location: '桌面 → 设置 → 云端主动联系与推送；角色聊天 → 对话设置。',
+      steps: [
+        '先看上方 Web Push 状态：如果写着未配置，就停止这项测试并记录「服务端未就绪」，不要反复授权或安装。',
+        '若状态显示已配置，在账号已登录且设备已注册的前提下，进入云端推送页面查看订阅状态。',
+        '安卓先用同一浏览器在前台测试、再锁屏测试，分别记录是否收到系统通知，以及点通知能否进入正确的角色聊天。',
+        '苹果手机只能以符合条件的 Safari 主屏幕网页 App 实际测试推送；普通网页标签页不能证明 iPhone 后台推送成功。',
+        '不要为了测试把原正式环境设备订阅或聊天记录全部清空。'
+      ],
+      test: '分别记录云端 API、推送配置、安卓前台、安卓锁屏和 iPhone 主屏幕 App 的结果；任何未实测项不标记为通过。',
+      href: '../settings/cloud-push.html', action: '打开云端推送', issue: true
+    },
+    {
+      id: 'qa-20261114-forum', category: '社交', title: '论坛八卦剧情与刷新防重复',
+      summary: '测试角色评论、楼主按既定大纲续写、刷新追加和旧帖保存；缺少 AI API 时只验证已有内容和保存，不把示例当成云端续写。',
+      location: '桌面 → 论坛 → 选一条八卦帖子。',
+      steps: [
+        '打开论坛现有帖子并查看原来的评论和楼主更新，记录最后一条内容。',
+        '按页面的真实刷新入口更新一次，核对旧帖和既有评论没有被清空。',
+        '若该帖子支持 AI 续写且已配置 API，再观察下一段是否延续同一大纲、是否重复讲已经出现的情节。',
+        '返回列表再进入同一帖子，确认时间线顺序和已保存的更新仍在。'
+      ],
+      test: '旧帖不丢失、剧情不重复、角色评论能够加载；没有 AI API 时不要把自动续写记为通过。',
+      href: '../forum/forum.html', action: '打开论坛', issue: true
+    },
+    {
+      id: 'qa-20261114-inspect', category: '角色', title: '查手机 · 备忘录与朋友圈跨角色隔离',
+      summary: '只读取虚构角色手机数据，测试备忘录、朋友圈、浏览历史以及与聊天的联动，不触及真实手机通讯录。',
+      location: '桌面 → 查手机 → 选角色。',
+      steps: [
+        '进入第一位角色虚构手机，打开浏览器历史、备忘录和朋友圈，检查已有内容能加载。',
+        '在允许编辑的备忘录位置录入一条非隐私测试便签，返回后重新打开检查是否保存。',
+        '切换第二位角色，确认第一位角色的便签、朋友圈和浏览记录不会串过去。',
+        '如角色可在聊天中自然提到便签内容，核对上下文；没接 API 时只记录本地保存结果。'
+      ],
+      test: '角色内容分开、可编辑内容不丢失；AI 联动单独验收，不等于查看真实手机。',
+      href: '../inspect-phone/select.html', action: '打开查手机'
+    },
+    {
+      id: 'qa-20261114-theme', category: '外观', title: '主题商城 · 真实主题预览与切换',
+      summary: '直接在原主题商城测试，现有聊天主题和聊天气泡要分别保存；不要以独立演示页代替真正聊天页面。',
+      location: '桌面 → 主题商城 → 主题 / 分类 / 我的。',
+      steps: [
+        '在主题商城打开已存在的主题详情，切换聊天首页与聊天详情预览。',
+        '只在测试环境应用一种主题，返回原聊天首页和详情检查字号、留白、图标、气泡大小。',
+        '在气泡分类单独试一种气泡样式，确认不会把其他页面主题强制替换。',
+        '退出浏览器再重进，检查选择是否保存；如遇未完工商品直接记录，不要当成已合并的完整版。'
+      ],
+      test: '商城入口能用，预览不修改真实聊天数据；已可用主题实际生效且刷新后保持。',
+      href: '../theme-store/theme-store.html', action: '打开主题商城', issue: true
+    },
+    {
+      id: 'qa-20261114-wallet', category: '应用', title: '钱包 · 模拟账本与失败恢复',
+      summary: '只测小手机内部的虚拟账本，先读账单再执行非真实的小额演示；不输入银行卡、不进行真实支付。',
+      location: '桌面 → 钱包 → 交易记录。',
+      steps: [
+        '打开钱包查看当前虚拟余额、历史记录和亲属卡相关入口是否正常加载。',
+        '如果环境有安全的模拟交易入口，只做一次明显标记的测试操作，记录交易编号。',
+        '刷新或重新打开账单，检查交易没有重复入账；如果操作失败，不应留下成功的假记录。',
+        '没有模拟交易入口时，只完成只读账单验收，不尝试真实付款。'
+      ],
+      test: '账单加载和角色／账号隔离正确，重复写入或失败恢复需要单独实际验证。',
+      href: '../wallet/wallet.html', action: '打开钱包', issue: true
+    },
+    {
       id: 'qa-001-admin', category: '设置', title: '本轮 ① 管理员后台核对',
-      summary: '001 本人手机登录已完成；继续验收管理中心是否按原账号权限展示，不执行破坏性操作。',
+      summary: '管理员 001 只认云端签发的权限。本次是独立测试库；如果实时诊断显示登录未就绪，跳过此项，不要把旧预览的 001 登录当成当前成功。',
       location: '桌面 → 管理中心。',
       steps: [
         '确认桌面出现「管理中心」，点进去后核对顶部 001 管理员身份。',
-        '进入账号列表，确认能看到原有账号，不创建第二个创始人；当前原数据库共有 4 个账号。',
+        '只有服务器确认当前账号为 super_admin 后才打开账号列表；本次独立预览不应显示其他数据库的历史账号。',
         '打开邀请码管理，只查看已有邀请记录和状态，不生成、不撤销邀请码。',
         '进入操作审计，确认列表可加载且有实际的服务端记录。',
         '返回桌面，再次进入后台，检查导航、内容和身份没有丢失。'
       ],
-      test: '001 能查看管理中心、账号列表、邀请码记录、审计；不会被要求再次注册或输入邀请码。',
+      test: '登录就绪且云端确认管理员后，001 才能看到管理中心；未就绪时要如实记录阻碍，不注册第二个创始人。',
       href: '../admin/admin-center.html', action: '打开管理中心'
     },
     {
@@ -841,8 +931,61 @@
     if (event.target === $('resetModal')) $('resetModal').hidden = true;
   });
 
+  // Only public, read-only endpoints. Never infer push delivery from the
+  // presence of a VAPID public key, or infer founder authority from a prior QA.
+  var qaChecking = false;
+  async function qaRead(url) {
+    try {
+      var response = await fetch(url, {
+        method: 'GET', credentials: 'same-origin', cache: 'no-store',
+        headers: { accept: 'application/json' }
+      });
+      if (!response.ok) return null;
+      var data = await response.json();
+      return data && data.ok === true ? data : null;
+    } catch (error) { return null; }
+  }
+  async function checkQaReadiness() {
+    if (qaChecking) return;
+    qaChecking = true;
+    $('qaRecheck').disabled = true;
+    $('qaCloudStatus').textContent = '检测中…';
+    $('qaAccountStatus').textContent = '检测中…';
+    $('qaPushStatus').textContent = '检测中…';
+    try {
+      var responses = await Promise.all([
+        qaRead('/api/health'),
+        qaRead('/api/admin/bootstrap/status')
+      ]);
+      var health = responses[0], account = responses[1];
+      var apiReady = health && health.storage === 'durable-object-sqlite';
+      $('qaCloudStatus').textContent = apiReady
+        ? '已连接独立云端 SQLite；尚需手机实际验证功能'
+        : '当前接口不可用，先记录问题，不要测试云端写入';
+      if (!account) {
+        $('qaAccountStatus').textContent = '暂不可用；先测试不依赖账号的入口';
+      } else if (account.identityMode === 'delegated') {
+        $('qaAccountStatus').textContent = account.signInReady === true && account.identityAuthorityConnected === true
+          ? '统一原账号服务已连接；仍需实际登录确认身份'
+          : '统一原账号暂未就绪；不要在预览重复注册';
+      } else if (account.initialized === true) {
+        $('qaAccountStatus').textContent = '独立测试库已有账号；仅用这套环境的账号登录';
+      } else {
+        $('qaAccountStatus').textContent = '测试账号尚未就绪；管理员 001 此项暂缓';
+      }
+      $('qaPushStatus').textContent = apiReady && health.vapidConfigured === true
+        ? '已配置服务端密钥；仍须订阅和安卓／苹果锁屏验收'
+        : '本测试环境尚未就绪；不要把其他环境的通知算进来';
+    } finally {
+      qaChecking = false;
+      $('qaRecheck').disabled = false;
+    }
+  }
+  $('qaRecheck').addEventListener('click', checkQaReadiness);
+
   renderUpdates();
   renderFilters();
   renderGuides();
   renderApps();
+  checkQaReadiness();
 })();
