@@ -148,7 +148,13 @@ test('retry cannot overwrite the first recoverable bookmark or silently rotate a
 });
 
 test('private execution receipts are persisted without bookmark, secret or account data', async () => {
-  const { env, calls } = setup();
+  const { env, calls, setResponse } = setup();
+  // Unlike direct unit tests using the injectable clock, scheduled() uses
+  // real wall time. Keep this synthetic window aligned with Date.now().
+  const now = Date.now();
+  env.FOUNDER_RUN_NOT_BEFORE_MS = String(now - 30000);
+  env.FOUNDER_RUN_NOT_AFTER_MS = String(now + 30000);
+  setResponse(Response.json({ ok: true, recorded: true, recordedAt: now - 5000 }));
   const receipts = new Map();
   env.RELEASE_AUDIT = {
     async put(key, value, options) {
@@ -163,7 +169,7 @@ test('private execution receipts are persisted without bookmark, secret or accou
   for (const [key, receipt] of receipts) {
     assert.equal(receipt.code, 'checkpoint_recorded');
     assert.equal(receipt.ok, true);
-    assert.equal(receipt.recordedAt, NOW - 5000);
+    assert.equal(receipt.recordedAt, now - 5000);
     assert.equal(Number.isSafeInteger(receipt.executedAt), true);
     assert.ok(!JSON.stringify(receipt).includes(SECRET));
     assert.doesNotMatch(JSON.stringify(receipt), /bookmark|password|hash|MAO-/);
