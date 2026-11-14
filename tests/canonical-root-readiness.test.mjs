@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {auditCanonicalRootReadiness, ROOT_HOST, ROOT_WORKER,
-  TRIAL_HOST, TRIAL_EDGE_WORKER, QA_WORKER
+  TRIAL_HOST, TRIAL_EDGE_WORKER, QA_WORKER, ROOT_NAMESPACE_ID, QA_NAMESPACE_ID
 } from '../scripts/release/verify-canonical-root-readiness.mjs';
 
 const chosen='MAO-SYNTHFOUNDER001';
-const liveNs='a'.repeat(32), qaNs='b'.repeat(32);
+const liveNs=ROOT_NAMESPACE_ID, qaNs=QA_NAMESPACE_ID;
 const rootBindings=[
   {name:'ASSETS',type:'assets'},
   {name:'CLOUD_DB',type:'durable_object_namespace',
