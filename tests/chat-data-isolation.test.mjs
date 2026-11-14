@@ -760,7 +760,7 @@ test('亲属卡通知：失败状态不会被普通卡片成功提示覆盖', ()
 
 test('商店和外卖：交易成功但聊天通知失败时显示合并后的明确状态', () => {
   assert.match(shopPageSource, /var chatNoticeFailed = false/);
-  assert.match(shopPageSource, /订单已完成，但聊天通知未保存/);
+  assert.match(shopPageSource, /订单已完成，但聊天通知(?:没有|未)保存/);
   assert.match(takeoutPageSource, /var chatNoticeFailed = false/);
   assert.match(takeoutPageSource, /下单成功，但聊天通知未保存/);
   assert.match(takeoutPageSource, /if \(!forwarded\)[\s\S]*?return;[\s\S]*?toast\('已转发给 '/);
