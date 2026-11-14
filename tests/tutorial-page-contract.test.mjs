@@ -102,6 +102,26 @@ test('current founder QA guide links to real admin, social and chat screens with
   assert.match(guideScript, /不要填写密码/);
 });
 
+test('2026-11-14 QA guide is inside the real desktop app and gates unverified server claims', () => {
+  assert.match(guideHtml, /id="qaReadinessTitle"/);
+  assert.match(guideHtml, /id="qaCloudStatus"/);
+  assert.match(guideHtml, /id="qaAccountStatus"/);
+  assert.match(guideHtml, /id="qaPushStatus"/);
+  assert.match(guideHtml, /id="qaRecheck"/);
+  assert.match(guideHtml, /tutorial\.js\?v=20261114qa1/);
+  assert.match(guideScript, /id: 'qa-20261114-quickstart'/);
+  for (const id of ['qa-20261114-push', 'qa-20261114-forum',
+    'qa-20261114-inspect', 'qa-20261114-theme', 'qa-20261114-wallet']) {
+    assert.ok(guideScript.includes("id: '" + id + "'"), 'missing staged QA guide ' + id);
+  }
+  assert.match(guideScript, /qaRead\('\/api\/health'\)/);
+  assert.match(guideScript, /qaRead\('\/api\/admin\/bootstrap\/status'\)/);
+  assert.match(guideScript, /health\.vapidConfigured === true/);
+  assert.match(guideScript, /account\.identityAuthorityConnected === true/);
+  assert.match(guideScript, /checkQaReadiness\(\)/);
+  assert.match(guideScript, /不能把旧预览的 001 登录当成当前成功/);
+});
+
 test('all tutorial guide deep links resolve to real HTML pages', () => {
   const guideRoutes = [...guideScript.matchAll(/href:\s*'\.\.\/([^']+\.html)'/g)].map((match) => match[1]);
   assert.ok(guideRoutes.length >= 50, 'expected route links throughout the complete guide catalog');
@@ -151,7 +171,7 @@ test('tutorial workflow enforces a guide update when user-facing app pages chang
 test('PWA app shell caches the full guide bundle and has a matching test command', () => {
   assert.ok(Number(/phone-app-pwa-v(\d+)/.exec(serviceWorker)?.[1]) >= 206, 'tutorial update must ship with the newer authenticated PWA cache');
   assert.ok(serviceWorker.includes("'./tutorial/tutorial.html'"));
-  assert.ok(serviceWorker.includes("'./tutorial/tutorial.js?v=20261113chats1'"));
+  assert.ok(serviceWorker.includes("'./tutorial/tutorial.js?v=20261114qa1'"));
   assert.equal(packageJson.scripts['test:tutorial'], 'node --test tests/tutorial-page-contract.test.mjs');
 });
 
