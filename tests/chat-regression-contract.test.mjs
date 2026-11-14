@@ -5334,3 +5334,40 @@ test('财务记账和亲属卡页面缺锁时拒绝写入，正常锁内记账�
   assert.equal(good.ok, true);
   assert.equal(JSON.parse(values.get('finance_records')).length, 2);
 });
+
+
+test('共享财务流水写入 API 不可绕过锁，持锁重试只保存一份明细', async () => {
+  const values = new Map();
+  let writes = 0;
+  const localStorage = {
+    getItem: key => values.has(key) ? values.get(key) : null,
+    setItem: (key, value) => { writes++; values.set(key, String(value)); }
+  };
+  const window = {
+    navigator: { locks: {
+      request: (_name, options, callback) => {
+        assert.equal(options.mode, 'exclusive');
+        return Promise.resolve().then(callback);
+      }
+    } },
+    localStorage
+  };
+  runInNewContext(walletLedgerSource, { window });
+  const ledger = window.MaoMaoWalletLedger;
+  const rows = [{ amount: 12, type: 'expense', category: '购物', paymentLineIndex: 0 }];
+  const direct = ledger.recordFinanceLines('finance-payment-1', rows, 'finance_records');
+  assert.equal(direct.ok, false);
+  assert.equal(direct.reason, 'mutation-lock-required');
+  assert.equal(writes, 0);
+  const saved = await ledger.runExclusive(() =>
+    ledger.recordFinanceLines('finance-payment-1', rows, 'finance_records'));
+  assert.equal(saved.ok, true);
+  assert.equal(saved.replayed, false);
+  const repeated = await ledger.runExclusive(() =>
+    ledger.recordFinanceLines('finance-payment-1', rows, 'finance_records'));
+  assert.equal(repeated.ok, true);
+  assert.equal(repeated.replayed, true);
+  assert.equal(writes, 1, 'a replay must not duplicate the stored payment row');
+  assert.equal(JSON.parse(values.get('finance_records')).length, 1);
+  assert.equal(ledger.hasActiveMutationLock(), false);
+});
