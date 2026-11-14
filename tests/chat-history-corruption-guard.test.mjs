@@ -89,3 +89,36 @@ test('PhoneStorage throwing must not fall back to overwriting localStorage', () 
   assert.equal(chat.bytes(), raw);
   assert.equal(chat.writes(), 0);
 });
+
+test('corrupt primary key blocks a valid-looking PhoneStorage duplicate', () => {
+  const raw = '{broken-primary';
+  const chat = fixture(raw, {
+    storage: {
+      getChatHistory() { return [{ role: 'received', text: 'stale duplicate' }]; },
+      saveChatHistory() { throw Error('must never write a corrupt conversation'); }
+    }
+  });
+  assert.equal(chat.read().length, 0);
+  assert.equal(chat.write([{ role: 'user', text: 'not persisted' }]), false);
+  assert.equal(chat.bytes(), raw);
+  assert.equal(chat.writes(), 0);
+  assert.equal(chat.initialized(), 0);
+});
+
+test('valid empty primary key is authoritative over stale v2 duplicate', () => {
+  const chat = fixture('[]', {
+    storage: { getChatHistory() { return [{ text: 'stale duplicate' }]; } }
+  });
+  assert.equal(chat.read().length, 0);
+  assert.equal(chat.initialized(), 0);
+  assert.equal(chat.writes(), 0);
+});
+
+test('absent primary key may still recover legacy v2 history without welcome overwrite', () => {
+  const chat = fixture(null, {
+    storage: { getChatHistory() { return [{ role: 'received', text: 'v2 history' }]; } }
+  });
+  assert.equal(chat.read()[0].text, 'v2 history');
+  assert.equal(chat.initialized(), 0);
+  assert.equal(chat.writes(), 0);
+});
