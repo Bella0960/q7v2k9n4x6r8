@@ -21,7 +21,11 @@
 
     var locks = global.navigator && global.navigator.locks;
     if (locks && typeof locks.request === 'function') {
-      return locks.request(LOCK_NAME, { mode: 'exclusive' }, function () {
+      var lockOptions = { mode: 'exclusive' };
+      if (options.ifAvailable === true) lockOptions.ifAvailable = true;
+      return locks.request(LOCK_NAME, lockOptions, function (lock) {
+        // A non-blocking payment must never run without acquiring the lock.
+        if (options.ifAvailable === true && !lock) return false;
         activeMutationLocks += 1;
         var result;
         try {
