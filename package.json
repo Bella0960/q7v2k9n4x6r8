@@ -52,7 +52,7 @@
     "test:forum:stories": "node --test tests/forum-gossip-story.test.mjs tests/forum-world-events.test.mjs",
     "test:release:accounts": "node --test tests/account-password-kdf.test.mjs tests/account-auth-contract.test.mjs tests/account-entry-runtime.test.mjs tests/account-bootstrap-runtime.test.mjs tests/account-storage-isolation.test.mjs tests/admin-center-ui.test.mjs tests/account-main-integration.test.mjs tests/worker-page-auth-runtime.test.mjs tests/production-account-deploy-guard.test.mjs tests/account-staging-readiness.test.mjs tests/account-local-runner-contract.test.mjs tests/cloudflare-namespace-inventory.test.mjs tests/delegated-identity-bridge.test.mjs tests/founder-legacy-sqlite-upgrade.test.mjs tests/founder-cutover.test.mjs tests/founder-private-checkpoint.test.mjs tests/founder-private-runner.test.mjs tests/release-staged-account-version.test.mjs",
     "test:release:features": "node --test tests/forum-gossip-story.test.mjs tests/forum-world-events.test.mjs tests/inspect-feature-contract.test.mjs tests/forum-chat-blockers.test.mjs",
-    "test:release:regressions": "node --test tests/chat-regression-contract.test.mjs tests/chat-data-isolation.test.mjs tests/chat-reply-bubble-mode.test.mjs tests/tutorial-page-contract.test.mjs tests/media-backup.test.mjs",
+    "test:release:regressions": "node --test tests/chat-regression-contract.test.mjs tests/chat-data-isolation.test.mjs tests/chat-reply-bubble-mode.test.mjs tests/tutorial-page-contract.test.mjs tests/media-backup.test.mjs && npm run test:chat:history",
     "test:release:gate": "npm run test:release:accounts && npm run test:release:features && npm run test:release:regressions && npm run test:release:extended",
     "test:release:artifacts": "node --test tests/pwa-navigation-cache.test.mjs tests/default-desktop-layout.test.mjs tests/mao-social-dist-contract.test.mjs",
     "postbuild": "npm run test:release:artifacts",
@@ -64,7 +64,8 @@
     "test:accounts:delegated": "node --test tests/delegated-identity-bridge.test.mjs",
     "test:accounts:legacy-upgrade": "node --test tests/founder-legacy-sqlite-upgrade.test.mjs",
     "test:social:legacy-mobile": "node --test tests/mao-social-mobile-runtime.test.mjs",
-    "test:cloud:founder": "node --test tests/cloud-push-founder-integration.test.mjs tests/cloud-webpush-transport.test.mjs tests/cloud-push-service-worker-display.test.mjs"
+    "test:cloud:founder": "node --test tests/cloud-push-founder-integration.test.mjs tests/cloud-webpush-transport.test.mjs tests/cloud-push-service-worker-display.test.mjs",
+    "test:chat:history": "node --test tests/chat-history-corruption-guard.test.mjs"
   },
   "devDependencies": {
     "playwright": "^1.64.1",
