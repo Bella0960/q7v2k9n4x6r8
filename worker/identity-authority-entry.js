@@ -45,20 +45,6 @@ export async function handlePermanentIdentityRequest(request, env) {
   if (typeof storage?.idFromName !== 'function' || typeof storage?.get !== 'function') {
     return deny(503, 'IDENTITY_STORAGE_UNAVAILABLE');
   }
-  // Temporary initialization probe for an otherwise private Worker. The
-  // deployment disables this flag and workers.dev immediately afterwards.
-  if (route === 'GET /__identity_storage_init' &&
-      env.MAO_IDENTITY_ALLOW_INIT_PROBE === 'true' &&
-      !url.search) {
-    const stub = storage.get(storage.idFromName(OBJECT_NAME));
-    const response = await stub.fetch(new Request(
-      AUTHORITY_ORIGIN + '/api/admin/bootstrap/status'
-    ));
-    return Response.json({ ready: response.ok }, {
-      status: response.ok ? 200 : 503,
-      headers: { 'cache-control': 'no-store' }
-    });
-  }
   if (url.origin !== AUTHORITY_ORIGIN || url.search || !ROUTES.has(route)) {
     return deny(404, 'IDENTITY_ROUTE_DENIED');
   }

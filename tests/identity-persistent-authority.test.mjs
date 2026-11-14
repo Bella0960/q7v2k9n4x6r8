@@ -39,6 +39,8 @@ test('permanent identity config has a unique non-production DO and no route to o
   assert.ok(!('zone_id' in config));
   assert.ok(!('assets' in config));
   assert.equal(config.preview_urls,false);
+  assert.equal(config.workers_dev,false,'permanent identity storage must not have a public hostname');
+  assert.ok(!('vars' in config),'temporary initialization flags must be removed');
   assert.ok(!JSON.stringify(config).includes('MAO-OXHBDBWCOIHPBBYN'));
   assert.ok(!('MAO_IDENTITY_BRIDGE_SECRET' in (config.vars||{})));
 });
@@ -96,14 +98,11 @@ test('forwards only authorized original login and session operations',async()=>{
   assert.equal(seen.length,3);
   assert.equal(seen.every(req=>req.headers.get('x-mao-identity-bridge')===null),true);
 });
-test('no migration health endpoint remains available without temporary config',async()=>{
+test('migration health route is always disabled, even when a stale flag is supplied',async()=>{
   const {env,seen}=environment();
   const req=new Request(origin+'/__identity_storage_init');
   assert.equal((await handlePermanentIdentityRequest(req,env)).status,404);
-  assert.equal(seen.length,0);
   env.MAO_IDENTITY_ALLOW_INIT_PROBE='true';
-  const ready=await handlePermanentIdentityRequest(req,env);
-  assert.equal(ready.status,200);
-  assert.deepEqual(await ready.json(),{ready:true});
-  assert.equal(seen.length,1);
+  assert.equal((await handlePermanentIdentityRequest(req,env)).status,404);
+  assert.equal(seen.length,0);
 });
