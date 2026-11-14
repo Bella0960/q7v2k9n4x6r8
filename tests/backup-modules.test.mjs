@@ -27,7 +27,7 @@ function browser(initial={}) {
     console,Date,Promise,Blob,setTimeout,clearTimeout,URL,confirm:()=>true};
   runInNewContext(registrySource,ctx,{filename:'backup-modules.js'});
   const source=backupSource.replace(injection,
-    '    window.__probe = { snapshot, validateBackup, restoreScoped, restoreStore, backupTargets, neverBackupKey };\\n'+injection);
+    '    window.__probe = { snapshot, validateBackup, restoreScoped, restoreStore, backupTargets, neverBackupKey };\n'+injection);
   runInNewContext(source,ctx,{filename:'backup.js'});
   return {reg:win.MAOMAOBackupRegistry,tools:win.__probe,storage};
 }
