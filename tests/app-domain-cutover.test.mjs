@@ -6,11 +6,11 @@ import app from '../worker-app-cutover.js';
 const config = JSON.parse(readFileSync(new URL('../wrangler.app.cutover.jsonc', import.meta.url), 'utf8'));
 const request = (path, init) => new Request('https://app.mao520.com' + path, init);
 
-test('candidate targets the paid official subdomain and its existing backend, never QA or a fresh database', () => {
+test('app.mao520.com is the sole trial origin and points ONLY at isolated QA, never production', () => {
   assert.equal(config.name, 'curly-dream-324c');
   assert.equal(config.main, 'worker-app-cutover.js');
   assert.equal(config.vars.MAO_APP_CUTOVER_ENABLED, 'false');
-  assert.deepEqual(config.services, [{ binding: 'MAO_APP_BACKEND', service: 'mao' }]);
+  assert.deepEqual(config.services, [{ binding: 'MAO_APP_BACKEND', service: 'maomao-aw-qa-20261114' }]);
   assert.equal(config.assets.binding, 'ASSETS');
   assert.equal(config.assets.run_worker_first, true);
   assert.equal(config.durable_objects, undefined);
@@ -88,10 +88,15 @@ test('enabled cutover fails closed when binding is absent or backend is unavaila
   assert.equal((await offline.json()).error.code, 'APP_BACKEND_UNAVAILABLE');
 });
 
-test('an enabled production adapter does not serve another hostname as the official app', async () => {
+test('trial adapter never serves production mao520.com or another hostname', async () => {
   const r = await app.fetch(new Request('https://preview.mao520.com/api/accounts/me'), {
     MAO_APP_CUTOVER_ENABLED: 'true',
     MAO_APP_BACKEND: { fetch: async () => { throw Error('must not call backend on mismatched host'); } }
   });
   assert.equal(r.status, 404);
+  const official = await app.fetch(new Request('https://mao520.com/api/accounts/me'), {
+    MAO_APP_CUTOVER_ENABLED: 'true',
+    MAO_APP_BACKEND: { fetch: async () => { throw Error('trial worker must never serve official hostname'); } }
+  });
+  assert.equal(official.status, 404);
 });
