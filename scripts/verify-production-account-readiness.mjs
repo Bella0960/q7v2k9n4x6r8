@@ -162,6 +162,20 @@ async function verify() {
   const appGateway = domains.some(d => d?.hostname === liveHost && d?.service === OFFICIAL_EDGE_SCRIPT)
     ? await getActiveWorkerVersion({ accountId, scriptName: OFFICIAL_EDGE_SCRIPT, token })
     : null;
+  // Production cannot pass merely because some *other* administrator has
+  // initialized the backend. The four live stores must retain the selected
+  // 001 and every existing member; query only aggregate counts on the actual
+  // deployed Durable Object namespaces (never a staged/Preview upload).
+  const { auditCloudflareAccounts } = await import('./release/audit-live-account-inventory.mjs');
+  const inventory = await auditCloudflareAccounts({
+    accountId, token, founderId: String(process.env.MAO_EXPECTED_FOUNDER_ID || '')
+  });
+  if (inventory.inventoryIssues.length) {
+    for (const issue of inventory.inventoryIssues)
+      console.error('BLOCKED: ' + issue);
+    throw new Error('Live account continuity not ready: ' +
+      inventory.inventoryIssues.length + ' unmet condition(s)');
+  }
   const secrets = production.bindings.filter(item => item.type === 'secret_text');
   // No registration POST, login credentials, secret values or admin privileges.
   // The active existing production origin must ALREADY have server-authorized 001.
