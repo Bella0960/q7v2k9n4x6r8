@@ -115,7 +115,7 @@ test('original founder QA phone has one-stop final acceptance and read-only envi
   assert.match(guideScript, /readPublicStatus\('\/api\/admin\/bootstrap\/status'\)/);
   assert.match(guideScript, /health\.vapidConfigured === true/);
   assert.match(guideScript, /account\.identityMode === 'delegated'/);
-  assert.match(guideHtml, /tutorial\.js\?v=20261114founder-accept1/);
+  assert.match(guideHtml, /tutorial\.js\?v=20261114founder-accept2/);
   assert.match(guideScript, /昨天已实际验收的管理员登录、真人好友聊天和安卓锁屏通知/);
   assert.match(guideScript, /主记录损坏时暂停保存/);
   assert.match(guideScript, /统一账本新 PR #283 未完结/);
