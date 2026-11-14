@@ -2618,6 +2618,7 @@ test('亲属卡独立存储成功但聊天记录失败时，不伪造聊天卡�
     contactName: '角色',
     window: {
       MaoMaoWalletLedger: {
+        supportsCrossTabLock: () => true,
         runExclusive: async (task) => {
           lockDepth += 1;
           try { return await task(); }
@@ -3356,26 +3357,20 @@ test('统一钱包锁会串行化同源不同页面的入账与支出', async ()
   assert.deepEqual(operations, ['chat-in', 'chat-out', 'shop-in', 'shop-out', 'wallet-in', 'wallet-out']);
 });
 
-test('不支持 Web Locks 的浏览器只提供页面内队列并明确暴露降级', async () => {
-  const sandbox = { window: { navigator: {} } };
-  runInNewContext(walletLedgerSource, sandbox);
-  const ledger = sandbox.window.MaoMaoWalletLedger;
-  assert.equal(ledger.supportsCrossTabLock(), false);
-  const notices = [];
-  const order = [];
-  await Promise.all([
-    ledger.runExclusive(async () => {
-      order.push('first-start');
-      await Promise.resolve();
-      order.push('first-end');
-    }, { onFallback: () => notices.push('fallback') }),
-    ledger.runExclusive(async () => {
-      order.push('second-start');
-      order.push('second-end');
-    }, { onFallback: () => notices.push('fallback') })
-  ]);
-  assert.deepEqual(order, ['first-start', 'first-end', 'second-start', 'second-end']);
-  assert.deepEqual(notices, ['fallback'], 'fallback warning is emitted only once per page');
+test('共享钱包锁在无 Web Locks 时始终拒绝执行，禁止页内降级队列写入', async () => {
+  for (const navigator of [undefined, {}, { locks: { request: null } }]) {
+    const sandbox = { window: { navigator } };
+    runInNewContext(walletLedgerSource, sandbox);
+    const ledger = sandbox.window.MaoMaoWalletLedger;
+    assert.equal(ledger.supportsCrossTabLock(), false);
+    let executions = 0;
+    const attempts = [ledger.runExclusive(() => { executions++; }, { onFallback: () => {} }),
+      ledger.runExclusive(() => { executions++; })];
+    for (const attempt of attempts) {
+      await assert.rejects(attempt, error => error.code === 'cross-tab-lock-unavailable');
+    }
+    assert.equal(executions, 0, 'neither task must run on the page-local fallback');
+  }
 });
 
 test('聊天详情页的多气泡呈现队列只声明一次', () => {
@@ -3414,6 +3409,7 @@ test('亲属卡所有状态变更与商店外卖消费共用钱包锁', async ()
     currentCharacter: { id: 'role-ai', name: '角色' },
     window: {
       MaoMaoWalletLedger: {
+        supportsCrossTabLock: () => true,
         runExclusive: task => {
           const run = roleLockQueue.then(async () => {
             roleLockDepth += 1;
@@ -3460,6 +3456,7 @@ test('亲属卡所有状态变更与商店外卖消费共用钱包锁', async ()
   const pageSandbox = {
     window: {
       MaoMaoWalletLedger: {
+        supportsCrossTabLock: () => true,
         runExclusive: (task) => {
           const next = lockQueue.then(async () => {
             lockDepth += 1;
