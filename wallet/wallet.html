@@ -851,6 +851,11 @@
         amountError.textContent = '钱包保护模块尚未加载，请刷新页面后重试';
         return;
       }
+      if (typeof ledger.supportsCrossTabLock !== 'function' ||
+          !ledger.supportsCrossTabLock()) {
+        amountError.textContent = '当前浏览器不支持跨页面钱包锁，充值和提现已暂停，未修改余额';
+        return;
+      }
       await ledger.runExclusive(function () {
         var signature = JSON.stringify({ mode: selectedMode, amount: val });
         var transactionId = ledger.getOrCreatePendingCheckout(
