@@ -81,3 +81,20 @@ HTML 的 JS/CSS 引用已更新版本参数，避免旧缓存继续执行原跳�
 用户随后反馈“我刚刚试了测试，没问题”，并提供 Android 系统通知中心截图。截图显示 Chrome 来自独立 QA 域名 `maomao-aw-qa-20261114.miamor520000.workers.dev` 的“MAOMAO · 云端测试通知”，正文“这条通知由云端推送到当前浏览器”。这是设备系统实际显示远程测试通知的证据，Android 远程测试推送显示验收记为 PASS，不再仅标为配置就绪或推送服务接受。
 
 截图没有证明点击通知回流、长期后台投递、iPhone 送达或账号列表/邀请码/审计可用；这些仍不标为通过。用户未单独展示管理员中心页面，本次通知截图不作为 001 全部管理功能的证明。截图含其他私人通知，不复制进公开仓库。
+
+## 正式发布条件评估 — 2026-11-14 21:07 UTC
+
+用户授权：如果复核判断已经适合正式版，可以直接发布。该授权是以发布条件满足为前提，本次判断 **NOT READY**，没有执行正式合并、部署、域名切换、账号迁移或恢复操作。
+
+重新核对远程 main 为 `1cde356c77957c1a202ea6bed7212cb067382fff`，#285 为 `071caffe9a35fca812404e1356eb8bb0ff490dab`；#285 仍 Draft，#291 的修复仍为独立分支。不能将 #291 直接当成完整、已验收正式版。
+
+读取各 Worker 当前单一 100% 部署版本（不采用最新上传设置冒充线上版本），并取得完整 52 条 DO namespace 清单。将真实元数据和 HTTPS 探测结果传给项目 `auditProductionAccountReadiness`，对部署工作流指定的正式入口 `https://app.mao520.com` 得到：
+
+- `PRODUCTION_DOMAIN_TARGET_MISMATCH`：该域名实际仍绑定只有 ASSETS 的 `curly-dream-324c`，不是门禁要求的 `mao`。
+- `LIVE_ACCOUNT_STATUS_NOT_200`：正式入口 `/api/admin/bootstrap/status` 实际 HTTP 404；同域 `/api/push/config` 也为 404。
+
+同时核对 `mao520.com` 绑定 `mao-auth-preview`，账号状态与推送配置 HTTP 200；这证明另一个账号入口可用，不证明 `app.mao520.com` 的同源账号/推送链路已经接通。`preview.mao520.com` 的 `mao` 域名映射当前 enabled=false。不能盲目覆盖路由或切换到空/不同身份库。
+
+其他未完成条件：001 的账号/邀请码/审计管理仍是明确的中央托管不可用状态；正式身份与现有浏览器数据连续性、可恢复的线上备份/恢复演练尚无本轮通过证据；iPhone 真机推送待用户后续测试。Android Chrome 远程测试通知通过仍然有效，但不能替代这些条件。
+
+只读门禁证据保存在 `/workspace/maomao-acceptance/production-readiness-result.json`（releaseReady=false）及对应 config/live JSON。下一步先完成正式同源账号方案、身份/数据连续性与恢复验证、001 管理接通和必要的手机验收，再利用用户已经给出的有条件发布授权推进；不可用换域名、创建第二管理员或复制 QA 数据替代发布条件。
