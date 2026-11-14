@@ -5423,7 +5423,7 @@ test('钱包所有底层写口必须持有 Web Lock：余额、回滚、待结�
     'repeated confirmation must not change the wallet balance');
   assert.equal(await ledger.runExclusive(() =>
     ledger.restoreWalletSnapshot(committed.raw, null)), true);
-  assert.equal(localStorage.getItem('workData'), null,
+  assert.equal(storage.getItem('workData'), null,
     'conditional rollback can restore the original first-use wallet state');
 
   const cancelledId = await ledger.runExclusive(() =>
