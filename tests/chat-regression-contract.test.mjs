@@ -4181,17 +4181,17 @@ test('用户红包/转账发送入口也使用共享钱包锁并刷新 chat-extr
 });
 
 
-test('钱包结算编号跨页面刷新复用，支付方式不能在未完成交易中被偷偷更换', () => {
+test('钱包结算编号跨页面刷新复用，支付方式不能在未完成交易中被偷偷更换', async () => {
   const values = new Map();
   const storage = {
     getItem: (key) => values.has(key) ? values.get(key) : null,
     setItem: (key, value) => { values.set(key, String(value)); },
     removeItem: (key) => { values.delete(key); }
   };
-  const firstWindow = { navigator: {}, localStorage: storage };
+  const firstWindow = { navigator: { locks: { request: (_name,_options,task) => Promise.resolve().then(task) } }, localStorage: storage };
   runInNewContext(walletLedgerSource, { window: firstWindow });
   const firstLedger = firstWindow.MaoMaoWalletLedger;
-  const firstId = firstLedger.getOrCreatePendingCheckout('shop', '[{"sku":1}]', 'close_pay');
+  const firstId = (await firstLedger.runExclusive(() => firstLedger.getOrCreatePendingCheckout('shop', '[{"sku":1}]', 'close_pay')));
   assert.ok(firstId, 'a pending checkout ID must be persisted before payment');
   assert.equal(firstLedger.isPendingCheckout(firstId), true,
     'the ledger must report a readable pending transaction');
@@ -4202,55 +4202,55 @@ test('钱包结算编号跨页面刷新复用，支付方式不能在未完成�
   assert.equal(firstLedger.getPendingCheckout('missing'), undefined,
     'a readable store with no matching transaction is different from an unreadable store');
 
-  const secondWindow = { navigator: {}, localStorage: storage };
+  const secondWindow = { navigator: { locks: { request: (_name,_options,task) => Promise.resolve().then(task) } }, localStorage: storage };
   runInNewContext(walletLedgerSource, { window: secondWindow });
   const secondLedger = secondWindow.MaoMaoWalletLedger;
   assert.equal(
-    secondLedger.getOrCreatePendingCheckout('shop', '[{"sku":1}]', 'close_pay'),
+    (await secondLedger.runExclusive(() => secondLedger.getOrCreatePendingCheckout('shop', '[{"sku":1}]', 'close_pay'))),
     firstId,
     'a reload must recover the same transaction ID'
   );
   assert.equal(
-    secondLedger.getOrCreatePendingCheckout('shop', '[{"sku":1}]', 'normal'),
+    (await secondLedger.runExclusive(() => secondLedger.getOrCreatePendingCheckout('shop', '[{"sku":1}]', 'normal'))),
     null,
     'an unfinished transaction cannot silently switch payment methods'
   );
   assert.equal(
-    secondLedger.getOrCreatePendingCheckout('shop', '[{"sku":2}]', 'close_pay'),
+    (await secondLedger.runExclusive(() => secondLedger.getOrCreatePendingCheckout('shop', '[{"sku":2}]', 'close_pay'))),
     null,
     'changing cart contents cannot bypass an unresolved checkout on the same channel'
   );
-  assert.equal(secondLedger.completePendingCheckout(firstId), true);
+  assert.equal((await secondLedger.runExclusive(() => secondLedger.completePendingCheckout(firstId))), true);
   assert.equal(secondLedger.isPendingCheckout(firstId), false,
     'a completed transaction must no longer block a new checkout');
   const storedAfterCompletion = JSON.parse(storage.getItem('maomao_wallet_pending_checkouts_v1'));
   assert.equal(storedAfterCompletion.find((item) => item.id === firstId).status, 'completed',
     'completion must be persisted before a checkout can be discarded');
-  const nextId = secondLedger.getOrCreatePendingCheckout('shop', '[{"sku":1}]', 'normal');
+  const nextId = (await secondLedger.runExclusive(() => secondLedger.getOrCreatePendingCheckout('shop', '[{"sku":1}]', 'normal')));
   assert.ok(nextId);
   assert.notEqual(nextId, firstId, 'a completed checkout allows a new intentional purchase');
   const storedAfterNextCheckout = JSON.parse(storage.getItem('maomao_wallet_pending_checkouts_v1'));
   assert.equal(storedAfterNextCheckout.find((item) => item.id === firstId).status, 'completed',
     'starting a new checkout must preserve earlier completed receipts');
-  const cancelledId = secondLedger.getOrCreatePendingCheckout('takeout', '[{"sku":9}]', 'normal');
+  const cancelledId = (await secondLedger.runExclusive(() => secondLedger.getOrCreatePendingCheckout('takeout', '[{"sku":9}]', 'normal')));
   assert.ok(cancelledId, 'a separate channel can start an independent checkout');
-  assert.equal(secondLedger.cancelPendingCheckout(cancelledId), true,
+  assert.equal((await secondLedger.runExclusive(() => secondLedger.cancelPendingCheckout(cancelledId))), true,
     'an unfinished checkout can be cancelled');
   const storedAfterCancellation = JSON.parse(storage.getItem('maomao_wallet_pending_checkouts_v1'));
   assert.equal(storedAfterCancellation.find((item) => item.id === firstId).status, 'completed',
     'cancelling an unfinished checkout must preserve completed transaction receipts');
   assert.equal(storedAfterCancellation.some((item) => item.id === cancelledId), false,
     'cancellation must remove only the requested pending transaction');
-  assert.equal(secondLedger.cancelPendingCheckout(cancelledId), true,
+  assert.equal((await secondLedger.runExclusive(() => secondLedger.cancelPendingCheckout(cancelledId))), true,
     'repeating cancellation after the pending row is gone is idempotent');
-  assert.equal(secondLedger.cancelPendingCheckout(firstId), false,
+  assert.equal((await secondLedger.runExclusive(() => secondLedger.cancelPendingCheckout(firstId))), false,
     'a completed transaction must not be cancellable');
-  assert.equal(secondLedger.completePendingCheckout(firstId), true,
+  assert.equal((await secondLedger.runExclusive(() => secondLedger.completePendingCheckout(firstId))), true,
     'repeating confirmation is idempotent only for a persisted completed receipt');
   const ledgerBeforeMissing = storage.getItem('maomao_wallet_pending_checkouts_v1');
-  assert.equal(secondLedger.completePendingCheckout('missing-checkout-id'), false,
+  assert.equal((await secondLedger.runExclusive(() => secondLedger.completePendingCheckout('missing-checkout-id'))), false,
     'a missing checkout receipt must not be reported as completed');
-  assert.equal(secondLedger.completePendingCheckout(cancelledId), false,
+  assert.equal((await secondLedger.runExclusive(() => secondLedger.completePendingCheckout(cancelledId))), false,
     'a cancelled unfinished checkout cannot later be confirmed as successful');
   assert.equal(storage.getItem('maomao_wallet_pending_checkouts_v1'), ledgerBeforeMissing,
     'failed confirmation must not mutate other checkout receipts');
@@ -4829,7 +4829,7 @@ test('聊天即时收款遇到损坏的既有财务流水时保留原值，不�
   assert.doesNotMatch(source, /getItem\\('finance_records'\\)\\s*\\|\\|\\s*'\\[\\]'/);
 });
 
-test('unified wallet writes: shared ledger validates commits and conditional rollbacks', () => {
+test('unified wallet writes: shared ledger validates commits and conditional rollbacks', async () => {
   const stored = new Map([['workData', JSON.stringify({
     balance: 90, history: [{ type: 'expense', paymentId: 'old', amount: 10 }]
   })]]);
@@ -4839,38 +4839,38 @@ test('unified wallet writes: shared ledger validates commits and conditional rol
     setItem: (key, value) => { writeCount += 1; stored.set(key, String(value)); },
     removeItem: key => { writeCount += 1; stored.delete(key); }
   };
-  const window = { navigator: {}, localStorage: storage };
+  const window = { navigator: { locks: { request: (_name,_options,task) => Promise.resolve().then(task) } }, localStorage: storage };
   runInNewContext(walletLedgerSource, { window });
   const ledger = window.MaoMaoWalletLedger;
   const before = stored.get('workData');
   const next = ledger.readWalletForMutation('workData');
   next.balance = 75;
   next.history.unshift({ type: 'expense', category: 'shop', amount: 15, paymentId: 'new' });
-  const committed = ledger.commitWalletSnapshot(next, before);
+  const committed = (await ledger.runExclusive(() => ledger.commitWalletSnapshot(next, before)));
   assert.equal(committed.ok, true);
   assert.equal(stored.get('workData'), committed.raw);
   assert.equal(ledger.readWalletForMutation('workData').balance, 75);
   assert.equal(ledger.readWalletForMutation('workData').history.length, 2);
-  assert.equal(ledger.commitWalletSnapshot(next, before).reason, 'stale-wallet');
-  assert.equal(ledger.commitWalletSnapshot({ balance: Number.NaN, history: [] }).ok, false);
-  assert.equal(ledger.commitWalletSnapshot({ balance: 3, history: {} }).ok, false);
+  assert.equal((await ledger.runExclusive(() => ledger.commitWalletSnapshot(next, before))).reason, 'stale-wallet');
+  assert.equal((await ledger.runExclusive(() => ledger.commitWalletSnapshot({ balance: Number.NaN, history: [] }))).ok, false);
+  assert.equal((await ledger.runExclusive(() => ledger.commitWalletSnapshot({ balance: 3, history: {} }))).ok, false);
   assert.equal(writeCount, 1, 'invalid and stale transactions must never reach storage');
-  assert.equal(ledger.restoreWalletSnapshot('wrong-version', before), false);
-  assert.equal(ledger.restoreWalletSnapshot(committed.raw, before), true);
+  assert.equal((await ledger.runExclusive(() => ledger.restoreWalletSnapshot('wrong-version', before))), false);
+  assert.equal((await ledger.runExclusive(() => ledger.restoreWalletSnapshot(committed.raw, before))), true);
   assert.equal(stored.get('workData'), before);
   assert.equal(writeCount, 2);
-  assert.equal(ledger.restoreWalletSnapshot(committed.raw, before), false, 'rollback can never apply twice');
+  assert.equal((await ledger.runExclusive(() => ledger.restoreWalletSnapshot(committed.raw, before))), false, 'rollback can never apply twice');
 
   const broken = '{invalid-wallet';
   stored.set('workData', broken);
-  assert.equal(ledger.commitWalletSnapshot({ balance: 1000, history: [] }).reason, 'invalid-store');
+  assert.equal((await ledger.runExclusive(() => ledger.commitWalletSnapshot({ balance: 1000, history: [] }))).reason, 'invalid-store');
   assert.equal(stored.get('workData'), broken, 'damaged wallet remains available for recovery');
-  assert.equal(ledger.restoreWalletSnapshot(broken, '{invalid-previous'), false);
+  assert.equal((await ledger.runExclusive(() => ledger.restoreWalletSnapshot(broken, '{invalid-previous'))), false);
 
   stored.delete('workData');
   const firstUse = ledger.readWalletForMutation('workData');
   assert.equal(firstUse.balance, 1000);
-  assert.equal(ledger.commitWalletSnapshot(firstUse, null).ok, true);
+  assert.equal((await ledger.runExclusive(() => ledger.commitWalletSnapshot(firstUse, null))).ok, true);
 });
 
 test('unified wallet writes: chat, shop, takeout and wallet page use the same commit API', () => {
@@ -4891,7 +4891,7 @@ test('unified wallet writes: chat, shop, takeout and wallet page use the same co
 });
 
 
-test('unified wallet writes: automatic snapshots reject stale balance overwrites', () => {
+test('unified wallet writes: automatic snapshots reject stale balance overwrites', async () => {
   const storageValues = new Map([['workData', JSON.stringify({
     balance: 100, history: [{ paymentId: 'initial', amount: 5 }]
   })]]);
@@ -4901,7 +4901,7 @@ test('unified wallet writes: automatic snapshots reject stale balance overwrites
     setItem: (key, value) => { writes++; storageValues.set(key, String(value)); },
     removeItem: key => { storageValues.delete(key); }
   };
-  const window = { localStorage: storage, navigator: {} };
+  const window = { localStorage: storage, navigator: { locks: { request: (_name,_options,task) => Promise.resolve().then(task) } } };
   runInNewContext(walletLedgerSource, { window });
   const ledger = window.MaoMaoWalletLedger;
 
@@ -4909,12 +4909,12 @@ test('unified wallet writes: automatic snapshots reject stale balance overwrites
   const second = ledger.readWalletForMutation('workData');
   second.balance -= 10;
   second.history.unshift({ paymentId: 'second', amount: 10 });
-  assert.equal(ledger.commitWalletSnapshot(second).ok, true);
+  assert.equal((await ledger.runExclusive(() => ledger.commitWalletSnapshot(second))).ok, true);
   assert.equal(ledger.readWalletForMutation('workData').balance, 90);
 
   first.balance -= 20;
   first.history.unshift({ paymentId: 'first', amount: 20 });
-  assert.equal(ledger.commitWalletSnapshot(first).reason, 'stale-wallet',
+  assert.equal((await ledger.runExclusive(() => ledger.commitWalletSnapshot(first))).reason, 'stale-wallet',
     'a snapshot read before a second tab wrote must not overwrite the new balance');
   assert.equal(ledger.readWalletForMutation('workData').balance, 90);
   assert.equal(ledger.readWalletForMutation('workData').history.length, 2);
@@ -4923,26 +4923,26 @@ test('unified wallet writes: automatic snapshots reject stale balance overwrites
   const fresh = ledger.readWalletForMutation('workData');
   fresh.balance -= 20;
   fresh.history.unshift({ paymentId: 'first', amount: 20 });
-  assert.equal(ledger.commitWalletSnapshot(fresh).ok, true);
+  assert.equal((await ledger.runExclusive(() => ledger.commitWalletSnapshot(fresh))).ok, true);
   assert.equal(ledger.readWalletForMutation('workData').balance, 70);
   assert.equal(writes, 2);
 
   const unsourced = { balance: 0, history: [] };
-  assert.equal(ledger.commitWalletSnapshot(unsourced).reason, 'snapshot-required',
+  assert.equal((await ledger.runExclusive(() => ledger.commitWalletSnapshot(unsourced))).reason, 'snapshot-required',
     'an unversioned wallet snapshot must not replace existing wallet data');
   assert.equal(writes, 2);
 
   const beforeMissing = ledger.readWalletForMutation('workData');
   storageValues.delete('workData');
-  assert.equal(ledger.commitWalletSnapshot(beforeMissing).reason, 'stale-wallet',
+  assert.equal((await ledger.runExclusive(() => ledger.commitWalletSnapshot(beforeMissing))).reason, 'stale-wallet',
     'disappearing storage also invalidates the previously read version');
   const trulyFresh = ledger.readWalletForMutation('workData');
   assert.equal(trulyFresh.balance, 1000);
   storageValues.set('workData', JSON.stringify({ balance: 200, history: [] }));
-  assert.equal(ledger.commitWalletSnapshot(trulyFresh).reason, 'stale-wallet',
+  assert.equal((await ledger.runExclusive(() => ledger.commitWalletSnapshot(trulyFresh))).reason, 'stale-wallet',
     'two first-use tabs must not replace whichever initialized the wallet first');
   storageValues.delete('workData');
-  assert.equal(ledger.commitWalletSnapshot(trulyFresh).ok, true);
+  assert.equal((await ledger.runExclusive(() => ledger.commitWalletSnapshot(trulyFresh))).ok, true);
   assert.equal(ledger.readWalletForMutation('workData').balance, 1000);
 });
 
