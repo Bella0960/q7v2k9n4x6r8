@@ -83,6 +83,19 @@ target DO retains the bookmark privately. Repeat ticks reuse the first
 recent checkpoint and cannot silently replace a stale one; a rotated
 checkpoint needs an explicitly reviewed manual recovery procedure.
 
+**Cloudflare connected-build trap (observed in validation):** When the
+existing `mao-auth-preview` Workers Build ran
+`wrangler deploy --dry-run --config wrangler.release-checkpoint.jsonc`,
+Cloudflare warned that it was overriding the configured Worker name
+`maomao-founder-checkpoint-operator` with the CI target
+`mao-auth-preview`. Because the command was **dry-run**, no Worker was
+modified. **Never execute a non-dry-run deployment of this release-only
+configuration through the existing `mao-auth-preview` or `mao`
+Cloudflare connected-build trigger**, since the builder could overwrite
+the wrong Worker. The operator requires its **own separately reviewed**
+deployment context and an explicit final-name verification. No such
+deployment has been performed.
+
 **Cloudflare limitation:** local Wrangler remote bindings do not support
 direct remote Durable Object access. A synthetic or `--dry-run` test is not
 proof of remote binding resolution or successful live PITR capture.
