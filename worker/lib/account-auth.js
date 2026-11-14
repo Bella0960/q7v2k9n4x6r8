@@ -205,7 +205,9 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
         throw new ApiError(403, 'IDENTITY_AUTHORITY_CHANGED', '权威账号身份已变化，请重新登录');
       }
     }
-    store.touchMaoAccountSession(session.session_id, timestamp);
+    // Revocation or account disable may race with the central issuer request.
+    // Only the final conditional database write may authorize this request.
+    if (store.touchMaoAccountSession(session.session_id, timestamp) === false) return null;
     return session;
   }
 
