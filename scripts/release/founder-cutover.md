@@ -19,3 +19,33 @@ Target founder: `MAO-OXHBDBWCOIHPBBYN`. The selected identity is active in found
 - If a check fails, stop writes, restore the recorded Durable Object checkpoint and revert the Worker version or route changed by the release, then verify both the original founder and existing member. Do not restore over unrelated changes made after the checkpoint.
 
 Synthetic rehearsal: `node --test tests/founder-cutover.test.mjs`.
+
+## Private checkpoint transport — release candidate only
+
+The release candidate defines `POST https://maomao.internal/internal/release/checkpoint`
+**on the Durable Object's private `fetch()` interface**, not on the
+public Worker. Public `worker.fetch()` forwards only `/api/*` to the DO;
+public `/internal/*` requests are not forwarded (regression-tested).
+
+- A separately provisioned high-entropy (48–256 characters, URL-safe)
+  `FOUNDER_RELEASE_OPERATOR_SECRET` is **required** on the target DO Worker.
+  The private caller must have a Cloudflare Worker/DO binding and pass it in
+  `x-maomao-release-secret`. The existing bootstrap secret, cookies, public
+  bootstrap API, founder login and any browser-provided value are **not** valid
+  substitutes. Do not configure this secret on QA automatically or reuse
+  credentials between preview and production.
+- The handler requires HTTPS, the exact `maomao.internal` host, exact path
+  and POST. It returns only `{ ok: true, recorded: true, recordedAt }` with
+  `Cache-Control: no-store`; never a PITR bookmark, SQL, user record or secret.
+  Missing configuration is 404, invalid caller is 403, runtime failure is a
+  fixed 503 message. It cannot restore data or perform the founder cutover.
+- An operator Worker with a **private binding** to the verified live
+  `CloudDatabase` must be independently reviewed before use. Its public HTTP
+  handler must never proxy requests to this internal method; the operator
+  credentials must be provided server-side, and its ability to invoke the
+  method should be limited to an explicit maintenance window.
+- This private transport is **implemented but not deployed to the live Worker**.
+  A successful synthetic test or dry-run does not prove a bookmark was taken
+  from the real `mao520.com` database. A new, securely reviewed execution
+  mechanism and explicit rollback/restore operator procedure remain mandatory
+  before any live account or domain change.
