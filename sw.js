@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v208';
+const CACHE_NAME = 'phone-app-pwa-v209';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 // v196 release: sweep orphaned role-owned media refs during avatar cleanup.
 const APP_SHELL = [
@@ -27,10 +27,23 @@ const APP_SHELL = [
   './forum/forum-world-events.js?v=20261111v1',
   './inspect-phone/select.html',
   './inspect-phone/phone.html',
-  './inspect-phone/inspect-feature.js?v=20261111v1',
-  './tutorial/tutorial.js?v=20261111v4',
+  './shared/js/phone/inspect_account_guard.js?v=20261112v2',
+  './shared/js/phone/inspect_interaction_bridge.js?v=20261112v5',
+  './inspect-phone/inspect-persona-web.js?v=20261112v3',
+  './inspect-phone/inspect-life-clock.js?v=20261112v1',
+  './inspect-phone/inspect-native-view.js?v=20261112v6',
+  './inspect-phone/inspect-native.css?v=20261112v5',
+  './inspect-phone/inspect-feature.js?v=20261112v8',
+  './tutorial/tutorial.js?v=20261114release1',
   './beauty/beauty.html',
   './theme-store/theme-store.html',
+  './theme-store/market-expansion.js?v=20261113m2',
+  './theme-store/market-expansion.css?v=20261113m2',
+  './theme-store/collection-store.js?v=20261112m3',
+  './theme-store/preview-scene.js?v=20261113m7',
+  './theme-store/preview-scene.css?v=20261113m7',
+  './theme-store/storefront.js?v=20261113m12',
+  './theme-store/storefront.css?v=20261113m13',
   './chat/chat/chat.html',
   './chat/contacts/contacts.html',
   './chat/moments/moments.html',
@@ -57,14 +70,23 @@ const APP_SHELL = [
   './assets/takeout/d14-latte.jpg',
   './assets/takeout/d15-croissant.jpg',
   './assets/takeout/d16-bento.jpg',
-  './shared/js/chat-beauty.js?v=20261102v3',
+  './shared/js/chat-beauty.js?v=20261112at1',
   './shared/js/chat-page-theme.js?v=20261102v1',
   './shared/js/wallpaper-store.js?v=20261026v2',
   './shared/css/chat-beauty-runtime.css?v=20261031v1',
   './shared/css/silver-butterfly-theme.css?v=20261102v5',
   './shared/css/wechat-theme-refinements.css?v=20261105v2',
   './shared/css/chat-list-editorial-theme.css?v=20261104v2',
-  './shared/js/chat-list-theme.js?v=20261104v2',
+  './shared/js/chat-list-theme.js?v=20261112at1',
+  './shared/js/wallpaper-store.js?v=20261112m2',
+  './shared/js/atmosphere-icons.js?v=20261112i1',
+  './shared/js/atmosphere-theme.js?v=20261112v1',
+  './shared/js/atmosphere-pages.js?v=20261112p4',
+  './shared/js/atmosphere-composer.js?v=20261112c1',
+  './shared/js/atmosphere-editorial-home.js?v=20261112e1',
+  './shared/css/atmosphere-theme.css?v=20261112v3',
+  './shared/css/atmosphere-pages.css?v=20261112p3',
+  './shared/css/atmosphere-editorial-home.css?v=20261112e1'
   './shared/assets/silver-butterfly-photo.webp',
   './games/games.html',
   './games/cooking.html',
