@@ -4601,34 +4601,41 @@ test('offline face-to-face role card customizer exposes persisted styles and con
 });
 
 
-test('共享账本补齐财务流水时只初始化真正不存在的记录，并对重试保持幂等', () => {
+test('共享账本补齐财务流水时只初始化真正不存在的记录，并对重试保持幂等', async () => {
   const values = new Map();
   const writes = [];
   const localStorage = {
     getItem: (key) => values.has(key) ? values.get(key) : null,
     setItem: (key, value) => { writes.push([key, String(value)]); values.set(key, String(value)); }
   };
-  const window = { navigator: {}, localStorage };
+  const window = {
+    navigator: { locks: {
+      request: (_name, _opts, callback) => Promise.resolve().then(callback)
+    } },
+    localStorage
+  };
   runInNewContext(walletLedgerSource, { window });
   const rows = [
     { amount: 12, type: 'expense', category: '购物', note: '商品A', time: '11月10日', paymentLineIndex: 0 },
     { amount: 8, type: 'expense', category: '购物', note: '商品B', time: '11月10日', paymentLineIndex: 1 }
   ];
-  const first = window.MaoMaoWalletLedger.recordFinanceLines('checkout-1', rows, 'finance_records');
+  const first = await window.MaoMaoWalletLedger.runExclusive(() =>
+    window.MaoMaoWalletLedger.recordFinanceLines('checkout-1', rows, 'finance_records'));
   assert.equal(first.ok, true);
   assert.equal(first.replayed, false);
   const stored = JSON.parse(values.get('finance_records'));
   assert.equal(stored.length, 2);
   assert.deepEqual(stored.map((row) => row.paymentId), ['checkout-1', 'checkout-1']);
   assert.deepEqual(stored.map((row) => row.paymentLineIndex), [0, 1]);
-  const replay = window.MaoMaoWalletLedger.recordFinanceLines('checkout-1', rows, 'finance_records');
+  const replay = await window.MaoMaoWalletLedger.runExclusive(() =>
+    window.MaoMaoWalletLedger.recordFinanceLines('checkout-1', rows, 'finance_records'));
   assert.equal(replay.ok, true);
   assert.equal(replay.replayed, true);
   assert.equal(JSON.parse(values.get('finance_records')).length, 2);
   assert.equal(writes.length, 1, 'replay must not write duplicate records');
 });
 
-test('共享账本遇到空字符串、损坏 JSON 或非数组财务记录时拒绝覆盖', () => {
+test('共享账本遇到空字符串、损坏 JSON 或非数组财务记录时拒绝覆盖', async () => {
   for (const raw of ['', '{broken-json', 'null', '{}']) {
     const values = new Map([['finance_records', raw]]);
     let writes = 0;
@@ -4636,18 +4643,21 @@ test('共享账本遇到空字符串、损坏 JSON 或非数组财务记录时�
       getItem: (key) => values.has(key) ? values.get(key) : null,
       setItem: (key, value) => { writes += 1; values.set(key, String(value)); }
     };
-    const window = { navigator: {}, localStorage };
+    const window = { navigator: {
+      locks: { request: (_name, _opts, callback) => Promise.resolve().then(callback) }
+    }, localStorage };
     runInNewContext(walletLedgerSource, { window });
-    const result = window.MaoMaoWalletLedger.recordFinanceLines('checkout-2', [
+    const result = await window.MaoMaoWalletLedger.runExclusive(() =>
+      window.MaoMaoWalletLedger.recordFinanceLines('checkout-2', [
       { amount: 10, type: 'expense', category: '外卖', paymentLineIndex: 0 }
-    ], 'finance_records');
+    ], 'finance_records'));
     assert.equal(result.ok, false, 'invalid value must fail closed');
     assert.equal(values.get('finance_records'), raw, 'original bytes must remain unchanged');
     assert.equal(writes, 0, 'invalid finance records must not be overwritten');
   }
 });
 
-test('共享账本遇到同交易编号的重复行或冲突金额时停止自动补账', () => {
+test('共享账本遇到同交易编号的重复行或冲突金额时停止自动补账', async () => {
   const cases = [
     [
       { amount: 9, type: 'expense', category: '购物', paymentId: 'checkout-3', paymentLineIndex: 0 },
@@ -4664,12 +4674,15 @@ test('共享账本遇到同交易编号的重复行或冲突金额时停止自�
       getItem: (key) => values.has(key) ? values.get(key) : null,
       setItem: (key, value) => { writes += 1; values.set(key, String(value)); }
     };
-    const window = { navigator: {}, localStorage };
+    const window = { navigator: {
+      locks: { request: (_name, _opts, callback) => Promise.resolve().then(callback) }
+    }, localStorage };
     runInNewContext(walletLedgerSource, { window });
-    const result = window.MaoMaoWalletLedger.recordFinanceLines('checkout-3', [
+    const result = await window.MaoMaoWalletLedger.runExclusive(() =>
+      window.MaoMaoWalletLedger.recordFinanceLines('checkout-3', [
       { amount: 9, type: 'expense', category: '购物', paymentLineIndex: 0 },
       { amount: 4, type: 'expense', category: '购物', paymentLineIndex: 1 }
-    ], 'finance_records');
+    ], 'finance_records'));
     assert.equal(result.ok, false);
     assert.equal(values.get('finance_records'), raw);
     assert.equal(writes, 0);
