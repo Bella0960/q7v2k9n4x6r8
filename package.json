@@ -54,7 +54,7 @@
     "test:accounts:browser": "node tests/account-mobile-layout-browser.mjs",
     "test:forum:stories": "node --test tests/forum-gossip-story.test.mjs tests/forum-world-events.test.mjs",
     "test:release:accounts": "node --test tests/account-password-kdf.test.mjs tests/account-auth-contract.test.mjs tests/account-entry-runtime.test.mjs tests/account-bootstrap-runtime.test.mjs tests/account-storage-isolation.test.mjs tests/admin-center-ui.test.mjs tests/account-main-integration.test.mjs tests/worker-page-auth-runtime.test.mjs tests/production-account-deploy-guard.test.mjs tests/account-staging-readiness.test.mjs tests/account-local-runner-contract.test.mjs tests/cloudflare-namespace-inventory.test.mjs tests/delegated-identity-bridge.test.mjs",
-    "test:release:features": "node --test tests/forum-gossip-story.test.mjs tests/forum-world-events.test.mjs tests/forum-chat-blockers.test.mjs && npm run test:inspect:contract && npm run test:theme:market",
+    "test:release:features": "node --test tests/forum-gossip-story.test.mjs tests/forum-world-events.test.mjs tests/forum-chat-blockers.test.mjs && npm run test:inspect:contract && npm run test:theme:market && node --test tests/release-features-account-wallet-contract.test.mjs",
     "test:release:regressions": "node --test tests/chat-regression-contract.test.mjs tests/chat-data-isolation.test.mjs tests/chat-reply-bubble-mode.test.mjs tests/tutorial-page-contract.test.mjs tests/media-backup.test.mjs",
     "test:release:gate": "npm run test:release:accounts && npm run test:release:features && npm run test:release:regressions && npm run test:release:extended",
     "test:release:artifacts": "node --test tests/pwa-navigation-cache.test.mjs tests/default-desktop-layout.test.mjs",
@@ -66,7 +66,7 @@
     "test:qa:config": "node --test tests/qa-worker-config.test.mjs",
     "test:theme:market": "node --check theme-store/collection-store.js && node --check theme-store/preview-scene.js && node --check theme-store/storefront.js && node --test tests/market-collection.test.mjs tests/market-preview-scene.test.mjs tests/icon-presets-contract.test.mjs",
     "test:theme:market:browser": "node tests/market-storefront-browser.mjs",
-    "test:integration:release-features": "npm run test:integration:account-wallet && npm run test:inspect:contract && npm run test:theme:market"
+    "test:integration:release-features": "npm run test:integration:account-wallet && npm run test:inspect:contract && npm run test:theme:market && node --test tests/release-features-account-wallet-contract.test.mjs"
   },
   "devDependencies": {
     "playwright": "^1.64.1",
