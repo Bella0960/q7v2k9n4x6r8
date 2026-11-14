@@ -405,6 +405,12 @@
     if (!ledger || typeof ledger.runExclusive !== 'function') {
       return { ok: false, reason: 'module' };
     }
+    // Manual entries and AI comments share the same finance rows as checkout.
+    // A page-local queue can lose those rows when a second tab is open.
+    if (typeof ledger.supportsCrossTabLock !== 'function' ||
+        !ledger.supportsCrossTabLock()) {
+      return { ok: false, reason: 'cross-tab-lock-unavailable' };
+    }
     try {
       return await ledger.runExclusive(function () {
         // Always re-read under the same wallet lock used by checkouts and receipts.
@@ -444,6 +450,7 @@
     if (reason === 'invalid') return '账本数据异常，已暂停写入；原始记录未被修改';
     if (reason === 'storage') return '账本保存失败，请检查手机存储空间';
     if (reason === 'module') return '钱包保护模块未加载，请刷新页面后重试';
+    if (reason === 'cross-tab-lock-unavailable') return '当前浏览器不支持跨页面钱包锁，记账与 AI 批注已暂停，未修改账目';
     return '账本暂不可用，请恢复原始记录后重试';
   }
 
