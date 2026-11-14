@@ -54,7 +54,7 @@ test('fictional-phone context requires a saved real reply and keeps account scop
 
 test('release shell includes feature modules without weakening account or wallet boundaries', () => {
   const sw = read('sw.js');
-  assert.match(sw, /phone-app-pwa-v209/);
+  assert.match(sw, /phone-app-pwa-v237/);
   for (const filename of [
     'theme-store/storefront.js',
     'theme-store/collection-store.js',
