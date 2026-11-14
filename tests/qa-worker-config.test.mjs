@@ -1,0 +1,30 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+
+test('QA Worker is isolated from production and never aliases old account preview', () => {
+  const config = JSON.parse(readFileSync(new URL('../wrangler.qa.jsonc', import.meta.url), 'utf8'));
+  const expectedName = 'maomao-aw-qa-20261114';
+  assert.equal(config.name, expectedName);
+  assert.notEqual(config.name, 'mao');
+  assert.notEqual(config.name, 'mao-auth-preview');
+  assert.notEqual(config.name, 'curly-dream-324c');
+  assert.equal(config.main, 'worker.js');
+  assert.ok(config.compatibility_flags.includes('nodejs_compat'));
+  assert.equal(config.workers_dev, true);
+  assert.equal(config.preview_urls, false);
+  assert.equal(config.assets.directory, './dist');
+  assert.equal(config.assets.binding, 'ASSETS');
+  assert.equal(config.assets.run_worker_first, true);
+  assert.equal(config.assets.html_handling, 'none');
+  assert.deepEqual(config.durable_objects.bindings, [
+    { name: 'CLOUD_DB', class_name: 'CloudDatabase' }
+  ]);
+  assert.deepEqual(config.migrations, [
+    { tag: 'v1', new_sqlite_classes: ['CloudDatabase'] }
+  ]);
+  assert.ok(!('routes' in config), 'QA must never bind production routes');
+  assert.ok(!('route' in config), 'QA must never bind a production route');
+  assert.ok(!('zone_id' in config), 'QA must never attach a production zone');
+  assert.ok(!('vars' in config), 'QA must not contain real credentials');
+});

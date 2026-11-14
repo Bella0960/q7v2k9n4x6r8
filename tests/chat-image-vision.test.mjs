@@ -273,7 +273,7 @@ test('PWA shell and package contracts include the chat vision runtime', () => {
   assert.ok(currentCacheVersion >= 203, 'PWA app shell must not regress below feature minimum v203');
   assert.ok(serviceWorkerSource.includes('chat-image-vision.js?v=20261113v1'));
   assert.ok(serviceWorkerSource.includes('chat-context-policy.js?v=20261107vision1'));
-  assert.ok(serviceWorkerSource.includes('chat-extras.js?t=20261107imagevision1'));
+  assert.ok(serviceWorkerSource.includes('chat-extras.js?t=20261114wallet-main1'));
   assert.ok(packageJson.scripts['test:chat:image-vision']);
   assert.ok(packageJson.scripts['test:chat:contract'].includes('tests/chat-image-vision.test.mjs'));
 });
