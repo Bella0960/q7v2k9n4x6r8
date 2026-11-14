@@ -71,6 +71,12 @@
 
   function writeAll(cards) {
     if (!Array.isArray(cards)) return false;
+    // This is the common persistence sink for invite, status, role changes and
+    // consumption. Never let a new module bypass the shared wallet Web Lock
+    // by calling a synchronous RoleFamilyCards API directly.
+    var ledger = global.MaoMaoWalletLedger;
+    if (!ledger || typeof ledger.hasActiveMutationLock !== 'function' ||
+        !ledger.hasActiveMutationLock()) return false;
     // Refuse to overwrite an unreadable existing store. An empty-looking result
     // must never be mistaken for permission to replace the user's saved cards.
     var before = readAllState();
