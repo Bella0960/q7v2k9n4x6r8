@@ -1,59 +1,56 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import gateway from '../worker/identity-authority-gateway.js';
+import {handleGatewayRequest} from '../worker/identity-authority-gateway.js';
 
-const secret='only-qa-gateway-test-secret-that-is-very-long';
-const original='https://mao520.com';
-const setup=()=>{
-  const calls=[];
-  const env={
-    MAO_IDENTITY_BRIDGE_SECRET:secret,
-    MAO_ORIGINAL_AUTH_DB:{
-      idFromName(name){assert.equal(name,'maomao-global');return 'original-founder-store-id';},
-      get(id){assert.equal(id,'original-founder-store-id');return {async fetch(req){calls.push(req);return Response.json({ok:true,initialized:true,configured:true})}}}
-    }
-  };
-  return {env,calls};
-};
-test('identity gateway denies missing and incorrect secret without touching original DB',async()=>{
-  const {env,calls}=setup();
-  for(const value of ['', 'wrong-secret-xxxxxxxxxxxxxxxxxxxxxxxxxxxxx']){
-    const req=new Request(original+'/api/admin/bootstrap/status',{headers:{'x-mao-identity-bridge':value}});
-    assert.equal((await gateway.fetch(req,env)).status,403);
+const secret='gateway-test-secret-xxxxxxxxxxxxxxxxxxxxxxxxxx';
+const internal='https://mao520.com';
+const authority='https://qa-phone-founder-001-keyreset-20261111-mao.miamor520000.workers.dev';
+const env={MAO_IDENTITY_BRIDGE_SECRET:secret};
+const headers={'x-mao-identity-bridge':secret};
+test('without a correct server-only secret gateway never makes an outbound request',async()=>{
+  let calls=0;
+  for(const val of ['', 'invalid-secret-yyyyyyyyyyyyyyyyyyyyyyy']){
+    const res=await handleGatewayRequest(
+      new Request(internal+'/api/admin/bootstrap/status',{headers:{'x-mao-identity-bridge':val}}),
+      env,async()=>{calls++;return Response.json({ok:true})});
+    assert.equal(res.status,403);
   }
-  assert.equal(calls.length,0);
+  assert.equal(calls,0);
 });
-test('identity gateway only exposes whitelisted original account routes, never registration or wallet',async()=>{
-  const {env,calls}=setup();
-  for(const [method,path] of [['POST','/api/admin/bootstrap'],['POST','/api/accounts/register'],['GET','/api/wallet/balance'],['GET','/admin/admin-center.html']]){
-    const req=new Request(original+path,{method,headers:{'x-mao-identity-bridge':secret}});
-    assert.equal((await gateway.fetch(req,env)).status,404);
+test('registration, bootstrap, wallet and arbitrary origins are forbidden',async()=>{
+  let count=0;const never=async()=>{count++;return Response.json({ok:true})};
+  for(const [method,path] of [['POST','/api/admin/bootstrap'],['POST','/api/accounts/register'],['GET','/api/wallet/balance'],['GET','/account/index.html']]){
+    const r=await handleGatewayRequest(new Request(internal+path,{method,headers}),env,never);
+    assert.equal(r.status,404);
   }
-  assert.equal((await gateway.fetch(new Request('https://wrong.example/api/admin/bootstrap/status',{headers:{'x-mao-identity-bridge':secret}}),env)).status,404);
-  assert.equal(calls.length,0);
+  assert.equal((await handleGatewayRequest(new Request('https://wrong.invalid/api/admin/bootstrap/status',{headers}),env,never)).status,404);
+  assert.equal(count,0);
 });
-test('identity gateway forwards verified read-only identity probe to original DO, without leaking bridge secret',async()=>{
-  const {env,calls}=setup();
-  const req=new Request(original+'/api/admin/bootstrap/status',{headers:{'x-mao-identity-bridge':secret}});
-  assert.equal((await gateway.fetch(req,env)).status,200);
-  assert.equal(calls.length,1);
-  assert.equal(new URL(calls[0].url).pathname,'/api/admin/bootstrap/status');
-  assert.equal(calls[0].headers.get('x-mao-identity-bridge'),null);
+test('read-only probe is pinned to exact original founder preview and has no bridge token on outbound URL or headers',async()=>{
+  let call;const req=new Request(internal+'/api/admin/bootstrap/status',{headers});
+  const res=await handleGatewayRequest(req,env,async forwarded=>{call=forwarded;return Response.json({ok:true,initialized:true,configured:true})});
+  assert.equal(res.status,200);
+  assert.equal(call.url,authority+'/api/admin/bootstrap/status');
+  assert.equal(call.headers.get('x-mao-identity-bridge'),null);
+  assert.equal(call.headers.get('origin'),null);
 });
-test('identity gateway forwards same-origin account login to original DO and never fabricates admin accounts',async()=>{
-  const {env,calls}=setup();
-  const req=new Request(original+'/api/accounts/login',{
-    method:'POST',headers:{origin:original,'content-type':'application/json','x-mao-identity-bridge':secret},
-    body:JSON.stringify({identifier:'ExistingAdmin',password:'test-only-password'})
+test('account login forwards only its existing request body and targets the same-origin authority endpoint',async()=>{
+  let call;const req=new Request(internal+'/api/accounts/login',{
+    method:'POST',headers:{...headers,origin:internal,'content-type':'application/json'},
+    body:JSON.stringify({identifier:'ExistingFounder',password:'only-test-password'})
   });
-  assert.equal((await gateway.fetch(req,env)).status,200);
-  assert.equal(calls.length,1);
-  assert.equal(calls[0].headers.get('origin'),original);
-  assert.equal(calls[0].headers.get('x-mao-identity-bridge'),null);
-  assert.equal(JSON.parse(await calls[0].text()).identifier,'ExistingAdmin');
+  const res=await handleGatewayRequest(req,env,async forwarded=>{call=forwarded;return Response.json({ok:false,error:{code:'LOGIN_FAILED'}},{status:401})});
+  assert.equal(res.status,401);
+  assert.equal(call.url,authority+'/api/accounts/login');
+  assert.equal(call.headers.get('origin'),authority);
+  assert.equal(call.headers.get('x-mao-identity-bridge'),null);
+  assert.equal(JSON.parse(await call.text()).identifier,'ExistingFounder');
 });
-test('identity gateway fails closed without an explicit original Durable Object binding',async()=>{
-  const req=new Request(original+'/api/admin/bootstrap/status',{headers:{'x-mao-identity-bridge':secret}});
-  const response=await gateway.fetch(req,{MAO_IDENTITY_BRIDGE_SECRET:secret});
-  assert.equal(response.status,503);
+test('gateway rejects redirects so credentials cannot be sent to another origin',async()=>{
+  const r=await handleGatewayRequest(new Request(internal+'/api/admin/bootstrap/status',{headers}),env,async()=>Response.redirect('https://other.invalid'));
+  assert.equal(r.status,502);
+});
+test('network errors fail closed and never produce a local fallback administrator',async()=>{
+  const r=await handleGatewayRequest(new Request(internal+'/api/admin/bootstrap/status',{headers}),env,async()=>{throw Error('unreachable')});
+  assert.equal(r.status,503);
 });
