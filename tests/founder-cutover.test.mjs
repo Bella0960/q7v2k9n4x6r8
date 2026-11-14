@@ -69,8 +69,10 @@ test('cutover retains members, requires proof, revokes prior founder and is idem
 
 test('unexpected current ID and username collision abort without identity changes', async t => {
   const ctx = setup(t);
-  assert.throws(() => cutoverFounder({ ...ctx, expectedCurrentId: memberId, checkpointProof: await issue(ctx) }), /does not match/);
-  assert.throws(() => cutoverFounder({ ...ctx, chosen: { ...ctx.chosen, usernameKey: 'member' }, checkpointProof: await issue(ctx) }), /belongs to another account/);
+  const mismatchedFounderProof = await issue(ctx);
+  assert.throws(() => cutoverFounder({ ...ctx, expectedCurrentId: memberId, checkpointProof: mismatchedFounderProof }), /does not match/);
+  const usernameCollisionProof = await issue(ctx);
+  assert.throws(() => cutoverFounder({ ...ctx, chosen: { ...ctx.chosen, usernameKey: 'member' }, checkpointProof: usernameCollisionProof }), /belongs to another account/);
   assert.equal(ctx.exec("SELECT id FROM mao_accounts WHERE role = 'super_admin'")[0].id, oldId);
 });
 
