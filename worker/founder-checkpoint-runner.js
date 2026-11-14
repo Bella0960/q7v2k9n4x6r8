@@ -72,9 +72,26 @@ export default {
   },
   async scheduled(_controller, env, ctx) {
     ctx.waitUntil((async () => {
+      // The operator is not allowed to touch the live DO if its independent,
+      // private execution receipt cannot be persisted.
+      const audit = env?.RELEASE_AUDIT;
+      if (typeof audit?.put !== 'function') {
+        throw new Error('private_checkpoint_receipt_binding_required');
+      }
       const result = await runPrivateFounderCheckpoint({ env });
+      const receipt = {
+        code: result.code,
+        ok: result.ok === true,
+        recordedAt: result.ok ? result.recordedAt : null,
+        executedAt: Date.now()
+      };
+      // KV receipts contain only opaque status and timestamps; never bookmarks,
+      // credentials, user IDs, request headers or SQL. No public KV bindings.
+      await audit.put('founder-checkpoint:last-attempt',
+        JSON.stringify(receipt), { expirationTtl: 60 * 60 * 24 * 3 });
       if (!result.ok) throw new Error('private_checkpoint_' + result.code);
-      // Only a non-sensitive acknowledgement; no bookmark or credentials.
+      await audit.put('founder-checkpoint:success',
+        JSON.stringify(receipt), { expirationTtl: 60 * 60 * 24 * 3 });
       console.log('private_checkpoint_recorded');
     })());
   }
