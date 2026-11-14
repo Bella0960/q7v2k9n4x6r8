@@ -38,25 +38,29 @@ jobs:
       - name: Verify PWA navigation fallback
         run: npm run test:pwa:navigation
 
-      # Verify actual custom-domain ownership, not just the Worker configured in wrangler.jsonc.
+      # A fail-closed release gate protects the original mao520.com account authority.
+      # A backup checkpoint and identity transfer must be independently verified
+      # before this manual job can ever be enabled for production.
       - name: Block unprepared production account deployment
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          MAOMAO_PRODUCTION_ORIGIN: https://app.mao520.com
+          MAOMAO_PRODUCTION_ORIGIN: https://mao520.com
           # One-time repository variable; no ID or password embedded into Git.
           MAO_EXPECTED_FOUNDER_ID: ${{ vars.MAO_EXPECTED_FOUNDER_ID }}
         run: node scripts/verify-production-account-readiness.mjs
 
-      - name: Deploy Cloudflare Worker
+      - name: Deploy original mao520.com authority (only after recovery gate)
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy --config wrangler.jsonc --keep-vars
+          command: deploy --config wrangler.production.jsonc --keep-vars
 
       - name: Install Chromium for live production verification
         run: npx playwright install --with-deps chromium
 
-      - name: Verify real production app routes and mobile taps
-        run: node tests/production-worker-navigation.browser.mjs
+      - name: Verify official root login gates and private route protections
+        env:
+          MAOMAO_PRODUCTION_URL: https://mao520.com
+        run: node tests/production-official-auth-smoke.browser.mjs
