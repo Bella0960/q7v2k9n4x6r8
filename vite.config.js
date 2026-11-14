@@ -11,9 +11,12 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url));
 // that is not part of this app and may reference assets unavailable to this build.
 const htmlFiles = {};
 const excludedHtmlDirs = new Set(['node_modules', 'dist', '.wrangler', 'tests', 'test-results']);
+// Production Worker source and build scripts are never browser pages or assets.
+const privateRuntimeDirs = new Set(['worker', 'scripts']);
 (function collectHtml(dir, prefix) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name.startsWith('.') || excludedHtmlDirs.has(entry.name)) continue;
+    if (entry.name.startsWith('.') || excludedHtmlDirs.has(entry.name) ||
+        (!prefix && privateRuntimeDirs.has(entry.name))) continue;
     const abs = resolve(dir, entry.name);
     if (entry.isDirectory()) {
       collectHtml(abs, prefix + entry.name + '/');
@@ -36,7 +39,8 @@ export default defineConfig({
       const excludedFiles = new Set([
         '.gitignore', 'CLAUDE.md', 'README.md', 'package.json',
         'package-lock.json', 'bun.lock', 'vite.config.js',
-        'wrangler.jsonc', 'wrangler.toml'
+        'wrangler.jsonc', 'wrangler.toml',
+        'worker.js', 'worker-app.js'
       ]);
       const allowedExtensions = new Set([
         '.js', '.css', '.json', '.png', '.jpg', '.jpeg', '.webp',
@@ -47,7 +51,8 @@ export default defineConfig({
 
       const walk = (dir, relativeDir) => {
         for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-          if (entry.name.startsWith('.') || excludedDirs.has(entry.name)) continue;
+          if (entry.name.startsWith('.') || excludedDirs.has(entry.name) ||
+              (!relativeDir && privateRuntimeDirs.has(entry.name))) continue;
           const absolutePath = resolve(dir, entry.name);
           const relativePath = relativeDir ? relativeDir + '/' + entry.name : entry.name;
 
