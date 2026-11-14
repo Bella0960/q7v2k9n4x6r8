@@ -85,6 +85,7 @@
   }
 
   function writePendingCheckouts(rows) {
+    if (activeMutationLocks === 0) return false;
     try {
       var serialized = JSON.stringify(rows);
       global.localStorage.setItem(PENDING_CHECKOUT_KEY, serialized);
@@ -182,6 +183,7 @@
     // claiming checkout confirmation without durable evidence.
     if (!target) return false;
     if (target.status === 'completed') return true;
+    if (activeMutationLocks === 0) return false;
     target.status = 'completed';
     target.completedAt = Date.now();
     var serialized = JSON.stringify(rows);
@@ -240,6 +242,9 @@
   // takeout, and wallet UI. Callers must already hold runExclusive().
   // An optional raw baseline rejects stale snapshots rather than overwriting them.
   function commitWalletSnapshot(wallet, expectedRaw) {
+    if (activeMutationLocks === 0) {
+      return { ok: false, reason: 'mutation-lock-required' };
+    }
     var storage = global.localStorage;
     if (!storage || typeof storage.getItem !== 'function' ||
         typeof storage.setItem !== 'function') return { ok: false, reason: 'storage' };
@@ -283,6 +288,7 @@
   // Conditional rollback for multi-record checkouts. Never overwrite a wallet
   // modified by another writer, and never roll back to malformed stored bytes.
   function restoreWalletSnapshot(expectedWrittenRaw, previousRaw) {
+    if (activeMutationLocks === 0) return false;
     var storage = global.localStorage;
     if (!storage || typeof storage.getItem !== 'function') return false;
     if (previousRaw != null && !readWalletForMutation('workData', previousRaw)) return false;
