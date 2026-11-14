@@ -1,10 +1,11 @@
-// Production redeploy trigger for main source commit 4be283839031dae52f5d35026a79b706d58b3337.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "mao",
   "main": "worker.js",
   "compatibility_date": "2026-10-27",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "keep_vars": true,
   "assets": {
     "directory": "./dist",
@@ -14,17 +15,48 @@
   },
   "durable_objects": {
     "bindings": [
-      { "name": "CLOUD_DB", "class_name": "CloudDatabase" }
+      {
+        "name": "CLOUD_DB",
+        "class_name": "CloudDatabase"
+      }
     ]
   },
   "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["CloudDatabase"] }
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "CloudDatabase"
+      ]
+    }
   ],
   "previews": {
     "durable_objects": {
       "bindings": [
-        { "name": "CLOUD_DB", "class_name": "CloudDatabase" }
+        {
+          "name": "CLOUD_DB",
+          "class_name": "CloudDatabase"
+        }
       ]
+    },
+    "vars": {
+      "DEVICE_PAIRING_TOKEN_TTL_MS": "300000",
+      "AUTONOMY_PREVIEW_ALARM_ENABLED": "true",
+      "AUTONOMY_MIN_IDLE_MS": "1800000",
+      "AUTONOMY_LEASE_MS": "60000",
+      "AUTONOMY_TICK_LIMIT": "10",
+      "AUTONOMY_RETRY_BACKOFF_MS": "60000,300000,900000",
+      "AUTONOMY_HEARTBEAT_TTL_MS": "90000",
+      "AUTONOMY_DEVICE_LEASE_MS": "120000",
+      "AUTONOMY_DEVICE_GRACE_MS": "0",
+      "MAO_SOCIAL_ENABLED": "true",
+      "MAO_SOCIAL_CHAT_ENABLED": "false",
+      "MAO_SOCIAL_E2EE_ENABLED": "true"
+    },
+    "ai": {
+      "binding": "AI"
     }
+  },
+  "ai": {
+    "binding": "AI"
   }
 }

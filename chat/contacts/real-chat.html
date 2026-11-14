@@ -1,0 +1,775 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#fafafa">
+<title>真人聊天 · MAOMAO</title>
+<style>
+:root{color-scheme:light;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;color:#171717;background:#fafafa}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0}
+body{font-size:13px}
+button,textarea{font:inherit}
+button{cursor:pointer}
+.app{height:100dvh;max-width:640px;margin:auto;background:#fafafa;display:flex;flex-direction:column;overflow:hidden}
+.top{padding:calc(13px + env(safe-area-inset-top)) 19px 13px;background:#fafafa;display:flex;align-items:center;gap:13px}
+.back{border:0;background:transparent;padding:7px 0;display:flex;align-items:center;justify-content:center;width:25px;color:#242424;flex-shrink:0}
+.back svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.45}
+.headline{min-width:0;flex:1}
+.headline h1{font-family:Georgia,"Songti SC",serif;letter-spacing:-.04em;font-size:22px;font-weight:400;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.headline p{font-size:10px;color:#999;letter-spacing:.08em;margin:5px 0 0}
+.header-right{color:#aaa;letter-spacing:.2em;font-size:9px}
+.rule{height:1px;background:linear-gradient(90deg,transparent,#e6e6e6 20%,#e6e6e6 80%,transparent)}
+.notice{margin:16px 20px 0;line-height:1.7;font-size:11px;color:#818181;text-align:center;flex-shrink:0}
+.notice strong{font-weight:500;color:#424242}
+.status{min-height:26px;line-height:1.6;padding:7px 20px 2px;color:#888;text-align:center;font-size:11px;flex-shrink:0}
+.status.error{color:#555}
+.log{flex:1;overflow-y:auto;overscroll-behavior:contain;padding:17px 20px 22px;scrollbar-width:none;min-height:0}
+.log::-webkit-scrollbar{display:none}
+.empty{color:#a0a0a0;font-size:12px;text-align:center;line-height:2.1;padding-top:23vh}
+.bubble-wrap{display:flex;flex-direction:column;margin:11px 0;align-items:flex-start}
+.bubble-wrap.mine{align-items:flex-end}
+.bubble{max-width:85%;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.65;font-size:12px;padding:9px 13px;background:#ececee;color:#222;border-radius:12px 12px 12px 3px}
+.bubble-wrap.mine .bubble{background:#242424;color:#fff;border-radius:12px 12px 3px 12px}
+.time{font-size:9px;color:#aaa;margin:5px 3px 0;letter-spacing:.02em}
+.footer{background:#fafafa;padding:11px 16px calc(14px + env(safe-area-inset-bottom))}
+.compose{display:flex;gap:8px;align-items:flex-end;border:1px solid #e6e6e6;background:#fff;border-radius:17px;padding:6px 6px 6px 13px}
+.compose textarea{border:0;outline:none;min-width:0;flex:1;resize:none;min-height:31px;max-height:96px;line-height:1.55;padding:6px 0;font-size:12px;background:transparent;color:#222}
+.compose textarea::placeholder{color:#aaa}
+.compose button{border:0;background:#222;color:white;border-radius:12px;min-width:59px;min-height:38px;padding:0 13px;font-size:12px}
+.compose button:disabled,.compose textarea:disabled{opacity:.45}
+.compose button.media-action{background:transparent;color:#444;border:0;min-width:33px;width:33px;height:37px;min-height:37px;padding:0;border-radius:9px;display:grid;place-items:center;flex-shrink:0}
+.compose button.media-action svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.55;stroke-linecap:round;stroke-linejoin:round}
+.compose button.media-action[aria-pressed="true"]{background:#272727;color:white}
+.compose button.media-action:focus-visible{outline:2px solid #777;outline-offset:2px}
+.bubble.media-photo{padding:4px;overflow:hidden;max-width:min(75%,260px)}
+.bubble.media-photo img{display:block;max-width:100%;max-height:310px;border-radius:9px;object-fit:contain;cursor:zoom-in}
+.bubble.media-voice{padding:0;min-width:0;max-width:min(72vw,225px);position:relative;white-space:normal;background:#fff;border:1px solid #e5e5e6;color:#242424;box-shadow:0 1px 3px rgba(0,0,0,.025)}
+.bubble-wrap.mine .bubble.media-voice{background:#111;color:#fff;border:1px solid #111;box-shadow:none}
+.voice-play{appearance:none;border:0;background:transparent;color:inherit;display:flex;align-items:center;gap:10px;width:var(--voice-width,105px);max-width:100%;height:42px;padding:0 12px;cursor:pointer;text-align:left;border-radius:inherit;outline-offset:3px;-webkit-tap-highlight-color:transparent}
+.voice-play:focus-visible{outline:2px solid #777}
+.voice-play:disabled{opacity:.72;cursor:default}
+.bubble-wrap.mine .voice-play{flex-direction:row-reverse}
+.voice-play .voice-wave{width:22px;height:22px;flex:0 0 22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.bubble-wrap.mine .voice-wave{transform:scaleX(-1)}
+.voice-play .voice-seconds{font-size:12px;white-space:nowrap;font-variant-numeric:tabular-nums;font-weight:500;letter-spacing:.015em}
+.voice-unread{position:absolute;right:-12px;top:50%;transform:translateY(-50%);width:5px;height:5px;border-radius:50%;background:#777}
+.voice-wave .voice-arc-middle,.voice-wave .voice-arc-outer{opacity:1}
+.voice-play[data-state="playing"] .voice-arc-middle{animation:mao-voice-mid .95s linear infinite}
+.voice-play[data-state="playing"] .voice-arc-outer{animation:mao-voice-out .95s linear infinite}
+.voice-play[data-state="sending"] .voice-wave{animation:mao-voice-send 1s ease-in-out infinite}
+.voice-play[data-state="failed"] .voice-seconds{text-decoration:underline;text-underline-offset:3px}
+.voice-play .voice-audio{display:none!important}
+@keyframes mao-voice-mid{0%,25%{opacity:.12}40%,100%{opacity:1}}
+@keyframes mao-voice-out{0%,50%{opacity:.12}65%,100%{opacity:1}}
+@keyframes mao-voice-send{0%,100%{opacity:.48}50%{opacity:1}}
+@media(prefers-reduced-motion:reduce){.voice-play[data-state] .voice-wave,.voice-play[data-state] .voice-arc-middle,.voice-play[data-state] .voice-arc-outer{animation:none!important;opacity:1}}
+.voice-state{margin:8px 3px 0;font-size:11px;letter-spacing:.025em;color:#565656}
+.voice-state:before{content:"";display:inline-block;width:6px;height:6px;margin-right:7px;border-radius:50%;background:#555}
+.retry-media{border:1px solid #d8d8d8;background:white;border-radius:10px;padding:8px 12px;color:#444;font-size:11px;display:block;margin:8px auto 0}
+.security-note{font-size:10px;color:#a7a7a7;line-height:1.55;text-align:center;margin:10px auto 0;max-width:370px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main class="app">
+ <header class="top">
+  <button class="back" type="button" id="back" aria-label="返回真人好友"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+  <div class="headline"><h1 id="peerTitle">私人对话</h1><p id="peerState">ENCRYPTED / CONNECTING</p></div>
+  <div class="header-right">PRIVATE</div>
+ </header>
+ <div class="rule"></div>
+ <p class="notice"><strong>双人加密聊天</strong> · 文字、照片和语音都在手机加密，服务器不保存原始内容。</p>
+ <div class="status" id="status" role="status" aria-live="polite">正在确认双方账号与加密设备…</div>
+ <div class="log" id="log" role="log" aria-live="polite"><p class="empty" id="empty">正在连接聊天…</p></div>
+ <div class="rule"></div>
+ <footer class="footer">
+   <form class="compose" id="compose">
+     <button type="button" class="media-action" id="photoBtn" aria-label="发送图片" title="发送图片" disabled>
+       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.8" y="3.7" width="18.4" height="16.6" rx="3"/><circle cx="8.5" cy="9.2" r="1.5"/><path d="m4.5 17 4.6-4.6 3.5 3 3.2-3.8 4.3 5"/></svg>
+     </button>
+     <button type="button" class="media-action" id="voiceBtn" aria-label="录制语音" title="录制语音" aria-pressed="false" disabled>
+       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4M8.5 21h7"/></svg>
+     </button>
+     <input type="file" id="photoInput" accept="image/*" hidden aria-label="选择图片">
+     <textarea id="input" placeholder="发送消息…" rows="1" maxlength="280" disabled aria-label="输入加密聊天消息"></textarea>
+     <button type="submit" id="send" disabled>发送</button>
+   </form>
+   <p class="voice-state" id="voiceState" hidden aria-live="polite">录音中 · 00:00 · 再点麦克风发送（最多 20 秒）</p>
+   <button type="button" class="retry-media" id="retryMedia" hidden>重新发送未确认的图片或语音</button>
+   <p class="security-note">聊天密钥只保留在当前浏览器。清除网站数据或换设备后，暂时无法恢复旧消息。首次交换公钥仍需信任服务器。</p>
+ </footer>
+</main>
+<script type="module">
+import {
+  createDeviceIdentity, idForPublicKey, conversationKey,
+  encryptText, decryptText, openDeviceKeyStore,
+  loadDeviceIdentity, saveDeviceIdentity
+} from './real-chat-crypto.mjs';
+import {MAX_MEDIA_BYTES,validateMediaKind,encryptMedia,decryptMedia,makeMediaMarker,parseMediaMarker}
+  from './real-chat-media.mjs';
+
+const $=id=>document.getElementById(id);
+const ID=/^MAO-[A-Z0-9]{12,24}$/;
+const peer=new URLSearchParams(location.search).get('peer');
+let owner=null,device=null,peerKey=null,db=null,key=null,friendshipId=null;
+let cursor=0,seen=new Set(),polling=false,sending=false,closed=false,pending=null;
+let friendLabel='',timer=null,identityEpoch=0;
+let pendingMedia=null,recording=null,recordingStopping=false,activeUrls=new Set();
+let activeVoicePlayers=new Set(),playingVoice=null,voicePlayed=new Set(),pendingVoiceWrap=null;
+const setStatus=(msg,error=false)=>{$('status').textContent=msg;$('status').classList.toggle('error',!!error);};
+const reqId=()=> 'e2e_'+crypto.randomUUID().replace(/-/g,'');
+function resetVisible() {
+  discardRecording();
+  // Pause and detach every decrypted player before freeing private blob URLs.
+  if(playingVoice){playingVoice.pause();playingVoice=null;}
+  activeVoicePlayers.forEach(player=>{player.pause();player.removeAttribute('src');});
+  activeVoicePlayers.clear();
+  voicePlayed.clear();
+  pendingVoiceWrap=null;
+  for(const url of activeUrls)URL.revokeObjectURL(url);
+  activeUrls.clear();
+  $('log').textContent='';$('input').value='';$('input').disabled=true;$('send').disabled=true;
+  $('photoBtn').disabled=true;$('voiceBtn').disabled=true;
+  $('retryMedia').hidden=true;
+  cursor=0;seen.clear();friendshipId=null;key=null;pending=null;pendingMedia=null;
+}
+function stop() {
+  closed=true;identityEpoch++;if(timer){clearInterval(timer);timer=null;}
+  resetVisible();owner=null;device=null;peerKey=null;db?.close();db=null;
+}
+async function api(path,{method='GET',body}={}){
+  const headers={accept:'application/json'};
+  if(owner)headers['x-mao-account-context']=owner.id;
+  if(body)headers['content-type']='application/json';
+  const res=await fetch(path,{method,headers,credentials:'same-origin',
+    cache:'no-store',redirect:'error',...(body?{body:JSON.stringify(body)}:{})});
+  const data=await res.json().catch(()=>null);
+  if(!res.ok||data?.ok!==true){
+    const code=data?.error?.code||'NETWORK_ERROR';
+    if(['ACCOUNT_CONTEXT_CHANGED','ACCOUNT_DISABLED','LOGIN_REQUIRED','SOCIAL_SESSION_EXPIRED',
+      'SOCIAL_NOT_APPROVED','SOCIAL_BLOCKED','SOCIAL_ACCOUNT_NOT_ACTIVE'].includes(code)){
+      stop();setStatus('登录或好友关系已变化，请返回好友列表核对。',true);
+    }
+    throw new Error(data?.error?.message||'聊天服务器暂不可用');
+  }
+  return data;
+}
+async function setupDevice(){
+  if(!globalThis.crypto?.subtle||!globalThis.indexedDB||!globalThis.isSecureContext)
+    throw new Error('该浏览器不支持网页加密存储，请使用更新的 HTTPS 浏览器。');
+  db=await openDeviceKeyStore();
+  let local=await loadDeviceIdentity(db,owner.id);
+  const issued=await api('/api/social/e2ee/keys');
+  if(issued.ownerAccountId!==owner.id)throw new Error('服务器返回的密钥所属账号不符');
+  if(issued.key){
+    if(!local||local.publicKey!==issued.key.publicKey||local.keyId!==issued.key.keyId)
+      throw new Error('此账号的聊天密钥位于原先启用的浏览器。本设备不能覆盖它或读取旧消息。');
+  } else {
+    if(!local){
+      local=await createDeviceIdentity();
+      await saveDeviceIdentity(db,owner.id,local);
+    }
+    const reg=await api('/api/social/e2ee/keys',{method:'POST',body:{publicKey:local.publicKey}});
+    if(reg.keyId!==local.keyId)throw new Error('设备密钥登记结果与本机不一致');
+  }
+  device=local;
+}
+async function ensurePeerKey(){
+  if(peerKey)return true;
+  const result=await api('/api/social/e2ee/keys/'+encodeURIComponent(peer));
+  if(result.ownerAccountId!==owner.id||result.accountId!==peer)
+    throw new Error('对方密钥对应账号不一致');
+  if(!result.key){
+    $('peerState').textContent='WAITING FOR PEER';
+    setStatus('等待对方在自己的手机上进入聊天，完成首次加密准备。');
+    return false;
+  }
+  if(await idForPublicKey(result.key.publicKey)!==result.key.keyId)
+    throw new Error('无法验证好友加密密钥');
+  peerKey=result.key;
+  $('peerState').textContent='ENCRYPTED / CONNECTED';
+  return true;
+}
+async function fetchMessages(){
+  if(closed||!owner||!device||polling)return;
+  polling=true;
+  const epoch=identityEpoch;
+  try{
+    if(!await ensurePeerKey())return;
+    const result=await api('/api/social/e2ee/chats/'+encodeURIComponent(peer)+'/messages?after='+cursor);
+    if(closed||epoch!==identityEpoch)return;
+    if(result.ownerAccountId!==owner.id||result.peerId!==peer||!/^[A-Za-z0-9_-]{8,96}$/.test(result.friendshipId))
+      throw new Error('返回的聊天范围不正确');
+    if(friendshipId&&friendshipId!==result.friendshipId){
+      resetVisible();setStatus('好友关系已更新，旧聊天已隔离。');
+    }
+    friendshipId=result.friendshipId;
+    if(!key)key=await conversationKey(device.privateKey,peerKey.publicKey,friendshipId,owner.id,peer);
+    if(closed||epoch!==identityEpoch)return;
+    $('input').disabled=false;
+    $('send').disabled=sending;
+    $('photoBtn').disabled=sending||!!recording;
+    $('voiceBtn').disabled=sending||recordingStopping;
+    if(!Array.isArray(result.messages)||!Number.isSafeInteger(result.nextCursor)||result.nextCursor<cursor)
+      throw new Error('聊天记录格式异常');
+    for(const message of result.messages){
+      if(!Number.isSafeInteger(message.seq)||message.seq<=0||seen.has(message.seq))continue;
+      if(message.senderId!==peer&&message.senderId!==owner.id)
+        throw new Error('聊天收件人和发送人不属于当前会话');
+      if(message.recipientId!==peer&&message.recipientId!==owner.id)
+        throw new Error('聊天记录越界');
+      const own=message.senderId===owner.id;
+      if((own?device.keyId:peerKey.keyId)!==message.envelope?.sk||
+         (own?peerKey.keyId:device.keyId)!==message.envelope?.rk)
+        throw new Error('这条消息的密钥身份与当前好友不一致');
+      let plain;
+      try{
+        plain=await decryptText(message.envelope,key,{friendshipId,
+          senderId:message.senderId,recipientId:message.recipientId,
+          clientMessageId:message.clientMessageId});
+      }catch{
+        plain='此条消息暂时无法在当前设备上解密';
+      }
+      if(closed||epoch!==identityEpoch)return;
+      if($('empty'))$('empty').remove();
+      const wrap=document.createElement('div');
+      wrap.className='bubble-wrap'+(own?' mine':'');
+      const bubble=document.createElement('div');bubble.className='bubble';
+      const mediaMarker=parseMediaMarker(plain);
+      if(mediaMarker){
+        bubble.textContent=mediaMarker.kind==='image'?'正在解密图片…':'正在解密语音…';
+        loadMediaForBubble(mediaMarker,message,bubble,epoch,friendshipId,key);
+      }else bubble.textContent=plain;
+      const time=document.createElement('span');time.className='time';
+      time.textContent=Number.isFinite(message.createdAt)?
+        new Date(message.createdAt).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}):'';
+      wrap.append(bubble,time);$('log').appendChild(wrap);
+      seen.add(message.seq);
+    }
+    cursor=Math.max(cursor,result.nextCursor);
+    $('log').scrollTop=$('log').scrollHeight;
+    setStatus('已连接 · 仅双方设备可解密 · 前台约每 3 秒检查新消息');
+  } catch(e){
+    if(!closed)setStatus(e.message||'加载加密消息失败',true);
+  } finally{polling=false;}
+}
+// Voice messages share the existing text/photo bubble pipeline, but render as
+// compact WeChat-style controls. Media never leaves the E2EE path or reaches AI.
+const voiceSvgNS='http://www.w3.org/2000/svg';
+function voiceGlyph(){
+  const svg=document.createElementNS(voiceSvgNS,'svg');
+  svg.setAttribute('viewBox','0 0 24 24');
+  svg.classList.add('voice-wave');
+  svg.setAttribute('aria-hidden','true');
+  const dot=document.createElementNS(voiceSvgNS,'circle');
+  dot.setAttribute('cx','6.7');dot.setAttribute('cy','12');dot.setAttribute('r','1.4');
+  const arcs=[
+    ['M10.3 8.2a5.2 5.2 0 0 1 0 7.6','voice-arc-middle'],
+    ['M14.2 4.9a9.5 9.5 0 0 1 0 14.2','voice-arc-outer']
+  ];
+  svg.appendChild(dot);
+  arcs.forEach(([d,klass])=>{
+    const arc=document.createElementNS(voiceSvgNS,'path');
+    arc.setAttribute('d',d);arc.classList.add(klass);svg.appendChild(arc);
+  });
+  return svg;
+}
+function voiceSeconds(value){
+  if(!Number.isFinite(value)||value<=0)return '00:00';
+  const total=Math.min(3599,Math.max(1,Math.ceil(value)));
+  return String(Math.floor(total/60)).padStart(2,'0')+':'+
+    String(total%60).padStart(2,'0');
+}
+function setVoiceLength(pill,secondsElement,value){
+  secondsElement.textContent=voiceSeconds(value);
+  if(Number.isFinite(value)&&value>0){
+    const secs=Math.max(1,Math.min(30,Math.ceil(value)));
+    pill.style.setProperty('--voice-width',(99+secs*4)+'px');
+    pill.setAttribute('aria-label','播放 '+secs+' 秒语音');
+  }
+}
+function makeVoicePill({mine=false,sending=false}={}){
+  const pill=document.createElement('button');
+  pill.type='button';pill.className='voice-play';
+  pill.dataset.state=sending?'sending':'unplayed';
+  const wave=voiceGlyph();
+  const seconds=document.createElement('span');
+  seconds.className='voice-seconds';
+  seconds.textContent=sending?'发送中':'00:00';
+  pill.append(wave,seconds);
+  pill.setAttribute('aria-label',sending?'语音发送中':'播放语音');
+  if(sending){pill.disabled=true;pill.setAttribute('aria-busy','true');}
+  return {pill,seconds};
+}
+function showPendingVoice(messageId){
+  if(closed||pendingVoiceWrap)return;
+  const wrap=document.createElement('div');
+  wrap.className='bubble-wrap mine';
+  wrap.dataset.pendingVoice=messageId;
+  const bubble=document.createElement('div');
+  bubble.className='bubble media-voice';
+  const {pill,seconds}=makeVoicePill({mine:true,sending:true});
+  bubble.appendChild(pill);
+  const time=document.createElement('span');
+  time.className='time';time.textContent='发送中';
+  wrap.append(bubble,time);
+  $('log').appendChild(wrap);
+  $('log').scrollTop=$('log').scrollHeight;
+  pendingVoiceWrap={wrap,pill,seconds,time,id:messageId};
+}
+function pendingVoiceStatus(state){
+  const view=pendingVoiceWrap;
+  if(!view)return;
+  if(state==='sent'){
+    view.wrap.remove();pendingVoiceWrap=null;return;
+  }
+  view.pill.dataset.state=state;
+  view.pill.disabled=state==='sending';
+  view.pill.setAttribute('aria-busy',state==='sending'?'true':'false');
+  view.seconds.textContent=state==='failed'?'重试':'发送中';
+  view.time.textContent=state==='failed'?'发送失败':'发送中';
+  view.pill.setAttribute('aria-label',state==='failed'?'语音发送失败，点击重试':'语音发送中');
+  if(state==='failed')view.pill.onclick=()=>{if(pendingMedia)transmitMedia();};
+}
+async function recoverLegacyVoiceDuration(bytes){
+  const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+  if(!AudioContextClass)return null;
+  let context;
+  try{
+    context=new AudioContextClass();
+    const data=bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength);
+    const audio=await context.decodeAudioData(data);
+    return Number.isFinite(audio.duration)&&audio.duration>0?audio.duration:null;
+  }catch{return null}
+  finally{
+    if(context && typeof context.close==='function')context.close().catch(()=>{});
+  }
+}
+function mountVoicePlayer(bubble,url,message,recordedSeconds=null,legacyBytes=null){
+  const mine=message.senderId===owner.id;
+  const {pill,seconds}=makeVoicePill({mine});
+  // New messages carry authenticated recording duration inside the E2EE marker.
+  // Some mobile WebM/M4A recordings report audio.duration=Infinity; do not
+  // replace a known real recording duration with that browser metadata.
+  const knownDuration=Number.isInteger(recordedSeconds)&&recordedSeconds>0?recordedSeconds:null;
+  if(knownDuration)setVoiceLength(pill,seconds,knownDuration);
+  const unread=document.createElement('span');
+  unread.className='voice-unread';
+  unread.setAttribute('aria-label','未播放');
+  unread.hidden=mine||voicePlayed.has(message.id);
+  // An invisible native audio element is retained only as the codec engine.
+  // It never exposes the browser's stock controls, scrub bar or more menu.
+  const audio=document.createElement('audio');
+  audio.className='voice-audio';
+  audio.hidden=true;audio.controls=false;audio.preload='metadata';audio.src=url;
+  activeVoicePlayers.add(audio);
+  const state=value=>{
+    pill.dataset.state=value;
+    pill.setAttribute('aria-pressed',value==='playing'?'true':'false');
+  };
+  let lastPlayedPosition=0;
+  const refreshDuration=()=>{
+    if(!knownDuration && Number.isFinite(audio.duration)&&audio.duration>0){
+      setVoiceLength(pill,seconds,audio.duration);
+    }
+    if(!audio.paused)pill.setAttribute('aria-label','暂停语音');
+  };
+  audio.addEventListener('loadedmetadata',refreshDuration);
+  audio.addEventListener('durationchange',refreshDuration);
+  audio.addEventListener('loadeddata',refreshDuration);
+  audio.addEventListener('timeupdate',()=>{
+    if(Number.isFinite(audio.currentTime))
+      lastPlayedPosition=Math.max(lastPlayedPosition,audio.currentTime);
+  });
+  // Old recordings had no encrypted duration marker. Web Audio can often
+  // recover the duration when a phone's native media element says Infinity.
+  if(!knownDuration && legacyBytes){
+    recoverLegacyVoiceDuration(legacyBytes).then(duration=>{
+      if(!closed && bubble.contains(pill) && duration>0){
+        setVoiceLength(pill,seconds,duration);
+      }
+    });
+  }
+  audio.addEventListener('play',()=>{
+    if(playingVoice&&playingVoice!==audio)playingVoice.pause();
+    playingVoice=audio;
+    state('playing');
+    voicePlayed.add(message.id);
+    unread.hidden=true;
+    pill.setAttribute('aria-label','暂停语音');
+  });
+  audio.addEventListener('pause',()=>{
+    state('unplayed');
+    if(playingVoice===audio)playingVoice=null;
+    refreshDuration();
+  });
+  audio.addEventListener('ended',()=>{
+    state('unplayed');
+    if(playingVoice===audio)playingVoice=null;
+    refreshDuration();
+    if(!knownDuration && seconds.textContent==='00:00' && lastPlayedPosition>0)
+      setVoiceLength(pill,seconds,lastPlayedPosition);
+  });
+  audio.addEventListener('error',()=>{
+    state('failed');
+    pill.setAttribute('aria-label','语音播放出错，请重试');
+  });
+  pill.addEventListener('click',()=>{
+    if(closed)return;
+    if(!audio.paused){audio.pause();return;}
+    if(playingVoice&&playingVoice!==audio)playingVoice.pause();
+    // Must start directly inside a user gesture for iOS Safari.
+    const result=audio.play();
+    if(result&&typeof result.catch==='function'){
+      result.catch(()=>{state('failed');setStatus('语音暂时无法播放，请检查手机音量或录音格式。',true);});
+    }
+  });
+  bubble.classList.add('media-voice');
+  bubble.replaceChildren(pill,unread,audio);
+  try{audio.load();}catch{}
+}
+// The attachment fetch is authorized again on every media request, and its
+// account, friendship generation, sender and client-message binding are checked
+// before using a local blob URL. No third-party media URL or AI call is used.
+async function loadMediaForBubble(marker,message,bubble,epoch,relation,conversation){
+  try{
+    const data=await api('/api/social/e2ee/chats/'+encodeURIComponent(peer)+
+      '/media/'+encodeURIComponent(marker.id));
+    if(closed||epoch!==identityEpoch||relation!==friendshipId)return;
+    const item=data.attachment;
+    if(data.ownerAccountId!==owner.id||data.peerId!==peer||data.friendshipId!==relation||
+       data.senderId!==message.senderId||data.recipientId!==message.recipientId||
+       data.clientMessageId!==message.clientMessageId||item?.id!==marker.id||
+       item.kind!==marker.kind||
+       (item.sk!==(message.senderId===owner.id?device.keyId:peerKey.keyId))||
+       (item.rk!==(message.senderId===owner.id?peerKey.keyId:device.keyId))){
+      throw new Error('媒体所属账号、密钥或好友关系不匹配');
+    }
+    const bytes=await decryptMedia(item,conversation,{
+      friendshipId:relation,senderId:message.senderId,
+      recipientId:message.recipientId,clientMessageId:message.clientMessageId,
+      mediaId:item.id,kind:item.kind,mime:item.mime,sk:item.sk,rk:item.rk
+    });
+    if(closed||epoch!==identityEpoch||relation!==friendshipId)return;
+    const url=URL.createObjectURL(new Blob([bytes],{type:item.mime}));
+    activeUrls.add(url);
+    if(item.kind==='image'){
+      const image=document.createElement('img');
+      image.src=url;
+      image.alt='好友发送的图片';
+      image.loading='lazy';
+      bubble.classList.add('media-photo');
+      bubble.replaceChildren(image);
+    }else{
+      mountVoicePlayer(bubble,url,message,marker.durationSeconds,
+        marker.durationSeconds?null:bytes);
+    }
+  }catch(error){
+    if(!closed&&epoch===identityEpoch&&relation===friendshipId){
+      bubble.textContent=marker.kind==='image'?'图片暂时无法加载':'语音暂时无法播放';
+      bubble.title=String(error?.message||'解密失败').slice(0,130);
+    }
+  }
+}
+
+function mediaReady(){
+  return !closed&&!sending&&!recordingStopping&&!!owner&&!!device&&!!peerKey&&!!key&&
+    !!friendshipId;
+}
+
+function updateMediaBusy(busy){
+  $('photoBtn').disabled=busy||!mediaReady()||!!recording;
+  $('voiceBtn').disabled=busy||!key||closed||recordingStopping;
+  $('send').disabled=busy||!key||closed;
+}
+
+async function transmitMedia(){
+  if(!pendingMedia||closed||sending)return;
+  const task=pendingMedia;
+  sending=true;updateMediaBusy(true);
+  if(task.payload.attachment.kind==='voice')pendingVoiceStatus('sending');
+  try{
+    const response=await api('/api/social/e2ee/chats/'+encodeURIComponent(peer)+'/media',{
+      method:'POST',body:task.payload
+    });
+    if(response.friendshipId!==task.friendshipId||response.mediaId!==task.mediaId||
+       response.message?.clientMessageId!==task.clientMessageId||
+       response.message?.senderId!==task.senderId||
+       response.message?.recipientId!==peer||
+       JSON.stringify(response.message?.envelope)!==JSON.stringify(task.payload.envelope)){
+      throw new Error('服务器没有返回完整的加密媒体发送回执');
+    }
+    if(closed||task.epoch!==identityEpoch||friendshipId!==task.friendshipId||
+       owner?.id!==task.senderId)return;
+    pendingMedia=null;
+    if(task.payload.attachment.kind==='voice')pendingVoiceStatus('sent');
+    $('retryMedia').hidden=true;
+    setStatus('图片或语音已安全送达服务器。');
+    await fetchMessages();
+  }catch(error){
+    if(!closed){
+      if(task.payload.attachment.kind==='voice')pendingVoiceStatus('failed');
+      $('retryMedia').hidden=false;
+      setStatus('发送尚未确认：'+String(error?.message||'网络错误')+'，可点击重试。',true);
+    }
+  }finally{
+    sending=false;
+    if(!closed)updateMediaBusy(false);
+  }
+}
+
+async function sendMediaBlob(blob,kind,mime,recordedDuration=null){
+  if(!mediaReady())throw new Error('请先等待双方加密聊天连接完成');
+  if(pendingMedia)throw new Error('还有一条未确认的媒体消息，请先点击重试');
+  if(!validateMediaKind(kind,mime))throw new Error('当前浏览器输出的语音格式不受支持');
+  if(blob.size===0||blob.size>MAX_MEDIA_BYTES)
+    throw new Error('语音或图片超过当前测试限制，请缩短录音或换一张图片');
+  const senderId=owner.id,relation=friendshipId,epoch=identityEpoch;
+  const clientMessageId=reqId();
+  const mediaId='med_'+crypto.randomUUID().replace(/-/g,'');
+  const meta={friendshipId:relation,senderId,recipientId:peer,clientMessageId,
+    mediaId,kind,mime,sk:device.keyId,rk:peerKey.keyId};
+  const bytes=new Uint8Array(await blob.arrayBuffer());
+  const attachment=await encryptMedia(bytes,key,meta);
+  const seconds=kind==='voice'&&Number.isFinite(recordedDuration)&&recordedDuration>0
+    ? Math.max(1,Math.min(60,Math.ceil(recordedDuration))):null;
+  const envelope=await encryptText(makeMediaMarker(mediaId,kind,seconds),key,meta);
+  if(closed||epoch!==identityEpoch||relation!==friendshipId||owner?.id!==senderId)return;
+  pendingMedia={mediaId,clientMessageId,senderId,friendshipId:relation,epoch,
+    payload:{friendshipId:relation,clientMessageId,attachment,envelope}};
+  if(kind==='voice')showPendingVoice(clientMessageId);
+  await transmitMedia();
+}
+
+function canvasBlob(canvas,quality){
+  return new Promise((resolve,reject)=>{
+    canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('手机未能压缩这张照片')),
+      'image/jpeg',quality);
+  });
+}
+
+async function makeSafePhoto(file){
+  if(!file||!file.type.startsWith('image/')||file.size>15*1024*1024)
+    throw new Error('请选择 15 MB 以内的相册图片');
+  const source=URL.createObjectURL(file);
+  try{
+    const image=new Image();
+    await new Promise((resolve,reject)=>{
+      image.onload=resolve;
+      image.onerror=()=>reject(new Error('图片无法在当前手机中读取'));
+      image.src=source;
+    });
+    if(!image.naturalWidth||!image.naturalHeight)throw new Error('图片尺寸无效');
+    let scale=Math.min(1,1400/Math.max(image.naturalWidth,image.naturalHeight));
+    for(const quality of [.8,.7,.59,.48,.38]){
+      const w=Math.max(1,Math.round(image.naturalWidth*scale));
+      const h=Math.max(1,Math.round(image.naturalHeight*scale));
+      const canvas=document.createElement('canvas');
+      canvas.width=w;canvas.height=h;
+      const context=canvas.getContext('2d',{alpha:false});
+      if(!context)throw new Error('当前手机不支持图片压缩');
+      context.fillStyle='#fff';context.fillRect(0,0,w,h);
+      context.drawImage(image,0,0,w,h);
+      const output=await canvasBlob(canvas,quality);
+      canvas.width=0;canvas.height=0;
+      if(output.size>0&&output.size<=MAX_MEDIA_BYTES)return output;
+      scale*=.78;
+    }
+    throw new Error('这张图片压缩后仍然过大，请选另一张');
+  }finally{URL.revokeObjectURL(source);}
+}
+
+$('photoBtn').addEventListener('click',()=>{
+  if(!mediaReady())return;
+  if(pendingMedia){setStatus('请先重试上一条未确认的图片或语音。',true);return;}
+  $('photoInput').click();
+});
+$('photoInput').addEventListener('change',async(event)=>{
+  const file=event.target.files?.[0];event.target.value='';
+  if(!file||!mediaReady())return;
+  $('photoBtn').disabled=true;
+  try{
+    setStatus('正在本机压缩并加密照片…');
+    await sendMediaBlob(await makeSafePhoto(file),'image','image/jpeg');
+  }catch(error){
+    if(!closed)setStatus(String(error?.message||'图片发送失败'),true);
+  }finally{if(!closed)updateMediaBusy(false);}
+});
+
+function clearRecordingUI(){
+  $('voiceState').hidden=true;
+  $('voiceBtn').setAttribute('aria-pressed','false');
+  $('voiceBtn').setAttribute('aria-label','录制语音');
+  $('voiceBtn').title='录制语音';
+}
+
+function discardRecording(){
+  const record=recording;recording=null;
+  if(record){
+    record.discard=true;
+    clearInterval(record.ticker);clearTimeout(record.deadline);
+    if(record.recorder.state!=='inactive')record.recorder.stop();
+    record.stream.getTracks().forEach(track=>track.stop());
+  }
+  clearRecordingUI();
+  recordingStopping=false;
+}
+
+async function startRecording(){
+  if(!mediaReady())return;
+  if(pendingMedia){setStatus('请先处理未确认的媒体消息。',true);return;}
+  if(!navigator.mediaDevices?.getUserMedia||typeof MediaRecorder!=='function'){
+    setStatus('当前浏览器不支持网页录音，请换支持麦克风的 HTTPS 浏览器。',true);
+    return;
+  }
+  $('voiceBtn').disabled=true;
+  let stream;
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({
+      audio:{echoCancellation:true,noiseSuppression:true},video:false
+    });
+    if(closed||!mediaReady()){
+      stream.getTracks().forEach(track=>track.stop());return;
+    }
+    const kinds=['audio/mp4','audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus'];
+    const mime=kinds.find(kind=>MediaRecorder.isTypeSupported?.(kind));
+    const recorder=new MediaRecorder(stream,{
+      ...(mime?{mimeType:mime}:{}),audioBitsPerSecond:24000
+    });
+    const state={stream,recorder,parts:[],start:Date.now(),discard:false,ticker:null,deadline:null};
+    recording=state;
+    recorder.addEventListener('dataavailable',event=>{if(event.data?.size)state.parts.push(event.data);});
+    recorder.addEventListener('error',()=>{
+      if(!closed)setStatus('录音过程发生错误，请再试一次。',true);
+      discardRecording();
+    });
+    recorder.addEventListener('stop',async()=>{
+      clearInterval(state.ticker);clearTimeout(state.deadline);
+      stream.getTracks().forEach(track=>track.stop());
+      if(recording===state)recording=null;
+      clearRecordingUI();
+      if(state.discard||closed){recordingStopping=false;return;}
+      recordingStopping=true;
+      try{
+        const captured=new Blob(state.parts,{type:recorder.mimeType||state.parts[0]?.type||''});
+        const type=captured.type.split(';')[0].toLowerCase();
+        if(!validateMediaKind('voice',type))
+          throw new Error('此浏览器生成的录音格式暂不兼容，请尝试 Safari 或 Chrome。');
+        setStatus('录音完成，正在加密发送…');
+        // Stop callbacks run after the recorder goes inactive; no raw audio
+        // bytes ever leave the browser before encryption.
+        recordingStopping=false;
+        // Use recorder wall-clock duration: reliable on Android and Safari,
+        // including audio containers with Infinity/NaN native duration.
+        const recordedSeconds=Math.max(.01,(Date.now()-state.start)/1000);
+        await sendMediaBlob(captured,'voice',type,recordedSeconds);
+      }catch(error){
+        if(!closed)setStatus(String(error?.message||'语音发送失败'),true);
+      }finally{
+        recordingStopping=false;
+        if(!closed)updateMediaBusy(false);
+      }
+    });
+    recorder.start(600);
+    $('voiceBtn').disabled=false;
+    $('voiceBtn').setAttribute('aria-pressed','true');
+    $('voiceBtn').setAttribute('aria-label','结束并发送语音');
+    $('voiceBtn').title='结束并发送语音';
+    $('voiceState').hidden=false;
+    const showTime=()=>{
+      const seconds=Math.min(20,Math.floor((Date.now()-state.start)/1000));
+      $('voiceState').textContent='录音中 · 00:'+String(seconds).padStart(2,'0')+
+        ' · 再点麦克风发送（最多 20 秒）';
+    };
+    showTime();
+    state.ticker=setInterval(showTime,300);
+    state.deadline=setTimeout(()=>stopRecording(false),20000);
+    setStatus('正在录音，点击麦克风结束并发送。');
+    $('photoBtn').disabled=true;
+  }catch(error){
+    if(stream)stream.getTracks().forEach(track=>track.stop());
+    if(recording)discardRecording();
+    if(!closed)setStatus(error?.name==='NotAllowedError'?
+      '麦克风权限未开启，请在浏览器设置中允许录音。':
+      '无法启动录音：'+String(error?.message||'请检查麦克风权限'),true);
+  }finally{if(!closed&& !recording)updateMediaBusy(false);}
+}
+
+function stopRecording(discard){
+  const state=recording;
+  if(!state)return;
+  recording=null;
+  state.discard=!!discard;
+  recordingStopping=!discard;
+  clearInterval(state.ticker);clearTimeout(state.deadline);
+  clearRecordingUI();
+  if(state.recorder.state!=='inactive')state.recorder.stop();
+  state.stream.getTracks().forEach(track=>track.stop());
+  $('voiceBtn').disabled=!discard;
+}
+
+$('voiceBtn').addEventListener('click',()=>{
+  if(recording)stopRecording(false);
+  else if(!recordingStopping)startRecording();
+});
+$('retryMedia').addEventListener('click',()=>{if(pendingMedia)transmitMedia();});
+
+async function start(){
+  try{
+    if(!ID.test(peer))throw new Error('未选择有效的真人好友');
+    const session=await api('/api/accounts/me');
+    owner=session.account;
+    if(!owner||!ID.test(owner.id)||owner.status!=='active'||owner.id===peer)
+      throw new Error('当前账号无权进入该会话');
+    const list=await api('/api/social/friends');
+    if(list.ownerAccountId!==owner.id||!Array.isArray(list.friends))throw new Error('好友列表身份异常');
+    const person=list.friends.find(item=>item.id===peer);
+    if(!person)throw new Error('只有双方同意并经过 001 审批的好友才能聊天');
+    friendLabel=person.displayName||peer;
+    $('peerTitle').textContent=friendLabel;
+    await setupDevice();
+    await fetchMessages();
+    if(!closed)timer=setInterval(()=>{
+      if(document.visibilityState==='visible')fetchMessages();
+    },3000);
+  }catch(e){if(!closed)setStatus(e.message||'聊天初始化失败',true);}
+}
+$('back').addEventListener('click',()=>{stop();location.assign('./real-friends.html');});
+$('compose').addEventListener('submit',async e=>{
+  e.preventDefault();
+  if(closed||sending||!owner||!peerKey||!key||!friendshipId)return;
+  const text=$('input').value.trim();if(!text)return;
+  sending=true;$('send').disabled=true;
+  const stamp=identityEpoch,ownerId=owner.id,relation=friendshipId;
+  try{
+    if(!pending||pending.text!==text||pending.friendshipId!==relation){
+      const clientMessageId=reqId();
+      const envelope=await encryptText(text,key,{friendshipId:relation,
+        senderId:ownerId,recipientId:peer,clientMessageId,
+        sk:device.keyId,rk:peerKey.keyId});
+      pending={text,friendshipId:relation,clientMessageId,envelope};
+    }
+    const result=await api('/api/social/e2ee/chats/'+encodeURIComponent(peer)+'/messages',
+      {method:'POST',body:{clientMessageId:pending.clientMessageId,
+        friendshipId:relation,envelope:pending.envelope}});
+    if(result.friendshipId!==relation||
+       result.message?.clientMessageId!==pending.clientMessageId||
+       result.message?.senderId!==ownerId||result.message?.recipientId!==peer||
+       JSON.stringify(result.message?.envelope)!==JSON.stringify(pending.envelope))
+      throw new Error('服务器发送回执不明确，已保留草稿供你核对');
+    if(closed||identityEpoch!==stamp||owner?.id!==ownerId||friendshipId!==relation)return;
+    pending=null;if($('input').value.trim()===text)$('input').value='';
+    await fetchMessages();
+  }catch(e){if(!closed)setStatus('消息未确认：'+(e.message||'发送失败'),true);}
+  finally{sending=false;if(!closed)$('send').disabled=!key;}
+});
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible'&&!closed)fetchMessages();
+});
+window.addEventListener('pagehide',stop);
+start();
+</script>
+</body>
+</html>

@@ -7,7 +7,7 @@ const detail = fs.readFileSync('chat/chat/chat-detail.html', 'utf8');
 const from = detail.indexOf('        var _chatHistoryUnreadable = false;');
 const to = detail.indexOf('        // 失败提示冷却：', from);
 const saveFrom = detail.indexOf('        function saveMessages(list) {', to);
-const saveTo = detail.indexOf('        // /photo 为用户显式触发', saveFrom);
+const saveTo = detail.indexOf('        // 同一角色优先用 Web Locks', saveFrom);
 assert.ok(from >= 0 && to > from && saveFrom > to && saveTo > saveFrom,
   'real chat source must expose the read/write guard blocks');
 const readFrom = detail.indexOf('        function _readBackHistory() {', to);
@@ -21,6 +21,8 @@ function fixture(raw, options = {}) {
   const toasts = [];
   const sandbox = {
     _storage: options.storage || null,
+    isGroupChat: false,
+    window: { MaomaoCloud: null },
     currentCharacter: { id: 'role-A' },
     storageKey: 'chat_history_role-A',
     localStorage: {

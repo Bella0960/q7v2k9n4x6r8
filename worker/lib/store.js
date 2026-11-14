@@ -979,6 +979,170 @@ class CloudStore {
     )[0] || null;
   }
 
+  getUserContextSharing(userId) {
+    return this.exec(
+      'SELECT user_id, enabled, updated_at, updated_by_device_id FROM user_context_sharing WHERE user_id = ?',
+      userId
+    )[0] || null;
+  }
+
+  setUserContextSharing({ userId, enabled, deviceId, now }) {
+    if (!this.isActiveAccountDevice(userId, deviceId)) return null;
+    const value = enabled === true ? 1 : 0;
+    return this.transaction(() => {
+      this.exec(
+        `INSERT INTO user_context_sharing (user_id, enabled, updated_at, updated_by_device_id)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(user_id) DO UPDATE SET
+           enabled = excluded.enabled,
+           updated_at = excluded.updated_at,
+           updated_by_device_id = excluded.updated_by_device_id`,
+        userId, value, now, deviceId
+      );
+      if (value === 0) {
+        this.exec('DELETE FROM character_context_snapshots WHERE user_id = ?', userId);
+        this.exec(
+          `UPDATE activity_queue
+           SET status = 'superseded', locked_by = NULL, locked_until = NULL,
+               next_attempt_at = NULL, updated_at = ?
+           WHERE status IN ('waiting', 'retry') AND kind = 'contact'
+             AND device_id IN (SELECT id FROM devices WHERE user_id = ?)`,
+          now, userId
+        );
+      }
+      return this.getUserContextSharing(userId);
+    });
+  }
+
+  recordCharacterContextSnapshot({
+    userId, characterId, eventId, deviceId, characterName = '',
+    personaText = '', recentMessages = [], lastUserMessageAt, now,
+    eventLimit = 600, windowStart = Number(now) - 3600000
+  }) {
+    if (!this.isActiveAccountDevice(userId, deviceId)) return { revoked: true, saved: false };
+    const sharing = this.getUserContextSharing(userId);
+    if (!sharing || Number(sharing.enabled) !== 1) return { disabled: true, saved: false };
+    const messagesJson = serializeStoreJson(recentMessages, 9000, 'context.recentMessages');
+    const normalizedName = String(characterName || '');
+    const normalizedPersona = String(personaText || '');
+    const normalizedLastUserAt = Number(lastUserMessageAt);
+
+    return this.transaction(() => {
+      const existingEvent = this.exec(
+        `SELECT event_id, context_version FROM character_context_events
+         WHERE user_id = ? AND character_id = ? AND event_id = ?`,
+        userId, characterId, eventId
+      )[0] || null;
+      let contextVersion = existingEvent ? Number(existingEvent.context_version || 0) : 0;
+      if (existingEvent && contextVersion < 1) {
+        return { conflict: true, saved: false, reason: 'event_version_unavailable' };
+      }
+
+      if (!existingEvent) {
+        if (this.countRecentCharacterContextEvents(deviceId, windowStart) >= eventLimit) {
+          return { limited: true, saved: false };
+        }
+        const insertedEvent = this.exec(
+          `INSERT OR IGNORE INTO character_context_events
+            (user_id, character_id, event_id, device_id, created_at, context_version)
+           VALUES (?, ?, ?, ?, ?, NULL) RETURNING event_id`,
+          userId, characterId, eventId, deviceId, now
+        )[0];
+        if (!insertedEvent) return { conflict: true, saved: false, reason: 'event_collision' };
+        const versionRow = this.exec(
+          `INSERT INTO character_context_versions
+            (user_id, character_id, version, updated_at, updated_by_device_id)
+           VALUES (?, ?, 1, ?, ?)
+           ON CONFLICT(user_id, character_id) DO UPDATE SET
+             version = character_context_versions.version + 1,
+             updated_at = excluded.updated_at,
+             updated_by_device_id = excluded.updated_by_device_id
+           RETURNING version`,
+          userId, characterId, now, deviceId
+        )[0];
+        contextVersion = Number(versionRow && versionRow.version || 0);
+        if (!Number.isSafeInteger(contextVersion) || contextVersion < 1) {
+          throw new Error('context version update failed');
+        }
+        this.exec(
+          `UPDATE character_context_events SET context_version = ?
+           WHERE user_id = ? AND character_id = ? AND event_id = ? AND context_version IS NULL`,
+          contextVersion, userId, characterId, eventId
+        );
+      }
+
+      const existingSnapshot = this.exec(
+        `SELECT source_device_id, character_name, persona_text,
+                recent_messages_json, last_user_message_at
+         FROM character_context_snapshots
+         WHERE user_id = ? AND character_id = ? AND context_version = ?`,
+        userId, characterId, contextVersion
+      )[0] || null;
+      if (existingSnapshot) {
+        const same = existingSnapshot.source_device_id === deviceId &&
+          existingSnapshot.character_name === normalizedName &&
+          existingSnapshot.persona_text === normalizedPersona &&
+          existingSnapshot.recent_messages_json === messagesJson &&
+          Number(existingSnapshot.last_user_message_at) === normalizedLastUserAt;
+        return same ? { saved: true, duplicate: true, contextVersion }
+          : { conflict: true, saved: false, reason: 'snapshot_immutable' };
+      }
+
+      const insertedSnapshot = this.exec(
+        `INSERT INTO character_context_snapshots
+          (user_id, character_id, context_version, source_device_id,
+           character_name, persona_text, recent_messages_json,
+           last_user_message_at, updated_at)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+         WHERE EXISTS (SELECT 1 FROM user_context_sharing WHERE user_id = ? AND enabled = 1)
+         RETURNING context_version`,
+        userId, characterId, contextVersion, deviceId, normalizedName,
+        normalizedPersona, messagesJson, normalizedLastUserAt, now, userId
+      )[0];
+      if (insertedSnapshot) {
+        this.exec(
+          `DELETE FROM character_context_snapshots
+           WHERE user_id = ? AND character_id = ? AND context_version < ?`,
+          userId, characterId, contextVersion
+        );
+      }
+      return insertedSnapshot ? { saved: true, duplicate: false, contextVersion }
+        : { disabled: true, saved: false };
+    });
+  }
+
+  getLatestCharacterContextSnapshot({ userId, characterId }) {
+    return this.exec(
+      `SELECT user_id, character_id, context_version, source_device_id,
+              character_name, persona_text, recent_messages_json,
+              last_user_message_at, updated_at
+       FROM character_context_snapshots
+       WHERE user_id = ? AND character_id = ?
+       ORDER BY context_version DESC LIMIT 1`,
+      userId, characterId
+    )[0] || null;
+  }
+
+  getCharacterContextSnapshot({ userId, characterId, contextVersion }) {
+    return this.exec(
+      `SELECT s.user_id, s.character_id, s.context_version, s.source_device_id,
+              s.character_name, s.persona_text, s.recent_messages_json,
+              s.last_user_message_at, s.updated_at
+       FROM character_context_snapshots s
+       INNER JOIN user_context_sharing sharing
+         ON sharing.user_id = s.user_id AND sharing.enabled = 1
+       INNER JOIN character_context_versions current
+         ON current.user_id = s.user_id AND current.character_id = s.character_id
+        AND current.version = s.context_version
+       INNER JOIN devices source
+         ON source.id = s.source_device_id AND source.user_id = s.user_id
+        AND source.revoked_at IS NULL
+       WHERE s.user_id = ? AND s.character_id = ? AND s.context_version = ?
+       LIMIT 1`,
+      userId, characterId, contextVersion
+    )[0] || null;
+  }
+
   countRecentCharacterContextEvents(deviceId, since) {
     const row = this.exec(
       'SELECT COUNT(*) AS total FROM character_context_events WHERE device_id = ? AND created_at >= ?',
@@ -1173,30 +1337,37 @@ class CloudStore {
     const dedupeKey = message?.dedupeKey == null ? null : requireStoreString(message.dedupeKey, 'outbound.dedupeKey');
     const payloadJson = serializeStoreJson(message.payload, 12000, 'outbound.payload');
     const now = Number(message.now);
+    const groupId = message?.groupId == null ? null : requireStoreString(message.groupId, 'outbound.groupId');
+    const groupIndex = message?.groupIndex == null ? 1 : Number(message.groupIndex);
+    const groupCount = message?.groupCount == null ? 1 : Number(message.groupCount);
     if (!Number.isSafeInteger(now) || now < 0) throw new TypeError('outbound.now 必须是非负安全整数');
+    if (!Number.isSafeInteger(groupIndex) || !Number.isSafeInteger(groupCount) ||
+        groupCount < 1 || groupCount > 4 || groupIndex < 1 || groupIndex > groupCount ||
+        (!groupId && (groupIndex !== 1 || groupCount !== 1))) {
+      throw new TypeError('outbound group metadata invalid');
+    }
 
     const recipient = this.exec(
       'SELECT id FROM devices WHERE id = ? AND user_id = ? AND revoked_at IS NULL',
-      deviceId,
-      userId
+      deviceId, userId
     )[0];
     if (!recipient) return { inserted: false, unavailable: true, message: null };
 
     const inserted = this.exec(
       `INSERT OR IGNORE INTO outbound_messages
         (id, device_id, character_id, payload_json, server_message_id, dedupe_key,
-         created_at, delivered_at, delivery_status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 'pending')
+         created_at, delivered_at, delivery_status, group_id, group_index, group_count)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 'pending', ?, ?, ?)
        RETURNING *`,
-      id, deviceId, characterId, payloadJson, serverMessageId, dedupeKey, now
+      id, deviceId, characterId, payloadJson, serverMessageId, dedupeKey,
+      now, groupId, groupIndex, groupCount
     )[0];
     if (inserted) return { inserted: true, idempotent: false, message: inserted };
 
     const existing = this.exec(
       `SELECT * FROM outbound_messages
        WHERE server_message_id = ? OR (? IS NOT NULL AND dedupe_key = ?)
-       ORDER BY CASE WHEN server_message_id = ? THEN 0 ELSE 1 END
-       LIMIT 1`,
+       ORDER BY CASE WHEN server_message_id = ? THEN 0 ELSE 1 END LIMIT 1`,
       serverMessageId, dedupeKey, dedupeKey, serverMessageId
     )[0] || null;
     const same = existing &&
@@ -1204,12 +1375,14 @@ class CloudStore {
       existing.character_id === characterId &&
       existing.server_message_id === serverMessageId &&
       (existing.dedupe_key ?? null) === dedupeKey &&
-      existing.payload_json === payloadJson;
+      existing.payload_json === payloadJson &&
+      (existing.group_id ?? null) === groupId &&
+      Number(existing.group_index || 1) === groupIndex &&
+      Number(existing.group_count || 1) === groupCount;
     return same
       ? { inserted: false, idempotent: true, message: existing }
       : { inserted: false, conflict: true, message: existing };
   }
-
   /**
    * Return pending chat outbox rows paired with active push subscriptions whose
    * per-message delivery is missing or due for retry. Message bodies are never
@@ -1226,10 +1399,12 @@ class CloudStore {
               target_device.id AS device_id,
               target_device.user_id AS target_account_id,
               source_device.id AS source_device_id,
-              o.character_id, o.server_message_id, o.created_at,
+              o.character_id, o.server_message_id, o.group_id,
+              o.group_index, o.group_count, o.created_at,
+              context_snapshot.character_name,
               s.id AS subscription_id, s.endpoint, s.p256dh, s.auth_key
        FROM outbound_messages o
-        INNER JOIN devices source_device ON source_device.id = o.device_id
+       INNER JOIN devices source_device ON source_device.id = o.device_id
        INNER JOIN devices target_device
          ON target_device.user_id = source_device.user_id
         AND target_device.revoked_at IS NULL
@@ -1239,13 +1414,26 @@ class CloudStore {
          ON r.server_message_id = o.server_message_id
         AND r.user_id = source_device.user_id
         AND r.device_id = target_device.id
+       LEFT JOIN character_context_snapshots context_snapshot
+         ON context_snapshot.user_id = source_device.user_id
+        AND context_snapshot.character_id = o.character_id
+        AND context_snapshot.context_version = (
+          SELECT MAX(latest.context_version)
+          FROM character_context_snapshots latest
+          WHERE latest.user_id = source_device.user_id
+            AND latest.character_id = o.character_id
+        )
        LEFT JOIN push_deliveries p
-         ON p.dedupe_key = ('outbound:' || o.server_message_id)
+         ON p.dedupe_key = CASE WHEN o.group_id IS NULL
+           THEN ('outbound:' || o.server_message_id)
+           ELSE ('outbound-group:' || o.group_id) END
         AND p.subscription_id = s.id
        WHERE r.local_saved_at IS NULL
+         AND COALESCE(o.group_index, 1) = 1
          AND NOT EXISTS (
            SELECT 1 FROM activity_queue staged
            WHERE staged.status = 'completed'
+             AND staged.result_group_id IS NULL
              AND staged.result_server_message_id = o.server_message_id
              AND staged.result_json IS NOT NULL
              AND (
@@ -1264,16 +1452,13 @@ class CloudStore {
          )
        ORDER BY o.created_at ASC, o.id ASC, target_device.created_at ASC, target_device.id ASC
        LIMIT ?`,
-      timestamp,
-      timestamp,
-      safeLimit
+      timestamp, timestamp, safeLimit
     );
   }
-
   getOutboundAccess({ userId, deviceId, characterId, serverMessageId }) {
     return this.exec(
       `SELECT o.id, o.server_message_id, o.character_id, o.created_at,
-              o.delivery_status, o.push_accepted_at, o.device_received_at,
+              o.group_id, o.group_index, o.group_count, o.delivery_status, o.push_accepted_at, o.device_received_at,
               o.local_saved_at, o.read_at, o.read_by_device_id
        FROM outbound_messages o
        INNER JOIN devices source_device ON source_device.id = o.device_id
@@ -1286,6 +1471,7 @@ class CloudStore {
          AND NOT EXISTS (
            SELECT 1 FROM activity_queue staged
            WHERE staged.status = 'completed'
+             AND staged.result_group_id IS NULL
              AND staged.result_server_message_id = o.server_message_id
              AND staged.result_json IS NOT NULL
              AND (
@@ -1323,7 +1509,7 @@ class CloudStore {
     }
     return this.exec(
       `SELECT o.id, o.character_id, o.payload_json, o.server_message_id,
-              o.created_at, o.delivery_status, o.push_accepted_at,
+              o.group_id, o.group_index, o.group_count, o.created_at, o.delivery_status, o.push_accepted_at,
               o.device_received_at, o.local_saved_at, o.read_at, o.read_by_device_id,
               r.device_received_at AS current_device_received_at,
               r.local_saved_at AS current_device_local_saved_at,
@@ -1338,10 +1524,24 @@ class CloudStore {
         AND r.user_id = requesting_device.user_id
         AND r.device_id = requesting_device.id
        WHERE source_device.user_id = ? AND o.character_id = ?
-         AND r.local_saved_at IS NULL
+         AND (
+           (o.group_id IS NULL AND r.local_saved_at IS NULL)
+           OR (o.group_id IS NOT NULL AND EXISTS (
+             SELECT 1
+             FROM outbound_messages group_row
+             LEFT JOIN outbound_device_receipts group_receipt
+               ON group_receipt.server_message_id = group_row.server_message_id
+              AND group_receipt.user_id = requesting_device.user_id
+              AND group_receipt.device_id = requesting_device.id
+             WHERE group_row.group_id = o.group_id
+               AND group_row.character_id = o.character_id
+               AND group_receipt.local_saved_at IS NULL
+           ))
+         )
          AND NOT EXISTS (
            SELECT 1 FROM activity_queue staged
            WHERE staged.status = 'completed'
+             AND staged.result_group_id IS NULL
              AND staged.result_server_message_id = o.server_message_id
              AND staged.result_json IS NOT NULL
              AND (
@@ -1356,7 +1556,7 @@ class CloudStore {
        ORDER BY o.created_at ASC, o.id ASC
        LIMIT ?`,
       deviceId, userId, userId, characterId,
-      cursorTime, cursorTime, cursorTime, cursorId, safeLimit
+      cursorTime, cursorTime, cursorTime, cursorId, Math.min(53, safeLimit + 3)
     );
   }
 
@@ -1379,13 +1579,17 @@ class CloudStore {
 
   markOutboundPushAccepted({ serverMessageId, now }) {
     return this.exec(
-      `UPDATE outbound_messages
-       SET push_accepted_at = COALESCE(push_accepted_at, ?)
-       WHERE server_message_id = ?
-       RETURNING server_message_id, push_accepted_at`,
-      now,
-      serverMessageId
+      'UPDATE outbound_messages SET push_accepted_at = COALESCE(push_accepted_at, ?) WHERE server_message_id = ? RETURNING server_message_id, push_accepted_at',
+      now, serverMessageId
     )[0] || null;
+  }
+
+  markOutboundGroupPushAccepted({ groupId, fallbackMessageId, now }) {
+    if (!groupId) return this.markOutboundPushAccepted({ serverMessageId: fallbackMessageId, now });
+    return this.exec(
+      'UPDATE outbound_messages SET push_accepted_at = COALESCE(push_accepted_at, ?) WHERE group_id = ? RETURNING server_message_id, push_accepted_at',
+      now, groupId
+    );
   }
 
   markOutboundReceived({ userId, deviceId, characterId, serverMessageId, now }) {
@@ -1594,6 +1798,33 @@ class CloudStore {
     )[0] || null;
   }
 
+  supersedePendingContactActivities({ userId, characterId, now }) {
+    return this.exec(
+      `UPDATE activity_queue
+       SET status = 'superseded', locked_by = NULL, locked_until = NULL,
+           next_attempt_at = NULL, updated_at = ?
+       WHERE character_id = ? AND kind = 'contact'
+         AND status IN ('waiting', 'retry')
+         AND device_id IN (SELECT id FROM devices WHERE user_id = ?)
+       RETURNING id`,
+      now, characterId, userId
+    ).length;
+  }
+
+  refreshPendingContactActivityContext({ deviceId, characterId, dedupeKey, contextVersion, now }) {
+    const payloadJson = serializeStoreJson({
+      contextVersion, sourceDeviceId: deviceId, executionMode: 'cloud'
+    }, 4000, 'activity.payload');
+    return this.exec(
+      `UPDATE activity_queue
+       SET payload_json = ?, updated_at = ?
+       WHERE device_id = ? AND character_id = ? AND kind = 'contact'
+         AND dedupe_key = ? AND status IN ('waiting', 'retry')
+       RETURNING id`,
+      payloadJson, now, deviceId, characterId, dedupeKey
+    )[0] || null;
+  }
+
   countPendingActivitiesForCharacter(userId, characterId) {
     const row = this.exec(
       `SELECT COUNT(*) AS total
@@ -1765,6 +1996,113 @@ class CloudStore {
    * The target tenant/device/role are taken only from persisted queue + device
    * rows, never from caller-supplied identifiers.
    */
+  completeCloudActivityWithOutboundGroup({ id, owner, attemptCount, now, groupId, contextVersion, sourceDeviceId, messages }) {
+    if (!Array.isArray(messages) || messages.length < 1 || messages.length > 4) {
+      throw new TypeError('cloud outbound group requires 1..4 messages');
+    }
+    const prepared = messages.map((message, index) => ({
+      serverMessageId: requireStoreString(message?.serverMessageId, 'group.serverMessageId'),
+      dedupeKey: requireStoreString(message?.dedupeKey, 'group.dedupeKey'),
+      payload: message.payload,
+      groupId,
+      groupIndex: index + 1,
+      groupCount: messages.length
+    }));
+    const safeContextVersion = Number(contextVersion);
+    const safeSourceDeviceId = requireStoreString(sourceDeviceId, 'group.sourceDeviceId');
+    if (!Number.isSafeInteger(safeContextVersion) || safeContextVersion < 1) {
+      throw new TypeError('cloud outbound group contextVersion invalid');
+    }
+    const resultJson = JSON.stringify(prepared);
+    const existingTask = this.exec(
+      `SELECT q.*, d.user_id AS user_id FROM activity_queue q
+       INNER JOIN devices d ON d.id = q.device_id
+       WHERE q.id = ? AND q.status = 'completed'
+         AND q.attempt_count = ? AND d.revoked_at IS NULL`,
+      id, attemptCount
+    )[0] || null;
+    if (existingTask) {
+      if (existingTask.result_group_id !== groupId ||
+          Number(existingTask.result_message_count || 1) !== prepared.length ||
+          existingTask.result_json !== resultJson) return null;
+      return this.enqueueCloudGroupRows(existingTask, prepared, now, true);
+    }
+
+    const task = this.exec(
+      `SELECT q.*, d.user_id AS user_id FROM activity_queue q
+       INNER JOIN devices d ON d.id = q.device_id
+       WHERE q.id = ? AND q.status = 'running'
+         AND q.locked_by = ? AND q.attempt_count = ?
+         AND q.locked_until > ? AND d.revoked_at IS NULL`,
+      id, owner, attemptCount, now
+    )[0] || null;
+    if (!task) return null;
+
+    const completed = this.exec(
+      `UPDATE activity_queue
+       SET status = 'completed', locked_by = NULL, locked_until = NULL,
+           next_attempt_at = NULL, updated_at = ?, result_json = ?,
+           result_server_message_id = ?, result_dedupe_key = ?,
+           result_group_id = ?, result_message_count = ?
+       WHERE id = ? AND status = 'running' AND locked_by = ?
+         AND attempt_count = ? AND locked_until > ?
+         AND device_id = ?
+         AND EXISTS (
+           SELECT 1 FROM devices source
+           INNER JOIN character_context_versions version
+             ON version.user_id = source.user_id
+            AND version.character_id = activity_queue.character_id
+            AND version.version = ?
+            AND version.updated_by_device_id = source.id
+           INNER JOIN user_context_sharing sharing
+             ON sharing.user_id = source.user_id AND sharing.enabled = 1
+           WHERE source.id = activity_queue.device_id
+             AND source.id = ? AND source.revoked_at IS NULL
+         )
+       RETURNING id`,
+      now, resultJson, prepared[0].serverMessageId,
+      'outbound-group:' + groupId, groupId, prepared.length,
+      id, owner, attemptCount, now,
+      safeSourceDeviceId, safeContextVersion, safeSourceDeviceId
+    )[0];
+    if (!completed) return null;
+    return this.enqueueCloudGroupRows(task, prepared, now, false);
+  }
+
+  enqueueCloudGroupRows(task, prepared, now, alreadyCompleted) {
+    let inserted = 0;
+    let idempotent = 0;
+    for (const item of prepared) {
+      const result = this.enqueueOutboundMessage({
+        id: 'out_' + item.serverMessageId,
+        deviceId: task.device_id,
+        userId: task.user_id,
+        characterId: task.character_id,
+        serverMessageId: item.serverMessageId,
+        dedupeKey: item.dedupeKey,
+        payload: item.payload,
+        groupId: item.groupId,
+        groupIndex: item.groupIndex,
+        groupCount: item.groupCount,
+        now
+      });
+      if (result.unavailable || result.conflict) {
+        return { completed: false, conflict: true, inserted, idempotent };
+      }
+      if (result.inserted) inserted += 1;
+      else if (result.idempotent) idempotent += 1;
+    }
+    return {
+      completed: true,
+      alreadyCompleted: alreadyCompleted === true,
+      groupId: prepared[0].groupId,
+      messageCount: prepared.length,
+      serverMessageIds: prepared.map(item => item.serverMessageId),
+      outboundInserted: inserted,
+      outboundIdempotent: idempotent
+    };
+  }
+
   repairAllStagedActivityOutboxes({ now, limit = 50 }) {
     const safeLimit = Math.max(1, Math.min(200, Math.floor(Number(limit) || 50)));
     const timestamp = Number(now);
@@ -1773,7 +2111,8 @@ class CloudStore {
     }
     const rows = this.exec(
       `SELECT q.id, q.device_id, q.character_id, q.result_json,
-              q.result_server_message_id, q.result_dedupe_key, q.updated_at,
+              q.result_server_message_id, q.result_dedupe_key,
+              q.result_group_id, q.result_message_count, q.updated_at,
               d.user_id
        FROM activity_queue q
        INNER JOIN devices d
@@ -1781,16 +2120,20 @@ class CloudStore {
        WHERE q.status = 'completed'
          AND q.result_json IS NOT NULL
          AND q.result_server_message_id IS NOT NULL
-         AND NOT EXISTS (
-           SELECT 1 FROM outbound_messages o
-           WHERE o.server_message_id = q.result_server_message_id
-             AND o.device_id = q.device_id
-             AND o.character_id = q.character_id
-             AND o.payload_json = q.result_json
-             AND o.dedupe_key IS q.result_dedupe_key
+         AND (
+           (q.result_group_id IS NOT NULL AND
+             (SELECT COUNT(*) FROM outbound_messages o WHERE o.group_id = q.result_group_id)
+               < q.result_message_count)
+           OR (q.result_group_id IS NULL AND NOT EXISTS (
+             SELECT 1 FROM outbound_messages o
+             WHERE o.server_message_id = q.result_server_message_id
+               AND o.device_id = q.device_id
+               AND o.character_id = q.character_id
+               AND o.payload_json = q.result_json
+               AND o.dedupe_key IS q.result_dedupe_key
+           ))
          )
-       ORDER BY q.updated_at ASC, q.id ASC
-       LIMIT ?`,
+       ORDER BY q.updated_at ASC, q.id ASC LIMIT ?`,
       safeLimit
     );
 
@@ -1802,6 +2145,32 @@ class CloudStore {
         payload = JSON.parse(row.result_json);
       } catch {
         deferred += 1;
+        continue;
+      }
+      if (row.result_group_id) {
+        if (!Array.isArray(payload) || payload.length !== Number(row.result_message_count)) {
+          deferred += 1;
+          continue;
+        }
+        let groupOk = true;
+        for (const item of payload) {
+          const result = this.enqueueOutboundMessage({
+            id: 'out_' + item.serverMessageId,
+            deviceId: row.device_id,
+            userId: row.user_id,
+            characterId: row.character_id,
+            serverMessageId: item.serverMessageId,
+            dedupeKey: item.dedupeKey,
+            payload: item.payload,
+            groupId: item.groupId,
+            groupIndex: item.groupIndex,
+            groupCount: item.groupCount,
+            now: Number(row.updated_at || timestamp)
+          });
+          if (result.inserted || result.idempotent) repaired += 1;
+          else groupOk = false;
+        }
+        if (!groupOk) deferred += 1;
         continue;
       }
       const result = this.enqueueOutboundMessage({
@@ -1823,29 +2192,32 @@ class CloudStore {
   repairStagedActivityOutbox({ userId, deviceId, characterId, now, limit = 10 }) {
     const safeLimit = Math.max(1, Math.min(20, Math.floor(Number(limit) || 10)));
     const rows = this.exec(
-      `SELECT q.id, q.device_id, q.character_id, q.result_json,
-              q.result_server_message_id, q.result_dedupe_key, q.updated_at,
-              d.user_id
-       FROM activity_queue q
-       INNER JOIN devices d ON d.id = q.device_id
-       WHERE d.user_id = ? AND d.id = ? AND d.revoked_at IS NULL
-         AND q.character_id = ? AND q.status = 'completed'
-         AND q.result_json IS NOT NULL
-         AND q.result_server_message_id IS NOT NULL
-         AND NOT EXISTS (
-           SELECT 1 FROM outbound_messages o
-           WHERE o.server_message_id = q.result_server_message_id
-             AND o.device_id = q.device_id
-             AND o.character_id = q.character_id
-             AND o.payload_json = q.result_json
-             AND o.dedupe_key IS q.result_dedupe_key
-         )
-       ORDER BY q.updated_at ASC, q.id ASC
-       LIMIT ?`,
-      userId,
-      deviceId,
-      characterId,
-      safeLimit
+      "SELECT q.id, q.device_id, q.character_id, q.result_json, \
+              q.result_server_message_id, q.result_dedupe_key, \
+              q.result_group_id, q.result_message_count, q.updated_at, \
+              d.user_id \
+       FROM activity_queue q \
+       INNER JOIN devices d ON d.id = q.device_id \
+       WHERE d.user_id = ? AND d.id = ? AND d.revoked_at IS NULL \
+         AND q.character_id = ? AND q.status = 'completed' \
+         AND q.result_json IS NOT NULL \
+         AND q.result_server_message_id IS NOT NULL \
+         AND ( \
+           (q.result_group_id IS NULL AND NOT EXISTS ( \
+             SELECT 1 FROM outbound_messages o \
+             WHERE o.server_message_id = q.result_server_message_id \
+               AND o.device_id = q.device_id \
+               AND o.character_id = q.character_id \
+               AND o.payload_json = q.result_json \
+               AND o.dedupe_key IS q.result_dedupe_key \
+           )) \
+           OR (q.result_group_id IS NOT NULL AND \
+             (SELECT COUNT(*) FROM outbound_messages o \
+              WHERE o.group_id = q.result_group_id) < q.result_message_count) \
+         ) \
+       ORDER BY q.updated_at ASC, q.id ASC \
+       LIMIT ?",
+      userId, deviceId, characterId, safeLimit
     );
 
     let repaired = 0;
@@ -1856,6 +2228,16 @@ class CloudStore {
         payload = JSON.parse(row.result_json);
       } catch {
         deferred += 1;
+        continue;
+      }
+      if (row.result_group_id) {
+        if (!Array.isArray(payload) || payload.length !== Number(row.result_message_count)) {
+          deferred += 1;
+          continue;
+        }
+        const result = this.enqueueCloudGroupRows(row, payload, Number(row.updated_at || now), true);
+        if (result.completed) repaired += result.outboundInserted + result.outboundIdempotent;
+        else deferred += 1;
         continue;
       }
       const result = this.enqueueOutboundMessage({
@@ -1874,6 +2256,40 @@ class CloudStore {
     return { repaired, deferred };
   }
 
+  /**
+   * Fetch cloud-owned contact work in SQL before applying the batch limit.
+   * Filtering after listDueActivities(limit) can starve cloud tasks behind
+   * older foreground-owned rows, even when a cloud task is already due.
+   */
+  listDueCloudActivities(now, limit) {
+    const safeLimit = Math.max(1, Math.min(50, Math.floor(Number(limit) || 10)));
+    return this.exec(
+      `SELECT q.*, d.user_id AS user_id,
+              d.revoked_at AS source_device_revoked_at
+       FROM activity_queue q
+       LEFT JOIN devices d ON d.id = q.device_id
+       WHERE q.kind = 'contact'
+         AND CASE
+           WHEN json_valid(q.payload_json)
+           THEN json_extract(q.payload_json, '$.executionMode')
+           ELSE NULL
+         END = 'cloud'
+         AND (
+           (q.status IN ('waiting', 'retry')
+             AND COALESCE(q.next_attempt_at, q.scheduled_at) <= ?
+             AND (q.locked_until IS NULL OR q.locked_until <= ?))
+           OR (q.status = 'running'
+             AND q.locked_until IS NOT NULL
+             AND q.locked_until <= ?)
+         )
+       ORDER BY COALESCE(q.next_attempt_at, q.scheduled_at) ASC, q.id ASC
+       LIMIT ?`,
+      now,
+      now,
+      now,
+      safeLimit
+    );
+  }
 
   listDueActivities(now, limit) {
     return this.exec(
@@ -2084,7 +2500,7 @@ class CloudStore {
        FROM execution_log e
        INNER JOIN devices d ON d.id = e.device_id
        WHERE d.user_id = ?
-         AND e.kind = 'autonomy_tick'
+         AND e.kind IN ('autonomy_tick', 'autonomy_cloud_tick')
          AND e.status IN ('deferred', 'failed', 'superseded', 'skipped')
          AND e.created_at >= ?
        GROUP BY e.reason_code
@@ -2096,6 +2512,103 @@ class CloudStore {
       reasonCode: String(row.reason_code || ''),
       count: Number(row.total || 0)
     }));
+  }
+
+  getRecentPushReasonSummary({ userId = 'owner', deviceId, since } = {}) {
+    const safeDeviceId = requireStoreString(deviceId, 'push.deviceId');
+    const windowStart = Number(since);
+    if (!Number.isSafeInteger(windowStart) || windowStart < 0) return [];
+    return this.exec(
+      `SELECT e.reason_code, COUNT(*) AS total
+       FROM execution_log e
+       INNER JOIN devices d ON d.id = e.device_id
+       WHERE d.user_id = ? AND d.id = ?
+         AND e.kind = 'outbound_push'
+         AND e.status IN ('retry', 'failed', 'skipped')
+         AND e.created_at >= ?
+       GROUP BY e.reason_code
+       ORDER BY total DESC, e.reason_code ASC
+       LIMIT 12`,
+      userId,
+      safeDeviceId,
+      windowStart
+    ).map(row => ({
+      reasonCode: String(row.reason_code || ''),
+      count: Number(row.total || 0)
+    }));
+  }
+
+  /**
+   * The tick row is content-free and global to this Worker deployment.
+   * It lets readiness distinguish "configured" from "Cron has actually run".
+   */
+  getLatestCloudAutonomyTick() {
+    const row = this.exec(
+      `SELECT status, reason_code, created_at
+       FROM execution_log
+       WHERE kind = 'autonomy_cloud_tick'
+       ORDER BY created_at DESC, id DESC
+       LIMIT 1`
+    )[0] || null;
+    return row ? {
+      status: String(row.status || ''),
+      reasonCode: String(row.reason_code || ''),
+      createdAt: Number(row.created_at)
+    } : null;
+  }
+
+  /**
+   * A successful generation marker is scoped to the authenticated account;
+   * it contains no prompt, generated text, or character identifier.
+   */
+  getLatestCloudAutonomyGeneration({ userId = 'owner' } = {}) {
+    const row = this.exec(
+      `SELECT e.created_at
+       FROM execution_log e
+       INNER JOIN devices d ON d.id = e.device_id
+       WHERE d.user_id = ?
+         AND e.kind = 'autonomy_cloud_model'
+         AND e.status = 'success'
+         AND e.reason_code = 'outbound_group_committed'
+       ORDER BY e.created_at DESC, e.id DESC
+       LIMIT 1`,
+      userId
+    )[0] || null;
+    return row ? Number(row.created_at) : null;
+  }
+
+  /**
+   * Per-device proof that the Web Push service accepted an autonomous chat
+   * notification (HTTP success). This is not proof that the OS displayed it.
+   */
+  getLatestAutonomyPushAcceptance({ userId = 'owner', deviceId, now = Date.now() } = {}) {
+    const safeDeviceId = requireStoreString(deviceId, 'push.deviceId');
+    const timestamp = Number(now);
+    if (!Number.isSafeInteger(timestamp) || timestamp <= 0) return null;
+    const row = this.exec(
+      `SELECT e.created_at
+       FROM execution_log e
+       INNER JOIN devices d ON d.id = e.device_id
+       WHERE d.user_id = ? AND d.id = ?
+         AND e.kind = 'outbound_push'
+         AND e.status = 'success'
+         AND e.reason_code = 'delivered'
+         AND EXISTS (
+           SELECT 1
+           FROM push_subscriptions s
+           WHERE s.id = json_extract(e.detail_json, '$.subscriptionId')
+             AND s.device_id = d.id
+             AND s.disabled_at IS NULL
+             AND e.created_at >= s.updated_at
+             AND (s.expiration_time IS NULL OR s.expiration_time > ?)
+         )
+       ORDER BY e.created_at DESC, e.id DESC
+       LIMIT 1`,
+      userId,
+      safeDeviceId,
+      timestamp
+    )[0] || null;
+    return row ? Number(row.created_at) : null;
   }
 
   hasMaoSuperAdminAccount() {
@@ -2214,6 +2727,8 @@ class CloudStore {
         'device_pairing_tokens',
         'character_context_versions',
         'character_context_events',
+        'user_context_sharing',
+        'character_context_snapshots',
         'outbound_device_receipts'
       ];
       for (const table of tables) {

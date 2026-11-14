@@ -13,6 +13,10 @@ import { SQL as MAO_ACCOUNT_RESTORE_STATE_SQL, VERSION as MAO_ACCOUNT_RESTORE_ST
 import { SQL as MAO_ADMIN_DIRECTORY_INDEXES_SQL, VERSION as MAO_ADMIN_DIRECTORY_INDEXES_VERSION } from '../migrations/0014_mao_admin_directory_indexes.js';
 import { SQL as MAO_ACCOUNT_AUDIT_CURSOR_SQL, VERSION as MAO_ACCOUNT_AUDIT_CURSOR_VERSION } from '../migrations/0015_mao_account_audit_cursor.js';
 import { SQL as MAO_GLOBAL_AUDIT_CURSOR_SQL, VERSION as MAO_GLOBAL_AUDIT_CURSOR_VERSION } from '../migrations/0016_mao_global_audit_cursor.js';
+import { SQL as MAO_SOCIAL_SQL, VERSION as MAO_SOCIAL_VERSION } from '../migrations/0017_mao_social.js';
+import { SQL as MAO_SOCIAL_E2EE_SQL, VERSION as MAO_SOCIAL_E2EE_VERSION } from '../migrations/0018_mao_social_e2ee.js';
+import { SQL as MAO_SOCIAL_MEDIA_SQL, VERSION as MAO_SOCIAL_MEDIA_VERSION } from '../migrations/0019_mao_social_e2ee_media.js';
+import { SQL as CLOUD_AUTONOMOUS_CONTEXT_SQL, VERSION as CLOUD_AUTONOMOUS_CONTEXT_VERSION } from '../migrations/0020_cloud_autonomous_context.js';
 import { SQL as OUTBOUND_INBOX_SQL, VERSION as OUTBOUND_INBOX_VERSION } from '../migrations/0006_outbound_inbox_index.js';
 
 /**
@@ -35,7 +39,11 @@ export const MIGRATIONS = [
   { version: MAO_ACCOUNT_RESTORE_STATE_VERSION, sql: MAO_ACCOUNT_RESTORE_STATE_SQL },
   { version: MAO_ADMIN_DIRECTORY_INDEXES_VERSION, sql: MAO_ADMIN_DIRECTORY_INDEXES_SQL },
   { version: MAO_ACCOUNT_AUDIT_CURSOR_VERSION, sql: MAO_ACCOUNT_AUDIT_CURSOR_SQL },
-  { version: MAO_GLOBAL_AUDIT_CURSOR_VERSION, sql: MAO_GLOBAL_AUDIT_CURSOR_SQL }
+  { version: MAO_GLOBAL_AUDIT_CURSOR_VERSION, sql: MAO_GLOBAL_AUDIT_CURSOR_SQL },
+  { version: MAO_SOCIAL_VERSION, sql: MAO_SOCIAL_SQL },
+  { version: MAO_SOCIAL_E2EE_VERSION, sql: MAO_SOCIAL_E2EE_SQL },
+  { version: MAO_SOCIAL_MEDIA_VERSION, sql: MAO_SOCIAL_MEDIA_SQL },
+  { version: CLOUD_AUTONOMOUS_CONTEXT_VERSION, sql: CLOUD_AUTONOMOUS_CONTEXT_SQL }
 ];
 
 /** 以单引号感知的方式拆分多条语句，避免把字符串里的分号切坏。 */
@@ -82,7 +90,19 @@ export function applyMigrations(exec, now = Date.now(), transaction = null) {
     // Use Durable Object transactionSync in production; the local SQLite test
     // adapter uses explicit BEGIN/COMMIT. The DDL and version marker commit as one.
     runTransaction(() => {
-      for (const statement of splitSql(migration.sql)) exec(statement);
+      const upgradingOriginalCloudSchema = migration.version === CLOUD_AUTONOMOUS_CONTEXT_VERSION &&
+        applied.has('0017_cloud_autonomous_context');
+      for (const statement of splitSql(migration.sql)) {
+        // The older release used identical cloud DDL at 0017, before social
+        // took that number. Reconcile only its additive columns, retaining
+        // all rows and executing the idempotent table/index definitions.
+        if (upgradingOriginalCloudSchema) {
+          const column = /^ALTER TABLE (\w+) ADD COLUMN (\w+)\b/i.exec(statement);
+          if (column && exec('PRAGMA table_info(' + column[1] + ')')
+            .some(row => row.name === column[2])) continue;
+        }
+        exec(statement);
+      }
       exec('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)', migration.version, now);
     });
     results.push(migration.version);

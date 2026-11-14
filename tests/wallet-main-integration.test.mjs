@@ -109,7 +109,7 @@ test('after-sales request is never duplicated and blocked when unsafe', async ()
 
 test('main-based wallet scripts are versioned for PWA refresh', () => {
   const sw = source('sw.js');
-  assert.match(sw, /phone-app-pwa-v237/);
+  assert.ok(Number(/phone-app-pwa-v(\d+)/.exec(sw)?.[1]) >= 237);
   assert.match(sw, /wallet-ledger\.js\?v=20261114v12/);
   assert.match(sw, /role_family_cards\.js\?v=20261114v4/);
 });

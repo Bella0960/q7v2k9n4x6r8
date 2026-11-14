@@ -29,11 +29,21 @@ test('QA Worker is isolated from production and never aliases old account previe
   assert.deepEqual(config.services, [
     { binding: 'MAO_IDENTITY_AUTHORITY', service: 'maomao-001-identity-gateway-20261114' }
   ], 'QA must use the private identity gateway rather than an old account Preview');
-  assert.deepEqual(config.vars, {
+  assert.deepEqual({
+    MAO_IDENTITY_MODE: config.vars.MAO_IDENTITY_MODE,
+    MAO_IDENTITY_AUTHORITY_MODE: config.vars.MAO_IDENTITY_AUTHORITY_MODE,
+    MAO_IDENTITY_CANONICAL_ADMIN_REQUIRED: config.vars.MAO_IDENTITY_CANONICAL_ADMIN_REQUIRED
+  }, {
     MAO_IDENTITY_MODE: 'delegated_preview',
     MAO_IDENTITY_AUTHORITY_MODE: 'existing_worker',
     MAO_IDENTITY_CANONICAL_ADMIN_REQUIRED: 'true'
   });
+  assert.equal(config.keep_vars, true);
+  assert.equal(config.ai.binding, 'AI');
+  assert.equal(config.vars.AUTONOMY_MODEL_BACKEND, 'workers_ai');
+  assert.equal(config.vars.MAO_SOCIAL_ENABLED, 'true');
+  assert.equal(config.vars.MAO_SOCIAL_CHAT_ENABLED, 'false');
+  assert.equal(config.vars.MAO_SOCIAL_E2EE_ENABLED, 'true');
   assert.ok(!JSON.stringify(config).includes('MAO-OXHBDBWCOIHPBBYN'),
     'permanent founder account ID belongs in a secret, not public repository config');
   assert.ok(!('MAO_IDENTITY_BRIDGE_SECRET' in config.vars));
