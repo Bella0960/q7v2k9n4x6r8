@@ -145,8 +145,26 @@
     function backupTargets(scope) {
         var registry = backupRegistry();
         if (!registry) return scope ? [] : IDB_TARGETS.slice();
-        return scope ? registry.databasesFor(scope, IDB_TARGETS)
+        var targets = scope ? registry.databasesFor(scope, IDB_TARGETS)
             : registry.allDatabases(IDB_TARGETS);
+        // For targeted music/media backups include actual audio bytes, not
+        // just catalog metadata. Keep the legacy full-backup footprint intact.
+        if (scope === 'music' || scope === 'media') {
+            targets = targets.map(function(target) {
+                if (target.db !== 'maomao-media-store') return target;
+                return Object.assign({}, target, {
+                    stores: target.stores.map(function(store) {
+                        if (store.store !== 'audio') return store;
+                        return {
+                            store: 'audio', keyPath: 'id', blobFields: ['blob'],
+                            blobMaxBytes: FONT_BLOB_MAX_BYTES,
+                            blobStoreMaxBytes: FONT_STORE_MAX_BYTES
+                        };
+                    })
+                });
+            });
+        }
+        return targets;
     }
 
     function snapshot(dropCaches, dropSecrets, includePrivateLocalKeys) {
@@ -304,7 +322,11 @@
                 Object.keys(stores).forEach(function (sn) {
                     var cnt = stores[sn].length;
                     n += cnt;
-                    if (tgt.db === 'maomao-media-store' && sn === 'audio' && cnt) hasAudioMeta = true;
+                    if (tgt.db === 'maomao-media-store' && sn === 'audio' && cnt) {
+                        var audioDef = tgt.stores.filter(function(def) { return def.store === 'audio'; })[0];
+                        if (audioDef && (audioDef.excludeFields || []).indexOf('blob') >= 0)
+                            hasAudioMeta = true;
+                    }
                 });
                 dbOverview[tgt.db] = n;
                 dbTotal += n;
@@ -313,6 +335,9 @@
                 });
             }
 
+            // Failures are recorded in the archive manifest. Never describe a
+            // partial media export as a fully recoverable backup.
+            var backupComplete = dbWarnings.length === 0 && allSkipped.length === 0 && !hasAudioMeta;
             // localStorage 也没有任何数据时（纯 IndexedDB 备份）也允许导出，
             // 因为 wallpaper / books / photos 都可能只在 IndexedDB 里。
             if (!Object.keys(snap).length && !dbTotal) {
@@ -352,6 +377,12 @@
                     exportedAt: new Date().toISOString(),
                     count: Object.keys(snap).length,
                     indexedDB: dbOverview,
+                    complete: backupComplete,
+                    warnings: {
+                        databasesSkipped: dbWarnings.length,
+                        recordsSkipped: allSkipped.length,
+                        audioMetadataOnly: hasAudioMeta
+                    },
                     ...(scope ? { scope: scope, moduleLabel: registry.get(scope).label,
                         sharedMedia: exportTargets.some(function(t) {
                             return t.db === 'maomao-assets' || t.db === 'maomao-media-store';
@@ -382,7 +413,7 @@
             setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
 
             // 组装 toast
-            var parts = ['已导出'];
+            var parts = [backupComplete ? '已导出完整备份' : '已导出部分备份（不完整）'];
             if (Object.keys(snap).length) parts.push('localStorage ' + Object.keys(snap).length + ' 项');
             if (dbTotal) parts.push('IndexedDB ' + dbTotal + ' 项');
             var msg = parts.join('、');
@@ -997,6 +1028,9 @@
             catch (e) { toast('导入失败：文件不是合法 JSON'); return; }
             var err = validateBackup(obj);
             if (err) { toast('导入失败：' + err); return; }
+            if (obj.__backup.scope && obj.__backup.complete === false) {
+                toast('分类备份不完整，已阻止恢复，以免覆盖原有数据'); return;
+            }
             var scope = obj.__backup.scope || '';
             if (requestedScope && scope !== requestedScope) {
                 toast('导入失败：文件分类与当前选择不一致'); return;
