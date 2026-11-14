@@ -11,6 +11,8 @@
     "test:chat:contract": "node --test tests/chat-regression-contract.test.mjs tests/chat-role-sticker-library.test.mjs tests/role-avatar-library.test.mjs tests/chat-image-vision.test.mjs tests/role-gallery-image-autonomy.test.mjs",
     "test:chat:reply": "node --test tests/chat-reply-bubble-mode.test.mjs",
     "test:chat:isolation": "node --test tests/chat-data-isolation.test.mjs",
+    "test:chat:history": "node --test tests/chat-history-corruption-guard.test.mjs",
+    "test:chat:history:browser": "node tests/chat-history-corruption-browser.mjs",
     "test:bugfix:blockers": "node --test tests/forum-chat-blockers.test.mjs",
     "test:tutorial": "node --test tests/tutorial-page-contract.test.mjs",
     "test:inspect:contract": "node --test tests/inspect-feature-contract.test.mjs",
