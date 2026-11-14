@@ -1,14 +1,11 @@
 /* MAOMAO wallet ledger coordination.
- * All in-app balance mutations share one origin-wide exclusive lock where Web Locks
- * are available. Older browsers get page-local serialization and an explicit fallback
- * signal; that fallback does not claim cross-tab safety.
+ * Balance, card and finance mutations require one origin-wide Web Lock.
+ * Never downgrade to a page-local queue: it cannot protect another tab.
  */
 (function (global) {
   'use strict';
 
   var LOCK_NAME = 'maomao-wallet-ledger-v1';
-  var fallbackQueue = Promise.resolve();
-  var fallbackNoticeShown = false;
   // Keep the exact raw snapshot associated with every wallet object returned by our reader.
   // Callers must not need to remember to provide a separate optimistic version token.
   var walletSnapshotOrigins = typeof WeakMap === 'function' ? new WeakMap() : null;
@@ -26,16 +23,12 @@
       });
     }
 
-    if (!fallbackNoticeShown) {
-      fallbackNoticeShown = true;
-      if (typeof options.onFallback === 'function') {
-        try { options.onFallback(); } catch (e) {}
-      }
-    }
-
-    var run = fallbackQueue.then(task, task);
-    fallbackQueue = run.then(function () {}, function () {});
-    return run;
+    // All callers may mutate financial state. A page-local promise queue is
+    // not a cross-tab lock and must never be treated as one. Reject before
+    // invoking task so even a future caller without its own guard stays safe.
+    var error = new Error('cross-tab-lock-unavailable');
+    error.code = 'cross-tab-lock-unavailable';
+    return Promise.reject(error);
   }
 
   var PENDING_CHECKOUT_KEY = 'maomao_wallet_pending_checkouts_v1';
