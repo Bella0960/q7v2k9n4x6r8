@@ -4,7 +4,7 @@ import { randomToken, sha256Hex, base64UrlToBytes, timingSafeEqualHex } from './
 import {
   usesDelegatedIdentity, callIdentityAuthority,
   assertTrustedIdentityIssuerRequest, probeExistingIdentityAuthority,
-  usesExistingAccountAuthority
+  usesExistingAccountAuthority, activeAuthoritySecret
 } from './identity-bridge.js';
 
 const SESSION_COOKIE = 'MAO_SESSION';
@@ -961,7 +961,7 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
           signInReady: !delegated || (
             authority.connected && authority.initialized && authority.configured &&
             typeof env.MAO_IDENTITY_AUTHORITY?.fetch === 'function' &&
-            String(env.MAO_IDENTITY_BRIDGE_SECRET || '').length >= 32 &&
+            activeAuthoritySecret(env).length >= 32 &&
             (env.MAO_IDENTITY_CANONICAL_ADMIN_REQUIRED !== 'true' ||
               /^MAO-[A-Z0-9]{12,24}$/.test(String(env.MAO_EXPECTED_FOUNDER_ID || '')))
           )

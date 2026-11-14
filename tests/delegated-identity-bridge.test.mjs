@@ -6,7 +6,7 @@ import {
   openTestDb, setupTestStore
 } from './helpers/cloud-helpers.mjs';
 import {
-  usesDelegatedIdentity, callIdentityAuthority, validateAuthorityAccount
+  usesDelegatedIdentity, callIdentityAuthority, validateAuthorityAccount, activeAuthoritySecret
 } from '../worker/lib/identity-bridge.js';
 
 const secret = 'test-only-identity-bridge-secret-very-long-2026';
@@ -409,4 +409,32 @@ test('canonical admin lock rejects any other existing founder without creating a
   assert.equal(result.payload.error.code,'CANONICAL_ADMIN_MISMATCH');
   assert.equal(preview.query('SELECT COUNT(*) AS n FROM mao_accounts')[0].n,0);
   assert.equal(issuer.query('SELECT COUNT(*) AS n FROM mao_account_sessions WHERE revoked_at IS NULL')[0].n,0);
+});
+
+
+test('permanent identity channel uses a distinct secret without changing the existing QA secret',()=>{
+  const old='original-bridge-secret-reuse-for-current-sessions';
+  const stable='new-permanent-authority-secret-for-cutover';
+  const base={
+    MAO_IDENTITY_MODE:'delegated_preview',
+    MAO_IDENTITY_AUTHORITY_MODE:'existing_worker',
+    MAO_IDENTITY_BRIDGE_SECRET:old,
+    MAO_PERSISTENT_IDENTITY_BRIDGE_SECRET:stable
+  };
+  assert.equal(activeAuthoritySecret(base),old);
+  assert.equal(activeAuthoritySecret({...base,MAO_IDENTITY_AUTHORITY_CHANNEL:'persistent'}),stable);
+  assert.equal(activeAuthoritySecret({...base,MAO_IDENTITY_AUTHORITY_CHANNEL:'persistent',MAO_PERSISTENT_IDENTITY_BRIDGE_SECRET:undefined}),'');
+});
+
+test('permanent identity channel fails closed when no dedicated secret is present',async()=>{
+  const requests=[];
+  const env={
+    MAO_IDENTITY_MODE:'delegated_preview',
+    MAO_IDENTITY_AUTHORITY_MODE:'existing_worker',
+    MAO_IDENTITY_AUTHORITY_CHANNEL:'persistent',
+    MAO_IDENTITY_BRIDGE_SECRET:'legacy-bridge-unchanged-xxxxxx-yyyy-zzzz',
+    MAO_IDENTITY_AUTHORITY:{async fetch(req){requests.push(req);return Response.json({ok:true})}}
+  };
+  await assert.rejects(callIdentityAuthority(env,'authenticate',{identifier:'Example',password:'no-login'}),error=>error?.code==='IDENTITY_BRIDGE_NOT_READY');
+  assert.equal(requests.length,0);
 });

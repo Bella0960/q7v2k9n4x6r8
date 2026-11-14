@@ -75,6 +75,19 @@ export function usesExistingAccountAuthority(env = {}) {
     env.MAO_IDENTITY_AUTHORITY_MODE === EXISTING_AUTHORITY_MODE;
 }
 
+/**
+ * Migration-safe credential channel:
+ * legacy QA sessions remain valid until the persistent authority has been
+ * independently seeded and verified. Switching to the permanent authority
+ * changes one explicit QA config value; it never exposes or overwrites the
+ * old bridge secret.
+ */
+export function activeAuthoritySecret(env = {}) {
+  return env.MAO_IDENTITY_AUTHORITY_CHANNEL === 'persistent'
+    ? String(env.MAO_PERSISTENT_IDENTITY_BRIDGE_SECRET || '')
+    : String(env.MAO_IDENTITY_BRIDGE_SECRET || '');
+}
+
 function parseAuthoritySessionCookie(response) {
   const cookie = String(response.headers.get('set-cookie') || '');
   const match = /^MAO_SESSION=([A-Za-z0-9_-]{32,128})(?:;|$)/.exec(cookie);
@@ -106,8 +119,11 @@ async function callExistingAccountWorker(env, operation, body) {
     : operation === 'logout'
       ? { authorization: 'Bearer ' + token, origin: INTERNAL_ORIGIN }
       : { authorization: 'Bearer ' + token };
-  const bridgeSecret=String(env.MAO_IDENTITY_BRIDGE_SECRET || '');
-  if(bridgeSecret.length >= 32) headers[BRIDGE_AUTH_HEADER]=bridgeSecret;
+  const bridgeSecret = activeAuthoritySecret(env);
+  if (env.MAO_IDENTITY_AUTHORITY_CHANNEL === 'persistent' && bridgeSecret.length < 32) {
+    throw new ApiError(503, 'IDENTITY_BRIDGE_NOT_READY', '长期身份服务密钥未配置');
+  }
+  if (bridgeSecret.length >= 32) headers[BRIDGE_AUTH_HEADER] = bridgeSecret;
   const request = new Request(INTERNAL_ORIGIN + pathname, {
     method: operation === 'status' ? 'GET' : 'POST',
     headers,
@@ -221,8 +237,8 @@ export async function probeExistingIdentityAuthority(env) {
       new Request('https://mao520.com/api/admin/bootstrap/status', {
         method: 'GET', headers: {
           accept: 'application/json',
-          ...(String(env.MAO_IDENTITY_BRIDGE_SECRET || '').length >= 32
-            ? {[BRIDGE_AUTH_HEADER]: String(env.MAO_IDENTITY_BRIDGE_SECRET)} : {})
+          ...(activeAuthoritySecret(env).length >= 32
+            ? {[BRIDGE_AUTH_HEADER]: activeAuthoritySecret(env)} : {})
         }
       })
     );
