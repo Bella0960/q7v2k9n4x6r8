@@ -293,6 +293,22 @@ test('NPC rejection and blocking do not create contacts', () => {
   assert.equal(h.roles.length, 1);
 });
 
+test('cross-role NPC rejection and blocking never mutate a mismatched request', () => {
+  for (const blocked of [false, true]) {
+    const h = createHarness();
+    const key = 'npc_friend_requests_v2_main-role';
+    const original = JSON.stringify([{
+      id: 'req-from-other-role', mainRoleId: 'different-main-role',
+      status: 'pending', createdAt: 123,
+      npc: { id: 'npc-foreign', name: '其他角色的申请', persona: '虚构人物' }
+    }]);
+    h.data.set(key, original);
+    assert.throws(() => h.context.NPCSocial.reject('req-from-other-role', blocked), /不属于当前主角色/);
+    assert.equal(h.data.get(key), original, 'mismatched request must remain byte-for-byte unchanged');
+    assert.equal(h.roles.length, 1);
+  }
+});
+
 test('NPC data remains separate from real-user accounts and financial features', () => {
   assert.match(source, /npc_friend_requests_v1/);
   assert.match(source, /npc_friend_requests_v2_/);
