@@ -707,111 +707,65 @@ function loadDetailForumCore(env) {
   );
 }
 
-/* 详情页仍保留旧种子帖合并逻辑；列表页已改为空论坛，单独覆盖。 */
-const forumSeedCores = [
-  { name: 'detail page', load: loadDetailForumCore }
-];
+/* 新版论坛不主动生成虚构种子帖；加载必须保留用户记录和异常降级能力。 */
+test('detail page starts empty and never injects demo seed posts', () => {
+  const env = createForumEnv({});
+  const page = loadDetailForumCore(env);
+  assert.deepEqual(Array.from(page.getSeededPosts()), []);
+  assert.deepEqual(Array.from(page.loadPosts()), []);
+  assert.equal(env.forum.data.forum_posts, '[]', '首次打开不应生成任何伪造帖子');
+});
 
-for (const core of forumSeedCores) {
-  test(core.name + ' only overwrites seed defaults that the user never touched', () => {
-    const env = createForumEnv({});
-    const page = core.load(env);
+test('detail page preserves existing posts including legacy seed IDs and user edits', () => {
+  const original = [
+    { id: 'p1', owner: 'seed', title: '历史帖子', body: '保留旧正文', comments: [{ text: '历史评论' }], likes: 9 },
+    { id: 'user_keep', owner: 'me', title: '自己发的帖子', body: '真实写入内容', comments: [{ text: '自己的评论' }], liked: true }
+  ];
+  const env = createForumEnv({ forum_posts: JSON.stringify(original) });
+  const loaded = loadDetailForumCore(env).loadPosts();
+  assert.equal(loaded.length, 2, '不得因新版本没有默认帖而删掉旧内容');
+  assert.equal(loaded[0].title, '历史帖子');
+  assert.equal(loaded[0].comments[0].text, '历史评论');
+  assert.equal(loaded[1].body, '真实写入内容');
+  assert.equal(loaded[1].comments[0].text, '自己的评论');
+  assert.equal(loaded[1].liked, true);
+});
 
-    env.localStorage.setItem('forum_config', JSON.stringify({ theme: 'reality' }));
-    const previousSeeds = clone(page.getSeededPosts());
+test('detail page remains idempotent without generated default posts', () => {
+  const env = createForumEnv({});
+  const page = loadDetailForumCore(env);
+  const first = clone(page.loadPosts());
+  const second = clone(page.loadPosts());
+  const third = clone(page.loadPosts());
+  assert.deepEqual(first, []);
+  assert.deepEqual(second, first);
+  assert.deepEqual(third, second);
+  assert.equal(env.forum.writes.filter(item => item.key === 'forum_posts').length, 1, '稳定状态不反复改写');
+});
 
-    const stored = clone(previousSeeds);
-    stored[0].title = '我自己改过的标题';
-    stored[0].likes = 99;
-    stored[0].liked = true;
-    stored[0].comments = [{ name: '我', owner: 'me', text: '我自己的评论' }];
-    const userPost = {
-      id: 'user_keep',
-      owner: 'me',
-      title: '用户自己发的帖子',
-      body: '用户自己写的正文',
-      liked: false,
-      comments: [{ name: '我', owner: 'me', text: '用户自建评论' }]
-    };
-    stored.push(userPost);
+test('detail page keeps unreadable stored records and warns without overwriting them', () => {
+  for (const raw of ['{broken json', JSON.stringify({ notAList: true })]) {
+    const env = createForumEnv({ forum_posts: raw });
+    const loaded = loadDetailForumCore(env).loadPosts();
+    assert.deepEqual(Array.from(loaded), [], '损坏数据时不制造替代内容');
+    assert.equal(env.forum.data.forum_posts, raw, '不得覆盖原始损坏数据');
+    assert.ok(env.forum.warns.length >= 1, '必须保留可排查警告');
+    assert.ok(env.forum.toasts.length >= 1, '必须给用户明确的降级提示');
+  }
+});
 
-    env.localStorage.setItem('forum_config', JSON.stringify({ theme: 'bagua' }));
-    env.localStorage.setItem('forum_posts', JSON.stringify(stored));
-    const loaded = page.loadPosts();
-    const nextSeeds = clone(page.getSeededPosts());
-
-    const p1 = loaded.find((item) => item.id === 'p1');
-    const p2 = loaded.find((item) => item.id === 'p2');
-    assert.equal(p1.title, '我自己改过的标题', '用户改过的标题必须保留');
-    assert.equal(p1.body, nextSeeds[0].body, '未改过的正文同步到新主题默认值');
-    assert.equal(p1.topic, nextSeeds[0].topic, '未改过的话题同步到新主题默认值');
-    assert.equal(p1.themeId, 'bagua', '派生字段 themeId 跟随当前主题');
-    assert.equal(p1.likes, 99, '点赞数保留');
-    assert.equal(p1.liked, true, '点赞状态保留');
-    assert.equal(p1.comments[0].text, '我自己的评论', '用户评论保留');
-    assert.equal(p2.title, nextSeeds[1].title, '完全未改过的种子帖同步到新默认标题');
-    assert.equal(p2.body, nextSeeds[1].body);
-
-    const keptUser = loaded.find((item) => item.id === 'user_keep');
-    assert.equal(keptUser.title, userPost.title, '用户自建帖子标题不被覆盖');
-    assert.equal(keptUser.body, userPost.body, '用户自建帖子正文不被覆盖');
-    assert.equal(keptUser.comments[0].text, '用户自建评论', '用户自建评论不被覆盖');
-    assert.equal(loaded.filter((item) => String(item.id).indexOf('p') === 0).length, 6, '种子帖不重复');
-  });
-
-  test(core.name + ' stays idempotent across repeated initialization', () => {
-    const env = createForumEnv({});
-    const page = core.load(env);
-    const first = clone(page.loadPosts());
-    const second = clone(page.loadPosts());
-    const third = clone(page.loadPosts());
-
-    assert.equal(first.length, 6, '首次初始化应得到 6 条种子帖');
-    assert.equal(new Set(first.map((item) => item.id)).size, 6, '种子帖 ID 不得重复');
-    assert.deepEqual(second, first, '第二次加载不得改变内容');
-    assert.deepEqual(third, second, '第三次加载不得改变内容');
-    assert.equal(
-      env.forum.writes.filter((entry) => entry.key === 'forum_posts').length,
-      1,
-      '内容稳定后不得每次都重写存储'
-    );
-    assert.equal(JSON.parse(env.forum.data.forum_posts).length, 6, '存储里只保留一份种子帖');
-  });
-
-  test(core.name + ' keeps the document shell when stored data is corrupt or not a list', () => {
-    for (const raw of ['{broken json', JSON.stringify({ notAList: true })]) {
-      const env = createForumEnv({ forum_posts: raw });
-      const page = core.load(env);
-      const loaded = page.loadPosts();
-      assert.ok(Array.isArray(loaded), '损坏数据不得让加载抛出或返回非数组');
-      assert.deepEqual(Array.from(loaded, (item) => item.id), ['p1', 'p2', 'p3', 'p4', 'p5', 'p6']);
-      assert.ok(env.forum.warns.length >= 1, '读取失败必须显式记录');
-      assert.ok(env.forum.toasts.length >= 1, '读取失败必须给出用户可见提示');
-      assert.equal(
-        env.forum.writes.filter((entry) => entry.key === 'forum_posts').length,
-        0,
-        '损坏数据不得被静默覆盖'
-      );
-    }
-  });
-
-  test(core.name + ' still shows already-read user posts when write-back fails', () => {
-    const env = createForumEnv({});
-    const page = core.load(env);
-    const userPost = { id: 'user_keep', owner: 'me', title: '仍在的帖子', body: '用户正文' };
-    env.localStorage.setItem('forum_posts', JSON.stringify([userPost]));
-    env.forum.setFailWrites(true);
-
-    const loaded = page.loadPosts();
-    assert.ok(loaded.some((item) => item.id === 'user_keep'), '回写失败不得退回只剩种子的视图');
-    assert.equal(loaded.length, 7, '用户帖子与 6 条种子帖都应继续展示');
-    assert.ok(env.forum.warns.length >= 1, '回写失败必须显式记录');
-    assert.ok(
-      env.forum.toasts.some((message) => message.indexOf('未写入') >= 0),
-      '回写失败必须提示本次改动可能不会保留'
-    );
-  });
-}
+test('detail page keeps already-read user posts when a migration cannot be saved', () => {
+  const original = [{ id: 'user_keep', owner: 'me', title: '仍在的帖子', body: '用户正文', comments: 3 }];
+  const env = createForumEnv({ forum_posts: JSON.stringify(original) });
+  env.forum.setFailWrites(true);
+  const loaded = loadDetailForumCore(env).loadPosts();
+  assert.equal(loaded.length, 1);
+  assert.equal(loaded[0].id, 'user_keep');
+  assert.deepEqual(Array.from(loaded[0].comments), [], '旧数字评论安全转换为可读列表');
+  assert.equal(env.forum.data.forum_posts, JSON.stringify(original), '保存失败不能假装已落盘');
+  assert.ok(env.forum.warns.length >= 1);
+  assert.ok(env.forum.toasts.some(m => m.includes('未写入')));
+});
 
 test('list page starts empty and never injects demo seed posts', () => {
   const env = createForumEnv({});
