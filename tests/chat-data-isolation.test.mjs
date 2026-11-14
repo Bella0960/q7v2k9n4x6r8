@@ -395,6 +395,10 @@ function loadHistoryFunctions(storageSlots) {
     console,
     localStorage: createLocalStorage(),
     currentCharacter: { id: 'roleA' },
+    isGroupChat: false,
+    // This test exercises local card persistence, not optional cloud context
+    // publishing. Keep the browser global inert without changing app logic.
+    window: { MaomaoCloud: null },
     removeLegacyStickerCaptions: (list) => list,
     getInitialMessages: () => [],
     _resetWarnCooldown() {},
