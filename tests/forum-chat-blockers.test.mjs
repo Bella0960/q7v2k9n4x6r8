@@ -103,6 +103,7 @@ function createSandboxBase() {
     currentCharacter: { id: 'role-1' },
     storageKey: 'chat_history_role-1',
     isGroupChat: false,
+    _chatHistoryUnreadable: false,
     // Browser-only cloud context publishing is deliberately disabled in this
     // isolated persistence test; the production code checks this global.
     window: { MaomaoCloud: null },
