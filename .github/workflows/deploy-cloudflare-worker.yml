@@ -48,7 +48,7 @@ jobs:
           MAOMAO_PRODUCTION_ORIGIN: https://mao520.com
           # One-time repository variable; no ID or password embedded into Git.
           MAO_EXPECTED_FOUNDER_ID: ${{ vars.MAO_EXPECTED_FOUNDER_ID }}
-        run: node scripts/verify-production-account-readiness.mjs
+        run: node scripts/release/verify-canonical-root-readiness.mjs
 
       - name: Deploy original mao520.com authority (only after recovery gate)
         uses: cloudflare/wrangler-action@v3
