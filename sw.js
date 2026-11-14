@@ -292,6 +292,14 @@ self.addEventListener('fetch', event => {
 
   // The public sign-in pages are network-first to prevent stale layouts after
   // an update. Offline fallback is limited to these public pages; never app HTML.
+  // Non-navigation HTML must still pass the Worker account gate. A script
+  // may fetch app HTML without a navigation, and cached account-injected meta
+  // tags from a different login must never be reused across users.
+  if (!isPublicAccountPage && (url.pathname === '/' || /\.html$/i.test(url.pathname))) {
+    event.respondWith(fetch(req));
+    return;
+  }
+
   if (req.mode === 'navigate' && isPublicAccountPage) {
     event.respondWith((async function () {
       var cacheWritePromise = null;
