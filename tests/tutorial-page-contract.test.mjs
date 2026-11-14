@@ -138,7 +138,8 @@ test('tutorial workflow enforces a guide update when user-facing app pages chang
 test('PWA app shell caches the full guide bundle and has a matching test command', () => {
   assert.ok(Number(/phone-app-pwa-v(\d+)/.exec(serviceWorker)?.[1]) >= 206, 'tutorial update must ship with the newer authenticated PWA cache');
   assert.ok(serviceWorker.includes("'./tutorial/tutorial.html'"));
-  assert.ok(serviceWorker.includes("'./tutorial/tutorial.js?v=20261111v4'"));
+  const guideScriptSrc = /<script src="(tutorial\.js\?v=[^"]+)"/.exec(guideHtml)?.[1];
+  assert.ok(guideScriptSrc && serviceWorker.includes(`'./tutorial/${guideScriptSrc}'`), 'PWA must precache the tutorial script version actually loaded by the page');
   assert.equal(packageJson.scripts['test:tutorial'], 'node --test tests/tutorial-page-contract.test.mjs');
 });
 
