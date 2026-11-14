@@ -66,11 +66,12 @@
     "test:qa:config": "node --test tests/qa-worker-config.test.mjs",
     "test:theme:market": "node --check theme-store/collection-store.js && node --check theme-store/preview-scene.js && node --check theme-store/storefront.js && node --test tests/market-collection.test.mjs tests/market-preview-scene.test.mjs tests/icon-presets-contract.test.mjs",
     "test:theme:market:browser": "node tests/market-storefront-browser.mjs",
-    "test:integration:release-features": "npm run test:integration:account-wallet && npm run test:inspect:contract && npm run test:theme:market && node --test tests/release-features-account-wallet-contract.test.mjs && npm run test:qa:identity-gateway && npm run test:identity:persistent && npm run test:identity:preserve-founder && npm run test:account:persistence",
+    "test:integration:release-features": "npm run test:integration:account-wallet && npm run test:inspect:contract && npm run test:theme:market && node --test tests/release-features-account-wallet-contract.test.mjs && npm run test:qa:identity-gateway && npm run test:identity:persistent && npm run test:identity:preserve-founder && npm run test:account:persistence && npm run test:backup:modules",
     "test:qa:identity-gateway": "node --test tests/identity-authority-gateway.test.mjs",
     "test:identity:persistent": "node --test tests/identity-persistent-authority.test.mjs",
     "test:identity:preserve-founder": "node --test tests/permanent-founder-preservation.test.mjs",
-    "test:account:persistence": "node --test tests/account-persistence.test.mjs"
+    "test:account:persistence": "node --test tests/account-persistence.test.mjs",
+    "test:backup:modules": "node --test tests/backup-modules.test.mjs"
   },
   "devDependencies": {
     "playwright": "^1.64.1",
