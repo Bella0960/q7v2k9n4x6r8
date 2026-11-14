@@ -409,11 +409,27 @@
         if (meta.schema > BACKUP_SCHEMA) return '备份版本（schema ' + meta.schema + '）比当前应用更新，请先升级应用再导入';
         if (meta.schema < 1) return 'schema 版本号异常，拒绝导入';
         if (!obj.data || typeof obj.data !== 'object' || Array.isArray(obj.data)) return 'data 段缺失或格式错误';
-        if (!Object.keys(obj.data).length) return '备份内容为空';
+        var scope = meta.scope || '';
+        var registry = typeof backupRegistry === 'function' ? backupRegistry() : null;
+        if (scope && (!registry || !registry.get(scope)))
+            return '备份模块无法识别，请更新应用';
+        if (scope && Object.keys(obj.data).some(function(k) {
+            return !registry.belongsTo(scope,k) || neverBackupKey(k) ||
+                SECRET_KEYS.indexOf(k) >= 0;
+        })) return '分类备份含不属于该模块的键或敏感凭据，拒绝导入';
+        var hasIdb = obj.indexedDB && typeof obj.indexedDB === 'object' &&
+            Object.keys(obj.indexedDB).length > 0;
+        if (!Object.keys(obj.data).length && !(scope && hasIdb))
+            return '备份内容为空';
         var looksLikeOurs = Object.keys(obj.data).some(function (k) {
             return CORE_HINTS.some(function (h) { return k.indexOf(h) === 0; });
         });
-        if (!looksLikeOurs) return '文件中找不到任何本应用核心数据，疑似选错了文件';
+        if (!scope && !looksLikeOurs) return '文件中找不到任何本应用核心数据，疑似选错了文件';
+        if (scope && hasIdb) {
+            var allowed = backupTargets(scope).map(function(t) { return t.db; });
+            if (Object.keys(obj.indexedDB).some(function(name) { return allowed.indexOf(name) < 0; }))
+                return '分类备份含不属于该模块的媒体库，拒绝导入';
+        }
         return '';
     }
 
@@ -424,6 +440,29 @@
         Object.keys(snap).forEach(function (k) {
             try { localStorage.setItem(k, String(snap[k])); }
             catch (e) { failed = true; }
+        });
+        return !failed;
+    }
+
+    // Scoped restore changes ONLY the chosen module's keys, not every app key.
+    // IDB references are restored in non-destructive merge mode separately.
+    function restoreScoped(snap, scope) {
+        var registry = backupRegistry();
+        if (!registry || !registry.get(scope)) return false;
+        var failed = false;
+        Object.keys(localStorage).forEach(function(k) {
+            if (!registry.belongsTo(scope,k) || neverBackupKey(k) ||
+                SECRET_KEYS.indexOf(k) >= 0) return;
+            if (Object.prototype.hasOwnProperty.call(snap,k)) return;
+            try { localStorage.removeItem(k); } catch(e) { failed = true; }
+        });
+        Object.keys(snap).forEach(function(k) {
+            if (!registry.belongsTo(scope,k) || neverBackupKey(k) ||
+                SECRET_KEYS.indexOf(k) >= 0) { failed = true; return; }
+            try {
+                localStorage.setItem(k,String(snap[k]));
+                if (localStorage.getItem(k) !== String(snap[k])) failed = true;
+            } catch(e) { failed = true; }
         });
         return !failed;
     }
