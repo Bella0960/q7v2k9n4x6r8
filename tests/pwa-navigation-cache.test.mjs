@@ -8,7 +8,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
-assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v206'/);
+assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v208'/);
 const viteConfig = read('vite.config.js');
 
 test('build emits a manifest containing every HTML entry point', () => {
@@ -82,4 +82,15 @@ test('public login uses fresh network HTML first, with offline-only cache fallba
     'fresh HTML must be returned before consulting the offline cache');
   assert.match(route, /if \(cached\) return cached;/);
   assert.doesNotMatch(route, /if \(cached\) return cached;[\s\S]*?var fresh = await networkPromise;/);
+});
+
+test('non-navigation HTML fetches bypass shared cache and revalidate account at Worker', () => {
+  const start = serviceWorker.indexOf('// Non-navigation HTML must still pass the Worker account gate.');
+  const end = serviceWorker.indexOf("if (req.mode === 'navigate' && isPublicAccountPage)", start);
+  assert.ok(start >= 0 && end > start);
+  const protectedFetch = serviceWorker.slice(start, end);
+  assert.match(protectedFetch, /!isPublicAccountPage/);
+  assert.match(protectedFetch, /url\.pathname === '\/' \|\| \/\\\.html\$\/i\.test\(url\.pathname\)/);
+  assert.match(protectedFetch, /event\.respondWith\(fetch\(req\)\)/);
+  assert.doesNotMatch(protectedFetch, /caches\.match|caches\.open|cache\.put/);
 });
