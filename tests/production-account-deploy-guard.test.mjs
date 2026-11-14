@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { auditProductionAccountReadiness } from '../scripts/verify-production-account-readiness.mjs';
+import { auditProductionAccountReadiness, auditCanonicalFounderEvidence, auditBackupEvidence } from '../scripts/verify-production-account-readiness.mjs';
 
 const example = () => ({
   production: {
@@ -8,7 +8,8 @@ const example = () => ({
     compatibility_flags: ['nodejs_compat'],
     bindings: [
       { name: 'ASSETS', type: 'assets' },
-      { name: 'CLOUD_DB', type: 'durable_object_namespace', class_name: 'CloudDatabase', namespace_id: 'production_unique_id' }
+      { name: 'CLOUD_DB', type: 'durable_object_namespace', class_name: 'CloudDatabase', namespace_id: 'production_unique_id' },
+      { name: 'MAO_CANONICAL_FOUNDER_REQUIRED', type: 'plain_text', text: 'true' }
     ]
   },
   preview: {
@@ -16,7 +17,9 @@ const example = () => ({
   },
   secrets: [
     { name: 'DEVICE_SECRET_PEPPER' },
-    { name: 'MAO_SUPER_ADMIN_BOOTSTRAP_SECRET' }
+    { name: 'MAO_SUPER_ADMIN_BOOTSTRAP_SECRET' },
+    { name: 'MAO_CANONICAL_FOUNDER_ID' },
+    { name: 'MAO_CANONICAL_FOUNDER_CREATED_AT' }
   ],
   domains: [{ hostname: 'app.mao520.com', service: 'mao', environment: 'production', enabled: true }],
   hostname: 'app.mao520.com',
@@ -160,4 +163,100 @@ test('duplicate canonical namespace names fail closed, even when one ID matches'
     class: 'CloudDatabase'
   });
   assert.ok(auditProductionAccountReadiness(data).includes('PROD_NAMESPACE_NOT_CANONICAL'));
+});
+
+test('production must expose a configured server-only canonical founder pin', () => {
+  const data = example();
+  data.secrets = data.secrets.filter(item => item.name !== 'MAO_CANONICAL_FOUNDER_ID');
+  assert.ok(auditProductionAccountReadiness(data).includes('PROD_SECRET_MISSING_MAO_CANONICAL_FOUNDER_ID'));
+});
+
+test('database proof accepts only the exact original ID, role, status and creation timestamp', () => {
+  const evidence = {
+    expectedId: 'MAO-AAAAAAAAAAAA',
+    expectedCreatedAt: 1794416935305,
+    rows: [{ id: 'MAO-AAAAAAAAAAAA', role: 'super_admin', status: 'active', created_at: 1794416935305 }]
+  };
+  assert.deepEqual(auditCanonicalFounderEvidence(evidence), []);
+  for (const change of [
+    { rows: [{ ...evidence.rows[0], id: 'MAO-BBBBBBBBBBBB' }] },
+    { rows: [{ ...evidence.rows[0], role: 'user' }] },
+    { rows: [{ ...evidence.rows[0], created_at: 1794338978643 }] },
+    { rows: [{ ...evidence.rows[0], status: 'revoked' }] },
+    { rows: [] },
+    { rows: [evidence.rows[0], evidence.rows[0]] }
+  ]) {
+    assert.ok(auditCanonicalFounderEvidence({ ...evidence, ...change }).includes('FOUNDER_ORIGIN_MISMATCH'));
+  }
+  assert.ok(auditCanonicalFounderEvidence({ ...evidence, expectedId: '' }).includes('FOUNDER_ORIGIN_PIN_INVALID'));
+  assert.ok(auditCanonicalFounderEvidence({ ...evidence, expectedCreatedAt: 'NaN' }).includes('FOUNDER_ORIGIN_PIN_INVALID'));
+});
+
+test('original founder database requires verified independent restorable backup before production', () => {
+  const originalId = 'MAO-AAAAAAAAAAAA'; // Synthetic, not actual user data.
+  const sourceNamespace = 'a'.repeat(32);
+  const expectedCreatedAt = 1770000000000;
+  const verified = {
+    status: 'verified',
+    schema_count: 77,
+    table_count: 29,
+    row_count: 56,
+    content_digest: 'f'.repeat(64),
+    verified_at: '2026-11-13T12:00:00.000Z',
+    source_namespace: sourceNamespace,
+    founder_id: originalId,
+    founder_created_at: expectedCreatedAt
+  };
+  const audit = backup => auditBackupEvidence({
+    backup, expectedId: originalId, expectedCreatedAt, sourceNamespace
+  });
+  assert.deepEqual(audit(verified), []);
+  for (const invalid of [
+    null,
+    {...verified,status:'schema_only_not_recoverable'},
+    {...verified,status:'copied_pending_independent_readback'},
+    {...verified,content_digest:''},
+    {...verified,verified_at:null},
+    {...verified,row_count:0},
+    {...verified,table_count:0}
+  ]) {
+    assert.ok(audit(invalid).includes('RESTORABLE_BACKUP_NOT_VERIFIED'));
+  }
+  for (const invalid of [
+    {...verified,source_namespace:'b'.repeat(32)},
+    {...verified,founder_id:'MAO-BBBBBBBBBBBB'},
+    {...verified,founder_created_at:expectedCreatedAt-86400000}
+  ]) {
+    assert.ok(audit(invalid).includes('BACKUP_ORIGIN_MISMATCH'));
+  }
+});
+
+
+
+test('production requires explicit strict founder enforcement, not just identity secret names', () => {
+  for (const replacement of [null, {type:'plain_text',text:'false'}, {type:'plain_text',text:'TRUE'}, {type:'secret_text',text:'true'}]) {
+    const data = example();
+    data.production.bindings = data.production.bindings.filter(item => item.name !== 'MAO_CANONICAL_FOUNDER_REQUIRED');
+    if (replacement) data.production.bindings.push({name:'MAO_CANONICAL_FOUNDER_REQUIRED', ...replacement});
+    assert.ok(auditProductionAccountReadiness(data).includes('PROD_FOUNDER_GUARD_NOT_REQUIRED'));
+  }
+  const duplicate = example();
+  duplicate.production.bindings.push({name:'MAO_CANONICAL_FOUNDER_REQUIRED',type:'plain_text',text:'true'});
+  assert.ok(auditProductionAccountReadiness(duplicate).includes('PROD_FOUNDER_GUARD_NOT_REQUIRED'));
+});
+
+test('missing original creation-time secret blocks production even with correct founder ID', () => {
+  const data = example();
+  data.secrets = data.secrets.filter(item => item.name !== 'MAO_CANONICAL_FOUNDER_CREATED_AT');
+  assert.ok(auditProductionAccountReadiness(data).includes('PROD_SECRET_MISSING_MAO_CANONICAL_FOUNDER_CREATED_AT'));
+});
+
+test('malformed or impossible restore verification dates cannot qualify as backup evidence', () => {
+  const sourceNamespace = 'a'.repeat(32);
+  const expectedId = 'MAO-AAAAAAAAAAAA';
+  const expectedCreatedAt = 1770000000000;
+  for (const verified_at of ['2026-11-13Tgarbage', '2026-02-30T12:00:00.000Z', '2026-13-01T12:00:00.000Z', '2026-11-13T25:00:00.000Z', {}, 1]) {
+    const backup = {status:'verified',schema_count:77,table_count:29,row_count:56,content_digest:'f'.repeat(64),verified_at,source_namespace:sourceNamespace,founder_id:expectedId,founder_created_at:expectedCreatedAt};
+    assert.ok(auditBackupEvidence({backup,expectedId,expectedCreatedAt,sourceNamespace}).includes('RESTORABLE_BACKUP_NOT_VERIFIED'));
+  }
 });

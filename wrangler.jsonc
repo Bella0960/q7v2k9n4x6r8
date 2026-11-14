@@ -20,6 +20,11 @@
     { "tag": "v1", "new_sqlite_classes": ["CloudDatabase"] }
   ],
   "previews": {
+    "vars": {
+      "MAO_SOCIAL_ENABLED": "true",
+      "MAO_SOCIAL_CHAT_ENABLED": "false",
+      "MAO_SOCIAL_E2EE_ENABLED": "true"
+    },
     "durable_objects": {
       "bindings": [
         { "name": "CLOUD_DB", "class_name": "CloudDatabase" }
