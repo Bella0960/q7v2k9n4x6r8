@@ -17,6 +17,7 @@ import { applyMigrations } from './worker/lib/migrations.js';
 import { runCloudModelTick } from './worker/lib/cloud-model-scheduler.js';
 import { runTick } from './worker/lib/scheduler.js';
 import { createSchedulerGate } from './worker/lib/scheduler-gate.js';
+import { FOUNDER_CHECKPOINT_PATH, handleFounderCheckpointInternal } from './worker/lib/founder-recovery-operator.js';
 
 const INSTANCE_NAME = 'maomao-global';
 
@@ -137,6 +138,13 @@ export class CloudDatabase {
 
   async fetch(request) {
     const url = new URL(request.url);
+    // Internal binding only. The public Worker entrypoint does not forward
+    // /internal/*, and a separate operator secret is mandatory.
+    if (url.pathname === FOUNDER_CHECKPOINT_PATH) {
+      return handleFounderCheckpointInternal({
+        request, env: this.env, storage: this.ctx.storage
+      });
+    }
     if (url.pathname.startsWith('/api/')) {
       const response = await this.handleApi(request);
       if (response.ok && request.method === 'POST' &&
