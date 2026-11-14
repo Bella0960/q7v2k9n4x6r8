@@ -450,7 +450,8 @@ test('名片：卡片快照只写入当前会话历史，不在其他会话出�
   sandbox.currentCharacter = { id: 'roleB' };
   assert.deepEqual(sandbox.loadMessages(), []);
   assert.equal(JSON.stringify(slots.roleB || []).includes('卡片甲'), false);
-  assert.equal(sandbox.localStorage.getItem('chat_history_roleB'), null);
+  assert.deepEqual(JSON.parse(sandbox.localStorage.getItem('chat_history_roleB')), []);
+  assert.equal(JSON.stringify(JSON.parse(sandbox.localStorage.getItem('chat_history_roleB'))).includes('卡片甲'), false);
 });
 
 test('名片：刷新后仍只从所属会话读回，不与其他角色共享存储槽', () => {
