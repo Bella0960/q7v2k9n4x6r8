@@ -12,7 +12,7 @@
   "services": [
     {
       "binding": "MAO_APP_BACKEND",
-      "service": "mao"
+      "service": "maomao-aw-qa-20261114"
     }
   ],
   "vars": {
