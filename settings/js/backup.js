@@ -147,13 +147,13 @@
             : registry.allDatabases(IDB_TARGETS);
     }
 
-    function snapshot(dropCaches, dropSecrets) {
+    function snapshot(dropCaches, dropSecrets, includePrivateLocalKeys) {
         var out = {};
         var keys = [];
         try { keys = Object.keys(localStorage); } catch (e) {}
         keys.forEach(function (k) {
             if (dropCaches && EXCLUDE_KEYS.indexOf(k) !== -1) return;
-            if (typeof neverBackupKey === 'function' && neverBackupKey(k)) return;
+            if (!includePrivateLocalKeys && typeof neverBackupKey === 'function' && neverBackupKey(k)) return;
             if (dropSecrets && SECRET_KEYS.indexOf(k) !== -1) return;
             try { out[k] = localStorage.getItem(k); } catch (e) {}
         });
@@ -1003,7 +1003,11 @@
                 toast('分类备份请使用「恢复所选模块」，避免误覆盖全量数据'); return;
             }
 
-            var incoming = obj.data;
+            // Never import auth/session secrets from an old or externally supplied archive.
+            var incoming = {};
+            Object.keys(obj.data).forEach(function(k) {
+                if (!neverBackupKey(k)) incoming[k] = obj.data[k];
+            });
             var count = Object.keys(incoming).length;
             var label = obj.__backup.exportedAt ? '（导出于 ' + String(obj.__backup.exportedAt).slice(0, 10) + '）' : '';
             // 显示 IndexedDB 概览（schema 2 备份）
@@ -1025,7 +1029,7 @@
             // 1. 建立本机恢复点：把当前 localStorage 快照写入独立 IndexedDB，
             //    写完立即读回并用 verifyRestore 对 localStorage 实际内容做校验。
             //    恢复点 DB 独立于三个业务库的 version，localStorage.clear() 炸不到它。
-            var current = snapshot(false, false);
+            var current = snapshot(false, false, true);
             var rpSnap = null;       // 从恢复点读回的真正快照
             var rpReady = false;
             try {
@@ -1056,7 +1060,9 @@
             // 即使下载失败，恢复点 DB 已经能保障回滚能力。
             var backupFileWarn = '';
             try {
-                downloadSnapshot(current, 'auto-before-restore');
+                // The downloadable safety copy is deliberately sanitized;
+                // login tokens and API keys stay on this device.
+                downloadSnapshot(snapshot(true, true), 'auto-before-restore');
             } catch (e) {
                 backupFileWarn = '（未能提供额外的安全备份文件，但已建立可回滚的恢复点）';
             }
@@ -1095,6 +1101,19 @@
             // 3. 保留本机 API 凭据（备份未携带时），避免导入他人备份后丢失配置
             var secretRes = scope ? { written: 0, failed: 0, failedKeys: [] } :
                 carryOverSecrets(incoming, current);
+            // Auth/session keys are not part of user backup files: retain the
+            // current authenticated browser's keys instead of accepting old ones.
+            if (!scope) Object.keys(current).forEach(function(k) {
+                if (!neverBackupKey(k)) return;
+                try {
+                    localStorage.setItem(k, String(current[k]));
+                    if (localStorage.getItem(k) !== String(current[k]))
+                        secretRes.failed++;
+                } catch (e) {
+                    secretRes.failed++;
+                    secretRes.failedKeys.push('本机登录状态');
+                }
+            });
 
             // 4. IndexedDB 恢复：schema < 2 的旧备份跳过并提示
             var dbRestored = 0;
