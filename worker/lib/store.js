@@ -2343,10 +2343,23 @@ class CloudStore {
   }
 
   touchMaoAccountSession(sessionId, now) {
-    this.exec(
-      "UPDATE mao_account_sessions SET last_used_at = ? WHERE id = ? AND revoked_at IS NULL",
-      now, sessionId
-    );
+    // The account may have been revoked after getMaoAccountSession() returned
+    // (for example while waiting on an identity authority). The final session
+    // touch is also the authorization gate, not just a best-effort heartbeat.
+    const timestamp = Number(now);
+    if (!sessionId || !Number.isSafeInteger(timestamp) || timestamp < 0) return false;
+    return Boolean(this.exec(
+      `UPDATE mao_account_sessions
+       SET last_used_at = ?
+       WHERE id = ? AND revoked_at IS NULL AND expires_at > ?
+         AND EXISTS (
+           SELECT 1 FROM mao_accounts
+           WHERE mao_accounts.id = mao_account_sessions.account_id
+             AND mao_accounts.status IN ('active', 'pending_invite')
+         )
+       RETURNING id`,
+      timestamp, sessionId, timestamp
+    )[0]);
   }
 
   revokeMaoAccountSession(sessionId, now) {
