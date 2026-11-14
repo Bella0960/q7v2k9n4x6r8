@@ -16,6 +16,9 @@ export const ROOT_WORKER = 'mao-auth-preview';
 export const TRIAL_HOST = 'app.mao520.com';
 export const TRIAL_EDGE_WORKER = 'curly-dream-324c';
 export const QA_WORKER = 'maomao-aw-qa-20261114';
+// Pin actual, inspected production and trial namespaces; no implicit migration.
+export const ROOT_NAMESPACE_ID = 'de73581323904befa8640be3f63db9b0';
+export const QA_NAMESPACE_ID = '4a24ce58079f468c87c2f75e107c4d1c';
 export const FOUNDER_ID = /^MAO-[A-Z0-9]{12,24}$/;
 const ACCOUNT_ID = /^[0-9a-f]{32}$/;
 const BACKUP_AUDIT_NAMESPACE = '54544f9f1ce54220957d8fc9c49ccc7c';
@@ -43,14 +46,14 @@ export function auditCanonicalRootReadiness(input) {
   if(rootVersion?.main_module!=='worker.js' ||
       binding(rootVersion,'ASSETS')?.type!=='assets' ||
       rootDb?.type!=='durable_object_namespace' ||
-      rootDb?.class_name!=='CloudDatabase' || !rootDb?.namespace_id ||
+      rootDb?.class_name!=='CloudDatabase' || rootDb?.namespace_id!==ROOT_NAMESPACE_ID ||
       rootDb?.script_name ||
       !rootVersion?.compatibility_flags?.includes('nodejs_compat') ||
       !['DEVICE_SECRET_PEPPER','MAO_SUPER_ADMIN_BOOTSTRAP_SECRET'].every(n=>binding(rootVersion,n)?.type==='secret_text')) {
     blocked.push('ROOT_WORKER_OR_ACCOUNT_STORAGE_UNVERIFIED');
   }
   if(qaVersion?.main_module!=='worker.js' ||
-      qaDb?.type!=='durable_object_namespace' || !qaDb?.namespace_id ||
+      qaDb?.type!=='durable_object_namespace' || qaDb?.namespace_id!==QA_NAMESPACE_ID ||
       qaDb?.class_name!=='CloudDatabase' || qaDb?.script_name ||
       qaDb.namespace_id===rootDb?.namespace_id) {
     blocked.push('QA_ACCOUNT_DATABASE_NOT_ISOLATED');
