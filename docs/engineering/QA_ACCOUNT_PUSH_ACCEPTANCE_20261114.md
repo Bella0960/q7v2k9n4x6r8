@@ -62,3 +62,16 @@ HTML 的 JS/CSS 引用已更新版本参数，避免旧缓存继续执行原跳�
 验证：`node --test tests/admin-center-ui.test.mjs` 20/20；新增 `npm run test:admin:browser` 9/9（375/430/900px 托管限制、重复检查、恢复、后续操作受限、未登录/禁用/普通账号/真实禁止/会话过期和临时故障）；完整 `npm run build` 通过，包含 release gate 和产物隔离检查。浏览器测试使用合成同源响应，没有真实账号、凭据或管理写入。
 
 本修复只解除误跳登录循环；统一账号系统的管理功能仍未接通，不能宣称账号列表、邀请码和审计已经可用。Android/iPhone 推送按用户要求延后。
+
+## 已授权推送及独立 QA 发布
+
+用户在完成复核后明确授权推送并更新。修复源提交 `91b204d6f36267781b3655cf8a85b832a8845c57` 已推送至 `GOV-004/qa-account-push-acceptance-20261114`，PR https://github.com/Bella0960/MAOMAO/pull/291 以 #285 的候选分支为 base；未合并 main 或 #285。
+
+- 发布前复核：9 个 Chromium 场景再次通过，20 项管理员 UI 测试与 1 项 QA 配置测试通过，工作树与差异检查正常。
+- Cloudflare Build `302c1fa6-655f-48f7-8977-27fbe9033227` 最终 success，精确构建上述修复 SHA，沿用原完整构建流程；部署命令增加 SHA 一致性保护，并指定 `wrangler.qa.jsonc --keep-vars`。
+- QA deployment `407c2aaa-6d91-48f8-8573-ddb9078694a1`，version `b81baac7-6bab-498c-b17d-f98bee83b51e`，100% QA 流量，2026-11-14 20:58 UTC。
+- HTTPS 只读验收：线上 JS/CSS 与已测源码逐字节一致；bootstrap/status 仍为 signInReady=true、identityAuthorityConnected=true、bootstrapAllowed=false；push/config HTTP 200、公开公钥存在；未登录管理页仍 302 到登录页。
+- QA 数据库 namespace 与原身份 gateway service binding 未变，既有账号及 VAPID secret 绑定仍在。自动部署命令已恢复 `echo MODULAR_BACKUP_QA_VERIFIED_DEPLOY_PAUSED`。
+- 正式 `mao` 发布前后均为 deployment `f6598f9b-c371-4405-9184-624dcf79d979` / version `d6c0e2c7-c8f2-4533-89fd-d503633413db`，本次未变更。
+
+仍待用户 Android 已登录页面复验；本轮没有读取用户真实会话，也没有宣称真机 001 管理功能或双端推送验收完成。
