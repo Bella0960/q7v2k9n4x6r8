@@ -391,9 +391,11 @@ test('封面：两套独立封面都存在时，编辑 myProfile.cover 不改变
 /* ---------- 名片：真实执行 chat-detail.html 的历史读写函数 ---------- */
 
 function loadHistoryFunctions(storageSlots) {
+  const localStorage = createLocalStorage();
   const sandbox = {
     console,
-    localStorage: createLocalStorage(),
+    localStorage,
+    _chatHistoryUnreadable: false,
     currentCharacter: { id: 'roleA' },
     removeLegacyStickerCaptions: (list) => list,
     getInitialMessages: () => [],
@@ -406,7 +408,10 @@ function loadHistoryFunctions(storageSlots) {
         return Array.isArray(slot) ? slot.slice() : [];
       },
       saveChatHistory(contactId, list) {
-        storageSlots[contactId] = JSON.parse(JSON.stringify(list));
+        // Match PhoneStorage: the authoritative per-role localStorage key is written first.
+        const copy = JSON.parse(JSON.stringify(list));
+        localStorage.setItem('chat_history_' + contactId, JSON.stringify(copy));
+        storageSlots[contactId] = copy;
         return true;
       }
     }
