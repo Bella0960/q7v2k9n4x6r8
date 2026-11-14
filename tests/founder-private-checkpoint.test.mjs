@@ -83,11 +83,12 @@ test('failed bookmark acquisition returns only a fixed error without leaking sto
   assert.equal(calls.put, 0);
 });
 
-test('public Worker never forwards /internal/release/checkpoint to the Durable Object', async () => {
+test('public Worker never forwards /internal/release/checkpoint to the Durable Object or assets', async () => {
   let forwarded = 0;
+  let assetRequests = 0;
   const env = {
     CLOUD_DB: { idFromName: value => value, get: () => ({ async fetch() { forwarded++; return Response.json({ ok: true }); } }) },
-    ASSETS: { async fetch() { return new Response('not found', { status: 404 }); } },
+    ASSETS: { async fetch() { assetRequests++; return new Response('unexpected asset', { status: 200 }); } },
     FOUNDER_RELEASE_OPERATOR_SECRET: SECRET
   };
   for (const method of ['GET', 'POST']) {
@@ -97,5 +98,6 @@ test('public Worker never forwards /internal/release/checkpoint to the Durable O
     );
     assert.equal(response.status, 404);
     assert.equal(forwarded, 0);
+    assert.equal(assetRequests, 0);
   }
 });
