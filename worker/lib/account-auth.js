@@ -207,7 +207,7 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     }
     // Revocation or account disable may race with the central issuer request.
     // Only the final conditional database write may authorize this request.
-    if (store.touchMaoAccountSession(session.session_id, timestamp) === false) return null;
+    if (store.touchMaoAccountSession(session.session_id, now()) !== true) return null;
     return session;
   }
 
