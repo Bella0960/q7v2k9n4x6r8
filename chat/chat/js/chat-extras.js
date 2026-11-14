@@ -1111,13 +1111,18 @@
       request = ledger.runExclusive(function () {
         action(); // Balance and chat-card reads/writes are one serialized operation.
         return true;
-      });
+      }, { ifAvailable: !!sending });
     } catch (error) {
       if (sending) _outgoingPaymentBusy = false;
       if (typeof showToast === 'function') showToast('钱包锁定失败，未发起新交易');
       return Promise.resolve(false);
     }
-    return Promise.resolve(request).catch(function () {
+    return Promise.resolve(request).then(function (processed) {
+      if (!processed && sending && typeof showToast === 'function') {
+        showToast('钱包正在另一个页面处理交易，请稍后重试，未扣款');
+      }
+      return processed;
+    }).catch(function () {
       if (typeof showToast === 'function') showToast('钱包操作未完成，请检查交易记录后再尝试');
       return false;
     }).finally(function () {
