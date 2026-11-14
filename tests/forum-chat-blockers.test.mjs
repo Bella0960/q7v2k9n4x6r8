@@ -884,7 +884,8 @@ test('detail invalid post id keeps the shell and an unreadable store still rende
   const renders = [];
   const coreEnv = createForumEnv({ forum_posts: '{broken json' });
   const core = loadDetailForumCore(coreEnv);
-  const seeds = clone(core.loadPosts());
+  assert.deepEqual(Array.from(core.loadPosts()), [], '损坏存储不应自动补入假帖子');
+  const existing = [{ id: 'user_keep', title: '已有帖子', owner: 'me', comments: [], body: '正文' }];
   const baseStubs = {
     document,
     URLSearchParams,
@@ -898,7 +899,7 @@ test('detail invalid post id keeps the shell and an unreadable store still rende
   Object.assign(env, baseStubs, {
     location: { search: '?id=missing_post' },
     getPostId: () => 'missing_post',
-    loadPosts: () => clone(seeds)
+    loadPosts: () => clone(existing)
   });
   const loadPost = loadDetailLoadPost(env);
   loadPost();
@@ -915,13 +916,13 @@ test('detail invalid post id keeps the shell and an unreadable store still rende
 
   const okEnv = createForumEnv({});
   Object.assign(okEnv, baseStubs, {
-    location: { search: '?id=p1' },
-    getPostId: () => 'p1',
-    loadPosts: () => clone(seeds)
+    location: { search: '?id=user_keep' },
+    getPostId: () => 'user_keep',
+    loadPosts: () => clone(existing)
   });
   const loadSeedPost = loadDetailLoadPost(okEnv);
   loadSeedPost();
-  assert.deepEqual(renders, ['post', 'comments'], '存储损坏时仍可展示已读出的种子帖，页面外壳不崩溃');
+  assert.deepEqual(renders, ['post', 'comments'], '原有用户帖子仍能正常渲染且页面外壳不崩溃');
 });
 
 /* ===== 论坛静默 catch 收口：注入抛错桩验证退化语义与 warn 上下文 ===== */
