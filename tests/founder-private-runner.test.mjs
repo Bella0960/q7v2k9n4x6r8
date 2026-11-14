@@ -42,6 +42,9 @@ test('operator config has no route, public workers.dev, preview URL or scheduled
   assert.equal(config.workers_dev, false);
   assert.equal(config.preview_urls, false);
   assert.deepEqual(config.triggers.crons, []);
+  assert.deepEqual(config.kv_namespaces, [{
+    binding: 'RELEASE_AUDIT', id: '54544f9f1ce54220957d8fc9c49ccc7c'
+  }]);
   assert.equal(config.routes, undefined);
   assert.deepEqual(config.durable_objects.bindings, [{
     name: 'LIVE_CLOUD_DB',
