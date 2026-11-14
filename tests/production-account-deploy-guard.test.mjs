@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { auditProductionAccountReadiness } from '../scripts/verify-production-account-readiness.mjs';
+import { readFileSync } from 'node:fs';
+import { auditProductionAccountReadiness, selectActiveDeploymentVersionId } from '../scripts/verify-production-account-readiness.mjs';
 
 const example = () => ({
   production: {
@@ -160,4 +161,43 @@ test('duplicate canonical namespace names fail closed, even when one ID matches'
     class: 'CloudDatabase'
   });
   assert.ok(auditProductionAccountReadiness(data).includes('PROD_NAMESPACE_NOT_CANONICAL'));
+});
+
+test('real-friend switches remain preview-only until the production account cutover is verified', () => {
+  const config = JSON.parse(readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8'));
+  const previewOnly = ['MAO_SOCIAL_ENABLED', 'MAO_SOCIAL_CHAT_ENABLED', 'MAO_SOCIAL_E2EE_ENABLED'];
+  for (const key of previewOnly) {
+    assert.equal(Object.hasOwn(config.vars || {}, key), false,
+      `${key} must not activate in production Worker vars during the QA-only rollout`);
+  }
+  assert.equal(config.previews?.vars?.MAO_SOCIAL_ENABLED, 'true');
+  assert.equal(config.previews?.vars?.MAO_SOCIAL_E2EE_ENABLED, 'true');
+});
+
+test('release checks the actually deployed Worker version, not latest uploaded probe', () => {
+  const active = '74bcc286-11b7-43fb-a09c-3f5d2e5310d8';
+  const latestUploadedButNotDeployed = '91918de0-4092-4796-bd84-be8bb6ece20c';
+  const deployment = { deployments: [
+    { versions: [{ version_id: active, percentage: 100 }] }
+  ] };
+  assert.equal(selectActiveDeploymentVersionId(deployment), active);
+  assert.notEqual(selectActiveDeploymentVersionId(deployment), latestUploadedButNotDeployed);
+});
+
+test('missing, empty, partial, or split traffic deployments block founder release', () => {
+  const version = '74bcc286-11b7-43fb-a09c-3f5d2e5310d8';
+  const cases = [
+    null, {}, { deployments: [] }, { deployments: [{}] },
+    { deployments: [{ versions: [] }] },
+    { deployments: [{ versions: [{ version_id: version, percentage: 99 }] }] },
+    { deployments: [{ versions: [
+      { version_id: version, percentage: 50 },
+      { version_id: '181c8d9b-bb18-4719-b2f6-e2e160d158f1', percentage: 50 }
+    ] }] },
+    { deployments: [{ versions: [{ version_id: 'not-a-valid-id', percentage: 100 }] }] }
+  ];
+  for (const item of cases) {
+    assert.throws(() => selectActiveDeploymentVersionId(item),
+      /no single fully deployed Worker version/);
+  }
 });
