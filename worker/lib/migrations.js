@@ -90,7 +90,19 @@ export function applyMigrations(exec, now = Date.now(), transaction = null) {
     // Use Durable Object transactionSync in production; the local SQLite test
     // adapter uses explicit BEGIN/COMMIT. The DDL and version marker commit as one.
     runTransaction(() => {
-      for (const statement of splitSql(migration.sql)) exec(statement);
+      const upgradingOriginalCloudSchema = migration.version === CLOUD_AUTONOMOUS_CONTEXT_VERSION &&
+        applied.has('0017_cloud_autonomous_context');
+      for (const statement of splitSql(migration.sql)) {
+        // The older release used identical cloud DDL at 0017, before social
+        // took that number. Reconcile only its additive columns, retaining
+        // all rows and executing the idempotent table/index definitions.
+        if (upgradingOriginalCloudSchema) {
+          const column = /^ALTER TABLE (\w+) ADD COLUMN (\w+)\b/i.exec(statement);
+          if (column && exec('PRAGMA table_info(' + column[1] + ')')
+            .some(row => row.name === column[2])) continue;
+        }
+        exec(statement);
+      }
       exec('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)', migration.version, now);
     });
     results.push(migration.version);

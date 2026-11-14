@@ -9,7 +9,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { openTestDb, setupTestStore } from './helpers/cloud-helpers.mjs';
-import { MIGRATIONS, splitSql } from '../worker/lib/migrations.js';
+import { MIGRATIONS, applyMigrations, splitSql } from '../worker/lib/migrations.js';
 import { passwordDigest } from '../worker/lib/account-auth.js';
 import { randomToken, sha256Hex } from '../worker/lib/crypto.js';
 
@@ -136,4 +136,21 @@ test('social schema upgrade uses additive DDL only; original migrations are unch
   assert.match(keys.sql, /CREATE TABLE IF NOT EXISTS mao_social_e2ee_keys/);
   assert.match(latest.sql, /CREATE TABLE IF NOT EXISTS mao_social_e2ee_media/);
   assert.equal(new Set(MIGRATIONS.map(x => x.version)).size, MIGRATIONS.length);
+});
+
+test('installed cloud 0017 upgrades through social migrations and cloud 0020 without data loss', t => {
+  const { db, exec, query } = openTestDb();
+  t.after(() => db.close());
+  applyOldMigrations(exec, 1);
+  const cloud = MIGRATIONS.find(m => m.version === '0020_cloud_autonomous_context');
+  for (const statement of splitSql(cloud.sql)) exec(statement);
+  exec('INSERT INTO schema_migrations VALUES (?, ?)', '0017_cloud_autonomous_context', 1);
+  exec('INSERT INTO user_context_sharing VALUES (?, 1, 1, NULL)', founderId);
+  assert.deepEqual(applyMigrations(exec, 2), [
+    '0017_mao_social', '0018_mao_social_e2ee', '0019_mao_social_e2ee_media', cloud.version
+  ]);
+  assert.deepEqual(query('SELECT user_id, enabled FROM user_context_sharing'), [
+    { user_id: founderId, enabled: 1 }
+  ]);
+  assert.deepEqual(applyMigrations(exec, 3), []);
 });
