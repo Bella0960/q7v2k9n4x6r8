@@ -9,6 +9,7 @@
  * no local users, no founder bootstrap, and no access to wallet/chat data.
  * QA invokes it through a secret-gated Worker Service Binding.
  */
+import { isDelegatedAdminManagementRoute } from './lib/delegated-admin-routes.js';
 const INTERNAL_ORIGIN='https://mao520.com';
 const FOUNDER_AUTHORITY_ORIGIN='https://qa-phone-founder-001-keyreset-20261111-mao.miamor520000.workers.dev';
 const BRIDGE_HEADER='x-mao-identity-bridge';
@@ -37,8 +38,13 @@ async function authorized(configured,supplied){
 }
 export async function handleGatewayRequest(request,env,outboundFetch=fetch){
   const url=new URL(request.url);
-  if(url.origin!==INTERNAL_ORIGIN||url.search||
-     !OPERATIONS.has(request.method.toUpperCase()+' '+url.pathname)){
+  const method = request.method.toUpperCase();
+  const isAdmin = isDelegatedAdminManagementRoute(method, url.pathname);
+  // Search parameters are allowed only for *listed* admin reads/pagination;
+  // never on identity/session operations, where they could affect routing.
+  if(url.origin!==INTERNAL_ORIGIN||
+     (!OPERATIONS.has(method+' '+url.pathname) && !isAdmin) ||
+     (url.search && !isAdmin)){
     return error(404,'IDENTITY_GATEWAY_ROUTE_DENIED');
   }
   const configured=String(env.MAO_IDENTITY_BRIDGE_SECRET||'');
@@ -46,7 +52,12 @@ export async function handleGatewayRequest(request,env,outboundFetch=fetch){
   if(!await authorized(configured,supplied)){
     return error(403,'IDENTITY_GATEWAY_FORBIDDEN');
   }
-  const target=FOUNDER_AUTHORITY_ORIGIN+url.pathname;
+  // Admin requests must carry the ORIGINAL authority session, never merely
+  // the service secret. The upstream account Worker checks 001 again.
+  if (isAdmin && !/^Bearer [A-Za-z0-9_-]{32,128}$/.test(
+    String(request.headers.get('authorization') || '')
+  )) return error(401,'IDENTITY_ADMIN_SESSION_REQUIRED');
+  const target=FOUNDER_AUTHORITY_ORIGIN+url.pathname+url.search;
   const headers=new Headers(request.headers);
   headers.delete(BRIDGE_HEADER);
   headers.delete('cookie');
