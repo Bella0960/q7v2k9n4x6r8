@@ -8246,9 +8246,27 @@
                     return true;
                 }
 
-                const existingPayment = wd.history.some(function (entry) {
+                const matchingWalletRows = wd.history.filter(function (entry) {
                     return entry && String(entry.paymentId || '') === String(paymentId);
                 });
+                // A receipt ID is only an idempotency key when it identifies
+                // exactly one compatible income. Never "repair" chat/finance
+                // state using a conflicting amount, category or outgoing row.
+                const conflictingWalletReceipt = matchingWalletRows.length > 1 ||
+                    (matchingWalletRows.length === 1 && (
+                        matchingWalletRows[0].type !== 'income' ||
+                        Number(matchingWalletRows[0].amount) !== amountNum ||
+                        (matchingWalletRows[0].category &&
+                            matchingWalletRows[0].category !== msg.type) ||
+                        (isTransferReturn && matchingWalletRows[0].reversalOfPaymentId &&
+                            String(matchingWalletRows[0].reversalOfPaymentId) !==
+                                String(ensureMid(returnSource)))
+                    ));
+                if (conflictingWalletReceipt) {
+                    showToast('这笔款项的钱包流水存在重复或金额、类型冲突，已停止操作，请核对账目');
+                    return;
+                }
+                const existingPayment = matchingWalletRows.length === 1;
                 const alreadyCompleted = isRed
                     ? msg.status === 'opened'
                     : msg.status === 'received';
