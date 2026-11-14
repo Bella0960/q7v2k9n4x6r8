@@ -255,6 +255,7 @@ test('official gateway release is blocked if Cloudflare still automatically depl
   assert.deepEqual(auditOfficialAutoDeployTrigger(correct),[]);
   for (const bad of [
     null,[],[...correct,...correct],
+    [...correct,{branch_includes:['*'],deploy_command:'npx wrangler deploy --config wrangler.app.jsonc --keep-vars'}],
     [{branch_includes:['main'],deploy_command:'npx wrangler deploy --config wrangler.app.jsonc --keep-vars'}],
     [{branch_includes:['main'],deploy_command:'echo npx wrangler deploy --config wrangler.app.cutover.jsonc --keep-vars'}],
     [{branch_includes:['integration/release-features-20261114'],deploy_command:correct[0].deploy_command}]
