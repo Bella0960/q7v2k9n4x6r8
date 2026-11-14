@@ -167,7 +167,10 @@
     var rows = readStoredCheckouts();
     if (!rows) return false;
     var target = rows.find(function (item) { return item.id === transactionId; });
-    if (!target) return true;
+    // An unknown checkout is not a successfully completed checkout. If the
+    // recovery receipt was lost or cancelled, callers must stop rather than
+    // claiming checkout confirmation without durable evidence.
+    if (!target) return false;
     if (target.status === 'completed') return true;
     target.status = 'completed';
     target.completedAt = Date.now();
