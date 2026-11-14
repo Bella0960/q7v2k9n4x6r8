@@ -163,3 +163,43 @@ test('scoped IndexedDB restore merges without deleting other media, while full r
   assert.deepEqual(full.keys,['imported']);
   assert.equal(full.clears,1);
 });
+
+test('real forum, chat and theme storage keys round-trip separately without wiping unrelated modules',()=>{
+  const forumValue=JSON.stringify([
+    {id:'post-1',title:'测试帖子',comments:[{id:'reply-1',text:'测试回复'}]},
+    {id:'post-2',title:'第二篇',comments:[]}
+  ]);
+  const chatValue=JSON.stringify([{id:'msg-1',text:'聊天备份测试'}]);
+  const themeValue=JSON.stringify({name:'Monochrome',version:1});
+  const original={
+    forum_posts:forumValue,forum_config:'{"sort":"new"}',
+    chat_history_001:chatValue,beauty_presets:themeValue,
+    diary_entry_001:'{"text":"should not change"}',
+    mao_session_token:'keep-this-login'
+  };
+  const {reg,tools,storage}=browser(original);
+  const exported=tools.snapshot(true,true);
+  const archives={};
+  for(const name of ['forum','chats','themes']){
+    archives[name]=reg.selectSnapshot(name,exported);
+    assert.ok(Object.keys(archives[name]).length>0,name+' archive unexpectedly empty');
+  }
+  assert.equal(archives.forum.forum_posts,forumValue);
+  assert.equal(archives.chats.chat_history_001,chatValue);
+  assert.equal(archives.themes.beauty_presets,themeValue);
+  assert.ok(!Object.hasOwn(archives.forum,'chat_history_001'));
+  assert.ok(!Object.hasOwn(archives.chats,'beauty_presets'));
+  storage.setItem('forum_posts','[]');
+  storage.setItem('chat_history_001','[]');
+  storage.setItem('beauty_presets','{}');
+  assert.equal(tools.restoreScoped(archives.forum,'forum'),true);
+  assert.equal(storage.getItem('forum_posts'),forumValue);
+  assert.equal(storage.getItem('chat_history_001'),'[]');
+  assert.equal(storage.getItem('beauty_presets'),'{}');
+  assert.equal(tools.restoreScoped(archives.chats,'chats'),true);
+  assert.equal(storage.getItem('chat_history_001'),chatValue);
+  assert.equal(tools.restoreScoped(archives.themes,'themes'),true);
+  assert.equal(storage.getItem('beauty_presets'),themeValue);
+  assert.equal(storage.getItem('diary_entry_001'),original.diary_entry_001);
+  assert.equal(storage.getItem('mao_session_token'),original.mao_session_token);
+});
