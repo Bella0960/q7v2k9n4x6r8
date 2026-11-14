@@ -394,6 +394,9 @@ function loadHistoryFunctions(storageSlots) {
   const sandbox = {
     console,
     localStorage: createLocalStorage(),
+    window: {},
+    isGroupChat: false,
+    _chatHistoryUnreadable: false,
     currentCharacter: { id: 'roleA' },
     removeLegacyStickerCaptions: (list) => list,
     getInitialMessages: () => [],
