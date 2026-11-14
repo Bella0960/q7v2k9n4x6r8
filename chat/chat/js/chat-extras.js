@@ -738,8 +738,15 @@
     }
 
     var ledger = window.MaoMaoWalletLedger;
-    if (!ledger || typeof ledger.runExclusive !== 'function') {
+    if (!ledger || typeof ledger.runExclusive !== 'function' ||
+        typeof ledger.supportsCrossTabLock !== 'function') {
       if (typeof showToast === 'function') showToast('钱包保护模块尚未加载，请刷新页面后重试');
+      return;
+    }
+    // A page-local fallback cannot safely serialize balance deductions in
+    // another chat tab. Never debit or recover a card without the shared lock.
+    if (!ledger.supportsCrossTabLock()) {
+      if (typeof showToast === 'function') showToast('当前浏览器不支持跨页面钱包锁，红包和转账发送已暂停，未扣款');
       return;
     }
 
