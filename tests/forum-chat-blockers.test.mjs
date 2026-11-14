@@ -93,6 +93,8 @@ function loadSaveMessages(sandbox) {
 
 function createSandboxBase() {
   return {
+    window: {},
+    isGroupChat: false,
     currentCharacter: { id: 'role-1' },
     storageKey: 'chat_history_role-1',
     showToast: () => {},
