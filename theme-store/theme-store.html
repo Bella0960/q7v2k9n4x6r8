@@ -7,7 +7,13 @@
   <title>主题商城</title>
   <script src="../shared/js/font-loader.js?v=20261102v1"></script>
   <script src="../shared/js/native-feel.js"></script>
-  <script src="../shared/js/chat-beauty.js?v=20261102v3"></script>
+  <script src="../shared/js/chat-beauty.js?v=20261112at1"></script>
+  <script src="../shared/js/wallpaper-store.js?v=20261112m2"></script>
+  <script src="../shared/js/atmosphere-icons.js?v=20261112i1"></script>
+  <script src="./market-expansion.js?v=20261113m2"></script>
+  <script src="./collection-store.js?v=20261112m3"></script>
+  <script src="./preview-scene.js?v=20261113m7"></script>
+  <script src="./storefront.js?v=20261113m12"></script>
   <link rel="stylesheet" href="../shared/css/chat-beauty-runtime.css?v=20261031v1">
   <link rel="stylesheet" href="../shared/css/mobile-fit.css">
   <style>
@@ -188,7 +194,13 @@
     .editorial-mini-time{width:13px;height:2px;border-radius:3px;background:#D0D0D5}
     @media(max-width:360px){.chat-list-theme-card{grid-template-columns:100px minmax(0,1fr);gap:8px 12px}.chat-list-theme-card .product-art{min-height:124px}}
 
-  </style>
+  .theme-art-atmosphere{background:linear-gradient(180deg,#fafafa 30%,#e2e2e2);border-radius:4px;gap:6px}
+.theme-art-atmosphere:before{display:none}.theme-art-atmosphere .art-bubble{background:transparent;color:#252525;border-radius:0;text-decoration:underline;text-underline-offset:4px;padding:2px 0;font-size:10px}
+.at-mini-symbol{width:43px;height:43px;align-self:center;color:#777;flex:none;stroke-width:1.15;filter:none}.at-mini-name{align-self:center;font-size:8px;letter-spacing:.08em}
+</style>
+<link rel="stylesheet" href="./market-expansion.css?v=20261113m2">
+<link rel="stylesheet" href="./storefront.css?v=20261113m13">
+<link rel="stylesheet" href="./preview-scene.css?v=20261113m7">
 </head>
 <body>
   <div class="store-app">
@@ -203,15 +215,15 @@
 
     <section class="intro">
       <div class="intro-kicker">A LITTLE CHANGE, A NEW FEELING</div>
-      <h2>让每一次对话，<br>都有自己的样子。</h2>
-      <p>挑选聊天主题、气泡样式与字体。已经保存的美化预设和字体方案，会自动出现在这里。</p>
+      <h2>每一个页面，<br>都值得认真打磨。</h2>
+      <p>整套聊天主题、独立气泡、桌面小组件、原创壁纸与字体方案，都可以在这里找到。保留你已经拥有的所有主题。</p>
     </section>
 
-    <nav class="category-nav" id="categoryNav" aria-label="商城分类">
-      <button class="category-tab active" data-category="themes" type="button">主题 <small>01</small></button>
-      <button class="category-tab" data-category="bubbles" type="button">聊天气泡 <small>02</small></button>
-      <button class="category-tab" data-category="fonts" type="button">字体 <small>03</small></button>
-      <button class="category-tab" data-category="mine" type="button">我的主题 <small>04</small></button>
+    <nav class="category-nav" id="categoryNav" aria-label="商城主栏目">
+      <button class="category-tab active" data-category="discover" type="button">首页</button>
+      <button class="category-tab" data-category="themes" type="button">主题</button>
+      <button class="category-tab" data-category="categories" type="button">分类</button>
+      <button class="category-tab" data-category="mine" type="button">我的</button>
     </nav>
 
     <main class="main-content" id="storeContent" aria-live="polite"></main>
@@ -227,15 +239,17 @@
     var VISUAL_KEY='beauty_visual_presets_v1';
     var DELETED_KEY='beauty_visual_presets_deleted_v1';
     var FONT_DB='maomao-font-presets', FONT_STORE='presets';
-    var categories=['themes','bubbles','fonts','mine'];
-    var categoryNames={themes:'主题',bubbles:'聊天气泡',fonts:'字体',mine:'我的主题'};
-    var currentCategory='themes';
+    var categories=['discover','themes','categories','mine','bubbles','widgets','wallpapers','fonts'];
+    var categoryNames={discover:'精选',themes:'主题',bubbles:'聊天气泡',widgets:'小组件',wallpapers:'壁纸',fonts:'字体',mine:'我的主题'};
+    var currentCategory='discover';
+    var market=window.MAOMAOMarketExpansion;
     var mineFilter='all';
     var fontRecords=[];
     var fontPreviewUrls={};
     var bubbleScopeValue='global';
     var toastTimer=null;
     var defaultThemes=[
+      {id:'atmosphere',name:'薄影',eyebrow:'MONOCHROME',desc:'轻薄文字、无底色消息与侧滑会话面板；支持深浅切换，保留独立气泡设置。'},
       {id:'default',name:'原生黑白',eyebrow:'01 / ORIGINAL',desc:'保留当前聊天界面的黑白基调与原有布局。'},
       {id:'imessage',name:'iMessage 短信',eyebrow:'02 / MESSAGE',desc:'短信式消息布局与经典蓝灰气泡。'},
       {id:'qq',name:'QQ 风格',eyebrow:'03 / CLASSIC',desc:'切换到项目已有的 QQ 聊天主题。'},
@@ -244,7 +258,8 @@
     ];
     var defaultOwned=['default'];
     // Bubble-only preset: it is stored with ChatBeauty.save(), never as a page theme.
-    var builtinBubblePresets=[{
+    var builtinBubblePresets=[
+      {id:'builtin-atmosphere',name:'薄影线条',builtin:true,data:window.ChatBeauty&&ChatBeauty.getAtmosphereBubbleDefaults?ChatBeauty.getAtmosphereBubbleDefaults():{}},{
       id:'builtin-wechat-bubble',name:'微信经典气泡',builtin:true,
       data:{
         avatarSize:34,avatarRadius:5,bubbleGap:13,bubbleGapX:0,bubbleMaxWidth:80,bubblePadding:9,
@@ -331,6 +346,8 @@
         '<div class="sample-row mine"><span class="sample-bubble" style="background:color-mix(in srgb,'+esc(my)+' '+myOpacity+'%,transparent);color:'+esc(myColor)+';border-radius:'+esc(myRadius)+';font-size:'+Number(myFont)+'px;padding:'+Math.max(2,Number(myPad)-.5)+'px '+(Number(myPad)+3)+'px;font-family:'+myFamily+'">有呀，等会见。</span><span class="sample-avatar">我</span></div>';
     }
     function themeArt(theme){
+      if(theme.id==='atmosphere')return '<div class="product-art theme-art-atmosphere"><svg class="at-mini-symbol" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 49V30c0-12 8-20 18-20s18 8 18 20v19"/><path d="M22 49V30c0-7 4-12 10-12s10 5 10 12v19"/><path d="M29 49V31c0-2 1-4 3-4s3 2 3 4v18"/><path d="M10 53h44"/></svg><span class="at-mini-name">薄影</span><span class="art-bubble left">今天的风很轻。</span><span class="art-bubble right">慢慢走，我等你。</span></div>';
+
       if(theme.id==='wechat'){
         return '<div class="product-art theme-art-wechat" aria-label="微信聊天、通讯录、朋友圈和单聊四页预览">'+
           '<div class="wechat-mini-screens">'+
@@ -365,20 +382,24 @@
       var active=window.ChatBeauty&&ChatBeauty.getThemePreset?ChatBeauty.getThemePreset():'default',owned=getOwned();
       var listActive=getChatListTheme()==='editorial',listOwned=owned.indexOf('messages-editorial')>=0;
       var listButtonLabel=listActive?'恢复默认':(listOwned?'应用设计':'免费获取并应用');
-      var html='<div class="section-head"><div><h3>聊天列表主题</h3></div><p>只改变聊天列表首页</p></div>'+
+      // Source-owned completed themes come first. The standalone Messages list theme
+      // and featured new-theme gallery remain available below the six real products.
+      var html='<div class="section-head sf-native-section"><div><h3>原有主题</h3></div><p>六套独立外观 · 原有功能保留</p></div><div class="product-grid">';
+      defaultThemes.forEach(function(item){
+        var isOwned=owned.indexOf(item.id)>=0,isActive=active===item.id;
+        var label=isActive?'正在使用':(isOwned?'应用主题':'免费应用');
+        html+='<article class="product-card">'+themeArt(item)+'<div class="product-meta"><span class="product-eyebrow">'+item.eyebrow+'</span><strong class="product-title">'+item.name+'</strong><span class="product-desc">'+item.desc+'</span></div><div class="product-foot"><span class="product-price">'+(isOwned?'已收录':'FREE')+'</span><button type="button" class="action-btn light" data-sf="detail" data-id="'+item.id+'">预览</button><button type="button" class="action-btn '+(isOwned?'light':'')+'" data-action="theme-apply" data-id="'+item.id+'" '+(isActive?'disabled':'')+'>'+label+'</button></div></article>';
+      });
+      html+='</div>'+
+        '<div class="section-head sf-list-theme-section"><div><h3>聊天列表专属主题</h3></div><p>单独切换，不影响聊天详情</p></div>'+
         '<div class="chat-list-theme-grid">'+
           '<article class="product-card chat-list-theme-card">'+editorialListArt()+
             '<div class="product-meta"><span class="product-eyebrow">01 / MESSAGES EDITION</span><strong class="product-title">留白 Messages</strong><span class="product-desc">中性灰白底色、克制字重与轻分隔。聊天列表独立换肤，不影响其他页面。</span></div>'+
             '<div class="product-foot"><span class="product-price">'+(listOwned?'已收录':'FREE')+'</span><button type="button" class="action-btn '+(listActive?'light':'')+'" data-action="chat-list-theme-toggle">'+listButtonLabel+'</button></div>'+
           '</article>'+
-        '</div>'+
-        '<div class="section-head"><div><h3>整套聊天主题</h3></div><p>一键切换聊天页的整体呈现</p></div><div class="product-grid">';
-      defaultThemes.forEach(function(item){
-        var isOwned=owned.indexOf(item.id)>=0,isActive=active===item.id;
-        var label=isActive?'正在使用':(isOwned?'应用主题':'免费获取并应用');
-        html+='<article class="product-card">'+themeArt(item)+'<div class="product-meta"><span class="product-eyebrow">'+item.eyebrow+'</span><strong class="product-title">'+item.name+'</strong><span class="product-desc">'+item.desc+'</span></div><div class="product-foot"><span class="product-price">'+(isOwned?'已收录':'FREE')+'</span><button type="button" class="action-btn '+(isOwned?'light':'')+'" data-action="theme-apply" data-id="'+item.id+'" '+(isActive?'disabled':'')+'>'+label+'</button></div></article>';
-      });
-      html+='</div><div class="helper-row"><p>列表主题独立保存，只作用于聊天首页；其他整套主题仍按原有方式切换。</p><button class="text-link" data-action="open-beauty" type="button">进入聊天美化</button></div>';
+        '</div>';
+      if(market)html+=market.renderThemeFeature();
+      html+='<div class="helper-row"><p>主题与聊天气泡可以分别设置。原来的角色消息、联系人和动态数据不会因切换主题清空。</p><button class="text-link" data-action="open-beauty" type="button">进入聊天美化</button></div>';
       return html;
     }
     function renderBubbles(){
@@ -390,7 +411,7 @@
         html+='<div class="bubble-list">';
         presets.forEach(function(p){
           var active=isBubblePresetActive(p,bubbleScopeValue);
-          html+='<article class="bubble-card"><div class="bubble-preview"><span class="bubble-preview-label">'+(p.builtin?'BUILT-IN / WECHAT':'BUBBLE PRESET')+'</span>'+bubbleSampleMarkup(p.data)+'</div><div class="bubble-details"><strong>'+esc(p.name||'未命名预设')+'</strong><small>'+(active?'正在使用':(p.builtin?'内置预设':'已保存'))+'</small><button class="action-btn '+(active?'light':'')+'" type="button" data-action="bubble-apply" data-id="'+esc(p.id)+'" '+(active?'disabled':'')+'>'+(active?'正在使用':'应用')+'</button></div></article>';
+          html+='<article class="bubble-card"><div class="bubble-preview"><span class="bubble-preview-label">'+(p.builtin?'BUILT-IN':'BUBBLE PRESET')+'</span>'+bubbleSampleMarkup(p.data)+'</div><div class="bubble-details"><strong>'+esc(p.name||'未命名预设')+'</strong><small>'+(active?'正在使用':(p.builtin?'内置预设':'已保存'))+'</small><button class="action-btn '+(active?'light':'')+'" type="button" data-action="bubble-apply" data-id="'+esc(p.id)+'" '+(active?'disabled':'')+'>'+(active?'正在使用':'应用')+'</button></div></article>';
         });
         html+='</div>';
       }
@@ -471,6 +492,8 @@
     }
     function enableProductDrag(){
       var rail=document.querySelector('.product-grid');if(!rail||rail.dataset.dragReady)return;
+      // Original horizontal rail behavior is inactive in the expanded two-column shelf.
+      if(window.getComputedStyle(rail).display==='grid')return;
       rail.dataset.dragReady='1';
       rail.tabIndex=0;
       rail.setAttribute('role','region');
@@ -506,14 +529,21 @@
     function render(){
       var content=document.getElementById('storeContent');
       document.querySelectorAll('.category-tab').forEach(function(button){button.classList.toggle('active',button.dataset.category===currentCategory);});
-      if(currentCategory==='themes')content.innerHTML=renderThemes();
+      var storefrontHTML=window.MAOMAOStorefront.render(currentCategory);
+      if(storefrontHTML!==null)content.innerHTML=storefrontHTML;
+      else if(currentCategory==='discover')content.innerHTML=market?market.renderDiscover():'';
+      else if(currentCategory==='themes')content.innerHTML=renderThemes();
       else if(currentCategory==='bubbles')content.innerHTML=renderBubbles();
+      else if(currentCategory==='widgets')content.innerHTML=market?market.renderWidgets():'';
+      else if(currentCategory==='wallpapers')content.innerHTML=market?market.renderWallpapers():'';
       else if(currentCategory==='fonts')content.innerHTML=renderFonts();
-      else content.innerHTML=renderMine();
+      else content.innerHTML=renderMine()+(market?market.renderMineExtra():'');
+      if(market&&(currentCategory==='wallpapers'||currentCategory==='discover'||currentCategory==='mine'))
+        market.loadWallpaper(function(){if(['wallpapers','discover','mine'].indexOf(currentCategory)>=0)render();});
       if(currentCategory==='bubbles')fillScope();
       if(currentCategory==='fonts')bindFontSpecimens();
       if(currentCategory==='mine')document.querySelectorAll('[data-filter]').forEach(function(button){button.classList.toggle('active',button.dataset.filter===mineFilter);});
-      if(currentCategory==='themes')enableProductDrag();
+
       updateOwnedCount();
     }
     function setCategory(category){
@@ -547,13 +577,14 @@
       render();
     }
     function applyTheme(id){
-      if(!window.ChatBeauty||!ChatBeauty.setThemePreset){toast('聊天主题模块暂不可用');return;}
+      if(!window.ChatBeauty||!ChatBeauty.setThemePreset){toast('聊天主题模块暂不可用');return false;}
       var owned=getOwned();
-      if(owned.indexOf(id)<0){owned.push(id);if(!setOwned(owned)){toast('收录失败，请检查本机存储空间');return;}}
-      if(!ChatBeauty.setThemePreset(id)){toast('主题应用失败');return;}
+      if(owned.indexOf(id)<0){owned.push(id);if(!setOwned(owned)){toast('收录失败，请检查本机存储空间');return false;}}
+      if(!ChatBeauty.setThemePreset(id)){toast('主题应用失败');return false;}
       try{window.dispatchEvent(new CustomEvent('maomao:chat-theme-change',{detail:{theme:id}}));}catch(e){}
       toast('已应用「'+(defaultThemes.filter(function(t){return t.id===id;})[0]||{}).name+'」');
       render();
+      return true;
     }
     function openFontDBRecord(id){
       return openFontDB().then(function(db){
@@ -618,6 +649,19 @@
       else if(action.dataset.action==='bubble-apply')applyBubblePreset(id);
       else if(action.dataset.action==='font-apply')applyFont(id);
       else if(action.dataset.action==='font-default')useSystemFont();
+      else if(action.dataset.action==='market-preview'&&market)market.preview('atmosphere');
+      else if(action.dataset.action==='market-apply-theme'&&market)applyTheme('atmosphere');
+      else if(action.dataset.action==='market-category')setCategory(id);
+      else if(action.dataset.action==='market-widget-open'&&market)market.widgetRoute(id);
+      else if(action.dataset.action==='market-route'&&market)market.route(id);
+      else if(action.dataset.action==='market-wallpaper-apply'&&market){
+        action.disabled=true;action.textContent='正在保存…';
+        market.applyWallpaper(id).then(function(name){
+          toast('已应用「'+name+'」到桌面壁纸');render();
+        }).catch(function(error){
+          toast(error&&error.message||'壁纸保存失败，请检查存储空间');action.disabled=false;action.textContent='重新尝试';
+        });
+      }
       else if(action.dataset.action==='open-beauty')openPage('../beauty/beauty.html');
       else if(action.dataset.action==='open-font-settings')openPage('../settings/font-settings.html');
       else if(action.dataset.action==='refresh'){refreshAll();}
@@ -625,29 +669,22 @@
     document.getElementById('storeContent').addEventListener('change',function(event){
       if(event.target&&event.target.id==='bubbleScope'){bubbleScopeValue=event.target.value||'global';render();}
     });
-    document.getElementById('storeContent').addEventListener('touchstart',function(event){
-      if(event.target.closest&&event.target.closest('.product-grid')){this._swipeX=null;this._swipeY=null;return;}
-      if(!event.touches||!event.touches.length)return;
-      this._swipeX=event.touches[0].clientX;this._swipeY=event.touches[0].clientY;
-    },{passive:true});
-    document.getElementById('storeContent').addEventListener('touchend',function(event){
-      if(this._swipeX==null||!event.changedTouches||!event.changedTouches.length)return;
-      var dx=event.changedTouches[0].clientX-this._swipeX,dy=event.changedTouches[0].clientY-this._swipeY;
-      this._swipeX=null;this._swipeY=null;
-      if(Math.abs(dx)>75&&Math.abs(dy)<55){
-        var index=categories.indexOf(currentCategory),next=index+(dx<0?1:-1);
-        if(next>=0&&next<categories.length)setCategory(categories[next]);
-      }
-    },{passive:true});
     function refreshAll(){
       loadFonts().then(function(){render();bindFontSpecimens();});
       if(currentCategory==='bubbles'||currentCategory==='mine')render();
     }
+    document.addEventListener('maomao:market-apply-atmosphere',function(){applyTheme('atmosphere');});
     window.addEventListener('pageshow',refreshAll);
     window.addEventListener('storage',function(event){
       if(!event.key||[VISUAL_KEY,DELETED_KEY,'beauty_chat_global_v1','maomao_chat_theme_preset','active_font_preset_id',OWN_KEY,CHAT_LIST_THEME_KEY].indexOf(event.key)>=0)refreshAll();
     });
     document.addEventListener('visibilitychange',function(){if(!document.hidden)refreshAll();});
+    window.MAOMAOStorefront.init({themes:defaultThemes, market:market, render:render,
+      navigate:setCategory, applyTheme:applyTheme, toast:toast, scope:function(){return bubbleScopeValue;},
+      using:function(){var box=document.createElement('div');box.innerHTML=renderMine();box.querySelectorAll('.mine-item').forEach(function(item){if(item.querySelector('.mine-status').textContent!=='正在使用')item.remove();});box.querySelector('.mine-filter')?.remove();return box.innerHTML;}, nativeThemes:renderThemes, nativeArt:themeArt, listCard:function(){var box=document.createElement('div');box.innerHTML=renderThemes();return box.querySelector('.chat-list-theme-grid').outerHTML;}});
+    document.querySelectorAll('#categoryNav button').forEach(function(button,index){
+      button.insertAdjacentHTML('afterbegin',window.MAOMAOStorefront.svg(['home','theme','category','mine'][index]));
+    });
     loadFonts().then(function(){render();bindFontSpecimens();});
   })();
   </script>
