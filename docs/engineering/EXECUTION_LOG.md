@@ -123,3 +123,51 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 5. Break cloud-push work into small, reviewable milestones. A code-only PR is not proof of scheduled execution, server model response, OS push delivery, or two-device message persistence.
 6. No merge to main, production deployment, APK update, Worker secret configuration, or destructive user-data operation without explicit owner approval.
 7. This conversation cannot run after the chat/session is closed. Leave this checkpoint so the next session can resume without asking the owner to repeat the task.
+
+## GOV-004 — PR #285 原账号、001、双端推送验收（2026-11-14 UTC）
+
+- Branch: `GOV-004/qa-account-push-acceptance-20261114`, based on exact PR #285 head `071caffe9a35fca812404e1356eb8bb0ff490dab`.
+- Scope: acceptance only. Application code, remote branches, account records, secrets and deployments unchanged.
+- QA bootstrap/status confirms delegated original authority connected/initialized and signInReady=true; bootstrapAllowed=false. Push public configuration HTTP 200; SW v240. Anonymous private pages redirect, account/social/push queries deny access, backend entry returns 404.
+- 11 focused Node test files pass, zero failures. Live unauthenticated Chromium at 390/430px shows login form, no horizontal overflow or page errors. This is not phone push acceptance or proof of authenticated founder identity.
+- User confirms Android login succeeds, but opening administrator center returns to login. **FAIL**. Live account/invite/audit admin APIs return 403 DELEGATED_ACCOUNT_MANAGED_CENTRALLY; `admin/admin-center.js` treats this 403 as login failure. Do not report 001 full management permissions passed or infer founder identity loss.
+- User only has Android now and explicitly defers push retesting; reports last night's successful push test. Record as historical user evidence, not this run's Android/iPhone delivery pass.
+- Detailed evidence and pending matrix: `docs/engineering/QA_ACCOUNT_PUSH_ACCEPTANCE_20261114.md`. Local raw safe probe results, script and screenshots are in `/workspace/maomao-acceptance/`; Node runner log in `/tmp/maomao-acceptance-tests.log`.
+- Next: handle delegated administrator UI/API contract and correct authority management route. Preserve identity boundaries; do not bypass delegated restrictions or create/copy administrator credentials. Resume hardware push acceptance when user is ready.
+
+### User-authorized continuation — delegated admin redirect fix
+
+- Shared `handleAdminAccessError` distinguishes centrally managed account APIs from expired/forbidden sessions after verifying active super_admin. Known delegated restriction keeps page/session, shows 001 and an accurate unavailable message, hides unavailable management controls and closes stale details/code/confirmation. Retry revalidates identity and restores controls only after successful reads.
+- All five error consumers (initialization/actions/details/account audit/global audit) use this handler. Genuine auth/role rejection remains protected. Versioned HTML JS/CSS references avoid executing stale cached assets.
+- Node admin UI tests 20/20; synthetic Chromium browser scenarios 9/9 at mobile and desktop widths; full npm build/release gate/postbuild passed. No Worker/gateway/data/secret changes. This fixes the redirect bug, not the missing central administration service.
+- Changes prepared on `GOV-004/qa-account-push-acceptance-20261114` for review and isolated QA publication. Push delivery testing remains deferred at the owner's request.
+- Local commit created and full build passed again after final cache-version edits. Remote publication is BLOCKED: automatic approval review rejected the combined commit/push command because it did not consider the specific repository destination explicitly authorized for publishing code and acceptance documents. The rejected command did not execute. A subsequent local-only commit succeeded; no push, PR creation, build-trigger mutation or QA deployment occurred. Request explicit approval to publish this fix branch to Bella0960/MAOMAO and update the isolated QA. Do not bypass the rejection using another upload route.
+
+### Publication completed after explicit owner approval — 2026-11-14 20:59 UTC
+
+- Owner authorized push/update after final review. Earlier automatic approval blocker is resolved. GitHub initially rejected private-email metadata; local commit metadata was corrected to the authenticated account's GitHub noreply address, without changing GitHub privacy settings.
+- Fix commit `91b204d6f36267781b3655cf8a85b832a8845c57` pushed to the dedicated branch; PR #291 targets #285's integration branch: https://github.com/Bella0960/MAOMAO/pull/291 . No main/integration merge.
+- Final review reran 9 browser scenarios, 20 admin UI tests and QA config test, all pass. Full build/release gate/postbuild passed before push.
+- Existing isolated QA build trigger ran exact SHA with a deploy-time SHA guard. Build `302c1fa6-655f-48f7-8977-27fbe9033227` success. QA deployment `407c2aaa-6d91-48f8-8573-ddb9078694a1`, version `b81baac7-6bab-498c-b17d-f98bee83b51e` active at 100%. Trigger deploy command restored to its previous paused command immediately after starting the build.
+- HTTPS deployed JS/CSS byte-match the tested source. Original identity authority remains connected and sign-in-ready, bootstrap remains disabled, push public config ready and anonymous management page still protected. QA namespace `4a24ce58079f468c87c2f75e107c4d1c`, identity service and existing secret bindings retained.
+- Production `mao` deployment/version unchanged before/after this task: `f6598f9b-c371-4405-9184-624dcf79d979` / `d6c0e2c7-c8f2-4533-89fd-d503633413db`.
+- Next: owner can reopen the QA administrator center to verify the redirect fix with the real Android session. Central account administration still intentionally unavailable; Android/iPhone push remains deferred. Safe raw deploy checks saved to `/workspace/maomao-acceptance/deployment-check.json`.
+
+### Owner hardware evidence — Android remote test notification PASS
+
+- Owner reports the test works and supplies an Android system notification-center screenshot showing Chrome, the isolated QA host, “MAOMAO · 云端测试通知” and “这条通知由云端推送到当前浏览器”. Android remote test notification OS display is now PASS.
+- This supersedes the earlier deferred/NOT VERIFIED status for Android remote test display only. iPhone delivery, notification-click routing, long-running background reliability and full central administrator operations remain unverified/unavailable. Do not infer them from the screenshot.
+- Do not commit the screenshot: it includes unrelated private notifications. Record only the minimal QA acceptance evidence in this log and the detailed acceptance report.
+
+### Owner extension requirement and push platform clarification
+
+- Owner reaffirmed that every new feature needs stable extension interfaces and automatic inclusion through registration, avoiding broad overwrites when extending. Added an explicit repository-wide registration/discovery requirement to AGENTS.md, covering relevant navigation, permission, storage/backup and delivery integrations. Existing backup register APIs remain the implementation reference; no new registry/framework was invented in this documentation change.
+- Inspected current Android wrapper: MainActivity uses WebViewAssetLoader and bundled `appassets.androidplatform.net` content. Gradle has only androidx.webkit; manifest has no native push service or notification permission. Current APK source has no Firebase/native notification integration, so browser push acceptance cannot be represented as APK push acceptance.
+- Current web client detects Service Worker/PushManager/Notification capabilities; changing browser requires its own subscription/permission. Only Android Chrome is hardware-verified in this task; other browsers and iPhone require separate acceptance. Future APK delivery needs a native adapter (provider choice to be evaluated), independent subscription registration and platform permission handling while preserving the shared account/message contracts. APK implementation/build is not requested in this turn.
+
+### Conditional production authorization evaluated — NOT READY, 2026-11-14 21:07 UTC
+
+- Owner authorizes production release if review concludes ready. Rechecked exact main/#285/#291 refs, currently active 100% Worker version metadata, custom domain targets, full 52-entry namespace inventory and live public status APIs.
+- Ran the project's actual `auditProductionAccountReadiness` with those read-only observations for configured release origin app.mao520.com. Result: `releaseReady=false`; failures `PRODUCTION_DOMAIN_TARGET_MISMATCH` and `LIVE_ACCOUNT_STATUS_NOT_200`. app.mao520.com still maps to ASSETS-only curly-dream-324c and account bootstrap status/push config are both 404. mao520.com is a separate live mao-auth-preview account service with working status/config; it is not evidence of same-origin readiness on app.mao520.com.
+- 001 account/invitation/audit management remains centrally unavailable. Real founder/browser data continuity and recoverable live backup/restore are not verified by this task; iPhone hardware push remains pending. Prior Android notification acceptance does not resolve these gaps.
+- No formal merge, production deployment, domain/account/data mutation or recovery attempted. Existing working QA retained. Detailed evidence and next release prerequisites appended to QA_ACCOUNT_PUSH_ACCEPTANCE_20261114.md; raw safe read-only result in `/workspace/maomao-acceptance/production-readiness-result.json`.

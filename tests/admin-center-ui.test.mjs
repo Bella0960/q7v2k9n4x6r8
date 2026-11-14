@@ -15,8 +15,8 @@ test('temporary session or API failures do not masquerade as a missing super-adm
   assert.match(init, /if \(initializing\) return/);
   assert.match(init, /if \(!me\.account \|\| me\.account\.role !== 'super_admin' \|\| me\.account\.status !== 'active'\)/,
     'a confirmed non-admin account must still leave the creator-only page');
-  assert.match(init, /error\.status === 401 \|\| error\.status === 403 \|\| error\.code === 'ADMIN_ONLY'/,
-    'only confirmed authentication/authorization errors should redirect');
+  assert.match(init, /handleAdminAccessError\(error\)/,
+    'initialization must distinguish delegated management from authentication failures');
   assert.match(init, /showError\([\s\S]*\(\) => init\(\)/,
     'transient failures must keep the page open and offer a retry');
   assert.match(adminScript, /function showError\(message, retry\)/);
@@ -38,8 +38,7 @@ test('audit request failures offer a retry but authentication failures leave the
   const end = adminScript.indexOf('\n\n  function closeDetail()', start);
   assert.ok(start >= 0 && end > start, 'audit loader must exist');
   const audit = adminScript.slice(start, end);
-  assert.match(audit, /error\.code === 'ACCOUNT_DISABLED'/);
-  assert.match(audit, /error\.status === 401 \|\| error\.status === 403 \|\| error\.code === 'ADMIN_ONLY'/);
+  assert.match(audit, /handleAdminAccessError\(error\)/);
   assert.match(audit, /'重试读取'/);
   assert.match(audit, /retryButton\.addEventListener\('click', \(\) => loadAudit\(accountId, reset\)\)/);
 });
