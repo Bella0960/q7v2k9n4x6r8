@@ -61,7 +61,9 @@ test('release shell includes feature modules without weakening account or wallet
     'inspect-phone/inspect-native-view.js',
     'inspect-phone/inspect-feature.js',
     'shared/js/phone/inspect_account_guard.js',
-    'shared/js/phone/inspect_interaction_bridge.js'
+    'shared/js/phone/inspect_interaction_bridge.js',
+    'shared/js/atmosphere-my-home.js',
+    'shared/css/atmosphere-my-home.css'
   ]) assert.ok(sw.includes(filename), 'PWA cache missing ' + filename);
   assert.match(sw, /mao-account-scope\.js/);
   const ledger = read('shared/js/phone/wallet-ledger.js');
