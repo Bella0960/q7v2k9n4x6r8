@@ -217,7 +217,7 @@ test('real sqlite session touch rejects revoked, expired and disabled sessions',
     // The real account-scoped revoke SQL must reject attempts to revoke a
     // second account's session; it must leave that other session authorized.
     assert.equal(store.revokeMaoAccountSessionForAccount('owner', 'other-account', now), false);
-    assert.equal(store.touchMaoAccountSession('other-account', now + 1), true);
+    assert.equal(store.touchMaoAccountSession('other-account', now), true);
     // Revoking the session after the initial lookup must block a stale request
     // at the last conditional UPDATE, without updating last_used_at.
     assert.equal(store.revokeMaoAccountSessionForAccount('owner', 'valid', now), true);
