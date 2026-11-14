@@ -42,7 +42,7 @@ test('真实 AI 回复保存后才标记提供过的线索，普通聊天不重�
   assert.ok(f.persisted().interactions[0].offeredToAIAt>0);
   const next=f.bridge.buildPromptPacket('rA',f.storage,Date.now(),{userText:'今天吃什么'});
   assert.equal(next.text,'');
-  assert.deepEqual(next.eventIds,[]);
+  assert.equal(next.eventIds.length,0);
   assert.equal(next.mode,'none');
 });
 
