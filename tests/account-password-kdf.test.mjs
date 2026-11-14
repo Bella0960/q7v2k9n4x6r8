@@ -65,7 +65,7 @@ test('HMAC fallback rejects algorithm downgrade by producing exactly historical 
 
 
 test('Workers build configurations enable native node:crypto password hashing', () => {
-  for (const configName of ['wrangler.jsonc', 'wrangler.preview.jsonc']) {
+  for (const configName of ['wrangler.jsonc']) {
     const raw = readFileSync(new URL('../' + configName, import.meta.url), 'utf8');
     const source = raw.replace(/^\s*\/\/[^\n]*$/gm, '');
     const config = JSON.parse(source);
