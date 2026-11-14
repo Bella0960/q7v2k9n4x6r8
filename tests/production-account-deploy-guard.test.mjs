@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { auditProductionAccountReadiness } from '../scripts/verify-production-account-readiness.mjs';
 
 const example = () => ({
@@ -160,4 +161,15 @@ test('duplicate canonical namespace names fail closed, even when one ID matches'
     class: 'CloudDatabase'
   });
   assert.ok(auditProductionAccountReadiness(data).includes('PROD_NAMESPACE_NOT_CANONICAL'));
+});
+
+test('real-friend switches remain preview-only until the production account cutover is verified', () => {
+  const config = JSON.parse(readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8'));
+  const previewOnly = ['MAO_SOCIAL_ENABLED', 'MAO_SOCIAL_CHAT_ENABLED', 'MAO_SOCIAL_E2EE_ENABLED'];
+  for (const key of previewOnly) {
+    assert.equal(Object.hasOwn(config.vars || {}, key), false,
+      `${key} must not activate in production Worker vars during the QA-only rollout`);
+  }
+  assert.equal(config.previews?.vars?.MAO_SOCIAL_ENABLED, 'true');
+  assert.equal(config.previews?.vars?.MAO_SOCIAL_E2EE_ENABLED, 'true');
 });
