@@ -102,3 +102,40 @@ proof of remote binding resolution or successful live PITR capture.
 Do not claim a production checkpoint until the isolated operation has run
 under the real target binding and its independent restore procedure has been
 validated. Never run a live restore or founder cutover as part of a test build.
+
+## Verified live deployment inventory, 2026-11-14
+
+- The standalone `maomao-founder-checkpoint-operator` Worker **exists on
+  Cloudflare**, deployed directly from the release candidate source on
+  2026-11-14. Its `LIVE_CLOUD_DB` binding targets the exact account namespace
+  of `mao-auth-preview` (class `CloudDatabase`). Read-only verification
+  confirmed **no routes/domains, no Cron triggers, and both workers.dev and
+  preview URLs disabled**. The run-enable switch, execution window and operator
+  secret have NOT been provisioned; the caller cannot run or touch user data.
+- The actual account Worker on `mao520.com` is the **deployed** version
+  `74bcc286-11b7-43fb-a09c-3f5d2e5310d8` (100% traffic). The temporary
+  checkpoint probe was an *uploaded but undeployed* version, NOT the live
+  account service. Do not confuse `GET /workers/scripts/:name` (latest
+  upload) with the deployed version identified by `/deployments`.
+- Full code and assets were staged as **uploaded version 29**,
+  `4a5aff67-c93e-4dae-add5-8541fbd0755a`, **not deployed**. Its bindings
+  were verified to include `ASSETS`, the exact existing `CLOUD_DB` namespace,
+  `DEVICE_SECRET_PEPPER`, `MAO_SUPER_ADMIN_BOOTSTRAP_SECRET`, and existing
+  VAPID key bindings. They were inherited entirely server-side without viewing
+  their contents.
+- Earlier intermediate uploaded versions 27 (incomplete account secrets) and
+  28 (no assets) are **NOT RELEASE CANDIDATES**. Never deploy them. An initial
+  `wrangler versions upload` with the ordinary preview config was rejected
+  because of a pending Durable Object migration; the dedicated
+  `wrangler.preview.version-upload.jsonc` omits migration declarations for a
+  *non-deploying upload* and succeeded. This does not authorize a production
+  migration or actual Worker deployment. Confirm the migration tag, asset
+  continuity and rollback before a traffic cutover.
+- Production-readiness gates must inspect the **single 100% deployed version**
+  and its bindings, not latest uploaded settings. Split/unknown deployments are
+  blocked. The live database PITR bookmark has **not** been recorded, and no
+  founder transfer or domain change has occurred.
+
+Deployment/operator changes above are real Cloudflare resources, not synthetic
+claims. They must not be interpreted as permission to activate the operator,
+recover the live database, or merge the Draft PR.
