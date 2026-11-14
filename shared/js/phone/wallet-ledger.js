@@ -1,0 +1,524 @@
+/* MAOMAO wallet ledger coordination.
+ * Balance, card and finance mutations require one origin-wide Web Lock.
+ * Never downgrade to a page-local queue: it cannot protect another tab.
+ */
+(function (global) {
+  'use strict';
+
+  var LOCK_NAME = 'maomao-wallet-ledger-v1';
+  // Synchronous store adapters (such as RoleFamilyCards.consume) can only
+  // commit while an actual origin-wide wallet lock callback is active.
+  var activeMutationLocks = 0;
+  // Keep the exact raw snapshot associated with every wallet object returned by our reader.
+  // Callers must not need to remember to provide a separate optimistic version token.
+  var walletSnapshotOrigins = typeof WeakMap === 'function' ? new WeakMap() : null;
+
+  function runExclusive(task, options) {
+    if (typeof task !== 'function') {
+      return Promise.reject(new TypeError('wallet ledger task must be a function'));
+    }
+    options = options || {};
+
+    var locks = global.navigator && global.navigator.locks;
+    if (locks && typeof locks.request === 'function') {
+      return locks.request(LOCK_NAME, { mode: 'exclusive' }, function () {
+        activeMutationLocks += 1;
+        var result;
+        try {
+          result = task();
+        } catch (error) {
+          activeMutationLocks -= 1;
+          throw error;
+        }
+        return Promise.resolve(result).then(function (value) {
+          activeMutationLocks -= 1;
+          return value;
+        }, function (error) {
+          activeMutationLocks -= 1;
+          throw error;
+        });
+      });
+    }
+
+    // All callers may mutate financial state. A page-local promise queue is
+    // not a cross-tab lock and must never be treated as one. Reject before
+    // invoking task so even a future caller without its own guard stays safe.
+    var error = new Error('cross-tab-lock-unavailable');
+    error.code = 'cross-tab-lock-unavailable';
+    return Promise.reject(error);
+  }
+
+  var PENDING_CHECKOUT_KEY = 'maomao_wallet_pending_checkouts_v1';
+
+  function readStoredCheckouts() {
+    try {
+      var raw = global.localStorage.getItem(PENDING_CHECKOUT_KEY);
+      if (raw == null) return [];
+      var value = JSON.parse(raw);
+      if (!Array.isArray(value)) return null;
+
+      var ids = Object.create(null);
+      var pendingChannels = Object.create(null);
+      for (var i = 0; i < value.length; i++) {
+        var item = value[i];
+        if (!item || typeof item !== 'object' ||
+            typeof item.id !== 'string' || !item.id ||
+            typeof item.channel !== 'string' || !item.channel ||
+            typeof item.signature !== 'string' || !item.signature ||
+            (item.status !== 'pending' && item.status !== 'completed') ||
+            ids[item.id]) return null;
+        ids[item.id] = true;
+        if (item.status === 'pending') {
+          if (pendingChannels[item.channel]) return null;
+          pendingChannels[item.channel] = true;
+        }
+      }
+      return value;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function readPendingCheckouts() {
+    var rows = readStoredCheckouts();
+    return rows ? rows.filter(function (item) { return item.status === 'pending'; }) : null;
+  }
+
+  function writePendingCheckouts(rows) {
+    if (activeMutationLocks === 0) return false;
+    try {
+      var serialized = JSON.stringify(rows);
+      global.localStorage.setItem(PENDING_CHECKOUT_KEY, serialized);
+      return global.localStorage.getItem(PENDING_CHECKOUT_KEY) === serialized;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function getOrCreatePendingCheckout(channel, signature, paymentMethod) {
+    channel = String(channel || '').trim().slice(0, 32);
+    signature = String(signature || '');
+    paymentMethod = String(paymentMethod || 'normal').slice(0, 64);
+    if (!channel || !signature || signature.length > 8000) return null;
+
+    // Keep completed receipts in the persisted ledger. Reading only pending rows
+    // here would silently erase completed history whenever a new checkout starts.
+    var rows = readStoredCheckouts();
+    if (!rows) return null;
+    var existing = rows.find(function (item) {
+      return item.status === 'pending' && item.channel === channel;
+    });
+    if (existing) {
+      // Only one unresolved checkout per channel is allowed. This also prevents a
+      // changed cart from bypassing an earlier partial commit and being charged again.
+      return existing.signature === signature &&
+        String(existing.paymentMethod || 'normal') === paymentMethod ? existing.id : null;
+    }
+
+    var randomPart = global.crypto && typeof global.crypto.randomUUID === 'function'
+      ? global.crypto.randomUUID()
+      : Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 12);
+    var id = 'mmchk_' + String(randomPart).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 96);
+    if (rows.some(function (item) { return item.id === id; })) return null;
+
+    rows.push({
+      id: id,
+      channel: channel,
+      signature: signature,
+      paymentMethod: paymentMethod,
+      status: 'pending',
+      createdAt: Date.now()
+    });
+    return writePendingCheckouts(rows) ? id : null;
+  }
+
+  function cancelPendingCheckout(transactionId) {
+    transactionId = String(transactionId || '');
+    if (!transactionId) return false;
+    // Read the complete ledger, not only pending rows. Completed transaction
+    // receipts must survive cancellation of an unrelated unfinished checkout.
+    var rows = readStoredCheckouts();
+    if (!rows) return false;
+    var target = rows.find(function (item) { return item.id === transactionId; });
+    if (!target) return true;
+    // A committed checkout is immutable through the cancellation path.
+    if (target.status !== 'pending') return false;
+    var next = rows.filter(function (item) { return item.id !== transactionId; });
+    if (!writePendingCheckouts(next)) return false;
+    var verified = readStoredCheckouts();
+    return !!verified && !verified.some(function (item) { return item.id === transactionId; });
+  }
+  function getPendingCheckout(channel) {
+    channel = String(channel || '').trim().slice(0, 32);
+    if (!channel) return null;
+    var rows = readPendingCheckouts();
+    if (!rows) return null;
+    var item = rows.find(function (row) { return row.channel === channel; });
+    if (!item) return undefined;
+    return {
+      id: item.id,
+      channel: item.channel,
+      signature: item.signature,
+      paymentMethod: item.paymentMethod || 'normal',
+      createdAt: item.createdAt
+    };
+  }
+
+  function isPendingCheckout(transactionId) {
+    transactionId = String(transactionId || '');
+    if (!transactionId) return false;
+    var rows = readPendingCheckouts();
+    if (!rows) return null;
+    return rows.some(function (item) { return item.id === transactionId; });
+  }
+
+  function completePendingCheckout(transactionId) {
+    transactionId = String(transactionId || '');
+    if (!transactionId) return false;
+    var rows = readStoredCheckouts();
+    if (!rows) return false;
+    var target = rows.find(function (item) { return item.id === transactionId; });
+    // An unknown checkout is not a successfully completed checkout. If the
+    // recovery receipt was lost or cancelled, callers must stop rather than
+    // claiming checkout confirmation without durable evidence.
+    if (!target) return false;
+    if (target.status === 'completed') return true;
+    if (activeMutationLocks === 0) return false;
+    target.status = 'completed';
+    target.completedAt = Date.now();
+    var serialized = JSON.stringify(rows);
+    try {
+      global.localStorage.setItem(PENDING_CHECKOUT_KEY, serialized);
+      if (global.localStorage.getItem(PENDING_CHECKOUT_KEY) !== serialized) return false;
+      var verified = readStoredCheckouts();
+      var saved = verified && verified.find(function (item) { return item.id === transactionId; });
+      return !!saved && saved.status === 'completed';
+    } catch (error) {
+      return false;
+    }
+  }
+
+  // Read the wallet snapshot used by a balance mutation. Missing storage keeps the
+  // app's first-use balance; malformed existing data fails closed and is never
+  // silently replaced with a fabricated balance.
+  function readWalletForMutation(storageKey, rawOverride) {
+    storageKey = String(storageKey || 'workData');
+    var raw;
+    try {
+      if (arguments.length > 1) {
+        raw = rawOverride;
+      } else {
+        if (!global.localStorage || typeof global.localStorage.getItem !== 'function') return null;
+        raw = global.localStorage.getItem(storageKey);
+      }
+    } catch (error) {
+      return null;
+    }
+
+    if (raw == null) {
+      var firstUse = { balance: 1000, history: [] };
+      if (walletSnapshotOrigins && storageKey === 'workData') walletSnapshotOrigins.set(firstUse, null);
+      return firstUse;
+    }
+
+    var wallet;
+    try {
+      wallet = JSON.parse(raw);
+    } catch (error) {
+      return null;
+    }
+    if (!wallet || typeof wallet !== 'object' || Array.isArray(wallet) ||
+        typeof wallet.balance !== 'number' || !isFinite(wallet.balance) ||
+        wallet.balance < 0) {
+      return null;
+    }
+    if (!Object.prototype.hasOwnProperty.call(wallet, 'history')) wallet.history = [];
+    else if (!Array.isArray(wallet.history)) return null;
+    if (walletSnapshotOrigins && storageKey === 'workData') walletSnapshotOrigins.set(wallet, raw);
+    return wallet;
+  }
+
+  // Central write path for the legacy workData wallet shared by chat, shop,
+  // takeout, and wallet UI. Callers must already hold runExclusive().
+  // An optional raw baseline rejects stale snapshots rather than overwriting them.
+  function commitWalletSnapshot(wallet, expectedRaw) {
+    if (activeMutationLocks === 0) {
+      return { ok: false, reason: 'mutation-lock-required' };
+    }
+    var storage = global.localStorage;
+    if (!storage || typeof storage.getItem !== 'function' ||
+        typeof storage.setItem !== 'function') return { ok: false, reason: 'storage' };
+    if (!wallet || typeof wallet !== 'object' || Array.isArray(wallet) ||
+        typeof wallet.balance !== 'number' || !isFinite(wallet.balance) ||
+        wallet.balance < 0 || !Array.isArray(wallet.history)) {
+      return { ok: false, reason: 'invalid-wallet' };
+    }
+    // Resolve the baseline before doing any more reads: a stale snapshot must
+    // not overwrite another tab's newer balance even if it bypassed Web Locks.
+    var baselineKnown = arguments.length > 1;
+    if (!baselineKnown && walletSnapshotOrigins && walletSnapshotOrigins.has(wallet)) {
+      expectedRaw = walletSnapshotOrigins.get(wallet);
+      baselineKnown = true;
+    }
+    var serialized;
+    try {
+      serialized = JSON.stringify(wallet);
+      if (!serialized || !readWalletForMutation('workData', serialized)) {
+        return { ok: false, reason: 'invalid-wallet' };
+      }
+      var existingRaw = storage.getItem('workData');
+      if (existingRaw != null && !readWalletForMutation('workData', existingRaw)) {
+        return { ok: false, reason: 'invalid-store' };
+      }
+      if (!baselineKnown) return { ok: false, reason: 'snapshot-required' };
+      if (existingRaw !== expectedRaw) {
+        return { ok: false, reason: 'stale-wallet' };
+      }
+      storage.setItem('workData', serialized);
+      if (storage.getItem('workData') !== serialized) {
+        return { ok: false, reason: 'readback' };
+      }
+      if (walletSnapshotOrigins) walletSnapshotOrigins.set(wallet, serialized);
+      return { ok: true, raw: serialized };
+    } catch (error) {
+      return { ok: false, reason: 'storage-write' };
+    }
+  }
+
+  // Conditional rollback for multi-record checkouts. Never overwrite a wallet
+  // modified by another writer, and never roll back to malformed stored bytes.
+  function restoreWalletSnapshot(expectedWrittenRaw, previousRaw) {
+    if (activeMutationLocks === 0) return false;
+    var storage = global.localStorage;
+    if (!storage || typeof storage.getItem !== 'function') return false;
+    if (previousRaw != null && !readWalletForMutation('workData', previousRaw)) return false;
+    try {
+      if (storage.getItem('workData') !== expectedWrittenRaw) return false;
+      if (previousRaw == null) {
+        if (typeof storage.removeItem !== 'function') return false;
+        storage.removeItem('workData');
+      } else {
+        if (typeof storage.setItem !== 'function') return false;
+        storage.setItem('workData', previousRaw);
+      }
+      return storage.getItem('workData') === (previousRaw == null ? null : previousRaw);
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function readClosePayState(storageKey, rawOverride) {
+    storageKey = String(storageKey || 'close_pay');
+    var raw;
+    try {
+      if (arguments.length > 1) raw = rawOverride;
+      else {
+        if (!global.localStorage || typeof global.localStorage.getItem !== 'function') {
+          return { ok: false, reason: 'storage', value: null };
+        }
+        raw = global.localStorage.getItem(storageKey);
+      }
+    } catch (error) {
+      return { ok: false, reason: 'storage', value: null };
+    }
+
+    var defaults = {
+      enabled: false,
+      roleId: '',
+      roleName: '',
+      limit: 500,
+      used: 0,
+      history: []
+    };
+    if (raw == null) return { ok: true, reason: '', value: defaults };
+
+    var data;
+    try { data = JSON.parse(raw); }
+    catch (error) { return { ok: false, reason: 'invalid', value: null }; }
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      return { ok: false, reason: 'invalid', value: null };
+    }
+
+    if (Object.prototype.hasOwnProperty.call(data, 'enabled') && typeof data.enabled !== 'boolean') {
+      return { ok: false, reason: 'invalid', value: null };
+    }
+    for (var key of ['roleId', 'roleName', 'roleAvatar']) {
+      if (Object.prototype.hasOwnProperty.call(data, key) && typeof data[key] !== 'string') {
+        return { ok: false, reason: 'invalid', value: null };
+      }
+    }
+
+    var limit = Object.prototype.hasOwnProperty.call(data, 'limit') ? Number(data.limit) : 500;
+    var used = Object.prototype.hasOwnProperty.call(data, 'used') ? Number(data.used) : 0;
+    if (!isFinite(limit) || limit < 0 || !isFinite(used) || used < 0) {
+      return { ok: false, reason: 'invalid', value: null };
+    }
+
+    var history = Object.prototype.hasOwnProperty.call(data, 'history') ? data.history : [];
+    if (!Array.isArray(history)) return { ok: false, reason: 'invalid', value: null };
+    var paymentIds = Object.create(null);
+    for (var i = 0; i < history.length; i++) {
+      var row = history[i];
+      if (!row || typeof row !== 'object' || Array.isArray(row) ||
+          !isFinite(Number(row.amount)) || Number(row.amount) <= 0 ||
+          !isFinite(Number(row.time)) || Number(row.time) <= 0 ||
+          (row.note != null && typeof row.note !== 'string') ||
+          (row.paymentId != null && typeof row.paymentId !== 'string')) {
+        return { ok: false, reason: 'invalid', value: null };
+      }
+      if (row.paymentId) {
+        if (paymentIds[row.paymentId]) return { ok: false, reason: 'invalid', value: null };
+        paymentIds[row.paymentId] = true;
+      }
+    }
+
+    var value = Object.assign({}, data, {
+      enabled: Object.prototype.hasOwnProperty.call(data, 'enabled') ? data.enabled : false,
+      roleId: Object.prototype.hasOwnProperty.call(data, 'roleId') ? data.roleId : '',
+      roleName: Object.prototype.hasOwnProperty.call(data, 'roleName') ? data.roleName : '',
+      limit: limit,
+      used: used,
+      history: history
+    });
+    return { ok: true, reason: '', value: value };
+  }
+
+  function readClosePayForMutation(storageKey, rawOverride) {
+    var state = arguments.length > 1
+      ? readClosePayState(storageKey, rawOverride)
+      : readClosePayState(storageKey);
+    return state.ok ? state.value : null;
+  }
+
+
+  function financeMoney(value) {
+    return Math.round(Number(value) * 100) / 100;
+  }
+
+  function inspectFinancePaymentRows(rows, transactionId, expectedRows) {
+    if (!Array.isArray(rows) || !Array.isArray(expectedRows) || !expectedRows.length) {
+      return { ok: false, reason: 'invalid-lines' };
+    }
+    var expectedByIndex = Object.create(null);
+    for (var i = 0; i < expectedRows.length; i++) {
+      var expected = expectedRows[i];
+      if (!expected || typeof expected !== 'object' || Array.isArray(expected) ||
+          !Number.isInteger(expected.paymentLineIndex) || expected.paymentLineIndex < 0 ||
+          !isFinite(Number(expected.amount)) || Number(expected.amount) < 0 ||
+          expected.type !== 'expense' ||
+          typeof expected.category !== 'string' || !expected.category) {
+        return { ok: false, reason: 'invalid-lines' };
+      }
+      var expectedKey = String(expected.paymentLineIndex);
+      if (expectedByIndex[expectedKey]) return { ok: false, reason: 'duplicate-expected-line' };
+      expectedByIndex[expectedKey] = expected;
+    }
+    var existingByIndex = Object.create(null);
+    for (var rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+      var row = rows[rowIndex];
+      if (!row || typeof row !== 'object' || Array.isArray(row) ||
+          !Object.prototype.hasOwnProperty.call(row, 'amount') ||
+          row.amount == null || row.amount === '' ||
+          !isFinite(Number(row.amount)) || Number(row.amount) < 0 ||
+          (Object.prototype.hasOwnProperty.call(row, 'type') && typeof row.type !== 'string')) {
+        return { ok: false, reason: 'invalid-store' };
+      }
+      if (row.paymentId !== transactionId) continue;
+      if (!Number.isInteger(row.paymentLineIndex) || row.paymentLineIndex < 0) {
+        return { ok: false, reason: 'transaction-conflict' };
+      }
+      var key = String(row.paymentLineIndex);
+      var wanted = expectedByIndex[key];
+      if (!wanted || existingByIndex[key]) return { ok: false, reason: 'transaction-conflict' };
+      if (row.type !== wanted.type || row.category !== wanted.category ||
+          financeMoney(row.amount) !== financeMoney(wanted.amount)) {
+        return { ok: false, reason: 'transaction-conflict' };
+      }
+      existingByIndex[key] = true;
+    }
+    var additions = [];
+    Object.keys(expectedByIndex).forEach(function (key) {
+      if (!existingByIndex[key]) {
+        additions.push(Object.assign({}, expectedByIndex[key], {
+          paymentId: transactionId,
+          paymentLineIndex: Number(key)
+        }));
+      }
+    });
+    return { ok: true, additions: additions };
+  }
+
+  // Called only while runExclusive() is held. Missing storage is first-use;
+  // empty, malformed, or conflicting existing data is never reset.
+  function recordFinanceLines(transactionId, expectedRows, storageKey) {
+    // This public helper is used by shop and takeout and may be called by new
+    // modules. Never let it silently bypass the shared Web Lock and overwrite
+    // a concurrent manual entry or after-sales annotation.
+    if (activeMutationLocks === 0) {
+      return { ok: false, reason: 'mutation-lock-required' };
+    }
+    transactionId = String(transactionId || '');
+    storageKey = String(storageKey || 'finance_records');
+    if (!transactionId || transactionId.length > 160) return { ok: false, reason: 'invalid-transaction' };
+    var raw;
+    try {
+      if (!global.localStorage || typeof global.localStorage.getItem !== 'function') {
+        return { ok: false, reason: 'storage-read' };
+      }
+      raw = global.localStorage.getItem(storageKey);
+    } catch (error) { return { ok: false, reason: 'storage-read' }; }
+    var rows;
+    if (raw == null) rows = [];
+    else {
+      if (raw === '') return { ok: false, reason: 'invalid-store' };
+      try { rows = JSON.parse(raw); }
+      catch (error) { return { ok: false, reason: 'invalid-store' }; }
+      if (!Array.isArray(rows)) return { ok: false, reason: 'invalid-store' };
+    }
+    var inspected = inspectFinancePaymentRows(rows, transactionId, expectedRows);
+    if (!inspected.ok) return inspected;
+    if (inspected.additions.length) {
+      var serialized;
+      try {
+        serialized = JSON.stringify(rows.concat(inspected.additions));
+        global.localStorage.setItem(storageKey, serialized);
+        if (global.localStorage.getItem(storageKey) !== serialized) {
+          return { ok: false, reason: 'storage-write' };
+        }
+      } catch (error) { return { ok: false, reason: 'storage-write' }; }
+    }
+    var verifyRaw;
+    try { verifyRaw = global.localStorage.getItem(storageKey); }
+    catch (error) { return { ok: false, reason: 'readback' }; }
+    if (verifyRaw == null || verifyRaw === '') return { ok: false, reason: 'readback' };
+    var verifiedRows;
+    try { verifiedRows = JSON.parse(verifyRaw); }
+    catch (error) { return { ok: false, reason: 'readback' }; }
+    var verified = inspectFinancePaymentRows(verifiedRows, transactionId, expectedRows);
+    if (!verified.ok || verified.additions.length) return { ok: false, reason: 'readback' };
+    return { ok: true, replayed: inspected.additions.length === 0 };
+  }
+
+  global.MaoMaoWalletLedger = Object.freeze({
+    lockName: LOCK_NAME,
+    runExclusive: runExclusive,
+    readWalletForMutation: readWalletForMutation,
+    commitWalletSnapshot: commitWalletSnapshot,
+    restoreWalletSnapshot: restoreWalletSnapshot,
+    readClosePayState: readClosePayState,
+    readClosePayForMutation: readClosePayForMutation,
+    getOrCreatePendingCheckout: getOrCreatePendingCheckout,
+    cancelPendingCheckout: cancelPendingCheckout,
+    isPendingCheckout: isPendingCheckout,
+    getPendingCheckout: getPendingCheckout,
+    completePendingCheckout: completePendingCheckout,
+    recordFinanceLines: recordFinanceLines,
+    supportsCrossTabLock: function () {
+      return !!(global.navigator && global.navigator.locks &&
+        typeof global.navigator.locks.request === 'function');
+    },
+    hasActiveMutationLock: function () {
+      return activeMutationLocks > 0;
+    }
+  });
+})(window);
