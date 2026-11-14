@@ -21,7 +21,7 @@ const REQUIRED_SECRETS = ['DEVICE_SECRET_PEPPER', 'MAO_SUPER_ADMIN_BOOTSTRAP_SEC
 export function auditOfficialAutoDeployTrigger(triggers) {
   if (!Array.isArray(triggers)) return ['OFFICIAL_AUTO_DEPLOY_UNVERIFIED'];
   const activeMain = triggers.filter(t => Array.isArray(t?.branch_includes) &&
-    t.branch_includes.includes('main'));
+    t.branch_includes.some(pattern => ['main', '*', '**', '**/*'].includes(pattern)));
   if (activeMain.length !== 1) return ['OFFICIAL_AUTO_DEPLOY_UNVERIFIED'];
   const cmd = String(activeMain[0].deploy_command || '').trim();
   if (cmd !== 'npx wrangler deploy --config wrangler.app.cutover.jsonc --keep-vars' &&
