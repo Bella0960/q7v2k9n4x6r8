@@ -106,3 +106,43 @@ test('migration health route is always disabled, even when a stale flag is suppl
   assert.equal((await handlePermanentIdentityRequest(req,env)).status,404);
   assert.equal(seen.length,0);
 });
+
+
+test('verified transfer route fails closed without private migration enablement and secret',async()=>{
+  const {env,seen}=environment();
+  const url=origin+'/__internal/preserve-founder';
+  const body=JSON.stringify({identity:{id:'MAO-TESTFOUNDERSAFE0001'},password:'test-only-password'});
+  const initial=await handlePermanentIdentityRequest(new Request(url,{method:'POST',body}),env);
+  assert.equal(initial.status,404);
+  env.MAO_PERMANENT_IDENTITY_CORE='true';
+  env.MAO_FOUNDER_TRANSFER_ENABLED='true';
+  env.MAO_FOUNDER_TRANSFER_SECRET='only-core-transfer-secret-for-test-strong';
+  const denied=await handlePermanentIdentityRequest(new Request(url,{
+    method:'POST',body,headers:{'x-mao-founder-transfer':'incorrect-test-secret-long-enough'}
+  }),env);
+  assert.equal(denied.status,403);
+  assert.equal(seen.length,0);
+});
+test('private transfer forwards only deliberately supplied existing account identity, not a session',async()=>{
+  const {env,seen}=environment();
+  const secret='only-core-transfer-secret-for-test-strong';
+  env.MAO_PERMANENT_IDENTITY_CORE='true';
+  env.MAO_FOUNDER_TRANSFER_ENABLED='true';
+  env.MAO_FOUNDER_TRANSFER_SECRET=secret;
+  const data={identity:{
+    id:'MAO-TESTFOUNDERSAFE0001',username:'OwnerOriginal',
+    role:'super_admin',status:'active',founderNumber:'001'
+  },password:'test-only-password-for-verification'};
+  const response=await handlePermanentIdentityRequest(new Request(origin+'/__internal/preserve-founder',{
+    method:'POST',
+    headers:{'x-mao-founder-transfer':secret,'content-type':'application/json'},
+    body:JSON.stringify(data)
+  }),env);
+  assert.equal(response.status,200);
+  assert.equal(seen.length,1);
+  const forwarded=seen[0];
+  assert.equal(new URL(forwarded.url).pathname,'/internal/identity/preserve-founder');
+  const forwardedData=await forwarded.json();
+  assert.deepEqual(forwardedData,data);
+  assert.equal(JSON.stringify(forwardedData).includes('authoritySessionToken'),false);
+});
