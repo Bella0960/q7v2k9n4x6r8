@@ -115,7 +115,8 @@ test('source owner admin list and audit come through gateway without copying sou
     headers: { cookie: pair.cookie }
   });
   assert.equal(accounts.status, 200);
-  assert.ok(accounts.payload.accounts.some(account => account.id === FOUNDER));
+  assert.equal(accounts.payload.accounts.some(account => account.id === FOUNDER), false,
+    'the existing admin directory deliberately hides its own super administrator');
   assert.ok(accounts.payload.accounts.some(account => account.id === PENDING));
   assert.equal(pair.preview.query('SELECT COUNT(*) AS n FROM mao_accounts')[0].n, 1,
     'delegated account list must NOT mirror accounts into the QA database');
