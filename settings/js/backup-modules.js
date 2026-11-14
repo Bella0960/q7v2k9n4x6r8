@@ -65,9 +65,17 @@
         if (isSensitiveKey(key)) return false;
         var item = get(id);
         if (!item) return false;
-        return item.keys.indexOf(key) >= 0 || item.prefixes.some(function (p) {
-            return key.indexOf(p) === 0;
+        function owns(module) {
+            return module.keys.indexOf(key) >= 0 || module.prefixes.some(function(p) {
+                return key.indexOf(p) === 0;
+            });
+        }
+        // Unknown existing keys still get a recoverable category instead of
+        // silently disappearing from all per-module export options.
+        if (id === 'other') return !definitions.some(function(module) {
+            return module.id !== 'other' && owns(module);
         });
+        return owns(item);
     }
     function selectSnapshot(id, snap) {
         var filtered = {};
@@ -151,9 +159,58 @@
         databases: ['maomao-media-store','maomao-assets']
     });
     register({
+        id: 'forum', label: '论坛与帖子',
+        keys: ['forum_config'],
+        prefixes: ['forum_', 'maomao_forum_'],
+        databases: []
+    });
+    register({
+        id: 'moments', label: '朋友圈与动态',
+        keys: ['moments','moments_notifications'],
+        prefixes: ['moments_', 'moment_', 'chat_auto_comment_', 'maomao_moments_'],
+        databases: ['maomao-assets']
+    });
+    register({
+        id: 'games', label: '游戏与剧情进度',
+        keys: ['immCasesDone'],
+        prefixes: ['game_', 'maomao_game_', 'maomao_detective_', 'detective_'],
+        databases: []
+    });
+    register({
+        id: 'cafe', label: '咖啡馆经营',
+        keys: ['maomao_cafe_state_v1'],
+        prefixes: ['maomao_cafe_', 'cafe_'],
+        databases: []
+    });
+    register({
+        id: 'music', label: '音乐与播放记录',
+        keys: ['music_local_tracks','music_recent','music_fav_list','music_state'],
+        prefixes: ['music_', 'maomao_music_'],
+        databases: ['maomao-media-store']
+    });
+    register({
+        id: 'friends', label: '联系人与好友',
+        keys: [],
+        prefixes: ['friend_', 'friends_', 'contact_', 'maomao_friend_'],
+        databases: []
+    });
+    register({
+        id: 'shopping', label: '外卖与商城订单',
+        keys: [],
+        prefixes: ['cart_', 'takeout_', 'delivery_', 'shop_', 'store_order_'],
+        databases: []
+    });
+    register({
         id: 'settings', label: '设置与个人资料',
         keys: ['myProfile','phone_current_contact'],
         prefixes: ['settings_', 'my_', 'profile_', 'phone_settings_','home_'],
+        databases: []
+    });
+
+    register({
+        id: 'other', label: '其他未分类本机数据',
+        keys: ['_backup_other_marker_'],
+        prefixes: [],
         databases: []
     });
 
