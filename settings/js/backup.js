@@ -1033,8 +1033,8 @@
             catch (e) { toast('导入失败：文件不是合法 JSON'); return; }
             var err = validateBackup(obj);
             if (err) { toast('导入失败：' + err); return; }
-            if (obj.__backup.scope && obj.__backup.complete === false) {
-                toast('分类备份不完整，已阻止恢复，以免覆盖原有数据'); return;
+            if (obj.__backup.complete === false) {
+                toast('这份备份不完整，已阻止自动恢复。请先保存完整备份，避免覆盖现有数据'); return;
             }
             var scope = obj.__backup.scope || '';
             if (requestedScope && scope !== requestedScope) {
@@ -1177,6 +1177,14 @@
                 }
             } else {
                 dbSkippedOld = true;
+            }
+
+            // A scoped import must not report success after a partial IDB
+            // failure, nor discard its pre-import localStorage recovery point.
+            if (scope && (dbFailed.length || dbSkippedBlob)) {
+                toast('分类恢复尚未完成：共享媒体有 ' + (dbFailed.length + dbSkippedBlob)
+                    + ' 处失败；已保留导入前的本机恢复点');
+                return;
             }
 
             // 4.5 字体兜底：active_font_preset_id 指向的预设可能因跳过 / 解码失败不存在了 → 清掉悬空 id
