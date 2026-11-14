@@ -27,6 +27,18 @@ export async function recordFounderCheckpoint({ storage, now = Date.now }) {
   }
   const recordedAt = now();
   if (!validNow(recordedAt)) throw new Error('Invalid checkpoint clock');
+  // A repeated operator tick must NOT slide the recovery point forward. An
+  // old/invalid checkpoint also blocks silent replacement; explicit reviewed
+  // maintenance is required to rotate it.
+  const existing = await storage.get(CHECKPOINT_KEY);
+  if (existing !== undefined) {
+    if (validBookmark(existing?.bookmark) && validNow(existing?.recordedAt) &&
+        existing.recordedAt <= recordedAt &&
+        recordedAt - existing.recordedAt <= MAX_CHECKPOINT_AGE_MS) {
+      return { recorded: true, recordedAt: existing.recordedAt };
+    }
+    throw new Error('Recovery checkpoint already exists; review before rotating');
+  }
   const bookmark = await storage.getCurrentBookmark();
   if (!validBookmark(bookmark)) throw new Error('Recovery checkpoint unavailable');
   await storage.put(CHECKPOINT_KEY, { bookmark, recordedAt });
