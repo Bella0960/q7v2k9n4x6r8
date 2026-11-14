@@ -1348,6 +1348,11 @@
         showToast('钱包保护模块尚未加载，请刷新页面后重试');
         return;
       }
+      if (typeof ledger.supportsCrossTabLock !== 'function' ||
+          !ledger.supportsCrossTabLock()) {
+        showToast('当前浏览器不支持跨页面钱包锁，商店结算已暂停，未扣款');
+        return;
+      }
       await ledger.runExclusive(function () {
         
             const total = payItems.reduce((s,c) => s + c.price, 0);
