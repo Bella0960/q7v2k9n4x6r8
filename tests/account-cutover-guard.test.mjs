@@ -47,6 +47,16 @@ test('unverified rollback, private-page session, backups or real iPhone each blo
   }
   const e=readyEvidence();e.appDomain.sameOriginAccountApiVerified=false;
   assert.ok(auditAccountCutover(e,F).blockers.includes('APP_DOMAIN_SAME_ORIGIN_AUTH_NOT_VERIFIED'));
+  // Lack of trusted evidence for the active account authority must fail closed.
+  for (const value of [undefined, null, false, 'true']) {
+    const unknown = readyEvidence();
+    if (value === undefined) delete unknown.appDomain.activeAccountAuthorityMatches;
+    else unknown.appDomain.activeAccountAuthorityMatches = value;
+    assert.ok(
+      auditAccountCutover(unknown,F).blockers.includes('APP_DOMAIN_SAME_ORIGIN_AUTH_NOT_VERIFIED'),
+      'identity-authority evidence: ' + String(value)
+    );
+  }
 });
 test('only complete trusted evidence with one canonical founder passes',()=>{
   assert.deepEqual(auditAccountCutover(readyEvidence(),F),{ready:true,blockers:[]});
