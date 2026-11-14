@@ -205,9 +205,11 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"></circle><path d="m16 16 5 5"></path></svg>
         <input class="search" id="guideSearch" type="search" placeholder="搜索功能名称、入口或操作…" autocomplete="off">
       </label>
+      <button class="tool-btn" id="copyTests" type="button" style="min-height:44px" aria-describedby="copyTestsHint">复制测试报告</button>
       <button class="tool-btn" id="exportTests" type="button">导出测试记录</button>
       <button class="tool-btn" id="resetTests" type="button">清空进度</button>
     </div>
+    <p id="copyTestsHint" class="summary-copy" role="status" aria-live="polite" style="margin:0 0 12px">手机测出 Bug 后，填写对应功能的备注，再点「复制测试报告」即可粘贴发送；不会自动读取账号密码、聊天内容或 API Key；发送前请检查备注里是否含敏感信息。</p>
     <nav class="filters" id="guideFilters" aria-label="教程分类"></nav>
 
     <div class="section-head">
@@ -297,6 +299,6 @@
     </section>
   </div>
 
-  <script src="tutorial.js?v=20261111v3"></script>
+  <script src="tutorial.js?v=20261111v4"></script>
 </body>
 </html>

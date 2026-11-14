@@ -580,19 +580,21 @@ test('15 槽位替换后，旧存档中被顶掉的通关状态会被迁移清�
   assert.equal(store.get('maomao_detective_slot_remap_v1'), '1', '迁移标记未写入');
 });
 
-test('09 Service Worker 导航：缓存优先 + 后台更新，且不使用桌面页作兜底', () => {
+test('09 Service Worker 导航：私有页面必须重新鉴权，断网只允许公开登录兜底', () => {
   const sw = readFileSync(resolve(root, 'sw.js'), 'utf8');
-  const nav = sw.slice(sw.indexOf("req.mode === 'navigate'"));
-  const cachedIndex = nav.indexOf('caches.match(req)');
-  const networkIndex = nav.indexOf('fetch(req)');
-  assert.ok(cachedIndex !== -1 && networkIndex !== -1, '未找到导航缓存与网络处理逻辑');
-  assert.ok(cachedIndex < networkIndex, '导航应先读缓存，让已缓存页面立即打开');
-  assert.ok(nav.includes('if (cached) return cached;'), '缓存命中时必须立即返回缓存页面');
-  assert.ok(nav.includes('event.waitUntil(updatePromise'), '网络更新必须在后台继续完成');
-  assert.ok(
-    nav.includes("return new Response('此页面暂时无法连接"),
-    '缓存与网络均不可用时应返回明确的离线提示'
-  );
-  assert.doesNotMatch(nav, /caches\.match\('\.\/index\.html'\)/, '不得用桌面 index.html 作为其它应用的兜底');
-  assert.match(sw, /const CACHE_NAME = 'phone-app-pwa-v\d+';/, '缓存版本必须保持递增');
+  const privateStart = sw.indexOf("if (req.mode === 'navigate' && !isPublicAccountPage)");
+  const publicStart = sw.indexOf("if (req.mode === 'navigate' && isPublicAccountPage)", privateStart);
+  assert.ok(privateStart >= 0 && publicStart > privateStart, '私有页面和公开登录页须分流');
+  const privateRoute = sw.slice(privateStart, publicStart);
+  assert.match(privateRoute, /return await fetch\(req\)/, '私有页面必须经过 Worker 实时会话验证');
+  assert.match(privateRoute, /caches\.match\(entry\.href\)/, '离线时只能使用公开登录页缓存');
+  assert.match(privateRoute, /new URL\('account\/index\.html'/);
+  assert.doesNotMatch(privateRoute, /caches\.match\(req\)|caches\.open\(CACHE_NAME\)/,
+    '禁止从缓存返回或保存受保护页面');
+  const publicRoute = sw.slice(publicStart);
+  assert.match(publicRoute, /fetch\(req, \{ cache: 'no-store' \}\)/);
+  const freshAt = publicRoute.indexOf('var fresh = await networkPromise;');
+  const cacheAt = publicRoute.indexOf('var cached = await caches.match(req)');
+  assert.ok(freshAt >= 0 && cacheAt > freshAt, '公开登录页先取新版本，只有断网才允许缓存');
+  assert.doesNotMatch(sw, /caches\.match\('\.\/index\.html'\)/, '不得用桌面首页兜底私有页面');
 });
