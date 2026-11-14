@@ -55,7 +55,7 @@ for(const width of [320,375,390,430,1280]){
  assert.equal(await page.locator('.product-grid').evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length),2,'original theme cards use two-column store shelf');
  assert.equal(await page.locator('.chat-list-theme-grid .product-card').count(),1,'existing independent Messages list theme stays available');
  for(const id of ['wechat','imessage','qq','silver-butterfly','atmosphere','default']){
-  await page.locator('.product-grid [data-sf="detail"][data-id="'+id+'"]').click();await page.locator('[data-sf="apply-theme"]').click();await page.locator('[data-sf="confirm-apply-theme"]').click();
+  await page.locator('.product-grid [data-sf="detail"][data-id="'+id+'"]').click();await page.locator('.sf-dialog [data-sf="apply-theme"]').click();await page.locator('[data-sf="confirm-apply-theme"]').click();
   assert.equal(await page.evaluate(()=>ChatBeauty.getThemePreset()),id);
  }
  await page.locator('.product-grid [data-sf="detail"][data-id="wechat"]').click();
