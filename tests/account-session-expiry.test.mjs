@@ -84,3 +84,65 @@ test('security session list flags malformed expiry as expired without exposing a
   }
   assert.equal(sessions.get('revoked').revokedAt, now - 1);
 });
+
+test('revoking a second device immediately invalidates its server authorization and preserves isolation', async () => {
+  const { createHash } = await import('node:crypto');
+  const now = 1_800_000_000_000;
+  const accountA = 'MAO-AAAAAAAAAAAA';
+  const accountB = 'MAO-BBBBBBBBBBBB';
+  const tokens = ['a'.repeat(43), 'b'.repeat(43), 'c'.repeat(43)];
+  const ids = ['session_A_12345678', 'session_B_12345678', 'session_C_12345678'];
+  const sessions = tokens.map((token, index) => ({
+    tokenHash: createHash('sha256').update(token).digest('hex'),
+    session_id: ids[index],
+    account_id: index === 2 ? accountB : accountA,
+    username: index === 2 ? 'other' : 'owner',
+    role: 'user',
+    status: 'active',
+    expires_at: now + 60000,
+    session_revoked_at: null
+  }));
+  const store = {
+    getMaoAccountSession(hash) {
+      const row = sessions.find(item => item.tokenHash === hash);
+      return row ? { ...row } : null;
+    },
+    touchMaoAccountSession() {},
+    revokeMaoAccountSessionForAccount(accountId, sessionId, timestamp) {
+      const row = sessions.find(item => item.account_id === accountId &&
+        item.session_id === sessionId && item.session_revoked_at == null);
+      if (!row) return false;
+      row.session_revoked_at = timestamp;
+      return true;
+    }
+  };
+  const auth = createAccountAuth({ store, now: () => now });
+  const request = (index, path, method = 'GET') => new Request('https://mao.test' + path, {
+    method,
+    headers: { cookie: 'MAO_SESSION=' + tokens[index] }
+  });
+  const me = index => auth.handle(request(index, '/api/accounts/me'), '/api/accounts/me', 'GET');
+  assert.equal((await me(0)).status, 200);
+  assert.equal((await me(1)).status, 200);
+  assert.equal((await me(2)).status, 200);
+
+  const foreignPath = '/api/accounts/sessions/' + ids[2] + '/revoke';
+  await assert.rejects(
+    auth.handle(request(0, foreignPath, 'POST'), foreignPath, 'POST'),
+    error => error.status === 404 || error.statusCode === 404,
+    'an account must not revoke another account session'
+  );
+  assert.equal((await me(2)).status, 200, 'foreign account remains authorized');
+
+  const revokePath = '/api/accounts/sessions/' + ids[1] + '/revoke';
+  const revoked = await auth.handle(request(0, revokePath, 'POST'), revokePath, 'POST');
+  assert.equal(revoked.status, 200);
+  assert.equal((await revoked.json()).revoked, true);
+  await assert.rejects(
+    me(1),
+    error => (error.status === 401 || error.statusCode === 401),
+    'old cookie must be rejected after remote revocation'
+  );
+  assert.equal((await me(0)).status, 200, 'initiating device remains authorized');
+  assert.equal((await me(2)).status, 200, 'unrelated account remains authorized');
+});
