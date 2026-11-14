@@ -1212,7 +1212,7 @@ test('takeout cart stays bound to one restaurant and checkout uses the cart rest
   assert.match(takeout, /cartShopId !== currentShop\.id/);
   assert.match(takeout, /window\.confirm\(/);
   assert.match(takeout, /var orderShop = getCartShop\(\)/);
-  assert.match(takeout, /shop: orderShop\.name, shopId: orderShop\.id/);
+  assert.match(takeout, /shop:\s*orderShop\.name,\s*shopId:\s*orderShop\.id/, 'checkout order must persist the cart restaurant ID alongside its name');
   assert.match(takeout, /function clearCart\(\)/);
   assert.match(takeout, /if \(currentShop\) renderDishes\(\);\s*else updateCartUI\(\)/);
 });
@@ -1875,8 +1875,12 @@ test('PWA manifest is referenced from the deployment root so relative icon and s
 });
 
 test('Service Worker navigation does not abort slow mobile page requests', () => {
-  assert.ok(serviceWorker.includes("if (req.mode === 'navigate')"));
-  assert.ok(serviceWorker.includes('fetch(req).then'));
+  // Account-gated app pages are network-only; public login pages are network-first.
+  // Neither path should abort a slow mobile request or serve cached private HTML.
+  assert.ok(serviceWorker.includes("if (req.mode === 'navigate' && !isPublicAccountPage)"));
+  assert.ok(serviceWorker.includes("if (req.mode === 'navigate' && isPublicAccountPage)"));
+  assert.match(serviceWorker, /return await fetch\(req\)/);
+  assert.match(serviceWorker, /fetch\(req, \{ cache: 'no-store' \}\)/);
   assert.equal(serviceWorker.includes('new AbortController()'), false);
   assert.equal(serviceWorker.includes('controller.abort()'), false);
 });
@@ -1892,8 +1896,10 @@ test('Cloudflare Worker preserves explicit HTML routes and maps only the root to
   assert.equal(wranglerConfig.assets.html_handling, 'none');
   assert.equal(wranglerConfig.assets.run_worker_first, true);
   assert.match(worker, /url\.pathname === "\/"[\s\S]*?new URL\("\/index\.html", url\)/);
-  assert.match(worker, /return env\.ASSETS\.fetch\(request\)/,
-    'non-root app routes must be passed through unchanged instead of falling back to index.html');
+  assert.match(worker, /const response = await env\.ASSETS\.fetch\(request\)/,
+    'non-root app routes must still request their own assets, not the desktop fallback');
+  assert.match(worker, /return isHtmlDocument && authorizedAccount\s*\? await injectAccountScope\(response, authorizedAccount\)\s*: response/,
+    'private HTML routes must retain the account gate and scope injection');
 });
 
 
@@ -2337,10 +2343,12 @@ test('chat detail: a failed AI reply save leaves copyable on-screen text but not
 
 test('chat detail: payment ledger success is independent from chat-card status persistence', () => {
   assert.match(detail, /if \(!saveWorkData\(wd\)\) return/);
-  assert.match(detail, /var chatStatusSaved = saveMessages\(list\)/);
-  assert.match(detail, /款项已入账，但聊天卡片状态没有保存/);
-  assert.match(detail, /duplicateStatusSaved\s*\? '这笔款项已经入账'/);
-  assert.match(detail, /msg\.status = isRed \? 'opened' : 'received'/);
+  assert.match(detail, /function persistReceiptStatus\(\)/);
+  assert.match(detail, /var targetStatus = isRed \? 'opened' : 'received'/);
+  assert.match(detail, /if \(msg\.status !== targetStatus\)[\s\S]*?msg\.status = targetStatus/);
+  assert.match(detail, /if \(!saveMessages\(list\)\)[\s\S]*?款项已入账，但聊天卡片状态未同步/);
+  assert.match(detail, /if \(existingPayment\)[\s\S]*?var receiptStatusRepair = persistReceiptStatus\(\)/);
+  assert.match(detail, /if \(persistReceiptStatus\(\) === false\) return/);
 });
 
 test('chat detail: group private messages require both the target history and group entry to persist', () => {
