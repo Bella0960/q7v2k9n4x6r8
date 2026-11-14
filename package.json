@@ -78,7 +78,7 @@
     "test:account:registration-persistence": "node --test tests/account-registration-persistence.test.mjs",
     "test:release:cloud-social": "node --test tests/cloud-autonomous-model.test.mjs tests/cloud-push-founder-integration.test.mjs tests/cloud-push-service-worker-display.test.mjs tests/cloud-webpush-transport.test.mjs tests/founder-cutover.test.mjs tests/founder-legacy-sqlite-upgrade.test.mjs tests/founder-private-checkpoint.test.mjs tests/founder-private-runner.test.mjs tests/release-staged-account-version.test.mjs",
     "test:social:approval": "node --test tests/mao-social-approval.test.mjs tests/mao-social-e2ee.test.mjs tests/friend-qr-entry.test.mjs tests/mao-real-chat-list.test.mjs tests/mao-real-voice-bubble.test.mjs",
-    "test:app:cutover": "node --test tests/app-domain-cutover.test.mjs",
+    "test:app:cutover": "node --test tests/app-domain-cutover.test.mjs tests/release-domain-topology.test.mjs",
     "test:accounts:delegated-admin": "node --test tests/delegated-admin-authority.test.mjs",
     "test:release:live-inventory": "node --test tests/live-account-inventory.test.mjs",
     "verify:cloud:account-inventory": "node scripts/release/audit-live-account-inventory.mjs"
