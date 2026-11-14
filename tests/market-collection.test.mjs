@@ -50,7 +50,9 @@ test('new cache revision lists exact storefront resources and retains legacy the
   assert.ok(sw.includes('./theme-store/storefront.js?v=20261113m12'))
   assert.ok(page.includes('collection-store.js?v=20261112m3'));
   assert.ok(sw.includes('./theme-store/collection-store.js?v=20261112m3'));
- assert.ok(sw.includes("phone-app-pwa-v229"));
+ const cacheVersion=/const CACHE_NAME = 'phone-app-pwa-v(\\d+)'/.exec(sw);
+ assert.ok(cacheVersion && Number(cacheVersion[1])>=229,
+   'merged application cache must not roll back behind storefront revision 229');
  for(const id of ['default','wechat','imessage','qq','silver-butterfly','atmosphere'])assert.ok(page.includes("id:'"+id+"'"));
 });
 test('outfit editing can narrow scope or explicitly recapture without duplicating or applying it',async()=>{
