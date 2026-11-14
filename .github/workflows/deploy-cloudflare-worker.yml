@@ -60,6 +60,8 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           MAOMAO_PRODUCTION_ORIGIN: https://app.mao520.com
+          # One-time repository variable; no ID or password embedded into Git.
+          MAO_EXPECTED_FOUNDER_ID: ${{ vars.MAO_EXPECTED_FOUNDER_ID }}
         run: node scripts/verify-production-account-readiness.mjs
 
       - name: Deploy Cloudflare Worker
