@@ -6923,6 +6923,7 @@
                             if (typeof showToast === 'function') showToast('AI 回复尚未保存。上方文字暂留在当前页面，请先复制保留，再检查存储空间。');
                         } else {
                             // A successful saved AI reply may acknowledge offered fictional-phone context.
+                            // This is NOT a fictional "read receipt"; it only tracks context offered after a real AI reply was saved.
                             // This never fabricates a character reply or read receipt.
                             if (!isGroupChat && (inspectPhoneEventIds.length || inspectPhoneFocusId) &&
                                 window.InspectInteractionBridge &&
