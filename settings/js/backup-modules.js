@@ -24,6 +24,8 @@
         var value = String(key || '');
         if (['api_settings', 'api_profiles_v1', 'minimax_tts_config'].indexOf(value) >= 0) return true;
         if (/^(access_token|refresh_token|session_token|auth_token|password|api_key|private_key)$/i.test(value)) return true;
+        if (/(?:^|[_-])(?:session|auth|access|refresh)[_-]?token(?:$|[_-])/i.test(value) ||
+            /(?:^|[_-])(?:password|private[_-]?key|secret)(?:$|[_-])/i.test(value)) return true;
         if (/^(mao|maomao)[_-].*(?:auth[_-]?token|session[_-]?token|refresh[_-]?token|password|secret|private[_-]?key)$/i.test(value)) return true;
         return false;
     }
@@ -127,7 +129,7 @@
     });
     register({
         id: 'characters', label: '角色、记忆与世界书',
-        keys: ['ai_custom_characters','phone_data_v2','workData'],
+        keys: ['ai_custom_characters','phone_data_v2'],
         prefixes: ['worldbook_', 'world_book_', 'memory_', 'char_', 'character_',
           'role_', 'phone_character_', 'relationship_', 'ai_character_'],
         databases: ['maomao-assets']
@@ -140,9 +142,9 @@
     });
     register({
         id: 'diary', label: '日记、备忘与生活记录',
-        keys: ['anniversaries','chat_special_moments','moments'],
+        keys: ['anniversaries','chat_special_moments'],
         prefixes: ['diary_', 'memo_', 'note_', 'todos_', 'footprint_',
-          'travel_', 'date_', 'moment_'],
+          'travel_', 'date_'],
         databases: ['maomao_diary_photo_store_v1','maomao-assets']
     });
     register({
@@ -155,7 +157,7 @@
     register({
         id: 'media', label: '图片、壁纸与本地媒体',
         keys: [],
-        prefixes: ['sticker_', 'gallery_', 'image_', 'media_', 'audio_', 'music_'],
+        prefixes: ['sticker_', 'gallery_', 'image_', 'media_', 'audio_'],
         databases: ['maomao-media-store','maomao-assets']
     });
     register({
