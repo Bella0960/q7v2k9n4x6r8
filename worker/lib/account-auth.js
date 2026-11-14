@@ -977,6 +977,8 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     }
     const headers = new Headers({
       'authorization': 'Bearer ' + sessionToken,
+      // Verified server-side account scope: never forward a browser-selected ID.
+      'x-mao-account-context': actor.account_id,
       'x-mao-identity-bridge': secret,
       'accept': 'application/json'
     });
