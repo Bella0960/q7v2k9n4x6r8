@@ -179,3 +179,13 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **专项测试**：Node 22 使用本地候选源镜像执行 5/5 通过，入口语法检查通过；新测试已加入 release gate。完整仓库 build / release gate、Cloudflare Service Binding 真正部署验收和两端真机 **NOT VERIFIED**。
 - **部署边界**：本次没有调用正式部署/域名写接口，生产 Worker、域名、数据库、密钥均未改。候选开关严格 `false`；不能因代码已提交就宣称 API 404 线上已消失。
 - **最大阻断**：目标生产 `mao` 权威管理员数据库与永久创始账号 `MAO-OXHBDBWCOIHPBBYN` 的连续性未验证；`mao520.com` 旧用户、原密码、管理员管理权限、可恢复数据库备份、Android/iPhone 与回滚均需通过，禁止将 QA 库或其他 ID 顶替。具体见 `docs/engineering/APP_DOMAIN_CUTOVER_20261115.md`。
+
+## 2026-11-15 — ACC-001 · 管理员账号/邀请码/审计委派接通
+
+- 子 PR #293（分支 `ACC-001/delegated-admin-authority-20261115`），目标是原 #285 完整候选；复用原账户身份网关，不新建第二套账号/密码/审计。
+- 现有真实验证：QA 001 登录后转到管理中心，账号/邀请码/审计在委派模式下被一概返回 403；此前 PR #291 仅防止误退登录，未接上真实管理。
+- 已在共享白名单中列出准确管理路由；上游私有网关增加原会话 Bearer 校验；QA 再检查 001、原永久 ID、会话状态，通过后转给原账号服务。来源账号作用域使用服务器验证结果，不信任浏览器 ID；拒绝公开 bootstrap、wallet、social 任意转发，去除上游 Set-Cookie 与服务端密钥，不在 QA 复制邀请/管理记录。
+- 第一轮真实 Cloudflare 测试发现原账号上下文头缺失导致 409；已修复。第二轮源代码断言与既有管理员列表的真实契约冲突（超管故意不列在普通目录）；已调整测试而不修改业务权限。新网关合同测试 7/7 + 原网关 6/6 + Wrangler gateway dry run 均通过，验证构建 `aa320b0d-6427-4fdd-a4f1-37892f325740` 成功。
+- QA 内部身份网关已成功真实部署，版本 `5aa0d23e-c832-4315-a309-208bb2cdbd91`，构建 `8689c6b3-fd8e-423a-9f18-035b18a8fd41` 成功，原 `MAO_IDENTITY_BRIDGE_SECRET` 密钥绑定仍存在；网关 workers.dev 入口关闭，未更改任何正式域名。
+- QA 专用管理开关只存在于 `wrangler.qa.jsonc`；生产 `wrangler.jsonc` 未开启。本轮最后 QA 完整测试并条件部署：Cloudflare Build `ab13d6ed-8b63-4d9b-a650-b078a7173aae`，准确源码提交 `763a206de6ad968a26b5f0a94d84fbf83bca447e`，失败不执行部署。本记录写入时结果尚未核实，不能标记为 QA 已发布或正式账号门禁通过。
+- 保留正式 `app.mao520.com` 旧 Worker、`mao520.com` 原账号服务及所有正式数据库。最终唯一管理员 ID 固定为 `MAO-OXHBDBWCOIHPBBYN`。正式生产接入需另外完成无损连续性、实际回滚/数据库恢复、同源账号与推送、原用户保留和 iPhone 真机验收，不可将已有 QA 账号库整体覆盖正式库。
