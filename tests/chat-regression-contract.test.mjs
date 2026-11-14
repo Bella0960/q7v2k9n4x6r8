@@ -2869,6 +2869,8 @@ test('订单售后申请关联原支付流水且重复提交保持同一申请�
       getItem: key => state.has(key) ? state.get(key) : null,
       setItem: (key, value) => state.set(key, String(value))
     },
+    // These journal tests emulate the browser's available origin-wide lock.
+    navigator: { locks: { request: (_name, _opts, task) => Promise.resolve().then(task) } },
     MaoMaoWalletLedger: { runExclusive: task => Promise.resolve().then(task) },
     crypto: { randomUUID: () => 'stable-after-sales-id' },
     console
@@ -2928,6 +2930,8 @@ test('订单售后在财务流水已关联但订单最终确认失败时，可�
         state.set(key, String(value));
       }
     },
+    // These journal tests emulate the browser's available origin-wide lock.
+    navigator: { locks: { request: (_name, _opts, task) => Promise.resolve().then(task) } },
     MaoMaoWalletLedger: { runExclusive: task => Promise.resolve().then(task) },
     crypto: { randomUUID: () => 'takeout-after-sales-id' },
     console
@@ -2972,6 +2976,8 @@ test('原支出流水缺失或金额不匹配时，不创建售后申请', async
       getItem: key => state.has(key) ? state.get(key) : null,
       setItem: (key, value) => state.set(key, String(value))
     },
+    // These journal tests emulate the browser's available origin-wide lock.
+    navigator: { locks: { request: (_name, _opts, task) => Promise.resolve().then(task) } },
     MaoMaoWalletLedger: { runExclusive: task => Promise.resolve().then(task) },
     console
   };
@@ -3006,7 +3012,7 @@ test('记账页能从原支出行追溯订单售后申请，且申请期间不�
 
 test('商店与外卖售后入口只对可核验的原始支付流水开放，且明确不自动退款', () => {
   for (const [name, page] of [['shop', shopPage], ['takeout', takeoutPage]]) {
-    assert.ok(page.includes('order-after-sales.js?v=20261107v2'));
+    assert.ok(page.includes('order-after-sales.js?v=20261114v3'));
     assert.match(page, /MaoMaoOrderAfterSales\.canSubmit/);
     assert.match(page, /MaoMaoOrderAfterSales|journal\.submit/);
     assert.match(page, /不会自动退款/);
@@ -5022,5 +5028,54 @@ test('聊天收款遇到重复或冲突的 paymentId 必须停止修复卡片和
     assert.equal(history[0].status, 'unopened');
     assert.deepEqual(wallet, before);
     assert.match(toasts.at(-1), /重复或金额、类型冲突/, caseName);
+  }
+});
+
+
+test('售后申请在缺少跨标签 Web Locks 时拒绝修改订单与财务流水', async () => {
+  for (const navigator of [undefined, {}, { locks: { request: null } }]) {
+    const originalOrders = JSON.stringify([{
+      paymentId: 'no-lock-order', total: 12, payMethod: 'normal'
+    }]);
+    const originalFinance = JSON.stringify([{
+      paymentId: 'no-lock-order', paymentLineIndex: 0,
+      type: 'expense', amount: 12
+    }]);
+    const records = new Map([
+      ['shop_orders', originalOrders],
+      ['finance_records', originalFinance]
+    ]);
+    let writes = 0;
+    let lockCalls = 0;
+    const sandboxWindow = {
+      navigator,
+      localStorage: {
+        getItem: key => records.has(key) ? records.get(key) : null,
+        setItem: (key, value) => {
+          writes += 1;
+          records.set(key, String(value));
+        }
+      },
+      MaoMaoWalletLedger: {
+        runExclusive: callback => {
+          lockCalls += 1;
+          return Promise.resolve().then(callback);
+        }
+      },
+      crypto: { randomUUID: () => 'no-lock-request' },
+      console: { warn: () => {} }
+    };
+    runInNewContext(orderAfterSalesSource, { window: sandboxWindow });
+    const result = await sandboxWindow.MaoMaoOrderAfterSales.submit({
+      channel: 'shop', ordersKey: 'shop_orders', financeKey: 'finance_records',
+      paymentId: 'no-lock-order', amount: 12, paymentMethod: 'normal',
+      type: 'cancel', reason: '测试'
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, 'cross-tab-lock-unavailable');
+    assert.equal(lockCalls, 0, 'unsafe page-local fallback must not be invoked');
+    assert.equal(writes, 0, 'no partial or fabricated after-sales journal writes');
+    assert.equal(records.get('shop_orders'), originalOrders);
+    assert.equal(records.get('finance_records'), originalFinance);
   }
 });
