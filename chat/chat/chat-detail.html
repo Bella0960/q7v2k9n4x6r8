@@ -7,19 +7,22 @@
     <script src="../../shared/js/native-feel.js"></script>
     <script src="../../shared/js/custom-css.js"></script>
     <script src="../../shared/js/wallpaper-store.js?v=20261026v2"></script>
-    <script src="../../shared/js/chat-beauty.js?v=20261102v3"></script>
+    <script src="../../shared/js/chat-beauty.js?v=20261112at1"></script>
     <link rel="stylesheet" href="../../shared/css/chat-beauty-runtime.css?v=20261031v1">
     <link rel="stylesheet" href="../call/call-overlay.css?v=20261105v1">
     <script src="../../shared/js/phone/phone_storage.js"></script>
+    <script src="../../shared/js/phone/inspect_account_guard.js?v=20261112v2"></script>
+    <script src="../../shared/js/phone/inspect_interaction_bridge.js?v=20261112v5"></script>
     <script src="../../shared/js/phone/storage/repository.js"></script>
     <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
-    <script src="../../shared/js/phone/role-avatar-library.js?v=20261107v14"></script>
+    <script src="../../shared/js/phone/role-avatar-library.js?v=20261113v1"></script>
     <script src="../../shared/js/phone/role-sticker-library.js?v=20261107v2"></script>
-    <script src="../../shared/js/phone/chat-image-vision.js?v=20261107v5"></script>
+    <script src="../../shared/js/phone/chat-image-vision.js?v=20261113v1"></script>
     <script src="../../shared/js/phone/phone_api.js?v=20261106v1"></script>
     <script src="../../shared/js/phone/image-generation.js?v=20261106v1"></script>
     <script src="../../shared/js/phone/role-gallery-image-autonomy.js?v=20261111v2"></script>
-    <script src="../../shared/js/phone/role_family_cards.js?v=20261028v3"></script>
+    <script src="../../shared/js/phone/role_family_cards.js?v=20261114v4"></script>
+    <script src="../../shared/js/phone/wallet-ledger.js?v=20261114v12"></script>
     <script src="../../shared/js/phone/memory_recall.js?v=20261024v2"></script>
     <script src="../../shared/js/phone/phone_stream.js"></script>
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
@@ -2058,6 +2061,12 @@
 <script src="../../shared/js/chat-page-theme.js?v=20261105v1"></script>
 <link rel="stylesheet" href="../../shared/css/silver-butterfly-theme.css?v=20261102v5">
 <link rel="stylesheet" href="../../shared/css/wechat-theme-refinements.css?v=20261105v2">
+<link rel="stylesheet" href="../../shared/css/atmosphere-theme.css?v=20261112v3">
+<link rel="stylesheet" href="../../shared/css/atmosphere-pages.css?v=20261112p3">
+<script src="../../shared/js/atmosphere-icons.js?v=20261112i1"></script>
+<script defer src="../../shared/js/atmosphere-theme.js?v=20261112v1"></script>
+<script defer src="../../shared/js/atmosphere-pages.js?v=20261112p4"></script>
+<script defer src="../../shared/js/atmosphere-composer.js?v=20261112c1"></script>
     <script src="../../shared/js/cloud-push-client.js?v=20261114v7"></script>
 </head>
 <body>
@@ -2814,6 +2823,8 @@
             return cleaned;
         }
 
+        // A damaged history must never be silently replaced with a welcome message.
+        // Keep its raw bytes for explicit backup/recovery rather than "repairing" on read.
         var _chatHistoryUnreadable = false;
         function loadMessages() {
             // The view is bound to the opened conversation, never a later global role.
@@ -2903,7 +2914,45 @@
             if (!msg || typeof msg !== 'object') return '';
             var body = msg.text != null ? msg.text : (msg.content != null ? msg.content : '');
             var marker = msg.mid != null ? msg.mid : (msg.time != null ? msg.time : '');
-            return String(msg.role || '') + '\u0001' + String(marker) + '\u0001' + String(body);
+            // Verify behavior-bearing metadata too, not only visible text:
+            // payment status, role-card references, call outcomes and group poll/chain state
+            // must not report success when only the text portion round-trips.
+            var mediaSignature = function (value) {
+                if (typeof value !== 'string' || !value) return '';
+                // Keep readback checks cheap for data URLs and other large attachments.
+                return value.length + ':' + value.slice(0, 48) + ':' + value.slice(-32);
+            };
+            var metadata = [
+                msg.type || '',
+                msg.status || '',
+                msg.amount == null ? '' : String(msg.amount),
+                msg.cardId || '',
+                msg.turnId || '',
+                msg.sendFailed ? '1' : '0',
+                msg.sendFailedReason || '',
+                msg.returnRequestedAt == null ? '' : String(msg.returnRequestedAt),
+                msg.returnedAt == null ? '' : String(msg.returnedAt),
+                msg.acceptedAt == null ? '' : String(msg.acceptedAt),
+                msg.editedAt == null ? '' : String(msg.editedAt),
+                msg.assetId || '',
+                msg.imageRecordId || '',
+                msg.desc || '',
+                msg.isPrivate ? '1' : '0',
+                msg.img ? mediaSignature(msg.img) : '',
+                msg.audio ? mediaSignature(msg.audio) : '',
+                msg.location && typeof msg.location === 'object' ? JSON.stringify(msg.location) : '',
+                msg.gift && typeof msg.gift === 'object' ? JSON.stringify(msg.gift) : '',
+                msg.fromGroupId || '',
+                msg.privateRoleId || '',
+                msg.privateFromGroup ? '1' : '0',
+                msg.senderId || '',
+                msg.memberId || '',
+                msg.poll && typeof msg.poll === 'object' ? JSON.stringify(msg.poll) : '',
+                msg.chain && typeof msg.chain === 'object' ? JSON.stringify(msg.chain) : '',
+                msg.call && typeof msg.call === 'object' ? JSON.stringify(msg.call) : ''
+            ];
+            return String(msg.role || '') + '\u0001' + String(marker) + '\u0001' +
+                String(body) + '\u0001' + JSON.stringify(metadata);
         }
 
         function _verifyHistoryRoundTrip(list) {
@@ -3450,8 +3499,10 @@
         // 长会话全量重渲染时（N 条 = N/2 次自读），这是纯浪费。
         // 改为按 raw 字符串缓存解析结果：raw 不变则跳过 JSON.parse（命中缓存）；
         // 用户改头像后 localStorage 字符串变化，缓存自动失效，不丢正确性。
+        let _chatPairAvatarUrl = '';
         let _myAvatarCache = { raw: null, avatar: '' };
         function getMyAvatar() {
+            if (!isGroupChat && _chatPairAvatarUrl) return _chatPairAvatarUrl;
             try {
                 const raw = localStorage.getItem('myProfile');
                 if (raw === _myAvatarCache.raw) return _myAvatarCache.avatar; // 命中缓存，跳过 JSON.parse
@@ -3465,6 +3516,35 @@
             _myAvatarCache = { raw: null, avatar: '' };
             return '';
         }
+
+        // Keep the per-chat B side of a matching pair separate from global myProfile.
+        // The role library stores only an asset reference; resolve it when chat opens.
+        let _chatPairAvatarToken = 0;
+        async function refreshChatPairUserAvatar() {
+            var token = ++_chatPairAvatarToken;
+            var roleId = String(aliasRoleId || currentCharacter.id || '');
+            var library = window.RoleAvatarLibrary;
+            if (isGroupChat || !library || typeof library.getChatPairUserSelection !== 'function') return;
+            var selected = library.getChatPairUserSelection(roleId);
+            var nextUrl = '';
+            if (selected && typeof library.toDataUrl === 'function') {
+                try {
+                    var resolved = await library.toDataUrl(selected.assetId);
+                    var fresh = library.getChatPairUserSelection(roleId);
+                    if (resolved && resolved.ok && /^data:image\//i.test(resolved.value || '') &&
+                        fresh && fresh.assetId === selected.assetId && fresh.pairId === selected.pairId) {
+                        nextUrl = resolved.value;
+                    }
+                } catch (error) { nextUrl = ''; }
+            }
+            if (token !== _chatPairAvatarToken ||
+                String(aliasRoleId || currentCharacter.id || '') !== roleId) return;
+            _chatPairAvatarUrl = nextUrl;
+            document.querySelectorAll('.msg-row.sent .msg-avatar').forEach(function (avatarNode) {
+                fillAvatar(avatarNode, getMyAvatar(), USER_SVG);
+            });
+        }
+        void refreshChatPairUserAvatar();
 
         // ================= 消息稳定标识：单条操作（复制/转发/翻译/编辑/删除）都依赖 mid =================
         function ensureMid(msg) {
@@ -4723,15 +4803,20 @@
                 call: { type: 'voice', title: '发起语音通话', text: '', theme: 'dark' },
                 time: Date.now()
             };
+            var previousLength = historyList.length;
             historyList.push(cardMsg);
-            saveMessages(historyList);
+            if (!saveMessages(historyList)) {
+                historyList.length = previousLength;
+                if (typeof showToast === 'function') showToast('来电卡没有保存到聊天记录，未自动进入通话');
+                return false;
+            }
             if (_vl) {
-                // 虚拟列表：从存储重新派生可见列表并窗口化重建到最新（来电卡已在 historyList 中）
                 vlRefresh();
             } else {
                 appendMessageToDOM(cardMsg);
                 scrollToBottom(true);
             }
+            return true;
         }
         // 自动来电：仅当该角色独立开关 chat_auto_call_<roleId> 为 'true' 时，延迟 1.5s 进入来电页
         // 关闭（false/null/脏值）时只保留卡片，绝不跳转
@@ -4784,13 +4869,33 @@
 
         // 虚拟图片落库：role=assistant + type=image（无 img 走占位图渲染），text 让 AI 后续也能"记得"发过图
         function insertVImageCards(historyList, descs) {
-            (descs || []).forEach(function (d) {
-                const card = { role: 'assistant', type: 'image', desc: d, text: '[图片] ' + d, time: Date.now() };
-                historyList.push(card);
-                saveMessages(historyList);
-                if (_vl) vlRefresh(); else appendMessageToDOM(card);
+            var descriptions = Array.isArray(descs) ? descs : [];
+            if (!descriptions.length) return true;
+            var previousLength = historyList.length;
+            var cards = descriptions.map(function (description) {
+                return {
+                    role: 'assistant',
+                    type: 'image',
+                    desc: description,
+                    text: '[图片] ' + description,
+                    time: Date.now()
+                };
             });
+            Array.prototype.push.apply(historyList, cards);
+            if (!saveMessages(historyList)) {
+                historyList.length = previousLength;
+                if (typeof showToast === 'function') showToast('图片消息没有保存到聊天记录，请检查本地存储空间');
+                return false;
+            }
+            if (_vl) {
+                vlRefresh();
+            } else {
+                cards.forEach(function (card, offset) {
+                    appendMessageToDOM(card, previousLength + offset);
+                });
+            }
             scrollToBottom(true);
+            return true;
         }
 
         // 心声卡日期格式化：2026年6月28日 14:30（iOS 备忘录风格）
@@ -4856,18 +4961,34 @@
             };
         }
         function applyTransferDecisionMarkers(historyList, amounts) {
-            if (!Array.isArray(historyList) || !Array.isArray(amounts) || !amounts.length) return;
+            var snapshots = [];
+            if (!Array.isArray(historyList) || !Array.isArray(amounts) || !amounts.length) return snapshots;
             amounts.forEach(function (amount) {
                 for (var i = historyList.length - 1; i >= 0; i--) {
                     var previous = historyList[i];
                     if (previous && (previous.role === 'user' || previous.role === 'sent') &&
                         previous.type === 'transfer' && (!previous.status || previous.status === 'unopened') &&
                         Number(previous.amount) === Number(amount)) {
+                        snapshots.push({
+                            message: previous,
+                            status: previous.status,
+                            acceptedAt: previous.acceptedAt
+                        });
                         previous.status = 'accepted';
                         previous.acceptedAt = Date.now();
                         break;
                     }
                 }
+            });
+            return snapshots;
+        }
+        function rollbackTransferDecisionMarkers(snapshots) {
+            (Array.isArray(snapshots) ? snapshots : []).forEach(function (snapshot) {
+                if (!snapshot || !snapshot.message) return;
+                if (snapshot.status == null) delete snapshot.message.status;
+                else snapshot.message.status = snapshot.status;
+                if (snapshot.acceptedAt == null) delete snapshot.message.acceptedAt;
+                else snapshot.message.acceptedAt = snapshot.acceptedAt;
             });
         }
 
@@ -4918,89 +5039,191 @@
             };
         }
 
-        function applyRoleFamilyCardChanges(changes) {
+        async function applyRoleFamilyCardChanges(changes) {
             if (!Array.isArray(changes) || !changes.length || isGroupChat ||
                 !window.RoleFamilyCards || typeof window.RoleFamilyCards.applyRoleChange !== 'function') return false;
+            var ledger = window.MaoMaoWalletLedger;
+            if (!ledger || typeof ledger.runExclusive !== 'function') {
+                if (typeof showToast === 'function') showToast('钱包保护模块未加载，亲属卡变更已暂停，请刷新页面重试');
+                return false;
+            }
+            if (typeof ledger.supportsCrossTabLock !== 'function' ||
+                !ledger.supportsCrossTabLock()) {
+                if (typeof showToast === 'function') showToast('当前浏览器不支持跨页面钱包锁，亲属卡变更已暂停，未修改数据');
+                return false;
+            }
             var roleId = String(aliasRoleId || currentRoleId || (currentCharacter && currentCharacter.id) || '');
-            var changed = false;
-            changes.forEach(function (change) {
-                var result = window.RoleFamilyCards.applyRoleChange(roleId, change);
-                if (result && result.ok) changed = true;
-            });
-            return changed;
+            try {
+                return await ledger.runExclusive(function () {
+                    var changed = false;
+                    changes.forEach(function (change) {
+                        var result = window.RoleFamilyCards.applyRoleChange(roleId, change);
+                        if (result && result.ok) changed = true;
+                        else if (result && result.reason === 'invalid' && typeof showToast === 'function') {
+                            showToast('亲属卡数据异常，已停止调整；请先恢复本地数据');
+                        }
+                    });
+                    return changed;
+                }, {
+                    onFallback: function () {
+                        if (typeof showToast === 'function') {
+                            showToast('当前浏览器不支持跨页面钱包锁，请避免同时在多个页面操作亲属卡和结算');
+                        }
+                    }
+                });
+            } catch (error) {
+                console.warn('[chat] 亲属卡调整未完成', error);
+                if (typeof showToast === 'function') showToast('亲属卡调整暂未完成，请稍后重试');
+                return false;
+            }
         }
 
-        function insertRoleFamilyCardInvitations(historyList, cardSpecs) {
+        async function insertRoleFamilyCardInvitations(historyList, cardSpecs) {
             if (!Array.isArray(cardSpecs) || !cardSpecs.length || isGroupChat ||
                 !window.RoleFamilyCards || typeof window.RoleFamilyCards.createInvite !== 'function') return false;
+            var ledger = window.MaoMaoWalletLedger;
+            if (!ledger || typeof ledger.runExclusive !== 'function') {
+                if (typeof showToast === 'function') showToast('钱包保护模块未加载，亲属卡发放已暂停，请刷新页面重试');
+                return false;
+            }
+            if (typeof ledger.supportsCrossTabLock !== 'function' ||
+                !ledger.supportsCrossTabLock()) {
+                if (typeof showToast === 'function') showToast('当前浏览器不支持跨页面钱包锁，亲属卡发放已暂停，未修改数据');
+                return false;
+            }
             var roleId = String(aliasRoleId || currentRoleId || (currentCharacter && currentCharacter.id) || '');
             if (!roleId) return false;
             var roleName = String((currentCharacter && currentCharacter.name) || contactName || '角色');
-            var inserted = false;
-            cardSpecs.forEach(function (spec) {
-                // 先检查这个角色是否已有未撤销的卡（active/pending/paused）
-                // 如果有，就自动调整已有卡的额度，不创建新卡
-                var existing = window.RoleFamilyCards.findForRole(roleId).filter(function (c) {
-                    return ['active', 'pending', 'paused'].indexOf(c.status) !== -1;
-                });
-                if (existing.length > 0) {
-                    // 已有卡，自动调整额度
-                    window.RoleFamilyCards.applyRoleChange(roleId, {
-                        action: 'adjust',
-                        monthlyLimit: spec.monthlyLimit,
-                        singleLimit: spec.singleLimit,
-                        note: spec.note
+            try {
+                return await ledger.runExclusive(function () {
+                    var cardState = typeof window.RoleFamilyCards.readState === 'function'
+                        ? window.RoleFamilyCards.readState() : { ok: false, reason: 'module' };
+                    if (!cardState.ok) {
+                        if (typeof showToast === 'function') {
+                            showToast(cardState.reason === 'invalid'
+                                ? '亲属卡数据异常，已暂停发放；请先恢复本地数据'
+                                : '亲属卡存储暂不可用，发放已暂停');
+                        }
+                        return false;
+                    }
+                    var inserted = false;
+                    var originalLength = historyList.length;
+                    var historyChanged = false;
+                    var externalCardChanged = false;
+                    cardSpecs.forEach(function (spec) {
+                        // 先检查这个角色是否已有未撤销的卡（active/pending/paused）
+                        // 如果有，就自动调整已有卡的额度，不创建新卡
+                        var existing = window.RoleFamilyCards.findForRole(roleId).filter(function (c) {
+                            return ['active', 'pending', 'paused'].indexOf(c.status) !== -1;
+                        });
+                        if (existing.length > 0) {
+                            // 已有卡，只在独立亲属卡存储明确更新成功时才算完成
+                            var adjusted = window.RoleFamilyCards.applyRoleChange(roleId, {
+                                action: 'adjust',
+                                monthlyLimit: spec.monthlyLimit,
+                                singleLimit: spec.singleLimit,
+                                note: spec.note
+                            });
+                            if (adjusted && adjusted.ok) {
+                                inserted = true;
+                                externalCardChanged = true;
+                            }
+                            return;
+                        }
+                        var card = window.RoleFamilyCards.createInvite({
+                            roleId: roleId,
+                            roleName: roleName,
+                            kind: spec.kind,
+                            monthlyLimit: spec.monthlyLimit,
+                            singleLimit: spec.singleLimit,
+                            note: spec.note
+                        });
+                        if (!card) {
+                            if (typeof showToast === 'function') showToast('亲属卡保存失败，请检查本地存储空间');
+                            return;
+                        }
+                        historyList.push({
+                            role: 'assistant',
+                            type: 'role_family_card',
+                            cardId: card.id,
+                            time: Date.now()
+                        });
+                        historyChanged = true;
+                        externalCardChanged = true;
+                        inserted = true;
                     });
-                    inserted = true;
-                    return;
-                }
-                var card = window.RoleFamilyCards.createInvite({
-                    roleId: roleId,
-                    roleName: roleName,
-                    kind: spec.kind,
-                    monthlyLimit: spec.monthlyLimit,
-                    singleLimit: spec.singleLimit,
-                    note: spec.note
+                    if (historyChanged && !saveMessages(historyList)) {
+                        historyList.splice(originalLength);
+                        if (typeof showToast === 'function') {
+                            showToast('亲属卡已创建，但聊天记录未能保存；请检查本地存储空间');
+                        }
+                        return false;
+                    }
+                    if (historyChanged || externalCardChanged) renderAllMessages();
+                    return inserted;
+                }, {
+                    onFallback: function () {
+                        if (typeof showToast === 'function') {
+                            showToast('当前浏览器不支持跨页面钱包锁，请避免同时在多个页面操作亲属卡和结算');
+                        }
+                    }
                 });
-                if (!card) {
-                    if (typeof showToast === 'function') showToast('亲属卡保存失败，请检查本地存储空间');
-                    return;
-                }
-                historyList.push({
-                    role: 'assistant',
-                    type: 'role_family_card',
-                    cardId: card.id,
-                    time: Date.now()
-                });
-                inserted = true;
-            });
-            if (inserted) {
-                saveMessages(historyList);
-                renderAllMessages();
+            } catch (error) {
+                console.warn('[chat] 亲属卡发放未完成', error);
+                if (typeof showToast === 'function') showToast('亲属卡发放暂未完成，请稍后重试');
+                return false;
             }
-            return inserted;
         }
 
-        window.handleRoleFamilyCardAction = function (event, cardId, action) {
+        var pendingRoleFamilyCardActions = new Set();
+        window.handleRoleFamilyCardAction = async function (event, cardId, action) {
             if (event && typeof event.stopPropagation === 'function') event.stopPropagation();
-            if (!window.RoleFamilyCards) return;
-            var result = window.RoleFamilyCards.update(cardId, action);
-            if (!result || !result.ok) {
-                if (typeof showToast === 'function') showToast(result && result.reason === 'storage' ? '保存失败：本地空间不足' : '这张卡当前无法执行该操作');
+            if (!window.RoleFamilyCards || !cardId) return;
+            var actionKey = String(cardId) + ':' + String(action || '');
+            if (pendingRoleFamilyCardActions.has(actionKey)) return;
+            var ledger = window.MaoMaoWalletLedger;
+            if (!ledger || typeof ledger.runExclusive !== 'function') {
+                if (typeof showToast === 'function') showToast('钱包保护模块未加载，亲属卡操作已暂停，请刷新页面重试');
                 return;
             }
-            renderAllMessages();
-            var card = result.card || {};
-            if (action === 'accept' || action === 'reject') {
-                if (typeof window.sendMsg === 'function') {
-                    var replyText = action === 'accept'
-                        ? '我收下了你给我的亲属卡。'
-                        : '谢谢你的心意，不过这张亲属卡我暂时先不收。';
-                    window.sendMsg({ text: replyText, silent: true });
+            if (typeof ledger.supportsCrossTabLock !== 'function' ||
+                !ledger.supportsCrossTabLock()) {
+                if (typeof showToast === 'function') showToast('当前浏览器不支持跨页面钱包锁，亲属卡操作已暂停，未修改数据');
+                return;
+            }
+            pendingRoleFamilyCardActions.add(actionKey);
+            try {
+                var result = await ledger.runExclusive(function () {
+                    return window.RoleFamilyCards.update(cardId, action);
+                }, {
+                    onFallback: function () {
+                        if (typeof showToast === 'function') {
+                            showToast('当前浏览器不支持跨页面钱包锁，请避免同时在多个页面操作亲属卡和结算');
+                        }
+                    }
+                });
+                if (!result || !result.ok) {
+                    if (typeof showToast === 'function') showToast(result && result.reason === 'invalid' ? '亲属卡数据异常，已停止修改；请先恢复本地数据' : (result && result.reason === 'storage' ? '保存失败：本地空间不足' : '这张卡当前无法执行该操作'));
+                    return;
                 }
-                if (typeof showToast === 'function') showToast(action === 'accept' ? '已领取，可在商店和外卖结算时使用' : '已婉拒这张卡');
-            } else {
-                if (typeof showToast === 'function') showToast(action === 'pause' ? '这张卡已暂停使用' : '这张卡已恢复使用');
+                renderAllMessages();
+                var card = result.card || {};
+                if (action === 'accept' || action === 'reject') {
+                    if (typeof window.sendMsg === 'function') {
+                        var replyText = action === 'accept'
+                            ? '我收下了你给我的亲属卡。'
+                            : '谢谢你的心意，不过这张亲属卡我暂时先不收。';
+                        window.sendMsg({ text: replyText, silent: true });
+                    }
+                    if (typeof showToast === 'function') showToast(action === 'accept' ? '已领取，可在商店和外卖结算时使用' : '已婉拒这张卡');
+                } else {
+                    if (typeof showToast === 'function') showToast(action === 'pause' ? '这张卡已暂停使用' : '这张卡已恢复使用');
+                }
+            } catch (error) {
+                console.warn('[chat] 亲属卡状态变更未完成', error);
+                if (typeof showToast === 'function') showToast('亲属卡操作暂未完成，请稍后重试');
+            } finally {
+                pendingRoleFamilyCardActions.delete(actionKey);
             }
         };
 
@@ -5079,6 +5302,8 @@
         // 命中红包/转账标记：在 AI 侧插入对应卡片并落库，role='assistant' 可被用户领取
         function insertPayCards(historyList, items) {
             if (!items || !items.length) return;
+            var previousLength = historyList.length;
+            var previousTransferStates = [];
             items.forEach(function (item) {
                 if (item.type === 'transfer' && /退回|退还|还给你/.test(String(item.message || ''))) {
                     for (var pi = historyList.length - 1; pi >= 0; pi--) {
@@ -5086,6 +5311,11 @@
                         if (previous && (previous.role === 'user' || previous.role === 'sent') &&
                             previous.type === 'transfer' && (!previous.status || previous.status === 'unopened') &&
                             Number(previous.amount) === Number(item.amount)) {
+                            previousTransferStates.push({
+                                message: previous,
+                                status: previous.status,
+                                returnRequestedAt: previous.returnRequestedAt
+                            });
                             previous.status = 'returning';
                             previous.returnRequestedAt = Date.now();
                             break;
@@ -5101,10 +5331,20 @@
                     timestamp: Date.now()
                 };
                 historyList.push(payMsg);
-
             });
-            saveMessages(historyList);
+            if (!saveMessages(historyList)) {
+                historyList.length = previousLength;
+                previousTransferStates.forEach(function (snapshot) {
+                    if (snapshot.status == null) delete snapshot.message.status;
+                    else snapshot.message.status = snapshot.status;
+                    if (snapshot.returnRequestedAt == null) delete snapshot.message.returnRequestedAt;
+                    else snapshot.message.returnRequestedAt = snapshot.returnRequestedAt;
+                });
+                if (typeof showToast === 'function') showToast('红包/转账卡没有保存到聊天记录，原有转账状态已恢复');
+                return false;
+            }
             renderAllMessages();
+            return true;
         }
 
         // ===== AI 回复清洗：只做标点/空白收口，不删任何正文内容 =====
@@ -5714,6 +5954,26 @@
                 // contextOnly 只发起 AI 回合，不创建普通用户文字消息。
             } else {
                 historyList = loadMessages();
+                if (opts && opts.regenTargetMid) {
+                    // Filter the old turn from the AI prompt, but never persist its deletion.
+                    // The existing stored turn remains intact through network/API failures.
+                    var regenTargetId = String(opts.regenTargetMid);
+                    var regenBefore = historyList.slice();
+                    if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.removeTurnFromHistory === 'function') {
+                        historyList = window.ChatMessagePolicy.removeTurnFromHistory(historyList, regenTargetId);
+                    } else {
+                        var regenParsed = window.ChatMessagePolicy && typeof window.ChatMessagePolicy.parseBubbleId === 'function'
+                            ? window.ChatMessagePolicy.parseBubbleId(regenTargetId)
+                            : { mid: regenTargetId.split('#')[0] };
+                        historyList = historyList.filter(function (message) {
+                            return ensureMid(message) !== regenParsed.mid;
+                        });
+                    }
+                    if (historyList.length === regenBefore.length) {
+                        if (typeof showToast === 'function') showToast('旧回复已变化，重新生成已取消，请刷新聊天');
+                        return;
+                    }
+                }
             }
 
             // ===== R2 字符预算：上下文各段落设上限，超长静默截断降级（防 400 context_length_exceeded） =====
@@ -6409,6 +6669,31 @@
             }
             if (sharedTimelinePrompt) systemPrompt += '\n\n' + sharedTimelinePrompt;
 
+            // 真正的跨应用互动：用户在角色手机的备忘录/朋友圈留下内容，
+            // 不造一条“角色已回复”的假消息，也不修改聊天历史；
+            // 同账号同域本地故事由本角色下一次正常 AI 回复作为可选话题读取。
+            var inspectPhoneEventIds=[],inspectPhoneFocusId=null;
+            if (!isGroupChat && !silent && !contextOnly && !isRegen &&
+                presenceMode === 'online' &&
+                window.InspectInteractionBridge &&
+                typeof window.InspectInteractionBridge.buildPromptPacket === 'function') {
+                try {
+                    var inspectPhonePacket=window.InspectInteractionBridge.buildPromptPacket(
+                        String(currentRoleId || currentCharacter.id || ''),
+                        localStorage,
+                        Date.now(),
+                        {userText:text}
+                    );
+                    if (inspectPhonePacket && inspectPhonePacket.text) {
+                        systemPrompt += '\n\n' + inspectPhonePacket.text;
+                        inspectPhoneEventIds=inspectPhonePacket.eventIds||[];
+                        inspectPhoneFocusId=inspectPhonePacket.focusId||null;
+                    }
+                } catch (inspectPhoneContextError) {
+                    // 隔离查手机数据出错时不影响正常聊天。
+                }
+            }
+
             // 只在单人线上聊天、普通可见回复中提供本角色已收藏的表情目录。
             // 群聊、旁白、静默任务、重玩和后台 context-only 回合都不触发自动表情。
             var roleStickerCatalog = [];
@@ -6766,6 +7051,23 @@
                 logApiCall(apiModel, 'success', apiCallStart);
             }
 
+            // Regeneration is replacement, not deletion: a failed/empty AI turn must
+            // never overwrite the saved old reply with the filtered prompt history.
+            if (isRegen && (!streamResult.ok || !String(fullText || '').trim())) {
+                for (var regenNode = 0; regenNode < streamNodes.length; regenNode++) {
+                    if (streamNodes[regenNode] && streamNodes[regenNode].parentNode) {
+                        streamNodes[regenNode].parentNode.removeChild(streamNodes[regenNode]);
+                    }
+                }
+                streamNodes = [];
+                if (_vl) _vl.streaming = false;
+                aiSending = false;
+                if (chatTitleEl) chatTitleEl.textContent = originalTitleText;
+                if (_vl) vlRefresh(); else renderAllMessages();
+                if (typeof showToast === 'function') showToast('重新生成未成功，原回复已保留');
+                return;
+            }
+
             // 重试后 API 失败：先把同一条用户消息重新标记为失败并落库，
             // 再按既有 _isRepeatedSystemError 去重规则处理错误提示。
             var retryRemarked = false;
@@ -6811,10 +7113,11 @@
                     fullText = parsedPay.text;
                     const parsedRoleFamilyCard = extractRoleFamilyCardMarkers(fullText);
                     fullText = parsedRoleFamilyCard.text;
-                    const roleFamilyCardChanged = applyRoleFamilyCardChanges(parsedRoleFamilyCard.changes);
+                    const roleFamilyCardChanged = await applyRoleFamilyCardChanges(parsedRoleFamilyCard.changes);
                     const parsedTransferDecision = extractTransferDecisionMarkers(fullText);
                     fullText = parsedTransferDecision.text;
-                    applyTransferDecisionMarkers(historyList, parsedTransferDecision.amounts);
+                    // 转账状态会与本轮回复一并保存；若主回复写入失败，状态也回滚。
+                    var transferDecisionSnapshots = [];
                     // 剥离自动记忆标记 [记住:xxx]，并存进 user_memory
                     const parsedMem = extractMemoryMarkers(fullText);
                     fullText = parsedMem.text;
@@ -6881,14 +7184,17 @@
                             memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined
                         }];
                     }
-                    if (fullText || aiStickerMessages.length || aiRoleGalleryMessages.length || avatarCandidates.length || avatarPairs.length) {
+                    if (fullText || aiStickerMessages.length || aiRoleGalleryMessages.length || avatarCandidates.length || avatarPairs.length ||
+                        (parsedTransferDecision.amounts && parsedTransferDecision.amounts.length)) {
                         // 正文按角色气泡偏好拆分；表情与图库图片仍保留在同一回复回合中。
                         groupReplyVisible = !!fullText || aiStickerMessages.length > 0 || aiRoleGalleryMessages.length > 0;
                         replyMessages.forEach(function (message) { historyList.push(message); });
                         aiStickerMessages.forEach(function (stickerMessage) { historyList.push(stickerMessage); });
                         aiRoleGalleryMessages.forEach(function (galleryMessage) { historyList.push(galleryMessage); });
                         window.__groupPrivateCardPending = false;
+                        transferDecisionSnapshots = applyTransferDecisionMarkers(historyList, parsedTransferDecision.amounts);
                         var replySaved = saveMessages(historyList);
+                        var replySaveFailed = !replySaved;
                         var avatarRoleId = aliasRoleId || currentCharacter.id;
                         if (replySaved && !isGroupChat && window.RoleAvatarLibrary &&
                             typeof window.RoleAvatarLibrary.addAsset === 'function') {
@@ -6920,13 +7226,41 @@
                                     { source: 'chat', label: '聊天候选头像' }
                                 );
                                 if (candidateResult && candidateResult.ok) {
-                                    if (typeof showToast === 'function') showToast('TA 把这张图片加入了头像收藏，当前头像没有改变');
+                                    var changeRequested = window.ChatImageVision.requestsAvatarChange &&
+                                        window.ChatImageVision.requestsAvatarChange(text);
+                                    if (changeRequested && window.RoleAvatarLibrary.applyToCharacter) {
+                                        var avatarApplied = await window.RoleAvatarLibrary.applyToCharacter(
+                                            avatarRoleId, candidateResult.value.id, {
+                                                isCurrent: function () {
+                                                    return String(aliasRoleId || currentCharacter.id) === String(avatarRoleId);
+                                                }
+                                            }
+                                        );
+                                        if (avatarApplied && avatarApplied.ok) {
+                                            currentCharacter.avatar = avatarApplied.value.avatar;
+                                            currentCharacter.avatarAssetId = avatarApplied.value.avatarAssetId;
+                                            if (chatHeaderAvatar) {
+                                                var updatedAvatarImage = document.createElement('img');
+                                                updatedAvatarImage.src = avatarApplied.value.avatar;
+                                                updatedAvatarImage.alt = '';
+                                                chatHeaderAvatar.replaceChildren(updatedAvatarImage);
+                                            }
+                                            if (typeof showToast === 'function') showToast('TA 已换上这张头像');
+                                        } else if (typeof showToast === 'function') {
+                                            showToast(avatarApplied && avatarApplied.error && avatarApplied.error.code === 'PARTIAL_ROLLBACK'
+                                                ? '头像切换未完成，请到头像档案检查当前标记'
+                                                : '图片已收藏，头像切换未成功');
+                                        }
+                                    } else if (typeof showToast === 'function') {
+                                        showToast('TA 把这张图片加入了头像收藏，当前头像没有改变');
+                                    }
                                 } else if (typeof showToast === 'function') {
                                     showToast('头像候选保存失败，原头像没有变化');
                                 }
                             }
                         }
                         if (!replySaved) {
+                            rollbackTransferDecisionMarkers(transferDecisionSnapshots);
                             // 持久化失败时不把未保存的文字或表情渲染成已发送消息。
                             replyMessages.concat(aiStickerMessages, aiRoleGalleryMessages).forEach(function (message) {
                                 var failedIndex = historyList.indexOf(message);
@@ -6939,9 +7273,27 @@
                             replyMessages = [];
                             aiStickerMessages = [];
                             aiRoleGalleryMessages = [];
-                            try { saveMessages(historyList); } catch (rollbackError) {}
-                            if (typeof showToast === 'function') showToast('回复保存失败，请检查本机存储空间');
+                            // Regeneration never deleted the saved old turn, so a
+                            // failed replacement write must not retry a filtered history.
+                            if (!isRegen) {
+                                try { saveMessages(historyList); } catch (rollbackError) {}
+                            }
+                            if (streamBubble && fullText) streamBubble.textContent = fullText;
+                            if (typeof showToast === 'function') showToast('AI 回复尚未保存。上方文字暂留在当前页面，请先复制保留，再检查存储空间。');
                         } else {
+                            // Only after a real response has been saved: mark notes
+                            // offered to the model. This is NOT a fictional "read receipt";
+                            // no chat message or read receipt is fabricated.
+                            if (!isGroupChat && (inspectPhoneEventIds.length || inspectPhoneFocusId) &&
+                                window.InspectInteractionBridge &&
+                                typeof window.InspectInteractionBridge.markOffered === 'function') {
+                                try {
+                                    window.InspectInteractionBridge.markOffered(
+                                        String(currentRoleId || currentCharacter.id || ''),
+                                        inspectPhoneEventIds, localStorage, Date.now(), inspectPhoneFocusId
+                                    );
+                                } catch (inspectPhoneMarkError) {}
+                            }
                             var lastVisibleMessage = aiRoleGalleryMessages.length
                                 ? aiRoleGalleryMessages[aiRoleGalleryMessages.length - 1]
                                 : (aiStickerMessages.length
@@ -6955,12 +7307,22 @@
                         // 一轮流式回复可能先生成多个临时节点，收尾时统一移除，再追加已落库消息。
                         for (var sn = 0; sn < streamNodes.length; sn++) {
                             var snNode = streamNodes[sn];
-                            if (snNode && snNode.parentNode) snNode.parentNode.removeChild(snNode);
+                            if (snNode && snNode.parentNode && !(replySaveFailed && streamBubble && fullText && snNode === streamBubble.closest('.msg-row'))) {
+                                snNode.parentNode.removeChild(snNode);
+                            }
                         }
                         streamNodes = [];
                         if (streamBubble) {
                             var tempRow = streamBubble.closest('.msg-row');
-                            if (tempRow && tempRow.parentNode) tempRow.remove();
+                            if (replySaveFailed && tempRow && fullText) {
+                                tempRow.setAttribute('data-unsaved-reply', 'true');
+                                tempRow.setAttribute('aria-label', 'AI 回复尚未保存，请复制保留');
+                                var unsavedNotice = document.createElement('div');
+                                unsavedNotice.textContent = '尚未保存 · 请复制保留';
+                                unsavedNotice.style.cssText = 'margin:4px 0 8px 42px;font-size:11px;line-height:1.4;color:#B42318;';
+                                tempRow.appendChild(unsavedNotice);
+                                if (_vl) _vl.streaming = false;
+                            } else if (tempRow && tempRow.parentNode) tempRow.remove();
                         }
                         if (replySaved && (replyMessages.length || aiStickerMessages.length || aiRoleGalleryMessages.length)) {
                             if (_vl) {
@@ -7010,16 +7372,15 @@
                         }
                     }
                     if (parsedCall.wantCall) {
-                        // AI 侧插入黑底「发起语音通话」卡并落库；是否拨号由 chat_auto_call 开关决定
-                        insertIncomingCallCard(historyList);
-                        maybeAutoIncomingCall();
+                        // 只有聊天卡片持久化成功，才允许触发自动来电跳转。
+                        if (insertIncomingCallCard(historyList)) maybeAutoIncomingCall();
                     }
                     if (parsedPay.items.length) {
                         // AI 侧插入红包/转账卡片并落库，role='assistant' 可被用户点击领取
                         insertPayCards(historyList, parsedPay.items);
                     }
                     if (parsedRoleFamilyCard.cards.length) {
-                        insertRoleFamilyCardInvitations(historyList, parsedRoleFamilyCard.cards);
+                        await insertRoleFamilyCardInvitations(historyList, parsedRoleFamilyCard.cards);
                     } else if (roleFamilyCardChanged) {
                         renderAllMessages();
                     }
@@ -7169,16 +7530,11 @@
                 return;
             }
             // 改写以「整轮回复」为单位：同 turnId 的所有气泡一起移除；老记录无 turnId 时只删该条消息。
+            // Keep the last saved reply visible and durable while AI generates a replacement.
+            // sendMsg filters this turn from its *in-memory prompt context* only; it
+            // commits the replacement in one verified history write after AI succeeds.
             var targetBubbleId = mid || ensureMid(list[targetIdx]);
-            if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.removeTurnFromHistory === 'function') {
-                list = window.ChatMessagePolicy.removeTurnFromHistory(list, targetBubbleId);
-            } else {
-                list.splice(targetIdx, 1);
-            }
-            saveMessages(list);
-            rerenderFromList(list);
-            // 触发重新生成
-            sendMsg({ isRegenerate: true, regenDirection: direction || '' });
+            sendMsg({ isRegenerate: true, regenDirection: direction || '', regenTargetMid: targetBubbleId });
         };
 
         // 改写指定的某条 AI 消息（由消息操作面板调用）
@@ -8140,134 +8496,353 @@
         }
 
         // 红包/转账卡片点击：拆红包 / 收款（防重复领取，金额强转数字防字符串拼接）
-        function handlePayCardClick(event) {
+        const pendingPaymentOperations = new Set();
+        let paymentLockFallbackNoticeShown = false;
+
+        async function handlePayCardClick(event) {
             const cardEl = event && event.currentTarget;
             if (!cardEl) return;
+            const receiptLedger = window.MaoMaoWalletLedger;
+            if (!receiptLedger || typeof receiptLedger.runExclusive !== 'function' ||
+                typeof receiptLedger.supportsCrossTabLock !== 'function') {
+                showToast('钱包保护模块尚未加载，红包和转账收款已暂停');
+                return;
+            }
+            // The fallback queue only protects this page. A second tab could
+            // credit the same paymentId before either tab sees the other write.
+            if (!receiptLedger.supportsCrossTabLock()) {
+                showToast('当前浏览器不支持跨页面钱包锁，红包和转账收款已暂停，未入账');
+                return;
+            }
             const mid = cardEl.getAttribute('data-mid') || '';
             const indexStr = cardEl.getAttribute('data-index');
 
-            // 必须按稳定 mid 查全量历史，不能把过滤了 silent/date 的显示序号当数组下标。
-            const list = loadMessages();
-            let index = mid ? list.findIndex(function (item) { return item && ensureMid(item) === mid; }) : -1;
-            if (index < 0 && indexStr !== '' && indexStr != null) {
+            // 先拿稳定 paymentId；真正执行时会在锁内重新读取完整历史。
+            const initialList = loadMessages();
+            let initialIndex = mid ? initialList.findIndex(function (item) {
+                return item && ensureMid(item) === mid;
+            }) : -1;
+            if (initialIndex < 0 && !mid && indexStr !== '' && indexStr != null) {
                 const legacyIndex = parseInt(indexStr, 10);
-                if (!isNaN(legacyIndex) && legacyIndex >= 0) index = legacyIndex;
+                if (!isNaN(legacyIndex) && legacyIndex >= 0 && legacyIndex < initialList.length) {
+                    initialIndex = legacyIndex;
+                }
             }
-            if (index < 0 || index >= list.length) return;
-            const msg = list[index];
-            if (!msg || (msg.type !== 'redpacket' && msg.type !== 'transfer')) return;
-            const isRed = msg.type === 'redpacket';
-
-            if (msg.type === 'transfer' && msg.status === 'returned') {
-                showToast('这笔转账已退回');
-                return;
-            }
-            if (msg.type === 'transfer' && msg.status === 'accepted') {
-                showToast('对方已收下这笔转账');
-                return;
-            }
-            if (msg.type === 'transfer' && msg.status === 'returning') {
-                showToast('对方正在退回这笔转账');
-                return;
-            }
-            // 只有角色发来的红包/转账可以由用户领取，防止点击自己发出的卡片给自己加钱。
-            if (msg.role !== 'assistant') {
-                showToast('这是你发出的' + (isRed ? '红包' : '转账') + '，等待对方回应哦');
+            if (initialIndex < 0 || initialIndex >= initialList.length) return;
+            const initialMessage = initialList[initialIndex];
+            if (!initialMessage || (initialMessage.type !== 'redpacket' && initialMessage.type !== 'transfer')) return;
+            const paymentId = ensureMid(initialMessage);
+            if (!mid && !saveMessages(initialList)) {
+                showToast('无法确认这张卡片的唯一编号，请检查本地存储空间');
                 return;
             }
 
-            // 状态校验：已领取/已收款直接提示并 return
-            if (isRed && msg.status === 'opened') {
-                showToast('你已经领取过这个红包啦');
+            if (pendingPaymentOperations.has(paymentId)) {
+                showToast('这笔款项正在处理中，请勿重复点击');
                 return;
             }
-            if (!isRed && msg.status === 'received') {
-                showToast('已经收过款啦');
-                return;
-            }
+            pendingPaymentOperations.add(paymentId);
+            const previousBusy = cardEl.getAttribute && cardEl.getAttribute('aria-busy');
+            if (cardEl.setAttribute) cardEl.setAttribute('aria-busy', 'true');
 
-            // 金额：Number 强转数字，杜绝字符串拼接（1000 + '100' 绝不会变成 '1000100'）
-            const amountNum = Number(msg.amount);
-            if (!isFinite(amountNum) || amountNum <= 0) {
-                showToast('金额数据异常');
-                return;
-            }
+            async function processPaymentUnderLock() {
+                // 必须在取得全局钱包锁之后重新读取，不能使用锁外的旧历史 / 旧余额快照。
+                const list = loadMessages();
+                const index = list.findIndex(function (item) {
+                    return item && ensureMid(item) === paymentId;
+                });
+                if (index < 0) {
+                    showToast('这张卡片已不存在，未执行收款');
+                    return;
+                }
+                const msg = list[index];
+                if (!msg || (msg.type !== 'redpacket' && msg.type !== 'transfer')) return;
+                const isRed = msg.type === 'redpacket';
 
-            // 1. 先落钱包账本，并以消息 mid 做幂等键，避免状态存储失败后重复加钱。
-            if (typeof getWorkData !== 'function' || typeof saveWorkData !== 'function') {
-                showToast('钱包暂不可用，未完成收款');
-                return;
-            }
-            const paymentId = ensureMid(msg);
-            const wd = getWorkData();
-            if (!wd || typeof wd !== 'object') {
-                showToast('钱包数据读取失败，未完成收款');
-                return;
-            }
-            if (!Array.isArray(wd.history)) wd.history = [];
-            if (wd.history.some(function (entry) { return entry && String(entry.paymentId || '') === String(paymentId); })) {
-                msg.status = isRed ? 'opened' : 'received';
-                saveMessages(list);
+                if (msg.role !== 'assistant') {
+                    showToast('这是你发出的' + (isRed ? '红包' : '转账') + '，等待对方回应哦');
+                    return;
+                }
+                if (msg.type === 'transfer' && msg.status === 'returned') {
+                    showToast('这笔转账已退回');
+                    return;
+                }
+                if (msg.type === 'transfer' && msg.status === 'accepted') {
+                    showToast('对方已收下这笔转账');
+                    return;
+                }
+                if (msg.type === 'transfer' && msg.status === 'returning') {
+                    showToast('对方正在退回这笔转账');
+                    return;
+                }
+
+                const amountNum = Number(msg.amount);
+                const isTransferReturn = !isRed && (
+                    !!msg.returnOfPaymentId ||
+                    /退回|退还|还给你/.test(String(msg.message || ''))
+                );
+                var returnSource = null;
+                if (isTransferReturn) {
+                    var sourceId = String(msg.returnOfPaymentId || '');
+                    if (sourceId) {
+                        returnSource = list.find(function (row) {
+                            return row && ensureMid(row) === sourceId;
+                        }) || null;
+                    } else {
+                        var legacyCandidates = list.filter(function (row) {
+                            return row && (row.role === 'user' || row.role === 'sent') &&
+                                row.type === 'transfer' &&
+                                Number(row.amount) === amountNum &&
+                                (row.status === 'returning' || row.status === 'returned');
+                        });
+                        if (legacyCandidates.length === 1) returnSource = legacyCandidates[0];
+                        else {
+                            showToast(legacyCandidates.length
+                                ? '原转账对应关系不明确，已停止入账，避免退错款'
+                                : '未找到对应的待退回转账，已停止入账');
+                            return;
+                        }
+                    }
+
+                    if (!returnSource ||
+                        (returnSource.role !== 'user' && returnSource.role !== 'sent') ||
+                        returnSource.type !== 'transfer' ||
+                        Number(returnSource.amount) !== amountNum ||
+                        (returnSource.status !== 'returning' && returnSource.status !== 'returned') ||
+                        (returnSource.returnCardId && String(returnSource.returnCardId) !== String(paymentId)) ||
+                        (returnSource.status === 'returned' && msg.status !== 'received')) {
+                        showToast('原转账状态或关联编号不一致，已停止入账');
+                        return;
+                    }
+                }
+                if (!isFinite(amountNum) || amountNum <= 0) {
+                    showToast('金额数据异常');
+                    return;
+                }
+                if (typeof getWorkData !== 'function' || typeof saveWorkData !== 'function') {
+                    showToast('钱包暂不可用，未完成收款');
+                    return;
+                }
+                const wd = getWorkData();
+                if (!wd || typeof wd !== 'object') {
+                    showToast('钱包数据读取失败，未完成收款');
+                    return;
+                }
+                if (!Array.isArray(wd.history)) wd.history = [];
+
+                function ensureFinanceRecord() {
+                    try {
+                        // This handler already runs under the shared wallet lock.
+                        // Missing means first-use; an existing empty/corrupt value must never be replaced.
+                        var financeRaw = localStorage.getItem('finance_records');
+                        let fin;
+                        if (financeRaw == null) fin = [];
+                        else {
+                            if (financeRaw === '') return false;
+                            fin = JSON.parse(financeRaw);
+                            if (!Array.isArray(fin)) return false;
+                            for (var rowIndex = 0; rowIndex < fin.length; rowIndex++) {
+                                var storedRow = fin[rowIndex];
+                                if (!storedRow || typeof storedRow !== 'object' || Array.isArray(storedRow) ||
+                                    !Object.prototype.hasOwnProperty.call(storedRow, 'amount') ||
+                                    storedRow.amount == null || storedRow.amount === '' ||
+                                    !isFinite(Number(storedRow.amount)) || Number(storedRow.amount) < 0 ||
+                                    (Object.prototype.hasOwnProperty.call(storedRow, 'type') &&
+                                        typeof storedRow.type !== 'string')) return false;
+                            }
+                        }
+                        var matches = fin.filter(function (entry) {
+                            return entry && String(entry.paymentId || '') === String(paymentId);
+                        });
+                        var expectedCategory = isRed ? '红包' : '转账';
+                        var reversalId = isTransferReturn && returnSource ? String(ensureMid(returnSource)) : '';
+                        if (matches.length > 1) return false;
+                        if (matches.length === 1) {
+                            var existing = matches[0];
+                            if (Number(existing.amount) !== amountNum ||
+                                existing.type !== '收入' || existing.category !== expectedCategory ||
+                                (isTransferReturn && existing.reversalOfPaymentId &&
+                                    String(existing.reversalOfPaymentId) !== reversalId)) return false;
+                            if (isTransferReturn && !existing.reversalOfPaymentId) {
+                                existing.reversalOfPaymentId = reversalId;
+                                var repaired = JSON.stringify(fin);
+                                localStorage.setItem('finance_records', repaired);
+                                return localStorage.getItem('finance_records') === repaired;
+                            }
+                            return true;
+                        }
+                        var financeRow = {
+                            paymentId: paymentId,
+                            amount: amountNum,
+                            type: '收入',
+                            category: expectedCategory,
+                            note: (currentCharacter ? currentCharacter.name : '角色') + (isRed ? ' 发的红包' : ' 转账给我'),
+                            time: Date.now()
+                        };
+                        if (isTransferReturn) financeRow.reversalOfPaymentId = reversalId;
+                        fin.push(financeRow);
+                        const serialized = JSON.stringify(fin);
+                        localStorage.setItem('finance_records', serialized);
+                        return localStorage.getItem('finance_records') === serialized;
+                    } catch (e) {
+                        return false;
+                    }
+                }
+
+                function persistReceiptStatus() {
+                    var changed = false;
+                    // 退回卡只能更新它明确关联的原转账，不能再按金额猜测目标。
+                    if (isTransferReturn && returnSource) {
+                        var originalId = String(ensureMid(returnSource));
+                        if (String(msg.returnOfPaymentId || '') !== originalId) {
+                            msg.returnOfPaymentId = originalId;
+                            changed = true;
+                        }
+                        if (String(returnSource.returnCardId || '') !== String(paymentId)) {
+                            returnSource.returnCardId = String(paymentId);
+                            changed = true;
+                        }
+                        if (returnSource.status === 'returning') {
+                            returnSource.status = 'returned';
+                            returnSource.returnedAt = Date.now();
+                            changed = true;
+                        }
+                    }
+                    var targetStatus = isRed ? 'opened' : 'received';
+                    if (msg.status !== targetStatus) {
+                        msg.status = targetStatus;
+                        changed = true;
+                    }
+                    if (!changed) return null;
+                    if (!saveMessages(list)) {
+                        showToast('款项已入账，但聊天卡片状态未同步；再次点击可补齐，不会重复入账');
+                        return false;
+                    }
+                    return true;
+                }
+
+                const matchingWalletRows = wd.history.filter(function (entry) {
+                    return entry && String(entry.paymentId || '') === String(paymentId);
+                });
+                // A receipt ID is only an idempotency key when it identifies
+                // exactly one compatible income. Never "repair" chat/finance
+                // state using a conflicting amount, category or outgoing row.
+                const conflictingWalletReceipt = matchingWalletRows.length > 1 ||
+                    (matchingWalletRows.length === 1 && (
+                        matchingWalletRows[0].type !== 'income' ||
+                        Number(matchingWalletRows[0].amount) !== amountNum ||
+                        (matchingWalletRows[0].category &&
+                            matchingWalletRows[0].category !== msg.type) ||
+                        (isTransferReturn && matchingWalletRows[0].reversalOfPaymentId &&
+                            String(matchingWalletRows[0].reversalOfPaymentId) !==
+                                String(ensureMid(returnSource)))
+                    ));
+                if (conflictingWalletReceipt) {
+                    showToast('这笔款项的钱包流水存在重复或金额、类型冲突，已停止操作，请核对账目');
+                    return;
+                }
+                const existingPayment = matchingWalletRows.length === 1;
+                const alreadyCompleted = isRed
+                    ? msg.status === 'opened'
+                    : msg.status === 'received';
+
+                if (alreadyCompleted) {
+                    if (!existingPayment) {
+                        showToast('卡片显示已完成，但钱包流水未找到；为避免重复入账，已停止操作');
+                        return;
+                    }
+                    // 已完成卡再次被打开时，也顺手修复可能尚未同步的原转账退回状态。
+                    var completedStatusRepair = persistReceiptStatus();
+                    if (completedStatusRepair === false) return;
+                    if (!ensureFinanceRecord()) {
+                        showToast('款项已入账，账本明细暂未同步');
+                    } else {
+                        showToast('这笔款项已经入账');
+                    }
+                    if (completedStatusRepair === true) renderAllMessages();
+                    return;
+                }
+
+                // 钱包流水是幂等依据：聊天状态写入失败后，只补状态和财务明细。
+                if (existingPayment) {
+                    var receiptStatusRepair = persistReceiptStatus();
+                    if (receiptStatusRepair === false) return;
+                    const financeSaved = ensureFinanceRecord();
+                    if (receiptStatusRepair === true) renderAllMessages();
+                    if (!financeSaved) showToast('款项已入账，账本明细暂未同步');
+                    else showToast('这笔款项已经入账，卡片状态已恢复');
+                    return;
+                }
+
+                const oldBalance = Number(wd.balance);
+                wd.balance = Math.round(((isFinite(oldBalance) ? oldBalance : 0) + amountNum) * 100) / 100;
+                var walletIncomeRow = {
+                    type: 'income',
+                    category: msg.type,
+                    title: isRed ? '收到红包' : (isTransferReturn ? '收到退回转账' : '收到转账'),
+                    amount: amountNum,
+                    time: Date.now(),
+                    paymentId: paymentId
+                };
+                if (isTransferReturn && returnSource) {
+                    walletIncomeRow.reversalOfPaymentId = String(ensureMid(returnSource));
+                }
+                wd.history.unshift(walletIncomeRow);
+                if (!saveWorkData(wd)) return;
+
+                // 写入后读回确认；只有余额和同一 paymentId 都存在，才推进聊天状态。
+                const confirmedWallet = getWorkData();
+                const walletConfirmed = confirmedWallet &&
+                    Number(confirmedWallet.balance) === Number(wd.balance) &&
+                    Array.isArray(confirmedWallet.history) &&
+                    confirmedWallet.history.some(function (entry) {
+                        return entry && String(entry.paymentId || '') === String(paymentId);
+                    });
+                if (!walletConfirmed) {
+                    showToast('钱包入账暂未确认，请稍后重试；系统会防止重复入账');
+                    return;
+                }
+
+                if (persistReceiptStatus() === false) return;
+                const financeSaved = ensureFinanceRecord();
                 renderAllMessages();
-                showToast('这笔款项已经入账');
-                return;
+                openPayResult('+' + amountNum.toFixed(2), isRed ? '已存入余额' : '收款成功');
+                if (!financeSaved) showToast('收款成功，账本明细暂未同步');
             }
-            const oldBalance = Number(wd.balance);
-            wd.balance = Math.round(((isFinite(oldBalance) ? oldBalance : 0) + amountNum) * 100) / 100;
-            wd.history.unshift({
-                type: 'income',
-                category: msg.type,
-                title: isRed ? '收到红包' : '收到转账',
-                amount: amountNum,
-                time: Date.now(),
-                paymentId: paymentId
-            });
-            if (!saveWorkData(wd)) return;
 
-            // 如果这是角色退回的转账，只有用户实际收款后，原转账才改为「已退回」。
-            if (!isRed && /退回|退还|还给你/.test(String(msg.message || ''))) {
-                for (let ri = list.length - 1; ri >= 0; ri--) {
-                    const previous = list[ri];
-                    if (previous && (previous.role === 'user' || previous.role === 'sent') &&
-                        previous.type === 'transfer' && previous.status === 'returning' &&
-                        Number(previous.amount) === amountNum) {
-                        previous.status = 'returned';
-                        previous.returnedAt = Date.now();
-                        break;
+            try {
+                const ledger = window.MaoMaoWalletLedger;
+                if (ledger && typeof ledger.runExclusive === 'function') {
+                    await ledger.runExclusive(processPaymentUnderLock, {
+                        onFallback: function () {
+                            showToast('当前浏览器不支持跨页面钱包锁，请避免同时在多个聊天页领取');
+                        }
+                    });
+                } else {
+                    // 锁模块加载失败时 fail-closed，不能退回无锁的钱包写入。
+                    showToast('钱包保护模块尚未加载，请刷新页面后重试');
+                }
+            } catch (error) {
+                console.warn('[chat] 红包 / 转账操作未完成', error);
+                showToast('收款暂未完成，请稍后重试；不会重复入账');
+            } finally {
+                pendingPaymentOperations.delete(paymentId);
+                if (cardEl.setAttribute || cardEl.removeAttribute) {
+                    if (previousBusy == null) {
+                        if (cardEl.removeAttribute) cardEl.removeAttribute('aria-busy');
+                    } else if (cardEl.setAttribute) {
+                        cardEl.setAttribute('aria-busy', previousBusy);
                     }
                 }
             }
-            msg.status = isRed ? 'opened' : 'received';
-            saveMessages(list);
-
-            // 记账本只在真正收款时记收入，避免 AI 生成卡片但用户尚未领取就提前入账。
-            try {
-                let fin = JSON.parse(localStorage.getItem('finance_records') || '[]');
-                if (!Array.isArray(fin)) fin = [];
-                if (!fin.some(function (entry) { return entry && String(entry.paymentId || '') === String(paymentId); })) {
-                    fin.push({
-                        paymentId: paymentId,
-                        amount: amountNum,
-                        type: '收入',
-                        category: isRed ? '红包' : '转账',
-                        note: (currentCharacter ? currentCharacter.name : '角色') + (isRed ? ' 发的红包' : ' 转账给我'),
-                        time: Date.now()
-                    });
-                    localStorage.setItem('finance_records', JSON.stringify(fin));
-                }
-            } catch (e) {}
-            renderAllMessages();
-
-            // 3. 结果弹窗：红包「已存入余额」，转账「收款成功」
-            openPayResult('+' + amountNum.toFixed(2), isRed ? '已存入余额' : '收款成功');
         }
-
 
         // ===== 群投票 / 群接龙 / 角色群管理标记 =====
         function processGroupInteractionMarkers(rawText, speaker, historyList, isRegeneration, isGroupFollowup) {
             var text = String(rawText || '');
             if (!isGroupChat || !currentGroup || !Array.isArray(historyList)) return text;
             var changedHistory = false;
+            var groupHistoryRollback = [];
             var relationshipEventSeen = false;
             text = text.replace(/\[群关系变化[:：]([^:：\]]{1,100})[:：]([^:：\]]{1,20})[:：]([+-]?\d{1,3})[:：]([+-]?\d{1,3})[:：]([^\]]{1,120})\]/gi, function (marker, targetKey, level, intimacyDelta, trustDelta, summary) {
                 if (relationshipEventSeen) return '';
@@ -8329,6 +8904,13 @@
                 var poll = pollMessage && pollMessage.poll;
                 var optionIndex = parseInt(optionNumber, 10) - 1;
                 if (poll && !poll.closed && Array.isArray(poll.options) && optionIndex >= 0 && optionIndex < poll.options.length && speaker && speaker.id != null) {
+                    groupHistoryRollback.push({
+                        kind: 'votes',
+                        message: pollMessage,
+                        hadVotes: !!poll.votes,
+                        votes: poll.votes && typeof poll.votes === 'object'
+                            ? JSON.parse(JSON.stringify(poll.votes)) : null
+                    });
                     if (!poll.votes || typeof poll.votes !== 'object') poll.votes = {};
                     poll.votes[String(speaker.id)] = optionIndex;
                     changedHistory = true;
@@ -8339,9 +8921,15 @@
                 var chainMessage = historyList.find(function (item) { return item && item.type === 'group_chain' && String(ensureMid(item)) === String(chainMid); });
                 var chain = chainMessage && chainMessage.chain;
                 if (chain && !chain.closed && speaker && speaker.id != null && String(entryText || '').trim()) {
-                    if (!Array.isArray(chain.entries)) chain.entries = [];
-                    var duplicate = chain.entries.some(function (entry) { return String(entry.memberId || '') === String(speaker.id); });
+                    var duplicate = Array.isArray(chain.entries) && chain.entries.some(function (entry) { return String(entry.memberId || '') === String(speaker.id); });
                     if (!duplicate) {
+                        groupHistoryRollback.push({
+                            kind: 'entries',
+                            message: chainMessage,
+                            hadEntries: Array.isArray(chain.entries),
+                            entries: Array.isArray(chain.entries) ? JSON.parse(JSON.stringify(chain.entries)) : []
+                        });
+                        if (!Array.isArray(chain.entries)) chain.entries = [];
                         chain.entries.push({ memberId: String(speaker.id), name: groupMemberDisplayName(speaker), text: String(entryText).trim().slice(0, 120), time: Date.now() });
                         changedHistory = true;
                     }
@@ -8363,8 +8951,9 @@
                 var displayName = groupMemberDisplayName(target);
                 var privateMessageText = String(privateText).trim().slice(0, 300);
                 var privateMsg = { role: 'assistant', name: displayName, text: privateMessageText, time: Date.now(), fromGroupId: String(currentGroup.id), privateFromGroup: true };
+                var privateHistory = [];
+                var privateSaved = false;
                 try {
-                    var privateHistory = [];
                     if (window.PhoneStorage && typeof window.PhoneStorage.getChatHistory === 'function') {
                         var storedHistory = window.PhoneStorage.getChatHistory(targetId);
                         if (Array.isArray(storedHistory)) privateHistory = storedHistory.slice();
@@ -8375,25 +8964,44 @@
                         if (Array.isArray(parsedPrivateHistory)) privateHistory = parsedPrivateHistory;
                     }
                     privateHistory.push(privateMsg);
-                    var saveOk = true;
                     if (window.PhoneStorage && typeof window.PhoneStorage.saveChatHistory === 'function') {
-                        saveOk = !!window.PhoneStorage.saveChatHistory(targetId, privateHistory);
+                        privateSaved = window.PhoneStorage.saveChatHistory(targetId, privateHistory) === true;
                     } else {
-                        try { localStorage.setItem('chat_history_' + targetId, JSON.stringify(privateHistory)); }
-                        catch (e) { saveOk = false; }
+                        localStorage.setItem('chat_history_' + targetId, JSON.stringify(privateHistory));
+                        privateSaved = true;
                     }
-                    if (!saveOk && typeof showToast === 'function') showToast('私聊记录未能保存，请检查本地存储空间');
-                } catch (e) {
-                    if (typeof showToast === 'function') showToast('私聊记录未能保存，请检查本地存储空间');
+                    var verifiedPrivate = window.PhoneStorage && typeof window.PhoneStorage.getChatHistory === 'function'
+                        ? window.PhoneStorage.getChatHistory(targetId)
+                        : JSON.parse(localStorage.getItem('chat_history_' + targetId) || '[]');
+                    var lastPrivate = Array.isArray(verifiedPrivate) && verifiedPrivate.length
+                        ? verifiedPrivate[verifiedPrivate.length - 1] : null;
+                    privateSaved = privateSaved && Array.isArray(verifiedPrivate) &&
+                        verifiedPrivate.length === privateHistory.length && lastPrivate &&
+                        lastPrivate.role === privateMsg.role && lastPrivate.type === privateMsg.type &&
+                        lastPrivate.time === privateMsg.time && lastPrivate.text === privateMsg.text &&
+                        lastPrivate.fromGroupId === privateMsg.fromGroupId;
+                } catch (privateError) {
+                    privateSaved = false;
+                    console.error('[GroupChat] private message persistence failed:', privateError);
                 }
+                if (!privateSaved) {
+                    if (typeof showToast === 'function') showToast('群私聊消息没有保存成功，未显示已发送状态');
+                    return '';
+                }
+
                 var groupPrivateMessage = {
                     role: 'assistant', type: 'group_private', text: privateMessageText,
                     senderId: targetId, privateRoleId: targetId, senderName: displayName,
                     name: displayName, fromGroupId: String(currentGroup.id), time: Date.now()
                 };
                 ensureMid(groupPrivateMessage);
+                var previousGroupLength = historyList.length;
                 historyList.push(groupPrivateMessage);
-                saveMessages(historyList);
+                if (!saveMessages(historyList)) {
+                    historyList.length = previousGroupLength;
+                    if (typeof showToast === 'function') showToast('私聊已保存，但群聊中的私聊入口没有保存成功');
+                    return '';
+                }
                 window.__groupPrivateCardPending = true;
                 showGroupPrivatePopup(displayName, targetId, privateMessageText);
                 return '';
@@ -8438,7 +9046,20 @@
                 return '';
             });
             text = text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
-            if (changedHistory) saveMessages(historyList);
+            if (changedHistory && !saveMessages(historyList)) {
+                groupHistoryRollback.forEach(function (snapshot) {
+                    var targetMessage = snapshot.message;
+                    if (!targetMessage) return;
+                    if (snapshot.kind === 'votes') {
+                        if (snapshot.hadVotes) targetMessage.poll.votes = snapshot.votes;
+                        else delete targetMessage.poll.votes;
+                    } else if (snapshot.kind === 'entries') {
+                        if (snapshot.hadEntries) targetMessage.chain.entries = snapshot.entries;
+                        else delete targetMessage.chain.entries;
+                    }
+                });
+                if (typeof showToast === 'function') showToast('群投票/接龙回应没有保存成功，原有互动状态已恢复');
+            }
             return text;
         }
 
@@ -8595,7 +9216,16 @@
                     if (options.length < 2) { showToast('投票选项不能完全相同'); return; }
                     var history = loadMessages();
                     var message = { role: 'user', type: 'group_poll', text: '', poll: { question: question.slice(0, 100), options: options, votes: {}, closed: false }, time: Date.now() };
-                    ensureMid(message); history.push(message); saveMessages(history); closeComposer(); renderAllMessages(); showToast('群投票已发起');
+                    ensureMid(message);
+                    history.push(message);
+                    if (!saveMessages(history)) {
+                        history.pop();
+                        showToast('群投票没有保存成功，请检查本地存储空间');
+                        return;
+                    }
+                    closeComposer();
+                    renderAllMessages();
+                    showToast('群投票已发起');
                     maybeStartGroupActivity();
                 } else if (composerMode === 'chain') {
                     var title = composerQuestion.value.trim();
@@ -8604,7 +9234,16 @@
                     var entries = first ? [{ memberId: '__user', name: '我', text: first.slice(0, 120), time: Date.now() }] : [];
                     var chainHistory = loadMessages();
                     var chainMessage = { role: 'user', type: 'group_chain', text: '', chain: { title: title.slice(0, 80), entries: entries, closed: false }, time: Date.now() };
-                    ensureMid(chainMessage); chainHistory.push(chainMessage); saveMessages(chainHistory); closeComposer(); renderAllMessages(); showToast('群接龙已发起');
+                    ensureMid(chainMessage);
+                    chainHistory.push(chainMessage);
+                    if (!saveMessages(chainHistory)) {
+                        chainHistory.pop();
+                        showToast('群接龙没有保存成功，请检查本地存储空间');
+                        return;
+                    }
+                    closeComposer();
+                    renderAllMessages();
+                    showToast('群接龙已发起');
                     maybeStartGroupActivity();
                 } else if (composerMode === 'join') {
                     var entryText = composerEntry.value.trim();
@@ -8615,8 +9254,16 @@
                     if (!targetChain || targetChain.closed) { closeComposer(); showToast('这条接龙已结束'); renderAllMessages(); return; }
                     if (!Array.isArray(targetChain.entries)) targetChain.entries = [];
                     if (targetChain.entries.some(function (entry) { return String(entry.memberId || '') === '__user'; })) { showToast('你已经参与过这条接龙'); return; }
+                    var previousEntries = JSON.parse(JSON.stringify(targetChain.entries));
                     targetChain.entries.push({ memberId: '__user', name: '我', text: entryText.slice(0, 120), time: Date.now() });
-                    saveMessages(joinHistory); closeComposer(); renderAllMessages(); showToast('已加入接龙');
+                    if (!saveMessages(joinHistory)) {
+                        targetChain.entries = previousEntries;
+                        showToast('接龙内容没有保存成功，请检查本地存储空间');
+                        return;
+                    }
+                    closeComposer();
+                    renderAllMessages();
+                    showToast('已加入接龙');
                 }
             });
             var messageContainer = document.getElementById('chat-messages');
@@ -8635,16 +9282,32 @@
                     var poll = pollMessage && pollMessage.poll;
                     var optionIndex = parseInt(voteButton.getAttribute('data-poll-option'), 10);
                     if (!poll || poll.closed || !Array.isArray(poll.options) || optionIndex < 0 || optionIndex >= poll.options.length) return;
-                    if (!poll.votes || typeof poll.votes !== 'object') poll.votes = {};
+                    var previousVotes = poll.votes && typeof poll.votes === 'object'
+                        ? JSON.parse(JSON.stringify(poll.votes)) : null;
+                    poll.votes = poll.votes && typeof poll.votes === 'object' ? poll.votes : {};
                     poll.votes.__user = optionIndex;
-                    saveMessages(history); renderAllMessages(); return;
+                    if (!saveMessages(history)) {
+                        if (previousVotes) poll.votes = previousVotes;
+                        else delete poll.votes;
+                        showToast('投票没有保存成功，请检查本地存储空间');
+                        return;
+                    }
+                    renderAllMessages();
+                    return;
                 }
                 var closePollButton = event.target.closest('[data-poll-close]');
                 if (closePollButton) {
                     var pollHistory = loadMessages();
                     var pollToClose = pollHistory.find(function (item) { return item && item.type === 'group_poll' && String(ensureMid(item)) === String(closePollButton.getAttribute('data-poll-close')); });
                     if (pollToClose && pollToClose.poll && !pollToClose.poll.closed) {
-                        pollToClose.poll.closed = true; saveMessages(pollHistory); renderAllMessages(); showToast('投票已结束');
+                        pollToClose.poll.closed = true;
+                        if (!saveMessages(pollHistory)) {
+                            pollToClose.poll.closed = false;
+                            showToast('投票状态没有保存成功，请稍后重试');
+                            return;
+                        }
+                        renderAllMessages();
+                        showToast('投票已结束');
                     }
                     return;
                 }
@@ -8662,14 +9325,21 @@
                     var closeHistory = loadMessages();
                     var chainToClose = closeHistory.find(function (item) { return item && item.type === 'group_chain' && String(ensureMid(item)) === String(closeChainButton.getAttribute('data-chain-close')); });
                     if (chainToClose && chainToClose.chain && !chainToClose.chain.closed) {
-                        chainToClose.chain.closed = true; saveMessages(closeHistory); renderAllMessages(); showToast('接龙已结束');
+                        chainToClose.chain.closed = true;
+                        if (!saveMessages(closeHistory)) {
+                            chainToClose.chain.closed = false;
+                            showToast('接龙状态没有保存成功，请稍后重试');
+                            return;
+                        }
+                        renderAllMessages();
+                        showToast('接龙已结束');
                     }
                 }
             });
         })();
 
     </script>
-    <script src="js/chat-extras.js?t=20261107imagevision1"></script>
+    <script src="js/chat-extras.js?t=20261114wallet-main1"></script>
     <script src="../call/call-overlay.js?v=20261105v1"></script>
     <script>
     function openNarrationModal() {
@@ -8823,6 +9493,17 @@
                     var sticker = entry.sticker;
                     var item = document.createElement('div');
                     item.className = 'sticker-panel-item';
+                    // Keep the existing send/favorite handlers. Keyboard users can
+                    // select a sticker from the new horizontal atmosphere carousel.
+                    item.setAttribute('role', 'button');
+                    item.tabIndex = 0;
+                    item.setAttribute('aria-label', '发送表情：' + String(sticker.desc || '图片表情'));
+                    item.addEventListener('keydown', function (event) {
+                        if (event.target !== item) return;
+                        if (event.key !== 'Enter' && event.key !== ' ') return;
+                        event.preventDefault();
+                        item.click();
+                    });
 
                     var stickerThumb = document.createElement('img');
                     stickerThumb.src = String(sticker.img || '');
@@ -8901,7 +9582,11 @@
                 };
                 var list = loadMessages();
                 list.push(msg);
-                saveMessages(list);
+                if (!saveMessages(list)) {
+                    list.pop();
+                    if (typeof showToast === 'function') showToast('表情没有保存到聊天记录，请检查本地存储空间');
+                    return false;
+                }
                 if (_vl) vlRefresh(); else appendMessageToDOM(msg);
                 scrollToBottom(true);
                 if (typeof SoundSystem !== 'undefined') SoundSystem.play('send');
@@ -8911,6 +9596,7 @@
                     silent: true,
                     contextOnly: true
                 });
+                return true;
             }
         })();
     </script>
@@ -9893,11 +10579,21 @@ form#chat-form .send-icon-btn { display: flex !important; visibility: visible !i
     var d = document.getElementById('chat-form');
     var cap = document.querySelector('.input-capsule');
     var wechat = isWechat();
-    if(cap) cap.style.marginRight = '50px';
+    var shell = document.querySelector('.phone-mockup');
+    var atmosphere = !!(shell && shell.getAttribute('data-chat-theme-preset') === 'atmosphere');
     if(!d) return;
     var old = d.querySelector('.send-icon-btn');
-    if(old) old.style.display = 'none';
     var b = document.getElementById('myFloatSend');
+    // Thin Shadow uses the original form submit button. Never add a second
+    // visual send control or bypass the native send/validation handlers.
+    if(atmosphere){
+      if(cap) cap.style.removeProperty('margin-right');
+      if(old) old.style.removeProperty('display');
+      if(b) b.remove();
+      return;
+    }
+    if(cap) cap.style.marginRight = '50px';
+    if(old) old.style.display = 'none';
     if(!b){
       b = document.createElement('button');
       b.id = 'myFloatSend';
@@ -9918,6 +10614,12 @@ form#chat-form .send-icon-btn { display: flex !important; visibility: visible !i
   window.addEventListener('storage', function(event){
     if(!event || event.key === 'maomao_chat_theme_preset') setTimeout(sync, 0);
   });
+  // Theme class can arrive after DOMContentLoaded; catch the actual shell
+  // attribute change instead of relying on a second page refresh.
+  var shell = document.querySelector('.phone-mockup');
+  if(shell && window.MutationObserver){
+    new MutationObserver(sync).observe(shell,{attributes:true,attributeFilter:['data-chat-theme-preset']});
+  }
 })();</script>
 <style id="maomao-quote-reply-fix">
 .msg-quoted-preview {
@@ -9935,3 +10637,4 @@ form#chat-form .send-icon-btn { display: flex !important; visibility: visible !i
 }
 </style>
 </body></html>
+
