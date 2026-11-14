@@ -86,8 +86,15 @@ function extractBracedBlock(source, startMarker) {
 
 function loadSaveMessages(sandbox) {
   const start = chatDetail.indexOf('function _readBackHistory()');
-  const end = chatDetail.indexOf('\n        // 头像占位', start);
+  const avatarStart = chatDetail.indexOf('\n        // 头像占位', start);
+  const cloudStart = chatDetail.indexOf('\n        (function startCloudOutboundSyncForActiveRole()', start);
+  // Source introduced the cloud inbox IIFE between the save helper and
+  // avatar block. The test intentionally isolates the save helper; evaluating
+  // the inbox startup in a Node VM would test unrelated browser globals.
+  const end = cloudStart >= 0 && cloudStart < avatarStart ? cloudStart : avatarStart;
   assert.ok(start >= 0 && end > start, 'saveMessages read-back helpers should be isolated');
+  assert.ok(chatDetail.slice(start, end).includes('function saveMessages('),
+    'the actual save helper must still be under test');
   return runInNewContext(chatDetail.slice(start, end) + '\nsaveMessages;', sandbox);
 }
 
