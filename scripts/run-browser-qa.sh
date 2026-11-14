@@ -20,7 +20,7 @@ apt-get "${APT_OPTS[@]}" update
   apt-get "${APT_OPTS[@]}" download \
     libatk1.0-0t64 libatk-bridge2.0-0t64 libxcomposite1 \
     libxdamage1 libxfixes3 libxrandr2 libxkbcommon0 \
-    libasound2t64 libatspi2.0-0t64
+    libasound2t64 libatspi2.0-0t64 libxi6
   for pkg in ./*.deb; do
     dpkg-deb -x "$pkg" "$LIB_WORK/libs"
   done
