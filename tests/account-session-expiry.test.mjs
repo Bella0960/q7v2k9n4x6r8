@@ -146,3 +146,32 @@ test('revoking a second device immediately invalidates its server authorization 
   assert.equal((await me(0)).status, 200, 'initiating device remains authorized');
   assert.equal((await me(2)).status, 200, 'unrelated account remains authorized');
 });
+
+test('revoked session cannot pass final authorization after a stale session lookup', async () => {
+  const now = 1_800_000_000_000;
+  const session = {
+    session_id: 'session-race',
+    account_id: 'MAO-AAAAAAAAAAAA',
+    username: 'synthetic',
+    role: 'user',
+    status: 'active',
+    expires_at: now + 60000,
+    session_revoked_at: null
+  };
+  let touchAttempts = 0;
+  const store = {
+    // Simulates a lookup that finished before another device revoked this session.
+    getMaoAccountSession() { return { ...session }; },
+    // The atomic SQL UPDATE sees revoked_at and rejects the stale session.
+    touchMaoAccountSession() { touchAttempts++; return false; }
+  };
+  const auth = createAccountAuth({ store, now: () => now });
+  const request = new Request('https://mao.test/api/accounts/me', {
+    headers: { cookie: 'MAO_SESSION=' + 'a'.repeat(43) }
+  });
+  assert.equal(await auth.getAuthenticatedAccount(request), null);
+  assert.equal(touchAttempts, 1, 'a final storage check must run before authorizing');
+  await assert.rejects(auth.handle(request, '/api/accounts/me', 'GET'),
+    error => error.status === 401 && error.code === 'LOGIN_REQUIRED');
+  assert.equal(touchAttempts, 2);
+});
