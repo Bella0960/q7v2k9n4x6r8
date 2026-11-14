@@ -29,6 +29,17 @@
     .update-item { display:grid; grid-template-columns:8px minmax(0,1fr); gap:9px; color:#555; font-size:11px; line-height:1.6; }
     .update-dot { width:5px; height:5px; margin-top:6px; border-radius:50%; background:#C33B35; }
     .updates-foot { margin:10px 0 0; color:#999; font-size:10px; line-height:1.6; }
+    .final-qa { padding:15px 16px; margin:0 0 20px; background:#fff; border:1px solid var(--line); border-radius:16px; }
+    .final-qa-head { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+    .final-qa-title { margin:0; color:#222; font-size:13px; font-weight:650; }
+    .final-qa button { padding:7px 10px; background:#fff; border:1px solid var(--line); color:#444; border-radius:9px; font:inherit; font-size:10px; cursor:pointer; }
+    .final-qa button:disabled { opacity:.55; }
+    .final-qa-grid { margin-top:10px; }
+    .final-qa-item { display:flex; justify-content:space-between; align-items:flex-start; gap:15px; padding:10px 0; border-bottom:1px solid #F0F0F3; font-size:11px; line-height:1.6; }
+    .final-qa-item:last-child { border-bottom:0; padding-bottom:0; }
+    .final-qa-item strong { flex:0 0 86px; color:#333; font-weight:550; }
+    .final-qa-item span { text-align:right; color:#777; }
+    .final-qa-note { margin:11px 0 0; color:#999; font-size:10px; line-height:1.7; }
     .test-summary { display:flex; justify-content:space-between; align-items:center; gap:12px; margin:0 0 12px; }
     .summary-copy { color:#777; font-size:11px; }
     .summary-count { color:#333; font-size:11px; font-variant-numeric:tabular-nums; white-space:nowrap; }
@@ -194,6 +205,19 @@
       <p class="updates-foot">正式功能合并后同步补充入口和操作步骤；只有经过实际验收的项目才会标记为已验证。</p>
     </section>
 
+    <section class="final-qa" aria-labelledby="finalQaTitle">
+      <div class="final-qa-head">
+        <h2 class="final-qa-title" id="finalQaTitle">原 001 环境 · 上线前只读检查</h2>
+        <button type="button" id="finalQaRecheck">重新检查</button>
+      </div>
+      <div class="final-qa-grid" aria-live="polite">
+        <div class="final-qa-item"><strong>云端数据</strong><span id="finalQaCloud">检查中…</span></div>
+        <div class="final-qa-item"><strong>管理员账号</strong><span id="finalQaAccount">检查中…</span></div>
+        <div class="final-qa-item"><strong>Web Push</strong><span id="finalQaPush">检查中…</span></div>
+      </div>
+      <p class="final-qa-note">只查询当前测试环境的公开状态接口。昨天完成的管理员登录、真人好友和安卓锁屏推送验收继续保留；这里的只读状态不代表新角色云端消息已经投递成功。不要重复注册、清除聊天或重新申请通知权限。</p>
+    </section>
+
     <div class="test-summary">
       <span class="summary-copy">你的手机测试进度会保存在当前浏览器，不会修改角色聊天数据。</span>
       <span class="summary-count" id="testCount">0 / 0 已测试</span>
@@ -299,6 +323,6 @@
     </section>
   </div>
 
-  <script src="tutorial.js?v=20261113chats1"></script>
+  <script src="tutorial.js?v=20261114founder-accept1"></script>
 </body>
 </html>
