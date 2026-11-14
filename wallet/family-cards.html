@@ -309,6 +309,11 @@ button,a{font:inherit}
       toast('钱包保护模块未加载，亲属卡操作已暂停，请刷新页面重试');
       return;
     }
+    if (typeof ledger.supportsCrossTabLock !== 'function' ||
+        !ledger.supportsCrossTabLock()) {
+      toast('当前浏览器不支持跨页面钱包锁，亲属卡操作已暂停，未修改卡片');
+      return;
+    }
     pendingCardActions.add(actionKey);
     try {
       var outcome = await ledger.runExclusive(function () {
