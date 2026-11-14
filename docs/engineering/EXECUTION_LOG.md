@@ -189,3 +189,11 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - QA 内部身份网关已成功真实部署，版本 `5aa0d23e-c832-4315-a309-208bb2cdbd91`，构建 `8689c6b3-fd8e-423a-9f18-035b18a8fd41` 成功，原 `MAO_IDENTITY_BRIDGE_SECRET` 密钥绑定仍存在；网关 workers.dev 入口关闭，未更改任何正式域名。
 - QA 专用管理开关只存在于 `wrangler.qa.jsonc`；生产 `wrangler.jsonc` 未开启。本轮最后 QA 完整测试并条件部署：Cloudflare Build `ab13d6ed-8b63-4d9b-a650-b078a7173aae`，准确源码提交 `763a206de6ad968a26b5f0a94d84fbf83bca447e`，失败不执行部署。本记录写入时结果尚未核实，不能标记为 QA 已发布或正式账号门禁通过。
 - 保留正式 `app.mao520.com` 旧 Worker、`mao520.com` 原账号服务及所有正式数据库。最终唯一管理员 ID 固定为 `MAO-OXHBDBWCOIHPBBYN`。正式生产接入需另外完成无损连续性、实际回滚/数据库恢复、同源账号与推送、原用户保留和 iPhone 真机验收，不可将已有 QA 账号库整体覆盖正式库。
+
+## 2026-11-15 — ACC-001 / GOV-004 · 正式域名待发布版本与真实数据库连续性
+
+- **Cloudflare 实际只读 SQL 汇总**：`mao-auth-preview` 正式账号源 2 人（1 位非目标超管、1 位普通成员），旧会话 3 条（管理员 1、成员 2），未撤销邀请码 1 条、设备 1 条、17 次迁移。QA 库 1 位目标超管 `MAO-OXHBDBWCOIHPBBYN`（20 次迁移），`mao` 空库 0 人（16 次迁移），`maomao-identity-core` 0 人（16 次迁移）。所有查询均经 Cloudflare DO Query v2，`rows_written=0`，不读取密码哈希或用户内容。
+- **已合并整合 PR #285 的子 PR**：#294 增加四库自动汇总只读检查，正式版门禁验证已部署的完整 Worker Service Binding，防止靠静态旧 Worker/错误 QA 库/旧管理员误过关；#295 防止正式域名自动 Build 仍部署旧 `wrangler.app.jsonc` 回退。分别对应成功的 Cloudflare 测试 Build `786ed92c-8a39-4083-a6f8-eed4caa0df25`、`e2023f77-0446-408d-821d-c40a81b7b385`。
+- **Cloudflare 实际上传正式域名新版本，但没有部署**：Build `1fbe4e89-ba7f-4ac6-8631-c95a9a07087b` 成功；`curly-dream-324c` 的待发布版本 `df316996-3b54-4c87-9ca7-89a78c05c3cd`，运行入口 `worker-app-cutover.js`，`MAO_APP_BACKEND` 指向 `mao`，切换开关 `false`。正式正在运行的版本仍是 `0216f4f6-dbb3-4a64-9ca4-153951a877e1`，100% 用户流量没切换。
+- **线上发布 trigger 未动**：为仅上传待发布版本而临时限制 Build，随后恢复原配置。当前仍是 `main` → `npx wrangler deploy --config wrangler.app.jsonc --keep-vars`；正式放量前必须原子更新为受审版本，否则会回退静态入口。
+- **明确未完成**：`mao` 仍是空账号库，不能直接开启 app 代理；尚未完成原成员+目标 001 的同一永久权威存储连续性、可恢复原始数据备份与真实恢复演练、真实旧密码登录、Android/iPhone 双端和正式同源 API。此段仅为真实环境审计、代码测试和无流量版本预置；禁止称作正式版 404 已修复。详见 `docs/engineering/LIVE_ACCOUNT_INVENTORY_20261115.md` 与 PR #285 最新验收评论。
