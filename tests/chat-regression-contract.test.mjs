@@ -986,7 +986,7 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261111cloudbubble1/);
   assert.match(search, /chat-message-policy\.js\?v=20261111cloudbubble1/);
-  assert.ok(serviceWorker.includes('phone-app-pwa-v220'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v221'));
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261111cloudbubble1/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
@@ -1300,7 +1300,7 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
   assert.match(detail, /chat-presence-policy\.js\?v=20261111firstcontact1/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v220/);
+  assert.match(serviceWorker, /phone-app-pwa-v221/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261111firstcontact1/);
 });
 
@@ -1422,7 +1422,7 @@ test('chat detail persists voice habits per character and per group session with
   assert.match(detail, /buildVoiceHabitPrompt\(voiceHabitProfile\)/);
   assert.match(detail, /buildEmotionContinuityPrompt/);
   assert.match(detail, /maxScan: 24/);
-  assert.match(serviceWorker, /phone-app-pwa-v220/);
+  assert.match(serviceWorker, /phone-app-pwa-v221/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261111firstcontact1/);
 });
 
@@ -1609,7 +1609,7 @@ test('chat detail injects the role autonomy prompt and precaches the updated pol
   assert.ok(detail.includes('maxNotes: 3'));
   assert.ok(detail.includes('maxTurns: 4'));
   assert.ok(detail.includes('chat-presence-policy.js?v=20261111firstcontact1'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v220'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v221'));
   assert.ok(serviceWorker.includes('chat-presence-policy.js?v=20261111firstcontact1'));
 });
 
@@ -1932,7 +1932,7 @@ test('proactive contact notifier is loaded on home and navigation pages and prec
   assert.match(detail, /chat-notifier\.js\?v=20261111cloudpush1/);
   assert.match(detail, /cloud-push-client\.js\?v=20261111cloudpush1/);
   assert.match(detail, /chat-presence-policy\.js\?v=20261111firstcontact1/);
-  assert.match(serviceWorker, /phone-app-pwa-v220/);
+  assert.match(serviceWorker, /phone-app-pwa-v221/);
   assert.match(serviceWorker, /chat-notifier\.js\?v=20261111cloudpush1/);
   assert.match(serviceWorker, /cloud-push-client\.js\?v=20261111cloudpush1/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261111firstcontact1/);
@@ -1989,7 +1989,7 @@ test('chat, group chat and Moments prompts consume the same public timeline with
   assert.ok(detail.includes('PhoneStorage.getMoments()'));
   assert.ok(momentsPage.includes('role-public-timeline.js?v=20261102v1'));
   assert.ok(momentsPage.includes('RolePublicTimeline.buildRolePrompt'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v220'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v221'));
   assert.ok(serviceWorker.includes('role-public-timeline.js?v=20261102v1'));
 });
   
@@ -2030,7 +2030,7 @@ test('Messages chat-list theme is isolated, cache-busted, grayscale and hides in
 
   assert.ok(chatHome.includes('chat-list-editorial-theme.css?v=20261104v2'));
   assert.ok(chatHome.includes('chat-list-theme.js?v=20261104v2'));
-  assert.match(serviceWorker, /phone-app-pwa-v220/);
+  assert.match(serviceWorker, /phone-app-pwa-v221/);
   assert.ok(serviceWorker.includes('./shared/css/chat-list-editorial-theme.css?v=20261104v2'));
   assert.ok(serviceWorker.includes('./shared/js/chat-list-theme.js?v=20261104v2'));
 
@@ -2172,7 +2172,7 @@ test('whole-chat theme is refreshed when a chat page is restored from browser hi
   ]) {
     assert.ok(read(path).includes('chat-page-theme.js?v=20261105v1'), path + ' should load the refreshed theme bridge');
   }
-  assert.match(serviceWorker, /phone-app-pwa-v220/, 'the PhoneAPI and settings changes require the refreshed PWA cache');
+  assert.match(serviceWorker, /phone-app-pwa-v221/, 'the PhoneAPI and settings changes require the refreshed PWA cache');
 });
 
 
@@ -2327,7 +2327,7 @@ test('WeChat page refinements load on all five core pages and stay isolated from
     'message bubbles must remain under ChatBeauty customization'
   );
   assert.ok(serviceWorker.includes("'./shared/css/wechat-theme-refinements.css?v=20261105v2'"));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v220'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v221'));
   assert.ok(
     wechatThemeCss.includes('.floating-nav .nav-tab > span:nth-of-type(2)::after'),
     'WeChat labels must attach to the second span, not the optional unread badge'
@@ -5215,4 +5215,109 @@ test('商店外卖与钱包余额操作缺少 Web Locks 时在交易前失败关
   assert.equal(attemptedLocks, 0, 'wallet top-up or withdrawal must not enter a writer');
   assert.equal(button.disabled, false, 'blocked wallet submit should restore the button');
   assert.match(amountError.textContent, /不支持跨页面钱包锁.*未修改余额/);
+});
+
+
+test('亲属卡写入必须持有真实共享 Web Lock，直接调用与缺锁写入均被拒绝', async () => {
+  const values = new Map();
+  let writes = 0;
+  const storage = {
+    getItem: key => values.has(key) ? values.get(key) : null,
+    setItem: (key, value) => { writes++; values.set(key, String(value)); }
+  };
+  const window = { navigator: {}, localStorage: storage };
+  runInNewContext(walletLedgerSource, { window });
+  runInNewContext(roleFamilyCardsSource, { window, localStorage: storage });
+  const cards = window.RoleFamilyCards;
+  const ledger = window.MaoMaoWalletLedger;
+  const input = { roleId: 'role-1', monthlyLimit: 100, singleLimit: 25 };
+  assert.equal(cards.createInvite(input), null, 'direct invite cannot bypass lock');
+  await assert.rejects(ledger.runExclusive(() => cards.createInvite(input)),
+    error => error.code === 'cross-tab-lock-unavailable');
+  assert.equal(writes, 0, 'no missing-lock card write');
+  assert.equal(ledger.hasActiveMutationLock(), false);
+
+  let tail = Promise.resolve();
+  window.navigator.locks = {
+    request: (_name, options, callback) => {
+      assert.equal(options.mode, 'exclusive');
+      const next = tail.then(callback);
+      tail = next.catch(() => {});
+      return next;
+    }
+  };
+  assert.equal(cards.createInvite(input), null, 'Web Locks support alone does not grant write access');
+  const invite = await ledger.runExclusive(() => cards.createInvite(input));
+  assert.ok(invite, 'locked invite must succeed');
+  assert.equal((await ledger.runExclusive(() => cards.update(invite.id, 'accept'))).ok, true);
+  const first = await ledger.runExclusive(() =>
+    cards.consume(invite.id, 12, '测试', 'shop', 'payment-id-1'));
+  const replay = await ledger.runExclusive(() =>
+    cards.consume(invite.id, 12, '测试', 'shop', 'payment-id-1'));
+  assert.equal(first.ok, true);
+  assert.equal(replay.ok, true);
+  assert.equal(replay.replayed, true);
+  assert.equal(cards.find(invite.id).history.length, 1, 'replay cannot consume quota twice');
+  assert.equal(ledger.hasActiveMutationLock(), false, 'lease must end after successful write');
+  await assert.rejects(ledger.runExclusive(() => { throw new Error('injected'); }), /injected/);
+  assert.equal(ledger.hasActiveMutationLock(), false, 'lease must also end after thrown error');
+  assert.equal(cards.update(invite.id, 'pause').ok, false, 'no post-lock status change');
+});
+
+test('财务记账和亲属卡页面缺锁时拒绝写入，正常锁内记账仍可执行', async () => {
+  const records = JSON.stringify([{ id: 'f1', type: 'expense', amount: 8, category: '餐饮' }]);
+  const values = new Map([['finance_records', records]]);
+  let writes = 0;
+  const localStorage = {
+    getItem: key => values.has(key) ? values.get(key) : null,
+    setItem: (key, value) => { writes++; values.set(key, String(value)); }
+  };
+  const window = { navigator: {}, localStorage };
+  runInNewContext(walletLedgerSource, { window });
+  const fstart = financePage.indexOf('  function readFinanceRecordsState()');
+  const fend = financePage.indexOf('  function escapeFinanceText(value)', fstart);
+  assert.ok(fstart >= 0 && fend > fstart);
+  const financeSandbox = {
+    window, localStorage, console: { warn: () => {} }, showToast: () => {}
+  };
+  runInNewContext(financePage.slice(fstart, fend), financeSandbox);
+  let financeMutatorCalls = 0;
+  const blocked = await financeSandbox.mutateFinanceRecords(rows => {
+    financeMutatorCalls++;
+    rows.push({ id: 'f2', type: 'income', amount: 9 });
+  });
+  assert.equal(blocked.reason, 'cross-tab-lock-unavailable');
+  assert.equal(financeMutatorCalls, 0);
+  assert.equal(writes, 0);
+  assert.equal(values.get('finance_records'), records);
+  assert.match(financeSandbox.financeMutationError(blocked.reason), /未修改账目/);
+
+  const actionStart = familyCardsPage.indexOf('var pendingCardActions = new Set();');
+  const actionEnd = familyCardsPage.indexOf("\n\n  document.querySelector('.filters')", actionStart);
+  assert.ok(actionStart >= 0 && actionEnd > actionStart);
+  let cardUpdateCalls = 0;
+  const toasts = [];
+  const actionSandbox = {
+    window,
+    api: {
+      find: id => ({ id }),
+      update: () => { cardUpdateCalls++; return { ok: true }; }
+    },
+    appendRoleNotice: () => {}, render: () => {},
+    toast: text => toasts.push(text), console: { warn: () => {} }
+  };
+  runInNewContext(familyCardsPage.slice(actionStart, actionEnd), actionSandbox);
+  await actionSandbox.runAction('pause', 'test-card');
+  assert.equal(cardUpdateCalls, 0, 'no card status write without the shared lock');
+  assert.match(toasts.at(-1), /亲属卡操作已暂停/);
+
+  window.navigator.locks = {
+    request: (_name, _options, callback) => Promise.resolve().then(callback)
+  };
+  const good = await financeSandbox.mutateFinanceRecords(rows => {
+    rows.push({ id: 'f2', type: 'income', amount: 9 });
+    return true;
+  });
+  assert.equal(good.ok, true);
+  assert.equal(JSON.parse(values.get('finance_records')).length, 2);
 });
