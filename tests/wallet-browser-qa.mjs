@@ -61,7 +61,10 @@ try {
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
       await page.goto(url, { waitUntil: 'load' });
-      await page.locator('#productGrid .product').first().click();
+      // The first listed product costs ¥2099; use the ¥49 pen for the ¥500
+      // close-pay allowance, exercising the valid selection rather than quota hiding.
+      const itemIndex = paymentMethod === 'close_pay' ? 7 : 0;
+      await page.locator('#productGrid .product').nth(itemIndex).click();
       await page.getByRole('button', { name: 'BUY NOW' }).click();
       assert.equal(await page.locator('#payView').isVisible(), true);
       assert.equal(await page.evaluate(() => !!navigator.locks?.request), true,
