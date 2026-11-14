@@ -391,9 +391,11 @@ test('封面：两套独立封面都存在时，编辑 myProfile.cover 不改变
 /* ---------- 名片：真实执行 chat-detail.html 的历史读写函数 ---------- */
 
 function loadHistoryFunctions(storageSlots) {
+  const localStorage = createLocalStorage();
   const sandbox = {
     console,
-    localStorage: createLocalStorage(),
+    localStorage,
+    _chatHistoryUnreadable: false,
     currentCharacter: { id: 'roleA' },
     isGroupChat: false,
     // This test exercises local card persistence, not optional cloud context
@@ -410,7 +412,10 @@ function loadHistoryFunctions(storageSlots) {
         return Array.isArray(slot) ? slot.slice() : [];
       },
       saveChatHistory(contactId, list) {
-        storageSlots[contactId] = JSON.parse(JSON.stringify(list));
+        // PhoneStorage writes the authoritative per-role key, not only v2 data.
+        const copy = JSON.parse(JSON.stringify(list));
+        localStorage.setItem('chat_history_' + contactId, JSON.stringify(copy));
+        storageSlots[contactId] = copy;
         return true;
       }
     }
@@ -443,13 +448,13 @@ test('名片：卡片快照只写入当前会话历史，不在其他会话出�
   const listA = sandbox.loadMessages();
   listA.push(card);
   assert.equal(sandbox.saveMessages(listA), true);
-  assert.deepEqual(sandbox.loadMessages(), [card]);
+  assert.deepEqual(JSON.parse(JSON.stringify(sandbox.loadMessages())), [card]);
   assert.match(JSON.stringify(slots.roleA), /卡片甲/);
 
   sandbox.currentCharacter = { id: 'roleB' };
-  assert.deepEqual(sandbox.loadMessages(), []);
+  assert.equal(sandbox.loadMessages().length, 0);
   assert.equal(JSON.stringify(slots.roleB || []).includes('卡片甲'), false);
-  assert.equal(sandbox.localStorage.getItem('chat_history_roleB'), null);
+  assert.deepEqual(JSON.parse(sandbox.localStorage.getItem('chat_history_roleB')), []);
 });
 
 test('名片：刷新后仍只从所属会话读回，不与其他角色共享存储槽', () => {
