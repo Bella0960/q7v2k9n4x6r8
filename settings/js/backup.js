@@ -811,18 +811,18 @@
     // 记录损坏（缺少必要字段）时静默跳过，不 throw。
     // 返回 Promise<{ written: number, skipped: number }>：实际写进 DB 的条数 / 跳过的条数。
     // clearOnRestore: 空数组时也执行 clear()，确保恢复后 store 与备份状态完全一致。
-    function restoreStore(db, storeDef, records, clearOnRestore) {
+    function restoreStore(db, storeDef, records, clearOnRestore, mergeOnly) {
         var blobFields = storeDef.blobFields || [];
         return new Promise(function (resolve, reject) {
             // 无 clearOnRestore 且记录为空 → 跳过（原有行为，不影响非媒体库）
-            if (!Array.isArray(records) || (!records.length && !clearOnRestore)) {
+            if (!Array.isArray(records) || (!records.length && (!clearOnRestore || mergeOnly))) {
                 resolve({ written: 0, skipped: 0 });
                 return;
             }
             var storeName = storeDef.store;
             var tx = db.transaction(storeName, 'readwrite');
             var store = tx.objectStore(storeName);
-            store.clear();
+            if (!mergeOnly) store.clear();
             // 空数组 + clearOnRestore：只执行 clear()，不 put 任何记录
             if (!records.length) {
                 tx.oncomplete = function () { resolve({ written: 0, skipped: 0 }); };
@@ -885,13 +885,14 @@
     // 恢复一个 DB：顺序处理备份里有的 store，一个 store 一个事务。
     // 备份里有我们没登记的 store（兼容性/未来字段）→ 静默跳过。
     // 返回 Promise<{ written: number, skipped: number, dbRestored: boolean }>
-    function restoreDatabase(dbName, version, storeDefs, incomingDb) {
+    function restoreDatabase(dbName, version, storeDefs, incomingDb, mergeOnly) {
         if (!incomingDb || typeof incomingDb !== 'object') return Promise.resolve({ written: 0, skipped: 0, dbRestored: true });
         var db = null;
-        // 从 IDB_TARGETS 中读取 clearOnRestore 标记
+        // 已登记的扩展数据库和内置数据库使用同样的恢复语义。
         var targetDef = null;
-        for (var t = 0; t < IDB_TARGETS.length; t++) {
-            if (IDB_TARGETS[t].db === dbName) { targetDef = IDB_TARGETS[t]; break; }
+        var allTargets = typeof backupTargets === 'function' ? backupTargets() : IDB_TARGETS;
+        for (var t = 0; t < allTargets.length; t++) {
+            if (allTargets[t].db === dbName) { targetDef = allTargets[t]; break; }
         }
         var clearOnRestore = targetDef && targetDef.clearOnRestore;
         return idbOpen(dbName, version, storeDefs).then(function (_db) {
@@ -907,8 +908,9 @@
                 if (!def) return next();
                 var records = incomingDb[sn];
                 // clearOnRestore: 空数组也调用 restoreStore（会执行 clear()），确保恢复状态与备份一致
-                if (!Array.isArray(records) || (!records.length && !clearOnRestore)) return next();
-                return restoreStore(db, def, records, clearOnRestore).then(function (res) {
+                if (!Array.isArray(records) ||
+                    (!records.length && (!clearOnRestore || mergeOnly))) return next();
+                return restoreStore(db, def, records, clearOnRestore, mergeOnly).then(function (res) {
                     totalWritten += res.written;
                     totalSkipped += res.skipped;
                     return next();
