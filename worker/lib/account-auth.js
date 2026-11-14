@@ -330,12 +330,13 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       if (!created) {
         throw new ApiError(429, 'ACCOUNT_REGISTRATION_RATE_LIMITED', '当前网络注册次数过多，请稍后再试');
       }
-      // Confirm the committed SQLite row before declaring registration success.
+      // Verify the committed Durable Object SQLite row before telling the
+      // browser it can rely on this permanent account ID.
       const verified = store.getMaoAccountById(account.id);
       if (!verified || verified.id !== account.id ||
           verified.username_key !== account.usernameKey ||
           verified.role !== 'user' || verified.status !== 'pending_invite') {
-        throw new ApiError(503,'ACCOUNT_SAVE_UNVERIFIED',
+        throw new ApiError(503, 'ACCOUNT_SAVE_UNVERIFIED',
           '账号持久保存尚未确认，请先检查已有账号，不要重复注册');
       }
       return json({ ok: true, account: publicAccount(verified), nextStep: 'invite_required' }, 201);
