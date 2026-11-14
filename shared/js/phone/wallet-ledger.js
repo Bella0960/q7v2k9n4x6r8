@@ -6,6 +6,9 @@
   'use strict';
 
   var LOCK_NAME = 'maomao-wallet-ledger-v1';
+  // Synchronous store adapters (such as RoleFamilyCards.consume) can only
+  // commit while an actual origin-wide wallet lock callback is active.
+  var activeMutationLocks = 0;
   // Keep the exact raw snapshot associated with every wallet object returned by our reader.
   // Callers must not need to remember to provide a separate optimistic version token.
   var walletSnapshotOrigins = typeof WeakMap === 'function' ? new WeakMap() : null;
@@ -19,7 +22,21 @@
     var locks = global.navigator && global.navigator.locks;
     if (locks && typeof locks.request === 'function') {
       return locks.request(LOCK_NAME, { mode: 'exclusive' }, function () {
-        return task();
+        activeMutationLocks += 1;
+        var result;
+        try {
+          result = task();
+        } catch (error) {
+          activeMutationLocks -= 1;
+          throw error;
+        }
+        return Promise.resolve(result).then(function (value) {
+          activeMutationLocks -= 1;
+          return value;
+        }, function (error) {
+          activeMutationLocks -= 1;
+          throw error;
+        });
       });
     }
 
@@ -487,6 +504,9 @@
     supportsCrossTabLock: function () {
       return !!(global.navigator && global.navigator.locks &&
         typeof global.navigator.locks.request === 'function');
+    },
+    hasActiveMutationLock: function () {
+      return activeMutationLocks > 0;
     }
   });
 })(window);
