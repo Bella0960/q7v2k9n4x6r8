@@ -88,13 +88,13 @@ function objectArt(name){
 function render(){
  if(!current)return;
  var c=current,masked=c.type==='蒙面档案',obj=c.type==='以物识人',blind=c.type==='性格盲测';
- cardEl.setAttribute('aria-label','查看 '+(masked?'神秘角色':c.name)+' 的人物档案');
+ cardEl.setAttribute('aria-label',(masked||obj||blind?'揭晓当前陌生人物的身份':'查看 '+c.name+' 的人物档案'));
  cardEl.innerHTML='<div class="card-top"><span>'+escapeHtml(modeCaption(c))+'</span><span class="card-number">'+String(position).padStart(2,'0')+'</span></div>'+
  '<div class="portrait">'+(obj?objectArt(c.object):'<div class="ring" aria-hidden="true"></div>')+
  '<span class="portrait-caption">'+(obj?'A LOST OBJECT':masked?'IDENTITY UNKNOWN':'A STRANGER, FOR NOW')+'</span></div>'+
- '<h2 class="name">'+escapeHtml(masked?'未署名的旅人':blind?'一段陌生的声音':c.name)+'</h2>'+
+ '<h2 class="name">'+escapeHtml(masked?'未署名的旅人':obj?'失主未详':blind?'一段陌生的声音':c.name)+'</h2>'+
  '<p class="hint">'+escapeHtml(masked?'身份暂未公开':blind?'先凭一句话，认识这个人':obj?c.object:c.job+' · '+c.era+' · '+c.gender+' · '+c.age+'岁')+'</p>'+
- '<div class="tags">'+(masked?'<span class="tag">身份未知</span><span class="tag">点击揭晓</span>':blind?'<span class="tag">先听 TA 说</span><span class="tag">点击揭晓</span>':'<span class="tag">'+escapeHtml(c.species)+'</span><span class="tag">'+escapeHtml(c.trait)+'</span><span class="tag">'+escapeHtml(c.era)+'</span>')+'</div>'+
+ '<div class="tags">'+(masked?'<span class="tag">身份未知</span><span class="tag">点击揭晓</span>':obj?'<span class="tag">遗留物件</span><span class="tag">寻找主人</span>':blind?'<span class="tag">先听 TA 说</span><span class="tag">点击揭晓</span>':'<span class="tag">'+escapeHtml(c.species)+'</span><span class="tag">'+escapeHtml(c.trait)+'</span><span class="tag">'+escapeHtml(c.era)+'</span>')+'</div>'+
  '<p class="quote">「'+escapeHtml(obj?'这件东西的主人，留下一段没有讲完的故事。':c.quote)+'」</p>'+
  '<div class="card-footer"><span>一位尚未认识的人</span><span class="look">轻触翻阅档案　＋</span></div>';
  document.getElementById('cardSequence').textContent=String(position).padStart(2,'0')+' / ∞';
