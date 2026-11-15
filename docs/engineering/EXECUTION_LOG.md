@@ -123,3 +123,8 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 2026-11-15 本窗口补充可核验结果：V8 语法编译三个改动脚本均通过；隔离引擎实际运行 50 张不同姓名人物卡、收藏/删除/偏好/原角色隔离通过；损坏候选/配额错误/后发撞名均被拒绝。仍须运行 Node/Vite 与真实浏览器测试。
 - 正式角色创建时同步存入 encounterOrigin v1 结构化来源字段（只对邂逅新角色），为以物识人/命运分支/关联角色模块保留数据接口，旧角色结构不动。
 - 最终复核：e7ac66f 提交后的分支仍仅领先 main，PR #297 为 open/draft；抽卡引擎、UI 脚本、角色编辑器的 JavaScript 编译检查通过。隔离环境连续生成 75 张人物卡，姓名不重复，性别/关系气质字段有效；旧角色未被写动，候选收藏成功。此复核不是 Node/Vite 构建或真机浏览器验收。
+
+- 2026-11-15 邂逅第二轮严格推进：修复原角色库 loadRoles 在读取异常后写回空数组的丢失风险，改为阻止写入与显式警示。PhoneStorage.result.getCharacters 的错误码位于 error.code，抽卡出错时 fail-closed。另修合成 click 拦截过久、短篇 AI 付费结果丢失、AI 草稿持久化假成功与删除候选后仍发起计费请求。原角色正式保存后仍能按需 AI 完善。
+- 校对 chat/chat/chat.html：聊天列表确实读取 ai_custom_characters，现有 role.id 兼容。
+- 本会话使用 V8 内存执行真实分支来源的 17 个合同测试 + 4 个模拟 DOM 手势测试，21/21 PASS（经适配的 JS 测试，不等于完整 Node test / Playwright 真浏览器 / 构建）。原始损坏数据未被修改；正常空角色库可首次保存。
+- PR #297 保持 Draft、未 merge、未 deploy；CI 依旧步骤 0/日志缺失，根因 NOT VERIFIED。下一步必须运行本机 Node、Vite build、Playwright 三视口与真实 Android/iOS 交互，再申请合并。
