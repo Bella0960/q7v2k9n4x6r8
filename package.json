@@ -47,10 +47,10 @@
     "test:role:avatars": "node --test tests/role-avatar-library.test.mjs",
     "test:chat:image-vision": "node --test tests/chat-image-vision.test.mjs",
     "postbuild": "node --test tests/production-assets-isolation.test.mjs && node scripts/record-encounter-build.mjs",
-    "test:encounter": "node --test tests/encounter-contract.test.mjs tests/encounter-ui-contract.test.mjs tests/encounter-actual-scope.test.mjs",
+    "test:encounter": "node --test tests/encounter-contract.test.mjs tests/encounter-ui-contract.test.mjs tests/encounter-actual-scope.test.mjs && node scripts/record-encounter-tests.mjs encounter",
     "test:encounter:browser": "node tests/encounter-browser.mjs",
     "gate:encounter": "node scripts/verify-encounter-release.mjs",
-    "test:account:ui-candidate": "node --test tests/admin-center-ui.test.mjs tests/account-bootstrap-runtime.test.mjs tests/account-password-kdf.test.mjs tests/account-session-expiry.test.mjs tests/worker-page-auth-runtime.test.mjs tests/account-storage-isolation.test.mjs && npm run test:account:release-gate && npm run test:account:registration-persistence",
+    "test:account:ui-candidate": "node --test tests/admin-center-ui.test.mjs tests/account-bootstrap-runtime.test.mjs tests/account-password-kdf.test.mjs tests/account-session-expiry.test.mjs tests/worker-page-auth-runtime.test.mjs tests/account-storage-isolation.test.mjs && npm run test:account:release-gate && npm run test:account:registration-persistence && node scripts/record-encounter-tests.mjs account",
     "test:account:release-gate": "node --test tests/account-cutover-guard.test.mjs",
     "test:account:registration-persistence": "node --test tests/account-registration-persistence.test.mjs"
   },
