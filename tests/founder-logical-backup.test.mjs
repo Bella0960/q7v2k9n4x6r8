@@ -202,7 +202,7 @@ test('formal capture writes sealed bytes to the private vault and returns only m
     state: { ...source.state, id: ROOT_OBJECT_ID },
     env: {
       FOUNDER_BACKUP_CAPTURE_MODE: 'read-only-sealed-backup',
-      FOUNDER_BACKUP_ENCRYPTION_KEY: randomToken(32), FOUNDER_RELEASE_OPERATOR_SECRET: secret,
+      FOUNDER_BACKUP_ENCRYPTION_KEY: randomToken(32), FOUNDER_BACKUP_CAPTURE_SECRET: secret,
       FOUNDER_BACKUP_VAULT: { put: (key, value) => vault.set(key, value) }
     },
     request: new Request('https://maomao.internal' + FOUNDER_BACKUP_PATH, {
@@ -234,7 +234,7 @@ test('formal capture writes sealed bytes to the private vault and returns only m
   const env = {
     FOUNDER_RESTORE_OBJECT_ID: disposableObjectId,
     FOUNDER_RESTORE_NAMESPACE_ID: isolatedNamespace,
-    FOUNDER_RELEASE_OPERATOR_SECRET: secret,
+    FOUNDER_BACKUP_CAPTURE_SECRET: secret,
     LIVE_CLOUD_DB: { idFromString: id => id, get: id => ({
       fetch: request => {
         assert.equal(id, ROOT_OBJECT_ID);

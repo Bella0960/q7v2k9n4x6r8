@@ -24,7 +24,7 @@ export async function captureFounderBackupInternal({ request, env, state, now = 
     return respond({ ok: false, error: 'not_found' }, 404);
   }
   if (!matchesSecret(request.headers.get('x-maomao-release-secret') || '',
-    env.FOUNDER_RELEASE_OPERATOR_SECRET || '')) {
+    env.FOUNDER_BACKUP_CAPTURE_SECRET || '')) {
     return respond({ ok: false, error: 'forbidden' }, 403);
   }
   const start = Number(request.headers.get('x-maomao-backup-from'));

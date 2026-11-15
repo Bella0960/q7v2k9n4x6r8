@@ -15,7 +15,7 @@ export async function runPrivateFounderBackup({ env, activation, now = Date.now 
     return { ok: false, code: 'backup_activation_invalid' };
   }
   const targetId = env.FOUNDER_RESTORE_OBJECT_ID;
-  const token = env.FOUNDER_RELEASE_OPERATOR_SECRET;
+  const token = env.FOUNDER_BACKUP_CAPTURE_SECRET;
   const vault = env.FOUNDER_BACKUP_VAULT;
   const audit = env.RELEASE_AUDIT;
   const source = env.LIVE_CLOUD_DB;
