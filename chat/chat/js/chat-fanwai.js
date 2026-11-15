@@ -7,11 +7,12 @@
   if (typeof document !== 'undefined' && document.querySelector) {
     var earlyMeta = document.querySelector('meta[name="mao-account-id"]');
     var earlyAccount = earlyMeta ? earlyMeta.getAttribute('content') : '';
-    if (/^MAO-[A-Z0-9]{12,24}$/.test(earlyAccount)) {
+    if (earlyMeta) {
       var earlyScope = global.__MAO_ACCOUNT_SCOPE__;
-      if (!earlyScope || earlyScope.ready !== true ||
+      if (!/^MAO-[A-Z0-9]{12,24}$/.test(earlyAccount) ||
+          !earlyScope || earlyScope.ready !== true ||
           earlyScope.accountId !== earlyAccount) {
-        console.warn('[Fanwai] 当前账号隔离尚未就绪，番外和扩展接口均不加载');
+        console.warn('[Fanwai] 账号标识无效或隔离尚未就绪，番外和扩展接口均不加载');
         return;
       }
     }
