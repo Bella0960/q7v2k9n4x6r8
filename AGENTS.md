@@ -8,13 +8,13 @@ Read these files first:
 
 1. **docs/engineering/RELEASE_PLAYBOOK.md — 唯一任务、环境、QA、整合及正式发布流程；发布事实按最近一次核验为准。**
 2. docs/engineering/README.md — authoritative project baseline and document map.
-2. docs/engineering/PROJECT_ARCHITECTURE.md — current architecture and app inventory.
-3. docs/engineering/STORAGE_AND_MIGRATION.md — storage facts, target design, and migration safety rules.
-4. docs/engineering/DEVELOPMENT_GOVERNANCE.md — branches, workflows, testing, security, and collaboration rules.
-5. docs/engineering/REMEDIATION_BACKLOG.md — approved task IDs and acceptance criteria.
-6. docs/chat-architecture-contract.md and docs/chat-regression-baseline.md before touching chat.
-7. docs/MAOMAO_VISUAL_DESIGN_CONSTITUTION.md before touching UI or visual design.
-8. CLAUDE.md for additional repository-specific context. If it conflicts with the engineering documents, report the conflict and follow the newer, explicitly verified engineering baseline.
+3. docs/engineering/PROJECT_ARCHITECTURE.md — current architecture and app inventory.
+4. docs/engineering/STORAGE_AND_MIGRATION.md — storage facts, target design, and migration safety rules.
+5. docs/engineering/DEVELOPMENT_GOVERNANCE.md — branches, workflows, testing, security, and collaboration rules.
+6. docs/engineering/REMEDIATION_BACKLOG.md — approved task IDs and acceptance criteria.
+7. docs/chat-architecture-contract.md and docs/chat-regression-baseline.md before touching chat.
+8. docs/MAOMAO_VISUAL_DESIGN_CONSTITUTION.md before touching UI or visual design.
+9. CLAUDE.md for additional repository-specific context. If it conflicts with the engineering documents, report the conflict and follow the newer, explicitly verified engineering baseline.
 
 **All work windows and scheduled agents must use the single PR status and release gate in RELEASE_PLAYBOOK.md. Never invent a new preview/production endpoint, or equate merging with deploying.**
 
