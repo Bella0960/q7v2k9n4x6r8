@@ -175,7 +175,7 @@
         var saved = recall.getMemories(context.character.id);
         if (Array.isArray(saved)) {
           var lines = saved.filter(function (item) {
-            if (!item || item.status === 'pending' || item.status === 'rejected') return false;
+            if (!item || (item.status !== 'confirmed' && item.status !== 'fixed')) return false;
             if (item.sourceRoleId && String(item.sourceRoleId) !== context.character.id) return false;
             return typeof (item.content || item.text) === 'string';
           }).sort(function (a, b) {
