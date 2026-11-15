@@ -170,7 +170,8 @@
   .p-body { font-size: 11px; line-height: 1.95; color: #656565; margin: 9px 0 0; overflow-wrap: anywhere; white-space: pre-wrap; }
   /* 回复提示条：清晰显示回复对象 */
   .reply-hint {
-    position: fixed; bottom: 64px; left: 50%; transform: translateX(-50%);
+    /* Fallback follows the Home Indicator band even before dynamic measurement. */
+    position: fixed; bottom: calc(var(--maomao-home-indicator-comment-bottom, calc(24px + env(safe-area-inset-bottom,0px))) + 66px); left: 50%; transform: translateX(-50%);
     width: 100%; max-width: 390px;
     display: flex; align-items: center; gap: 8px;
     padding: 9px 22px;
@@ -263,6 +264,38 @@
   </div>
 
 <script>
+/* Keep the reply target above the real composer, including image previews.
+ * The composer can grow or move when the independent Home Indicator toggles;
+ * the old fixed 64px reply hint could cover the input. */
+(function keepReplyHintAboveComposer() {
+  var composer = document.querySelector('.comment-bar');
+  var hint = document.getElementById('replyHint');
+  if (!composer || !hint) return;
+  var pending = false;
+  function sync() {
+    pending = false;
+    var size = composer.getBoundingClientRect().height;
+    var offset = parseFloat(window.getComputedStyle(composer).bottom);
+    if (!Number.isFinite(offset)) offset = 0;
+    hint.style.bottom = Math.ceil(size + offset + 8) + 'px';
+  }
+  function schedule() {
+    if (pending) return;
+    pending = true;
+    window.requestAnimationFrame(sync);
+  }
+  if (typeof ResizeObserver === 'function') {
+    new ResizeObserver(schedule).observe(composer);
+  }
+  window.addEventListener('resize', schedule);
+  window.addEventListener('pageshow', schedule);
+  window.addEventListener('maomao:home-indicator-change', schedule);
+  window.addEventListener('storage', function (event) {
+    if (!event.key || event.key === 'settings_home_indicator_visible') schedule();
+  });
+  schedule();
+})();
+
 function readForumConfig(){try{return JSON.parse(localStorage.getItem('forum_config')||'{}')}catch(e){console.warn('[Forum] readForumConfig 读取 forum_config 失败，按默认配置继续',e);return {}}}
 const THEME_PRESETS={
  reality:{name:'现代都市',english:'CITY / EVERYDAY',tagline:'城市日常 / 把普通日子里的细节，留在这里。',motto:'LIFE IN THE EVERYDAY',featureTitle:'今天的城市生活，又有什么新鲜事？',featureDeck:'生活观察、工作见闻、邻里小事与临时起意的分享，都可以在这里慢慢聊。',topics:['全部','今日话题','生活观察','职场见闻','邻里闲谈','深夜碎念','随手分享']},
