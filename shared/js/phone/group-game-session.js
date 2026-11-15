@@ -84,7 +84,11 @@
     if (req.actorId !== '__user') return error('NO_PERMISSION','只有群主可以开始秘密游戏');
     var template = templates[id(req.gameId || 'mystery')];
     if (!template || template.mode !== 'session') return error('UNKNOWN_GAME','该玩法尚未接入独立对局');
-    var previous = game(gid, storage);
+    var previous = game(gid, storage), rawExisting;
+    try { rawExisting = storage.getItem(publicKey(gid)); }
+    catch (e) { return error('STORAGE_UNAVAILABLE','暂时无法读取原有对局，已停止新建'); }
+    if (rawExisting !== null && !previous)
+      return error('CORRUPT_SESSION','旧游戏记录异常，已保护原始数据，不会覆盖');
     if (previous && previous.status === 'active') return error('ALREADY_ACTIVE','请先结束正在进行的游戏');
     var players = groupMemberIds(group);
     if (players.length < 2 || players.length > 24 || new Set(players).size !== players.length)
