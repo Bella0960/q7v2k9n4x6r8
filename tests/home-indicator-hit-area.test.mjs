@@ -361,6 +361,42 @@ async function runViewport(browser, baseUrl, viewport) {
     };
   });
 
+  // A reply hint must not overlap the composer. Preview images expand the
+  // composer, so a static bottom:64px causes real input obstruction.
+  const hintMetrics = () => page.evaluate(() => {
+    const hint = document.getElementById('replyHint');
+    const composer = document.querySelector('.comment-bar');
+    const hr = hint.getBoundingClientRect();
+    const cr = composer.getBoundingClientRect();
+    return { hintBottom: hr.bottom, composerTop: cr.top, composerHeight: cr.height,
+      bottomCSS: getComputedStyle(hint).bottom };
+  });
+  await page.evaluate(() => { document.getElementById('replyHint').style.display = 'flex'; });
+  let replyMetrics = await hintMetrics();
+  add('forum-detail.reply-hint.above-composer',
+    replyMetrics.hintBottom <= replyMetrics.composerTop - 6, replyMetrics);
+  const composerBeforePreview = replyMetrics.composerHeight;
+
+  await page.evaluate(() => {
+    const probe = document.createElement('div');
+    probe.id = 'home-indicator-preview-size-probe';
+    probe.style.height = '60px';
+    document.getElementById('commentImagePreview').appendChild(probe);
+  });
+  await page.waitForFunction(() => {
+    const bar = document.querySelector('.comment-bar');
+    return bar.getBoundingClientRect().height > 90 &&
+      document.getElementById('replyHint').getBoundingClientRect().bottom <= bar.getBoundingClientRect().top - 6;
+  }, null, { timeout: 1500 }).catch(() => {});
+  replyMetrics = await hintMetrics();
+  add('forum-detail.reply-hint.stays-above-expanded-composer',
+    replyMetrics.composerHeight > composerBeforePreview + 45 &&
+    replyMetrics.hintBottom <= replyMetrics.composerTop - 6, replyMetrics);
+  await page.evaluate(() => {
+    document.getElementById('home-indicator-preview-size-probe')?.remove();
+    document.getElementById('replyHint').style.display = 'none';
+  });
+
   // The visual 140px shell is aria-hidden and must not be a second keyboard
   // tab stop. Its separate 84px hit-target remains the accessible button.
   const homeA11y = await page.evaluate(() => {
