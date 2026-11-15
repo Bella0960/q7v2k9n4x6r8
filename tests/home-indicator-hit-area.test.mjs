@@ -369,6 +369,8 @@ async function runViewport(browser, baseUrl, viewport) {
     const hr = hint.getBoundingClientRect();
     const cr = composer.getBoundingClientRect();
     return { hintBottom: hr.bottom, hintHeight: hr.height,
+      hintLeft: hr.left, hintWidth: hr.width,
+      composerLeft: cr.left, composerWidth: cr.width,
       composerTop: cr.top, composerHeight: cr.height,
       composerBottom: parseFloat(getComputedStyle(composer).bottom) || 0,
       contentScrollClearance: parseFloat(getComputedStyle(document.body).paddingBottom) || 0,
@@ -390,6 +392,10 @@ async function runViewport(browser, baseUrl, viewport) {
   let replyMetrics = await hintMetrics();
   add('forum-detail.reply-hint.above-composer',
     replyMetrics.hintBottom <= replyMetrics.composerTop - 6, replyMetrics);
+  add('forum-detail.reply-hint.matches-mobile-composer-width',
+    Math.abs(replyMetrics.hintLeft - replyMetrics.composerLeft) <= 1 &&
+    Math.abs(replyMetrics.hintWidth - replyMetrics.composerWidth) <= 1,
+    replyMetrics);
   add('forum-detail.reply-hint.content-scroll-clearance',
     replyMetrics.contentScrollClearance >=
       replyMetrics.composerHeight + replyMetrics.composerBottom + replyMetrics.hintHeight + 14,
