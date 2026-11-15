@@ -1017,6 +1017,9 @@
     var morePanel = document.createElement('div');
     morePanel.className = 'fw-reader-menu';
     morePanel.hidden = true;
+    if (state.unsavedEpisode === episode && episode.messages.length) {
+      morePanel.appendChild(button('copy-unsaved', '复制当前对话备份', ''));
+    }
     if (!state.busy && episode.messages.length >= 12) {
       morePanel.appendChild(button('fork', '另一种走向', ''));
     }
@@ -1262,6 +1265,27 @@
       menu.hidden = !menu.hidden;
       node.setAttribute('aria-expanded', menu.hidden ? 'false' : 'true');
       node.setAttribute('aria-label', menu.hidden ? '更多番外操作' : '收起更多操作');
+      return;
+    }
+    if (key === 'copy-unsaved') {
+      var episodeToCopy = state.active;
+      if (!episodeToCopy || state.unsavedEpisode !== episodeToCopy ||
+          !Array.isArray(episodeToCopy.messages) || !episodeToCopy.messages.length) return;
+      var clipboard = global.navigator && global.navigator.clipboard;
+      if (!clipboard || typeof clipboard.writeText !== 'function') {
+        showNotice('当前浏览器无法复制，请长按对话文字手动备份');
+        return;
+      }
+      var text = (episodeToCopy.name || '番外') + '\n\n' +
+        episodeToCopy.messages.map(function (message) {
+          return (message.role === 'user' ? '我' : '角色') + '：' + message.text;
+        }).join('\n\n');
+      try {
+        await clipboard.writeText(text); // 必须由用户明确点击，不自动触碰系统剪贴板。
+        showNotice('已复制对话，请粘贴至安全位置备份');
+      } catch (error) {
+        showNotice('复制未成功，请长按对话文字手动备份');
+      }
       return;
     }
     if (key === 'return-story') {
