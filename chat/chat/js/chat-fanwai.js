@@ -420,7 +420,7 @@
     var completion = settingsWriteQueue.then(write, write);
     settingsWriteQueue = completion.then(function () {}, function () {});
     return completion.then(function (saved) {
-      if (!saved && settingVersion === settingsWriteVersion) {
+      if (canPersist && !saved && settingVersion === settingsWriteVersion) {
         showNotice('故事设置未能保存，下次打开可能需要重新选择');
       }
       return saved;
