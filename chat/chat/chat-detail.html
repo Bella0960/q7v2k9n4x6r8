@@ -6646,7 +6646,10 @@
                 if (fullText) {
                     // ---- 标记剥离 → 清洗 → 落库 → 重渲染（成功与中断保文共用同一套收尾） ----
                     // 群投票/接龙/群管理标记先落到当前历史与群资料，再清理展示文本
-                    fullText = processGroupInteractionMarkers(fullText, groupReplyPick, historyList, isRegen, isGroupFollowup, streamResult.ok);
+                    var pendingGameWhisper = null;
+                    fullText = processGroupInteractionMarkers(fullText, groupReplyPick, historyList, isRegen, isGroupFollowup, streamResult.ok, function (event) {
+                        pendingGameWhisper = event;
+                    });
                     // 私聊角色可以发出待同意的群邀请；必须等模型完整成功，不允许中断回复改变入群状态。
                     if (window.GroupGovernance) {
                         fullText = fullText.replace(/\[群邀请[:：]([^\]]{1,100})\]/g, function (marker, proposedGroupId) {
@@ -6783,6 +6786,14 @@
                         window.__groupPrivateCardPending = false;
                         transferDecisionSnapshots = applyTransferDecisionMarkers(historyList, parsedTransferDecision.amounts);
                         var replySaved = saveMessages(historyList);
+                        // Commit private game actions only after the public AI turn
+                        // has survived its existing history write + verification.
+                        if (replySaved && pendingGameWhisper && window.GroupGameSessions) {
+                            var gameWhisperResult = window.GroupGameSessions.sendWhisper(pendingGameWhisper);
+                            if (!gameWhisperResult.ok && typeof showToast === 'function') {
+                                showToast(gameWhisperResult.message || '游戏私聊没有保存成功');
+                            }
+                        }
                         var replySaveFailed = !replySaved;
                         var avatarRoleId = aliasRoleId || currentCharacter.id;
                         if (replySaved && !isGroupChat && window.RoleAvatarLibrary &&
@@ -8172,7 +8183,7 @@
 
 
         // ===== 群投票 / 群接龙 / 角色群管理标记 =====
-        function processGroupInteractionMarkers(rawText, speaker, historyList, isRegeneration, isGroupFollowup, isCompleted) {
+        function processGroupInteractionMarkers(rawText, speaker, historyList, isRegeneration, isGroupFollowup, isCompleted, queueGameWhisper) {
             var text = String(rawText || '');
             if (!isGroupChat || !currentGroup || !Array.isArray(historyList)) return text;
             var changedHistory = false;
@@ -8298,20 +8309,18 @@
                 if (gameWhisperSeen) return '';
                 gameWhisperSeen = true;
                 if (!isCompleted || isRegeneration || contextOnly || !speaker || speaker.id == null ||
-                    !window.GroupGameSessions) return '';
+                    !window.GroupGameSessions || typeof queueGameWhisper !== 'function') return '';
                 var activeGame = window.GroupGameSessions.getPublic(String(currentGroup.id));
                 var senderId = String(speaker.id), recipientId = String(recipientKey).trim();
                 if (!activeGame || activeGame.status !== 'active' ||
                     activeGame.players.indexOf(senderId) === -1 ||
                     activeGame.players.indexOf(recipientId) === -1 ||
                     senderId === recipientId) return '';
-                var outcome = window.GroupGameSessions.sendWhisper({
+                queueGameWhisper({
                     groupId: String(currentGroup.id), fromId: senderId, toId: recipientId,
                     text: String(whisperText).trim(),
                     eventId: 'gw' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12)
                 });
-                if (!outcome.ok && typeof showToast === 'function')
-                    showToast(outcome.message || '游戏私聊没有保存成功');
                 return '';
             });
             var settings = getGroupSettings();
