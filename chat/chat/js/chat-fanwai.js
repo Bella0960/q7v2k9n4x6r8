@@ -740,7 +740,8 @@
     var saved = label('div', 'fw-saved', '正在整理最近的故事…');
     sheet.appendChild(saved);
     var episodes = await listSaved();
-    if (!state.opened || state.busy || state.selected) return;
+    if (!state.opened || state.busy || state.selected || viewSerial !== state.viewSerial ||
+        !state.root.contains(saved)) return;
     renderArchive(saved, episodes);
     sheet.scrollTop = 0;
   }
