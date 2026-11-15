@@ -93,6 +93,16 @@
     c.member.muted = false; c.member.mutedUntil = 0;
     return { ok: true, message: '已解除禁言' };
   }});
+  // Custom group title is group-local. Never edit the character's original profile.
+  registerAction('set-title', { scope: 'admin', run: function (c) {
+    var check = editable(c); if (!check.ok) return check;
+    var title = id(c.options.title);
+    if (title.length > 20 || /[\r\n]/.test(title)) return fail('INVALID_TITLE', '群头衔最多20个字');
+    c.member.title = title;
+    return { ok: true, message: title
+      ? '已为「' + (c.member.nickname || c.member.name || '成员') + '」设置专属头衔'
+      : '已清除该成员的专属头衔' };
+  }});
   registerAction('promote', { scope: 'owner', run: function (c) {
     if (!c.member || id(c.member.id) === id(c.group.ownerId)) return fail('INVALID_TARGET', '不能修改群主身份');
     c.member.isAdmin = true;
