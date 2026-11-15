@@ -1059,6 +1059,8 @@
 
   async function close() {
     if (!state.opened) return;
+    // 立刻让旧创建/生成视图失效；保存仍在进行时不隐藏当前可复制的草稿。
+    state.viewSerial++;
     var save;
     if (state.busy) save = pause();
     else if (state.pendingPause) save = state.pendingPause;
@@ -1071,7 +1073,6 @@
       return;
     }
     state.opened = false;
-    state.viewSerial++;
     state.branchSource = null;
     state.root.hidden = true;
   }
