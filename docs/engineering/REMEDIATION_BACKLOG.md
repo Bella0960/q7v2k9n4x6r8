@@ -4,6 +4,31 @@ This backlog divides the full cleanup into independent, reviewable tasks. Agents
 
 Status vocabulary: OPEN, IN PROGRESS, FIXED, DEFERRED, NOT VERIFIED.
 
+## 新增全局 Bug 轨道（2026-11-15；不重复建立修复 PR）
+
+首轮 [全局 Bug 审计与证据清单](GLOBAL_BUG_AUDIT_20261115.md) 已覆盖 main 90 个 HTML 页面直接静态链接、现有测试、Cloudflare 发布历史及关键存储路径。**仅静态核查，不等于全站动态/真机测试**。必须按 [统一流程](RELEASE_PLAYBOOK.md) 在原 PR 开发、QA 和发布。
+
+### NAV-001 — 全局跨文件夹跳转路径重复／错误目录（用户反馈）
+**Priority:** P1 · **Status:** OPEN / NOT VERIFIED（用户报告可见症状，尚未定位实时根因）
+
+范围：跨目录 `href/src/data-href`、JS 运行时 URL 拼接、前进后退、子路径部署、Service Worker 更新及浏览器深链接。避免相对路径把目录一层层叠上去，或 404 后回首页冒充成功。
+
+当前证据：main 90 个 HTML 文件的可解析静态直接链接，本轮未发现指向不存在的目标。桌面/生产导航浏览器测试目前只实际点击第一个图标；其余动态跨目录链路尚未验收。
+
+复用：先核对 [PR #207](https://github.com/Bella0960/MAOMAO/pull/207) 的 PWA 导航、[PR #159](https://github.com/Bella0960/MAOMAO/pull/159) / [#160](https://github.com/Bella0960/MAOMAO/pull/160) 的真实路由测试；旧 PR 与最新 main 分叉时**不得整文件回滚**，在原 PR 中补齐测试/最小修复，不重复新建导航系统。
+
+验收：**至少**桌面→聊天→联系人→详情→返回、论坛→帖子→返回、钱包→店铺→返回、设置→子页→返回、世界书→角色库→返回，反复 10 轮，在根域和子路径部署下均不得叠路径；覆盖刷新、PWA 缓存升级、带参数/中文路径、Android Chrome/iPhone Safari。每步核对最终 URL、HTTP/Worker 状态与页面内容；必须真实浏览器测试，不能只跑正则。
+
+### NAV-002 — 论坛详情页 Home Indicator 点击区域缺失
+**Priority:** P1 · **Status:** SOURCE-VERIFIED / FIX CANDIDATE IN ORIGINAL PR #245
+
+当前 main `shared/js/home-indicator.js` 在存在 `.comment-bar` 时不生成 84×4 点击层，而底部线本身 `pointer-events:none`；`forum/forum-detail.html` 确实有 `.comment-bar`。在 [原 PR #245](https://github.com/Bella0960/MAOMAO/pull/245) 先检查相对最新 main 的改动，补实机“返回桌面”和“评论可输入”双向命中测试，避免独立重修。
+
+### QA-GLOBAL-001 — 90 页真实交互与 Bug 定期回归
+**Priority:** P0 for release / P1 ongoing · **Status:** IN PROGRESS (static URL review only)
+
+每次发布前按模块整理“已确认／待复现／已修复且实测”证据，自动生成页面路径清单，进行 Node、构建、Playwright 浏览器与唯一隔离 QA 的 Android/iPhone 关键跨页路径验收。历史报告必须以当前 main/PR 实际源代码和运行结果复核，不得复制旧 Bug 状态；保留失败 URL/步骤、所属原 PR、数据影响、回滚办法。
+
 ## Phase 0 — Establish an accurate baseline
 
 ### GOV-001 — Reconcile project documentation
