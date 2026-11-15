@@ -22,6 +22,7 @@
     }
     function isSensitiveKey(key) {
         var value = String(key || '');
+        if (/^phone_group_game_(?:private_)?v1_/.test(value)) return true;
         if (['api_settings', 'api_profiles_v1', 'minimax_tts_config'].indexOf(value) >= 0) return true;
         if (/^(access_token|refresh_token|session_token|auth_token|password|api_key|private_key)$/i.test(value)) return true;
         if (/(?:^|[_-])(?:session|auth|access|refresh)[_-]?token(?:$|[_-])/i.test(value) ||
@@ -130,7 +131,8 @@
     register({
         id: 'characters', label: '角色、记忆与世界书',
         keys: ['ai_custom_characters','phone_data_v2'],
-        prefixes: ['worldbook_', 'world_book_', 'memory_', 'char_', 'character_',
+        prefixes: ['worldbook_', 'world_book_', 'memory_', 'chat_memories_',
+          'phone_group_memory_public_events_v1_', 'char_', 'character_',
           'role_', 'phone_character_', 'relationship_', 'ai_character_'],
         databases: ['maomao-assets']
     });
