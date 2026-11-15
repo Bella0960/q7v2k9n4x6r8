@@ -6,6 +6,7 @@
 <title>群聊玩法 · 小手机</title>
 <script src="../../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../../shared/js/native-feel.js"></script>
+<script src="../../shared/js/group-governance.js?v=20261115g1"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{color-scheme:light;--ink:#111;--muted:#888;--line:#e9e9ed;--paper:#fff;--wash:#f7f7f9}
@@ -143,7 +144,7 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
         <span class="switch"><input type="checkbox" data-setting="spectatorMode"><span class="track"></span></span>
       </label>
       <label class="setting">
-        <span class="setting-copy"><span class="setting-title">允许角色自主管理群聊</span><span class="setting-desc">管理员或群主可按剧情提出改群名、邀请现有角色入群或移除成员；实际变更会保存到群资料。</span></span>
+        <span class="setting-copy"><span class="setting-title">允许角色自主管理群聊</span><span class="setting-desc">管理员或群主可按剧情改群名、邀请或移除角色，也可以根据你明确的指令禁言或解禁成员；权限验证后才会保存。</span></span>
         <span class="switch"><input type="checkbox" data-setting="allowRoleActions"><span class="track"></span></span>
       </label>
       <label class="setting">
@@ -194,7 +195,16 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       <button type="button" id="transferOwnerBtn" style="width:100%;height:40px;margin-top:10px;border:1px solid #111;border-radius:10px;background:#111;color:#fff;font:inherit;font-size:12px;cursor:pointer;">确认转让群主</button>
       <p class="hint">转让仅改变群聊内的模拟群主身份，不会影响角色库。群主仍可在本页面管理群设置。</p>
     </div>
+    <details style="margin:14px 0 2px;font-size:12px;color:#666">
+      <summary style="cursor:pointer;padding:10px 1px">··· 更多群管理</summary>
+      <button id="leaveGroupBtn" type="button" style="width:100%;height:39px;border:1px solid #e8e8ec;background:#fafafc;border-radius:10px;margin-top:8px;color:#333;font:inherit;cursor:pointer">退出群聊</button>
+      <p class="hint">退出后群聊会从你的列表隐藏。角色可以再次邀请你，但必须经过你同意才能重新入群；原聊天记录保留。</p>
+    </details>
 
+    <div class="setting" style="margin-top:14px">
+      <span class="setting-copy"><span class="setting-title">允许角色向我发起群邀请</span><span class="setting-desc">退出群聊后，群里的角色可以邀请你回来；是否接受始终由你决定。</span></span>
+      <span class="switch"><input type="checkbox" data-setting="allowRoleInvitations"><span class="track"></span></span>
+    </div>
     <div class="section"><h3>成员资料</h3><span>IDENTITY / HOURS</span></div>
     <div id="membersList" class="members"></div>
     <p class="hint">群昵称和专属头衔只影响群聊显示，不会修改角色库原始资料。禁言与作息只影响该角色能否被选中发言。</p>
@@ -233,7 +243,7 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
     document.getElementById('groupTitle').textContent='群聊不存在';
   }else{
     if(!group.settings||typeof group.settings!=='object')group.settings={};
-    var defaults={scheduleEnabled:false,memorySharing:false,spectatorMode:false,allowRoleActions:false,allowPrivateMessages:true,autoTalkEnabled:false,relationshipDynamicsEnabled:true,followUpEnabled:false};
+    var defaults={scheduleEnabled:false,memorySharing:false,spectatorMode:false,allowRoleActions:false,allowRoleInvitations:true,allowPrivateMessages:true,autoTalkEnabled:false,relationshipDynamicsEnabled:true,followUpEnabled:false};
     Object.keys(defaults).forEach(function(key){if(typeof group.settings[key]!=='boolean')group.settings[key]=defaults[key];});
     var autoRounds=Number(group.settings.autoTalkRounds);
     if([0,1,2].indexOf(autoRounds)===-1)group.settings.autoTalkRounds=1;
@@ -310,7 +320,7 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
     var expandedMembers={};
     var CHEVRON_SVG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
     function memberSummary(member){
-      return '角色 · '+escapeHtml(member.name||'未命名角色')+(member.nickname?' · 群昵称 · '+escapeHtml(member.nickname):'');
+      return '角色 · '+escapeHtml(member.name||'未命名角色')+(member.nickname?' · 群昵称 · '+escapeHtml(member.nickname):'')+(member.isAdmin?' · 管理员':'')+(window.GroupGovernance&&window.GroupGovernance.isMuted(member)?' · 禁言中':'');
     }
     function renderMembers(){
       var list=document.getElementById('membersList');
@@ -510,6 +520,14 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       var member=(group.members||[]).find(function(m){return String(m.id)===String(card.getAttribute('data-member-id'));});
       if(!member)return;
       var field=input.getAttribute('data-member-field');
+      if((field==='isAdmin'||field==='muted')&&window.GroupGovernance){
+        var action=field==='isAdmin'?(input.checked?'promote':'demote'):(input.checked?'mute':'unmute');
+        var result=window.GroupGovernance.apply({group:group,actorId:'__user',action:action,target:String(member.id),save:function(){return persist();}});
+        if(!result.ok)notify(result.message||'没有群管理权限');
+        else notify(result.message||'群管理已保存');
+        renderMembers();renderOwner();renderRelationships();
+        return;
+      }
       if(input.type==='checkbox')member[field]=input.checked;
       else if(field==='talkativeness')member.talkativeness=Math.max(0,Math.min(1,Number(input.value)||0));
       else if(field==='replyThreshold')member.replyThreshold=Math.max(30,Math.min(85,parseInt(input.value,10)||55));
@@ -542,6 +560,13 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       if(String(group.ownerId)===String(id))group.ownerId='__user';
       delete expandedMembers[String(id)];
       persist('已移出群聊');renderMembers();renderOwner();renderRelationships();
+    });
+    document.getElementById('leaveGroupBtn').addEventListener('click',function(){
+      if(!window.GroupGovernance){notify('群管理模块未加载');return;}
+      if(!confirm('确定退出「'+String(group.name||'群聊')+'」？原有聊天记录会保留。'))return;
+      var result=window.GroupGovernance.leave({group:group,save:function(){return persist();}});
+      if(!result.ok){notify(result.message||'退群没有成功');return;}
+      location.href='chat.html';
     });
     renderSettings();renderMembers();renderOwner();renderRelationships();
   }
