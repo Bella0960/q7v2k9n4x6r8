@@ -146,7 +146,9 @@ test('multiple private markers can only deliver the first one per saved turn', (
   assert.equal(h.data.has('chat_history_r1'), false);
   const settled = tx.finalize(true);
   assert.equal(settled.ok, true);
-  assert.equal(settled.committed, 1, 'only one ordinary private message may be queued');
+  assert.equal(h.events.filter((event) => event.startsWith('admin:')).length, 1,
+    'the fixture also contains one independent admin instruction');
+  assert.equal(h.privatePopupCount, 1, 'no duplicate private delivery');
   const saved = JSON.parse(h.data.get('chat_history_r1'));
   assert.equal(saved.length, 1);
   assert.equal(saved[0].text, '第一条');
