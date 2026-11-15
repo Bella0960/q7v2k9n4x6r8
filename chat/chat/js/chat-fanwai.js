@@ -358,7 +358,7 @@
     stopped: false, serial: 0, opened: false, branchSource: null, forkPoint: 0,
     settings: { memory: 'none', count: null },
     settingsLoaded: false, settingsPromise: null, archiveLimit: 12, viewSerial: 0,
-    currentAbort: null, pendingPause: null
+    currentAbort: null, pendingPause: null, unsavedEpisode: null
   };
   var memory = new Map();
   var dbConnection = null;
@@ -470,6 +470,7 @@
       if (!database) {
         if (!canPersist) { memory.set(snapshot.id, snapshot); return true; }
         persistenceFailed = true;
+        if (state.active === episode) state.unsavedEpisode = episode;
         return false;
       }
       return new Promise(function (resolve) {
@@ -477,8 +478,13 @@
         function finish(ok) {
           if (settled) return;
           settled = true;
-          if (ok) memory.set(snapshot.id, snapshot);
-          else persistenceFailed = true;
+          if (ok) {
+            memory.set(snapshot.id, snapshot);
+            if (state.unsavedEpisode === episode) state.unsavedEpisode = null;
+          } else {
+            persistenceFailed = true;
+            if (state.active === episode) state.unsavedEpisode = episode;
+          }
           resolve(ok);
         }
         try {
@@ -1040,7 +1046,7 @@
     renderReader();
     var completion = Promise.resolve(save).then(function (saved) {
       if (!saved && canPersist && episode && state.active === episode &&
-          pausedSerial === state.serial) {
+          state.unsavedEpisode === episode && pausedSerial === state.serial) {
         episode.status = 'partial';
         episode.error = '暂停内容尚未成功保存；请勿关闭页面，以免丢失对话。';
         if (state.opened) renderReader();
@@ -1068,7 +1074,7 @@
     var closingSerial = state.serial;
     var saved = await save;
     if (state.serial !== closingSerial || !state.opened) return;
-    if (!saved && canPersist) {
+    if (!saved && canPersist && state.active && state.unsavedEpisode === state.active) {
       showNotice('番外尚未保存成功，为保护内容暂不收起页面');
       return;
     }
@@ -1252,7 +1258,8 @@
     if (key === 'back') {
       var paused = state.busy ? pause() : state.pendingPause;
       var backSerial = state.serial;
-      if (paused && !(await paused) && canPersist) return;
+      if (paused && !(await paused) && canPersist &&
+          state.active && state.unsavedEpisode === state.active) return;
       if (backSerial !== state.serial) return;
       openPicker();
       return;
