@@ -57,6 +57,7 @@ class Node {
   querySelector(selector) {
     if (selector === '[data-feat="fanwai"]') return this.all().find(n => n.dataset.feat === 'fanwai') || null;
     if (selector === '.fw-sheet') return this.all().find(n => n.className.split(' ').includes('fw-sheet')) || null;
+    if (selector === '.fw-saved') return this.all().find(n => n.className === 'fw-saved') || null;
     if (selector === '.fw-settings-drawer') return this.all().find(n => n.className === 'fw-settings-drawer') || null;
     if (selector === '.fw-reader-menu') return this.all().find(n => n.className === 'fw-reader-menu') || null;
     if (selector === '#fw-count') return this.all().find(n => n.id === 'fw-count') || null;
