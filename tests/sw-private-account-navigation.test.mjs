@@ -70,12 +70,22 @@ function harness({ cached = null, network, installNetwork } = {}) {
     handlers.fetch(event);
     return event;
   }
+  function dispatchGet(path) {
+    const request = { method: 'GET', mode: 'cors', url: origin + path };
+    const event = {
+      request,
+      respondWith(p) { this.response = Promise.resolve(p); },
+      waitUntil() {}
+    };
+    handlers.fetch(event);
+    return event;
+  }
   async function dispatchInstall() {
     const event = { waitUntil(p) { this.wait = Promise.resolve(p); } };
     handlers.install(event);
     await event.wait;
   }
-  return { dispatchNavigate, dispatchInstall, stored, removed, preCached, requests };
+  return { dispatchNavigate, dispatchGet, dispatchInstall, stored, removed, preCached, requests };
 }
 
 test('private cached account page is never shown offline to a different account', async () => {
@@ -121,4 +131,27 @@ test('PWA install skips private HTML while preserving public files in the app sh
   await app.dispatchInstall();
   assert.ok(!app.stored.some(row => row.request.endsWith('.html')));
   assert.ok(app.preCached.some(path => path.endsWith('.js')));
+});
+
+test('account API GET bypasses the PWA cache even when an old response exists', async () => {
+  const app = harness({
+    cached: response('wrong-account-data', 'private, no-store'),
+    network: async () => response('correct-account-data', 'private, no-store')
+  });
+  const event = app.dispatchGet('/api/mao/account/me');
+  const result = await event.response;
+  assert.equal(await result.text(), 'correct-account-data');
+  assert.equal(app.stored.length, 0);
+  assert.equal(app.requests.length, 1, 'must fetch the current server response');
+});
+
+test('private responses in static resource fallback are not served from CacheStorage', async () => {
+  const app = harness({
+    cached: response('old-private-response', 'private, no-store'),
+    network: async () => response('new-private-response', 'private, no-store')
+  });
+  const event = app.dispatchGet('/shared/data/private-state.json');
+  const result = await event.response;
+  assert.equal(await result.text(), 'new-private-response');
+  assert.equal(app.stored.length, 0);
 });
