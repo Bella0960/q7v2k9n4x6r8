@@ -80,3 +80,14 @@ test('episodes are account-scoped and never written to main chat history or memo
   assert.match(css, /\.fw-user \.fw-bubble/);
   assert.match(css, /\.fw-char \.fw-bubble/);
 });
+
+
+test('fanwai loader stays next to the existing plus panel and runs before unrelated extras', () => {
+  const hook = extras.indexOf("fanwaiScript.src = 'js/chat-fanwai.js");
+  const plusPanel = extras.indexOf("const panelOverlay = document.getElementById('plusPanelOverlay')");
+  const laterFeatures = extras.indexOf('// 功能 1：位置');
+  assert.ok(plusPanel >= 0 && hook > plusPanel && hook < laterFeatures,
+    'an error inside unrelated later chat extensions must not prevent the fanwai entry from loading');
+  assert.equal(extras.split("fanwaiScript.src = 'js/chat-fanwai.js").length, 2,
+    'one and only one dynamically injected fanwai script is expected');
+});
