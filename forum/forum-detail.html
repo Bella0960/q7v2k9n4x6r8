@@ -189,6 +189,14 @@
     body .comment-bar {
       padding-bottom: var(--maomao-home-indicator-comment-padding-bottom, 10px) !important;
     }
+    /* mobile-fit.css expands the composer to the phone width. The reply hint
+       must follow the same mobile edge instead of keeping its 390px cap. */
+    body .reply-hint {
+      left: 0;
+      transform: none;
+      width: 100%;
+      max-width: none;
+    }
   }
   .comment-bar input {
     flex: 1; height: auto; background: transparent;
