@@ -675,6 +675,10 @@ function renderRoleList() {
     if (!container) return;
     const roles = loadRoles();
 
+    if (roleStoreReadError) {
+        container.innerHTML = '<div class="empty-tip" role="alert">角色资料读取失败，已暂停保存和删除。原始数据未修改；请先检查浏览器存储或恢复备份，不要新建角色覆盖。</div>';
+        return;
+    }
     if (!roles || roles.length === 0) {
         container.innerHTML = '<div class="empty-tip">暂无角色，点击右上角“添加”创建一位主角色</div>';
         return;
