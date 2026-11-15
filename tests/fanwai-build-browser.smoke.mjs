@@ -190,6 +190,50 @@ try {
       assert.equal(result.chatHistory, previousChat,
         'fanwai must not silently alter the real chat message history');
       assert.deepEqual(missingCritical, [], 'required built resources cannot return HTTP errors');
+      // 检查实际浏览器执行边界，而非仅看 Mock DOM：认证信息伪造/错账号不能暴露番外插件。
+      // 通过本地路由改写合成 HTML，绝不触碰真实 Worker、账号或用户资料。
+      for (const guardCase of [
+        { label: 'malformed account meta', id: 'MAO-invalid' },
+        { label: 'mismatched ready account scope', id: 'MAO-AAAAAAAAAAAA', scope: 'MAO-BBBBBBBBBBBB' }
+      ]) {
+        stage = 'checking authenticated fanwai guard: ' + guardCase.label;
+        const guarded = await context.newPage();
+        try {
+          if (guardCase.scope) {
+            await guarded.addInitScript(accountId => {
+              window.__MAO_ACCOUNT_SCOPE__ = { accountId, ready: true };
+            }, guardCase.scope);
+          }
+          await guarded.route('**/chat/chat/chat-detail.html*', async route => {
+            const response = await route.fetch();
+            const original = await response.text();
+            const modified = original.replace(/<head\b[^>]*>/i,
+              head => head + '<meta name="mao-account-id" content="' + guardCase.id + '">');
+            assert.notEqual(modified, original, 'test must inject account marker into local HTML');
+            await route.fulfill({ response, body: modified });
+          });
+          const refusal = guarded.waitForEvent('console', {
+            predicate: message => message.text().includes('[Fanwai] 账号标识无效或隔离尚未就绪'),
+            timeout: 20000
+          });
+          const guardedResponse = await guarded.goto(
+            origin + '/chat/chat/chat-detail.html?id=' + encodeURIComponent(seedRole.id),
+            { waitUntil: 'domcontentloaded', timeout: 25000 }
+          );
+          assert.equal(guardedResponse?.status(), 200);
+          await refusal;
+          const exposed = await guarded.evaluate(() => ({
+            menu: document.querySelectorAll('#plusPanelOverlay [data-feat="fanwai"]').length,
+            reader: !!document.querySelector('#fanwaiLayer'),
+            core: typeof window.MAOMAOFanwaiCore,
+            plugins: typeof window.MAOMAOFanwai
+          }));
+          assert.deepEqual(exposed, { menu: 0, reader: false, core: 'undefined', plugins: 'undefined' },
+            guardCase.label + ' must not expose protected story or memory interfaces');
+        } finally {
+          await guarded.close();
+        }
+      }
       stage = 'complete';
       console.log('PASS ' + viewport.label + ' ' + JSON.stringify({
         viewport: viewport.width + 'x' + viewport.height,
