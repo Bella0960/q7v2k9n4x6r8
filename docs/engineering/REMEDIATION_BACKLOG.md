@@ -35,6 +35,16 @@ Status vocabulary: OPEN, IN PROGRESS, FIXED, DEFERRED, NOT VERIFIED.
 
 验收：不删除或重命名现有 HTML、不损坏账号和聊天存储、不改变主题 UI；旧书签/深链接仍有效，刷新/浏览器返回/通知分享/PWA 离线与安卓 Chrome、iPhone Safari 均走正确站内路由。验证与 NAV-001 一起记录 **实际 URL 和页面内容**；未实测前标 NOT VERIFIED。
 
+**参考源码已复核（2026-11-15，来源详见 [全局审计](GLOBAL_BUG_AUDIT_20261115.md)）：**
+- Miya：`index.html` 单桌面宿主，`js1/app.js` 的 `launchApp(id) / APP_HANDLERS`，`js2/miya-lazy-boot.js` 按需加载。参考 app 注册与加载，不照搬页面。
+- AI Virtual Phone：`MainApp` → `DesktopShell`，`activeApp / setActiveApp / renderAppBody` 控制内置应用；架构思想可用，**不得迁 React/Next**。
+- **qqjrsy-520**：3,118,857 字节的 `index.html` + 独立插件；`baby-plugin.js` 调用宿主 `setActivePage()`，`multi-offline-plugin.js` 维护 `MultiOfflinePlugin` 对象并注入子屏幕。只证实插件调用契约，超大主文件未能完整读取。**禁止复制超大单 HTML、全局变量污染、各插件私自修改状态栏的做法**。
+- **jrsy**：仅多种 JS 插件和 `manifest.json`，当前 Git 树无主 `index.html`；不能说其独立站壳已验收。
+- **FlutterCppWangWangPhone**：确有 `wangwang_phone/ios/` 和手动构建未签名 IPA 工作流，Flutter 以 `WangWangApp` / `HomePage` / `ChatAppController` 分层；**原生 iOS 路线与 MAOMAO PWA 网页路线不同**，参考安全区和模块边界，不新建 IPA 工作流。
+
+**实施验收拆分（按顺序）：** (A) 定义唯一 app registry/导航栈/生命周期契约与兼容旧 HTML 的 fallback；(B) 隔离共享 CSS、状态栏、主题、账号/角色上下文及持久化接口；(C) 先完成聊天/联系人/论坛/设置/钱包试点，实测返回、刷新、深链接和 PWA；(D) 扩到其余模块并补 Android/iPhone 验收。**不可仅改地址栏外观冒充统一架构已落地，也不允许新建另一套数据源。**
+
+
 ### NAV-002 — 论坛详情页 Home Indicator 点击区域缺失
 **Priority:** P1 · **Status:** SOURCE-VERIFIED / FIX CANDIDATE IN ORIGINAL PR #245
 
