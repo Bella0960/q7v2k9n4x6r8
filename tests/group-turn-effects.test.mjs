@@ -99,9 +99,10 @@ test('chat detail commits group effects only beyond verified reply save barrier'
   const parse = detail.indexOf('fullText = processGroupInteractionMarkers(');
   const save = detail.indexOf('var replySaved = saveMessages(historyList);', parse);
   const finalize = detail.indexOf('groupTurnEffects.finalize(replySaved)', save);
-  const privateGame = detail.indexOf('GroupGameSessions.sendWhisper(pendingGameWhisper)', save);
+  const privateGame = detail.indexOf('GroupGameSessions.sendWhisper(pendingGameWhisper)', parse);
   assert.ok(parse > 0 && save > parse);
-  assert.ok(finalize > save && privateGame > finalize);
+  assert.ok(privateGame > parse && privateGame < save && finalize > save,
+    'whisper must be queued before save, not executed after finalize');
   assert.match(detail, /groupTurnEffects\.finalize\(false\)/);
   assert.match(detail, /groupReplyVisible = false;[\s\S]*?rollbackTransferDecisionMarkers/);
   assert.match(detail, /turnEffects\.registerUndo\(function \(\) \{/);
