@@ -380,6 +380,24 @@
     notify('removed',id);
     return ok(verified.value);
   }
+  // 原生 Web Locks 存在时把同账号内跨标签页的候选写入串行化。
+  // 无 Web Locks 的旧浏览器仍保持 V2 的独立人物键，不回退至整包数组覆盖。
+  async function withCandidateLock(operation) {
+    var scope = checkAccountScope();
+    if (!scope.ok) return scope;
+    var manager = global.navigator && global.navigator.locks;
+    try {
+      if (manager && typeof manager.request === 'function') {
+        return await manager.request('maomao:encounter:v2:' + scope.value.id,
+          {mode:'exclusive'}, operation);
+      }
+      return operation();
+    } catch (error) {
+      return fail('候选跨标签页操作失败，已保留现有资料，请重新尝试');
+    }
+  }
+  function saveCandidateSafe(card) { return withCandidateLock(function(){return saveCandidate(card);}); }
+  function removeCandidateSafe(id) { return withCandidateLock(function(){return removeCandidate(id);}); }
   function formatBrief(card) {
     if (!card) return '';
     var age = card.species === '人类' ? String(card.age) + '岁' : '年龄 ' + String(card.age) + '年';
@@ -397,8 +415,9 @@
     ].join('\n');
   }
   global.MAOMAOEncounter = Object.freeze({
-    version:1, generate:generate, getCandidates:getCandidates, saveCandidate:saveCandidate,
-    removeCandidate:removeCandidate, getPreferences:getPreferences, savePreferences:savePreferences,
+    version:2, generate:generate, getCandidates:getCandidates, saveCandidate:saveCandidate,
+    removeCandidate:removeCandidate, saveCandidateSafe:saveCandidateSafe,
+    removeCandidateSafe:removeCandidateSafe, getPreferences:getPreferences, savePreferences:savePreferences,
     formatBrief:formatBrief, normalizeName:normalizeName,
     checkAccountScope:checkAccountScope, verifyLiveAccountContext:verifyLiveAccountContext,
     registerCardDecorator:function(fn) {
