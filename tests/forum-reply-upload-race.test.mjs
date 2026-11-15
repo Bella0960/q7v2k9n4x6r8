@@ -252,3 +252,100 @@ test('blank and malformed AI-only replies do not mutate the original thread', as
   assert.equal(h.renders.length, 0);
   assert.match(h.status.textContent, /暂时没有新的回应/);
 });
+
+
+const initialStart = page.indexOf('  async function generateInitialAIComments()');
+const initialEnd = page.indexOf('\n  function getPostId()', initialStart);
+assert.ok(initialStart >= 0 && initialEnd > initialStart,
+  'forum initial AI comments function must remain discoverable');
+const initialSource = page.slice(initialStart, initialEnd);
+
+function setupInitialAI({ allowSave = true } = {}) {
+  let finish;
+  const pendingAI = new Promise(resolve => { finish = resolve; });
+  const startingPost = {
+    id: 'initial-post-a', name: '原帖子', topic: '日常', comments: [],
+    aiCommentBatch: undefined
+  };
+  const newPost = {
+    id: 'initial-post-b', name: '另一帖子', topic: '日常', comments: [],
+    aiCommentBatch: undefined
+  };
+  const status = { textContent: '' };
+  const saves = [], renders = [];
+  const sandbox = {
+    post: startingPost,
+    document: { getElementById: id => id === 'aiCommentStatus' ? status : null },
+    DETAIL_RESIDENTS: [],
+    detailResident: () => ({ id: 'r1', name: '路人甲' }),
+    postTitle: () => '帖子标题',
+    postBody: () => '帖子正文',
+    forumAIJSON: () => pendingAI,
+    makeDetailAIComment: item => {
+      const text = String(item && item.text || '').trim();
+      return text ? { name: '路人甲', owner: 'community', text } : null;
+    },
+    saveNow: () => { saves.push(1); return allowSave; },
+    renderComments: () => renders.push('comments'),
+    renderPost: () => renders.push('post'),
+    console: { warn() {} },
+    setTimeout() {}
+  };
+  const controller = vm.runInNewContext(`
+    ${initialSource}
+    ({
+      run: generateInitialAIComments,
+      switchTo(nextPost) { post = nextPost; }
+    });
+  `, sandbox, { filename: 'forum-detail-initial-ai.js' });
+  return {
+    startingPost, newPost, saves, renders, status, controller,
+    finishAI: (comments = [{ residentId: 'r1', text: '原帖的回应' }]) =>
+      finish({ ok: true, data: { comments } })
+  };
+}
+
+test('initial AI comments must not overwrite a switched post', async () => {
+  const h = setupInitialAI();
+  const pending = h.controller.run();
+  h.controller.switchTo(h.newPost);
+  h.finishAI();
+  await pending;
+  assert.equal(h.startingPost.comments.length, 0);
+  assert.equal(h.newPost.comments.length, 0);
+  assert.notEqual(h.newPost.aiCommentBatch, 'v1');
+  assert.equal(h.saves.length, 0);
+  assert.equal(h.renders.length, 0);
+});
+
+test('initial AI comments still save to their original post when it remains active', async () => {
+  const h = setupInitialAI();
+  const pending = h.controller.run();
+  h.finishAI();
+  await pending;
+  assert.equal(h.startingPost.comments.length, 1);
+  assert.equal(h.startingPost.comments[0].text, '原帖的回应');
+  assert.equal(h.startingPost.aiCommentBatch, 'v1');
+  assert.equal(h.saves.length, 1);
+  assert.match(h.status.textContent, /又有 1 位网友/);
+});
+
+test('failed initial AI persistence restores previous comments and batch state', async () => {
+  const h = setupInitialAI({ allowSave: false });
+  const pending = h.controller.run();
+  h.finishAI();
+  await pending;
+  assert.equal(h.startingPost.comments.length, 0);
+  assert.notEqual(h.startingPost.aiCommentBatch, 'v1');
+  assert.equal(h.saves.length, 1);
+});
+
+test('empty initial AI generation must not save or claim success', async () => {
+  const h = setupInitialAI();
+  const pending = h.controller.run();
+  h.finishAI([]);
+  await pending;
+  assert.equal(h.startingPost.comments.length, 0);
+  assert.equal(h.saves.length, 0);
+  assert.match(h.status.textContent, /暂时还没人接话/);
+});
