@@ -799,7 +799,7 @@
   align-items: flex-end;
   min-width: 0;
 }
-#fanwaiLayer .fw-actions .fw-reader-more-toggle {
+#fanwaiLayer .fw-actions .fw-btn.fw-reader-more-toggle {
   flex: initial;
   width: auto;
   border: 0;
