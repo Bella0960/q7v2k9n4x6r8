@@ -368,13 +368,20 @@ async function runViewport(browser, baseUrl, viewport) {
     const composer = document.querySelector('.comment-bar');
     const hr = hint.getBoundingClientRect();
     const cr = composer.getBoundingClientRect();
-    return { hintBottom: hr.bottom, composerTop: cr.top, composerHeight: cr.height,
+    return { hintBottom: hr.bottom, hintHeight: hr.height,
+      composerTop: cr.top, composerHeight: cr.height,
+      composerBottom: parseFloat(getComputedStyle(composer).bottom) || 0,
+      contentScrollClearance: parseFloat(getComputedStyle(document.body).paddingBottom) || 0,
       bottomCSS: getComputedStyle(hint).bottom };
   });
   await page.evaluate(() => { document.getElementById('replyHint').style.display = 'flex'; });
   let replyMetrics = await hintMetrics();
   add('forum-detail.reply-hint.above-composer',
     replyMetrics.hintBottom <= replyMetrics.composerTop - 6, replyMetrics);
+  add('forum-detail.reply-hint.content-scroll-clearance',
+    replyMetrics.contentScrollClearance >=
+      replyMetrics.composerHeight + replyMetrics.composerBottom + replyMetrics.hintHeight + 14,
+    replyMetrics);
   const composerBeforePreview = replyMetrics.composerHeight;
 
   await page.evaluate(() => {
@@ -392,6 +399,10 @@ async function runViewport(browser, baseUrl, viewport) {
   add('forum-detail.reply-hint.stays-above-expanded-composer',
     replyMetrics.composerHeight > composerBeforePreview + 45 &&
     replyMetrics.hintBottom <= replyMetrics.composerTop - 6, replyMetrics);
+  add('forum-detail.reply-hint.expanded-content-scroll-clearance',
+    replyMetrics.contentScrollClearance >=
+      replyMetrics.composerHeight + replyMetrics.composerBottom + replyMetrics.hintHeight + 14,
+    replyMetrics);
   await page.evaluate(() => {
     document.getElementById('home-indicator-preview-size-probe')?.remove();
     document.getElementById('replyHint').style.display = 'none';
