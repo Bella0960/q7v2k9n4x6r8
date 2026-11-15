@@ -25,7 +25,7 @@
 .portrait:before{content:"";position:absolute;width:142px;height:142px;background:#f3f3f1;border-radius:50%;filter:blur(22px);opacity:.7}
 .ring{display:block;width:116px;height:116px;position:relative;flex-shrink:0;border:17px solid #cbccca;border-radius:50%;transform:rotate(-25deg);box-shadow:inset 0 0 0 1px rgba(0,0,0,.01)}.ring:after{content:"";position:absolute;width:40px;height:40px;top:-28px;right:-27px;background:#fff;border-radius:50%;transform:rotate(15deg)}
 .portrait-caption{font-family:var(--serif);font-size:10px;letter-spacing:.21em;margin-top:27px;color:#a0a19d;font-style:italic}
-.object-icon{width:110px;height:110px;display:grid;place-items:center;border-radius:50%;border:1px solid #d9dad6;color:#878985;font-family:var(--serif);font-size:39px;font-weight:400;position:relative}.object-icon:before{content:"";height:32px;width:32px;border:1px solid #c2c3bf;position:absolute;transform:rotate(26deg);border-radius:4px}.object-icon span{font-size:0}
+.object-icon{width:118px;height:118px;display:grid;place-items:center;border-radius:50%;background:#f2f2f0;border:1px solid #e8e9e5;position:relative}.object-icon svg{width:72px;height:72px;stroke:#878a85;fill:none;stroke-width:1.25;stroke-linecap:round;stroke-linejoin:round;transform:rotate(-9deg)}
 .name{font-family:var(--serif);font-size:33px;letter-spacing:.055em;font-weight:400;line-height:1.3;margin:3px 0 8px;word-break:break-word}.hint{color:#777976;font-size:12px;letter-spacing:.02em;margin:0 0 17px}.tags{display:flex;gap:7px;flex-wrap:wrap;align-items:center}.tag{color:#777a76;font-size:10px;padding:6px 9px;background:#f4f4f2;border-radius:9px;letter-spacing:.035em}.quote{font-size:12px;line-height:1.85;color:#646662;min-height:45px;margin:18px 0 12px;white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.card-footer{padding-top:13px;border-top:1px solid #eeeeea;display:flex;align-items:center;justify-content:space-between;color:#9a9b97;font-size:10px;letter-spacing:.08em}.card-footer .look{color:#555753}
 .bottom{padding:4px 29px max(23px,env(safe-area-inset-bottom,18px));flex-shrink:0}.buttons{display:grid;grid-template-columns:1fr 1fr;gap:13px}.action{height:51px;border-radius:15px;border:1px solid #d8d9d6;background:transparent;display:flex;align-items:center;justify-content:center;gap:10px;font-size:12px;letter-spacing:.14em;color:#666864;transition:transform .18s,background .18s}.action:active{transform:scale(.975)}.action.primary{background:#343633;border-color:#343633;color:#fff}.action svg{width:16px;height:16px;stroke:currentColor;stroke-width:1.45;fill:none}.bottom-copy{display:flex;align-items:center;justify-content:space-between;margin-top:14px;color:#9b9c98;font-size:10px;letter-spacing:.08em}
 .notice{position:absolute;z-index:9;left:26px;right:26px;bottom:112px;border-radius:14px;background:#282a28;color:#f9f9f7;padding:13px 17px;font-size:12px;text-align:center;box-shadow:0 4px 15px rgba(0,0,0,.1);opacity:0;pointer-events:none;transform:translateY(12px);transition:opacity .2s,transform .2s}.notice.show{opacity:1;transform:translateY(0)}
@@ -73,12 +73,24 @@ clock();setInterval(clock,30000);
 function notify(text){noticeEl.textContent=text;noticeEl.classList.add('show');clearTimeout(noticeTimer);noticeTimer=setTimeout(function(){noticeEl.classList.remove('show');},2400);}
 function count(){var r=engine.getCandidates();document.getElementById('savedCount').textContent=r.ok?String(r.value.length).padStart(2,'0'):'!';}
 function modeCaption(c){return c.type==='蒙面档案'?'UNKNOWN / 另一种身份':c.type==='以物识人'?'OBJECT / 一件遗留物':c.type==='命运分支'?'FATE / 两种可能':c.type==='性格盲测'?'VOICE / 先听他说': 'PERSONA / 人物档案';}
+
+function objectArt(name){
+ // 原创线描 SVG：真实对应卡片物件，不下载外部素材，也不使用 Emoji。
+ var drawing='<path d="M10 18h44v32H10z M10 21l22 17 22-17"/>';
+ if(/怀表/.test(name))drawing='<circle cx="32" cy="36" r="22"/><circle cx="32" cy="36" r="17"/><path d="M32 21v15l11 5 M26 7V3h12v4 M28 14h8"/>';
+ else if(/钥匙/.test(name))drawing='<circle cx="20" cy="24" r="10"/><circle cx="20" cy="24" r="3"/><path d="M27 31l25 25 5-5-7-7-5 5-5-5"/>';
+ else if(/胶片|照片/.test(name))drawing='<rect x="10" y="13" width="44" height="38" rx="2"/><path d="M17 13v38M47 13v38 M10 22h7m-7 10h7m-7 10h7m30-20h7m-7 10h7m-7 10h7 M23 39l8-9 5 6 4-4 6 9"/>';
+ else if(/书|笔记/.test(name))drawing='<path d="M8 12c10-4 18-2 24 2 8-5 15-6 24-2v40c-10-4-18-3-24 1-7-5-15-6-24-1zM32 14v39 M15 22c5-1 10 0 13 2 M37 24c4-2 8-3 12-2"/>';
+ else if(/胸针|戒指/.test(name))drawing='<circle cx="32" cy="32" r="19"/><circle cx="32" cy="32" r="10"/><path d="M32 13v-7 M32 58v-7 M13 32H6 M58 32h-7"/>';
+ return '<div class="object-icon" aria-hidden="true"><svg viewBox="0 0 64 64">'+drawing+'</svg></div>';
+}
+
 function render(){
  if(!current)return;
  var c=current,masked=c.type==='蒙面档案',obj=c.type==='以物识人',blind=c.type==='性格盲测';
  cardEl.setAttribute('aria-label','查看 '+(masked?'神秘角色':c.name)+' 的人物档案');
  cardEl.innerHTML='<div class="card-top"><span>'+escapeHtml(modeCaption(c))+'</span><span class="card-number">'+String(position).padStart(2,'0')+'</span></div>'+
- '<div class="portrait">'+(obj?'<div class="object-icon" aria-hidden="true"><span>物件</span></div>':'<div class="ring" aria-hidden="true"></div>')+
+ '<div class="portrait">'+(obj?objectArt(c.object):'<div class="ring" aria-hidden="true"></div>')+
  '<span class="portrait-caption">'+(obj?'A LOST OBJECT':masked?'IDENTITY UNKNOWN':'A STRANGER, FOR NOW')+'</span></div>'+
  '<h2 class="name">'+escapeHtml(masked?'未署名的旅人':blind?'一段陌生的声音':c.name)+'</h2>'+
  '<p class="hint">'+escapeHtml(masked?'身份暂未公开':blind?'先凭一句话，认识这个人':obj?c.object:c.job+' · '+c.era+' · '+c.gender+' · '+c.age+'岁')+'</p>'+
