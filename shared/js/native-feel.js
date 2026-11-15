@@ -408,7 +408,7 @@
         window.addEventListener('maomao:themechange', schedule);
         if (window.MutationObserver) {
             var observer = new MutationObserver(schedule);
-            observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style', 'data-theme', 'data-wallpaper-tone'] });
+            observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style', 'data-theme', 'data-wallpaper-tone', 'data-maomao-statusbar-hidden'] });
             if (document.body) observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class', 'style'] });
         }
     })();
