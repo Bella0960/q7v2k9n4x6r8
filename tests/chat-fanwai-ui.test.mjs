@@ -43,6 +43,10 @@ class Node {
   getAttribute(key) { return this.attributes[key]; }
   addEventListener(name, listener) { this.handlers[name] = listener; }
   all() { return this.children.flatMap(n => [n, ...n.all()]); }
+  querySelectorAll(selector) {
+    if (selector === 'input[data-fanwai-context]:checked') return this.all().filter(n => n.dataset.fanwaiContext && n.checked);
+    return [];
+  }
   querySelector(selector) {
     if (selector === '[data-feat="fanwai"]') return this.all().find(n => n.dataset.feat === 'fanwai') || null;
     if (selector === '.fw-sheet') return this.all().find(n => n.className.split(' ').includes('fw-sheet')) || null;
@@ -59,13 +63,15 @@ function mount(options = {}) {
   const grid = new Node('div');
   const shell = new Node('div');
   let requestCount = 0;
+  const prompts = [];
   let failAt = options.failAt || 0;
   const accountId = options.accountId || '';
   const window = {
     location: { search: '?id=' + (options.roleId || 'role-1') },
     PhoneStorage: { getApiConfig: () => ({ apiKey: 'mock-key' }) },
     PhoneAPI: {
-      completeJSON: async () => {
+      completeJSON: async request => {
+        prompts.push(request.system);
         requestCount++;
         if (failAt && requestCount === failAt) throw new Error('模拟网络中断');
         const n = requestCount;
@@ -77,7 +83,7 @@ function mount(options = {}) {
       }
     },
     localStorage: { getItem: key => {
-      if (key === 'ai_custom_characters') return JSON.stringify([{ id: 'role-1', name: '测试角色', persona: '短句风格' }]);
+      if (key === 'ai_custom_characters') return JSON.stringify([{ id: 'role-1', name: '测试角色', persona: '短句风格', memory: '旧回忆：曾在海边看过日落' }]);
       if (key === 'myProfile') return JSON.stringify({ nickname: '测试用户' });
       return null;
     } },
@@ -102,6 +108,8 @@ function mount(options = {}) {
   return {
     grid, shell,
     get requests() { return requestCount; },
+    get prompts() { return prompts; },
+    get registry() { return window.MAOMAOFanwai; },
     open() {
       const menu = grid.querySelector('[data-feat="fanwai"]');
       assert.ok(menu, 'existing plus menu must receive fanwai button');
@@ -159,4 +167,39 @@ test('API interruption retains partial dialogue and resume completes it', async 
 test('group chat has no fanwai menu entry', () => {
   const app = mount({ roleId: 'group-42' });
   assert.equal(app.grid.querySelector('[data-feat="fanwai"]'), null);
+});
+
+
+test('memory stays outside API prompts by default; explicit opt-in is read-only', async () => {
+  const app = mount();
+  const root = app.open();
+  await tickUntil(() => !!root.querySelector('.fw-sheet')?.all().find(el => el.dataset.template));
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(el => el.dataset.template === 'daily') });
+  const toggle = sheet.all().find(el => el.dataset.fanwaiContext === 'character-memory');
+  assert.ok(toggle, 'memory reference must be an explicit optional control');
+  assert.equal(toggle.checked, false);
+  toggle.checked = true;
+  await root.handlers.click({ target: sheet.all().find(el => el.dataset.action === 'start-template') });
+  await tickUntil(() => sheet.all().filter(n => n.className === 'fw-bubble').length === 80);
+  assert.ok(app.prompts[0].includes('曾在海边看过日落'), 'opt-in should pass role memory as context');
+  assert.ok(app.prompts[0].includes('短句风格'), 'role persona remains present');
+});
+
+test('new plugin templates appear in the picker and can generate without editing page HTML', async () => {
+  const app = mount();
+  assert.equal(app.registry.registerTemplate({
+    id: 'sunset', name: '黄昏篇', english: 'At dusk', mood: '天色渐暗',
+    subtitle: '黄昏里的闲谈', scenario: '傍晚聊天', target: 40
+  }), true);
+  const root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().filter(n => n.dataset.template).length === 7);
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.template === 'sunset') });
+  const preview = sheet.all().find(n => n.className.split(' ').includes('fw-preview-cover'));
+  assert.ok(preview);
+  assert.equal(app.requests, 0);
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'start-template') });
+  await tickUntil(() => sheet.all().filter(n => n.className === 'fw-bubble').length === 40);
+  assert.equal(sheet.all().filter(n => n.className === 'fw-bubble').length, 40);
 });
