@@ -165,3 +165,29 @@ test('chat detail routes private events only after a verified saved AI reply', (
     assert.doesNotThrow(() => new vm.Script(match[1], { filename: 'chat-detail:inline' + index }));
   }
 });
+
+test('backup keeps confirmed group memory but excludes unfinished secret cards', () => {
+  const window = {};
+  vm.runInNewContext(load('settings/js/backup-modules.js'), { window, console });
+  const reg = window.MAOMAOBackupRegistry;
+  assert.equal(reg.belongsTo('characters', 'chat_memories_g1'), true);
+  assert.equal(reg.belongsTo('characters', 'phone_group_memory_public_events_v1_g1'), true);
+  assert.equal(reg.isSensitiveKey('phone_group_game_private_v1_g1_sid_r2'), true);
+  assert.equal(reg.isSensitiveKey('phone_group_game_v1_g1'), true);
+  assert.match(load('settings/js/backup.js'), /phone_group_game_\(\?:private_\)\?v1_/);
+});
+
+test('PWA uses the updated game scripts and installs the entire feature bundle', () => {
+  const worker = load('sw.js');
+  const detail = load('chat/chat/chat-detail.html');
+  const settings = load('chat/chat/group-play.html');
+  assert.match(worker, /phone-app-pwa-v208/);
+  for (const name of ['group-game-session.js?v=20261115game2',
+    'group-memory-events.js?v=20261115gme2']) {
+    assert.ok(worker.includes(name), name);
+    assert.ok(detail.includes(name), name);
+    assert.ok(settings.includes(name), name);
+  }
+  assert.ok(worker.includes('group-game-panel.js?v=20261115gpanel1'));
+  assert.ok(worker.includes('chat-context-policy.js?v=20261115gameprivacy1'));
+});
