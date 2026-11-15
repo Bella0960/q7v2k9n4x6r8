@@ -114,9 +114,12 @@
     var members=req.group&&Array.isArray(req.group.members)?req.group.members:[];
     var match=members.find(function(m){return m&&id(m.id)===session.revealedRoleId;});
     var name=match?id(match.nickname||match.name).slice(0,28):'一位成员';
+    var host=members.find(function(m){return m&&id(m.id)===id(official.hostId);});
+    var hostLabel=official.hostId==='__user'?'群主':
+      (host?id(host.nickname||host.name).slice(0,28):'一位主持人');
     return storePublic(req,{groupId:session.groupId,kind:'game-finished',
       sourceId:session.sessionId,createdAt:session.finishedAt,
-      summary:'群聊结束「猜猜谁是坏人」游戏，共'+official.players.length+
+      summary:'群聊结束「猜猜谁是坏人」游戏，由「'+hostLabel+'」主持，共'+official.players.length+
         '位角色参与，公布的坏人是「'+name+'」。'+
         (official.voteCount>0
           ? '本局'+official.voteCount+'人投票，'+official.correctVotes+'人猜对。'
