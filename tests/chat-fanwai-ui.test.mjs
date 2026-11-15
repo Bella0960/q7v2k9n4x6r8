@@ -252,6 +252,7 @@ test('new plugin templates appear in the picker and can generate without editing
 function fakeFanwaiDB(options = {}) {
   const records = new Map();
   const queriedRanges = [];
+  let putCount = 0;
   return {
     records, queriedRanges,
     open() {
@@ -284,7 +285,8 @@ function fakeFanwaiDB(options = {}) {
                 return req;
               },
               put(record) {
-                if (options.failWrites) {
+                putCount++;
+                if (options.failWrites || options.failAtWrite === putCount) {
                   Promise.resolve().then(() => { if (transaction.onabort) transaction.onabort(); });
                   return;
                 }
@@ -454,4 +456,45 @@ test('storage write rejection prevents paid story generation and does not falsel
   await tickUntil(() => app.notices.some(text => text.includes('无法保存')));
   assert.equal(app.requests, 0, 'generation must not begin when initial save failed');
   assert.equal(database.records.size, 0);
+});
+
+
+test('mid-generation IndexedDB failure stops further API charges and warns about unsaved data', async () => {
+  const db = fakeFanwaiDB({ failAtWrite: 3 }); // first save and first batch succeed, next batch fails
+  const app = mount({ accountId: 'MAO-AAAAAAAAAAAA', indexedDB: db });
+  const root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().filter(n => n.dataset.template).length === 6);
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.template === 'daily') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'start-template') });
+  await tickUntil(() => sheet.all().find(n => n.className === 'fw-status')?.textContent.includes('本机存储不可用'));
+  assert.equal(app.requests, 2, 'generation should stop immediately when the second batch fails to save');
+  assert.ok(!sheet.all().some(n => n.dataset.action === 'resume'), 'do not offer an unusable paid resume');
+  const stored = [...db.records.values()].find(record => record.templateId === 'daily');
+  assert.ok(stored);
+  assert.equal(stored.messages.length, 12, 'only successfully committed dialogue can be trusted on reload');
+  assert.equal(stored.status, 'partial');
+});
+
+test('deleting one story requires explicit confirmation; cancellation preserves it', async () => {
+  const db = fakeFanwaiDB();
+  const app = mount({ accountId: 'MAO-AAAAAAAAAAAA', indexedDB: db });
+  const root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().filter(n => n.dataset.template).length === 6);
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.template === 'daily') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'start-template') });
+  await tickUntil(() => sheet.all().filter(n => n.className === 'fw-bubble').length === 80);
+  assert.equal([...db.records.values()].filter(record => record.templateId === 'daily').length, 1);
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'toggle-reader-menu') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'delete') });
+  assert.ok(sheet.all().find(n => n.dataset.action === 'confirm-delete'));
+  assert.equal([...db.records.values()].filter(record => record.templateId === 'daily').length, 1);
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'return-story') });
+  assert.equal(sheet.all().filter(n => n.className === 'fw-bubble').length, 80);
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'toggle-reader-menu') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'delete') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'confirm-delete') });
+  await tickUntil(() => [...db.records.values()].filter(record => record.templateId === 'daily').length === 0);
+  assert.equal(sheet.all().filter(n => n.dataset.action === 'read').length, 0);
 });
