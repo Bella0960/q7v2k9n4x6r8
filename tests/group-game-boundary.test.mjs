@@ -220,8 +220,8 @@ test('PWA uses the updated game scripts and installs the entire feature bundle',
   const worker = load('sw.js');
   const detail = load('chat/chat/chat-detail.html');
   const settings = load('chat/chat/group-play.html');
-  assert.match(worker, /phone-app-pwa-v208/);
-  for (const name of ['group-game-session.js?v=20261115game2',
+  assert.match(worker, /phone-app-pwa-v209/);
+  for (const name of ['group-game-session.js?v=20261115game3',
     'group-memory-events.js?v=20261115gme2']) {
     assert.ok(worker.includes(name), name);
     assert.ok(detail.includes(name), name);
