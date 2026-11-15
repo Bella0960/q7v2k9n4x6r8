@@ -39,6 +39,7 @@ body{
 .lock-hint{position:absolute;bottom:36px;left:0;right:0;text-align:center;color:#787880;font-size:12px}
 .lock-hint svg{width:20px;height:20px;display:block;margin:0 auto 7px}
 .phone{position:absolute;inset:0;display:grid;grid-template-rows:34px 1fr;opacity:0;transition:opacity .24s ease}
+html[data-maomao-statusbar-hidden] #phone{grid-template-rows:minmax(0,1fr)}
 .phone.show{opacity:1}
 .statusbar{display:flex;align-items:center;justify-content:space-between;padding:0 16px;font-size:12px;color:#333;background:transparent;z-index:2}
 .status-icons{display:flex;align-items:center;gap:7px;color:#4d4d55}
