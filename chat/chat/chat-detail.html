@@ -8285,6 +8285,7 @@
                     .trim();
             }
             var relationshipEventSeen = false;
+            var queuedGovernance = Object.create(null);
             // An explicit user instruction is still checked against live group
             // permissions; execution waits until this AI reply is persisted.
             if (!isGroupFollowup && window.GroupGovernance) {
@@ -8297,6 +8298,7 @@
                         lastUserMessage.text, currentGroup
                     );
                     if (requestedModeration) {
+                        queuedGovernance[requestedModeration.actorId + '|' + requestedModeration.action + '|' + requestedModeration.target] = true;
                         var moderationMid = String(lastUserMessage.mid);
                         var moderationText = String(lastUserMessage.text || '');
                         turnEffects.afterSave(function () {
@@ -8558,6 +8560,20 @@
                 var roles = [];
                 if (action === '邀请') try { roles = JSON.parse(localStorage.getItem('ai_custom_characters') || '[]'); } catch (e) {}
                 var actorId = String(speaker.id), taskAction = nameMap[action];
+                // A direct addressed admin request and an AI-generated marker
+                // may describe the same action. Commit it at most once per turn.
+                if (taskAction === 'mute' || taskAction === 'unmute') {
+                    var matchingTargets = (currentGroup.members || []).filter(function (m) {
+                        return m && (String(m.id) === actionTarget ||
+                            String(m.name || '') === actionTarget ||
+                            String(m.nickname || '') === actionTarget);
+                    });
+                    var canonicalTarget = matchingTargets.length === 1
+                        ? String(matchingTargets[0].id) : actionTarget;
+                    var moderationKey = actorId + '|' + taskAction + '|' + canonicalTarget;
+                    if (queuedGovernance[moderationKey]) return '';
+                    queuedGovernance[moderationKey] = true;
+                }
                 turnEffects.afterSave(function () {
                     var liveGroup = loadGroupById(currentRoleId);
                     if (!liveGroup || !window.GroupGovernance.userIsInGroup(liveGroup))
