@@ -26,6 +26,15 @@ Status vocabulary: OPEN, IN PROGRESS, FIXED, DEFERRED, NOT VERIFIED.
 
 验收：**至少**桌面→聊天→联系人→详情→返回、论坛→帖子→返回、钱包→店铺→返回、设置→子页→返回、世界书→角色库→返回，反复 10 轮，在根域和子路径部署下均不得叠路径；覆盖刷新、PWA 缓存升级、带参数/中文路径、Android Chrome/iPhone Safari。每步核对最终 URL、HTTP/Worker 状态与页面内容；必须真实浏览器测试，不能只跑正则。
 
+### NAV-003 — 统一对外网址与应用级导航体验（用户明确要求）
+**Priority:** P1 · **Status:** SOURCE-VERIFIED PRODUCT GAP / DESIGN NOT IMPLEMENTED
+
+用户反馈：别的小手机打开后像一个完整网站；MAOMAO 在浏览器显示 `/chat/chat/chat.html` 等层层文件路径，**即使路径合法也不接受这种对外体验**。这与 NAV-001 “实际链接重复目录导致跳错”不是同一个问题。当前 `index.html` 通过 `window.location.assign` 导航到物理 `.html`，`worker-app.js` 仅处理根路径 `/`，可从源码确认原因。
+
+目标：继续用一个正式入口 `https://app.mao520.com/`，在现有 MPA 代码之上渐进式统一对外导航。短路径（`/chat`、`/forum`）和**全部页面都只显示根域 `/`**必须作为两种不同实现与验收目标；若要求始终根域，仅改 Worker 重写不够，须验证统一应用壳/客户端路由可行性，不能临时嵌套 iframe 或用 `replaceState` 掩盖实际导航问题。先核查已有导航与整合 PR，必要的跨模块契约由协调者认领，避免开重复分支。
+
+验收：不删除或重命名现有 HTML、不损坏账号和聊天存储、不改变主题 UI；旧书签/深链接仍有效，刷新/浏览器返回/通知分享/PWA 离线与安卓 Chrome、iPhone Safari 均走正确站内路由。验证与 NAV-001 一起记录 **实际 URL 和页面内容**；未实测前标 NOT VERIFIED。
+
 ### NAV-002 — 论坛详情页 Home Indicator 点击区域缺失
 **Priority:** P1 · **Status:** SOURCE-VERIFIED / FIX CANDIDATE IN ORIGINAL PR #245
 
