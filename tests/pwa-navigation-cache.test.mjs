@@ -8,7 +8,9 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
-assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v206'/);
+const version = serviceWorker.match(/const CACHE_NAME = 'phone-app-pwa-v(\\d+)'/);
+  assert.ok(version, 'PWA must use a versioned app-shell cache');
+  assert.ok(Number(version[1]) >= 206, 'account-private cache fix must invalidate older PWA installs');
 const viteConfig = read('vite.config.js');
 
 test('build emits a manifest containing every HTML entry point', () => {
