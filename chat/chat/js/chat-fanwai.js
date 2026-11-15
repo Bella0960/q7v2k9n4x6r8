@@ -209,6 +209,28 @@
     }).filter(Boolean);
   }
 
+  // PhoneAPI.completeJSON 继承用户 API 设置的 maxTokens；低 token 配额必须少量分批输出 JSON。
+  function chooseBatchSize(config) {
+    var tokens = Number(config && config.maxTokens);
+    if (!Number.isFinite(tokens) || tokens <= 0 || tokens >= 1200) return 12;
+    if (tokens >= 700) return 8;
+    if (tokens >= 350) return 5;
+    return 3;
+  }
+
+  function appendNewMessages(episode, chunk) {
+    if (!episode || !Array.isArray(episode.messages) || !Array.isArray(chunk)) return 0;
+    var added = 0;
+    chunk.forEach(function (message) {
+      if (!message || episode.messages.length >= episode.target) return;
+      var duplicated = episode.messages.slice(-6).some(function (existing) {
+        return existing.role === message.role && existing.text === message.text;
+      });
+      if (!duplicated) { episode.messages.push(message); added++; }
+    });
+    return added;
+  }
+
   function episodePrompt(episode, character, user, count, optionalContext) {
     var persona = String((character && (character.persona || character.prompt || character.description)) || '').slice(0, 7000);
     var userName = String((user && (user.nickname || user.name)) || '用户').slice(0, 80);
@@ -253,6 +275,8 @@
     normalizeMessages: normalizeMessages,
     episodePrompt: episodePrompt,
     storyBeat: storyBeat,
+    chooseBatchSize: chooseBatchSize,
+    appendNewMessages: appendNewMessages,
     registerTemplate: registerTemplate,
     registerContextProvider: registerContextProvider,
     listContextProviders: listContextProviders,
@@ -917,13 +941,14 @@
     episode.error = '';
     renderReader();
     var rounds = 0;
+    var batchSize = chooseBatchSize(config);
     try {
       var optionalContext = await resolveContexts(episode, role, userInfo());
       if (currentSerial !== state.serial || state.stopped) return;
       while (!state.stopped && episode.messages.length < episode.target) {
-        if (++rounds > Math.ceil(episode.target / 6) + 5) throw new Error('续写速度过慢，请稍后手动继续');
+        if (++rounds > Math.ceil(episode.target / 3) + 8) throw new Error('续写速度过慢，请稍后手动继续');
         var remaining = episode.target - episode.messages.length;
-        var requested = Math.min(12, remaining);
+        var requested = Math.min(batchSize, remaining);
         var result = await global.PhoneAPI.completeJSON({
           system: episodePrompt(episode, role, userInfo(), requested, optionalContext),
           user: '请续写此篇番外，本轮只输出 JSON messages，' + requested + ' 条，顺接上文，不要重复。',
@@ -933,17 +958,7 @@
         if (currentSerial !== state.serial || state.stopped) break;
         if (!result || !result.ok) throw new Error('模型没有返回有效的聊天消息 JSON');
         var chunk = normalizeMessages(result.data, requested);
-        var previous = episode.messages.slice(-4);
-        var added = 0;
-        chunk.forEach(function (message) {
-          var duplicated = previous.some(function (p) {
-            return p.role === message.role && p.text === message.text;
-          });
-          if (!duplicated && episode.messages.length < episode.target) {
-            episode.messages.push(message);
-            added++;
-          }
-        });
+        var added = appendNewMessages(episode, chunk);
         if (!added) throw new Error('本段没有生成新的对话');
         episode.status = episode.messages.length >= episode.target ? 'complete' : 'partial';
         if (!(await persist(episode))) throw new Error('本机保存失败，已停止生成，避免更多内容丢失');
