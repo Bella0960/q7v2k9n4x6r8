@@ -82,7 +82,7 @@ function render(){
  '<span class="portrait-caption">'+(obj?'A LOST OBJECT':masked?'IDENTITY UNKNOWN':'A STRANGER, FOR NOW')+'</span></div>'+
  '<h2 class="name">'+escapeHtml(masked?'未署名的旅人':blind?'一段陌生的声音':c.name)+'</h2>'+
  '<p class="hint">'+escapeHtml(masked?'身份暂未公开':blind?'先凭一句话，认识这个人':obj?c.object:c.job+' · '+c.era+' · '+c.gender+' · '+c.age+'岁')+'</p>'+
- '<div class="tags">'+(masked?'<span class="tag">身份未知</span><span class="tag">点击揭晓</span>':'<span class="tag">'+escapeHtml(c.species)+'</span><span class="tag">'+escapeHtml(c.trait)+'</span><span class="tag">'+escapeHtml(c.era)+'</span>')+'</div>'+
+ '<div class="tags">'+(masked?'<span class="tag">身份未知</span><span class="tag">点击揭晓</span>':blind?'<span class="tag">先听 TA 说</span><span class="tag">点击揭晓</span>':'<span class="tag">'+escapeHtml(c.species)+'</span><span class="tag">'+escapeHtml(c.trait)+'</span><span class="tag">'+escapeHtml(c.era)+'</span>')+'</div>'+
  '<p class="quote">「'+escapeHtml(obj?'这件东西的主人，留下一段没有讲完的故事。':c.quote)+'」</p>'+
  '<div class="card-footer"><span>一位尚未认识的人</span><span class="look">轻触翻阅档案　＋</span></div>';
  document.getElementById('cardSequence').textContent=String(position).padStart(2,'0')+' / ∞';
@@ -181,6 +181,7 @@ function openSettings(){
  '<p class="tiny">设置藏在这里，抽卡首页只保留人物和操作。</p>'+
  select('type','相遇方式',['全部','普通相遇','蒙面档案','以物识人','命运分支','性格盲测'],p.type||'全部')+
  select('world','背景',['全部'].concat(allWorlds.slice(1)),p.world||'全部')+
+ select('gender','人物性别',['全部','男','女'],p.gender||'全部')+
  select('similarity','人物类型偏好',['完全随机','多来喜欢的类型','尽量探索不同类型'],p.similarity||'完全随机')+
  '<p class="tiny">初始人物由本地素材组合，免费抽卡。不读取你的聊天记录，也不自动调用生图或聊天 API。人物相似度不强制排除。</p>',
  '抽卡偏好');
