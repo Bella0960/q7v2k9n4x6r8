@@ -744,18 +744,22 @@ test('authenticated pages without the established account scope module never mou
   const missing = mount({ accountId: 'MAO-AAAAAAAAAAAA', scopeMissing: true });
   assert.equal(missing.grid.querySelector('[data-feat="fanwai"]'), null,
     'missing isolated storage runtime must not fall back to legacy shared localStorage');
+  assert.equal(missing.registry, undefined,
+    'unauthenticated plugin API must not expose role-memory providers before isolation');
   const wrong = mount({
     accountId: 'MAO-AAAAAAAAAAAA',
     scopeAccountId: 'MAO-BBBBBBBBBBBB'
   });
   assert.equal(wrong.grid.querySelector('[data-feat="fanwai"]'), null,
     'runtime from another account must never enable this account');
+  assert.equal(wrong.registry, undefined, 'another account must not receive the plugin API');
   const notReady = mount({
     accountId: 'MAO-AAAAAAAAAAAA',
     scopeReady: false
   });
   assert.equal(notReady.grid.querySelector('[data-feat="fanwai"]'), null,
     'unfinished account scope install must not enable the feature');
+  assert.equal(notReady.registry, undefined, 'unready scope must not register memory providers');
   const valid = mount({ accountId: 'MAO-AAAAAAAAAAAA' });
   assert.ok(valid.grid.querySelector('[data-feat="fanwai"]'),
     'matching completed existing scope preserves normal episode operation');
