@@ -2,6 +2,23 @@
 
 This file is the repository-wide entry point for every AI coding agent and human contributor.
 
+## MAOMAO 永久开工约定（用户明确要求，2026-11-15）
+
+**所有新聊天窗口、Work、自动化任务和其他工程执行者，只要任务涉及 MAOMAO，默认先执行本约定，不要求用户每次重贴长篇提示词。** 本段是项目级工作约定，具体实现与发布顺序以 `docs/engineering/RELEASE_PLAYBOOK.md` 的唯一门禁为准；不可把聊天记忆、提示词或文档当作 CI/发布权限技术锁。
+
+- **只认现有项目**：唯一仓库 `Bella0960/MAOMAO`、当前 `main` 为代码基线，正式小手机目标 `https://app.mao520.com/`。保留已有 HTML/CSS/JavaScript、Vite、Cloudflare、PWA、功能、黑白灰 UI、主题、角色与用户数据；禁止重做、换技术栈、抄不兼容开源素材或引入第二套系统。
+- **开工先查事实**：读取本文件、`RELEASE_PLAYBOOK.md`、`REMEDIATION_BACKLOG.md`、`GLOBAL_BUG_AUDIT_20261115.md` 和开放 PR 台账；其中仅存在于治理 Draft PR #300 的最新版，应读 `GOV-RELEASE-20261115-single-process` 分支。先核对实时 `main`、已有任务 ID、原 PR、依赖和文件认领；禁止盲目新开重复 PR/Worker/DB。
+- **绝不多窗口抢写**：一个任务一个主要负责人、一个主 PR。开发者在原任务分支实做并自测；若 Work 被指定为独立 QA，则只读测试、定位并向原 PR 反馈，不得擅自写入正在开发的文件。跨模块共享 API/状态栏/导航由协调者指定唯一文件所有者。
+- **逐步统一系统底座**：统一状态栏、桌面/导航/生命周期、全局设置、系统事件、主题、角色/账号隔离与存储接口；所有新模块留稳定扩展接入口。优先复用现有公共实现，渐进适配旧页面；禁止为了“统一”强行向沉浸页加状态栏、一次性重写 90 页、只改 URL 外观冒充架构统一。
+- **关键正在推进的原任务**：`UI-STATUS-001` 原 PR #301（状态栏）仍需真实 Node/build/浏览器/QA 结果；`CHAT-HISTORY-001` 原 PR #282 防聊天历史误覆盖；`NAV-001/NAV-003` 继续核对原导航/整合 PR；不能把 Draft、CI 未启动或静态审计说成已修复。
+- **唯一固定流程，不得跳关**：需求登记 → 检查原 PR 与依赖 → 认领原分支实做 → 真实自动测试与构建 → 唯一隔离 QA（Android/iPhone 相关验收）→ 整合审核 → 合并 `main` → 正式数据安全/备份恢复/Worker 绑定与触发器门禁 → 用户明确批准 → 正式发布 → 线上复验/归档。失败回原 PR，阻塞时写实证并继续无关的安全任务。
+- **生产数据是红线**：永久管理员 ID `MAO-OXHBDBWCOIHPBBYN`、正式账号密码及数据不得重置、复制到 QA 或被损坏；禁止未授权修改生产 DB、Worker、DNS、凭据、发布开关。现有唯一指定 QA Worker `maomao-aw-qa-20261114` 的访问 URL、隔离性与版本仍须实际核验，不能猜测或另建多个预览。
+- **iPhone 保留 PWA 路线**：Safari「添加到主屏幕」不需要开发 IPA/Apple 代码签名；不得为参考 iOS 工程而新增 Flutter、IPA、证书签名/自动 APK 构建。实测 Android Chrome 与 iPhone Safari 的安全区、返回、缓存、数据与应用开关。
+- **不准伪报进度**：提交 PR ≠ 自动测试通过 ≠ QA 通过 ≠ 合入 `main` ≠ 正式上线。任何未实际执行的测试必须标 `NOT VERIFIED`；CI 无运行步骤按阻塞记录。每次交代任务/PR、当前状态、真实文件与 commit、测试证据、QA 与数据库、main/正式站是否变更、下一步唯一动作。
+- **不要求用户反复“继续”**：收到具体修复任务后，在已授权范围持续推进到验收或真实阻塞；额度、窗口切换时把证据、分支、文件认领与下一动作写回现有 PR/执行日志。不承诺聊天结束后自动后台做事。
+
+**默认触发：** 用户在任何新对话说「MAOMAO 开工」「继续小手机」「按统一流程推进」或提出具体 MAOMAO 工程任务时，应按以上约定自动接续；无需用户复述规则。若当前窗口无法读到仓库/现有 PR，必须说明限制，不能凭记忆猜测当前工程状态。
+
 ## Read before changing code
 
 Read these files first:
