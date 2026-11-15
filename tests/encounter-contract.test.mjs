@@ -690,7 +690,7 @@ function encounterEditorDraftFixture(seed = {}) {
   };
   const code=[
     "let activeEncounterDraftId='',pendingDraftRecovery=null,unreadableDraftKey='',currentDraftKey='',editorOriginalState=null,selectedColor='',avatarDataUrl='',selectedWorldBookIds=[],portraitPurpose='',editorReturnView='';",
-    "function getRandomColor(){return '#777'} function updateAvatarPreview(){} function renderWorldBookBinder(){} function showView(){} function setSaveStatus(message,state){statuses.push({message,state});}",
+    "function getRandomColor(){return '#777'} function updateAvatarPreview(){} function renderWorldBookBinder(){} function showView(){} function showAppView(){} function setSaveStatus(message,state){statuses.push({message,state});}",
     segment('function openAddRole(options) {','// 打开编辑旧角色'),
     segment('function getDraftKey(roleId) {','function setSaveStatus(message, state) {'),
     segment('function persistEditorDraft(force) {',"document.getElementById('btnBackProfile')"),
