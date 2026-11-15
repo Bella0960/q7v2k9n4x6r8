@@ -211,24 +211,32 @@
     var key=inboxKey(gid,session.sessionId,to), inbox=read(storage,key);
     if (inbox != null && !Array.isArray(inbox)) return error('CORRUPT_INBOX','私聊记录异常');
     inbox=inbox||[];
-    if (inbox.some(function (m) { return m && m.eventId===eventId; }))
-      return { ok:true, duplicate:true };
-    var event={ eventId:eventId, groupId:gid,sessionId:session.sessionId,
+    var existing=inbox.find(function(m){return m&&m.eventId===eventId;});
+    var duplicate=!!existing;
+    var event=existing||{ eventId:eventId, groupId:gid,sessionId:session.sessionId,
       fromId:from,toId:to,text:content,time:Date.now() };
-    if (!write(storage,key,inbox.concat([event]).slice(-40)))
+    if(existing && (existing.groupId!==gid || existing.sessionId!==session.sessionId ||
+       existing.fromId!==from || existing.toId!==to || existing.text!==content))
+      return error('EVENT_CONFLICT','相同事件编号的私聊内容不一致');
+    if(!duplicate && !write(storage,key,inbox.concat([event]).slice(-40)))
       return error('SAVE_FAILED','私聊没有保存成功');
+    var activitySynced=true;
     if (session.rules.showPrivateActivity) {
-      // Store only who spoke to whom, NEVER private text or identity.
+      // Only participant metadata is stored in PUBLIC state. A public write can
+      // fail after private delivery; retry with the SAME event ID reconciles it.
       var raw=read(storage,publicKey(gid));
-      if (raw && raw.sessionId===session.sessionId && raw.status==='active') {
-        raw.activity=(Array.isArray(raw.activity)?raw.activity:[]).concat([
-          { fromId:from,toId:to,time:event.time }
-        ]).slice(-12);
-        write(storage,publicKey(gid),raw);
+      if (!raw || raw.sessionId!==session.sessionId || raw.status!=='active') {
+        activitySynced=false;
+      } else {
+        var prior=Array.isArray(raw.activity)?raw.activity:[];
+        if (!prior.some(function(m){return m&&m.eventId===eventId;})) {
+          raw.activity=prior.concat([{ eventId:eventId,fromId:from,toId:to,time:event.time }]).slice(-12);
+          activitySynced=write(storage,publicKey(gid),raw);
+        }
       }
     }
-    emit('game:whispered',{groupId:gid,sessionId:session.sessionId,fromId:from,toId:to});
-    return {ok:true,duplicate:false};
+    if(!duplicate)emit('game:whispered',{groupId:gid,sessionId:session.sessionId,fromId:from,toId:to});
+    return {ok:true,duplicate:duplicate,privateSaved:true,activitySynced:activitySynced};
   }
   // A host may read ONLY messages addressed to the host in the active round.
   // No general "view all private chats" API is exposed to the group owner.
