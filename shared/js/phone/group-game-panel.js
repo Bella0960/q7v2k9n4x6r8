@@ -42,6 +42,7 @@
       '</form>'+
       '</details>'+
       '<button type="button" id="groupGameFinish" class="group-game-button secondary" hidden>结束游戏 · 揭晓身份</button>'+
+      '<button type="button" id="groupGameCancel" class="group-game-button secondary" hidden>取消本局（不揭晓）</button>'+
       '<p id="groupGameNotice" class="group-game-notice" role="status" aria-live="polite"></p>';
     var style=document.createElement('style');
     style.id='group-game-panel-style';
@@ -72,6 +73,7 @@
       allowed=panel.querySelector('#groupGamePrivate'), activity=panel.querySelector('#groupGameActivity'),
       activityRow=panel.querySelector('#groupGameActivityRow'),
       current=panel.querySelector('#groupGameCurrent'), finish=panel.querySelector('#groupGameFinish'),
+      cancelButton=panel.querySelector('#groupGameCancel'),
       notice=panel.querySelector('#groupGameNotice'),
       whisperPanel=panel.querySelector('#groupGameWhisperPanel'),
       whisperTo=panel.querySelector('#groupGameWhisperTo'),
@@ -128,7 +130,7 @@
     }
     function render(){
       group=currentGroup();isOwner=group&&String(group.ownerId||'__user')==='__user';
-      if(!group){stateLine('群资料已变化，请返回群聊重新打开。');form.hidden=true;finish.hidden=true;whisperPanel.hidden=true;return;}
+      if(!group){stateLine('群资料已变化，请返回群聊重新打开。');form.hidden=true;finish.hidden=true;cancelButton.hidden=true;whisperPanel.hidden=true;return;}
       var game=api.getPublic(String(group.id));
       select.textContent='';
       (group.members||[]).forEach(function(m){
@@ -137,14 +139,15 @@
         o.textContent=String(m.nickname||m.name||'群成员');select.appendChild(o);
       });
       if(!isOwner){
-        form.hidden=true;finish.hidden=true;whisperPanel.hidden=true;
+        form.hidden=true;finish.hidden=true;cancelButton.hidden=true;whisperPanel.hidden=true;
         stateLine(game&&game.status==='active'
           ? '本局猜身份进行中 · 已投 '+game.voteCount+'/'+game.players.length+' 票。'
           : '目前没有进行中的秘密身份游戏。');
         return;
       }
-      if(!game||game.status==='finished'){
-        form.hidden=false;finish.hidden=true;whisperPanel.hidden=true;
+      if(!game||game.status==='finished'||game.status==='cancelled'){
+        form.hidden=false;finish.hidden=true;cancelButton.hidden=true;whisperPanel.hidden=true;
+        if(game&&game.status==='cancelled')stateLine('上一局已取消，未公布身份。可以重新开始。');
         if(game&&game.status==='finished'){
           stateLine('上一局已揭晓 · 坏人是「'+nameFor(game.revealedRoleId)+
             '」 · '+game.voteCount+'/'+game.players.length+' 人投票，'+game.correctVotes+' 人猜对。');
@@ -152,7 +155,7 @@
         }
         else stateLine('设置这一局的规则，再由你亲自发放秘密身份牌。');
       }else{
-        form.hidden=true;finish.hidden=false;
+        form.hidden=true;finish.hidden=false;cancelButton.hidden=false;
         finish.disabled=game.voteError===true;
         whisperPanel.hidden=game.rules.allowPrivate!==true;
         if(!whisperPanel.hidden) {
@@ -209,6 +212,15 @@
       notice.textContent='已发给 '+nameFor(whisperTo.value)+'，仅该角色能收到。'+
         (sent.activitySynced===false?' 私聊动向暂未同步。':'');
       renderPrivateConversation();
+    });
+    cancelButton.addEventListener('click',function(){
+      group=currentGroup();
+      if(!group||String(group.ownerId||'__user')!=='__user')return;
+      if(!root.confirm('取消本局？未揭晓的身份牌、猜测票和游戏私聊将清除；原群聊消息不变。'))return;
+      var ended=api.cancel({group:group,groupId:gid,actorId:'__user'});
+      if(!ended.ok){notice.textContent=ended.message||'取消失败';return;}
+      notice.textContent='已取消本局，未揭晓身份；可以开启新一局。';
+      render();
     });
     finish.addEventListener('click',function(){
       group=currentGroup();
