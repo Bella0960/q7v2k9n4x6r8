@@ -39,7 +39,10 @@ function harness(options = {}) {
   };
   const storage = {
     getItem(key){return data.has(key)?data.get(key):null},
-    setItem(key,value){data.set(key,String(value))}
+    setItem(key,value){
+      if (options.failPrivateWrite && key === 'chat_history_r1') throw Error('QuotaExceededError');
+      data.set(key,String(value));
+    }
   };
   const window = {GroupGovernance:governance, GroupGameSessions:null};
   new Function('window',gameSource)(window);
@@ -60,7 +63,7 @@ function harness(options = {}) {
       events.push('relation:'+fromId+':'+targetId);
       return {ok:true};
     },
-    saveMessages(){groupWrites.push('history');return true;},
+    saveMessages(){groupWrites.push('history');return options.failGroupCardWrite !== true;},
     showToast(){},
     showGroupPrivatePopup(){privatePopupCount++;},
     console
@@ -153,6 +156,31 @@ test('multiple private markers can only deliver the first one per saved turn', (
   assert.equal(saved.length, 1);
   assert.equal(saved[0].text, '第一条');
   assert.equal(h.privatePopupCount, 1);
+});
+
+test('recipient history write failure never creates a public private card', () => {
+  const h = harness({failPrivateWrite:true}), tx = h.createTurn();
+  h.parse('公开回复 [群私聊:r1:不要进入群记录的内容]', h.group.members[0],
+    h.history, false, false, true, '', () => {}, tx);
+  const result = tx.finalize(true);
+  assert.equal(result.ok, false, 'post-save failure must be reported');
+  assert.equal(result.postCommitFailures, 1);
+  assert.equal(h.data.has('chat_history_r1'), false);
+  assert.equal(h.history.filter((m) => m.type === 'group_private').length, 0);
+  assert.equal(h.privatePopupCount, 0);
+});
+
+test('failed group-card write reports partial delivery and keeps private text outside public history', () => {
+  const h = harness({failGroupCardWrite:true}), tx = h.createTurn();
+  h.parse('公开回复 [群私聊:r1:只给角色的文本]', h.group.members[0],
+    h.history, false, false, true, '', () => {}, tx);
+  const result = tx.finalize(true);
+  assert.equal(result.saved, true, 'the public AI reply was already saved');
+  assert.equal(result.ok, false, 'private event as a whole was only partly written');
+  assert.equal(result.postCommitFailures, 1);
+  assert.match(h.data.get('chat_history_r1'), /只给角色的文本/);
+  assert.equal(h.history.filter((m) => m.type === 'group_private').length, 0);
+  assert.equal(h.privatePopupCount, 0);
 });
 
 test('incomplete AI response does not even stage vote/chain or governance', () => {
