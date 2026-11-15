@@ -138,25 +138,46 @@ function getRandomColor() {
     return AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
 }
 
+// 读取失败不能被当成空角色库：更不能用空数组覆盖原有角色数据。
+let roleStoreReadError = false;
 function loadRoles() {
     try {
-        if (window.PhoneStorage && typeof PhoneStorage.getCharacters === 'function') {
-            const stored = PhoneStorage.getCharacters();
-            if (Array.isArray(stored)) return stored;
+        if (window.PhoneStorage && PhoneStorage.result &&
+            typeof PhoneStorage.result.getCharacters === 'function') {
+            const result = PhoneStorage.result.getCharacters();
+            if (result && result.ok && Array.isArray(result.value)) {
+                roleStoreReadError = false;
+                return result.value;
+            }
+            if (result && result.error && result.error.code === 'NOT_FOUND') {
+                roleStoreReadError = false;
+                return DEFAULT_ROLES;
+            }
+            roleStoreReadError = true;
+            console.warn('角色库读取失败，暂时禁止写入，避免覆盖旧资料。');
+            return DEFAULT_ROLES;
         }
         const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) {
-            const parsed = JSON.parse(raw);
-            if (Array.isArray(parsed)) return parsed;
+        if (raw === null) {
+            roleStoreReadError = false;
+            return DEFAULT_ROLES;
         }
-    } catch (e) {
-        console.error('读取角色数据异常:', e);
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) throw new Error('角色数据不是数组');
+        roleStoreReadError = false;
+        return parsed;
+    } catch (error) {
+        console.warn('角色库读取异常，原始数据保持不变：', error);
+        roleStoreReadError = true;
+        return DEFAULT_ROLES;
     }
-    saveRoles(DEFAULT_ROLES);
-    return DEFAULT_ROLES;
 }
 
 function saveRoles(roles) {
+    if (roleStoreReadError || !Array.isArray(roles)) {
+        console.warn('已拒绝保存角色：角色库尚未安全读取，防止空列表覆盖已有数据。');
+        return false;
+    }
     try {
         if (window.PhoneStorage && PhoneStorage.result &&
             typeof PhoneStorage.result.saveCharacters === 'function') {
