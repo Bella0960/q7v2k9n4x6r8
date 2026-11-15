@@ -2987,6 +2987,7 @@
                 msg.memberId || '',
                 msg.poll && typeof msg.poll === 'object' ? JSON.stringify(msg.poll) : '',
                 msg.chain && typeof msg.chain === 'object' ? JSON.stringify(msg.chain) : '',
+                msg.groupGame && typeof msg.groupGame === 'object' ? JSON.stringify(msg.groupGame) : '',
                 msg.call && typeof msg.call === 'object' ? JSON.stringify(msg.call) : ''
             ];
             return String(msg.role || '') + '\u0001' + String(marker) + '\u0001' +
