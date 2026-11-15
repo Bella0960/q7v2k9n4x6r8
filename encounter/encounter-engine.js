@@ -14,6 +14,9 @@
   var givenMen = ['知序','见山','叙白','云深','观澜','行舟','景辞','怀瑾','晏舟','朔风','景行','言川','时屿','长宁'];
   var givenWomen = ['望舒','南枝','晚晴','知微','初晴','青禾','雨眠','昭宁','映雪','南乔','明月','清越','照影','初弦'];
   var western = ['Aster Vale','Elian Voss','Rowan Grey','Iris Solen','Celia Maren','Noa Vey','Rhea Arden','Silas North','Vera Lys','Luca Wren'];
+  // 补充可组合名字片段，避免长期抽卡只在几十个固定名字间循环。
+  var nameStarts = ['知','清','望','行','景','书','怀','思','楚','林','霁','庭','君','云','秋','安','时','言','宁','予','明','朝','希','初','闻','苏','北','昭'];
+  var nameEnds = ['川','月','舟','宁','辞','岚','微','野','安','白','屿','衡','竹','然','瑾','音','澜','晴','霜','禾','言','之','汐','远','修','澈','辰','棠'];
   var archetypes = [
     {trait:'温柔克制',hidden:'有自己的原则，从不轻易许诺',quote:'有些事情，值得慢慢说。'},
     {trait:'阳光直率',hidden:'偶尔也需要一个安静的角落',quote:'走吧，今天适合认识新朋友。'},
@@ -43,6 +46,7 @@
   ];
   var secrets = ['一张从未寄出的明信片','一枚停在凌晨三点的怀表','一本字迹不同的旅行笔记','一把没有标记的旧钥匙','一卷褪色的胶片','一封没有署名的信','一本被反复翻阅的旧书','一枚刻着陌生日期的胸针'];
   var fates = ['曾经离开故乡多年','正在寻找一位失联的故人','曾意外卷入一段时间错位','一直守护某个秘密的约定','在人间隐居多年','刚从漫长的旅程归来','经历过一次重生，保留模糊记忆','偶尔梦见另一个时空'];
+  var uncommonFates = ['一直保留着不属于这个时代的记忆碎片','曾立下只允许履行一次的古老约定','偶然发现祖辈留下的第二份人生记录','拥有一幅描绘尚未发生之事的画','一封信改变了原本确定的命运'];
   var styles = ['普通相遇','普通相遇','普通相遇','普通相遇','普通相遇','普通相遇','蒙面档案','以物识人','命运分支','性格盲测'];
   var PREFERENCES_KEY = 'maomao_encounter_preferences_v1';
 
@@ -122,7 +126,8 @@
     var isFantasy = world.era === '西方奇幻';
     var pool = gender === '女' ? givenWomen.concat(given) : givenMen.concat(given);
     for (var i = 0; i < 160; i++) {
-      var name = isFantasy && random(3) === 0 ? pick(western) : pick(surnames) + pick(pool);
+      var compound = random(5) === 0 ? pick(nameStarts) + pick(nameEnds) : pick(pool);
+      var name = isFantasy && random(3) === 0 ? pick(western) : pick(surnames) + compound;
       if (!taken.has(normalizeName(name))) return name;
     }
     return null;
@@ -167,12 +172,13 @@
     }
     var age = w.species === '人类' ? 22 + random(21) : (w.species === '仿生人' ? 23 + random(20) : 80 + random(1800));
     var type = prefs.type === '普通相遇' ? '普通相遇' : (styles.indexOf(prefs.type) >= 0 ? prefs.type : pick(styles));
+    var rarity = random(100) < 8 ? '特别邂逅' : '普通';
     var card = {
       id:'enc_' + Date.now().toString(36) + '_' + random(99999999).toString(36),
       name:name, gender:gender, age:age, species:w.species, era:w.era, job:pick(w.jobs),
       relationVibe:pick(['年上感','年下感','同龄感','自由发展']),
       trait:a.trait, contrast:a.hidden, quote:a.quote,
-      object:pick(secrets), fate:pick(fates), type:type,
+      object:pick(secrets), fate:rarity === '特别邂逅' ? pick(uncommonFates) : pick(fates), type:type, rarity:rarity,
       choices:['留在熟悉的地方','踏上一段未知旅程'],
       selectedChoice:'', createdAt:Date.now(), schemaVersion:1
     };
@@ -227,6 +233,7 @@
       '【内在反差】' + card.contrast,
       '【重要物件】' + card.object,
       '【命运线索】' + (card.selectedChoice || card.fate),
+      '【相遇类型】' + (card.rarity || '普通') + '（稀有仅表示故事线索较特别，不代表人物等级）',
       '【说话气质】' + card.quote,
       '【创作说明】以上为简要原创设定。正式聊天前可在角色档案补全经历、习惯、动机与表达方式。'
     ].join('\n');
