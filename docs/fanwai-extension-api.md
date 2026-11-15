@@ -133,3 +133,11 @@ npm run build
 - 新增 `tests/account-fanwai-pwa-runtime.test.mjs`，覆盖受保护页面绕过缓存、断网只能显示公开登录页、公开登录响应重定向后不入缓存、PWA 安装不预缓存私人 HTML。
 - `npm run test:integration:account-fanwai` 汇总原账号隔离/Worker 测试与番外三组 UI/逻辑测试、PhoneAPI 取消测试及网络优先的 PWA 测试；不会修改真实数据库。
 - 逻辑及模拟运行测试通过不代表 `npm run build`、真实 Node 全量回归、真实浏览器或 Android/iOS 验收通过。账号 #290 仍是草稿门禁，联合分支也不能直接指向正式 `app.mao520.com`。
+
+
+## 2026-11-16｜本地浏览器验收补全与删除队列
+
+- **删除与保存按同一队列执行**：在 `erase()` 调用时先等待本账号/角色已经排队的 IndexedDB `put` 事务完成，再提交 `delete`，避免“生成收尾保存尚未落盘 → 用户立刻删除 → 旧保存晚到导致故事复活”。失败仍保持原有告警，不标记删除成功，存档格式不变。
+- **新增真实 Chromium 烟测项目**（脚本已写、真浏览器未跑）：本地合成 HTML 注入畸形账号 meta、或注入与已就绪账号作用域不一致的 meta，确认番外菜单、阅读层、公共记忆插件 API 均不出现；不连接生产 Worker/数据库。40 条对话完成后，再测阅读区域宽度、消息横向溢出与底部操作栏是否被挤出。
+- **验证**：当前分支四套番外/公共 PhoneAPI 测试在源代码 V8 模拟执行环境 **46/46 通过**，包含延迟最终保存后立即删除的回归；本地 Chromium smoke 源码 JS 语法检查通过，但 `npm ci` / `npm run build` / 实际 Playwright 页面验收仍 **NOT RUN**。不将模拟视口冒充 Android/iPhone 真机。
+- **缓存**：聊天页 `chat-extras.js?t=20261116fanwai13` 加载 `chat-fanwai.js?v=20261116v13`，确保手机刷新使用删除队列新逻辑。无 IndexedDB schema 或账号数据迁移。
