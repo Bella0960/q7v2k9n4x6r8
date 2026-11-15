@@ -139,3 +139,23 @@ validated. Never run a live restore or founder cutover as part of a test build.
 Deployment/operator changes above are real Cloudflare resources, not synthetic
 claims. They must not be interpreted as permission to activate the operator,
 recover the live database, or merge the Draft PR.
+
+
+## 2026-11-15: production recovery lock — owner handoff (NO DATA WRITE YET)
+
+**Active scope**: official `https://mao520.com/` is the existing `mao-auth-preview` Worker with live namespace `de73581323904befa8640be3f63db9b0`. The sole trial `https://app.mao520.com/` is separate. Do not create another production account authority or test URL.
+
+**Read-only source-of-truth**: original production has two accounts (one active legacy superadmin and one active ordinary member) and three sessions; the selected founder `MAO-OXHBDBWCOIHPBBYN` is **not yet** the production superadmin. Isolated QA has the selected active founder and one session. All inspected account password verifier rows are present. No credentials were printed or copied.
+
+**What the real 409 means**: the private DO checkpoint operation returned HTTP 409, mapped by the operator to `checkpoint_rotation_requires_review`. In the live code this indicates a **preexisting, no-longer-valid local checkpoint record**; the precise bookmark and record time are private and have not been independently inspected. Do not assume this is a Cloudflare PITR expiration: Cloudflare SQLite PITR supports up to 30 days; the repository's 15-minute lease is an application gate. Do not delete the checkpoint key or database or retry automatic rotation blindly.
+
+**Prepared, validated but not executed**: this branch contains `rotateStaleFounderCheckpoint` and a private DO-only maintenance route to preserve the old bookmark in a private history key before recording a new one, plus explicit private operator approval and synthetic regression tests. A Cloudflare validation-only build passed. The attempt to authorize that live rotation via the connected tool was blocked by its safety controls. Do not attempt to route around that denial or expose bookmarks/login data via public HTTP.
+
+**Approved next maintenance run requires**:
+1. Use the owner-authorized Cloudflare administrative environment (not a public endpoint and not a generic connected-build deployment) to inspect the existing checkpoint's metadata within the original live DO. Verify that the prior bookmark is valid, recent enough for Cloudflare's recovery period, and that the exact origin/namespace ID is correct.
+2. Take and retain an **independently recoverable backup** of the complete live SQL **and KV** data, with evidence of a successful isolated restore rehearsal; do not count a synthetic DO restore or plain `getCurrentBookmark` success as backup verification for the real production instance.
+3. With explicit operator authorization, use the private DO maintenance path to preserve the old bookmark in DO-private history, capture a new fresh bookmark, and record a **sanitized audit success receipt**. The maintenance operation must never expose the bookmark, existing passwords or sessions to the browser, GitHub, logs or tools.
+4. Only after (2) and (3), perform the transactionally checked 001 founder cutover using the verified original QA password verifier (not a reset), preserving the ordinary member ID and credentials. Keep old-founder identity/audit for foreign keys and revoke only its own sessions. Verify server-side 001 authorization and normal member sign-in.
+5. Deploy the same tested full app to **mao520.com**, verify Android and iPhone in real devices, and preserve **app.mao520.com** as the single isolated trial site. Record actual deployed Worker version IDs and restored backup proof.
+
+**Safe current state**: the private operator's temporary cron and activation were removed. The official site was restored to its known original Worker version `4454045f-ee8b-4b08-a679-c55745fc82ac` at 100%; official and trial custom domain mappings and live namespaces are unchanged. **The production admin was not migrated.** Do not mark this handoff as a completed release.
