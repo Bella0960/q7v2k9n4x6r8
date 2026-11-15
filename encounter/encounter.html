@@ -72,7 +72,7 @@ function clock(){var d=new Date();document.getElementById('deviceTime').textCont
 clock();setInterval(clock,30000);
 function notify(text){noticeEl.textContent=text;noticeEl.classList.add('show');clearTimeout(noticeTimer);noticeTimer=setTimeout(function(){noticeEl.classList.remove('show');},2400);}
 function count(){var r=engine.getCandidates();document.getElementById('savedCount').textContent=r.ok?String(r.value.length).padStart(2,'0'):'!';}
-function modeCaption(c){return c.type==='蒙面档案'?'UNKNOWN / 另一种身份':c.type==='以物识人'?'OBJECT / 一件遗留物':c.type==='命运分支'?'FATE / 两种可能':c.type==='性格盲测'?'VOICE / 先听他说': 'PERSONA / 人物档案';}
+function modeCaption(c){if(c.rarity==='特别邂逅'&&c.type==='普通相遇')return 'SPECIAL / 特别邂逅';return c.type==='蒙面档案'?'UNKNOWN / 另一种身份':c.type==='以物识人'?'OBJECT / 一件遗留物':c.type==='命运分支'?'FATE / 两种可能':c.type==='性格盲测'?'VOICE / 先听他说': 'PERSONA / 人物档案';}
 
 function objectArt(name){
  // 原创线描 SVG：真实对应卡片物件，不下载外部素材，也不使用 Emoji。
@@ -176,7 +176,7 @@ function openDetail(){
  if(!current)return;var c=current;
  var html=head('PERSONA / 01','人物档案')+'<div class="sheet-quote">「'+escapeHtml(c.quote)+'」</div>'+
  row('姓名',c.name)+row('性别',c.gender)+row('关系气质',c.relationVibe)+row('身份',c.job)+row('种族',c.species)+row('年龄',String(c.age))+
- row('世界',c.era)+row('外在',c.trait)+row('内在反差',c.contrast)+
+ row('世界',c.era)+row('外在',c.trait)+row('内在反差',c.contrast)+(c.rarity==='特别邂逅'?row('相遇','特别邂逅 · 无付费'): '')+
  '<div class="divider"></div><p class="sheet-text">一件重要的东西：'+escapeHtml(c.object)+'。<br>命运线索：'+escapeHtml(c.fate)+'。</p>';
  if(c.type==='命运分支'){
    html+='<div class="field"><label>选择一个故事起点（仅改变当前候选）</label>'+
