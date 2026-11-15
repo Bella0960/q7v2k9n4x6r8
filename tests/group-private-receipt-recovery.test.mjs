@@ -66,6 +66,18 @@ test('reopen/retry is idempotent, including same message IDs in different roles'
   assert.equal(h.writes,1,'repeat open must never rewrite group history');
 });
 
+test('a missing receipt older than 600 later messages still recovers', () => {
+  const h=fixture();
+  const later=Array.from({length:750},(_,i)=>({
+    role:'assistant', mid:'later-'+i, text:'普通单聊消息', time:Date.now()+i
+  }));
+  h.roles.set('r1',[h.receipt('very-old', {time:Date.now()-10000}), ...later]);
+  assert.equal(h.recover(h.req).repaired,1);
+  assert.equal(h.stored[0].privateMessageId,'very-old');
+  assert.equal(h.stored[0].text,'');
+  assert.equal(h.recover(h.req).repaired,0);
+});
+
 test('exclude other groups, legacy unmarked chat, and nonmember roles', () => {
   const h=fixture();
   h.roles.set('r1',[
