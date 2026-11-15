@@ -303,11 +303,13 @@
     root: null, active: null, selected: null, busy: false, creating: false,
     stopped: false, serial: 0, opened: false, branchSource: null, forkPoint: 0,
     settings: { memory: 'none', count: null },
-    settingsLoaded: false, settingsPromise: null, archiveLimit: 12
+    settingsLoaded: false, settingsPromise: null, archiveLimit: 12, viewSerial: 0
   };
   var memory = new Map();
   var dbConnection = null;
   var persistenceFailed = false;
+  var episodeWriteQueue = Promise.resolve();
+  var settingsWriteQueue = Promise.resolve();
   var DB_NAME = 'maomao-fanwai-v1';
 
   function showNotice(message) {
@@ -364,21 +366,34 @@
     })();
     return state.settingsPromise;
   }
-  async function saveSettings() {
-    var database = await db();
-    if (!database) return;
-    return new Promise(function (resolve) {
-      try {
-        var transaction = database.transaction('episodes', 'readwrite');
-        transaction.objectStore('episodes').put({
-          id: SETTINGS_ID, kind: 'fanwai-settings',
-          settings: normalizeSettings(state.settings), updatedAt: Date.now()
-        });
-        transaction.oncomplete = resolve;
-        transaction.onabort = resolve;
-        transaction.onerror = resolve;
-      } catch (error) { resolve(); }
-    });
+  // 快速切换记忆/篇幅时，按触发顺序提交，旧值不能晚到后覆盖新值。
+  function saveSettings() {
+    var snapshot = normalizeSettings(state.settings);
+    var write = async function () {
+      var database = await db();
+      if (!database) return false;
+      return new Promise(function (resolve) {
+        var settled = false;
+        function finish(ok) {
+          if (settled) return;
+          settled = true;
+          resolve(ok);
+        }
+        try {
+          var transaction = database.transaction('episodes', 'readwrite');
+          transaction.oncomplete = function () { finish(true); };
+          transaction.onabort = function () { finish(false); };
+          transaction.onerror = function () { finish(false); };
+          transaction.objectStore('episodes').put({
+            id: SETTINGS_ID, kind: 'fanwai-settings',
+            settings: snapshot, updatedAt: Date.now()
+          });
+        } catch (error) { finish(false); }
+      });
+    };
+    var completion = settingsWriteQueue.then(write, write);
+    settingsWriteQueue = completion.then(function () {}, function () {});
+    return completion;
   }
 
   // 永不把写入失败当作“已保存”。失效的 IndexedDB 不能驱动后续收费生成。
@@ -387,24 +402,30 @@
     episode.updatedAt = Date.now();
     var snapshot = JSON.parse(JSON.stringify(episode));
     memory.set(snapshot.id, snapshot);
-    var database = await db();
-    if (!database) return !canPersist; // 无实名账号的临时会话允许内存保存。
-    return new Promise(function (resolve) {
-      var settled = false;
-      function finish(ok) {
-        if (settled) return;
-        settled = true;
-        if (!ok) persistenceFailed = true;
-        resolve(ok);
-      }
-      try {
-        var transaction = database.transaction('episodes', 'readwrite');
-        transaction.oncomplete = function () { finish(true); };
-        transaction.onerror = function () { finish(false); };
-        transaction.onabort = function () { finish(false); };
-        transaction.objectStore('episodes').put(snapshot);
-      } catch (error) { finish(false); }
-    });
+    // 同一篇故事的“生成中保存 / 暂停保存 / 继续保存”必须按提交顺序落盘。
+    var write = async function () {
+      var database = await db();
+      if (!database) return !canPersist; // 临时会话支持纯内存保存。
+      return new Promise(function (resolve) {
+        var settled = false;
+        function finish(ok) {
+          if (settled) return;
+          settled = true;
+          if (!ok) persistenceFailed = true;
+          resolve(ok);
+        }
+        try {
+          var transaction = database.transaction('episodes', 'readwrite');
+          transaction.oncomplete = function () { finish(true); };
+          transaction.onerror = function () { finish(false); };
+          transaction.onabort = function () { finish(false); };
+          transaction.objectStore('episodes').put(snapshot);
+        } catch (error) { finish(false); }
+      });
+    };
+    var completion = episodeWriteQueue.then(write, write);
+    episodeWriteQueue = completion.then(function () {}, function () {});
+    return completion;
   }
 
   async function listSaved() {
@@ -632,9 +653,10 @@
     state.opened = true;
     state.selected = null;
     state.root.hidden = false;
+    var viewSerial = ++state.viewSerial;
     var sheet = clearView();
     await loadSettings();
-    if (!state.opened || state.selected) return;
+    if (!state.opened || state.selected || viewSerial !== state.viewSerial) return;
     topBar(sheet);
 
     var hero = document.createElement('section');
@@ -713,6 +735,7 @@
     if (!state.root || !template || state.busy) return;
     state.opened = true;
     state.selected = template;
+    state.viewSerial++;
     state.root.hidden = false;
     var detail = EDITORIAL[template.id] || {
       en: template.english || 'Another chapter', mood: template.mood || template.subtitle,
@@ -746,6 +769,7 @@
     var source = state.active;
     if (!source || state.busy || !Array.isArray(source.messages) || source.messages.length < 12) return;
     state.branchSource = source;
+    state.viewSerial++;
     state.forkPoint = Math.max(6, Math.min(source.messages.length - 6, Math.floor(source.messages.length * .58)));
     var sheet = clearView();
     sheet.classList.add('fw-branch-preview');
@@ -780,6 +804,7 @@
     var count = source.target;
     if (count <= kept) return;
     state.creating = true;
+    var viewSerial = state.viewSerial;
     try {
       var now = Date.now();
       var episode = {
@@ -803,6 +828,7 @@
         showNotice('无法保存新的故事分支，未发起模型请求');
         return;
       }
+      if (!state.opened || viewSerial !== state.viewSerial) return;
       emit('episode:created', { id: episode.id, characterId: roleId, target: count, originId: source.id });
       state.branchSource = null;
       state.forkPoint = 0;
@@ -903,6 +929,7 @@
   function openReader(episode) {
     state.opened = true;
     state.active = episode;
+    state.viewSerial++;
     state.root.hidden = false;
     renderReader();
   }
@@ -922,6 +949,7 @@
   function close() {
     if (state.busy) pause();
     state.opened = false;
+    state.viewSerial++;
     state.branchSource = null;
     state.root.hidden = true;
   }
@@ -950,9 +978,13 @@
     var rounds = 0;
     var batchSize = chooseBatchSize(config);
     try {
+      await episodeWriteQueue;
+      if (currentSerial !== state.serial || state.stopped || state.active !== episode) return;
+      if (canPersist && persistenceFailed) throw new Error('存储失败，已阻止新一轮模型请求');
       var optionalContext = await resolveContexts(episode, role, userInfo());
       if (currentSerial !== state.serial || state.stopped) return;
-      while (!state.stopped && episode.messages.length < episode.target) {
+      while (!state.stopped && currentSerial === state.serial && state.active === episode && episode.messages.length < episode.target) {
+        if (canPersist && persistenceFailed) throw new Error('本机存储失败，已终止更多模型请求');
         if (++rounds > Math.ceil(episode.target / 3) + 8) throw new Error('续写速度过慢，请稍后手动继续');
         var remaining = episode.target - episode.messages.length;
         var requested = Math.min(batchSize, remaining);
@@ -969,6 +1001,7 @@
         if (!added) throw new Error('本段没有生成新的对话');
         episode.status = episode.messages.length >= episode.target ? 'complete' : 'partial';
         if (!(await persist(episode))) throw new Error('本机保存失败，已停止生成，避免更多内容丢失');
+        if (currentSerial !== state.serial || state.stopped || state.active !== episode) break;
         emit('episode:progress', { id: episode.id, characterId: roleId,
           completed: episode.messages.length, target: episode.target });
         renderReader();
@@ -1003,6 +1036,7 @@
     var count = template ? Number(selectedCount) || template.target : Number(select && select.value) || 80;
     if (![40, 80, 100].includes(count)) count = template ? template.target : 80;
     state.creating = true;
+    var viewSerial = state.viewSerial;
     var episode = {
       id: scope + ':' + roleId + ':' + Date.now() + ':' + Math.random().toString(36).slice(2, 8),
       accountId: scope, characterId: roleId,
@@ -1018,6 +1052,7 @@
         showNotice('番外无法保存，已阻止开始生成，请检查浏览器存储空间');
         return;
       }
+      if (!state.opened || viewSerial !== state.viewSerial) return;
       emit('episode:created', { id: episode.id, characterId: roleId, target: count });
       openReader(episode);
       generate();
@@ -1056,6 +1091,7 @@
       return;
     }
     if (key === 'return-story') {
+      state.viewSerial++;
       state.branchSource = null;
       state.forkPoint = 0;
       if (state.active) openReader(state.active);
@@ -1093,9 +1129,10 @@
       return;
     }
     if (key === 'read') {
+      var viewSerial = state.viewSerial;
       var episodes = await listSaved();
       var selected = episodes.find(function (e) { return e.id === node.dataset.id; });
-      if (selected) openReader(selected); return;
+      if (selected && state.opened && viewSerial === state.viewSerial) openReader(selected); return;
     }
     if (key === 'delete') { openDeleteConfirm(); return; }
     if (key === 'confirm-delete') {
