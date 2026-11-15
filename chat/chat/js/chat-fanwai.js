@@ -357,20 +357,29 @@
     });
   }
 
+  // 永不把写入失败当作“已保存”。失效的 IndexedDB 不能驱动后续收费生成。
   async function persist(episode) {
+    if (!episode || episode.accountId !== scope || episode.characterId !== roleId) return false;
     episode.updatedAt = Date.now();
     var snapshot = JSON.parse(JSON.stringify(episode));
     memory.set(snapshot.id, snapshot);
     var database = await db();
-    if (!database) return;
+    if (!database) return !canPersist; // 无实名账号的临时会话允许内存保存。
     return new Promise(function (resolve) {
+      var settled = false;
+      function finish(ok) {
+        if (settled) return;
+        settled = true;
+        if (!ok) persistenceFailed = true;
+        resolve(ok);
+      }
       try {
         var transaction = database.transaction('episodes', 'readwrite');
+        transaction.oncomplete = function () { finish(true); };
+        transaction.onerror = function () { finish(false); };
+        transaction.onabort = function () { finish(false); };
         transaction.objectStore('episodes').put(snapshot);
-        transaction.oncomplete = function () { resolve(); };
-        transaction.onerror = function () { persistenceFailed = true; resolve(); };
-        transaction.onabort = function () { persistenceFailed = true; resolve(); };
-      } catch (e) { persistenceFailed = true; resolve(); }
+      } catch (error) { finish(false); }
     });
   }
 
@@ -380,32 +389,54 @@
     if (database) {
       var stored = await new Promise(function (resolve) {
         try {
-          var request = database.transaction('episodes', 'readonly').objectStore('episodes').getAll();
+          // 严格使用 ID 主键的角色范围查询，避免把同库中其他账号的番外读进 JS。
+          var prefix = scope + ':' + roleId + ':';
+          if (!global.IDBKeyRange || typeof global.IDBKeyRange.bound !== 'function') {
+            resolve([]); return;
+          }
+          var range = global.IDBKeyRange.bound(prefix, prefix + '\uffff', false, false);
+          var request = database.transaction('episodes', 'readonly').objectStore('episodes').getAll(range);
           request.onsuccess = function () { resolve(request.result || []); };
           request.onerror = function () { resolve([]); };
-        } catch (e) { resolve([]); }
+        } catch (error) { resolve([]); }
       });
-      stored.forEach(function (item) { if (item && item.id) memory.set(item.id, item); });
+      stored.forEach(function (item) {
+        if (item && item.id && item.accountId === scope &&
+            item.characterId === roleId && Array.isArray(item.messages)) memory.set(item.id, item);
+      });
       items = Array.from(memory.values());
     }
     return items.filter(function (e) {
-      return e && e.accountId === scope && e.characterId === roleId;
+      return e && e.accountId === scope && e.characterId === roleId &&
+        Array.isArray(e.messages) && Number.isFinite(e.target) &&
+        String(e.id).startsWith(scope + ':' + roleId + ':');
     }).sort(function (a, b) { return b.updatedAt - a.updatedAt; }).slice(0, 12);
   }
 
   async function erase(episode) {
-    if (!episode || episode.accountId !== scope || episode.characterId !== roleId) return;
-    memory.delete(episode.id);
+    if (!episode || episode.accountId !== scope || episode.characterId !== roleId) return false;
     var database = await db();
-    if (!database) return;
+    if (!database) {
+      if (canPersist) return false;
+      memory.delete(episode.id);
+      return true;
+    }
     return new Promise(function (resolve) {
+      var settled = false;
+      function finish(ok) {
+        if (settled) return;
+        settled = true;
+        if (ok) memory.delete(episode.id);
+        else persistenceFailed = true;
+        resolve(ok);
+      }
       try {
         var transaction = database.transaction('episodes', 'readwrite');
+        transaction.oncomplete = function () { finish(true); };
+        transaction.onerror = function () { finish(false); };
+        transaction.onabort = function () { finish(false); };
         transaction.objectStore('episodes').delete(episode.id);
-        transaction.oncomplete = resolve;
-        transaction.onerror = resolve;
-        transaction.onabort = resolve;
-      } catch (e) { resolve(); }
+      } catch (error) { finish(false); }
     });
   }
 
@@ -737,7 +768,10 @@
         originId: source.id, forkAt: kept,
         status: 'partial', createdAt: now, updatedAt: now, error: ''
       };
-      await persist(episode);
+      if (!(await persist(episode))) {
+        showNotice('无法保存新的故事分支，未发起模型请求');
+        return;
+      }
       emit('episode:created', { id: episode.id, characterId: roleId, target: count, originId: source.id });
       state.branchSource = null;
       state.forkPoint = 0;
@@ -894,7 +928,7 @@
         });
         if (!added) throw new Error('本段没有生成新的对话');
         episode.status = episode.messages.length >= episode.target ? 'complete' : 'partial';
-        await persist(episode);
+        if (!(await persist(episode))) throw new Error('本机保存失败，已停止生成，避免更多内容丢失');
         emit('episode:progress', { id: episode.id, characterId: roleId,
           completed: episode.messages.length, target: episode.target });
         renderReader();
@@ -908,7 +942,10 @@
     } finally {
       if (currentSerial === state.serial) {
         state.busy = false;
-        if (episode.messages.length >= episode.target) episode.status = 'complete';
+        if (canPersist && persistenceFailed) {
+          episode.status = 'partial';
+          episode.error = '本机存储不可用；已停止生成，请勿关闭页面，以免丢失尚未保存的消息。';
+        } else if (episode.messages.length >= episode.target) episode.status = 'complete';
         await persist(episode);
         if (episode.status === 'complete') emit('episode:completed', { id: episode.id, characterId: roleId });
         renderReader();
@@ -937,7 +974,10 @@
       status: 'partial', createdAt: Date.now(), updatedAt: Date.now(), error: ''
     };
     try {
-      await persist(episode);
+      if (!(await persist(episode))) {
+        showNotice('番外无法保存，已阻止开始生成，请检查浏览器存储空间');
+        return;
+      }
       emit('episode:created', { id: episode.id, characterId: roleId, target: count });
       openReader(episode);
       generate();
@@ -1012,7 +1052,10 @@
       if (state.busy) return;
       if (!state.active) return;
       var deletedId = state.active.id;
-      await erase(state.active);
+      if (!(await erase(state.active))) {
+        showNotice('删除未成功，请检查本机存储状态后重试');
+        return;
+      }
       emit('episode:deleted', { id: deletedId, characterId: roleId });
       state.active = null; openPicker(); return;
     }
