@@ -8583,7 +8583,11 @@
                 return '';
             });
             text = text.replace(/\[群聊结束\]/g, function () {
-                window.__groupAutoStopRequested = true;
+                // A stop marker cannot change group scheduling before reply save.
+                turnEffects.afterSave(function () {
+                    window.__groupAutoStopRequested = true;
+                    return { ok:true };
+                });
                 return '';
             });
             text = text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
