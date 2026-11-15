@@ -3750,6 +3750,7 @@
                 var gameResult = msg.groupGame || {};
                 var gameFinished = gameResult.status === 'finished';
                 var tally = Array.isArray(gameResult.voteTally) ? gameResult.voteTally : [];
+                var hostName = String(gameResult.hostName || '群主').slice(0, 36);
                 var winnerName = String(gameResult.revealedName || '群成员').slice(0, 36);
                 var participants = Math.max(0, Math.min(24, Number(gameResult.playersCount) || 0));
                 var votesDone = Math.max(0, Math.min(participants, Number(gameResult.voteCount) || 0));
@@ -3764,6 +3765,7 @@
                     '<div class="group-game-result-kicker">GROUP GAME / ' + (gameFinished ? 'RESULT' : 'CANCELLED') + '</div>' +
                     '<div class="group-game-result-title">' +
                     (gameFinished ? '本局身份已揭晓' : '本局已取消') + '</div>' +
+                    '<div class="group-game-result-meta">本局主持：' + escHtml(hostName) + '</div>' +
                     '<div class="group-game-result-meta">' +
                     (gameFinished
                         ? '坏人：' + escHtml(winnerName) + '<br>' + votesDone + ' / ' + participants +
