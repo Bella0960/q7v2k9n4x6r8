@@ -303,7 +303,8 @@
     root: null, active: null, selected: null, busy: false, creating: false,
     stopped: false, serial: 0, opened: false, branchSource: null, forkPoint: 0,
     settings: { memory: 'none', count: null },
-    settingsLoaded: false, settingsPromise: null, archiveLimit: 12, viewSerial: 0
+    settingsLoaded: false, settingsPromise: null, archiveLimit: 12, viewSerial: 0,
+    currentAbort: null
   };
   var memory = new Map();
   var dbConnection = null;
@@ -938,6 +939,10 @@
   }
 
   function pause() {
+    if (state.currentAbort) {
+      try { state.currentAbort.abort(); } catch (error) {}
+      state.currentAbort = null;
+    }
     state.stopped = true;
     state.serial++;
     state.busy = false;
@@ -991,12 +996,21 @@
         if (++rounds > Math.ceil(episode.target / 3) + 8) throw new Error('续写速度过慢，请稍后手动继续');
         var remaining = episode.target - episode.messages.length;
         var requested = Math.min(batchSize, remaining);
-        var result = await global.PhoneAPI.completeJSON({
-          system: episodePrompt(episode, role, userInfo(), requested, optionalContext),
-          user: '请续写此篇番外，本轮只输出 JSON messages，' + requested + ' 条，顺接上文，不要重复。',
-          temperature: 0.8,
-          timeoutMs: 90000
-        });
+        var requestController = typeof global.AbortController === 'function'
+          ? new global.AbortController() : null;
+        state.currentAbort = requestController;
+        var result;
+        try {
+          result = await global.PhoneAPI.completeJSON({
+            system: episodePrompt(episode, role, userInfo(), requested, optionalContext),
+            user: '请续写此篇番外，本轮只输出 JSON messages，' + requested + ' 条，顺接上文，不要重复。',
+            temperature: 0.8,
+            timeoutMs: 90000,
+            signal: requestController ? requestController.signal : undefined
+          });
+        } finally {
+          if (state.currentAbort === requestController) state.currentAbort = null;
+        }
         if (currentSerial !== state.serial || state.stopped) break;
         if (!result || !result.ok) throw new Error('模型没有返回有效的聊天消息 JSON');
         var chunk = normalizeMessages(result.data, requested);
