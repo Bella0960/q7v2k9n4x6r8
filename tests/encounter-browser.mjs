@@ -81,11 +81,8 @@ try {
     await page.locator('#frontCard .name').waitFor();
     const name = await page.locator('#frontCard .name').innerText();
     assert.ok(name.length >= 2, '普通相遇应显示可读姓名');
-    assert.equal(name,await page.evaluate(() => {
-      // 在本地普通相遇模式，卡面必须展示真实姓名，而不是隐藏身份的占位符。
-      const front=document.querySelector('#frontCard');
-      return front?.querySelector('.name')?.textContent || '';
-    }));
+    assert.doesNotMatch(name,/^(未署名的旅人|失主未详|一段陌生的声音)$/,
+      '主流程必须使用「普通相遇」的真实姓名，否则姓名保存断言没有意义');
     // 两张都是实际候选，不只是装饰层；可切换回原来的卡片。
     const firstCandidateId = await page.locator('#frontCard').getAttribute('data-candidate-id');
     await page.locator('#swapButton').click();
@@ -122,6 +119,28 @@ try {
     await page.locator('#likeButton').click();
     await page.waitForTimeout(350);
     assert.equal(await page.locator('#savedCount').innerText(),'01','点击喜欢应保存候选');
+    // 与桌面鼠标不同：CDP 发送真实 Chromium 触摸序列检验手机左滑 PASS。
+    // 触控区域偏上，避免命中屏幕底部手势导航。
+    const touchCard=await page.locator('#frontCard').boundingBox();
+    const beforeTouch=await page.locator('#frontCard').getAttribute('data-candidate-id');
+    const startX=touchCard.x+touchCard.width*0.72;
+    const startY=touchCard.y+touchCard.height*0.45;
+    const touch=await context.newCDPSession(page);
+    await touch.send('Input.dispatchTouchEvent',{
+      type:'touchStart',touchPoints:[{x:startX,y:startY,id:1}]
+    });
+    for(let step=1;step<=7;step++){
+      await touch.send('Input.dispatchTouchEvent',{
+        type:'touchMove',touchPoints:[{x:startX-step*27,y:startY+step,id:1}]
+      });
+      await page.waitForTimeout(16);
+    }
+    await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+    await page.waitForTimeout(400);
+    const afterTouch=await page.locator('#frontCard').getAttribute('data-candidate-id');
+    assert.notEqual(afterTouch,beforeTouch,'真实手指左滑必须切换到下一位人物');
+    assert.equal(await page.locator('#savedCount').innerText(),'01','手指左滑 PASS 不得增加收藏');
+    await touch.detach();
     if(viewport.width===390){
       // 强制物件卡：卡面不得先暴露失主的姓名、性别、种族。
       await page.locator('#moreButton').click();
@@ -203,7 +222,7 @@ try {
   const receipt={
     schemaVersion:1,gitHead:gitHead(),startedAt,finishedAt:Date.now(),
     source:'vite-dist', viewports:[375,390,430],checked:{
-      cardSwap:true,swipeRebound:true,candidatePersistence:true,
+      cardSwap:true,swipeRebound:true,fingerSwipeLeft:true,candidatePersistence:true,
       roleCreation:true,jsonRoundTrip:true,thirdPartyJsonRejected:true,
       freeDrawNoApi:true
     },captured
