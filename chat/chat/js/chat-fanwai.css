@@ -839,3 +839,47 @@
   background: rgba(255,255,255,.8);
   color: #68736a;
 }
+
+
+/* 平行分支创作：入口只放在阅读「···」内，确认前不请求模型。 */
+#fanwaiLayer .fw-branch-preview {
+  padding-bottom: calc(32px + env(safe-area-inset-bottom, 0px));
+}
+#fanwaiLayer .fw-branch-kicker {
+  margin: 15px 1px 22px;
+  color: #9aa19a;
+  font: 9px/1.5 Georgia, "Times New Roman", serif;
+  letter-spacing: .19em;
+}
+#fanwaiLayer .fw-branch-title {
+  white-space: pre-line;
+  margin: 0 0 17px;
+  color: #39453e;
+  font: 400 clamp(29px, 8.3vw, 38px)/1.35 "Songti SC", "Noto Serif CJK SC", STSong, Georgia, serif;
+  letter-spacing: -.055em;
+}
+#fanwaiLayer .fw-branch-description {
+  max-width: 295px;
+  margin: 0 0 30px;
+  color: #858f85;
+  font-size: 11px;
+  line-height: 1.85;
+}
+#fanwaiLayer .fw-branch-input {
+  min-height: 113px;
+  padding: 16px 14px;
+  margin: 0 0 18px;
+  background: #eeefeb;
+  border: 0;
+  border-left: 1px solid rgba(76,87,80,.18);
+  color: #515a53;
+  font-size: 12px;
+  line-height: 1.85;
+}
+#fanwaiLayer .fw-branch-note {
+  color: #a3aaa4;
+  text-align: center;
+  line-height: 1.7;
+  font-size: 9px;
+  margin: 10px 0 0;
+}
