@@ -146,21 +146,23 @@ function loadRoles() {
             typeof PhoneStorage.result.getCharacters === 'function') {
             const result = PhoneStorage.result.getCharacters();
             if (result && result.ok && Array.isArray(result.value)) {
+                // 编辑前先取独立快照，失败的保存不会污染原 PhoneStorage 缓存对象。
+                const snapshot = JSON.parse(JSON.stringify(result.value));
                 roleStoreReadError = false;
-                return result.value;
+                return snapshot;
             }
             if (result && result.error && result.error.code === 'NOT_FOUND') {
                 roleStoreReadError = false;
-                return DEFAULT_ROLES;
+                return DEFAULT_ROLES.slice();
             }
             roleStoreReadError = true;
             console.warn('角色库读取失败，暂时禁止写入，避免覆盖旧资料。');
-            return DEFAULT_ROLES;
+            return DEFAULT_ROLES.slice();
         }
         const raw = localStorage.getItem(STORAGE_KEY);
         if (raw === null) {
             roleStoreReadError = false;
-            return DEFAULT_ROLES;
+            return DEFAULT_ROLES.slice();
         }
         const parsed = JSON.parse(raw);
         if (!Array.isArray(parsed)) throw new Error('角色数据不是数组');
@@ -169,7 +171,7 @@ function loadRoles() {
     } catch (error) {
         console.warn('角色库读取异常，原始数据保持不变：', error);
         roleStoreReadError = true;
-        return DEFAULT_ROLES;
+        return DEFAULT_ROLES.slice();
     }
 }
 
