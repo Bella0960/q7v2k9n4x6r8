@@ -117,7 +117,7 @@
   // 原「＋」面板初始化完成后立刻装载番外，避免其他可选扩展初始化异常阻断入口。
   // 只加载现有模块，不增设第二套聊天页面或事件系统。
   var fanwaiScript = document.createElement('script');
-  fanwaiScript.src = 'js/chat-fanwai.js?v=20261116v14';
+  fanwaiScript.src = 'js/chat-fanwai.js?v=20261116v15';
   fanwaiScript.onerror = function () { console.warn('[Fanwai] 扩展模块加载失败'); };
   document.body.appendChild(fanwaiScript);
 
