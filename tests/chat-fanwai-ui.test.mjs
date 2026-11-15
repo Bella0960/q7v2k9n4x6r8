@@ -1099,3 +1099,28 @@ test('failed creation without live dialogue does not trap the picker open', asyn
   assert.equal(root.hidden, true,
     'no active unsaved dialogue exists, so a failed empty creation must not trap the whole UI');
 });
+
+
+test('closing during slow first write must not hide a newer reopened picker', async () => {
+  let firstWriteStarted = false;
+  const db = fakeFanwaiDB({
+    writeDelays: [45],
+    onPut(record, count) {
+      if (count === 1 && record.templateId === 'daily') firstWriteStarted = true;
+    }
+  });
+  const app = mount({ accountId: 'MAO-AAAAAAAAAAAA', indexedDB: db });
+  const root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().some(n => n.dataset.template === 'daily'));
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.template === 'daily') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'start-template') });
+  await tickUntil(() => firstWriteStarted);
+  const oldClose = root.handlers.click({ target: root.querySelector('.fw-backdrop') });
+  app.open(); // User reopened while the first close still waits for IndexedDB.
+  await oldClose;
+  assert.equal(root.hidden, false, 'old async close must never hide the newly reopened picker');
+  assert.ok(sheet.all().some(n => n.dataset.template === 'daily'));
+  await tickUntil(() => ![...db.records.values()].some(row => row.templateId === 'daily'));
+  assert.equal(app.requests, 0, 'abandoned initial draft must never launch a model request');
+});
