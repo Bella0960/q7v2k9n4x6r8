@@ -51,6 +51,8 @@ jobs:
         run: node --test tests/global-statusbar-wiring.test.mjs
       - name: Install Chromium for mobile viewport checks
         run: npx playwright install --with-deps chromium
+      - name: Check global status bar DOM behavior in Chromium
+        run: node tests/global-statusbar-browser.mjs
       - name: Run chat regression contract tests
         run: |
           npm run test:chat:reply
