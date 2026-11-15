@@ -69,3 +69,13 @@ Gate 不允许仅靠代码检查或旧截图通过。PR #290、#297 继续保留
 - **旧人设数据安全**：现有角色编辑器 `saveRoles()` 不再仅信任 `PhoneStorage.result.saveCharacters()` 的 `ok` 返回，而是重新读取、比对完整 JSON 内容；浏览器静默丢写或校验不符时拒绝宣告成功并阻断后续覆盖。无 PhoneStorage 时亦检查 localStorage 实际保存字节。
 - **最新隔离验证**：整合分支 30 项合同 + 5 项 UI 模拟，**35/35 PASS（V8 适配执行）**。这不等于原生 Node、Vite 构建、Playwright Chromium 或 Android/iOS 真机实际通过。
 - **正式门禁状态**：CI 多个工作流 0 steps 失败，未取得真实运行回执；独立整合分支仍不合并 main、不部署 app.mao520.com、不操作永久管理员账号与数据库。先取得 `npm run test:account:ui-candidate`、`npm run test:encounter`、`npm run build`、`npm run test:encounter:browser` 和 `npm run gate:encounter` 真实成功日志，再进行 Android/iPhone、正式备份恢复验收。
+
+## 最新严格门禁补强（2026-11-15）
+
+- 新增单一总验收命令 `npm run test:encounter:full`（需先安装依赖）。固定顺序：账号原生 Node 测试 → 邂逅原生 Node 测试 → Vite + 既有 postbuild 资产隔离检查 → 真 Chromium dist 页面回归 → 发布门禁。任一步失败时停止下一步，不能产生最终通过结论。
+- 原生账号测试和邂逅测试新增各自 Git HEAD 绑定的本地回执：`test-results/encounter-account-test-receipt.json` 和 `test-results/encounter-encounter-test-receipt.json`。缺失、格式错误或与当前 HEAD 不符，发布门禁直接失败。记录脚本仅在 npm 子命令测试成功后执行。
+- 构建回执 `dist/encounter-build-receipt.json`、浏览器回执 `test-results/encounter-browser-receipt.json` 都必须来自同一 HEAD，浏览器的 `source` 必须是 `vite-dist`。五张截图和真实手机左滑触摸断言不可省略。
+- `.gitignore` 排除整个 `test-results/`，避免把角色档案浏览器截图与本地测试回执提交到 GitHub。回执生成与发布检查还会拒绝跟踪或未跟踪的新代码存在未提交修改。
+- Playwright 优先启动自身的 Chromium；失败时可从主机已安装的 Chromium/Chrome 路径或显式设置 `PLAYWRIGHT_CHROMIUM_PATH` 查找真实可执行文件，无法启动则明确报错，不会用静态模拟代替。
+- 角色库 `saveRoles` 的静默写入失败保护已提交到源 PR #297 与本整合分支，新版角色保护测试在隔离 JS 环境通过；最近整合分支 30 合同 + 5 模拟 UI 为 **35/35**。
+- **尚未完成**：在可执行完整 Git 仓库的环境中实际运行 `npm run test:encounter:full`、手机 Android/iPhone 真机验收、已授权正式账号真实切换、正式加密备份及隔离恢复。上述任何一项没有真实回执都不能签收合并/部署。
