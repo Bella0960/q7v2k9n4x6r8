@@ -265,7 +265,10 @@ test('a complete or half-streamed secret marker never becomes a public bubble or
     '公开推理[群私聊:r1:未完成的私聊',
     '公开推理[游戏私聊',
     '公开推理[游',
-    '公开推理[群私'
+    '公开推理[群私',
+    '公开推理[游戏私聊:r2:跨行线索\\n继续隐藏]',
+    '公开推理[群私聊:r2:跨行线索\\n未结束',
+    '公开推理[游戏私聊:r2:' + '秘密'.repeat(700)
   ];
   for (const message of samples) {
     const masked = h.game.redactPublicStreamText(message);
