@@ -779,3 +779,20 @@ test('late archive query cannot reset scroll or overwrite a newer template previ
   assert.ok(sheet.all().some(n => n.className.includes('fw-preview-cover')));
   assert.equal(app.requests, 0);
 });
+
+
+test('failed hidden settings persist warns once even after rapid changes', async () => {
+  const db = fakeFanwaiDB({ failWrites: true });
+  const app = mount({ accountId: 'MAO-AAAAAAAAAAAA', indexedDB: db });
+  const root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().some(n => n.dataset.template === 'daily'));
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.template === 'daily') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.memoryMode === 'role') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.memoryMode === 'none') });
+  await tickUntil(() => app.notices.some(n => n.includes('故事设置未能保存')));
+  assert.equal(app.notices.filter(n => n.includes('故事设置未能保存')).length, 1,
+    'only the last failing rapid change should display a storage warning');
+  assert.equal(app.requests, 0, 'changing preferences must never consume AI requests');
+  assert.ok(![...db.records.values()].some(x => x.kind === 'fanwai-settings'));
+});
