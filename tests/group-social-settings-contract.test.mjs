@@ -84,3 +84,33 @@ test('PWA includes both group modules and opens genuine existing group/memory pa
   assert.match(group, /worldbook\/memory\/memory.html\?view=groups/);
   assert.match(group, /chat-detail\.html\?id=/);
 });
+
+
+test('public group history recall excludes role-only and private messages, preserving ordinary single-chat recall', () => {
+  const data = new Map();
+  const storage = {
+    getItem(k) { return data.get(k) || null; },
+    setItem(k, v) { data.set(k, String(v)); }
+  };
+  const window = { localStorage: storage };
+  vm.runInNewContext(loadMemorySource(), { window, console });
+  const recall = window.MemoryRecall;
+  const history = [
+    { role: 'assistant', text: '群里找到了秘密线索，藏在花园的盒子里', visibility: 'role_only' },
+    { role: 'assistant', text: '私信里讨论了秘密线索和花园地图', visibility: 'private' },
+    { role: 'assistant', text: '秘密线索来自其他人的私聊', type: 'group_private' },
+    { role: 'assistant', text: '大家说好了今晚一起玩推理游戏', visibility: 'public' }
+  ];
+  const query = '秘密线索';
+  const privateRecall = recall.searchHistoryMessages(history, query, { maxScan: 100, maxItems: 5 });
+  assert.ok(privateRecall.length >= 1, 'legacy role history still supports its own historical recall');
+  const publicRecall = recall.searchHistoryMessages(history, query, {
+    maxScan: 100, maxItems: 5, groupPublicOnly: true
+  });
+  assert.deepEqual(Array.from(publicRecall), [], 'the shared group AI cannot recall private visibility');
+  const page = load('chat/chat/chat-detail.html');
+  assert.match(page, /recallOptions\.groupPublicOnly = true/);
+  assert.match(page, /m\.visibility !== 'role_only'/);
+});
+
+function loadMemorySource() { return load('shared/js/phone/memory_recall.js'); }
