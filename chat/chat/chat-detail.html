@@ -5821,6 +5821,20 @@
                         '。可根据你本人的性格、真实关系和最近对话，自然问问用户为什么退出，或选择不追问。' +
                         '如果确实希望邀请用户重新入群，在正常回复末尾添加一次隐藏标记 [群邀请:准确群ID]；不要每轮都邀请，不要伪造用户已加入。系统只会创建待确认邀请，接受或拒绝由用户决定。';
                 }
+                // 仅邀请角色库里已有的人，用户同意前只生成请求，不创建群或修改角色资料。
+                var rolePool = [];
+                try { rolePool = JSON.parse(localStorage.getItem('ai_custom_characters') || '[]'); } catch (e) {}
+                var groupCandidates = Array.isArray(rolePool) ? rolePool.filter(function (role) {
+                    return role && role.id != null && String(role.id) !== String(aliasRoleId || currentRoleId);
+                }).slice(0, 12) : [];
+                if (groupCandidates.length) {
+                    systemPrompt += '\n\n[可以提出新的群聊邀请]\n你可以根据你的人设、生活背景和最近谈话，在有真正理由时邀请用户参加你创建的新群聊。' +
+                      '可选择的其他现有角色为：' + groupCandidates.map(function (role) {
+                        return String(role.name || '角色') + '(ID=' + String(role.id) + ')';
+                      }).join('、') +
+                      '。如果情境自然，且确实愿意拉上至少一位其他现有角色，可在正常回复末尾附上 [建群邀请:新群名:另一角色ID]，多个角色ID用英文逗号分隔。' +
+                      '不准虚构新角色、凭空声明用户已入群或每轮都邀请。系统只建立待确认邀请，用户接受后才真正建群；同一角色24小时内最多发起一次新建群邀请。';
+                }
             }
             // 群聊：覆盖本轮发言者身份（无论是否使用协议均生效）
             if (isGroupChat && groupReplyPick) {
@@ -6415,7 +6429,8 @@
                         if (window.ChatImageVision && typeof window.ChatImageVision.stripAvatarCandidateMarker === 'function') {
                             snapshotText = window.ChatImageVision.stripAvatarCandidateMarker(snapshotText);
                         }
-                        return snapshotText.replace(/\[群邀请[:：][^\]]{0,100}\]/g, '').replace(/\[群邀请[:：][^\]]{0,}$/g, '');
+                        return snapshotText.replace(/\[群邀请[:：][^\]]{0,100}\]/g, '').replace(/\[群邀请[:：][^\]]{0,}$/g, '')
+                            .replace(/\[建群邀请[:：][^\]]{0,180}\]/g, '').replace(/\[建群邀请[:：][^\]]{0,}$/g, '');
                     })(),
                     voiceMode: presenceMode || 'online',
                     groupName: groupReplyPick ? groupReplyPick.name : undefined,
@@ -6430,6 +6445,8 @@
                     .replace(/\[中译[:：][^\]]{0,}$/g, '')
                     .replace(/\[群邀请[:：][^\]]{0,100}\]/g, '')
                     .replace(/\[群邀请[:：][^\]]{0,}$/g, '')
+                    .replace(/\[建群邀请[:：][^\]]{0,180}\]/g, '')
+                    .replace(/\[建群邀请[:：][^\]]{0,}$/g, '')
                     .replace(/\n{3,}/g, '\n\n')
                     .trim();
 
@@ -6564,6 +6581,18 @@
                             if (!isGroupChat && streamResult.ok && !isRegen && !contextOnly && !silent && presenceMode === 'online') {
                                 var invited = window.GroupGovernance.offerInvitation({groupId:String(proposedGroupId).trim(),inviterId:aliasRoleId || currentRoleId});
                                 if (invited.ok && typeof showToast === 'function') showToast('TA 发来一条群聊邀请，可在聊天列表决定是否加入');
+                            }
+                            return '';
+                        });
+                    }
+                    if (window.GroupGovernance) {
+                        fullText = fullText.replace(/\[建群邀请[:：]([^:：\]]{1,20})[:：]([^\]]{1,150})\]/g, function (marker, name, memberIds) {
+                            if (!isGroupChat && streamResult.ok && !isRegen && !contextOnly && !silent && presenceMode === 'online') {
+                                var offered = window.GroupGovernance.offerNewGroupInvitation({
+                                    inviterId: aliasRoleId || currentRoleId, groupName: name,
+                                    memberIds: String(memberIds).split(/[,，、]/).map(function (s) { return s.trim(); })
+                                });
+                                if (offered.ok && typeof showToast === 'function') showToast('TA 邀请你加入新群聊，可在聊天列表选择是否加入');
                             }
                             return '';
                         });
