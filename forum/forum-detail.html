@@ -536,7 +536,11 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     const r=detailResident(item&&item.residentId,index),text=String(item&&item.text||'').trim().slice(0,260);
     if(!text)return null;
     const now=Date.now();
-    const replies=(Array.isArray(item.replies)?item.replies:[]).slice(0,2).map((x,j)=>{
+    // AI output may contain null/scalar nested entries. Skip malformed rows
+    // before the two-reply limit so a bad row does not hide a valid response.
+    const nested=Array.isArray(item&&item.replies)
+      ?item.replies.filter(x=>x&&typeof x==='object'&&!Array.isArray(x)).slice(0,2):[];
+    const replies=nested.map((x,j)=>{
       const rr=detailResident(x.residentId,index+j+3),replyText=String(x.text||'').trim().slice(0,220);
       return replyText?{name:rr.name,avatar:'#'+['333333','555555','777777','444444'][j%4],residentId:rr.id,owner:'community',source:'forum-ai',text:replyText,time:now-(j+1)*70000,replyTo:String(x.replyTo||r.name),likes:0}:null;
     }).filter(Boolean);
