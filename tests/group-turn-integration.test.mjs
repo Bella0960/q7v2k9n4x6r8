@@ -130,6 +130,22 @@ test('ordinary private group DM cannot write to role chat until reply is saved',
   assert.equal(h2.privatePopupCount, 1);
 });
 
+test('multiple private markers can only deliver the first one per saved turn', () => {
+  const h = harness(), tx = h.createTurn();
+  const text = '回复 [群私聊:r1:第一条] [群私聊:r1:第二条]';
+  const visible = h.parse(text, h.group.members[0], h.history,
+    false, false, true, '', () => {}, tx);
+  assert.doesNotMatch(visible, /第一条|第二条|群私聊/);
+  assert.equal(h.data.has('chat_history_r1'), false);
+  const settled = tx.finalize(true);
+  assert.equal(settled.ok, true);
+  assert.equal(settled.committed, 1, 'only one ordinary private message may be queued');
+  const saved = JSON.parse(h.data.get('chat_history_r1'));
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].text, '第一条');
+  assert.equal(h.privatePopupCount, 1);
+});
+
 test('incomplete AI response does not even stage vote/chain or governance', () => {
   const h = harness(), tx = h.createTurn(), before = JSON.stringify(h.history);
   const stripped = h.parse(actions, h.group.members[0], h.history,
