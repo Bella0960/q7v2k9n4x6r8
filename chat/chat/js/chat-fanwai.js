@@ -366,6 +366,8 @@
   var episodeWriteQueue = Promise.resolve();
   var settingsWriteQueue = Promise.resolve();
   var settingsWriteVersion = 0;
+  // 只有最新一版偏好完成 IndexedDB 事务，才能按它创建会调用模型的故事。
+  var settingsCommittedVersion = 0;
   var DB_NAME = 'maomao-fanwai-v1';
 
   function showNotice(message) {
@@ -475,6 +477,9 @@
     var completion = settingsWriteQueue.then(write, write);
     settingsWriteQueue = completion.then(function () {}, function () {});
     return completion.then(function (saved) {
+      if (canPersist && saved) {
+        settingsCommittedVersion = Math.max(settingsCommittedVersion, settingVersion);
+      }
       if (canPersist && !saved && settingVersion === settingsWriteVersion) {
         showNotice('故事设置未能保存，下次打开可能需要重新选择');
       }
@@ -1241,6 +1246,16 @@
     state.creating = true;
     // 立即让尚未结束的存档查询失效；不能在新故事首次写盘期间跳回旧篇。
     var viewSerial = ++state.viewSerial;
+    try {
+      if (canPersist && settingsCommittedVersion < settingsWriteVersion) {
+        // 等待已排队的最新偏好完成真实事务，不能用尚未确认的记忆模式调用付费模型。
+        await settingsWriteQueue;
+        if (!state.opened || viewSerial !== state.viewSerial) return;
+        if (settingsCommittedVersion < settingsWriteVersion) {
+          showNotice('故事设置尚未保存成功，请重新选择后再开始');
+          return;
+        }
+      }
     var episode = {
       id: scope + ':' + roleId + ':' + Date.now() + ':' + Math.random().toString(36).slice(2, 8),
       accountId: scope, characterId: roleId,
@@ -1251,7 +1266,6 @@
       contextIds: chosenContexts(),
       status: 'partial', createdAt: Date.now(), updatedAt: Date.now(), error: ''
     };
-    try {
       if (!(await persist(episode))) {
         showNotice('番外无法保存，已阻止开始生成，请检查浏览器存储空间');
         return;
