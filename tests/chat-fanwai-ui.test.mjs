@@ -475,6 +475,11 @@ test('storage write rejection prevents paid story generation and does not falsel
   await tickUntil(() => app.notices.some(text => text.includes('无法保存')));
   assert.equal(app.requests, 0, 'generation must not begin when initial save failed');
   assert.equal(database.records.size, 0);
+  await root.handlers.click({ target: root.querySelector('.fw-backdrop') });
+  app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().some(n => n.dataset.template));
+  assert.equal(root.querySelector('.fw-sheet').all().filter(n => n.dataset.action === 'read').length, 0,
+    'failed first save must not appear as a confirmed archive entry');
 });
 
 
@@ -493,6 +498,25 @@ test('mid-generation IndexedDB failure stops further API charges and warns about
   assert.ok(stored);
   assert.equal(stored.messages.length, 12, 'only successfully committed dialogue can be trusted on reload');
   assert.equal(stored.status, 'partial');
+});
+
+test('archive reopens the last committed batch, not uncommitted generation after storage failure', async () => {
+  const db = fakeFanwaiDB({ failAtWrite: 3 });
+  const app = mount({ accountId: 'MAO-AAAAAAAAAAAA', indexedDB: db });
+  const root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().some(n => n.dataset.template));
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.template === 'daily') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'start-template') });
+  await tickUntil(() => sheet.all().find(n => n.className === 'fw-status')?.textContent.includes('本机存储不可用'));
+  assert.equal(app.requests, 2);
+  await root.handlers.click({ target: root.querySelector('.fw-backdrop') });
+  app.open();
+  await tickUntil(() => sheet.all().some(n => n.dataset.action === 'read'));
+  const archived = sheet.all().find(n => n.dataset.action === 'read');
+  await root.handlers.click({ target: archived });
+  assert.equal(sheet.all().filter(n => n.className === 'fw-bubble').length, 12,
+    'archive must reflect only the last successfully committed snapshot');
 });
 
 test('deleting one story requires explicit confirmation; cancellation preserves it', async () => {
