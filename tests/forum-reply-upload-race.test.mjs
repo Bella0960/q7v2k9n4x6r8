@@ -116,3 +116,104 @@ test('normal top-level comments still send without a reply target', async () => 
   assert.equal(h.input.value, '');
   assert.equal(h.button.disabled, false);
 });
+
+
+const aiStart = page.indexOf('  async function generateRepliesToUserComment(');
+const aiEnd = page.indexOf('\n  function clearCommentImages()', aiStart);
+assert.ok(aiStart >= 0 && aiEnd > aiStart,
+  'forum AI reply source must remain discoverable');
+const aiReplySource = page.slice(aiStart, aiEnd);
+
+function setupAIReply({ allowSave = true, targetPresent = true } = {}) {
+  let finishAI;
+  const pendingAI = new Promise(resolve => { finishAI = resolve; });
+  const target = { id: 'original-comment', name: '乙', text: '想听回复', replies: [] };
+  const post = { comments: targetPresent ? [target] : [], mediaAssetIds: [] };
+  const status = { textContent: '' };
+  const writes = [], renders = [], requests = [];
+  const sandbox = {
+    post,
+    window: { ForumGossip: null, ForumWorldEvents: null },
+    gossipSeriesRunning: false,
+    document: { getElementById(id) { return id === 'aiCommentStatus' ? status : null; } },
+    DETAIL_RESIDENTS: [],
+    detailResident: () => ({ id: 'r1', name: '路人甲', style: 'casual' }),
+    postTitle: () => '',
+    postBody: () => '',
+    forumAIJSON: (...args) => { requests.push(args); return pendingAI; },
+    makeDetailAIComment: reply => ({
+      name: '路人甲', avatar: '', residentId: 'r1', text: reply.text
+    }),
+    saveNow: () => { writes.push(1); return allowSave; },
+    renderComments: () => renders.push('comments'),
+    renderPost: () => renders.push('post'),
+    readForumConfig: () => ({}),
+    console: { warn() {} },
+    setTimeout() {}
+  };
+  const controller = vm.runInNewContext(`
+    ${aiReplySource}
+    ({
+      generate: generateRepliesToUserComment,
+      setCurrentPost(nextPost) { post = nextPost; }
+    });
+  `, sandbox, { filename: 'forum-detail-ai-reply.js' });
+  return {
+    target, post, status, writes, renders, requests, controller,
+    finishAI: () => finishAI({
+      ok: true,
+      data: { replies: [{ residentId: 'r1', text: '我来接话' }] }
+    })
+  };
+}
+
+test('AI reply is discarded when the original comment is deleted during generation', async () => {
+  const h = setupAIReply();
+  const pending = h.controller.generate(h.target, '你好', []);
+  h.post.comments.splice(0, 1);
+  h.finishAI();
+  await pending;
+  assert.equal(h.target.replies.length, 0, 'do not append to a removed target');
+  assert.equal(h.writes.length, 0, 'do not save an orphaned reply');
+  assert.equal(h.renders.length, 0, 'do not render stale AI output');
+  assert.match(h.status.textContent, /原评论已删除/);
+});
+
+test('valid AI replies still save and report success', async () => {
+  const h = setupAIReply();
+  const pending = h.controller.generate(h.target, '你好', []);
+  h.finishAI();
+  await pending;
+  assert.equal(h.target.replies.length, 1);
+  assert.equal(h.target.replies[0].text, '我来接话');
+  assert.equal(h.writes.length, 1);
+  assert.equal(h.status.textContent, '有网友回应了你的留言');
+});
+
+test('AI response from another post cannot mutate the previous discussion', async () => {
+  const h = setupAIReply();
+  const pending = h.controller.generate(h.target, '你好', []);
+  h.controller.setCurrentPost({ comments: [], mediaAssetIds: [] });
+  h.finishAI();
+  await pending;
+  assert.equal(h.target.replies.length, 0);
+  assert.equal(h.writes.length, 0);
+  assert.equal(h.renders.length, 0);
+});
+
+test('AI reply save failure rolls back and reports the failure', async () => {
+  const h = setupAIReply({ allowSave: false });
+  const pending = h.controller.generate(h.target, '你好', []);
+  h.finishAI();
+  await pending;
+  assert.equal(h.target.replies.length, 0);
+  assert.equal(h.writes.length, 1);
+  assert.match(h.status.textContent, /没保存成功/);
+});
+
+test('already deleted comments do not start a new AI call', async () => {
+  const h = setupAIReply({ targetPresent: false });
+  await h.controller.generate(h.target, '你好', []);
+  assert.equal(h.requests.length, 0);
+  assert.equal(h.writes.length, 0);
+});
