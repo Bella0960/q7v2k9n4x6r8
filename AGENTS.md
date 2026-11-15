@@ -6,7 +6,8 @@ This file is the repository-wide entry point for every AI coding agent and human
 
 Read these files first:
 
-1. docs/engineering/README.md — authoritative project baseline and document map.
+1. **docs/engineering/RELEASE_PLAYBOOK.md — 唯一任务、环境、QA、整合及正式发布流程；发布事实按最近一次核验为准。**
+2. docs/engineering/README.md — authoritative project baseline and document map.
 2. docs/engineering/PROJECT_ARCHITECTURE.md — current architecture and app inventory.
 3. docs/engineering/STORAGE_AND_MIGRATION.md — storage facts, target design, and migration safety rules.
 4. docs/engineering/DEVELOPMENT_GOVERNANCE.md — branches, workflows, testing, security, and collaboration rules.
@@ -14,6 +15,8 @@ Read these files first:
 6. docs/chat-architecture-contract.md and docs/chat-regression-baseline.md before touching chat.
 7. docs/MAOMAO_VISUAL_DESIGN_CONSTITUTION.md before touching UI or visual design.
 8. CLAUDE.md for additional repository-specific context. If it conflicts with the engineering documents, report the conflict and follow the newer, explicitly verified engineering baseline.
+
+**All work windows and scheduled agents must use the single PR status and release gate in RELEASE_PLAYBOOK.md. Never invent a new preview/production endpoint, or equate merging with deploying.**
 
 ## Non-negotiable project constraints
 
@@ -28,11 +31,11 @@ Read these files first:
 - Never log API keys, secrets, or real private conversations.
 - Keep the user's visual system: neutral black/white/gray, editorial spacing and typography, restrained lines and compact cards. Do not impose generic card grids, gradients, saturated blue/purple/pink, decorative emoji, or unnecessary labels. Chat screens retain their chat-native interaction style.
 - The website is the current delivery channel. APK building is manual only. Do not restore automatic APK builds.
-- Do not add cloud database/sync infrastructure (D1, R2, account sync, authentication) without a separate decision and explicit approval.
+- Existing production/QA Workers already contain CloudDatabase Durable Object and account bindings. Preserve their current isolation and credentials. Do not introduce *additional* cloud databases, accounts, identity sources, Worker entrypoints, migrations or runtime cutovers without a separate decision, backup/restore evidence and explicit owner approval.
 
 ## Task execution protocol
 
-- Claim one or more explicit Task IDs from docs/engineering/REMEDIATION_BACKLOG.md.
+- Claim one or more explicit Task IDs from docs/engineering/REMEDIATION_BACKLOG.md; first find/reuse any existing implementation PR and record one authoritative PR state per RELEASE_PLAYBOOK.md.
 - Before editing, inspect current main and the exact callers/consumers of every touched API, storage key, CSS selector, and route.
 - Use a dedicated branch named task-ID/short-description. Do not push unreviewed changes directly to main.
 - Do not let two agents edit the same files concurrently. Agree on file ownership first.
@@ -51,7 +54,7 @@ When the owner gives a direct implementation request (“fix”, “finish”, �
 - After each subtask, run the narrowest relevant checks, repair failures, update `docs/engineering/EXECUTION_LOG.md`, then advance to the next independent subtask.
 - If one item is blocked, record the exact blocker and continue other independent, authorized items. Ask the owner only when a genuine product decision, missing requirement, credential/secret, destructive operation, data-schema migration approval, or production release authorization is required.
 - Give concise progress updates during long work, but do not turn each progress update into a request for approval.
-- Never push directly to `main`; do not merge, deploy production, build/update APKs, configure secrets, or perform irreversible user-data actions without explicit owner approval.
+- Never push directly to `main`; do not merge, deploy production, build/update APKs, configure secrets, or perform irreversible user-data actions without explicit owner approval. Never use `preview.mao520.com` merely by its name as proof of QA isolation, and never interpret the `mao` Worker deploy as a deploy to `app.mao520.com`.
 - A chat/session ending cannot be treated as background execution. Before stopping, write enough verified state, links, and next actions to `EXECUTION_LOG.md` so another session can resume without asking the owner to repeat the task.
 
 “Complete all” means complete all authorized subtasks within the requested scope. It does not authorize enabling deferred roadmap items or crossing the release/data-safety boundaries above.
