@@ -66,7 +66,7 @@
 'use strict';
 var engine=window.MAOMAOEncounter;
 var cardEl=document.getElementById('frontCard'),sheet=document.getElementById('sheet'),overlay=document.getElementById('overlay'),noticeEl=document.getElementById('notice');
-var current=null,position=0,drag=null,lock=false,noticeTimer=0;
+var current=null,position=0,drag=null,lock=false,noticeTimer=0,lastDragEnd=0,returnFocus=null;
 function escapeHtml(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function clock(){var d=new Date();document.getElementById('deviceTime').textContent=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
 clock();setInterval(clock,30000);
@@ -118,18 +118,46 @@ cardEl.addEventListener('pointermove',function(e){
  cardEl.style.opacity=String(Math.max(.52,1-Math.abs(drag.dx)/600));
 });
 function finish(e){
- if(!drag||e.pointerId!==drag.id)return;var dx=drag.dx,h=drag.horizontal;drag=null;
- if(!h)return;if(dx>95)move('right');else if(dx< -95)move('left');else snap();
+ if(!drag||e.pointerId!==drag.id)return;
+ var dx=drag.dx,dy=drag.dy,h=drag.horizontal;
+ drag=null;
+ // 手机浏览器会在 pointerup 之后合成 click；滑过的卡不能误打开档案。
+ if(Math.abs(dx)>8||Math.abs(dy)>8)lastDragEnd=Date.now();
+ if(!h)return;
+ if(dx>95)move('right');else if(dx< -95)move('left');else snap();
 }
-cardEl.addEventListener('pointerup',finish);cardEl.addEventListener('pointercancel',function(){if(drag){drag=null;snap();}});cardEl.addEventListener('lostpointercapture',function(){if(drag&&drag.horizontal){drag=null;snap();}});
-cardEl.addEventListener('click',function(e){if(lock||!current||Math.abs((drag&&drag.dx)||0)>5)return;openDetail();});
+cardEl.addEventListener('pointerup',finish);
+cardEl.addEventListener('pointercancel',function(){if(drag){lastDragEnd=Date.now();drag=null;snap();}});
+cardEl.addEventListener('lostpointercapture',function(){if(drag&&drag.horizontal){lastDragEnd=Date.now();drag=null;snap();}});
+cardEl.addEventListener('click',function(e){
+ if(lock||!current||drag||Date.now()-lastDragEnd<480){e.preventDefault();return;}
+ openDetail();
+});
 cardEl.addEventListener('keydown',function(e){if(e.key==='ArrowLeft'){e.preventDefault();move('left');}else if(e.key==='ArrowRight'){e.preventDefault();move('right');}else if(e.key==='Enter'||e.key===' '){e.preventDefault();openDetail();}});
 document.getElementById('passButton').addEventListener('click',function(){move('left');});
 document.getElementById('likeButton').addEventListener('click',function(){move('right');});
-function openSheet(content,title){sheet.setAttribute('aria-label',title);sheet.innerHTML=content;overlay.classList.add('open');overlay.setAttribute('aria-hidden','false');var close=sheet.querySelector('.close');if(close)close.focus();}
-function closeSheet(){overlay.classList.remove('open');overlay.setAttribute('aria-hidden','true');document.getElementById('moreButton').focus();}
+function openSheet(content,title){
+ returnFocus=document.activeElement instanceof HTMLElement?document.activeElement:null;
+ sheet.setAttribute('aria-label',title);sheet.innerHTML=content;overlay.classList.add('open');
+ overlay.setAttribute('aria-hidden','false');var close=sheet.querySelector('.close');if(close)close.focus();
+}
+function closeSheet(){
+ overlay.classList.remove('open');overlay.setAttribute('aria-hidden','true');
+ if(returnFocus&&document.contains(returnFocus))returnFocus.focus();
+ else document.getElementById('moreButton').focus();
+ returnFocus=null;
+}
 overlay.addEventListener('click',function(e){if(e.target===overlay||e.target.closest('.close'))closeSheet();});
-window.addEventListener('keydown',function(e){if(e.key==='Escape'&&overlay.classList.contains('open'))closeSheet();});
+window.addEventListener('keydown',function(e){
+ if(!overlay.classList.contains('open'))return;
+ if(e.key==='Escape'){e.preventDefault();closeSheet();return;}
+ if(e.key!=='Tab')return;
+ var controls=Array.from(sheet.querySelectorAll('button:not([disabled]),select:not([disabled]),a[href],input:not([disabled])'));
+ if(!controls.length){e.preventDefault();return;}
+ var first=controls[0],last=controls[controls.length-1];
+ if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+ else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+});
 function head(k,t){return '<div class="sheet-head"><div><div class="sheet-kicker">'+escapeHtml(k)+'</div><h2 class="sheet-title">'+escapeHtml(t)+'</h2></div><button class="close" aria-label="关闭">×</button></div>';}
 function row(label,value){return '<div class="sheet-row"><span>'+escapeHtml(label)+'</span><strong>'+escapeHtml(value)+'</strong></div>';}
 function openDetail(){
