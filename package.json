@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0 --port 3000",
     "lint": "node -e 'console.log(\"Lint passed\")'",
-    "test:chat:contract": "node --test tests/chat-regression-contract.test.mjs tests/chat-role-sticker-library.test.mjs tests/role-avatar-library.test.mjs tests/chat-image-vision.test.mjs tests/role-gallery-image-autonomy.test.mjs",
+    "test:chat:contract": "node --test tests/chat-regression-contract.test.mjs tests/chat-role-sticker-library.test.mjs tests/role-avatar-library.test.mjs tests/chat-image-vision.test.mjs tests/role-gallery-image-autonomy.test.mjs tests/chat-fanwai.test.mjs tests/chat-fanwai-ui.test.mjs tests/chat-fanwai-extension.test.mjs tests/phone-api-abort.test.mjs",
     "test:chat:reply": "node --test tests/chat-reply-bubble-mode.test.mjs",
     "test:chat:isolation": "node --test tests/chat-data-isolation.test.mjs",
     "test:bugfix:blockers": "node --test tests/forum-chat-blockers.test.mjs",
@@ -27,7 +27,7 @@
     "perf:fixab:mobile": "THROTTLE=4 node perf/fixab-regression.mjs",
     "perf:gate": "node perf/gate.mjs",
     "test:desktop:layout": "node --test tests/default-desktop-layout.test.mjs",
-    "test:pwa:navigation": "node --test tests/pwa-navigation-cache.test.mjs tests/icon-presets-contract.test.mjs",
+    "test:pwa:navigation": "node --test tests/pwa-navigation-cache.test.mjs tests/icon-presets-contract.test.mjs tests/account-fanwai-pwa-runtime.test.mjs tests/release-account-assets-gate.test.mjs",
     "test:font:runtime": "node --test tests/font-runtime-performance.test.mjs",
     "test:chat:call": "node --test tests/chat-call-experience.test.mjs",
     "test:media:backup": "node --test tests/media-backup.test.mjs",
@@ -51,7 +51,8 @@
     "test:account:release-gate": "node --test tests/account-cutover-guard.test.mjs",
     "test:account:registration-persistence": "node --test tests/account-registration-persistence.test.mjs",
     "test:chat:fanwai": "node --test tests/chat-fanwai.test.mjs tests/chat-fanwai-ui.test.mjs tests/chat-fanwai-extension.test.mjs tests/phone-api-abort.test.mjs",
-    "test:integration:account-fanwai": "node --test tests/account-storage-isolation.test.mjs tests/worker-page-auth-runtime.test.mjs tests/chat-fanwai.test.mjs tests/chat-fanwai-ui.test.mjs tests/chat-fanwai-extension.test.mjs tests/phone-api-abort.test.mjs"
+    "test:integration:account-fanwai": "node --test tests/account-storage-isolation.test.mjs tests/worker-page-auth-runtime.test.mjs tests/chat-fanwai.test.mjs tests/chat-fanwai-ui.test.mjs tests/chat-fanwai-extension.test.mjs tests/phone-api-abort.test.mjs tests/release-account-assets-gate.test.mjs tests/account-fanwai-pwa-runtime.test.mjs",
+    "test:release:account-assets": "node --test tests/release-account-assets-gate.test.mjs"
   },
   "devDependencies": {
     "playwright": "^1.64.1",
