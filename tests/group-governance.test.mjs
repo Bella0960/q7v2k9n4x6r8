@@ -146,7 +146,7 @@ test('new role-owned group stays a draft until accepted and keeps existing roles
 test('all touched pages compile and refer to the shared bridge; backup and PWA include it', () => {
   for (const filename of ['chat/chat/chat.html', 'chat/chat/chat-detail.html', 'chat/chat/group-play.html']) {
     const html = load(filename);
-    assert.match(html, /group-governance\.js\?v=20261115g1/, filename);
+    assert.match(html, /group-governance\.js\?v=20261115g2/, filename);
     const inline = [...html.matchAll(/<script(?:\s+[^>]*)?>([\s\S]*?)<\/script>/gi)];
     for (const [index, match] of inline.entries()) {
       assert.doesNotThrow(() => new vm.Script(match[1], { filename: filename + ':inline' + index }));
@@ -159,7 +159,7 @@ test('all touched pages compile and refer to the shared bridge; backup and PWA i
   assert.match(detail, /群动作:禁言:/);
   assert.match(load('chat/chat/chat.html'), /pendingInvitations/);
   assert.match(load('chat/chat/group-play.html'), /GroupGovernance\.leave/);
-  assert.match(load('sw.js'), /group-governance\.js\?v=20261115g1/);
+  assert.match(load('sw.js'), /group-governance\.js\?v=20261115g2/);
   assert.match(load('settings/js/backup-modules.js'), /phone_group_invitations/);
 });
 
