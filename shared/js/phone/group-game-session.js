@@ -220,7 +220,7 @@
           '群主已指定你主持本局；已投票：'+session.voteCount+'/'+session.players.length+'。\n'+
           (ready
             ? '所有玩家均已投票。你可以自然宣布即将公布结果；在完成本轮公开发言的最后附加 [游戏揭晓]。系统会核验投票并公布真实结果；你不能猜测或自行指定坏人。'
-            : '请自然引导成员讲理由、依次猜测。尚未全部投票，绝对不能宣布结果，也不能使用 [游戏揭晓]。')};
+            : '请自然引导成员讲理由、依次猜测。尚未全部投票，不能宣布结果。')};
     }
     if (session.players.indexOf(rid) === -1) return error('NOT_PLAYER','非本局角色不能参与');
     var secret = read(storage, secretKey(gid, session.sessionId, rid));
