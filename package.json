@@ -14,6 +14,7 @@
     "test:chat:isolation": "node --test tests/chat-data-isolation.test.mjs",
     "test:chat:history": "node --test tests/chat-history-corruption-guard.test.mjs",
     "test:chat:storage": "node --test tests/chat-phone-storage-primary-guard.test.mjs",
+    "test:chat:storage:browser": "node tests/chat-phone-storage-browser.mjs",
     "test:chat:history:browser": "node tests/chat-history-corruption-browser.mjs",
     "test:bugfix:blockers": "node --test tests/forum-chat-blockers.test.mjs",
     "test:tutorial": "node --test tests/tutorial-page-contract.test.mjs",
