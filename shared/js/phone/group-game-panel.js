@@ -153,7 +153,7 @@
             '」 · '+game.voteCount+'/'+game.players.length+' 人投票，'+game.correctVotes+' 人猜对。');
           renderTally(game);
         }
-        else stateLine('设置这一局的规则，再由你亲自发放秘密身份牌。');
+        else if(!game)stateLine('设置这一局的规则，再由你亲自发放秘密身份牌。');
       }else{
         form.hidden=true;finish.hidden=false;cancelButton.hidden=false;
         finish.disabled=game.voteError===true;
