@@ -46,10 +46,25 @@ export async function runPrivateFounderCheckpoint({ env, now = Date.now }) {
 
   try {
     const stub = ns.get(ns.idFromName(TARGET_INSTANCE));
-    const response = await stub.fetch(new Request(PRIVATE_URL, {
+    let response = await stub.fetch(new Request(PRIVATE_URL, {
       method: 'POST',
       headers: { 'x-maomao-release-secret': secret }
     }));
+    // Never auto-rotate a historical PITR bookmark. Only the separately
+    // expiring private KV authorization may approve preserving the old lease
+    // before recording a new one; no ordinary Cron retry can opt in.
+    if (response.status === 409 &&
+        env.FOUNDER_ROTATE_ALLOWED === 'preserve-old-checkpoint-and-rotate') {
+      response = await stub.fetch(new Request(
+        'https://maomao.internal/internal/release/checkpoint-rotate', {
+          method: 'POST',
+          headers: {
+            'x-maomao-release-secret': secret,
+            'x-maomao-release-operation': 'preserve-old-checkpoint-and-rotate'
+          }
+        }
+      ));
+    }
     if (!response.ok) {
       // HTTP status only; never expose the internal response, bookmark or secret.
       const code = {
@@ -116,7 +131,9 @@ export default {
         ...env,
         FOUNDER_RUN_ENABLED: activation.mode,
         FOUNDER_RUN_NOT_BEFORE_MS: activation.from,
-        FOUNDER_RUN_NOT_AFTER_MS: activation.until
+        FOUNDER_RUN_NOT_AFTER_MS: activation.until,
+        FOUNDER_ROTATE_ALLOWED: activation.rotateApproved === true
+          ? 'preserve-old-checkpoint-and-rotate' : undefined
       } : env;
       const result = await runPrivateFounderCheckpoint({ env: runtimeEnv });
       const receipt = {
