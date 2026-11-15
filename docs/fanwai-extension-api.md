@@ -141,3 +141,11 @@ npm run build
 - **新增真实 Chromium 烟测项目**（脚本已写、真浏览器未跑）：本地合成 HTML 注入畸形账号 meta、或注入与已就绪账号作用域不一致的 meta，确认番外菜单、阅读层、公共记忆插件 API 均不出现；不连接生产 Worker/数据库。40 条对话完成后，再测阅读区域宽度、消息横向溢出与底部操作栏是否被挤出。
 - **验证**：当前分支四套番外/公共 PhoneAPI 测试在源代码 V8 模拟执行环境 **46/46 通过**，包含延迟最终保存后立即删除的回归；本地 Chromium smoke 源码 JS 语法检查通过，但 `npm ci` / `npm run build` / 实际 Playwright 页面验收仍 **NOT RUN**。不将模拟视口冒充 Android/iPhone 真机。
 - **缓存**：聊天页 `chat-extras.js?t=20261116fanwai13` 加载 `chat-fanwai.js?v=20261116v13`，确保手机刷新使用删除队列新逻辑。无 IndexedDB schema 或账号数据迁移。
+
+
+## 2026-11-16｜插件隔离与旧存档异步切换
+
+- **注册顺序**：在真实 DOM 聊天页面中，必须先核对账号元数据与 `__MAO_ACCOUNT_SCOPE__.ready`、当前会话 ID，并通过 `phone_groups` / 旧群 ID 兼容识别确认是单聊，才设置 `window.MAOMAOFanwai` 与 `window.MAOMAOFanwaiCore`。群聊不仅不出现「番外」按钮，也不暴露插件注册、背景读取和生命周期接口。无 DOM 的 Node 核心测试继续通过纯逻辑接口进行合同测试。
+- **异步界面一致性**：点击新番外开始时立即增加 `viewSerial`，使先前正在返回的旧存档查询失效；旧存档 `read` 事件在异步查询前后都要确认不处于创建/删除/生成，并核对当前页面序号，防止慢查询覆盖正在保存的新篇。
+- **验证**：原四组番外 UI/核心/扩展/PhoneAPI 模拟回归 52/52 PASS，额外的发布资产加载检查 6/6 PASS；来自当前 PR #299 源文件的 V8 执行，不等于真正 Node CLI、Vite build 或 Chromium/Android/iPhone 实测，后者仍 NOT RUN。
+- **版本/兼容**：手机加载 `chat-extras.js?t=20261116fanwai16` → `chat-fanwai.js?v=20261116v16`。本次不更改消息格式、IndexedDB schema、老存档、主线聊天或正式账号数据。
