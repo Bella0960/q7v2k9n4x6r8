@@ -189,7 +189,9 @@ try {
       assert.equal(await page.locator('#editRoleName').inputValue(),name,'候选人名应进入原角色编辑器');
       assert.match(await page.locator('#editRolePersona').inputValue(),/【基础资料】/);
       await page.locator('#btnSaveRole').click();
-      assert.match(await page.locator('#saveStatus').innerText(),/已保存/);
+      await page.waitForFunction(() => document.querySelector('#saveStatus')?.textContent?.includes('已保存'));
+      assert.doesNotMatch(page.url(),/encounterDraft=/,
+        '角色入库后必须清理已消费的候选参数，避免刷新时重复导入并弹窗');
       const roles=await page.evaluate(() => JSON.parse(localStorage.getItem('ai_custom_characters')));
       assert.equal(roles.find(r=>r.id==='existing').persona,'既有人物，不可修改');
       const inserted=roles.find(r=>r.name===name);
