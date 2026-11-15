@@ -514,3 +514,61 @@ test('cancel is a verified write; invalid vote can be safely abandoned', () => {
   assert.equal(h.game.getPublic('g1').status,'cancelled');
   assert.equal(begin(h).ok,true);
 });
+
+
+test('incomplete privacy cleanup is reported and can be retried without losing group history', () => {
+  const h=harness();
+  const historic=[{ role:'user',text:'原来的群聊消息',mid:'old1' }];
+  h.storage.setItem('chat_history_g1',JSON.stringify(historic));
+  assert.equal(begin(h,{allowPrivate:true}).ok,true);
+  const sid=h.game.getPublic('g1').sessionId;
+  assert.equal(h.game.sendWhisper({groupId:'g1',sessionId:sid,fromId:'r1',toId:'r2',
+    text:'临时游戏私聊',eventId:'clear-probe'}).ok,true);
+  const actualRemove=h.storage.removeItem.bind(h.storage);
+  let blocked=true;
+  h.storage.removeItem=(key)=>{
+    if(blocked && key.includes(sid))throw new Error('StorageUnavailable');
+    return actualRemove(key);
+  };
+  const result=h.game.finish({group:group(),groupId:'g1',actorId:'__user'});
+  assert.equal(result.ok,true,'the public game result was durably saved');
+  assert.equal(result.cleanupComplete,false,'must not pretend private data was cleared');
+  const status=h.game.getCleanupStatus({group:group(),groupId:'g1',actorId:'__user'});
+  assert.equal(status.ok,true);
+  assert.ok(status.cleanupPending>0);
+  assert.equal(begin(h).code,'PENDING_CLEANUP',
+    'new rounds cannot silently leave previous secrets lying around');
+  assert.equal(h.game.retryCleanup({group:group(),groupId:'g1',actorId:'r2'}).code,
+    'NO_PERMISSION');
+  blocked=false;
+  const recovered=h.game.retryCleanup({group:group(),groupId:'g1',actorId:'__user'});
+  assert.equal(recovered.ok,true);
+  assert.equal(recovered.cleanupComplete,true);
+  assert.equal(h.game.getCleanupStatus({group:group(),groupId:'g1',actorId:'__user'}).cleanupPending,0);
+  assert.equal(h.storage.getItem('chat_history_g1'),JSON.stringify(historic),
+    'game cleanup never deletes existing public conversation messages');
+  assert.equal(begin(h).ok,true);
+});
+
+test('cancelled rounds with failed cleanup expose retry but not role secrets', () => {
+  const h=harness();
+  assert.equal(begin(h,{allowPrivate:true}).ok,true);
+  const sid=h.game.getPublic('g1').sessionId;
+  const actualRemove=h.storage.removeItem.bind(h.storage);
+  h.storage.removeItem=(key)=>{
+    if(key.includes(sid))throw new Error('RemoveBlocked');
+    return actualRemove(key);
+  };
+  const ended=h.game.cancel({group:group(),groupId:'g1',actorId:'__user'});
+  assert.equal(ended.ok,true);
+  assert.equal(ended.cleanupComplete,false);
+  assert.equal(ended.session.status,'cancelled');
+  assert.equal(ended.session.revealedRoleId,'');
+  assert.equal(h.game.buildRoleContext({groupId:'g1',roleId:'r2'}).active,false,
+    'cancelled identities cannot enter AI context even when cleanup fails');
+  assert.equal(h.memory.recordGameClosure({group:group(),session:ended.session}).ok,false);
+  const panel=load('shared/js/phone/group-game-panel.js');
+  assert.match(panel,/groupGameCleanup/);
+  assert.match(panel,/api\.getCleanupStatus/);
+  assert.match(panel,/api\.retryCleanup/);
+});
