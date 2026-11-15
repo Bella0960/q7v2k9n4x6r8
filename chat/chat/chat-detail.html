@@ -8426,9 +8426,21 @@
             });
             // Malformed private markers are dropped, never rendered as public speech.
             text = text.replace(/\[游戏私聊[:：][^\]\r\n]{0,600}\]?/g, '');
-            var settings = getGroupSettings();
             text = text.replace(/\[群私聊[:：]([^:：\]]+)[:：]([^\]]{1,300})\]/g, function (marker, targetKey, privateText) {
-                if (settings.allowPrivateMessages === false) return '';
+                // Persistent role DMs are deferred; no private data is written
+                // before the public AI reply has been durably saved.
+                turnEffects.afterSave(function () {
+                var liveGroup = loadGroupById(currentRoleId);
+                if (!liveGroup || !window.GroupGovernance ||
+                    !window.GroupGovernance.userIsInGroup(liveGroup))
+                    return { ok:false, code:'GROUP_CHANGED' };
+                currentGroup = liveGroup;
+                var liveSpeaker = (liveGroup.members || []).find(function (m) {
+                    return m && String(m.id) === String(speaker && speaker.id || '');
+                });
+                if (!liveSpeaker || window.GroupGovernance.isMuted(liveSpeaker) ||
+                    getGroupSettings().allowPrivateMessages === false)
+                    return { ok:false, code:'PRIVATE_DISABLED' };
                 if (window.GroupGameSessions) {
                     var privateRule = window.GroupGameSessions.canWhisper({
                         groupId:String(currentGroup.id),
@@ -8504,6 +8516,8 @@
                 }
                 window.__groupPrivateCardPending = true;
                 showGroupPrivatePopup(displayName, targetId, privateMessageText);
+                return { ok:true };
+                });
                 return '';
             });
             // 统一通过权限网关处理，模型隐藏标记本身不是授权凭证。
