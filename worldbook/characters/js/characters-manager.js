@@ -1822,6 +1822,15 @@ document.getElementById('btnExpandEncounterPersona').addEventListener('click', a
         setSaveStatus('当前 AI 请求模块不可用，请检查 API 设置。', 'error');
         return;
     }
+    if (roleStoreReadError) {
+        setSaveStatus('角色库读取异常，已暂停 API 完善，避免产生无法保存的付费结果。', 'error');
+        return;
+    }
+    // 先确认浏览器能暂存短卡；容量不足时不发送可能计费的生成请求。
+    if (!persistEditorDraft(true)) {
+        setSaveStatus('草稿暂存失败，尚未调用 API。请先检查浏览器剩余存储空间。', 'error');
+        return;
+    }
     if (!confirm('完善完整人设将调用一次你配置的聊天 API，可能产生费用。确定生成吗？')) return;
     const button = this;
     const draftId = activeEncounterDraftId;
