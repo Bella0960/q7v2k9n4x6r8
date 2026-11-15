@@ -25,7 +25,7 @@ Task ID: FEATURE-ENCOUNTER-001
 6. 用户确认保存后才通过原有 PhoneStorage / ai_custom_characters 写正式角色；成功后尝试清理对应候选，失败须提示。头像在原角色库自由更换。
 7. 正式 AI 完善（已加入首阶段代码，尚未验收）：在原角色编辑器出现「AI 完善人设 · 使用 API」按钮；用户主动点击并确认后，通过现有 PhoneAPI.complete 请求一次。生成后的完整人设进入可编辑草稿，用户再次点击保存才写正式角色；失败保留原短卡，不自动重试。尚未声称通过真实 API 调用测试，也不自动创建主动推送。
 
-存储键：maomao_encounter_candidates_v1（轻量小数据，版本 1，不含二进制/密钥/对话）；maomao_encounter_preferences_v1（本地偏好）。正式角色 ID 仍由原系统产生，人物关系必须基于 ID 而非姓名。当前没有自动跨设备同步，不得依赖尚未验收的云同步。
+存储键：maomao_encounter_candidates_v1（轻量小数据，版本 1，不含二进制/密钥/对话）；maomao_encounter_preferences_v1（本地偏好）。正式角色 ID 仍由原系统产生，人物关系必须基于 ID 而非姓名。 新创建的邂逅角色另外保留 encounterOrigin 版本化元数据（种族/时代/职业/物件/命运线索/卡片来源 ID），以供后续剧情扩展；其他旧角色无需迁移。当前没有自动跨设备同步，不得依赖尚未验收的云同步。
 
 ## 4. 玩法与扩展
 
