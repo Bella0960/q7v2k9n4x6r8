@@ -2490,7 +2490,9 @@
                     }
                 }
                 if (!found) return false;
-                localStorage.setItem('phone_groups', JSON.stringify(groups));
+                var storedGroupRaw = JSON.stringify(groups);
+                localStorage.setItem('phone_groups', storedGroupRaw);
+                if (localStorage.getItem('phone_groups') !== storedGroupRaw) return false;
                 var status = document.getElementById('chat-status-sub');
                 if (status) status.textContent = (currentGroup.members || []).map(groupMemberDisplayName).join(' · ') || '群聊';
                 return true;
@@ -8254,6 +8256,21 @@
             }
             var changedHistory = false;
             var groupHistoryRollback = [];
+            // Register BEFORE parsing any model marker; even if parsing throws
+            // halfway through, the outer finally restores staged mutations.
+            turnEffects.registerUndo(function () {
+                for (var i=groupHistoryRollback.length-1;i>=0;i--) {
+                    var snapshot=groupHistoryRollback[i], targetMessage=snapshot.message;
+                    if(!targetMessage)continue;
+                    if(snapshot.kind==='votes') {
+                        if(snapshot.hadVotes)targetMessage.poll.votes=snapshot.votes;
+                        else delete targetMessage.poll.votes;
+                    } else if(snapshot.kind==='entries') {
+                        if(snapshot.hadEntries)targetMessage.chain.entries=snapshot.entries;
+                        else delete targetMessage.chain.entries;
+                    }
+                }
+            });
             // An incomplete/aborted AI turn may be displayed for recovery, but
             // can never cast votes, modify relationships, create DMs or govern
             // the group. Strip action markers rather than exposing them publicly.
@@ -8570,23 +8587,8 @@
                 return '';
             });
             text = text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
-            // Votes and chains are already mutated in the in-memory history;
-            // the AI reply's upcoming saveMessages(historyList) commits them
-            // atomically. If that save fails (or there is no visible reply),
-            // restore exact pre-turn objects without touching persisted history.
-            if (changedHistory) turnEffects.registerUndo(function () {
-                for (var i=groupHistoryRollback.length-1;i>=0;i--) {
-                    var snapshot=groupHistoryRollback[i], targetMessage=snapshot.message;
-                    if(!targetMessage)continue;
-                    if(snapshot.kind==='votes') {
-                        if(snapshot.hadVotes)targetMessage.poll.votes=snapshot.votes;
-                        else delete targetMessage.poll.votes;
-                    } else if(snapshot.kind==='entries') {
-                        if(snapshot.hadEntries)targetMessage.chain.entries=snapshot.entries;
-                        else delete targetMessage.chain.entries;
-                    }
-                }
-            });
+            // Votes/chains stay staged in this in-memory array until the same
+            // verified save as the reply. The registered undo covers failure.
             return text;
         }
 
