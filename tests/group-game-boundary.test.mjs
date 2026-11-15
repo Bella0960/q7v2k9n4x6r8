@@ -383,3 +383,89 @@ test('no-private mode also blocks ordinary one-to-one role chat before persisten
   assert.ok(guardIndex > 0 && saveIndex > guardIndex,
     'direct DM guard must run before writing a new user message');
 });
+
+
+test('one ballot per character is private until the host reveals the round', () => {
+  const h = harness();
+  assert.equal(begin(h).ok, true);
+  const sessionId = h.game.getPublic('g1').sessionId;
+  const context = h.game.buildRoleContext({ groupId:'g1', roleId:'r1' });
+  assert.match(context.text, /\[游戏猜测:你怀疑的准确角色ID\]/);
+  const first = { groupId:'g1', sessionId, voterId:'r1', targetId:'r2', eventId:'guess-first' };
+  assert.equal(h.game.castVote(first).ok, true);
+  assert.equal(h.game.castVote(first).duplicate, true, 'replaying the same ballot is idempotent');
+  assert.equal(h.game.castVote({ ...first, eventId:'changed-guess', targetId:'r3' }).code,
+    'ALREADY_VOTED', 'the character cannot move its vote in the same round');
+  assert.equal(h.game.castVote({ ...first, voterId:'r2', targetId:'r2', eventId:'self' }).code,
+    'INVALID_VOTE', 'self-voting and outsiders are not valid');
+  assert.equal(h.game.castVote({ ...first, voterId:'outsider', eventId:'outside' }).code,
+    'INVALID_VOTE');
+  const second = { ...first, voterId:'r3', targetId:'r1', eventId:'guess-second' };
+  assert.equal(h.game.castVote(second).ok, true);
+
+  const pub = h.game.getPublic('g1');
+  assert.equal(pub.voteCount, 2);
+  assert.equal(pub.correctVotes, null, 'secret vote results are not revealed early');
+  assert.equal(pub.voteTally.length, 0);
+  const publicData = JSON.stringify(pub);
+  assert.doesNotMatch(publicData, /guess-first|guess-second|targetId|r2.*1票/);
+  assert.match(h.game.buildRoleContext({ groupId:'g1', roleId:'r1' }).text, /你已完成本局猜测/);
+  assert.doesNotMatch(h.game.buildRoleContext({ groupId:'g1', roleId:'r3' }).text, /guess-first|我投了r2/);
+
+  const finished = h.game.finish({ group:group(), groupId:'g1', actorId:'__user' });
+  assert.equal(finished.ok, true);
+  assert.equal(finished.session.revealedRoleId, 'r2');
+  assert.equal(finished.session.voteCount, 2);
+  assert.equal(finished.session.correctVotes, 1);
+  const tally = finished.session.voteTally.reduce((out, row) => {
+    out[row.targetId] = row.count;
+    return out;
+  }, {});
+  assert.equal(tally.r1, 1);
+  assert.equal(tally.r2, 1);
+  assert.equal(tally.r3, 0);
+  assert.equal([...h.records.keys()].some(key => key.includes('_vote_')), false,
+    'the round cannot leave recoverable private vote keys');
+  assert.equal(h.memory.recordGameClosure({ group:group(), session:finished.session }).ok, true);
+  assert.match(h.memory.getPublicPrompt({ groupId:'g1' }), /2人投票，1人猜对/);
+});
+
+test('game guesses fail closed on storage errors, corruption and stale rounds', () => {
+  const h = harness();
+  assert.equal(begin(h).ok, true);
+  const sid = h.game.getPublic('g1').sessionId;
+  const ballot = { groupId:'g1', sessionId:sid, voterId:'r1',
+    targetId:'r2', eventId:'storage-probe' };
+  h.storage.blocked = true;
+  assert.equal(h.game.castVote(ballot).code, 'SAVE_FAILED');
+  h.storage.blocked = false;
+  assert.equal(h.game.getPublic('g1').voteCount, 0, 'no phantom vote after failed write');
+  assert.equal(h.game.castVote(ballot).ok, true);
+  const key = 'phone_group_game_private_v1_g1_' + sid + '_vote_r1';
+  h.storage.setItem(key, '{"eventId":');
+  assert.equal(h.game.getPublic('g1').voteError, true);
+  assert.equal(h.game.castVote({ ...ballot, voterId:'r3', eventId:'next' }).code, 'CORRUPT_VOTE');
+  assert.equal(h.game.finish({ group:group(), groupId:'g1', actorId:'__user' }).code,
+    'CORRUPT_VOTE', 'do not declare an incorrect tally');
+  assert.equal(h.game.getPublic('g1').status, 'active');
+  h.storage.removeItem(key);
+  assert.equal(h.game.finish({ group:group(), groupId:'g1', actorId:'__user' }).ok, true);
+  assert.equal(begin(h).ok, true);
+  assert.equal(h.game.castVote(ballot).code, 'STALE_SESSION');
+});
+
+test('game guess AI tag is saved only after real reply and never flashes in streaming UI', () => {
+  const detail = load('chat/chat/chat-detail.html');
+  const sessionSource = load('shared/js/phone/group-game-session.js');
+  const panel = load('shared/js/phone/group-game-panel.js');
+  assert.match(detail, /turnEffects\.afterSave\(function \(\) \{[\s\S]*?GroupGameSessions\.castVote/);
+  assert.match(detail, /expectedGameSessionId/);
+  assert.match(detail, /gameGuessSeen/);
+  assert.match(detail, /游戏猜测/);
+  assert.match(sessionSource, /游戏猜测/);
+  assert.match(detail, /redactGroupPrivateStream\(tmpText\)/);
+  assert.match(detail, /redactGroupPrivateStream\(snapshotText\.replace/);
+  assert.match(panel, /game\.voteCount/);
+  assert.match(panel, /game\.correctVotes/);
+  assert.match(panel, /renderTally\(game\)/);
+});
