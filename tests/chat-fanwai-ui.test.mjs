@@ -376,3 +376,31 @@ test('reader ellipsis opens a safe alternate storyline without overwriting the o
   await root.handlers.click({ target: originalRow });
   assert.deepEqual(sheet.all().filter(n => n.className === 'fw-bubble').map(n => n.textContent), originalMessages);
 });
+
+
+test('alternate route and original both survive a full reload in isolated fanwai IndexedDB', async () => {
+  const indexedDB = fakeFanwaiDB();
+  const accountId = 'MAO-AAAAAAAAAAAA';
+  const first = mount({ accountId, indexedDB });
+  const root = first.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().filter(n => n.dataset.template).length === 6);
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.template === 'daily') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'start-template') });
+  await tickUntil(() => sheet.all().filter(n => n.className === 'fw-bubble').length === 80);
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'toggle-reader-menu') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'fork') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'create-fork') });
+  await tickUntil(() => sheet.all().filter(n => n.className === 'fw-bubble').length === 80);
+  await tickUntil(() => Array.from(indexedDB.records.values()).filter(r => r.target === 80 && r.status === 'complete').length === 2);
+
+  const second = mount({ accountId, indexedDB });
+  const secondRoot = second.open();
+  await tickUntil(() => secondRoot.querySelector('.fw-sheet')?.all().filter(n => n.dataset.action === 'read').length === 2);
+  const newSheet = secondRoot.querySelector('.fw-sheet');
+  const rows = newSheet.all().filter(n => n.dataset.action === 'read');
+  assert.equal(rows.length, 2);
+  await secondRoot.handlers.click({ target: rows[0] });
+  assert.equal(newSheet.all().filter(n => n.className === 'fw-bubble').length, 80);
+  assert.equal(second.requests, 0, 'reopening either finished story should not call the model');
+});
