@@ -1275,6 +1275,9 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     if(button&&button.disabled)return;
     if(button)button.disabled=true;
     const replying=replyToIdx;
+    // Never persist an upload to a different post if the active post changes
+    // while its media is being saved.
+    const sourcePost=post;
     // Capture the actual reply target before the asynchronous image upload.
     // Comment indices can shift while the user deletes another comment.
     const replyTarget=replying>=0?post.comments[replying]:null;
@@ -1282,6 +1285,11 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     let assetIds=[];
     try{
       assetIds=await ForumMedia.upload(files,'forum-comment',commentId);
+      if(post!==sourcePost||!sourcePost||!Array.isArray(sourcePost.comments)){
+        await ForumMedia.release(assetIds,'forum-comment',commentId);
+        toast('帖子已切换，评论未发送，请重新确认');
+        return;
+      }
       let replyContainer,savedItem;
       if(replying>=0){
         // Never attach a reply to a different comment at a stale array index.
