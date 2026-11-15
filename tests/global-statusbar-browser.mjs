@@ -7,6 +7,9 @@ import { chromium } from 'playwright';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const source = fs.readFileSync(path.join(root, 'shared/js/statusbar-control.js'), 'utf8');
+const inspectHtml = fs.readFileSync(path.join(root, 'inspect-phone/phone.html'), 'utf8');
+const inspectCss = inspectHtml.match(/<style>([\s\S]*?)<\/style>/i)?.[1];
+assert.ok(inspectCss, 'inspect phone page CSS missing');
 const browser = await chromium.launch({
   headless: true,
   ...(process.env.MAOMAO_BROWSER_EXECUTABLE ? { executablePath: process.env.MAOMAO_BROWSER_EXECUTABLE } : {})
@@ -80,6 +83,44 @@ try {
       });
       assert.equal(await page.locator('#bottom').evaluate(el => getComputedStyle(el).display), 'none', width + 'px bottom');
       assert.equal(await page.locator('#top').evaluate(el => getComputedStyle(el).display), 'flex', width + 'px top');
+      // Use the real inspect-phone CSS, not a hand-written height fixture.
+      // Verify that hiding the system bar removes its formerly reserved 34px grid row.
+      const inspectPage = await context.newPage();
+      try {
+        await inspectPage.setContent('<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">' +
+          '<style>' + inspectCss + '</style></head><body><div class="device">' +
+          '<section id="phone" class="phone show">' +
+          '<header id="inspectBar" class="statusbar" data-maomao-system-statusbar>08:00</header>' +
+          '<div id="inspectMain" class="main">Content</div></section></div></body></html>');
+        await inspectPage.evaluate(() => {
+          window.__inspectPrefs = new Map([
+            ['settings_statusbar', '0'], ['settings_home_indicator_visible', '1']
+          ]);
+          Object.defineProperty(window, 'localStorage', {
+            configurable: true,
+            value: { getItem(key) { return window.__inspectPrefs.get(key) ?? null; } }
+          });
+        });
+        await inspectPage.addScriptTag({ content: source });
+        const gridMetrics = () => inspectPage.evaluate(() => ({
+          status: getComputedStyle(document.querySelector('#inspectBar')).display,
+          phone: document.querySelector('#phone').getBoundingClientRect().height,
+          main: document.querySelector('#inspectMain').getBoundingClientRect().height
+        }));
+        const hidden = await gridMetrics();
+        assert.equal(hidden.status, 'none', width + 'px inspect hidden');
+        assert.ok(Math.abs(hidden.phone - hidden.main) < 2, width + 'px inspect grid should fill hidden row');
+        await inspectPage.evaluate(() => {
+          window.__inspectPrefs.set('settings_statusbar', '1');
+          window.__statusbarControlApply();
+        });
+        const shown = await gridMetrics();
+        assert.equal(shown.status, 'flex', width + 'px inspect restored');
+        assert.ok(Math.abs(shown.phone - shown.main - 34) < 2,
+          width + 'px inspect should restore its 34px system row');
+      } finally {
+        await inspectPage.close();
+      }
       assert.deepEqual(errors, [], width + 'px browser errors');
       console.log('statusbar browser DOM contract PASS: ' + width + 'px');
     } finally {
