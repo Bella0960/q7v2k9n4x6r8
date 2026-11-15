@@ -515,3 +515,17 @@ test('unchanged composer still clears submitted text and image selection after a
   assert.equal(h.imageClearCount(), 1);
   assert.equal(h.controller.getReplyIndex(), -1);
 });
+
+
+test('new image selection preserves the selected reply target during a pending send', async () => {
+  const h = setup({ selectedIndex: 1 });
+  const pending = h.controller.send();
+  const nextImage = { name: 'next-reply.png', type: 'image/png' };
+  h.imageDraft.push(nextImage);
+  h.finishUpload([]);
+  await pending;
+  assert.equal(h.post.comments[1].replies.length, 1);
+  assert.equal(h.controller.getReplyIndex(), 1);
+  assert.equal(h.imageDraft[0], nextImage);
+  assert.equal(h.imageClearCount(), 0);
+});
