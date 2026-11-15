@@ -85,7 +85,7 @@ try{
   head=execFileSync('git',['rev-parse','HEAD'],{
     cwd:root,encoding:'utf8',stdio:['ignore','pipe','ignore']
   }).trim();
-  const dirty=execFileSync('git',['status','--porcelain','--untracked-files=no'],{
+  const dirty=execFileSync('git',['status','--porcelain','--untracked-files=normal'],{
     cwd:root,encoding:'utf8',stdio:['ignore','pipe','ignore']
   }).trim();
   if(dirty)errors.push('工作区有未提交修改，测试回执无法与正在验收的代码一致');
