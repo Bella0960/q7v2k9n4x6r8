@@ -529,3 +529,34 @@ test('new image selection preserves the selected reply target during a pending s
   assert.equal(h.imageDraft[0], nextImage);
   assert.equal(h.imageClearCount(), 0);
 });
+
+
+// Test the real parser, not the shortened mock used by async request fixtures.
+const commentMakerStart = page.indexOf('  function makeDetailAIComment(item,index){');
+const commentMakerEnd = page.indexOf('\n  // Scoped per-post so', commentMakerStart);
+assert.ok(commentMakerStart >= 0 && commentMakerEnd > commentMakerStart,
+  'forum AI comment parser source must remain discoverable');
+const makeCommentSource = page.slice(commentMakerStart, commentMakerEnd);
+const makeActualAIComment = vm.runInNewContext(makeCommentSource + '\nmakeDetailAIComment;', {
+  detailResident: (id, index) => ({ id: id || 'r' + index, name: '路人' })
+});
+
+test('makeDetailAIComment ignores invalid nested AI rows without losing valid replies', () => {
+  const result = makeActualAIComment({
+    residentId: 'main-r', text: '有效主评论', replies: [
+      null, 'not an object',
+      { residentId: 'reply-r1', text: '第一条有效回复' },
+      { residentId: 'reply-r2', text: '第二条有效回复' }
+    ]
+  }, 0);
+  assert.equal(result.text, '有效主评论');
+  assert.equal(result.replies.length, 2);
+  assert.deepEqual(Array.from(result.replies, r => r.text), ['第一条有效回复', '第二条有效回复']);
+});
+
+test('invalid AI main or nested entries cannot crash comment parsing', () => {
+  assert.equal(makeActualAIComment(null, 0), null);
+  const result = makeActualAIComment({ text: '正常主评论', replies: [false, 42, [], undefined] }, 1);
+  assert.equal(result.text, '正常主评论');
+  assert.deepEqual(Array.from(result.replies), []);
+});
