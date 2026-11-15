@@ -184,7 +184,8 @@
       });
       if(!sent.ok){notice.textContent=sent.message||'私聊没有保存成功';return;}
       whisperText.value='';
-      notice.textContent='已发给 '+nameFor(whisperTo.value)+'，仅该角色能收到。';
+      notice.textContent='已发给 '+nameFor(whisperTo.value)+'，仅该角色能收到。'+
+        (sent.activitySynced===false?' 私聊动向暂未同步。':'');
       renderPrivateConversation();
     });
     finish.addEventListener('click',function(){
