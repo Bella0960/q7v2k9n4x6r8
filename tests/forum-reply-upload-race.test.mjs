@@ -254,15 +254,15 @@ test('blank and malformed AI-only replies do not mutate the original thread', as
 });
 
 
-const initialStart = page.indexOf('  async function generateInitialAIComments()');
+const initialStart = page.indexOf('  const pendingInitialAIComments=new WeakSet();');
 const initialEnd = page.indexOf('\n  function getPostId()', initialStart);
 assert.ok(initialStart >= 0 && initialEnd > initialStart,
   'forum initial AI comments function must remain discoverable');
 const initialSource = page.slice(initialStart, initialEnd);
 
 function setupInitialAI({ allowSave = true } = {}) {
-  let finish, rejectAI;
-  const pendingAI = new Promise((resolve, reject) => { finish = resolve; rejectAI = reject; });
+  const pendingRequests = [];
+  const requestAI = () => new Promise((resolve, reject) => pendingRequests.push({ resolve, reject }));
   const startingPost = {
     id: 'initial-post-a', name: '原帖子', topic: '日常', comments: [],
     aiCommentBatch: undefined
@@ -280,7 +280,7 @@ function setupInitialAI({ allowSave = true } = {}) {
     detailResident: () => ({ id: 'r1', name: '路人甲' }),
     postTitle: () => '帖子标题',
     postBody: () => '帖子正文',
-    forumAIJSON: () => pendingAI,
+    forumAIJSON: () => requestAI(),
     makeDetailAIComment: item => {
       const text = String(item && item.text || '').trim();
       return text ? { name: '路人甲', owner: 'community', text } : null;
@@ -301,8 +301,9 @@ function setupInitialAI({ allowSave = true } = {}) {
   return {
     startingPost, newPost, saves, renders, status, controller,
     finishAI: (comments = [{ residentId: 'r1', text: '原帖的回应' }]) =>
-      finish({ ok: true, data: { comments } }),
-    rejectAI: () => rejectAI(new Error('test-only simulated AI failure'))
+      pendingRequests.shift()?.resolve({ ok: true, data: { comments } }),
+    rejectAI: () => pendingRequests.shift()?.reject(new Error('test-only simulated AI failure')),
+    get pendingRequests() { return pendingRequests.length; }
   };
 }
 
@@ -361,5 +362,40 @@ test('initial AI failure from a previous post does not overwrite new post status
   await pending;
   assert.equal(h.status.textContent, '新帖子正在加载');
   assert.equal(h.newPost.comments.length, 0);
+  assert.equal(h.saves.length, 0);
+});
+
+
+test('two overlapping initial AI calls for the same post only start one request and save one batch', async () => {
+  const h = setupInitialAI();
+  const first = h.controller.run();
+  const second = h.controller.run();
+  h.finishAI();
+  await Promise.all([first, second]);
+  assert.equal(h.startingPost.comments.length, 1);
+  assert.equal(h.saves.length, 1);
+  assert.equal(h.startingPost.aiCommentBatch, 'v1');
+});
+
+test('initial AI generation permits a retry after a failed request', async () => {
+  const h = setupInitialAI();
+  const first = h.controller.run();
+  h.rejectAI();
+  await first;
+  // A rejected request must not leave a permanent per-post lock.
+  const second = h.controller.run();
+  h.finishAI();
+  await second;
+  assert.equal(h.startingPost.comments.length, 1);
+  assert.equal(h.saves.length, 1);
+});
+
+test('initial AI generation respects an existing completed batch returned mid-flight', async () => {
+  const h = setupInitialAI();
+  const pending = h.controller.run();
+  h.startingPost.aiCommentBatch = 'v1';
+  h.finishAI();
+  await pending;
+  assert.equal(h.startingPost.comments.length, 0);
   assert.equal(h.saves.length, 0);
 });
