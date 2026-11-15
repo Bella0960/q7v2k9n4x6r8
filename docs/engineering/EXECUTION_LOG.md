@@ -108,3 +108,13 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 5. Break cloud-push work into small, reviewable milestones. A code-only PR is not proof of scheduled execution, server model response, OS push delivery, or two-device message persistence.
 6. No merge to main, production deployment, APK update, Worker secret configuration, or destructive user-data operation without explicit owner approval.
 7. This conversation cannot run after the chat/session is closed. Leave this checkpoint so the next session can resume without asking the owner to repeat the task.
+
+
+## 2026-11-16｜群聊秘密游戏/接龙记忆专项接续（原 PR #298）
+
+- **当前任务**：按用户授权继续「接龙/游戏可扩展接口、秘密私聊规则、群聊长期记忆」，沿用原任务 `feat/group-governance-extensibility-20261115`，状态 **开发中**。关联 `ARCH-001`（抽离群互动）、`SEC-001`（隐私与访问边界）、`QA-002`（保存失败回滚/幂等测试）；不占用其他专项文件所有权。
+- **代码进度**：修复流式气泡和 pagehide 未完成快照可能暴露 `[游戏私聊]` / `[群私聊]` 内容的问题，支持跨行/未闭合标记清洗；损坏的游戏公开状态使角色生成/私聊 fail closed；`MemoryRecall` 群公开召回再过滤 `role_only/private` 可见性；主持人的单角色游戏私聊与只读自身对话列表；禁止私聊对局期间阻止单角色私聊绕过；私聊动向存储失败可通过同一事件 ID 补记且不重复投递。
+- **本轮实际代码**：`shared/js/phone/group-game-session.js`、`shared/js/phone/group-game-panel.js`、`shared/js/phone/memory_recall.js`、`chat/chat/chat-detail.html`、`chat/chat/group-play.html`；测试 `tests/group-game-boundary.test.mjs` / `tests/group-social-settings-contract.test.mjs`；PWA `sw.js` v220；设计文档 `GROUP_SOCIAL_WORLD_MASTERPLAN_20261115.md`。
+- **实际验证**：当前准确分支代码在连接器 V8 隔离环境 **38/38 检查通过**（仅 JS 执行与静态集成边界），不属于 Node/浏览器全功能测试。**NOT RUN**：`npm ci`、`npm run test:group:governance`、`node --test tests/group-game-boundary.test.mjs`、`npm run test:group:ui`、`npm run test:chat:contract`、`npm run build`、Playwright、Android/iPhone 真机、唯一 QA 环境。不要误报完成。
+- **兼容与回滚**：未改 `phone_groups` / `chat_history_<id>` 格式及现有角色/群 ID，未触碰生产账号和钱包；新局使用版本化独立临时键；正式发布前须验证备份排除敏感局数据与原有聊天回归。回滚只回退 PR #298 代码，不能擅自清理用户浏览器记录。
+- **接续动作**：在具备本项目可执行检出与 Node/Vite/浏览器的既有隔离环境运行上面的准确命令；修复失败后给群主/角色各走一次实际游戏、禁私聊、私聊动向、结算、接龙完成回忆及刷新重进；再推进其他游戏模板和统一钱包接口。保持 Draft，无用户授权不合并/deploy。
