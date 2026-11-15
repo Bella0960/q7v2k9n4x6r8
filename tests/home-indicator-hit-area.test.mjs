@@ -461,11 +461,13 @@ async function runViewport(browser, baseUrl, viewport) {
       if (!saveNow()) return { setupSaved: false };
       renderComments();
       replyTo(1);
+      document.getElementById('commentInput').value = '待发送的回复草稿';
       deleteComment(0);
       const preceding = {
         index: replyToIdx,
         hintVisible: getComputedStyle(document.getElementById('replyHint')).display !== 'none',
         label: document.getElementById('replyTargetName').textContent,
+        draft: document.getElementById('commentInput').value,
         remainingIds: post.comments.map((comment) => comment.id)
       };
       deleteComment(0);
@@ -488,6 +490,7 @@ async function runViewport(browser, baseUrl, viewport) {
     adjacentDelete.preceding?.index === 0 &&
     adjacentDelete.preceding?.hintVisible === true &&
     adjacentDelete.preceding?.label === '@正在回复的人' &&
+    adjacentDelete.preceding?.draft === '待发送的回复草稿' &&
     adjacentDelete.preceding?.remainingIds.join(',') === 'nav2-selected-target',
     adjacentDelete);
   add('forum-detail.reply.cancelled-when-target-deleted',
