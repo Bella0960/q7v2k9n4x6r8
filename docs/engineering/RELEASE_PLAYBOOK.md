@@ -106,6 +106,14 @@
 - 禁止直接推送 `main`、强制覆盖历史、绕过验证自动合并、随意重置数据库、复建账号系统、为每次手机测试创建一个 Worker。
 - 新功能必须沿用既有架构，预留可扩展接口/事件/注册点；不得以“整合”为由大面积回滚已验收的功能。
 
+### 两个唯一正式网址与现有别名的实际边界（2026-11-16 只读复核）
+
+**用户对外只认 `mao520.com` 与 `app.mao520.com` 两个正式入口。** Cloudflare Custom Domain 当前分别指向 `mao-auth-preview` 和 `curly-dream-324c`。额外启用的 `auth`、`login`、`admin`、`static`、`ivory` 子域名为历史或兼容入口，`preview` 当前已停用；它们不能被继续包装成多个用户需要记住的新正式站。**是否可以关闭、改跳转或者删除旧 Worker 必须先审查真实登录、推送、静态资源及认证回调依赖；不得凭名字“preview”误删正式身份服务。**
+
+`curly-dream-324c` 虽有 `MAO_APP_BACKEND`→`maomao-aw-qa-20261114` Service Binding，但 `MAO_APP_CUTOVER_ENABLED=false`，不能将“存在绑定”说成“已完成新版切换”。现有 QA Worker 虽有独立 `CLOUD_DB`，却将 `MAO_IDENTITY_AUTHORITY` 指向 `maomao-001-identity-gateway-20261114`（production），当前只核实了配置，**没有证明测试登录不会影响正式身份系统**。
+
+本次新增专项 `DOMAIN-ENTRY-001`（详见 `REMEDIATION_BACKLOG.md`）要求：先梳理并实测旧别名/路由/凭据/数据隔离，安全准备一个稳定、完整、真正可玩且与正式站不同 origin 的既有 QA 入口供用户验收，**不添加第三个对外宣传的正式域名、不在 `app.mao520.com/qa` 未经隔离评估地混用本地存储、Cookie 或 Service Worker**。如两个可见正式域名与完全独立 QA 的实施细节有冲突，应在原整合 PR 给出已验证的最小实现，不能擅自改生产路由或生产身份。**该专项不允许借域名治理名义阻塞其他无文件冲突的日常开发**。
+
 ## 2. 运行环境账本（Cloudflare 配置只读核对：2026-11-15）
 
 | 用途 | 已核对入口/资源 | 当前实际指向 | 必须遵守 |
