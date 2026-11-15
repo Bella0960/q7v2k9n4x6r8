@@ -612,3 +612,43 @@ test('桌面有独立应用入口，抽卡页有可访问交互与移动端样�
   assert.match(appSource,/id="moreButton"/);
   assert.doesNotMatch(appSource,/(<img[^>]+src="https:\/\/)/);
 });
+
+test('空角色库与 PhoneStorage 返回独立副本：保存失败不能产生幽灵角色', () => {
+  const start = managerSource.indexOf('let roleStoreReadError = false;');
+  const end = managerSource.indexOf('const ROLE_AVATAR_CLEANUP_QUEUE_KEY', start);
+  assert.ok(start >= 0 && end > start);
+  const code = managerSource.slice(start, end) + ';({loadRoles,saveRoles})';
+  const storage = {getItem(){return null;},setItem(){throw Error('quota');}};
+  const emptyPhoneStorage = {
+    result: {
+      getCharacters(){return {ok:false,error:{code:'NOT_FOUND'}};},
+      saveCharacters(){return {ok:false,error:{code:'QUOTA_EXCEEDED'}};}
+    }
+  };
+  const empty = vm.runInNewContext(code, {
+    window:{PhoneStorage:emptyPhoneStorage},PhoneStorage:emptyPhoneStorage,
+    localStorage:storage,STORAGE_KEY:'ai_custom_characters',DEFAULT_ROLES:[],console
+  });
+  const pending = empty.loadRoles();
+  pending.push({id:'role_unsaved',name:'未成功保存'});
+  assert.equal(empty.saveRoles(pending),false);
+  assert.deepEqual([...empty.loadRoles()],[],'写入失败后不能把内存中的新角色当成已保存角色');
+  assert.notEqual(empty.loadRoles(),empty.loadRoles(),'默认空库不能共享可变数组');
+
+  const cached = [{id:'existing',name:'已有角色'}];
+  const phoneStorage = {
+    result: {
+      getCharacters(){return {ok:true,value:cached};},
+      saveCharacters(){return {ok:false,error:{code:'QUOTA_EXCEEDED'}};}
+    }
+  };
+  const existing = vm.runInNewContext(code, {
+    window:{PhoneStorage:phoneStorage},PhoneStorage:phoneStorage,
+    localStorage:storage,STORAGE_KEY:'ai_custom_characters',DEFAULT_ROLES:[],console
+  });
+  const draft = existing.loadRoles();
+  draft[0].name = '未保存的修改';
+  assert.equal(cached[0].name,'已有角色','编辑前不得直接改写底层缓存引用');
+  assert.equal(existing.saveRoles(draft),false);
+  assert.equal(existing.loadRoles()[0].name,'已有角色','保存失败后应能重新读到原资料');
+});
