@@ -11,7 +11,7 @@ const homePage = read('index.html');
 test('service worker declares a versioned PWA cache without pinning an obsolete release', () => {
   const cacheName = serviceWorker.match(/const CACHE_NAME = ['"]([^'"]+)['"]/);
   assert.ok(cacheName, 'service worker must declare CACHE_NAME');
-  assert.match(cacheName[1], /^phone-app-pwa-v[1-9]\\d*$/,
+  assert.match(cacheName[1], /^phone-app-pwa-v[1-9]\d*$/,
     'cache name must retain the versioned phone-app-pwa format');
 });
 const viteConfig = read('vite.config.js');
