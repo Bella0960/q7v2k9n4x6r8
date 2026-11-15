@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import operator, { runPrivateFounderCheckpoint } from '../worker/founder-checkpoint-runner.js';
 import { recordFounderCheckpoint } from '../scripts/release/founder-checkpoint.mjs';
+import { handleFounderCheckpointRotationInternal } from '../worker/lib/founder-recovery-operator.js';
 
 const NOW = 1_800_000_000_000;
 const SECRET = 'R'.repeat(64);
@@ -274,4 +275,33 @@ test('KV activation for another domain or an expired window cannot contact live 
     await assert.rejects(pending,/private_checkpoint_(disabled|window_closed)/);
     assert.equal(calls.length,0);
   }
+});
+
+test('private 001 checkpoint rotation retains previous bookmark with no public credential exposure', async()=>{
+  const now=1_800_000_000_000;
+  const original={bookmark:'a'.repeat(64),recordedAt:now-3600000};
+  const state=new Map([['release:founder-cutover:checkpoint',original]]);
+  const storage={
+    async get(k){return state.get(k);},async put(k,v){state.set(k,v);},
+    async sync(){},async getCurrentBookmark(){return 'b'.repeat(64);},
+    async transaction(fn){return fn(this);}
+  };
+  const request=new Request('https://maomao.internal/internal/release/checkpoint-rotate',{
+    method:'POST',headers:{
+      'x-maomao-release-secret':SECRET,
+      'x-maomao-release-operation':'preserve-old-checkpoint-and-rotate'
+    }
+  });
+  const env={FOUNDER_RELEASE_OPERATOR_SECRET:SECRET};
+  const response=await handleFounderCheckpointRotationInternal({request,env,storage,now:()=>now});
+  assert.equal(response.status,200);
+  const payload=await response.json();
+  assert.deepEqual(payload,{ok:true,recorded:true,recordedAt:now,rotated:true});
+  assert.equal(state.get('release:founder-cutover:history:'+original.recordedAt).bookmark,original.bookmark);
+  assert.equal(state.get('release:founder-cutover:checkpoint').bookmark,'b'.repeat(64));
+  assert.doesNotMatch(JSON.stringify(payload),/bookmark|password|salt|hash/);
+  const unauthorized=new Request(request.url,{method:'POST',headers:{
+    'x-maomao-release-secret':'wrong','x-maomao-release-operation':'preserve-old-checkpoint-and-rotate'
+  }});
+  assert.equal((await handleFounderCheckpointRotationInternal({request:unauthorized,env,storage,now:()=>now})).status,403);
 });
