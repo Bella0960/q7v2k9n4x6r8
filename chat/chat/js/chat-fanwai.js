@@ -303,7 +303,7 @@
   var trustedAccountScope = global.__MAO_ACCOUNT_SCOPE__;
   if (canPersist && (!trustedAccountScope || trustedAccountScope.ready !== true ||
       trustedAccountScope.accountId !== accountId)) {
-    console.error('[Fanwai] 已登录页面缺少匹配的账号隔离运行时，拒绝启动番外');
+    console.warn('[Fanwai] 已登录页面缺少匹配的账号隔离运行时，拒绝启动番外');
     return;
   }
   var scope = canPersist ? accountId : 'temporary:' + Math.random().toString(36).slice(2);
