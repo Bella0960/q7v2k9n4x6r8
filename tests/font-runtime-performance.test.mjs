@@ -45,7 +45,7 @@ test('service worker serves cached font assets from a same-origin route', () => 
 });
 
 test('font asset cache survives app-shell version upgrades', () => {
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v203'/);
+  assert.ok(Number(serviceWorker.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m)?.[1] || 0) >= 241, 'PWA must retain the network-first account cache baseline');
   assert.match(serviceWorker, /keys\.filter\(key => key\.startsWith\('phone-app-'\) && key !== CACHE_NAME\)/);
   assert.doesNotMatch(serviceWorker, /key\.startsWith\('maomao-font-assets/);
 });
