@@ -395,3 +395,44 @@ test('Android PWA theme color follows global visibility across hide/show/hide', 
   window.__statusbarControlApply();
   assert.equal(meta.content, '#181818', 'hiding again should update the native theme-color');
 });
+
+test('Android PWA color observer attaches after body is created', () => {
+  const nativeFeel = fs.readFileSync(path.join(projectRoot, 'shared/js/native-feel.js'), 'utf8');
+  const sampler = nativeFeel.match(/\(function MAOMAOSystemBarColor\(\) \{[\s\S]*?\n    \}\)\(\);/);
+  assert.ok(sampler, 'native-feel system bar color sampler is missing');
+  const documentEvents = new Map();
+  const subscriptions = [];
+  let frames = 0;
+  class Observer {
+    constructor(callback) { this.callback = callback; }
+    observe(target, options) { subscriptions.push({ target, options, observer: this }); }
+  }
+  const root = {};
+  const document = {
+    documentElement: root,
+    body: null,
+    readyState: 'loading',
+    addEventListener(name, callback) {
+      const callbacks = documentEvents.get(name) || [];
+      callbacks.push(callback);
+      documentEvents.set(name, callbacks);
+    }
+  };
+  const window = {
+    MutationObserver: Observer,
+    requestAnimationFrame(callback) { frames++; callback(); },
+    addEventListener() {}
+  };
+  vm.runInNewContext(sampler[0], { document, window, MutationObserver: Observer },
+    { filename: 'native-feel-late-body.js' });
+  assert.equal(subscriptions.length, 1, 'HTML root should be observed before body exists');
+  assert.equal(subscriptions[0].target, root);
+  document.body = { classList: { contains() { return true; } } };
+  for (const callback of documentEvents.get('DOMContentLoaded') || []) callback();
+  const bodySubscription = subscriptions.find(entry => entry.target === document.body);
+  assert.ok(bodySubscription, 'DOMContentLoaded must attach the original color observer to body');
+  assert.ok(bodySubscription.options.subtree && bodySubscription.options.attributeFilter.includes('style'));
+  const before = frames;
+  bodySubscription.observer.callback([{ type: 'attributes', attributeName: 'style', target: document.body }]);
+  assert.equal(frames, before + 1, 'later body style changes must schedule native theme-color refresh');
+});
