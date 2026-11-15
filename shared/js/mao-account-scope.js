@@ -13,9 +13,7 @@
 
   if (!accountId || !/^MAO-[A-Z0-9]{12,24}$/.test(accountId)) return;
 
-  try {
-    global.__MAO_ACCOUNT_SCOPE__ = Object.freeze({ accountId: accountId, role: role, ready: true });
-  } catch (error) {}
+  // 仅在账号 API 和所有存储命名空间安装成功后声明 ready，避免半初始化误放行。
 
   // Bind every same-origin API request to the MAO account whose data namespace
   // this page opened with. This closes the interval before the 30-second tab
@@ -395,6 +393,13 @@
       return;
     }
   } else {
+    stopUnsafeAccountPage();
+    return;
+  }
+
+  try {
+    global.__MAO_ACCOUNT_SCOPE__ = Object.freeze({ accountId: accountId, role: role, ready: true });
+  } catch (error) {
     stopUnsafeAccountPage();
     return;
   }
