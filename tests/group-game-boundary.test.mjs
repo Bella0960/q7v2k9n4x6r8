@@ -83,12 +83,13 @@ test('missing or corrupted role-only card fails closed, not an invented reply', 
 test('private chat is blocked by frozen game rules and cannot leak into shared state', () => {
   const h = harness();
   assert.equal(begin(h, { allowPrivate: false }).ok, true);
-  assert.equal(h.game.sendWhisper({ groupId: 'g1', fromId: 'r1',
+  const firstSessionId = h.game.getPublic('g1').sessionId;
+  assert.equal(h.game.sendWhisper({ groupId: 'g1', sessionId: firstSessionId, fromId: 'r1',
     toId: 'r2', text: '仅收件人知道', eventId: 'event1' }).ok, false);
   assert.equal([...h.records.keys()].some((k) => k.includes('_inbox_')), false);
   assert.equal(h.game.finish({ groupId: 'g1', group: group(), actorId: '__user' }).ok, true);
   assert.equal(begin(h, { allowPrivate: true, showPrivateActivity: true }).ok, true);
-  const req = { groupId: 'g1', fromId: 'r1', toId: 'r2',
+  const req = { groupId: 'g1', sessionId: h.game.getPublic('g1').sessionId, fromId: 'r1', toId: 'r2',
     text: '仅收件人知道', eventId: 'event2' };
   assert.equal(h.game.sendWhisper(req).ok, true);
   assert.equal(h.game.sendWhisper(req).duplicate, true);
@@ -102,6 +103,11 @@ test('private chat is blocked by frozen game rules and cannot leak into shared s
   assert.equal(h.game.finish({ groupId: 'g1', group: group(), actorId: '__user' }).ok, true);
   assert.equal(h.game.buildRoleContext({ groupId: 'g1', roleId: 'r2' }).active, false);
   assert.equal([...h.records.keys()].some((key) => key.includes('_inbox_')), false);
+  assert.equal(begin(h, { allowPrivate: true }).ok, true);
+  assert.notEqual(h.game.getPublic('g1').sessionId, req.sessionId);
+  assert.equal(h.game.sendWhisper({ ...req, eventId: 'old-round-echo' }).code, 'STALE_SESSION',
+    'late responses from the previous game must never enter the next round');
+  assert.equal(h.game.buildRoleContext({ groupId: 'g1', roleId: 'r2' }).text.includes('仅收件人知道'), false);
 });
 
 test('shared AI history filters private records and explicit role-only visibility', () => {
@@ -161,6 +167,10 @@ test('chat detail routes private events only after a verified saved AI reply', (
   assert.match(detail, /GroupGameSessions\.sendWhisper\(pendingGameWhisper\)/);
   assert.match(detail, /GroupMemoryEvents\.recordChainClosure/);
   assert.match(detail, /m\.type !== 'group_game_private'/);
+  assert.match(detail, /activeGame\.sessionId !== expectedGameSessionId/);
+  assert.match(detail, /privateRule\.active\) return ''/);
+  assert.match(detail, /const roleMemory = isGroupChat[\s\S]*?buildWeightedMemoryText/);
+  assert.match(detail, /if \(!isCompleted \|\| isRegeneration \|\| contextOnly\)/);
   for (const [index, match] of [...detail.matchAll(/<script(?:\s+[^>]*)?>([\s\S]*?)<\/script>/gi)].entries()) {
     assert.doesNotThrow(() => new vm.Script(match[1], { filename: 'chat-detail:inline' + index }));
   }
