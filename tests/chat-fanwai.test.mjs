@@ -24,7 +24,7 @@ test('six story templates are available without replacing the existing chat UI',
   });
   assert.match(extras, /fanwaiScript\.src\s*=\s*'js\/chat-fanwai\.js/);
   assert.match(source, /#plusPanelOverlay \.plus-grid/);
-  assert.match(source, /data-feat\s*=\s*'fanwai'/);
+  assert.match(source, /item\.dataset\.feat\s*=\s*'fanwai'/);
 });
 
 test('only chat message roles are accepted; input text is treated as data', () => {
