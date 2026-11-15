@@ -403,6 +403,28 @@ async function runViewport(browser, baseUrl, viewport) {
     replyMetrics.contentScrollClearance >=
       replyMetrics.composerHeight + replyMetrics.composerBottom + replyMetrics.hintHeight + 14,
     replyMetrics);
+  // Verify actual scrolled viewport clearance, not merely a CSS padding number.
+  await page.evaluate(() => {
+    const probe = document.createElement('div');
+    probe.id = 'home-indicator-last-content-probe';
+    probe.style.height = '180px';
+    document.body.appendChild(probe);
+    window.scrollTo(0, document.documentElement.scrollHeight);
+  });
+  await page.waitForTimeout(100);
+  const lastContentClearance = await page.evaluate(() => ({
+    lastContentBottom: document.getElementById('home-indicator-last-content-probe').getBoundingClientRect().bottom,
+    replyHintTop: document.getElementById('replyHint').getBoundingClientRect().top,
+    scrollY: window.scrollY
+  }));
+  add('forum-detail.reply-hint.scrolled-last-content-visible',
+    lastContentClearance.scrollY > 0 &&
+    lastContentClearance.lastContentBottom <= lastContentClearance.replyHintTop - 6,
+    lastContentClearance);
+  await page.evaluate(() => {
+    document.getElementById('home-indicator-last-content-probe')?.remove();
+  });
+
   await page.evaluate(() => {
     document.getElementById('home-indicator-preview-size-probe')?.remove();
     document.getElementById('replyHint').style.display = 'none';
