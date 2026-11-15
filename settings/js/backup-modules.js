@@ -131,7 +131,7 @@
         id: 'characters', label: '角色、记忆与世界书',
         keys: ['ai_custom_characters','phone_data_v2'],
         prefixes: ['worldbook_', 'world_book_', 'memory_', 'char_', 'character_',
-          'role_', 'phone_character_', 'relationship_', 'ai_character_'],
+          'role_', 'phone_character_', 'relationship_', 'ai_character_', 'maomao_encounter_'],
         databases: ['maomao-assets']
     });
     register({
