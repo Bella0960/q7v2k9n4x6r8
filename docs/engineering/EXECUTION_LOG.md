@@ -128,3 +128,14 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **兼容/隐私**：不删除原有 `chat_history_<groupId>`、不改 `phone_groups` schema、不改 `group_poll/group_chain` 数据形态；选票键沿用已有临时 `phone_group_game_private_v1_` 前缀并已在备份敏感键排除范围中。未揭晓的选票不会出现在公开对局或群长期记忆；删除失败不能伪报完成，取消后无效身份不会进入 AI 回复。
 - **实际检查**：连接器隔离 V8 执行当前 PR 准确源码，**51/51** 行为与语法/引用检查通过；这不是完整 Node/Vite/浏览器环境。**NOT RUN**：`npm run test:group:governance`、`npm run test:group:ui`、`npm run test:chat:contract`、`npm run build`、真实浏览器及 Android/iPhone。没有依赖仓库 GitHub Actions。
 - **继续顺序**：先在既有可执行隔离环境核对准确提交 SHA 与新增 Node 用例、修复任何实际失败；然后验收完整的开始→讨论→每角色投票→揭晓/取消→记忆→新局循环；继续开发群聊内结果呈现和主持人扩展。不合并 `main`，不改生产账号/数据/钱包。
+
+
+
+
+## 2026-11-16｜PR #298 接续：结果卡进入原群聊天记录
+
+- **原任务**：群聊社交世界扩展，沿用 Draft PR #298 / \`feat/group-governance-extensibility-20261115\`，不建立重复分支。对应 \`ARCH-001\`、\`SEC-001\`、\`QA-002\` 的群聊专项。
+- **代码提交**：\`shared/js/phone/group-game-chat-receipts.js\`（真实系统消息投影、固定 mid 防重、旧数据兼容、失败保全、公开结果验证）；\`shared/js/phone/group-game-panel.js\`（揭晓/取消后写群聊、失败补发、重开局前补齐）；\`chat/chat/group-play.html\`（脚本接入、修正初始化先后）；\`chat/chat/chat-detail.html\`（结果卡渲染及 groupGame 元数据写后校验）；\`sw.js\`（v223 新脚本缓存）；\`tests/group-game-chat-receipts.test.mjs\` 与 \`package.json\`（加入原测试命令）。
+- **兼容性**：仍写原 \`chat_history_<groupId>\`，没有另建消息库/账号/钱包。系统消息为 \`type:group_game_result\`、\`role:system\`、稳定 \`mid:m_game_result_<sessionId>\`。正式揭晓显示汇总票数、取消不泄露身份，长期记忆继续经原 \`GroupMemoryEvents\`。角色后续改群昵称不改变旧局的可信结果。
+- **真实检查**：准确分支代码与已有测试用例在隔离 V8 运行：新结果卡 9/9、秘密游戏边界 25/25、群设置记忆 5/5，合计 39/39。**NOT RUN**：项目检出后的原生 Node 测试、Vite build、Playwright、实际 Android/iPhone、唯一 QA 环境。测试不依赖 GitHub Actions。不能将受控 V8 测试当作完整 QA。
+- **待继续**：真实浏览器验证首次进入「游戏与活动」、群主进行一局并在群里看见结果卡、关闭/刷新后不重复、取消不显示身份、损坏存储显示补发、长聊天虚拟列表/聊天首页预览及 PWA 缓存更新。然后再推进角色主持人、更多小游戏及更完整的记忆事件。保持 Draft，未授权不合并 \`main\`、不触碰正式数据。
