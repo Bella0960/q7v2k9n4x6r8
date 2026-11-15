@@ -361,6 +361,24 @@ async function runViewport(browser, baseUrl, viewport) {
     };
   });
 
+  // The visual 140px shell is aria-hidden and must not be a second keyboard
+  // tab stop. Its separate 84px hit-target remains the accessible button.
+  const homeA11y = await page.evaluate(() => {
+    const shell = document.querySelector('button.maomao-global-home-indicator');
+    const target = document.querySelector('.maomao-global-home-indicator-hit-target');
+    return {
+      shellHidden: shell?.getAttribute('aria-hidden'),
+      shellTabIndex: shell?.tabIndex,
+      targetLabel: target?.getAttribute('aria-label'),
+      targetTabIndex: target?.tabIndex,
+      targetHidden: target?.getAttribute('aria-hidden')
+    };
+  });
+  add('forum-detail.home-line.decorative-shell-not-keyboard-focusable',
+    homeA11y.shellHidden === 'true' && homeA11y.shellTabIndex === -1 &&
+    !!homeA11y.targetLabel && homeA11y.targetTabIndex === 0 &&
+    homeA11y.targetHidden !== 'true', homeA11y);
+
   add('forum-detail.home-line.visible-84x4',
     detailLineGeom.lineWidth === '84px' && detailLineGeom.lineHeight === '4px' &&
     Math.abs(detailLineGeom.lineRect.width - 84) <= 0.5 &&
