@@ -1,5 +1,13 @@
 # MAOMAO Execution Log
 
+## 2026-11-15 — QA-001 production identity cutover applied
+
+- Rotated the formal checkpoint at 10:17:54 UTC with the previous checkpoint retained. The private operator confirmed the verified SQL and internal KV backup and isolated restore receipts (`3ccd44e748cc`).
+- The owner signed in with the existing credentials on the original account surface. A one-time encrypted handoff moved the existing verifier for `MAO-OXHBDBWCOIHPBBYN` to the existing production object. The production transaction and private success receipt were verified at 10:21:54 UTC.
+- Read-only production verification found exactly one active super administrator, the selected ID. The prior administrator row is retained in disabled status, and the active ordinary account and its two session records (one active) match pre-cutover checks. SQLite quick check returned `ok` and foreign-key check returned no violations.
+- Closed the capture and the two activation windows, removed the operator schedule, and restored the pinned stable production code version `4454045f-ee8b-4b08-a679-c55745fc82ac` at 100%. The production database binding remains the existing binding. The production homepage redirects to the login page, and the trial hostname returned HTTP 200.
+- The focused continuity regression suite passed 54 tests. Formal owner login and full release acceptance are separate checks still pending at this checkpoint.
+
 ## 2026-11-15 — QA-001 live checkpoint rotated and owner-login handoff prepared
 
 - Verified the private `founder-checkpoint:success` receipt for the original formal object. It records `rotated: true` at 03:06:31 UTC, bound to the independently verified encrypted backup and isolated restore with SHA-256 prefix `3ccd44e748cc`. The rotation source persists the prior bookmark in private history before updating the active checkpoint. The historical receipt is valid evidence of the rotation. Its 15-minute execution lease has expired and needs refresh in the eventual transfer window.
