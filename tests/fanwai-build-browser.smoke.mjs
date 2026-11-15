@@ -189,6 +189,31 @@ try {
       assert.ok(result.calls >= 4 && result.calls <= 18, 'generation must be batched');
       assert.equal(result.chatHistory, previousChat,
         'fanwai must not silently alter the real chat message history');
+      stage = 'checking completed reader layout on mobile';
+      const reading = await page.locator('#fanwaiLayer .fw-sheet.fw-reading').evaluate(sheet => {
+        const box = sheet.getBoundingClientRect();
+        const messages = sheet.querySelector('.fw-messages');
+        const actions = sheet.querySelector('.fw-actions');
+        const buttons = actions ? actions.getBoundingClientRect() : null;
+        return {
+          left: box.left, right: box.right, bottom: box.bottom,
+          viewportWidth: innerWidth, viewportHeight: innerHeight,
+          widthOverflow: sheet.scrollWidth > sheet.clientWidth + 1,
+          chatOverflow: !messages || messages.scrollWidth > messages.clientWidth + 1,
+          chatHeight: messages?.clientHeight || 0,
+          actionHeight: buttons?.height || 0,
+          actionBottom: buttons?.bottom || 0
+        };
+      });
+      assert.ok(reading.left >= -1 && reading.right <= viewport.width + 1,
+        viewport.label + ': reader must fit the mobile width ' + JSON.stringify(reading));
+      assert.equal(reading.widthOverflow, false,
+        viewport.label + ': completed story reader cannot scroll sideways');
+      assert.equal(reading.chatOverflow, false,
+        viewport.label + ': messages cannot extend horizontally past the reader');
+      assert.ok(reading.chatHeight >= 120, viewport.label + ': message scrolling area must remain usable');
+      assert.ok(reading.actionHeight > 0 && reading.actionBottom <= reading.bottom + 1,
+        viewport.label + ': bottom story controls must remain in the reading sheet');
       assert.deepEqual(missingCritical, [], 'required built resources cannot return HTTP errors');
       // 检查实际浏览器执行边界，而非仅看 Mock DOM：认证信息伪造/错账号不能暴露番外插件。
       // 通过本地路由改写合成 HTML，绝不触碰真实 Worker、账号或用户资料。
