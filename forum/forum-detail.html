@@ -1218,12 +1218,22 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
         return;
       }
       if(!result||!result.ok||!result.data||!Array.isArray(result.data.replies))throw new Error('回复生成结果无效');
+      // Validate the complete AI batch before touching stored comments.
+      // Empty or malformed JSON entries must never create a phantom success
+      // or leave an unsaved partial reply in the in-memory post.
+      const addedReplies=[];
+      result.data.replies.slice(0,2).forEach((x,i)=>{
+        if(!x||typeof x!=='object')return;
+        const c=makeDetailAIComment({residentId:x.residentId,text:x.text},i);
+        if(c)addedReplies.push({name:c.name,avatar:c.avatar,residentId:c.residentId,owner:'community',source:'forum-ai',text:c.text,time:Date.now()+i*1000,replyTo:String(x.replyTo||'我'),likes:0});
+      });
+      if(!addedReplies.length){
+        if(status)status.textContent='暂时没有新的回应，稍后再看看';
+        return;
+      }
       const previousReplies=Array.isArray(target.replies)?target.replies.slice():[];
       if(!Array.isArray(target.replies))target.replies=[];
-      result.data.replies.slice(0,2).forEach((x,i)=>{
-        const c=makeDetailAIComment({residentId:x.residentId,text:x.text},i);
-        if(c)target.replies.push({name:c.name,avatar:c.avatar,residentId:c.residentId,owner:'community',source:'forum-ai',text:c.text,time:Date.now()+i*1000,replyTo:String(x.replyTo||'我'),likes:0});
-      });
+      target.replies.push(...addedReplies);
       if(!saveNow()){
         target.replies=previousReplies;
         renderComments();renderPost();
