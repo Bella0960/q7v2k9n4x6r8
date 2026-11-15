@@ -71,3 +71,11 @@ jobs:
         run: |
           npm run test:chat:isolation
           npm run test:chat:isolation:browser
+      - name: Save fanwai browser failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fanwai-browser-failure-${{ github.run_id }}
+          path: test-results/fanwai-browser/
+          if-no-files-found: ignore
+          retention-days: 5
