@@ -1,0 +1,138 @@
+/* MAOMAO 番外剧场：仅作用于独立弹层，不修改现有聊天主题与输入栏。 */
+.fw-layer, .fw-layer * { box-sizing: border-box; }
+.fw-layer[hidden] { display: none !important; }
+.fw-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1800;
+  display: flex;
+  align-items: flex-end;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+  color: #171717;
+}
+.fw-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 15, 15, .38);
+}
+.fw-sheet {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-height: 86%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 21px 18px calc(22px + env(safe-area-inset-bottom, 0px));
+  border-radius: 23px 23px 0 0;
+  background: #F8F8F9;
+  box-shadow: 0 -14px 45px rgba(0,0,0,.13);
+  animation: fw-rise .26s cubic-bezier(.2,.65,.25,1);
+}
+@keyframes fw-rise { from { transform: translateY(26px); opacity: .65; } to { transform: translateY(0); opacity: 1; } }
+.fw-topline {
+  color: #999;
+  font: 500 9px/1.5 Georgia, serif;
+  letter-spacing: .18em;
+  margin-bottom: 8px;
+}
+.fw-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.fw-head h2 { font: 400 29px/1.1 Georgia, "Songti SC", serif; letter-spacing: -.035em; margin: 0; }
+.fw-subtitle { font-size: 11px; line-height: 1.7; color: #888; margin: 10px 0 19px; }
+.fw-btn {
+  appearance: none;
+  border: 1px solid #E5E5E7;
+  background: #fff;
+  color: #333;
+  border-radius: 12px;
+  cursor: pointer;
+  font: 500 12px/1.4 inherit;
+  padding: 10px 12px;
+  -webkit-tap-highlight-color: transparent;
+}
+.fw-btn:focus-visible, .fw-custom:focus-visible, .fw-length-label select:focus-visible {
+  outline: 2px solid #555;
+  outline-offset: 2px;
+}
+.fw-btn:active { transform: scale(.985); }
+.fw-close { border: 0; border-radius: 999px; background: #EFEFF1; font-size: 11px; padding: 8px 12px; }
+.fw-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin-bottom: 20px; }
+.fw-card {
+  text-align: left;
+  min-height: 106px;
+  border-radius: 16px;
+  padding: 14px;
+  background: #fff;
+  border: 1px solid #ECECEF;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.fw-index { font: 400 11px/1 Georgia, serif; color: #ACACB0; margin-bottom: 15px; }
+.fw-card-title { color: #202023; font: 500 15px/1.4 "Songti SC", Georgia, serif; }
+.fw-card-sub { color: #999; font-size: 10px; line-height: 1.5; margin-top: 4px; }
+.fw-section-title { color: #555; font-size: 12px; font-weight: 600; letter-spacing: .02em; margin: 0 0 10px; }
+.fw-custom {
+  width: 100%;
+  height: 78px;
+  resize: vertical;
+  border: 1px solid #ECECEF;
+  border-radius: 13px;
+  padding: 11px 12px;
+  background: white;
+  color: #242426;
+  font: 12px/1.7 -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+  outline: none;
+}
+.fw-custom::placeholder { color: #AAA; }
+.fw-length-label { display: flex; align-items: center; justify-content: space-between; margin: 10px 0; font-size: 11px; color: #777; }
+.fw-length-label select { border: 1px solid #E5E5E7; border-radius: 9px; padding: 7px 10px; color: #444; background: white; }
+.fw-primary { display: block; width: 100%; border-color: #222; color: #fff; background: #222; padding: 12px; font-size: 12px; }
+.fw-saved { margin-top: 22px; }
+.fw-saved-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 9px;
+  justify-content: space-between;
+  margin-bottom: 7px;
+  text-align: left;
+}
+.fw-saved-row strong { font-weight: 500; color: #444; }
+.fw-saved-row span { font-size: 10px; color: #999; white-space: nowrap; }
+.fw-reading { display: flex; flex-direction: column; min-height: 55%; max-height: 91%; overflow: hidden; }
+.fw-reading .fw-subtitle { margin-bottom: 8px; }
+.fw-messages {
+  flex: 1;
+  min-height: 180px;
+  max-height: min(57vh, 480px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 13px 2px 16px;
+  scrollbar-width: thin;
+}
+.fw-message { display: flex; margin: 0 0 9px; width: 100%; }
+.fw-user { justify-content: flex-end; }
+.fw-char { justify-content: flex-start; }
+.fw-bubble {
+  max-width: 83%;
+  padding: 9px 12px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+  border-radius: 14px;
+  color: #252528;
+  background: #fff;
+  border: 1px solid #EBEBEE;
+}
+.fw-user .fw-bubble { color: #fff; background: #262628; border-color: #262628; border-bottom-right-radius: 5px; }
+.fw-char .fw-bubble { border-bottom-left-radius: 5px; }
+.fw-status { margin: 4px 0 12px; color: #929298; font-size: 10px; line-height: 1.6; }
+.fw-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.fw-actions .fw-primary { flex: 1 1 100%; }
+.fw-actions .fw-btn:not(.fw-primary) { flex: 1; }
+.fw-danger { color: #777; background: transparent; }
+@media (prefers-reduced-motion: reduce) { .fw-sheet { animation: none !important; } }
