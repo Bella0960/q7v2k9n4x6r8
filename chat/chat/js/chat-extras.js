@@ -1241,4 +1241,10 @@
     oldHandleFeature(feat);
   };
 
+  // 番外是聊天现有「＋」面板的可选扩展；失败不影响主线消息发送。
+  var fanwaiScript = document.createElement('script');
+  fanwaiScript.src = 'js/chat-fanwai.js?v=20261115v1';
+  fanwaiScript.onerror = function () { console.warn('[Fanwai] 扩展模块加载失败'); };
+  document.body.appendChild(fanwaiScript);
+
 })();
