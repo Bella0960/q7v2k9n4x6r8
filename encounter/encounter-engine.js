@@ -11,6 +11,8 @@
   var sessionNames = new Set();
   var surnames = ['沈','江','谢','裴','宋','闻','陆','温','顾','许','程','林','季','苏','黎','纪','叶','陈','秦','孟','贺','傅','唐','阮','白','洛','周','夏'];
   var given = ['知序','见山','听澜','叙白','予安','今朝','清越','时屿','星野','望舒','南枝','书言','云深','观澜','行舟','景辞','照影','晚晴','之遥','鹤归','知微','怀瑾','初晴','青禾','雨眠','朝暮','明月','昭宁','言川','映雪','晏舟','长宁','流光','朔风','初弦','执玉','栖迟','扶摇','南乔','景行'];
+  var givenMen = ['知序','见山','叙白','云深','观澜','行舟','景辞','怀瑾','晏舟','朔风','景行','言川','时屿','长宁'];
+  var givenWomen = ['望舒','南枝','晚晴','知微','初晴','青禾','雨眠','昭宁','映雪','南乔','明月','清越','照影','初弦'];
   var western = ['Aster Vale','Elian Voss','Rowan Grey','Iris Solen','Celia Maren','Noa Vey','Rhea Arden','Silas North','Vera Lys','Luca Wren'];
   var archetypes = [
     {trait:'温柔克制',hidden:'有自己的原则，从不轻易许诺',quote:'有些事情，值得慢慢说。'},
@@ -116,10 +118,11 @@
     sessionNames.forEach(function(n) { roles.value.add(n); });
     return roles;
   }
-  function chooseName(world, taken) {
+  function chooseName(world, taken, gender) {
     var isFantasy = world.era === '西方奇幻';
+    var pool = gender === '女' ? givenWomen.concat(given) : givenMen.concat(given);
     for (var i = 0; i < 160; i++) {
-      var name = isFantasy && random(3) === 0 ? pick(western) : pick(surnames) + pick(given);
+      var name = isFantasy && random(3) === 0 ? pick(western) : pick(surnames) + pick(pool);
       if (!taken.has(normalizeName(name))) return name;
     }
     return null;
@@ -148,7 +151,8 @@
       var discoveries = worlds.filter(function(x) { return !favorites.has(x.species + ':' + x.era); });
       if (discoveries.length) w = pick(discoveries);
     }
-    var name = chooseName(w, reserved.value);
+    var gender = random(2) === 0 ? '男' : '女';
+    var name = chooseName(w, reserved.value, gender);
     if (!name) return fail('可用姓名不足，稍后再试');
     var a = pick(archetypes);
     if (saved.length && prefs.similarity === '多来喜欢的类型' && random(100) < 65) {
@@ -165,7 +169,8 @@
     var type = prefs.type === '普通相遇' ? '普通相遇' : (styles.indexOf(prefs.type) >= 0 ? prefs.type : pick(styles));
     var card = {
       id:'enc_' + Date.now().toString(36) + '_' + random(99999999).toString(36),
-      name:name, age:age, species:w.species, era:w.era, job:pick(w.jobs),
+      name:name, gender:gender, age:age, species:w.species, era:w.era, job:pick(w.jobs),
+      relationVibe:pick(['年上感','年下感','同龄感','自由发展']),
       trait:a.trait, contrast:a.hidden, quote:a.quote,
       object:pick(secrets), fate:pick(fates), type:type,
       choices:['留在熟悉的地方','踏上一段未知旅程'],
@@ -215,7 +220,8 @@
     if (!card) return '';
     var age = card.species === '人类' ? String(card.age) + '岁' : '年龄 ' + String(card.age) + '年';
     return [
-      '【基础资料】' + card.name + '｜' + age + '｜' + card.species,
+      '【基础资料】' + card.name + '｜' + (card.gender || '') + '｜' + age + '｜' + card.species,
+      '【关系气质】' + (card.relationVibe || '自由发展') + '（仅是人物气质，不预设用户与 TA 的关系）',
       '【世界背景】' + card.era + '；身份：' + card.job,
       '【外在性格】' + card.trait,
       '【内在反差】' + card.contrast,
