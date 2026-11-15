@@ -6725,6 +6725,8 @@
                             var result = window.GroupGameSessions.sendWhisper(pendingGameWhisper);
                             if (!result.ok && typeof showToast === 'function')
                                 showToast(result.message || '游戏私聊没有保存成功');
+                            else if (result.ok && result.activitySynced === false && typeof showToast === 'function')
+                                showToast('游戏私聊已送达，但私聊动向还没有同步');
                             return result;
                         });
                     }
