@@ -66,7 +66,7 @@ runInNewContext(rolePublicTimelineSource, { window: rolePublicTimelineWindow, gl
 const rolePublicTimeline = rolePublicTimelineWindow.RolePublicTimeline;
 
 const serviceWorker = read('sw.js');
-const currentPwaCacheVersion = Number((serviceWorker.match(/const CACHE_NAME = 'phone-app-pwa-v(\\d+)'/) || [])[1]) || 0;
+const currentPwaCacheVersion = Number((serviceWorker.match(/const CACHE_NAME = 'phone-app-pwa-v(\d+)'/) || [])[1]) || 0;
 const profileEditor = read('profile/edit-profile.html');
 const chatListPage = read('chat/chat/chat.html');
 const contactsPage = read('chat/contacts/contacts.html');
@@ -1294,7 +1294,7 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v17/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v\\d+'/);
+  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v\d+'/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
 });
 
@@ -1416,7 +1416,7 @@ test('chat detail persists voice habits per character and per group session with
   assert.match(detail, /buildVoiceHabitPrompt\(voiceHabitProfile\)/);
   assert.match(detail, /buildEmotionContinuityPrompt/);
   assert.match(detail, /maxScan: 24/);
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v\\d+'/);
+  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v\d+'/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
 });
 
@@ -1810,7 +1810,7 @@ test('proactive contact notifier is loaded on home and navigation pages and prec
   assert.match(navPage, /chat-notifier\.js\?v=20261102v3/);
   assert.match(detail, /chat-notifier\.js\?v=20261102v3/);
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v17/);
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v\\d+'/);
+  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v\d+'/);
   assert.match(serviceWorker, /chat-notifier\.js\?v=20261102v3/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
   assert.match(serviceWorker, /chat-followup-policy/);
@@ -1906,7 +1906,7 @@ test('Messages chat-list theme is isolated, cache-busted, grayscale and hides in
 
   assert.ok(chatHome.includes('chat-list-editorial-theme.css?v=20261104v2'));
   assert.ok(chatHome.includes('chat-list-theme.js?v=20261104v2'));
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v\\d+'/);
+  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v\d+'/);
   assert.ok(serviceWorker.includes('./shared/css/chat-list-editorial-theme.css?v=20261104v2'));
   assert.ok(serviceWorker.includes('./shared/js/chat-list-theme.js?v=20261104v2'));
 
@@ -2048,7 +2048,7 @@ test('whole-chat theme is refreshed when a chat page is restored from browser hi
   ]) {
     assert.ok(read(path).includes('chat-page-theme.js?v=20261105v1'), path + ' should load the refreshed theme bridge');
   }
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v\\d+'/, 'the PhoneAPI and settings changes require the refreshed PWA cache');
+  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v\d+'/, 'the PhoneAPI and settings changes require the refreshed PWA cache');
 });
 
 
