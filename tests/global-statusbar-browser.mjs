@@ -29,7 +29,8 @@ try {
         '<header id="top" class="status-bar">09:41</header>' +
         '<header id="custom" class="statusbar" data-maomao-system-statusbar>08:00</header>' +
         '<header id="unmarked" class="statusbar">Ordinary UI</header>' +
-        '<div id="bottom" class="gesture-bar">Home Indicator</div></body></html>');
+        '<div id="bottom" class="gesture-bar">Home Indicator</div>' +
+        '<button id="accessibleHome" class="gesture-bar" role="button" aria-label="返回桌面"></button></body></html>');
       // The about:blank fixture uses stub storage. No real app origin is exercised.
       await page.evaluate(() => {
         window.__testPrefs = new Map([
@@ -44,6 +45,8 @@ try {
         });
       });
       await page.addScriptTag({ content: source });
+      assert.equal(await page.locator('#accessibleHome').getAttribute('aria-hidden'), null,
+        width + 'px interactive Home Indicator is not aria-hidden');
       const initial = await page.evaluate(() => ({
         top: getComputedStyle(document.querySelector('#top')).display,
         custom: getComputedStyle(document.querySelector('#custom')).display,
@@ -82,6 +85,14 @@ try {
         window.__statusbarControlApply();
       });
       assert.equal(await page.locator('#bottom').evaluate(el => getComputedStyle(el).display), 'none', width + 'px bottom');
+      assert.equal(await page.locator('#accessibleHome').getAttribute('aria-hidden'), 'true',
+        width + 'px hidden interactive Home Indicator has correct ARIA state');
+      await page.evaluate(() => {
+        localStorage.setItem('settings_home_indicator_visible', '1');
+        window.__statusbarControlApply();
+      });
+      assert.equal(await page.locator('#accessibleHome').getAttribute('aria-hidden'), null,
+        width + 'px restored interactive Home Indicator is accessible');
       assert.equal(await page.locator('#top').evaluate(el => getComputedStyle(el).display), 'flex', width + 'px top');
       // Use the real inspect-phone CSS, not a hand-written height fixture.
       // Verify that hiding the system bar removes its formerly reserved 34px grid row.
