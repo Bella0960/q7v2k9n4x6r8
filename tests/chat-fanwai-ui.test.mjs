@@ -294,6 +294,7 @@ function fakeFanwaiDB(options = {}) {
               },
               put(record) {
                 putCount++;
+                if (typeof options.onPut === 'function') options.onPut(record, putCount);
                 if (options.failWrites || options.failAtWrite === putCount) {
                   Promise.resolve().then(() => { if (transaction.onabort) transaction.onabort(); });
                   return;
@@ -680,4 +681,31 @@ test('pausing a story aborts its actual request signal and prevents late text fr
   await tickUntil(() => sheet.all().filter(n => n.className === 'fw-bubble').length === 80);
   assert.equal(app.requests, 8);
   assert.equal(sheet.all().find(n => n.className === 'fw-status').textContent, '这篇番外已经写完。');
+});
+
+
+test('closing during the final save does not render or dispatch an obsolete completed event', async () => {
+  let root;
+  let closed = false;
+  let completed = 0;
+  const indexedDB = fakeFanwaiDB({
+    onPut(_record, count) {
+      if (count !== 9 || !root) return;
+      closed = true;
+      root.handlers.click({ target: root.querySelector('.fw-backdrop') });
+    }
+  });
+  const app = mount({ accountId: 'MAO-AAAAAAAAAAAA', indexedDB });
+  app.registry.on('episode:completed', () => { completed++; });
+  root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().filter(n => n.dataset.template).length === 6);
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.template === 'daily') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'start-template') });
+  await tickUntil(() => closed);
+  await new Promise(resolve => setTimeout(resolve, 3));
+  assert.equal(root.hidden, true);
+  assert.equal(completed, 0, 'late completion should not publish on the closed reader');
+  const story = [...indexedDB.records.values()].find(row => row.templateId === 'daily');
+  assert.equal(story.messages.length, 80, 'the valid saved episode remains intact');
 });
