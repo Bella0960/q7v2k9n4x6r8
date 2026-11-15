@@ -1,0 +1,167 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import vm from 'node:vm';
+import { fileURLToPath } from 'node:url';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const load = (filename) => fs.readFileSync(path.join(root, filename), 'utf8');
+const gameSource = load('shared/js/phone/group-game-session.js');
+const memorySource = load('shared/js/phone/group-memory-events.js');
+const contextSource = load('shared/js/phone/chat-context-policy.js');
+
+function harness() {
+  const records = new Map();
+  const storage = {
+    blocked: false,
+    getItem(key) { return records.has(key) ? records.get(key) : null; },
+    setItem(key, value) {
+      if (this.blocked) throw new Error('QuotaExceededError');
+      records.set(key, String(value));
+    },
+    removeItem(key) { records.delete(key); }
+  };
+  const memories = new Map();
+  const window = { localStorage: storage };
+  window.MemoryRecall = {
+    getMemories(gid) { return memories.get(gid) || []; },
+    upsertMemory(gid, item) {
+      const list = memories.get(gid) || [];
+      const memory = { ...item, id: 'memory' + (list.length + 1), createdAt: Date.now() };
+      list.push(memory);
+      memories.set(gid, list);
+      return { ok: true, memory };
+    }
+  };
+  for (const [name, source] of [
+    ['group-game-session.js', gameSource],
+    ['group-memory-events.js', memorySource],
+    ['chat-context-policy.js', contextSource]
+  ]) vm.runInNewContext(source, { window, console }, { filename: name });
+  return { game: window.GroupGameSessions, memory: window.GroupMemoryEvents,
+    context: window.ChatContextPolicy, storage, records, memories };
+}
+function group(id = 'g1') {
+  return { id, ownerId: '__user', userMembership: 'joined',
+    members: [{ id: 'r1', name: '角色一' }, { id: 'r2', name: '角色二' }, { id: 'r3', name: '角色三' }] };
+}
+function begin(h, options = {}) {
+  return h.game.start({ group: group(options.groupId || 'g1'), actorId: '__user',
+    gameId: 'mystery', badRoleId: 'r2', ...options });
+}
+
+test('private identity cards never enter the public game record or another player context', () => {
+  const h = harness();
+  assert.equal(begin(h).ok, true);
+  const pub = h.game.getPublic('g1');
+  assert.equal(pub.status, 'active');
+  assert.equal(JSON.stringify(pub).includes('badRoleId'), false);
+  assert.equal(h.records.get('phone_group_game_v1_g1').includes('"role":"bad"'), false);
+  const good = h.game.buildRoleContext({ groupId: 'g1', roleId: 'r1' });
+  const bad = h.game.buildRoleContext({ groupId: 'g1', roleId: 'r2' });
+  const other = h.game.buildRoleContext({ groupId: 'g1', roleId: 'r3' });
+  assert.equal(good.ok, true);
+  assert.equal(good.text.includes('你的身份：普通玩家'), true);
+  assert.equal(good.text.includes('r2'), false);
+  assert.equal(bad.text.includes('你的身份：坏人'), true);
+  assert.equal(other.text.includes('你的身份：普通玩家'), true);
+  assert.equal(h.game.getPublic('g2'), null);
+  assert.equal(h.game.buildRoleContext({ groupId: 'g1', roleId: 'uninvited' }).ok, false);
+});
+
+test('missing or corrupted role-only card fails closed, not an invented reply', () => {
+  const h = harness();
+  assert.equal(begin(h).ok, true);
+  const key = [...h.records.keys()].find((k) => k.includes('_r1') && k.startsWith('phone_group_game_private_'));
+  assert.ok(key);
+  h.storage.removeItem(key);
+  assert.equal(h.game.buildRoleContext({ groupId: 'g1', roleId: 'r1' }).code, 'MISSING_CARD');
+  assert.equal(h.game.buildRoleContext({ groupId: 'g1', roleId: 'r2' }).ok, true);
+});
+
+test('private chat is blocked by frozen game rules and cannot leak into shared state', () => {
+  const h = harness();
+  assert.equal(begin(h, { allowPrivate: false }).ok, true);
+  assert.equal(h.game.sendWhisper({ groupId: 'g1', fromId: 'r1',
+    toId: 'r2', text: '仅收件人知道', eventId: 'event1' }).ok, false);
+  assert.equal([...h.records.keys()].some((k) => k.includes('_inbox_')), false);
+  assert.equal(h.game.finish({ groupId: 'g1', group: group(), actorId: '__user' }).ok, true);
+  assert.equal(begin(h, { allowPrivate: true, showPrivateActivity: true }).ok, true);
+  const req = { groupId: 'g1', fromId: 'r1', toId: 'r2',
+    text: '仅收件人知道', eventId: 'event2' };
+  assert.equal(h.game.sendWhisper(req).ok, true);
+  assert.equal(h.game.sendWhisper(req).duplicate, true);
+  assert.equal(h.game.sendWhisper({ ...req, toId: 'outsider', eventId: 'event3' }).ok, false);
+  const recipient = h.game.buildRoleContext({ groupId: 'g1', roleId: 'r2' });
+  const other = h.game.buildRoleContext({ groupId: 'g1', roleId: 'r3' });
+  assert.match(recipient.text, /仅收件人知道/);
+  assert.doesNotMatch(other.text, /仅收件人知道/);
+  assert.doesNotMatch(JSON.stringify(h.game.getPublic('g1')), /仅收件人知道/);
+  assert.doesNotMatch(h.records.get('phone_group_game_v1_g1'), /仅收件人知道/);
+  assert.equal(h.game.finish({ groupId: 'g1', group: group(), actorId: '__user' }).ok, true);
+  assert.equal(h.game.buildRoleContext({ groupId: 'g1', roleId: 'r2' }).active, false);
+  assert.equal([...h.records.keys()].some((key) => key.includes('_inbox_')), false);
+});
+
+test('shared AI history filters private records and explicit role-only visibility', () => {
+  const h = harness();
+  const entries = [
+    { role: 'user', text: '公开消息' },
+    { role: 'assistant', type: 'group_private', text: '普通群私聊' },
+    { role: 'assistant', type: 'group_game_private', text: '秘密游戏私聊' },
+    { role: 'assistant', visibility: 'role_only', text: '只给角色' },
+    { role: 'assistant', visibility: 'private', text: '私密' },
+    { role: 'assistant', text: '正常回话', memberId: 'r1' }
+  ];
+  const result = h.context.mapHistoryToApiMessages(entries, String, {
+    isGroupChat: true, groupMembers: group().members
+  });
+  const text = JSON.stringify(result);
+  assert.match(text, /公开消息/);
+  assert.match(text, /正常回话/);
+  for (const secret of ['普通群私聊', '秘密游戏私聊', '只给角色', '私密'])
+    assert.doesNotMatch(text, new RegExp(secret));
+});
+
+test('only a persisted game reveal can enter public long-term group memories', () => {
+  const h = harness();
+  assert.equal(begin(h).ok, true);
+  const forged = { ...h.game.getPublic('g1'), status: 'finished', revealedRoleId: 'r2' };
+  assert.equal(h.memory.recordGameClosure({ group: group(), session: forged }).ok, false);
+  assert.equal(h.memories.has('g1'), false);
+  const finished = h.game.finish({ groupId: 'g1', group: group(), actorId: '__user' });
+  assert.equal(finished.ok, true);
+  const event = h.memory.recordGameClosure({ group: group(), session: finished.session });
+  assert.equal(event.ok, true);
+  assert.equal(h.memories.get('g1').length, 1);
+  assert.match(h.memory.getPublicPrompt({ groupId: 'g1' }), /角色二/);
+  assert.equal(h.memory.getPublicPrompt({ groupId: 'g2' }), '');
+  assert.equal(h.memory.recordGameClosure({ group: group(), session: finished.session }).duplicate, true);
+});
+
+test('closed chain memory requires a matching saved public chat message', () => {
+  const h = harness();
+  const event = { role: 'user', type: 'group_chain', mid: 'chain1', time: Date.now(),
+    chain: { title: '故事接龙', closed: true, entries: [
+      { memberId: '__user', text: '开头' }, { memberId: 'r1', text: '续写' }
+    ] } };
+  assert.equal(h.memory.recordChainClosure({ group: group(), message: event }).ok, false);
+  h.storage.setItem('chat_history_g1', JSON.stringify([event]));
+  assert.equal(h.memory.recordChainClosure({ group: group(), message: event }).ok, true);
+  assert.match(h.memory.getPublicPrompt({ groupId: 'g1' }), /故事接龙/);
+  assert.equal(h.memory.recordChainClosure({ group: group(), message: event }).duplicate, true);
+  assert.equal(h.memory.getPublicPrompt({ groupId: 'g2' }), '');
+});
+
+test('chat detail routes private events only after a verified saved AI reply', () => {
+  const detail = load('chat/chat/chat-detail.html');
+  assert.match(detail, /queueGameWhisper\(/);
+  assert.match(detail, /replySaved && pendingGameWhisper/);
+  assert.match(detail, /GroupGameSessions\.sendWhisper\(pendingGameWhisper\)/);
+  assert.match(detail, /GroupMemoryEvents\.recordChainClosure/);
+  assert.match(detail, /m\.type !== 'group_game_private'/);
+  for (const [index, match] of [...detail.matchAll(/<script(?:\s+[^>]*)?>([\s\S]*?)<\/script>/gi)].entries()) {
+    assert.doesNotThrow(() => new vm.Script(match[1], { filename: 'chat-detail:inline' + index }));
+  }
+});
