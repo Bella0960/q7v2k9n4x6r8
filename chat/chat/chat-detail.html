@@ -28,6 +28,7 @@
     <script src="../../shared/js/phone/chat-presence-policy.js?v=20261102v17"></script>
     <script src="../../shared/js/phone/role-public-timeline.js?v=20261102v1"></script>
     <script src="../../shared/js/phone/group-chat-policy.js?v=20261102v5"></script>
+    <script src="../../shared/js/group-governance.js?v=20261115g1"></script>
     <script src="../../shared/js/chat-notifier.js?v=20261102v3"></script>
     <style>
         * {
@@ -2436,6 +2437,10 @@
         let currentGroup = null;
         if (isGroupChat) {
             currentGroup = loadGroupById(currentRoleId);
+            if (currentGroup && window.GroupGovernance && !window.GroupGovernance.userIsInGroup(currentGroup)) {
+                currentGroup = null;
+                location.replace('chat.html');
+            }
         }
 
         function groupMemberDisplayName(member) {
@@ -2465,7 +2470,7 @@
         function getAvailableGroupMembers() {
             var members = (currentGroup && Array.isArray(currentGroup.members)) ? currentGroup.members : [];
             return members.filter(function(member) {
-                return member && !member.muted && isGroupMemberInActiveHours(member);
+                return member && !(window.GroupGovernance ? window.GroupGovernance.isMuted(member) : member.muted) && isGroupMemberInActiveHours(member);
             });
         }
         function saveCurrentGroupObject() {
@@ -5494,7 +5499,7 @@
                     if (m.title) labels.push('头衔：' + m.title);
                     if (m.isAdmin) labels.push('管理员');
                     if (String(currentGroup.ownerId || '__user') === String(m.id)) labels.push('群主');
-                    if (m.muted) labels.push('禁言中');
+                    if (window.GroupGovernance ? window.GroupGovernance.isMuted(m) : m.muted) labels.push('禁言中');
                     else if (!isGroupMemberInActiveHours(m)) labels.push('当前休息中');
                     return (i + 1) + '. ' + groupMemberDisplayName(m) + '（ID：' + String(m.id) + '）' + (labels.length ? '（' + labels.join('、') + '）' : '') + '：' + p;
                 });
@@ -5803,6 +5808,20 @@
                     systemPrompt = `你的名字是${currentCharacter.name}。\n${systemPrompt}`;
                 }
             }
+            // 角色主动邀请只针对确实退出过的群。历史群沿用默认“已加入”状态。
+            // 不替角色编造台词：提供离群事实，让当前角色按照人设决定是否追问。
+            if (!isGroupChat && window.GroupGovernance && presenceMode === 'online') {
+                var groupsToInvite = window.GroupGovernance.unjoinedGroupsForRole(aliasRoleId || currentRoleId);
+                if (groupsToInvite.length) {
+                    systemPrompt += '\n\n[群聊邀请与离群事件]\n用户已经退出以下与你有关的群聊：' +
+                        groupsToInvite.map(function (g) {
+                            return '「' + g.name + '」(群ID=' + g.id + ')' +
+                              (g.lastUserExit && g.lastUserExit.at ? '；离群时间=' + new Date(g.lastUserExit.at).toLocaleString() : '');
+                        }).join('；') +
+                        '。可根据你本人的性格、真实关系和最近对话，自然问问用户为什么退出，或选择不追问。' +
+                        '如果确实希望邀请用户重新入群，在正常回复末尾添加一次隐藏标记 [群邀请:准确群ID]；不要每轮都邀请，不要伪造用户已加入。系统只会创建待确认邀请，接受或拒绝由用户决定。';
+                }
+            }
             // 群聊：覆盖本轮发言者身份（无论是否使用协议均生效）
             if (isGroupChat && groupReplyPick) {
                 const memberNames = (currentGroup.members || []).map(function (m) { return groupMemberDisplayName(m); }).join('、') || '暂无成员';
@@ -5842,7 +5861,7 @@
                     }
                 }
                 if (groupSettings.allowRoleActions) {
-                    systemPrompt += '\n\n[群管理行动]\n只有带有管理员或群主身份的成员才可以根据剧情执行群管理操作。若剧情确实需要，可在正常台词末尾附加一个隐藏标记：改群名用 [群动作:改名:新群名]；邀请角色库中已有角色用 [群动作:邀请:角色名]；移除成员用 [群动作:移除:角色名]。不要向用户解释标记，系统会处理。不要重复邀请已有成员，不要移除最后一名群成员。';
+                    systemPrompt += '\n\n[群管理行动]\n只有带有管理员或群主身份的成员才可以根据剧情执行群管理操作。若用户明确要求且你具有管理权限，可在正常台词末尾添加隐藏标记：[群动作:禁言:成员姓名或ID] 或 [群动作:解禁:成员姓名或ID]；也支持 [群动作:改名:新群名]、[群动作:邀请:角色名]、[群动作:移除:角色名]。不能禁言群主、不能越权管理其他管理员；未获允许不要擅自操作。系统会验证身份并保存，不要向用户解释隐藏标记。';
                 }
                 if (groupSettings.allowPrivateMessages !== false) {
                     systemPrompt += '\n\n[群成员私聊能力]\n你可以偶尔向用户发起私聊，但不要每轮都触发，仅在出现适合单独说的话、想补充秘密或想私下安慰用户时使用。仅允许给自己发私聊：在本轮正常群聊回复末尾另起一行写 [群私聊:你的准确角色ID:私聊内容]。角色ID必须从群成员名单中选择，并且应当是本轮发言者自己的ID；私聊内容控制在1-3句，不要解释标记。标记会保存到你的单聊历史，并在群聊里弹出私聊小窗。每轮最多一条。';
@@ -6396,7 +6415,7 @@
                         if (window.ChatImageVision && typeof window.ChatImageVision.stripAvatarCandidateMarker === 'function') {
                             snapshotText = window.ChatImageVision.stripAvatarCandidateMarker(snapshotText);
                         }
-                        return snapshotText;
+                        return snapshotText.replace(/\[群邀请[:：][^\]]{0,100}\]/g, '').replace(/\[群邀请[:：][^\]]{0,}$/g, '');
                     })(),
                     voiceMode: presenceMode || 'online',
                     groupName: groupReplyPick ? groupReplyPick.name : undefined,
@@ -6409,6 +6428,8 @@
                     .replace(/<\/?narratage\b[^>]*>/gi, '')
                     .replace(/\[中译[:：][^\]]{0,800}\]/g, '')
                     .replace(/\[中译[:：][^\]]{0,}$/g, '')
+                    .replace(/\[群邀请[:：][^\]]{0,100}\]/g, '')
+                    .replace(/\[群邀请[:：][^\]]{0,}$/g, '')
                     .replace(/\n{3,}/g, '\n\n')
                     .trim();
 
@@ -6537,6 +6558,16 @@
                     // ---- 标记剥离 → 清洗 → 落库 → 重渲染（成功与中断保文共用同一套收尾） ----
                     // 群投票/接龙/群管理标记先落到当前历史与群资料，再清理展示文本
                     fullText = processGroupInteractionMarkers(fullText, groupReplyPick, historyList, isRegen, isGroupFollowup);
+                    // 私聊角色可以发出待同意的群邀请；必须等模型完整成功，不允许中断回复改变入群状态。
+                    if (window.GroupGovernance) {
+                        fullText = fullText.replace(/\[群邀请[:：]([^\]]{1,100})\]/g, function (marker, proposedGroupId) {
+                            if (!isGroupChat && streamResult.ok && !isRegen && !contextOnly && !silent && presenceMode === 'online') {
+                                var invited = window.GroupGovernance.offerInvitation({groupId:String(proposedGroupId).trim(),inviterId:aliasRoleId || currentRoleId});
+                                if (invited.ok && typeof showToast === 'function') showToast('TA 发来一条群聊邀请，可在聊天列表决定是否加入');
+                            }
+                            return '';
+                        });
+                    }
                     // 角色表情是现有回复的一部分，不发起额外 API。只接受完整成功的单聊线上回复。
                     var parsedRoleSticker = { text: fullText, stickers: [] };
                     if (roleStickerCatalog.length && !isGroupChat &&
@@ -8046,6 +8077,27 @@
             var changedHistory = false;
             var groupHistoryRollback = [];
             var relationshipEventSeen = false;
+            // 用户对已任命的管理员下明确指令时，直接执行，不依赖模型是否生成机器标记。
+            // 同一条消息的 mid 只允许处理一次，防止重新生成与多气泡重复执行。
+            if (!isRegeneration && !isGroupFollowup && window.GroupGovernance) {
+                var lastUserMessage = historyList.slice().reverse().find(function (msg) {
+                    return msg && msg.role === 'user' && !msg.silent && !msg.sendFailed;
+                });
+                if (lastUserMessage && lastUserMessage.mid &&
+                    String(currentGroup.lastModerationMid || '') !== String(lastUserMessage.mid)) {
+                    var request = window.GroupGovernance.naturalModeration(lastUserMessage.text, currentGroup);
+                    if (request) {
+                        var previousMid = currentGroup.lastModerationMid;
+                        currentGroup.lastModerationMid = String(lastUserMessage.mid);
+                        var moderation = window.GroupGovernance.apply({
+                            group:currentGroup,actorId:request.actorId,action:request.action,
+                            target:request.target,save:saveCurrentGroupObject
+                        });
+                        if (!moderation.ok) currentGroup.lastModerationMid = previousMid;
+                        else if (typeof showToast === 'function') showToast(moderation.message || '群管理已生效');
+                    }
+                }
+            }
             text = text.replace(/\[群关系变化[:：]([^:：\]]{1,100})[:：]([^:：\]]{1,20})[:：]([+-]?\d{1,3})[:：]([+-]?\d{1,3})[:：]([^\]]{1,120})\]/gi, function (marker, targetKey, level, intimacyDelta, trustDelta, summary) {
                 if (relationshipEventSeen) return '';
                 relationshipEventSeen = true;
@@ -8208,38 +8260,26 @@
                 showGroupPrivatePopup(displayName, targetId, privateMessageText);
                 return '';
             });
-            text = text.replace(/\[群动作[:：](改名|邀请|移除)[:：]([^\]]{1,40})\]/g, function (marker, action, targetName) {
-                var isOwner = currentGroup && String(currentGroup.ownerId || '__user') === String(speaker && speaker.id || '');
-                if (!settings.allowRoleActions || !speaker || (!speaker.isAdmin && !isOwner)) return '';
-                targetName = String(targetName || '').trim();
-                if (!targetName) return '';
-                var actionMessage = '';
-                if (action === '改名') {
-                    currentGroup.name = targetName.slice(0, 20);
-                    currentCharacter.name = currentGroup.name;
-                    var title = document.getElementById('chat-title');
-                    if (title) title.textContent = currentGroup.name;
-                    actionMessage = '群管理员将群名修改为「' + currentGroup.name + '」';
-                } else if (action === '邀请') {
-                    var roles = [];
-                    try { roles = JSON.parse(localStorage.getItem('ai_custom_characters') || '[]'); } catch (e) {}
-                    var targetRole = Array.isArray(roles) ? roles.find(function (role) { return role && (String(role.id) === targetName || String(role.name || '').trim() === targetName); }) : null;
-                    if (targetRole && !(currentGroup.members || []).some(function (member) { return String(member.id) === String(targetRole.id); })) {
-                        if (!Array.isArray(currentGroup.members)) currentGroup.members = [];
-                        currentGroup.members.push({ id: String(targetRole.id), name: targetRole.name || '角色', avatar: targetRole.avatar || '', nickname: '', title: '', isAdmin: false, muted: false, activeFrom: '08:00', activeTo: '23:00' });
-                        actionMessage = '群管理员邀请「' + (targetRole.name || '角色') + '」加入群聊';
+            // 统一通过权限网关处理，模型隐藏标记本身不是授权凭证。
+            text = text.replace(/\[群动作[:：](改名|邀请|移除|禁言|解禁)[:：]([^\]]{1,60})\]/g, function (marker, action, targetName) {
+                if (!window.GroupGovernance || !speaker || speaker.id == null || isRegeneration) return '';
+                var nameMap = { '改名':'rename', '邀请':'invite', '移除':'remove', '禁言':'mute', '解禁':'unmute' };
+                var roles = [];
+                if (action === '邀请') try { roles = JSON.parse(localStorage.getItem('ai_custom_characters') || '[]'); } catch (e) {}
+                var result = window.GroupGovernance.apply({
+                    group: currentGroup, actorId: String(speaker.id), action: nameMap[action],
+                    target: String(targetName || '').trim(), options: { roles: roles },
+                    save: saveCurrentGroupObject
+                });
+                if (result.ok) {
+                    if (action === '改名') {
+                        currentCharacter.name = currentGroup.name;
+                        var title = document.getElementById('chat-title');
+                        if (title) title.textContent = currentGroup.name;
                     }
-                } else if (action === '移除') {
-                    var existing = (currentGroup.members || []).find(function (member) { return String(member.id) === targetName || String(member.name || '').trim() === targetName || groupMemberDisplayName(member) === targetName; });
-                    if (existing && (currentGroup.members || []).length > 1) {
-                        currentGroup.members = currentGroup.members.filter(function (member) { return String(member.id) !== String(existing.id); });
-                        if (String(currentGroup.ownerId || '') === String(existing.id)) currentGroup.ownerId = '__user';
-                        actionMessage = '群管理员将「' + groupMemberDisplayName(existing) + '」移出群聊';
-                    }
-                }
-                if (actionMessage) {
-                    saveCurrentGroupObject();
-                    if (typeof showToast === 'function') showToast(actionMessage);
+                    if (typeof showToast === 'function') showToast(result.message || '群管理已生效');
+                } else if (result.code !== 'DISABLED' && typeof showToast === 'function') {
+                    showToast(result.message || '群管理操作未成功');
                 }
                 return '';
             });
