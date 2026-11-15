@@ -753,8 +753,6 @@
   function renderReader() {
     if (!state.opened || !state.active || !state.root) return;
     var episode = state.active;
-    var currentRole = roleInfo();
-    var speakerName = String((currentRole && currentRole.name) || '角色').slice(0, 24);
     // 续写刷新时尊重正在翻看旧消息的人，不强行把阅读位置拉到底部。
     var previousList = state.root.querySelector('.fw-messages');
     var previousTop = previousList ? previousList.scrollTop : 0;
@@ -784,11 +782,13 @@
     var messages = document.createElement('div');
     messages.className = 'fw-messages';
     messages.setAttribute('aria-label', '番外聊天内容');
-    episode.messages.forEach(function (message) {
-      var row = label('div', 'fw-message ' + (message.role === 'user' ? 'fw-user' : 'fw-char'), '');
-      var speaker = label('span', 'fw-speaker', message.role === 'user' ? '我' : speakerName);
+    episode.messages.forEach(function (message, index) {
+      var sameSpeaker = index > 0 && episode.messages[index - 1].role === message.role;
+      var row = label('div', 'fw-message ' + (message.role === 'user' ? 'fw-user' : 'fw-char') +
+        (sameSpeaker ? ' fw-continuation' : ''), '');
       var bubble = label('p', 'fw-bubble', message.text);
-      row.append(speaker, bubble); messages.appendChild(row);
+      row.appendChild(bubble);
+      messages.appendChild(row);
     });
     if (!episode.messages.length) messages.appendChild(label('p', 'fw-empty-chat', '第一页还没有写下文字。'));
     sheet.appendChild(messages);
