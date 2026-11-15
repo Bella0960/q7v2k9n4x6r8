@@ -43,6 +43,7 @@
       '</details>'+
       '<button type="button" id="groupGameFinish" class="group-game-button secondary" hidden>结束游戏 · 揭晓身份</button>'+
       '<button type="button" id="groupGameCancel" class="group-game-button secondary" hidden>取消本局（不揭晓）</button>'+
+      '<button type="button" id="groupGameCleanup" class="group-game-button secondary" hidden>重试清理临时数据</button>'+
       '<p id="groupGameNotice" class="group-game-notice" role="status" aria-live="polite"></p>';
     var style=document.createElement('style');
     style.id='group-game-panel-style';
@@ -74,6 +75,7 @@
       activityRow=panel.querySelector('#groupGameActivityRow'),
       current=panel.querySelector('#groupGameCurrent'), finish=panel.querySelector('#groupGameFinish'),
       cancelButton=panel.querySelector('#groupGameCancel'),
+      cleanupButton=panel.querySelector('#groupGameCleanup'),
       notice=panel.querySelector('#groupGameNotice'),
       whisperPanel=panel.querySelector('#groupGameWhisperPanel'),
       whisperTo=panel.querySelector('#groupGameWhisperTo'),
@@ -129,6 +131,7 @@
       if(list.children.length)current.appendChild(list);
     }
     function render(){
+      cleanupButton.hidden=true;
       group=currentGroup();isOwner=group&&String(group.ownerId||'__user')==='__user';
       if(!group){stateLine('群资料已变化，请返回群聊重新打开。');form.hidden=true;finish.hidden=true;cancelButton.hidden=true;whisperPanel.hidden=true;return;}
       var game=api.getPublic(String(group.id));
@@ -184,6 +187,16 @@
           current.appendChild(ul);
         }
       }
+      if(game && (game.status==='finished'||game.status==='cancelled')) {
+        var temporary=api.getCleanupStatus({group:group,groupId:gid,actorId:'__user'});
+        if(temporary && temporary.ok && temporary.cleanupPending>0) {
+          cleanupButton.hidden=false;
+          var noticeLine=document.createElement('p');
+          noticeLine.className='group-game-notice';
+          noticeLine.textContent='上一局有 '+temporary.cleanupPending+' 项临时记录尚未清理，不会进入角色回复。';
+          current.appendChild(noticeLine);
+        }
+      }
     }
     form.addEventListener('submit',function(e){
       e.preventDefault();group=currentGroup();
@@ -219,7 +232,16 @@
       if(!root.confirm('取消本局？未揭晓的身份牌、猜测票和游戏私聊将清除；原群聊消息不变。'))return;
       var ended=api.cancel({group:group,groupId:gid,actorId:'__user'});
       if(!ended.ok){notice.textContent=ended.message||'取消失败';return;}
-      notice.textContent='已取消本局，未揭晓身份；可以开启新一局。';
+      notice.textContent='已取消本局，未揭晓身份；可以开启新一局。'+
+        (ended.cleanupComplete===false?' 临时记录未完全清除，请重试清理。':'');
+      render();
+    });
+    cleanupButton.addEventListener('click',function(){
+      group=currentGroup();
+      var cleaned=api.retryCleanup({group:group,groupId:gid,actorId:'__user'});
+      notice.textContent=!cleaned.ok ? (cleaned.message||'无法清理') :
+        cleaned.cleanupComplete ? '本局临时记录已清理。' :
+        '仍有临时记录没有清理成功，请检查本机存储。';
       render();
     });
     finish.addEventListener('click',function(){
@@ -233,6 +255,8 @@
         notice.textContent=remembered.ok?'身份已揭晓，结果已写入本群共同记忆。':
           '身份已揭晓，但长期记忆未保存成功：'+(remembered.message||'请检查本机存储');
       }else notice.textContent='身份已揭晓；记忆服务未加载。';
+      if(result.cleanupComplete===false)
+        notice.textContent += ' 本局临时记录尚未完全清理，请重试。';
       render();
     });
     render();
