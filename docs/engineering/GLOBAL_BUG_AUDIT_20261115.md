@@ -42,6 +42,13 @@
 
 **源码证据：** `index.html` 的桌面 `app-tile[data-href]` 直接指定 `chat/chat/chat.html` 等物理文件，并以 `new URL(href, document.baseURI)` + `window.location.assign(destination.href)` 执行整页跳转；`worker-app.js` 仅把 `/` 映射为 `/index.html`，其余请求原样交给 `env.ASSETS.fetch(request)`。用户截图中的物理路径显示与此设计一致。
 
+**2026-11-15 参考仓库复核（用户已在自己 GitHub 收藏/复制，之前已要求学习，不得再遗忘）：**
+- [`Bella0960/mingruis-miya`](https://github.com/Bella0960/mingruis-miya)：[`index.html`](https://github.com/Bella0960/mingruis-miya/blob/main/index.html) 本身承载桌面 `#miya-phone-layer` 与 `data-app` 应用入口，而不是每个图标导向独立物理页面；[`js1/app.js`](https://github.com/Bella0960/mingruis-miya/blob/main/js1/app.js) 的 `launchApp(id)` 调度 `APP_HANDLERS[id]`，通过 `window.miyaLazyEnsureApp(id)` 确保应用加载；[`js2/miya-lazy-boot.js`](https://github.com/Bella0960/mingruis-miya/blob/main/js2/miya-lazy-boot.js) 按应用/功能组动态加载脚本与 CSS。**可学习：一个桌面主壳、统一 App 注册/开启/关闭、按需加载，保持原生 JS。**
+- [`Bella0960/ai-virtual-phone123`](https://github.com/Bella0960/ai-virtual-phone123)：[`app/page.tsx`](https://github.com/Bella0960/ai-virtual-phone123/blob/main/app/page.tsx) 统一渲染 `<MainApp/>`；[`components/main-app.tsx`](https://github.com/Bella0960/ai-virtual-phone123/blob/main/components/main-app.tsx) 连接 `DesktopShell`，[`components/desktop-shell.tsx`](https://github.com/Bella0960/ai-virtual-phone123/blob/main/components/desktop-shell.tsx) 中 `activeApp / setActiveApp` 与 `renderAppBody()` 通过同一壳切换内置应用，单独为定制应用保留运行器。**可学习架构边界；不代表要将 MAOMAO 改写成 React / Next.js。**
+- [`Bella0960/jrsy`](https://github.com/Bella0960/jrsy) 当前仓库只有极短 README，未提供可据以验证的完整导航实现；[`qqjrsy-520`](https://github.com/Bella0960/qqjrsy-520) 的 `index.html` 当前为空，不能以其作为路由技术证据。
+- **差距确定：** MAOMAO `index.html` 点击 `data-href` → `window.location.assign` → 多页物理 `.html`；Miya 是统一壳注册应用，AI Virtual Phone 是统一 `MainApp` 状态驱动切换。用户已经要求多次统一底座，不能仅以“当前地址路径合法”结束任务。
+- **面向现有工程的推荐实现顺序：** 在已有导航/整合任务内先确立 `AppRegistry`（注册/打开/关闭/来源/生命周期）与稳定的 URL/History 契约，再按高频功能逐个适配统一壳；未适配旧 MPA 页面保留安全 fallback 和深链接兼容，禁止一次性重写 90 页，先做回归与 QA 验收。只读参考技术思想，具体 UI/功能须原创并符合既有项目审美/数据隔离要求。
+
 **产品目标和严格技术边界：**
 1. **稳定的统一域名**：正式目标入口仍是 `https://app.mao520.com/`；不得出现把用户导航分散到其它测试 Worker / 各种子域名的情况。
 2. **优先最小影响的简洁地址**：例如公开路由 `/chat`、`/forum`、`/wallet`、`/settings`，Worker / 客户端公共导航映射到现有 HTML 文件；保留旧 `.html` 深链接兼容。**这是短网址，不是“所有页面只显示根域”。**
