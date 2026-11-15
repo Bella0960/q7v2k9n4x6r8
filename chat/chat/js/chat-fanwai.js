@@ -77,7 +77,7 @@
   var accountId = accountMeta ? accountMeta.getAttribute('content') : '';
   var canPersist = /^MAO-[A-Z0-9]{12,24}$/.test(accountId);
   var scope = canPersist ? accountId : 'temporary:' + Math.random().toString(36).slice(2);
-  var state = { root: null, active: null, busy: false, creating: false, stopped: false, serial: 0, opened: false };
+  var state = { root: null, active: null, selected: null, busy: false, creating: false, stopped: false, serial: 0, opened: false };
   var memory = new Map();
   var dbConnection = null;
   var persistenceFailed = false;
@@ -190,58 +190,168 @@
     var sheet = state.root.querySelector('.fw-sheet');
     sheet.replaceChildren();
     sheet.classList.remove('fw-reading');
+    sheet.classList.remove('fw-preview');
     return sheet;
+  }
+
+  // 图像只通过原创 CSS 的雾、纸张与光影构成，不引用他人的参考素材。
+  var EDITORIAL = {
+    daily: { en: 'Ordinary days', mood: '一条消息，让普通的一天变得值得记住。', index: '01' },
+    fight: { en: 'A little argument', mood: '有时拌嘴也是一种了解。', index: '02' },
+    tease: { en: 'A playful secret', mood: '平淡生活里的一点坏主意。', index: '03' },
+    romance: { en: 'Small surprises', mood: '被记住的小事，最让人心动。', index: '04' },
+    jealous: { en: 'Unsaid feelings', mood: '在意的话，慢慢说出来。', index: '05' },
+    lateNight: { en: 'After midnight', mood: '夜深之后，才适合轻轻说的话。', index: '06' }
+  };
+
+  function topBar(sheet, title, secondaryAction, secondaryLabel) {
+    var bar = document.createElement('div');
+    bar.className = 'fw-head';
+    bar.append(
+      label('span', 'fw-brandline', 'ELSEWHERE / STORIES'),
+      button(secondaryAction || 'close', secondaryLabel || '关闭', 'fw-close')
+    );
+    sheet.appendChild(bar);
+    if (title) sheet.appendChild(label('div', 'fw-topline', title));
+  }
+
+  function countPicker(id, defaultValue) {
+    var row = label('label', 'fw-length-label', '对话篇幅');
+    var select = document.createElement('select');
+    select.id = id;
+    [40, 80, 100].forEach(function (n) {
+      var opt = document.createElement('option');
+      opt.value = String(n);
+      opt.textContent = (n === 40 ? '短篇 · ' : n === 80 ? '中篇 · ' : '长篇 · ') + n + '条';
+      if (n === defaultValue) opt.selected = true;
+      select.appendChild(opt);
+    });
+    row.appendChild(select);
+    return row;
   }
 
   async function openPicker() {
     if (!state.root) return;
     state.opened = true;
+    state.selected = null;
     state.root.hidden = false;
     var sheet = clearView();
-    var top = label('div', 'fw-topline', 'EXTRA STORIES');
-    var head = document.createElement('div'); head.className = 'fw-head';
-    head.append(label('h2', '', '番外剧场'), button('close', '关闭', 'fw-close'));
-    sheet.append(top, head, label('p', 'fw-subtitle', '独立的小剧场 · 不会进入主线聊天与记忆'));
+    topBar(sheet);
+
+    var hero = document.createElement('section');
+    hero.className = 'fw-hero';
+    hero.setAttribute('aria-label', '番外剧场封面');
+    hero.append(
+      label('div', 'fw-hero-overline', 'A SMALL COLLECTION OF MOMENTS'),
+      label('h2', 'fw-hero-title', '故事之外，\n还有日常。'),
+      label('p', 'fw-hero-caption', '不必发生什么大事，也值得写下来。'),
+      label('span', 'fw-hero-edition', 'VOL. 01  /  PRIVATE EDITION')
+    );
+    var texture = document.createElement('span');
+    texture.className = 'fw-hero-object';
+    texture.setAttribute('aria-hidden', 'true');
+    hero.appendChild(texture);
+    sheet.appendChild(hero);
+
+    var section = document.createElement('div'); section.className = 'fw-section-head';
+    section.append(
+      label('div', 'fw-section-overline', 'SELECT A MOMENT  /  01—06'),
+      label('h3', 'fw-section-title', '想从哪一幕开始？')
+    );
+    sheet.appendChild(section);
     var grid = document.createElement('div'); grid.className = 'fw-grid';
     TEMPLATES.forEach(function (t, index) {
-      var card = button('template', '', 'fw-card');
+      var detail = EDITORIAL[t.id];
+      var card = button('template', '', 'fw-card fw-card-' + t.id);
       card.dataset.template = t.id;
-      card.append(label('span', 'fw-index', String(index + 1).padStart(2, '0')),
+      card.setAttribute('aria-label', '预览' + t.name + '：' + t.subtitle);
+      var caption = document.createElement('div'); caption.className = 'fw-card-caption';
+      caption.append(
+        label('span', 'fw-index', detail.index + ' / CHAPTER'),
+        label('span', 'fw-tag', t.target + ' MESSAGES')
+      );
+      var text = document.createElement('div'); text.className = 'fw-card-copy';
+      text.append(
+        label('span', 'fw-card-english', detail.en),
         label('strong', 'fw-card-title', t.name),
-        label('span', 'fw-card-sub', t.subtitle));
+        label('span', 'fw-card-sub', t.subtitle)
+      );
+      card.append(caption, text, label('span', 'fw-card-foot', '轻触预览'));
       grid.appendChild(card);
     });
     sheet.appendChild(grid);
-    var custom = label('h3', 'fw-section-title', '自己写一个故事');
+
+    var customCard = document.createElement('section');
+    customCard.className = 'fw-custom-panel';
+    customCard.append(
+      label('div', 'fw-section-overline', 'WRITE YOUR OWN  /  07'),
+      label('h3', 'fw-section-title', '下一篇，由你决定。'),
+      label('p', 'fw-custom-hint', '也许是雨后的街角，也许是一条没发出去的消息。')
+    );
     var input = document.createElement('textarea');
     input.className = 'fw-custom';
     input.id = 'fw-custom-input';
     input.maxLength = 1500;
-    input.placeholder = '描述想看的剧情和氛围……';
-    var countLabel = label('label', 'fw-length-label', '对话条数');
-    var countSelect = document.createElement('select'); countSelect.id = 'fw-count';
-    [80, 100].forEach(function (n) {
-      var option = document.createElement('option');
-      option.value = String(n); option.textContent = n + ' 条'; countSelect.appendChild(option);
-    });
-    countLabel.append(countSelect);
-    sheet.append(custom, input, countLabel, button('custom', '生成自定义番外', 'fw-primary'));
-    var saved = label('div', 'fw-saved', '正在读取已保存的番外…');
+    input.placeholder = '写一点画面、氛围，或你想听见的话……';
+    customCard.append(
+      input,
+      countPicker('fw-count', 80),
+      button('custom', '写下这篇番外', 'fw-primary')
+    );
+    sheet.appendChild(customCard);
+
+    var saved = label('div', 'fw-saved', '正在整理最近的故事…');
     sheet.appendChild(saved);
     var episodes = await listSaved();
-    if (!state.opened || state.busy) return;
+    if (!state.opened || state.busy || state.selected) return;
     saved.replaceChildren();
     if (episodes.length) {
-      saved.appendChild(label('h3', 'fw-section-title', '最近的番外'));
-      episodes.forEach(function (episode) {
+      saved.append(
+        label('div', 'fw-section-overline', 'FROM THE ARCHIVE'),
+        label('h3', 'fw-section-title', '还没读完的故事')
+      );
+      episodes.forEach(function (episode, index) {
         var row = button('read', '', 'fw-saved-row');
         row.dataset.id = episode.id;
-        row.append(label('strong', '', episode.name || '番外'),
-          label('span', '', episode.messages.length + '/' + episode.target + ' 条 · ' +
-            (episode.status === 'complete' ? '已完成' : '可继续')));
+        row.append(
+          label('span', 'fw-saved-index', String(index + 1).padStart(2, '0')),
+          label('strong', 'fw-saved-title', episode.name || '番外'),
+          label('span', 'fw-saved-meta', episode.messages.length + '/' + episode.target + ' · ' +
+            (episode.status === 'complete' ? '已完成' : '继续读'))
+        );
         saved.appendChild(row);
       });
     }
+    sheet.scrollTop = 0;
+  }
+
+  function openTemplatePreview(template) {
+    if (!state.root || !template || state.busy) return;
+    state.opened = true;
+    state.selected = template;
+    state.root.hidden = false;
+    var detail = EDITORIAL[template.id];
+    var sheet = clearView();
+    sheet.classList.add('fw-preview');
+    topBar(sheet, 'A PREVIEW FROM THE ARCHIVE', 'back', '返回目录');
+
+    var cover = document.createElement('section');
+    cover.className = 'fw-preview-cover fw-scene-' + template.id;
+    cover.append(
+      label('span', 'fw-preview-number', 'CHAPTER  ' + detail.index),
+      label('span', 'fw-preview-en', detail.en),
+      label('h2', 'fw-preview-title', template.name),
+      label('p', 'fw-preview-mood', detail.mood)
+    );
+    sheet.appendChild(cover);
+    sheet.append(
+      label('div', 'fw-section-overline', 'THE LITTLE PLOT'),
+      label('p', 'fw-preview-description', template.scenario),
+      label('p', 'fw-preview-note', '这只是独立番外，不会改动主线聊天、人物记忆或钱包。'),
+      countPicker('fw-preview-count', template.target),
+      button('start-template', '开始写这篇', 'fw-primary fw-start'),
+      label('div', 'fw-preview-smallprint', '开始后才会调用当前聊天 API。可以暂停，也可以回来续写。')
+    );
     sheet.scrollTop = 0;
   }
 
@@ -250,21 +360,39 @@
     var episode = state.active;
     var sheet = clearView();
     sheet.classList.add('fw-reading');
-    var top = label('div', 'fw-topline', 'SIDE STORY · ' + (episode.status === 'complete' ? 'COMPLETE' : 'DRAFT'));
-    var head = document.createElement('div'); head.className = 'fw-head';
-    head.append(label('h2', '', episode.name), button('close', '关闭', 'fw-close'));
-    sheet.append(top, head);
-    var sub = label('p', 'fw-subtitle', episode.messages.length + ' / ' + episode.target +
-      ' 条 · 不影响主线 · ' + (canPersist && !persistenceFailed ? '本机独立保存' : '临时会话，离开后可能丢失'));
-    sheet.appendChild(sub);
+    topBar(sheet, 'CHAPTER IN PROGRESS', 'close', '收起');
+
+    var heading = document.createElement('div'); heading.className = 'fw-reader-heading';
+    heading.append(
+      label('span', 'fw-reader-kicker', 'PRIVATE STORY  /  ' + (episode.status === 'complete' ? 'FINISHED' : 'ONGOING')),
+      label('h2', 'fw-reader-title', episode.name),
+      label('p', 'fw-reader-description', '另一条时间线里的只言片语。')
+    );
+    sheet.appendChild(heading);
+    var progress = document.createElement('div'); progress.className = 'fw-progress';
+    progress.setAttribute('aria-label', '番外生成进度');
+    var track = document.createElement('div'); track.className = 'fw-progress-track';
+    var fill = document.createElement('span'); fill.className = 'fw-progress-fill';
+    fill.style.width = Math.min(100, Math.round(episode.messages.length / episode.target * 100)) + '%';
+    track.appendChild(fill);
+    progress.append(
+      track,
+      label('span', 'fw-progress-text', episode.messages.length + ' / ' + episode.target + ' MESSAGES')
+    );
+    sheet.appendChild(progress);
+
     var messages = document.createElement('div');
     messages.className = 'fw-messages';
     messages.setAttribute('aria-label', '番外聊天内容');
+    var divider = label('p', 'fw-chat-divider', '— A STORY THAT STAYS HERE —');
+    messages.appendChild(divider);
     episode.messages.forEach(function (message) {
       var row = label('div', 'fw-message ' + (message.role === 'user' ? 'fw-user' : 'fw-char'), '');
+      var speaker = label('span', 'fw-speaker', message.role === 'user' ? '我' : 'TA');
       var bubble = label('p', 'fw-bubble', message.text);
-      row.appendChild(bubble); messages.appendChild(row);
+      row.append(speaker, bubble); messages.appendChild(row);
     });
+    if (!episode.messages.length) messages.appendChild(label('p', 'fw-empty-chat', '第一页还没有写下文字。'));
     sheet.appendChild(messages);
     var status = label('p', 'fw-status', state.busy
       ? '正在续写… ' + episode.messages.length + '/' + episode.target
@@ -275,7 +403,7 @@
     var actions = document.createElement('div'); actions.className = 'fw-actions';
     if (state.busy) actions.appendChild(button('pause', '暂停续写', 'fw-primary'));
     else if (episode.status !== 'complete') actions.appendChild(button('resume', '继续生成', 'fw-primary'));
-    actions.append(button('back', '返回模板', ''), button('delete', '删除本篇', 'fw-danger'));
+    actions.append(button('back', '返回目录', ''), button('delete', '删除本篇', 'fw-danger'));
     sheet.appendChild(actions);
     // 长篇从尾部阅读，不触碰原本的 chat-messages 虚拟列表。
     messages.scrollTop = messages.scrollHeight;
@@ -370,14 +498,15 @@
     }
   }
 
-  async function start(template, custom) {
+  async function start(template, custom, selectedCount) {
     if (state.busy || state.creating) return;
     var role = roleInfo();
     if (!role) { showNotice('请先创建或选择一个角色'); return; }
     var scenario = template ? template.scenario : String(custom || '').trim();
     if (!scenario) { showNotice('请先描述想看的剧情'); return; }
     var select = state.root.querySelector('#fw-count');
-    var count = template ? template.target : Number(select && select.value) || 80;
+    var count = template ? Number(selectedCount) || template.target : Number(select && select.value) || 80;
+    if (![40, 80, 100].includes(count)) count = template ? template.target : 80;
     state.creating = true;
     var episode = {
       id: scope + ':' + roleId + ':' + Date.now() + ':' + Math.random().toString(36).slice(2, 8),
@@ -404,7 +533,14 @@
     if (key === 'resume') { generate(); return; }
     if (key === 'template') {
       var chosen = TEMPLATES.find(function (t) { return t.id === node.dataset.template; });
-      if (chosen) start(chosen); return;
+      if (chosen) openTemplatePreview(chosen);
+      return;
+    }
+    if (key === 'start-template') {
+      if (!state.selected) return;
+      var select = state.root.querySelector('#fw-preview-count');
+      start(state.selected, null, Number(select && select.value) || state.selected.target);
+      return;
     }
     if (key === 'custom') {
       var input = state.root.querySelector('#fw-custom-input');
@@ -435,7 +571,7 @@
     });
     grid.appendChild(item);
     var style = document.createElement('link'); style.rel = 'stylesheet';
-    style.href = 'js/chat-fanwai.css?v=20261115v1';
+    style.href = 'js/chat-fanwai.css?v=20261115softcore1';
     document.head.appendChild(style);
     var root = document.createElement('div');
     root.id = 'fanwaiLayer'; root.className = 'fw-layer'; root.hidden = true;
