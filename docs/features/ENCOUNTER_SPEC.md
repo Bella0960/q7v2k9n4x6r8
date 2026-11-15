@@ -61,3 +61,5 @@ JSON 导入只接受该格式与字段，不直接兼容酒馆、SillyTavern 等
 测试文件：tests/encounter-contract.test.mjs（17 项）、tests/encounter-ui-contract.test.mjs（4 项）、tests/encounter-browser.mjs（Playwright 浏览器用例）。本会话将 21 项纯 JS 合同/模拟 UI 测试适配到 V8 内存执行，21/21 PASS；此结论不等于原生 Node、Vite build 或真实浏览器测试已运行。GitHub Actions 当前失败于步骤开始前，job steps=0、日志 BlobNotFound，不能据此判断代码测试成功或失败。正式合并仍需完整构建与 375–430px 真机交互验收。
 
 多标签页并发写入若同时发生，localStorage 本身没有原子比较交换。现有候选 ID 防重复检查只保护顺序发生的重复提交，不能宣称已实现严格并发事务。要彻底解决还需后续利用现有持久化基础设施设计事务保护。
+
+- **发布前必须再核查账号隔离：** 当前候选收藏键 maomao_encounter_candidates_v1 属于同站点浏览器存储，尚未接通已验证的用户账号级命名空间。在同一个浏览器站点切换不同登录账户时，不得假定候选自动隔离；正式启用多账号场景前要复用既有账号隔离机制，验证登出、切换账户、备份恢复和数据可见性。此项 NOT VERIFIED，禁止宣称已完成跨账号隔离。
