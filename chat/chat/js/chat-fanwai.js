@@ -189,6 +189,7 @@
   function clearView() {
     var sheet = state.root.querySelector('.fw-sheet');
     sheet.replaceChildren();
+    sheet.classList.remove('fw-reading');
     return sheet;
   }
 
