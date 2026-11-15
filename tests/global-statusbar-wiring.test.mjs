@@ -19,7 +19,7 @@ function projectHtml(dir = projectRoot) {
   return files;
 }
 
-function boot(initialStatus = '0') {
+function boot(initialStatus = '0', gestureBars = []) {
   const values = new Map([['settings_statusbar', initialStatus], ['settings_home_indicator_visible', '1']]);
   const styles = new Map();
   const documentEvents = new Map();
@@ -38,7 +38,7 @@ function boot(initialStatus = '0') {
     createElement() { return { id: '', textContent: '' }; },
     getElementById(id) { return styles.get(id) || null; },
     addEventListener(name, listener) { documentEvents.set(name, listener); },
-    querySelectorAll(name) { return name === '.gesture-bar' ? [] : []; }
+    querySelectorAll(name) { return name === '.gesture-bar' ? gestureBars : []; }
   };
   const window = {
     addEventListener(name, listener) { windowEvents.set(name, listener); }
@@ -101,6 +101,40 @@ test('settings apply and storage/pageshow events restore original page display w
   app.values.set('settings_statusbar', '1');
   app.windowEvents.get('pageshow')();
   assert.equal(app.root.hasAttribute('data-maomao-statusbar-hidden'), false);
+});
+
+test('visible interactive Home Indicator stays accessible across top bar updates', () => {
+  function bar(role) {
+    const attributes = new Map(role ? [['role', role], ['aria-hidden', 'false']] : []);
+    return {
+      style: { display: '' },
+      getAttribute(key) { return attributes.get(key) ?? null; },
+      setAttribute(key, value) { attributes.set(key, value); },
+      removeAttribute(key) { attributes.delete(key); },
+      hasAttribute(key) { return attributes.has(key); }
+    };
+  }
+  const interactive = bar('button');
+  const decorative = bar();
+  const app = boot('0', [interactive, decorative]);
+  app.documentEvents.get('DOMContentLoaded')();
+  assert.equal(interactive.style.display, '');
+  assert.equal(interactive.hasAttribute('aria-hidden'), false, 'visible return control must be accessible');
+  assert.equal(decorative.getAttribute('aria-hidden'), 'true', 'decorative bar stays hidden from assistive tech');
+
+  app.values.set('settings_statusbar', '1');
+  app.window.__statusbarControlApply();
+  assert.equal(interactive.hasAttribute('aria-hidden'), false, 'top setting must not hide bottom return target');
+
+  app.values.set('settings_home_indicator_visible', '0');
+  app.window.__statusbarControlApply();
+  assert.equal(interactive.style.display, 'none');
+  assert.equal(interactive.getAttribute('aria-hidden'), 'true');
+
+  app.values.set('settings_home_indicator_visible', '1');
+  app.windowEvents.get('pageshow')();
+  assert.equal(interactive.style.display, '');
+  assert.equal(interactive.hasAttribute('aria-hidden'), false);
 });
 
 test('first visit defaults to a visible status bar if setting is absent', () => {
