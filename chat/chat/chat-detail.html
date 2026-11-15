@@ -3729,7 +3729,7 @@
                 bubble.classList.add('bubble-group-interaction');
                 bubble.innerHTML = '<div class="group-private-card"><div class="group-private-label">群成员私聊 · ' + escHtml(msg.senderName || msg.name || '群成员') + '</div>' +
                     '<div class="group-private-sender">' + escHtml(msg.senderName || msg.name || '群成员') + ' 悄悄说</div>' +
-                    '<div class="group-private-text">' + escHtml(msg.text || '') + '</div>' +
+                    '<div class="group-private-text">' + escHtml(msg.text || '私聊内容仅在角色单聊中查看') + '</div>' +
                     '<button type="button" class="group-private-open" data-private-open="' + escHtml(privateRoleId) + '">打开与 TA 的私聊</button></div>';
             } else if (msg.type === 'group_poll') {
                 const poll = msg.poll || {};
@@ -8493,6 +8493,7 @@
                 var displayName = groupMemberDisplayName(target);
                 var privateMessageText = String(privateText).trim().slice(0, 300);
                 var privateMsg = { role: 'assistant', name: displayName, text: privateMessageText, time: Date.now(), fromGroupId: String(currentGroup.id), privateFromGroup: true };
+                ensureMid(privateMsg);
                 var privateHistory = [];
                 var privateSaved = false;
                 try {
@@ -8521,6 +8522,7 @@
                         verifiedPrivate.length === privateHistory.length && lastPrivate &&
                         lastPrivate.role === privateMsg.role && lastPrivate.type === privateMsg.type &&
                         lastPrivate.time === privateMsg.time && lastPrivate.text === privateMsg.text &&
+                        String(lastPrivate.mid || '') === String(privateMsg.mid) &&
                         lastPrivate.fromGroupId === privateMsg.fromGroupId;
                 } catch (privateError) {
                     privateSaved = false;
@@ -8531,8 +8533,11 @@
                     return '';
                 }
 
+                // Public group history contains a pointer, never the private
+                // message body; the actual message exists only in this role DM.
                 var groupPrivateMessage = {
-                    role: 'assistant', type: 'group_private', text: privateMessageText,
+                    role: 'assistant', type: 'group_private', text: '',
+                    privateMessageId: String(privateMsg.mid),
                     senderId: targetId, privateRoleId: targetId, senderName: displayName,
                     name: displayName, fromGroupId: String(currentGroup.id), time: Date.now()
                 };
