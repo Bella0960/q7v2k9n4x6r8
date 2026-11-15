@@ -128,3 +128,4 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 校对 chat/chat/chat.html：聊天列表确实读取 ai_custom_characters，现有 role.id 兼容。
 - 本会话使用 V8 内存执行真实分支来源的 17 个合同测试 + 4 个模拟 DOM 手势测试，21/21 PASS（经适配的 JS 测试，不等于完整 Node test / Playwright 真浏览器 / 构建）。原始损坏数据未被修改；正常空角色库可首次保存。
 - PR #297 保持 Draft、未 merge、未 deploy；CI 依旧步骤 0/日志缺失，根因 NOT VERIFIED。下一步必须运行本机 Node、Vite build、Playwright 三视口与真实 Android/iOS 交互，再申请合并。
+- 安全门禁补充：新候选键目前是同源浏览器本地全局键；跨账号隔离及备份恢复需与统一账户系统再验收，NOT VERIFIED。暂不擅自创建第二套登录、迁移正式数据或改动 Cloudflare 账号。
