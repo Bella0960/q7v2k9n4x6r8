@@ -155,3 +155,30 @@ test('custom plugin templates can supply four independent plot beats', () => {
     messages: Array.from({ length: 23 }, () => ({ role: 'user', text: '今晚' }))
   }, 12).instruction, '突然转折');
 });
+
+
+test('configured provider output limit chooses safely smaller request batches', () => {
+  const core = mount().MAOMAOFanwaiCore;
+  assert.equal(core.chooseBatchSize({}), 12);
+  assert.equal(core.chooseBatchSize({ maxTokens: 2000 }), 12);
+  assert.equal(core.chooseBatchSize({ maxTokens: 800 }), 8);
+  assert.equal(core.chooseBatchSize({ maxTokens: 512 }), 5);
+  assert.equal(core.chooseBatchSize({ maxTokens: 220 }), 3);
+  assert.equal(core.chooseBatchSize({ maxTokens: 'not-a-number' }), 12);
+});
+
+test('repeated dialogue in one generated chunk is never appended twice and target stays bounded', () => {
+  const core = mount().MAOMAOFanwaiCore;
+  const e = { target: 5, messages: [{ role: 'char', text: '你好' }] };
+  const inserted = core.appendNewMessages(e, [
+    { role: 'char', text: '你好' },
+    { role: 'user', text: '今天去哪儿' },
+    { role: 'user', text: '今天去哪儿' },
+    { role: 'char', text: '去书店' },
+    { role: 'user', text: '好呀' },
+    { role: 'char', text: '出发' }
+  ]);
+  assert.equal(inserted, 4);
+  assert.equal(e.messages.length, 5);
+  assert.deepEqual(e.messages.map(m => m.text), ['你好', '今天去哪儿', '去书店', '好呀', '出发']);
+});
