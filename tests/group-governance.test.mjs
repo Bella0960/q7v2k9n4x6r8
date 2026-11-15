@@ -1,0 +1,164 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import vm from 'node:vm';
+import { fileURLToPath } from 'node:url';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const load = (p) => fs.readFileSync(path.join(root, p), 'utf8');
+const source = load('shared/js/group-governance.js');
+const roles = [
+  { id: 'c1', name: '林澈', persona: '冷静谨慎' },
+  { id: 'c2', name: '江念', persona: '活泼健谈' },
+  { id: 'c3', name: '李四', persona: '安静' }
+];
+
+function harness(groups = []) {
+  const values = new Map([
+    ['phone_groups', JSON.stringify(groups)],
+    ['ai_custom_characters', JSON.stringify(roles)]
+  ]);
+  const storage = {
+    blocked: false,
+    getItem(key) { return values.has(key) ? values.get(key) : null; },
+    setItem(key, value) {
+      if (this.blocked) throw new Error('QuotaExceededError');
+      values.set(key, String(value));
+    }
+  };
+  const window = { localStorage: storage };
+  vm.runInNewContext(source, { window, console }, { filename: 'group-governance.js' });
+  return { api: window.GroupGovernance, storage, values };
+}
+function group(settings = { allowRoleActions: true }) {
+  return { id: 'g1', name: '测试群', ownerId: '__user',
+    settings, members: roles.map((role) => ({
+      id: role.id, name: role.name, avatar: '', isAdmin: false, muted: false
+    })), relationships: {} };
+}
+function save(storage, g) {
+  return () => {
+    storage.setItem('phone_groups', JSON.stringify([g]));
+    return true;
+  };
+}
+
+test('legacy membership and owner-granted role moderation enforce role boundaries', () => {
+  const g = group({ allowRoleActions: false });
+  const { api, storage } = harness([g]);
+  const commit = save(storage, g);
+  assert.equal(api.userIsInGroup(g), true, 'legacy groups are joined');
+  assert.equal(api.rank(g, '__user'), 3);
+  assert.equal(api.apply({ group: g, actorId: 'c1', action: 'mute', target: 'c3', save: commit }).ok, false);
+  assert.equal(api.apply({ group: g, actorId: '__user', action: 'promote', target: 'c1', save: commit }).ok, true);
+  assert.equal(g.settings.allowRoleActions, true, 'appointing a group admin enables the agreed role actions');
+  assert.equal(api.rank(g, 'c1'), 2);
+  assert.equal(api.apply({ group: g, actorId: 'c1', action: 'mute', target: 'c3', save: commit }).ok, true);
+  assert.equal(api.isMuted(g.members[2]), true);
+  assert.equal(api.apply({ group: g, actorId: 'c1', action: 'mute', target: 'c1', save: commit }).ok, false);
+  assert.equal(api.apply({ group: g, actorId: 'c2', action: 'unmute', target: 'c3', save: commit }).ok, false);
+  assert.equal(api.apply({ group: g, actorId: 'c1', action: 'mute', target: '__user', save: commit }).ok, false);
+  assert.equal(api.apply({ group: g, actorId: '__user', action: 'promote', target: 'c2', save: commit }).ok, true);
+  assert.equal(api.apply({ group: g, actorId: 'c1', action: 'mute', target: 'c2', save: commit }).ok, false);
+  assert.equal(api.apply({ group: g, actorId: 'c1', action: 'promote', target: 'c3', save: commit }).ok, false);
+  assert.equal(api.apply({ group: g, actorId: '__user', action: 'demote', target: 'c1', save: commit }).ok, true);
+  assert.equal(api.apply({ group: g, actorId: 'c1', action: 'unmute', target: 'c3', save: commit }).ok, false);
+  assert.equal(api.apply({ group: g, actorId: '__user', action: 'unmute', target: 'c3', save: commit }).ok, true);
+  assert.equal(api.isMuted(g.members[2]), false);
+});
+
+test('explicit addressed natural moderation is idempotence-friendly and rejects hypotheticals', () => {
+  const g = group();
+  g.members[0].isAdmin = true;
+  const { api } = harness([g]);
+  assert.equal(JSON.stringify(api.naturalModeration('林澈，你把李四禁言了', g)),
+    JSON.stringify({ actorId: 'c1', target: 'c3', action: 'mute' }));
+  assert.equal(JSON.stringify(api.naturalModeration('@林澈 把李四解除禁言', g)),
+    JSON.stringify({ actorId: 'c1', target: 'c3', action: 'unmute' }));
+  assert.equal(api.naturalModeration('如果林澈把李四禁言了会怎样', g), null);
+  assert.equal(api.naturalModeration('江念把李四禁言了', g), null, 'non-admins cannot be directed to mute');
+  assert.equal(api.naturalModeration('林澈你今天心情怎么样', g), null);
+});
+
+test('failed persistence rolls back changes and events only fire after success', () => {
+  const g = group();
+  const { api, storage } = harness([g]);
+  let changes = 0;
+  const unsubscribe = api.on('action:promote', () => { changes++; });
+  const bad = api.apply({ group: g, actorId: '__user', action: 'promote',
+    target: 'c1', save: () => false });
+  assert.equal(bad.ok, false);
+  assert.equal(g.members[0].isAdmin, false);
+  assert.equal(changes, 0);
+  const good = api.apply({ group: g, actorId: '__user', action: 'promote',
+    target: 'c1', save: save(storage, g) });
+  assert.equal(good.ok, true);
+  assert.equal(changes, 1);
+  unsubscribe();
+  storage.blocked = true;
+  assert.equal(api.leave({ group: g, save: () => {
+    try { storage.setItem('phone_groups', JSON.stringify([g])); return true; }
+    catch { return false; }
+  }}).ok, false);
+  assert.equal(api.userIsInGroup(g), true);
+});
+
+test('leave and rejoin require consent; decline never rejoins or modifies role library', () => {
+  const g = group();
+  const { api, storage } = harness([g]);
+  const beforeRoles = storage.getItem('ai_custom_characters');
+  assert.equal(api.leave({ group: g, save: save(storage, g) }).ok, true);
+  assert.equal(api.userIsInGroup(g), false);
+  const offered = api.offerInvitation({ groupId: 'g1', inviterId: 'c1' });
+  assert.equal(offered.ok, true);
+  assert.equal(api.offerInvitation({ groupId: 'g1', inviterId: 'c1' }).ok, false);
+  assert.equal(api.pendingInvitations().length, 1);
+  assert.equal(api.resolveInvitation({ id: offered.invitation.id, accept: false }).ok, true);
+  assert.equal(JSON.parse(storage.getItem('phone_groups'))[0].userMembership, 'left');
+  const offeredAgain = api.offerInvitation({ groupId: 'g1', inviterId: 'c1' });
+  assert.equal(offeredAgain.ok, true);
+  assert.equal(api.resolveInvitation({ id: offeredAgain.invitation.id, accept: true }).ok, true);
+  assert.equal(JSON.parse(storage.getItem('phone_groups'))[0].userMembership, 'joined');
+  assert.equal(storage.getItem('ai_custom_characters'), beforeRoles);
+});
+
+test('new role-owned group stays a draft until accepted and keeps existing roles untouched', () => {
+  const { api, storage } = harness([]);
+  const beforeRoles = storage.getItem('ai_custom_characters');
+  const proposed = api.offerNewGroupInvitation({ inviterId: 'c1',
+    groupName: '周末小聚', memberIds: ['c2', 'invalid'] });
+  assert.equal(proposed.ok, true);
+  assert.equal(JSON.parse(storage.getItem('phone_groups')).length, 0);
+  assert.equal(api.pendingInvitations()[0].draft, true);
+  assert.equal(api.offerNewGroupInvitation({ inviterId: 'c1',
+    groupName: '第二个群', memberIds: ['c3'] }).ok, false, 'daily cooldown and one pending invite');
+  assert.equal(api.resolveInvitation({ id: proposed.invitation.id, accept: true }).ok, true);
+  const groups = JSON.parse(storage.getItem('phone_groups'));
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].name, '周末小聚');
+  assert.equal(groups[0].ownerId, 'c1');
+  assert.equal(groups[0].members.length, 2);
+  assert.equal(groups[0].userMembership, 'joined');
+  assert.equal(storage.getItem('ai_custom_characters'), beforeRoles);
+});
+
+test('all touched pages compile and refer to the shared bridge; backup and PWA include it', () => {
+  for (const filename of ['chat/chat/chat.html', 'chat/chat/chat-detail.html', 'chat/chat/group-play.html']) {
+    const html = load(filename);
+    assert.match(html, /group-governance\.js\?v=20261115g1/, filename);
+    const inline = [...html.matchAll(/<script(?:\s+[^>]*)?>([\s\S]*?)<\/script>/gi)];
+    for (const [index, match] of inline.entries()) {
+      assert.doesNotThrow(() => new vm.Script(match[1], { filename: filename + ':inline' + index }));
+    }
+  }
+  const detail = load('chat/chat/chat-detail.html');
+  assert.match(detail, /GroupGovernance\.isMuted/);
+  assert.match(detail, /GroupGovernance\.naturalModeration/);
+  assert.match(detail, /offerNewGroupInvitation/);
+  assert.match(detail, /群动作:禁言:/);
+  assert.match(load('chat/chat/chat.html'), /pendingInvitations/);
+  assert.match(load('chat/chat/group-play.html'), /GroupGovernance\.leave/);
+  assert.match(load('sw.js'), /group-governance\.js\?v=20261115g1/);
+  assert.match(load('settings/js/backup-modules.js'), /phone_group_invitations/);
+});
