@@ -24,7 +24,7 @@
 .portrait{flex:1;min-height:135px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative}
 .portrait:before{content:"";position:absolute;width:142px;height:142px;background:#f3f3f1;border-radius:50%;filter:blur(22px);opacity:.7}
 .ring{display:block;width:116px;height:116px;position:relative;flex-shrink:0;border:17px solid #cbccca;border-radius:50%;transform:rotate(-25deg);box-shadow:inset 0 0 0 1px rgba(0,0,0,.01)}.ring:after{content:"";position:absolute;width:40px;height:40px;top:-28px;right:-27px;background:#fff;border-radius:50%;transform:rotate(15deg)}
-.portrait-caption{font-family:var(--serif);font-size:10px;letter-spacing:.21em;margin-top:27px;color:#a0a19d;font-style:italic}
+.portrait-caption{font-size:11px;letter-spacing:.18em;margin-top:27px;color:#a0a19d;font-weight:400}
 .object-icon{width:118px;height:118px;display:grid;place-items:center;border-radius:50%;background:#f2f2f0;border:1px solid #e8e9e5;position:relative}.object-icon svg{width:72px;height:72px;stroke:#878a85;fill:none;stroke-width:1.25;stroke-linecap:round;stroke-linejoin:round;transform:rotate(-9deg)}
 .name{font-family:var(--serif);font-size:33px;letter-spacing:.055em;font-weight:400;line-height:1.3;margin:3px 0 8px;word-break:break-word}.hint{color:#777976;font-size:12px;letter-spacing:.02em;margin:0 0 17px}.tags{display:flex;gap:7px;flex-wrap:wrap;align-items:center}.tag{color:#777a76;font-size:10px;padding:6px 9px;background:#f4f4f2;border-radius:9px;letter-spacing:.035em}.quote{font-size:12px;line-height:1.85;color:#646662;min-height:45px;margin:18px 0 12px;white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.card-footer{padding-top:13px;border-top:1px solid #eeeeea;display:flex;align-items:center;justify-content:space-between;color:#9a9b97;font-size:10px;letter-spacing:.08em}.card-footer .look{color:#555753}
 .bottom{padding:4px 29px max(23px,env(safe-area-inset-bottom,18px));flex-shrink:0}.buttons{display:grid;grid-template-columns:1fr 1fr;gap:13px}.action{height:51px;border-radius:15px;border:1px solid #d8d9d6;background:transparent;display:flex;align-items:center;justify-content:center;gap:10px;font-size:12px;letter-spacing:.14em;color:#666864;transition:transform .18s,background .18s}.action:active{transform:scale(.975)}.action.primary{background:#343633;border-color:#343633;color:#fff}.action svg{width:16px;height:16px;stroke:currentColor;stroke-width:1.45;fill:none}.bottom-copy{display:flex;align-items:center;justify-content:space-between;margin-top:14px;color:#9b9c98;font-size:10px;letter-spacing:.08em}
@@ -46,7 +46,7 @@
 <main class="phone" aria-label="邂逅人物抽卡">
   <div class="status-bar"><span id="deviceTime">09:41</span><div class="status-marks"><span class="cell" aria-hidden="true"><i></i><i></i><i></i><i></i></span><svg width="15" height="11" viewBox="0 0 20 15" aria-hidden="true"><path d="M1 4Q10 -3 19 4M4 7Q10 2 16 7M8 11Q10 9 12 11" stroke="#777" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg><span class="battery" aria-hidden="true"><b></b></span></div></div>
   <header class="header"><a class="back" href="../index.html" aria-label="返回桌面"><svg viewBox="0 0 24 24"><path d="M15 5 8 12l7 7"/></svg></a><h1 class="page-title">邂逅</h1><button class="menu-button" id="moreButton" aria-label="抽卡偏好及玩法设置">···</button></header>
-  <section class="intro"><div><div class="intro-copy">SOMEONE, SOMEWHERE</div><div class="intro-sub">一次未曾预料的相遇</div></div><button class="collection-link" id="savedButton">候选收藏 <span id="savedCount">00</span></button></section>
+  <section class="intro"><div><div class="intro-sub">一次未曾预料的相遇</div></div><button class="collection-link" id="savedButton">候选收藏 <span id="savedCount">00</span></button></section>
   <section class="deck-wrap" id="deckArea" aria-label="左右滑动人物卡片，向左跳过，向右收藏">
     <div class="back-card second" aria-hidden="true"></div><div class="back-card" aria-hidden="true"></div>
     <article id="frontCard" class="card" tabindex="0" role="button" aria-label="查看当前人物的更多信息"></article>
@@ -91,7 +91,7 @@ function render(){
  cardEl.setAttribute('aria-label',(masked||obj||blind?'揭晓当前陌生人物的身份':'查看 '+c.name+' 的人物档案'));
  cardEl.innerHTML='<div class="card-top"><span>'+escapeHtml(modeCaption(c))+'</span><span class="card-number">'+String(position).padStart(2,'0')+'</span></div>'+
  '<div class="portrait">'+(obj?objectArt(c.object):'<div class="ring" aria-hidden="true"></div>')+
- '<span class="portrait-caption">'+(obj?'A LOST OBJECT':masked?'IDENTITY UNKNOWN':'A STRANGER, FOR NOW')+'</span></div>'+
+ '<span class="portrait-caption">'+(obj?'物件里的线索':masked?'身份尚未揭晓':'尚未相识')+'</span></div>'+
  '<h2 class="name">'+escapeHtml(masked?'未署名的旅人':obj?'失主未详':blind?'一段陌生的声音':c.name)+'</h2>'+
  '<p class="hint">'+escapeHtml(masked?'身份暂未公开':blind?'先凭一句话，认识这个人':obj?c.object:c.job+' · '+c.era+' · '+c.gender+' · '+c.age+'岁')+'</p>'+
  '<div class="tags">'+(masked?'<span class="tag">身份未知</span><span class="tag">点击揭晓</span>':obj?'<span class="tag">遗留物件</span><span class="tag">寻找主人</span>':blind?'<span class="tag">先听 TA 说</span><span class="tag">点击揭晓</span>':'<span class="tag">'+escapeHtml(c.species)+'</span><span class="tag">'+escapeHtml(c.trait)+'</span><span class="tag">'+escapeHtml(c.era)+'</span>')+'</div>'+
