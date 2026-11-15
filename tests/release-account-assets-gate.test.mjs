@@ -38,3 +38,22 @@ test('release prerequisite: authenticated HTML must remain network-first after a
   assert.match(sw, /if \(!isPublicAccountPage && \(url\.pathname === '\/'/,
     'Non-navigation HTML loads must also bypass legacy CacheStorage after integrating PR #290');
 });
+
+
+test('release prerequisite: actual chat HTML loads fanwai entry and Vite publishes both JS and CSS', () => {
+  const html = readFileSync(resolve(root, 'chat/chat/chat-detail.html'), 'utf8');
+  const extras = readFileSync(resolve(root, 'chat/chat/js/chat-extras.js'), 'utf8');
+  const fanwai = readFileSync(resolve(root, 'chat/chat/js/chat-fanwai.js'), 'utf8');
+  const vite = readFileSync(resolve(root, 'vite.config.js'), 'utf8');
+  assert.match(html, /<script src="js\/chat-extras\.js\?t=20261115fanwai\d+"/,
+    'chat page must refresh the original extras loader after integrating fanwai');
+  assert.match(extras, /fanwaiScript\.src = 'js\/chat-fanwai\.js\?v=20261115v\d+'/,
+    'existing plus menu must load the versioned fanwai script');
+  assert.match(fanwai, /js\/chat-fanwai\.css\?v=20261115softcore\d+/,
+    'fanwai must request its own versioned stylesheet');
+  for (const asset of ['chat/chat/js/chat-fanwai.js', 'chat/chat/js/chat-fanwai.css']) {
+    assert.ok(existsSync(resolve(root, asset)), asset + ' must exist before production build');
+  }
+  assert.match(vite, /'\.js'/);
+  assert.match(vite, /'\.css'/);
+});
