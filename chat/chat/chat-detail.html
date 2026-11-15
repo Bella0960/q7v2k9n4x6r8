@@ -8451,7 +8451,12 @@
             });
             // Malformed private markers are dropped, never rendered as public speech.
             text = text.replace(/\[游戏私聊[:：][^\]\r\n]{0,600}\]?/g, '');
+            var regularPrivateMarkerSeen = false;
             text = text.replace(/\[群私聊[:：]([^:：\]]+)[:：]([^\]]{1,300})\]/g, function (marker, targetKey, privateText) {
+                // Limit ordinary private DMs to one per AI turn; an AI-produced
+                // batch of markers must not spam multiple persistent histories.
+                if (regularPrivateMarkerSeen) return '';
+                regularPrivateMarkerSeen = true;
                 // Persistent role DMs are deferred; no private data is written
                 // before the public AI reply has been durably saved.
                 turnEffects.afterSave(function () {
