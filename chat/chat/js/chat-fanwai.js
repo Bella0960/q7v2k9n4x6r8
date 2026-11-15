@@ -1054,11 +1054,14 @@
       ? (episode.status = 'partial', persist(episode)) : episodeWriteQueue.then(function () {
         return !canPersist || !persistenceFailed;
       });
-    if (episode && episode.status === 'partial') {
-      emit('episode:paused', { id: episode.id, characterId: roleId });
-    }
     renderReader();
     var completion = Promise.resolve(save).then(function (saved) {
+      // 暂停事件属于持久化后的确认事件。失败时外部插件绝不能误认已保存，
+      // 用户在等待落盘时已经续写/切换故事也不能发出旧事件。
+      if (saved && episode && episode.status === 'partial' &&
+          state.active === episode && pausedSerial === state.serial) {
+        emit('episode:paused', { id: episode.id, characterId: roleId });
+      }
       if (!saved && canPersist && episode && state.active === episode &&
           state.unsavedEpisode === episode && pausedSerial === state.serial) {
         episode.status = 'partial';
