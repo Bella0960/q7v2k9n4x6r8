@@ -102,6 +102,14 @@ npm run build
 - **实际构建阻碍已确认**：Cloudflare Builds 的账户额度接口返回 `has_reached_build_minutes_limit: true`，对应 PR 提交的构建记录状态为 `stopped / skipped`。其刷新时间是 `2026-11-30T23:59:59.999Z`。这不是 Vite 编译成功或失败的证据；禁止把旧预览 URL 当作最新提交的验收版本。
 - **待完成**：完整的 Node/Vite 构建、真实模型、Android/Apple Safari 设备上可操作性及账号退出→登录场景。所有操作先在预览隔离环境进行，正式账号数据库不参与番外测试。
 
+## 联合发布依赖（禁止绕过）
+
+- 番外代码依赖**现有账号整合 PR #290** 的 `shared/js/mao-account-scope.js`、`account/index.html`、`account/bootstrap.html`。当前 `main`/本 PR 单独分支仍缺少这些资源，Worker 已引用但资源路径不存在。不要临时复制/重写第二套账号登录，不要在缺资源时上线。
+- 在有 `mao-account-id` 的受保护页面，番外必须确认 `window.__MAO_ACCOUNT_SCOPE__.ready === true` 且 `accountId` 与页面 meta 完全一致；缺少或不匹配时停止装载番外，避免回退读取同源的未隔离角色数据。
+- #290 的 PWA 已是 `phone-app-pwa-v238`，采用**受保护 HTML 服务器先验证**；本番外分支仍以较旧的 v206 缓存逻辑为基础。最终整合时必须以最新账号安全 SW 为底逐项合并静态资源优化，**不得直接用本 PR 的旧版 sw.js 覆盖它**。
+- 发布前必须跑 `npm run test:release:account-assets`。在尚未整合 #290 的本分支，这项测试**按设计应失败**，明确列出缺失资源与账号服务器门禁。它不是番外 36 项逻辑回归的失败；但任何正式上线都必须先消除此失败。
+- `persist()` 只有收到 IndexedDB 完成回执才更新「已保存存档」内存快照；首写失败的草稿不能冒充已保存，写到一半出错后从存档重开只展示上次真正落盘的消息。
+
 ## 已知限制
 
 - 本阶段的独立番外属于**本机存储**，不等于跨设备云端同步，也未合并到正式版。后续接云存储须另做服务器端身份校验与迁移验收。
