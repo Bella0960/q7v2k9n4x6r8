@@ -26,8 +26,17 @@ test('default home has the clock, duo avatars, photo wall and app quadrants in t
     'app_wallet', 'app_music', 'app_beauty', 'app_theme_store'
   ]);
   assert.equal(pages.length, 3);
+  assert.equal(pages[1][0], 'app_characters');
+  assert.equal(pages[1][1], 'app_encounter', '邂逅必须出现在默认桌面的角色档案旁');
   assert.match(index, /v:\s*14,/);
   assert.match(index, /var LS_KEY = 'ds_layout_v14'/);
+});
+
+test('邂逅迁移尊重已有桌面布局与用户手动移除记录', () => {
+  assert.match(index,/function addEncounterShortcutToExistingLayouts\(\)/);
+  assert.match(index,/var id = 'app_encounter'/);
+  assert.match(index,/currentLayout\.removed \|\| \[\]/);
+  assert.match(index,/page\.splice\(anchor >= 0 \? anchor \+ 1 : page\.length, 0, id\)/);
 });
 
 test('obsolete layout keys are cleared and the widget manager uses the current layout key', () => {
@@ -53,7 +62,9 @@ test('the mobile home grid keeps four columns and supports vertical page scrolli
   assert.match(desktopCss, /#gridPage0 > \[data-drag\]:nth-child\(6\)[^{]*\{ grid-column: 3 \/ 5 !important; grid-row: 3 \/ 5 !important;/);
   assert.match(mobileCss, /#gridPage0 > \[data-drag\]:nth-child\(7\)[^{]*\{ grid-column: 1 \/ 3 !important; grid-row: 5 \/ 7 !important;/);
   assert.match(mobileCss, /\.maomao-home \.home-page[\s\S]*?overflow-y:\s*auto\s*!important/);
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v203'/);
+  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v\d+'/);
+  assert.match(serviceWorker, /req\.mode === 'navigate' && !isPublicAccountPage/,
+    '正式角色页面不得使用离线缓存绕过登录校验');
 });
 
 
