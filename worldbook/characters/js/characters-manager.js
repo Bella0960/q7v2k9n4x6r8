@@ -1857,9 +1857,25 @@ document.getElementById('btnExpandEncounterPersona').addEventListener('click', a
     const sourceText = personaEl.value;
     const roleName = document.getElementById('editRoleName').value.trim();
     button.disabled = true;
-    button.textContent = 'AI 正在完善人设…';
-    setSaveStatus('正在调用你配置的 API（只请求一次），当前人设已保留。', 'info');
+    button.textContent = '正在确认账号…';
+    setSaveStatus('正在核验账号，还没有调用收费 AI。', 'info');
     try {
+        const access = window.MAOMAOEncounter &&
+            typeof window.MAOMAOEncounter.verifyLiveAccountContext === 'function'
+            ? await window.MAOMAOEncounter.verifyLiveAccountContext() : null;
+        if (!access || !access.ok) {
+            setSaveStatus(access && access.error ? access.error : '无法核验账号，未调用 API。', 'error');
+            return;
+        }
+        // 核验登录会话期间，用户可能已切换角色或关闭编辑页。
+        if (draftId !== activeEncounterDraftId ||
+            targetRoleId !== document.getElementById('editRoleId').value.trim() ||
+            document.getElementById('editorView').classList.contains('hidden')) {
+            setSaveStatus('当前角色已变化，未调用 API。', 'error');
+            return;
+        }
+        button.textContent = 'AI 正在完善人设…';
+        setSaveStatus('正在调用你配置的 API（只请求一次），当前人设已保留。', 'info');
         const result = await window.PhoneAPI.complete({
             system: '你是一位擅长原创人物设定的中文编辑。请在不改变提供的姓名、种族、时代、职业、核心性格、重要物件和命运线索的前提下，把短卡扩展为完整、具体、逻辑自洽的人设。组织成自然段落与清晰小节，约 1000 至 1600 中文字。包括成长经历、职业日常、外在与内在性格反差、说话习惯、重要关系、兴趣、目标、弱点与只供创作者查看的隐藏秘密。给人物真实平凡的生活细节，避免空泛标签、公式化人物、重复修饰，不要捏造已有用户聊天经历。不得输出格式之外的说明。',
             user: '以下为本项目用户主动收藏的人物短卡，请依据其内容扩写，不要换人设。\n角色姓名：' + roleName + '\n' + sourceText,
