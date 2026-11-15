@@ -97,6 +97,8 @@ test('角色库已有原生编辑器、邂逅候选交接、仅接受 MAOMAO JSO
   assert.match(charactersPage,/encounter-engine\.js/);
   assert.match(managerSource,/openEncounterCandidateFromQuery/);
   assert.match(managerSource,/MAOMAOEncounter\.formatBrief/);
+  assert.match(managerSource,/encounterOrigin/);
+  assert.match(managerSource,/sourceCandidateId/);
   assert.match(managerSource,/data\.format !== 'maomao-character'/);
   assert.doesNotMatch(managerSource,/data\.char_name\s*\|\|/);
   assert.match(managerSource,/btnExportRole/);
