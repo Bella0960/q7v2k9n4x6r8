@@ -23,6 +23,8 @@
       '<p class="group-game-description">主持人私下分配身份牌。成员在群里猜谁是坏人；身份不会写进群聊消息。</p>'+
       '<div id="groupGameCurrent"></div>'+
       '<form id="groupGameStartForm" class="group-game-form">'+
+      '<label for="groupGameHost">本局主持人</label>'+
+      '<select id="groupGameHost"></select>'+
       '<label for="groupGameBadRole">秘密指定坏人</label>'+
       '<select id="groupGameBadRole" required></select>'+
       '<label class="group-game-check"><span>允许游戏私聊</span><input type="checkbox" id="groupGamePrivate"></label>'+
@@ -72,6 +74,7 @@
     pane.appendChild(panel);
     var group=currentGroup(),isOwner=group&&String(group.ownerId||'__user')==='__user';
     var form=panel.querySelector('#groupGameStartForm'), select=panel.querySelector('#groupGameBadRole'),
+      hostSelect=panel.querySelector('#groupGameHost'),
       allowed=panel.querySelector('#groupGamePrivate'), activity=panel.querySelector('#groupGameActivity'),
       activityRow=panel.querySelector('#groupGameActivityRow'),
       current=panel.querySelector('#groupGameCurrent'), finish=panel.querySelector('#groupGameFinish'),
@@ -115,6 +118,22 @@
       });
     }
     whisperTo.addEventListener('change',renderPrivateConversation);
+    function updateCulpritOptions(){
+      var prior=select.value;
+      select.textContent='';
+      var g=currentGroup();
+      var moderator=hostSelect.value;
+      (g&&g.members||[]).forEach(function(m){
+        if(!m||!m.id||String(m.id)===moderator)return;
+        var option=document.createElement('option');
+        option.value=String(m.id);
+        option.textContent=String(m.nickname||m.name||'成员');
+        select.appendChild(option);
+      });
+      if(prior && Array.from(select.options).some(function(o){return o.value===prior}))
+        select.value=prior;
+    }
+    hostSelect.addEventListener('change',updateCulpritOptions);
     function stateLine(text){
       current.textContent='';
       var p=document.createElement('p');p.className='group-game-state';p.textContent=text;current.appendChild(p);
@@ -144,12 +163,21 @@
       group=currentGroup();isOwner=group&&String(group.ownerId||'__user')==='__user';
       if(!group){stateLine('群资料已变化，请返回群聊重新打开。');form.hidden=true;finish.hidden=true;cancelButton.hidden=true;whisperPanel.hidden=true;return;}
       var game=api.getPublic(String(group.id));
-      select.textContent='';
+      var lastHost=hostSelect.value || '__user';
+      hostSelect.textContent='';
+      var own=document.createElement('option');
+      own.value='__user';own.textContent='我来主持';
+      hostSelect.appendChild(own);
       (group.members||[]).forEach(function(m){
         if(!m||!m.id)return;
-        var o=document.createElement('option');o.value=String(m.id);
-        o.textContent=String(m.nickname||m.name||'群成员');select.appendChild(o);
+        var option=document.createElement('option');
+        option.value=String(m.id);
+        option.textContent=String(m.nickname||m.name||'群成员');
+        hostSelect.appendChild(option);
       });
+      if(Array.from(hostSelect.options).some(function(o){return o.value===lastHost}))
+        hostSelect.value=lastHost;
+      updateCulpritOptions();
       if(!isOwner){
         form.hidden=true;finish.hidden=true;cancelButton.hidden=true;whisperPanel.hidden=true;
         stateLine(game&&game.status==='active'
@@ -183,7 +211,8 @@
           renderPrivateConversation();
         }
         stateLine((game.voteError ? '投票记录异常，请检查本机存储。' :
-          '本局进行中 · 已投 '+game.voteCount+'/'+game.players.length+' 票')+
+          '本局进行中 · 主持：'+nameFor(game.hostId)+
+          ' · 已投 '+game.voteCount+'/'+game.players.length+' 票')+
           ' · 游戏私聊'+(game.rules.allowPrivate?'开启':'关闭')+
           ' · 猜测对象揭晓前保密。');
         if(game.rules.showPrivateActivity&&Array.isArray(game.activity)&&game.activity.length){
@@ -226,8 +255,13 @@
         }
       }
       var res=api.start({group:group,actorId:'__user',gameId:'mystery',
-        badRoleId:select.value,allowPrivate:allowed.checked,showPrivateActivity:activity.checked});
-      notice.textContent=res.ok?'秘密身份牌已分别保存。返回群聊即可开始推理。':(res.message||'开始失败');
+        hostId:hostSelect.value, badRoleId:select.value,
+        allowPrivate:allowed.checked,showPrivateActivity:activity.checked});
+      notice.textContent=res.ok
+        ? (res.session.hostId==='__user'
+          ? '秘密身份牌已分别保存。返回群聊即可开始推理。'
+          : '已指定'+nameFor(res.session.hostId)+'主持本局，主持人不参与抽身份和投票。')
+        : (res.message||'开始失败');
       if(res.ok)render();
     });
     whisperForm.addEventListener('submit',function(e){
