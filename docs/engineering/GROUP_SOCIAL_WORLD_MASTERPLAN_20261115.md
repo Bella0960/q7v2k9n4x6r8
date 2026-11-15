@@ -127,3 +127,20 @@ PR #298 已有群管理扩展和邀请的开发代码，但没有完成整仓测
 **测试事实**：对最新 PR 分支实际源码在连接器隔离 V8 执行了 **51/51 条语法、角色/群隔离、投票、揭晓、保存失败、取消、临时数据清理、共同记忆及 PWA 引用检查**；新增真实 Node 合约用例写入 `tests/group-game-boundary.test.mjs`，但 `node --test`、`npm run build`、浏览器/手机 QA **均 NOT RUN**。不将这 51 项受控检查当成完整验收。PWA 缓存版本为 v222，游戏脚本 v20261116game8，面板脚本 v20261116gpanel4，群事件记忆 v20261116gme3。
 
 **下一步待做**：在现有可执行隔离环境对精确 commit 运行 `npm run test:group:governance`、`npm run test:group:ui`、`npm run test:chat:contract`、`npm run build` 及手机尺寸浏览器验证；之后继续完善群聊内游戏结果卡、角色更多轮次互动、可选角色主持人和新增游戏模板。新玩法注册器目前有元数据接口，并不代表所有游戏已可直接启动。
+
+
+
+
+## 10. 群聊内真实游戏结果卡（2026-11-16 本轮）
+
+**实现：原 PR #298 的 Draft 分支，不另开聊天/记忆系统。**
+
+- **消息投影**：新增 \`shared/js/phone/group-game-chat-receipts.js\`（公开接口 \`GroupGameChatReceipts.check/publish\`）。只有已真实落库且同局号的 \`finished\` / \`cancelled\` 公开状态，才可以投影为现有 \`chat_history_<groupId>\` 的单条 \`group_game_result\` 系统消息。消息编号恒为 \`m_game_result_<sessionId>\`，重复发布幂等；不存角色身份牌、私聊、投票者身份。
+- **真实存储**：在 \`chat/chat/group-play.html\` 引入既有 \`phone_storage.js\` 读取兼容旧记录；新模块先检测主聊天记录和 \`phone_data_v2\` 旧副本可读性，再调用唯一 \`PhoneStorage.saveChatHistory\` 写入并读回验证。任一原始历史损坏/写入失败，停止操作，不覆盖或冒称成功。
+- **结果字段**：\`groupGame:{version,groupId,sessionId,gameId,status,revealedRoleId,revealedName,voteCount,correctVotes,voteTally,playersCount}\`，取消局的身份/票据字段为空，已揭晓局仅存按目标的**汇总票数**。签名比对使用不可变局号和数字结果而非角色当前群昵称；群昵称修改不会制造旧局冲突。
+- **聊天页渲染**：\`chat/chat/chat-detail.html\` 在现有消息时间线将 \`group_game_result\` 渲染为克制的黑白灰结果卡。票数列表收进「查看各角色得票」折叠区。它是 \`role:system\` 的公开事实消息，不冒充某一角色 AI 的回复；既有长聊天虚拟列表和消息存储仍通用。
+- **设置页**：群主点击揭晓或取消后，分别触发真实存储；若群聊结果卡未成功保存，明确提示并显示「补发群聊结果」。重新开局前优先补齐旧局收据，避免上一局事件丢失。未结束的局不会发出结果。
+- **首次打开修复**：原 \`group-game-panel.js\` 的延迟初始化早于创建「游戏与活动」面板的 \`group-settings-layout.js\`，可能导致首次页面加载不显示游戏面板。已修正两者执行顺序并加入回归断言。
+- **可靠性边界**：单设备 localStorage 的「读取→写入→校验」不能提供跨多个同时开启的浏览器标签页的数据库级事务；真正多人云端群仍需服务端权鉴和原子写入。此版不改变已有群 ID、角色 ID、原红包/钱包和单聊结构。
+
+**实际测试**：新增 \`tests/group-game-chat-receipts.test.mjs\`（9 条）并接入已有 \`test:group:governance\`。本轮以准确分支源码在连接器隔离 V8 环境**执行同一批 Node 风格测试的测试主体**：结果卡 9/9、原秘密游戏边界 25/25、群设置/记忆合约 5/5，总计 **39/39**。该运行环境使用模拟的 Node \`vm\`/assert 桥，**不属于 Node 原生 test runner，也不代表浏览器/构建验收**。待有真正项目检出环境执行 \`npm run test:group:governance\`、\`npm run test:group:ui\`、\`npm run test:chat:contract\`、\`npm run build\`、真浏览器和 Android/iPhone 检查。PWA 资源版本 \`phone-app-pwa-v223\`，新增 \`group-game-chat-receipts.js?v=20261116receipt1\`。
