@@ -558,8 +558,9 @@
       });
       var saved = store.saveCharacters(roles);
       if (!saved || saved.ok !== true) throw new Error('NPC 已通过申请，但保存到通讯录失败；请重试接受，不会重复创建。');
-    } else if (String(existing.npcFriendRequestId || '') !== String(request.id)) {
-      throw new Error('角色 ID 冲突，未覆盖现有联系人。');
+    } else if (String(existing.npcFriendRequestId || '') !== String(request.id) ||
+               String(existing.npcOriginMainRoleId || '') !== roleId) {
+      throw new Error('角色 ID 或所属主角色冲突，未覆盖现有联系人。');
     }
 
     // Do not mark a request accepted until its first greeting is durable.
@@ -618,9 +619,12 @@
     if (!roles.ok) return;
     var changed = false;
     requests.forEach(function (request) {
-      if (!request || request.status !== 'pending' || !request.npc) return;
+      if (!request || request.status !== 'pending' || !request.npc ||
+          String(request.mainRoleId || '') !== roleId) return;
       var existing = roles.value.find(function (role) {
-        return String(role.id) === String(request.npc.id) && String(role.npcFriendRequestId || '') === String(request.id);
+        return String(role.id) === String(request.npc.id) &&
+          String(role.npcFriendRequestId || '') === String(request.id) &&
+          String(role.npcOriginMainRoleId || '') === roleId;
       });
       if (existing && hasWelcomeMessage(existing.id, request)) {
         request.status = 'accepted';
