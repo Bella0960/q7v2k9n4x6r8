@@ -357,7 +357,7 @@
     root: null, active: null, selected: null, busy: false, creating: false, deleting: false,
     stopped: false, serial: 0, opened: false, branchSource: null, forkPoint: 0,
     settings: { memory: 'none', count: null },
-    settingsLoaded: false, settingsPromise: null, archiveLimit: 12, viewSerial: 0,
+    settingsLoaded: false, settingsPromise: null, settingsVerified: !canPersist, archiveLimit: 12, viewSerial: 0,
     currentAbort: null, pendingPause: null, unsavedEpisode: null
   };
   var memory = new Map();
@@ -405,25 +405,49 @@
   function loadSettings() {
     if (state.settingsLoaded) return Promise.resolve(state.settings);
     if (state.settingsPromise) return state.settingsPromise;
+    // 读失败与“没有保存过偏好”是两件事；不可把默认值冒充已读到的设置，
+    // 否则下一次点选会静默覆盖用户原有的记忆/篇幅偏好。
     state.settingsPromise = (async function () {
       var database = await db();
+      if (canPersist && !database) {
+        showNotice('故事设置暂时无法读取，原有偏好不会被覆盖');
+        return state.settings;
+      }
       if (database) {
-        var saved = await new Promise(function (resolve) {
+        var lookup = await new Promise(function (resolve) {
           try {
             var request = database.transaction('episodes', 'readonly').objectStore('episodes').get(SETTINGS_ID);
-            request.onsuccess = function () { resolve(request.result || null); };
-            request.onerror = function () { resolve(null); };
-          } catch (error) { resolve(null); }
+            request.onsuccess = function () { resolve({ ok: true, record: request.result || null }); };
+            request.onerror = function () { resolve({ ok: false }); };
+          } catch (error) { resolve({ ok: false }); }
         });
-        if (saved && saved.kind === 'fanwai-settings') state.settings = normalizeSettings(saved.settings);
+        if (!lookup.ok) {
+          showNotice('故事设置读取失败，请稍后重新进入；原有偏好不会被覆盖');
+          return state.settings;
+        }
+        if (lookup.record && lookup.record.kind === 'fanwai-settings') {
+          state.settings = normalizeSettings(lookup.record.settings);
+        }
       }
+      state.settingsVerified = true;
       state.settingsLoaded = true;
       return state.settings;
-    })();
+    })().then(function (value) {
+      state.settingsPromise = null; // 读取失败允许下一次进入时重新查询。
+      return value;
+    }, function () {
+      state.settingsPromise = null;
+      showNotice('故事设置读取失败，请稍后重新进入');
+      return state.settings;
+    });
     return state.settingsPromise;
   }
   // 快速切换记忆/篇幅时，按触发顺序提交，旧值不能晚到后覆盖新值。
   function saveSettings() {
+    if (canPersist && !state.settingsVerified) {
+      showNotice('尚未安全读取原有故事设置，暂不能覆盖保存');
+      return Promise.resolve(false);
+    }
     var snapshot = normalizeSettings(state.settings);
     var settingVersion = ++settingsWriteVersion;
     var write = async function () {
@@ -1252,6 +1276,10 @@
       return;
     }
     if (key === 'set-memory') {
+      if (canPersist && !state.settingsVerified) {
+        showNotice('原有故事设置尚未读到，请重新进入后再修改');
+        return;
+      }
       var mode = node.dataset.memoryMode === 'role' ? 'role' : 'none';
       state.settings.memory = mode;
       Array.from(state.root.querySelectorAll('[data-action="set-memory"]')).forEach(function (option) {
@@ -1393,6 +1421,10 @@
       if (!target || (target.id !== 'fw-count' && target.id !== 'fw-preview-count')) return;
       var count = Number(target.value);
       if (![40, 80, 100].includes(count)) return;
+      if (canPersist && !state.settingsVerified) {
+        showNotice('原有故事设置尚未读到，请重新进入后再修改');
+        return;
+      }
       state.settings.count = count;
       saveSettings();
     });
