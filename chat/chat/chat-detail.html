@@ -5713,10 +5713,15 @@
             userMemoryText = capText(userMemoryText, CTX_CAP.userMemory);
 
             // 长期记忆：权重分层（清晰记得/隐约记得），兼容原文本记忆
-            const roleMemory = capText(buildWeightedMemoryText(
-                typeof aliasRoleId !== 'undefined' ? aliasRoleId : roleId,
-                (currentCharacter.memory || '').trim()
-            ) || '暂无记忆', CTX_CAP.memory);
+            // Group memories have a separate verified public allowlist below.
+            // Never inject raw chat_memories_<groupId> or a legacy group.memory blob
+            // through the unrestricted single-character memory path.
+            const roleMemory = isGroupChat
+                ? '本群仅通过经过公开范围过滤的共同记忆接口读取历史。'
+                : capText(buildWeightedMemoryText(
+                    typeof aliasRoleId !== 'undefined' ? aliasRoleId : roleId,
+                    (currentCharacter.memory || '').trim()
+                ) || '暂无记忆', CTX_CAP.memory);
 
             // 实时状态（记忆空间子系统：当前心情 + 今日事件）
             const memoryContext = (typeof memorySystem !== 'undefined')
@@ -5922,7 +5927,7 @@
                 if (groupSettings.allowRoleActions) {
                     systemPrompt += '\n\n[群管理行动]\n只有带有管理员或群主身份的成员才可以根据剧情执行群管理操作。若用户明确要求且你具有管理权限，可在正常台词末尾添加隐藏标记：[群动作:禁言:成员姓名或ID] 或 [群动作:解禁:成员姓名或ID]；也支持 [群动作:改名:新群名]、[群动作:邀请:角色名]、[群动作:移除:角色名]、[群动作:头衔:成员ID|新头衔]（仅普通成员，头衔不超过20字）。不能禁言群主、不能越权管理其他管理员；未获允许不要擅自操作。系统会验证身份并保存，不要向用户解释隐藏标记。';
                 }
-                if (groupSettings.allowPrivateMessages !== false && (!groupGameActiveForPrompt || (window.GroupGameSessions && window.GroupGameSessions.canWhisper({groupId:String(currentGroup.id),fromId:String(groupReplyPick.id),toId:'__user'}).allowed))) {
+                if (groupSettings.allowPrivateMessages !== false && !groupGameActiveForPrompt) {
                     systemPrompt += '\n\n[群成员私聊能力]\n你可以偶尔向用户发起私聊，但不要每轮都触发，仅在出现适合单独说的话、想补充秘密或想私下安慰用户时使用。仅允许给自己发私聊：在本轮正常群聊回复末尾另起一行写 [群私聊:你的准确角色ID:私聊内容]。角色ID必须从群成员名单中选择，并且应当是本轮发言者自己的ID；私聊内容控制在1-3句，不要解释标记。标记会保存到你的单聊历史，并在群聊里弹出私聊小窗。每轮最多一条。';
                 }
                 const activePolls = historyList.filter(function (item) { return item && item.type === 'group_poll' && item.poll && !item.poll.closed; }).slice(-3);
@@ -8188,6 +8193,13 @@
             if (!isGroupChat || !currentGroup || !Array.isArray(historyList)) return text;
             var changedHistory = false;
             var groupHistoryRollback = [];
+            // An incomplete/aborted AI turn may be displayed for recovery, but
+            // can never cast votes, modify relationships, create DMs or govern
+            // the group. Strip action markers rather than exposing them publicly.
+            if (!isCompleted || isRegeneration || contextOnly) {
+                return text.replace(/\[(?:群关系变化|群关系互动|群投票|群接龙|群私聊|游戏私聊|群动作|群聊结束)[:：]?[^\]\r\n]{0,600}\]?/g, '')
+                    .trim();
+            }
             var relationshipEventSeen = false;
             // 用户对已任命的管理员下明确指令时，直接执行，不依赖模型是否生成机器标记。
             // 同一条消息的 mid 只允许处理一次，防止重新生成与多气泡重复执行。
@@ -8334,7 +8346,9 @@
                         fromId:String(speaker && speaker.id || ''),
                         toId:'__user'
                     });
-                    if (privateRule.active && !privateRule.allowed) return '';
+                    // Game-only private traffic belongs to the session inbox.
+                    // Never mirror an in-game secret into the permanent 1:1 history.
+                    if (privateRule.active) return '';
                 }
                 var members = Array.isArray(currentGroup.members) ? currentGroup.members : [];
                 var target = members.find(function (member) {
