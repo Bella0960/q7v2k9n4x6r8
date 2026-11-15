@@ -1482,7 +1482,7 @@ function handleSaveRole() {
                 relationVibe: card.relationVibe || '',
                 trait: card.trait || '', contrast: card.contrast || '',
                 object: card.object || '', fate: card.selectedChoice || card.fate || '',
-                encounterType: card.type || ''
+                encounterType: card.type || '', rarity: card.rarity || '普通'
             };
         }
         roles.unshift({
