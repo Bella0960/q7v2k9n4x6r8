@@ -7,6 +7,7 @@ import {
   assertTrustedIdentityIssuerRequest, probeExistingIdentityAuthority,
   usesExistingAccountAuthority, activeAuthoritySecret
 } from './identity-bridge.js';
+import { usesIsolatedQaIdentity, assertIsolatedQaOrigin, makeQaLocalId, isQaLocalAccount } from './qa-local-identity.js';
 
 const SESSION_COOKIE = 'MAO_SESSION';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -154,6 +155,7 @@ function publicAccount(account) {
 
 export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
   const delegated = usesDelegatedIdentity(env);
+  const qaLocal = usesIsolatedQaIdentity(env);
 
   async function createSession(account, request, centralToken = null) {
     // The existing account authority supplies the token only through a
@@ -178,11 +180,14 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
   }
 
   async function getAuthenticatedAccount(request) {
+    if (qaLocal) assertIsolatedQaOrigin(request, env);
     const token = cookieValue(request);
     if (!token) return null;
     const session = store.getMaoAccountSession(await sha256Hex(token));
     const timestamp = now();
     if (!session) return null;
+    // Old delegated QA sessions remain stored, but cannot authorize isolated QA.
+    if (qaLocal && !isQaLocalAccount(session)) return null;
     // Keep the user-facing disabled notice even after all sessions are revoked.
     if (session.status === 'disabled' || session.status === 'revoked') {
       throw new ApiError(403, 'ACCOUNT_DISABLED', '您的账号已被禁用');
@@ -224,6 +229,10 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
   }
 
   async function bootstrap(request) {
+    if (qaLocal) {
+      assertIsolatedQaOrigin(request, env);
+      throw new ApiError(403, 'QA_FOUNDER_BOOTSTRAP_DISABLED', '隔离测试版不允许初始化正式管理员或第二个 001');
+    }
     if (delegated) {
       throw new ApiError(403, 'DELEGATED_FOUNDER_BOOTSTRAP_DISABLED', '你已有唯一管理员身份，测试版禁止创建第二个 001');
     }
@@ -292,6 +301,7 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
   }
 
   async function register(request) {
+    if (qaLocal) assertIsolatedQaOrigin(request, env);
     if (delegated) {
       throw new ApiError(403, 'DELEGATED_REGISTRATION_DISABLED', '测试版与统一账号共用身份，请使用原账号登录，不需要重新注册');
     }
@@ -317,12 +327,14 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     const salt = randomToken(16);
     const passwordHash = await passwordDigest(password, salt);
     const account = {
-      id: 'MAO-' + randomToken(12).replace(/[-_]/g, 'X').toUpperCase(),
+      id: qaLocal ? makeQaLocalId(randomToken) :
+        'MAO-' + randomToken(12).replace(/[-_]/g, 'X').toUpperCase(),
       username: identity.username,
       usernameKey: identity.usernameKey,
       passwordSalt: salt,
       passwordHash,
       qqEmail: normalizedEmail(body.qqEmail),
+      qaAutoActivate: qaLocal,
       registrationIpHash,
       now: timestamp
     };
@@ -336,11 +348,14 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       const verified = store.getMaoAccountById(account.id);
       if (!verified || verified.id !== account.id ||
           verified.username_key !== account.usernameKey ||
-          verified.role !== 'user' || verified.status !== 'pending_invite') {
+          verified.role !== 'user' ||
+          verified.status !== (qaLocal ? 'active' : 'pending_invite') ||
+          (qaLocal && !isQaLocalAccount(verified))) {
         throw new ApiError(503, 'ACCOUNT_SAVE_UNVERIFIED',
           '账号持久保存尚未确认，请先检查已有账号，不要重复注册');
       }
-      return json({ ok: true, account: publicAccount(verified), nextStep: 'invite_required' }, 201);
+      return json({ ok: true, account: publicAccount(verified),
+        nextStep: qaLocal ? 'login' : 'invite_required' }, 201);
     } catch (error) {
       if (/unique|constraint/i.test(String(error?.message || error))) {
         throw new ApiError(409, 'ACCOUNT_ALREADY_EXISTS', '用户名或邮箱已被使用');
@@ -420,9 +435,13 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
   }
 
   async function login(request) {
+    if (qaLocal) assertIsolatedQaOrigin(request, env);
     const body = await readJsonBody(request);
     if (!delegated) {
       const account = await validateLocalCredentials(request, body);
+      if (qaLocal && !isQaLocalAccount(account)) {
+        throw new ApiError(401, 'QA_ACCOUNT_ONLY', '请使用隔离测试版创建的独立测试账号登录');
+      }
       return await createSession(account, request);
     }
 
@@ -1025,6 +1044,7 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       // founder form without accepting or logging any credentials.
       if ((path === '/api/admin/bootstrap/status' && method === 'GET') ||
           (path === '/api/admin/bootstrap/preflight' && method === 'POST')) {
+        if (qaLocal) assertIsolatedQaOrigin(request, env);
         // The Preview does not own the founder. Inspect only the authority's
         // public, read-only setup status; never mutate the real account store.
         const authority = delegated
@@ -1033,14 +1053,14 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
         const initialized = delegated ? authority.initialized : store.hasMaoSuperAdminAccount();
         return ok({
           initialized,
-          configured: !delegated &&
+          configured: !delegated && !qaLocal &&
             String(env.MAO_SUPER_ADMIN_BOOTSTRAP_SECRET || '').length >= 32 &&
             String(env.DEVICE_SECRET_PEPPER || '').length >= 32,
-          identityMode: delegated ? 'delegated' : 'local',
-          bootstrapAllowed: !delegated,
+          identityMode: qaLocal ? 'isolated_qa' : (delegated ? 'delegated' : 'local'),
+          bootstrapAllowed: !delegated && !qaLocal,
           identityAuthorityConnected: delegated ? authority.connected : undefined,
           identityAuthorityInitialized: delegated ? authority.initialized : undefined,
-          signInReady: !delegated || (
+          signInReady: qaLocal ? String(env.DEVICE_SECRET_PEPPER || '').length >= 32 : !delegated || (
             authority.connected && authority.initialized && authority.configured &&
             typeof env.MAO_IDENTITY_AUTHORITY?.fetch === 'function' &&
             activeAuthoritySecret(env).length >= 32 &&
