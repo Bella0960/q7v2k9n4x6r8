@@ -34,8 +34,9 @@
       var messages;
       try {messages=req.readRoleHistory(rid);}catch(e){unreadable++;return;}
       if(!Array.isArray(messages)){unreadable++;return;}
-      // A bounded scan avoids a large synchronous UI stall with old chat history.
-      messages.slice(-600).forEach(function(message) {
+      // Scan all role history: an older undelivered receipt must never become
+      // permanently unrecoverable after 600 newer messages arrive.
+      messages.forEach(function(message) {
         if(!message||message.role!=='assistant'||
            message.privateFromGroup!==true||message.privateGroupReceiptV1!==true||
            str(message.fromGroupId)!==gid||!validId(message.mid)||
