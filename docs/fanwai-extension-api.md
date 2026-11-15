@@ -96,6 +96,7 @@ npm run build
 ## PWA 账号隔离与预览部署门槛（2026-11-15）
 
 - **账号级 HTML 不允许离线复用旧身份**：正式 Worker 在已登录页面返回 `Cache-Control: private, no-store`，PWA v206 不再把这种 HTML 放进 app-shell，也不从旧缓存提供此类页面；新版本激活时清理旧 `phone-app-` 缓存。防止切换账号后读到旧账号注入的 `mao-account-id`。
+- **跳转后的登录页不得以旧路由缓存**：用户未登录时请求受保护的 `chat-detail.html` 可能被重定向到登录页。即使最终返回 HTTP 200，只要 `Response.redirected` 为真，安装预缓存、导航后台更新及静态资源更新都不能将它保存为原来的聊天页 URL。对应测试见 `tests/sw-private-account-navigation.test.mjs`。
 - **账号接口禁止缓存**：`/api/`、`/account/`、`/internal/` 路径直接请求服务器，其他静态资源也尊重 no-store/private 响应。公共 HTML、CSS、JS 仍保留缓存优先与后台更新；受账号保护的 HTML 离线不可用（安全性优先，这是需要在真机验收时明确验证的取舍）。
 - **新增测试**：`tests/sw-private-account-navigation.test.mjs` 覆盖私有页面跨账号不得重用、私有页面不入缓存、API GET 不读旧缓存、普通静态缓存仍可用；现有 `tests/sw-navigation-cache-lifecycle.test.mjs` 验证后台更新、缓存写入生命周期与离线公共页面回退。
 - **实际构建阻碍已确认**：Cloudflare Builds 的账户额度接口返回 `has_reached_build_minutes_limit: true`，对应 PR 提交的构建记录状态为 `stopped / skipped`。其刷新时间是 `2026-11-30T23:59:59.999Z`。这不是 Vite 编译成功或失败的证据；禁止把旧预览 URL 当作最新提交的验收版本。
