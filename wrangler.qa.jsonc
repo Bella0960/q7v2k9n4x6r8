@@ -31,6 +31,9 @@
       ]
     }
   ],
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
   "services": [
     {
       "binding": "MAO_IDENTITY_AUTHORITY",
