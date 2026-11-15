@@ -177,7 +177,12 @@
   var accountId = accountMeta ? accountMeta.getAttribute('content') : '';
   var canPersist = /^MAO-[A-Z0-9]{12,24}$/.test(accountId);
   var scope = canPersist ? accountId : 'temporary:' + Math.random().toString(36).slice(2);
-  var state = { root: null, active: null, selected: null, busy: false, creating: false, stopped: false, serial: 0, opened: false };
+  var state = {
+    root: null, active: null, selected: null, busy: false, creating: false,
+    stopped: false, serial: 0, opened: false,
+    settings: { memory: 'none', count: null },
+    settingsLoaded: false, settingsPromise: null
+  };
   var memory = new Map();
   var dbConnection = null;
   var persistenceFailed = false;
@@ -206,6 +211,52 @@
       request.onblocked = function () { persistenceFailed = true; resolve(null); };
     });
     return dbConnection;
+  }
+
+  // 小偏好按当前账号和角色独立保存；无有效账号上下文时仅在本次页面会话有效。
+  // 与番外同库不同记录类型，绝不写入主线设置/聊天/记忆 key。
+  var SETTINGS_ID = 'settings:' + scope + ':' + roleId;
+  function normalizeSettings(value) {
+    return {
+      memory: value && value.memory === 'role' ? 'role' : 'none',
+      count: value && [40, 80, 100].includes(Number(value.count)) ? Number(value.count) : null
+    };
+  }
+  function loadSettings() {
+    if (state.settingsLoaded) return Promise.resolve(state.settings);
+    if (state.settingsPromise) return state.settingsPromise;
+    state.settingsPromise = (async function () {
+      var database = await db();
+      if (database) {
+        var saved = await new Promise(function (resolve) {
+          try {
+            var request = database.transaction('episodes', 'readonly').objectStore('episodes').get(SETTINGS_ID);
+            request.onsuccess = function () { resolve(request.result || null); };
+            request.onerror = function () { resolve(null); };
+          } catch (error) { resolve(null); }
+        });
+        if (saved && saved.kind === 'fanwai-settings') state.settings = normalizeSettings(saved.settings);
+      }
+      state.settingsLoaded = true;
+      return state.settings;
+    })();
+    return state.settingsPromise;
+  }
+  async function saveSettings() {
+    var database = await db();
+    if (!database) return;
+    return new Promise(function (resolve) {
+      try {
+        var transaction = database.transaction('episodes', 'readwrite');
+        transaction.objectStore('episodes').put({
+          id: SETTINGS_ID, kind: 'fanwai-settings',
+          settings: normalizeSettings(state.settings), updatedAt: Date.now()
+        });
+        transaction.oncomplete = resolve;
+        transaction.onabort = resolve;
+        transaction.onerror = resolve;
+      } catch (error) { resolve(); }
+    });
   }
 
   async function persist(episode) {
@@ -309,55 +360,92 @@
     var bar = document.createElement('div');
     bar.className = 'fw-head';
     bar.append(
-      label('span', 'fw-brandline', 'ELSEWHERE / STORIES'),
+      label('span', 'fw-brandline', '番外  /  STORIES'),
       button(secondaryAction || 'close', secondaryLabel || '关闭', 'fw-close')
     );
     sheet.appendChild(bar);
     if (title) sheet.appendChild(label('div', 'fw-topline', title));
   }
 
-  function countPicker(id, defaultValue) {
+  function countPicker(id, suggestedCount) {
     var row = label('label', 'fw-length-label', '对话篇幅');
     var select = document.createElement('select');
     select.id = id;
+    var chosen = state.settings.count || suggestedCount;
     [40, 80, 100].forEach(function (n) {
-      var opt = document.createElement('option');
-      opt.value = String(n);
-      opt.textContent = (n === 40 ? '短篇 · ' : n === 80 ? '中篇 · ' : '长篇 · ') + n + '条';
-      if (n === defaultValue) opt.selected = true;
-      select.appendChild(opt);
+      var option = document.createElement('option');
+      option.value = String(n);
+      option.textContent = (n === 40 ? '短篇 · ' : n === 80 ? '中篇 · ' : '长篇 · ') + n + '条';
+      if (n === chosen) option.selected = true;
+      select.appendChild(option);
     });
+    select.value = String(chosen);
     row.appendChild(select);
     return row;
   }
 
+  // 设置折叠，仅在明确打开时呈现；主页面只露出一行不起眼的入口。
+  function storySettings(countId, suggestedCount) {
+    var wrap = document.createElement('section');
+    wrap.className = 'fw-settings';
+    var toggle = button('toggle-settings', '故事设置', 'fw-settings-toggle');
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.setAttribute('aria-label', '展开故事设置');
+    var drawer = document.createElement('div');
+    drawer.className = 'fw-settings-drawer';
+    drawer.hidden = true;
 
-  // 默认不读取主线记忆；选择项只是一个引用许可，所有读取发生于生成时、不会回写。
-  function contextPicker() {
-    var box = document.createElement('section');
-    box.className = 'fw-context-box';
-    box.appendChild(label('p', 'fw-context-kicker', '角色设定会自动带入 · 回忆引用可选'));
-    listContextProviders().forEach(function (provider) {
-      var row = document.createElement('label');
-      row.className = 'fw-context-row';
-      var check = document.createElement('input');
-      check.type = 'checkbox';
-      check.className = 'fw-context-checkbox';
-      check.dataset.fanwaiContext = provider.id;
-      check.checked = false;
-      row.append(check, label('span', 'fw-context-title', '参考' + provider.label));
-      box.appendChild(row);
+    drawer.appendChild(label('p', 'fw-settings-label', '记忆方式'));
+    var modes = document.createElement('div');
+    modes.className = 'fw-memory-modes';
+    [
+      { id: 'none', text: '不带记忆' },
+      { id: 'role', text: '参考角色记忆' }
+    ].forEach(function (mode) {
+      var active = state.settings.memory === mode.id;
+      var option = button('set-memory', mode.text, 'fw-memory-mode' + (active ? ' fw-mode-active' : ''));
+      option.dataset.memoryMode = mode.id;
+      option.setAttribute('aria-pressed', active ? 'true' : 'false');
+      modes.appendChild(option);
     });
-    box.appendChild(label('p', 'fw-context-note', '默认关闭。开启也仅作为故事背景，不会修改角色记忆。'));
-    return box;
+    drawer.appendChild(modes);
+    drawer.appendChild(label('p', 'fw-settings-help',
+      '角色人设始终保留。记忆只供当前番外参考，不会回写主线。'));
+    drawer.appendChild(countPicker(countId, suggestedCount));
+
+    // 以后的世界书、章节摘要等只读来源，仍由 registerContextProvider 扩展。
+    var optional = listContextProviders().filter(function (provider) {
+      return provider.id !== 'character-memory';
+    });
+    if (optional.length) {
+      var sources = document.createElement('div');
+      sources.className = 'fw-settings-sources';
+      sources.appendChild(label('p', 'fw-settings-label', '其他背景（可选）'));
+      optional.forEach(function (provider) {
+        var row = document.createElement('label');
+        row.className = 'fw-context-row';
+        var check = document.createElement('input');
+        check.type = 'checkbox';
+        check.className = 'fw-context-checkbox';
+        check.dataset.fanwaiContext = provider.id;
+        check.checked = false;
+        row.append(check, label('span', 'fw-context-title', provider.label));
+        sources.appendChild(row);
+      });
+      drawer.appendChild(sources);
+    }
+    wrap.append(toggle, drawer);
+    return wrap;
   }
 
   function chosenContexts() {
-    var root = state.root;
-    if (!root || typeof root.querySelectorAll !== 'function') return [];
-    return Array.from(root.querySelectorAll('input[data-fanwai-context]:checked'))
+    var selected = state.settings.memory === 'role' && contextProviders.has('character-memory')
+      ? ['character-memory'] : [];
+    if (!state.root || typeof state.root.querySelectorAll !== 'function') return selected;
+    return selected.concat(Array.from(state.root.querySelectorAll('input[data-fanwai-context]:checked'))
       .map(function (el) { return el.dataset.fanwaiContext; })
-      .filter(function (id) { return contextProviders.has(id); }).slice(0, 5);
+      .filter(function (id) { return id !== 'character-memory' && contextProviders.has(id); }))
+      .slice(0, 5);
   }
 
   async function openPicker() {
@@ -366,6 +454,8 @@
     state.selected = null;
     state.root.hidden = false;
     var sheet = clearView();
+    await loadSettings();
+    if (!state.opened || state.selected) return;
     topBar(sheet);
 
     var hero = document.createElement('section');
@@ -428,8 +518,7 @@
     input.placeholder = '写一点画面、氛围，或你想听见的话……';
     customCard.append(
       input,
-      countPicker('fw-count', 80),
-      contextPicker(),
+      storySettings('fw-count', 80),
       button('custom', '写下这篇番外', 'fw-primary')
     );
     sheet.appendChild(customCard);
@@ -484,11 +573,8 @@
     sheet.append(
       label('div', 'fw-section-overline', 'THE LITTLE PLOT'),
       label('p', 'fw-preview-description', template.scenario),
-      label('p', 'fw-preview-note', '这只是独立番外，不会改动主线聊天、人物记忆或钱包。'),
-      countPicker('fw-preview-count', template.target),
-      contextPicker(),
-      button('start-template', '开始写这篇', 'fw-primary fw-start'),
-      label('div', 'fw-preview-smallprint', '开始后才会调用当前聊天 API。可以暂停，也可以回来续写。')
+      storySettings('fw-preview-count', template.target),
+      button('start-template', '开始写这篇', 'fw-primary fw-start')
     );
     sheet.scrollTop = 0;
   }
@@ -505,13 +591,11 @@
       (previousList.scrollHeight - previousList.scrollTop - previousList.clientHeight <= 50);
     var sheet = clearView();
     sheet.classList.add('fw-reading');
-    topBar(sheet, 'CHAPTER IN PROGRESS', 'close', '收起');
+    topBar(sheet, '', 'close', '收起');
 
     var heading = document.createElement('div'); heading.className = 'fw-reader-heading';
     heading.append(
-      label('span', 'fw-reader-kicker', 'PRIVATE STORY  /  ' + (episode.status === 'complete' ? 'FINISHED' : 'ONGOING')),
-      label('h2', 'fw-reader-title', episode.name),
-      label('p', 'fw-reader-description', '另一条时间线里的只言片语。')
+      label('h2', 'fw-reader-title', episode.name)
     );
     sheet.appendChild(heading);
     var progress = document.createElement('div'); progress.className = 'fw-progress';
@@ -529,8 +613,6 @@
     var messages = document.createElement('div');
     messages.className = 'fw-messages';
     messages.setAttribute('aria-label', '番外聊天内容');
-    var divider = label('p', 'fw-chat-divider', '— A STORY THAT STAYS HERE —');
-    messages.appendChild(divider);
     episode.messages.forEach(function (message) {
       var row = label('div', 'fw-message ' + (message.role === 'user' ? 'fw-user' : 'fw-char'), '');
       var speaker = label('span', 'fw-speaker', message.role === 'user' ? '我' : speakerName);
@@ -548,7 +630,16 @@
     var actions = document.createElement('div'); actions.className = 'fw-actions';
     if (state.busy) actions.appendChild(button('pause', '暂停续写', 'fw-primary'));
     else if (episode.status !== 'complete') actions.appendChild(button('resume', '继续生成', 'fw-primary'));
-    actions.append(button('back', '返回目录', ''), button('delete', '删除本篇', 'fw-danger'));
+    var more = document.createElement('div');
+    more.className = 'fw-reader-more';
+    var moreToggle = button('toggle-reader-menu', '更多', 'fw-reader-more-toggle');
+    moreToggle.setAttribute('aria-expanded', 'false');
+    var morePanel = document.createElement('div');
+    morePanel.className = 'fw-reader-menu';
+    morePanel.hidden = true;
+    morePanel.append(button('back', '返回目录', ''), button('delete', '删除本篇', 'fw-danger'));
+    more.append(moreToggle, morePanel);
+    actions.appendChild(more);
     sheet.appendChild(actions);
     // 长篇从尾部阅读，不触碰原本的 chat-messages 虚拟列表。
     messages.scrollTop = atEnd ? messages.scrollHeight : Math.min(previousTop, messages.scrollHeight);
@@ -680,6 +771,31 @@
     var node = event.target.closest('[data-action]');
     if (!node || !state.root.contains(node)) return;
     var key = node.dataset.action;
+    if (key === 'toggle-settings') {
+      var drawer = state.root.querySelector('.fw-settings-drawer');
+      if (!drawer) return;
+      drawer.hidden = !drawer.hidden;
+      node.setAttribute('aria-expanded', drawer.hidden ? 'false' : 'true');
+      return;
+    }
+    if (key === 'set-memory') {
+      var mode = node.dataset.memoryMode === 'role' ? 'role' : 'none';
+      state.settings.memory = mode;
+      Array.from(state.root.querySelectorAll('[data-action="set-memory"]')).forEach(function (option) {
+        var selected = option.dataset.memoryMode === mode;
+        option.setAttribute('aria-pressed', selected ? 'true' : 'false');
+        option.classList.toggle('fw-mode-active', selected);
+      });
+      saveSettings();
+      return;
+    }
+    if (key === 'toggle-reader-menu') {
+      var menu = state.root.querySelector('.fw-reader-menu');
+      if (!menu) return;
+      menu.hidden = !menu.hidden;
+      node.setAttribute('aria-expanded', menu.hidden ? 'false' : 'true');
+      return;
+    }
     if (key === 'close') { close(); return; }
     if (key === 'back') { if (state.busy) pause(); openPicker(); return; }
     if (key === 'pause') { pause(); return; }
@@ -733,6 +849,14 @@
     root.id = 'fanwaiLayer'; root.className = 'fw-layer'; root.hidden = true;
     root.innerHTML = '<div class="fw-backdrop" data-action="close"></div><section class="fw-sheet" role="dialog" aria-modal="true" aria-label="番外剧场"></section>';
     root.addEventListener('click', action);
+    root.addEventListener('change', function (event) {
+      var target = event.target;
+      if (!target || (target.id !== 'fw-count' && target.id !== 'fw-preview-count')) return;
+      var count = Number(target.value);
+      if (![40, 80, 100].includes(count)) return;
+      state.settings.count = count;
+      saveSettings();
+    });
     shell.appendChild(root);
     state.root = root;
     document.addEventListener('keydown', function (event) {
