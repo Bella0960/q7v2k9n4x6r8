@@ -5946,9 +5946,9 @@
                     if (ownGameContext.active) {
                         groupGameActiveForPrompt = true;
                         groupGameSessionForPrompt = String(ownGameContext.sessionId || '');
-                        systemPrompt += '\\n\\n' + ownGameContext.text;
+                        systemPrompt += '\n\n' + ownGameContext.text;
                         if (ownGameContext.canWhisper) {
-                            systemPrompt += '\\n你可以在必要时私下给本局其他角色或主持人（主持人的收件人ID为__user）发一条不超过240字的游戏消息：在回复末尾附 [游戏私聊:准确角色ID:内容]。每轮最多一条，只向这个收件人开放，不要在公开正文复述。';
+                            systemPrompt += '\n你可以在必要时私下给本局其他角色或主持人（主持人的收件人ID为__user）发一条不超过240字的游戏消息：在回复末尾附 [游戏私聊:准确角色ID:内容]。每轮最多一条，只向这个收件人开放，不要在公开正文复述。';
                         }
                     }
                 }
@@ -5956,7 +5956,7 @@
                     var publicGroupMemory = window.GroupMemoryEvents.getPublicPrompt({
                         groupId:String(currentGroup.id), activeGame:groupGameActiveForPrompt, maxChars:440
                     });
-                    if (publicGroupMemory) systemPrompt += '\\n\\n' + publicGroupMemory;
+                    if (publicGroupMemory) systemPrompt += '\n\n' + publicGroupMemory;
                 }
                 if (groupSettings.memorySharing && !groupGameActiveForPrompt) {
                     const syncedMemoryLines = [];
