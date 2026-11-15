@@ -1083,3 +1083,19 @@ test('returning to the archive waits for pause save success before hiding a live
     'failed save must keep the reader instead of returning to archive');
   assert.equal(app.requests, 1);
 });
+
+
+test('failed creation without live dialogue does not trap the picker open', async () => {
+  const db = fakeFanwaiDB({ failAtWrite: 1 });
+  const app = mount({ accountId: 'MAO-AAAAAAAAAAAA', indexedDB: db });
+  const root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().some(n => n.dataset.template === 'daily'));
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.template === 'daily') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'start-template') });
+  await tickUntil(() => app.notices.some(n => n.includes('无法保存')));
+  assert.equal(app.requests, 0, 'failed initial save must not trigger model charges');
+  await root.handlers.click({ target: root.querySelector('.fw-backdrop') });
+  assert.equal(root.hidden, true,
+    'no active unsaved dialogue exists, so a failed empty creation must not trap the whole UI');
+});
