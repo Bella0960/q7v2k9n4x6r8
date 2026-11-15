@@ -303,7 +303,7 @@
     root: null, active: null, selected: null, busy: false, creating: false,
     stopped: false, serial: 0, opened: false, branchSource: null, forkPoint: 0,
     settings: { memory: 'none', count: null },
-    settingsLoaded: false, settingsPromise: null
+    settingsLoaded: false, settingsPromise: null, archiveLimit: 12
   };
   var memory = new Map();
   var dbConnection = null;
@@ -434,7 +434,7 @@
       return e && e.accountId === scope && e.characterId === roleId &&
         Array.isArray(e.messages) && Number.isFinite(e.target) &&
         String(e.id).startsWith(scope + ':' + roleId + ':');
-    }).sort(function (a, b) { return b.updatedAt - a.updatedAt; }).slice(0, 12);
+    }).sort(function (a, b) { return b.updatedAt - a.updatedAt; }).slice(0, state.archiveLimit + 1);
   }
 
   async function erase(episode) {
@@ -603,6 +603,30 @@
       .slice(0, 5);
   }
 
+  function renderArchive(saved, episodes) {
+    if (!saved) return;
+    saved.replaceChildren();
+    if (!episodes.length) return;
+    saved.append(
+      label('div', 'fw-section-overline', 'FROM THE ARCHIVE'),
+      label('h3', 'fw-section-title', '最近的故事')
+    );
+    episodes.slice(0, state.archiveLimit).forEach(function (episode, index) {
+      var row = button('read', '', 'fw-saved-row');
+      row.dataset.id = episode.id;
+      row.append(
+        label('span', 'fw-saved-index', String(index + 1).padStart(2, '0')),
+        label('strong', 'fw-saved-title', episode.name || '番外'),
+        label('span', 'fw-saved-meta', episode.messages.length + '/' + episode.target + ' · ' +
+          (episode.status === 'complete' ? '已完成' : '继续读'))
+      );
+      saved.appendChild(row);
+    });
+    if (episodes.length > state.archiveLimit) {
+      saved.appendChild(button('more-archive', '查看更多故事', 'fw-archive-more'));
+    }
+  }
+
   async function openPicker() {
     if (!state.root) return;
     state.opened = true;
@@ -681,24 +705,7 @@
     sheet.appendChild(saved);
     var episodes = await listSaved();
     if (!state.opened || state.busy || state.selected) return;
-    saved.replaceChildren();
-    if (episodes.length) {
-      saved.append(
-        label('div', 'fw-section-overline', 'FROM THE ARCHIVE'),
-        label('h3', 'fw-section-title', '还没读完的故事')
-      );
-      episodes.forEach(function (episode, index) {
-        var row = button('read', '', 'fw-saved-row');
-        row.dataset.id = episode.id;
-        row.append(
-          label('span', 'fw-saved-index', String(index + 1).padStart(2, '0')),
-          label('strong', 'fw-saved-title', episode.name || '番外'),
-          label('span', 'fw-saved-meta', episode.messages.length + '/' + episode.target + ' · ' +
-            (episode.status === 'complete' ? '已完成' : '继续读'))
-        );
-        saved.appendChild(row);
-      });
-    }
+    renderArchive(saved, episodes);
     sheet.scrollTop = 0;
   }
 
@@ -1075,6 +1082,15 @@
     if (key === 'custom') {
       var input = state.root.querySelector('#fw-custom-input');
       start(null, input && input.value); return;
+    }
+    if (key === 'more-archive') {
+      state.archiveLimit += 12;
+      var savedContainer = state.root.querySelector('.fw-saved');
+      var loaded = await listSaved();
+      if (state.opened && !state.selected && savedContainer && state.root.contains(savedContainer)) {
+        renderArchive(savedContainer, loaded);
+      }
+      return;
     }
     if (key === 'read') {
       var episodes = await listSaved();
