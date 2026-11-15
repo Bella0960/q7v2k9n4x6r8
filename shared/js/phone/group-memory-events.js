@@ -52,20 +52,45 @@
       return fail('LEDGER_SAVE_FAILED','群记忆已写入，但事件索引未确认；可重试');
     return {ok:true,duplicate:!!record.duplicate,event:snapshot};
   }
+  function savedChain(req, gid, mid) {
+    var history = [];
+    try {
+      if(root.PhoneStorage && typeof root.PhoneStorage.getChatHistory==='function') {
+        history = root.PhoneStorage.getChatHistory(gid);
+      }
+      if(!Array.isArray(history))return null;
+      if(!history.length) {
+        var raw=storageOf(req).getItem('chat_history_'+gid);
+        history=raw?JSON.parse(raw):[];
+      }
+      if(!Array.isArray(history))return null;
+      var matched=history.filter(function(m) {
+        return m&&m.type==='group_chain'&&id(m.mid)===mid&&m.chain&&m.chain.closed===true;
+      });
+      return matched.length===1?matched[0]:null;
+    } catch(e){return null;}
+  }
   function recordChainClosure(req){
     req=req||{};
     var g=req.group, m=req.message;
     if(!g||!m||m.type!=='group_chain'||!m.chain||m.chain.closed!==true)
       return fail('NOT_CLOSED','只有已完成的群接龙才能入长期记忆');
+    var gid=id(g.id), mid=id(m.mid);
+    if(!valid(gid)||!mid||mid.length>180)
+      return fail('INVALID_EVENT','接龙缺少有效群 ID 或消息编号');
+    // A UI-supplied object is not evidence that a group message was saved.
+    var saved=savedChain(req,gid,mid);
+    if(!saved)return fail('NOT_SAVED','接龙结束状态尚未确认写入聊天历史');
+    m=saved;
     var entries=Array.isArray(m.chain.entries)?m.chain.entries.filter(function(x){
       return x&&id(x.memberId)&&id(x.text);
     }):[];
     if(!entries.length)return fail('EMPTY_CHAIN','空接龙不生成事件');
-    var title=id(m.chain.title).slice(0,65), mid=id(m.mid);
+    var title=id(m.chain.title).slice(0,65);
     if(!title||!mid)return fail('INVALID_EVENT','接龙缺少已保存的主题或消息编号');
     var people=Object.create(null);
     entries.forEach(function(e){people[id(e.memberId)]=true;});
-    return storePublic(req,{groupId:id(g.id),kind:'chain-finished',sourceId:mid,
+    return storePublic(req,{groupId:gid,kind:'chain-finished',sourceId:mid,
       createdAt:Number(m.time)||Date.now(),summary:
         '群聊完成接龙「'+title+'」，'+Object.keys(people).length+'位成员参与，共接了'+entries.length+'条。'});
   }
@@ -76,6 +101,16 @@
       !valid(session.groupId)||!valid(session.sessionId)||!valid(session.revealedRoleId)||
       !Array.isArray(session.players)||session.players.indexOf(session.revealedRoleId)===-1)
       return fail('NOT_REVEALED','游戏尚未正式揭晓，秘密不能写进共同记忆');
+    // Verify the revealed outcome against the saved public session, never a
+    // caller-provided result object or unrevealed private identity cards.
+    var official=root.GroupGameSessions &&
+      typeof root.GroupGameSessions.getPublic==='function'
+      ? root.GroupGameSessions.getPublic(session.groupId,storageOf(req)) : null;
+    if(!official||official.status!=='finished'||
+      official.sessionId!==session.sessionId||
+      official.revealedRoleId!==session.revealedRoleId||
+      JSON.stringify(official.players)!==JSON.stringify(session.players))
+      return fail('UNVERIFIED_RESULT','游戏结果尚未确认保存，禁止进入群共同记忆');
     var members=req.group&&Array.isArray(req.group.members)?req.group.members:[];
     var match=members.find(function(m){return m&&id(m.id)===session.revealedRoleId;});
     var name=match?id(match.nickname||match.name).slice(0,28):'一位成员';
