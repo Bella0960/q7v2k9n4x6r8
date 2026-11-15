@@ -1349,6 +1349,7 @@ function updateAvatarPreview() {
 
 // 打开添加角色
 function openAddRole() {
+    activeEncounterDraftId = '';
     portraitPurpose = 'profile';
     editorReturnView = 'listView';
     document.getElementById('editorTitle').textContent = 'New Character';
@@ -1370,6 +1371,7 @@ function openAddRole() {
 
 // 打开编辑旧角色
 function openEditRole(id) {
+    activeEncounterDraftId = '';
     portraitPurpose = 'profile';
     editorReturnView = 'profileView';
     const roles = loadRoles();
