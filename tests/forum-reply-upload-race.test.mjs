@@ -48,7 +48,8 @@ function setup({ selectedIndex = 1, allowSave = true } = {}) {
     ({
       send: sendComment,
       setReplyIndex(index) { replyToIdx = index; },
-      getReplyIndex() { return replyToIdx; }
+      getReplyIndex() { return replyToIdx; },
+      setCurrentPost(nextPost) { post = nextPost; }
     });
   `, sandbox, { filename: 'forum-detail-send-comment.js' });
   return { post, input, button, released, generated, notices, controller,
@@ -415,4 +416,51 @@ test('separate posts can generate in parallel without crossing data', async () =
   assert.equal(h.newPost.comments.length, 1);
   assert.equal(h.newPost.comments[0].text, '新帖自己的回复');
   assert.equal(h.saves.length, 1);
+});
+
+
+test('switching posts during top-level image upload cannot send the original draft to the new post', async () => {
+  const h = setup({ selectedIndex: -1 });
+  const otherPost = { id: 'another-post', comments: [] };
+  const pending = h.controller.send();
+  h.controller.setCurrentPost(otherPost);
+  h.finishUpload(['pending-post-switch-asset']);
+  await pending;
+  assert.equal(h.post.comments.length, 3, 'original post must remain unchanged');
+  assert.equal(otherPost.comments.length, 0, 'do not write into switched post');
+  assert.equal(h.released.length, 1, 'cancelled send releases uploaded media');
+  assert.equal(h.released[0][0][0], 'pending-post-switch-asset');
+  assert.equal(h.input.value, '发给乙的回复草稿', 'retain text for retry');
+  assert.deepEqual(h.generated, [], 'no AI replies for cancelled comment');
+  assert.ok(h.notices.some(message => message.includes('帖子已切换')));
+  assert.equal(h.button.disabled, false);
+});
+
+test('switching posts during nested image upload cancels even if the new post shares the reply object', async () => {
+  const h = setup();
+  const otherPost = { id: 'another-post', comments: [h.post.comments[1]] };
+  const pending = h.controller.send();
+  h.controller.setCurrentPost(otherPost);
+  h.finishUpload(['pending-nested-switch-asset']);
+  await pending;
+  assert.equal(h.post.comments[1].replies.length, 0);
+  assert.equal(otherPost.comments[0].replies.length, 0);
+  assert.equal(h.released.length, 1);
+  assert.equal(h.input.value, '发给乙的回复草稿');
+  assert.deepEqual(h.generated, []);
+  assert.ok(h.notices.some(message => message.includes('帖子已切换')));
+});
+
+test('switching away and back before upload resolves still uses the captured original post', async () => {
+  const h = setup({ selectedIndex: -1 });
+  const otherPost = { id: 'another-post', comments: [] };
+  const pending = h.controller.send();
+  h.controller.setCurrentPost(otherPost);
+  h.controller.setCurrentPost(h.post);
+  h.finishUpload([]);
+  await pending;
+  assert.equal(h.post.comments.length, 4);
+  assert.equal(h.post.comments[3].text, '发给乙的回复草稿');
+  assert.equal(otherPost.comments.length, 0);
+  assert.equal(h.released.length, 0);
 });
