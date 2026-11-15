@@ -402,17 +402,22 @@
     if (!episode || episode.accountId !== scope || episode.characterId !== roleId) return false;
     episode.updatedAt = Date.now();
     var snapshot = JSON.parse(JSON.stringify(episode));
-    memory.set(snapshot.id, snapshot);
+    // 不能把未确认的事务放进“已保存存档”；失败仍可在当前阅读页查看内存稿。
     // 同一篇故事的“生成中保存 / 暂停保存 / 继续保存”必须按提交顺序落盘。
     var write = async function () {
       var database = await db();
-      if (!database) return !canPersist; // 临时会话支持纯内存保存。
+      if (!database) {
+        if (!canPersist) { memory.set(snapshot.id, snapshot); return true; }
+        persistenceFailed = true;
+        return false;
+      }
       return new Promise(function (resolve) {
         var settled = false;
         function finish(ok) {
           if (settled) return;
           settled = true;
-          if (!ok) persistenceFailed = true;
+          if (ok) memory.set(snapshot.id, snapshot);
+          else persistenceFailed = true;
           resolve(ok);
         }
         try {
