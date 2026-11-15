@@ -287,6 +287,16 @@ test('正式账号作用域就绪时复用原本隔离的 storage，多个账号
   assert.ok(Array.from(backing.keys()).every(k=>k.startsWith('__mao_account_v1__MAO-AAAAAAAAAAAA__')));
 });
 
+test('损坏的抽卡偏好不得在下一次设置时被静默覆盖', () => {
+  const source='{corrupt-preferences';
+  const h=harness({'maomao_encounter_preferences_v1':source});
+  const result=h.api.savePreferences({type:'普通相遇'});
+  assert.equal(result.ok,false);
+  assert.equal(h.localStorage.getItem('maomao_encounter_preferences_v1'),source);
+  // 默认抽卡仍可进行，但用户必须主动修复偏好文件才能更新设置。
+  assert.equal(h.api.generate().ok,true);
+});
+
 test('浏览器静默丢写时不能误报收藏/删除/偏好保存成功', () => {
   const h=harness();
   const candidate=h.api.generate().value;
