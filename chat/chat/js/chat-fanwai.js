@@ -2,6 +2,21 @@
 (function (global) {
   'use strict';
 
+  // 认证作用域必须在注册任何记忆提供方或公开扩展 API 之前完成校验。
+  // 否则即使菜单不挂载，其他脚本也可能通过早期插件接口读取角色背景。
+  if (typeof document !== 'undefined' && document.querySelector) {
+    var earlyMeta = document.querySelector('meta[name="mao-account-id"]');
+    var earlyAccount = earlyMeta ? earlyMeta.getAttribute('content') : '';
+    if (/^MAO-[A-Z0-9]{12,24}$/.test(earlyAccount)) {
+      var earlyScope = global.__MAO_ACCOUNT_SCOPE__;
+      if (!earlyScope || earlyScope.ready !== true ||
+          earlyScope.accountId !== earlyAccount) {
+        console.warn('[Fanwai] 当前账号隔离尚未就绪，番外和扩展接口均不加载');
+        return;
+      }
+    }
+  }
+
   var TEMPLATES = [
     { id: 'daily', name: '日常篇', subtitle: '突然想找你说说话', target: 80,
       scenario: '一个普通的日子，用户主动向角色发消息；从生活小事自然聊开。不要强制改变角色已有的关系设定。' },
