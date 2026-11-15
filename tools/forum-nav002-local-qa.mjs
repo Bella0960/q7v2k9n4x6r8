@@ -45,6 +45,10 @@ function value(flag){
   const i=args.indexOf(flag);
   return i<0?null:args[i+1];
 }
+// Full-app evidence must always identify the exact original PR revision.
+// Without a SHA even a clean, unrelated main checkout could report PASS.
+if(!value('--expect-head')||!/^[a-f0-9]{8,40}$/i.test(value('--expect-head')))
+  block('NAV-002 needs --expect-head <8-40 hex characters from PR #245 HEAD>');
 const root=path.resolve(value('--root')||path.join(path.dirname(fileURLToPath(import.meta.url)),'..'));
 report.root=root;
 const required=['package.json','package-lock.json','forum/forum-detail.html',
@@ -66,7 +70,8 @@ function pageCount(folder){
     return n+(x.isDirectory()?pageCount(file):x.isFile()&&x.name.endsWith('.html')?1:0);
   },0);
 }
-report.sourcePages=pageCount(root);
+try { report.sourcePages=pageCount(root); }
+catch(error){block('unable to enumerate project HTML pages: '+error.message);}
 if(report.sourcePages<80)block('only '+report.sourcePages+' HTML pages; incomplete app snapshot');
 const git=spawnSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8',timeout:15000});
 if(git.status!==0||!/^[a-f0-9]{40}\s*$/i.test(git.stdout))block('cannot verify Git commit');
@@ -79,6 +84,10 @@ if(value('--expect-head')&&!report.head.startsWith(value('--expect-head')))
   block('expected commit '+value('--expect-head')+', found '+report.head);
 const npm=process.platform==='win32'?'npm.cmd':'npm';
 const npx=process.platform==='win32'?'npx.cmd':'npx';
+const npmVersion=spawnSync(npm,['--version'],{cwd:root,encoding:'utf8',timeout:15000,
+  shell:process.platform==='win32'});
+report.runtime={node:process.version,npm:npmVersion.status===0?npmVersion.stdout.trim():null,
+  platform:process.platform,arch:process.arch};
 function run(name,bin,argv,timeout=480000){
   const processResult=spawnSync(bin,argv,{cwd:root,encoding:'utf8',timeout,maxBuffer:12*1024*1024,
     env:{...process.env,CI:'1',NO_COLOR:'1'},shell:process.platform==='win32'});
@@ -99,6 +108,16 @@ if(!fs.existsSync(vite))block('missing dependencies; run --install where npm reg
 if(args.includes('--install-browser')){
   const r=run('playwright-chromium',npx,['--no-install','playwright','install','chromium'],600000);
   if(r!=='PASS')finish(r,r==='BLOCKED'?2:1);
+}
+// A missing Playwright package or Chromium executable is an environment
+// blocker, not a failing MAOMAO browser assertion. Actually launch Chromium.
+try {
+  const { chromium }=await import('playwright');
+  const browser=await chromium.launch({headless:true});
+  await browser.close();
+  report.stages.push({name:'chromium-preflight',result:'PASS'});
+} catch(error) {
+  block('Chromium / Playwright unavailable locally: '+String(error.message||error).slice(0,480));
 }
 const steps=[
   ['forum-upload-ai-node',process.execPath,['--test','tests/forum-reply-upload-race.test.mjs']],
