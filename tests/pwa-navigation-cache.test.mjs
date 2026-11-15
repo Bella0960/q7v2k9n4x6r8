@@ -8,7 +8,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
-const cacheVersion = Number((serviceWorker.match(/const CACHE_NAME = 'phone-app-pwa-v(\\d+)'/) || [])[1]) || 0;
+const cacheVersion = Number((serviceWorker.match(/const CACHE_NAME = 'phone-app-pwa-v(\d+)'/) || [])[1]) || 0;
 assert.ok(cacheVersion >= 207, 'group and memory assets require an updated PWA cache');
 const viteConfig = read('vite.config.js');
 
