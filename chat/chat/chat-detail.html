@@ -5879,7 +5879,32 @@
                 if (groupSettings.spectatorMode) {
                     systemPrompt += '\n\n[旁观模式]\n用户当前是旁观者。用户发来的文字是剧情走向提示或导演指令；角色之间优先自然交流、争论、互相回应，不要每句话都直接向用户提问或称呼用户，也不要替用户发言。';
                 }
-                if (groupSettings.memorySharing) {
+                // A role receives only its own game card, not another player's secret.
+                // Group public memories are filtered separately from role-private vaults.
+                var groupGameActiveForPrompt = false;
+                if (window.GroupGameSessions) {
+                    var ownGameContext = window.GroupGameSessions.buildRoleContext({
+                        groupId: String(currentGroup.id), roleId: String(groupReplyPick.id)
+                    });
+                    if (!ownGameContext.ok) {
+                        if (typeof showToast === 'function') showToast(ownGameContext.message || '游戏身份牌不可用，本轮回复已停止');
+                        return;
+                    }
+                    if (ownGameContext.active) {
+                        groupGameActiveForPrompt = true;
+                        systemPrompt += '\\n\\n' + ownGameContext.text;
+                        if (ownGameContext.canWhisper) {
+                            systemPrompt += '\\n你可以在必要时私下给本局另一位角色发一条不超过240字的游戏消息：在回复末尾附 [游戏私聊:准确角色ID:内容]。每轮最多一条，只向这个收件人开放，不要在公开正文复述。';
+                        }
+                    }
+                }
+                if (window.GroupMemoryEvents) {
+                    var publicGroupMemory = window.GroupMemoryEvents.getPublicPrompt({
+                        groupId:String(currentGroup.id), activeGame:groupGameActiveForPrompt, maxChars:440
+                    });
+                    if (publicGroupMemory) systemPrompt += '\\n\\n' + publicGroupMemory;
+                }
+                if (groupSettings.memorySharing && !groupGameActiveForPrompt) {
                     const syncedMemoryLines = [];
                     (currentGroup.members || []).forEach(function (member) {
                         const role = getRoleById(member.id);
@@ -5894,7 +5919,7 @@
                 if (groupSettings.allowRoleActions) {
                     systemPrompt += '\n\n[群管理行动]\n只有带有管理员或群主身份的成员才可以根据剧情执行群管理操作。若用户明确要求且你具有管理权限，可在正常台词末尾添加隐藏标记：[群动作:禁言:成员姓名或ID] 或 [群动作:解禁:成员姓名或ID]；也支持 [群动作:改名:新群名]、[群动作:邀请:角色名]、[群动作:移除:角色名]、[群动作:头衔:成员ID|新头衔]（仅普通成员，头衔不超过20字）。不能禁言群主、不能越权管理其他管理员；未获允许不要擅自操作。系统会验证身份并保存，不要向用户解释隐藏标记。';
                 }
-                if (groupSettings.allowPrivateMessages !== false) {
+                if (groupSettings.allowPrivateMessages !== false && (!groupGameActiveForPrompt || (window.GroupGameSessions && window.GroupGameSessions.canWhisper({groupId:String(currentGroup.id),fromId:String(groupReplyPick.id),toId:'__user'}).allowed))) {
                     systemPrompt += '\n\n[群成员私聊能力]\n你可以偶尔向用户发起私聊，但不要每轮都触发，仅在出现适合单独说的话、想补充秘密或想私下安慰用户时使用。仅允许给自己发私聊：在本轮正常群聊回复末尾另起一行写 [群私聊:你的准确角色ID:私聊内容]。角色ID必须从群成员名单中选择，并且应当是本轮发言者自己的ID；私聊内容控制在1-3句，不要解释标记。标记会保存到你的单聊历史，并在群聊里弹出私聊小窗。每轮最多一条。';
                 }
                 const activePolls = historyList.filter(function (item) { return item && item.type === 'group_poll' && item.poll && !item.poll.closed; }).slice(-3);
@@ -6328,7 +6353,11 @@
                         }
                     }
                 }
-                const recalledText = window.MemoryRecall.buildHistoricalRecallText(historyList, recallQuery, recallOptions);
+                var recallableHistory = isGroupChat
+                    ? historyList.filter(function (m) {
+                        return m && m.type !== 'group_private' && m.type !== 'group_game_private';
+                    }) : historyList;
+                const recalledText = window.MemoryRecall.buildHistoricalRecallText(recallableHistory, recallQuery, recallOptions);
                 if (recalledText) apiMessages[0].content += '\n\n' + recalledText;
             }
 
@@ -8255,6 +8284,14 @@
             var settings = getGroupSettings();
             text = text.replace(/\[群私聊[:：]([^:：\]]+)[:：]([^\]]{1,300})\]/g, function (marker, targetKey, privateText) {
                 if (settings.allowPrivateMessages === false) return '';
+                if (window.GroupGameSessions) {
+                    var privateRule = window.GroupGameSessions.canWhisper({
+                        groupId:String(currentGroup.id),
+                        fromId:String(speaker && speaker.id || ''),
+                        toId:'__user'
+                    });
+                    if (privateRule.active && !privateRule.allowed) return '';
+                }
                 var members = Array.isArray(currentGroup.members) ? currentGroup.members : [];
                 var target = members.find(function (member) {
                     return member && (String(member.id) === String(targetKey).trim() ||
