@@ -623,6 +623,7 @@
   user-select: text;
   box-shadow: 0 2px 8px rgba(60,68,62,.025);
 }
+#fanwaiLayer .fw-char .fw-bubble { background: #fff; color: #4c554f; }
 #fanwaiLayer .fw-user .fw-bubble {
   color: #f9faf7;
   background: #555e59;
