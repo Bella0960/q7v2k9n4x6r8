@@ -2552,6 +2552,42 @@
             });
             return relation;
         }
+        // Deferred relationship effects use the latest saved group, not the
+        // stale model-prompt snapshot. Failed group writes restore local changes.
+        function commitDeferredGroupRelationship(speakerId, targetId, updateRelation) {
+            var liveGroup = loadGroupById(currentRoleId);
+            if (!liveGroup || !Array.isArray(liveGroup.members) ||
+                (window.GroupGovernance && !window.GroupGovernance.userIsInGroup(liveGroup)))
+                return { ok:false, code:'GROUP_CHANGED' };
+            var activeSpeaker = liveGroup.members.find(function (m) {
+                return m && String(m.id) === String(speakerId);
+            });
+            var target = liveGroup.members.find(function (m) {
+                return m && String(m.id) === String(targetId);
+            });
+            if (!activeSpeaker || !target || activeSpeaker === target ||
+                (window.GroupGovernance && window.GroupGovernance.isMuted(activeSpeaker)))
+                return { ok:false, code:'MEMBERSHIP_CHANGED' };
+            var before;
+            try { before = JSON.stringify(liveGroup.relationships || {}); }
+            catch (e) { return { ok:false, code:'CORRUPT_RELATIONSHIPS' }; }
+            currentGroup = liveGroup;
+            try {
+                var relation = getOrCreateGroupRelationship(activeSpeaker, target);
+                if (!relation || updateRelation(relation, activeSpeaker, target) !== true) {
+                    liveGroup.relationships = JSON.parse(before);
+                    return { ok:false, code:'RELATION_NOT_APPLIED' };
+                }
+                if (!saveCurrentGroupObject()) {
+                    liveGroup.relationships = JSON.parse(before);
+                    return { ok:false, code:'SAVE_FAILED' };
+                }
+                return { ok:true };
+            } catch (e) {
+                liveGroup.relationships = JSON.parse(before);
+                return { ok:false, code:'RELATION_FAILED' };
+            }
+        }
         function findGroupSpeakerInHistory(historyList) {
             var members = currentGroup && Array.isArray(currentGroup.members) ? currentGroup.members : [];
             for (var i = (historyList || []).length - 1; i >= 0; i--) {
@@ -8226,24 +8262,43 @@
                     .trim();
             }
             var relationshipEventSeen = false;
-            // 用户对已任命的管理员下明确指令时，直接执行，不依赖模型是否生成机器标记。
-            // 同一条消息的 mid 只允许处理一次，防止重新生成与多气泡重复执行。
-            if (!isRegeneration && !isGroupFollowup && window.GroupGovernance) {
+            // An explicit user instruction is still checked against live group
+            // permissions; execution waits until this AI reply is persisted.
+            if (!isGroupFollowup && window.GroupGovernance) {
                 var lastUserMessage = historyList.slice().reverse().find(function (msg) {
                     return msg && msg.role === 'user' && !msg.silent && !msg.sendFailed;
                 });
                 if (lastUserMessage && lastUserMessage.mid &&
                     String(currentGroup.lastModerationMid || '') !== String(lastUserMessage.mid)) {
-                    var request = window.GroupGovernance.naturalModeration(lastUserMessage.text, currentGroup);
-                    if (request) {
-                        var previousMid = currentGroup.lastModerationMid;
-                        currentGroup.lastModerationMid = String(lastUserMessage.mid);
-                        var moderation = window.GroupGovernance.apply({
-                            group:currentGroup,actorId:request.actorId,action:request.action,
-                            target:request.target,save:saveCurrentGroupObject
+                    var requestedModeration = window.GroupGovernance.naturalModeration(
+                        lastUserMessage.text, currentGroup
+                    );
+                    if (requestedModeration) {
+                        var moderationMid = String(lastUserMessage.mid);
+                        var moderationText = String(lastUserMessage.text || '');
+                        turnEffects.afterSave(function () {
+                            var liveGroup = loadGroupById(currentRoleId);
+                            if (!liveGroup || !window.GroupGovernance.userIsInGroup(liveGroup))
+                                return { ok:false, code:'GROUP_CHANGED' };
+                            currentGroup = liveGroup;
+                            if (String(liveGroup.lastModerationMid || '') === moderationMid) return { ok:true };
+                            var rechecked = window.GroupGovernance.naturalModeration(moderationText, liveGroup);
+                            if (!rechecked || rechecked.actorId !== requestedModeration.actorId ||
+                                rechecked.target !== requestedModeration.target ||
+                                rechecked.action !== requestedModeration.action)
+                                return { ok:false, code:'PERMISSION_CHANGED' };
+                            var oldMid = liveGroup.lastModerationMid;
+                            liveGroup.lastModerationMid = moderationMid;
+                            var result = window.GroupGovernance.apply({
+                                group:liveGroup, actorId:rechecked.actorId,
+                                action:rechecked.action, target:rechecked.target,
+                                save:saveCurrentGroupObject
+                            });
+                            if (!result.ok) liveGroup.lastModerationMid = oldMid;
+                            else if (typeof showToast === 'function')
+                                showToast(result.message || '群管理已生效');
+                            return result;
                         });
-                        if (!moderation.ok) currentGroup.lastModerationMid = previousMid;
-                        else if (typeof showToast === 'function') showToast(moderation.message || '群管理已生效');
                     }
                 }
             }
