@@ -127,7 +127,7 @@ test('PWA precaches the same group turn module version used by the chat page', (
   const sw = read('sw.js'), detail = read('chat/chat/chat-detail.html');
   const asset = 'group-turn-effects.js?v=20261115gte2';
   const cacheVersion = Number((sw.match(/phone-app-pwa-v(\d+)/) || [])[1]) || 0;
-  assert.ok(cacheVersion >= 213);
+  assert.ok(cacheVersion >= 214);
   assert.ok(sw.includes(asset));
   assert.ok(detail.includes(asset));
 });
