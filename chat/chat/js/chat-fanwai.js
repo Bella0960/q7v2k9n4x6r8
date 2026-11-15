@@ -310,7 +310,7 @@
   if (typeof document === 'undefined' || !document.createElement) return;
 
   var roleId = new URLSearchParams(global.location.search).get('id') || '';
-  if (!roleId || /^g/i.test(roleId)) return; // 群聊保持原样。
+  if (!roleId) return;
   var accountMeta = document.querySelector('meta[name="mao-account-id"]');
   var accountId = accountMeta ? accountMeta.getAttribute('content') : '';
   var canPersist = /^MAO-[A-Z0-9]{12,24}$/.test(accountId);
@@ -321,6 +321,29 @@
       trustedAccountScope.accountId !== accountId)) {
     console.warn('[Fanwai] 已登录页面缺少匹配的账号隔离运行时，拒绝启动番外');
     return;
+  }
+  // 群聊真实创建 ID 为 g + 时间戳，兼容旧 group-*，并查询已有 phone_groups。
+  // 不能用 /^g/i：导入的普通角色也可能有 g/G 开头的 ID。
+  var isGroup = false;
+  try {
+    var groups = JSON.parse(global.localStorage.getItem('phone_groups') || '[]');
+    if (Array.isArray(groups)) {
+      isGroup = groups.some(function (group) {
+        return group && String(group.id) === roleId;
+      });
+    }
+  } catch (error) {} // 异常时仍拦截现有群 ID 格式，避免显示番外入口。
+  if (isGroup) return;
+  if (/^(?:g[0-9]{12,}|group[-_])/i.test(roleId)) {
+    // 优先尊重现有角色库中的确切 ID；旧群记录丢失时仍保持群聊默认隐藏。
+    var knownRole = false;
+    try {
+      var characters = JSON.parse(global.localStorage.getItem('ai_custom_characters') || '[]');
+      knownRole = Array.isArray(characters) && characters.some(function (role) {
+        return role && String(role.id) === roleId;
+      });
+    } catch (error) {}
+    if (!knownRole) return;
   }
   var scope = canPersist ? accountId : 'temporary:' + Math.random().toString(36).slice(2);
   var state = {
