@@ -68,6 +68,17 @@ test('failed role-card/public-state writes roll back the entire new game', () =>
   }
 });
 
+test('corrupt existing public game state is never overwritten by a new round', () => {
+  const h = harness();
+  const corrupted = '{"status":"active","unparseable":';
+  h.storage.setItem('phone_group_game_v1_g1', corrupted);
+  const result = begin(h);
+  assert.equal(result.code, 'CORRUPT_SESSION');
+  assert.equal(h.storage.getItem('phone_group_game_v1_g1'), corrupted);
+  assert.equal([...h.records.keys()].some((key) =>
+    key.startsWith('phone_group_game_private_v1_')), false);
+});
+
 test('public memory prompt only sees confirmed allowlisted sources', () => {
   const h = harness();
   h.memories.set('g1', [
