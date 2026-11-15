@@ -1803,21 +1803,25 @@ document.getElementById('btnExpandEncounterPersona').addEventListener('click', a
             timeoutMs: 45000
         });
         const expanded = String(result || '').trim();
-        if (expanded.length < 150) throw new Error('生成内容过短，未覆盖原始人设');
+        if (!expanded) throw new Error('API 返回空内容，已保留原始短卡');
+        // 即使服务商截断了较短的付费返回，也保留可用文字，不强迫二次付费。
         // 用户在网络请求期间修改的内容不应被无声覆盖。
         if (draftId !== activeEncounterDraftId ||
             document.getElementById('editRoleId').value.trim() !== '') {
             setSaveStatus('页面已切换，生成结果未覆盖当前角色。', 'error');
             return;
         }
-        if (personaEl.value !== sourceText &&
-            !confirm('你在生成期间修改了人设。要用这份 AI 草稿替换当前编辑内容吗？')) {
+        const nameChanged = document.getElementById('editRoleName').value.trim() !== roleName;
+        if ((personaEl.value !== sourceText || nameChanged) &&
+            !confirm('生成期间你修改了姓名或人设。要将这份 AI 草稿应用到当前编辑内容吗？')) {
             setSaveStatus('保留了你手动编辑的人设，未应用 AI 草稿。', 'info');
             return;
         }
         personaEl.value = expanded;
         persistEditorDraft(true);
-        setSaveStatus('AI 人设草稿已填入，请检查并点击「保存设定」。', 'success');
+        setSaveStatus(expanded.length < 150
+            ? 'API 返回内容较短，但已保存为可编辑草稿，不会自动再次扣费。'
+            : 'AI 人设草稿已填入，请检查并点击「保存设定」。', 'success');
     } catch (error) {
         setSaveStatus('AI 完善未成功：' + (error && error.message ? error.message : '请求异常') + '。原有人设仍保留。', 'error');
     } finally {
