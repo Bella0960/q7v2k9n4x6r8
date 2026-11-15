@@ -319,6 +319,7 @@
   var persistenceFailed = false;
   var episodeWriteQueue = Promise.resolve();
   var settingsWriteQueue = Promise.resolve();
+  var settingsWriteVersion = 0;
   var DB_NAME = 'maomao-fanwai-v1';
 
   function showNotice(message) {
@@ -378,6 +379,7 @@
   // 快速切换记忆/篇幅时，按触发顺序提交，旧值不能晚到后覆盖新值。
   function saveSettings() {
     var snapshot = normalizeSettings(state.settings);
+    var settingVersion = ++settingsWriteVersion;
     var write = async function () {
       var database = await db();
       if (!database) return false;
@@ -402,7 +404,12 @@
     };
     var completion = settingsWriteQueue.then(write, write);
     settingsWriteQueue = completion.then(function () {}, function () {});
-    return completion;
+    return completion.then(function (saved) {
+      if (!saved && settingVersion === settingsWriteVersion) {
+        showNotice('故事设置未能保存，下次打开可能需要重新选择');
+      }
+      return saved;
+    });
   }
 
   // 永不把写入失败当作“已保存”。失效的 IndexedDB 不能驱动后续收费生成。
