@@ -108,7 +108,7 @@ try {
       await page.locator('#roleListContainer .role-slim-bar[data-id="'+inserted.id+'"]').click();
       await page.locator('#profileContent').waitFor({state:'visible'});
       // 从档案页重新打开编辑器，以便检查 JSON 导出。
-      await page.locator('[data-profile-action="edit"]').first().click();
+      await page.locator('[data-profile-action="basic"]').first().click();
       assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('maomao_encounter_candidates_v1')).length),0,'正式保存成功后清理候选');
       const downloadEvent=page.waitForEvent('download');
       await page.locator('#btnExportRole').click();
