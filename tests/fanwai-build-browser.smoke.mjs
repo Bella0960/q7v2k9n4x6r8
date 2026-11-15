@@ -79,6 +79,13 @@ try {
       viewport: { width: viewport.width, height: viewport.height },
       deviceScaleFactor: 2, isMobile: true, hasTouch: true, serviceWorkers: 'block'
     });
+    // 安全烟测：禁止一切站外请求，绝不访问用户真实 AI/推送/支付服务。
+    let blockedExternalRequests = 0;
+    await context.route('**/*', route => {
+      if (route.request().url().startsWith(origin + '/')) return route.continue();
+      blockedExternalRequests++;
+      return route.abort();
+    });
     const page = await context.newPage();
     const missingCritical = [];
     page.on('response', response => {
@@ -167,7 +174,8 @@ try {
       console.log('PASS ' + viewport.label + ' ' + JSON.stringify({
         viewport: viewport.width + 'x' + viewport.height,
         templateCards: 6, messages: result.messages, modelMockCalls: result.calls,
-        noRealApi: true, noMainChatMutation: true
+        noRealApi: true, noMainChatMutation: true,
+        blockedExternalRequests
       }));
     } finally {
       await context.close();
