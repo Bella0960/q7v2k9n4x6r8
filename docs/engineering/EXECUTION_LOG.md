@@ -134,3 +134,13 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 补全两位独立抽卡候选与切换操作；增加 2 卡切换/分别保存回归；候选及偏好本地写后读回校验；坏偏好不被静默覆盖；扩展玩法不得改写 ID/版本。
 - 将 maomao_encounter_* 纳入现有备份注册表 characters 类别。隔离模拟验证备份包含候选和设置，排除 API Key。
 - 本轮最终隔离 V8 合同 + 模拟 UI 检查 **28/28 PASS**，4 个 JS 脚本语法通过，均非原生 Node/Vite/真实浏览器结果。发布前仍须完成 PR #290 依赖与真实账号隔离验证、Playwright+Android+iPhone、构建，以及候选跨标签页并发风险的处置。PR #297 保持 Draft。
+
+### FEATURE-ENCOUNTER-001 — 2026-11-15 第四轮严格发布门禁
+- **PR 分支：** FEATURE-ENCOUNTER-001-initial-experience；PR #297 仍为 Draft，正式 main 未合并，未部署 app.mao520.com，未写 Cloudflare 管理员/钱包/账户数据库。
+- **与 PR #290 安全依赖：** main Worker 已尝试注入 /shared/js/mao-account-scope.js?v=2，但 main 中尚缺该脚本；开发分支原样复用 PR #290 的账号隔离脚本、sw.js 私有 HTML/字体缓存保护、shared/js/font-loader.js。PR #290 的 account/index.html/account.js 仍未进入 main，账号登录入口是明确阻碍；不能假称完整整合已发布。
+- **多标签页候选保护：** 改为 per-card V2 独立键，V1 旧候选数组只读合并，删除墓碑 prevent stale reappear；有 navigator.locks 的浏览器通过同账号独占锁封装 saveCandidateSafe/removeCandidateSafe；无 Web Locks 的环境保留独立键后备。不声称已解决整个原角色库跨标签页事务问题。
+- **关键 UI 修复：** 默认桌面之前未分配 app_encounter 导致无法看到新图标；现已加入人物档案旁，并为已有自定义桌面做幂等插入，尊重 removed 清单。
+- **备份：** settings/js/backup-modules.js 角色分类收录 maomao_encounter_*，覆盖 V1/V2/删除墓碑/偏好，仍排除 API Key。
+- **测试：** tests/encounter-contract.test.mjs 新增并发同存储、旧数组只读兼容、Web Locks 序列化、独立键测试。tests/encounter-actual-scope.test.mjs 对原版 PR290 作用域实际执行模拟；修复 Playwright 中读取废弃 V1 数组的断言。同步更新 PWA、字体与桌面旧式缓存假设的测试。package.json 新增 test:encounter、test:encounter:browser、gate:encounter。
+- **本轮非原生校验回执：** 当前分支源码经 V8 适配执行 28 项合同 + 5 项交互 = 33/33；原版 MAO 账号隔离与引擎兼容 4/4；PWA/字体缓存/桌面静态合同 16/16。未执行真实 npm ci、npm run build、Node原生 test、Playwright 运行截图、Android/iPhone 真机或真实账号切换/正式恢复验证。
+- **正式发布 gate：** scripts/verify-encounter-release.mjs 只读检查账号入口、构建、PWA、三尺寸及角色编辑器验收截图，缺一项明确拒绝通过。当前因账号入口尚未安全整合、dist 与截图不存在，此 gate 不能通过。不得绕过原管理员独立备份及隔离恢复门禁。
