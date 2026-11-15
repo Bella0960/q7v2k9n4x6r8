@@ -139,3 +139,12 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **兼容性**：仍写原 \`chat_history_<groupId>\`，没有另建消息库/账号/钱包。系统消息为 \`type:group_game_result\`、\`role:system\`、稳定 \`mid:m_game_result_<sessionId>\`。正式揭晓显示汇总票数、取消不泄露身份，长期记忆继续经原 \`GroupMemoryEvents\`。角色后续改群昵称不改变旧局的可信结果。
 - **真实检查**：准确分支代码与已有测试用例在隔离 V8 运行：新结果卡 9/9、秘密游戏边界 25/25、群设置记忆 5/5，合计 39/39。**NOT RUN**：项目检出后的原生 Node 测试、Vite build、Playwright、实际 Android/iPhone、唯一 QA 环境。测试不依赖 GitHub Actions。不能将受控 V8 测试当作完整 QA。
 - **待继续**：真实浏览器验证首次进入「游戏与活动」、群主进行一局并在群里看见结果卡、关闭/刷新后不重复、取消不显示身份、损坏存储显示补发、长聊天虚拟列表/聊天首页预览及 PWA 缓存更新。然后再推进角色主持人、更多小游戏及更完整的记忆事件。保持 Draft，未授权不合并 \`main\`、不触碰正式数据。
+
+
+
+## 2026-11-16｜PR #298 接续：角色主持人可参与真实游戏流程
+
+- **原职责**：继续群聊玩法 PR #298，依据 `ARCH-001 / SEC-001 / QA-002`。没有新建分支或重复 PR。
+- **真实代码**：`shared/js/phone/group-game-session.js`（群主授权角色主持、玩家身份和主持上下文隔离、仅所有玩家投票后角色主持人可揭晓、群主优先权限）；`shared/js/phone/group-game-panel.js`（简洁主持人下拉、自动排除主持人抽坏人）；`chat/chat/chat-detail.html`（开局及全票后优先选主持人、隐藏揭晓标记、经过消息保存成功后才触发结果及记忆）；`shared/js/phone/group-game-chat-receipts.js`（公开结果保存主持人标识/历史名字）、`shared/js/phone/group-memory-events.js`（保存核验后的公开主持人经历）；`tests/group-game-boundary.test.mjs`、`tests/group-game-chat-receipts.test.mjs`（主持权限与隐私回归）；`sw.js`（v225）。
+- **执行证据**：隔离 V8 通过以分支准确源码执行的 Node 风格测试主体，覆盖主持人无身份牌、无投票权限、非授权揭晓受阻、全票后结算、群主接管、保存后副作用、结果卡昵称变更和公开记忆。测试结果依最终本轮日志的回归数为准。**原生 Node runner、Vite、Playwright、手机/唯一 QA 未运行（NOT RUN）**，不依赖 GitHub Actions。
+- **安全/兼容**：身份牌与主持人上下文仍按 session/role 隔离；原群消息、原角色数据、钱包和管理员 001 未修改。自动结算写入原历史后的逻辑仍需真实浏览器动态验证；若群聊写入失败，原游戏结果可由群主设置入口重试补发。保留 Draft，不合并或部署。
