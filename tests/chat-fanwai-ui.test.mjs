@@ -321,12 +321,17 @@ function fakeFanwaiDB(options = {}) {
                 else Promise.resolve().then(commit);
               },
               delete(id) {
+                if (typeof options.onDelete === 'function') options.onDelete(id);
                 if (options.failDeletes) {
                   Promise.resolve().then(() => { if (transaction.onabort) transaction.onabort(); });
                   return;
                 }
-                records.delete(id);
-                Promise.resolve().then(() => { if (transaction.oncomplete) transaction.oncomplete(); });
+                const finishDelete = () => {
+                  records.delete(id);
+                  if (transaction.oncomplete) transaction.oncomplete();
+                };
+                if (options.deleteDelayMs) setTimeout(finishDelete, options.deleteDelayMs);
+                else Promise.resolve().then(finishDelete);
               }
             });
             return transaction;
@@ -891,4 +896,56 @@ test('delete during a pending final save cannot resurrect an erased side story',
   assert.equal(indexedDB.records.has(savedId), false,
     'the pending put must finish before delete, never resurrecting a deleted story');
   assert.equal(app.requests, 7, 'deletion must not call the AI');
+});
+
+
+test('repeated delete confirmations issue exactly one transaction and one lifecycle event', async () => {
+  let deleteCalls = 0;
+  const db = fakeFanwaiDB({ deleteDelayMs: 30, onDelete() { deleteCalls++; } });
+  const accountId = 'MAO-AAAAAAAAAAAA';
+  const id = accountId + ':role-1:double-submit';
+  db.records.set(id, {
+    id, accountId, characterId: 'role-1', name: '待删除的故事',
+    status: 'complete', target: 40, updatedAt: 10,
+    messages: [{ role: 'char', text: '已存档' }]
+  });
+  const app = mount({ accountId, indexedDB: db });
+  let deletedEvents = 0;
+  app.registry.on('episode:deleted', () => { deletedEvents++; });
+  const root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().some(el => el.dataset.id === id));
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(el => el.dataset.action === 'read') });
+  await root.handlers.click({ target: sheet.all().find(el => el.dataset.action === 'delete') });
+  const confirm = sheet.all().find(el => el.dataset.action === 'confirm-delete');
+  const first = root.handlers.click({ target: confirm });
+  const second = root.handlers.click({ target: confirm });
+  await Promise.all([first, second]);
+  assert.equal(deleteCalls, 1);
+  assert.equal(deletedEvents, 1);
+  assert.equal(db.records.has(id), false);
+  assert.equal(app.requests, 0);
+});
+
+test('closing the story while deletion commits cannot reopen the sheet', async () => {
+  const db = fakeFanwaiDB({ deleteDelayMs: 35 });
+  const accountId = 'MAO-AAAAAAAAAAAA';
+  const id = accountId + ':role-1:close-on-delete';
+  db.records.set(id, {
+    id, accountId, characterId: 'role-1', name: '即将删除',
+    status: 'complete', target: 40, updatedAt: 10,
+    messages: [{ role: 'char', text: '独立番外' }]
+  });
+  const app = mount({ accountId, indexedDB: db });
+  const root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().some(el => el.dataset.id === id));
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(el => el.dataset.action === 'read') });
+  await root.handlers.click({ target: sheet.all().find(el => el.dataset.action === 'delete') });
+  const pending = root.handlers.click({ target: sheet.all().find(el => el.dataset.action === 'confirm-delete') });
+  await root.handlers.click({ target: sheet.all().find(el => el.dataset.action === 'close') });
+  await pending;
+  assert.equal(root.hidden, true, 'closed UI must remain closed after delayed storage completion');
+  assert.equal(db.records.has(id), false);
+  assert.equal(app.requests, 0);
 });
