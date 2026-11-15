@@ -286,7 +286,8 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       var transferBtn=document.getElementById('transferOwnerBtn');
       var currentOwnerId=String(group.ownerId||'__user');
       transferBtn.textContent=String(select.value)===currentOwnerId?'当前群主':(select.value==='__user'?'转让群主给我':'确认转让群主');
-      transferBtn.disabled=String(select.value)===currentOwnerId;
+      select.disabled=currentOwnerId!=='__user';
+      transferBtn.disabled=currentOwnerId!=='__user'||String(select.value)===currentOwnerId;
       transferBtn.style.opacity=transferBtn.disabled?'.58':'1';
       transferBtn.style.cursor=transferBtn.disabled?'default':'pointer';
     }
@@ -295,7 +296,7 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       var isCurrent=String(this.value)===currentOwnerId;
       var button=document.getElementById('transferOwnerBtn');
       button.textContent=isCurrent?'当前群主':(this.value==='__user'?'转让群主给我':'确认转让群主');
-      button.disabled=isCurrent;
+      button.disabled=currentOwnerId!=='__user'||isCurrent;
       button.style.opacity=isCurrent?'.58':'1';
       button.style.cursor=isCurrent?'default':'pointer';
     });
@@ -344,7 +345,7 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
               '<span class="member-heading"><span class="member-name">'+escapeHtml(member.nickname||member.name||'未命名成员')+'</span><span class="member-id">'+memberSummary(member)+'</span></span>'+
               '<span class="chevron">'+CHEVRON_SVG+'</span>'+
             '</button>'+
-            '<button type="button" class="remove" data-remove-member="'+escapeHtml(id)+'">移出群聊</button>'+
+            '<button type="button" class="remove" data-remove-member="'+escapeHtml(id)+'" '+(String(group.ownerId||'__user')!=='__user'?'disabled title="只有群主或管理员可移除成员"':'')+'>移出群聊</button>'+
           '</div>'+
           '<div class="member-body">'+
           '<div class="fields">'+
@@ -504,10 +505,11 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
     document.getElementById('transferOwnerBtn').addEventListener('click',function(){
       var nextOwnerId=document.getElementById('ownerSelect').value||'__user';
       var oldOwner=String(group.ownerId||'__user');
+      if(oldOwner!=='__user'){notify('只有当前群主才能转让群主身份');return;}
       if(nextOwnerId===oldOwner){notify('这位成员已经是群主');return;}
       var nextOwner=(group.members||[]).find(function(m){return String(m.id)===String(nextOwnerId);});
       var nextName=nextOwner?(nextOwner.nickname||nextOwner.name||'群成员'):'你自己';
-      if(!confirm('确定将群主转让给「'+nextName+'」吗？'))return;
+      if(!confirm('确定将群主转让给「'+nextName+'」吗？转让后你不能自行收回群主权限。'))return;
       group.ownerId=nextOwner?String(nextOwner.id):'__user';
       if(nextOwner)nextOwner.isAdmin=true;
       persist('群主已更新');
@@ -556,10 +558,12 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       if(!button)return;
       var id=button.getAttribute('data-remove-member');
       if(!confirm('确定将这位角色移出群聊？已有聊天记录会保留。'))return;
-      group.members=(group.members||[]).filter(function(m){return String(m.id)!==String(id);});
-      if(String(group.ownerId)===String(id))group.ownerId='__user';
+      var removed=window.GroupGovernance?window.GroupGovernance.apply({
+        group:group,actorId:'__user',action:'remove',target:String(id),save:function(){return persist();}
+      }):{ok:false,message:'群管理模块未加载'};
+      if(!removed.ok){notify(removed.message||'没有操作权限');return;}
       delete expandedMembers[String(id)];
-      persist('已移出群聊');renderMembers();renderOwner();renderRelationships();
+      notify('已移出群聊');renderMembers();renderOwner();renderRelationships();
     });
     document.getElementById('leaveGroupBtn').addEventListener('click',function(){
       if(!window.GroupGovernance){notify('群管理模块未加载');return;}
