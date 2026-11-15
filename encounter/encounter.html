@@ -66,7 +66,7 @@
 'use strict';
 var engine=window.MAOMAOEncounter;
 var cardEl=document.getElementById('frontCard'),sheet=document.getElementById('sheet'),overlay=document.getElementById('overlay'),noticeEl=document.getElementById('notice');
-var current=null,position=0,drag=null,lock=false,noticeTimer=0,lastDragEnd=0,returnFocus=null;
+var current=null,position=0,drag=null,lock=false,noticeTimer=0,suppressDragClick=false,returnFocus=null;
 function escapeHtml(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function clock(){var d=new Date();document.getElementById('deviceTime').textContent=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
 clock();setInterval(clock,30000);
@@ -118,7 +118,7 @@ function move(direction){
  setTimeout(function(){lock=false;drawNew();},240);
 }
 function snap(){cardEl.classList.remove('dragging');cardEl.classList.add('moving');cardEl.style.transform='translate3d(0,0,0) rotate(0deg)';cardEl.style.opacity='1';setTimeout(function(){cardEl.classList.remove('moving');},260);}
-cardEl.addEventListener('pointerdown',function(e){if(e.button!==0||lock||!current)return;drag={id:e.pointerId,x:e.clientX,y:e.clientY,dx:0,dy:0,horizontal:false};});
+cardEl.addEventListener('pointerdown',function(e){if(e.button!==0||lock||!current)return;suppressDragClick=false;drag={id:e.pointerId,x:e.clientX,y:e.clientY,dx:0,dy:0,horizontal:false};});
 cardEl.addEventListener('pointermove',function(e){
  if(!drag||drag.id!==e.pointerId||lock)return;
  drag.dx=e.clientX-drag.x;drag.dy=e.clientY-drag.y;
@@ -134,15 +134,15 @@ function finish(e){
  var dx=drag.dx,dy=drag.dy,h=drag.horizontal;
  drag=null;
  // 手机浏览器会在 pointerup 之后合成 click；滑过的卡不能误打开档案。
- if(Math.abs(dx)>8||Math.abs(dy)>8)lastDragEnd=Date.now();
+ if(Math.abs(dx)>8||Math.abs(dy)>8)suppressDragClick=true;
  if(!h)return;
  if(dx>95)move('right');else if(dx< -95)move('left');else snap();
 }
 cardEl.addEventListener('pointerup',finish);
-cardEl.addEventListener('pointercancel',function(){if(drag){lastDragEnd=Date.now();drag=null;snap();}});
-cardEl.addEventListener('lostpointercapture',function(){if(drag&&drag.horizontal){lastDragEnd=Date.now();drag=null;snap();}});
+cardEl.addEventListener('pointercancel',function(){if(drag){suppressDragClick=true;drag=null;snap();}});
+cardEl.addEventListener('lostpointercapture',function(){if(drag&&drag.horizontal){suppressDragClick=true;drag=null;snap();}});
 cardEl.addEventListener('click',function(e){
- if(lock||!current||drag||Date.now()-lastDragEnd<480){e.preventDefault();return;}
+ if(lock||!current||drag||suppressDragClick){suppressDragClick=false;e.preventDefault();return;}
  openDetail();
 });
 cardEl.addEventListener('keydown',function(e){if(e.key==='ArrowLeft'){e.preventDefault();move('left');}else if(e.key==='ArrowRight'){e.preventDefault();move('right');}else if(e.key==='Enter'||e.key===' '){e.preventDefault();openDetail();}});
