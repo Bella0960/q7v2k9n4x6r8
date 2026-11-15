@@ -191,3 +191,11 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **测试提交**：`1eff17cd` 覆盖成功延迟提交与失败不通知；`23d78af6` 覆盖保存待提交期间续写时旧暂停事件被取消。原四组模拟 UI / 合同 / 扩展 / PhoneAPI **61/61 PASS**。测试通过仅指 V8 隔离执行，不等于 `node --test`、Vite、Chromium 或手机真机，以上仍未跑。
 - **缓存**：`0e65b143`、`734a02ca` 更新番外 JS 加载版本至 `20261116v20`，聊天扩展加载版本至 `20261116fanwai20`；未修改旧数据、存储 schema、主线消息、状态栏或钱包。
 - **开发阶段**：用户明确不合并；本轮无 QA、生产或数据库操作。下次继续原 PR 开发并执行可用范围内的真实验证。
+
+## 2026-11-16｜番外：记忆偏好读取失败不再污染旧数据
+
+- **原任务**：仅开发 `integration/account-fanwai-stack-20261115` / Draft PR #299，上游 #290，用户明确“不合并、不部署”。按治理 Draft #300 统一规则核对归属，没有创建新分支、PR、Worker 或数据存储。
+- **实修 Bug**：原 `loadSettings()` 把 IndexDB 偏好 `get` 失败当作记录缺失，仍设置 `settingsLoaded=true`。用户下一次修改时可能把默认 `memory=none, count=null` 写回旧设置，或者未察觉按错误记忆模式创建番外。提交 `538a7f53` 增加读取成功标志、失败不落盘且可重试；提交 `dd41c363` 阻止偏好未安全读取时产生新故事及模型请求。
+- **回归**：`2c757c4f` 增加失败设置读取与成功重试的合成 IndexedDB 场景；`89b3ee1f` 增加未读偏好时不可创建草稿或产生模型调用的断言。当前源文件 V8 隔离执行的番外 UI/核心/扩展/PhoneAPI **62/62 PASS**，发布资源合同 **6/6 PASS**。不把 V8 模拟冒充实际 `node --test`/Vite/Chromium/真机。
+- **兼容/版本**：`5d6221fb`、`fe295261` 将手机资源链更新为 `chat-extras.js?t=20261116fanwai21` → `chat-fanwai.js?v=20261116v21`；没有迁移/清理原角色、聊天、世界书、账号、钱包、番外数据。
+- **尚未执行**：完整仓库 CLI 测试、`npm ci`、`npm run build`、Playwright Chromium 及 Android/iPhone 真实验收仍 NOT RUN，不能声称 QA 成功。本轮不触碰唯一 QA Worker 或正式版。
