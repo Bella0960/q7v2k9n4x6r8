@@ -5576,6 +5576,21 @@
                 rolePersona = (currentCharacter.persona || currentCharacter.prompt || '').trim()
                     || '你是一个善解人意、回复自然的AI助手。';
             }
+            // An explicitly addressed admin order should be answered by the addressed admin,
+            // not a randomly selected member (and never by the muted target).
+            if (isGroupChat && currentGroup && !isGroupFollowup && !isRegen && window.GroupGovernance) {
+                var directed = window.GroupGovernance.naturalModeration(text, currentGroup);
+                if (directed) {
+                    var addressedAdmin = getAvailableGroupMembers().find(function (m) {
+                        return m && String(m.id) === directed.actorId;
+                    });
+                    if (addressedAdmin) {
+                        groupReplyPick = Object.assign({}, addressedAdmin, {
+                            name: groupMemberDisplayName(addressedAdmin), isMentioned: true
+                        });
+                    }
+                }
+            }
             if (groupContextPrompt) rolePersona += '\n' + groupContextPrompt;
             rolePersona = capText(rolePersona, CTX_CAP.persona);
 
@@ -6519,6 +6534,22 @@
             fullText = typeof streamResult.fullText === 'string'
                 ? streamResult.fullText
                 : lastPaintedStreamText;
+
+            // Recheck live membership before committing the reply: a muted/removed role
+            // must not speak even if another tab changed permissions mid-stream.
+            if (isGroupChat && currentGroup && groupReplyPick && window.GroupGovernance) {
+                var liveGroup = loadGroupById(currentRoleId);
+                var liveSpeaker = liveGroup && (liveGroup.members || []).find(function (m) {
+                    return m && String(m.id) === String(groupReplyPick.id);
+                });
+                if (!liveGroup || !window.GroupGovernance.userIsInGroup(liveGroup) ||
+                    !liveSpeaker || window.GroupGovernance.isMuted(liveSpeaker)) {
+                    fullText = '';
+                    if (typeof showToast === 'function') showToast('这位成员已不在可发言状态，本轮回复已取消');
+                } else {
+                    currentGroup = liveGroup;
+                }
+            }
 
             // 流内一直没出现 loading 移除（零 delta 兜底）
             const loadingEl2 = document.getElementById(statusId);
