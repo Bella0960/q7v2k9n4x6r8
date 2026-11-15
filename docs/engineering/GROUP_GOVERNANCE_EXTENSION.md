@@ -66,3 +66,13 @@
 - 为核对 GitHub Action 配额之外的回归，使用 V8 兼容夹具执行了五份仓库测试的实际测试逻辑；另外对 GitHub `shared/js/phone/group-turn-effects.js` 的精确 Blob SHA 校验后，以独立 Node.js 22 `node --test` 对该文件执行了 5 项真实单元测试并通过。这不是整仓 `npm run test:group:governance`、Playwright、`npm run build` 或 Android/iPhone 完整验收。
 
 - `GroupGameSessions.sendWhisper` 现在也统一注册到 `GroupTurnEffects.afterSave`：会随当前群 AI 回复成功落库才投递，并在失败时进入同一后置操作失败计数；旧局 `sessionId` 校验继续有效。
+
+## 2026-11-15｜跨存储角色私聊入口恢复（原 PR #298）
+
+- 新增 `shared/js/phone/group-private-receipt-recovery.js`，加载聊天页时由 `GroupPrivateReceiptRecovery.reconcile({group, readGroupHistory, readRoleHistory, saveGroupHistory})` 完成恢复。沿用原有 `PhoneStorage`/群聊天历史入口，不建立新的群数据库或独立登录系统。
+- 仅对**新版本、已经成功持久化**且带 `privateGroupReceiptV1:true`、`privateFromGroup:true`、正确 `fromGroupId` 与 `mid` 的角色私聊补卡。旧版无标记记录不自动补写，避免把普通单聊冒充群私聊。
+- 新恢复卡只保留 `privateMessageId`、发送角色、原群 ID、时间与类型，`text:''`；私聊正文仍只保存在对应角色聊天历史。仅扫描本群当前有效角色，不从其他群、退群状态或用户输入推断私聊。
+- 不再限制只扫描最近 600 条角色聊天，避免长期遗留失败永远无法补回；多次打开按角色 ID + 原 `mid` 去重，原群记录读取异常则停止，恢复写入必须经过原有 `saveMessages` 和回读核验。
+- **故障范围**：本模块在下次打开群聊时修补“角色单聊成功、群入口写入失败”，是浏览器本地的幂等修复，不提供实时 Push，不保证页面永不崩溃、不涵盖管理员/关系/钱包的跨存储恢复，也不是服务端 ACID 事务。群内已失去成员资格的角色消息不会自动恢复，以免越权泄露。没有自动改写旧版已保存的含正文群私聊记录。
+- 新增 `tests/group-private-receipt-recovery.test.mjs` 并纳入 `npm run test:group:governance`，覆盖重复恢复、跨群拒绝、历史超 600 条、损坏/拒绝写入、读回不一致以及脚本和 PWA 接线。PWA 缓存更新至 `v216`。
+- 验证：从 GitHub 读取的 9/9 条恢复相关完整测试逻辑通过；从 GitHub 提取源码/测试并经 Blob SHA 验证一致，在原生 Node.js 22 下运行新模块 8/8 个行为测试通过；其余 1 项页面/PWA 接线测试基于 GitHub 原始页面在独立 V8 环境通过。此前原有五份群回归逻辑 39/39 通过。**尚未执行整仓原生 Node、Playwright、构建或 Android/iPhone 实机验收，PR 继续 Draft。**
