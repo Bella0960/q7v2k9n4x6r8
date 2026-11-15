@@ -763,6 +763,51 @@ test('pause and immediately resume cannot let a stale network response overwrite
 });
 
 
+
+test('pause event is dispatched only after the durable pause transaction commits', async () => {
+  const db = fakeFanwaiDB({ writeDelays: [0, 32] });
+  const app = mount({
+    accountId: 'MAO-AAAAAAAAAAAA', indexedDB: db,
+    completeJSON: () => new Promise(() => {})
+  });
+  let pausedEvents = 0;
+  app.registry.on('episode:paused', () => { pausedEvents++; });
+  const root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().some(n => n.dataset.template === 'daily'));
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.template === 'daily') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'start-template') });
+  await tickUntil(() => app.requests === 1);
+  const pending = root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'pause') });
+  assert.equal(pausedEvents, 0, 'a queued IndexedDB write is not a committed pause');
+  await pending;
+  assert.equal(pausedEvents, 1, 'one completed pause produces one lifecycle event');
+  assert.equal(app.requests, 1, 'pausing must not trigger an extra model request');
+  assert.ok([...db.records.values()].some(row => row.status === 'partial'),
+    'the event must describe a story with a committed pause snapshot');
+});
+
+test('failed pause save must not tell extension listeners that the story was persisted', async () => {
+  const db = fakeFanwaiDB({ failAtWrite: 2 });
+  const app = mount({
+    accountId: 'MAO-AAAAAAAAAAAA', indexedDB: db,
+    completeJSON: () => new Promise(() => {})
+  });
+  let pausedEvents = 0;
+  app.registry.on('episode:paused', () => { pausedEvents++; });
+  const root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().some(n => n.dataset.template === 'daily'));
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.template === 'daily') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'start-template') });
+  await tickUntil(() => app.requests === 1);
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'pause') });
+  assert.equal(pausedEvents, 0, 'abort/failure is not a durable pause event');
+  assert.ok(app.notices.some(n => n.includes('暂停保存失败')));
+  assert.equal(root.hidden, false, 'failed save must keep the working draft open');
+  assert.equal(app.requests, 1, 'save failure cannot trigger another paid generation');
+});
+
 test('pausing a story aborts its actual request signal and prevents late text from entering the archive', async () => {
   let signal;
   let wasAborted = false;
