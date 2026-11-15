@@ -113,3 +113,43 @@ test('only opted-in, confirmed memories of the selected role can enter side-stor
   assert.doesNotMatch(context, /待确认草稿/);
   assert.doesNotMatch(context, /别人的记忆/);
 });
+
+
+test('long episode pacing moves through four plot stages without extra model calls', () => {
+  const core = mount().MAOMAOFanwaiCore;
+  const character = { id: 'role-1', name: '小云', persona: '话少' };
+  const user = { nickname: '访客' };
+  const episode = { templateId: 'tease', target: 80, scenario: '善意的玩笑', messages: [] };
+  assert.equal(core.storyBeat(episode, 12).stage, 1);
+  const opening = core.episodePrompt(episode, character, user, 12);
+  assert.match(opening, /铺好无伤大雅的玩笑线索/);
+  assert.match(opening, /这是开场/);
+  assert.doesNotMatch(opening, /最后一轮/);
+  episode.messages = Array.from({ length: 22 }, () => ({ role: 'char', text: '消息' }));
+  assert.equal(core.storyBeat(episode, 12).stage, 2);
+  episode.messages = Array.from({ length: 47 }, () => ({ role: 'user', text: '聊天' }));
+  assert.equal(core.storyBeat(episode, 12).stage, 3);
+  episode.messages = Array.from({ length: 73 }, () => ({ role: 'char', text: '准备结束' }));
+  assert.equal(core.storyBeat(episode, 7).stage, 4);
+  assert.equal(core.storyBeat(episode, 7).closing, true);
+  const closing = core.episodePrompt(episode, character, user, 7);
+  assert.match(closing, /最后一轮/);
+  assert.match(closing, /情节收束/);
+  assert.ok(!Object.prototype.hasOwnProperty.call(episode, 'summary'), 'story arc should not create paid outline requests');
+});
+
+test('custom plugin templates can supply four independent plot beats', () => {
+  const core = mount().MAOMAOFanwaiCore;
+  assert.equal(core.registerTemplate({
+    id: 'moon', name: '月下篇', scenario: '月亮升起来了',
+    target: 40,
+    beats: ['开场线索', '发现新事', '突然转折', '好好结尾']
+  }), true);
+  const template = core.templates.find(item => item.id === 'moon');
+  assert.ok(template);
+  assert.equal(template.beats.length, 4);
+  assert.equal(core.storyBeat({
+    templateId: 'moon', beats: template.beats, target: 40,
+    messages: Array.from({ length: 23 }, () => ({ role: 'user', text: '今晚' }))
+  }, 12).instruction, '突然转折');
+});
