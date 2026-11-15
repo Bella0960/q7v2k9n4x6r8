@@ -1027,3 +1027,59 @@ test('pending archive read cannot replace a newly submitted custom story during 
   assert.ok(app.prompts[0].includes('清晨的一杯热茶'));
   assert.ok(db.records.has(prior), 'the old story remains untouched');
 });
+
+
+test('closing during a failed batch save leaves unsaved dialogue visible and stops further paid requests', async () => {
+  let closeTriggered = false;
+  let root;
+  const db = fakeFanwaiDB({
+    failAtWrite: 2,
+    onPut(record, count) {
+      if (count !== 2 || !root) return;
+      closeTriggered = true;
+      root.handlers.click({ target: root.querySelector('.fw-backdrop') });
+    }
+  });
+  const app = mount({ accountId: 'MAO-AAAAAAAAAAAA', indexedDB: db });
+  root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().some(n => n.dataset.template === 'daily'));
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.template === 'daily') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'start-template') });
+  await tickUntil(() => closeTriggered);
+  await tickUntil(() => app.notices.some(n => n.includes('保存失败')));
+  assert.equal(root.hidden, false,
+    'failed IndexedDB commit must not close the only readable copy of generated dialogue');
+  assert.equal(sheet.all().filter(n => n.className === 'fw-bubble').length, 12,
+    'unsaved dialogue must remain visible for manual recovery');
+  assert.equal(app.requests, 1, 'do not spend on additional model calls after failed persistence');
+  const stored = [...db.records.values()].find(r => r.templateId === 'daily');
+  assert.equal(stored.messages.length, 0, 'only the initial empty draft was committed');
+});
+
+test('returning to the archive waits for pause save success before hiding a live unsaved draft', async () => {
+  let backTriggered = false;
+  let root;
+  const db = fakeFanwaiDB({
+    failAtWrite: 2,
+    onPut(record, count) {
+      if (count !== 2 || !root) return;
+      backTriggered = true;
+      const menuBack = root.querySelector('.fw-sheet').all()
+        .find(n => n.dataset.action === 'back');
+      root.handlers.click({ target: menuBack });
+    }
+  });
+  const app = mount({ accountId: 'MAO-AAAAAAAAAAAA', indexedDB: db });
+  root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().some(n => n.dataset.template === 'daily'));
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.template === 'daily') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'start-template') });
+  await tickUntil(() => backTriggered);
+  await tickUntil(() => app.notices.some(n => n.includes('暂停保存失败')));
+  assert.equal(root.hidden, false);
+  assert.equal(sheet.all().filter(n => n.className === 'fw-bubble').length, 12,
+    'failed save must keep the reader instead of returning to archive');
+  assert.equal(app.requests, 1);
+});
