@@ -226,3 +226,32 @@ test('game pane is mounted only after its five-category settings container exist
   const game = read('shared/js/phone/group-game-panel.js');
   assert.match(game, /document\.querySelector\('\[data-group-category="games"\]'\)/);
 });
+
+
+test('appointed role moderator stays credited after group nickname changes', () => {
+  const h=createHarness();
+  const selected=h.games.start({group:group(),actorId:'__user',
+    gameId:'mystery',hostId:'r3',badRoleId:'r2',allowPrivate:false});
+  assert.equal(selected.ok,true);
+  const sid=selected.session.sessionId;
+  assert.equal(h.games.castVote({groupId:'g1',sessionId:sid,voterId:'r1',
+    targetId:'r2',eventId:'mod-r1'}).ok,true);
+  assert.equal(h.games.castVote({groupId:'g1',sessionId:sid,voterId:'r2',
+    targetId:'r1',eventId:'mod-r2'}).ok,true);
+  const closed=h.games.finish({group:group(),groupId:'g1',sessionId:sid,actorId:'r3'});
+  assert.equal(closed.ok,true);
+  const saved=post(h,closed.session);
+  assert.equal(saved.ok,true);
+  const previous=history(h)[0];
+  assert.equal(previous.groupGame.hostId,'r3');
+  assert.equal(previous.groupGame.hostName,'沈知');
+  assert.equal(previous.groupGame.revealedName,'陈望');
+  assert.doesNotMatch(JSON.stringify(previous),/mod-r1|mod-r2|voterId/);
+  const renamed=group();
+  renamed.members[2].nickname='改了名字的主持人';
+  assert.equal(post(h,closed.session,renamed).duplicate,true);
+  assert.equal(history(h).length,1);
+  assert.equal(history(h)[0].groupGame.hostName,'沈知');
+  const chat=read('chat/chat/chat-detail.html');
+  assert.match(chat,/gameResult\.hostName/);
+});
