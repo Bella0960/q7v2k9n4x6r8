@@ -1324,7 +1324,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
         commentImageFiles.every((file,i)=>file===files[i]);
       if(imagesUnchanged)clearCommentImages();
       const activeReplyTarget=replyToIdx>=0?post.comments[replyToIdx]:null;
-      if(draftUnchanged&&activeReplyTarget===replyTarget)cancelReply();
+      if(draftUnchanged&&imagesUnchanged&&activeReplyTarget===replyTarget)cancelReply();
       // After posting from author-only view, reveal the reader's saved comment.
       if(gossipView==='author')gossipView='all';
       renderPost();renderComments();
