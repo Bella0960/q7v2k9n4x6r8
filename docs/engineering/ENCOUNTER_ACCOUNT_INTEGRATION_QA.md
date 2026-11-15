@@ -88,3 +88,12 @@ Gate 不允许仅靠代码检查或旧截图通过。PR #290、#297 继续保留
 - 角色浏览器脚本补强：等待异步入库完成，并断言创建成功后 URL 无 `encounterDraft`。新增三个合同测试覆盖同账号锁和重复点击、排队期间换账号拒绝创建、同候选稳定 ID/冲突拒绝及成功后的 URL 清理（共四项，含前一轮的两项锁测试）。
 - 使用当前整合分支 GitHub 源文件在 V8 适配隔离环境复核：34 项合同 + 5 项 UI 模拟，**39/39 PASS**。不是原生 `node --test` 或 Vite/Playwright 回执。
 - 本轮检查当前执行容器：Node 22、Chromium、Python Playwright 均可用，但没有 GitHub MAOMAO 完整仓库副本，禁止把局部提取的 HTML/JS 模拟冒充生产 `dist` 实测。完整 `npm run test:encounter:full`、Android+iPhone、账号备份/隔离恢复仍待真实执行。PR #290/#297 和整合分支均未合并 main 或部署正式域名。
+
+## 2026-11-15｜本轮账号隔离与角色缓存安全补丁
+
+- **真实源代码分叉已修复**：集中整合分支和源 PR #297 原先仍在所有隔离模块安装之前发布 `__MAO_ACCOUNT_SCOPE__.ready=true`，落后于账号 PR #290 的最新补丁。现两处均原样采用 PR #290 的完整 `shared/js/mao-account-scope.js` 安全版本（Git blob `9227f5c1725f27a42f3009fe606e66c6cf8ec624`），只在账号 API 绑定与相应的存储隔离成功后标记就绪。
+- **防止保存失败产生幽灵角色**：角色管理器此前返回共享的空 `DEFAULT_ROLES` 数组，创建时 `unshift` 即使保存失败也会污染默认数组；现在所有空值/错误回退都返回独立副本。
+- **防止修改存储底层缓存**：若 PhoneStorage 返回数组引用，编辑器现在先克隆合法 JSON 角色快照，再允许修改。失败的保存不能提前改动原缓存对象。
+- **新增持久回归代码**：`tests/encounter-actual-scope.test.mjs` 验证隔离初始化失败时拒绝抽卡；`tests/encounter-contract.test.mjs` 验证失败写入不会出现幽灵角色及缓存污染；整合分支账号专项测试亦验证拒绝提前 ready。
+- **已实测（本轮独立 V8，精确读取当前 GitHub 分支源码）**：10/10 定向检查通过，包括两个源 JS 的 V8 编译、账号失败阻断、默认数组/缓存快照及写入失败恢复。**该结果不是**原生 Node CLI 测试、Vite build、Playwright Chromium、Android/iPhone 真机或正式生产回执。
+- **保持发布门禁**：继续执行 `npm run test:encounter:full` 的真实完整工作树验收；PR #290/#297 仍 Draft。不得把此轮代码级通过当作正式数据库、管理员 001、真实手机或生产可发布通过。
