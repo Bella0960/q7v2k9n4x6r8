@@ -98,7 +98,7 @@ if(built && browsed) {
   const sizes=[375,390,430];
   if(!Array.isArray(browsed.viewports)||sizes.some(x=>!browsed.viewports.includes(x)))
     errors.push('缺少 375/390/430px 全尺寸真实浏览器验收');
-  const mustCheck=['cardSwap','swipeRebound','candidatePersistence','roleCreation',
+  const mustCheck=['cardSwap','swipeRebound','fingerSwipeLeft','candidatePersistence','roleCreation',
     'jsonRoundTrip','thirdPartyJsonRejected','freeDrawNoApi'];
   for(const item of mustCheck)if(browsed.checked?.[item]!==true)errors.push('未实际完成浏览器断言：'+item);
   for(const name of [
