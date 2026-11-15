@@ -731,6 +731,18 @@
     return wrap;
   }
 
+  // 首次写盘期间冻结本篇的可选背景、记忆及篇幅，避免用户界面与实际发给模型的上下文分叉。
+  function lockStorySettings(locked) {
+    if (!state.root) return;
+    var controls = Array.from(state.root.querySelectorAll('[data-action="set-memory"]'));
+    controls = controls.concat(Array.from(state.root.querySelectorAll('input[data-fanwai-context]')));
+    ['#fw-count', '#fw-preview-count'].forEach(function (selector) {
+      var el = state.root.querySelector(selector);
+      if (el) controls.push(el);
+    });
+    controls.forEach(function (control) { control.disabled = !!locked; });
+  }
+
   function chosenContexts() {
     var selected = state.settings.memory === 'role' && contextProviders.has('character-memory')
       ? ['character-memory'] : [];
@@ -1244,6 +1256,7 @@
     var count = template ? Number(selectedCount) || template.target : Number(select && select.value) || 80;
     if (![40, 80, 100].includes(count)) count = template ? template.target : 80;
     state.creating = true;
+    lockStorySettings(true);
     // 立即让尚未结束的存档查询失效；不能在新故事首次写盘期间跳回旧篇。
     var viewSerial = ++state.viewSerial;
     try {
@@ -1277,7 +1290,10 @@
       emit('episode:created', { id: episode.id, characterId: roleId, target: count });
       openReader(episode);
       generate();
-    } finally { state.creating = false; }
+    } finally {
+      state.creating = false;
+      lockStorySettings(false);
+    }
   }
 
   async function action(event) {
@@ -1294,6 +1310,10 @@
       return;
     }
     if (key === 'set-memory') {
+      if (state.creating) {
+        showNotice('正在创建这篇番外，请完成后再修改下一篇的记忆设置');
+        return;
+      }
       if (canPersist && !state.settingsVerified) {
         showNotice('原有故事设置尚未读到，请重新进入后再修改');
         return;
@@ -1439,6 +1459,12 @@
       if (!target || (target.id !== 'fw-count' && target.id !== 'fw-preview-count')) return;
       var count = Number(target.value);
       if (![40, 80, 100].includes(count)) return;
+      if (state.creating) {
+        // 即使脚本模拟触发 change，也不能让控件显示一个并未用于本篇的目标篇幅。
+        target.value = String(state.settings.count || (state.selected ? state.selected.target : 80));
+        showNotice('正在创建这篇番外，请稍后再修改篇幅');
+        return;
+      }
       if (canPersist && !state.settingsVerified) {
         showNotice('原有故事设置尚未读到，请重新进入后再修改');
         return;
