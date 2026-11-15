@@ -37,7 +37,7 @@
     "test:forum:seed": "node --test tests/forum-seed-comments.test.mjs",
     "test:forum:mobile": "node tests/forum-media-mobile.mjs",
     "test:group:ui": "node --test tests/group-ui-collapse-invite.test.mjs",
-    "test:group:governance": "node --test tests/group-governance.test.mjs tests/group-social-settings-contract.test.mjs tests/group-game-boundary.test.mjs tests/group-turn-effects.test.mjs tests/group-turn-integration.test.mjs",
+    "test:group:governance": "node --test tests/group-governance.test.mjs tests/group-social-settings-contract.test.mjs tests/group-game-boundary.test.mjs tests/group-turn-effects.test.mjs tests/group-turn-integration.test.mjs tests/group-private-receipt-recovery.test.mjs",
     "test:group:invite-e2e": "node --test tests/group-chat-invite-e2e.test.mjs",
     "test:wechat:browser": "node tests/wechat-theme-browser.mjs",
     "test:clock:palette": "node tests/clock-palette-longpress.test.mjs",
