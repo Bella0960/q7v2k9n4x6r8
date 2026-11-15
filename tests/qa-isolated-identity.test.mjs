@@ -98,6 +98,8 @@ test('isolated QA can register a real local test user, log in and resume session
   assert.equal(data.account.role, 'user');
   assert.match(data.account.id, /^MAO-QA[A-Z0-9]{16}$/);
   assert.ok(isQaLocalAccount(data.account));
+  assert.equal(f.store.isMaoIsolatedQaAccount(data.account.id), true,
+    'account provenance must come from QA registration audit, not just an ID prefix');
   assert.equal(f.query('SELECT status FROM mao_accounts WHERE id = ?', data.account.id)[0].status, 'active');
 
   const logged = await handle(f, '/api/accounts/login', {
@@ -136,6 +138,30 @@ test('old delegated/real identity sessions cannot be promoted into isolated QA s
   );
   assert.equal(f.query('SELECT COUNT(*) AS total FROM mao_accounts WHERE id = ?', legacyId)[0].total, 1,
     'old QA records must not be deleted');
+  assert.equal(f.externalCalls(), 0);
+});
+
+test('forged or legacy QA-looking account IDs cannot authenticate without isolated QA provenance', async t => {
+  const f = fixture();
+  t.after(f.close);
+  const suspiciousId = 'MAO-QAABCDEFGHIJKLMNOP';
+  const timestamp = Date.now();
+  f.store.createMaoAccount({
+    id: suspiciousId, username: 'legacy_qa_name', usernameKey: 'legacy_qa_name',
+    passwordSalt: 'legacy-synthetic-salt', passwordHash: 'legacy-synthetic-hash',
+    registrationIpHash: 'synthetic-legacy-IP-2', now: timestamp
+  });
+  assert.equal(isQaLocalAccount({ id: suspiciousId, role: 'user' }), true);
+  assert.equal(f.store.isMaoIsolatedQaAccount(suspiciousId), false);
+  const token = 'AnotherLegacySyntheticToken0123456789012345';
+  assert.equal(f.store.createMaoAccountSession({
+    id: 'legacy-session-with-prefix', accountId: suspiciousId,
+    tokenHash: await sha256Hex(token), now: timestamp, expiresAt: timestamp + 600000
+  }), true);
+  await assert.rejects(
+    handle(f, '/api/accounts/me', { cookie: 'MAO_SESSION=' + token }),
+    error => error.code === 'ACCOUNT_SESSION_REQUIRED'
+  );
   assert.equal(f.externalCalls(), 0);
 });
 
