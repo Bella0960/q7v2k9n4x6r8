@@ -198,7 +198,10 @@ test('角色库第一次为空时可安全初始化新角色，不需要写空�
   const map=new Map();
   const localStorage={getItem(k){return map.get(k)??null;},setItem(k,v){map.set(k,String(v));}};
   const PhoneStorage={result:{
-    getCharacters(){return {ok:false,error:{code:'NOT_FOUND'}};},
+    getCharacters(){
+      const raw=localStorage.getItem('ai_custom_characters');
+      return raw===null?{ok:false,error:{code:'NOT_FOUND'}}:{ok:true,value:JSON.parse(raw)};
+    },
     saveCharacters(value){localStorage.setItem('ai_custom_characters',JSON.stringify(value));return {ok:true};}
   }};
   const window={PhoneStorage};
@@ -210,6 +213,41 @@ test('角色库第一次为空时可安全初始化新角色，不需要写空�
   assert.equal(JSON.parse(map.get('ai_custom_characters'))[0].name,'自建角色');
 });
 
+
+
+test('角色编辑器的 PhoneStorage 静默丢写必须报错并禁止后续覆盖', () => {
+  const start=managerSource.indexOf('let roleStoreReadError = false;');
+  const end=managerSource.indexOf('const ROLE_AVATAR_CLEANUP_QUEUE_KEY',start);
+  const existing=[{id:'old',name:'保留的角色',persona:'绝不能被空数组覆盖'}];
+  const source=managerSource.slice(start,end);
+  const fake={
+    getCharacters(){return {ok:true,value:existing};},
+    saveCharacters(){return {ok:true};} // 浏览器报告写入成功，实际没持久化
+  };
+  const PhoneStorage={result:fake};
+  const localStorage={getItem(){return JSON.stringify(existing);},setItem(){throw Error('should never touch fallback');}};
+  const manager=vm.runInNewContext(source+';({loadRoles,saveRoles,isBlocked:()=>roleStoreReadError})',
+    {window:{PhoneStorage},PhoneStorage,localStorage,STORAGE_KEY:'ai_custom_characters',DEFAULT_ROLES:[],console});
+  assert.equal(manager.loadRoles().length,1);
+  assert.equal(manager.saveRoles([{id:'new',name:'本次待保存角色'}]),false,
+    '旧数据没变时不得误报保存成功');
+  assert.equal(manager.isBlocked(),true,'必须拒绝再次覆盖旧数据');
+  assert.equal(existing[0].persona,'绝不能被空数组覆盖');
+});
+
+test('没有 PhoneStorage 时本地存储假写成功也必须拒绝并保留旧字节', () => {
+  const start=managerSource.indexOf('let roleStoreReadError = false;');
+  const end=managerSource.indexOf('const ROLE_AVATAR_CLEANUP_QUEUE_KEY',start);
+  const original='[{"id":"preserved","name":"旧角色"}]';
+  const localStorage={getItem(){return original;},setItem(){}};
+  const manager=vm.runInNewContext(managerSource.slice(start,end)+
+    ';({loadRoles,saveRoles,isBlocked:()=>roleStoreReadError})',
+    {window:{},localStorage,STORAGE_KEY:'ai_custom_characters',DEFAULT_ROLES:[],console});
+  assert.equal(manager.loadRoles().length,1);
+  assert.equal(manager.saveRoles([{id:'new',name:'新角色'}]),false);
+  assert.equal(manager.isBlocked(),true);
+  assert.equal(localStorage.getItem('ai_custom_characters'),original);
+});
 
 test('邂逅保存为原生角色后，现有聊天首页可直接列出该角色', () => {
   assert.match(chatListSource,/var CHARACTERS_KEY = 'ai_custom_characters'/);
