@@ -183,6 +183,13 @@
     padding: 10px 22px;
     padding-bottom: var(--maomao-home-indicator-comment-padding-bottom, 10px);
   }
+  /* mobile-fit.css uses !important for generic bottom bars. On this forum page
+     the Home Indicator owner supplies a more precise per-page padding setting. */
+  @media (max-width: 480px) {
+    body .comment-bar {
+      padding-bottom: var(--maomao-home-indicator-comment-padding-bottom, 10px) !important;
+    }
+  }
   .comment-bar input {
     flex: 1; height: auto; background: transparent;
     border: 0; border-bottom: 1px solid #ddd;
