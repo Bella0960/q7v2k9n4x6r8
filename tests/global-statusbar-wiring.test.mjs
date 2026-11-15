@@ -293,3 +293,34 @@ test('appearance Home Indicator switch updates on cross-tab storage and page res
   app.pageEvents.get('pageshow')();
   assert.equal(app.toggle.checked, true);
 });
+
+test('Android PWA system bar color sampler observes status bar hidden state', () => {
+  const nativeFeel = fs.readFileSync(path.join(projectRoot, 'shared/js/native-feel.js'), 'utf8');
+  const sampler = nativeFeel.match(/\(function MAOMAOSystemBarColor\(\) \{[\s\S]*?\n    \}\)\(\);/);
+  assert.ok(sampler, 'existing Android system-bar color sampler must be present');
+  assert.match(source, /STATUSBAR_HIDDEN_ATTR = 'data-maomao-statusbar-hidden'/);
+
+  const subscriptions = [];
+  let scheduled = 0;
+  class Observer {
+    constructor(callback) { this.callback = callback; }
+    observe(element, options) { subscriptions.push({ element, options, observer: this }); }
+  }
+  const root = {};
+  const body = { classList: { contains(name) { return name === 'maomao-home'; } } };
+  const document = { documentElement: root, body, readyState: 'complete', addEventListener() {} };
+  const window = {
+    MutationObserver: Observer,
+    requestAnimationFrame(callback) { scheduled++; callback(); },
+    addEventListener() {}
+  };
+  vm.runInNewContext(sampler[0], { window, document, MutationObserver: Observer },
+    { filename: 'native-feel-system-bar-color.js' });
+  const rootSubscription = subscriptions.find(({ element }) => element === root);
+  assert.ok(rootSubscription, 'system-bar sampler must observe HTML root');
+  assert.ok(Array.from(rootSubscription.options.attributeFilter).includes('data-maomao-statusbar-hidden'),
+    'visibility switch must cause a native PWA system color refresh');
+  const beforeToggle = scheduled;
+  rootSubscription.observer.callback([{ attributeName: 'data-maomao-statusbar-hidden' }]);
+  assert.equal(scheduled, beforeToggle + 1, 'visibility change should schedule color recalculation');
+});
