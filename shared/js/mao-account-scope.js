@@ -176,10 +176,7 @@
     try {
       global.__MAO_ACCOUNT_SCOPE__ = Object.freeze({ accountId: accountId, role: role, ready: true });
     } catch (error) {
-      global.stop();
-      document.open();
-      document.write('账号会话隔离暂不可用');
-      document.close();
+      stopUnsafeAccountPage();
     }
     return;
   }
