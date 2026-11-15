@@ -187,6 +187,12 @@ self.addEventListener('fetch', event => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
+  // 账号与云端数据接口必须直连服务端，绝不能被静态资源缓存层复用。
+  if (/^\/(?:api|account|internal)(?:\/|$)/.test(url.pathname)) {
+    event.respondWith(fetch(req));
+    return;
+  }
+
   // User-imported fonts are cached once by font-loader.js and served as same-origin
   // font resources. Keep this cache separate from the versioned app-shell cache.
   const fontAssetPrefix = new URL('__maomao_fonts/', self.registration.scope).pathname;
@@ -268,17 +274,20 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // 静态文件缓存优先，并在后台更新缓存。
+  // 公共静态文件沿用旧策略；即使错误进入此分支的私有响应也必须拒绝缓存。
   event.respondWith(
     caches.match(req).then(cached => {
+      const safeCached = isPrivateResponse(cached) ? null : cached;
       const fresh = fetch(req).then(response => {
-        if (response && response.ok) {
+        if (response && response.ok && !isPrivateResponse(response)) {
           const copy = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(req, copy));
+          caches.open(CACHE_NAME).then(cache => cache.put(req, copy)).catch(() => undefined);
         }
         return response;
-      }).catch(() => cached);
-      return cached || fresh;
+      }).catch(() => safeCached || new Response('暂时无法连接', {
+        status: 503, headers: { 'Cache-Control': 'no-store' }
+      }));
+      return safeCached || fresh;
     })
   );
 });
