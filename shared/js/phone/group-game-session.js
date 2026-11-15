@@ -14,6 +14,7 @@
   function publicKey(gid) { return PREFIX + gid; }
   function secretKey(gid, sid, rid) { return PRIVATE + gid + '_' + sid + '_' + rid; }
   function inboxKey(gid, sid, rid) { return PRIVATE + gid + '_' + sid + '_inbox_' + rid; }
+  function voteKey(gid,sid,rid) { return PRIVATE + gid + '_' + sid + '_vote_' + rid; }
   function storageOf(req) { return req && req.storage || root.localStorage; }
   function read(storage, key) {
     try { var text = storage.getItem(key); return text ? JSON.parse(text) : null; }
@@ -55,6 +56,18 @@
       return m && id(m.id);
     }).filter(valid) : [];
   }
+  function voteFor(session, rid, storage) {
+    var key=voteKey(session.groupId,session.sessionId,rid), raw;
+    try { raw=storage.getItem(key); }
+    catch(e) { return error('STORAGE_UNAVAILABLE','无法读取本局投票'); }
+    if(raw===null)return {ok:true,voted:false};
+    var vote=read(storage,key);
+    if(!vote || vote.groupId!==session.groupId || vote.sessionId!==session.sessionId ||
+      vote.voterId!==rid || session.players.indexOf(vote.targetId)===-1 ||
+      !valid(vote.eventId) || !Number.isFinite(Number(vote.time)))
+      return error('CORRUPT_VOTE','已有投票记录异常，已停止操作');
+    return {ok:true,voted:true,vote:vote};
+  }
   function game(groupId, storage) {
     if (!valid(groupId)) return null;
     var session = read(storage || root.localStorage, publicKey(groupId));
@@ -63,7 +76,16 @@
       ['active','finished'].indexOf(session.status) === -1 ||
       !Array.isArray(session.players) || session.players.some(function (x) { return !valid(x); }))
       return null;
-    // Never return a storage object bearing a private answer.
+    // A public game view exposes participation counts, NEVER private vote targets
+    // until the host has explicitly ended and revealed the session.
+    var voteCount=0,voteError=false;
+    if(session.status==='active') {
+      for(var pi=0;pi<session.players.length;pi++) {
+        var check=voteFor(session,session.players[pi],storage||root.localStorage);
+        if(!check.ok)voteError=true;
+        else if(check.voted)voteCount++;
+      }
+    }
     return { version:1, sessionId:session.sessionId, groupId:session.groupId,
       gameId:session.gameId, status:session.status, hostId:session.hostId,
       players:session.players.slice(), rules:{
@@ -71,6 +93,12 @@
         showPrivateActivity:session.rules && session.rules.showPrivateActivity === true
       }, createdAt:session.createdAt, finishedAt:session.finishedAt || 0,
       revealedRoleId:session.status === 'finished' ? id(session.revealedRoleId) : '',
+      voteCount:session.status==='active' ? voteCount : (Number(session.voteCount)||0),
+      voteError:voteError,
+      correctVotes:session.status==='finished' ? (Number(session.correctVotes)||0) : null,
+      voteTally:session.status==='finished' && Array.isArray(session.voteTally)
+        ? session.voteTally.filter(function(v){return v&&session.players.indexOf(id(v.targetId))!==-1;})
+          .map(function(v){return {targetId:id(v.targetId),count:Number(v.count)||0};}) : [],
       activity:session.rules && session.rules.showPrivateActivity === true
         ? (Array.isArray(session.activity) ? session.activity.slice(-12).map(function (v) {
           return { fromId:id(v.fromId), toId:id(v.toId), time:Number(v.time)||0 };
@@ -157,11 +185,16 @@
     if (!secret || secret.groupId !== gid || secret.sessionId !== session.sessionId ||
       secret.recipientId !== rid || (secret.role !== 'good' && secret.role !== 'bad'))
       return error('MISSING_CARD','角色身份牌未找到，已停止本轮回复，避免身份串号');
+    var ownVote=voteFor(session,rid,storage);
+    if(!ownVote.ok)return ownVote;
     var rules = session.rules;
     var text = '[群聊游戏 · 本局仅给当前角色的资料]\n' +
       '游戏：猜猜谁是坏人；你的身份：' + (secret.role === 'bad' ? '坏人' : '普通玩家') + '。\n' +
       '本局私聊：' + (rules.allowPrivate ? '允许玩家之间的游戏私聊' : '禁止玩家之间的游戏私聊') + '。\n' +
-      '请根据自己已知的事实参与推理；你无法读取其他成员的身份牌。';
+      '请根据自己已知的事实参与推理；你无法读取其他成员的身份牌。' +
+      (ownVote.voted
+        ? '\\n你已完成本局猜测，不得再次投票，也不要编造其他人的选票。'
+        : '\\n当群主宣布开始猜测，且你根据公开对话确实想投票时，在正常回复末尾添加 [游戏猜测:你怀疑的准确角色ID]。只能选一位本局其他角色，一局只有一票；不要代替其他角色投票。');
     if (rules.allowPrivate) {
       var whispers = read(storage, inboxKey(gid, session.sessionId, rid));
       var incoming = Array.isArray(whispers) ? whispers.slice(-3).filter(function (m) {
@@ -173,6 +206,37 @@
     }
     return { ok:true, active:true, text:text, sessionId:session.sessionId,
       canWhisper:rules.allowPrivate };
+  }
+  function castVote(req) {
+    req=req||{};
+    var gid=id(req.groupId),rid=id(req.voterId),target=id(req.targetId),
+      storage=storageOf(req),session=game(gid,storage);
+    if(!session || session.status!=='active' || !valid(req.sessionId) ||
+      session.sessionId!==id(req.sessionId))
+      return error('STALE_SESSION','投票所属对局已结束或已变化');
+    if(session.voteError)return error('CORRUPT_VOTE','本局已有异常投票，暂停新增');
+    if(session.players.indexOf(rid)===-1 || session.players.indexOf(target)===-1 ||
+      rid===target)return error('INVALID_VOTE','只能由本局角色投给另一位参赛者');
+    var eventId=id(req.eventId);
+    if(!valid(eventId))return error('INVALID_EVENT','投票事件编号无效');
+    // The role's identity card must remain valid when it votes.
+    var card=read(storage,secretKey(gid,session.sessionId,rid));
+    if(!card || card.groupId!==gid || card.sessionId!==session.sessionId ||
+      card.recipientId!==rid || ['good','bad'].indexOf(card.role)===-1)
+      return error('MISSING_CARD','角色身份牌缺失，禁止代投');
+    var previous=voteFor(session,rid,storage);
+    if(!previous.ok)return previous;
+    if(previous.voted) {
+      if(previous.vote.targetId===target && previous.vote.eventId===eventId)
+        return {ok:true,duplicate:true,voteCount:session.voteCount};
+      return error('ALREADY_VOTED','每位角色每局只能投一次');
+    }
+    var vote={version:1,groupId:gid,sessionId:session.sessionId,
+      voterId:rid,targetId:target,eventId:eventId,time:Date.now()};
+    if(!write(storage,voteKey(gid,session.sessionId,rid),vote))
+      return error('SAVE_FAILED','投票没有保存成功');
+    emit('game:voted',{groupId:gid,sessionId:session.sessionId,voterId:rid});
+    return {ok:true,duplicate:false,voteCount:session.voteCount+1};
   }
   function canWhisper(req) {
     req = req || {};
@@ -327,7 +391,7 @@
     if (!req.group || id(req.group.id)!==gid ||
       id(req.group.ownerId||'__user')!=='__user' || req.group.userMembership==='left')
       return error('NO_PERMISSION','无法确认当前群主权限');
-    var bad=[];
+    var bad=[],votes=[],targets=Object.create(null);
     for(var i=0;i<session.players.length;i++){
       var rid=session.players[i];
       var secret=read(storage,secretKey(gid,session.sessionId,rid));
@@ -335,15 +399,27 @@
         return error('MISSING_CARD','身份牌缺失，不能伪造揭晓结果');
       if(secret.role==='bad')bad.push(rid);
       else if(secret.role!=='good')return error('INVALID_CARD','身份牌异常');
+      var ballot=voteFor(session,rid,storage);
+      if(!ballot.ok)return ballot;
+      if(ballot.voted) {
+        votes.push(ballot.vote);
+        targets[ballot.vote.targetId]=(targets[ballot.vote.targetId]||0)+1;
+      }
     }
     if(bad.length!==1)return error('INVALID_RESULT','无法确定唯一坏人');
     var raw=read(storage,publicKey(gid));
     if(!raw||raw.sessionId!==session.sessionId)return error('CONFLICT','对局已发生变化');
     raw.status='finished';raw.finishedAt=Date.now();raw.revealedRoleId=bad[0];
+    raw.voteCount=votes.length;
+    raw.correctVotes=votes.filter(function(v){return v.targetId===bad[0];}).length;
+    raw.voteTally=session.players.map(function(rid){
+      return {targetId:rid,count:targets[rid]||0};
+    });
     if(!write(storage,publicKey(gid),raw))return error('SAVE_FAILED','游戏结束状态未保存');
     drop(storage,inboxKey(gid,session.sessionId,'__user'));
     session.players.forEach(function (rid) {
       drop(storage,secretKey(gid,session.sessionId,rid));
+      drop(storage,voteKey(gid,session.sessionId,rid));
       drop(storage,inboxKey(gid,session.sessionId,rid));
     });
     emit('game:finished',{groupId:gid,sessionId:session.sessionId,gameId:session.gameId,
@@ -352,7 +428,7 @@
   }
   root.GroupGameSessions=Object.freeze({
     registerGame:registerGame, games:games, on:on, getPublic:game,
-    start:start, finish:finish, buildRoleContext:buildRoleContext,
+    start:start, finish:finish, castVote:castVote, buildRoleContext:buildRoleContext,
     canWhisper:canWhisper, checkDirectPrivateAllowed:checkDirectPrivateAllowed,
     sendWhisper:sendWhisper, getHostInbox:getHostInbox, getHostConversation:getHostConversation,
     redactPublicStreamText:redactPublicStreamText
