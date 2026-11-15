@@ -6593,7 +6593,7 @@
                     return window.GroupGameSessions.redactPublicStreamText(source);
                 // Privacy fallback if the external script fails to load.
                 return source.replace(/\[游戏揭晓\]?/g, '').replace(/\[(?:游戏私聊|群私聊|游戏猜测)[:：][\s\S]*?(?:\]|$)/g, '')
-                    .replace(/\[(?:游|游戏|游戏私|游戏私聊|群|群私|群私聊)[^\]\r\n]{0,1000}$/g, '');
+                    .replace(/\[(?:游|游戏|游戏私|游戏私聊|游戏猜|游戏猜测|游戏揭|游戏揭晓|群|群私|群私聊)[^\]\r\n]{0,1000}$/g, '');
             }
             function paintStreamLive(text) {
                 // 保留原始累计文本：若流引擎意外抛错，收尾仍可走既有清洗与落库流程。
