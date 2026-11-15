@@ -251,6 +251,32 @@
       .slice(-20).map(function(msg){return {fromId:id(msg.fromId),
         text:id(msg.text).slice(0,240),time:Number(msg.time)||0};})};
   }
+  // Private conversation with one player: host-sent + host-received only.
+  // Whispers exchanged by two other players are never returned, even to host.
+  function getHostConversation(req) {
+    req=req||{};
+    var checked=getHostInbox(req);
+    if(!checked.ok)return checked;
+    var gid=id(req.groupId),peer=id(req.peerId),storage=storageOf(req);
+    var session=game(gid,storage);
+    if(!session || session.players.indexOf(peer)===-1)
+      return error('NOT_PLAYER','没有找到本局私聊对象');
+    var sent=read(storage,inboxKey(gid,session.sessionId,peer));
+    if(sent!==null && !Array.isArray(sent))return error('CORRUPT_INBOX','私聊记录异常');
+    var received=read(storage,inboxKey(gid,session.sessionId,'__user'));
+    if(received!==null && !Array.isArray(received))return error('CORRUPT_INBOX','群主私聊记录异常');
+    var items=(sent||[]).filter(function(m){
+      return m&&m.groupId===gid&&m.sessionId===session.sessionId&&
+        m.fromId==='__user'&&m.toId===peer;
+    }).map(function(m){return {senderId:'__user',text:id(m.text).slice(0,240),
+      time:Number(m.time)||0,direction:'sent'};}).concat((received||[]).filter(function(m){
+      return m&&m.groupId===gid&&m.sessionId===session.sessionId&&
+        m.fromId===peer&&m.toId==='__user';
+    }).map(function(m){return {senderId:peer,text:id(m.text).slice(0,240),
+      time:Number(m.time)||0,direction:'received'};}));
+    items.sort(function(a,b){return a.time-b.time;});
+    return {ok:true,sessionId:session.sessionId,messages:items.slice(-40)};
+  }
   function finish(req) {
     req=req||{};
     var gid=id(req.groupId), storage=storageOf(req);
@@ -286,7 +312,7 @@
   root.GroupGameSessions=Object.freeze({
     registerGame:registerGame, games:games, on:on, getPublic:game,
     start:start, finish:finish, buildRoleContext:buildRoleContext,
-    canWhisper:canWhisper, sendWhisper:sendWhisper, getHostInbox:getHostInbox,
+    canWhisper:canWhisper, sendWhisper:sendWhisper, getHostInbox:getHostInbox, getHostConversation:getHostConversation,
     redactPublicStreamText:redactPublicStreamText
   });
 })(typeof window!=='undefined'?window:globalThis);
