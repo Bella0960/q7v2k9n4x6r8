@@ -50,6 +50,36 @@
   var styles = ['普通相遇','普通相遇','普通相遇','普通相遇','普通相遇','普通相遇','蒙面档案','以物识人','命运分支','性格盲测'];
   var PREFERENCES_KEY = 'maomao_encounter_preferences_v1';
 
+  // 尊重项目已有的 MAO 账号作用域：正式站点必须使用 Worker 注入的
+  // __MAO_ACCOUNT_SCOPE__ + 账号 meta。此处绝不自建另一套登录/账号键。
+  // 普通用户的 localStorage 已由原作用域代理隔离，001 管理员沿用原存储。
+  function checkAccountScope() {
+    var host = '';
+    try { host = String(global.location && global.location.hostname || '').toLowerCase(); }
+    catch (e) { return fail('无法确认站点位置，已停止读取角色候选'); }
+    var localDev = !host || host === 'localhost' || host === '127.0.0.1' || host === '::1' || host.endsWith('.localhost');
+    var idNode, roleNode;
+    try {
+      var doc = global.document;
+      if (doc && typeof doc.querySelector === 'function') {
+        idNode = doc.querySelector('meta[name="mao-account-id"]');
+        roleNode = doc.querySelector('meta[name="mao-account-role"]');
+      }
+    } catch (e) { return fail('无法检查当前账号上下文，已停止访问候选'); }
+    var pageId = String(idNode && idNode.content || '').trim();
+    var pageRole = String(roleNode && roleNode.content || '').trim();
+    var scope = global.__MAO_ACCOUNT_SCOPE__;
+    if (pageId || pageRole || !localDev) {
+      if (!/^MAO-[A-Z0-9]{12,24}$/.test(pageId) ||
+          (pageRole !== 'super_admin' && pageRole !== 'user') ||
+          !scope || scope.ready !== true ||
+          scope.accountId !== pageId || scope.role !== pageRole) {
+        return fail('账号隔离尚未就绪。已停止抽卡和收藏，请先通过正式账号入口登录。');
+      }
+    }
+    return ok({id:pageId || 'local-development', role:pageRole || 'local-development'});
+  }
+
   function random(max) {
     if (global.crypto && global.crypto.getRandomValues) {
       var bytes = new Uint32Array(1);
@@ -72,6 +102,8 @@
     } catch (e) { return fail('无法读取本地资料，请检查浏览器存储状态'); }
   }
   function getCandidates() {
+    var access = checkAccountScope();
+    if (!access.ok) return access;
     var r = getRaw(KEY, []);
     if (!r.ok) return r;
     if (!Array.isArray(r.value)) return fail('候选收藏格式异常');
@@ -79,12 +111,15 @@
     return ok(r.value);
   }
   function getPreferences() {
+    if (!checkAccountScope().ok) return {};
     try {
       var o = JSON.parse(global.localStorage.getItem(PREFERENCES_KEY) || '{}');
       return (o && typeof o === 'object' && !Array.isArray(o)) ? o : {};
     } catch (e) { return {}; }
   }
   function savePreferences(patch) {
+    var access = checkAccountScope();
+    if (!access.ok) return access;
     var allowed = ['type','world','similarity','gender'];
     var preferences = getPreferences();
     allowed.forEach(function(key) {
@@ -94,6 +129,8 @@
     catch (e) { return fail('偏好保存失败，请检查存储空间'); }
   }
   function getRoleNames() {
+    var access = checkAccountScope();
+    if (!access.ok) return access;
     try {
       var roles = null;
       if (global.PhoneStorage && global.PhoneStorage.result && global.PhoneStorage.result.getCharacters) {
@@ -251,7 +288,7 @@
   global.MAOMAOEncounter = Object.freeze({
     version:1, generate:generate, getCandidates:getCandidates, saveCandidate:saveCandidate,
     removeCandidate:removeCandidate, getPreferences:getPreferences, savePreferences:savePreferences,
-    formatBrief:formatBrief, normalizeName:normalizeName,
+    formatBrief:formatBrief, normalizeName:normalizeName, checkAccountScope:checkAccountScope,
     registerCardDecorator:function(fn) {
       if (typeof fn !== 'function') return function(){};
       decorators.push(fn);
