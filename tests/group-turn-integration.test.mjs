@@ -127,6 +127,13 @@ test('ordinary private group DM cannot write to role chat until reply is saved',
   assert.equal(h2.data.has('chat_history_r1'), false);
   assert.equal(tx2.finalize(true).ok, true);
   assert.match(h2.data.get('chat_history_r1'), /角色限定私聊/);
+  const publicCard = h2.history.find((item) => item && item.type === 'group_private');
+  assert.ok(publicCard, 'group entry remains usable after private delivery');
+  assert.equal(publicCard.text, '', 'public group history must not duplicate private text');
+  assert.ok(publicCard.privateMessageId, 'group card has metadata-only private receipt');
+  assert.doesNotMatch(JSON.stringify(publicCard), /角色限定私聊/);
+  const savedPrivate = JSON.parse(h2.data.get('chat_history_r1'));
+  assert.equal(publicCard.privateMessageId, savedPrivate[0].mid);
   assert.equal(h2.privatePopupCount, 1);
 });
 
