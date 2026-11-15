@@ -6704,6 +6704,16 @@
                     fullText = processGroupInteractionMarkers(fullText, groupReplyPick, historyList, isRegen, isGroupFollowup, streamResult.ok, groupGameSessionForPrompt, function (event) {
                         pendingGameWhisper = event;
                     }, groupTurnEffects);
+                    // Game-only whisper is an ordinary deferred effect: it must
+                    // share the same verified reply barrier as every other action.
+                    if (pendingGameWhisper && groupTurnEffects && window.GroupGameSessions) {
+                        groupTurnEffects.afterSave(function () {
+                            var result = window.GroupGameSessions.sendWhisper(pendingGameWhisper);
+                            if (!result.ok && typeof showToast === 'function')
+                                showToast(result.message || '游戏私聊没有保存成功');
+                            return result;
+                        });
+                    }
                     // 私聊角色可以发出待同意的群邀请；必须等模型完整成功，不允许中断回复改变入群状态。
                     if (window.GroupGovernance) {
                         fullText = fullText.replace(/\[群邀请[:：]([^\]]{1,100})\]/g, function (marker, proposedGroupId) {
@@ -6852,14 +6862,6 @@
                             groupTurnFinalized = true;
                             if (replySaved && !settledGroupTurn.ok && typeof showToast === 'function') {
                                 showToast('群互动部分操作未成功，请检查群设置与存储');
-                            }
-                        }
-                        // Commit private game actions only after the public AI turn
-                        // has survived its existing history write + verification.
-                        if (replySaved && pendingGameWhisper && window.GroupGameSessions) {
-                            var gameWhisperResult = window.GroupGameSessions.sendWhisper(pendingGameWhisper);
-                            if (!gameWhisperResult.ok && typeof showToast === 'function') {
-                                showToast(gameWhisperResult.message || '游戏私聊没有保存成功');
                             }
                         }
                         var replySaveFailed = !replySaved;
