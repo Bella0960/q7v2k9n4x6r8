@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>音效设置</title>
 <script src="../shared/js/native-feel.js"></script>
+<script src="../shared/js/haptics.js"></script>
 <script src="../shared/js/statusbar-control.js"></script>
 <script src="../shared/js/sound-system.js"></script>
 <style>
@@ -116,6 +117,18 @@
         border-color: #111111;
         font-weight: 600;
     }
+    .haptics-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .haptics-toggle {
+        border: 0; background: #D6D6DA; width: 46px; height: 28px;
+        border-radius: 999px; padding: 3px; cursor: pointer; flex-shrink: 0;
+        transition: background 0.15s ease;
+    }
+    .haptics-toggle::before {
+        content: ''; display: block; width: 22px; height: 22px;
+        border-radius: 50%; background: #FFFFFF; transition: transform 0.15s ease;
+    }
+    .haptics-toggle[aria-checked="true"] { background: #222222; }
+    .haptics-toggle[aria-checked="true"]::before { transform: translateX(18px); }
     .hint-line {
         margin-top: 12px;
         font-size: 0.75rem;
@@ -157,12 +170,40 @@
                 <div class="event-title">来电铃声</div>
                 <div class="chip-row" data-event="call"></div>
             </section>
+            <section class="card">
+                <div class="haptics-row">
+                    <div>
+                        <div class="event-title" style="margin-bottom:4px">交互轻震</div>
+                        <span class="card-label">收发消息、桌面翻页等轻触反馈</span>
+                    </div>
+                    <button id="hapticsToggle" type="button" class="haptics-toggle" role="switch" aria-label="交互轻震" aria-checked="true"></button>
+                </div>
+                <p class="hint-line" id="hapticsHint"></p>
+            </section>
             <p class="hint-line">点击音效即可试听，选中自动保存。单独角色的音效可在该角色的对话设置中单独覆盖。</p>
         </main>
     </div>
 
 <script>
     (function () {
+        var haptics = window.MAOMAOHaptics;
+        var toggle = document.getElementById('hapticsToggle');
+        var hint = document.getElementById('hapticsHint');
+        function syncHaptics() {
+            toggle.setAttribute('aria-checked', haptics.isEnabled() ? 'true' : 'false');
+            hint.textContent = haptics.supported()
+                ? '轻量反馈，可随时关闭；不会改变消息声音和通知设置。'
+                : '当前浏览器不支持网页震动，设置仍会保存。';
+        }
+        toggle.addEventListener('click', function () {
+            if (!haptics.setEnabled(!haptics.isEnabled())) {
+                hint.textContent = '设置保存失败，请检查浏览器存储权限。';
+                return;
+            }
+            syncHaptics();
+        });
+        syncHaptics();
+
         var cfg = SoundSystem.readConfig();
         var rows = document.querySelectorAll('.chip-row');
 
