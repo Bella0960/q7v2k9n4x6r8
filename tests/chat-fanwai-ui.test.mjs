@@ -193,6 +193,8 @@ test('memory mode is tucked away and defaults to no-memory; opt-in enters only t
   assert.equal(settings.all().filter(el => el.dataset.action === 'set-memory').length, 2);
   const trigger = sheet.all().find(el => el.dataset.action === 'toggle-settings');
   assert.ok(trigger);
+  assert.equal(trigger.textContent, '···', 'settings entry must be visual dots only');
+  assert.equal(trigger.attributes['aria-label'], '展开故事设置', 'assistive technology still gets a clear name');
   await root.handlers.click({ target: trigger });
   assert.equal(settings.hidden, false);
   const withMemory = sheet.all().find(el => el.dataset.memoryMode === 'role');
