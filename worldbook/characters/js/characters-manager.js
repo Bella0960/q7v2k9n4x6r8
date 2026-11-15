@@ -1441,10 +1441,14 @@ function handleSaveRole() {
         }
         const normalized = window.MAOMAOEncounter.normalizeName(nameVal);
         const collision = roles.some(function (role) {
-            const aliases = Array.isArray(role.aliases) ? role.aliases : [];
-            return [role.name].concat(aliases).some(function (existingName) {
-                return window.MAOMAOEncounter.normalizeName(existingName) === normalized;
-            });
+            function sameName(person) {
+                if (!person) return false;
+                const aliases = Array.isArray(person.aliases) ? person.aliases : [];
+                return [person.name].concat(aliases).some(function (existingName) {
+                    return window.MAOMAOEncounter.normalizeName(existingName) === normalized;
+                });
+            }
+            return sameName(role) || (Array.isArray(role.npcCharacters) && role.npcCharacters.some(sameName));
         });
         if (collision) {
             setSaveStatus('姓名与已有角色或别名重复，请先修改新角色名称。', 'error');
