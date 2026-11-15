@@ -1,0 +1,52 @@
+# MAOMAO「邂逅 × 账号」隔离整合验收单
+
+更新：2026-11-15
+集成分支：integration/encounter-account-acceptance-20261115
+源功能：PR #297，FEATURE-ENCOUNTER-001-initial-experience
+源账号：PR #290，integration/account-001-main-20261115
+账号源快照：61392396e2aea7980a9136731f0173bb3abbcc13
+功能源快照：13de7a35542b453c30b1918c0bd6d6ae2727cc0a
+基底：截至 2026-11-15 的 main 之上的 PR #297，**不是以过时账号分支覆盖 main**。
+
+## 目的及边界
+
+只建立**一个**暂存整合分支，不部署、不更改正式数据库、不修改管理员永久 ID、不清除或重建任何用户账号数据。管理员历史数据只能在账号主线自己的真实备份和隔离恢复验收后上线。此分支不代替 PR #290 / #297 正式审查。
+
+## 实际整合
+
+1. 从 PR #290 通过同仓库原始 Git blob SHA 复制 25 份此前缺失的账号入口、管理中心、图片素材、账号测试与发布检查代码（图片二进制保留原样，未转存或重新生图）。
+2. 对重叠代码逐处整合而非覆盖：index.html **同时保留** 邂逅入口、默认布局迁移、仅管理员可见的管理中心入口；settings/settings.html 接入既有 MAO 账号管理；worker/lib/account-auth.js 保留已提交账号 SQLite 记录再次读取的成功确认；package.json 同时有 test:account 和 test:encounter；tests/icon-presets-contract.test.mjs 与 tests/chat-regression-contract.test.mjs 调整到账号安全 PWA 版本阈值。
+3. 账号作用域/Service Worker/字体隔离三份敏感代码在整合分支上与 PR #290 blob SHA 完全一致，未出现第二个身份签发或第二套账号存储。
+4. 候选收藏 V2 每人物独立键、旧 V1 只读兼容、删除墓碑、浏览器支持时 Web Locks 独占写入；账号作用域仍由已有 MAO 代理处理。
+5. 备份注册表已包含 V1、V2、墓碑与偏好，API 密钥不进入角色备份。独立「邂逅」应用在默认第二页角色档案旁，并可安全迁移旧布局。
+
+## 已完成的非原生检查（不等于真实构建）
+
+- 使用当前整合分支实际代码在隔离 V8 中执行：邂逅合同与模拟 UI **33/33** PASS。
+- PR #290 真实账号作用域文件与邂逅引擎组合模拟：**4/4** PASS；普通账号 A/B 的候选键彼此隔离，超级管理员沿用旧数据。
+- PR #290 原账号存储/事件/API 作用域 12 项适配模拟：**12/12** PASS。
+- 桌面集成发现 **管理中心特殊入口不应计入普通账号默认布局**，已修复测试；重跑相关 6 项通过。
+- PWA / 字体 / 桌面此前 16 项静态回归通过；仍须原生完整回归。
+
+## 必须实际取得的回执（目前均未取得）
+
+在**同一整合分支**工作树内按序：
+
+```bash
+npm ci
+npm run test:account:ui-candidate
+npm run test:encounter
+npm run build
+npm run test:encounter:browser
+npm run gate:encounter
+```
+
+Browser test 需 Playwright Chromium。若自带浏览器尚未安装，可设置 PLAYWRIGHT_CHROMIUM_PATH 为**本地已验证的 Chromium 可执行文件**。Build 与 Browser 脚本会生成带同一 Git HEAD 的独立回执；过期文件无法通过 gate。
+
+须验收：375×812、390×844、430×932 手机页面，单张/双卡切换、上下手势互斥、姓名与别名查重、收藏/刷新/旧卡迁移/删除、多标签页收藏、正式人设保存与重复提交、MAOMAO JSON 导出导入、第三方 JSON 拒绝、现有聊天首页、正常余额/无余额时 AI 按需调用、全局状态栏和 PWA 路由。
+
+**真实登录边界**：两名普通账号同站点切换、管理员原数据、退出/过期会话、iPhone Safari/Android Chrome、字体缓存跨账号隔离、备份与隔离恢复、无网络状态均必须人工 + 浏览器确认。正式库加密备份与恢复点以账户工程门禁为准。
+
+## 当前决策
+
+Gate 不允许仅靠代码检查或旧截图通过。PR #290、#297 继续保留 Draft；本整合分支也不是正式部署候选，直到完整构建/浏览器/双端真机/账号备份验收结束。不得把此分支直接合并进 main。
