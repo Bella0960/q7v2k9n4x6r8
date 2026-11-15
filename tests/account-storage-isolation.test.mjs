@@ -132,6 +132,7 @@ function createScope({ accountId, role = 'user', fetchImpl = null, caches = null
 
 test('普通 MAO 账号的 localStorage 与 sessionStorage 只读写自己的命名空间', () => {
   const a = createScope({ accountId: 'MAO-AAAAAAAAAAAA', role: 'user' });
+  assert.equal(a.window.__MAO_ACCOUNT_SCOPE__?.ready, true, 'readiness is published only after all storage guards install');
   a.window.localStorage.setItem('ai_custom_characters', '[{"id":"account-a"}]');
   a.window.localStorage.setItem('profile', 'A');
   assert.equal(a.window.localStorage.getItem('ai_custom_characters'), '[{"id":"account-a"}]');
@@ -307,6 +308,8 @@ test('无法安装账号存储命名空间时阻止继续加载页面', () => {
   };
   vm.runInNewContext(scopeSource, { window, document, console, Object, Array, Proxy, Reflect, Promise, encodeURIComponent, Symbol });
   assert.equal(document.blocked, true);
+  assert.equal(window.__MAO_ACCOUNT_SCOPE__, undefined,
+    'failure must never expose a falsely ready account namespace marker');
 });
 
 test('Worker 只对已授权账号页面注入数据命名空间，并禁止缓存个人 HTML', () => {
