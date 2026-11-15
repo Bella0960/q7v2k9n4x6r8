@@ -469,3 +469,48 @@ test('game guess AI tag is saved only after real reply and never flashes in stre
   assert.match(panel, /game\.correctVotes/);
   assert.match(panel, /renderTally\(game\)/);
 });
+
+
+test('host can cancel a broken or unfinished game without revealing or remembering secrets', () => {
+  const h = harness();
+  assert.equal(begin(h, {allowPrivate: true}).ok, true);
+  const sid = h.game.getPublic('g1').sessionId;
+  assert.equal(h.game.castVote({
+    groupId:'g1',sessionId:sid,voterId:'r1',targetId:'r2',eventId:'abort-test'
+  }).ok, true);
+  assert.equal(h.game.sendWhisper({
+    groupId:'g1',sessionId:sid,fromId:'r1',toId:'r3',
+    text:'未公开的猜测',eventId:'abort-whisper'
+  }).ok, true);
+  assert.equal(h.game.cancel({group:group(),groupId:'g1',actorId:'r1'}).code,
+    'NO_PERMISSION', 'regular roles cannot cancel a host session');
+  const cancelled = h.game.cancel({group:group(),groupId:'g1',actorId:'__user'});
+  assert.equal(cancelled.ok, true);
+  assert.equal(cancelled.session.status, 'cancelled');
+  assert.equal(cancelled.session.revealedRoleId, '');
+  assert.equal(cancelled.session.voteTally.length, 0);
+  assert.equal(h.memory.recordGameClosure({group:group(),session:cancelled.session}).ok,
+    false, 'cancelled sessions must never create a public result memory');
+  assert.equal(h.game.checkDirectPrivateAllowed({roleId:'r1'}).allowed,true);
+  assert.equal([...h.records.keys()].some(k =>
+    k.includes(sid) && k.startsWith('phone_group_game_private_v1_')),false);
+  assert.equal(begin(h).ok,true,'the owner can immediately start a fresh round');
+});
+
+test('cancel is a verified write; invalid vote can be safely abandoned', () => {
+  const h = harness();
+  assert.equal(begin(h).ok, true);
+  const sid = h.game.getPublic('g1').sessionId;
+  h.storage.setItem('phone_group_game_private_v1_g1_'+sid+'_vote_r1','{"broken":');
+  assert.equal(h.game.getPublic('g1').voteError,true);
+  assert.equal(h.game.finish({group:group(),groupId:'g1',actorId:'__user'}).code,
+    'CORRUPT_VOTE');
+  h.storage.blocked=true;
+  assert.equal(h.game.cancel({group:group(),groupId:'g1',actorId:'__user'}).code,
+    'SAVE_FAILED','failed cancellation must not discard identity cards');
+  assert.equal(h.game.getPublic('g1').status,'active');
+  h.storage.blocked=false;
+  assert.equal(h.game.cancel({group:group(),groupId:'g1',actorId:'__user'}).ok,true);
+  assert.equal(h.game.getPublic('g1').status,'cancelled');
+  assert.equal(begin(h).ok,true);
+});
