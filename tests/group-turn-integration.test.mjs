@@ -105,6 +105,8 @@ test('verified AI reply commits moderation and relationships once; vote/chain re
   assert.equal(h.history[0].poll.votes.r1, 1);
   assert.equal(h.history[1].chain.entries.length, 2);
   assert.ok(h.events.some((event) => event.startsWith('admin:')));
+  assert.equal(h.events.filter((event) => event.startsWith('admin:')).length, 1,
+    'direct admin instruction and equivalent AI marker must not apply twice');
   assert.ok(h.events.some((event) => event.startsWith('relation:')));
   assert.ok(h.groupWrites.indexOf('verified-reply') < h.groupWrites.indexOf('group'));
   assert.equal(tx.finalize(true).code, 'ALREADY_FINALIZED');
