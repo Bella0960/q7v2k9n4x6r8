@@ -1227,6 +1227,10 @@
 
   async function start(template, custom, selectedCount) {
     if (state.busy || state.creating || state.deleting) return;
+    if (canPersist && !state.settingsVerified) {
+      showNotice('故事设置尚未安全读取，已阻止按错误记忆模式创建番外');
+      return;
+    }
     var role = roleInfo();
     if (!role) { showNotice('请先创建或选择一个角色'); return; }
     var scenario = template ? template.scenario : String(custom || '').trim();
