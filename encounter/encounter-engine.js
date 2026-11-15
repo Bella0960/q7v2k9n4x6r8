@@ -80,6 +80,28 @@
     return ok({id:pageId || 'local-development', role:pageRole || 'local-development'});
   }
 
+  async function verifyLiveAccountContext() {
+    var scopeResult = checkAccountScope();
+    if (!scopeResult.ok) return scopeResult;
+    if (scopeResult.value.id === 'local-development') return scopeResult;
+    if (typeof global.fetch !== 'function') return fail('无法核验当前登录账号，已停止可能计费的操作');
+    try {
+      var response = await global.fetch('/api/accounts/me', {
+        method:'GET', credentials:'same-origin', cache:'no-store',
+        headers:{accept:'application/json'}
+      });
+      var data = await response.json();
+      var account = data && data.account;
+      if (!response.ok || !account || account.id !== scopeResult.value.id ||
+          account.role !== scopeResult.value.role || account.status !== 'active') {
+        return fail('当前账号会话已变化或失效，请重新登录后再使用付费 AI');
+      }
+      return scopeResult;
+    } catch (error) {
+      return fail('暂时无法确认登录会话，已停止 API 请求以保护账号');
+    }
+  }
+
   function random(max) {
     if (global.crypto && global.crypto.getRandomValues) {
       var bytes = new Uint32Array(1);
@@ -312,7 +334,8 @@
   global.MAOMAOEncounter = Object.freeze({
     version:1, generate:generate, getCandidates:getCandidates, saveCandidate:saveCandidate,
     removeCandidate:removeCandidate, getPreferences:getPreferences, savePreferences:savePreferences,
-    formatBrief:formatBrief, normalizeName:normalizeName, checkAccountScope:checkAccountScope,
+    formatBrief:formatBrief, normalizeName:normalizeName,
+    checkAccountScope:checkAccountScope, verifyLiveAccountContext:verifyLiveAccountContext,
     registerCardDecorator:function(fn) {
       if (typeof fn !== 'function') return function(){};
       decorators.push(fn);
