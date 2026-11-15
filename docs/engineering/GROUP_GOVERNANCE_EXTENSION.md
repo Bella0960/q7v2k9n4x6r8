@@ -64,3 +64,5 @@
 - **新生成的**普通角色群私聊正文只保存在该角色的 `chat_history_<角色ID>` 中；群聊 `group_private` 入口卡仅有角色 ID 和 `privateMessageId` 等元数据，不再复制私聊正文。读回验证包括私聊消息的 `mid` 和入口卡 `privateMessageId`。原有历史入口保留兼容，不主动批量改写已有数据。
 - 单聊写入失败不会产生群入口或已投递弹窗；若单聊写入成功但群入口保存失败，会报告部分失败，单聊记录保留且仍能从角色单聊中查看，**目前不承诺崩溃后自动补建卡片**。
 - 为核对 GitHub Action 配额之外的回归，使用 V8 兼容夹具执行了五份仓库测试的实际测试逻辑；另外对 GitHub `shared/js/phone/group-turn-effects.js` 的精确 Blob SHA 校验后，以独立 Node.js 22 `node --test` 对该文件执行了 5 项真实单元测试并通过。这不是整仓 `npm run test:group:governance`、Playwright、`npm run build` 或 Android/iPhone 完整验收。
+
+- `GroupGameSessions.sendWhisper` 现在也统一注册到 `GroupTurnEffects.afterSave`：会随当前群 AI 回复成功落库才投递，并在失败时进入同一后置操作失败计数；旧局 `sessionId` 校验继续有效。
