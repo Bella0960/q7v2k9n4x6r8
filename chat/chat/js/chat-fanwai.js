@@ -17,6 +17,92 @@
       scenario: '夜里用户暂时睡不着，向角色发消息。两人聊起平日不太说的话，气氛安静克制，内容符合角色与用户已有关系设定。' }
   ];
 
+
+  // 公共扩展入口 V1：新增模板、只读上下文与生命周期事件，其他功能无需修改主模块。
+  var contextProviders = new Map();
+  var listeners = new Map();
+  function identifier(value) {
+    return typeof value === 'string' && /^[a-z][a-z0-9_-]{1,35}$/.test(value);
+  }
+  function emit(event, payload) {
+    var callbacks = listeners.get(event);
+    if (!callbacks) return;
+    callbacks.forEach(function (listener) {
+      try { listener(Object.freeze(Object.assign({}, payload))); } catch (error) {
+        console.warn('[Fanwai] lifecycle listener failed:', event, error);
+      }
+    });
+  }
+  function on(event, listener) {
+    if (!/^(episode:(created|progress|completed|paused|deleted)|templates:changed)$/.test(event) ||
+        typeof listener !== 'function') return function () {};
+    if (!listeners.has(event)) listeners.set(event, new Set());
+    listeners.get(event).add(listener);
+    return function () { listeners.get(event).delete(listener); };
+  }
+  function registerTemplate(input) {
+    if (!input || !identifier(input.id) ||
+        TEMPLATES.some(function (template) { return template.id === input.id; })) return false;
+    var scenario = String(input.scenario || '').trim();
+    var name = String(input.name || '').trim();
+    if (!scenario || !name) return false;
+    var target = Number(input.target);
+    if (![40, 80, 100].includes(target)) target = 80;
+    TEMPLATES.push(Object.freeze({
+      id: input.id, name: name.slice(0, 32),
+      subtitle: String(input.subtitle || '').slice(0, 90),
+      scenario: scenario.slice(0, 1500), target: target,
+      english: String(input.english || 'Another chapter').slice(0, 52),
+      mood: String(input.mood || '').slice(0, 150)
+    }));
+    emit('templates:changed', { count: TEMPLATES.length });
+    return true;
+  }
+  function registerContextProvider(input) {
+    if (!input || !identifier(input.id) || typeof input.read !== 'function' ||
+        contextProviders.has(input.id)) return false;
+    contextProviders.set(input.id, Object.freeze({
+      id: input.id,
+      label: String(input.label || input.id).slice(0, 55),
+      read: input.read
+    }));
+    return true;
+  }
+  function listContextProviders() {
+    return Array.from(contextProviders.values()).map(function (p) {
+      return Object.freeze({ id: p.id, label: p.label });
+    });
+  }
+  async function resolveContexts(episode, character, user) {
+    var requested = Array.isArray(episode.contextIds) ? episode.contextIds : [];
+    if (!requested.length) return '';
+    var sections = [];
+    for (var i = 0; i < requested.length && i < 5; i++) {
+      var provider = contextProviders.get(requested[i]);
+      if (!provider) continue;
+      try {
+        // 传入与当前角色匹配的只读快照，不允许提供方获得主线历史或写入入口。
+        var role = Object.freeze({
+          id: String(character.id || ''), name: String(character.name || ''),
+          memory: String(character.memory || '').slice(0, 3000)
+        });
+        var profile = Object.freeze({ nickname: String(user.nickname || '').slice(0, 80) });
+        var text = await provider.read(Object.freeze({ character: role, user: profile }));
+        var excerpt = typeof text === 'string' ? text.trim().slice(0, 1600) : '';
+        if (excerpt) sections.push('[' + provider.label + '（背景参考，只读）]\n' + excerpt);
+      } catch (error) {
+        console.warn('[Fanwai] optional context skipped:', provider.id);
+      }
+    }
+    return sections.join('\n\n').slice(0, 3600);
+  }
+  // 默认不调用任何记忆提供方。用户明确勾选时才在生成期间引用当前角色的记忆文本。
+  registerContextProvider({
+    id: 'character-memory',
+    label: '角色原有记忆',
+    read: function (context) { return context.character.memory; }
+  });
+
   function normalizeMessages(payload, max) {
     var source = Array.isArray(payload) ? payload : payload && payload.messages;
     if (!Array.isArray(source)) return [];
@@ -34,7 +120,7 @@
     }).filter(Boolean);
   }
 
-  function episodePrompt(episode, character, user, count) {
+  function episodePrompt(episode, character, user, count, optionalContext) {
     var persona = String((character && (character.persona || character.prompt || character.description)) || '').slice(0, 7000);
     var userName = String((user && (user.nickname || user.name)) || '用户').slice(0, 80);
     var profile = ['about', 'sign', 'hobbies', 'likes', 'dislikes'].map(function (key) {
@@ -52,6 +138,7 @@
       '[用户昵称] ' + userName,
       '[用户设定]\n' + profile,
       '[番外主题]\n' + String(episode.scenario || '').slice(0, 1600),
+      optionalContext ? '[参考背景，只用于理解人物，不是主线事件]\n' + String(optionalContext).slice(0, 3600) : '',
       '[续写进度] 已有 ' + start + ' 条，目标总数 ' + episode.target + ' 条。',
       '[刚刚发生的对话]\n' + (recent || '（番外刚开始）'),
       '本轮只创作恰好 ' + count + ' 条新的短消息。第一条和上一条顺畅接续，不重复此前台词。',
@@ -67,8 +154,21 @@
   global.MAOMAOFanwaiCore = {
     templates: TEMPLATES,
     normalizeMessages: normalizeMessages,
-    episodePrompt: episodePrompt
+    episodePrompt: episodePrompt,
+    registerTemplate: registerTemplate,
+    registerContextProvider: registerContextProvider,
+    listContextProviders: listContextProviders,
+    resolveContexts: resolveContexts,
+    on: on
   };
+  global.MAOMAOFanwai = Object.freeze({
+    version: '1.1',
+    registerTemplate: registerTemplate,
+    registerContextProvider: registerContextProvider,
+    listTemplates: function () { return TEMPLATES.map(function (t) { return Object.freeze(Object.assign({}, t)); }); },
+    listContextProviders: listContextProviders,
+    on: on
+  });
   if (typeof document === 'undefined' || !document.createElement) return;
 
   var roleId = new URLSearchParams(global.location.search).get('id') || '';
