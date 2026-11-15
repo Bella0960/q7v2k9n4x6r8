@@ -79,6 +79,8 @@ test('episodes are account-scoped and never written to main chat history or memo
   assert.doesNotMatch(source, /user_memory\s*=/);
   assert.match(css, /\.fw-user \.fw-bubble/);
   assert.match(css, /\.fw-char \.fw-bubble/);
+  assert.match(css, /-webkit-user-select:\s*text/);
+  assert.match(css, /-webkit-touch-callout:\s*default/);
 });
 
 
