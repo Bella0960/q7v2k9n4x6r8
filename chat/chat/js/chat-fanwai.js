@@ -84,7 +84,7 @@
         // 传入与当前角色匹配的只读快照，不允许提供方获得主线历史或写入入口。
         var role = Object.freeze({
           id: String(character.id || ''), name: String(character.name || ''),
-          memory: String(character.memory || '').slice(0, 3000)
+          memory: provider.id === 'character-memory' ? String(character.memory || '').slice(0, 3000) : ''
         });
         var profile = Object.freeze({ nickname: String(user.nickname || '').slice(0, 80) });
         var text = await provider.read(Object.freeze({ character: role, user: profile }));
@@ -100,7 +100,30 @@
   registerContextProvider({
     id: 'character-memory',
     label: '角色原有记忆',
-    read: function (context) { return context.character.memory; }
+    read: function (context) {
+      var sections = [];
+      if (context.character.memory) sections.push(context.character.memory);
+      // 复用聊天已加载的只读记忆检索入口，不使用记忆的新增、强化或保存方法。
+      var recall = global.MemoryRecall;
+      if (recall && typeof recall.getMemories === 'function') {
+        var saved = recall.getMemories(context.character.id);
+        if (Array.isArray(saved)) {
+          var lines = saved.filter(function (item) {
+            if (!item || item.status === 'pending' || item.status === 'rejected') return false;
+            if (item.sourceRoleId && String(item.sourceRoleId) !== context.character.id) return false;
+            return typeof (item.content || item.text) === 'string';
+          }).sort(function (a, b) {
+            return (Number(b.importance) || 3) - (Number(a.importance) || 3) ||
+              (Number(b.lastReinforcedAt || b.createdAt) || 0) -
+              (Number(a.lastReinforcedAt || a.createdAt) || 0);
+          }).slice(0, 6).map(function (item) {
+            return String(item.content || item.text).replace(/\s+/g, ' ').slice(0, 250);
+          });
+          if (lines.length) sections.push('已确认的角色长期记忆：\n- ' + lines.join('\n- '));
+        }
+      }
+      return sections.join('\n\n');
+    }
   });
 
   function normalizeMessages(payload, max) {
