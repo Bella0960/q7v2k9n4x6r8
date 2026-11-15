@@ -511,3 +511,33 @@ test('low maxTokens still reaches the requested 80 messages with smaller valid J
   assert.equal(app.requests, 27, '80 messages in batches of at most 3 with a small output allowance');
   assert.equal(sheet.all().find(n => n.className === 'fw-status').textContent, '这篇番外已经写完。');
 });
+
+
+test('older side stories remain reachable after the first twelve without cluttering the picker', async () => {
+  const db = fakeFanwaiDB();
+  const account = 'MAO-AAAAAAAAAAAA';
+  for (let i = 0; i < 17; i++) {
+    const id = account + ':role-1:' + String(i).padStart(4, '0');
+    db.records.set(id, {
+      id, accountId: account, characterId: 'role-1',
+      templateId: 'daily', name: '存档第' + (i + 1) + '篇',
+      target: 40, status: 'complete', updatedAt: i + 1,
+      messages: [{ role: 'char', text: '旧故事 ' + i }]
+    });
+  }
+  const app = mount({ accountId: account, indexedDB: db });
+  const root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().filter(n => n.dataset.action === 'read').length === 12);
+  const sheet = root.querySelector('.fw-sheet');
+  assert.equal(sheet.all().filter(n => n.dataset.action === 'read').length, 12);
+  const more = sheet.all().find(n => n.dataset.action === 'more-archive');
+  assert.ok(more);
+  await root.handlers.click({ target: more });
+  await tickUntil(() => sheet.all().filter(n => n.dataset.action === 'read').length === 17);
+  assert.equal(sheet.all().filter(n => n.dataset.action === 'more-archive').length, 0);
+  const oldest = sheet.all().find(n => n.dataset.id === account + ':role-1:0000');
+  assert.ok(oldest, 'very first saved story stays available');
+  await root.handlers.click({ target: oldest });
+  assert.equal(sheet.all().find(n => n.className === 'fw-bubble').textContent, '旧故事 0');
+  assert.equal(app.requests, 0);
+});
