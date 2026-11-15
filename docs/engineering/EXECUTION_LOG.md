@@ -6,7 +6,7 @@
 - The owner signed in with the existing credentials on the original account surface. A one-time encrypted handoff moved the existing verifier for `MAO-OXHBDBWCOIHPBBYN` to the existing production object. The production transaction and private success receipt were verified at 10:21:54 UTC.
 - Read-only production verification found exactly one active super administrator, the selected ID. The prior administrator row is retained in disabled status, and the active ordinary account and its two session records (one active) match pre-cutover checks. SQLite quick check returned `ok` and foreign-key check returned no violations.
 - Closed the capture and the two activation windows, removed the operator schedule, and restored the pinned stable production code version `4454045f-ee8b-4b08-a679-c55745fc82ac` at 100%. The production database binding remains the existing binding. The production homepage redirects to the login page, and the trial hostname returned HTTP 200.
-- The focused continuity regression suite passed 54 tests. Formal owner login and full release acceptance are separate checks still pending at this checkpoint.
+- The focused continuity regression suite passed 54 tests. The owner reported seeing the admin center on the formal domain after signing in with the existing credentials. A read-only production query confirmed a new active session for the selected administrator at 2026-11-15T10:25:51.876Z. Full release acceptance remains pending.
 
 ## 2026-11-15 — QA-001 live checkpoint rotated and owner-login handoff prepared
 
