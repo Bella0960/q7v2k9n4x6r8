@@ -86,8 +86,16 @@
 | **BACKUP-003** | **P1 · SOURCE-VERIFIED 范围限制** | `settings/js/backup.js` 中全量模式的 `maomao-media-store/audio` 仍设置 `excludeFields: ['blob']`，即音频本体不包含在该模式中。代码另有定向音频导出 `blobFields:['blob']`，且含“不完整备份”提示。**不是“完全没备份功能”或“无提示静默丢失”。** | backlog **DATA-003** 与 **#250**；需要核实用户所需“真正全量”语义、恢复后媒体完整性和文件大小提示。 |
 | **CACHE-001** | **P1 · 待实测** | Service Worker 采用缓存优先，旧页面与新页面/脚本混用、更新时 404 等需真机回归；**不是已经证实所有页面缓存有 Bug**。 | **#207** 原 PR，结合 `tests/sw-navigation-cache-lifecycle.test.mjs`、PWA 实测；先比对 #207 与当前 main，避免旧版本覆盖。 |
 | **DOC-001** | **P1 · SOURCE-VERIFIED 文档不一致** | `docs/engineering/PROJECT_ARCHITECTURE.md` 仍写“无服务器用户数据库”，与现有账号 Worker/CloudDatabase 的真实绑定事实冲突；容易误导新窗口再建一套账号。 | 在**治理 PR #300** 内纠正当前架构说明，并保留文档原版时间戳。 |
-| **UI-STATUS-001** | **P1 · 历史反馈/待逐页验收** | 用户要求设置里的状态栏开关全项目生效；目前有公共 `shared/js/statusbar-control.js`，但未逐页核对 90 个 HTML 是否正确接入，不能直接说全部已统一。 | 复用现有状态栏需求与共享模块；不再造第二套开关，按页面/设备测试。 |
+| **UI-STATUS-001** | **P1 · SOURCE-VERIFIED / 部分代码已修，未实测** | 已静态扫描 main 90 个 HTML：28 页有 `.status-bar`，其中 27 页原有公共脚本，**`beauty/beauty.html` 漏接**；另 62 页无该静态类标记，并非全都应强制添加状态栏。现有控制器按每个节点 `style.display` 改写，不能天然覆盖后续动态挂载元素且可能覆写页面原布局。 | **原有 `task-ARCH-003/global-statusbar` 分支已复用并开放唯一修复 PR #301**：接入 beauty、用根节点 CSS 管理可见性、补 Node/VM 接入回归。仍需运行测试、逐页分类自定义/沉浸状态栏、浏览器与 Android/iOS QA；未合并未上线。 |
 | **APP-001** | **P2 · 历史反馈待复验** | 查手机、论坛、阅读、主题商城、桌面 Dock 和游戏解锁等曾有用户反馈；本轮没有逐项完成真实交互，因此不能打包认定为“当前都坏了”或“都好了”。 | 分别回原功能 PR/既有测试；本轮优先全局共用的路径、存储、发布、设置，而非盲目重做 UI。 |
+
+## 全局状态栏第一批实质整改（2026-11-15）
+
+**不再停留在「全页检查计划」：** 已复用历史分支 `task-ARCH-003/global-statusbar`，提交实代码并开启 [Draft PR #301](https://github.com/Bella0960/MAOMAO/pull/301)。本次源代码级别仅变 `shared/js/statusbar-control.js`、`beauty/beauty.html` 和新增 `tests/global-statusbar-wiring.test.mjs`，与 main 比较 ahead 3 / behind 5。该旧分支名中 ARCH-003 与 backlog 的「脚本加载顺序」任务同名，**实际工程任务 ID 按 UI-STATUS-001 识别，防止后续混淆**。
+
+当前共 90 HTML：28 页含字面 `class=\"...status-bar...\"`，27 原已接统一脚本，1 页 beauty 原漏接；62 页没用此静态类，须进一步区分自绘/沉浸/运行时状态栏。不能凭静态 HTML 就宣称全站视觉通过。新全局控制器保留 `settings_statusbar` 和 `__statusbarControlApply`，通过 HTML 根状态 + CSS `!important` 管理已存在与后续挂载的顶部状态栏，不再改写每页状态栏的 inline `style.display`。**不改变 Home Indicator、聊天数据、账户、主题或正式域名。**
+
+**验证边界：** 已只读核对源码改动和三文件差异；新增 Node/VM 自动测试已提交但**未运行**，Vite 构建、浏览器、唯一 QA、Android/iPhone 真机仍未做。未达到发布门禁，不能写「全部状态栏已修好」。
 
 ## 历史记录中不能重复误报的项目
 
