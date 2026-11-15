@@ -155,10 +155,10 @@
   // Incomplete prefixes matter: streaming often stops midway through a marker.
   function redactPublicStreamText(input) {
     var output=String(input==null?'':input);
-    output=output.replace(/\[(?:游戏私聊|群私聊)[:：][\s\S]*?(?:\]|$)/g,'');
+    output=output.replace(/\[(?:游戏私聊|群私聊|游戏猜测)[:：][\s\S]*?(?:\]|$)/g,'');
     var last=output.match(/\[[^\]\r\n]{0,200}$/);
     if(last) {
-      var tail=last[0].slice(1), names=['游戏私聊','群私聊'];
+      var tail=last[0].slice(1), names=['游戏私聊','群私聊','游戏猜测'];
       if(!tail || names.some(function(name){
         return name.indexOf(tail)===0 || tail.indexOf(name+':')===0 ||
           tail.indexOf(name+'：')===0;
