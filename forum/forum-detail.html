@@ -978,7 +978,10 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       renderComments();renderPost();
       return;
     }
-    if(replyToIdx>=i)cancelReply();
+    // Deleting an earlier comment shifts indices, but the selected reply
+    // target still exists. Only cancel when the actual target was removed.
+    if(replyToIdx===i)cancelReply();
+    else if(replyToIdx>i)replyToIdx--;
     if(removed.id&&Array.isArray(removed.mediaAssetIds)&&window.ForumMedia)
       ForumMedia.release(removed.mediaAssetIds,'forum-comment',removed.id);
     renderComments();renderPost();
