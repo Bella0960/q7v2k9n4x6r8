@@ -90,6 +90,7 @@ const built=parseReceipt('dist/encounter-build-receipt.json');
 const browsed=parseReceipt('test-results/encounter-browser-receipt.json');
 if(built && head && built.gitHead!==head)errors.push('构建回执对应旧提交，必须重新构建：'+built.gitHead);
 if(browsed && head && browsed.gitHead!==head)errors.push('浏览器截图对应旧提交，必须重新测试：'+browsed.gitHead);
+if(browsed && browsed.source!=='vite-dist')errors.push('浏览器必须加载 Vite dist 构建页面，源码截图不能当正式验收');
 if(built && browsed) {
   if(!Number.isFinite(built.createdAt)||!Number.isFinite(browsed.startedAt)||
       browsed.startedAt < built.createdAt-1000)
@@ -100,11 +101,16 @@ if(built && browsed) {
   const mustCheck=['cardSwap','swipeRebound','candidatePersistence','roleCreation',
     'jsonRoundTrip','thirdPartyJsonRejected','freeDrawNoApi'];
   for(const item of mustCheck)if(browsed.checked?.[item]!==true)errors.push('未实际完成浏览器断言：'+item);
-  for(const [name,info] of Object.entries(browsed.captured||{})){
+  for(const name of [
+    'encounter-375.png','encounter-390.png','encounter-430.png',
+    'encounter-original-role-editor.png','encounter-object-concealed.png'
+  ]){
+    const info=browsed.captured?.[name];
     const filename='test-results/'+name;
-    if(!existsSync(path(filename))||statSync(path(filename)).size!==info.bytes||
+    if(!info||!Number.isFinite(info.bytes)||info.bytes<1000||
+        !existsSync(path(filename))||statSync(path(filename)).size!==info.bytes||
         statSync(path(filename)).mtimeMs < browsed.startedAt-1000)
-      errors.push('截图缺失或与本次测试不匹配：'+filename);
+      errors.push('截图缺失、无有效回执或与本次测试不匹配：'+filename);
   }
 }
 for(const line of results)console.log('CHECK  '+line);
