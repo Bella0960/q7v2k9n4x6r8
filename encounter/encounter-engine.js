@@ -99,7 +99,9 @@
       if (global.PhoneStorage && global.PhoneStorage.result && global.PhoneStorage.result.getCharacters) {
         var result = global.PhoneStorage.result.getCharacters();
         if (result.ok && Array.isArray(result.value)) roles = result.value;
-        else if (result.code && result.code !== 'NOT_FOUND') return fail('角色库暂时无法读取，已停止抽卡以避免撞名');
+        else if (!result || !result.error || result.error.code !== 'NOT_FOUND') {
+          return fail('角色库暂时无法读取，已停止抽卡以避免撞名和覆盖资料');
+        }
       }
       if (roles === null) {
         var raw = global.localStorage.getItem('ai_custom_characters');
