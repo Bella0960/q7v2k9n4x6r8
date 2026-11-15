@@ -1,5 +1,11 @@
 # MAOMAO Execution Log
 
+## 2026-11-15 — QA-001 recovery checkpoint rotation guard
+
+- The private scheduled checkpoint operator now verifies matching encrypted production backup and isolated restore receipts before invoking rotation. It uses the same receipt rules as the canonical release gate and requires the exact archive digest named in the private activation (`backupDigest`). It rechecks the two-minute authorization window after fetching the receipts. The ordinary checkpoint operation retains its existing behavior.
+- Ran 52/52 Node recovery and release tests and repeated the local workerd archive-and-restore drill. The tests exercise missing receipts, a different archive digest, a production restore target, a mismatched source, a future-dated restore, and a valid scheduled authorization. Rejected operations never reach the rotation endpoint.
+- Live read-only audit still shows production version `4454045f-ee8b-4b08-a679-c55745fc82ac` at 100%, no checkpoint-operator schedules, and no production backup, isolated restore, or checkpoint success receipts. The branch changes do not deploy or enable a live operation. Production still requires a reviewed private backup executor with an independent vault and isolated target.
+
 ## 2026-11-15 — QA-001 archive readback and isolated recovery receipts
 
 - The private recovery helper now writes only a sealed artifact to an independently supplied vault, reads it back, checks its digest, and restores exactly those bytes into the pinned isolated object. It publishes the existing release-gate audit keys only after the restore receipt matches the target and ciphertext digest. Archive content is kept out of the audit payload.

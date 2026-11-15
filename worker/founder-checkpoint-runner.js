@@ -5,6 +5,10 @@
  * It has no public action route and no configured cron by default.
  * The external DO binding targets the existing live account Worker.
  */
+import { ENCRYPTED_BACKUP_RECEIPT_KEY, ISOLATED_RESTORE_RECEIPT_KEY,
+  verifyProductionRecoveryReceipts
+} from '../scripts/release/founder-recovery-receipts.mjs';
+
 const TARGET_SCRIPT = 'mao-auth-preview';
 const TARGET_INSTANCE = 'maomao-global';
 const TARGET_ORIGIN = 'https://mao520.com';
@@ -55,6 +59,23 @@ export async function runPrivateFounderCheckpoint({ env, now = Date.now }) {
     // before recording a new one; no ordinary Cron retry can opt in.
     if (response.status === 409 &&
         env.FOUNDER_ROTATE_ALLOWED === 'preserve-old-checkpoint-and-rotate') {
+      const audit = env.RELEASE_AUDIT;
+      const approvedDigest = env.FOUNDER_ROTATE_BACKUP_DIGEST;
+      if (typeof audit?.get !== 'function' || typeof approvedDigest !== 'string') {
+        return { ok: false, code: 'checkpoint_recovery_not_verified' };
+      }
+      const [backup, restore] = await Promise.all([
+        audit.get(ENCRYPTED_BACKUP_RECEIPT_KEY, { type: 'json' }),
+        audit.get(ISOLATED_RESTORE_RECEIPT_KEY, { type: 'json' })
+      ]).catch(() => []);
+      const verifiedAt = now();
+      if (!verifyProductionRecoveryReceipts(backup, restore).restoreVerified ||
+          backup.ciphertextSha256 !== approvedDigest || restore.verifiedAt > verifiedAt + 2000) {
+        return { ok: false, code: 'checkpoint_recovery_not_verified' };
+      }
+      if (!Number.isSafeInteger(verifiedAt) || verifiedAt < start || verifiedAt >= end) {
+        return { ok: false, code: 'window_closed' };
+      }
       response = await stub.fetch(new Request(
         'https://maomao.internal/internal/release/checkpoint-rotate', {
           method: 'POST',
@@ -133,7 +154,8 @@ export default {
         FOUNDER_RUN_NOT_BEFORE_MS: activation.from,
         FOUNDER_RUN_NOT_AFTER_MS: activation.until,
         FOUNDER_ROTATE_ALLOWED: activation.rotateApproved === true
-          ? 'preserve-old-checkpoint-and-rotate' : undefined
+          ? 'preserve-old-checkpoint-and-rotate' : undefined,
+        FOUNDER_ROTATE_BACKUP_DIGEST: activation.backupDigest
       } : env;
       const result = await runPrivateFounderCheckpoint({ env: runtimeEnv });
       const receipt = {

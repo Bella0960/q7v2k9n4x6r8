@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import operator, { runPrivateFounderCheckpoint } from '../worker/founder-checkpoint-runner.js';
 import { recordFounderCheckpoint } from '../scripts/release/founder-checkpoint.mjs';
+import { ROOT_NAMESPACE_ID, ROOT_OBJECT_ID, ENCRYPTED_BACKUP_RECEIPT_KEY,
+  ISOLATED_RESTORE_RECEIPT_KEY
+} from '../scripts/release/founder-recovery-receipts.mjs';
 import {
   FOUNDER_ROTATE_PATH,
   handleFounderCheckpointInternal,
@@ -11,6 +14,26 @@ import {
 
 const NOW = 1_800_000_000_000;
 const SECRET = 'R'.repeat(64);
+const digest = 'd'.repeat(64);
+
+function authorizeRotation(env, timestamp) {
+  const backup = {
+    ok: true, code: 'encrypted_sql_kv_backup_verified', sourceNamespaceId: ROOT_NAMESPACE_ID,
+    sourceObjectId: ROOT_OBJECT_ID, createdAt: timestamp - 1000, ciphertextSha256: digest
+  };
+  const restore = {
+    ok: true, code: 'isolated_restore_verified', targetNamespaceId: 'b'.repeat(32),
+    targetObjectId: 'b'.repeat(64), verifiedAt: timestamp - 100, ciphertextSha256: digest
+  };
+  env.FOUNDER_ROTATE_ALLOWED = 'preserve-old-checkpoint-and-rotate';
+  env.FOUNDER_ROTATE_BACKUP_DIGEST = digest;
+  env.RELEASE_AUDIT = {
+    async get(key) {
+      return { [ENCRYPTED_BACKUP_RECEIPT_KEY]: backup, [ISOLATED_RESTORE_RECEIPT_KEY]: restore }[key];
+    }
+  };
+  return { backup, restore };
+}
 
 function setup() {
   const calls = [];
@@ -208,7 +231,7 @@ test('runner receives the real stale-checkpoint response and rotates only with a
   assert.equal(values.size, 1);
   assert.equal(values.get('release:founder-cutover:checkpoint'), original);
 
-  env.FOUNDER_ROTATE_ALLOWED = 'preserve-old-checkpoint-and-rotate';
+  authorizeRotation(env, NOW);
   assert.deepEqual(await runPrivateFounderCheckpoint({ env, now }), {
     ok: true, code: 'checkpoint_recorded', recordedAt: NOW
   });
@@ -367,10 +390,29 @@ test('stale checkpoint is rotated only with explicit private window approval', a
   const denied=await runPrivateFounderCheckpoint({env,now:()=>now});
   assert.deepEqual(denied,{ok:false,code:'checkpoint_rotation_requires_review'});
   assert.deepEqual(calls,['/internal/release/checkpoint']);
-  env.FOUNDER_ROTATE_ALLOWED='preserve-old-checkpoint-and-rotate';
+  authorizeRotation(env, now);
   const accepted=await runPrivateFounderCheckpoint({env,now:()=>now});
   assert.deepEqual(accepted,{ok:true,code:'checkpoint_recorded',recordedAt:now});
   assert.deepEqual(calls.slice(-2),['/internal/release/checkpoint','/internal/release/checkpoint-rotate']);
+});
+
+test('rotation stops before contacting the rotation endpoint when recovery proof is absent or mismatched', async () => {
+  for (const invalidate of [
+    env => { delete env.RELEASE_AUDIT; },
+    env => { env.FOUNDER_ROTATE_BACKUP_DIGEST = 'a'.repeat(64); },
+    (_env, { restore }) => { restore.targetObjectId = ROOT_OBJECT_ID; },
+    (_env, { restore }) => { restore.ciphertextSha256 = 'a'.repeat(64); },
+    (_env, { backup }) => { backup.sourceNamespaceId = 'b'.repeat(32); },
+    (_env, { restore }) => { restore.verifiedAt = NOW + 60000; }
+  ]) {
+    const { env, calls, setResponse } = setup();
+    setResponse(new Response('old checkpoint', { status: 409 }));
+    invalidate(env, authorizeRotation(env, NOW));
+    assert.deepEqual(await runPrivateFounderCheckpoint({ env, now: () => NOW }),
+      { ok: false, code: 'checkpoint_recovery_not_verified' });
+    assert.deepEqual(calls.filter(call => call[0] === 'fetch').map(call => call[1]),
+      ['https://maomao.internal/internal/release/checkpoint']);
+  }
 });
 
 test('private KV activation never approves stale bookmark rotation without explicit true flag', async()=>{
@@ -390,4 +432,41 @@ test('private KV activation never approves stale bookmark rotation without expli
   let pending;await operator.scheduled({},env,{waitUntil(p){pending=p;}});
   await assert.rejects(pending,/private_checkpoint_checkpoint_rotation_requires_review/);
   assert.equal(calls.length,1);
+});
+
+test('scheduled approval uses the archive digest from the private activation', async () => {
+  const { env } = setup();
+  const now = Date.now();
+  const receipts = authorizeRotation(env, now);
+  delete env.FOUNDER_RUN_ENABLED;
+  delete env.FOUNDER_ROTATE_ALLOWED;
+  delete env.FOUNDER_ROTATE_BACKUP_DIGEST;
+  const calls = [];
+  const writes = new Map();
+  env.LIVE_CLOUD_DB = {
+    idFromName: name => name,
+    get: () => ({ async fetch(request) {
+      calls.push(new URL(request.url).pathname);
+      return request.url.endsWith('/checkpoint')
+        ? new Response('stale', { status: 409 })
+        : Response.json({ ok: true, recorded: true, recordedAt: now });
+    } })
+  };
+  env.RELEASE_AUDIT = {
+    async get(key) {
+      return {
+        'founder-checkpoint:activation': { v: 1, target: 'mao-auth-preview',
+          origin: 'https://mao520.com', mode: 'acknowledge-single-use-live-checkpoint',
+          from: String(now - 1000), until: String(now + 60000), rotateApproved: true, backupDigest: digest },
+        [ENCRYPTED_BACKUP_RECEIPT_KEY]: receipts.backup,
+        [ISOLATED_RESTORE_RECEIPT_KEY]: receipts.restore
+      }[key];
+    },
+    async put(key, value) { writes.set(key, JSON.parse(value)); }
+  };
+  let pending;
+  await operator.scheduled({}, env, { waitUntil(promise) { pending = promise; } });
+  await pending;
+  assert.deepEqual(calls, ['/internal/release/checkpoint', '/internal/release/checkpoint-rotate']);
+  assert.equal(writes.get('founder-checkpoint:success').recordedAt, now);
 });
