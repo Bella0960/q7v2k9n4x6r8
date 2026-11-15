@@ -943,7 +943,7 @@ test('closing the story while deletion commits cannot reopen the sheet', async (
   await root.handlers.click({ target: sheet.all().find(el => el.dataset.action === 'read') });
   await root.handlers.click({ target: sheet.all().find(el => el.dataset.action === 'delete') });
   const pending = root.handlers.click({ target: sheet.all().find(el => el.dataset.action === 'confirm-delete') });
-  await root.handlers.click({ target: sheet.all().find(el => el.dataset.action === 'close') });
+  await root.handlers.click({ target: root.querySelector('.fw-backdrop') });
   await pending;
   assert.equal(root.hidden, true, 'closed UI must remain closed after delayed storage completion');
   assert.equal(db.records.has(id), false);
