@@ -8,6 +8,7 @@ const appSource = fs.readFileSync(new URL('../encounter/encounter.html', import.
 const managerSource = fs.readFileSync(new URL('../worldbook/characters/js/characters-manager.js', import.meta.url), 'utf8');
 const charactersPage = fs.readFileSync(new URL('../worldbook/characters/characters.html', import.meta.url), 'utf8');
 const desktopSource = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+const chatListSource = fs.readFileSync(new URL('../chat/chat/chat.html', import.meta.url), 'utf8');
 
 function harness(seed = {}) {
   const map = new Map(Object.entries(seed));
@@ -203,6 +204,22 @@ test('角色库第一次为空时可安全初始化新角色，不需要写空�
   assert.equal(map.size,0,'只读加载不应偷偷写入存储');
   assert.equal(manager.saveRoles([{id:'one',name:'自建角色'}]),true);
   assert.equal(JSON.parse(map.get('ai_custom_characters'))[0].name,'自建角色');
+});
+
+
+test('邂逅保存为原生角色后，现有聊天首页可直接列出该角色', () => {
+  assert.match(chatListSource,/var CHARACTERS_KEY = 'ai_custom_characters'/);
+  assert.match(chatListSource,/var roles = loadCharacters\(\)\.filter/);
+  assert.match(chatListSource,/var rolesHTML = roles\.map/);
+  assert.match(chatListSource,/chat-detail\.html\?v=.*?&id=/);
+  assert.match(managerSource,/saveRoles\(roles\)/);
+});
+
+test('保存后的邂逅角色仍可以手动选择 AI 完善，不能强迫再次抽卡', () => {
+  assert.match(managerSource,/const editingSavedEncounter =/);
+  assert.match(managerSource,/target\.encounterOrigin && target\.encounterOrigin\.version === 1/);
+  assert.match(managerSource,/if \(!activeEncounterDraftId && !editingSavedEncounter\)/);
+  assert.match(managerSource,/const targetRoleId = editorRoleId/);
 });
 
 test('桌面有独立应用入口，抽卡页有可访问交互与移动端样式', () => {
