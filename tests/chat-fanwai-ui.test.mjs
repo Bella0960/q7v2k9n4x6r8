@@ -787,6 +787,41 @@ test('pause event is dispatched only after the durable pause transaction commits
     'the event must describe a story with a committed pause snapshot');
 });
 
+
+test('resuming while pause write is pending suppresses the obsolete pause event', async () => {
+  const db = fakeFanwaiDB({ writeDelays: [0, 32] });
+  let firstRequest = false;
+  const app = mount({
+    accountId: 'MAO-AAAAAAAAAAAA', indexedDB: db,
+    completeJSON(request, index) {
+      if (index === 1) {
+        firstRequest = true;
+        return new Promise(() => {});
+      }
+      const requested = Number(request.user.match(/(\d+) 条/)[1]);
+      return { ok: true, data: {
+        messages: Array.from({ length: requested }, (_, n) =>
+          ({ role: n % 2 ? 'char' : 'user', text: '继续写 ' + index + '/' + n }))
+      } };
+    }
+  });
+  let pausedEvents = 0;
+  app.registry.on('episode:paused', () => { pausedEvents++; });
+  const root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().some(n => n.dataset.template === 'daily'));
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.template === 'daily') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'start-template') });
+  await tickUntil(() => firstRequest);
+  const waitingPause = root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'pause') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'resume') });
+  await waitingPause;
+  assert.equal(pausedEvents, 0, 'a newer run invalidates the older pending pause lifecycle event');
+  await tickUntil(() => sheet.all().filter(n => n.className === 'fw-bubble').length === 80, 120);
+  assert.equal(pausedEvents, 0);
+  assert.equal(app.requests, 8, 'resuming must not duplicate AI requests or paused notifications');
+});
+
 test('failed pause save must not tell extension listeners that the story was persisted', async () => {
   const db = fakeFanwaiDB({ failAtWrite: 2 });
   const app = mount({
