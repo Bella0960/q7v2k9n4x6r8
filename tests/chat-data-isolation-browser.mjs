@@ -1,6 +1,6 @@
 /**
  * 聊天数据隔离：真实浏览器读写验证（本机优先 msedge，CI 回退内置 chromium）。
- * 覆盖：角色 A/B/全局聊天背景、聊天名片按会话隔离、聊天列表封面与我的主页封面互不覆盖。
+ * 覆盖：角色 A/B/全局聊天背景、聊天名片和转发按会话隔离、两套封面互不覆盖。
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -53,6 +53,10 @@ function startServer() {
 const image = (label) => 'data:image/png;base64,' + label;
 
 const SEED = {
+  ai_custom_characters: JSON.stringify([
+    { id: 'iso_A', name: '测试角色 A' },
+    { id: 'iso_B', name: '测试角色 B' }
+  ]),
   beauty_chat_global_v1: JSON.stringify({
     v: 1,
     updatedAt: 1,
@@ -101,6 +105,46 @@ async function waitForText(page, text, present) {
   );
 }
 
+async function verifyForwarding(page, origin) {
+  const sourceUrl = origin + '/chat/chat/chat-detail.html?id=iso_A';
+  const targetUrl = origin + '/chat/chat/chat-detail.html?id=iso_B';
+  const sourceText = 'A 会话的普通消息';
+  const legacyText = 'B 的旧版聊天记录';
+  const sourceKey = 'chat_history_iso_A';
+  const targetKey = 'chat_history_iso_B';
+  const broken = '{"incomplete":';
+  const legacy = JSON.stringify({ iso_B: { chat: { history: [
+    { role: 'received', text: legacyText, mid: 'legacy-b', time: 1 }
+  ] } } });
+  await page.goto(sourceUrl);
+  const read = key => page.evaluate(name => localStorage.getItem(name), key);
+  const sourceBytes = await read(sourceKey);
+  await page.evaluate(({ targetKey, broken, legacy }) => {
+    localStorage.setItem(targetKey, broken);
+    localStorage.setItem('phone_data_v2', legacy);
+  }, { targetKey, broken, legacy });
+
+  const forward = async () => {
+    await page.getByText(sourceText, { exact: true }).click({ delay: 650 });
+    await page.locator('[data-act="forward"]').click();
+    await page.locator('#fwList [data-id="iso_B"]').click();
+  };
+  await forward();
+  await page.getByText('目标会话记录异常，已停止转发以保护原始数据', { exact: true }).waitFor();
+  assert.equal(await read(targetKey), broken);
+  assert.equal(await read('phone_data_v2'), legacy);
+  assert.equal(await read(sourceKey), sourceBytes);
+
+  await page.evaluate(key => localStorage.removeItem(key), targetKey);
+  await forward();
+  await page.getByText('已转发给 测试角色 B', { exact: true }).waitFor();
+  assert.deepEqual(JSON.parse(await read(targetKey)).map(message => message.text), [legacyText, sourceText]);
+  assert.equal(await read(sourceKey), sourceBytes);
+  await page.goto(targetUrl);
+  await page.reload();
+  await page.getByText(sourceText, { exact: true }).waitFor();
+}
+
 async function main() {
   let chromium;
   try {
@@ -132,6 +176,8 @@ async function main() {
     hasTouch: true,
     serviceWorkers: 'block'
   });
+  await context.route('**/*', route =>
+    new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
   await context.addInitScript((seed) => {
     Object.keys(seed).forEach((key) => {
       if (window.localStorage.getItem(key) === null) {
@@ -177,6 +223,9 @@ async function main() {
     await waitForText(page, 'B 会话的普通消息', true);
     assert.equal(await page.evaluate(() => document.body.innerText.includes('卡片甲')), false);
     results.push('B 会话不出现 A 的名片');
+
+    await verifyForwarding(page, origin);
+    results.push('转发保护目标原始数据，旧版历史可追加并在刷新后读回');
 
     // 4. 聊天列表封面与我的主页封面互不覆盖
     await page.goto(origin + '/chat/chat/chat.html', { waitUntil: 'domcontentloaded' });
