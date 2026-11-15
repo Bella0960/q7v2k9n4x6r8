@@ -1,5 +1,12 @@
 # MAOMAO Execution Log
 
+## 2026-11-15 — QA-001 staged production backup-only capture and private executor
+
+- The source Durable Object accepts the dedicated operation only on its private binding with the pinned production object identity, configured private vault, explicit capture mode, separate backup key, operator secret and two-minute window. It reads SQL and internal KV in place and writes only sealed bytes directly into the archive vault. The acknowledgement contains the archive digest and source metadata. The backup executor retrieves those same bytes privately, restores only into the independently pinned target and writes the matching backup and restore receipts. The path has no identity cutover or checkpoint mutation.
+- Node recovery suites passed 53/53. The new synthetic end-to-end test exercises the capture handler, archive write, readback, real SQLite restore, and paired receipts together. The local workerd archive-and-restore rehearsal also passed.
+- Staged the minimal backup-only source version `bfc39678-d19d-4193-8c1a-645996a65986` on `mao-auth-preview`, built from the exact active baseline with only the additional private handler and helper modules. Readback showed the original Durable Object namespace, ASSETS, and no capture activation, encryption key or vault bindings. The source upload did not deploy traffic. Staged the private executor version `0413b457-2fab-43ed-9aa1-26a1bdb1b12e` with its existing private bindings. The executor upload did not activate it.
+- The source remains on `4454045f-ee8b-4b08-a679-c55745fc82ac` and operator on `f144223b-b7c1-4283-9682-078f81a5e5b2`. No live export, password transfer, checkpoint rotation or account mutation occurred. Earlier automated review denied live export and checkpoint rotation activation. The next required approval is a private backup-only execution on the original object with the sealed archive vault and empty isolated target.
+
 ## 2026-11-15 — QA-001 provisioned private vault and isolated target
 
 - Provisioned the dedicated private Workers KV archive namespace `MAOMAO_PRIVATE_FOUNDER_BACKUP_VAULT` (`e3cb732aab3340b9be84965c9f8daa26`) and SQLite Durable Object namespace `23e6ea47970441d28887d5951997710e` for `FounderRecoveryTarget`. Both are bound to the existing private `maomao-founder-checkpoint-operator` version `f144223b-b7c1-4283-9682-078f81a5e5b2`. Original secret and production database binding were retained. Readback showed no Cron, public domain, workers.dev, preview, or activation.

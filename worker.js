@@ -19,6 +19,7 @@ import { runTick } from './worker/lib/scheduler.js';
 import { createSchedulerGate } from './worker/lib/scheduler-gate.js';
 import { FOUNDER_CHECKPOINT_PATH, handleFounderCheckpointInternal, FOUNDER_ROTATE_PATH, handleFounderCheckpointRotationInternal } from './worker/lib/founder-recovery-operator.js';
 
+import { FOUNDER_BACKUP_PATH, captureFounderBackupInternal } from './worker/lib/founder-backup-capture.js';
 import { inspectAccountPersistence, inspectPitrReadiness } from './worker/lib/account-persistence.js';
 
 const INSTANCE_NAME = 'maomao-global';
@@ -142,6 +143,9 @@ export class CloudDatabase {
     const url = new URL(request.url);
     // Internal binding only. The public Worker entrypoint does not forward
     // /internal/*, and a separate operator secret is mandatory.
+    if (url.pathname === FOUNDER_BACKUP_PATH) {
+      return captureFounderBackupInternal({ request, env: this.env, state: this.ctx });
+    }
     if (url.pathname === FOUNDER_CHECKPOINT_PATH) {
       return handleFounderCheckpointInternal({
         request, env: this.env, storage: this.ctx.storage

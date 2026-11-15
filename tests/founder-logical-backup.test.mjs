@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { sealFounderBackup, restoreFounderBackup } from '../scripts/release/founder-logical-backup.mjs';
 import { recordFounderRecoveryEvidence } from '../scripts/release/founder-recovery-evidence.mjs';
+import { ROOT_OBJECT_ID, ROOT_NAMESPACE_ID } from '../scripts/release/founder-recovery-receipts.mjs';
+import { captureFounderBackupInternal, FOUNDER_BACKUP_PATH } from '../worker/lib/founder-backup-capture.js';
+import { runPrivateFounderBackup } from '../worker/founder-backup-runner.js';
 import { passwordDigest } from '../worker/lib/account-auth.js';
 import { randomToken, sha256Hex } from '../worker/lib/crypto.js';
 import { applyMigrations } from '../worker/lib/migrations.js';
@@ -188,4 +191,71 @@ test('readback corruption or a restore receipt for another target cannot publish
   await assert.rejects(recordFounderRecoveryEvidence(operation), /recovery_restore_unverified/);
   assert.equal(restoreCalls, 1);
   assert.equal(audit.size, 0);
+});
+
+test('formal capture writes sealed bytes to the private vault and returns only metadata', async t => {
+  const { source } = await seed(t);
+  const vault = new Map();
+  const now = Date.now();
+  const secret = 'z'.repeat(64);
+  const options = {
+    state: { ...source.state, id: ROOT_OBJECT_ID },
+    env: {
+      FOUNDER_BACKUP_CAPTURE_MODE: 'read-only-sealed-backup',
+      FOUNDER_BACKUP_ENCRYPTION_KEY: randomToken(32), FOUNDER_RELEASE_OPERATOR_SECRET: secret,
+      FOUNDER_BACKUP_VAULT: { put: (key, value) => vault.set(key, value) }
+    },
+    request: new Request('https://maomao.internal' + FOUNDER_BACKUP_PATH, {
+      method: 'POST',
+      headers: { 'x-maomao-release-secret': secret,
+        'x-maomao-backup-from': String(now - 1000), 'x-maomao-backup-until': String(now + 1000) }
+    }),
+    now: () => now
+  };
+  assert.equal((await captureFounderBackupInternal({ ...options, state: source.state })).status, 404);
+  assert.equal((await captureFounderBackupInternal({ ...options, now: () => now + 1000 })).status, 403);
+  assert.equal(vault.size, 0);
+  const response = await captureFounderBackupInternal(options);
+  assert.equal(response.status, 200);
+  const receipt = await response.json();
+  assert.equal(receipt.sourceNamespaceId, ROOT_NAMESPACE_ID);
+  assert.equal(receipt.sourceObjectId, ROOT_OBJECT_ID);
+  assert.equal(receipt.artifact, undefined);
+  const encrypted = vault.get('founder-recovery/v1/' + receipt.ciphertextSha256 + '.json');
+  assert.equal(await sha256Hex(encrypted), receipt.ciphertextSha256);
+  assert.ok(!encrypted.includes(checkpointKey) && !encrypted.includes(member));
+  assert.equal(source.query('SELECT COUNT(*) AS count FROM mao_accounts')[0].count, 2);
+
+  const isolatedNamespace = '23e6ea47970441d28887d5951997710e';
+  const target = fixture(t, disposableObjectId);
+  const audit = new Map();
+  const activation = { mode: 'seal-and-verify-original-production-db', sourceObjectId: ROOT_OBJECT_ID,
+    targetObjectId: disposableObjectId, from: now - 1000, until: now + 1000 };
+  const env = {
+    FOUNDER_RESTORE_OBJECT_ID: disposableObjectId,
+    FOUNDER_RESTORE_NAMESPACE_ID: isolatedNamespace,
+    FOUNDER_RELEASE_OPERATOR_SECRET: secret,
+    LIVE_CLOUD_DB: { idFromString: id => id, get: id => ({
+      fetch: request => {
+        assert.equal(id, ROOT_OBJECT_ID);
+        return captureFounderBackupInternal({ ...options, request });
+      }
+    }) },
+    FOUNDER_BACKUP_VAULT: { get: key => vault.get(key) },
+    FOUNDER_RESTORE_TARGET: { idFromString: id => id, get: id => ({
+      restore: input => {
+        assert.equal(id, disposableObjectId);
+        return restoreFounderBackup({ ...input, state: target.state, targetNamespaceId: isolatedNamespace,
+          disposableObjectId, expectedSourceNamespaceId: ROOT_NAMESPACE_ID, expectedSourceObjectId: ROOT_OBJECT_ID,
+          key: options.env.FOUNDER_BACKUP_ENCRYPTION_KEY });
+      }
+    }) },
+    RELEASE_AUDIT: { put: (name, value) => audit.set(name, JSON.parse(value)) }
+  };
+  assert.deepEqual(await runPrivateFounderBackup({ env, activation, now: () => now }),
+    { ok: true, code: 'production_backup_restored' });
+  assert.equal(audit.size, 2);
+  assert.equal(audit.get('founder-recovery:encrypted-backup-success').ciphertextSha256,
+    audit.get('founder-recovery:isolated-restore-success').ciphertextSha256);
+  assert.deepEqual(target.values, source.values);
 });
