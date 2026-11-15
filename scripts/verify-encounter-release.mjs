@@ -85,7 +85,23 @@ try{
   head=execFileSync('git',['rev-parse','HEAD'],{
     cwd:root,encoding:'utf8',stdio:['ignore','pipe','ignore']
   }).trim();
-}catch(e){errors.push('无法读取 Git HEAD，不能确认构建与截图是否来自当前分支');}
+  const dirty=execFileSync('git',['status','--porcelain','--untracked-files=no'],{
+    cwd:root,encoding:'utf8',stdio:['ignore','pipe','ignore']
+  }).trim();
+  if(dirty)errors.push('工作区有未提交修改，测试回执无法与正在验收的代码一致');
+}catch(e){errors.push('无法读取 Git HEAD 或工作区状态，不能确认当前测试版本');}
+const accountTest=parseReceipt('test-results/encounter-account-test-receipt.json');
+const encounterTest=parseReceipt('test-results/encounter-encounter-test-receipt.json');
+for(const [kind,receipt] of [['account',accountTest],['encounter',encounterTest]]){
+  if(!receipt)continue;
+  if(receipt.kind!==kind || receipt.source!=='native-node-test' ||
+      !Number.isFinite(receipt.finishedAt)){
+    errors.push(kind+' 原生 Node 测试回执格式无效');
+  }
+  if(head && receipt.gitHead!==head){
+    errors.push(kind+' Node 回归来自旧 Git 提交，必须重新测试');
+  }
+}
 const built=parseReceipt('dist/encounter-build-receipt.json');
 const browsed=parseReceipt('test-results/encounter-browser-receipt.json');
 if(built && head && built.gitHead!==head)errors.push('构建回执对应旧提交，必须重新构建：'+built.gitHead);
