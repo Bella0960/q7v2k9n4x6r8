@@ -291,6 +291,10 @@ function fakeFanwaiDB(options = {}) {
                 }
                 queriedRanges.push(range);
                 const req = {};
+                if (options.failReads) {
+                  Promise.resolve().then(() => { if (req.onerror) req.onerror(); });
+                  return req;
+                }
                 const finishRead = () => {
                   req.result = Array.from(records.values()).filter(record =>
                     record.id >= range.lower && record.id <= range.upper);
@@ -819,4 +823,44 @@ test('failed hidden settings persist warns once even after rapid changes', async
     'only the last failing rapid change should display a storage warning');
   assert.equal(app.requests, 0, 'changing preferences must never consume AI requests');
   assert.ok(![...db.records.values()].some(x => x.kind === 'fanwai-settings'));
+});
+
+
+test('archive follows confirmed deletions made by another tab instead of resurrecting a stale row', async () => {
+  const db = fakeFanwaiDB();
+  const accountId = 'MAO-AAAAAAAAAAAA';
+  const id = accountId + ':role-1:other-tab';
+  db.records.set(id, {
+    id, accountId, characterId: 'role-1', templateId: 'daily',
+    name: '另一标签页的故事', status: 'complete', target: 40, updatedAt: 3,
+    messages: [{ role: 'char', text: '已经保存过的内容' }]
+  });
+  const app = mount({ accountId, indexedDB: db });
+  const root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().some(el => el.dataset.id === id));
+  db.records.delete(id); // Another tab committed a deletion while the first tab was still open.
+  app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().filter(el => el.dataset.action === 'read').length === 0);
+  assert.equal(root.querySelector('.fw-sheet').all().some(el => el.dataset.id === id), false);
+  assert.equal(app.requests, 0);
+});
+
+test('failed archive refresh preserves the last committed snapshot and shows an error', async () => {
+  const settings = {};
+  const db = fakeFanwaiDB(settings);
+  const accountId = 'MAO-AAAAAAAAAAAA';
+  const id = accountId + ':role-1:read-failure';
+  db.records.set(id, {
+    id, accountId, characterId: 'role-1', templateId: 'daily',
+    name: '保留的旧番外', status: 'complete', target: 40, updatedAt: 5,
+    messages: [{ role: 'char', text: '上次已经保存' }]
+  });
+  const app = mount({ accountId, indexedDB: db });
+  const root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().some(el => el.dataset.id === id));
+  settings.failReads = true;
+  app.open();
+  await tickUntil(() => app.notices.some(x => x.includes('番外目录暂时无法刷新')));
+  assert.equal(root.querySelector('.fw-sheet').all().filter(el => el.dataset.id === id).length, 1);
+  assert.equal(app.requests, 0);
 });
