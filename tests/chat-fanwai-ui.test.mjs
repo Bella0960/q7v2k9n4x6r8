@@ -110,7 +110,8 @@ function mount(options = {}) {
     },
     localStorage: { getItem: key => {
       localStorageReadCount++;
-      if (key === 'ai_custom_characters') return JSON.stringify([{ id: 'role-1', name: '测试角色', persona: '短句风格', memory: '旧回忆：曾在海边看过日落' }]);
+      if (key === 'ai_custom_characters') return JSON.stringify(options.characters || [{ id: 'role-1', name: '测试角色', persona: '短句风格', memory: '旧回忆：曾在海边看过日落' }]);
+      if (key === 'phone_groups') return JSON.stringify(options.groups || []);
       if (key === 'myProfile') return JSON.stringify({ nickname: '测试用户' });
       return null;
     } },
@@ -196,6 +197,44 @@ test('API interruption retains partial dialogue and resume completes it', async 
 test('group chat has no fanwai menu entry', () => {
   const app = mount({ roleId: 'group-42' });
   assert.equal(app.grid.querySelector('[data-feat="fanwai"]'), null);
+});
+
+test('g-prefixed imported characters retain the fanwai menu and can start their own story', async () => {
+  const role = { id: 'gail_custom_01', name: 'Gail', persona: '短句风格' };
+  const app = mount({ roleId: role.id, characters: [role] });
+  const root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().some(el => el.dataset.template === 'daily'));
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(el => el.dataset.template === 'daily') });
+  await root.handlers.click({ target: sheet.all().find(el => el.dataset.action === 'start-template') });
+  await tickUntil(() => app.requests > 0);
+  assert.equal(app.requests > 0, true, 'actual imported role must not be misclassified as a group');
+  assert.match(app.prompts[0], /Gail/, 'fanwai must use the requested role, not a different character');
+});
+
+test('real group IDs and nonstandard groups from phone_groups never expose the fanwai entry', () => {
+  for (const roleId of ['g1700000000000', 'group-old42', 'group_legacy42']) {
+    const group = mount({ roleId });
+    assert.equal(group.grid.querySelector('[data-feat="fanwai"]'), null, roleId);
+  }
+  const customGroup = mount({
+    roleId: 'chat-room-random-id',
+    groups: [{ id: 'chat-room-random-id', name: '自定义群聊', members: [] }]
+  });
+  assert.equal(customGroup.grid.querySelector('[data-feat="fanwai"]'), null);
+  const collision = mount({
+    roleId: 'gail_custom_01',
+    characters: [{ id: 'gail_custom_01', name: 'Gail' }],
+    groups: [{ id: 'gail_custom_01', name: '群聊', members: [] }]
+  });
+  assert.equal(collision.grid.querySelector('[data-feat="fanwai"]'), null,
+    'the recorded group must take precedence when IDs collide');
+});
+
+test('a character using the legacy numeric group prefix remains accessible if it is in the role library', () => {
+  const roleId = 'g1700000000000';
+  const character = mount({ roleId, characters: [{ id: roleId, name: '真实角色', persona: '人设' }] });
+  assert.ok(character.grid.querySelector('[data-feat="fanwai"]'));
 });
 
 
