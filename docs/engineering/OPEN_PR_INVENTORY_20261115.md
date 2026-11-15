@@ -22,6 +22,24 @@
 | 好友/NPC 堆叠 | **#196：`feat/qr-friends-mvp → feat/cloud-autonomous-activity-push`**；**#198：`feat/real-friend-text-chat → feat/qr-friends-mvp`**；**#199：`SOC-001/contact-groups-moments-privacy → main`**；**#205：`feat/npc-social-soc001-integration-20261108 → SOC-001/contact-groups-moments-privacy`** | 检查既有云端与群组依赖；不拆成第二套好友系统 |
 | 遗留治理堆叠 | **#245/#246/#247** 仍以 `GOV-001-autonomous-execution-and-doc-sync` 为 base（其 #244 已合入 main） | 先检查旧目标基线是否需调整，不能仅凭已有审核直接合并 |
 
+## 账号／钱包唯一候选路线：Git 祖先与差异实证（2026-11-15）
+
+**核查方法：** 对 GitHub 的 `compare_commits` 比较 `main` 和各分支、以及 `integration/release-features-20261114` 与其他分支的提交关系；只证明 Git 历史/差异，**不等于 UI、部署、账号或数据库功能已验收**。
+
+| 分支 PR | 相比最新 `main`（本次核查时） | 以 #285 为 base 再比较该 PR | 执行规则 |
+| --- | --- | --- | --- |
+| **#285** | ahead 159、behind 0，224 个变更文件 | 整合候选本身 | **账号钱包／正式版的唯一优先候选整理入口**，先审计内容和发布门禁；不是已批准发布 |
+| **#284** | ahead 31、behind 5 | **behind 133、ahead 0（祖先）** | 已包含在 #285 的提交历史中；不再把 #284 单独叠加合并 |
+| **#283** | ahead 10、behind 5 | **behind 154、ahead 0（祖先）** | 已包含在 #285 的提交历史中；不再把 #283 单独叠加合并 |
+| **#290** | ahead 20、behind 1 | **diverged，ahead 4、behind 144，最终仅 2 个文件不同**：`shared/js/mao-account-scope.js`、`tests/account-storage-isolation.test.mjs` | 审查这两处差异和测试后，在 **#285 原整合分支** 做最小移植（如果确实缺失）；不得为了合并而整套覆盖 |
+| **#281** | ahead 552、behind 5 | **diverged，ahead 552、behind 164**（GitHub 文件结果可能有截断） | 与 #285 显著分叉；只对确实缺失的功能作逐文件核对，严禁整体覆盖 |
+| **#262** | ahead 196、behind 30 | **diverged，ahead 196、behind 189** | 旧管理员分支，不直接并入 main；按原管理员身份保护规则逐项核查 |
+| **#299** | `base = #290` 的分支、非 main PR | 相对于 #290 **ahead 45、behind 0** | 属于番外堆叠，不直接插进发布；待账号差异处理后明确迁移/重新定基线 |
+
+**优先级：** #285 为唯一**整合候选整理入口**，不是唯一正式版代码，也不自动视为通过 QA。其他旧 PR 保留历史记录，先核对差异，证实被包含且需求完整后才由负责人确认关闭。#275 主题与 #272 查手机相对 #285 也均已分叉（分别 ahead 271/behind 192、ahead 146/behind 192）；不能因 #285 标题提到“主题/查手机”就断言已包含它们的最新版，仍须分别验收。
+
+**这里确定的是“下一步从哪里修”，不是允许把 #285 合到 main。** 正式版本条件仍按 RELEASE_PLAYBOOK 的备份、账号连续性、唯一 QA、Android/iPhone、部署触发器、发布授权检查执行。
+
 ## 按模块归档的全部开放 PR
 
 **符号说明：** 此处均默认为“待定位/待核实”，未给出“已完成”。每个 PR 必须先核实内容与最新 main、再确定是否可复用、等待依赖或经确认关闭。
