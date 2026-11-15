@@ -58,3 +58,14 @@ Gate 不允许仅靠代码检查或旧截图通过。PR #290、#297 继续保留
 - 本整合分支（而非两个源 PR 分别）的邂逅合同/模拟 UI **33/33**、账号 × 邂逅真实作用域 **4/4**、PWA/字体/桌面静态合同 **16/16** 均通过。
 - npm build/Node 原生/Playwright/安卓/iOS/正式账号切换**仍未实际运行通过**。GitHub Actions 目前多个无关 workflow 都在 0 job steps 处失败，属于 CI 环境阻断而非可信的代码结论。
 - 原有正式环境、数据库和管理员账号均未修改。整合分支仅用于**单一隔离验收**，不再开更多测试网站或多重账号系统。
+
+## 2026-11-15 第五轮严格推进记录
+
+- **真实构建而非源码模拟**：tests/encounter-browser.mjs 的 HTTP 静态服务器现改为只服务 `dist/`；必须先完成 Vite 构建，同时存在账号入口、邂逅和角色档案页面。原先加载原始源码可能误过关，已修复。
+- **确定性与隐私模式**：浏览器主流程首次注入 `普通相遇` 偏好，避免把“蒙面身份”的占位标题错当真名；另设以物识人单独验收真实隐私遮罩。
+- **真实手机触控模拟**：Playwright Chromium 浏览器上下文开启 `isMobile/hasTouch`，使用 CDP `Input.dispatchTouchEvent` 真正派发左滑事件，验证 PASS 切换人物且不误收藏；此外检查 375/390/430px 横向溢出和按钮触控高度。
+- **强制验收回执**：浏览器回执必须说明 `source:'vite-dist'`，含真实触控成功标记及五张当前版本截图的匹配文件尺寸和时间；构建和浏览器回执都必须对应同一 Git HEAD。
+- **修复原生账号测试遗漏**：整合分支最初未复制 PR #290 的 `tests/worker-page-auth-runtime.test.mjs`，会令 `npm run test:account:ui-candidate` 直接找不到文件。现已补入，账号与邂逅测试脚本引用的 15 个测试/脚本目标逐项确认存在。
+- **旧人设数据安全**：现有角色编辑器 `saveRoles()` 不再仅信任 `PhoneStorage.result.saveCharacters()` 的 `ok` 返回，而是重新读取、比对完整 JSON 内容；浏览器静默丢写或校验不符时拒绝宣告成功并阻断后续覆盖。无 PhoneStorage 时亦检查 localStorage 实际保存字节。
+- **最新隔离验证**：整合分支 30 项合同 + 5 项 UI 模拟，**35/35 PASS（V8 适配执行）**。这不等于原生 Node、Vite 构建、Playwright Chromium 或 Android/iOS 真机实际通过。
+- **正式门禁状态**：CI 多个工作流 0 steps 失败，未取得真实运行回执；独立整合分支仍不合并 main、不部署 app.mao520.com、不操作永久管理员账号与数据库。先取得 `npm run test:account:ui-candidate`、`npm run test:encounter`、`npm run build`、`npm run test:encounter:browser` 和 `npm run gate:encounter` 真实成功日志，再进行 Android/iPhone、正式备份恢复验收。
