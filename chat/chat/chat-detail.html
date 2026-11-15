@@ -30,6 +30,7 @@
     <script src="../../shared/js/phone/group-chat-policy.js?v=20261102v5"></script>
     <script src="../../shared/js/group-governance.js?v=20261115g1"></script>
     <script src="../../shared/js/phone/group-game-session.js?v=20261115game3"></script>
+    <script src="../../shared/js/phone/group-turn-effects.js?v=20261115gte1"></script>
     <script src="../../shared/js/phone/group-memory-events.js?v=20261115gme2"></script>
     <script src="../../shared/js/chat-notifier.js?v=20261102v3"></script>
     <style>
@@ -6649,6 +6650,11 @@
                 retryRemarked = _markUserSendFailed(historyList, retryTarget.mid, retryTarget.time);
             }
 
+            // Each AI group turn owns a scoped message-history write barrier.
+            // If it is unavailable, hidden group action markers fail closed.
+            var groupTurnEffects = isGroupChat && window.GroupTurnEffects
+                ? window.GroupTurnEffects.create() : null;
+            var groupTurnFinalized = false;
             try {
                 if (fullText) {
                     // ---- 标记剥离 → 清洗 → 落库 → 重渲染（成功与中断保文共用同一套收尾） ----
@@ -6656,7 +6662,7 @@
                     var pendingGameWhisper = null;
                     fullText = processGroupInteractionMarkers(fullText, groupReplyPick, historyList, isRegen, isGroupFollowup, streamResult.ok, groupGameSessionForPrompt, function (event) {
                         pendingGameWhisper = event;
-                    });
+                    }, groupTurnEffects);
                     // 私聊角色可以发出待同意的群邀请；必须等模型完整成功，不允许中断回复改变入群状态。
                     if (window.GroupGovernance) {
                         fullText = fullText.replace(/\[群邀请[:：]([^\]]{1,100})\]/g, function (marker, proposedGroupId) {
@@ -6793,6 +6799,16 @@
                         window.__groupPrivateCardPending = false;
                         transferDecisionSnapshots = applyTransferDecisionMarkers(historyList, parsedTransferDecision.amounts);
                         var replySaved = saveMessages(historyList);
+                        // Poll/chain history changes share the SAME verified save as
+                        // the AI reply. Deferred governance/relationships/DMs run
+                        // strictly afterwards, not during marker parsing.
+                        if (groupTurnEffects) {
+                            var settledGroupTurn = groupTurnEffects.finalize(replySaved);
+                            groupTurnFinalized = true;
+                            if (replySaved && !settledGroupTurn.ok && typeof showToast === 'function') {
+                                showToast('群互动部分操作未成功，请检查群设置与存储');
+                            }
+                        }
                         // Commit private game actions only after the public AI turn
                         // has survived its existing history write + verification.
                         if (replySaved && pendingGameWhisper && window.GroupGameSessions) {
@@ -6867,6 +6883,7 @@
                             }
                         }
                         if (!replySaved) {
+                            groupReplyVisible = false;
                             rollbackTransferDecisionMarkers(transferDecisionSnapshots);
                             // 持久化失败时不把未保存的文字或表情渲染成已发送消息。
                             replyMessages.concat(aiStickerMessages, aiRoleGalleryMessages).forEach(function (message) {
@@ -7032,6 +7049,8 @@
             } catch (postErr) {
                 // 收尾处理自身的异常：仅记录，不伪装成网络错误
                 console.error('[chat-detail] 流式收尾处理异常:', postErr);
+            } finally {
+                if (groupTurnEffects && !groupTurnFinalized) groupTurnEffects.finalize(false);
             }
 
             aiSending = false;   // R3：所有出口统一解锁
@@ -8190,9 +8209,13 @@
 
 
         // ===== 群投票 / 群接龙 / 角色群管理标记 =====
-        function processGroupInteractionMarkers(rawText, speaker, historyList, isRegeneration, isGroupFollowup, isCompleted, expectedGameSessionId, queueGameWhisper) {
+        function processGroupInteractionMarkers(rawText, speaker, historyList, isRegeneration, isGroupFollowup, isCompleted, expectedGameSessionId, queueGameWhisper, turnEffects) {
             var text = String(rawText || '');
             if (!isGroupChat || !currentGroup || !Array.isArray(historyList)) return text;
+            if (!turnEffects || typeof turnEffects.afterSave !== 'function' ||
+                typeof turnEffects.registerUndo !== 'function') {
+                return text.replace(/\[(?:群关系变化|群关系互动|群投票|群接龙|群私聊|游戏私聊|群动作|群聊结束)[:：]?[^\]\r\n]{0,600}\]?/g, '').trim();
+            }
             var changedHistory = false;
             var groupHistoryRollback = [];
             // An incomplete/aborted AI turn may be displayed for recovery, but
