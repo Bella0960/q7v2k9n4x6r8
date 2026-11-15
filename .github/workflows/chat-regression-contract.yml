@@ -62,6 +62,7 @@ jobs:
           npm run test:images
           npm run test:forum:seed
           npm run build
+          npm run test:fanwai:browser:build
           npm run test:forum:mobile
           npm run test:group:ui
           npm run test:group:invite-e2e
