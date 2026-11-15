@@ -28,6 +28,7 @@ function makePage(options = {}) {
     } };
     const context = {
         window: page,
+        localStorage: page.localStorage,
         document: doc,
         navigator,
         Date: { now() { return now; } },
