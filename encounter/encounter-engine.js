@@ -81,7 +81,7 @@
     } catch (e) { return {}; }
   }
   function savePreferences(patch) {
-    var allowed = ['type','world','similarity'];
+    var allowed = ['type','world','similarity','gender'];
     var preferences = getPreferences();
     allowed.forEach(function(key) {
       if (Object.prototype.hasOwnProperty.call(patch,key)) preferences[key] = String(patch[key]).slice(0,50);
@@ -151,7 +151,7 @@
       var discoveries = worlds.filter(function(x) { return !favorites.has(x.species + ':' + x.era); });
       if (discoveries.length) w = pick(discoveries);
     }
-    var gender = random(2) === 0 ? '男' : '女';
+    var gender = prefs.gender === '男' || prefs.gender === '女' ? prefs.gender : (random(2) === 0 ? '男' : '女');
     var name = chooseName(w, reserved.value, gender);
     if (!name) return fail('可用姓名不足，稍后再试');
     var a = pick(archetypes);
