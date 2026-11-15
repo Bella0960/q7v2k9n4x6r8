@@ -114,6 +114,7 @@
       var m = history[i] || {};
       // Group-private cards may be retained for UI, but never qualify as shared history recall.
       if (m.type === 'group_private' || m.type === 'group_game_private') continue;
+      if (options.groupPublicOnly && (m.visibility === 'private' || m.visibility === 'role_only')) continue;
       if (m.isError || m.role === 'system_error') continue;
       var role = m.role;
       if (['sent','user','received','assistant'].indexOf(role) < 0) continue;
