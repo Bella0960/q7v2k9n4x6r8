@@ -1,5 +1,27 @@
 # MAOMAO Development Governance and Multi-AI Workflow
 
+## 0. 单一测试版优先（2026-11-15 用户确认的项目总流程）
+
+本节优先于下面任何与此冲突的旧措辞，适用于**全部功能**，不只是邂逅：
+
+```text
+功能需求登记 → 检查已有代码与分支 → 认领并继续开发
+→ 自动测试（失败返回开发）→ 唯一完整测试环境验收（失败返回开发）
+→ 用户验收通过 → 合并 main → 正式发布前安全检查
+→ 获得正式发布批准 → 发布正式环境 → 线上复验并归档
+```
+
+- **只维护一个完整、可长期使用的统一测试版**，不因新增任务另建测试入口、账号系统、数据库或一堆预览域名。修复发生在既有功能任务分支及统一测试版中；通过后再统一收敛进正式版。
+- 开始写代码前检查已有任务、PR、分支与对应文件，继续原有工作，避免同功能重复开发和未经协调覆盖。
+- 自动测试必须是真正执行过的命令/浏览器或其他可验证证据；无法运行就如实标记 BLOCKED，不得以 V8 模拟代替原生测试结果或报告“测试通过”。
+- **只有自动测试通过，才把这一批功能部署到统一测试环境**。测试版是整体小手机，而不是孤立静态演示图；允许用户在统一测试版实际玩，发现问题返回开发和同一测试版继续修复。
+- **只有用户验收通过才可合并 main**；合并代码与发布正式网站严格分开。发布前必须完成生产账号与角色数据安全、备份/隔离恢复、后端身份/路由和可回滚验证，之后取得明确发布批准。不得自行部署或清除真实数据。
+- 任何未完成的角色抽卡/账号联动只能保留在原功能分支与统一整合测试分支；不可因个别代码检查通过而合并 main 或直接修改 app.mao520.com / mao520.com。
+- 工作汇报固定包含：当前流程节点、已经实际完成的功能、验证证据、距离下一节点的阻碍。禁止用未执行的步骤充当成功。
+
+**实际部署工作流（截至 2026-11-15）：** `.github/workflows/deploy-cloudflare-worker.yml` 当前仅配置 `workflow_dispatch`，没有 push 到 main 的自动触发；不得在未经批准时恢复自动生产发布。独立于该工作流的 Cloudflare 构建、手动部署等通道仍应检查，不能仅凭这一项断言所有生产发布路径均关闭。
+
+
 ## 1. GitHub repository model
 
 Keep Bella0960/MAOMAO as the canonical monorepo and main as the stable integration branch.
@@ -19,7 +41,7 @@ Do not force-push main. Never overwrite a newer main commit. Rebase/merge agains
 
 | Workflow | Current trigger | Purpose | Policy |
 |---|---|---|---|
-| deploy-cloudflare-worker.yml | Push to main with matching app/source paths; manual | Vite build and Cloudflare Worker static-asset deployment | Keep automatic website deployment |
+| deploy-cloudflare-worker.yml | Manual workflow_dispatch only (2026-11-15 actual YAML) | Vite build, account release gate, Cloudflare Worker deployment and browser verification | **Keep manual authorization; never deploy before unified test acceptance and release approval** |
 | chat-regression-contract.yml | Push/PR for chat-related paths; manual | npm run test:chat:contract | Keep and expand |
 | perf-gate.yml | Push/PR for chat/shared phone/perf paths; manual | Playwright performance budget gate | Keep; inspect runtime/cost and maintain |
 | build-android-apk.yml | Manual workflow_dispatch only | Build debug APK | Do not restore push trigger; output retained 3 days |
