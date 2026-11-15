@@ -18,6 +18,10 @@
 .deck-wrap{position:relative;flex:1;min-height:0;margin:15px 0 8px;display:flex;justify-content:center;align-items:center;padding:5px 28px;touch-action:pan-y}
 .back-card{position:absolute;top:3%;bottom:3%;left:40px;right:40px;background:#eeefed;border-radius:22px;border:1px solid #e6e7e4;pointer-events:none;transform:translate(16px,6px) rotate(2.3deg);opacity:.86}
 .back-card.second{transform:translate(-16px,7px) rotate(-2.1deg);background:#e7e7e5;opacity:.68}
+.alternate-card{pointer-events:auto;cursor:pointer;padding:0;color:#777;background:#ececea;z-index:0}
+.alternate-card:focus-visible{outline:2px solid #858783;outline-offset:2px}
+.swap-card{border:0;background:transparent;padding:4px 0;color:#737570;font-size:10px;letter-spacing:.08em;max-width:75%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
+.swap-card:active{color:#262826}
 .card{position:relative;width:100%;height:100%;max-height:525px;background:var(--card);border:1px solid #ecece9;border-radius:22px;box-shadow:0 12px 32px rgba(22,22,22,.035);padding:25px 27px 25px;display:flex;flex-direction:column;overflow:hidden;touch-action:pan-y;user-select:none;cursor:grab;will-change:transform,opacity;transform:translate3d(0,0,0);transition:box-shadow .2s}
 .card.dragging{transition:none;cursor:grabbing;box-shadow:0 19px 35px rgba(22,22,22,.08)}.card.moving{transition:transform .26s cubic-bezier(.2,.7,.22,1),opacity .25s}
 .card-top{display:flex;justify-content:space-between;align-items:center;color:#939590;font-size:10px;letter-spacing:.12em;line-height:1.4}.card-number{font-family:Georgia,serif;font-size:13px;color:#666865}
@@ -48,13 +52,14 @@
   <header class="header"><a class="back" href="../index.html" aria-label="返回桌面"><svg viewBox="0 0 24 24"><path d="M15 5 8 12l7 7"/></svg></a><h1 class="page-title">邂逅</h1><button class="menu-button" id="moreButton" aria-label="抽卡偏好及玩法设置">···</button></header>
   <section class="intro"><div><div class="intro-sub">一次未曾预料的相遇</div></div><button class="collection-link" id="savedButton">候选收藏 <span id="savedCount">00</span></button></section>
   <section class="deck-wrap" id="deckArea" aria-label="左右滑动人物卡片，向左跳过，向右收藏">
-    <div class="back-card second" aria-hidden="true"></div><div class="back-card" aria-hidden="true"></div>
+    <div class="back-card second" aria-hidden="true"></div>
+    <button class="back-card alternate-card" id="alternateCard" type="button" aria-label="查看另一位候选"></button>
     <article id="frontCard" class="card" tabindex="0" role="button" aria-label="查看当前人物的更多信息"></article>
   </section>
   <div class="bottom"><div class="buttons">
     <button class="action" id="passButton"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>PASS</button>
     <button class="action primary" id="likeButton"><svg viewBox="0 0 24 24"><path d="M12 21s-8-5.1-8-11a4.5 4.5 0 0 1 8-2.5A4.5 4.5 0 0 1 20 10c0 5.9-8 11-8 11Z"/></svg>收藏</button>
-  </div><div class="bottom-copy"><span>向左跳过 · 向右收藏</span><span id="cardSequence">01 / ∞</span></div></div>
+  </div><div class="bottom-copy"><button type="button" id="swapButton" class="swap-card" aria-label="切换到另一位候选">另一位候选</button><span id="cardSequence">01 / ∞</span></div></div>
   <div class="notice" id="notice" role="status" aria-live="polite"></div>
   <div class="overlay" id="overlay" aria-hidden="true"><div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="人物信息"></div></div>
 </main>
@@ -66,7 +71,7 @@
 'use strict';
 var engine=window.MAOMAOEncounter;
 var cardEl=document.getElementById('frontCard'),sheet=document.getElementById('sheet'),overlay=document.getElementById('overlay'),noticeEl=document.getElementById('notice');
-var current=null,position=0,drag=null,lock=false,noticeTimer=0,suppressDragClick=false,returnFocus=null;
+var current=null,alternate=null,position=0,drag=null,lock=false,noticeTimer=0,suppressDragClick=false,returnFocus=null;
 function escapeHtml(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function clock(){var d=new Date();document.getElementById('deviceTime').textContent=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
 clock();setInterval(clock,30000);
@@ -98,11 +103,35 @@ function render(){
  '<p class="quote">「'+escapeHtml(obj?'这件东西的主人，留下一段没有讲完的故事。':c.quote)+'」</p>'+
  '<div class="card-footer"><span>一位尚未认识的人</span><span class="look">轻触翻阅档案　＋</span></div>';
  document.getElementById('cardSequence').textContent=String(position).padStart(2,'0')+' / ∞';
+ var peekName=alternate && ['蒙面档案','以物识人','性格盲测'].includes(alternate.type)
+     ? '身份未揭晓' : alternate ? alternate.name : '暂无下一位';
+ var swap=document.getElementById('swapButton'),back=document.getElementById('alternateCard');
+ swap.textContent='另一位 · '+peekName;
+ swap.disabled=!alternate;
+ back.disabled=!alternate;
+ back.setAttribute('aria-label',alternate?'切换到另一位候选：'+peekName:'暂无另一位候选');
  count();
 }
 function drawNew(){
- var r=engine.generate();if(!r.ok){current=null;cardEl.innerHTML='<div class="empty">'+escapeHtml(r.error)+'</div>';notify(r.error);return;}
- current=r.value;position++;cardEl.classList.remove('dragging','moving');cardEl.style.transform='';cardEl.style.opacity='';render();
+ // 每轮同时保留两张真实候选卡，切换不会丢失任何一张；初次只需本地生成两张。
+ if(alternate){current=alternate;alternate=null;}
+ else {
+   var r=engine.generate();
+   if(!r.ok){current=null;cardEl.innerHTML='<div class="empty">'+escapeHtml(r.error)+'</div>';notify(r.error);return;}
+   current=r.value;
+ }
+ var next=engine.generate();
+ if(next.ok)alternate=next.value;
+ else {alternate=null;notify(next.error);}
+ position++;cardEl.classList.remove('dragging','moving');cardEl.style.transform='';cardEl.style.opacity='';render();
+}
+function switchCandidate(){
+ if(lock||!current||!alternate)return;
+ var was=current;current=alternate;alternate=was;
+ suppressDragClick=false;
+ cardEl.classList.remove('moving','dragging');
+ cardEl.style.transform='';cardEl.style.opacity='';
+ render();
 }
 function move(direction){
  if(lock||!current)return;
@@ -148,6 +177,8 @@ cardEl.addEventListener('click',function(e){
 cardEl.addEventListener('keydown',function(e){if(e.key==='ArrowLeft'){e.preventDefault();move('left');}else if(e.key==='ArrowRight'){e.preventDefault();move('right');}else if(e.key==='Enter'||e.key===' '){e.preventDefault();openDetail();}});
 document.getElementById('passButton').addEventListener('click',function(){move('left');});
 document.getElementById('likeButton').addEventListener('click',function(){move('right');});
+document.getElementById('swapButton').addEventListener('click',switchCandidate);
+document.getElementById('alternateCard').addEventListener('click',switchCandidate);
 function openSheet(content,title){
  returnFocus=document.activeElement instanceof HTMLElement?document.activeElement:null;
  sheet.setAttribute('aria-label',title);sheet.innerHTML=content;overlay.classList.add('open');
@@ -199,7 +230,11 @@ function openSettings(){
  '抽卡偏好');
  sheet.querySelectorAll('[data-setting]').forEach(function(s){s.addEventListener('change',function(){
    var patch={};patch[s.dataset.setting]=s.value;var r=engine.savePreferences(patch);
-   if(!r.ok){notify(r.error);return;}notify('偏好已保存，下一张卡片起生效');
+   if(!r.ok){notify(r.error);return;}
+   // 筛选变更后的另一张卡必须按新偏好生成，不能沿用旧筛选缓存。
+   alternate=null;
+   document.getElementById('swapButton').disabled=true;
+   notify('偏好已保存，下一张卡片起生效');
  });});
 }
 function openSaved(){
