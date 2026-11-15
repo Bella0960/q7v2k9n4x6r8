@@ -29,6 +29,17 @@ This file is the repository-wide entry point for every AI coding agent and human
 
 **进度与终点：** 按当前任务的实际阶段报告代码成果和剩余开发；QA、main、正式环境只是后续条件性门禁，不是日常开发的默认终点。不得为了强调规范而重复用户已清楚的流程，影响真实功能进度。
 
+### GitHub Actions 不可用期间的硬性执行规则（用户反复确认，2026-11-16）
+
+**已知工作环境限制：目前 MAOMAO 仓库 GitHub Actions 额度/runner 无法正常提供可执行的构建与测试。此前出现短时间失败、job 无任何 steps 的记录，属于 CI 没有执行，不能当成代码测试失败。这个限制用户已多次说明；禁止下一次开工再次把它当作新发现，天天重复报告或据此暂停开发。**
+
+- **不再依赖 GitHub Actions 推进日常开发**：不以 Actions 绿灯为代码开发前提，不为“试试看额度恢复”反复推送无关提交、手动重跑同一 CI、另外建 workflow 或要求用户解决额度。仅当用户明确要复查、或存在经核实的恢复证据时才重新检查 Actions。
+- **替代真实测试必须实际执行**：在可用的本地、Work/独立电脑或隔离运行环境内检出目标分支，按改动范围运行 `npm ci`、存在的 Node 回归命令、`npm run build` 及必要的真实浏览器/Playwright 验证。优先解决可用环境中的依赖、运行器问题，而不是停留在 GitHub CI 状态。工具不能执行就记录 `NOT RUN — NO EXECUTION ENVIRONMENT`，不得冒称通过。
+- **证据与阻塞要分开**：记录 commit SHA、测试环境/Node 版本、命令、退出码、失败内容、日期及对应原 PR；外部 `CI_UNAVAILABLE` 与真正的 `CODE_TEST_FAILED` 严格区分。仓库检查要求仍须遵守，不得因 CI 失效绕过 GitHub 分支保护、自动所需检查、审查或生产安全门禁；若分支保护要求不可满足，记录为整合阻塞，继续其他无冲突的安全开发。
+- **日报重点是功能**：能测试就替代测试，不能测试就推进不依赖该环境的真实代码工作；不得把“GitHub Actions 又失败了”“测试额度没了”“正式版不能发”作为日常主汇报。外部 CI 状态首次核对后只保留一条已知环境备注，**状态不变就不重复打扰用户**。
+
+完整替代执行与验收依据见 `docs/engineering/RELEASE_PLAYBOOK.md` 的「GitHub Actions 不可用时的本地测试替代制度」。此规则只改变**测试执行地点和重复报告方式**，不降低真实测试、安全性、账号隔离和正式发布授权标准。
+
 ## Read before changing code
 
 Read these files first:
@@ -68,7 +79,7 @@ Read these files first:
 - Use a dedicated branch named task-ID/short-description. Do not push unreviewed changes directly to main.
 - Do not let two agents edit the same files concurrently. Agree on file ownership first.
 - Keep the patch narrow. Avoid formatting unrelated files or adding dependencies without approval.
-- Add/update tests for the behavior changed. Run npm run build and the relevant test scripts. Remember: the current npm run lint command is a placeholder and is not a real linter.
+- Add/update tests for the behavior changed. Run npm run build and relevant tests in a real executable local/isolated environment; **GitHub Actions is currently unavailable and must not be the default route or gate for daily development**. If no executable environment exists, mark actual verification NOT RUN and keep developing independent changes, never claim tests passed. The current npm run lint command is a placeholder and is not a real linter.
 - For UI work, verify at the phone viewport (375–430px) and desktop shell. For chat/storage work, follow the manual acceptance lists in the chat contract and storage plan.
 - Report: task IDs, files changed, behavior preserved, tests run and exact results, migration/rollback behavior, known gaps, and commit/PR link.
 - If you cannot inspect or verify something, label it NOT VERIFIED. Do not infer success from a green unrelated workflow.
