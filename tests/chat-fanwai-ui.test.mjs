@@ -87,6 +87,7 @@ function mount(options = {}) {
     location: { search: '?id=' + (options.roleId || 'role-1') },
     PhoneStorage: { getApiConfig: () => ({ apiKey: 'mock-key', maxTokens: options.maxTokens }) },
     indexedDB: options.indexedDB,
+    AbortController,
     IDBKeyRange: options.indexedDB ? { bound: (lower, upper) => ({ lower, upper }) } : undefined,
     showToast: message => notices.push(message),
     PhoneAPI: {
@@ -642,4 +643,41 @@ test('pause and immediately resume cannot let a stale network response overwrite
   assert.equal(sheet.all().filter(n => n.className === 'fw-bubble').length, 80);
   assert.equal(sheet.all().filter(n => n.className === 'fw-bubble').filter(n => n.textContent.includes('旧请求迟到')).length, 0);
   assert.equal(app.requests, 8, 'one stale in-flight request, seven new requests; no extra hidden generation');
+});
+
+
+test('pausing a story aborts its actual request signal and prevents late text from entering the archive', async () => {
+  let signal;
+  let wasAborted = false;
+  const app = mount({ completeJSON: (request, call) => {
+    if (call === 1) {
+      signal = request.signal;
+      return new Promise((_resolve, reject) => {
+        request.signal.addEventListener('abort', () => {
+          wasAborted = true;
+          const error = new Error('request cancelled');
+          error.name = 'AbortError';
+          reject(error);
+        }, { once: true });
+      });
+    }
+    return { ok: true, data: { messages: Array.from({ length: 12 }, (_, i) =>
+      ({ role: i % 2 ? 'char' : 'user', text: '新对话 ' + call + '/' + i })) } };
+  } });
+  const root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().filter(n => n.dataset.template).length === 6);
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.template === 'daily') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'start-template') });
+  await tickUntil(() => !!signal);
+  assert.equal(signal.aborted, false);
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'pause') });
+  await tickUntil(() => wasAborted);
+  assert.equal(signal.aborted, true);
+  assert.equal(app.requests, 1);
+  assert.equal(sheet.all().filter(n => n.className === 'fw-bubble').length, 0);
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'resume') });
+  await tickUntil(() => sheet.all().filter(n => n.className === 'fw-bubble').length === 80);
+  assert.equal(app.requests, 8);
+  assert.equal(sheet.all().find(n => n.className === 'fw-status').textContent, '这篇番外已经写完。');
 });
