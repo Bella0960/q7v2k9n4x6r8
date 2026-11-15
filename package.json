@@ -52,7 +52,9 @@
     "test:account:registration-persistence": "node --test tests/account-registration-persistence.test.mjs",
     "test:chat:fanwai": "node --test tests/chat-fanwai.test.mjs tests/chat-fanwai-ui.test.mjs tests/chat-fanwai-extension.test.mjs tests/phone-api-abort.test.mjs",
     "test:integration:account-fanwai": "node --test tests/account-storage-isolation.test.mjs tests/worker-page-auth-runtime.test.mjs tests/chat-fanwai.test.mjs tests/chat-fanwai-ui.test.mjs tests/chat-fanwai-extension.test.mjs tests/phone-api-abort.test.mjs tests/release-account-assets-gate.test.mjs tests/account-fanwai-pwa-runtime.test.mjs tests/sw-navigation-cache-lifecycle.test.mjs",
-    "test:release:account-assets": "node --test tests/release-account-assets-gate.test.mjs"
+    "test:release:account-assets": "node --test tests/release-account-assets-gate.test.mjs",
+    "test:fanwai:browser:build": "node tests/fanwai-build-browser.smoke.mjs",
+    "test:fanwai:build-and-browser": "npm run build && npm run test:fanwai:browser:build"
   },
   "devDependencies": {
     "playwright": "^1.64.1",
