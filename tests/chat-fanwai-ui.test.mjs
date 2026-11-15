@@ -89,6 +89,9 @@ function mount(options = {}) {
     indexedDB: options.indexedDB,
     AbortController,
     IDBKeyRange: options.indexedDB ? { bound: (lower, upper) => ({ lower, upper }) } : undefined,
+    __MAO_ACCOUNT_SCOPE__: accountId && !options.scopeMissing
+      ? { accountId: options.scopeAccountId || accountId, role: 'user', ready: options.scopeReady !== false }
+      : undefined,
     showToast: message => notices.push(message),
     PhoneAPI: {
       completeJSON: async request => {
@@ -732,4 +735,26 @@ test('closing during the final save does not render or dispatch an obsolete comp
   assert.equal(completed, 0, 'late completion should not publish on the closed reader');
   const story = [...indexedDB.records.values()].find(row => row.templateId === 'daily');
   assert.equal(story.messages.length, 80, 'the valid saved episode remains intact');
+});
+
+
+test('authenticated pages without the established account scope module never mount the fanwai entry', () => {
+  const missing = mount({ accountId: 'MAO-AAAAAAAAAAAA', scopeMissing: true });
+  assert.equal(missing.grid.querySelector('[data-feat="fanwai"]'), null,
+    'missing isolated storage runtime must not fall back to legacy shared localStorage');
+  const wrong = mount({
+    accountId: 'MAO-AAAAAAAAAAAA',
+    scopeAccountId: 'MAO-BBBBBBBBBBBB'
+  });
+  assert.equal(wrong.grid.querySelector('[data-feat="fanwai"]'), null,
+    'runtime from another account must never enable this account');
+  const notReady = mount({
+    accountId: 'MAO-AAAAAAAAAAAA',
+    scopeReady: false
+  });
+  assert.equal(notReady.grid.querySelector('[data-feat="fanwai"]'), null,
+    'unfinished account scope install must not enable the feature');
+  const valid = mount({ accountId: 'MAO-AAAAAAAAAAAA' });
+  assert.ok(valid.grid.querySelector('[data-feat="fanwai"]'),
+    'matching completed existing scope preserves normal episode operation');
 });
