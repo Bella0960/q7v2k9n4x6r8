@@ -112,7 +112,8 @@
       var translation = '';
       TRANSLATION_MARKER_REGEX.lastIndex = 0;
       bubble = bubble.replace(TRANSLATION_MARKER_REGEX, function (_, t) {
-        translation = String(t || '').trim();
+        var nextTranslation = String(t || '').trim();
+        if (nextTranslation) translation = translation ? translation + '\n' + nextTranslation : nextTranslation;
         return '';
       }).replace(/[ \t]*\n[ \t]*(?=\n|$)/g, '\n').trim();
       if (bubble) {
