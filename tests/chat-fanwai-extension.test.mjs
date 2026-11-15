@@ -97,6 +97,7 @@ test('only opted-in, confirmed memories of the selected role can enter side-stor
         { sourceRoleId: 'role-1', content: '确认记忆：一起逛书店', status: 'confirmed', importance: 5 },
         { sourceRoleId: 'role-1', content: '待确认草稿：不应出现', status: 'pending', importance: 5 },
         { sourceRoleId: 'role-2', content: '别人的记忆：不应出现', status: 'confirmed', importance: 5 },
+        { sourceRoleId: 'role-1', content: '尚未确认的旧记忆：不应出现', importance: 5 },
         { sourceRoleId: 'role-1', text: '固定纪念日：初雪', status: 'fixed', importance: 4 }
       ];
     }
@@ -112,6 +113,7 @@ test('only opted-in, confirmed memories of the selected role can enter side-stor
   assert.match(context, /初雪/);
   assert.doesNotMatch(context, /待确认草稿/);
   assert.doesNotMatch(context, /别人的记忆/);
+  assert.doesNotMatch(context, /尚未确认的旧记忆/);
 });
 
 
