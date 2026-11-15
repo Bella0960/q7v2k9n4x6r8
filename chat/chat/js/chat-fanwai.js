@@ -981,6 +981,7 @@
     var episode = state.active;
     state.busy = true; state.stopped = false;
     var currentSerial = ++state.serial;
+    var generationView = state.viewSerial;
     episode.error = '';
     renderReader();
     var rounds = 0;
@@ -1037,7 +1038,8 @@
           episode.error = '本机存储不可用；已停止生成，请勿关闭页面，以免丢失尚未保存的消息。';
         } else if (episode.messages.length >= episode.target) episode.status = 'complete';
         var finalSaved = await persist(episode);
-        if (currentSerial !== state.serial || state.active !== episode || state.stopped) return;
+        if (currentSerial !== state.serial || state.active !== episode || state.stopped ||
+            generationView !== state.viewSerial || !state.opened) return;
         if (!finalSaved && canPersist) {
           episode.status = 'partial';
           episode.error = '保存失败，请勿关闭页面；尚未保存的内容暂时只在本次页面中。';
