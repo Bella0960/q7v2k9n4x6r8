@@ -15,9 +15,13 @@ function harness() {
   const records = new Map();
   const storage = {
     blocked: false,
+    failOnWrite: 0,
+    writeCount: 0,
     getItem(key) { return records.has(key) ? records.get(key) : null; },
     setItem(key, value) {
-      if (this.blocked) throw new Error('QuotaExceededError');
+      this.writeCount++;
+      if (this.blocked || this.writeCount === this.failOnWrite)
+        throw new Error('QuotaExceededError');
       records.set(key, String(value));
     },
     removeItem(key) { records.delete(key); }
@@ -50,6 +54,31 @@ function begin(h, options = {}) {
   return h.game.start({ group: group(options.groupId || 'g1'), actorId: '__user',
     gameId: 'mystery', badRoleId: 'r2', ...options });
 }
+
+test('failed role-card/public-state writes roll back the entire new game', () => {
+  for (let failOnWrite = 1; failOnWrite <= 4; failOnWrite++) {
+    const h = harness();
+    h.storage.failOnWrite = failOnWrite;
+    const result = begin(h);
+    assert.equal(result.ok, false, 'failed write #' + failOnWrite);
+    assert.equal(h.game.getPublic('g1'), null, 'no active game may become visible');
+    assert.equal([...h.records.keys()].some((key) =>
+      key.startsWith('phone_group_game_private_v1_')), false,
+      'no dangling role cards after failed write #' + failOnWrite);
+  }
+});
+
+test('public memory prompt only sees confirmed allowlisted sources', () => {
+  const h = harness();
+  h.memories.set('g1', [
+    { id: 'secret-memory', content: '不可公开的私密身份', status: 'fixed', source: 'private' },
+    { id: 'public-memory', content: '大家一起完成了一次接龙', status: 'fixed', source: 'group_chain_public' },
+    { id: 'unconfirmed-memory', content: '还没确认的猜测', status: 'pending', source: 'group_manual' }
+  ]);
+  const publicPrompt = h.memory.getPublicPrompt({ groupId: 'g1' });
+  assert.match(publicPrompt, /大家一起完成了一次接龙/);
+  assert.doesNotMatch(publicPrompt, /不可公开的私密身份|还没确认的猜测/);
+});
 
 test('private identity cards never enter the public game record or another player context', () => {
   const h = harness();
