@@ -25,7 +25,7 @@ Task ID: FEATURE-ENCOUNTER-001
 6. 用户确认保存后才通过原有 PhoneStorage / ai_custom_characters 写正式角色；成功后尝试清理对应候选，失败须提示。头像在原角色库自由更换。
 7. 正式 AI 完善（首阶段已编码，尚未真实 API 验收）：候选人物可以先免费保存为正式角色，之后仍可回到原角色编辑器选择「AI 完善人设 · 使用 API」。只有用户手动点击并确认后，才会通过现有 PhoneAPI.complete 请求一次；发起请求之前会预检草稿存储与候选状态。生成结果先放入可编辑草稿，用户再次确认保存后才更新角色。存储失败必须明确提示复制内容，不能声称成功，也不自动重试付费请求。
 
-存储键：maomao_encounter_candidates_v1（轻量小数据，版本 1，不含二进制/密钥/对话）；maomao_encounter_preferences_v1（本地偏好）。正式角色 ID 仍由原系统产生，人物关系必须基于 ID 而非姓名。 新创建的邂逅角色另外保留 encounterOrigin 版本化元数据（种族/时代/职业/物件/命运线索/卡片来源 ID），以供后续剧情扩展；其他旧角色无需迁移。当前没有自动跨设备同步，不得依赖尚未验收的云同步。
+存储键：maomao_encounter_candidates_v1 仅保留旧候选只读兼容；新增逐张人物 maomao_encounter_card_v2:<id> 和删除墓碑 maomao_encounter_removed_v2:<id>；maomao_encounter_preferences_v1 保存抽卡偏好。正式角色 ID 仍由原系统产生，人物关系必须基于 ID 而非姓名。 新创建的邂逅角色另外保留 encounterOrigin 版本化元数据（种族/时代/职业/物件/命运线索/卡片来源 ID），以供后续剧情扩展；其他旧角色无需迁移。当前没有自动跨设备同步，不得依赖尚未验收的云同步。
 
 ## 4. 玩法与扩展
 
@@ -43,7 +43,7 @@ JSON 导入只接受该格式与字段，不直接兼容酒馆、SillyTavern 等
 
 ## 6. 验收与后续
 
-代码回归命令：node --test tests/encounter-contract.test.mjs；生产构建：npm run build。
+回归：npm run test:encounter；构建：npm run build；浏览器：npm run test:encounter:browser；发布门禁：npm run gate:encounter。
 手机 375×812 / 390×844 / 430×932、桌面外壳，Android 和 iOS Safari 真实交互需要单独验收。
 重点：方向及回弹、滑卡点击互斥、候选刷新持久化、失败不假成功、角色姓名去重、编辑草稿恢复、保存与候选清理、JSON 导出再导入、第三方 JSON 拒绝、状态栏开关、PWA 路由/缓存、主系统其他功能不回归、抽卡 0 API。
 
@@ -60,9 +60,9 @@ JSON 导入只接受该格式与字段，不直接兼容酒馆、SillyTavern 等
 
 测试文件：tests/encounter-contract.test.mjs（17 项）、tests/encounter-ui-contract.test.mjs（4 项）、tests/encounter-browser.mjs（Playwright 浏览器用例）。本会话将 21 项纯 JS 合同/模拟 UI 测试适配到 V8 内存执行，21/21 PASS；此结论不等于原生 Node、Vite build 或真实浏览器测试已运行。GitHub Actions 当前失败于步骤开始前，job steps=0、日志 BlobNotFound，不能据此判断代码测试成功或失败。正式合并仍需完整构建与 375–430px 真机交互验收。
 
-多标签页并发写入若同时发生，localStorage 本身没有原子比较交换。现有候选 ID 防重复检查只保护顺序发生的重复提交，不能宣称已实现严格并发事务。要彻底解决还需后续利用现有持久化基础设施设计事务保护。
+多标签页并发：已停用候选共享数组的新增写入，改成逐张独立键、删除墓碑及浏览器支持时 Web Locks 独占写入。旧角色库的整体数组并发修改仍需统一存储系统单独验收。
 
-- **发布前必须再核查账号隔离：** 当前候选收藏键 maomao_encounter_candidates_v1 属于同站点浏览器存储，尚未接通已验证的用户账号级命名空间。在同一个浏览器站点切换不同登录账户时，不得假定候选自动隔离；正式启用多账号场景前要复用既有账号隔离机制，验证登出、切换账户、备份恢复和数据可见性。此项 NOT VERIFIED，禁止宣称已完成跨账号隔离。
+- **发布前仍须核查账号隔离：** 开发分支已沿用 PR #290 原版脚本、Worker 注入契约、PWA 私有缓存保护；V8 账号隔离模拟通过。但正式账号登录、登出、切换、备份恢复与 Android/iPhone 真机尚未验收，不得宣称已上线安全隔离。
 
 ## 8. 严格推进增量 — 2026-11-15
 
@@ -70,16 +70,26 @@ JSON 导入只接受该格式与字段，不直接兼容酒馆、SillyTavern 等
 - 已查明现有共享账号隔离实现在账号 PR #290 的 shared/js/mao-account-scope.js，Worker 为已认证 HTML 注入账号 meta 和该作用域脚本。原管理员保留旧 localStorage，其他账号复用原作用域代理的每账号命名空间。
 - 邂逅引擎在非 localhost 页面必须看到相符的账号 meta、__MAO_ACCOUNT_SCOPE__.ready、永久 ID 与角色；否则停止读取候选、收藏、抽卡和偏好写入。仅 localhost 等本地开发环境允许不注入账号上下文。
 - 用户明确启动收费 AI 时，除了草稿空间预检，还通过既有 /api/accounts/me 核验当前真实账号会话；无效、换号或接口不可用时拒绝付费 API 调用。
-- **发布依赖**：PR #290 的账号隔离脚本尚未在当前 main 中；#297 未复制该实现、不改 Worker、不更改管理员登录。正式部署必须先确认账号主线整合、账号隔离真实浏览器测试及备份恢复通过，不可只凭单元测试声称账号已安全接通。
+- **发布依赖**：账号 PR #290 仍为 Draft，当前 main 没有正式账号入口。PR #297 已原样复用 #290 的账号隔离脚本、Service Worker 和字体缓存实现，未造第二套账号系统，也未修改正式管理员或生产数据库。完整账号入口仍待安全整合验收。
 
 ### 两张真实候选与存储可靠性
 - 不再使用一张真卡加假叠卡：首次本地生成两名不同角色，底部细字“另一位”可切换查看，另一张真实候选不因切换被丢弃；收藏/PASS 消耗当前人物并保留另一张。偏好切换后重新准备下张候选。无生图、无聊天模型调用。
 - 候选收藏、删除和偏好修改写入后再读取核验；存储忽略写入时不报成功。偏好 JSON 损坏时拒绝覆盖旧值。
 - 扩展玩法无法覆盖候选稳定 ID、schemaVersion、createdAt，人物关系和聊天仍以固定 ID 关联。
 - 候选与偏好键加入现有 settings/js/backup-modules.js 的 characters 分类，不创建第二套备份机制，保留原有敏感 Key 排除规则。
-- 保留多标签页同时编辑候选数组的并发风险门禁：localStorage 无原子事务，读回检验不能等同于完整并发安全，需要后续由既有存储方案解决。
+- V2 已采用逐张人物独立键 + 墓碑 + 有条件 Web Locks，避免多标签写入整包数组互相覆盖；旧浏览器和现有正式角色库并发仍是独立验收项。
 
 ### 复核与范围
 - 本轮 23 项合同 + 5 项模拟界面测试在 V8 隔离执行环境通过 **28/28**；其内容来自当前 PR #297 最新文件。引擎、编辑器、交互与备份注册脚本均通过 JavaScript 语法编译检查。
 - **未执行** 原生命令 node --test、npm run build、Playwright Chromium、安卓实际浏览器、iOS Safari，也未发起真实付费 AI 请求。不能称为完整端到端验收或视觉达标。
 - PR 仍 Draft；未合并 main，不改正式 mao520.com/app.mao520.com 服务、管理员、钱包或其他已有角色数据。
+
+## 9. 第四轮严格实现与发布前门禁（2026-11-15）
+
+- 账号依赖：main 已有 Worker 注入账号作用域的逻辑但缺少 JS 文件；从 PR #290 原样复用 shared/js/mao-account-scope.js、sw.js 和 shared/js/font-loader.js 的已设计安全实现。PR #290 的 account/index.html 尚未合并，因此正式账号入口依然是发布阻碍。
+- 双账号验证：tests/encounter-actual-scope.test.mjs 运行原版账号作用域与邂逅引擎，两名普通账号候选分开保存，唯一管理员继续用原始数据；不另创登录或修改正式数据库。
+- 并发存储：新人物保存到 maomao_encounter_card_v2:<id>，旧候选数组只读兼容，删除墓碑防止旧标签页复活；有 Web Locks 时 UI 通过同账号独占锁保存/删除。避免跨标签页整包覆盖，不保证原角色库整体事务安全。
+- 桌面入口：修复新应用仅添加 HTML 图标、却没分配默认桌面页面的缺陷；新用户在人物档案旁看到邂逅，既有用户幂等增量迁移，不动用户已移除记录。
+- 测试工具：npm run test:encounter；npm run build；npm run test:encounter:browser；npm run gate:encounter。只读 gate 在缺账号入口、构建产物、PWA 路由或三尺寸验收截图时明确失败。
+- 当前本会话中 28 个合同与 5 个模拟 UI 检查在 V8 适配环境通过（33/33）；原账号作用域另执行 4 项实际 JS 模拟通过；PWA/字体缓存/桌面静态回归 16 项通过。并非原生命令 node --test、Vite、Playwright 或真机测试。
+- 执行环境本地有 Node22、Chromium 与 Python Playwright，但没有当前 GitHub 源码的容器挂载副本；原生构建和实际页面截图尚未执行。PR #297 保持 Draft，禁止合并正式版直到完整门禁和 Android/iPhone 真机验收。
