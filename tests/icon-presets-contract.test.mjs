@@ -47,5 +47,6 @@ test('switching and resetting icons can roll back, while deleting a preset does 
 });
 
 test('service worker cache version changes so installed PWA users receive the updated icon page', () => {
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v203'/);
+  const version = Number(serviceWorker.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m)?.[1] || 0);
+  assert.ok(version >= 203, 'icon preset cache must not regress below v203');
 });
