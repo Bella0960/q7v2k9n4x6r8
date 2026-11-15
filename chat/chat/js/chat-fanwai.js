@@ -1036,8 +1036,15 @@
           episode.status = 'partial';
           episode.error = '本机存储不可用；已停止生成，请勿关闭页面，以免丢失尚未保存的消息。';
         } else if (episode.messages.length >= episode.target) episode.status = 'complete';
-        await persist(episode);
-        if (episode.status === 'complete') emit('episode:completed', { id: episode.id, characterId: roleId });
+        var finalSaved = await persist(episode);
+        if (currentSerial !== state.serial || state.active !== episode || state.stopped) return;
+        if (!finalSaved && canPersist) {
+          episode.status = 'partial';
+          episode.error = '保存失败，请勿关闭页面；尚未保存的内容暂时只在本次页面中。';
+        }
+        if (episode.status === 'complete' && finalSaved) {
+          emit('episode:completed', { id: episode.id, characterId: roleId });
+        }
         renderReader();
       }
     }
