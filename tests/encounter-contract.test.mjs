@@ -486,6 +486,8 @@ test('人物候选与偏好包含在现有「角色」分类备份中', () => {
   assert.equal(r.belongsTo('characters','maomao_encounter_preferences_v1'),true);
   assert.equal(r.belongsTo('characters','maomao_encounter_card_v2:enc_example'),true);
   assert.equal(r.belongsTo('characters','maomao_encounter_removed_v2:enc_example'),true);
+  assert.equal(r.belongsTo('characters','maomao_character_draft_v1:new'),true);
+  assert.equal(r.belongsTo('characters','maomao_character_draft_v1:encounter:enc_example'),true);
   assert.equal(r.belongsTo('other','maomao_encounter_candidates_v1'),false);
   const saved=r.selectSnapshot('characters',{
     maomao_encounter_candidates_v1:'[{"id":"enc_example"}]',
@@ -651,4 +653,100 @@ test('空角色库与 PhoneStorage 返回独立副本：保存失败不能产生
   assert.equal(cached[0].name,'已有角色','编辑前不得直接改写底层缓存引用');
   assert.equal(existing.saveRoles(draft),false);
   assert.equal(existing.loadRoles()[0].name,'已有角色','保存失败后应能重新读到原资料');
+});
+
+
+function encounterEditorDraftFixture(seed = {}) {
+  const db = new Map(Object.entries(seed));
+  const localStorage = {
+    get length(){return db.size;},
+    key(i){return [...db.keys()][i]??null;},
+    getItem(key){return db.has(key)?db.get(key):null;},
+    setItem(key,value){db.set(key,String(value));},
+    removeItem(key){db.delete(key);}
+  };
+  const window = {
+    localStorage,location:{hostname:'localhost',search:''},
+    dispatchEvent(){}
+  };
+  vm.runInNewContext(engineSource,{window,Math,Set,Uint32Array,Date,JSON,String,Array,Object,Number,CustomEvent:class {}});
+  const candidate=window.MAOMAOEncounter.generate().value;
+  assert.equal(window.MAOMAOEncounter.saveCandidate(candidate).ok,true);
+  window.location.search='?encounterDraft='+encodeURIComponent(candidate.id);
+  const elements=new Map();
+  const document={getElementById(id){
+    if(elements.has(id))return elements.get(id);
+    const flags=new Set(['hidden']);
+    const item={id,value:'',textContent:'',style:{},dataset:{},
+      classList:{add:k=>flags.add(k),remove:k=>flags.delete(k),contains:k=>flags.has(k)},
+      focus(){}};
+    elements.set(id,item);
+    return item;
+  }};
+  const segment=(start,end)=>{
+    const i=managerSource.indexOf(start),j=managerSource.indexOf(end,i+start.length);
+    assert.ok(i>=0&&j>i,'missing actual editor function '+start);
+    return managerSource.slice(i,j);
+  };
+  const code=[
+    "let activeEncounterDraftId='',pendingDraftRecovery=null,unreadableDraftKey='',currentDraftKey='',editorOriginalState=null,selectedColor='',avatarDataUrl='',selectedWorldBookIds=[],portraitPurpose='',editorReturnView='';",
+    "function getRandomColor(){return '#777'} function updateAvatarPreview(){} function renderWorldBookBinder(){} function showView(){} function setSaveStatus(message,state){statuses.push({message,state});}",
+    segment('function openAddRole(options) {','// 打开编辑旧角色'),
+    segment('function getDraftKey(roleId) {','function setSaveStatus(message, state) {'),
+    segment('function persistEditorDraft(force) {',"document.getElementById('btnBackProfile')"),
+    segment('function openEncounterCandidateFromQuery() {','// 「已相识」返回现有角色档案'),
+    ";({importCandidate:openEncounterCandidateFromQuery,openManual:openAddRole,saveDraft:persistEditorDraft,recover:recoverPendingDraft,discard:discardPendingDraft,cancel:handleCancelEdit,peek:()=>({key:currentDraftKey,hasRecovery:!!pendingDraftRecovery,unreadable:unreadableDraftKey===currentDraftKey,origin:activeEncounterDraftId})})"
+  ].join('\n');
+  const statuses=[];
+  const editor=vm.runInNewContext(code,{
+    window,document,localStorage,URLSearchParams,JSON,Date,console,
+    statuses,confirm:()=>true,alert(message){throw Error('unexpected alert: '+message);}
+  });
+  return {editor,db,localStorage,elements,candidate,window,statuses,
+    el:id=>document.getElementById(id)};
+}
+
+test('邂逅导入的草稿按人物隔离，不覆盖普通新角色草稿，回访可恢复未保存修改',()=>{
+  const normalDraft={version:1,savedAt:123,
+    state:{roleId:'',name:'正在手写的角色',persona:'一份没写完的重要人设',tone:'',avatar:'',worldBookIds:[]}};
+  const raw=JSON.stringify(normalDraft);
+  const h=encounterEditorDraftFixture({'maomao_character_draft_v1:new':raw});
+  h.editor.importCandidate();
+  const key='maomao_character_draft_v1:encounter:'+h.candidate.id;
+  assert.equal(h.editor.peek().key,key);
+  assert.equal(h.el('editRoleName').value,h.candidate.name);
+  assert.equal(h.db.get('maomao_character_draft_v1:new'),raw,'不得覆盖用户普通新角色草稿');
+  assert.equal(h.db.has(key),false,'首次打开模板不应写入无意义的恢复草稿');
+  h.el('editRolePersona').value='修改后仍未保存的邂逅人设';
+  assert.equal(h.editor.saveDraft(true),true);
+  const saved=h.db.get(key);
+  h.editor.importCandidate();
+  assert.equal(h.editor.peek().hasRecovery,true,'重开相同人物应询问是否恢复');
+  assert.equal(h.db.get(key),saved,'进入编辑器不能先覆盖旧草稿');
+  h.editor.recover();
+  assert.equal(h.el('editRolePersona').value,'修改后仍未保存的邂逅人设');
+  h.editor.openManual();
+  assert.equal(h.editor.peek().key,'maomao_character_draft_v1:new');
+  assert.equal(h.editor.peek().hasRecovery,true,'普通新角色草稿仍有独立恢复入口');
+  assert.equal(h.db.get('maomao_character_draft_v1:new'),raw);
+});
+
+test('损坏的邂逅草稿不自动删除或覆盖；恢复失败后只有明确放弃才能清理',()=>{
+  const h=encounterEditorDraftFixture();
+  const key='maomao_character_draft_v1:encounter:'+h.candidate.id;
+  const corrupt='{damaged-but-owned-by-user';
+  h.db.set(key,corrupt);
+  h.editor.importCandidate();
+  assert.equal(h.editor.peek().unreadable,true);
+  assert.equal(h.editor.peek().hasRecovery,true);
+  assert.equal(h.db.get(key),corrupt,'读取错误不应删除原草稿');
+  assert.equal(h.editor.saveDraft(true),false,'自动暂存不允许覆盖损坏原文');
+  h.editor.recover();
+  assert.equal(h.db.get(key),corrupt,'无法恢复时不能偷偷清理');
+  h.editor.cancel();
+  assert.equal(h.db.get(key),corrupt,'关闭编辑器也不是授权删除损坏数据');
+  h.editor.importCandidate();
+  h.editor.discard();
+  assert.equal(h.db.has(key),false,'用户明确点击放弃草稿才可删除');
+  assert.equal(h.editor.peek().unreadable,false,'放弃后可以开始新的草稿');
 });
