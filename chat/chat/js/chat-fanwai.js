@@ -189,7 +189,8 @@
   }
 
   function db() {
-    if (!canPersist || persistenceFailed || !global.indexedDB) return Promise.resolve(null);
+    if (!canPersist || persistenceFailed) return Promise.resolve(null);
+    if (!global.indexedDB) { persistenceFailed = true; return Promise.resolve(null); }
     if (dbConnection) return dbConnection;
     dbConnection = new Promise(function (resolve) {
       var request;
@@ -330,6 +331,35 @@
     return row;
   }
 
+
+  // 默认不读取主线记忆；选择项只是一个引用许可，所有读取发生于生成时、不会回写。
+  function contextPicker() {
+    var box = document.createElement('section');
+    box.className = 'fw-context-box';
+    box.appendChild(label('p', 'fw-context-kicker', '角色设定会自动带入 · 回忆引用可选'));
+    listContextProviders().forEach(function (provider) {
+      var row = document.createElement('label');
+      row.className = 'fw-context-row';
+      var check = document.createElement('input');
+      check.type = 'checkbox';
+      check.className = 'fw-context-checkbox';
+      check.dataset.fanwaiContext = provider.id;
+      check.checked = false;
+      row.append(check, label('span', 'fw-context-title', '参考' + provider.label));
+      box.appendChild(row);
+    });
+    box.appendChild(label('p', 'fw-context-note', '默认关闭。开启也仅作为故事背景，不会修改角色记忆。'));
+    return box;
+  }
+
+  function chosenContexts() {
+    var root = state.root;
+    if (!root || typeof root.querySelectorAll !== 'function') return [];
+    return Array.from(root.querySelectorAll('input[data-fanwai-context]:checked'))
+      .map(function (el) { return el.dataset.fanwaiContext; })
+      .filter(function (id) { return contextProviders.has(id); }).slice(0, 5);
+  }
+
   async function openPicker() {
     if (!state.root) return;
     state.opened = true;
@@ -355,13 +385,16 @@
 
     var section = document.createElement('div'); section.className = 'fw-section-head';
     section.append(
-      label('div', 'fw-section-overline', 'SELECT A MOMENT  /  01—06'),
+      label('div', 'fw-section-overline', 'SELECT A MOMENT  /  01—' + String(TEMPLATES.length).padStart(2, '0')),
       label('h3', 'fw-section-title', '想从哪一幕开始？')
     );
     sheet.appendChild(section);
     var grid = document.createElement('div'); grid.className = 'fw-grid';
     TEMPLATES.forEach(function (t, index) {
-      var detail = EDITORIAL[t.id];
+      var detail = EDITORIAL[t.id] || {
+        en: t.english || 'Another chapter', mood: t.mood || t.subtitle,
+        index: String(index + 1).padStart(2, '0')
+      };
       var card = button('template', '', 'fw-card fw-card-' + t.id);
       card.dataset.template = t.id;
       card.setAttribute('aria-label', '预览' + t.name + '：' + t.subtitle);
@@ -384,7 +417,7 @@
     var customCard = document.createElement('section');
     customCard.className = 'fw-custom-panel';
     customCard.append(
-      label('div', 'fw-section-overline', 'WRITE YOUR OWN  /  07'),
+      label('div', 'fw-section-overline', 'WRITE YOUR OWN  /  ' + String(TEMPLATES.length + 1).padStart(2, '0')),
       label('h3', 'fw-section-title', '下一篇，由你决定。'),
       label('p', 'fw-custom-hint', '也许是雨后的街角，也许是一条没发出去的消息。')
     );
@@ -396,6 +429,7 @@
     customCard.append(
       input,
       countPicker('fw-count', 80),
+      contextPicker(),
       button('custom', '写下这篇番外', 'fw-primary')
     );
     sheet.appendChild(customCard);
@@ -430,7 +464,10 @@
     state.opened = true;
     state.selected = template;
     state.root.hidden = false;
-    var detail = EDITORIAL[template.id];
+    var detail = EDITORIAL[template.id] || {
+      en: template.english || 'Another chapter', mood: template.mood || template.subtitle,
+      index: String(TEMPLATES.indexOf(template) + 1).padStart(2, '0')
+    };
     var sheet = clearView();
     sheet.classList.add('fw-preview');
     topBar(sheet, 'A PREVIEW FROM THE ARCHIVE', 'back', '返回目录');
@@ -449,6 +486,7 @@
       label('p', 'fw-preview-description', template.scenario),
       label('p', 'fw-preview-note', '这只是独立番外，不会改动主线聊天、人物记忆或钱包。'),
       countPicker('fw-preview-count', template.target),
+      contextPicker(),
       button('start-template', '开始写这篇', 'fw-primary fw-start'),
       label('div', 'fw-preview-smallprint', '开始后才会调用当前聊天 API。可以暂停，也可以回来续写。')
     );
@@ -458,6 +496,8 @@
   function renderReader() {
     if (!state.opened || !state.active || !state.root) return;
     var episode = state.active;
+    var currentRole = roleInfo();
+    var speakerName = String((currentRole && currentRole.name) || '角色').slice(0, 24);
     // 续写刷新时尊重正在翻看旧消息的人，不强行把阅读位置拉到底部。
     var previousList = state.root.querySelector('.fw-messages');
     var previousTop = previousList ? previousList.scrollTop : 0;
@@ -493,7 +533,7 @@
     messages.appendChild(divider);
     episode.messages.forEach(function (message) {
       var row = label('div', 'fw-message ' + (message.role === 'user' ? 'fw-user' : 'fw-char'), '');
-      var speaker = label('span', 'fw-speaker', message.role === 'user' ? '我' : 'TA');
+      var speaker = label('span', 'fw-speaker', message.role === 'user' ? '我' : speakerName);
       var bubble = label('p', 'fw-bubble', message.text);
       row.append(speaker, bubble); messages.appendChild(row);
     });
@@ -529,6 +569,7 @@
     if (state.active && state.active.status !== 'complete') {
       state.active.status = 'partial';
       persist(state.active);
+      emit('episode:paused', { id: state.active.id, characterId: roleId });
     }
     renderReader();
   }
@@ -558,12 +599,14 @@
     renderReader();
     var rounds = 0;
     try {
+      var optionalContext = await resolveContexts(episode, role, userInfo());
+      if (currentSerial !== state.serial || state.stopped) return;
       while (!state.stopped && episode.messages.length < episode.target) {
         if (++rounds > Math.ceil(episode.target / 6) + 5) throw new Error('续写速度过慢，请稍后手动继续');
         var remaining = episode.target - episode.messages.length;
         var requested = Math.min(12, remaining);
         var result = await global.PhoneAPI.completeJSON({
-          system: episodePrompt(episode, role, userInfo(), requested),
+          system: episodePrompt(episode, role, userInfo(), requested, optionalContext),
           user: '请续写此篇番外，本轮只输出 JSON messages，' + requested + ' 条，顺接上文，不要重复。',
           temperature: 0.8,
           timeoutMs: 90000
@@ -585,6 +628,8 @@
         if (!added) throw new Error('本段没有生成新的对话');
         episode.status = episode.messages.length >= episode.target ? 'complete' : 'partial';
         await persist(episode);
+        emit('episode:progress', { id: episode.id, characterId: roleId,
+          completed: episode.messages.length, target: episode.target });
         renderReader();
       }
     } catch (error) {
@@ -598,6 +643,7 @@
         state.busy = false;
         if (episode.messages.length >= episode.target) episode.status = 'complete';
         await persist(episode);
+        if (episode.status === 'complete') emit('episode:completed', { id: episode.id, characterId: roleId });
         renderReader();
       }
     }
@@ -619,10 +665,12 @@
       name: template ? template.name : '自定义番外',
       templateId: template ? template.id : 'custom',
       scenario: scenario, target: count, messages: [],
+      contextIds: chosenContexts(),
       status: 'partial', createdAt: Date.now(), updatedAt: Date.now(), error: ''
     };
     try {
       await persist(episode);
+      emit('episode:created', { id: episode.id, characterId: roleId, target: count });
       openReader(episode);
       generate();
     } finally { state.creating = false; }
@@ -659,7 +707,10 @@
     if (key === 'delete') {
       if (state.busy) return;
       if (!state.active) return;
-      await erase(state.active); state.active = null; openPicker(); return;
+      var deletedId = state.active.id;
+      await erase(state.active);
+      emit('episode:deleted', { id: deletedId, characterId: roleId });
+      state.active = null; openPicker(); return;
     }
   }
 
