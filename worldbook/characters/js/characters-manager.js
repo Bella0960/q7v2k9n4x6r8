@@ -1797,7 +1797,58 @@ document.getElementById('relationshipFilters').addEventListener('click', functio
 
 document.getElementById('btnAddRole').addEventListener('click', openAddRole);
 document.getElementById('btnCancelEdit').addEventListener('click', handleCancelEdit);
-document.getElementById('btnSaveRole').addEventListener('click', handleSaveRole);
+// 邂逅候选正式入库：同一账号的两个标签页不可同时根据旧列表创建同一人物。
+// 普通角色编辑依旧复用原有 handleSaveRole，不添加第二套角色系统。
+let encounterRoleSaveBusy = false;
+async function saveEncounterRoleWithLock() {
+    if (!activeEncounterDraftId) {
+        handleSaveRole();
+        return;
+    }
+    if (encounterRoleSaveBusy) return;
+    const initialCandidateId = String(activeEncounterDraftId);
+    const access = window.MAOMAOEncounter &&
+        typeof window.MAOMAOEncounter.checkAccountScope === 'function' &&
+        window.MAOMAOEncounter.checkAccountScope();
+    if (!access || !access.ok) {
+        setSaveStatus(access && access.error || '当前账号状态不可用，未创建角色。', 'error');
+        return;
+    }
+    const initialAccountId = access.value.id;
+    const saveButton = document.getElementById('btnSaveRole');
+    encounterRoleSaveBusy = true;
+    saveButton.disabled = true;
+    try {
+        const create = function () {
+            const currentAccess = window.MAOMAOEncounter.checkAccountScope();
+            if (!currentAccess.ok || currentAccess.value.id !== initialAccountId ||
+                activeEncounterDraftId !== initialCandidateId ||
+                document.getElementById('editorView').classList.contains('hidden') ||
+                document.getElementById('editRoleId').value.trim()) {
+                setSaveStatus('账号或当前人物已变化，未创建角色。', 'error');
+                return;
+            }
+            // 必须在取得锁之后重新读取原角色和候选：handleSaveRole 内部做重复来源、
+            // 姓名冲突、存储读回和候选删除校验。
+            handleSaveRole();
+        };
+        const manager = window.navigator && window.navigator.locks;
+        if (manager && typeof manager.request === 'function') {
+            await manager.request('maomao:encounter:role-create:' + initialAccountId,
+                {mode:'exclusive'}, create);
+        } else {
+            // 不支持 Web Locks 时仍是一次同步读-查-写；不承诺跨进程事务安全。
+            create();
+        }
+    } catch (error) {
+        console.error('邂逅角色创建同步失败：', error);
+        setSaveStatus('角色创建未确认成功，请重新查看角色库，避免重复创建。', 'error');
+    } finally {
+        encounterRoleSaveBusy = false;
+        saveButton.disabled = false;
+    }
+}
+document.getElementById('btnSaveRole').addEventListener('click', saveEncounterRoleWithLock);
 ['editRoleName', 'editRolePersona', 'editRoleTone'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
