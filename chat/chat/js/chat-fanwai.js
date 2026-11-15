@@ -466,27 +466,35 @@
   }
 
   async function listSaved() {
+    // 先完成本页提交，再以当前账号/角色的数据库快照刷新目录。
+    await episodeWriteQueue;
     var items = Array.from(memory.values());
     var database = await db();
     if (database) {
       var stored = await new Promise(function (resolve) {
         try {
-          // 严格使用 ID 主键的角色范围查询，避免把同库中其他账号的番外读进 JS。
           var prefix = scope + ':' + roleId + ':';
           if (!global.IDBKeyRange || typeof global.IDBKeyRange.bound !== 'function') {
-            resolve([]); return;
+            resolve(null); return; // 无法安全查询，绝不扫描其他账号的记录。
           }
           var range = global.IDBKeyRange.bound(prefix, prefix + '\uffff', false, false);
           var request = database.transaction('episodes', 'readonly').objectStore('episodes').getAll(range);
-          request.onsuccess = function () { resolve(request.result || []); };
-          request.onerror = function () { resolve([]); };
-        } catch (error) { resolve([]); }
+          request.onsuccess = function () { resolve(Array.isArray(request.result) ? request.result : null); };
+          request.onerror = function () { resolve(null); };
+        } catch (error) { resolve(null); }
       });
-      stored.forEach(function (item) {
-        if (item && item.id && item.accountId === scope &&
-            item.characterId === roleId && Array.isArray(item.messages)) memory.set(item.id, item);
-      });
-      items = Array.from(memory.values());
+      if (stored) {
+        // 成功读取是权威存档；其他标签页已删除的故事不能因内存缓存而“复活”。
+        memory.clear();
+        stored.forEach(function (item) {
+          if (item && item.id && item.accountId === scope &&
+              item.characterId === roleId && Array.isArray(item.messages)) memory.set(item.id, item);
+        });
+        items = Array.from(memory.values());
+      } else {
+        // 查询故障不是“全部已删除”；保留最后确认存储成功的目录快照。
+        showNotice('番外目录暂时无法刷新，显示上次成功保存的内容');
+      }
     }
     return items.filter(function (e) {
       return e && e.accountId === scope && e.characterId === roleId &&
