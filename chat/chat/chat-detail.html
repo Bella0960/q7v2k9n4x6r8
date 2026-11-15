@@ -5730,9 +5730,11 @@
             const userPersona = userFacts.length ? userFacts.join('\n') : '无';
 
             // ===== 用户动态记忆：聊天中 AI 自动记住的关于用户的事 =====
-            let userMemoryText = '（暂无）';
+            let userMemoryText = isGroupChat ? '（本群仅使用已确认的公开共同回忆）' : '（暂无）';
             try {
-                const um = JSON.parse(localStorage.getItem('user_memory') || '[]');
+                // Legacy user_memory includes unscoped one-to-one facts. Never
+                // import that untrusted global cache into a group AI prompt.
+                const um = !isGroupChat ? JSON.parse(localStorage.getItem('user_memory') || '[]') : [];
                 if (Array.isArray(um) && um.length) {
                     // User facts saved by older builds may be global; new extracted memories are stored
                     // in chat_memories_<roleId>. Keep scoped legacy entries with their own character.
@@ -6764,7 +6766,11 @@
                     // 剥离自动记忆标记 [记住:xxx]，并存进 user_memory
                     const parsedMem = extractMemoryMarkers(fullText);
                     fullText = parsedMem.text;
-                    if (parsedMem.memories.length) saveUserMemories(parsedMem.memories);
+                    // Group secrets and per-role facts must never be promoted
+                    // into global user_memory from an AI machine marker.
+                    // Only confirmed public events use GroupMemoryEvents.
+                    if (parsedMem.memories.length && !isGroupChat && streamResult.ok)
+                        saveUserMemories(parsedMem.memories);
                     // 剥离心声标记 [心声:内容] 与虚拟图片标记 [图片:描述]
                     const parsedHeart = extractHeartMarkers(fullText);
                     fullText = parsedHeart.text;
