@@ -131,12 +131,50 @@
     // 快照：{ key: 原始字符串值 }
     // @param {Boolean} dropCaches   为 true 时跳过临时缓存（EXCLUDE_KEYS）
     // @param {Boolean} dropSecrets  为 true 时跳过敏感凭据（SECRET_KEYS）
+    // Never export login sessions, account passwords or identity tokens,
+    // even if the optional API-key export checkbox is enabled.
+    function neverBackupKey(key) {
+        return /^(access_token|refresh_token|session_token|auth_token|password|api_key|private_key)$/i.test(key) ||
+            /(?:^|[_-])(?:session|auth|access|refresh)[_-]?token(?:$|[_-])/i.test(key) ||
+            /(?:^|[_-])(?:password|private[_-]?key|secret)(?:$|[_-])/i.test(key) ||
+            /^(mao|maomao)[_-].*(?:auth[_-]?token|session[_-]?token|refresh[_-]?token|password|secret|private[_-]?key)$/i.test(key);
+    }
+    function backupRegistry() {
+        return (typeof window !== 'undefined' && window.MAOMAOBackupRegistry) || null;
+    }
+    function backupTargets(scope) {
+        var registry = backupRegistry();
+        if (!registry) return scope ? [] : IDB_TARGETS.slice();
+        var targets = scope ? registry.databasesFor(scope, IDB_TARGETS)
+            : registry.allDatabases(IDB_TARGETS);
+        // For targeted music/media backups include actual audio bytes, not
+        // just catalog metadata. Keep the legacy full-backup footprint intact.
+        if (scope === 'music' || scope === 'media') {
+            targets = targets.map(function(target) {
+                if (target.db !== 'maomao-media-store') return target;
+                return Object.assign({}, target, {
+                    stores: target.stores.map(function(store) {
+                        if (store.store !== 'audio') return store;
+                        return {
+                            store: 'audio', keyPath: 'id', blobFields: ['blob'],
+                            blobMaxBytes: FONT_BLOB_MAX_BYTES,
+                            blobStoreMaxBytes: FONT_STORE_MAX_BYTES
+                        };
+                    })
+                });
+            });
+        }
+        return targets;
+    }
+
     function snapshot(dropCaches, dropSecrets) {
+        var includePrivateLocalKeys = arguments[2] === true;
         var out = {};
         var keys = [];
         try { keys = Object.keys(localStorage); } catch (e) {}
         keys.forEach(function (k) {
             if (dropCaches && EXCLUDE_KEYS.indexOf(k) !== -1) return;
+            if (!includePrivateLocalKeys && typeof neverBackupKey === 'function' && neverBackupKey(k)) return;
             if (dropSecrets && SECRET_KEYS.indexOf(k) !== -1) return;
             try { out[k] = localStorage.getItem(k); } catch (e) {}
         });
@@ -236,9 +274,15 @@
     }
 
     async function doExport() {
+        var sectionId = arguments[0];
         try {
+            var registry = typeof backupRegistry === 'function' ? backupRegistry() : null;
+            var scope = typeof sectionId === 'string' && registry && registry.get(sectionId) ? sectionId : '';
+            if (typeof sectionId === 'string' && sectionId && !scope) {
+                toast('该备份模块尚未注册，请更新应用'); return;
+            }
             // 默认剥掉密钥；只有用户显式勾选 + confirm 二次确认才打包
-            var withSecrets = includeSecretsEnabled();
+            var withSecrets = !scope && includeSecretsEnabled();
             if (withSecrets) {
                 var goOn = confirm('本次导出将包含明文 API Key。\n\n' +
                     '任何拿到这个文件的人都能直接使用你的 API 额度。\n' +
@@ -246,6 +290,7 @@
                 if (!goOn) return;
             }
             var snap = snapshot(true, !withSecrets);
+            if (scope) snap = registry.selectSnapshot(scope, snap);
 
             // 顺序 dump 所有 IndexedDB；每个库失败都 catch 成 null，不阻断整体导出
             var dbData = {};     // <dbName>: { data: { store: records[] }, skipped: [...] }
@@ -255,8 +300,9 @@
             var dbTotal = 0;
             var hasAudioMeta = false;
 
-            for (var i = 0; i < IDB_TARGETS.length; i++) {
-                var tgt = IDB_TARGETS[i];
+            var exportTargets = typeof backupTargets === 'function' ? backupTargets(scope) : IDB_TARGETS;
+            for (var i = 0; i < exportTargets.length; i++) {
+                var tgt = exportTargets[i];
                 var part = await dumpDatabase(tgt.db, tgt.version, tgt.stores);
                 if (part === null) {
                     dbWarnings.push(tgt.db + '（读取失败）');
@@ -278,7 +324,11 @@
                 Object.keys(stores).forEach(function (sn) {
                     var cnt = stores[sn].length;
                     n += cnt;
-                    if (tgt.db === 'maomao-media-store' && sn === 'audio' && cnt) hasAudioMeta = true;
+                    if (tgt.db === 'maomao-media-store' && sn === 'audio' && cnt) {
+                        var audioDef = tgt.stores.filter(function(def) { return def.store === 'audio'; })[0];
+                        if (audioDef && (audioDef.excludeFields || []).indexOf('blob') >= 0)
+                            hasAudioMeta = true;
+                    }
                 });
                 dbOverview[tgt.db] = n;
                 dbTotal += n;
@@ -287,6 +337,9 @@
                 });
             }
 
+            // Failures are recorded in the archive manifest. Never describe a
+            // partial media export as a fully recoverable backup.
+            var backupComplete = dbWarnings.length === 0 && allSkipped.length === 0 && !hasAudioMeta;
             // localStorage 也没有任何数据时（纯 IndexedDB 备份）也允许导出，
             // 因为 wallpaper / books / photos 都可能只在 IndexedDB 里。
             if (!Object.keys(snap).length && !dbTotal) {
@@ -325,7 +378,17 @@
                     schema: BACKUP_SCHEMA,
                     exportedAt: new Date().toISOString(),
                     count: Object.keys(snap).length,
-                    indexedDB: dbOverview
+                    indexedDB: dbOverview,
+                    complete: backupComplete,
+                    warnings: {
+                        databasesSkipped: dbWarnings.length,
+                        recordsSkipped: allSkipped.length,
+                        audioMetadataOnly: hasAudioMeta
+                    },
+                    ...(scope ? { scope: scope, moduleLabel: registry.get(scope).label,
+                        sharedMedia: exportTargets.some(function(t) {
+                            return t.db === 'maomao-assets' || t.db === 'maomao-media-store';
+                        }) } : {})
                 },
                 data: snap
             };
@@ -339,6 +402,7 @@
             function p2(n) { return n < 10 ? '0' + n : '' + n; }
             var name = 'phone-app-backup-' + d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate())
                 + '-' + p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds())
+                + (scope ? '-' + scope : '')
                 + (withSecrets ? '-with-secrets' : '') + '.json';
             var blob = new Blob([bodyStr], { type: 'application/json' });
             var url = URL.createObjectURL(blob);
@@ -351,10 +415,11 @@
             setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
 
             // 组装 toast
-            var parts = ['已导出'];
+            var parts = [backupComplete ? '已导出完整备份' : '已导出部分备份（不完整）'];
             if (Object.keys(snap).length) parts.push('localStorage ' + Object.keys(snap).length + ' 项');
             if (dbTotal) parts.push('IndexedDB ' + dbTotal + ' 项');
             var msg = parts.join('、');
+            if (scope) msg += '（' + registry.get(scope).label + '分类备份）';
             if (withSecrets) msg += '，含 API 密钥';
             if (dbWarnings.length) msg += '（' + dbWarnings.length + ' 个 IndexedDB 库读取失败已跳过）';
             if (hasAudioMeta) msg += '（本地音频元数据已包含，音频文件本身未打包）';
@@ -379,11 +444,27 @@
         if (meta.schema > BACKUP_SCHEMA) return '备份版本（schema ' + meta.schema + '）比当前应用更新，请先升级应用再导入';
         if (meta.schema < 1) return 'schema 版本号异常，拒绝导入';
         if (!obj.data || typeof obj.data !== 'object' || Array.isArray(obj.data)) return 'data 段缺失或格式错误';
-        if (!Object.keys(obj.data).length) return '备份内容为空';
+        var scope = meta.scope || '';
+        var registry = typeof backupRegistry === 'function' ? backupRegistry() : null;
+        if (scope && (!registry || !registry.get(scope)))
+            return '备份模块无法识别，请更新应用';
+        if (scope && Object.keys(obj.data).some(function(k) {
+            return !registry.belongsTo(scope,k) || neverBackupKey(k) ||
+                SECRET_KEYS.indexOf(k) >= 0;
+        })) return '分类备份含不属于该模块的键或敏感凭据，拒绝导入';
+        var hasIdb = obj.indexedDB && typeof obj.indexedDB === 'object' &&
+            Object.keys(obj.indexedDB).length > 0;
+        if (!Object.keys(obj.data).length && !(scope && hasIdb))
+            return '备份内容为空';
         var looksLikeOurs = Object.keys(obj.data).some(function (k) {
             return CORE_HINTS.some(function (h) { return k.indexOf(h) === 0; });
         });
-        if (!looksLikeOurs) return '文件中找不到任何本应用核心数据，疑似选错了文件';
+        if (!scope && !looksLikeOurs) return '文件中找不到任何本应用核心数据，疑似选错了文件';
+        if (scope && hasIdb) {
+            var allowed = backupTargets(scope).map(function(t) { return t.db; });
+            if (Object.keys(obj.indexedDB).some(function(name) { return allowed.indexOf(name) < 0; }))
+                return '分类备份含不属于该模块的媒体库，拒绝导入';
+        }
         return '';
     }
 
@@ -394,6 +475,29 @@
         Object.keys(snap).forEach(function (k) {
             try { localStorage.setItem(k, String(snap[k])); }
             catch (e) { failed = true; }
+        });
+        return !failed;
+    }
+
+    // Scoped restore changes ONLY the chosen module's keys, not every app key.
+    // IDB references are restored in non-destructive merge mode separately.
+    function restoreScoped(snap, scope) {
+        var registry = backupRegistry();
+        if (!registry || !registry.get(scope)) return false;
+        var failed = false;
+        Object.keys(localStorage).forEach(function(k) {
+            if (!registry.belongsTo(scope,k) || neverBackupKey(k) ||
+                SECRET_KEYS.indexOf(k) >= 0) return;
+            if (Object.prototype.hasOwnProperty.call(snap,k)) return;
+            try { localStorage.removeItem(k); } catch(e) { failed = true; }
+        });
+        Object.keys(snap).forEach(function(k) {
+            if (!registry.belongsTo(scope,k) || neverBackupKey(k) ||
+                SECRET_KEYS.indexOf(k) >= 0) { failed = true; return; }
+            try {
+                localStorage.setItem(k,String(snap[k]));
+                if (localStorage.getItem(k) !== String(snap[k])) failed = true;
+            } catch(e) { failed = true; }
         });
         return !failed;
     }
@@ -743,17 +847,18 @@
     // 返回 Promise<{ written: number, skipped: number }>：实际写进 DB 的条数 / 跳过的条数。
     // clearOnRestore: 空数组时也执行 clear()，确保恢复后 store 与备份状态完全一致。
     function restoreStore(db, storeDef, records, clearOnRestore) {
+        var mergeOnly = arguments[4] === true;
         var blobFields = storeDef.blobFields || [];
         return new Promise(function (resolve, reject) {
             // 无 clearOnRestore 且记录为空 → 跳过（原有行为，不影响非媒体库）
-            if (!Array.isArray(records) || (!records.length && !clearOnRestore)) {
+            if (!Array.isArray(records) || (!records.length && (!clearOnRestore || mergeOnly))) {
                 resolve({ written: 0, skipped: 0 });
                 return;
             }
             var storeName = storeDef.store;
             var tx = db.transaction(storeName, 'readwrite');
             var store = tx.objectStore(storeName);
-            store.clear();
+            if (!mergeOnly) store.clear();
             // 空数组 + clearOnRestore：只执行 clear()，不 put 任何记录
             if (!records.length) {
                 tx.oncomplete = function () { resolve({ written: 0, skipped: 0 }); };
@@ -817,12 +922,14 @@
     // 备份里有我们没登记的 store（兼容性/未来字段）→ 静默跳过。
     // 返回 Promise<{ written: number, skipped: number, dbRestored: boolean }>
     function restoreDatabase(dbName, version, storeDefs, incomingDb) {
+        var mergeOnly = arguments[4] === true;
         if (!incomingDb || typeof incomingDb !== 'object') return Promise.resolve({ written: 0, skipped: 0, dbRestored: true });
         var db = null;
-        // 从 IDB_TARGETS 中读取 clearOnRestore 标记
+        // 已登记的扩展数据库和内置数据库使用同样的恢复语义。
         var targetDef = null;
-        for (var t = 0; t < IDB_TARGETS.length; t++) {
-            if (IDB_TARGETS[t].db === dbName) { targetDef = IDB_TARGETS[t]; break; }
+        var allTargets = typeof backupTargets === 'function' ? backupTargets() : IDB_TARGETS;
+        for (var t = 0; t < allTargets.length; t++) {
+            if (allTargets[t].db === dbName) { targetDef = allTargets[t]; break; }
         }
         var clearOnRestore = targetDef && targetDef.clearOnRestore;
         return idbOpen(dbName, version, storeDefs).then(function (_db) {
@@ -838,8 +945,9 @@
                 if (!def) return next();
                 var records = incomingDb[sn];
                 // clearOnRestore: 空数组也调用 restoreStore（会执行 clear()），确保恢复状态与备份一致
-                if (!Array.isArray(records) || (!records.length && !clearOnRestore)) return next();
-                return restoreStore(db, def, records, clearOnRestore).then(function (res) {
+                if (!Array.isArray(records) ||
+                    (!records.length && (!clearOnRestore || mergeOnly))) return next();
+                return restoreStore(db, def, records, clearOnRestore, mergeOnly).then(function (res) {
                     totalWritten += res.written;
                     totalSkipped += res.skipped;
                     return next();
@@ -916,6 +1024,7 @@
     }
 
     function handleImportFile(file) {
+        var requestedScope = arguments[1];
         if (!file) return;
         var reader = new FileReader();
         reader.onload = async function (ev) {
@@ -924,8 +1033,22 @@
             catch (e) { toast('导入失败：文件不是合法 JSON'); return; }
             var err = validateBackup(obj);
             if (err) { toast('导入失败：' + err); return; }
+            if (obj.__backup.complete === false) {
+                toast('这份备份不完整，已阻止自动恢复。请先保存完整备份，避免覆盖现有数据'); return;
+            }
+            var scope = obj.__backup.scope || '';
+            if (requestedScope && scope !== requestedScope) {
+                toast('导入失败：文件分类与当前选择不一致'); return;
+            }
+            if (!requestedScope && scope) {
+                toast('分类备份请使用「恢复所选模块」，避免误覆盖全量数据'); return;
+            }
 
-            var incoming = obj.data;
+            // Never import auth/session secrets from an old or externally supplied archive.
+            var incoming = {};
+            Object.keys(obj.data).forEach(function(k) {
+                if (!neverBackupKey(k)) incoming[k] = obj.data[k];
+            });
             var count = Object.keys(incoming).length;
             var label = obj.__backup.exportedAt ? '（导出于 ' + String(obj.__backup.exportedAt).slice(0, 10) + '）' : '';
             // 显示 IndexedDB 概览（schema 2 备份）
@@ -934,14 +1057,20 @@
             if (idbMeta && typeof idbMeta === 'object') {
                 Object.keys(idbMeta).forEach(function (k) { idbTotal += (idbMeta[k] || 0); });
             }
-            if (!confirm('将用备份覆盖当前全部数据（localStorage ' + count + ' 项'
-                    + (idbTotal ? '，IndexedDB ' + idbTotal + ' 项' : '') + '）' + label
-                    + '。\n\n当前数据会先自动导出一份安全备份，localStorage 导入失败会自动回滚。确定继续？')) return;
+            var promptText = scope
+                ? '只恢复「' + backupRegistry().get(scope).label + '」模块（本机数据 ' + count + ' 项'
+                  + (idbTotal ? '，共享媒体 ' + idbTotal + ' 项' : '') + '）' + label
+                  + '。\\n\\n不会清空其他模块。共享图片和字体按记录合并，但同名记录可能更新。'
+                  + '本机恢复点只保障 localStorage；恢复前请另存一份完整备份。确定继续？'
+                : '将用备份覆盖当前全部数据（localStorage ' + count + ' 项'
+                  + (idbTotal ? '，IndexedDB ' + idbTotal + ' 项' : '') + '）' + label
+                  + '。\\n\\n当前数据会先自动导出一份安全备份，localStorage 导入失败会自动回滚。确定继续？';
+            if (!confirm(promptText)) return;
 
             // 1. 建立本机恢复点：把当前 localStorage 快照写入独立 IndexedDB，
             //    写完立即读回并用 verifyRestore 对 localStorage 实际内容做校验。
             //    恢复点 DB 独立于三个业务库的 version，localStorage.clear() 炸不到它。
-            var current = snapshot(false, false);
+            var current = snapshot(false, false, true);
             var rpSnap = null;       // 从恢复点读回的真正快照
             var rpReady = false;
             try {
@@ -972,13 +1101,15 @@
             // 即使下载失败，恢复点 DB 已经能保障回滚能力。
             var backupFileWarn = '';
             try {
-                downloadSnapshot(current, 'auto-before-restore');
+                // The downloadable safety copy is deliberately sanitized;
+                // login tokens and API keys stay on this device.
+                downloadSnapshot(snapshot(true, true), 'auto-before-restore');
             } catch (e) {
                 backupFileWarn = '（未能提供额外的安全备份文件，但已建立可回滚的恢复点）';
             }
 
             // 2. localStorage 覆盖写入；失败则从恢复点回滚后结束（IndexedDB 还没动）
-            var ok = restore(incoming);
+            var ok = scope ? restoreScoped(incoming, scope) : restore(incoming);
             if (!ok) {
                 // 回滚：直接用恢复点里读回来的快照，而不是内存里的 current
                 var rpRollback = rpSnap;
@@ -1009,7 +1140,21 @@
                 return;  // 失败路径：不清理恢复点（让它留着便于排查或下次覆盖）
             }
             // 3. 保留本机 API 凭据（备份未携带时），避免导入他人备份后丢失配置
-            var secretRes = carryOverSecrets(incoming, current);
+            var secretRes = scope ? { written: 0, failed: 0, failedKeys: [] } :
+                carryOverSecrets(incoming, current);
+            // Auth/session keys are not part of user backup files: retain the
+            // current authenticated browser's keys instead of accepting old ones.
+            if (!scope) Object.keys(current).forEach(function(k) {
+                if (!neverBackupKey(k)) return;
+                try {
+                    localStorage.setItem(k, String(current[k]));
+                    if (localStorage.getItem(k) !== String(current[k]))
+                        secretRes.failed++;
+                } catch (e) {
+                    secretRes.failed++;
+                    secretRes.failedKeys.push('本机登录状态');
+                }
+            });
 
             // 4. IndexedDB 恢复：schema < 2 的旧备份跳过并提示
             var dbRestored = 0;
@@ -1017,12 +1162,13 @@
             var dbFailed = [];
             var dbSkippedOld = false;
             if (obj.__backup.schema >= 2 && obj.indexedDB && typeof obj.indexedDB === 'object') {
-                for (var i = 0; i < IDB_TARGETS.length; i++) {
-                    var tgt = IDB_TARGETS[i];
+                var selectedTargets = backupTargets(scope);
+                for (var i = 0; i < selectedTargets.length; i++) {
+                    var tgt = selectedTargets[i];
                     var incomingDb = obj.indexedDB[tgt.db];
                     if (!incomingDb || typeof incomingDb !== 'object') continue;
                     try {
-                        var res = await restoreDatabase(tgt.db, tgt.version, tgt.stores, incomingDb);
+                        var res = await restoreDatabase(tgt.db, tgt.version, tgt.stores, incomingDb, !!scope);
                         dbRestored += res.written;
                         dbSkippedBlob += res.skipped;
                     } catch (e) {
@@ -1033,8 +1179,16 @@
                 dbSkippedOld = true;
             }
 
+            // A scoped import must not report success after a partial IDB
+            // failure, nor discard its pre-import localStorage recovery point.
+            if (scope && (dbFailed.length || dbSkippedBlob)) {
+                toast('分类恢复尚未完成：共享媒体有 ' + (dbFailed.length + dbSkippedBlob)
+                    + ' 处失败；已保留导入前的本机恢复点');
+                return;
+            }
+
             // 4.5 字体兜底：active_font_preset_id 指向的预设可能因跳过 / 解码失败不存在了 → 清掉悬空 id
-            var fontOrphanCleaned = await checkFontPresetOrphan();
+            var fontOrphanCleaned = (!scope || scope === 'themes') ? await checkFontPresetOrphan() : false;
 
             // 5. 成功路径：清掉本机恢复点（已无需保留）
             rpDeleteRole(RP_ROLE_PRE);
@@ -1049,6 +1203,7 @@
             if (dbRestored) parts.push('已恢复 IndexedDB ' + dbRestored + ' 项');
             if (dbSkippedBlob) parts.push('有 ' + dbSkippedBlob + ' 项 IndexedDB 记录因内容损坏未恢复');
             if (dbFailed.length) parts.push('部分 IndexedDB 未恢复：' + dbFailed.join('；'));
+            if (scope) parts.push('已单独恢复「' + backupRegistry().get(scope).label + '」');
             if (dbSkippedOld) parts.push('备份版本较旧，未包含媒体与书籍数据');
             if (fontOrphanCleaned) parts.push('自定义字体未随备份恢复，请重新上传');
             var tail = backupFileWarn || '';
@@ -1057,6 +1212,35 @@
         };
         reader.onerror = function () { toast('导入失败：文件读取失败'); };
         reader.readAsText(file);
+    }
+
+    // 新功能使用 MAOMAOBackupRegistry.register() 自动接入，无需改设置页结构。
+    var moduleSelect = $('backupModuleSelect');
+    var moduleExport = $('rowExportModule');
+    var moduleImport = $('rowImportModule');
+    var moduleFile = $('importModuleFileInput');
+    var moduleRegistry = backupRegistry();
+    if (moduleSelect && moduleRegistry) {
+        moduleRegistry.list().forEach(function(item) {
+            var option = document.createElement('option');
+            option.value = item.id;
+            option.textContent = item.label;
+            moduleSelect.appendChild(option);
+        });
+    }
+    if (moduleExport && moduleSelect) {
+        moduleExport.addEventListener('click', function() {
+            doExport(moduleSelect.value);
+        });
+    }
+    if (moduleImport && moduleFile && moduleSelect) {
+        moduleImport.addEventListener('click', function() { moduleFile.click(); });
+        moduleFile.addEventListener('change', function() {
+            var chosen = moduleSelect.value;
+            var selected = moduleFile.files && moduleFile.files[0];
+            moduleFile.value = '';
+            handleImportFile(selected, chosen);
+        });
     }
 
     // 绑定 DATA 分组入口

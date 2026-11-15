@@ -438,6 +438,172 @@
         return { ok: true, value: getActive(roleId), meta: { activeId: avatarId } };
     }
 
+    async function applyToCharacter(roleId, avatarId, options) {
+        options = options || {};
+        if (!validRoleId(roleId)) return failure('VALIDATION_FAILED', 'roleId is required');
+        var item = find(roleId, avatarId);
+        if (!item) return failure('NOT_FOUND', 'avatar does not belong to this character');
+        var charactersBefore;
+        var indexBefore;
+        try {
+            charactersBefore = global.localStorage.getItem('ai_custom_characters');
+            indexBefore = global.localStorage.getItem(storageKey(roleId));
+        } catch (error) { return failure('STORAGE_FAILED', 'character data cannot be read'); }
+        var resolved;
+        try { resolved = await toDataUrl(item.assetId); }
+        catch (error) { return failure('DB_UNAVAILABLE', 'avatar image cannot be read'); }
+        if (!resolved || !resolved.ok || !/^data:image\//i.test(resolved.value || '')) {
+            return failure('DB_UNAVAILABLE', 'avatar image cannot be read');
+        }
+        var blocked = roleMutationBlock(roleId);
+        if (blocked) return blocked;
+        try {
+            // Do not overwrite a newer portrait, role edit, deletion or account switch
+            // while the asynchronous media read was in flight.
+            if ((options.isCurrent && options.isCurrent() !== true) ||
+                global.localStorage.getItem('ai_custom_characters') !== charactersBefore ||
+                global.localStorage.getItem(storageKey(roleId)) !== indexBefore) {
+                return failure('STALE_SELECTION', 'character data changed while reading the image');
+            }
+            var characters = JSON.parse(charactersBefore);
+            if (!Array.isArray(characters)) return failure('CORRUPT_DATA', 'character list is invalid');
+            var character = characters.find(function (entry) { return entry && String(entry.id) === String(roleId); });
+            if (!character) return failure('NOT_FOUND', 'character no longer exists');
+            var activated = setActive(roleId, avatarId);
+            if (!activated.ok) return activated;
+            character.avatar = resolved.value;
+            character.avatarAssetId = item.assetId;
+            try {
+                global.localStorage.setItem('ai_custom_characters', JSON.stringify(characters));
+            } catch (error) {
+                try {
+                    if (indexBefore == null) global.localStorage.removeItem(storageKey(roleId));
+                    else global.localStorage.setItem(storageKey(roleId), indexBefore);
+                } catch (rollbackError) { return failure('PARTIAL_ROLLBACK', 'portrait selection needs repair'); }
+                return failure('STORAGE_FAILED', 'character portrait could not be saved');
+            }
+            return { ok: true, value: character };
+        } catch (error) { return failure('STORAGE_FAILED', 'character portrait could not be saved'); }
+    }
+
+
+    // A matching-pair assignment changes only this chat's user portrait.
+    // The user's global myProfile avatar is intentionally never modified.
+    var CHAT_PAIR_KEY_PREFIX = 'maomao_chat_pair_user_avatar_v1_';
+    function chatPairKey(roleId) {
+        return CHAT_PAIR_KEY_PREFIX + encodeURIComponent(String(roleId));
+    }
+
+    function getChatPairUserSelection(roleId) {
+        if (!validRoleId(roleId)) return null;
+        var stateResult = readStateResult(roleId);
+        if (!stateResult.ok) return null;
+        try {
+            var raw = global.localStorage.getItem(chatPairKey(roleId));
+            if (!raw) return null;
+            var selected = JSON.parse(raw);
+            if (!selected || !ASSET_RE.test(String(selected.assetId || ''))) return null;
+            var pair = stateResult.value.pairs.find(function (entry) {
+                return entry.id === selected.pairId && entry.avatarIds[1] === selected.avatarId;
+            });
+            var userItem = stateResult.value.items.find(function (entry) {
+                return entry.id === selected.avatarId && entry.assetId === selected.assetId;
+            });
+            return pair && userItem ? {
+                pairId: pair.id, avatarId: userItem.id, assetId: userItem.assetId
+            } : null;
+        } catch (error) { return null; }
+    }
+
+    async function applyPairToChat(roleId, pairId, options) {
+        options = options || {};
+        if (!validRoleId(roleId)) return failure('VALIDATION_FAILED', 'roleId is required');
+        var blocked = roleMutationBlock(roleId);
+        if (blocked) return blocked;
+        var beforeState = readStateResult(roleId);
+        if (!beforeState.ok) return beforeState;
+        var pair = beforeState.value.pairs.find(function (entry) {
+            return entry.id === String(pairId || '');
+        });
+        if (!pair) return failure('NOT_FOUND', 'paired portraits were not found');
+        var roleAvatar = beforeState.value.items.find(function (item) {
+            return item.id === pair.avatarIds[0];
+        });
+        var userAvatar = beforeState.value.items.find(function (item) {
+            return item.id === pair.avatarIds[1];
+        });
+        if (!roleAvatar || !userAvatar) return failure('NOT_FOUND', 'pair portraits are unavailable');
+
+        var oldCharacters, oldLibrary, oldChatUser;
+        var libraryKey = storageKey(roleId);
+        var userKey = chatPairKey(roleId);
+        try {
+            oldCharacters = global.localStorage.getItem('ai_custom_characters');
+            oldLibrary = global.localStorage.getItem(libraryKey);
+            oldChatUser = global.localStorage.getItem(userKey);
+        } catch (error) { return failure('STORAGE_FAILED', 'pair selection could not be read'); }
+
+        var images;
+        try {
+            images = await Promise.all([toDataUrl(roleAvatar.assetId), toDataUrl(userAvatar.assetId)]);
+        } catch (error) { return failure('DB_UNAVAILABLE', 'pair portraits cannot be read'); }
+        if (images.some(function (result) {
+            return !result || !result.ok || !/^data:image\//i.test(result.value || '');
+        })) return failure('DB_UNAVAILABLE', 'pair portraits cannot be read');
+
+        blocked = roleMutationBlock(roleId);
+        if (blocked) return blocked;
+        try {
+            if ((options.isCurrent && options.isCurrent() !== true) ||
+                global.localStorage.getItem('ai_custom_characters') !== oldCharacters ||
+                global.localStorage.getItem(libraryKey) !== oldLibrary ||
+                global.localStorage.getItem(userKey) !== oldChatUser) {
+                return failure('STALE_SELECTION', 'pair or character changed during image loading');
+            }
+            var roles = JSON.parse(oldCharacters);
+            if (!Array.isArray(roles)) return failure('CORRUPT_DATA', 'character list is invalid');
+            var role = roles.find(function (entry) { return entry && String(entry.id) === String(roleId); });
+            if (!role) return failure('NOT_FOUND', 'character no longer exists');
+            role.avatar = images[0].value;
+            role.avatarAssetId = roleAvatar.assetId;
+
+            // All three writes are synchronous, with snapshots to restore if any fail.
+            // No image bytes are copied into the chat-scoped assignment.
+            var nextState = normalizeState(beforeState.value);
+            nextState.activeId = roleAvatar.id;
+            var writes = { library: false, characters: false, chat: false };
+            try {
+                global.localStorage.setItem(libraryKey, JSON.stringify(nextState));
+                writes.library = true;
+                global.localStorage.setItem('ai_custom_characters', JSON.stringify(roles));
+                writes.characters = true;
+                global.localStorage.setItem(userKey, JSON.stringify({
+                    pairId: pair.id, avatarId: userAvatar.id, assetId: userAvatar.assetId
+                }));
+                writes.chat = true;
+            } catch (error) {
+                var restored = true;
+                function rollback(key, raw) {
+                    try {
+                        if (raw == null) global.localStorage.removeItem(key);
+                        else global.localStorage.setItem(key, raw);
+                    } catch (rollbackError) { restored = false; }
+                }
+                if (writes.chat) rollback(userKey, oldChatUser);
+                if (writes.characters) rollback('ai_custom_characters', oldCharacters);
+                if (writes.library) rollback(libraryKey, oldLibrary);
+                return restored
+                    ? failure('STORAGE_FAILED', 'pair assignment was not saved; previous portraits were retained')
+                    : failure('PARTIAL_ROLLBACK', 'pair assignment failed and a portrait snapshot needs repair');
+            }
+            return { ok: true, value: {
+                role: role, pairId: pair.id, roleAssetId: roleAvatar.assetId, userAssetId: userAvatar.assetId
+            } };
+        } catch (error) {
+            return failure('STORAGE_FAILED', 'pair assignment could not be completed');
+        }
+    }
+
     function add(roleId, input, options) {
         options = options || {};
         if (!validRoleId(roleId)) return Promise.resolve(failure('VALIDATION_FAILED', 'roleId is required'));
@@ -936,6 +1102,9 @@
         addAsset: addAsset,
         addAssetPair: addAssetPair,
         setActive: setActive,
+        applyToCharacter: applyToCharacter,
+        applyPairToChat: applyPairToChat,
+        getChatPairUserSelection: getChatPairUserSelection,
         toDataUrl: toDataUrl,
         toObjectUrl: toObjectUrl,
         remove: remove,
@@ -945,3 +1114,4 @@
         _storageKey: storageKey
     };
 })(window);
+

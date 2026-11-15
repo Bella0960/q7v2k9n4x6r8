@@ -12,6 +12,8 @@
     "test:chat:reply": "node --test tests/chat-reply-bubble-mode.test.mjs",
     "test:chat:isolation": "node --test tests/chat-data-isolation.test.mjs",
     "test:bugfix:blockers": "node --test tests/forum-chat-blockers.test.mjs",
+    "test:tutorial": "node --test tests/tutorial-page-contract.test.mjs",
+    "test:inspect:contract": "node --test tests/inspect-feature-contract.test.mjs",
     "test:detective:unlock": "node --test tests/detective-case-unlock.test.mjs",
     "perf:bench": "node perf/bench.mjs",
     "perf:bench:mobile": "THROTTLE=4 node perf/bench.mjs",
@@ -29,6 +31,7 @@
     "test:font:runtime": "node --test tests/font-runtime-performance.test.mjs",
     "test:chat:call": "node --test tests/chat-call-experience.test.mjs",
     "test:media:backup": "node --test tests/media-backup.test.mjs",
+    "test:backup:modules": "node --test tests/backup-modules.test.mjs",
     "test:forum:media": "node --test tests/forum-media.test.mjs",
     "test:api:image": "node --test tests/phone-api-image-generation.test.mjs",
     "test:forum:seed": "node --test tests/forum-seed-comments.test.mjs",
@@ -42,7 +45,8 @@
     "test:icons:presets": "node --test tests/icon-presets-contract.test.mjs",
     "test:images": "node --test tests/image-generation-pipeline.test.mjs",
     "test:role:avatars": "node --test tests/role-avatar-library.test.mjs",
-    "test:chat:image-vision": "node --test tests/chat-image-vision.test.mjs"
+    "test:chat:image-vision": "node --test tests/chat-image-vision.test.mjs",
+    "postbuild": "node --test tests/production-assets-isolation.test.mjs"
   },
   "devDependencies": {
     "playwright": "^1.64.1",

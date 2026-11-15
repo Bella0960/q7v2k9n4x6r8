@@ -119,7 +119,7 @@ The tree snapshot is a point-in-time measurement. Re-run the inventory when maki
 3. index.html currently registers ./sw.js on window load. The old CLAUDE.md statement that Service Worker registration is disabled is stale. Verify cache/update behavior before modifying SW logic.
 4. Chat history is still primarily stored as one serialized array per role/group in localStorage using chat_history_<id>. It is not yet a true IndexedDB-backed paginated conversation store.
 5. Several areas already use IndexedDB (wallpaper/media, local audio, diary photos, reading library, fonts), and a new maomao-assets media repository exists. The fact that a repository module exists does not mean every feature uses it.
-6. settings/js/backup.js enumerates specific IndexedDB databases. At this baseline, maomao-assets is not in that list, and the audio store excludes its Blob field. These are backup-coverage gaps to resolve before migrating chat media.
+6. Current-source correction (2026-11-11): settings/js/backup.js includes maomao-assets v2 (assets/blobs/refs/image_records), Blob Base64 limits, atomic whole-database exclusion when media is skipped, and clear-on-restore behavior. tests/media-backup.test.mjs contains 10 focused regression cases, but their execution is NOT VERIFIED in this environment. The separate maomao-media-store audio store still excludes its blob field; track that independently as DATA-003.
 7. Cloudflare deployment builds the website and deploys dist as static assets. wrangler.jsonc currently specifies the Worker name, compatibility date, and assets directory; it does not configure D1, R2, user authentication, or account sync.
 8. APK workflow is manual-only now. Old APK cleanup has a separate manual workflow which deletes only artifacts named MAOMAO-Android-APK. The cleanup workflow must still be manually run by a repository maintainer. A repository-scoped cleanup cannot clear artifacts owned by other repositories in the same account/organization.
 9. package.json lint currently prints “Lint passed”; it is not a real lint check. package.json does not define a generic npm test script, while npm-publish-github-packages.yml invokes npm test on release. Treat that release workflow as unverified and do not create a release until it is reviewed.
@@ -388,7 +388,7 @@ PhoneStorage provides a common API and error-result namespace, but not every exi
 | maomao_diary_photo_store_v1 | v1: photos (keyPath key) | diary/diary.html | Listed in backup.js |
 | maomao-reading-library | v1: books (keyPath id), comments (keyPath id) | library/library.html | Listed in backup.js |
 | maomao-font-presets | v1: presets (keyPath id, includes Blob) | shared/js/font-loader.js, settings/font-settings.html, theme-store/theme-store.html | Listed in backup.js; Blob serialized as Base64 with 30 MiB per-record and 90 MiB per-store source limits |
-| maomao-assets | v1: assets, blobs, refs | shared/js/phone/storage/media-repository.js | Not present in backup.js IDB_TARGETS at this baseline; must be added and tested before the repository is used for irreplaceable chat media |
+| maomao-assets | v2: assets, blobs, refs, image_records | shared/js/phone/storage/media-repository.js | Included in backup.js IDB_TARGETS with Base64 Blob handling, atomicExport, and clearOnRestore; dedicated round-trip tests exist, execution pending verification |
 | maomao-restore-point | v1, restore-point helper store | settings/js/backup.js | Internal restore safety mechanism, not ordinary user content; inspect its lifecycle during backup refactor |
 
 The database register is a code-derived inventory, not a complete audit of every browser profile's live IndexedDB data. Add a startup/runtime diagnostic to enumerate actual databases where supported and report database names, versions, stores, record counts, and approximate sizes without exposing message content.
@@ -436,7 +436,7 @@ Do not prematurely merge every existing DB into one physical database. Prefer on
 
 ### C. MediaRepository / Blob store: binary data
 
-Use the existing maomao-assets repository rather than inventing a second media system, after backup support is complete.
+Use the existing maomao-assets repository rather than inventing a second media system. Its v2 backup target is present; verify the dedicated regression suite and a real export/restore cycle before treating backup acceptance as complete.
 
 Messages should reference media by assetId. The renderer should resolve assetId to a Blob/object URL. Every object URL must be revoked when no longer needed. Reuse identical assets by hash when safe. Store MIME type, byte size, owner type/id, creation time, hash, and reference metadata.
 
@@ -461,7 +461,7 @@ Never begin with “move then delete.” Follow this order:
 
 1. **Inventory:** find every reader/writer of chat_history_<id>, characters, memories, images, stickers, calls, date mode, group messages, wallet/forum integrations, search, backup, export, and import.
 2. **Baseline:** capture current schema examples using synthetic fixtures; record counts, message order, stable IDs, role/group IDs, and all known fields. Never use real private chats as public fixtures.
-3. **Backup coverage:** update backup.js for maomao-assets, media blobs/refs, and audio Blob inclusion or an explicitly documented separate-export route. Test backup and restore both ways.
+3. **Backup verification:** maomao-assets v2 and its four stores are already registered in backup.js with atomic export and clear-on-restore. Run tests/media-backup.test.mjs and verify a real export/restore cycle. Separately resolve DATA-003: maomao-media-store/audio currently excludes its Blob, so decide whether music is included in full backup or offered through a clearly reported large-media export.
 4. **Preflight:** check IndexedDB availability and navigator.storage.estimate() where supported. Do not assume a fixed browser quota. Estimate required free space plus headroom; stop safely if insufficient.
 5. **Shadow copy:** copy existing localStorage histories to IndexedDB without changing the source key. Process large histories in bounded batches; show progress and allow retry.
 6. **Verification:** compare per-conversation message counts, stable IDs/mids, order, timestamps, role/group association, and a deterministic hash of normalized records. Verify media references and readable previews.
@@ -797,7 +797,7 @@ Acceptance:
 ### DATA-002 — Complete backup coverage for MediaRepository
 **Priority:** P0 · **Status:** OPEN
 
-Evidence: maomao-assets (assets/blobs/refs) is not in backup.js IDB_TARGETS at baseline.
+Evidence: current main already includes maomao-assets v2 in backup.js IDB_TARGETS with assets/blobs/refs/image_records, Blob Base64 limits, atomicExport, and clearOnRestore; test execution and a real export/restore cycle remain unverified.
 
 Acceptance:
 - Export includes metadata, Blob payloads, references, and integrity hashes.
@@ -1090,7 +1090,7 @@ Deliver: map 88 HTML pages into production apps, maintenance pages, previews, an
 ### Agent B — Storage/database registry
 Task: DATA-001
 Mode: READ-ONLY AUDIT
-Deliver: every localStorage key family and every IndexedDB database/store, owner module, version, blob fields, backup status, migration status, and quota/error handling. Explicitly verify maomao-assets backup omission and audio Blob exclusion. Do not migrate data.
+Deliver: every localStorage key family and every IndexedDB database/store, owner module, version, blob fields, backup status, migration status, and quota/error handling. Verify the current maomao-assets backup target, atomic skip/restore behavior, actual test execution, and the separate audio Blob exclusion. Do not migrate data.
 
 ### Agent C — Chat-history call-site inventory
 Task: DATA-005

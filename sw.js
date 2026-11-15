@@ -1,12 +1,22 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v199';
+const CACHE_NAME = 'phone-app-pwa-v205';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 // v196 release: sweep orphaned role-owned media refs during avatar cleanup.
 const APP_SHELL = [
   './',
   './index.html',
+  './tutorial/tutorial.html',
+  './forum/forum.html',
+  './forum/forum-detail.html',
+  './forum/forum-settings.html',
+  './forum/forum-gossip.js',
+  './forum/forum-world-events.js?v=20261111v1',
+  './inspect-phone/select.html',
+  './inspect-phone/phone.html',
+  './inspect-phone/inspect-feature.js?v=20261111v1',
+  './tutorial/tutorial.js?v=20261111v3',
   './beauty/beauty.html',
   './theme-store/theme-store.html',
   './chat/chat/chat.html',
@@ -55,6 +65,7 @@ const APP_SHELL = [
   './chat/date/date.html',
   './chat/date/journey.html',
   './chat/chat/chat-detail.html',
+  './chat/chat/chat-settings.html',
   './chat/chat/js/chat-extras.js?t=20261107imagevision1',
   './worldbook/characters/characters.html',
   './worldbook/characters/js/characters-manager.js?v=20261107v11',
@@ -83,7 +94,7 @@ const APP_SHELL = [
   'shared/js/phone/phone_storage.js',
   './shared/js/phone/phone_context.js?v=20261102npc1',
   'shared/js/phone/chat-message-policy.js?v=20261029v5',
-  './shared/js/phone/chat-image-vision.js?v=20261107v5',
+  './shared/js/phone/chat-image-vision.js?v=20261113v1',
   'shared/js/phone/chat-send-policy.js?v=20261029v2',
   'shared/js/phone/chat-context-policy.js?v=20261107vision1',
   './shared/js/phone/chat-presence-policy.js?v=20261102v17',
@@ -97,10 +108,10 @@ const APP_SHELL = [
   'shared/js/phone/storage/repository.js',
   'shared/js/phone/storage/media-repository.js?v=20261107v2',
   './shared/js/phone/role-sticker-library.js?v=20261107v2',
-  './shared/js/phone/role-avatar-library.js?v=20261107v14',
+  './shared/js/phone/role-avatar-library.js?v=20261113v1',
   'shared/js/phone/phone_api.js?v=20261106v1',
   'shared/js/phone/image-generation.js?v=20261106v1',
-  './shared/js/phone/role-gallery-image-autonomy.js?v=20261111v1',
+  './shared/js/phone/role-gallery-image-autonomy.js?v=20261111v2',
   'desktop/js/script.js',
   'shared/js/statusbar-control.js',
   'shared/js/nav.js',
@@ -247,3 +258,4 @@ self.addEventListener('fetch', event => {
     })
   );
 });
+

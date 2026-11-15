@@ -10,7 +10,7 @@ const mediaRepositorySource = fs.readFileSync(
 );
 
 function createLibrary(seed, options = {}) {
-  const optionKeys = ['failWrites', 'failMedia', 'failAddRefFor', 'failRemoveRefFor', 'failRemoveAssetFor', 'failListByOwner', 'retainAssets', 'deferPutBlob', 'deferGetAssetFor'];
+  const optionKeys = ['failWrites', 'failMedia', 'failAddRefFor', 'failRemoveRefFor', 'failRemoveAssetFor', 'failListByOwner', 'retainAssets', 'deferPutBlob', 'deferGetAssetFor', 'failChatPairWrite'];
   if (seed && Object.keys(seed).some(key => optionKeys.includes(key)) && !Object.keys(options).length) {
     options = seed;
     seed = {};
@@ -34,7 +34,8 @@ function createLibrary(seed, options = {}) {
       return values.has(key) ? values.get(key) : null;
     },
     setItem(key, value) {
-      if (options.failWrites) throw new Error('storage quota');
+      if (options.failWrites || (options.failCharacterWrite && key === 'ai_custom_characters') ||
+        (options.failChatPairWrite && key.startsWith('maomao_chat_pair_user_avatar_v1_'))) throw new Error('storage quota');
       values.set(key, String(value));
     },
     removeItem(key) {
@@ -439,7 +440,7 @@ test('parallel portrait uploads merge into the latest role snapshot instead of o
   assert.equal(results.every(result => result.ok), true);
   assert.equal(api.list('role-a').length, 2);
   assert.deepEqual(
-    api.list('role-a').map(item => item.label).sort(),
+    Array.from(api.list('role-a'), item => item.label).sort(),
     ['并发头像 A', '并发头像 B']
   );
 });
@@ -603,7 +604,7 @@ test('character profile loads the shared media stack before the avatar library a
   const storage = characterPage.indexOf('phone_storage.js');
   const repository = characterPage.indexOf('storage/repository.js');
   const media = characterPage.indexOf('storage/media-repository.js');
-  const avatars = characterPage.indexOf('role-avatar-library.js?v=20261107v14');
+  const avatars = characterPage.indexOf('role-avatar-library.js?v=20261113v1');
   const manager = characterPage.indexOf('js/characters-manager.js?v=20261107v11');
   assert.ok(storage >= 0 && repository > storage && media > repository && avatars > media && manager > avatars);
   assert.ok(characterPage.includes('id="avatarLibraryFileInput"'));
@@ -654,15 +655,16 @@ test('deleting a character releases only its references and re-discovers interru
   assert.ok(managerSource.includes('await library.removeRole(String(id))'));
   assert.ok(managerSource.includes('listPendingRoleCleanups()'));
   assert.ok(managerSource.includes('const discovered = library.listPendingRoleCleanups()'));
-  assert.ok(managerSource.includes('删除标记暂时无法扫描'));
+  assert.ok(managerSource.includes('角色头像清理标记暂时无法扫描，将继续处理已有重试队列'));
   assert.ok(managerSource.includes('角色删除失败，原有资料和头像均已保留。'));
 });
 
-test('PWA shell caches the role portrait archive and its runtime at v195', () => {
-  assert.ok(serviceWorker.includes("const CACHE_NAME = 'phone-app-pwa-v198'"));
+test('PWA shell caches the role portrait archive and its runtime', () => {
+  const currentCacheVersion = Number(serviceWorker.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m)?.[1] || 0);
+  assert.ok(currentCacheVersion >= 203, 'PWA app shell must not regress below feature minimum v203');
   assert.ok(serviceWorker.includes("'./worldbook/characters/characters.html'"));
   assert.ok(serviceWorker.includes("'./worldbook/characters/js/characters-manager.js?v=20261107v11'"));
-  assert.ok(serviceWorker.includes("'./shared/js/phone/role-avatar-library.js?v=20261107v14'"));
+  assert.ok(serviceWorker.includes("'./shared/js/phone/role-avatar-library.js?v=20261113v1'"));
 });
 
 
@@ -1128,4 +1130,152 @@ test('role deletion reports incomplete rollback and still restores every other r
   assert.equal(refs.has(second.value.assetId + '|role-avatar|role-a'), false);
   assert.equal(refs.has(third.value.assetId + '|role-avatar|role-a'), false);
   assert.equal(values.has(api._storageKey('role-a')), false);
+});
+
+
+test('chat avatar application persists only the selected role and active portrait', async () => {
+  const original = [{ id: 'role-a', avatar: 'old', persona: 'keep' }, { id: 'role-b', avatar: 'other' }];
+  const { api, values } = createLibrary({ ai_custom_characters: JSON.stringify(original) });
+  const added = await api.add('role-a', 'data:image/jpeg;base64,NEW');
+  const applied = await api.applyToCharacter('role-a', added.value.id);
+  assert.equal(applied.ok, true);
+  const roles = JSON.parse(values.get('ai_custom_characters'));
+  assert.equal(roles[0].avatarAssetId, added.value.assetId);
+  assert.equal(roles[0].persona, 'keep');
+  assert.deepEqual(roles[1], original[1]);
+  assert.equal(api.getActive('role-a').id, added.value.id);
+  assert.equal((await api.applyToCharacter('role-b', added.value.id)).ok, false);
+});
+
+test('late avatar reads cannot overwrite newer role edits or an invalidated chat', async () => {
+  const { api, values } = createLibrary({ ai_custom_characters: JSON.stringify([{ id: 'role-a', avatar: 'old' }]) });
+  const added = await api.add('role-a', 'data:image/jpeg;base64,NEW');
+  const pending = api.applyToCharacter('role-a', added.value.id);
+  const newer = JSON.stringify([{ id: 'role-a', avatar: 'newer' }]);
+  values.set('ai_custom_characters', newer);
+  assert.equal((await pending).error.code, 'STALE_SELECTION');
+  assert.equal(values.get('ai_custom_characters'), newer);
+  assert.equal(api.getActive('role-a'), null);
+  assert.equal((await api.applyToCharacter('role-a', added.value.id, { isCurrent: () => false })).ok, false);
+});
+
+test('failed character persistence restores the previous active portrait', async () => {
+  const options = {};
+  const original = JSON.stringify([{ id: 'role-a', avatar: 'old' }]);
+  const { api, values } = createLibrary({ ai_custom_characters: original }, options);
+  const added = await api.add('role-a', 'data:image/jpeg;base64,NEW');
+  options.failCharacterWrite = true;
+  const result = await api.applyToCharacter('role-a', added.value.id);
+  assert.equal(result.error.code, 'STORAGE_FAILED');
+  assert.equal(values.get('ai_custom_characters'), original);
+  assert.equal(api.getActive('role-a'), null);
+});
+
+
+test('applying a matching pair gives A to the role and B only to that chat', async () => {
+  const original = [{ id: 'role-a', avatar: 'role-old', persona: 'keep' }, { id: 'role-b', avatar: 'other' }];
+  const globalProfile = JSON.stringify({ avatar: 'global-personal-avatar' });
+  const { api, values, assets } = createLibrary({
+    ai_custom_characters: JSON.stringify(original), myProfile: globalProfile
+  });
+  const a = await api.add('role-a', 'data:image/jpeg;base64,PAIR_ROLE');
+  const b = await api.add('role-a', 'data:image/jpeg;base64,PAIR_USER');
+  const pair = api.linkPair('role-a', a.value.id, b.value.id);
+  const originalAssetCount = assets.size;
+  const applied = await api.applyPairToChat('role-a', pair.value.id);
+  assert.equal(applied.ok, true);
+  const roles = JSON.parse(values.get('ai_custom_characters'));
+  assert.equal(roles[0].avatarAssetId, a.value.assetId);
+  assert.equal(roles[0].persona, 'keep');
+  assert.deepEqual(roles[1], original[1], 'other roles must not change');
+  assert.equal(api.getActive('role-a').id, a.value.id);
+  const scoped = api.getChatPairUserSelection('role-a');
+  assert.equal(scoped.assetId, b.value.assetId);
+  assert.equal(scoped.pairId, pair.value.id);
+  assert.equal(api.getChatPairUserSelection('role-b'), null);
+  assert.equal(values.get('myProfile'), globalProfile, 'global profile must remain untouched');
+  assert.equal(assets.size, originalAssetCount, 'assignment never duplicates a portrait blob');
+});
+
+test('pair assignment rolls back both sides when character storage fails', async () => {
+  const options = {};
+  const original = JSON.stringify([{ id: 'role-a', avatar: 'unchanged' }]);
+  const { api, values } = createLibrary({ ai_custom_characters: original }, options);
+  const a = await api.add('role-a', 'data:image/jpeg;base64,ROLE');
+  const b = await api.add('role-a', 'data:image/jpeg;base64,USER');
+  const pair = api.linkPair('role-a', a.value.id, b.value.id);
+  options.failCharacterWrite = true;
+  const failed = await api.applyPairToChat('role-a', pair.value.id);
+  assert.equal(failed.error.code, 'STORAGE_FAILED');
+  assert.equal(values.get('ai_custom_characters'), original);
+  assert.equal(api.getActive('role-a'), null);
+  assert.equal(api.getChatPairUserSelection('role-a'), null);
+});
+
+test('pair assignment restores role and previous user selection on chat-scoped quota failure', async () => {
+  const options = {};
+  const { api, values } = createLibrary({
+    ai_custom_characters: JSON.stringify([{ id: 'role-a', avatar: 'previous' }])
+  }, options);
+  const a = await api.add('role-a', 'data:image/jpeg;base64,A');
+  const b = await api.add('role-a', 'data:image/jpeg;base64,B');
+  const c = await api.add('role-a', 'data:image/jpeg;base64,C');
+  const d = await api.add('role-a', 'data:image/jpeg;base64,D');
+  const firstPair = api.linkPair('role-a', a.value.id, b.value.id);
+  const secondPair = api.linkPair('role-a', c.value.id, d.value.id);
+  assert.equal((await api.applyPairToChat('role-a', firstPair.value.id)).ok, true);
+  const previousRoles = values.get('ai_custom_characters');
+  const previousActive = api.getActive('role-a').id;
+  const previousUser = api.getChatPairUserSelection('role-a');
+  options.failChatPairWrite = true;
+  const failed = await api.applyPairToChat('role-a', secondPair.value.id);
+  assert.equal(failed.error.code, 'STORAGE_FAILED');
+  assert.equal(values.get('ai_custom_characters'), previousRoles);
+  assert.equal(api.getActive('role-a').id, previousActive);
+  assert.equal(api.getChatPairUserSelection('role-a').assetId, previousUser.assetId);
+});
+
+test('pair assignment rejects stale or missing role and does not cross role boundaries', async () => {
+  const { api, values } = createLibrary({
+    ai_custom_characters: JSON.stringify([{ id: 'role-a', avatar: 'old' }, { id: 'role-b', avatar: 'other' }])
+  });
+  const a = await api.add('role-a', 'data:image/jpeg;base64,PAIR_A');
+  const b = await api.add('role-a', 'data:image/jpeg;base64,PAIR_B');
+  const pair = api.linkPair('role-a', a.value.id, b.value.id);
+  assert.equal((await api.applyPairToChat('role-b', pair.value.id)).error.code, 'NOT_FOUND');
+  assert.equal((await api.applyPairToChat('role-a', pair.value.id, { isCurrent: () => false })).error.code, 'STALE_SELECTION');
+  const pending = api.applyPairToChat('role-a', pair.value.id);
+  const newCharacters = JSON.stringify([{ id: 'role-a', avatar: 'edited' }, { id: 'role-b', avatar: 'other' }]);
+  values.set('ai_custom_characters', newCharacters);
+  assert.equal((await pending).error.code, 'STALE_SELECTION');
+  assert.equal(values.get('ai_custom_characters'), newCharacters);
+  assert.equal(api.getChatPairUserSelection('role-a'), null);
+});
+
+test('unlinking or swapping a pair invalidates its old chat user assignment', async () => {
+  const { api } = createLibrary({
+    ai_custom_characters: JSON.stringify([{ id: 'role-a', avatar: 'old' }])
+  });
+  const a = await api.add('role-a', 'data:image/jpeg;base64,PAIR_A');
+  const b = await api.add('role-a', 'data:image/jpeg;base64,PAIR_B');
+  const pair = api.linkPair('role-a', a.value.id, b.value.id);
+  assert.equal((await api.applyPairToChat('role-a', pair.value.id)).ok, true);
+  assert.ok(api.getChatPairUserSelection('role-a'));
+  assert.equal(api.swapPair('role-a', pair.value.id).ok, true);
+  assert.equal(api.getChatPairUserSelection('role-a'), null);
+  assert.equal((await api.applyPairToChat('role-a', pair.value.id)).ok, true);
+  assert.equal(api.getChatPairUserSelection('role-a').assetId, a.value.assetId);
+  assert.equal(api.unlinkPair('role-a', pair.value.id).ok, true);
+  assert.equal(api.getChatPairUserSelection('role-a'), null);
+});
+
+test('paired gallery and chat use role-scoped user avatar, never rewrite global myProfile', () => {
+  const chatDetail = fs.readFileSync(path.join(process.cwd(), 'chat/chat/chat-detail.html'), 'utf8');
+  assert.ok(managerSource.includes('data-avatar-pair-action="apply-both"'));
+  assert.ok(managerSource.includes('applyRoleAvatarPairToChat(pairId)'));
+  assert.ok(managerSource.includes('library.applyPairToChat(roleId, pairId'));
+  assert.ok(chatDetail.includes('refreshChatPairUserAvatar()'));
+  assert.ok(chatDetail.includes('library.getChatPairUserSelection(roleId)'));
+  assert.ok(chatDetail.includes('if (!isGroupChat && _chatPairAvatarUrl) return _chatPairAvatarUrl'));
+  assert.ok(source.includes("CHAT_PAIR_KEY_PREFIX = 'maomao_chat_pair_user_avatar_v1_'"));
 });

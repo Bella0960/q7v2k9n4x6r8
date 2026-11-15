@@ -5,7 +5,7 @@ This is the durable checkpoint for owner-assigned, multi-step work. Update it af
 ## Current work package
 
 - **Owner request:** Identify remaining MAOMAO work, start with low-risk items, and adopt end-to-end execution so the owner does not need to repeatedly say “continue”.
-- **Task IDs:** GOV-001, GOV-004, HOME-INDICATOR-002
+- **Task IDs:** GOV-001, GOV-004
 - **Status:** IN PROGRESS
 - **Working branch:** `GOV-001-autonomous-execution-and-doc-sync`
 - **Base:** `main` at `f0cf6c74f0272219ebe4aa9e5a8c21fea7e49273`
@@ -21,8 +21,6 @@ This is the durable checkpoint for owner-assigned, multi-step work. Update it af
 - Do not claim browser/device acceptance based only on static source checks.
 
 ## Open PRs requiring reconciliation (not automatically mergeable)
-
-- PR #245 — HOME-INDICATOR-002 forum-detail hit target; current branch is rebased on latest GOV-001 base, Playwright/device validation pending.
 
 - #243 interactive desktop tutorial — PR description/source checks now report 50 step-by-step guides, 29 desktop-app guides and 10 FAQs; real-phone acceptance is not verified. Its latest Tutorial Guide Regression job still failed before any step executed.
 - #242 chat beauty preview / chat layout — the unrelated top-right menu experiment has been removed from its branch; do not reintroduce it.
@@ -76,12 +74,7 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - PR #244 remains Draft. PRs #245 and #246 are stacked on its branch; do not merge them ahead of the base dependency.
 - PR #243 is not Draft, but its CI has not actually run and the phone tutorial/navigation flow has not been verified on a real device.
 
-### Current work branch
-
-- `HOME-INDICATOR-002/forum-detail-hit-target-on-main` is stacked on `GOV-001-autonomous-execution-and-doc-sync` at `f66cdff964e7db88d9f73095878f17f47f97182d`.
-- The branch contains the forum-detail Home Indicator JS, composer safe-area CSS, and expanded browser regression test. Playwright/device execution is pending.
-
-## Work performed this run
+### Work performed this run
 - Re-ran only the tutorial-specific failed workflow for PR #243 to check whether Actions runner allocation had recovered. The retry failed before steps began.
 - Updated this execution log on the existing GOV-001 branch so the tutorial inventory and current CI/deployment evidence are no longer stale.
 - No application code, secrets, user data, production Worker, or APK was changed.
@@ -92,6 +85,29 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 3. Break the #148/#239 cloud-push stack into reviewable milestones; configure the Worker model secret only through the protected Cloudflare secret mechanism after the user has selected/authorized the provider.
 4. Verify the active Worker version against a recorded main SHA and perform a real external route/device check before calling production current.
 
+
+## Owner task — complete remaining MAOMAO work (2026-11-11, 07:36 Asia/Shanghai)
+
+### Current inventory and verified corrections
+- Current main remains `f0cf6c74f0272219ebe4aa9e5a8c21fea7e49273`; GitHub search currently reports 38 open PRs and 0 open ordinary issues. Open PR count is not equivalent to outstanding feature count; several older branches are superseded or stacked.
+- PR #242 (`fix/chat-theme-preview-and-layout`) is based directly on main. Its current diff contains the chat beauty preview, role-target normalization, CSS scope and chat list/detail layout adjustments. It does **not** contain the accidental top-right floating-menu experiment. The existing `#btn-more-menu` behavior was not changed by the current diff. The user's requested bottom composer "+" menu is a separate control and must not be conflated with it.
+- PR #243 tutorial catalog covers 29 desktop apps and 50 guide records. Its contract test explicitly checks 11 FAQ entries and the 19 actual composer menu labels: 表情包、奔赴、重玩、位置、纪念日、旁白动作、直播间、音乐、语音通话、视频通话、发红包、转账、图片、语音、名片、送礼物、群投票、群接龙、群通话. Older notes saying 10 FAQs are stale. Tutorial browser/device acceptance remains NOT VERIFIED.
+- PR #245 contains the forum-detail Home Indicator hit-target correction and an expanded Playwright test for chat/forum interaction, comment input, navigation, and overflow. The test has not executed in this environment; do not mark the fix accepted until its browser run/device check succeeds.
+- PR #246 contains a source-verified inventory of 89 HTML pages and 28 unique launcher destinations plus two static links. It explicitly labels the route/storage cross-module mapping as partial and NOT COMPLETE.
+- PR #247 audited only `apps/settings/`: its two legacy CSS files have no in-repo page consumers but are still copied into `dist`. No deletion is safe to claim; external static URL/production artifact behavior is not verified.
+- PR #248 replaces the placeholder `npm run lint` with a no-dependency Node syntax checker and adds `test:lint`. It checks JS/MJS/CJS files and executable inline scripts in HTML. The commands have not been executed and CI integration is intentionally pending runner recovery.
+- Recent workflow runs for PR #242, #243, #245, and #248 conclude failure with missing job logs/steps. These are NOT VERIFIED test results; available job data has no usable logs. Do not infer test failures in application code or green status.
+- PR #148 cloud-push infrastructure remains a large non-mergeable stack; PR #239 server-side model and grouped bubble delivery depends on it. The Worker model secret is not configured, and live scheduler/push delivery remains NOT VERIFIED. Do not configure secrets or deploy without explicit owner approval.
+- Multi-bubble and role-media behavior already has implementation on current main; stale PR #184 must be audited against main before any port/merge, not duplicated.
+
+### Execution boundaries and next sequence
+1. Keep the user-facing bottom composer "+" menu as the target for any future menu changes. Do not edit top-right conversation settings/menu unless separately requested.
+2. Continue low-risk independent items first: review and reconcile GOV-001/004, GOV-002, GOV-003, CI-004, Tutorial, and HOME-INDICATOR-002. Keep stacked PR base dependencies intact.
+3. Before changing storage, complete DATA-001/002/005 inventories and backup safety checks. Do not migrate or delete existing user data during this task without an explicit migration/backup approval.
+4. Reconcile the already-landed multi-bubble/role-media path against older branches; then address contextual sticker/avatar behavior only where a concrete gap remains.
+5. Break cloud-push work into small, reviewable milestones. A code-only PR is not proof of scheduled execution, server model response, OS push delivery, or two-device message persistence.
+6. No merge to main, production deployment, APK update, Worker secret configuration, or destructive user-data operation without explicit owner approval.
+7. This conversation cannot run after the chat/session is closed. Leave this checkpoint so the next session can resume without asking the owner to repeat the task.
 
 ## 2026-11-15 — HOME-INDICATOR-002 keyboard focus of decorative app shell
 
@@ -119,3 +135,9 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **Actually executed:** fetched exact page-inline IIFE from updated GitHub blob `faef7232ece501203fcb2bafd9c596499d409b5e` and executed it in isolated V8 with simulated DOM/ResizeObserver. Verified five states **PASS**: initial `98px`, reply hint visible `134px`, 60px expanded composer `194px`, Home Indicator hidden `170px`, reply hint hidden again `134px`. Confirmed one ResizeObserver watches both elements.
 - **NOT RUN:** complete app original Playwright suite, `npm ci`, `npm run build`, physical devices or isolated QA; current working runtime lacks complete repo. Added Playwright assertions are committed but not executed against full app. Do not equate source-level simulation to full browser E2E.
 - **Scope/release:** original Draft PR #245, no duplicate branch, no shared controller changes, no main merge and no production operations. If the known QA source tree becomes available, next action is `node tests/home-indicator-hit-area.test.mjs` (with installed Playwright) plus build, then only single isolated QA.
+
+## 2026-11-16 — NAV-002 verified main reconciliation
+
+- Reconciled PR #245 from old #244-based tree with current immutable main commit `a5415d7e28280fd07cea4d02e19e87d9ec36083e`; PR #244 was already merged. Created a two-parent, fast-forward-only merge commit (parents original PR HEAD and main HEAD) whose content tree uses the entire **latest main** as the baseline and carries only NAV-002's 3 implementation/test paths plus this log. No full old forum HTML or historical governance document overwrites.
+- Forum page retains current main's `forum-gossip.js` / `forum-world-events.js` imports and newer 1355-line feature content. Ported narrow composer/HOME Indicator CSS and existing isolated ResizeObserver routine; retained #245 Home Indicator and expanded original test. Source/composition verified; complete app E2E/build **NOT RUN** until full source+dependencies available.
+- No main merge, no QA/production Worker, data, schema or secrets changes. Reviewer must run original Playwright forum navigation against the merged branch before QA acceptance.

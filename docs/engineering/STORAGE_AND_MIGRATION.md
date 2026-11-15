@@ -90,7 +90,7 @@ Do not prematurely merge every existing DB into one physical database. Prefer on
 
 ### C. MediaRepository / Blob store: binary data
 
-Use the existing maomao-assets repository rather than inventing a second media system, after backup support is complete.
+Use the existing maomao-assets repository rather than inventing a second media system. Its v2 backup target is now present in settings/js/backup.js; confirm the media-backup regression suite and a real export/restore cycle before treating backup acceptance as complete.
 
 Messages should reference media by assetId. The renderer should resolve assetId to a Blob/object URL. Every object URL must be revoked when no longer needed. Reuse identical assets by hash when safe. Store MIME type, byte size, owner type/id, creation time, hash, and reference metadata.
 
@@ -115,7 +115,7 @@ Never begin with “move then delete.” Follow this order:
 
 1. **Inventory:** find every reader/writer of chat_history_<id>, characters, memories, images, stickers, calls, date mode, group messages, wallet/forum integrations, search, backup, export, and import.
 2. **Baseline:** capture current schema examples using synthetic fixtures; record counts, message order, stable IDs, role/group IDs, and all known fields. Never use real private chats as public fixtures.
-3. **Backup coverage:** update backup.js for maomao-assets, media blobs/refs, and audio Blob inclusion or an explicitly documented separate-export route. Test backup and restore both ways.
+3. **Backup verification:** maomao-assets v2 and its four stores are already registered in backup.js with atomic export and clear-on-restore. Run tests/media-backup.test.mjs and verify a real export/restore cycle. Separately resolve DATA-003: maomao-media-store/audio currently excludes its Blob, so decide whether music is included in full backup or offered through a clearly reported large-media export.
 4. **Preflight:** check IndexedDB availability and navigator.storage.estimate() where supported. Do not assume a fixed browser quota. Estimate required free space plus headroom; stop safely if insufficient.
 5. **Shadow copy:** copy existing localStorage histories to IndexedDB without changing the source key. Process large histories in bounded batches; show progress and allow retry.
 6. **Verification:** compare per-conversation message counts, stable IDs/mids, order, timestamps, role/group association, and a deterministic hash of normalized records. Verify media references and readable previews.

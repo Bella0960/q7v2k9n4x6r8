@@ -385,6 +385,58 @@ async function main() {
       results.push(`${caseName} 模式：落库 ${turn.length} 条、逐条上屏、刷新后身份与文本不变`);
     }
 
+    // ================= 2b. 浏览器真实链路：用户发送持久化失败 =================
+    // 故障注入仅针对当前角色聊天记录，不改其他本地设置，不调用正式 AI。
+    for (const failure of ['quota', 'silent']) {
+      await setSeed(page, {
+        ai_custom_characters: rolesWith('auto'),
+        api_settings: API_SETTINGS,
+        chat_history_bubA: JSON.stringify([{ role: 'user', text: '旧消息必须保留', time: 1, mid: 'old_safe' }])
+      });
+      await page.goto(origin + '/chat/chat/chat-detail.html?id=bubA', { waitUntil: 'domcontentloaded' });
+      await waitForRows(page, 1);
+      const before = await page.evaluate(() => localStorage.getItem('chat_history_bubA'));
+
+      await page.evaluate((mode) => {
+        const original = Storage.prototype.setItem;
+        window.__chatWriteAttemptCount = 0;
+        window.__restoreChatWrite = () => { Storage.prototype.setItem = original; };
+        Storage.prototype.setItem = function (key, value) {
+          if (String(key) === 'chat_history_bubA') {
+            window.__chatWriteAttemptCount += 1;
+            if (mode === 'quota') throw new DOMException('quota exceeded', 'QuotaExceededError');
+            return; // Simulate a browser/storage layer that silently ignores writes.
+          }
+          return original.call(this, key, value);
+        };
+      }, failure);
+
+      const unsavedText = '模拟写入失败，不允许发送';
+      try {
+        await page.locator('#chat-input').fill(unsavedText);
+        await page.locator('#chat-input').press('Enter');
+        await page.waitForTimeout(700);
+        const observed = await page.evaluate(() => ({
+          writeAttempts: window.__chatWriteAttemptCount,
+          stored: localStorage.getItem('chat_history_bubA'),
+          input: document.getElementById('chat-input').value,
+          visible: Array.from(document.querySelectorAll('#chat-messages .msg-row'))
+            .map(row => row.innerText || '').join('\n')
+        }));
+        assert.ok(observed.writeAttempts > 0, failure + ': actual chat save path must be intercepted');
+        assert.equal(observed.stored, before, failure + ': unsaved message must not mutate old history');
+        assert.equal(observed.input, unsavedText, failure + ': a failed send must keep editable input');
+        assert.ok(!observed.visible.includes(unsavedText),
+          failure + ': a failed send must not appear as successfully delivered');
+        results.push(failure + '：真实浏览器发送被拒，旧记录不变，输入和引用安全保留');
+      } finally {
+        await page.evaluate(() => {
+          if (window.__restoreChatWrite) window.__restoreChatWrite();
+          delete window.__restoreChatWrite;
+        });
+      }
+    }
+
     // ================= 3. 老记录：单条消息多气泡的显示与四类操作 =================
     const legacyText = '旧气泡一\n\n旧气泡二\n\n旧气泡三';
     const legacyHistory = JSON.stringify([

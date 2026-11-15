@@ -216,8 +216,8 @@ test('user image shares require first-use privacy confirmation and pass only cur
 });
 
 test('AI sees current-turn images and can only add an explicit avatar candidate after a successful reply', () => {
-  assert.ok(chatDetailSource.includes('chat-image-vision.js?v=20261107v5'));
-  assert.ok(chatDetailSource.includes('role-avatar-library.js?v=20261107v14'));
+  assert.ok(chatDetailSource.includes('chat-image-vision.js?v=20261113v1'));
+  assert.ok(chatDetailSource.includes('role-avatar-library.js?v=20261113v1'));
   assert.ok(chatDetailSource.indexOf('storage/media-repository.js') < chatDetailSource.indexOf('role-avatar-library.js'));
   assert.ok(chatDetailSource.includes('ChatImageVision.prepareHistory'));
   assert.ok(chatDetailSource.includes('visionImageMids'));
@@ -246,7 +246,8 @@ test('candidate assets share the original media blob and do not change the activ
   assert.ok(avatarLibrarySource.includes('media.getAsset(assetId)'));
   assert.ok(avatarLibrarySource.includes("media.addRef(assetId, OWNER_TYPE, String(roleId))"));
   assert.ok(avatarLibrarySource.includes("source: options.source === 'legacy' ? 'legacy' : (options.source === 'chat' ? 'chat' : 'upload')"));
-  assert.ok(avatarLibrarySource.includes("var latest = readState(roleId)"));
+  assert.match(avatarLibrarySource,
+    /media\.addRef\(assetId, OWNER_TYPE, String\(roleId\)\)[\s\S]*?var latestResult = readStateResult\(roleId\);[\s\S]*?var latest = latestResult\.value/);
   assert.ok(avatarLibrarySource.includes("activeId: latest.activeId, items: [item].concat(latest.items)"));
   assert.ok(avatarLibrarySource.includes("return { ok: true, value: copyItem(item, next.activeId), meta: { linked: true } }"));
 });
@@ -254,16 +255,23 @@ test('candidate assets share the original media blob and do not change the activ
 test('deleted chat images release only chat references after single or bulk deletion is saved', () => {
   assert.ok(chatDetailSource.includes('function releaseDeletedChatImageReferences(messages)'));
   assert.ok(chatDetailSource.includes("String(message.assetId),\n                        'chat-message',"));
-  assert.ok(chatDetailSource.includes('if (!saveMessages(keep))'));
-  assert.ok(chatDetailSource.includes('releaseDeletedChatImageReferences(removedMessages)'));
-  assert.ok(chatDetailSource.includes('releaseDeletedChatImageReferences([removedMessage])'));
+  const single = chatDetailSource.slice(chatDetailSource.indexOf('function deleteOneMessage(bubbleId)'));
+  const bulk = chatDetailSource.slice(chatDetailSource.indexOf("document.getElementById('selectDeleteBtn').addEventListener"));
+  for (const handler of [single, bulk]) {
+    const save = handler.indexOf('if (!saveMessages(keep))');
+    const release = handler.indexOf('releaseDeletedChatImageReferences(removedMessages)');
+    assert.ok(save >= 0 && release > save, 'reference cleanup must follow a successful save');
+    assert.match(handler.slice(save, release), /删除失败[\s\S]*?return;/);
+    assert.match(handler.slice(0, release), /removedMessages = list\.filter\(function \(m\) \{ return !keptMids\.has/);
+  }
   assert.ok(chatExtrasSource.includes('releaseDeletedChatImageReferences(previousMessages)'));
   assert.ok(chatDetailSource.includes('window.releaseDeletedChatImageReferences = releaseDeletedChatImageReferences'));
 });
 
 test('PWA shell and package contracts include the chat vision runtime', () => {
-  assert.ok(serviceWorkerSource.includes("const CACHE_NAME = 'phone-app-pwa-v198'"));
-  assert.ok(serviceWorkerSource.includes('chat-image-vision.js?v=20261107v5'));
+  const currentCacheVersion = Number(serviceWorkerSource.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m)?.[1] || 0);
+  assert.ok(currentCacheVersion >= 203, 'PWA app shell must not regress below feature minimum v203');
+  assert.ok(serviceWorkerSource.includes('chat-image-vision.js?v=20261113v1'));
   assert.ok(serviceWorkerSource.includes('chat-context-policy.js?v=20261107vision1'));
   assert.ok(serviceWorkerSource.includes('chat-extras.js?t=20261107imagevision1'));
   assert.ok(packageJson.scripts['test:chat:image-vision']);
@@ -272,7 +280,8 @@ test('PWA shell and package contracts include the chat vision runtime', () => {
 
 
 test('forwarding an asset-backed chat image adds a destination chat reference', () => {
-  assert.ok(chatDetailSource.includes('async function forwardMessage(msg, targetId, targetName)'));
+  assert.match(chatDetailSource,
+    /async function forwardMessage\(resolved, targetId, targetName\)\s*\{\s*var msg = resolved\.message;/);
   assert.ok(chatDetailSource.includes("_chatImageMediaRepo.addRef(fwd.assetId, 'chat-message', String(fwd.mid))"));
   assert.ok(chatDetailSource.includes('fwd.assetId = String(msg.assetId)'));
   assert.ok(chatDetailSource.includes('if (linkedImageRef)'));
@@ -383,4 +392,15 @@ test('role deletion waits for portrait cleanup and persists retryable failures',
   assert.ok(characterManagerSource.includes("try {\n        renderRoleList();\n    } catch (error)"));
   assert.ok(characterManagerSource.includes("角色已删除，但当前联系人状态暂时无法清理"));
   assert.ok(characterManagerSource.includes('function writeRoleAvatarCleanupQueue(queue)'));
+});
+
+
+test('active avatar changes require an explicit character change instruction', () => {
+  const api = createVision();
+  for (const text of ['把这张设为你的头像', '换个头像', '请把这张换成你的头像']) {
+    assert.equal(api.requestsAvatarChange(text), true, text);
+  }
+  for (const text of ['收藏这张头像', '这张适合做头像吗', '不要换头像', '帮我换头像', '把这张设为我的头像', '这两张配成情头', '只收藏，不要换头像']) {
+    assert.equal(api.requestsAvatarChange(text), false, text);
+  }
 });

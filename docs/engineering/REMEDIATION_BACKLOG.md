@@ -124,9 +124,9 @@ Acceptance:
 - No untracked IndexedDB database remains.
 
 ### DATA-002 — Complete backup coverage for MediaRepository
-**Priority:** P0 · **Status:** OPEN
+**Priority:** P0 · **Status:** IN PROGRESS (2026-11-11: implementation is already present on main; automated execution/restore acceptance remains NOT VERIFIED)
 
-Evidence: maomao-assets (assets/blobs/refs) is not in backup.js IDB_TARGETS at baseline.
+Evidence: current main `settings/js/backup.js` includes `maomao-assets` v2 stores `assets`, `blobs`, `refs`, and `image_records`; Blob payloads use Base64 with size limits; `atomicExport: true` excludes the entire database if any blob is skipped; `clearOnRestore: true` clears stores even when the backup store is empty. `tests/media-backup.test.mjs` contains 10 focused cases for MIME preservation, empty-store clearing, invalid Base64 handling, size-limit atomic exclusion, full four-store round trip, and reference integrity. The test file exists but its execution has not been verified in this environment.
 
 Acceptance:
 - Export includes metadata, Blob payloads, references, and integrity hashes.
@@ -158,15 +158,22 @@ Acceptance:
 - No auto-delete feature.
 
 ### DATA-005 — Inventory all chat-history read/write callers
-**Priority:** P0 · **Status:** OPEN
+**Priority:** P0 · **Status:** FIXED (static source inventory completed 2026-11-11)
 
-Scope: chat detail/list/search, calls, date/journey, memory, moments, notifications, forum, wallet cards, chat extras, PhoneStorage, tests, backup/export.
+Evidence: `docs/chat-history-callers.md` records the main-branch readers, writers, deletions, role/group/date-mode scopes, legacy fallbacks, test-only callers, and known persistence-result handling gaps.
+
+Completed:
+- Identified production call sites across chat detail/list/search/settings, chat extras, date/journey, calls, notifier, wallet, forum, couple, role matching, memory, library, image generation, PhoneStorage, ConversationRepository, and backup/restore.
+- Recorded the current localStorage-backed `chat_history_<id>` behavior, PhoneStorage compatibility rules, shared online/date history, and distinct role/group ID domains.
+- Assigned a safe migration order and called out write paths that ignore save failures or bypass PhoneStorage.
 
 Acceptance:
-- Call-site matrix identifies file, operation, role/group ID, legacy fallback, and whether write is direct or through PhoneStorage.
-- Every caller assigned a migration step.
-- Cross-role/group isolation and date-mode shared history rules are recorded.
-- This is initially read-only inventory; do not switch storage backend in this task.
+- [x] Call-site matrix identifies file, operation, role/group ID, legacy fallback, and whether write is direct or through PhoneStorage.
+- [x] Every caller assigned a migration step.
+- [x] Cross-role/group isolation and date-mode shared history rules are recorded.
+- [x] This was a read-only inventory; no storage backend was switched.
+
+Remaining implementation is tracked by DATA-006/007/008 and QA-002. DATA-005 being fixed does not mean those runtime defects are fixed.
 
 ### DATA-006 — Design and implement IndexedDB conversation storage
 **Priority:** P0 · **Status:** BLOCKED BY DATA-001/002/005
@@ -195,15 +202,28 @@ Acceptance:
 - Existing legacy image messages render unchanged.
 
 ### DATA-008 — Make remaining legacy storage callers explicit
-**Priority:** P2 · **Status:** OPEN
+**Priority:** P2 · **Status:** IN PROGRESS (PR #255, 2026-11-11)
 
 Scope: migrate direct localStorage readers/writers page-by-page to approved PhoneStorage/repository APIs after storage contracts are stable.
+
+Progress in PR #255:
+- Added verified history writes and explicit failure handling for offline/date chat, travel-journey stage messages, group-call result cards, forum post sharing, couple-space invitations, wallet shop/takeout/family-card notices, and shake-match contact initialization.
+- Added behavior tests for write refusal, readback mismatch, quota errors, role isolation, and retry/deduplication.
+- No history key or message schema was renamed; no history was truncated or migrated.
+- A failed purchase/order is not inferred from a failed chat notice: transaction state and message-notice state remain separate.
+
+Remaining:
+- Finish the legacy read/write audit against DATA-005 and migrate search/settings and any remaining direct writers after the parallel multi-bubble branch is reconciled.
+- Audit remaining read-only legacy fallbacks in memory/context/library paths.
+- Confirm backup/export behavior before changing the storage backend (DATA-001/002/006/007).
+- Run the complete local/CI regression suite and validate on a real phone/PWA.
 
 Acceptance:
 - Each migration is limited to one domain or feature.
 - No hidden change to key names or role scoping.
 - Failures propagate and are tested.
 - Direct access remains only where documented as an intentional compatibility boundary.
+- DATA-008 remains OPEN until the remaining callers are migrated and the full regression/device acceptance is complete.
 
 ### DATA-009 — Decide cloud sync, if ever required
 **Priority:** P3 · **Status:** DEFERRED
@@ -267,19 +287,6 @@ Acceptance:
 - No runtime framework introduced.
 - Each module declares required global APIs in comments/tests.
 
-### HOME-INDICATOR-002 — Add a precise Home Indicator hit target to forum detail
-**Priority:** P1 · **Status:** IN PROGRESS (ported onto the latest GOV-001 base; automated browser/device acceptance pending)
-
-Scope: create the exact 84×4px transparent hit target on app pages even when a fixed `.comment-bar` exists; move the forum composer above the indicator band only while the indicator is enabled; restore the original composer bottom spacing when the preference is disabled.
-
-Acceptance:
-- The visible Home Indicator line remains 84×4px and the separate hit target aligns exactly with it.
-- Tapping the line center on forum detail returns to the desktop.
-- Comment input center and edge taps still focus; typing and submitting a comment still work.
-- When the Home Indicator is hidden, the hit target disappears and the comment composer returns to `bottom: 0px`.
-- Check 375×812, 390×844, and 430×932; no horizontal overflow.
-- Do not enlarge the invisible hit area, change other pages' geometry, or alter comment data.
-
 ## Phase 4 — Reliability, security, performance
 
 ### QA-001 — Expand real browser/mobile acceptance
@@ -292,7 +299,16 @@ Acceptance:
 - Automated static contracts are not described as full E2E coverage.
 
 ### QA-002 — Add storage-failure tests
-**Priority:** P1 · **Status:** OPEN
+**Priority:** P1 · **Status:** IN PROGRESS (chat-history cases added in PR #255)
+
+Progress:
+- Added behavior tests for chat history save rejection, readback mismatch, localStorage quota failure, role isolation, date-mode rollback, journey retry/deduplication, call/forum/wallet notices, and shake-match initialization.
+- The tests are wired into the existing `npm run test:chat:isolation` script.
+
+Remaining:
+- Add IndexedDB unavailable/blocked/quota tests when the DATA-001 registry and DATA-006 storage implementation are ready.
+- Run the suite locally and obtain actionable CI output; current Actions runs returned failed conclusions without job steps or logs.
+- Verify refresh/reopen and storage behavior on desktop and real mobile browsers.
 
 Acceptance:
 - Simulate localStorage quota errors and IndexedDB unavailable/blocked/quota errors.
