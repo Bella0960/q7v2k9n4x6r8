@@ -132,3 +132,67 @@ test('PWA precaches the same group turn module version used by the chat page', (
   assert.ok(sw.includes(asset));
   assert.ok(detail.includes(asset));
 });
+
+
+test('role-DM old/new group invitations are deferred until the AI reply save is verified', () => {
+  const detail = read('chat/chat/chat-detail.html');
+  assert.match(detail, /var groupTurnEffects = window\.GroupTurnEffects/);
+  const start = detail.indexOf('// 私聊角色可以发出待同意的群邀请');
+  const end = detail.indexOf('// 角色表情是现有回复的一部分', start);
+  assert.ok(start >= 0 && end > start, 'the chat reply must stage invitations');
+  const source = detail.slice(start, end);
+  const save = detail.indexOf('var replySaved = saveMessages(historyList);', end);
+  const commit = detail.indexOf('groupTurnEffects.finalize(replySaved)', save);
+  assert.ok(save > end && commit > save, 'finalization must follow verified reply save');
+  assert.match(source, /groupTurnEffects\.afterSave\(function \(\) \{[\s\S]*?GroupGovernance\.offerInvitation/);
+  assert.match(source, /groupTurnEffects\.afterSave\(function \(\) \{[\s\S]*?GroupGovernance\.offerNewGroupInvitation/);
+
+  // Execute the actual two marker handlers extracted from chat-detail.html;
+  // any direct pre-save invitation write must fail these assertions.
+  const runMarkers = new Function(
+    'window', 'groupTurnEffects', 'isGroupChat', 'streamResult', 'isRegen',
+    'contextOnly', 'silent', 'presenceMode', 'aliasRoleId', 'currentRoleId',
+    'showToast', 'fullText',
+    source + '\nreturn fullText;'
+  );
+  function stage(options = {}) {
+    const calls = [], notices = [];
+    const window = { GroupGovernance: {
+      offerInvitation(request) { calls.push(['existing', request]); return { ok:true }; },
+      offerNewGroupInvitation(request) { calls.push(['new', request]); return { ok:true }; }
+    } };
+    const tx = makeTurn();
+    const visible = runMarkers(
+      window, tx, options.isGroupChat || false,
+      { ok:options.streamOk !== false }, false,
+      options.contextOnly || false, false, 'online',
+      'r1', 'r1', (notice) => notices.push(notice),
+      '正常回复 [群邀请:g1] [建群邀请:新建群:r1,r2]'
+    );
+    assert.doesNotMatch(visible, /群邀请|建群邀请/);
+    return { tx, calls, notices };
+  }
+  const failed = stage();
+  assert.equal(failed.calls.length, 0, 'marker parsing must not write any invitation');
+  failed.tx.finalize(false);
+  assert.equal(failed.calls.length, 0, 'failed history save must preserve invite storage');
+  assert.equal(failed.notices.length, 0);
+
+  const complete = stage();
+  assert.equal(complete.calls.length, 0);
+  const result = complete.tx.finalize(true);
+  assert.equal(result.ok, true);
+  assert.equal(result.committed, 2);
+  assert.deepEqual(complete.calls.map(([type]) => type), ['existing', 'new']);
+  assert.equal(complete.calls[0][1].groupId, 'g1');
+  assert.equal(complete.calls[0][1].inviterId, 'r1');
+  assert.deepEqual(complete.calls[1][1].memberIds, ['r1', 'r2']);
+  assert.equal(complete.notices.length, 2);
+  assert.equal(complete.tx.finalize(true).code, 'ALREADY_FINALIZED');
+
+  for (const opts of [{streamOk:false}, {contextOnly:true}, {isGroupChat:true}]) {
+    const blocked = stage(opts);
+    blocked.tx.finalize(true);
+    assert.equal(blocked.calls.length, 0, 'incomplete or disallowed turns cannot invite');
+  }
+});
