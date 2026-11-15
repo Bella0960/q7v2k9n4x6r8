@@ -93,6 +93,7 @@ function objectArt(name){
 function render(){
  if(!current)return;
  var c=current,masked=c.type==='蒙面档案',obj=c.type==='以物识人',blind=c.type==='性格盲测';
+ cardEl.dataset.candidateId=c.id;
  cardEl.setAttribute('aria-label',(masked||obj||blind?'揭晓当前陌生人物的身份':'查看 '+c.name+' 的人物档案'));
  cardEl.innerHTML='<div class="card-top"><span>'+escapeHtml(modeCaption(c))+'</span><span class="card-number">'+String(position).padStart(2,'0')+'</span></div>'+
  '<div class="portrait">'+(obj?objectArt(c.object):'<div class="ring" aria-hidden="true"></div>')+
