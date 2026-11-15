@@ -6523,6 +6523,15 @@
 
             // R4 渲染回调：交给 PhoneStream 每帧节流调用（正则清洗 + DOM 写入 + 滚动）
             // 引擎已抽离至 shared/js/phone/phone_stream.js（三段式超时/SSE 解析/残留收尾）
+            function redactGroupPrivateStream(value) {
+                var source = String(value == null ? '' : value);
+                if (!isGroupChat) return source;
+                if (window.GroupGameSessions && typeof window.GroupGameSessions.redactPublicStreamText === 'function')
+                    return window.GroupGameSessions.redactPublicStreamText(source);
+                // Privacy fallback if the external script fails to load.
+                return source.replace(/\[(?:游戏私聊|群私聊)[:：][^\]\r\n]{0,1000}(?:\]|$)/g, '')
+                    .replace(/\[(?:游|游戏|游戏私|游戏私聊|群|群私|群私聊)[^\]\r\n]{0,1000}$/g, '');
+            }
             function paintStreamLive(text) {
                 // 保留原始累计文本：若流引擎意外抛错，收尾仍可走既有清洗与落库流程。
                 lastPaintedStreamText = typeof text === 'string' ? text : '';
@@ -6536,8 +6545,8 @@
                         if (window.ChatImageVision && typeof window.ChatImageVision.stripAvatarCandidateMarker === 'function') {
                             snapshotText = window.ChatImageVision.stripAvatarCandidateMarker(snapshotText);
                         }
-                        return snapshotText.replace(/\[群邀请[:：][^\]]{0,100}\]/g, '').replace(/\[群邀请[:：][^\]]{0,}$/g, '')
-                            .replace(/\[建群邀请[:：][^\]]{0,180}\]/g, '').replace(/\[建群邀请[:：][^\]]{0,}$/g, '');
+                        return redactGroupPrivateStream(snapshotText.replace(/\[群邀请[:：][^\]]{0,100}\]/g, '').replace(/\[群邀请[:：][^\]]{0,}$/g, '')
+                            .replace(/\[建群邀请[:：][^\]]{0,180}\]/g, '').replace(/\[建群邀请[:：][^\]]{0,}$/g, ''));
                     })(),
                     voiceMode: presenceMode || 'online',
                     groupName: groupReplyPick ? groupReplyPick.name : undefined,
@@ -6563,6 +6572,7 @@
                 if (window.ChatImageVision && typeof window.ChatImageVision.stripAvatarCandidateMarker === 'function') {
                     tmpText = window.ChatImageVision.stripAvatarCandidateMarker(tmpText);
                 }
+                tmpText = redactGroupPrivateStream(tmpText).trim();
                 if (!tmpText) return;
 
                 if (!streamBubble) {
