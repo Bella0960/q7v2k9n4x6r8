@@ -338,6 +338,10 @@ function fakeFanwaiDB(options = {}) {
               get(id) {
                 const req = {};
                 Promise.resolve().then(() => {
+                  if (options.failSettingsReads && String(id).startsWith('settings:')) {
+                    if (req.onerror) req.onerror();
+                    return;
+                  }
                   req.result = records.get(id);
                   if (req.onsuccess) req.onsuccess();
                 });
@@ -442,6 +446,43 @@ test('hidden story preferences survive reopening but stay isolated between accou
   }
 });
 
+
+
+
+test('failed IndexedDB settings read never replaces existing memory preferences with defaults', async () => {
+  const behavior = { failSettingsReads: true };
+  const db = fakeFanwaiDB(behavior);
+  const accountId = 'MAO-AAAAAAAAAAAA';
+  const key = 'settings:' + accountId + ':role-1';
+  db.records.set(key, {
+    id: key, kind: 'fanwai-settings',
+    settings: { memory: 'role', count: 40 }, updatedAt: 10
+  });
+  const app = mount({ accountId, indexedDB: db });
+  const root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().some(n => n.dataset.template === 'daily'));
+  const sheet = root.querySelector('.fw-sheet');
+  const memoryChoice = sheet.all().find(n => n.dataset.action === 'set-memory' && n.dataset.memoryMode === 'role');
+  assert.ok(memoryChoice);
+  await root.handlers.click({ target: memoryChoice });
+  const countSelect = sheet.all().find(n => n.id === 'fw-count');
+  countSelect.value = '100';
+  await root.handlers.change({ target: countSelect });
+  assert.deepEqual(db.records.get(key).settings, { memory: 'role', count: 40 },
+    'a read failure may not clobber either saved preference');
+  assert.ok(app.notices.some(n => n.includes('故事设置读取失败')));
+  assert.ok(app.notices.some(n => n.includes('尚未读到')));
+  assert.equal(app.requests, 0, 'settings recovery must not call the model');
+
+  behavior.failSettingsReads = false;
+  app.open(); // Same open page is permitted to retry the failed settings read.
+  await tickUntil(() => sheet.all().some(n => n.dataset.template === 'daily'));
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.template === 'daily') });
+  assert.equal(sheet.all().find(n => n.dataset.memoryMode === 'role').attributes['aria-pressed'], 'true');
+  assert.equal(sheet.all().find(n => n.id === 'fw-preview-count').value, '40');
+  assert.deepEqual(db.records.get(key).settings, { memory: 'role', count: 40 },
+    'successful retry restores the old choice without writing defaults');
+});
 
 
 test('reader ellipsis opens a safe alternate storyline without overwriting the original', async () => {
