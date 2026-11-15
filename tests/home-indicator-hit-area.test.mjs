@@ -574,6 +574,30 @@ async function runViewport(browser, baseUrl, viewport) {
     restoredPreferenceState.hitDisplay === 'block' && restoredPreferenceState.composerBottom === '24px',
     restoredPreferenceState);
 
+  // The generic mobile-fit.css gives .comment-bar padding-bottom:... !important.
+  // This forum-specific preference must still win, including on 375-430px phones.
+  const paddingPreference = await page.evaluate(() => {
+    const root = document.documentElement;
+    const bar = document.querySelector('.comment-bar');
+    const property = '--maomao-home-indicator-comment-padding-bottom';
+    const previous = root.style.getPropertyValue(property);
+    const priority = root.style.getPropertyPriority(property);
+    try {
+      root.style.setProperty(property, '19px');
+      return {
+        expected: '19px',
+        computed: getComputedStyle(bar).paddingBottom,
+        width: window.innerWidth
+      };
+    } finally {
+      if (previous) root.style.setProperty(property, previous, priority);
+      else root.style.removeProperty(property);
+    }
+  });
+  add('forum-detail.mobile-fit-respects-home-indicator-composer-padding',
+    paddingPreference.computed === paddingPreference.expected,
+    paddingPreference);
+
   // ---------- 6. Home 条自身仍可用 ----------
   await openPage(`${baseUrl}/forum/forum.html`, '.nav-item[data-page="home"]');
   const barGeom = await page.evaluate(() => {
