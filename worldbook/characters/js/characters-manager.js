@@ -1406,6 +1406,10 @@ function openEditRole(id) {
     const roles = loadRoles();
     const target = roles.find(r => r.id === id);
     if (!target) return;
+    // 已创建过的「邂逅」角色，之后回到角色库仍可选择 AI 完善，不强迫立刻付费。
+    if (aiExpand && target.encounterOrigin && target.encounterOrigin.version === 1) {
+        aiExpand.classList.remove('hidden');
+    }
 
     document.getElementById('editorTitle').textContent = 'Edit Character';
     document.getElementById('editRoleId').value = target.id;
@@ -1549,7 +1553,8 @@ function handleSaveRole() {
     if (activeEncounterDraftId && !roleId && window.MAOMAOEncounter) {
         const result = window.MAOMAOEncounter.removeCandidate(activeEncounterDraftId);
         activeEncounterDraftId = '';
-        document.getElementById('btnExpandEncounterPersona').classList.add('hidden');
+        // 保存成功后仍可主动扩写，不需要重新抽卡或重复创建角色。
+        document.getElementById('btnExpandEncounterPersona').classList.remove('hidden');
         setSaveStatus(result.ok ? '已保存到角色库' : '角色已保存，候选收藏暂时未清理', result.ok ? 'success' : 'info');
     } else {
         setSaveStatus('已保存', 'success');
@@ -1814,8 +1819,12 @@ document.getElementById('btnDiscardDraft').addEventListener('click', discardPend
 
 // 只在邂逅候选编辑页可用。严格由用户主动点击并确认，不自动调用收费 API。
 document.getElementById('btnExpandEncounterPersona').addEventListener('click', async function () {
-    if (!activeEncounterDraftId) {
-        setSaveStatus('请先从邂逅的候选收藏里选择角色。', 'error');
+    const editorRoleId = document.getElementById('editRoleId').value.trim();
+    const savedRole = editorRoleId ? getRoleById(editorRoleId) : null;
+    const editingSavedEncounter = !!(savedRole && savedRole.encounterOrigin &&
+        savedRole.encounterOrigin.version === 1);
+    if (!activeEncounterDraftId && !editingSavedEncounter) {
+        setSaveStatus('只支持对「邂逅」创建的人物进行 AI 完善。', 'error');
         return;
     }
     if (!window.PhoneAPI || typeof window.PhoneAPI.complete !== 'function') {
@@ -1834,6 +1843,7 @@ document.getElementById('btnExpandEncounterPersona').addEventListener('click', a
     if (!confirm('完善完整人设将调用一次你配置的聊天 API，可能产生费用。确定生成吗？')) return;
     const button = this;
     const draftId = activeEncounterDraftId;
+    const targetRoleId = editorRoleId;
     const personaEl = document.getElementById('editRolePersona');
     const sourceText = personaEl.value;
     const roleName = document.getElementById('editRoleName').value.trim();
@@ -1852,7 +1862,7 @@ document.getElementById('btnExpandEncounterPersona').addEventListener('click', a
         // 即使服务商截断了较短的付费返回，也保留可用文字，不强迫二次付费。
         // 用户在网络请求期间修改的内容不应被无声覆盖。
         if (draftId !== activeEncounterDraftId ||
-            document.getElementById('editRoleId').value.trim() !== '') {
+            document.getElementById('editRoleId').value.trim() !== targetRoleId) {
             setSaveStatus('页面已切换，生成结果未覆盖当前角色。', 'error');
             return;
         }
