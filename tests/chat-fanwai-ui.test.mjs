@@ -140,6 +140,7 @@ function mount(options = {}) {
     get prompts() { return prompts; },
     get notices() { return notices; },
     get registry() { return window.MAOMAOFanwai; },
+    get core() { return window.MAOMAOFanwaiCore; },
     open() {
       const menu = grid.querySelector('[data-feat="fanwai"]');
       assert.ok(menu, 'existing plus menu must receive fanwai button');
@@ -194,9 +195,11 @@ test('API interruption retains partial dialogue and resume completes it', async 
   assert.equal(sheet.all().filter(n => n.className === 'fw-bubble').length, 80);
 });
 
-test('group chat has no fanwai menu entry', () => {
+test('group chat has no fanwai menu entry or plugin and memory APIs', () => {
   const app = mount({ roleId: 'group-42' });
   assert.equal(app.grid.querySelector('[data-feat="fanwai"]'), null);
+  assert.equal(app.registry, undefined, 'group chat must not expose fanwai plugins');
+  assert.equal(app.core, undefined, 'group chat must not expose memory/context helpers');
 });
 
 test('g-prefixed imported characters retain the fanwai menu and can start their own story', async () => {
@@ -216,12 +219,16 @@ test('real group IDs and nonstandard groups from phone_groups never expose the f
   for (const roleId of ['g1700000000000', 'group-old42', 'group_legacy42']) {
     const group = mount({ roleId });
     assert.equal(group.grid.querySelector('[data-feat="fanwai"]'), null, roleId);
+    assert.equal(group.registry, undefined, roleId + ' must not load plugins');
+    assert.equal(group.core, undefined, roleId + ' must not load context helpers');
   }
   const customGroup = mount({
     roleId: 'chat-room-random-id',
     groups: [{ id: 'chat-room-random-id', name: '自定义群聊', members: [] }]
   });
   assert.equal(customGroup.grid.querySelector('[data-feat="fanwai"]'), null);
+  assert.equal(customGroup.registry, undefined);
+  assert.equal(customGroup.core, undefined);
   const collision = mount({
     roleId: 'gail_custom_01',
     characters: [{ id: 'gail_custom_01', name: 'Gail' }],
@@ -229,6 +236,8 @@ test('real group IDs and nonstandard groups from phone_groups never expose the f
   });
   assert.equal(collision.grid.querySelector('[data-feat="fanwai"]'), null,
     'the recorded group must take precedence when IDs collide');
+  assert.equal(collision.registry, undefined);
+  assert.equal(collision.core, undefined);
 });
 
 test('a character using the legacy numeric group prefix remains accessible if it is in the role library', () => {
@@ -814,6 +823,7 @@ test('authenticated pages without the established account scope module never mou
   const valid = mount({ accountId: 'MAO-AAAAAAAAAAAA' });
   assert.ok(valid.grid.querySelector('[data-feat="fanwai"]'),
     'matching completed existing scope preserves normal episode operation');
+  assert.ok(valid.registry && valid.core, 'verified private chat must keep extension points');
 });
 
 
