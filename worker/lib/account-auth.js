@@ -187,7 +187,8 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     const timestamp = now();
     if (!session) return null;
     // Old delegated QA sessions remain stored, but cannot authorize isolated QA.
-    if (qaLocal && !isQaLocalAccount(session)) return null;
+    if (qaLocal && (!isQaLocalAccount(session) ||
+        !store.isMaoIsolatedQaAccount(session.account_id))) return null;
     // Keep the user-facing disabled notice even after all sessions are revoked.
     if (session.status === 'disabled' || session.status === 'revoked') {
       throw new ApiError(403, 'ACCOUNT_DISABLED', '您的账号已被禁用');
@@ -350,7 +351,8 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
           verified.username_key !== account.usernameKey ||
           verified.role !== 'user' ||
           verified.status !== (qaLocal ? 'active' : 'pending_invite') ||
-          (qaLocal && !isQaLocalAccount(verified))) {
+          (qaLocal && (!isQaLocalAccount(verified) ||
+            !store.isMaoIsolatedQaAccount(verified.id)))) {
         throw new ApiError(503, 'ACCOUNT_SAVE_UNVERIFIED',
           '账号持久保存尚未确认，请先检查已有账号，不要重复注册');
       }
@@ -439,7 +441,8 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     const body = await readJsonBody(request);
     if (!delegated) {
       const account = await validateLocalCredentials(request, body);
-      if (qaLocal && !isQaLocalAccount(account)) {
+      if (qaLocal && (!isQaLocalAccount(account) ||
+          !store.isMaoIsolatedQaAccount(account.id))) {
         throw new ApiError(401, 'QA_ACCOUNT_ONLY', '请使用隔离测试版创建的独立测试账号登录');
       }
       return await createSession(account, request);
