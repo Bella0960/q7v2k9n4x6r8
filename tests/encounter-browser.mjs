@@ -62,6 +62,22 @@ try {
     await page.locator('#likeButton').click();
     await page.waitForTimeout(350);
     assert.equal(await page.locator('#savedCount').innerText(),'01','点击喜欢应保存候选');
+    if(viewport.width===390){
+      // 强制物件卡：卡面不得先暴露失主的姓名、性别、种族。
+      await page.locator('#moreButton').click();
+      await page.locator('#setting-type').selectOption('以物识人');
+      await page.locator('#setting-gender').selectOption('女');
+      await page.keyboard.press('Escape');
+      await page.locator('#passButton').click();
+      await page.waitForTimeout(350);
+      assert.equal(await page.locator('#frontCard .name').innerText(),'失主未详');
+      await page.screenshot({path:resolve(artifacts,'encounter-object-concealed.png')});
+      await page.locator('#frontCard').click();
+      await page.locator('#overlay.open').waitFor();
+      assert.match(await page.locator('#sheet').innerText(),/姓名/);
+      assert.match(await page.locator('#sheet').innerText(),/女/);
+      await page.keyboard.press('Escape');
+    }
     await page.reload({waitUntil:'load'});
     assert.equal(await page.locator('#savedCount').innerText(),'01','候选应刷新后存在');
     await page.locator('#savedButton').click();
@@ -88,6 +104,16 @@ try {
       assert.equal(exported.version,1);
       assert.equal(exported.character.name,name);
       assert.ok(!JSON.stringify(exported).includes('apiKey'));
+      const imported=JSON.stringify(exported);
+      await page.locator('#roleImportFile').setInputFiles({name:'maomao-character.json',mimeType:'application/json',buffer:Buffer.from(imported)});
+      await page.waitForFunction(() => document.querySelector('#saveStatus')?.textContent?.includes('已导入 MAOMAO'));
+      assert.equal(await page.locator('#editRoleName').inputValue(),name,'本机导出的 JSON 应能再次导入');
+      await page.locator('#roleImportFile').setInputFiles({
+        name:'external-card.json',mimeType:'application/json',
+        buffer:Buffer.from(JSON.stringify({name:'external',char_name:'external',description:'outside'}))
+      });
+      await page.waitForFunction(() => document.querySelector('#saveStatus')?.textContent?.includes('仅支持从 MAOMAO 导出的角色 JSON'));
+      assert.equal(await page.locator('#editRoleName').inputValue(),name,'拒绝第三方卡后不得覆盖已有人设');
       await page.screenshot({path:resolve(artifacts,'encounter-original-role-editor.png')});
     }
     if(jsErrors.length)failures.push(...jsErrors.map(e=>viewport.width+': '+e));
