@@ -57,7 +57,7 @@ function createHarness({ cachedResponse = null, fetchImpl, putImpl, matchImpl } 
   const openCalls = [];
 
   const cache = {
-    match: async request => (cachedResponse || null),
+    match: request => (matchImpl ? matchImpl(request) : Promise.resolve(cachedResponse || null)),
     put(request, response) {
       putCalls.push({ request, response });
       if (putImpl) return putImpl(request, response);
