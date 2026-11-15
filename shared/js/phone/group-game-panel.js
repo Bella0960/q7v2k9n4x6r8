@@ -44,6 +44,7 @@
       '<button type="button" id="groupGameFinish" class="group-game-button secondary" hidden>结束游戏 · 揭晓身份</button>'+
       '<button type="button" id="groupGameCancel" class="group-game-button secondary" hidden>取消本局（不揭晓）</button>'+
       '<button type="button" id="groupGameCleanup" class="group-game-button secondary" hidden>重试清理临时数据</button>'+
+      '<button type="button" id="groupGameReceiptRetry" class="group-game-button secondary" hidden>补发群聊结果</button>'+
       '<p id="groupGameNotice" class="group-game-notice" role="status" aria-live="polite"></p>';
     var style=document.createElement('style');
     style.id='group-game-panel-style';
@@ -76,6 +77,7 @@
       current=panel.querySelector('#groupGameCurrent'), finish=panel.querySelector('#groupGameFinish'),
       cancelButton=panel.querySelector('#groupGameCancel'),
       cleanupButton=panel.querySelector('#groupGameCleanup'),
+      receiptButton=panel.querySelector('#groupGameReceiptRetry'),
       notice=panel.querySelector('#groupGameNotice'),
       whisperPanel=panel.querySelector('#groupGameWhisperPanel'),
       whisperTo=panel.querySelector('#groupGameWhisperTo'),
@@ -130,7 +132,14 @@
         });
       if(list.children.length)current.appendChild(list);
     }
+    function postResult(session) {
+      var receipts=root.GroupGameChatReceipts;
+      if(!receipts || typeof receipts.publish!=='function')
+        return {ok:false,message:'群聊结果同步模块未加载'};
+      return receipts.publish({group:currentGroup(),session:session,actorId:'__user'});
+    }
     function render(){
+      receiptButton.hidden=true;
       cleanupButton.hidden=true;
       group=currentGroup();isOwner=group&&String(group.ownerId||'__user')==='__user';
       if(!group){stateLine('群资料已变化，请返回群聊重新打开。');form.hidden=true;finish.hidden=true;cancelButton.hidden=true;whisperPanel.hidden=true;return;}
@@ -188,6 +197,12 @@
         }
       }
       if(game && (game.status==='finished'||game.status==='cancelled')) {
+        if(isOwner) {
+          var stored=root.GroupGameChatReceipts&&root.GroupGameChatReceipts.check({
+            group:group,session:game,actorId:'__user'
+          });
+          if(!stored || !stored.ok || !stored.exists) receiptButton.hidden=false;
+        }
         var temporary=api.getCleanupStatus({group:group,groupId:gid,actorId:'__user'});
         if(temporary && temporary.ok && temporary.cleanupPending>0) {
           cleanupButton.hidden=false;
@@ -201,6 +216,15 @@
     form.addEventListener('submit',function(e){
       e.preventDefault();group=currentGroup();
       if(!group||!isOwner){notice.textContent='只有群主可以决定本局规则。';return;}
+      var oldGame=api.getPublic(gid);
+      if(oldGame && (oldGame.status==='finished'||oldGame.status==='cancelled')) {
+        var savedReceipt=postResult(oldGame);
+        if(!savedReceipt.ok) {
+          notice.textContent='上一局的群聊结果还没有保存：'+
+            (savedReceipt.message||'请先修复存储并重试');
+          render();return;
+        }
+      }
       var res=api.start({group:group,actorId:'__user',gameId:'mystery',
         badRoleId:select.value,allowPrivate:allowed.checked,showPrivateActivity:activity.checked});
       notice.textContent=res.ok?'秘密身份牌已分别保存。返回群聊即可开始推理。':(res.message||'开始失败');
@@ -232,7 +256,9 @@
       if(!root.confirm('取消本局？未揭晓的身份牌、猜测票和游戏私聊将清除；原群聊消息不变。'))return;
       var ended=api.cancel({group:group,groupId:gid,actorId:'__user'});
       if(!ended.ok){notice.textContent=ended.message||'取消失败';return;}
-      notice.textContent='已取消本局，未揭晓身份；可以开启新一局。'+
+      var posted=postResult(ended.session);
+      notice.textContent='已取消本局，未揭晓身份。'+
+        (posted.ok?' 群聊消息已同步。':' 群聊消息尚未保存：'+(posted.message||'请重试'))+
         (ended.cleanupComplete===false?' 临时记录未完全清除，请重试清理。':'');
       render();
     });
@@ -244,17 +270,29 @@
         '仍有临时记录没有清理成功，请检查本机存储。';
       render();
     });
+    receiptButton.addEventListener('click',function(){
+      group=currentGroup();
+      if(!group || String(group.ownerId||'__user')!=='__user')return;
+      var previous=api.getPublic(gid);
+      var result=postResult(previous);
+      notice.textContent=result.ok?'游戏结果已同步到原群聊。':
+        '群聊消息尚未保存：'+(result.message||'请检查存储');
+      render();
+    });
     finish.addEventListener('click',function(){
       group=currentGroup();
       if(!group||!isOwner)return;
       if(!root.confirm('结束当前游戏并公布坏人身份？'))return;
       var result=api.finish({group:group,groupId:gid,actorId:'__user'});
       if(!result.ok){notice.textContent=result.message||'结束失败';return;}
+      var chatReceipt=postResult(result.session);
       if(root.GroupMemoryEvents){
         var remembered=root.GroupMemoryEvents.recordGameClosure({group:group,session:result.session});
-        notice.textContent=remembered.ok?'身份已揭晓，结果已写入本群共同记忆。':
+        notice.textContent=remembered.ok?'身份已揭晓，长期记忆已保存。':
           '身份已揭晓，但长期记忆未保存成功：'+(remembered.message||'请检查本机存储');
       }else notice.textContent='身份已揭晓；记忆服务未加载。';
+      notice.textContent+=chatReceipt.ok?' 群聊结果卡已保存。':
+        ' 群聊结果卡未保存：'+(chatReceipt.message||'请重试');
       if(result.cleanupComplete===false)
         notice.textContent += ' 本局临时记录尚未完全清理，请重试。';
       render();
