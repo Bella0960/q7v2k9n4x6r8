@@ -125,6 +125,11 @@ test('existing plus menu opens six templates and generates 80 isolated chat bubb
   const cards = sheet.all().filter(n => n.dataset.template);
   assert.equal(cards.length, 6);
   await root.handlers.click({ target: cards[0] });
+  assert.equal(app.requests, 0, 'preview must not consume any model request');
+  assert.ok(sheet.all().find(n => n.className === 'fw-preview-cover'), 'scene preview cover should appear');
+  const begin = sheet.all().find(n => n.dataset.action === 'start-template');
+  assert.ok(begin, 'generation requires explicit confirmation');
+  await root.handlers.click({ target: begin });
   await tickUntil(() => sheet.all().filter(n => n.className === 'fw-bubble').length === 80);
   assert.equal(app.requests, 7);
   assert.equal(sheet.all().filter(n => n.className === 'fw-bubble').length, 80);
@@ -138,6 +143,8 @@ test('API interruption retains partial dialogue and resume completes it', async 
   const sheet = root.querySelector('.fw-sheet');
   const card = sheet.all().find(n => n.dataset.template === 'daily');
   await root.handlers.click({ target: card });
+  assert.equal(app.requests, 0, 'opening a scene must not call the AI');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'start-template') });
   await tickUntil(() => sheet.all().find(n => n.className === 'fw-status')?.textContent.includes('模拟网络中断'));
   assert.equal(sheet.all().filter(n => n.className === 'fw-bubble').length, 12);
   const resume = sheet.all().find(n => n.dataset.action === 'resume');
