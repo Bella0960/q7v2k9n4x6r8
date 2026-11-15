@@ -30,6 +30,8 @@ test('邂逅引擎保持离线，不需要 API，并为新角色生成唯一姓�
     assert.ok(!seen.has(r.value.name), '原角色或同轮抽卡姓名不得碰撞');
     seen.add(r.value.name);
     assert.ok(r.value.age >= 21);
+    assert.ok(['男','女'].includes(r.value.gender));
+    assert.ok(['年上感','年下感','同龄感','自由发展'].includes(r.value.relationVibe));
     assert.ok(r.value.species !== '哥布林');
     assert.ok(r.value.id.startsWith('enc_'));
   }
