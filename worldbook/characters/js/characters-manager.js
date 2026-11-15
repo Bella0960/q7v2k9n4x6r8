@@ -1563,6 +1563,15 @@ function handleSaveRole() {
     if (activeEncounterDraftId && !roleId && window.MAOMAOEncounter) {
         const result = window.MAOMAOEncounter.removeCandidate(activeEncounterDraftId);
         activeEncounterDraftId = '';
+        // 创建成功后 URL 不可继续指向已消费的候选。否则刷新会尝试再次
+        // 导入同一张卡并弹“候选已不存在”，妨碍正常返回角色档案。
+        try {
+            const url = new URL(window.location.href);
+            if (url.searchParams.has('encounterDraft')) {
+                url.searchParams.delete('encounterDraft');
+                window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+            }
+        } catch (error) { console.warn('创建已保存，清理邂逅来源参数失败：', error); }
         // 保存成功后仍可主动扩写，不需要重新抽卡或重复创建角色。
         document.getElementById('btnExpandEncounterPersona').classList.remove('hidden');
         setSaveStatus(result.ok ? '已保存到角色库' : '角色已保存，候选收藏暂时未清理', result.ok ? 'success' : 'info');
