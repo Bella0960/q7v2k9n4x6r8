@@ -38,7 +38,7 @@
 .sheet-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:19px}.sheet-kicker{color:#989a96;font-size:10px;letter-spacing:.16em}.sheet-title{font-family:var(--serif);font-weight:400;font-size:27px;margin:5px 0 0;letter-spacing:.04em}.close{border:0;background:#eeeef0;color:#4a4c49;border-radius:50%;font-size:21px;width:31px;height:31px;display:grid;place-items:center;line-height:1}
 .field{margin:20px 0}.field label{font-size:11px;color:#686a67;display:block;margin-bottom:9px}.field select{width:100%;height:43px;border:1px solid #e7e8e5;border-radius:12px;background:#f2f2ef;color:#383936;padding:0 12px;outline:none;font-size:12px}.tiny{color:#989a96;font-size:11px;line-height:1.8;margin:12px 0}.divider{height:1px;background:#ededeb;margin:20px 0}.sheet-text{font-size:12px;color:#656764;line-height:1.9}.sheet-quote{font-family:var(--serif);font-size:21px;line-height:1.6;color:#343633;margin:18px 0 26px}.sheet-row{display:flex;justify-content:space-between;gap:20px;color:#81837e;font-size:11px;margin:13px 0}.sheet-row strong{font-weight:400;color:#3d3f3c;text-align:right}
 .fate-button{width:100%;display:block;text-align:left;margin:8px 0;padding:15px;border:1px solid #e0e1de;border-radius:12px;background:#f5f5f3;color:#444742;font-size:12px}.fate-button.selected{border-color:#676963;background:#ebebea}
-.saved-list{display:flex;flex-direction:column;gap:9px}.saved-item{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding:13px 11px;background:#f3f3f1;border-radius:13px}.saved-name{font-family:var(--serif);font-size:17px}.saved-meta{color:#939590;font-size:10px;margin-top:4px}.saved-actions{display:flex;gap:7px}.mini{font-size:11px;border:1px solid #dcddda;border-radius:9px;padding:9px 11px;color:#4f514d;background:transparent}.mini.dark{background:#343633;color:#fff;border-color:#343633}
+.saved-list{display:flex;flex-direction:column;gap:9px}.saved-item{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding:13px 11px;background:#f3f3f1;border-radius:13px}.saved-name{font-family:var(--serif);font-size:17px}.saved-preview{display:block;width:100%;padding:0;border:0;background:transparent;text-align:left;color:var(--ink);font-weight:400}.saved-preview:after{content:"  ＋";font:12px sans-serif;color:#92948f}.saved-detail-actions{display:flex;justify-content:flex-end;gap:9px;flex-wrap:wrap;margin-top:23px}.story-preview{background:#f1f1ef;border-radius:12px;padding:14px 16px;line-height:1.9;font-size:12px;color:#61635f;white-space:pre-line}.saved-meta{color:#939590;font-size:10px;margin-top:4px}.saved-actions{display:flex;gap:7px}.mini{font-size:11px;border:1px solid #dcddda;border-radius:9px;padding:9px 11px;color:#4f514d;background:transparent}.mini.dark{background:#343633;color:#fff;border-color:#343633}
 .empty{font-size:12px;color:#8b8d89;line-height:2;padding:22px 0}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
 @media(max-width:480px){body{background:var(--paper)}.stage{padding:0;display:block}.phone{width:100%;height:100dvh;min-height:0;border:0;border-radius:0}.status-bar{padding-top:max(13px,env(safe-area-inset-top,13px));height:calc(31px + env(safe-area-inset-top,0px))}.header{height:70px}.deck-wrap{margin-top:11px;margin-bottom:7px;padding:4px 27px}.card{padding:22px 24px}.name{font-size:31px}}
 @media(max-height:720px){.header{height:60px}.intro{padding-top:0}.deck-wrap{margin-top:8px}.portrait{min-height:100px}.ring{width:88px;height:88px;border-width:13px}.ring:after{width:29px;height:29px;top:-21px;right:-22px}.portrait-caption{margin-top:17px}.quote{margin:10px 0}.card{padding-top:19px;padding-bottom:18px}.name{font-size:28px}.bottom{padding-bottom:max(13px,env(safe-area-inset-bottom,10px))}}
@@ -182,7 +182,7 @@ document.getElementById('likeButton').addEventListener('click',function(){move('
 document.getElementById('swapButton').addEventListener('click',switchCandidate);
 document.getElementById('alternateCard').addEventListener('click',switchCandidate);
 function openSheet(content,title){
- returnFocus=document.activeElement instanceof HTMLElement?document.activeElement:null;
+ if(!overlay.classList.contains('open')) returnFocus=document.activeElement instanceof HTMLElement?document.activeElement:null;
  sheet.setAttribute('aria-label',title);sheet.innerHTML=content;overlay.classList.add('open');
  overlay.setAttribute('aria-hidden','false');var close=sheet.querySelector('.close');if(close)close.focus();
 }
@@ -205,19 +205,44 @@ window.addEventListener('keydown',function(e){
 });
 function head(k,t){return '<div class="sheet-head"><div><div class="sheet-kicker">'+escapeHtml(k)+'</div><h2 class="sheet-title">'+escapeHtml(t)+'</h2></div><button class="close" aria-label="关闭">×</button></div>';}
 function row(label,value){return '<div class="sheet-row"><span>'+escapeHtml(label)+'</span><strong>'+escapeHtml(value)+'</strong></div>';}
-function openDetail(){
- if(!current)return;var c=current;
+function openDetail(card,fromSaved){
+ if(!card&&!current)return;var c=card||current;
  var html=head('PERSONA / 01','人物档案')+'<div class="sheet-quote">「'+escapeHtml(c.quote)+'」</div>'+
  row('姓名',c.name)+row('性别',c.gender)+row('关系气质',c.relationVibe)+row('身份',c.job)+row('种族',c.species)+row('年龄',String(c.age))+
  row('世界',c.era)+row('外在',c.trait)+row('内在反差',c.contrast)+(c.rarity==='特别邂逅'?row('相遇','特别邂逅 · 无付费'): '')+
  '<div class="divider"></div><p class="sheet-text">一件重要的东西：'+escapeHtml(c.object)+'。<br>命运线索：'+escapeHtml(c.fate)+'。</p>';
- if(c.type==='命运分支'){
-   html+='<div class="field"><label>选择一个故事起点（仅改变当前候选）</label>'+
+ if(c.type==='命运分支'&&Array.isArray(c.choices)){
+   html+='<div class="field"><label>选择一个故事起点'+(fromSaved?'（会保存到收藏档案）':'（收藏后将一同保留）')+'</label>'+
    c.choices.map(function(t){return '<button class="fate-button '+(c.selectedChoice===t?'selected':'')+'" data-fate="'+escapeHtml(t)+'">'+escapeHtml(t)+'</button>';}).join('')+'</div>';
+   if(c.selectedChoice&&engine.storyOpening){
+     var opening=engine.storyOpening(c,c.selectedChoice);
+     if(opening)html+='<p class="story-preview">'+escapeHtml(opening)+'</p>';
+   }
  }
- html+='<p class="tiny">这是一张免费生成的简要卡片。喜欢后再去角色库完善完整设定。</p>';
+ html+='<p class="tiny">本地免费生成的简要设定。成为正式角色后，还能继续完善经历、习惯与故事。</p>';
+ if(fromSaved){
+   html+='<div class="saved-detail-actions"><button type="button" class="mini" data-return-collection>返回收藏</button>'+
+   '<button type="button" class="mini dark" data-create="'+escapeHtml(c.id)+'">去创建</button></div>';
+ }
  openSheet(html,'人物档案');
- sheet.querySelectorAll('[data-fate]').forEach(function(btn){btn.addEventListener('click',function(){c.selectedChoice=btn.dataset.fate;openDetail();notify('已选择故事起点');});});
+ sheet.querySelectorAll('[data-fate]').forEach(function(btn){btn.addEventListener('click',async function(){
+   var chosen=btn.dataset.fate;
+   if(fromSaved){
+     btn.disabled=true;
+     var result=await engine.updateCandidateStoryChoiceSafe(c.id,chosen);
+     if(!result.ok){btn.disabled=false;notify(result.error);return;}
+     c=result.value;
+   }else{
+     c.selectedChoice=chosen;
+   }
+   openDetail(c,fromSaved);notify(fromSaved?'故事起点已保存':'已选择故事起点');
+ });});
+ var back=sheet.querySelector('[data-return-collection]');
+ if(back)back.addEventListener('click',openSaved);
+ var create=sheet.querySelector('[data-create]');
+ if(create)create.addEventListener('click',function(){
+   window.location.href='../worldbook/characters/characters.html?encounterDraft='+encodeURIComponent(c.id);
+ });
 }
 function openSettings(){
  var p=engine.getPreferences(),allWorlds=['全部','现代都市','架空古代','东方幻想','西方奇幻','未来纪元','现代异闻','神话时代'];
@@ -249,11 +274,15 @@ function openSaved(){
  var html=head('PRIVATE COLLECTION / '+String(r.value.length).padStart(2,'0'),'候选收藏')+
  '<p class="tiny">喜欢的人先留在这里。只有点击「去创建」并在角色库保存，才会成为正式角色。</p>';
  html+=r.value.length?'<div class="saved-list">'+r.value.map(function(c){
-   return '<div class="saved-item"><div><div class="saved-name">'+escapeHtml(c.name)+'</div><div class="saved-meta">'+escapeHtml(c.species+' · '+c.trait+' · '+c.job)+'</div></div>'+
+   return '<div class="saved-item"><div><button type="button" class="saved-name saved-preview" data-preview="'+escapeHtml(c.id)+'" aria-label="查看'+escapeHtml(c.name)+'的完整人物档案">'+escapeHtml(c.name)+'</button><div class="saved-meta">'+escapeHtml(c.species+' · '+c.trait+' · '+c.job)+'</div></div>'+
    '<div class="saved-actions"><button class="mini" data-remove="'+escapeHtml(c.id)+'">移除</button>'+
    '<button class="mini dark" data-create="'+escapeHtml(c.id)+'">去创建</button></div></div>';
  }).join('')+'</div>':'<div class="empty">还没有收藏的人物。<br>向右滑动喜欢的人，TA 就会出现在这里。</div>';
  openSheet(html,'候选收藏');
+ sheet.querySelectorAll('[data-preview]').forEach(function(b){b.addEventListener('click',function(){
+   var chosen=r.value.find(function(c){return c.id===b.dataset.preview;});
+   if(chosen)openDetail(chosen,true);else notify('人物档案已变化，请重新进入收藏');
+ });});
  sheet.querySelectorAll('[data-remove]').forEach(function(b){b.addEventListener('click',async function(){
    var result=await engine.removeCandidateSafe(b.dataset.remove);if(!result.ok){notify(result.error);return;}
    count();openSaved();
