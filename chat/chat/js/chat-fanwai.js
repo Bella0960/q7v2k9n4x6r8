@@ -738,6 +738,13 @@
 
   async function openPicker() {
     if (!state.root) return;
+    // 单独检查目录入口：即使暂停保存失败已经结算，或再次点开「番外」，
+    // 也不能把唯一一份尚未落盘的聊天稿从阅读页切走。
+    if (state.active && state.unsavedEpisode === state.active) {
+      showNotice('当前番外仍有未保存的对话，请保留阅读页面');
+      if (state.opened) renderReader();
+      return;
+    }
     state.opened = true;
     state.selected = null;
     state.root.hidden = false;
@@ -856,6 +863,10 @@
   // 用户仅在明确确认之后才触发新的 AI 请求，原文不会被改写或删除。
   function openBranchPreview() {
     var source = state.active;
+    if (source && state.unsavedEpisode === source) {
+      showNotice('本篇尚有未保存的对话，暂时不能新建分支');
+      return;
+    }
     if (!source || state.busy || !Array.isArray(source.messages) || source.messages.length < 12) return;
     state.branchSource = source;
     state.viewSerial++;
