@@ -20,7 +20,7 @@
 .back-card.second{transform:translate(-16px,7px) rotate(-2.1deg);background:#e7e7e5;opacity:.68}
 .alternate-card{pointer-events:auto;cursor:pointer;padding:0;color:#777;background:#ececea;z-index:0}
 .alternate-card:focus-visible{outline:2px solid #858783;outline-offset:2px}
-.swap-card{border:0;background:transparent;padding:4px 0;color:#737570;font-size:10px;letter-spacing:.08em;max-width:75%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
+.swap-card{border:0;background:transparent;padding:7px 0;min-height:32px;color:#737570;font-size:10px;letter-spacing:.08em;max-width:75%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}.swap-card:disabled{opacity:.55}
 .swap-card:active{color:#262826}
 .card{position:relative;width:100%;height:100%;max-height:525px;background:var(--card);border:1px solid #ecece9;border-radius:22px;box-shadow:0 12px 32px rgba(22,22,22,.035);padding:25px 27px 25px;display:flex;flex-direction:column;overflow:hidden;touch-action:pan-y;user-select:none;cursor:grab;will-change:transform,opacity;transform:translate3d(0,0,0);transition:box-shadow .2s}
 .card.dragging{transition:none;cursor:grabbing;box-shadow:0 19px 35px rgba(22,22,22,.08)}.card.moving{transition:transform .26s cubic-bezier(.2,.7,.22,1),opacity .25s}
@@ -234,7 +234,12 @@ function openSettings(){
    if(!r.ok){notify(r.error);return;}
    // 筛选变更后的另一张卡必须按新偏好生成，不能沿用旧筛选缓存。
    alternate=null;
-   document.getElementById('swapButton').disabled=true;
+   var switchButton=document.getElementById('swapButton');
+   switchButton.disabled=true;
+   switchButton.textContent='另一位 · 下一张生效';
+   var backButton=document.getElementById('alternateCard');
+   backButton.disabled=true;
+   backButton.setAttribute('aria-label','新的筛选会在下一张人物卡生效');
    notify('偏好已保存，下一张卡片起生效');
  });});
 }
