@@ -375,6 +375,18 @@ async function runViewport(browser, baseUrl, viewport) {
       bottomCSS: getComputedStyle(hint).bottom };
   });
   await page.evaluate(() => { document.getElementById('replyHint').style.display = 'flex'; });
+  // ResizeObserver/rAF updates are asynchronous. Wait for real geometry before
+  // measuring, rather than racing the first visible reply-hint frame.
+  await page.waitForFunction(() => {
+    const hint = document.getElementById('replyHint');
+    const composer = document.querySelector('.comment-bar');
+    const h = hint.getBoundingClientRect();
+    const c = composer.getBoundingClientRect();
+    const scrollPadding = parseFloat(getComputedStyle(document.body).paddingBottom) || 0;
+    const composerBottom = parseFloat(getComputedStyle(composer).bottom) || 0;
+    return h.height > 0 && h.bottom <= c.top - 6 &&
+      scrollPadding >= c.height + composerBottom + h.height + 14;
+  }, null, { timeout: 2000 });
   let replyMetrics = await hintMetrics();
   add('forum-detail.reply-hint.above-composer',
     replyMetrics.hintBottom <= replyMetrics.composerTop - 6, replyMetrics);
