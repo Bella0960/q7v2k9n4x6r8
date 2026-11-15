@@ -72,7 +72,8 @@ test('group memory IDs isolate from individual characters and other groups', () 
 
 test('PWA includes both group modules and opens genuine existing group/memory pages', () => {
   const sw = read('sw.js');
-  assert.match(sw, /phone-app-pwa-v207/);
+  const cacheVersion = Number((sw.match(/phone-app-pwa-v(\d+)/) || [])[1]) || 0;
+  assert.ok(cacheVersion >= 209, 'group game privacy fixes require PWA cache v209+');
   for (const resource of ['group-settings-layout.js?v=20261115s1',
     'group_memory_view.js?v=20261115gm1',
     './chat/chat/group-play.html',
