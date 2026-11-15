@@ -669,3 +669,43 @@
   #fanwaiLayer .fw-sheet { animation: none !important; }
   #fanwaiLayer .fw-btn, #fanwaiLayer .fw-progress-fill { transition: none !important; }
 }
+
+
+/* 可选主线记忆引用：阅读轻量、默认不选，不引入新的设置系统。 */
+#fanwaiLayer .fw-context-box {
+  border: 0;
+  margin: 13px 0 16px;
+  padding: 12px 12px 11px;
+  background: rgba(220, 224, 219, .27);
+  border-radius: 4px;
+}
+#fanwaiLayer .fw-context-kicker {
+  font-size: 10px;
+  color: #747d76;
+  letter-spacing: .04em;
+  line-height: 1.6;
+  margin: 0 0 9px;
+}
+#fanwaiLayer .fw-context-row {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  cursor: pointer;
+  min-height: 32px;
+  padding: 5px 0;
+}
+#fanwaiLayer .fw-context-checkbox {
+  appearance: auto;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: #66726a;
+  flex-shrink: 0;
+}
+#fanwaiLayer .fw-context-title { font-size: 11px; color: #59615b; line-height: 1.5; }
+#fanwaiLayer .fw-context-note {
+  color: #999f99;
+  font-size: 9px;
+  line-height: 1.6;
+  margin: 4px 0 0;
+}
