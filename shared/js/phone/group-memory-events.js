@@ -116,8 +116,11 @@
     var name=match?id(match.nickname||match.name).slice(0,28):'一位成员';
     return storePublic(req,{groupId:session.groupId,kind:'game-finished',
       sourceId:session.sessionId,createdAt:session.finishedAt,
-      summary:'群聊结束「猜猜谁是坏人」游戏，共'+session.players.length+
-        '位角色参与，公布的坏人是「'+name+'」。'});
+      summary:'群聊结束「猜猜谁是坏人」游戏，共'+official.players.length+
+        '位角色参与，公布的坏人是「'+name+'」。'+
+        (official.voteCount>0
+          ? '本局'+official.voteCount+'人投票，'+official.correctVotes+'人猜对。'
+          : '本局没有提交猜测票。')});
   }
   function getPublicPrompt(req){
     req=req||{};
