@@ -88,6 +88,7 @@ function mount(options = {}) {
       completeJSON: async request => {
         prompts.push(request.system);
         requestCount++;
+        if (typeof options.completeJSON === 'function') return options.completeJSON(request, requestCount);
         if (failAt && requestCount === failAt) throw new Error('模拟网络中断');
         const n = requestCount;
         return { ok: true, data: {
@@ -291,8 +292,14 @@ function fakeFanwaiDB(options = {}) {
                   Promise.resolve().then(() => { if (transaction.onabort) transaction.onabort(); });
                   return;
                 }
-                records.set(record.id, JSON.parse(JSON.stringify(record)));
-                Promise.resolve().then(() => { if (transaction.oncomplete) transaction.oncomplete(); });
+                const copy = JSON.parse(JSON.stringify(record));
+                const delay = (options.writeDelays && options.writeDelays[putCount - 1]) || 0;
+                const commit = () => {
+                  records.set(record.id, copy);
+                  if (transaction.oncomplete) transaction.oncomplete();
+                };
+                if (delay) setTimeout(commit, delay);
+                else Promise.resolve().then(commit);
               },
               delete(id) {
                 if (options.failDeletes) {
@@ -568,4 +575,66 @@ test('failed IndexedDB deletion keeps the original story instead of reporting a 
   await tickUntil(() => app.notices.some(text => text.includes('删除未成功')));
   assert.ok(db.records.has(id), 'storage failure must preserve the original episode');
   assert.ok(sheet.all().find(n => n.className === 'fw-delete-title'));
+});
+
+
+test('quickly toggled memory preferences commit in order and the last choice wins', async () => {
+  const indexedDB = fakeFanwaiDB({ writeDelays: [18, 1, 1] });
+  const accountId = 'MAO-AAAAAAAAAAAA';
+  const app = mount({ accountId, indexedDB });
+  const root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().filter(n => n.dataset.template).length === 6);
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.template === 'daily') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.memoryMode === 'role') });
+  const count = sheet.all().find(n => n.id === 'fw-preview-count');
+  count.value = '40';
+  await root.handlers.change({ target: count });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.memoryMode === 'none') });
+  await tickUntil(() => indexedDB.records.get('settings:' + accountId + ':role-1')?.settings?.count === 40);
+  await new Promise(resolve => setTimeout(resolve, 26));
+  const stored = indexedDB.records.get('settings:' + accountId + ':role-1');
+  assert.equal(stored.settings.memory, 'none');
+  assert.equal(stored.settings.count, 40);
+});
+
+test('close during delayed initial save does not reopen the reader or spend API calls', async () => {
+  const indexedDB = fakeFanwaiDB({ writeDelays: [18] });
+  const app = mount({ accountId: 'MAO-AAAAAAAAAAAA', indexedDB });
+  const root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().filter(n => n.dataset.template).length === 6);
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.template === 'daily') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'start-template') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'close') });
+  await new Promise(resolve => setTimeout(resolve, 24));
+  await tickUntil(() => !Array.from(indexedDB.records.values()).some(row => row.templateId === 'daily'));
+  assert.equal(root.hidden, true);
+  assert.equal(app.requests, 0);
+});
+
+test('pause and immediately resume cannot let a stale network response overwrite the newer run', async () => {
+  let releaseOld;
+  const app = mount({ completeJSON: (request, index) => {
+    if (index === 1) return new Promise(resolve => { releaseOld = resolve; });
+    const amount = Number(request.user.match(/(\d+) 条/)[1]);
+    return { ok: true, data: {
+      messages: Array.from({ length: amount }, (_, i) =>
+        ({ role: i % 2 ? 'char' : 'user', text: '新一轮 ' + index + '/' + i }))
+    } };
+  } });
+  const root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().filter(n => n.dataset.template).length === 6);
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.template === 'daily') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'start-template') });
+  await tickUntil(() => typeof releaseOld === 'function');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'pause') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'resume') });
+  await tickUntil(() => app.requests >= 2);
+  releaseOld({ ok: true, data: { messages: [{ role: 'char', text: '旧请求迟到，不应该入库' }] } });
+  await tickUntil(() => sheet.all().filter(n => n.className === 'fw-bubble').length === 80);
+  assert.equal(sheet.all().filter(n => n.className === 'fw-bubble').length, 80);
+  assert.equal(sheet.all().filter(n => n.className === 'fw-bubble').filter(n => n.textContent.includes('旧请求迟到')).length, 0);
+  assert.equal(app.requests, 8, 'one stale in-flight request, seven new requests; no extra hidden generation');
 });
