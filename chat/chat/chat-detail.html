@@ -5775,7 +5775,10 @@
                     typeof window.ChatContextPolicy.buildWorldbookInjectionText === 'function') {
                   worldbookText = window.ChatContextPolicy.buildWorldbookInjectionText(wbList, {
                     currentText: text,
-                    recentMessages: historyList.slice(-8),
+                    recentMessages: (isGroupChat ? historyList.filter(function (m) {
+                        return m && m.type !== 'group_private' && m.type !== 'group_game_private' &&
+                            m.visibility !== 'private' && m.visibility !== 'role_only';
+                    }) : historyList).slice(-8),
                     maxEntries: 32,
                     maxChars: CTX_CAP.worldbook
                   });
@@ -6296,6 +6299,11 @@
                 }
                 recentHistory = historyList.slice(-memoryLimit);
             }
+            // Exclude legacy private cards before history enters model requests.
+            if (isGroupChat) recentHistory = recentHistory.filter(function (m) {
+                return m && m.type !== 'group_private' && m.type !== 'group_game_private' &&
+                    m.visibility !== 'private' && m.visibility !== 'role_only';
+            });
 
             // Decode only images explicitly attached to this send. DataURLs stay transient in memory.
             if (visionImageMids.length && window.ChatImageVision &&
@@ -6355,7 +6363,8 @@
                 }
                 var recallableHistory = isGroupChat
                     ? historyList.filter(function (m) {
-                        return m && m.type !== 'group_private' && m.type !== 'group_game_private';
+                        return m && m.type !== 'group_private' && m.type !== 'group_game_private' &&
+                            m.visibility !== 'private' && m.visibility !== 'role_only';
                     }) : historyList;
                 const recalledText = window.MemoryRecall.buildHistoricalRecallText(recallableHistory, recallQuery, recallOptions);
                 if (recalledText) apiMessages[0].content += '\n\n' + recalledText;
@@ -6378,7 +6387,8 @@
                 // Compatibility fallback: keep the legacy context mapping intact if the shared module fails to load.
                 recentHistory.forEach(m => {
                     if (m.isError || m.role === 'system_error' || m.sendFailed) return;
-                    if (isGroupChat && m.type === 'group_private') return;
+                    if (isGroupChat && (m.type === 'group_private' || m.type === 'group_game_private' ||
+                        m.visibility === 'private' || m.visibility === 'role_only')) return;
                     if (m.type === 'sticker') {
                         var stickerMeaning = String(m.desc || '').trim();
                         var stickerRole = (m.role === 'received' || m.role === 'assistant') ? 'assistant' : 'user';
@@ -6636,7 +6646,7 @@
                 if (fullText) {
                     // ---- 标记剥离 → 清洗 → 落库 → 重渲染（成功与中断保文共用同一套收尾） ----
                     // 群投票/接龙/群管理标记先落到当前历史与群资料，再清理展示文本
-                    fullText = processGroupInteractionMarkers(fullText, groupReplyPick, historyList, isRegen, isGroupFollowup);
+                    fullText = processGroupInteractionMarkers(fullText, groupReplyPick, historyList, isRegen, isGroupFollowup, streamResult.ok);
                     // 私聊角色可以发出待同意的群邀请；必须等模型完整成功，不允许中断回复改变入群状态。
                     if (window.GroupGovernance) {
                         fullText = fullText.replace(/\[群邀请[:：]([^\]]{1,100})\]/g, function (marker, proposedGroupId) {
@@ -8162,7 +8172,7 @@
 
 
         // ===== 群投票 / 群接龙 / 角色群管理标记 =====
-        function processGroupInteractionMarkers(rawText, speaker, historyList, isRegeneration, isGroupFollowup) {
+        function processGroupInteractionMarkers(rawText, speaker, historyList, isRegeneration, isGroupFollowup, isCompleted) {
             var text = String(rawText || '');
             if (!isGroupChat || !currentGroup || !Array.isArray(historyList)) return text;
             var changedHistory = false;
@@ -8279,6 +8289,29 @@
                         changedHistory = true;
                     }
                 }
+                return '';
+            });
+            // Parse and authorize at most one secret whisper per successful role reply.
+            // The hidden marker is never added to public group chat history.
+            var gameWhisperSeen = false;
+            text = text.replace(/\[游戏私聊[:：]([^:：\]]{1,90})[:：]([^\]]{1,240})\]/g, function (marker, recipientKey, whisperText) {
+                if (gameWhisperSeen) return '';
+                gameWhisperSeen = true;
+                if (!isCompleted || isRegeneration || contextOnly || !speaker || speaker.id == null ||
+                    !window.GroupGameSessions) return '';
+                var activeGame = window.GroupGameSessions.getPublic(String(currentGroup.id));
+                var senderId = String(speaker.id), recipientId = String(recipientKey).trim();
+                if (!activeGame || activeGame.status !== 'active' ||
+                    activeGame.players.indexOf(senderId) === -1 ||
+                    activeGame.players.indexOf(recipientId) === -1 ||
+                    senderId === recipientId) return '';
+                var outcome = window.GroupGameSessions.sendWhisper({
+                    groupId: String(currentGroup.id), fromId: senderId, toId: recipientId,
+                    text: String(whisperText).trim(),
+                    eventId: 'gw' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12)
+                });
+                if (!outcome.ok && typeof showToast === 'function')
+                    showToast(outcome.message || '游戏私聊没有保存成功');
                 return '';
             });
             var settings = getGroupSettings();
@@ -8681,7 +8714,15 @@
                             return;
                         }
                         renderAllMessages();
-                        showToast('接龙已结束');
+                        if (window.GroupMemoryEvents) {
+                            var rememberedChain = window.GroupMemoryEvents.recordChainClosure({
+                                group: currentGroup, message: chainToClose
+                            });
+                            showToast(rememberedChain.ok ? '接龙已结束，已记入本群共同回忆' :
+                                '接龙已结束，但群记忆未写入：' + (rememberedChain.message || '请稍后重试'));
+                        } else {
+                            showToast('接龙已结束');
+                        }
                     }
                 }
             });
