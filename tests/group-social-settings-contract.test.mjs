@@ -34,7 +34,7 @@ test('memory groups integrate into original Memory Space and share MemoryRecall'
   const html = read('worldbook/memory/memory.html');
   const js = read('shared/js/phone/group_memory_view.js');
   assert.match(html, /group_memory_view\.js\?v=20261115gm1/);
-  assert.ok(html.indexOf('group_memory_view.js') < html.indexOf('id="memory-space-framework"'),
+  assert.ok(html.indexOf('group_memory_view.js') < html.indexOf('<script id="memory-space-framework"'),
     'group tab must exist before old framework binds tab clicks');
   assert.doesNotThrow(() => new vm.Script(js));
   assert.match(js, /root\.MemoryRecall\.upsertMemory\(groupId/);
