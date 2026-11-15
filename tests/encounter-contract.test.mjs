@@ -9,6 +9,7 @@ const managerSource = fs.readFileSync(new URL('../worldbook/characters/js/charac
 const charactersPage = fs.readFileSync(new URL('../worldbook/characters/characters.html', import.meta.url), 'utf8');
 const desktopSource = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const chatListSource = fs.readFileSync(new URL('../chat/chat/chat.html', import.meta.url), 'utf8');
+const backupRegistrySource = fs.readFileSync(new URL('../settings/js/backup-modules.js', import.meta.url), 'utf8');
 
 function harness(seed = {}) {
   const map = new Map(Object.entries(seed));
@@ -312,6 +313,23 @@ test('可扩展卡片不能覆盖稳定人物 ID、版本和创建时间', () =>
   assert.equal(card.schemaVersion,1);
   assert.ok(card.createdAt>0);
   assert.equal(card.badge,'custom-arc');
+});
+
+
+test('人物候选与偏好包含在现有「角色」分类备份中', () => {
+  const window = {};
+  vm.runInNewContext(backupRegistrySource, {window,console,Array,Object,Set,String,Number,TypeError});
+  const r=window.MAOMAOBackupRegistry;
+  assert.equal(r.belongsTo('characters','maomao_encounter_candidates_v1'),true);
+  assert.equal(r.belongsTo('characters','maomao_encounter_preferences_v1'),true);
+  assert.equal(r.belongsTo('other','maomao_encounter_candidates_v1'),false);
+  const saved=r.selectSnapshot('characters',{
+    maomao_encounter_candidates_v1:'[{"id":"enc_example"}]',
+    maomao_encounter_preferences_v1:'{"gender":"女"}',
+    api_settings:'private-api-key',
+    another_feature:'should-not-export'
+  });
+  assert.deepEqual(Object.keys(saved).sort(),['maomao_encounter_candidates_v1','maomao_encounter_preferences_v1']);
 });
 
 test('桌面有独立应用入口，抽卡页有可访问交互与移动端样式', () => {
