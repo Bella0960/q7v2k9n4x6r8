@@ -179,13 +179,23 @@ function saveRoles(roles) {
         return false;
     }
     try {
+        const serialized = JSON.stringify(roles);
         if (window.PhoneStorage && PhoneStorage.result &&
             typeof PhoneStorage.result.saveCharacters === 'function') {
             const result = PhoneStorage.result.saveCharacters(roles);
-            return !!(result && result.ok);
+            if (!result || !result.ok) return false;
+            // PhoneStorage 可能收到浏览器静默丢写，不能只信任返回值。
+            const reread = PhoneStorage.result.getCharacters();
+            if (reread && reread.ok && Array.isArray(reread.value) &&
+                JSON.stringify(reread.value) === serialized) return true;
+        } else {
+            localStorage.setItem(STORAGE_KEY, serialized);
+            if (localStorage.getItem(STORAGE_KEY) === serialized) return true;
         }
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(roles));
-        return true;
+        // 不再继续写旧数据；原文保留给用户备份或恢复。
+        roleStoreReadError = true;
+        console.warn('角色保存后读取校验失败，已停止后续写入。请检查空间和已有备份。');
+        return false;
     } catch (e) {
         console.error('保存角色数据异常:', e);
         return false;
