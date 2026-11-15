@@ -490,8 +490,7 @@
       card.setAttribute('aria-label', '预览' + t.name + '：' + t.subtitle);
       var caption = document.createElement('div'); caption.className = 'fw-card-caption';
       caption.append(
-        label('span', 'fw-index', detail.index + ' / CHAPTER'),
-        label('span', 'fw-tag', t.target + ' MESSAGES')
+        label('span', 'fw-index', detail.index + ' / CHAPTER')
       );
       var text = document.createElement('div'); text.className = 'fw-card-copy';
       text.append(
@@ -499,7 +498,7 @@
         label('strong', 'fw-card-title', t.name),
         label('span', 'fw-card-sub', t.subtitle)
       );
-      card.append(caption, text, label('span', 'fw-card-foot', '轻触预览'));
+      card.append(caption, text);
       grid.appendChild(card);
     });
     sheet.appendChild(grid);
