@@ -81,29 +81,31 @@ test('轻滑回弹不能触发人物档案，下一次真实点击应立刻可�
   assert.equal(overlay.classList.contains('open'),true,'下一次正常点击不得被 480ms 阻挡');
 });
 
-test('点收藏才生成候选且换卡，不修改原角色列表',()=>{
+test('点收藏才生成候选且换卡，不修改原角色列表',async ()=>{
   const original='[{"id":"old","name":"原角色","persona":"保留原文"}]';
   const h=setup({'ai_custom_characters':original});
   assert.match(h.el('frontCard').innerHTML,/class="name"/);
   h.el('likeButton').fire('click');
+  await new Promise(resolve=>setImmediate(resolve));
   assert.equal(h.window.MAOMAOEncounter.getCandidates().value.length,1);
   assert.equal(h.rows.get('ai_custom_characters'),original);
   h.flush();
   assert.equal(h.el('savedCount').textContent,'01');
 });
 
-test('候选保存失败不假成功，也不偷偷换掉当前卡片',()=>{
+test('候选保存失败不假成功，也不偷偷换掉当前卡片',async ()=>{
   const h=setup();
   const before=h.el('frontCard').innerHTML;
   h.localStorage.setItem=()=>{throw new Error('QuotaExceededError');};
   h.el('likeButton').fire('click');
+  await new Promise(resolve=>setImmediate(resolve));
   assert.equal(h.window.MAOMAOEncounter.getCandidates().value.length,0);
   assert.equal(h.el('frontCard').innerHTML,before);
   assert.match(h.el('notice').textContent,/收藏失败/);
 });
 
 
-test('两位候选都是真实独立卡片，切换不会丢失任何一位',()=>{
+test('两位候选都是真实独立卡片，切换不会丢失任何一位',async ()=>{
   const h=setup({'maomao_encounter_preferences_v1':'{"type":"普通相遇"}'});
   const card=h.el('frontCard');
   function shownName(){
@@ -117,6 +119,7 @@ test('两位候选都是真实独立卡片，切换不会丢失任何一位',()=
   const second=shownName();
   assert.ok(second && first!==second,'另一位候选的姓名必须不同');
   h.el('likeButton').fire('click');
+  await new Promise(resolve=>setImmediate(resolve));
   h.flush();
   assert.equal(shownName(),first,'收藏第二位后第一位应仍然存在');
   const saved=h.window.MAOMAOEncounter.getCandidates();
@@ -124,6 +127,7 @@ test('两位候选都是真实独立卡片，切换不会丢失任何一位',()=
   assert.equal(saved.value.length,1);
   assert.equal(saved.value[0].name,second);
   h.el('likeButton').fire('click');
+  await new Promise(resolve=>setImmediate(resolve));
   h.flush();
   const both=h.window.MAOMAOEncounter.getCandidates().value;
   assert.equal(both.length,2,'两位可以分别收藏');
