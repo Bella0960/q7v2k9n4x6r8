@@ -52,6 +52,7 @@ let selectedColor = AVATAR_COLORS[0];
 let avatarDataUrl = ''; // 当前待保存头像
 let selectedWorldBookIds = []; // 当前编辑会话中勾选的世界书 ID
 let currentDraftKey = '';
+let activeEncounterDraftId = '';
 let editorOriginalState = null;
 let pendingDraftRecovery = null;
 let cropSourceImage = null;
@@ -1412,6 +1413,14 @@ function handleSaveRole() {
     }
 
     const roles = loadRoles();
+    // 邂逅候选进入正式角色库前再次查重，旧角色永远优先。
+    if (!roleId && activeEncounterDraftId && roles.some(function (role) {
+        return window.MAOMAOEncounter &&
+            window.MAOMAOEncounter.normalizeName(role.name) === window.MAOMAOEncounter.normalizeName(nameVal);
+    })) {
+        setSaveStatus('姓名与已有角色重复，请先修改新角色名称。', 'error');
+        return;
+    }
     let savedRoleId = roleId;
 
     if (roleId) {
@@ -1462,7 +1471,13 @@ function handleSaveRole() {
         try { localStorage.removeItem(currentDraftKey); } catch (e) {}
     }
     editorOriginalState = captureEditorState();
-    setSaveStatus('已保存', 'success');
+    if (activeEncounterDraftId && !roleId && window.MAOMAOEncounter) {
+        const result = window.MAOMAOEncounter.removeCandidate(activeEncounterDraftId);
+        activeEncounterDraftId = '';
+        setSaveStatus(result.ok ? '已保存到角色库' : '角色已保存，候选收藏暂时未清理', result.ok ? 'success' : 'info');
+    } else {
+        setSaveStatus('已保存', 'success');
+    }
 }
 
 
@@ -1714,6 +1729,35 @@ document.getElementById('btnConfirmPortrait').addEventListener('click', confirmP
 document.getElementById('btnRecoverDraft').addEventListener('click', recoverPendingDraft);
 document.getElementById('btnDiscardDraft').addEventListener('click', discardPendingDraft);
 
+// MAOMAO 自有格式：明确格式版本，只导出角色文字，不包含个人聊天、记忆、头像、API 密钥。
+document.getElementById('btnExportRole').addEventListener('click', function () {
+    const id = document.getElementById('editRoleId').value.trim();
+    const role = loadRoles().find(function (item) { return String(item.id) === id; });
+    if (!role) {
+        setSaveStatus('请先保存角色，再导出专属 JSON。', 'error');
+        return;
+    }
+    const file = {
+        format: 'maomao-character',
+        version: 1,
+        character: {
+            name: role.name || '', persona: role.persona || '',
+            tone: role.tone || '', appearanceDescription: role.appearanceDescription || '',
+            styleKeywords: Array.isArray(role.styleKeywords) ? role.styleKeywords : []
+        }
+    };
+    const blob = new Blob([JSON.stringify(file, null, 2)], {type:'application/json;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'character-' + String(role.name || 'role').replace(/[\\/:*?"<>|]/g, '_') + '.json';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
+    setSaveStatus('已导出 MAOMAO 人设 JSON（不包含聊天与私密资料）', 'success');
+});
+
 // ====== 导入角色 JSON ======
 document.getElementById('btnImportRole').addEventListener('click', function() {
     document.getElementById('roleImportFile').click();
@@ -1741,23 +1785,27 @@ document.getElementById('roleImportFile').addEventListener('change', function(e)
                 persistEditorDraft();
                 return;
             }
-            let data = JSON.parse(text);
-            if (Array.isArray(data)) data = data[0];
-            if (!data || typeof data !== 'object') throw new Error('文件不是角色数据');
-            // 兼容常见字段名
-            const name = data.name || data.char_name || data.title || '';
-            const persona = data.persona || data.description || data.personality || data.system || '';
-            const tone = data.tone || data.dialogue_example || data.culture_example || '';
-            const avatar = data.avatar || data.avatar_url || '';
-            if (!name && !persona) throw new Error('文件里没找到角色名或人设');
-            document.getElementById('editRoleName').value = String(name);
-            document.getElementById('editRolePersona').value = String(persona);
-            document.getElementById('editRoleTone').value = String(tone);
-            if (avatar && typeof avatar === 'string' && /^data:image\//.test(avatar)) {
-                avatarDataUrl = avatar;
-                updateAvatarPreview();
+            const data = JSON.parse(text);
+            // 只读取 MAOMAO 自己导出的 JSON；不识别酒馆/第三方角色卡字段。
+            if (!data || data.format !== 'maomao-character' || data.version !== 1 ||
+                !data.character || typeof data.character !== 'object' || Array.isArray(data.character)) {
+                throw new Error('仅支持从 MAOMAO 导出的角色 JSON（版本 1）');
             }
-            setSaveStatus('已导入「' + (name || '未命名') + '」，检查后点保存', 'success');
+            const item = data.character;
+            const name = typeof item.name === 'string' ? item.name.trim().slice(0, 30) : '';
+            const persona = typeof item.persona === 'string' ? item.persona.slice(0, 30000) : '';
+            const tone = typeof item.tone === 'string' ? item.tone.slice(0, 12000) : '';
+            if (!name || !persona) throw new Error('MAOMAO 文件缺少角色姓名或人设');
+            document.getElementById('editRoleName').value = name;
+            document.getElementById('editRolePersona').value = persona;
+            document.getElementById('editRoleTone').value = tone;
+            document.getElementById('editRoleAppearance').value =
+                typeof item.appearanceDescription === 'string' ? item.appearanceDescription : '';
+            document.getElementById('editRoleStyleKeywords').value =
+                Array.isArray(item.styleKeywords) ? item.styleKeywords.filter(x => typeof x === 'string').join(', ') : '';
+            avatarDataUrl = ''; // JSON 仅保存人设文本，图片仍从原头像库自行设置。
+            updateAvatarPreview();
+            setSaveStatus('已导入 MAOMAO 角色，请检查后保存', 'success');
             persistEditorDraft();
         } catch (err) {
             setSaveStatus('导入失败：' + (err && err.message ? err.message : '文件格式不对'), 'error');
@@ -1787,8 +1835,39 @@ if (cropCanvas) {
     cropCanvas.addEventListener('lostpointercapture', stopCropDrag);
 }
 
+// 从邂逅候选收藏进入原有角色编辑器；不新建第二套角色数据库。
+function openEncounterCandidateFromQuery() {
+    const candidateId = new URLSearchParams(window.location.search).get('encounterDraft');
+    if (!candidateId || !window.MAOMAOEncounter) return;
+    const source = window.MAOMAOEncounter.getCandidates();
+    if (!source.ok) {
+        alert(source.error);
+        return;
+    }
+    const candidate = source.value.find(function (item) { return item.id === candidateId; });
+    if (!candidate) {
+        alert('这张候选人物卡已不存在。');
+        return;
+    }
+    openAddRole();
+    if (pendingDraftRecovery) {
+        setSaveStatus('你还有一份未保存的人设草稿，请先处理恢复提示，再重新打开这张候选卡。', 'error');
+        return;
+    }
+    activeEncounterDraftId = candidateId;
+    document.getElementById('editRoleName').value = candidate.name || '';
+    document.getElementById('editRolePersona').value = window.MAOMAOEncounter.formatBrief(candidate);
+    document.getElementById('editRoleTone').value = candidate.quote || '';
+    document.getElementById('editRoleStyleKeywords').value = [candidate.trait,candidate.species,candidate.era].join(', ');
+    editorOriginalState = captureEditorState();
+    persistEditorDraft(true);
+    editorReturnView = 'listView';
+    setSaveStatus('已带入邂逅人设，可继续完善；保存后才会加入正式角色库。', 'info');
+}
+
 // 页面初始化
 renderRoleList();
+openEncounterCandidateFromQuery();
 retryPendingRoleAvatarCleanup().catch(function (error) {
     console.warn('角色头像清理队列暂时无法执行:', error);
 });
