@@ -261,8 +261,8 @@ assert.ok(initialStart >= 0 && initialEnd > initialStart,
 const initialSource = page.slice(initialStart, initialEnd);
 
 function setupInitialAI({ allowSave = true } = {}) {
-  let finish;
-  const pendingAI = new Promise(resolve => { finish = resolve; });
+  let finish, rejectAI;
+  const pendingAI = new Promise((resolve, reject) => { finish = resolve; rejectAI = reject; });
   const startingPost = {
     id: 'initial-post-a', name: '原帖子', topic: '日常', comments: [],
     aiCommentBatch: undefined
@@ -301,7 +301,8 @@ function setupInitialAI({ allowSave = true } = {}) {
   return {
     startingPost, newPost, saves, renders, status, controller,
     finishAI: (comments = [{ residentId: 'r1', text: '原帖的回应' }]) =>
-      finish({ ok: true, data: { comments } })
+      finish({ ok: true, data: { comments } }),
+    rejectAI: () => rejectAI(new Error('test-only simulated AI failure'))
   };
 }
 
@@ -348,4 +349,17 @@ test('empty initial AI generation must not save or claim success', async () => {
   assert.equal(h.startingPost.comments.length, 0);
   assert.equal(h.saves.length, 0);
   assert.match(h.status.textContent, /暂时还没人接话/);
+});
+
+
+test('initial AI failure from a previous post does not overwrite new post status', async () => {
+  const h = setupInitialAI();
+  const pending = h.controller.run();
+  h.controller.switchTo(h.newPost);
+  h.status.textContent = '新帖子正在加载';
+  h.rejectAI();
+  await pending;
+  assert.equal(h.status.textContent, '新帖子正在加载');
+  assert.equal(h.newPost.comments.length, 0);
+  assert.equal(h.saves.length, 0);
 });
