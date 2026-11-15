@@ -5890,6 +5890,7 @@
                 // A role receives only its own game card, not another player's secret.
                 // Group public memories are filtered separately from role-private vaults.
                 var groupGameActiveForPrompt = false;
+                var groupGameSessionForPrompt = '';
                 if (window.GroupGameSessions) {
                     var ownGameContext = window.GroupGameSessions.buildRoleContext({
                         groupId: String(currentGroup.id), roleId: String(groupReplyPick.id)
@@ -5900,6 +5901,7 @@
                     }
                     if (ownGameContext.active) {
                         groupGameActiveForPrompt = true;
+                        groupGameSessionForPrompt = String(ownGameContext.sessionId || '');
                         systemPrompt += '\\n\\n' + ownGameContext.text;
                         if (ownGameContext.canWhisper) {
                             systemPrompt += '\\n你可以在必要时私下给本局另一位角色发一条不超过240字的游戏消息：在回复末尾附 [游戏私聊:准确角色ID:内容]。每轮最多一条，只向这个收件人开放，不要在公开正文复述。';
@@ -6652,7 +6654,7 @@
                     // ---- 标记剥离 → 清洗 → 落库 → 重渲染（成功与中断保文共用同一套收尾） ----
                     // 群投票/接龙/群管理标记先落到当前历史与群资料，再清理展示文本
                     var pendingGameWhisper = null;
-                    fullText = processGroupInteractionMarkers(fullText, groupReplyPick, historyList, isRegen, isGroupFollowup, streamResult.ok, function (event) {
+                    fullText = processGroupInteractionMarkers(fullText, groupReplyPick, historyList, isRegen, isGroupFollowup, streamResult.ok, groupGameSessionForPrompt, function (event) {
                         pendingGameWhisper = event;
                     });
                     // 私聊角色可以发出待同意的群邀请；必须等模型完整成功，不允许中断回复改变入群状态。
@@ -8188,7 +8190,7 @@
 
 
         // ===== 群投票 / 群接龙 / 角色群管理标记 =====
-        function processGroupInteractionMarkers(rawText, speaker, historyList, isRegeneration, isGroupFollowup, isCompleted, queueGameWhisper) {
+        function processGroupInteractionMarkers(rawText, speaker, historyList, isRegeneration, isGroupFollowup, isCompleted, expectedGameSessionId, queueGameWhisper) {
             var text = String(rawText || '');
             if (!isGroupChat || !currentGroup || !Array.isArray(historyList)) return text;
             var changedHistory = false;
@@ -8325,12 +8327,13 @@
                 var activeGame = window.GroupGameSessions.getPublic(String(currentGroup.id));
                 var senderId = String(speaker.id), recipientId = String(recipientKey).trim();
                 if (!activeGame || activeGame.status !== 'active' ||
+                    !expectedGameSessionId || activeGame.sessionId !== expectedGameSessionId ||
                     activeGame.players.indexOf(senderId) === -1 ||
                     activeGame.players.indexOf(recipientId) === -1 ||
                     senderId === recipientId) return '';
                 queueGameWhisper({
-                    groupId: String(currentGroup.id), fromId: senderId, toId: recipientId,
-                    text: String(whisperText).trim(),
+                    groupId: String(currentGroup.id), sessionId: expectedGameSessionId,
+                    fromId: senderId, toId: recipientId, text: String(whisperText).trim(),
                     eventId: 'gw' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12)
                 });
                 return '';
