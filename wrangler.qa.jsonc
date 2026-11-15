@@ -32,19 +32,12 @@
     }
   ],
   "triggers": {
-    "crons": ["*/5 * * * *"]
+    "crons": [
+      "*/5 * * * *"
+    ]
   },
-  "services": [
-    {
-      "binding": "MAO_IDENTITY_AUTHORITY",
-      "service": "maomao-001-identity-gateway-20261114"
-    }
-  ],
   "vars": {
-    "MAO_IDENTITY_MODE": "delegated_preview",
-    "MAO_IDENTITY_AUTHORITY_MODE": "existing_worker",
-    "MAO_IDENTITY_CANONICAL_ADMIN_REQUIRED": "true",
-    "MAO_DELEGATED_ADMIN_MANAGEMENT_ENABLED": "true",
+    "MAO_IDENTITY_MODE": "isolated_qa",
     "DEVICE_PAIRING_TOKEN_TTL_MS": "300000",
     "AUTONOMY_PREVIEW_ALARM_ENABLED": "true",
     "AUTONOMY_MIN_IDLE_MS": "1800000",
@@ -57,7 +50,8 @@
     "MAO_SOCIAL_ENABLED": "true",
     "MAO_SOCIAL_CHAT_ENABLED": "false",
     "MAO_SOCIAL_E2EE_ENABLED": "true",
-    "AUTONOMY_MODEL_BACKEND": "workers_ai"
+    "AUTONOMY_MODEL_BACKEND": "workers_ai",
+    "MAO_QA_ALLOWED_ORIGIN": "https://maomao-aw-qa-20261114.miamor520000.workers.dev"
   },
   "keep_vars": true,
   "ai": {
