@@ -28,6 +28,28 @@
     } catch (e) { return false; }
   }
   function drop(storage, key) { try { storage.removeItem(key); } catch (e) {} }
+  function cleanupKeys(session) {
+    var keys=[inboxKey(session.groupId,session.sessionId,'__user')];
+    session.players.forEach(function(rid){
+      keys.push(secretKey(session.groupId,session.sessionId,rid));
+      keys.push(voteKey(session.groupId,session.sessionId,rid));
+      keys.push(inboxKey(session.groupId,session.sessionId,rid));
+    });
+    return keys;
+  }
+  function pendingCleanup(storage,session) {
+    var count=0;
+    cleanupKeys(session).forEach(function(key){
+      try { if(storage.getItem(key)!==null)count++; }
+      catch(e) { count++; }
+    });
+    return count;
+  }
+  function cleanupRound(storage,session) {
+    cleanupKeys(session).forEach(function(key){drop(storage,key);});
+    var pending=pendingCleanup(storage,session);
+    return {complete:pending===0,pending:pending};
+  }
   function error(code, message) { return { ok:false, code:code, message:message }; }
   function emit(event, payload) {
     (handlers[event] || []).concat(handlers['*'] || []).forEach(function (fn) {
@@ -119,6 +141,8 @@
     if (rawExisting !== null && !previous)
       return error('CORRUPT_SESSION','旧游戏记录异常，已保护原始数据，不会覆盖');
     if (previous && previous.status === 'active') return error('ALREADY_ACTIVE','请先结束正在进行的游戏');
+    if (previous && !cleanupRound(storage,previous).complete)
+      return error('PENDING_CLEANUP','上一局临时数据仍未完全清理，请先在群聊设置中重试');
     var players = groupMemberIds(group);
     if (players.length < 2 || players.length > 24 || new Set(players).size !== players.length)
       return error('INVALID_PLAYERS','至少需要两位且不能有重复的有效角色');
@@ -417,15 +441,11 @@
       return {targetId:rid,count:targets[rid]||0};
     });
     if(!write(storage,publicKey(gid),raw))return error('SAVE_FAILED','游戏结束状态未保存');
-    drop(storage,inboxKey(gid,session.sessionId,'__user'));
-    session.players.forEach(function (rid) {
-      drop(storage,secretKey(gid,session.sessionId,rid));
-      drop(storage,voteKey(gid,session.sessionId,rid));
-      drop(storage,inboxKey(gid,session.sessionId,rid));
-    });
+    var finishCleanup=cleanupRound(storage,session);
     emit('game:finished',{groupId:gid,sessionId:session.sessionId,gameId:session.gameId,
       revealedRoleId:bad[0],finishedAt:raw.finishedAt});
-    return {ok:true,session:game(gid,storage)};
+    return {ok:true,session:game(gid,storage),
+      cleanupComplete:finishCleanup.complete,cleanupPending:finishCleanup.pending};
   }
   // Host can abandon an invalid/unfinished round without inventing a winner.
   // This only clears the round's temporary cards, votes and private inboxes.
@@ -449,19 +469,33 @@
     delete raw.revealedRoleId;
     if(!write(storage,publicKey(gid),raw))
       return error('SAVE_FAILED','取消状态没有保存成功；原对局仍然保留');
-    drop(storage,inboxKey(gid,session.sessionId,'__user'));
-    session.players.forEach(function(rid){
-      drop(storage,secretKey(gid,session.sessionId,rid));
-      drop(storage,voteKey(gid,session.sessionId,rid));
-      drop(storage,inboxKey(gid,session.sessionId,rid));
-    });
+    var cancelCleanup=cleanupRound(storage,session);
     emit('game:cancelled',{groupId:gid,sessionId:session.sessionId,
       gameId:session.gameId,cancelledAt:raw.cancelledAt});
-    return {ok:true,session:game(gid,storage)};
+    return {ok:true,session:game(gid,storage),
+      cleanupComplete:cancelCleanup.complete,cleanupPending:cancelCleanup.pending};
   }
+  // Only the current owner may inspect/retry cleanup of an inactive game.
+  function cleanupStatus(req,shouldRetry) {
+    req=req||{};
+    var gid=id(req.groupId),group=req.group,storage=storageOf(req);
+    if(req.actorId!=='__user'||!group||id(group.id)!==gid||
+      id(group.ownerId||'__user')!=='__user'||group.userMembership==='left')
+      return error('NO_PERMISSION','只有当前群主可以清理本局临时数据');
+    var session=game(gid,storage);
+    if(!session || (session.status!=='finished'&&session.status!=='cancelled'))
+      return error('NOT_FINISHED','当前对局尚不能清理');
+    var value=shouldRetry ? cleanupRound(storage,session)
+      : {pending:pendingCleanup(storage,session)};
+    return {ok:true,cleanupComplete:value.pending===0,cleanupPending:value.pending};
+  }
+  function getCleanupStatus(req) { return cleanupStatus(req,false); }
+  function retryCleanup(req) { return cleanupStatus(req,true); }
   root.GroupGameSessions=Object.freeze({
     registerGame:registerGame, games:games, on:on, getPublic:game,
-    start:start, finish:finish, cancel:cancel, castVote:castVote, buildRoleContext:buildRoleContext,
+    start:start, finish:finish, cancel:cancel,
+    getCleanupStatus:getCleanupStatus, retryCleanup:retryCleanup,
+    castVote:castVote, buildRoleContext:buildRoleContext,
     canWhisper:canWhisper, checkDirectPrivateAllowed:checkDirectPrivateAllowed,
     sendWhisper:sendWhisper, getHostInbox:getHostInbox, getHostConversation:getHostConversation,
     redactPublicStreamText:redactPublicStreamText
