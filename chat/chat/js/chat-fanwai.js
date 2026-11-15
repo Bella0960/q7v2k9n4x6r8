@@ -1066,14 +1066,14 @@
   async function close() {
     if (!state.opened) return;
     // 立刻让旧创建/生成视图失效；保存仍在进行时不隐藏当前可复制的草稿。
-    state.viewSerial++;
+    var closingView = ++state.viewSerial;
     var save;
     if (state.busy) save = pause();
     else if (state.pendingPause) save = state.pendingPause;
     else save = episodeWriteQueue.then(function () { return !canPersist || !persistenceFailed; });
     var closingSerial = state.serial;
     var saved = await save;
-    if (state.serial !== closingSerial || !state.opened) return;
+    if (state.serial !== closingSerial || state.viewSerial !== closingView || !state.opened) return;
     if (!saved && canPersist && state.active && state.unsavedEpisode === state.active) {
       showNotice('番外尚未保存成功，为保护内容暂不收起页面');
       return;
@@ -1254,7 +1254,7 @@
     }
     if (key === 'fork') { openBranchPreview(); return; }
     if (key === 'create-fork') { await createFork(); return; }
-    if (key === 'close') { close(); return; }
+    if (key === 'close') { await close(); return; }
     if (key === 'back') {
       var paused = state.busy ? pause() : state.pendingPause;
       var backSerial = state.serial;
