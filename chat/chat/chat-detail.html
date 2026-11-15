@@ -5264,6 +5264,22 @@
             const isGroupFollowup = sendState.isGroupFollowup;
             const groupAutoDepth = sendState.groupAutoDepth;
             const text = sendState.text;
+            // A role in an active NO-PRIVATE game cannot receive regular 1:1
+            // messages as a loophole around the game's frozen private rules.
+            // Reject BEFORE writing user text or starting an API request.
+            if (!isGroupChat && window.GroupGameSessions &&
+                typeof window.GroupGameSessions.checkDirectPrivateAllowed === 'function') {
+                var gamePrivateGate = window.GroupGameSessions.checkDirectPrivateAllowed({
+                    roleId: aliasRoleId || currentRoleId
+                });
+                if (!gamePrivateGate.ok || gamePrivateGate.allowed === false) {
+                    if (typeof showToast === 'function') showToast(
+                        gamePrivateGate.message ||
+                        '角色正在参与禁止私聊的群游戏，结束该局后恢复私聊'
+                    );
+                    return;
+                }
+            }
             // 重试调用携带的目标：API 失败时据此把原用户消息重新标记为可重试。
             const retryTarget = (opts && opts.retryTarget && typeof opts.retryTarget === 'object')
                 ? {
