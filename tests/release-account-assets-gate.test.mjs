@@ -57,3 +57,16 @@ test('release prerequisite: actual chat HTML loads fanwai entry and Vite publish
   assert.match(vite, /'\.js'/);
   assert.match(vite, /'\.css'/);
 });
+
+
+test('release prerequisite: current production deployment remains manual-only and checks founder continuity', () => {
+  const workflow = readFileSync(resolve(root, '.github/workflows/deploy-cloudflare-worker.yml'), 'utf8');
+  assert.match(workflow, /^on:\s*\n  workflow_dispatch:/m,
+    'production deployment must require an explicit workflow dispatch');
+  assert.doesNotMatch(workflow, /^\s+push:/m,
+    'merging this draft must not re-enable automatic deployment to app.mao520.com');
+  assert.match(workflow, /verify-production-worker-source\.mjs/);
+  assert.match(workflow, /test -f scripts\/verify-production-account-readiness\.mjs/,
+    'missing founder continuity verification must fail closed');
+  assert.match(workflow, /node scripts\/verify-production-account-readiness\.mjs/);
+});
