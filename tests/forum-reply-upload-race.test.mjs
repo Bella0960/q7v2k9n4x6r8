@@ -141,9 +141,10 @@ function setupAIReply({ allowSave = true, targetPresent = true } = {}) {
     postTitle: () => '',
     postBody: () => '',
     forumAIJSON: (...args) => { requests.push(args); return pendingAI; },
-    makeDetailAIComment: reply => ({
-      name: '路人甲', avatar: '', residentId: 'r1', text: reply.text
-    }),
+    makeDetailAIComment: reply => {
+      const text = String(reply && reply.text || '').trim();
+      return text ? { name: '路人甲', avatar: '', residentId: 'r1', text } : null;
+    },
     saveNow: () => { writes.push(1); return allowSave; },
     renderComments: () => renders.push('comments'),
     renderPost: () => renders.push('post'),
@@ -160,9 +161,9 @@ function setupAIReply({ allowSave = true, targetPresent = true } = {}) {
   `, sandbox, { filename: 'forum-detail-ai-reply.js' });
   return {
     target, post, status, writes, renders, requests, controller,
-    finishAI: () => finishAI({
+    finishAI: (replies = [{ residentId: 'r1', text: '我来接话' }]) => finishAI({
       ok: true,
-      data: { replies: [{ residentId: 'r1', text: '我来接话' }] }
+      data: { replies }
     })
   };
 }
@@ -216,4 +217,38 @@ test('already deleted comments do not start a new AI call', async () => {
   await h.controller.generate(h.target, '你好', []);
   assert.equal(h.requests.length, 0);
   assert.equal(h.writes.length, 0);
+});
+
+
+test('empty AI result does not write or report a successful reply', async () => {
+  const h = setupAIReply();
+  const pending = h.controller.generate(h.target, '你好', []);
+  h.finishAI([]);
+  await pending;
+  assert.equal(h.target.replies.length, 0);
+  assert.equal(h.writes.length, 0);
+  assert.equal(h.renders.length, 0);
+  assert.match(h.status.textContent, /暂时没有新的回应/);
+});
+
+test('malformed AI entry after a valid reply does not lose the valid reply', async () => {
+  const h = setupAIReply();
+  const pending = h.controller.generate(h.target, '你好', []);
+  h.finishAI([{ residentId: 'r1', text: '有效回复' }, null]);
+  await pending;
+  assert.equal(h.target.replies.length, 1);
+  assert.equal(h.target.replies[0].text, '有效回复');
+  assert.equal(h.writes.length, 1);
+  assert.equal(h.status.textContent, '有网友回应了你的留言');
+});
+
+test('blank and malformed AI-only replies do not mutate the original thread', async () => {
+  const h = setupAIReply();
+  const pending = h.controller.generate(h.target, '你好', []);
+  h.finishAI([null, { residentId: 'r1', text: '   ' }]);
+  await pending;
+  assert.equal(h.target.replies.length, 0);
+  assert.equal(h.writes.length, 0);
+  assert.equal(h.renders.length, 0);
+  assert.match(h.status.textContent, /暂时没有新的回应/);
 });
