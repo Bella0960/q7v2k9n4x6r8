@@ -150,7 +150,8 @@
     var session = game(id(req.groupId),storageOf(req));
     if (!session || session.status !== 'active') return { active:false, allowed:true };
     var from=id(req.fromId), to=id(req.toId);
-    return { active:true, allowed:session.rules.allowPrivate === true &&
+    return { active:true, allowed:(!req.sessionId || id(req.sessionId) === session.sessionId) &&
+      session.rules.allowPrivate === true &&
       (from === '__user' || session.players.indexOf(from) !== -1) &&
       (to === '__user' || session.players.indexOf(to) !== -1) &&
       from !== to };
@@ -158,9 +159,14 @@
   function sendWhisper(req) {
     req = req || {};
     var gid=id(req.groupId), to=id(req.toId), from=id(req.fromId), storage=storageOf(req);
-    var session=game(gid,storage), right=canWhisper(req);
-    if (!session || session.status !== 'active' || !right.allowed)
-      return error('PRIVATE_DISABLED','本局不允许玩家私聊');
+    var session=game(gid,storage);
+    // A queued AI whisper must be bound to the session which produced it.
+    // Never allow a late completion from an old game to write into a new round.
+    if(!session || session.status !== 'active' || !valid(req.sessionId) ||
+      id(req.sessionId)!==session.sessionId)
+      return error('STALE_SESSION','私聊所属对局已结束或发生变化');
+    var right=canWhisper(req);
+    if(!right.allowed) return error('PRIVATE_DISABLED','本局不允许玩家私聊');
     if (session.players.indexOf(to)===-1) return error('INVALID_RECIPIENT','只能发给本局角色');
     var content=id(req.text);
     if (!content || content.length>240) return error('INVALID_TEXT','私聊消息最多240字');
