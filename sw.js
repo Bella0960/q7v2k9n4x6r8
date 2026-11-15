@@ -155,7 +155,7 @@ self.addEventListener('install', event => {
         // HTML 必须先检查服务器的缓存策略，不能 cache.add() 盲存账号私有页面。
         if (url === './' || /\.html(?:[?#]|$)/i.test(url)) {
           return fetch(url, { cache: 'no-store' }).then(function (response) {
-            return response && response.ok && !isPrivateResponse(response)
+            return response && response.ok && !response.redirected && !isPrivateResponse(response)
               ? cache.put(url, response) : undefined;
           }).catch(function () { return undefined; });
         }
@@ -220,7 +220,7 @@ self.addEventListener('fetch', event => {
       }).catch(function () { return null; });
       var cacheWritePromise = null;
       var networkPromise = fetch(req).then(function (response) {
-        if (response && response.ok) {
+        if (response && response.ok && !response.redirected) {
           // 账号注入页只返回网络响应，且顺手清除历史错误缓存。
           // 公共页面仍保留“缓存优先、后台更新”的原离线体验。
           if (isPrivateResponse(response)) {
@@ -279,7 +279,7 @@ self.addEventListener('fetch', event => {
     caches.match(req).then(cached => {
       const safeCached = isPrivateResponse(cached) ? null : cached;
       const fresh = fetch(req).then(response => {
-        if (response && response.ok && !isPrivateResponse(response)) {
+        if (response && response.ok && !response.redirected && !isPrivateResponse(response)) {
           const copy = response.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(req, copy)).catch(() => undefined);
         }
