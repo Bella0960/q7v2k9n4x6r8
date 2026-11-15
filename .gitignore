@@ -45,6 +45,7 @@ logs/
 
 # ===== 本地调试 / 测试产物 =====
 *-test*.png
+test-results/ # Playwright screenshots and local acceptance receipts; may contain private role data
 bug-fix-list.md
 perf/diag-hl.mjs
 perf/virtual-regression.mjs
