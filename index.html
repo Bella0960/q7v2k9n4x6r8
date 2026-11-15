@@ -36,6 +36,7 @@
     <script src="shared/js/font-loader.js?v=20261022v1"></script>
     <script src="shared/js/wallpaper-store.js?v=20261026v2"></script>
 <script src="shared/js/native-feel.js?v=20261026-statusbar2"></script>
+<script src="shared/js/haptics.js"></script>
     <link rel="stylesheet" href="desktop/css/styles.css?v=20261106-home-layout2">
   <link rel="stylesheet" href="shared/css/mobile-fit.css?v=20261106-home-layout2">
     <link rel="stylesheet" href="shared/vendor/liquid-glass/liquid-glass.css?v=1.2.0">
@@ -1587,11 +1588,17 @@
         }
       }, true);
 
-      // 4. 监听桌面横向滑动同步 dot
+      // 4. 只在用户真实左右滑动且桌面分页变化时反馈；程序跳页、拖图标不触发。
       if (homeScreen) {
+        var lastTouchSwipeAt = -Infinity;
+        homeScreen.addEventListener('touchstart', function () {
+          lastTouchSwipeAt = Date.now();
+        }, { passive: true });
         homeScreen.addEventListener('scroll', function () {
           var cur = getCurrentPageFromScroll();
           if (cur !== activePageIndex) {
+            if (!editing && Date.now() - lastTouchSwipeAt < 1200 &&
+                window.MAOMAOHaptics) window.MAOMAOHaptics.trigger('swipe');
             activePageIndex = cur;
             var dots = document.querySelectorAll('.page-dots .dot');
             dots.forEach(function (d, i) {
