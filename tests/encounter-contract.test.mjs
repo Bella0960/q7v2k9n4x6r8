@@ -318,6 +318,25 @@ test('拿到入库锁之前切换账号或人物，绝不能创建候选',async 
   assert.equal(els.btnSaveRole.disabled,false);
 });
 
+
+test('候选入库后清理已消费 URL，刷新不应再次尝试导入或丢掉返回来源', () => {
+  const start=managerSource.indexOf('        // 创建成功后 URL 不可继续指向已消费的候选。');
+  const end=managerSource.indexOf("        } catch (error) { console.warn('创建已保存，清理邂逅来源参数失败：', error); }",start);
+  assert.ok(start>=0 && end>start,'成功创建后必须清理 encounterDraft 查询参数');
+  const source=managerSource.slice(managerSource.indexOf('        try {',start),
+    end+"        } catch (error) { console.warn('创建已保存，清理邂逅来源参数失败：', error); }".length);
+  const replaced=[];
+  const window={
+    location:{href:'https://app.mao520.com/worldbook/characters/characters.html?encounterDraft=enc_old&from=contacts#profile'},
+    history:{state:{tab:'roles'},replaceState(state,title,url){replaced.push({state,url});}}
+  };
+  vm.runInNewContext(source,{window,URL,console});
+  assert.equal(replaced.length,1);
+  assert.equal(replaced[0].url,
+    '/worldbook/characters/characters.html?from=contacts#profile');
+  assert.equal(replaced[0].state.tab,'roles');
+});
+
 test('邂逅保存为原生角色后，现有聊天首页可直接列出该角色', () => {
   assert.match(chatListSource,/var CHARACTERS_KEY = 'ai_custom_characters'/);
   assert.match(chatListSource,/var roles = loadCharacters\(\)\.filter/);
