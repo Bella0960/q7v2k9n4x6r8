@@ -575,6 +575,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       }else if(status){status.textContent='暂时还没人接话，过会儿再来看看'}
     }catch(error){
       console.warn('[Forum] 首批路人评论生成失败',error);
+      if(post!==initialPost)return;
       // 打开帖子时自动触发的后台生成：评论区内联 status 已是可见提示，再弹 toast 会在每次打开帖子时重复打扰，故此处只用状态文案。
       if(status)status.textContent=(post.mediaAssetIds||[]).length?'图片已经保留；当前 API 或模型可能不支持看图，暂时无法生成图片讨论':'路人暂时没有赶来，稍后重新打开帖子再试试';
     }
