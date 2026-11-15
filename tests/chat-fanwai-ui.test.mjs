@@ -766,6 +766,21 @@ test('authenticated pages without the established account scope module never mou
 });
 
 
+
+test('malformed authenticated meta cannot silently use temporary mode or expose role-memory plugins', () => {
+  for (const accountId of ['MAO-invalid', 'INVALID-ACCOUNT', 'MAO-123']) {
+    const app = mount({ accountId });
+    assert.equal(app.grid.querySelector('[data-feat="fanwai"]'), null,
+      'invalid account meta must fail closed: ' + accountId);
+    assert.equal(app.registry, undefined,
+      'invalid account meta must not create plugin access: ' + accountId);
+  }
+  const localPreview = mount();
+  assert.ok(localPreview.grid.querySelector('[data-feat="fanwai"]'),
+    'a truly unmarked local/static preview may still use memory-only stories');
+});
+
+
 test('late archive query cannot reset scroll or overwrite a newer template preview', async () => {
   const db = fakeFanwaiDB({ readDelayMs: 24 });
   const app = mount({ accountId: 'MAO-AAAAAAAAAAAA', indexedDB: db });
