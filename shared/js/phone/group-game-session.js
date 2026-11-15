@@ -194,8 +194,9 @@
     if (!valid(gid)||req.actorId!=='__user') return error('NO_PERMISSION','只有群主能结束并揭晓');
     var session=game(gid,storage);
     if (!session || session.status!=='active') return error('NOT_ACTIVE','当前没有进行中的游戏');
-    if (req.group && (id(req.group.id)!==gid || id(req.group.ownerId||'__user')!=='__user'))
-      return error('NO_PERMISSION','群主身份已变化');
+    if (!req.group || id(req.group.id)!==gid ||
+      id(req.group.ownerId||'__user')!=='__user' || req.group.userMembership==='left')
+      return error('NO_PERMISSION','无法确认当前群主权限');
     var bad=[];
     for(var i=0;i<session.players.length;i++){
       var rid=session.players[i];
