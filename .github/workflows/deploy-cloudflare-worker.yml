@@ -1,25 +1,9 @@
 name: Deploy MAOMAO to Cloudflare Workers
 
+# Production release hold: the live original account DB, founder 001 and
+# existing member must pass recoverable checkpoint + same-origin continuity.
+# Do not auto-overwrite the uploaded backend or official gateway from old main.
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - '.github/workflows/deploy-cloudflare-worker.yml'
-      - 'diary/**'
-      - '**/*.html'
-      - '**/*.js'
-      - '**/*.css'
-      - '**/*.json'
-      - 'assets/**'
-      - 'games/assets/**'
-      - 'shared/**'
-      - 'apps/**'
-      - 'vite.config.js'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'wrangler.jsonc'
-      - 'tests/production-worker-navigation.browser.mjs'
   workflow_dispatch:
 
 permissions:
@@ -53,6 +37,19 @@ jobs:
 
       - name: Verify PWA navigation fallback
         run: npm run test:pwa:navigation
+
+      - name: Block unverified account cutover (no live writes)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          MAOMAO_PRODUCTION_ORIGIN: https://app.mao520.com
+          MAO_EXPECTED_FOUNDER_ID: ${{ vars.MAO_EXPECTED_FOUNDER_ID }}
+        run: |
+          test -f scripts/verify-production-account-readiness.mjs || {
+            echo "Blocked: current main lacks the verified account-continuity release gate"
+            exit 1
+          }
+          node scripts/verify-production-account-readiness.mjs
 
       - name: Deploy Cloudflare Worker
         uses: cloudflare/wrangler-action@v3
