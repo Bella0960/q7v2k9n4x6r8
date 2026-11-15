@@ -50,6 +50,7 @@ export async function runPrivateFounderCheckpoint({ env, now = Date.now }) {
 
   try {
     const stub = ns.get(ns.idFromName(TARGET_INSTANCE));
+    let rotationRequested = false;
     let response = await stub.fetch(new Request(PRIVATE_URL, {
       method: 'POST',
       headers: { 'x-maomao-release-secret': secret }
@@ -76,6 +77,7 @@ export async function runPrivateFounderCheckpoint({ env, now = Date.now }) {
       if (!Number.isSafeInteger(verifiedAt) || verifiedAt < start || verifiedAt >= end) {
         return { ok: false, code: 'window_closed' };
       }
+      rotationRequested = true;
       response = await stub.fetch(new Request(
         'https://maomao.internal/internal/release/checkpoint-rotate', {
           method: 'POST',
@@ -103,6 +105,7 @@ export async function runPrivateFounderCheckpoint({ env, now = Date.now }) {
     // across Worker isolates, and reject records older than the 15m lease.
     const receivedAt = now();
     if (result?.ok !== true || result?.recorded !== true ||
+        (rotationRequested && result.rotated !== true) ||
         !Number.isSafeInteger(result.recordedAt) ||
         !Number.isSafeInteger(receivedAt) ||
         result.recordedAt <= 0 ||
@@ -110,7 +113,8 @@ export async function runPrivateFounderCheckpoint({ env, now = Date.now }) {
         receivedAt - result.recordedAt > 15 * 60 * 1000) {
       return { ok: false, code: 'invalid_acknowledgement' };
     }
-    return { ok: true, code: SUCCESS, recordedAt: result.recordedAt };
+    return { ok: true, code: SUCCESS, recordedAt: result.recordedAt,
+      ...(rotationRequested ? { rotated: true, backupDigest: env.FOUNDER_ROTATE_BACKUP_DIGEST } : {}) };
   } catch {
     // Never expose DO errors, secrets, account data or bookmark values.
     return { ok: false, code: 'checkpoint_failed' };
@@ -162,7 +166,8 @@ export default {
         code: result.code,
         ok: result.ok === true,
         recordedAt: result.ok ? result.recordedAt : null,
-        executedAt: Date.now()
+        executedAt: Date.now(),
+        ...(result.rotated ? { rotated: true, backupDigest: result.backupDigest } : {})
       };
       // KV receipts contain only opaque status and timestamps; never bookmarks,
       // credentials, user IDs, request headers or SQL. No public KV bindings.

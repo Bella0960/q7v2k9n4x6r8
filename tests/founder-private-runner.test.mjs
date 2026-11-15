@@ -239,7 +239,7 @@ test('runner receives the real stale-checkpoint response and rotates only with a
 
   authorizeRotation(env, NOW);
   assert.deepEqual(await runPrivateFounderCheckpoint({ env, now }), {
-    ok: true, code: 'checkpoint_recorded', recordedAt: NOW
+    ok: true, code: 'checkpoint_recorded', recordedAt: NOW, rotated: true, backupDigest: digest
   });
   assert.equal(paths.length, 3);
   assert.equal(paths[2], FOUNDER_ROTATE_PATH);
@@ -390,7 +390,7 @@ test('stale checkpoint is rotated only with explicit private window approval', a
     get(){return {async fetch(req){
       calls.push(new URL(req.url).pathname);
       if(req.url.endsWith('/checkpoint'))return new Response('old lease',{status:409});
-      return Response.json({ok:true,recorded:true,recordedAt:now});
+      return Response.json({ok:true,recorded:true,recordedAt:now,rotated:true});
     }};}
   };
   const denied=await runPrivateFounderCheckpoint({env,now:()=>now});
@@ -398,7 +398,7 @@ test('stale checkpoint is rotated only with explicit private window approval', a
   assert.deepEqual(calls,['/internal/release/checkpoint']);
   authorizeRotation(env, now);
   const accepted=await runPrivateFounderCheckpoint({env,now:()=>now});
-  assert.deepEqual(accepted,{ok:true,code:'checkpoint_recorded',recordedAt:now});
+  assert.deepEqual(accepted,{ok:true,code:'checkpoint_recorded',recordedAt:now,rotated:true,backupDigest:digest});
   assert.deepEqual(calls.slice(-2),['/internal/release/checkpoint','/internal/release/checkpoint-rotate']);
 });
 
@@ -455,7 +455,7 @@ test('scheduled approval uses the archive digest from the private activation', a
       calls.push(new URL(request.url).pathname);
       return request.url.endsWith('/checkpoint')
         ? new Response('stale', { status: 409 })
-        : Response.json({ ok: true, recorded: true, recordedAt: now });
+        : Response.json({ ok: true, recorded: true, recordedAt: now, rotated: true });
     } })
   };
   env.RELEASE_AUDIT = {
@@ -475,4 +475,6 @@ test('scheduled approval uses the archive digest from the private activation', a
   await pending;
   assert.deepEqual(calls, ['/internal/release/checkpoint', '/internal/release/checkpoint-rotate']);
   assert.equal(writes.get('founder-checkpoint:success').recordedAt, now);
+  assert.equal(writes.get('founder-checkpoint:success').rotated, true);
+  assert.equal(writes.get('founder-checkpoint:success').backupDigest, digest);
 });

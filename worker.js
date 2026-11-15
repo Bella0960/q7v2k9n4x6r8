@@ -20,6 +20,9 @@ import { createSchedulerGate } from './worker/lib/scheduler-gate.js';
 import { FOUNDER_CHECKPOINT_PATH, handleFounderCheckpointInternal, FOUNDER_ROTATE_PATH, handleFounderCheckpointRotationInternal } from './worker/lib/founder-recovery-operator.js';
 
 import { FOUNDER_BACKUP_PATH, captureFounderBackupInternal } from './worker/lib/founder-backup-capture.js';
+import { FOUNDER_APPLY_PATH,
+  preserveFounderAfterLogin, applyOriginalFounder
+} from './worker/lib/founder-continuity-transfer.js';
 import { inspectAccountPersistence, inspectPitrReadiness } from './worker/lib/account-persistence.js';
 
 const INSTANCE_NAME = 'maomao-global';
@@ -146,6 +149,9 @@ export class CloudDatabase {
     if (url.pathname === FOUNDER_BACKUP_PATH) {
       return captureFounderBackupInternal({ request, env: this.env, state: this.ctx });
     }
+    if (url.pathname === FOUNDER_APPLY_PATH) {
+      return applyOriginalFounder({ request, env: this.env, state: this.ctx });
+    }
     if (url.pathname === FOUNDER_CHECKPOINT_PATH) {
       return handleFounderCheckpointInternal({
         request, env: this.env, storage: this.ctx.storage
@@ -158,6 +164,10 @@ export class CloudDatabase {
     }
     if (url.pathname.startsWith('/api/')) {
       const response = await this.handleApi(request);
+      if (url.pathname === '/api/accounts/login' && request.method === 'POST' &&
+          this.env.FOUNDER_CONTINUITY_MODE === 'seal-only') {
+        await preserveFounderAfterLogin({ loginResponse: response, env: this.env, state: this.ctx });
+      }
       if (response.ok && request.method === 'POST' &&
           /^\/api\/characters\/[^/]+\/context-snapshot$/.test(url.pathname)) {
         await this.ensurePreviewAlarm();
