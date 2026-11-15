@@ -41,7 +41,7 @@
   ];
   var secrets = ['一张从未寄出的明信片','一枚停在凌晨三点的怀表','一本字迹不同的旅行笔记','一把没有标记的旧钥匙','一卷褪色的胶片','一封没有署名的信','一本被反复翻阅的旧书','一枚刻着陌生日期的胸针'];
   var fates = ['曾经离开故乡多年','正在寻找一位失联的故人','曾意外卷入一段时间错位','一直守护某个秘密的约定','在人间隐居多年','刚从漫长的旅程归来','经历过一次重生，保留模糊记忆','偶尔梦见另一个时空'];
-  var styles = ['普通相遇','蒙面档案','以物识人','命运分支','性格盲测'];
+  var styles = ['普通相遇','普通相遇','普通相遇','普通相遇','普通相遇','普通相遇','蒙面档案','以物识人','命运分支','性格盲测'];
   var PREFERENCES_KEY = 'maomao_encounter_preferences_v1';
 
   function random(max) {
@@ -69,7 +69,8 @@
     var r = getRaw(KEY, []);
     if (!r.ok) return r;
     if (!Array.isArray(r.value)) return fail('候选收藏格式异常');
-    return ok(r.value.filter(function(x) { return x && typeof x === 'object' && typeof x.id === 'string'; }));
+    if (r.value.some(function(x) { return !x || typeof x !== 'object' || typeof x.id !== 'string'; })) return fail('候选收藏有无法识别的记录，未更改原始数据');
+    return ok(r.value);
   }
   function getPreferences() {
     try {
@@ -133,10 +134,33 @@
     var reserved = getReservedNames();
     if (!reserved.ok) return reserved;
     var prefs = getPreferences();
+    var savedResult = getCandidates();
+    var saved = savedResult.ok ? savedResult.value : [];
     var w = chooseWorld(prefs);
+    if ((!prefs.world || prefs.world === '全部') && saved.length &&
+        prefs.similarity === '多来喜欢的类型' && random(100) < 55) {
+      var preferred = pick(saved);
+      var wMatch = worlds.find(function(x) { return x.era === preferred.era && x.species === preferred.species; });
+      if (wMatch) w = wMatch;
+    } else if ((!prefs.world || prefs.world === '全部') && saved.length &&
+               prefs.similarity === '尽量探索不同类型' && random(100) < 60) {
+      var favorites = new Set(saved.map(function(x) { return x.species + ':' + x.era; }));
+      var discoveries = worlds.filter(function(x) { return !favorites.has(x.species + ':' + x.era); });
+      if (discoveries.length) w = pick(discoveries);
+    }
     var name = chooseName(w, reserved.value);
     if (!name) return fail('可用姓名不足，稍后再试');
     var a = pick(archetypes);
+    if (saved.length && prefs.similarity === '多来喜欢的类型' && random(100) < 65) {
+      var liked = pick(saved);
+      var matched = archetypes.find(function(x) { return x.trait === liked.trait; });
+      if (matched) a = matched;
+    }
+    if (saved.length && prefs.similarity === '尽量探索不同类型' && random(100) < 65) {
+      var traits = new Set(saved.map(function(x) { return x.trait; }));
+      var alternatives = archetypes.filter(function(x) { return !traits.has(x.trait); });
+      if (alternatives.length) a = pick(alternatives);
+    }
     var age = w.species === '人类' ? 22 + random(21) : (w.species === '仿生人' ? 23 + random(20) : 80 + random(1800));
     var type = prefs.type === '普通相遇' ? '普通相遇' : (styles.indexOf(prefs.type) >= 0 ? prefs.type : pick(styles));
     var card = {
