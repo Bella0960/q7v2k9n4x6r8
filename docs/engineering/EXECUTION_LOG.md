@@ -144,3 +144,14 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **测试：** tests/encounter-contract.test.mjs 新增并发同存储、旧数组只读兼容、Web Locks 序列化、独立键测试。tests/encounter-actual-scope.test.mjs 对原版 PR290 作用域实际执行模拟；修复 Playwright 中读取废弃 V1 数组的断言。同步更新 PWA、字体与桌面旧式缓存假设的测试。package.json 新增 test:encounter、test:encounter:browser、gate:encounter。
 - **本轮非原生校验回执：** 当前分支源码经 V8 适配执行 28 项合同 + 5 项交互 = 33/33；原版 MAO 账号隔离与引擎兼容 4/4；PWA/字体缓存/桌面静态合同 16/16。未执行真实 npm ci、npm run build、Node原生 test、Playwright 运行截图、Android/iPhone 真机或真实账号切换/正式恢复验证。
 - **正式发布 gate：** scripts/verify-encounter-release.mjs 只读检查账号入口、构建、PWA、三尺寸及角色编辑器验收截图，缺一项明确拒绝通过。当前因账号入口尚未安全整合、dist 与截图不存在，此 gate 不能通过。不得绕过原管理员独立备份及隔离恢复门禁。
+
+
+### FEATURE-ENCOUNTER-001 — 2026-11-15 持续修复：邂逅草稿隔离与备份安全
+
+- **开发对象：** 原功能 PR #297（FEATURE-ENCOUNTER-001-initial-experience）；所有交付同步到唯一整合 QA 分支 integration/encounter-account-acceptance-20261115，未建立第二个测试环境。
+- **实际缺陷：** 邂逅候选导入角色编辑器之前调用 openAddRole()，会读取普通新建角色的 `maomao_character_draft_v1:new`；后续强制 persistEditorDraft(true) 也写到同一键，可能覆盖原本未保存的手动角色草稿或阻断候选导入。
+- **已修：** 新增 `getEncounterDraftKey(candidateId)`，为每张候选使用 `maomao_character_draft_v1:encounter:<id>`；从候选进入时绕过普通新角色的草稿恢复，先带入候选人设，再检查该候选自己的待恢复草稿，不强制覆盖原文。普通新建角色仍使用旧键，旧草稿不迁移/不删除。
+- **损坏数据保护：** 原 offerDraftRecovery 会在解析失败时静默 removeItem；现保留原始键值并禁用同键自动暂存/角色保存，取消编辑不删除，只有用户点击既有“放弃草稿”按钮且成功清理后才继续。
+- **备份分类：** 角色分类增加 `maomao_character_draft_v1:` 前缀，涵盖手动新建、旧角色编辑、邂逅候选草稿；保留 API 密钥排除规则。无 schema 迁移、角色数据修改或云端账号写入。
+- **实际执行的检查：** 通过从当前 GitHub 原文件提取并运行的 V8 隔离编辑器流程：手动新角色草稿保留、候选独立草稿保存、退出重进恢复、旧草稿恢复、损坏草稿保留/禁止覆写/显式放弃、备份归类与密钥排除。新增两项原有 Node 回归用例并在 V8 适配执行 PASS；**未执行原生 node --test、npm ci/build、Playwright Chromium、Android/iOS 或统一线上 QA 验收**。不得将模拟当作真实整体验收。
+- **当前状态：** 开发中；PR #297 保留 Draft，统一整合测试分支只作待验收源码；未合并 main、未部署测试/正式环境。下一步依照 GOV PR #300 的 RELEASE_PLAYBOOK：先取得真实自动构建回执，再部署唯一 QA 供用户整体试玩；失败返回原 PR 修复。
