@@ -242,6 +242,52 @@
       return ok(set);
     } catch (e) { return fail('角色库读取失败，暂时不能抽卡'); }
   }
+  // 「已相识」直接检索现有角色库的 encounterOrigin，不创建第二份正式角色数据。
+  // 账号/存储异常时明确失败，不能把读失败伪装成“没有相识的人”。
+  function getEncounteredRoles() {
+    var scope = checkAccountScope();
+    if (!scope.ok) return scope;
+    try {
+      var roles = null;
+      if (global.PhoneStorage && global.PhoneStorage.result &&
+          typeof global.PhoneStorage.result.getCharacters === 'function') {
+        var result = global.PhoneStorage.result.getCharacters();
+        if (result && result.ok && Array.isArray(result.value)) {
+          roles = result.value;
+        } else if (!result || !result.error || result.error.code !== 'NOT_FOUND') {
+          return fail('暂时无法读取已创建角色，原人物资料保持不变');
+        }
+      }
+      if (roles === null) {
+        var raw = global.localStorage.getItem('ai_custom_characters');
+        roles = raw === null ? [] : JSON.parse(raw);
+      }
+      if (!Array.isArray(roles)) return fail('角色列表格式异常，暂时无法查看已相识人物');
+      var seen = new Set();
+      var records = [];
+      roles.forEach(function(role) {
+        if (!role || typeof role !== 'object' ||
+            typeof role.id !== 'string' || !role.id ||
+            typeof role.name !== 'string' || !role.name ||
+            !role.encounterOrigin || role.encounterOrigin.version !== 1) return;
+        var sourceId = String(role.encounterOrigin.sourceCandidateId || '');
+        if (!/^enc_[a-z0-9_-]{3,80}$/i.test(sourceId) || seen.has(role.id)) return;
+        seen.add(role.id);
+        records.push({
+          id: role.id,
+          name: role.name,
+          sourceCandidateId: sourceId,
+          era: String(role.encounterOrigin.era || ''),
+          trait: String(role.encounterOrigin.trait || ''),
+          storyChoice: String(role.encounterOrigin.storyChoice || '')
+        });
+      });
+      return ok(records);
+    } catch (error) {
+      return fail('已相识人物读取失败，原角色档案未修改');
+    }
+  }
+
   function getReservedNames() {
     var roles = getRoleNames(), saved = getCandidates();
     if (!roles.ok) return roles;
@@ -474,7 +520,7 @@
     removeCandidate:removeCandidate, saveCandidateSafe:saveCandidateSafe,
     removeCandidateSafe:removeCandidateSafe, updateCandidateStoryChoiceSafe:updateCandidateStoryChoiceSafe,
     getPreferences:getPreferences, savePreferences:savePreferences,
-    formatBrief:formatBrief, storyOpening:storyOpening, normalizeName:normalizeName,
+    formatBrief:formatBrief, storyOpening:storyOpening, getEncounteredRoles:getEncounteredRoles, normalizeName:normalizeName,
     checkAccountScope:checkAccountScope, verifyLiveAccountContext:verifyLiveAccountContext,
     registerCardDecorator:function(fn) {
       if (typeof fn !== 'function') return function(){};
