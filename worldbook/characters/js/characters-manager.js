@@ -1921,6 +1921,8 @@ function openEncounterCandidateFromQuery() {
         return;
     }
     activeEncounterDraftId = candidateId;
+    selectedColor = '#D2D3D0'; // 邂逅新角色默认低饱和灰色，保存前仍可更换头像。
+    updateAvatarPreview();
     document.getElementById('btnExpandEncounterPersona').classList.remove('hidden');
     document.getElementById('editRoleName').value = candidate.name || '';
     document.getElementById('editRolePersona').value = window.MAOMAOEncounter.formatBrief(candidate);
