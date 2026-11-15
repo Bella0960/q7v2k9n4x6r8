@@ -250,6 +250,27 @@ test('没有 PhoneStorage 时本地存储假写成功也必须拒绝并保留旧
 });
 
 
+
+test('同一张邂逅候选始终映射相同角色 ID，原有 ID 冲突时绝不覆盖', () => {
+  const start=managerSource.indexOf('        savedRoleId = activeEncounterDraftId');
+  const end=managerSource.indexOf('        // 保留「邂逅」的结构化来源',start);
+  assert.ok(start>=0 && end>start, '新建候选必须使用确定性正式角色 ID');
+  const snippet=managerSource.slice(start,end);
+  const errors=[];
+  const chooseId=vm.runInNewContext(
+    '(function (candidateId,roles){let savedRoleId="";'+
+      'const activeEncounterDraftId=candidateId;'+snippet+
+      'return savedRoleId;})',
+    {Date,Math,String,setSaveStatus(message){errors.push(message);}}
+  );
+  const id=chooseId('enc_test001',[]);
+  assert.equal(id,'role_enc_test001');
+  assert.equal(chooseId('enc_test001',[]),id);
+  assert.equal(chooseId('enc_test001',[{id}]),undefined);
+  assert.match(errors[0],/角色 ID 已存在/);
+  assert.ok(chooseId('',[]).startsWith('role_'),'普通新增角色仍能使用原有 ID 规则');
+});
+
 test('候选正式入库必须通过同账号 Web Locks，等待时重复点保存无效', async () => {
   const start=managerSource.indexOf('let encounterRoleSaveBusy = false;');
   const endAnchor="document.getElementById('btnSaveRole').addEventListener('click', saveEncounterRoleWithLock);";
