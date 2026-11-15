@@ -132,18 +132,28 @@
     if (r.value.some(function(x) { return !x || typeof x !== 'object' || typeof x.id !== 'string'; })) return fail('候选收藏有无法识别的记录，未更改原始数据');
     return ok(r.value);
   }
-  function getPreferences() {
-    if (!checkAccountScope().ok) return {};
-    try {
-      var o = JSON.parse(global.localStorage.getItem(PREFERENCES_KEY) || '{}');
-      return (o && typeof o === 'object' && !Array.isArray(o)) ? o : {};
-    } catch (e) { return {}; }
-  }
-  function savePreferences(patch) {
+  function getPreferencesResult() {
     var access = checkAccountScope();
     if (!access.ok) return access;
+    try {
+      var raw = global.localStorage.getItem(PREFERENCES_KEY);
+      if (raw === null) return ok({});
+      var o = JSON.parse(raw);
+      if (!o || typeof o !== 'object' || Array.isArray(o)) {
+        return fail('抽卡偏好数据异常，原始内容已保留');
+      }
+      return ok(o);
+    } catch (e) { return fail('抽卡偏好读取失败，未修改原始存储'); }
+  }
+  function getPreferences() {
+    var r = getPreferencesResult();
+    return r.ok ? r.value : {};
+  }
+  function savePreferences(patch) {
+    var current = getPreferencesResult();
+    if (!current.ok) return current;
     var allowed = ['type','world','similarity','gender'];
-    var preferences = getPreferences();
+    var preferences = current.value;
     allowed.forEach(function(key) {
       if (Object.prototype.hasOwnProperty.call(patch,key)) preferences[key] = String(patch[key]).slice(0,50);
     });
