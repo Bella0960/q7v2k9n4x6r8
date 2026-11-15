@@ -732,6 +732,7 @@
   font-size: 20px;
   letter-spacing: .14em;
   min-width: 44px;
+  min-height: 44px;
   justify-content: flex-start;
   line-height: 1;
 }
@@ -804,15 +805,15 @@
 }
 #fanwaiLayer .fw-actions .fw-btn.fw-reader-more-toggle {
   flex: initial;
-  width: auto;
+  width: 44px;
   border: 0;
   background: transparent;
-  color: #a0a7a1;
-  font-size: 10px;
+  color: #919b92;
+  font-size: 20px;
   font-weight: 400;
-  letter-spacing: .1em;
-  padding: 6px 2px;
-  min-height: 25px;
+  letter-spacing: .12em;
+  padding: 4px 2px;
+  min-height: 44px;
   border-radius: 0;
 }
 #fanwaiLayer .fw-reader-menu {
