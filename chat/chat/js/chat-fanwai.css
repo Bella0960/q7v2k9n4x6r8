@@ -46,7 +46,10 @@
   color: #333;
   border-radius: 12px;
   cursor: pointer;
-  font: 500 12px/1.4 inherit;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
   padding: 10px 12px;
   -webkit-tap-highlight-color: transparent;
 }
