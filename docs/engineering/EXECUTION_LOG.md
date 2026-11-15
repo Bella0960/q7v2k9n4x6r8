@@ -1,5 +1,12 @@
 # MAOMAO Execution Log
 
+## 2026-11-15 — QA-001 encrypted logical recovery rehearsal
+
+- Added the operator-only `scripts/release/founder-logical-backup.mjs` snapshot and restore helpers. They capture application SQL and private KV in one SQLite storage transaction, seal the archive with AES-256-GCM and verify the artifact digest and authenticated source metadata before restoring. The restore requires a pinned, empty, separate object and compares restored SQL, schema, migration history and KV against the decrypted snapshot before committing.
+- Used disposable Node SQLite databases to verify the original passwords and IDs for a synthetic founder and member using the existing account login API. An existing member session, migration history, BLOB, full-width integer and auto-increment high-water mark survived. A wrong key, tampered archive, live or occupied target and injected KV write failure all failed closed. Related Node suites passed 49/49.
+- Ran the additional SQLite Durable Object drill with local `workerd@1.20261115.1`, using two isolated namespaces and only generated fixture data. It passed against the real SQL and KV storage interfaces. Reproduce from the repository root with `drill_dir=$(mktemp -d)` followed by `npx --yes workerd@1.20261115.1 test -d "sqlite-disk=$drill_dir" tests/founder-logical-backup.workerd.capnp`.
+- KV values outside the JSON types currently used by the application fail closed. The helpers add no Worker route or trigger. A reviewed private operator still has to run the helpers inside the actual source object and an isolated target, store the encrypted archive independently, and write private success receipts only after verification. No production archive or receipt was created, and production deploy, checkpoint rotation and founder transfer remain pending.
+
 ## 2026-11-15 — QA-001 exact-version recovery audit
 
 - Cloudflare returned the executable modules for the 100%-active `mao-auth-preview` version `4454045f-ee8b-4b08-a679-c55745fc82ac`. Its private checkpoint handler has `checkpoint_review_required` HTTP 409 and `checkpoint_unavailable` HTTP 503. Its modules do not contain the private rotation route found in inactive upload `e17cfbd7-8dab-43c3-9a06-1672bd79c63a`. This audit observed source and deployment metadata without invoking the private mutation routes.
