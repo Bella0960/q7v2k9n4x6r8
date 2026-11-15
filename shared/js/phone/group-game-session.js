@@ -96,7 +96,9 @@
     if (!session || typeof session !== 'object' || session.groupId !== groupId ||
       !valid(session.sessionId) || !templates[session.gameId] ||
       ['active','finished','cancelled'].indexOf(session.status) === -1 ||
-      !Array.isArray(session.players) || session.players.some(function (x) { return !valid(x); }))
+      !Array.isArray(session.players) || session.players.some(function (x) { return !valid(x); }) ||
+      (session.hostId!=='__user' && (!valid(session.hostId) ||
+        session.players.indexOf(session.hostId)!==-1)))
       return null;
     // A public game view exposes participation counts, NEVER private vote targets
     // until the host has explicitly ended and revealed the session.
@@ -143,7 +145,10 @@
     if (previous && previous.status === 'active') return error('ALREADY_ACTIVE','请先结束正在进行的游戏');
     if (previous && !cleanupRound(storage,previous).complete)
       return error('PENDING_CLEANUP','上一局临时数据仍未完全清理，请先在群聊设置中重试');
-    var players = groupMemberIds(group);
+    var members=groupMemberIds(group), hostId=id(req.hostId||'__user');
+    if(hostId!=='__user' && (members.indexOf(hostId)===-1 || !valid(hostId)))
+      return error('INVALID_HOST','只能从本群现有角色中选择主持人');
+    var players=members.filter(function(rid){return rid!==hostId;});
     if (players.length < 2 || players.length > 24 || new Set(players).size !== players.length)
       return error('INVALID_PLAYERS','至少需要两位且不能有重复的有效角色');
     var culprit = id(req.badRoleId);
@@ -152,7 +157,7 @@
     var rules = { allowPrivate:req.allowPrivate === true, showPrivateActivity:req.allowPrivate === true && req.showPrivateActivity === true };
     var session = {
       version:1, sessionId:sid, groupId:gid, gameId:template.id, status:'active',
-      hostId:'__user', players:players, rules:rules, activity:[], createdAt:Date.now()
+      hostId:hostId, players:players, rules:rules, activity:[], createdAt:Date.now()
     };
     // Write ALL role-only secrets first, verify each, THEN publish the public active state.
     var secretKeys = [];
@@ -180,10 +185,11 @@
   // Incomplete prefixes matter: streaming often stops midway through a marker.
   function redactPublicStreamText(input) {
     var output=String(input==null?'':input);
+    output=output.replace(/\[游戏揭晓\]?/g,'');
     output=output.replace(/\[(?:游戏私聊|群私聊|游戏猜测)[:：][\s\S]*?(?:\]|$)/g,'');
     var last=output.match(/\[[^\]\r\n]{0,200}$/);
     if(last) {
-      var tail=last[0].slice(1), names=['游戏私聊','群私聊','游戏猜测'];
+      var tail=last[0].slice(1), names=['游戏私聊','群私聊','游戏猜测','游戏揭晓'];
       if(!tail || names.some(function(name){
         return name.indexOf(tail)===0 || tail.indexOf(name+':')===0 ||
           tail.indexOf(name+'：')===0;
@@ -205,6 +211,17 @@
       return { ok:true, active:false, text:'' };
     }
     if (session.status !== 'active') return { ok:true, active:false, text:'' };
+    if (session.hostId===rid && rid!=='__user') {
+      if(session.voteError)return error('CORRUPT_VOTE','本局投票异常，主持人不能代替玩家结算');
+      var ready=session.voteCount===session.players.length;
+      return {ok:true,active:true,sessionId:session.sessionId,isHost:true,
+        canWhisper:false,text:'[群聊游戏 · 你是本局主持人]\n'+
+          '游戏：猜猜谁是坏人。你不是玩家，不参与抽身份或投票，也不知道坏人是谁。\n'+
+          '群主已指定你主持本局；已投票：'+session.voteCount+'/'+session.players.length+'。\n'+
+          (ready
+            ? '所有玩家均已投票。你可以自然宣布即将公布结果；在完成本轮公开发言的最后附加 [游戏揭晓]。系统会核验投票并公布真实结果；你不能猜测或自行指定坏人。'
+            : '请自然引导成员讲理由、依次猜测。尚未全部投票，绝对不能宣布结果，也不能使用 [游戏揭晓]。')};
+    }
     if (session.players.indexOf(rid) === -1) return error('NOT_PLAYER','非本局角色不能参与');
     var secret = read(storage, secretKey(gid, session.sessionId, rid));
     if (!secret || secret.groupId !== gid || secret.sessionId !== session.sessionId ||
@@ -219,7 +236,7 @@
       '请根据自己已知的事实参与推理；你无法读取其他成员的身份牌。' +
       (ownVote.voted
         ? '\n你已完成本局猜测，不得再次投票，也不要编造其他人的选票。'
-        : '\n当群主宣布开始猜测，且你根据公开对话确实想投票时，在正常回复末尾添加 [游戏猜测:你怀疑的准确角色ID]。只能选一位本局其他角色，一局只有一票；不要代替其他角色投票。');
+        : '\n当主持人宣布开始猜测，且你根据公开对话确实想投票时，在正常回复末尾添加 [游戏猜测:你怀疑的准确角色ID]。只能选一位本局其他角色，一局只有一票；不要代替其他角色投票。');
     if (rules.allowPrivate) {
       var whispers = read(storage, inboxKey(gid, session.sessionId, rid));
       var incoming = Array.isArray(whispers) ? whispers.slice(-3).filter(function (m) {
@@ -410,12 +427,26 @@
   function finish(req) {
     req=req||{};
     var gid=id(req.groupId), storage=storageOf(req);
-    if (!valid(gid)||req.actorId!=='__user') return error('NO_PERMISSION','只有群主能结束并揭晓');
+    if (!valid(gid)) return error('INVALID_GROUP','当前群聊无效');
     var session=game(gid,storage);
     if (!session || session.status!=='active') return error('NOT_ACTIVE','当前没有进行中的游戏');
     if (!req.group || id(req.group.id)!==gid ||
       id(req.group.ownerId||'__user')!=='__user' || req.group.userMembership==='left')
       return error('NO_PERMISSION','无法确认当前群主权限');
+    var actor=id(req.actorId), delegated=actor!=='__user';
+    if(delegated) {
+      if(!valid(actor)||actor!==session.hostId||!valid(req.sessionId)||
+        id(req.sessionId)!==session.sessionId)
+        return error('NO_PERMISSION','只有群主授权的本局主持人可以宣布结果');
+      var hostMember=Array.isArray(req.group.members)&&req.group.members.find(function(m){
+        return m&&id(m.id)===actor;
+      });
+      if(!hostMember||hostMember.isMuted===true||
+        (Number(hostMember.mutedUntil)||0)>Date.now())
+        return error('HOST_UNAVAILABLE','主持人已离群或被禁言');
+      if(session.voteError || session.voteCount!==session.players.length)
+        return error('NOT_READY','必须由全部玩家投票后，主持人才可以自动揭晓');
+    }
     var bad=[],votes=[],targets=Object.create(null);
     for(var i=0;i<session.players.length;i++){
       var rid=session.players[i];
@@ -432,8 +463,11 @@
       }
     }
     if(bad.length!==1)return error('INVALID_RESULT','无法确定唯一坏人');
+    if(delegated && votes.length!==session.players.length)
+      return error('NOT_READY','投票在揭晓期间发生变化，请重试');
     var raw=read(storage,publicKey(gid));
-    if(!raw||raw.sessionId!==session.sessionId)return error('CONFLICT','对局已发生变化');
+    if(!raw||raw.sessionId!==session.sessionId||raw.status!=='active')
+      return error('CONFLICT','对局已发生变化');
     raw.status='finished';raw.finishedAt=Date.now();raw.revealedRoleId=bad[0];
     raw.voteCount=votes.length;
     raw.correctVotes=votes.filter(function(v){return v.targetId===bad[0];}).length;
