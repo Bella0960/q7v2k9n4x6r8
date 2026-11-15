@@ -7,6 +7,7 @@
 <script src="../../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../../shared/js/native-feel.js"></script>
 <script src="../../shared/js/group-governance.js?v=20261115g1"></script>
+<script src="../../shared/js/group-settings-layout.js?v=20261115s1" defer></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{color-scheme:light;--ink:#111;--muted:#888;--line:#e9e9ed;--paper:#fff;--wash:#f7f7f9}
@@ -110,6 +111,30 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
 .toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translate(-50%,8px);background:#111;color:#fff;border-radius:10px;padding:9px 14px;font-size:11px;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:20;white-space:nowrap}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 .error{font-size:13px;line-height:1.8;color:#777;padding:30px 2px}
+/* Group-only IA: five quiet entry rows; existing controls stay intact within one panel. */
+#groupCategoryHome[hidden],.category-pane[hidden]{display:none!important}
+.cat-intro{font-size:11px;line-height:1.85;color:#8b8b8d;margin:5px 0 18px}
+.category-row{display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;min-height:70px;padding:15px 1px;border:0;border-bottom:1px solid #efeff0;background:#fff;color:#171717;text-align:left;cursor:pointer;font:inherit}
+.category-row:first-of-type{border-top:1px solid #efeff0}
+.category-text{min-width:0;display:flex;flex-direction:column;gap:5px}
+.category-text strong{font-weight:550;font-size:14px;line-height:1.35}
+.category-text small{font-size:10px;line-height:1.5;color:#999;font-weight:400}
+.category-row svg{width:15px;height:15px;flex:none;color:#999}
+.category-row:active,.category-link:active{background:#f8f8f9}
+.category-pane{padding:2px 0 20px}
+.category-heading{font:500 25px/1.4 Georgia,"Songti SC",serif;margin:7px 0 17px;letter-spacing:-.5px}
+.category-back{padding:9px 0;color:#8a8a8a;border:0;background:none;cursor:pointer;font:11px/1.6 -apple-system,BlinkMacSystemFont,sans-serif}
+.category-more{margin-top:14px;padding:0 1px;border-top:1px solid #ededed}
+.category-more>summary{padding:13px 0;cursor:pointer;color:#666;font-size:11px;list-style:none}
+.category-more>summary::-webkit-details-marker{display:none}
+.category-more>summary:after{content:"+";float:right;font-size:15px;color:#888}
+.category-more[open]>summary:after{content:"−"}
+.category-more .setting{padding-left:3px;padding-right:3px}
+.category-link{display:block;margin:13px 0 12px;padding:15px 12px;border:1px solid #ececee;border-radius:12px;background:#fafafa;color:#333;text-decoration:none;font:12px/1.55 -apple-system,BlinkMacSystemFont,sans-serif}
+.category-pane .members{margin-top:8px}
+.category-pane .section{margin-top:27px}
+.category-pane .setting-title{font-size:12px}
+@media(max-width:355px){.category-row{min-height:64px}.category-heading{font-size:23px}}
 @media(min-width:431px){.phone{min-height:calc(100dvh - 24px);margin:12px 0;border-radius:28px;box-shadow:0 12px 45px #0000000c}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
