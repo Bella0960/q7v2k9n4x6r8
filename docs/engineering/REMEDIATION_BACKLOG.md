@@ -8,6 +8,13 @@ Status vocabulary: OPEN, IN PROGRESS, FIXED, DEFERRED, NOT VERIFIED.
 
 首轮 [全局 Bug 审计与证据清单](GLOBAL_BUG_AUDIT_20261115.md) 已覆盖 main 90 个 HTML 页面直接静态链接、现有测试、Cloudflare 发布历史及关键存储路径。**仅静态核查，不等于全站动态/真机测试**。必须按 [统一流程](RELEASE_PLAYBOOK.md) 在原 PR 开发、QA 和发布。
 
+### CHAT-HISTORY-001 — 转发到损坏的目标聊天记录时不得重置原始数据
+**Priority:** P0 · **Status:** SOURCE-VERIFIED / OPEN IN EXISTING PR #282
+
+已核对 current main 和 [原 PR #282](https://github.com/Bella0960/MAOMAO/pull/282)：`chat/chat/chat-detail.html` 的 `forwardMessage()` 在目标 `chat_history_<targetId>` JSON 损坏或非数组时，把目标历史重置为 `[]`，再直接 `localStorage.setItem`，可能覆盖原始损坏字节并使用户无法恢复。不能仅修主聊天读写却漏掉这个转发旁路。
+
+安全验收：在**仅合成数据**中模拟损坏 JSON、非数组、已存在但为空、完全不存在、旧版 v2 回退、存储拒绝/写后读回失败、图片引用创建后保存失败；损坏/不可读时必须停转发、保留原始字节和其他角色、回滚失败媒体引用，并明确提示。复用 #282 的 PhoneStorage fail-closed 契约与现有测试，不开新聊天存储分支。自动检查、独立 QA 与用户批准正式发布全部依 [统一流程](RELEASE_PLAYBOOK.md)。
+
 ### NAV-001 — 全局跨文件夹跳转路径重复／错误目录（用户反馈）
 **Priority:** P1 · **Status:** OPEN / NOT VERIFIED（用户报告可见症状，尚未定位实时根因）
 
