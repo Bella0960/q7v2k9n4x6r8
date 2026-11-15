@@ -17,7 +17,7 @@ import { applyMigrations } from './worker/lib/migrations.js';
 import { runCloudModelTick } from './worker/lib/cloud-model-scheduler.js';
 import { runTick } from './worker/lib/scheduler.js';
 import { createSchedulerGate } from './worker/lib/scheduler-gate.js';
-import { FOUNDER_CHECKPOINT_PATH, handleFounderCheckpointInternal } from './worker/lib/founder-recovery-operator.js';
+import { FOUNDER_CHECKPOINT_PATH, handleFounderCheckpointInternal, FOUNDER_ROTATE_PATH, handleFounderCheckpointRotationInternal } from './worker/lib/founder-recovery-operator.js';
 
 import { inspectAccountPersistence, inspectPitrReadiness } from './worker/lib/account-persistence.js';
 
@@ -144,6 +144,11 @@ export class CloudDatabase {
     // /internal/*, and a separate operator secret is mandatory.
     if (url.pathname === FOUNDER_CHECKPOINT_PATH) {
       return handleFounderCheckpointInternal({
+        request, env: this.env, storage: this.ctx.storage
+      });
+    }
+    if (url.pathname === FOUNDER_ROTATE_PATH) {
+      return handleFounderCheckpointRotationInternal({
         request, env: this.env, storage: this.ctx.storage
       });
     }
