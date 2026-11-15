@@ -126,7 +126,11 @@
     button.setAttribute('title', '返回桌面');
     button.setAttribute('data-maomao-global-home-indicator', '1');
     button.style.display = getPreference() ? 'flex' : 'none';
+    // The visual shell has no pointer action; the separate 84px hit-target is
+    // the sole keyboard/screen-reader return control. Do not leave an
+    // aria-hidden button in the keyboard tab order.
     button.setAttribute('aria-hidden', 'true');
+    button.setAttribute('tabindex', '-1');
     document.body.appendChild(button);
 
     // while only the 84x4 visible-line footprint can return to the home screen.
