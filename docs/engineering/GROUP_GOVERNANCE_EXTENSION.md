@@ -56,3 +56,11 @@
 3. `npm run build` 与 `npm run test:chat:contract`，重点检查 PWA `v209` 及其三个游戏/记忆脚本的版本一致性。
 4. 手机浏览器验收：群主任命/撤职、管理员听取用户指令、被禁言成员绝无新增群气泡、解禁复发、权限越界被拒绝；角色新群邀请接受/拒绝、退群后列表消失、聊天历史保留、接受后返回；自定义主题与断网/存储不足提示。
 5. 与正式账号系统整合前，验证账号隔离与云端授权。**全部通过前保持 Draft，不得合并或部署生产**。
+
+## 2026-11-15 后续审计：严格回执与私聊数据边界
+
+- `GroupTurnEffects.finalize(true)` 的成功判断采用**明确回执**：仅 `true` 或 `{ok:true}` 可计入 `committed`；`undefined`、空字符串、空对象、`null` 和异步 Promise 不会误算成功。当前接口刻意是同步后置动作，新增异步操作应先设计独立可验证提交过程，不能直接丢给 `afterSave`。
+- 普通 `[群私聊]` 每个 AI 回合最多投递一条，重复机器标记只剥离不重复写入。
+- **新生成的**普通角色群私聊正文只保存在该角色的 `chat_history_<角色ID>` 中；群聊 `group_private` 入口卡仅有角色 ID 和 `privateMessageId` 等元数据，不再复制私聊正文。读回验证包括私聊消息的 `mid` 和入口卡 `privateMessageId`。原有历史入口保留兼容，不主动批量改写已有数据。
+- 单聊写入失败不会产生群入口或已投递弹窗；若单聊写入成功但群入口保存失败，会报告部分失败，单聊记录保留且仍能从角色单聊中查看，**目前不承诺崩溃后自动补建卡片**。
+- 为核对 GitHub Action 配额之外的回归，使用 V8 兼容夹具执行了五份仓库测试的实际测试逻辑；另外对 GitHub `shared/js/phone/group-turn-effects.js` 的精确 Blob SHA 校验后，以独立 Node.js 22 `node --test` 对该文件执行了 5 项真实单元测试并通过。这不是整仓 `npm run test:group:governance`、Playwright、`npm run build` 或 Android/iPhone 完整验收。
