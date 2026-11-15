@@ -398,6 +398,59 @@
   }
   function saveCandidateSafe(card) { return withCandidateLock(function(){return saveCandidate(card);}); }
   function removeCandidateSafe(id) { return withCandidateLock(function(){return removeCandidate(id);}); }
+  // 收藏的人物并非只读卡片：允许用户日后重新选择命运分支。
+  // 仅更新一张候选自己的 V2 key，绝不写角色库、覆盖其他候选或修改原有 ID。
+  function updateCandidateStoryChoice(id, choice) {
+    if (typeof id !== 'string' || !/^enc_[a-z0-9_-]{3,80}$/i.test(id)) return fail('候选 ID 无效');
+    var before = getCandidates();
+    if (!before.ok) return before;
+    var card = before.value.find(function(item) { return item.id === id; });
+    if (!card) return fail('这位候选已不在收藏中，请重新打开收藏查看');
+    if (card.type !== '命运分支' || !Array.isArray(card.choices) ||
+        typeof choice !== 'string' || card.choices.indexOf(choice) === -1) {
+      return fail('该人物不支持此故事选项');
+    }
+    var key = ITEM_PREFIX + id;
+    var updated = Object.assign({}, card, {selectedChoice:choice});
+    try {
+      if (global.localStorage.getItem(REMOVED_PREFIX + id) !== null) {
+        return fail('这位人物已经被移除，无法修改故事');
+      }
+      global.localStorage.setItem(key, JSON.stringify(updated));
+      var raw = global.localStorage.getItem(key);
+      var saved = raw && JSON.parse(raw);
+      if (!saved || saved.id !== id || saved.selectedChoice !== choice) {
+        return fail('故事选择保存后校验失败，请检查存储空间');
+      }
+      var verified = getCandidates();
+      if (!verified.ok || !verified.value.some(function(item) {
+        return item.id === id && item.selectedChoice === choice;
+      })) {
+        return fail('故事选择未能确认保存，请重新打开档案检查');
+      }
+    } catch (error) {
+      return fail('故事选择保存失败，原人物档案已保留');
+    }
+    notify('story-choice', {id:id, selectedChoice:choice});
+    return ok(updated);
+  }
+  function updateCandidateStoryChoiceSafe(id, choice) {
+    return withCandidateLock(function() { return updateCandidateStoryChoice(id,choice); });
+  }
+  // 选故事不请求 AI：同一个人物和选项始终给出稳定的开场，正式角色设定也可继承。
+  function storyOpening(card, choice) {
+    if (!card || !Array.isArray(card.choices) || card.choices.indexOf(choice) === -1) return '';
+    var name = String(card.name || '这位陌生人');
+    var era = String(card.era || '这个世界');
+    var job = String(card.job || '旅人');
+    var object = String(card.object || '一件旧物');
+    if (choice === card.choices[0]) {
+      return '在' + era + '，' + name + '选择守住熟悉的生活。作为' + job +
+        '，TA 从「' + object + '」发现了一条牵动往事的线索。';
+    }
+    return name + '离开了熟悉的落脚处，开始追寻「' + object +
+      '」背后的故事。' + era + '之外的旅途，将让' + job + '的身份面临新的选择。';
+  }
   function formatBrief(card) {
     if (!card) return '';
     var age = card.species === '人类' ? String(card.age) + '岁' : '年龄 ' + String(card.age) + '年';
@@ -408,7 +461,9 @@
       '【外在性格】' + card.trait,
       '【内在反差】' + card.contrast,
       '【重要物件】' + card.object,
-      '【命运线索】' + (card.selectedChoice || card.fate),
+      '【命运线索】' + card.fate,
+      ...(card.selectedChoice && Array.isArray(card.choices) && card.choices.indexOf(card.selectedChoice) !== -1
+        ? ['【故事起点】' + card.selectedChoice, '【开场片段】' + storyOpening(card, card.selectedChoice)] : []),
       '【相遇类型】' + (card.rarity || '普通') + '（稀有仅表示故事线索较特别，不代表人物等级）',
       '【说话气质】' + card.quote,
       '【创作说明】以上为简要原创设定。正式聊天前可在角色档案补全经历、习惯、动机与表达方式。'
@@ -417,8 +472,9 @@
   global.MAOMAOEncounter = Object.freeze({
     version:2, generate:generate, getCandidates:getCandidates, saveCandidate:saveCandidate,
     removeCandidate:removeCandidate, saveCandidateSafe:saveCandidateSafe,
-    removeCandidateSafe:removeCandidateSafe, getPreferences:getPreferences, savePreferences:savePreferences,
-    formatBrief:formatBrief, normalizeName:normalizeName,
+    removeCandidateSafe:removeCandidateSafe, updateCandidateStoryChoiceSafe:updateCandidateStoryChoiceSafe,
+    getPreferences:getPreferences, savePreferences:savePreferences,
+    formatBrief:formatBrief, storyOpening:storyOpening, normalizeName:normalizeName,
     checkAccountScope:checkAccountScope, verifyLiveAccountContext:verifyLiveAccountContext,
     registerCardDecorator:function(fn) {
       if (typeof fn !== 'function') return function(){};
