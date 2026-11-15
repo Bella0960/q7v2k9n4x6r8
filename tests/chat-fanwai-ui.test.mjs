@@ -864,3 +864,31 @@ test('failed archive refresh preserves the last committed snapshot and shows an 
   assert.equal(root.querySelector('.fw-sheet').all().filter(el => el.dataset.id === id).length, 1);
   assert.equal(app.requests, 0);
 });
+
+
+test('delete during a pending final save cannot resurrect an erased side story', async () => {
+  let finalPutStarted = false;
+  const indexedDB = fakeFanwaiDB({
+    writeDelays: [0, 0, 0, 0, 0, 0, 0, 0, 90],
+    onPut(record, count) {
+      if (count === 9 && record.characterId === 'role-1') finalPutStarted = true;
+    }
+  });
+  const app = mount({ accountId: 'MAO-AAAAAAAAAAAA', indexedDB });
+  const root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().some(el => el.dataset.template === 'daily'));
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(el => el.dataset.template === 'daily') });
+  await root.handlers.click({ target: sheet.all().find(el => el.dataset.action === 'start-template') });
+  await tickUntil(() => finalPutStarted);
+  const savedId = [...indexedDB.records.keys()].find(id => id.includes(':role-1:'));
+  assert.ok(savedId, 'the story must have earlier committed batches before final save');
+  await root.handlers.click({ target: sheet.all().find(el => el.dataset.action === 'delete') });
+  const confirm = sheet.all().find(el => el.dataset.action === 'confirm-delete');
+  assert.ok(confirm, 'deletion must be available after generation stops');
+  await root.handlers.click({ target: confirm });
+  await new Promise(resolve => setTimeout(resolve, 105));
+  assert.equal(indexedDB.records.has(savedId), false,
+    'the pending put must finish before delete, never resurrecting a deleted story');
+  assert.equal(app.requests, 7, 'deletion must not call the AI');
+});
