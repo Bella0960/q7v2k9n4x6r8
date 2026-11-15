@@ -76,10 +76,35 @@ if (pkg.name !== 'phone-simulator') {
   writeReport();
   process.exit(2);
 }
+// Prevent a partial fixture or stale export from being reported as a full app run.
+const ignoredDirs = new Set(['.git', '.github', '.wrangler', 'node_modules', 'dist', 'tests', 'test-results', 'coverage']);
+function countHtml(dir) {
+  let count = 0;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name.startsWith('.') || ignoredDirs.has(entry.name)) continue;
+    const location = path.join(dir, entry.name);
+    if (entry.isDirectory()) count += countHtml(location);
+    else if (entry.name.endsWith('.html')) count++;
+  }
+  return count;
+}
+const htmlPages = countHtml(root);
+report.htmlPages = htmlPages;
+if (htmlPages < 80 || !/\bvite\s+build\b/.test(pkg.scripts?.build || '')) {
+  report.stages.push({ name: 'full-repo-preflight', result: 'BLOCKED', htmlPages,
+    buildScript: pkg.scripts?.build || null });
+  console.error('BLOCKED: incomplete source or missing real Vite build script.');
+  writeReport();
+  process.exit(2);
+}
 report.verified.sourcePreflight = true;
 const git = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', timeout: 10000 });
-if (git.status === 0) report.commit = git.stdout.trim();
-else report.note += ' Git SHA could not be read; identify snapshot manually.';
+if (git.status === 0) {
+  report.commit = git.stdout.trim();
+  const status = spawnSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8', timeout: 10000 });
+  report.dirtyWorktree = status.status === 0 ? Boolean(status.stdout.trim()) : null;
+  if (report.dirtyWorktree) report.note += ' Working tree has changes; tests do not necessarily match the recorded HEAD.';
+} else report.note += ' Git SHA could not be read; identify snapshot manually.';
 
 const viteBin = path.join(root, 'node_modules', '.bin', process.platform === 'win32' ? 'vite.cmd' : 'vite');
 if (args.includes('--install')) {
