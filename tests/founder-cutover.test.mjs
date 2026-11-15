@@ -187,8 +187,10 @@ test('private continuity transfers one encrypted verifier after live recovery pr
   const digest = 'd'.repeat(64);
   const from = String(timestamp - 1000);
   const until = String(timestamp + 2000);
+  const handoffId = randomToken(16);
   const vars = { FOUNDER_CONTINUITY_KEY: key, FOUNDER_CONTINUITY_SECRET: secret,
-    FOUNDER_CONTINUITY_FROM: from, FOUNDER_CONTINUITY_UNTIL: until, FOUNDER_CONTINUITY_BACKUP_DIGEST: digest };
+    FOUNDER_CONTINUITY_FROM: String(timestamp - 120000), FOUNDER_CONTINUITY_UNTIL: String(timestamp + 300000),
+    FOUNDER_CONTINUITY_BACKUP_DIGEST: digest, FOUNDER_CONTINUITY_HANDOFF_ID: handoffId };
   const receipt = new Map([
     ['founder-recovery:encrypted-backup-success', { ok: true, code: 'encrypted_sql_kv_backup_verified',
       sourceNamespaceId: ROOT_NAMESPACE_ID, sourceObjectId: ROOT_OBJECT_ID, createdAt: timestamp - 800,
@@ -201,6 +203,7 @@ test('private continuity transfers one encrypted verifier after live recovery pr
   const vault = new Map();
   const env = {
     FOUNDER_CONTINUITY_SECRET: secret,
+    FOUNDER_CONTINUITY_HANDOFF_ID: handoffId,
     FOUNDER_BACKUP_VAULT: { get: k => vault.get(k) },
     RELEASE_AUDIT: { get: k => receipt.get(k), put: (k, v) => receipt.set(k, JSON.parse(v)) },
     LIVE_CLOUD_DB: { idFromString: id => id, get: id => ({
@@ -214,7 +217,7 @@ test('private continuity transfers one encrypted verifier after live recovery pr
     }) }
   };
   const activation = { mode: 'transfer-existing-founder-001', founderId: FOUNDER_CONTINUITY_ID,
-    backupDigest: digest, from, until };
+    backupDigest: digest, handoffId, from, until };
   assert.equal((await runPrivateFounderContinuity({ env, activation, now })).code, 'continuity_recovery_unverified');
   assert.deepEqual(calls, []);
   receipt.set('founder-checkpoint:success', { ok: true, rotated: true, code: 'checkpoint_recorded',

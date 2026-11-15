@@ -7,12 +7,13 @@ import {
 } from '../scripts/release/founder-recovery-receipts.mjs';
 
 export async function runPrivateFounderContinuity({ env, activation, now = Date.now }) {
-  const { from, until, backupDigest } = activation || {};
+  const { from, until, backupDigest, handoffId } = activation || {};
   const token = env?.FOUNDER_CONTINUITY_SECRET;
   const audit = env?.RELEASE_AUDIT;
   const time = now();
   if (activation?.mode !== 'transfer-existing-founder-001' ||
       activation.founderId !== FOUNDER_CONTINUITY_ID || typeof token !== 'string' ||
+      !/^[A-Za-z0-9_-]{22}$/.test(handoffId || '') || handoffId !== env.FOUNDER_CONTINUITY_HANDOFF_ID ||
       !/^[A-Za-z0-9_-]{48,256}$/.test(token) || !/^\d{13}$/.test(from || '') ||
       !/^\d{13}$/.test(until || '') || Number(until) <= Number(from) ||
       Number(until) - Number(from) > 120000 || time < Number(from) || time >= Number(until) ||
@@ -35,8 +36,9 @@ export async function runPrivateFounderContinuity({ env, activation, now = Date.
       return { ok: false, code: 'continuity_recovery_unverified' };
     }
     const target = env.LIVE_CLOUD_DB.get(env.LIVE_CLOUD_DB.idFromString(ROOT_OBJECT_ID));
-    const headers = { 'x-maomao-continuity-secret': token, 'content-type': 'application/json' };
-    const encrypted = await env.FOUNDER_BACKUP_VAULT.get(founderContinuityEnvelopeKey(backupDigest, from));
+    const headers = { 'x-maomao-continuity-secret': token, 'content-type': 'application/json',
+      'x-maomao-continuity-from': from, 'x-maomao-continuity-until': until };
+    const encrypted = await env.FOUNDER_BACKUP_VAULT.get(founderContinuityEnvelopeKey(backupDigest, handoffId));
     if (typeof encrypted !== 'string' || encrypted.length > 2048 || now() >= Number(until)) {
       return { ok: false, code: 'continuity_envelope_unavailable' };
     }

@@ -10,8 +10,9 @@ export const FOUNDER_SEAL_PATH = '/internal/release/founder-continuity-seal';
 export const FOUNDER_APPLY_PATH = '/internal/release/founder-continuity-apply';
 const response = (data, status) => Response.json(data, { status, headers: { 'cache-control': 'no-store' } });
 
-export const founderContinuityEnvelopeKey = (digest, from) =>
-  'founder-continuity/v1/' + digest + '/' + from;
+export const founderContinuityEnvelopeKey = (digest, handoffId) =>
+  'founder-continuity/v2/' + digest + '/' + handoffId;
+const envelopeLifetimeMs = 30 * 60 * 1000;
 
 function authorizedContext(request, env, state, source, now) {
   const url = new URL(request.url);
@@ -28,19 +29,23 @@ function authorizedContext(request, env, state, source, now) {
   for (let i = 0; i < expected.length; i++) difference |= (provided.charCodeAt(i) || 0) ^ expected.charCodeAt(i);
   if (difference) return null;
   const key = base64UrlToBytes(env.FOUNDER_CONTINUITY_KEY);
-  const from = env.FOUNDER_CONTINUITY_FROM;
-  const until = env.FOUNDER_CONTINUITY_UNTIL;
+  const from = source ? env.FOUNDER_CONTINUITY_FROM : request.headers.get('x-maomao-continuity-from');
+  const until = source ? env.FOUNDER_CONTINUITY_UNTIL : request.headers.get('x-maomao-continuity-until');
   const digest = env.FOUNDER_CONTINUITY_BACKUP_DIGEST;
+  const handoffId = env.FOUNDER_CONTINUITY_HANDOFF_ID;
+  const maxWindow = source ? 20 * 60 * 1000 : 120000;
   if (key?.length !== 32 || !/^\d{13}$/.test(from || '') || !/^\d{13}$/.test(until || '') ||
-      Number(until) <= Number(from) || Number(until) - Number(from) > 120000 ||
+      !/^[A-Za-z0-9_-]{22}$/.test(handoffId || '') ||
+      Number(until) <= Number(from) || Number(until) - Number(from) > maxWindow ||
       now < Number(from) || now >= Number(until) || !/^[a-f0-9]{64}$/.test(digest || '')) return null;
-  const context = utf8(JSON.stringify(['maomao-founder-transfer-v1', FOUNDER_ORIGINAL_OBJECT_ID,
-    ROOT_OBJECT_ID, FOUNDER_CONTINUITY_ID, digest, from, until]));
+  const context = utf8(JSON.stringify(['maomao-founder-transfer-v2', FOUNDER_ORIGINAL_OBJECT_ID,
+    ROOT_OBJECT_ID, FOUNDER_CONTINUITY_ID, digest, handoffId]));
   return { key, context, until: Number(until) };
 }
 
 export async function sealOriginalFounder({ request, env, state, now = Date.now }) {
-  const auth = authorizedContext(request, env, state, true, now());
+  const sealedAt = now();
+  const auth = authorizedContext(request, env, state, true, sealedAt);
   if (!auth) return response({ ok: false, code: 'continuity_not_authorized' }, 403);
   try {
     const account = state.storage.sql.exec(
@@ -52,7 +57,7 @@ export async function sealOriginalFounder({ request, env, state, now = Date.now 
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const key = await crypto.subtle.importKey('raw', auth.key, 'AES-GCM', false, ['encrypt']);
     const sealed = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: auth.context },
-      key, utf8(JSON.stringify(account[0])));
+      key, utf8(JSON.stringify({ ...account[0], sealedAt })));
     return response({ ok: true, iv: bytesToBase64Url(iv), sealed: bytesToBase64Url(sealed) }, 200);
   } catch {
     return response({ ok: false, code: 'source_identity_unavailable' }, 503);
@@ -76,8 +81,8 @@ export async function preserveFounderAfterLogin({ loginResponse, env, state, now
     });
     const encrypted = await sealOriginalFounder({ request, env, state, now });
     if (!encrypted.ok) return false;
-    const key = founderContinuityEnvelopeKey(env.FOUNDER_CONTINUITY_BACKUP_DIGEST, env.FOUNDER_CONTINUITY_FROM);
-    await env.FOUNDER_BACKUP_VAULT.put(key, await encrypted.text(), { expirationTtl: 600 });
+    const key = founderContinuityEnvelopeKey(env.FOUNDER_CONTINUITY_BACKUP_DIGEST, env.FOUNDER_CONTINUITY_HANDOFF_ID);
+    await env.FOUNDER_BACKUP_VAULT.put(key, await encrypted.text(), { expirationTtl: envelopeLifetimeMs / 1000 });
     return true;
   } catch {
     return false;
@@ -101,6 +106,10 @@ export async function applyOriginalFounder({ request, env, state, now = Date.now
     const { storage } = state;
     const checkpointProof = await verifyFounderCheckpoint({ storage, now });
     const timestamp = now();
+    if (!Number.isSafeInteger(chosen.sealedAt) || chosen.sealedAt > timestamp ||
+        timestamp - chosen.sealedAt >= envelopeLifetimeMs) {
+      return response({ ok: false, code: 'continuity_envelope_expired' }, 409);
+    }
     if (timestamp >= auth.until) return response({ ok: false, code: 'continuity_not_authorized' }, 403);
     const result = cutoverFounder({
       exec: (sql, ...values) => storage.sql.exec(sql, ...values).toArray(),
