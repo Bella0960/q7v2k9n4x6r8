@@ -85,6 +85,7 @@
       var match=members.find(function(m){return m&&asId(m.id)===rid;});
       return asId(match&&(match.nickname||match.name)||'群成员').slice(0,36);
     }
+    var hostName=official.hostId==='__user'?'群主':memberName(asId(official.hostId));
     var finished=official.status==='finished',
       count=Math.max(0,Math.min(24,Number(official.voteCount)||0)),
       correct=Math.max(0,Math.min(count,Number(official.correctVotes)||0));
@@ -120,6 +121,7 @@
       groupGame:{
         version:1,groupId:gid,sessionId:official.sessionId,
         gameId:'mystery',status:official.status,
+        hostId:asId(official.hostId),hostName:hostName,
         revealedRoleId:finished?official.revealedRoleId:'',
         revealedName:finished?memberName(official.revealedRoleId):'',
         voteCount:finished?count:0,correctVotes:finished?correct:0,
@@ -134,7 +136,8 @@
     return JSON.stringify({
       mid:asId(message.mid),groupId:asId(game.groupId),
       sessionId:asId(game.sessionId),gameId:asId(game.gameId),
-      status:asId(game.status),revealedRoleId:asId(game.revealedRoleId),
+      status:asId(game.status),hostId:asId(game.hostId||'__user'),
+      revealedRoleId:asId(game.revealedRoleId),
       playersCount:Number(game.playersCount)||0,
       voteCount:Number(game.voteCount)||0,
       correctVotes:Number(game.correctVotes)||0,
