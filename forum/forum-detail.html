@@ -542,11 +542,15 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     }).filter(Boolean);
     return {name:r.name,avatar:'#'+['333333','555555','777777','444444'][index%4],residentId:r.id,owner:'community',source:'forum-ai',text:text,time:now-index*50000,likes:0,replies:replies};
   }
+  // Scoped per-post so an overlapping call cannot buy two AI generations or
+  // append two "first batches". This is transient and never persisted.
+  const pendingInitialAIComments=new WeakSet();
   async function generateInitialAIComments(){
-    if(!post||post.aiCommentBatch==='v1')return;
+    if(!post||post.aiCommentBatch==='v1'||pendingInitialAIComments.has(post))return;
     // A deferred AI response belongs to the post that initiated it, never to
     // a different post that may have become active before it returned.
     const initialPost=post;
+    pendingInitialAIComments.add(initialPost);
     const status=document.getElementById('aiCommentStatus');
     if(status)status.textContent='社区里有人正在看这条帖子…';
     try{
@@ -554,7 +558,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       const existing=post.comments.slice(-5).map(c=>({name:c.name,text:c.text,replies:(c.replies||[]).map(x=>x.text)}));
       const prompt='请为下面这条论坛帖子补上第一批自然的网友讨论。只返回 JSON。\n固定路人：'+JSON.stringify(residents)+'\n帖子：'+JSON.stringify({author:post.name,title:postTitle(),body:postBody(),topic:post.topic||''})+'\n已有评论（不要重复）：'+JSON.stringify(existing)+'\n要求：生成 3-4 条评论，至少有两种不同态度；评论要抓住帖子细节，有人追问、有人分享经历、有人补充或温和反对。选择 1-2 条评论加一条楼中楼回复，让讨论有来有回。禁止每条都夸楼主或只说“确实”“哈哈”。所有 residentId 必须来自固定路人。格式：{"comments":[{"residentId":"路人id","text":"评论内容","replies":[{"residentId":"路人id","text":"回复内容","replyTo":"被回复昵称"}]}]}';
       const result=await forumAIJSON(prompt,0.93,initialPost.mediaAssetIds);
-      if(post!==initialPost)return;
+      if(post!==initialPost||initialPost.aiCommentBatch==='v1')return;
       if(!result||!result.ok||!result.data||!Array.isArray(result.data.comments))throw new Error('评论生成结果无效');
       const added=result.data.comments.slice(0,4).map((x,i)=>makeDetailAIComment(x,i)).filter(Boolean);
       if(added.length){
@@ -578,6 +582,8 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       if(post!==initialPost)return;
       // 打开帖子时自动触发的后台生成：评论区内联 status 已是可见提示，再弹 toast 会在每次打开帖子时重复打扰，故此处只用状态文案。
       if(status)status.textContent=(post.mediaAssetIds||[]).length?'图片已经保留；当前 API 或模型可能不支持看图，暂时无法生成图片讨论':'路人暂时没有赶来，稍后重新打开帖子再试试';
+    }finally{
+      pendingInitialAIComments.delete(initialPost);
     }
   }
 
