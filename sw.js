@@ -1,8 +1,13 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v238';
+const CACHE_NAME = 'phone-app-pwa-v241';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
+function cacheablePublicResponse(response) {
+  return !!(response && response.ok && !response.redirected &&
+    !/(?:^|[,\s])(?:no-store|private)(?:[,\s]|$)/i.test(
+      String(response.headers && response.headers.get('cache-control') || '')));
+}
 // v196 release: sweep orphaned role-owned media refs during avatar cleanup.
 const APP_SHELL = [
   './',
@@ -162,7 +167,14 @@ self.addEventListener('install', event => {
       const resources = Array.from(new Set(APP_SHELL.concat(pageEntries)))
         .filter(url => url === './account/index.html' || url === './account/bootstrap.html' ||
           (url !== './' && url !== '/' && !/\.html(?:\?|$)/i.test(url)));
-      await Promise.all(resources.map(url => cache.add(url).catch(() => undefined)));
+      await Promise.all(resources.map(function (url) {
+        if (url === './account/index.html' || url === './account/bootstrap.html') {
+          return fetch(url, { cache: 'no-store' }).then(function (response) {
+            return cacheablePublicResponse(response) ? cache.put(url, response) : undefined;
+          }).catch(function () { return undefined; });
+        }
+        return cache.add(url).catch(function () { return undefined; });
+      }));
     }).then(() => self.skipWaiting())
   );
 });
@@ -278,7 +290,7 @@ self.addEventListener('fetch', event => {
       } catch {
         const entry = new URL('account/index.html', self.registration.scope);
         const cachedEntry = await caches.match(entry.href).catch(function () { return null; });
-        return cachedEntry || new Response('当前处于离线状态，请联网验证 MAO 账号后继续。', {
+        return cacheablePublicResponse(cachedEntry) ? cachedEntry : new Response('当前处于离线状态，请联网验证 MAO 账号后继续。', {
           status: 503,
           headers: { 'Content-Type': 'text/plain; charset=UTF-8', 'Cache-Control': 'no-store' }
         });
@@ -301,7 +313,7 @@ self.addEventListener('fetch', event => {
     event.respondWith((async function () {
       var cacheWritePromise = null;
       var networkPromise = fetch(req, { cache: 'no-store' }).then(function (response) {
-        if (response && response.ok) {
+        if (cacheablePublicResponse(response)) {
           var copy = response.clone();
           cacheWritePromise = caches.open(CACHE_NAME)
             .then(function (cache) { return cache.put(req, copy); })
@@ -319,7 +331,7 @@ self.addEventListener('fetch', event => {
 
       // Only when the network genuinely fails, show a cached public sign-in.
       var cached = await caches.match(req).catch(function () { return null; });
-      if (cached) return cached;
+      if (cacheablePublicResponse(cached)) return cached;
 
       return new Response('此页面暂时无法连接，请检查网络后重试。', {
         status: 503,
@@ -349,9 +361,10 @@ self.addEventListener('fetch', event => {
   event.respondWith(
     caches.match(req).then(cached => {
       const fresh = fetch(req).then(response => {
-        if (response && response.ok) {
+        if (cacheablePublicResponse(response)) {
           const copy = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(req, copy));
+          caches.open(CACHE_NAME).then(cache => cache.put(req, copy))
+            .catch(() => undefined);
         }
         return response;
       }).catch(() => cached);
