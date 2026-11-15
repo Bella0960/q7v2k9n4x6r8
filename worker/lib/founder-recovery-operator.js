@@ -1,4 +1,8 @@
-import { recordFounderCheckpoint, rotateStaleFounderCheckpoint } from '../../scripts/release/founder-checkpoint.mjs';
+import {
+  FounderCheckpointRotationRequired,
+  recordFounderCheckpoint,
+  rotateStaleFounderCheckpoint
+} from '../../scripts/release/founder-checkpoint.mjs';
 
 // This path exists only on the private Durable Object stub. The public Worker
 // entrypoint forwards /api/* and does NOT forward /internal/*.
@@ -43,7 +47,10 @@ export async function handleFounderCheckpointInternal({ request, env, storage, n
     const { recordedAt } = await recordFounderCheckpoint({ storage, now });
     // Never send a raw bookmark, secret, previous credentials or SQL payload.
     return json({ ok: true, recorded: true, recordedAt }, 200);
-  } catch {
+  } catch (error) {
+    if (error instanceof FounderCheckpointRotationRequired) {
+      return json({ ok: false, error: 'checkpoint_rotation_requires_review' }, 409);
+    }
     return json({ ok: false, error: 'checkpoint_unavailable' }, 503);
   }
 }

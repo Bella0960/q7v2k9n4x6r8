@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import operator, { runPrivateFounderCheckpoint } from '../worker/founder-checkpoint-runner.js';
 import { recordFounderCheckpoint } from '../scripts/release/founder-checkpoint.mjs';
-import { handleFounderCheckpointRotationInternal } from '../worker/lib/founder-recovery-operator.js';
+import {
+  FOUNDER_ROTATE_PATH,
+  handleFounderCheckpointInternal,
+  handleFounderCheckpointRotationInternal
+} from '../worker/lib/founder-recovery-operator.js';
 
 const NOW = 1_800_000_000_000;
 const SECRET = 'R'.repeat(64);
@@ -169,6 +173,49 @@ test('retry cannot overwrite the first recoverable bookmark or silently rotate a
   await assert.rejects(recordFounderCheckpoint({ storage, now: () => NOW + 900001 }), /review before rotating/);
   assert.equal(bookmarkCalls, 1);
   assert.equal(writes, 1);
+});
+
+test('runner receives the real stale-checkpoint response and rotates only with approval', async () => {
+  const { env } = setup();
+  const original = { bookmark: 'a'.repeat(64), recordedAt: NOW - 3600000 };
+  const values = new Map([['release:founder-cutover:checkpoint', original]]);
+  const storage = {
+    async get(key) { return values.get(key); },
+    async put(key, value) { values.set(key, value); },
+    async getCurrentBookmark() { return 'b'.repeat(64); },
+    async sync() {},
+    async transaction(callback) { return callback(this); }
+  };
+  const paths = [];
+  const now = () => NOW;
+  env.LIVE_CLOUD_DB = {
+    idFromName: name => name,
+    get: () => ({
+      fetch(request) {
+        const pathname = new URL(request.url).pathname;
+        paths.push(pathname);
+        const handle = pathname === FOUNDER_ROTATE_PATH
+          ? handleFounderCheckpointRotationInternal : handleFounderCheckpointInternal;
+        return handle({ request, storage, env, now });
+      }
+    })
+  };
+
+  assert.deepEqual(await runPrivateFounderCheckpoint({ env, now }), {
+    ok: false, code: 'checkpoint_rotation_requires_review'
+  });
+  assert.equal(paths.length, 1);
+  assert.equal(values.size, 1);
+  assert.equal(values.get('release:founder-cutover:checkpoint'), original);
+
+  env.FOUNDER_ROTATE_ALLOWED = 'preserve-old-checkpoint-and-rotate';
+  assert.deepEqual(await runPrivateFounderCheckpoint({ env, now }), {
+    ok: true, code: 'checkpoint_recorded', recordedAt: NOW
+  });
+  assert.equal(paths.length, 3);
+  assert.equal(paths[2], FOUNDER_ROTATE_PATH);
+  assert.equal(values.get('release:founder-cutover:history:' + original.recordedAt), original);
+  assert.equal(values.get('release:founder-cutover:checkpoint').recordedAt, NOW);
 });
 
 test('private execution receipts are persisted without bookmark, secret or account data', async () => {

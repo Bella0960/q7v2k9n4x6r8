@@ -5,6 +5,12 @@ const CHECKPOINT_KEY = 'release:founder-cutover:checkpoint';
 const MAX_CHECKPOINT_AGE_MS = 15 * 60 * 1000;
 const issuedProofs = new WeakMap();
 
+export class FounderCheckpointRotationRequired extends Error {
+  constructor() {
+    super('Recovery checkpoint already exists; review before rotating');
+  }
+}
+
 function validBookmark(value) {
   return typeof value === 'string' && /^[0-9a-f-]{20,128}$/i.test(value);
 }
@@ -37,7 +43,7 @@ export async function recordFounderCheckpoint({ storage, now = Date.now }) {
         recordedAt - existing.recordedAt <= MAX_CHECKPOINT_AGE_MS) {
       return { recorded: true, recordedAt: existing.recordedAt };
     }
-    throw new Error('Recovery checkpoint already exists; review before rotating');
+    throw new FounderCheckpointRotationRequired();
   }
   const bookmark = await storage.getCurrentBookmark();
   if (!validBookmark(bookmark)) throw new Error('Recovery checkpoint unavailable');
