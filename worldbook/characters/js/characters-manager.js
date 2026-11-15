@@ -1535,6 +1535,13 @@ function handleSaveRole() {
                 relationVibe: card.relationVibe || '',
                 trait: card.trait || '', contrast: card.contrast || '',
                 object: card.object || '', fate: card.selectedChoice || card.fate || '',
+                // fate 保留旧版读取契约；新增分支字段供后续故事、足迹玩法独立扩展。
+                originalFate: card.fate || '',
+                storyChoice: (Array.isArray(card.choices) && card.choices.includes(card.selectedChoice))
+                    ? card.selectedChoice : '',
+                storyOpening: (Array.isArray(card.choices) && card.choices.includes(card.selectedChoice) &&
+                    typeof window.MAOMAOEncounter.storyOpening === 'function')
+                    ? window.MAOMAOEncounter.storyOpening(card,card.selectedChoice) : '',
                 encounterType: card.type || '', rarity: card.rarity || '普通'
             };
         }
@@ -2143,9 +2150,25 @@ function openEncounterCandidateFromQuery() {
     setSaveStatus('已带入邂逅人设，可继续完善；保存后才会加入正式角色库。', 'info');
 }
 
+// 「已相识」返回现有角色档案，只读检查邂逅来源，不自动设为当前角色。
+function openEncounterRoleFromQuery() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('encounterDraft')) return; // 候选导入优先，拒绝混用两种意图。
+    const roleId = params.get('encounterRole');
+    if (!roleId) return;
+    const role = getRoleById(roleId);
+    if (!role || !role.encounterOrigin || role.encounterOrigin.version !== 1 ||
+        !/^enc_[a-z0-9_-]{3,80}$/i.test(String(role.encounterOrigin.sourceCandidateId || ''))) {
+        console.warn('未找到对应的邂逅角色，保留原角色列表。');
+        return;
+    }
+    openRoleProfile(role.id);
+}
+
 // 页面初始化
 renderRoleList();
 openEncounterCandidateFromQuery();
+openEncounterRoleFromQuery();
 retryPendingRoleAvatarCleanup().catch(function (error) {
     console.warn('角色头像清理队列暂时无法执行:', error);
 });
@@ -2159,5 +2182,7 @@ retryPendingRoleAvatarCleanup().catch(function (error) {
     var from = params.get('from');
     if (from === 'contacts') {
         backBtn.setAttribute('href', '../../chat/contacts/contacts.html');
+    } else if (from === 'encounter') {
+        backBtn.setAttribute('href', '../../encounter/encounter.html');
     }
 })();
