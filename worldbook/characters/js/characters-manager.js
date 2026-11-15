@@ -1454,7 +1454,8 @@ function handleSaveRole() {
             const card = candidates.ok && candidates.value.find(function (c) { return c.id === activeEncounterDraftId; });
             if (card) encounterOrigin = {
                 version: 1, sourceCandidateId: card.id, createdAt: card.createdAt || Date.now(),
-                species: card.species || '', era: card.era || '', job: card.job || '',
+                gender: card.gender || '', species: card.species || '', era: card.era || '', job: card.job || '',
+                relationVibe: card.relationVibe || '',
                 trait: card.trait || '', contrast: card.contrast || '',
                 object: card.object || '', fate: card.selectedChoice || card.fate || '',
                 encounterType: card.type || ''
