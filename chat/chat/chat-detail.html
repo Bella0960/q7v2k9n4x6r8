@@ -8520,21 +8520,35 @@
                 }
                 var roles = [];
                 if (action === '邀请') try { roles = JSON.parse(localStorage.getItem('ai_custom_characters') || '[]'); } catch (e) {}
-                var result = window.GroupGovernance.apply({
-                    group: currentGroup, actorId: String(speaker.id), action: nameMap[action],
-                    target: actionTarget, options: { roles: roles, title: titleValue },
-                    save: saveCurrentGroupObject
-                });
-                if (result.ok) {
-                    if (action === '改名') {
-                        currentCharacter.name = currentGroup.name;
-                        var title = document.getElementById('chat-title');
-                        if (title) title.textContent = currentGroup.name;
+                var actorId = String(speaker.id), taskAction = nameMap[action];
+                turnEffects.afterSave(function () {
+                    var liveGroup = loadGroupById(currentRoleId);
+                    if (!liveGroup || !window.GroupGovernance.userIsInGroup(liveGroup))
+                        return { ok:false, code:'GROUP_CHANGED' };
+                    currentGroup = liveGroup;
+                    var liveSpeaker = (liveGroup.members || []).find(function(m) {
+                        return m && String(m.id) === actorId;
+                    });
+                    if (!liveSpeaker || window.GroupGovernance.isMuted(liveSpeaker))
+                        return { ok:false, code:'SPEAKER_CHANGED' };
+                    var result = window.GroupGovernance.apply({
+                        group: liveGroup, actorId: actorId, action: taskAction,
+                        target: actionTarget, options: { roles: roles, title: titleValue },
+                        save: saveCurrentGroupObject
+                    });
+                    if (result.ok) {
+                        if (action === '改名') {
+                            currentCharacter.name = liveGroup.name;
+                            var title = document.getElementById('chat-title');
+                            if (title) title.textContent = liveGroup.name;
+                        }
+                        if (typeof showToast === 'function')
+                            showToast(result.message || '群管理已生效');
+                    } else if (result.code !== 'DISABLED' && typeof showToast === 'function') {
+                        showToast(result.message || '群管理操作未成功');
                     }
-                    if (typeof showToast === 'function') showToast(result.message || '群管理已生效');
-                } else if (result.code !== 'DISABLED' && typeof showToast === 'function') {
-                    showToast(result.message || '群管理操作未成功');
-                }
+                    return result;
+                });
                 return '';
             });
             text = text.replace(/\[群聊结束\]/g, function () {
