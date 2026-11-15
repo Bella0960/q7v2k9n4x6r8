@@ -473,6 +473,12 @@ test('failed IndexedDB settings read never replaces existing memory preferences 
   assert.ok(app.notices.some(n => n.includes('故事设置读取失败')));
   assert.ok(app.notices.some(n => n.includes('尚未读到')));
   assert.equal(app.requests, 0, 'settings recovery must not call the model');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.template === 'daily') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'start-template') });
+  assert.equal(app.requests, 0, 'an unread memory preference must not trigger paid story generation');
+  assert.equal([...db.records.values()].filter(row => row.templateId === 'daily').length, 0,
+    'the app must not persist a story with guessed memory settings');
+  assert.ok(app.notices.some(n => n.includes('错误记忆模式')));
 
   behavior.failSettingsReads = false;
   app.open(); // Same open page is permitted to retry the failed settings read.
