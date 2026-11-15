@@ -100,6 +100,10 @@ test('角色库已有原生编辑器、邂逅候选交接、仅接受 MAOMAO JSO
   assert.match(managerSource,/data\.format !== 'maomao-character'/);
   assert.doesNotMatch(managerSource,/data\.char_name\s*\|\|/);
   assert.match(managerSource,/btnExportRole/);
+  assert.match(managerSource,/btnExpandEncounterPersona/);
+  assert.match(managerSource,/PhoneAPI\.complete/);
+  assert.match(managerSource,/confirm\('完善完整人设将调用一次/);
+  assert.match(managerSource,/不支持把其他平台的 JSON 角色卡作为 TXT 导入/);
   assert.match(managerSource,/saveRoles\(roles\)/);
 });
 
