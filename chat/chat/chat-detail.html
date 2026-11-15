@@ -8326,7 +8326,7 @@
             if (!isGroupChat || !currentGroup || !Array.isArray(historyList)) return text;
             if (!turnEffects || typeof turnEffects.afterSave !== 'function' ||
                 typeof turnEffects.registerUndo !== 'function') {
-                return text.replace(/\[(?:群关系变化|群关系互动|群投票|群接龙|群私聊|游戏私聊|群动作|群聊结束)[:：]?[^\]\r\n]{0,600}\]?/g, '').replace(/\\[(?:游戏私聊|群私聊)[:：][\\s\\S]*?(?:\\]|$)/g, '').trim();
+                return text.replace(/\[(?:群关系变化|群关系互动|群投票|群接龙|群私聊|游戏私聊|群动作|群聊结束)[:：]?[^\]\r\n]{0,600}\]?/g, '').replace(/\[(?:游戏私聊|群私聊)[:：][\s\S]*?(?:\]|$)/g, '').trim();
             }
             var changedHistory = false;
             var groupHistoryRollback = [];
@@ -8350,7 +8350,7 @@
             // the group. Strip action markers rather than exposing them publicly.
             if (!isCompleted || isRegeneration || contextOnly) {
                 return text.replace(/\[(?:群关系变化|群关系互动|群投票|群接龙|群私聊|游戏私聊|群动作|群聊结束)[:：]?[^\]\r\n]{0,600}\]?/g, '')
-                    .replace(/\\[(?:游戏私聊|群私聊)[:：][\\s\\S]*?(?:\\]|$)/g, '').trim();
+                    .replace(/\[(?:游戏私聊|群私聊)[:：][\s\S]*?(?:\]|$)/g, '').trim();
             }
             var relationshipEventSeen = false;
             var queuedGovernance = Object.create(null);
@@ -8698,7 +8698,7 @@
             text = window.GroupGameSessions &&
                 typeof window.GroupGameSessions.redactPublicStreamText === 'function'
                     ? window.GroupGameSessions.redactPublicStreamText(text)
-                    : text.replace(/\\[(?:游戏私聊|群私聊)[:：][\\s\\S]*?(?:\\]|$)/g, '');
+                    : text.replace(/\[(?:游戏私聊|群私聊)[:：][\s\S]*?(?:\]|$)/g, '');
             // Votes/chains stay staged in this in-memory array until the same
             // verified save as the reply. The registered undo covers failure.
             return text;
