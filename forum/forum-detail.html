@@ -1190,6 +1190,10 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
 
   async function generateRepliesToUserComment(target,text,submittedImageIds){
     if(!target)return;
+    // The AI call may finish after a comment is deleted or the page changes post.
+    // Keep the original post identity; do not write orphaned replies or report success.
+    const replyPost=post;
+    if(!replyPost||!Array.isArray(replyPost.comments)||!replyPost.comments.includes(target))return;
     if(!gossipSeriesRunning&&window.ForumGossip&&ForumGossip.isGossipPost(post)&&!ForumGossip.progress(post).finished&&
        readForumConfig().gossipAutoContinue!==false&&ForumGossip.wantsContinuation(text)){
       await generateGossipAuthorContinuation(target,text);
@@ -1208,6 +1212,11 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       const prompt='论坛里刚出现一条新留言，请让 1-2 位不同的路人自然回应它。只返回 JSON。\n路人资料：'+JSON.stringify(residents)+'\n帖子：'+JSON.stringify({title:postTitle(),body:postBody(),topic:post.topic||''})+'\n当前讨论串：'+JSON.stringify(threadContext)+'\n用户刚刚说：'+JSON.stringify(text)+'\n要求：回复要直接回应这句话和上下文，不要泛泛夸赞或重复已有内容；可以追问、分享相似经历或有礼貌地提出不同看法。最多两条，第二条可以接第一条的话。每条 10-55 字，保持口语和各自性格。格式：{"replies":[{"residentId":"路人id","text":"回复","replyTo":"我"}]}';
       const imageIds=Array.from(new Set([].concat(post.mediaAssetIds||[],target.mediaAssetIds||[],submittedImageIds||[]))).slice(0,2);
       const result=await forumAIJSON(prompt,0.94,imageIds);
+      // Never persist generated replies to a deleted target or an old post.
+      if(post!==replyPost||!Array.isArray(replyPost.comments)||!replyPost.comments.includes(target)){
+        if(status&&post===replyPost)status.textContent='原评论已删除，本次网友回复已取消';
+        return;
+      }
       if(!result||!result.ok||!result.data||!Array.isArray(result.data.replies))throw new Error('回复生成结果无效');
       const previousReplies=Array.isArray(target.replies)?target.replies.slice():[];
       if(!Array.isArray(target.replies))target.replies=[];
