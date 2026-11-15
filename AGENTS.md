@@ -6,7 +6,7 @@ This file is the repository-wide entry point for every AI coding agent and human
 
 Read these files first:
 
-1. **docs/engineering/RELEASE_PLAYBOOK.md — 唯一任务、环境、QA、整合及正式发布流程；发布事实按最近一次核验为准。**
+1. **docs/engineering/RELEASE_PLAYBOOK.md — 唯一任务、环境、QA、整合及正式发布流程；发布事实按最近一次核验为准；开放 PR 依赖见 docs/engineering/OPEN_PR_INVENTORY_20261115.md。**
 2. docs/engineering/README.md — authoritative project baseline and document map.
 3. docs/engineering/PROJECT_ARCHITECTURE.md — current architecture and app inventory.
 4. docs/engineering/STORAGE_AND_MIGRATION.md — storage facts, target design, and migration safety rules.
