@@ -687,3 +687,19 @@ test('moderator speaker selection preserves direct mentions while opening and an
   assert.match(source, /m\.mid === receipt\.mid/);
   assert.match(source, /gameRevealSeen/);
 });
+
+
+test('shared group memory can remember the public moderator but not private ballots', () => {
+  const h=harness();
+  assert.equal(begin(h,{hostId:'r3'}).ok,true);
+  const sid=h.game.getPublic('g1').sessionId;
+  assert.equal(h.game.castVote({groupId:'g1',sessionId:sid,
+    voterId:'r1',targetId:'r2',eventId:'moderator-memory-vote'}).ok,true);
+  const finished=h.game.finish({group:group(),groupId:'g1',actorId:'__user'});
+  assert.equal(finished.ok,true);
+  assert.equal(h.memory.recordGameClosure({group:group(),session:finished.session}).ok,true);
+  const shared=h.memory.getPublicPrompt({groupId:'g1'});
+  assert.match(shared,/「角色三」主持/);
+  assert.match(shared,/「角色二」/);
+  assert.doesNotMatch(shared,/moderator-memory-vote|voterId|phone_group_game_private/);
+});
