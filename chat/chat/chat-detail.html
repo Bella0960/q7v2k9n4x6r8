@@ -1957,6 +1957,19 @@
 </style><style id="group-interaction-style">
 .bubble-group-interaction{max-width:min(290px,calc(100vw - 112px))!important;width:100%;padding:0!important;background:transparent!important;border:0!important;box-shadow:none!important}
 .group-interaction-card{width:100%;min-width:230px;max-width:290px;background:#fff;border:1px solid #e7e7eb;border-radius:15px;padding:13px;color:#111;box-shadow:0 3px 14px rgba(0,0,0,.035);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
+/* Game receipts use the SAME message timeline; no floating or parallel game feed. */
+.msg-row.group-game-result-row{justify-content:center!important;align-items:center!important;padding:7px 10px!important}
+.msg-row.group-game-result-row .msg-avatar{display:none!important}
+.msg-row.group-game-result-row .bubble-group-game-result{width:100%!important;max-width:min(310px,calc(100vw - 46px))!important}
+.group-game-result-card{border:1px solid #e8e8eb;border-radius:15px;background:#fafafa;padding:14px 15px;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;text-align:left;color:#222}
+.group-game-result-kicker{font:10px/1.5 -apple-system,BlinkMacSystemFont,sans-serif;letter-spacing:.07em;color:#999}
+.group-game-result-title{font:500 19px/1.5 Georgia,"Songti SC",serif;margin:8px 0 5px;color:#161616}
+.group-game-result-meta{font:11px/1.8 -apple-system,BlinkMacSystemFont,sans-serif;color:#777}
+.group-game-result-more{border-top:1px solid #e8e8eb;margin-top:12px;padding-top:10px;font:11px/1.7 -apple-system,BlinkMacSystemFont,sans-serif}
+.group-game-result-more summary{cursor:pointer;color:#555}
+.group-game-result-more ul{padding:7px 0 0;margin:0;list-style:none}
+.group-game-result-more li{display:flex;justify-content:space-between;gap:18px;padding:3px 0;color:#666}
+
 .group-interaction-head{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:10px;letter-spacing:.5px;color:#888;padding-bottom:9px;border-bottom:1px solid #f0f0f3}
 .group-interaction-title{font-size:14px;font-weight:600;line-height:1.5;margin:10px 0 12px;overflow-wrap:anywhere}
 .group-poll-options{display:flex;flex-direction:column;gap:7px}
@@ -3727,6 +3740,37 @@
                     <div class="msg-card-body">${escHtml(m.content || '')}</div>
                     <div class="msg-card-meta">${escHtml(m.date || '')}</div>
                 </div>`;
+            } else if (msg.type === 'group_game_result' && isGroupChat) {
+                // Saved to chat_history_<groupId> with a deterministic mid. The result
+                // is a public receipt, NEVER a private card or an AI-authored win claim.
+                row.classList.add('group-game-result-row');
+                bubble.classList.add('bubble-group-interaction', 'bubble-group-game-result');
+                var gameResult = msg.groupGame || {};
+                var gameFinished = gameResult.status === 'finished';
+                var tally = Array.isArray(gameResult.voteTally) ? gameResult.voteTally : [];
+                var winnerName = String(gameResult.revealedName || '群成员').slice(0, 36);
+                var participants = Math.max(0, Math.min(24, Number(gameResult.playersCount) || 0));
+                var votesDone = Math.max(0, Math.min(participants, Number(gameResult.voteCount) || 0));
+                var correctDone = Math.max(0, Math.min(votesDone, Number(gameResult.correctVotes) || 0));
+                var voteList = tally.filter(function (vote) {
+                    return vote && Number.isInteger(Number(vote.count)) && Number(vote.count) >= 0;
+                }).slice(0, 24).map(function (vote) {
+                    return '<li><span>' + escHtml(String(vote.name || '成员').slice(0, 36)) + '</span><span>' +
+                        Number(vote.count) + ' 票</span></li>';
+                }).join('');
+                bubble.innerHTML = '<section class="group-game-result-card">' +
+                    '<div class="group-game-result-kicker">GROUP GAME / ' + (gameFinished ? 'RESULT' : 'CANCELLED') + '</div>' +
+                    '<div class="group-game-result-title">' +
+                    (gameFinished ? '本局身份已揭晓' : '本局已取消') + '</div>' +
+                    '<div class="group-game-result-meta">' +
+                    (gameFinished
+                        ? '坏人：' + escHtml(winnerName) + '<br>' + votesDone + ' / ' + participants +
+                          ' 人投票，' + correctDone + ' 人猜对'
+                        : '未公布身份 · 没有胜负结果') +
+                    '</div>' +
+                    (gameFinished && voteList
+                        ? '<details class="group-game-result-more"><summary>查看各角色得票</summary><ul>' +
+                          voteList + '</ul></details>' : '') + '</section>';
             } else if (msg.type === 'group_private') {
                 const privateRoleId = String(msg.privateRoleId || msg.senderId || '');
                 bubble.classList.add('bubble-group-interaction');
