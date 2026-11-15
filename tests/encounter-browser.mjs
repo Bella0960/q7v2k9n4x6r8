@@ -15,6 +15,8 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+// 浏览器必须真实加载 Vite 构建产物，不可用开发源码通过来冒充正式环境。
+const siteRoot = resolve(root, 'dist');
 const artifacts = resolve(root, 'test-results');
 const startedAt = Date.now();
 const receiptPath = resolve(artifacts, 'encounter-browser-receipt.json');
@@ -25,14 +27,19 @@ const mime = {'.html':'text/html;charset=utf-8','.js':'application/javascript;ch
 const server = http.createServer(async (req, res) => {
   try {
     const pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
-    const resolved = resolve(root, '.' + pathname);
-    if (!resolved.startsWith(root + '/') && resolved !== root) { res.writeHead(403);res.end();return; }
+    const resolved = resolve(siteRoot, '.' + pathname);
+    if (!resolved.startsWith(siteRoot + '/') && resolved !== siteRoot) { res.writeHead(403);res.end();return; }
     const stat = await fs.stat(resolved);
     const file = stat.isDirectory() ? resolve(resolved, 'index.html') : resolved;
     res.setHeader('content-type', mime[extname(file)] || 'application/octet-stream');
     res.end(await fs.readFile(file));
   } catch { res.writeHead(404);res.end('Not found'); }
 });
+if (!existsSync(resolve(siteRoot, 'encounter/encounter.html')) ||
+    !existsSync(resolve(siteRoot, 'worldbook/characters/characters.html')) ||
+    !existsSync(resolve(siteRoot, 'account/index.html'))) {
+  throw new Error('缺少完整 Vite 构建产物（邂逅、人物档案或账号入口）。请先在整合分支执行 npm run build');
+}
 await new Promise(r => server.listen(0, '127.0.0.1', r));
 const base = 'http://127.0.0.1:' + server.address().port;
 let browser;
@@ -175,7 +182,7 @@ try {
   }
   const receipt={
     schemaVersion:1,gitHead:gitHead(),startedAt,finishedAt:Date.now(),
-    viewports:[375,390,430],checked:{
+    source:'vite-dist', viewports:[375,390,430],checked:{
       cardSwap:true,swipeRebound:true,candidatePersistence:true,
       roleCreation:true,jsonRoundTrip:true,thirdPartyJsonRejected:true,
       freeDrawNoApi:true
