@@ -93,3 +93,10 @@ JSON 导入只接受该格式与字段，不直接兼容酒馆、SillyTavern 等
 - 测试工具：npm run test:encounter；npm run build；npm run test:encounter:browser；npm run gate:encounter。只读 gate 在缺账号入口、构建产物、PWA 路由或三尺寸验收截图时明确失败。
 - 当前本会话中 28 个合同与 5 个模拟 UI 检查在 V8 适配环境通过（33/33）；原账号作用域另执行 4 项实际 JS 模拟通过；PWA/字体缓存/桌面静态回归 16 项通过。并非原生命令 node --test、Vite、Playwright 或真机测试。
 - 执行环境本地有 Node22、Chromium 与 Python Playwright，但没有当前 GitHub 源码的容器挂载副本；原生构建和实际页面截图尚未执行。PR #297 保持 Draft，禁止合并正式版直到完整门禁和 Android/iPhone 真机验收。
+
+## 第五轮原角色保存与真实浏览器验收门禁（2026-11-15）
+
+- 人物档案 `saveRoles()` 增加真实读回比对，不再仅凭 `PhoneStorage` 返回 `ok` 宣告角色已保存；静默丢写会失败并暂停后续写入，避免误清候选。新增两个角色原始数据保护测试。
+- 浏览器测试必须加载 Vite `dist` 构建产物；主流程固定普通相遇以核对真实姓名，蒙面/物件隐私模式独立检查。手机 375/390/430px 宽度、横向溢出、主操作尺寸、Chromium 原生触摸事件左滑 PASS 均纳入可执行断言。
+- 发布门禁必须检查 Git HEAD 对应的构建与浏览器回执、五张截图、`source:'vite-dist'` 及 `fingerSwipeLeft` 真实触摸标记，缺失不得放行。
+- 新一轮 30 项合同 + 5 项 UI 适配模拟在整合分支 **35/35 PASS**。未完成原生命令 `npm run build`、Playwright、Android/iPhone 或正式数据库隔离恢复验收。
