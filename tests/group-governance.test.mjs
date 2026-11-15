@@ -194,3 +194,43 @@ test('QQ-style custom titles are group-local; admins cannot override peers or ow
   const rolePool = JSON.parse(storage.getItem('ai_custom_characters'));
   assert.equal(rolePool[1].name, '江念', 'no mutation to original character profile');
 });
+
+
+test('silent storage writes cannot create phantom old/new group invitations or joins', () => {
+  const g = group();
+  g.userMembership = 'left';
+  const h = harness([g]);
+  const originalSet = h.storage.setItem.bind(h.storage);
+  h.storage.setItem = (key, value) => {
+    if (key === 'phone_group_invitations') return; // silently dropped
+    originalSet(key, value);
+  };
+  const failed = h.api.offerInvitation({ groupId: 'g1', inviterId: 'c1' });
+  assert.equal(failed.ok, false);
+  assert.equal(failed.code, 'SAVE_FAILED');
+  assert.deepEqual(h.api.pendingInvitations(), []);
+  h.storage.setItem = originalSet;
+  const invited = h.api.offerInvitation({ groupId: 'g1', inviterId: 'c1' });
+  assert.equal(invited.ok, true);
+  // An adapter may silently drop membership updates too. Never claim joined.
+  h.storage.setItem = (key, value) => {
+    if (key === 'phone_groups') return;
+    originalSet(key, value);
+  };
+  assert.equal(h.api.resolveInvitation({ id: invited.invitation.id, accept:true }).code, 'SAVE_FAILED');
+  assert.equal(JSON.parse(h.storage.getItem('phone_groups'))[0].userMembership, 'left');
+
+  const n = harness([]);
+  const setNew = n.storage.setItem.bind(n.storage);
+  n.storage.setItem = (key, value) => {
+    if (key === 'phone_group_invitations') return;
+    setNew(key, value);
+  };
+  const proposed = n.api.offerNewGroupInvitation({
+    inviterId:'c1', groupName:'周末小聚', memberIds:['c2']
+  });
+  assert.equal(proposed.ok, false);
+  assert.equal(proposed.code, 'SAVE_FAILED');
+  assert.equal(n.api.pendingInvitations().length, 0);
+  assert.equal(JSON.parse(n.storage.getItem('phone_groups')).length, 0);
+});
