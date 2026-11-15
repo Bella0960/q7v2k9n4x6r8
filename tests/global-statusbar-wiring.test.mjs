@@ -70,10 +70,10 @@ test('explicitly marked native custom system bars reuse the same controller', ()
   let marked = 0;
   for (const page of projectHtml()) {
     const html = fs.readFileSync(page, 'utf8');
-    const matches = html.match(/<(?:div|header)\\b[^>]*\\bdata-maomao-system-statusbar\\b[^>]*>/gi) || [];
+    const matches = html.match(/<(?:div|header)\b[^>]*\bdata-maomao-system-statusbar\b[^>]*>/gi) || [];
     if (!matches.length) continue;
     marked += matches.length;
-    assert.match(html, /<script\\b[^>]*src=["'][^"']*shared\\/js\\/statusbar-control\\.js/i,
+    assert.match(html, /<script\b[^>]*src=["'][^"']*shared\/js\/statusbar-control\.js/i,
       'custom system status bar missing shared control: ' + path.relative(projectRoot, page));
   }
   assert.ok(marked >= 3, 'expected the three custom system bars to be marked');
