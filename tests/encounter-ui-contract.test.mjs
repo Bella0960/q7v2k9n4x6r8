@@ -17,6 +17,8 @@ const uiSource=match[1];
 function setup(initial={}) {
   const rows=new Map(Object.entries(initial));
   const localStorage={
+    get length(){return rows.size;},
+    key(index){return [...rows.keys()][index]??null;},
     getItem(key){return rows.has(key)?rows.get(key):null;},
     setItem(key,value){rows.set(key,String(value));},
     removeItem(key){rows.delete(key);}
