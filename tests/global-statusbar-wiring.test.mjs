@@ -66,12 +66,26 @@ test('every real HTML page with .status-bar loads the existing shared controller
   assert.ok(checked >= 20, 'expected status-bar-bearing app pages were not scanned');
 });
 
+test('explicitly marked native custom system bars reuse the same controller', () => {
+  let marked = 0;
+  for (const page of projectHtml()) {
+    const html = fs.readFileSync(page, 'utf8');
+    const matches = html.match(/<(?:div|header)\\b[^>]*\\bdata-maomao-system-statusbar\\b[^>]*>/gi) || [];
+    if (!matches.length) continue;
+    marked += matches.length;
+    assert.match(html, /<script\\b[^>]*src=["'][^"']*shared\\/js\\/statusbar-control\\.js/i,
+      'custom system status bar missing shared control: ' + path.relative(projectRoot, page));
+  }
+  assert.ok(marked >= 3, 'expected the three custom system bars to be marked');
+});
+
 test('hidden preference applies immediately and covers dynamically added bars through CSS', () => {
   const app = boot('0');
   assert.equal(app.root.hasAttribute('data-maomao-statusbar-hidden'), true);
   const css = app.styles.get('maomao-global-statusbar-rule')?.textContent;
   assert.ok(css, 'shared rule missing');
-  assert.match(css, /html\[data-maomao-statusbar-hidden\] \.status-bar\{display:none!important;\}/);
+  assert.match(css, /html\[data-maomao-statusbar-hidden\] \.status-bar,/);
+  assert.match(css, /html\[data-maomao-statusbar-hidden\] \[data-maomao-system-statusbar\]\{display:none!important;\}/);
   // The global rule is independent of when each page/overlay mounts its status bar.
   assert.doesNotMatch(source, /querySelectorAll\(['"]\.status-bar['"]\)/);
 });
@@ -169,6 +183,7 @@ test('status bar source changes trigger the existing CI checks', () => {
   ]) {
     for (const affectedFile of [
       'beauty/beauty.html', 'settings/settings.html', 'shared/js/statusbar-control.js',
+      'music/music.html', 'inspect-phone/phone.html', 'travel/dream-travel.html',
       'tests/**'
     ]) {
       assert.ok(block.includes("      - '" + affectedFile + "'"),
