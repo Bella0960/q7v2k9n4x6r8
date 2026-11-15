@@ -67,6 +67,22 @@ test('failed post-commit effects are reported while later independent actions co
   assert.equal(events.length, 3);
 });
 
+test('empty, malformed or unresolved post-save receipts are failures, not successes', () => {
+  const tx = makeTurn(), executed = [];
+  tx.afterSave(() => { executed.push('undefined'); });
+  tx.afterSave(() => { executed.push('empty'); return ''; });
+  tx.afterSave(() => { executed.push('object'); return {}; });
+  tx.afterSave(() => { executed.push('null'); return null; });
+  tx.afterSave(() => { executed.push('pending'); return Promise.resolve({ok:true}); });
+  tx.afterSave(() => { executed.push('verified'); return {ok:true}; });
+  const result = tx.finalize(true);
+  assert.equal(result.saved, true);
+  assert.equal(result.ok, false);
+  assert.equal(result.committed, 1, 'only an explicit successful receipt counts');
+  assert.equal(result.postCommitFailures, 5);
+  assert.equal(executed.length, 6);
+});
+
 test('rollback exceptions cannot accidentally commit deferred actions', () => {
   const tx = makeTurn();
   let callbacks = 0;
