@@ -213,3 +213,16 @@ test('game result is a non-AI system receipt and page uses a genuine chat card',
   assert.match(sw, /phone-app-pwa-v223/);
   assert.match(sw, /group-game-chat-receipts\.js\?v=20261116receipt1/);
 });
+
+
+test('game pane is mounted only after its five-category settings container exists', () => {
+  const page = read('chat/chat/group-play.html');
+  const settingsScript = page.indexOf('group-settings-layout.js?v=20261115s1');
+  const gameScript = page.indexOf('group-game-panel.js?v=20261116gpanel5');
+  assert.ok(settingsScript > 0 && gameScript > settingsScript,
+    'both deferred scripts run at interactive/DOMContentLoaded; settings must mount before game panel');
+  const settings = read('shared/js/group-settings-layout.js');
+  assert.match(settings, /data-group-category/);
+  const game = read('shared/js/phone/group-game-panel.js');
+  assert.match(game, /document\.querySelector\('\[data-group-category="games"\]'\)/);
+});
