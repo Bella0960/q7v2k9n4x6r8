@@ -828,7 +828,10 @@
         showNotice('无法保存新的故事分支，未发起模型请求');
         return;
       }
-      if (!state.opened || viewSerial !== state.viewSerial) return;
+      if (!state.opened || viewSerial !== state.viewSerial) {
+        await erase(episode); // 用户已退出，清理未发起生成的空白草稿。
+        return;
+      }
       emit('episode:created', { id: episode.id, characterId: roleId, target: count, originId: source.id });
       state.branchSource = null;
       state.forkPoint = 0;
@@ -1052,7 +1055,10 @@
         showNotice('番外无法保存，已阻止开始生成，请检查浏览器存储空间');
         return;
       }
-      if (!state.opened || viewSerial !== state.viewSerial) return;
+      if (!state.opened || viewSerial !== state.viewSerial) {
+        await erase(episode); // 用户已退出，清理未发起生成的空白草稿。
+        return;
+      }
       emit('episode:created', { id: episode.id, characterId: roleId, target: count });
       openReader(episode);
       generate();
