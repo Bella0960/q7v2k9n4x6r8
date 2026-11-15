@@ -347,6 +347,67 @@ test('人物候选与偏好包含在现有「角色」分类备份中', () => {
   assert.deepEqual(Object.keys(saved).sort(),['maomao_encounter_candidates_v1','maomao_encounter_preferences_v1']);
 });
 
+
+test('两个标签页保存不同候选不会覆盖彼此，删除其一不会删除另一位', () => {
+  const map=new Map();
+  function tab() {
+    const localStorage={
+      get length(){return map.size;},
+      key(index){return [...map.keys()][index]??null;},
+      getItem(key){return map.get(key)??null;},
+      setItem(key,value){map.set(key,String(value));},
+      removeItem(key){map.delete(key);}
+    };
+    const window={localStorage,dispatchEvent(){}};
+    vm.runInNewContext(engineSource,{window,Math,Set,Uint32Array,Date,JSON,String,Array,Object,Number,CustomEvent:class {}});
+    return window.MAOMAOEncounter;
+  }
+  const a=tab(),b=tab();
+  const cardA=a.generate().value;
+  let cardB=b.generate().value;
+  for(let attempt=0;cardA.name===cardB.name && attempt<10;attempt++)cardB=b.generate().value;
+  assert.ok(cardA.id!==cardB.id && cardA.name!==cardB.name);
+  assert.equal(a.saveCandidate(cardA).ok,true);
+  assert.equal(b.saveCandidate(cardB).ok,true);
+  assert.equal(a.getCandidates().value.length,2);
+  assert.equal(b.getCandidates().value.length,2);
+  assert.equal(a.removeCandidate(cardA.id).ok,true);
+  const left=b.getCandidates().value;
+  assert.equal(left.length,1);
+  assert.equal(left[0].id,cardB.id);
+  assert.equal(b.saveCandidate(cardA).ok,false,'另一标签页不能复活已经删除的人物');
+  assert.equal(a.getCandidates().value.length,1);
+});
+
+test('旧版候选数组只读兼容：新增不改旧数组，删除使用单独墓碑', () => {
+  const legacyCard={id:'enc_legacy01',name:'旧候选人物',createdAt:12345,gender:'女'};
+  const original=JSON.stringify([legacyCard]);
+  const h=harness({'maomao_encounter_candidates_v1':original});
+  assert.equal(h.api.getCandidates().value.length,1);
+  const fresh=h.api.generate().value;
+  assert.equal(h.api.saveCandidate(fresh).ok,true);
+  assert.equal(h.api.getCandidates().value.length,2);
+  assert.equal(h.localStorage.getItem('maomao_encounter_candidates_v1'),original);
+  assert.equal(h.api.removeCandidate(legacyCard.id).ok,true);
+  assert.equal(h.api.getCandidates().value.length,1);
+  assert.equal(h.api.getCandidates().value[0].id,fresh.id);
+  assert.equal(h.localStorage.getItem('maomao_encounter_candidates_v1'),original,'旧数组原样保留可恢复');
+  assert.equal(h.localStorage.getItem('maomao_encounter_removed_v2:'+legacyCard.id),'1');
+});
+
+test('不同候选是独立物理存储键，浏览器备份能完整枚举', () => {
+  const h=harness();
+  const a=h.api.generate().value;
+  const b=h.api.generate().value;
+  assert.ok(a.id!==b.id && a.name!==b.name);
+  assert.equal(h.api.saveCandidate(a).ok,true);
+  assert.equal(h.api.saveCandidate(b).ok,true);
+  assert.ok(h.map.has('maomao_encounter_card_v2:'+a.id));
+  assert.ok(h.map.has('maomao_encounter_card_v2:'+b.id));
+  assert.equal(h.map.has('maomao_encounter_candidates_v1'),false,
+    'V2 不再向全局共享的 V1 数组写入新候选');
+});
+
 test('桌面有独立应用入口，抽卡页有可访问交互与移动端样式', () => {
   assert.match(desktopSource,/data-href="encounter\/encounter\.html"/);
   assert.match(appSource,/id="frontCard"/);
