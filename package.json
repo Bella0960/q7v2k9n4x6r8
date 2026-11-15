@@ -46,7 +46,7 @@
     "test:images": "node --test tests/image-generation-pipeline.test.mjs",
     "test:role:avatars": "node --test tests/role-avatar-library.test.mjs",
     "test:chat:image-vision": "node --test tests/chat-image-vision.test.mjs",
-    "postbuild": "node --test tests/production-assets-isolation.test.mjs",
+    "postbuild": "node --test tests/production-assets-isolation.test.mjs && node scripts/record-encounter-build.mjs",
     "test:encounter": "node --test tests/encounter-contract.test.mjs tests/encounter-ui-contract.test.mjs tests/encounter-actual-scope.test.mjs",
     "test:encounter:browser": "node tests/encounter-browser.mjs",
     "gate:encounter": "node scripts/verify-encounter-release.mjs"
