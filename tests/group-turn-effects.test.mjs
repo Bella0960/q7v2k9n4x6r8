@@ -92,6 +92,8 @@ test('chat detail commits group effects only beyond verified reply save barrier'
   assert.match(detail, /if \(!turnEffects \|\| typeof turnEffects\.afterSave !== 'function'/);
   assert.match(detail, /turnEffects\.afterSave\(function \(\) \{/);
   assert.match(detail, /storedGroupRaw = JSON\.stringify\(groups\)/);
+  assert.match(detail, /let userMemoryText = isGroupChat/);
+  assert.match(detail, /if \(parsedMem\.memories\.length && !isGroupChat && streamResult\.ok\)/);
   const processStart = detail.indexOf('function processGroupInteractionMarkers(');
   const processEnd = detail.indexOf('function showGroupPrivatePopup(', processStart);
   assert.ok(processEnd > processStart);
