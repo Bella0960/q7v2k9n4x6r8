@@ -2671,6 +2671,13 @@ class CloudStore {
   }
 
   createMaoAccount(account) {
+    // Only the origin-pinned isolated QA account path may opt into local,
+    // immediately usable test users. All production registrations remain
+    // pending_invite, and no existing delegated account is rewritten.
+    const qaAutoActivate = account.qaAutoActivate === true;
+    if (qaAutoActivate && !/^MAO-QA[A-Z0-9]{16}$/.test(String(account.id || ''))) {
+      throw new TypeError('QA auto-activation requires an isolated QA account ID');
+    }
     return this.transaction(() => {
       const inserted = this.exec(
         "INSERT INTO mao_accounts (id, username, username_key, password_salt, password_hash, role, status, qq_email, qq_email_verified_at, created_at, updated_at, registration_ip_hash) " +
@@ -2683,12 +2690,21 @@ class CloudStore {
         Number(account.now) - 60 * 60 * 1000
       )[0];
       if (!inserted) return null;
+      if (qaAutoActivate) {
+        // Atomic with registration: crash/retry cannot leave a half-authorized
+        // test user, and no production account/admin record is touched.
+        const activated = this.exec(
+          "UPDATE mao_accounts SET status = 'active', authorized_at = ?, updated_at = ? WHERE id = ? AND role = 'user' AND status = 'pending_invite' RETURNING id",
+          account.now, account.now, account.id
+        )[0];
+        if (!activated) throw new Error('QA account activation was not persisted');
+      }
       this.exec(
         "INSERT INTO mao_account_audit (id, actor_account_id, target_account_id, action, detail_json, created_at) VALUES (?, ?, ?, 'account_register', ?, ?)",
         'audit_' + crypto.randomUUID(),
         account.id,
         account.id,
-        serializeStoreJson({ registrationMethod: 'password' }, 2048, 'account registration audit detail'),
+        serializeStoreJson({ registrationMethod: qaAutoActivate ? 'isolated_qa' : 'password' }, 2048, 'account registration audit detail'),
         account.now
       );
       return this.getMaoAccountById(account.id);
