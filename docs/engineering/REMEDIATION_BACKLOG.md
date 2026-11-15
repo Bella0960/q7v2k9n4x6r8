@@ -42,6 +42,12 @@ Status vocabulary: OPEN, IN PROGRESS, FIXED, DEFERRED, NOT VERIFIED.
 - **jrsy**：仅多种 JS 插件和 `manifest.json`，当前 Git 树无主 `index.html`；不能说其独立站壳已验收。
 - **FlutterCppWangWangPhone**：确有 `wangwang_phone/ios/` 和手动构建未签名 IPA 工作流，Flutter 以 `WangWangApp` / `HomePage` / `ChatAppController` 分层；**原生 iOS 路线与 MAOMAO PWA 网页路线不同**，参考安全区和模块边界，不新建 IPA 工作流。
 
+**苹果桌面安装与参考技术边界（2026-11-15 用户确认，仅沿用现有 PWA）：**
+- 已核对 **main**：`manifest.json` 配置了 `start_url: "./index.html"`、`scope: "./"`、`display: "standalone"`；`index.html` 已有 `apple-mobile-web-app-capable=yes`、`apple-mobile-web-app-title`、`apple-touch-icon` 与 manifest 引用；`sw.js` 已是 PWA 缓存入口。**iPhone Safari 的“分享→添加到主屏幕”不需 IPA/Apple 开发者代码签名**。这些是源码配置事实，**尚不能证明用户已在 iPhone 安装/启动验收通过**。
+- 别的开源工程若提供 `ios/`、未签名 IPA、Flutter/C++、Android APK，**不纳入本次 MAOMAO 实施范围**：禁止新建 Apple 签名、证书/描述文件、IPA 发布、Flutter 工程或第二套登录/数据库。PWA 添加桌面与原生签名是两条不同路线。
+- **参考吸收门禁**：只选择兼容现有原生 HTML/CSS/JS、Cloudflare/PWA、已有主题与 PhoneStorage 访问层的结构（AppRegistry、统一 Shell/导航栈、可撤销生命周期、按需加载、隔离样式和统一设置）；一旦方案需要重写大量页面、改变账号 ID、改动媒体/聊天存储键、复制第三方素材/版权不明源码、引入更多 Worker/测试域名，一律拒绝或另案经用户明确授权。
+- **分阶段质量门禁**：实施前后都核查 `manifest/start_url/scope/display`、Safari 添加到主屏幕后图标/打开/深链接、手机安全区、刷新与离线返回、跨应用聊天/钱包数据不丢失；仅从源代码看配置不算真实 iOS 验收。任何新 Shell 必须保留现有 Android/iOS PWA 能力，失败时回原 PR 修复，未通过唯一 QA 不合 main/正式站。
+
 **实施验收拆分（按顺序）：** (A) 定义唯一 app registry/导航栈/生命周期契约与兼容旧 HTML 的 fallback；(B) 隔离共享 CSS、状态栏、主题、账号/角色上下文及持久化接口；(C) 先完成聊天/联系人/论坛/设置/钱包试点，实测返回、刷新、深链接和 PWA；(D) 扩到其余模块并补 Android/iPhone 验收。**不可仅改地址栏外观冒充统一架构已落地，也不允许新建另一套数据源。**
 
 
