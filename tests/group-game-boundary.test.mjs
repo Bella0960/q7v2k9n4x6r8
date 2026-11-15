@@ -356,3 +356,27 @@ test('game private DM preserves confirmed delivery and recovers public activity 
   assert.equal(h.game.sendWhisper({ ...req, text: '碰撞的另一条消息' }).code, 'EVENT_CONFLICT');
   assert.doesNotMatch(h.records.get('phone_group_game_v1_g1'), /只给角色二的秘密消息/);
 });
+
+
+test('no-private mode also blocks ordinary one-to-one role chat before persistence', () => {
+  const h = harness();
+  h.storage.setItem('phone_groups', JSON.stringify([group()]));
+  assert.equal(begin(h, { allowPrivate: false }).ok, true);
+  const denied = h.game.checkDirectPrivateAllowed({ roleId: 'r2' });
+  assert.equal(denied.ok, true);
+  assert.equal(denied.allowed, false);
+  assert.equal(denied.reason, 'GAME_PRIVATE_DISABLED');
+  assert.equal(h.game.checkDirectPrivateAllowed({ roleId: 'outside' }).allowed, true);
+  assert.equal(h.game.finish({ group: group(), groupId: 'g1', actorId: '__user' }).ok, true);
+  assert.equal(h.game.checkDirectPrivateAllowed({ roleId: 'r2' }).allowed, true);
+  assert.equal(begin(h, { allowPrivate: true }).ok, true);
+  assert.equal(h.game.checkDirectPrivateAllowed({ roleId: 'r2' }).allowed, true);
+  h.storage.setItem('phone_group_game_v1_g1', '{"notValid":');
+  assert.equal(h.game.checkDirectPrivateAllowed({ roleId: 'r2' }).code, 'CORRUPT_SESSION');
+  const detail = load('chat/chat/chat-detail.html');
+  assert.match(detail, /GameSessions\.checkDirectPrivateAllowed/);
+  const guardIndex = detail.indexOf('checkDirectPrivateAllowed({');
+  const saveIndex = detail.indexOf('const userMsg = {', guardIndex);
+  assert.ok(guardIndex > 0 && saveIndex > guardIndex,
+    'direct DM guard must run before writing a new user message');
+});
