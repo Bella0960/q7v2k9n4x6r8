@@ -572,3 +572,105 @@ test('cancelled rounds with failed cleanup expose retry but not role secrets', (
   assert.match(panel,/api\.getCleanupStatus/);
   assert.match(panel,/api\.retryCleanup/);
 });
+
+
+test('owner may appoint a nonplaying AI host; moderator receives no secret role card or votes', () => {
+  const h = harness();
+  const selected = begin(h, { hostId:'r3' });
+  assert.equal(selected.ok, true);
+  const sid = selected.session.sessionId;
+  assert.equal(selected.session.hostId, 'r3');
+  assert.equal(selected.session.players.length, 2);
+  assert.equal(selected.session.players.includes('r3'), false);
+  assert.equal(h.records.has('phone_group_game_private_v1_g1_'+sid+'_r3'), false,
+    'a moderator must never receive a role-only identity card');
+  assert.equal(h.records.has('phone_group_game_private_v1_g1_'+sid+'_vote_r3'), false);
+  const host = h.game.buildRoleContext({ groupId:'g1', roleId:'r3' });
+  assert.equal(host.ok, true);
+  assert.equal(host.active, true);
+  assert.equal(host.isHost, true);
+  assert.match(host.text, /你是本局主持人/);
+  assert.match(host.text, /你不是玩家/);
+  assert.doesNotMatch(host.text, /唯一的坏人|坏人是谁：|r2是坏人/);
+  assert.doesNotMatch(host.text, /可添加.*游戏猜测/);
+  assert.doesNotMatch(host.text, /游戏揭晓\]/, 'host cannot reveal before all ballots');
+  assert.equal(h.game.castVote({
+    groupId:'g1',sessionId:sid,voterId:'r3',targetId:'r2',eventId:'mod-vote'
+  }).code,'INVALID_VOTE');
+  assert.equal(h.game.finish({group:group(),groupId:'g1',
+    sessionId:sid,actorId:'r3'}).code,'NOT_READY');
+  assert.equal(h.game.start({group:group(),actorId:'r3',
+    hostId:'r3',badRoleId:'r2',gameId:'mystery'}).code,'NO_PERMISSION');
+});
+
+test('delegated host can reveal only after unanimous ballots and matching round', () => {
+  const h = harness();
+  const started = begin(h,{hostId:'r3'});
+  assert.equal(started.ok,true);
+  const sid=started.session.sessionId;
+  assert.equal(h.game.castVote({
+    groupId:'g1',sessionId:sid,voterId:'r1',targetId:'r2',eventId:'host-vote-1'
+  }).ok,true);
+  assert.equal(h.game.finish({
+    group:group(),groupId:'g1',sessionId:sid,actorId:'r3'
+  }).code,'NOT_READY');
+  assert.equal(h.game.castVote({
+    groupId:'g1',sessionId:sid,voterId:'r2',targetId:'r1',eventId:'host-vote-2'
+  }).ok,true);
+  const host=h.game.buildRoleContext({groupId:'g1',roleId:'r3'});
+  assert.equal(host.ok,true);
+  assert.match(host.text, /\[游戏揭晓\]/);
+  assert.doesNotMatch(host.text, /坏人是r2|唯一的坏人/);
+  assert.equal(h.game.finish({
+    group:group(),groupId:'g1',sessionId:'stale-round',actorId:'r3'
+  }).code,'NO_PERMISSION');
+  assert.equal(h.game.finish({
+    group:group(),groupId:'g1',sessionId:sid,actorId:'r2'
+  }).code,'NO_PERMISSION');
+  const muted=group();
+  muted.members.find(m=>m.id==='r3').isMuted=true;
+  assert.equal(h.game.finish({
+    group:muted,groupId:'g1',sessionId:sid,actorId:'r3'
+  }).code,'HOST_UNAVAILABLE');
+  const final=h.game.finish({group:group(),groupId:'g1',sessionId:sid,actorId:'r3'});
+  assert.equal(final.ok,true);
+  assert.equal(final.session.status,'finished');
+  assert.equal(final.session.revealedRoleId,'r2');
+  assert.equal(final.session.voteCount,2);
+  assert.equal(final.session.correctVotes,1);
+  assert.equal(h.game.finish({group:group(),groupId:'g1',sessionId:sid,
+    actorId:'r3'}).code,'NOT_ACTIVE', 'repeated marker never ends game twice');
+  assert.equal([...h.records.keys()].some(k=>k.includes(sid)&&
+    k.startsWith('phone_group_game_private_v1_')),false);
+});
+
+test('role moderator selection is fail-closed; owner remains able to finish and cancel', () => {
+  const h=harness();
+  assert.equal(begin(h,{hostId:'outsider'}).code,'INVALID_HOST');
+  assert.equal(begin(h,{hostId:'r2'}).code,'INVALID_SECRET',
+    'selected moderator cannot also be secretly designated as bad');
+  assert.equal(begin(h,{hostId:'r3'}).ok,true);
+  assert.equal(h.game.cancel({group:group(),groupId:'g1',actorId:'r3'}).code,
+    'NO_PERMISSION','AI moderators cannot cancel the game');
+  assert.equal(h.game.finish({group:group(),groupId:'g1',actorId:'__user'}).ok,true,
+    'owner retains override to finish early');
+});
+
+test('AI moderator reveal directives stay hidden and use verified-save effects', () => {
+  const h=harness();
+  assert.equal(h.game.redactPublicStreamText('宣布结果[游戏揭晓]'),'宣布结果');
+  assert.equal(h.game.redactPublicStreamText('宣布结果[游戏揭'),'宣布结果');
+  const detail=load('chat/chat/chat-detail.html');
+  assert.match(detail,/gameRevealSeen/);
+  assert.match(detail,/GroupGameSessions\.finish\(\{/);
+  assert.match(detail,/GroupGameChatReceipts\.publish\(\{/);
+  assert.match(detail,/GroupMemoryEvents\.recordGameClosure\(\{/);
+  assert.match(detail,/turnEffects\.afterSave\(function\(\)\{/);
+  assert.match(detail,/session\.hostId!==hostId/);
+  assert.match(detail,/groupAutoRevealReceipt/);
+  assert.match(detail,/replySaved/);
+  const panel=load('shared/js/phone/group-game-panel.js');
+  assert.match(panel,/id="groupGameHost"/);
+  assert.match(panel,/hostId:hostSelect\.value/);
+  assert.match(panel,/updateCulpritOptions\(\)/);
+});
