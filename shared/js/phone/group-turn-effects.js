@@ -33,8 +33,10 @@
       after.forEach(function (action) {
         try {
           var result = action();
-          if (result === false || (result && result.ok === false)) failed++;
-          else committed++;
+          // Every handler must explicitly confirm success. An undefined, empty,
+          // or malformed return value is NOT proof that storage committed.
+          if (result === true || (result && result.ok === true)) committed++;
+          else failed++;
         } catch (e) { failed++; }
       });
       return { ok:failed===0, saved:true, rolledBack:0, committed:committed,
