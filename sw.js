@@ -289,7 +289,9 @@ self.addEventListener('fetch', event => {
         return await fetch(req);
       } catch {
         const entry = new URL('account/index.html', self.registration.scope);
-        const cachedEntry = await caches.match(entry.href).catch(function () { return null; });
+        const cachedEntry = await caches.open(CACHE_NAME).then(function (cache) {
+          return cache.match(entry.href);
+        }).catch(function () { return null; });
         return cacheablePublicResponse(cachedEntry) ? cachedEntry : new Response('当前处于离线状态，请联网验证 MAO 账号后继续。', {
           status: 503,
           headers: { 'Content-Type': 'text/plain; charset=UTF-8', 'Cache-Control': 'no-store' }
@@ -330,7 +332,9 @@ self.addEventListener('fetch', event => {
       if (fresh) return fresh;
 
       // Only when the network genuinely fails, show a cached public sign-in.
-      var cached = await caches.match(req).catch(function () { return null; });
+      var cached = await caches.open(CACHE_NAME).then(function (cache) {
+        return cache.match(req);
+      }).catch(function () { return null; });
       if (cacheablePublicResponse(cached)) return cached;
 
       return new Response('此页面暂时无法连接，请检查网络后重试。', {
