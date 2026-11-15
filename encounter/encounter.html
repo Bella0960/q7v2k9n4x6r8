@@ -81,7 +81,7 @@ function render(){
  '<div class="portrait">'+(obj?'<div class="object-icon" aria-hidden="true"><span>物件</span></div>':'<div class="ring" aria-hidden="true"></div>')+
  '<span class="portrait-caption">'+(obj?'A LOST OBJECT':masked?'IDENTITY UNKNOWN':'A STRANGER, FOR NOW')+'</span></div>'+
  '<h2 class="name">'+escapeHtml(masked?'未署名的旅人':blind?'一段陌生的声音':c.name)+'</h2>'+
- '<p class="hint">'+escapeHtml(masked?'身份暂未公开':blind?'先凭一句话，认识这个人':obj?c.object:c.job+' · '+c.era)+'</p>'+
+ '<p class="hint">'+escapeHtml(masked?'身份暂未公开':blind?'先凭一句话，认识这个人':obj?c.object:c.job+' · '+c.era+' · '+c.gender+' · '+c.age+'岁')+'</p>'+
  '<div class="tags">'+(masked?'<span class="tag">身份未知</span><span class="tag">点击揭晓</span>':'<span class="tag">'+escapeHtml(c.species)+'</span><span class="tag">'+escapeHtml(c.trait)+'</span><span class="tag">'+escapeHtml(c.era)+'</span>')+'</div>'+
  '<p class="quote">「'+escapeHtml(obj?'这件东西的主人，留下一段没有讲完的故事。':c.quote)+'」</p>'+
  '<div class="card-footer"><span>一位尚未认识的人</span><span class="look">轻触翻阅档案　＋</span></div>';
@@ -135,7 +135,7 @@ function row(label,value){return '<div class="sheet-row"><span>'+escapeHtml(labe
 function openDetail(){
  if(!current)return;var c=current;
  var html=head('PERSONA / 01','人物档案')+'<div class="sheet-quote">「'+escapeHtml(c.quote)+'」</div>'+
- row('姓名',c.name)+row('身份',c.job)+row('种族',c.species)+row('年龄',String(c.age))+
+ row('姓名',c.name)+row('性别',c.gender)+row('关系气质',c.relationVibe)+row('身份',c.job)+row('种族',c.species)+row('年龄',String(c.age))+
  row('世界',c.era)+row('外在',c.trait)+row('内在反差',c.contrast)+
  '<div class="divider"></div><p class="sheet-text">一件重要的东西：'+escapeHtml(c.object)+'。<br>命运线索：'+escapeHtml(c.fate)+'。</p>';
  if(c.type==='命运分支'){
