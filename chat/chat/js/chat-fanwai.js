@@ -298,6 +298,14 @@
   var accountMeta = document.querySelector('meta[name="mao-account-id"]');
   var accountId = accountMeta ? accountMeta.getAttribute('content') : '';
   var canPersist = /^MAO-[A-Z0-9]{12,24}$/.test(accountId);
+  // 认证页面必须先由既有账号模块完成命名空间隔离；找不到它就不能读取原始角色资料。
+  // 依赖账号整合 PR #290，不在番外里新建第二套账号或迁移旧数据。
+  var trustedAccountScope = global.__MAO_ACCOUNT_SCOPE__;
+  if (canPersist && (!trustedAccountScope || trustedAccountScope.ready !== true ||
+      trustedAccountScope.accountId !== accountId)) {
+    console.error('[Fanwai] 已登录页面缺少匹配的账号隔离运行时，拒绝启动番外');
+    return;
+  }
   var scope = canPersist ? accountId : 'temporary:' + Math.random().toString(36).slice(2);
   var state = {
     root: null, active: null, selected: null, busy: false, creating: false,
