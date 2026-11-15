@@ -8,11 +8,13 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { existsSync, createReadStream } from 'node:fs';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve, relative, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
 const ROOT = resolve(fileURLToPath(new URL('../dist/', import.meta.url)));
+const DIAGNOSTIC_DIR = resolve(ROOT, '..', 'test-results', 'fanwai-browser');
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',
@@ -88,6 +90,15 @@ try {
     });
     const page = await context.newPage();
     const missingCritical = [];
+    const pageErrors = [];
+    const failedRequests = [];
+    let stage = 'opening chat HTML';
+    page.on('pageerror', error => pageErrors.push(String(error).slice(0, 450)));
+    page.on('requestfailed', request => {
+      if (request.url().startsWith(origin + '/')) {
+        failedRequests.push(request.url() + ': ' + (request.failure()?.errorText || 'failed'));
+      }
+    });
     page.on('response', response => {
       if (REQUIRED.some(asset => response.url().includes('/' + asset)) && response.status() >= 400)
         missingCritical.push(response.url() + ' HTTP ' + response.status());
@@ -99,16 +110,20 @@ try {
         localStorage.setItem('myProfile', JSON.stringify({ nickname: '测试用户' }));
     }, seedRole);
     try {
+      stage = 'opening built chat-detail.html';
       const response = await page.goto(
         origin + '/chat/chat/chat-detail.html?id=' + encodeURIComponent(seedRole.id),
         { waitUntil: 'domcontentloaded', timeout: 25000 }
       );
       assert.equal(response?.status(), 200, viewport.label + ': chat HTML must load');
+      stage = 'waiting for + menu fanwai entry';
       const entry = page.locator('#plusPanelOverlay .plus-grid [data-feat="fanwai"]');
       await entry.waitFor({ state: 'attached', timeout: 20000 });
       assert.equal(await entry.count(), 1, 'exactly one entry in existing plus menu');
+      stage = 'opening + panel';
       await page.locator('#plus-action-btn').click();
       await entry.click();
+      stage = 'opening fanwai picker';
       const sheet = page.locator('#fanwaiLayer .fw-sheet');
       await sheet.waitFor({ state: 'visible' });
       await page.locator('#fanwaiLayer .fw-card').first().waitFor({ state: 'visible' });
@@ -124,6 +139,7 @@ try {
         viewport.label + ': sheet must stay within mobile viewport ' + JSON.stringify(geometry));
       assert.equal(geometry.overflowX, false, viewport.label + ': sheet must not overflow horizontally');
 
+      stage = 'installing local, non-billing PhoneAPI mock';
       await page.evaluate(() => {
         window.__fanwaiMockCalls = 0;
         assertPhoneAPI();
@@ -150,12 +166,15 @@ try {
       const previousChat = await page.evaluate(id =>
         localStorage.getItem('chat_history_' + id), seedRole.id);
 
+      stage = 'opening template preview';
       await page.locator('#fanwaiLayer .fw-card').first().click();
       await page.locator('#fanwaiLayer .fw-preview-cover').waitFor({ state: 'visible' });
       const settingsToggle = page.locator('#fanwaiLayer [data-action="toggle-settings"]');
+      stage = 'opening collapsed story settings';
       await settingsToggle.click();
       assert.equal(await page.locator('#fanwaiLayer .fw-settings-drawer').isVisible(), true);
       await page.locator('#fw-preview-count').selectOption('40');
+      stage = 'generating 40 offline mock messages';
       await page.locator('#fanwaiLayer [data-action="start-template"]').click();
       await page.waitForFunction(() =>
         document.querySelectorAll('#fanwaiLayer .fw-bubble').length === 40,
@@ -171,12 +190,32 @@ try {
       assert.equal(result.chatHistory, previousChat,
         'fanwai must not silently alter the real chat message history');
       assert.deepEqual(missingCritical, [], 'required built resources cannot return HTTP errors');
+      stage = 'complete';
       console.log('PASS ' + viewport.label + ' ' + JSON.stringify({
         viewport: viewport.width + 'x' + viewport.height,
         templateCards: 6, messages: result.messages, modelMockCalls: result.calls,
         noRealApi: true, noMainChatMutation: true,
         blockedExternalRequests
       }));
+    } catch (error) {
+      await mkdir(DIAGNOSTIC_DIR, { recursive: true });
+      const shortName = viewport.label.startsWith('Android') ? 'android-390' : 'iphone-size-375';
+      const screenshot = resolve(DIAGNOSTIC_DIR, shortName + '.png');
+      try { await page.screenshot({ path: screenshot, fullPage: true, timeout: 3000 }); }
+      catch (screenshotError) {
+        console.error('Unable to capture browser failure screenshot:', String(screenshotError));
+      }
+      const report = {
+        viewport: viewport.label, stage, error: String(error),
+        pageErrors: pageErrors.slice(0, 16),
+        missingCritical: missingCritical.slice(0, 16),
+        failedRequests: failedRequests.slice(0, 16),
+        blockedExternalRequests
+      };
+      await writeFile(resolve(DIAGNOSTIC_DIR, shortName + '.json'),
+        JSON.stringify(report, null, 2), 'utf8');
+      console.error('FAIL ' + viewport.label + ': ' + JSON.stringify(report));
+      throw error;
     } finally {
       await context.close();
     }
