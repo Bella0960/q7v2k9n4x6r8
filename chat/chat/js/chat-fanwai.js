@@ -1146,7 +1146,8 @@
     var count = template ? Number(selectedCount) || template.target : Number(select && select.value) || 80;
     if (![40, 80, 100].includes(count)) count = template ? template.target : 80;
     state.creating = true;
-    var viewSerial = state.viewSerial;
+    // 立即让尚未结束的存档查询失效；不能在新故事首次写盘期间跳回旧篇。
+    var viewSerial = ++state.viewSerial;
     var episode = {
       id: scope + ':' + roleId + ':' + Date.now() + ':' + Math.random().toString(36).slice(2, 8),
       accountId: scope, characterId: roleId,
@@ -1243,10 +1244,13 @@
       return;
     }
     if (key === 'read') {
+      if (state.creating || state.deleting || state.busy) return;
       var viewSerial = state.viewSerial;
       var episodes = await listSaved();
       var selected = episodes.find(function (e) { return e.id === node.dataset.id; });
-      if (selected && state.opened && viewSerial === state.viewSerial) openReader(selected); return;
+      if (selected && state.opened && !state.creating && !state.deleting && !state.busy &&
+          viewSerial === state.viewSerial) openReader(selected);
+      return;
     }
     if (key === 'delete') { openDeleteConfirm(); return; }
     if (key === 'confirm-delete') {
