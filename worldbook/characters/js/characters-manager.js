@@ -1419,13 +1419,37 @@ function handleSaveRole() {
     }
 
     const roles = loadRoles();
-    // 邂逅候选进入正式角色库前再次查重，旧角色永远优先。
-    if (!roleId && activeEncounterDraftId && roles.some(function (role) {
-        return window.MAOMAOEncounter &&
-            window.MAOMAOEncounter.normalizeName(role.name) === window.MAOMAOEncounter.normalizeName(nameVal);
-    })) {
-        setSaveStatus('姓名与已有角色重复，请先修改新角色名称。', 'error');
-        return;
+    // 候选只可创建一次；两个标签页重复保存必须拒绝，而不是生成两个相同角色。
+    if (!roleId && activeEncounterDraftId) {
+        const origin = String(activeEncounterDraftId);
+        const alreadyCreated = roles.some(function (role) {
+            return role && role.encounterOrigin &&
+                String(role.encounterOrigin.sourceCandidateId || '') === origin;
+        });
+        if (alreadyCreated) {
+            setSaveStatus('该候选已经在另一页面创建为正式角色，不能重复创建。', 'error');
+            return;
+        }
+        const candidateResult = window.MAOMAOEncounter && window.MAOMAOEncounter.getCandidates();
+        if (!candidateResult || !candidateResult.ok) {
+            setSaveStatus('候选收藏读取失败，已停止创建，原有资料不会被覆盖。', 'error');
+            return;
+        }
+        if (!candidateResult.value.some(function (candidate) { return candidate.id === origin; })) {
+            setSaveStatus('候选卡已不在收藏中，请返回「邂逅」重新选择。', 'error');
+            return;
+        }
+        const normalized = window.MAOMAOEncounter.normalizeName(nameVal);
+        const collision = roles.some(function (role) {
+            const aliases = Array.isArray(role.aliases) ? role.aliases : [];
+            return [role.name].concat(aliases).some(function (existingName) {
+                return window.MAOMAOEncounter.normalizeName(existingName) === normalized;
+            });
+        });
+        if (collision) {
+            setSaveStatus('姓名与已有角色或别名重复，请先修改新角色名称。', 'error');
+            return;
+        }
     }
     let savedRoleId = roleId;
 
