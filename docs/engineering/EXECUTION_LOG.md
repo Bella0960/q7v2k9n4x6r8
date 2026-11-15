@@ -183,3 +183,11 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **版本链**：`chat-extras.js?t=20261116fanwai19` → `chat-fanwai.js?v=20261116v19` → `chat-fanwai.css?v=20261116softcore6`。原「＋」菜单仅增量加载，未重写聊天。
 - **验证事实**：对 GitHub 当前分支源码执行四组 V8 合同/模拟 DOM/API 回归 **58/58 PASS**，当前 release asset 资源合同 **6/6 PASS**。这不等于真实 Node CLI/Vite build/Playwright 或移动真机完成；本执行工作区未检出完整工程/依赖，相关步骤 **NOT RUN**。未重试 GitHub Actions 额度限制。
 - **回滚边界**：局部撤回该功能 JS/CSS/回归、缓存版本即可，不需要更改旧存档格式/数据。原 PR 仍 Draft，未部署至固定完整 QA 或正式版。下一步在真实可执行的完整仓库运行既有 `test:integration:account-fanwai` 与 `test:fanwai:build-and-browser`，验证剪贴板权限、手动选取、刷新保存一致性，再由用户在唯一隔离 QA 中实际试玩。
+
+## 2026-11-16｜番外：暂停事件等待持久化成功
+
+- **用户指令：暂停整合与部署，仅继续原任务开发。** 继续 `integration/account-fanwai-stack-20261115` / Draft PR #299，保持 base #290；不合并 main、不触碰现有 QA Worker 或正式版。
+- **实修问题**：`pause()` 以前在 `persist()` 提交前先触发 `episode:paused`，可能让扩展把未落盘故事当成已暂停并持久化。提交 `9d3884a8` 改为在保存返回成功、同一故事未切换且版本序号未过期时通知；保存失败不触发成功事件。
+- **测试提交**：`1eff17cd` 覆盖成功延迟提交与失败不通知；`23d78af6` 覆盖保存待提交期间续写时旧暂停事件被取消。原四组模拟 UI / 合同 / 扩展 / PhoneAPI **61/61 PASS**。测试通过仅指 V8 隔离执行，不等于 `node --test`、Vite、Chromium 或手机真机，以上仍未跑。
+- **缓存**：`0e65b143`、`734a02ca` 更新番外 JS 加载版本至 `20261116v20`，聊天扩展加载版本至 `20261116fanwai20`；未修改旧数据、存储 schema、主线消息、状态栏或钱包。
+- **开发阶段**：用户明确不合并；本轮无 QA、生产或数据库操作。下次继续原 PR 开发并执行可用范围内的真实验证。
