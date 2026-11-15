@@ -784,6 +784,20 @@
     }
   }
 
+  function openDeleteConfirm() {
+    if (!state.active || state.busy) return;
+    var sheet = clearView();
+    sheet.classList.add('fw-delete-confirm');
+    topBar(sheet, '', 'return-story', '取消');
+    sheet.append(
+      label('p', 'fw-delete-kicker', 'REMOVE FROM YOUR ARCHIVE'),
+      label('h2', 'fw-delete-title', '要删除这篇故事吗？'),
+      label('p', 'fw-delete-description', '只删除当前番外。其他故事和主线聊天不会改变；删除后无法在番外目录恢复。'),
+      button('confirm-delete', '确认删除这篇', 'fw-btn fw-delete-final'),
+      button('return-story', '保留故事', 'fw-btn fw-delete-cancel')
+    );
+  }
+
   function renderReader() {
     if (!state.opened || !state.active || !state.root) return;
     var episode = state.active;
@@ -834,7 +848,7 @@
     sheet.appendChild(status);
     var actions = document.createElement('div'); actions.className = 'fw-actions';
     if (state.busy) actions.appendChild(button('pause', '暂停续写', 'fw-primary'));
-    else if (episode.status !== 'complete') actions.appendChild(button('resume', '继续生成', 'fw-primary'));
+    else if (episode.status !== 'complete' && (!canPersist || !persistenceFailed)) actions.appendChild(button('resume', '继续生成', 'fw-primary'));
     var more = document.createElement('div');
     more.className = 'fw-reader-more';
     var moreToggle = button('toggle-reader-menu', '···', 'fw-reader-more-toggle');
@@ -883,6 +897,10 @@
 
   async function generate() {
     if (!state.active || state.busy) return;
+    if (canPersist && persistenceFailed) {
+      showNotice('本机存储发生错误，已停止生成以保护内容，请勿关闭此页面');
+      return;
+    }
     var role = roleInfo();
     if (!role) { showNotice('找不到当前角色的人设，请先在角色库中确认'); return; }
     if (!global.PhoneAPI || typeof global.PhoneAPI.completeJSON !== 'function') {
@@ -1048,12 +1066,12 @@
       var selected = episodes.find(function (e) { return e.id === node.dataset.id; });
       if (selected) openReader(selected); return;
     }
-    if (key === 'delete') {
-      if (state.busy) return;
-      if (!state.active) return;
+    if (key === 'delete') { openDeleteConfirm(); return; }
+    if (key === 'confirm-delete') {
+      if (state.busy || !state.active) return;
       var deletedId = state.active.id;
       if (!(await erase(state.active))) {
-        showNotice('删除未成功，请检查本机存储状态后重试');
+        showNotice('删除未成功，故事仍然保留，请检查本机存储状态');
         return;
       }
       emit('episode:deleted', { id: deletedId, characterId: roleId });
