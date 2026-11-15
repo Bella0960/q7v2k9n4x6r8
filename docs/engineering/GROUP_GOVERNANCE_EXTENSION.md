@@ -12,7 +12,7 @@
 - `apply({group, actorId, action, target, options, save})`：**唯一推荐的群动作入口**。调用方需提供真实持久化回调，只有 `save()` 返回严格 `true` 才发布完成事件。
 - `on('group:changed', handler)`、`on('action:mute', handler)`、`on('action:unmute', handler)`、`on('invitation:offered', handler)`、`on('invitation:resolved', handler)`、`on('group:user-left', handler)`：便于后续接通知、日志、AI 自动任务。可返回取消订阅函数。
 
-当前内置动作 `mute` / `unmute` / `promote` / `demote` / `rename` / `invite` / `remove`。权限采用群主 > 管理员 > 普通成员；管理员不可操作群主或其他管理员；角色端管理员动作需要 `settings.allowRoleActions=true`；群主在 UI 任命角色管理员时会开启该角色管理能力。应用只能操作本应用虚构角色群，**不能把客户端的身份标记视为正式真人账号服务的授权凭证**；将来接云端真人群需要服务端独立认证和持久化。
+当前内置动作 `mute` / `unmute` / `promote` / `demote` / `rename` / `invite` / `remove` / `set-title`。权限采用群主 > 管理员 > 普通成员；管理员不可操作群主或其他管理员；角色端管理员动作需要 `settings.allowRoleActions=true`；群主在 UI 任命角色管理员时会开启该角色管理能力。应用只能操作本应用虚构角色群，**不能把客户端的身份标记视为正式真人账号服务的授权凭证**；将来接云端真人群需要服务端独立认证和持久化。
 
 ## 群邀请与成员状态
 
@@ -30,10 +30,21 @@
 
 “角色主动追问退群原因/拉我进群”当前在**用户后续进入角色私聊并产生正常 AI 回复时**可触发。尚未接云端定时调度、离线 Push、iOS/Android 的全链路通知；不能称之为人不在线时自动追问。
 
+## 秘密游戏、群长期记忆与未来扩展（同一 PR #298）
+
+- `GroupGameSessions.registerGame(name, spec)` 和 `games()` 是轻量模板**注册入口**；当前仅 `mystery` 具有完整独立对局实现，接龙/投票继续复用旧消息形态。模板注册**不等于**新玩法拥有可执行逻辑；未来游戏仍须接入对应状态机、身份牌与验收用例，不得向用户显示未实现的可玩按钮。
+- `GroupGameSessions.start({group, actorId:'__user', gameId:'mystery', badRoleId, allowPrivate, showPrivateActivity})` 先保存每位角色独立卡片，验证后才公开不含秘密的游戏状态。已有记录无法解析时拒绝覆盖，写入失败清理本次卡片，不产生虚假成功。
+- `buildRoleContext({groupId, roleId})` 只提供该角色本人身份与本局收件箱；不可读取其余角色牌。 `getPublic(groupId)` 在结束前不暴露身份。
+- `sendWhisper({groupId, sessionId, fromId, toId, text, eventId})` **必须携带原始对局 `sessionId`**；旧局结束后迟到的消息不能写入新局。仅在当前对局允许私聊、且收发双方是有效角色时写入角色自己的独立收件箱；重复 `eventId` 不二次追加。游戏进行中禁止把 `[群私聊]` 的内容写进永久角色单聊。
+- 正常群聊模型上下文不接收 `group_private`、`group_game_private`、`visibility=private/role_only`；群长期记忆仅由 `GroupMemoryEvents.getPublicPrompt` 提供已经确认的 `group_manual`、`group_game_public`、`group_chain_public`。不要通过原始 `chat_memories_<groupId>` 直接注入旧群记忆。
+- `recordChainClosure` 以已成功保存的关闭接龙为准；`recordGameClosure` 以已保存的正式揭晓局为准；正在玩的秘密身份、未揭晓角色、私聊收件箱均不得进入公共记忆。普通明文备份不包含进行中秘密对局，公开的已确认群记忆仍纳入记忆备份。
+- 状态仅为**同一设备上的虚构 AI 群聊边界**，不是加密存储，更不能作为真人群跨账号的云端服务端鉴权。
+- **未关闭的整合风险**：原有部分群投票、关系与管理动作在 AI 可见回复落库前就会执行；已阻止中断/重生成/上下文回合触发，但完整成功的流式回复如随后落库失败，仍需要下一轮全链路事务改造，不能据此宣布完整一致性。
+
 ## 验收门槛
 
 1. `npm run test:group:governance`（纯逻辑、保存失败回滚、历史兼容、静态整合契约）。
 2. `npm run test:group:ui`、`npm run test:group:invite-e2e`（已有 Playwright 群聊回归）。
-3. `npm run build` 与 `npm run test:chat:contract`，重点检查 PWA `v206`。
+3. `npm run build` 与 `npm run test:chat:contract`，重点检查 PWA `v209` 及其三个游戏/记忆脚本的版本一致性。
 4. 手机浏览器验收：群主任命/撤职、管理员听取用户指令、被禁言成员绝无新增群气泡、解禁复发、权限越界被拒绝；角色新群邀请接受/拒绝、退群后列表消失、聊天历史保留、接受后返回；自定义主题与断网/存储不足提示。
 5. 与正式账号系统整合前，验证账号隔离与云端授权。**全部通过前保持 Draft，不得合并或部署生产**。
