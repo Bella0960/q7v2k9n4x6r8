@@ -83,6 +83,7 @@
       if(!allowed.checked)activity.checked=false;
     });
     function nameFor(id){
+      if(String(id)==='__user')return '我';
       var g=currentGroup();
       var member=g&&Array.isArray(g.members)&&g.members.find(function(m){return m&&String(m.id)===String(id);});
       return member?String(member.nickname||member.name||'角色'):'成员';
