@@ -399,3 +399,20 @@ test('initial AI generation respects an existing completed batch returned mid-fl
   assert.equal(h.startingPost.comments.length, 0);
   assert.equal(h.saves.length, 0);
 });
+
+
+test('separate posts can generate in parallel without crossing data', async () => {
+  const h = setupInitialAI();
+  const oldRequest = h.controller.run();
+  h.controller.switchTo(h.newPost);
+  const newRequest = h.controller.run();
+  assert.equal(h.pendingRequests, 2, 'per-post locking must allow other posts');
+  h.finishAI([{ residentId: 'r1', text: '原帖的迟到回复' }]);
+  await oldRequest;
+  h.finishAI([{ residentId: 'r1', text: '新帖自己的回复' }]);
+  await newRequest;
+  assert.equal(h.startingPost.comments.length, 0);
+  assert.equal(h.newPost.comments.length, 1);
+  assert.equal(h.newPost.comments[0].text, '新帖自己的回复');
+  assert.equal(h.saves.length, 1);
+});
