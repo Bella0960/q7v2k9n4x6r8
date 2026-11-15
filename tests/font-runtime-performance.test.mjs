@@ -45,7 +45,7 @@ test('service worker serves cached font assets from a same-origin route', () => 
 });
 
 test('font asset cache survives app-shell version upgrades', () => {
-  const version = serviceWorker.match(/const CACHE_NAME = 'phone-app-pwa-v(\\d+)'/);
+  const version = serviceWorker.match(/const CACHE_NAME = 'phone-app-pwa-v(\d+)'/);
   assert.ok(version, 'PWA must use a versioned app-shell cache');
   assert.ok(Number(version[1]) >= 206, 'account-private cache fix must invalidate older PWA installs');
   assert.match(serviceWorker, /keys\.filter\(key => key\.startsWith\('phone-app-'\) && key !== CACHE_NAME\)/);
