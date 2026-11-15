@@ -337,14 +337,22 @@ test('人物候选与偏好包含在现有「角色」分类备份中', () => {
   const r=window.MAOMAOBackupRegistry;
   assert.equal(r.belongsTo('characters','maomao_encounter_candidates_v1'),true);
   assert.equal(r.belongsTo('characters','maomao_encounter_preferences_v1'),true);
+  assert.equal(r.belongsTo('characters','maomao_encounter_card_v2:enc_example'),true);
+  assert.equal(r.belongsTo('characters','maomao_encounter_removed_v2:enc_example'),true);
   assert.equal(r.belongsTo('other','maomao_encounter_candidates_v1'),false);
   const saved=r.selectSnapshot('characters',{
     maomao_encounter_candidates_v1:'[{"id":"enc_example"}]',
     maomao_encounter_preferences_v1:'{"gender":"女"}',
+    'maomao_encounter_card_v2:enc_example':'{"id":"enc_example","name":"测试角色"}',
+    'maomao_encounter_removed_v2:enc_deleted':'1',
     api_settings:'private-api-key',
     another_feature:'should-not-export'
   });
-  assert.deepEqual(Object.keys(saved).sort(),['maomao_encounter_candidates_v1','maomao_encounter_preferences_v1']);
+  assert.deepEqual(Object.keys(saved).sort(),[
+    'maomao_encounter_candidates_v1','maomao_encounter_preferences_v1',
+    'maomao_encounter_card_v2:enc_example','maomao_encounter_removed_v2:enc_deleted'
+  ].sort());
+  assert.equal(Object.hasOwn(saved,'api_settings'),false,'备份不得夹带 API 密钥');
 });
 
 
