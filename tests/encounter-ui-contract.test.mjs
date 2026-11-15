@@ -100,6 +100,35 @@ test('候选保存失败不假成功，也不偷偷换掉当前卡片',()=>{
   assert.match(h.el('notice').textContent,/收藏失败/);
 });
 
+
+test('两位候选都是真实独立卡片，切换不会丢失任何一位',()=>{
+  const h=setup({'maomao_encounter_preferences_v1':'{"type":"普通相遇"}'});
+  const card=h.el('frontCard');
+  function shownName(){
+    const matched=card.innerHTML.match(/<h2 class="name">([^<]+)<\/h2>/);
+    return matched?matched[1]:'';
+  }
+  const first=shownName();
+  assert.ok(first,'第一张人物卡应有真实姓名');
+  assert.match(h.el('swapButton').textContent,/另一位/);
+  h.el('swapButton').fire('click');
+  const second=shownName();
+  assert.ok(second && first!==second,'另一位候选的姓名必须不同');
+  h.el('likeButton').fire('click');
+  h.flush();
+  assert.equal(shownName(),first,'收藏第二位后第一位应仍然存在');
+  const saved=h.window.MAOMAOEncounter.getCandidates();
+  assert.equal(saved.ok,true);
+  assert.equal(saved.value.length,1);
+  assert.equal(saved.value[0].name,second);
+  h.el('likeButton').fire('click');
+  h.flush();
+  const both=h.window.MAOMAOEncounter.getCandidates().value;
+  assert.equal(both.length,2,'两位可以分别收藏');
+  assert.ok(both.some(c=>c.name===first));
+  assert.ok(both.some(c=>c.name===second));
+});
+
 test('左滑只跳过人物，不创建收藏',()=>{
   const h=setup();
   const card=h.el('frontCard');
