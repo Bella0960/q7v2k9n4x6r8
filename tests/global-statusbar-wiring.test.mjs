@@ -324,3 +324,74 @@ test('Android PWA system bar color sampler observes status bar hidden state', ()
   rootSubscription.observer.callback([{ attributeName: 'data-maomao-statusbar-hidden' }]);
   assert.equal(scheduled, beforeToggle + 1, 'visibility change should schedule color recalculation');
 });
+
+test('Android PWA theme color follows global visibility across hide/show/hide', () => {
+  const nativeFeel = fs.readFileSync(path.join(projectRoot, 'shared/js/native-feel.js'), 'utf8');
+  const sampler = nativeFeel.match(/\(function MAOMAOSystemBarColor\(\) \{[\s\S]*?\n    \}\)\(\);/);
+  assert.ok(sampler, 'existing native-feel color sampler missing');
+
+  const subscriptions = [];
+  const attributes = new Set();
+  const elements = new Map();
+  const preferences = new Map([
+    ['settings_statusbar', '0'], ['settings_home_indicator_visible', '1']
+  ]);
+  function notify(name) {
+    for (const entry of subscriptions) {
+      if (entry.target === root && entry.options.attributeFilter.includes(name)) {
+        entry.observer.callback([{ type: 'attributes', attributeName: name, target: root }]);
+      }
+    }
+  }
+  const root = {
+    nodeType: 1,
+    setAttribute(name) { attributes.add(name); notify(name); },
+    removeAttribute(name) { if (attributes.delete(name)) notify(name); },
+    hasAttribute(name) { return attributes.has(name); }
+  };
+  const foreground = { nodeType: 1, parentElement: null };
+  const meta = {
+    content: '#FFFFFF',
+    getAttribute(name) { return name === 'content' ? this.content : null; },
+    setAttribute(name, value) { if (name === 'content') this.content = value; }
+  };
+  const document = {
+    documentElement: root,
+    body: { nodeType: 1, classList: { contains() { return false; } } },
+    head: { appendChild(element) { if (element.id) elements.set(element.id, element); } },
+    readyState: 'complete',
+    createElement() { return { id: '', textContent: '' }; },
+    getElementById(name) { return elements.get(name) || null; },
+    addEventListener() {},
+    querySelectorAll() { return []; },
+    querySelector(name) { return name === 'meta[name="theme-color"]' ? meta : null; },
+    elementsFromPoint() { return [foreground]; }
+  };
+  class Observer {
+    constructor(callback) { this.callback = callback; }
+    observe(target, options) { subscriptions.push({ target, options, observer: this }); }
+  }
+  const window = {
+    MutationObserver: Observer,
+    innerWidth: 390,
+    innerHeight: 844,
+    requestAnimationFrame(callback) { callback(); },
+    addEventListener() {},
+    getComputedStyle() {
+      return { backgroundColor: root.hasAttribute('data-maomao-statusbar-hidden')
+        ? 'rgb(24, 24, 24)' : 'rgb(240, 240, 240)' };
+    }
+  };
+  const localStorage = { getItem(name) { return preferences.get(name) ?? null; } };
+  vm.runInNewContext(source, { document, window, localStorage }, { filename: 'statusbar-control.js' });
+  vm.runInNewContext(sampler[0], { document, window, MutationObserver: Observer },
+    { filename: 'native-feel-system-bar-color.js' });
+
+  assert.equal(meta.content, '#181818', 'hidden bar should sample the simulated dark top area');
+  preferences.set('settings_statusbar', '1');
+  window.__statusbarControlApply();
+  assert.equal(meta.content, '#f0f0f0', 'restored bar should refresh Android PWA theme-color');
+  preferences.set('settings_statusbar', '0');
+  window.__statusbarControlApply();
+  assert.equal(meta.content, '#181818', 'hiding again should update the native theme-color');
+});
