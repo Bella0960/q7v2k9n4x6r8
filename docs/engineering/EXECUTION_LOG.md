@@ -163,3 +163,13 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **执行证据**：从原 PR 当前 GitHub 代码输入 V8 JS 测试执行器，番外核心/UI/扩展/PhoneAPI 52/52 PASS；发布资产检查 6/6 PASS，番外 JS 语法校验 PASS。此项不是仓库实际 `node --test`。当前执行环境仍没有可用的 MAOMAO 完整检出/Vite/Playwright 依赖；`npm ci`、Vite、Chromium、Android/iPhone、独立 QA **NOT RUN**。
 - **数据与回滚**：没有触碰账号/钱包/生产 Worker/正式 DB，也无数据 schema 迁移。原 PR #299 保持 Draft，未合并未部署。需要回滚时撤销局部番外 JS、测试及版本提交即可；保留角色、群组、番外与主线存档。
 
+
+
+## 2026-11-16｜番外：关闭前等待存档回执与恢复 UI
+
+- 原任务与文件归属：继续 `integration/account-fanwai-stack-20261115` / Draft PR #299，账号 #290 为 base。仅调整番外 JS/模拟 UI 回归、手机版本引用与本次日志。
+- 定位真实数据风险：原 `pause()` 发起 `persist()` 却不等待结果，`close()` 直接隐藏页面；IndexedDB 失败时，唯一留在当前页面的生成对话可能无法恢复。首次修复后，已有回归揭示初次创建慢保存/旧关闭回调以及删除期间关闭的时序冲突，已逐项修正。
+- 代码提交：`38de35f3` 暂停保存回执；`0a04bdb9` 即时版本失效；`d81d34af` 仅拦截真正未存储的当前对话；`dc4c0e60` 拦截旧关闭回调影响新视图；`54b107ba` 允许删除事务期间直接收起不自动重开。新增三类失败/快速重开回归（`f1821bc9`、`57bf8d63`、`bddcca64`）。
+- 验证：基于 GitHub 当前 PR 源码，用隔离 V8 测试外壳执行已有四组番外/PhoneAPI 测试 **56/56 PASS**；发布资产加载合同 **6/6 PASS**；改动 JS 语法 PASS。手机加载链版本更新为 `20261116fanwai18` → `20261116v18`。
+- 严格边界：本轮**未执行**完整 `npm ci`、真实 `node --test` CLI、`npm run build`、Playwright Chromium、Android/iOS、真实模型或独立 QA；无完整仓库执行副本和相关依赖。未触发 Actions，不修改账号/群聊/主线聊天存储结构、正式数据库/Worker/管理员；无 Schema 迁移。页面被浏览器直接销毁时，异步 IDB 提交仍可能受浏览器限制，需真机 E2E 验证。
+- 状态：仍为原 Draft PR #299、未合并 main、未部署；可局部回滚此次改动和缓存版本。后续优先在能检出完整源码的隔离环境运行原 Node/Vite/Chromium 验收命令，再按实际问题回原分支修复。
