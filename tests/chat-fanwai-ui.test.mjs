@@ -239,3 +239,93 @@ test('new plugin templates appear in the picker and can generate without editing
   await tickUntil(() => sheet.all().filter(n => n.className === 'fw-bubble').length === 40);
   assert.equal(sheet.all().filter(n => n.className === 'fw-bubble').length, 40);
 });
+
+
+// 轻量 IndexedDB 事务模拟：验证偏好只留在番外库、账号和角色之间绝不串用。
+function fakeFanwaiDB() {
+  const records = new Map();
+  return {
+    records,
+    open() {
+      const request = {};
+      Promise.resolve().then(() => {
+        request.result = {
+          objectStoreNames: { contains: () => true },
+          transaction() {
+            const transaction = { oncomplete: null, onerror: null, onabort: null };
+            transaction.objectStore = () => ({
+              get(id) {
+                const req = {};
+                Promise.resolve().then(() => {
+                  req.result = records.get(id);
+                  if (req.onsuccess) req.onsuccess();
+                });
+                return req;
+              },
+              getAll() {
+                const req = {};
+                Promise.resolve().then(() => {
+                  req.result = Array.from(records.values());
+                  if (req.onsuccess) req.onsuccess();
+                });
+                return req;
+              },
+              put(record) {
+                records.set(record.id, JSON.parse(JSON.stringify(record)));
+                Promise.resolve().then(() => { if (transaction.oncomplete) transaction.oncomplete(); });
+              },
+              delete(id) {
+                records.delete(id);
+                Promise.resolve().then(() => { if (transaction.oncomplete) transaction.oncomplete(); });
+              }
+            });
+            return transaction;
+          }
+        };
+        if (request.onsuccess) request.onsuccess();
+      });
+      return request;
+    }
+  };
+}
+
+test('hidden story preferences survive reopening but stay isolated between accounts and roles', async () => {
+  const indexedDB = fakeFanwaiDB();
+  const accountA = 'MAO-AAAAAAAAAAAA';
+  const accountB = 'MAO-BBBBBBBBBBBB';
+  const first = mount({ accountId: accountA, indexedDB });
+  const root = first.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().filter(n => n.dataset.template).length === 6);
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.template === 'daily') });
+  assert.equal(sheet.all().find(n => n.className === 'fw-settings-drawer').hidden, true);
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'toggle-settings') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.memoryMode === 'role') });
+  const count = sheet.all().find(n => n.id === 'fw-preview-count');
+  count.value = '40';
+  await root.handlers.change({ target: count });
+  await tickUntil(() => indexedDB.records.get('settings:' + accountA + ':role-1')?.settings?.count === 40);
+  assert.equal(indexedDB.records.get('settings:' + accountA + ':role-1').settings.memory, 'role');
+
+  const second = mount({ accountId: accountA, indexedDB });
+  const secondRoot = second.open();
+  await tickUntil(() => secondRoot.querySelector('.fw-sheet')?.all().filter(n => n.dataset.template).length === 6);
+  const secondSheet = secondRoot.querySelector('.fw-sheet');
+  await secondRoot.handlers.click({ target: secondSheet.all().find(n => n.dataset.template === 'daily') });
+  assert.equal(secondSheet.all().find(n => n.dataset.memoryMode === 'role').attributes['aria-pressed'], 'true');
+  assert.equal(secondSheet.all().find(n => n.id === 'fw-preview-count').value, '40');
+
+  for (const options of [
+    { accountId: accountB, roleId: 'role-1', indexedDB },
+    { accountId: accountA, roleId: 'role-2', indexedDB }
+  ]) {
+    const other = mount(options);
+    const otherRoot = other.open();
+    await tickUntil(() => otherRoot.querySelector('.fw-sheet')?.all().filter(n => n.dataset.template).length === 6);
+    const otherSheet = otherRoot.querySelector('.fw-sheet');
+    await otherRoot.handlers.click({ target: otherSheet.all().find(n => n.dataset.template === 'daily') });
+    assert.equal(otherSheet.all().find(n => n.dataset.memoryMode === 'none').attributes['aria-pressed'], 'true');
+    assert.equal(otherSheet.all().find(n => n.id === 'fw-preview-count').value, '80');
+  }
+});
+
