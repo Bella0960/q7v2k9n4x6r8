@@ -1,13 +1,15 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "maomao-founder-checkpoint-operator",
-  "main": "worker/founder-checkpoint-runner.js",
+  "main": "worker/founder-recovery-entry.js",
   "compatibility_date": "2026-10-27",
+  "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,
   "preview_urls": false,
   "triggers": { "crons": [] },
   "kv_namespaces": [
-    { "binding": "RELEASE_AUDIT", "id": "54544f9f1ce54220957d8fc9c49ccc7c" }
+    { "binding": "RELEASE_AUDIT", "id": "54544f9f1ce54220957d8fc9c49ccc7c" },
+    { "binding": "FOUNDER_BACKUP_VAULT", "id": "e3cb732aab3340b9be84965c9f8daa26" }
   ],
   "durable_objects": {
     "bindings": [
@@ -15,9 +17,13 @@
         "name": "LIVE_CLOUD_DB",
         "class_name": "CloudDatabase",
         "script_name": "mao-auth-preview"
-      }
+      },
+      { "name": "FOUNDER_RESTORE_TARGET", "class_name": "FounderRecoveryTarget" }
     ]
   },
+  "migrations": [
+    { "tag": "founder-recovery-target-v1", "new_sqlite_classes": ["FounderRecoveryTarget"] }
+  ],
   "vars": {
     "FOUNDER_TARGET_SCRIPT": "mao-auth-preview",
     "FOUNDER_TARGET_ORIGIN": "https://mao520.com"

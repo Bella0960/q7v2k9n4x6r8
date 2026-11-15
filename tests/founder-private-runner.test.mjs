@@ -67,21 +67,27 @@ function setup() {
 test('operator config has no route, public workers.dev, preview URL or scheduled cron', () => {
   const config = JSON.parse(readFileSync(new URL('../wrangler.release-checkpoint.jsonc', import.meta.url), 'utf8'));
   assert.equal(config.name, 'maomao-founder-checkpoint-operator');
+  assert.equal(config.main, 'worker/founder-recovery-entry.js');
   assert.equal(config.workers_dev, false);
   assert.equal(config.preview_urls, false);
   assert.deepEqual(config.triggers.crons, []);
-  assert.deepEqual(config.kv_namespaces, [{
-    binding: 'RELEASE_AUDIT', id: '54544f9f1ce54220957d8fc9c49ccc7c'
-  }]);
+  assert.deepEqual(config.kv_namespaces, [
+    { binding: 'RELEASE_AUDIT', id: '54544f9f1ce54220957d8fc9c49ccc7c' },
+    { binding: 'FOUNDER_BACKUP_VAULT', id: 'e3cb732aab3340b9be84965c9f8daa26' }
+  ]);
   assert.equal(config.routes, undefined);
-  assert.deepEqual(config.durable_objects.bindings, [{
-    name: 'LIVE_CLOUD_DB',
-    class_name: 'CloudDatabase',
-    script_name: 'mao-auth-preview'
-  }]);
+  assert.deepEqual(config.durable_objects.bindings, [
+    { name: 'LIVE_CLOUD_DB', class_name: 'CloudDatabase', script_name: 'mao-auth-preview' },
+    { name: 'FOUNDER_RESTORE_TARGET', class_name: 'FounderRecoveryTarget' }
+  ]);
+  assert.deepEqual(config.migrations, [
+    { tag: 'founder-recovery-target-v1', new_sqlite_classes: ['FounderRecoveryTarget'] }
+  ]);
   assert.equal(config.vars.FOUNDER_TARGET_ORIGIN, 'https://mao520.com');
   assert.equal(config.vars.FOUNDER_RUN_ENABLED, undefined);
   assert.equal(config.vars.FOUNDER_RELEASE_OPERATOR_SECRET, undefined);
+  assert.equal(config.vars.FOUNDER_BACKUP_ENCRYPTION_KEY, undefined);
+  assert.equal(config.vars.FOUNDER_RESTORE_OBJECT_ID, undefined);
 });
 
 test('operator is fail-closed without explicit activation or correct target', async () => {

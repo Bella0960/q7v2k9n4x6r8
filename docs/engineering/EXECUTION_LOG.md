@@ -1,5 +1,12 @@
 # MAOMAO Execution Log
 
+## 2026-11-15 — QA-001 provisioned private vault and isolated target
+
+- Provisioned the dedicated private Workers KV archive namespace `MAOMAO_PRIVATE_FOUNDER_BACKUP_VAULT` (`e3cb732aab3340b9be84965c9f8daa26`) and SQLite Durable Object namespace `23e6ea47970441d28887d5951997710e` for `FounderRecoveryTarget`. Both are bound to the existing private `maomao-founder-checkpoint-operator` version `f144223b-b7c1-4283-9682-078f81a5e5b2`. Original secret and production database binding were retained. Readback showed no Cron, public domain, workers.dev, preview, or activation.
+- Ran separate Cloudflare storage smoke checks. A synthetic ciphertext passed write and byte-for-byte readback in the private vault with a short expiry. A named synthetic SQLite object accepted and retained its marker and passed quick check. A different named SQLite object intended for the actual recovery rehearsal had zero application schema entries. The remote tests did not transfer production data or create recovery receipts.
+- Committed the operator-only entrypoint, target class and matching Wrangler configuration. Tests passed 52/52 and the local workerd archive-and-restore rehearsal passed. Restore RPC fails closed until the authorized execution config pins the isolated namespace, exact target object and private key.
+- Production remained on `4454045f-ee8b-4b08-a679-c55745fc82ac`, with two accounts and three sessions, zero writes, and the requested founder absent from the original database. The running production object still has no private SQL-plus-KV sealing method and the operator has no live backup activation. An approved one-time private read of the production object is still required to create and verify the actual encrypted archive. No test account, original account, or old checkpoint was deleted.
+
 ## 2026-11-15 — QA-001 recovery checkpoint rotation guard
 
 - The private scheduled checkpoint operator now verifies matching encrypted production backup and isolated restore receipts before invoking rotation. It uses the same receipt rules as the canonical release gate and requires the exact archive digest named in the private activation (`backupDigest`). It rechecks the two-minute authorization window after fetching the receipts. The ordinary checkpoint operation retains its existing behavior.
