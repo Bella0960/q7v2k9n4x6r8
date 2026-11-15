@@ -77,7 +77,7 @@
   var accountId = accountMeta ? accountMeta.getAttribute('content') : '';
   var canPersist = /^MAO-[A-Z0-9]{12,24}$/.test(accountId);
   var scope = canPersist ? accountId : 'temporary:' + Math.random().toString(36).slice(2);
-  var state = { root: null, active: null, busy: false, stopped: false, serial: 0, opened: false };
+  var state = { root: null, active: null, busy: false, creating: false, stopped: false, serial: 0, opened: false };
   var memory = new Map();
   var dbConnection = null;
   var persistenceFailed = false;
@@ -371,13 +371,14 @@
   }
 
   async function start(template, custom) {
-    if (state.busy) return;
+    if (state.busy || state.creating) return;
     var role = roleInfo();
     if (!role) { showNotice('请先创建或选择一个角色'); return; }
     var scenario = template ? template.scenario : String(custom || '').trim();
     if (!scenario) { showNotice('请先描述想看的剧情'); return; }
     var select = state.root.querySelector('#fw-count');
     var count = template ? template.target : Number(select && select.value) || 80;
+    state.creating = true;
     var episode = {
       id: scope + ':' + roleId + ':' + Date.now() + ':' + Math.random().toString(36).slice(2, 8),
       accountId: scope, characterId: roleId,
@@ -386,9 +387,11 @@
       scenario: scenario, target: count, messages: [],
       status: 'partial', createdAt: Date.now(), updatedAt: Date.now(), error: ''
     };
-    await persist(episode);
-    openReader(episode);
-    generate();
+    try {
+      await persist(episode);
+      openReader(episode);
+      generate();
+    } finally { state.creating = false; }
   }
 
   async function action(event) {
