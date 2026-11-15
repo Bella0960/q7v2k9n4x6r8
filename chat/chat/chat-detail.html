@@ -31,6 +31,7 @@
     <script src="../../shared/js/group-governance.js?v=20261115g1"></script>
     <script src="../../shared/js/phone/group-game-session.js?v=20261115game3"></script>
     <script src="../../shared/js/phone/group-turn-effects.js?v=20261115gte2"></script>
+    <script src="../../shared/js/phone/group-private-receipt-recovery.js?v=20261115gpr1"></script>
     <script src="../../shared/js/phone/group-memory-events.js?v=20261115gme2"></script>
     <script src="../../shared/js/chat-notifier.js?v=20261102v3"></script>
     <style>
@@ -2967,6 +2968,7 @@
                 msg.fromGroupId || '',
                 msg.privateRoleId || '',
                 msg.privateMessageId || '',
+                msg.privateGroupReceiptV1 ? '1' : '0',
                 msg.privateFromGroup ? '1' : '0',
                 msg.senderId || '',
                 msg.memberId || '',
@@ -7898,6 +7900,36 @@
         syncChatThemeLayout();
 
         renderAllMessages();
+        // Repair a metadata-only group entry if a previous private DM survived
+        // but its companion public card failed to save. Never copy DM body.
+        if (isGroupChat && currentGroup && window.GroupPrivateReceiptRecovery &&
+            !window.__groupPrivateReceiptRecoveryRunning) {
+            window.__groupPrivateReceiptRecoveryRunning = true;
+            try {
+                var privateReceiptRepair = window.GroupPrivateReceiptRecovery.reconcile({
+                    group: currentGroup,
+                    readGroupHistory: function () { return _readBackHistory(); },
+                    saveGroupHistory: function (messages) { return saveMessages(messages); },
+                    readRoleHistory: function (roleId) {
+                        try {
+                            if (window.PhoneStorage && typeof window.PhoneStorage.getChatHistory === 'function') {
+                                var roleItems = window.PhoneStorage.getChatHistory(roleId);
+                                if (Array.isArray(roleItems) && roleItems.length) return roleItems;
+                            }
+                            var raw = localStorage.getItem('chat_history_' + roleId);
+                            if (raw === null) return [];
+                            var parsed = JSON.parse(raw);
+                            return Array.isArray(parsed) ? parsed : null;
+                        } catch(e) { return null; }
+                    }
+                });
+                if (privateReceiptRepair && privateReceiptRepair.repaired > 0) renderAllMessages();
+            } catch (e) {
+                console.warn('[GroupChat] private receipt recovery paused:', e);
+            } finally {
+                window.__groupPrivateReceiptRecoveryRunning = false;
+            }
+        }
         highlightMessageFromUrl();
 
         // 美化中心保存后，页面从返回缓存恢复时重新读取最新配置。
@@ -8495,7 +8527,8 @@
                 var targetId = String(target.id);
                 var displayName = groupMemberDisplayName(target);
                 var privateMessageText = String(privateText).trim().slice(0, 300);
-                var privateMsg = { role: 'assistant', name: displayName, text: privateMessageText, time: Date.now(), fromGroupId: String(currentGroup.id), privateFromGroup: true };
+                var privateMsg = { role: 'assistant', name: displayName, text: privateMessageText, time: Date.now(),
+                    fromGroupId: String(currentGroup.id), privateFromGroup: true, privateGroupReceiptV1: true };
                 ensureMid(privateMsg);
                 var privateHistory = [];
                 var privateSaved = false;
@@ -8526,6 +8559,7 @@
                         lastPrivate.role === privateMsg.role && lastPrivate.type === privateMsg.type &&
                         lastPrivate.time === privateMsg.time && lastPrivate.text === privateMsg.text &&
                         String(lastPrivate.mid || '') === String(privateMsg.mid) &&
+                        lastPrivate.privateGroupReceiptV1 === true &&
                         lastPrivate.fromGroupId === privateMsg.fromGroupId;
                 } catch (privateError) {
                     privateSaved = false;
