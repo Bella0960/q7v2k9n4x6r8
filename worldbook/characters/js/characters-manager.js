@@ -1385,7 +1385,11 @@ function updateAvatarPreview() {
 
 
 // 打开添加角色
-function openAddRole() {
+function openAddRole(options) {
+    // 普通「添加角色」与邂逅候选导入共用编辑器，但不得共用未保存草稿。
+    // 点击事件是 Event，不会拥有 skipDraftRecovery=true。
+    const skipDraftRecovery = !!(options && options.skipDraftRecovery === true);
+    closeRecoveryDialog();
     activeEncounterDraftId = '';
     const aiExpand = document.getElementById('btnExpandEncounterPersona');
     if (aiExpand) aiExpand.classList.add('hidden');
@@ -1405,7 +1409,7 @@ function openAddRole() {
     currentDraftKey = getDraftKey('');
     editorOriginalState = captureEditorState();
     showView('editor');
-    offerDraftRecovery();
+    if (!skipDraftRecovery) offerDraftRecovery();
 }
 
 // 打开编辑旧角色
@@ -1660,6 +1664,11 @@ async function handleDeleteRole(id) {
 // ====== 草稿、保存反馈与编辑状态 ======
 function getDraftKey(roleId) {
     return 'maomao_character_draft_v1:' + (roleId ? String(roleId) : 'new');
+}
+
+// 每位邂逅候选拥有独立草稿。保留旧 new 草稿和已保存角色的旧 key 不动。
+function getEncounterDraftKey(candidateId) {
+    return getDraftKey('encounter:' + String(candidateId));
 }
 
 function captureEditorState() {
@@ -2131,12 +2140,10 @@ function openEncounterCandidateFromQuery() {
         alert('这张候选人物卡已不存在。');
         return;
     }
-    openAddRole();
-    if (pendingDraftRecovery) {
-        setSaveStatus('你还有一份未保存的人设草稿，请先处理恢复提示，再重新打开这张候选卡。', 'error');
-        return;
-    }
+    // 只打开干净的编辑器，不读取/修改手动新建人物的 'new' 草稿。
+    openAddRole({ skipDraftRecovery: true });
     activeEncounterDraftId = candidateId;
+    currentDraftKey = getEncounterDraftKey(candidateId);
     selectedColor = '#D2D3D0'; // 邂逅新角色默认低饱和灰色，保存前仍可更换头像。
     updateAvatarPreview();
     document.getElementById('btnExpandEncounterPersona').classList.remove('hidden');
@@ -2145,8 +2152,13 @@ function openEncounterCandidateFromQuery() {
     document.getElementById('editRoleTone').value = candidate.quote || '';
     document.getElementById('editRoleStyleKeywords').value = [candidate.trait,candidate.species,candidate.era].join(', ');
     editorOriginalState = captureEditorState();
-    persistEditorDraft(true);
     editorReturnView = 'listView';
+    // 有同一候选的历史草稿时先询问恢复，不可提前用新卡片模板覆盖原文。
+    if (offerDraftRecovery()) {
+        setSaveStatus('发现这位邂逅人物尚未保存的草稿，可先恢复后继续编辑。', 'info');
+        return;
+    }
+    // 不强制写入一份与候选完全相同的草稿；用户改动由原编辑器自动暂存。
     setSaveStatus('已带入邂逅人设，可继续完善；保存后才会加入正式角色库。', 'info');
 }
 
