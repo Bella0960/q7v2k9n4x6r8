@@ -1794,6 +1794,12 @@ document.getElementById('btnExportRole').addEventListener('click', function () {
         setSaveStatus('请先保存角色，再导出专属 JSON。', 'error');
         return;
     }
+    if (document.getElementById('editRoleName').value !== (role.name || '') ||
+        document.getElementById('editRolePersona').value !== (role.persona || '') ||
+        document.getElementById('editRoleTone').value !== (role.tone || '')) {
+        setSaveStatus('有尚未保存的修改，请先保存再导出。', 'error');
+        return;
+    }
     const file = {
         format: 'maomao-character',
         version: 1,
@@ -1823,12 +1829,14 @@ document.getElementById('roleImportFile').addEventListener('change', function(e)
     const file = e.target.files && e.target.files[0];
     e.target.value = '';
     if (!file) return;
-    const isTxt = /\.txt$/i.test(file.name) || (file.type || '').indexOf('text/plain') === 0;
+    const isTxt = /\.txt$/i.test(file.name);
+    if (file.size > 1024 * 1024) { setSaveStatus('文件超过 1 MB，请拆分或精简后再导入。', 'error'); return; }
     const reader = new FileReader();
     reader.onload = function(ev) {
         try {
             const text = String(ev.target.result || '');
             if (isTxt) {
+                if (/^[\s]*[\[{]/.test(text)) throw new Error('不支持把其他平台的 JSON 角色卡作为 TXT 导入');
                 // txt：整段当人设，第一行若很短（<=20字）当姓名
                 const lines = text.split(/\r?\n/);
                 let name = '', persona = text;
@@ -1849,10 +1857,11 @@ document.getElementById('roleImportFile').addEventListener('change', function(e)
                 throw new Error('仅支持从 MAOMAO 导出的角色 JSON（版本 1）');
             }
             const item = data.character;
-            const name = typeof item.name === 'string' ? item.name.trim().slice(0, 30) : '';
-            const persona = typeof item.persona === 'string' ? item.persona.slice(0, 30000) : '';
-            const tone = typeof item.tone === 'string' ? item.tone.slice(0, 12000) : '';
+            const name = typeof item.name === 'string' ? item.name.trim() : '';
+            const persona = typeof item.persona === 'string' ? item.persona : '';
+            const tone = typeof item.tone === 'string' ? item.tone : '';
             if (!name || !persona) throw new Error('MAOMAO 文件缺少角色姓名或人设');
+            if (name.length > 30 || persona.length > 30000 || tone.length > 12000) throw new Error('角色字段超过编辑器限制，未截断原文件');
             document.getElementById('editRoleName').value = name;
             document.getElementById('editRolePersona').value = persona;
             document.getElementById('editRoleTone').value = tone;
