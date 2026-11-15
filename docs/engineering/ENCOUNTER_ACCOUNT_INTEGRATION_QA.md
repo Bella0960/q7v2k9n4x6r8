@@ -79,3 +79,12 @@ Gate 不允许仅靠代码检查或旧截图通过。PR #290、#297 继续保留
 - Playwright 优先启动自身的 Chromium；失败时可从主机已安装的 Chromium/Chrome 路径或显式设置 `PLAYWRIGHT_CHROMIUM_PATH` 查找真实可执行文件，无法启动则明确报错，不会用静态模拟代替。
 - 角色库 `saveRoles` 的静默写入失败保护已提交到源 PR #297 与本整合分支，新版角色保护测试在隔离 JS 环境通过；最近整合分支 30 合同 + 5 模拟 UI 为 **35/35**。
 - **尚未完成**：在可执行完整 Git 仓库的环境中实际运行 `npm run test:encounter:full`、手机 Android/iPhone 真机验收、已授权正式账号真实切换、正式加密备份及隔离恢复。上述任何一项没有真实回执都不能签收合并/部署。
+
+## 2026-11-15｜第六轮：入库并发保护、幂等身份与刷新修复
+
+- 发现缺口：候选收藏 V2 虽有独立存储键 + Web Locks，但「候选正式创建角色」仍调用原有同步整包 `saveRoles`，多标签页可能同时依据旧数据执行创建。现对**邂逅候选正式入库**新增同账号 `navigator.locks.request('maomao:encounter:role-create:<accountId>', {mode:'exclusive'}, ...)` 包装；排队完成后重新核对当前账号、候选 ID、编辑器状态，再调用原角色编辑器已有校验。保存等待期间禁用重复点击。旧普通角色编辑依旧走既有路径。
+- 缺少 Web Locks 的旧 Safari/浏览器新增候选稳定 ID 映射：同一 `enc_<id>` 始终映射 `role_enc_<id>`，若正式角色 ID 已存在则拒绝覆盖。此措施避免为同一候选生成两个不同随机 ID，但**不等于**整个 ai_custom_characters 数组已经具备跨标签页事务保证。
+- 真实页面保存成功后 URL 若仍带 `?encounterDraft=...`，下一次刷新会试图再导入已消费候选并提示「候选已不存在」。现成功入库后只移除 `encounterDraft` 参数，保留其他查询参数和 hash，避免刷新误提示。
+- 角色浏览器脚本补强：等待异步入库完成，并断言创建成功后 URL 无 `encounterDraft`。新增三个合同测试覆盖同账号锁和重复点击、排队期间换账号拒绝创建、同候选稳定 ID/冲突拒绝及成功后的 URL 清理（共四项，含前一轮的两项锁测试）。
+- 使用当前整合分支 GitHub 源文件在 V8 适配隔离环境复核：34 项合同 + 5 项 UI 模拟，**39/39 PASS**。不是原生 `node --test` 或 Vite/Playwright 回执。
+- 本轮检查当前执行容器：Node 22、Chromium、Python Playwright 均可用，但没有 GitHub MAOMAO 完整仓库副本，禁止把局部提取的 HTML/JS 模拟冒充生产 `dist` 实测。完整 `npm run test:encounter:full`、Android+iPhone、账号备份/隔离恢复仍待真实执行。PR #290/#297 和整合分支均未合并 main 或部署正式域名。
