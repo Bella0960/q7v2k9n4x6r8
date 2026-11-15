@@ -50,12 +50,32 @@ try {
   await fs.rm(receiptPath,{force:true});
   try {
     browser = await chromium.launch({headless:true});
-  } catch (error) {
-    // 本地环境允许显式指定 Chromium；不静默使用任意未知浏览器。
-    if (!process.env.PLAYWRIGHT_CHROMIUM_PATH) throw error;
-    browser = await chromium.launch({headless:true,
-      executablePath:process.env.PLAYWRIGHT_CHROMIUM_PATH,
-      args:process.platform==='linux'?['--no-sandbox']:[]});
+  } catch (originalError) {
+    // CI 额度或 Playwright Browser 安装缺失时，复用主机已安装的真实 Chromium。
+    // 不能退化成没有浏览器的截图假测试。
+    const candidates=[
+      process.env.PLAYWRIGHT_CHROMIUM_PATH,
+      ...(process.platform==='linux'
+        ? ['/usr/bin/chromium','/usr/bin/chromium-browser','/usr/bin/google-chrome']
+        : process.platform==='darwin'
+        ? ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome']
+        : process.platform==='win32'
+        ? ['C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+           'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe']
+        : [])
+    ].filter(Boolean);
+    let lastError=originalError;
+    for(const executablePath of candidates){
+      if(!existsSync(executablePath))continue;
+      try{
+        browser=await chromium.launch({
+          headless:true,executablePath,
+          args:process.platform==='linux'?['--no-sandbox']:[]
+        });
+        break;
+      }catch(error){lastError=error;}
+    }
+    if(!browser)throw lastError;
   }
   for (const viewport of [{width:375,height:812},{width:390,height:844},{width:430,height:932}]) {
     const context = await browser.newContext({
