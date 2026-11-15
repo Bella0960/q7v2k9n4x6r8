@@ -56,6 +56,18 @@ Status vocabulary: OPEN, IN PROGRESS, FIXED, DEFERRED, NOT VERIFIED.
 
 当前 main `shared/js/home-indicator.js` 在存在 `.comment-bar` 时不生成 84×4 点击层，而底部线本身 `pointer-events:none`；`forum/forum-detail.html` 确实有 `.comment-bar`。在 [原 PR #245](https://github.com/Bella0960/MAOMAO/pull/245) 先检查相对最新 main 的改动，补实机“返回桌面”和“评论可输入”双向命中测试，避免独立重修。
 
+### UI-STATUS-001 — 全项目状态栏同源设置与页面适配（已开工）
+**Priority:** P1 · **Status:** IN PROGRESS / SOURCE CHECKED / TEST NOT RUN
+
+2026-11-15 实际扫描 main 90 个 HTML 页面：用静态 `class="...status-bar..."` 标记筛查，共 **28 页**使用既有 `.status-bar` 结构，其中 **27 页**原本直接加载 `shared/js/statusbar-control.js`，`beauty/beauty.html` **遗漏引入**；另外 **62 页没有该类静态标记**，其中可能有刻意沉浸式 UI 和自定义/运行时生成状态栏，**不能一概标错或强制注入同一横条**。
+
+**唯一实现 PR：[PR #301](https://github.com/Bella0960/MAOMAO/pull/301)（Draft），复用既有 `task-ARCH-003/global-statusbar` 分支。**注意旧分支名含 `ARCH-003`，而此台账中 `ARCH-003` 原指「脚本依赖/加载顺序审计」；本工作唯一任务标识仍为 `UI-STATUS-001`，不把两个职责混成一套功能。此轮 PR 仅 3 个文件：
+- `beauty/beauty.html` 补公共控制器；
+- `shared/js/statusbar-control.js` 改为读取**既有唯一 `settings_statusbar`** 后设置 HTML 根属性 + 统一 CSS（覆盖延迟挂载、避免逐节点覆盖原布局 `display`），保留已有设置页 `__statusbarControlApply()` 与 Home Indicator 旧逻辑；
+- `tests/global-statusbar-wiring.test.mjs` 加入 HTML 挂载契约及 VM/存储事件的回归测试。
+
+**后续严格顺序（只在原 PR 修）：**先确保 `node --test tests/global-statusbar-wiring.test.mjs`、`npm ci && npm run build` 真实执行，核对与最新 main 的 5 提交差异；随后分类 62 页（沉浸式有意省略 / 独立自绘状态栏 / 运行时生成），按公共壳规范逐模块接入而非一次性覆盖 CSS；设置开/关、跨功能跳转、iOS Safari 添加桌面安全区、Android PWA、返回条不被遮挡都在唯一隔离 QA 验收。**本次仅完成源码提交与静态核查，尚未运行 Node/浏览器/真机测试；未合并 main 或部署正式版。**
+
 ### QA-GLOBAL-001 — 90 页真实交互与 Bug 定期回归
 **Priority:** P0 for release / P1 ongoing · **Status:** IN PROGRESS (static URL review only)
 
