@@ -208,7 +208,7 @@ test('silent storage writes cannot create phantom old/new group invitations or j
   const failed = h.api.offerInvitation({ groupId: 'g1', inviterId: 'c1' });
   assert.equal(failed.ok, false);
   assert.equal(failed.code, 'SAVE_FAILED');
-  assert.deepEqual(h.api.pendingInvitations(), []);
+  assert.equal(h.api.pendingInvitations().length, 0);
   h.storage.setItem = originalSet;
   const invited = h.api.offerInvitation({ groupId: 'g1', inviterId: 'c1' });
   assert.equal(invited.ok, true);
