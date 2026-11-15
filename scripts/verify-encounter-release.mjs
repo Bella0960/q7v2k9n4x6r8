@@ -10,7 +10,8 @@
  *
  * Android/iOS 真机、正式账号桥接和生产恢复验收仍须单独确认。
  */
-import {readFileSync,existsSync} from 'node:fs';
+import {readFileSync,existsSync,statSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
 import {resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
@@ -70,6 +71,42 @@ for(const width of [375,390,430]){
 requireFile('test-results/encounter-original-role-editor.png',
   '需真实跑通候选进入角色编辑器、创建、刷新、JSON 导出与重新导入');
 
+// 构建与截图必须由同一次 Git HEAD 的实际运行生成，旧图片不能混过门禁。
+const parseReceipt=name=>{
+  if(!requireFile(name,'缺少该版本真实执行回执，不接受旧截图或旧构建'))return null;
+  try{
+    const receipt=JSON.parse(read(name));
+    if(!receipt || receipt.schemaVersion!==1)throw new Error('回执版本错误');
+    return receipt;
+  }catch(error){errors.push(name+' 无效：'+error.message);return null;}
+};
+let head='';
+try{
+  head=execFileSync('git',['rev-parse','HEAD'],{
+    cwd:root,encoding:'utf8',stdio:['ignore','pipe','ignore']
+  }).trim();
+}catch(e){errors.push('无法读取 Git HEAD，不能确认构建与截图是否来自当前分支');}
+const built=parseReceipt('dist/encounter-build-receipt.json');
+const browsed=parseReceipt('test-results/encounter-browser-receipt.json');
+if(built && head && built.gitHead!==head)errors.push('构建回执对应旧提交，必须重新构建：'+built.gitHead);
+if(browsed && head && browsed.gitHead!==head)errors.push('浏览器截图对应旧提交，必须重新测试：'+browsed.gitHead);
+if(built && browsed) {
+  if(!Number.isFinite(built.createdAt)||!Number.isFinite(browsed.startedAt)||
+      browsed.startedAt < built.createdAt-1000)
+    errors.push('浏览器测试早于本次构建，必须重新截图验收');
+  const sizes=[375,390,430];
+  if(!Array.isArray(browsed.viewports)||sizes.some(x=>!browsed.viewports.includes(x)))
+    errors.push('缺少 375/390/430px 全尺寸真实浏览器验收');
+  const mustCheck=['cardSwap','swipeRebound','candidatePersistence','roleCreation',
+    'jsonRoundTrip','thirdPartyJsonRejected','freeDrawNoApi'];
+  for(const item of mustCheck)if(browsed.checked?.[item]!==true)errors.push('未实际完成浏览器断言：'+item);
+  for(const [name,info] of Object.entries(browsed.captured||{})){
+    const filename='test-results/'+name;
+    if(!existsSync(path(filename))||statSync(path(filename)).size!==info.bytes||
+        statSync(path(filename)).mtimeMs < browsed.startedAt-1000)
+      errors.push('截图缺失或与本次测试不匹配：'+filename);
+  }
+}
 for(const line of results)console.log('CHECK  '+line);
 if(errors.length){
   for(const error of errors)console.error('BLOCK  '+error);
