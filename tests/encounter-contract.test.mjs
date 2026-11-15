@@ -222,6 +222,98 @@ test('保存后的邂逅角色仍可以手动选择 AI 完善，不能强迫再�
   assert.match(managerSource,/const targetRoleId = editorRoleId/);
 });
 
+
+test('正式域名未注入已生效的 MAO 账号作用域时全部候选操作必须停止', () => {
+  const local = new Map();
+  const localStorage={
+    getItem(key){return local.get(key)??null;},
+    setItem(key,value){local.set(key,String(value));}
+  };
+  const metas={
+    'meta[name="mao-account-id"]':{content:'MAO-AAAAAAAAAAAA'},
+    'meta[name="mao-account-role"]':{content:'user'}
+  };
+  function verify(meta, scope, hostname='app.mao520.com') {
+    const window={
+      localStorage,location:{hostname},
+      document:{querySelector(s){return meta[s]||null;}},
+      __MAO_ACCOUNT_SCOPE__:scope
+    };
+    vm.runInNewContext(engineSource,{window,Math,Set,Uint32Array,Date,JSON,String,Array,Object,Number,CustomEvent:class {}});
+    return window.MAOMAOEncounter;
+  }
+  const noIdentity=verify({},null);
+  assert.equal(noIdentity.generate().ok,false);
+  assert.equal(noIdentity.saveCandidate({id:'enc_x',name:'访客'}).ok,false);
+  assert.equal(noIdentity.savePreferences({gender:'女'}).ok,false);
+  const missingScope=verify(metas,null);
+  assert.equal(missingScope.getCandidates().ok,false);
+  const wrongScope=verify(metas,{accountId:'MAO-BBBBBBBBBBBB',role:'user',ready:true});
+  assert.equal(wrongScope.generate().ok,false);
+  assert.equal(local.size,0,'拒绝账号作用域时不得读写存储');
+});
+
+test('正式账号作用域就绪时复用原本隔离的 storage，多个账号候选互不可见', () => {
+  // 模拟 PR #290 提供的账号代理，邂逅只调用作用域代理，不另造身份系统。
+  const backing=new Map();
+  function makeAccount(accountId) {
+    const prefix='__mao_account_v1__'+encodeURIComponent(accountId)+'__';
+    const localStorage={
+      getItem(key){return backing.get(prefix+key)??null;},
+      setItem(key,value){backing.set(prefix+key,String(value));},
+      removeItem(key){backing.delete(prefix+key);}
+    };
+    const metas={
+      'meta[name="mao-account-id"]':{content:accountId},
+      'meta[name="mao-account-role"]':{content:'user'}
+    };
+    const window={
+      localStorage,
+      location:{hostname:'app.mao520.com'},
+      document:{querySelector(s){return metas[s]||null;}},
+      __MAO_ACCOUNT_SCOPE__:{accountId,role:'user',ready:true}
+    };
+    vm.runInNewContext(engineSource,{window,Math,Set,Uint32Array,Date,JSON,String,Array,Object,Number,CustomEvent:class {}});
+    return window.MAOMAOEncounter;
+  }
+  const a=makeAccount('MAO-AAAAAAAAAAAA'),b=makeAccount('MAO-BBBBBBBBBBBB');
+  assert.equal(a.checkAccountScope().ok,true);
+  const card=a.generate().value;
+  assert.equal(a.saveCandidate(card).ok,true);
+  assert.equal(a.getCandidates().value.length,1);
+  assert.equal(b.getCandidates().value.length,0,'其他账号不得读取 A 的候选');
+  assert.equal(b.generate().ok,true,'其他账号仍应能使用其独立角色库');
+  assert.ok(Array.from(backing.keys()).every(k=>k.startsWith('__mao_account_v1__MAO-AAAAAAAAAAAA__')));
+});
+
+test('浏览器静默丢写时不能误报收藏/删除/偏好保存成功', () => {
+  const h=harness();
+  const candidate=h.api.generate().value;
+  h.localStorage.setItem=()=>{}; // 浏览器或扩展悄悄忽略 setItem
+  assert.equal(h.api.saveCandidate(candidate).ok,false);
+  assert.equal(h.api.savePreferences({gender:'女'}).ok,false);
+  assert.equal(h.api.getCandidates().value.length,0);
+  // 移除被浏览器静默忽略也应被校验发现
+  const normal=harness();
+  const card=normal.api.generate().value;
+  assert.equal(normal.api.saveCandidate(card).ok,true);
+  normal.localStorage.setItem=()=>{};
+  assert.equal(normal.api.removeCandidate(card.id).ok,false);
+  assert.equal(normal.api.getCandidates().value.length,1);
+});
+
+test('可扩展卡片不能覆盖稳定人物 ID、版本和创建时间', () => {
+  const h=harness();
+  h.api.registerCardDecorator(() => ({
+    id:'role_conflict',createdAt:0,schemaVersion:99,badge:'custom-arc'
+  }));
+  const card=h.api.generate().value;
+  assert.ok(card.id.startsWith('enc_'));
+  assert.equal(card.schemaVersion,1);
+  assert.ok(card.createdAt>0);
+  assert.equal(card.badge,'custom-arc');
+});
+
 test('桌面有独立应用入口，抽卡页有可访问交互与移动端样式', () => {
   assert.match(desktopSource,/data-href="encounter\/encounter\.html"/);
   assert.match(appSource,/id="frontCard"/);
