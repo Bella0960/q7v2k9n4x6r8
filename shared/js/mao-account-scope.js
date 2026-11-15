@@ -172,8 +172,15 @@
   }
 
   if (role === 'super_admin') {
-    // Existing MAO content belongs to the creator. Keep the original keys/DB names
-    // for this one account so the first authorized release does not hide old data.
+    // 唯一创始管理员继续使用原始本地存储；API 身份绑定已成功时才宣告就绪。
+    try {
+      global.__MAO_ACCOUNT_SCOPE__ = Object.freeze({ accountId: accountId, role: role, ready: true });
+    } catch (error) {
+      global.stop();
+      document.open();
+      document.write('账号会话隔离暂不可用');
+      document.close();
+    }
     return;
   }
 
