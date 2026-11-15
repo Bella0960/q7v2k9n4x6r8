@@ -324,7 +324,7 @@
   }
   var scope = canPersist ? accountId : 'temporary:' + Math.random().toString(36).slice(2);
   var state = {
-    root: null, active: null, selected: null, busy: false, creating: false,
+    root: null, active: null, selected: null, busy: false, creating: false, deleting: false,
     stopped: false, serial: 0, opened: false, branchSource: null, forkPoint: 0,
     settings: { memory: 'none', count: null },
     settingsLoaded: false, settingsPromise: null, archiveLimit: 12, viewSerial: 0,
@@ -1107,7 +1107,7 @@
   }
 
   async function start(template, custom, selectedCount) {
-    if (state.busy || state.creating) return;
+    if (state.busy || state.creating || state.deleting) return;
     var role = roleInfo();
     if (!role) { showNotice('请先创建或选择一个角色'); return; }
     var scenario = template ? template.scenario : String(custom || '').trim();
@@ -1146,6 +1146,7 @@
     var node = event.target.closest('[data-action]');
     if (!node || !state.root.contains(node)) return;
     var key = node.dataset.action;
+    if (state.deleting && key !== 'close') return; // 等待删除提交，禁止并行操作同一篇故事。
     if (key === 'toggle-settings') {
       var drawer = state.root.querySelector('.fw-settings-drawer');
       if (!drawer) return;
@@ -1219,14 +1220,24 @@
     }
     if (key === 'delete') { openDeleteConfirm(); return; }
     if (key === 'confirm-delete') {
-      if (state.busy || !state.active) return;
-      var deletedId = state.active.id;
-      if (!(await erase(state.active))) {
-        showNotice('删除未成功，故事仍然保留，请检查本机存储状态');
-        return;
+      if (state.busy || state.deleting || !state.active) return;
+      state.deleting = true;
+      var deletingEpisode = state.active;
+      var deletedId = deletingEpisode.id;
+      node.disabled = true;
+      try {
+        if (!(await erase(deletingEpisode))) {
+          showNotice('删除未成功，故事仍然保留，请检查本机存储状态');
+          return;
+        }
+        emit('episode:deleted', { id: deletedId, characterId: roleId });
+        if (state.active === deletingEpisode) state.active = null;
+        if (state.opened) openPicker(); // 用户中途收起面板，不可被延迟事务重新打开。
+      } finally {
+        state.deleting = false;
+        node.disabled = false;
       }
-      emit('episode:deleted', { id: deletedId, characterId: roleId });
-      state.active = null; openPicker(); return;
+      return;
     }
   }
 
