@@ -8305,56 +8305,64 @@
             text = text.replace(/\[群关系变化[:：]([^:：\]]{1,100})[:：]([^:：\]]{1,20})[:：]([+-]?\d{1,3})[:：]([+-]?\d{1,3})[:：]([^\]]{1,120})\]/gi, function (marker, targetKey, level, intimacyDelta, trustDelta, summary) {
                 if (relationshipEventSeen) return '';
                 relationshipEventSeen = true;
-                if (isRegeneration || !isGroupFollowup || !speaker || speaker.id == null || getGroupSettings().relationshipDynamicsEnabled === false) return '';
+                if (!isGroupFollowup || !speaker || speaker.id == null ||
+                    getGroupSettings().relationshipDynamicsEnabled === false) return '';
                 var targetId = String(targetKey || '').trim();
                 var members = Array.isArray(currentGroup.members) ? currentGroup.members : [];
-                var target = members.find(function (member) { return member && String(member.id) === targetId; });
+                var target = members.find(function (m) { return m && String(m.id) === targetId; });
                 if (!target || String(target.id) === String(speaker.id)) return '';
-                var previousSpeaker = findGroupSpeakerInHistory(historyList);
-                if (!previousSpeaker || String(previousSpeaker.id) !== String(target.id)) return '';
-                var relation = getOrCreateGroupRelationship(speaker, target);
-                var direction = relation && relation.directions && relation.directions[String(speaker.id)];
-                var policy = window.GroupChatPolicy;
-                if (!direction || !policy || typeof policy.applyRelationshipEvent !== 'function') return '';
-                var applied = policy.applyRelationshipEvent(direction, {
+                var prior = findGroupSpeakerInHistory(historyList);
+                if (!prior || String(prior.id) !== targetId) return '';
+                var fromId = String(speaker.id);
+                var evidence = {
                     level: String(level || '').toLowerCase(),
                     intimacyDelta: Number(intimacyDelta),
                     trustDelta: Number(trustDelta),
                     summary: String(summary || '').trim()
-                }, Date.now());
-                if (applied) {
-                    relation.lastInteractionAt = Date.now();
-                    saveCurrentGroupObject();
-                }
+                };
+                turnEffects.afterSave(function () {
+                    return commitDeferredGroupRelationship(fromId, targetId, function (relation) {
+                        var direction = relation.directions && relation.directions[fromId];
+                        var policy = window.GroupChatPolicy;
+                        if (!direction || !policy || typeof policy.applyRelationshipEvent !== 'function')
+                            return false;
+                        var applied = policy.applyRelationshipEvent(direction, evidence, Date.now());
+                        if (applied) relation.lastInteractionAt = Date.now();
+                        return applied === true;
+                    });
+                });
                 return '';
             });
             text = text.replace(/\[群关系互动[:：]([^:：\]]{1,100})(?:[:：]([^\]]{1,160}))?\]/g, function (marker, targetKey, memorySummary) {
-                if (isRegeneration || !speaker || speaker.id == null) return '';
+                if (!speaker || speaker.id == null) return '';
                 var targetId = String(targetKey || '').trim();
                 var members = Array.isArray(currentGroup.members) ? currentGroup.members : [];
-                var target = members.find(function (member) { return member && String(member.id) === targetId; });
+                var target = members.find(function (m) { return m && String(m.id) === targetId; });
                 if (!target || String(target.id) === String(speaker.id)) return '';
-                var previousSpeaker = findGroupSpeakerInHistory(historyList);
-                if (!previousSpeaker || String(previousSpeaker.id) !== String(target.id)) return '';
-                var relation = getOrCreateGroupRelationship(speaker, target);
-                if (relation) {
-                    relation.interactions = Math.max(0, parseInt(relation.interactions, 10) || 0) + 1;
-                    relation.lastInteractionAt = Date.now();
-                    var summary = String(memorySummary || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140);
-                    if (summary) {
-                        var direction = relation.directions && relation.directions[String(speaker.id)];
-                        if (direction) {
-                            if (!Array.isArray(direction.sharedEvents)) direction.sharedEvents = [];
-                            direction.sharedEvents.push({ summary: summary, time: Date.now(), fromId: String(speaker.id), toId: String(target.id) });
-                            direction.sharedEvents = direction.sharedEvents.filter(function (item) { return item && String(item.summary || '').trim(); }).slice(-6);
-                            direction.lastInteractionAt = Date.now();
+                var prior = findGroupSpeakerInHistory(historyList);
+                if (!prior || String(prior.id) !== targetId) return '';
+                var fromId = String(speaker.id);
+                var summary = String(memorySummary || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0,140);
+                turnEffects.afterSave(function () {
+                    return commitDeferredGroupRelationship(fromId, targetId, function (relation) {
+                        relation.interactions = Math.max(0,parseInt(relation.interactions,10)||0)+1;
+                        relation.lastInteractionAt = Date.now();
+                        if (summary) {
+                            var direction = relation.directions && relation.directions[fromId];
+                            var event = {summary:summary,time:Date.now(),fromId:fromId,toId:targetId};
+                            if (direction) {
+                                if (!Array.isArray(direction.sharedEvents)) direction.sharedEvents=[];
+                                direction.sharedEvents.push(event);
+                                direction.sharedEvents=direction.sharedEvents.filter(function(x){return x&&String(x.summary||'').trim();}).slice(-6);
+                                direction.lastInteractionAt=event.time;
+                            }
+                            if (!Array.isArray(relation.memories)) relation.memories=[];
+                            relation.memories.push(event);
+                            relation.memories=relation.memories.filter(function(x){return x&&String(x.summary||'').trim();}).slice(-6);
                         }
-                        if (!Array.isArray(relation.memories)) relation.memories = [];
-                        relation.memories.push({ summary: summary, time: Date.now(), fromId: String(speaker.id), toId: String(target.id) });
-                        relation.memories = relation.memories.filter(function (item) { return item && String(item.summary || '').trim(); }).slice(-6);
-                    }
-                    saveCurrentGroupObject();
-                }
+                        return true;
+                    });
+                });
                 return '';
             });
             text = text.replace(/\[群投票:([^\]:]+):(\d{1,2})\]/g, function (marker, pollMid, optionNumber) {
