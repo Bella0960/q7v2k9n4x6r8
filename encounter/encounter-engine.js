@@ -107,9 +107,17 @@
       }
       if (!Array.isArray(roles)) return fail('角色库数据异常，无法安全检查姓名');
       var set = new Set();
-      roles.forEach(function(r) {
-        if (r && r.name) set.add(normalizeName(r.name));
-        if (r && Array.isArray(r.aliases)) r.aliases.forEach(function(n) { set.add(normalizeName(n)); });
+      function includeNames(person) {
+        if (!person || typeof person !== 'object') return;
+        if (person.name) set.add(normalizeName(person.name));
+        if (Array.isArray(person.aliases)) {
+          person.aliases.forEach(function(n) { if (n) set.add(normalizeName(n)); });
+        }
+      }
+      roles.forEach(function(role) {
+        includeNames(role);
+        // 角色档案里还会有家人、朋友等独立人物档案；也要避免与这些姓名撞名。
+        if (role && Array.isArray(role.npcCharacters)) role.npcCharacters.forEach(includeNames);
       });
       return ok(set);
     } catch (e) { return fail('角色库读取失败，暂时不能抽卡'); }
