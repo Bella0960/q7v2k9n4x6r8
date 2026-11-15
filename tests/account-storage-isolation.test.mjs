@@ -307,6 +307,8 @@ test('无法安装账号存储命名空间时阻止继续加载页面', () => {
   };
   vm.runInNewContext(scopeSource, { window, document, console, Object, Array, Proxy, Reflect, Promise, encodeURIComponent, Symbol });
   assert.equal(document.blocked, true);
+  assert.equal(window.__MAO_ACCOUNT_SCOPE__, undefined,
+    '失败的账号初始化不能提前暴露 ready=true');
 });
 
 test('Worker 只对已授权账号页面注入数据命名空间，并禁止缓存个人 HTML', () => {
