@@ -2,6 +2,8 @@
  * 邂逅 / Encounter 真实浏览器回归（不会调用真实 AI API）。
  * 运行：node tests/encounter-browser.mjs
  * 需本地 npm ci 且安装 Playwright Chromium。截图生成在 test-results/（不入库）。
+ * 这是 localhost 浏览器模拟测试，不验证官方 Worker 的真实登录/缓存策略；
+ * 账号隔离使用 tests/encounter-actual-scope.test.mjs 单独验证。
  */
 import { chromium } from 'playwright';
 import http from 'node:http';
@@ -118,7 +120,9 @@ try {
       await page.locator('#profileContent').waitFor({state:'visible'});
       // 从档案页重新打开编辑器，以便检查 JSON 导出。
       await page.locator('[data-profile-action="basic"]').first().click();
-      assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('maomao_encounter_candidates_v1')).length),0,'正式保存成功后清理候选');
+      const persistedCandidates = await page.evaluate(() => window.MAOMAOEncounter.getCandidates());
+      assert.equal(persistedCandidates.ok,true,'候选读回不能报错');
+      assert.equal(persistedCandidates.value.length,0,'正式保存成功后清理候选（支持旧数据与逐条 V2 存储）');
       const downloadEvent=page.waitForEvent('download');
       await page.locator('#btnExportRole').click();
       const download=await downloadEvent;
