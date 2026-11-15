@@ -53,7 +53,7 @@ test('the mobile home grid keeps four columns and supports vertical page scrolli
   assert.match(desktopCss, /#gridPage0 > \[data-drag\]:nth-child\(6\)[^{]*\{ grid-column: 3 \/ 5 !important; grid-row: 3 \/ 5 !important;/);
   assert.match(mobileCss, /#gridPage0 > \[data-drag\]:nth-child\(7\)[^{]*\{ grid-column: 1 \/ 3 !important; grid-row: 5 \/ 7 !important;/);
   assert.match(mobileCss, /\.maomao-home \.home-page[\s\S]*?overflow-y:\s*auto\s*!important/);
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v203'/);
+  assert.ok(Number(serviceWorker.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m)?.[1] || 0) >= 241, 'PWA must retain the network-first account cache baseline');
 });
 
 
