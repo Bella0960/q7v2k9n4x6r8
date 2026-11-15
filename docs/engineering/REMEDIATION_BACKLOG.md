@@ -25,6 +25,33 @@ Status vocabulary: OPEN, IN PROGRESS, FIXED, DEFERRED, NOT VERIFIED.
 
 完整细则以 [RELEASE_PLAYBOOK.md 第 0B 节](RELEASE_PLAYBOOK.md) 为准。GitHub CI 只有在用户明确要求或恢复有新实证时才重新复查；平时无需继续刷 Actions 状态。此整改不涉及正式发布、数据或仓库自动流程的强行关闭。
 
+## DOMAIN-ENTRY-001 — 两个唯一正式入口、历史别名收敛与 QA 身份隔离专项（2026-11-16）
+
+**Priority:** P0 身份/生产安全 + P1 可用性 · **Status:** 配置只读已核实 / 尚未实施域名迁移或路由调整。**归属：统一工程 NAV-003/发布整合负责人；使用现有治理 PR #300 和已有相关原 PR，禁止另建竞品工程、Worker、数据库或无必要的新 PR。**
+
+### 用户已确认的唯一对外正式入口
+- `https://mao520.com/`：已有正式身份/管理入口；目前 Cloudflare Custom Domain 映射 `mao-auth-preview`。**不要因为 Worker 名字有 preview 就误认为它是可删除的测试数据。**
+- `https://app.mao520.com/`：用户唯一正式小手机入口；目前 Custom Domain 映射 `curly-dream-324c`。该 Worker 有 `MAO_APP_BACKEND` → `maomao-aw-qa-20261114` 的 Service Binding，但配置开关 `MAO_APP_CUTOVER_ENABLED=false`。**禁止将“已绑定后端”误报为“已切换/新功能已上线”。**
+- **不允许再增加第三个面向普通用户宣传的 MAOMAO 正式入口；清理/隐藏旧地址必须先证明其使用关系与兼容路径，不能贸然删掉登录或静态资源服务。** 用户只需要记住以上两个域名。
+
+### 2026-11-16 Cloudflare 只读核对事实
+- 同一 zone 内的 Custom Domain：`mao520.com`→`mao-auth-preview`；`app.mao520.com`→`curly-dream-324c`；额外启用别名 `auth.mao520.com`、`login.mao520.com`、`admin.mao520.com`→`mao-auth-preview`；`static.mao520.com`→`mao-welcome-asset`、`ivory.mao520.com`→`mao-ivory-auth-preview`；`preview.mao520.com`→`mao` 为 `enabled=false`。额外还有个别特定静态资源的 Worker Route，不能把 Custom Domain 清单当作完整访问链路。
+- 唯一既有测试 Worker `maomao-aw-qa-20261114` 的 `CLOUD_DB` Durable Object namespace 与 `mao` 不同，但其 `MAO_IDENTITY_MODE=delegated_preview`、`MAO_IDENTITY_AUTHORITY_MODE=existing_worker` 且 Service Binding `MAO_IDENTITY_AUTHORITY`→`maomao-001-identity-gateway-20261114`（production 环境）。**数据命名空间独立不等于身份系统独立。** 不得使用正式管理员或现有用户凭据进行未经验证的 QA。
+- 当前 Worker 部署版本、HTTP 页面、Service Worker/PWA 缓存、登录跨域重定向和实际浏览器行为必须继续单独核查；以上是 API 配置事实，不是端到端验收，也不构成修改生产路由的许可。
+
+### 本专项强制执行顺序
+1. **全链路资产账本**：只读列出两个正式域名、全部旧 Custom Domains、Worker Routes、Service Bindings、Cookie Domain、OAuth/账号重定向、CORS、静态资源/推送回调、PWA scope、浏览器存储 origin、管理员入口及对应服务调用，逐一注明“在用/可迁移/不可确认”。重点排查其它现有任务及 PR 的依赖。
+2. **目标架构**：用户对外只记两个正式链接；旧 auth/login/admin 等地址仅在必要时保留为兼容别名/安全重定向，不能无限新增。测试版是**唯一长期完整且真实身份/数据隔离**的小手机，不建立第二个正式域名。测试版可通过受控入口进入已有独立 QA Worker 的**固定隔离 origin**；不能未经安全评估直接用 `app.mao520.com/qa` 同源混合生产与 QA 的 Cookie、localStorage、Service Worker 或 API。若所需安全隔离与“只有两处用户可见网址”不能同时实现，要明确提出可行的最小方案，不能假装已隔离。
+3. **先断开风险，再谈上线**：以只读链路证据和合成测试身份检查 QA 账号注册/登录与正式身份权威的关系，测试数据不得写入/污染正式用户 ID/权限/数据库；如果无法证明隔离，**不得让用户拿真实账号、API Key 或长期个人测试数据进入 QA**。先在原 QA/身份功能分支作可回滚的最小修复，保留已有正式超级管理员 `MAO-OXHBDBWCOIHPBBYN`。
+4. **构建与部署**：`main` 的 `wrangler.jsonc` 默认 `name: "mao"`、`assets.directory: "./dist"`，所以**绝不能直接用默认 `wrangler deploy` 当成对 QA 的部署**。`dist/` 被 Git 忽略属于正常情况，需在可执行本地/Work/隔离环境对需要验收的已认领原 PR 实际运行 `npm ci`、`npm run build` 和相关测试，再以明确、已核验绑定和目标的隔离 QA 部署配置提交**完整可玩的 PWA 与 API**；不得依赖已知不可用的 GitHub Actions。对现有 QA 的每一次更新要保护测试数据并核对回滚。
+5. **验收闭环**：同一个固定 QA 入口里让用户自己安全配置真实 API，使用聊天/群聊/论坛等实际功能、刷新和跨日持续数据后亲自验收；发现问题回原 PR 修复再原地更新。用户确认 QA 版本后才能进入正式候选；另需独立的正式发布批准、安全备份与恢复证明，**不允许自行开 `MAO_APP_CUTOVER_ENABLED`、变更正式域名路由、删除历史 Worker/别名、修改生产账号/DB 或把测试数据迁至正式库**。
+
+### 本专项交付证据
+- **一张可核实的域名→Worker→Service Binding→DB/identity 链路表**，包括历史别名风险/迁移计划和现有前端重定向/资源依赖。
+- **QA 身份隔离通过/未通过的客观记录**（仅使用合成测试数据，且不得扰动正式系统）、同一完整 QA 实际 URL/构建 SHA/真实 API 验收状态。
+- **原 PR 的真实代码/配置差异、执行过的测试和用户可操作入口**。没有真实部署/实测前不得报告“已经修好所有域名/测试版已经接通”。
+- **没有用户明确授权，禁止任何生产入口、身份、数据和发布切换写入。** 可在原任务分支实做修复、测试和准备可审核的迁移补丁。
+
 ## QA-UNIFIED-001 — 唯一长期完整测试小手机、真实 API 与用户验收（2026-11-16 确认）
 
 **Priority:** P0（发布用户体验门禁） / P1（持续工程实现） · **Status:** REQUIREMENT CONFIRMED / FULL QA NOT VERIFIED
