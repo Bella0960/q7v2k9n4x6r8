@@ -52,7 +52,7 @@
 - **参考工程对 MAOMAO 的落地约束：** 
 1. **主外壳仍只有一套**：启动、桌面、状态栏、导航栈、返回、字体/主题与窗口焦点由公共模块统一控制，各 app 只提供 `id / open / close / mount / unmount / restore` 或等效生命周期接口；错误/未接入旧页面允许降级，避免“一次迁移 90 页”。
 2. **不复制巨型单文件**：参考 JRSY 插件化，但不照搬 `index.html` 巨型结构、散落全局函数和直接修改系统状态栏的 CSS；共享数据访问统一走已审计的 PhoneStorage/Repository，继续做失败保护和备份校验。
-3. **两端形态区分**：安装到主屏幕的 iOS Safari PWA（`display: standalone`、安全区、通知权限等）与 Flutter 原生 iOS IPA 是不同路线；现阶段 MAOMAO 交付主线仍为现有网页/PWA，不因参考仓库存在 iOS 工程就自行添加 IPA 编译或 Apple 签名管线。
+3. **两端形态区分**：安装到主屏幕的 iOS Safari PWA（`display: standalone`、安全区、通知权限等）与 Flutter 原生 iOS IPA 是不同路线；现阶段 MAOMAO 交付主线仍为现有网页/PWA，不因参考仓库存在 iOS 工程就自行添加 IPA 编译或 Apple 签名管线。**已核 main PWA 配置：** `manifest.json` 为 `start_url: "./index.html"`、`scope: "./"`、`display: "standalone"`，`index.html` 包含 `apple-mobile-web-app-capable=yes`、`apple-mobile-web-app-title`、`apple-touch-icon`、manifest 引用，`sw.js` 已存在。Safari 分享菜单的“添加到主屏幕”不需要 Apple 代码签名；**实际 iPhone PWA 安装、离线启动、返回及通知还未完成本轮设备测试**。
 4. **验收不是看 URL**：除了地址栏简洁，还必须验证跨 app 的聊天历史/角色身份隔离、通知深链接、前进后退、卸载/重复挂载、浏览器刷新恢复、PWA 缓存、Android Chrome 与 iPhone Safari。禁止向正式账号/数据库做实验。
 5. **来源界限**：本轮确实读到 JRSY 各插件、Miya 公共启动和汪汪机 Flutter/iOS 文件；**尚未读到 qqjrsy-520 3.1 MB 主 `index.html` 的完整内容、也未运行参考工程**，不能写成“已经验证其全站零 Bug”或“全部源码已学习”。参考仅提取设计思想，不复制未经确认许可的源码或素材。
 
@@ -65,6 +65,8 @@
 3. **若验收目标是地址栏始终只显示 `app.mao520.com`**，必须先设计可行的单一应用外壳/统一客户端路由及前进后退、直接打开、刷新、PWA、分享、通知深链接和 Android/iPhone 兼容方案；**仅 Worker rewrite 不会在 MPA 整页导航后自动保持地址栏为 `/`**，也不能靠 `history.replaceState` 假装实现所有导航。不能为了隐藏路径而大规模嵌套 iframe 或破坏已做完的页面。
 4. **保留现有内容**：不得删除/重命名 90 个 HTML 页面，不更改账号/聊天数据库/角色 ID/主题/存储键，不重做 UI；只评估和实现逐步兼容的最小路由层。验证路线先在**现有导航/整合 PR** 中认领，避免另造路线重复 PR。
 5. **验收**：Chrome 浏览器中连续跳转多个功能、刷新、复制链接直达、浏览器返回、PWA 安装/离线、聊天图片、跨角色会话、Android/iPhone；用户看到的地址应符合明确选择的最终目标，内部物理路径不能被错误叠加；实际服务地址与 QA/正式 Worker 映射一并记录。
+
+**用户授权的参考边界（2026-11-15）：** 仅采用与 MAOMAO 现有原生 HTML/CSS/JS + Cloudflare/PWA + 已有账号数据兼容，且确实能降低耦合、避免 Bug 的结构。**禁止为了参考 iOS 源码而加 Flutter/C++、IPA、签名、证书、第二份账号/数据库或重建测试环境；禁止复制无明确可复用授权的第三方源码、图标和素材。** 任何统一应用外壳必须以安全兼容旧功能、旧书签、状态栏统一开关、原角色数据为前提，先隔离 QA、再双端实测；不满足就停在评估阶段，不自动改架构。
 
 **状态：** 需求和源码事实已确认；短路径/始终根域的产品目标仍需明确区分；尚未改客户端导航或 Worker，未完成浏览器、QA 和真机验收。不能标记为“已实现”。
 
