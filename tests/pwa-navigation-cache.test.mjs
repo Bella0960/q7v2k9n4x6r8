@@ -48,7 +48,8 @@ test('private mobile navigations always revalidate the account with Worker; only
   assert.match(serviceWorker, /req\.mode === 'navigate' && !isPublicAccountPage/);
   assert.match(serviceWorker, /return await fetch\(req\)/);
   assert.match(serviceWorker, /if \(req\.mode === 'navigate' && isPublicAccountPage\)/);
-  assert.match(serviceWorker, /var cached = await caches\.match\(req\)/);
+  assert.match(serviceWorker, /var cached = await caches\.open\(CACHE_NAME\)/);
+  assert.match(serviceWorker, /return cache\.match\(req\)/);
   assert.match(serviceWorker, /cache: 'no-store'/);
   assert.match(serviceWorker, /status: 503/);
 });
