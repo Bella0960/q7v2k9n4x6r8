@@ -82,6 +82,7 @@ function mount(options = {}) {
   let localStorageReadCount = 0;
   const prompts = [];
   const notices = [];
+  const clipboardWrites = [];
   let failAt = options.failAt || 0;
   const accountId = options.accountId || '';
   const window = {
@@ -94,6 +95,14 @@ function mount(options = {}) {
       ? { accountId: options.scopeAccountId || accountId, role: 'user', ready: options.scopeReady !== false }
       : undefined,
     showToast: message => notices.push(message),
+    navigator: options.clipboardUnavailable ? {} : {
+      clipboard: {
+        async writeText(value) {
+          if (options.clipboardReject) throw Error('permission denied');
+          clipboardWrites.push(value);
+        }
+      }
+    },
     PhoneAPI: {
       completeJSON: async request => {
         prompts.push(request.system);
@@ -139,6 +148,7 @@ function mount(options = {}) {
     get storageReads() { return localStorageReadCount; },
     get prompts() { return prompts; },
     get notices() { return notices; },
+    get copied() { return clipboardWrites; },
     get registry() { return window.MAOMAOFanwai; },
     get core() { return window.MAOMAOFanwaiCore; },
     open() {
@@ -1140,4 +1150,45 @@ test('closing during slow first write must not hide a newer reopened picker', as
   assert.ok(sheet.all().some(n => n.dataset.template === 'daily'));
   await tickUntil(() => ![...db.records.values()].some(row => row.templateId === 'daily'));
   assert.equal(app.requests, 0, 'abandoned initial draft must never launch a model request');
+});
+
+
+test('unsaved story recovery is copied only on explicit user action and never leaks API credentials', async () => {
+  const db = fakeFanwaiDB({ failAtWrite: 3 });
+  const app = mount({ accountId: 'MAO-AAAAAAAAAAAA', indexedDB: db });
+  const root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().some(n => n.dataset.template === 'daily'));
+  const sheet = root.querySelector('.fw-sheet');
+  assert.equal(app.copied.length, 0, 'clipboard must remain untouched until user explicitly requests export');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.template === 'daily') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'start-template') });
+  await tickUntil(() => sheet.all().find(n => n.className === 'fw-status')?.textContent.includes('本机存储不可用'));
+  assert.equal(app.copied.length, 0);
+  const backup = sheet.all().find(n => n.dataset.action === 'copy-unsaved');
+  assert.ok(backup, 'recovery action must appear only when there is unsaved dialogue');
+  await root.handlers.click({ target: backup });
+  assert.equal(app.copied.length, 1);
+  assert.match(app.copied[0], /对话 1-0/);
+  assert.match(app.copied[0], /对话 2-11/);
+  assert.match(app.copied[0], /(?:我|角色)：/);
+  assert.doesNotMatch(app.copied[0], /mock-key|旧回忆：/);
+  assert.ok(app.notices.some(n => n.includes('已复制对话')));
+  assert.equal(app.requests, 2, 'copy must never initiate extra model calls');
+  assert.equal(root.hidden, false);
+});
+
+test('unavailable clipboard keeps the unsaved reader visible and gives manual recovery guidance', async () => {
+  const db = fakeFanwaiDB({ failAtWrite: 2 });
+  const app = mount({ accountId: 'MAO-AAAAAAAAAAAA', indexedDB: db, clipboardUnavailable: true });
+  const root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().some(n => n.dataset.template === 'daily'));
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.template === 'daily') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'start-template') });
+  await tickUntil(() => sheet.all().find(n => n.className === 'fw-status')?.textContent.includes('本机存储不可用'));
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'copy-unsaved') });
+  assert.equal(app.copied.length, 0);
+  assert.ok(app.notices.some(n => n.includes('长按对话文字手动备份')));
+  assert.equal(sheet.all().filter(n => n.className === 'fw-bubble').length, 12);
+  assert.equal(root.hidden, false);
 });
