@@ -31,6 +31,10 @@ class Node {
   set innerHTML(markup) {
     this._html = markup;
     if (markup.includes('class="fw-sheet"')) {
+      const backdrop = new Node('div');
+      backdrop.className = 'fw-backdrop';
+      backdrop.dataset.action = 'close';
+      this.append(backdrop);
       const sheet = new Node('section');
       sheet.className = 'fw-sheet';
       this.append(sheet);
@@ -57,6 +61,7 @@ class Node {
   querySelector(selector) {
     if (selector === '[data-feat="fanwai"]') return this.all().find(n => n.dataset.feat === 'fanwai') || null;
     if (selector === '.fw-sheet') return this.all().find(n => n.className.split(' ').includes('fw-sheet')) || null;
+    if (selector === '.fw-backdrop') return this.all().find(n => n.className === 'fw-backdrop') || null;
     if (selector === '.fw-saved') return this.all().find(n => n.className === 'fw-saved') || null;
     if (selector === '.fw-settings-drawer') return this.all().find(n => n.className === 'fw-settings-drawer') || null;
     if (selector === '.fw-reader-menu') return this.all().find(n => n.className === 'fw-reader-menu') || null;
@@ -606,7 +611,7 @@ test('close during delayed initial save does not reopen the reader or spend API 
   const sheet = root.querySelector('.fw-sheet');
   await root.handlers.click({ target: sheet.all().find(n => n.dataset.template === 'daily') });
   await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'start-template') });
-  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'close') });
+  await root.handlers.click({ target: root.querySelector('.fw-backdrop') });
   await new Promise(resolve => setTimeout(resolve, 24));
   await tickUntil(() => !Array.from(indexedDB.records.values()).some(row => row.templateId === 'daily'));
   assert.equal(root.hidden, true);
