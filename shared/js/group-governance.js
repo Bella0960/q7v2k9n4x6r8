@@ -95,7 +95,11 @@
   }});
   registerAction('promote', { scope: 'owner', run: function (c) {
     if (!c.member || id(c.member.id) === id(c.group.ownerId)) return fail('INVALID_TARGET', '不能修改群主身份');
-    c.member.isAdmin = true; return { ok: true, message: '已任命群管理员' };
+    c.member.isAdmin = true;
+    if (!c.group.settings || typeof c.group.settings !== 'object') c.group.settings = {};
+    // Appointing a role is an explicit owner authorization for its ordinary group actions.
+    c.group.settings.allowRoleActions = true;
+    return { ok: true, message: '已任命群管理员，可在群里接收管理指令' };
   }});
   registerAction('demote', { scope: 'owner', run: function (c) {
     if (!c.member || id(c.member.id) === id(c.group.ownerId)) return fail('INVALID_TARGET', '不能修改群主身份');
@@ -152,14 +156,59 @@
     emit('invitation:offered', invitation);
     return { ok: true, invitation: invitation };
   }
+  // AI can propose a new role-owned group without creating one before the user accepts.
+  function offerNewGroupInvitation(req) {
+    req = req || {};
+    var storage = req.storage || root.localStorage, all = read(storage, 'phone_groups'),
+      inbox = read(storage, INVITATIONS), roles = read(storage, 'ai_custom_characters');
+    if (!all || !inbox || !roles) return fail('INVALID_STORAGE', '群邀请所需数据无法读取');
+    var inviter = roles.find(function (r) { return r && id(r.id) === id(req.inviterId); });
+    var title = id(req.groupName).replace(/[\r\n<>]/g, '').slice(0, 20);
+    if (!inviter || !title) return fail('INVALID_PROPOSAL', '群邀请信息无效');
+    var requested = Array.isArray(req.memberIds) ? req.memberIds.map(id).filter(Boolean).slice(0, 5) : [];
+    var selected = roles.filter(function (r) {
+      return r && r.id != null && (id(r.id) === id(inviter.id) || requested.indexOf(id(r.id)) >= 0);
+    });
+    if (!selected.some(function (r) { return id(r.id) !== id(inviter.id); }))
+      return fail('NEED_MEMBERS', '新群至少还需要一位已创建的角色');
+    if (inbox.some(function (x) { return x && x.status === 'pending' && id(x.inviterId) === id(inviter.id); }))
+      return fail('ALREADY_PENDING', '这位角色已有待处理邀请');
+    if (inbox.some(function (x) {
+      return x && x.draftGroup && id(x.inviterId) === id(inviter.id) &&
+        Date.now() - Number(x.createdAt || 0) < 24 * 60 * 60 * 1000;
+    })) return fail('COOLDOWN', '请稍后再发新的群邀请');
+    var gid = 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    if (all.some(function (g) { return g && id(g.id) === gid; })) return fail('DUPLICATE_GROUP', '群编号冲突');
+    var draft = {
+      id: gid, name: title, avatar: '', ownerId: id(inviter.id), userMembership: 'left',
+      members: selected.map(function (role) {
+        return { id: id(role.id), name: role.name || '角色', avatar: role.avatar || '', nickname: '',
+          title: '', isAdmin: false, muted: false, activeFrom: '08:00', activeTo: '23:00' };
+      }), relationships: {}, settings: { allowRoleActions: true, allowRoleInvitations: true }
+    };
+    var invitation = { id: 'gi_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 9),
+      groupId: gid, inviterId: id(inviter.id), status: 'pending', createdAt: Date.now(), draftGroup: draft };
+    inbox.push(invitation);
+    if (!write(storage, INVITATIONS, inbox.slice(-100))) return fail('SAVE_FAILED', '入群邀请未保存');
+    emit('invitation:offered', { id: invitation.id, groupId: gid, inviterId: id(inviter.id), draft: true });
+    return { ok: true, invitation: invitation };
+  }
   function pendingInvitations(storage) {
     storage = storage || root.localStorage;
     var all = read(storage, 'phone_groups'), inbox = read(storage, INVITATIONS);
     if (!all || !inbox) return [];
     return inbox.filter(function (x) {
-      var g = x && all.find(function (v) { return v && id(v.id) === id(x.groupId); });
-      return x && x.status === 'pending' && eligible(g, x.inviterId);
+      if (!x || x.status !== 'pending') return false;
+      if (x.draftGroup) return x.draftGroup.ownerId === x.inviterId &&
+        Array.isArray(x.draftGroup.members) && x.draftGroup.members.length >= 2;
+      var g = all.find(function (v) { return v && id(v.id) === id(x.groupId); });
+      return eligible(g, x.inviterId);
     }).map(function (x) {
+      if (x.draftGroup) {
+        var draftMember = find(x.draftGroup, x.inviterId);
+        return { id: x.id, groupId: x.groupId, groupName: x.draftGroup.name || '新群聊',
+          inviterId: x.inviterId, inviterName: draftMember && draftMember.name || '群成员', draft: true };
+      }
       var g = all.find(function (v) { return v && id(v.id) === id(x.groupId); });
       var inviter = find(g, x.inviterId);
       return { id: x.id, groupId: x.groupId, groupName: g.name || '群聊',
@@ -172,11 +221,19 @@
     if (!all || !inbox) return fail('INVALID_STORAGE', '群邀请存储不可用');
     var inv = inbox.find(function (x) { return x && x.status === 'pending' && id(x.id) === id(req.id); });
     if (!inv) return fail('NOT_FOUND', '邀请已处理或不存在');
-    var g = all.find(function (x) { return x && id(x.id) === id(inv.groupId); });
-    if (!eligible(g, inv.inviterId)) return fail('INELIGIBLE', '邀请已失效');
+    var g = inv.draftGroup || all.find(function (x) { return x && id(x.id) === id(inv.groupId); });
+    if (inv.draftGroup) {
+      if (!g || id(g.ownerId) !== id(inv.inviterId) || !find(g, inv.inviterId) ||
+          all.some(function (existing) { return existing && id(existing.id) === id(g.id); }))
+        return fail('INELIGIBLE', '新群邀请已经失效');
+      var roles = read(storage, 'ai_custom_characters');
+      if (!roles || g.members.some(function (m) { return !roles.some(function (r) { return r && id(r.id) === id(m.id); }); }))
+        return fail('MISSING_ROLE', '群成员已变化，无法创建');
+    } else if (!eligible(g, inv.inviterId)) return fail('INELIGIBLE', '邀请已失效');
     var original = JSON.stringify(all), accepted = req.accept === true;
     if (accepted) {
       g.userMembership = 'joined'; g.lastUserJoinedAt = Date.now();
+      if (inv.draftGroup) all.push(g);
       if (!write(storage, 'phone_groups', all)) return fail('SAVE_FAILED', '入群保存失败');
     }
     inv.status = accepted ? 'accepted' : 'declined'; inv.resolvedAt = Date.now();
@@ -240,7 +297,8 @@
   root.GroupGovernance = Object.freeze({
     on: on, registerAction: registerAction, apply: apply, rank: rank, findMember: find,
     isMuted: muted, userIsInGroup: joined, naturalModeration: naturalModeration,
-    offerInvitation: offerInvitation, pendingInvitations: pendingInvitations,
+    offerInvitation: offerInvitation, offerNewGroupInvitation: offerNewGroupInvitation,
+    pendingInvitations: pendingInvitations,
     resolveInvitation: resolveInvitation, leave: leave, unjoinedGroupsForRole: unjoinedGroupsForRole
   });
 })(typeof window !== 'undefined' ? window : globalThis);
