@@ -1042,7 +1042,9 @@
             generationView !== state.viewSerial || !state.opened) return;
         if (!finalSaved && canPersist) {
           episode.status = 'partial';
-          episode.error = '保存失败，请勿关闭页面；尚未保存的内容暂时只在本次页面中。';
+          if (!episode.error) {
+            episode.error = '保存失败，请勿关闭页面；尚未保存的内容暂时只在本次页面中。';
+          }
         }
         if (episode.status === 'complete' && finalSaved) {
           emit('episode:completed', { id: episode.id, characterId: roleId });
