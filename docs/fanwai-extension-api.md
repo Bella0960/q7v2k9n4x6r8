@@ -1,6 +1,7 @@
 # MAOMAO 番外剧场 · 扩展接口 V1.1
 
-适用分支：`feat/fanwai-chat-episodes-20261115`（PR #296）。
+原功能分支：`feat/fanwai-chat-episodes-20261115`（PR #296）。
+联合验收分支：`integration/account-fanwai-stack-20261115`（基于既有账号 PR #290；**不可直接发布**）。
 
 ## 边界
 
@@ -104,10 +105,10 @@ npm run build
 
 ## 联合发布依赖（禁止绕过）
 
-- 番外代码依赖**现有账号整合 PR #290** 的 `shared/js/mao-account-scope.js`、`account/index.html`、`account/bootstrap.html`。当前 `main`/本 PR 单独分支仍缺少这些资源，Worker 已引用但资源路径不存在。不要临时复制/重写第二套账号登录，不要在缺资源时上线。
+- 番外代码依赖**现有账号整合 PR #290** 的 `shared/js/mao-account-scope.js`、`account/index.html`、`account/bootstrap.html`。`main` 和原番外 PR #296 单独分支尚缺这些资源；**联合验收分支已直接继承 #290 原有文件**。禁止复制或另建第二套账号登录，更不可单独部署旧版番外分支。
 - 在有 `mao-account-id` 的受保护页面，番外必须确认 `window.__MAO_ACCOUNT_SCOPE__.ready === true` 且 `accountId` 与页面 meta 完全一致；缺少或不匹配时停止装载番外，避免回退读取同源的未隔离角色数据。
-- #290 的 PWA 已是 `phone-app-pwa-v238`，采用**受保护 HTML 服务器先验证**；本番外分支仍以较旧的 v206 缓存逻辑为基础。最终整合时必须以最新账号安全 SW 为底逐项合并静态资源优化，**不得直接用本 PR 的旧版 sw.js 覆盖它**。
-- 发布前必须跑 `npm run test:release:account-assets`。在尚未整合 #290 的本分支，这项测试**按设计应失败**，明确列出缺失资源与账号服务器门禁。它不是番外 36 项逻辑回归的失败；但任何正式上线都必须先消除此失败。
+- 本联合分支保留账号 #290 的**受保护 HTML 必须走服务器验证**机制（原 v238），仅对公共登录页及静态资源增加 `redirected` / `no-store` / `private` 缓存保护，升级到 `phone-app-pwa-v241`。没有拿原番外分支较旧的 v206 Service Worker 覆盖账号版。
+- 发布前必须跑 `npm run test:release:account-assets`。该门禁在原番外 PR #296 单独分支**应失败**；在联合分支必须能识别现成的账号资源及网络先验证规则，且需通过真正的 Node 测试运行器复核。任何正式发布都不能略过此检查。
 - `persist()` 只有收到 IndexedDB 完成回执才更新「已保存存档」内存快照；首写失败的草稿不能冒充已保存，写到一半出错后从存档重开只展示上次真正落盘的消息。
 
 ## 已知限制
@@ -115,3 +116,9 @@ npm run build
 - 本阶段的独立番外属于**本机存储**，不等于跨设备云端同步，也未合并到正式版。后续接云存储须另做服务器端身份校验与迁移验收。
 - 「参考角色记忆」目前只读取当前角色记录的 `memory` 与已确认的 `MemoryRecall` 长期记忆，不读取所有世界书、原始聊天历史或其他账号数据。其他只读来源请通过 `registerContextProvider` 接入，并由用户明确选择启用。
 - 隐藏的篇幅与记忆偏好会记住当前**账号 + 角色**的选择（同一浏览器的独立番外库），不意味着跨设备同步。
+
+## 本次联合分支的验收边界
+
+- 新增 `tests/account-fanwai-pwa-runtime.test.mjs`，覆盖受保护页面绕过缓存、断网只能显示公开登录页、公开登录响应重定向后不入缓存、PWA 安装不预缓存私人 HTML。
+- `npm run test:integration:account-fanwai` 汇总原账号隔离/Worker 测试与番外三组 UI/逻辑测试、PhoneAPI 取消测试及网络优先的 PWA 测试；不会修改真实数据库。
+- 逻辑及模拟运行测试通过不代表 `npm run build`、真实 Node 全量回归、真实浏览器或 Android/iOS 验收通过。账号 #290 仍是草稿门禁，联合分支也不能直接指向正式 `app.mao520.com`。
