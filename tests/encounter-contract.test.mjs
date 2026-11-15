@@ -164,6 +164,29 @@ test('原角色库读取损坏时不得用空数组覆盖，且拒绝保存', ()
   }
 });
 
+
+test('付费 AI 人设草稿写入失败必须返回失败，不能误报已经保存', () => {
+  const start=managerSource.indexOf('function persistEditorDraft(force) {');
+  const end=managerSource.indexOf('function applyEditorState(state) {',start);
+  assert.ok(start>=0 && end>start);
+  const source=managerSource.slice(start,end);
+  const status=[];
+  const result=vm.runInNewContext(source+';persistEditorDraft(true)',
+    {
+      currentDraftKey:'maomao_character_draft_v1:new',editorOriginalState:null,
+      captureEditorState:()=>({name:'保留生成的角色',persona:'已经支付并得到返回值'}),
+      editorStatesEqual:(a,b)=>JSON.stringify(a)===JSON.stringify(b),
+      localStorage:{setItem(){throw new Error('QuotaExceededError');}},
+      setSaveStatus:(text,state)=>status.push({text,state}),
+      Date,JSON,console
+    });
+  assert.equal(result,false,'空间不足时返回失败');
+  assert.equal(status.at(-1).state,'error','必须告知用户需要立即复制原文');
+  assert.match(status.at(-1).text,/草稿暂存失败/);
+  assert.match(managerSource,/if \(!persistEditorDraft\(true\)\)/,'收费请求前必须先做存储预检');
+  assert.match(managerSource,/if \(!draftSaved\)/,'收费结果不能假称已经持久化');
+});
+
 test('角色库第一次为空时可安全初始化新角色，不需要写空数组', () => {
   const start=managerSource.indexOf('let roleStoreReadError = false;');
   const end=managerSource.indexOf('const ROLE_AVATAR_CLEANUP_QUEUE_KEY',start);
