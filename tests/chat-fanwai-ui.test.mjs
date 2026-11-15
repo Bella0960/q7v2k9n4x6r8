@@ -295,6 +295,10 @@ function fakeFanwaiDB(options = {}) {
                 Promise.resolve().then(() => { if (transaction.oncomplete) transaction.oncomplete(); });
               },
               delete(id) {
+                if (options.failDeletes) {
+                  Promise.resolve().then(() => { if (transaction.onabort) transaction.onabort(); });
+                  return;
+                }
                 records.delete(id);
                 Promise.resolve().then(() => { if (transaction.oncomplete) transaction.oncomplete(); });
               }
@@ -541,4 +545,27 @@ test('older side stories remain reachable after the first twelve without clutter
   await root.handlers.click({ target: oldest });
   assert.equal(sheet.all().find(n => n.className === 'fw-bubble').textContent, '旧故事 0');
   assert.equal(app.requests, 0);
+});
+
+
+test('failed IndexedDB deletion keeps the original story instead of reporting a successful deletion', async () => {
+  const db = fakeFanwaiDB({ failDeletes: true });
+  const account = 'MAO-AAAAAAAAAAAA';
+  const id = account + ':role-1:existing';
+  db.records.set(id, {
+    id, accountId: account, characterId: 'role-1', name: '珍贵番外',
+    templateId: 'daily', target: 40, status: 'complete', updatedAt: 5,
+    messages: [{ role: 'char', text: '原来的台词' }]
+  });
+  const app = mount({ accountId: account, indexedDB: db });
+  const root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().some(n => n.dataset.id === id));
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.id === id) });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'toggle-reader-menu') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'delete') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'confirm-delete') });
+  await tickUntil(() => app.notices.some(text => text.includes('删除未成功')));
+  assert.ok(db.records.has(id), 'storage failure must preserve the original episode');
+  assert.ok(sheet.all().find(n => n.className === 'fw-delete-title'));
 });
