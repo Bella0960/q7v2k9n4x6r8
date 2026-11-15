@@ -242,3 +242,40 @@ test('PWA uses the updated game scripts and installs the entire feature bundle',
   assert.ok(worker.includes('group-game-panel.js?v=20261115gpanel1'));
   assert.ok(worker.includes('chat-context-policy.js?v=20261115gameprivacy1'));
 });
+
+test('corrupt game metadata fails closed for AI identity and all private routes', () => {
+  const h = harness();
+  h.storage.setItem('phone_group_game_v1_g1', '{"sessionId":');
+  assert.equal(h.game.buildRoleContext({ groupId: 'g1', roleId: 'r1' }).code, 'CORRUPT_SESSION');
+  const permission = h.game.canWhisper({ groupId: 'g1', fromId: 'r1', toId: 'r2' });
+  assert.equal(permission.active, true);
+  assert.equal(permission.allowed, false);
+  assert.equal(permission.code, 'CORRUPT_SESSION');
+  assert.equal(h.game.buildRoleContext({ groupId: 'g2', roleId: 'r1' }).active, false,
+    'a truly empty unrelated group must still work');
+  assert.equal(h.game.canWhisper({ groupId: 'g2', fromId: 'r1', toId: 'r2' }).allowed, true);
+});
+
+test('a complete or half-streamed secret marker never becomes a public bubble or pagehide snapshot', () => {
+  const h = harness();
+  const samples = [
+    '公开推理[游戏私聊:r2:我收到的绝密线索]',
+    '公开推理[游戏私聊:r2:还没输出完的秘密',
+    '公开推理[群私聊:r1:只能发给你的话]',
+    '公开推理[群私聊:r1:未完成的私聊',
+    '公开推理[游戏私聊',
+    '公开推理[游',
+    '公开推理[群私'
+  ];
+  for (const message of samples) {
+    const masked = h.game.redactPublicStreamText(message);
+    assert.equal(masked, '公开推理', message);
+  }
+  assert.equal(h.game.redactPublicStreamText('公开[今天]大家投票吧'), '公开[今天]大家投票吧');
+  const detail = load('chat/chat/chat-detail.html');
+  assert.match(detail, /function redactGroupPrivateStream\(value\)/);
+  assert.match(detail, /return redactGroupPrivateStream\(snapshotText\.replace/);
+  assert.match(detail, /tmpText = redactGroupPrivateStream\(tmpText\)\.trim\(\)/);
+  assert.match(detail, /if \(!isCompleted \|\| isRegeneration \|\| contextOnly\)/,
+    'incomplete AI replies may not persist private machine actions');
+});
