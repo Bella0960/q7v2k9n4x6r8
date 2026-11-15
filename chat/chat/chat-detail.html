@@ -6546,7 +6546,7 @@
                 if (window.GroupGameSessions && typeof window.GroupGameSessions.redactPublicStreamText === 'function')
                     return window.GroupGameSessions.redactPublicStreamText(source);
                 // Privacy fallback if the external script fails to load.
-                return source.replace(/\[(?:游戏私聊|群私聊)[:：][\s\S]*?(?:\]|$)/g, '')
+                return source.replace(/\[(?:游戏私聊|群私聊|游戏猜测)[:：][\s\S]*?(?:\]|$)/g, '')
                     .replace(/\[(?:游|游戏|游戏私|游戏私聊|群|群私|群私聊)[^\]\r\n]{0,1000}$/g, '');
             }
             function paintStreamLive(text) {
@@ -8342,7 +8342,7 @@
             if (!isGroupChat || !currentGroup || !Array.isArray(historyList)) return text;
             if (!turnEffects || typeof turnEffects.afterSave !== 'function' ||
                 typeof turnEffects.registerUndo !== 'function') {
-                return text.replace(/\[(?:群关系变化|群关系互动|群投票|群接龙|群私聊|游戏私聊|群动作|群聊结束)[:：]?[^\]\r\n]{0,600}\]?/g, '').replace(/\[(?:游戏私聊|群私聊)[:：][\s\S]*?(?:\]|$)/g, '').trim();
+                return text.replace(/\[(?:群关系变化|群关系互动|群投票|群接龙|群私聊|游戏私聊|游戏猜测|群动作|群聊结束)[:：]?[^\]\r\n]{0,600}\]?/g, '').replace(/\[(?:游戏私聊|群私聊|游戏猜测)[:：][\s\S]*?(?:\]|$)/g, '').trim();
             }
             var changedHistory = false;
             var groupHistoryRollback = [];
@@ -8365,8 +8365,8 @@
             // can never cast votes, modify relationships, create DMs or govern
             // the group. Strip action markers rather than exposing them publicly.
             if (!isCompleted || isRegeneration || contextOnly) {
-                return text.replace(/\[(?:群关系变化|群关系互动|群投票|群接龙|群私聊|游戏私聊|群动作|群聊结束)[:：]?[^\]\r\n]{0,600}\]?/g, '')
-                    .replace(/\[(?:游戏私聊|群私聊)[:：][\s\S]*?(?:\]|$)/g, '').trim();
+                return text.replace(/\[(?:群关系变化|群关系互动|群投票|群接龙|群私聊|游戏私聊|游戏猜测|群动作|群聊结束)[:：]?[^\]\r\n]{0,600}\]?/g, '')
+                    .replace(/\[(?:游戏私聊|群私聊|游戏猜测)[:：][\s\S]*?(?:\]|$)/g, '').trim();
             }
             var relationshipEventSeen = false;
             var queuedGovernance = Object.create(null);
@@ -8511,6 +8511,40 @@
                 }
                 return '';
             });
+            // Commit a role's guess only AFTER its public reply was verified saved.
+            // The guessed target remains private in the ballot vault until reveal.
+            var gameGuessSeen = false;
+            text = text.replace(/\[游戏猜测[:：]([A-Za-z0-9_-]{1,90})\]/g, function (marker, guessedId) {
+                if (gameGuessSeen) return '';
+                gameGuessSeen = true;
+                if (!isCompleted || isRegeneration || contextOnly ||
+                    !speaker || speaker.id == null || !window.GroupGameSessions ||
+                    typeof window.GroupGameSessions.castVote !== 'function') return '';
+                var activeGuessGame = window.GroupGameSessions.getPublic(String(currentGroup.id));
+                var voterId = String(speaker.id), targetId = String(guessedId).trim();
+                if (!activeGuessGame || activeGuessGame.status !== 'active' ||
+                    !expectedGameSessionId || activeGuessGame.sessionId !== expectedGameSessionId ||
+                    activeGuessGame.voteError || activeGuessGame.players.indexOf(voterId) === -1 ||
+                    activeGuessGame.players.indexOf(targetId) === -1 || voterId === targetId) return '';
+                var roundId = expectedGameSessionId;
+                var voteEventId = 'gv' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+                turnEffects.afterSave(function () {
+                    var liveGroup = loadGroupById(currentRoleId);
+                    if (!liveGroup || !Array.isArray(liveGroup.members) ||
+                        !liveGroup.members.some(function(m) { return m && String(m.id) === voterId &&
+                            !(window.GroupGovernance && window.GroupGovernance.isMuted(m)); }))
+                        return { ok:false, code:'VOTER_LEFT' };
+                    var result = window.GroupGameSessions.castVote({
+                        groupId:String(currentGroup.id), sessionId:roundId,
+                        voterId:voterId, targetId:targetId, eventId:voteEventId
+                    });
+                    if (!result.ok && result.code !== 'ALREADY_VOTED' && typeof showToast === 'function')
+                        showToast(result.message || '游戏投票没有保存成功');
+                    return result;
+                });
+                return '';
+            });
+            text = text.replace(/\[游戏猜测[:：][\s\S]*?(?:\]|$)/g, '');
             // Parse and authorize at most one secret whisper per successful role reply.
             // The hidden marker is never added to public group chat history.
             var gameWhisperSeen = false;
@@ -8714,7 +8748,7 @@
             text = window.GroupGameSessions &&
                 typeof window.GroupGameSessions.redactPublicStreamText === 'function'
                     ? window.GroupGameSessions.redactPublicStreamText(text)
-                    : text.replace(/\[(?:游戏私聊|群私聊)[:：][\s\S]*?(?:\]|$)/g, '');
+                    : text.replace(/\[(?:游戏私聊|群私聊|游戏猜测)[:：][\s\S]*?(?:\]|$)/g, '');
             // Votes/chains stay staged in this in-memory array until the same
             // verified save as the reply. The registered undo covers failure.
             return text;
