@@ -1884,7 +1884,7 @@ document.getElementById('roleImportFile').addEventListener('change', function(e)
                 typeof item.appearanceDescription === 'string' ? item.appearanceDescription : '';
             document.getElementById('editRoleStyleKeywords').value =
                 Array.isArray(item.styleKeywords) ? item.styleKeywords.filter(x => typeof x === 'string').join(', ') : '';
-            avatarDataUrl = ''; // JSON 仅保存人设文本，图片仍从原头像库自行设置。
+            // JSON 只导入文字。保留编辑器当前头像，避免覆盖既有角色图片。
             updateAvatarPreview();
             setSaveStatus('已导入 MAOMAO 角色，请检查后保存', 'success');
             persistEditorDraft();
