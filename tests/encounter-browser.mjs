@@ -12,9 +12,15 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { resolve, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const artifacts = resolve(root, 'test-results');
+const startedAt = Date.now();
+const receiptPath = resolve(artifacts, 'encounter-browser-receipt.json');
+const gitHead = () => execFileSync('git',['rev-parse','HEAD'],{
+  cwd:root,encoding:'utf8',stdio:['ignore','pipe','ignore']
+}).trim();
 const mime = {'.html':'text/html;charset=utf-8','.js':'application/javascript;charset=utf-8','.css':'text/css;charset=utf-8','.json':'application/json;charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.woff2':'font/woff2'};
 const server = http.createServer(async (req, res) => {
   try {
@@ -33,7 +39,17 @@ let browser;
 const failures = [];
 try {
   mkdirSync(artifacts, {recursive: true});
-  browser = await chromium.launch({headless:true});
+  // 先取消上一次“通过”回执；本轮任何中断都不得继承旧结果。
+  await fs.rm(receiptPath,{force:true});
+  try {
+    browser = await chromium.launch({headless:true});
+  } catch (error) {
+    // 本地环境允许显式指定 Chromium；不静默使用任意未知浏览器。
+    if (!process.env.PLAYWRIGHT_CHROMIUM_PATH) throw error;
+    browser = await chromium.launch({headless:true,
+      executablePath:process.env.PLAYWRIGHT_CHROMIUM_PATH,
+      args:process.platform==='linux'?['--no-sandbox']:[]});
+  }
   for (const viewport of [{width:375,height:812},{width:390,height:844},{width:430,height:932}]) {
     const context = await browser.newContext({viewport,acceptDownloads:true,reducedMotion:'reduce'});
     const page = await context.newPage();
@@ -147,7 +163,26 @@ try {
     await context.close();
   }
   if(failures.length)throw new Error('Browser JS errors:\n'+failures.join('\n'));
-  console.log('PASS: 邂逅 375 / 390 / 430 视口、滑卡回弹、零 API、候选持久化、原角色创建及 JSON 导出。');
+  const files=['encounter-375.png','encounter-390.png','encounter-430.png',
+    'encounter-original-role-editor.png','encounter-object-concealed.png'];
+  const captured={};
+  for(const name of files){
+    const stat=await fs.stat(resolve(artifacts,name));
+    if(stat.mtimeMs < startedAt-1000) {
+      throw new Error('旧截图不得用于本轮验收：'+name);
+    }
+    captured[name]={bytes:stat.size,mtimeMs:stat.mtimeMs};
+  }
+  const receipt={
+    schemaVersion:1,gitHead:gitHead(),startedAt,finishedAt:Date.now(),
+    viewports:[375,390,430],checked:{
+      cardSwap:true,swipeRebound:true,candidatePersistence:true,
+      roleCreation:true,jsonRoundTrip:true,thirdPartyJsonRejected:true,
+      freeDrawNoApi:true
+    },captured
+  };
+  await fs.writeFile(receiptPath,JSON.stringify(receipt,null,2)+'\n','utf8');
+  console.log('PASS: 邂逅已在真实 Chromium 通过三视口和角色完整创建流程；回执对应 '+receipt.gitHead);
 } finally {
   if(browser)await browser.close();
   await new Promise(r=>server.close(r));
