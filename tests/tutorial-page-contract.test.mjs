@@ -129,7 +129,7 @@ test('tutorial workflow enforces a guide update when user-facing app pages chang
 });
 
 test('PWA app shell caches the full guide bundle and has a matching test command', () => {
-  const version = serviceWorker.match(/const CACHE_NAME = 'phone-app-pwa-v(\\d+)'/);
+  const version = serviceWorker.match(/const CACHE_NAME = 'phone-app-pwa-v(\d+)'/);
   assert.ok(version, 'PWA must use a versioned app-shell cache');
   assert.ok(Number(version[1]) >= 206, 'account-private cache fix must invalidate older PWA installs');
   assert.ok(serviceWorker.includes("'./tutorial/tutorial.html'"));
