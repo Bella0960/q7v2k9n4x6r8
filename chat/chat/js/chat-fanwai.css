@@ -878,3 +878,45 @@
   font-size: 9px;
   margin: 10px 0 0;
 }
+
+
+/* 重要的删除操作单独确认。页面中仍只保留小号字、灰白纸面与两个动作。 */
+#fanwaiLayer .fw-delete-confirm {
+  min-height: 318px;
+  padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+}
+#fanwaiLayer .fw-delete-kicker {
+  color: #abb1aa;
+  font: 9px/1.4 Georgia, serif;
+  letter-spacing: .18em;
+  margin: 17px 0 16px;
+}
+#fanwaiLayer .fw-delete-title {
+  font: 400 24px/1.45 "Songti SC", STSong, Georgia, serif;
+  color: #404940;
+  margin: 0 0 9px;
+}
+#fanwaiLayer .fw-delete-description {
+  color: #8b958b;
+  font-size: 11px;
+  line-height: 1.8;
+  margin: 0 0 21px;
+}
+#fanwaiLayer .fw-delete-final {
+  display: block;
+  width: 100%;
+  border-radius: 4px;
+  padding: 12px;
+  color: #fff;
+  background: #515a53;
+  border-color: #515a53;
+}
+#fanwaiLayer .fw-delete-cancel {
+  display: block;
+  width: 100%;
+  color: #8b938a;
+  background: transparent;
+  border: 0;
+  font-size: 11px;
+  padding: 13px;
+}
