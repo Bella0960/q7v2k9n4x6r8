@@ -58,7 +58,10 @@ try {
       args:process.platform==='linux'?['--no-sandbox']:[]});
   }
   for (const viewport of [{width:375,height:812},{width:390,height:844},{width:430,height:932}]) {
-    const context = await browser.newContext({viewport,acceptDownloads:true,reducedMotion:'reduce'});
+    const context = await browser.newContext({
+      viewport,acceptDownloads:true,reducedMotion:'reduce',
+      isMobile:true,hasTouch:true,deviceScaleFactor:2
+    });
     const page = await context.newPage();
     const jsErrors = [];
     page.on('pageerror', error => jsErrors.push(String(error)));
@@ -66,6 +69,9 @@ try {
       // 仅第一次注入测试资料，页面跳转或刷新不得重置真实保存结果。
       if (localStorage.getItem('maomao_encounter_test_seeded') !== '1') {
         localStorage.setItem('ai_custom_characters', JSON.stringify([{id:'existing',name:'沈知序',persona:'既有人物，不可修改'}]));
+        // 将主流程固定为「普通相遇」，否则蒙面/物件卡面会故意遮住真名，
+        // 不能拿占位文字和后续收藏里的真实姓名比较。
+        localStorage.setItem('maomao_encounter_preferences_v1', JSON.stringify({type:'普通相遇'}));
         localStorage.setItem('maomao_encounter_test_seeded', '1');
       }
     });
@@ -74,7 +80,12 @@ try {
     await page.goto(base + '/encounter/encounter.html', {waitUntil:'load'});
     await page.locator('#frontCard .name').waitFor();
     const name = await page.locator('#frontCard .name').innerText();
-    assert.ok(name.length >= 2, '初始卡片应有可读姓名');
+    assert.ok(name.length >= 2, '普通相遇应显示可读姓名');
+    assert.equal(name,await page.evaluate(() => {
+      // 在本地普通相遇模式，卡面必须展示真实姓名，而不是隐藏身份的占位符。
+      const front=document.querySelector('#frontCard');
+      return front?.querySelector('.name')?.textContent || '';
+    }));
     // 两张都是实际候选，不只是装饰层；可切换回原来的卡片。
     const firstCandidateId = await page.locator('#frontCard').getAttribute('data-candidate-id');
     await page.locator('#swapButton').click();
@@ -86,6 +97,15 @@ try {
       firstCandidateId, '切换后不能丢失第一张候选');
     const bounds = await page.locator('#frontCard').boundingBox();
     assert.ok(bounds?.width > 200 && bounds?.height > 280, '人物卡片应适合手机阅读');
+    const ui = await page.evaluate(() => ({
+      scrollWidth:document.documentElement.scrollWidth,
+      viewportWidth:document.documentElement.clientWidth,
+      actionHeight:document.querySelector('#likeButton')?.getBoundingClientRect().height,
+      swapHeight:document.querySelector('#swapButton')?.getBoundingClientRect().height
+    }));
+    assert.ok(ui.scrollWidth <= ui.viewportWidth+1,'整页不能出现横向溢出');
+    assert.ok(ui.actionHeight >= 44,'主要操作按钮须有移动端可触及面积');
+    assert.ok(ui.swapHeight >= 30,'双卡切换应有可触及区域');
     await page.screenshot({path:resolve(artifacts, 'encounter-' + viewport.width + '.png')});
     await page.locator('#frontCard').click();
     await page.locator('#overlay.open').waitFor();
