@@ -1,21 +1,21 @@
 # MAOMAO 番外剧场 · 扩展接口 V1.1
 
-适用分支：\`feat/fanwai-chat-episodes-20261115\`（PR #296）。
+适用分支：`feat/fanwai-chat-episodes-20261115`（PR #296）。
 
 ## 边界
 
-- **复用当前聊天**：聊天页只通过现有 \`chat-extras.js\` 的「＋」面板加载 \`chat-fanwai.js\`；不改消息发送、聊天气泡主题或状态栏。
-- **角色设定必读**：从当前角色 ID 对应的 \`ai_custom_characters\` 读取人设；用户设定来自原有 \`myProfile\`。
-- **主线记忆默认不读**：进入模板预览后点细小的「故事设置」才显示「不带记忆 / 参考角色记忆」；默认选择不带记忆。启用后只读当前角色人设中的 `memory` 字段，以及 `MemoryRecall.getMemories(roleId)` 返回的已确认／固定记忆（过滤其他角色和待确认记忆）；单个来源最多 1600 字符进入上下文。不会读取原始主聊天历史，也不会调用任何记忆写入、强化方法。
+- **复用当前聊天**：聊天页只通过现有 `chat-extras.js` 的「＋」面板加载 `chat-fanwai.js`；不改消息发送、聊天气泡主题或状态栏。
+- **角色设定必读**：从当前角色 ID 对应的 `ai_custom_characters` 读取人设；用户设定来自原有 `myProfile`。
+- **主线记忆默认不读**：进入模板预览后点只有「···」的隐藏入口才显示「不带记忆 / 参考角色记忆」；默认选择不带记忆。启用后只读当前角色人设中的 `memory` 字段，以及 `MemoryRecall.getMemories(roleId)` 返回的已确认／固定记忆（过滤其他角色和待确认记忆）；单个来源最多 1600 字符进入上下文。不会读取原始主聊天历史，也不会调用任何记忆写入、强化方法。
 - **主线数据永不回写**：番外及其隐藏设定仅写入独立 `maomao-fanwai-v1` IndexedDB（故事记录与设定记录分别标记），并以账号 ID + 当前角色 ID 隔离。没有已认证账号上下文时仅保留当前页面会话的临时偏好，避免错账号落库。
 - **只读上下文不是信任边界**：扩展 JS 与主应用运行在同一个页面，只有审查过的本地脚本才能注册扩展。扩展回调仅收到有限的、冻结的角色和用户资料快照，不会获得主线存储写入函数。任何扩展不应自己读写主线存储或上传隐私资料。
-- **模型返回纯文本消息 JSON**，前端仅通过 \`textContent\` 构建聊天气泡，不执行生成的 HTML 或脚本。
+- **模型返回纯文本消息 JSON**，前端仅通过 `textContent` 构建聊天气泡，不执行生成的 HTML 或脚本。
 
 ## 稳定公共 API
 
-加载 \`chat-fanwai.js\` 后使用 \`window.MAOMAOFanwai\`（\`version: "1.1"\`）：
+加载 `chat-fanwai.js` 后使用 `window.MAOMAOFanwai`（`version: "1.1"`）：
 
-\`\`\`js
+```js
 // ① 只添加新模板，不修改原有 6 张卡片或聊天页面。
 const ok = window.MAOMAOFanwai.registerTemplate({
   id: 'rainyday',              // a-z 开头，之后允许小写、数字、-、_
@@ -24,7 +24,8 @@ const ok = window.MAOMAOFanwai.registerTemplate({
   english: 'On a rainy day',
   mood: '日子慢慢地安静下来。',
   scenario: '雨停后，两人聊起生活中那些无关紧要却值得记住的小事。',
-  target: 80                  // 支持 40 / 80 / 100
+  target: 80,                 // 支持 40 / 80 / 100
+  beats: ['开场线索', '推进剧情', '发生转折', '自然收束'] // 可选：四段故事节奏
 });
 
 // ② 注册可选的只读背景来源。默认不启用，生成前用户主动勾选才会调用 read。
@@ -43,27 +44,35 @@ const unsubscribe = window.MAOMAOFanwai.on('episode:completed', ({ id, character
 });
 
 // 离开插件页面前可 unsubscribe()。
-\`\`\`
+```
 
-可订阅的事件：\`templates:changed\`、\`episode:created\`、\`episode:progress\`、\`episode:completed\`、\`episode:paused\`、\`episode:deleted\`。监听器异常会被捕获，不中断番外生成。
+可订阅的事件：`templates:changed`、`episode:created`、`episode:progress`、`episode:completed`、`episode:paused`、`episode:deleted`。监听器异常会被捕获，不中断番外生成。
 
-另有 \`listTemplates()\`、\`listContextProviders()\`（均返回不暴露内部可变引用的简要配置）。\`MAOMAOFanwaiCore\` 提供纯逻辑方法 \`episodePrompt\`、\`normalizeMessages\`、\`resolveContexts\`，供 Node 回归使用。
+另有 `listTemplates()`、`listContextProviders()`（均返回不暴露内部可变引用的简要配置）。`MAOMAOFanwaiCore` 提供纯逻辑方法 `episodePrompt`、`normalizeMessages`、`resolveContexts`，供 Node 回归使用。
 
 ## 扩建方式
 
-新增模块放进自己单独的 JS 文件，由现有页面脚本加载后调用上述注册接口。**不必修改主线消息模型、番外生成函数或番外阅读页的 DOM 结构**。新的模板如果没有指定专门的封面样式，会使用通用的 Softcore CSS 模板；未来可以通过自己的作用域 CSS 定制对应 \`.fw-card-<id>\` 和 \`.fw-scene-<id>\`。
+新增模块放进自己单独的 JS 文件，由现有页面脚本加载后调用上述注册接口。**不必修改主线消息模型、番外生成函数或番外阅读页的 DOM 结构**。新的模板如果没有指定专门的封面样式，会使用通用的 Softcore CSS 模板；未来可以通过自己的作用域 CSS 定制对应 `.fw-card-<id>` 和 `.fw-scene-<id>`。
 
 当前不允许任意网址注入 JS，不允许未经审查的外部模板执行代码。普通用户可通过「自定义番外」输入剧情文字，但其文字只会作为模型数据使用。
 
+## 可玩性与费用控制
+
+- 默认 6 种故事模板，每种通过四段式剧情节奏推进（开场、发展、转折、收束）；只对现有批量生成请求追加提示词，不额外购买一次大纲请求。第七个插件模板可通过 `beats: ['开场','推进','转折','收束']` 指定自己的四段结构。
+- 阅读页的「···」里藏有「另一种走向」。至少生成 12 条消息后才显示；用户进入独立预览，可输入希望改变的情节，也可留空让模型发挥。
+- 先预览、后确认：不点击「写另一种走向」就不发请求。确认后保留原篇前半段作为分岔起点，后续单独生成新故事，`originId`、`forkAt` 标明来源。原稿不会被删除或覆写，目录可同时读两条路线。
+- 平行分支继续沿用**原故事**的角色、人设、已选择的只读记忆许可和目标篇幅，而不是读取其他角色或在跳转时擅自打开新的记忆。
+- 阅读页取消了每个气泡上方重复的发言人标签：从左右位置区分双方，连续同一人消息视觉上更紧密。
+
 ## 回归
 
-\`\`\`bash
+```bash
 npm run test:chat:fanwai
 npm run test:chat:contract
 npm run build
-\`\`\`
+```
 
-重点人工验收：单聊 →「＋」→ 番外 → 选模板 → **先预览，不产生 API 请求** → 默认只看到封面/剧情/开始按钮 → 点轻量「故事设置」才展开带/不带记忆及 40/80/100 条篇幅 → 开始生成 → 阅读页默认隐藏「返回目录/删除」 → 点「更多」才展开 → 暂停、继续、关闭、最近番外。检查不影响主线聊天、角色记忆、主题商城、钱包和其他账号。上线仍需真实浏览器、Android 与 iPhone 验收；不绕过当前正式发布门禁。
+重点人工验收：单聊 →「＋」→ 番外 → 选模板 → **先预览，不产生 API 请求** → 默认只看到封面/剧情/开始按钮 → 点小小的「···」才展开带/不带记忆及 40/80/100 条篇幅 → 开始生成 → 阅读页默认隐藏「返回目录/删除」 → 点「···」才展开 → 暂停、继续、关闭、最近番外。检查不影响主线聊天、角色记忆、主题商城、钱包和其他账号。上线仍需真实浏览器、Android 与 iPhone 验收；不绕过当前正式发布门禁。
 
 ## 已知限制
 
