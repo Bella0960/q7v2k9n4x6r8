@@ -2670,6 +2670,17 @@ class CloudStore {
     });
   }
 
+  // An ID prefix alone does not prove that a test identity was locally
+  // registered. The immutable registration audit record prevents any legacy
+  // delegated account/session from inheriting isolated QA permissions.
+  isMaoIsolatedQaAccount(accountId) {
+    if (!/^MAO-QA[A-Z0-9]{16}$/.test(String(accountId || ''))) return false;
+    return Boolean(this.exec(
+      "SELECT id FROM mao_account_audit WHERE target_account_id = ? AND action = 'account_register' AND json_extract(detail_json, '$.registrationMethod') = 'isolated_qa' LIMIT 1",
+      accountId
+    )[0]);
+  }
+
   createMaoAccount(account) {
     // Only the origin-pinned isolated QA account path may opt into local,
     // immediately usable test users. All production registrations remain
