@@ -47,8 +47,16 @@
         /* The bottom home indicator is separate from the top status bar and has its own setting. */
         var homeIndicators = document.querySelectorAll('.gesture-bar');
         for (var j = 0; j < homeIndicators.length; j++) {
-            homeIndicators[j].style.display = hideHomeIndicator ? 'none' : '';
-            homeIndicators[j].setAttribute('aria-hidden', 'true');
+            var indicator = homeIndicators[j];
+            indicator.style.display = hideHomeIndicator ? 'none' : '';
+            /* The existing home-indicator controller exposes desktop bars as
+             * role=button. Do not hide a visible, operable return target from
+             * assistive technology when only the top status bar is toggled. */
+            if (!hideHomeIndicator && indicator.getAttribute('role') === 'button') {
+                indicator.removeAttribute('aria-hidden');
+            } else {
+                indicator.setAttribute('aria-hidden', 'true');
+            }
         }
     }
 
