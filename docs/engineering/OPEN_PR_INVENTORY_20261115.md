@@ -4,7 +4,7 @@
 
 ## 清查结论
 
-- **开放 PR：59 个（含本次唯一治理 PR #300）**。尚未清理、关闭、批量合并其中任何一个。
+- **原始清查开放 PR：59 个（含治理 PR #300）；本日另新增 1 个唯一状态栏修复 Draft #301，当前登记总数 60 个**。尚未清理、关闭、批量合并其中任何一个。
 - 旧 PR 存在不同目标基线、堆叠 PR、相互竞争的账号钱包整合候选及 GitHub `mergeable=false` 状态，必须核实差异和依赖，禁止一键批量合并。
 - 本台账不意味着已经跑完 CI、真实 QA、安卓或 iPhone，也不意味着生产 Worker 切换。正式发布冻结条件见 [RELEASE_PLAYBOOK.md](RELEASE_PLAYBOOK.md)。
 
@@ -95,8 +95,9 @@
 - [#196](https://github.com/Bella0960/MAOMAO/pull/196) — 真人好友 MVP：二维码添加、好友申请与好友列表
 - [#210](https://github.com/Bella0960/MAOMAO/pull/210) — test(forum): seed deterministic scroll fixture posts
 
-### 主题／界面／PWA／查手机（13）
+### 主题／界面／PWA／查手机（14）
 
+- [#301](https://github.com/Bella0960/MAOMAO/pull/301) — fix(statusbar): 统一已有状态栏开关并补齐聊天美化页接入（复用旧 `task-ARCH-003/global-statusbar` 分支；UI-STATUS-001；Draft、未运行完整测试）
 - [#275](https://github.com/Bella0960/MAOMAO/pull/275) — feat(theme-store): four-tab storefront and scoped personal collections
 - [#273](https://github.com/Bella0960/MAOMAO/pull/273) — feat(theme): 薄影氛围聊天主题与原生发送兼容
 - [#267](https://github.com/Bella0960/MAOMAO/pull/267) — Give the Settings home more breathing room
