@@ -196,7 +196,7 @@
       '【外在性格】' + card.trait,
       '【内在反差】' + card.contrast,
       '【重要物件】' + card.object,
-      '【命运线索】' + card.selectedChoice || card.fate,
+      '【命运线索】' + (card.selectedChoice || card.fate),
       '【说话气质】' + card.quote,
       '【创作说明】以上为简要原创设定。正式聊天前可在角色档案补全经历、习惯、动机与表达方式。'
     ].join('\n');
