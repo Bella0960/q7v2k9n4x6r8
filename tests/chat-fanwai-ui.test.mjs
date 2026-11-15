@@ -19,7 +19,13 @@ class Node {
     this.style = {};
     this.classList = {
       add: (value) => { this.className += ' ' + value; },
-      remove: (value) => { this.className = this.className.split(' ').filter(c => c !== value).join(' '); }
+      remove: (value) => { this.className = this.className.split(' ').filter(c => c !== value).join(' '); },
+      toggle: (value, force) => {
+        const names = this.className.split(' ').filter(Boolean);
+        const enable = force === undefined ? !names.includes(value) : force;
+        this.className = enable ? [...new Set([...names, value])].join(' ') : names.filter(n => n !== value).join(' ');
+        return enable;
+      }
     };
   }
   set innerHTML(markup) {
@@ -45,11 +51,14 @@ class Node {
   all() { return this.children.flatMap(n => [n, ...n.all()]); }
   querySelectorAll(selector) {
     if (selector === 'input[data-fanwai-context]:checked') return this.all().filter(n => n.dataset.fanwaiContext && n.checked);
+    if (selector === '[data-action="set-memory"]') return this.all().filter(n => n.dataset.action === 'set-memory');
     return [];
   }
   querySelector(selector) {
     if (selector === '[data-feat="fanwai"]') return this.all().find(n => n.dataset.feat === 'fanwai') || null;
     if (selector === '.fw-sheet') return this.all().find(n => n.className.split(' ').includes('fw-sheet')) || null;
+    if (selector === '.fw-settings-drawer') return this.all().find(n => n.className === 'fw-settings-drawer') || null;
+    if (selector === '.fw-reader-menu') return this.all().find(n => n.className === 'fw-reader-menu') || null;
     if (selector === '#fw-count') return this.all().find(n => n.id === 'fw-count') || null;
     if (selector === '#fw-custom-input') return this.all().find(n => n.id === 'fw-custom-input') || null;
     if (selector === '#fw-preview-count') return this.all().find(n => n.id === 'fw-preview-count') || null;
@@ -69,6 +78,7 @@ function mount(options = {}) {
   const window = {
     location: { search: '?id=' + (options.roleId || 'role-1') },
     PhoneStorage: { getApiConfig: () => ({ apiKey: 'mock-key' }) },
+    indexedDB: options.indexedDB,
     PhoneAPI: {
       completeJSON: async request => {
         prompts.push(request.system);
@@ -170,20 +180,46 @@ test('group chat has no fanwai menu entry', () => {
 });
 
 
-test('memory stays outside API prompts by default; explicit opt-in is read-only', async () => {
+test('memory mode is tucked away and defaults to no-memory; opt-in enters only the new story', async () => {
   const app = mount();
   const root = app.open();
   await tickUntil(() => !!root.querySelector('.fw-sheet')?.all().find(el => el.dataset.template));
   const sheet = root.querySelector('.fw-sheet');
   await root.handlers.click({ target: sheet.all().find(el => el.dataset.template === 'daily') });
-  const toggle = sheet.all().find(el => el.dataset.fanwaiContext === 'character-memory');
-  assert.ok(toggle, 'memory reference must be an explicit optional control');
-  assert.equal(toggle.checked, false);
-  toggle.checked = true;
+  const settings = sheet.all().find(el => el.className === 'fw-settings-drawer');
+  assert.ok(settings, 'the settings drawer is present');
+  assert.equal(settings.hidden, true, 'story settings are hidden by default');
+  assert.equal(settings.all().filter(el => el.dataset.action === 'set-memory').length, 2);
+  const trigger = sheet.all().find(el => el.dataset.action === 'toggle-settings');
+  assert.ok(trigger);
+  await root.handlers.click({ target: trigger });
+  assert.equal(settings.hidden, false);
+  const withMemory = sheet.all().find(el => el.dataset.memoryMode === 'role');
+  assert.ok(withMemory);
+  await root.handlers.click({ target: withMemory });
+  assert.equal(withMemory.attributes['aria-pressed'], 'true');
   await root.handlers.click({ target: sheet.all().find(el => el.dataset.action === 'start-template') });
   await tickUntil(() => sheet.all().filter(n => n.className === 'fw-bubble').length === 80);
-  assert.ok(app.prompts[0].includes('曾在海边看过日落'), 'opt-in should pass role memory as context');
+  assert.ok(app.prompts[0].includes('曾在海边看过日落'), 'opt-in should include current role memory');
   assert.ok(app.prompts[0].includes('短句风格'), 'role persona remains present');
+  const readerMenu = sheet.all().find(el => el.className === 'fw-reader-menu');
+  assert.ok(readerMenu);
+  assert.equal(readerMenu.hidden, true, 'delete and back actions are tucked away');
+  await root.handlers.click({ target: sheet.all().find(el => el.dataset.action === 'toggle-reader-menu') });
+  assert.equal(readerMenu.hidden, false);
+});
+
+test('starting a story without opening preferences never injects role memory', async () => {
+  const app = mount();
+  const root = app.open();
+  await tickUntil(() => !!root.querySelector('.fw-sheet')?.all().find(el => el.dataset.template));
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.template === 'daily') });
+  assert.equal(sheet.all().find(n => n.className === 'fw-settings-drawer').hidden, true);
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'start-template') });
+  await tickUntil(() => sheet.all().filter(n => n.className === 'fw-bubble').length === 80);
+  assert.ok(!app.prompts[0].includes('曾在海边看过日落'));
+  assert.ok(app.prompts[0].includes('短句风格'));
 });
 
 test('new plugin templates appear in the picker and can generate without editing page HTML', async () => {
