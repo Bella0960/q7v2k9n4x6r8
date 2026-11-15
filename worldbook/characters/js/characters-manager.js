@@ -1657,18 +1657,25 @@ function setSaveStatus(message, state) {
 }
 
 function persistEditorDraft(force) {
-    if (!currentDraftKey) return;
+    if (!currentDraftKey) return false;
     const state = captureEditorState();
     if (!force && editorOriginalState && editorStatesEqual(state, editorOriginalState)) {
-        try { localStorage.removeItem(currentDraftKey); } catch (e) {}
-        return;
+        try {
+            localStorage.removeItem(currentDraftKey);
+            return true;
+        } catch (error) {
+            setSaveStatus('草稿状态读取异常，请检查存储后再离开。', 'error');
+            return false;
+        }
     }
     const draft = { version: 1, savedAt: Date.now(), state: state };
     try {
         localStorage.setItem(currentDraftKey, JSON.stringify(draft));
-    } catch (e) {
-        console.warn('角色草稿暂存失败:', e);
-        setSaveStatus('草稿暂存失败，请尽快手动保存。', 'error');
+        return true;
+    } catch (error) {
+        console.warn('角色草稿暂存失败:', error);
+        setSaveStatus('草稿暂存失败，请立即复制当前人设或检查空间后手动保存。', 'error');
+        return false;
     }
 }
 
@@ -1847,10 +1854,14 @@ document.getElementById('btnExpandEncounterPersona').addEventListener('click', a
             return;
         }
         personaEl.value = expanded;
-        persistEditorDraft(true);
+        const draftSaved = persistEditorDraft(true);
+        if (!draftSaved) {
+            setSaveStatus('AI 内容已留在编辑框，但存储失败。请立即复制这份内容，清理空间后再保存。', 'error');
+            return;
+        }
         setSaveStatus(expanded.length < 150
-            ? 'API 返回内容较短，但已保存为可编辑草稿，不会自动再次扣费。'
-            : 'AI 人设草稿已填入，请检查并点击「保存设定」。', 'success');
+            ? 'API 返回内容较短，已存为可编辑草稿；不会自动再次扣费。'
+            : 'AI 人设草稿已暂存，请检查并点击「保存设定」。', 'success');
     } catch (error) {
         setSaveStatus('AI 完善未成功：' + (error && error.message ? error.message : '请求异常') + '。原有人设仍保留。', 'error');
     } finally {
