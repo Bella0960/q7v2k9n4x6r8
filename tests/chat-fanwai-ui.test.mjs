@@ -62,6 +62,7 @@ class Node {
     if (selector === '#fw-count') return this.all().find(n => n.id === 'fw-count') || null;
     if (selector === '#fw-custom-input') return this.all().find(n => n.id === 'fw-custom-input') || null;
     if (selector === '#fw-preview-count') return this.all().find(n => n.id === 'fw-preview-count') || null;
+    if (selector === '#fw-branch-input') return this.all().find(n => n.id === 'fw-branch-input') || null;
     return null;
   }
   closest(selector) { return selector === '[data-action]' && this.dataset.action ? this : null; }
@@ -329,3 +330,49 @@ test('hidden story preferences survive reopening but stay isolated between accou
   }
 });
 
+
+
+test('reader ellipsis opens a safe alternate storyline without overwriting the original', async () => {
+  const app = mount();
+  const root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().filter(n => n.dataset.template).length === 6);
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.template === 'daily') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'start-template') });
+  await tickUntil(() => sheet.all().filter(n => n.className === 'fw-bubble').length === 80);
+  const originalMessages = sheet.all().filter(n => n.className === 'fw-bubble').map(n => n.textContent);
+  const originalRequests = app.requests;
+  assert.equal(originalRequests, 7);
+
+  const readerMore = sheet.all().find(n => n.dataset.action === 'toggle-reader-menu');
+  assert.equal(readerMore.textContent, '···');
+  await root.handlers.click({ target: readerMore });
+  assert.equal(sheet.all().find(n => n.className === 'fw-reader-menu').hidden, false);
+  const fork = sheet.all().find(n => n.dataset.action === 'fork');
+  assert.ok(fork, 'parallel route should be available only in reader overflow');
+  await root.handlers.click({ target: fork });
+  assert.equal(app.requests, originalRequests, 'opening alternate route must not consume API quota');
+  assert.ok(sheet.all().find(n => n.className === 'fw-branch-title'));
+  const branchText = sheet.all().find(n => n.id === 'fw-branch-input');
+  assert.ok(branchText);
+  branchText.value = '突然收到一封旧信，改变了两人的计划';
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'create-fork') });
+  await tickUntil(() => sheet.all().filter(n => n.className === 'fw-bubble').length === 80);
+  assert.ok(app.requests > originalRequests, 'confirmation calls model to generate remainder');
+  assert.ok(app.prompts[originalRequests].includes('突然收到一封旧信'));
+  assert.ok(sheet.all().find(n => n.className === 'fw-reader-title').textContent.includes('另一种走向'));
+  const newMessages = sheet.all().filter(n => n.className === 'fw-bubble').map(n => n.textContent);
+  assert.deepEqual(newMessages.slice(0, 10), originalMessages.slice(0, 10));
+  assert.ok(newMessages.some((value, index) => value !== originalMessages[index]));
+
+  // Returning to the archive must show both original and branch.
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'toggle-reader-menu') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'back') });
+  await tickUntil(() => sheet.all().filter(n => n.dataset.action === 'read').length === 2);
+  const archive = sheet.all().filter(n => n.dataset.action === 'read');
+  assert.equal(archive.length, 2);
+  const originalRow = archive.find(n => n.all().some(el => el.textContent === '日常篇'));
+  assert.ok(originalRow, 'original episode remains available');
+  await root.handlers.click({ target: originalRow });
+  assert.deepEqual(sheet.all().filter(n => n.className === 'fw-bubble').map(n => n.textContent), originalMessages);
+});
