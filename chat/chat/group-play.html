@@ -555,6 +555,15 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
         renderMembers();renderOwner();renderRelationships();
         return;
       }
+      if(field==='title'){
+        var updatedTitle=window.GroupGovernance?window.GroupGovernance.apply({
+          group:group,actorId:'__user',action:'set-title',target:String(member.id),
+          options:{title:input.value.trim()},save:function(){return persist();}
+        }):{ok:false,message:'群管理模块未加载'};
+        notify(updatedTitle.message||(updatedTitle.ok?'头衔已保存':'没有群管理权限'));
+        renderMembers();renderOwner();renderRelationships();
+        return;
+      }
       if(input.type==='checkbox')member[field]=input.checked;
       else if(field==='talkativeness')member.talkativeness=Math.max(0,Math.min(1,Number(input.value)||0));
       else if(field==='replyThreshold')member.replyThreshold=Math.max(30,Math.min(85,parseInt(input.value,10)||55));
