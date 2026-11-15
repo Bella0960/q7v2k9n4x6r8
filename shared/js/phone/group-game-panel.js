@@ -113,6 +113,19 @@
       current.textContent='';
       var p=document.createElement('p');p.className='group-game-state';p.textContent=text;current.appendChild(p);
     }
+    function renderTally(game){
+      if(!Array.isArray(game.voteTally)||!game.voteTally.length)return;
+      var list=document.createElement('ul');
+      list.className='group-game-activity';
+      game.voteTally.filter(function(row){return row&&Number(row.count)>0;})
+        .sort(function(a,b){return Number(b.count)-Number(a.count);})
+        .forEach(function(row){
+          var li=document.createElement('li');
+          li.textContent=nameFor(row.targetId)+' · '+Number(row.count)+'票';
+          list.appendChild(li);
+        });
+      if(list.children.length)current.appendChild(list);
+    }
     function render(){
       group=currentGroup();isOwner=group&&String(group.ownerId||'__user')==='__user';
       if(!group){stateLine('群资料已变化，请返回群聊重新打开。');form.hidden=true;finish.hidden=true;whisperPanel.hidden=true;return;}
@@ -125,15 +138,22 @@
       });
       if(!isOwner){
         form.hidden=true;finish.hidden=true;whisperPanel.hidden=true;
-        stateLine(game&&game.status==='active'?'一局猜身份正在进行中。只有群主能调整玩法规则。':'目前没有进行中的秘密身份游戏。');
+        stateLine(game&&game.status==='active'
+          ? '本局猜身份进行中 · 已投 '+game.voteCount+'/'+game.players.length+' 票。'
+          : '目前没有进行中的秘密身份游戏。');
         return;
       }
       if(!game||game.status==='finished'){
         form.hidden=false;finish.hidden=true;whisperPanel.hidden=true;
-        if(game&&game.status==='finished')stateLine('上一局已结束，坏人是「'+nameFor(game.revealedRoleId)+'」。可开始新的一局。');
+        if(game&&game.status==='finished'){
+          stateLine('上一局已揭晓 · 坏人是「'+nameFor(game.revealedRoleId)+
+            '」 · '+game.voteCount+'/'+game.players.length+' 人投票，'+game.correctVotes+' 人猜对。');
+          renderTally(game);
+        }
         else stateLine('设置这一局的规则，再由你亲自发放秘密身份牌。');
       }else{
         form.hidden=true;finish.hidden=false;
+        finish.disabled=game.voteError===true;
         whisperPanel.hidden=game.rules.allowPrivate!==true;
         if(!whisperPanel.hidden) {
           var prior=whisperTo.value;
@@ -147,8 +167,10 @@
           if(prior && game.players.indexOf(prior)!==-1)whisperTo.value=prior;
           renderPrivateConversation();
         }
-        stateLine('本局进行中 · 玩家私聊'+(game.rules.allowPrivate?'开启':'关闭')+
-          ' · 身份在揭晓前不会显示给其他角色。');
+        stateLine((game.voteError ? '投票记录异常，请检查本机存储。' :
+          '本局进行中 · 已投 '+game.voteCount+'/'+game.players.length+' 票')+
+          ' · 游戏私聊'+(game.rules.allowPrivate?'开启':'关闭')+
+          ' · 猜测对象揭晓前保密。');
         if(game.rules.showPrivateActivity&&Array.isArray(game.activity)&&game.activity.length){
           var ul=document.createElement('ul');ul.className='group-game-activity';
           game.activity.slice(-4).forEach(function(e){
