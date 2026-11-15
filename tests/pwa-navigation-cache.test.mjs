@@ -8,7 +8,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
-assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v203'/);
+assert.ok(Number(/phone-app-pwa-v(\d+)/.exec(serviceWorker)?.[1]) >= 238);
 const viteConfig = read('vite.config.js');
 
 test('build emits a manifest containing every HTML entry point', () => {
@@ -37,18 +37,24 @@ test('every desktop app shortcut is emitted as a real HTML page in the productio
   }
 });
 
-test('service worker precaches all HTML routes listed by the build manifest', () => {
+test('service worker stores public login pages but never precaches account-owned HTML', () => {
   assert.match(serviceWorker, /fetch\('\.\/pwa-pages\.json'/);
   assert.match(serviceWorker, /APP_SHELL\.concat\(pageEntries\)/);
+  assert.match(serviceWorker, /filter\(url => url === '\.\/account\/index\.html'/);
   assert.match(serviceWorker, /cache\.add\(url\)/);
 });
 
-test('mobile navigation serves cached app pages before waiting for network', () => {
-  assert.match(serviceWorker, /var cachedPromise = caches\.match\(req\)/);
-  assert.match(serviceWorker, /if \(cached\) return cached/);
-  assert.match(serviceWorker, /event\.waitUntil\(updatePromise/);
+test('private navigation goes directly to Worker and never reuses cached protected HTML', () => {
+  const start = serviceWorker.indexOf("if (req.mode === 'navigate' && !isPublicAccountPage)");
+  const end = serviceWorker.indexOf("if (req.mode === 'navigate' && isPublicAccountPage)", start);
+  assert.ok(start >= 0 && end > start, 'public and private navigation must use distinct paths');
+  const privateRoute = serviceWorker.slice(start, end);
+  assert.match(privateRoute, /return await fetch\(req\)/);
+  assert.match(privateRoute, /new URL\('account\/index\.html'/, 'offline fallback must point only to the public login page');
+  assert.match(privateRoute, /caches\.match\(entry\.href\)/, 'offline login is allowed');
+  assert.doesNotMatch(privateRoute, /caches\.match\(req\)|caches\.open|event\.waitUntil/,
+    'a protected HTML request itself must never be cached or served from cache');
 });
-
 
 test('desktop app navigation has one valid capture-phase owner', () => {
   assert.doesNotMatch(desktopScript, /data-href 点击跳转|target\.closest\('\[data-href\]'\)/,
@@ -61,4 +67,31 @@ test('desktop app navigation has one valid capture-phase owner', () => {
 test('failed app navigation never falls back to the desktop index page', () => {
   assert.doesNotMatch(serviceWorker, /cached \|\| caches\.match\('\.\/index\.html'\)/);
   assert.match(serviceWorker, /status: 503/);
+});
+
+test('public login uses fresh network HTML first, with offline-only cache fallback', () => {
+  const start = serviceWorker.indexOf("if (req.mode === 'navigate' && isPublicAccountPage)");
+  const end = serviceWorker.indexOf('// 所有历史版本参数的 font-loader', start);
+  assert.ok(start > 0 && end > start);
+  const route = serviceWorker.slice(start, end);
+  assert.match(route, /fetch\(req, \{ cache: 'no-store' \}\)/);
+  assert.match(route, /event\.waitUntil\(networkPromise/);
+  const freshAt = route.indexOf('var fresh = await networkPromise;');
+  const cachedAt = route.indexOf('var cached = await caches.match(req)');
+  assert.ok(freshAt >= 0 && cachedAt > freshAt,
+    'fresh HTML must be returned before consulting the offline cache');
+  assert.match(route, /if \(cached\) return cached;/);
+  assert.doesNotMatch(route, /if \(cached\) return cached;[\s\S]*?var fresh = await networkPromise;/);
+});
+
+test('non-navigation HTML fetches bypass shared cache and revalidate account at Worker', () => {
+  const start = serviceWorker.indexOf('// Non-navigation HTML must still pass the Worker account gate.');
+  const end = serviceWorker.indexOf("if (req.mode === 'navigate' && isPublicAccountPage)", start);
+  assert.ok(start >= 0 && end > start);
+  const protectedFetch = serviceWorker.slice(start, end);
+  assert.match(protectedFetch, /!isPublicAccountPage/);
+  assert.match(protectedFetch, /url\.pathname === '\/'/);
+  assert.match(protectedFetch, /html\$/);
+  assert.match(protectedFetch, /event\.respondWith\(fetch\(req\)\)/);
+  assert.doesNotMatch(protectedFetch, /caches\.match|caches\.open|cache\.put/);
 });

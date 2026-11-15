@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#F7F7F8">
+  <title>MAO · 管理中心</title>
+  <link rel="stylesheet" href="./admin-center.css?v=20261114-delegated-admin1">
+  <script src="./admin-center.js?v=20261114-delegated-admin1" defer></script>
+</head>
+<body>
+  <main class="admin-shell">
+    <header class="admin-header">
+      <a class="back-link" href="../index.html" aria-label="返回桌面">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14.5 5-7 7 7 7"/></svg>
+        <span>桌面</span>
+      </a>
+      <div><div class="eyebrow">FOUNDER · 001</div><h1>管理中心</h1></div>
+      <span class="admin-mark" aria-label="创始管理员编号 001">001</span>
+    </header>
+
+    <section class="admin-intro">
+      <div>
+        <div class="eyebrow">ADMIN ACCESS</div>
+        <h2>授权与用户管理</h2>
+        <p>所有 MAO 使用资格均由创作者本人授权。</p>
+      </div>
+      <div class="shield-mark" aria-hidden="true">⌑</div>
+    </section>
+
+    <section class="stats-grid" aria-label="账号统计">
+      <div class="stat-card"><span>普通账号</span><strong id="statTotal">—</strong></div>
+      <div class="stat-card"><span>待授权</span><strong id="statPending">—</strong></div>
+      <div class="stat-card"><span>正常使用</span><strong id="statActive">—</strong></div>
+      <div class="stat-card"><span>受限账号</span><strong id="statDisabled">—</strong></div>
+    </section>
+
+    <nav class="admin-tabs" aria-label="管理项目">
+      <button class="tab-button active" type="button" data-tab="users">用户管理</button>
+      <button class="tab-button" type="button" data-tab="invites">邀请码管理</button>
+      <button class="tab-button" type="button" data-tab="audit">操作审计</button>
+      <button class="tab-button" type="button" data-tab="settings">后台设置</button>
+    </nav>
+
+    <section class="admin-view" id="usersView">
+      <div class="view-heading"><div><h2>账号列表</h2><p>按 MAO 永久 ID 管理独立账号</p></div><button class="refresh-button" id="refreshUsers" type="button">刷新</button></div>
+      <label class="search-box"><span aria-hidden="true">⌕</span><input id="accountSearch" type="search" placeholder="搜索永久 ID、用户名或邮箱"></label>
+      <div class="account-filter-row" role="group" aria-label="按账号状态筛选">
+        <button class="filter-button active" type="button" data-account-filter="all" aria-pressed="true">全部 <span id="filterCountAll">—</span></button>
+        <button class="filter-button" type="button" data-account-filter="pending_invite" aria-pressed="false">待授权 <span id="filterCountPending">—</span></button>
+        <button class="filter-button" type="button" data-account-filter="active" aria-pressed="false">正常 <span id="filterCountActive">—</span></button>
+        <button class="filter-button" type="button" data-account-filter="restricted" aria-pressed="false">受限 <span id="filterCountRestricted">—</span></button>
+      </div>
+      <p class="results-count" id="accountResultCount" aria-live="polite">正在读取账号…</p>
+      <p class="limit-note" id="accountLimitNotice" hidden></p>
+      <div class="records-card" id="accountsList"><p class="empty-note">正在读取账号…</p></div>
+      <button class="directory-more" id="loadMoreAccounts" type="button" hidden>加载更多账号</button>
+    </section>
+
+    <section class="admin-view" id="invitesView" hidden>
+      <div class="view-heading"><div><h2>邀请码记录</h2><p>随机生成 · 一人一码 · 使用后失效</p></div><button class="refresh-button" id="refreshInvites" type="button">刷新</button></div>
+      <div class="policy-note"><b>邀请码规则</b><span>每个邀请码只能成功授权一个指定账号。原始邀请码只在生成时显示一次，后台仅保存哈希。</span></div>
+      <label class="search-box"><span aria-hidden="true">⌕</span><input id="inviteSearch" type="search" placeholder="搜索目标 MAO ID、邮箱、用户名或记录 ID"></label>
+      <div class="invite-filter-row" role="group" aria-label="按邀请码状态筛选">
+        <button class="filter-button active" type="button" data-invite-filter="all" aria-pressed="true">全部 <span id="inviteCountAll">—</span></button>
+        <button class="filter-button" type="button" data-invite-filter="pending" aria-pressed="false">待使用 <span id="inviteCountPending">—</span></button>
+        <button class="filter-button" type="button" data-invite-filter="used" aria-pressed="false">已使用 <span id="inviteCountUsed">—</span></button>
+        <button class="filter-button" type="button" data-invite-filter="expired" aria-pressed="false">已过期 <span id="inviteCountExpired">—</span></button>
+        <button class="filter-button" type="button" data-invite-filter="revoked" aria-pressed="false">已撤销 <span id="inviteCountRevoked">—</span></button>
+      </div>
+      <p class="results-count" id="inviteResultCount" aria-live="polite">正在读取邀请码…</p>
+      <p class="limit-note" id="inviteLimitNotice" hidden></p>
+      <div class="records-card" id="invitesList"><p class="empty-note">正在读取邀请码…</p></div>
+      <button class="directory-more" id="loadMoreInvites" type="button" hidden>加载更多邀请码</button>
+      <p class="helper-note">当前可直接绑定 MAO 永久 ID。QQ 邮箱所有权验证与邮件发送尚未接通，因此邮箱方式暂不开放。</p>
+    </section>
+
+    <section class="admin-view" id="auditView" hidden>
+      <div class="view-heading"><div><h2>操作审计</h2><p>全局查询账号状态与邀请码授权事件</p></div><button class="refresh-button" id="refreshGlobalAudit" type="button">刷新</button></div>
+      <div class="audit-summary-row">
+        <div><span>记录总数</span><strong id="globalAuditTotal">—</strong></div>
+        <div><span>账号状态操作</span><strong id="globalAuditAccountActions">—</strong></div>
+        <div><span>邀请码事件</span><strong id="globalAuditInviteActions">—</strong></div>
+      </div>
+      <label class="search-box"><span aria-hidden="true">⌕</span><input id="globalAuditSearch" type="search" placeholder="搜索记录 ID、MAO ID、操作或邀请码记录 ID"></label>
+      <div class="audit-filter-row" role="group" aria-label="操作记录类别">
+        <button class="filter-button active" type="button" data-audit-filter="all" aria-pressed="true">全部</button>
+        <button class="filter-button" type="button" data-audit-filter="account" aria-pressed="false">账号状态</button>
+        <button class="filter-button" type="button" data-audit-filter="invite" aria-pressed="false">邀请码</button>
+      </div>
+      <div class="audit-range-row" role="group" aria-label="操作记录时间范围">
+        <button class="filter-button active" type="button" data-audit-range="all" aria-pressed="true">全部时间</button>
+        <button class="filter-button" type="button" data-audit-range="today" aria-pressed="false">今天</button>
+        <button class="filter-button" type="button" data-audit-range="7d" aria-pressed="false">近 7 天</button>
+      </div>
+      <p class="results-count" id="globalAuditResultCount" aria-live="polite">正在读取操作记录…</p>
+      <div class="records-card global-audit-list" id="globalAuditList"><p class="empty-note">正在读取操作记录…</p></div>
+      <button class="directory-more" id="loadMoreGlobalAudit" type="button" hidden>加载更多记录</button>
+      <p class="helper-note">此处只展示服务器保存的授权与账号操作审计，不保存或显示邀请码明文、密码摘要和会话令牌。</p>
+    </section>
+
+    <section class="admin-view" id="settingsView" hidden>
+      <div class="view-heading"><div><h2>后台设置</h2><p>账号授权、安全保护与审计规则</p></div></div>
+      <div class="policy-list">
+        <details class="policy-item" open>
+          <summary><span>账号准入与邀请码</span><small>强制规则</small></summary>
+          <p>新账号创建后先进入待授权状态。必须使用绑定该 MAO 永久 ID 的有效邀请码完成一次性核销，才能进入 MAO。邮箱所有权验证未接通前，不开放邮箱目标发码路径。</p>
+        </details>
+        <details class="policy-item">
+          <summary><span>账号生命周期</span><small>强制规则</small></summary>
+          <p>临时停用会撤销登录会话、设备凭据和关联有效邀请码。恢复时回到停用前保存的授权状态。永久撤销不可通过普通恢复操作复活，保留只读历史资料。</p>
+        </details>
+        <details class="policy-item">
+          <summary><span>危险操作保护</span><small>强制规则</small></summary>
+          <p>停用、永久撤销、邀请码撤销、设备移除和会话撤销等操作必须先打开屏幕中央确认弹窗，明确显示对象与影响范围；只有再次点击确认按钮才会提交。</p>
+        </details>
+        <details class="policy-item">
+          <summary><span>事务与异常恢复</span><small>强制规则</small></summary>
+          <p>账号状态、邀请码与对应审计事件必须在同一事务中提交。请求失败或发生并发冲突时，不得显示假成功；页面必须重新核对服务器状态后再提供操作入口。</p>
+        </details>
+        <details class="policy-item">
+          <summary><span>审计记录与敏感信息</span><small>只读保护</small></summary>
+          <p>审计历史在普通管理界面只允许查询，不提供编辑或删除入口。记录保留操作人、目标账号、时间、状态变化及必要元数据；邀请码明文、密码摘要和会话令牌不得进入审计展示。</p>
+        </details>
+        <details class="policy-item">
+          <summary><span>账号数据隔离</span><small>强制规则</small></summary>
+          <p>MAO 永久账号 ID 是账号数据分区依据，与真人好友 ID 和设备 ID 分离。所有私有 API 必须核对登录会话与页面账号上下文，不能依赖前端隐藏按钮代替服务器权限检查。</p>
+        </details>
+      </div>
+      <p class="helper-note">这些是系统强制安全规则，不提供普通开关。规则修改必须通过受控代码变更、回归测试和明确发布审批完成。</p>
+    </section>
+
+    <section class="detail-sheet" id="accountDetail" hidden>
+      <div class="sheet-top"><div><div class="eyebrow">ACCOUNT DETAIL</div><h2 id="detailUsername">账号详情</h2></div><button class="close-detail" id="closeDetail" type="button" aria-label="关闭">×</button></div>
+      <div class="detail-id"><div class="detail-id-copy"><span>MAO 永久 ID</span><strong id="detailId">—</strong></div><button type="button" class="copy-detail-id" id="copyDetailId">复制 ID</button></div>
+      <div class="detail-meta" id="detailMeta"></div>
+      <div class="invite-status" id="accountInviteStatus" hidden></div>
+      <div class="audit-heading"><h3>管理记录</h3><span>PRIVATE AUDIT</span></div>
+      <p class="results-count audit-result-count" id="auditResultCount" aria-live="polite">正在读取记录…</p>
+      <div class="audit-list" id="auditList"><p class="empty-note">正在读取记录…</p></div>
+      <button class="directory-more audit-more" id="loadMoreAudit" type="button" hidden>加载更多管理记录</button>
+      <div class="danger-zone">
+        <div class="danger-zone-heading">账号操作</div>
+        <p>以下操作会影响账号使用资格，请仔细核对后再执行。</p>
+        <div class="action-stack" id="detailActions"></div>
+      </div>
+    </section>
+
+    <section class="code-sheet" id="inviteCodeSheet" hidden>
+      <div class="sheet-top"><div><div class="eyebrow">ONE-TIME INVITATION</div><h2>邀请码已生成</h2></div><button class="close-detail" id="closeCodeSheet" type="button" aria-label="关闭">×</button></div>
+      <p>请立即复制并安全交付给指定用户。离开此页面后，原始邀请码不会再次显示。</p>
+      <div class="generated-code" id="generatedCode"></div>
+      <button class="dark-button" id="copyInviteCode" type="button">复制邀请码</button>
+      <p class="helper-note">此邀请码已绑定目标 MAO 永久 ID，只能成功使用一次。</p>
+    </section>
+
+    <p class="admin-footer">仅管理员可访问 · 所有操作由服务器记录</p>
+  </main>
+  <dialog id="adminConfirmDialog" class="admin-confirm-dialog" aria-labelledby="adminConfirmTitle" aria-describedby="adminConfirmDescription">
+    <div class="admin-confirm-content">
+      <div class="eyebrow">CONFIRM ACTION</div>
+      <h2 id="adminConfirmTitle">请确认操作</h2>
+      <p id="adminConfirmDescription"></p>
+      <div class="admin-confirm-reason" id="adminConfirmReasonField" hidden>
+        <label for="adminConfirmReason">管理员备注（仅管理员可见）</label>
+        <textarea id="adminConfirmReason" rows="3" maxlength="500" placeholder="可填写本次操作的备注"></textarea>
+      </div>
+      <div class="admin-confirm-actions">
+        <button type="button" id="adminConfirmCancel">取消</button>
+        <button type="button" id="adminConfirmSubmit" class="danger">确认操作</button>
+      </div>
+    </div>
+  </dialog>
+</body>
+</html>

@@ -75,6 +75,19 @@ export function usesExistingAccountAuthority(env = {}) {
     env.MAO_IDENTITY_AUTHORITY_MODE === EXISTING_AUTHORITY_MODE;
 }
 
+/**
+ * Migration-safe credential channel:
+ * legacy QA sessions remain valid until the persistent authority has been
+ * independently seeded and verified. Switching to the permanent authority
+ * changes one explicit QA config value; it never exposes or overwrites the
+ * old bridge secret.
+ */
+export function activeAuthoritySecret(env = {}) {
+  return env.MAO_IDENTITY_AUTHORITY_CHANNEL === 'persistent'
+    ? String(env.MAO_PERSISTENT_IDENTITY_BRIDGE_SECRET || '')
+    : String(env.MAO_IDENTITY_BRIDGE_SECRET || '');
+}
+
 function parseAuthoritySessionCookie(response) {
   const cookie = String(response.headers.get('set-cookie') || '');
   const match = /^MAO_SESSION=([A-Za-z0-9_-]{32,128})(?:;|$)/.exec(cookie);
@@ -106,6 +119,11 @@ async function callExistingAccountWorker(env, operation, body) {
     : operation === 'logout'
       ? { authorization: 'Bearer ' + token, origin: INTERNAL_ORIGIN }
       : { authorization: 'Bearer ' + token };
+  const bridgeSecret = activeAuthoritySecret(env);
+  if (env.MAO_IDENTITY_AUTHORITY_CHANNEL === 'persistent' && bridgeSecret.length < 32) {
+    throw new ApiError(503, 'IDENTITY_BRIDGE_NOT_READY', '长期身份服务密钥未配置');
+  }
+  if (bridgeSecret.length >= 32) headers[BRIDGE_AUTH_HEADER] = bridgeSecret;
   const request = new Request(INTERNAL_ORIGIN + pathname, {
     method: operation === 'status' ? 'GET' : 'POST',
     headers,
@@ -153,7 +171,21 @@ export async function callIdentityAuthority(env, operation, body) {
     throw new ApiError(503, 'IDENTITY_BRIDGE_NOT_READY', '统一身份认证未就绪');
   }
   if (usesExistingAccountAuthority(env)) {
-    return callExistingAccountWorker(env, operation, body);
+    const result=await callExistingAccountWorker(env,operation,body);
+    if(env.MAO_IDENTITY_CANONICAL_ADMIN_REQUIRED === 'true' && operation !== 'logout'){
+      const expected=String(env.MAO_EXPECTED_FOUNDER_ID || '');
+      const mismatch=!ACCOUNT_ID.test(expected) ||
+        (result.role === 'super_admin' && result.id !== expected);
+      if(mismatch){
+        // No rejected administrator login may leave an orphan central session.
+        if(operation === 'authenticate' && result.authoritySessionToken){
+          try{await callExistingAccountWorker(env,'logout',{sessionToken:result.authoritySessionToken})}catch{}
+        }
+        throw new ApiError(403,'CANONICAL_ADMIN_MISMATCH',
+          '当前服务器未确认唯一管理员身份，禁止创建或切换管理员');
+      }
+    }
+    return result;
   }
   if (!ALLOWED_OPERATIONS.has(operation)) {
     throw new ApiError(503, 'IDENTITY_BRIDGE_NOT_READY', '统一身份认证未就绪');
@@ -203,7 +235,11 @@ export async function probeExistingIdentityAuthority(env) {
   try {
     const response = await env.MAO_IDENTITY_AUTHORITY.fetch(
       new Request('https://mao520.com/api/admin/bootstrap/status', {
-        method: 'GET', headers: { accept: 'application/json' }
+        method: 'GET', headers: {
+          accept: 'application/json',
+          ...(activeAuthoritySecret(env).length >= 32
+            ? {[BRIDGE_AUTH_HEADER]: activeAuthoritySecret(env)} : {})
+        }
       })
     );
     if (!response.ok) return { connected: false, initialized: false, configured: false };

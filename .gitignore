@@ -53,3 +53,8 @@ perf/virtual-regression.mjs
 .zip
 .rar
 .7z
+
+# Temporary Wrangler local credentials and isolated SQLite state.
+.dev.vars
+.dev.vars.*
+.wrangler/

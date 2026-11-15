@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>真人好友</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f7f7f8;color:#151515;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;font-size:13px}
+header{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:12px;padding:calc(env(safe-area-inset-top) + 15px) 18px 15px;background:#fff;border-bottom:1px solid #ebebeb}
+header a{color:#555;text-decoration:none;font-size:14px}h1{font-size:17px;font-weight:600;letter-spacing:-.3px;margin:0}
+main{max-width:600px;margin:0 auto;padding:15px 14px calc(36px + env(safe-area-inset-bottom))}
+section{background:#fff;padding:17px 16px;margin-bottom:12px;border:1px solid #f0f0f0;border-radius:15px}
+h2{font-size:14px;font-weight:600;margin:0 0 12px}h3{font-size:12px;margin:12px 0 8px;color:#666}
+p{margin:8px 0;color:#666;line-height:1.6}.fine{font-size:11px;color:#8e8e93}
+button,.link{font:inherit;border:1px solid #dedee0;border-radius:8px;background:#fff;color:#111;padding:9px 13px;cursor:pointer}
+button.primary{color:white;background:#171717;border-color:#171717}
+button:disabled{opacity:.45;cursor:default}
+input,textarea{display:block;width:100%;font:inherit;border:1px solid #e0e0e2;border-radius:8px;background:#fcfcfd;padding:11px;margin:9px 0;color:#111}
+textarea{min-height:70px;resize:vertical}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.row>button{flex:0 0 auto}
+.status{padding:12px 14px;line-height:1.5;border-radius:10px;background:#efeff0;margin-bottom:12px;white-space:pre-wrap}
+.item{border-top:1px solid #f2f2f2;padding:12px 0}.item:first-child{border-top:0}
+.item-title{font-weight:550;overflow-wrap:anywhere}.item-sub{color:#8c8c8c;font-size:11px;margin:5px 0}
+.code{font-size:11px;color:#777;word-break:break-all;line-height:1.7;user-select:all}
+#qrWrap svg{max-width:210px;width:100%;height:auto;display:block;margin:13px auto}
+#messages{height:min(45vh,340px);overflow-y:auto;background:#fafafa;padding:12px;border-radius:9px}
+.bubble{margin:8px 0;max-width:86%;padding:9px 11px;background:#eaeaea;border-radius:11px;white-space:pre-wrap;overflow-wrap:anywhere}
+.bubble.mine{margin-left:auto;background:#171717;color:#fff}
+#chatPanel[hidden],section[hidden],[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><a href="./contacts.html" aria-label="返回通讯录">返回</a><h1>真人好友</h1></header>
+<main>
+<div id="status" class="status" role="status" aria-live="polite">正在确认账号与服务状态…</div>
+<section><h2>当前 MAO 账号</h2><p id="accountLabel">正在检查…</p><p class="fine">真人好友使用正式 MAO 永久 ID，不另开账号，不与 AI 角色合并。</p></section>
+<section id="inviteSection" hidden>
+<h2>添加真人好友</h2>
+<button id="rotate" class="primary">生成一次性好友码</button>
+<div id="myCode" hidden>
+<div id="qrWrap" aria-label="好友二维码"></div>
+<p class="code" id="codeLabel"></p>
+<p id="expiryLabel" class="fine"></p>
+<div class="row"><button id="copyLink">复制 HTTPS 邀请链接</button></div>
+<p class="fine">对方用手机相机扫描二维码，或复制链接打开；好友码有效期 15 分钟。</p>
+</div>
+<h3>发送好友申请</h3>
+<form id="requestForm">
+<input id="friendCode" maxlength="512" autocomplete="off" placeholder="粘贴好友码或邀请链接" required>
+<input id="friendNote" maxlength="160" placeholder="申请备注（选填）">
+<button id="sendRequest" class="primary" type="submit">发送申请</button>
+</form>
+<p class="fine">对方同意后，还需要 001 管理员最终审批，才能成为好友。</p>
+</section>
+<section id="requestsSection" hidden>
+<div class="row"><h2 style="margin:0;flex:1">好友申请</h2><button id="refresh">刷新</button></div>
+<h3>收到的申请</h3><div id="incoming"></div>
+<h3>发出的申请</h3><div id="outgoing"></div>
+</section>
+<section id="approvalSection" hidden><h2>001 管理员审批</h2><div id="approvals"></div></section>
+<section id="friendsSection" hidden><h2>已审批的真人好友</h2><div id="friends"></div></section>
+<section id="chatPanel" hidden>
+<div class="row"><h2 id="chatTitle" style="margin:0;flex:1"></h2><button id="closeChat">关闭</button></div>
+<p class="fine">仅已批准的双方可收发消息。本测试版使用前台轮询。文字消息尚未完成端到端加密验收，请勿发送敏感内容。</p>
+<div id="messages" role="log" aria-live="polite"></div>
+<form id="chatForm"><textarea id="chatText" maxlength="2000" placeholder="输入消息…" required></textarea><button class="primary" type="submit" id="chatSend">发送</button></form>
+</section>
+<p class="fine">真人聊天不需要 AI API。当前为双方设备加密的文字测试版，不支持真人转账、红包或礼物；不会读取 AI 角色聊天记录。</p>
+</main>
+<script src="../../shared/js/phone/qrcode-generator.js?v=20261112social1"></script>
+<script>
+(function(){
+'use strict';
+var account=null, currentCode=null, currentChat=null, cursor=0, messageTimer=null;
+var chatEpoch=0, activeMessageLoad=null, seenMessageSeq=new Set(), currentFriendshipId=null;
+var pendingSendId=null, pendingSendFingerprint=null, pendingMessageId=null, pendingMessageText=null;
+var el=function(id){return document.getElementById(id)};
+var pattern=/^[a-f0-9]{64}$/;
+var idPattern=/^MAO-[A-Z0-9]{12,24}$/;
+function status(s){el('status').textContent=s;}
+function requestId(){if(window.crypto&&crypto.randomUUID)return 'req_'+crypto.randomUUID().replace(/-/g,'');var a=new Uint8Array(18);crypto.getRandomValues(a);return 'req_'+Array.from(a,x=>x.toString(16).padStart(2,'0')).join('');}
+function messageId(){return 'msgclient_'+requestId();}
+function explain(err){var o=err&&err.message||'操作失败';return o.length>220?o.slice(0,220):o;}
+var authErrors=new Set(['ACCOUNT_CONTEXT_CHANGED','ACCOUNT_CONTEXT_REQUIRED','LOGIN_REQUIRED',
+'ACCOUNT_DISABLED','SOCIAL_SESSION_EXPIRED','SOCIAL_LOGIN_REQUIRED','SOCIAL_INVITE_REQUIRED']);
+function closeChat(){
+clearTimer();chatEpoch++;activeMessageLoad=null;seenMessageSeq.clear();currentFriendshipId=null;
+currentChat=null;cursor=0;pendingMessageId=null;pendingMessageText=null;
+el('messages').textContent='';el('chatText').value='';el('chatPanel').hidden=true;
+}
+function clearPrivateSession(){
+closeChat();resetCode();account=null;pendingSendId=null;pendingSendFingerprint=null;
+for(var key of ['incoming','outgoing','friends','approvals','codeLabel','friendCode','friendNote']){
+var node=el(key);if(node){if('value' in node)node.value='';else node.textContent='';}
+}
+for(var section of ['inviteSection','requestsSection','friendsSection','approvalSection'])el(section).hidden=true;
+el('accountLabel').textContent='登录状态已变化，请重新进入。';
+}
+async function api(path,method,body){
+var authContext=account&&account.id;
+// All authenticated MAO endpoints require the page account namespace,
+// not just the session cookie. /api/accounts/me works without it on first load.
+var headers={Accept:'application/json',...(body?{'Content-Type':'application/json'}:{})};
+if(authContext)headers['X-MAO-Account-Context']=authContext;
+var response=await fetch(path,{method:method||'GET',credentials:'same-origin',cache:'no-store',redirect:'error',
+headers:headers,...(body?{body:JSON.stringify(body)}:{})});
+var result;try{result=await response.json()}catch(e){throw new Error('服务器没有返回合法 JSON。');}
+if(!response.ok||!result||result.ok!==true){
+var code=result&&result.error&&result.error.code||'';
+if(authErrors.has(code))clearPrivateSession();
+else if(path.indexOf('/api/social/chats/')===0 &&
+['SOCIAL_NOT_APPROVED','SOCIAL_BLOCKED','SOCIAL_ACCOUNT_NOT_ACTIVE','SOCIAL_CHAT_NOT_ENABLED'].includes(code))closeChat();
+throw new Error(result&&result.error&&result.error.message||code||'HTTP '+response.status);
+}
+return result;
+}
+function buttonBusy(button,busy){button.disabled=busy;}
+function make(tag,txt,cls){var node=document.createElement(tag);node.textContent=String(txt==null?'':txt);if(cls)node.className=cls;return node;}
+function action(parent,title,fn,primary){
+var btn=make('button',title);btn.type='button';if(primary)btn.className='primary';btn.addEventListener('click',async function(){
+if(btn.disabled)return;buttonBusy(btn,true);try{await fn()}catch(err){status(explain(err))}finally{buttonBusy(btn,false);}
+});parent.appendChild(btn);return btn;
+}
+function clearTimer(){if(messageTimer){clearInterval(messageTimer);messageTimer=null;}}
+function resetCode(){currentCode=null;el('myCode').hidden=true;el('qrWrap').textContent='';}
+function shareUrl(code){
+var url=new URL('./real-friends.html',location.href);
+url.search='';url.hash='mao-friend='+code;return url.href;
+}
+function readCode(value){
+var raw=String(value||'').trim();
+if(pattern.test(raw.toLowerCase()))return raw.toLowerCase();
+try{
+var u=new URL(raw,location.href);
+if(u.origin!==location.origin||!u.pathname.endsWith('/chat/contacts/real-friends.html'))return '';
+var m=/^#mao-friend=([a-f0-9]{64})$/i.exec(u.hash);
+return m?m[1].toLowerCase():'';
+}catch(e){return '';}
+}
+function renderCode(data){
+resetCode();if(!account||data.ownerAccountId!==account.id||!pattern.test(data.code))throw new Error('好友码所属账号或格式异常。');
+if(!Number.isSafeInteger(data.expiresAt)||data.expiresAt<=Date.now())throw new Error('好友码已经过期。');
+currentCode={code:data.code,owner:account.id,expiresAt:data.expiresAt};
+var url=shareUrl(data.code);
+if(typeof window.qrcode==='function'){
+var q=window.qrcode(0,'M');q.addData(url,'Byte');q.make();
+el('qrWrap').innerHTML=q.createSvgTag({cellSize:4,margin:4,scalable:true});
+}else el('qrWrap').textContent='二维码暂不可用，请复制链接。';
+el('codeLabel').textContent=data.code;el('myCode').hidden=false;
+codeExpiry();
+}
+function codeExpiry(){
+var valid=!!(currentCode&&account&&currentCode.owner===account.id&&currentCode.expiresAt>Date.now());
+el('copyLink').disabled=!valid;
+el('expiryLabel').textContent=valid?'有效期至 '+new Date(currentCode.expiresAt).toLocaleTimeString():'好友码已过期，请重新生成。';
+if(!valid&&currentCode)el('qrWrap').textContent='二维码已失效';
+}
+function renderList(id,items,kind){
+var area=el(id);area.textContent='';
+if(!items.length){area.appendChild(make('p','暂无记录','fine'));return;}
+items.forEach(function(item){
+var row=make('div','','item');row.appendChild(make('div',(kind==='incoming'?item.requesterId:item.recipientId)||item.id,'item-title'));
+row.appendChild(make('div',item.status==='pending_admin'?'等待 001 管理员审批':item.status==='pending_peer'?'等待对方处理':item.status,'item-sub'));
+if(item.note)row.appendChild(make('p',item.note,'fine'));
+var buttons=make('div','','row');
+if(kind==='incoming'&&item.status==='pending_peer'){
+action(buttons,'同意',async()=>{await mutate('/api/social/friend-requests/'+item.id+'/accept')},true);
+action(buttons,'拒绝',async()=>{await mutate('/api/social/friend-requests/'+item.id+'/decline')});
+}
+if(kind==='outgoing'&&(item.status==='pending_peer'||item.status==='pending_admin'))
+action(buttons,'撤回',async()=>{await mutate('/api/social/friend-requests/'+item.id+'/cancel')});
+row.appendChild(buttons);area.appendChild(row);
+});
+}
+async function mutate(path,method){
+var response=await api(path,method||'POST');
+var requestId=path.match(/\/friend-requests\/([^/]+)\/(accept|decline|cancel)$/);
+var adminReview=path.match(/\/friend-approvals\/([^/]+)\/(approve|reject)$/);
+if(requestId){
+var expected={accept:'pending_admin',decline:'declined',cancel:'cancelled'}[requestId[2]];
+if(!response.request||response.request.id!==requestId[1]||response.request.status!==expected)
+throw new Error('好友申请缺少明确的服务端回执，请刷新核对。');
+}
+if(adminReview){
+var decision=adminReview[2]==='approve'?'approved':'rejected';
+if(!response.request||response.request.id!==adminReview[1]||response.request.status!==decision)
+throw new Error('管理员审批结果不明确，请先刷新核对。');
+}
+if(method==='DELETE'&&path.endsWith('/block')){
+if(response.blocked!==false)throw new Error('解除屏蔽结果不明确，请刷新核对。');
+}else if(path.endsWith('/block')){
+if(response.blocked!==true)throw new Error('屏蔽结果不明确，请刷新核对。');
+}else if(method==='DELETE'){
+if(typeof response.removed!=='boolean')throw new Error('好友删除结果不明确，请刷新核对。');
+}
+status('操作已由服务器确认。');
+try{await refresh()}catch(e){status('操作已确认，但列表未刷新：'+explain(e))}
+return response;
+}
+async function refresh(){
+if(!account)return;
+var ownerId=account.id;
+var session=await api('/api/accounts/me');
+if(!account||!session.account||session.account.id!==ownerId||session.account.status!=='active'){
+clearPrivateSession();throw new Error('登录账号已变化，请重新进入。');
+}
+var list=await Promise.all([
+api('/api/social/friend-requests?direction=incoming'),
+api('/api/social/friend-requests?direction=outgoing'),
+api('/api/social/friends')
+]);
+if(!account||account.id!==ownerId)return;
+for(var result of list)if(result.ownerAccountId!==ownerId){
+clearPrivateSession();throw new Error('账号身份与好友资料不一致，已清除旧账号资料。');
+}
+// An authoritative friends refresh may revoke an active chat (remove, block,
+// disabled account or a remote approval change). Never leave its old bubbles
+// and drafts visible while waiting for the next polling interval.
+if(currentChat&&!list[2].friends.some(function(friend){return friend.id===currentChat.id;})){
+closeChat();
+}
+renderList('incoming',list[0].requests,'incoming');renderList('outgoing',list[1].requests,'outgoing');
+var peers=el('friends');peers.textContent='';
+if(!list[2].friends.length)peers.appendChild(make('p','还没有经过审批的真人好友','fine'));
+list[2].friends.forEach(function(f){
+if(!idPattern.test(f.id))return;
+var div=make('div','','item');div.appendChild(make('div',f.displayName||f.id,'item-title'));
+div.appendChild(make('div',f.id,'item-sub'));var bar=make('div','','row');
+action(bar,'聊天',async()=>{window.location.href='./real-chat.html?peer='+encodeURIComponent(f.id)},true);
+action(bar,'删除',async()=>{if(!confirm('删除真人好友？'))return;await mutate('/api/social/friends/'+f.id,'DELETE')});
+action(bar,'屏蔽',async()=>{if(!confirm('屏蔽后将解除好友关系，确定吗？'))return;await mutate('/api/social/friends/'+f.id+'/block')});
+div.appendChild(bar);peers.appendChild(div);
+});
+if(account.role==='super_admin'){
+var queue=await api('/api/admin/social/friend-approvals');
+var area=el('approvals');area.textContent='';
+if(!queue.approvals.length)area.appendChild(make('p','暂无待审核申请','fine'));
+queue.approvals.forEach(function(item){
+var row=make('div','','item');
+row.appendChild(make('div',(item.requesterName||item.requesterId)+' → '+(item.recipientName||item.recipientId),'item-title'));
+row.appendChild(make('p',item.note||'无备注','fine'));
+var bar=make('div','','row');
+action(bar,'批准',async()=>{if(!confirm('确认双方已同意并批准建立好友关系？'))return;await mutate('/api/admin/social/friend-approvals/'+item.id+'/approve')},true);
+action(bar,'拒绝',async()=>{await mutate('/api/admin/social/friend-approvals/'+item.id+'/reject')});
+row.appendChild(bar);area.appendChild(row);
+});
+}
+}
+async function loadMessages(){
+if(!currentChat||!account)return;
+var target=currentChat.id,ownerId=account.id,epoch=chatEpoch,startCursor=cursor;
+// Polling, tab-resume and send confirmation may overlap. Only one fetch per
+// conversation generation may render; old responses must never touch a new view.
+if(activeMessageLoad&&activeMessageLoad.epoch===epoch)return activeMessageLoad.promise;
+var task=(async function(){
+var result=await api('/api/social/chats/'+encodeURIComponent(target)+'/messages?after='+startCursor);
+if(epoch!==chatEpoch||!account||account.id!==ownerId||!currentChat||currentChat.id!==target)return;
+if(result.ownerAccountId!==ownerId||result.peerId!==target||
+!(/^[A-Za-z0-9_-]{8,96}$/).test(result.friendshipId)){
+clearPrivateSession();throw new Error('聊天所属账号或好友关系异常，已清除旧账号资料。');
+}
+// The second 001 approval starts a new conversation. Never reuse old bubbles,
+// cursor or a still-pending retry from the previous friendship.
+if(currentFriendshipId&&currentFriendshipId!==result.friendshipId){
+var newFriendshipId=result.friendshipId;
+seenMessageSeq.clear();cursor=0;startCursor=0;el('messages').textContent='';
+el('chatText').value='';status('好友关系已重新审批，旧聊天已隐藏。');
+result=await api('/api/social/chats/'+encodeURIComponent(target)+'/messages?after=0');
+if(epoch!==chatEpoch||!account||account.id!==ownerId||!currentChat||currentChat.id!==target)return;
+if(result.ownerAccountId!==ownerId||result.peerId!==target||
+result.friendshipId!==newFriendshipId){
+clearPrivateSession();throw new Error('好友关系在刷新时变化，请重新进入。');
+}
+pendingMessageId=null;pendingMessageText=null;
+}
+currentFriendshipId=result.friendshipId;
+if(!Array.isArray(result.messages)||!Number.isSafeInteger(result.nextCursor)||
+result.nextCursor<startCursor){
+throw new Error('聊天记录返回格式异常，请刷新后重试。');
+}
+for(var m of result.messages){
+if(!Number.isSafeInteger(m.seq)||m.seq<=0||m.seq<=startCursor||
+(m.senderId!==ownerId&&m.senderId!==target)||
+(m.recipientId!==ownerId&&m.recipientId!==target)){
+throw new Error('聊天消息记录异常，未使用不可信数据。');
+}
+}
+result.messages.forEach(function(m){
+if(seenMessageSeq.has(m.seq))return;
+seenMessageSeq.add(m.seq);
+var node=make('div',m.text,'bubble'+(m.senderId===ownerId?' mine':''));
+el('messages').appendChild(node);
+});
+cursor=Math.max(cursor,result.nextCursor);
+el('messages').scrollTop=el('messages').scrollHeight;
+})();
+activeMessageLoad={epoch:epoch,promise:task};
+try{await task}finally{if(activeMessageLoad&&activeMessageLoad.promise===task)activeMessageLoad=null;}
+}
+async function openChat(friend){
+clearTimer();chatEpoch++;activeMessageLoad=null;seenMessageSeq.clear();currentFriendshipId=null;
+pendingMessageId=null;pendingMessageText=null;currentChat=friend;cursor=0;el('messages').textContent='';el('chatTitle').textContent=friend.displayName||friend.id;
+el('chatPanel').hidden=false;
+var openedEpoch=chatEpoch;
+await loadMessages();
+// Closing or switching chat while the first history request was in flight
+// must not leave a hidden polling timer running against a stale conversation.
+if(openedEpoch!==chatEpoch||!currentChat||currentChat.id!==friend.id)return;
+messageTimer=setInterval(function(){if(document.visibilityState==='visible')loadMessages().catch(e=>{status(explain(e));clearTimer();})},5000);
+}
+el('closeChat').addEventListener('click',closeChat);
+el('rotate').addEventListener('click',async function(){var btn=el('rotate');if(btn.disabled)return;buttonBusy(btn,true);
+try{renderCode(await api('/api/social/friend-codes','POST'));status('已签发一次性好友码。');}catch(e){resetCode();status(explain(e))}
+finally{buttonBusy(btn,false);}
+});
+el('copyLink').addEventListener('click',async function(){
+if(!currentCode||currentCode.expiresAt<=Date.now()||currentCode.owner!==account.id){codeExpiry();return;}
+try{await navigator.clipboard.writeText(shareUrl(currentCode.code));status('邀请链接已复制。');}
+catch(e){status('复制不可用，请选中上方好友码手动复制。');}
+});
+el('requestForm').addEventListener('submit',async function(e){
+e.preventDefault();var btn=el('sendRequest');if(btn.disabled)return;
+var code=readCode(el('friendCode').value);if(!code){status('好友码或分享链接无效。');return;}
+buttonBusy(btn,true);
+try{
+var fingerprint=code+'\n'+el('friendNote').value;
+if(!pendingSendId||pendingSendFingerprint!==fingerprint){pendingSendId=requestId();pendingSendFingerprint=fingerprint;}
+var result=await api('/api/social/friend-requests','POST',
+{requestId:pendingSendId,code:code,note:el('friendNote').value});
+if(result.request.status!=='pending_peer'&&result.request.status!=='pending_admin')throw new Error('服务器未确认申请状态');
+pendingSendId=null;pendingSendFingerprint=null;el('friendCode').value='';el('friendNote').value='';
+status('申请已提交，等待对方同意及 001 最终审批。');
+try{await refresh()}catch(e){status('申请已被服务器确认，但刷新列表失败：'+explain(e))}
+}catch(err){status(explain(err))}
+finally{buttonBusy(btn,false);}
+});
+el('chatForm').addEventListener('submit',async function(e){
+e.preventDefault();var btn=el('chatSend');if(btn.disabled||!currentChat)return;
+var msg=el('chatText').value.trim();if(!msg)return;
+if(!currentFriendshipId){status('请先完成当前好友关系验证，再发送消息。');return;}
+buttonBusy(btn,true);
+var peerId=currentChat.id,ownerId=account&&account.id;
+var sentFriendshipId=currentFriendshipId,sendEpoch=chatEpoch;
+try{
+var fingerprint=peerId+'\n'+msg;
+if(!pendingMessageId||pendingMessageText!==fingerprint){
+pendingMessageId=messageId();pendingMessageText=fingerprint;
+}
+var result=await api('/api/social/chats/'+encodeURIComponent(peerId)+'/messages','POST',
+{clientMessageId:pendingMessageId,text:msg,friendshipId:sentFriendshipId});
+if(result.friendshipId!==sentFriendshipId||
+!result.message||result.message.senderId!==ownerId||
+result.message.recipientId!==peerId||result.message.text!==msg||!result.message.id){
+throw new Error('消息发送结果缺少服务器确认，请先刷新核对。');
+}
+if(!account||account.id!==ownerId||!currentChat||currentChat.id!==peerId||
+chatEpoch!==sendEpoch||currentFriendshipId!==sentFriendshipId)return;
+pendingMessageId=null;pendingMessageText=null;
+if(el('chatText').value.trim()===msg)el('chatText').value='';
+status('服务器已确认收到消息。');
+try{await loadMessages()}catch(e){status('消息已发送，但聊天记录尚未刷新：'+explain(e))}
+}catch(err){status('消息尚未确认：'+explain(err))}
+finally{buttonBusy(btn,false);}
+});
+el('refresh').addEventListener('click',function(){refresh().then(()=>status('已从服务器刷新。')).catch(e=>status(explain(e)))});
+document.addEventListener('visibilitychange',function(){
+codeExpiry();
+if(document.visibilityState==='visible'&&account){
+refresh().then(function(){if(currentChat)return loadMessages()}).catch(e=>status(explain(e)));
+}
+});
+// A browser may preserve the page in its back-forward cache (BFCache).
+// Clear all account-owned DOM before navigation instead of showing stale chat
+// to a different account when the user returns through browser history.
+window.addEventListener('pagehide',function(){clearPrivateSession();});
+window.addEventListener('pageshow',function(event){
+if(event&&event.persisted)location.reload();
+});
+(async function init(){
+var incoming=readCode(location.href);if(incoming){el('friendCode').value=incoming;history.replaceState(null,'',location.pathname+location.search);}
+try{
+var result=await api('/api/accounts/me');account=result.account;
+if(!account||!idPattern.test(account.id)||account.status!=='active')throw new Error('请先登录并完成 MAO 邀请码授权。');
+el('accountLabel').textContent=account.username+' · '+account.id+(account.founderNumber?' · 001 管理员':'');
+el('inviteSection').hidden=false;el('requestsSection').hidden=false;el('friendsSection').hidden=false;
+el('approvalSection').hidden=account.role!=='super_admin';
+await refresh();status('账号已验证。真人好友与 AI 角色独立。');
+}catch(e){status('当前测试服务不可用：'+explain(e))}
+})();
+})();
+</script>
+</body>
+</html>

@@ -16,7 +16,8 @@
     var shell = document.querySelector('.phone-mockup');
     if (!shell) return;
 
-    if (readTheme() === THEME_ID) {
+    var pageTheme = global.ChatBeauty && global.ChatBeauty.getThemePreset ? global.ChatBeauty.getThemePreset() : '';
+    if (readTheme() === THEME_ID && pageTheme !== 'atmosphere') {
       shell.setAttribute('data-chat-list-theme', THEME_ID);
     } else {
       shell.removeAttribute('data-chat-list-theme');
@@ -47,8 +48,9 @@
   }
 
   global.addEventListener('pageshow', applyTheme);
+  global.addEventListener('maomao:chat-theme-change', applyTheme);
   global.addEventListener('maomao:chat-list-theme-change', applyTheme);
   global.addEventListener('storage', function (event) {
-    if (!event || event.key === STORAGE_KEY) applyTheme();
+    if (!event || event.key === STORAGE_KEY || event.key === 'maomao_chat_theme_preset') applyTheme();
   });
 })(window);

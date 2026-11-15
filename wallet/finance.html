@@ -7,6 +7,7 @@
 <title>记账</title>
 <script src="../shared/js/native-feel.js"></script>
 <script src="../shared/js/phone/phone_storage.js"></script>
+<script src="../shared/js/phone/wallet-ledger.js?v=20261114v12"></script>
 <script src="../shared/js/phone/phone_api.js"></script>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
 <style>
@@ -171,6 +172,13 @@
   .r-date { font-size: 0.688rem; color: #ccc; margin-top: 2px; }
   .r-char-note { margin-top: 5px; font-size: 0.688rem; color: #aaa; line-height: 1.55; overflow-wrap: anywhere; }
   .r-char-note .cc-role { color: #888; font-weight: 600; margin-right: 4px; }
+  .r-after-sales {
+    margin-top: 6px; padding: 6px 8px; border-radius: 8px;
+    background: #F4F4F6; color: #555; font-size: .656rem; line-height: 1.5;
+  }
+  .r-after-sales strong { color: #222; font-weight: 650; }
+  .r-after-sales-id { color: #999; margin-left: 4px; font-variant-numeric: tabular-nums; }
+
 
   .empty {
     text-align: center; padding: 40px 20px; color: #999; font-size: 0.875rem;
@@ -352,23 +360,142 @@
   let currentType = 'expense';
   let currentCat = '餐饮';
 
-  var _storage = window.PhoneStorage;
+  function readFinanceRecordsState() {
+    var raw;
+    try { raw = localStorage.getItem('finance_records'); }
+    catch (error) { return { ok: false, reason: 'storage', value: null }; }
+    if (raw == null) return { ok: true, reason: '', value: [] };
+
+    var list;
+    try { list = JSON.parse(raw); }
+    catch (error) { return { ok: false, reason: 'invalid', value: null }; }
+    if (!Array.isArray(list)) return { ok: false, reason: 'invalid', value: null };
+
+    for (var i = 0; i < list.length; i++) {
+      var row = list[i];
+      if (!row || typeof row !== 'object' || Array.isArray(row)) {
+        return { ok: false, reason: 'invalid', value: null };
+      }
+      if (!Object.prototype.hasOwnProperty.call(row, 'amount') ||
+          row.amount == null || row.amount === '' ||
+          !isFinite(Number(row.amount)) || Number(row.amount) < 0) {
+        return { ok: false, reason: 'invalid', value: null };
+      }
+      if (Object.prototype.hasOwnProperty.call(row, 'type') && typeof row.type !== 'string') {
+        return { ok: false, reason: 'invalid', value: null };
+      }
+    }
+    return { ok: true, reason: '', value: list };
+  }
+
   function loadRecords() {
-    var list = _storage ? _storage.getFinanceRecords() : (function(){ try { return JSON.parse(localStorage.getItem('finance_records') || '[]'); } catch(e){ return []; } })();
-    if (!Array.isArray(list)) return [];
+    var state = readFinanceRecordsState();
+    if (!state.ok) return null;
+    var list = state.value;
     // 给旧记录补稳定 id（按数组下标+时间+分类生成，保证多次 load 一致）
     list.forEach(function(r, i) {
       if (!r.id) r.id = 'f_legacy_' + i + '_' + (r.time || '') + '_' + (r.category || '');
+      if (r.amount != null) r.amount = Number(r.amount);
     });
     return list;
   }
-  function saveRecords(list) {
-    if (_storage) { _storage.saveFinanceRecords(list); return; }
-    localStorage.setItem('finance_records', JSON.stringify(list));
+
+  async function mutateFinanceRecords(mutator) {
+    var ledger = window.MaoMaoWalletLedger;
+    if (!ledger || typeof ledger.runExclusive !== 'function') {
+      return { ok: false, reason: 'module' };
+    }
+    // Manual entries and AI comments share the same finance rows as checkout.
+    // A page-local queue can lose those rows when a second tab is open.
+    if (typeof ledger.supportsCrossTabLock !== 'function' ||
+        !ledger.supportsCrossTabLock()) {
+      return { ok: false, reason: 'cross-tab-lock-unavailable' };
+    }
+    try {
+      return await ledger.runExclusive(function () {
+        // Always re-read under the same wallet lock used by checkouts and receipts.
+        var state = readFinanceRecordsState();
+        if (!state.ok) return { ok: false, reason: state.reason || 'invalid' };
+        var list = state.value;
+        // Preserve the same deterministic IDs used by loadRecords() for legacy rows
+        // so an AI annotation can still locate a pre-ID transaction after re-reading.
+        list.forEach(function (row, index) {
+          if (!row.id) row.id = 'f_legacy_' + index + '_' + (row.time || '') + '_' + (row.category || '');
+        });
+        var result = typeof mutator === 'function' ? mutator(list) : null;
+        if (result && result.abort) return { ok: false, reason: result.abort };
+
+        var serialized = JSON.stringify(list);
+        localStorage.setItem('finance_records', serialized);
+        if (localStorage.getItem('finance_records') !== serialized) {
+          return { ok: false, reason: 'storage' };
+        }
+        var verified = readFinanceRecordsState();
+        if (!verified.ok || JSON.stringify(verified.value) !== serialized) {
+          return { ok: false, reason: 'storage' };
+        }
+        return { ok: true, records: verified.value, result: result };
+      }, {
+        onFallback: function () {
+          showToast('当前浏览器不支持跨页面账本锁，请避免同时修改账本和提交订单');
+        }
+      });
+    } catch (error) {
+      console.warn('[finance] 财务记录保存失败', error);
+      return { ok: false, reason: 'storage' };
+    }
+  }
+
+  function financeMutationError(reason) {
+    if (reason === 'invalid') return '账本数据异常，已暂停写入；原始记录未被修改';
+    if (reason === 'storage') return '账本保存失败，请检查手机存储空间';
+    if (reason === 'module') return '钱包保护模块未加载，请刷新页面后重试';
+    if (reason === 'cross-tab-lock-unavailable') return '当前浏览器不支持跨页面钱包锁，记账与 AI 批注已暂停，未修改账目';
+    return '账本暂不可用，请恢复原始记录后重试';
+  }
+
+  function escapeFinanceText(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
+      return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch];
+    });
+  }
+
+  function renderAfterSalesNote(record) {
+    if (!record || !record.afterSalesRequestId) return '';
+    var requestId = String(record.afterSalesRequestId);
+    var shortId = escapeFinanceText(requestId.slice(-6));
+    var channelLabel = record.afterSalesChannel === 'takeout' ? '外卖' :
+      (record.afterSalesChannel === 'shop' ? '商店' : '订单');
+    var typeLabel = record.afterSalesType === 'cancel' ? '取消申请' : '售后申请';
+    if (record.afterSalesStatus === 'pending_review') {
+      return '<div class="r-after-sales"><strong>' + channelLabel + typeLabel +
+        ' · 待处理</strong><span class="r-after-sales-id">编号 ' + shortId +
+        '</span><div>仍按原支出记账；申请处理前不会自动退款或改动余额。</div></div>';
+    }
+    return '<div class="r-after-sales"><strong>' + channelLabel +
+      '售后记录待核对</strong><span class="r-after-sales-id">编号 ' + shortId +
+      '</span></div>';
   }
 
   function render() {
     const list = loadRecords();
+    const sideActions = document.querySelector('.side-actions');
+    const box = document.getElementById('recordList');
+    if (!list) {
+      document.getElementById('balanceNum').textContent = '—';
+      const ps = document.getElementById('peekStatus');
+      if (ps) ps.textContent = '账本数据异常';
+      if (sideActions) {
+        sideActions.style.pointerEvents = 'none';
+        sideActions.style.opacity = '.45';
+      }
+      box.innerHTML = '<div class="empty">账本数据异常，已暂停新增和批注。原始财务记录未被覆盖，请先恢复本地数据。</div>';
+      return;
+    }
+    if (sideActions) {
+      sideActions.style.pointerEvents = '';
+      sideActions.style.opacity = '';
+    }
     let balance = 0;
     list.forEach(r => { balance += r.type === 'income' ? r.amount : -r.amount; });
     document.getElementById('balanceNum').textContent = '¥' + balance.toFixed(2);
@@ -379,7 +506,6 @@
       ps.textContent = 'Char偷看' + (peekEnabled() ? '开' : '关') + ' · ' + ccCount + '条';
     }
 
-    const box = document.getElementById('recordList');
     if (list.length === 0) {
       box.innerHTML = '<div class="empty">还没有记录，点底部 + 记一笔</div>';
       return;
@@ -388,6 +514,7 @@
       const ccList = Array.isArray(r.charComments) ? r.charComments : [];
       const ccLast = ccList[ccList.length - 1];
       const ccHtml = ccLast ? `<div class="r-char-note"><span class="cc-role">${ccLast.characterName || 'TA'}</span>${String(ccLast.text || '').slice(0, 44)}</div>` : '';
+      const afterSalesHtml = renderAfterSalesNote(r);
       return `
       <div class="record-item">
         <div class="r-icon">${CAT_ICONS[r.category] || CAT_ICONS['其他']}</div>
@@ -395,6 +522,7 @@
           <div class="r-name">${r.category}</div>
           <div class="r-merchant">${r.note || '—'}</div>
           ${ccHtml}
+          ${afterSalesHtml}
         </div>
         <div class="r-right">
           <div class="r-amount">${r.type === 'income' ? '+' : '-'}¥${r.amount.toFixed(2)}</div>
@@ -416,6 +544,10 @@
       el.classList.toggle('active', el.dataset.type === t));
   }
   function openSheet(type) {
+    if (loadRecords() === null) {
+      showToast('账本数据异常，已暂停记账；原始记录未被修改');
+      return;
+    }
     currentType = type; setType(type); renderCats();
     document.getElementById('amountInput').value = '';
     document.getElementById('noteInput').value = '';
@@ -423,15 +555,24 @@
   }
   function closeSheet() { document.getElementById('sheet').classList.remove('show'); }
 
-  function saveRecord() {
+  async function saveRecord() {
     const amt = parseFloat(document.getElementById('amountInput').value);
     if (!amt || amt <= 0) { showToast('请输入金额'); return; }
     const note = document.getElementById('noteInput').value.trim();
     const now = new Date();
     const time = (now.getMonth()+1) + '月' + now.getDate() + '日';
-    const list = loadRecords();
-    list.push({ id: 'f_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,6), amount: amt, type: currentType, category: currentCat, note, time, ts: now.getTime() });
-    saveRecords(list);
+    const record = {
+      id: 'f_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,6),
+      amount: amt, type: currentType, category: currentCat, note, time, ts: now.getTime()
+    };
+    const outcome = await mutateFinanceRecords(function (list) {
+      list.push(record);
+      return { id: record.id };
+    });
+    if (!outcome.ok) {
+      showToast(financeMutationError(outcome.reason));
+      return;
+    }
     closeSheet(); render(); showToast('已记录');
     setTimeout(maybeAutoPeek, 800);
   }
@@ -465,6 +606,7 @@
     const role = peekCurrentRole();
     if (!role) return;
     const list = loadRecords();
+    if (!list) return;
     // 找最近一条：有 id、还没被当前角色批注过
     const target = list.slice().reverse().find(r => {
       if (!r.id) return false;
@@ -477,15 +619,24 @@
     const kind = target.type === 'income' ? '收入' : '支出';
     const system = '你在偷看用户的手机账本。用角色「' + role.name + '」的身份，像在账单旁边随手写一句涂鸦批注。要求：20-50字，语气自然符合人设；支出可以吐槽乱花钱、心疼她省吃俭用、催她好好吃饭；收入可以开心、鼓励。不要加引号或标题，不要复述金额，直接写批注。\n角色设定：' + (setting || '根据角色名字自然回应。');
     const user = '用户一笔账单：\n' + kind + ' ¥' + Number(target.amount).toFixed(2) + '\n分类：' + (target.category || '其他') + '\n备注：' + (target.note || '（无）');
-    PhoneAPI.complete({ system: system, user: user, temperature: 0.85, timeoutMs: 20000 }).then(function(text) {
+    PhoneAPI.complete({ system: system, user: user, temperature: 0.85, timeoutMs: 20000 }).then(async function(text) {
       text = String(text || '').trim().replace(/^["「『]+|["」』]+$/g, '').slice(0, 120);
       if (!text) return;
-      const all = loadRecords();
-      const live = all.find(r => r.id === target.id);
-      if (!live) return;
-      if (!Array.isArray(live.charComments)) live.charComments = [];
-      live.charComments.push({ id: 'peek_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,6), characterId: role.id, characterName: role.name, text: text, createdAt: new Date().toISOString(), auto: true });
-      saveRecords(all);
+      const outcome = await mutateFinanceRecords(function (all) {
+        const live = all.find(r => r.id === target.id);
+        if (!live) return { abort: 'missing' };
+        if (!Array.isArray(live.charComments)) live.charComments = [];
+        live.charComments.push({
+          id: 'peek_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,6),
+          characterId: role.id, characterName: role.name, text: text,
+          createdAt: new Date().toISOString(), auto: true
+        });
+        return { id: live.id };
+      });
+      if (!outcome.ok) {
+        if (outcome.reason !== 'missing') showToast(financeMutationError(outcome.reason));
+        return;
+      }
       render();
       console.log('[Char Peek] 已在账单旁涂鸦:', text);
     }).catch(function(err) {

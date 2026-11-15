@@ -391,10 +391,12 @@ test('封面：两套独立封面都存在时，编辑 myProfile.cover 不改变
 /* ---------- 名片：真实执行 chat-detail.html 的历史读写函数 ---------- */
 
 function loadHistoryFunctions(storageSlots) {
+  const localStorage = createLocalStorage();
   const sandbox = {
     console,
-    localStorage: createLocalStorage(),
+    localStorage,
     currentCharacter: { id: 'roleA' },
+    _chatHistoryUnreadable: false,
     removeLegacyStickerCaptions: (list) => list,
     getInitialMessages: () => [],
     _resetWarnCooldown() {},
@@ -406,7 +408,9 @@ function loadHistoryFunctions(storageSlots) {
         return Array.isArray(slot) ? slot.slice() : [];
       },
       saveChatHistory(contactId, list) {
-        storageSlots[contactId] = JSON.parse(JSON.stringify(list));
+        const copy = JSON.parse(JSON.stringify(list));
+        localStorage.setItem('chat_history_' + contactId, JSON.stringify(copy));
+        storageSlots[contactId] = copy;
         return true;
       }
     }
@@ -439,13 +443,14 @@ test('名片：卡片快照只写入当前会话历史，不在其他会话出�
   const listA = sandbox.loadMessages();
   listA.push(card);
   assert.equal(sandbox.saveMessages(listA), true);
-  assert.deepEqual(sandbox.loadMessages(), [card]);
+  assert.deepEqual(JSON.parse(JSON.stringify(sandbox.loadMessages())), [card]);
   assert.match(JSON.stringify(slots.roleA), /卡片甲/);
 
   sandbox.currentCharacter = { id: 'roleB' };
-  assert.deepEqual(sandbox.loadMessages(), []);
+  assert.deepEqual(JSON.parse(JSON.stringify(sandbox.loadMessages())), []);
   assert.equal(JSON.stringify(slots.roleB || []).includes('卡片甲'), false);
-  assert.equal(sandbox.localStorage.getItem('chat_history_roleB'), null);
+  assert.deepEqual(JSON.parse(sandbox.localStorage.getItem('chat_history_roleB')), []);
+  assert.equal(JSON.stringify(JSON.parse(sandbox.localStorage.getItem('chat_history_roleB'))).includes('卡片甲'), false);
 });
 
 test('名片：刷新后仍只从所属会话读回，不与其他角色共享存储槽', () => {
@@ -752,7 +757,7 @@ test('亲属卡通知：失败状态不会被普通卡片成功提示覆盖', ()
 
 test('商店和外卖：交易成功但聊天通知失败时显示合并后的明确状态', () => {
   assert.match(shopPageSource, /var chatNoticeFailed = false/);
-  assert.match(shopPageSource, /订单已完成，但聊天通知未保存/);
+  assert.match(shopPageSource, /订单已完成，但聊天通知(?:没有保存|未保存)/, '支付成功与聊天通知失败必须分别告知');
   assert.match(takeoutPageSource, /var chatNoticeFailed = false/);
   assert.match(takeoutPageSource, /下单成功，但聊天通知未保存/);
   assert.match(takeoutPageSource, /if \(!forwarded\)[\s\S]*?return;[\s\S]*?toast\('已转发给 '/);
