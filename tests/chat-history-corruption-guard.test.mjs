@@ -181,3 +181,157 @@ test('normal per-role write succeeds with the real readback helper', () => {
   assert.equal(JSON.parse(chat.bytes())[0].mid, 'm-1');
   assert.equal(chat.writes(), 1);
 });
+
+const storageSource = fs.readFileSync('shared/js/phone/phone_storage.js', 'utf8');
+const forwardStart = detail.indexOf('        async function forwardMessage(');
+const forwardEnd = detail.indexOf('        // 点 AI 头像', forwardStart);
+assert.ok(forwardStart >= 0 && forwardEnd > forwardStart, 'real forwarding handler is required');
+
+function forwardFixture({ primary, legacy, getItem, setItem, addRef, removeRef } = {}) {
+  const targetKey = 'chat_history_role-B';
+  const sourceKey = 'chat_history_role-A';
+  const sourceBytes = '[{"mid":"source","text":"keep the source"}]';
+  const stored = new Map([[sourceKey, sourceBytes]]);
+  if (primary !== undefined) stored.set(targetKey, primary);
+  if (legacy !== undefined) stored.set('phone_data_v2', JSON.stringify(legacy));
+  const toasts = [];
+  const removed = [];
+  let nextMid = 0;
+  const sandbox = {
+    localStorage: {
+      getItem: key => getItem ? getItem(key, stored) : stored.get(key) ?? null,
+      setItem: (key, value) => setItem ? setItem(key, value, stored) : stored.set(key, value)
+    },
+    console: { warn: () => {} },
+    aliasRoleId: 'role-A',
+    chatTitle: { textContent: 'Source alias' },
+    contactName: 'Source',
+    plainTextOf: message => message.text,
+    ensureMid: message => { if (!message.mid) message.mid = 'forward-' + ++nextMid; },
+    showToast: text => toasts.push(text),
+    _chatImageMediaRepo: {
+      addRef: addRef ? (...args) => addRef(stored, ...args) : async () => ({ ok: true }),
+      removeRef: removeRef || (async (...args) => { removed.push(args); })
+    }
+  };
+  sandbox.window = sandbox;
+  vm.createContext(sandbox);
+  vm.runInContext(storageSource, sandbox);
+  sandbox._storage = sandbox.PhoneStorage;
+  vm.runInContext(detail.slice(forwardStart, forwardEnd), sandbox);
+  return {
+    forward: (message = { text: 'hello' }) =>
+      sandbox.forwardMessage({ message, count: 1, text: message.text }, 'role-B', 'Target'),
+    primary: () => stored.get(targetKey),
+    legacy: () => stored.get('phone_data_v2'),
+    sourceUnchanged: () => assert.equal(stored.get(sourceKey), sourceBytes),
+    toasts,
+    removed
+  };
+}
+
+test('forwarding refuses corrupt or non-array primary history even with a valid legacy duplicate', async () => {
+  const legacy = { 'role-B': { chat: { history: [{ text: 'older copy' }] } } };
+  for (const primary of ['{broken', '{"text":"wrong shape"}', '']) {
+    const fixture = forwardFixture({ primary, legacy });
+    await fixture.forward();
+    assert.equal(fixture.primary(), primary);
+    assert.equal(fixture.legacy(), JSON.stringify(legacy));
+    assert.match(fixture.toasts.at(-1), /保护原始数据/);
+    fixture.sourceUnchanged();
+  }
+});
+
+test('forwarding appends to legacy only when the primary key is missing', async () => {
+  const legacy = {
+    'role-A': { chat: { history: [{ text: 'other role' }] } },
+    'role-B': { chat: { history: [{ text: 'older message' }] }, notes: { text: 'keep' } }
+  };
+  for (const primary of [undefined, '[]']) {
+    const fixture = forwardFixture({ primary, legacy });
+    await fixture.forward();
+    assert.deepEqual(JSON.parse(fixture.primary()).map(message => message.text),
+      primary === undefined ? ['older message', 'hello'] : ['hello']);
+    assert.deepEqual(JSON.parse(fixture.primary()).at(-1).forwardFrom,
+      { id: 'role-A', name: 'Source alias' });
+    assert.deepEqual(JSON.parse(fixture.legacy()), {
+      'role-A': legacy['role-A'], 'role-B': { notes: legacy['role-B'].notes }
+    });
+    assert.match(fixture.toasts.at(-1), /已转发/);
+    fixture.sourceUnchanged();
+  }
+  const malformed = { 'role-B': { chat: { history: 'unreadable history' } } };
+  const fixture = forwardFixture({ legacy: malformed });
+  await fixture.forward();
+  assert.equal(fixture.primary(), undefined);
+  assert.equal(fixture.legacy(), JSON.stringify(malformed));
+  assert.match(fixture.toasts.at(-1), /保护原始数据/);
+});
+
+test('forwarding refuses unreadable data and rolls back a linked image on quota or a dropped write', async () => {
+  const unreadable = forwardFixture({
+    primary: '[]',
+    getItem() { throw new Error('storage is unavailable'); }
+  });
+  await unreadable.forward();
+  assert.equal(unreadable.primary(), '[]');
+  assert.match(unreadable.toasts.at(-1), /存储暂不可用/);
+  for (const drop of [false, true]) {
+    const fixture = forwardFixture({
+      primary: '[]',
+      setItem() {
+        if (!drop) throw new DOMException('full', 'QuotaExceededError');
+      }
+    });
+    await fixture.forward({ type: 'image', assetId: 'test-asset', text: '' });
+    assert.equal(fixture.primary(), '[]');
+    assert.deepEqual(fixture.removed, [['test-asset', 'chat-message', 'forward-1']]);
+    assert.match(fixture.toasts.at(-1), /转发失败|转发未完成/);
+    fixture.sourceUnchanged();
+  }
+});
+
+test('image forwarding reads history after linking and keeps a possibly persisted image when readback throws', async () => {
+  const original = [{ mid: 'existing', text: 'keep' }];
+  const concurrent = { mid: 'new', text: 'arrived while linking' };
+  const fixture = forwardFixture({
+    primary: JSON.stringify(original),
+    addRef: async stored => {
+      stored.set('chat_history_role-B', JSON.stringify([...original, concurrent]));
+      return { ok: true };
+    }
+  });
+  await fixture.forward({ type: 'image', assetId: 'test-asset', text: '' });
+  assert.deepEqual(JSON.parse(fixture.primary()).map(message => message.mid), ['existing', 'new', 'forward-1']);
+  assert.equal(fixture.removed.length, 0);
+  assert.match(fixture.toasts.at(-1), /已转发/);
+
+  const corruptedWhileLinking = forwardFixture({
+    primary: JSON.stringify(original),
+    addRef: async stored => {
+      stored.set('chat_history_role-B', '{changed');
+      return { ok: true };
+    }
+  });
+  await corruptedWhileLinking.forward({ type: 'image', assetId: 'test-asset', text: '' });
+  assert.equal(corruptedWhileLinking.primary(), '{changed');
+  assert.deepEqual(corruptedWhileLinking.removed, [['test-asset', 'chat-message', 'forward-1']]);
+
+  let hasWritten = false;
+  const uncertain = forwardFixture({
+    primary: JSON.stringify(original),
+    getItem(key, stored) {
+      if (hasWritten && key === 'chat_history_role-B') throw new Error('readback unavailable');
+      return stored.get(key) ?? null;
+    },
+    setItem(key, value, stored) {
+      stored.set(key, value);
+      if (key === 'chat_history_role-B') hasWritten = true;
+    }
+  });
+  await uncertain.forward({ type: 'image', assetId: 'test-asset', text: '' });
+  assert.equal(JSON.parse(uncertain.primary()).at(-1).assetId, 'test-asset');
+  assert.equal(uncertain.removed.length, 0);
+  assert.match(uncertain.toasts.at(-1), /无法确认/);
+  uncertain.sourceUnchanged();
+});
