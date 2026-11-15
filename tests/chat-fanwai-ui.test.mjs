@@ -79,6 +79,7 @@ function mount(options = {}) {
   const grid = new Node('div');
   const shell = new Node('div');
   let requestCount = 0;
+  let localStorageReadCount = 0;
   const prompts = [];
   const notices = [];
   let failAt = options.failAt || 0;
@@ -108,6 +109,7 @@ function mount(options = {}) {
       }
     },
     localStorage: { getItem: key => {
+      localStorageReadCount++;
       if (key === 'ai_custom_characters') return JSON.stringify([{ id: 'role-1', name: '测试角色', persona: '短句风格', memory: '旧回忆：曾在海边看过日落' }]);
       if (key === 'myProfile') return JSON.stringify({ nickname: '测试用户' });
       return null;
@@ -133,6 +135,7 @@ function mount(options = {}) {
   return {
     grid, shell,
     get requests() { return requestCount; },
+    get storageReads() { return localStorageReadCount; },
     get prompts() { return prompts; },
     get notices() { return notices; },
     get registry() { return window.MAOMAOFanwai; },
@@ -774,6 +777,8 @@ test('malformed authenticated meta cannot silently use temporary mode or expose 
       'invalid account meta must fail closed: ' + accountId);
     assert.equal(app.registry, undefined,
       'invalid account meta must not create plugin access: ' + accountId);
+    assert.equal(app.storageReads, 0,
+      'invalid authenticated meta must not read the shared character store: ' + accountId);
   }
   const localPreview = mount();
   assert.ok(localPreview.grid.querySelector('[data-feat="fanwai"]'),
