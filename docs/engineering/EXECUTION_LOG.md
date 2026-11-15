@@ -117,4 +117,5 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 修改：index.html 桌面入口；worldbook/characters/characters.html / js/characters-manager.js 候选进入原编辑器、导出 MAOMAO JSON 与仅支持原生 JSON 导入。
 - 不修改正式角色/聊天/账户数据库记录；未触碰 Cloudflare 正式部署与管理员身份；未合并 main。
 - 代码已提交；10 项合同测试已写，当前执行环境无法直接运行本仓库 Node/Vite/真机浏览器，测试、npm run build、UI 实际效果均为 NOT VERIFIED。不得把提交代码等同于验收通过。
+- 后续同分支新增原有 PhoneAPI.complete 的按需 AI 人设扩写按钮、付费确认与草稿保护、第三方 JSON 伪装 TXT 拦截和超长字段拒绝（避免静默裁剪）。真实 API 返回与费用尚未验证。
 - 后续：优先真实浏览器测试滑动和草稿恢复、修复实际失败、建设显式 AI 人设完善按钮（用户确认时调用 API）、扩展人物关系/稀有卡；通过验收后再申请合并。
