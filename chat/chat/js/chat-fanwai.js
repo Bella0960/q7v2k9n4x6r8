@@ -505,29 +505,36 @@
 
   async function erase(episode) {
     if (!episode || episode.accountId !== scope || episode.characterId !== roleId) return false;
-    var database = await db();
-    if (!database) {
-      if (canPersist) return false;
-      memory.delete(episode.id);
-      return true;
-    }
-    return new Promise(function (resolve) {
-      var settled = false;
-      function finish(ok) {
-        if (settled) return;
-        settled = true;
-        if (ok) memory.delete(episode.id);
-        else persistenceFailed = true;
-        resolve(ok);
+    // 删除与生成保存必须共用一条写队列。否则暂停后立即删除时，
+    // 先前尚未提交的 put 可能晚于 delete 完成，把已经删除的番外重新写回。
+    var remove = async function () {
+      var database = await db();
+      if (!database) {
+        if (canPersist) return false;
+        memory.delete(episode.id);
+        return true;
       }
-      try {
-        var transaction = database.transaction('episodes', 'readwrite');
-        transaction.oncomplete = function () { finish(true); };
-        transaction.onerror = function () { finish(false); };
-        transaction.onabort = function () { finish(false); };
-        transaction.objectStore('episodes').delete(episode.id);
-      } catch (error) { finish(false); }
-    });
+      return new Promise(function (resolve) {
+        var settled = false;
+        function finish(ok) {
+          if (settled) return;
+          settled = true;
+          if (ok) memory.delete(episode.id);
+          else persistenceFailed = true;
+          resolve(ok);
+        }
+        try {
+          var transaction = database.transaction('episodes', 'readwrite');
+          transaction.oncomplete = function () { finish(true); };
+          transaction.onerror = function () { finish(false); };
+          transaction.onabort = function () { finish(false); };
+          transaction.objectStore('episodes').delete(episode.id);
+        } catch (error) { finish(false); }
+      });
+    };
+    var completion = episodeWriteQueue.then(remove, remove);
+    episodeWriteQueue = completion.then(function () {}, function () {});
+    return completion;
   }
 
   function roleInfo() {
