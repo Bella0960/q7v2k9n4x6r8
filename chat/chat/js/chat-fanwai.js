@@ -1065,6 +1065,15 @@
 
   async function close() {
     if (!state.opened) return;
+    if (state.deleting) {
+      // 删除的是已存档的篇目。允许用户直接收起，删除事务照常完成；
+      // 失败时存档仍在数据库中，绝不能由异步回调把已关闭面板重新打开。
+      state.opened = false;
+      state.viewSerial++;
+      state.branchSource = null;
+      state.root.hidden = true;
+      return;
+    }
     // 立刻让旧创建/生成视图失效；保存仍在进行时不隐藏当前可复制的草稿。
     var closingView = ++state.viewSerial;
     var save;
