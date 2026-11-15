@@ -37,7 +37,13 @@ try {
     const page = await context.newPage();
     const jsErrors = [];
     page.on('pageerror', error => jsErrors.push(String(error)));
-    await page.addInitScript(() => { localStorage.setItem('ai_custom_characters', JSON.stringify([{id:'existing',name:'沈知序',persona:'既有人物，不可修改'}])); });
+    await page.addInitScript(() => {
+      // 仅第一次注入测试资料，页面跳转或刷新不得重置真实保存结果。
+      if (localStorage.getItem('maomao_encounter_test_seeded') !== '1') {
+        localStorage.setItem('ai_custom_characters', JSON.stringify([{id:'existing',name:'沈知序',persona:'既有人物，不可修改'}]));
+        localStorage.setItem('maomao_encounter_test_seeded', '1');
+      }
+    });
     const attemptedApi = [];
     page.on('request', request => { if (request.url().includes('/chat/completions')) attemptedApi.push(request.url()); });
     await page.goto(base + '/encounter/encounter.html', {waitUntil:'load'});
@@ -95,6 +101,14 @@ try {
       assert.equal(roles.find(r=>r.id==='existing').persona,'既有人物，不可修改');
       const inserted=roles.find(r=>r.name===name);
       assert.ok(inserted?.encounterOrigin?.sourceCandidateId,'正式角色应保留结构化来源');
+      // 再打开角色库，验证不是仅内存里显示成功。
+      await page.reload({waitUntil:'load'});
+      const afterReload = await page.evaluate(() => JSON.parse(localStorage.getItem('ai_custom_characters')));
+      assert.ok(afterReload.some(r=>r.id===inserted.id),'刷新后正式角色仍应存在');
+      await page.locator('#roleListContainer .role-slim-bar[data-id="'+inserted.id+'"]').click();
+      await page.locator('#profileContent').waitFor({state:'visible'});
+      // 从档案页重新打开编辑器，以便检查 JSON 导出。
+      await page.locator('[data-profile-action="edit"]').first().click();
       assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('maomao_encounter_candidates_v1')).length),0,'正式保存成功后清理候选');
       const downloadEvent=page.waitForEvent('download');
       await page.locator('#btnExportRole').click();
