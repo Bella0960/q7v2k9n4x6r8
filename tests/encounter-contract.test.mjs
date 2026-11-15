@@ -14,6 +14,8 @@ const backupRegistrySource = fs.readFileSync(new URL('../settings/js/backup-modu
 function harness(seed = {}) {
   const map = new Map(Object.entries(seed));
   const localStorage = {
+    get length(){return map.size;},
+    key(index){return [...map.keys()][index]??null;},
     getItem(key) { return map.has(key) ? map.get(key) : null; },
     setItem(key, value) { map.set(key, String(value)); },
     removeItem(key) { map.delete(key); }
@@ -65,6 +67,7 @@ test('收藏时再次与正式角色库查重，绝不覆盖现有姓名', () =>
   const saved = h.api.saveCandidate(person);
   assert.equal(saved.ok,false);
   assert.equal(h.localStorage.getItem('maomao_encounter_candidates_v1'),null);
+  assert.equal([...h.map.keys()].some(k=>k.startsWith('maomao_encounter_card_v2:')),false);
 });
 
 test('损坏的候选收藏保持原文，不得静默覆盖', () => {
@@ -260,6 +263,8 @@ test('正式账号作用域就绪时复用原本隔离的 storage，多个账号
   function makeAccount(accountId) {
     const prefix='__mao_account_v1__'+encodeURIComponent(accountId)+'__';
     const localStorage={
+      get length(){return [...backing.keys()].filter(k=>k.startsWith(prefix)).length;},
+      key(index){return [...backing.keys()].filter(k=>k.startsWith(prefix)).map(k=>k.slice(prefix.length))[index]??null;},
       getItem(key){return backing.get(prefix+key)??null;},
       setItem(key,value){backing.set(prefix+key,String(value));},
       removeItem(key){backing.delete(prefix+key);}
