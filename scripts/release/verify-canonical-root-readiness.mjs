@@ -18,6 +18,7 @@ export const TRIAL_EDGE_WORKER = 'curly-dream-324c';
 export const QA_WORKER = 'maomao-aw-qa-20261114';
 // Pin actual, inspected production and trial namespaces; no implicit migration.
 export const ROOT_NAMESPACE_ID = 'de73581323904befa8640be3f63db9b0';
+export const ROOT_OBJECT_ID = 'd0d619b13394b64fd111b412a9deefb6a8b5c37e57e175ff586681e961655ab0';
 export const QA_NAMESPACE_ID = '4a24ce58079f468c87c2f75e107c4d1c';
 export const FOUNDER_ID = /^MAO-[A-Z0-9]{12,24}$/;
 const ACCOUNT_ID = /^[0-9a-f]{32}$/;
@@ -32,11 +33,13 @@ function oneDomain(domains, hostname, service) {
     records[0]?.environment==='production' && records[0]?.service===service;
 }
 const validCount=n=>Number.isSafeInteger(n)&&n>=0;
+const validTime=n=>Number.isSafeInteger(n)&&n>0;
+const validObjectId=id=>typeof id==='string'&&/^[0-9a-f]{64}$/.test(id);
 
 export function auditCanonicalRootReadiness(input) {
   const blocked=[];
   const { domains, rootVersion, trialVersion, qaVersion, rootCounts, qaCounts,
-    expectedFounderId, backupReceipt, restoreReceipt, status }=input||{};
+    expectedFounderId, checkpointReceipt, backupReceipt, restoreReceipt, status }=input||{};
   if(!FOUNDER_ID.test(expectedFounderId||''))blocked.push('EXPECTED_FOUNDER_UNAVAILABLE');
   if(!oneDomain(domains,ROOT_HOST,ROOT_WORKER))blocked.push('ROOT_DOMAIN_NOT_CANONICAL');
   if(!oneDomain(domains,TRIAL_HOST,TRIAL_EDGE_WORKER))blocked.push('TRIAL_DOMAIN_NOT_ISOLATED');
@@ -85,14 +88,30 @@ export function auditCanonicalRootReadiness(input) {
       status.body.initialized!==true || status.body.configured!==true)
     blocked.push('ROOT_SAME_ORIGIN_ACCOUNT_API_NOT_READY');
 
-  // A failed or absent private checkpoint is never a backup. The rehearsal
-  // receipt must come from an authorized, separately audited operator, not
-  // from a browser, repo file, workflow variable or developer assertion.
-  if(backupReceipt?.ok!==true || backupReceipt?.code!=='checkpoint_recorded' ||
-      !Number.isSafeInteger(backupReceipt?.recordedAt))
+  if(checkpointReceipt?.ok!==true || checkpointReceipt?.code!=='checkpoint_recorded' ||
+      !validTime(checkpointReceipt?.recordedAt))
     blocked.push('LIVE_PITR_CHECKPOINT_NOT_VERIFIED');
-  if(restoreReceipt?.ok!==true || restoreReceipt?.code!=='isolated_restore_verified' ||
-      !Number.isSafeInteger(restoreReceipt?.verifiedAt))
+
+  const backupVerified=backupReceipt?.ok===true &&
+    backupReceipt.code==='encrypted_sql_kv_backup_verified' &&
+    backupReceipt.sourceNamespaceId===ROOT_NAMESPACE_ID &&
+    backupReceipt.sourceObjectId===ROOT_OBJECT_ID &&
+    validObjectId(backupReceipt.ciphertextSha256) &&
+    validTime(backupReceipt.createdAt);
+  if(!backupVerified)blocked.push('INDEPENDENT_ENCRYPTED_BACKUP_NOT_VERIFIED');
+
+  // The private restore receipt must identify the exact encrypted artifact
+  // and an isolated target. The operator verifies schema, migrations, account
+  // IDs, verifiers, sessions, and KV before emitting this receipt.
+  if(!backupVerified || restoreReceipt?.ok!==true ||
+      restoreReceipt.code!=='isolated_restore_verified' ||
+      restoreReceipt.ciphertextSha256!==backupReceipt.ciphertextSha256 ||
+      !ACCOUNT_ID.test(restoreReceipt.targetNamespaceId||'') ||
+      restoreReceipt.targetNamespaceId===ROOT_NAMESPACE_ID ||
+      !validObjectId(restoreReceipt.targetObjectId) ||
+      restoreReceipt.targetObjectId===ROOT_OBJECT_ID ||
+      !validTime(restoreReceipt.verifiedAt) ||
+      restoreReceipt.verifiedAt<backupReceipt.createdAt)
     blocked.push('INDEPENDENT_RECOVERY_REHEARSAL_NOT_VERIFIED');
   return Object.freeze({ready:blocked.length===0,blockers:Object.freeze(blocked)});
 }
@@ -164,12 +183,13 @@ export async function verifyOfficialRootReadiness(env=process.env) {
   if(!ACCOUNT_ID.test(accountId)||!token||!FOUNDER_ID.test(expectedFounderId)||
       origin!=='https://mao520.com')throw Error('OFFICIAL_RELEASE_INPUTS_INVALID');
   const base='https://api.cloudflare.com/client/v4/accounts/'+accountId;
-  const [domainsResponse,rootVersion,trialVersion,qaVersion,backupReceipt,restoreReceipt]=await Promise.all([
+  const [domainsResponse,rootVersion,trialVersion,qaVersion,checkpointReceipt,backupReceipt,restoreReceipt]=await Promise.all([
     getJSON(base+'/workers/domains',token),
     deployedVersion(base,ROOT_WORKER,token),
     deployedVersion(base,TRIAL_EDGE_WORKER,token),
     deployedVersion(base,QA_WORKER,token),
     privateAudit(base,token,'founder-checkpoint:success'),
+    privateAudit(base,token,'founder-recovery:encrypted-backup-success'),
     privateAudit(base,token,'founder-recovery:isolated-restore-success')
   ]);
   const rootNs=binding(rootVersion,'CLOUD_DB')?.namespace_id;
@@ -186,7 +206,7 @@ export async function verifyOfficialRootReadiness(env=process.env) {
     await statusResp.json().catch(()=>null):null};
   const result=auditCanonicalRootReadiness({
     domains:domainsResponse.result,rootVersion,trialVersion,qaVersion,
-    rootCounts,qaCounts,expectedFounderId,backupReceipt,restoreReceipt,status
+    rootCounts,qaCounts,expectedFounderId,checkpointReceipt,backupReceipt,restoreReceipt,status
   });
   if(!result.ready)throw Error('OFFICIAL_ROOT_RELEASE_BLOCKED:'+result.blockers.join(','));
   console.log('PASS: original paid root account authority; isolated QA and independently recoverable 001');

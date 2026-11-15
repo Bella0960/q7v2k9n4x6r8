@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {auditCanonicalRootReadiness, ROOT_HOST, ROOT_WORKER,
-  TRIAL_HOST, TRIAL_EDGE_WORKER, QA_WORKER, ROOT_NAMESPACE_ID, QA_NAMESPACE_ID
+  TRIAL_HOST, TRIAL_EDGE_WORKER, QA_WORKER, ROOT_NAMESPACE_ID, ROOT_OBJECT_ID, QA_NAMESPACE_ID
 } from '../scripts/release/verify-canonical-root-readiness.mjs';
 
 const chosen='MAO-SYNTHFOUNDER001';
@@ -32,8 +32,11 @@ function fixtures() {
   rootCounts:{accounts:2,admins:1,members:1,chosenFounder:1,verifiers:2,sessions:3,orphanSessions:0},
   qaCounts:{chosenFounder:1},
   status:{httpStatus:200,body:{ok:true,initialized:true,configured:true}},
-  backupReceipt:{ok:true,code:'checkpoint_recorded',recordedAt:1794651180341},
-  restoreReceipt:{ok:true,code:'isolated_restore_verified',verifiedAt:1794651180341}
+  checkpointReceipt:{ok:true,code:'checkpoint_recorded',recordedAt:1794651180342},
+  backupReceipt:{ok:true,code:'encrypted_sql_kv_backup_verified',createdAt:1794651180340,
+    sourceNamespaceId:liveNs,sourceObjectId:ROOT_OBJECT_ID,ciphertextSha256:'a'.repeat(64)},
+  restoreReceipt:{ok:true,code:'isolated_restore_verified',verifiedAt:1794651180341,
+    targetNamespaceId:'b'.repeat(32),targetObjectId:'b'.repeat(64),ciphertextSha256:'a'.repeat(64)}
  };
 }
 test('canonical root readiness is a strict all-evidence predicate, not a deploy command',()=>{
@@ -75,11 +78,34 @@ test('existing users, verifiers and session integrity must all survive',()=>{
  assert.ok(auditCanonicalRootReadiness(y).blockers.includes('ROOT_ACCOUNT_INVENTORY_UNVERIFIED'));
 });
 test('missing PITR success and independent restore must always block release',()=>{
- const x=fixtures();x.backupReceipt={ok:false,code:'invalid_acknowledgement'};
+ const x=fixtures();x.checkpointReceipt={ok:false,code:'invalid_acknowledgement'};
  x.restoreReceipt=null;
  const a=auditCanonicalRootReadiness(x);
  assert.ok(a.blockers.includes('LIVE_PITR_CHECKPOINT_NOT_VERIFIED'));
  assert.ok(a.blockers.includes('INDEPENDENT_RECOVERY_REHEARSAL_NOT_VERIFIED'));
+});
+test('a PITR bookmark and restore status cannot substitute for a production SQL and KV backup',()=>{
+ for(const backupReceipt of [null,
+   {...fixtures().backupReceipt,sourceNamespaceId:qaNs},
+   {...fixtures().backupReceipt,sourceObjectId:'c'.repeat(64)}
+ ]) {
+  const result=auditCanonicalRootReadiness({...fixtures(),backupReceipt});
+  assert.ok(result.blockers.includes('INDEPENDENT_ENCRYPTED_BACKUP_NOT_VERIFIED'));
+  assert.ok(result.blockers.includes('INDEPENDENT_RECOVERY_REHEARSAL_NOT_VERIFIED'));
+ }
+});
+test('restore proof must match the encrypted artifact and refer to an isolated target',()=>{
+ for(const fields of [
+   {ciphertextSha256:'c'.repeat(64)},
+   {targetNamespaceId:ROOT_NAMESPACE_ID},
+   {targetObjectId:ROOT_OBJECT_ID},
+   {verifiedAt:fixtures().backupReceipt.createdAt-1}
+ ]) {
+  const input=fixtures();
+  Object.assign(input.restoreReceipt,fields);
+  assert.deepEqual(auditCanonicalRootReadiness(input).blockers,
+    ['INDEPENDENT_RECOVERY_REHEARSAL_NOT_VERIFIED']);
+ }
 });
 test('wrong hostname, missing private HTML protections or public login 404 fail closed',()=>{
  const x=fixtures();x.status.httpStatus=404;
