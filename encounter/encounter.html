@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f6f6f5">
+<title>邂逅 · 人物卡</title>
+<script src="../shared/js/font-loader.js"></script>
+<style>
+:root{color-scheme:light;--ink:#222321;--muted:#898b88;--paper:#f6f6f5;--card:#fff;--stroke:#e7e7e4;--serif:Georgia,"Songti SC","Noto Serif CJK SC",serif}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;color:var(--ink);background:#e9e9e7}button,select{font:inherit}button{cursor:pointer}button:focus-visible,[role=button]:focus-visible{outline:2px solid #50514e;outline-offset:4px}
+.stage{min-height:100dvh;display:grid;place-items:center;padding:12px}
+.phone{width:min(402px,100%);height:min(860px,calc(100dvh - 24px));min-height:570px;background:var(--paper);border:1px solid #e3e3e1;border-radius:32px;overflow:hidden;position:relative;display:flex;flex-direction:column;isolation:isolate}
+.status-bar{height:31px;padding:13px 28px 0;display:flex;align-items:center;justify-content:space-between;color:#353631;font-size:11px;letter-spacing:.05em;flex-shrink:0}
+.status-marks{display:flex;gap:7px;align-items:center}.cell{height:10px;display:flex;gap:2px;align-items:flex-end}.cell i{width:2px;background:#666;height:4px}.cell i:nth-child(2){height:6px}.cell i:nth-child(3){height:8px}.cell i:nth-child(4){height:10px}.battery{width:19px;height:10px;border:1px solid #777;border-radius:3px;padding:1px;position:relative}.battery:after{content:"";width:2px;height:4px;background:#777;position:absolute;right:-4px;top:2px;border-radius:0 2px 2px 0}.battery b{display:block;background:#777;height:100%;width:72%;border-radius:1px}
+.header{height:77px;display:flex;align-items:center;justify-content:space-between;padding:10px 24px 0;flex-shrink:0}.back{width:42px;height:42px;display:grid;place-items:center;color:var(--ink);text-decoration:none}.back svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.4}.page-title{font-family:var(--serif);font-weight:400;letter-spacing:.12em;font-size:21px;margin:0}.menu-button{border:0;background:transparent;color:var(--ink);font-size:21px;letter-spacing:2px;width:42px;height:42px;padding:0 0 9px}
+.intro{padding:9px 29px 0;display:flex;justify-content:space-between;align-items:flex-end;flex-shrink:0}.intro-copy{font-size:11px;letter-spacing:.15em;color:var(--muted)}.intro-sub{font-family:var(--serif);font-style:italic;font-size:14px;color:#757672;margin-top:5px}.collection-link{border:0;background:transparent;font-size:11px;color:#646662;padding:8px 0;white-space:nowrap;letter-spacing:.06em}
+.deck-wrap{position:relative;flex:1;min-height:0;margin:15px 0 8px;display:flex;justify-content:center;align-items:center;padding:5px 28px;touch-action:pan-y}
+.back-card{position:absolute;top:3%;bottom:3%;left:40px;right:40px;background:#eeefed;border-radius:22px;border:1px solid #e6e7e4;pointer-events:none;transform:translate(16px,6px) rotate(2.3deg);opacity:.86}
+.back-card.second{transform:translate(-16px,7px) rotate(-2.1deg);background:#e7e7e5;opacity:.68}
+.card{position:relative;width:100%;height:100%;max-height:525px;background:var(--card);border:1px solid #ecece9;border-radius:22px;box-shadow:0 12px 32px rgba(22,22,22,.035);padding:25px 27px 25px;display:flex;flex-direction:column;overflow:hidden;touch-action:pan-y;user-select:none;cursor:grab;will-change:transform,opacity;transform:translate3d(0,0,0);transition:box-shadow .2s}
+.card.dragging{transition:none;cursor:grabbing;box-shadow:0 19px 35px rgba(22,22,22,.08)}.card.moving{transition:transform .26s cubic-bezier(.2,.7,.22,1),opacity .25s}
+.card-top{display:flex;justify-content:space-between;align-items:center;color:#939590;font-size:10px;letter-spacing:.12em;line-height:1.4}.card-number{font-family:Georgia,serif;font-size:13px;color:#666865}
+.portrait{flex:1;min-height:135px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative}
+.portrait:before{content:"";position:absolute;width:142px;height:142px;background:#f3f3f1;border-radius:50%;filter:blur(22px);opacity:.7}
+.ring{display:block;width:116px;height:116px;position:relative;flex-shrink:0;border:17px solid #cbccca;border-radius:50%;transform:rotate(-25deg);box-shadow:inset 0 0 0 1px rgba(0,0,0,.01)}.ring:after{content:"";position:absolute;width:40px;height:40px;top:-28px;right:-27px;background:#fff;border-radius:50%;transform:rotate(15deg)}
+.portrait-caption{font-family:var(--serif);font-size:10px;letter-spacing:.21em;margin-top:27px;color:#a0a19d;font-style:italic}
+.object-icon{width:110px;height:110px;display:grid;place-items:center;border-radius:50%;border:1px solid #d9dad6;color:#878985;font-family:var(--serif);font-size:39px;font-weight:400;position:relative}.object-icon:before{content:"";height:32px;width:32px;border:1px solid #c2c3bf;position:absolute;transform:rotate(26deg);border-radius:4px}.object-icon span{font-size:0}
+.name{font-family:var(--serif);font-size:33px;letter-spacing:.055em;font-weight:400;line-height:1.3;margin:3px 0 8px;word-break:break-word}.hint{color:#777976;font-size:12px;letter-spacing:.02em;margin:0 0 17px}.tags{display:flex;gap:7px;flex-wrap:wrap;align-items:center}.tag{color:#777a76;font-size:10px;padding:6px 9px;background:#f4f4f2;border-radius:9px;letter-spacing:.035em}.quote{font-size:12px;line-height:1.85;color:#646662;min-height:45px;margin:18px 0 12px;white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.card-footer{padding-top:13px;border-top:1px solid #eeeeea;display:flex;align-items:center;justify-content:space-between;color:#9a9b97;font-size:10px;letter-spacing:.08em}.card-footer .look{color:#555753}
+.bottom{padding:4px 29px max(23px,env(safe-area-inset-bottom,18px));flex-shrink:0}.buttons{display:grid;grid-template-columns:1fr 1fr;gap:13px}.action{height:51px;border-radius:15px;border:1px solid #d8d9d6;background:transparent;display:flex;align-items:center;justify-content:center;gap:10px;font-size:12px;letter-spacing:.14em;color:#666864;transition:transform .18s,background .18s}.action:active{transform:scale(.975)}.action.primary{background:#343633;border-color:#343633;color:#fff}.action svg{width:16px;height:16px;stroke:currentColor;stroke-width:1.45;fill:none}.bottom-copy{display:flex;align-items:center;justify-content:space-between;margin-top:14px;color:#9b9c98;font-size:10px;letter-spacing:.08em}
+.notice{position:absolute;z-index:9;left:26px;right:26px;bottom:112px;border-radius:14px;background:#282a28;color:#f9f9f7;padding:13px 17px;font-size:12px;text-align:center;box-shadow:0 4px 15px rgba(0,0,0,.1);opacity:0;pointer-events:none;transform:translateY(12px);transition:opacity .2s,transform .2s}.notice.show{opacity:1;transform:translateY(0)}
+.overlay{position:absolute;inset:0;background:rgba(23,24,23,.28);z-index:20;display:flex;flex-direction:column;justify-content:flex-end;opacity:0;pointer-events:none;transition:opacity .22s}.overlay.open{opacity:1;pointer-events:auto}
+.sheet{background:#fbfbfa;border-radius:25px 25px 0 0;padding:20px 24px max(28px,env(safe-area-inset-bottom,20px));max-height:85%;overflow-y:auto;transform:translateY(24px);transition:transform .23s}.overlay.open .sheet{transform:translateY(0)}
+.sheet-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:19px}.sheet-kicker{color:#989a96;font-size:10px;letter-spacing:.16em}.sheet-title{font-family:var(--serif);font-weight:400;font-size:27px;margin:5px 0 0;letter-spacing:.04em}.close{border:0;background:#eeeef0;color:#4a4c49;border-radius:50%;font-size:21px;width:31px;height:31px;display:grid;place-items:center;line-height:1}
+.field{margin:20px 0}.field label{font-size:11px;color:#686a67;display:block;margin-bottom:9px}.field select{width:100%;height:43px;border:1px solid #e7e8e5;border-radius:12px;background:#f2f2ef;color:#383936;padding:0 12px;outline:none;font-size:12px}.tiny{color:#989a96;font-size:11px;line-height:1.8;margin:12px 0}.divider{height:1px;background:#ededeb;margin:20px 0}.sheet-text{font-size:12px;color:#656764;line-height:1.9}.sheet-quote{font-family:var(--serif);font-size:21px;line-height:1.6;color:#343633;margin:18px 0 26px}.sheet-row{display:flex;justify-content:space-between;gap:20px;color:#81837e;font-size:11px;margin:13px 0}.sheet-row strong{font-weight:400;color:#3d3f3c;text-align:right}
+.fate-button{width:100%;display:block;text-align:left;margin:8px 0;padding:15px;border:1px solid #e0e1de;border-radius:12px;background:#f5f5f3;color:#444742;font-size:12px}.fate-button.selected{border-color:#676963;background:#ebebea}
+.saved-list{display:flex;flex-direction:column;gap:9px}.saved-item{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding:13px 11px;background:#f3f3f1;border-radius:13px}.saved-name{font-family:var(--serif);font-size:17px}.saved-meta{color:#939590;font-size:10px;margin-top:4px}.saved-actions{display:flex;gap:7px}.mini{font-size:11px;border:1px solid #dcddda;border-radius:9px;padding:9px 11px;color:#4f514d;background:transparent}.mini.dark{background:#343633;color:#fff;border-color:#343633}
+.empty{font-size:12px;color:#8b8d89;line-height:2;padding:22px 0}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+@media(max-width:480px){body{background:var(--paper)}.stage{padding:0;display:block}.phone{width:100%;height:100dvh;min-height:0;border:0;border-radius:0}.status-bar{padding-top:max(13px,env(safe-area-inset-top,13px));height:calc(31px + env(safe-area-inset-top,0px))}.header{height:70px}.deck-wrap{margin-top:11px;margin-bottom:7px;padding:4px 27px}.card{padding:22px 24px}.name{font-size:31px}}
+@media(max-height:720px){.header{height:60px}.intro{padding-top:0}.deck-wrap{margin-top:8px}.portrait{min-height:100px}.ring{width:88px;height:88px;border-width:13px}.ring:after{width:29px;height:29px;top:-21px;right:-22px}.portrait-caption{margin-top:17px}.quote{margin:10px 0}.card{padding-top:19px;padding-bottom:18px}.name{font-size:28px}.bottom{padding-bottom:max(13px,env(safe-area-inset-bottom,10px))}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+</style>
+</head>
+<body>
+<div class="stage">
+<main class="phone" aria-label="邂逅人物抽卡">
+  <div class="status-bar"><span id="deviceTime">09:41</span><div class="status-marks"><span class="cell" aria-hidden="true"><i></i><i></i><i></i><i></i></span><svg width="15" height="11" viewBox="0 0 20 15" aria-hidden="true"><path d="M1 4Q10 -3 19 4M4 7Q10 2 16 7M8 11Q10 9 12 11" stroke="#777" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg><span class="battery" aria-hidden="true"><b></b></span></div></div>
+  <header class="header"><a class="back" href="../index.html" aria-label="返回桌面"><svg viewBox="0 0 24 24"><path d="M15 5 8 12l7 7"/></svg></a><h1 class="page-title">邂逅</h1><button class="menu-button" id="moreButton" aria-label="抽卡偏好及玩法设置">···</button></header>
+  <section class="intro"><div><div class="intro-copy">SOMEONE, SOMEWHERE</div><div class="intro-sub">一次未曾预料的相遇</div></div><button class="collection-link" id="savedButton">候选收藏 <span id="savedCount">00</span></button></section>
+  <section class="deck-wrap" id="deckArea" aria-label="左右滑动人物卡片，向左跳过，向右收藏">
+    <div class="back-card second" aria-hidden="true"></div><div class="back-card" aria-hidden="true"></div>
+    <article id="frontCard" class="card" tabindex="0" role="button" aria-label="查看当前人物的更多信息"></article>
+  </section>
+  <div class="bottom"><div class="buttons">
+    <button class="action" id="passButton"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>PASS</button>
+    <button class="action primary" id="likeButton"><svg viewBox="0 0 24 24"><path d="M12 21s-8-5.1-8-11a4.5 4.5 0 0 1 8-2.5A4.5 4.5 0 0 1 20 10c0 5.9-8 11-8 11Z"/></svg>收藏</button>
+  </div><div class="bottom-copy"><span>向左跳过 · 向右收藏</span><span id="cardSequence">01 / ∞</span></div></div>
+  <div class="notice" id="notice" role="status" aria-live="polite"></div>
+  <div class="overlay" id="overlay" aria-hidden="true"><div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="人物信息"></div></div>
+</main>
+</div>
+<script src="../shared/js/phone/phone_storage.js"></script>
+<script src="encounter-engine.js"></script>
+<script>
+(function(){
+'use strict';
+var engine=window.MAOMAOEncounter;
+var cardEl=document.getElementById('frontCard'),sheet=document.getElementById('sheet'),overlay=document.getElementById('overlay'),noticeEl=document.getElementById('notice');
+var current=null,position=0,drag=null,lock=false,noticeTimer=0;
+function escapeHtml(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function clock(){var d=new Date();document.getElementById('deviceTime').textContent=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
+clock();setInterval(clock,30000);
+function notify(text){noticeEl.textContent=text;noticeEl.classList.add('show');clearTimeout(noticeTimer);noticeTimer=setTimeout(function(){noticeEl.classList.remove('show');},2400);}
+function count(){var r=engine.getCandidates();document.getElementById('savedCount').textContent=r.ok?String(r.value.length).padStart(2,'0'):'!';}
+function modeCaption(c){return c.type==='蒙面档案'?'UNKNOWN / 另一种身份':c.type==='以物识人'?'OBJECT / 一件遗留物':c.type==='命运分支'?'FATE / 两种可能':c.type==='性格盲测'?'VOICE / 先听他说': 'PERSONA / 人物档案';}
+function render(){
+ if(!current)return;
+ var c=current,masked=c.type==='蒙面档案',obj=c.type==='以物识人',blind=c.type==='性格盲测';
+ cardEl.setAttribute('aria-label','查看 '+(masked?'神秘角色':c.name)+' 的人物档案');
+ cardEl.innerHTML='<div class="card-top"><span>'+escapeHtml(modeCaption(c))+'</span><span class="card-number">'+String(position).padStart(2,'0')+'</span></div>'+
+ '<div class="portrait">'+(obj?'<div class="object-icon" aria-hidden="true"><span>物件</span></div>':'<div class="ring" aria-hidden="true"></div>')+
+ '<span class="portrait-caption">'+(obj?'A LOST OBJECT':masked?'IDENTITY UNKNOWN':'A STRANGER, FOR NOW')+'</span></div>'+
+ '<h2 class="name">'+escapeHtml(masked?'未署名的旅人':blind?'一段陌生的声音':c.name)+'</h2>'+
+ '<p class="hint">'+escapeHtml(masked?'身份暂未公开':blind?'先凭一句话，认识这个人':obj?c.object:c.job+' · '+c.era)+'</p>'+
+ '<div class="tags">'+(masked?'<span class="tag">身份未知</span><span class="tag">点击揭晓</span>':'<span class="tag">'+escapeHtml(c.species)+'</span><span class="tag">'+escapeHtml(c.trait)+'</span><span class="tag">'+escapeHtml(c.era)+'</span>')+'</div>'+
+ '<p class="quote">「'+escapeHtml(obj?'这件东西的主人，留下一段没有讲完的故事。':c.quote)+'」</p>'+
+ '<div class="card-footer"><span>一位尚未认识的人</span><span class="look">轻触翻阅档案　＋</span></div>';
+ document.getElementById('cardSequence').textContent=String(position).padStart(2,'0')+' / ∞';
+ count();
+}
+function drawNew(){
+ var r=engine.generate();if(!r.ok){current=null;cardEl.innerHTML='<div class="empty">'+escapeHtml(r.error)+'</div>';notify(r.error);return;}
+ current=r.value;position++;cardEl.classList.remove('dragging','moving');cardEl.style.transform='';cardEl.style.opacity='';render();
+}
+function move(direction){
+ if(lock||!current)return;
+ var old=current;
+ if(direction==='right'){
+   var saved=engine.saveCandidate(old);
+   if(!saved.ok){notify(saved.error);snap();return;}
+   notify('已加入候选收藏，不消耗 API');
+ }
+ lock=true;cardEl.classList.remove('dragging');cardEl.classList.add('moving');
+ cardEl.style.transform='translate3d('+(direction==='right'?window.innerWidth: -window.innerWidth)+'px,0,0) rotate('+(direction==='right'?15:-15)+'deg)';
+ cardEl.style.opacity='0';
+ setTimeout(function(){lock=false;drawNew();},240);
+}
+function snap(){cardEl.classList.remove('dragging');cardEl.classList.add('moving');cardEl.style.transform='translate3d(0,0,0) rotate(0deg)';cardEl.style.opacity='1';setTimeout(function(){cardEl.classList.remove('moving');},260);}
+cardEl.addEventListener('pointerdown',function(e){if(e.button!==0||lock||!current)return;drag={id:e.pointerId,x:e.clientX,y:e.clientY,dx:0,dy:0,horizontal:false};});
+cardEl.addEventListener('pointermove',function(e){
+ if(!drag||drag.id!==e.pointerId||lock)return;
+ drag.dx=e.clientX-drag.x;drag.dy=e.clientY-drag.y;
+ if(!drag.horizontal&&Math.abs(drag.dx)>9&&Math.abs(drag.dx)>Math.abs(drag.dy)*1.3){drag.horizontal=true;try{cardEl.setPointerCapture(e.pointerId);}catch(err){}}
+ if(!drag.horizontal)return;
+ cardEl.classList.remove('moving');cardEl.classList.add('dragging');
+ var angle=Math.max(-13,Math.min(13,drag.dx/19));
+ cardEl.style.transform='translate3d('+drag.dx+'px,'+(Math.abs(drag.dx)/14)+'px,0) rotate('+angle+'deg)';
+ cardEl.style.opacity=String(Math.max(.52,1-Math.abs(drag.dx)/600));
+});
+function finish(e){
+ if(!drag||e.pointerId!==drag.id)return;var dx=drag.dx,h=drag.horizontal;drag=null;
+ if(!h)return;if(dx>95)move('right');else if(dx< -95)move('left');else snap();
+}
+cardEl.addEventListener('pointerup',finish);cardEl.addEventListener('pointercancel',function(){if(drag){drag=null;snap();}});cardEl.addEventListener('lostpointercapture',function(){if(drag&&drag.horizontal){drag=null;snap();}});
+cardEl.addEventListener('click',function(e){if(lock||!current||Math.abs((drag&&drag.dx)||0)>5)return;openDetail();});
+cardEl.addEventListener('keydown',function(e){if(e.key==='ArrowLeft'){e.preventDefault();move('left');}else if(e.key==='ArrowRight'){e.preventDefault();move('right');}else if(e.key==='Enter'||e.key===' '){e.preventDefault();openDetail();}});
+document.getElementById('passButton').addEventListener('click',function(){move('left');});
+document.getElementById('likeButton').addEventListener('click',function(){move('right');});
+function openSheet(content,title){sheet.setAttribute('aria-label',title);sheet.innerHTML=content;overlay.classList.add('open');overlay.setAttribute('aria-hidden','false');var close=sheet.querySelector('.close');if(close)close.focus();}
+function closeSheet(){overlay.classList.remove('open');overlay.setAttribute('aria-hidden','true');document.getElementById('moreButton').focus();}
+overlay.addEventListener('click',function(e){if(e.target===overlay||e.target.closest('.close'))closeSheet();});
+window.addEventListener('keydown',function(e){if(e.key==='Escape'&&overlay.classList.contains('open'))closeSheet();});
+function head(k,t){return '<div class="sheet-head"><div><div class="sheet-kicker">'+escapeHtml(k)+'</div><h2 class="sheet-title">'+escapeHtml(t)+'</h2></div><button class="close" aria-label="关闭">×</button></div>';}
+function row(label,value){return '<div class="sheet-row"><span>'+escapeHtml(label)+'</span><strong>'+escapeHtml(value)+'</strong></div>';}
+function openDetail(){
+ if(!current)return;var c=current;
+ var html=head('PERSONA / 01','人物档案')+'<div class="sheet-quote">「'+escapeHtml(c.quote)+'」</div>'+
+ row('姓名',c.name)+row('身份',c.job)+row('种族',c.species)+row('年龄',String(c.age))+
+ row('世界',c.era)+row('外在',c.trait)+row('内在反差',c.contrast)+
+ '<div class="divider"></div><p class="sheet-text">一件重要的东西：'+escapeHtml(c.object)+'。<br>命运线索：'+escapeHtml(c.fate)+'。</p>';
+ if(c.type==='命运分支'){
+   html+='<div class="field"><label>选择一个故事起点（仅改变当前候选）</label>'+
+   c.choices.map(function(t){return '<button class="fate-button '+(c.selectedChoice===t?'selected':'')+'" data-fate="'+escapeHtml(t)+'">'+escapeHtml(t)+'</button>';}).join('')+'</div>';
+ }
+ html+='<p class="tiny">这是一张免费生成的简要卡片。喜欢后再去角色库完善完整设定。</p>';
+ openSheet(html,'人物档案');
+ sheet.querySelectorAll('[data-fate]').forEach(function(btn){btn.addEventListener('click',function(){c.selectedChoice=btn.dataset.fate;openDetail();notify('已选择故事起点');});});
+}
+function openSettings(){
+ var p=engine.getPreferences(),allWorlds=['全部','现代都市','架空古代','东方幻想','西方奇幻','未来纪元','现代异闻','神话时代'];
+ function select(field,label,items,value){return '<div class="field"><label for="setting-'+field+'">'+label+'</label><select id="setting-'+field+'" data-setting="'+field+'">'+items.map(function(v){return '<option value="'+escapeHtml(v)+'" '+(v===value?'selected':'')+'>'+escapeHtml(v)+'</option>';}).join('')+'</select></div>';}
+ openSheet(head('PREFERENCES / SETTINGS','抽卡偏好')+
+ '<p class="tiny">设置藏在这里，抽卡首页只保留人物和操作。</p>'+
+ select('type','相遇方式',['全部','普通相遇','蒙面档案','以物识人','命运分支','性格盲测'],p.type||'全部')+
+ select('world','背景',['全部'].concat(allWorlds.slice(1)),p.world||'全部')+
+ select('similarity','人物类型偏好',['完全随机','多来喜欢的类型','尽量探索不同类型'],p.similarity||'完全随机')+
+ '<p class="tiny">初始人物由本地素材组合，免费抽卡。不读取你的聊天记录，也不自动调用生图或聊天 API。人物相似度不强制排除。</p>',
+ '抽卡偏好');
+ sheet.querySelectorAll('[data-setting]').forEach(function(s){s.addEventListener('change',function(){
+   var patch={};patch[s.dataset.setting]=s.value;var r=engine.savePreferences(patch);
+   if(!r.ok){notify(r.error);return;}notify('偏好已保存，下一张卡片起生效');
+ });});
+}
+function openSaved(){
+ var r=engine.getCandidates();if(!r.ok){notify(r.error);return;}
+ var html=head('PRIVATE COLLECTION / '+String(r.value.length).padStart(2,'0'),'候选收藏')+
+ '<p class="tiny">喜欢的人先留在这里。只有点击「去创建」并在角色库保存，才会成为正式角色。</p>';
+ html+=r.value.length?'<div class="saved-list">'+r.value.map(function(c){
+   return '<div class="saved-item"><div><div class="saved-name">'+escapeHtml(c.name)+'</div><div class="saved-meta">'+escapeHtml(c.species+' · '+c.trait+' · '+c.job)+'</div></div>'+
+   '<div class="saved-actions"><button class="mini" data-remove="'+escapeHtml(c.id)+'">移除</button>'+
+   '<button class="mini dark" data-create="'+escapeHtml(c.id)+'">去创建</button></div></div>';
+ }).join('')+'</div>':'<div class="empty">还没有收藏的人物。<br>向右滑动喜欢的人，TA 就会出现在这里。</div>';
+ openSheet(html,'候选收藏');
+ sheet.querySelectorAll('[data-remove]').forEach(function(b){b.addEventListener('click',function(){
+   var result=engine.removeCandidate(b.dataset.remove);if(!result.ok){notify(result.error);return;}
+   count();openSaved();
+ });});
+ sheet.querySelectorAll('[data-create]').forEach(function(b){b.addEventListener('click',function(){
+   window.location.href='../worldbook/characters/characters.html?encounterDraft='+encodeURIComponent(b.dataset.create);
+ });});
+}
+document.getElementById('moreButton').addEventListener('click',openSettings);
+document.getElementById('savedButton').addEventListener('click',openSaved);
+drawNew();
+})();
+</script>
+<script src="../shared/js/statusbar-control.js"></script>
+</body>
+</html>
