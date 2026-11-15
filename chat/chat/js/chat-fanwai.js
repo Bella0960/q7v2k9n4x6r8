@@ -285,29 +285,35 @@
     ].join('\n\n');
   }
 
-  // 独立导出纯逻辑，方便 Node 回归测试；DOM 只负责展示和交互。
-  global.MAOMAOFanwaiCore = {
-    templates: TEMPLATES,
-    normalizeMessages: normalizeMessages,
-    episodePrompt: episodePrompt,
-    storyBeat: storyBeat,
-    chooseBatchSize: chooseBatchSize,
-    appendNewMessages: appendNewMessages,
-    registerTemplate: registerTemplate,
-    registerContextProvider: registerContextProvider,
-    listContextProviders: listContextProviders,
-    resolveContexts: resolveContexts,
-    on: on
-  };
-  global.MAOMAOFanwai = Object.freeze({
-    version: '1.1',
-    registerTemplate: registerTemplate,
-    registerContextProvider: registerContextProvider,
-    listTemplates: function () { return TEMPLATES.map(function (t) { return Object.freeze(Object.assign({}, t)); }); },
-    listContextProviders: listContextProviders,
-    on: on
-  });
-  if (typeof document === 'undefined' || !document.createElement) return;
+  // 有 DOM 的聊天页面只在账号与群聊隔离完成后公开扩展 API；
+  // 无 DOM 的 Node 纯逻辑测试仍可直接读取 MAOMAOFanwaiCore。
+  function exposeFanwaiAPI() {
+    global.MAOMAOFanwaiCore = {
+      templates: TEMPLATES,
+      normalizeMessages: normalizeMessages,
+      episodePrompt: episodePrompt,
+      storyBeat: storyBeat,
+      chooseBatchSize: chooseBatchSize,
+      appendNewMessages: appendNewMessages,
+      registerTemplate: registerTemplate,
+      registerContextProvider: registerContextProvider,
+      listContextProviders: listContextProviders,
+      resolveContexts: resolveContexts,
+      on: on
+    };
+    global.MAOMAOFanwai = Object.freeze({
+      version: '1.1',
+      registerTemplate: registerTemplate,
+      registerContextProvider: registerContextProvider,
+      listTemplates: function () { return TEMPLATES.map(function (t) { return Object.freeze(Object.assign({}, t)); }); },
+      listContextProviders: listContextProviders,
+      on: on
+    });
+  }
+  if (typeof document === 'undefined' || !document.createElement) {
+    exposeFanwaiAPI();
+    return;
+  }
 
   var roleId = new URLSearchParams(global.location.search).get('id') || '';
   if (!roleId) return;
@@ -345,6 +351,7 @@
     } catch (error) {}
     if (!knownRole) return;
   }
+  exposeFanwaiAPI(); // 只对允许的单聊页面开放插件、上下文与事件接口。
   var scope = canPersist ? accountId : 'temporary:' + Math.random().toString(36).slice(2);
   var state = {
     root: null, active: null, selected: null, busy: false, creating: false, deleting: false,
