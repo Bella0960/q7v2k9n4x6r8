@@ -1827,6 +1827,15 @@ document.getElementById('btnExpandEncounterPersona').addEventListener('click', a
         setSaveStatus('只支持对「邂逅」创建的人物进行 AI 完善。', 'error');
         return;
     }
+    if (activeEncounterDraftId) {
+        const candidates = window.MAOMAOEncounter && window.MAOMAOEncounter.getCandidates();
+        if (!candidates || !candidates.ok || !candidates.value.some(function (c) {
+            return c.id === activeEncounterDraftId;
+        })) {
+            setSaveStatus('这张候选卡不再存在，未调用 API。请返回邂逅核实收藏。', 'error');
+            return;
+        }
+    }
     if (!window.PhoneAPI || typeof window.PhoneAPI.complete !== 'function') {
         setSaveStatus('当前 AI 请求模块不可用，请检查 API 设置。', 'error');
         return;
@@ -1862,7 +1871,8 @@ document.getElementById('btnExpandEncounterPersona').addEventListener('click', a
         // 即使服务商截断了较短的付费返回，也保留可用文字，不强迫二次付费。
         // 用户在网络请求期间修改的内容不应被无声覆盖。
         if (draftId !== activeEncounterDraftId ||
-            document.getElementById('editRoleId').value.trim() !== targetRoleId) {
+            document.getElementById('editRoleId').value.trim() !== targetRoleId ||
+            document.getElementById('editorView').classList.contains('hidden')) {
             setSaveStatus('页面已切换，生成结果未覆盖当前角色。', 'error');
             return;
         }
