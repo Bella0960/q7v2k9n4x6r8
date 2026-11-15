@@ -117,6 +117,10 @@ npm run build
 - 「参考角色记忆」目前只读取当前角色记录的 `memory` 与已确认的 `MemoryRecall` 长期记忆，不读取所有世界书、原始聊天历史或其他账号数据。其他只读来源请通过 `registerContextProvider` 接入，并由用户明确选择启用。
 - 隐藏的篇幅与记忆偏好会记住当前**账号 + 角色**的选择（同一浏览器的独立番外库），不意味着跨设备同步。
 
+
+- 公开登录页断网回退只查当前 `CACHE_NAME` 对应的**公共 app-shell**，不能使用全域 `caches.match()` 搜索其他账号或旧业务模块的 CacheStorage。受保护聊天页面仍强制先经过 Worker 在线验证，不直接回退旧聊天 HTML。
+- `tests/sw-navigation-cache-lifecycle.test.mjs` 原本面向全部导航的“缓存优先”假设已经改为**仅验证公开登录页**的网络优先 + 写盘生命周期；它与新增的账号私有导航测试共同覆盖离线安全边界。
+
 ## 本次联合分支的验收边界
 
 - 新增 `tests/account-fanwai-pwa-runtime.test.mjs`，覆盖受保护页面绕过缓存、断网只能显示公开登录页、公开登录响应重定向后不入缓存、PWA 安装不预缓存私人 HTML。
