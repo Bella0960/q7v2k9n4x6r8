@@ -73,7 +73,7 @@
     var session = read(storage || root.localStorage, publicKey(groupId));
     if (!session || typeof session !== 'object' || session.groupId !== groupId ||
       !valid(session.sessionId) || !templates[session.gameId] ||
-      ['active','finished'].indexOf(session.status) === -1 ||
+      ['active','finished','cancelled'].indexOf(session.status) === -1 ||
       !Array.isArray(session.players) || session.players.some(function (x) { return !valid(x); }))
       return null;
     // A public game view exposes participation counts, NEVER private vote targets
@@ -92,6 +92,7 @@
         allowPrivate:session.rules && session.rules.allowPrivate === true,
         showPrivateActivity:session.rules && session.rules.showPrivateActivity === true
       }, createdAt:session.createdAt, finishedAt:session.finishedAt || 0,
+      cancelledAt:session.status==='cancelled' ? (Number(session.cancelledAt)||0) : 0,
       revealedRoleId:session.status === 'finished' ? id(session.revealedRoleId) : '',
       voteCount:session.status==='active' ? voteCount : (Number(session.voteCount)||0),
       voteError:voteError,
@@ -426,9 +427,41 @@
       revealedRoleId:bad[0],finishedAt:raw.finishedAt});
     return {ok:true,session:game(gid,storage)};
   }
+  // Host can abandon an invalid/unfinished round without inventing a winner.
+  // This only clears the round's temporary cards, votes and private inboxes.
+  function cancel(req) {
+    req=req||{};
+    var gid=id(req.groupId),storage=storageOf(req),group=req.group;
+    if(req.actorId!=='__user'||!group||id(group.id)!==gid||
+      id(group.ownerId||'__user')!=='__user'||group.userMembership==='left')
+      return error('NO_PERMISSION','只有当前群主可以取消本局');
+    var session=game(gid,storage);
+    if(!session||session.status!=='active')return error('NOT_ACTIVE','当前没有进行中的游戏');
+    var raw=read(storage,publicKey(gid));
+    if(!raw||raw.sessionId!==session.sessionId||raw.status!=='active')
+      return error('CONFLICT','对局已经发生变化');
+    raw.status='cancelled';
+    raw.cancelledAt=Date.now();
+    // Do not publish private ballot, identity or whisper content on cancellation.
+    delete raw.voteCount;
+    delete raw.correctVotes;
+    delete raw.voteTally;
+    delete raw.revealedRoleId;
+    if(!write(storage,publicKey(gid),raw))
+      return error('SAVE_FAILED','取消状态没有保存成功；原对局仍然保留');
+    drop(storage,inboxKey(gid,session.sessionId,'__user'));
+    session.players.forEach(function(rid){
+      drop(storage,secretKey(gid,session.sessionId,rid));
+      drop(storage,voteKey(gid,session.sessionId,rid));
+      drop(storage,inboxKey(gid,session.sessionId,rid));
+    });
+    emit('game:cancelled',{groupId:gid,sessionId:session.sessionId,
+      gameId:session.gameId,cancelledAt:raw.cancelledAt});
+    return {ok:true,session:game(gid,storage)};
+  }
   root.GroupGameSessions=Object.freeze({
     registerGame:registerGame, games:games, on:on, getPublic:game,
-    start:start, finish:finish, castVote:castVote, buildRoleContext:buildRoleContext,
+    start:start, finish:finish, cancel:cancel, castVote:castVote, buildRoleContext:buildRoleContext,
     canWhisper:canWhisper, checkDirectPrivateAllowed:checkDirectPrivateAllowed,
     sendWhisper:sendWhisper, getHostInbox:getHostInbox, getHostConversation:getHostConversation,
     redactPublicStreamText:redactPublicStreamText
