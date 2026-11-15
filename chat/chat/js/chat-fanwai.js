@@ -865,7 +865,7 @@
     });
     grid.appendChild(item);
     var style = document.createElement('link'); style.rel = 'stylesheet';
-    style.href = 'js/chat-fanwai.css?v=20261115softcore1';
+    style.href = 'js/chat-fanwai.css?v=20261115softcore2';
     document.head.appendChild(style);
     var root = document.createElement('div');
     root.id = 'fanwaiLayer'; root.className = 'fw-layer'; root.hidden = true;
