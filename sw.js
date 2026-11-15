@@ -197,12 +197,29 @@ self.addEventListener('fetch', event => {
     event.respondWith((async function () {
       var cachedPromise = caches.match(req).catch(function () { return null; });
       var cacheWritePromise = null;
-      var networkPromise = fetch(req).then(function (response) {
+      // 不能复用 navigate 模式的原始 Request 再 fetch：Chromium 会以
+      // "TypeError: Failed to fetch" 拒绝该请求，后台刷新因此永远失败，
+      // 旧页面会被无限期缓存（只有 sw.js 变更触发重装时才会被替换）。
+      // 用同 URL 的新 Request 绕过此限制，no-store 确保拿到最新 HTML。
+      var refreshUrl = req.url;
+      // Preserve navigation headers and credentials so the refreshed HTML and
+      // Cache API key follow the same Vary/identity rules as the original request.
+      var refreshKey = new Request(refreshUrl, {
+        headers: req.headers,
+        credentials: req.credentials,
+        redirect: req.redirect
+      });
+      var networkPromise = fetch(new Request(refreshUrl, {
+        headers: req.headers,
+        credentials: req.credentials,
+        redirect: req.redirect,
+        cache: 'no-store'
+      })).then(function (response) {
         if (response && response.ok) {
           var copy = response.clone();
           // 写回缓存单独成 Promise：失败只影响缓存，不影响已成功的网络响应。
           cacheWritePromise = caches.open(CACHE_NAME)
-            .then(function (cache) { return cache.put(req, copy); })
+            .then(function (cache) { return cache.put(refreshKey, copy); })
             .catch(function () { return undefined; });
         }
         return response;
