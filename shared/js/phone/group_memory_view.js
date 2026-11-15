@@ -163,9 +163,10 @@
       }
       var verification = memories(groupId);
       var savedId = result.memory && result.memory.id;
+      var normalized = root.MemoryRecall.cleanText ? root.MemoryRecall.cleanText(content).slice(0, 600) : content;
       var saved = Array.isArray(verification) && verification.some(function (entry) {
         return entry && String(entry.id) === String(savedId) &&
-          String(entry.content || '') === content;
+          String(entry.content || '') === normalized;
       });
       if (!saved) {
         status.textContent = '无法确认写入，请检查存储后重试。'; return;
@@ -179,6 +180,8 @@
       document.addEventListener('DOMContentLoaded', function () { tab.click(); }, { once: true });
     }
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  // Mounted before memory-space-framework, so the existing tab binder sees the new tab.
+  if (document.querySelector('.mem-tabs') && document.querySelector('.mem-scroll-area')) init();
+  else if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 })(window);
