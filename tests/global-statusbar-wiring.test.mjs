@@ -137,6 +137,45 @@ test('visible interactive Home Indicator stays accessible across top bar updates
   assert.equal(interactive.hasAttribute('aria-hidden'), false);
 });
 
+test('top status bar updates never erase independent Home Indicator inline display', () => {
+  function makeBar(display) {
+    const attrs = new Map([['role', 'button']]);
+    return {
+      style: { display },
+      getAttribute(key) { return attrs.get(key) ?? null; },
+      setAttribute(key, value) { attrs.set(key, value); },
+      removeAttribute(key) { attrs.delete(key); }
+    };
+  }
+  const visibleBar = makeBar('inline-flex');
+  const pageHiddenBar = makeBar('none');
+  const app = boot('0', [visibleBar, pageHiddenBar]);
+  app.documentEvents.get('DOMContentLoaded')();
+  assert.equal(visibleBar.style.display, 'inline-flex', 'initial visible styling must survive');
+  assert.equal(pageHiddenBar.style.display, 'none', 'pre-hidden UI must stay hidden');
+
+  app.values.set('settings_statusbar', '1');
+  app.window.__statusbarControlApply();
+  assert.equal(visibleBar.style.display, 'inline-flex', 'top switch must not reset bottom inline styling');
+
+  app.values.set('settings_home_indicator_visible', '0');
+  app.window.__statusbarControlApply();
+  assert.equal(visibleBar.style.display, 'none');
+  assert.equal(pageHiddenBar.style.display, 'none');
+  app.window.__statusbarControlApply();
+  app.values.set('settings_home_indicator_visible', '1');
+  app.window.__statusbarControlApply();
+  assert.equal(visibleBar.style.display, 'inline-flex', 'controller restores the original display');
+  assert.equal(pageHiddenBar.style.display, 'none', 'pre-hidden bar must not be accidentally revealed');
+
+  app.values.set('settings_home_indicator_visible', '0');
+  app.window.__statusbarControlApply();
+  visibleBar.style.display = 'flex'; // updated by the dedicated Home Indicator owner
+  app.values.set('settings_home_indicator_visible', '1');
+  app.window.__statusbarControlApply();
+  assert.equal(visibleBar.style.display, 'flex', 'must not overwrite a newer owner-authored style');
+});
+
 test('first visit defaults to a visible status bar if setting is absent', () => {
   const app = boot();
   app.values.delete('settings_statusbar');
