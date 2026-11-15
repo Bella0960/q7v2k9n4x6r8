@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { sealFounderBackup, restoreFounderBackup } from '../scripts/release/founder-logical-backup.mjs';
+import { recordFounderRecoveryEvidence } from '../scripts/release/founder-recovery-evidence.mjs';
 import { passwordDigest } from '../worker/lib/account-auth.js';
 import { randomToken, sha256Hex } from '../worker/lib/crypto.js';
 import { applyMigrations } from '../worker/lib/migrations.js';
@@ -161,4 +162,30 @@ test('unsupported KV values fail closed and restore errors roll back SQL and KV 
   await assert.rejects(restoreFounderBackup(recovery(target, sealed, key)), /simulated_kv_failure/);
   assert.equal(target.query('SELECT COUNT(*) AS n FROM sqlite_schema')[0].n, 0);
   assert.equal(target.values.size, 0);
+});
+
+test('readback corruption or a restore receipt for another target cannot publish success', async t => {
+  const { source } = await seed(t);
+  const sealed = await sealFounderBackup({ state: source.state, sourceNamespaceId, key: randomToken(32) });
+  const audit = new Map();
+  let stored;
+  let restoreCalls = 0;
+  const operation = {
+    sealed,
+    expectedSource: { namespaceId: sourceNamespaceId, objectId: sourceObjectId },
+    expectedTarget: { namespaceId: targetNamespaceId, objectId: disposableObjectId },
+    vault: { putIfAbsent: (_key, bytes) => { stored = bytes; }, read: () => stored + 'corrupt' },
+    restore: () => {
+      restoreCalls++;
+      return { ok: true, code: 'isolated_restore_verified', ciphertextSha256: sealed.ciphertextSha256,
+        targetNamespaceId, targetObjectId: sourceObjectId, verifiedAt: Date.now() };
+    },
+    audit: { put: (key, value) => audit.set(key, value) }
+  };
+  await assert.rejects(recordFounderRecoveryEvidence(operation), /recovery_vault_readback_failed/);
+  assert.equal(restoreCalls, 0);
+  operation.vault.read = () => stored;
+  await assert.rejects(recordFounderRecoveryEvidence(operation), /recovery_restore_unverified/);
+  assert.equal(restoreCalls, 1);
+  assert.equal(audit.size, 0);
 });

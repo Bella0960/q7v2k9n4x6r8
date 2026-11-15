@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import { base64UrlToBytes, bytesToBase64Url, sha256Hex, utf8 } from '../../worker/lib/crypto.js';
 
-const FORMAT = 'maomao-do-sql-kv-v1';
+export const FOUNDER_BACKUP_FORMAT = 'maomao-do-sql-kv-v1';
 const objectIdPattern = /^[a-f0-9]{64}$/;
 const namespaceIdPattern = /^[a-f0-9]{32}$/;
 const sqlCasts = { integer: 'CAST(? AS INTEGER)', real: 'CAST(? AS REAL)', text: 'CAST(? AS TEXT)' };
@@ -108,7 +108,7 @@ export async function sealFounderBackup({ state, sourceNamespaceId, key }) {
       !snapshot.tables.some(table => table.name === 'mao_account_sessions')) {
     throw new Error('account_schema_missing');
   }
-  const header = { format: FORMAT, sourceNamespaceId, sourceObjectId, createdAt: Date.now() };
+  const header = { format: FOUNDER_BACKUP_FORMAT, sourceNamespaceId, sourceObjectId, createdAt: Date.now() };
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ciphertext = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv, additionalData: utf8(JSON.stringify(header)) },
@@ -149,7 +149,7 @@ export async function restoreFounderBackup({
   if (await sha256Hex(artifact) !== ciphertextSha256) throw new Error('backup_digest_mismatch');
   const { format, sourceNamespaceId, sourceObjectId, createdAt, iv, ciphertext } = JSON.parse(artifact);
   const header = { format, sourceNamespaceId, sourceObjectId, createdAt };
-  if (format !== FORMAT || sourceNamespaceId !== expectedSourceNamespaceId ||
+  if (format !== FOUNDER_BACKUP_FORMAT || sourceNamespaceId !== expectedSourceNamespaceId ||
       sourceObjectId !== expectedSourceObjectId || !Number.isSafeInteger(createdAt) ||
       createdAt <= 0 || createdAt > Date.now()) throw new Error('backup_source_mismatch');
   const encryptionKey = await importKey(key, ['decrypt']);

@@ -4,6 +4,7 @@ const config :Workerd.Config = (
    modules = [
           (name = "tests/founder-logical-backup.workerd.js", esModule = embed "founder-logical-backup.workerd.js"),
           (name = "scripts/release/founder-logical-backup.mjs", esModule = embed "../scripts/release/founder-logical-backup.mjs"),
+          (name = "scripts/release/founder-recovery-evidence.mjs", esModule = embed "../scripts/release/founder-recovery-evidence.mjs"),
           (name = "worker/lib/crypto.js", esModule = embed "../worker/lib/crypto.js"),
           (name = "worker/lib/migrations.js", esModule = embed "../worker/lib/migrations.js"),
           (name = "worker/migrations/0001_init.js", esModule = embed "../worker/migrations/0001_init.js"),
@@ -30,11 +31,13 @@ const config :Workerd.Config = (
    compatibilityDate = "2026-10-27",
    bindings = [
       (name="SOURCE", durableObjectNamespace="Source"),
-      (name="TARGET", durableObjectNamespace="Target")
+      (name="TARGET", durableObjectNamespace="Target"),
+      (name="VAULT", durableObjectNamespace="Vault")
    ],
    durableObjectNamespaces = [
       (className="Source", uniqueKey="backup-drill-source", enableSql=true),
-      (className="Target", uniqueKey="backup-drill-target", enableSql=true)
+      (className="Target", uniqueKey="backup-drill-target", enableSql=true),
+      (className="Vault", uniqueKey="backup-drill-vault", enableSql=true)
    ],
    durableObjectStorage = (localDisk="sqlite-disk")
  ))]

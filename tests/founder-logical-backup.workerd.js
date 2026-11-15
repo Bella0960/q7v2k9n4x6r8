@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { DurableObject } from 'cloudflare:workers';
 import { sealFounderBackup, restoreFounderBackup } from '../scripts/release/founder-logical-backup.mjs';
+import { recordFounderRecoveryEvidence } from '../scripts/release/founder-recovery-evidence.mjs';
 import { applyMigrations } from '../worker/lib/migrations.js';
 import { randomToken } from '../worker/lib/crypto.js';
 
@@ -41,14 +42,36 @@ export class Target extends DurableObject {
     return receipt;
   }
 }
+export class Vault extends DurableObject {
+  putIfAbsent(name, artifact) {
+    this.ctx.storage.transactionSync(() => {
+      if (this.ctx.storage.kv.get(name) === undefined) this.ctx.storage.kv.put(name, artifact);
+    });
+  }
+  read(name) {
+    return this.ctx.storage.kv.get(name);
+  }
+}
 export default {
   async test(_controller, env) {
     const key = randomToken(32);
     const targetId = env.TARGET.idFromName('backup-workerd-target');
-    const sealed = await env.SOURCE.getByName('backup-workerd-source').seal(key);
+    const sourceId = env.SOURCE.idFromName('backup-workerd-source');
+    const sealed = await env.SOURCE.get(sourceId).seal(key);
     assert.ok(!sealed.artifact.includes('test-hash'));
-    const restored = await env.TARGET.get(targetId).unseal(sealed, targetId.toString(), key);
-    assert.equal(restored.code, 'isolated_restore_verified');
-    assert.equal(restored.ciphertextSha256, sealed.ciphertextSha256);
+    const target = env.TARGET.get(targetId);
+    const audit = new Map();
+    const { backup, restored } = await recordFounderRecoveryEvidence({
+      sealed,
+      expectedSource: { namespaceId: sourceNamespaceId, objectId: sourceId.toString() },
+      expectedTarget: { namespaceId: targetNamespaceId, objectId: targetId.toString() },
+      vault: env.VAULT.getByName('backup-archive'),
+      restore: input => target.unseal({ ...input, sourceObjectId: sourceId.toString() }, targetId.toString(), key),
+      audit: { put: (name, value) => audit.set(name, JSON.parse(value)) }
+    });
+    assert.equal(backup.ciphertextSha256, sealed.ciphertextSha256);
+    assert.equal(restored.ciphertextSha256, backup.ciphertextSha256);
+    assert.deepEqual(audit.get('founder-recovery:encrypted-backup-success'), backup);
+    assert.deepEqual(audit.get('founder-recovery:isolated-restore-success'), restored);
   }
 };

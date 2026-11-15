@@ -1,5 +1,11 @@
 # MAOMAO Execution Log
 
+## 2026-11-15 — QA-001 archive readback and isolated recovery receipts
+
+- The private recovery helper now writes only a sealed artifact to an independently supplied vault, reads it back, checks its digest, and restores exactly those bytes into the pinned isolated object. It publishes the existing release-gate audit keys only after the restore receipt matches the target and ciphertext digest. Archive content is kept out of the audit payload.
+- The local workerd drill used three separate Durable Object namespaces for source, vault, and isolated restore. The rehearsal verified readback, schema and migrations, account and session data, internal KV and both private receipts. The Node regression suite passed 50/50. Corrupted vault readback and restore receipts for an incorrect object yielded no success receipts.
+- Cloudflare's read-only R2 inventory returned 403 / 10042 because R2 is disabled on this account. The live private checkpoint Worker still has only the original source and audit bindings. The vault adapter remains storage-independent, and no account product, bucket, Worker route, trigger, secret or production binding was enabled. A reviewed private production executor with an independent vault and isolated target still needs to run the same flow before recovery point rotation, 001 transfer, or formal release.
+
 ## 2026-11-15 — QA-001 encrypted logical recovery rehearsal
 
 - Added the operator-only `scripts/release/founder-logical-backup.mjs` snapshot and restore helpers. They capture application SQL and private KV in one SQLite storage transaction, seal the archive with AES-256-GCM and verify the artifact digest and authenticated source metadata before restoring. The restore requires a pinned, empty, separate object and compares restored SQL, schema, migration history and KV against the decrypted snapshot before committing.
