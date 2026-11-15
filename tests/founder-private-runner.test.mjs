@@ -305,3 +305,42 @@ test('private 001 checkpoint rotation retains previous bookmark with no public c
   }});
   assert.equal((await handleFounderCheckpointRotationInternal({request:unauthorized,env,storage,now:()=>now})).status,403);
 });
+
+test('stale checkpoint is rotated only with explicit private window approval', async()=>{
+  const now=1_800_000_000_000;
+  const {env}=setup(),calls=[];
+  env.LIVE_CLOUD_DB={
+    idFromName(name){return name;},
+    get(){return {async fetch(req){
+      calls.push(new URL(req.url).pathname);
+      if(req.url.endsWith('/checkpoint'))return new Response('old lease',{status:409});
+      return Response.json({ok:true,recorded:true,recordedAt:now});
+    }};}
+  };
+  const denied=await runPrivateFounderCheckpoint({env,now:()=>now});
+  assert.deepEqual(denied,{ok:false,code:'checkpoint_rotation_requires_review'});
+  assert.deepEqual(calls,['/internal/release/checkpoint']);
+  env.FOUNDER_ROTATE_ALLOWED='preserve-old-checkpoint-and-rotate';
+  const accepted=await runPrivateFounderCheckpoint({env,now:()=>now});
+  assert.deepEqual(accepted,{ok:true,code:'checkpoint_recorded',recordedAt:now});
+  assert.deepEqual(calls.slice(-2),['/internal/release/checkpoint','/internal/release/checkpoint-rotate']);
+});
+
+test('private KV activation never approves stale bookmark rotation without explicit true flag', async()=>{
+  const {env}=setup();
+  const now=Date.now(),calls=[];
+  env.FOUNDER_RUN_ENABLED=undefined;
+  env.LIVE_CLOUD_DB={
+    idFromName(s){return s;},
+    get(){return {async fetch(req){calls.push(req.url);return new Response('old',{status:409});}};}
+  };
+  env.RELEASE_AUDIT={
+    async get(){return {v:1,target:'mao-auth-preview',origin:'https://mao520.com',
+      mode:'acknowledge-single-use-live-checkpoint',from:String(now-3000),
+      until:String(now+60000),rotateApproved:false};},
+    async put(){}
+  };
+  let pending;await operator.scheduled({},env,{waitUntil(p){pending=p;}});
+  await assert.rejects(pending,/private_checkpoint_checkpoint_rotation_requires_review/);
+  assert.equal(calls.length,1);
+});
