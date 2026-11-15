@@ -122,13 +122,13 @@
     var memberPane = paneMap.members;
     var memberHeading = heading('成员资料');
     if (memberHeading) memberHeading.remove();
-    memberPane.appendChild(members);
     var mHint = sectionHint(members);
+    memberPane.appendChild(members);
     if (mHint) memberPane.appendChild(mHint);
     var relationHeading = heading('成员关系与熟悉度');
     if (relationHeading) memberPane.appendChild(relationHeading);
-    memberPane.appendChild(relationships);
     var rHint = sectionHint(relationships);
+    memberPane.appendChild(relationships);
     if (rHint) memberPane.appendChild(rHint);
     takeSetting('relationshipDynamicsEnabled', memberPane);
     var leave = document.getElementById('leaveGroupBtn');
