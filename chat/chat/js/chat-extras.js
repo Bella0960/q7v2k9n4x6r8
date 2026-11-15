@@ -1243,7 +1243,7 @@
 
   // 只在原「＋」菜单增量注册番外；不改变已有聊天发送流程。
   var fanwaiScript = document.createElement('script');
-  fanwaiScript.src = 'js/chat-fanwai.js?v=20261115v7';
+  fanwaiScript.src = 'js/chat-fanwai.js?v=20261115v8';
   fanwaiScript.onerror = function () { console.warn('[Fanwai] 扩展模块加载失败'); };
   document.body.appendChild(fanwaiScript);
 
