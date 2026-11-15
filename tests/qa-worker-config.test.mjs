@@ -26,18 +26,13 @@ test('QA Worker is isolated from production and never aliases old account previe
   assert.ok(!('routes' in config), 'QA must never bind production routes');
   assert.ok(!('route' in config), 'QA must never bind a production route');
   assert.ok(!('zone_id' in config), 'QA must never attach a production zone');
-  assert.deepEqual(config.services, [
-    { binding: 'MAO_IDENTITY_AUTHORITY', service: 'maomao-001-identity-gateway-20261114' }
-  ], 'QA must use the private identity gateway rather than an old account Preview');
-  assert.deepEqual({
-    MAO_IDENTITY_MODE: config.vars.MAO_IDENTITY_MODE,
-    MAO_IDENTITY_AUTHORITY_MODE: config.vars.MAO_IDENTITY_AUTHORITY_MODE,
-    MAO_IDENTITY_CANONICAL_ADMIN_REQUIRED: config.vars.MAO_IDENTITY_CANONICAL_ADMIN_REQUIRED
-  }, {
-    MAO_IDENTITY_MODE: 'delegated_preview',
-    MAO_IDENTITY_AUTHORITY_MODE: 'existing_worker',
-    MAO_IDENTITY_CANONICAL_ADMIN_REQUIRED: 'true'
-  });
+  assert.ok(!(config.services || []).some(s => s.binding === 'MAO_IDENTITY_AUTHORITY'),
+    'isolated QA must never delegate login to the production identity gateway');
+  assert.equal(config.vars.MAO_IDENTITY_MODE, 'isolated_qa');
+  assert.equal(config.vars.MAO_QA_ALLOWED_ORIGIN,
+    'https://maomao-aw-qa-20261114.miamor520000.workers.dev');
+  assert.ok(!('MAO_IDENTITY_AUTHORITY_MODE' in config.vars));
+  assert.ok(!('MAO_IDENTITY_CANONICAL_ADMIN_REQUIRED' in config.vars));
   assert.deepEqual(config.triggers, { crons: ['*/5 * * * *'] },
     'isolated QA must keep its cloud autonomy Cron through redeploys');
   assert.equal(config.keep_vars, true);
@@ -46,8 +41,8 @@ test('QA Worker is isolated from production and never aliases old account previe
   assert.equal(config.vars.MAO_SOCIAL_ENABLED, 'true');
   assert.equal(config.vars.MAO_SOCIAL_CHAT_ENABLED, 'false');
   assert.equal(config.vars.MAO_SOCIAL_E2EE_ENABLED, 'true');
-  assert.equal(config.vars.MAO_DELEGATED_ADMIN_MANAGEMENT_ENABLED, 'true',
-    'admin authority proxy is enabled only after the private gateway is upgraded');
+  assert.equal(config.vars.MAO_DELEGATED_ADMIN_MANAGEMENT_ENABLED, undefined,
+    'isolated test accounts cannot proxy privileged production account management');
   const prod=JSON.parse(readFileSync(new URL('../wrangler.jsonc', import.meta.url),'utf8'));
   assert.equal(prod.vars?.MAO_DELEGATED_ADMIN_MANAGEMENT_ENABLED, undefined,
     'never enable delegated QA management implicitly in production');
