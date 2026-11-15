@@ -134,15 +134,16 @@ function switchCandidate(){
  cardEl.style.transform='';cardEl.style.opacity='';
  render();
 }
-function move(direction){
+async function move(direction){
  if(lock||!current)return;
+ lock=true;
  var old=current;
  if(direction==='right'){
-   var saved=engine.saveCandidate(old);
-   if(!saved.ok){notify(saved.error);snap();return;}
+   var saved=await engine.saveCandidateSafe(old);
+   if(!saved.ok){lock=false;notify(saved.error);snap();return;}
    notify('已加入候选收藏，不消耗 API');
  }
- lock=true;cardEl.classList.remove('dragging');cardEl.classList.add('moving');
+ cardEl.classList.remove('dragging');cardEl.classList.add('moving');
  cardEl.style.transform='translate3d('+(direction==='right'?window.innerWidth: -window.innerWidth)+'px,0,0) rotate('+(direction==='right'?15:-15)+'deg)';
  cardEl.style.opacity='0';
  setTimeout(function(){lock=false;drawNew();},240);
@@ -253,8 +254,8 @@ function openSaved(){
    '<button class="mini dark" data-create="'+escapeHtml(c.id)+'">去创建</button></div></div>';
  }).join('')+'</div>':'<div class="empty">还没有收藏的人物。<br>向右滑动喜欢的人，TA 就会出现在这里。</div>';
  openSheet(html,'候选收藏');
- sheet.querySelectorAll('[data-remove]').forEach(function(b){b.addEventListener('click',function(){
-   var result=engine.removeCandidate(b.dataset.remove);if(!result.ok){notify(result.error);return;}
+ sheet.querySelectorAll('[data-remove]').forEach(function(b){b.addEventListener('click',async function(){
+   var result=await engine.removeCandidateSafe(b.dataset.remove);if(!result.ok){notify(result.error);return;}
    count();openSaved();
  });});
  sheet.querySelectorAll('[data-create]').forEach(function(b){b.addEventListener('click',function(){
