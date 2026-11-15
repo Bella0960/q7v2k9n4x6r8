@@ -45,12 +45,16 @@ test('release prerequisite: actual chat HTML loads fanwai entry and Vite publish
   const extras = readFileSync(resolve(root, 'chat/chat/js/chat-extras.js'), 'utf8');
   const fanwai = readFileSync(resolve(root, 'chat/chat/js/chat-fanwai.js'), 'utf8');
   const vite = readFileSync(resolve(root, 'vite.config.js'), 'utf8');
-  assert.match(html, /<script src="js\/chat-extras\.js\?t=20261115fanwai\d+"/,
+  assert.match(html, /<script src="js\/chat-extras\.js\?t=20\d{6}fanwai\d+"/,
     'chat page must refresh the original extras loader after integrating fanwai');
-  assert.match(extras, /fanwaiScript\.src = 'js\/chat-fanwai\.js\?v=20261115v\d+'/,
+  assert.match(extras, /fanwaiScript\.src = 'js\/chat-fanwai\.js\?v=20\d{6}v\d+'/,
     'existing plus menu must load the versioned fanwai script');
-  assert.match(fanwai, /js\/chat-fanwai\.css\?v=20261115softcore\d+/,
+  assert.match(fanwai, /js\/chat-fanwai\.css\?v=20\d{6}softcore\d+/,
     'fanwai must request its own versioned stylesheet');
+  assert.equal((html.match(/<script src="js\/chat-extras\.js\?t=/g) || []).length, 1,
+    'chat detail must load exactly one versioned extras script');
+  assert.equal((extras.match(/fanwaiScript\.src\s*=\s*'js\/chat-fanwai\.js\?v=/g) || []).length, 1,
+    'the existing plus panel must load exactly one fanwai module');
   for (const asset of ['chat/chat/js/chat-fanwai.js', 'chat/chat/js/chat-fanwai.css']) {
     assert.ok(existsSync(resolve(root, asset)), asset + ' must exist before production build');
   }
