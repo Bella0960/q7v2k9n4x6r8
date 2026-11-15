@@ -40,6 +40,11 @@
      * before DOMContentLoaded when the preference was already disabled. */
     applyStatusbarPreference();
 
+    /* Preserve each bar's existing inline display while this controller hides it.
+     * The dedicated Home Indicator module may update the same bar independently;
+     * never overwrite a newer display change made by that owner. */
+    var hiddenHomeIndicatorDisplay = new WeakMap();
+
     function apply() {
         applyStatusbarPreference();
         var hideHomeIndicator = getPref('settings_home_indicator_visible') === '0';
@@ -48,7 +53,17 @@
         var homeIndicators = document.querySelectorAll('.gesture-bar');
         for (var j = 0; j < homeIndicators.length; j++) {
             var indicator = homeIndicators[j];
-            indicator.style.display = hideHomeIndicator ? 'none' : '';
+            if (hideHomeIndicator) {
+                if (!hiddenHomeIndicatorDisplay.has(indicator)) {
+                    hiddenHomeIndicatorDisplay.set(indicator, indicator.style.display);
+                }
+                indicator.style.display = 'none';
+            } else if (hiddenHomeIndicatorDisplay.has(indicator)) {
+                if (indicator.style.display === 'none') {
+                    indicator.style.display = hiddenHomeIndicatorDisplay.get(indicator);
+                }
+                hiddenHomeIndicatorDisplay.delete(indicator);
+            }
             /* The existing home-indicator controller exposes desktop bars as
              * role=button. Do not hide a visible, operable return target from
              * assistive technology when only the top status bar is toggled. */
