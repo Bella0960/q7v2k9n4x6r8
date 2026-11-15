@@ -28,7 +28,7 @@
     background: repeating-linear-gradient(0deg,rgba(0,0,0,.008) 0,rgba(0,0,0,.008) 1px,transparent 1px,transparent 5px),#fff;
     color: var(--ink);
     min-height: 100vh; max-width: 390px; margin: 0 auto;
-    padding-bottom: 90px; -webkit-font-smoothing: antialiased;
+    padding-bottom: max(90px, var(--maomao-forum-detail-reserved-bottom, 90px)); -webkit-font-smoothing: antialiased;
   }
   .topbar {
     height: 59px; padding: 0 22px;
@@ -278,6 +278,12 @@
     var offset = parseFloat(window.getComputedStyle(composer).bottom);
     if (!Number.isFinite(offset)) offset = 0;
     hint.style.bottom = Math.ceil(size + offset + 8) + 'px';
+    // Fixed reply prompts and image previews must not cover the last comment
+    // when the reader scrolls to the end of this page.
+    var hintVisible = window.getComputedStyle(hint).display !== 'none';
+    var hintHeight = hintVisible ? hint.getBoundingClientRect().height + 8 : 0;
+    document.body.style.setProperty('--maomao-forum-detail-reserved-bottom',
+      Math.ceil(size + offset + 8 + hintHeight) + 'px');
   }
   function schedule() {
     if (pending) return;
@@ -285,7 +291,9 @@
     window.requestAnimationFrame(sync);
   }
   if (typeof ResizeObserver === 'function') {
-    new ResizeObserver(schedule).observe(composer);
+    var observer = new ResizeObserver(schedule);
+    observer.observe(composer);
+    observer.observe(hint);
   }
   window.addEventListener('resize', schedule);
   window.addEventListener('pageshow', schedule);
