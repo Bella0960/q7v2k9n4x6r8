@@ -195,3 +195,31 @@ test('Worker 与客户端作用域接口保持相同的注入版本和请求账�
   assert.match(scopeSource,/headers\.set\('x-mao-account-context', accountId\)/);
   assert.match(fontLoaderSource,/fontAssetPath \+= encodeURIComponent\(maoScope\.accountId\)/);
 });
+
+test('账号作用域半初始化失败时邂逅必须拒绝抽卡，不能信任 ready=true', () => {
+  const accountId = 'MAO-DDDDDDDDDDDD';
+  const metas = {
+    'meta[name="mao-account-id"]': {content:accountId},
+    'meta[name="mao-account-role"]': {content:'user'}
+  };
+  const document = {
+    querySelector(selector) { return metas[selector] || null; },
+    open() {}, write() { this.blocked = true; }, close() {}
+  };
+  const window = {
+    location:{hostname:'app.mao520.com'},
+    localStorage:makeStorage(),
+    sessionStorage:makeStorage(),
+    indexedDB:null,
+    caches:null,
+    stop() {}
+  };
+  vm.runInNewContext(scopeSource,
+    {window,document,console,Object,Array,Proxy,Reflect,Promise,encodeURIComponent,Symbol});
+  assert.equal(document.blocked,true,'缺失必需环境时应阻断页面');
+  assert.equal(window.__MAO_ACCOUNT_SCOPE__,undefined,'不能在保护安装前宣告 ready');
+  window.document = document;
+  vm.runInNewContext(engineSource,
+    {window,Math,Set,Uint32Array,Date,JSON,String,Array,Object,Number,CustomEvent:class {}});
+  assert.equal(window.MAOMAOEncounter.generate().ok,false,'隔离不完整不得生成候选');
+});
