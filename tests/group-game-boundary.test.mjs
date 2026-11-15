@@ -325,3 +325,34 @@ test('host game private-chat controls remain collapsed and unavailable in no-pri
   assert.match(detail, /recipientId !== '__user'/);
   assert.match(detail, /redactGroupPrivateStream/);
 });
+
+
+test('game private DM preserves confirmed delivery and recovers public activity idempotently', () => {
+  const h = harness();
+  assert.equal(begin(h, { allowPrivate: true, showPrivateActivity: true }).ok, true);
+  const sid = h.game.getPublic('g1').sessionId;
+  const req = { groupId: 'g1', sessionId: sid, fromId: 'r1', toId: 'r2',
+    text: '只给角色二的秘密消息', eventId: 'whisper-recover-1' };
+  const originalSet = h.storage.setItem.bind(h.storage);
+  let blockActivity = true;
+  h.storage.setItem = (key, value) => {
+    if (key === 'phone_group_game_v1_g1' && blockActivity) throw new Error('QuotaExceededError');
+    return originalSet(key, value);
+  };
+  const first = h.game.sendWhisper(req);
+  assert.equal(first.ok, true, 'recipient inbox has been durably saved');
+  assert.equal(first.privateSaved, true);
+  assert.equal(first.activitySynced, false, 'public activity failure must not be misreported as synced');
+  assert.equal(h.game.buildRoleContext({ groupId: 'g1', roleId: 'r2' }).text.includes(req.text), true);
+  assert.equal(h.game.getPublic('g1').activity.length, 0);
+  blockActivity = false;
+  const again = h.game.sendWhisper(req);
+  assert.equal(again.ok, true);
+  assert.equal(again.duplicate, true);
+  assert.equal(again.activitySynced, true);
+  assert.equal(h.game.getPublic('g1').activity.length, 1, 'retry must add metadata once');
+  const recipient = h.records.get('phone_group_game_private_v1_g1_' + sid + '_inbox_r2');
+  assert.equal(JSON.parse(recipient).length, 1, 'retry must not deliver a second private message');
+  assert.equal(h.game.sendWhisper({ ...req, text: '碰撞的另一条消息' }).code, 'EVENT_CONFLICT');
+  assert.doesNotMatch(h.records.get('phone_group_game_v1_g1'), /只给角色二的秘密消息/);
+});
