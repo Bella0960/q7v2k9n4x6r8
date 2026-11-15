@@ -155,3 +155,28 @@ test('private responses in static resource fallback are not served from CacheSto
   assert.equal(await result.text(), 'new-private-response');
   assert.equal(app.stored.length, 0);
 });
+
+
+test('redirected account sign-in HTML is never cached as the protected chat page', async () => {
+  const login = response('登录入口');
+  Object.defineProperty(login, 'redirected', { value: true });
+  const app = harness({ network: async () => login });
+  const event = app.dispatchNavigate();
+  const result = await event.response;
+  await Promise.all(event.waits);
+  assert.equal(await result.text(), '登录入口', 'browser may follow the server redirect');
+  assert.equal(app.stored.length, 0, 'login HTML must not be stored under /chat/chat/chat-detail.html');
+});
+
+test('install precache cannot save redirected login responses for protected HTML entries', async () => {
+  const app = harness({
+    installNetwork: async url => {
+      const res = response(url.endsWith('.html') ? '登录入口' : '公共资源');
+      if (url.endsWith('.html')) Object.defineProperty(res, 'redirected', { value: true });
+      return res;
+    }
+  });
+  await app.dispatchInstall();
+  assert.ok(!app.stored.some(item => /\.html(?:[?#]|$)/.test(item.request)));
+  assert.ok(app.preCached.some(item => item.endsWith('.js')));
+});
