@@ -156,3 +156,25 @@ test('settings status bar toggle persists successful changes and follows cross-t
   app.windowHandlers.get('pageshow')();
   assert.equal(app.toggle.checked, false);
 });
+
+test('status bar source changes trigger the existing CI checks', () => {
+  const workflow = fs.readFileSync(path.join(projectRoot, '.github/workflows/chat-regression-contract.yml'), 'utf8');
+  const pushIndex = workflow.indexOf('  push:\n');
+  const prIndex = workflow.indexOf('  pull_request:\n');
+  const manualIndex = workflow.indexOf('  workflow_dispatch:\n');
+  assert.ok(pushIndex >= 0 && prIndex > pushIndex && manualIndex > prIndex, 'expected existing CI event filters');
+  for (const [event, block] of [
+    ['push', workflow.slice(pushIndex, prIndex)],
+    ['pull_request', workflow.slice(prIndex, manualIndex)]
+  ]) {
+    for (const affectedFile of [
+      'beauty/beauty.html', 'settings/settings.html', 'shared/js/statusbar-control.js',
+      'tests/**'
+    ]) {
+      assert.ok(block.includes("      - '" + affectedFile + "'"),
+        event + ' does not run on ' + affectedFile);
+    }
+  }
+  assert.match(workflow, /run: node --test tests\/global-statusbar-wiring\.test\.mjs/);
+  assert.match(workflow, /run: node tests\/global-statusbar-browser\.mjs/);
+});
