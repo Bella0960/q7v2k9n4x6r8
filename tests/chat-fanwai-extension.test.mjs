@@ -83,3 +83,33 @@ test('plugin context failures are contained and never abort the episode', async 
   const extra = await core.resolveContexts({ contextIds: ['broken'] }, { id: 'role-1', name: '小云', memory: '原始记忆' }, {});
   assert.equal(extra, '');
 });
+
+
+test('only opted-in, confirmed memories of the selected role can enter side-story prompts', async () => {
+  const window = mount();
+  const core = window.MAOMAOFanwaiCore;
+  let reads = 0;
+  window.MemoryRecall = {
+    getMemories(id) {
+      reads++;
+      assert.equal(id, 'role-1');
+      return [
+        { sourceRoleId: 'role-1', content: '确认记忆：一起逛书店', status: 'confirmed', importance: 5 },
+        { sourceRoleId: 'role-1', content: '待确认草稿：不应出现', status: 'pending', importance: 5 },
+        { sourceRoleId: 'role-2', content: '别人的记忆：不应出现', status: 'confirmed', importance: 5 },
+        { sourceRoleId: 'role-1', text: '固定纪念日：初雪', status: 'fixed', importance: 4 }
+      ];
+    }
+  };
+  const character = { id: 'role-1', name: '小云', persona: '温和', memory: '角色备忘：喜欢晴天' };
+  const user = { nickname: '小月' };
+  assert.equal(await core.resolveContexts({ contextIds: [] }, character, user), '');
+  assert.equal(reads, 0);
+  const context = await core.resolveContexts({ contextIds: ['character-memory'] }, character, user);
+  assert.equal(reads, 1);
+  assert.match(context, /一起逛书店/);
+  assert.match(context, /喜欢晴天/);
+  assert.match(context, /初雪/);
+  assert.doesNotMatch(context, /待确认草稿/);
+  assert.doesNotMatch(context, /别人的记忆/);
+});
