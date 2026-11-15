@@ -998,3 +998,32 @@ test('closing the story while deletion commits cannot reopen the sheet', async (
   assert.equal(db.records.has(id), false);
   assert.equal(app.requests, 0);
 });
+
+
+test('pending archive read cannot replace a newly submitted custom story during slow first save', async () => {
+  const db = fakeFanwaiDB({ readDelayMs: 18, writeDelays: [55] });
+  const accountId = 'MAO-AAAAAAAAAAAA';
+  const prior = accountId + ':role-1:old-story';
+  db.records.set(prior, {
+    id: prior, accountId, characterId: 'role-1', templateId: 'daily',
+    name: '旧故事', status: 'complete', target: 40, updatedAt: 10,
+    messages: [{ role: 'char', text: '以前写的故事' }]
+  });
+  const app = mount({ accountId, indexedDB: db });
+  const root = app.open();
+  const sheet = root.querySelector('.fw-sheet');
+  await tickUntil(() => sheet.all().some(n => n.dataset.id === prior), 100);
+  const oldRead = sheet.all().find(n => n.dataset.action === 'read' && n.dataset.id === prior);
+  assert.ok(oldRead);
+  const pendingRead = root.handlers.click({ target: oldRead });
+  const customInput = sheet.all().find(n => n.id === 'fw-custom-input');
+  customInput.value = '清晨的一杯热茶，顺着这段日常聊下去';
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'custom') });
+  await pendingRead; // The stale archive read resolves before the new first write commits.
+  await tickUntil(() => app.requests > 0, 120);
+  const titles = sheet.all().filter(n => n.className === 'fw-reader-title');
+  assert.ok(titles.some(n => n.textContent === '自定义番外'),
+    'starting a new custom story must not be overwritten by an older archive click');
+  assert.ok(app.prompts[0].includes('清晨的一杯热茶'));
+  assert.ok(db.records.has(prior), 'the old story remains untouched');
+});
