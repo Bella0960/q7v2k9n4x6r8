@@ -288,11 +288,13 @@ function fakeFanwaiDB(options = {}) {
                 }
                 queriedRanges.push(range);
                 const req = {};
-                Promise.resolve().then(() => {
+                const finishRead = () => {
                   req.result = Array.from(records.values()).filter(record =>
                     record.id >= range.lower && record.id <= range.upper);
                   if (req.onsuccess) req.onsuccess();
-                });
+                };
+                if (options.readDelayMs) setTimeout(finishRead, options.readDelayMs);
+                else Promise.resolve().then(finishRead);
                 return req;
               },
               put(record) {
@@ -757,4 +759,23 @@ test('authenticated pages without the established account scope module never mou
   const valid = mount({ accountId: 'MAO-AAAAAAAAAAAA' });
   assert.ok(valid.grid.querySelector('[data-feat="fanwai"]'),
     'matching completed existing scope preserves normal episode operation');
+});
+
+
+test('late archive query cannot reset scroll or overwrite a newer template preview', async () => {
+  const db = fakeFanwaiDB({ readDelayMs: 24 });
+  const app = mount({ accountId: 'MAO-AAAAAAAAAAAA', indexedDB: db });
+  const root = app.open();
+  const sheet = root.querySelector('.fw-sheet');
+  await tickUntil(() => sheet.all().some(n => n.dataset.template === 'daily'));
+  await root.handlers.click({
+    target: sheet.all().find(n => n.dataset.template === 'daily')
+  });
+  assert.ok(sheet.all().some(n => n.className.includes('fw-preview-cover')));
+  sheet.scrollTop = 153; // User is reading a preview while the old archive request finishes.
+  await new Promise(resolve => setTimeout(resolve, 35));
+  assert.equal(sheet.scrollTop, 153,
+    'stale picker must not scroll the newer preview back to the top');
+  assert.ok(sheet.all().some(n => n.className.includes('fw-preview-cover')));
+  assert.equal(app.requests, 0);
 });
