@@ -128,7 +128,7 @@ test('existing plus menu opens six templates and generates 80 isolated chat bubb
   assert.equal(cards.length, 6);
   await root.handlers.click({ target: cards[0] });
   assert.equal(app.requests, 0, 'preview must not consume any model request');
-  assert.ok(sheet.all().find(n => n.className === 'fw-preview-cover'), 'scene preview cover should appear');
+  assert.ok(sheet.all().find(n => n.className.split(' ').includes('fw-preview-cover')), 'scene preview cover should appear');
   const begin = sheet.all().find(n => n.dataset.action === 'start-template');
   assert.ok(begin, 'generation requires explicit confirmation');
   await root.handlers.click({ target: begin });
