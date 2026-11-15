@@ -732,14 +732,22 @@
   letter-spacing: .07em;
   text-align: left;
 }
-#fanwaiLayer .fw-settings-toggle::before {
-  content: "···";
-  font-family: Georgia, serif;
-  font-size: 13px;
-  letter-spacing: .13em;
+#fanwaiLayer .fw-settings-toggle {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 20px;
+  letter-spacing: .14em;
+  min-width: 44px;
+  justify-content: flex-start;
   line-height: 1;
-  margin-right: 8px;
-  color: #929d94;
+}
+#fanwaiLayer .fw-btn.fw-reader-more-toggle {
+  min-width: 44px;
+  min-height: 34px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 20px;
+  letter-spacing: .14em;
+  line-height: 1;
+  text-align: right;
 }
 #fanwaiLayer .fw-settings-drawer {
   margin: 1px 0 13px;
