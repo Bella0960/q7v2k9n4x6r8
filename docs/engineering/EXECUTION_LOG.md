@@ -108,3 +108,13 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 5. Break cloud-push work into small, reviewable milestones. A code-only PR is not proof of scheduled execution, server model response, OS push delivery, or two-device message persistence.
 6. No merge to main, production deployment, APK update, Worker secret configuration, or destructive user-data operation without explicit owner approval.
 7. This conversation cannot run after the chat/session is closed. Leave this checkpoint so the next session can resume without asking the owner to repeat the task.
+
+## FEATURE-ENCOUNTER-001 — 2026-11-15 邂逅角色抽卡
+- 用户授权实施新功能；偏好：低饱和冷灰黑白、首页极简、无额外装饰、真实互动、本地 0 API 初筛、原角色库对接、强制姓名查重、相似人设可保留、独立扩展接口。
+- Base: main @ a5415d7e28280fd07cea4d02e19e87d9ec36083e
+- Branch: FEATURE-ENCOUNTER-001-initial-experience
+- 新增：encounter/encounter.html；encounter/encounter-engine.js；tests/encounter-contract.test.mjs；docs/features/ENCOUNTER_SPEC.md。
+- 修改：index.html 桌面入口；worldbook/characters/characters.html / js/characters-manager.js 候选进入原编辑器、导出 MAOMAO JSON 与仅支持原生 JSON 导入。
+- 不修改正式角色/聊天/账户数据库记录；未触碰 Cloudflare 正式部署与管理员身份；未合并 main。
+- 代码已提交；10 项合同测试已写，当前执行环境无法直接运行本仓库 Node/Vite/真机浏览器，测试、npm run build、UI 实际效果均为 NOT VERIFIED。不得把提交代码等同于验收通过。
+- 后续：优先真实浏览器测试滑动和草稿恢复、修复实际失败、建设显式 AI 人设完善按钮（用户确认时调用 API）、扩展人物关系/稀有卡；通过验收后再申请合并。
