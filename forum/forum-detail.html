@@ -1245,13 +1245,23 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     if(button&&button.disabled)return;
     if(button)button.disabled=true;
     const replying=replyToIdx;
+    // Capture the actual reply target before the asynchronous image upload.
+    // Comment indices can shift while the user deletes another comment.
+    const replyTarget=replying>=0?post.comments[replying]:null;
     const commentId='forum_comment_'+Date.now().toString(36);
     let assetIds=[];
     try{
       assetIds=await ForumMedia.upload(files,'forum-comment',commentId);
       let replyContainer,savedItem;
       if(replying>=0){
-        const target=post.comments[replying];
+        // Never attach a reply to a different comment at a stale array index.
+        // If the selected target was removed while uploading, keep the draft.
+        if(!replyTarget||!post.comments.includes(replyTarget)){
+          await ForumMedia.release(assetIds,'forum-comment',commentId);
+          toast('回复对象已不存在，请重新选择');
+          return;
+        }
+        const target=replyTarget;
         if(!target.replies)target.replies=[];
         savedItem={id:commentId,name:'我',avatar:'#222',owner:'me',text:text,time:Date.now(),replyTo:target.name,mediaAssetIds:assetIds};
         target.replies.push(savedItem);
@@ -1262,7 +1272,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
         replyContainer=savedItem;
       }
       if(!saveNow()){
-        if(replying>=0){const target=post.comments[replying];target.replies=target.replies.filter(item=>item!==savedItem)}
+        if(replying>=0){replyTarget.replies=replyTarget.replies.filter(item=>item!==savedItem)}
         else post.comments=post.comments.filter(item=>item!==savedItem);
         await ForumMedia.release(assetIds,'forum-comment',commentId);
         return;
