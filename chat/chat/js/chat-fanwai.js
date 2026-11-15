@@ -411,9 +411,10 @@
   function storySettings(countId, suggestedCount) {
     var wrap = document.createElement('section');
     wrap.className = 'fw-settings';
-    var toggle = button('toggle-settings', '故事设置', 'fw-settings-toggle');
+    var toggle = button('toggle-settings', '···', 'fw-settings-toggle');
     toggle.setAttribute('aria-expanded', 'false');
     toggle.setAttribute('aria-label', '展开故事设置');
+    toggle.setAttribute('title', '故事设置');
     var drawer = document.createElement('div');
     drawer.className = 'fw-settings-drawer';
     drawer.hidden = true;
@@ -654,8 +655,9 @@
     else if (episode.status !== 'complete') actions.appendChild(button('resume', '继续生成', 'fw-primary'));
     var more = document.createElement('div');
     more.className = 'fw-reader-more';
-    var moreToggle = button('toggle-reader-menu', '更多', 'fw-reader-more-toggle');
+    var moreToggle = button('toggle-reader-menu', '···', 'fw-reader-more-toggle');
     moreToggle.setAttribute('aria-expanded', 'false');
+    moreToggle.setAttribute('aria-label', '更多番外操作');
     var morePanel = document.createElement('div');
     morePanel.className = 'fw-reader-menu';
     morePanel.hidden = true;
@@ -798,6 +800,7 @@
       if (!drawer) return;
       drawer.hidden = !drawer.hidden;
       node.setAttribute('aria-expanded', drawer.hidden ? 'false' : 'true');
+      node.setAttribute('aria-label', drawer.hidden ? '展开故事设置' : '收起故事设置');
       return;
     }
     if (key === 'set-memory') {
@@ -816,6 +819,7 @@
       if (!menu) return;
       menu.hidden = !menu.hidden;
       node.setAttribute('aria-expanded', menu.hidden ? 'false' : 'true');
+      node.setAttribute('aria-label', menu.hidden ? '更多番外操作' : '收起更多操作');
       return;
     }
     if (key === 'close') { close(); return; }
