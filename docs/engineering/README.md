@@ -84,10 +84,10 @@ When documents disagree, use this order:
 1. The user's latest explicit product requirement.
 2. The verified live environment ledger and release gates in RELEASE_PLAYBOOK.md for deployment decisions.
 3. Current source code and verified runtime behavior.
-3. This engineering handbook's verified baseline and approved decisions.
-4. Current feature contracts and visual design constitution.
-5. Historical audit/refactor reports.
-6. Old assistant/agent notes and assumptions.
+4. This engineering handbook's verified baseline and approved decisions.
+5. Current feature contracts and visual design constitution.
+6. Historical audit/refactor reports.
+7. Old assistant/agent notes and assumptions.
 
 A historic report records what was observed at its date. Before implementing it, verify whether the issue still exists on main.
 
