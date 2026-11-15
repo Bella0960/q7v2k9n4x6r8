@@ -15,6 +15,8 @@ function setup({ selectedIndex = 1, allowSave = true } = {}) {
   let finishUpload;
   const pendingUpload = new Promise(resolve => { finishUpload = resolve; });
   const released = [], generated = [], notices = [];
+  const imageDraft = [];
+  let imageClears = 0;
   const post = { comments: [
     { id: 'a', name: '甲', replies: [] },
     { id: 'b', name: '乙', replies: [] },
@@ -32,9 +34,9 @@ function setup({ selectedIndex = 1, allowSave = true } = {}) {
       upload: () => pendingUpload,
       release: async (...args) => { released.push(args); }
     },
-    commentImageFiles: [],
+    commentImageFiles: imageDraft,
     saveNow: () => allowSave,
-    clearCommentImages() {},
+    clearCommentImages() { imageClears += 1; imageDraft.splice(0); },
     renderPost() {},
     renderComments() {},
     generateRepliesToUserComment: async target => { generated.push(target.id); },
@@ -52,8 +54,8 @@ function setup({ selectedIndex = 1, allowSave = true } = {}) {
       setCurrentPost(nextPost) { post = nextPost; }
     });
   `, sandbox, { filename: 'forum-detail-send-comment.js' });
-  return { post, input, button, released, generated, notices, controller,
-    finishUpload };
+  return { post, input, button, released, generated, notices, imageDraft, controller,
+    imageClearCount: () => imageClears, finishUpload };
 }
 
 test('an earlier deletion during upload does not redirect a reply to the next comment', async () => {
@@ -463,4 +465,53 @@ test('switching away and back before upload resolves still uses the captured ori
   assert.equal(h.post.comments[3].text, '发给乙的回复草稿');
   assert.equal(otherPost.comments.length, 0);
   assert.equal(h.released.length, 0);
+});
+
+
+test('text typed during an in-flight upload remains in the composer after the previous comment sends', async () => {
+  const h = setup({ selectedIndex: -1 });
+  const pending = h.controller.send();
+  h.input.value = '用户新输入的第二条草稿';
+  h.finishUpload([]);
+  await pending;
+  assert.equal(h.post.comments.length, 4);
+  assert.equal(h.post.comments[3].text, '发给乙的回复草稿');
+  assert.equal(h.input.value, '用户新输入的第二条草稿');
+  assert.equal(h.button.disabled, false);
+});
+
+test('new image selection during upload is never removed by the previous send', async () => {
+  const h = setup({ selectedIndex: -1 });
+  const pending = h.controller.send();
+  const nextImage = { name: 'new-selection.png', type: 'image/png' };
+  h.imageDraft.push(nextImage);
+  h.finishUpload([]);
+  await pending;
+  assert.equal(h.post.comments.length, 4);
+  assert.equal(h.imageDraft.length, 1);
+  assert.equal(h.imageDraft[0], nextImage);
+  assert.equal(h.imageClearCount(), 0);
+});
+
+test('new reply target and draft selected during upload survive the preceding reply send', async () => {
+  const h = setup({ selectedIndex: 1 });
+  const pending = h.controller.send();
+  h.input.value = '下一条回复';
+  h.controller.setReplyIndex(2);
+  h.finishUpload([]);
+  await pending;
+  assert.equal(h.post.comments[1].replies.length, 1);
+  assert.equal(h.post.comments[2].replies.length, 0);
+  assert.equal(h.controller.getReplyIndex(), 2);
+  assert.equal(h.input.value, '下一条回复');
+});
+
+test('unchanged composer still clears submitted text and image selection after a successful send', async () => {
+  const h = setup({ selectedIndex: -1 });
+  const pending = h.controller.send();
+  h.finishUpload([]);
+  await pending;
+  assert.equal(h.input.value, '');
+  assert.equal(h.imageClearCount(), 1);
+  assert.equal(h.controller.getReplyIndex(), -1);
 });
