@@ -203,8 +203,8 @@ test('closed chain memory requires a matching saved public chat message', () => 
 test('chat detail routes private events only after a verified saved AI reply', () => {
   const detail = load('chat/chat/chat-detail.html');
   assert.match(detail, /queueGameWhisper\(/);
-  assert.match(detail, /replySaved && pendingGameWhisper/);
-  assert.match(detail, /GroupGameSessions\.sendWhisper\(pendingGameWhisper\)/);
+  assert.match(detail, /pendingGameWhisper && groupTurnEffects && window\.GroupGameSessions/);
+  assert.match(detail, /groupTurnEffects\.afterSave\(function \(\) \{[\s\S]*?GroupGameSessions\.sendWhisper\(pendingGameWhisper\)/);
   assert.match(detail, /GroupMemoryEvents\.recordChainClosure/);
   assert.match(detail, /m\.type !== 'group_game_private'/);
   assert.match(detail, /activeGame\.sessionId !== expectedGameSessionId/);
