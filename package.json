@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0 --port 3000",
     "lint": "node -e 'console.log(\"Lint passed\")'",
-    "test:chat:contract": "node --test tests/chat-regression-contract.test.mjs tests/chat-role-sticker-library.test.mjs tests/role-avatar-library.test.mjs tests/chat-image-vision.test.mjs tests/role-gallery-image-autonomy.test.mjs tests/chat-fanwai.test.mjs tests/chat-fanwai-ui.test.mjs tests/chat-fanwai-extension.test.mjs tests/phone-api-abort.test.mjs",
+    "test:chat:contract": "node --test tests/chat-regression-contract.test.mjs tests/chat-role-sticker-library.test.mjs tests/role-avatar-library.test.mjs tests/chat-image-vision.test.mjs tests/role-gallery-image-autonomy.test.mjs tests/chat-fanwai.test.mjs tests/chat-fanwai-ui.test.mjs tests/chat-fanwai-extension.test.mjs tests/phone-api-abort.test.mjs tests/sw-private-account-navigation.test.mjs",
     "test:chat:reply": "node --test tests/chat-reply-bubble-mode.test.mjs",
     "test:chat:isolation": "node --test tests/chat-data-isolation.test.mjs",
     "test:bugfix:blockers": "node --test tests/forum-chat-blockers.test.mjs",
@@ -47,7 +47,7 @@
     "test:role:avatars": "node --test tests/role-avatar-library.test.mjs",
     "test:chat:image-vision": "node --test tests/chat-image-vision.test.mjs",
     "postbuild": "node --test tests/production-assets-isolation.test.mjs",
-    "test:chat:fanwai": "node --test tests/chat-fanwai.test.mjs tests/chat-fanwai-ui.test.mjs tests/chat-fanwai-extension.test.mjs tests/phone-api-abort.test.mjs"
+    "test:chat:fanwai": "node --test tests/chat-fanwai.test.mjs tests/chat-fanwai-ui.test.mjs tests/chat-fanwai-extension.test.mjs tests/phone-api-abort.test.mjs tests/sw-private-account-navigation.test.mjs"
   },
   "devDependencies": {
     "playwright": "^1.64.1",
