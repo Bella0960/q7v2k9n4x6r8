@@ -16,7 +16,7 @@ if(kind!=='account'&&kind!=='encounter'){
   const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
   const git=(args)=>execFileSync('git',args,{cwd:root,encoding:'utf8',
     stdio:['ignore','pipe','ignore']}).trim();
-  const dirty=git(['status','--porcelain','--untracked-files=no']);
+  const dirty=git(['status','--porcelain','--untracked-files=normal']);
   if(dirty){
     console.error('工作区仍有未提交的代码变动，不能把测试回执绑定到旧 Git HEAD');
     process.exitCode=1;
