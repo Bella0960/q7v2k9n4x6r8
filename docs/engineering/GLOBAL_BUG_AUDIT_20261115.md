@@ -32,6 +32,25 @@
 4. 自动测试通过后，在**唯一已核实隔离 QA** 的 Android Chrome、iPhone Safari 实机检查；记录 URL、Worker/DB 绑定、版本、截图和复现步骤。测试未跑时继续标 `NOT VERIFIED`。
 5. **禁止**为排查单项导航问题另造 QA Worker/域名或直接改正式 `app.mao520.com`。先在原导航/PWA PR 处理或明确最小迁移路线。
 
+## 新增统一应用网址与导航体验（2026-11-15 用户明确提出）
+
+**NAV-003 · P1 · SOURCE-VERIFIED 当前实现 / PRODUCT REQUIREMENT：对外暴露 `.html` 深层文件路径，缺统一的应用级可见 URL。**
+
+与 `NAV-001` 严格区分：
+- `NAV-001`：链接**错误地重复/叠加目录**，是待动态复现的跳转缺陷；不能拿 `/chat/chat/chat.html` 这种合法源码路径直接证明出现重复 bug。
+- `NAV-003`：即使路径完全正确，用户仍明确**不接受浏览器把内部多级文件夹和 `.html` 暴露为小手机对外导航体验**，希望整个小手机是一个统一站点和统一操作入口。这是现有 MPA 的已确认产品体验缺口，而非“修一下路径”就自动满足的要求。
+
+**源码证据：** `index.html` 的桌面 `app-tile[data-href]` 直接指定 `chat/chat/chat.html` 等物理文件，并以 `new URL(href, document.baseURI)` + `window.location.assign(destination.href)` 执行整页跳转；`worker-app.js` 仅把 `/` 映射为 `/index.html`，其余请求原样交给 `env.ASSETS.fetch(request)`。用户截图中的物理路径显示与此设计一致。
+
+**产品目标和严格技术边界：**
+1. **稳定的统一域名**：正式目标入口仍是 `https://app.mao520.com/`；不得出现把用户导航分散到其它测试 Worker / 各种子域名的情况。
+2. **优先最小影响的简洁地址**：例如公开路由 `/chat`、`/forum`、`/wallet`、`/settings`，Worker / 客户端公共导航映射到现有 HTML 文件；保留旧 `.html` 深链接兼容。**这是短网址，不是“所有页面只显示根域”。**
+3. **若验收目标是地址栏始终只显示 `app.mao520.com`**，必须先设计可行的单一应用外壳/统一客户端路由及前进后退、直接打开、刷新、PWA、分享、通知深链接和 Android/iPhone 兼容方案；**仅 Worker rewrite 不会在 MPA 整页导航后自动保持地址栏为 `/`**，也不能靠 `history.replaceState` 假装实现所有导航。不能为了隐藏路径而大规模嵌套 iframe 或破坏已做完的页面。
+4. **保留现有内容**：不得删除/重命名 90 个 HTML 页面，不更改账号/聊天数据库/角色 ID/主题/存储键，不重做 UI；只评估和实现逐步兼容的最小路由层。验证路线先在**现有导航/整合 PR** 中认领，避免另造路线重复 PR。
+5. **验收**：Chrome 浏览器中连续跳转多个功能、刷新、复制链接直达、浏览器返回、PWA 安装/离线、聊天图片、跨角色会话、Android/iPhone；用户看到的地址应符合明确选择的最终目标，内部物理路径不能被错误叠加；实际服务地址与 QA/正式 Worker 映射一并记录。
+
+**状态：** 需求和源码事实已确认；短路径/始终根域的产品目标仍需明确区分；尚未改客户端导航或 Worker，未完成浏览器、QA 和真机验收。不能标记为“已实现”。
+
 ## 全项目 Bug / 高风险清单（按优先级）
 
 | ID | 级别/证据 | 问题及当前核查事实 | 原任务/PR 与下一动作 |
@@ -41,6 +60,7 @@
 | **CHAT-HISTORY-001** | **P0 · SOURCE-VERIFIED 数据覆盖风险** | `chat/chat/chat-detail.html` 的 `forwardMessage()` 用 `try { JSON.parse(localStorage.getItem(key) || '[]') } catch { arr=[] }`，非数组也强制置空，随后直接 `localStorage.setItem(key, JSON.stringify(arr))`。**当目标角色聊天主键已损坏时，转发会以单条新消息覆盖原始损坏内容。** 同样代码仍出现在当前开放的 #282 分支（约 7492–7548 行）。此结论来自确定性的源码执行路径，尚未跑浏览器破坏性测试。 | **原 PR #282**（chat primary history fail-closed）；先在隔离测试数据中补“转发至损坏/非数组/不可读/缺失且有 v2 备份的角色”测试，转发应失败且原始字节不动；任何媒体引用创建后必须回滚；修复统一采用已保护的 PhoneStorage 事务式写入，禁止错误 JSON 变成空数组再写。**不动正式数据。** |
 | **QA-001** | **P0 发布门禁** | 真实跨页、Android/iPhone、独立 QA 后端验收不能以 Node 静态检查或旧 CI 成功替代；固定 QA URL 未核实，不能提供伪测试地址。| 统一 [RELEASE_PLAYBOOK](RELEASE_PLAYBOOK.md)，QA-001；先核实唯一 QA Worker 与可访问 URL，严禁用生产数据库测试。 |
 | **NAV-001** | **P1 · USER-REPORTED / NOT VERIFIED** | 用户反馈跨文件夹路径叠加。90 页静态直链扫描未发现可解析目标丢失；运行时字符串拼接、部署子路径及缓存尚未完成验证。 | 参照上方验收，关联 #207/#159/#160，不宣布修复，不新开重复分支。 |
+| **NAV-003** | **P1 · SOURCE-VERIFIED 架构/产品体验缺口** | 现有桌面把各模块作为物理 `.html` 文件跳转；Worker 只对 `/` 映射 `index.html`，其它 URL 原样服务，导致浏览器地址栏展示多级文件路径。用户要求统一的小手机入口和对外导航，**与 NAV-001 的错误路径叠加不是一件事**。 | 在原导航/整合任务中先评估渐进式短 URL `/chat` 等与单一根域应用壳两类目标的实际代价，不能只靠 Worker rewrite 承诺永远显示根域。优先最小兼容路由，保留现有页面和账号/数据；真实 Chrome/Android/iPhone 验收。 |
 | **NAV-002** | **P1 · SOURCE-VERIFIED** | `shared/js/home-indicator.js` 的固定返回条使用 `pointer-events:none`，且遇 `.comment-bar` 时跳过创建 `.maomao-global-home-indicator-hit-target`。`forum/forum-detail.html` 实际含该评论栏，存在无法点击返回的代码路径。 | **已有 PR #245** 正在处理底部点击区；先核对该 PR 与最新 main 的差异、更新基线、运行浏览器点击/评论输入不冲突测试。 |
 | **CI-004** | **P1 · SOURCE-VERIFIED** | `package.json` 的 `lint` 只是输出 `Lint passed`，没有真实扫描。不能引用它作为构建通过证据。 | **已有 PR #248**；先修真实源代码语法检查并接入 CI，不借机重构全站。 |
 | **CI-003** | **P1 · SOURCE-VERIFIED** | `.github/workflows/npm-publish-github-packages.yml` 调用 `npm test` 与 `npm publish`，而当前 `package.json` 未定义通用 `test` 脚本；发布 npm 包流程与小手机网站发布目标不一致。 | 复用 backlog CI-003；不要自动创建 GitHub Release/npm 发布；由明确的构建治理任务修。 |
