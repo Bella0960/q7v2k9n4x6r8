@@ -96,6 +96,16 @@
         return {targetId:asId(v.targetId),
           name:memberName(asId(v.targetId)).slice(0,36), count:Number(v.count)};
       }) : [];
+    if(finished) {
+      var sum=votes.reduce(function(n,v){return n+v.count;},0);
+      var correctRow=votes.find(function(v){return v.targetId===official.revealedRoleId;});
+      if(count>official.players.length || (votes.length &&
+        (votes.length!==official.players.length || sum!==count ||
+          !correctRow || correctRow.count!==correct)))
+        return problem('INVALID_TALLY','已保存的投票统计异常，禁止生成结果卡');
+      if(!votes.length && (count!==0 || correct!==0))
+        return problem('INVALID_TALLY','投票统计缺失，禁止编造结果');
+    }
     var time=Number(finished?official.finishedAt:official.cancelledAt);
     if (!Number.isFinite(time) || time<=0)
       return problem('UNVERIFIED_RESULT','游戏结束时间没有确认');
@@ -110,11 +120,28 @@
       groupGame:{
         version:1,groupId:gid,sessionId:official.sessionId,
         gameId:'mystery',status:official.status,
+        revealedRoleId:finished?official.revealedRoleId:'',
         revealedName:finished?memberName(official.revealedRoleId):'',
         voteCount:finished?count:0,correctVotes:finished?correct:0,
         voteTally:votes,playersCount:official.players.length
       }
     }};
+  }
+
+  function stableResultSignature(message) {
+    if(!message || message.type!=='group_game_result' || !message.groupGame) return '';
+    var game=message.groupGame;
+    return JSON.stringify({
+      mid:asId(message.mid),groupId:asId(game.groupId),
+      sessionId:asId(game.sessionId),gameId:asId(game.gameId),
+      status:asId(game.status),revealedRoleId:asId(game.revealedRoleId),
+      playersCount:Number(game.playersCount)||0,
+      voteCount:Number(game.voteCount)||0,
+      correctVotes:Number(game.correctVotes)||0,
+      voteTally:Array.isArray(game.voteTally) ? game.voteTally.map(function(v){
+        return {targetId:asId(v&&v.targetId),count:Number(v&&v.count)||0};
+      }) : []
+    });
   }
 
   function check(req) {
@@ -129,7 +156,9 @@
     });
     if (found.length>1) return problem('DUPLICATE_CONFLICT','历史中存在重复的游戏结果编号，禁止覆盖');
     if (found.length===1) {
-      if (JSON.stringify(found[0])!==JSON.stringify(message))
+      // Display names/text can legitimately change when a member renames.
+      // A receipt is identical if its immutable outcome matches the session.
+      if (stableResultSignature(found[0])!==stableResultSignature(message))
         return problem('RECEIPT_CONFLICT','已有游戏结果与当前已保存对局不一致');
       return {ok:true,exists:true,record:message};
     }
