@@ -4,7 +4,9 @@
  */
 (function (global) {
   'use strict';
-  var KEY = 'maomao_encounter_candidates_v1';
+  var KEY = 'maomao_encounter_candidates_v1'; // 旧候选数组，仅保留只读兼容
+  var ITEM_PREFIX = 'maomao_encounter_card_v2:';
+  var REMOVED_PREFIX = 'maomao_encounter_removed_v2:';
   var MAX = 80;
   var listeners = [];
   var decorators = [];
@@ -123,14 +125,55 @@
       return ok(parsed);
     } catch (e) { return fail('无法读取本地资料，请检查浏览器存储状态'); }
   }
+  // V2：每张候选独立 key，标签页新增不同人物不会再互相覆盖整个收藏数组。
+  // V1 历史数组保留只读，删除旧候选时仅写对应墓碑，不主动改写旧数据。
   function getCandidates() {
     var access = checkAccountScope();
     if (!access.ok) return access;
-    var r = getRaw(KEY, []);
-    if (!r.ok) return r;
-    if (!Array.isArray(r.value)) return fail('候选收藏格式异常');
-    if (r.value.some(function(x) { return !x || typeof x !== 'object' || typeof x.id !== 'string'; })) return fail('候选收藏有无法识别的记录，未更改原始数据');
-    return ok(r.value);
+    var legacy = getRaw(KEY, []);
+    if (!legacy.ok) return legacy;
+    if (!Array.isArray(legacy.value)) return fail('旧候选收藏格式异常，已保留原数据');
+    var cards = new Map(), removed = new Set();
+    for (var old of legacy.value) {
+      if (!old || typeof old !== 'object' || typeof old.id !== 'string' ||
+          typeof old.name !== 'string') return fail('旧候选收藏含有无法识别的角色，未修改原数据');
+      if (cards.has(old.id)) return fail('旧候选收藏存在重复 ID，已停止写入以保护原数据');
+      cards.set(old.id,old);
+    }
+    try {
+      var store = global.localStorage;
+      if (!store || typeof store.key !== 'function' ||
+          !Number.isSafeInteger(store.length) || store.length < 0) {
+        return fail('当前浏览器不支持安全的候选逐条存储，已暂停收藏');
+      }
+      var keys = [];
+      for (var i = 0, length = store.length; i < length; i++) {
+        var key = store.key(i);
+        if (typeof key === 'string' &&
+            (key.indexOf(ITEM_PREFIX) === 0 || key.indexOf(REMOVED_PREFIX) === 0)) keys.push(key);
+      }
+      // 先扫描删除标记，再合并候选；即使旧标签页有未完成的写入，也不会复活被删人物。
+      keys.forEach(function(key) {
+        if (key.indexOf(REMOVED_PREFIX) === 0) removed.add(key.slice(REMOVED_PREFIX.length));
+      });
+      for (var key of keys) {
+        if (key.indexOf(ITEM_PREFIX) !== 0) continue;
+        var raw = store.getItem(key);
+        if (raw === null) continue; // 跨标签页刚刚删除
+        var item = JSON.parse(raw);
+        var id = key.slice(ITEM_PREFIX.length);
+        if (!item || typeof item !== 'object' || Array.isArray(item) ||
+            typeof item.id !== 'string' || item.id !== id ||
+            typeof item.name !== 'string' || !item.name) {
+          return fail('候选人物存储异常，未覆盖任何已有资料');
+        }
+        cards.set(id,item);
+      }
+    } catch (error) { return fail('候选资料读取失败，已停止写入，原始数据保留'); }
+    var result = [];
+    cards.forEach(function(card,id) { if (!removed.has(id)) result.push(card); });
+    result.sort(function(a,b) { return Number(b.savedAt||b.createdAt||0)-Number(a.savedAt||a.createdAt||0); });
+    return ok(result);
   }
   function getPreferencesResult() {
     var access = checkAccountScope();
@@ -288,7 +331,8 @@
     try { global.dispatchEvent(new CustomEvent('maomao:encounter', {detail:{event:event,payload:payload}})); } catch (e) {}
   }
   function saveCandidate(card) {
-    if (!card || !card.id || !card.name) return fail('人物卡无效');
+    if (!card || !card.id || !/^enc_[a-z0-9_-]{3,80}$/i.test(card.id) ||
+        typeof card.name !== 'string' || !card.name) return fail('人物卡无效');
     var names = getRoleNames();
     var current = getCandidates();
     if (!names.ok) return names;
@@ -299,31 +343,42 @@
       return fail('这位人物与现有角色撞名，请重新抽取');
     }
     if (current.value.length >= MAX) return fail('候选收藏已满（80 位），可以先整理后再收藏');
-    var newList = [Object.assign({},card,{savedAt:Date.now()})].concat(current.value);
+    var key = ITEM_PREFIX+card.id;
+    var value = Object.assign({},card,{savedAt:Date.now()});
     try {
-      global.localStorage.setItem(KEY,JSON.stringify(newList));
+      // 删除墓碑优先于旧页面随后发出的相同 ID 保存。
+      if (global.localStorage.getItem(REMOVED_PREFIX+card.id) !== null) {
+        return fail('该候选已经被删除，不能在其他标签页恢复。请重新抽取');
+      }
+      global.localStorage.setItem(key,JSON.stringify(value));
+      var raw = global.localStorage.getItem(key);
+      if (!raw || JSON.parse(raw).id !== card.id) return fail('收藏写入后校验失败，请检查浏览器存储');
       var verified = getCandidates();
       if (!verified.ok || !verified.value.some(function(c) { return c.id === card.id; })) {
-        return fail('收藏写入后校验失败，请检查浏览器空间或其他标签页。卡片仍然保留');
+        return fail('收藏写入后校验失败，请检查浏览器空间或其他标签页');
       }
     } catch (e) { return fail('收藏失败，浏览器存储空间可能不足；卡片仍在当前页面'); }
     notify('saved',card);
-    return ok(newList);
+    return ok(verified.value);
   }
   function removeCandidate(id) {
     var state = getCandidates();
     if (!state.ok) return state;
     if (!state.value.some(function(c) { return c.id === id; })) return fail('找不到候选角色');
-    var next = state.value.filter(function(c) { return c.id !== id; });
     try {
-      global.localStorage.setItem(KEY,JSON.stringify(next));
+      // 先写墓碑：删旧数组里的候选也不必覆盖整包历史数据。
+      global.localStorage.setItem(REMOVED_PREFIX+id,'1');
+      if (global.localStorage.getItem(REMOVED_PREFIX+id) !== '1') {
+        return fail('删除标记写入失败，原收藏已保留');
+      }
+      global.localStorage.removeItem(ITEM_PREFIX+id);
       var verified = getCandidates();
       if (!verified.ok || verified.value.some(function(c) { return c.id === id; })) {
         return fail('删除后校验失败，请重新进入收藏确认结果');
       }
     } catch (e) { return fail('删除失败，原收藏已保留'); }
     notify('removed',id);
-    return ok(next);
+    return ok(verified.value);
   }
   function formatBrief(card) {
     if (!card) return '';
