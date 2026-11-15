@@ -122,11 +122,36 @@
     emit('game:started', { groupId:gid, sessionId:sid, gameId:template.id });
     return { ok:true, session:safe };
   }
+  // Hide complete AND half-streamed private directives before temporary DOM paint,
+  // background/pagehide snapshots, search or any public group transcript.
+  // Incomplete prefixes matter: streaming often stops midway through a marker.
+  function redactPublicStreamText(input) {
+    var output=String(input==null?'':input);
+    output=output.replace(/\[(?:游戏私聊|群私聊)[:：][^\]\r\n]{0,1000}(?:\]|$)/g,'');
+    var last=output.match(/\[[^\]\r\n]{0,200}$/);
+    if(last) {
+      var tail=last[0].slice(1), names=['游戏私聊','群私聊'];
+      if(!tail || names.some(function(name){
+        return name.indexOf(tail)===0 || tail.indexOf(name+':')===0 ||
+          tail.indexOf(name+'：')===0;
+      })) output=output.slice(0,output.length-last[0].length);
+    }
+    return output;
+  }
   function buildRoleContext(req) {
     req = req || {};
     var gid = id(req.groupId), rid = id(req.roleId), storage = storageOf(req);
     var session = game(gid, storage);
-    if (!session || session.status !== 'active') return { ok:true, active:false, text:'' };
+    if (!session) {
+      // Missing session is normal; unreadable public session is NOT. Do not
+      // silently resume a game with no role card or private-chat protection.
+      try {
+        if (storage.getItem(publicKey(gid)) !== null)
+          return error('CORRUPT_SESSION','群游戏数据异常，已停止角色回复');
+      } catch(e) { return error('STORAGE_UNAVAILABLE','无法读取游戏状态，已停止角色回复'); }
+      return { ok:true, active:false, text:'' };
+    }
+    if (session.status !== 'active') return { ok:true, active:false, text:'' };
     if (session.players.indexOf(rid) === -1) return error('NOT_PLAYER','非本局角色不能参与');
     var secret = read(storage, secretKey(gid, session.sessionId, rid));
     if (!secret || secret.groupId !== gid || secret.sessionId !== session.sessionId ||
@@ -152,7 +177,14 @@
   function canWhisper(req) {
     req = req || {};
     var session = game(id(req.groupId),storageOf(req));
-    if (!session || session.status !== 'active') return { active:false, allowed:true };
+    if (!session) {
+      try {
+        if (storageOf(req).getItem(publicKey(id(req.groupId))) !== null)
+          return { active:true, allowed:false, code:'CORRUPT_SESSION' };
+      } catch(e) { return { active:true, allowed:false, code:'STORAGE_UNAVAILABLE' }; }
+      return { active:false, allowed:true };
+    }
+    if (session.status !== 'active') return { active:false, allowed:true };
     var from=id(req.fromId), to=id(req.toId);
     return { active:true, allowed:(!req.sessionId || id(req.sessionId) === session.sessionId) &&
       session.rules.allowPrivate === true &&
@@ -232,6 +264,7 @@
   root.GroupGameSessions=Object.freeze({
     registerGame:registerGame, games:games, on:on, getPublic:game,
     start:start, finish:finish, buildRoleContext:buildRoleContext,
-    canWhisper:canWhisper, sendWhisper:sendWhisper
+    canWhisper:canWhisper, sendWhisper:sendWhisper,
+    redactPublicStreamText:redactPublicStreamText
   });
 })(typeof window!=='undefined'?window:globalThis);
