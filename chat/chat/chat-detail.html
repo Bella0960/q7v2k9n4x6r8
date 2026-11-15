@@ -5697,6 +5697,33 @@
                     }
                 }
             }
+            // Keep the appointed moderator conversationally active: let them
+            // open the game once and announce the verified result after every
+            // player votes. Explicit @mentions and admin orders still win.
+            if (isGroupChat && currentGroup && !isRegen && !contextOnly &&
+                window.GroupGameSessions && (!groupReplyPick || !groupReplyPick.isMentioned)) {
+                var hostRound = window.GroupGameSessions.getPublic(String(currentGroup.id));
+                if (hostRound && hostRound.status === 'active' &&
+                    hostRound.hostId && hostRound.hostId !== '__user' && !hostRound.voteError) {
+                    var roleHost = getAvailableGroupMembers().find(function (m) {
+                        return m && String(m.id) === String(hostRound.hostId);
+                    });
+                    var moderatorSpoke = historyList.some(function (m) {
+                        return m && (m.role === 'assistant' || m.role === 'received') &&
+                            String(m.memberId || '') === String(hostRound.hostId) &&
+                            Number(m.time || 0) >= Number(hostRound.createdAt || 0);
+                    });
+                    var allVoted = hostRound.voteCount === hostRound.players.length;
+                    var lastGameSpeaker = findGroupSpeakerInHistory(historyList);
+                    if (roleHost && (!moderatorSpoke ||
+                        (allVoted && (!isGroupFollowup || !lastGameSpeaker ||
+                            String(lastGameSpeaker.id) !== String(hostRound.hostId))))) {
+                        groupReplyPick = Object.assign({}, roleHost, {
+                            name: groupMemberDisplayName(roleHost), isMentioned: false
+                        });
+                    }
+                }
+            }
             if (groupContextPrompt) rolePersona += '\n' + groupContextPrompt;
             rolePersona = capText(rolePersona, CTX_CAP.persona);
 
