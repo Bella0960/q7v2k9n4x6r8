@@ -162,3 +162,35 @@ test('all touched pages compile and refer to the shared bridge; backup and PWA i
   assert.match(load('sw.js'), /group-governance\.js\?v=20261115g1/);
   assert.match(load('settings/js/backup-modules.js'), /phone_group_invitations/);
 });
+
+
+test('QQ-style custom titles are group-local; admins cannot override peers or owner', () => {
+  const g = group({ allowRoleActions: true });
+  const { api, storage } = harness([g]);
+  const commit = save(storage, g);
+  assert.equal(api.apply({ group: g, actorId: '__user', action: 'promote', target: 'c1', save: commit }).ok, true);
+  assert.equal(api.apply({ group: g, actorId: 'c1', action: 'set-title', target: 'c2',
+    options: { title: '首席摸鱼官' }, save: commit }).ok, true);
+  assert.equal(g.members[1].title, '首席摸鱼官');
+  assert.equal(api.apply({ group: g, actorId: 'c1', action: 'set-title', target: 'c1',
+    options: { title: '群主' }, save: commit }).ok, false, 'cannot title self');
+  assert.equal(api.apply({ group: g, actorId: '__user', action: 'promote', target: 'c3', save: commit }).ok, true);
+  assert.equal(api.apply({ group: g, actorId: 'c1', action: 'set-title', target: 'c3',
+    options: { title: '越权头衔' }, save: commit }).ok, false, 'cannot title peer admin');
+  assert.equal(api.apply({ group: g, actorId: '__user', action: 'set-title', target: 'c3',
+    options: { title: '活动主持' }, save: commit }).ok, true);
+  assert.equal(g.members[2].title, '活动主持');
+  assert.equal(api.apply({ group: g, actorId: 'c2', action: 'set-title', target: 'c1',
+    options: { title: '普通成员不能改' }, save: commit }).ok, false);
+
+  const before = JSON.stringify(g);
+  const failed = api.apply({ group: g, actorId: '__user', action: 'set-title', target: 'c2',
+    options: { title: '未保存' }, save: () => false });
+  assert.equal(failed.ok, false);
+  assert.equal(JSON.stringify(g), before, 'failure must restore previous title and group data');
+  assert.equal(api.apply({ group: g, actorId: '__user', action: 'set-title', target: 'c2',
+    options: { title: '' }, save: commit }).ok, true, 'owner may clear a custom title');
+  assert.equal(g.members[1].title, '');
+  const rolePool = JSON.parse(storage.getItem('ai_custom_characters'));
+  assert.equal(rolePool[1].name, '江念', 'no mutation to original character profile');
+});
