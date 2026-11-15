@@ -249,6 +249,75 @@ test('没有 PhoneStorage 时本地存储假写成功也必须拒绝并保留旧
   assert.equal(localStorage.getItem('ai_custom_characters'),original);
 });
 
+
+test('候选正式入库必须通过同账号 Web Locks，等待时重复点保存无效', async () => {
+  const start=managerSource.indexOf('let encounterRoleSaveBusy = false;');
+  const endAnchor="document.getElementById('btnSaveRole').addEventListener('click', saveEncounterRoleWithLock);";
+  const end=managerSource.indexOf(endAnchor,start);
+  assert.ok(start>=0 && end>start,'必须复用角色编辑器中的入库锁');
+  const code=managerSource.slice(start,end+endAnchor.length);
+  let onClick,unlock,saveCount=0,lockName='',status='';
+  const els={
+    btnSaveRole:{disabled:false,addEventListener(type,fn){onClick=fn;}},
+    editorView:{classList:{contains(){return false;}}},
+    editRoleId:{value:''}
+  };
+  const document={getElementById(id){return els[id];}};
+  const window={
+    MAOMAOEncounter:{checkAccountScope(){return {ok:true,value:{id:'MAO-AAAAAAAAAAAA'}};}},
+    navigator:{locks:{request(name,options,fn){
+      lockName=name;
+      assert.equal(options.mode,'exclusive');
+      return new Promise(resolve=>{unlock=()=>resolve(fn());});
+    }}}
+  };
+  const globals={window,document,activeEncounterDraftId:'enc_one',handleSaveRole(){saveCount++;},
+    setSaveStatus(s){status=s;},console};
+  vm.runInNewContext(code,globals);
+  const first=onClick(),second=onClick();
+  assert.equal(els.btnSaveRole.disabled,true,'保存等待期间必须禁用按钮');
+  assert.equal(saveCount,0);
+  assert.equal(lockName,'maomao:encounter:role-create:MAO-AAAAAAAAAAAA');
+  await second;
+  assert.equal(saveCount,0,'不能重复进入创建');
+  unlock();
+  await first;
+  assert.equal(saveCount,1);
+  assert.equal(els.btnSaveRole.disabled,false);
+  assert.equal(status,'');
+});
+
+test('拿到入库锁之前切换账号或人物，绝不能创建候选',async ()=>{
+  const start=managerSource.indexOf('let encounterRoleSaveBusy = false;');
+  const endAnchor="document.getElementById('btnSaveRole').addEventListener('click', saveEncounterRoleWithLock);";
+  const end=managerSource.indexOf(endAnchor,start);
+  const code=managerSource.slice(start,end+endAnchor.length);
+  let click,unlock,accountId='MAO-AAAAAAAAAAAA',saveCount=0,reason='';
+  const els={
+    btnSaveRole:{disabled:false,addEventListener(type,fn){click=fn;}},
+    editorView:{classList:{contains(){return false;}}},
+    editRoleId:{value:''}
+  };
+  const window={
+    MAOMAOEncounter:{checkAccountScope(){return {ok:true,value:{id:accountId}};}},
+    navigator:{locks:{request(name,options,fn){
+      return new Promise(resolve=>{unlock=()=>resolve(fn());});
+    }}}
+  };
+  vm.runInNewContext(code,{
+    window,document:{getElementById(id){return els[id];}},
+    activeEncounterDraftId:'enc_one',handleSaveRole(){saveCount++;},
+    setSaveStatus(message){reason=message;},console
+  });
+  const pending=click();
+  accountId='MAO-BBBBBBBBBBBB';
+  unlock();
+  await pending;
+  assert.equal(saveCount,0,'账号变化后不能保存旧账号候选');
+  assert.match(reason,/账号或当前人物已变化/);
+  assert.equal(els.btnSaveRole.disabled,false);
+});
+
 test('邂逅保存为原生角色后，现有聊天首页可直接列出该角色', () => {
   assert.match(chatListSource,/var CHARACTERS_KEY = 'ai_custom_characters'/);
   assert.match(chatListSource,/var roles = loadCharacters\(\)\.filter/);
