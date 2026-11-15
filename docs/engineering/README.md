@@ -11,7 +11,8 @@
 ## Current release authority (updated 2026-11-15)
 
 - **[RELEASE_PLAYBOOK.md](RELEASE_PLAYBOOK.md)** — the one authoritative development → QA → integration → production workflow, live environment mapping and status vocabulary. All assistants and workflows must refer here.
-- **[OPEN_PR_INVENTORY_20261115.md](OPEN_PR_INVENTORY_20261115.md)** — point-in-time inventory of 59 open PRs, known stacked dependencies, and no-bulk-merge rules. This section supersedes older deployment assumptions elsewhere in this November 3/11 snapshot.
+- **[OPEN_PR_INVENTORY_20261115.md](OPEN_PR_INVENTORY_20261115.md)** — point-in-time inventory of 59 open PRs, known stacked dependencies, and no-bulk-merge rules.
+- **[GLOBAL_BUG_AUDIT_20261115.md](GLOBAL_BUG_AUDIT_20261115.md)** — evidence-labeled global bug registry; NAV-001 cross-folder path stacking is registered with required real-browser/phone acceptance. Do not turn a historical finding into a new defect without current verification. This section supersedes older deployment assumptions elsewhere in this November 3/11 snapshot.
 - Production is **not** auto-deployed merely by pushing to main: the current GitHub deployment workflow is manual; Cloudflare Builds triggers must be checked separately. `wrangler.jsonc` currently targets Worker `mao` but the paid app domain maps to `curly-dream-324c`.
 - Existing CloudDatabase account/QA bindings were confirmed in Cloudflare on 2026-11-15; claims below about an absent cloud backend are historical, **not current**.
 
