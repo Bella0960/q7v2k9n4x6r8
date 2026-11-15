@@ -12,14 +12,36 @@
         try { return localStorage.getItem(key); } catch (e) { return null; }
     }
 
-    function apply() {
-        var hideStatusbar = getPref('settings_statusbar') === '0';
-        var hideHomeIndicator = getPref('settings_home_indicator_visible') === '0';
-        var bars = document.querySelectorAll('.status-bar');
-        for (var i = 0; i < bars.length; i++) {
-            var sb = bars[i];
-            sb.style.display = hideStatusbar ? 'none' : '';
+    /* Keep the visual state on the document root. The CSS rule also covers status
+     * bars inserted after startup, without watching/mutating every child element.
+     * Do not overwrite inline display values used by page-specific layouts. */
+    var STATUSBAR_HIDDEN_ATTR = 'data-maomao-statusbar-hidden';
+    var STATUSBAR_STYLE_ID = 'maomao-global-statusbar-rule';
+
+    function ensureStatusbarRule() {
+        if (document.getElementById(STATUSBAR_STYLE_ID)) return;
+        var rule = document.createElement('style');
+        rule.id = STATUSBAR_STYLE_ID;
+        rule.textContent = 'html[' + STATUSBAR_HIDDEN_ATTR + '] .status-bar{display:none!important;}';
+        (document.head || document.documentElement).appendChild(rule);
+    }
+
+    function applyStatusbarPreference() {
+        ensureStatusbarRule();
+        if (getPref('settings_statusbar') === '0') {
+            document.documentElement.setAttribute(STATUSBAR_HIDDEN_ATTR, '');
+        } else {
+            document.documentElement.removeAttribute(STATUSBAR_HIDDEN_ATTR);
         }
+    }
+
+    /* Apply at script evaluation (normally in <head>) to avoid a visible flash
+     * before DOMContentLoaded when the preference was already disabled. */
+    applyStatusbarPreference();
+
+    function apply() {
+        applyStatusbarPreference();
+        var hideHomeIndicator = getPref('settings_home_indicator_visible') === '0';
 
         /* The bottom home indicator is separate from the top status bar and has its own setting. */
         var homeIndicators = document.querySelectorAll('.gesture-bar');
