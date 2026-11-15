@@ -1,4 +1,4 @@
-name: Deploy MAOMAO to Cloudflare Workers
+name: Manual deploy mao backend Worker (NOT app.mao520.com)
 
 # Production release hold: the live original account DB, founder 001 and
 # existing member must pass recoverable checkpoint + same-origin continuity.
@@ -14,6 +14,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - name: Block release from a non-main branch
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" != "refs/heads/main" ]]; then
+            echo "Blocked: manual mao backend deploy can only run on main"
+            exit 1
+          fi
+
       - name: Checkout main
         uses: actions/checkout@v4
 
