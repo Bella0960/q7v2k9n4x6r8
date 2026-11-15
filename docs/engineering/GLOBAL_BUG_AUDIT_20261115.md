@@ -91,11 +91,11 @@
 
 ## 全局状态栏第一批实质整改（2026-11-15）
 
-**不再停留在「全页检查计划」：** 已复用历史分支 `task-ARCH-003/global-statusbar`，提交实代码并开启 [Draft PR #301](https://github.com/Bella0960/MAOMAO/pull/301)。本次源代码级别仅变 `shared/js/statusbar-control.js`、`beauty/beauty.html` 和新增 `tests/global-statusbar-wiring.test.mjs`，与 main 比较 ahead 3 / behind 5。该旧分支名中 ARCH-003 与 backlog 的「脚本加载顺序」任务同名，**实际工程任务 ID 按 UI-STATUS-001 识别，防止后续混淆**。
+**不再停留在「全页检查计划」：** 已复用历史分支 `task-ARCH-003/global-statusbar`，提交实代码并开启 [Draft PR #301](https://github.com/Bella0960/MAOMAO/pull/301)。本次改动包含 `shared/js/statusbar-control.js`、`beauty/beauty.html`、新增 `tests/global-statusbar-wiring.test.mjs` 和现有 CI 工作流 `.github/workflows/chat-regression-contract.yml`。原分支已完成保留双亲的安全 main 同步，当前比对 ahead 5 / behind 0，实际差异仅四文件。该旧分支名中 ARCH-003 与 backlog 的「脚本加载顺序」任务同名，**实际工程任务 ID 按 UI-STATUS-001 识别，防止后续混淆**。
 
 当前共 90 HTML：28 页含字面 `class=\"...status-bar...\"`，27 原已接统一脚本，1 页 beauty 原漏接；62 页没用此静态类，须进一步区分自绘/沉浸/运行时状态栏。不能凭静态 HTML 就宣称全站视觉通过。新全局控制器保留 `settings_statusbar` 和 `__statusbarControlApply`，通过 HTML 根状态 + CSS `!important` 管理已存在与后续挂载的顶部状态栏，不再改写每页状态栏的 inline `style.display`。**不改变 Home Indicator、聊天数据、账户、主题或正式域名。**
 
-**验证边界：** 已只读核对源码改动和三文件差异；新增 Node/VM 自动测试已提交但**未运行**，Vite 构建、浏览器、唯一 QA、Android/iPhone 真机仍未做。未达到发布门禁，不能写「全部状态栏已修好」。
+**验证边界：** 已只读核对源码改动和三文件差异；新增 Node/VM 自动测试已提交并接入既有 CI；2026-11-15 GitHub Actions 两次运行约 2 秒失败且 job `steps: []`，无 Node/npm/build 实际步骤。测试仍**未运行**，Vite 构建、浏览器、唯一 QA、Android/iPhone 真机仍未做。未达到发布门禁，不能写「全部状态栏已修好」。
 
 ## 历史记录中不能重复误报的项目
 
