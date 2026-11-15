@@ -50,10 +50,14 @@ test('every desktop app is assigned exactly once and dock apps stay in the dock'
   const pages = extractDefaultPages(index);
   const assigned = pages.flat();
   const appIds = [...new Set([...index.matchAll(/data-drag="(app_[^"]+)"/g)].map((m) => m[1]))]
-    .filter((id) => id !== 'app_chat' && id !== 'app_shop');
+    .filter((id) => id !== 'app_chat' && id !== 'app_shop' && id !== 'app_admin_center');
   assert.equal(new Set(assigned).size, assigned.length, 'default pages must not contain duplicate items');
   assert.deepEqual([...assigned].filter((id) => id.startsWith('app_')).sort(), [...appIds].sort());
   assert.match(index, /dock:\s*\['app_chat',\s*'app_shop'\]/);
+  assert.match(index,/data-drag="app_admin_center"[^>]*hidden/,
+    '管理中心必须默认隐藏，不能成为普通用户的桌面应用');
+  assert.match(index,/function configureCreatorAdminShortcut\(\)/,
+    '管理员管理中心必须根据服务端账号身份决定是否显示');
 });
 
 test('the mobile home grid keeps four columns and supports vertical page scrolling', () => {
