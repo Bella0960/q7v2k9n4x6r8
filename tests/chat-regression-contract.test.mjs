@@ -973,10 +973,15 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
 
 });
 
+test('chat PWA uses a cache generation at least as new as the policy rollout', () => {
+  const version = serviceWorker.match(/\bconst CACHE_NAME\s*=\s*['"]phone-app-pwa-v(\d+)['"]/);
+  assert.ok(version, 'the app shell must declare a versioned cache name');
+  assert.ok(Number(version[1]) >= 204, 'the cache generation must include the chat policy rollout');
+});
+
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.ok(serviceWorker.includes('phone-app-pwa-v204'));
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
@@ -1293,7 +1298,6 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v17/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v204/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
 });
 
@@ -1415,7 +1419,6 @@ test('chat detail persists voice habits per character and per group session with
   assert.match(detail, /buildVoiceHabitPrompt\(voiceHabitProfile\)/);
   assert.match(detail, /buildEmotionContinuityPrompt/);
   assert.match(detail, /maxScan: 24/);
-  assert.match(serviceWorker, /phone-app-pwa-v204/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
 });
 
@@ -1602,7 +1605,6 @@ test('chat detail injects the role autonomy prompt and precaches the updated pol
   assert.ok(detail.includes('maxNotes: 3'));
   assert.ok(detail.includes('maxTurns: 4'));
   assert.ok(detail.includes('chat-presence-policy.js?v=20261102v17'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v204'));
   assert.ok(serviceWorker.includes('chat-presence-policy.js?v=20261102v17'));
 });
 
@@ -1809,7 +1811,6 @@ test('proactive contact notifier is loaded on home and navigation pages and prec
   assert.match(navPage, /chat-notifier\.js\?v=20261102v3/);
   assert.match(detail, /chat-notifier\.js\?v=20261102v3/);
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v17/);
-  assert.match(serviceWorker, /phone-app-pwa-v204/);
   assert.match(serviceWorker, /chat-notifier\.js\?v=20261102v3/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
   assert.match(serviceWorker, /chat-followup-policy/);
@@ -1865,7 +1866,6 @@ test('chat, group chat and Moments prompts consume the same public timeline with
   assert.ok(detail.includes('PhoneStorage.getMoments()'));
   assert.ok(momentsPage.includes('role-public-timeline.js?v=20261102v1'));
   assert.ok(momentsPage.includes('RolePublicTimeline.buildRolePrompt'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v204'));
   assert.ok(serviceWorker.includes('role-public-timeline.js?v=20261102v1'));
 });
   
@@ -1881,19 +1881,57 @@ test('Service Worker navigation does not abort slow mobile page requests', () =>
   assert.equal(serviceWorker.includes('controller.abort()'), false);
 });
 
-test('Cloudflare Worker preserves explicit HTML routes and maps only the root to the desktop index', () => {
+test('Cloudflare Worker preserves authorized HTML routes and maps only the root to the desktop index', async () => {
   const wranglerRaw = read('wrangler.jsonc');
   // Strip BOM and normalize Windows line endings before removing the JSONC comment.
   const wranglerConfig = JSON.parse(wranglerRaw.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/^\/\/.*\n/, ''));
-  const worker = read('worker.js');
+  const { default: worker } = await import('../worker.js');
 
   assert.equal(wranglerConfig.main, 'worker.js');
   assert.equal(wranglerConfig.assets.binding, 'ASSETS');
   assert.equal(wranglerConfig.assets.html_handling, 'none');
   assert.equal(wranglerConfig.assets.run_worker_first, true);
-  assert.match(worker, /url\.pathname === "\/"[\s\S]*?new URL\("\/index\.html", url\)/);
-  assert.match(worker, /return env\.ASSETS\.fetch\(request\)/,
-    'non-root app routes must be passed through unchanged instead of falling back to index.html');
+  const origin = 'https://maomao.test';
+  const account = { id: 'MAO-SYNTHETICQA01', role: 'user', status: 'active' };
+  const assetPaths = [];
+  const env = {
+    ASSETS: {
+      fetch(request) {
+        const url = new URL(request.url);
+        assetPaths.push(url.pathname + url.search);
+        if (url.pathname === '/missing.html') return new Response('not found', { status: 404 });
+        return new Response('<html><head></head><body>fixture</body></html>', {
+          headers: { 'content-type': 'text/html; charset=utf-8' }
+        });
+      }
+    }
+  };
+  const chatPath = '/chat/chat/chat-detail.html?id=qa-role';
+  let response = await worker.fetch(new Request(origin + chatPath), env);
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get('location'), origin + '/account/index.html');
+  assert.deepEqual(assetPaths, [], 'unauthenticated requests must not reach protected HTML assets');
+
+  env.CLOUD_DB = {
+    idFromName: name => name,
+    get: () => ({
+      fetch(request) {
+        assert.equal(new URL(request.url).pathname, '/api/accounts/me');
+        assert.equal(request.headers.get('cookie'), 'session=synthetic');
+        return Response.json({ account });
+      }
+    })
+  };
+  const request = path => new Request(origin + path, { headers: { cookie: 'session=synthetic' } });
+  for (const path of ['/', chatPath]) {
+    response = await worker.fetch(request(path), env);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('cache-control'), /\bno-store\b/);
+    assert.match(await response.text(), /data-mao-account-scope/);
+  }
+  response = await worker.fetch(request('/missing.html'), env);
+  assert.equal(response.status, 404);
+  assert.deepEqual(assetPaths, ['/index.html', chatPath, '/missing.html']);
 });
 
 
@@ -1905,7 +1943,6 @@ test('Messages chat-list theme is isolated, cache-busted, grayscale and hides in
 
   assert.ok(chatHome.includes('chat-list-editorial-theme.css?v=20261104v2'));
   assert.ok(chatHome.includes('chat-list-theme.js?v=20261104v2'));
-  assert.match(serviceWorker, /phone-app-pwa-v204/);
   assert.ok(serviceWorker.includes('./shared/css/chat-list-editorial-theme.css?v=20261104v2'));
   assert.ok(serviceWorker.includes('./shared/js/chat-list-theme.js?v=20261104v2'));
 
@@ -2047,7 +2084,6 @@ test('whole-chat theme is refreshed when a chat page is restored from browser hi
   ]) {
     assert.ok(read(path).includes('chat-page-theme.js?v=20261105v1'), path + ' should load the refreshed theme bridge');
   }
-  assert.match(serviceWorker, /phone-app-pwa-v204/, 'the PhoneAPI and settings changes require the refreshed PWA cache');
 });
 
 
@@ -2202,7 +2238,6 @@ test('WeChat page refinements load on all five core pages and stay isolated from
     'message bubbles must remain under ChatBeauty customization'
   );
   assert.ok(serviceWorker.includes("'./shared/css/wechat-theme-refinements.css?v=20261105v2'"));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v204'));
   assert.ok(
     wechatThemeCss.includes('.floating-nav .nav-tab > span:nth-of-type(2)::after'),
     'WeChat labels must attach to the second span, not the optional unread badge'
@@ -2279,7 +2314,6 @@ test('chat sticker picker exposes per-role favourites without replacing the glob
   assert.ok(detail.includes('stickerAllTab'));
   assert.ok(detail.includes('sticker_libraries'));
   assert.ok(serviceWorker.includes('role-sticker-library.js?v=20261107v2'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v204'));
 });
 
 test('AI replies can choose one role-favorite sticker without leaking machine markers', () => {
@@ -2295,7 +2329,6 @@ test('AI replies can choose one role-favorite sticker without leaking machine ma
   assert.ok(detail.includes('aiStickerMessages.forEach'));
   assert.ok(detail.includes('appendMessageToDOM(stickerMessage, stickerMessageIndex)'));
   assert.ok(serviceWorker.includes('role-sticker-library.js?v=20261107v2'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v204'));
 });
 
 
@@ -2307,7 +2340,6 @@ test('AI replies can send only images from the active role gallery and keep medi
   assert.match(detail, /RoleGalleryImageAutonomy\.releaseReferences\(aiRoleGalleryMessages\)/);
   assert.match(detail, /aiRoleGalleryMessages\.forEach\(function \(galleryMessage\)/);
   assert.ok(serviceWorker.includes('role-gallery-image-autonomy.js?v=20261111v2'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v204'));
 });
 
 test('chat detail classic inline scripts parse before chat handlers are attached', () => {
