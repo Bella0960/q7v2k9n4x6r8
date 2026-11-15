@@ -448,6 +448,55 @@ async function runViewport(browser, baseUrl, viewport) {
     document.getElementById('replyHint').style.display = 'none';
   });
 
+  // Deleting another comment above a selected reply target must shift the
+  // target index rather than silently cancelling the user's reply context.
+  // Use the live forum page functions and restore the seeded post afterward.
+  const adjacentDelete = await page.evaluate(() => {
+    const originalComments = post.comments.slice();
+    try {
+      post.comments = [
+        { id: 'nav2-earlier-comment', name: '先前评论', owner: 'me', text: '先发', time: Date.now() },
+        { id: 'nav2-selected-target', name: '正在回复的人', owner: 'me', text: '目标', time: Date.now() }
+      ];
+      if (!saveNow()) return { setupSaved: false };
+      renderComments();
+      replyTo(1);
+      deleteComment(0);
+      const preceding = {
+        index: replyToIdx,
+        hintVisible: getComputedStyle(document.getElementById('replyHint')).display !== 'none',
+        label: document.getElementById('replyTargetName').textContent,
+        remainingIds: post.comments.map((comment) => comment.id)
+      };
+      deleteComment(0);
+      const target = {
+        index: replyToIdx,
+        hintHidden: getComputedStyle(document.getElementById('replyHint')).display === 'none',
+        remaining: post.comments.length
+      };
+      return { setupSaved: true, preceding, target };
+    } finally {
+      post.comments = originalComments;
+      saveNow();
+      cancelReply();
+      renderComments();
+      renderPost();
+    }
+  });
+  add('forum-detail.reply.kept-when-earlier-comment-deleted',
+    adjacentDelete.setupSaved === true &&
+    adjacentDelete.preceding?.index === 0 &&
+    adjacentDelete.preceding?.hintVisible === true &&
+    adjacentDelete.preceding?.label === '@正在回复的人' &&
+    adjacentDelete.preceding?.remainingIds.join(',') === 'nav2-selected-target',
+    adjacentDelete);
+  add('forum-detail.reply.cancelled-when-target-deleted',
+    adjacentDelete.setupSaved === true &&
+    adjacentDelete.target?.index === -1 &&
+    adjacentDelete.target?.hintHidden === true &&
+    adjacentDelete.target?.remaining === 0,
+    adjacentDelete);
+
   // The visual 140px shell is aria-hidden and must not be a second keyboard
   // tab stop. Its separate 84px hit-target remains the accessible button.
   const homeA11y = await page.evaluate(() => {
