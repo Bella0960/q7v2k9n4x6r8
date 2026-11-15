@@ -1268,7 +1268,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     if(bar)bar.classList.remove('has-images');
   }
   async function sendComment() {
-    const input=document.getElementById('commentInput'),text=input.value.trim();
+    const input=document.getElementById('commentInput'),draftAtSend=input.value,text=draftAtSend.trim();
     const files=commentImageFiles.slice();
     if(!text&&!files.length){toast('写一句话或添加一张图片吧');input.focus();return}
     const button=document.querySelector('.comment-bar .send-btn');
@@ -1315,9 +1315,16 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
         await ForumMedia.release(assetIds,'forum-comment',commentId);
         return;
       }
-      input.value='';
-      clearCommentImages();
-      cancelReply();
+      // The composer stays editable during async image upload. Clear only the
+      // draft/images actually submitted; never erase newly typed or selected
+      // content from a later draft.
+      const draftUnchanged=input.value===draftAtSend;
+      if(draftUnchanged)input.value='';
+      const imagesUnchanged=commentImageFiles.length===files.length&&
+        commentImageFiles.every((file,i)=>file===files[i]);
+      if(imagesUnchanged)clearCommentImages();
+      const activeReplyTarget=replyToIdx>=0?post.comments[replyToIdx]:null;
+      if(draftUnchanged&&activeReplyTarget===replyTarget)cancelReply();
       // After posting from author-only view, reveal the reader's saved comment.
       if(gossipView==='author')gossipView='all';
       renderPost();renderComments();
