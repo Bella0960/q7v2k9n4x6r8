@@ -113,9 +113,11 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 用户授权实施新功能；偏好：低饱和冷灰黑白、首页极简、无额外装饰、真实互动、本地 0 API 初筛、原角色库对接、强制姓名查重、相似人设可保留、独立扩展接口。
 - Base: main @ a5415d7e28280fd07cea4d02e19e87d9ec36083e
 - Branch: FEATURE-ENCOUNTER-001-initial-experience
+- Draft PR: https://github.com/Bella0960/MAOMAO/pull/297
 - 新增：encounter/encounter.html；encounter/encounter-engine.js；tests/encounter-contract.test.mjs；docs/features/ENCOUNTER_SPEC.md。
 - 修改：index.html 桌面入口；worldbook/characters/characters.html / js/characters-manager.js 候选进入原编辑器、导出 MAOMAO JSON 与仅支持原生 JSON 导入。
 - 不修改正式角色/聊天/账户数据库记录；未触碰 Cloudflare 正式部署与管理员身份；未合并 main。
 - 代码已提交；10 项合同测试已写，当前执行环境无法直接运行本仓库 Node/Vite/真机浏览器，测试、npm run build、UI 实际效果均为 NOT VERIFIED。不得把提交代码等同于验收通过。
 - 后续同分支新增原有 PhoneAPI.complete 的按需 AI 人设扩写按钮、付费确认与草稿保护、第三方 JSON 伪装 TXT 拦截和超长字段拒绝（避免静默裁剪）。真实 API 返回与费用尚未验证。
 - 后续：优先真实浏览器测试滑动和草稿恢复、修复实际失败、建设显式 AI 人设完善按钮（用户确认时调用 API）、扩展人物关系/稀有卡；通过验收后再申请合并。
+- 2026-11-15 本窗口补充可核验结果：V8 语法编译三个改动脚本均通过；隔离引擎实际运行 50 张不同姓名人物卡、收藏/删除/偏好/原角色隔离通过；损坏候选/配额错误/后发撞名均被拒绝。仍须运行 Node/Vite 与真实浏览器测试。
