@@ -1034,6 +1034,51 @@ test('failed hidden settings persist warns once even after rapid changes', async
 });
 
 
+
+test('creating with a changed memory mode waits until the setting transaction commits', async () => {
+  const accountId = 'MAO-AAAAAAAAAAAA';
+  const db = fakeFanwaiDB({ writeDelays: [65] }); // The first write is the setting, not the story.
+  const app = mount({ accountId, indexedDB: db });
+  const root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().some(n => n.dataset.template === 'daily'));
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.template === 'daily') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.memoryMode === 'role') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'start-template') });
+
+  assert.equal(app.requests, 0, 'a pending preference transaction must not trigger paid generation');
+  await tickUntil(() => app.requests > 0, 160);
+  assert.equal(db.records.get('settings:' + accountId + ':role-1')?.settings.memory, 'role',
+    'latest memory preference must be durable before the first AI request');
+  assert.match(app.prompts[0], /曾在海边看过日落/,
+    'the episode must follow the same confirmed memory mode');
+});
+
+test('failed memory preference save blocks story creation until a successful retry', async () => {
+  const accountId = 'MAO-AAAAAAAAAAAA';
+  const db = fakeFanwaiDB({ failAtWrite: 1 });
+  const app = mount({ accountId, indexedDB: db });
+  const root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().some(n => n.dataset.template === 'daily'));
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.template === 'daily') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.memoryMode === 'role') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'start-template') });
+  await tickUntil(() => app.notices.some(n => n.includes('尚未保存成功')));
+
+  assert.equal(app.requests, 0, 'a rejected setting write must not start an AI request');
+  assert.ok(![...db.records.values()].some(r => r.templateId === 'daily'),
+    'no new episode may be persisted with an uncommitted memory preference');
+
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.memoryMode === 'role') });
+  await tickUntil(() => db.records.get('settings:' + accountId + ':role-1')?.settings.memory === 'role');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'start-template') });
+  await tickUntil(() => app.requests > 0);
+  assert.match(app.prompts[0], /曾在海边看过日落/,
+    'retrying the preference save must restore normal generation');
+});
+
+
 test('archive follows confirmed deletions made by another tab instead of resurrecting a stale row', async () => {
   const db = fakeFanwaiDB();
   const accountId = 'MAO-AAAAAAAAAAAA';
