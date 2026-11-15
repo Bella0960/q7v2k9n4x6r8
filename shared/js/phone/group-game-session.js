@@ -192,6 +192,39 @@
       (to === '__user' || session.players.indexOf(to) !== -1) &&
       from !== to };
   }
+  // A no-private game also blocks ordinary 1:1 role replies for its players.
+  // Otherwise leaving the group UI would silently bypass the frozen rule.
+  function checkDirectPrivateAllowed(req) {
+    req=req||{};
+    var rid=id(req.roleId),storage=storageOf(req);
+    if(!valid(rid))return {ok:true,allowed:true};
+    var groups;
+    try {
+      var raw=storage.getItem('phone_groups');
+      groups=raw?JSON.parse(raw):[];
+      if(!Array.isArray(groups))throw Error('Invalid group index');
+    } catch(e){return error('GROUP_INDEX_UNAVAILABLE','暂时无法确认群游戏规则');}
+    for(var i=0;i<groups.length;i++) {
+      var g=groups[i],gid=id(g&&g.id);
+      if(!valid(gid)||!g||g.userMembership==='left'||g.userMembership==='declined'||
+        !Array.isArray(g.members)||!g.members.some(function(m){return m&&id(m.id)===rid;}))
+        continue;
+      var current=game(gid,storage);
+      if(!current) {
+        // Corrupted active-game metadata must not act as permission to DM.
+        try {
+          if(storage.getItem(publicKey(gid))!==null)
+            return error('CORRUPT_SESSION','关联群的游戏数据异常，私聊已暂停');
+        } catch(e){return error('STORAGE_UNAVAILABLE','无法核对游戏规则');}
+        continue;
+      }
+      if(current.status==='active' && current.players.indexOf(rid)!==-1 &&
+        current.rules.allowPrivate!==true)
+        return {ok:true,allowed:false,groupId:gid,
+          groupName:id(g.name).slice(0,24),reason:'GAME_PRIVATE_DISABLED'};
+    }
+    return {ok:true,allowed:true};
+  }
   function sendWhisper(req) {
     req = req || {};
     var gid=id(req.groupId), to=id(req.toId), from=id(req.fromId), storage=storageOf(req);
@@ -320,7 +353,8 @@
   root.GroupGameSessions=Object.freeze({
     registerGame:registerGame, games:games, on:on, getPublic:game,
     start:start, finish:finish, buildRoleContext:buildRoleContext,
-    canWhisper:canWhisper, sendWhisper:sendWhisper, getHostInbox:getHostInbox, getHostConversation:getHostConversation,
+    canWhisper:canWhisper, checkDirectPrivateAllowed:checkDirectPrivateAllowed,
+    sendWhisper:sendWhisper, getHostInbox:getHostInbox, getHostConversation:getHostConversation,
     redactPublicStreamText:redactPublicStreamText
   });
 })(typeof window!=='undefined'?window:globalThis);
