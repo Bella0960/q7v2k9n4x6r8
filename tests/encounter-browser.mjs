@@ -50,6 +50,15 @@ try {
     await page.locator('#frontCard .name').waitFor();
     const name = await page.locator('#frontCard .name').innerText();
     assert.ok(name.length >= 2, '初始卡片应有可读姓名');
+    // 两张都是实际候选，不只是装饰层；可切换回原来的卡片。
+    const firstCandidateId = await page.locator('#frontCard').getAttribute('data-candidate-id');
+    await page.locator('#swapButton').click();
+    const secondCandidateId = await page.locator('#frontCard').getAttribute('data-candidate-id');
+    assert.ok(firstCandidateId && secondCandidateId && firstCandidateId !== secondCandidateId,
+      '两张人物卡必须拥有不同的稳定 ID');
+    await page.locator('#swapButton').click();
+    assert.equal(await page.locator('#frontCard').getAttribute('data-candidate-id'),
+      firstCandidateId, '切换后不能丢失第一张候选');
     const bounds = await page.locator('#frontCard').boundingBox();
     assert.ok(bounds?.width > 200 && bounds?.height > 280, '人物卡片应适合手机阅读');
     await page.screenshot({path:resolve(artifacts, 'encounter-' + viewport.width + '.png')});
