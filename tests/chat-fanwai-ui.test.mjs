@@ -79,7 +79,7 @@ function mount(options = {}) {
   const accountId = options.accountId || '';
   const window = {
     location: { search: '?id=' + (options.roleId || 'role-1') },
-    PhoneStorage: { getApiConfig: () => ({ apiKey: 'mock-key' }) },
+    PhoneStorage: { getApiConfig: () => ({ apiKey: 'mock-key', maxTokens: options.maxTokens }) },
     indexedDB: options.indexedDB,
     IDBKeyRange: options.indexedDB ? { bound: (lower, upper) => ({ lower, upper }) } : undefined,
     showToast: message => notices.push(message),
@@ -497,4 +497,17 @@ test('deleting one story requires explicit confirmation; cancellation preserves 
   await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'confirm-delete') });
   await tickUntil(() => [...db.records.values()].filter(record => record.templateId === 'daily').length === 0);
   assert.equal(sheet.all().filter(n => n.dataset.action === 'read').length, 0);
+});
+
+
+test('low maxTokens still reaches the requested 80 messages with smaller valid JSON batches', async () => {
+  const app = mount({ maxTokens: 220 });
+  const root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().filter(n => n.dataset.template).length === 6);
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.template === 'daily') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'start-template') });
+  await tickUntil(() => sheet.all().filter(n => n.className === 'fw-bubble').length === 80);
+  assert.equal(app.requests, 27, '80 messages in batches of at most 3 with a small output allowance');
+  assert.equal(sheet.all().find(n => n.className === 'fw-status').textContent, '这篇番外已经写完。');
 });
