@@ -203,7 +203,7 @@
       return error('STALE_SESSION','私聊所属对局已结束或发生变化');
     var right=canWhisper(req);
     if(!right.allowed) return error('PRIVATE_DISABLED','本局不允许玩家私聊');
-    if (session.players.indexOf(to)===-1) return error('INVALID_RECIPIENT','只能发给本局角色');
+    if (to!=='__user' && session.players.indexOf(to)===-1) return error('INVALID_RECIPIENT','只能发给本局角色或群主');
     var content=id(req.text);
     if (!content || content.length>240) return error('INVALID_TEXT','私聊消息最多240字');
     var eventId=id(req.eventId);
@@ -230,6 +230,27 @@
     emit('game:whispered',{groupId:gid,sessionId:session.sessionId,fromId:from,toId:to});
     return {ok:true,duplicate:false};
   }
+  // A host may read ONLY messages addressed to the host in the active round.
+  // No general "view all private chats" API is exposed to the group owner.
+  function getHostInbox(req) {
+    req=req||{};
+    var gid=id(req.groupId),group=req.group,storage=storageOf(req);
+    if(!group || id(group.id)!==gid || id(group.ownerId||'__user')!=='__user' ||
+      group.userMembership==='left' || req.actorId!=='__user')
+      return error('NO_PERMISSION','只有当前群主可以查看发给自己的游戏私聊');
+    var session=game(gid,storage);
+    if(!session || session.status!=='active')
+      return error('NOT_ACTIVE','当前没有进行中的游戏');
+    var inbox=read(storage,inboxKey(gid,session.sessionId,'__user'));
+    if(inbox!==null && !Array.isArray(inbox))
+      return error('CORRUPT_INBOX','群主私聊收件箱异常');
+    return {ok:true,sessionId:session.sessionId,messages:(inbox||[])
+      .filter(function(msg){return msg&&msg.groupId===gid &&
+        msg.sessionId===session.sessionId && msg.toId==='__user' &&
+        session.players.indexOf(msg.fromId)!==-1;})
+      .slice(-20).map(function(msg){return {fromId:id(msg.fromId),
+        text:id(msg.text).slice(0,240),time:Number(msg.time)||0};})};
+  }
   function finish(req) {
     req=req||{};
     var gid=id(req.groupId), storage=storageOf(req);
@@ -253,6 +274,7 @@
     if(!raw||raw.sessionId!==session.sessionId)return error('CONFLICT','对局已发生变化');
     raw.status='finished';raw.finishedAt=Date.now();raw.revealedRoleId=bad[0];
     if(!write(storage,publicKey(gid),raw))return error('SAVE_FAILED','游戏结束状态未保存');
+    drop(storage,inboxKey(gid,session.sessionId,'__user'));
     session.players.forEach(function (rid) {
       drop(storage,secretKey(gid,session.sessionId,rid));
       drop(storage,inboxKey(gid,session.sessionId,rid));
@@ -264,7 +286,7 @@
   root.GroupGameSessions=Object.freeze({
     registerGame:registerGame, games:games, on:on, getPublic:game,
     start:start, finish:finish, buildRoleContext:buildRoleContext,
-    canWhisper:canWhisper, sendWhisper:sendWhisper,
+    canWhisper:canWhisper, sendWhisper:sendWhisper, getHostInbox:getHostInbox,
     redactPublicStreamText:redactPublicStreamText
   });
 })(typeof window!=='undefined'?window:globalThis);
