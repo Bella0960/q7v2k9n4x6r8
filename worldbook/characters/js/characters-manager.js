@@ -55,6 +55,7 @@ let currentDraftKey = '';
 let activeEncounterDraftId = '';
 let editorOriginalState = null;
 let pendingDraftRecovery = null;
+let unreadableDraftKey = ''; // 未经用户明确放弃，任何流程都不可覆盖损坏的原草稿
 let cropSourceImage = null;
 let cropBaseScale = 1;
 let cropZoom = 1;
@@ -1448,6 +1449,10 @@ function openEditRole(id) {
 
 // 保存角色：仅在本地存储确认成功后显示成功状态，并留在当前编辑页
 function handleSaveRole() {
+    if (currentDraftKey && currentDraftKey === unreadableDraftKey) {
+        setSaveStatus('这份未完成草稿暂时无法读取，原文已保留。请先在恢复提示中明确放弃后再创建角色。', 'error');
+        return;
+    }
     const roleId = document.getElementById('editRoleId').value.trim();
     const nameVal = document.getElementById('editRoleName').value.trim();
     const personaVal = document.getElementById('editRolePersona').value;
@@ -1708,6 +1713,10 @@ function setSaveStatus(message, state) {
 
 function persistEditorDraft(force) {
     if (!currentDraftKey) return false;
+    if (unreadableDraftKey === currentDraftKey) {
+        setSaveStatus('原草稿无法读取，已禁止覆盖。请先备份原始资料，或在恢复提示中明确放弃这份草稿。', 'error');
+        return false;
+    }
     const state = captureEditorState();
     if (!force && editorOriginalState && editorStatesEqual(state, editorOriginalState)) {
         try {
@@ -1746,14 +1755,33 @@ function applyEditorState(state) {
 function offerDraftRecovery() {
     if (!currentDraftKey) return false;
     let draft = null;
+    let raw = null;
+    let malformed = false;
     try {
-        const raw = localStorage.getItem(currentDraftKey);
-        if (raw) draft = JSON.parse(raw);
-    } catch (e) {
-        console.warn('读取角色草稿失败:', e);
-        try { localStorage.removeItem(currentDraftKey); } catch (_) {}
+        raw = localStorage.getItem(currentDraftKey);
+        if (raw !== null) draft = JSON.parse(raw);
+    } catch (error) {
+        console.warn('读取角色草稿失败，原始内容已保留：', error);
+        malformed = true;
     }
-    if (!draft || draft.version !== 1 || !draft.state) return false;
+    if (raw !== null && (malformed || !draft || draft.version !== 1 ||
+        !draft.state || typeof draft.state !== 'object' || Array.isArray(draft.state))) {
+        // 旧逻辑曾自动 removeItem 丢弃损坏草稿，此处不再静默删除。
+        unreadableDraftKey = currentDraftKey;
+        pendingDraftRecovery = {
+            draft: null,
+            base: editorOriginalState || captureEditorState(),
+            unreadable: true
+        };
+        const copy = document.getElementById('recoveryCopy');
+        if (copy) copy.textContent = '上一份草稿内容异常，无法自动恢复，但原文已保留。只有主动选择「放弃草稿」才会清理这份原文；否则请先备份资料。';
+        const dialog = document.getElementById('recoveryDialog');
+        if (dialog) dialog.classList.remove('hidden');
+        setSaveStatus('已有草稿读取异常，禁止自动覆盖旧内容。', 'error');
+        return true;
+    }
+    if (!draft) return false;
+    if (unreadableDraftKey === currentDraftKey) unreadableDraftKey = '';
     const base = editorOriginalState || captureEditorState();
     if (editorStatesEqual(draft.state, base)) {
         try { localStorage.removeItem(currentDraftKey); } catch (e) {}
@@ -1781,6 +1809,10 @@ function closeRecoveryDialog() {
 
 function recoverPendingDraft() {
     if (!pendingDraftRecovery) return;
+    if (pendingDraftRecovery.unreadable || !pendingDraftRecovery.draft) {
+        setSaveStatus('原草稿内容异常，无法自动恢复。原始内容已保留；请先备份，或主动放弃这份草稿。', 'error');
+        return;
+    }
     applyEditorState(pendingDraftRecovery.draft.state);
     closeRecoveryDialog();
     persistEditorDraft(true);
@@ -1789,7 +1821,13 @@ function recoverPendingDraft() {
 
 function discardPendingDraft() {
     if (!currentDraftKey) return;
-    try { localStorage.removeItem(currentDraftKey); } catch (e) {}
+    try {
+        localStorage.removeItem(currentDraftKey);
+    } catch (error) {
+        setSaveStatus('无法清理旧草稿，原始内容保持不变。请检查存储空间。', 'error');
+        return;
+    }
+    if (unreadableDraftKey === currentDraftKey) unreadableDraftKey = '';
     if (pendingDraftRecovery) applyEditorState(pendingDraftRecovery.base);
     closeRecoveryDialog();
     setSaveStatus('', 'info');
@@ -1802,7 +1840,8 @@ function handleCancelEdit() {
         const shouldDiscard = confirm('当前有尚未保存的修改。放弃本次全部修改并返回上一层吗？');
         if (!shouldDiscard) return;
     }
-    if (currentDraftKey) {
+    // 关闭编辑页不能当作“主动放弃一份损坏草稿”的授权。
+    if (currentDraftKey && unreadableDraftKey !== currentDraftKey) {
         try { localStorage.removeItem(currentDraftKey); } catch (e) {}
     }
     closeRecoveryDialog();
