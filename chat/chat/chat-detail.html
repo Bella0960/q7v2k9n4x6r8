@@ -33,6 +33,7 @@
     <script src="../../shared/js/phone/group-turn-effects.js?v=20261115gte2"></script>
     <script src="../../shared/js/phone/group-private-receipt-recovery.js?v=20261115gpr1"></script>
     <script src="../../shared/js/phone/group-memory-events.js?v=20261116gme3"></script>
+    <script src="../../shared/js/phone/group-game-chat-receipts.js?v=20261116receipt1"></script>
     <script src="../../shared/js/chat-notifier.js?v=20261102v3"></script>
     <style>
         * {
@@ -6591,7 +6592,7 @@
                 if (window.GroupGameSessions && typeof window.GroupGameSessions.redactPublicStreamText === 'function')
                     return window.GroupGameSessions.redactPublicStreamText(source);
                 // Privacy fallback if the external script fails to load.
-                return source.replace(/\[(?:游戏私聊|群私聊|游戏猜测)[:：][\s\S]*?(?:\]|$)/g, '')
+                return source.replace(/\[游戏揭晓\]?/g, '').replace(/\[(?:游戏私聊|群私聊|游戏猜测)[:：][\s\S]*?(?:\]|$)/g, '')
                     .replace(/\[(?:游|游戏|游戏私|游戏私聊|群|群私|群私聊)[^\]\r\n]{0,1000}$/g, '');
             }
             function paintStreamLive(text) {
@@ -6771,6 +6772,7 @@
             var groupTurnEffects = window.GroupTurnEffects
                 ? window.GroupTurnEffects.create() : null;
             var groupTurnFinalized = false;
+            var groupAutoRevealReceipt = null;
             try {
                 if (fullText) {
                     // ---- 标记剥离 → 清洗 → 落库 → 重渲染（成功与中断保文共用同一套收尾） ----
@@ -6778,7 +6780,11 @@
                     var pendingGameWhisper = null;
                     fullText = processGroupInteractionMarkers(fullText, groupReplyPick, historyList, isRegen, isGroupFollowup, streamResult.ok, groupGameSessionForPrompt, function (event) {
                         pendingGameWhisper = event;
-                    }, groupTurnEffects);
+                    }, groupTurnEffects, function(receipt){
+                        groupAutoRevealReceipt = receipt;
+                        if (receipt && !historyList.some(function(m){return m && m.mid === receipt.mid;}))
+                            historyList.push(receipt);
+                    });
                     // Game-only whisper is an ordinary deferred effect: it must
                     // share the same verified reply barrier as every other action.
                     if (pendingGameWhisper && groupTurnEffects && window.GroupGameSessions) {
@@ -7109,6 +7115,12 @@
                                         var galleryMessageIndex = chatMessages.querySelectorAll('.msg-row[data-idx]').length;
                                         appendMessageToDOM(galleryMessage, galleryMessageIndex);
                                     });
+                                }
+                                if (groupAutoRevealReceipt &&
+                                    !chatMessages.querySelector('.msg-row[data-mid="' +
+                                        String(groupAutoRevealReceipt.mid) + '"]')) {
+                                    appendMessageToDOM(groupAutoRevealReceipt,
+                                        chatMessages.querySelectorAll('.msg-row[data-idx]').length);
                                 }
                                 scrollToBottom(true);
                             }
@@ -8382,12 +8394,12 @@
 
 
         // ===== 群投票 / 群接龙 / 角色群管理标记 =====
-        function processGroupInteractionMarkers(rawText, speaker, historyList, isRegeneration, isGroupFollowup, isCompleted, expectedGameSessionId, queueGameWhisper, turnEffects) {
+        function processGroupInteractionMarkers(rawText, speaker, historyList, isRegeneration, isGroupFollowup, isCompleted, expectedGameSessionId, queueGameWhisper, turnEffects, queueGameReveal) {
             var text = String(rawText || '');
             if (!isGroupChat || !currentGroup || !Array.isArray(historyList)) return text;
             if (!turnEffects || typeof turnEffects.afterSave !== 'function' ||
                 typeof turnEffects.registerUndo !== 'function') {
-                return text.replace(/\[(?:群关系变化|群关系互动|群投票|群接龙|群私聊|游戏私聊|游戏猜测|群动作|群聊结束)[:：]?[^\]\r\n]{0,600}\]?/g, '').replace(/\[(?:游戏私聊|群私聊|游戏猜测)[:：][\s\S]*?(?:\]|$)/g, '').trim();
+                return text.replace(/\[(?:群关系变化|群关系互动|群投票|群接龙|群私聊|游戏私聊|游戏猜测|游戏揭晓|群动作|群聊结束)[:：]?[^\]\r\n]{0,600}\]?/g, '').replace(/\[(?:游戏私聊|群私聊|游戏猜测)[:：][\s\S]*?(?:\]|$)/g, '').trim();
             }
             var changedHistory = false;
             var groupHistoryRollback = [];
@@ -8410,7 +8422,7 @@
             // can never cast votes, modify relationships, create DMs or govern
             // the group. Strip action markers rather than exposing them publicly.
             if (!isCompleted || isRegeneration || contextOnly) {
-                return text.replace(/\[(?:群关系变化|群关系互动|群投票|群接龙|群私聊|游戏私聊|游戏猜测|群动作|群聊结束)[:：]?[^\]\r\n]{0,600}\]?/g, '')
+                return text.replace(/\[(?:群关系变化|群关系互动|群投票|群接龙|群私聊|游戏私聊|游戏猜测|游戏揭晓|群动作|群聊结束)[:：]?[^\]\r\n]{0,600}\]?/g, '')
                     .replace(/\[(?:游戏私聊|群私聊|游戏猜测)[:：][\s\S]*?(?:\]|$)/g, '').trim();
             }
             var relationshipEventSeen = false;
@@ -8556,6 +8568,57 @@
                 }
                 return '';
             });
+            // Only the owner-appointed moderator can initiate an autonomous reveal.
+            // The marker is never rendered; the real closure and receipt happen
+            // after a verified public reply write, never during token streaming.
+            var gameRevealSeen=false;
+            text=text.replace(/\[游戏揭晓\]/g,function(){
+                if(gameRevealSeen)return '';
+                gameRevealSeen=true;
+                if(!isCompleted || isRegeneration || contextOnly ||
+                    !speaker || speaker.id == null || !window.GroupGameSessions ||
+                    !expectedGameSessionId || typeof queueGameReveal!=='function')return '';
+                var session=window.GroupGameSessions.getPublic(String(currentGroup.id));
+                var hostId=String(speaker.id);
+                if(!session || session.status!=='active' ||
+                    session.sessionId!==expectedGameSessionId ||
+                    session.hostId!==hostId || hostId==='__user' ||
+                    session.voteError || session.voteCount!==session.players.length)return '';
+                var ownGroupId=String(currentGroup.id), roundId=expectedGameSessionId;
+                turnEffects.afterSave(function(){
+                    var liveGroup=loadGroupById(ownGroupId);
+                    var now=window.GroupGameSessions.getPublic(ownGroupId);
+                    if(!liveGroup || !now || now.status!=='active' ||
+                        now.sessionId!==roundId || now.hostId!==hostId)
+                        return {ok:false,code:'STALE_SESSION'};
+                    var finished=window.GroupGameSessions.finish({
+                        group:liveGroup,groupId:ownGroupId,sessionId:roundId,actorId:hostId
+                    });
+                    if(!finished.ok)return finished;
+                    var receipt=window.GroupGameChatReceipts &&
+                        window.GroupGameChatReceipts.publish({
+                            group:liveGroup,session:finished.session,actorId:'__user'
+                        });
+                    if(receipt && receipt.ok && receipt.record)queueGameReveal(receipt.record);
+                    if(window.GroupMemoryEvents) {
+                        var publicMemory=window.GroupMemoryEvents.recordGameClosure({
+                            group:liveGroup,session:finished.session
+                        });
+                        if(!publicMemory.ok && typeof showToast==='function')
+                            showToast(publicMemory.message||'游戏已揭晓，但群记忆没有保存');
+                    }
+                    if(!receipt || !receipt.ok) {
+                        if(typeof showToast==='function')
+                            showToast('游戏已揭晓，但群聊结果卡尚未保存；可在群设置补发');
+                        return {ok:false,code:'RECEIPT_SAVE_FAILED'};
+                    }
+                    if(finished.cleanupComplete===false && typeof showToast==='function')
+                        showToast('游戏临时记录尚未完全清理，请到群设置重试');
+                    return {ok:true};
+                });
+                return '';
+            });
+            text=text.replace(/\[游戏揭晓[^\]\r\n]{0,80}\]?/g,'');
             // Commit a role's guess only AFTER its public reply was verified saved.
             // The guessed target remains private in the ballot vault until reveal.
             var gameGuessSeen = false;
