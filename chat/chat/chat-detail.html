@@ -6693,9 +6693,10 @@
                 retryRemarked = _markUserSendFailed(historyList, retryTarget.mid, retryTarget.time);
             }
 
-            // Each AI group turn owns a scoped message-history write barrier.
-            // If it is unavailable, hidden group action markers fail closed.
-            var groupTurnEffects = isGroupChat && window.GroupTurnEffects
+            // Shared verified-write barrier for group turns AND role-DM group invitations.
+            // An invitation may only appear after the AI reply has actually persisted.
+            // If the helper is unavailable, hidden actions fail closed.
+            var groupTurnEffects = window.GroupTurnEffects
                 ? window.GroupTurnEffects.create() : null;
             var groupTurnFinalized = false;
             try {
@@ -6719,21 +6720,38 @@
                     // 私聊角色可以发出待同意的群邀请；必须等模型完整成功，不允许中断回复改变入群状态。
                     if (window.GroupGovernance) {
                         fullText = fullText.replace(/\[群邀请[:：]([^\]]{1,100})\]/g, function (marker, proposedGroupId) {
-                            if (!isGroupChat && streamResult.ok && !isRegen && !contextOnly && !silent && presenceMode === 'online') {
-                                var invited = window.GroupGovernance.offerInvitation({groupId:String(proposedGroupId).trim(),inviterId:aliasRoleId || currentRoleId});
-                                if (invited.ok && typeof showToast === 'function') showToast('TA 发来一条群聊邀请，可在聊天列表决定是否加入');
+                            if (!isGroupChat && streamResult.ok && !isRegen && !contextOnly && !silent &&
+                                presenceMode === 'online' && groupTurnEffects) {
+                                var deferredGroupId = String(proposedGroupId).trim();
+                                var deferredInviterId = aliasRoleId || currentRoleId;
+                                groupTurnEffects.afterSave(function () {
+                                    var invited = window.GroupGovernance.offerInvitation({
+                                        groupId: deferredGroupId, inviterId: deferredInviterId
+                                    });
+                                    if (invited && invited.ok && typeof showToast === 'function')
+                                        showToast('TA 发来一条群聊邀请，可在聊天列表决定是否加入');
+                                    return invited;
+                                });
                             }
                             return '';
                         });
                     }
                     if (window.GroupGovernance) {
                         fullText = fullText.replace(/\[建群邀请[:：]([^:：\]]{1,20})[:：]([^\]]{1,150})\]/g, function (marker, name, memberIds) {
-                            if (!isGroupChat && streamResult.ok && !isRegen && !contextOnly && !silent && presenceMode === 'online') {
-                                var offered = window.GroupGovernance.offerNewGroupInvitation({
-                                    inviterId: aliasRoleId || currentRoleId, groupName: name,
-                                    memberIds: String(memberIds).split(/[,，、]/).map(function (s) { return s.trim(); })
+                            if (!isGroupChat && streamResult.ok && !isRegen && !contextOnly && !silent &&
+                                presenceMode === 'online' && groupTurnEffects) {
+                                var deferredGroupName = name;
+                                var deferredMemberIds = String(memberIds).split(/[,，、]/).map(function (s) { return s.trim(); });
+                                var deferredInviterId = aliasRoleId || currentRoleId;
+                                groupTurnEffects.afterSave(function () {
+                                    var offered = window.GroupGovernance.offerNewGroupInvitation({
+                                        inviterId: deferredInviterId, groupName: deferredGroupName,
+                                        memberIds: deferredMemberIds
+                                    });
+                                    if (offered && offered.ok && typeof showToast === 'function')
+                                        showToast('TA 邀请你加入新群聊，可在聊天列表选择是否加入');
+                                    return offered;
                                 });
-                                if (offered.ok && typeof showToast === 'function') showToast('TA 邀请你加入新群聊，可在聊天列表选择是否加入');
                             }
                             return '';
                         });
@@ -6863,7 +6881,9 @@
                             var settledGroupTurn = groupTurnEffects.finalize(replySaved);
                             groupTurnFinalized = true;
                             if (replySaved && !settledGroupTurn.ok && typeof showToast === 'function') {
-                                showToast('群互动部分操作未成功，请检查群设置与存储');
+                                showToast(isGroupChat
+                                    ? '群互动部分操作未成功，请检查群设置与存储'
+                                    : '群邀请未成功保存，请检查本地存储');
                             }
                         }
                         var replySaveFailed = !replySaved;
