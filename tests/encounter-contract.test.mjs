@@ -395,6 +395,45 @@ test('旧版候选数组只读兼容：新增不改旧数组，删除使用单�
   assert.equal(h.localStorage.getItem('maomao_encounter_removed_v2:'+legacyCard.id),'1');
 });
 
+
+test('支持原生 Web Locks 时收藏和删除必须通过同账号独占锁',async () => {
+  const data=new Map(),requestNames=[];
+  const localStorage={
+    get length(){return data.size;},
+    key(i){return [...data.keys()][i]??null;},
+    getItem(k){return data.get(k)??null;},
+    setItem(k,v){data.set(k,String(v));},
+    removeItem(k){data.delete(k);}
+  };
+  const window={
+    localStorage,dispatchEvent(){},
+    navigator:{locks:{
+      async request(name,options,fn){
+        requestNames.push({name,mode:options.mode});
+        return fn();
+      }
+    }}
+  };
+  vm.runInNewContext(engineSource,{window,Math,Set,Uint32Array,Date,JSON,String,Array,Object,Number,CustomEvent:class {}});
+  const api=window.MAOMAOEncounter;
+  const card=api.generate().value;
+  assert.equal((await api.saveCandidateSafe(card)).ok,true);
+  assert.equal((await api.removeCandidateSafe(card.id)).ok,true);
+  assert.equal(api.getCandidates().value.length,0);
+  assert.equal(requestNames.length,2);
+  assert.equal(requestNames[0].name,'maomao:encounter:v2:local-development');
+  assert.equal(requestNames[0].mode,'exclusive');
+});
+
+test('没有 Web Locks 的旧浏览器仍使用逐角色存储，不回退共用数组',async ()=>{
+  const h=harness();
+  const card=h.api.generate().value;
+  assert.equal((await h.api.saveCandidateSafe(card)).ok,true);
+  assert.equal(h.api.getCandidates().value.length,1);
+  assert.equal(h.map.has('maomao_encounter_candidates_v1'),false);
+  assert.equal((await h.api.removeCandidateSafe(card.id)).ok,true);
+});
+
 test('不同候选是独立物理存储键，浏览器备份能完整枚举', () => {
   const h=harness();
   const a=h.api.generate().value;
