@@ -33,6 +33,7 @@ test('邂逅引擎保持离线，不需要 API，并为新角色生成唯一姓�
     assert.ok(['男','女'].includes(r.value.gender));
     assert.ok(['年上感','年下感','同龄感','自由发展'].includes(r.value.relationVibe));
     assert.ok(r.value.species !== '哥布林');
+    assert.ok(['普通','特别邂逅'].includes(r.value.rarity));
     assert.ok(r.value.id.startsWith('enc_'));
   }
 });
@@ -77,6 +78,14 @@ test('存储空间不足时不显示收藏成功', () => {
   const card=h.api.generate().value;
   h.localStorage.setItem = function() {throw new Error('quota');};
   assert.equal(h.api.saveCandidate(card).ok,false);
+});
+
+test('隐藏偏好允许按人物性别抽取，绝不自动调用生成 API', () => {
+  const h = harness();
+  assert.equal(h.api.savePreferences({gender:'女'}).ok,true);
+  for (let i=0;i<12;i++) assert.equal(h.api.generate().value.gender,'女');
+  assert.equal(h.api.savePreferences({gender:'男'}).ok,true);
+  for (let i=0;i<12;i++) assert.equal(h.api.generate().value.gender,'男');
 });
 
 test('相似度是偏好，不强制排除喜爱的类型', () => {
