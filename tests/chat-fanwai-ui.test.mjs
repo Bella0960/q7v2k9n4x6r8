@@ -74,12 +74,15 @@ function mount(options = {}) {
   const shell = new Node('div');
   let requestCount = 0;
   const prompts = [];
+  const notices = [];
   let failAt = options.failAt || 0;
   const accountId = options.accountId || '';
   const window = {
     location: { search: '?id=' + (options.roleId || 'role-1') },
     PhoneStorage: { getApiConfig: () => ({ apiKey: 'mock-key' }) },
     indexedDB: options.indexedDB,
+    IDBKeyRange: options.indexedDB ? { bound: (lower, upper) => ({ lower, upper }) } : undefined,
+    showToast: message => notices.push(message),
     PhoneAPI: {
       completeJSON: async request => {
         prompts.push(request.system);
@@ -120,6 +123,7 @@ function mount(options = {}) {
     grid, shell,
     get requests() { return requestCount; },
     get prompts() { return prompts; },
+    get notices() { return notices; },
     get registry() { return window.MAOMAOFanwai; },
     open() {
       const menu = grid.querySelector('[data-feat="fanwai"]');
@@ -245,10 +249,11 @@ test('new plugin templates appear in the picker and can generate without editing
 
 
 // 轻量 IndexedDB 事务模拟：验证偏好只留在番外库、账号和角色之间绝不串用。
-function fakeFanwaiDB() {
+function fakeFanwaiDB(options = {}) {
   const records = new Map();
+  const queriedRanges = [];
   return {
-    records,
+    records, queriedRanges,
     open() {
       const request = {};
       Promise.resolve().then(() => {
@@ -265,15 +270,24 @@ function fakeFanwaiDB() {
                 });
                 return req;
               },
-              getAll() {
+              getAll(range) {
+                if (!range || typeof range.lower !== 'string' || typeof range.upper !== 'string') {
+                  throw new Error('unscoped getAll() is not permitted');
+                }
+                queriedRanges.push(range);
                 const req = {};
                 Promise.resolve().then(() => {
-                  req.result = Array.from(records.values());
+                  req.result = Array.from(records.values()).filter(record =>
+                    record.id >= range.lower && record.id <= range.upper);
                   if (req.onsuccess) req.onsuccess();
                 });
                 return req;
               },
               put(record) {
+                if (options.failWrites) {
+                  Promise.resolve().then(() => { if (transaction.onabort) transaction.onabort(); });
+                  return;
+                }
                 records.set(record.id, JSON.parse(JSON.stringify(record)));
                 Promise.resolve().then(() => { if (transaction.oncomplete) transaction.oncomplete(); });
               },
@@ -405,4 +419,39 @@ test('alternate route and original both survive a full reload in isolated fanwai
   await secondRoot.handlers.click({ target: rows[0] });
   assert.equal(newSheet.all().filter(n => n.className === 'fw-bubble').length, 80);
   assert.equal(second.requests, 0, 'reopening either finished story should not call the model');
+});
+
+
+test('account-scoped archive never performs an unrestricted read across the shared IndexedDB', async () => {
+  const database = fakeFanwaiDB();
+  const accountA = 'MAO-AAAAAAAAAAAA';
+  const accountB = 'MAO-BBBBBBBBBBBB';
+  const item = (account, role, suffix) => ({
+    id: account + ':' + role + ':' + suffix,
+    accountId: account, characterId: role, status: 'complete', target: 40,
+    name: '测试番外', messages: [{ role: 'char', text: suffix }], updatedAt: 1
+  });
+  database.records.set(accountA + ':role-1:own', item(accountA, 'role-1', 'own'));
+  database.records.set(accountB + ':role-1:other', item(accountB, 'role-1', 'other'));
+  database.records.set(accountA + ':role-2:other-role', item(accountA, 'role-2', 'other-role'));
+  const app = mount({ indexedDB: database, accountId: accountA });
+  const root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().filter(n => n.dataset.action === 'read').length === 1);
+  assert.equal(root.querySelector('.fw-sheet').all().filter(n => n.dataset.action === 'read').length, 1);
+  assert.ok(database.queriedRanges.length);
+  assert.equal(database.queriedRanges[0].lower, accountA + ':role-1:');
+  assert.equal(database.queriedRanges[0].upper, accountA + ':role-1:\uffff');
+});
+
+test('storage write rejection prevents paid story generation and does not falsely confirm saved progress', async () => {
+  const database = fakeFanwaiDB({ failWrites: true });
+  const app = mount({ accountId: 'MAO-AAAAAAAAAAAA', indexedDB: database });
+  const root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().filter(n => n.dataset.template).length === 6);
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.template === 'daily') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'start-template') });
+  await tickUntil(() => app.notices.some(text => text.includes('无法保存')));
+  assert.equal(app.requests, 0, 'generation must not begin when initial save failed');
+  assert.equal(database.records.size, 0);
 });
