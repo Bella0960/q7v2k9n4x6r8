@@ -38,6 +38,8 @@ test('QA Worker is isolated from production and never aliases old account previe
     MAO_IDENTITY_AUTHORITY_MODE: 'existing_worker',
     MAO_IDENTITY_CANONICAL_ADMIN_REQUIRED: 'true'
   });
+  assert.deepEqual(config.triggers, { crons: ['*/5 * * * *'] },
+    'isolated QA must keep its cloud autonomy Cron through redeploys');
   assert.equal(config.keep_vars, true);
   assert.equal(config.ai.binding, 'AI');
   assert.equal(config.vars.AUTONOMY_MODEL_BACKEND, 'workers_ai');
