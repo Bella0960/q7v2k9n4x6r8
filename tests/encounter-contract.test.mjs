@@ -120,6 +120,68 @@ test('角色库已有原生编辑器、邂逅候选交接、仅接受 MAOMAO JSO
   assert.match(managerSource,/saveRoles\(roles\)/);
 });
 
+
+test('PhoneStorage 损坏/不可用时抽卡必须停止，不能 fallback 成空角色库', () => {
+  for (const errorCode of ['CORRUPT_DATA', 'DB_UNAVAILABLE', 'DB_BLOCKED']) {
+    const h = harness();
+    const window = {
+      localStorage: h.localStorage,
+      dispatchEvent() {},
+      PhoneStorage: { result: { getCharacters() { return {ok: false, error: {code:errorCode}}; } } }
+    };
+    vm.runInNewContext(engineSource, {window,Math,Set,Uint32Array,Date,JSON,String,Array,Object,Number,CustomEvent:class {}});
+    const result = window.MAOMAOEncounter.generate();
+    assert.equal(result.ok,false, '角色读取错误必须阻断生成: '+errorCode);
+  }
+});
+
+test('原角色库读取损坏时不得用空数组覆盖，且拒绝保存', () => {
+  const start = managerSource.indexOf('let roleStoreReadError = false;');
+  const end = managerSource.indexOf('const ROLE_AVATAR_CLEANUP_QUEUE_KEY',start);
+  assert.ok(start >= 0 && end > start, '应复用当前管理器的真实读取/保存函数');
+  const code = managerSource.slice(start,end);
+  const key='ai_custom_characters';
+  for (const stored of ['{broken','{"roles":[]}','null']) {
+    const data = new Map([[key,stored]]);
+    const localStorage = {
+      getItem(k) { return data.has(k)?data.get(k):null; },
+      setItem(k,v) { data.set(k,String(v)); },
+      removeItem(k) { data.delete(k); }
+    };
+    const PhoneStorage = {
+      result: {
+        getCharacters() {return {ok:false,error:{code:'CORRUPT_DATA'}};},
+        saveCharacters() {throw new Error('must not write');}
+      }
+    };
+    const window = {PhoneStorage};
+    const manager = vm.runInNewContext(code+';({loadRoles,saveRoles,isBlocked:()=>roleStoreReadError})',
+      {window,PhoneStorage,localStorage,STORAGE_KEY:key,DEFAULT_ROLES:[],console});
+    assert.equal(manager.loadRoles().length,0);
+    assert.equal(manager.isBlocked(),true);
+    assert.equal(manager.saveRoles([{id:'new'}]),false);
+    assert.equal(data.get(key),stored,'读取错误时保留全部原始字节');
+  }
+});
+
+test('角色库第一次为空时可安全初始化新角色，不需要写空数组', () => {
+  const start=managerSource.indexOf('let roleStoreReadError = false;');
+  const end=managerSource.indexOf('const ROLE_AVATAR_CLEANUP_QUEUE_KEY',start);
+  const map=new Map();
+  const localStorage={getItem(k){return map.get(k)??null;},setItem(k,v){map.set(k,String(v));}};
+  const PhoneStorage={result:{
+    getCharacters(){return {ok:false,error:{code:'NOT_FOUND'}};},
+    saveCharacters(value){localStorage.setItem('ai_custom_characters',JSON.stringify(value));return {ok:true};}
+  }};
+  const window={PhoneStorage};
+  const manager=vm.runInNewContext(managerSource.slice(start,end)+';({loadRoles,saveRoles})',
+    {window,PhoneStorage,localStorage,STORAGE_KEY:'ai_custom_characters',DEFAULT_ROLES:[],console});
+  assert.equal(manager.loadRoles().length,0);
+  assert.equal(map.size,0,'只读加载不应偷偷写入存储');
+  assert.equal(manager.saveRoles([{id:'one',name:'自建角色'}]),true);
+  assert.equal(JSON.parse(map.get('ai_custom_characters'))[0].name,'自建角色');
+});
+
 test('桌面有独立应用入口，抽卡页有可访问交互与移动端样式', () => {
   assert.match(desktopSource,/data-href="encounter\/encounter\.html"/);
   assert.match(appSource,/id="frontCard"/);
