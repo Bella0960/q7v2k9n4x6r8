@@ -496,3 +496,35 @@ test('NPC request migration refuses silent storage failures and keeps legacy bac
   assert.equal(h.data.has(key), false, 'no unsaved migration should be reported as complete');
   assert.equal(h.data.get('npc_friend_requests_v1'), JSON.stringify(legacy));
 });
+
+test('accept refuses an existing NPC contact owned by another main role', async () => {
+  const h = createHarness();
+  const created = await h.context.NPCSocial.discoverNow();
+  const request = created.request;
+  h.roles.push({
+    id: request.npc.id, name: request.npc.name, npcSocialRole: true,
+    npcFriendRequestId: request.id, npcOriginMainRoleId: 'second-role'
+  });
+  assert.throws(() => h.context.NPCSocial.accept(request.id), /所属主角色冲突/);
+  assert.equal(h.context.NPCSocial.getPendingCount(), 1);
+  assert.equal(h.histories[request.npc.id], undefined, 'must not write a greeting into another role contact');
+});
+
+test('reconciliation ignores cross-role requests and cross-role NPC contacts', async () => {
+  const h = createHarness();
+  const created = await h.context.NPCSocial.discoverNow();
+  const request = created.request;
+  h.roles.push({
+    id: request.npc.id, name: request.npc.name, npcSocialRole: true,
+    npcFriendRequestId: request.id, npcOriginMainRoleId: 'second-role'
+  });
+  h.histories[request.npc.id] = [{role:'assistant',text:request.npc.greeting,npcFriendWelcome:true}];
+  h.context.NPCSocial.reconcileAccepted();
+  assert.equal(h.context.NPCSocial.getPendingCount(), 1, 'wrong-origin contact cannot complete a request');
+  const key = 'npc_friend_requests_v2_main-role';
+  const rows = JSON.parse(h.data.get(key));
+  rows[0].mainRoleId = 'second-role';
+  h.data.set(key, JSON.stringify(rows));
+  h.context.NPCSocial.reconcileAccepted();
+  assert.equal(JSON.parse(h.data.get(key))[0].status, 'pending', 'misfiled request must remain unchanged');
+});
