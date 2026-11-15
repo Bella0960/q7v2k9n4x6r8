@@ -594,17 +594,12 @@
   display: flex;
   align-items: flex-start;
   gap: 5px;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
   width: 100%;
 }
+#fanwaiLayer .fw-message.fw-continuation { margin-top: -5px; }
 #fanwaiLayer .fw-char { flex-direction: column; align-items: flex-start; }
 #fanwaiLayer .fw-user { flex-direction: column; align-items: flex-end; }
-#fanwaiLayer .fw-speaker {
-  padding: 0 5px;
-  font-size: 9px;
-  letter-spacing: .08em;
-  color: #969f99;
-}
 #fanwaiLayer .fw-bubble {
   display: block;
   border: 1px solid rgba(93,103,97,.09);
