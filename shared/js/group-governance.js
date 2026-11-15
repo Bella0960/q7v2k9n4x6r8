@@ -144,7 +144,13 @@
     } catch (e) { return null; }
   }
   function write(storage, key, value) {
-    try { storage.setItem(key, JSON.stringify(value)); return true; } catch (e) { return false; }
+    // Some storage adapters silently drop writes without throwing. Never report
+    // an invitation or accepted group as saved until the same key reads back.
+    try {
+      var serialized = JSON.stringify(value);
+      storage.setItem(key, serialized);
+      return storage.getItem(key) === serialized;
+    } catch (e) { return false; }
   }
   function eligible(group, roleId) {
     var m = find(group, roleId);
