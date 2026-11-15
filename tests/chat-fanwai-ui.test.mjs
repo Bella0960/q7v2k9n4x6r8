@@ -55,6 +55,7 @@ class Node {
   all() { return this.children.flatMap(n => [n, ...n.all()]); }
   querySelectorAll(selector) {
     if (selector === 'input[data-fanwai-context]:checked') return this.all().filter(n => n.dataset.fanwaiContext && n.checked);
+    if (selector === 'input[data-fanwai-context]') return this.all().filter(n => n.dataset.fanwaiContext);
     if (selector === '[data-action="set-memory"]') return this.all().filter(n => n.dataset.action === 'set-memory');
     return [];
   }
@@ -1078,6 +1079,52 @@ test('failed memory preference save blocks story creation until a successful ret
     'retrying the preference save must restore normal generation');
 });
 
+
+
+test('memory, episode length and optional contexts are frozen while a new story is committing', async () => {
+  const accountId = 'MAO-AAAAAAAAAAAA';
+  const db = fakeFanwaiDB({ writeDelays: [0, 75] }); // Settings save succeeds, initial episode save is slow.
+  const app = mount({ accountId, indexedDB: db });
+  assert.equal(app.registry.registerContextProvider({
+    id: 'world-snapshot',
+    label: '独立故事背景',
+    read: () => '只读备忘：窗外在下雨'
+  }), true);
+  const root = app.open();
+  await tickUntil(() => root.querySelector('.fw-sheet')?.all().some(n => n.dataset.template === 'daily'));
+  const sheet = root.querySelector('.fw-sheet');
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.template === 'daily') });
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.memoryMode === 'role') });
+  await tickUntil(() => db.records.get('settings:' + accountId + ':role-1')?.settings.memory === 'role');
+
+  const extra = sheet.all().find(n => n.dataset.fanwaiContext === 'world-snapshot');
+  assert.ok(extra);
+  extra.checked = true;
+  const firstWrite = root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'start-template') });
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(app.requests, 0, 'no model call while the first story save is pending');
+  assert.equal(extra.disabled, true, 'optional read-only providers must be locked as well');
+
+  // Simulate a stale UI callback even though a real browser would suppress clicks on disabled controls.
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.memoryMode === 'none') });
+  assert.equal(sheet.all().find(n => n.dataset.memoryMode === 'role').attributes['aria-pressed'], 'true',
+    'the current episode must keep the memory mode selected at confirmation');
+  const count = sheet.all().find(n => n.id === 'fw-preview-count');
+  assert.equal(count.disabled, true);
+  count.value = '100';
+  await root.handlers.change({ target: count });
+  assert.equal(count.value, '80', 'a pending episode must not appear to accept a different length');
+
+  await firstWrite;
+  await tickUntil(() => app.requests > 0, 150);
+  assert.equal(db.records.get('settings:' + accountId + ':role-1')?.settings.memory, 'role');
+  assert.match(app.prompts[0], /曾在海边看过日落/,
+    'the model must receive exactly the memory context selected for this episode');
+  assert.match(app.prompts[0], /窗外在下雨/,
+    'the explicitly selected optional context remains part of the frozen story');
+  assert.ok(app.notices.some(n => n.includes('正在创建这篇番外')),
+    'rejected stale events should explain why settings cannot change right now');
+});
 
 test('archive follows confirmed deletions made by another tab instead of resurrecting a stale row', async () => {
   const db = fakeFanwaiDB();
