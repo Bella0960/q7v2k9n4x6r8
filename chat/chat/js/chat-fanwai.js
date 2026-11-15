@@ -358,7 +358,7 @@
     stopped: false, serial: 0, opened: false, branchSource: null, forkPoint: 0,
     settings: { memory: 'none', count: null },
     settingsLoaded: false, settingsPromise: null, archiveLimit: 12, viewSerial: 0,
-    currentAbort: null
+    currentAbort: null, pendingPause: null
   };
   var memory = new Map();
   var dbConnection = null;
@@ -1021,23 +1021,55 @@
   }
 
   function pause() {
+    if (state.pendingPause) return state.pendingPause;
+    var episode = state.active;
     if (state.currentAbort) {
       try { state.currentAbort.abort(); } catch (error) {}
       state.currentAbort = null;
     }
     state.stopped = true;
-    state.serial++;
+    var pausedSerial = ++state.serial;
     state.busy = false;
-    if (state.active && state.active.status !== 'complete') {
-      state.active.status = 'partial';
-      persist(state.active);
-      emit('episode:paused', { id: state.active.id, characterId: roleId });
+    var save = episode && episode.status !== 'complete'
+      ? (episode.status = 'partial', persist(episode)) : episodeWriteQueue.then(function () {
+        return !canPersist || !persistenceFailed;
+      });
+    if (episode && episode.status === 'partial') {
+      emit('episode:paused', { id: episode.id, characterId: roleId });
     }
     renderReader();
+    var completion = Promise.resolve(save).then(function (saved) {
+      if (!saved && canPersist && episode && state.active === episode &&
+          pausedSerial === state.serial) {
+        episode.status = 'partial';
+        episode.error = '暂停内容尚未成功保存；请勿关闭页面，以免丢失对话。';
+        if (state.opened) renderReader();
+        showNotice('暂停保存失败，当前内容仍在页面中，请勿关闭');
+      }
+      return saved;
+    });
+    state.pendingPause = completion;
+    completion.then(function () {
+      if (state.pendingPause === completion) state.pendingPause = null;
+    }, function () {
+      if (state.pendingPause === completion) state.pendingPause = null;
+    });
+    return completion;
   }
 
-  function close() {
-    if (state.busy) pause();
+  async function close() {
+    if (!state.opened) return;
+    var save;
+    if (state.busy) save = pause();
+    else if (state.pendingPause) save = state.pendingPause;
+    else save = episodeWriteQueue.then(function () { return !canPersist || !persistenceFailed; });
+    var closingSerial = state.serial;
+    var saved = await save;
+    if (state.serial !== closingSerial || !state.opened) return;
+    if (!saved && canPersist) {
+      showNotice('番外尚未保存成功，为保护内容暂不收起页面');
+      return;
+    }
     state.opened = false;
     state.viewSerial++;
     state.branchSource = null;
@@ -1216,8 +1248,15 @@
     if (key === 'fork') { openBranchPreview(); return; }
     if (key === 'create-fork') { await createFork(); return; }
     if (key === 'close') { close(); return; }
-    if (key === 'back') { if (state.busy) pause(); openPicker(); return; }
-    if (key === 'pause') { pause(); return; }
+    if (key === 'back') {
+      var paused = state.busy ? pause() : state.pendingPause;
+      var backSerial = state.serial;
+      if (paused && !(await paused) && canPersist) return;
+      if (backSerial !== state.serial) return;
+      openPicker();
+      return;
+    }
+    if (key === 'pause') { await pause(); return; }
     if (key === 'resume') { generate(); return; }
     if (key === 'template') {
       var chosen = TEMPLATES.find(function (t) { return t.id === node.dataset.template; });
