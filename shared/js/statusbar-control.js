@@ -22,7 +22,8 @@
         if (document.getElementById(STATUSBAR_STYLE_ID)) return;
         var rule = document.createElement('style');
         rule.id = STATUSBAR_STYLE_ID;
-        rule.textContent = 'html[' + STATUSBAR_HIDDEN_ATTR + '] .status-bar{display:none!important;}';
+        rule.textContent = 'html[' + STATUSBAR_HIDDEN_ATTR + '] .status-bar,' +
+            'html[' + STATUSBAR_HIDDEN_ATTR + '] [data-maomao-system-statusbar]{display:none!important;}';
         (document.head || document.documentElement).appendChild(rule);
     }
 
