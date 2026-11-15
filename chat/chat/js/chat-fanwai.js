@@ -277,7 +277,7 @@
   var scope = canPersist ? accountId : 'temporary:' + Math.random().toString(36).slice(2);
   var state = {
     root: null, active: null, selected: null, busy: false, creating: false,
-    stopped: false, serial: 0, opened: false,
+    stopped: false, serial: 0, opened: false, branchSource: null, forkPoint: 0,
     settings: { memory: 'none', count: null },
     settingsLoaded: false, settingsPromise: null
   };
@@ -441,6 +441,7 @@
     sheet.replaceChildren();
     sheet.classList.remove('fw-reading');
     sheet.classList.remove('fw-preview');
+    sheet.classList.remove('fw-branch-preview');
     return sheet;
   }
 
@@ -677,6 +678,78 @@
     sheet.scrollTop = 0;
   }
 
+  // 从原番外的中间某幕分岔。保留此前的对话作为起点，后续独立存储、独立生成。
+  // 用户仅在明确确认之后才触发新的 AI 请求，原文不会被改写或删除。
+  function openBranchPreview() {
+    var source = state.active;
+    if (!source || state.busy || !Array.isArray(source.messages) || source.messages.length < 12) return;
+    state.branchSource = source;
+    state.forkPoint = Math.max(6, Math.min(source.messages.length - 6, Math.floor(source.messages.length * .58)));
+    var sheet = clearView();
+    sheet.classList.add('fw-branch-preview');
+    topBar(sheet, '', 'return-story', '返回故事');
+    sheet.append(
+      label('p', 'fw-branch-kicker', 'ANOTHER POSSIBILITY'),
+      label('h2', 'fw-branch-title', '如果故事\n换一种走向。'),
+      label('p', 'fw-branch-description', '保留前 ' + state.forkPoint + ' 条消息，从那一刻开始重新发展。原来的故事会完整保留。')
+    );
+    var input = document.createElement('textarea');
+    input.className = 'fw-custom fw-branch-input';
+    input.id = 'fw-branch-input';
+    input.maxLength = 500;
+    input.placeholder = '想让接下来发生什么？可以留空，交给故事自己决定。';
+    sheet.append(
+      input,
+      button('create-fork', '写另一种走向', 'fw-primary'),
+      label('p', 'fw-branch-note', '确认后才会调用当前聊天 API，费用取决于你设置的模型。')
+    );
+    sheet.scrollTop = 0;
+  }
+
+  async function createFork() {
+    if (state.busy || state.creating || !state.branchSource) return;
+    var source = state.branchSource;
+    if (source.accountId !== scope || source.characterId !== roleId) return;
+    if (!roleInfo()) { showNotice('找不到当前角色，请先确认角色档案'); return; }
+    var input = state.root.querySelector('#fw-branch-input');
+    var direction = String(input && input.value || '').trim().slice(0, 500) ||
+      '从分岔点出现一个意料之外但合情合理的新选择，之后发展出不同的故事结果。';
+    var kept = Math.max(0, Math.min(source.messages.length - 6, state.forkPoint));
+    var count = source.target;
+    if (count <= kept) return;
+    state.creating = true;
+    try {
+      var now = Date.now();
+      var episode = {
+        id: scope + ':' + roleId + ':' + now + ':' + Math.random().toString(36).slice(2, 8),
+        accountId: scope, characterId: roleId,
+        name: (source.name.replace(/\s*·\s*另一种走向$/, '') + ' · 另一种走向').slice(0, 80),
+        templateId: source.templateId,
+        scenario: (String(source.scenario || '').slice(0, 850) +
+          '\n[这是一条平行分支，从已保留的前文自然分岔]\n' +
+          direction + '\n分岔后的事件和对白不可照搬原来故事的发展。').slice(0, 1600),
+        target: count,
+        messages: source.messages.slice(0, kept).map(function (m) {
+          return { role: m.role, text: m.text };
+        }),
+        contextIds: (Array.isArray(source.contextIds) ? source.contextIds : []).slice(0, 5),
+        beats: source.beats || null,
+        originId: source.id, forkAt: kept,
+        status: 'partial', createdAt: now, updatedAt: now, error: ''
+      };
+      await persist(episode);
+      emit('episode:created', { id: episode.id, characterId: roleId, target: count, originId: source.id });
+      state.branchSource = null;
+      state.forkPoint = 0;
+      openReader(episode);
+      generate();
+    } catch (error) {
+      showNotice('无法保存新的故事走向，请重试');
+    } finally {
+      state.creating = false;
+    }
+  }
+
   function renderReader() {
     if (!state.opened || !state.active || !state.root) return;
     var episode = state.active;
@@ -736,6 +809,9 @@
     var morePanel = document.createElement('div');
     morePanel.className = 'fw-reader-menu';
     morePanel.hidden = true;
+    if (!state.busy && episode.messages.length >= 12) {
+      morePanel.appendChild(button('fork', '另一种走向', ''));
+    }
     morePanel.append(button('back', '返回目录', ''), button('delete', '删除本篇', 'fw-danger'));
     more.append(moreToggle, morePanel);
     actions.appendChild(more);
@@ -767,6 +843,7 @@
   function close() {
     if (state.busy) pause();
     state.opened = false;
+    state.branchSource = null;
     state.root.hidden = true;
   }
 
@@ -898,6 +975,15 @@
       node.setAttribute('aria-label', menu.hidden ? '更多番外操作' : '收起更多操作');
       return;
     }
+    if (key === 'return-story') {
+      state.branchSource = null;
+      state.forkPoint = 0;
+      if (state.active) openReader(state.active);
+      else openPicker();
+      return;
+    }
+    if (key === 'fork') { openBranchPreview(); return; }
+    if (key === 'create-fork') { await createFork(); return; }
     if (key === 'close') { close(); return; }
     if (key === 'back') { if (state.busy) pause(); openPicker(); return; }
     if (key === 'pause') { pause(); return; }
