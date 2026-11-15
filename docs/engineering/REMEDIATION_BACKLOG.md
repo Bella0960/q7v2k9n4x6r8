@@ -15,6 +15,16 @@ Status vocabulary: OPEN, IN PROGRESS, FIXED, DEFERRED, NOT VERIFIED.
 - **报告重点**：开发阶段报告真实文件/commit/修了什么/测试证据/下一动作；未进入 QA、main、正式发布可各用一句标记，禁止对普通开发任务长篇反复解释测试版与正式版。
 
 
+## CI-EXTERNAL-001 — GitHub Actions 额度/runner 不可用：停止依赖，改用可执行本地测试
+
+**状态：已知外部环境限制 / 已启用统一替代流程；不能把 job 未运行当作代码测试失败。**
+
+用户已反复说明 GitHub Actions 额度耗尽/仓库检查不可用。此前 PR #301 的两项 GitHub 检查在极短时间返回 `failure` 且 job `steps: []`，没有真正执行 Node、npm 或浏览器测试。**从现在开始此项不是其他开发窗口默认要重复调查的 Bug，也不是全项目暂停功能开发的理由。**
+
+**强制执行：** 不再依赖 GitHub Actions 绿灯作为正常开发起点；不得每天重试同一 workflow 或多次重复向用户报告额度问题。需要质量证据时，在可运行的本地、Work 或隔离环境检出原 PR 具体 SHA，执行项目实际存在的 Node 测试、`npm ci`、`npm run build` 与必要真实浏览器验证，附命令/退出码/环境/时间到原 PR。无运行条件标 `NOT RUN — NO EXECUTION ENVIRONMENT`，只阻塞该项的真实验收门禁，**不停止独立模块的继续开发**。若 GitHub branch protection 仍强制某 check，不得擅自绕过保护或合并，须交由整合负责人评估符合权限的授权路径。
+
+完整细则以 [RELEASE_PLAYBOOK.md 第 0B 节](RELEASE_PLAYBOOK.md) 为准。GitHub CI 只有在用户明确要求或恢复有新实证时才重新复查；平时无需继续刷 Actions 状态。此整改不涉及正式发布、数据或仓库自动流程的强行关闭。
+
 ## 新增全局 Bug 轨道（2026-11-15；不重复建立修复 PR）
 
 首轮 [全局 Bug 审计与证据清单](GLOBAL_BUG_AUDIT_20261115.md) 已覆盖 main 90 个 HTML 页面直接静态链接、现有测试、Cloudflare 发布历史及关键存储路径。**仅静态核查，不等于全站动态/真机测试**。必须按 [统一流程](RELEASE_PLAYBOOK.md) 在原 PR 开发、QA 和发布。
@@ -388,7 +398,7 @@ Progress:
 
 Remaining:
 - Add IndexedDB unavailable/blocked/quota tests when the DATA-001 registry and DATA-006 storage implementation are ready.
-- Run the suite locally and obtain actionable CI output; current Actions runs returned failed conclusions without job steps or logs.
+- Run the suite **in any available executable local/Work/isolated environment**, recording real command/exit code evidence on its original PR. GitHub Actions currently unavailable, with empty jobs/no executed steps; **do not wait, loop or make Actions recovery a condition to keep developing**. No executable environment means NOT RUN, not CODE_TEST_FAILED.
 - Verify refresh/reopen and storage behavior on desktop and real mobile browsers.
 
 Acceptance:
