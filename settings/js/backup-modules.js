@@ -109,7 +109,7 @@
     // are never treated as the authoritative MAO server account database.
     register({
         id: 'chats', label: '聊天与会话',
-        keys: ['phone_groups', 'hidden_chat_dialog_ids', 'chat_special_moments'],
+        keys: ['phone_groups', 'phone_group_invitations', 'hidden_chat_dialog_ids', 'chat_special_moments'],
         prefixes: ['chat_history_', 'chat_mode_', 'chat_pin_', 'chat_group_alias_',
           'chat_translation_', 'chat_unread_', 'chat_message_', 'chat_voice_',
           'conversation_', 'phone_chat_', 'group_chat_'],
