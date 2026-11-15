@@ -5890,7 +5890,7 @@
                     }
                 }
                 if (groupSettings.allowRoleActions) {
-                    systemPrompt += '\n\n[群管理行动]\n只有带有管理员或群主身份的成员才可以根据剧情执行群管理操作。若用户明确要求且你具有管理权限，可在正常台词末尾添加隐藏标记：[群动作:禁言:成员姓名或ID] 或 [群动作:解禁:成员姓名或ID]；也支持 [群动作:改名:新群名]、[群动作:邀请:角色名]、[群动作:移除:角色名]。不能禁言群主、不能越权管理其他管理员；未获允许不要擅自操作。系统会验证身份并保存，不要向用户解释隐藏标记。';
+                    systemPrompt += '\n\n[群管理行动]\n只有带有管理员或群主身份的成员才可以根据剧情执行群管理操作。若用户明确要求且你具有管理权限，可在正常台词末尾添加隐藏标记：[群动作:禁言:成员姓名或ID] 或 [群动作:解禁:成员姓名或ID]；也支持 [群动作:改名:新群名]、[群动作:邀请:角色名]、[群动作:移除:角色名]、[群动作:头衔:成员ID|新头衔]（仅普通成员，头衔不超过20字）。不能禁言群主、不能越权管理其他管理员；未获允许不要擅自操作。系统会验证身份并保存，不要向用户解释隐藏标记。';
                 }
                 if (groupSettings.allowPrivateMessages !== false) {
                     systemPrompt += '\n\n[群成员私聊能力]\n你可以偶尔向用户发起私聊，但不要每轮都触发，仅在出现适合单独说的话、想补充秘密或想私下安慰用户时使用。仅允许给自己发私聊：在本轮正常群聊回复末尾另起一行写 [群私聊:你的准确角色ID:私聊内容]。角色ID必须从群成员名单中选择，并且应当是本轮发言者自己的ID；私聊内容控制在1-3句，不要解释标记。标记会保存到你的单聊历史，并在群聊里弹出私聊小窗。每轮最多一条。';
@@ -8321,14 +8321,22 @@
                 return '';
             });
             // 统一通过权限网关处理，模型隐藏标记本身不是授权凭证。
-            text = text.replace(/\[群动作[:：](改名|邀请|移除|禁言|解禁)[:：]([^\]]{1,60})\]/g, function (marker, action, targetName) {
+            text = text.replace(/\[群动作[:：](改名|邀请|移除|禁言|解禁|头衔)[:：]([^\]]{1,80})\]/g, function (marker, action, targetName) {
                 if (!window.GroupGovernance || !speaker || speaker.id == null || isRegeneration) return '';
-                var nameMap = { '改名':'rename', '邀请':'invite', '移除':'remove', '禁言':'mute', '解禁':'unmute' };
+                var nameMap = { '改名':'rename', '邀请':'invite', '移除':'remove', '禁言':'mute', '解禁':'unmute', '头衔':'set-title' };
+                var titleValue = '';
+                var actionTarget = String(targetName || '').trim();
+                if (action === '头衔') {
+                    var titleSeparator = actionTarget.indexOf('|');
+                    if (titleSeparator < 1) return '';
+                    titleValue = actionTarget.slice(titleSeparator + 1).trim();
+                    actionTarget = actionTarget.slice(0, titleSeparator).trim();
+                }
                 var roles = [];
                 if (action === '邀请') try { roles = JSON.parse(localStorage.getItem('ai_custom_characters') || '[]'); } catch (e) {}
                 var result = window.GroupGovernance.apply({
                     group: currentGroup, actorId: String(speaker.id), action: nameMap[action],
-                    target: String(targetName || '').trim(), options: { roles: roles },
+                    target: actionTarget, options: { roles: roles, title: titleValue },
                     save: saveCurrentGroupObject
                 });
                 if (result.ok) {
