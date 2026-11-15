@@ -1,0 +1,112 @@
+/**
+ * 无浏览器依赖的「邂逅」交互事件回归。
+ * 执行：node --test tests/encounter-ui-contract.test.mjs
+ * 这是模拟 DOM 事件测试；真实浏览器视觉仍需 tests/encounter-browser.mjs。
+ */
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+
+const engineSource=fs.readFileSync(new URL('../encounter/encounter-engine.js',import.meta.url),'utf8');
+const html=fs.readFileSync(new URL('../encounter/encounter.html',import.meta.url),'utf8');
+const match=html.match(/<script>([\s\S]*?)<\/script>/);
+assert.ok(match,'抽卡页面必须保留实际的内联交互脚本');
+const uiSource=match[1];
+
+function setup(initial={}) {
+  const rows=new Map(Object.entries(initial));
+  const localStorage={
+    getItem(key){return rows.has(key)?rows.get(key):null;},
+    setItem(key,value){rows.set(key,String(value));},
+    removeItem(key){rows.delete(key);}
+  };
+  const window={
+    localStorage, innerWidth:390, location:{},listeners:{},
+    dispatchEvent(){},
+    addEventListener(type,fn){(this.listeners[type]??=[]).push(fn);}
+  };
+  let document;
+  class FakeEl {
+    constructor(id){
+      this.id=id;this.handlers={};this.style={};this.attrs={};this.dataset={};
+      this.textContent='';this.innerHTML='';this.value='';
+      const c=new Set();
+      this.classList={add(...names){names.forEach(n=>c.add(n));},remove(...names){names.forEach(n=>c.delete(n));},contains(n){return c.has(n);}};
+    }
+    addEventListener(type,fn){(this.handlers[type]??=[]).push(fn);}
+    fire(type,props={}){
+      const event={button:0,pointerId:1,clientX:100,clientY:200,preventDefault(){},...props};
+      for(const fn of (this.handlers[type]||[]))fn.call(this,event);
+    }
+    setAttribute(k,v){this.attrs[k]=String(v);}
+    getAttribute(k){return this.attrs[k];}
+    setPointerCapture(){}
+    querySelector(){return new FakeEl('close');}
+    querySelectorAll(){return [];}
+    focus(){document.activeElement=this;}
+  }
+  const elements=new Map();
+  document={
+    activeElement:null,
+    getElementById(id){if(!elements.has(id))elements.set(id,new FakeEl(id));return elements.get(id);},
+    contains(){return true;}
+  };
+  let timers=[];
+  const setTimeoutMock=fn=>{timers.push(fn);return timers.length;};
+  const clearTimeoutMock=()=>{};
+  const flush=()=>{const pending=timers;timers=[];for(const fn of pending)fn();};
+  const globals={window,document,HTMLElement:FakeEl,Math,Set,Date,JSON,String,Array,Object,Number,Uint32Array,
+    CustomEvent:class{},setTimeout:setTimeoutMock,clearTimeout:clearTimeoutMock,setInterval:()=>1};
+  vm.runInNewContext(engineSource,globals);
+  vm.runInNewContext(uiSource,globals);
+  return {window,document,rows,localStorage,el:id=>elements.get(id),flush};
+}
+
+test('轻滑回弹不能触发人物档案，下一次真实点击应立刻可用',()=>{
+  const h=setup();
+  const card=h.el('frontCard'),overlay=h.el('overlay');
+  const before=card.innerHTML;
+  card.fire('pointerdown');
+  card.fire('pointermove',{clientX:144,clientY:202});
+  card.fire('pointerup',{clientX:144,clientY:202});
+  card.fire('click'); // 浏览器补发的合成 click
+  assert.equal(overlay.classList.contains('open'),false,'不可误开详情');
+  assert.equal(card.innerHTML,before,'轻滑回弹不换人物');
+  card.fire('pointerdown'); // 新的一次正常点击，必须清理滑动抑制
+  card.fire('pointerup');
+  card.fire('click');
+  assert.equal(overlay.classList.contains('open'),true,'下一次正常点击不得被 480ms 阻挡');
+});
+
+test('点收藏才生成候选且换卡，不修改原角色列表',()=>{
+  const original='[{"id":"old","name":"原角色","persona":"保留原文"}]';
+  const h=setup({'ai_custom_characters':original});
+  assert.match(h.el('frontCard').innerHTML,/class="name"/);
+  h.el('likeButton').fire('click');
+  assert.equal(h.window.MAOMAOEncounter.getCandidates().value.length,1);
+  assert.equal(h.rows.get('ai_custom_characters'),original);
+  h.flush();
+  assert.equal(h.el('savedCount').textContent,'01');
+});
+
+test('候选保存失败不假成功，也不偷偷换掉当前卡片',()=>{
+  const h=setup();
+  const before=h.el('frontCard').innerHTML;
+  h.localStorage.setItem=()=>{throw new Error('QuotaExceededError');};
+  h.el('likeButton').fire('click');
+  assert.equal(h.window.MAOMAOEncounter.getCandidates().value.length,0);
+  assert.equal(h.el('frontCard').innerHTML,before);
+  assert.match(h.el('notice').textContent,/收藏失败/);
+});
+
+test('左滑只跳过人物，不创建收藏',()=>{
+  const h=setup();
+  const card=h.el('frontCard');
+  card.fire('pointerdown');
+  card.fire('pointermove',{clientX:-20,clientY:200});
+  card.fire('pointerup',{clientX:-20,clientY:200});
+  h.flush();
+  assert.equal(h.window.MAOMAOEncounter.getCandidates().value.length,0);
+  assert.equal(h.el('cardSequence').textContent,'02 / ∞');
+});
