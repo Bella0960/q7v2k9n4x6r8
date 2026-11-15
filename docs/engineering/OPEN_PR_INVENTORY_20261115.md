@@ -40,13 +40,14 @@
 - [#160](https://github.com/Bella0960/MAOMAO/pull/160) — Probe live Worker responses for every app page
 - [#259](https://github.com/Bella0960/MAOMAO/pull/259) — feat(tutorial): API 技术手册、故障诊断与手机端完整验收门槛
 
-### 账号／正式版／钱包整合（9）
+### 账号／正式版／钱包整合（10）
 
 - [#285](https://github.com/Bella0960/MAOMAO/pull/285) — integrate(release): theme storefront + fictional phone atop secured account-wallet candidate
 - [#290](https://github.com/Bella0960/MAOMAO/pull/290) — integrate(account): bring existing 001 account/admin UI onto current main, release-gated
 - [#284](https://github.com/Bella0960/MAOMAO/pull/284) — 整合账号 001、云端 Worker 与统一钱包（基于最新 main，待全量验收）
 - [#283](https://github.com/Bella0960/MAOMAO/pull/283) — 钱包统一账本迁移到最新 main（分阶段整合，待完整验收）
 - [#281](https://github.com/Bella0960/MAOMAO/pull/281) — Integrate verified account and cloud push preview with current main
+- [#258](https://github.com/Bella0960/MAOMAO/pull/258) — feat(account): integrate ivory mobile entry and recover auth flows
 - [#262](https://github.com/Bella0960/MAOMAO/pull/262) — feat(auth): 将唯一创始管理员 001 与统一登录接入现有手机 main（保留桌面与数据）
 - [#237](https://github.com/Bella0960/MAOMAO/pull/237) — fix(wallet): fail closed on corrupted checkout balance data
 - [#250](https://github.com/Bella0960/MAOMAO/pull/250) — fix: report excluded local audio in backup and restore
@@ -101,10 +102,6 @@
 - [#202](https://github.com/Bella0960/MAOMAO/pull/202) — feat(mcp): add a guarded external tool connection center
 - [#186](https://github.com/Bella0960/MAOMAO/pull/186) — feat(tutorial): add interactive MAOMAO user guide
 - [#171](https://github.com/Bella0960/MAOMAO/pull/171) — preview(ai-image): role-specific generation and gallery on current main
-
-### 未分类
-
-- [#258](https://github.com/Bella0960/MAOMAO/pull/258) — feat(account): integrate ivory mobile entry and recover auth flows
 
 ## 工作窗口执行规则（不用重新问用户）
 
