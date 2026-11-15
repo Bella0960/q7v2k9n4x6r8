@@ -1764,8 +1764,8 @@ function offerDraftRecovery() {
         console.warn('读取角色草稿失败，原始内容已保留：', error);
         malformed = true;
     }
-    if (raw !== null && (malformed || !draft || draft.version !== 1 ||
-        !draft.state || typeof draft.state !== 'object' || Array.isArray(draft.state))) {
+    if (malformed || (raw !== null && (!draft || draft.version !== 1 ||
+        !draft.state || typeof draft.state !== 'object' || Array.isArray(draft.state)))) {
         // 旧逻辑曾自动 removeItem 丢弃损坏草稿，此处不再静默删除。
         unreadableDraftKey = currentDraftKey;
         pendingDraftRecovery = {
