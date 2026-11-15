@@ -1,8 +1,13 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v205';
+const CACHE_NAME = 'phone-app-pwa-v206';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
+// 已登录页面由 Worker 注入当前账号身份，no-store/private 响应绝不可跨账号复用。
+function isPrivateResponse(response) {
+  var policy = response && response.headers && response.headers.get('cache-control');
+  return /(?:^|[,\s])(?:no-store|private)(?:[,\s]|$)/i.test(String(policy || ''));
+}
 // v196 release: sweep orphaned role-owned media refs during avatar cleanup.
 const APP_SHELL = [
   './',
@@ -146,7 +151,16 @@ self.addEventListener('install', event => {
       }
 
       const resources = Array.from(new Set(APP_SHELL.concat(pageEntries)));
-      await Promise.all(resources.map(url => cache.add(url).catch(() => undefined)));
+      await Promise.all(resources.map(function (url) {
+        // HTML 必须先检查服务器的缓存策略，不能 cache.add() 盲存账号私有页面。
+        if (url === './' || /\.html(?:[?#]|$)/i.test(url)) {
+          return fetch(url, { cache: 'no-store' }).then(function (response) {
+            return response && response.ok && !isPrivateResponse(response)
+              ? cache.put(url, response) : undefined;
+          }).catch(function () { return undefined; });
+        }
+        return cache.add(url).catch(function () { return undefined; });
+      }));
     }).then(() => self.skipWaiting())
   );
 });
@@ -195,15 +209,25 @@ self.addEventListener('fetch', event => {
   // 绝不把 index.html 当作其他应用的兜底页面，避免点开应用却重新显示桌面。
   if (req.mode === 'navigate') {
     event.respondWith((async function () {
-      var cachedPromise = caches.match(req).catch(function () { return null; });
+      var cachedPromise = caches.match(req).then(function (cached) {
+        return isPrivateResponse(cached) ? null : cached;
+      }).catch(function () { return null; });
       var cacheWritePromise = null;
       var networkPromise = fetch(req).then(function (response) {
         if (response && response.ok) {
-          var copy = response.clone();
-          // 写回缓存单独成 Promise：失败只影响缓存，不影响已成功的网络响应。
-          cacheWritePromise = caches.open(CACHE_NAME)
-            .then(function (cache) { return cache.put(req, copy); })
-            .catch(function () { return undefined; });
+          // 账号注入页只返回网络响应，且顺手清除历史错误缓存。
+          // 公共页面仍保留“缓存优先、后台更新”的原离线体验。
+          if (isPrivateResponse(response)) {
+            cacheWritePromise = caches.open(CACHE_NAME)
+              .then(function (cache) {
+                return typeof cache.delete === 'function' ? cache.delete(req) : undefined;
+              }).catch(function () { return undefined; });
+          } else {
+            var copy = response.clone();
+            cacheWritePromise = caches.open(CACHE_NAME)
+              .then(function (cache) { return cache.put(req, copy); })
+              .catch(function () { return undefined; });
+          }
         }
         return response;
       }).catch(function () {
