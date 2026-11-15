@@ -8479,20 +8479,23 @@
                 return '';
             });
             text = text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
-            if (changedHistory && !saveMessages(historyList)) {
-                groupHistoryRollback.forEach(function (snapshot) {
-                    var targetMessage = snapshot.message;
-                    if (!targetMessage) return;
-                    if (snapshot.kind === 'votes') {
-                        if (snapshot.hadVotes) targetMessage.poll.votes = snapshot.votes;
+            // Votes and chains are already mutated in the in-memory history;
+            // the AI reply's upcoming saveMessages(historyList) commits them
+            // atomically. If that save fails (or there is no visible reply),
+            // restore exact pre-turn objects without touching persisted history.
+            if (changedHistory) turnEffects.registerUndo(function () {
+                for (var i=groupHistoryRollback.length-1;i>=0;i--) {
+                    var snapshot=groupHistoryRollback[i], targetMessage=snapshot.message;
+                    if(!targetMessage)continue;
+                    if(snapshot.kind==='votes') {
+                        if(snapshot.hadVotes)targetMessage.poll.votes=snapshot.votes;
                         else delete targetMessage.poll.votes;
-                    } else if (snapshot.kind === 'entries') {
-                        if (snapshot.hadEntries) targetMessage.chain.entries = snapshot.entries;
+                    } else if(snapshot.kind==='entries') {
+                        if(snapshot.hadEntries)targetMessage.chain.entries=snapshot.entries;
                         else delete targetMessage.chain.entries;
                     }
-                });
-                if (typeof showToast === 'function') showToast('群投票/接龙回应没有保存成功，原有互动状态已恢复');
-            }
+                }
+            });
             return text;
         }
 
