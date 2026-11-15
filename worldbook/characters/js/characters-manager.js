@@ -1350,6 +1350,8 @@ function updateAvatarPreview() {
 // 打开添加角色
 function openAddRole() {
     activeEncounterDraftId = '';
+    const aiExpand = document.getElementById('btnExpandEncounterPersona');
+    if (aiExpand) aiExpand.classList.add('hidden');
     portraitPurpose = 'profile';
     editorReturnView = 'listView';
     document.getElementById('editorTitle').textContent = 'New Character';
@@ -1372,6 +1374,8 @@ function openAddRole() {
 // 打开编辑旧角色
 function openEditRole(id) {
     activeEncounterDraftId = '';
+    const aiExpand = document.getElementById('btnExpandEncounterPersona');
+    if (aiExpand) aiExpand.classList.add('hidden');
     portraitPurpose = 'profile';
     editorReturnView = 'profileView';
     const roles = loadRoles();
@@ -1476,6 +1480,7 @@ function handleSaveRole() {
     if (activeEncounterDraftId && !roleId && window.MAOMAOEncounter) {
         const result = window.MAOMAOEncounter.removeCandidate(activeEncounterDraftId);
         activeEncounterDraftId = '';
+        document.getElementById('btnExpandEncounterPersona').classList.add('hidden');
         setSaveStatus(result.ok ? '已保存到角色库' : '角色已保存，候选收藏暂时未清理', result.ok ? 'success' : 'info');
     } else {
         setSaveStatus('已保存', 'success');
@@ -1731,6 +1736,56 @@ document.getElementById('btnConfirmPortrait').addEventListener('click', confirmP
 document.getElementById('btnRecoverDraft').addEventListener('click', recoverPendingDraft);
 document.getElementById('btnDiscardDraft').addEventListener('click', discardPendingDraft);
 
+// 只在邂逅候选编辑页可用。严格由用户主动点击并确认，不自动调用收费 API。
+document.getElementById('btnExpandEncounterPersona').addEventListener('click', async function () {
+    if (!activeEncounterDraftId) {
+        setSaveStatus('请先从邂逅的候选收藏里选择角色。', 'error');
+        return;
+    }
+    if (!window.PhoneAPI || typeof window.PhoneAPI.complete !== 'function') {
+        setSaveStatus('当前 AI 请求模块不可用，请检查 API 设置。', 'error');
+        return;
+    }
+    if (!confirm('完善完整人设将调用一次你配置的聊天 API，可能产生费用。确定生成吗？')) return;
+    const button = this;
+    const draftId = activeEncounterDraftId;
+    const personaEl = document.getElementById('editRolePersona');
+    const sourceText = personaEl.value;
+    const roleName = document.getElementById('editRoleName').value.trim();
+    button.disabled = true;
+    button.textContent = 'AI 正在完善人设…';
+    setSaveStatus('正在调用你配置的 API（只请求一次），当前人设已保留。', 'info');
+    try {
+        const result = await window.PhoneAPI.complete({
+            system: '你是一位擅长原创人物设定的中文编辑。请在不改变提供的姓名、种族、时代、职业、核心性格、重要物件和命运线索的前提下，把短卡扩展为完整、具体、逻辑自洽的人设。组织成自然段落与清晰小节，约 1000 至 1600 中文字。包括成长经历、职业日常、外在与内在性格反差、说话习惯、重要关系、兴趣、目标、弱点与只供创作者查看的隐藏秘密。给人物真实平凡的生活细节，避免空泛标签、公式化人物、重复修饰，不要捏造已有用户聊天经历。不得输出格式之外的说明。',
+            user: '以下为本项目用户主动收藏的人物短卡，请依据其内容扩写，不要换人设。\n角色姓名：' + roleName + '\n' + sourceText,
+            temperature: 0.85,
+            timeoutMs: 45000
+        });
+        const expanded = String(result || '').trim();
+        if (expanded.length < 150) throw new Error('生成内容过短，未覆盖原始人设');
+        // 用户在网络请求期间修改的内容不应被无声覆盖。
+        if (draftId !== activeEncounterDraftId ||
+            document.getElementById('editRoleId').value.trim() !== '') {
+            setSaveStatus('页面已切换，生成结果未覆盖当前角色。', 'error');
+            return;
+        }
+        if (personaEl.value !== sourceText &&
+            !confirm('你在生成期间修改了人设。要用这份 AI 草稿替换当前编辑内容吗？')) {
+            setSaveStatus('保留了你手动编辑的人设，未应用 AI 草稿。', 'info');
+            return;
+        }
+        personaEl.value = expanded;
+        persistEditorDraft(true);
+        setSaveStatus('AI 人设草稿已填入，请检查并点击「保存设定」。', 'success');
+    } catch (error) {
+        setSaveStatus('AI 完善未成功：' + (error && error.message ? error.message : '请求异常') + '。原有人设仍保留。', 'error');
+    } finally {
+        button.disabled = false;
+        button.textContent = 'AI 完善人设 · 使用 API';
+    }
+});
+
 // MAOMAO 自有格式：明确格式版本，只导出角色文字，不包含个人聊天、记忆、头像、API 密钥。
 document.getElementById('btnExportRole').addEventListener('click', function () {
     const id = document.getElementById('editRoleId').value.trim();
@@ -1857,6 +1912,7 @@ function openEncounterCandidateFromQuery() {
         return;
     }
     activeEncounterDraftId = candidateId;
+    document.getElementById('btnExpandEncounterPersona').classList.remove('hidden');
     document.getElementById('editRoleName').value = candidate.name || '';
     document.getElementById('editRolePersona').value = window.MAOMAOEncounter.formatBrief(candidate);
     document.getElementById('editRoleTone').value = candidate.quote || '';
