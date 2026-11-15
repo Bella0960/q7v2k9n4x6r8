@@ -279,3 +279,49 @@ test('a complete or half-streamed secret marker never becomes a public bubble or
   assert.match(detail, /if \(!isCompleted \|\| isRegeneration \|\| contextOnly\)/,
     'incomplete AI replies may not persist private machine actions');
 });
+
+
+test('host game DM displays only its own conversation, never the other players private talk', () => {
+  const h = harness();
+  assert.equal(begin(h, { allowPrivate: true, showPrivateActivity: true }).ok, true);
+  const sid = h.game.getPublic('g1').sessionId;
+  const send = (fromId, toId, text, eventId) => h.game.sendWhisper({
+    groupId: 'g1', sessionId: sid, fromId, toId, text, eventId
+  });
+  assert.equal(send('__user', 'r2', '我给你的提示只有你能看到', 'host1').ok, true);
+  assert.equal(send('r2', '__user', '主持人，我收到了', 'host2').ok, true);
+  assert.equal(send('r3', 'r2', '其他两位角色的私下讨论', 'host3').ok, true);
+  const convo = h.game.getHostConversation({
+    group: group(), groupId: 'g1', actorId: '__user', peerId: 'r2'
+  });
+  assert.equal(convo.ok, true);
+  assert.equal(convo.messages.length, 2);
+  assert.equal(convo.messages[0].direction, 'sent');
+  assert.equal(convo.messages[1].direction, 'received');
+  const visible = JSON.stringify(convo.messages);
+  assert.match(visible, /我给你的提示只有你能看到/);
+  assert.match(visible, /主持人，我收到了/);
+  assert.doesNotMatch(visible, /其他两位角色的私下讨论/);
+  assert.equal(h.game.getHostConversation({
+    group: group(), groupId: 'g1', actorId: 'r2', peerId: 'r2'
+  }).code, 'NO_PERMISSION');
+  assert.equal(h.game.getHostConversation({
+    group: group(), groupId: 'g1', actorId: '__user', peerId: 'outsider'
+  }).code, 'NOT_PLAYER');
+  assert.doesNotMatch(JSON.stringify(h.game.getPublic('g1')), /我给你的提示|主持人，我收到了/);
+  assert.doesNotMatch(h.memory.getPublicPrompt({ groupId: 'g1' }), /主持人，我收到了/);
+  assert.equal(h.game.finish({ groupId: 'g1', group: group(), actorId: '__user' }).ok, true);
+  assert.equal([...h.records.keys()].some(k => k.includes('_inbox___user')), false);
+});
+
+test('host game private-chat controls remain collapsed and unavailable in no-private mode', () => {
+  const settings = load('shared/js/phone/group-game-panel.js');
+  const detail = load('chat/chat/chat-detail.html');
+  assert.doesNotThrow(() => new vm.Script(settings));
+  assert.match(settings, /id="groupGameWhisperPanel"/);
+  assert.match(settings, /game\.rules\.allowPrivate!==true/);
+  assert.match(settings, /api\.getHostConversation/);
+  assert.match(settings, /api\.sendWhisper/);
+  assert.match(detail, /recipientId !== '__user'/);
+  assert.match(detail, /redactGroupPrivateStream/);
+});
