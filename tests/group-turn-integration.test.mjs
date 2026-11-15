@@ -13,7 +13,7 @@ assert.ok(markerStart > 0 && markerEnd > markerStart);
 const markerSource = html.slice(markerStart, markerEnd);
 const gameSource = read('shared/js/phone/group-turn-effects.js');
 
-function harness() {
+function harness(options = {}) {
   const events = [], groupWrites = [], data = new Map();
   let privatePopupCount = 0;
   const group = {
@@ -48,6 +48,7 @@ function harness() {
     contextOnly:false, localStorage:storage,
     getGroupSettings(){return group.settings;},
     ensureMid(message) {
+      if (options.failChain && message.mid === 'c1') throw Error('Injected parser failure');
       if (!message.mid) message.mid='id'+Date.now();
       return message.mid;
     },
@@ -135,4 +136,17 @@ test('incomplete AI response does not even stage vote/chain or governance', () =
   assert.equal(JSON.stringify(h.history), before);
   assert.equal(tx.finalize(false).saved, false);
   assert.deepEqual(h.events, []);
+});
+
+test('exception halfway through marker parsing rolls back an earlier staged vote', () => {
+  const h = harness({failChain:true}), tx = h.createTurn();
+  const before = JSON.stringify(h.history);
+  assert.throws(() => h.parse(actions, h.group.members[0], h.history,
+    false, false, true, '', () => {}, tx), /Injected parser failure/);
+  assert.equal(h.history[0].poll.votes.r1, 1, 'vote was staged before the exception');
+  const result = tx.finalize(false);
+  assert.equal(result.saved, false);
+  assert.equal(JSON.stringify(h.history), before);
+  assert.equal(h.events.length, 0);
+  assert.equal(h.groupWrites.length, 0);
 });
