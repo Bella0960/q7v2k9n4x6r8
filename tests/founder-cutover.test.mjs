@@ -5,7 +5,8 @@ import { applyMigrations } from '../worker/lib/migrations.js';
 import { cutoverFounder } from '../scripts/release/founder-cutover.mjs';
 import {
   recordFounderCheckpoint,
-  verifyFounderCheckpoint
+  verifyFounderCheckpoint,
+  rotateStaleFounderCheckpoint
 } from '../scripts/release/founder-checkpoint.mjs';
 
 const oldId = 'MAO-ORIGINAL0001';
@@ -114,4 +115,44 @@ test('checkpoint expires after fifteen minutes and proof also expires before exe
   const proof = await verifyFounderCheckpoint({ storage: ctx.storage, now: () => 2 + 900_000 });
   assert.throws(() => cutoverFounder({ ...ctx, now: 2 + 900_001, checkpointProof: proof }), /Verified recovery checkpoint proof required/);
   assert.equal(ctx.exec("SELECT id FROM mao_accounts WHERE role = 'super_admin'")[0].id, oldId);
+});
+
+test('explicit private rotation preserves the old PITR bookmark and issues a fresh lease', async () => {
+  const now=1_800_000_000_000;
+  const old={bookmark:'a'.repeat(64),recordedAt:now-60*60*1000};
+  const values=new Map([[checkpointKey,structuredClone(old)]]);
+  let captures=0;
+  const storage={
+    async get(key){return structuredClone(values.get(key));},
+    async put(key,value){values.set(key,structuredClone(value));},
+    async sync(){},
+    async getCurrentBookmark(){captures++;return 'b'.repeat(64);},
+    async transaction(fn){const original=new Map(values);try{return await fn(this);}catch(e){values.clear();for(const [k,v] of original)values.set(k,v);throw e;}}
+  };
+  assert.deepEqual(await rotateStaleFounderCheckpoint({storage,now:()=>now}),{
+    recorded:true,recordedAt:now,rotated:true
+  });
+  assert.deepEqual(await storage.get('release:founder-cutover:history:'+old.recordedAt),old);
+  assert.deepEqual(await storage.get(checkpointKey),{
+    bookmark:'b'.repeat(64),recordedAt:now
+  });
+  assert.equal(captures,1);
+  assert.deepEqual(await rotateStaleFounderCheckpoint({storage,now:()=>now+1}),{
+    recorded:true,recordedAt:now,rotated:false
+  });
+  await verifyFounderCheckpoint({storage,now:()=>now+2});
+});
+
+test('stale checkpoint rotation refuses missing, corrupt and unrecoverably old bookmarks', async () => {
+  const now=1_800_000_000_000, values=new Map();
+  const storage={
+    async get(key){return values.get(key);}, async put(key,x){values.set(key,x);},
+    async sync(){},async getCurrentBookmark(){return 'c'.repeat(64);},
+    async transaction(fn){return fn(this);}
+  };
+  await assert.rejects(rotateStaleFounderCheckpoint({storage,now:()=>now}),/Existing checkpoint/);
+  values.set(checkpointKey,{bookmark:'broken',recordedAt:now-3600000});
+  await assert.rejects(rotateStaleFounderCheckpoint({storage,now:()=>now}),/Existing checkpoint/);
+  values.set(checkpointKey,{bookmark:'a'.repeat(64),recordedAt:now-29*24*60*60*1000});
+  await assert.rejects(rotateStaleFounderCheckpoint({storage,now:()=>now}),/outside reviewable/);
 });
