@@ -216,7 +216,7 @@ test('status bar source changes trigger the existing CI checks', () => {
     ['pull_request', workflow.slice(prIndex, manualIndex)]
   ]) {
     for (const affectedFile of [
-      'beauty/beauty.html', 'settings/settings.html', 'shared/js/statusbar-control.js',
+      'beauty/beauty.html', 'settings/settings.html', 'settings/appearance.html', 'shared/js/statusbar-control.js',
       'music/music.html', 'inspect-phone/phone.html', 'travel/dream-travel.html',
       'tests/**'
     ]) {
