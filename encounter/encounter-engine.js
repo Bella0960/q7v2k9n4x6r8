@@ -125,8 +125,14 @@
     allowed.forEach(function(key) {
       if (Object.prototype.hasOwnProperty.call(patch,key)) preferences[key] = String(patch[key]).slice(0,50);
     });
-    try { global.localStorage.setItem(PREFERENCES_KEY, JSON.stringify(preferences)); return ok(preferences); }
-    catch (e) { return fail('偏好保存失败，请检查存储空间'); }
+    try {
+      global.localStorage.setItem(PREFERENCES_KEY, JSON.stringify(preferences));
+      var confirmed = JSON.parse(global.localStorage.getItem(PREFERENCES_KEY) || 'null');
+      if (!confirmed || allowed.some(function(key) { return String(confirmed[key] || '') !== String(preferences[key] || ''); })) {
+        return fail('偏好写入后校验失败，请检查存储空间或多标签页冲突');
+      }
+      return ok(preferences);
+    } catch (e) { return fail('偏好保存失败，请检查存储空间'); }
   }
   function getRoleNames() {
     var access = checkAccountScope();
@@ -229,11 +235,19 @@
       choices:['留在熟悉的地方','踏上一段未知旅程'],
       selectedChoice:'', createdAt:Date.now(), schemaVersion:1
     };
+    var protectedIdentity = { id:card.id, createdAt:card.createdAt, schemaVersion:card.schemaVersion };
     for (var i = 0; i < decorators.length; i++) {
-      try { var output = decorators[i](Object.assign({},card)); if (output && typeof output === 'object') card = Object.assign(card,output); }
-      catch (e) { /* 第三方玩法故障不影响原始卡 */ }
+      try {
+        var output = decorators[i](Object.assign({},card));
+        if (output && typeof output === 'object' && !Array.isArray(output)) card = Object.assign({},card,output);
+      } catch (e) { /* 扩展玩法异常不能破坏默认卡片 */ }
     }
-    if (!card.name || reserved.value.has(normalizeName(card.name))) card.name = name;
+    // 扩展模块可增加故事内容，但不能替换主键或存储版本，避免候选串线。
+    card.id=protectedIdentity.id;
+    card.createdAt=protectedIdentity.createdAt;
+    card.schemaVersion=protectedIdentity.schemaVersion;
+    if (typeof card.name !== 'string' || !card.name.trim() ||
+        reserved.value.has(normalizeName(card.name))) card.name = name;
     sessionNames.add(normalizeName(card.name));
     return ok(card);
   }
@@ -254,8 +268,13 @@
     }
     if (current.value.length >= MAX) return fail('候选收藏已满（80 位），可以先整理后再收藏');
     var newList = [Object.assign({},card,{savedAt:Date.now()})].concat(current.value);
-    try { global.localStorage.setItem(KEY,JSON.stringify(newList)); }
-    catch (e) { return fail('收藏失败，浏览器存储空间可能不足；卡片仍在当前页面'); }
+    try {
+      global.localStorage.setItem(KEY,JSON.stringify(newList));
+      var verified = getCandidates();
+      if (!verified.ok || !verified.value.some(function(c) { return c.id === card.id; })) {
+        return fail('收藏写入后校验失败，请检查浏览器空间或其他标签页。卡片仍然保留');
+      }
+    } catch (e) { return fail('收藏失败，浏览器存储空间可能不足；卡片仍在当前页面'); }
     notify('saved',card);
     return ok(newList);
   }
@@ -264,8 +283,13 @@
     if (!state.ok) return state;
     if (!state.value.some(function(c) { return c.id === id; })) return fail('找不到候选角色');
     var next = state.value.filter(function(c) { return c.id !== id; });
-    try { global.localStorage.setItem(KEY,JSON.stringify(next)); }
-    catch (e) { return fail('删除失败，原收藏已保留'); }
+    try {
+      global.localStorage.setItem(KEY,JSON.stringify(next));
+      var verified = getCandidates();
+      if (!verified.ok || verified.value.some(function(c) { return c.id === id; })) {
+        return fail('删除后校验失败，请重新进入收藏确认结果');
+      }
+    } catch (e) { return fail('删除失败，原收藏已保留'); }
     notify('removed',id);
     return ok(next);
   }
