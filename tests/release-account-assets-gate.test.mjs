@@ -30,3 +30,11 @@ test('release prerequisite: fanwai never silently ignores a missing authenticate
   assert.match(code, /trustedAccountScope\.ready !== true/);
   assert.match(code, /trustedAccountScope\.accountId !== accountId/);
 });
+
+test('release prerequisite: authenticated HTML must remain network-first after account integration', () => {
+  const sw = readFileSync(resolve(root, 'sw.js'), 'utf8');
+  assert.match(sw, /req\.mode === 'navigate' && !isPublicAccountPage/,
+    'Protected app pages must pass the authenticated Worker gate on every visit; integrate the v238+ account PWA from PR #290, never overwrite with v206 fanwai cache-first logic');
+  assert.match(sw, /if \(!isPublicAccountPage && \(url\.pathname === '\/'/,
+    'Non-navigation HTML loads must also bypass legacy CacheStorage after integrating PR #290');
+});
