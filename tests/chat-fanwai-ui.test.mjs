@@ -16,6 +16,7 @@ class Node {
     this.hidden = false;
     this.scrollTop = 0;
     this.scrollHeight = 0;
+    this.style = {};
     this.classList = {
       add: (value) => { this.className += ' ' + value; },
       remove: (value) => { this.className = this.className.split(' ').filter(c => c !== value).join(' '); }
@@ -47,6 +48,7 @@ class Node {
     if (selector === '.fw-sheet') return this.all().find(n => n.className.split(' ').includes('fw-sheet')) || null;
     if (selector === '#fw-count') return this.all().find(n => n.id === 'fw-count') || null;
     if (selector === '#fw-custom-input') return this.all().find(n => n.id === 'fw-custom-input') || null;
+    if (selector === '#fw-preview-count') return this.all().find(n => n.id === 'fw-preview-count') || null;
     return null;
   }
   closest(selector) { return selector === '[data-action]' && this.dataset.action ? this : null; }
