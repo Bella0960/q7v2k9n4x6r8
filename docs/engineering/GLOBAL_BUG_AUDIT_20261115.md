@@ -38,6 +38,7 @@
 | --- | --- | --- | --- |
 | **PROD-001** | **P0 · 配置已核查，真实运行待复验** | `app.mao520.com` 目前绑 `curly-dream-324c`，原先只读核查 `MAO_APP_CUTOVER_ENABLED=false`；`mao520.com` 的账号库却是另一个 Worker。不能因正式账号可登录而宣称完整小手机 API 接通。| 候选 **#285**，子改动 #292/#295；先核验正式域名/自动 Build trigger、原管理员及普通成员数据连续性、加密备份与隔离恢复，不作生产切换。 |
 | **DATA-001** | **P0 · SOURCE-VERIFIED 架构风险** | 聊天历史 `chat_history_<id>` 仍主要以每会话完整数组存 localStorage，富媒体/存储配额及跨角色隔离风险尚须统一回归；不能随便迁移/删除历史。| 复用 backlog **DATA-001/002/005/006/007/008**、[调用台账](../chat-history-callers.md)；优先测试失败保护、备份恢复，再做非破坏迁移。 |
+| **CHAT-HISTORY-001** | **P0 · SOURCE-VERIFIED 数据覆盖风险** | `chat/chat/chat-detail.html` 的 `forwardMessage()` 用 `try { JSON.parse(localStorage.getItem(key) || '[]') } catch { arr=[] }`，非数组也强制置空，随后直接 `localStorage.setItem(key, JSON.stringify(arr))`。**当目标角色聊天主键已损坏时，转发会以单条新消息覆盖原始损坏内容。** 同样代码仍出现在当前开放的 #282 分支（约 7492–7548 行）。此结论来自确定性的源码执行路径，尚未跑浏览器破坏性测试。 | **原 PR #282**（chat primary history fail-closed）；先在隔离测试数据中补“转发至损坏/非数组/不可读/缺失且有 v2 备份的角色”测试，转发应失败且原始字节不动；任何媒体引用创建后必须回滚；修复统一采用已保护的 PhoneStorage 事务式写入，禁止错误 JSON 变成空数组再写。**不动正式数据。** |
 | **QA-001** | **P0 发布门禁** | 真实跨页、Android/iPhone、独立 QA 后端验收不能以 Node 静态检查或旧 CI 成功替代；固定 QA URL 未核实，不能提供伪测试地址。| 统一 [RELEASE_PLAYBOOK](RELEASE_PLAYBOOK.md)，QA-001；先核实唯一 QA Worker 与可访问 URL，严禁用生产数据库测试。 |
 | **NAV-001** | **P1 · USER-REPORTED / NOT VERIFIED** | 用户反馈跨文件夹路径叠加。90 页静态直链扫描未发现可解析目标丢失；运行时字符串拼接、部署子路径及缓存尚未完成验证。 | 参照上方验收，关联 #207/#159/#160，不宣布修复，不新开重复分支。 |
 | **NAV-002** | **P1 · SOURCE-VERIFIED** | `shared/js/home-indicator.js` 的固定返回条使用 `pointer-events:none`，且遇 `.comment-bar` 时跳过创建 `.maomao-global-home-indicator-hit-target`。`forum/forum-detail.html` 实际含该评论栏，存在无法点击返回的代码路径。 | **已有 PR #245** 正在处理底部点击区；先核对该 PR 与最新 main 的差异、更新基线、运行浏览器点击/评论输入不冲突测试。 |
@@ -61,7 +62,7 @@
 ## 执行方式
 
 1. 全局风险只在本登记册 + [REMEDIATION_BACKLOG.md](REMEDIATION_BACKLOG.md) 更新一次；功能/修复进度回到**原 PR**，不创建竞争性“总修复大杂烩”分支。
-2. 先处理 **NAV-001 路径复现与跨目录回归**，并行只读核查 NAV-002、数据保存/备份及正式路由；每个问题明确唯一负责文件集合和测试证据。
+2. 先同步处理 **CHAT-HISTORY-001 防止转发覆盖损坏数据** 和 **NAV-001 路径复现与跨目录回归**，并行只读核查 NAV-002、其他数据保存/备份及正式路由；每个问题明确唯一负责文件集合和测试证据。
 3. 任何修复均是 **任务登记 → 原 PR 开发 → Node/构建/浏览器 → 唯一隔离 QA → 整合审核 → 正式发布前安全核查 → 用户批准 → 线上复验**。
 4. 未经明确批准，**不合并 main、不动正式 Cloudflare、账号或数据库、不删用户数据**。
 
