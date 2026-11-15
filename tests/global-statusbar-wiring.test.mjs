@@ -227,3 +227,69 @@ test('status bar source changes trigger the existing CI checks', () => {
   assert.match(workflow, /run: node --test tests\/global-statusbar-wiring\.test\.mjs/);
   assert.match(workflow, /run: node tests\/global-statusbar-browser\.mjs/);
 });
+
+function bootHomeIndicatorAppearance(writeMode = 'ok') {
+  const html = fs.readFileSync(path.join(projectRoot, 'settings/appearance.html'), 'utf8');
+  const match = html.match(/\/\* ---- 桌面底部 Home Indicator 开关 ---- \*\/([\s\S]*?)\/\* ---- 桌面 Dock \/ 导航栏开关 ---- \*\//);
+  assert.ok(match, 'appearance page Home Indicator toggle handler missing');
+  const values = new Map([['settings_home_indicator_visible', '1']]);
+  const toggleHandlers = new Map();
+  const pageEvents = new Map();
+  const notifications = [];
+  const toasts = [];
+  let applyCalls = 0;
+  const toggle = { checked: false, addEventListener(name, fn) { toggleHandlers.set(name, fn); } };
+  const localStorage = {
+    getItem(key) { return values.get(key) ?? null; },
+    setItem(key, value) {
+      if (writeMode === 'throw') throw new Error('QuotaExceededError');
+      if (writeMode !== 'silent-drop') values.set(key, value);
+    }
+  };
+  const window = {
+    addEventListener(name, fn) { pageEvents.set(name, fn); },
+    dispatchEvent(event) { notifications.push(event.type); return true; },
+    __statusbarControlApply() { applyCalls++; }
+  };
+  vm.runInNewContext(match[1], {
+    document: { getElementById(id) { return id === 'homeIndicatorToggle' ? toggle : null; } },
+    localStorage, window,
+    Event: function Event(type) { this.type = type; },
+    showToast(message) { toasts.push(message); }
+  }, { filename: 'appearance-home-indicator-handler.js' });
+  return { values, toggle, toggleHandlers, pageEvents, notifications, toasts, getApplyCount: () => applyCalls };
+}
+
+test('appearance Home Indicator setting notifies its existing controller only after a confirmed save', () => {
+  const app = bootHomeIndicatorAppearance();
+  assert.equal(app.toggle.checked, true);
+  app.toggle.checked = false;
+  app.toggleHandlers.get('change')();
+  assert.equal(app.values.get('settings_home_indicator_visible'), '0');
+  assert.equal(app.getApplyCount(), 1);
+  assert.deepEqual(app.notifications, ['maomao:home-indicator-change']);
+  assert.match(app.toasts[0], /已隐藏/);
+});
+
+test('appearance Home Indicator setting restores toggle on quota error or silently dropped write', () => {
+  for (const failure of ['throw', 'silent-drop']) {
+    const app = bootHomeIndicatorAppearance(failure);
+    app.toggle.checked = false;
+    app.toggleHandlers.get('change')();
+    assert.equal(app.values.get('settings_home_indicator_visible'), '1', failure);
+    assert.equal(app.toggle.checked, true, failure);
+    assert.equal(app.getApplyCount(), 0, failure);
+    assert.deepEqual(app.notifications, [], failure);
+    assert.match(app.toasts[0], /未能保存/, failure);
+  }
+});
+
+test('appearance Home Indicator switch updates on cross-tab storage and page restore', () => {
+  const app = bootHomeIndicatorAppearance();
+  app.values.set('settings_home_indicator_visible', '0');
+  app.pageEvents.get('storage')({ key: 'settings_home_indicator_visible' });
+  assert.equal(app.toggle.checked, false);
+  app.values.set('settings_home_indicator_visible', '1');
+  app.pageEvents.get('pageshow')();
+  assert.equal(app.toggle.checked, true);
+});
