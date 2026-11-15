@@ -674,3 +674,16 @@ test('AI moderator reveal directives stay hidden and use verified-save effects',
   assert.match(panel,/hostId:hostSelect\.value/);
   assert.match(panel,/updateCulpritOptions\(\)/);
 });
+
+
+test('moderator speaker selection preserves direct mentions while opening and announcing results', () => {
+  const source=load('chat/chat/chat-detail.html');
+  assert.match(source, /moderatorSpoke = historyList\.some/);
+  assert.match(source, /hostRound\.voteCount === hostRound\.players\.length/);
+  assert.match(source, /!groupReplyPick\.isMentioned/);
+  assert.match(source, /getAvailableGroupMembers\(\)\.find/);
+  assert.match(source, /groupAutoRevealReceipt = receipt/);
+  assert.match(source, /groupAutoRevealReceipt &&/);
+  assert.match(source, /m\.mid === receipt\.mid/);
+  assert.match(source, /gameRevealSeen/);
+});
