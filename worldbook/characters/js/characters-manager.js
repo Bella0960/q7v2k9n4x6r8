@@ -1512,7 +1512,15 @@ function handleSaveRole() {
         target.avatarBg = selectedColor;
         target.worldBookIds = selectedWorldBookIds.slice();
     } else {
-        savedRoleId = 'role_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+        // 候选来源固定映射到同一正式角色 ID。即使旧 Safari 没有 Web Locks、
+        // 两个标签页并发保存同一候选，也不能凭随机 ID 生成两个独立角色。
+        savedRoleId = activeEncounterDraftId
+            ? 'role_' + String(activeEncounterDraftId)
+            : 'role_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+        if (roles.some(function (role) { return String(role.id) === savedRoleId; })) {
+            setSaveStatus('这个角色 ID 已存在，已停止创建，原角色不会被覆盖。', 'error');
+            return;
+        }
         // 保留「邂逅」的结构化来源，供后续物件、命运、人物关系玩法读取。
         // 不影响已有角色字段，也绝不对旧角色追加或覆盖设定。
         let encounterOrigin = null;
