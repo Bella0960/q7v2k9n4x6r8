@@ -565,9 +565,10 @@ test('mid-generation IndexedDB failure stops further API charges and warns about
   assert.equal(stored.status, 'partial');
 });
 
-test('archive reopens the last committed batch, not uncommitted generation after storage failure', async () => {
+test('unsaved live draft remains readable while a fresh page reload only sees the last committed batch', async () => {
   const db = fakeFanwaiDB({ failAtWrite: 3 });
-  const app = mount({ accountId: 'MAO-AAAAAAAAAAAA', indexedDB: db });
+  const accountId = 'MAO-AAAAAAAAAAAA';
+  const app = mount({ accountId, indexedDB: db });
   const root = app.open();
   await tickUntil(() => root.querySelector('.fw-sheet')?.all().some(n => n.dataset.template));
   const sheet = root.querySelector('.fw-sheet');
@@ -575,13 +576,29 @@ test('archive reopens the last committed batch, not uncommitted generation after
   await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'start-template') });
   await tickUntil(() => sheet.all().find(n => n.className === 'fw-status')?.textContent.includes('本机存储不可用'));
   assert.equal(app.requests, 2);
-  await root.handlers.click({ target: root.querySelector('.fw-backdrop') });
+  assert.equal(sheet.all().filter(n => n.className === 'fw-bubble').length, 24);
+  await root.handlers.click({ target: sheet.all().find(n => n.dataset.action === 'back') });
+  assert.equal(sheet.all().filter(n => n.className === 'fw-bubble').length, 24,
+    'return to archive must not hide the only copy of uncommitted dialogue');
   app.open();
-  await tickUntil(() => sheet.all().some(n => n.dataset.action === 'read'));
-  const archived = sheet.all().find(n => n.dataset.action === 'read');
-  await root.handlers.click({ target: archived });
-  assert.equal(sheet.all().filter(n => n.className === 'fw-bubble').length, 12,
-    'archive must reflect only the last successfully committed snapshot');
+  assert.equal(sheet.all().filter(n => n.className === 'fw-bubble').length, 24,
+    're-opening fanwai must not bypass the failed-save protection');
+  assert.ok(app.notices.some(n => n.includes('未保存的对话')));
+  const branch = sheet.all().find(n => n.dataset.action === 'fork');
+  assert.ok(branch, 'reader keeps the original branch affordance');
+  await root.handlers.click({ target: branch });
+  assert.equal(sheet.all().filter(n => n.className === 'fw-bubble').length, 24,
+    'unsaved draft cannot be replaced by a new branch preview');
+  assert.ok(app.notices.some(n => n.includes('暂时不能新建分支')));
+  assert.equal(app.requests, 2);
+
+  const fresh = mount({ accountId, indexedDB: db });
+  const reloaded = fresh.open();
+  const newSheet = reloaded.querySelector('.fw-sheet');
+  await tickUntil(() => newSheet.all().some(n => n.dataset.action === 'read'));
+  await reloaded.handlers.click({ target: newSheet.all().find(n => n.dataset.action === 'read') });
+  assert.equal(newSheet.all().filter(n => n.className === 'fw-bubble').length, 12,
+    'a new page must show only the previously committed archive, not the live unsaved tail');
 });
 
 test('deleting one story requires explicit confirmation; cancellation preserves it', async () => {
