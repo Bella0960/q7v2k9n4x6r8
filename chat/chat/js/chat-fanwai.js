@@ -358,6 +358,11 @@
   function renderReader() {
     if (!state.opened || !state.active || !state.root) return;
     var episode = state.active;
+    // 续写刷新时尊重正在翻看旧消息的人，不强行把阅读位置拉到底部。
+    var previousList = state.root.querySelector('.fw-messages');
+    var previousTop = previousList ? previousList.scrollTop : 0;
+    var atEnd = !previousList ||
+      (previousList.scrollHeight - previousList.scrollTop - previousList.clientHeight <= 50);
     var sheet = clearView();
     sheet.classList.add('fw-reading');
     topBar(sheet, 'CHAPTER IN PROGRESS', 'close', '收起');
@@ -406,7 +411,7 @@
     actions.append(button('back', '返回目录', ''), button('delete', '删除本篇', 'fw-danger'));
     sheet.appendChild(actions);
     // 长篇从尾部阅读，不触碰原本的 chat-messages 虚拟列表。
-    messages.scrollTop = messages.scrollHeight;
+    messages.scrollTop = atEnd ? messages.scrollHeight : Math.min(previousTop, messages.scrollHeight);
     sheet.scrollTop = 0;
   }
 
