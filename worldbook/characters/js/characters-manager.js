@@ -1446,6 +1446,20 @@ function handleSaveRole() {
         target.worldBookIds = selectedWorldBookIds.slice();
     } else {
         savedRoleId = 'role_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+        // 保留「邂逅」的结构化来源，供后续物件、命运、人物关系玩法读取。
+        // 不影响已有角色字段，也绝不对旧角色追加或覆盖设定。
+        let encounterOrigin = null;
+        if (activeEncounterDraftId && window.MAOMAOEncounter) {
+            const candidates = window.MAOMAOEncounter.getCandidates();
+            const card = candidates.ok && candidates.value.find(function (c) { return c.id === activeEncounterDraftId; });
+            if (card) encounterOrigin = {
+                version: 1, sourceCandidateId: card.id, createdAt: card.createdAt || Date.now(),
+                species: card.species || '', era: card.era || '', job: card.job || '',
+                trait: card.trait || '', contrast: card.contrast || '',
+                object: card.object || '', fate: card.selectedChoice || card.fate || '',
+                encounterType: card.type || ''
+            };
+        }
         roles.unshift({
             id: savedRoleId,
             name: nameVal,
@@ -1456,7 +1470,8 @@ function handleSaveRole() {
             appearanceDescription: appearanceVal,
             styleKeywords: styleKeywordsVal,
             worldBookIds: selectedWorldBookIds.slice(),
-            replyBubbleMode: 'auto'
+            replyBubbleMode: 'auto',
+            ...(encounterOrigin ? { encounterOrigin: encounterOrigin } : {})
         });
     }
 
