@@ -193,8 +193,8 @@
       '本局私聊：' + (rules.allowPrivate ? '允许玩家之间的游戏私聊' : '禁止玩家之间的游戏私聊') + '。\n' +
       '请根据自己已知的事实参与推理；你无法读取其他成员的身份牌。' +
       (ownVote.voted
-        ? '\\n你已完成本局猜测，不得再次投票，也不要编造其他人的选票。'
-        : '\\n当群主宣布开始猜测，且你根据公开对话确实想投票时，在正常回复末尾添加 [游戏猜测:你怀疑的准确角色ID]。只能选一位本局其他角色，一局只有一票；不要代替其他角色投票。');
+        ? '\n你已完成本局猜测，不得再次投票，也不要编造其他人的选票。'
+        : '\n当群主宣布开始猜测，且你根据公开对话确实想投票时，在正常回复末尾添加 [游戏猜测:你怀疑的准确角色ID]。只能选一位本局其他角色，一局只有一票；不要代替其他角色投票。');
     if (rules.allowPrivate) {
       var whispers = read(storage, inboxKey(gid, session.sessionId, rid));
       var incoming = Array.isArray(whispers) ? whispers.slice(-3).filter(function (m) {
