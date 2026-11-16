@@ -1971,65 +1971,210 @@
     }
   });
 
-  // ===== 歌单：只保存已有歌曲 ID，不复制音频文件 =====
+  // ===== MUSIC-UI-001 歌单：保留 music_playlists_v1 中的名称 → 歌曲 ID[] =====
+  // 扩展接口只发布已落盘的本机事件，不等同于云端/角色接受回执。
+  let musicPlaylistActiveName = null;
+  function musicPlaylistOwn(obj, key) {
+    return Object.prototype.hasOwnProperty.call(obj, key);
+  }
+  function musicPlaylistCatalog() {
+    var stored = musicReadMap(MUSIC_PLAYLISTS_KEY);
+    var result = Object.create(null);
+    Object.keys(stored).forEach(function(name) {
+      if (!Array.isArray(stored[name]) || !stored[name].every(function(id) {
+        return typeof id === 'string' && id.length > 0;
+      })) throw new Error('旧歌单记录不完整，已停止修改以保护原数据');
+      result[name] = stored[name].slice();
+    });
+    return result;
+  }
+  function musicPlaylistNewName(value) {
+    var name = String(value == null ? '' : value).trim();
+    if (!name || Array.from(name).length > 24 || /[\x00-\x1f\x7f]/.test(name))
+      throw new Error('歌单名称须为 1–24 字，且不能包含控制字符');
+    return name;
+  }
+  function musicPlaylistCommit(data, action, name, extra) {
+    musicWriteMap(MUSIC_PLAYLISTS_KEY, data);
+    window.dispatchEvent(new CustomEvent('maomao:music:playlist-changed', {
+      detail: Object.assign({ version:1, action:action, name:name, savedLocal:true }, extra || {})
+    }));
+  }
+  window.MAOMAOMusicPlaylists = Object.freeze({
+    list: function() {
+      var data = musicPlaylistCatalog();
+      return Object.keys(data).map(function(name) {
+        return { name:name, trackIds:data[name].slice() };
+      });
+    },
+    getTrackIds: function(name) {
+      var data = musicPlaylistCatalog();
+      return musicPlaylistOwn(data,name) ? data[name].slice() : null;
+    },
+    addTrack: function(rawName, trackId) {
+      var name = musicPlaylistNewName(rawName);
+      var id = String(trackId);
+      if (!getTrackById(id)) throw new Error('歌曲不存在，不能加入歌单');
+      var data = musicPlaylistCatalog();
+      var ids = musicPlaylistOwn(data,name) ? data[name].slice() : [];
+      if (ids.includes(id)) return false;
+      ids.push(id);
+      data[name] = ids;
+      musicPlaylistCommit(data, 'track-added', name, { trackId:id });
+      return true;
+    },
+    removeTrack: function(name, trackId) {
+      var data = musicPlaylistCatalog();
+      if (!musicPlaylistOwn(data,name)) throw new Error('歌单不存在');
+      var id = String(trackId);
+      var ids = data[name], next = ids.filter(function(item) { return item !== id; });
+      if (next.length === ids.length) return false;
+      data[name] = next;
+      musicPlaylistCommit(data, 'track-removed', name, { trackId:id });
+      return true;
+    },
+    rename: function(oldName, rawNewName) {
+      var nextName = musicPlaylistNewName(rawNewName), data = musicPlaylistCatalog();
+      if (!musicPlaylistOwn(data,oldName)) throw new Error('歌单不存在');
+      if (oldName === nextName) return false;
+      if (musicPlaylistOwn(data,nextName)) throw new Error('同名歌单已存在，不会覆盖');
+      var next = Object.create(null);
+      Object.keys(data).forEach(function(name) {
+        next[name === oldName ? nextName : name] = data[name].slice();
+      });
+      musicPlaylistCommit(next, 'renamed', nextName, { previousName:oldName });
+      return true;
+    },
+    removePlaylist: function(name) {
+      var data = musicPlaylistCatalog();
+      if (!musicPlaylistOwn(data,name)) throw new Error('歌单不存在');
+      delete data[name];
+      musicPlaylistCommit(data, 'playlist-removed', name, { originalTracksPreserved:true });
+      return true;
+    },
+    subscribe: function(callback) {
+      if (typeof callback !== 'function') throw new TypeError('listener required');
+      var listener = function(event) { callback(event.detail); };
+      window.addEventListener('maomao:music:playlist-changed', listener);
+      return function() { window.removeEventListener('maomao:music:playlist-changed', listener); };
+    }
+  });
+  function musicPlaylistAction(text, click, cls) {
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = text;
+    button.className = cls || 'music-playlist-quiet';
+    button.addEventListener('click', click);
+    return button;
+  }
   function addCurrentToMusicPlaylist() {
     var t = tracks[currentIdx];
     if (!t) return;
-    var name = window.prompt('输入歌单名称（最多 24 字）', '');
+    var name = window.prompt('歌单名称（1–24 字）', '');
     if (name === null) return;
-    name = name.trim().slice(0, 24);
-    if (!name) { toast('歌单名称不能为空'); return; }
     try {
-      var playlists = musicReadMap(MUSIC_PLAYLISTS_KEY);
-      var ids = Array.isArray(playlists[name]) ? playlists[name].slice() : [];
-      if (!ids.includes(t.id)) ids.push(t.id);
-      playlists[name] = ids;
-      musicWriteMap(MUSIC_PLAYLISTS_KEY, playlists);
-      toast('已加入歌单：' + name);
+      var added = window.MAOMAOMusicPlaylists.addTrack(name, t.id);
+      toast(added ? '歌曲已加入歌单' : '歌曲已经在该歌单中');
     } catch (err) { toast('歌单保存失败：' + err.message); }
   }
+  function musicPlaylistBack() {
+    if (musicPlaylistActiveName !== null) showMusicPlaylists();
+    else document.getElementById('musicPlaylistView').style.display = 'none';
+  }
+  function musicPlaylistRefresh() {
+    if (musicPlaylistActiveName !== null) showMusicPlaylistTracks(musicPlaylistActiveName);
+    else showMusicPlaylists();
+  }
   function showMusicPlaylists() {
-    closeImportSheet();
-    closeProfile();
+    closeImportSheet(); closeProfile();
+    musicPlaylistActiveName = null;
     var panel = document.getElementById('musicPlaylistView');
     var list = document.getElementById('musicPlaylistList');
+    document.getElementById('musicPlaylistTitle').textContent = '我的歌单';
     list.replaceChildren();
     try {
-      var playlists = musicReadMap(MUSIC_PLAYLISTS_KEY);
-      var names = Object.keys(playlists);
-      if (!names.length) { list.textContent = '还没有歌单。可以在播放页 ··· 中将歌曲加入歌单。'; }
-      names.forEach(function(name) {
-        var button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'music-playlist-row';
-        var ids = Array.isArray(playlists[name]) ? playlists[name] : [];
-        button.textContent = name + ' · ' + ids.length + ' 首';
-        button.addEventListener('click', function() { showMusicPlaylistTracks(name); });
-        list.appendChild(button);
+      var entries = window.MAOMAOMusicPlaylists.list();
+      if (!entries.length) {
+        var empty = document.createElement('p');
+        empty.className = 'music-playlist-note';
+        empty.textContent = '还没有歌单。可以从播放页 ··· 菜单加入歌曲。';
+        list.appendChild(empty);
+      }
+      entries.forEach(function(entry) {
+        list.appendChild(musicPlaylistAction(entry.name + ' · ' + entry.trackIds.length + ' 首',
+          function() { showMusicPlaylistTracks(entry.name); }, 'music-playlist-row'));
       });
       panel.style.display = 'flex';
-    } catch (err) { toast('歌单读取失败，未修改任何歌单：' + err.message); }
+    } catch (err) { toast('歌单读取失败，原数据未修改：' + err.message); }
+  }
+  function musicPlaylistRename(name) {
+    var typed = window.prompt('修改歌单名称', name);
+    if (typed === null) return;
+    try {
+      var nextName = musicPlaylistNewName(typed);
+      var updated = window.MAOMAOMusicPlaylists.rename(name, nextName);
+      if (updated) toast('歌单已改名');
+      showMusicPlaylistTracks(nextName);
+    } catch (err) { toast('改名失败：' + err.message); }
+  }
+  function musicPlaylistDelete(name) {
+    if (!window.confirm('删除歌单“' + name + '”？歌曲文件和收藏会保留。')) return;
+    try {
+      window.MAOMAOMusicPlaylists.removePlaylist(name);
+      toast('歌单已删除，歌曲仍保留');
+      showMusicPlaylists();
+    } catch (err) { toast('删除歌单失败：' + err.message); }
+  }
+  function musicPlaylistRemoveTrack(name, trackId) {
+    if (!window.confirm('仅从歌单移出歌曲？音频和收藏都会保留。')) return;
+    try {
+      window.MAOMAOMusicPlaylists.removeTrack(name, trackId);
+      toast('已移出歌单，原歌曲保留');
+      showMusicPlaylistTracks(name);
+    } catch (err) { toast('移出失败：' + err.message); }
   }
   function showMusicPlaylistTracks(name) {
     var list = document.getElementById('musicPlaylistList');
-    list.replaceChildren();
     try {
-      var ids = musicReadMap(MUSIC_PLAYLISTS_KEY)[name] || [];
+      var ids = window.MAOMAOMusicPlaylists.getTrackIds(name);
+      if (!ids) throw new Error('歌单不存在');
+      musicPlaylistActiveName = name;
+      document.getElementById('musicPlaylistTitle').textContent = name;
+      list.replaceChildren();
+      var toolbar = document.createElement('div');
+      toolbar.className = 'music-playlist-toolbar';
+      toolbar.appendChild(musicPlaylistAction('改名', function() { musicPlaylistRename(name); }));
+      toolbar.appendChild(musicPlaylistAction('删除歌单', function() { musicPlaylistDelete(name); }));
+      list.appendChild(toolbar);
+      if (!ids.length) {
+        var empty = document.createElement('p');
+        empty.className = 'music-playlist-note';
+        empty.textContent = '歌单还没有歌曲。可从播放页添加。';
+        list.appendChild(empty);
+      }
       ids.forEach(function(id) {
         var t = getTrackById(id);
-        if (!t) return;
-        var button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'music-playlist-row';
-        button.textContent = t.name + ' — ' + t.artist;
-        button.addEventListener('click', function() {
-          document.getElementById('musicPlaylistView').style.display = 'none';
-          playTrack(t.id);
-        });
-        list.appendChild(button);
+        var row = document.createElement('div');
+        row.className = 'music-playlist-track';
+        var label = musicPlaylistAction(t ? t.name : '暂不可用的歌曲（记录已保留）',
+          function() {
+            if (!t) { toast('歌曲暂不可用；原记录未删除'); return; }
+            document.getElementById('musicPlaylistView').style.display = 'none';
+            playTrack(t.id);
+          }, 'music-playlist-track-name');
+        if (t) {
+          var artist = document.createElement('small');
+          artist.textContent = t.artist || '未知歌手';
+          label.appendChild(artist);
+        }
+        row.appendChild(label);
+        row.appendChild(musicPlaylistAction('移出', function() {
+          musicPlaylistRemoveTrack(name, id);
+        }));
+        list.appendChild(row);
       });
-      if (!list.childNodes.length) list.textContent = '这个歌单暂时没有可用的歌曲。';
-    } catch (err) { toast('歌单读取失败：' + err.message); }
+      document.getElementById('musicPlaylistView').style.display = 'flex';
+    } catch (err) { toast('歌单读取失败，原数据未修改：' + err.message); }
   }
 
   // ===== 页面切换 =====
