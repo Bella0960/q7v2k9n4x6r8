@@ -399,6 +399,7 @@ function loadHistoryFunctions(storageSlots) {
     getInitialMessages: () => [],
     _resetWarnCooldown() {},
     _shouldWarnAgain: () => false,
+    _chatHistoryUnreadable: false,
     showToast() {},
     _storage: {
       getChatHistory(contactId) {
