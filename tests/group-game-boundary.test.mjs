@@ -68,6 +68,67 @@ test('failed role-card/public-state writes roll back the entire new game', () =>
   }
 });
 
+test('game start keeps private role cards after a transient public-state readback failure', () => {
+  const h = harness();
+  const key = 'phone_group_game_v1_g1';
+  const originalSet = h.storage.setItem;
+  const originalGet = h.storage.getItem;
+  let failNextPublicRead = false;
+  h.storage.setItem = function (k, value) {
+    originalSet.call(this, k, value);
+    if (k === key) failNextPublicRead = true;
+  };
+  h.storage.getItem = function (k) {
+    if (k === key && failNextPublicRead) {
+      failNextPublicRead = false;
+      throw new Error('transient IndexedDB/localStorage readback error');
+    }
+    return originalGet.call(this, k);
+  };
+  const result = begin(h);
+  assert.equal(result.ok, true, 'saved public state is rechecked before declaring failure');
+  assert.equal(h.game.getPublic('g1').status, 'active');
+  assert.equal(h.game.buildRoleContext({groupId:'g1',roleId:'r1'}).ok, true);
+  assert.equal(h.game.buildRoleContext({groupId:'g1',roleId:'r2'}).ok, true);
+});
+
+test('persistent public readback failure never creates an active game without cards', () => {
+  const h = harness();
+  const key = 'phone_group_game_v1_g1';
+  const originalSet = h.storage.setItem;
+  const originalGet = h.storage.getItem;
+  let blockPublicRead = false;
+  h.storage.setItem = function (k, value) {
+    originalSet.call(this, k, value);
+    if (k === key) blockPublicRead = true;
+  };
+  h.storage.getItem = function (k) {
+    if (k === key && blockPublicRead) throw Error('storage unavailable');
+    return originalGet.call(this, k);
+  };
+  const result = begin(h);
+  assert.equal(result.code, 'SAVE_UNVERIFIED', 'unknown persistence cannot be a false success');
+  assert.equal(h.records.has(key), true, 'committed public record remains available');
+  assert.equal([...h.records.keys()].filter(k =>
+    k.startsWith('phone_group_game_private_v1_g1_')).length, 3,
+    'role cards must not be deleted while public state is uncertain');
+  blockPublicRead = false;
+  assert.equal(h.game.getPublic('g1').status, 'active', 'refresh can recover the round');
+  assert.equal(h.game.buildRoleContext({groupId:'g1',roleId:'r2'}).ok, true);
+});
+
+test('a role card from another group cannot be used for game reveal', () => {
+  const h = harness();
+  assert.equal(begin(h).ok, true);
+  const key = [...h.records.keys()].find(k =>
+    k.startsWith('phone_group_game_private_v1_g1_') && k.endsWith('_r1'));
+  const role = JSON.parse(h.storage.getItem(key));
+  h.storage.setItem(key, JSON.stringify({...role, groupId:'g2'}));
+  assert.equal(h.game.finish({group:group(),groupId:'g1',actorId:'__user'}).code,
+    'MISSING_CARD', 'a cross-group identity record cannot authorize reveal');
+  assert.equal(h.game.getPublic('g1').status, 'active');
+});
+
 test('corrupt existing public game state is never overwritten by a new round', () => {
   const h = harness();
   const corrupted = '{"status":"active","unparseable":';
