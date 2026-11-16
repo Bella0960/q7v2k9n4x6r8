@@ -201,3 +201,47 @@ test('release retains the full core and QA secret sets and critical bindings', (
   assert.equal((source.match(/assertReadyForUpload\(\);\n  run\('npx'/g) || []).length, 2,
     'each Worker upload must recheck source and build artifacts');
 });
+
+
+const auditStart = source.indexOf('function verifiedAccountCounts(item, name) {');
+const auditEnd = source.indexOf('\n\nasync function cloudflarePreflight()', auditStart);
+assert.ok(auditStart >= 0 && auditEnd > auditStart,
+  'SQL founder evidence validation helper must exist');
+const auditCounts = vm.runInNewContext(
+  source.slice(auditStart, auditEnd) + '\nverifiedAccountCounts;',
+  { assert }
+);
+
+test('accepts valid QA founder counts and a truly empty isolated core', () => {
+  const qa = auditCounts({
+    meta: { rows_written: 0 }, rows: [[1, 1, 1]]
+  }, 'QA');
+  assert.equal(JSON.stringify(qa), JSON.stringify({
+    total: 1, matches: 1, admins: 1
+  }));
+  const core = auditCounts({
+    meta: { rows_written: 0 }, rows: [[0, null, null]]
+  }, 'CORE');
+  assert.equal(JSON.stringify(core), JSON.stringify({
+    total: 0, matches: 0, admins: 0
+  }));
+});
+
+test('refuses to infer an empty core from missing or malformed Cloudflare SQL evidence', () => {
+  const bad = [
+    null,
+    {},
+    { rows: [[0, null, null]] },
+    { meta: { rows_written: 1 }, rows: [[0, null, null]] },
+    { meta: { rows_written: 0 }, rows: [] },
+    { meta: { rows_written: 0 }, rows: [[null, null, null]] },
+    { meta: { rows_written: 0 }, rows: [[0, null]] },
+    { meta: { rows_written: 0 }, rows: [['0', null, null]] },
+    { meta: { rows_written: 0 }, rows: [[1, null, 1]] },
+    { meta: { rows_written: 0 }, rows: [[1, 2, 1]] },
+    { meta: { rows_written: 0 }, rows: [[-1, 0, 0]] }
+  ];
+  for (const item of bad) {
+    assert.throws(() => auditCounts(item, 'CORE'));
+  }
+});
