@@ -52,6 +52,13 @@ function setup(initial={}) {
         if(!this.reunionActionCache[selector])this.reunionActionCache[selector]=new FakeEl(selector);
         return this.reunionActionCache[selector];
       }
+      if(selector==='[data-object-reveal]'){
+        if(this.objectRevealSource!==this.innerHTML){
+          this.objectRevealSource=this.innerHTML;
+          this.objectRevealButton=new FakeEl('object-reveal');
+        }
+        return this.objectRevealButton;
+      }
       if(selector==='[data-blind-reveal]'){
         if(this.blindRevealSource!==this.innerHTML){
           this.blindRevealSource=this.innerHTML;
@@ -78,6 +85,15 @@ function setup(initial={}) {
           });
         }
         return this.reunionCache[selector];
+      }
+      if(selector==='[data-object-choice]'){
+        if(this.objectChoicesSource!==this.innerHTML){
+          this.objectChoicesSource=this.innerHTML;
+          this.objectChoiceButtons=[...this.innerHTML.matchAll(/data-object-choice="([^"]+)"/g)].map(m=>{
+            const item=new FakeEl('object-choice');item.dataset.objectChoice=m[1];return item;
+          });
+        }
+        return this.objectChoiceButtons;
       }
       if(selector==='[data-blind-choice]'){
         // 模拟真正 DOM：同一轮 innerHTML 的查询必须返回同一批已绑定事件的节点。
@@ -258,4 +274,35 @@ test('再遇界面打开后角色被删除或当前账号不可读，点击聊�
   sheet.querySelector('[data-reunion-chat]').fire('click');
   assert.equal(h.window.location.href,undefined,'删除角色后不能继续进入失效聊天');
   assert.match(h.el('notice').textContent,/当前角色库/);
+});
+
+
+test('以物识人先猜职业后揭晓，失败不篡改旧角色或候选收藏',()=>{
+  const original='[{"id":"old","name":"原角色","persona":"全部保留"}]';
+  const h=setup({'ai_custom_characters':original,
+    'maomao_encounter_preferences_v1':'{"type":"以物识人"}'});
+  const cover=h.el('frontCard'),sheet=h.el('sheet');
+  assert.match(cover.innerHTML,/失主未详/);
+  cover.fire('click');
+  assert.match(sheet.innerHTML,/以物识人/);
+  assert.match(sheet.innerHTML,/你猜 TA 的身份是/);
+  assert.doesNotMatch(sheet.innerHTML,/class="sheet-row"/,'猜测前不得泄露姓名或身份');
+  const options=sheet.querySelectorAll('[data-object-choice]');
+  assert.equal(options.length,3);
+  options[0].fire('click');
+  assert.match(sheet.innerHTML,/人物档案/);
+  assert.match(sheet.innerHTML,/class="sheet-row"/);
+  assert.match(sheet.innerHTML,/你猜对了|你猜 TA 是/);
+  assert.equal(h.localStorage.getItem('ai_custom_characters'),original);
+  assert.equal(h.window.MAOMAOEncounter.getCandidates().value.length,0);
+});
+test('以物识人可以直接揭晓，不要求猜测也不改角色',()=>{
+  const h=setup({'maomao_encounter_preferences_v1':'{"type":"以物识人"}'});
+  h.el('frontCard').fire('click');
+  const sheet=h.el('sheet');
+  assert.match(sheet.innerHTML,/直接揭晓/);
+  sheet.querySelector('[data-object-reveal]').fire('click');
+  assert.match(sheet.innerHTML,/人物档案/);
+  assert.doesNotMatch(sheet.innerHTML,/你猜对了|你猜 TA 是/);
+  assert.equal(h.window.MAOMAOEncounter.getCandidates().value.length,0);
 });

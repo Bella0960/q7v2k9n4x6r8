@@ -802,3 +802,41 @@ test('已相识角色库损坏时拒绝再遇并保留原始数据',()=>{
   assert.equal(h.api.getReunionScenes('role_enc_demo').ok,false);
   assert.equal(h.localStorage.getItem('ai_custom_characters'),'{damaged');
 });
+
+
+test('以物识人提供所属世界的三种职业猜测，真实身份恰好一次且零存储写入',()=>{
+  const original='[{"id":"older","name":"旧人物","persona":"绝不更改"}]';
+  const h=harness({
+    ai_custom_characters:original,
+    maomao_encounter_preferences_v1:'{"type":"以物识人","world":"现代都市"}'
+  });
+  const known=['书店店主','建筑设计师','医生','摄影师','花艺师','律师','编辑','音乐制作人','咖啡师','研究员'];
+  const card=h.api.generate().value;
+  assert.equal(card.type,'以物识人');
+  const before=new Map(h.map);
+  const options=Array.from(h.api.getObjectOptions(card));
+  assert.equal(options.length,3);
+  assert.equal(new Set(options).size,3,'猜测职业不得重复');
+  assert.equal(options.filter(x=>x===card.job).length,1,'真实职业必须且只出现一次');
+  assert.ok(options.every(x=>known.includes(x)),'不应混入其他世界的职业');
+  assert.deepEqual(Array.from(h.api.getObjectOptions({...card})),options,'人物同一 ID 选项顺序要稳定');
+  assert.equal(h.api.getObjectOptions({...card,type:'普通相遇'}).length,0);
+  assert.equal(h.api.getObjectOptions({...card,job:'其他世界不存在的职业'}).length,0);
+  assert.deepEqual(Array.from(h.map.entries()),Array.from(before.entries()),'猜测选项不得写存储');
+  assert.equal(h.localStorage.getItem('ai_custom_characters'),original);
+});
+test('以物识人任意原生世界均生成有三个不重复的合理身份选项',()=>{
+  const worlds=['现代都市','架空古代','东方幻想','西方奇幻','未来纪元','现代异闻','神话时代'];
+  for(const world of worlds){
+    const h=harness({'maomao_encounter_preferences_v1':JSON.stringify({type:'以物识人',world})});
+    for(let i=0;i<3;i++){
+      const r=h.api.generate();
+      assert.equal(r.ok,true,r.error);
+      assert.equal(r.value.era,world);
+      const choices=Array.from(h.api.getObjectOptions(r.value));
+      assert.equal(choices.length,3,world);
+      assert.equal(new Set(choices).size,3,world);
+      assert.equal(choices.filter(x=>x===r.value.job).length,1,world);
+    }
+  }
+});

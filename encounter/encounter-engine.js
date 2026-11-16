@@ -511,6 +511,31 @@
 
   // 性格盲测只展示基于原人设的固定三选一；不增加存储键、不改人物 ID，也不调用 AI。
   // 同一候选的选项顺序稳定，返回值不暴露为新的“性格评判”或角色修改指令。
+
+  // 「以物识人」只在所属世界的原生职业池挑三项，不泄露真名与身份。
+  // 按同一人物 ID 稳定选择与排列；不修改候选和正式角色，也不消耗 API。
+  function getObjectOptions(card) {
+    if (!card || card.type !== '以物识人' || typeof card.job !== 'string' ||
+        typeof card.id !== 'string' || !card.id) return [];
+    var world = worlds.find(function(item) {
+      return item.era === card.era && item.species === card.species &&
+        item.jobs.indexOf(card.job) !== -1;
+    });
+    if (!world) return [];
+    var others = world.jobs.filter(function(job) { return job !== card.job; });
+    if (others.length < 2) return [];
+    var seed = card.id + ':object';
+    var hash = 2166136261;
+    for (var i = 0; i < seed.length && i < 96; i++) {
+      hash = Math.imul(hash ^ seed.charCodeAt(i), 16777619) >>> 0;
+    }
+    var first = others.splice(hash % others.length, 1)[0];
+    var second = others[(hash >>> 8) % others.length];
+    var choices = [first, second];
+    choices.splice((hash >>> 16) % 3, 0, card.job);
+    return choices;
+  }
+
   function getBlindOptions(card) {
     if (!card || typeof card.trait !== 'string' || !card.trait.trim()) return [];
     var others = archetypes.map(function(item) { return item.trait; })
@@ -564,6 +589,7 @@
     removeCandidateSafe:removeCandidateSafe, updateCandidateStoryChoiceSafe:updateCandidateStoryChoiceSafe,
     getPreferences:getPreferences, savePreferences:savePreferences,
     formatBrief:formatBrief, storyOpening:storyOpening, getBlindOptions:getBlindOptions,
+    getObjectOptions:getObjectOptions,
     getEncounteredRoles:getEncounteredRoles, getReunionScenes:getReunionScenes, normalizeName:normalizeName,
     checkAccountScope:checkAccountScope, verifyLiveAccountContext:verifyLiveAccountContext,
     registerCardDecorator:function(fn) {

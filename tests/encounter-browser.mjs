@@ -172,8 +172,16 @@ try {
       await page.screenshot({path:resolve(artifacts,'encounter-object-concealed.png')});
       await page.locator('#frontCard').click();
       await page.locator('#overlay.open').waitFor();
+      await page.locator('[data-object-choice]').first().waitFor();
+      assert.equal(await page.locator('[data-object-choice]').count(),3,
+        '以物识人必须呈现三种属于该人物世界的职业选项');
+      assert.equal(await page.locator('#sheet .sheet-row').count(),0,
+        '猜测身份之前不得展示完整姓名、性别或种族');
+      await page.screenshot({path:resolve(artifacts,'encounter-object-guess-390.png')});
+      await page.locator('[data-object-choice]').first().click();
       assert.match(await page.locator('#sheet').innerText(),/姓名/);
       assert.match(await page.locator('#sheet').innerText(),/女/);
+      assert.match(await page.locator('#sheet').innerText(),/你猜对了|你猜 TA 是/);
       await page.keyboard.press('Escape');
       // 「性格盲测」必须有真实的三选一流程，而不是点击就直接泄露人设。
       await page.locator('#moreButton').click();
@@ -271,7 +279,7 @@ try {
   if(failures.length)throw new Error('Browser JS errors:\n'+failures.join('\n'));
   const files=['encounter-375.png','encounter-390.png','encounter-430.png',
     'encounter-original-role-editor.png','encounter-object-concealed.png',
-    'encounter-blind-guess-390.png'];
+    'encounter-object-guess-390.png','encounter-blind-guess-390.png'];
   const captured={};
   for(const name of files){
     const stat=await fs.stat(resolve(artifacts,name));
@@ -285,7 +293,7 @@ try {
     source:'vite-dist',viewports:[375,390,430],checked:{
       cardSwap:true,swipeRebound:true,fingerSwipeLeft:true,candidatePersistence:true,
       roleCreation:true,jsonRoundTrip:true,thirdPartyJsonRejected:true,
-      freeDrawNoApi:true,blindPersonaGuess:true,reunionNativeChat:true
+      freeDrawNoApi:true,blindPersonaGuess:true,objectIdentityGuess:true,reunionNativeChat:true
     },captured
   };
   await fs.writeFile(receiptPath,JSON.stringify(receipt,null,2)+'\n','utf8');

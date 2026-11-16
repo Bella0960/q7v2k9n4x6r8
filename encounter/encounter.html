@@ -226,9 +226,32 @@ function openBlindGuess(card) {
  var reveal=sheet.querySelector('[data-blind-reveal]');
  if(reveal)reveal.addEventListener('click',function(){openDetail(card,false,true);});
 }
-function openDetail(card,fromSaved,revealBlind,blindGuess){
+
+function openObjectGuess(card){
+ var choices=engine.getObjectOptions(card);
+ if(choices.length!==3){openDetail(card,false,false,undefined,true);return;}
+ var html=head('OBJECT / CLUES','以物识人')+
+  '<div class="sheet-quote">「'+escapeHtml(card.object)+'」</div>'+
+  '<p class="tiny">这件东西留下了一段故事。只凭物件和线索，猜猜主人平时做什么。没有对错惩罚。</p>'+
+  '<p class="sheet-text">线索：'+escapeHtml(card.fate)+'</p>'+
+  '<div class="field"><label>你猜 TA 的身份是？</label>'+
+  choices.map(function(job){return '<button type="button" class="fate-button" data-object-choice="'+escapeHtml(job)+'">'+escapeHtml(job)+'</button>';}).join('')+
+  '</div><div class="saved-detail-actions"><button type="button" class="mini" data-object-reveal>直接揭晓</button></div>';
+ openSheet(html,'以物识人');
+ sheet.querySelectorAll('[data-object-choice]').forEach(function(button){
+   button.addEventListener('click',function(){
+     var guess=button.dataset.objectChoice;
+     if(choices.indexOf(guess)===-1)return;
+     openDetail(card,false,false,undefined,true,guess);
+   });
+ });
+ var reveal=sheet.querySelector('[data-object-reveal]');
+ if(reveal)reveal.addEventListener('click',function(){openDetail(card,false,false,undefined,true);});
+}
+function openDetail(card,fromSaved,revealBlind,blindGuess,revealObject,objectGuess){
  if(!card&&!current)return;var c=card||current;
  if(c.type==='性格盲测'&&!fromSaved&&!revealBlind){openBlindGuess(c);return;}
+ if(c.type==='以物识人'&&!fromSaved&&!revealObject){openObjectGuess(c);return;}
  var html=head('PERSONA / 01','人物档案')+'<div class="sheet-quote">「'+escapeHtml(c.quote)+'」</div>'+
  row('姓名',c.name)+row('性别',c.gender)+row('关系气质',c.relationVibe)+row('身份',c.job)+row('种族',c.species)+row('年龄',String(c.age))+
  row('世界',c.era)+row('外在',c.trait)+row('内在反差',c.contrast)+(c.rarity==='特别邂逅'?row('相遇','特别邂逅 · 无付费'): '')+
@@ -246,6 +269,12 @@ function openDetail(card,fromSaved,revealBlind,blindGuess){
    html+='<p class="story-preview">'+(blindGuess===c.trait
      ? '你的第一印象恰好是「'+escapeHtml(c.trait)+'」。继续看看 TA 不轻易显露的另一面。'
      : '你原以为 TA 更接近「'+escapeHtml(blindGuess)+'」，其实外在气质是「'+escapeHtml(c.trait)+'」。每个人都不止一面。')+'</p>';
+ }
+ if(c.type==='以物识人'&&revealObject&&typeof objectGuess==='string'&&
+    engine.getObjectOptions(c).indexOf(objectGuess)!==-1) {
+   html+='<p class="story-preview">'+(objectGuess===c.job
+     ? '你猜对了，TA 确实是「'+escapeHtml(c.job)+'」。这件旧物背后还有没有讲完的故事。'
+     : '你猜 TA 是「'+escapeHtml(objectGuess)+'」，其实 TA 的身份是「'+escapeHtml(c.job)+'」。物件未必能讲出一个人的全部。')+'</p>';
  }
  html+='<p class="tiny">本地免费生成的简要设定。成为正式角色后，还能继续完善经历、习惯与故事。</p>';
  if(fromSaved){
