@@ -11,8 +11,6 @@
 *{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;color:var(--ink);background:#e9e9e7}button,select{font:inherit}button{cursor:pointer}button:focus-visible,[role=button]:focus-visible{outline:2px solid #50514e;outline-offset:4px}
 .stage{min-height:100dvh;display:grid;place-items:center;padding:12px}
 .phone{width:min(402px,100%);height:min(860px,calc(100dvh - 24px));min-height:570px;background:var(--paper);border:1px solid #e3e3e1;border-radius:32px;overflow:hidden;position:relative;display:flex;flex-direction:column;isolation:isolate}
-.status-bar{height:31px;padding:13px 28px 0;display:flex;align-items:center;justify-content:space-between;color:#353631;font-size:11px;letter-spacing:.05em;flex-shrink:0}
-.status-marks{display:flex;gap:7px;align-items:center}.cell{height:10px;display:flex;gap:2px;align-items:flex-end}.cell i{width:2px;background:#666;height:4px}.cell i:nth-child(2){height:6px}.cell i:nth-child(3){height:8px}.cell i:nth-child(4){height:10px}.battery{width:19px;height:10px;border:1px solid #777;border-radius:3px;padding:1px;position:relative}.battery:after{content:"";width:2px;height:4px;background:#777;position:absolute;right:-4px;top:2px;border-radius:0 2px 2px 0}.battery b{display:block;background:#777;height:100%;width:72%;border-radius:1px}
 .header{height:77px;display:flex;align-items:center;justify-content:space-between;padding:10px 24px 0;flex-shrink:0}.back{width:42px;height:42px;display:grid;place-items:center;color:var(--ink);text-decoration:none}.back svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.4}.page-title{font-family:var(--serif);font-weight:400;letter-spacing:.12em;font-size:21px;margin:0}.menu-button{border:0;background:transparent;color:var(--ink);font-size:21px;letter-spacing:2px;width:42px;height:42px;padding:0 0 9px}
 .intro{padding:9px 29px 0;display:flex;justify-content:space-between;align-items:flex-end;flex-shrink:0}.intro-copy{font-size:11px;letter-spacing:.15em;color:var(--muted)}.intro-sub{font-family:var(--serif);font-style:italic;font-size:14px;color:#757672;margin-top:5px}.collection-link{border:0;background:transparent;font-size:11px;color:#646662;padding:8px 0;white-space:nowrap;letter-spacing:.06em}
 .deck-wrap{position:relative;flex:1;min-height:0;margin:15px 0 8px;display:flex;justify-content:center;align-items:center;padding:5px 28px;touch-action:pan-y}
@@ -44,8 +42,6 @@
   body{background:var(--paper)}
   .stage{padding:0;display:block}
   .phone{width:100%;height:100dvh;min-height:0;border:0;border-radius:0;padding-top:env(safe-area-inset-top,0px)}
-  /* 真机由系统显示时间、电量与信号；桌面手机预览仍保留模拟状态栏。 */
-  .status-bar{display:none}
   .header{height:65px;padding:0 19px}
   .menu-button{display:grid;place-items:center;font:20px/1 Arial,sans-serif;letter-spacing:0;padding:0;white-space:nowrap}
   .intro{padding:6px 24px 0;align-items:center;gap:12px}
@@ -66,7 +62,6 @@
 <body>
 <div class="stage">
 <main class="phone" aria-label="邂逅人物抽卡">
-  <div class="status-bar"><span id="deviceTime">09:41</span><div class="status-marks"><span class="cell" aria-hidden="true"><i></i><i></i><i></i><i></i></span><svg width="15" height="11" viewBox="0 0 20 15" aria-hidden="true"><path d="M1 4Q10 -3 19 4M4 7Q10 2 16 7M8 11Q10 9 12 11" stroke="#777" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg><span class="battery" aria-hidden="true"><b></b></span></div></div>
   <header class="header"><a class="back" href="../index.html" aria-label="返回桌面"><svg viewBox="0 0 24 24"><path d="M15 5 8 12l7 7"/></svg></a><h1 class="page-title">邂逅</h1><button class="menu-button" id="moreButton" aria-label="抽卡偏好及玩法设置">···</button></header>
   <section class="intro"><div><div class="intro-sub">一次未曾预料的相遇</div></div><button class="collection-link" id="savedButton">候选收藏 <span id="savedCount">00</span></button></section>
   <section class="deck-wrap" id="deckArea" aria-label="左右滑动人物卡片，向左跳过，向右收藏">
@@ -92,8 +87,6 @@ var cardEl=document.getElementById('frontCard'),sheet=document.getElementById('s
 var current=null,alternate=null,position=0,drag=null,lock=false,noticeTimer=0,suppressDragClick=false,returnFocus=null;
 var sheetVersion=0,storyChoicePending=false;
 function escapeHtml(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
-function clock(){var d=new Date();document.getElementById('deviceTime').textContent=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
-clock();setInterval(clock,30000);
 function notify(text){noticeEl.textContent=text;noticeEl.classList.add('show');clearTimeout(noticeTimer);noticeTimer=setTimeout(function(){noticeEl.classList.remove('show');},2400);}
 function count(){var r=engine.getCandidates();document.getElementById('savedCount').textContent=r.ok?String(r.value.length).padStart(2,'0'):'!';}
 function modeCaption(c){if(c.rarity==='特别邂逅'&&c.type==='普通相遇')return 'SPECIAL / 特别邂逅';return c.type==='蒙面档案'?'UNKNOWN / 另一种身份':c.type==='以物识人'?'OBJECT / 一件遗留物':c.type==='命运分支'?'FATE / 两种可能':c.type==='性格盲测'?'VOICE / 先听他说': 'PERSONA / 人物档案';}
