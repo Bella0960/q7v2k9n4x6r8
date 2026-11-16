@@ -28,8 +28,9 @@ export function auditAccountCutover(evidence, expectedFounderId) {
       q.canonicalFounderRole!=='super_admin' || q.canonicalFounderStatus!=='active') {
     failures.push('ORIGINAL_QA_FOUNDER_CONTINUITY_UNVERIFIED');
   }
-  if (!a || !a.nonPreview || !isCount(a.count) || a.count<1 ||
+  if (!a || a.nonPreview!==true || !isCount(a.count) || a.count<1 ||
       a.canonicalFounderId!==expectedFounderId ||
+      a.canonicalFounderRole!=='super_admin' ||
       a.canonicalFounderStatus!=='active') {
     failures.push('PERMANENT_IDENTITY_AUTHORITY_NOT_READY');
   }
