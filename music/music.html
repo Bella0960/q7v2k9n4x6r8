@@ -488,6 +488,71 @@
   .np-play { width: 54px; height: 54px; background: #e9e9ed; color: #62626a; box-shadow: none; }
   .np-play svg { width: 22px; height: 22px; }
   .np-side { color: #777781; }
+
+  /* MUSIC-UI-001：把封面、歌曲信息、进度和按钮作为一组放在画面中部，
+     不再挤在顶部。保留原有 ID、事件和歌词切换交互。 */
+  .np-overlay > .navbar {
+    flex: 0 0 auto;
+    min-height: 50px;
+    position: relative;
+    z-index: 1;
+  }
+  .np-main {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    padding: clamp(30px, 6vh, 64px) 0 clamp(54px, 11vh, 118px);
+    scrollbar-width: none;
+  }
+  .np-main::-webkit-scrollbar { display: none; }
+  .np-main > .np-cover-wrap {
+    height: clamp(174px, 24vh, 210px) !important;
+    min-height: clamp(174px, 24vh, 210px) !important;
+    padding: 0 24px !important;
+    align-items: center;
+    flex: 0 0 auto;
+  }
+  .np-main .np-cover {
+    width: clamp(156px, 21vh, 184px);
+    height: clamp(156px, 21vh, 184px);
+    border-radius: 16px;
+  }
+  .np-main #lyricView {
+    top: 0 !important;
+    left: 24px !important;
+    right: 24px !important;
+    height: 100% !important;
+    padding: 12px 16px !important;
+  }
+  .np-main .np-song-row {
+    flex: 0 0 auto;
+    padding: clamp(22px, 3.2vh, 34px) 24px 0;
+    gap: 12px;
+  }
+  .np-main .np-song-row > div:first-child { min-width: 0; }
+  .np-main .np-title {
+    font-size: clamp(21px, 5.6vw, 25px);
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+  }
+  .np-main .np-controls {
+    flex: 0 0 auto;
+    padding: clamp(24px, 3.2vh, 34px) 24px 0;
+  }
+  .np-main .np-side { min-width: 32px; justify-content: center; }
+  .np-main .np-play { flex: 0 0 auto; }
+  /* 小屏/横屏：缩小封面，允许内容滚动，避免截断播放控制。 */
+  @media (max-height: 690px) {
+    .np-main { justify-content: flex-start; padding: 26px 0 38px; }
+    .np-main > .np-cover-wrap { height: 150px !important; min-height: 150px !important; }
+    .np-main .np-cover { width: 142px; height: 142px; border-radius: 14px; }
+    .np-main .np-song-row { padding-top: 18px; }
+    .np-main .np-controls { padding-top: 18px; }
+  }
   .profile-head { background: var(--music-paper); color: var(--music-ink); padding: 25px 22px 18px; }
   .profile-head .p-sub, .profile-stats .ps-label { color: var(--music-muted); }
   .profile-head .pm-icon { background: #eeeef1 !important; color: #777781 !important; }
@@ -674,6 +739,8 @@
         <div onclick="closeNPMenu();showTimer()" style="display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:10px;cursor:pointer;font-size:14px;color:#222;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M9 2h6"/></svg>睡眠定时</div>
         <div onclick="closeNPMenu();showImportSheet()" style="display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:10px;cursor:pointer;font-size:14px;color:#222;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>导入本地音乐</div>
       </div>
+      <!-- 播放主体随屏幕高度垂直居中，短屏可滚动 -->
+      <div class="np-main">
       <div class="np-cover-wrap" style="position:relative;height:280px;padding:8px 30px 0;">
         <div class="np-cover" id="npCover" style="cursor:pointer" title="点击更换封面">
           <span class="music-placeholder-art" aria-hidden="true"></span>
@@ -728,6 +795,7 @@
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
         </button>
       </div>
+      </div><!-- /.np-main -->
 
       <!-- 歌曲操作：居中弹窗卡片 -->
       <div id="importSheet" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(0.9);opacity:0;pointer-events:none;width:86%;max-width:320px;background:#fff;border-radius:20px;padding:24px 20px;box-shadow:0 20px 60px rgba(0,0,0,0.15);transition:all .25s ease;z-index:110;">
