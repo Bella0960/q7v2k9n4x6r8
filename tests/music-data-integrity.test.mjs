@@ -504,3 +504,100 @@ test('MUSIC-UI-001: playlist session survives refresh, while legacy or stale que
   assert.match(music, /playlistName:musicPlaybackQueue \? musicPlaybackQueue\.name : null/);
   assert.match(music, /await playTrack\(selected\.id,\s*musicPlaybackQueue \? \{ playlistName:musicPlaybackQueue\.name \} : undefined\)/);
 });
+
+test('MUSIC-UI-001: local track rename and recoverable hide preserve old IDs and binary references', () => {
+  const metaStart = music.indexOf('function readLocalTracksMeta()');
+  const metaEnd = music.indexOf('// 合并本地曲目到 tracks 数组', metaStart);
+  const apiStart = music.indexOf('function musicLocalCatalog()');
+  const apiEnd = music.indexOf('// ===== MUSIC-UI-001 歌单：', apiStart);
+  assert.ok(metaStart > 0 && metaEnd > metaStart && apiStart > 0 && apiEnd > apiStart);
+  const source = music.slice(metaStart, metaEnd) + '\n' + music.slice(apiStart, apiEnd);
+  const original = [
+    {id:'local_1', name:'原始标题', source:'local', artist:'本地导入'},
+    {id:'local_2', name:'第二首', source:'local', artist:'本地导入'}
+  ];
+  const data = new Map([['music_local_tracks', JSON.stringify(original)]]);
+  const events = [], notifications = [], blobs = new Map([['local_1', 'AUDIO_1'],['local_2', 'AUDIO_2']]);
+  let quota = false;
+  const localStorage = {
+    getItem:key => data.get(key) ?? null,
+    setItem:(key, value) => { if (quota) throw Error('QuotaExceededError'); data.set(key, value); }
+  };
+  const tracks = [
+    {id:'demo_1',name:'示例',source:'remote',artist:'演示'},
+    ...original.map(x => ({...x}))
+  ];
+  const audio = { paused:false, pause() { this.paused = true; },
+    removeAttribute() {}, load() {} };
+  const ui = { getElementById: () => ({ textContent:'',style:{} }) };
+  const result = runInNewContext(
+    "let musicMetaReadFailure=null, currentIdx=1, playing=true," +
+    "playbackRevision=0, musicPlaybackQueue=null;\n" +
+    "const LOCAL_TRACKS_KEY='music_local_tracks'," +
+    "MUSIC_LYRICS_KEY='music_lyrics_v1';\n" + source +
+    "\n({library:window.MAOMAOLocalMusic, state:()=>({currentIdx,playing,playbackRevision})})",
+    {
+      localStorage, tracks, document:ui, window:{
+        audio, dispatchEvent:e => events.push(e.detail)
+      },
+      CustomEvent: class {
+        constructor(type, options) { this.type=type;this.detail=options.detail; }
+      },
+      musicReadMap: () => ({}),
+      musicApplyCurrentCover:() => Promise.resolve(),
+      renderRecent() {}, renderAlbum() {}, renderSearch() {}, renderFav() {},
+      renderTrackLyrics() {}, updateHeartIcon() {}, updatePlayIcon() {},
+      revokeCurrentUrl() {}, musicEmitPlayback() {}, musicQueuePublish() {},
+      saveState() { return true; }, musicWarnOnce() {},
+      toast:message => notifications.push(message)
+    }
+  );
+  const api = result.library;
+  assert.equal(api.list().length, 2);
+  assert.equal(api.rename('local_1', '自定义曲名'), true);
+  assert.equal(tracks[1].name, '自定义曲名');
+  assert.equal(JSON.parse(data.get('music_local_tracks'))[0].id, 'local_1');
+  assert.equal(api.setHidden('local_1', true), true);
+  assert.equal(audio.paused, true);
+  assert.equal(result.state().playing, false);
+  assert.equal(tracks.some(t => t.id === 'local_1'), false);
+  assert.equal(JSON.parse(data.get('music_local_tracks'))[0].hidden, true);
+  assert.equal(api.list().find(t => t.id === 'local_1').hidden, true);
+  assert.equal(api.setHidden('local_1', false), true);
+  assert.equal(tracks.some(t => t.id === 'local_1'), true);
+  assert.equal(Object.prototype.hasOwnProperty.call(JSON.parse(data.get('music_local_tracks'))[0], 'hidden'), false);
+  assert.equal(blobs.get('local_1'), 'AUDIO_1');
+  assert.equal(blobs.get('local_2'), 'AUDIO_2');
+  assert.ok(events.every(e => e.savedLocal === true && e.binaryDeleted === false));
+  const old = data.get('music_local_tracks'), oldEvents = events.length;
+  quota = true;
+  assert.throws(() => api.rename('local_2', '失败的写入'), /QuotaExceededError/);
+  quota = false;
+  assert.equal(data.get('music_local_tracks'), old);
+  assert.equal(events.length, oldEvents, 'no saved event for failed write');
+  data.set('music_local_tracks', '{damaged');
+  assert.throws(() => api.rename('local_2', '禁止覆盖'));
+  assert.equal(data.get('music_local_tracks'), '{damaged');
+  const methodBody = music.slice(apiStart, apiEnd);
+  assert.doesNotMatch(methodBody, /deleteAudioBlob\(|clearAudioStore\(|musicMedia\.removeAsset\(/);
+  assert.match(methodBody, /if \(hidden\) \+\+playbackRevision;/);
+});
+
+test('MUSIC-UI-001: legacy local metadata loads; explicitly hidden songs stay in recoverable catalog', () => {
+  const start = music.indexOf('function mergeLocalTracks()');
+  const end = music.indexOf('// 读取并升级', start);
+  assert.ok(start > 0 && end > start);
+  const catalog = [
+    {id:'local_old',name:'老歌曲',source:'local',lyrics:[]},
+    {id:'local_hidden',name:'已移出',source:'local',hidden:true,lyrics:[]}
+  ];
+  const tracks = [{id:'demo_1',name:'系统示例',source:'remote'}];
+  runInNewContext(music.slice(start, end) + '\nmergeLocalTracks()', {
+    tracks, readLocalTracksMeta:() => catalog, musicReadMap:()=>({})
+  });
+  assert.equal(tracks.some(t => t.id === 'local_old'), true);
+  assert.equal(tracks.some(t => t.id === 'local_hidden'), false);
+  assert.equal(catalog[1].hidden, true, 'underlying catalog record still available for restore');
+  assert.match(music, /id="musicLocalManager"/);
+  assert.match(music, /onclick="openMusicLocalManager\(\)"/);
+});
