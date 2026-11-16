@@ -141,3 +141,12 @@ test('chat detail scripts parse so the conversation settings handler can bind', 
   assert.ok(scripts.some(([, , source]) => /async function sendMsg\(/.test(source)));
   for (const [, , source] of scripts) new Function(source);
 });
+
+test('account release candidate guide documents the existing login path and QA safety boundary', () => {
+  assert.match(guideScript, /"id"\s*:\s*"account-qa"/);
+  assert.match(guideScript, /已有账号 · 登录/);
+  assert.match(guideScript, /管理员中心（QA 待验收）/);
+  assert.match(guideScript, /"href"\s*:\s*"\.\.\/account\/index\.html"/);
+  assert.match(guideScript, /本机备份不等于云端账号的可恢复备份/);
+  assert.match(guideScript, /不得对正式账号执行停用、重置或清空/);
+});
