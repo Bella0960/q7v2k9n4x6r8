@@ -276,3 +276,55 @@ test('QA readiness survives unrelated busy-state transitions and never submits w
     handler.indexOf("api('/api/accounts/login'"),
     'blocked QA login must return before transmitting credentials');
 });
+
+
+test('known QA hides signup before the asynchronous status check returns', () => {
+  const source = readFileSync(new URL('../account/account.js', import.meta.url), 'utf8');
+  const start = source.indexOf('  syncLoginAvailability();\n  if (isKnownQaHost) {');
+  const end = source.indexOf('\n\n  function showPanel(', start);
+  assert.ok(start >= 0 && end > start, 'initial QA registration guard must exist');
+  const initial = source.slice(start, end);
+  for (const knownQa of [true, false]) {
+    const links = [{ hidden: false }, { hidden: false }];
+    const run = vm.runInNewContext(
+      '(function (isKnownQaHost) {\n' +
+      '  const links = [{ hidden: false }, { hidden: false }];\n' +
+      '  const document = { querySelectorAll: () => links };\n' +
+      '  const syncLoginAvailability = () => {};\n' +
+      initial + '\n  return links;\n})'
+    );
+    const outcome = run(knownQa);
+    assert.equal(outcome.every(button => button.hidden), knownQa);
+    assert.equal(links.length, 2);
+  }
+});
+
+test('QA stale signup form never sends password or invokes FormData', async () => {
+  const source = readFileSync(new URL('../account/account.js', import.meta.url), 'utf8');
+  const start = source.indexOf("  byId('registerForm').addEventListener('submit'");
+  const end = source.indexOf("\n\n  byId('loginForm').addEventListener('submit'", start);
+  assert.ok(start >= 0 && end > start, 'real registration submission handler must exist');
+  const handler = source.slice(start, end);
+  for (const [knownQa, delegated] of [[true, true], [true, false], [false, true]]) {
+    const simulate = vm.runInNewContext(
+      '(async function () {\n' +
+      '  let prevented = 0, formReads = 0, requests = 0, message = "";\n' +
+      '  const isKnownQaHost = ' + knownQa + ', delegatedIdentity = ' + delegated + ';\n' +
+      '  const authBusy = false;\n' +
+      '  const FormData = function () { formReads++; throw Error("should not read"); };\n' +
+      '  const api = async () => { requests++; throw Error("must not network"); };\n' +
+      '  const setError = (_, value) => { message = value; };\n' +
+      '  let submit;\n' +
+      '  const byId = () => ({ addEventListener: (_, fn) => { submit = fn; } });\n' +
+      handler + '\n' +
+      '  await submit({ preventDefault() { prevented++; } });\n' +
+      '  return { prevented, formReads, requests, message };\n' +
+      '})'
+    );
+    const result = await simulate();
+    assert.equal(result.prevented, 1);
+    assert.equal(result.formReads, 0, 'QA password must not be read from register form');
+    assert.equal(result.requests, 0, 'QA register must never reach account API');
+    assert.match(result.message, /QA 测试版不允许重复注册/);
+  }
+});
