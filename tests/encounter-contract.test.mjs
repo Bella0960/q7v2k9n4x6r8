@@ -771,3 +771,34 @@ test('性格盲测固定三种不同选项，真实气质只出现一次且不�
   assert.equal(h.api.getBlindOptions(null).length, 0);
 });
 
+
+
+test('已相识的人物支持三个免费重逢场景，按正式 ID 检索且绝不写角色、记忆或聊天', () => {
+  const original={id:'old',name:'旧角色',persona:'不能改变'};
+  const met={id:'role_enc_demo',name:'林见山',persona:'原人设',encounterOrigin:{
+    version:1,sourceCandidateId:'enc_demo',era:'现代都市',job:'摄影师',
+    object:'一卷褪色的胶片',originalFate:'曾经离开故乡多年'
+  }};
+  const value=JSON.stringify([original,met]);
+  const h=harness({'ai_custom_characters':value});
+  const size=h.map.size;
+  const result=h.api.getReunionScenes(met.id);
+  assert.equal(result.ok,true,result.error);
+  assert.equal(result.value.id,met.id);
+  assert.equal(result.value.scenes.length,3);
+  assert.equal(new Set(Array.from(result.value.scenes,x=>x.id)).size,3);
+  assert.match(result.value.scenes[0].text,/摄影师/);
+  assert.match(result.value.scenes[1].text,/胶片/);
+  assert.match(result.value.scenes[2].text,/离开故乡/);
+  assert.deepEqual(Array.from(h.api.getReunionScenes(met.id).value.scenes,x=>x.text),
+    Array.from(result.value.scenes,x=>x.text));
+  assert.equal(h.api.getReunionScenes(original.id).ok,false,'普通旧角色不能冒充邂逅角色');
+  assert.equal(h.api.getReunionScenes('role_missing').ok,false);
+  assert.equal(h.localStorage.getItem('ai_custom_characters'),value);
+  assert.equal(h.map.size,size);
+});
+test('已相识角色库损坏时拒绝再遇并保留原始数据',()=>{
+  const h=harness({'ai_custom_characters':'{damaged'});
+  assert.equal(h.api.getReunionScenes('role_enc_demo').ok,false);
+  assert.equal(h.localStorage.getItem('ai_custom_characters'),'{damaged');
+});

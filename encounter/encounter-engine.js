@@ -279,13 +279,37 @@
           sourceCandidateId: sourceId,
           era: String(role.encounterOrigin.era || ''),
           trait: String(role.encounterOrigin.trait || ''),
-          storyChoice: String(role.encounterOrigin.storyChoice || '')
+          storyChoice: String(role.encounterOrigin.storyChoice || ''),
+          job: String(role.encounterOrigin.job || ''),
+          object: String(role.encounterOrigin.object || ''),
+          fate: String(role.encounterOrigin.originalFate || role.encounterOrigin.fate || '')
         });
       });
       return ok(records);
     } catch (error) {
       return fail('已相识人物读取失败，原角色档案未修改');
     }
+  }
+
+  // 只按已存在的正式角色 ID 读取已相识资料；不建新角色、不写对话或存储。
+  // 每次生成故事重新读取当前账号的角色，防止换号、删除角色后的旧资料继续使用。
+  function getReunionScenes(roleId) {
+    if (typeof roleId !== 'string' || !roleId) return fail('请选择已相识的角色');
+    var current = getEncounteredRoles();
+    if (!current.ok) return current;
+    var role = current.value.find(function(item) { return item.id === roleId; });
+    if (!role) return fail('这位人物已不在当前角色库，请返回相遇收藏刷新');
+    function brief(value, fallback) {
+      return String(value || fallback).replace(/[\r\n\t]+/g,' ').trim().slice(0,72);
+    }
+    var name=brief(role.name,'这位旧识'), era=brief(role.era,'熟悉的地方');
+    var job=brief(role.job,'自己的工作'), object=brief(role.object,'那件旧物');
+    var fate=brief(role.fate || role.storyChoice,'尚未讲完的往事');
+    return ok({id:role.id,name:role.name,scenes:[
+      {id:'everyday',title:'日常偶遇',text:'在'+era+'，你再次遇见'+name+'。TA正忙着'+job+'的事情，偶然抬头，认出了曾见过的面孔。'},
+      {id:'keepsake',title:'旧物线索',text:'关于「'+object+'」的一点消息，让你和'+name+'又一次相遇。线索并不完整，TA也正想弄清它从何而来。'},
+      {id:'turning',title:'命运回声',text:'在'+era+'，与「'+fate+'」有关的往事有了新变化。'+name+'正站在另一条路的起点。'}
+    ]});
   }
 
   function getReservedNames() {
@@ -540,7 +564,7 @@
     removeCandidateSafe:removeCandidateSafe, updateCandidateStoryChoiceSafe:updateCandidateStoryChoiceSafe,
     getPreferences:getPreferences, savePreferences:savePreferences,
     formatBrief:formatBrief, storyOpening:storyOpening, getBlindOptions:getBlindOptions,
-    getEncounteredRoles:getEncounteredRoles, normalizeName:normalizeName,
+    getEncounteredRoles:getEncounteredRoles, getReunionScenes:getReunionScenes, normalizeName:normalizeName,
     checkAccountScope:checkAccountScope, verifyLiveAccountContext:verifyLiveAccountContext,
     registerCardDecorator:function(fn) {
       if (typeof fn !== 'function') return function(){};

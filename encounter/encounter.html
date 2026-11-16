@@ -297,6 +297,42 @@ function openSettings(){
    notify('偏好已保存，下一张卡片起生效');
  });});
 }
+function openReunion(roleId,sceneId){
+ var result=engine.getReunionScenes(roleId);
+ if(!result.ok){notify(result.error);return;}
+ var reunion=result.value;
+ var scene=reunion.scenes.find(function(item){return item.id===sceneId;})||reunion.scenes[0];
+ var html=head('ENCOUNTER / AGAIN','再次相遇')+
+ '<p class="tiny">与 '+escapeHtml(reunion.name)+' 的另一种相遇。选一个故事起点，只在这里预览，不会自动写进聊天或角色记忆。</p>'+
+ '<div class="field"><label>这一次，在哪里相遇？</label>'+
+ reunion.scenes.map(function(item){
+   return '<button type="button" class="fate-button '+(item.id===scene.id?'selected':'')+
+      '" data-reunion-scene="'+escapeHtml(item.id)+'" aria-pressed="'+(item.id===scene.id?'true':'false')+'">'+escapeHtml(item.title)+'</button>';
+ }).join('')+'</div>'+
+ '<p class="story-preview" role="status">'+escapeHtml(scene.text)+'</p>'+
+ '<div class="saved-detail-actions"><button type="button" class="mini" data-return-collection>返回收藏</button>'+
+ '<button type="button" class="mini" data-reunion-profile>去档案</button>'+
+ '<button type="button" class="mini dark" data-reunion-chat>去聊天</button></div>';
+ openSheet(html,'再次相遇');
+ sheet.querySelectorAll('[data-reunion-scene]').forEach(function(button){
+   button.addEventListener('click',function(){openReunion(roleId,button.dataset.reunionScene);});
+ });
+ var back=sheet.querySelector('[data-return-collection]');
+ if(back)back.addEventListener('click',openSaved);
+ var profile=sheet.querySelector('[data-reunion-profile]');
+ if(profile)profile.addEventListener('click',function(){
+   var fresh=engine.getReunionScenes(roleId);
+   if(!fresh.ok){notify(fresh.error);return;}
+   window.location.href='../worldbook/characters/characters.html?from=encounter&encounterRole='+encodeURIComponent(fresh.value.id);
+ });
+ var chat=sheet.querySelector('[data-reunion-chat]');
+ if(chat)chat.addEventListener('click',function(){
+   // 仅复用现有聊天路由；故事预览不被塞入聊天输入框，也不自动发送。
+   var fresh=engine.getReunionScenes(roleId);
+   if(!fresh.ok){notify(fresh.error);return;}
+   window.location.href='../chat/chat/chat-detail.html?v=20261028modes1&id='+encodeURIComponent(fresh.value.id);
+ });
+}
 function openSaved(){
  var r=engine.getCandidates();if(!r.ok){notify(r.error);return;}
  var met=engine.getEncounteredRoles();if(!met.ok){notify(met.error);return;}
@@ -315,7 +351,8 @@ function openSaved(){
  (met.value.length?'<div class="saved-list">'+met.value.map(function(role){
    return '<div class="saved-item"><div><button type="button" class="saved-name met-role-button" data-visit-role="'+escapeHtml(role.id)+'" aria-label="返回'+escapeHtml(role.name)+'的角色档案">'+escapeHtml(role.name)+'</button>'+
    '<div class="met-role-hint">'+escapeHtml([role.era,role.trait,role.storyChoice].filter(Boolean).join(' · ')||'已加入角色库')+'</div></div>'+
-   '<button type="button" class="mini dark" data-visit-role="'+escapeHtml(role.id)+'">去档案</button></div>';
+   '<div class="saved-actions"><button type="button" class="mini" data-reunion="'+escapeHtml(role.id)+'">再遇</button>'+
+   '<button type="button" class="mini dark" data-visit-role="'+escapeHtml(role.id)+'">去档案</button></div></div>';
  }).join('')+'</div>':'<p class="tiny">收藏人物创建成功后，就可以从这里再次找到 TA。</p>')+'</section>';
  openSheet(html,'相遇收藏');
  sheet.querySelectorAll('[data-preview]').forEach(function(b){b.addEventListener('click',function(){
@@ -330,6 +367,9 @@ function openSaved(){
    var candidate=waiting.find(function(c){return c.id===b.dataset.create;});
    if(!candidate){notify('候选已变化，请重新打开收藏');return;}
    window.location.href='../worldbook/characters/characters.html?encounterDraft='+encodeURIComponent(candidate.id);
+ });});
+ sheet.querySelectorAll('[data-reunion]').forEach(function(b){b.addEventListener('click',function(){
+   openReunion(b.dataset.reunion);
  });});
  sheet.querySelectorAll('[data-visit-role]').forEach(function(b){b.addEventListener('click',function(){
    var role=met.value.find(function(item){return item.id===b.dataset.visitRole;});
