@@ -65,16 +65,25 @@ test('guide documents the merged chat features and correctly separates unverifie
   assert.match(guideScript, /此前的手机打不开反馈仍需在安装版和普通浏览器分别实测/);
 });
 
-test('all 29 desktop app shortcuts have a matching app guide and quick-open entry', () => {
+test('every desktop app has a matching guide and quick-open entry, including admin center', () => {
   const tiles = [...home.matchAll(/data-href="([^"]+)" data-drag="(app_[^"]+)" data-name="([^"]+)"/g)]
     .map((match) => ({ path: match[1], id: match[2], name: match[3] }))
     .filter((item) => item.id.startsWith('app_'));
   const appGuideIds = [...guideScript.matchAll(/id:'(app-[^']+)'/g)].map((match) => match[1]);
   const appEntries = [...guideScript.matchAll(/\['([^']+)',\s*'([^']+\.html)',\s*'[^']+'\]/g)]
     .map((match) => ({ name: match[1], path: match[2] }));
-  assert.equal(tiles.length, 29, 'expected all desktop app tiles, including Tutorial');
-  assert.equal(appGuideIds.length, 29, 'every app must have its own step-by-step guide');
-  assert.equal(appEntries.length, 29, 'every app must appear in the quick-open directory');
+  assert.ok(tiles.some((tile) => tile.id === 'app_admin_center'),
+    'desktop admin-center shortcut must exist');
+  assert.ok(tiles.some((tile) => tile.id === 'app_tutorial'),
+    'desktop tutorial shortcut must exist');
+  assert.equal(appGuideIds.length, tiles.length,
+    'every real desktop app must have its own step-by-step guide');
+  assert.equal(new Set(appGuideIds).size, appGuideIds.length,
+    'duplicate app guides are not allowed');
+  assert.equal(appEntries.length, tiles.length,
+    'every real desktop app must appear in the quick-open directory');
+  assert.equal(new Set(appEntries.map((entry) => entry.path)).size, appEntries.length,
+    'duplicate quick-open destinations are not allowed');
   tiles.forEach((tile) => {
     assert.ok(guideScript.includes("href:'../" + tile.path + "'"), 'missing app guide route for ' + tile.name);
     assert.ok(appEntries.some((entry) => entry.path === tile.path), 'missing quick-open entry for ' + tile.name);
@@ -129,7 +138,8 @@ test('tutorial workflow enforces a guide update when user-facing app pages chang
 });
 
 test('PWA app shell caches the full guide bundle and has a matching test command', () => {
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v203'/);
+  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v[0-9]+'/,
+    'PWA shell must use a versioned cache without hard-coding an old release');
   assert.ok(serviceWorker.includes("'./tutorial/tutorial.html'"));
   assert.ok(serviceWorker.includes("'./tutorial/tutorial.js?v=20261111v3'"));
   assert.equal(packageJson.scripts['test:tutorial'], 'node --test tests/tutorial-page-contract.test.mjs');
