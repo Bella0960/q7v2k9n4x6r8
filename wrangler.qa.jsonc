@@ -28,6 +28,7 @@
     "MAO_IDENTITY_AUTHORITY_MODE": "existing_worker",
     "MAO_IDENTITY_CANONICAL_ADMIN_REQUIRED": "true",
     "MAO_QA_AUTHORITY_WORKER": "maomao-identity-core",
+    "MAO_QA_IDENTITY_SETUP": "isolated_authority",
     "MAO_DELEGATED_ADMIN_MANAGEMENT_ENABLED": "true",
     "MAO_SOCIAL_CHAT_ENABLED": "false",
     "MAO_SOCIAL_E2EE_ENABLED": "true",
