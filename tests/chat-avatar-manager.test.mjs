@@ -29,6 +29,9 @@ test('portrait editor is an original minimal second-level mobile page with no ex
   assert.match(page, /env\(safe-area-inset-bottom/);
   assert.match(page, /:focus-visible/);
   assert.match(page, /prefers-reduced-motion/);
+  assert.match(page, /\.pickbar \{ display:none; position:sticky;/);
+  assert.ok(page.indexOf('id="pairBuilder"') < page.indexOf('id="album"'),
+    'pairing confirmation stays above the scrollable collection');
   assert.doesNotMatch(page, /(?:linear|radial)-gradient\s*\(/i);
   assert.doesNotMatch(page, /cdn\.|unsplash|picsum|emoji|<iframe/i);
   assert.ok(!page.includes('Mao.')); // No logo decoration.
