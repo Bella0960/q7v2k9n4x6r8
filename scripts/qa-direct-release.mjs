@@ -35,9 +35,12 @@ const TESTS = [
   // Build first so this works on a clean checkout, not only after an older build.
   ['npm', ['run', 'build']],
   ['npm', ['run', 'test:pwa:navigation']],
+  // Full Node regression includes Playwright browser tests (group UI and gesture).
+  // Provision Chromium BEFORE they execute; otherwise a fresh Codespace fails
+  // browserType.launch with a missing chrome-headless-shell executable.
+  ['npx', ['playwright', 'install', 'chromium']],
   // A full Node suite catches regressions outside the narrower account/chat scripts.
   ['node', ['--test']],
-  ['npx', ['playwright', 'install', 'chromium']],
   ['npm', ['run', 'test:fanwai:browser:build']]
 ];
 
