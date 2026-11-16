@@ -168,6 +168,33 @@ try {
       assert.equal(await page.locator('.np-controls').isVisible(), true,
         width + 'px short phone hides controls');
       await page.screenshot({ path: join(shots, 'player-short-' + width + '.png') });
+      // 在真实浏览器点歌单控件：改名、移出单曲、删除歌单，原音频仍在 IndexedDB。
+      await page.setViewportSize({ width, height: 844 });
+      await page.evaluate(() => {
+        hideNP();
+        showMusicPlaylists();
+        showMusicPlaylistTracks('手机验收');
+      });
+      assert.equal(await page.locator('#musicPlaylistView').isVisible(), true);
+      assert.equal(await page.locator('.music-playlist-track').count(), 1);
+      await page.screenshot({ path: join(shots, 'playlist-' + width + '.png') });
+      page.once('dialog', dialog => dialog.accept('已改名'));
+      await page.locator('.music-playlist-toolbar .music-playlist-quiet').first().click();
+      assert.equal(await page.evaluate(() =>
+        Object.prototype.hasOwnProperty.call(JSON.parse(localStorage.getItem('music_playlists_v1')), '已改名')), true);
+      page.once('dialog', dialog => dialog.accept());
+      await page.locator('.music-playlist-track .music-playlist-quiet').first().click();
+      assert.equal(await page.evaluate(() =>
+        JSON.parse(localStorage.getItem('music_playlists_v1'))['已改名'].length), 0);
+      page.once('dialog', dialog => dialog.accept());
+      await page.locator('.music-playlist-toolbar .music-playlist-quiet').last().click();
+      assert.equal(await page.evaluate(() =>
+        Object.keys(JSON.parse(localStorage.getItem('music_playlists_v1') || '{}')).length), 0);
+      assert.equal(await page.evaluate(async id => {
+        const blob = await getAudioBlob(id);
+        const catalog = JSON.parse(localStorage.getItem('music_local_tracks') || '[]');
+        return blob?.size > 44 && catalog.some(track => track.id === id);
+      }, trackId), true, 'playlist deletion must not delete the imported local song');
       assert.deepEqual(pageErrors, [], 'no uncaught JS errors at ' + width);
       console.log('PASS Chromium ' + width + 'px: viewport, import Blob, reload, playback, cover, LRC, playlist');
     } finally {
