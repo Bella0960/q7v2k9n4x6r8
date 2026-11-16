@@ -2,6 +2,16 @@
 
 This is the durable checkpoint for owner-assigned, multi-step work. Update it after meaningful milestones and before ending a session.
 
+## 2026-11-16｜PR #299｜精修 QA 登录可见性、忙碌态和 PWA 资源一致性
+
+- **本轮范围**：沿用用户指定的原 #299 集成分支，保留所有数据/现有 Worker/原 PR，不合并、不部署 QA 或正式，也不执行 Cloudflare 数据库写入。检查并遵循原 `AGENTS.md` 和 QA 身份交接约束。#299 base 对应现有 #290 HEAD。
+- **问题一（可见性）**：在 `account/account.js` 中的“QA 使用独立密码、不要使用正式版密码”提醒被 `account/ivory-entry.css` 的全局 `.panel>.lead{display:none}` 隐藏。只对独立 QA 添加 `qa-login-hint` 显示样式；常规登录仍简约。原 `tests/account-qa-bootstrap-route.test.mjs` 增加真实源码和 CSS 合同测试。修正首次加入时测试桩字符串的换行语法问题，后续对 6 个相关 JS 文件做 V8 语法解析均通过。
+- **问题二（登录忙碌态）**：原 `setAuthBusy(false)` 可能在身份 core 断联时恢复启用登录按钮。新增 `syncLoginAvailability` 并在请求完成后恢复准确状态；如果 `delegatedIdentity` 且 `!delegatedSignInReady`，在读取/提交表单密码之前直接阻断。正常本地登录兼容。用原源码 DOM 桩测试 4 种忙碌态/离线/就绪/本地组合均符合预期；新增原 Node 回归测试。
+- **问题三（旧 PWA）**：服务工作者对静态资源缓存优先，原 `account/index.html`、`account/bootstrap.html` 引用的 JS/CSS 版本号未更新。只更新登录 JS、登录 CSS 和初始化 JS 的引用为 `v=20261116-qa1`，不重置原缓存或存储。
+- **发布门禁**：`scripts/qa-direct-release.mjs` 对原 QA workers.dev 地址匿名 GET 六项：身份状态、登录 HTML、登录 JS、登录 CSS、初始化 HTML、初始化 JS；验证真正的新脚本与样式被提供，阻断仍返回旧缓存或缺少资源的版本。新增 `dist/account/bootstrap.js` 与 `dist/account/ivory-entry.css` 完整构建检查。`tests/qa-release-live-version.test.mjs` 已增补旧资源、404、权威断联情况。
+- **局部验证证据**：从 GitHub 最新 #299 HEAD 读取同一提交的实际 JS/CSS/HTML，执行原 `qaHttpSmoke` 源码（HTTP 响应为模拟），覆盖首次 QA/已初始化/旧登录 JS/旧 CSS/旧初始化 JS/旧初始化 HTML/旧登录 HTML/断联/资源 404，**9/9 PASS**。相关 JavaScript 的 V8 语法解析全部通过。以上均不等于实际 Node `node --test`、Vite 构建、Chromium 或 QA 线上 HTTP。
+- **剩余阻塞**：当前工具没有完整私有仓库 checkout 和完整工程测试环境，尚不能安全执行 `npm ci` / Node/Vite/Chromium / Wrangler 上线。独立 QA core 尚未初始化，唯一 QA 仍需从旧网关切换，真实原 001 登录/退出/刷新及旧聊天/番外/PWA 真机验收仍需完成。不得声明生产或 QA 已更新。
+
 ## 2026-11-16｜PR #299｜QA 初始化允许原管理员永久 ID，避免误导重新配置密钥
 
 - **本轮真实数据核验（只读）**：Cloudflare 唯一 QA Durable Object 查询原 founder `MAO-OXHBDBWCOIHPBBYN`，账号恰好 1、ID 精确匹配、role 为启用 super_admin、原用户名满足账号规则（不输出用户名本身），SQL `rows_written=0`。因此旧用户名不合法并非真实阻塞。
