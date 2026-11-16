@@ -548,6 +548,7 @@ async function createRoleAvatarPairFromDraft() {
     }
     avatarPairDraftIds = [];
     await renderAvatarLibrary(roleId);
+    if (String(currentProfileRoleId || '') !== roleId) return;
     setAvatarLibraryStatus('已建立配对，两张头像仍可分别设为当前头像。', 'success');
 }
 
@@ -561,6 +562,7 @@ async function renameRoleAvatarPair(pairId, label) {
         return;
     }
     await renderAvatarLibrary(roleId);
+    if (String(currentProfileRoleId || '') !== roleId) return;
     setAvatarLibraryStatus('配对名称已更新。', 'success');
 }
 
@@ -572,6 +574,9 @@ async function applyRoleAvatarPairToChat(pairId) {
     const result = await library.applyPairToChat(roleId, pairId, {
         isCurrent: function () { return String(currentProfileRoleId || '') === roleId; }
     });
+    // The asynchronous media read may complete after a different role opens.
+    // Do not show old-role status or redraw a different profile.
+    if (String(currentProfileRoleId || '') !== roleId) return;
     if (!result || !result.ok) {
         const code = result && result.error && result.error.code;
         setAvatarLibraryStatus(code === 'PARTIAL_ROLLBACK'
@@ -593,6 +598,7 @@ async function swapRoleAvatarPair(pairId) {
         return;
     }
     await renderAvatarLibrary(roleId);
+    if (String(currentProfileRoleId || '') !== roleId) return;
     setAvatarLibraryStatus('已交换配对头像 A/B 顺序，当前使用的头像没有改变。', 'success');
 }
 
@@ -608,6 +614,7 @@ async function unlinkRoleAvatarPair(pairId) {
         return;
     }
     await renderAvatarLibrary(roleId);
+    if (String(currentProfileRoleId || '') !== roleId) return;
     setAvatarLibraryStatus(result.meta && result.meta.chatSelectionCleared
         ? '已解除配对及当前聊天中的配对头像设置，两张原图仍保留在收藏中。'
         : '已解除配对，两张原图仍保留在收藏中。', 'success');
@@ -627,12 +634,14 @@ async function removeRoleAvatarFromLibrary(avatarId) {
 
     setAvatarLibraryStatus('正在移除头像…', 'info');
     const result = await library.remove(roleId, avatarId);
+    if (String(currentProfileRoleId || '') !== roleId) return;
     if (!result || !result.ok) {
         setAvatarLibraryStatus(result && result.error && result.error.message
             ? result.error.message : '移除失败，图片没有从图库中删除。', 'error');
         return;
     }
     await renderAvatarLibrary(roleId);
+    if (String(currentProfileRoleId || '') !== roleId) return;
     setAvatarLibraryStatus('已从这个角色的头像收藏中移除。', 'success');
 }
 
