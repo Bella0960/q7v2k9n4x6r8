@@ -442,6 +442,14 @@
   .music-invite-controls { margin:3px 0 4px; padding:8px; background:#fafafb; border-radius:9px; }
   .music-invite-controls select { width:100%; border:1px solid #e7e7eb; border-radius:8px; padding:9px;
     background:white; color:#66666d; font-family:inherit; font-size:12px; }
+  .music-local-row { display:flex; align-items:center; gap:12px; padding:12px 0;
+    border-bottom:1px solid #ececf0; }
+  .music-local-details { flex:1; min-width:0; }
+  .music-local-name { font-size:13px; line-height:1.5; color:#44444b; overflow-wrap:anywhere; }
+  .music-local-status { color:#9b9ba3; font-size:11px; margin-top:3px; }
+  .music-local-btn { background:transparent; border:0; font:inherit; font-size:12px;
+    color:#777781; padding:9px 3px; cursor:pointer; flex:none; }
+  .music-local-btn:focus-visible { outline:1px solid #999; outline-offset:3px; border-radius:5px; }
   .music-playlist-row { display:block; width:100%; border:0; background:transparent; color:#52525b;
     text-align:left; padding:15px 2px; border-bottom:1px solid #ececf0; font:inherit; font-size:13px; }
   .music-playlist-track { display:flex; gap:12px; align-items:center;
@@ -839,6 +847,7 @@
         <button type="button" onclick="document.getElementById('musicBackgroundUpload').click();closeImportSheet()" class="music-extra-action">更换音乐页面背景</button>
         <button type="button" onclick="addCurrentToMusicPlaylist();closeImportSheet()" class="music-extra-action">将歌曲加入歌单</button>
         <button type="button" onclick="showMusicPlaylists()" class="music-extra-action">我的歌单</button>
+        <button type="button" onclick="openMusicLocalManager()" class="music-extra-action">管理已导入歌曲</button>
         <div class="music-invite-controls">
           <select id="musicInviteRoleSelect" aria-label="选择要邀请的角色"><option value="">选择已有角色</option></select>
           <button type="button" class="music-extra-action" onclick="inviteMusicRole()">邀请角色一起听</button>
@@ -977,6 +986,18 @@
     </div>
   </div>
 
+  <!-- 本地歌曲管理：非破坏性移出、恢复、重命名；不删除音频 Blob -->
+  <div id="musicLocalManager" style="position:absolute;inset:0;z-index:112;display:none;flex-direction:column;background:#F8F8FA;">
+    <div class="navbar">
+      <button class="icon-btn" type="button" aria-label="关闭本地音乐管理" onclick="closeMusicLocalManager()">‹</button>
+      <div style="font-size:15px;font-weight:500;">本地音乐</div>
+      <div style="width:32px;"></div>
+    </div>
+    <div class="content" style="overflow-y:auto;padding:14px 22px 42px;">
+      <div class="music-playlist-note" style="padding:0 0 13px;">移出后可随时恢复，原音频、歌词、封面和收藏不会删除。</div>
+      <div id="musicLocalManagerList"></div>
+    </div>
+  </div>
   <!-- 歌单管理，仅从个人页或播放页菜单打开，不占底部导航 -->
   <div id="musicPlaylistView" style="position:absolute;inset:0;z-index:106;display:none;flex-direction:column;background:#F8F8FA;">
     <div class="navbar">
@@ -1342,7 +1363,7 @@
   function mergeLocalTracks() {
     var localMeta = readLocalTracksMeta();
     localMeta.forEach(function (meta) {
-      if (!meta || !meta.id) return;
+      if (!meta || !meta.id || meta.hidden === true) return;
       if (tracks.find(function (t) { return t.id === meta.id; })) return;
       tracks.push(Object.assign({ source: 'local' }, meta));
     });
@@ -2081,6 +2102,193 @@
       return invites.filter(function(item) { return item.status === 'queued_local'; });
     }
   });
+
+  // ===== MUSIC-UI-001 本地音乐管理 =====
+  // 仅在旧 music_local_tracks 行上追加可选 hidden 标志，不新建 key，
+  // 不会触碰歌曲 Blob、音乐收藏、歌词和媒体资源引用。
+  function musicLocalCatalog() {
+    var records = readLocalTracksMeta();
+    if (musicMetaReadFailure) throw new Error('旧音乐目录损坏，禁止覆盖');
+    var ids = new Set();
+    records.forEach(function(row) {
+      if (!row || typeof row.id !== 'string' || !row.id ||
+          ids.has(row.id) || typeof row.name !== 'string')
+        throw new Error('原歌曲目录存在无效或重复 ID，已阻止修改');
+      ids.add(row.id);
+    });
+    return records;
+  }
+  function musicLocalUpdateUI() {
+    renderRecent();
+    renderAlbum();
+    renderSearch(tracks);
+    renderFav();
+    var count = document.getElementById('psTracks');
+    if (count) count.textContent = tracks.length;
+    var active = tracks[currentIdx];
+    if (active) {
+      document.getElementById('miniName').textContent = active.name;
+      document.getElementById('miniArtist').textContent = active.artist;
+      document.getElementById('npTitle').textContent = active.name;
+      document.getElementById('npArtist').textContent = active.artist;
+      renderTrackLyrics(active);
+      updateHeartIcon();
+      musicApplyCurrentCover().catch(function() {});
+    }
+    updatePlayIcon();
+  }
+  function musicLocalReconcile(catalog, editedId, hidden) {
+    var active = tracks[currentIdx], activeId = active && active.id;
+    var activeHidden = !!(hidden && activeId === editedId);
+    if (activeHidden) {
+      ++playbackRevision; // 取消并发中的音频加载回调
+      window.audio.pause();
+      playing = false;
+      musicEmitPlayback('pause'); // 在撤销曲目之前发出真实暂停事件
+      revokeCurrentUrl();
+      window.audio.removeAttribute('src');
+      window.audio.load();
+    }
+    var already = new Map(tracks.filter(function(t) {
+      return t.source === 'local';
+    }).map(function(t) { return [t.id, t]; }));
+    var demos = tracks.filter(function(t) { return t.source !== 'local'; });
+    var lyrics;
+    try { lyrics = musicReadMap(MUSIC_LYRICS_KEY); }
+    catch (err) { lyrics = {}; }
+    var locals = catalog.filter(function(row) { return row.hidden !== true; })
+      .map(function(row) {
+        var track = already.get(row.id) || { source:'local' };
+        Object.assign(track, row, { source:'local' });
+        if (Array.isArray(lyrics[row.id])) track.lyrics = lyrics[row.id];
+        else if (lyrics[row.id] && Array.isArray(lyrics[row.id].lines)) {
+          track.lyrics = lyrics[row.id].lines;
+          track.lyricTimes = Array.isArray(lyrics[row.id].times) ? lyrics[row.id].times : [];
+        }
+        return track;
+      });
+    tracks.splice(0, tracks.length, ...demos, ...locals);
+    var nextIndex = tracks.findIndex(function(t) { return t.id === activeId; });
+    currentIdx = nextIndex < 0 ? 0 : nextIndex;
+    if (activeHidden) {
+      musicPlaybackQueue = null; // 不影响持久化歌单 ID，仅解除当前会话播放来源
+      musicQueuePublish('local-hidden');
+      saveState(); // 记录已恢复为默认未播放曲目
+    }
+    musicLocalUpdateUI();
+  }
+  window.MAOMAOLocalMusic = Object.freeze({
+    list: function() {
+      return musicLocalCatalog().map(function(row) {
+        return { id:row.id, name:row.name, artist:row.artist || '', hidden:row.hidden === true };
+      });
+    },
+    rename: function(id, typed) {
+      var name = String(typed == null ? '' : typed).trim();
+      if (!name || Array.from(name).length > 100 || /[\x00-\x1f\x7f]/.test(name))
+        throw new Error('歌曲名称须为 1–100 字，不能包含控制字符');
+      var catalog = musicLocalCatalog(), index = catalog.findIndex(function(row) { return row.id === id; });
+      if (index < 0) throw new Error('本地歌曲不存在');
+      if (catalog[index].name === name) return false;
+      var next = catalog.map(function(row, i) {
+        return i === index ? Object.assign({}, row, { name:name }) : row;
+      });
+      saveLocalTracksMeta(next); // 成功并校验后才能改变页面展示
+      musicLocalReconcile(next, id, false);
+      window.dispatchEvent(new CustomEvent('maomao:music:local-library-changed', {
+        detail:{ version:1, action:'renamed', trackId:id, savedLocal:true, binaryDeleted:false }
+      }));
+      return true;
+    },
+    setHidden: function(id, hidden) {
+      var catalog = musicLocalCatalog(), index = catalog.findIndex(function(row) { return row.id === id; });
+      if (index < 0) throw new Error('本地歌曲不存在');
+      hidden = !!hidden;
+      if ((catalog[index].hidden === true) === hidden) return false;
+      var next = catalog.map(function(row, i) {
+        if (i !== index) return row;
+        var updated = Object.assign({}, row);
+        if (hidden) updated.hidden = true;
+        else delete updated.hidden; // 恢复为旧数据格式
+        return updated;
+      });
+      saveLocalTracksMeta(next); // 音频 Blob 永不删除，便于恢复与备份
+      musicLocalReconcile(next, id, hidden);
+      window.dispatchEvent(new CustomEvent('maomao:music:local-library-changed', {
+        detail:{ version:1, action:hidden?'hidden':'restored',
+          trackId:id, savedLocal:true, binaryDeleted:false }
+      }));
+      return true;
+    },
+    subscribe: function(handler) {
+      if (typeof handler !== 'function') throw new TypeError('callback required');
+      var listener = function(event) { handler(event.detail); };
+      window.addEventListener('maomao:music:local-library-changed', listener);
+      return function() { window.removeEventListener('maomao:music:local-library-changed', listener); };
+    }
+  });
+  function closeMusicLocalManager() {
+    document.getElementById('musicLocalManager').style.display = 'none';
+  }
+  function openMusicLocalManager() {
+    closeImportSheet();
+    closeProfile();
+    renderMusicLocalManager();
+    document.getElementById('musicLocalManager').style.display = 'flex';
+  }
+  function musicLocalAction(title, callback) {
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'music-local-btn';
+    button.textContent = title;
+    button.addEventListener('click', callback);
+    return button;
+  }
+  function renderMusicLocalManager() {
+    var box = document.getElementById('musicLocalManagerList');
+    box.replaceChildren();
+    try {
+      var records = window.MAOMAOLocalMusic.list();
+      if (!records.length) {
+        var empty = document.createElement('p');
+        empty.className = 'music-playlist-note';
+        empty.textContent = '还没有导入本地音乐。';
+        box.appendChild(empty);
+      }
+      records.forEach(function(record) {
+        var row = document.createElement('div');
+        row.className = 'music-local-row';
+        var detail = document.createElement('div');
+        detail.className = 'music-local-details';
+        var title = document.createElement('div');
+        title.className = 'music-local-name';
+        title.textContent = record.name;
+        var status = document.createElement('div');
+        status.className = 'music-local-status';
+        status.textContent = record.hidden ? '已移出 · 原文件保留' : (record.artist || '本地歌曲');
+        detail.appendChild(title); detail.appendChild(status);
+        row.appendChild(detail);
+        row.appendChild(musicLocalAction('改名', function() {
+          var typed = window.prompt('歌曲名称', record.name);
+          if (typed === null) return;
+          try {
+            if (window.MAOMAOLocalMusic.rename(record.id, typed)) toast('名称已保存');
+            renderMusicLocalManager();
+          } catch (err) { toast('改名失败，原歌曲未改变：' + err.message); }
+        }));
+        row.appendChild(musicLocalAction(record.hidden ? '恢复' : '移出', function() {
+          if (!record.hidden && !window.confirm(
+            '只从曲库列表移出此歌曲，原始音频、歌词、封面及收藏都保留。确定继续？')) return;
+          try {
+            window.MAOMAOLocalMusic.setHidden(record.id, !record.hidden);
+            renderMusicLocalManager();
+            toast(record.hidden ? '已恢复到曲库' : '已移出曲库，可随时恢复');
+          } catch (err) { toast('操作未完成：' + err.message); }
+        }));
+        box.appendChild(row);
+      });
+    } catch (err) { toast('读取本地音乐失败，原数据已保留：' + err.message); }
+  }
 
   // ===== MUSIC-UI-001 歌单：保留 music_playlists_v1 中的名称 → 歌曲 ID[] =====
   // 扩展接口只发布已落盘的本机事件，不等同于云端/角色接受回执。
