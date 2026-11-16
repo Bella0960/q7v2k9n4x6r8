@@ -6621,7 +6621,7 @@
                 if (window.GroupGameSessions && typeof window.GroupGameSessions.redactPublicStreamText === 'function')
                     return window.GroupGameSessions.redactPublicStreamText(source);
                 // Privacy fallback if the external script fails to load.
-                return source.replace(/\[游戏揭晓\]?/g, '').replace(/\[(?:游戏私聊|群私聊|游戏猜测)[:：][\s\S]*?(?:\]|$)/g, '')
+                return source.replace(/\[游戏揭晓\]?/g, '').replace(/\[(?:游戏私聊|群私聊|游戏猜测)[:：][\s\S]*/g, '')
                     .replace(/\[(?:游|游戏|游戏私|游戏私聊|游戏猜|游戏猜测|游戏揭|游戏揭晓|群|群私|群私聊)[^\]\r\n]{0,1000}$/g, '');
             }
             function paintStreamLive(text) {
@@ -8426,9 +8426,20 @@
         function processGroupInteractionMarkers(rawText, speaker, historyList, isRegeneration, isGroupFollowup, isCompleted, expectedGameSessionId, queueGameWhisper, turnEffects, queueGameReveal) {
             var text = String(rawText || '');
             if (!isGroupChat || !currentGroup || !Array.isArray(historyList)) return text;
+            // Hidden private actions must be complete, flat end-of-reply tokens.
+            // Nested brackets, line breaks and trailing public-looking text are
+            // ambiguous: discard that entire suffix BEFORE any side effect is
+            // queued. Otherwise the first ']' could prematurely end a marker and
+            // leave confidential text in the saved public chat history.
+            var privateMarker=/\\[(?:游戏私聊|群私聊|游戏猜测)[:：]/.exec(text);
+            if (privateMarker) {
+                var privateTail=text.slice(privateMarker.index);
+                if (!/^(?:\\[(?:游戏私聊|群私聊|游戏猜测)[:：][^\\[\\]\\r\\n]{1,500}\\][ \\t\\r\\n]*)+$/.test(privateTail))
+                    text=text.slice(0,privateMarker.index);
+            }
             if (!turnEffects || typeof turnEffects.afterSave !== 'function' ||
                 typeof turnEffects.registerUndo !== 'function') {
-                return text.replace(/\[(?:群关系变化|群关系互动|群投票|群接龙|群私聊|游戏私聊|游戏猜测|游戏揭晓|群动作|群聊结束)[:：]?[^\]\r\n]{0,600}\]?/g, '').replace(/\[(?:游戏私聊|群私聊|游戏猜测)[:：][\s\S]*?(?:\]|$)/g, '').trim();
+                return text.replace(/\[(?:群关系变化|群关系互动|群投票|群接龙|群私聊|游戏私聊|游戏猜测|游戏揭晓|群动作|群聊结束)[:：]?[^\]\r\n]{0,600}\]?/g, '').replace(/\[(?:游戏私聊|群私聊|游戏猜测)[:：][\s\S]*/g, '').trim();
             }
             var changedHistory = false;
             var groupHistoryRollback = [];
@@ -8452,7 +8463,7 @@
             // the group. Strip action markers rather than exposing them publicly.
             if (!isCompleted || isRegeneration || contextOnly) {
                 return text.replace(/\[(?:群关系变化|群关系互动|群投票|群接龙|群私聊|游戏私聊|游戏猜测|游戏揭晓|群动作|群聊结束)[:：]?[^\]\r\n]{0,600}\]?/g, '')
-                    .replace(/\[(?:游戏私聊|群私聊|游戏猜测)[:：][\s\S]*?(?:\]|$)/g, '').trim();
+                    .replace(/\[(?:游戏私聊|群私聊|游戏猜测)[:：][\s\S]*/g, '').trim();
             }
             var relationshipEventSeen = false;
             var queuedGovernance = Object.create(null);
@@ -8705,7 +8716,7 @@
                 return '';
             });
             // Malformed private markers are dropped, never rendered as public speech.
-            text = text.replace(/\[游戏私聊[:：][\s\S]*?(?:\]|$)/g, '');
+            text = text.replace(/\[游戏私聊[:：][\s\S]*/g, '');
             var regularPrivateMarkerSeen = false;
             text = text.replace(/\[群私聊[:：]([^:：\]]+)[:：]([^\]]{1,300})\]/g, function (marker, targetKey, privateText) {
                 // Limit ordinary private DMs to one per AI turn; an AI-produced
@@ -8885,7 +8896,7 @@
             text = window.GroupGameSessions &&
                 typeof window.GroupGameSessions.redactPublicStreamText === 'function'
                     ? window.GroupGameSessions.redactPublicStreamText(text)
-                    : text.replace(/\[(?:游戏私聊|群私聊|游戏猜测)[:：][\s\S]*?(?:\]|$)/g, '');
+                    : text.replace(/\[(?:游戏私聊|群私聊|游戏猜测)[:：][\s\S]*/g, '');
             // Votes/chains stay staged in this in-memory array until the same
             // verified save as the reply. The registered undo covers failure.
             return text;
