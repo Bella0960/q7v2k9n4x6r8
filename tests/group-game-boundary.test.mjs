@@ -294,7 +294,7 @@ test('PWA uses the updated game scripts and installs the entire feature bundle',
   const settings = load('chat/chat/group-play.html');
   const cacheVersion = Number((worker.match(/phone-app-pwa-v(\d+)/) || [])[1]) || 0;
   assert.ok(cacheVersion >= 210, 'secret-game privacy assets require PWA v209+');
-  for (const name of ['group-game-session.js?v=20261116game9',
+  for (const name of ['group-game-session.js?v=20261116game10',
     'group-memory-events.js?v=20261116gme4']) {
     assert.ok(worker.includes(name), name);
     assert.ok(detail.includes(name), name);
