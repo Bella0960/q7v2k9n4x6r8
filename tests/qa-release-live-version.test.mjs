@@ -405,7 +405,7 @@ test('QA release builds the Vite dist before navigation and full Node tests', ()
   const tasks = source.slice(taskListStart, taskListEnd);
   const build = tasks.indexOf("['npm', ['run', 'build']]");
   const navigation = tasks.indexOf("['npm', ['run', 'test:pwa:navigation']]");
-  const browserInstall = tasks.indexOf("['npx', ['playwright', 'install', 'chromium']]");
+  const browserInstall = tasks.indexOf("['npx', ['playwright', 'install', '--with-deps', 'chromium']]");
   const fullNode = tasks.indexOf("['node', ['--test']]");
   assert.ok(build >= 0 && navigation >= 0 && browserInstall >= 0 && fullNode >= 0,
     'Vite build, PWA navigation, Chromium install and full Node regression are required');
@@ -414,7 +414,9 @@ test('QA release builds the Vite dist before navigation and full Node tests', ()
   assert.ok(build < fullNode,
     'full Node tests may also consume Vite output, so build must run first');
   assert.ok(browserInstall < fullNode,
-    'full Node suite runs Playwright browser tests; Chromium must be installed first');
+    'full Node suite runs Playwright browser tests; Chromium and Linux dependencies must be installed first');
+  assert.match(tasks, /playwright', 'install', '--with-deps', 'chromium'/,
+    'browser install must include OS libraries such as libnspr4.so');
   const pwaTest = readFileSync(new URL('./pwa-navigation-cache.test.mjs', import.meta.url), 'utf8');
   assert.match(pwaTest, /read\('dist\/index\.html'\)/);
   assert.match(pwaTest, /read\('dist\/pwa-pages\.json'\)/);
