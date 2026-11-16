@@ -357,8 +357,30 @@
                     });
                 } catch (e) { missingAudioIds.push('目录无法解析'); }
             }
+            // 音乐封面与自定义背景保存在 maomao-assets；分类备份未包含该库时
+            // 不得声称这些资源已经完整打包，更不能让用户盲目恢复。
+            var missingMusicMedia = [];
+            var musicAssets = ((dbData['maomao-assets'] || {}).blobs || []);
+            var exportedMusicAssets = new Set(musicAssets.filter(function(rec) {
+                return rec && rec.assetId && typeof rec.blob === 'string' && rec.blob.length > 0;
+            }).map(function(rec) { return String(rec.assetId); }));
+            var musicCoverRefs = [];
+            if (snap.music_cover_assets_v1) {
+                try {
+                    var covers = JSON.parse(snap.music_cover_assets_v1);
+                    if (!covers || typeof covers !== 'object' || Array.isArray(covers)) throw new Error('bad covers');
+                    Object.keys(covers).forEach(function(id) {
+                        if (covers[id]) musicCoverRefs.push(String(covers[id]));
+                    });
+                } catch (e) { missingMusicMedia.push('封面配置损坏'); }
+            }
+            if (snap.music_background_asset_v1)
+                musicCoverRefs.push(snap.music_background_asset_v1);
+            musicCoverRefs.forEach(function(assetId) {
+                if (!exportedMusicAssets.has(assetId)) missingMusicMedia.push(assetId);
+            });
             var backupComplete = dbWarnings.length === 0 && allSkipped.length === 0
-                && !hasAudioMeta && missingAudioIds.length === 0;
+                && !hasAudioMeta && missingAudioIds.length === 0 && missingMusicMedia.length === 0;
             // localStorage 也没有任何数据时（纯 IndexedDB 备份）也允许导出，
             // 因为 wallpaper / books / photos 都可能只在 IndexedDB 里。
             if (!Object.keys(snap).length && !dbTotal) {
@@ -403,7 +425,8 @@
                         databasesSkipped: dbWarnings.length,
                         recordsSkipped: allSkipped.length,
                         audioMetadataOnly: hasAudioMeta,
-                        missingMusicAudio: missingAudioIds.length
+                        missingMusicAudio: missingAudioIds.length,
+                        missingMusicMedia: missingMusicMedia.length
                     },
                     ...(scope ? { scope: scope, moduleLabel: registry.get(scope).label,
                         sharedMedia: exportTargets.some(function(t) {
@@ -445,6 +468,8 @@
             if (hasAudioMeta) msg += '（本地音频元数据已包含，音频文件本身未打包）';
             if (missingAudioIds.length) msg += '（' + missingAudioIds.length
                 + ' 首本地歌曲缺少可恢复音频，备份不完整且已禁止自动恢复）';
+            if (missingMusicMedia.length) msg += '（' + missingMusicMedia.length
+                + ' 项音乐封面/背景未包含原始图片，此备份不可自动恢复）';
             if (allSkipped.length) {
                 msg += '（' + allSkipped.length + ' 项因体积超限或读取失败未包含'
                     + '：' + allSkipped.slice(0, 5).map(function (s) { return s.db + '.' + s.store + '::' + s.id; }).join('、')
@@ -1045,6 +1070,26 @@
         }
     }
 
+    function backupMissingMusicImages(obj) {
+        var data = obj && obj.data || {};
+        var imageIds = [];
+        if (data.music_cover_assets_v1) {
+            var covers;
+            try { covers = JSON.parse(data.music_cover_assets_v1); } catch (e) { return true; }
+            if (!covers || typeof covers !== 'object' || Array.isArray(covers)) return true;
+            Object.keys(covers).forEach(function(key) {
+                if (covers[key]) imageIds.push(String(covers[key]));
+            });
+        }
+        if (data.music_background_asset_v1) imageIds.push(String(data.music_background_asset_v1));
+        if (!imageIds.length) return false;
+        var records = obj.indexedDB && obj.indexedDB['maomao-assets']
+            && obj.indexedDB['maomao-assets'].blobs;
+        var available = new Set((Array.isArray(records) ? records : []).filter(function(record) {
+            return record && record.assetId && typeof record.blob === 'string' && record.blob.length > 0;
+        }).map(function(record) { return String(record.assetId); }));
+        return imageIds.some(function(id) { return !available.has(id); });
+    }
     function backupMissingMusicBytes(obj) {
         var raw = obj && obj.data && obj.data.music_local_tracks;
         if (!raw) return false;
@@ -1075,6 +1120,9 @@
             }
             if (backupMissingMusicBytes(obj)) {
                 toast('旧备份没有本地歌曲原始音频，已禁止恢复，避免覆盖现有歌曲'); return;
+            }
+            if (backupMissingMusicImages(obj)) {
+                toast('备份缺少音乐自定义封面或背景原图，已阻止恢复以保护原素材'); return;
             }
             var scope = obj.__backup.scope || '';
             if (requestedScope && scope !== requestedScope) {
