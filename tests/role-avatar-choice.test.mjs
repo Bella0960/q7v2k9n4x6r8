@@ -203,3 +203,70 @@ test('cooldown persistence failures cannot be misreported as a successful record
   vm.runInNewContext(source, { window });
   assert.equal(window.RoleAvatarChoice.recordApplied('role-A', 100000100), false);
 });
+
+
+function manualPortraitHarness() {
+  const manager = fs.readFileSync(path.join(root, 'worldbook/characters/js/characters-manager.js'), 'utf8');
+  const start = manager.indexOf('async function selectRoleAvatarFromLibrary(avatarId) {');
+  const end = manager.indexOf('\nfunction toggleRoleAvatarPairDraft(avatarId) {', start);
+  assert.ok(start >= 0 && end > start, 'character profile must have the manual avatar handler');
+  const handler = manager.slice(start, end);
+  const status = [];
+  const renders = [];
+  let resolveApply;
+  const library = {
+    find(roleId, avatarId) {
+      return roleId === 'role-A' && avatarId === 'portrait-b' ? { id: avatarId } : null;
+    },
+    applyToCharacter(roleId, avatarId, options) {
+      return new Promise(resolve => {
+        resolveApply = (result) => resolve(result);
+      });
+    }
+  };
+  const factory = new Function(
+    'window', 'setAvatarLibraryStatus', 'renderRoleProfile',
+    "let currentProfileRoleId = 'role-A';\n" + handler +
+    "\nreturn { select: selectRoleAvatarFromLibrary, switchRole(id) { currentProfileRoleId = id; } };"
+  );
+  const ctl = factory({ RoleAvatarLibrary: library },
+    (message, kind) => status.push({ message, kind }),
+    () => renders.push(true));
+  return { ...ctl, status, renders, library, get resolveApply() { return resolveApply; }, handler };
+}
+
+test('manual profile avatar switching reuses the library atomic save interface', () => {
+  const fixture = manualPortraitHarness();
+  assert.match(fixture.handler, /library\.applyToCharacter\(roleId, item\.id, \{/);
+  assert.match(fixture.handler, /isCurrent: function \(\)/);
+  assert.match(fixture.handler, /if \(String\(currentProfileRoleId \|\| ''\) !== roleId\) return/);
+  assert.ok(!fixture.handler.includes('saveRoles('));
+  assert.ok(!fixture.handler.includes('library.setActive('));
+});
+
+test('a role switch during image IO prevents a stale profile being rendered', async () => {
+  const fixture = manualPortraitHarness();
+  const pending = fixture.select('portrait-b');
+  fixture.switchRole('role-B');
+  fixture.resolveApply({ ok: true, value: { avatar: 'data:image/png;base64,irrelevant' } });
+  await pending;
+  assert.equal(fixture.renders.length, 0);
+  assert.equal(fixture.status.filter(entry => entry.kind === 'success').length, 0);
+});
+
+test('manual avatar switch displays success only after library save succeeds', async () => {
+  const success = manualPortraitHarness();
+  const saved = success.select('portrait-b');
+  success.resolveApply({ ok: true, value: { avatarAssetId: 'asset-new' } });
+  await saved;
+  assert.equal(success.renders.length, 1);
+  assert.equal(success.status.filter(entry => entry.kind === 'success').length, 1);
+
+  const failed = manualPortraitHarness();
+  const pending = failed.select('portrait-b');
+  failed.resolveApply({ ok: false, error: { code: 'STALE_SELECTION' } });
+  await pending;
+  assert.equal(failed.renders.length, 0);
+  assert.equal(failed.status.filter(entry => entry.kind === 'error').length, 1);
+  assert.match(failed.status.at(-1).message, /原头像未被覆盖/);
+});
