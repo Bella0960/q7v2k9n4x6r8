@@ -36,9 +36,10 @@ const TESTS = [
   ['npm', ['run', 'build']],
   ['npm', ['run', 'test:pwa:navigation']],
   // Full Node regression includes Playwright browser tests (group UI and gesture).
-  // Provision Chromium BEFORE they execute; otherwise a fresh Codespace fails
-  // browserType.launch with a missing chrome-headless-shell executable.
-  ['npx', ['playwright', 'install', 'chromium']],
+  // Provision Chromium AND its Linux shared libraries BEFORE browser tests.
+  // A fresh Codespace may already have chrome-headless-shell but lack
+  // libnspr4.so; plain "playwright install chromium" does not install OS deps.
+  ['npx', ['playwright', 'install', '--with-deps', 'chromium']],
   // A full Node suite catches regressions outside the narrower account/chat scripts.
   ['node', ['--test']],
   ['npm', ['run', 'test:fanwai:browser:build']]
