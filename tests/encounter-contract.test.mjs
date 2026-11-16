@@ -750,3 +750,29 @@ test('损坏的邂逅草稿不自动删除或覆盖；恢复失败后只有明�
   assert.equal(h.db.has(key),false,'用户明确点击放弃草稿才可删除');
   assert.equal(h.editor.peek().unreadable,false,'放弃后可以开始新的草稿');
 });
+
+test('手机真触摸左滑兜底仅处理水平大幅移动，不误判滚动或轻触', () => {
+  const start=appSource.indexOf('var touchSwipe=null;');
+  const end=appSource.indexOf("cardEl.addEventListener('click'",start);
+  assert.ok(start>0 && end>start,'邂逅必须保留真实触控事件兜底');
+  const events={},moves=[];
+  const cardEl={addEventListener(name,handler){events[name]=handler;}};
+  const runtime={cardEl,lock:false,current:{id:'enc_1'},drag:null,suppressDragClick:false,
+    move(direction){moves.push(direction);},Array};
+  vm.runInNewContext(appSource.slice(start,end),runtime);
+  const press=(x,y)=>events.touchstart({touches:[{identifier:1,clientX:x,clientY:y}]});
+  const release=(x,y)=>events.touchend({changedTouches:[{identifier:1,clientX:x,clientY:y}]});
+  press(210,200);release(20,206);
+  assert.deepEqual(moves,['left'],'真实水平左滑应切换人物');
+  assert.equal(runtime.suppressDragClick,true,'滑动松手不能弹出人物详情');
+  runtime.suppressDragClick=false;
+  press(210,200);release(205,340);
+  press(210,200);release(160,202);
+  assert.deepEqual(moves,['left'],'纵向滚动或短距离移动不得换卡');
+  press(210,200);events.touchcancel();
+  release(10,201);
+  assert.deepEqual(moves,['left'],'浏览器取消触摸必须清空滑动');
+  runtime.lock=true;
+  press(210,200);release(10,201);
+  assert.deepEqual(moves,['left'],'pointer 手势完成时兜底不得二次移动');
+});
