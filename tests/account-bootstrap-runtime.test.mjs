@@ -212,3 +212,33 @@ test('failed manual preflight shows an error code and never sends founder creden
   assert.equal(page.calls.filter(call => call.path === '/api/admin/bootstrap').length, 0);
   assert.equal(page.nodes.bootstrapTestConnection.disabled, false);
 });
+
+test('delegated preview still blocks founder setup unless isolated QA is explicitly enabled', async () => {
+  const page = mount(async () => result({
+    ok: true, initialized: false, configured: true,
+    identityMode: 'delegated', bootstrapAllowed: false, qaSetupAllowed: false
+  }));
+  await page.settle();
+  assert.equal(page.nodes.bootstrapForm.hidden, true);
+  assert.match(page.nodes.bootstrapStatus.textContent, /原来的管理员账号 001/);
+  assert.deepEqual(page.redirects, []);
+});
+
+test('explicit isolated QA bootstrap returns to QA sign-in rather than falsely granting admin session', async () => {
+  const status = {
+    ok: true, initialized: false, configured: true, identityMode: 'delegated',
+    bootstrapAllowed: true, qaSetupAllowed: true
+  };
+  const page = mount(async path => path.endsWith('/status') || path.endsWith('/preflight')
+    ? result(status)
+    : result({
+      ok: true, account: { role: 'super_admin', founderNumber: '001' },
+      qaSetupComplete: true, nextStep: 'qa_login'
+    }));
+  await page.settle();
+  assert.equal(page.nodes.bootstrapForm.hidden, false);
+  await page.submit();
+  assert.deepEqual(page.redirects, ['/account/index.html']);
+  assert.equal(page.calls.filter(call => call.path === '/api/admin/bootstrap').length, 1);
+  assert.equal(page.nodes.bootstrapForm.values.bootstrapSecret, '');
+});
