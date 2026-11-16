@@ -172,3 +172,10 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **执行验证**：实际更新后的引擎/页面内联 JS 在 V8 语法检查通过；场景生成、正式 ID 校验及零写入的动态运行检查通过。重跑原 UI 测试主体于 V8 兼容适配器，**8/8 PASS**（包括再遇、故事切换、显式聊天入口与删除角色后拒绝跳转）。40 个合同测试于 V8 适配器中 **27 PASS / 13 未成功适配**；后 13 项主要缺少 Node VM 全局 `console`、`URL`、`URLSearchParams`、VM 返回表达式等，并非已证实的业务失败；不能声称合同全通过。浏览器脚本与发布 gate 经移除 import/shebang 的等价语法解析 PASS。
 - **NOT VERIFIED**：完整 Node `--test`、Vite `npm run build`、Playwright Chromium、真机 Android / iOS、Cloudflare QA 部署均未实际执行；上述 V8 是逻辑模拟不等于正式验收。原 PR 保持 Draft。
 - **下一轮交接**：唯一 QA #299 当前部署结束之后，按顺序提取原 PR 最新 SHA，使用正式依赖环境运行 `npm run test:encounter`、`npm run build`、`npm run test:encounter:browser`、`npm run gate:encounter`；回执须含 `reunionNativeChat` 并对应同一 Git HEAD。用户手机验收前不得合 main 或正式发布。
+
+
+## FEATURE-ENCOUNTER-001｜2026-11-17 以物识人猜职业
+- 原 PR #297 分支继续开发，不修改 #299 或正式版。提交 b8a574825fc60f49c4a83f925ef69841db6b00cd：以物识人三职业猜测与直接揭晓，职业选项按已有世界/种族与候选 ID 稳定生成；零 API、零写入，不修改旧角色、候选、消息、记忆。
+- 更新文件：encounter/encounter-engine.js、encounter/encounter.html、tests/encounter-contract.test.mjs、tests/encounter-ui-contract.test.mjs、tests/encounter-browser.mjs、scripts/verify-encounter-release.mjs。新门禁需 objectIdentityGuess 和 encounter-object-guess-390.png。
+- 已执行：更新后的引擎/页面脚本 V8 语法及真实逻辑检查通过；全部模拟 UI 10/10 PASS；新增 Node 合同测试主体 2/2 在 V8 适配环境通过，覆盖七种世界、选项去重、真实职业、稳定 ID 和零写入。
+- NOT VERIFIED：原生 Node CLI、完整 Vite 构建、Playwright 真浏览器、Android/iPhone 真机。PR 保留 Draft；等待唯一 QA 本轮部署完成后按顺序纳入。不得据此合并 main 或发布正式环境。
