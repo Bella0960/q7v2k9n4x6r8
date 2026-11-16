@@ -92,10 +92,21 @@
             return true;
         } catch (error) { return false; }
     }
+    // Called only after the character list has been successfully saved
+    // without this role. No other role's cooldown or asset is touched.
+    function clearRole(roleId) {
+        if (!roleId) return false;
+        try {
+            global.localStorage.removeItem(storageKey(roleId));
+            return true;
+        } catch (error) { return false; }
+    }
+
     global.RoleAvatarChoice = {
         prepare: prepare,
         parseReply: parseReply,
         strip: strip,
-        recordApplied: recordApplied
+        recordApplied: recordApplied,
+        clearRole: clearRole
     };
 })(window);
