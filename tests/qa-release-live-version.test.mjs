@@ -79,7 +79,14 @@ assert.ok(smokeStart >= 0 && smokeEnd > smokeStart,
   'original QA URL HTTP smoke guard must exist');
 const smokeSource = source.slice(smokeStart, smokeEnd);
 
-function runHttpSmoke(coreInitialized, { overrides = {}, html = '<form id="loginForm"></form>' } = {}) {
+function runHttpSmoke(coreInitialized, {
+  overrides = {},
+  html = '<form id="loginForm"></form><script src="/account/account.js?v=20261116-qa1"></script><link href="/account/ivory-entry.css?v=20261116-qa1">',
+  loginJs = "subtitle.classList.toggle('qa-login-hint'",
+  loginCss = '#loginPanel>.lead.qa-login-hint',
+  bootstrapHtml = '<span id="bootstrapUsernameLabel"></span><script src="./bootstrap.js?v=20261116-qa1"></script>',
+  bootstrapJs = 'usernameField.maxLength = qaSetup ? 28 : 24'
+} = {}) {
   const calls = [];
   const status = {
     ok: true, identityMode: 'delegated', qaIdentityCore: true,
@@ -98,10 +105,18 @@ function runHttpSmoke(coreInitialized, { overrides = {}, html = '<form id="login
       if (url.endsWith('/api/admin/bootstrap/status')) {
         return { status: 200, async json() { return status; } };
       }
-      if (url.endsWith('/account/index.html')) {
-        return { status: 200, async text() { return html; } };
+      const assets = {
+        '/account/index.html': html,
+        '/account/account.js?v=20261116-qa1': loginJs,
+        '/account/ivory-entry.css?v=20261116-qa1': loginCss,
+        '/account/bootstrap.html': bootstrapHtml,
+        '/account/bootstrap.js?v=20261116-qa1': bootstrapJs
+      };
+      const path = url.slice('https://maomao-aw-qa-20261114.miamor520000.workers.dev'.length);
+      if (Object.prototype.hasOwnProperty.call(assets, path)) {
+        return { status: 200, async text() { return assets[path]; } };
       }
-      throw new Error('unexpected URL');
+      throw new Error('unexpected URL: ' + url);
     }
   });
   return { calls, promise: probe(coreInitialized) };
@@ -113,7 +128,11 @@ test('original QA URL smoke accepts first-run setup and a ready disabled setup',
     await fixture.promise;
     assert.deepEqual(fixture.calls.map(x => x.url), [
       'https://maomao-aw-qa-20261114.miamor520000.workers.dev/api/admin/bootstrap/status',
-      'https://maomao-aw-qa-20261114.miamor520000.workers.dev/account/index.html'
+      'https://maomao-aw-qa-20261114.miamor520000.workers.dev/account/index.html',
+      'https://maomao-aw-qa-20261114.miamor520000.workers.dev/account/account.js?v=20261116-qa1',
+      'https://maomao-aw-qa-20261114.miamor520000.workers.dev/account/ivory-entry.css?v=20261116-qa1',
+      'https://maomao-aw-qa-20261114.miamor520000.workers.dev/account/bootstrap.html',
+      'https://maomao-aw-qa-20261114.miamor520000.workers.dev/account/bootstrap.js?v=20261116-qa1'
     ]);
     assert.ok(fixture.calls.every(x => x.options.method === 'GET'));
     assert.ok(fixture.calls.every(x => !x.options.body && !x.options.cookie &&
@@ -135,6 +154,10 @@ test('QA URL smoke blocks a disconnected core, inconsistent setup, or missing lo
     overrides: { qaSetupAllowed: true }
   }).promise);
   await assert.rejects(runHttpSmoke(false, { html: '<html>No login form</html>' }).promise);
+  await assert.rejects(runHttpSmoke(false, { loginJs: 'stale login script' }).promise);
+  await assert.rejects(runHttpSmoke(false, { loginCss: 'stale login CSS' }).promise);
+  await assert.rejects(runHttpSmoke(false, { bootstrapHtml: 'stale setup HTML' }).promise);
+  await assert.rejects(runHttpSmoke(false, { bootstrapJs: 'stale setup script' }).promise);
 });
 
 
