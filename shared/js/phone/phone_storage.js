@@ -654,18 +654,24 @@
 
             if (appId === 'chat') {
                 var hist = _probe('chat_history_' + contactId);
-                if (hist.state === 'ok') {
-                    if (Array.isArray(hist.parsed)) {
-                        return okResult({ history: hist.parsed },
-                            { found: true, source: 'chat_history_' + contactId });
-                    }
+                // Only an absent primary permits the legacy v2 fallback. A readable
+                // but non-array primary, or an unavailable read, must fail closed.
+                if (hist.state === 'ok' && Array.isArray(hist.parsed)) {
+                    return okResult({ history: hist.parsed },
+                        { found: true, source: 'chat_history_' + contactId });
                 }
-                // 旧 key 损坏 → 直接返回 CORRUPT_DATA，不要回退到新 key 掩盖问题
-                if (hist.state === 'corrupt') {
+                if (hist.state === 'unavailable') {
+                    return failResult(ERR.DB_UNAVAILABLE, 'chat history unavailable', true);
+                }
+                if (hist.state !== 'missing') {
                     return failResult(ERR.CORRUPT_DATA,
-                        'chat_history_' + contactId + ' corrupt', false, { raw: hist.raw });
+                        'chat history primary is not a valid array', false);
                 }
+                if (!rootRes.ok) return rootRes;
                 if (bucket && bucket.chat != null) {
+                    if (!Array.isArray(bucket.chat.history)) {
+                        return failResult(ERR.CORRUPT_DATA, 'legacy chat history is not an array', false);
+                    }
                     return okResult(bucket.chat, { found: true, source: 'phone_data_v2' });
                 }
                 return failResult(ERR.NOT_FOUND, 'chat data not found for ' + contactId, false);
