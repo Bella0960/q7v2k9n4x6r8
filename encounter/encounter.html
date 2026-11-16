@@ -172,6 +172,27 @@ function finish(e){
 cardEl.addEventListener('pointerup',finish);
 cardEl.addEventListener('pointercancel',function(){if(drag){suppressDragClick=true;drag=null;snap();}});
 cardEl.addEventListener('lostpointercapture',function(){if(drag&&drag.horizontal){suppressDragClick=true;drag=null;snap();}});
+// Some mobile browsers cancel Pointer Events while negotiating the page gesture.
+// A real touchend can still finish a horizontal card swipe, never a vertical scroll.
+var touchSwipe=null;
+cardEl.addEventListener('touchstart',function(e){
+ if(lock||!current||e.touches.length!==1){touchSwipe=null;return;}
+ var finger=e.touches[0];
+ touchSwipe={id:finger.identifier,x:finger.clientX,y:finger.clientY};
+},{passive:true});
+cardEl.addEventListener('touchend',function(e){
+ if(!touchSwipe)return;
+ var initial=touchSwipe;touchSwipe=null;
+ if(lock||!current)return; // Pointer Events have already completed this swipe.
+ var finger=Array.from(e.changedTouches).find(function(t){return t.identifier===initial.id;});
+ if(!finger)return;
+ var dx=finger.clientX-initial.x,dy=finger.clientY-initial.y;
+ if(Math.abs(dx)<=95||Math.abs(dx)<=Math.abs(dy)*1.3)return;
+ suppressDragClick=true;
+ drag=null;
+ move(dx>0?'right':'left');
+},{passive:true});
+cardEl.addEventListener('touchcancel',function(){touchSwipe=null;},{passive:true});
 cardEl.addEventListener('click',function(e){
  if(lock||!current||drag||suppressDragClick){suppressDragClick=false;e.preventDefault();return;}
  openDetail();
