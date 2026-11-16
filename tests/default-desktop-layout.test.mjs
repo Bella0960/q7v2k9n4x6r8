@@ -26,8 +26,16 @@ test('default home has the clock, duo avatars, photo wall and app quadrants in t
     'app_wallet', 'app_music', 'app_beauty', 'app_theme_store'
   ]);
   assert.equal(pages.length, 3);
+  assert.equal(pages[1][0], 'app_characters');
+  assert.equal(pages[1][1], 'app_encounter', '邂逅必须出现在角色库旁');
   assert.match(index, /v:\s*14,/);
   assert.match(index, /var LS_KEY = 'ds_layout_v14'/);
+});
+
+test('encounter entry preserves removed apps and saved desktop layout', () => {
+  assert.match(index, /data-href="encounter\/encounter\.html" data-drag="app_encounter"/);
+  assert.match(index, /function addEncounterShortcutToExistingLayouts\(\)/);
+  assert.match(index, /currentLayout\.removed \|\| \[\]/);
 });
 
 test('obsolete layout keys are cleared and the widget manager uses the current layout key', () => {

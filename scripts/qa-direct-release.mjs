@@ -32,6 +32,7 @@ const QA_SETUP_CLOSED = 'disabled';
 const TESTS = [
   ['npm', ['ci', '--no-audit', '--no-fund']],
   ['npm', ['run', 'test:account:ui-candidate']],
+  ['node', ['scripts/record-encounter-tests.mjs', 'account']],
   ['npm', ['run', 'test:integration:account-fanwai']],
   ['npm', ['run', 'test:tutorial']],
   ['npm', ['run', 'test:chat:contract']],
@@ -39,6 +40,7 @@ const TESTS = [
   // The PWA navigation suite reads dist/index.html and dist/pwa-pages.json.
   // Build first so this works on a clean checkout, not only after an older build.
   ['npm', ['run', 'build']],
+  ['npm', ['run', 'test:encounter']],
   ['npm', ['run', 'test:pwa:navigation']],
   // Full Node regression includes Playwright browser tests (group UI and gesture).
   // Provision Chromium AND its Linux shared libraries BEFORE browser tests.
@@ -49,6 +51,8 @@ const TESTS = [
   ['node', ['tests/music-mobile-browser.mjs']],
   // A full Node suite catches regressions outside the narrower account/chat scripts.
   ['node', ['--test']],
+  ['npm', ['run', 'test:encounter:browser']],
+  ['npm', ['run', 'gate:encounter']],
   ['npm', ['run', 'test:fanwai:browser:build']]
 ];
 
