@@ -28,7 +28,7 @@ Browser storage is scoped to the origin, browser profile, and device. Changing d
 | moments, forum_posts, settings and app-specific keys | Social feed, forum and application data | Some image-bearing structures may still add substantial strings |
 | home_custom_wallpaper and other legacy keys | Legacy wallpaper/settings compatibility | Wallpaper store can fall back to legacy localStorage |
 | home_icon_presets_v1 / home_icon_active_preset_v1 | Saved icon-set metadata and currently selected preset ID | Icon image copies are stored separately in the shared wallpapers IndexedDB store |
-| music_local_tracks | Local music metadata | Audio Blob itself is in IndexedDB, metadata remains in localStorage |
+| music_local_tracks | Local music metadata, optional `hidden:true` for recoverable removal from library | Audio Blob remains in IndexedDB; rename/hidden updates only metadata and preserve original track IDs, cover, lyrics, favorites and playlist references. Old rows without `hidden` remain visible. |
 | music_cover_assets_v1 / music_background_asset_v1 | Music song-cover and page-background asset ID references | Binary data in existing `maomao-assets` media repository; refs are music-specific, no DataURL in localStorage |
 | music_lyrics_v1 / music_playlists_v1 | LRC/TXT lyric text & timings, named playlist track IDs | Local music preferences, no copied audio; old local track IDs preserved |
 | music_state (optional playlistName) | Existing playback ID/time/playing fields plus optional active playlist name | Backward-compatible extension in PR #303; validates referenced playlist and track when reopened; old records still open in library mode; no audio duplication or migration of IDs |
