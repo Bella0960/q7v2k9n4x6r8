@@ -6691,6 +6691,9 @@
                         var replySaved = saveMessages(historyList);
                         var replySaveFailed = !replySaved;
                         var avatarRoleId = aliasRoleId || currentCharacter.id;
+                        // Do not switch twice in one reply if AI sends several new
+                        // avatar candidates and also returns an old-library choice.
+                        var avatarChangedFromNewCandidate = false;
                         if (replySaved && !isGroupChat && window.RoleAvatarLibrary &&
                             typeof window.RoleAvatarLibrary.addAsset === 'function') {
                             for (var avatarPairIndex = 0; avatarPairIndex < avatarPairs.length; avatarPairIndex++) {
@@ -6723,7 +6726,8 @@
                                 if (candidateResult && candidateResult.ok) {
                                     var changeRequested = window.ChatImageVision.requestsAvatarChange &&
                                         window.ChatImageVision.requestsAvatarChange(text);
-                                    if (changeRequested && window.RoleAvatarLibrary.applyToCharacter) {
+                                    if (changeRequested && !avatarChangedFromNewCandidate &&
+                                        window.RoleAvatarLibrary.applyToCharacter) {
                                         var avatarApplied = await window.RoleAvatarLibrary.applyToCharacter(
                                             avatarRoleId, candidateResult.value.id, {
                                                 isCurrent: function () {
@@ -6732,13 +6736,19 @@
                                             }
                                         );
                                         if (avatarApplied && avatarApplied.ok) {
-                                            currentCharacter.avatar = avatarApplied.value.avatar;
-                                            currentCharacter.avatarAssetId = avatarApplied.value.avatarAssetId;
-                                            if (chatHeaderAvatar) {
-                                                var updatedAvatarImage = document.createElement('img');
-                                                updatedAvatarImage.src = avatarApplied.value.avatar;
-                                                updatedAvatarImage.alt = '';
-                                                chatHeaderAvatar.replaceChildren(updatedAvatarImage);
+                                            avatarChangedFromNewCandidate = true;
+                                            // Re-read the visible conversation after media IO.
+                                            // Another chat opened mid-flight must never show
+                                            // this role's image in its own header.
+                                            if (String(aliasRoleId || currentCharacter.id) === String(avatarRoleId)) {
+                                                currentCharacter.avatar = avatarApplied.value.avatar;
+                                                currentCharacter.avatarAssetId = avatarApplied.value.avatarAssetId;
+                                                if (chatHeaderAvatar) {
+                                                    var updatedAvatarImage = document.createElement('img');
+                                                    updatedAvatarImage.src = avatarApplied.value.avatar;
+                                                    updatedAvatarImage.alt = '';
+                                                    chatHeaderAvatar.replaceChildren(updatedAvatarImage);
+                                                }
                                             }
                                             if (window.RoleAvatarChoice && typeof window.RoleAvatarChoice.recordApplied === 'function') {
                                                 window.RoleAvatarChoice.recordApplied(avatarRoleId);
@@ -6759,6 +6769,7 @@
                         }
                         var currentAvatarChoiceRole = getRoleById(avatarRoleId);
                         if (replySaved && replyMessages.some(function (msg) { return !!String(msg.text || '').trim(); }) &&
+                            !avatarChangedFromNewCandidate &&
                             !isGroupChat && parsedRoleAvatarChoice.avatarId &&
                             currentAvatarChoiceRole && currentAvatarChoiceRole.avatarAutonomyEnabled !== false &&
                             window.RoleAvatarLibrary && typeof window.RoleAvatarLibrary.applyToCharacter === 'function') {
