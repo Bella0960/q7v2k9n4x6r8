@@ -968,9 +968,15 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
         const initialized = delegated ? authority.initialized : store.hasMaoSuperAdminAccount();
         const qaSetup = delegated && qaIsolatedSetupEnabled(env);
         const qaCoreFounder = !delegated ? isolatedQaAuthorityFounderId(env) : null;
+        // Once the one-time QA setup flag is disabled, the isolated core is
+        // still configured for login. Never misreport it as missing secrets.
+        // Legacy gateway previews continue to keep bootstrap configured=false.
+        const qaCoreReady = delegated && usesExistingAccountAuthority(env) &&
+          env.MAO_QA_AUTHORITY_WORKER === 'maomao-identity-core' &&
+          authority.connected && authority.configured;
         return ok({
           initialized,
-          configured: qaSetup ? authority.configured : !delegated &&
+          configured: delegated ? Boolean(qaCoreReady) :
             String(env.MAO_SUPER_ADMIN_BOOTSTRAP_SECRET || '').length >= 32 &&
             String(env.DEVICE_SECRET_PEPPER || '').length >= 32,
           identityMode: delegated ? 'delegated' : 'local',
