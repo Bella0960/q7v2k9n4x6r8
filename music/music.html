@@ -1771,8 +1771,11 @@
       delete covers[t.id];
       musicWriteMap(MUSIC_COVERS_KEY, covers);
       await musicApplyCurrentCover();
-      if (oldAssetId)
+      if (oldAssetId) {
+        musicForgetCoverUrl(oldAssetId);
         musicReleaseOldAsset(oldAssetId, 'music-cover', t.id).catch(function () {});
+      }
+      renderRecent(); renderSearch(tracks); renderFav();
       toast('已恢复浅灰封面');
     } catch (err) { toast('恢复失败，现有封面已保留：' + err.message); }
   }
