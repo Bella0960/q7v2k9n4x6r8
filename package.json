@@ -48,7 +48,7 @@
     "test:chat:image-vision": "node --test tests/chat-image-vision.test.mjs",
     "postbuild": "node --test tests/production-assets-isolation.test.mjs",
     "test:account:ui-candidate": "node --test tests/admin-center-ui.test.mjs tests/account-bootstrap-runtime.test.mjs tests/account-password-kdf.test.mjs tests/account-session-expiry.test.mjs tests/worker-page-auth-runtime.test.mjs tests/account-storage-isolation.test.mjs && npm run test:account:release-gate && npm run test:account:registration-persistence",
-    "test:account:release-gate": "node --test tests/account-cutover-guard.test.mjs",
+    "test:account:release-gate": "node --test tests/account-cutover-guard.test.mjs tests/account-identity-bridge-probe.test.mjs",
     "test:account:registration-persistence": "node --test tests/account-registration-persistence.test.mjs",
     "test:chat:fanwai": "node --test tests/chat-fanwai.test.mjs tests/chat-fanwai-ui.test.mjs tests/chat-fanwai-extension.test.mjs tests/phone-api-abort.test.mjs",
     "test:integration:account-fanwai": "node --test tests/account-storage-isolation.test.mjs tests/worker-page-auth-runtime.test.mjs tests/chat-fanwai.test.mjs tests/chat-fanwai-ui.test.mjs tests/chat-fanwai-extension.test.mjs tests/phone-api-abort.test.mjs tests/release-account-assets-gate.test.mjs tests/account-fanwai-pwa-runtime.test.mjs tests/sw-navigation-cache-lifecycle.test.mjs",
