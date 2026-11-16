@@ -10,7 +10,7 @@ const mediaRepositorySource = fs.readFileSync(
 );
 
 function createLibrary(seed, options = {}) {
-  const optionKeys = ['failWrites', 'failMedia', 'failAddRefFor', 'failRemoveRefFor', 'failRemoveAssetFor', 'failListByOwner', 'retainAssets', 'deferPutBlob', 'deferGetAssetFor', 'failChatPairWrite'];
+  const optionKeys = ['failWrites', 'failMedia', 'failAddRefFor', 'failRemoveRefFor', 'failRemoveAssetFor', 'failListByOwner', 'retainAssets', 'deferPutBlob', 'deferGetAssetFor', 'failChatPairWrite', 'failChatPairRemove'];
   if (seed && Object.keys(seed).some(key => optionKeys.includes(key)) && !Object.keys(options).length) {
     options = seed;
     seed = {};
@@ -39,7 +39,10 @@ function createLibrary(seed, options = {}) {
       values.set(key, String(value));
     },
     removeItem(key) {
-      if (options.failWrites) throw new Error('storage quota');
+      if (options.failWrites ||
+        (options.failChatPairRemove && key.startsWith('maomao_chat_pair_user_avatar_v1_'))) {
+        throw new Error('storage quota');
+      }
       values.delete(key);
     }
   };
@@ -1252,21 +1255,85 @@ test('pair assignment rejects stale or missing role and does not cross role boun
   assert.equal(api.getChatPairUserSelection('role-a'), null);
 });
 
-test('unlinking or swapping a pair invalidates its old chat user assignment', async () => {
-  const { api } = createLibrary({
+test('swapping a pair keeps the applied chat user avatar until re-application, unlink does not resurrect it', async () => {
+  const { api, values } = createLibrary({
     ai_custom_characters: JSON.stringify([{ id: 'role-a', avatar: 'old' }])
   });
   const a = await api.add('role-a', 'data:image/jpeg;base64,PAIR_A');
   const b = await api.add('role-a', 'data:image/jpeg;base64,PAIR_B');
   const pair = api.linkPair('role-a', a.value.id, b.value.id);
   assert.equal((await api.applyPairToChat('role-a', pair.value.id)).ok, true);
-  assert.ok(api.getChatPairUserSelection('role-a'));
+  assert.equal(api.getChatPairUserSelection('role-a').assetId, b.value.assetId);
+  const savedSelectionKey = 'maomao_chat_pair_user_avatar_v1_role-a';
+  const previousAssignment = values.get(savedSelectionKey);
+
   assert.equal(api.swapPair('role-a', pair.value.id).ok, true);
-  assert.equal(api.getChatPairUserSelection('role-a'), null);
+  assert.equal(api.getChatPairUserSelection('role-a').assetId, b.value.assetId,
+    'changing A/B order cannot silently replace a chat user avatar');
+  assert.equal(values.get(savedSelectionKey), previousAssignment);
   assert.equal((await api.applyPairToChat('role-a', pair.value.id)).ok, true);
-  assert.equal(api.getChatPairUserSelection('role-a').assetId, a.value.assetId);
-  assert.equal(api.unlinkPair('role-a', pair.value.id).ok, true);
+  assert.equal(api.getChatPairUserSelection('role-a').assetId, a.value.assetId,
+    'reapplying the swapped pair intentionally selects the new B portrait');
+
+  const unlinked = api.unlinkPair('role-a', pair.value.id);
+  assert.equal(unlinked.ok, true);
+  assert.equal(unlinked.meta.chatSelectionCleared, true);
   assert.equal(api.getChatPairUserSelection('role-a'), null);
+  assert.equal(values.has(savedSelectionKey), false, 'unlink removes old chat-scoped selection metadata');
+  assert.equal(api.linkPair('role-a', a.value.id, b.value.id).ok, true);
+  assert.equal(api.getChatPairUserSelection('role-a'), null,
+    're-linking the same deterministic pair ID must not revive previous selection');
+});
+
+test('unlink never removes another role or another pair chat assignment', async () => {
+  const { api, values } = createLibrary({
+    ai_custom_characters: JSON.stringify([
+      { id: 'role-a', avatar: 'old-a' }, { id: 'role-b', avatar: 'old-b' }
+    ])
+  });
+  const a = await api.add('role-a', 'data:image/jpeg;base64,AVATAR_A');
+  const b = await api.add('role-a', 'data:image/jpeg;base64,AVATAR_B');
+  const c = await api.add('role-a', 'data:image/jpeg;base64,AVATAR_C');
+  const d = await api.add('role-a', 'data:image/jpeg;base64,AVATAR_D');
+  const e = await api.add('role-b', 'data:image/jpeg;base64,AVATAR_E');
+  const f = await api.add('role-b', 'data:image/jpeg;base64,AVATAR_F');
+  const first = api.linkPair('role-a', a.value.id, b.value.id);
+  const second = api.linkPair('role-a', c.value.id, d.value.id);
+  const otherRole = api.linkPair('role-b', e.value.id, f.value.id);
+  assert.equal((await api.applyPairToChat('role-a', first.value.id)).ok, true);
+  assert.equal((await api.applyPairToChat('role-b', otherRole.value.id)).ok, true);
+  const beforeOther = values.get('maomao_chat_pair_user_avatar_v1_role-b');
+  const beforeActive = api.getActive('role-a').id;
+  const unlinked = api.unlinkPair('role-a', second.value.id);
+  assert.equal(unlinked.ok, true);
+  assert.equal(unlinked.meta.chatSelectionCleared, false);
+  assert.equal(api.getChatPairUserSelection('role-a').assetId, b.value.assetId);
+  assert.equal(api.getActive('role-a').id, beforeActive);
+  assert.equal(values.get('maomao_chat_pair_user_avatar_v1_role-b'), beforeOther);
+  assert.equal(api.getChatPairUserSelection('role-b').assetId, f.value.assetId);
+});
+
+test('failed chat-scoped deletion rolls back pair unlink without losing images or selection', async () => {
+  const options = {};
+  const { api, values, assets } = createLibrary({
+    ai_custom_characters: JSON.stringify([{ id: 'role-a', avatar: 'old' }])
+  }, options);
+  const a = await api.add('role-a', 'data:image/jpeg;base64,AVATAR_A');
+  const b = await api.add('role-a', 'data:image/jpeg;base64,AVATAR_B');
+  const pair = api.linkPair('role-a', a.value.id, b.value.id);
+  assert.equal((await api.applyPairToChat('role-a', pair.value.id)).ok, true);
+  const beforeIndex = values.get(api._storageKey('role-a'));
+  const beforeSelection = values.get('maomao_chat_pair_user_avatar_v1_role-a');
+  const count = assets.size;
+  options.failChatPairRemove = true;
+  const failed = api.unlinkPair('role-a', pair.value.id);
+  assert.equal(failed.ok, false);
+  assert.equal(failed.error.code, 'STORAGE_FAILED');
+  assert.equal(values.get(api._storageKey('role-a')), beforeIndex);
+  assert.equal(values.get('maomao_chat_pair_user_avatar_v1_role-a'), beforeSelection);
+  assert.equal(api.getPairs('role-a').length, 1);
+  assert.equal(api.getChatPairUserSelection('role-a').assetId, b.value.assetId);
+  assert.equal(assets.size, count);
 });
 
 test('paired gallery and chat use role-scoped user avatar, never rewrite global myProfile', () => {
