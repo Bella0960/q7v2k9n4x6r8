@@ -178,7 +178,7 @@ test('付费 AI 人设草稿写入失败必须返回失败，不能误报已经�
   const status=[];
   const result=vm.runInNewContext(source+';persistEditorDraft(true)',
     {
-      currentDraftKey:'maomao_character_draft_v1:new',editorOriginalState:null,
+      currentDraftKey:'maomao_character_draft_v1:new',unreadableDraftKey:'',editorOriginalState:null,
       captureEditorState:()=>({name:'保留生成的角色',persona:'已经支付并得到返回值'}),
       editorStatesEqual:(a,b)=>JSON.stringify(a)===JSON.stringify(b),
       localStorage:{setItem(){throw new Error('QuotaExceededError');}},
