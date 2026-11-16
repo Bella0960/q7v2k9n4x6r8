@@ -229,10 +229,12 @@ test('已相识人物支持再次相遇的三条分支，主动选择才进入�
   assert.equal(reopen.length,1,'已相识只应列出一位符合来源的角色');
   reopen[0].fire('click');
   assert.match(sheet.innerHTML,/再次相遇/);
-  assert.match(sheet.innerHTML,/旧书/);
+  assert.match(sheet.innerHTML,/档案员/,'默认先展示日常偶遇');
   const options=sheet.querySelectorAll('[data-reunion-scene]');
   assert.equal(options.length,3);
-  options[2].fire('click');
+  options[1].fire('click');
+  assert.match(sheet.innerHTML,/旧书/,'明确选择旧物线索后展示人物物件');
+  sheet.querySelectorAll('[data-reunion-scene]')[2].fire('click');
   assert.match(sheet.innerHTML,/命运回声/);
   assert.match(sheet.innerHTML,/寻找旧友/);
   assert.match(sheet.innerHTML,/aria-pressed="true">命运回声/);
