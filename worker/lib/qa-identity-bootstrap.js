@@ -89,8 +89,9 @@ export async function initializeIsolatedQaAuthority({ env = {}, store, request }
     throw new ApiError(409, 'QA_AUTHORITY_NOT_EMPTY_OR_NOT_READY',
       '独立 QA 身份库未通过空库和安全配置校验，已阻止初始化');
   }
-  // No browser cookie is forwarded; the core creates its own server-side
-  // session during bootstrap, but the browser must separately log in to QA.
+  // Isolated QA bootstrap returns only the founder identity: it creates no
+  // extra authority session and never exposes a cookie to the QA browser.
+  // The owner explicitly logs in with QA-only credentials afterward.
   let response;
   try {
     response = await authority.fetch(new Request(INTERNAL_ORIGIN + '/api/admin/bootstrap', {
