@@ -355,7 +355,20 @@
     try {
       const status = await api('/api/admin/bootstrap/status');
       delegatedIdentity = status.identityMode === 'delegated';
-      link.hidden = delegatedIdentity || status.bootstrapAllowed === false || Boolean(status.initialized);
+      // Initializing an empty QA authority is allowed ONLY when the server
+      // confirms the isolated core, exact one-time setup mode, and readiness.
+      // Once the founder exists, this link disappears even if setup is still on.
+      const canQaSetup = delegatedIdentity &&
+        status.qaIdentityCore === true &&
+        status.qaSetupAllowed === true &&
+        status.bootstrapAllowed === true &&
+        status.identityAuthorityConnected === true &&
+        status.configured === true &&
+        status.initialized === false;
+      const canLocalSetup = !delegatedIdentity &&
+        status.bootstrapAllowed !== false && status.initialized === false;
+      link.hidden = !(canQaSetup || canLocalSetup);
+      link.textContent = canQaSetup ? '设置 QA 独立账号密码' : '创作者首次初始化';
       if (delegatedIdentity) {
         document.querySelectorAll('[data-show="registerPanel"]').forEach(button => { button.hidden = true; });
         const subtitle = byId('loginPanel')?.querySelector('.lead');
@@ -371,9 +384,11 @@
           });
         }
         if (unavailable) {
-          setError('loginError', status.qaIdentityCore === true
-            ? 'QA 独立身份服务尚未就绪。请先完成 QA 专用初始化，不要填写正式版密码或重复注册。'
-            : '统一身份验证尚未接通。本测试版不会要求你重新注册，请暂时不要输入管理员密码。');
+          setError('loginError', canQaSetup
+            ? 'QA 独立身份服务已就绪。请先点击「设置 QA 独立账号密码」完成一次性初始化，不要使用正式版密码。'
+            : status.qaIdentityCore === true
+              ? 'QA 独立身份服务尚未就绪，请勿输入正式版密码或重复注册。'
+              : '统一身份验证尚未接通。本测试版不会要求你重新注册，请暂时不要输入管理员密码。');
         }
       }
     } catch {
