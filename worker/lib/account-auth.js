@@ -6,7 +6,7 @@ import {
   assertTrustedIdentityIssuerRequest, probeExistingIdentityAuthority,
   usesExistingAccountAuthority
 } from './identity-bridge.js';
-import { qaIsolatedSetupEnabled, resolveQaAuthorityFounderId, initializeIsolatedQaAuthority } from './qa-identity-bootstrap.js';
+import { qaIsolatedSetupEnabled, isolatedQaAuthorityFounderId, resolveQaAuthorityFounderId, initializeIsolatedQaAuthority } from './qa-identity-bootstrap.js';
 
 const SESSION_COOKIE = 'MAO_SESSION';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -960,6 +960,7 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
           : null;
         const initialized = delegated ? authority.initialized : store.hasMaoSuperAdminAccount();
         const qaSetup = delegated && qaIsolatedSetupEnabled(env);
+        const qaCoreFounder = !delegated ? isolatedQaAuthorityFounderId(env) : null;
         return ok({
           initialized,
           configured: qaSetup ? authority.configured : !delegated &&
@@ -968,6 +969,8 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
           identityMode: delegated ? 'delegated' : 'local',
           bootstrapAllowed: !delegated || qaSetup,
           qaSetupAllowed: qaSetup,
+          qaIsolatedAuthority: !!qaCoreFounder,
+          qaExpectedFounderId: qaCoreFounder || undefined,
           identityAuthorityConnected: delegated ? authority.connected : undefined,
           identityAuthorityInitialized: delegated ? authority.initialized : undefined,
           signInReady: !delegated || (
