@@ -423,6 +423,19 @@
   .section-head .see-all { color: var(--music-muted); }
   .music-import-link { padding: 7px 0 7px 12px; background: transparent; border: 0; color: #85858e; font: inherit; font-size: 12px; cursor: pointer; }
   .music-import-link:focus-visible { outline: 2px solid #888890; outline-offset: 3px; }
+  /* 全局仅在操作后显示的轻量提示，不遮挡播放控制或操作菜单。 */
+  .music-toast {
+    position: absolute; left: 18px; right: 18px;
+    bottom: calc(29px + env(safe-area-inset-bottom, 0px));
+    z-index: 230; pointer-events: none; opacity: 0;
+    transform: translateY(7px);
+    transition: opacity .18s ease, transform .18s ease;
+    background: rgba(40,40,44,.92); color: #fff;
+    border-radius: 10px; padding: 11px 14px;
+    font-size: 12px; font-weight: 400; line-height: 1.6;
+    text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,.06);
+  }
+  .music-toast.show { opacity: 1; transform: translateY(0); }
   .music-extra-action { display:block; width:100%; text-align:left; background:transparent;
     border:0; border-top:1px solid #f0f0f2; color:#686871; padding:10px 8px;
     font-size:12px; font-family:inherit; cursor:pointer; }
@@ -1029,6 +1042,30 @@
   let currentCoverUrl = null;
   let coverRevision = 0;
   let playbackRevision = 0;
+  let musicToastTimer = null;
+  const musicWarnedStorage = new Set();
+  let musicRecentReadError = null;
+  let musicFavReadError = null;
+  function toast(message) {
+    var el = document.getElementById('musicToast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'musicToast';
+      el.className = 'music-toast';
+      el.setAttribute('role', 'status');
+      el.setAttribute('aria-live', 'polite');
+      (document.querySelector('.phone') || document.body).appendChild(el);
+    }
+    el.textContent = String(message == null ? '' : message);
+    el.classList.add('show');
+    if (musicToastTimer) clearTimeout(musicToastTimer);
+    musicToastTimer = setTimeout(function() { el.classList.remove('show'); }, 2600);
+  }
+  function musicWarnOnce(key, message) {
+    if (musicWarnedStorage.has(key)) return;
+    musicWarnedStorage.add(key);
+    toast(message);
+  }
   function musicSafeText(value) {
     return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
       return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
@@ -1305,43 +1342,52 @@
     } catch (e) { /* 保留原有歌词，禁止覆盖损坏的导入目录 */ }
   }
   // 读取并升级"最近播放"——旧格式是数字下标，新格式是 id 字符串
-  function readRecentIds() {
+  function musicReadIdList(key, kind) {
     try {
-      var raw = JSON.parse(localStorage.getItem('music_recent') || '[]');
-      if (!Array.isArray(raw)) return [];
+      var raw = JSON.parse(localStorage.getItem(key) || '[]');
+      if (!Array.isArray(raw)) throw new Error('music ids not an array');
       var upgraded = false;
-      var ids = raw.map(function (v) {
-        if (typeof v === 'number') {
-          upgraded = true;
-          return 'demo_' + (v + 1);
-        }
+      var ids = raw.map(function(v) {
+        if (typeof v === 'number') { upgraded = true; return 'demo_' + (v + 1); }
         return String(v);
       });
-      if (upgraded) localStorage.setItem('music_recent', JSON.stringify(ids));
+      if (upgraded) {
+        try {
+          var upgradedJson = JSON.stringify(ids);
+          localStorage.setItem(key, upgradedJson);
+          if (localStorage.getItem(key) !== upgradedJson) throw new Error('upgrade verification failed');
+        } catch (err) { musicWarnOnce('music-'+kind+'-upgrade','原有'+kind+'仍可读取，但旧格式升级未保存'); }
+      }
       return ids;
-    } catch (e) { return []; }
+    } catch (err) {
+      if (key === 'music_recent') musicRecentReadError = err;
+      else musicFavReadError = err;
+      musicWarnOnce('music-'+kind+'-read',kind+'记录读取异常，已禁止覆盖原数据');
+      return [];
+    }
   }
-  function readFavIds() {
+  function readRecentIds() { return musicReadIdList('music_recent', '最近播放'); }
+  function readFavIds() { return musicReadIdList('music_fav_list', '收藏'); }
+  function musicSaveIdList(key, ids, oldError, kind) {
+    if (oldError) {
+      musicWarnOnce('music-'+kind+'-preserve',kind+'记录异常，未覆盖原数据');
+      return false;
+    }
     try {
-      var raw = JSON.parse(localStorage.getItem('music_fav_list') || '[]');
-      if (!Array.isArray(raw)) return [];
-      var upgraded = false;
-      var ids = raw.map(function (v) {
-        if (typeof v === 'number') {
-          upgraded = true;
-          return 'demo_' + (v + 1);
-        }
-        return String(v);
-      });
-      if (upgraded) localStorage.setItem('music_fav_list', JSON.stringify(ids));
-      return ids;
-    } catch (e) { return []; }
+      var json = JSON.stringify(ids || []);
+      localStorage.setItem(key, json);
+      if (localStorage.getItem(key) !== json) throw new Error('readback mismatch');
+      return true;
+    } catch (err) {
+      musicWarnOnce('music-'+kind+'-write',kind+'保存失败，请检查本机存储空间');
+      return false;
+    }
   }
   function saveRecentIds(ids) {
-    try { localStorage.setItem('music_recent', JSON.stringify(ids || [])); } catch (e) {}
+    return musicSaveIdList('music_recent', ids, musicRecentReadError, '最近播放');
   }
   function saveFavIds(ids) {
-    try { localStorage.setItem('music_fav_list', JSON.stringify(ids || [])); } catch (e) {}
+    return musicSaveIdList('music_fav_list', ids, musicFavReadError, '收藏');
   }
   function removeTrackFromRecent(id) {
     saveRecentIds(readRecentIds().filter(function (x) { return x !== id; }));
@@ -1509,7 +1555,8 @@
     saveRecentIds(recent);
     // 更新播放计数
     var played = parseInt(localStorage.getItem('music_played_count') || '0', 10) + 1;
-    localStorage.setItem('music_played_count', String(played));
+    try { localStorage.setItem('music_played_count', String(played)); }
+    catch (err) { musicWarnOnce('music-played-count','播放已开始，播放次数暂未保存'); }
     // 保存断点
     saveState();
     showNP();
@@ -1675,20 +1722,15 @@
     var currentT = tracks[currentIdx];
     if (!currentT) return;
     var favs = readFavIds();
-    var newState = !isFav(currentT.id);
+    var newState = favs.indexOf(currentT.id) === -1;
+    var next = newState ? favs.concat([currentT.id])
+      : favs.filter(function(x) { return x !== currentT.id; });
+    // 保存失败时不改变心形状态，避免用户以为已经成功收藏。
+    if (!saveFavIds(next)) { updateHeartIcon(); return; }
     window.isHeart = newState;
-    var p = document.querySelector('#heartIcon path');
-    if (newState) {
-      p.setAttribute('fill', '#000');
-      p.setAttribute('stroke', '#000');
-      if (favs.indexOf(currentT.id) === -1) favs.push(currentT.id);
-    } else {
-      p.setAttribute('fill', 'none');
-      p.setAttribute('stroke', '#ccc');
-      favs = favs.filter(function (x) { return x !== currentT.id; });
-    }
-    saveFavIds(favs);
-    localStorage.setItem('music_fav_count', String(favs.length));
+    updateHeartIcon();
+    try { localStorage.setItem('music_fav_count', String(next.length)); }
+    catch (err) { musicWarnOnce('music-fav-count','收藏已保存，但统计更新失败'); }
     var btn = document.getElementById('btnHeart');
     btn.style.transform = 'scale(1.2)';
     setTimeout(function () { btn.style.transform = ''; }, 200);
@@ -2064,8 +2106,7 @@
   function openProfile() {
     renderProfile();
     document.getElementById('psTracks').textContent = tracks.length;
-    var fav = parseInt(localStorage.getItem('music_fav_count') || '0', 10);
-    document.getElementById('psFav').textContent = fav;
+    document.getElementById('psFav').textContent = readFavIds().length;
     var played = parseInt(localStorage.getItem('music_played_count') || '0', 10);
     document.getElementById('psPlayed').textContent = played;
     document.getElementById('profileMask').classList.add('show');
@@ -2150,14 +2191,23 @@
   // ===== 断点续播 =====
   function saveState() {
     try {
+      var oldState = localStorage.getItem('music_state');
+      if (oldState) JSON.parse(oldState); // 损坏的旧播放进度不准静默覆盖
       var currentT = tracks[currentIdx];
-      localStorage.setItem('music_state', JSON.stringify({
+      var payload = JSON.stringify({
         id: currentT ? currentT.id : null,
         idx: currentIdx,
         time: window.audio.currentTime || 0,
         playing: playing
-      }));
-    } catch(e) {}
+      });
+      localStorage.setItem('music_state', payload);
+      if (localStorage.getItem('music_state') !== payload)
+        throw new Error('playback progress verification failed');
+      return true;
+    } catch(err) {
+      musicWarnOnce('music-progress-save','音乐仍可播放，但进度未保存；请检查存储空间或旧数据');
+      return false;
+    }
   }
   function loadState() {
     try {
