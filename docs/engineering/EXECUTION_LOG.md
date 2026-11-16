@@ -171,3 +171,11 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **证据严格区分**：这是原测试主体经隔离 V8 shim 执行，不是整仓 Node.js `npm run test:group:governance`、不是 `npm ci`、Vite、Playwright 或 Android/iPhone 真机。前期单项 V8 shim 的 `console` / `load` 桥缺失曾造成模拟测试错误，修正执行夹具后原七套均通过；不能将夹具错误当作生产功能失败。
 - **仍未关门**：QA 唯一整合 PR #299 目前尚未装入 #298 群游戏源码，且与其代码历史分叉；同名 `chat-detail.html` / `sw.js` 有账号安全与其他并行成果，禁止无脑整页替换。没有完整 Codespaces checkout 和 QA 发布令牌的本会话，不能自行宣称完成原生 Node / Vite / Chromium / 真机/现网。真人云端群、云端离线主动群聊、钱包群红包的服务端跨设备事务、其他未实现游戏均不属于本批可宣布交付的已实现功能。
 - **严格放行路径**：唯一 QA 集成负责人从 #298 取最新源码，仅对 #299 实际增量合并，先执行 `npm run test:group:governance`、`npm run test:group:ui`、`npm run test:group:invite-e2e`、`npm run test:chat:contract`、`npm run build`，然后完整 `npm run qa:release:check` 与 375/390/430 Chromium。群管理权限越权、群主/角色主持、私聊秘密隔离、保存失败、旧群历史、游戏结果重复刷新、PWA 缓存及账号隔离通过后，才经现有 QA-only 发布门禁在原 Worker 更新唯一 https://preview.mao520.com，手机验收后再宣布「本批群聊交付完成」。不自动发布正式版。
+
+## 2026-11-17｜群聊交付级 bug：开局读回异常导致空壳对局
+
+- **复现**：准确 #298 `GroupGameSessions.start` 旧源码，在公开游戏 key 的 `setItem` 已成功、但第一次 `getItem` 读回抛错的情况下，原实现返回 `SAVE_FAILED` 并**删除全部游戏身份牌**，留下 `status=active` 的公开游戏而没有角色卡，群游戏无法继续。
+- **已修代码**：`ee6b1bae`，公开开局写入未被首次验证时重新核对存储：如果实际字节一致并可读，保留身份牌并确认开始成功；读回持续不可用则返回 `SAVE_UNVERIFIED`，保留身份牌供刷新后恢复，拒绝谎称成功；明确不存在新公开对局才清理本次身份牌。开局最终再次核实当前 session；结束游戏增加 `secret.groupId` 核验防跨群卡片进入揭晓。
+- **已提交测试**：`22945d27`，`tests/group-game-boundary.test.mjs` 新增三项：瞬时读回异常恢复成功，持续读回异常保存原始身份牌可后续恢复，以及跨群身份牌不能揭晓。使用当前 Github 精确源码及受控 V8 `node:test` 兼容夹具实际执行 **36/36** 原测试主体；相关群结果卡套件 **10/10**。其余原 5 套 39 项在上一提交已通过隔离 V8，本次未改其模块。**完整原生 Node、Vite、Playwright、手机 QA 未验证。**
+- **真实整合阻塞增加一项**：只读核对唯一 QA #299：`shared/js/group-governance.js`、`shared/js/phone/group-game-session.js`、`group-turn-effects.js` 等至少 9 个群聊运行模块仍缺失；`tests/group-game-boundary.test.mjs` 及 `tests/group-governance.test.mjs` 同样缺失，`package.json` 没有 `test:group:governance`，`scripts/qa-direct-release.mjs` 当前缺少显式群游戏门禁。QA 合入不得仅复制页面，需完整移植组装、引用版本、PWA 缓存及 Node/Chromium 验收门禁，避免测试脚本表面绿灯、群功能却不在版本里。大文件 `chat-detail.html`、`sw.js` 已与 #299 其他模块分叉，不能整体覆盖。
+- **用户的完整交付标准未变**：只有合入唯一 QA #299、原生测试与浏览器验收通过、原 Worker 部署 https://preview.mao520.com 且用户手机验证后才可宣布这一批群聊交付。绝不未经验证触碰正式版。
