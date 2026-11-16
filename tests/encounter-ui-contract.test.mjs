@@ -78,6 +78,22 @@ function setup(initial={}) {
       return new FakeEl('close');
     }
     querySelectorAll(selector){
+      if(selector==='[data-preview]'||selector==='[data-fate]'){
+        if(!this.storyCache || this.storyCacheHtml!==this.innerHTML){
+          this.storyCacheHtml=this.innerHTML;this.storyCache={};
+        }
+        if(!this.storyCache[selector]){
+          const attr=selector==='[data-preview]'?'preview':'fate';
+          const re=new RegExp('data-'+attr+'="([^"]+)"','g');
+          this.storyCache[selector]=[...this.innerHTML.matchAll(re)].map(m=>{
+            const el=new FakeEl(attr);
+            if(attr==='preview')el.dataset.preview=m[1];
+            else el.dataset.fate=m[1];
+            return el;
+          });
+        }
+        return this.storyCache[selector];
+      }
       if(selector==='[data-reunion]' || selector==='[data-reunion-scene]'){
         // 相同 HTML 片段返回同一批节点，才能真实模拟 addEventListener。
         if(!this.reunionCache || this.reunionCacheHtml!==this.innerHTML){
@@ -350,4 +366,63 @@ test('蒙面档案可直接揭晓，不强制展开三个线索',()=>{
   sheet.querySelector('[data-mask-reveal]').fire('click');
   assert.match(sheet.innerHTML,/姓名<\/span>/);
   assert.equal(h.window.MAOMAOEncounter.getCandidates().value.length,0);
+});
+
+
+test('收藏命运分支连续双击不同选项仅保存一次，成功后重新打开仍是确认的选项',async()=>{
+  const h=setup({'maomao_encounter_preferences_v1':'{"type":"命运分支"}'});
+  const api=h.window.MAOMAOEncounter;
+  const card=api.generate().value;
+  assert.equal(card.type,'命运分支');
+  assert.equal(api.saveCandidate(card).ok,true);
+  h.el('savedButton').fire('click');
+  const sheet=h.el('sheet');
+  const preview=sheet.querySelectorAll('[data-preview]');
+  assert.equal(preview.length,1);
+  preview[0].fire('click');
+  const options=sheet.querySelectorAll('[data-fate]');
+  assert.equal(options.length,2);
+  let resume,requests=0;
+  h.window.navigator={locks:{request(name,params,fn){
+    requests++;
+    return new Promise(resolve=>{resume=()=>resolve(fn());});
+  }}};
+  options[0].fire('click');
+  options[1].fire('click');
+  assert.equal(requests,1,'未完成的保存期间另一条选择不得再次排队');
+  assert.ok(options.every(b=>b.disabled),'等待时应禁用全部分支按钮');
+  resume();
+  await new Promise(resolve=>setImmediate(resolve));
+  const persisted=api.getCandidates().value.find(c=>c.id===card.id);
+  assert.equal(persisted.selectedChoice,options[0].dataset.fate);
+  assert.match(sheet.innerHTML,/selected/);
+  h.el('savedButton').fire('click');
+  sheet.querySelectorAll('[data-preview]')[0].fire('click');
+  assert.match(sheet.innerHTML,/故事起点/);
+  assert.equal(api.getCandidates().value.find(c=>c.id===card.id).selectedChoice,
+    options[0].dataset.fate,'重新进入收藏仍应显示刚确认的命运分支');
+});
+
+test('收藏命运保存排队时关闭弹层，旧回调不得重新弹出已关闭的档案',async()=>{
+  const h=setup({'maomao_encounter_preferences_v1':'{"type":"命运分支"}'});
+  const api=h.window.MAOMAOEncounter;
+  const card=api.generate().value;
+  assert.equal(api.saveCandidate(card).ok,true);
+  h.el('savedButton').fire('click');
+  const sheet=h.el('sheet');
+  sheet.querySelectorAll('[data-preview]')[0].fire('click');
+  let resume;
+  h.window.navigator={locks:{request(name,options,fn){
+    return new Promise(resolve=>{resume=()=>resolve(fn());});
+  }}};
+  sheet.querySelectorAll('[data-fate]')[0].fire('click');
+  for(const fn of (h.window.listeners.keydown||[]))
+    fn({key:'Escape',preventDefault(){}});
+  assert.equal(h.el('overlay').classList.contains('open'),false);
+  resume();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(h.el('overlay').classList.contains('open'),false,
+    '保存完成不能把用户主动关闭的档案再次打开');
+  assert.ok(api.getCandidates().value.some(c=>c.id===card.id),
+    '成功保存的候选仍可从收藏重新打开');
 });

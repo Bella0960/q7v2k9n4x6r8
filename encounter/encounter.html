@@ -72,6 +72,7 @@
 var engine=window.MAOMAOEncounter;
 var cardEl=document.getElementById('frontCard'),sheet=document.getElementById('sheet'),overlay=document.getElementById('overlay'),noticeEl=document.getElementById('notice');
 var current=null,alternate=null,position=0,drag=null,lock=false,noticeTimer=0,suppressDragClick=false,returnFocus=null;
+var sheetVersion=0,storyChoicePending=false;
 function escapeHtml(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function clock(){var d=new Date();document.getElementById('deviceTime').textContent=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
 clock();setInterval(clock,30000);
@@ -183,10 +184,12 @@ document.getElementById('swapButton').addEventListener('click',switchCandidate);
 document.getElementById('alternateCard').addEventListener('click',switchCandidate);
 function openSheet(content,title){
  if(!overlay.classList.contains('open')) returnFocus=document.activeElement instanceof HTMLElement?document.activeElement:null;
+ sheetVersion++;
  sheet.setAttribute('aria-label',title);sheet.innerHTML=content;overlay.classList.add('open');
  overlay.setAttribute('aria-hidden','false');var close=sheet.querySelector('.close');if(close)close.focus();
 }
 function closeSheet(){
+ sheetVersion++;
  overlay.classList.remove('open');overlay.setAttribute('aria-hidden','true');
  if(returnFocus&&document.contains(returnFocus))returnFocus.focus();
  else document.getElementById('moreButton').focus();
@@ -309,9 +312,22 @@ function openDetail(card,fromSaved,revealBlind,blindGuess,revealObject,objectGue
  sheet.querySelectorAll('[data-fate]').forEach(function(btn){btn.addEventListener('click',async function(){
    var chosen=btn.dataset.fate;
    if(fromSaved){
-     btn.disabled=true;
-     var result=await engine.updateCandidateStoryChoiceSafe(c.id,chosen);
-     if(!result.ok){btn.disabled=false;notify(result.error);return;}
+     // 同一时刻只允许一次候选命运写入；其它按钮一起禁用，避免排队覆盖。
+     if(storyChoicePending)return;
+     storyChoicePending=true;
+     var viewVersion=sheetVersion;
+     var buttons=Array.from(sheet.querySelectorAll('[data-fate]'));
+     buttons.forEach(function(button){button.disabled=true;});
+     var result;
+     try { result=await engine.updateCandidateStoryChoiceSafe(c.id,chosen); }
+     catch(error){result={ok:false,error:'故事保存异常，请重新打开收藏检查'};}
+     finally {
+       storyChoicePending=false;
+       buttons.forEach(function(button){button.disabled=false;});
+     }
+     // 如果弹层已关闭或已转到另一人物，旧异步回调不能覆写新抽屉。
+     if(viewVersion!==sheetVersion)return;
+     if(!result.ok){notify(result.error);return;}
      c=result.value;
    }else{
      c.selectedChoice=chosen;
