@@ -956,6 +956,11 @@
     localStorage.setItem(key, value);
     if (localStorage.getItem(key) !== value) throw new Error('音乐设置写入后校验失败');
   }
+  async function musicReleaseOldAsset(assetId, ownerType, ownerId) {
+    if (!musicMedia || !assetId) return;
+    var unlinked = await musicMedia.removeRef(assetId, ownerType, ownerId);
+    if (unlinked.ok) await musicMedia.removeAsset(assetId);
+  }
   function renderTrackLyrics(t) {
     var box = document.getElementById('lyrics');
     if (!box || !t) return;
@@ -999,7 +1004,7 @@
     if (!id) {
       if (currentCoverUrl) URL.revokeObjectURL(currentCoverUrl);
       currentCoverUrl = null;
-      document.querySelectorAll('#npCover, .m-cover').forEach(function (el) {
+      document.querySelectorAll('#npCover, .m-cover, .hero-cover, .big-cover').forEach(function (el) {
         el.innerHTML = '<span class="music-placeholder-art" aria-hidden="true"></span>';
       });
       return;
@@ -1008,7 +1013,7 @@
     if (revision !== coverRevision) return;
     if (!result.ok) { toast('自定义封面读取失败，原文件记录已保留'); return; }
     var url = URL.createObjectURL(result.value);
-    document.querySelectorAll('#npCover, .m-cover').forEach(function (el) {
+    document.querySelectorAll('#npCover, .m-cover, .hero-cover, .big-cover').forEach(function (el) {
       var img = document.createElement('img');
       img.src = url; img.alt = ''; img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:inherit';
       el.replaceChildren(img);
@@ -1090,8 +1095,9 @@
         tx.objectStore(AUDIO_STORE_NAME).clear();
         tx.oncomplete = function () { resolve(); };
         tx.onerror = function () { reject(tx.error); };
+        tx.onabort = function () { reject(tx.error); };
       });
-    }).catch(function () {});
+    });
   }
 
   // ===== localStorage：本地曲目元数据 + 向后兼容升级 =====
@@ -1207,10 +1213,10 @@
     order.forEach(function (tid) {
       var t = getTrackById(tid);
       if (!t) return;
-      recentList.innerHTML += `<div class="track-item" onclick="playTrack('${t.id}')">
+      recentList.innerHTML += `<div class="track-item" onclick="playTrack(${musicSafeText(JSON.stringify(t.id))})">
         <div class="t-cover"><span class="music-placeholder-art" aria-hidden="true"></span></div>
-        <div class="t-info"><div class="t-name">${t.name}</div><div class="t-artist">${t.artist}</div></div>
-        <div class="t-dur">${t.dur}</div></div>`;
+        <div class="t-info"><div class="t-name">${musicSafeText(t.name)}</div><div class="t-artist">${musicSafeText(t.artist)}</div></div>
+        <div class="t-dur">${musicSafeText(t.dur)}</div></div>`;
     });
   }
   renderRecent();
@@ -1224,9 +1230,9 @@
       var icon = isCur
         ? `<svg viewBox="0 0 24 24" width="16" height="16" fill="#000"><path d="M8 5v14l11-7z"/></svg>`
         : `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#bbb" stroke-width="2" stroke-linecap="round"><path d="M5 8h14M5 12h14M5 16h14"/></svg>`;
-      albumSongs.innerHTML += `<div class="song-row ${isCur ? 'playing' : ''}" onclick="playTrack('${t.id}')">
+      albumSongs.innerHTML += `<div class="song-row ${isCur ? 'playing' : ''}" onclick="playTrack(${musicSafeText(JSON.stringify(t.id))})">
         <div class="num">${String(i+1).padStart(2,'0')}</div>
-        <div><div class="s-name">${t.name}</div><div class="s-artist">${t.artist} · ${t.dur}</div></div>
+        <div><div class="s-name">${musicSafeText(t.name)}</div><div class="s-artist">${musicSafeText(t.artist)} · ${musicSafeText(t.dur)}</div></div>
         <div class="s-dur">${icon}</div></div>`;
     });
   }
@@ -1238,9 +1244,9 @@
     searchResults.innerHTML = '';
     list.forEach(function (t) {
       if (!t || !t.id) return;
-      searchResults.innerHTML += `<div class="track-item" onclick="playTrack('${t.id}')">
+      searchResults.innerHTML += `<div class="track-item" onclick="playTrack(${musicSafeText(JSON.stringify(t.id))})">
         <div class="t-cover"><span class="music-placeholder-art" aria-hidden="true"></span></div>
-        <div class="t-info"><div class="t-name">${t.name}</div><div class="t-artist">${t.artist}</div></div></div>`;
+        <div class="t-info"><div class="t-name">${musicSafeText(t.name)}</div><div class="t-artist">${musicSafeText(t.artist)}</div></div></div>`;
     });
   }
   renderSearch(tracks);
@@ -1543,9 +1549,12 @@
         type: 'image', mimeType: file.type, ownerType: 'music-cover', ownerId: t.id
       });
       if (!result.ok) throw new Error(result.error.message);
+      var oldAssetId = covers[t.id];
       covers[t.id] = result.value.assetId;
       musicWriteMap(MUSIC_COVERS_KEY, covers);
       if (tracks[currentIdx].id === t.id) await musicApplyCurrentCover();
+      if (oldAssetId && oldAssetId !== result.value.assetId)
+        musicReleaseOldAsset(oldAssetId, 'music-cover', t.id).catch(function () {});
       toast('封面已保存');
     } catch (err) { toast('封面保存失败，已有封面不会被删除：' + err.message); }
   });
@@ -1619,10 +1628,13 @@
         type: 'image', mimeType: file.type, ownerType: 'music-background', ownerId: 'music-page'
       });
       if (!result.ok) throw new Error(result.error.message);
+      var oldAssetId = localStorage.getItem(MUSIC_BACKGROUND_KEY);
       localStorage.setItem(MUSIC_BACKGROUND_KEY, result.value.assetId);
       if (localStorage.getItem(MUSIC_BACKGROUND_KEY) !== result.value.assetId)
         throw new Error('背景引用写入校验失败');
       await musicApplyBackground();
+      if (oldAssetId && oldAssetId !== result.value.assetId)
+        musicReleaseOldAsset(oldAssetId, 'music-background', 'music-page').catch(function () {});
       toast('音乐背景已保存');
     } catch (err) { toast('背景保存失败：' + err.message); }
   });
@@ -1631,17 +1643,23 @@
     if (!t || !window.confirm('恢复这首歌的浅灰默认封面？')) return;
     try {
       var covers = musicReadMap(MUSIC_COVERS_KEY);
+      var oldAssetId = covers[t.id];
       delete covers[t.id];
       musicWriteMap(MUSIC_COVERS_KEY, covers);
       await musicApplyCurrentCover();
+      if (oldAssetId)
+        musicReleaseOldAsset(oldAssetId, 'music-cover', t.id).catch(function () {});
       toast('已恢复浅灰封面');
     } catch (err) { toast('恢复失败，现有封面已保留：' + err.message); }
   }
   async function resetMusicBackground() {
     if (!window.confirm('恢复音乐页面的浅灰默认背景？')) return;
     try {
+      var oldAssetId = localStorage.getItem(MUSIC_BACKGROUND_KEY);
       localStorage.removeItem(MUSIC_BACKGROUND_KEY);
       await musicApplyBackground();
+      if (oldAssetId)
+        musicReleaseOldAsset(oldAssetId, 'music-background', 'music-page').catch(function () {});
       toast('已恢复默认背景');
     } catch (err) { toast('恢复背景失败：' + err.message); }
   }
@@ -2021,13 +2039,18 @@
     renderRecent();
     closeSetting();
   }
-  function clearAllData() {
-    ['music_profile_avatar','music_profile_name','music_profile_handle','music_profile_bg',
-     'music_fav_list','music_fav_count','music_played_count','music_recent','music_state',
-     LOCAL_TRACKS_KEY
-    ].forEach(function (k) { localStorage.removeItem(k); });
-    revokeCurrentUrl();
-    clearAudioStore().then(function () { location.reload(); });
+  async function clearAllData() {
+    if (!window.confirm('这会清除本设备的本地歌曲和音乐设置。请先完成包含音频原文件的完整备份。确定继续？')) return;
+    try {
+      // 首先清除音频库；如果失败，绝不抢先丢掉曲目目录。
+      await clearAudioStore();
+      ['music_profile_avatar','music_profile_name','music_profile_handle','music_profile_bg',
+       'music_fav_list','music_fav_count','music_played_count','music_recent','music_state',
+       LOCAL_TRACKS_KEY, MUSIC_LYRICS_KEY, MUSIC_PLAYLISTS_KEY
+      ].forEach(function (k) { localStorage.removeItem(k); });
+      revokeCurrentUrl();
+      location.reload();
+    } catch (err) { toast('清除未完成，请检查音乐目录与音频库：' + err.message); }
   }
 
   // ===== 我的收藏列表 =====
@@ -2049,10 +2072,10 @@
     }
     box.innerHTML = '';
     list.forEach(function (t) {
-      box.innerHTML += `<div class="track-item" onclick="playTrack('${t.id}')">
+      box.innerHTML += `<div class="track-item" onclick="playTrack(${musicSafeText(JSON.stringify(t.id))})">
         <div class="t-cover"><span class="music-placeholder-art" aria-hidden="true"></span></div>
-        <div class="t-info"><div class="t-name">${t.name}</div><div class="t-artist">${t.artist}</div></div>
-        <div class="t-dur">${t.dur}</div></div>`;
+        <div class="t-info"><div class="t-name">${musicSafeText(t.name)}</div><div class="t-artist">${musicSafeText(t.artist)}</div></div>
+        <div class="t-dur">${musicSafeText(t.dur)}</div></div>`;
     });
   }
 
