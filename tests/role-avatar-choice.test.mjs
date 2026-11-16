@@ -86,7 +86,7 @@ test('chat saves the assistant response before applying a role-scoped selection'
   assert.ok(detail.includes('role-avatar-choice.js?v=20261113v1'));
   assert.ok(detail.includes('RoleAvatarChoice.prepare('));
   assert.ok(detail.includes('RoleAvatarChoice.parseReply('));
-  assert.ok(detail.includes('if (replySaved && !isGroupChat && parsedRoleAvatarChoice.avatarId'));
+  assert.ok(detail.includes('if (replySaved && replyMessages.some(function (msg)'));
   assert.ok(detail.includes('RoleAvatarLibrary.applyToCharacter('));
   assert.ok(detail.includes('RoleAvatarChoice.recordApplied(avatarRoleId)'));
   assert.ok(detail.includes('snapshotText = window.RoleAvatarChoice.strip(snapshotText)'));
@@ -107,4 +107,26 @@ test('character profile keeps an explicit role-scoped opt-out across open chat t
   assert.ok(detail.includes('currentAvatarChoiceRole && currentAvatarChoiceRole.avatarAutonomyEnabled !== false'));
   assert.ok(detail.includes('var liveRole = getRoleById(avatarRoleId)'));
   assert.ok(detail.includes('!!liveRole && liveRole.avatarAutonomyEnabled !== false'));
+});
+
+
+test('avatar-control marker is honored only at the end of a completed assistant reply', () => {
+  const { api } = createChoice();
+  const plan = api.prepare('role-A', makeLibrary(), '普通聊天', { now: 100000000 });
+  assert.equal(api.parseReply('一段示例：[[MAOMAO_ROLE_AVATAR:1]] 我先说别的', plan, true).avatarId, '');
+  assert.equal(api.parseReply('示例 [[MAOMAO_ROLE_AVATAR:1]]' + '\n' + '正常文本结尾', plan, true).avatarId, '');
+  assert.equal(api.parseReply('完整的回复 [[maomao_role_avatar:2]] ', plan, true).avatarId, 'c');
+  assert.equal(api.strip('对话内容 [[maomao_role_avatar:1'), '对话内容');
+});
+
+test('a machine-only marker cannot be treated as a delivered chat reply or trigger avatar mutation', () => {
+  assert.ok(detail.includes('// A machine-only avatar marker is not a delivered AI reply.'));
+  assert.ok(!detail.includes('                        parsedRoleAvatarChoice.avatarId ||\n'));
+  assert.ok(detail.includes('if (replySaved && replyMessages.some(function (msg)'));
+  assert.ok(detail.includes("return !!String(msg.text || '').trim()"));
+});
+
+test('asynchronous autonomous switch must not repaint a different chat header', () => {
+  assert.match(detail, /if \(autonomousApplied && autonomousApplied\.ok\) \{[\s\S]*?String\(aliasRoleId \|\| currentCharacter\.id\) === String\(avatarRoleId\)/);
+  assert.match(detail, /isCurrent: function \(\) \{[\s\S]*?var liveRole = getRoleById\(avatarRoleId\)/);
 });
