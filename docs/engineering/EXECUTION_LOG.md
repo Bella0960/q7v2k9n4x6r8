@@ -2,6 +2,15 @@
 
 This is the durable checkpoint for owner-assigned, multi-step work. Update it after meaningful milestones and before ending a session.
 
+## 2026-11-16｜PR #299｜QA 身份就绪与初始化关闭门禁（当前轮）
+
+- **范围**：只修改原 PR #299 分支；不合并 main，不触碰正式账号/数据库/Worker，不新建 QA 服务。
+- **实际修复 1**：`worker/lib/identity-bridge.js` 的就绪探测针对已核对的现有独立 `maomao-identity-core` 不再依赖退役网关的桥接密钥；必须由内网 Service Binding 返回 `identityMode=local`、`qaIsolatedAuthority=true`、正确的 `qaExpectedFounderId` 和 `bootstrapAllowed=true` 才判断身份核心已连接。旧网关仍要求原共享密钥。新增 `tests/account-identity-bridge-probe.test.mjs` 测试隔离模式、错绑和关闭初始化旗标后的探测兼容。
+- **实际修复 2**：`scripts/qa-direct-release.mjs` 根据独立核心真实账号数检查 QA 初始化变量生命周期：核心空库只允许 `MAO_QA_IDENTITY_SETUP=isolated_authority`，核心已有唯一 001 管理员则只允许 `disabled`，防止后续部署重新开启一次性入口。更新 QA 身份文档，明确运行配置与 `wrangler.qa.jsonc` 必须同步关闭，不关闭独立核心身份识别旗标。
+- **测试依据**：从 GitHub 当前源码直接运行身份探测模块及其六项用例，隔离 V8 请求桩 **6/6 PASS**；发布脚本在独立 V8 模拟 git/Wrangler/Cloudflare 中验证空库+开启、空库+关闭、已初始化+开启、已初始化+关闭的组合，**4/4 PASS**。**没有**执行整仓 Node CLI、npm ci、Vite、Chromium 或真实 Worker 新版部署；这些结果不可替代实际验收。
+- **现场限制**：当前对话仅可读取/修改 GitHub 和读取 Cloudflare，缺少整个私有仓库的可执行检出及完成部署的构建门禁。现网 core 为密钥配置后的旧代码版本，QA 仍旧 gateway；不得绕过测试或删除任一命名空间。
+- **接续**：最新原 #299 HEAD 请以 GitHub 实时返回为准；在完整 checkout 运行真实测试并部署现有 core→QA；用户在唯一 QA 入口初始化后，将 QA setup 设为 `disabled` 并同步到原配置；再验证登录、数据保留、番外、PWA 和真机，最后讨论合并。
+
 ## 2026-11-16｜PR #290 账号安全专项 · 恢复教程门禁
 
 - **范围**：在原 #290 分支修复实际代码/合并候选，不更新生产 Worker 或账号数据；未向 main 合并。
