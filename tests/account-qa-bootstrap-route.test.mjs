@@ -144,7 +144,11 @@ test('QA login page uses QA-only password hint without changing legacy gateway U
     '  let delegatedIdentity = false;\n' +
     '  let delegatedSignInReady = true;\n' +
     '  const link = { hidden: false };\n' +
-    '  const subtitle = { textContent: "" };\n' +
+    '  const subtitle = { textContent: "", classList: {
+    tokens: new Set(),
+    toggle(name, value) { if (value) this.tokens.add(name); else this.tokens.delete(name); },
+    contains(name) { return this.tokens.has(name); }
+  } };\n' +
     '  const fields = [{ disabled: false }, { disabled: false }];\n' +
     '  const register = [{ hidden: false }];\n' +
     '  const errors = [];\n' +
@@ -165,6 +169,8 @@ test('QA login page uses QA-only password hint without changing legacy gateway U
   });
   assert.match(qa.subtitle.textContent, /QA.*专用密码|QA.*单独设置的密码/);
   assert.match(qa.subtitle.textContent, /不要输入正式版密码/);
+  assert.equal(qa.subtitle.classList.contains('qa-login-hint'), true,
+    'the isolated QA warning must opt into visible styling');
   assert.ok(qa.fields.every(field => field.disabled === false));
   assert.equal(qa.link.hidden, true);
   const fresh = await mount({
@@ -202,5 +208,10 @@ test('QA login page uses QA-only password hint without changing legacy gateway U
   });
   assert.match(legacy.subtitle.textContent, /原来的 MAO 账号登录/);
   assert.doesNotMatch(legacy.subtitle.textContent, /QA.*密码/);
+  assert.equal(legacy.subtitle.classList.contains('qa-login-hint'), false,
+    'normal delegated login should keep its compact layout');
   assert.ok(legacy.fields.every(field => field.disabled === false));
+  const css = readFileSync(new URL('../account/ivory-entry.css', import.meta.url), 'utf8');
+  assert.match(css, /\.ivory-entry #loginPanel>\.lead\.qa-login-hint\s*\{\s*display:block/,
+    'actual mobile CSS must display the otherwise-hidden QA warning');
 });
