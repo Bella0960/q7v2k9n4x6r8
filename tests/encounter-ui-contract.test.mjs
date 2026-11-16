@@ -44,11 +44,27 @@ function setup(initial={}) {
     setAttribute(k,v){this.attrs[k]=String(v);}
     getAttribute(k){return this.attrs[k];}
     setPointerCapture(){}
-    querySelector(){return new FakeEl('close');}
+    querySelector(selector){
+      if(selector==='[data-blind-reveal]'){
+        if(this.blindRevealSource!==this.innerHTML){
+          this.blindRevealSource=this.innerHTML;
+          this.blindRevealButton=new FakeEl('blind-reveal');
+        }
+        return this.blindRevealButton;
+      }
+      return new FakeEl('close');
+    }
     querySelectorAll(selector){
-      if(selector==='[data-blind-choice]') return [...this.innerHTML.matchAll(/data-blind-choice="([^"]+)"/g)].map(m=>{
-        const item=new FakeEl('choice');item.dataset.blindChoice=m[1];return item;
-      });
+      if(selector==='[data-blind-choice]'){
+        // 模拟真正 DOM：同一轮 innerHTML 的查询必须返回同一批已绑定事件的节点。
+        if(this.blindChoicesSource!==this.innerHTML){
+          this.blindChoicesSource=this.innerHTML;
+          this.blindChoiceButtons=[...this.innerHTML.matchAll(/data-blind-choice="([^"]+)"/g)].map(m=>{
+            const item=new FakeEl('choice');item.dataset.blindChoice=m[1];return item;
+          });
+        }
+        return this.blindChoiceButtons;
+      }
       return [];
     }
     focus(){document.activeElement=this;}
