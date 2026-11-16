@@ -223,6 +223,81 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     return account;
   }
 
+  // The one QA identity core is a distinct, verified account authority.
+  // Forward only explicitly approved admin operations to that isolated core;
+  // never grant the Preview database permission to mutate account identities.
+  async function proxyIsolatedQaAdminRequest(request, path, method) {
+    const supportedGet =
+      path === '/api/admin/accounts' ||
+      path === '/api/admin/invites' ||
+      path === '/api/admin/audit' ||
+      /^\/api\/admin\/accounts\/MAO-[A-Z0-9]{12,24}\/(detail|active-invite|audit)$/.test(path);
+    const supportedPost =
+      path === '/api/admin/invites' ||
+      /^\/api\/admin\/accounts\/MAO-[A-Z0-9]{12,24}\/action$/.test(path) ||
+      /^\/api\/admin\/invites\/[A-Za-z0-9_-]{16,64}\/revoke$/.test(path);
+    if (!((method === 'GET' && supportedGet) || (method === 'POST' && supportedPost)) ||
+        !usesExistingAccountAuthority(env) ||
+        env.MAO_DELEGATED_ADMIN_MANAGEMENT_ENABLED !== 'true' ||
+        env.MAO_QA_AUTHORITY_WORKER !== 'maomao-identity-core' ||
+        typeof env.MAO_IDENTITY_AUTHORITY?.fetch !== 'function' ||
+        !/^MAO-[A-Z0-9]{12,24}$/.test(String(env.MAO_EXPECTED_FOUNDER_ID || ''))) {
+      throw new ApiError(403, 'DELEGATED_ACCOUNT_MANAGED_CENTRALLY',
+        '测试版管理员接口未接通独立身份服务，登录状态不受影响');
+    }
+
+    const admin = await requireActiveAdmin(request);
+    if (admin.id !== env.MAO_EXPECTED_FOUNDER_ID || admin.role !== 'super_admin') {
+      throw new ApiError(403, 'QA_FOUNDER_MISMATCH', '管理员 001 的永久身份未通过安全核对');
+    }
+    // Probe proves the binding targets the opt-in isolated authority with
+    // this exact founder ID, not an old gateway or a production account store.
+    const authority = await probeExistingIdentityAuthority(env);
+    if (!authority.connected || !authority.initialized || !authority.configured) {
+      throw new ApiError(503, 'QA_ADMIN_AUTHORITY_UNAVAILABLE',
+        '测试版独立管理员服务尚未就绪，请稍后重新检查');
+    }
+
+    const token = cookieValue(request);
+    if (!/^[A-Za-z0-9_-]{32,128}$/.test(token)) {
+      throw new ApiError(401, 'ACCOUNT_SESSION_REQUIRED', '请重新登录 MAO 账号');
+    }
+    const internalOrigin = 'https://mao520.com';
+    const headers = {
+      authorization: 'Bearer ' + token,
+      accept: 'application/json'
+    };
+    const options = { method, headers };
+    if (method === 'POST') {
+      const body = await request.text();
+      if (body.length > 32768) {
+        throw new ApiError(413, 'REQUEST_TOO_LARGE', '管理员操作数据过长');
+      }
+      headers.origin = internalOrigin;
+      headers['content-type'] = 'application/json';
+      options.body = body;
+    }
+    const target = internalOrigin + path + new URL(request.url).search;
+    let response;
+    try {
+      response = await env.MAO_IDENTITY_AUTHORITY.fetch(new Request(target, options));
+    } catch {
+      // A timed-out write has an unknown outcome. Never retry it automatically.
+      throw new ApiError(503, 'QA_ADMIN_RESULT_UNCONFIRMED',
+        '独立管理员服务未返回确认结果，请先重新读取状态，不要重复提交');
+    }
+    const payload = await response.json().catch(() => null);
+    if (!payload || typeof payload !== 'object' || typeof payload.ok !== 'boolean') {
+      throw new ApiError(503, 'QA_ADMIN_RESPONSE_INVALID', '独立管理员服务返回的数据无法核实');
+    }
+    // Construct a new JSON response: never forward identity-core Set-Cookie
+    // or internal service headers to the browser.
+    return Response.json(payload, {
+      status: response.status,
+      headers: { 'cache-control': 'no-store' }
+    });
+  }
+
   async function bootstrap(request) {
     if (delegated) {
       return await initializeIsolatedQaAuthority({ env, store, request });
@@ -988,11 +1063,15 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       if (delegated && (
         path === '/api/accounts/register' ||
         path === '/api/accounts/invites/redeem' ||
-        path === '/api/accounts/password/change' ||
-        (path.startsWith('/api/admin/') && !path.startsWith('/api/admin/social/') &&
-          !(path === '/api/admin/bootstrap' && method === 'POST' && qaIsolatedSetupEnabled(env)))
+        path === '/api/accounts/password/change'
       )) {
-        throw new ApiError(403, 'DELEGATED_ACCOUNT_MANAGED_CENTRALLY', '账号和管理员身份只能在统一账号系统中管理');
+        throw new ApiError(403, 'DELEGATED_ACCOUNT_MANAGED_CENTRALLY',
+          '账号资料只能在统一账号系统中管理');
+      }
+      if (delegated && path.startsWith('/api/admin/') &&
+          !path.startsWith('/api/admin/social/') &&
+          !(path === '/api/admin/bootstrap' && method === 'POST' && qaIsolatedSetupEnabled(env))) {
+        return await proxyIsolatedQaAdminRequest(request, path, method);
       }
       if (path === '/api/accounts/register' && method === 'POST') return await register(request);
       if (path === '/api/accounts/login' && method === 'POST') return await login(request);
