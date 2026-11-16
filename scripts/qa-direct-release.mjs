@@ -214,7 +214,7 @@ async function qaHttpSmoke(coreInitialized) {
   // Vite may fingerprint or merge stylesheets. Verify what the login HTML
   // actually loads rather than requiring the pre-build CSS href to survive.
   const cssRefs = [...loginHtml.matchAll(
-    /<link\\b(?=[^>]*\\brel=["']stylesheet["'])[^>]*\\bhref=["']([^"']+)["'][^>]*>/gi
+    /<link\b(?=[^>]*\brel=["']stylesheet["'])[^>]*\bhref=["']([^"']+)["'][^>]*>/gi
   )].map(match => match[1]);
   assert.ok(cssRefs.length > 0, 'QA login HTML does not load a stylesheet');
   const renderedCss = await Promise.all(cssRefs.map(async href => {
