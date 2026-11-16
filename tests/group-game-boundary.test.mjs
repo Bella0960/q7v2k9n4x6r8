@@ -703,3 +703,43 @@ test('shared group memory can remember the public moderator but not private ball
   assert.match(shared,/「角色二」/);
   assert.doesNotMatch(shared,/moderator-memory-vote|voterId|phone_group_game_private/);
 });
+
+test('corrupt game inbox fails closed without losing previously stored private data', () => {
+  const h = harness();
+  assert.equal(begin(h, {allowPrivate: true}).ok, true);
+  const sessionId = h.game.getPublic('g1').sessionId;
+  const recipientKey = 'phone_group_game_private_v1_g1_' + sessionId + '_inbox_r2';
+  const damaged = '{"oldPrivateMessage":';
+  h.storage.setItem(recipientKey, damaged);
+  const send = () => h.game.sendWhisper({
+    groupId:'g1',sessionId,fromId:'r1',toId:'r2',
+    text:'不能覆盖原私聊',eventId:'inbox-corruption'
+  });
+  assert.equal(send().code, 'CORRUPT_INBOX');
+  assert.equal(h.storage.getItem(recipientKey), damaged,
+    'malformed private messages must not be overwritten with a new array');
+  assert.equal(h.game.buildRoleContext({groupId:'g1',roleId:'r2'}).code,
+    'CORRUPT_INBOX', 'recipient AI reply must stop if inbox is unreadable');
+  assert.equal(h.game.getHostConversation({
+    group:group(),groupId:'g1',actorId:'__user',peerId:'r2'
+  }).code, 'CORRUPT_INBOX',
+  'owner cannot silently see a falsely empty private conversation');
+
+  const originalGet = h.storage.getItem.bind(h.storage);
+  h.storage.getItem = (key) => {
+    if (key === recipientKey) throw new Error('StorageUnavailable');
+    return originalGet(key);
+  };
+  assert.equal(send().code, 'STORAGE_UNAVAILABLE');
+  assert.equal(h.game.buildRoleContext({groupId:'g1',roleId:'r2'}).code,
+    'STORAGE_UNAVAILABLE');
+  h.storage.getItem = originalGet;
+  assert.equal(h.storage.getItem(recipientKey), damaged);
+
+  const hostKey = 'phone_group_game_private_v1_g1_' + sessionId + '_inbox___user';
+  h.storage.setItem(hostKey, damaged);
+  assert.equal(h.game.getHostConversation({
+    group:group(),groupId:'g1',actorId:'__user',peerId:'r1'
+  }).code, 'CORRUPT_INBOX');
+  assert.equal(h.storage.getItem(hostKey), damaged);
+});
