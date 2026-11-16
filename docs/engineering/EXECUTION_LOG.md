@@ -14,6 +14,17 @@
 
 This is the durable checkpoint for owner-assigned, multi-step work. Update it after meaningful milestones and before ending a session.
 
+
+### Continuation checkpoint — 2026-11-16 · same PR #303
+
+- **DATA-003 hardening pushed:** `settings/js/backup.js` now excludes audio-store records missing their original Blob, and explicitly preflights imported audio (including legacy archives missing a catalog) and referenced music image Base64 before the restore path can clear IndexedDB. This is a fail-closed protection, not a claim that arbitrary backups are byte-for-byte verified.
+- **Existing regression alignment:** `tests/backup-modules.test.mjs` was updated for full audio Blob coverage; `tests/media-backup.test.mjs` now provides actual mock audio bytes + MIME and asserts exported Base64 instead of a metadata-only fixture; `tests/music-data-integrity.test.mjs` now contains 14 focused contracts with the shared-validator extraction fixed.
+- **Native music fixes pushed:** on reload, the Play control reacquires the local audio Blob from IndexedDB (or sets an actual demo source) and restores the saved time where possible. Music statusbar now visibly follows the existing global setting and updates local time. Per-song user covers render without filters in recent/search/favorites via lazy, bounded objectURL cache; original shallow player remains. Cover reset immediately updates lists; BFCache return refreshes revoked thumbnail URLs.
+- **Browser smoke script updated (NOT EXECUTED):** `tests/music-mobile-browser.mjs` now checks global statusbar hide/show, actual import/play on a temporary WAV, audio resumed from IndexedDB after reload, and uploaded-cover image in Recent at 375/390/430px.
+- **Actual tests performed here:** production `backup.js` and the real inline music player script compiled as JavaScript without syntax errors (isolated V8); **10/10** synthetic storage/backup guard checks, **7/7** isolated lyric/metadata checks, and **5/5** later local-resume/archive checks passed on fetched production function text. These are meaningful isolated execution checks, **NOT** the committed Node test suite, Vite build, complete browser app, full binary export/restore, or phone acceptance.
+- **Remaining blockers:** complete MAOMAO Node/Vite/Chromium test environment (no checkout in this connector runtime), real binary/MIME restoration and oversize scenarios, local custom-cover music-scoped backup dependency (currently correctly marks incomplete), verified remote AI/chat/memory/cloud ACKs and role autonomous invitations, original isolated QA deploy and dual-device acceptance. Keep PR **Draft** and production untouched.
+
+
 ## Current work package
 
 - **Owner request:** Identify remaining MAOMAO work, start with low-risk items, and adopt end-to-end execution so the owner does not need to repeatedly say “continue”.
