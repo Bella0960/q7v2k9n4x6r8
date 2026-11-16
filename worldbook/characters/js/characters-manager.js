@@ -1826,6 +1826,7 @@ if (cropCanvas) {
 // this listener without coupling the rest of the character manager.
 (function watchExternalRoleAvatarChanges() {
     let pending = false;
+    let pendingRoleId = '';
     let deferredWhileEditing = false;
     let refreshTimer = null;
 
@@ -1860,6 +1861,12 @@ if (cropCanvas) {
         if (!pending) return;
         const roleId = currentVisibleRole();
         if (!roleId || document.hidden) return;
+        // If another role was opened during the debounce, discard the event.
+        if (roleId !== pendingRoleId) {
+            pending = false;
+            deferredWhileEditing = false;
+            return;
+        }
         const container = document.getElementById('profileContent');
         // Preserve any unsaved pair-name typing, including IME composition.
         if (container && container.contains(document.activeElement) &&
@@ -1880,7 +1887,10 @@ if (cropCanvas) {
     }
 
     function requestRefresh() {
+        const roleId = currentVisibleRole();
+        if (!roleId) return;
         pending = true;
+        pendingRoleId = roleId;
         if (refreshTimer !== null) return;
         refreshTimer = setTimeout(executeRefresh, 60);
     }
