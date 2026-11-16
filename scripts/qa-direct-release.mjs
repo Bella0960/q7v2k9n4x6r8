@@ -87,6 +87,25 @@ function secretNames(settings) {
     .sort();
 }
 
+function verifyQaRuntimeVars(bindings, plannedVars, { allowClosingSetup = false } = {}) {
+  const live = (bindings || []).filter(binding => binding.type === 'plain_text');
+  const seen = new Set();
+  for (const setting of live) {
+    assert.ok(!seen.has(setting.name), 'Duplicated QA runtime variable: ' + setting.name);
+    seen.add(setting.name);
+    assert.ok(Object.prototype.hasOwnProperty.call(plannedVars, setting.name),
+      'An existing QA runtime variable is missing from the release config: ' + setting.name);
+    const next = plannedVars[setting.name];
+    const canClose = allowClosingSetup &&
+      setting.name === 'MAO_QA_IDENTITY_SETUP' &&
+      setting.text === QA_SETUP_OPEN && next === QA_SETUP_CLOSED;
+    if (!canClose) {
+      assert.equal(next, setting.text,
+        'Release would unexpectedly change the existing QA runtime variable: ' + setting.name);
+    }
+  }
+}
+
 function preflightCheckout() {
   assert.equal(run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], true), BRANCH,
     'Only the original #299 integration branch may be used for the QA release');
@@ -322,6 +341,9 @@ async function cloudflarePreflight() {
       ', founder matches=' + matches + ', active admins=' + admins);
   }
   assert.equal(typeof coreInitialized, 'boolean', 'Cannot verify QA identity core state');
+  verifyQaRuntimeVars(qa.bindings,
+    JSON.parse(readFileSync('wrangler.qa.jsonc', 'utf8')).vars,
+    { allowClosingSetup: coreInitialized });
   return { coreInitialized, originalQaSecrets, originalCoreSecrets };
 }
 
@@ -371,6 +393,8 @@ async function main() {
     'QA latest deployment is not a Wrangler release');
   const qa = await cloudflare('/workers/scripts/' + QA + '/settings');
   const qaBinding = name => qa.bindings?.find(x => x.name === name);
+  verifyQaRuntimeVars(qa.bindings,
+    JSON.parse(readFileSync('wrangler.qa.jsonc', 'utf8')).vars);
   assert.deepEqual(secretNames(qa), originalQaSecrets,
     'Existing QA secrets changed during deployment: keep the original push and account credentials');
   assert.equal(qaBinding('AI')?.type, 'ai', 'Existing QA AI binding was lost');
