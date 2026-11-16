@@ -130,6 +130,22 @@ async function cloudflare(path, body) {
   return result.result;
 }
 
+async function liveWorkerVersion(name) {
+  const result = await cloudflare('/workers/scripts/' + name + '/deployments');
+  const deployments = Array.isArray(result?.deployments) ? result.deployments :
+    Array.isArray(result) ? result : [];
+  const latest = deployments[0];
+  const versions = latest?.versions;
+  assert.ok(Array.isArray(versions) && versions.length === 1 &&
+    Number(versions[0].percentage) === 100,
+    'Cannot verify a single fully active deployment for ' + name);
+  const versionId = String(versions[0].version_id || '');
+  assert.match(versionId,
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    'Cloudflare returned an invalid deployed version for ' + name);
+  return { versionId, source: String(latest.source || '') };
+}
+
 async function cloudflarePreflight() {
   const [qa, core] = await Promise.all([
     cloudflare('/workers/scripts/' + QA + '/settings'),
@@ -193,8 +209,15 @@ async function main() {
   assert.equal(process.env.MAOMAO_QA_DEPLOY_CONFIRM, QA,
     'Set MAOMAO_QA_DEPLOY_CONFIRM to the exact existing QA Worker name');
   await cloudflarePreflight();
+  const corePrevious = await liveWorkerVersion(CORE);
+  const qaPrevious = await liveWorkerVersion(QA);
   assertLatestGitHead();
   run('npx', ['--yes', 'wrangler@4', 'deploy', '--config', 'wrangler.qa-identity-core.jsonc']);
+  const coreVersion = await liveWorkerVersion(CORE);
+  assert.notEqual(coreVersion.versionId, corePrevious.versionId,
+    'Identity core deployment version did not advance');
+  assert.equal(coreVersion.source, 'wrangler',
+    'Identity core latest deployment is not a Wrangler release');
   const core = await cloudflare('/workers/scripts/' + CORE + '/settings');
   const coreBinding = name => core.bindings?.find(x => x.name === name);
   assert.equal(coreBinding('CLOUD_DB')?.namespace_id, CORE_DB);
@@ -208,6 +231,11 @@ async function main() {
   // The second remote check prevents an old PR build from switching QA.
   assertLatestGitHead();
   run('npx', ['--yes', 'wrangler@4', 'deploy', '--config', 'wrangler.qa.jsonc']);
+  const qaVersion = await liveWorkerVersion(QA);
+  assert.notEqual(qaVersion.versionId, qaPrevious.versionId,
+    'QA deployment version did not advance');
+  assert.equal(qaVersion.source, 'wrangler',
+    'QA latest deployment is not a Wrangler release');
   const qa = await cloudflare('/workers/scripts/' + QA + '/settings');
   const qaBinding = name => qa.bindings?.find(x => x.name === name);
   assert.equal(qaBinding('CLOUD_DB')?.namespace_id, QA_DB);
@@ -217,6 +245,8 @@ async function main() {
   assert.equal(qaBinding('MAO_QA_AUTHORITY_WORKER')?.text, CORE);
   assert.equal(qaBinding('MAO_QA_IDENTITY_SETUP')?.text,
     JSON.parse(readFileSync('wrangler.qa.jsonc', 'utf8')).vars?.MAO_QA_IDENTITY_SETUP);
+  console.log('Cloudflare active QA identity core version: ' + coreVersion.versionId);
+  console.log('Cloudflare active QA Worker version: ' + qaVersion.versionId);
   console.log('QA deployed to the EXISTING Worker. Test bootstrap/login and disable one-time setup.');
 }
 
