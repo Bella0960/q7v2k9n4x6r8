@@ -201,6 +201,7 @@ test('release stops if tests change tracked files or if Vite output is missing',
     /Tests altered the checkout/);
   for (const path of ['dist/index.html', 'dist/account/index.html',
     'dist/account/bootstrap.html', 'dist/account/account.js',
+    'dist/account/bootstrap.js', 'dist/account/ivory-entry.css',
     'dist/chat/chat/chat-detail.html']) {
     assert.throws(() => mountUploadGate({ missing: path }).assertReadyForUpload(),
       /QA Vite asset missing after build/);
