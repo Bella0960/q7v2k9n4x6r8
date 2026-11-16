@@ -655,7 +655,7 @@ let browser;
 
 try {
   browser = await chromium.launch({
-    channel: process.env.CLOCK_TEST_CHANNEL || 'msedge',
+    channel: process.env.CLOCK_TEST_CHANNEL === 'msedge' ? 'msedge' : 'chromium',
     headless: true
   });
 
