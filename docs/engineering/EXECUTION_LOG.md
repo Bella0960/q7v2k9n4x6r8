@@ -2,6 +2,16 @@
 
 This is the durable checkpoint for owner-assigned, multi-step work. Update it after meaningful milestones and before ending a session.
 
+## 2026-11-16｜PR #299｜关键阻塞集中清理：两项真实回归测试漂移已修
+
+- **当前 HEAD：`909c75a14a736c4181cc82f0670e884ca9472204`**；原 PR #299 继续 Draft（基于 #290 最新 head），无新 PR/环境/数据库，Cloudflare、正式版、main 皆未改。
+- **已修正一个确定的真实测试门禁阻塞**：先从原 #299 取回 `tests/account-qa-bootstrap-route.test.mjs` 和 `account/account.js`，按整份测试文件执行 10 个案例：**8/10**，两项测试失败。原因是后续已实现“QA 初始立即隐藏注册入口”，使旧测试的 `syncLoginAvailability(); function showPanel()` 邻接断言及从 `syncLoginAvailability` 截取到 `showPanel` 的测试桩不再正确。
+- **修复提交 `909c75a14a736c4181cc82f0670e884ca9472204`**：只改 `tests/account-qa-bootstrap-route.test.mjs` 两处，改为断言真正的 QA 初始注册防护，忙碌态测试只提取两个目标函数而不混入初始 DOM 副作用。再次运行同一整份测试文件：**10/10**。这是使用模拟 Node 接口的 V8 原源码测试运行，并非完整仓库的 `node --test`。
+- **额外定点复测**：使用同一提交的 GitHub 原源码、测试和合成依赖，执行 `tests/qa-identity-bootstrap.test.mjs`：**12/12**；执行 `tests/qa-release-live-version.test.mjs`：**16/16**。三份合计 **38/38** 模拟执行通过；不能冒充 `npm ci`、Node 测试 CLI、Vite、Chromium 或真正的 Cloudflare 登录。
+- **会话问题已排除**：最初怀疑 core `/api/accounts/logout` 不处理 Bearer；追踪 `worker/lib/account-auth.js` 实际 `cookieValue(request)` 函数发现它同时读取 Cookie 和严格格式 Bearer，因此原 QA 的 Bearer 注销并不缺失，**未做无依据的修改**。
+- **剩余真实阻塞（按优先级）**：① 在同一完整私有 checkout 下实际跑 `npm ci`、全量 Node、Vite、Chromium；② 按现有验证门禁将 #299 核心代码部署至**现有** `maomao-identity-core`，再仅切换现有 `maomao-aw-qa-20261114` 的 Service Binding；③ 由用户在原 QA URL 使用已保存的 QA-only Secret 进行 001 首次初始化，独立新 QA 登录密码、同步关闭 setup，验收登录/刷新/退出、历史聊天/番外和 PWA 手机。不可绕过真实构建后直接部署或触碰正式管理员数据。
+- **Cloudflare 前次已验证现场**：现有 QA 仍绑定 `maomao-001-identity-gateway-20261114`，原 QA 库唯一 active founder 001；独立 core 库仍为空且已配双 Secret。代码在 PR，不得宣称已部署。
+
 ## 2026-11-16｜PR #299｜QA 注册误入口 + 原运行开关一致性 + Worker 路由安全
 
 - **原则**：仅继续原 #299 与 #290 堆叠，不新建 PR/QA Worker/数据库；未合并 main、未部署新版 QA/核心、未修改正式 Worker/账号/密钥或任何 DO 数据。
