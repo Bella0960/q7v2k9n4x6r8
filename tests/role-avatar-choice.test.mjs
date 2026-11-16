@@ -309,3 +309,117 @@ test('character deletion cleans cooldown only after save, with the existing retr
   assert.ok(characterPage.includes('../../shared/js/phone/role-avatar-choice.js?v=20261113v1'));
   assert.ok(characterPage.indexOf('role-avatar-choice.js?v=20261113v1') < characterPage.indexOf('characters-manager.js?v=20261113v2'));
 });
+
+
+function makeChatPairSyncHarness() {
+  const start = detail.indexOf("        let _chatPairAvatarUrl = '';");
+  const end = detail.indexOf('        // ================= 消息稳定标识：', start);
+  assert.ok(start >= 0 && end > start, 'chat pair avatar lifecycle must exist');
+  const fragment = detail.slice(start, end);
+  const listeners = { window: {}, document: {} };
+  const painting = [];
+  const avatars = [{}, {}];
+  const state = {
+    selected: { pairId: 'pair-a', avatarId: 'avatar-b', assetId: 'asset-b' },
+    currentDataUrl: 'data:image/png;base64,PHOTO_B',
+    localProfile: JSON.stringify({ avatar: 'global-avatar' }),
+    reads: 0
+  };
+  const win = {
+    RoleAvatarLibrary: {
+      getChatPairUserSelection() { return state.selected; },
+      toDataUrl() {
+        state.reads++;
+        return Promise.resolve({ ok: true, value: state.currentDataUrl });
+      }
+    },
+    addEventListener(name, callback) { (listeners.window[name] ||= []).push(callback); }
+  };
+  const doc = {
+    hidden: false,
+    addEventListener(name, callback) { (listeners.document[name] ||= []).push(callback); },
+    querySelectorAll(selector) {
+      assert.equal(selector, '.msg-row.sent .msg-avatar');
+      return avatars;
+    }
+  };
+  const context = {
+    window: win, document: doc, isGroupChat: false,
+    currentCharacter: { id: 'role-A' }, aliasRoleId: 'role-A',
+    USER_SVG: '<svg></svg>',
+    localStorage: { getItem: () => state.localProfile },
+    fillAvatar(node, avatar) { painting.push(avatar); node.avatar = avatar; }
+  };
+  vm.runInNewContext(fragment +
+    '\nwindow.__chatPairSync = {refresh: refreshChatPairUserAvatar, current: () => _chatPairAvatarUrl};',
+    context, { filename: 'chat-pair-sync.js' });
+  const fire = (source, name, event) => {
+    for (const handler of listeners[source][name] || []) handler(event);
+  };
+  const settle = async () => {
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+  };
+  return { state, doc, win, avatars, painting, listeners, fire, settle, api: win.__chatPairSync };
+}
+
+test('other tabs changing this pair update only its sent-message avatars', async () => {
+  const f = makeChatPairSyncHarness();
+  await f.api.refresh();
+  assert.equal(f.api.current(), 'data:image/png;base64,PHOTO_B');
+  assert.equal(f.avatars[0].avatar, 'data:image/png;base64,PHOTO_B');
+  const paintCount = f.painting.length;
+
+  // A change to a different role must not disturb the open chat.
+  f.fire('window', 'storage', { key: 'maomao_chat_pair_user_avatar_v1_role-B' });
+  await f.settle();
+  assert.equal(f.painting.length, paintCount);
+  f.fire('window', 'storage', { key: 'myProfile' });
+  await f.settle();
+  assert.equal(f.painting.length, paintCount);
+
+  // Unlink in the other tab. The old B-side avatar disappears; global
+  // profile photo is used, but never overwritten by role avatar logic.
+  f.state.selected = null;
+  f.fire('window', 'storage', { key: 'maomao_chat_pair_user_avatar_v1_role-A' });
+  await f.settle();
+  assert.equal(f.api.current(), '');
+  assert.equal(f.avatars[0].avatar, 'global-avatar');
+  assert.equal(f.state.localProfile, JSON.stringify({ avatar: 'global-avatar' }));
+
+  // Relink and reapply in another tab: existing conversation updates.
+  f.state.selected = { pairId: 'pair-a', avatarId: 'avatar-a', assetId: 'asset-a' };
+  f.state.currentDataUrl = 'data:image/png;base64,PHOTO_A';
+  f.fire('window', 'storage', { key: 'maomao_role_avatar_library_v1_role-A' });
+  await f.settle();
+  assert.equal(f.api.current(), 'data:image/png;base64,PHOTO_A');
+  assert.equal(f.avatars[1].avatar, 'data:image/png;base64,PHOTO_A');
+});
+
+test('returning from BFCache/background refreshes the current pair without repainting unchanged conversations', async () => {
+  const f = makeChatPairSyncHarness();
+  await f.api.refresh();
+  const paintCount = f.painting.length;
+  f.fire('window', 'pageshow', {});
+  await f.settle();
+  assert.equal(f.painting.length, paintCount);
+  f.doc.hidden = true;
+  f.fire('document', 'visibilitychange', {});
+  await f.settle();
+  assert.equal(f.painting.length, paintCount);
+  f.doc.hidden = false;
+  f.state.selected = null;
+  f.fire('document', 'visibilitychange', {});
+  await f.settle();
+  assert.equal(f.api.current(), '');
+  assert.equal(f.avatars[0].avatar, 'global-avatar');
+});
+
+test('pair storage event after deleting this library clears an old B-side portrait', async () => {
+  const f = makeChatPairSyncHarness();
+  await f.api.refresh();
+  f.state.selected = null;
+  f.fire('window', 'storage', { key: null });
+  await f.settle();
+  assert.equal(f.api.current(), '');
+  assert.equal(f.avatars[0].avatar, 'global-avatar');
+});
