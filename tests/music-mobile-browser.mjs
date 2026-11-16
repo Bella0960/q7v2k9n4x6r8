@@ -182,19 +182,51 @@ try {
       await page.locator('.music-playlist-toolbar .music-playlist-quiet').first().click();
       assert.equal(await page.evaluate(() =>
         Object.prototype.hasOwnProperty.call(JSON.parse(localStorage.getItem('music_playlists_v1')), '已改名')), true);
+      // 用两首真实导入的 WAV 验证播放队列，不用无音源的模拟歌曲。
+      await page.locator('#musicImport').setInputFiles({
+        name:'QA 第二首.wav', mimeType:'audio/wav', buffer:makeWav()
+      });
+      await page.waitForFunction(() =>
+        JSON.parse(localStorage.getItem('music_local_tracks') || '[]').length === 2);
+      const secondTrackId = await page.evaluate(id =>
+        JSON.parse(localStorage.getItem('music_local_tracks')).find(t => t.id !== id).id, trackId);
+      await page.evaluate(id => {
+        window.MAOMAOMusicPlaylists.addTrack('已改名', id);
+        hideNP();
+        showMusicPlaylistTracks('已改名');
+      }, secondTrackId);
+      assert.equal(await page.locator('.music-playlist-track-name').count(), 2);
+      await page.locator('.music-playlist-track-name').first().click();
+      await page.waitForFunction(id =>
+        window.MAOMAOMusicQueue.getState().playlistName === '已改名' &&
+        window.MAOMAOMusicQueue.getState().currentTrackId === id, trackId);
+      assert.equal(await page.locator('#musicPlaylistView').isVisible(), false,
+        'playlist only closes after audio playback really starts');
+      assert.equal(await page.locator('#npOverlay').isVisible(), true);
+      await page.evaluate(() => nextTrack());
+      await page.waitForFunction(id =>
+        window.MAOMAOMusicQueue.getState().currentTrackId === id, secondTrackId);
+      assert.equal(await page.locator('#npTitle').textContent(), 'QA 第二首');
+      await page.evaluate(() => {
+        hideNP();
+        showMusicPlaylistTracks('已改名');
+      });
       page.once('dialog', dialog => dialog.accept());
       await page.locator('.music-playlist-track .music-playlist-quiet').first().click();
       assert.equal(await page.evaluate(() =>
-        JSON.parse(localStorage.getItem('music_playlists_v1'))['已改名'].length), 0);
+        JSON.parse(localStorage.getItem('music_playlists_v1'))['已改名'].length), 1);
       page.once('dialog', dialog => dialog.accept());
       await page.locator('.music-playlist-toolbar .music-playlist-quiet').last().click();
       assert.equal(await page.evaluate(() =>
         Object.keys(JSON.parse(localStorage.getItem('music_playlists_v1') || '{}')).length), 0);
-      assert.equal(await page.evaluate(async id => {
-        const blob = await getAudioBlob(id);
+      assert.equal(await page.evaluate(async ids => {
         const catalog = JSON.parse(localStorage.getItem('music_local_tracks') || '[]');
-        return blob?.size > 44 && catalog.some(track => track.id === id);
-      }, trackId), true, 'playlist deletion must not delete the imported local song');
+        for (const id of ids) {
+          const blob = await getAudioBlob(id);
+          if (!(blob?.size > 44 && catalog.some(track => track.id === id))) return false;
+        }
+        return true;
+      }, [trackId, secondTrackId]), true, 'deleting a playlist must preserve both original WAV files');
       assert.deepEqual(pageErrors, [], 'no uncaught JS errors at ' + width);
       console.log('PASS Chromium ' + width + 'px: viewport, import Blob, reload, playback, cover, LRC, playlist');
     } finally {
