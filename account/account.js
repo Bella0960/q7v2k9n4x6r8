@@ -372,9 +372,14 @@
       if (delegatedIdentity) {
         document.querySelectorAll('[data-show="registerPanel"]').forEach(button => { button.hidden = true; });
         const subtitle = byId('loginPanel')?.querySelector('.lead');
-        if (subtitle) subtitle.textContent = status.qaIdentityCore === true
-          ? 'QA 测试版：使用原管理员用户名或永久 ID，以及为 QA 单独设置的密码。不要输入正式版密码。'
-          : '用你原来的 MAO 账号登录。管理员 001 不需要邀请码，也不需要重复注册。';
+        if (subtitle) {
+          subtitle.textContent = status.qaIdentityCore === true
+            ? 'QA 测试版：使用原管理员用户名或永久 ID，以及为 QA 单独设置的密码。不要输入正式版密码。'
+            : '用你原来的 MAO 账号登录。管理员 001 不需要邀请码，也不需要重复注册。';
+          // Ivory login hides generic .lead by default. The QA-only
+          // password warning must actually be visible on a phone.
+          subtitle.classList.toggle('qa-login-hint', status.qaIdentityCore === true);
+        }
         delegatedSignInReady = status.signInReady === true;
         const unavailable = !delegatedSignInReady;
         const loginForm = byId('loginForm');
