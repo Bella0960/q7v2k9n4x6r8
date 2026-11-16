@@ -197,13 +197,18 @@ export async function callIdentityAuthority(env, operation, body) {
  * A Worker Preview's Service Binding targets the authority's deployed Worker.
  */
 export async function probeExistingIdentityAuthority(env) {
-  if (!usesDelegatedIdentity(env) || typeof env.MAO_IDENTITY_AUTHORITY?.fetch !== 'function') {
+  // The deployed gateway requires this server-only header for every route,
+  // including its read-only bootstrap probe. Never probe anonymously.
+  const secret = String(env?.MAO_IDENTITY_BRIDGE_SECRET || '');
+  if (!usesDelegatedIdentity(env) || secret.length < 32 ||
+      typeof env.MAO_IDENTITY_AUTHORITY?.fetch !== 'function') {
     return { connected: false, initialized: false, configured: false };
   }
   try {
     const response = await env.MAO_IDENTITY_AUTHORITY.fetch(
-      new Request('https://mao520.com/api/admin/bootstrap/status', {
-        method: 'GET', headers: { accept: 'application/json' }
+      new Request(INTERNAL_ORIGIN + '/api/admin/bootstrap/status', {
+        method: 'GET',
+        headers: { accept: 'application/json', [BRIDGE_AUTH_HEADER]: secret }
       })
     );
     if (!response.ok) return { connected: false, initialized: false, configured: false };
