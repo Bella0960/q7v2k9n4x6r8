@@ -491,3 +491,146 @@ test('pair editing and portrait removal discard stale status after leaving profi
   assert.match(removal, /await library\.remove\(roleId, avatarId\);\s*if \(String\(currentProfileRoleId \|\| ''\) !== roleId\) return;/);
   assert.match(removal, /await renderAvatarLibrary\(roleId\);\s*if \(String\(currentProfileRoleId \|\| ''\) !== roleId\) return;/);
 });
+
+
+function makeCharacterProfileStorageHarness() {
+  const manager = fs.readFileSync(path.join(root, 'worldbook/characters/js/characters-manager.js'), 'utf8');
+  const start = manager.indexOf('(function watchExternalRoleAvatarChanges() {');
+  const end = manager.indexOf('// 页面初始化', start);
+  assert.ok(start >= 0 && end > start, 'cross-tab character-profile watcher must exist');
+  const code = manager.slice(start, end);
+  const winListeners = {};
+  const docListeners = {};
+  const containerListeners = {};
+  const timers = [];
+  const calls = { library: [], view: [], profile: 0 };
+  const roles = {
+    'role-A': { id: 'role-A', name: 'A', avatar: 'data:image/png;base64,NEW_A' },
+    'role-B': { id: 'role-B', name: 'B', avatar: 'data:image/png;base64,NEW_B' }
+  };
+  let role = 'role-A';
+  let hiddenView = false;
+  let currentAvatar = {
+    tagName: 'IMG', src: 'data:image/png;base64,OLD_A',
+    getAttribute(name) { return name === 'src' ? this.src : ''; },
+    replaceWith(next) { currentAvatar = next; }
+  };
+  const editorInput = { matches(selector) { return selector === '[data-avatar-pair-label-input]'; } };
+  const container = {
+    querySelector(selector) {
+      assert.equal(selector, '.profile-hero-avatar');
+      return currentAvatar;
+    },
+    contains(element) { return element === editorInput; },
+    addEventListener(type, handler) { (containerListeners[type] ||= []).push(handler); }
+  };
+  const doc = {
+    hidden: false, activeElement: null,
+    getElementById(name) {
+      if (name === 'profileView') return {
+        classList: { contains(c) { return c === 'hidden' && hiddenView; } }
+      };
+      if (name === 'profileContent') return container;
+      return null;
+    },
+    createElement(tagName) { return { tagName: tagName.toUpperCase(), className: '', src: '', alt: '', textContent: '' }; },
+    addEventListener(type, callback) { (docListeners[type] ||= []).push(callback); }
+  };
+  const window = { addEventListener(type, callback) { (winListeners[type] ||= []).push(callback); } };
+  const context = {
+    window, document: doc,
+    getRoleById(id) { return roles[id] || null; },
+    renderAvatarLibrary(id) { calls.library.push(id); return Promise.resolve(true); },
+    showAppView(id) { calls.view.push(id); },
+    setTimeout(handler) { timers.push(handler); return timers.length; }
+  };
+  vm.runInNewContext('let currentProfileRoleId = "role-A";\n' +
+    code + '\nwindow.setAvatarRole = id => { currentProfileRoleId = id; };',
+    context, { filename: 'character-profile-storage.js' });
+  const fire = (set, name, event) => {
+    const listeners = set === 'window' ? winListeners :
+      set === 'document' ? docListeners : containerListeners;
+    for (const fn of listeners[name] || []) fn(event);
+  };
+  function flush() {
+    let limit = 12;
+    while (timers.length && --limit > 0) timers.shift()();
+    assert.ok(limit > 0, 'debounced profile refresh must not loop');
+  }
+  return {
+    window, doc, roles, calls, fire, flush, editorInput,
+    setRole(id) { window.setAvatarRole(id); },
+    setHiddenView(value) { hiddenView = value; },
+    get avatar() { return currentAvatar; },
+    get timerCount() { return timers.length; }
+  };
+}
+
+test('other tabs refresh only current role avatar section, without rewriting global profile', () => {
+  const f = makeCharacterProfileStorageHarness();
+  f.fire('window', 'storage', { key: 'maomao_role_avatar_library_v1_role-B' });
+  f.fire('window', 'storage', { key: 'myProfile' });
+  assert.equal(f.timerCount, 0, 'other role and global profile keys must not refresh current gallery');
+  f.fire('window', 'storage', { key: 'maomao_role_avatar_library_v1_role-A' });
+  f.fire('window', 'storage', { key: 'maomao_chat_pair_user_avatar_v1_role-A' });
+  assert.equal(f.timerCount, 1, 'simultaneous index and pair changes should coalesce');
+  f.flush();
+  assert.equal(f.calls.library.length, 1);
+  assert.equal(f.calls.library[0], 'role-A');
+  assert.equal(f.avatar.src, 'data:image/png;base64,NEW_A');
+  assert.equal(f.calls.profile, 0, 'do not recreate the whole profile');
+  assert.equal(f.calls.view.length, 0);
+});
+
+test('cross-tab avatar updates do not discard an unsaved pair rename', () => {
+  const f = makeCharacterProfileStorageHarness();
+  f.doc.activeElement = f.editorInput;
+  f.fire('window', 'storage', { key: 'maomao_role_avatar_library_v1_role-A' });
+  f.flush();
+  assert.equal(f.calls.library.length, 0);
+  assert.equal(f.avatar.src, 'data:image/png;base64,OLD_A');
+  f.doc.activeElement = null;
+  f.fire('container', 'focusout', {});
+  f.flush();
+  assert.equal(f.calls.library.length, 1);
+  assert.equal(f.avatar.src, 'data:image/png;base64,NEW_A');
+});
+
+test('stale queued updates never repaint another role after profile navigation', () => {
+  const f = makeCharacterProfileStorageHarness();
+  f.fire('window', 'storage', { key: 'maomao_role_avatar_library_v1_role-A' });
+  f.setRole('role-B');
+  f.flush();
+  assert.equal(f.calls.library.length, 0);
+  assert.equal(f.avatar.src, 'data:image/png;base64,OLD_A');
+  f.fire('window', 'storage', { key: 'maomao_role_avatar_library_v1_role-B' });
+  f.flush();
+  assert.deepEqual(f.calls.library, ['role-B']);
+  assert.equal(f.avatar.src, 'data:image/png;base64,NEW_B');
+});
+
+test('background return and BFCache restore refresh active profile without polling', () => {
+  const f = makeCharacterProfileStorageHarness();
+  f.fire('window', 'pageshow', { persisted: false });
+  assert.equal(f.timerCount, 0);
+  f.fire('window', 'pageshow', { persisted: true });
+  f.flush();
+  assert.equal(f.calls.library.length, 1);
+  f.doc.hidden = true;
+  f.fire('window', 'storage', { key: null });
+  f.flush();
+  assert.equal(f.calls.library.length, 1);
+  f.doc.hidden = false;
+  f.fire('document', 'visibilitychange', {});
+  f.flush();
+  assert.equal(f.calls.library.length, 2);
+});
+
+test('deleted role in another tab safely returns profile to character list', () => {
+  const f = makeCharacterProfileStorageHarness();
+  delete f.roles['role-A'];
+  f.fire('window', 'storage', { key: 'ai_custom_characters' });
+  f.flush();
+  assert.deepEqual(f.calls.view, ['listView']);
+  assert.equal(f.calls.library.length, 0);
+});
