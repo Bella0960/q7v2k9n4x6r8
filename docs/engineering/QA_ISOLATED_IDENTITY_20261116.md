@@ -54,8 +54,8 @@ QA 首次上线后由用户进入原 QA 域名的账号初始化页，可使用*
 - 修复 `account/account.js` 的 QA 专用密码说明被 `account/ivory-entry.css` 隐藏的问题：只在确认独立 QA 时启用低干扰 `qa-login-hint`，原有普通登录布局不变。
 - 修复 QA 身份尚未就绪时，`setAuthBusy(false)` 或其他表单操作可能重新启用登录提交按钮的问题；登录提交逻辑也会先检查 `delegatedSignInReady`，拒绝向未就绪的委托核心发送密码。
 - 因 `sw.js` 对静态资源使用缓存优先策略，`account/index.html` 的登录 JS/CSS 及 `account/bootstrap.html` 的初始化 JS 已切换 `v=20261116-qa1`，避免原手机 PWA 继续读取相同 URL 的旧文件。本轮没有修改 Service Worker 的存储或账号缓存隔离规则。
-- 现有 `scripts/qa-direct-release.mjs` 的 QA HTTP smoke 进一步要求原 QA workers.dev 入口实际返回**六项真实资源**：状态接口、登录 HTML、登录 JS、登录 CSS、初始化 HTML、初始化 JS；检查各自 HTTP 200、前端版本引用、QA 专用密码可见样式及管理员 ID 输入逻辑。不仅检查 Worker 元数据、状态 API 或登录表单是否存在。
+- 现有 `scripts/qa-direct-release.mjs` 的 QA HTTP smoke 进一步要求原 QA workers.dev 入口实际返回**六项基础资源**：状态接口、登录 HTML、登录 JS、登录源 CSS、初始化 HTML、初始化 JS；另外解析登录 HTML 实际引用的**全部样式表**并逐个同源 GET，检查内容确实包含 `qa-login-hint`。这样兼容 Vite 合并/指纹化后的 CSS 路径，也避免仅有源 CSS 而页面实际加载旧 CSS。任何缺失、跨源链接、旧缓存或身份状态异常均不允许报告 QA 通过。
 - `assertReadyForUpload()` 也追加 `dist/account/bootstrap.js` 和 `dist/account/ivory-entry.css` 构建产物检查。原 `tests/account-qa-bootstrap-route.test.mjs` 及 `tests/qa-release-live-version.test.mjs` 已增加相应回归。
-- **本轮可验证结果**：针对原 GitHub 源文件运行独立 JS DOM 桩检查；从同一提交读取实际登录 HTML、JS、CSS 与初始化 HTML、JS 并注入 HTTP smoke 的模拟响应，验证两种正确状态、旧 JS/CSS/HTML、核心断联、404 等 **9/9** 场景符合预期；相关 JS 在 V8 中完成语法解析。**没有**实际运行 `npm ci`、Node CLI 全量、Vite 构建或 Chromium 手机视口，也没有从线上 QA 取得这六项响应。不能把此记录当作已部署或已登录。
+- **本轮可验证结果**：针对原 GitHub 源文件运行独立 JS DOM 桩检查；从同一提交读取实际登录 HTML、JS、CSS 与初始化 HTML、JS 以及普通基础样式表，注入 HTTP smoke 的模拟响应，验证首次/已初始化、旧登录 JS、旧登录 CSS、旧初始化 JS、缺少已引用基础 CSS、模拟 Vite 指纹样式正常、跨源 CSS 被拒绝、核心断联等 **9/9** 场景符合预期；相关测试 JS 在 V8 中完成语法解析。**没有**实际运行 `npm ci`、Node CLI 全量、Vite 构建或 Chromium 手机视口，也没有从线上 QA 取得真实 HTTP 回执。不能把此记录当作已部署或已登录。
 - 当前 `MAO_SUPER_ADMIN_BOOTSTRAP_SECRET`、`DEVICE_SECRET_PEPPER` 已在 Cloudflare 的独立身份 Worker 配置，不要重新让用户生成或发送。独立核心仍需完整工程测试后更新，唯一 QA 仍旧网关，正式版未改。
 
