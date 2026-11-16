@@ -197,3 +197,11 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 提交 8cf4cfacee29691a36e27d510fbe0d6c6f54cec9：Playwright 390px 独立上下文验证故事起点选择、收藏、改选、刷新后保持，并要求新 release gate 回执 fateChoicePersistence 与截图 encounter-fate-persisted-390.png。
 - 已实际执行：本轮已提交代码的 V8 适配模拟 DOM 回归 14/14 PASS，新增账号等待锁/返回边界合同 2/2 PASS，Playwright 与 release gate 的 JS 语法解析 PASS。未实际运行完整 Node CLI、Vite build、Playwright Chromium 或 Android/iPhone；不能宣称 QA 通过或上线。
 - 下轮 QA 部署冻结结束后，唯一整合窗口按顺序接入 PR #297 最新 SHA，运行 npm run test:encounter、npm run build、npm run test:encounter:browser、npm run gate:encounter；Android/iOS 验收后才考虑合 main，正式发布另行批准。
+
+
+## FEATURE-ENCOUNTER-001｜2026-11-17 顶部与底部布局（截图反馈）及假状态栏禁令
+- **范围**：沿用原功能 Draft PR #297 与 FEATURE-ENCOUNTER-001-initial-experience；唯一 QA #299 未被本轮修改；不新建 PR，不动 main、正式 Worker、管理员 001、角色存档。
+- **原因**：用户 Android 截图显示系统原生状态栏与自绘时间/信号/电量重复；三个点菜单和候选收藏数字布局松散，背卡拉到主卡下方，PASS/收藏接近底部手势区。
+- **实际修复**：71fa52e 调整移动端顶部菜单/计数、卡片与背卡底部对齐、真实 safe-area 与按钮间距；4fe77fa 彻底移除假状态栏 DOM、样式与 clock 计时器，不依赖 CSS 隐藏（覆盖横屏/大屏）；be3dcc8 修改浏览器断言；eceb079/aa2433a 增加源码合同检查并修正正则转义；5d4fcad/f42705e 把 nativeSystemStatusBar 标记加入真浏览器测试回执与发布门禁。
+- **检查结论**：已从连接的 GitHub 当前原分支重新读取页面和测试，完成 9/9 条源码静态条件确认（没有假栏节点/定时器、上下安全区、三尺寸浏览器断言与检查标记）。**不能替代真实 node --test、npm run build、Playwright 或 Android/iOS 真机。**
+- **剩余门禁**：使用依赖已整合的完整工程执行 npm run test:encounter、npm run build、npm run test:encounter:browser、npm run gate:encounter；查看手机 375/390/430 屏幕与横屏安全区；由唯一 QA 集成窗口按既有顺序引入 #297 新 SHA 后在 preview.mao520.com 验收。QA 当前冻结时不可直接推送；正式发布需独立审批。
