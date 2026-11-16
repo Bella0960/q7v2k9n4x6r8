@@ -29,3 +29,18 @@ test('MUSIC-UI-001: self-contained playback features are still available', () =>
   assert.match(music, /id="audioPlayer"/);
   assert.match(music, /id="progressBar"/);
 });
+
+test('MUSIC-UI-001: now-playing group centers on tall screens and scrolls safely on short phones', () => {
+  const start = music.indexOf('<div class="np-main">');
+  const end = music.indexOf('<!-- /.np-main -->', start);
+  assert.ok(start > 0 && end > start, 'one vertical now-playing body wrapper');
+  const group = music.slice(start, end);
+  for (const selector of ['id="npCover"', 'id="lyricView"', 'class="np-song-row"', 'id="progressBar"', 'class="np-controls"']) {
+    assert.ok(group.includes(selector), 'now playing item stays in centered group: ' + selector);
+  }
+  assert.match(music, /\.np-main\s*\{[\s\S]*?justify-content:\s*center/);
+  assert.match(music, /\.np-main\s*\{[\s\S]*?overflow-y:\s*auto/);
+  assert.match(music, /@media\s*\(max-height:\s*690px\)/);
+  assert.match(music, /\.np-main\s+\.np-cover\s*\{/);
+  assert.match(music, /\.np-main\s+#lyricView\s*\{/);
+});
