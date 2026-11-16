@@ -1400,6 +1400,25 @@
       window.audio.pause(); playing = false;
       musicEmitPlayback('pause');
     } else {
+      // 刷新后本地曲仅恢复元数据，Blob URL 必须重新从 IndexedDB 创建。
+      // 默认示例曲没有 src 时也走同一真实 playTrack 流程。
+      var selected = tracks[currentIdx];
+      if (selected && (!window.audio.src || (selected.source === 'local' && !currentBlobUrl))) {
+        var resumeTime = 0;
+        try {
+          var saved = JSON.parse(localStorage.getItem('music_state') || 'null');
+          if (saved && String(saved.id) === String(selected.id))
+            resumeTime = Math.max(0, Number(saved.time) || 0);
+        } catch (err) {}
+        await playTrack(selected.id);
+        if (!window.audio.paused && resumeTime > 0 && Number.isFinite(window.audio.duration)) {
+          try {
+            window.audio.currentTime = Math.min(resumeTime, Math.max(0, window.audio.duration - 0.1));
+            saveState();
+          } catch (err) { toast('当前音频无法恢复原播放进度'); }
+        }
+        return;
+      }
       try { await window.audio.play(); }
       catch (err) { toast('音频未能继续播放'); playing = false; updatePlayIcon(); return; }
       playing = !window.audio.paused;
