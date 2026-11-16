@@ -74,15 +74,20 @@ async function verifyPage(browser, base, width) {
       { id: 'role-A', name: '测试角色甲', avatar: '', avatarAutonomyEnabled: true },
       { id: 'role-B', name: '测试角色乙', avatar: '', avatarAutonomyEnabled: true }
     ];
-    localStorage.setItem('ai_custom_characters', JSON.stringify(roles));
-    localStorage.setItem('myProfile', JSON.stringify({ avatar: 'sentinel-only' }));
+    // Preserve edits across reload; only a fresh test context is seeded.
+    if (!localStorage.getItem('ai_custom_characters')) {
+      localStorage.setItem('ai_custom_characters', JSON.stringify(roles));
+    }
+    if (!localStorage.getItem('myProfile')) {
+      localStorage.setItem('myProfile', JSON.stringify({ avatar: 'sentinel-only' }));
+    }
   });
 
   try {
     const address = base + '/chat/chat/avatar-manager.html?roleId=role-A';
     const navigation = await page.goto(address, { waitUntil: 'domcontentloaded' });
     assert.equal(navigation?.status(), 200, 'portrait route must be served');
-    await page.waitForFunction(() => Boolean(window.RoleAvatarLibrary), { timeout: 15000 });
+    await page.waitForFunction(() => Boolean(window.RoleAvatarLibrary), null, { timeout: 15000 });
     assert.equal(await page.locator('#roleName').textContent(), '测试角色甲');
     assert.equal(await page.locator('#album .portrait').count(), 0);
     assert.equal(await page.locator('#advancedMenu').count(), 1);
