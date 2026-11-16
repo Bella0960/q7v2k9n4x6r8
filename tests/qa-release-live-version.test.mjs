@@ -1,0 +1,73 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
+
+// Verify the actual production release helper without invoking Wrangler,
+// accessing live credentials, or performing Cloudflare writes.
+const source = readFileSync(new URL('../scripts/qa-direct-release.mjs', import.meta.url), 'utf8');
+const start = source.indexOf('async function liveWorkerVersion(name) {');
+const end = source.indexOf('\n\nasync function cloudflarePreflight()', start);
+assert.ok(start >= 0 && end > start, 'live Worker version gate must exist');
+const helper = source.slice(start, end);
+
+function mount(result) {
+  const requests = [];
+  const fn = vm.runInNewContext(helper + '\nliveWorkerVersion;', {
+    assert,
+    cloudflare: async path => {
+      requests.push(path);
+      return result;
+    }
+  });
+  return { fn, requests };
+}
+
+const UUID_A = '11111111-1111-4111-8111-111111111111';
+const UUID_B = '22222222-2222-4222-8222-222222222222';
+
+test('reads 100% active Worker deployment from the expected Worker endpoint', async () => {
+  const fixture = mount({ deployments: [
+    { source: 'wrangler', versions: [{ version_id: UUID_A, percentage: 100 }] }
+  ] });
+  const result = await fixture.fn('maomao-identity-core');
+  assert.equal(result.versionId, UUID_A);
+  assert.equal(result.source, 'wrangler');
+  assert.deepEqual(fixture.requests, ['/workers/scripts/maomao-identity-core/deployments']);
+});
+
+test('also accepts Cloudflare deployments returned directly as an array', async () => {
+  const fixture = mount([
+    { source: 'wrangler', versions: [{ version_id: UUID_B, percentage: 100 }] }
+  ]);
+  const result = await fixture.fn('maomao-aw-qa-20261114');
+  assert.equal(result.versionId, UUID_B);
+});
+
+test('rejects a missing, split, or malformed deployment instead of reporting success', async () => {
+  const bad = [
+    {},
+    { deployments: [] },
+    { deployments: [{ versions: [] }] },
+    { deployments: [{ versions: [
+      { version_id: UUID_A, percentage: 50 },
+      { version_id: UUID_B, percentage: 50 }
+    ] }] },
+    { deployments: [{ versions: [{ version_id: UUID_A, percentage: 95 }] }] },
+    { deployments: [{ versions: [{ version_id: 'not-a-version', percentage: 100 }] }] }
+  ];
+  for (const result of bad) {
+    await assert.rejects(mount(result).fn('maomao-identity-core'));
+  }
+});
+
+test('direct QA release must compare pre/post versions of BOTH existing Workers', () => {
+  assert.match(source, /const corePrevious = await liveWorkerVersion\(CORE\)/);
+  assert.match(source, /const qaPrevious = await liveWorkerVersion\(QA\)/);
+  assert.match(source, /assert\.notEqual\(coreVersion\.versionId, corePrevious\.versionId/);
+  assert.match(source, /assert\.notEqual\(qaVersion\.versionId, qaPrevious\.versionId/);
+  assert.match(source, /assert\.equal\(coreVersion\.source, 'wrangler'/);
+  assert.match(source, /assert\.equal\(qaVersion\.source, 'wrangler'/);
+  assert.match(source, /run\('npx', \['--yes', 'wrangler@4', 'deploy', '--config', 'wrangler\.qa-identity-core\.jsonc'\]\)/);
+  assert.match(source, /run\('npx', \['--yes', 'wrangler@4', 'deploy', '--config', 'wrangler\.qa\.jsonc'\]\)/);
+});
