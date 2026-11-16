@@ -342,3 +342,56 @@ test('QA founder setup may only change open to disabled after founder exists', (
     allowClosingSetup: true
   }), /unexpectedly change/, 'a later release cannot re-open closed setup');
 });
+
+
+const routeGuardStart = source.indexOf('async function verifyWorkerPublicRoutes() {');
+const routeGuardEnd = source.indexOf('\n\nasync function cloudflarePreflight()', routeGuardStart);
+assert.ok(routeGuardStart >= 0 && routeGuardEnd > routeGuardStart,
+  'Worker public-route safety check must exist');
+
+function makePublicRouteCheck(qa, core) {
+  const calls = [];
+  const verify = vm.runInNewContext(
+    source.slice(routeGuardStart, routeGuardEnd) + '\nverifyWorkerPublicRoutes;',
+    { assert, QA: 'maomao-aw-qa-20261114', CORE: 'maomao-identity-core',
+      cloudflare: async path => {
+        calls.push(path);
+        return path.includes('maomao-identity-core') ? core : qa;
+      }
+    }
+  );
+  return { run: verify, calls };
+}
+
+test('QA URL remains public but the identity core and preview URLs stay private', async () => {
+  const good = makePublicRouteCheck(
+    { enabled: true, previews_enabled: false },
+    { enabled: false, previews_enabled: false }
+  );
+  await good.run();
+  assert.equal(good.calls.length, 2);
+  assert.ok(good.calls.some(path => path.endsWith('/maomao-identity-core/subdomain')));
+  assert.ok(good.calls.some(path => path.endsWith('/maomao-aw-qa-20261114/subdomain')));
+  for (const [qa, core] of [
+    [{ enabled: false, previews_enabled: false }, { enabled: false, previews_enabled: false }],
+    [{ enabled: true, previews_enabled: true }, { enabled: false, previews_enabled: false }],
+    [{ enabled: true, previews_enabled: false }, { enabled: true, previews_enabled: false }],
+    [{ enabled: true, previews_enabled: false }, { enabled: false, previews_enabled: true }],
+    [{ enabled: true, previews_enabled: false }, {}]
+  ]) {
+    await assert.rejects(makePublicRouteCheck(qa, core).run());
+  }
+});
+
+test('Wrangler configs preserve original QA route and hide isolated core routes', () => {
+  const qa = JSON.parse(readFileSync(new URL('../wrangler.qa.jsonc', import.meta.url), 'utf8'));
+  const core = JSON.parse(readFileSync(new URL('../wrangler.qa-identity-core.jsonc', import.meta.url), 'utf8'));
+  assert.equal(qa.name, 'maomao-aw-qa-20261114');
+  assert.equal(qa.workers_dev, true);
+  assert.equal(qa.preview_urls, false);
+  assert.equal(core.name, 'maomao-identity-core');
+  assert.equal(core.workers_dev, false);
+  assert.equal(core.preview_urls, false);
+  assert.equal((source.match(/await verifyWorkerPublicRoutes\(\);/g) || []).length, 3,
+    'public route gate must run before release and after each Worker upload');
+});
