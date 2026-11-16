@@ -1,0 +1,22 @@
+{
+  "name": "MAOMAO QA · Node 22 / Vite / Chromium",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm",
+  "onCreateCommand": "npm ci --no-audit --no-fund",
+  "postCreateCommand": "npx playwright install --with-deps chromium && npm run qa:release:check",
+  "forwardPorts": [
+    3000
+  ],
+  "portsAttributes": {
+    "3000": {
+      "label": "MAOMAO local Vite preview",
+      "onAutoForward": "ignore"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  }
+}
