@@ -27,3 +27,20 @@
 - 用户仅在**唯一、已核实 origin 的完整 QA**的 `/account/bootstrap.html` 选择**不同于正式版**的 QA 专属密码，提交一次；用户名与旧 QA 管理员一致。检查返回的是 `qa_login` 而非自动登录，重新到 QA 登录页完成验证。
 - 成功后关闭 `MAO_QA_IDENTITY_SETUP`。执行 QA 登录/退出/刷新/跨角色隔离/现有聊天历史恢复回归，验证原 ID、角色、钱包/记忆等测试数据未丢失，记录 Worker 版本、QA 入口、真实测试与验收结果。
 - 若初始化 POST 超时或返回未知状态，**先只读检查身份核心的账号和审计**，不要重复创建、重置或覆盖用户数据。不得因为构建/GitHub Actions 额度不足而绕过测试。
+
+## 2026-11-16｜直接发布到唯一 QA（绕过已耗尽的构建额度）
+
+已在 #299 原分支加入：
+- `wrangler.qa.jsonc`：**只允许目标 `maomao-aw-qa-20261114`**，使用旧的 `CloudDatabase` 类名和 v1 迁移标签、`ASSETS`、`AI` 及原有 QA 运行变量；`MAO_IDENTITY_AUTHORITY` 绑定明确转到**既有独立** `maomao-identity-core`，不能指向正式账号 Worker。
+- `wrangler.qa-identity-core.jsonc`：只允许目标现有 `maomao-identity-core`，不接前端静态资源，也不修改 `mao`、`mao-auth-preview` 或 `curly-dream-324c`。明确指定既有 QA 永久管理员 ID，但不附带正式密码或任何 Secret。
+- `scripts/qa-direct-release.mjs`：完整原分支 checkout 的一键构建和受控发布入口。直接 Wrangler 上传，不使用 Workers Builds 分钟，也不依赖 GitHub Actions。
+
+**在可执行完整私有仓库的工作环境**，检出 `integration/account-fanwai-stack-20261115`（#299），确认工作树无本地未提交改动。先运行 `npm run qa:release:check`；此命令会顺序执行 npm ci、账号专项、账号+番外整合、教程、聊天合同、PWA、Vite 构建、Chromium 安装及番外浏览器烟测，任一失败即停止，**不部署**。
+
+发布前，还必须通过 Cloudflare 管理控制台或受保护的工作环境**只在** `maomao-identity-core` 配置两项全新的、不同于正式环境的 QA-only Secret：`MAO_SUPER_ADMIN_BOOTSTRAP_SECRET` 和 `DEVICE_SECRET_PEPPER`。严禁向聊天、GitHub、日志或截图传递密钥。已通过只读 API 确认该 Worker 目前**尚未**配置这两项，绝不能跳过。
+
+只有上述完整测试通过，且 QA 账号/身份库只读检查通过后，才在受保护环境设置 Cloudflare 发布 Token、Account ID，并用确切 Worker 名的确认变量调用 `npm run qa:release:deploy`。脚本会再次执行所有测试、只读核对两套已有 DO namespace、唯一 active 管理员 001 和现有秘密绑定，之后**先升级现有独立身份核心、再升级现有唯一 QA**。任何不匹配直接拒绝发布。正式版/正式库不是目标。
+
+QA 首次上线后由用户进入原 QA 域名的账号初始化页，使用与正式版完全不同的 QA 密码，完成一次性初始化并重新登录；成功后需及时关闭 `MAO_QA_IDENTITY_SETUP`，并验收旧角色/聊天、账号 ID、番外剧场和手机浏览器。
+
+**当前发布状态仍是未完成**：直发入口已提交，但本对话运行环境缺少完整私有 checkout、Vite/Playwright 依赖以及核心 QA-only Secret，因此上述脚本的完整工程运行和 Cloudflare 部署**均未执行**。不能把这份脚本或隔离局部测试当作真实部署回执。
