@@ -31,6 +31,7 @@ const TESTS = [
   ['npm', ['run', 'test:integration:account-fanwai']],
   ['npm', ['run', 'test:tutorial']],
   ['npm', ['run', 'test:chat:contract']],
+  ['node', ['--test', 'tests/qa-cloud-settings-integration.test.mjs']],
   // The PWA navigation suite reads dist/index.html and dist/pwa-pages.json.
   // Build first so this works on a clean checkout, not only after an older build.
   ['npm', ['run', 'build']],
@@ -80,7 +81,9 @@ function assertReadyForUpload() {
     'dist/index.html', 'dist/account/index.html',
     'dist/account/bootstrap.html', 'dist/account/account.js',
     'dist/account/bootstrap.js', 'dist/account/ivory-entry.css',
-    'dist/chat/chat/chat-detail.html'
+    'dist/chat/chat/chat-detail.html',
+    'dist/settings/cloud-push.html',
+    'dist/shared/js/cloud-push-client.js'
   ]) {
     assert.ok(existsSync(path), 'QA Vite asset missing after build: ' + path);
   }
