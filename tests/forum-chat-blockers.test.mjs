@@ -768,8 +768,8 @@ for (const core of forumSeedCores) {
     const second = clone(page.loadPosts());
     const third = clone(page.loadPosts());
 
-    assert.equal(first.length, 6, '首次初始化应得到 6 条种子帖');
-    assert.equal(new Set(first.map((item) => item.id)).size, 6, '种子帖 ID 不得重复');
+    assert.equal(first.length, 0, '首次初始化应保持空论坛');
+    assert.equal(new Set(first.map((item) => item.id)).size, 0, '不得注入示例帖');
     assert.deepEqual(second, first, '第二次加载不得改变内容');
     assert.deepEqual(third, second, '第三次加载不得改变内容');
     assert.equal(
@@ -777,7 +777,7 @@ for (const core of forumSeedCores) {
       1,
       '内容稳定后不得每次都重写存储'
     );
-    assert.equal(JSON.parse(env.forum.data.forum_posts).length, 6, '存储里只保留一份种子帖');
+    assert.deepEqual(JSON.parse(env.forum.data.forum_posts), [], '只持久化空列表');
   });
 
   test(core.name + ' keeps the document shell when stored data is corrupt or not a list', () => {
@@ -786,7 +786,7 @@ for (const core of forumSeedCores) {
       const page = core.load(env);
       const loaded = page.loadPosts();
       assert.ok(Array.isArray(loaded), '损坏数据不得让加载抛出或返回非数组');
-      assert.deepEqual(Array.from(loaded, (item) => item.id), ['p1', 'p2', 'p3', 'p4', 'p5', 'p6']);
+      assert.deepEqual(Array.from(loaded, (item) => item.id), [], '损坏数据不会重新注入旧帖子');
       assert.ok(env.forum.warns.length >= 1, '读取失败必须显式记录');
       assert.ok(env.forum.toasts.length >= 1, '读取失败必须给出用户可见提示');
       assert.equal(
@@ -800,13 +800,14 @@ for (const core of forumSeedCores) {
   test(core.name + ' still shows already-read user posts when write-back fails', () => {
     const env = createForumEnv({});
     const page = core.load(env);
-    const userPost = { id: 'user_keep', owner: 'me', title: '仍在的帖子', body: '用户正文' };
+    const userPost = { id: 'user_keep', owner: 'me', title: '仍在的帖子', body: '用户正文', comments: 3 };
     env.localStorage.setItem('forum_posts', JSON.stringify([userPost]));
     env.forum.setFailWrites(true);
 
     const loaded = page.loadPosts();
     assert.ok(loaded.some((item) => item.id === 'user_keep'), '回写失败不得退回只剩种子的视图');
-    assert.equal(loaded.length, 7, '用户帖子与 6 条种子帖都应继续展示');
+    assert.equal(loaded.length, 1, '不注入旧种子帖，用户帖子仍应展示');
+    assert.deepEqual(Array.from(loaded[0].comments), [], '旧数字评论应安全迁移为空数组');
     assert.ok(env.forum.warns.length >= 1, '回写失败必须显式记录');
     assert.ok(
       env.forum.toasts.some((message) => message.indexOf('未写入') >= 0),
@@ -906,7 +907,7 @@ function loadDetailLoadPost(env) {
   return runInNewContext(source + '\nloadPost;', env);
 }
 
-test('detail invalid post id keeps the shell and an unreadable store still renders the seed post', () => {
+test('detail invalid post id keeps its shell and an existing user post still renders normally', () => {
   const head = fakeElement();
   const actions = fakeElement();
   const content = fakeElement();
@@ -932,7 +933,8 @@ test('detail invalid post id keeps the shell and an unreadable store still rende
   const renders = [];
   const coreEnv = createForumEnv({ forum_posts: '{broken json' });
   const core = loadDetailForumCore(coreEnv);
-  const seeds = clone(core.loadPosts());
+  const emptyPosts = clone(core.loadPosts());
+  assert.deepEqual(emptyPosts, [], '损坏的存储不可重新生成旧种子帖');
   const baseStubs = {
     document,
     URLSearchParams,
@@ -946,7 +948,7 @@ test('detail invalid post id keeps the shell and an unreadable store still rende
   Object.assign(env, baseStubs, {
     location: { search: '?id=missing_post' },
     getPostId: () => 'missing_post',
-    loadPosts: () => clone(seeds)
+    loadPosts: () => clone(emptyPosts)
   });
   const loadPost = loadDetailLoadPost(env);
   loadPost();
@@ -963,13 +965,13 @@ test('detail invalid post id keeps the shell and an unreadable store still rende
 
   const okEnv = createForumEnv({});
   Object.assign(okEnv, baseStubs, {
-    location: { search: '?id=p1' },
-    getPostId: () => 'p1',
-    loadPosts: () => clone(seeds)
+    location: { search: '?id=user_keep' },
+    getPostId: () => 'user_keep',
+    loadPosts: () => [{ id: 'user_keep', owner: 'me', title: '留存的帖子', body: '仍可读取', comments: [], aiCommentBatch: 'v1' }]
   });
   const loadSeedPost = loadDetailLoadPost(okEnv);
   loadSeedPost();
-  assert.deepEqual(renders, ['post', 'comments'], '存储损坏时仍可展示已读出的种子帖，页面外壳不崩溃');
+  assert.deepEqual(renders, ['post', 'comments'], '有效用户帖能正常渲染，页面外壳不崩溃');
 });
 
 /* ===== 论坛静默 catch 收口：注入抛错桩验证退化语义与 warn 上下文 ===== */
@@ -1086,6 +1088,7 @@ test('callAI without a loaded PhoneAPI still degrades quietly on the normal path
 
 test('getForumThreadWorldbook falls back to the default theme persona and logs the forum_config read failure', () => {
   const env = createForumEnv({ forum_config: '{broken json' });
+  env.post = null; // real forum-detail.html defines this variable in enclosing scope
   const before = env.forum.warns.length;
   const worldbook = loadThreadWorldbook(env)();
   assert.ok(worldbook.includes('当前论坛主题：现代都市'), '配置读失败时仍使用默认主题人设');
@@ -1095,6 +1098,7 @@ test('getForumThreadWorldbook falls back to the default theme persona and logs t
   assert.ok(env.forum.warns[before].includes('forum_config'));
 
   const okEnv = createForumEnv({ forum_config: JSON.stringify({ theme: 'xiuxian' }) });
+  okEnv.post = null;
   assert.ok(loadThreadWorldbook(okEnv)().includes('当前论坛主题：修仙界'), '正常路径不得受影响');
   assert.equal(okEnv.forum.warns.length, 0);
 });
