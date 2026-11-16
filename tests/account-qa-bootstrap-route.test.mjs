@@ -148,6 +148,8 @@ test('QA login page uses QA-only password hint without changing legacy gateway U
     'toggle(name, value) { if (value) this.tokens.add(name); else this.tokens.delete(name); }, ' +
     'contains(name) { return this.tokens.has(name); } } };\n' +
     '  const fields = [{ disabled: false }, { disabled: false }];\n' +
+    '  let authBusy = false;\n' +
+    '  const syncLoginAvailability = () => { const disabled = authBusy || (delegatedIdentity && !delegatedSignInReady); fields.forEach(f => { f.disabled = disabled; }); };\n' +
     '  const register = [{ hidden: false }];\n' +
     '  const errors = [];\n' +
     '  const byId = id => ({ creatorBootstrapLink: link,\n' +
@@ -212,4 +214,47 @@ test('QA login page uses QA-only password hint without changing legacy gateway U
   const css = readFileSync(new URL('../account/ivory-entry.css', import.meta.url), 'utf8');
   assert.match(css, /\.ivory-entry #loginPanel>\.lead\.qa-login-hint\s*\{\s*display:block/,
     'actual mobile CSS must display the otherwise-hidden QA warning');
+});
+
+
+test('QA readiness survives unrelated busy-state transitions and never submits while offline', () => {
+  const ui = readFileSync(new URL('../account/account.js', import.meta.url), 'utf8');
+  const start = ui.indexOf('  function syncLoginAvailability() {');
+  const finish = ui.indexOf('\n\n  function showPanel(', start);
+  assert.ok(start >= 0 && finish > start,
+    'real login availability and busy handlers must exist');
+  const body = ui.slice(start, finish);
+  const simulate = vm.runInNewContext(
+    '(function () {\n' +
+    '  let delegatedIdentity = true, delegatedSignInReady = false, authBusy = false;\n' +
+    '  const inputs = [{ disabled: false }, { disabled: false }];\n' +
+    '  const buttons = [{ disabled: false }, { disabled: false }];\n' +
+    '  const byId = name => name === "loginForm" ? { querySelectorAll: () => inputs } : null;\n' +
+    '  const document = { querySelectorAll: () => buttons };\n' +
+    body + '\n' +
+    '  setAuthBusy(true);\n' +
+    '  const whileBusy = inputs.every(x => x.disabled);\n' +
+    '  setAuthBusy(false);\n' +
+    '  const whileOffline = inputs.every(x => x.disabled);\n' +
+    '  delegatedSignInReady = true;\n' +
+    '  syncLoginAvailability();\n' +
+    '  const afterReady = inputs.every(x => !x.disabled);\n' +
+    '  delegatedIdentity = false;\n' +
+    '  delegatedSignInReady = false;\n' +
+    '  syncLoginAvailability();\n' +
+    '  const localMode = inputs.every(x => !x.disabled);\n' +
+    '  return { whileBusy, whileOffline, afterReady, localMode };\n' +
+    '})'
+  )();
+  assert.equal(JSON.stringify(simulate), JSON.stringify({
+    whileBusy: true, whileOffline: true, afterReady: true, localMode: true
+  }));
+  const handler = ui.slice(
+    ui.indexOf("byId('loginForm').addEventListener('submit'"),
+    ui.indexOf("byId('inviteForm').addEventListener('submit'")
+  );
+  assert.match(handler, /if \(delegatedIdentity && !delegatedSignInReady\) \{/);
+  assert.ok(handler.indexOf('delegatedIdentity && !delegatedSignInReady') <
+    handler.indexOf("api('/api/accounts/login'"),
+    'blocked QA login must return before transmitting credentials');
 });
