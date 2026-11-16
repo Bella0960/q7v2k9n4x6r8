@@ -444,6 +444,21 @@
     background:white; color:#66666d; font-family:inherit; font-size:12px; }
   .music-playlist-row { display:block; width:100%; border:0; background:transparent; color:#52525b;
     text-align:left; padding:15px 2px; border-bottom:1px solid #ececf0; font:inherit; font-size:13px; }
+  .music-playlist-track { display:flex; gap:12px; align-items:center;
+    padding:11px 0; border-bottom:1px solid #eeeef0; }
+  .music-playlist-track-name { min-width:0; flex:1; text-align:left; border:0;
+    background:transparent; padding:7px 0; color:#3f3f45; font:inherit; font-size:13px;
+    overflow-wrap:anywhere; }
+  .music-playlist-track-name small { display:block; font-size:11px; line-height:1.5;
+    color:#9898a0; margin-top:3px; }
+  .music-playlist-quiet { flex:none; border:0; background:transparent; color:#96969f;
+    font:inherit; font-size:12px; padding:10px 4px; cursor:pointer; }
+  .music-playlist-toolbar { display:flex; justify-content:flex-end; gap:20px;
+    padding:8px 0 16px; }
+  .music-playlist-note { color:#9898a0; font-size:12px; line-height:1.8;
+    padding:16px 2px; }
+  .music-playlist-track-name:focus-visible, .music-playlist-quiet:focus-visible,
+  .music-playlist-row:focus-visible { outline:1px solid #9999a3; outline-offset:3px; border-radius:5px; }
   #importSheet { max-height:calc(100% - 100px); overflow-y:auto; }
   .album-cover { border-radius: 10px; }
   .album-item .name, .t-name, .song-row .s-name { font-weight: 550; color: var(--music-ink); }
@@ -965,9 +980,9 @@
   <!-- 歌单管理，仅从个人页或播放页菜单打开，不占底部导航 -->
   <div id="musicPlaylistView" style="position:absolute;inset:0;z-index:106;display:none;flex-direction:column;background:#F8F8FA;">
     <div class="navbar">
-      <button class="icon-btn" type="button" onclick="document.getElementById('musicPlaylistView').style.display='none'">‹</button>
-      <div style="font-size:15px;font-weight:500;">我的歌单</div>
-      <button class="icon-btn" type="button" onclick="showMusicPlaylists()">↻</button>
+      <button class="icon-btn" type="button" aria-label="返回歌单" onclick="musicPlaylistBack()">‹</button>
+      <div id="musicPlaylistTitle" style="font-size:15px;font-weight:500;max-width:64%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">我的歌单</div>
+      <button class="icon-btn" type="button" aria-label="刷新歌单" onclick="musicPlaylistRefresh()">↻</button>
     </div>
     <div class="content" id="musicPlaylistList" style="padding-bottom:40px;"></div>
   </div>
