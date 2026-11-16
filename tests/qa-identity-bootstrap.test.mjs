@@ -5,7 +5,7 @@ import { qaIsolatedSetupEnabled, isolatedQaAuthorityFounderId, resolveQaAuthorit
 const F = 'MAO-SYNTHFOUNDER001';
 const SECRET = 's'.repeat(40);
 const shadow = { id: F, username: 'qaowner001', role: 'super_admin', status: 'active' };
-const request = (overrides={}) => new Request('https://qa.test/api/admin/bootstrap', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({bootstrapSecret:SECRET,username:shadow.username,password:'qa-only-password-123',confirmPassword:'qa-only-password-123',...overrides})});
+const request = (overrides={}) => new Request('https://maomao-aw-qa-20261114.miamor520000.workers.dev/api/admin/bootstrap', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({bootstrapSecret:SECRET,username:shadow.username,password:'qa-only-password-123',confirmPassword:'qa-only-password-123',...overrides})});
 const goodStatus = () => Response.json({ok:true,identityMode:'local',initialized:false,configured:true,bootstrapAllowed:true,qaIsolatedAuthority:true,qaExpectedFounderId:F});
 const goodCreate = () => Response.json({ok:true,account:{...shadow,founderNumber:'001'}},{headers:{'set-cookie':'MAO_SESSION=qa-secret-cookie; HttpOnly; Secure; SameSite=Lax'}});
 function fixture(overrides={}) {
@@ -47,6 +47,14 @@ test('QA one-time setup checks shadow account and private binding before contact
  assert.equal(forwarded.password,'qa-only-password-123');
  assert.equal(forwarded.bootstrapSecret,SECRET);
  assert.equal(forwarded.qqEmail,'');
+});
+test('isolated setup refuses production and arbitrary browser origins',async()=>{
+ for(const origin of ['https://mao520.com','https://app.mao520.com','https://wrong.example.test']){
+  const {env,store,calls}=fixture();
+  const req=new Request(origin+'/api/admin/bootstrap', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({bootstrapSecret:SECRET,username:shadow.username,password:'qa-only-password-123',confirmPassword:'qa-only-password-123'})});
+  await assert.rejects(initializeIsolatedQaAuthority({env,store,request:req}),e=>e.code==='QA_SETUP_WRONG_ORIGIN');
+  assert.equal(calls.length,0);
+ }
 });
 test('disabled QA setup never contacts an identity authority',async()=>{
  for(const override of [
