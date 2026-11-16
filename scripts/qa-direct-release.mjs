@@ -90,7 +90,7 @@ function preflightCheckout() {
     assert.equal(config.custom_domains, undefined, 'Custom domains are forbidden for QA');
     assert.equal(config.zone_id, undefined, 'Production zone bindings are forbidden for QA');
     assert.equal(config.zone_name, undefined, 'Production zone bindings are forbidden for QA');
-    assert.ok(!/mao520\\.com/i.test(JSON.stringify(config)), 'Production domains are forbidden for QA');
+    assert.ok(!JSON.stringify(config).toLowerCase().includes('mao520.com'), 'Production domains are forbidden for QA');
   }
   assert.equal(qa.assets?.binding, 'ASSETS');
   assert.equal(qa.assets?.run_worker_first, true);
