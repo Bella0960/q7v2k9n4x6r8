@@ -9,6 +9,7 @@ import { runInNewContext, Script } from 'node:vm';
 
 const music = readFileSync(new URL('../music/music.html', import.meta.url), 'utf8');
 const backup = readFileSync(new URL('../settings/js/backup.js', import.meta.url), 'utf8');
+const backupModules = readFileSync(new URL('../settings/js/backup-modules.js', import.meta.url), 'utf8');
 
 test('MUSIC-UI-001: actual embedded player script is syntactically valid', () => {
   const scripts = [...music.matchAll(/<script\s*>([\s\S]*?)<\/script>/g)];
@@ -344,4 +345,22 @@ test('MUSIC-UI-001: playlist management is hidden in the existing panel with rea
   assert.match(music, /window\.confirm\('删除歌单/);
   assert.match(music, /function musicPlaylistCommit\(data, action, name, extra\)/);
   assert.match(music, /maomao:music:playlist-changed/);
+});
+
+test('MUSIC-UI-001: existing scoped backup includes playlist/lyrics/cover references but not chat', () => {
+  const registry = runInNewContext(backupModules + '\nwindow.MAOMAOBackupRegistry', { window:{} });
+  const musicKeys = [
+    'music_local_tracks', 'music_playlists_v1', 'music_lyrics_v1',
+    'music_cover_assets_v1', 'music_background_asset_v1',
+    'music_recent', 'music_fav_list', 'music_listen_invites_v1',
+    'music_playback_state_v1'
+  ];
+  const example = Object.fromEntries(musicKeys.map(key => [key, 'saved']));
+  example.chat_history_001 = 'private-chat';
+  for (const key of musicKeys) assert.equal(registry.belongsTo('music', key), true, key);
+  const result = registry.selectSnapshot('music', example);
+  assert.equal(Object.keys(result).length, musicKeys.length);
+  assert.equal(Object.prototype.hasOwnProperty.call(result, 'chat_history_001'), false);
+  // Important limitation: music-only backups do not yet include the referenced maomao-assets image Blob store.
+  // Existing exporter correctly marks such archives incomplete; never describe them as restored/tested.
 });
