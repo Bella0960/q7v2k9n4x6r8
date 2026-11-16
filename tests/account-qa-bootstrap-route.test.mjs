@@ -94,6 +94,7 @@ test('QA core remains configured for login after one-time setup is closed', asyn
   assert.equal(status.initialized, true);
   assert.equal(status.bootstrapAllowed, false);
   assert.equal(status.qaSetupAllowed, false);
+  assert.equal(status.qaIdentityCore, true);
 });
 
 test('QA identity status fails closed if its authority is offline', async () => {
@@ -122,10 +123,61 @@ test('legacy gateway and ordinary local account status behavior stays unchanged'
   });
   assert.equal(oldResult.configured, false);
   assert.equal(oldResult.bootstrapAllowed, false);
+  assert.equal(oldResult.qaIdentityCore, false);
   const local = await runStatusRoute({
     MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: 'a'.repeat(40),
     DEVICE_SECRET_PEPPER: 'b'.repeat(40)
   }, null, false);
   assert.equal(local.configured, true);
   assert.equal(local.bootstrapAllowed, true);
+});
+
+
+test('QA login page uses QA-only password hint without changing legacy gateway UI', async () => {
+  const loginSource = readFileSync(new URL('../account/account.js', import.meta.url), 'utf8');
+  const begin = loginSource.indexOf('  async function checkCreatorBootstrapEntry() {');
+  const finish = loginSource.indexOf('\n\n  (async function restoreSession()', begin);
+  assert.ok(begin >= 0 && finish > begin, 'actual login readiness handler must exist');
+  const actualHandler = loginSource.slice(begin, finish);
+  const mount = vm.runInNewContext(
+    '(async function (status) {\n' +
+    '  let delegatedIdentity = false;\n' +
+    '  let delegatedSignInReady = true;\n' +
+    '  const link = { hidden: false };\n' +
+    '  const subtitle = { textContent: "" };\n' +
+    '  const fields = [{ disabled: false }, { disabled: false }];\n' +
+    '  const register = [{ hidden: false }];\n' +
+    '  const errors = [];\n' +
+    '  const byId = id => ({ creatorBootstrapLink: link,\n' +
+    '    loginPanel: { querySelector: () => subtitle },\n' +
+    '    loginForm: { querySelectorAll: () => fields } })[id];\n' +
+    '  const document = { querySelectorAll: () => register };\n' +
+    '  const api = async () => status;\n' +
+    '  const setError = (id, message) => errors.push({ id, message });\n' +
+    actualHandler + '\n' +
+    '  await checkCreatorBootstrapEntry();\n' +
+    '  return { link, subtitle, fields, register, errors, delegatedSignInReady };\n' +
+    '})'
+  );
+  const qa = await mount({
+    identityMode: 'delegated', qaIdentityCore: true, initialized: true,
+    bootstrapAllowed: false, signInReady: true
+  });
+  assert.match(qa.subtitle.textContent, /QA.*专用密码|QA.*单独设置的密码/);
+  assert.match(qa.subtitle.textContent, /不要输入正式版密码/);
+  assert.ok(qa.fields.every(field => field.disabled === false));
+  assert.equal(qa.link.hidden, true);
+  const unavailable = await mount({
+    identityMode: 'delegated', qaIdentityCore: true, initialized: false,
+    bootstrapAllowed: true, signInReady: false
+  });
+  assert.ok(unavailable.fields.every(field => field.disabled === true));
+  assert.match(unavailable.errors[0]?.message || '', /QA 独立身份服务尚未就绪/);
+  const legacy = await mount({
+    identityMode: 'delegated', qaIdentityCore: false, initialized: true,
+    bootstrapAllowed: false, signInReady: true
+  });
+  assert.match(legacy.subtitle.textContent, /原来的 MAO 账号登录/);
+  assert.doesNotMatch(legacy.subtitle.textContent, /QA.*密码/);
+  assert.ok(legacy.fields.every(field => field.disabled === false));
 });
