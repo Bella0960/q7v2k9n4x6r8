@@ -163,3 +163,43 @@ test('explicit choice cannot bypass a role disabling avatar autonomy', () => {
   const { api } = createChoice();
   assert.equal(api.prepare('role-A', makeLibrary(), '换个头像', { enabled: false }).prompt, '');
 });
+
+
+test('one saved AI turn never replaces the role avatar twice', () => {
+  assert.match(detail, /var avatarChangedFromNewCandidate = false/);
+  assert.match(detail, /if \(changeRequested && !avatarChangedFromNewCandidate &&/);
+  assert.match(detail, /if \(avatarApplied && avatarApplied\.ok\) \{\s*avatarChangedFromNewCandidate = true;/);
+  assert.match(detail, /replySaved && replyMessages\.some\(function \(msg\)/);
+  assert.match(detail, /!avatarChangedFromNewCandidate &&\s*!isGroupChat && parsedRoleAvatarChoice\.avatarId/);
+  assert.match(detail, /for \(var avatarCandidateIndex/); // Every additional candidate remains collectable.
+});
+
+test('newly generated avatar never paints into a different role after asynchronous reads', () => {
+  assert.match(detail,
+    /if \(avatarApplied && avatarApplied\.ok\) \{[\s\S]*?if \(String\(aliasRoleId \|\| currentCharacter\.id\) === String\(avatarRoleId\)\) \{[\s\S]*?chatHeaderAvatar\.replaceChildren\(updatedAvatarImage\)/);
+  assert.match(detail, /isCurrent: function \(\) \{[\s\S]*?String\(aliasRoleId \|\| currentCharacter\.id\) === String\(avatarRoleId\)/);
+});
+
+test('out-of-order tabs cannot shorten cooldown after a newer successful avatar change', () => {
+  const { api, values } = createChoice();
+  assert.equal(api.recordApplied('role-A', 100000300), true);
+  assert.equal(api.recordApplied('role-A', 100000100), true);
+  assert.equal(values.get('maomao_role_avatar_auto_last_v1_role-A'), '100000300');
+  assert.equal(api.prepare('role-A', makeLibrary(), '普通聊天', { now: 100000301 }).prompt, '');
+  assert.ok(api.prepare('role-B', makeLibrary(), '普通聊天', { now: 100000301 }).prompt);
+  assert.ok(api.prepare('role-A', makeLibrary(), '你自己换头像', { now: 100000301 }).prompt);
+});
+
+test('cooldown persistence failures cannot be misreported as a successful record', () => {
+  const { api } = createChoice();
+  assert.equal(api.recordApplied('', 100000100), false);
+  assert.equal(api.recordApplied('role-A', Infinity), false);
+  const window = {
+    localStorage: {
+      getItem() { return null; },
+      setItem() { throw new Error('quota-exceeded'); }
+    }
+  };
+  vm.runInNewContext(source, { window });
+  assert.equal(window.RoleAvatarChoice.recordApplied('role-A', 100000100), false);
+});
