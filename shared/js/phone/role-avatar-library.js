@@ -357,8 +357,43 @@
             items: state.items,
             pairs: state.pairs.filter(function (item) { return item.id !== pairId; })
         };
+        // The old chat-side assignment must not silently resurrect if the
+        // same two pictures are later linked again (pair IDs are deterministic).
+        // Snapshot both records before the first write so a failed clear can
+        // restore the exact old library without deleting either image.
+        var libraryKey = storageKey(roleId);
+        var selectionKey = chatPairKey(roleId);
+        var previousLibrary, previousSelection, clearsCurrentSelection = false;
+        try {
+            previousLibrary = global.localStorage.getItem(libraryKey);
+            previousSelection = global.localStorage.getItem(selectionKey);
+            if (previousSelection) {
+                try {
+                    clearsCurrentSelection = JSON.parse(previousSelection).pairId === pairId;
+                } catch (parseError) {
+                    // A corrupt legacy selection is already ignored on read.
+                }
+            }
+        } catch (error) {
+            return failure('STORAGE_FAILED', 'pair selection could not be read');
+        }
         if (!writeState(roleId, next)) return failure('STORAGE_FAILED', 'pair relationship could not be removed');
-        return { ok: true, value: copyPair(pair, state), meta: { portraitsRetained: true } };
+        if (clearsCurrentSelection) {
+            try {
+                global.localStorage.removeItem(selectionKey);
+            } catch (error) {
+                // Keep the pair linked if its chat assignment could not be
+                // cleared; never report unlink as successful in this case.
+                try {
+                    if (previousLibrary == null) global.localStorage.removeItem(libraryKey);
+                    else global.localStorage.setItem(libraryKey, previousLibrary);
+                } catch (rollbackError) {
+                    return failure('PARTIAL_ROLLBACK', 'pair unlink could not fully restore its metadata');
+                }
+                return failure('STORAGE_FAILED', 'chat pair selection could not be cleared');
+            }
+        }
+        return { ok: true, value: copyPair(pair, state), meta: { portraitsRetained: true, chatSelectionCleared: clearsCurrentSelection } };
     }
 
     function renamePair(roleId, pairId, label) {
@@ -504,7 +539,10 @@
             var selected = JSON.parse(raw);
             if (!selected || !ASSET_RE.test(String(selected.assetId || ''))) return null;
             var pair = stateResult.value.pairs.find(function (entry) {
-                return entry.id === selected.pairId && entry.avatarIds[1] === selected.avatarId;
+                // A/B swapping is a draft ordering change, not an implicit
+                // re-application of the chat's already-selected user picture.
+                return entry.id === selected.pairId &&
+                    entry.avatarIds.indexOf(selected.avatarId) >= 0;
             });
             var userItem = stateResult.value.items.find(function (entry) {
                 return entry.id === selected.avatarId && entry.assetId === selected.assetId;
