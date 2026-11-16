@@ -1424,6 +1424,71 @@
   mergeLocalTracks();
 
   let currentIdx = 1, playing = false;
+  // 会话内播放来源：不改变 music_playlists_v1 和旧断点格式。
+  let musicPlaybackQueue = null;
+  function musicQueueList() {
+    if (!musicPlaybackQueue) return tracks.map(function(t) { return t.id; });
+    try {
+      var ids = window.MAOMAOMusicPlaylists.getTrackIds(musicPlaybackQueue.name);
+      if (!ids) {
+        musicPlaybackQueue = null;
+        return tracks.map(function(t) { return t.id; });
+      }
+      return ids.filter(function(id) { return !!getTrackById(id); });
+    } catch (err) {
+      toast('歌单读取失败，已停止自动切歌；原歌单记录保留');
+      return [];
+    }
+  }
+  function musicQueuePublish(action) {
+    window.dispatchEvent(new CustomEvent('maomao:music:queue-changed', {
+      detail: { version:1, action:action, savedLocal:false,
+        playlistName:musicPlaybackQueue ? musicPlaybackQueue.name : null,
+        trackId:tracks[currentIdx] ? tracks[currentIdx].id : null }
+    }));
+  }
+  function musicQueueAssign(trackId, options) {
+    var name = options && typeof options.playlistName === 'string'
+      ? options.playlistName : null;
+    if (name) {
+      try {
+        var ids = window.MAOMAOMusicPlaylists.getTrackIds(name);
+        musicPlaybackQueue = ids && ids.includes(trackId) ? { name:name } : null;
+      } catch (err) {
+        musicPlaybackQueue = null;
+        toast('歌单读取失败，已切换为普通单曲播放');
+      }
+    } else musicPlaybackQueue = null;
+    musicQueuePublish(musicPlaybackQueue ? 'playlist-selected' : 'library-selected');
+  }
+  window.MAOMAOMusicQueue = Object.freeze({
+    getState: function() {
+      return { version:1, playlistName:musicPlaybackQueue ? musicPlaybackQueue.name : null,
+        trackIds:musicQueueList().slice(),
+        currentTrackId:tracks[currentIdx] ? tracks[currentIdx].id : null };
+    },
+    subscribe: function(callback) {
+      if (typeof callback !== 'function') throw new TypeError('listener required');
+      var listener = function(event) { callback(event.detail); };
+      window.addEventListener('maomao:music:queue-changed', listener);
+      return function() { window.removeEventListener('maomao:music:queue-changed', listener); };
+    }
+  });
+  window.addEventListener('maomao:music:playlist-changed', function(event) {
+    if (!musicPlaybackQueue) return;
+    var detail = event.detail || {};
+    if (detail.action === 'renamed' && musicPlaybackQueue.name === detail.previousName) {
+      musicPlaybackQueue = { name:detail.name };
+      musicQueuePublish('playlist-renamed');
+    } else if (detail.action === 'playlist-removed' && musicPlaybackQueue.name === detail.name) {
+      musicPlaybackQueue = null;
+      musicQueuePublish('playlist-removed');
+    } else if (detail.action === 'track-removed' && musicPlaybackQueue.name === detail.name
+        && tracks[currentIdx] && tracks[currentIdx].id === detail.trackId) {
+      musicPlaybackQueue = null;
+      musicQueuePublish('current-track-removed');
+    }
+  });
   window.isShuffle = false;
   window.isHeart = false;
   window.lastLyricLine = -1;
@@ -1517,9 +1582,9 @@
 
   // ===== 真实音频播放 =====
 
-  async function playTrack(trackId) {
+  async function playTrack(trackId, options) {
     var t = getTrackById(trackId);
-    if (!t) { toast('曲目不存在'); return; }
+    if (!t) { toast('曲目不存在'); return false; }
     // 源文件可用且真正开始播放之后再更新 UI/currentIdx；
     // 否则保持原曲与旧收藏/进度，不显示假成功。
     // 等待真实音频拿到后才切换，失败不移除旧收藏或历史
@@ -1529,31 +1594,32 @@
         var blob = await getAudioBlob(t.id);
         if (!blob) {
           toast('本地音频暂时无法读取，请保留原文件并检查存储或备份；收藏不会删除');
-          return;
+          return false;
         }
-        if (playRequest !== playbackRevision) return;
+        if (playRequest !== playbackRevision) return false;
         var url = URL.createObjectURL(blob);
         revokeCurrentUrl();
         currentBlobUrl = url;
         window.audio.src = url;
       } catch (e) {
         toast('音频加载失败');
-        return;
+        return false;
       }
     } else {
       revokeCurrentUrl();
       window.audio.src = t.url;
     }
-    if (playRequest !== playbackRevision) return;
+    if (playRequest !== playbackRevision) return false;
     try { await window.audio.play(); }
     catch (e) {
       playing = false;
       updatePlayIcon();
       toast('无法开始播放，请检查音频来源或手机播放权限');
-      return;
+      return false;
     }
-    if (playRequest !== playbackRevision) return; // 前一个异步切歌不得覆盖新请求
+    if (playRequest !== playbackRevision) return false; // 前一个异步切歌不得覆盖新请求
     currentIdx = tracks.indexOf(t);
+    musicQueueAssign(t.id, options);
     document.getElementById('miniName').textContent = t.name;
     document.getElementById('miniArtist').textContent = t.artist;
     document.getElementById('npTitle').textContent = t.name;
@@ -1579,25 +1645,35 @@
     showNP();
     musicApplyCurrentCover().catch(function () { toast('封面读取失败'); });
     musicEmitPlayback('play');
+    return true;
   }
 
-  function prevTrack() {
-    var i = currentIdx - 1;
-    if (i < 0) i = tracks.length - 1;
-    playTrack(tracks[i].id);
-  }
-  function nextTrack() {
-    if (window.isShuffle && tracks.length > 1) {
-      var ni;
-      do { ni = Math.floor(Math.random() * tracks.length); } while (ni === currentIdx);
-      playTrack(tracks[ni].id);
-    } else {
-      var i = currentIdx + 1;
-      if (i >= tracks.length) i = 0;
-      playTrack(tracks[i].id);
+  function musicNavigateTrack(direction, fromEnded) {
+    var ids = musicQueueList();
+    var currentId = tracks[currentIdx] && tracks[currentIdx].id;
+    var index = ids.indexOf(currentId);
+    if (!ids.length || index < 0) {
+      if (!fromEnded) toast('当前播放列表中没有可切换的歌曲');
+      return false;
     }
+    var target;
+    if (direction > 0 && window.isShuffle && ids.length > 1) {
+      var candidates = ids.filter(function(id) { return id !== currentId; });
+      target = candidates[Math.floor(Math.random() * candidates.length)];
+    } else if (direction < 0) {
+      target = ids[index === 0 ? ids.length - 1 : index - 1];
+    } else {
+      if (fromEnded && index === ids.length - 1 && window.loopState !== 1) {
+        return false; // 循环关闭：播到队列最后一首自然结束，不跳到全曲库。
+      }
+      target = ids[index === ids.length - 1 ? 0 : index + 1];
+    }
+    if (!target || (fromEnded && ids.length === 1 && window.loopState !== 1)) return false;
+    playTrack(target, musicPlaybackQueue ? { playlistName:musicPlaybackQueue.name } : undefined);
+    return true;
   }
-
+  function prevTrack() { return musicNavigateTrack(-1, false); }
+  function nextTrack(fromEnded) { return musicNavigateTrack(1, !!fromEnded); }
   async function togglePlay() {
     if (!window.audio.paused) {
       window.audio.pause(); playing = false;
@@ -1703,11 +1779,25 @@
   });
 
   // 播完自动切下一首
-  window.audio.addEventListener('ended', () => {
+  window.audio.addEventListener('ended', async function () {
     playing = false;
+    updatePlayIcon();
+    saveState();
     musicEmitPlayback('ended');
-    if (window.loopState === 2) { window.audio.currentTime = 0; window.audio.play().catch(function () {}); }
-    else nextTrack();
+    if (window.loopState === 2) {
+      window.audio.currentTime = 0;
+      try {
+        await window.audio.play();
+        playing = !window.audio.paused;
+        updatePlayIcon();
+        saveState();
+        musicEmitPlayback('resume');
+      } catch (err) {
+        playing = false;
+        updatePlayIcon();
+        toast('单曲重播失败，播放已停止');
+      }
+    } else nextTrack(true);
   });
 
   function updatePlayIcon() {
@@ -2174,8 +2264,10 @@
         var label = musicPlaylistAction(t ? t.name : '暂不可用的歌曲（记录已保留）',
           function() {
             if (!t) { toast('歌曲暂不可用；原记录未删除'); return; }
-            document.getElementById('musicPlaylistView').style.display = 'none';
-            playTrack(t.id);
+            // 播放成功再关闭歌单；失败时保留可操作列表便于重新选择。
+            playTrack(t.id, { playlistName:name }).then(function(started) {
+              if (started) document.getElementById('musicPlaylistView').style.display = 'none';
+            });
           }, 'music-playlist-track-name');
         if (t) {
           var artist = document.createElement('small');
