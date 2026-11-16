@@ -187,3 +187,44 @@ test('isolated QA core bootstrap must not mint an unused session', async () => {
     }
   }
 });
+
+test('QA founder permanent ID is an alias, never a new account username', async () => {
+  const { env, store, calls } = fixture();
+  const response = await initializeIsolatedQaAuthority({
+    env, store, request: request({ username: F })
+  });
+  const data = await response.json();
+  assert.equal(data.ok, true);
+  assert.equal(data.account.id, F);
+  assert.equal(data.account.username, shadow.username);
+  assert.equal(data.nextStep, 'qa_login');
+  assert.equal(calls.length, 2);
+  const forwarded = await calls[1].json();
+  assert.equal(forwarded.username, shadow.username,
+    'authority must create the canonical existing username, never the ID alias');
+  assert.notEqual(forwarded.username, F);
+  assert.equal(response.headers.get('set-cookie'), null);
+});
+
+test('QA ID alias never accepts unrelated identifiers or wrong founder IDs', async () => {
+  for (const candidate of ['MAO-UNRELATED12345', 'MAO-OTHERFOUNDER001', 'unknown']) {
+    const { env, store, calls } = fixture();
+    await assert.rejects(
+      initializeIsolatedQaAuthority({
+        env, store, request: request({ username: candidate })
+      }),
+      error => error.code === 'QA_SHADOW_USERNAME_MISMATCH'
+    );
+    assert.equal(calls.length, 0,
+      'no foreign identity is forwarded to the authority');
+  }
+});
+
+test('QA setup form changes only its QA identifier label and max length', () => {
+  const html = readFileSync(new URL('../account/bootstrap.html', import.meta.url), 'utf8');
+  const ui = readFileSync(new URL('../account/bootstrap.js', import.meta.url), 'utf8');
+  assert.match(html, /id="bootstrapUsernameLabel"/);
+  assert.match(ui, /usernameLabel\.textContent = qaSetup/);
+  assert.match(ui, /usernameField\.maxLength = qaSetup \? 28 : 24/);
+  assert.match(ui, /原管理员用户名或永久 ID/);
+});
