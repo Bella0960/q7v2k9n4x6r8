@@ -1095,16 +1095,24 @@ test('getForumThreadWorldbook falls back to the default theme persona and logs t
   assert.equal(okEnv.forum.warns.length, 0);
 });
 
-test('sharePost degrades to the no-contact prompt and logs the unreadable character cache', () => {
+test('sharePost distinguishes an unreadable character cache from an empty contact list', () => {
   const alerts = [];
   const env = createForumEnv({ ai_custom_characters: '{broken json' });
   env.alert = (message) => alerts.push(String(message));
   const before = env.forum.warns.length;
   loadSharePost(env)();
-  assert.deepEqual(alerts, ['还没有联系人，先去加好友吧'], '解析失败仍按无联系人处理');
+  assert.deepEqual(alerts, ['联系人列表暂时无法读取，请重试'], '损坏的角色缓存必须报读取错误，不得误称没有联系人');
   assert.equal(env.forum.warns.length, before + 1);
   assert.ok(env.forum.warns[before].includes('sharePost'));
   assert.ok(env.forum.warns[before].includes('ai_custom_characters'));
   assert.equal(env.forum.writes.length, 0, '角色缓存不可读时不得写入聊天记录');
+
+  const emptyAlerts = [];
+  const empty = createForumEnv({ ai_custom_characters: '[]' });
+  empty.alert = (message) => emptyAlerts.push(String(message));
+  loadSharePost(empty)();
+  assert.deepEqual(emptyAlerts, ['还没有可分享的联系人，请先去添加联系人'],
+    '正常空列表应该提示去添加联系人，和损坏缓存明确区分');
+  assert.equal(empty.forum.writes.length, 0, '空联系人列表也不能写入聊天记录');
 });
 
