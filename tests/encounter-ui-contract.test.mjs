@@ -14,6 +14,17 @@ const match=html.match(/<script>([\s\S]*?)<\/script>/);
 assert.ok(match,'抽卡页面必须保留实际的内联交互脚本');
 const uiSource=match[1];
 
+test('全局禁用假状态栏：邂逅不能自绘系统时间、信号、电量', () => {
+  assert.doesNotMatch(html, /\\b(?:deviceTime|status-bar|status-marks)\\b/,
+    '页面源码不应保留隐藏的模拟系统状态栏');
+  assert.doesNotMatch(uiSource, /setInterval\\(clock|function clock\\(/,
+    '不应继续运行绘制假时间的计时器');
+  assert.match(html, /env\\(safe-area-inset-top,0px\\)/,
+    '手机顶部必须为真正的系统安全区预留空间');
+  assert.match(html, /env\\(safe-area-inset-bottom,0px\\)/,
+    '底部操作区必须兼容真实系统手势安全区');
+});
+
 function setup(initial={}) {
   const rows=new Map(Object.entries(initial));
   const localStorage={
