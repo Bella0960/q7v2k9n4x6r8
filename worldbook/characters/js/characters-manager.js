@@ -608,7 +608,9 @@ async function unlinkRoleAvatarPair(pairId) {
         return;
     }
     await renderAvatarLibrary(roleId);
-    setAvatarLibraryStatus('已解除配对，两张头像仍保留在收藏中。', 'success');
+    setAvatarLibraryStatus(result.meta && result.meta.chatSelectionCleared
+        ? '已解除配对及当前聊天中的配对头像设置，两张原图仍保留在收藏中。'
+        : '已解除配对，两张原图仍保留在收藏中。', 'success');
 }
 
 async function removeRoleAvatarFromLibrary(avatarId) {
