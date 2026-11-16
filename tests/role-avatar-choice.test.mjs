@@ -533,7 +533,13 @@ function makeCharacterProfileStorageHarness() {
       if (name === 'profileContent') return container;
       return null;
     },
-    createElement(tagName) { return { tagName: tagName.toUpperCase(), className: '', src: '', alt: '', textContent: '' }; },
+    createElement(tagName) {
+      return {
+        tagName: tagName.toUpperCase(), className: '', src: '', alt: '', textContent: '',
+        getAttribute(name) { return name === 'src' ? this.src : ''; },
+        replaceWith(next) { currentAvatar = next; }
+      };
+    },
     addEventListener(type, callback) { (docListeners[type] ||= []).push(callback); }
   };
   const window = { addEventListener(type, callback) { (winListeners[type] ||= []).push(callback); } };
