@@ -175,6 +175,25 @@ try {
       assert.match(await page.locator('#sheet').innerText(),/姓名/);
       assert.match(await page.locator('#sheet').innerText(),/女/);
       await page.keyboard.press('Escape');
+      // 「性格盲测」必须有真实的三选一流程，而不是点击就直接泄露人设。
+      await page.locator('#moreButton').click();
+      await page.locator('#setting-type').selectOption('性格盲测');
+      await page.keyboard.press('Escape');
+      await page.locator('#passButton').click();
+      await page.waitForTimeout(350);
+      assert.equal(await page.locator('#frontCard .name').innerText(),'一段陌生的声音');
+      await page.locator('#frontCard').click();
+      await page.locator('[data-blind-choice]').first().waitFor();
+      assert.equal(await page.locator('[data-blind-choice]').count(),3,
+        '盲测必须提供三个本地性格选项');
+      assert.equal(await page.locator('#sheet .sheet-row').count(),0,
+        '选择之前不得展示人物完整身份');
+      await page.screenshot({path:resolve(artifacts,'encounter-blind-guess-390.png')});
+      await page.locator('[data-blind-choice]').first().click();
+      assert.match(await page.locator('#sheet').innerText(),/姓名/);
+      assert.match(await page.locator('#sheet').innerText(),/内在反差/);
+      assert.match(await page.locator('#sheet').innerText(),/你的第一印象|你原以为/);
+      await page.keyboard.press('Escape');
     }
     await page.reload({waitUntil:'load'});
     assert.equal(await page.locator('#savedCount').innerText(),'01','候选应刷新后存在');
@@ -231,7 +250,8 @@ try {
   }
   if(failures.length)throw new Error('Browser JS errors:\n'+failures.join('\n'));
   const files=['encounter-375.png','encounter-390.png','encounter-430.png',
-    'encounter-original-role-editor.png','encounter-object-concealed.png'];
+    'encounter-original-role-editor.png','encounter-object-concealed.png',
+    'encounter-blind-guess-390.png'];
   const captured={};
   for(const name of files){
     const stat=await fs.stat(resolve(artifacts,name));
@@ -245,7 +265,7 @@ try {
     source:'vite-dist',viewports:[375,390,430],checked:{
       cardSwap:true,swipeRebound:true,fingerSwipeLeft:true,candidatePersistence:true,
       roleCreation:true,jsonRoundTrip:true,thirdPartyJsonRejected:true,
-      freeDrawNoApi:true
+      freeDrawNoApi:true,blindPersonaGuess:true
     },captured
   };
   await fs.writeFile(receiptPath,JSON.stringify(receipt,null,2)+'\n','utf8');
