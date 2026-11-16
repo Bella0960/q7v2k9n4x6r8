@@ -423,3 +423,71 @@ test('pair storage event after deleting this library clears an old B-side portra
   assert.equal(f.api.current(), '');
   assert.equal(f.avatars[0].avatar, 'global-avatar');
 });
+
+
+function makePairApplyRoleSwitchHarness() {
+  const manager = fs.readFileSync(path.join(root, 'worldbook/characters/js/characters-manager.js'), 'utf8');
+  const begin = manager.indexOf('async function applyRoleAvatarPairToChat(pairId) {');
+  const end = manager.indexOf('\nasync function swapRoleAvatarPair(pairId) {', begin);
+  assert.ok(begin >= 0 && end > begin);
+  const fragment = manager.slice(begin, end);
+  let finish;
+  const shown = [];
+  const rendered = [];
+  const window = { RoleAvatarLibrary: {
+    applyPairToChat(roleId, pairId, options) {
+      assert.equal(roleId, 'role-A');
+      assert.equal(pairId, 'pair-1');
+      assert.equal(typeof options.isCurrent, 'function');
+      return new Promise(resolve => { finish = resolve; });
+    }
+  }};
+  const factory = new Function('window', 'setAvatarLibraryStatus', 'renderRoleProfile',
+    "let currentProfileRoleId = 'role-A';\n" + fragment +
+    "\nreturn { apply: applyRoleAvatarPairToChat, switchRole: id => { currentProfileRoleId = id; } };");
+  const controls = factory(window, (message, kind) => shown.push({ message, kind }),
+    () => rendered.push(true));
+  return { ...controls, shown, rendered, get finish() { return finish; } };
+}
+
+test('pair apply completion must not repaint a new role after asynchronous media save', async () => {
+  const f = makePairApplyRoleSwitchHarness();
+  const pending = f.apply('pair-1');
+  f.switchRole('role-B');
+  f.finish({ ok: true });
+  await pending;
+  assert.equal(f.rendered.length, 0);
+  assert.equal(f.shown.filter(x => x.kind === 'success').length, 0);
+});
+
+test('pair apply reports success only when still on the same role', async () => {
+  const f = makePairApplyRoleSwitchHarness();
+  const pending = f.apply('pair-1');
+  f.finish({ ok: true });
+  await pending;
+  assert.equal(f.rendered.length, 1);
+  assert.equal(f.shown.filter(x => x.kind === 'success').length, 1);
+});
+
+test('pair editing and portrait removal discard stale status after leaving profile', () => {
+  const manager = fs.readFileSync(path.join(root, 'worldbook/characters/js/characters-manager.js'), 'utf8');
+  for (const [begin, end] of [
+    ['async function createRoleAvatarPairFromDraft()', 'async function renameRoleAvatarPair('],
+    ['async function renameRoleAvatarPair(', 'async function applyRoleAvatarPairToChat('],
+    ['async function swapRoleAvatarPair(', 'async function unlinkRoleAvatarPair('],
+    ['async function unlinkRoleAvatarPair(', 'async function removeRoleAvatarFromLibrary(']
+  ]) {
+    const start = manager.indexOf(begin);
+    const stop = manager.indexOf(end, start);
+    assert.ok(start >= 0 && stop > start, begin);
+    const body = manager.slice(start, stop);
+    assert.match(body,
+      /await renderAvatarLibrary\(roleId\);\s*if \(String\(currentProfileRoleId \|\| ''\) !== roleId\) return;/,
+      begin);
+  }
+  const removeStart = manager.indexOf('async function removeRoleAvatarFromLibrary(');
+  const removeEnd = manager.indexOf('\nfunction escapeHtml(', removeStart);
+  const removal = manager.slice(removeStart, removeEnd);
+  assert.match(removal, /await library\.remove\(roleId, avatarId\);\s*if \(String\(currentProfileRoleId \|\| ''\) !== roleId\) return;/);
+  assert.match(removal, /await renderAvatarLibrary\(roleId\);\s*if \(String\(currentProfileRoleId \|\| ''\) !== roleId\) return;/);
+});
