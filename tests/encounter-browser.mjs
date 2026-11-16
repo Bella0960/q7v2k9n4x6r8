@@ -218,6 +218,26 @@ try {
       await page.reload({waitUntil:'load'});
       const afterReload = await page.evaluate(() => JSON.parse(localStorage.getItem('ai_custom_characters')));
       assert.ok(afterReload.some(r=>r.id===inserted.id),'刷新后正式角色仍应存在');
+      // 新标签页复用当前账号下的角色库；只按已创建角色的正式 ID 跳转原聊天。
+      const revisit=await context.newPage();
+      try {
+        await revisit.goto(base+'/encounter/encounter.html',{waitUntil:'load'});
+        await revisit.locator('#savedButton').click();
+        await revisit.locator('[data-reunion="'+inserted.id+'"]').click();
+        assert.match(await revisit.locator('#sheet').innerText(),/再次相遇/);
+        await revisit.locator('[data-reunion-scene="keepsake"]').click();
+        assert.ok((await revisit.locator('#sheet .story-preview').innerText())
+          .includes(inserted.encounterOrigin.object),'旧物线索应继承原人物物件');
+        assert.equal((await revisit.evaluate(() => JSON.parse(localStorage.getItem('ai_custom_characters'))))
+          .find(r=>r.id===inserted.id)?.persona,inserted.persona,
+          '再遇预览不得修改正式角色人设');
+        await revisit.locator('[data-reunion-chat]').click();
+        await revisit.waitForURL(/\/chat\/chat\/chat-detail\.html\?/);
+        assert.equal(new URL(revisit.url()).searchParams.get('id'),inserted.id,
+          '主动去聊天必须传已有正式角色 ID');
+      } finally {
+        await revisit.close();
+      }
       await page.locator('#roleListContainer .role-slim-bar[data-id="'+inserted.id+'"]').click();
       await page.locator('#profileContent').waitFor({state:'visible'});
       // 从档案页重新打开编辑器，以便检查 JSON 导出。
@@ -265,7 +285,7 @@ try {
     source:'vite-dist',viewports:[375,390,430],checked:{
       cardSwap:true,swipeRebound:true,fingerSwipeLeft:true,candidatePersistence:true,
       roleCreation:true,jsonRoundTrip:true,thirdPartyJsonRejected:true,
-      freeDrawNoApi:true,blindPersonaGuess:true
+      freeDrawNoApi:true,blindPersonaGuess:true,reunionNativeChat:true
     },captured
   };
   await fs.writeFile(receiptPath,JSON.stringify(receipt,null,2)+'\n','utf8');
