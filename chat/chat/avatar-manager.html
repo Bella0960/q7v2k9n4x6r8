@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#FFFFFF">
+<title>头像管理 · 对话设置</title>
+<script src="../../shared/js/font-loader.js?v=20261022v1"></script>
+<script src="../../shared/js/native-feel.js"></script>
+<script src="../../shared/js/phone/phone_storage.js"></script>
+<script src="../../shared/js/phone/storage/repository.js"></script>
+<script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
+<script src="../../shared/js/phone/role-avatar-library.js?v=20261117v1"></script>
+<style>
+  :root { color-scheme: light; --ink:#1B1B1B; --muted:#969696; --paper:#FFFFFF; --wash:#F5F5F4; --edge:#E8E8E5; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; min-height:100%; }
+  body { display:grid; place-items:center; min-height:100dvh; background:#E8E8E8; color:var(--ink);
+    font:13px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI",sans-serif; -webkit-tap-highlight-color:transparent; }
+  button,input { font:inherit; }
+  button { cursor:pointer; }
+  button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible { outline:2px solid #555; outline-offset:3px; }
+  .phone { width:min(390px,calc(100vw - 24px)); height:min(844px,calc(100dvh - 24px)); overflow:hidden; position:relative;
+    display:flex; flex-direction:column; border:1px solid rgba(0,0,0,.06); border-radius:42px; background:var(--paper); box-shadow:0 12px 36px rgba(0,0,0,.065); }
+  .top { display:flex; align-items:center; justify-content:space-between; min-height:104px;
+    padding:calc(48px + env(safe-area-inset-top,0px)) 23px 15px; flex:none; background:#fff; z-index:3; }
+  .back { color:#292929; display:flex; align-items:center; gap:8px; text-decoration:none; padding:7px 2px; font-size:11px; }
+  .back svg { width:16px; height:16px; stroke-width:1.5; }
+  .top-title { color:#777; font:500 11px/1 -apple-system,BlinkMacSystemFont,sans-serif; letter-spacing:.13em; }
+  .more { position:relative; }
+  .more summary { display:grid; place-items:center; list-style:none; width:35px; height:33px; color:#333; font-size:20px; font-weight:400; letter-spacing:.1em; cursor:pointer; }
+  .more summary::-webkit-details-marker { display:none; }
+  .more-panel { position:absolute; right:0; top:40px; width:240px; z-index:8; padding:16px; background:#fff;
+    border:1px solid #E8E8E5; box-shadow:0 12px 32px rgba(0,0,0,.08); border-radius:16px; }
+  .more-line { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  .more-copy { font-size:12px; font-weight:600; }
+  .more-note { font-size:10px; color:#888; line-height:1.65; margin:10px 0 0; }
+  .toggle { appearance:none; flex:none; width:37px; height:22px; border-radius:20px; border:1px solid #ddd;
+    background:#ddd; position:relative; cursor:pointer; transition:background .2s; }
+  .toggle:before { content:""; width:16px; height:16px; border-radius:50%; background:#fff; position:absolute; top:2px; left:2px;
+    box-shadow:0 1px 3px rgba(0,0,0,.1); transition:transform .2s; }
+  .toggle:checked { background:#333; border-color:#333; }
+  .toggle:checked:before { transform:translateX(15px); }
+  .scroll { flex:1; min-height:0; overflow-y:auto; scrollbar-width:none; padding:1px 23px calc(38px + env(safe-area-inset-bottom,0px)); overscroll-behavior:contain; }
+  .scroll::-webkit-scrollbar { display:none; }
+  .kicker { font-size:9px; color:#9B9B9B; letter-spacing:.15em; text-transform:uppercase; font-weight:500; }
+  h1,h2,h3,p { margin:0; }
+  h1 { margin:8px 0 6px; font:400 39px/1.02 Georgia,"Noto Serif SC","Songti SC",serif; letter-spacing:-.04em; }
+  .page-note { color:#929292; font-size:11px; line-height:1.65; margin-bottom:27px; }
+  .section-top { display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin:24px 0 12px; }
+  .section-title { color:#2A2A2A; font-size:13px; font-weight:600; letter-spacing:.015em; }
+  .section-number { font:italic 13px/1 Georgia,serif; color:#B3B3B3; }
+  .current { background:var(--wash); border-radius:17px; display:flex; align-items:center; gap:17px; padding:16px; min-height:155px; }
+  .current-picture { width:104px; height:127px; flex:none; overflow:hidden; border-radius:8px; background:#E8E8E6;
+    display:grid; place-items:center; }
+  .current-picture img { width:100%; height:100%; object-fit:cover; }
+  .current-picture svg,.thumb-placeholder svg { width:28px; height:28px; stroke:#A8A8A6; stroke-width:1; fill:none; }
+  .current-info { min-width:0; }
+  .current-name { font:400 23px/1.25 Georgia,"Songti SC",serif; overflow-wrap:anywhere; }
+  .current-desc { margin-top:11px; color:#979797; font-size:11px; line-height:1.75; }
+  .current-small { margin-top:8px; font-size:10px; color:#B5B5B5; letter-spacing:.05em; }
+  .section-actions { display:flex; align-items:center; gap:12px; }
+  .text-button { padding:7px 0 7px 5px; border:0; background:transparent; color:#333; font-size:11px; white-space:nowrap; }
+  .text-button:active { opacity:.56; }
+  .album { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:11px 10px; }
+  .portrait { min-width:0; padding:0; border:0; text-align:left; background:transparent; color:var(--ink); }
+  .thumb { position:relative; aspect-ratio:.86; border-radius:8px; overflow:hidden; display:grid; place-items:center; background:#F0F0EE;
+    border:1px solid transparent; transition:border-color .18s,transform .18s; }
+  .portrait:active .thumb { transform:scale(.985); }
+  .portrait[aria-pressed=true] .thumb { border:1.5px solid #252525; }
+  .thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+  .thumb-placeholder { display:grid; place-items:center; width:100%; height:100%; }
+  .thumb.selected:after { content:""; position:absolute; inset:4px; border:1px solid #fff; border-radius:5px; pointer-events:none; }
+  .chip { position:absolute; top:7px; left:7px; padding:3px 6px; border-radius:5px; background:rgba(255,255,255,.93); color:#444;
+    font-size:9px; line-height:1.2; }
+  .portrait-label { display:block; font-size:10px; color:#666; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin:7px 2px 0; }
+  .portrait-sub { display:block; font-size:9px; color:#aaa; margin:1px 2px 0; }
+  .empty { grid-column:1/-1; text-align:center; color:#999; background:#F7F7F6; border-radius:13px; padding:32px 18px; }
+  .empty p { font-size:11px; line-height:1.8; }
+  .empty .caption { font:italic 26px/1 Georgia,serif; color:#B7B7B4; margin-bottom:10px; }
+  .section-description { color:#999; font-size:10px; line-height:1.75; margin:-5px 0 13px; }
+  .pair-list { display:flex; flex-direction:column; gap:10px; }
+  .pair { display:flex; align-items:center; width:100%; min-height:96px; gap:13px; padding:11px 12px; border-radius:14px;
+    background:var(--wash); border:0; text-align:left; }
+  .pair-photos { display:flex; flex:none; gap:5px; }
+  .pair-mini { width:53px; height:67px; border-radius:6px; background:#E8E8E6; overflow:hidden; display:grid; place-items:center; position:relative; }
+  .pair-mini img { width:100%; height:100%; object-fit:cover; }
+  .pair-mini svg { width:18px; height:18px; stroke:#AFAFAC; stroke-width:1.1; fill:none; }
+  .pair-mark { position:absolute; bottom:3px; left:4px; background:rgba(255,255,255,.86); padding:1px 4px; font-size:9px; border-radius:3px; }
+  .pair-copy { flex:1; min-width:0; }
+  .pair-copy strong { display:block; font-size:11px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pair-copy small { display:block; margin-top:5px; color:#999; font-size:10px; line-height:1.6; }
+  .pair-arrow { color:#A4A4A4; font-size:18px; font-weight:300; }
+  .pair-empty { color:#aaa; font-size:11px; padding:12px 2px 15px; line-height:1.65; }
+  .pickbar { display:none; margin:13px 0 0; padding:11px 12px; border-radius:10px; background:#F5F5F4; align-items:center; gap:10px; }
+  .pickbar.visible { display:flex; }
+  .pickcount { flex:1; font-size:11px; color:#666; }
+  .pickbar button { border:0; background:transparent; color:#555; font-size:11px; padding:8px 2px; }
+  .pickbar button.primary { color:#111; font-weight:600; }
+  .pickbar button:disabled { opacity:.4; cursor:default; }
+  .footnote { color:#B1B1B1; font-size:10px; line-height:1.75; margin-top:23px; }
+  .overlay { display:none; position:absolute; inset:0; background:rgba(17,17,17,.25); z-index:10; align-items:flex-end; }
+  .overlay.show { display:flex; }
+  .sheet { position:relative; width:100%; max-height:85%; overflow-y:auto; scrollbar-width:none; background:#fff;
+    border-radius:23px 23px 0 0; padding:12px 23px calc(27px + env(safe-area-inset-bottom,0px)); box-shadow:0 -8px 26px rgba(0,0,0,.04); }
+  .handle { width:34px; height:3px; background:#D4D4D4; border-radius:2px; margin:0 auto 22px; }
+  .sheet-heading { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:11px; }
+  .sheet h2 { font:400 27px/1.1 Georgia,"Songti SC",serif; }
+  .close { border:0; background:none; color:#888; padding:8px; font-size:22px; }
+  .sheet-help { color:#999; font-size:11px; line-height:1.6; margin:8px 0 18px; }
+  .sheet-actions { display:grid; gap:9px; }
+  .sheet-actions button { min-height:43px; width:100%; border:1px solid var(--edge); border-radius:10px; background:#fff; color:#333; }
+  .sheet-actions button.primary { background:#222; color:#fff; border-color:#222; }
+  .sheet-actions button.danger { color:#777; background:#FAFAFA; border-color:#F1F1F1; }
+  .sheet-actions button:disabled { opacity:.37; }
+  .sheet-field { display:none; gap:8px; margin:0 0 14px; }
+  .sheet-field.visible { display:flex; }
+  .sheet-field input { flex:1; min-width:0; min-height:42px; padding:0 12px; border:1px solid #E3E3E0; background:#F8F8F7;
+    border-radius:9px; outline:none; }
+  .sheet-field button { padding:0 13px; border:0; border-radius:9px; background:#222; color:#fff; }
+  .status { position:absolute; left:20px; right:20px; bottom:calc(19px + env(safe-area-inset-bottom,0px)); background:#262626; color:#fff;
+    font-size:11px; text-align:center; line-height:1.5; padding:12px 16px; border-radius:12px; z-index:20;
+    opacity:0; pointer-events:none; transform:translateY(8px); transition:opacity .17s,transform .17s; }
+  .status.show { opacity:1; transform:translateY(0); }
+  .status.error { background:#575757; }
+  .busy button { pointer-events:none; }
+  .busy .status { pointer-events:auto; }
+  input[type=file] { display:none; }
+  @media(max-width:480px) {
+    body { display:block; background:#fff; }
+    .phone { width:100%; height:100dvh; min-height:100dvh; border:none; border-radius:0; box-shadow:none; }
+    .top { padding-top:calc(27px + env(safe-area-inset-top,0px)); min-height:80px; }
+  }
+  @media(prefers-reduced-motion:reduce) {
+    .thumb,.status,.toggle,.toggle:before { transition:none; }
+  }
+</style>
+</head>
+<body>
+<main class="phone" id="avatarApp">
+  <header class="top">
+    <a class="back" id="backLink" href="chat-settings.html" aria-label="返回聊天设置">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+      返回
+    </a>
+    <div class="top-title">CHAT / PORTRAITS</div>
+    <details class="more" id="advancedMenu">
+      <summary aria-label="更多头像设置" title="更多头像设置">···</summary>
+      <div class="more-panel">
+        <div class="more-line">
+          <span class="more-copy">自主更换头像</span>
+          <input type="checkbox" class="toggle" id="autonomyToggle" aria-label="允许角色自主更换头像">
+        </div>
+        <p class="more-note">允许 TA 根据聊天情境从自己的收藏中选择。不会改变你的个人主页头像。</p>
+      </div>
+    </details>
+  </header>
+
+  <div class="scroll" id="avatarScroll">
+    <div class="kicker">PRIVATE COLLECTION / CHARACTER</div>
+    <h1>Portraits.</h1>
+    <p class="page-note">每一张照片，都只属于这段对话。</p>
+
+    <div class="section-top"><h2 class="section-title">当前头像</h2><span class="section-number">01</span></div>
+    <div class="current" id="currentCard">
+      <div class="current-picture" id="currentPicture" aria-hidden="true"></div>
+      <div class="current-info">
+        <div class="current-name" id="roleName">角色</div>
+        <p class="current-desc">TA 在聊天里使用的头像。可以随时从收藏里更换。</p>
+        <p class="current-small" id="currentState">CURRENT PORTRAIT</p>
+      </div>
+    </div>
+
+    <div class="section-top">
+      <h2 class="section-title">头像收藏 <span id="libraryCount" class="section-number">00</span></h2>
+      <div class="section-actions"><button class="text-button" id="uploadButton" type="button">＋ 添加照片</button></div>
+    </div>
+    <p class="section-description">轻点照片管理。所有素材按角色独立保存。</p>
+    <div class="album" id="album" aria-live="polite"></div>
+    <div class="pickbar" id="pairBuilder">
+      <span class="pickcount" id="pickCount">已选择 0 / 2</span>
+      <button type="button" id="cancelPair">取消</button>
+      <button type="button" class="primary" id="createPair" disabled>完成配对</button>
+    </div>
+
+    <div class="section-top">
+      <h2 class="section-title">情头配对 <span id="pairCount" class="section-number">00</span></h2>
+      <button class="text-button" id="startPair" type="button">＋ 新建配对</button>
+    </div>
+    <p class="section-description">A 给 TA，B 仅用于你和 TA 的聊天。交换顺序后需重新应用。</p>
+    <div class="pair-list" id="pairList"></div>
+    <p class="footnote">照片存储在本机媒体库中。解除配对只清除关联，不删除原图；所有设置不会影响其他角色。</p>
+  </div>
+
+  <input id="avatarFiles" type="file" accept="image/*" multiple aria-label="上传头像照片">
+  <div class="overlay" id="actionOverlay" aria-hidden="true">
+    <section class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+      <div class="handle"></div>
+      <div class="sheet-heading"><h2 id="sheetTitle">管理照片</h2><button class="close" id="closeSheet" type="button" aria-label="关闭">×</button></div>
+      <p class="sheet-help" id="sheetHelp"></p>
+      <div class="sheet-field" id="renameField">
+        <input id="renameInput" type="text" maxlength="36" placeholder="给这组情头起个名字" aria-label="情头名称">
+        <button type="button" id="savePairName">保存</button>
+      </div>
+      <div class="sheet-actions" id="sheetActions"></div>
+    </section>
+  </div>
+  <div class="status" id="feedback" role="status" aria-live="polite"></div>
+</main>
+<script src="./avatar-manager.js?v=20261117v1" defer></script>
+</body>
+</html>
