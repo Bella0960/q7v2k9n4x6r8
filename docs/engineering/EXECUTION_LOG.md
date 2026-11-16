@@ -1,5 +1,16 @@
 # MAOMAO Execution Log
 
+## MUSIC-UI-001 · 2026-11-17｜继续原 PR #303：可恢复本地音乐管理
+
+- **范围与纪律：** 仅修改 `task-MUSIC-UI-001/lightweight-player` / 原 Draft PR #303。没有创建 PR、触动 QA #299 / 其整合分支、main、正式环境、数据库或身份服务。
+- **实际功能：** 原音乐页隐藏“歌曲操作”下新增「管理已导入歌曲」，提供已导入歌曲重命名、移出曲库、恢复。移出是 `music_local_tracks` 现有记录上的**可选 `hidden:true`**，是软移出；**不调用 `deleteAudioBlob()`、不删除 IndexedDB 音频**，也不改变歌曲永久 ID、播放历史、收藏、歌单、歌词或封面资产的原引用。旧记录无 hidden 字段依然默认可见，恢复时删除该可选字段。原音频真实缺失时仍需按照既有缺失处理，不能宣传已恢复音频。
+- **数据约束：** 读到损坏或重复的旧元数据时拒绝改写。更改记录先调用原 `saveLocalTracksMeta()` 并进行 readback 校验，成功后才更新内存曲库、页面与发出带 `binaryDeleted:false`、`savedLocal:true` 的版本化 `maomao:music:local-library-changed` 事件。配额/写入失败不更新 UI、不发假成功事件。输入名称必须是 1–100 字，无控制字符。
+- **播放安全：** 软移出当前歌曲时会暂停并关闭音频 URL，播放器安全回到未播放默认曲目；软移出任何歌曲都会使正在等待中的异步 `playTrack` 请求失效，防止过期回调选中已移出的曲目。重命名/恢复只刷新源引用与内容列表，不复制二进制。管理 UI 保持极浅灰、无额外底栏。
+- **实际提交：** `2573d937718a9246ece944c378eee8fe5eb1df19` 新功能，`18635e55c9fe37f0b4f45d619993cf7c772bb2b5` 并发竞态修复；`c5ae6d8407dbe2a99c6f755edb16c58d3ee5d951` 两个 Node 回归用例；`470080845dbe4826568e8e9bf5f89d528bb82b49` Chromium 步骤；`0f98fa913a525833d89fdaada328bb8e8da35dec` 存储兼容说明。
+- **验证级别：** GitHub 原始生产函数隔离 V8 运行 **12/12** 本地管理场景通过（软移出当前曲、恢复相同 ID、失效回调令牌、保留二进制引用、配额失败、损坏目录等）；新增两个 Node 回归片段经隔离 V8 执行 **2/2** 通过，音乐内联 JS 与 Chromium 脚本语法解析 PASS。**NOT RUN / NOT VERIFIED：** 全量 Node `node --test`、Vite 构建、Chromium 375/390/430、浏览器 IndexedDB 真实读写、Android/iPhone 真机、QA 部署。无需夸大为已验收。
+- **后续：** 由 PR #303 原开发窗口继续音乐质量与导入功能修复；QA 现有整合流程结束后，由唯一 QA 窗口按 HEAD 和测试门禁整合 `music/music.html`、`tests/music-data-integrity.test.mjs`、`tests/music-mobile-browser.mjs`；不要重复建 QA 分支/PR，也不要合并 main 或部署正式版。
+
+
 ## MUSIC-UI-001 · 2026-11-17 用户截图反馈：播放详情整体过于靠上
 
 - **实际截图问题：** 840px 左右高度，默认封面/标题/播放条全部靠近顶部，控制键约在上半屏，下半屏留下大块无意义空白。
