@@ -2,6 +2,14 @@
 
 This is the durable checkpoint for owner-assigned, multi-step work. Update it after meaningful milestones and before ending a session.
 
+## 2026-11-16｜PR #299｜真实 QA 工程构建环境接入（Codespaces，未启动）
+- **目标**：不建第二套项目或 QA，接续已有私有仓库分支 `integration/account-fanwai-stack-20261115`；仅原 PR #299，**不合并 main，不自动部署正式版/QA**。
+- **已提交**：`.devcontainer/devcontainer.json`，GitHub 提交 `731649420084aa82e8e8c1e3d87a3d36d60452c5`。使用 Node 22 Dev Container；Codespaces 创建时 `npm ci --no-audit --no-fund`，随后 `npx playwright install --with-deps chromium && npm run qa:release:check`。这使自动测试在 Codespaces 真实源仓和容器里执行，而不是使用零散 GitHub 文件的模拟测试；若任一阶段失败，保留原错误供排查。没有新增 GitHub Actions 工作流、Cloudflare Worker、数据库、PR 或自动部署。
+- **配置静态验收**：从 PR #299 最新 HEAD 读取上述 Dev Container 文件、`package.json` 及原 `scripts/qa-direct-release.mjs`，检查 Node 22、npm ci、Chromium 系统依赖、QA 全套 Node/Vite/浏览器脚本、无 `--deploy`/自动上线，**8/8 项通过**。配置可解析，但**Codespace 尚未启动，Node/Vite/Chromium 实际通过状态 NOT VERIFIED**。
+- **已确认可运行工具的边界**：本聊天有 Node 22/npm/Git，但没有私有 MAOMAO checkout 或直接创建/操作 GitHub Codespaces 的连接器动作；现有 GitHub 连接器能写仓库，无法在 Codespaces 终端运行命令。只有用户在 GitHub 的 Code → Codespaces 打开上述分支创建 Codespace，才能执行真正的自动预检。Codespaces 使用独立用量/配额，不能保证本账户有足够额度。
+- **先前真实 Cloudflare 只读预检**：唯一 QA `maomao-aw-qa-20261114` 仍绑定旧网关；原 QA 影子管理员 ID 匹配且独立身份 core 库为空，两个 Worker 原有密钥和独立 DO namespace 保留，真实 `cloudflarePreflight` 函数对实测回执 PASS。不需要删数据库、重设密钥。该预检不是编译/部署成功。
+- **最短剩余步骤**：Codespace 真实 `npm run qa:release:check` 全部通过→使用已有 QA-only 身份凭据和安全权限，仅更新原 `maomao-identity-core`、再更新原 `maomao-aw-qa-20261114`→从原 workers.dev URL 实测初始化 001、关闭一次性入口，验收登录/退出/刷新及聊天/番外。**云端 Worker 版本仍旧，本轮没有部署。**
+
 ## 2026-11-16｜PR #299｜关键阻塞集中清理：两项真实回归测试漂移已修
 
 - **当前 HEAD：`909c75a14a736c4181cc82f0670e884ca9472204`**；原 PR #299 继续 Draft（基于 #290 最新 head），无新 PR/环境/数据库，Cloudflare、正式版、main 皆未改。
