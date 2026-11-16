@@ -1843,6 +1843,13 @@ if (cropCanvas) {
         if (!oldAvatar) return;
         const nextSrc = String(role.avatar || '');
         const currentSrc = oldAvatar.tagName === 'IMG' ? oldAvatar.getAttribute('src') || '' : '';
+        // A text-only fallback also needs to reflect a renamed character,
+        // without recreating the entire profile or touching editor fields.
+        if (!nextSrc && oldAvatar.tagName !== 'IMG') {
+            const initial = String(role.name || '角').slice(0, 1);
+            if (oldAvatar.textContent !== initial) oldAvatar.textContent = initial;
+            return;
+        }
         if (nextSrc !== currentSrc) {
             const nextAvatar = document.createElement(nextSrc ? 'img' : 'div');
             nextAvatar.className = 'profile-hero-avatar';
