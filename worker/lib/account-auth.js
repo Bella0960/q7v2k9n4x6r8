@@ -989,7 +989,8 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
         path === '/api/accounts/register' ||
         path === '/api/accounts/invites/redeem' ||
         path === '/api/accounts/password/change' ||
-        (path.startsWith('/api/admin/') && !path.startsWith('/api/admin/social/'))
+        (path.startsWith('/api/admin/') && !path.startsWith('/api/admin/social/') &&
+          !(path === '/api/admin/bootstrap' && method === 'POST' && qaIsolatedSetupEnabled(env)))
       )) {
         throw new ApiError(403, 'DELEGATED_ACCOUNT_MANAGED_CENTRALLY', '账号和管理员身份只能在统一账号系统中管理');
       }
