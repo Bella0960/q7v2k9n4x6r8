@@ -21,7 +21,7 @@
   var busy = false;
   var currentAction = null;
   var renderVersion = 0;
-  var ownedObjectUrls = [];
+  var objectUrlCache = new Map();
   var refreshPending = false;
   var refreshDirty = false;
   var toastTimer = 0;
@@ -92,27 +92,42 @@
     return node;
   }
   function releaseImages() {
-    ownedObjectUrls.forEach(function (ref) {
-      try { if (ref && typeof ref.revoke === 'function') ref.revoke(); } catch (_) {}
+    objectUrlCache.forEach(function (entry) {
+      entry.cancelled = true;
+      if (entry.picture && typeof entry.picture.revoke === 'function') {
+        try { entry.picture.revoke(); } catch (_) {}
+      }
     });
-    ownedObjectUrls = [];
+    objectUrlCache.clear();
   }
   async function drawAsset(assetId, node, version) {
-    var result;
-    try { result = await lib.toObjectUrl(assetId); } catch (_) { return; }
-    if (!result || !result.ok || !result.value) return;
-    var picture = result.value;
-    if (version !== renderVersion || !node.isConnected) {
-      try { if (typeof picture.revoke === 'function') picture.revoke(); } catch (_) {}
-      return;
+    // The gallery and pair cards can show the same photo. Fetch each Blob
+    // once per render, share the objectURL, and revoke it on rerender/pagehide.
+    var shared = objectUrlCache.get(assetId);
+    if (!shared) {
+      shared = { picture: null, cancelled: false };
+      objectUrlCache.set(assetId, shared);
+      shared.promise = Promise.resolve().then(function () {
+        return lib.toObjectUrl(assetId);
+      }).then(function (result) {
+        if (!result || !result.ok || !result.value) return null;
+        var picture = result.value;
+        if (shared.cancelled) {
+          try { if (typeof picture.revoke === 'function') picture.revoke(); } catch (_) {}
+          return null;
+        }
+        shared.picture = picture;
+        return picture;
+      }).catch(function () { return null; });
     }
+    var picture = await shared.promise;
+    if (!picture || version !== renderVersion || !node.isConnected) return;
     var img = document.createElement('img');
     img.alt = '';
     img.loading = 'lazy';
     img.decoding = 'async';
     img.src = picture.url;
     node.replaceChildren(img);
-    ownedObjectUrls.push(picture);
   }
   function thumb(item, version) {
     var node = document.createElement('span');
@@ -163,6 +178,10 @@
   }
   function renderGallery(role, version) {
     var items = lib.list(roleId);
+    var pairedIds = Object.create(null);
+    lib.getPairs(roleId).forEach(function (pair) {
+      pair.avatarIds.forEach(function (id) { pairedIds[id] = true; });
+    });
     album.replaceChildren();
     byId('libraryCount').textContent = String(items.length).padStart(2, '0');
     if (!items.length) {
@@ -194,8 +213,7 @@
       label.textContent = item.label || '角色头像';
       var sub = document.createElement('span');
       sub.className = 'portrait-sub';
-      var linked = lib.getPairForAvatar(roleId, item.id);
-      sub.textContent = linked ? '已配对' : '收藏照片';
+      sub.textContent = pairedIds[item.id] ? '已配对' : '收藏照片';
       card.append(image, label, sub);
       card.addEventListener('click', function () {
         if (busy) return;
@@ -218,6 +236,7 @@
   }
   function renderPairs(version) {
     var pairs = lib.getPairs(roleId);
+    var selected = lib.getChatPairUserSelection(roleId);
     pairList.replaceChildren();
     byId('pairCount').textContent = String(pairs.length).padStart(2, '0');
     if (!pairs.length) {
@@ -240,7 +259,6 @@
       var title = document.createElement('strong');
       title.textContent = pair.label || '情头配对';
       var caption = document.createElement('small');
-      var selected = lib.getChatPairUserSelection(roleId);
       caption.textContent = selected && selected.pairId === pair.id ? '已用于当前聊天' : '待应用到这段聊天';
       info.append(title, caption);
       var arrow = document.createElement('span');
