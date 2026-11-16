@@ -743,3 +743,37 @@ test('corrupt game inbox fails closed without losing previously stored private d
   }).code, 'CORRUPT_INBOX');
   assert.equal(h.storage.getItem(hostKey), damaged);
 });
+
+test('corrupted self-vote cannot be counted or published as game result', () => {
+  const h = harness();
+  assert.equal(begin(h).ok, true);
+  const sid = h.game.getPublic('g1').sessionId;
+  const key = 'phone_group_game_private_v1_g1_' + sid + '_vote_r1';
+  const invalid = {version:1,groupId:'g1',sessionId:sid,voterId:'r1',
+    targetId:'r1',eventId:'invalid-self-ballot',time:Date.now()};
+  h.storage.setItem(key, JSON.stringify(invalid));
+  const publicBefore = h.game.getPublic('g1');
+  assert.equal(publicBefore.voteError, true,
+    'self-vote in storage must mark the round as corrupted');
+  assert.equal(publicBefore.voteCount, 0,
+    'invalid ballots cannot count toward unanimous completion');
+  assert.equal(h.game.castVote({groupId:'g1',sessionId:sid,
+    voterId:'r2',targetId:'r1',eventId:'valid-after-damaged'}).code,
+    'CORRUPT_VOTE', 'no voting into a round with corrupted ballots');
+  assert.equal(h.game.finish({group:group(),groupId:'g1',actorId:'__user'}).code,
+    'CORRUPT_VOTE', 'owner cannot publish a fabricated tally');
+  assert.equal(h.game.getPublic('g1').status,'active');
+  assert.equal(h.storage.getItem(key), JSON.stringify(invalid),
+    'protect unreadable or inconsistent source ballots for diagnosis');
+  assert.equal(h.game.cancel({group:group(),groupId:'g1',actorId:'__user'}).ok,
+    true, 'owner retains a safe way to cancel without revealing identity');
+
+  const next = begin(h);
+  assert.equal(next.ok, true);
+  const nextSid = next.session.sessionId;
+  const nextKey = 'phone_group_game_private_v1_g1_' + nextSid + '_vote_r1';
+  h.storage.setItem(nextKey, JSON.stringify({...invalid,
+    sessionId:nextSid,targetId:'r2',time:null}));
+  assert.equal(h.game.getPublic('g1').voteError,true,
+    'missing vote timestamps cannot count as valid ballots');
+});
