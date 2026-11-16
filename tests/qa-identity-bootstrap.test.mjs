@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { qaIsolatedSetupEnabled, isolatedQaAuthorityFounderId, resolveQaAuthorityFounderId, initializeIsolatedQaAuthority } from '../worker/lib/qa-identity-bootstrap.js';
 
 const F = 'MAO-SYNTHFOUNDER001';
@@ -101,4 +102,85 @@ test('wrong identity created in core never reports success or exposes its cookie
   const {env,store}=fixture();env.MAO_IDENTITY_AUTHORITY={fetch:async r=>r.method==='GET'?goodStatus():Response.json({ok:true,account})};
   await assert.rejects(initializeIsolatedQaAuthority({env,store,request:request()}),e=>e.code==='QA_AUTHORITY_IDENTITY_MISMATCH');
  }
+});
+
+
+test('isolated QA core bootstrap must not mint an unused session', async () => {
+  // Exercise the actual internal bootstrap function for both QA-only and
+  // ordinary local authority modes, with an entirely synthetic store.
+  const source = readFileSync(new URL('../worker/lib/account-auth.js', import.meta.url), 'utf8');
+  const start = source.indexOf('  async function bootstrap(request) {');
+  const end = source.indexOf('\n  async function register(request) {', start);
+  assert.ok(start >= 0 && end > start, 'account bootstrap source must be found');
+  const definition = source.slice(start, end).trim();
+  const syntheticId = F;
+  const make = new Function(
+    'env', 'delegated', 'store', 'readJsonBody', 'ApiError', 'sha256Hex',
+    'timingSafeEqualHex', 'normalizedUsername', 'normalizedEmail', 'randomToken',
+    'passwordDigest', 'resolveQaAuthorityFounderId', 'isolatedQaAuthorityFounderId',
+    'publicAccount', 'createSession', 'now', 'ok',
+    'return (' + definition + ');'
+  );
+  for (const isolated of [true, false]) {
+    let createdAccount = null;
+    let sessions = 0;
+    const store = {
+      hasMaoSuperAdminAccount: () => false,
+      getMaoLoginRateLimit: () => ({ blocked: false }),
+      clearMaoLoginRateLimit: () => {},
+      recordMaoLoginFailure: () => ({ blocked: false }),
+      createMaoSuperAdminAccountIfEmpty: account => {
+        createdAccount = {
+          id: account.id, username: account.username,
+          role: 'super_admin', status: 'active'
+        };
+        return true;
+      },
+      getMaoAccountById: () => createdAccount
+    };
+    const env = {
+      MAO_IDENTITY_MODE: 'local',
+      MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: SECRET,
+      DEVICE_SECRET_PEPPER: 'p'.repeat(40),
+      ...(isolated ? {
+        MAO_QA_ISOLATED_IDENTITY_CORE: 'true',
+        MAO_QA_FOUNDER_ID: syntheticId
+      } : {})
+    };
+    const makeBootstrap = make(
+      env, false, store,
+      async () => ({
+        bootstrapSecret: SECRET, username: shadow.username,
+        password: 'qa-only-password-123', confirmPassword: 'qa-only-password-123',
+        qqEmail: ''
+      }),
+      class ApiError extends Error {
+        constructor(status, code, message) { super(message); this.status = status; this.code = code; }
+      },
+      async text => text,
+      (a, b) => a === b,
+      value => ({ username: String(value), usernameKey: String(value).toLowerCase() }),
+      () => null,
+      () => 'SYNTHETIC1234567',
+      async () => 'synthetic-pbkdf2-hash',
+      resolveQaAuthorityFounderId,
+      isolatedQaAuthorityFounderId,
+      account => ({ ...account, founderNumber: '001' }),
+      async account => { sessions++; return { sessionCreated: true, account }; },
+      () => 1700000000000,
+      body => body
+    );
+    const result = await makeBootstrap({ url: 'https://mao520.com/api/admin/bootstrap' });
+    assert.equal(createdAccount?.role, 'super_admin');
+    if (isolated) {
+      assert.equal(createdAccount.id, syntheticId, 'exact existing QA founder ID remains fixed');
+      assert.equal(sessions, 0, 'no invisible authority session must be created');
+      assert.equal(result.account.id, syntheticId);
+      assert.equal(result.qaSetupComplete, true);
+      assert.equal(result.nextStep, 'qa_login');
+    } else {
+      assert.equal(sessions, 1, 'ordinary local bootstrap must still issue its session');
+      assert.equal(result.sessionCreated, true);
+    }
+  }
 });
