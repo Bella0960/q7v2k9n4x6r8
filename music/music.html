@@ -1305,13 +1305,8 @@
   async function playTrack(trackId) {
     var t = getTrackById(trackId);
     if (!t) { toast('曲目不存在'); return; }
-    currentIdx = tracks.indexOf(t);
-    document.getElementById('miniName').textContent = t.name;
-    document.getElementById('miniArtist').textContent = t.artist;
-    document.getElementById('npTitle').textContent = t.name;
-    document.getElementById('npArtist').textContent = t.artist;
-    renderTrackLyrics(t);
-    window.lastLyricLine = -1;
+    // 源文件可用且真正开始播放之后再更新 UI/currentIdx；
+    // 否则保持原曲与旧收藏/进度，不显示假成功。
     // 等待真实音频拿到后才切换，失败不移除旧收藏或历史
     var playRequest = ++playbackRevision;
     if (t.source === 'local') {
@@ -1342,6 +1337,13 @@
       toast('无法开始播放，请检查音频来源或手机播放权限');
       return;
     }
+    if (playRequest !== playbackRevision) return; // 前一个异步切歌不得覆盖新请求
+    currentIdx = tracks.indexOf(t);
+    document.getElementById('miniName').textContent = t.name;
+    document.getElementById('miniArtist').textContent = t.artist;
+    document.getElementById('npTitle').textContent = t.name;
+    document.getElementById('npArtist').textContent = t.artist;
+    renderTrackLyrics(t);
     playing = !window.audio.paused;
     renderAlbum();
     updatePlayIcon();
