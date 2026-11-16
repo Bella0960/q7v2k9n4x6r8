@@ -473,7 +473,9 @@ test('forum refresh / 页面入口：刷新流程使用最新存储快照合并�
 });
 
 
-// VM-extracted helpers may return cross-realm arrays. Normalize only the container\n// to this test realm before strict comparison; keep all value assertions.\ntest('forum refresh / 重复根评论携带新楼中楼：保留根评论并只追加尚未出现的回复', () => {
+// VM-extracted helpers may return cross-realm arrays. Normalize only the container
+// to this test realm before strict comparison; keep all value assertions.
+test('forum refresh / 重复根评论携带新楼中楼：保留根评论并只追加尚未出现的回复', () => {
   const api = runForumRefreshCore();
   const current = [{
     id: 'thread_post',
