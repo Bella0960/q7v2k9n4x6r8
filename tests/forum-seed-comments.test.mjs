@@ -473,7 +473,7 @@ test('forum refresh / 页面入口：刷新流程使用最新存储快照合并�
 });
 
 
-test('forum refresh / 重复根评论携带新楼中楼：保留根评论并只追加尚未出现的回复', () => {
+// VM-extracted helpers may return cross-realm arrays. Normalize only the container\n// to this test realm before strict comparison; keep all value assertions.\ntest('forum refresh / 重复根评论携带新楼中楼：保留根评论并只追加尚未出现的回复', () => {
   const api = runForumRefreshCore();
   const current = [{
     id: 'thread_post',
@@ -517,7 +517,7 @@ test('forum refresh / 重复根评论携带新楼中楼：保留根评论并只�
   assert.equal(result.activityCount, 1, '只把新楼中楼计为新增内容');
   assert.equal(comments.length, 1, '重复的根评论不能再插入一份');
   assert.deepEqual(
-    comments[0].replies.map((reply) => reply.text),
+    Array.from(comments[0].replies, (reply) => reply.text),
     ['之前的补充', '我也想补充一点']
   );
   assert.equal(current[0].comments[0].replies.length, 1, '合并不得改写原始内存快照');
@@ -552,7 +552,7 @@ test('forum refresh / 新帖子自带评论：根评论和楼中楼都按身份�
   assert.equal(result.addedPostCount, 1);
   assert.equal(result.posts[0].comments.length, 1, '新帖子里的重复根评论只保留一份');
   assert.deepEqual(
-    result.posts[0].comments[0].replies.map((reply) => reply.text),
+    Array.from(result.posts[0].comments[0].replies, (reply) => reply.text),
     ['我来补充', '还有一个细节']
   );
 });
