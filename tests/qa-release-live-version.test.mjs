@@ -71,3 +71,65 @@ test('direct QA release must compare pre/post versions of BOTH existing Workers'
   assert.match(source, /run\('npx', \['--yes', 'wrangler@4', 'deploy', '--config', 'wrangler\.qa-identity-core\.jsonc'\]\)/);
   assert.match(source, /run\('npx', \['--yes', 'wrangler@4', 'deploy', '--config', 'wrangler\.qa\.jsonc'\]\)/);
 });
+
+
+const smokeStart = source.indexOf('async function qaHttpSmoke(coreInitialized) {');
+const smokeEnd = source.indexOf('\n\nasync function cloudflarePreflight()', smokeStart);
+assert.ok(smokeStart >= 0 && smokeEnd > smokeStart,
+  'original QA URL HTTP smoke guard must exist');
+const smokeSource = source.slice(smokeStart, smokeEnd);
+
+function runHttpSmoke(coreInitialized, { overrides = {}, html = '<form id="loginForm"></form>' } = {}) {
+  const calls = [];
+  const status = {
+    ok: true, identityMode: 'delegated',
+    identityAuthorityConnected: true,
+    identityAuthorityInitialized: coreInitialized,
+    initialized: coreInitialized, configured: true,
+    signInReady: coreInitialized, qaSetupAllowed: !coreInitialized,
+    ...overrides
+  };
+  const probe = vm.runInNewContext(smokeSource + '\nqaHttpSmoke;', {
+    assert,
+    AbortSignal: { timeout: () => ({}) },
+    console: { log() {} },
+    fetch: async (url, options) => {
+      calls.push({ url, options });
+      if (url.endsWith('/api/admin/bootstrap/status')) {
+        return { status: 200, async json() { return status; } };
+      }
+      if (url.endsWith('/account/index.html')) {
+        return { status: 200, async text() { return html; } };
+      }
+      throw new Error('unexpected URL');
+    }
+  });
+  return { calls, promise: probe(coreInitialized) };
+}
+
+test('original QA URL smoke accepts first-run setup and a ready disabled setup', async () => {
+  for (const ready of [false, true]) {
+    const fixture = runHttpSmoke(ready);
+    await fixture.promise;
+    assert.deepEqual(fixture.calls.map(x => x.url), [
+      'https://maomao-aw-qa-20261114.miamor520000.workers.dev/api/admin/bootstrap/status',
+      'https://maomao-aw-qa-20261114.miamor520000.workers.dev/account/index.html'
+    ]);
+    assert.ok(fixture.calls.every(x => x.options.method === 'GET'));
+    assert.ok(fixture.calls.every(x => !x.options.body && !x.options.cookie &&
+      !x.options.authorization), 'probe must not transmit passwords or cookies');
+  }
+});
+
+test('QA URL smoke blocks a disconnected core, inconsistent setup, or missing login HTML', async () => {
+  await assert.rejects(runHttpSmoke(false, {
+    overrides: { identityAuthorityConnected: false }
+  }).promise);
+  await assert.rejects(runHttpSmoke(true, {
+    overrides: { signInReady: false }
+  }).promise);
+  await assert.rejects(runHttpSmoke(true, {
+    overrides: { qaSetupAllowed: true }
+  }).promise);
+  await assert.rejects(runHttpSmoke(false, { html: '<html>No login form</html>' }).promise);
+});
