@@ -40,8 +40,26 @@
 .fate-button{width:100%;display:block;text-align:left;margin:8px 0;padding:15px;border:1px solid #e0e1de;border-radius:12px;background:#f5f5f3;color:#444742;font-size:12px}.fate-button.selected{border-color:#676963;background:#ebebea}
 .saved-section-title{margin:23px 0 12px;font-family:var(--serif);font-size:17px;font-weight:400;letter-spacing:.035em}.saved-section-count{margin-left:6px;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;color:#999;font-size:11px}.met-archive{margin-top:24px;padding-top:2px}.met-role-button{border:0;background:transparent;padding:0;text-align:left;color:inherit;width:100%}.met-role-button:focus-visible{outline:2px solid #777;outline-offset:3px}.met-role-hint{margin-top:4px;font-size:10px;color:#939590}.saved-list{display:flex;flex-direction:column;gap:9px}.saved-item{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding:13px 11px;background:#f3f3f1;border-radius:13px}.saved-name{font-family:var(--serif);font-size:17px}.saved-preview{display:block;width:100%;padding:0;border:0;background:transparent;text-align:left;color:var(--ink);font-weight:400}.saved-preview:after{content:"  ＋";font:12px sans-serif;color:#92948f}.saved-detail-actions{display:flex;justify-content:flex-end;gap:9px;flex-wrap:wrap;margin-top:23px}.story-preview{background:#f1f1ef;border-radius:12px;padding:14px 16px;line-height:1.9;font-size:12px;color:#61635f;white-space:pre-line}.saved-meta{color:#939590;font-size:10px;margin-top:4px}.saved-actions{display:flex;gap:7px}.mini{font-size:11px;border:1px solid #dcddda;border-radius:9px;padding:9px 11px;color:#4f514d;background:transparent}.mini.dark{background:#343633;color:#fff;border-color:#343633}
 .empty{font-size:12px;color:#8b8d89;line-height:2;padding:22px 0}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
-@media(max-width:480px){body{background:var(--paper)}.stage{padding:0;display:block}.phone{width:100%;height:100dvh;min-height:0;border:0;border-radius:0}.status-bar{padding-top:max(13px,env(safe-area-inset-top,13px));height:calc(31px + env(safe-area-inset-top,0px))}.header{height:70px}.deck-wrap{margin-top:11px;margin-bottom:7px;padding:4px 27px}.card{padding:22px 24px}.name{font-size:31px}}
-@media(max-height:720px){.header{height:60px}.intro{padding-top:0}.deck-wrap{margin-top:8px}.portrait{min-height:100px}.ring{width:88px;height:88px;border-width:13px}.ring:after{width:29px;height:29px;top:-21px;right:-22px}.portrait-caption{margin-top:17px}.quote{margin:10px 0}.card{padding-top:19px;padding-bottom:18px}.name{font-size:28px}.bottom{padding-bottom:max(13px,env(safe-area-inset-bottom,10px))}}
+@media(max-width:480px){
+  body{background:var(--paper)}
+  .stage{padding:0;display:block}
+  .phone{width:100%;height:100dvh;min-height:0;border:0;border-radius:0;padding-top:env(safe-area-inset-top,0px)}
+  /* 真机由系统显示时间、电量与信号；桌面手机预览仍保留模拟状态栏。 */
+  .status-bar{display:none}
+  .header{height:65px;padding:0 19px}
+  .menu-button{display:grid;place-items:center;font:20px/1 Arial,sans-serif;letter-spacing:0;padding:0;white-space:nowrap}
+  .intro{padding:6px 24px 0;align-items:center;gap:12px}
+  .intro-sub{line-height:1.45}
+  .collection-link{display:inline-flex;align-items:baseline;gap:6px;padding:7px 0;font-variant-numeric:tabular-nums}
+  /* 底部操作区与卡片相邻，后景卡片跟随主卡片高度，而不是拉满空白。 */
+  .deck-wrap{margin:11px 0 5px;padding:4px 27px;align-items:flex-end}
+  .card{max-height:min(580px,100%);padding:22px 24px}
+  .back-card{top:auto;bottom:4px;height:min(580px,calc(100% - 8px))}
+  .name{font-size:31px}
+  .bottom{padding:6px 27px calc(14px + env(safe-area-inset-bottom,0px))}
+  .bottom-copy{margin-top:8px}
+}
+@media(max-height:720px){.header{height:60px}.intro{padding-top:0}.deck-wrap{margin-top:8px}.portrait{min-height:100px}.ring{width:88px;height:88px;border-width:13px}.ring:after{width:29px;height:29px;top:-21px;right:-22px}.portrait-caption{margin-top:17px}.quote{margin:10px 0}.card{padding-top:19px;padding-bottom:18px}.name{font-size:28px}.bottom{padding-bottom:calc(13px + env(safe-area-inset-bottom,0px))}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 </style>
 </head>
