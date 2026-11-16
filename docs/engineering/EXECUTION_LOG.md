@@ -179,3 +179,12 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 更新文件：encounter/encounter-engine.js、encounter/encounter.html、tests/encounter-contract.test.mjs、tests/encounter-ui-contract.test.mjs、tests/encounter-browser.mjs、scripts/verify-encounter-release.mjs。新门禁需 objectIdentityGuess 和 encounter-object-guess-390.png。
 - 已执行：更新后的引擎/页面脚本 V8 语法及真实逻辑检查通过；全部模拟 UI 10/10 PASS；新增 Node 合同测试主体 2/2 在 V8 适配环境通过，覆盖七种世界、选项去重、真实职业、稳定 ID 和零写入。
 - NOT VERIFIED：原生 Node CLI、完整 Vite 构建、Playwright 真浏览器、Android/iPhone 真机。PR 保留 Draft；等待唯一 QA 本轮部署完成后按顺序纳入。不得据此合并 main 或发布正式环境。
+
+
+## FEATURE-ENCOUNTER-001｜2026-11-17 蒙面档案逐层寻迹
+- 继续原 PR #297 的 FEATURE-ENCOUNTER-001-initial-experience 分支；唯一 QA PR #299 的冻结整合分支保持不动，不建重复 PR、不部署正式环境。
+- 本轮功能提交 ec49160e68dc7d2447b64041e83567bb61b239d0：蒙面档案先显示台词与 00/03 提示，逐次点击展开来处/身份轮廓/随身之物，明确点击才揭晓姓名和完整角色信息；任意阶段可直接揭晓。扩展只读 API getMaskedClues(card)，不写角色、聊天、记忆、候选或新增存储，不调用 API。
+- 实际修改六处：encounter/encounter-engine.js、encounter/encounter.html、tests/encounter-contract.test.mjs、tests/encounter-ui-contract.test.mjs、tests/encounter-browser.mjs、scripts/verify-encounter-release.mjs。浏览器新增 390px 逐层线索截图 encounter-masked-clues-390.png 和门禁 maskedClueSteps。
+- 已执行验证：实际 GitHub 更新后的引擎/页面内联 JS 语法与运行时只读逻辑 PASS；浏览器脚本及 gate 在去掉 ES 模块壳的等价语法检查 PASS；来自已提交源码的 V8 模拟 DOM 全回归 12/12 PASS，新增独立合同 1/1 PASS。其他模式的原测试主体也包含在 12 项中。
+- NOT VERIFIED：未在完整仓库执行 Node CLI、Vite 生产构建、Playwright 真 Chromium、Android/iOS 真机或 QA 部署。仅测试模拟完成，不能声称线上可用或合并就绪。PR #297 Draft 保留。
+- 集成规则：当前 QA #299 部署完成后再由整合窗口按序取原 PR 最新 SHA，运行 npm run test:encounter、npm run build、npm run test:encounter:browser、npm run gate:encounter，取得与同一 Git HEAD 对应的回执后给用户手机验收；正式版另行审批。
