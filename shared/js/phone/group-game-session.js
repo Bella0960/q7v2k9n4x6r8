@@ -101,7 +101,8 @@
     var vote=read(storage,key);
     if(!vote || vote.groupId!==session.groupId || vote.sessionId!==session.sessionId ||
       vote.voterId!==rid || session.players.indexOf(vote.targetId)===-1 ||
-      !valid(vote.eventId) || !Number.isFinite(Number(vote.time)))
+      vote.targetId===rid || !valid(vote.eventId) ||
+      !Number.isFinite(Number(vote.time)) || Number(vote.time)<=0)
       return error('CORRUPT_VOTE','已有投票记录异常，已停止操作');
     return {ok:true,voted:true,vote:vote};
   }
