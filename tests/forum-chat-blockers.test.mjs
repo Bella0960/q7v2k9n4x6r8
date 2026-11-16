@@ -94,6 +94,8 @@ function loadSaveMessages(sandbox) {
 function createSandboxBase() {
   return {
     currentCharacter: { id: 'role-1' },
+    // saveMessages normally closes over this fail-closed flag in chat-detail.html.
+    _chatHistoryUnreadable: false,
     storageKey: 'chat_history_role-1',
     showToast: () => {},
     _resetWarnCooldown: () => {},
