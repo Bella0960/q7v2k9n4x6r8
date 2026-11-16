@@ -7,7 +7,7 @@ function readyEvidence() {
   return {
     productionAccountStore:{count:2,superAdmins:1,canonicalFounderId:F,canonicalFounderRole:'super_admin',canonicalFounderStatus:'active'},
     qaAccountStore:{count:1,canonicalFounderId:F,canonicalFounderRole:'super_admin',canonicalFounderStatus:'active'},
-    permanentIdentityStore:{count:1,nonPreview:true,canonicalFounderId:F,canonicalFounderStatus:'active'},
+    permanentIdentityStore:{count:1,nonPreview:true,canonicalFounderId:F,canonicalFounderRole:'super_admin',canonicalFounderStatus:'active'},
     appDomain:{host:'app.mao520.com',sameOriginAccountApiVerified:true,privateHtmlGated:true,activeAccountAuthorityMatches:true},
     passwordAndOldSessionsContinuityVerified:true,
     twoAccountIsolationVerified:true,
@@ -66,4 +66,21 @@ test('missing or malformed evidence fails closed and never exposes credentials',
   assert.equal(auditAccountCutover(readyEvidence(),'not an ID').ready,false);
   const e=readyEvidence();e.productionAccountStore.count=NaN;
   assert.ok(auditAccountCutover(e,F).blockers.includes('PRODUCTION_COUNTS_NOT_VERIFIED'));
+});
+
+test('permanent authority must be a confirmed non-preview source with canonical super_admin',()=>{
+  for (const badNonPreview of [undefined, null, false, 'false', 1]) {
+    const evidence=readyEvidence();
+    if (badNonPreview===undefined) delete evidence.permanentIdentityStore.nonPreview;
+    else evidence.permanentIdentityStore.nonPreview=badNonPreview;
+    assert.ok(auditAccountCutover(evidence,F).blockers.includes('PERMANENT_IDENTITY_AUTHORITY_NOT_READY'),
+      'nonPreview=' + String(badNonPreview));
+  }
+  for(const badRole of [undefined, null, 'member', 'admin', 'SUPER_ADMIN']){
+    const evidence=readyEvidence();
+    if(badRole===undefined) delete evidence.permanentIdentityStore.canonicalFounderRole;
+    else evidence.permanentIdentityStore.canonicalFounderRole=badRole;
+    assert.ok(auditAccountCutover(evidence,F).blockers.includes('PERMANENT_IDENTITY_AUTHORITY_NOT_READY'),
+      'role=' + String(badRole));
+  }
 });
