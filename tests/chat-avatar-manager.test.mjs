@@ -245,7 +245,13 @@ test('real editor controller mounts a scoped UI and calls the existing media lib
   assert.ok(unlink, 'unlink action should exist for a saved pair');
   await unlink.click();
   assert.equal(removedPairs.length, 0, 'first tap only asks for confirmation');
-  assert.ok(actionSheet.children.find(x => x.textContent === '取消'));
+  const cancel = actionSheet.children.find(x => x.textContent === '取消');
+  assert.ok(cancel);
+  await cancel.click();
+  assert.equal(removedPairs.length, 0, 'cancellation must not mutate a pair');
+  await document.getElementById('pairList').children[0].click();
+  const secondUnlink = actionSheet.children.find(x => x.textContent.includes('解除配对'));
+  await secondUnlink.click();
   const confirm = actionSheet.children.find(x => x.textContent === '确认解除');
   assert.ok(confirm, 'confirmation remains inside the designed bottom sheet');
   await confirm.click();
@@ -253,4 +259,57 @@ test('real editor controller mounts a scoped UI and calls the existing media lib
 
   assert.deepEqual(saved, ['ai_custom_characters'],
     'the editor must not write new image blobs or cross-role keys');
+});
+
+
+test('legacy media-only role photo displays from its assetId without a Base64 source', () => {
+  const start = controller.indexOf('  function renderCurrent(role, version) {');
+  const end = controller.indexOf('\n  function makeEmpty(', start);
+  assert.ok(start >= 0 && end > start);
+  const calls = [];
+  const nodes = {
+    roleName: { textContent: '' },
+    currentPicture: { children: [], replaceChildren(...items) { this.children = items; }, appendChild(item) { this.children.push(item); } },
+    currentState: { textContent: '' },
+    autonomyToggle: { checked: false }
+  };
+  const view = new Function('byId', 'document', 'placeholder', 'drawAsset',
+    controller.slice(start, end) + '\nreturn renderCurrent;')(
+    name => nodes[name],
+    { createElement: () => ({ src: '', alt: '' }) },
+    () => ({ placeholder: true }),
+    (assetId, node, version) => { calls.push({ assetId, node, version }); }
+  );
+  const assetId = 'as_' + 'A'.repeat(32);
+  view({ id: 'role-A', name: '旧角色', avatar: 'idb-image:old', avatarAssetId: assetId }, 12);
+  assert.equal(nodes.currentState.textContent, '已应用');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].assetId, assetId);
+  assert.equal(calls[0].node, nodes.currentPicture);
+  assert.equal(calls[0].version, 12);
+
+  view({ id: 'role-B', name: '有图片地址', avatar: 'data:image/png;base64,ZGF0YQ==', avatarAssetId: assetId }, 13);
+  assert.equal(calls.length, 1, 'usable image src must not duplicate an IndexedDB preview');
+});
+
+test('autonomy setting restores previous role value on quota/write failure without touching another role', () => {
+  const start = controller.indexOf('  function saveAutonomy() {');
+  const end = controller.indexOf('\n  function scheduleRefresh()', start);
+  assert.ok(start >= 0 && end > start);
+  const current = { id: 'role-A', name: '角色A', avatarAutonomyEnabled: true };
+  const raw = JSON.stringify([current, { id: 'role-B', avatarAutonomyEnabled: false }]);
+  const toggle = { checked: false };
+  const feedback = [];
+  const save = new Function('byId', 'readRole', 'localStorage', 'roleId', 'busy', 'hint',
+    controller.slice(start, end) + '\nreturn saveAutonomy;')(
+    () => toggle, () => current, {
+      getItem: key => key === 'ai_custom_characters' ? raw : null,
+      setItem() { throw new Error('quota'); }
+    }, 'role-A', false,
+    (message, error) => feedback.push({ message, error })
+  );
+  save();
+  assert.equal(toggle.checked, true, 'failed writes restore old checked state');
+  assert.equal(JSON.parse(raw)[1].avatarAutonomyEnabled, false, 'other roles stay unchanged');
+  assert.equal(feedback.at(-1).error, true);
 });
