@@ -71,3 +71,74 @@ test('gateway probe stays disabled for non-delegated mode or absent binding', as
   assert.equal(calls, 0);
   assert.deepEqual(await probeExistingIdentityAuthority(delegated(null)), OFFLINE);
 });
+
+
+test('isolated QA core readiness does not require retired gateway secret', async () => {
+  const founder = 'MAO-SYNTHFOUNDER001';
+  let calls = 0;
+  const env = delegated({ fetch: async request => {
+    calls++;
+    assert.equal(request.method, 'GET');
+    assert.equal(request.headers.get('x-mao-identity-bridge'), null);
+    assert.equal(request.headers.get('cookie'), null);
+    assert.equal(request.headers.get('authorization'), null);
+    return Response.json({
+      ok: true, initialized: false, configured: true,
+      identityMode: 'local', bootstrapAllowed: true,
+      qaIsolatedAuthority: true, qaExpectedFounderId: founder
+    });
+  } });
+  delete env.MAO_IDENTITY_BRIDGE_SECRET;
+  env.MAO_IDENTITY_AUTHORITY_MODE = 'existing_worker';
+  env.MAO_QA_AUTHORITY_WORKER = 'maomao-identity-core';
+  env.MAO_EXPECTED_FOUNDER_ID = founder;
+  assert.deepEqual(await probeExistingIdentityAuthority(env),
+    { connected: true, initialized: false, configured: true });
+  // Closing the one-time setup switch must not restore a dependency on the
+  // retired gateway key. Logins still need a properly initialized core.
+  delete env.MAO_QA_IDENTITY_SETUP;
+  assert.deepEqual(await probeExistingIdentityAuthority(env),
+    { connected: true, initialized: false, configured: true });
+  assert.equal(calls, 2);
+});
+
+test('isolated QA readiness rejects wrong authority, wrong founder and malformed status', async () => {
+  const founder = 'MAO-SYNTHFOUNDER001';
+  const ready = {
+    ok: true, initialized: true, configured: true, identityMode: 'local',
+    bootstrapAllowed: true, qaIsolatedAuthority: true,
+    qaExpectedFounderId: founder
+  };
+  for (const changes of [
+    { identityMode: 'delegated' },
+    { bootstrapAllowed: false },
+    { qaIsolatedAuthority: false },
+    { qaExpectedFounderId: 'MAO-OTHERFOUNDER001' },
+    { qaExpectedFounderId: undefined },
+    { initialized: 'true' },
+    { configured: null },
+    { ok: false }
+  ]) {
+    const env = delegated({ fetch: async request => {
+      assert.equal(request.headers.get('x-mao-identity-bridge'), null);
+      return Response.json({ ...ready, ...changes });
+    } });
+    delete env.MAO_IDENTITY_BRIDGE_SECRET;
+    env.MAO_IDENTITY_AUTHORITY_MODE = 'existing_worker';
+    env.MAO_QA_AUTHORITY_WORKER = 'maomao-identity-core';
+    env.MAO_EXPECTED_FOUNDER_ID = founder;
+    assert.deepEqual(await probeExistingIdentityAuthority(env), OFFLINE);
+  }
+  // The opt-in selector must never disable the legacy gateway's secret gate.
+  let calls = 0;
+  const foreign = delegated({ fetch: async () => {
+    calls++;
+    return Response.json(ready);
+  } });
+  delete foreign.MAO_IDENTITY_BRIDGE_SECRET;
+  foreign.MAO_IDENTITY_AUTHORITY_MODE = 'existing_worker';
+  foreign.MAO_QA_AUTHORITY_WORKER = 'wrong-worker';
+  foreign.MAO_EXPECTED_FOUNDER_ID = founder;
+  assert.deepEqual(await probeExistingIdentityAuthority(foreign), OFFLINE);
+  assert.equal(calls, 0);
+});
