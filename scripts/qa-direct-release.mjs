@@ -52,18 +52,23 @@ function run(command, args, quiet = false) {
   return quiet ? String(result.stdout || '').trim() : '';
 }
 
-function preflightCheckout() {
-  assert.equal(run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], true), BRANCH,
-    'Only the original #299 integration branch may be used for the QA release');
-  const origin = run('git', ['remote', 'get-url', 'origin'], true);
-  assert.match(origin, /^(?:https:\/\/github\.com\/|ssh:\/\/git@github\.com\/|git@github\.com:)Bella0960\/MAOMAO(?:\.git)?\/?$/, 'Unexpected repository origin');
-  // A clean local branch can still be stale: never release an older #299 HEAD.
+function assertLatestGitHead() {
+  // Remote #299 may advance while tests run: verify again immediately before uploads.
   const localSha = run('git', ['rev-parse', 'HEAD'], true);
   const remoteLine = run('git', ['ls-remote', '--heads', 'origin', BRANCH], true);
   const [remoteSha, remoteRef] = remoteLine.split(/\s+/);
   assert.match(remoteSha || '', /^[a-f0-9]{40}$/, 'Cannot verify remote #299 HEAD');
   assert.equal(remoteRef, 'refs/heads/' + BRANCH, 'Unexpected remote branch ref');
   assert.equal(localSha, remoteSha, 'Local #299 HEAD is stale: fetch the latest before QA release');
+}
+
+function preflightCheckout() {
+  assert.equal(run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], true), BRANCH,
+    'Only the original #299 integration branch may be used for the QA release');
+  const origin = run('git', ['remote', 'get-url', 'origin'], true);
+  assert.match(origin, /^(?:https:\/\/github\.com\/|ssh:\/\/git@github\.com\/|git@github\.com:)Bella0960\/MAOMAO(?:\.git)?\/?$/, 'Unexpected repository origin');
+  // A clean local branch can still be stale: never release an older #299 HEAD.
+  assertLatestGitHead();
   assert.equal(run('git', ['status', '--porcelain'], true), '', 'Checkout must be clean');
   for (const path of ['package-lock.json', 'worker.js', 'vite.config.js']) {
     assert.ok(existsSync(path), 'Missing complete repository file: ' + path);
@@ -80,7 +85,12 @@ function preflightCheckout() {
       [{ name: 'CLOUD_DB', class_name: 'CloudDatabase' }]);
     assert.equal(config.migrations?.[0]?.tag, 'v1');
     assert.ok(!['mao', 'mao-auth-preview', 'curly-dream-324c'].includes(config.name));
-    assert.ok(!JSON.stringify(config).includes('app.mao520.com'));
+    assert.equal(config.routes, undefined, 'Custom routes are forbidden for QA');
+    assert.equal(config.route, undefined, 'Custom routes are forbidden for QA');
+    assert.equal(config.custom_domains, undefined, 'Custom domains are forbidden for QA');
+    assert.equal(config.zone_id, undefined, 'Production zone bindings are forbidden for QA');
+    assert.equal(config.zone_name, undefined, 'Production zone bindings are forbidden for QA');
+    assert.ok(!/mao520\\.com/i.test(JSON.stringify(config)), 'Production domains are forbidden for QA');
   }
   assert.equal(qa.assets?.binding, 'ASSETS');
   assert.equal(qa.assets?.run_worker_first, true);
@@ -175,6 +185,7 @@ async function main() {
   assert.equal(process.env.MAOMAO_QA_DEPLOY_CONFIRM, QA,
     'Set MAOMAO_QA_DEPLOY_CONFIRM to the exact existing QA Worker name');
   await cloudflarePreflight();
+  assertLatestGitHead();
   run('npx', ['--yes', 'wrangler@4', 'deploy', '--config', 'wrangler.qa-identity-core.jsonc']);
   const core = await cloudflare('/workers/scripts/' + CORE + '/settings');
   const coreBinding = name => core.bindings?.find(x => x.name === name);
@@ -186,6 +197,8 @@ async function main() {
     assert.equal(coreBinding(name)?.type, 'secret_text', 'Core QA-only secret lost after deploy: ' + name);
   }
   // Do not switch QA's old authority until the isolated core is configured.
+  // The second remote check prevents an old PR build from switching QA.
+  assertLatestGitHead();
   run('npx', ['--yes', 'wrangler@4', 'deploy', '--config', 'wrangler.qa.jsonc']);
   const qa = await cloudflare('/workers/scripts/' + QA + '/settings');
   const qaBinding = name => qa.bindings?.find(x => x.name === name);
