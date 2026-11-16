@@ -53,6 +53,8 @@ function run(command, args, quiet = false) {
 function preflightCheckout() {
   assert.equal(run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], true), BRANCH,
     'Only the original #299 integration branch may be used for the QA release');
+  const origin = run('git', ['remote', 'get-url', 'origin'], true);
+  assert.match(origin, /(?:github\.com[:/])Bella0960\/MAOMAO(?:\.git)?$/, 'Unexpected repository origin');
   assert.equal(run('git', ['status', '--porcelain'], true), '', 'Checkout must be clean');
   for (const path of ['package-lock.json', 'worker.js', 'vite.config.js']) {
     assert.ok(existsSync(path), 'Missing complete repository file: ' + path);
