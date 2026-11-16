@@ -3121,12 +3121,34 @@
             }
             if (token !== _chatPairAvatarToken ||
                 String(aliasRoleId || currentCharacter.id || '') !== roleId) return;
+            // Avoid repainting every bubble on visibility/pageshow when the
+            // selected photo has not changed. Large chats may have many rows.
+            if (_chatPairAvatarUrl === nextUrl) return;
             _chatPairAvatarUrl = nextUrl;
             document.querySelectorAll('.msg-row.sent .msg-avatar').forEach(function (avatarNode) {
                 fillAvatar(avatarNode, getMyAvatar(), USER_SVG);
             });
         }
         void refreshChatPairUserAvatar();
+
+        // Edits in the character/profile tab do not fire storage events in
+        // that same tab. In this *chat* tab they do: refresh only for this
+        // role's pair selection/index, and also on BFCache / foreground return.
+        // Never sync to myProfile or other roles.
+        const chatPairUserKey = 'maomao_chat_pair_user_avatar_v1_' + encodeURIComponent(String(aliasRoleId || currentCharacter.id || ''));
+        const chatPairLibraryKey = 'maomao_role_avatar_library_v1_' + encodeURIComponent(String(aliasRoleId || currentCharacter.id || ''));
+        window.addEventListener('storage', function (event) {
+            if (isGroupChat || !event) return;
+            if (event.key === null || event.key === chatPairUserKey || event.key === chatPairLibraryKey) {
+                void refreshChatPairUserAvatar();
+            }
+        });
+        window.addEventListener('pageshow', function () {
+            if (!isGroupChat) void refreshChatPairUserAvatar();
+        });
+        document.addEventListener('visibilitychange', function () {
+            if (!isGroupChat && !document.hidden) void refreshChatPairUserAvatar();
+        });
 
         // ================= 消息稳定标识：单条操作（复制/转发/翻译/编辑/删除）都依赖 mid =================
         function ensureMid(msg) {
