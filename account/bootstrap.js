@@ -79,7 +79,8 @@
 
     try {
       const status = await request('/api/admin/bootstrap/status');
-      if (status.identityMode === 'delegated' || status.bootstrapAllowed === false) {
+      if ((status.identityMode === 'delegated' && status.qaSetupAllowed !== true) ||
+          status.bootstrapAllowed === false) {
         form.hidden = true;
         statusNode.hidden = false;
         statusNode.textContent = '这不是新管理员注册入口。当前测试版与统一账号共用身份，请返回登录页，使用你原来的管理员账号 001；无需邀请码或重新初始化。';
@@ -217,10 +218,15 @@
         return;
       }
       attemptedCreate = true;
-      await request('/api/admin/bootstrap', 'POST', body);
-      // The bootstrap endpoint establishes the new super-admin's HttpOnly session.
+      const creation = await request('/api/admin/bootstrap', 'POST', body);
+      // Isolated QA bootstrap intentionally does not forward the authority's
+      // session cookie. The owner signs in separately with QA-only credentials.
       form.reset();
-      window.location.replace('/admin/admin-center.html');
+      if (creation.qaSetupComplete === true && creation.nextStep === 'qa_login') {
+        window.location.replace('/account/index.html');
+      } else {
+        window.location.replace('/admin/admin-center.html');
+      }
     } catch (error) {
       if (error.code === 'ADMIN_ALREADY_INITIALIZED') {
         showInitialized();
