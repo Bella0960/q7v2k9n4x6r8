@@ -229,7 +229,6 @@ test('real editor controller mounts a scoped UI and calls the existing media lib
   const confirm = actionSheet.children.find(x => x.textContent === '确认解除');
   assert.ok(confirm, 'confirmation remains inside the designed bottom sheet');
   await confirm.click();
-  await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(removedPairs, [{ roleId: 'role-A', id: 'pair_ab' }]);
 
   assert.deepEqual(saved, ['ai_custom_characters'],
