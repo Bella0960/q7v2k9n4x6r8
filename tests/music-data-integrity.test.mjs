@@ -364,3 +364,87 @@ test('MUSIC-UI-001: existing scoped backup includes playlist/lyrics/cover refere
   // Important limitation: music-only backups do not yet include the referenced maomao-assets image Blob store.
   // Existing exporter correctly marks such archives incomplete; never describe them as restored/tested.
 });
+
+test('MUSIC-UI-001: actual queue traversal follows selected playlist through repeat and edits', () => {
+  const start = music.indexOf('let musicPlaybackQueue = null;');
+  const end = music.indexOf('window.isShuffle = false;', start);
+  const navigationStart = music.indexOf('function musicNavigateTrack(direction, fromEnded)');
+  const navigationEnd = music.indexOf('async function togglePlay()', navigationStart);
+  assert.ok(start > -1 && end > start && navigationStart > -1 && navigationEnd > navigationStart);
+  const tracks = ['a', 'b', 'c', 'd'].map(id => ({ id }));
+  const lists = { '晨间': ['a', 'c'], '周末': ['b', 'd', 'unavailable'] };
+  const listeners = {};
+  const calls = [];
+  const events = [];
+  const window = {
+    isShuffle: false, loopState: 0,
+    MAOMAOMusicPlaylists: { getTrackIds: name =>
+      Object.prototype.hasOwnProperty.call(lists, name) ? lists[name] : null },
+    addEventListener: (type, cb) => (listeners[type] ||= []).push(cb),
+    removeEventListener() {},
+    dispatchEvent: event => events.push(event.detail)
+  };
+  const api = runInNewContext(
+    'let currentIdx = 0;\n' + music.slice(start, end) + '\n' +
+    music.slice(navigationStart, navigationEnd) + '\n' +
+    '({ select:musicQueueAssign, previous:prevTrack, next:nextTrack,' +
+    ' state:()=>window.MAOMAOMusicQueue.getState(),' +
+    ' setCurrent:id=>{currentIdx=tracks.findIndex(t=>t.id===id)} })',
+    { window, tracks, CustomEvent: class {
+        constructor(type, opts) { this.type = type; this.detail = opts.detail; }
+      }, getTrackById: id => tracks.find(t => t.id === id) || null,
+      playTrack: (id, opts) => { calls.push({id, opts}); return Promise.resolve(true); },
+      toast() {}, Math: Object.assign(Object.create(Math), {random: () => 0}) }
+  );
+  api.setCurrent('a');
+  api.select('a', {playlistName:'晨间'});
+  assert.equal(api.state().playlistName, '晨间');
+  assert.equal(Array.from(api.state().trackIds).join(','), 'a,c');
+  assert.equal(api.next(false), true);
+  assert.equal(calls.at(-1).id, 'c');
+  assert.equal(calls.at(-1).opts.playlistName, '晨间');
+  api.setCurrent('c');
+  assert.equal(api.next(true), false, 'loop off must stop at playlist end');
+  window.loopState = 1;
+  assert.equal(api.next(true), true);
+  assert.equal(calls.at(-1).id, 'a', 'playlist repeat wraps inside playlist');
+  window.isShuffle = true;
+  api.setCurrent('a');
+  api.next(false);
+  assert.equal(calls.at(-1).id, 'c', 'shuffle cannot escape playlist');
+  window.isShuffle = false;
+  lists['晨间'] = ['a', 'missing', 'c'];
+  assert.equal(Array.from(api.state().trackIds).join(','), 'a,c');
+  listeners['maomao:music:playlist-changed'][0]({
+    detail: {action:'renamed',previousName:'晨间',name:'午后'}
+  });
+  lists['午后'] = lists['晨间']; delete lists['晨间'];
+  assert.equal(api.state().playlistName, '午后');
+  listeners['maomao:music:playlist-changed'][0]({
+    detail: {action:'track-removed',name:'午后',trackId:'a'}
+  });
+  assert.equal(api.state().playlistName, null, 'removing current song releases queue context');
+  api.setCurrent('b');
+  api.select('b', {playlistName:'周末'});
+  assert.equal(Array.from(api.state().trackIds).join(','), 'b,d');
+  listeners['maomao:music:playlist-changed'][0]({
+    detail: {action:'playlist-removed',name:'周末'}
+  });
+  assert.equal(api.state().playlistName, null, 'deleting active playlist returns to library');
+  assert.ok(events.every(event => event.savedLocal === false && event.version === 1));
+});
+
+test('MUSIC-UI-001: playback context changes only after real audio success, and song menu remains on failure', () => {
+  const start = music.indexOf('async function playTrack(trackId, options)');
+  const end = music.indexOf('function musicNavigateTrack(direction, fromEnded)', start);
+  assert.ok(start > -1 && end > start);
+  const play = music.slice(start, end);
+  assert.ok(play.indexOf('await window.audio.play()') < play.indexOf('musicQueueAssign(t.id, options)'),
+    'do not switch queue if new source cannot actually play');
+  assert.match(play, /return false;/);
+  assert.match(play, /return true;/);
+  assert.match(music, /playTrack\(t\.id, \{ playlistName:name \}\)\.then\(function\(started\)/);
+  assert.match(music, /if \(started\) document\.getElementById\('musicPlaylistView'\)\.style\.display = 'none'/);
+  assert.match(music, /nextTrack\(true\)/);
+  assert.match(music, /if \(fromEnded && index === ids\.length - 1 && window\.loopState !== 1\)/);
+});
