@@ -1189,7 +1189,8 @@
       duration: Number.isFinite(window.audio.duration) ? window.audio.duration : 0,
       playing: !window.audio.paused && !window.audio.ended,
       source: t.source === 'local' ? 'local' : 'remote', updatedAt: Date.now(),
-      origin: 'native-audio-player', roleJoined: false };
+      origin: 'native-audio-player', roleJoined: false,
+      playlistName:musicPlaybackQueue ? musicPlaybackQueue.name : null };
     // 数据源只表示本机真实音频播放；不会对角色/好友宣称已经听到或同步。
     try {
       var raw = JSON.stringify(state);
@@ -1205,7 +1206,8 @@
       var t = tracks[currentIdx];
       return t ? { trackId: t.id, title: t.name, artist: t.artist,
         playing: !window.audio.paused && !window.audio.ended,
-        currentTime: window.audio.currentTime || 0 } : null;
+        currentTime: window.audio.currentTime || 0,
+        playlistName:musicPlaybackQueue ? musicPlaybackQueue.name : null } : null;
     },
     subscribe: function (handler) {
       var listener = function (event) { handler(event.detail); };
@@ -1479,13 +1481,16 @@
     var detail = event.detail || {};
     if (detail.action === 'renamed' && musicPlaybackQueue.name === detail.previousName) {
       musicPlaybackQueue = { name:detail.name };
+      saveState(); // 改名成功后同步保存会话来源，避免刷新时丢失歌单。
       musicQueuePublish('playlist-renamed');
     } else if (detail.action === 'playlist-removed' && musicPlaybackQueue.name === detail.name) {
       musicPlaybackQueue = null;
+      saveState();
       musicQueuePublish('playlist-removed');
     } else if (detail.action === 'track-removed' && musicPlaybackQueue.name === detail.name
         && tracks[currentIdx] && tracks[currentIdx].id === detail.trackId) {
       musicPlaybackQueue = null;
+      saveState();
       musicQueuePublish('current-track-removed');
     }
   });
@@ -1690,7 +1695,8 @@
           if (saved && String(saved.id) === String(selected.id))
             resumeTime = Math.max(0, Number(saved.time) || 0);
         } catch (err) {}
-        await playTrack(selected.id);
+        await playTrack(selected.id,
+          musicPlaybackQueue ? { playlistName:musicPlaybackQueue.name } : undefined);
         if (!window.audio.paused && resumeTime > 0 && Number.isFinite(window.audio.duration)) {
           try {
             window.audio.currentTime = Math.min(resumeTime, Math.max(0, window.audio.duration - 0.1));
@@ -2468,7 +2474,9 @@
         id: currentT ? currentT.id : null,
         idx: currentIdx,
         time: window.audio.currentTime || 0,
-        playing: playing
+        playing: playing,
+        // 可选扩展字段：旧 music_state 仍兼容，歌单文件仍独立保存在 music_playlists_v1。
+        playlistName:musicPlaybackQueue ? musicPlaybackQueue.name : null
       });
       localStorage.setItem('music_state', payload);
       if (localStorage.getItem('music_state') !== payload)
@@ -2489,6 +2497,17 @@
       if (!t && typeof s.idx === 'number' && tracks[s.idx]) t = tracks[s.idx];
       if (!t) return;
       currentIdx = tracks.indexOf(t);
+      // 旧存档无 playlistName 时按普通单曲恢复，绝不猜测用户的歌单。
+      musicPlaybackQueue = null;
+      if (typeof s.playlistName === 'string') {
+        try {
+          var savedIds = window.MAOMAOMusicPlaylists.getTrackIds(s.playlistName);
+          if (savedIds && savedIds.includes(t.id)) {
+            musicPlaybackQueue = { name:s.playlistName };
+            musicQueuePublish('restored');
+          }
+        } catch (err) { /* 歌单读取失败不影响原歌曲、收藏或进度恢复 */ }
+      }
       document.getElementById('miniName').textContent = t.name;
       document.getElementById('miniArtist').textContent = t.artist;
       document.getElementById('npTitle').textContent = t.name;
