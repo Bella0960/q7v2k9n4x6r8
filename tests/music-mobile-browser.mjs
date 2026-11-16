@@ -55,7 +55,9 @@ try {
     try {
       const response = await page.goto(BASE, { waitUntil: 'domcontentloaded' });
       assert.equal(response.status(), 200, 'music page HTTP 200');
-      await page.locator('#musicImport').waitFor();
+      // The file input is intentionally hidden: the visible import button opens it.
+      await page.locator('.music-import-link').waitFor({ state: 'visible' });
+      await page.locator('#musicImport').waitFor({ state: 'attached' });
       await page.screenshot({ path: join(shots, 'home-' + width + '.png') });
       await page.evaluate(() => {
         localStorage.setItem('settings_statusbar', '0');
