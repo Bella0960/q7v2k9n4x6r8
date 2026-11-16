@@ -172,17 +172,23 @@ async function qaHttpSmoke(coreInitialized) {
   // Check the exact URL used by the owner, not merely Cloudflare metadata.
   // These requests are anonymous, read-only, and never transmit credentials.
   const origin = 'https://maomao-aw-qa-20261114.miamor520000.workers.dev';
-  const [statusResponse, loginResponse] = await Promise.all([
-    fetch(origin + '/api/admin/bootstrap/status', {
+  const paths = [
+    '/api/admin/bootstrap/status',
+    '/account/index.html',
+    '/account/account.js?v=20261116-qa1',
+    '/account/ivory-entry.css?v=20261116-qa1',
+    '/account/bootstrap.html',
+    '/account/bootstrap.js?v=20261116-qa1'
+  ];
+  const responses = await Promise.all(paths.map((path, index) =>
+    fetch(origin + path, {
       method: 'GET', redirect: 'manual', cache: 'no-store',
-      headers: { accept: 'application/json' },
-      signal: AbortSignal.timeout(15000)
-    }),
-    fetch(origin + '/account/index.html', {
-      method: 'GET', redirect: 'manual', cache: 'no-store',
+      headers: { accept: index === 0 ? 'application/json' : '*/*' },
       signal: AbortSignal.timeout(15000)
     })
-  ]);
+  ));
+  const [statusResponse, loginResponse, loginJsResponse, loginCssResponse,
+    bootstrapHtmlResponse, bootstrapJsResponse] = responses;
   assert.equal(statusResponse.status, 200, 'QA status endpoint did not return HTTP 200');
   const status = await statusResponse.json();
   assert.equal(status?.ok, true, 'QA status endpoint did not confirm success');
@@ -202,7 +208,31 @@ async function qaHttpSmoke(coreInitialized) {
   const loginHtml = await loginResponse.text();
   assert.ok(/<form\b[^>]*\bid=["']loginForm["']/i.test(loginHtml),
     'The existing QA login form is missing from the served HTML');
-  console.log('QA status endpoint and login HTML verified on the original workers.dev URL.');
+  assert.ok(loginHtml.includes('/account/account.js?v=20261116-qa1') &&
+    loginHtml.includes('/account/ivory-entry.css?v=20261116-qa1'),
+    'QA login HTML is still referencing cached older JavaScript or CSS');
+  for (const [response, label] of [
+    [loginJsResponse, 'QA login JavaScript'],
+    [loginCssResponse, 'QA login stylesheet'],
+    [bootstrapHtmlResponse, 'QA founder setup HTML'],
+    [bootstrapJsResponse, 'QA founder setup JavaScript']
+  ]) {
+    assert.equal(response.status, 200, label + ' did not return HTTP 200');
+  }
+  const [loginJs, loginCss, bootstrapHtml, bootstrapJs] = await Promise.all([
+    loginJsResponse.text(), loginCssResponse.text(),
+    bootstrapHtmlResponse.text(), bootstrapJsResponse.text()
+  ]);
+  assert.ok(loginJs.includes("subtitle.classList.toggle('qa-login-hint'"),
+    'QA-only password warning JavaScript is stale or missing');
+  assert.ok(loginCss.includes('#loginPanel>.lead.qa-login-hint'),
+    'QA-only password warning is still hidden in the deployed CSS');
+  assert.ok(bootstrapHtml.includes('id="bootstrapUsernameLabel"') &&
+    bootstrapHtml.includes('./bootstrap.js?v=20261116-qa1'),
+    'QA founder setup form or versioned script is stale or missing');
+  assert.ok(bootstrapJs.includes('usernameField.maxLength = qaSetup ? 28 : 24'),
+    'QA setup cannot accept the existing founder permanent ID');
+  console.log('Original QA login/setup HTML, scripts, CSS and identity status verified.');
 }
 
 function verifiedAccountCounts(item, name) {
