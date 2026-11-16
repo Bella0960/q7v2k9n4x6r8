@@ -23,6 +23,8 @@ const CORE_DB = 'e1b78d3813ae4a819841e8c5c3e9e8ec';
 const QA_DO = '4a10d3dab4e16639445f4afdb0b7e5e2462cf06894cb4ae85f0ac3cd3cdba101';
 const CORE_DO = 'dba114c7b0abd8e53d1d78e579924852b8e40907e50213634aeeaeb41ab51a98';
 const BRANCH = 'integration/account-fanwai-stack-20261115';
+const QA_SETUP_OPEN = 'isolated_authority';
+const QA_SETUP_CLOSED = 'disabled';
 const TESTS = [
   ['npm', ['ci', '--no-audit', '--no-fund']],
   ['npm', ['run', 'test:account:ui-candidate']],
@@ -99,7 +101,8 @@ function preflightCheckout() {
   assert.equal(qa.vars?.MAO_IDENTITY_MODE, 'delegated_preview');
   assert.equal(qa.vars?.MAO_IDENTITY_AUTHORITY_MODE, 'existing_worker');
   assert.equal(qa.vars?.MAO_QA_AUTHORITY_WORKER, CORE);
-  assert.equal(qa.vars?.MAO_QA_IDENTITY_SETUP, 'isolated_authority');
+  assert.ok([QA_SETUP_OPEN, QA_SETUP_CLOSED].includes(qa.vars?.MAO_QA_IDENTITY_SETUP),
+    'QA setup must be explicitly opened for first bootstrap or disabled afterward');
   assert.equal(core.vars?.MAO_IDENTITY_MODE, 'local');
   assert.equal(core.vars?.MAO_QA_ISOLATED_IDENTITY_CORE, 'true');
   assert.equal(core.vars?.MAO_QA_FOUNDER_ID, FOUNDER);
@@ -143,6 +146,7 @@ async function cloudflarePreflight() {
     assert.equal(binding(core, name)?.type, 'secret_text',
       'Isolated core missing QA-only ' + name + '; configure securely before deployment');
   }
+  const qaSetupState = JSON.parse(readFileSync('wrangler.qa.jsonc', 'utf8')).vars?.MAO_QA_IDENTITY_SETUP;
   const currentService = binding(qa, 'MAO_IDENTITY_AUTHORITY')?.service;
   assert.ok([CORE, 'maomao-001-identity-gateway-20261114'].includes(currentService),
     'Unexpected identity service binding');
@@ -165,6 +169,10 @@ async function cloudflarePreflight() {
     } else {
       assert.ok(total <= 1 && (total === 0 || (matches === 1 && admins === 1)),
         'The isolated identity core contains conflicting accounts');
+      // Once the QA founder exists, subsequent deployments must close the
+      // one-time setup switch instead of silently re-opening that route.
+      assert.equal(qaSetupState, total === 0 ? QA_SETUP_OPEN : QA_SETUP_CLOSED,
+        'QA bootstrap lifecycle mismatch: close setup after the founder is initialized');
     }
     console.log('Read-only verified ' + name + ': accounts=' + total +
       ', founder matches=' + matches + ', active admins=' + admins);
@@ -207,7 +215,8 @@ async function main() {
   assert.equal(qaBinding('MAO_IDENTITY_MODE')?.text, 'delegated_preview');
   assert.equal(qaBinding('MAO_IDENTITY_AUTHORITY_MODE')?.text, 'existing_worker');
   assert.equal(qaBinding('MAO_QA_AUTHORITY_WORKER')?.text, CORE);
-  assert.equal(qaBinding('MAO_QA_IDENTITY_SETUP')?.text, 'isolated_authority');
+  assert.equal(qaBinding('MAO_QA_IDENTITY_SETUP')?.text,
+    JSON.parse(readFileSync('wrangler.qa.jsonc', 'utf8')).vars?.MAO_QA_IDENTITY_SETUP);
   console.log('QA deployed to the EXISTING Worker. Test bootstrap/login and disable one-time setup.');
 }
 
