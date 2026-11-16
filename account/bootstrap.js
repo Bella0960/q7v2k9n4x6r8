@@ -6,6 +6,8 @@
   const statusNode = document.getElementById('bootstrapStatus');
   const retryButton = document.getElementById('retryBootstrapCheck');
   const setupHelp = document.getElementById('bootstrapSetupHelp');
+  const qaHelp = document.getElementById('qaAuthorityHelp');
+  const heading = document.getElementById('bootstrapHeading');
   let statusCheckInProgress = false;
 
   async function request(path, method = 'GET', body = null) {
@@ -62,6 +64,7 @@
     statusNode.hidden = true;
     retryButton.hidden = true;
     if (setupHelp) setupHelp.hidden = true;
+    if (qaHelp) qaHelp.hidden = true;
     completeNode.hidden = false;
     errorNode.textContent = '';
   }
@@ -75,11 +78,14 @@
     statusNode.textContent = '正在确认服务器初始化状态…';
     retryButton.hidden = true;
     if (setupHelp) setupHelp.hidden = true;
+    if (qaHelp) qaHelp.hidden = true;
     retryButton.disabled = true;
 
     try {
       const status = await request('/api/admin/bootstrap/status');
-      if ((status.identityMode === 'delegated' && status.qaSetupAllowed !== true) ||
+      const qaSetup = status.identityMode === 'delegated' && status.qaSetupAllowed === true;
+      if (heading) heading.textContent = qaSetup ? 'QA 身份初始化' : '创作者初始化';
+      if ((status.identityMode === 'delegated' && !qaSetup) ||
           status.bootstrapAllowed === false) {
         form.hidden = true;
         statusNode.hidden = false;
@@ -97,7 +103,8 @@
         // Never present a form that the server cannot accept yet.
         statusNode.textContent = '账号测试环境尚未配置安全密钥，请按下方说明设置后重新检查。';
         retryButton.hidden = false;
-        if (setupHelp) setupHelp.hidden = false;
+        if (setupHelp) setupHelp.hidden = qaSetup;
+        if (qaHelp) qaHelp.hidden = !qaSetup;
         return;
       }
       statusNode.hidden = true;
