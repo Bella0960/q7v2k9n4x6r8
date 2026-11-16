@@ -238,6 +238,33 @@ try {
         }
         return true;
       }, [trackId, secondTrackId]), true, 'deleting a playlist must preserve both original WAV files');
+
+      // 本地音乐管理：改名 + 可逆移出/恢复，跨刷新不丢原始 WAV。
+      await page.evaluate(() => { hideNP(); openMusicLocalManager(); });
+      assert.equal(await page.locator('#musicLocalManager').isVisible(), true);
+      const localRow = page.locator('.music-local-row').filter({ hasText:'QA 第二首' });
+      await localRow.waitFor();
+      page.once('dialog', dialog => dialog.accept('保留的本地曲'));
+      await localRow.locator('.music-local-btn').first().click();
+      assert.equal(await page.evaluate(id =>
+        JSON.parse(localStorage.getItem('music_local_tracks')).find(t => t.id === id)?.name,
+        secondTrackId), '保留的本地曲');
+      page.once('dialog', dialog => dialog.accept());
+      await page.locator('.music-local-row').filter({hasText:'保留的本地曲'})
+        .locator('.music-local-btn').last().click();
+      assert.equal(await page.evaluate(id =>
+        JSON.parse(localStorage.getItem('music_local_tracks')).find(t => t.id === id)?.hidden,
+        secondTrackId), true);
+      assert.equal(await page.evaluate(id => getTrackById(id) === null, secondTrackId), true);
+      await page.reload({ waitUntil:'domcontentloaded' });
+      await page.evaluate(() => openMusicLocalManager());
+      const hiddenRow = page.locator('.music-local-row').filter({hasText:'保留的本地曲'});
+      assert.match(await hiddenRow.textContent(), /已移出/);
+      await hiddenRow.locator('.music-local-btn').last().click();
+      assert.equal(await page.evaluate(id => !!getTrackById(id), secondTrackId), true);
+      assert.equal(await page.evaluate(async id => (await getAudioBlob(id))?.size > 44,
+        secondTrackId), true, 'restored local song retains original IndexedDB audio');
+      await page.screenshot({ path: join(shots, 'local-manager-' + width + '.png') });
       assert.deepEqual(pageErrors, [], 'no uncaught JS errors at ' + width);
       console.log('PASS Chromium ' + width + 'px: viewport, import Blob, reload, playback, cover, LRC, playlist');
     } finally {
