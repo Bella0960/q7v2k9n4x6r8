@@ -9,11 +9,25 @@
   let delegatedIdentity = false;
   let delegatedSignInReady = true;
 
+  function syncLoginAvailability() {
+    // Auth-state readiness and busy state are independent. Finishing an
+    // unrelated request must never re-enable the QA login form while the
+    // delegated identity core is not ready.
+    const disabled = authBusy || (delegatedIdentity && !delegatedSignInReady);
+    const form = byId('loginForm');
+    if (form) {
+      form.querySelectorAll('input, button[type="submit"]').forEach(node => {
+        node.disabled = disabled;
+      });
+    }
+  }
+
   function setAuthBusy(value) {
     authBusy = value;
     document.querySelectorAll('[data-show], .form button[type="submit"]').forEach(button => {
       button.disabled = value;
     });
+    syncLoginAvailability();
   }
 
   function showPanel(id) {
@@ -282,6 +296,10 @@
   byId('loginForm').addEventListener('submit', async event => {
     event.preventDefault();
     if (authBusy) return;
+    if (delegatedIdentity && !delegatedSignInReady) {
+      setError('loginError', 'QA 身份服务尚未就绪，请不要提交密码；先完成独立账号初始化或检查连接。');
+      return;
+    }
     setError('loginError');
     const form = new FormData(event.currentTarget);
     if (!String(form.get('identifier') || '').trim() || !String(form.get('password') || '')) {
@@ -304,7 +322,6 @@
       showAuthError(error, 'loginError');
     } finally {
       setAuthBusy(false);
-      button.disabled = false;
     }
   });
 
@@ -381,14 +398,8 @@
           subtitle.classList.toggle('qa-login-hint', status.qaIdentityCore === true);
         }
         delegatedSignInReady = status.signInReady === true;
-        const unavailable = !delegatedSignInReady;
-        const loginForm = byId('loginForm');
-        if (loginForm) {
-          loginForm.querySelectorAll('input, button[type="submit"]').forEach(node => {
-            node.disabled = unavailable;
-          });
-        }
-        if (unavailable) {
+        syncLoginAvailability();
+        if (!delegatedSignInReady) {
           setError('loginError', canQaSetup
             ? 'QA 独立身份服务已就绪。请先点击「设置 QA 独立账号密码」完成一次性初始化，不要使用正式版密码。'
             : status.qaIdentityCore === true
