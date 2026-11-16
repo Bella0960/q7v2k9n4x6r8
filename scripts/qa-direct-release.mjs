@@ -176,7 +176,7 @@ async function qaHttpSmoke(coreInitialized) {
     'QA one-time setup state does not match the identity core');
   assert.equal(loginResponse.status, 200, 'QA login document did not return HTTP 200');
   const loginHtml = await loginResponse.text();
-  assert.ok(/<form\\b[^>]*\\bid=["']loginForm["']/i.test(loginHtml),
+  assert.ok(/<form\b[^>]*\bid=["']loginForm["']/i.test(loginHtml),
     'The existing QA login form is missing from the served HTML');
   console.log('QA status endpoint and login HTML verified on the original workers.dev URL.');
 }
