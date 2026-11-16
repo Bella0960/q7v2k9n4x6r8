@@ -144,11 +144,9 @@ test('QA login page uses QA-only password hint without changing legacy gateway U
     '  let delegatedIdentity = false;\n' +
     '  let delegatedSignInReady = true;\n' +
     '  const link = { hidden: false };\n' +
-    '  const subtitle = { textContent: "", classList: {
-    tokens: new Set(),
-    toggle(name, value) { if (value) this.tokens.add(name); else this.tokens.delete(name); },
-    contains(name) { return this.tokens.has(name); }
-  } };\n' +
+    '  const subtitle = { textContent: "", classList: { tokens: new Set(), ' +
+    'toggle(name, value) { if (value) this.tokens.add(name); else this.tokens.delete(name); }, ' +
+    'contains(name) { return this.tokens.has(name); } } };\n' +
     '  const fields = [{ disabled: false }, { disabled: false }];\n' +
     '  const register = [{ hidden: false }];\n' +
     '  const errors = [];\n' +
