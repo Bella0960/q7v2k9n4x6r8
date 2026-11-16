@@ -36,7 +36,9 @@ test('gateway probe fails closed before any network call without a valid bridge 
     const env = delegated({ fetch: async () => {
       calls++;
       return Response.json({ ok: true, initialized: true, configured: true });
-    } }, secret);
+    } });
+    if (secret === undefined) delete env.MAO_IDENTITY_BRIDGE_SECRET;
+    else env.MAO_IDENTITY_BRIDGE_SECRET = secret;
     assert.deepEqual(await probeExistingIdentityAuthority(env), OFFLINE);
     assert.equal(calls, 0, 'must not send an unauthenticated probe');
   }
