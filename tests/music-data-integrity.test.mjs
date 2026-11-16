@@ -172,3 +172,48 @@ test('MUSIC-UI-001: global statusbar visibly responds and local song can resume 
   assert.match(play, /await playTrack\(selected\.id\)/);
   assert.match(play, /resumeTime > 0/);
 });
+
+test('MUSIC-UI-001: local toast exists and favorites/progress fail closed without false success', () => {
+  assert.match(music, /function toast\(message\)/);
+  assert.match(music, /aria-live/);
+  assert.match(music, /if \(!saveFavIds\(next\)\) \{ updateHeartIcon\(\); return; \}/);
+  const start = music.indexOf('function musicReadIdList(key, kind)');
+  const end = music.indexOf('function removeTrackFromRecent(id)', start);
+  assert.ok(start >= 0 && end > start);
+  const source = music.slice(start, end);
+  const values = new Map([['music_fav_list', '["demo_2"]'], ['music_recent', '["demo_3"]']]);
+  let quota = false;
+  const warnings = [];
+  const localStorage = {
+    getItem(k) { return values.has(k) ? values.get(k) : null; },
+    setItem(k, v) { if (quota) throw Error('QuotaExceededError'); values.set(k, v); }
+  };
+  const api = runInNewContext(
+    'let musicRecentReadError=null;let musicFavReadError=null;\n' +
+    source + '\n({readFavIds,saveFavIds,readRecentIds,saveRecentIds})',
+    { localStorage, musicWarnOnce: (key, message) => warnings.push(message) }
+  );
+  assert.equal(api.readFavIds()[0], 'demo_2');
+  quota = true;
+  assert.equal(api.saveFavIds(['demo_2', 'local_1']), false);
+  assert.equal(values.get('music_fav_list'), '["demo_2"]');
+  quota = false;
+  values.set('music_fav_list', '{invalid');
+  assert.equal(api.readFavIds().length, 0);
+  assert.equal(api.saveFavIds(['local_1']), false);
+  assert.equal(values.get('music_fav_list'), '{invalid', 'must not overwrite damaged archive');
+
+  const stateStart = music.indexOf('function saveState()');
+  const stateEnd = music.indexOf('function loadState()', stateStart);
+  assert.ok(stateStart >= 0 && stateEnd > stateStart);
+  const originalState = JSON.stringify({ id:'local_1', time:20 });
+  const saveState = runInNewContext(music.slice(stateStart, stateEnd) + '\nsaveState',
+    { localStorage: {
+        getItem:k => k === 'music_state' ? originalState : null,
+        setItem() { throw Error('QuotaExceededError'); }
+      }, musicWarnOnce: (key, message) => warnings.push(message),
+      tracks:[{id:'local_1'}],currentIdx:0,playing:true,window:{audio:{currentTime:35}}
+    });
+  assert.equal(saveState(), false);
+  assert.ok(warnings.some(message => message.includes('保存失败')));
+});
