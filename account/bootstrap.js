@@ -8,6 +8,8 @@
   const setupHelp = document.getElementById('bootstrapSetupHelp');
   const qaHelp = document.getElementById('qaAuthorityHelp');
   const heading = document.getElementById('bootstrapHeading');
+  const usernameLabel = document.getElementById('bootstrapUsernameLabel');
+  const usernameField = form.querySelector('[name="username"]');
   let statusCheckInProgress = false;
 
   async function request(path, method = 'GET', body = null) {
@@ -85,6 +87,13 @@
       const status = await request('/api/admin/bootstrap/status');
       const qaSetup = status.identityMode === 'delegated' && status.qaSetupAllowed === true;
       if (heading) heading.textContent = qaSetup ? 'QA 身份初始化' : '创作者初始化';
+      if (usernameLabel) usernameLabel.textContent = qaSetup
+        ? '原管理员用户名或永久 ID' : '管理员用户名';
+      if (usernameField) {
+        usernameField.maxLength = qaSetup ? 28 : 24;
+        usernameField.placeholder = qaSetup
+          ? '填写原用户名或管理员 001 的永久 ID' : '设置创作者账号名';
+      }
       if ((status.identityMode === 'delegated' && !qaSetup) ||
           status.bootstrapAllowed === false) {
         form.hidden = true;
