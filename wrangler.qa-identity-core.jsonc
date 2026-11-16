@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "maomao-identity-core",
+  "main": "worker.js",
+  "compatibility_date": "2026-10-27",
+  "compatibility_flags": ["nodejs_compat"],
+  "keep_vars": true,
+  "durable_objects": {
+    "bindings": [
+      { "name": "CLOUD_DB", "class_name": "CloudDatabase" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["CloudDatabase"] }
+  ],
+  "vars": {
+    "MAO_IDENTITY_MODE": "local",
+    "MAO_QA_ISOLATED_IDENTITY_CORE": "true",
+    "MAO_QA_FOUNDER_ID": "MAO-OXHBDBWCOIHPBBYN"
+  }
+}
