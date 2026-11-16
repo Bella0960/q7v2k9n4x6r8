@@ -1820,6 +1820,95 @@ if (cropCanvas) {
     cropCanvas.addEventListener('lostpointercapture', stopCropDrag);
 }
 
+// Keep an already-open character profile in sync with other tabs without
+// re-rendering unrelated editor pages or writing back into role storage.
+// Feature hooks stay scoped to the active role so later modules can extend
+// this listener without coupling the rest of the character manager.
+(function watchExternalRoleAvatarChanges() {
+    let pending = false;
+    let deferredWhileEditing = false;
+    let refreshTimer = null;
+
+    function currentVisibleRole() {
+        const panel = document.getElementById('profileView');
+        if (!panel || panel.classList.contains('hidden')) return '';
+        return String(currentProfileRoleId || '');
+    }
+
+    function updateProfileAvatar(role) {
+        const container = document.getElementById('profileContent');
+        if (!container) return;
+        const oldAvatar = container.querySelector('.profile-hero-avatar');
+        if (!oldAvatar) return;
+        const nextSrc = String(role.avatar || '');
+        const currentSrc = oldAvatar.tagName === 'IMG' ? oldAvatar.getAttribute('src') || '' : '';
+        if (nextSrc !== currentSrc) {
+            const nextAvatar = document.createElement(nextSrc ? 'img' : 'div');
+            nextAvatar.className = 'profile-hero-avatar';
+            if (nextSrc) {
+                nextAvatar.src = nextSrc;
+                nextAvatar.alt = '';
+            } else {
+                nextAvatar.textContent = String(role.name || '角').slice(0, 1);
+            }
+            oldAvatar.replaceWith(nextAvatar);
+        }
+    }
+
+    function executeRefresh() {
+        refreshTimer = null;
+        if (!pending) return;
+        const roleId = currentVisibleRole();
+        if (!roleId || document.hidden) return;
+        const container = document.getElementById('profileContent');
+        // Preserve any unsaved pair-name typing, including IME composition.
+        if (container && container.contains(document.activeElement) &&
+            document.activeElement.matches &&
+            document.activeElement.matches('[data-avatar-pair-label-input]')) {
+            deferredWhileEditing = true;
+            return;
+        }
+        pending = false;
+        deferredWhileEditing = false;
+        const role = getRoleById(roleId);
+        if (!role) {
+            showAppView('listView');
+            return;
+        }
+        updateProfileAvatar(role);
+        void renderAvatarLibrary(roleId);
+    }
+
+    function requestRefresh() {
+        pending = true;
+        if (refreshTimer !== null) return;
+        refreshTimer = setTimeout(executeRefresh, 60);
+    }
+
+    window.addEventListener('storage', function (event) {
+        const roleId = currentVisibleRole();
+        if (!roleId || !event) return;
+        const encoded = encodeURIComponent(roleId);
+        // Never react to a different character, myProfile, or unrelated keys.
+        if (event.key === null ||
+            event.key === 'maomao_role_avatar_library_v1_' + encoded ||
+            event.key === 'maomao_chat_pair_user_avatar_v1_' + encoded ||
+            event.key === 'ai_custom_characters') {
+            requestRefresh();
+        }
+    });
+    window.addEventListener('pageshow', function (event) {
+        if (event && event.persisted && currentVisibleRole()) requestRefresh();
+    });
+    document.addEventListener('visibilitychange', function () {
+        if (!document.hidden && currentVisibleRole()) requestRefresh();
+    });
+    const profileContent = document.getElementById('profileContent');
+    if (profileContent) profileContent.addEventListener('focusout', function () {
+        if (deferredWhileEditing) requestRefresh();
+    });
+})();
+
 // 页面初始化
 renderRoleList();
 retryPendingRoleAvatarCleanup().catch(function (error) {
