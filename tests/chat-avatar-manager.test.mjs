@@ -93,6 +93,7 @@ test('real editor controller mounts a scoped UI and calls the existing media lib
   const added = [];
   const linked = [];
   const images = [];
+  const revoked = [];
   const removedPairs = [];
   const portraits = [];
   const pairs = [];
@@ -143,10 +144,20 @@ test('real editor controller mounts a scoped UI and calls the existing media lib
     getPairForAvatar(_, id) { return pairs.find(p => p.avatarIds.includes(id)) || null; },
     getChatPairUserSelection() { return null; },
     find(_, id) { return portraits.find(p => p.id === id) || null; },
-    toObjectUrl: async () => ({ ok: true, value: { url: 'blob:unit', revoke() {} } }),
+    toObjectUrl: async assetId => {
+      images.push(assetId);
+      return { ok: true, value: {
+        url: 'blob:' + assetId,
+        revoke() { revoked.push(assetId); }
+      } };
+    },
     async add(roleId, file, opts) {
       added.push({ roleId, file: file.name });
-      const item = { id: 'avatar_' + added.length, assetId: 'as_' + 'A'.repeat(32), label: opts.label, active: false };
+      const item = {
+        id: 'avatar_' + added.length,
+        assetId: 'as_' + (added.length === 1 ? 'A' : 'B').repeat(32),
+        label: opts.label, active: false
+      };
       portraits.push(item);
       return { ok: true, value: item };
     },
@@ -195,6 +206,9 @@ test('real editor controller mounts a scoped UI and calls the existing media lib
   });
   assert.deepEqual(added.map(x => x.roleId), ['role-A', 'role-A']);
   assert.equal(document.getElementById('album').children.length, 2);
+  await Promise.resolve();
+  const beforePairReads = images.length;
+  assert.equal(beforePairReads, 2, 'initial gallery reads each unique image once');
 
   await document.getElementById('startPair').click();
   const card = document.getElementById('album').children;
@@ -206,7 +220,13 @@ test('real editor controller mounts a scoped UI and calls the existing media lib
   // Merely selecting photos must preserve DOM nodes and not reload media URLs.
   assert.equal(document.getElementById('album').children[0], card[0]);
   assert.equal(document.getElementById('album').children[1], card[1]);
+  assert.equal(images.length, beforePairReads, 'pair picks must not fetch images again');
   await document.getElementById('createPair').click();
+  await Promise.resolve();
+  assert.equal(images.length, beforePairReads + 2,
+    'the gallery and newly linked pair must share one URL per unique asset');
+  assert.equal(revoked.length, 2,
+    'an updated render must release the prior gallery URLs');
   assert.deepEqual(linked, [{ roleId: 'role-A', first: 'avatar_1', second: 'avatar_2' }]);
   assert.equal(document.getElementById('pairList').children.length, 1);
 
