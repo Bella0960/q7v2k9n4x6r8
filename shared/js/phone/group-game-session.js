@@ -189,10 +189,22 @@
       secretKeys.push(key);
     }
     if (!write(storage, publicKey(gid), session)) {
-      secretKeys.forEach(function (k) { drop(storage,k); });
-      return error('SAVE_FAILED','公开对局状态保存失败，本局没有开始');
+      // A write may have committed even when its immediate readback failed.
+      // Never delete the role cards until the public record is conclusively
+      // absent/different: that would strand an active round without identities.
+      var observed;
+      try { observed = storage.getItem(publicKey(gid)); }
+      catch (e) {
+        return error('SAVE_UNVERIFIED','开局保存状态暂时无法核实，已保护身份牌；请刷新后检查本局状态');
+      }
+      if (observed !== JSON.stringify(session)) {
+        secretKeys.forEach(function (k) { drop(storage,k); });
+        return error('SAVE_FAILED','公开对局状态保存失败，本局没有开始');
+      }
     }
     var safe = game(gid, storage);
+    if (!safe || safe.sessionId !== sid)
+      return error('SAVE_UNVERIFIED','开局状态暂时无法核实，已保留身份牌供刷新后恢复');
     emit('game:started', { groupId:gid, sessionId:sid, gameId:template.id });
     return { ok:true, session:safe };
   }
@@ -467,7 +479,8 @@
     for(var i=0;i<session.players.length;i++){
       var rid=session.players[i];
       var secret=read(storage,secretKey(gid,session.sessionId,rid));
-      if(!secret||secret.recipientId!==rid||secret.sessionId!==session.sessionId)
+      if(!secret||secret.groupId!==gid||secret.recipientId!==rid||
+        secret.sessionId!==session.sessionId)
         return error('MISSING_CARD','身份牌缺失，不能伪造揭晓结果');
       if(secret.role==='bad')bad.push(rid);
       else if(secret.role!=='good')return error('INVALID_CARD','身份牌异常');
