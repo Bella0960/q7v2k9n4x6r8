@@ -1,5 +1,12 @@
 # MAOMAO Execution Log
 
+## MUSIC-UI-001 · 2026-11-17 用户截图反馈：播放详情整体过于靠上
+
+- **实际截图问题：** 840px 左右高度，默认封面/标题/播放条全部靠近顶部，控制键约在上半屏，下半屏留下大块无意义空白。
+- **已修改原 PR #303，未生成预览图：** `music/music.html` 仅在现有 `#npOverlay` 中增加一个包裹封面、歌词、曲名、进度和播放按钮的 `.np-main`；主区域采用垂直居中、弹性占高与独立滚动，不调整原有 ID/事件。封面从固定 126px 增至随高度调整的 156–184px；页面信息间距与进度控制重排；宽度保持轻量响应式。高度 <=690px 时缩小封面并允许纵向滚动，避免控制区被截断。
+- **专项脚本增加检查：** `tests/music-lightweight-default.test.mjs` 保护结构、居中与矮屏回退；`tests/music-mobile-browser.mjs` 修正原先误将首页作为“播放器截图”的问题，需在真实打开 `#npOverlay` 后检查 375/390/430px x 844px 的布局重心，并新增 667px 机型按钮可达性与单屏截图检查。
+- **执行证据：** 11/11 项基于最新分支源码的 JavaScript 语法/HTML 包裹配对与规则静态核对通过。**尚未在完整工程中执行 Node/Vite/Chromium，也尚未用真机验收。** 此次视觉反馈仍需用户在唯一 QA 手机测试后确认，不改正式 main、数据库、身份或生产部署。
+
 ## MUSIC-UI-001 / DATA-003 — 2026-11-16 · PR #303 (Draft, code checkpoint)
 
 - **Owner / scope:** `Bella0960/MAOMAO`, existing branch `task-MUSIC-UI-001/lightweight-player`. Existing PR only. No new branch, no main merge, no QA or production deployment, no server data/administrator access.
