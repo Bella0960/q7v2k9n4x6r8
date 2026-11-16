@@ -73,6 +73,7 @@ function assertReadyForUpload() {
   for (const path of [
     'dist/index.html', 'dist/account/index.html',
     'dist/account/bootstrap.html', 'dist/account/account.js',
+    'dist/account/bootstrap.js', 'dist/account/ivory-entry.css',
     'dist/chat/chat/chat-detail.html'
   ]) {
     assert.ok(existsSync(path), 'QA Vite asset missing after build: ' + path);
