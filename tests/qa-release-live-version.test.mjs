@@ -136,3 +136,68 @@ test('QA URL smoke blocks a disconnected core, inconsistent setup, or missing lo
   }).promise);
   await assert.rejects(runHttpSmoke(false, { html: '<html>No login form</html>' }).promise);
 });
+
+
+const uploadGateStart = source.indexOf('function assertReadyForUpload() {');
+const uploadGateEnd = source.indexOf('\n\nfunction preflightCheckout()', uploadGateStart);
+assert.ok(uploadGateStart >= 0 && uploadGateEnd > uploadGateStart,
+  'release upload source and secret preservation helpers must exist');
+const uploadGateSource = source.slice(uploadGateStart, uploadGateEnd);
+
+function mountUploadGate({ dirty = false, missing = null } = {}) {
+  const requested = [];
+  let headChecks = 0;
+  const gate = vm.runInNewContext(
+    uploadGateSource + '\n({ assertReadyForUpload, secretNames });',
+    {
+      assert,
+      assertLatestGitHead() { headChecks++; },
+      run(command, args) {
+        requested.push([command, ...args]);
+        return dirty ? ' M worker/lib/account-auth.js' : '';
+      },
+      existsSync(path) { return path !== missing; }
+    }
+  );
+  return {
+    ...gate,
+    requested,
+    headCheckCount() { return headChecks; }
+  };
+}
+
+test('release checks a clean checkout and built app files before either upload', () => {
+  const gate = mountUploadGate();
+  gate.assertReadyForUpload();
+  assert.equal(gate.headCheckCount(), 1);
+  assert.deepEqual(gate.requested, [['git', 'status', '--porcelain']]);
+});
+
+test('release stops if tests change tracked files or if Vite output is missing', () => {
+  assert.throws(() => mountUploadGate({ dirty: true }).assertReadyForUpload(),
+    /Tests altered the checkout/);
+  for (const path of ['dist/index.html', 'dist/account/index.html',
+    'dist/account/bootstrap.html', 'dist/account/account.js',
+    'dist/chat/chat/chat-detail.html']) {
+    assert.throws(() => mountUploadGate({ missing: path }).assertReadyForUpload(),
+      /QA Vite asset missing after build/);
+  }
+});
+
+test('release retains the full core and QA secret sets and critical bindings', () => {
+  const gate = mountUploadGate();
+  const bindings = [
+    { name: 'VAPID_PRIVATE_KEY', type: 'secret_text' },
+    { name: 'AI', type: 'ai' },
+    { name: 'MAO_IDENTITY_BRIDGE_SECRET', type: 'secret_text' },
+    { name: 'DEVICE_SECRET_PEPPER', type: 'secret_text' }
+  ];
+  assert.equal(JSON.stringify(gate.secretNames({ bindings })),
+    JSON.stringify(['DEVICE_SECRET_PEPPER', 'MAO_IDENTITY_BRIDGE_SECRET', 'VAPID_PRIVATE_KEY']));
+  assert.match(source, /assert\.deepEqual\(secretNames\(core\), originalCoreSecrets/);
+  assert.match(source, /assert\.deepEqual\(secretNames\(qa\), originalQaSecrets/);
+  assert.match(source, /qaBinding\('AI'\)\?\.type, 'ai'/);
+  assert.match(source, /qaBinding\('ASSETS'\)\?\.type, 'assets'/);
+  assert.equal((source.match(/assertReadyForUpload\(\);\n  run\('npx'/g) || []).length, 2,
+    'each Worker upload must recheck source and build artifacts');
+});
