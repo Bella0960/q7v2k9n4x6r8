@@ -41,7 +41,9 @@ test('every desktop app is assigned exactly once and dock apps stay in the dock'
   const pages = extractDefaultPages(index);
   const assigned = pages.flat();
   const appIds = [...new Set([...index.matchAll(/data-drag="(app_[^"]+)"/g)].map((m) => m[1]))]
-    .filter((id) => id !== 'app_chat' && id !== 'app_shop');
+    .filter((id) => id !== 'app_chat' && id !== 'app_shop' && id !== 'app_admin_center');
+  // The super-admin-only entry is intentionally hidden until account authorization.
+  assert.match(index, /data-drag="app_admin_center"[^>]*\bhidden>/);
   assert.equal(new Set(assigned).size, assigned.length, 'default pages must not contain duplicate items');
   assert.deepEqual([...assigned].filter((id) => id.startsWith('app_')).sort(), [...appIds].sort());
   assert.match(index, /dock:\s*\['app_chat',\s*'app_shop'\]/);
