@@ -6677,8 +6677,9 @@
                             memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined
                         }];
                     }
+                    // A machine-only avatar marker is not a delivered AI reply.
+                    // Never allow an empty/failed assistant turn to alter a role photo.
                     if (fullText || aiStickerMessages.length || aiRoleGalleryMessages.length || avatarCandidates.length || avatarPairs.length ||
-                        parsedRoleAvatarChoice.avatarId ||
                         (parsedTransferDecision.amounts && parsedTransferDecision.amounts.length)) {
                         // 正文按角色气泡偏好拆分；表情与图库图片仍保留在同一回复回合中。
                         groupReplyVisible = !!fullText || aiStickerMessages.length > 0 || aiRoleGalleryMessages.length > 0;
@@ -6757,7 +6758,8 @@
                             }
                         }
                         var currentAvatarChoiceRole = getRoleById(avatarRoleId);
-                        if (replySaved && !isGroupChat && parsedRoleAvatarChoice.avatarId &&
+                        if (replySaved && replyMessages.some(function (msg) { return !!String(msg.text || '').trim(); }) &&
+                            !isGroupChat && parsedRoleAvatarChoice.avatarId &&
                             currentAvatarChoiceRole && currentAvatarChoiceRole.avatarAutonomyEnabled !== false &&
                             window.RoleAvatarLibrary && typeof window.RoleAvatarLibrary.applyToCharacter === 'function') {
                             var autonomousApplied = await window.RoleAvatarLibrary.applyToCharacter(
@@ -6770,13 +6772,18 @@
                                 }
                             );
                             if (autonomousApplied && autonomousApplied.ok) {
-                                currentCharacter.avatar = autonomousApplied.value.avatar;
-                                currentCharacter.avatarAssetId = autonomousApplied.value.avatarAssetId;
-                                if (chatHeaderAvatar) {
-                                    var chosenImage = document.createElement('img');
-                                    chosenImage.src = autonomousApplied.value.avatar;
-                                    chosenImage.alt = '';
-                                    chatHeaderAvatar.replaceChildren(chosenImage);
+                                // A tab might navigate to another role while the media
+                                // read completes. Persist the requested role only; never
+                                // paint the old role's picture into the new chat header.
+                                if (String(aliasRoleId || currentCharacter.id) === String(avatarRoleId)) {
+                                    currentCharacter.avatar = autonomousApplied.value.avatar;
+                                    currentCharacter.avatarAssetId = autonomousApplied.value.avatarAssetId;
+                                    if (chatHeaderAvatar) {
+                                        var chosenImage = document.createElement('img');
+                                        chosenImage.src = autonomousApplied.value.avatar;
+                                        chosenImage.alt = '';
+                                        chatHeaderAvatar.replaceChildren(chosenImage);
+                                    }
                                 }
                                 if (window.RoleAvatarChoice && typeof window.RoleAvatarChoice.recordApplied === 'function') {
                                     window.RoleAvatarChoice.recordApplied(avatarRoleId);
