@@ -133,3 +133,15 @@ test('MUSIC-UI-001: imported filenames are escaped everywhere and wiping audio n
   assert.match(music, /await clearAudioStore\(\)/);
   assert.match(music, /musicMedia\.removeRef\(assetId, ownerType, ownerId\)/);
 });
+
+test('MUSIC-LISTEN-001: no imaginary sync—native playback and role invites have explicit delivery states', () => {
+  assert.match(music, /MUSIC_ROLE_INVITES_KEY\s*=\s*'music_listen_invites_v1'/);
+  assert.match(music, /MUSIC_PLAYBACK_STATE_KEY\s*=\s*'music_playback_state_v1'/);
+  assert.match(music, /window\.MAOMAOMusicInvites = Object\.freeze/);
+  assert.match(music, /window\.PhoneStorage\.getCharacters\(\)/);
+  assert.match(music, /status:\s*'queued_local', delivered:\s*false, accepted:\s*false/);
+  assert.match(music, /roleJoined:\s*false/);
+  assert.match(music, /maomao:music:invite-created/);
+  assert.match(music, /maomao:music:playback/);
+  assert.doesNotMatch(music, /status:\s*'accepted'/);
+});
