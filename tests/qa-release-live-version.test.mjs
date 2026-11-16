@@ -291,3 +291,54 @@ test('refuses to infer an empty core from missing or malformed Cloudflare SQL ev
     assert.throws(() => auditCounts(item, 'CORE'));
   }
 });
+
+
+const qaVarCheckStart = source.indexOf('function verifyQaRuntimeVars(bindings, plannedVars,');
+const qaVarCheckEnd = source.indexOf('\n\nfunction preflightCheckout()', qaVarCheckStart);
+assert.ok(qaVarCheckStart >= 0 && qaVarCheckEnd > qaVarCheckStart,
+  'QA runtime preservation helper must exist');
+const verifyQaRuntimeVars = vm.runInNewContext(
+  source.slice(qaVarCheckStart, qaVarCheckEnd) + '\nverifyQaRuntimeVars;',
+  { assert, QA_SETUP_OPEN: 'isolated_authority', QA_SETUP_CLOSED: 'disabled' }
+);
+
+test('planned QA feature flags preserve every existing non-secret setting', () => {
+  const planned = {
+    AUTONOMY_TICK_LIMIT: '10',
+    MAO_SOCIAL_CHAT_ENABLED: 'false',
+    MAO_IDENTITY_MODE: 'delegated_preview',
+    MAO_QA_IDENTITY_SETUP: 'isolated_authority',
+    MAO_QA_AUTHORITY_WORKER: 'maomao-identity-core'
+  };
+  const existing = [
+    { name: 'AUTONOMY_TICK_LIMIT', text: '10', type: 'plain_text' },
+    { name: 'MAO_SOCIAL_CHAT_ENABLED', text: 'false', type: 'plain_text' },
+    { name: 'MAO_IDENTITY_MODE', text: 'delegated_preview', type: 'plain_text' },
+    { name: 'MAO_EXPECTED_FOUNDER_ID', type: 'secret_text' }
+  ];
+  assert.doesNotThrow(() => verifyQaRuntimeVars(existing, planned));
+  assert.throws(() => verifyQaRuntimeVars(existing,
+    { ...planned, AUTONOMY_TICK_LIMIT: '1' }), /unexpectedly change/);
+  assert.throws(() => verifyQaRuntimeVars(existing,
+    { ...planned, MAO_SOCIAL_CHAT_ENABLED: 'true' }), /unexpectedly change/);
+  assert.throws(() => verifyQaRuntimeVars(existing,
+    { ...planned, AUTONOMY_TICK_LIMIT: undefined }), /unexpectedly change/);
+  assert.throws(() => verifyQaRuntimeVars(existing.slice(0, 1), {}),
+    /missing from the release config/);
+  assert.throws(() => verifyQaRuntimeVars([existing[0], existing[0]], planned),
+    /Duplicated QA runtime variable/);
+});
+
+test('QA founder setup may only change open to disabled after founder exists', () => {
+  const setup = [{ type: 'plain_text', name: 'MAO_QA_IDENTITY_SETUP',
+    text: 'isolated_authority' }];
+  const disabled = { MAO_QA_IDENTITY_SETUP: 'disabled' };
+  assert.throws(() => verifyQaRuntimeVars(setup, disabled), /unexpectedly change/);
+  assert.doesNotThrow(() => verifyQaRuntimeVars(setup, disabled,
+    { allowClosingSetup: true }));
+  assert.throws(() => verifyQaRuntimeVars([
+    { type: 'plain_text', name: 'MAO_QA_IDENTITY_SETUP', text: 'disabled' }
+  ], { MAO_QA_IDENTITY_SETUP: 'isolated_authority' }, {
+    allowClosingSetup: true
+  }), /unexpectedly change/, 'a later release cannot re-open closed setup');
+});
