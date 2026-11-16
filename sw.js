@@ -85,7 +85,7 @@ const APP_SHELL = [
   './chat/chat/chat-settings.html',
   './chat/chat/js/chat-extras.js?t=20261107imagevision1',
   './worldbook/characters/characters.html',
-  './worldbook/characters/js/characters-manager.js?v=20261107v11',
+  './worldbook/characters/js/characters-manager.js?v=20261115-encounter1',
   './travel/dream-travel.html',
   './novel/novel.html',
   './novel/novel-detail.html',
