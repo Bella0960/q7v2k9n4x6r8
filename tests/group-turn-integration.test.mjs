@@ -205,3 +205,28 @@ test('exception halfway through marker parsing rolls back an earlier staged vote
   assert.equal(h.events.length, 0);
   assert.equal(h.groupWrites.length, 0);
 });
+
+test('malformed nested private directives cannot escape into saved group replies', () => {
+  const h = harness(), tx = h.createTurn();
+  const speaker = h.group.members[0];
+  let queued = 0;
+  const examples = [
+    '公开回复 [游戏私聊:r2:秘密[嵌套]剩余秘密]',
+    '公开回复 [群私聊:r1:私下内容[一部分]末尾机密]',
+    '公开回复 [游戏猜测:r2]这段不是安全的公开话语',
+    '公开回复 [群私聊:r1:前半段]\\n私聊后续不应公开'
+  ];
+  examples.forEach((source) => {
+    const visible = h.parse(source, speaker, h.history,
+      false, false, true, 's1', () => { queued++; }, tx);
+    assert.equal(visible, '公开回复', 'entire ambiguous suffix is hidden');
+  });
+  assert.equal(queued, 0, 'malformed game private actions cannot be scheduled');
+  assert.equal(h.data.has('chat_history_r1'), false);
+  assert.equal(h.history.some(m => m.type === 'group_private'), false);
+  const saved = tx.finalize(true);
+  assert.equal(saved.ok, true, 'independent valid post-save effects are unaffected');
+  assert.equal(h.data.has('chat_history_r1'), false,
+    'malformed ordinary DMs must not reach the character private history');
+  assert.equal(h.history.some(m => m.type === 'group_private'), false);
+});
