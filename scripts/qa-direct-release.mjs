@@ -64,6 +64,28 @@ function assertLatestGitHead() {
   assert.equal(localSha, remoteSha, 'Local #299 HEAD is stale: fetch the latest before QA release');
 }
 
+function assertReadyForUpload() {
+  // npm/Vite/browser tests must not silently alter tracked source files.
+  assertLatestGitHead();
+  assert.equal(run('git', ['status', '--porcelain'], true), '',
+    'Tests altered the checkout: refusing to upload uncommitted source');
+  // Wrangler serves the Vite build, not the unbuilt checkout.
+  for (const path of [
+    'dist/index.html', 'dist/account/index.html',
+    'dist/account/bootstrap.html', 'dist/account/account.js',
+    'dist/chat/chat/chat-detail.html'
+  ]) {
+    assert.ok(existsSync(path), 'QA Vite asset missing after build: ' + path);
+  }
+}
+
+function secretNames(settings) {
+  return (settings?.bindings || [])
+    .filter(binding => binding.type === 'secret_text')
+    .map(binding => binding.name)
+    .sort();
+}
+
 function preflightCheckout() {
   assert.equal(run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], true), BRANCH,
     'Only the original #299 integration branch may be used for the QA release');
@@ -199,6 +221,8 @@ async function cloudflarePreflight() {
     assert.equal(binding(core, name)?.type, 'secret_text',
       'Isolated core missing QA-only ' + name + '; configure securely before deployment');
   }
+  const originalQaSecrets = secretNames(qa);
+  const originalCoreSecrets = secretNames(core);
   const qaSetupState = JSON.parse(readFileSync('wrangler.qa.jsonc', 'utf8')).vars?.MAO_QA_IDENTITY_SETUP;
   const currentService = binding(qa, 'MAO_IDENTITY_AUTHORITY')?.service;
   assert.ok([CORE, 'maomao-001-identity-gateway-20261114'].includes(currentService),
@@ -233,7 +257,7 @@ async function cloudflarePreflight() {
       ', founder matches=' + matches + ', active admins=' + admins);
   }
   assert.equal(typeof coreInitialized, 'boolean', 'Cannot verify QA identity core state');
-  return { coreInitialized };
+  return { coreInitialized, originalQaSecrets, originalCoreSecrets };
 }
 
 async function main() {
@@ -249,10 +273,11 @@ async function main() {
   }
   assert.equal(process.env.MAOMAO_QA_DEPLOY_CONFIRM, QA,
     'Set MAOMAO_QA_DEPLOY_CONFIRM to the exact existing QA Worker name');
-  const { coreInitialized } = await cloudflarePreflight();
+  const { coreInitialized, originalQaSecrets, originalCoreSecrets } =
+    await cloudflarePreflight();
   const corePrevious = await liveWorkerVersion(CORE);
   const qaPrevious = await liveWorkerVersion(QA);
-  assertLatestGitHead();
+  assertReadyForUpload();
   run('npx', ['--yes', 'wrangler@4', 'deploy', '--config', 'wrangler.qa-identity-core.jsonc']);
   const coreVersion = await liveWorkerVersion(CORE);
   assert.notEqual(coreVersion.versionId, corePrevious.versionId,
@@ -261,6 +286,8 @@ async function main() {
     'Identity core latest deployment is not a Wrangler release');
   const core = await cloudflare('/workers/scripts/' + CORE + '/settings');
   const coreBinding = name => core.bindings?.find(x => x.name === name);
+  assert.deepEqual(secretNames(core), originalCoreSecrets,
+    'QA identity core secrets changed during deployment');
   assert.equal(coreBinding('CLOUD_DB')?.namespace_id, CORE_DB);
   assert.equal(coreBinding('MAO_IDENTITY_MODE')?.text, 'local', 'Core identity mode did not deploy');
   assert.equal(coreBinding('MAO_QA_ISOLATED_IDENTITY_CORE')?.text, 'true', 'Isolated QA identity mode did not deploy');
@@ -270,7 +297,7 @@ async function main() {
   }
   // Do not switch QA's old authority until the isolated core is configured.
   // The second remote check prevents an old PR build from switching QA.
-  assertLatestGitHead();
+  assertReadyForUpload();
   run('npx', ['--yes', 'wrangler@4', 'deploy', '--config', 'wrangler.qa.jsonc']);
   const qaVersion = await liveWorkerVersion(QA);
   assert.notEqual(qaVersion.versionId, qaPrevious.versionId,
@@ -279,6 +306,10 @@ async function main() {
     'QA latest deployment is not a Wrangler release');
   const qa = await cloudflare('/workers/scripts/' + QA + '/settings');
   const qaBinding = name => qa.bindings?.find(x => x.name === name);
+  assert.deepEqual(secretNames(qa), originalQaSecrets,
+    'Existing QA secrets changed during deployment: keep the original push and account credentials');
+  assert.equal(qaBinding('AI')?.type, 'ai', 'Existing QA AI binding was lost');
+  assert.equal(qaBinding('ASSETS')?.type, 'assets', 'Existing QA web assets binding was lost');
   assert.equal(qaBinding('CLOUD_DB')?.namespace_id, QA_DB);
   assert.equal(qaBinding('MAO_IDENTITY_AUTHORITY')?.service, CORE);
   assert.equal(qaBinding('MAO_IDENTITY_MODE')?.text, 'delegated_preview');
