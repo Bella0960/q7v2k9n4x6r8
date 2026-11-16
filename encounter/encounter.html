@@ -205,8 +205,30 @@ window.addEventListener('keydown',function(e){
 });
 function head(k,t){return '<div class="sheet-head"><div><div class="sheet-kicker">'+escapeHtml(k)+'</div><h2 class="sheet-title">'+escapeHtml(t)+'</h2></div><button class="close" aria-label="关闭">×</button></div>';}
 function row(label,value){return '<div class="sheet-row"><span>'+escapeHtml(label)+'</span><strong>'+escapeHtml(value)+'</strong></div>';}
-function openDetail(card,fromSaved){
+
+function openBlindGuess(card) {
+ var options=engine.getBlindOptions(card);
+ if(options.length!==3){openDetail(card,false,true);return;}
+ var html=head('VOICE / FIRST IMPRESSION','性格盲测')+
+  '<div class="sheet-quote">「'+escapeHtml(card.quote)+'」</div>'+
+  '<p class="tiny">只凭这一句话，你觉得 TA 更接近哪种性格？没有分数，也不会改变人物设定。</p>'+
+  '<div class="field"><label>选择你的第一印象</label>'+
+  options.map(function(choice){return '<button type="button" class="fate-button" data-blind-choice="'+escapeHtml(choice)+'">'+escapeHtml(choice)+'</button>';}).join('')+
+  '</div><div class="saved-detail-actions"><button type="button" class="mini" data-blind-reveal>直接揭晓</button></div>';
+ openSheet(html,'性格盲测');
+ sheet.querySelectorAll('[data-blind-choice]').forEach(function(button){
+   button.addEventListener('click',function(){
+     var guess=button.dataset.blindChoice;
+     if(options.indexOf(guess)===-1)return;
+     openDetail(card,false,true,guess);
+   });
+ });
+ var reveal=sheet.querySelector('[data-blind-reveal]');
+ if(reveal)reveal.addEventListener('click',function(){openDetail(card,false,true);});
+}
+function openDetail(card,fromSaved,revealBlind,blindGuess){
  if(!card&&!current)return;var c=card||current;
+ if(c.type==='性格盲测'&&!fromSaved&&!revealBlind){openBlindGuess(c);return;}
  var html=head('PERSONA / 01','人物档案')+'<div class="sheet-quote">「'+escapeHtml(c.quote)+'」</div>'+
  row('姓名',c.name)+row('性别',c.gender)+row('关系气质',c.relationVibe)+row('身份',c.job)+row('种族',c.species)+row('年龄',String(c.age))+
  row('世界',c.era)+row('外在',c.trait)+row('内在反差',c.contrast)+(c.rarity==='特别邂逅'?row('相遇','特别邂逅 · 无付费'): '')+
@@ -218,6 +240,12 @@ function openDetail(card,fromSaved){
      var opening=engine.storyOpening(c,c.selectedChoice);
      if(opening)html+='<p class="story-preview">'+escapeHtml(opening)+'</p>';
    }
+ }
+ if(c.type==='性格盲测'&&revealBlind&&typeof blindGuess==='string'&&
+    engine.getBlindOptions(c).indexOf(blindGuess)!==-1) {
+   html+='<p class="story-preview">'+(blindGuess===c.trait
+     ? '你的第一印象恰好是「'+escapeHtml(c.trait)+'」。继续看看 TA 不轻易显露的另一面。'
+     : '你原以为 TA 更接近「'+escapeHtml(blindGuess)+'」，其实外在气质是「'+escapeHtml(c.trait)+'」。每个人都不止一面。')+'</p>';
  }
  html+='<p class="tiny">本地免费生成的简要设定。成为正式角色后，还能继续完善经历、习惯与故事。</p>';
  if(fromSaved){

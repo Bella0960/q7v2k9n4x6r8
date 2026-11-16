@@ -45,7 +45,12 @@ function setup(initial={}) {
     getAttribute(k){return this.attrs[k];}
     setPointerCapture(){}
     querySelector(){return new FakeEl('close');}
-    querySelectorAll(){return [];}
+    querySelectorAll(selector){
+      if(selector==='[data-blind-choice]') return [...this.innerHTML.matchAll(/data-blind-choice="([^"]+)"/g)].map(m=>{
+        const item=new FakeEl('choice');item.dataset.blindChoice=m[1];return item;
+      });
+      return [];
+    }
     focus(){document.activeElement=this;}
   }
   const elements=new Map();
@@ -145,3 +150,26 @@ test('左滑只跳过人物，不创建收藏',()=>{
   assert.equal(h.window.MAOMAOEncounter.getCandidates().value.length,0);
   assert.equal(h.el('cardSequence').textContent,'02 / ∞');
 });
+
+test('性格盲测先猜再揭晓，未选前不泄露姓名，猜测不更改收藏或正式角色',()=>{
+  const existing = '[{"id":"existing","name":"原角色","persona":"原样保留"}]';
+  const h=setup({
+    'ai_custom_characters':existing,
+    'maomao_encounter_preferences_v1':'{"type":"性格盲测"}'
+  });
+  const card=h.el('frontCard');
+  assert.match(card.innerHTML,/一段陌生的声音/);
+  card.fire('click');
+  const sheet=h.el('sheet');
+  assert.match(sheet.innerHTML,/选择你的第一印象/);
+  assert.doesNotMatch(sheet.innerHTML,/姓名<\/span>/,'盲测前不能直接显示姓名');
+  const choices=sheet.querySelectorAll('[data-blind-choice]');
+  assert.equal(choices.length,3);
+  choices[0].fire('click');
+  assert.match(sheet.innerHTML,/人物档案/);
+  assert.match(sheet.innerHTML,/你的第一印象|你原以为/);
+  assert.match(sheet.innerHTML,/内在反差/);
+  assert.equal(h.localStorage.getItem('ai_custom_characters'),existing);
+  assert.equal(h.window.MAOMAOEncounter.getCandidates().value.length,0);
+});
+

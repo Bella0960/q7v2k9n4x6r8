@@ -484,6 +484,25 @@
     return withCandidateLock(function() { return updateCandidateStoryChoice(id,choice); });
   }
   // 选故事不请求 AI：同一个人物和选项始终给出稳定的开场，正式角色设定也可继承。
+
+  // 性格盲测只展示基于原人设的固定三选一；不增加存储键、不改人物 ID，也不调用 AI。
+  // 同一候选的选项顺序稳定，返回值不暴露为新的“性格评判”或角色修改指令。
+  function getBlindOptions(card) {
+    if (!card || typeof card.trait !== 'string' || !card.trait.trim()) return [];
+    var others = archetypes.map(function(item) { return item.trait; })
+      .filter(function(trait) { return trait !== card.trait; });
+    if (others.length < 2) return [];
+    var seed = String(card.id || '');
+    var hash = 2166136261;
+    for (var i = 0; i < seed.length && i < 96; i++) {
+      hash = Math.imul(hash ^ seed.charCodeAt(i), 16777619) >>> 0;
+    }
+    var first = others.splice(hash % others.length, 1)[0];
+    var second = others[(hash >>> 8) % others.length];
+    var choices = [first, second];
+    choices.splice((hash >>> 16) % 3, 0, card.trait);
+    return choices;
+  }
   function storyOpening(card, choice) {
     if (!card || !Array.isArray(card.choices) || card.choices.indexOf(choice) === -1) return '';
     var name = String(card.name || '这位陌生人');
@@ -520,7 +539,8 @@
     removeCandidate:removeCandidate, saveCandidateSafe:saveCandidateSafe,
     removeCandidateSafe:removeCandidateSafe, updateCandidateStoryChoiceSafe:updateCandidateStoryChoiceSafe,
     getPreferences:getPreferences, savePreferences:savePreferences,
-    formatBrief:formatBrief, storyOpening:storyOpening, getEncounteredRoles:getEncounteredRoles, normalizeName:normalizeName,
+    formatBrief:formatBrief, storyOpening:storyOpening, getBlindOptions:getBlindOptions,
+    getEncounteredRoles:getEncounteredRoles, normalizeName:normalizeName,
     checkAccountScope:checkAccountScope, verifyLiveAccountContext:verifyLiveAccountContext,
     registerCardDecorator:function(fn) {
       if (typeof fn !== 'function') return function(){};

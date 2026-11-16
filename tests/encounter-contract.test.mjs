@@ -750,3 +750,24 @@ test('损坏的邂逅草稿不自动删除或覆盖；恢复失败后只有明�
   assert.equal(h.db.has(key),false,'用户明确点击放弃草稿才可删除');
   assert.equal(h.editor.peek().unreadable,false,'放弃后可以开始新的草稿');
 });
+
+test('性格盲测固定三种不同选项，真实气质只出现一次且不写角色数据', () => {
+  const original = '[{"id":"old","name":"原有角色","persona":"必须原样保留"}]';
+  const h = harness({
+    ai_custom_characters: original,
+    maomao_encounter_preferences_v1: '{"type":"性格盲测"}'
+  });
+  const card = h.api.generate().value;
+  assert.equal(card.type, '性格盲测');
+  const before = h.map.size;
+  const options = Array.from(h.api.getBlindOptions(card));
+  assert.equal(options.length, 3);
+  assert.equal(new Set(options).size, 3);
+  assert.equal(options.filter(x => x === card.trait).length, 1);
+  assert.deepEqual(Array.from(h.api.getBlindOptions({...card})), options);
+  assert.equal(h.map.size, before, '猜测选项不可自动写入任何数据');
+  assert.equal(h.localStorage.getItem('ai_custom_characters'), original);
+  assert.deepEqual(Array.from(h.api.getBlindOptions({...card,trait:'特殊性格'})).filter(x => x === '特殊性格'), ['特殊性格']);
+  assert.equal(h.api.getBlindOptions(null).length, 0);
+});
+
