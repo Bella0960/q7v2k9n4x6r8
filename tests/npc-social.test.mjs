@@ -528,3 +528,23 @@ test('reconciliation ignores cross-role requests and cross-role NPC contacts', a
   h.context.NPCSocial.reconcileAccepted();
   assert.equal(JSON.parse(h.data.get(key))[0].status, 'pending', 'misfiled request must remain unchanged');
 });
+
+test('already-accepted NPC requests verify original contact ownership before idempotent success', async () => {
+  const h = createHarness();
+  const generated = await h.context.NPCSocial.discoverNow();
+  const request = generated.request;
+  const accepted = h.context.NPCSocial.accept(request.id);
+  assert.equal(accepted.ok, true);
+  assert.equal(h.context.NPCSocial.accept(request.id).alreadyAccepted, true);
+  const greetingCount = h.histories[accepted.roleId].length;
+
+  const contact = h.roles.find(role => role.id === accepted.roleId);
+  contact.npcOriginMainRoleId = 'other-main-role';
+  assert.throws(() => h.context.NPCSocial.accept(request.id), /所属主角色冲突/);
+  assert.equal(h.histories[accepted.roleId].length, greetingCount, 'do not write to foreign chat history');
+
+  contact.npcOriginMainRoleId = 'main-role';
+  h.roles.splice(h.roles.indexOf(contact), 1);
+  assert.throws(() => h.context.NPCSocial.accept(request.id), /联系人缺失/);
+  assert.equal(h.roles.some(role => role.id === accepted.roleId), false, 'must not silently recreate a missing accepted contact');
+});
