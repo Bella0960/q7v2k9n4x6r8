@@ -623,8 +623,12 @@ test('role manager imports legacy avatar data only into that role library and ke
   assert.ok(managerSource.includes("library.setActive(role.id, previousActive ? previousActive.id : '')"));
   assert.ok(managerSource.includes("source: 'legacy'"));
   assert.ok(managerSource.includes('latest.avatarAssetId = saved.value.assetId'));
-  assert.ok(managerSource.includes('target.avatar = resolved.value'));
-  assert.ok(managerSource.includes('target.avatarAssetId = item.assetId'));
+  // Manual switches now call the atomic library API instead of duplicating
+  // two unrelated role/index writes in the character profile page.
+  assert.ok(managerSource.includes('library.applyToCharacter(roleId, item.id, {'));
+  assert.ok(managerSource.includes("return String(currentProfileRoleId || '') === roleId;"));
+  assert.ok(source.includes('character.avatar = resolved.value'));
+  assert.ok(source.includes('character.avatarAssetId = item.assetId'));
   assert.ok(managerSource.includes('role.avatar'),
     'existing profile and list avatar rendering must continue to support the legacy field');
 });
@@ -637,12 +641,15 @@ test('portrait studio can add a cropped Blob without automatically replacing the
   assert.ok(managerSource.includes("portraitPurpose = 'profile'"));
 });
 
-test('current avatar changes are persisted with a compatibility DataURL and roll back on save failure', () => {
-  assert.ok(managerSource.includes('library.setActive(roleId, item.id)'));
-  assert.ok(managerSource.includes('library.toDataUrl(item.assetId)'));
-  assert.ok(managerSource.includes("const previousAvatar = target.avatar || ''"));
-  assert.ok(managerSource.includes("library.setActive(roleId, previousActive ? previousActive.id : '')"));
-  assert.ok(managerSource.includes('target.avatar = previousAvatar'));
+test('current avatar changes atomically persist the compatibility DataURL and roll back on save failure', () => {
+  assert.ok(managerSource.includes('library.applyToCharacter(roleId, item.id, {'));
+  assert.ok(source.includes('async function applyToCharacter(roleId, avatarId, options)'));
+  assert.ok(source.includes('resolved = await toDataUrl(item.assetId)'));
+  assert.ok(source.includes('character.avatar = resolved.value'));
+  assert.ok(source.includes('character.avatarAssetId = item.assetId'));
+  assert.ok(source.includes("global.localStorage.setItem('ai_custom_characters', JSON.stringify(characters))"));
+  assert.ok(source.includes('global.localStorage.setItem(storageKey(roleId), indexBefore)'));
+  assert.ok(source.includes("return failure('PARTIAL_ROLLBACK'"));
 });
 
 test('avatar gallery revokes object URLs and prevents removal of the active portrait', () => {
