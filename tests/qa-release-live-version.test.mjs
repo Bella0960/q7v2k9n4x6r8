@@ -81,11 +81,12 @@ const smokeSource = source.slice(smokeStart, smokeEnd);
 
 function runHttpSmoke(coreInitialized, {
   overrides = {},
-  html = '<form id="loginForm"></form><script src="/account/account.js?v=20261116-qa1"></script><link href="/account/ivory-entry.css?v=20261116-qa1">',
+  html = '<form id="loginForm"></form><script src="/account/account.js?v=20261116-qa1"></script><link rel="stylesheet" href="/account/ivory-entry.css?v=20261116-qa1">',
   loginJs = "subtitle.classList.toggle('qa-login-hint'",
   loginCss = '#loginPanel>.lead.qa-login-hint',
   bootstrapHtml = '<span id="bootstrapUsernameLabel"></span><script src="./bootstrap.js?v=20261116-qa1"></script>',
-  bootstrapJs = 'usernameField.maxLength = qaSetup ? 28 : 24'
+  bootstrapJs = 'usernameField.maxLength = qaSetup ? 28 : 24',
+  linkedCss = {}
 } = {}) {
   const calls = [];
   const status = {
@@ -99,6 +100,7 @@ function runHttpSmoke(coreInitialized, {
   const probe = vm.runInNewContext(smokeSource + '\nqaHttpSmoke;', {
     assert,
     AbortSignal: { timeout: () => ({}) },
+    URL,
     console: { log() {} },
     fetch: async (url, options) => {
       calls.push({ url, options });
@@ -110,7 +112,8 @@ function runHttpSmoke(coreInitialized, {
         '/account/account.js?v=20261116-qa1': loginJs,
         '/account/ivory-entry.css?v=20261116-qa1': loginCss,
         '/account/bootstrap.html': bootstrapHtml,
-        '/account/bootstrap.js?v=20261116-qa1': bootstrapJs
+        '/account/bootstrap.js?v=20261116-qa1': bootstrapJs,
+        ...linkedCss
       };
       const path = url.slice('https://maomao-aw-qa-20261114.miamor520000.workers.dev'.length);
       if (Object.prototype.hasOwnProperty.call(assets, path)) {
@@ -132,7 +135,8 @@ test('original QA URL smoke accepts first-run setup and a ready disabled setup',
       'https://maomao-aw-qa-20261114.miamor520000.workers.dev/account/account.js?v=20261116-qa1',
       'https://maomao-aw-qa-20261114.miamor520000.workers.dev/account/ivory-entry.css?v=20261116-qa1',
       'https://maomao-aw-qa-20261114.miamor520000.workers.dev/account/bootstrap.html',
-      'https://maomao-aw-qa-20261114.miamor520000.workers.dev/account/bootstrap.js?v=20261116-qa1'
+      'https://maomao-aw-qa-20261114.miamor520000.workers.dev/account/bootstrap.js?v=20261116-qa1',
+      'https://maomao-aw-qa-20261114.miamor520000.workers.dev/account/ivory-entry.css?v=20261116-qa1'
     ]);
     assert.ok(fixture.calls.every(x => x.options.method === 'GET'));
     assert.ok(fixture.calls.every(x => !x.options.body && !x.options.cookie &&
@@ -158,6 +162,21 @@ test('QA URL smoke blocks a disconnected core, inconsistent setup, or missing lo
   await assert.rejects(runHttpSmoke(false, { loginCss: 'stale login CSS' }).promise);
   await assert.rejects(runHttpSmoke(false, { bootstrapHtml: 'stale setup HTML' }).promise);
   await assert.rejects(runHttpSmoke(false, { bootstrapJs: 'stale setup script' }).promise);
+  await assert.rejects(runHttpSmoke(false, {
+    html: '<form id="loginForm"></form><script src="/account/account.js?v=20261116-qa1"></script><link rel="stylesheet" href="https://external.example.test/css.css">'
+  }).promise);
+});
+
+test('accepts Vite fingerprinted stylesheet when the actual linked CSS contains QA warning', async () => {
+  const html = '<form id="loginForm"></form><script src="/account/account.js?v=20261116-qa1"></script><link rel="stylesheet" crossorigin href="./assets/qa-abcdef.css">';
+  const href = '/account/assets/qa-abcdef.css';
+  const probe = runHttpSmoke(false, {
+    html,
+    linkedCss: { [href]: '.ivory-entry #loginPanel>.lead.qa-login-hint{display:block}' }
+  });
+  await probe.promise;
+  assert.ok(probe.calls.some(call => call.url.endsWith(href)),
+    'QA smoke must fetch the CSS actually loaded by the built page');
 });
 
 
