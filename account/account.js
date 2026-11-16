@@ -35,6 +35,13 @@
   }
 
   syncLoginAvailability();
+  if (isKnownQaHost) {
+    // Hide registration before the async identity-status probe finishes:
+    // the isolated QA reuses founder 001 and never creates another account.
+    document.querySelectorAll('[data-show="registerPanel"]').forEach(button => {
+      button.hidden = true;
+    });
+  }
 
   function showPanel(id) {
     viewRevision += 1;
@@ -233,6 +240,13 @@
 
   byId('registerForm').addEventListener('submit', async event => {
     event.preventDefault();
+    // This guard is intentional even when the registration entry is hidden.
+    // A stale tab or script may still submit the form directly.
+    if (isKnownQaHost || delegatedIdentity) {
+      setError('registerError',
+        'QA 测试版不允许重复注册。请使用原管理员账号完成独立 QA 初始化或登录。');
+      return;
+    }
     if (authBusy) return;
     setError('registerError');
     const form = new FormData(event.currentTarget);
