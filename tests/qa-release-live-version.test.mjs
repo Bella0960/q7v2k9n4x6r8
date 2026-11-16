@@ -81,11 +81,11 @@ const smokeSource = source.slice(smokeStart, smokeEnd);
 
 function runHttpSmoke(coreInitialized, {
   overrides = {},
-  html = '<form id="loginForm"></form><script src="/account/account.js?v=20261116-qa1"></script><link rel="stylesheet" href="/account/ivory-entry.css?v=20261116-qa1">',
-  loginJs = "subtitle.classList.toggle('qa-login-hint'",
-  loginCss = '#loginPanel>.lead.qa-login-hint',
-  bootstrapHtml = '<span id="bootstrapUsernameLabel"></span><script src="./bootstrap.js?v=20261116-qa1"></script>',
-  bootstrapJs = 'usernameField.maxLength = qaSetup ? 28 : 24',
+  html = readFileSync(new URL('../account/index.html', import.meta.url), 'utf8'),
+  loginJs = readFileSync(new URL('../account/account.js', import.meta.url), 'utf8'),
+  loginCss = readFileSync(new URL('../account/ivory-entry.css', import.meta.url), 'utf8'),
+  bootstrapHtml = readFileSync(new URL('../account/bootstrap.html', import.meta.url), 'utf8'),
+  bootstrapJs = readFileSync(new URL('../account/bootstrap.js', import.meta.url), 'utf8'),
   linkedCss = {}
 } = {}) {
   const calls = [];
@@ -111,6 +111,8 @@ function runHttpSmoke(coreInitialized, {
         '/account/index.html': html,
         '/account/account.js?v=20261116-qa1': loginJs,
         '/account/ivory-entry.css?v=20261116-qa1': loginCss,
+        '/account/account.css?v=20261111-nav1':
+          readFileSync(new URL('../account/account.css', import.meta.url), 'utf8'),
         '/account/bootstrap.html': bootstrapHtml,
         '/account/bootstrap.js?v=20261116-qa1': bootstrapJs,
         ...linkedCss
@@ -136,6 +138,7 @@ test('original QA URL smoke accepts first-run setup and a ready disabled setup',
       'https://maomao-aw-qa-20261114.miamor520000.workers.dev/account/ivory-entry.css?v=20261116-qa1',
       'https://maomao-aw-qa-20261114.miamor520000.workers.dev/account/bootstrap.html',
       'https://maomao-aw-qa-20261114.miamor520000.workers.dev/account/bootstrap.js?v=20261116-qa1',
+      'https://maomao-aw-qa-20261114.miamor520000.workers.dev/account/account.css?v=20261111-nav1',
       'https://maomao-aw-qa-20261114.miamor520000.workers.dev/account/ivory-entry.css?v=20261116-qa1'
     ]);
     assert.ok(fixture.calls.every(x => x.options.method === 'GET'));
