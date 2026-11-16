@@ -97,6 +97,12 @@ async function verifyPage(browser, base, width) {
     await page.waitForFunction(() => document.querySelectorAll('#album .portrait').length === 2, null, { timeout: 15000 });
     assert.equal(await page.locator('#libraryCount').textContent(), '02');
     const first = page.locator('#album .portrait').nth(0);
+    await first.click();
+    await page.getByRole('button', { name: '设为 TA 的当前头像' }).click();
+    await page.waitForFunction(() => !!JSON.parse(
+      localStorage.getItem('ai_custom_characters') || '[]'
+    ).find(role => role.id === 'role-A')?.avatarAssetId, null, { timeout: 12000 });
+    assert.equal(await page.locator('#currentState').textContent(), '已应用');
     await page.locator('#startPair').click();
     await first.click();
     await page.locator('#album .portrait').nth(1).click();
@@ -123,6 +129,14 @@ async function verifyPage(browser, base, width) {
     assert.equal(afterPair.profile, '{"avatar":"sentinel-only"}', 'global avatar cannot change');
 
     await page.locator('#pairList .pair').click();
+    await page.getByRole('button', { name: '重命名这组情头' }).click();
+    await page.locator('#renameInput').fill('晨雨');
+    await page.getByRole('button', { name: '保存' }).click();
+    await page.waitForFunction(() =>
+      document.querySelector('#pairList .pair strong')?.textContent === '晨雨',
+      null, { timeout: 12000 });
+
+    await page.locator('#pairList .pair').click();
     await page.getByRole('button', { name: '交换 A / B 顺序' }).click();
     await page.waitForFunction(() => document.querySelector('#pairList .pair') !== null);
     assert.equal(await page.locator('#pairList .pair').count(), 1);
@@ -140,6 +154,7 @@ async function verifyPage(browser, base, width) {
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => document.querySelectorAll('#album .portrait').length === 2, null, { timeout: 15000 });
     assert.equal(await page.locator('#pairList .pair').count(), 1);
+    assert.equal(await page.locator('#pairList .pair strong').textContent(), '晨雨');
     assert.equal(await page.locator('#autonomyToggle').isChecked(), false);
 
     // Removal must be a two-stage in-page confirmation; cancel is harmless.
@@ -153,6 +168,21 @@ async function verifyPage(browser, base, width) {
     await page.getByRole('button', { name: '确认解除' }).click();
     await page.waitForFunction(() => document.querySelectorAll('#pairList .pair').length === 0, null, { timeout: 12000 });
     assert.equal(await page.locator('#album .portrait').count(), 2, 'unlink never removes original photos');
+
+    // Removing an unpaired, inactive photo must not delete the current one.
+    const inactive = page.locator('#album .portrait').filter({
+      hasNot: page.locator('.chip')
+    }).first();
+    await inactive.click();
+    await page.getByRole('button', { name: '从收藏移除' }).click();
+    assert.equal(await page.locator('#album .portrait').count(), 2);
+    await page.getByRole('button', { name: '确认移除' }).click();
+    await page.waitForFunction(() =>
+      document.querySelectorAll('#album .portrait').length === 1,
+      null, { timeout: 12000 });
+    assert.equal(await page.locator('#currentState').textContent(), '已应用');
+    assert.equal(await page.evaluate(() => localStorage.getItem('myProfile')),
+      '{"avatar":"sentinel-only"}');
 
     const geometry = await page.evaluate(() => {
       const frame = document.querySelector('.phone').getBoundingClientRect();
@@ -171,7 +201,9 @@ async function verifyPage(browser, base, width) {
     assert.ok(geometry.scrollBottom <= geometry.viewportHeight + 1, 'scroll area must fit visible phone');
     assert.deepEqual(errors, [], 'the page must not raise uncaught JavaScript errors');
     assert.deepEqual(missing, [], 'no local page asset may return 4xx');
-    return { width, result: 'PASS', uploaded: 2, pairsCreated: 1, pairUnlinked: 1, roleIsolation: true };
+    return { width, result: 'PASS', uploaded: 2, manualApply: true, pairsCreated: 1,
+      pairRenamed: true, pairSwapped: true, pairUnlinked: 1, inactivePhotoRemoved: true,
+      roleIsolation: true };
   } finally {
     await context.close();
   }
