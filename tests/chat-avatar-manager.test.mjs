@@ -61,7 +61,8 @@ test('editor routes all mutations to existing role-scoped library APIs, not new 
   assert.match(controller, /STORAGE_FAILED/);
   assert.match(controller, /PARTIAL_ROLLBACK/);
   assert.match(controller, /if \(busy\) return/);
-  assert.match(controller, /window\.confirm/);
+  assert.match(controller, /function confirmInSheet\(/);
+  assert.doesNotMatch(controller, /window\.confirm\(/);
   assert.doesNotMatch(controller, /localStorage\.setItem\(['"](?:myProfile|maomao_chat_pair_user_avatar_v1_)/);
   assert.doesNotMatch(controller, /localStorage\.setItem\(['"](?:maomao_role_avatar_library_v1_)/);
 });
@@ -92,6 +93,7 @@ test('real editor controller mounts a scoped UI and calls the existing media lib
   const added = [];
   const linked = [];
   const images = [];
+  const removedPairs = [];
   const portraits = [];
   const pairs = [];
   let rawRoles = JSON.stringify([
@@ -156,7 +158,12 @@ test('real editor controller mounts a scoped UI and calls the existing media lib
     },
     renamePair() { return { ok: true }; },
     swapPair() { return { ok: true }; },
-    unlinkPair() { return { ok: true }; },
+    unlinkPair(roleId, id) {
+      removedPairs.push({ roleId, id });
+      const at = pairs.findIndex(p => p.id === id);
+      if (at >= 0) pairs.splice(at, 1);
+      return { ok: true };
+    },
     async remove() { return { ok: true }; },
     setActive() { return { ok: true }; },
     async addAsset() { return { ok: true }; },
@@ -194,6 +201,11 @@ test('real editor controller mounts a scoped UI and calls the existing media lib
   await card[0].click();
   await card[1].click();
   assert.equal(document.getElementById('createPair').disabled, false);
+  assert.equal(card[0].getAttribute('aria-pressed'), 'true');
+  assert.equal(card[1].getAttribute('aria-pressed'), 'true');
+  // Merely selecting photos must preserve DOM nodes and not reload media URLs.
+  assert.equal(document.getElementById('album').children[0], card[0]);
+  assert.equal(document.getElementById('album').children[1], card[1]);
   await document.getElementById('createPair').click();
   assert.deepEqual(linked, [{ roleId: 'role-A', first: 'avatar_1', second: 'avatar_2' }]);
   assert.equal(document.getElementById('pairList').children.length, 1);
@@ -204,6 +216,22 @@ test('real editor controller mounts a scoped UI and calls the existing media lib
   const next = JSON.parse(rawRoles);
   assert.equal(next[0].avatarAutonomyEnabled, false);
   assert.equal(next[1].avatarAutonomyEnabled, true);
+
+  // Destructive actions require a second, in-page confirmation. Opening
+  // the action must never silently remove the previously applied pair.
+  await document.getElementById('pairList').children[0].click();
+  const actionSheet = document.getElementById('sheetActions');
+  const unlink = actionSheet.children.find(x => x.textContent.includes('解除配对'));
+  assert.ok(unlink, 'unlink action should exist for a saved pair');
+  await unlink.click();
+  assert.equal(removedPairs.length, 0, 'first tap only asks for confirmation');
+  assert.ok(actionSheet.children.find(x => x.textContent === '取消'));
+  const confirm = actionSheet.children.find(x => x.textContent === '确认解除');
+  assert.ok(confirm, 'confirmation remains inside the designed bottom sheet');
+  await confirm.click();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(removedPairs, [{ roleId: 'role-A', id: 'pair_ab' }]);
+
   assert.deepEqual(saved, ['ai_custom_characters'],
     'the editor must not write new image blobs or cross-role keys');
 });
