@@ -6,7 +6,7 @@
 
 - 唯一 QA Worker：`maomao-aw-qa-20261114`，它的 CloudDatabase Durable Object 命名空间与正式账号 Worker `mao-auth-preview` 不同。
 - QA 现有唯一超级管理员是委托导入的影子身份（只读账号审计 `identity_authority_import=1`），本地密码是不可登录占位。不能简单关闭委托认证，也不能删除或重建此记录。
-- 实际部署的 QA Service Binding 仍指向旧身份网关；网关又转发至当前 Cloudflare 账号不存在的旧 QA Worker。另有现成 `maomao-identity-core` Worker，独立空库、无账号/会话、无初始化所需的两项 Secret，workers.dev 入口已禁用。
+- 实际部署的 QA Service Binding 仍指向旧身份网关；网关又转发至当前 Cloudflare 账号不存在的旧 QA Worker。另有现成 `maomao-identity-core` Worker，独立空库、无账号/会话；初始化所需的两项 Secret 已于 2026-11-16 配置，workers.dev 入口已禁用。
 - **绝不直接把 QA 绑定到正式 `mao-auth-preview`**。不得克隆正式账号密码、session、角色记录或支付数据；不得修改正式管理员、正式路由、正式数据库或正式 Secret。
 
 ## 代码实现（#290 → #299 堆叠）
