@@ -81,7 +81,14 @@
     function recordApplied(roleId, timestamp) {
         if (!roleId) return false;
         try {
-            global.localStorage.setItem(storageKey(roleId), String(Number(timestamp) || Date.now()));
+            var key = storageKey(roleId);
+            var nextTime = Number(timestamp) || Date.now();
+            if (!isFinite(nextTime) || nextTime <= 0) return false;
+            // A stale background tab must not roll back a more recent change,
+            // which would otherwise shorten the role's autonomous cooldown.
+            var previous = Number(global.localStorage.getItem(key));
+            if (isFinite(previous) && previous > nextTime) nextTime = previous;
+            global.localStorage.setItem(key, String(nextTime));
             return true;
         } catch (error) { return false; }
     }
