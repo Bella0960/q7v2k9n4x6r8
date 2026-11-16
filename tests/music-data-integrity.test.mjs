@@ -266,3 +266,82 @@ test('MUSIC-UI-001: timeupdate stores once per 5-second bucket, while seek store
   handlers.timeupdate();
   assert.equal(writes, 3, 'invalid metadata must not write or render an invalid percentage');
 });
+
+test('MUSIC-UI-001: playlist edits keep original song IDs, fail closed and emit only committed events', () => {
+  const mapStart = music.indexOf('function musicReadMap(key)');
+  const mapEnd = music.indexOf('async function musicReleaseOldAsset(', mapStart);
+  const apiStart = music.indexOf('let musicPlaylistActiveName = null');
+  const apiEnd = music.indexOf('function musicPlaylistAction(', apiStart);
+  assert.ok(mapStart > 0 && mapEnd > mapStart && apiStart > 0 && apiEnd > apiStart);
+  const production = music.slice(mapStart, mapEnd) + '\n' +
+    music.slice(apiStart, apiEnd) + '\nwindow.MAOMAOMusicPlaylists';
+  const records = new Map();
+  const events = [];
+  let quota = false;
+  const api = runInNewContext(production, {
+    MUSIC_PLAYLISTS_KEY: 'music_playlists_v1',
+    localStorage: {
+      getItem: key => records.get(key) ?? null,
+      setItem: (key, value) => {
+        if (quota) throw new Error('QuotaExceededError');
+        records.set(key, value);
+      }
+    },
+    window: {
+      dispatchEvent: event => events.push(event.detail),
+      addEventListener() {}, removeEventListener() {}
+    },
+    CustomEvent: class {
+      constructor(type, options) { this.type = type; this.detail = options.detail; }
+    },
+    getTrackById: id => ['local_1', 'local_2'].includes(id) ? {id} : null
+  });
+  assert.equal(api.addTrack('清晨', 'local_1'), true);
+  assert.equal(api.addTrack('清晨', 'local_1'), false, 'duplicate add must not create new event');
+  assert.equal(events.length, 1);
+  assert.equal(api.addTrack('清晨', 'local_2'), true);
+  assert.equal(api.rename('清晨', '通勤'), true);
+  assert.equal(JSON.stringify(Array.from(api.getTrackIds('通勤'))), '["local_1","local_2"]');
+  assert.equal(api.addTrack('周末', 'local_1'), true);
+  const beforeCollision = records.get('music_playlists_v1');
+  const eventCount = events.length;
+  assert.throws(() => api.rename('通勤', '周末'), /同名歌单/);
+  assert.equal(records.get('music_playlists_v1'), beforeCollision);
+  assert.equal(events.length, eventCount);
+  assert.equal(api.removeTrack('通勤', 'local_1'), true);
+  assert.equal(JSON.stringify(Array.from(api.getTrackIds('通勤'))), '["local_2"]');
+  assert.equal(api.removePlaylist('通勤'), true);
+  assert.equal(api.getTrackIds('通勤'), null);
+  assert.equal(JSON.stringify(Array.from(api.getTrackIds('周末'))), '["local_1"]');
+  const beforeQuota = records.get('music_playlists_v1');
+  const countBeforeQuota = events.length;
+  quota = true;
+  assert.throws(() => api.addTrack('周末', 'local_2'), /QuotaExceededError/);
+  quota = false;
+  assert.equal(records.get('music_playlists_v1'), beforeQuota);
+  assert.equal(events.length, countBeforeQuota, 'no success event when saving fails');
+  records.set('music_playlists_v1', '{bad');
+  assert.throws(() => api.addTrack('周末', 'local_2'));
+  assert.equal(records.get('music_playlists_v1'), '{bad', 'corrupted old playlists never overwritten');
+  records.delete('music_playlists_v1');
+  assert.equal(api.addTrack('__proto__', 'local_1'), true, 'untrusted name must not mutate Object prototype');
+  assert.equal(JSON.parse(records.get('music_playlists_v1'))['__proto__'][0], 'local_1');
+  assert.ok(events.every(event => event.version === 1 && event.savedLocal === true));
+  const source = music.slice(apiStart, apiEnd);
+  assert.doesNotMatch(source, /deleteAudioBlob|clearAudioStore|removeTrackFromFav/);
+});
+
+test('MUSIC-UI-001: playlist management is hidden in the existing panel with real controls', () => {
+  assert.match(music, /id="musicPlaylistView"/);
+  assert.match(music, /id="musicPlaylistTitle"/);
+  assert.match(music, /onclick="musicPlaylistBack\(\)"/);
+  assert.match(music, /onclick="musicPlaylistRefresh\(\)"/);
+  assert.match(music, /function musicPlaylistRename\(name\)/);
+  assert.match(music, /function musicPlaylistRemoveTrack\(name, trackId\)/);
+  assert.match(music, /function musicPlaylistDelete\(name\)/);
+  assert.match(music, /className = 'music-playlist-toolbar'/);
+  assert.match(music, /className = 'music-playlist-track'/);
+  assert.match(music, /window\.confirm\('删除歌单/);
+  assert.match(music, /function musicPlaylistCommit\(data, action, name, extra\)/);
+  assert.match(music, /maomao:music:playlist-changed/);
+});
