@@ -1,5 +1,7 @@
 # MAOMAO｜唯一 QA 独立身份初始化与联通（候选方案，尚未部署）
 
+> **最新已核实状态（2026-11-16）：** Cloudflare 的 `maomao-identity-core` 已经存在 `MAO_SUPER_ADMIN_BOOTSTRAP_SECRET` 和 `DEVICE_SECRET_PEPPER` 两项 `secret_text` 绑定；值不可读，也未复制到仓库。该 Worker 当前版本 `ee8b8249-93a5-48ba-86fe-95e45a972d99` 仅为密钥配置后的版本，**不是 #299 新版代码**。原 QA 仍指向旧网关，暂未部署 #299，也未完成真实登录。两套数据库命名空间必须保持不同，不得删除或合并。
+
 ## 现状和安全边界
 
 - 唯一 QA Worker：`maomao-aw-qa-20261114`，它的 CloudDatabase Durable Object 命名空间与正式账号 Worker `mao-auth-preview` 不同。
@@ -37,10 +39,10 @@
 
 **在可执行完整私有仓库的工作环境**，检出 `integration/account-fanwai-stack-20261115`（#299），确认工作树无本地未提交改动。先运行 `npm run qa:release:check`；此命令会顺序执行 npm ci、账号专项、账号+番外整合、教程、聊天合同、PWA、Vite 构建、Chromium 安装及番外浏览器烟测，任一失败即停止，**不部署**。
 
-发布前，还必须通过 Cloudflare 管理控制台或受保护的工作环境**只在** `maomao-identity-core` 配置两项全新的、不同于正式环境的 QA-only Secret：`MAO_SUPER_ADMIN_BOOTSTRAP_SECRET` 和 `DEVICE_SECRET_PEPPER`。严禁向聊天、GitHub、日志或截图传递密钥。已通过只读 API 确认该 Worker 目前**尚未**配置这两项，绝不能跳过。
+发布前，还必须通过 Cloudflare 管理控制台或受保护的工作环境**只在** `maomao-identity-core` 配置两项全新的、不同于正式环境的 QA-only Secret：`MAO_SUPER_ADMIN_BOOTSTRAP_SECRET` 和 `DEVICE_SECRET_PEPPER`。严禁向聊天、GitHub、日志或截图传递密钥。**更新：2026-11-16 Cloudflare 只读 API 已核实这两项已配置为 Secret；禁止再次要求用户重复创建或在聊天中提供其值。** 原先“尚未配置”的结论已过期。
 
 只有上述完整测试通过，且 QA 账号/身份库只读检查通过后，才在受保护环境设置 Cloudflare 发布 Token、Account ID，并用确切 Worker 名的确认变量调用 `npm run qa:release:deploy`。脚本会再次执行所有测试、只读核对两套已有 DO namespace、唯一 active 管理员 001 和现有秘密绑定，之后**先升级现有独立身份核心、再升级现有唯一 QA**。任何不匹配直接拒绝发布。正式版/正式库不是目标。
 
 QA 首次上线后由用户进入原 QA 域名的账号初始化页，使用与正式版完全不同的 QA 密码，完成一次性初始化并重新登录；成功后需及时关闭 `MAO_QA_IDENTITY_SETUP`，并验收旧角色/聊天、账号 ID、番外剧场和手机浏览器。
 
-**当前发布状态仍是未完成**：直发入口已提交，但本对话运行环境缺少完整私有 checkout、Vite/Playwright 依赖以及核心 QA-only Secret，因此上述脚本的完整工程运行和 Cloudflare 部署**均未执行**。不能把这份脚本或隔离局部测试当作真实部署回执。
+**当前发布状态仍是未完成**：直发入口及安全门禁修补已提交，核心两项 QA-only Secret 已配置，但本对话运行环境仍缺少完整私有 checkout、Vite/Playwright 依赖，因此上述脚本的完整工程运行和 Cloudflare 部署**均未执行**。不能把这份脚本或隔离局部测试当作真实部署回执。
