@@ -217,3 +217,52 @@ test('MUSIC-UI-001: local toast exists and favorites/progress fail closed withou
   assert.equal(saveState(), false);
   assert.ok(warnings.some(message => message.includes('保存失败')));
 });
+
+test('MUSIC-UI-001: timeupdate stores once per 5-second bucket, while seek stores immediately', () => {
+  const start = music.indexOf("window.audio.addEventListener('timeupdate'");
+  const end = music.indexOf('// 点击"词"按钮切换歌词显示', start);
+  assert.ok(start >= 0 && end > start, 'production timeupdate handler must exist');
+  const seekStart = music.indexOf("window.audio.addEventListener('seeked'", end);
+  const seekEnd = music.indexOf('// 播完自动切下一首', seekStart);
+  assert.ok(seekStart >= 0 && seekEnd > seekStart, 'production seeked handler must exist');
+  const handlers = {};
+  let writes = 0;
+  const audio = {
+    currentTime: 5, duration: 100,
+    addEventListener(type, handler) { handlers[type] = handler; }
+  };
+  const elements = {
+    curTime: { textContent: '' }, totalTime: { textContent: '' },
+    progressFill: { style: {} }
+  };
+  const document = {
+    getElementById(id) { return elements[id]; },
+    querySelector() { return { style: {} }; },
+    querySelectorAll() { return []; }
+  };
+  runInNewContext(
+    "let musicLastPersistedProgressKey = ''; let currentIdx = 0;\n" +
+    music.slice(start, end) + '\n' + music.slice(seekStart, seekEnd),
+    {
+      window: { audio, lastLyricLine: -1 }, tracks: [{ id: 'local_1' }],
+      document, saveState() { writes++; }
+    }
+  );
+  assert.equal(typeof handlers.timeupdate, 'function');
+  assert.equal(typeof handlers.seeked, 'function');
+  for (let i = 0; i < 6; i++) handlers.timeupdate();
+  assert.equal(writes, 1, 'multiple timeupdate notifications within same second must not write repeatedly');
+  audio.currentTime = 6;
+  handlers.timeupdate();
+  assert.equal(writes, 1);
+  audio.currentTime = 10;
+  handlers.timeupdate();
+  assert.equal(writes, 2);
+  audio.currentTime = 12.5;
+  handlers.seeked();
+  assert.equal(writes, 3, 'seeking must persist without waiting for another five-second interval');
+  audio.duration = Infinity;
+  audio.currentTime = 15;
+  handlers.timeupdate();
+  assert.equal(writes, 3, 'invalid metadata must not write or render an invalid percentage');
+});
