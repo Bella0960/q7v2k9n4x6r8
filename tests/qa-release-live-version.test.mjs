@@ -395,3 +395,24 @@ test('Wrangler configs preserve original QA route and hide isolated core routes'
   assert.equal((source.match(/await verifyWorkerPublicRoutes\(\);/g) || []).length, 3,
     'public route gate must run before release and after each Worker upload');
 });
+
+
+test('QA release builds the Vite dist before navigation and full Node tests', () => {
+  const taskListStart = source.indexOf('const TESTS = [');
+  const taskListEnd = source.indexOf('\n];', taskListStart);
+  assert.ok(taskListStart >= 0 && taskListEnd > taskListStart,
+    'the real QA release task list must exist');
+  const tasks = source.slice(taskListStart, taskListEnd);
+  const build = tasks.indexOf("['npm', ['run', 'build']]");
+  const navigation = tasks.indexOf("['npm', ['run', 'test:pwa:navigation']]");
+  const fullNode = tasks.indexOf("['node', ['--test']]");
+  assert.ok(build >= 0 && navigation >= 0 && fullNode >= 0,
+    'Vite build, PWA navigation and full Node regression must all be included');
+  assert.ok(build < navigation,
+    'navigation reads dist/index.html and dist/pwa-pages.json; build must run first');
+  assert.ok(build < fullNode,
+    'full Node tests may also consume Vite output, so build must run first');
+  const pwaTest = readFileSync(new URL('./pwa-navigation-cache.test.mjs', import.meta.url), 'utf8');
+  assert.match(pwaTest, /read\('dist\/index\.html'\)/);
+  assert.match(pwaTest, /read\('dist\/pwa-pages\.json'\)/);
+});
