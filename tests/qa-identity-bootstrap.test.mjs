@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { qaIsolatedSetupEnabled, resolveQaAuthorityFounderId, initializeIsolatedQaAuthority } from '../worker/lib/qa-identity-bootstrap.js';
+import { qaIsolatedSetupEnabled, isolatedQaAuthorityFounderId, resolveQaAuthorityFounderId, initializeIsolatedQaAuthority } from '../worker/lib/qa-identity-bootstrap.js';
 
 const F = 'MAO-SYNTHFOUNDER001';
 const SECRET = 's'.repeat(40);
 const shadow = { id: F, username: 'qaowner001', role: 'super_admin', status: 'active' };
 const request = (overrides={}) => new Request('https://qa.test/api/admin/bootstrap', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({bootstrapSecret:SECRET,username:shadow.username,password:'qa-only-password-123',confirmPassword:'qa-only-password-123',...overrides})});
-const goodStatus = () => Response.json({ok:true,identityMode:'local',initialized:false,configured:true,bootstrapAllowed:true});
+const goodStatus = () => Response.json({ok:true,identityMode:'local',initialized:false,configured:true,bootstrapAllowed:true,qaIsolatedAuthority:true,qaExpectedFounderId:F});
 const goodCreate = () => Response.json({ok:true,account:{...shadow,founderNumber:'001'}},{headers:{'set-cookie':'MAO_SESSION=qa-secret-cookie; HttpOnly; Secure; SameSite=Lax'}});
 function fixture(overrides={}) {
  const calls=[];
@@ -18,6 +18,7 @@ test('existing normal bootstrap ID behavior is unchanged without QA config',()=>
 });
 test('isolated identity core may reserve the exact founder ID only with explicit QA config',()=>{
  const env={MAO_QA_ISOLATED_IDENTITY_CORE:'true',MAO_QA_FOUNDER_ID:F};
+ assert.equal(isolatedQaAuthorityFounderId(env), F);
  assert.equal(resolveQaAuthorityFounderId(env,()=>{throw Error('must not generate')}), F);
  for(const bad of [
   {MAO_QA_FOUNDER_ID:F},
@@ -76,6 +77,8 @@ test('initialized, unconfigured, foreign or malformed authority refuses without 
   {ok:true,identityMode:'delegated',initialized:false,configured:true,bootstrapAllowed:true},
   {ok:true,identityMode:'local',initialized:false,configured:false,bootstrapAllowed:true},
   {ok:true,identityMode:'local',initialized:false,configured:true,bootstrapAllowed:false},
+  {ok:true,identityMode:'local',initialized:false,configured:true,bootstrapAllowed:true},
+  {ok:true,identityMode:'local',initialized:false,configured:true,bootstrapAllowed:true,qaIsolatedAuthority:true,qaExpectedFounderId:'MAO-WRONG123456789'},
   {ok:false}
  ];
  for(const status of statuses){
