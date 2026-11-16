@@ -146,6 +146,41 @@ async function liveWorkerVersion(name) {
   return { versionId, source: String(latest.source || '') };
 }
 
+async function qaHttpSmoke(coreInitialized) {
+  // Check the exact URL used by the owner, not merely Cloudflare metadata.
+  // These requests are anonymous, read-only, and never transmit credentials.
+  const origin = 'https://maomao-aw-qa-20261114.miamor520000.workers.dev';
+  const [statusResponse, loginResponse] = await Promise.all([
+    fetch(origin + '/api/admin/bootstrap/status', {
+      method: 'GET', redirect: 'manual', cache: 'no-store',
+      headers: { accept: 'application/json' },
+      signal: AbortSignal.timeout(15000)
+    }),
+    fetch(origin + '/account/index.html', {
+      method: 'GET', redirect: 'manual', cache: 'no-store',
+      signal: AbortSignal.timeout(15000)
+    })
+  ]);
+  assert.equal(statusResponse.status, 200, 'QA status endpoint did not return HTTP 200');
+  const status = await statusResponse.json();
+  assert.equal(status?.ok, true, 'QA status endpoint did not confirm success');
+  assert.equal(status.identityMode, 'delegated', 'QA account mode mismatch');
+  assert.equal(status.identityAuthorityConnected, true, 'QA core is not reachable');
+  assert.equal(status.identityAuthorityInitialized, coreInitialized,
+    'QA identity initialization did not match the pre-deployment DB check');
+  assert.equal(status.initialized, coreInitialized, 'QA bootstrap status is inconsistent');
+  assert.equal(status.configured, true, 'QA identity core did not report ready configuration');
+  assert.equal(status.signInReady, coreInitialized,
+    'QA login readiness does not match the initialized identity core');
+  assert.equal(status.qaSetupAllowed, !coreInitialized,
+    'QA one-time setup state does not match the identity core');
+  assert.equal(loginResponse.status, 200, 'QA login document did not return HTTP 200');
+  const loginHtml = await loginResponse.text();
+  assert.ok(/<form\\b[^>]*\\bid=["']loginForm["']/i.test(loginHtml),
+    'The existing QA login form is missing from the served HTML');
+  console.log('QA status endpoint and login HTML verified on the original workers.dev URL.');
+}
+
 async function cloudflarePreflight() {
   const [qa, core] = await Promise.all([
     cloudflare('/workers/scripts/' + QA + '/settings'),
@@ -166,6 +201,7 @@ async function cloudflarePreflight() {
   const currentService = binding(qa, 'MAO_IDENTITY_AUTHORITY')?.service;
   assert.ok([CORE, 'maomao-001-identity-gateway-20261114'].includes(currentService),
     'Unexpected identity service binding');
+  let coreInitialized = null;
   for (const [name, namespace, object] of [
     [QA, QA_DB, QA_DO], [CORE, CORE_DB, CORE_DO]
   ]) {
@@ -189,10 +225,13 @@ async function cloudflarePreflight() {
       // one-time setup switch instead of silently re-opening that route.
       assert.equal(qaSetupState, total === 0 ? QA_SETUP_OPEN : QA_SETUP_CLOSED,
         'QA bootstrap lifecycle mismatch: close setup after the founder is initialized');
+      coreInitialized = total === 1;
     }
     console.log('Read-only verified ' + name + ': accounts=' + total +
       ', founder matches=' + matches + ', active admins=' + admins);
   }
+  assert.equal(typeof coreInitialized, 'boolean', 'Cannot verify QA identity core state');
+  return { coreInitialized };
 }
 
 async function main() {
@@ -208,7 +247,7 @@ async function main() {
   }
   assert.equal(process.env.MAOMAO_QA_DEPLOY_CONFIRM, QA,
     'Set MAOMAO_QA_DEPLOY_CONFIRM to the exact existing QA Worker name');
-  await cloudflarePreflight();
+  const { coreInitialized } = await cloudflarePreflight();
   const corePrevious = await liveWorkerVersion(CORE);
   const qaPrevious = await liveWorkerVersion(QA);
   assertLatestGitHead();
@@ -245,6 +284,7 @@ async function main() {
   assert.equal(qaBinding('MAO_QA_AUTHORITY_WORKER')?.text, CORE);
   assert.equal(qaBinding('MAO_QA_IDENTITY_SETUP')?.text,
     JSON.parse(readFileSync('wrangler.qa.jsonc', 'utf8')).vars?.MAO_QA_IDENTITY_SETUP);
+  await qaHttpSmoke(coreInitialized);
   console.log('Cloudflare active QA identity core version: ' + coreVersion.versionId);
   console.log('Cloudflare active QA Worker version: ' + qaVersion.versionId);
   console.log('QA deployed to the EXISTING Worker. Test bootstrap/login and disable one-time setup.');
