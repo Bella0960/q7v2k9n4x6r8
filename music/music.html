@@ -2140,8 +2140,10 @@
   function musicLocalReconcile(catalog, editedId, hidden) {
     var active = tracks[currentIdx], activeId = active && active.id;
     var activeHidden = !!(hidden && activeId === editedId);
+    // 不论目标是否当前曲目：隐藏前使所有异步 playTrack 请求失效，
+    // 防止旧请求完成时把已移出曲目写回 currentIdx = -1。
+    if (hidden) ++playbackRevision;
     if (activeHidden) {
-      ++playbackRevision; // 取消并发中的音频加载回调
       window.audio.pause();
       playing = false;
       musicEmitPlayback('pause'); // 在撤销曲目之前发出真实暂停事件
