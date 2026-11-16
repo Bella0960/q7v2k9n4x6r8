@@ -181,7 +181,7 @@
         window.location.replace('/account/index.html?disabled=1');
         return;
       }
-      if (error.status === 401 || error.status === 403 || error.code === 'ADMIN_ONLY') {
+      if (error.status === 401 && error.code === 'ACCOUNT_SESSION_REQUIRED') {
         window.location.replace('/account/index.html?admin=1');
         return;
       }
@@ -527,7 +527,7 @@
         window.location.replace('/account/index.html?disabled=1');
         return;
       }
-      if (error.status === 401 || error.status === 403 || error.code === 'ADMIN_ONLY') {
+      if (error.status === 401 && error.code === 'ACCOUNT_SESSION_REQUIRED') {
         window.location.replace('/account/index.html?admin=1');
         return;
       }
@@ -722,7 +722,7 @@
         window.location.replace('/account/index.html?disabled=1');
         return;
       }
-      if (error.status === 401 || error.status === 403 || error.code === 'ADMIN_ONLY') {
+      if (error.status === 401 && error.code === 'ACCOUNT_SESSION_REQUIRED') {
         window.location.replace('/account/index.html?admin=1');
         return;
       }
@@ -855,7 +855,7 @@
         window.location.replace('/account/index.html?disabled=1');
         return;
       }
-      if (error.status === 401 || error.status === 403 || error.code === 'ADMIN_ONLY') {
+      if (error.status === 401 && error.code === 'ACCOUNT_SESSION_REQUIRED') {
         window.location.replace('/account/index.html?admin=1');
         return;
       }
@@ -1076,7 +1076,7 @@
         window.location.replace('/account/index.html?disabled=1');
         return;
       }
-      if (error.status === 401 || error.status === 403 || error.code === 'ADMIN_ONLY') {
+      if (error.status === 401 && error.code === 'ACCOUNT_SESSION_REQUIRED') {
         window.location.replace('/account/index.html?admin=1');
         return;
       }
