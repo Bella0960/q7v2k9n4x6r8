@@ -278,7 +278,12 @@
       var assetId = String(role.avatarAssetId || '');
       var added = /^as_[A-Z2-7]{32}$/.test(assetId)
         ? await lib.addAsset(roleId, assetId, { source: 'legacy', label: '原头像' })
-        : await lib.add(roleId, role.avatar, { source: 'legacy', label: '原头像' });
+        : null;
+      // A legacy avatar may keep a stale media reference after an old
+      // partial backup. The original DataURL is a safe read-only fallback.
+      if ((!added || !added.ok) && /^data:image\//i.test(String(role.avatar || ''))) {
+        added = await lib.add(roleId, role.avatar, { source: 'legacy', label: '原头像' });
+      }
       if (!added || !added.ok) return added;
       return lib.setActive(roleId, added.value.id);
     }, '已将原头像收录至收藏。');
@@ -399,9 +404,11 @@
     }
     setBusy(true);
     var count = 0;
+    var failed = false;
     try {
       for (var file of files) {
         if (!file.type.startsWith('image/') || file.size > 12 * 1024 * 1024) {
+          failed = true;
           hint('请选择小于 12MB 的图片文件。', true);
           break;
         }
@@ -411,13 +418,16 @@
           source: 'upload'
         });
         if (!result || !result.ok) {
+          failed = true;
           hint(errorText(result, '照片未能保存，已成功保存的其他照片仍在收藏中。'), true);
           break;
         }
         count++;
       }
       await render();
-      if (count > 0) hint('已保存 ' + count + ' 张照片到 TA 的专属收藏。');
+      if (count > 0) hint(failed
+        ? '已保存 ' + count + ' 张照片，其余照片未成功保存，请检查提示。'
+        : '已保存 ' + count + ' 张照片到 TA 的专属收藏。', failed);
     } catch (_) {
       hint('上传被中断，请检查已保存的收藏。', true);
     } finally {
