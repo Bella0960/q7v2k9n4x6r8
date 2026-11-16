@@ -165,6 +165,8 @@ async function qaHttpSmoke(coreInitialized) {
   const status = await statusResponse.json();
   assert.equal(status?.ok, true, 'QA status endpoint did not confirm success');
   assert.equal(status.identityMode, 'delegated', 'QA account mode mismatch');
+  assert.equal(status.qaIdentityCore, true,
+    'QA login page is not linked to the isolated identity core');
   assert.equal(status.identityAuthorityConnected, true, 'QA core is not reachable');
   assert.equal(status.identityAuthorityInitialized, coreInitialized,
     'QA identity initialization did not match the pre-deployment DB check');
