@@ -148,3 +148,11 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **真实代码**：`shared/js/phone/group-game-session.js`（群主授权角色主持、玩家身份和主持上下文隔离、仅所有玩家投票后角色主持人可揭晓、群主优先权限）；`shared/js/phone/group-game-panel.js`（简洁主持人下拉、自动排除主持人抽坏人）；`chat/chat/chat-detail.html`（开局及全票后优先选主持人、隐藏揭晓标记、经过消息保存成功后才触发结果及记忆）；`shared/js/phone/group-game-chat-receipts.js`（公开结果保存主持人标识/历史名字）、`shared/js/phone/group-memory-events.js`（保存核验后的公开主持人经历）；`tests/group-game-boundary.test.mjs`、`tests/group-game-chat-receipts.test.mjs`（主持权限与隐私回归）；`sw.js`（v225）。
 - **执行证据**：隔离 V8 通过以分支准确源码执行的 Node 风格测试主体，覆盖主持人无身份牌、无投票权限、非授权揭晓受阻、全票后结算、群主接管、保存后副作用、结果卡昵称变更和公开记忆。测试结果依最终本轮日志的回归数为准。**原生 Node runner、Vite、Playwright、手机/唯一 QA 未运行（NOT RUN）**，不依赖 GitHub Actions。
 - **安全/兼容**：身份牌与主持人上下文仍按 session/role 隔离；原群消息、原角色数据、钱包和管理员 001 未修改。自动结算写入原历史后的逻辑仍需真实浏览器动态验证；若群聊写入失败，原游戏结果可由群主设置入口重试补发。保留 Draft，不合并或部署。
+
+## 2026-11-17｜群聊第一批 QA 前的秘密私聊保护
+
+- **原分支**：继续 PR #298，不新建 PR，不更新 #299、main 或正式版。模块修复提交 `e3cf3c55`，回归用例提交 `d3cd4f38`。
+- **真实发现**：游戏私聊 `read()` 无法区分缺少键与 JSON 损坏；此前 `sendWhisper` 可能把损坏的收件箱当作空数组写回，造成已有私聊数据覆盖；AI/主持人读取也可能把损坏私聊误认为没有消息。
+- **改动**：原 `GroupGameSessions` 新增只读、失败关闭的 `readInbox`，用于角色游戏上下文、私聊发送、群主收件箱及群主与单角色会话。缺少键仍返回空数组；存在但损坏/不可读的键返回 `CORRUPT_INBOX` 或 `STORAGE_UNAVAILABLE`，不写入、不给模型伪造无私聊的上下文。 `tests/group-game-boundary.test.mjs` 增加损坏 JSON、读取抛错、原始内容保留、角色/群主信息隔离用例。
+- **核对方式**：已从 GitHub 读回最新源码与 PR HEAD，确认代码/测试已写入同一个 Draft 分支；未获得本会话完整仓库工作树，**NOT RUN**：真实 Node 新用例、`npm run test:group:governance`、群 UI/E2E、`npm run test:chat:contract`、`npm run build`、Chromium、Android/iPhone。
+- **QA 整合阻塞**：目前原唯一 QA 整合分支 `integration/account-fanwai-stack-20261115` 不含 `shared/js/phone/group-game-session.js` 及 `tests/group-game-boundary.test.mjs`；#298 与 QA 分支历史明显分叉，不可整页覆盖其账号/PWA 安全代码。应只由唯一 QA 整合负责人按文件/逻辑移植，并先运行完整原生 Node、Vite、浏览器门禁，再通过既有 `scripts/qa-direct-release.mjs --qa-only` 发布到唯一 QA Worker。绝不直接发布 main/正式版。
