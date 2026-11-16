@@ -163,3 +163,11 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **准确提交**：`639d4d4c` 在 `shared/js/phone/group-game-session.js` 的旧票读取层拒绝自投票与空/非正的时间戳；`a76f5f82` 在 `tests/group-game-boundary.test.mjs` 添加异常自投票、阻断继续投票/揭晓、原数据保留、群主安全取消、异常时间戳等回归。不改变合法选票格式或历史。
 - **本会话真实执行**：直接用 GitHub PR #298 最新源码在隔离 V8 中先执行 **6/6** 私聊保护行为检查，再执行 **12/12** 验票与正常揭晓针对性检查；额外读取完整 `tests/group-game-boundary.test.mjs` 及其 9 份源码依赖，用 V8 兼容 `node:test`/`assert`/`vm` 夹具实际跑该文件 **33/33** 用例（包括新增两例），全部通过。**这些数字不是原生 Node runner，不是完整工程、浏览器/真机验收。**
 - **QA 继续门禁**：从本 PR 最新 SHA 继续在现有 #299 分支安全移植并复跑原生 `npm run test:group:governance`、群 UI/邀请 E2E、`test:chat:contract`、`npm run build`、浏览器 375/390/430；通过后再经现有 `scripts/qa-direct-release.mjs --qa-only` 更新唯一 `preview.mao520.com`。现阶段**没有**声称群聊已在 QA 或正式版上线，#298 保持 Draft。
+
+## 2026-11-17｜群聊交付收口 · 七套原测试 82/82
+
+- **本轮目标**：用户明确要求尽快达到可宣布完整交付的程度。先冻结新增游戏种类，仅优先消除群聊现有功能的安全、正确性、整合与验收阻塞。
+- **准确测试材料**：从 PR #298 当前 GitHub 分支读取七份原 `tests/*.test.mjs` 测试主体及其运行所需的准确源码，在独立 V8 中以兼容 `node:test` / `assert` / `vm` / `fs` 的受控加载夹具逐一执行：`group-game-boundary` 33/33、`group-governance` 8/8、`group-social-settings-contract` 5/5、`group-game-chat-receipts` 10/10、`group-turn-effects` 8/8、`group-turn-integration` 9/9、`group-private-receipt-recovery` 9/9；**合计 82/82**，涵盖本轮私聊收件箱损坏防覆盖与无效自投票修复。此前额外 6+12 条直接源码诊断检查属于重叠专项，不并入 82 计数。
+- **证据严格区分**：这是原测试主体经隔离 V8 shim 执行，不是整仓 Node.js `npm run test:group:governance`、不是 `npm ci`、Vite、Playwright 或 Android/iPhone 真机。前期单项 V8 shim 的 `console` / `load` 桥缺失曾造成模拟测试错误，修正执行夹具后原七套均通过；不能将夹具错误当作生产功能失败。
+- **仍未关门**：QA 唯一整合 PR #299 目前尚未装入 #298 群游戏源码，且与其代码历史分叉；同名 `chat-detail.html` / `sw.js` 有账号安全与其他并行成果，禁止无脑整页替换。没有完整 Codespaces checkout 和 QA 发布令牌的本会话，不能自行宣称完成原生 Node / Vite / Chromium / 真机/现网。真人云端群、云端离线主动群聊、钱包群红包的服务端跨设备事务、其他未实现游戏均不属于本批可宣布交付的已实现功能。
+- **严格放行路径**：唯一 QA 集成负责人从 #298 取最新源码，仅对 #299 实际增量合并，先执行 `npm run test:group:governance`、`npm run test:group:ui`、`npm run test:group:invite-e2e`、`npm run test:chat:contract`、`npm run build`，然后完整 `npm run qa:release:check` 与 375/390/430 Chromium。群管理权限越权、群主/角色主持、私聊秘密隔离、保存失败、旧群历史、游戏结果重复刷新、PWA 缓存及账号隔离通过后，才经现有 QA-only 发布门禁在原 Worker 更新唯一 https://preview.mao520.com，手机验收后再宣布「本批群聊交付完成」。不自动发布正式版。
