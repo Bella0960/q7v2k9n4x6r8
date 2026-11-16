@@ -117,9 +117,24 @@ try {
       scrollWidth:document.documentElement.scrollWidth,
       viewportWidth:document.documentElement.clientWidth,
       actionHeight:document.querySelector('#likeButton')?.getBoundingClientRect().height,
-      swapHeight:document.querySelector('#swapButton')?.getBoundingClientRect().height
+      swapHeight:document.querySelector('#swapButton')?.getBoundingClientRect().height,
+      statusDisplay:getComputedStyle(document.querySelector('.status-bar')).display,
+      menuRight:document.querySelector('#moreButton').getBoundingClientRect().right,
+      savedRight:document.querySelector('#savedButton').getBoundingClientRect().right,
+      cardBottom:document.querySelector('#frontCard').getBoundingClientRect().bottom,
+      buttonsTop:document.querySelector('.buttons').getBoundingClientRect().top,
+      buttonsBottom:document.querySelector('.buttons').getBoundingClientRect().bottom,
+      footerBottom:document.querySelector('.bottom-copy').getBoundingClientRect().bottom,
+      viewportHeight:window.innerHeight
     }));
     assert.ok(ui.scrollWidth <= ui.viewportWidth+1,'整页不能出现横向溢出');
+    assert.equal(ui.statusDisplay,'none','手机端不能叠加绘制第二套状态栏');
+    assert.ok(ui.menuRight <= ui.viewportWidth-12,'右上角设置菜单必须留在安全横向边距内');
+    assert.ok(ui.savedRight <= ui.viewportWidth-12,'收藏计数不能靠屏幕边缘或溢出');
+    assert.ok(ui.buttonsTop >= ui.cardBottom && ui.buttonsTop-ui.cardBottom <= 40,
+      '人物卡下方与 PASS/收藏按钮之间不应出现大块空白');
+    assert.ok(ui.buttonsBottom <= ui.viewportHeight-32,'操作按钮不能被系统底部导航遮挡');
+    assert.ok(ui.footerBottom <= ui.viewportHeight-8,'切换候选与卡片序号不能超出手机可视区');
     assert.ok(ui.actionHeight >= 44,'主要操作按钮须有移动端可触及面积');
     assert.ok(ui.swapHeight >= 30,'双卡切换应有可触及区域');
     await page.screenshot({path:resolve(artifacts, 'encounter-' + viewport.width + '.png')});
