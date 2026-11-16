@@ -468,7 +468,7 @@ function openAvatarLibraryUpload() {
 async function selectRoleAvatarFromLibrary(avatarId) {
     const roleId = String(currentProfileRoleId || '');
     const library = window.RoleAvatarLibrary;
-    if (!roleId || !library) return;
+    if (!roleId || !library || typeof library.applyToCharacter !== 'function') return;
     const item = library.find(roleId, avatarId);
     if (!item) {
         setAvatarLibraryStatus('这张头像不属于当前角色，未进行更改。', 'error');
@@ -476,38 +476,29 @@ async function selectRoleAvatarFromLibrary(avatarId) {
     }
 
     setAvatarLibraryStatus('正在切换当前头像…', 'info');
-    const resolved = await library.toDataUrl(item.assetId);
-    if (!resolved || !resolved.ok || typeof resolved.value !== 'string') {
-        setAvatarLibraryStatus('图片暂时无法读取，原头像没有变化。', 'error');
+    // Reuse the library's snapshot/rollback and deletion protection instead
+    // of writing ai_custom_characters and activeId separately on this page.
+    const result = await library.applyToCharacter(roleId, item.id, {
+        isCurrent: function () {
+            return String(currentProfileRoleId || '') === roleId;
+        }
+    });
+    // The user may have opened another role while IndexedDB was loading.
+    if (String(currentProfileRoleId || '') !== roleId) return;
+    if (!result || !result.ok) {
+        const code = result && result.error && result.error.code;
+        const message = code === 'PARTIAL_ROLLBACK'
+            ? '保存未完全恢复，请检查当前头像标记。'
+            : code === 'STALE_SELECTION'
+                ? '角色资料或收藏已更新，原头像未被覆盖。请刷新后重试。'
+                : code === 'ROLE_DELETED'
+                    ? '角色已被删除，不能继续修改头像。'
+                    : code === 'DB_UNAVAILABLE'
+                        ? '图片暂时无法读取，原头像没有变化。'
+                        : '头像保存失败，原有资料未更改。请检查浏览器存储空间。';
+        setAvatarLibraryStatus(message, 'error');
         return;
     }
-
-    const roles = loadRoles();
-    const target = roles.find(function (role) { return String(role.id) === roleId; });
-    if (!target) {
-        setAvatarLibraryStatus('找不到当前角色，原头像没有变化。', 'error');
-        return;
-    }
-
-    const previousAvatar = target.avatar || '';
-    const previousAssetId = target.avatarAssetId || '';
-    const previousActive = library.getActive(roleId);
-    const activated = library.setActive(roleId, item.id);
-    if (!activated.ok) {
-        setAvatarLibraryStatus('当前头像标记保存失败，未更改角色资料。', 'error');
-        return;
-    }
-
-    target.avatar = resolved.value;
-    target.avatarAssetId = item.assetId;
-    if (!saveRoles(roles)) {
-        target.avatar = previousAvatar;
-        target.avatarAssetId = previousAssetId;
-        library.setActive(roleId, previousActive ? previousActive.id : '');
-        setAvatarLibraryStatus('保存失败，已恢复原头像。请检查浏览器存储空间。', 'error');
-        return;
-    }
-
     renderRoleProfile();
     setAvatarLibraryStatus('已设为当前头像。聊天列表与角色资料会读取这份角色头像。', 'success');
 }
