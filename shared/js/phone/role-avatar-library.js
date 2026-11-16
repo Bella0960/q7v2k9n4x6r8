@@ -1110,8 +1110,11 @@
                 }
                 try {
                     global.localStorage.removeItem(storageKey(roleId));
+                    // A deleted role must never leave a chat-scoped user photo
+                    // assignment that could reappear if its ID is reimported.
+                    global.localStorage.removeItem(chatPairKey(roleId));
                 } catch (error) {
-                    return failure('STORAGE_FAILED', 'role avatar metadata could not be cleared; retry cleanup');
+                    return failure('STORAGE_FAILED', 'role portrait metadata or chat assignment could not be cleared; retry cleanup');
                 }
                 if (!markRoleDeletionComplete(roleId)) {
                     return failure('STORAGE_FAILED', 'role media references were released, but deletion completion could not be saved; retry cleanup');
