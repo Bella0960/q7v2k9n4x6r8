@@ -689,58 +689,66 @@ html.dark .phone-mockup { border-color: rgba(255, 255, 255, 0.08); }
 }
 .model-item:active { background: var(--line); transform: scale(0.98); }
 
-/* Settings home only. The API panel keeps its own header and form spacing. */
+/* Settings home only: compact header and menu density.
+   Native OS status bar is untouched; hide this page's simulated status strip. */
+.phone-mockup > .status-bar { display: none !important; }
+
 .phone-mockup > .header,
 .phone-mockup > .content {
     --settings-gutter: clamp(16px, 5.2vw, 22px);
     --settings-row-inset: 16px;
     --settings-icon-size: 30px;
-    --settings-row-gap: 14px;
+    --settings-row-gap: 12px;
 }
 
 .phone-mockup > .header {
     flex: none;
-    padding: 42px var(--settings-gutter) 22px;
+    align-items: center;
+    padding: max(12px, env(safe-area-inset-top, 0px)) var(--settings-gutter) 12px;
+    min-height: 56px;
 }
 
 .phone-mockup > .header .header-left {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
 }
 
 .phone-mockup > .header .back-btn {
-    width: 44px;
-    height: 44px;
-    margin-inline-start: -12px;
+    width: 34px;
+    height: 38px;
+    margin-inline-start: -4px;
 }
 
 .phone-mockup > .header .header-title {
-    font-size: 38px;
-    line-height: 1.08;
+    font-size: 29px;
+    line-height: 1.2;
+    font-weight: 750;
+    letter-spacing: -.45px;
 }
 
 .phone-mockup > .content {
     min-height: 0;
-    padding: 0 var(--settings-gutter) max(28px, env(safe-area-inset-bottom));
+    padding: 0 var(--settings-gutter) max(20px, env(safe-area-inset-bottom));
 }
 
 .phone-mockup > .content .group-title {
-    padding: 0 4px 8px;
+    padding: 9px 4px 6px;
     line-height: 1.4;
     flex: none;
 }
 
 .phone-mockup > .content .card {
     flex: none;
-    padding: 3px 0;
-    margin-bottom: 20px;
+    padding: 2px 0;
+    margin-bottom: 10px;
 }
 
 .phone-mockup > .content .menu-row {
     position: relative;
     gap: var(--settings-row-gap);
-    padding: 13px var(--settings-row-inset);
+    padding: 10px var(--settings-row-inset);
     border-bottom: 0;
 }
 
@@ -751,7 +759,7 @@ html.dark .phone-mockup { border-color: rgba(255, 255, 255, 0.08); }
     bottom: 0;
     height: 1px;
     background-color: var(--line);
-    opacity: 0.6;
+    opacity: .55;
     pointer-events: none;
 }
 
@@ -768,21 +776,13 @@ html.dark .phone-mockup { border-color: rgba(255, 255, 255, 0.08); }
 
 .phone-mockup > .content .t-en { margin-left: 0; }
 .phone-mockup > .content .menu-arrow { width: 12px; text-align: end; }
+.phone-mockup > .content .user-row { padding-block: 11px; }
 
-.phone-mockup > .content .user-row {
-    padding-block: 16px;
-}
-
-.phone-mockup > .content .avatar {
-    width: 50px;
-    height: 50px;
-}
-
+.phone-mockup > .content .avatar { width: 46px; height: 46px; }
 .phone-mockup > .content .menu-info {
     gap: 4px;
     overflow-wrap: anywhere;
 }
-
 .phone-mockup > .content .menu-info .menu-title {
     font-size: 16px;
     font-weight: 600;
