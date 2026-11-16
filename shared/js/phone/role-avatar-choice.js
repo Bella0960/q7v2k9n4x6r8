@@ -24,10 +24,10 @@
         // A direct "do not change" instruction always beats spontaneous selection.
         // Negative requests take priority over any selection plan, including
         // explicit commands in the same turn. A direct "不换头像" is a veto.
-        if (/(?:不要|别|不许|不准|禁止|先不|暂不|不用|不想|不需要|no\\s+avatar\\s+change|don't\\s+change|do\\s+not\\s+change)[^。！？!?]{0,18}(?:换|选|挑|更改|头像|avatar)|(?:不换|不改|不动)[^。！？!?]{0,12}(?:头像|avatar)/i.test(text)) return empty;
+        if (/(?:不要|别|不许|不准|禁止|先不|暂不|不用|不想|不需要|no\s+avatar\s+change|don't\s+change|do\s+not\s+change)[^。！？!?]{0,18}(?:换|选|挑|更改|头像|avatar)|(?:不换|不改|不动)[^。！？!?]{0,12}(?:头像|avatar)/i.test(text)) return empty;
         // Intentional role-avatar commands override the weekly automatic
         // cooldown. The user's own profile photo is never changed here.
-        var explicit = /(?:你|自己|自主|随便|自选)[^。！？!?]{0,14}(?:换|选|挑|设|用)[^。！？!?]{0,14}(?:头像|avatar)|(?:头像|avatar)[^。！？!?]{0,12}(?:你|自己|自主|随便)(?:选|挑|换)?|(?:^|[，,。！？!?；;\\s])(?:请|麻烦|现在|直接|先|帮我|给你)?(?:换|挑|选|更换)(?:个|张|一下|一张|一个|新|别的|其他){0,3}头像(?:吧|呀|呢|噢|好不好)?(?=$|[，,。！？!?；;\\s])|把你(?:的)?头像(?:换|改|设成)/i.test(text);
+        var explicit = /(?:你|自己|自主|随便|自选)[^。！？!?]{0,14}(?:换|选|挑|设|用)[^。！？!?]{0,14}(?:头像|avatar)|(?:头像|avatar)[^。！？!?]{0,12}(?:你|自己|自主|随便)(?:选|挑|换)?|(?:^|[，,。！？!?；;\s])(?:请|麻烦|现在|直接|先|帮我|给你)?(?:换|挑|选|更换)(?:个|张|一下|一张|一个|新|别的|其他){0,3}头像(?:吧|呀|呢|噢|好不好)?(?=$|[，,。！？!?；;\s])|把你(?:的)?头像(?:换|改|设成)/i.test(text);
         var items;
         try { items = library.list(roleId); } catch (error) { return empty; }
         if (!Array.isArray(items) || items.length < 2) return empty;
