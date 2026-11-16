@@ -209,9 +209,26 @@ async function qaHttpSmoke(coreInitialized) {
   const loginHtml = await loginResponse.text();
   assert.ok(/<form\b[^>]*\bid=["']loginForm["']/i.test(loginHtml),
     'The existing QA login form is missing from the served HTML');
-  assert.ok(loginHtml.includes('/account/account.js?v=20261116-qa1') &&
-    loginHtml.includes('/account/ivory-entry.css?v=20261116-qa1'),
-    'QA login HTML is still referencing cached older JavaScript or CSS');
+  assert.ok(loginHtml.includes('/account/account.js?v=20261116-qa1'),
+    'QA login HTML is still referencing cached older JavaScript');
+  // Vite may fingerprint or merge stylesheets. Verify what the login HTML
+  // actually loads rather than requiring the pre-build CSS href to survive.
+  const cssRefs = [...loginHtml.matchAll(
+    /<link\\b(?=[^>]*\\brel=["']stylesheet["'])[^>]*\\bhref=["']([^"']+)["'][^>]*>/gi
+  )].map(match => match[1]);
+  assert.ok(cssRefs.length > 0, 'QA login HTML does not load a stylesheet');
+  const renderedCss = await Promise.all(cssRefs.map(async href => {
+    const url = new URL(href, origin + '/account/index.html');
+    assert.equal(url.origin, origin, 'QA login stylesheet must be same-origin');
+    assert.ok(url.pathname.toLowerCase().endsWith('.css'),
+      'QA login stylesheet URL is not CSS');
+    const response = await fetch(url.href, {
+      method: 'GET', redirect: 'manual', cache: 'no-store',
+      signal: AbortSignal.timeout(15000)
+    });
+    assert.equal(response.status, 200, 'QA linked stylesheet did not return HTTP 200');
+    return response.text();
+  }));
   for (const [response, label] of [
     [loginJsResponse, 'QA login JavaScript'],
     [loginCssResponse, 'QA login stylesheet'],
@@ -227,7 +244,9 @@ async function qaHttpSmoke(coreInitialized) {
   assert.ok(loginJs.includes("subtitle.classList.toggle('qa-login-hint'"),
     'QA-only password warning JavaScript is stale or missing');
   assert.ok(loginCss.includes('#loginPanel>.lead.qa-login-hint'),
-    'QA-only password warning is still hidden in the deployed CSS');
+    'QA login source stylesheet is stale or missing');
+  assert.ok(renderedCss.some(css => css.includes('qa-login-hint')),
+    'QA login HTML does not actually load the password warning style');
   assert.ok(bootstrapHtml.includes('id="bootstrapUsernameLabel"') &&
     bootstrapHtml.includes('./bootstrap.js?v=20261116-qa1'),
     'QA founder setup form or versioned script is stale or missing');
