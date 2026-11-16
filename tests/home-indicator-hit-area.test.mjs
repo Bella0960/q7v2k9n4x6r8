@@ -215,9 +215,10 @@ async function runViewport(browser, baseUrl, viewport) {
     };
     const nav = (p) => rect(document.querySelector(`.nav-item[data-page="${p}"]`));
     const bar = document.querySelector('button.maomao-global-home-indicator');
-    let firstPost = null;
-    const post = document.querySelector('.post[data-post]');
-    if (post) firstPost = post.dataset.post;
+    // A single seeded post is promoted to the featured card and removed from
+    // .post-list. Accept both real feed entry types before testing its detail.
+    const post = document.querySelector('.post[data-post], .featured[data-post]');
+    const firstPost = post ? post.dataset.post : null;
     return { discover: nav('discover'), notice: nav('notice'), home: nav('home'), bar: rect(bar), firstPost, barPointerEvents: getComputedStyle(bar).pointerEvents };
   });
   const discoverStack = await hitStack(page, forumGeom.discover.cx, forumGeom.discover.cy);
@@ -281,8 +282,9 @@ async function runViewport(browser, baseUrl, viewport) {
 
   // ---------- 4. 论坛评论输入框 ----------
   const postId = forumGeom.firstPost;
-  if (postId) {
-    await openPage(`${baseUrl}/forum/forum-detail.html?id=${encodeURIComponent(SEEDED_POST.id)}`, '#commentInput');
+  if (postId === SEEDED_POST.id) {
+    // Navigate using the item actually found in the feed, not an unrelated URL.
+    await openPage(`${baseUrl}/forum/forum-detail.html?id=${encodeURIComponent(postId)}`, '#commentInput:not([disabled])');
     const commentGeom = await page.evaluate(measureRects, '#commentInput');
     const commentStack = commentGeom.targetCenter ? await hitStack(page, commentGeom.targetCenter.x, commentGeom.targetCenter.y) : null;
     const beforePath = pathOf();
@@ -308,9 +310,9 @@ async function runViewport(browser, baseUrl, viewport) {
     const detailOverflow = await readOverflow(page);
     add('forum-detail.no-horizontal-overflow', detailOverflow.overflow <= 0, detailOverflow);
   } else {
-    add('forum.comment-input.center.clicking.focus', false, { reason: 'no seeded post found on forum.html' });
-    add('forum.comment-input.center.clicking.typing', false, { reason: 'no seeded post found on forum.html' });
-    add('forum-detail.no-horizontal-overflow', false, { reason: 'no seeded post found on forum.html' });
+    add('forum.comment-input.center.clicking.focus', false, { reason: 'expected seeded feed item not found in post or featured card', actualPostId: postId });
+    add('forum.comment-input.center.clicking.typing', false, { reason: 'expected seeded feed item not found in post or featured card', actualPostId: postId });
+    add('forum-detail.no-horizontal-overflow', false, { reason: 'expected seeded feed item not found in post or featured card', actualPostId: postId });
   }
 
   // ---------- 5. Home 条自身仍可用 ----------
