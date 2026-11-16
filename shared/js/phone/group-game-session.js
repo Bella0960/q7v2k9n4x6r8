@@ -20,6 +20,21 @@
     try { var text = storage.getItem(key); return text ? JSON.parse(text) : null; }
     catch (e) { return null; }
   }
+  // Unlike generic reads, a private inbox must distinguish an absent key from
+  // unreadable/corrupted data. Never overwrite or silently ignore private DMs.
+  function readInbox(storage, key) {
+    var raw;
+    try { raw=storage.getItem(key); }
+    catch (e) { return error('STORAGE_UNAVAILABLE','无法读取本局游戏私聊'); }
+    if (raw===null) return {ok:true,messages:[]};
+    try {
+      var parsed=JSON.parse(raw);
+      return Array.isArray(parsed) ? {ok:true,messages:parsed} :
+        error('CORRUPT_INBOX','游戏私聊记录格式异常，已保护原数据');
+    } catch (e) {
+      return error('CORRUPT_INBOX','游戏私聊记录损坏，已保护原数据');
+    }
+  }
   function write(storage, key, value) {
     try {
       var raw = JSON.stringify(value);
@@ -238,10 +253,11 @@
         ? '\n你已完成本局猜测，不得再次投票，也不要编造其他人的选票。'
         : '\n当主持人宣布开始猜测，且你根据公开对话确实想投票时，在正常回复末尾添加 [游戏猜测:你怀疑的准确角色ID]。只能选一位本局其他角色，一局只有一票；不要代替其他角色投票。');
     if (rules.allowPrivate) {
-      var whispers = read(storage, inboxKey(gid, session.sessionId, rid));
-      var incoming = Array.isArray(whispers) ? whispers.slice(-3).filter(function (m) {
+      var whisperRead = readInbox(storage, inboxKey(gid, session.sessionId, rid));
+      if (!whisperRead.ok) return whisperRead;
+      var incoming = whisperRead.messages.slice(-3).filter(function (m) {
         return m && m.toId === rid && m.sessionId === session.sessionId && m.groupId === gid;
-      }) : [];
+      });
       if (incoming.length) text += '\n[只有你收到的私聊]\n' + incoming.map(function (m) {
         return id(m.fromId).slice(0,90) + '：' + id(m.text).slice(0,240);
       }).join('\n');
@@ -347,9 +363,9 @@
     if (!content || content.length>240) return error('INVALID_TEXT','私聊消息最多240字');
     var eventId=id(req.eventId);
     if (!valid(eventId)) return error('INVALID_EVENT','消息需要唯一事件编号');
-    var key=inboxKey(gid,session.sessionId,to), inbox=read(storage,key);
-    if (inbox != null && !Array.isArray(inbox)) return error('CORRUPT_INBOX','私聊记录异常');
-    inbox=inbox||[];
+    var key=inboxKey(gid,session.sessionId,to), inboxRead=readInbox(storage,key);
+    if (!inboxRead.ok) return inboxRead;
+    var inbox=inboxRead.messages;
     var existing=inbox.find(function(m){return m&&m.eventId===eventId;});
     var duplicate=!!existing;
     var event=existing||{ eventId:eventId, groupId:gid,sessionId:session.sessionId,
@@ -388,10 +404,9 @@
     var session=game(gid,storage);
     if(!session || session.status!=='active')
       return error('NOT_ACTIVE','当前没有进行中的游戏');
-    var inbox=read(storage,inboxKey(gid,session.sessionId,'__user'));
-    if(inbox!==null && !Array.isArray(inbox))
-      return error('CORRUPT_INBOX','群主私聊收件箱异常');
-    return {ok:true,sessionId:session.sessionId,messages:(inbox||[])
+    var inboxRead=readInbox(storage,inboxKey(gid,session.sessionId,'__user'));
+    if(!inboxRead.ok) return inboxRead;
+    return {ok:true,sessionId:session.sessionId,messages:inboxRead.messages
       .filter(function(msg){return msg&&msg.groupId===gid &&
         msg.sessionId===session.sessionId && msg.toId==='__user' &&
         session.players.indexOf(msg.fromId)!==-1;})
@@ -408,15 +423,15 @@
     var session=game(gid,storage);
     if(!session || session.players.indexOf(peer)===-1)
       return error('NOT_PLAYER','没有找到本局私聊对象');
-    var sent=read(storage,inboxKey(gid,session.sessionId,peer));
-    if(sent!==null && !Array.isArray(sent))return error('CORRUPT_INBOX','私聊记录异常');
-    var received=read(storage,inboxKey(gid,session.sessionId,'__user'));
-    if(received!==null && !Array.isArray(received))return error('CORRUPT_INBOX','群主私聊记录异常');
-    var items=(sent||[]).filter(function(m){
+    var sent=readInbox(storage,inboxKey(gid,session.sessionId,peer));
+    if(!sent.ok) return sent;
+    var received=readInbox(storage,inboxKey(gid,session.sessionId,'__user'));
+    if(!received.ok) return received;
+    var items=sent.messages.filter(function(m){
       return m&&m.groupId===gid&&m.sessionId===session.sessionId&&
         m.fromId==='__user'&&m.toId===peer;
     }).map(function(m){return {senderId:'__user',text:id(m.text).slice(0,240),
-      time:Number(m.time)||0,direction:'sent'};}).concat((received||[]).filter(function(m){
+      time:Number(m.time)||0,direction:'sent'};}).concat(received.messages.filter(function(m){
       return m&&m.groupId===gid&&m.sessionId===session.sessionId&&
         m.fromId===peer&&m.toId==='__user';
     }).map(function(m){return {senderId:peer,text:id(m.text).slice(0,240),
