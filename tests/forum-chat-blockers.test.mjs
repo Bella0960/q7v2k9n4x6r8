@@ -12,10 +12,11 @@ const forumHome = read('forum/forum.html');
 const forumDetail = read('forum/forum-detail.html');
 const chatDetail = read('chat/chat/chat-detail.html');
 
-test('forum detail loads the same theme-aware seeded posts as the list and persists first initialization', () => {
+test('forum detail and list both start empty and preserve first-use initialization', () => {
   assert.match(forumHome, /function getSeededPosts\(themeOverride\)/);
   assert.match(forumDetail, /function getSeededPosts\(themeOverride\)/);
-  assert.match(forumDetail, /const seeded=\[/);
+  assert.match(forumHome, /function getSeededPosts\(themeOverride\)\s*\{\s*return \[\]/);
+  assert.match(forumDetail, /function getSeededPosts\(themeOverride\)\s*\{\s*return \[\]/);
   assert.match(forumHome, /localStorage\.setItem\(STORE,JSON\.stringify\(seedPosts\)\)/);
   assert.match(forumDetail, /if \(raw === null\)[\s\S]*?savePosts\(seedPosts\)/);
   assert.match(forumDetail, /function loadPosts\(\)[\s\S]*?mergeForumPosts\(stored, seedPosts, buildPreviousSeedSets\(stored, seedIds\)\)/);
@@ -713,50 +714,51 @@ const forumSeedCores = [
 ];
 
 for (const core of forumSeedCores) {
-  test(core.name + ' only overwrites seed defaults that the user never touched', () => {
+  test(core.name + ' preserves user edits while migrating explicitly supplied legacy seed defaults', () => {
     const env = createForumEnv({});
     const page = core.load(env);
+    assert.equal(page.getSeededPosts().length, 0, 'current forum must not inject demo posts');
 
-    env.localStorage.setItem('forum_config', JSON.stringify({ theme: 'reality' }));
-    const previousSeeds = clone(page.getSeededPosts());
-
-    const stored = clone(previousSeeds);
+    // Only this migration test supplies old seed fixtures. The actual app default
+    // stays empty; this checks legacy data protection without reinstating seeds.
+    const oldSeeds = [
+      { id: 'p1', name: '旧作者', title: '旧标题', body: '旧正文', topic: '旧话题', owner: 'seed', themeId: 'reality' },
+      { id: 'p2', name: '旧作者二', title: '旧标题二', body: '旧正文二', topic: '旧话题', owner: 'seed', themeId: 'reality' }
+    ];
+    const nextSeeds = [
+      { ...oldSeeds[0], title: '新默认标题', body: '新默认正文', topic: '新话题', themeId: 'bagua' },
+      { ...oldSeeds[1], title: '新默认标题二', body: '新默认正文二', topic: '新话题', themeId: 'bagua' }
+    ];
+    const stored = clone(oldSeeds);
     stored[0].title = '我自己改过的标题';
     stored[0].likes = 99;
     stored[0].liked = true;
     stored[0].comments = [{ name: '我', owner: 'me', text: '我自己的评论' }];
     const userPost = {
-      id: 'user_keep',
-      owner: 'me',
-      title: '用户自己发的帖子',
-      body: '用户自己写的正文',
-      liked: false,
-      comments: [{ name: '我', owner: 'me', text: '用户自建评论' }]
+      id: 'user_keep', owner: 'me', title: '用户自己发的帖子',
+      body: '用户自己写的正文', comments: [{ name: '我', text: '用户自建评论' }]
     };
     stored.push(userPost);
 
-    env.localStorage.setItem('forum_config', JSON.stringify({ theme: 'bagua' }));
-    env.localStorage.setItem('forum_posts', JSON.stringify(stored));
-    const loaded = page.loadPosts();
-    const nextSeeds = clone(page.getSeededPosts());
-
-    const p1 = loaded.find((item) => item.id === 'p1');
-    const p2 = loaded.find((item) => item.id === 'p2');
-    assert.equal(p1.title, '我自己改过的标题', '用户改过的标题必须保留');
-    assert.equal(p1.body, nextSeeds[0].body, '未改过的正文同步到新主题默认值');
-    assert.equal(p1.topic, nextSeeds[0].topic, '未改过的话题同步到新主题默认值');
-    assert.equal(p1.themeId, 'bagua', '派生字段 themeId 跟随当前主题');
-    assert.equal(p1.likes, 99, '点赞数保留');
-    assert.equal(p1.liked, true, '点赞状态保留');
-    assert.equal(p1.comments[0].text, '我自己的评论', '用户评论保留');
-    assert.equal(p2.title, nextSeeds[1].title, '完全未改过的种子帖同步到新默认标题');
+    const previous = new Map([['reality', new Map(oldSeeds.map(post => [post.id, post]))]]);
+    const loaded = page.mergeForumPosts(stored, nextSeeds, previous);
+    const p1 = loaded.find(item => item.id === 'p1');
+    const p2 = loaded.find(item => item.id === 'p2');
+    assert.equal(p1.title, '我自己改过的标题', '已编辑的默认标题不可覆盖');
+    assert.equal(p1.body, nextSeeds[0].body, '未编辑的正文可同步新默认');
+    assert.equal(p1.topic, nextSeeds[0].topic);
+    assert.equal(p1.themeId, 'bagua');
+    assert.equal(p1.likes, 99);
+    assert.equal(p1.liked, true);
+    assert.equal(p1.comments[0].text, '我自己的评论');
+    assert.equal(p2.title, nextSeeds[1].title);
     assert.equal(p2.body, nextSeeds[1].body);
-
-    const keptUser = loaded.find((item) => item.id === 'user_keep');
-    assert.equal(keptUser.title, userPost.title, '用户自建帖子标题不被覆盖');
-    assert.equal(keptUser.body, userPost.body, '用户自建帖子正文不被覆盖');
-    assert.equal(keptUser.comments[0].text, '用户自建评论', '用户自建评论不被覆盖');
-    assert.equal(loaded.filter((item) => String(item.id).indexOf('p') === 0).length, 6, '种子帖不重复');
+    const keptUser = loaded.find(item => item.id === 'user_keep');
+    assert.equal(keptUser.title, userPost.title);
+    assert.equal(keptUser.body, userPost.body);
+    assert.equal(keptUser.comments[0].text, '用户自建评论');
+    assert.equal(loaded.length, 3, 'no new demo posts or duplicates');
+    assert.equal(stored[0].title, '我自己改过的标题', 'merge must not mutate input');
   });
 
   test(core.name + ' stays idempotent across repeated initialization', () => {
