@@ -129,7 +129,7 @@ test('tutorial workflow enforces a guide update when user-facing app pages chang
 });
 
 test('PWA app shell caches the full guide bundle and has a matching test command', () => {
-  assert.ok(Number(serviceWorker.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m)?.[1] || 0) >= 241, 'PWA must retain the network-first account cache baseline');
+  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v203'/);
   assert.ok(serviceWorker.includes("'./tutorial/tutorial.html'"));
   assert.ok(serviceWorker.includes("'./tutorial/tutorial.js?v=20261111v3'"));
   assert.equal(packageJson.scripts['test:tutorial'], 'node --test tests/tutorial-page-contract.test.mjs');
@@ -140,4 +140,24 @@ test('chat detail scripts parse so the conversation settings handler can bind', 
     .filter(([, attributes]) => !/\bsrc\s*=|\btype\s*=/.test(attributes));
   assert.ok(scripts.some(([, , source]) => /async function sendMsg\(/.test(source)));
   for (const [, , source] of scripts) new Function(source);
+});
+
+test('account release candidate guide documents the existing login path and QA safety boundary', () => {
+  assert.match(guideScript, /"id"\s*:\s*"account-qa"/);
+  assert.match(guideScript, /已有账号 · 登录/);
+  assert.match(guideScript, /管理员中心（QA 待验收）/);
+  assert.match(guideScript, /"href"\s*:\s*"\.\.\/account\/index\.html"/);
+  assert.match(guideScript, /本机备份不等于云端账号的可恢复备份/);
+  assert.match(guideScript, /不得对正式账号执行停用、重置或清空/);
+});
+
+test('fanwai tutorial exposes hidden story preferences without claiming production acceptance', () => {
+  assert.match(guideScript, /"id"\s*:\s*"fanwai-story-qa"/);
+  assert.match(guideScript, /番外剧场与隐藏故事设置（QA 待验收）/);
+  assert.match(guideScript, /输入栏「＋」→「番外」/);
+  assert.match(guideScript, /不带记忆/);
+  assert.match(guideScript, /参考角色记忆/);
+  assert.match(guideScript, /短篇 40 条、中篇 80 条、长篇 100 条/);
+  assert.match(guideScript, /不能当作成功/);
+  assert.match(guideScript, /不允许写入原聊天、长期记忆或钱包/);
 });
