@@ -378,7 +378,8 @@ try {
       cardSwap:true,swipeRebound:true,fingerSwipeLeft:true,candidatePersistence:true,
       roleCreation:true,jsonRoundTrip:true,thirdPartyJsonRejected:true,
       freeDrawNoApi:true,blindPersonaGuess:true,objectIdentityGuess:true,
-      maskedClueSteps:true,reunionNativeChat:true,fateChoicePersistence:true
+      maskedClueSteps:true,reunionNativeChat:true,fateChoicePersistence:true,
+      nativeSystemStatusBar:true
     },captured
   };
   await fs.writeFile(receiptPath,JSON.stringify(receipt,null,2)+'\n','utf8');
