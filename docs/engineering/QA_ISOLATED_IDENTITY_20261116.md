@@ -27,7 +27,7 @@
 - 保留**同一个** QA Worker/Cloud DB，验证它的 `MAO_IDENTITY_AUTHORITY` Service Binding 真正指向 `maomao-identity-core`（不是旧 gateway 或正式账号 Worker）。在 QA Worker 临时设置 `MAO_QA_IDENTITY_SETUP=isolated_authority` 和 `MAO_QA_AUTHORITY_WORKER=maomao-identity-core`，保留委托模式及既有安全密钥。
 - 先完成真实 `npm ci`、`npm run test:account:ui-candidate`、`npm run test:tutorial`、`npm run build`、Chromium，以及对账号回归/QA Cookie/登录的整体验证；相关测试未跑不得修改线上运行 Worker。
 - 用户仅在**唯一、已核实 origin 的完整 QA**的 `/account/bootstrap.html` 选择**不同于正式版**的 QA 专属密码，提交一次；用户名与旧 QA 管理员一致。检查返回的是 `qa_login` 而非自动登录，重新到 QA 登录页完成验证。
-- 成功后关闭 `MAO_QA_IDENTITY_SETUP`。执行 QA 登录/退出/刷新/跨角色隔离/现有聊天历史恢复回归，验证原 ID、角色、钱包/记忆等测试数据未丢失，记录 Worker 版本、QA 入口、真实测试与验收结果。
+- 成功后将**唯一 QA** 的 `MAO_QA_IDENTITY_SETUP` 改为字面值 `disabled`，并同步更新 `wrangler.qa.jsonc` 的同名变量，防止后续 Wrangler 部署重新开启初始化入口；**不能**关闭独立核心的 `MAO_QA_ISOLATED_IDENTITY_CORE`（就绪探测仍需识别固定 founder）。执行 QA 登录/退出/刷新/跨角色隔离/现有聊天历史恢复回归，验证原 ID、角色、钱包/记忆等测试数据未丢失，记录 Worker 版本、QA 入口、真实测试与验收结果。
 - 若初始化 POST 超时或返回未知状态，**先只读检查身份核心的账号和审计**，不要重复创建、重置或覆盖用户数据。不得因为构建/GitHub Actions 额度不足而绕过测试。
 
 ## 2026-11-16｜直接发布到唯一 QA（绕过已耗尽的构建额度）
@@ -43,6 +43,6 @@
 
 只有上述完整测试通过，且 QA 账号/身份库只读检查通过后，才在受保护环境设置 Cloudflare 发布 Token、Account ID，并用确切 Worker 名的确认变量调用 `npm run qa:release:deploy`。脚本会再次执行所有测试、只读核对两套已有 DO namespace、唯一 active 管理员 001 和现有秘密绑定，之后**先升级现有独立身份核心、再升级现有唯一 QA**。任何不匹配直接拒绝发布。正式版/正式库不是目标。
 
-QA 首次上线后由用户进入原 QA 域名的账号初始化页，使用与正式版完全不同的 QA 密码，完成一次性初始化并重新登录；成功后需及时关闭 `MAO_QA_IDENTITY_SETUP`，并验收旧角色/聊天、账号 ID、番外剧场和手机浏览器。
+QA 首次上线后由用户进入原 QA 域名的账号初始化页，使用与正式版完全不同的 QA 密码，完成一次性初始化并重新登录。初始化成功后必须关闭 QA 一次性设置：使运行中的 QA `MAO_QA_IDENTITY_SETUP=disabled`，且在原 #299 的 `wrangler.qa.jsonc` 同步设为 `disabled`；未同步不得进行后续新版 QA 发布。发布脚本已经增加生命周期核对：独立核心 0 账号只允许 `isolated_authority`，已有唯一管理员则只允许 `disabled`。禁用初始化入口后，再验收旧角色/聊天、账号 ID、番外剧场和手机浏览器。
 
 **当前发布状态仍是未完成**：直发入口及安全门禁修补已提交，核心两项 QA-only Secret 已配置，但本对话运行环境仍缺少完整私有 checkout、Vite/Playwright 依赖，因此上述脚本的完整工程运行和 Cloudflare 部署**均未执行**。不能把这份脚本或隔离局部测试当作真实部署回执。
