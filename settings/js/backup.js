@@ -1078,6 +1078,12 @@
         }
     }
 
+    // 引用原始媒体时在覆盖任何数据库前校验编码格式。避免带有损坏 Blob
+    // 字符串的旧存档在 restoreStore.clear() 后跳过记录而丢失现有文件。
+    function musicBackupBlobEncoded(value) {
+        return typeof value === 'string' && value.length >= 4
+            && value.length % 4 === 0 && /^[A-Za-z0-9+/]*={0,2}$/.test(value);
+    }
     function backupMissingMusicImages(obj) {
         var data = obj && obj.data || {};
         var imageIds = [];
@@ -1094,21 +1100,26 @@
         var records = obj.indexedDB && obj.indexedDB['maomao-assets']
             && obj.indexedDB['maomao-assets'].blobs;
         var available = new Set((Array.isArray(records) ? records : []).filter(function(record) {
-            return record && record.assetId && typeof record.blob === 'string' && record.blob.length > 0;
+            return record && record.assetId && musicBackupBlobEncoded(record.blob);
         }).map(function(record) { return String(record.assetId); }));
         return imageIds.some(function(id) { return !available.has(id); });
     }
     function backupMissingMusicBytes(obj) {
+        var audio = obj.indexedDB && obj.indexedDB['maomao-media-store']
+            && obj.indexedDB['maomao-media-store'].audio;
+        // 连 music_local_tracks 都缺失的老备份也可能含 metadata-only audio。
+        // 不允许该数组触发恢复清库，却只写入不带 Blob 的空壳记录。
+        if (audio !== undefined && !Array.isArray(audio)) return true;
+        if (Array.isArray(audio) && audio.some(function(record) {
+            return !record || record.id == null || !musicBackupBlobEncoded(record.blob);
+        })) return true;
         var raw = obj && obj.data && obj.data.music_local_tracks;
         if (!raw) return false;
         var catalog;
         try { catalog = JSON.parse(raw); } catch (e) { return true; }
         if (!Array.isArray(catalog)) return true;
-        var audio = obj.indexedDB && obj.indexedDB['maomao-media-store']
-            && obj.indexedDB['maomao-media-store'].audio;
-        var validIds = new Set((Array.isArray(audio) ? audio : []).filter(function(rec) {
-            return rec && typeof rec.blob === 'string' && rec.blob.length > 0;
-        }).map(function(rec) { return String(rec.id); }));
+        var validIds = new Set((Array.isArray(audio) ? audio : [])
+            .map(function(record) { return String(record.id); }));
         return catalog.some(function(track) {
             return track && track.id && track.source === 'local' && !validIds.has(String(track.id));
         });
