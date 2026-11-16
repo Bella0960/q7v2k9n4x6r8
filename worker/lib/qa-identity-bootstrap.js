@@ -45,6 +45,13 @@ export async function initializeIsolatedQaAuthority({ env = {}, store, request }
   if (!qaIsolatedSetupEnabled(env)) {
     throw new ApiError(403, 'QA_SETUP_DISABLED', 'QA 独立身份初始化尚未启用');
   }
+  // Never accept a QA credential setup request on either production hostname.
+  // The unique existing QA workers.dev origin is the only allowed browser entry.
+  if (new URL(request.url).hostname !==
+      'maomao-aw-qa-20261114.miamor520000.workers.dev') {
+    throw new ApiError(403, 'QA_SETUP_WRONG_ORIGIN',
+      'QA 初始化必须通过唯一隔离测试入口执行');
+  }
   const expectedId = String(env.MAO_EXPECTED_FOUNDER_ID);
   const shadow = store.getMaoAccountById(expectedId);
   if (!shadow || shadow.id !== expectedId || shadow.role !== 'super_admin' ||
