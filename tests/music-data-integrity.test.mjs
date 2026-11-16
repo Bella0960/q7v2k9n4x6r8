@@ -11,7 +11,7 @@ const music = readFileSync(new URL('../music/music.html', import.meta.url), 'utf
 const backup = readFileSync(new URL('../settings/js/backup.js', import.meta.url), 'utf8');
 
 test('MUSIC-UI-001: actual embedded player script is syntactically valid', () => {
-  const scripts = [...music.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)];
+  const scripts = [...music.matchAll(/<script\s*>([\s\S]*?)<\/script>/g)];
   assert.equal(scripts.length, 1, 'one inline native player script');
   assert.doesNotThrow(() => new Script(scripts[0][1], { filename: 'music/music.html:inline' }));
 });
