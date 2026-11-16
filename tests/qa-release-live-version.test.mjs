@@ -244,7 +244,9 @@ test('release retains the full core and QA secret sets and critical bindings', (
   assert.match(source, /assert\.deepEqual\(secretNames\(qa\), originalQaSecrets/);
   assert.match(source, /qaBinding\('AI'\)\?\.type, 'ai'/);
   assert.match(source, /qaBinding\('ASSETS'\)\?\.type, 'assets'/);
-  assert.equal((source.match(/assertReadyForUpload\(\);\n  run\('npx'/g) || []).length, 2,
+  const protectedUploads = [...source.matchAll(/^[ \t]+assertReadyForUpload\(\);\n[ \t]+run\('npx', \['--yes', 'wrangler@4', 'deploy', '--config', '([^']+)'\]\);/gm)]
+    .map(match => match[1]).sort();
+  assert.deepEqual(protectedUploads, ['wrangler.qa-identity-core.jsonc', 'wrangler.qa.jsonc'],
     'each Worker upload must recheck source and build artifacts');
 });
 
