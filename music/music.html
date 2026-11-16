@@ -983,6 +983,66 @@
     var unlinked = await musicMedia.removeRef(assetId, ownerType, ownerId);
     if (unlinked.ok) await musicMedia.removeAsset(assetId);
   }
+  // 分页/搜索/收藏使用用户原图缩略图，不生成 Base64，也不在渲染时重复存音频。
+  // ObjectURL 共用并限量缓存；隐藏列表按可视区域懒加载。
+  var musicCoverUrlCache = new Map();
+  var musicCoverLoadPending = new Map();
+  var musicThumbnailObserver = typeof IntersectionObserver !== 'undefined'
+    ? new IntersectionObserver(function(entries, observer) {
+        entries.forEach(function(entry) {
+          if (!entry.isIntersecting) return;
+          observer.unobserve(entry.target);
+          if (typeof entry.target.__loadMusicCover === 'function') entry.target.__loadMusicCover();
+        });
+      }, { rootMargin: '160px' }) : null;
+  function musicForgetCoverUrl(assetId) {
+    var url = musicCoverUrlCache.get(assetId);
+    if (url) URL.revokeObjectURL(url);
+    musicCoverUrlCache.delete(assetId);
+  }
+  function musicCachedCoverUrl(assetId) {
+    if (musicCoverUrlCache.has(assetId)) return Promise.resolve(musicCoverUrlCache.get(assetId));
+    if (musicCoverLoadPending.has(assetId)) return musicCoverLoadPending.get(assetId);
+    var task = musicMedia.getBlob(assetId).then(function(result) {
+      if (!result.ok) throw new Error('封面文件无法读取');
+      var url = URL.createObjectURL(result.value);
+      musicCoverUrlCache.set(assetId, url);
+      if (musicCoverUrlCache.size > 64) {
+        var old = musicCoverUrlCache.keys().next().value;
+        if (old !== assetId) musicForgetCoverUrl(old);
+      }
+      return url;
+    }).finally(function() { musicCoverLoadPending.delete(assetId); });
+    musicCoverLoadPending.set(assetId, task);
+    return task;
+  }
+  function musicApplyTrackThumbnails(container) {
+    if (!musicMedia || !container) return;
+    var covers;
+    try { covers = musicReadMap(MUSIC_COVERS_KEY); } catch (e) { return; }
+    container.querySelectorAll('.t-cover[data-music-track-id]').forEach(function(el) {
+      var assetId = covers[el.dataset.musicTrackId];
+      if (!assetId) return;
+      el.__loadMusicCover = function() {
+        el.dataset.musicAssetId = assetId;
+        musicCachedCoverUrl(assetId).then(function(url) {
+          if (!el.isConnected || el.dataset.musicAssetId !== assetId) return;
+          var img = document.createElement('img');
+          img.alt = '';
+          img.src = url;
+          img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:inherit';
+          el.replaceChildren(img);
+        }).catch(function() { delete el.dataset.musicAssetId; });
+      };
+      if (musicThumbnailObserver) musicThumbnailObserver.observe(el);
+      else el.__loadMusicCover();
+    });
+  }
+  window.addEventListener('pagehide', function() {
+    musicCoverUrlCache.forEach(function(url) { URL.revokeObjectURL(url); });
+    musicCoverUrlCache.clear();
+  });
+
   function renderTrackLyrics(t) {
     var box = document.getElementById('lyrics');
     if (!box || !t) return;
@@ -1243,10 +1303,11 @@
       var t = getTrackById(tid);
       if (!t) return;
       recentList.innerHTML += `<div class="track-item" onclick="playTrack(${musicSafeText(JSON.stringify(t.id))})">
-        <div class="t-cover"><span class="music-placeholder-art" aria-hidden="true"></span></div>
+        <div class="t-cover" data-music-track-id="${musicSafeText(t.id)}"><span class="music-placeholder-art" aria-hidden="true"></span></div>
         <div class="t-info"><div class="t-name">${musicSafeText(t.name)}</div><div class="t-artist">${musicSafeText(t.artist)}</div></div>
         <div class="t-dur">${musicSafeText(t.dur)}</div></div>`;
     });
+    musicApplyTrackThumbnails(recentList);
   }
   renderRecent();
 
@@ -1274,9 +1335,10 @@
     list.forEach(function (t) {
       if (!t || !t.id) return;
       searchResults.innerHTML += `<div class="track-item" onclick="playTrack(${musicSafeText(JSON.stringify(t.id))})">
-        <div class="t-cover"><span class="music-placeholder-art" aria-hidden="true"></span></div>
+        <div class="t-cover" data-music-track-id="${musicSafeText(t.id)}"><span class="music-placeholder-art" aria-hidden="true"></span></div>
         <div class="t-info"><div class="t-name">${musicSafeText(t.name)}</div><div class="t-artist">${musicSafeText(t.artist)}</div></div></div>`;
     });
+    musicApplyTrackThumbnails(searchResults);
   }
   renderSearch(tracks);
 
@@ -1603,8 +1665,11 @@
       covers[t.id] = result.value.assetId;
       musicWriteMap(MUSIC_COVERS_KEY, covers);
       if (tracks[currentIdx].id === t.id) await musicApplyCurrentCover();
-      if (oldAssetId && oldAssetId !== result.value.assetId)
+      if (oldAssetId && oldAssetId !== result.value.assetId) {
+        musicForgetCoverUrl(oldAssetId);
         musicReleaseOldAsset(oldAssetId, 'music-cover', t.id).catch(function () {});
+      }
+      renderRecent(); renderSearch(tracks); renderFav();
       toast('封面已保存');
     } catch (err) { toast('封面保存失败，已有封面不会被删除：' + err.message); }
   });
@@ -2176,10 +2241,11 @@
     box.innerHTML = '';
     list.forEach(function (t) {
       box.innerHTML += `<div class="track-item" onclick="playTrack(${musicSafeText(JSON.stringify(t.id))})">
-        <div class="t-cover"><span class="music-placeholder-art" aria-hidden="true"></span></div>
+        <div class="t-cover" data-music-track-id="${musicSafeText(t.id)}"><span class="music-placeholder-art" aria-hidden="true"></span></div>
         <div class="t-info"><div class="t-name">${musicSafeText(t.name)}</div><div class="t-artist">${musicSafeText(t.artist)}</div></div>
         <div class="t-dur">${musicSafeText(t.dur)}</div></div>`;
     });
+    musicApplyTrackThumbnails(box);
   }
 
   musicApplyBackground().catch(function () { /* keep existing settings on failure */ });
