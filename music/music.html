@@ -1414,6 +1414,8 @@
   window.lastLyricLine = -1;
   let progress = 64; // 当前播放秒数
   let playTimer = null;
+  // timeupdate 会在同一秒触发数次；同一曲目/秒数最多写入一次。
+  let musicLastPersistedProgressKey = '';
 
   // ===== 渲染最近播放（按历史排序） =====
   const recentList = document.getElementById('recent-list');
@@ -1584,6 +1586,7 @@
   async function togglePlay() {
     if (!window.audio.paused) {
       window.audio.pause(); playing = false;
+      saveState(); // 暂停时立即保留当前进度，而不是等待下一个五秒采样。
       musicEmitPlayback('pause');
     } else {
       // 刷新后本地曲仅恢复元数据，Blob URL 必须重新从 IndexedDB 创建。
@@ -1608,6 +1611,7 @@
       try { await window.audio.play(); }
       catch (err) { toast('音频未能继续播放'); playing = false; updatePlayIcon(); return; }
       playing = !window.audio.paused;
+      saveState();
       musicEmitPlayback('resume');
     }
     updatePlayIcon();
@@ -1619,7 +1623,8 @@
 
   // 音频事件：进度更新
   window.audio.addEventListener('timeupdate', () => {
-    if (!window.audio.duration) return;
+    if (!Number.isFinite(window.audio.duration) || window.audio.duration <= 0 ||
+        !Number.isFinite(window.audio.currentTime)) return;
     const pct = window.audio.currentTime / window.audio.duration;
     const m = Math.floor(window.audio.currentTime/60), s = Math.floor(window.audio.currentTime%60);
     const tm = Math.floor(window.audio.duration/60), ts = Math.floor(window.audio.duration%60);
@@ -1650,8 +1655,16 @@
         window.lastLyricLine = li;
       }
     }
-    // 保存断点（每 5 秒存一次）
-    if (Math.floor(window.audio.currentTime) % 5 === 0) saveState();
+    // 每首歌每 5 秒记录一次；不能按 timeupdate 次数重复写 localStorage。
+    const second = Math.floor(window.audio.currentTime);
+    const activeTrack = tracks[currentIdx];
+    if (activeTrack && second >= 0 && second % 5 === 0) {
+      const key = String(activeTrack.id) + ':' + second;
+      if (key !== musicLastPersistedProgressKey) {
+        musicLastPersistedProgressKey = key;
+        saveState();
+      }
+    }
   });
 
   // 点击"词"按钮切换歌词显示
@@ -1666,7 +1679,12 @@
   document.getElementById('progressBar').addEventListener('click', function(e) {
     const rect = this.getBoundingClientRect();
     const pct = (e.clientX - rect.left) / rect.width;
-    if (window.audio.duration) window.audio.currentTime = pct * window.audio.duration;
+    if (Number.isFinite(window.audio.duration) && window.audio.duration > 0)
+      window.audio.currentTime = Math.max(0, Math.min(1, pct)) * window.audio.duration;
+  });
+  // 手动拖动进度与硬件媒体控制可在 5 秒窗口外发生，保存必须即时。
+  window.audio.addEventListener('seeked', function () {
+    if (Number.isFinite(window.audio.currentTime)) saveState();
   });
 
   // 播完自动切下一首
