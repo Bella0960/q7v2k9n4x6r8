@@ -205,6 +205,23 @@ async function qaHttpSmoke(coreInitialized) {
   console.log('QA status endpoint and login HTML verified on the original workers.dev URL.');
 }
 
+function verifiedAccountCounts(item, name) {
+  // Missing/invalid Cloudflare SQL evidence is NOT evidence of an empty DB.
+  assert.equal(item?.meta?.rows_written, 0,
+    'Cannot prove Cloudflare account query was read-only: ' + name);
+  const row = item?.rows?.[0];
+  assert.ok(Array.isArray(row) && row.length === 3,
+    'Cloudflare account query returned incomplete SQL counts: ' + name);
+  const [total, matchCell, adminCell] = row;
+  const matches = total === 0 && matchCell === null ? 0 : matchCell;
+  const admins = total === 0 && adminCell === null ? 0 : adminCell;
+  assert.ok(Number.isSafeInteger(total) && total >= 0 &&
+    Number.isSafeInteger(matches) && matches >= 0 && matches <= total &&
+    Number.isSafeInteger(admins) && admins >= 0 && admins <= total,
+    'Cloudflare account counts are invalid or unverified: ' + name);
+  return { total, matches, admins };
+}
+
 async function cloudflarePreflight() {
   const [qa, core] = await Promise.all([
     cloudflare('/workers/scripts/' + QA + '/settings'),
@@ -237,10 +254,8 @@ async function cloudflarePreflight() {
         sql: 'SELECT COUNT(*), SUM(CASE WHEN id=? AND role=? AND status=? THEN 1 ELSE 0 END), SUM(CASE WHEN role=? AND status=? THEN 1 ELSE 0 END) FROM mao_accounts',
         params: [FOUNDER, 'super_admin', 'active', 'super_admin', 'active']
       }] });
-    const item = result?.results?.[0];
-    assert.equal(Number(item?.meta?.rows_written || 0), 0);
-    const [total, matches, admins] = (item?.rows?.[0] || []).map(x => Number(x || 0));
-    assert.ok(Number.isSafeInteger(total), 'Cannot verify accounts: ' + name);
+    const { total, matches, admins } =
+      verifiedAccountCounts(result?.results?.[0], name);
     if (name === QA) {
       assert.ok(total >= 1 && matches === 1 && admins === 1,
         'The original QA founder/admin no longer matches');
