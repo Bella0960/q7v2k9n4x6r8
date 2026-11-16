@@ -227,4 +227,6 @@ test('QA setup form changes only its QA identifier label and max length', () => 
   assert.match(ui, /usernameLabel\.textContent = qaSetup/);
   assert.match(ui, /usernameField\.maxLength = qaSetup \? 28 : 24/);
   assert.match(ui, /原管理员用户名或永久 ID/);
+  assert.match(ui, /若密钥已经设置，请勿重新生成/);
+  assert.match(html, /独立 QA 身份服务暂时未就绪/);
 });
