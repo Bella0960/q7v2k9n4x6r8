@@ -29,6 +29,9 @@ Browser storage is scoped to the origin, browser profile, and device. Changing d
 | home_custom_wallpaper and other legacy keys | Legacy wallpaper/settings compatibility | Wallpaper store can fall back to legacy localStorage |
 | home_icon_presets_v1 / home_icon_active_preset_v1 | Saved icon-set metadata and currently selected preset ID | Icon image copies are stored separately in the shared wallpapers IndexedDB store |
 | music_local_tracks | Local music metadata | Audio Blob itself is in IndexedDB, metadata remains in localStorage |
+| music_cover_assets_v1 / music_background_asset_v1 | Music song-cover and page-background asset ID references | Binary data in existing `maomao-assets` media repository; refs are music-specific, no DataURL in localStorage |
+| music_lyrics_v1 / music_playlists_v1 | LRC/TXT lyric text & timings, named playlist track IDs | Local music preferences, no copied audio; old local track IDs preserved |
+| music_listen_invites_v1 / music_playback_state_v1 | Locally queued actual-character-ID invitations and actual native playback events | No server delivery, no character acknowledgement, **not** a confirmed shared listening session |
 | maomao_reader_bg_v1 | Reading background | Source comments cap the data URL at 600,000 characters |
 
 PhoneStorage provides a common API and error-result namespace, but not every existing caller uses it. Some legacy pages still access localStorage directly. Do not assume all keys have already migrated.
@@ -37,7 +40,7 @@ PhoneStorage provides a common API and error-result namespace, but not every exi
 
 | Database | Version / stores | Main consumer | Current backup observation |
 |---|---|---|---|
-| maomao-media-store | v2: wallpapers (out-of-line key), audio (keyPath id) | shared/js/wallpaper-store.js and music/music.html | Listed in backup.js. wallpapers included. audio record's blob field is explicitly excluded, so the actual audio file is not included by that target rule. |
+| maomao-media-store | v2: wallpapers (out-of-line key), audio (keyPath id) | shared/js/wallpaper-store.js and music/music.html | **PR #303 分支代码（未验收）：** DATA-003 将 audio/blob 转为 Base64 纳入全量和音乐分类备份，30 MiB/条、90 MiB/store 限制，超限时整个媒体库不纳入备份并报告不完整；main 仍以实际合并状态为准。 |
 | `maomao-media-store.wallpapers` records keyed `home_icon_preset_img_v1_<presetId>_<appId>` | Saved icon-set image copies | settings/icon-settings.html | Included in the existing wallpapers backup/restore path |
 | maomao_diary_photo_store_v1 | v1: photos (keyPath key) | diary/diary.html | Listed in backup.js |
 | maomao-reading-library | v1: books (keyPath id), comments (keyPath id) | library/library.html | Listed in backup.js |
@@ -53,7 +56,7 @@ The database register is a code-derived inventory, not a complete audit of every
 - Its getPage method currently reads the complete history array and slices it in memory. This is not disk-level paging.
 - MediaRepository supports Blob storage, SHA-256-based IDs, de-duplication, and reference records. The registered `maomao-assets` v2 database also stores generated-image metadata in `image_records`; image bytes remain in `blobs` and chat/gallery records reference them by assetId.
 - Diary photos use IndexedDB but store a data field (source currently uses strings/data URLs), not necessarily Blob.
-- Local music files use IndexedDB audio records, but backup.js excludes the blob field. Decide whether music should be included in a full backup or separately exportable.
+- PR #303 DATA-003 (代码已提交，**NOT VERIFIED**): full-device backups include local audio Blob; archive completeness verifies every local song ID has a recoverable audio record. Music covers/background assets remain in `maomao-assets`; a music-only scoped backup containing those image references but not the actual image assets is marked **incomplete** and blocked on restore. Do not claim a complete migrated backup until a real export/restore and browser/phone acceptance pass.
 - Backup.js includes several fixed IndexedDB database/store definitions. Any new DB/store must be registered and covered by restore tests at the same time it is introduced.
 
 ## 3. Target architecture
@@ -115,7 +118,7 @@ Never begin with “move then delete.” Follow this order:
 
 1. **Inventory:** find every reader/writer of chat_history_<id>, characters, memories, images, stickers, calls, date mode, group messages, wallet/forum integrations, search, backup, export, and import.
 2. **Baseline:** capture current schema examples using synthetic fixtures; record counts, message order, stable IDs, role/group IDs, and all known fields. Never use real private chats as public fixtures.
-3. **Backup verification:** maomao-assets v2 and its four stores are already registered in backup.js with atomic export and clear-on-restore. Run tests/media-backup.test.mjs and verify a real export/restore cycle. Separately resolve DATA-003: maomao-media-store/audio currently excludes its Blob, so decide whether music is included in full backup or offered through a clearly reported large-media export.
+3. **Backup verification:** maomao-assets v2 and its four stores are registered in backup.js with atomic export and clear-on-restore. Run tests/media-backup.test.mjs and a real export/restore. **DATA-003 is code-changed on PR #303, not yet accepted:** run tests/music-data-integrity.test.mjs, verify Blob bytes/MIME after restore, test >30 MiB single and >90 MiB aggregate fail-closed reports, and verify old metadata-only archives cannot overwrite existing local songs.
 4. **Preflight:** check IndexedDB availability and navigator.storage.estimate() where supported. Do not assume a fixed browser quota. Estimate required free space plus headroom; stop safely if insufficient.
 5. **Shadow copy:** copy existing localStorage histories to IndexedDB without changing the source key. Process large histories in bounded batches; show progress and allow retry.
 6. **Verification:** compare per-conversation message counts, stable IDs/mids, order, timestamps, role/group association, and a deterministic hash of normalized records. Verify media references and readable previews.
