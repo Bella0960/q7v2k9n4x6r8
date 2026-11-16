@@ -31,6 +31,7 @@ Browser storage is scoped to the origin, browser profile, and device. Changing d
 | music_local_tracks | Local music metadata | Audio Blob itself is in IndexedDB, metadata remains in localStorage |
 | music_cover_assets_v1 / music_background_asset_v1 | Music song-cover and page-background asset ID references | Binary data in existing `maomao-assets` media repository; refs are music-specific, no DataURL in localStorage |
 | music_lyrics_v1 / music_playlists_v1 | LRC/TXT lyric text & timings, named playlist track IDs | Local music preferences, no copied audio; old local track IDs preserved |
+| music_state (optional playlistName) | Existing playback ID/time/playing fields plus optional active playlist name | Backward-compatible extension in PR #303; validates referenced playlist and track when reopened; old records still open in library mode; no audio duplication or migration of IDs |
 | music_listen_invites_v1 / music_playback_state_v1 | Locally queued actual-character-ID invitations and actual native playback events | No server delivery, no character acknowledgement, **not** a confirmed shared listening session |
 | maomao_reader_bg_v1 | Reading background | Source comments cap the data URL at 600,000 characters |
 
