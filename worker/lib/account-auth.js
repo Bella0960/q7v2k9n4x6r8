@@ -247,7 +247,7 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     }
 
     const admin = await requireActiveAdmin(request);
-    if (admin.id !== env.MAO_EXPECTED_FOUNDER_ID || admin.role !== 'super_admin') {
+    if (admin.account_id !== env.MAO_EXPECTED_FOUNDER_ID || admin.role !== 'super_admin') {
       throw new ApiError(403, 'QA_FOUNDER_MISMATCH', '管理员 001 的永久身份未通过安全核对');
     }
     // Probe proves the binding targets the opt-in isolated authority with
