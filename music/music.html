@@ -1042,6 +1042,15 @@
     musicCoverUrlCache.forEach(function(url) { URL.revokeObjectURL(url); });
     musicCoverUrlCache.clear();
   });
+  window.addEventListener('pageshow', function(event) {
+    // BFCache 返回时旧 ObjectURL 已释放，重新绘制最新的用户封面。
+    if (event.persisted) {
+      renderRecent();
+      renderSearch(tracks);
+      renderFav();
+      musicApplyCurrentCover().catch(function () {});
+    }
+  });
 
   function renderTrackLyrics(t) {
     var box = document.getElementById('lyrics');
