@@ -123,3 +123,30 @@ test('invalid outgoing list never becomes [] and cannot delete a conversation', 
   assert.equal(f.data.chat_history_A, original);
   assert.equal(f.writes.filter((key) => key === 'chat_history_A').length, 0);
 });
+
+
+test('result.getData(chat) refuses non-array and unreadable primary instead of stale v2', () => {
+  const legacy = root('stale A');
+  for (const primary of ['{"history":[]}', 'null', '""', '{broken']) {
+    const f = fixture({ chat_history_A: primary, phone_data_v2: legacy });
+    assert.equal(f.api.result.getData('A', 'chat').error.code, 'CORRUPT_DATA');
+    assert.equal(f.data.chat_history_A, primary);
+    assert.equal(f.data.phone_data_v2, legacy);
+  }
+  const f = fixture({ chat_history_A: '[]', phone_data_v2: legacy }, { readThrows: true });
+  assert.equal(f.api.result.getData('A', 'chat').error.code, 'DB_UNAVAILABLE');
+  assert.equal(f.data.chat_history_A, '[]');
+});
+
+test('result.getData(chat) falls back only for missing primary with a valid legacy array', () => {
+  const good = fixture({ phone_data_v2: root('old A') });
+  assert.equal(good.api.result.getData('A', 'chat').value.history[0].text, 'old A');
+  const malformed = fixture({
+    phone_data_v2: JSON.stringify({ A: { chat: { history: { text: 'invalid' } } } })
+  });
+  assert.equal(malformed.api.result.getData('A', 'chat').error.code, 'CORRUPT_DATA');
+  const invalidRoot = fixture({ phone_data_v2: '{invalid-v2' });
+  assert.equal(invalidRoot.api.result.getData('A', 'chat').error.code, 'CORRUPT_DATA');
+  const validPrimary = fixture({ chat_history_A: '[{"text":"primary"}]', phone_data_v2: '{invalid-v2' });
+  assert.equal(validPrimary.api.result.getData('A', 'chat').value.history[0].text, 'primary');
+});
