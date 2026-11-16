@@ -523,8 +523,8 @@
     var request = requests.find(function (row) { return row && String(row.id) === String(requestId); });
     if (!request) throw new Error('找不到这条好友申请。');
     if (String(request.mainRoleId || '') !== roleId) throw new Error('这条好友申请不属于当前主角色。');
-    if (request.status === 'accepted') return { ok: true, roleId: request.npc.id, alreadyAccepted: true };
-    if (request.status !== 'pending' || !request.npc || !request.npc.id) throw new Error('这条好友申请不能再接受。');
+    if (!request.npc || !request.npc.id) throw new Error('这条好友申请缺少 NPC 身份信息。');
+    if (request.status !== 'pending' && request.status !== 'accepted') throw new Error('这条好友申请不能再接受。');
 
     var store = global.PhoneStorage && global.PhoneStorage.result;
     if (!store || typeof store.getCharacters !== 'function' || typeof store.saveCharacters !== 'function') {
@@ -534,6 +534,15 @@
     if (!current.ok) throw new Error('角色列表读取失败，未修改任何角色。');
     var roles = current.value.slice();
     var existing = roles.find(function (role) { return String(role.id) === String(request.npc.id); });
+    // Even an already-accepted request must resolve to its original NPC contact.
+    // A stale or foreign contact ID must never be reported as a successful acceptance.
+    if (request.status === 'accepted') {
+      if (!existing || String(existing.npcFriendRequestId || '') !== String(request.id) ||
+          String(existing.npcOriginMainRoleId || '') !== roleId) {
+        throw new Error('已接受申请的联系人缺失或所属主角色冲突，未确认接受状态。');
+      }
+      return { ok: true, roleId: existing.id, alreadyAccepted: true };
+    }
     if (!existing) {
       var duplicateName = roles.find(function (role) { return String(role.name || '').trim().toLowerCase() === String(request.npc.name || '').trim().toLowerCase(); });
       if (duplicateName) throw new Error('通讯录已有同名角色。请先检查现有联系人，避免误合并。');
