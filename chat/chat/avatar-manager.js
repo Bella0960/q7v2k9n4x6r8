@@ -23,6 +23,7 @@
   var renderVersion = 0;
   var ownedObjectUrls = [];
   var refreshPending = false;
+  var refreshDirty = false;
   var toastTimer = 0;
 
   if (roleId) back.href = 'chat-settings.html?roleId=' + encodeURIComponent(roleId);
@@ -81,6 +82,7 @@
       hint('操作失败，原数据可能仍在，请刷新检查。', true);
     } finally {
       setBusy(false);
+      if (refreshDirty) scheduleRefresh();
     }
   }
   function placeholder(size) {
@@ -119,20 +121,24 @@
     void drawAsset(item.assetId, node, version);
     return node;
   }
-  function renderCurrent(role) {
+  function renderCurrent(role, version) {
     byId('roleName').textContent = role.name || '未命名角色';
     var picture = byId('currentPicture');
     picture.replaceChildren();
     var src = String(role.avatar || '');
-    if (/^(?:data:image\/|blob:|https?:\/\/)/i.test(src)) {
+    var safeUrl = /^(?:data:image\/|blob:|https?:\/\/)/i.test(src);
+    var assetId = String(role.avatarAssetId || '');
+    var hasAsset = /^as_[A-Z2-7]{32}$/.test(assetId);
+    if (safeUrl) {
       var img = document.createElement('img');
       img.alt = '';
       img.src = src;
       picture.appendChild(img);
     } else {
       picture.appendChild(placeholder('current'));
+      if (hasAsset) void drawAsset(assetId, picture, version);
     }
-    byId('currentState').textContent = src ? 'CURRENT PORTRAIT / 已应用' : 'CURRENT PORTRAIT / 尚未设置';
+    byId('currentState').textContent = safeUrl || hasAsset ? '已应用' : '尚未设置';
     var toggle = byId('autonomyToggle');
     toggle.checked = role.avatarAutonomyEnabled !== false;
   }
@@ -171,6 +177,7 @@
       card.className = 'portrait';
       card.type = 'button';
       card.setAttribute('aria-label', '管理头像：' + (item.label || '角色头像'));
+      card.setAttribute('data-avatar-id', item.id);
       card.setAttribute('aria-pressed', String(chooseIds.indexOf(item.id) >= 0));
       var image = document.createElement('span');
       image.className = 'thumb';
@@ -252,6 +259,19 @@
     byId('pickCount').textContent = '已选择 ' + chooseIds.length + ' / 2';
     byId('createPair').disabled = chooseIds.length !== 2;
   }
+  function refreshPairSelection() {
+    renderPickbar();
+    // Only repaint selection chrome; preserve all decoded thumbnail URLs.
+    Array.prototype.forEach.call(album.children, function (card) {
+      var id = card.getAttribute && card.getAttribute('data-avatar-id');
+      if (!id) return;
+      var selected = chooseIds.indexOf(id) !== -1;
+      card.setAttribute('aria-pressed', String(selected));
+      var picture = card.firstElementChild || (card.children && card.children[0]);
+      if (picture && picture.classList) picture.classList.toggle('selected', selected);
+    });
+  }
+
   async function render() {
     var version = ++renderVersion;
     releaseImages();
@@ -266,7 +286,7 @@
       byId('autonomyToggle').disabled = true;
       return;
     }
-    renderCurrent(role);
+    renderCurrent(role, version);
     renderGallery(role, version);
     renderPairs(version);
     renderPickbar();
@@ -299,7 +319,7 @@
       hint('一组情头只能选择两张照片。', true);
       return;
     } else chooseIds.push(avatarId);
-    void render();
+    refreshPairSelection();
   }
   function startPair() {
     if (!exists()) return;
@@ -308,7 +328,7 @@
     }
     pairMode = true;
     chooseIds = [];
-    void render();
+    refreshPairSelection();
     byId('pairBuilder').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
   async function finishPair() {
@@ -320,7 +340,7 @@
     if (lib.getPairForAvatar(roleId, ids[0])) {
       pairMode = false;
       chooseIds = [];
-      await render();
+      refreshPairSelection();
     }
   }
   function closeSheet() {
@@ -329,6 +349,7 @@
     renameField.classList.remove('visible');
     sheetActions.replaceChildren();
     currentAction = null;
+    if (!busy && refreshDirty) scheduleRefresh();
   }
   function openSheet(title, help) {
     closeSheet();
@@ -347,9 +368,16 @@
     button.addEventListener('click', handler);
     sheetActions.appendChild(button);
   }
+  function confirmInSheet(description, buttonText, work, successText) {
+    sheetHelp.textContent = description;
+    renameField.classList.remove('visible');
+    sheetActions.replaceChildren();
+    action(buttonText, 'danger', function () { void doSave(work, successText); });
+    action('取消', '', closeSheet);
+  }
+
   function openAvatarActions(item) {
     if (!exists()) return;
-    currentAction = { type: 'avatar', id: item.id };
     openSheet(item.label || '管理照片', '这张照片只属于当前角色。所有更改会同步至角色资料。');
     currentAction = { type: 'avatar', id: item.id };
     action('设为 TA 的当前头像', 'primary', function () {
@@ -362,11 +390,12 @@
       closeSheet();
       pairMode = true;
       if (!chooseIds.includes(item.id)) chooseIds = [item.id];
-      void render();
+      refreshPairSelection();
     }, Boolean(linked));
     action('从收藏移除', 'danger', function () {
-      if (!window.confirm('确定从这个角色的收藏移除这张照片？已发送的聊天图片不会被清除。')) return;
-      void doSave(function () { return lib.remove(roleId, item.id); }, '照片已从这个角色的收藏移除。');
+      confirmInSheet('确定移除这张收藏照片吗？已发送的聊天图片不会被删除。',
+        '确认移除', function () { return lib.remove(roleId, item.id); },
+        '照片已从这个角色的收藏移除。');
     }, item.active || Boolean(linked));
   }
   function openPairActions(pair) {
@@ -388,8 +417,8 @@
       renameInput.focus();
     });
     action('解除配对（保留原图）', 'danger', function () {
-      if (!window.confirm('只解除这两张头像的配对关系？原图将继续保留。')) return;
-      void doSave(function () { return lib.unlinkPair(roleId, pair.id); },
+      confirmInSheet('确定解除这组情头吗？两张原图仍保留在收藏中。',
+        '确认解除', function () { return lib.unlinkPair(roleId, pair.id); },
         '已解除情头关联，两张照片仍在收藏中。');
     });
   }
@@ -456,11 +485,15 @@
     }
   }
   function scheduleRefresh() {
-    if (busy || refreshPending || overlay.classList.contains('show')) return;
+    refreshDirty = true;
+    if (refreshPending || busy || document.hidden || overlay.classList.contains('show')) return;
     refreshPending = true;
     setTimeout(function () {
       refreshPending = false;
-      if (!busy && !document.hidden && !overlay.classList.contains('show')) void render();
+      if (busy || document.hidden || overlay.classList.contains('show')) return;
+      if (!refreshDirty) return;
+      refreshDirty = false;
+      void render();
     }, 60);
   }
 
@@ -470,7 +503,7 @@
   byId('cancelPair').addEventListener('click', function () {
     pairMode = false;
     chooseIds = [];
-    void render();
+    refreshPairSelection();
   });
   byId('createPair').addEventListener('click', finishPair);
   byId('autonomyToggle').addEventListener('change', saveAutonomy);
