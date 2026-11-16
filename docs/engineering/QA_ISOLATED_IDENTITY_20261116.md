@@ -43,7 +43,7 @@
 
 只有上述完整测试通过，且 QA 账号/身份库只读检查通过后，才在受保护环境设置 Cloudflare 发布 Token、Account ID，并用确切 Worker 名的确认变量调用 `npm run qa:release:deploy`。脚本会再次执行所有测试、只读核对两套已有 DO namespace、唯一 active 管理员 001 和现有秘密绑定，之后**先升级现有独立身份核心、再升级现有唯一 QA**。任何不匹配直接拒绝发布。正式版/正式库不是目标。
 
-QA 首次上线后由用户进入原 QA 域名的账号初始化页，使用与正式版完全不同的 QA 密码，完成一次性初始化并重新登录。初始化成功后必须关闭 QA 一次性设置：使运行中的 QA `MAO_QA_IDENTITY_SETUP=disabled`，且在原 #299 的 `wrangler.qa.jsonc` 同步设为 `disabled`；未同步不得进行后续新版 QA 发布。发布脚本已经增加生命周期核对：独立核心 0 账号只允许 `isolated_authority`，已有唯一管理员则只允许 `disabled`。禁用初始化入口后，再验收旧角色/聊天、账号 ID、番外剧场和手机浏览器。
+QA 首次上线后由用户进入原 QA 域名的账号初始化页，可使用**原 QA 管理员用户名或永久 ID `MAO-OXHBDBWCOIHPBBYN`**确认既有身份；服务器将永久 ID 仅作为已有用户名的别名，真实创建仍严格沿用旧 QA 影子账号的用户名及原永久 ID，不新建其他管理员或改名。初始化密钥填写已保存在密码管理器中的同一份 QA 专用密钥，**不要重新生成**；新设置的 QA 登录密码须与正式版完全不同。完成一次性初始化后，返回 QA 登录页单独登录。初始化成功后必须关闭 QA 一次性设置：使运行中的 QA `MAO_QA_IDENTITY_SETUP=disabled`，且在原 #299 的 `wrangler.qa.jsonc` 同步设为 `disabled`；未同步不得进行后续新版 QA 发布。发布脚本已经增加生命周期核对：独立核心 0 账号只允许 `isolated_authority`，已有唯一管理员则只允许 `disabled`。禁用初始化入口后，再验收旧角色/聊天、账号 ID、番外剧场和手机浏览器。
 
 **2026-11-16 补充门禁：** 本轮发布脚本不再只检查 Wrangler 返回码，而是要求两个现有 Worker 的 Cloudflare 实际 100% active 版本在各自部署后前进且来源为 Wrangler；QA 更新后还必须从**原 workers.dev 地址**匿名 GET `/api/admin/bootstrap/status` 和 `/account/index.html`，确认身份核心连接、一次性初始化开关与独立核心真实账号状态一致，且登录表单实际存在。空库初始化前允许 `signInReady=false` / `qaSetupAllowed=true`；管理员已创建并关闭入口后要求 `signInReady=true` / `qaSetupAllowed=false`。这些都是未来真实发布时执行的检查，当前仅在模拟 HTTP/Cloudflare 回执下验证，**尚未进行实际新版部署或真机验收**。
 
