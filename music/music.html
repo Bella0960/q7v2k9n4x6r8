@@ -48,8 +48,21 @@
     background: #1a1a1a; z-index: 200;
   }
 
-  /* 状态栏：整个去掉，内容直接从顶部开始 */
-  .statusbar { display: none; } /* 原有 PWA 版无内嵌状态栏，不创建第二套系统显示 */
+  /* 和 #301 全局设置共用一个状态栏：默认轻薄显示，设置关闭时由公共控制器隐藏。 */
+  .statusbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex: 0 0 auto;
+    min-height: 30px;
+    padding: 7px 19px 3px;
+    background: transparent;
+    color: #777781;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: .1px;
+  }
+  .statusbar svg { opacity: .68; }
   .statusbar .right { display: flex; gap: 6px; align-items: center; }
 
   /* ===== 音乐 App 主体 ===== */
@@ -2151,6 +2164,16 @@
   }
 
   musicApplyBackground().catch(function () { /* keep existing settings on failure */ });
+  // 仅更新本地模拟手机的时钟。状态栏显隐完全交由 #301 公共脚本控制。
+  function updateMusicStatusClock() {
+    var clock = document.querySelector('.statusbar > span');
+    if (clock) clock.textContent = new Date().toLocaleTimeString('zh-CN',
+      { hour: '2-digit', minute: '2-digit', hour12: false });
+  }
+  updateMusicStatusClock();
+  window.setInterval(updateMusicStatusClock, 60 * 1000);
+  window.addEventListener('pageshow', updateMusicStatusClock);
+
   // 音乐首页头像与手机全局个人资料保持一致
   renderMusicAvatar(document.getElementById('musicHomeAvatar'), getProfile().avatar);
 
