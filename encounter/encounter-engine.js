@@ -455,13 +455,31 @@
   async function withCandidateLock(operation) {
     var scope = checkAccountScope();
     if (!scope.ok) return scope;
+    // Web Locks 可能排队：A 账号排队的旧请求不能拿到锁后写入 B 账号的存储。
+    function guardAccount() {
+      var latest = checkAccountScope();
+      if (!latest.ok) return latest;
+      if (latest.value.id !== scope.value.id || latest.value.role !== scope.value.role) {
+        return fail('等待期间账号已切换，操作已取消；请重新打开人物收藏');
+      }
+      return ok(latest.value);
+    }
+    function runGuarded() {
+      var checked = guardAccount();
+      return checked.ok ? operation() : checked;
+    }
     var manager = global.navigator && global.navigator.locks;
     try {
+      var result;
       if (manager && typeof manager.request === 'function') {
-        return await manager.request('maomao:encounter:v2:' + scope.value.id,
-          {mode:'exclusive'}, operation);
+        result = await manager.request('maomao:encounter:v2:' + scope.value.id,
+          {mode:'exclusive'}, runGuarded);
+      } else {
+        result = runGuarded();
       }
-      return operation();
+      // 写入和异步返回之间也可能换号；旧结果不得冒充新账号操作成功。
+      var after = guardAccount();
+      return after.ok ? result : after;
     } catch (error) {
       return fail('候选跨标签页操作失败，已保留现有资料，请重新尝试');
     }

@@ -865,3 +865,88 @@ test('蒙面档案三条线索只读且不会提前揭晓姓名、职业或角�
   assert.equal(h.api.getMaskedClues({...c,type:'普通相遇'}).length,0);
   assert.equal(h.api.getMaskedClues(null).length,0);
 });
+
+
+test('跨标签页锁等待时切换账号，收藏/删除/命运修改不得误写另一账号', async () => {
+  for (const kind of ['save','remove','choice']) {
+    let active='MAO-AAAAAAAAAAAA', unlock, requestCount=0, lockName='';
+    const stores={A:new Map(),B:new Map()};
+    const current=()=>stores[active==='MAO-AAAAAAAAAAAA'?'A':'B'];
+    const window={
+      location:{hostname:'app.mao520.com'},
+      document:{querySelector(selector){
+        if(selector==='meta[name="mao-account-id"]')return {content:active};
+        if(selector==='meta[name="mao-account-role"]')return {content:'user'};
+        return null;
+      }},
+      __MAO_ACCOUNT_SCOPE__:{get accountId(){return active;},role:'user',ready:true},
+      localStorage:{
+        get length(){return current().size;},
+        key(index){return [...current().keys()][index]??null;},
+        getItem(key){return current().get(key)??null;},
+        setItem(key,value){current().set(key,String(value));},
+        removeItem(key){current().delete(key);}
+      },
+      dispatchEvent(){},
+      navigator:{locks:{request(name,options,fn){
+        requestCount++;lockName=name;
+        assert.equal(options.mode,'exclusive');
+        return new Promise(resolve=>{unlock=()=>resolve(fn());});
+      }}}
+    };
+    vm.runInNewContext(engineSource,{window,Math,Set,Uint32Array,Date,JSON,String,Array,Object,Number,CustomEvent:class{}});
+    const api=window.MAOMAOEncounter;
+    const card=api.generate().value;
+    if(kind!=='save'){
+      card.type='命运分支';
+      assert.equal(api.saveCandidate(card).ok,true);
+    }
+    const beforeA=Array.from(stores.A.entries()),beforeB=Array.from(stores.B.entries());
+    let pending;
+    if(kind==='save')pending=api.saveCandidateSafe(card);
+    else if(kind==='remove')pending=api.removeCandidateSafe(card.id);
+    else pending=api.updateCandidateStoryChoiceSafe(card.id,card.choices[1]);
+    assert.equal(requestCount,1);
+    assert.equal(lockName,'maomao:encounter:v2:MAO-AAAAAAAAAAAA');
+    active='MAO-BBBBBBBBBBBB';
+    unlock();
+    const result=await pending;
+    assert.equal(result.ok,false,kind+' 必须拒绝账号切换后的旧请求');
+    assert.match(result.error,/账号已切换/);
+    assert.deepEqual(Array.from(stores.A.entries()),beforeA,'原账号候选必须保持原样');
+    assert.deepEqual(Array.from(stores.B.entries()),beforeB,'新账号不能收到旧请求写入');
+    assert.equal(api.getCandidates().value.length,0);
+  }
+});
+
+test('锁内保存完成但通知前切换账号，旧操作不能在新账号页面报成功',async()=>{
+  let active='MAO-AAAAAAAAAAAA';
+  const stores={A:new Map(),B:new Map()};
+  const current=()=>stores[active==='MAO-AAAAAAAAAAAA'?'A':'B'];
+  const window={
+    location:{hostname:'app.mao520.com'},
+    document:{querySelector(s){return /account-id/.test(s)?{content:active}:{content:'user'};}},
+    __MAO_ACCOUNT_SCOPE__:{get accountId(){return active;},role:'user',ready:true},
+    localStorage:{
+      get length(){return current().size;},
+      key(i){return [...current().keys()][i]??null;},
+      getItem(k){return current().get(k)??null;},
+      setItem(k,v){current().set(k,String(v));},
+      removeItem(k){current().delete(k);}
+    },
+    dispatchEvent(){},
+    navigator:{locks:{async request(name,options,fn){
+      const result=fn();
+      active='MAO-BBBBBBBBBBBB';
+      return result;
+    }}}
+  };
+  vm.runInNewContext(engineSource,{window,Math,Set,Uint32Array,Date,JSON,String,Array,Object,Number,CustomEvent:class{}});
+  const api=window.MAOMAOEncounter;
+  const card=api.generate().value;
+  const result=await api.saveCandidateSafe(card);
+  assert.equal(result.ok,false);
+  assert.match(result.error,/账号已切换/);
+  assert.equal(stores.A.size,1,'A 已成功写入但不得对 B 显示成功');
+  assert.equal(stores.B.size,0);
+});
