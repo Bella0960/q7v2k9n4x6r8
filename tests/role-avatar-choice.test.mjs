@@ -13,7 +13,8 @@ function createChoice(seed = {}) {
   const values = new Map(Object.entries(seed));
   const window = { localStorage: {
     getItem(key) { return values.has(key) ? values.get(key) : null; },
-    setItem(key, value) { values.set(key, String(value)); }
+    setItem(key, value) { values.set(key, String(value)); },
+    removeItem(key) { values.delete(key); }
   }};
   vm.runInNewContext(source, { window }, { filename: 'role-avatar-choice.js' });
   return { api: window.RoleAvatarChoice, values };
@@ -269,4 +270,42 @@ test('manual avatar switch displays success only after library save succeeds', a
   assert.equal(failed.renders.length, 0);
   assert.equal(failed.status.filter(entry => entry.kind === 'error').length, 1);
   assert.match(failed.status.at(-1).message, /原头像未被覆盖/);
+});
+
+
+test('deleted roles clear only their own avatar cooldown record', () => {
+  const { api, values } = createChoice();
+  assert.equal(api.recordApplied('role-A', 100000101), true);
+  assert.equal(api.recordApplied('role-B', 100000102), true);
+  assert.equal(api.clearRole('role-A'), true);
+  assert.equal(values.has('maomao_role_avatar_auto_last_v1_role-A'), false);
+  assert.equal(values.get('maomao_role_avatar_auto_last_v1_role-B'), '100000102');
+  assert.equal(api.clearRole(''), false);
+});
+
+test('deleted-role cooldown cleanup failures are visible and do not claim success', () => {
+  const window = {
+    localStorage: {
+      getItem() { return null; },
+      setItem() {},
+      removeItem() { throw new Error('storage blocked'); }
+    }
+  };
+  vm.runInNewContext(source, { window });
+  assert.equal(window.RoleAvatarChoice.clearRole('role-A'), false);
+});
+
+test('character deletion cleans cooldown only after save, with the existing retry queue', () => {
+  const manager = fs.readFileSync(path.join(root, 'worldbook/characters/js/characters-manager.js'), 'utf8');
+  const characterPage = fs.readFileSync(path.join(root, 'worldbook/characters/characters.html'), 'utf8');
+  const start = manager.indexOf('async function handleDeleteRole(id) {');
+  const end = manager.indexOf('// ====== 草稿', start);
+  const deletion = manager.slice(start, end);
+  assert.ok(deletion.indexOf('if (!saveRoles(updatedRoles))') >= 0);
+  assert.ok(deletion.indexOf('choice.clearRole(String(id))') > deletion.indexOf('if (!saveRoles(updatedRoles))'));
+  assert.match(deletion, /!cooldownCleared && !enqueueRoleAvatarCleanup\(id\)/);
+  assert.match(manager, /const cooldownCleared = !!choice && typeof choice\.clearRole === 'function' &&\s*choice\.clearRole\(item\.roleId\)/);
+  assert.match(manager, /!result \|\| !result\.ok \|\| !cooldownCleared/);
+  assert.ok(characterPage.includes('../../shared/js/phone/role-avatar-choice.js?v=20261113v1'));
+  assert.ok(characterPage.indexOf('role-avatar-choice.js?v=20261113v1') < characterPage.indexOf('characters-manager.js?v=20261113v2'));
 });
