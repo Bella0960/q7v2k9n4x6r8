@@ -50,3 +50,20 @@ test('current QA server supports cloud diagnostics, and does not claim standalon
   assert.match(app, /'\/api\/autonomy\/readiness'/);
   assert.match(app, /autonomousMessageGenerationReady: false/);
 });
+
+test('music-only QA release never redeploys or alters the isolated identity core', () => {
+  const runner = read('scripts/qa-direct-release.mjs');
+  const qa = JSON.parse(read('wrangler.qa.jsonc'));
+  assert.equal(qa.name, 'maomao-aw-qa-20261114');
+  assert.equal(qa.keep_vars, true);
+  assert.equal(qa.assets?.directory, './dist');
+  assert.equal(qa.vars?.MAO_QA_IDENTITY_SETUP, 'disabled');
+  assert.match(runner, /const qaOnly = process\.argv\.includes\('--qa-only'\)/);
+  assert.match(runner, /const deploy = qaOnly \|\| process\.argv\.includes\('--deploy'\)/);
+  assert.match(runner, /if \(qaOnly\) \{[\s\S]*?coreInitialized[\s\S]*?\} else \{/);
+  assert.match(runner, /else \{[\s\S]*?wrangler@4'[\s\S]*?wrangler\.qa-identity-core\.jsonc/);
+  assert.match(runner, /assert\.equal\(coreAfter\.versionId, coreVersion\.versionId/);
+  assert.match(runner, /MAOMAO_QA_DEPLOY_CONFIRM/);
+  assert.match(runner, /\['node', \['tests\/music-mobile-browser\.mjs'\]\]/);
+  assert.match(runner, /'wrangler\.qa\.jsonc'/);
+});
