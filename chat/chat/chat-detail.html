@@ -8431,10 +8431,10 @@
             // ambiguous: discard that entire suffix BEFORE any side effect is
             // queued. Otherwise the first ']' could prematurely end a marker and
             // leave confidential text in the saved public chat history.
-            var privateMarker=/\\[(?:游戏私聊|群私聊|游戏猜测)[:：]/.exec(text);
+            var privateMarker=/\[(?:游戏私聊|群私聊|游戏猜测)[:：]/.exec(text);
             if (privateMarker) {
                 var privateTail=text.slice(privateMarker.index);
-                if (!/^(?:\\[(?:游戏私聊|群私聊|游戏猜测)[:：][^\\[\\]\\r\\n]{1,500}\\][ \\t\\r\\n]*)+$/.test(privateTail))
+                if (!/^(?:\[(?:游戏私聊|群私聊|游戏猜测)[:：][^\[\]\r\n]{1,500}\][ \t\r\n]*)+$/.test(privateTail))
                     text=text.slice(0,privateMarker.index);
             }
             if (!turnEffects || typeof turnEffects.afterSave !== 'function' ||
