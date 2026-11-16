@@ -170,7 +170,10 @@ test('isolated QA core bootstrap must not mint an unused session', async () => {
       () => 1700000000000,
       body => body
     );
-    const result = await makeBootstrap({ url: 'https://mao520.com/api/admin/bootstrap' });
+    const result = await makeBootstrap({
+      url: 'https://mao520.com/api/admin/bootstrap',
+      headers: { get: () => null }
+    });
     assert.equal(createdAccount?.role, 'super_admin');
     if (isolated) {
       assert.equal(createdAccount.id, syntheticId, 'exact existing QA founder ID remains fixed');
