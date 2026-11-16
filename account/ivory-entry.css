@@ -67,6 +67,18 @@ body:before{content:none}
 .ivory-entry .panel{width:100%;margin:0;padding:0;animation:fade-in .3s ease both;min-height:0}
 .ivory-entry .panel[hidden],.ivory-entry [hidden]{display:none!important}
 .ivory-entry .panel>.eyebrow,.ivory-entry .panel>h1,.ivory-entry .panel>.lead{display:none}
+/* QA-only safety text: the common ivory skin intentionally hides panel leads.
+   Keep this short, quiet and visible only on isolated QA login. */
+.ivory-entry #loginPanel>.lead.qa-login-hint{
+  display:block;
+  max-width:340px;
+  margin:0 auto 17px;
+  color:#6c6865;
+  font:12px/1.7 var(--sans);
+  letter-spacing:0;
+  text-align:left;
+}
+
 .ivory-entry .state-panel .blocked-label{margin:0 0 16px}
 .ivory-entry .panel form{margin:0 auto}
 .ivory-entry .welcome-panel>.primary-button{margin:0}
