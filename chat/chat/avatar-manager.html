@@ -92,7 +92,9 @@
   .pair-copy small { display:block; margin-top:5px; color:#999; font-size:10px; line-height:1.6; }
   .pair-arrow { color:#A4A4A4; font-size:18px; font-weight:300; }
   .pair-empty { color:#aaa; font-size:11px; padding:12px 2px 15px; line-height:1.65; }
-  .pickbar { display:none; margin:13px 0 0; padding:11px 12px; border-radius:10px; background:#F5F5F4; align-items:center; gap:10px; }
+  .pickbar { display:none; position:sticky; top:8px; z-index:2; margin:10px 0 14px; padding:11px 12px;
+    border:1px solid #EAEAE7; border-radius:11px; background:rgba(250,250,249,.96); align-items:center; gap:10px;
+    box-shadow:0 5px 15px rgba(0,0,0,.035); }
   .pickbar.visible { display:flex; }
   .pickcount { flex:1; font-size:11px; color:#666; }
   .pickbar button { border:0; background:transparent; color:#555; font-size:11px; padding:8px 2px; }
@@ -176,12 +178,12 @@
       <div class="section-actions"><button class="text-button" id="uploadButton" type="button">＋ 添加照片</button></div>
     </div>
     <p class="section-description">轻点照片管理。所有素材按角色独立保存。</p>
-    <div class="album" id="album" aria-live="polite"></div>
     <div class="pickbar" id="pairBuilder">
       <span class="pickcount" id="pickCount">已选择 0 / 2</span>
       <button type="button" id="cancelPair">取消</button>
       <button type="button" class="primary" id="createPair" disabled>完成配对</button>
     </div>
+    <div class="album" id="album" aria-live="polite"></div>
 
     <div class="section-top">
       <h2 class="section-title">情头配对 <span id="pairCount" class="section-number">00</span></h2>
