@@ -413,6 +413,9 @@
   .music-extra-action { display:block; width:100%; text-align:left; background:transparent;
     border:0; border-top:1px solid #f0f0f2; color:#686871; padding:10px 8px;
     font-size:12px; font-family:inherit; cursor:pointer; }
+  .music-invite-controls { margin:3px 0 4px; padding:8px; background:#fafafb; border-radius:9px; }
+  .music-invite-controls select { width:100%; border:1px solid #e7e7eb; border-radius:8px; padding:9px;
+    background:white; color:#66666d; font-family:inherit; font-size:12px; }
   .music-playlist-row { display:block; width:100%; border:0; background:transparent; color:#52525b;
     text-align:left; padding:15px 2px; border-bottom:1px solid #ececf0; font:inherit; font-size:13px; }
   #importSheet { max-height:calc(100% - 100px); overflow-y:auto; }
@@ -727,6 +730,10 @@
         <button type="button" onclick="document.getElementById('musicBackgroundUpload').click();closeImportSheet()" class="music-extra-action">更换音乐页面背景</button>
         <button type="button" onclick="addCurrentToMusicPlaylist();closeImportSheet()" class="music-extra-action">将歌曲加入歌单</button>
         <button type="button" onclick="showMusicPlaylists()" class="music-extra-action">我的歌单</button>
+        <div class="music-invite-controls">
+          <select id="musicInviteRoleSelect" aria-label="选择要邀请的角色"><option value="">选择已有角色</option></select>
+          <button type="button" class="music-extra-action" onclick="inviteMusicRole()">邀请角色一起听</button>
+        </div>
         <button type="button" onclick="resetMusicCover();closeImportSheet()" class="music-extra-action">恢复当前歌曲默认封面</button>
         <button type="button" onclick="resetMusicBackground();closeImportSheet()" class="music-extra-action">恢复默认页面背景</button>
         <div onclick="closeImportSheet()" style="display:flex;align-items:center;justify-content:center;padding:12px;border-radius:14px;cursor:pointer;color:#999;font-size:14px;">取消</div>
@@ -933,6 +940,8 @@
   const MUSIC_LYRICS_KEY = 'music_lyrics_v1';
   const MUSIC_PLAYLISTS_KEY = 'music_playlists_v1';
   const MUSIC_BACKGROUND_KEY = 'music_background_asset_v1';
+  const MUSIC_ROLE_INVITES_KEY = 'music_listen_invites_v1';
+  const MUSIC_PLAYBACK_STATE_KEY = 'music_playback_state_v1';
   const musicMedia = window.PhoneStorage && window.PhoneStorage.MediaRepository
     ? new window.PhoneStorage.MediaRepository() : null;
   let musicMetaReadFailure = null;
@@ -973,13 +982,20 @@
   function musicEmitPlayback(type) {
     var t = tracks[currentIdx];
     if (!t) return;
-    window.dispatchEvent(new CustomEvent('maomao:music:playback', {
-      detail: { version: 1, type: type, trackId: t.id, title: t.name,
-        artist: t.artist, currentTime: window.audio.currentTime || 0,
-        duration: Number.isFinite(window.audio.duration) ? window.audio.duration : 0,
-        playing: !window.audio.paused && !window.audio.ended,
-        source: t.source === 'local' ? 'local' : 'remote' }
-    }));
+    var state = { version: 1, type: type, trackId: t.id, title: t.name,
+      artist: t.artist, currentTime: window.audio.currentTime || 0,
+      duration: Number.isFinite(window.audio.duration) ? window.audio.duration : 0,
+      playing: !window.audio.paused && !window.audio.ended,
+      source: t.source === 'local' ? 'local' : 'remote', updatedAt: Date.now(),
+      origin: 'native-audio-player', roleJoined: false };
+    // 数据源只表示本机真实音频播放；不会对角色/好友宣称已经听到或同步。
+    try {
+      var raw = JSON.stringify(state);
+      localStorage.setItem(MUSIC_PLAYBACK_STATE_KEY, raw);
+      if (localStorage.getItem(MUSIC_PLAYBACK_STATE_KEY) !== raw)
+        throw new Error('播放状态存储校验失败');
+    } catch (err) { toast('播放正常，但共享状态未能保存：' + err.message); }
+    window.dispatchEvent(new CustomEvent('maomao:music:playback', { detail: state }));
   }
   // 事件只反映浏览器真实播放状态；订阅方必须自己完成角色/多人权限和送达 ACK。
   window.MAOMAOMusicPlayback = Object.freeze({
@@ -1664,6 +1680,58 @@
     } catch (err) { toast('恢复背景失败：' + err.message); }
   }
 
+  // ===== 角色邀请：只认已有真实角色 ID，不虚构 AI 回应或远端播放 =====
+  function renderMusicRoleOptions() {
+    var select = document.getElementById('musicInviteRoleSelect');
+    if (!select) return;
+    var previous = select.value;
+    select.replaceChildren(new Option('选择已有角色', ''));
+    try {
+      var roles = window.PhoneStorage && window.PhoneStorage.getCharacters
+        ? window.PhoneStorage.getCharacters() : [];
+      roles.forEach(function(role) {
+        if (!role || role.id == null) return;
+        select.add(new Option(String(role.name || '未命名角色'), String(role.id)));
+      });
+      if ([].some.call(select.options, function(item) { return item.value === previous; }))
+        select.value = previous;
+    } catch (err) { toast('角色列表读取失败，未创建任何邀请'); }
+  }
+  function inviteMusicRole() {
+    var selectedRoleId = document.getElementById('musicInviteRoleSelect').value;
+    var track = tracks[currentIdx];
+    if (!selectedRoleId || !track) { toast('请先选择已有角色和歌曲'); return; }
+    try {
+      var roles = window.PhoneStorage && window.PhoneStorage.getCharacters
+        ? window.PhoneStorage.getCharacters() : [];
+      var role = roles.find(function(r) { return r && String(r.id) === selectedRoleId; });
+      if (!role) { toast('角色不存在，邀请未创建'); return; }
+      var raw = localStorage.getItem(MUSIC_ROLE_INVITES_KEY);
+      var invites = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(invites)) throw new Error('既有邀请记录格式异常');
+      var record = { version: 1,
+        id: 'music_invite_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+        roleId: selectedRoleId, trackId: track.id, trackName: track.name,
+        artist: track.artist, createdAt: Date.now(), initiatedBy: 'user',
+        status: 'queued_local', delivered: false, accepted: false };
+      var next = invites.slice(-49).concat([record]), payload = JSON.stringify(next);
+      localStorage.setItem(MUSIC_ROLE_INVITES_KEY, payload);
+      if (localStorage.getItem(MUSIC_ROLE_INVITES_KEY) !== payload)
+        throw new Error('邀请记录写入后校验失败');
+      window.dispatchEvent(new CustomEvent('maomao:music:invite-created', { detail: record }));
+      closeImportSheet();
+      toast('邀请已记录在本机；尚未送达角色，不能算共听成功');
+    } catch (err) { toast('邀请未保存：' + err.message); }
+  }
+  window.MAOMAOMusicInvites = Object.freeze({
+    getQueued: function() {
+      var raw = localStorage.getItem(MUSIC_ROLE_INVITES_KEY);
+      var invites = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(invites)) throw new Error('invites corrupt');
+      return invites.filter(function(item) { return item.status === 'queued_local'; });
+    }
+  });
+
   // ===== 歌单：只保存已有歌曲 ID，不复制音频文件 =====
   function addCurrentToMusicPlaylist() {
     var t = tracks[currentIdx];
@@ -1739,6 +1807,7 @@
 
   // ===== 导入本地音乐 =====
   function showImportSheet() {
+    renderMusicRoleOptions();
     document.getElementById('importSheet').style.transform = 'translate(-50%,-50%) scale(1)';
     document.getElementById('importSheet').style.opacity = '1';
     document.getElementById('importSheet').style.pointerEvents = 'auto';
