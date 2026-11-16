@@ -155,3 +155,11 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **备份分类：** 角色分类增加 `maomao_character_draft_v1:` 前缀，涵盖手动新建、旧角色编辑、邂逅候选草稿；保留 API 密钥排除规则。无 schema 迁移、角色数据修改或云端账号写入。
 - **实际执行的检查：** 通过从当前 GitHub 原文件提取并运行的 V8 隔离编辑器流程：手动新角色草稿保留、候选独立草稿保存、退出重进恢复、旧草稿恢复、损坏草稿保留/禁止覆写/显式放弃、备份归类与密钥排除。新增两项原有 Node 回归用例并在 V8 适配执行 PASS；**未执行原生 node --test、npm ci/build、Playwright Chromium、Android/iOS 或统一线上 QA 验收**。不得将模拟当作真实整体验收。
 - **当前状态：** 开发中；PR #297 保留 Draft，统一整合测试分支只作待验收源码；未合并 main、未部署测试/正式环境。下一步依照 GOV PR #300 的 RELEASE_PLAYBOOK：先取得真实自动构建回执，再部署唯一 QA 供用户整体试玩；失败返回原 PR 修复。
+
+## FEATURE-ENCOUNTER-001｜2026-11-17 性格盲测三选一交互
+- **范围/分支**：只继续原 `FEATURE-ENCOUNTER-001-initial-experience` / Draft PR #297，不向 PR #299 或正式 main 提交；QA 部署窗口不受影响。
+- **玩法**：性格盲测从“点开直接看答案”升级为“按台词猜三种性格之一 → 揭晓人设/反差”，可以直接揭晓。选项按候选 ID 稳定排列，真性格只出现一次。收藏候选仍直接打开档案；不改变已有角色、候选保存格式、账号隔离、JSON、命运分支，不增加 localStorage key 或 AI 调用。
+- **提交**：`696727437a7d1611034e8d5256be80220aac7523` 功能/合同/模拟 UI；`2e3e9daee05282b314cc23ca16ed13998089eb42` 修复测试 Fake DOM 重新创建按钮导致绑定丢失的测试替身；`df47b6f3a3b6c6be46a6d8b602f4d93701a29089` 增加 Playwright 390px 性格猜测/揭晓断言、截图及相同 Git HEAD 发布门禁。
+- **已执行（V8，真实更新后的源码）**：引擎/页面内联 JS 语法检查 PASS；性格选项稳定性/不重复/真正性格单次出现及不写存储 PASS；模拟卡片点击 → 三选一 → 查看档案 → 猜测反馈，且原角色及候选收藏不变，PASS。首次模拟点击测试未通过，原因是 Fake DOM 查询每次创建新假按钮；修复该测试替身后重新执行 PASS。
+- **NOT VERIFIED**：原生 Node CLI `npm run test:encounter`、Vite `npm run build`、Playwright 真浏览器、Android/iOS、云端 QA 均未在本会话执行；此次提交不能称已发布或手机可玩。原 PR 保留 Draft。
+- **后续**：其他窗口继续并行；本功能等唯一 QA 完成本轮部署后在 PR 评论提供的 SHA 按序接入下轮 QA，先实际浏览器验收，再由用户手机验收，正式版独立审批。
