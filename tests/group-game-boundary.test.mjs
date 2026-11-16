@@ -838,3 +838,26 @@ test('corrupted self-vote cannot be counted or published as game result', () => 
   assert.equal(h.game.getPublic('g1').voteError,true,
     'missing vote timestamps cannot count as valid ballots');
 });
+
+test('nested closing brackets in hidden directives never expose partial secrets', () => {
+  const h = harness();
+  const samples = [
+    '公开推理[游戏私聊:r2:不能公开[注释]后半段秘密]',
+    '公开推理[群私聊:r1:给你的内容[方括号]后半段秘密]',
+    '公开推理[游戏私聊:r2:跨行[括号]\\n后半段秘密]',
+    '公开推理[游戏私聊:r2:秘密]后面不应假定是公开正文',
+    '公开推理[游戏猜测:r2]未验证的后缀',
+    '公开推理[游戏私聊:r2:秘密[嵌套]后半段秘密',
+    '公开推理[群私聊:r1:长内容]\\n偷偷补充第二行'
+  ];
+  for (const source of samples) {
+    assert.equal(h.game.redactPublicStreamText(source), '公开推理', source);
+  }
+  assert.equal(h.game.redactPublicStreamText('公开推理[今天]群友继续聊天'),
+    '公开推理[今天]群友继续聊天', 'ordinary user text remains visible');
+  const detail = load('chat/chat/chat-detail.html');
+  assert.match(detail, /var privateMarker=/,
+    'the final saved group reply must validate the marker grammar too');
+  assert.match(detail, /var privateTail=/,
+    'nested directives must be dropped before they can queue private effects');
+});
