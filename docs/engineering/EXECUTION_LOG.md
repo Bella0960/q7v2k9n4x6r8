@@ -2,6 +2,16 @@
 
 This is the durable checkpoint for owner-assigned, multi-step work. Update it after meaningful milestones and before ending a session.
 
+## 2026-11-16｜PR #299｜可验证发布版本 + 账号就绪 + 原 QA HTTP 验收门禁
+
+- **任务目标**：在 Work 暂不可用、未配置完整私有仓库执行环境时，优先解除 QA 真实部署之前的确定性代码缺陷。只进原 #299，不合并 main、不部署正式或 QA、无数据库写入。
+- **修复 1：真实版本回执**。修改 `scripts/qa-direct-release.mjs`：以 Cloudflare deployments API 核对 core 和 QA 部署前后 100% active 版本 ID，要求版本发生变化、部署来源为 Wrangler，缺失/分流/不合法信息 fail closed。新增 `tests/qa-release-live-version.test.mjs`。
+- **修复 2：初始化关闭后正确回报账号就绪**。修改 `worker/lib/account-auth.js` 的 `/api/admin/bootstrap/status`：独立 QA core 在关闭一次性初始化后也会按真实权威探测状态回报 `configured`；断联仍 false，旧 gateway 和普通本地初始化行为保持不变。在 `tests/account-qa-bootstrap-route.test.mjs` 增加覆盖。
+- **修复 3：原 QA URL 实际响应门禁**。发布脚本新增匿名只读 GET：从唯一 `maomao-aw-qa-20261114.miamor520000.workers.dev` 检查 `/api/admin/bootstrap/status`、`/account/index.html`；核对初始/已初始化两种生命周期和页面登录表单，失败时不承认验收成功。新增相关测试，不发送任何账号密码或 Cookie。
+- **本会话局部验证**：直接从最新原 GitHub 读取并运行 helper 的隔离模拟，Cloudflare 版本检查 4/4 场景、QA 状态路由 4/4 场景、原 QA HTTP helper 3/3 场景符合预期。**不是**完整 Node CLI 测试，更不是 npm ci/Vite/Chromium、真实 Worker 发布或手机验收，不得混淆。
+- **PR 关系**：#299 目前 base SHA 与上游 #290 当前 HEAD 一致（本轮真实只读核对），无需盲目重复同步。
+- **仍缺真实证据**：完整 Node、Vite、Chromium 测试；两个 QA Worker 实际更新及版本/HTTP 回执；QA 管理员独立初始化、关入口、登录/退出/刷新和旧角色聊天/番外/PWA 手机验收。下一次直接接原 #299 最新 HEAD；**正式版/正式库禁止触碰**。
+
 ## 2026-11-16｜PR #299｜QA 身份就绪与初始化关闭门禁（当前轮）
 
 - **范围**：只修改原 PR #299 分支；不合并 main，不触碰正式账号/数据库/Worker，不新建 QA 服务。
