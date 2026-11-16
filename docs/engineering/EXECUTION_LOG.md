@@ -188,3 +188,12 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 已执行验证：实际 GitHub 更新后的引擎/页面内联 JS 语法与运行时只读逻辑 PASS；浏览器脚本及 gate 在去掉 ES 模块壳的等价语法检查 PASS；来自已提交源码的 V8 模拟 DOM 全回归 12/12 PASS，新增独立合同 1/1 PASS。其他模式的原测试主体也包含在 12 项中。
 - NOT VERIFIED：未在完整仓库执行 Node CLI、Vite 生产构建、Playwright 真 Chromium、Android/iOS 真机或 QA 部署。仅测试模拟完成，不能声称线上可用或合并就绪。PR #297 Draft 保留。
 - 集成规则：当前 QA #299 部署完成后再由整合窗口按序取原 PR 最新 SHA，运行 npm run test:encounter、npm run build、npm run test:encounter:browser、npm run gate:encounter，取得与同一 Git HEAD 对应的回执后给用户手机验收；正式版另行审批。
+
+
+## FEATURE-ENCOUNTER-001｜2026-11-17 命运分支异步保护与账号锁验收
+- 原 PR #297 功能分支继续开发；唯一 QA #299 冻结期间不推送、不新建 PR、不修改正式版或管理员 001 数据。
+- 提交 b3b123c5692386c148be29c6676f780cc4b541d1：修复跨标签 Web Lock 排队时账号切换，候选收藏/移除/故事更新拿锁后复核当前账号与请求前 ID/role；锁返回后再次检查，不误写其他账号、不假报成功。
+- 提交 f757a7149d4ec2828bb8c47075f3a9764aa25860：命运分支收藏状态下选择只允许一个待处理操作；全部选项禁用，抽屉关闭或转到其他页面时丢弃旧回调，避免重新弹出旧人物。
+- 提交 8cf4cfacee29691a36e27d510fbe0d6c6f54cec9：Playwright 390px 独立上下文验证故事起点选择、收藏、改选、刷新后保持，并要求新 release gate 回执 fateChoicePersistence 与截图 encounter-fate-persisted-390.png。
+- 已实际执行：本轮已提交代码的 V8 适配模拟 DOM 回归 14/14 PASS，新增账号等待锁/返回边界合同 2/2 PASS，Playwright 与 release gate 的 JS 语法解析 PASS。未实际运行完整 Node CLI、Vite build、Playwright Chromium 或 Android/iPhone；不能宣称 QA 通过或上线。
+- 下轮 QA 部署冻结结束后，唯一整合窗口按顺序接入 PR #297 最新 SHA，运行 npm run test:encounter、npm run build、npm run test:encounter:browser、npm run gate:encounter；Android/iOS 验收后才考虑合 main，正式发布另行批准。
