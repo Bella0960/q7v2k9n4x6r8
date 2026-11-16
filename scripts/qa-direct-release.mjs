@@ -136,6 +136,12 @@ function preflightCheckout() {
     assert.equal(config.zone_name, undefined, 'Production zone bindings are forbidden for QA');
     assert.ok(!JSON.stringify(config).toLowerCase().includes('mao520.com'), 'Production domains are forbidden for QA');
   }
+  assert.equal(qa.workers_dev, true,
+    'The sole QA testing URL must remain enabled on workers.dev');
+  assert.equal(core.workers_dev, false,
+    'The isolated identity core must never acquire a public workers.dev URL');
+  assert.equal(qa.preview_urls, false, 'QA must not generate extra preview URLs');
+  assert.equal(core.preview_urls, false, 'Identity core preview URLs must remain disabled');
   assert.equal(qa.assets?.binding, 'ASSETS');
   assert.equal(qa.assets?.run_worker_first, true);
   assert.equal(core.assets, undefined);
@@ -291,7 +297,23 @@ function verifiedAccountCounts(item, name) {
   return { total, matches, admins };
 }
 
+async function verifyWorkerPublicRoutes() {
+  const [qa, core] = await Promise.all([
+    cloudflare('/workers/scripts/' + QA + '/subdomain'),
+    cloudflare('/workers/scripts/' + CORE + '/subdomain')
+  ]);
+  assert.equal(qa?.enabled, true,
+    'The original QA workers.dev test entry is disabled');
+  assert.equal(qa?.previews_enabled, false,
+    'Unexpected extra QA preview URLs are enabled');
+  assert.equal(core?.enabled, false,
+    'The isolated identity core is unexpectedly public on workers.dev');
+  assert.equal(core?.previews_enabled, false,
+    'The isolated identity core is unexpectedly public through preview URLs');
+}
+
 async function cloudflarePreflight() {
+  await verifyWorkerPublicRoutes();
   const [qa, core] = await Promise.all([
     cloudflare('/workers/scripts/' + QA + '/settings'),
     cloudflare('/workers/scripts/' + CORE + '/settings')
@@ -367,6 +389,7 @@ async function main() {
   assertReadyForUpload();
   run('npx', ['--yes', 'wrangler@4', 'deploy', '--config', 'wrangler.qa-identity-core.jsonc']);
   const coreVersion = await liveWorkerVersion(CORE);
+  await verifyWorkerPublicRoutes();
   assert.notEqual(coreVersion.versionId, corePrevious.versionId,
     'Identity core deployment version did not advance');
   assert.equal(coreVersion.source, 'wrangler',
@@ -387,6 +410,7 @@ async function main() {
   assertReadyForUpload();
   run('npx', ['--yes', 'wrangler@4', 'deploy', '--config', 'wrangler.qa.jsonc']);
   const qaVersion = await liveWorkerVersion(QA);
+  await verifyWorkerPublicRoutes();
   assert.notEqual(qaVersion.versionId, qaPrevious.versionId,
     'QA deployment version did not advance');
   assert.equal(qaVersion.source, 'wrangler',
