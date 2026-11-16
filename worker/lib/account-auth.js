@@ -288,7 +288,14 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       throw error;
     }
     if (!created) throw new ApiError(409, 'ADMIN_ALREADY_INITIALIZED', '超级管理员已经初始化');
-    return await createSession(store.getMaoAccountById(account.id), request);
+    const founder = store.getMaoAccountById(account.id);
+    if (isolatedQaAuthorityFounderId(env) === account.id) {
+      // QA setup is a server-to-server operation. Do not mint an orphaned
+      // authority session: no authority cookie is ever sent to this browser.
+      // The owner explicitly logs in at the existing QA origin afterward.
+      return ok({ account: publicAccount(founder), qaSetupComplete: true, nextStep: 'qa_login' });
+    }
+    return await createSession(founder, request);
   }
 
   async function register(request) {
