@@ -59,3 +59,16 @@ QA 首次上线后由用户进入原 QA 域名的账号初始化页，可使用*
 - **本轮可验证结果**：针对原 GitHub 源文件运行独立 JS DOM 桩检查；从同一提交读取实际登录 HTML、JS、CSS 与初始化 HTML、JS 以及普通基础样式表，注入 HTTP smoke 的模拟响应，验证首次/已初始化、旧登录 JS、旧登录 CSS、旧初始化 JS、缺少已引用基础 CSS、模拟 Vite 指纹样式正常、跨源 CSS 被拒绝、核心断联等 **9/9** 场景符合预期；相关测试 JS 在 V8 中完成语法解析。**没有**实际运行 `npm ci`、Node CLI 全量、Vite 构建或 Chromium 手机视口，也没有从线上 QA 取得真实 HTTP 回执。不能把此记录当作已部署或已登录。
 - 当前 `MAO_SUPER_ADMIN_BOOTSTRAP_SECRET`、`DEVICE_SECRET_PEPPER` 已在 Cloudflare 的独立身份 Worker 配置，不要重新让用户生成或发送。独立核心仍需完整工程测试后更新，唯一 QA 仍旧网关，正式版未改。
 
+
+
+## 2026-11-16｜独立身份核心的公开路由保护（已修代码，尚未部署）
+
+**本轮新增的确定性风险：** Cloudflare 官方说明，如果只在 Dashboard 关闭一个 Worker 的 `workers.dev`，但 Wrangler 配置不写 `"workers_dev": false`，下次 Wrangler 部署会重新启用该公开入口。原独立身份核心 `maomao-identity-core` 的现网 `workers.dev` 已关闭，但旧 `wrangler.qa-identity-core.jsonc` 没有声明该选项，**未来首次部署可能暴露身份服务入口**。参见 [Cloudflare 官方 workers.dev 文档](https://developers.cloudflare.com/workers/configuration/routing/workers-dev/)。
+
+- `wrangler.qa-identity-core.jsonc` 明确配置 `workers_dev: false`、`preview_urls: false`；保留原 `CloudDatabase` 绑定及两项 QA-only Secret 的现网配置，内部 Service Binding 不受公共入口开关影响。
+- `wrangler.qa.jsonc` 明确配置 `workers_dev: true`、`preview_urls: false`；保留用户要使用的**原唯一 QA workers.dev 测试入口**，不自动新开一套 Preview URL。
+- `scripts/qa-direct-release.mjs` 本地 preflight 核验两份配置中的公开入口和预览入口；Cloudflare 实际 API `/workers/scripts/{name}/subdomain` 在上传前、核心上传后、QA 上传后**共检查三次**，身份核心若对外公开、任意额外预览开启或唯一 QA URL 被关闭，都停止发布验收。
+- `tests/qa-release-live-version.test.mjs` 新增同一源代码回归，对正确现状、QA 入口关闭、身份核心公开、预览地址误开放等情况 fail closed。
+- **真实 Cloudflare 只读证据**：账户子域为 `miamor520000`；唯一 QA Worker `enabled=true`、`previews_enabled=false`；独立身份核心 `enabled=false`、`previews_enabled=false`。以此真实回执运行最新发布检查函数**通过**，模拟 4 种错误公开状态全部被拒绝。未更改任何 Cloudflare Worker、路由、密码或账号；此修复当前仍只在原 #299 待部署代码中。
+- 文档中的“身份核心保持私有”特指 `workers.dev` 及 Preview URL 开关；其它版本/部署 URL 的公开权限如需完整安全断言仍须在正式执行环境依据 Cloudflare 产品控制项单独核实，不得混为一谈。
+
