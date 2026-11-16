@@ -8,7 +8,7 @@
 - **发布路径安全：** 原 `--deploy` 重发 QA 身份核心，本次音乐前端不应做此动作；扩充原有 `scripts/qa-direct-release.mjs` 的 `--qa-only` 模式，真实测试之后只上传当前 Worker，保证核心版本前后不变；新增 `npm run qa:release:worker-only` 入口和 QA-only 契约检查，并把音乐 Chromium 手机视口脚本加入 release TESTS。
 - **只读云端核对：** 现有 QA `maomao-aw-qa-20261114` 仍存在；最新一次 Cloudflare 已部署时间为 2026-11-16T19:51:47Z，版本 `5954a708-ba4d-48df-b17f-02b0116b75ef`。19 项运行变量与仓库 QA 配置完全一致，MAO_IDENTITY_AUTHORITY 仍连隔离 core；QA/Core SQL 只读计数各 1 个账号、1 个启用的超级管理员，记录行写入 0。
 - **执行证据与诚实状态：** 最新 QA 文件与原音乐 PR 的 7 个音乐/备份文件 SHA 已核对一致。缺失 toast 的源码实锤已修；隔离 V8 实际调用 toast、收藏失败、防覆盖和播放进度配额逻辑 5/5 通过；QA-only 合同隔离执行 1/1 通过，JS 语法检查通过。**这些不等于完整 Node/Vite/Chromium 验收**，本窗口无该仓库的可执行完整 checkout。**没有把新代码部署到 Cloudflare QA**，不能提供已更新的可测链接。
-- **唯一剩余动作：** 在现有 Codespaces 该 QA 整合分支拉最新 HEAD，先运行 `npm run qa:release:check`（真实 Node、Vite、Chromium 门禁）；全部通过后凭本地安全配置的 Cloudflare 凭证运行 `MAOMAO_QA_DEPLOY_CONFIRM=maomao-aw-qa-20261114 npm run qa:release:worker-only`（只部署 Worker，不重发身份核心），核对 Cloudflare version 已更新后才通知用户手机测试。若任何检查失败，停在 QA，不修改 main 或正式版。
+- **唯一剩余动作：** 在现有 Codespaces 该 QA 整合分支拉最新 HEAD，凭本地安全配置的 Cloudflare 凭证直接运行 `MAOMAO_QA_DEPLOY_CONFIRM=maomao-aw-qa-20261114 npm run qa:release:worker-only`（命令自身先跑完整 Node、Vite、Chromium 门禁，全部通过才只发布 QA Worker，不重发身份核心；避免先 check 再重复测一次），核对 Cloudflare version 已更新后才通知用户手机测试。若任何检查失败，停在 QA，不修改 main 或正式版。
 
 
 This is the durable checkpoint for owner-assigned, multi-step work. Update it after meaningful milestones and before ending a session.
