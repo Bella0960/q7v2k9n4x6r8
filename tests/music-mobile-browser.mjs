@@ -96,12 +96,17 @@ try {
         return { size: record?.blob?.size, type: record?.blob?.type };
       }, trackId);
       assert.ok(audioInfo.size >= 44, 'actual WAV binary persisted');
+      await page.evaluate(id => playTrack(id), trackId);
+      await page.waitForFunction(id => {
+        try { return JSON.parse(localStorage.getItem('music_state') || 'null')?.id === id; }
+        catch { return false; }
+      }, trackId, { timeout: 10000 });
       await page.reload({ waitUntil: 'domcontentloaded' });
       assert.equal(await page.evaluate(id => JSON.parse(localStorage.getItem('music_local_tracks'))[0].id === id, trackId), true);
       // Critical: after reload, local audio has no object URL until user plays.
       await page.evaluate(() => togglePlay());
       await page.waitForFunction(() => window.audio && window.audio.currentSrc.startsWith('blob:'),
-        { timeout: 10000 }).catch(() => {});
+        null, { timeout: 10000 });
       assert.ok(await page.evaluate(() => window.audio && window.audio.src.startsWith('blob:')),
         'resume must recreate local Blob URL after refresh');
       await page.waitForFunction(id => document.getElementById('npTitle')?.textContent === 'QA 轻声', trackId);
