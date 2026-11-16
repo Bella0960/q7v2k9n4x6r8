@@ -115,6 +115,15 @@ try {
         try { return !!JSON.parse(localStorage.getItem('music_cover_assets_v1') || '{}')[id]; }
         catch { return false; }
       }, trackId);
+      await page.evaluate(() => { hideNP(); switchTab('home'); });
+      const thumbnail = page.locator('#recent-list [data-music-track-id="' + trackId + '"]');
+      await thumbnail.scrollIntoViewIfNeeded();
+      await page.waitForFunction(id => {
+        const img = document.querySelector('#recent-list [data-music-track-id="' + id + '"] img');
+        return !!(img && img.src.startsWith('blob:'));
+      }, trackId, { timeout: 10000 });
+      assert.equal(await thumbnail.locator('img').count(), 1,
+        'recent-play list must display uploaded original cover');
       await page.locator('#lyricsUpload').setInputFiles({
         name: 'sample.lrc', mimeType:'text/plain',
         buffer: Buffer.from('[00:00.00]第一句\n[00:00.50]第二句\n')
