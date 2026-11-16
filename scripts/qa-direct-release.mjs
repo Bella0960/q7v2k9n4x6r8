@@ -56,7 +56,7 @@ function preflightCheckout() {
   assert.equal(run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], true), BRANCH,
     'Only the original #299 integration branch may be used for the QA release');
   const origin = run('git', ['remote', 'get-url', 'origin'], true);
-  assert.match(origin, /(?:github\.com[:/])Bella0960\/MAOMAO(?:\.git)?$/, 'Unexpected repository origin');
+  assert.match(origin, /^(?:https:\/\/github\.com\/|ssh:\/\/git@github\.com\/|git@github\.com:)Bella0960\/MAOMAO(?:\.git)?\/?$/, 'Unexpected repository origin');
   // A clean local branch can still be stale: never release an older #299 HEAD.
   const localSha = run('git', ['rev-parse', 'HEAD'], true);
   const remoteLine = run('git', ['ls-remote', '--heads', 'origin', BRANCH], true);
@@ -177,11 +177,24 @@ async function main() {
   await cloudflarePreflight();
   run('npx', ['--yes', 'wrangler@4', 'deploy', '--config', 'wrangler.qa-identity-core.jsonc']);
   const core = await cloudflare('/workers/scripts/' + CORE + '/settings');
-  assert.equal(core.bindings?.find(x => x.name === 'CLOUD_DB')?.namespace_id, CORE_DB);
+  const coreBinding = name => core.bindings?.find(x => x.name === name);
+  assert.equal(coreBinding('CLOUD_DB')?.namespace_id, CORE_DB);
+  assert.equal(coreBinding('MAO_IDENTITY_MODE')?.text, 'local', 'Core identity mode did not deploy');
+  assert.equal(coreBinding('MAO_QA_ISOLATED_IDENTITY_CORE')?.text, 'true', 'Isolated QA identity mode did not deploy');
+  assert.equal(coreBinding('MAO_QA_FOUNDER_ID')?.text, FOUNDER, 'QA founder continuity config did not deploy');
+  for (const name of ['MAO_SUPER_ADMIN_BOOTSTRAP_SECRET', 'DEVICE_SECRET_PEPPER']) {
+    assert.equal(coreBinding(name)?.type, 'secret_text', 'Core QA-only secret lost after deploy: ' + name);
+  }
+  // Do not switch QA's old authority until the isolated core is configured.
   run('npx', ['--yes', 'wrangler@4', 'deploy', '--config', 'wrangler.qa.jsonc']);
   const qa = await cloudflare('/workers/scripts/' + QA + '/settings');
-  assert.equal(qa.bindings?.find(x => x.name === 'CLOUD_DB')?.namespace_id, QA_DB);
-  assert.equal(qa.bindings?.find(x => x.name === 'MAO_IDENTITY_AUTHORITY')?.service, CORE);
+  const qaBinding = name => qa.bindings?.find(x => x.name === name);
+  assert.equal(qaBinding('CLOUD_DB')?.namespace_id, QA_DB);
+  assert.equal(qaBinding('MAO_IDENTITY_AUTHORITY')?.service, CORE);
+  assert.equal(qaBinding('MAO_IDENTITY_MODE')?.text, 'delegated_preview');
+  assert.equal(qaBinding('MAO_IDENTITY_AUTHORITY_MODE')?.text, 'existing_worker');
+  assert.equal(qaBinding('MAO_QA_AUTHORITY_WORKER')?.text, CORE);
+  assert.equal(qaBinding('MAO_QA_IDENTITY_SETUP')?.text, 'isolated_authority');
   console.log('QA deployed to the EXISTING Worker. Test bootstrap/login and disable one-time setup.');
 }
 
