@@ -971,8 +971,9 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
         // Once the one-time QA setup flag is disabled, the isolated core is
         // still configured for login. Never misreport it as missing secrets.
         // Legacy gateway previews continue to keep bootstrap configured=false.
-        const qaCoreReady = delegated && usesExistingAccountAuthority(env) &&
-          env.MAO_QA_AUTHORITY_WORKER === 'maomao-identity-core' &&
+        const qaIdentityCore = delegated && usesExistingAccountAuthority(env) &&
+          env.MAO_QA_AUTHORITY_WORKER === 'maomao-identity-core';
+        const qaCoreReady = qaIdentityCore &&
           authority.connected && authority.configured;
         return ok({
           initialized,
@@ -982,6 +983,9 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
           identityMode: delegated ? 'delegated' : 'local',
           bootstrapAllowed: !delegated || qaSetup,
           qaSetupAllowed: qaSetup,
+          // This is a display hint only; login is still verified by the
+          // isolated authority, never by a client-supplied identity flag.
+          qaIdentityCore,
           qaIsolatedAuthority: !!qaCoreFounder,
           qaExpectedFounderId: qaCoreFounder || undefined,
           identityAuthorityConnected: delegated ? authority.connected : undefined,
