@@ -179,3 +179,11 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **已提交测试**：`22945d27`，`tests/group-game-boundary.test.mjs` 新增三项：瞬时读回异常恢复成功，持续读回异常保存原始身份牌可后续恢复，以及跨群身份牌不能揭晓。使用当前 Github 精确源码及受控 V8 `node:test` 兼容夹具实际执行 **36/36** 原测试主体；相关群结果卡套件 **10/10**。其余原 5 套 39 项在上一提交已通过隔离 V8，本次未改其模块。**完整原生 Node、Vite、Playwright、手机 QA 未验证。**
 - **真实整合阻塞增加一项**：只读核对唯一 QA #299：`shared/js/group-governance.js`、`shared/js/phone/group-game-session.js`、`group-turn-effects.js` 等至少 9 个群聊运行模块仍缺失；`tests/group-game-boundary.test.mjs` 及 `tests/group-governance.test.mjs` 同样缺失，`package.json` 没有 `test:group:governance`，`scripts/qa-direct-release.mjs` 当前缺少显式群游戏门禁。QA 合入不得仅复制页面，需完整移植组装、引用版本、PWA 缓存及 Node/Chromium 验收门禁，避免测试脚本表面绿灯、群功能却不在版本里。大文件 `chat-detail.html`、`sw.js` 已与 #299 其他模块分叉，不能整体覆盖。
 - **用户的完整交付标准未变**：只有合入唯一 QA #299、原生测试与浏览器验收通过、原 Worker 部署 https://preview.mao520.com 且用户手机验证后才可宣布这一批群聊交付。绝不未经验证触碰正式版。
+
+## 2026-11-17｜群秘密标记泄密修复、PWA 更新与交付核验
+
+- **实际复现**：原 `GroupGameSessions.redactPublicStreamText` 用最短匹配 `[...]` 删除秘密指令。若 AI 的 `[游戏私聊:...]` 或 `[群私聊:...]` 内容包含意外的内层 `]`，流式气泡和页面快照可能公开剩余机密文字，`processGroupInteractionMarkers` 的最终文本同样有风险。例：`公开推理[游戏私聊:r2:不能公开[注释]后半段秘密]` 原返回 `公开推理后半段秘密]`。
+- **真实代码修复**：`1eed665e` 的群游戏公共流式遮蔽改为从首次秘密指令起删除整段后缀；`15d5a62d` + `53b994ac` 的原 `chat/chat/chat-detail.html` 在解析任何私聊/投票私有动作前核对隐藏指令必须是完整、无嵌套方括号、没有尾随普通文本的末尾 token。含嵌套/跨行/不明确后缀时不执行私聊副作用，直接清除整段；流式备用遮蔽与最终落盘也统一删除秘密后缀，避免仅修显示不修聊天历史。正常末尾的单条或多条合法私聊指令保持可用。
+- **新增实际回归**：`c8192e4d` 在 `tests/group-game-boundary.test.mjs` 覆盖流式和隐私标记闭合情况；`03655662` 在 `tests/group-turn-integration.test.mjs` 验证公开文本、禁排队和禁落地私聊。同步 `sw.js` PWA 缓存 `v225→v226`，群游戏脚本查询版本 `game9→game10` 及相应页面、测试；旧回执契约测试的 PWA 版本断言也同步。
+- **测试级别**：从 GitHub 直接读取原有七套 Node 风格测试和运行模块，在隔离 V8 兼容 `node:test`/`assert`/`vm`/`fs` 的夹具里逐份真实执行，**87/87**：边界 37/37、群治理 8/8、群设置/记忆 5/5、游戏结果卡 10/10、回合保存屏障 8/8、回合整合 10/10、普通私聊回执恢复 9/9。另检查准确群分支五个 HTML 页面（群消息、群设置、群管理、聊天列表、记忆空间）的 17 个内联普通脚本均通过 V8 语法解析；外部脚本/模块脚本没有据此宣称已执行。**均不是原生 Node/Vite/Playwright/Android/iPhone 的验收。**
+- **仍未交付事实**：唯一 QA #299 尚未实际移植本群功能（9 个运行模块仍缺）；Cloudflare 现有 QA Worker `maomao-aw-qa-20261114` 最后部署仍为 2026-11-16 21:19:39Z 版本 `597166f2-4e59-48d3-9046-10f517cd7dd0`。整合时要在 QA 自有 `sw.js` 缓存 `v241` 基础上递增，不能直接回退到本功能分支 `v226`；必须在 QA 发布门禁明确加入原生群治理+UI/邀请浏览器测试，不覆盖管理员 001、Push 或正式数据。唯一手机入口 https://preview.mao520.com，未通过真实发布与用户手机验收前仍不得宣布「群聊第一批完整交付」。
