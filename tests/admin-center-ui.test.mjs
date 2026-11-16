@@ -15,12 +15,16 @@ test('temporary session or API failures do not masquerade as a missing super-adm
   assert.match(init, /if \(initializing\) return/);
   assert.match(init, /if \(!me\.account \|\| me\.account\.role !== 'super_admin' \|\| me\.account\.status !== 'active'\)/,
     'a confirmed non-admin account must still leave the creator-only page');
-  assert.match(init, /error\.status === 401 \|\| error\.status === 403 \|\| error\.code === 'ADMIN_ONLY'/,
-    'only confirmed authentication/authorization errors should redirect');
+  assert.match(init, /error\.status === 401 && error\.code === 'ACCOUNT_SESSION_REQUIRED'/,
+    'only a confirmed missing session should redirect; QA admin API denial is not logout');
   assert.match(init, /showError\([\s\S]*\(\) => init\(\)/,
     'transient failures must keep the page open and offer a retry');
   assert.match(adminScript, /function showError\(message, retry\)/);
   assert.match(adminScript, /'重新检查'/);
+  assert.equal((adminScript.match(/error\\.status === 401 && error\\.code === 'ACCOUNT_SESSION_REQUIRED'/g) || []).length, 5,
+    'all admin loaders and actions must distinguish a missing session from QA management API 403');
+  assert.doesNotMatch(adminScript, /error\\.status === 401 \\|\\| error\\.status === 403/,
+    'a forbidden admin endpoint must never trigger a login loop');
 });
 
 test('admin actions lock existing and newly rendered buttons without erasing their original disabled state', () => {
@@ -39,7 +43,7 @@ test('audit request failures offer a retry but authentication failures leave the
   assert.ok(start >= 0 && end > start, 'audit loader must exist');
   const audit = adminScript.slice(start, end);
   assert.match(audit, /error\.code === 'ACCOUNT_DISABLED'/);
-  assert.match(audit, /error\.status === 401 \|\| error\.status === 403 \|\| error\.code === 'ADMIN_ONLY'/);
+  assert.match(audit, /error\.status === 401 && error\.code === 'ACCOUNT_SESSION_REQUIRED'/);
   assert.match(audit, /'重试读取'/);
   assert.match(audit, /retryButton\.addEventListener\('click', \(\) => loadAudit\(accountId, reset\)\)/);
 });
