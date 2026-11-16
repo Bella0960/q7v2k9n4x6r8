@@ -338,3 +338,11 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **修复**：`5be09648` 创建期间锁定记忆按钮、篇幅和插件上下文控件，并阻止模拟的失效事件修改正在创建的故事；`9ed742ad` 增加延迟存储+三类控件回归；`eaba3e77`、`4cc9f7fa` 更新手机 JS 加载 v23。保存完成或失败均在 finally 解除操作锁，不新增存储键或更改公开插件 API。
 - **实际执行证据**：从当前原 PR 源文件在 V8 隔离执行器运行 UI 48/48 PASS、核心/插件/PhoneAPI 17/17 PASS，合计 65/65；这是合成 DOM/IndexedDB 和 V8 的模拟执行，**不是** `node --test` CLI 或 Vite/Chromium/Android/iPhone。完整 `npm ci` / `npm run build` / `test:fanwai:build-and-browser` 仍 NOT RUN — NO FULL REPOSITORY EXECUTION ENVIRONMENT。
 - **兼容/回滚/下一步**：无 DB migration，不清理或迁移角色、聊天、番外、记忆、用户账户数据。可回滚本轮局部功能/测试/缓存版本。下一步骤为在完整隔离仓库执行现有 Node + Vite + Chromium 门禁，依据实测结果继续修原 PR；当前未合并 main、未部署 QA 或正式版。
+
+## 2026-11-17｜FEATURE-ENCOUNTER-001：进入现有唯一统一 QA 分支（尚未上线）
+- **目标/归属**：继续原邂逅功能 PR #297（Draft），只把既有成果安全接入唯一联合 QA `integration/account-fanwai-stack-20261115` / PR #299（Draft）；不新建测试 Worker、独立项目或 PR，不合并 main。
+- **实际提交**：`a51f772d3d13b8484e7b95eab1313ad59c97d8c7`（13 个源码/测试/原角色库与备份接入文件）、`f0990026f0d71fcd9c7af2299a0688d4f4f989a2`（仅首页邂逅入口/默认布局/尊重已移除标记）、`6b02bdea49213400ed6061506ec92e616b441299`（Node/Vite/Playwright 及同 Git HEAD 回执门禁接入原 QA-only 脚本；新增桌面回归断言）。沿用原 PR #297 版本的邂逅引擎、创建角色锁、损坏草稿保护和原角色不覆盖方案。
+- **并行改动保护**：保留联合分支原账号及管理员入口、Service Worker 云推送、音乐浏览器验收以及 `scripts/qa-direct-release.mjs --qa-only`；不将旧 `integration/encounter-account-acceptance-20261115` 覆盖新版 QA。
+- **本轮已核实**：从 GitHub 提交后联合分支读取的源码，静态确认抽卡路由/桌面放置/角色锁/原角色存储保护/备份前缀/账号隔离和 QA 测试门禁在位。V8 编译 `encounter-engine.js`、`characters-manager.js`、邂逅页面 1 个及首页 6 个内联脚本，全部无语法错误。PR #297 原有 39/39 是交接中提供的**隔离测试**数据，未在本会话作为原生 Node 重新执行。QA 发布脚本是 ESM，不能用 `new Function` 模拟 node 编译。
+- **未完成/发布阻塞**：无完整仓库本地检出环境，本轮 **未运行** `npm ci`、原生 `node --test`、`npm run build`、Playwright 三手机宽度及 Android/iPhone 实机验证；**未上传** Cloudflare QA Worker，正式域名、main、管理员和任何数据库均未写动；不能称线上邂逅可测。
+- **统一验收下一步**：在真实工程 Codespace 完整检出该分支的最新 HEAD，运行 `npm run qa:release:check`（需既有环境所需的运行依赖），修复实测失败项；满足全部真实 Node/Vite/Playwright/账号门禁后，通过现有 `MAOMAO_QA_DEPLOY_CONFIRM=maomao-aw-qa-20261114 node scripts/qa-direct-release.mjs --qa-only` 只更新唯一 QA Worker，再由用户手机真实体验。先测试版，绝不部署 app.mao520.com 正式版。
