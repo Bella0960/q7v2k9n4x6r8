@@ -136,7 +136,38 @@ try {
       await page.evaluate(() => addCurrentToMusicPlaylist());
       assert.equal(await page.evaluate(id =>
         JSON.parse(localStorage.getItem('music_playlists_v1'))['手机验收'].includes(id), trackId), true);
+      // 视觉验收必须真正打开播放页，而不是误拍音乐首页。
+      await page.evaluate(() => showNP());
+      await page.waitForTimeout(260);
+      const layout = await page.evaluate(() => {
+        const phone = document.querySelector('.phone').getBoundingClientRect();
+        const cover = document.querySelector('#npCover').getBoundingClientRect();
+        const controls = document.querySelector('.np-controls').getBoundingClientRect();
+        const panel = document.querySelector('#npOverlay .np-main').getBoundingClientRect();
+        return {
+          coverTop: cover.top - phone.top,
+          coverBottom: cover.bottom - phone.top,
+          controlsTop: controls.top - phone.top,
+          controlsBottom: controls.bottom - phone.top,
+          panelHeight: panel.height, phoneHeight: phone.height,
+          layoutMid: (cover.top + controls.bottom) / 2 - phone.top
+        };
+      });
+      assert.ok(layout.coverTop > 128,
+        width + 'px cover still too high: ' + JSON.stringify(layout));
+      assert.ok(layout.controlsTop > 430,
+        width + 'px player controls still clustered at top: ' + JSON.stringify(layout));
+      assert.ok(layout.controlsBottom < layout.phoneHeight - 50,
+        width + 'px player controls too low or clipped: ' + JSON.stringify(layout));
+      assert.ok(Math.abs(layout.layoutMid - layout.phoneHeight / 2) < 94,
+        width + 'px now-playing group not vertically balanced: ' + JSON.stringify(layout));
       await page.screenshot({ path: join(shots, 'player-' + width + '.png') });
+      // 小屏高（667px）必须可以滑动到播放控制，而不是被隐藏。
+      await page.setViewportSize({ width, height: 667 });
+      await page.locator('.np-controls').scrollIntoViewIfNeeded();
+      assert.equal(await page.locator('.np-controls').isVisible(), true,
+        width + 'px short phone hides controls');
+      await page.screenshot({ path: join(shots, 'player-short-' + width + '.png') });
       assert.deepEqual(pageErrors, [], 'no uncaught JS errors at ' + width);
       console.log('PASS Chromium ' + width + 'px: viewport, import Blob, reload, playback, cover, LRC, playlist');
     } finally {
