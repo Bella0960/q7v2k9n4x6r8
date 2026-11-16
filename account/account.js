@@ -6,8 +6,12 @@
   let currentAccount = null;
   let viewRevision = 0;
   let authBusy = false;
-  let delegatedIdentity = false;
-  let delegatedSignInReady = true;
+  // The one approved QA origin must fail closed until the authority is
+  // confirmed. Other account origins retain their existing login behavior.
+  const isKnownQaHost = window.location.hostname ===
+    'maomao-aw-qa-20261114.miamor520000.workers.dev';
+  let delegatedIdentity = isKnownQaHost;
+  let delegatedSignInReady = !isKnownQaHost;
 
   function syncLoginAvailability() {
     // Auth-state readiness and busy state are independent. Finishing an
@@ -29,6 +33,8 @@
     });
     syncLoginAvailability();
   }
+
+  syncLoginAvailability();
 
   function showPanel(id) {
     viewRevision += 1;
@@ -371,7 +377,19 @@
     if (!link) return;
     try {
       const status = await api('/api/admin/bootstrap/status');
-      delegatedIdentity = status.identityMode === 'delegated';
+      const reportedDelegated = status.identityMode === 'delegated';
+      if (isKnownQaHost && !reportedDelegated) {
+        delegatedIdentity = true;
+        delegatedSignInReady = false;
+        link.hidden = true;
+        syncLoginAvailability();
+        document.querySelectorAll('[data-show="registerPanel"]').forEach(button => {
+          button.hidden = true;
+        });
+        setError('loginError', 'QA 身份状态异常，已暂停登录。不要输入正式版密码或重新注册。');
+        return;
+      }
+      delegatedIdentity = reportedDelegated;
       // Initializing an empty QA authority is allowed ONLY when the server
       // confirms the isolated core, exact one-time setup mode, and readiness.
       // Once the founder exists, this link disappears even if setup is still on.
@@ -409,6 +427,15 @@
       }
     } catch {
       link.hidden = true;
+      if (isKnownQaHost) {
+        delegatedIdentity = true;
+        delegatedSignInReady = false;
+        syncLoginAvailability();
+        document.querySelectorAll('[data-show="registerPanel"]').forEach(button => {
+          button.hidden = true;
+        });
+        setError('loginError', 'QA 身份服务连接失败，登录已暂停。请检查连接，不要提交密码。');
+      }
     }
   }
 
