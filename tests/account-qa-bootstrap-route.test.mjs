@@ -218,8 +218,8 @@ test('QA login page uses QA-only password hint without changing legacy gateway U
   assert.match(unreachableQa.errors[0]?.message || '', /QA 身份服务连接失败/);
   assert.match(loginSource, /let delegatedIdentity = isKnownQaHost/);
   assert.match(loginSource, /let delegatedSignInReady = !isKnownQaHost/);
-  assert.match(loginSource, /syncLoginAvailability\(\);\s+function showPanel\(/,
-    'known QA must begin with disabled login before its status request completes');
+  assert.match(loginSource, /syncLoginAvailability\(\);\s+if \(isKnownQaHost\) \{/,
+    'known QA must lock login before showing any register action or awaiting status');
   const legacy = await mount({
     identityMode: 'delegated', qaIdentityCore: false, initialized: true,
     bootstrapAllowed: false, signInReady: true
@@ -238,7 +238,7 @@ test('QA login page uses QA-only password hint without changing legacy gateway U
 test('QA readiness survives unrelated busy-state transitions and never submits while offline', () => {
   const ui = readFileSync(new URL('../account/account.js', import.meta.url), 'utf8');
   const start = ui.indexOf('  function syncLoginAvailability() {');
-  const finish = ui.indexOf('\n\n  function showPanel(', start);
+  const finish = ui.indexOf('\n\n  syncLoginAvailability();', start);
   assert.ok(start >= 0 && finish > start,
     'real login availability and busy handlers must exist');
   const body = ui.slice(start, finish);
