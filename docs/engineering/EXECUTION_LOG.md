@@ -2,6 +2,15 @@
 
 This is the durable checkpoint for owner-assigned, multi-step work. Update it after meaningful milestones and before ending a session.
 
+## 2026-11-16｜PR #299｜QA 注册误入口 + 原运行开关一致性 + Worker 路由安全
+
+- **原则**：仅继续原 #299 与 #290 堆叠，不新建 PR/QA Worker/数据库；未合并 main、未部署新版 QA/核心、未修改正式 Worker/账号/密钥或任何 DO 数据。
+- **前端误入口已修**：在唯一 QA workers.dev 页面初次执行脚本时立即隐藏注册按钮；即使旧标签页或手工事件提交 `registerForm`，也会在读取 FormData/密码、发送请求前阻断。正式/本地注册保持原样。原 `tests/account-qa-bootstrap-route.test.mjs` 增加前端初始按钮与直接提交保护。隔离 JS 执行真实 GitHub 源码：5/5 场景符合预期，阻断情况下没有账号 API 请求。
+- **真实 QA 配置核对与防回归**：Cloudflare QA Worker 的 17 项现有非密钥 plain-text 变量与 `wrangler.qa.jsonc` 对应项一致，发布候选仅新增两项 QA 身份变量。原发布脚本新增 `verifyQaRuntimeVars`，禁止意外更改自主活动、聊天、推送等运行变量、缺失已有变量或偷偷重新开启已关闭的 QA 初始化；只允许身份库确有原 founder 后执行 `isolated_authority → disabled` 单向关闭。原 `tests/qa-release-live-version.test.mjs` 更新；以 Cloudflare 当前真实 17 项变量为基准，模拟 7/7 状态符合预期。
+- **关键隐患：Wrangler 默认可能重新开启身份核心 workers.dev**。从 Cloudflare 官方文档证实：若 Worker 仅在 Dashboard 关闭 `workers.dev`，没有在 Wrangler 文件声明 `workers_dev=false`，下一次 Wrangler 部署会重新公开路由。现网 core 明确是 `enabled=false`，QA 唯一测试入口 `enabled=true`，两者 `previews_enabled=false`。在两份原 Wrangler JSONC 配置写明 `core: workers_dev=false, preview_urls=false`、`QA: workers_dev=true, preview_urls=false`；发布脚本在 Cloudflare 上传前、core 上传后、QA 上传后共三次读取真实 `/subdomain` 并 fail closed。原测试文件增加 2 项。真实 Cloudflare 路由数据通过，新代码对“core 意外公开 / preview 意外开启 / QA 入口关闭”四种伪造错误回执全部拒绝。
+- **具体注意**：文中的 `workers.dev/preview_urls` 公开开关与 Cloudflare 的其它版本 URL/部署 URL 不应混为一谈。核心真正的部署、绑定、权限、登录、设备与手机验收仍是 NOT VERIFIED；不可据此声称完整安全验收已通过。
+- **剩余阻塞**：原 #299 私有仓库缺完整本地 checkout，不能真实运行 npm ci、完整 Node、Vite、Chromium 或 Wrangler。等有完整执行环境，先执行真实测试，部署原 core→唯一 QA；由用户使用原 001 + 已设置 QA Secret 创建独立 QA 密码，立即关闭 setup 并同步配置，然后验收真机登录/退出/刷新、旧角色/聊天/番外。不得要求重复创建密钥或改正式密码。
+
 ## 2026-11-16｜PR #299｜精修 QA 登录可见性、忙碌态和 PWA 资源一致性
 
 - **本轮范围**：沿用用户指定的原 #299 集成分支，保留所有数据/现有 Worker/原 PR，不合并、不部署 QA 或正式，也不执行 Cloudflare 数据库写入。检查并遵循原 `AGENTS.md` 和 QA 身份交接约束。#299 base 对应现有 #290 HEAD。
