@@ -10,8 +10,10 @@
     function strip(raw) {
         var text = String(raw || '');
         text = text.replace(/\[\[MAOMAO_ROLE_AVATAR:[^\]]*\]\]/gi, '');
-        var partial = text.lastIndexOf(MARKER);
-        if (partial >= 0) text = text.slice(0, partial);
+        // Hide an interrupted trailing machine marker regardless of casing.
+        // Do not truncate ordinary prose when a marker-like string is quoted
+        // in the middle of a response.
+        text = text.replace(/\[\[MAOMAO_ROLE_AVATAR:[^\]\r\n]*$/i, '');
         return text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trimEnd();
     }
     function prepare(roleId, library, userText, options) {
@@ -60,7 +62,9 @@
         var text = String(raw || '');
         var avatarId = '';
         if (allowed && plan && Array.isArray(plan.candidates) && plan.candidates.length) {
-            var marker = text.match(/\[\[MAOMAO_ROLE_AVATAR:(\d{1,2})\]\]/i);
+            // Accept only a complete, final control marker; quoted examples
+            // inside normal prose must never cause an avatar change.
+            var marker = text.match(/\[\[MAOMAO_ROLE_AVATAR:(\d{1,2})\]\]\s*$/i);
             if (marker) {
                 var index = Number(marker[1]) - 1;
                 if (index >= 0 && index < plan.candidates.length) {
