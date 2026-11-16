@@ -167,12 +167,35 @@ test('QA login page uses QA-only password hint without changing legacy gateway U
   assert.match(qa.subtitle.textContent, /不要输入正式版密码/);
   assert.ok(qa.fields.every(field => field.disabled === false));
   assert.equal(qa.link.hidden, true);
+  const fresh = await mount({
+    identityMode: 'delegated', qaIdentityCore: true, initialized: false,
+    bootstrapAllowed: true, qaSetupAllowed: true,
+    identityAuthorityConnected: true, configured: true, signInReady: false
+  });
+  assert.equal(fresh.link.hidden, false, 'empty and ready QA must expose setup entry');
+  assert.equal(fresh.link.textContent, '设置 QA 独立账号密码');
+  assert.ok(fresh.fields.every(field => field.disabled === true));
+  assert.match(fresh.errors[0]?.message || '', /先点击「设置 QA 独立账号密码」/);
   const unavailable = await mount({
     identityMode: 'delegated', qaIdentityCore: true, initialized: false,
     bootstrapAllowed: true, signInReady: false
   });
   assert.ok(unavailable.fields.every(field => field.disabled === true));
   assert.match(unavailable.errors[0]?.message || '', /QA 独立身份服务尚未就绪/);
+  assert.equal(unavailable.link.hidden, true, 'not-ready QA must not expose setup');
+  for (const denied of [
+    { qaIdentityCore: false }, { qaSetupAllowed: false },
+    { identityAuthorityConnected: false }, { configured: false },
+    { initialized: true }, { bootstrapAllowed: false }
+  ]) {
+    const blocked = await mount({
+      identityMode: 'delegated', qaIdentityCore: true, initialized: false,
+      bootstrapAllowed: true, qaSetupAllowed: true,
+      identityAuthorityConnected: true, configured: true, signInReady: false,
+      ...denied
+    });
+    assert.equal(blocked.link.hidden, true, 'unverified QA setup entry must stay hidden');
+  }
   const legacy = await mount({
     identityMode: 'delegated', qaIdentityCore: false, initialized: true,
     bootstrapAllowed: false, signInReady: true
