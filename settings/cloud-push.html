@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>云端推送 · Settings</title>
+    <script src="../shared/js/font-loader.js?v=20261022v1"></script>
+    <script src="../shared/js/native-feel.js"></script>
+    <script src="../shared/js/phone/phone_storage.js"></script>
+    <script src="../shared/js/statusbar-control.js"></script>
+    <link rel="stylesheet" href="css/settings.css">
+    <link rel="stylesheet" href="../shared/css/mobile-fit.css">
+    <script>
+    (function () {
+        try {
+            if (localStorage.getItem('settings_dark_mode') === '1') {
+                document.documentElement.classList.add('dark');
+            }
+        } catch (error) {}
+    })();
+    </script>
+    <style>
+        body { background: var(--bg); align-items: stretch; }
+        .phone-mockup {
+            width: min(520px, 100vw);
+            height: 100dvh;
+            min-height: 100vh;
+            border: 0;
+            border-radius: 0;
+            box-shadow: none;
+        }
+        .status-bar { padding-top: calc(12px + env(safe-area-inset-top)); }
+        .header {
+            padding: calc(48px + env(safe-area-inset-top)) 22px 15px;
+            align-items: center;
+            justify-content: flex-start;
+        }
+        .header-left { gap: 10px; }
+        .header-title { font-size: 27px; font-weight: 750; letter-spacing: -0.6px; }
+        .content { padding: 0 22px calc(28px + env(safe-area-inset-bottom)); }
+        .cloud-intro {
+            color: var(--sub);
+            font-size: 13px;
+            line-height: 1.75;
+            margin: 4px 0 10px;
+        }
+        .cloud-intro p + p { margin-top: 5px; }
+        .group-title { padding: 17px 2px 8px; }
+        .cloud-panel {
+            width: 100%;
+            padding: 2px 15px;
+            border-radius: 16px;
+            background: var(--card);
+        }
+        .cloud-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            min-height: 62px;
+            padding: 11px 0;
+            border-bottom: 1px solid var(--line);
+        }
+        .cloud-row:last-child { border-bottom: 0; }
+        .cloud-row-copy { min-width: 0; flex: 1; }
+        .cloud-row-title { color: var(--ink); font-size: 14px; line-height: 1.45; }
+        .cloud-row-note { margin-top: 3px; color: var(--aux); font-size: 11.5px; line-height: 1.5; }
+        .cloud-value {
+            max-width: 46%;
+            color: var(--aux);
+            font-size: 11.5px;
+            line-height: 1.5;
+            text-align: right;
+            overflow-wrap: anywhere;
+        }
+        .cloud-explain {
+            margin: 9px 2px 0;
+            color: var(--aux);
+            font-size: 11.5px;
+            line-height: 1.7;
+        }
+        .cloud-form { padding: 13px 0 14px; }
+        .cloud-subtitle {
+            margin: 0 0 11px;
+            color: var(--ink);
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .cloud-field { display: block; min-width: 0; margin-top: 12px; }
+        .cloud-field > span {
+            display: block;
+            margin-bottom: 6px;
+            color: var(--sub);
+            font-size: 12px;
+        }
+        .cloud-field input,
+        .cloud-field select,
+        .cloud-input {
+            width: 100%;
+            min-width: 0;
+            height: 42px;
+            padding: 0 11px;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            background: var(--bg);
+            color: var(--ink);
+            font: inherit;
+            font-size: 13px;
+            outline: none;
+        }
+        .cloud-field input:focus,
+        .cloud-field select:focus,
+        .cloud-input:focus { border-color: var(--aux); }
+        .cloud-control-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-top: 12px;
+        }
+        .cloud-control-row label { color: var(--sub); font-size: 12px; }
+        .cloud-control-row select {
+            max-width: 68%;
+            height: 38px;
+            padding: 0 9px;
+            border: 1px solid var(--line);
+            border-radius: 9px;
+            background: var(--bg);
+            color: var(--ink);
+            font-size: 12px;
+        }
+        .cloud-button {
+            width: 100%;
+            min-height: 42px;
+            margin-top: 12px;
+            padding: 0 14px;
+            border: 1px solid var(--line);
+            border-radius: 11px;
+            background: transparent;
+            color: var(--ink);
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .cloud-button.primary {
+            border-color: var(--ink);
+            background: var(--ink);
+            color: var(--bg);
+        }
+        .cloud-button:disabled { opacity: .48; cursor: not-allowed; }
+        .cloud-hint {
+            margin: 8px 1px 0;
+            color: var(--aux);
+            font-size: 11px;
+            line-height: 1.65;
+        }
+        .cloud-details {
+            margin-top: 10px;
+            padding: 0 15px;
+            border-radius: 15px;
+            background: var(--card);
+        }
+        .cloud-details summary {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            min-height: 52px;
+            color: var(--ink);
+            font-size: 13px;
+            font-weight: 500;
+            list-style: none;
+            cursor: pointer;
+        }
+        .cloud-details summary::-webkit-details-marker { display: none; }
+        .cloud-details summary::after {
+            content: '⌄';
+            color: var(--aux);
+            font-size: 17px;
+            font-weight: 400;
+            transition: transform .18s ease;
+        }
+        .cloud-details[open] summary::after { transform: rotate(180deg); }
+        .cloud-details-content {
+            padding: 1px 0 15px;
+            border-top: 1px solid var(--line);
+        }
+        .cloud-time-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            gap: 2px 10px;
+            margin-top: 7px;
+        }
+        .cloud-time-grid .cloud-field { margin-top: 11px; }
+        .cloud-check {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 14px;
+            color: var(--sub);
+            font-size: 12px;
+        }
+        .cloud-check input { width: 16px; height: 16px; accent-color: var(--ink); }
+        .cloud-action {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            min-height: 48px;
+            border-bottom: 1px solid var(--line);
+            color: var(--ink);
+            font-size: 13px;
+            cursor: pointer;
+        }
+        #cloudTestRow {
+            width: 100%;
+            margin: 13px 0 0;
+            padding: 0 14px;
+            justify-content: center;
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            background: var(--card);
+            font-weight: 600;
+            font-size: 13px;
+            line-height: 1.5;
+            font-family: inherit;
+        }
+        #cloudTestRow::after { content: none; }
+        #cloudTestRow:disabled { opacity: .55; cursor: default; }
+        .cloud-local-test {
+            margin: 8px 0 0;
+            padding: 7px 0;
+            min-height: 36px;
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+            color: #555;
+            font: inherit;
+            font-size: 12px;
+            text-decoration: underline;
+            text-underline-offset: 4px;
+            cursor: pointer;
+        }
+        .cloud-local-test:disabled { opacity: .55; }
+
+        .cloud-action:last-of-type { border-bottom: 0; }
+        .cloud-action::after { content: '›'; color: var(--aux); font-size: 19px; }
+        .cloud-action[aria-disabled="true"] { opacity: .55; pointer-events: none; }
+        .cloud-code-panel { padding: 10px 0 13px; }
+        .cloud-inline-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+        .cloud-inline-row .cloud-input { flex: 1; }
+        .cloud-inline-row .cloud-button { width: auto; min-width: 66px; min-height: 40px; margin: 0; }
+        .cloud-result {
+            display: none;
+            max-height: 260px;
+            overflow: auto;
+            padding: 8px 0 12px;
+            color: var(--aux);
+            font-size: 11.5px;
+            line-height: 1.7;
+            white-space: pre-line;
+            overflow-wrap: anywhere;
+        }
+        .cloud-danger { color: var(--sub); }
+        .cloud-guide {
+            margin: 22px 2px 4px;
+            padding-top: 17px;
+            border-top: 1px solid var(--line);
+        }
+        .cloud-guide-title {
+            color: var(--ink);
+            font-size: 16px;
+            font-weight: 650;
+            letter-spacing: -.2px;
+        }
+        .cloud-guide-lead {
+            margin-top: 7px;
+            color: var(--sub);
+            font-size: 12px;
+            line-height: 1.75;
+        }
+        .cloud-guide-list { margin-top: 12px; }
+        .cloud-guide-item {
+            display: grid;
+            grid-template-columns: 86px minmax(0, 1fr);
+            gap: 9px;
+            padding: 11px 0;
+            border-bottom: 1px solid var(--line);
+        }
+        .cloud-guide-item strong {
+            color: var(--ink);
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .cloud-guide-item p {
+            color: var(--sub);
+            font-size: 11.5px;
+            line-height: 1.7;
+        }
+        .cloud-guide-limit {
+            margin-top: 13px;
+            color: var(--aux);
+            font-size: 11.5px;
+            line-height: 1.75;
+        }
+        .cloud-guide-limit strong { color: var(--sub); font-weight: 600; }
+        .cloud-guide-status {
+            margin-top: 17px;
+            padding-top: 14px;
+            border-top: 1px solid var(--line);
+        }
+        .cloud-guide-status-title {
+            margin-bottom: 3px;
+            color: var(--ink);
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .cloud-guide-status-item {
+            display: grid;
+            grid-template-columns: 95px minmax(0, 1fr);
+            gap: 9px;
+            padding: 9px 0;
+            border-bottom: 1px solid var(--line);
+        }
+        .cloud-guide-status-item:last-child { border-bottom: 0; }
+        .cloud-guide-status-item strong {
+            color: var(--sub);
+            font-size: 11.5px;
+            font-weight: 600;
+        }
+        .cloud-guide-status-item p {
+            color: var(--aux);
+            font-size: 11.5px;
+            line-height: 1.7;
+        }
+        @media (min-width: 600px) {
+            body { background: #F2F2F4; }
+            .phone-mockup { min-height: 100vh; box-shadow: 0 8px 36px rgba(0,0,0,.05); }
+        }
+        html.dark body { background: #000; }
+        html.dark .cloud-field input,
+        html.dark .cloud-field select,
+        html.dark .cloud-input,
+        html.dark .cloud-control-row select { background: var(--card-2); }
+    </style>
+</head>
+<body>
+<div class="phone-mockup">
+    <div class="status-bar">
+        <span class="status-time">09:41</span>
+        <div class="status-icons">
+            <svg width="15" height="10" viewBox="0 0 18 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1 8.5V3.5M5.5 9.5V2.5M10 10V1.5M14.5 8V4"/></svg>
+            <svg width="18" height="10" viewBox="0 0 18 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="2" width="13" height="8" rx="2"/><path d="M16 5v2"/></svg>
+        </div>
+    </div>
+
+    <header class="header">
+        <div class="header-left">
+            <button type="button" class="icon-btn back-btn" onclick="location.href='settings.html'" aria-label="返回设置">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4 7 12l8 8"/><path d="M7 12h13"/></svg>
+            </button>
+            <h1 class="header-title">云端推送</h1>
+        </div>
+    </header>
+
+    <main class="content">
+        <p role="status" style="font-size:12px;line-height:1.7;color:var(--sub);padding:8px 2px;">当前 QA：推送连接可测试；角色关闭应用后的 AI 自动生成尚未就绪。各项开关以实际云端返回为准。</p>
+        <div class="cloud-intro">
+            <p>设备推送负责把云端通知送到这台设备；角色自主活动负责按角色授权和作息安排主动联系。两项设置彼此独立。</p>
+            <p>当前 QA 已有设备订阅、测试推送与角色作息接口。云端独立运行 AI 生成尚未验收；仅打开推送开关不会自动收到角色发来的聊天消息。</p>
+        </div>
+
+        <section aria-labelledby="deviceTitle">
+            <div class="group-title" id="deviceTitle">DEVICE</div>
+            <div class="cloud-panel">
+                <div class="cloud-row">
+                    <div class="cloud-row-copy">
+                        <div class="cloud-row-title">云端连接</div>
+                        <div class="cloud-row-note">当前设备与云端服务的连接状态</div>
+                    </div>
+                    <div class="cloud-value" id="cloudStatusText" role="status" aria-live="polite">未连接</div>
+                </div>
+                <div class="cloud-row">
+                    <div class="cloud-row-copy">
+                        <div class="cloud-row-title">推送通知</div>
+                        <div class="cloud-row-note">在这台设备接收云端提醒</div>
+                    </div>
+                    <label class="switch" aria-label="推送通知">
+                        <input type="checkbox" id="cloudPushToggle">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
+            <button class="cloud-action" id="cloudTestRow" type="button" aria-label="发送一条不需要 AI 或角色的手机系统测试通知">发送测试通知</button>
+            <p class="cloud-hint" id="cloudPushResult" role="status" aria-live="polite">测试通知不需要角色或 API。请先开启上方推送。</p>
+            <button id="cloudLocalTestRow" type="button" class="cloud-local-test">本机通知自检</button>
+            <p class="cloud-hint" id="cloudLocalResult" role="status" aria-live="polite">本机自检不经过服务器，用来确认当前浏览器能否显示系统通知。</p>
+            <button id="cloudEmptyPushRow" type="button" class="cloud-local-test">远程空载测试（排除加密问题）</button>
+            <p class="cloud-hint" id="cloudEmptyPushResult" role="status" aria-live="polite">这是无私人内容的 FCM 远程唤醒；不需要角色或 AI。</p>
+        </section>
+
+        <section aria-labelledby="autonomyTitle">
+            <div class="group-title" id="autonomyTitle">CHARACTER ACTIVITY</div>
+            <div class="cloud-panel">
+                <div class="cloud-row">
+                    <div class="cloud-row-copy">
+                        <div class="cloud-row-title">云端自主活动授权</div>
+                        <div class="cloud-row-note">允许已授权角色进入主动联系调度</div>
+                    </div>
+                    <label class="switch" aria-label="云端自主活动授权">
+                        <input type="checkbox" id="cloudAutonomyToggle" disabled>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div class="cloud-row cloud-context-sharing-row">
+                    <div class="cloud-row-copy">
+                        <div class="cloud-row-title">允许云端使用角色上下文</div>
+                        <div class="cloud-row-note">单独授权将角色设定与近期文字同步到服务端，并发送给你配置的模型服务商生成主动消息</div>
+                    </div>
+                    <label class="switch" aria-label="允许云端使用角色上下文">
+                        <input type="checkbox" id="cloudContextSharingToggle" disabled>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <p class="cloud-hint cloud-context-sharing-hint">
+                    默认关闭。开启后，角色称呼、角色设定文字和最近最多 12 条纯文字聊天消息会同步到 MAOMAO 服务端，并发送给你配置的模型服务商处理；请先确认所选服务商的隐私政策，不要在聊天中放入真实个人隐私、密码或验证码。图片、语音、附件、完整聊天记录和手机里的 API Key 都不会上传。关闭后，云端保存的角色上下文会被删除；本机聊天记录不受影响。
+                </p>
+                <div class="cloud-form">
+                    <div class="cloud-subtitle">角色授权</div>
+                    <label class="cloud-field">
+                        <span>选择角色</span>
+                        <select id="cloudRoleSelect" aria-label="选择角色">
+                            <option value="">正在读取本机角色…</option>
+                        </select>
+                    </label>
+                    <div class="cloud-control-row">
+                        <label for="cloudCharacterAutonomyMode">该角色的授权方式</label>
+                        <select id="cloudCharacterAutonomyMode">
+                            <option value="inherit">跟随全局设置</option>
+                            <option value="on">仅此角色开启</option>
+                            <option value="off">仅此角色关闭</option>
+                        </select>
+                    </div>
+                    <button id="cloudRoleAutonomySave" class="cloud-button" type="button">保存角色授权</button>
+                    <button id="cloudRoleInitialTest" class="cloud-button" type="button">排队测试角色首次联系</button>
+                    <p id="cloudRoleInitialTestStatus" class="cloud-hint" role="status" aria-live="polite">请选择新建测试角色。此测试只发送角色名称和固定开场指令。</p>
+                    <p id="cloudRoleSaveStatus" class="cloud-hint" role="status" aria-live="polite"></p>
+                    <p class="cloud-hint">角色名称默认只从本机读取；只有单独开启上方上下文共享后，才会同步有限角色设定与近期文字。</p>
+                </div>
+            </div>
+
+            <details class="cloud-details">
+                <summary>时区与作息设置</summary>
+                <div class="cloud-details-content">
+                    <label class="cloud-field" for="cloudRoleTimezone">
+                        <span>IANA 时区（例如 America/Los_Angeles）</span>
+                        <input id="cloudRoleTimezone" type="text" inputmode="text" autocomplete="off" placeholder="请填写角色所在时区">
+                    </label>
+                    <div class="cloud-time-grid">
+                        <label class="cloud-field">
+                            <span>允许主动联系 · 开始</span>
+                            <input id="cloudRoleActiveStart" type="text" inputmode="numeric" placeholder="HH:MM">
+                        </label>
+                        <label class="cloud-field">
+                            <span>允许主动联系 · 结束</span>
+                            <input id="cloudRoleActiveEnd" type="text" inputmode="numeric" placeholder="HH:MM">
+                        </label>
+                        <label class="cloud-field">
+                            <span>忙碌时段 · 开始（可选）</span>
+                            <input id="cloudRoleBusyStart" type="text" inputmode="numeric" placeholder="HH:MM">
+                        </label>
+                        <label class="cloud-field">
+                            <span>忙碌时段 · 结束（可选）</span>
+                            <input id="cloudRoleBusyEnd" type="text" inputmode="numeric" placeholder="HH:MM">
+                        </label>
+                        <label class="cloud-field">
+                            <span>休息时段 · 开始（可选）</span>
+                            <input id="cloudRoleAsleepStart" type="text" inputmode="numeric" placeholder="HH:MM">
+                        </label>
+                        <label class="cloud-field">
+                            <span>休息时段 · 结束（可选）</span>
+                            <input id="cloudRoleAsleepEnd" type="text" inputmode="numeric" placeholder="HH:MM">
+                        </label>
+                    </div>
+                    <label class="cloud-check">
+                        <input id="cloudRoleAway" type="checkbox">
+                        此角色当前设为外出
+                    </label>
+                    <button id="cloudRoleScheduleSave" class="cloud-button primary" type="button">保存时区与作息</button>
+                    <p class="cloud-hint">时区和允许主动联系的起止时间为必填；忙碌与休息时段可选。未保存有效作息的角色不会进入云端调度。</p>
+                </div>
+            </details>
+        </section>
+
+        <section aria-labelledby="deviceToolsTitle">
+            <div class="group-title" id="deviceToolsTitle">DEVICE MANAGEMENT</div>
+            <details class="cloud-details">
+                <summary>设备配对与诊断</summary>
+                <div class="cloud-details-content">
+                    <div class="cloud-action" id="cloudPairCreateRow" role="button" tabindex="0">生成一次性配对码</div>
+                    <div id="cloudPairCodePanel" class="cloud-code-panel" style="display:none;">
+                        <p class="cloud-hint">配对码短时有效且只能使用一次，请在另一台设备上输入。</p>
+                        <div class="cloud-inline-row">
+                            <input class="cloud-input" id="cloudPairCodeOutput" type="text" readonly aria-label="一次性设备配对码">
+                            <button class="cloud-button" id="cloudPairCodeCopyButton" type="button">复制</button>
+                        </div>
+                    </div>
+                    <p class="cloud-hint">首次连接时输入初始认领码；之后添加设备，请输入已连接设备生成的一次性配对码。</p>
+                    <div class="cloud-inline-row">
+                        <input class="cloud-input" id="cloudPairCodeInput" type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="输入一次性配对码" aria-label="输入一次性配对码">
+                        <button class="cloud-button primary" id="cloudPairConnectButton" type="button">连接</button>
+                    </div>
+                    <div class="cloud-action" id="cloudReadinessCheck" role="button" tabindex="0">检查云端准备情况</div>
+                    <div id="cloudReadinessResult" class="cloud-result" role="status" aria-live="polite"></div>
+                    <div class="cloud-action cloud-danger" id="cloudRevokeRow" role="button" tabindex="0">断开云连接</div>
+                </div>
+            </details>
+        </section>
+
+        <section class="cloud-guide" aria-labelledby="cloudGuideTitle">
+            <h2 class="cloud-guide-title" id="cloudGuideTitle">这到底是什么功能？</h2>
+            <p class="cloud-guide-lead">简单说：它让 MAOMAO 可以把云端提醒送到你的设备，也为角色按设定时间主动联系你提供授权和调度入口。它不是一个新的聊天窗口。</p>
+
+            <div class="cloud-guide-list">
+                <div class="cloud-guide-item">
+                    <strong>推送通知</strong>
+                    <p>负责把云端发出的通知显示在这台设备上。打开它只代表允许接收通知，不会因此自动生成聊天内容，也不会替角色开启主动联系。</p>
+                </div>
+                <div class="cloud-guide-item">
+                    <strong>角色主动联系</strong>
+                    <p>给角色授权后，云端会根据全局开关、该角色的授权方式和作息判断是否可以主动联系。角色任务需要通过真实客户端与服务端联动后才可执行；目前未完成后台独立 AI 生成验收。允许时段之外、忙碌或休息时段，以及设为外出的角色，不会按普通主动联系时段发送。</p>
+                </div>
+                <div class="cloud-guide-item">
+                    <strong>设备配对</strong>
+                    <p>把另一台设备加入同一个云端账号。配对成功后，该设备也可以获得自己的推送订阅，并参与已授权的消息接收流程。</p>
+                </div>
+                <div class="cloud-guide-item">
+                    <strong>测试与诊断</strong>
+                    <p>「发送测试推送」只检查通知能否送到设备；「检查云端准备情况」用于查看配置和调度是否就绪，不会替角色发送聊天消息。</p>
+                </div>
+            </div>
+
+            <p class="cloud-guide-limit"><strong>目前需要知道的限制：</strong>当前 QA 不承诺关闭应用后自动发消息：后端仍报告云端自主生成未就绪，需进一步整合与真机验收。服务端凭据与手机 API Key 完全分离；上下文共享默认关闭，关闭后会删除云端快照。推送订阅只负责把提醒送到设备，不决定是否生成消息。</p>
+
+            <div class="cloud-guide-status" aria-label="当前功能进度">
+                <h3 class="cloud-guide-status-title">当前进度</h3>
+                <div class="cloud-guide-status-item">
+                    <strong>前台主动联系</strong>
+                    <p>保留已有的前台执行路径；云端任务与前台任务分开认领，前台设备不会抢走标记为云端执行的任务。</p>
+                </div>
+                <div class="cloud-guide-status-item">
+                    <strong>关闭应用后生成</strong>
+                    <p>当前 QA 尚未验证云端独立生成。即使已配置作息或授权，关闭应用后也不保证生成或送达。</p>
+                </div>
+                <div class="cloud-guide-status-item">
+                    <strong>真实设备验收</strong>
+                    <p>历史预览曾验证安卓推送；本次 QA 的真实通知投递、角色主动生成和消息入库尚未完成真机验收。</p>
+                </div>
+            </div>
+        </section>
+    </main>
+</div>
+
+<script src="../shared/js/cloud-push-client.js?v=20261117qa1"></script>
+<script>
+(function () {
+    if (window.MaomaoCloud && window.MaomaoCloud.mountSettings) {
+        window.MaomaoCloud.mountSettings();
+    }
+})();
+</script>
+</body>
+</html>
