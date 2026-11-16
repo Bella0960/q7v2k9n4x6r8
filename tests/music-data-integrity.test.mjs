@@ -151,3 +151,24 @@ test('MUSIC-LISTEN-001: no imaginary sync—native playback and role invites hav
   assert.match(music, /maomao:music:playback/);
   assert.doesNotMatch(music, /status:\s*'accepted'/);
 });
+
+test('MUSIC-UI-001: saved covers appear as original images in every song list without inline Base64', () => {
+  assert.match(music, /function musicApplyTrackThumbnails\(container\)/);
+  assert.match(music, /musicApplyTrackThumbnails\(recentList\)/);
+  assert.match(music, /musicApplyTrackThumbnails\(searchResults\)/);
+  assert.match(music, /musicApplyTrackThumbnails\(box\)/);
+  assert.match(music, /data-music-track-id/);
+  assert.match(music, /musicCoverUrlCache\.size > 64/);
+  assert.match(music, /URL\.revokeObjectURL\(url\)/);
+  assert.match(music, /event\.persisted/);
+});
+
+test('MUSIC-UI-001: global statusbar visibly responds and local song can resume after reload', () => {
+  assert.match(music, /class="statusbar status-bar" data-maomao-system-statusbar/);
+  assert.match(music, /function updateMusicStatusClock\(\)/);
+  assert.doesNotMatch(music, /\.statusbar\s*\{\s*display:\s*none/);
+  const play = music.slice(music.indexOf('async function togglePlay()'), music.indexOf('// 音频事件', music.indexOf('async function togglePlay()')));
+  assert.match(play, /selected\.source === 'local' && !currentBlobUrl/);
+  assert.match(play, /await playTrack\(selected\.id\)/);
+  assert.match(play, /resumeTime > 0/);
+});
