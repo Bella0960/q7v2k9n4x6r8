@@ -17,9 +17,8 @@ import { chromium } from 'playwright';
  *   4) 其他 [data-drag] 元素的长按拖动行为保持不变。
  *
  * 运行前提（本地测试，非 CI 覆盖）：
- *   - 需要 Playwright 与 Microsoft Edge；仓库既有浏览器测试同样使用
- *     channel: 'msedge'（见 tests/takeout-add-button.browser.mjs）。
- *   - 若环境没有 Edge，可用 CLOCK_TEST_CHANNEL=chromium 指定其他 Chromium 渠道。
+ *   - 默认使用 Playwright 已安装的 Chromium，确保 Codespaces 可重复执行。
+ *   - 仅显式设置 CLOCK_TEST_CHANNEL=msedge 时才使用 Edge。
  *   - 依赖本地静态服务器（serviceWorkers: 'block'），不启动 Vite，也不依赖
  *     %TEMP% 下的任何临时脚本或配置。
  *   - 触摸用例使用 CDP Input.dispatchTouchEvent 真实触摸事件，不是普通 click()。
