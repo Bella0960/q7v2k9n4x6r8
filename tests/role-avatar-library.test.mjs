@@ -1346,3 +1346,49 @@ test('paired gallery and chat use role-scoped user avatar, never rewrite global 
   assert.ok(chatDetail.includes('if (!isGroupChat && _chatPairAvatarUrl) return _chatPairAvatarUrl'));
   assert.ok(source.includes("CHAT_PAIR_KEY_PREFIX = 'maomao_chat_pair_user_avatar_v1_'"));
 });
+
+
+test('deleting a role removes only that role chat-pair assignment, not another role or global profile', async () => {
+  const globalProfile = JSON.stringify({ avatar: 'my-private-profile' });
+  const { api, values } = createLibrary({
+    ai_custom_characters: JSON.stringify([{ id: 'role-a' }, { id: 'role-b' }]),
+    myProfile: globalProfile
+  });
+  const a = await api.add('role-a', 'data:image/jpeg;base64,A');
+  const b = await api.add('role-a', 'data:image/jpeg;base64,B');
+  const c = await api.add('role-b', 'data:image/jpeg;base64,C');
+  const d = await api.add('role-b', 'data:image/jpeg;base64,D');
+  const pairA = api.linkPair('role-a', a.value.id, b.value.id);
+  const pairB = api.linkPair('role-b', c.value.id, d.value.id);
+  assert.equal((await api.applyPairToChat('role-a', pairA.value.id)).ok, true);
+  assert.equal((await api.applyPairToChat('role-b', pairB.value.id)).ok, true);
+  const beforeOther = values.get('maomao_chat_pair_user_avatar_v1_role-b');
+  assert.equal((await api.removeRole('role-a')).ok, true);
+  assert.equal(values.has('maomao_chat_pair_user_avatar_v1_role-a'), false);
+  assert.equal(api.getChatPairUserSelection('role-a'), null);
+  assert.equal(values.get('maomao_chat_pair_user_avatar_v1_role-b'), beforeOther);
+  assert.equal(api.getChatPairUserSelection('role-b').assetId, d.value.assetId);
+  assert.equal(values.get('myProfile'), globalProfile);
+});
+
+test('blocked role chat-assignment cleanup remains retryable after partial role removal', async () => {
+  const options = {};
+  const { api, values } = createLibrary({
+    ai_custom_characters: JSON.stringify([{ id: 'role-a', avatar: 'old' }])
+  }, options);
+  const a = await api.add('role-a', 'data:image/jpeg;base64,A');
+  const b = await api.add('role-a', 'data:image/jpeg;base64,B');
+  const pair = api.linkPair('role-a', a.value.id, b.value.id);
+  assert.equal((await api.applyPairToChat('role-a', pair.value.id)).ok, true);
+  const oldChat = values.get('maomao_chat_pair_user_avatar_v1_role-a');
+  options.failChatPairRemove = true;
+  const fail = await api.removeRole('role-a');
+  assert.equal(fail.ok, false);
+  assert.equal(fail.error.code, 'STORAGE_FAILED');
+  assert.equal(values.get('maomao_chat_pair_user_avatar_v1_role-a'), oldChat);
+  assert.ok(api.listPendingRoleCleanups().value.includes('role-a'));
+  options.failChatPairRemove = false;
+  assert.equal((await api.removeRole('role-a')).ok, true);
+  assert.equal(values.has('maomao_chat_pair_user_avatar_v1_role-a'), false);
+  assert.equal(api.listPendingRoleCleanups().value.includes('role-a'), false);
+});
