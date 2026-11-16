@@ -94,13 +94,13 @@ function render(){
  if(!current)return;
  var c=current,masked=c.type==='蒙面档案',obj=c.type==='以物识人',blind=c.type==='性格盲测';
  cardEl.dataset.candidateId=c.id;
- cardEl.setAttribute('aria-label',(masked||obj||blind?'揭晓当前陌生人物的身份':'查看 '+c.name+' 的人物档案'));
+ cardEl.setAttribute('aria-label',(masked?'逐步查看蒙面人物的线索':obj||blind?'揭晓当前陌生人物的身份':'查看 '+c.name+' 的人物档案'));
  cardEl.innerHTML='<div class="card-top"><span>'+escapeHtml(modeCaption(c))+'</span><span class="card-number">'+String(position).padStart(2,'0')+'</span></div>'+
  '<div class="portrait">'+(obj?objectArt(c.object):'<div class="ring" aria-hidden="true"></div>')+
  '<span class="portrait-caption">'+(obj?'物件里的线索':masked?'身份尚未揭晓':'尚未相识')+'</span></div>'+
  '<h2 class="name">'+escapeHtml(masked?'未署名的旅人':obj?'失主未详':blind?'一段陌生的声音':c.name)+'</h2>'+
  '<p class="hint">'+escapeHtml(masked?'身份暂未公开':blind?'先凭一句话，认识这个人':obj?c.object:c.job+' · '+c.era+' · '+c.gender+' · '+c.age+'岁')+'</p>'+
- '<div class="tags">'+(masked?'<span class="tag">身份未知</span><span class="tag">点击揭晓</span>':obj?'<span class="tag">遗留物件</span><span class="tag">寻找主人</span>':blind?'<span class="tag">先听 TA 说</span><span class="tag">点击揭晓</span>':'<span class="tag">'+escapeHtml(c.species)+'</span><span class="tag">'+escapeHtml(c.trait)+'</span><span class="tag">'+escapeHtml(c.era)+'</span>')+'</div>'+
+ '<div class="tags">'+(masked?'<span class="tag">身份未知</span><span class="tag">逐步寻迹</span>':obj?'<span class="tag">遗留物件</span><span class="tag">寻找主人</span>':blind?'<span class="tag">先听 TA 说</span><span class="tag">点击揭晓</span>':'<span class="tag">'+escapeHtml(c.species)+'</span><span class="tag">'+escapeHtml(c.trait)+'</span><span class="tag">'+escapeHtml(c.era)+'</span>')+'</div>'+
  '<p class="quote">「'+escapeHtml(obj?'这件东西的主人，留下一段没有讲完的故事。':c.quote)+'」</p>'+
  '<div class="card-footer"><span>一位尚未认识的人</span><span class="look">轻触翻阅档案　＋</span></div>';
  document.getElementById('cardSequence').textContent=String(position).padStart(2,'0')+' / ∞';
@@ -248,8 +248,32 @@ function openObjectGuess(card){
  var reveal=sheet.querySelector('[data-object-reveal]');
  if(reveal)reveal.addEventListener('click',function(){openDetail(card,false,false,undefined,true);});
 }
-function openDetail(card,fromSaved,revealBlind,blindGuess,revealObject,objectGuess){
+function openMaskedClues(card,shown){
+ var clues=engine.getMaskedClues(card);
+ if(clues.length!==3){openDetail(card,false,false,undefined,false,undefined,true);return;}
+ var count=Math.max(0,Math.min(clues.length,Math.floor(Number(shown)||0)));
+ var html=head('UNKNOWN / CLUES','蒙面档案')+
+   '<div class="sheet-quote">「'+escapeHtml(card.quote)+'」</div>'+
+   '<p class="tiny">身份仍然保密。你可以逐条查看线索，也可以随时直接揭晓。</p>'+
+   '<p class="tiny" aria-live="polite">线索 '+String(count).padStart(2,'0')+' / 03</p>'+
+   (count?'<div class="masked-clues">'+clues.slice(0,count).map(function(item){
+     return '<div class="story-preview"><strong>'+escapeHtml(item.title)+'</strong>'+
+       '<p class="sheet-text">'+escapeHtml(item.text)+'</p></div>';
+   }).join('')+'</div>':'<p class="sheet-text">还没有打开任何线索。</p>')+
+   '<div class="saved-detail-actions">'+
+   (count<clues.length?'<button type="button" class="mini" data-mask-next>查看下一条线索</button>':'')+
+   '<button type="button" class="mini dark" data-mask-reveal>揭晓身份</button></div>';
+ openSheet(html,'蒙面档案');
+ var next=sheet.querySelector('[data-mask-next]');
+ if(next)next.addEventListener('click',function(){openMaskedClues(card,count+1);});
+ var reveal=sheet.querySelector('[data-mask-reveal]');
+ if(reveal)reveal.addEventListener('click',function(){
+   openDetail(card,false,false,undefined,false,undefined,true);
+ });
+}
+function openDetail(card,fromSaved,revealBlind,blindGuess,revealObject,objectGuess,revealMasked){
  if(!card&&!current)return;var c=card||current;
+ if(c.type==='蒙面档案'&&!fromSaved&&!revealMasked){openMaskedClues(c,0);return;}
  if(c.type==='性格盲测'&&!fromSaved&&!revealBlind){openBlindGuess(c);return;}
  if(c.type==='以物识人'&&!fromSaved&&!revealObject){openObjectGuess(c);return;}
  var html=head('PERSONA / 01','人物档案')+'<div class="sheet-quote">「'+escapeHtml(c.quote)+'」</div>'+

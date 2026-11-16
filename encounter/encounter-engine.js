@@ -514,6 +514,20 @@
 
   // 「以物识人」只在所属世界的原生职业池挑三项，不泄露真名与身份。
   // 按同一人物 ID 稳定选择与排列；不修改候选和正式角色，也不消耗 API。
+  // 蒙面档案逐条展示已有世界设定，不在揭晓前包含姓名、职业或正式 ID。
+  // 按已有人物数据生成临时线索；不写角色、候选、聊天或记忆。
+  function getMaskedClues(card) {
+    if (!card || card.type !== '蒙面档案' || typeof card.id !== 'string' ||
+        !card.id || typeof card.era !== 'string' || !card.era ||
+        typeof card.species !== 'string' || !card.species ||
+        typeof card.object !== 'string' || !card.object) return [];
+    return [
+      {id:'origin',title:'来处',text:'这个人的故事发生在「' + card.era + '」。'},
+      {id:'kind',title:'身份轮廓',text:'TA 属于「' + card.species + '」，但还没有留下姓名。'},
+      {id:'keepsake',title:'随身之物',text:'TA 留下了一件线索：「' + card.object + '」。'}
+    ];
+  }
+
   function getObjectOptions(card) {
     if (!card || card.type !== '以物识人' || typeof card.job !== 'string' ||
         typeof card.id !== 'string' || !card.id) return [];
@@ -589,7 +603,7 @@
     removeCandidateSafe:removeCandidateSafe, updateCandidateStoryChoiceSafe:updateCandidateStoryChoiceSafe,
     getPreferences:getPreferences, savePreferences:savePreferences,
     formatBrief:formatBrief, storyOpening:storyOpening, getBlindOptions:getBlindOptions,
-    getObjectOptions:getObjectOptions,
+    getObjectOptions:getObjectOptions, getMaskedClues:getMaskedClues,
     getEncounteredRoles:getEncounteredRoles, getReunionScenes:getReunionScenes, normalizeName:normalizeName,
     checkAccountScope:checkAccountScope, verifyLiveAccountContext:verifyLiveAccountContext,
     registerCardDecorator:function(fn) {

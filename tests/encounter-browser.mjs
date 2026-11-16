@@ -202,6 +202,30 @@ try {
       assert.match(await page.locator('#sheet').innerText(),/内在反差/);
       assert.match(await page.locator('#sheet').innerText(),/你的第一印象|你原以为/);
       await page.keyboard.press('Escape');
+      // 蒙面档案必须逐层展示线索，玩家主动揭晓之前不得出现姓名或原职业。
+      await page.locator('#moreButton').click();
+      await page.locator('#setting-type').selectOption('蒙面档案');
+      await page.keyboard.press('Escape');
+      await page.locator('#passButton').click();
+      await page.waitForTimeout(350);
+      assert.equal(await page.locator('#frontCard .name').innerText(),'未署名的旅人');
+      await page.locator('#frontCard').click();
+      await page.locator('#overlay.open').waitFor();
+      assert.match(await page.locator('#sheet').innerText(),/线索 00 \/ 03/);
+      assert.equal(await page.locator('#sheet .sheet-row').count(),0);
+      await page.locator('[data-mask-next]').click();
+      assert.match(await page.locator('#sheet').innerText(),/线索 01 \/ 03/);
+      await page.locator('[data-mask-next]').click();
+      assert.match(await page.locator('#sheet').innerText(),/线索 02 \/ 03/);
+      assert.equal(await page.locator('#sheet .sheet-row').count(),0);
+      await page.screenshot({path:resolve(artifacts,'encounter-masked-clues-390.png')});
+      await page.locator('[data-mask-next]').click();
+      assert.match(await page.locator('#sheet').innerText(),/线索 03 \/ 03/);
+      assert.equal(await page.locator('[data-mask-next]').count(),0);
+      await page.locator('[data-mask-reveal]').click();
+      assert.match(await page.locator('#sheet').innerText(),/姓名/);
+      assert.match(await page.locator('#sheet').innerText(),/身份/);
+      await page.keyboard.press('Escape');
     }
     await page.reload({waitUntil:'load'});
     assert.equal(await page.locator('#savedCount').innerText(),'01','候选应刷新后存在');
@@ -279,7 +303,8 @@ try {
   if(failures.length)throw new Error('Browser JS errors:\n'+failures.join('\n'));
   const files=['encounter-375.png','encounter-390.png','encounter-430.png',
     'encounter-original-role-editor.png','encounter-object-concealed.png',
-    'encounter-object-guess-390.png','encounter-blind-guess-390.png'];
+    'encounter-object-guess-390.png','encounter-blind-guess-390.png',
+    'encounter-masked-clues-390.png'];
   const captured={};
   for(const name of files){
     const stat=await fs.stat(resolve(artifacts,name));
@@ -293,7 +318,8 @@ try {
     source:'vite-dist',viewports:[375,390,430],checked:{
       cardSwap:true,swipeRebound:true,fingerSwipeLeft:true,candidatePersistence:true,
       roleCreation:true,jsonRoundTrip:true,thirdPartyJsonRejected:true,
-      freeDrawNoApi:true,blindPersonaGuess:true,objectIdentityGuess:true,reunionNativeChat:true
+      freeDrawNoApi:true,blindPersonaGuess:true,objectIdentityGuess:true,
+      maskedClueSteps:true,reunionNativeChat:true
     },captured
   };
   await fs.writeFile(receiptPath,JSON.stringify(receipt,null,2)+'\n','utf8');

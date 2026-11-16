@@ -840,3 +840,28 @@ test('以物识人任意原生世界均生成有三个不重复的合理身份�
     }
   }
 });
+
+
+test('蒙面档案三条线索只读且不会提前揭晓姓名、职业或角色 ID',()=>{
+  const original='[{"id":"existing","name":"原来的人","persona":"不能修改"}]';
+  const h=harness({'ai_custom_characters':original,
+    'maomao_encounter_preferences_v1':'{"type":"蒙面档案"}'});
+  const c=h.api.generate().value;
+  assert.equal(c.type,'蒙面档案');
+  const before=Array.from(h.map.entries());
+  const clues=Array.from(h.api.getMaskedClues(c));
+  assert.equal(clues.length,3);
+  assert.deepEqual(Array.from(clues,x=>x.id),['origin','kind','keepsake']);
+  assert.equal(new Set(Array.from(clues,x=>x.id)).size,3);
+  assert.match(clues[0].text,new RegExp(c.era));
+  assert.match(clues[1].text,new RegExp(c.species));
+  assert.ok(clues[2].text.includes(c.object));
+  const preview=clues.map(x=>x.text).join(' ');
+  assert.equal(preview.includes(c.name),false,'蒙面线索不得写出人物真实姓名');
+  assert.equal(preview.includes(c.job),false,'未揭晓前不得包含职业');
+  assert.equal(preview.includes(c.id),false,'不能泄露候选 ID');
+  assert.deepEqual(Array.from(h.map.entries()),before,'逐条线索不应改写任何存储');
+  assert.equal(h.localStorage.getItem('ai_custom_characters'),original);
+  assert.equal(h.api.getMaskedClues({...c,type:'普通相遇'}).length,0);
+  assert.equal(h.api.getMaskedClues(null).length,0);
+});

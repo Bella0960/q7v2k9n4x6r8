@@ -52,6 +52,15 @@ function setup(initial={}) {
         if(!this.reunionActionCache[selector])this.reunionActionCache[selector]=new FakeEl(selector);
         return this.reunionActionCache[selector];
       }
+      if(selector==='[data-mask-next]'||selector==='[data-mask-reveal]'){
+        if(!this.maskActions || this.maskActionSource!==this.innerHTML){
+          this.maskActionSource=this.innerHTML;this.maskActions={};
+        }
+        if(!this.maskActions[selector])this.maskActions[selector]=
+          this.innerHTML.includes(selector==='[data-mask-next]'?'data-mask-next':'data-mask-reveal')
+          ? new FakeEl(selector):null;
+        return this.maskActions[selector];
+      }
       if(selector==='[data-object-reveal]'){
         if(this.objectRevealSource!==this.innerHTML){
           this.objectRevealSource=this.innerHTML;
@@ -304,5 +313,41 @@ test('以物识人可以直接揭晓，不要求猜测也不改角色',()=>{
   sheet.querySelector('[data-object-reveal]').fire('click');
   assert.match(sheet.innerHTML,/人物档案/);
   assert.doesNotMatch(sheet.innerHTML,/你猜对了|你猜 TA 是/);
+  assert.equal(h.window.MAOMAOEncounter.getCandidates().value.length,0);
+});
+
+
+test('蒙面档案逐条展开线索，最后手动揭晓，未揭晓前不泄露完整身份',()=>{
+  const original='[{"id":"old","name":"旧角色","persona":"保持不变"}]';
+  const h=setup({'ai_custom_characters':original,
+    'maomao_encounter_preferences_v1':'{"type":"蒙面档案"}'});
+  const cover=h.el('frontCard'),sheet=h.el('sheet');
+  assert.match(cover.innerHTML,/未署名的旅人/);
+  assert.match(cover.innerHTML,/逐步寻迹/);
+  cover.fire('click');
+  assert.match(sheet.innerHTML,/线索 00 \/ 03/);
+  assert.doesNotMatch(sheet.innerHTML,/class="sheet-row"/);
+  for(let i=1;i<=3;i++){
+    const next=sheet.querySelector('[data-mask-next]');
+    assert.ok(next,'第 '+i+' 次仍能展开');
+    next.fire('click');
+    assert.match(sheet.innerHTML,new RegExp('线索 0'+i+' / 03'));
+    assert.doesNotMatch(sheet.innerHTML,/class="sheet-row"/,'展开线索不能揭晓人设');
+  }
+  assert.equal(sheet.querySelector('[data-mask-next]'),null);
+  assert.match(sheet.innerHTML,/随身之物/);
+  assert.match(sheet.innerHTML,/身份轮廓/);
+  sheet.querySelector('[data-mask-reveal]').fire('click');
+  assert.match(sheet.innerHTML,/人物档案/);
+  assert.match(sheet.innerHTML,/姓名<\/span>/);
+  assert.equal(h.localStorage.getItem('ai_custom_characters'),original);
+  assert.equal(h.window.MAOMAOEncounter.getCandidates().value.length,0);
+});
+test('蒙面档案可直接揭晓，不强制展开三个线索',()=>{
+  const h=setup({'maomao_encounter_preferences_v1':'{"type":"蒙面档案"}'});
+  h.el('frontCard').fire('click');
+  const sheet=h.el('sheet');
+  sheet.querySelector('[data-mask-reveal]').fire('click');
+  assert.match(sheet.innerHTML,/姓名<\/span>/);
   assert.equal(h.window.MAOMAOEncounter.getCandidates().value.length,0);
 });
