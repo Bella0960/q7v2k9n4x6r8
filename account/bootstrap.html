@@ -31,7 +31,7 @@
     <section class="panel form-panel">
       <a class="back-button" href="./index.html" aria-label="返回账号入口" style="display:grid;place-items:center;text-decoration:none">←</a>
       <div class="eyebrow">ONE-TIME INITIALIZATION</div>
-      <h1>创作者初始化</h1>
+      <h1 id="bootstrapHeading">创作者初始化</h1>
       <p class="lead">首次部署时创建唯一超级管理员。初始化成功后，此入口永久关闭。</p>
       <div class="bootstrap-warning">此操作仅适用于 MAO 创作者本人。初始化前，需在 Cloudflare Worker Secrets 中配置 MAO_SUPER_ADMIN_BOOTSTRAP_SECRET（至少 32 位），并确认 DEVICE_SECRET_PEPPER（至少 32 位）已配置。此页面不会显示或保存服务器密钥，切勿将密钥发给其他人。</div>
       <div class="bootstrap-state" id="bootstrapStatus" role="status" aria-live="polite">正在确认服务器初始化状态…</div>
@@ -58,6 +58,12 @@
           <p role="status" id="bootstrapCopyStatus" aria-live="polite"></p>
         </div>
         <a href="https://dash.cloudflare.com/" target="_blank" rel="noopener noreferrer">打开 Cloudflare 控制台</a>
+      </aside>
+      <aside class="bootstrap-setup-help" id="qaAuthorityHelp" hidden aria-live="polite">
+        <strong>独立 QA 身份服务尚未配置完成</strong>
+        <p>此处只用于现有测试小手机的独立身份源，不是重新创建正式管理员。请由工程维护人员在现有 <code>maomao-identity-core</code> Worker 设置独立 QA 专用密钥及已核实的管理员 ID，再验证 QA Service Binding 是否确实指向该 Worker。</p>
+        <p>不要在 <code>mao-auth-preview</code>、<code>mao</code> 或任何正式 Worker 上填写、替换密码与初始化密钥。不要将密钥发送到聊天、GitHub 或截图。</p>
+        <p>设置完毕后点击「重新检查」。QA 密码必须与正式账号密码不同；初始化完成后需要从 QA 登录页单独登录。</p>
       </aside>
       <form id="bootstrapForm" hidden>
         <label>初始化密钥<input name="bootstrapSecret" type="password" autocomplete="off" minlength="32" required placeholder="输入部署时设置的 Worker Secret"></label>
