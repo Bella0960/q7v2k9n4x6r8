@@ -53,3 +53,6 @@ perf/virtual-regression.mjs
 .zip
 .rar
 .7z
+
+# 本地回执与 Playwright 截图不可提交
+test-results/

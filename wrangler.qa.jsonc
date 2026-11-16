@@ -1,0 +1,49 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "maomao-aw-qa-20261114",
+  "main": "worker.js",
+  "workers_dev": true,
+  "preview_urls": false,
+  "compatibility_date": "2026-10-27",
+  "compatibility_flags": ["nodejs_compat"],
+  "keep_vars": true,
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "html_handling": "none",
+    "run_worker_first": true
+  },
+  "ai": { "binding": "AI" },
+  "durable_objects": {
+    "bindings": [
+      { "name": "CLOUD_DB", "class_name": "CloudDatabase" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["CloudDatabase"] }
+  ],
+  "services": [
+    { "binding": "MAO_IDENTITY_AUTHORITY", "service": "maomao-identity-core" }
+  ],
+  "vars": {
+    "MAO_IDENTITY_MODE": "delegated_preview",
+    "MAO_IDENTITY_AUTHORITY_MODE": "existing_worker",
+    "MAO_IDENTITY_CANONICAL_ADMIN_REQUIRED": "true",
+    "MAO_QA_AUTHORITY_WORKER": "maomao-identity-core",
+    "MAO_QA_IDENTITY_SETUP": "disabled",
+    "MAO_DELEGATED_ADMIN_MANAGEMENT_ENABLED": "true",
+    "MAO_SOCIAL_CHAT_ENABLED": "false",
+    "MAO_SOCIAL_E2EE_ENABLED": "true",
+    "MAO_SOCIAL_ENABLED": "true",
+    "AUTONOMY_DEVICE_GRACE_MS": "0",
+    "AUTONOMY_DEVICE_LEASE_MS": "120000",
+    "AUTONOMY_HEARTBEAT_TTL_MS": "90000",
+    "AUTONOMY_LEASE_MS": "60000",
+    "AUTONOMY_MIN_IDLE_MS": "1800000",
+    "AUTONOMY_MODEL_BACKEND": "workers_ai",
+    "AUTONOMY_PREVIEW_ALARM_ENABLED": "true",
+    "AUTONOMY_RETRY_BACKOFF_MS": "60000,300000,900000",
+    "AUTONOMY_TICK_LIMIT": "10",
+    "DEVICE_PAIRING_TOKEN_TTL_MS": "300000"
+  }
+}

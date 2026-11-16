@@ -1,6 +1,98 @@
 # MAOMAO Execution Log
 
+## 2026-11-17｜MUSIC-UI-001｜同步现有 QA 整合分支（代码已到，云端未发布）
+
+- **用户确认需求：** 复核音乐首页与播放页整体效果，并尽快在手机上通过现有唯一 QA 测试。坚守只合到 QA、不合并 main、不触动正式服务及管理员账号。
+- **发现与修复：** QA 分支已经包含 #303 的备份、音频导入、歌词、封面及歌单代码；只有 Now Playing 整体居中与短屏滚动布局没有同步。经过逐字归一化比对，确认改动独立后将 `music/music.html`、`tests/music-lightweight-default.test.mjs`、`tests/music-mobile-browser.mjs` 同步至 QA 分支，未覆盖现有账号、聊天和其他模块。
+- **真正的功能阻塞：** 音乐页几十处调用 `toast()`，却没有定义、没有 DOM 容器，保存成功/失败提示会抛 JS 错误。已在 PR #303 与 QA 分支同步修复为按需出现的灰黑轻量提示；修复收藏/最近播放读取异常被覆盖、写入配额失败静默吞掉、收藏失败仍变心形、播放进度保存失败无提示、播放计数失败中断成功播放等问题。新测试含配额/损坏记录防覆盖。
+- **发布路径安全：** 原 `--deploy` 重发 QA 身份核心，本次音乐前端不应做此动作；扩充原有 `scripts/qa-direct-release.mjs` 的 `--qa-only` 模式，真实测试之后只上传当前 Worker，保证核心版本前后不变；新增 `npm run qa:release:worker-only` 入口和 QA-only 契约检查，并把音乐 Chromium 手机视口脚本加入 release TESTS。
+- **只读云端核对：** 现有 QA `maomao-aw-qa-20261114` 仍存在；最新一次 Cloudflare 已部署时间为 2026-11-16T19:51:47Z，版本 `5954a708-ba4d-48df-b17f-02b0116b75ef`。19 项运行变量与仓库 QA 配置完全一致，MAO_IDENTITY_AUTHORITY 仍连隔离 core；QA/Core SQL 只读计数各 1 个账号、1 个启用的超级管理员，记录行写入 0。
+- **执行证据与诚实状态：** 最新 QA 文件与原音乐 PR 的 7 个音乐/备份文件 SHA 已核对一致。缺失 toast 的源码实锤已修；隔离 V8 实际调用 toast、收藏失败、防覆盖和播放进度配额逻辑 5/5 通过；QA-only 合同隔离执行 1/1 通过，JS 语法检查通过。**这些不等于完整 Node/Vite/Chromium 验收**，本窗口无该仓库的可执行完整 checkout。**没有把新代码部署到 Cloudflare QA**，不能提供已更新的可测链接。
+- **唯一剩余动作：** 在现有 Codespaces 该 QA 整合分支拉最新 HEAD，凭本地安全配置的 Cloudflare 凭证直接运行 `MAOMAO_QA_DEPLOY_CONFIRM=maomao-aw-qa-20261114 npm run qa:release:worker-only`（命令自身先跑完整 Node、Vite、Chromium 门禁，全部通过才只发布 QA Worker，不重发身份核心；避免先 check 再重复测一次），核对 Cloudflare version 已更新后才通知用户手机测试。若任何检查失败，停在 QA，不修改 main 或正式版。
+
+
 This is the durable checkpoint for owner-assigned, multi-step work. Update it after meaningful milestones and before ending a session.
+
+## 2026-11-16｜PR #299｜真实 QA 工程构建环境接入（Codespaces，未启动）
+- **目标**：不建第二套项目或 QA，接续已有私有仓库分支 `integration/account-fanwai-stack-20261115`；仅原 PR #299，**不合并 main，不自动部署正式版/QA**。
+- **已提交**：`.devcontainer/devcontainer.json`，GitHub 提交 `731649420084aa82e8e8c1e3d87a3d36d60452c5`。使用 Node 22 Dev Container；Codespaces 创建时 `npm ci --no-audit --no-fund`，随后 `npx playwright install --with-deps chromium && npm run qa:release:check`。这使自动测试在 Codespaces 真实源仓和容器里执行，而不是使用零散 GitHub 文件的模拟测试；若任一阶段失败，保留原错误供排查。没有新增 GitHub Actions 工作流、Cloudflare Worker、数据库、PR 或自动部署。
+- **配置静态验收**：从 PR #299 最新 HEAD 读取上述 Dev Container 文件、`package.json` 及原 `scripts/qa-direct-release.mjs`，检查 Node 22、npm ci、Chromium 系统依赖、QA 全套 Node/Vite/浏览器脚本、无 `--deploy`/自动上线，**8/8 项通过**。配置可解析，但**Codespace 尚未启动，Node/Vite/Chromium 实际通过状态 NOT VERIFIED**。
+- **已确认可运行工具的边界**：本聊天有 Node 22/npm/Git，但没有私有 MAOMAO checkout 或直接创建/操作 GitHub Codespaces 的连接器动作；现有 GitHub 连接器能写仓库，无法在 Codespaces 终端运行命令。只有用户在 GitHub 的 Code → Codespaces 打开上述分支创建 Codespace，才能执行真正的自动预检。Codespaces 使用独立用量/配额，不能保证本账户有足够额度。
+- **先前真实 Cloudflare 只读预检**：唯一 QA `maomao-aw-qa-20261114` 仍绑定旧网关；原 QA 影子管理员 ID 匹配且独立身份 core 库为空，两个 Worker 原有密钥和独立 DO namespace 保留，真实 `cloudflarePreflight` 函数对实测回执 PASS。不需要删数据库、重设密钥。该预检不是编译/部署成功。
+- **最短剩余步骤**：Codespace 真实 `npm run qa:release:check` 全部通过→使用已有 QA-only 身份凭据和安全权限，仅更新原 `maomao-identity-core`、再更新原 `maomao-aw-qa-20261114`→从原 workers.dev URL 实测初始化 001、关闭一次性入口，验收登录/退出/刷新及聊天/番外。**云端 Worker 版本仍旧，本轮没有部署。**
+
+## 2026-11-16｜PR #299｜关键阻塞集中清理：两项真实回归测试漂移已修
+
+- **当前 HEAD：`909c75a14a736c4181cc82f0670e884ca9472204`**；原 PR #299 继续 Draft（基于 #290 最新 head），无新 PR/环境/数据库，Cloudflare、正式版、main 皆未改。
+- **已修正一个确定的真实测试门禁阻塞**：先从原 #299 取回 `tests/account-qa-bootstrap-route.test.mjs` 和 `account/account.js`，按整份测试文件执行 10 个案例：**8/10**，两项测试失败。原因是后续已实现“QA 初始立即隐藏注册入口”，使旧测试的 `syncLoginAvailability(); function showPanel()` 邻接断言及从 `syncLoginAvailability` 截取到 `showPanel` 的测试桩不再正确。
+- **修复提交 `909c75a14a736c4181cc82f0670e884ca9472204`**：只改 `tests/account-qa-bootstrap-route.test.mjs` 两处，改为断言真正的 QA 初始注册防护，忙碌态测试只提取两个目标函数而不混入初始 DOM 副作用。再次运行同一整份测试文件：**10/10**。这是使用模拟 Node 接口的 V8 原源码测试运行，并非完整仓库的 `node --test`。
+- **额外定点复测**：使用同一提交的 GitHub 原源码、测试和合成依赖，执行 `tests/qa-identity-bootstrap.test.mjs`：**12/12**；执行 `tests/qa-release-live-version.test.mjs`：**16/16**。三份合计 **38/38** 模拟执行通过；不能冒充 `npm ci`、Node 测试 CLI、Vite、Chromium 或真正的 Cloudflare 登录。
+- **会话问题已排除**：最初怀疑 core `/api/accounts/logout` 不处理 Bearer；追踪 `worker/lib/account-auth.js` 实际 `cookieValue(request)` 函数发现它同时读取 Cookie 和严格格式 Bearer，因此原 QA 的 Bearer 注销并不缺失，**未做无依据的修改**。
+- **剩余真实阻塞（按优先级）**：① 在同一完整私有 checkout 下实际跑 `npm ci`、全量 Node、Vite、Chromium；② 按现有验证门禁将 #299 核心代码部署至**现有** `maomao-identity-core`，再仅切换现有 `maomao-aw-qa-20261114` 的 Service Binding；③ 由用户在原 QA URL 使用已保存的 QA-only Secret 进行 001 首次初始化，独立新 QA 登录密码、同步关闭 setup，验收登录/刷新/退出、历史聊天/番外和 PWA 手机。不可绕过真实构建后直接部署或触碰正式管理员数据。
+- **Cloudflare 前次已验证现场**：现有 QA 仍绑定 `maomao-001-identity-gateway-20261114`，原 QA 库唯一 active founder 001；独立 core 库仍为空且已配双 Secret。代码在 PR，不得宣称已部署。
+
+## 2026-11-16｜PR #299｜QA 注册误入口 + 原运行开关一致性 + Worker 路由安全
+
+- **原则**：仅继续原 #299 与 #290 堆叠，不新建 PR/QA Worker/数据库；未合并 main、未部署新版 QA/核心、未修改正式 Worker/账号/密钥或任何 DO 数据。
+- **前端误入口已修**：在唯一 QA workers.dev 页面初次执行脚本时立即隐藏注册按钮；即使旧标签页或手工事件提交 `registerForm`，也会在读取 FormData/密码、发送请求前阻断。正式/本地注册保持原样。原 `tests/account-qa-bootstrap-route.test.mjs` 增加前端初始按钮与直接提交保护。隔离 JS 执行真实 GitHub 源码：5/5 场景符合预期，阻断情况下没有账号 API 请求。
+- **真实 QA 配置核对与防回归**：Cloudflare QA Worker 的 17 项现有非密钥 plain-text 变量与 `wrangler.qa.jsonc` 对应项一致，发布候选仅新增两项 QA 身份变量。原发布脚本新增 `verifyQaRuntimeVars`，禁止意外更改自主活动、聊天、推送等运行变量、缺失已有变量或偷偷重新开启已关闭的 QA 初始化；只允许身份库确有原 founder 后执行 `isolated_authority → disabled` 单向关闭。原 `tests/qa-release-live-version.test.mjs` 更新；以 Cloudflare 当前真实 17 项变量为基准，模拟 7/7 状态符合预期。
+- **关键隐患：Wrangler 默认可能重新开启身份核心 workers.dev**。从 Cloudflare 官方文档证实：若 Worker 仅在 Dashboard 关闭 `workers.dev`，没有在 Wrangler 文件声明 `workers_dev=false`，下一次 Wrangler 部署会重新公开路由。现网 core 明确是 `enabled=false`，QA 唯一测试入口 `enabled=true`，两者 `previews_enabled=false`。在两份原 Wrangler JSONC 配置写明 `core: workers_dev=false, preview_urls=false`、`QA: workers_dev=true, preview_urls=false`；发布脚本在 Cloudflare 上传前、core 上传后、QA 上传后共三次读取真实 `/subdomain` 并 fail closed。原测试文件增加 2 项。真实 Cloudflare 路由数据通过，新代码对“core 意外公开 / preview 意外开启 / QA 入口关闭”四种伪造错误回执全部拒绝。
+- **具体注意**：文中的 `workers.dev/preview_urls` 公开开关与 Cloudflare 的其它版本 URL/部署 URL 不应混为一谈。核心真正的部署、绑定、权限、登录、设备与手机验收仍是 NOT VERIFIED；不可据此声称完整安全验收已通过。
+- **剩余阻塞**：原 #299 私有仓库缺完整本地 checkout，不能真实运行 npm ci、完整 Node、Vite、Chromium 或 Wrangler。等有完整执行环境，先执行真实测试，部署原 core→唯一 QA；由用户使用原 001 + 已设置 QA Secret 创建独立 QA 密码，立即关闭 setup 并同步配置，然后验收真机登录/退出/刷新、旧角色/聊天/番外。不得要求重复创建密钥或改正式密码。
+
+## 2026-11-16｜PR #299｜精修 QA 登录可见性、忙碌态和 PWA 资源一致性
+
+- **本轮范围**：沿用用户指定的原 #299 集成分支，保留所有数据/现有 Worker/原 PR，不合并、不部署 QA 或正式，也不执行 Cloudflare 数据库写入。检查并遵循原 `AGENTS.md` 和 QA 身份交接约束。#299 base 对应现有 #290 HEAD。
+- **问题一（可见性）**：在 `account/account.js` 中的“QA 使用独立密码、不要使用正式版密码”提醒被 `account/ivory-entry.css` 的全局 `.panel>.lead{display:none}` 隐藏。只对独立 QA 添加 `qa-login-hint` 显示样式；常规登录仍简约。原 `tests/account-qa-bootstrap-route.test.mjs` 增加真实源码和 CSS 合同测试。修正首次加入时测试桩字符串的换行语法问题，后续对 6 个相关 JS 文件做 V8 语法解析均通过。
+- **问题二（登录忙碌态 + 默认关闭）**：原 `setAuthBusy(false)` 可能在身份 core 断联时恢复启用登录按钮。新增 `syncLoginAvailability` 并在请求完成后恢复准确状态；如果 `delegatedIdentity` 且 `!delegatedSignInReady`，在读取/提交表单密码之前直接阻断。进一步使唯一已知 QA workers.dev 域名从初始页面载入即保持未验证状态（不展示可用登录），当状态接口失败或意外报告 `local` 模式时隐藏注册入口并保持密码提交禁用。正常本地/正式入口不变。用原源码 DOM 桩测试忙碌态 4/4、QA 就绪/首次/错误模式/离线/普通 local/旧 gateway **6/6**；新增原 Node 回归测试。
+- **问题三（旧 PWA）**：服务工作者对静态资源缓存优先，原 `account/index.html`、`account/bootstrap.html` 引用的 JS/CSS 版本号未更新。只更新登录 JS、登录 CSS 和初始化 JS 的引用为 `v=20261116-qa1`，不重置原缓存或存储。
+- **发布门禁**：`scripts/qa-direct-release.mjs` 对原 QA workers.dev 地址匿名 GET 六项基础资源：身份状态、登录 HTML、登录 JS、源 CSS、初始化 HTML、初始化 JS；**额外解析并同源 GET 登录 HTML 实际引用的样式表**，校验 `qa-login-hint` 真正在渲染 CSS 中，兼容 Vite CSS 合并/指纹路径；不信任跨源 CSS、旧缓存或缺少资源的版本。新增 `dist/account/bootstrap.js` 与 `dist/account/ivory-entry.css` 构建检查。`tests/qa-release-live-version.test.mjs` 已增补旧资源、404、权威断联情况。
+- **局部验证证据**：从 GitHub 最新 #299 HEAD 读取同一提交的实际 JS/CSS/HTML，执行原 `qaHttpSmoke` 源码（HTTP 响应为模拟），覆盖首次 QA/已初始化/旧登录 JS/旧 CSS/旧初始化 JS/旧初始化 HTML/旧登录 HTML/断联/资源 404，**9/9 PASS**。相关 JavaScript 的 V8 语法解析全部通过。以上均不等于实际 Node `node --test`、Vite 构建、Chromium 或 QA 线上 HTTP。
+- **剩余阻塞**：当前工具没有完整私有仓库 checkout 和完整工程测试环境，尚不能安全执行 `npm ci` / Node/Vite/Chromium / Wrangler 上线。独立 QA core 尚未初始化，唯一 QA 仍需从旧网关切换，真实原 001 登录/退出/刷新及旧聊天/番外/PWA 真机验收仍需完成。不得声明生产或 QA 已更新。
+
+## 2026-11-16｜PR #299｜QA 初始化允许原管理员永久 ID，避免误导重新配置密钥
+
+- **本轮真实数据核验（只读）**：Cloudflare 唯一 QA Durable Object 查询原 founder `MAO-OXHBDBWCOIHPBBYN`，账号恰好 1、ID 精确匹配、role 为启用 super_admin、原用户名满足账号规则（不输出用户名本身），SQL `rows_written=0`。因此旧用户名不合法并非真实阻塞。
+- **解决实际操作阻塞**：`worker/lib/qa-identity-bootstrap.js` 在显式 QA-only 单次初始化时，允许用户在管理员用户名输入框填**现有影子账号用户名**或**既有 founder 永久 ID**。服务端只把 ID 当查找别名，转发给独立 core 的用户名仍是 shadow.username，返回固定 founder ID；不允许传入外部 ID、改名、创建第二个管理员，不修改普通/正式初始化逻辑。
+- **小范围 UI**：`account/bootstrap.html` + `account/bootstrap.js` 只有确认 QA 模式才显示「原管理员用户名或永久 ID」，允许最长 28 个字符输入 ID，普通本地初始化仍是 24 字符的用户名。QA 连不上身份服务时不要把它误报为 Secret 丢失，也不要叫用户重新生成已配置的 Secret。
+- **新增测试**：原 `tests/qa-identity-bootstrap.test.mjs` 新增 QA ID 别名成功、陌生身份拒绝、QA 表单/提示约束。隔离 JS 运行现有 GitHub 后端初始化源代码 **4/4** 场景通过，模拟 DOM 执行原 QA 页面 `checkStatus` 源码 **4/4** 场景通过；使用本地模拟绑定/网络，不是 Cloudflare 实际初始化、完整 Node、Vite、Chromium 或真机验收。
+- **范围和接续**：本轮只修改原 #299 Draft 分支，未部署 QA 或正式、未合并 main、未写账号数据。两项 QA-only Cloudflare Secrets 已在用户控制台设置，无需重复填。继续需要完整私有仓库真实构建与 QA Worker 发布门禁，通过后才允许真实 QA 初始化、关闭 setup 并手机验收。
+
+## 2026-11-16｜PR #299｜保留 QA 密钥/构建产物 + 严格 SQL 验证（本轮）
+
+- **只在原 PR #299 分支开发**。未经用户确认不合并 main、不部署正式或 QA Worker、不写入/迁移任何账号、角色、聊天、推送数据。执行环境有 Node 22、npm 和 Git，但没有私有仓库完整 checkout、GitHub 身份凭据或自动挂载工程文件，不能将 JS 模拟视为全量测试。
+- **发布前阻断代码污染**：`scripts/qa-direct-release.mjs` 新增 `assertReadyForUpload()`，两次 Wrangler 上传之前各自核对远程最新提交、git 工作区无改动和必须存在的 `dist/index.html`、账号 HTML/JS、聊天 HTML 等 Vite 产物。防止构建/测试修改追踪文件或丢失构建产物仍被部署。
+- **部署后避免丢失原有能力**：对 `maomao-identity-core` 与唯一 QA Worker 的全部 `secret_text` 名称做部署前后比对（只比名称/类型，永不读取密钥值）；额外核对 QA 的 `AI`、`ASSETS` 绑定都保留。避免发布成功却破坏账号/推送/静态资源。
+- **数据库 SQL 回执不允许宽松转换**：`verifiedAccountCounts()` 必须看到 `rows_written === 0`、完整的 3 个 SQL 列、非负整数计数和一致的匹配范围；只允许真正 `COUNT=0` 且 SUM 为 null 的独立空库。缺字段、null COUNT、错误类型、伪造计数或任何写入都阻止发布。
+- **测试**：`tests/qa-release-live-version.test.mjs` 新增工作区/构建/密钥检查、SQL 校验的真实源码回归。在隔离 JS 运行实际源码，上传前保护 4/4、SQL 回执处理 9/9；**本轮另直接通过 Cloudflare Connector 只读查询真实两个 DO，调用最新发布脚本 `verifiedAccountCounts` 函数检查均成功**：原 QA `accounts=1, matches=1, admins=1`；独立 core `accounts=0, matches=0, admins=0`，双查询 `rows_written=0`。无线上数据写入。
+- **剩余**：必须在具备完整私有仓库的可信环境运行 `npm ci`、Node/Vite/Chromium 和浏览器测试，才能用 Wrangler 在原 QA Worker 上受控部署 core→QA；随后按原流程完成 001 的 QA-only 初始化、关闭一次性入口、真实登录和真机验收。不得绕过完整测试声称上线。
+
+## 2026-11-16｜PR #299｜首次 QA 初始化入口与 QA 独立密码提示（本轮）
+- **事实复核**：原 QA 代码的核心身份登录通过 `/api/accounts/login` 获取安全 HttpOnly 会话，后续 `/api/accounts/me` 使用 Bearer 验证、退出调用核心 `/api/accounts/logout`；本轮源码静态核对未发现必须推倒重写的会话适配问题。仍需要真实 QA 登录/刷新/退出验收。
+- **问题 1 已修复**：`account/account.js` 曾在委托模式无条件隐藏 `creatorBootstrapLink`，即使独立 core 空库且 `qaSetupAllowed=true`，用户在原 QA 入口也找不到首次初始化。现在仅当状态接口明确返回 isolated QA + `qaSetupAllowed` + `bootstrapAllowed` + authority connected + configured + initialized=false 时，显示「设置 QA 独立账号密码」。已创建管理员、身份断联、旧 gateway、正式/本地错误状态均隐藏。普通 local 首次初始化保留。
+- **问题 2 已修复**：`worker/lib/account-auth.js` 对状态接口新增非授权性质的 `qaIdentityCore` 显示标记，`account/account.js` 对 QA 提示“原管理员用户名/永久 ID + QA 单独设置的密码，不输入正式版密码”，普通委托页面保留原提示。生产身份校验从未依赖此显示标记。
+- **问题 3 发布门禁**：`scripts/qa-direct-release.mjs` 从原 QA workers.dev 地址读取状态时，额外要求 `qaIdentityCore===true`，防止仍指向旧身份模式的页面误报成功；`tests/qa-release-live-version.test.mjs` 增加缺失标记拒绝案例。
+- **回归**：从 GitHub 当前原源码执行隔离 V8 UI handler **7/7 场景通过**（首次空库显示、初始化完成隐藏、离线隐藏、关闭设置隐藏、外部 authority 隐藏、普通本地入口、旧 delegated），真实源码 QA HTTP helper **4/4 场景通过**（首次/已初始化、错误核心标记、登录页缺失）。**这些是桩模拟，不是完整 Node CLI、Vite、Chromium 或部署后的手机验收。** 新的 Node 回归断言已附原测试文件，待完整私有 checkout 执行。
+- **现网边界**：未对 Cloudflare 做部署/绑定/身份数据库写入；两项 QA core Secret 已配，无需重复创建。原 #299 继续 Draft，不合并 main、不触碰正式版。
+
+## 2026-11-16｜PR #299｜可验证发布版本 + 账号就绪 + 原 QA HTTP 验收门禁
+
+- **任务目标**：在 Work 暂不可用、未配置完整私有仓库执行环境时，优先解除 QA 真实部署之前的确定性代码缺陷。只进原 #299，不合并 main、不部署正式或 QA、无数据库写入。
+- **修复 1：真实版本回执**。修改 `scripts/qa-direct-release.mjs`：以 Cloudflare deployments API 核对 core 和 QA 部署前后 100% active 版本 ID，要求版本发生变化、部署来源为 Wrangler，缺失/分流/不合法信息 fail closed。新增 `tests/qa-release-live-version.test.mjs`。
+- **修复 2：初始化关闭后正确回报账号就绪**。修改 `worker/lib/account-auth.js` 的 `/api/admin/bootstrap/status`：独立 QA core 在关闭一次性初始化后也会按真实权威探测状态回报 `configured`；断联仍 false，旧 gateway 和普通本地初始化行为保持不变。在 `tests/account-qa-bootstrap-route.test.mjs` 增加覆盖。
+- **修复 3：原 QA URL 实际响应门禁**。发布脚本新增匿名只读 GET：从唯一 `maomao-aw-qa-20261114.miamor520000.workers.dev` 检查 `/api/admin/bootstrap/status`、`/account/index.html`；核对初始/已初始化两种生命周期和页面登录表单，失败时不承认验收成功。新增相关测试，不发送任何账号密码或 Cookie。
+- **本会话局部验证**：直接从最新原 GitHub 读取并运行 helper 的隔离模拟，Cloudflare 版本检查 4/4 场景、QA 状态路由 4/4 场景、原 QA HTTP helper 3/3 场景符合预期。**不是**完整 Node CLI 测试，更不是 npm ci/Vite/Chromium、真实 Worker 发布或手机验收，不得混淆。
+- **PR 关系**：#299 目前 base SHA 与上游 #290 当前 HEAD 一致（本轮真实只读核对），无需盲目重复同步。
+- **仍缺真实证据**：完整 Node、Vite、Chromium 测试；两个 QA Worker 实际更新及版本/HTTP 回执；QA 管理员独立初始化、关入口、登录/退出/刷新和旧角色聊天/番外/PWA 手机验收。下一次直接接原 #299 最新 HEAD；**正式版/正式库禁止触碰**。
+
+## 2026-11-16｜PR #299｜QA 身份就绪与初始化关闭门禁（当前轮）
+
+- **范围**：只修改原 PR #299 分支；不合并 main，不触碰正式账号/数据库/Worker，不新建 QA 服务。
+- **实际修复 1**：`worker/lib/identity-bridge.js` 的就绪探测针对已核对的现有独立 `maomao-identity-core` 不再依赖退役网关的桥接密钥；必须由内网 Service Binding 返回 `identityMode=local`、`qaIsolatedAuthority=true`、正确的 `qaExpectedFounderId` 和 `bootstrapAllowed=true` 才判断身份核心已连接。旧网关仍要求原共享密钥。新增 `tests/account-identity-bridge-probe.test.mjs` 测试隔离模式、错绑和关闭初始化旗标后的探测兼容。
+- **实际修复 2**：`scripts/qa-direct-release.mjs` 根据独立核心真实账号数检查 QA 初始化变量生命周期：核心空库只允许 `MAO_QA_IDENTITY_SETUP=isolated_authority`，核心已有唯一 001 管理员则只允许 `disabled`，防止后续部署重新开启一次性入口。更新 QA 身份文档，明确运行配置与 `wrangler.qa.jsonc` 必须同步关闭，不关闭独立核心身份识别旗标。
+- **测试依据**：从 GitHub 当前源码直接运行身份探测模块及其六项用例，隔离 V8 请求桩 **6/6 PASS**；发布脚本在独立 V8 模拟 git/Wrangler/Cloudflare 中验证空库+开启、空库+关闭、已初始化+开启、已初始化+关闭的组合，**4/4 PASS**。**没有**执行整仓 Node CLI、npm ci、Vite、Chromium 或真实 Worker 新版部署；这些结果不可替代实际验收。
+- **现场限制**：当前对话仅可读取/修改 GitHub 和读取 Cloudflare，缺少整个私有仓库的可执行检出及完成部署的构建门禁。现网 core 为密钥配置后的旧代码版本，QA 仍旧 gateway；不得绕过测试或删除任一命名空间。
+- **接续**：最新原 #299 HEAD 请以 GitHub 实时返回为准；在完整 checkout 运行真实测试并部署现有 core→QA；用户在唯一 QA 入口初始化后，将 QA setup 设为 `disabled` 并同步到原配置；再验证登录、数据保留、番外、PWA 和真机，最后讨论合并。
 
 ## 2026-11-16｜PR #290 账号安全专项 · 恢复教程门禁
 
@@ -9,6 +101,15 @@ This is the durable checkpoint for owner-assigned, multi-step work. Update it af
 - **确认的代码层阻塞**：`.github/workflows/tutorial-regression.yml` 会在 PR 修改用户界面而未更新 `tutorial/tutorial.js` 时明确报错。PR #290 曾修改 `index.html`、`settings/settings.html` 而没有同步教程。现已增补 **真实账号登录/账号管理 QA 指引**及 `tests/tutorial-page-contract.test.mjs` 契约断言，修复该工作流的文件变更要求；完整教程测试尚未运行。
 - **GitHub Actions 基础设施阻塞**：早先失败 run 创建后约 2 秒结束，jobs 没有 steps，日志 BlobNotFound；代码测试实际上未被运行。暂不能证明到底是额度、计费、runner 还是其他组织策略阻断，禁止重复触发并冒充代码失败。
 - **后续**：在有完整私有仓库的执行环境跑 `npm ci`、`npm run test:account:ui-candidate`、`npm run test:tutorial`、`npm run build`，修真实失败；确认 QA 与正式账号认证隔离后才能更新唯一现有 QA。正式发布仍须单独批准。
+
+## 2026-11-16｜PR #299 番外堆叠 · 教程门禁整改
+
+- **范围**：仅原 #299 分支，以上游 #290 账号安全候选为基础，不部署正式版、不创建新 QA、不改变角色聊天存档。
+- **确认的代码层阻塞**：Tutorial Guide Regression 在 PR 修改 `chat/**` 等用户页面而未同时更新 `tutorial/tutorial.js` 时按工作流逻辑直接失败。#299 此前修改番外与聊天页面但遗漏教程更新。现已补 `番外剧场与隐藏故事设置（QA 待验收）` 指引，并在 `tests/tutorial-page-contract.test.mjs` 添加契约断言；同时保留 #290 新增的账号管理 QA 指引。
+- **交互事实**：角色单聊「＋」→「番外」；故事页面「···」展开记忆方式、对话篇幅；可选不带记忆 / 参考角色记忆、40/80/100 条，番外不写主线聊天和长期记忆。尚未完成真实 QA 验收，不能称可正式发布。
+- **CI 执行故障**：四项 GitHub Actions 运行在 job 无 steps 状态下失败；获取一个旧 job 日志返回 BlobNotFound。此信号说明尚未执行代码测试，不能作为 npm ci / Vite / Chromium 的证据，禁止无意义重试。
+- **狭义核验**：对 PR 文件清单进行与 Tutorial Guide Regression 同样的界面目录规则匹配，现已包含 `tutorial/tutorial.js`。账号门禁单文件 Node 22 子集 **6/6 PASS**。整仓 `npm ci`、`npm run test:tutorial`、`npm run test:integration:account-fanwai`、`npm run test:fanwai:build-and-browser` 和 QA 实机尚未运行。
+- **待办**：同步最新上游 #290 提交，确认 GitHub stacked branch `behind=0`，使用有完整仓库/依赖的真实工程环境测试，只有测试与身份隔离通过后才部署既有 QA。
 
 ## 2026-11-16｜PR #290 QA 身份网关 readiness 探测漏洞修复
 
@@ -27,6 +128,15 @@ This is the durable checkpoint for owner-assigned, multi-step work. Update it af
 - **验证**：独立 Node v22.16.0 从提交的 `qa-identity-bootstrap.js` + 新回归 `tests/qa-identity-bootstrap.test.mjs` 实测 **8/8 PASS**；加既有账号安全与网关探测子集 **18/18 PASS**。GitHub Blob 与隔离环境文件严格一致：`1a30c1edc13cc9327aa83348b4cbba4160517e52`、`7f5cc0d1bdf9450c395cddd719783ce55cb34818`。`account/bootstrap.js` V8 只做语法解析成功。`npm ci`/整仓 Node/Vite/Chromium **NOT RUN**。
 - **部署边界**：所有 QA 初始化配置和后端代码此刻均**未部署**，新标志默认关闭；Cloudflare 账号/库/Worker/Secrets 没有写入。配置与验收精确步骤见 `docs/engineering/QA_ISOLATED_IDENTITY_20261116.md`。不得为测试而改正式账号，不能因 GitHub Actions 无 runner 就绕过构建。
 - **下一步**：在可信完整工程环境做编译、账号与 PWA 浏览器测试；先核验唯一 QA 的 Service Binding 指向独立 `maomao-identity-core`，只在 QA-only 环境配置凭据和空库 founder ID，单次初始化后关闭 setup 标志，保留影子账号 ID 对应的现有测试数据，并由用户真实验收。
+
+## 2026-11-16｜现有唯一 QA 的直接发布入口（不使用 Cloudflare Builds）
+
+- **目标**：让已含 #290 的 #299 完整候选有一条可执行的真实测试→原 QA 发布路径，不新建 PR、QA Worker 或正式版部署。
+- **已提交**：`wrangler.qa.jsonc`（唯一 QA `maomao-aw-qa-20261114`，保留原 `CLOUD_DB` 类，`AI`、`ASSETS` 与 QA 运行变量，隔离身份服务绑定 `maomao-identity-core`）；`wrangler.qa-identity-core.jsonc`（仅现有隔离身份 Worker，设定 QA-only founder ID，无前端 assets）；`scripts/qa-direct-release.mjs`；`npm run qa:release:check` 和 `npm run qa:release:deploy`；`docs/engineering/QA_ISOLATED_IDENTITY_20261116.md` 追加执行说明。
+- **脚本安全门禁**：必须是原 #299 分支且工作树干净；真实执行 `npm ci`、账号、账号番外整合、教程、聊天、PWA、Vite 及 Chromium 浏览器烟测。测试有失败即停止。发布还要求专门确认变量、Cloudflare QA-only 密钥已配置、QA/core 的 Durable Object namespace 与原管理员 001 唯一 active 身份只读校验通过。脚本绝不使用 `wrangler.jsonc` / `wrangler.app.jsonc` 正式目标。
+- **静态验证**：实际 GitHub 原分支读回两份独立 Wrangler 配置、发布脚本及 package.json，10/10 项目标、绑定、配置、安全检查匹配，且发布脚本已经过 V8 语法解析（去除 ESM import 用于语法验证）。**这不是完整 Node/Vite/Chromium 运行结果**。
+- **尚未实际发布**：本对话执行环境没有完整私有仓库/Node 依赖，无法执行新发布脚本；现有独立 `maomao-identity-core` 缺两项全新 QA-only secrets，脚本会 fail-closed。最新 QA Worker 仍是 11 月 14 日部署，**尚不能交付新版真实测试入口**。不要求等待 Cloudflare Workers Builds 额度刷新；应在可运行完整仓库的 Work/Codespaces/可信本地环境执行脚本，按结果修复，再直接 Wrangler 只部署两套 QA Worker。
+- **没有执行**：任何 Worker 正式部署、现有 QA 部署、Cloudflare secrets 写入、用户/钱包/聊天/DO 记录改写、main 合并或其他 PR 创建。
 
 ## Current work package
 
@@ -134,3 +244,116 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 5. Break cloud-push work into small, reviewable milestones. A code-only PR is not proof of scheduled execution, server model response, OS push delivery, or two-device message persistence.
 6. No merge to main, production deployment, APK update, Worker secret configuration, or destructive user-data operation without explicit owner approval.
 7. This conversation cannot run after the chat/session is closed. Leave this checkpoint so the next session can resume without asking the owner to repeat the task.
+
+
+## 2026-11-16 — 番外 PR #299：真实构建门禁的脚本版本契约修复
+
+- **现有任务与归属**：续做番外联合草稿 PR #299，head `integration/account-fanwai-stack-20261115`，base 账号 PR #290；治理 Draft PR #300 仍未合入 main。没有创建新分支、PR、Worker 或测试数据库。
+- **已确认的代码错误**：`tests/release-account-assets-gate.test.mjs` 将聊天扩展和番外 JS/CSS 资源查询版本固定为 `20261115`，但当前聊天加载器已更新为 `20261116`，导致真实 `node --test` 的发布资产检查在进入 Vite/Chromium 之前就可能错误失败。
+- **本次实际修复**：提交 `4b32f73bed6e11aeeacec5bf0faa9be75b20a4ee`，将三个版本断言改为 `20\\d{6}` 日期结构而不固定特定日期，并校验聊天 HTML 只加载一份 extras、extras 只加载一份番外脚本。没有修改用户数据、聊天功能、生产 Worker 或发布流程。
+- **代码级验证**：从 GitHub 读取本次 PR 当前源文件及相关 Worker、账号入口、Vite、发布 workflow，在隔离的 JS 执行器运行 `release-account-assets-gate.test.mjs` 的 **6/6** 同步契约断言，无失败。此项仅为 V8 合同模拟，不是实际 Node CLI 通过。
+- **真实执行环境**：本地 Node `v22.16.0`、npm 可用，但当前容器没有挂载 MAOMAO 仓库，`vite`、`playwright` 依赖也未安装。故 `npm ci`、`npm run test:integration:account-fanwai`、`npm run test:fanwai:build-and-browser`：**NOT RUN — NO CHECKED-OUT REPOSITORY**。GitHub Actions runner 已知不可用，未重跑、未新建 CI 流程。
+- **后续单一动作**：在可检出目标 SHA 的隔离执行环境按顺序运行现有 Node 联合回归、Vite 构建与 Playwright Chromium 双手机视口烟测；只按实际失败回 PR #299 修复，不把视口模拟当成 Android/iPhone 真机。当前仍为草稿；未合并、未部署、未碰正式账号/管理员/钱包数据。
+
+
+## 2026-11-16｜番外 PR #299：浏览器安全门禁与删除提交顺序
+
+- **唯一任务**：继续 PR #299 原分支，账号 PR #290 为 base；与其他共享 API、账号、状态栏负责人保持独立。沿用原版 HTML/CSS/JS、索引存档结构及手机「＋」菜单。
+- **代码修复**：`de315157` 将 `erase()` 纳入 `episodeWriteQueue`，解决用户暂停/生成收尾后立即删除，晚到的 IndexedDB `put` 覆盖 `delete`、使故事重新出现的竞态。保留原始事务成功/失败语义、内存缓存及账号/角色校验；不迁移任何已有数据。
+- **回归**：`e2c1334` 新增第 9 次延迟保存与立即删除的测试，确认晚到保存不会复活已删除番外，也不追加 AI 请求；四套番外/PhoneAPI 源码在 V8 代码测试执行环境 **46/46 PASS**。
+- **浏览器验收改进**：`da594b3` 在原本的 Playwright Chromium 本地烟测中加入畸形认证 meta、错账号作用域拒绝挂载两种真实页面路径；`306e18e` 加入 40 条消息生成后的阅读区宽度、横向溢出与底部操作栏位置检查。只用本地合成角色，禁止真实模型/支付/用户数据。烟测新源码语法 **PASS**，真正运行仍 **NOT RUN**。
+- **手机缓存版本**：`76bccbe` 和 `c63ac8d` 将聊天页加载链更新到 `20261116fanwai13` → `20261116v13`。现有发布资产合同检查 **6/6 PASS（JS 执行器）**。
+- **未执行的验收**：容器可用 Node 22 与 Chromium，但没有此私有仓库可检出的完整本地副本及其 Vite/Playwright 安装，因此本轮 `npm ci`、`npm run build`、`node --test` CLI、`npm run test:fanwai:build-and-browser` 均 **NOT RUN**。未重试已知不可用的 GitHub Actions，未声称浏览器或真机验收通过。
+- **边界**：原 PR 继续 Draft，未合并 main、未向唯一 QA 环境部署、未动正式管理员、数据库、Worker 或钱包。下次在可检出分支 SHA 的隔离环境运行已有命令，并只根据真实错误修原 PR；禁止另外开重复测试分支。
+
+
+## 2026-11-16｜番外：删除确认防重复提交
+
+- **任务/文件归属**：续做原番外联合草稿 PR #299，账号 PR #290 为上游，不新建 PR。只改 `chat/chat/js/chat-fanwai.js`、`tests/chat-fanwai-ui.test.mjs`、聊天缓存版本引用及本日志。
+- **实际 Bug 修复**：首次确认删除即设置 `state.deleting`，直到 IndexedDB 事务完成才解除锁；双击确认/等待期间切换其他故事操作不再引发重复删除事务或重复 `episode:deleted`；用户在等待期间收起番外，删除成功后不自动重新打开。仍沿用原 `episodeWriteQueue`，保留原存档格式、账号角色校验、主线聊天与数据库。
+- **回归**：新增双确认去重（1 次 delete / 1 次生命周期事件）与事务提交期间收起后不重开两项测试。初次执行时测试错误使用了确认页不存在的关闭按钮；已改为调用真实存在的遮罩关闭入口。此后从 PR 当前源文件在 V8 模拟环境执行番外/PhoneAPI 回归 **48/48 PASS**，资源加载合同 **6/6 PASS**。
+- **资源版本**：`chat-extras.js?t=20261116fanwai14` 加载 `chat-fanwai.js?v=20261116v14`，避免手机继续加载旧交互逻辑。
+- **实际执行限制**：仍未取得可检出 MAOMAO 全仓库并安装 Vite/Playwright 的执行工作区；真实 `npm ci`、`node --test` CLI、Vite 构建与 Chromium/Android/iPhone 实测 **NOT RUN**。不重试已知不可用 Actions，不把模拟回归冒充真机验收。
+- **回滚**：撤销本次小补丁及两处脚本版本变更即可；没有数据库迁移、没有触碰正式账号/钱包、没有合并或部署。下一步仍是在可执行的隔离环境运行已接入的 `test:integration:account-fanwai` 和 `test:fanwai:build-and-browser`，依据真实结果修原 PR。
+
+
+
+## 2026-11-16｜番外 G 字头角色 ID 与真实群聊识别修复
+
+- **任务 / 唯一 PR**：PR #299 原 `integration/account-fanwai-stack-20261115`（base #290）；未另建 PR/Worker/数据库。以已存在的 `phone_groups` 与旧群 ID 格式为准，保留当前主线聊天数据和「＋」面板原样。
+- **发现的真实代码 Bug**：此前番外用 `/^g/i` 判断群聊，一切以 G/g 开头的普通角色（包括 JSON 导入角色）都会被错误隐藏。现从隔离后的 `phone_groups` 中按完整 ID 比对群聊，继续识别真实 `g + 13 位时间戳` 与旧 `group-*/group_*`；存在格式冲突时优先识别真实角色库，`phone_groups` 中的确切群组仍具有优先权。
+- **隔离边界**：只在账号 meta 校验和隔离运行时 ready 之后读取 `phone_groups`，畸形账号标记依然提前拒绝；不修改或覆盖角色、群聊和用户聊天存储。
+- **源代码提交**：`767d4909` 实际修复 `chat/chat/js/chat-fanwai.js`；`fa4e4903` 增加 g 开头导入角色真实生成路径、标准/旧/自定义群 ID 与同名碰撞三类测试；`746fbf6a`、`0e4dacae` 更新手机加载版本 `20261116fanwai15` → `20261116v15`。
+- **已执行的检查**：从 PR 当前 GitHub 源码经 V8 JS 测试执行器运行番外/PhoneAPI **51/51 PASS**；发布资产加载合同 **6/6 PASS**。二者不等于完整 Node CLI 或真实 Chromium，通过范围仅限对应源代码合同及模拟浏览器行为。
+- **未执行**：`npm ci`、完整 `node --test`、Vite 构建、Chromium/Android/iPhone 真机和唯一隔离 QA 均 **NOT RUN**，当前会话没有可供检出的整个仓库和运行时依赖。已知 Actions 限额不重试。
+- **回滚**：恢复该函数群聊判定逻辑及测试、对应静态版本即可；无数据迁移、无生产账号/钱包/Worker 变更。继续原 PR 开发，进入后续测试条件时沿用原脚本验收。
+
+
+
+## 2026-11-16｜番外：插件接口实际隔离与异步存档切换
+
+- **认领范围**：原番外联合 Draft PR #299，base #290，不另建 PR / Worker / 数据库。复用原手机「＋」菜单、真实 `phone_groups` 和已有番外扩展 API。
+- **实修 1（接口隔离）**：此前番外在群聊 ID 检查之前已执行 `global.MAOMAOFanwaiCore` / `global.MAOMAOFanwai` 对外注册，群聊只是隐藏按钮却仍有插件/上下文接口。提交 `4002cacb` 把暴露动作移到账号和会话类型检验之后；无 DOM 的 Node 纯逻辑合同仍保留访问。提交 `dda8b160` 扩展群聊、自定义群聊、旧群 ID、撞 ID 的接口缺席断言，同时确认合法单聊仍可注册插件。
+- **实修 2（慢存档覆盖新故事）**：旧目录 `read` 可以在首次创建故事的异步存储期间返回，错把旧故事重新打开。提交 `3c4666b5` 使新建剧情立即令旧 `viewSerial` 失效，同时对 `read` 异步前后增设 `creating / deleting / busy` 与序号一致性门禁；提交 `0fe2adc0` 验证慢范围查询与慢首次 `put` 并发时仍打开用户选中的新剧情、不会改写旧存档。
+- **手机资源版本**：`a9604123`、`6a0aa59c` 更新为 `chat-extras.js?t=20261116fanwai16` → `chat-fanwai.js?v=20261116v16`；`b5992a7e` 更新扩展接口契约说明。
+- **执行证据**：从原 PR 当前 GitHub 代码输入 V8 JS 测试执行器，番外核心/UI/扩展/PhoneAPI 52/52 PASS；发布资产检查 6/6 PASS，番外 JS 语法校验 PASS。此项不是仓库实际 `node --test`。当前执行环境仍没有可用的 MAOMAO 完整检出/Vite/Playwright 依赖；`npm ci`、Vite、Chromium、Android/iPhone、独立 QA **NOT RUN**。
+- **数据与回滚**：没有触碰账号/钱包/生产 Worker/正式 DB，也无数据 schema 迁移。原 PR #299 保持 Draft，未合并未部署。需要回滚时撤销局部番外 JS、测试及版本提交即可；保留角色、群组、番外与主线存档。
+
+
+
+## 2026-11-16｜番外：关闭前等待存档回执与恢复 UI
+
+- 原任务与文件归属：继续 `integration/account-fanwai-stack-20261115` / Draft PR #299，账号 #290 为 base。仅调整番外 JS/模拟 UI 回归、手机版本引用与本次日志。
+- 定位真实数据风险：原 `pause()` 发起 `persist()` 却不等待结果，`close()` 直接隐藏页面；IndexedDB 失败时，唯一留在当前页面的生成对话可能无法恢复。首次修复后，已有回归揭示初次创建慢保存/旧关闭回调以及删除期间关闭的时序冲突，已逐项修正。
+- 代码提交：`38de35f3` 暂停保存回执；`0a04bdb9` 即时版本失效；`d81d34af` 仅拦截真正未存储的当前对话；`dc4c0e60` 拦截旧关闭回调影响新视图；`54b107ba` 允许删除事务期间直接收起不自动重开。新增三类失败/快速重开回归（`f1821bc9`、`57bf8d63`、`bddcca64`）。
+- 验证：基于 GitHub 当前 PR 源码，用隔离 V8 测试外壳执行已有四组番外/PhoneAPI 测试 **56/56 PASS**；发布资产加载合同 **6/6 PASS**；改动 JS 语法 PASS。手机加载链版本更新为 `20261116fanwai18` → `20261116v18`。
+- 严格边界：本轮**未执行**完整 `npm ci`、真实 `node --test` CLI、`npm run build`、Playwright Chromium、Android/iOS、真实模型或独立 QA；无完整仓库执行副本和相关依赖。未触发 Actions，不修改账号/群聊/主线聊天存储结构、正式数据库/Worker/管理员；无 Schema 迁移。页面被浏览器直接销毁时，异步 IDB 提交仍可能受浏览器限制，需真机 E2E 验证。
+- 状态：仍为原 Draft PR #299、未合并 main、未部署；可局部回滚此次改动和缓存版本。后续优先在能检出完整源码的隔离环境运行原 Node/Vite/Chromium 验收命令，再按实际问题回原分支修复。
+
+
+## 2026-11-16｜番外：未保存对话逃逸路径与安全复制备份
+
+- **唯一任务**：继续 `integration/account-fanwai-stack-20261115` / Draft PR #299，base 现有账号 #290。未新建分支/PR/Worker/数据库，未触碰管理员、钱包、主线消息和正式站。
+- **修复的数据风险**：暂停/收起保存失败时已有防护，但 `openPicker()` 直接调用（包括重新点番外入口）与已结束暂停后的 `back` 仍能覆盖唯一未保存的阅读草稿。提交 `947b5998` 将未存储草稿保护下沉至统一目录入口，并阻止从同一份未保存稿开启故事分支；提交 `a0ec6122` 把旧“返回目录重新打开 12 条已保存消息”的回归改为正确的双端状态验收：当前页面保留 24 条内存稿，刷新后的全新页面只允许读到上次实际提交的 12 条。
+- **手动恢复**：提交 `1adec92e` 在确实保存失败且有对话时，将“复制当前对话备份”放入隐藏的「···」菜单；仅经用户点击才访问系统剪贴板，不包含 API Key 与角色背景记忆，不自动将未保存内容声称已落盘。提交 `4a1c2a34` 添加主动复制和剪贴板不可用的回归测试。提交 `5af33926` 强化 WebKit 文字长按选取；提交 `f7e7d1dd` 增强现有 CSS 合同。
+- **版本链**：`chat-extras.js?t=20261116fanwai19` → `chat-fanwai.js?v=20261116v19` → `chat-fanwai.css?v=20261116softcore6`。原「＋」菜单仅增量加载，未重写聊天。
+- **验证事实**：对 GitHub 当前分支源码执行四组 V8 合同/模拟 DOM/API 回归 **58/58 PASS**，当前 release asset 资源合同 **6/6 PASS**。这不等于真实 Node CLI/Vite build/Playwright 或移动真机完成；本执行工作区未检出完整工程/依赖，相关步骤 **NOT RUN**。未重试 GitHub Actions 额度限制。
+- **回滚边界**：局部撤回该功能 JS/CSS/回归、缓存版本即可，不需要更改旧存档格式/数据。原 PR 仍 Draft，未部署至固定完整 QA 或正式版。下一步在真实可执行的完整仓库运行既有 `test:integration:account-fanwai` 与 `test:fanwai:build-and-browser`，验证剪贴板权限、手动选取、刷新保存一致性，再由用户在唯一隔离 QA 中实际试玩。
+
+## 2026-11-16｜番外：暂停事件等待持久化成功
+
+- **用户指令：暂停整合与部署，仅继续原任务开发。** 继续 `integration/account-fanwai-stack-20261115` / Draft PR #299，保持 base #290；不合并 main、不触碰现有 QA Worker 或正式版。
+- **实修问题**：`pause()` 以前在 `persist()` 提交前先触发 `episode:paused`，可能让扩展把未落盘故事当成已暂停并持久化。提交 `9d3884a8` 改为在保存返回成功、同一故事未切换且版本序号未过期时通知；保存失败不触发成功事件。
+- **测试提交**：`1eff17cd` 覆盖成功延迟提交与失败不通知；`23d78af6` 覆盖保存待提交期间续写时旧暂停事件被取消。原四组模拟 UI / 合同 / 扩展 / PhoneAPI **61/61 PASS**。测试通过仅指 V8 隔离执行，不等于 `node --test`、Vite、Chromium 或手机真机，以上仍未跑。
+- **缓存**：`0e65b143`、`734a02ca` 更新番外 JS 加载版本至 `20261116v20`，聊天扩展加载版本至 `20261116fanwai20`；未修改旧数据、存储 schema、主线消息、状态栏或钱包。
+- **开发阶段**：用户明确不合并；本轮无 QA、生产或数据库操作。下次继续原 PR 开发并执行可用范围内的真实验证。
+
+## 2026-11-16｜番外：记忆偏好读取失败不再污染旧数据
+
+- **原任务**：仅开发 `integration/account-fanwai-stack-20261115` / Draft PR #299，上游 #290，用户明确“不合并、不部署”。按治理 Draft #300 统一规则核对归属，没有创建新分支、PR、Worker 或数据存储。
+- **实修 Bug**：原 `loadSettings()` 把 IndexDB 偏好 `get` 失败当作记录缺失，仍设置 `settingsLoaded=true`。用户下一次修改时可能把默认 `memory=none, count=null` 写回旧设置，或者未察觉按错误记忆模式创建番外。提交 `538a7f53` 增加读取成功标志、失败不落盘且可重试；提交 `dd41c363` 阻止偏好未安全读取时产生新故事及模型请求。
+- **回归**：`2c757c4f` 增加失败设置读取与成功重试的合成 IndexedDB 场景；`89b3ee1f` 增加未读偏好时不可创建草稿或产生模型调用的断言。当前源文件 V8 隔离执行的番外 UI/核心/扩展/PhoneAPI **62/62 PASS**，发布资源合同 **6/6 PASS**。不把 V8 模拟冒充实际 `node --test`/Vite/Chromium/真机。
+- **兼容/版本**：`5d6221fb`、`fe295261` 将手机资源链更新为 `chat-extras.js?t=20261116fanwai21` → `chat-fanwai.js?v=20261116v21`；没有迁移/清理原角色、聊天、世界书、账号、钱包、番外数据。
+- **尚未执行**：完整仓库 CLI 测试、`npm ci`、`npm run build`、Playwright Chromium 及 Android/iPhone 真实验收仍 NOT RUN，不能声称 QA 成功。本轮不触碰唯一 QA Worker 或正式版。
+
+## 2026-11-16｜番外 PR #299：保存最新记忆偏好后才开始生成
+- **原任务/分支**：唯一联合草稿 PR #299；integration/account-fanwai-stack-20261115（以账号 #290 为 base），治理 Draft #300 尚未合入 main。仅修改已有番外 JS、UI 回归、手机加载缓存版本、番外文档和本日志。
+- **实修**：新增 settingsCommittedVersion 和对 settingsWriteQueue 的等待；新故事只有在最新记忆/篇幅偏好写盘成功时才能创建并请求模型。失败后提示用户重新选择以重试。等待期间已切换页面的旧操作不会继续生成；原角色、旧番外、主线消息、账号和钱包不变。
+- **代码提交**：e3027586（功能）、4d59a08f（新增 2 项测试）、af6166c7 / de67348e（移动缓存 v22）。
+- **实际验证**：从该分支 GitHub 源码在 V8 模拟 DOM/IndexedDB 跑 UI 47/47 PASS；不等于 node --test CLI。npm ci、npm run build、Playwright Chromium、Android/iPhone **NOT RUN — NO FULL REPOSITORY EXECUTION ENVIRONMENT**。不重试已知不可用 Actions。
+- **回滚/状态**：仅回滚本轮局部提交和缓存版本；无数据库迁移/生产操作。PR 仍 Draft、未合 main、未部署 QA/正式版。下一步在能完整检出仓库的环境运行 npm run test:integration:account-fanwai 与 npm run test:fanwai:build-and-browser，按真实失败继续在原 PR 修复。
+
+## 2026-11-16｜番外 #299：创建中修改记忆造成实际 AI 上下文错位
+- **唯一主 PR/职责**：继续 `integration/account-fanwai-stack-20261115` / Draft PR #299（堆叠 #290），未与其他窗口重复认领，共享账号、钱包、状态栏、生产代码未改。
+- **真实代码风险及复现**：在模拟慢速 IndexedDB 初始故事保存时，点击「开始写这篇」后还能改成「不带记忆」，但故事已经缓存原来带记忆的 `contextIds`，可能把角色记忆送进模型。修复前针对性动态回归 FAIL（界面无记忆/请求含角色记忆）。
+- **修复**：`5be09648` 创建期间锁定记忆按钮、篇幅和插件上下文控件，并阻止模拟的失效事件修改正在创建的故事；`9ed742ad` 增加延迟存储+三类控件回归；`eaba3e77`、`4cc9f7fa` 更新手机 JS 加载 v23。保存完成或失败均在 finally 解除操作锁，不新增存储键或更改公开插件 API。
+- **实际执行证据**：从当前原 PR 源文件在 V8 隔离执行器运行 UI 48/48 PASS、核心/插件/PhoneAPI 17/17 PASS，合计 65/65；这是合成 DOM/IndexedDB 和 V8 的模拟执行，**不是** `node --test` CLI 或 Vite/Chromium/Android/iPhone。完整 `npm ci` / `npm run build` / `test:fanwai:build-and-browser` 仍 NOT RUN — NO FULL REPOSITORY EXECUTION ENVIRONMENT。
+- **兼容/回滚/下一步**：无 DB migration，不清理或迁移角色、聊天、番外、记忆、用户账户数据。可回滚本轮局部功能/测试/缓存版本。下一步骤为在完整隔离仓库执行现有 Node + Vite + Chromium 门禁，依据实测结果继续修原 PR；当前未合并 main、未部署 QA 或正式版。
+
+## 2026-11-17｜FEATURE-ENCOUNTER-001：进入现有唯一统一 QA 分支（尚未上线）
+- **目标/归属**：继续原邂逅功能 PR #297（Draft），只把既有成果安全接入唯一联合 QA `integration/account-fanwai-stack-20261115` / PR #299（Draft）；不新建测试 Worker、独立项目或 PR，不合并 main。
+- **实际提交**：`a51f772d3d13b8484e7b95eab1313ad59c97d8c7`（13 个源码/测试/原角色库与备份接入文件）、`f0990026f0d71fcd9c7af2299a0688d4f4f989a2`（仅首页邂逅入口/默认布局/尊重已移除标记）、`6b02bdea49213400ed6061506ec92e616b441299`（Node/Vite/Playwright 及同 Git HEAD 回执门禁接入原 QA-only 脚本；新增桌面回归断言）。沿用原 PR #297 版本的邂逅引擎、创建角色锁、损坏草稿保护和原角色不覆盖方案。
+- **并行改动保护**：保留联合分支原账号及管理员入口、Service Worker 云推送、音乐浏览器验收以及 `scripts/qa-direct-release.mjs --qa-only`；不将旧 `integration/encounter-account-acceptance-20261115` 覆盖新版 QA。
+- **本轮已核实**：从 GitHub 提交后联合分支读取的源码，静态确认抽卡路由/桌面放置/角色锁/原角色存储保护/备份前缀/账号隔离和 QA 测试门禁在位。V8 编译 `encounter-engine.js`、`characters-manager.js`、邂逅页面 1 个及首页 6 个内联脚本，全部无语法错误。PR #297 原有 39/39 是交接中提供的**隔离测试**数据，未在本会话作为原生 Node 重新执行。QA 发布脚本是 ESM，不能用 `new Function` 模拟 node 编译。
+- **未完成/发布阻塞**：无完整仓库本地检出环境，本轮 **未运行** `npm ci`、原生 `node --test`、`npm run build`、Playwright 三手机宽度及 Android/iPhone 实机验证；**未上传** Cloudflare QA Worker，正式域名、main、管理员和任何数据库均未写动；不能称线上邂逅可测。
+- **统一验收下一步**：在真实工程 Codespace 完整检出该分支的最新 HEAD，运行 `npm run qa:release:check`（需既有环境所需的运行依赖），修复实测失败项；满足全部真实 Node/Vite/Playwright/账号门禁后，通过现有 `MAOMAO_QA_DEPLOY_CONFIRM=maomao-aw-qa-20261114 node scripts/qa-direct-release.mjs --qa-only` 只更新唯一 QA Worker，再由用户手机真实体验。先测试版，绝不部署 app.mao520.com 正式版。

@@ -9,7 +9,7 @@ const serviceWorker = read('sw.js');
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
 const pwaVersion = Number(serviceWorker.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m)?.[1] || 0);
-assert.ok(pwaVersion >= 203, 'PWA shell must preserve at least the original icon preset cache version');
+assert.ok(pwaVersion >= 241, 'PWA shell must preserve at least the original icon preset cache version');
 const viteConfig = read('vite.config.js');
 
 test('build emits a manifest containing every HTML entry point', () => {
@@ -48,7 +48,8 @@ test('private mobile navigations always revalidate the account with Worker; only
   assert.match(serviceWorker, /req\.mode === 'navigate' && !isPublicAccountPage/);
   assert.match(serviceWorker, /return await fetch\(req\)/);
   assert.match(serviceWorker, /if \(req\.mode === 'navigate' && isPublicAccountPage\)/);
-  assert.match(serviceWorker, /var cached = await caches\.match\(req\)/);
+  assert.match(serviceWorker, /var cached = await caches\.open\(CACHE_NAME\)/);
+  assert.match(serviceWorker, /return cache\.match\(req\)/);
   assert.match(serviceWorker, /cache: 'no-store'/);
   assert.match(serviceWorker, /status: 503/);
 });

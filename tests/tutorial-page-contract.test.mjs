@@ -65,16 +65,25 @@ test('guide documents the merged chat features and correctly separates unverifie
   assert.match(guideScript, /此前的手机打不开反馈仍需在安装版和普通浏览器分别实测/);
 });
 
-test('all 29 desktop app shortcuts have a matching app guide and quick-open entry', () => {
+test('every desktop app has a matching guide and quick-open entry, including admin center', () => {
   const tiles = [...home.matchAll(/data-href="([^"]+)" data-drag="(app_[^"]+)" data-name="([^"]+)"/g)]
     .map((match) => ({ path: match[1], id: match[2], name: match[3] }))
     .filter((item) => item.id.startsWith('app_'));
   const appGuideIds = [...guideScript.matchAll(/id:'(app-[^']+)'/g)].map((match) => match[1]);
   const appEntries = [...guideScript.matchAll(/\['([^']+)',\s*'([^']+\.html)',\s*'[^']+'\]/g)]
     .map((match) => ({ name: match[1], path: match[2] }));
-  assert.equal(tiles.length, 29, 'expected all desktop app tiles, including Tutorial');
-  assert.equal(appGuideIds.length, 29, 'every app must have its own step-by-step guide');
-  assert.equal(appEntries.length, 29, 'every app must appear in the quick-open directory');
+  assert.ok(tiles.some((tile) => tile.id === 'app_admin_center'),
+    'desktop admin-center shortcut must exist');
+  assert.ok(tiles.some((tile) => tile.id === 'app_tutorial'),
+    'desktop tutorial shortcut must exist');
+  assert.equal(appGuideIds.length, tiles.length,
+    'every real desktop app must have its own step-by-step guide');
+  assert.equal(new Set(appGuideIds).size, appGuideIds.length,
+    'duplicate app guides are not allowed');
+  assert.equal(appEntries.length, tiles.length,
+    'every real desktop app must appear in the quick-open directory');
+  assert.equal(new Set(appEntries.map((entry) => entry.path)).size, appEntries.length,
+    'duplicate quick-open destinations are not allowed');
   tiles.forEach((tile) => {
     assert.ok(guideScript.includes("href:'../" + tile.path + "'"), 'missing app guide route for ' + tile.name);
     assert.ok(appEntries.some((entry) => entry.path === tile.path), 'missing quick-open entry for ' + tile.name);
@@ -129,7 +138,8 @@ test('tutorial workflow enforces a guide update when user-facing app pages chang
 });
 
 test('PWA app shell caches the full guide bundle and has a matching test command', () => {
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v203'/);
+  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v[0-9]+'/,
+    'PWA shell must use a versioned cache without hard-coding an old release');
   assert.ok(serviceWorker.includes("'./tutorial/tutorial.html'"));
   assert.ok(serviceWorker.includes("'./tutorial/tutorial.js?v=20261111v3'"));
   assert.equal(packageJson.scripts['test:tutorial'], 'node --test tests/tutorial-page-contract.test.mjs');
@@ -149,4 +159,15 @@ test('account release candidate guide documents the existing login path and QA s
   assert.match(guideScript, /"href"\s*:\s*"\.\.\/account\/index\.html"/);
   assert.match(guideScript, /本机备份不等于云端账号的可恢复备份/);
   assert.match(guideScript, /不得对正式账号执行停用、重置或清空/);
+});
+
+test('fanwai tutorial exposes hidden story preferences without claiming production acceptance', () => {
+  assert.match(guideScript, /"id"\s*:\s*"fanwai-story-qa"/);
+  assert.match(guideScript, /番外剧场与隐藏故事设置（QA 待验收）/);
+  assert.match(guideScript, /输入栏「＋」→「番外」/);
+  assert.match(guideScript, /不带记忆/);
+  assert.match(guideScript, /参考角色记忆/);
+  assert.match(guideScript, /短篇 40 条、中篇 80 条、长篇 100 条/);
+  assert.match(guideScript, /不能当作成功/);
+  assert.match(guideScript, /不允许写入原聊天、长期记忆或钱包/);
 });

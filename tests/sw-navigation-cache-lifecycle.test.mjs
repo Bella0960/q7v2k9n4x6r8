@@ -12,7 +12,8 @@ import { createContext, runInContext } from 'node:vm';
  * 通过可手动释放的 Promise 观察“页面响应”“后台缓存写入”“event.waitUntil 生命周期”
  * 三者的真实时序。
  *
- * 旧实现的缺陷：caches.open(...).then(cache => cache.put(...)) 的 Promise 没有被返回，
+ * 旧实现的缺陷：caches.open(...).then(cache => cache.put(...)) 的 Promise 没有被返回；
+ * 本分支遵循账号网络优先：此套缓存生命周期回归只针对公开登录页。
  * updatePromise 在 cache.put 完成前就 settle，waitUntil 只覆盖了 fetch，缓存写入失败
  * 还会产生未处理的 rejection。
  */
@@ -20,7 +21,7 @@ import { createContext, runInContext } from 'node:vm';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SW_SOURCE = readFileSync(resolve(root, 'sw.js'), 'utf8');
 const ORIGIN = 'https://maomao.test';
-const NAV_URL = `${ORIGIN}/chat/chat/chat.html`;
+const NAV_URL = `${ORIGIN}/account/index.html`; // 只有公开登录页允许离线缓存
 const CACHE_NAME = SW_SOURCE.match(/const CACHE_NAME = ['"`]([^'"`]+)['"`]/)[1];
 
 function deferred() {
@@ -56,7 +57,7 @@ function createHarness({ cachedResponse = null, fetchImpl, putImpl, matchImpl } 
   const openCalls = [];
 
   const cache = {
-    match: async request => (cachedResponse || null),
+    match: request => (matchImpl ? matchImpl(request) : Promise.resolve(cachedResponse || null)),
     put(request, response) {
       putCalls.push({ request, response });
       if (putImpl) return putImpl(request, response);
@@ -135,8 +136,8 @@ function htmlResponse(body, status = 200) {
   });
 }
 
-test('场景1：命中缓存立即返回，网络照常后台更新，缓存写入完成前 waitUntil 仍 pending', async () => {
-  const cached = htmlResponse('cached-page');
+test('场景1：公开登录页即使命中缓存也必须先拿服务器新版本；缓存写盘延续 waitUntil 生命周期', async () => {
+  const cached = htmlResponse('older-public-login');
   const networkGate = deferred();
   const putGate = deferred();
   const harness = createHarness({
@@ -146,25 +147,25 @@ test('场景1：命中缓存立即返回，网络照常后台更新，缓存写�
   });
 
   const event = harness.dispatchNavigation();
-  assert.equal(event.lifecycle.length, 1, 'waitUntil 必须在事件分发期间同步登记');
+  assert.equal(event.lifecycle.length, 1, 'waitUntil 需要在事件分发时登记');
   const lifecycleState = trackState(event.lifecycle[0]);
-
-  const response = await event.responsePromise;
-  assert.equal(response, cached, '命中缓存时必须原样返回缓存响应');
-  assert.equal(await response.text(), 'cached-page');
-  assert.equal(harness.fetchCalls.length, 1, '即使命中缓存也必须继续发起网络请求');
-  assert.equal(lifecycleState.value, 'pending', '网络尚未返回时 waitUntil 不应结束');
-
-  networkGate.resolve(htmlResponse('fresh-page'));
+  const responseState = trackState(event.responsePromise);
   await flushAsync();
 
-  assert.equal(harness.putCalls.length, 1, '网络成功后必须调用 cache.put');
-  assert.equal(harness.openCalls[0], CACHE_NAME, '必须写入当前 CACHE_NAME');
-  assert.equal(lifecycleState.value, 'pending', 'cache.put 未完成时 waitUntil 必须仍 pending');
+  assert.equal(responseState.value, 'pending', '公开登录页网络优先，不能先显示旧登录页面');
+  assert.equal(lifecycleState.value, 'pending');
+  assert.equal(harness.fetchCalls.length, 1);
+
+  networkGate.resolve(htmlResponse('fresh-public-login'));
+  const response = await event.responsePromise;
+  assert.equal(await response.text(), 'fresh-public-login');
+  assert.equal(harness.putCalls.length, 1);
+  assert.equal(harness.openCalls[0], CACHE_NAME);
+  assert.equal(lifecycleState.value, 'pending', '公开登录页缓存写盘期间生命周期必须继续');
 
   putGate.resolve();
   await flushAsync();
-  assert.equal(lifecycleState.value, 'fulfilled', 'cache.put 完成后 waitUntil 才完成');
+  assert.equal(lifecycleState.value, 'fulfilled');
 });
 
 test('场景2：缓存未命中先返回网络响应，但 waitUntil 持续等待缓存写入落盘', async () => {
@@ -262,29 +263,22 @@ test('场景4：网络失败时回退缓存，无缓存时仍是 503，且不触
   assert.equal(missState.value, 'fulfilled', '503 兜底路径的生命周期应正常结束');
 });
 
-test('场景5：caches.match 拒绝时按未命中处理，页面仍拿到网络响应且后台写盘照常执行', async () => {
-  const networkGate = deferred();
-  const putGate = deferred();
+test('场景5：公开登录页断网且缓存读取失败时返回 503，不会暴露错误页面', async () => {
   const matchError = new Error('cache storage unavailable');
   const harness = createHarness({
     matchImpl: () => Promise.reject(matchError),
-    fetchImpl: () => networkGate.promise,
-    putImpl: () => putGate.promise
+    fetchImpl: () => Promise.reject(new Error('offline')),
+    putImpl: () => Promise.reject(new Error('must not write cache'))
   });
 
   const event = harness.dispatchNavigation();
   const lifecycleState = trackState(event.lifecycle[0]);
-
-  networkGate.resolve(htmlResponse('fresh-after-cache-error'));
   const response = await event.responsePromise;
-  assert.equal(response.status, 200, 'caches.match 拒绝不能导致导航硬失败');
-  assert.equal(await response.text(), 'fresh-after-cache-error');
-  assert.equal(harness.putCalls.length, 1, '缓存读取失败但网络成功后仍应写盘');
-  assert.equal(lifecycleState.value, 'pending', '后台写盘未完成时 waitUntil 必须继续等待');
-
-  putGate.resolve();
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get('Cache-Control'), 'no-store');
+  assert.equal(harness.putCalls.length, 0);
   await flushAsync();
-  assert.equal(lifecycleState.value, 'fulfilled', '后台写盘完成后生命周期正常结束');
+  assert.equal(lifecycleState.value, 'fulfilled');
 });
 
 test('场景6：网络返回非 2xx 时原样返回页面且不写缓存', async () => {

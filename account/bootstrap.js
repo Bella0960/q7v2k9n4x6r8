@@ -8,6 +8,8 @@
   const setupHelp = document.getElementById('bootstrapSetupHelp');
   const qaHelp = document.getElementById('qaAuthorityHelp');
   const heading = document.getElementById('bootstrapHeading');
+  const usernameLabel = document.getElementById('bootstrapUsernameLabel');
+  const usernameField = form.querySelector('[name="username"]');
   let statusCheckInProgress = false;
 
   async function request(path, method = 'GET', body = null) {
@@ -85,6 +87,13 @@
       const status = await request('/api/admin/bootstrap/status');
       const qaSetup = status.identityMode === 'delegated' && status.qaSetupAllowed === true;
       if (heading) heading.textContent = qaSetup ? 'QA 身份初始化' : '创作者初始化';
+      if (usernameLabel) usernameLabel.textContent = qaSetup
+        ? '原管理员用户名或永久 ID' : '管理员用户名';
+      if (usernameField) {
+        usernameField.maxLength = qaSetup ? 28 : 24;
+        usernameField.placeholder = qaSetup
+          ? '填写原用户名或管理员 001 的永久 ID' : '设置创作者账号名';
+      }
       if ((status.identityMode === 'delegated' && !qaSetup) ||
           status.bootstrapAllowed === false) {
         form.hidden = true;
@@ -101,7 +110,9 @@
       }
       if (status.configured === false) {
         // Never present a form that the server cannot accept yet.
-        statusNode.textContent = '账号测试环境尚未配置安全密钥，请按下方说明设置后重新检查。';
+        statusNode.textContent = qaSetup
+          ? 'QA 独立身份服务暂未通过连接或配置检查。若密钥已经设置，请勿重新生成；先检查身份 Worker 绑定，再重新检查。'
+          : '账号测试环境尚未配置安全密钥，请按下方说明设置后重新检查。';
         retryButton.hidden = false;
         if (setupHelp) setupHelp.hidden = qaSetup;
         if (qaHelp) qaHelp.hidden = !qaSetup;

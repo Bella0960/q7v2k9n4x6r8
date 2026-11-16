@@ -23,9 +23,57 @@
  * 依赖：playwright 主包（package.json devDependencies ^1.64.1）
  */
 import { chromium } from 'playwright';
+import { createServer } from 'node:http';
+import { readFile } from 'node:fs/promises';
+import { dirname, extname, isAbsolute, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const BASE = (process.env.BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
-const URL = `${BASE}/inspect-phone/phone.html?id=pw-test`;
+// Full "node --test" runs without an external Vite server. Host the existing
+// static test page on a loopback-only random port instead of assuming :3000.
+const TEST_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const MIME_TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2'
+};
+
+async function startLocalTestServer() {
+  const server = createServer(async (req, res) => {
+    try {
+      const pathname = decodeURIComponent(new globalThis.URL(req.url || '/', 'http://127.0.0.1').pathname);
+      const target = resolve(TEST_ROOT, '.' + (pathname === '/' ? '/index.html' : pathname));
+      const rel = relative(TEST_ROOT, target);
+      if (rel.startsWith('..') || isAbsolute(rel)) {
+        res.writeHead(403).end('Forbidden');
+        return;
+      }
+      const data = await readFile(target);
+      res.writeHead(200, {
+        'content-type': MIME_TYPES[extname(target).toLowerCase()] || 'application/octet-stream'
+      }).end(data);
+    } catch {
+      res.writeHead(404).end('Not found');
+    }
+  });
+  await new Promise((resolveReady, rejectReady) => {
+    server.once('error', rejectReady);
+    server.listen(0, '127.0.0.1', resolveReady);
+  });
+  return server;
+}
+
+let localTestServer = null;
+let BASE = (process.env.BASE_URL || '').replace(/\/$/, '');
+let URL = BASE ? `${BASE}/inspect-phone/phone.html?id=pw-test` : '';
 const ROLE_SEED = JSON.stringify([{ id: 'pw-test', name: 'PW测试', description: 'test role' }]);
 
 let totalAssertions = 0;
@@ -117,6 +165,11 @@ async function snapshot(page, label) {
 }
 
 async function main() {
+  if (!BASE) {
+    localTestServer = await startLocalTestServer();
+    BASE = 'http://127.0.0.1:' + localTestServer.address().port;
+    URL = BASE + '/inspect-phone/phone.html?id=pw-test';
+  }
   console.log('\n=== inspect-phone 回归测试 v3（位移守卫边界 + 纯 CDP touch）===');
   console.log('BASE:', BASE);
 
@@ -334,4 +387,11 @@ async function main() {
   }
 }
 
-main().catch(err => { console.error('FATAL:', err?.message || err); process.exit(1); });
+main().catch(err => {
+  console.error('FATAL:', err?.message || err);
+  process.exitCode = 1;
+}).finally(async () => {
+  if (localTestServer) {
+    await new Promise((resolveClose) => localTestServer.close(resolveClose));
+  }
+});

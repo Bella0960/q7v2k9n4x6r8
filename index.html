@@ -277,6 +277,15 @@
                   <span class="ds-del" title="移除">×</span>
                 </button>
 
+                <!-- 邂逅：本地抽卡 / 收藏候选人物 -->
+                <button class="app-card app-tile" type="button" data-href="encounter/encounter.html" data-drag="app_encounter" data-name="邂逅" title="邂逅">
+                  <span class="app-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.2 4.2a8.5 8.5 0 1 0 2.6 12.5"/><path d="m16 5 3-2M19 3l2 3"/></svg>
+                  </span>
+                  <span class="app-name">邂逅</span>
+                  <span class="ds-del" title="移除">×</span>
+                </button>
+
                 <!-- 日记 App：黑白极简私人手账 -->
                 <button class="app-card app-tile" type="button" data-href="diary/diary.html" data-drag="app_diary" data-name="日记" title="日记">
                   <span class="app-icon">
@@ -663,7 +672,7 @@
           v: 14,
           pages: [
             ['clock-lg', 'app_inspect', 'app_worldbook', 'app_memory', 'app_forum', 'duo', 'photowall', 'app_wallet', 'app_music', 'app_beauty', 'app_theme_store'],
-            ['app_characters', 'app_footprint', 'app_settings', 'app_tutorial', 'app_finance', 'app_takeout', 'app_couple', 'app_growth', 'app_companion', 'app_games', 'app_cafe', 'app_live_room', 'app_poster'],
+            ['app_characters', 'app_encounter', 'app_footprint', 'app_settings', 'app_tutorial', 'app_finance', 'app_takeout', 'app_couple', 'app_growth', 'app_companion', 'app_games', 'app_cafe', 'app_live_room', 'app_poster'],
             ['app_library', 'app_envelope', 'app_diary', 'app_novelstudio', 'app_dreamtravel', 'app_date']
           ],
           dock: ['app_chat', 'app_shop'],
@@ -760,6 +769,24 @@
         while (currentLayout.pages.length <= pageIndex) currentLayout.pages.push([]);
         var anchor = currentLayout.pages[pageIndex].indexOf('app_settings');
         currentLayout.pages[pageIndex].splice(anchor >= 0 ? anchor + 1 : currentLayout.pages[pageIndex].length, 0, id);
+        saveLayout(currentLayout);
+      })();
+
+      // 邂逅新应用：只增量插入现有角色入口旁，不重置用户已排列的桌面。
+      (function addEncounterShortcutToExistingLayouts() {
+        var id = 'app_encounter';
+        var exists = (currentLayout.pages || []).some(function(page){return page.indexOf(id) !== -1;})
+          || (currentLayout.dock || []).indexOf(id) !== -1
+          || (currentLayout.removed || []).indexOf(id) !== -1;
+        if (exists) return; // 用户主动移除过的入口绝不能擅自恢复
+        var pageIndex = (currentLayout.pages || []).findIndex(function(page){
+          return page.indexOf('app_characters') !== -1;
+        });
+        if (pageIndex < 0) pageIndex = 1;
+        while (currentLayout.pages.length <= pageIndex) currentLayout.pages.push([]);
+        var page = currentLayout.pages[pageIndex];
+        var anchor = page.indexOf('app_characters');
+        page.splice(anchor >= 0 ? anchor + 1 : page.length, 0, id);
         saveLayout(currentLayout);
       })();
 

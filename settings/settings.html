@@ -62,6 +62,11 @@
                     <div class="menu-title"><span class="t-cn">API 设置</span><span class="t-en">API</span></div>
                     <div class="menu-arrow">›</div>
                 </div>
+                <div class="menu-row" onclick="window.location.href='cloud-push.html'" role="button" tabindex="0" aria-label="打开云端推送与角色活动设置">
+                    <div class="menu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg></div>
+                    <div class="menu-title"><span class="t-cn">云端推送</span><span class="t-en">Cloud</span></div>
+                    <div class="menu-arrow">›</div>
+                </div>
                 <div class="menu-row" onclick="window.location.href='image-generation.html'" role="button" tabindex="0">
                     <div class="menu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>
                     <div class="menu-title"><span class="t-cn">角色生图与图库</span><span class="t-en">Images</span></div>
@@ -422,10 +427,36 @@
             try { return localStorage.getItem(key) === null ? def : localStorage.getItem(key); } catch (e) { return def; }
         }
         if (statusbarToggle) {
-            statusbarToggle.checked = readSbPref('settings_statusbar', '1') === '1';
+            var confirmedStatusbarPref = readSbPref('settings_statusbar', '1');
+            statusbarToggle.checked = confirmedStatusbarPref === '1';
             statusbarToggle.addEventListener('change', function () {
-                try { localStorage.setItem('settings_statusbar', statusbarToggle.checked ? '1' : '0'); } catch (e) {}
+                var requested = statusbarToggle.checked ? '1' : '0';
+                try {
+                    localStorage.setItem('settings_statusbar', requested);
+                    if (localStorage.getItem('settings_statusbar') !== requested) {
+                        throw new Error('Status bar preference was not persisted');
+                    }
+                } catch (e) {
+                    // Do not display a saved state if storage throws or silently drops writes.
+                    statusbarToggle.checked = confirmedStatusbarPref === '1';
+                    if (window.__statusbarControlApply) window.__statusbarControlApply();
+                    if (typeof window.alert === 'function') {
+                        window.alert('状态栏设置未能保存，请检查浏览器存储空间后重试。');
+                    }
+                    return;
+                }
+                confirmedStatusbarPref = requested;
                 if (window.__statusbarControlApply) window.__statusbarControlApply();
+            });
+            window.addEventListener('storage', function (event) {
+                if (!event.key || event.key === 'settings_statusbar') {
+                    confirmedStatusbarPref = readSbPref('settings_statusbar', '1');
+                    statusbarToggle.checked = confirmedStatusbarPref === '1';
+                }
+            });
+            window.addEventListener('pageshow', function () {
+                confirmedStatusbarPref = readSbPref('settings_statusbar', '1');
+                statusbarToggle.checked = confirmedStatusbarPref === '1';
             });
         }
 

@@ -6,13 +6,40 @@
   let currentAccount = null;
   let viewRevision = 0;
   let authBusy = false;
-  let delegatedIdentity = false;
-  let delegatedSignInReady = true;
+  // The one approved QA origin must fail closed until the authority is
+  // confirmed. Other account origins retain their existing login behavior.
+  const isKnownQaHost = window.location.hostname ===
+    'maomao-aw-qa-20261114.miamor520000.workers.dev';
+  let delegatedIdentity = isKnownQaHost;
+  let delegatedSignInReady = !isKnownQaHost;
+
+  function syncLoginAvailability() {
+    // Auth-state readiness and busy state are independent. Finishing an
+    // unrelated request must never re-enable the QA login form while the
+    // delegated identity core is not ready.
+    const disabled = authBusy || (delegatedIdentity && !delegatedSignInReady);
+    const form = byId('loginForm');
+    if (form) {
+      form.querySelectorAll('input, button[type="submit"]').forEach(node => {
+        node.disabled = disabled;
+      });
+    }
+  }
 
   function setAuthBusy(value) {
     authBusy = value;
     document.querySelectorAll('[data-show], .form button[type="submit"]').forEach(button => {
       button.disabled = value;
+    });
+    syncLoginAvailability();
+  }
+
+  syncLoginAvailability();
+  if (isKnownQaHost) {
+    // Hide registration before the async identity-status probe finishes:
+    // the isolated QA reuses founder 001 and never creates another account.
+    document.querySelectorAll('[data-show="registerPanel"]').forEach(button => {
+      button.hidden = true;
     });
   }
 
@@ -213,6 +240,13 @@
 
   byId('registerForm').addEventListener('submit', async event => {
     event.preventDefault();
+    // This guard is intentional even when the registration entry is hidden.
+    // A stale tab or script may still submit the form directly.
+    if (isKnownQaHost || delegatedIdentity) {
+      setError('registerError',
+        'QA 测试版不允许重复注册。请使用原管理员账号完成独立 QA 初始化或登录。');
+      return;
+    }
     if (authBusy) return;
     setError('registerError');
     const form = new FormData(event.currentTarget);
@@ -282,6 +316,10 @@
   byId('loginForm').addEventListener('submit', async event => {
     event.preventDefault();
     if (authBusy) return;
+    if (delegatedIdentity && !delegatedSignInReady) {
+      setError('loginError', 'QA 身份服务尚未就绪，请不要提交密码；先完成独立账号初始化或检查连接。');
+      return;
+    }
     setError('loginError');
     const form = new FormData(event.currentTarget);
     if (!String(form.get('identifier') || '').trim() || !String(form.get('password') || '')) {
@@ -304,7 +342,6 @@
       showAuthError(error, 'loginError');
     } finally {
       setAuthBusy(false);
-      button.disabled = false;
     }
   });
 
@@ -354,26 +391,65 @@
     if (!link) return;
     try {
       const status = await api('/api/admin/bootstrap/status');
-      delegatedIdentity = status.identityMode === 'delegated';
-      link.hidden = delegatedIdentity || status.bootstrapAllowed === false || Boolean(status.initialized);
+      const reportedDelegated = status.identityMode === 'delegated';
+      if (isKnownQaHost && !reportedDelegated) {
+        delegatedIdentity = true;
+        delegatedSignInReady = false;
+        link.hidden = true;
+        syncLoginAvailability();
+        document.querySelectorAll('[data-show="registerPanel"]').forEach(button => {
+          button.hidden = true;
+        });
+        setError('loginError', 'QA 身份状态异常，已暂停登录。不要输入正式版密码或重新注册。');
+        return;
+      }
+      delegatedIdentity = reportedDelegated;
+      // Initializing an empty QA authority is allowed ONLY when the server
+      // confirms the isolated core, exact one-time setup mode, and readiness.
+      // Once the founder exists, this link disappears even if setup is still on.
+      const canQaSetup = delegatedIdentity &&
+        status.qaIdentityCore === true &&
+        status.qaSetupAllowed === true &&
+        status.bootstrapAllowed === true &&
+        status.identityAuthorityConnected === true &&
+        status.configured === true &&
+        status.initialized === false;
+      const canLocalSetup = !delegatedIdentity &&
+        status.bootstrapAllowed !== false && status.initialized === false;
+      link.hidden = !(canQaSetup || canLocalSetup);
+      link.textContent = canQaSetup ? '设置 QA 独立账号密码' : '创作者首次初始化';
       if (delegatedIdentity) {
         document.querySelectorAll('[data-show="registerPanel"]').forEach(button => { button.hidden = true; });
         const subtitle = byId('loginPanel')?.querySelector('.lead');
-        if (subtitle) subtitle.textContent = '用你原来的 MAO 账号登录。管理员 001 不需要邀请码，也不需要重复注册。';
-        delegatedSignInReady = status.signInReady === true;
-        const unavailable = !delegatedSignInReady;
-        const loginForm = byId('loginForm');
-        if (loginForm) {
-          loginForm.querySelectorAll('input, button[type="submit"]').forEach(node => {
-            node.disabled = unavailable;
-          });
+        if (subtitle) {
+          subtitle.textContent = status.qaIdentityCore === true
+            ? 'QA 测试版：使用原管理员用户名或永久 ID，以及为 QA 单独设置的密码。不要输入正式版密码。'
+            : '用你原来的 MAO 账号登录。管理员 001 不需要邀请码，也不需要重复注册。';
+          // Ivory login hides generic .lead by default. The QA-only
+          // password warning must actually be visible on a phone.
+          subtitle.classList.toggle('qa-login-hint', status.qaIdentityCore === true);
         }
-        if (unavailable) {
-          setError('loginError', '统一身份验证尚未接通。本测试版不会要求你重新注册，请暂时不要输入管理员密码。');
+        delegatedSignInReady = status.signInReady === true;
+        syncLoginAvailability();
+        if (!delegatedSignInReady) {
+          setError('loginError', canQaSetup
+            ? 'QA 独立身份服务已就绪。请先点击「设置 QA 独立账号密码」完成一次性初始化，不要使用正式版密码。'
+            : status.qaIdentityCore === true
+              ? 'QA 独立身份服务尚未就绪，请勿输入正式版密码或重复注册。'
+              : '统一身份验证尚未接通。本测试版不会要求你重新注册，请暂时不要输入管理员密码。');
         }
       }
     } catch {
       link.hidden = true;
+      if (isKnownQaHost) {
+        delegatedIdentity = true;
+        delegatedSignInReady = false;
+        syncLoginAvailability();
+        document.querySelectorAll('[data-show="registerPanel"]').forEach(button => {
+          button.hidden = true;
+        });
+        setError('loginError', 'QA 身份服务连接失败，登录已暂停。请检查连接，不要提交密码。');
+      }
     }
   }
 

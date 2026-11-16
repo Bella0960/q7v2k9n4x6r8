@@ -115,16 +115,18 @@ test('downloadable snapshots exclude secret tokens by default and even when API 
   const localRecovery=tools.snapshot(false,false,true);
   assert.equal(localRecovery.mao_session_token,'secret-session');
 });
-test('separate music backup captures audio blobs while old full-backup format stays compatible',()=>{
+test('DATA-003: both full and music-scoped backups include audio bytes with safe limits',()=>{
   const {tools}=browser();
   const full=tools.backupTargets().find(x=>x.db==='maomao-media-store');
   const music=tools.backupTargets('music').find(x=>x.db==='maomao-media-store');
-  const fullAudio=full.stores.find(x=>x.store==='audio');
-  const musicAudio=music.stores.find(x=>x.store==='audio');
-  assert.ok(fullAudio.excludeFields.includes('blob'));
-  assert.deepEqual(Array.from(musicAudio.blobFields),['blob']);
-  assert.ok(musicAudio.blobMaxBytes>0);
-  assert.ok(musicAudio.blobStoreMaxBytes>=musicAudio.blobMaxBytes);
+  assert.equal(full.atomicExport, true, 'full backup cannot silently export metadata without audio');
+  for (const target of [full, music]) {
+    const audio=target.stores.find(x=>x.store==='audio');
+    assert.deepEqual(Array.from(audio.blobFields), ['blob']);
+    assert.ok(!(audio.excludeFields || []).includes('blob'));
+    assert.ok(audio.blobMaxBytes>0);
+    assert.ok(audio.blobStoreMaxBytes>=audio.blobMaxBytes);
+  }
 });
 test('new modules include forum, moments, café, games and unclassified local keys',()=>{
   const {reg}=browser();

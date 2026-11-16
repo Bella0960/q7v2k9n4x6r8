@@ -60,13 +60,17 @@ export async function initializeIsolatedQaAuthority({ env = {}, store, request }
       'QA 现有管理员身份不匹配，已停止初始化，原有数据保持不变');
   }
   const body = await readJsonBody(request);
-  const username = String(body.username || '').trim();
+  const submittedIdentity = String(body.username || '').trim();
   const secret = String(body.bootstrapSecret || '');
   const password = String(body.password || '');
-  if (username !== shadow.username) {
+  // The owner may know only the permanent founder ID. Accept it as the
+  // lookup alias, but ALWAYS create the isolated core's founder using the
+  // existing QA shadow username: no rename, new founder, or account migration.
+  if (submittedIdentity !== shadow.username && submittedIdentity !== expectedId) {
     throw new ApiError(409, 'QA_SHADOW_USERNAME_MISMATCH',
-      '请使用 QA 已有管理员用户名，不会创建第二个管理员');
+      '请输入 QA 原管理员用户名或永久 ID，不会创建第二个管理员');
   }
+  const username = shadow.username;
   if (secret.length < 32 || password.length < 10 || password.length > 128 ||
       body.confirmPassword !== password) {
     throw new ApiError(400, 'QA_SETUP_CREDENTIALS_INVALID', 'QA 初始化资料不完整');
@@ -89,8 +93,9 @@ export async function initializeIsolatedQaAuthority({ env = {}, store, request }
     throw new ApiError(409, 'QA_AUTHORITY_NOT_EMPTY_OR_NOT_READY',
       '独立 QA 身份库未通过空库和安全配置校验，已阻止初始化');
   }
-  // No browser cookie is forwarded; the core creates its own server-side
-  // session during bootstrap, but the browser must separately log in to QA.
+  // Isolated QA bootstrap returns only the founder identity: it creates no
+  // extra authority session and never exposes a cookie to the QA browser.
+  // The owner explicitly logs in with QA-only credentials afterward.
   let response;
   try {
     response = await authority.fetch(new Request(INTERNAL_ORIGIN + '/api/admin/bootstrap', {

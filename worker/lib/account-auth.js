@@ -288,7 +288,14 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       throw error;
     }
     if (!created) throw new ApiError(409, 'ADMIN_ALREADY_INITIALIZED', '超级管理员已经初始化');
-    return await createSession(store.getMaoAccountById(account.id), request);
+    const founder = store.getMaoAccountById(account.id);
+    if (isolatedQaAuthorityFounderId(env) === account.id) {
+      // QA setup is a server-to-server operation. Do not mint an orphaned
+      // authority session: no authority cookie is ever sent to this browser.
+      // The owner explicitly logs in at the existing QA origin afterward.
+      return ok({ account: publicAccount(founder), qaSetupComplete: true, nextStep: 'qa_login' });
+    }
+    return await createSession(founder, request);
   }
 
   async function register(request) {
@@ -961,14 +968,24 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
         const initialized = delegated ? authority.initialized : store.hasMaoSuperAdminAccount();
         const qaSetup = delegated && qaIsolatedSetupEnabled(env);
         const qaCoreFounder = !delegated ? isolatedQaAuthorityFounderId(env) : null;
+        // Once the one-time QA setup flag is disabled, the isolated core is
+        // still configured for login. Never misreport it as missing secrets.
+        // Legacy gateway previews continue to keep bootstrap configured=false.
+        const qaIdentityCore = delegated && usesExistingAccountAuthority(env) &&
+          env.MAO_QA_AUTHORITY_WORKER === 'maomao-identity-core';
+        const qaCoreReady = qaIdentityCore &&
+          authority.connected && authority.configured;
         return ok({
           initialized,
-          configured: qaSetup ? authority.configured : !delegated &&
+          configured: delegated ? Boolean(qaCoreReady) :
             String(env.MAO_SUPER_ADMIN_BOOTSTRAP_SECRET || '').length >= 32 &&
             String(env.DEVICE_SECRET_PEPPER || '').length >= 32,
           identityMode: delegated ? 'delegated' : 'local',
           bootstrapAllowed: !delegated || qaSetup,
           qaSetupAllowed: qaSetup,
+          // This is a display hint only; login is still verified by the
+          // isolated authority, never by a client-supplied identity flag.
+          qaIdentityCore,
           qaIsolatedAuthority: !!qaCoreFounder,
           qaExpectedFounderId: qaCoreFounder || undefined,
           identityAuthorityConnected: delegated ? authority.connected : undefined,

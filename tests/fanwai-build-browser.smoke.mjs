@@ -1,0 +1,296 @@
+/**
+ * MAOMAO 番外真实浏览器烟测：在 npm run build 的 dist 上验证经典脚本加载、
+ * 手机触控、模板/折叠设置与不联网的 40 条模拟生成。
+ *
+ * 不触碰线上域名、账号和真实模型；使用本地 HTTP + Playwright Chromium。
+ * Android/iPhone 是视口模拟，不冒充 Safari 或 Android 真机。
+ */
+import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
+import { existsSync, createReadStream } from 'node:fs';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { resolve, relative, extname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { chromium } from 'playwright';
+
+const ROOT = resolve(fileURLToPath(new URL('../dist/', import.meta.url)));
+const DIAGNOSTIC_DIR = resolve(ROOT, '..', 'test-results', 'fanwai-browser');
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'application/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.webp': 'image/webp',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg'
+};
+const REQUIRED = [
+  'chat/chat/chat-detail.html',
+  'chat/chat/js/chat-extras.js',
+  'chat/chat/js/chat-fanwai.js',
+  'chat/chat/js/chat-fanwai.css',
+  'shared/js/phone/phone_api.js'
+];
+
+for (const asset of REQUIRED) {
+  assert.ok(existsSync(resolve(ROOT, asset)),
+    'Build output is missing ' + asset + '; run npm run build (including postbuild) first');
+}
+
+function serveDist() {
+  const server = createServer((req, res) => {
+    let pathname;
+    try { pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname); }
+    catch { res.writeHead(400); res.end('bad path'); return; }
+    const file = resolve(ROOT, '.' + pathname);
+    const rel = relative(ROOT, file);
+    if (rel.startsWith('..') || rel === '' || rel.startsWith('/')) {
+      res.writeHead(403); res.end('forbidden'); return;
+    }
+    if (!existsSync(file)) { res.writeHead(404); res.end('not found'); return; }
+    res.writeHead(200, {
+      'content-type': MIME[extname(file)] || 'application/octet-stream',
+      'cache-control': 'no-store'
+    });
+    createReadStream(file).on('error', () => res.destroy()).pipe(res);
+  });
+  return new Promise(resolveServer => server.listen(0, '127.0.0.1', () => resolveServer(server)));
+}
+
+const widths = [
+  { label: 'Android-size Chromium', width: 390, height: 844 },
+  { label: 'iPhone-size Chromium (NOT Safari)', width: 375, height: 812 }
+];
+const seedRole = {
+  id: 'fanwai_smoke_role', name: '番外验收角色',
+  persona: '朋友关系，简短自然地聊天，认真回应日常生活细节。',
+  createdAt: 1
+};
+let browser, server;
+try {
+  browser = await chromium.launch({
+    headless: true,
+    ...(process.env.MAOMAO_CHROMIUM_PATH
+      ? { executablePath: process.env.MAOMAO_CHROMIUM_PATH } : {})
+  });
+  server = await serveDist();
+  const origin = 'http://127.0.0.1:' + server.address().port;
+  for (const viewport of widths) {
+    const context = await browser.newContext({
+      viewport: { width: viewport.width, height: viewport.height },
+      deviceScaleFactor: 2, isMobile: true, hasTouch: true, serviceWorkers: 'block'
+    });
+    // 安全烟测：禁止一切站外请求，绝不访问用户真实 AI/推送/支付服务。
+    let blockedExternalRequests = 0;
+    await context.route('**/*', route => {
+      if (route.request().url().startsWith(origin + '/')) return route.continue();
+      blockedExternalRequests++;
+      return route.abort();
+    });
+    const page = await context.newPage();
+    const missingCritical = [];
+    const pageErrors = [];
+    const failedRequests = [];
+    let stage = 'opening chat HTML';
+    page.on('pageerror', error => pageErrors.push(String(error).slice(0, 450)));
+    page.on('requestfailed', request => {
+      if (request.url().startsWith(origin + '/')) {
+        failedRequests.push(request.url() + ': ' + (request.failure()?.errorText || 'failed'));
+      }
+    });
+    page.on('response', response => {
+      if (REQUIRED.some(asset => response.url().includes('/' + asset)) && response.status() >= 400)
+        missingCritical.push(response.url() + ' HTTP ' + response.status());
+    });
+    await context.addInitScript(role => {
+      if (localStorage.getItem('ai_custom_characters') === null)
+        localStorage.setItem('ai_custom_characters', JSON.stringify([role]));
+      if (localStorage.getItem('myProfile') === null)
+        localStorage.setItem('myProfile', JSON.stringify({ nickname: '测试用户' }));
+    }, seedRole);
+    try {
+      stage = 'opening built chat-detail.html';
+      const response = await page.goto(
+        origin + '/chat/chat/chat-detail.html?id=' + encodeURIComponent(seedRole.id),
+        { waitUntil: 'domcontentloaded', timeout: 25000 }
+      );
+      assert.equal(response?.status(), 200, viewport.label + ': chat HTML must load');
+      stage = 'waiting for + menu fanwai entry';
+      const entry = page.locator('#plusPanelOverlay .plus-grid [data-feat="fanwai"]');
+      await entry.waitFor({ state: 'attached', timeout: 20000 });
+      assert.equal(await entry.count(), 1, 'exactly one entry in existing plus menu');
+      stage = 'opening + panel';
+      await page.locator('#plus-action-btn').click();
+      await entry.click();
+      stage = 'opening fanwai picker';
+      const sheet = page.locator('#fanwaiLayer .fw-sheet');
+      await sheet.waitFor({ state: 'visible' });
+      await page.locator('#fanwaiLayer .fw-card').first().waitFor({ state: 'visible' });
+      assert.equal(await page.locator('#fanwaiLayer .fw-card').count(), 6);
+      const geometry = await sheet.evaluate(el => {
+        const box = el.getBoundingClientRect();
+        return {
+          left: box.left, right: box.right, viewport: innerWidth,
+          overflowX: el.scrollWidth > el.clientWidth + 1
+        };
+      });
+      assert.ok(geometry.left >= -1 && geometry.right <= viewport.width + 1,
+        viewport.label + ': sheet must stay within mobile viewport ' + JSON.stringify(geometry));
+      assert.equal(geometry.overflowX, false, viewport.label + ': sheet must not overflow horizontally');
+
+      stage = 'installing local, non-billing PhoneAPI mock';
+      await page.evaluate(() => {
+        window.__fanwaiMockCalls = 0;
+        assertPhoneAPI();
+        function assertPhoneAPI() {
+          if (!window.PhoneAPI || !window.PhoneStorage) throw Error('Real PhoneAPI did not load');
+        }
+        window.PhoneStorage.getApiConfig = () => ({
+          apiKey: 'SMOKE-ONLY-NO-NETWORK', model: 'mock', maxTokens: 1600
+        });
+        window.PhoneAPI.completeJSON = async options => {
+          window.__fanwaiMockCalls++;
+          const requested = Number(options.system.match(/本轮只创作恰好 (\d+) 条/)?.[1] || 0);
+          if (!requested || requested > 25) throw Error('Bad model batch: ' + requested);
+          return {
+            ok: true, data: {
+              messages: Array.from({ length: requested }, (_, i) => ({
+                role: i % 2 ? 'char' : 'user',
+                text: '本地番外验收 ' + window.__fanwaiMockCalls + '/' + i
+              }))
+            }
+          };
+        };
+      });
+      const previousChat = await page.evaluate(id =>
+        localStorage.getItem('chat_history_' + id), seedRole.id);
+
+      stage = 'opening template preview';
+      await page.locator('#fanwaiLayer .fw-card').first().click();
+      await page.locator('#fanwaiLayer .fw-preview-cover').waitFor({ state: 'visible' });
+      const settingsToggle = page.locator('#fanwaiLayer [data-action="toggle-settings"]');
+      stage = 'opening collapsed story settings';
+      await settingsToggle.click();
+      assert.equal(await page.locator('#fanwaiLayer .fw-settings-drawer').isVisible(), true);
+      await page.locator('#fw-preview-count').selectOption('40');
+      stage = 'generating 40 offline mock messages';
+      await page.locator('#fanwaiLayer [data-action="start-template"]').click();
+      await page.waitForFunction(() =>
+        document.querySelectorAll('#fanwaiLayer .fw-bubble').length === 40,
+        null, { timeout: 25000 }
+      );
+      const result = await page.evaluate(id => ({
+        messages: document.querySelectorAll('#fanwaiLayer .fw-bubble').length,
+        calls: window.__fanwaiMockCalls,
+        chatHistory: localStorage.getItem('chat_history_' + id)
+      }), seedRole.id);
+      assert.equal(result.messages, 40);
+      assert.ok(result.calls >= 4 && result.calls <= 18, 'generation must be batched');
+      assert.equal(result.chatHistory, previousChat,
+        'fanwai must not silently alter the real chat message history');
+      stage = 'checking completed reader layout on mobile';
+      const reading = await page.locator('#fanwaiLayer .fw-sheet.fw-reading').evaluate(sheet => {
+        const box = sheet.getBoundingClientRect();
+        const messages = sheet.querySelector('.fw-messages');
+        const actions = sheet.querySelector('.fw-actions');
+        const buttons = actions ? actions.getBoundingClientRect() : null;
+        return {
+          left: box.left, right: box.right, bottom: box.bottom,
+          viewportWidth: innerWidth, viewportHeight: innerHeight,
+          widthOverflow: sheet.scrollWidth > sheet.clientWidth + 1,
+          chatOverflow: !messages || messages.scrollWidth > messages.clientWidth + 1,
+          chatHeight: messages?.clientHeight || 0,
+          actionHeight: buttons?.height || 0,
+          actionBottom: buttons?.bottom || 0
+        };
+      });
+      assert.ok(reading.left >= -1 && reading.right <= viewport.width + 1,
+        viewport.label + ': reader must fit the mobile width ' + JSON.stringify(reading));
+      assert.equal(reading.widthOverflow, false,
+        viewport.label + ': completed story reader cannot scroll sideways');
+      assert.equal(reading.chatOverflow, false,
+        viewport.label + ': messages cannot extend horizontally past the reader');
+      assert.ok(reading.chatHeight >= 120, viewport.label + ': message scrolling area must remain usable');
+      assert.ok(reading.actionHeight > 0 && reading.actionBottom <= reading.bottom + 1,
+        viewport.label + ': bottom story controls must remain in the reading sheet');
+      assert.deepEqual(missingCritical, [], 'required built resources cannot return HTTP errors');
+      // 检查实际浏览器执行边界，而非仅看 Mock DOM：认证信息伪造/错账号不能暴露番外插件。
+      // 通过本地路由改写合成 HTML，绝不触碰真实 Worker、账号或用户资料。
+      for (const guardCase of [
+        { label: 'malformed account meta', id: 'MAO-invalid' },
+        { label: 'mismatched ready account scope', id: 'MAO-AAAAAAAAAAAA', scope: 'MAO-BBBBBBBBBBBB' }
+      ]) {
+        stage = 'checking authenticated fanwai guard: ' + guardCase.label;
+        const guarded = await context.newPage();
+        try {
+          if (guardCase.scope) {
+            await guarded.addInitScript(accountId => {
+              window.__MAO_ACCOUNT_SCOPE__ = { accountId, ready: true };
+            }, guardCase.scope);
+          }
+          await guarded.route('**/chat/chat/chat-detail.html*', async route => {
+            const response = await route.fetch();
+            const original = await response.text();
+            const modified = original.replace(/<head\b[^>]*>/i,
+              head => head + '<meta name="mao-account-id" content="' + guardCase.id + '">');
+            assert.notEqual(modified, original, 'test must inject account marker into local HTML');
+            await route.fulfill({ response, body: modified });
+          });
+          const refusal = guarded.waitForEvent('console', {
+            predicate: message => message.text().includes('[Fanwai] 账号标识无效或隔离尚未就绪'),
+            timeout: 20000
+          });
+          const guardedResponse = await guarded.goto(
+            origin + '/chat/chat/chat-detail.html?id=' + encodeURIComponent(seedRole.id),
+            { waitUntil: 'domcontentloaded', timeout: 25000 }
+          );
+          assert.equal(guardedResponse?.status(), 200);
+          await refusal;
+          const exposed = await guarded.evaluate(() => ({
+            menu: document.querySelectorAll('#plusPanelOverlay [data-feat="fanwai"]').length,
+            reader: !!document.querySelector('#fanwaiLayer'),
+            core: typeof window.MAOMAOFanwaiCore,
+            plugins: typeof window.MAOMAOFanwai
+          }));
+          assert.deepEqual(exposed, { menu: 0, reader: false, core: 'undefined', plugins: 'undefined' },
+            guardCase.label + ' must not expose protected story or memory interfaces');
+        } finally {
+          await guarded.close();
+        }
+      }
+      stage = 'complete';
+      console.log('PASS ' + viewport.label + ' ' + JSON.stringify({
+        viewport: viewport.width + 'x' + viewport.height,
+        templateCards: 6, messages: result.messages, modelMockCalls: result.calls,
+        noRealApi: true, noMainChatMutation: true,
+        blockedExternalRequests
+      }));
+    } catch (error) {
+      await mkdir(DIAGNOSTIC_DIR, { recursive: true });
+      const shortName = viewport.label.startsWith('Android') ? 'android-390' : 'iphone-size-375';
+      const screenshot = resolve(DIAGNOSTIC_DIR, shortName + '.png');
+      try { await page.screenshot({ path: screenshot, fullPage: true, timeout: 3000 }); }
+      catch (screenshotError) {
+        console.error('Unable to capture browser failure screenshot:', String(screenshotError));
+      }
+      const report = {
+        viewport: viewport.label, stage, error: String(error),
+        pageErrors: pageErrors.slice(0, 16),
+        missingCritical: missingCritical.slice(0, 16),
+        failedRequests: failedRequests.slice(0, 16),
+        blockedExternalRequests
+      };
+      await writeFile(resolve(DIAGNOSTIC_DIR, shortName + '.json'),
+        JSON.stringify(report, null, 2), 'utf8');
+      console.error('FAIL ' + viewport.label + ': ' + JSON.stringify(report));
+      throw error;
+    } finally {
+      await context.close();
+    }
+  }
+  console.log('PASS: built fanwai browser smoke completed (Chromium mobile emulation only).');
+} finally {
+  if (browser) await browser.close();
+  if (server) await new Promise(resolveClose => server.close(resolveClose));
+}

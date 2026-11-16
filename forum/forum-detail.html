@@ -30,7 +30,7 @@
     background: repeating-linear-gradient(0deg,rgba(0,0,0,.008) 0,rgba(0,0,0,.008) 1px,transparent 1px,transparent 5px),#fff;
     color: var(--ink);
     min-height: 100vh; max-width: 390px; margin: 0 auto;
-    padding-bottom: 90px; -webkit-font-smoothing: antialiased;
+    padding-bottom: max(90px, var(--maomao-forum-detail-reserved-bottom, 90px)); -webkit-font-smoothing: antialiased;
   }
   .topbar {
     height: 59px; padding: 0 22px;
@@ -173,14 +173,30 @@
   /* 评论输入栏：毛玻璃 + 下划线字段 */
   .forum-media-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:12px;max-width:100%}.forum-media-item{margin:0;min-width:0;overflow:hidden;background:#f1f1f1;aspect-ratio:4/3}.forum-media-item img{display:block;width:100%;height:100%;object-fit:cover}.forum-media-item img.media-load-failed{object-fit:contain;padding:12px;color:#888;font-size:9px}.post-detail-media{margin-top:15px}.comment-media{max-width:230px;grid-template-columns:repeat(2,minmax(0,1fr));margin-top:9px}.comment-media .forum-media-item{aspect-ratio:1/1}.forum-preview-item{width:58px;height:58px;flex:0 0 58px;margin:0;overflow:hidden;background:#f1f1f1}.forum-preview-item img{width:100%;height:100%;object-fit:cover}.forum-image-preview{display:flex;gap:7px;overflow-x:auto;max-width:100%}.comment-bar{flex-direction:column;align-items:stretch;gap:7px}.comment-input-row{display:flex;align-items:center;gap:8px;width:100%}.comment-input-row input{min-width:0}.comment-image-button{width:30px;height:30px;flex:0 0 30px;border:1px solid #ddd;background:#fff;color:#555;font-size:17px;line-height:1}.comment-bar .forum-image-preview:empty{display:none}
   .comment-bar {
-    position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+    /* Keep the existing comment input above the independent Home Indicator. */
+    position: fixed; bottom: var(--maomao-home-indicator-comment-bottom, calc(24px + env(safe-area-inset-bottom,0px))); left: 50%; transform: translateX(-50%);
     width: 100%; max-width: 390px;
     background: rgba(255,255,255,.92);
     backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px);
     border-top: 1px solid #e8e8e8;
     display: flex; gap: 12px; align-items: center;
     padding: 10px 22px;
-    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+    padding-bottom: var(--maomao-home-indicator-comment-padding-bottom, 10px);
+  }
+  /* mobile-fit.css uses !important for generic bottom bars. On this forum page
+     the Home Indicator owner supplies a more precise per-page padding setting. */
+  @media (max-width: 480px) {
+    body .comment-bar {
+      padding-bottom: var(--maomao-home-indicator-comment-padding-bottom, 10px) !important;
+    }
+    /* mobile-fit.css expands the composer to the phone width. The reply hint
+       must follow the same mobile edge instead of keeping its 390px cap. */
+    body .reply-hint {
+      left: 0;
+      transform: none;
+      width: 100%;
+      max-width: none;
+    }
   }
   .comment-bar input {
     flex: 1; height: auto; background: transparent;
@@ -202,7 +218,7 @@
   .p-body { font-size: 11px; line-height: 1.95; color: #656565; margin: 9px 0 0; overflow-wrap: anywhere; white-space: pre-wrap; }
   /* 回复提示条：清晰显示回复对象 */
   .reply-hint {
-    position: fixed; bottom: 64px; left: 50%; transform: translateX(-50%);
+    position: fixed; bottom: calc(var(--maomao-home-indicator-comment-bottom, calc(24px + env(safe-area-inset-bottom,0px))) + 66px); left: 50%; transform: translateX(-50%);
     width: 100%; max-width: 390px;
     display: flex; align-items: center; gap: 8px;
     padding: 9px 22px;
@@ -313,6 +329,46 @@
   </div>
 
 <script>
+/* Keep the reply target above the real composer, including image previews.
+ * The composer can grow or move when the independent Home Indicator toggles;
+ * the old fixed 64px reply hint could cover the input. */
+(function keepReplyHintAboveComposer() {
+  var composer = document.querySelector('.comment-bar');
+  var hint = document.getElementById('replyHint');
+  if (!composer || !hint) return;
+  var pending = false;
+  function sync() {
+    pending = false;
+    var size = composer.getBoundingClientRect().height;
+    var offset = parseFloat(window.getComputedStyle(composer).bottom);
+    if (!Number.isFinite(offset)) offset = 0;
+    hint.style.bottom = Math.ceil(size + offset + 8) + 'px';
+    // Fixed reply prompts and image previews must not cover the last comment
+    // when the reader scrolls to the end of this page.
+    var hintVisible = window.getComputedStyle(hint).display !== 'none';
+    var hintHeight = hintVisible ? hint.getBoundingClientRect().height + 8 : 0;
+    document.body.style.setProperty('--maomao-forum-detail-reserved-bottom',
+      Math.ceil(size + offset + 8 + hintHeight) + 'px');
+  }
+  function schedule() {
+    if (pending) return;
+    pending = true;
+    window.requestAnimationFrame(sync);
+  }
+  if (typeof ResizeObserver === 'function') {
+    var observer = new ResizeObserver(schedule);
+    observer.observe(composer);
+    observer.observe(hint);
+  }
+  window.addEventListener('resize', schedule);
+  window.addEventListener('pageshow', schedule);
+  window.addEventListener('maomao:home-indicator-change', schedule);
+  window.addEventListener('storage', function (event) {
+    if (!event.key || event.key === 'settings_home_indicator_visible') schedule();
+  });
+  schedule();
+})();
+
 function readForumConfig(){try{return JSON.parse(localStorage.getItem('forum_config')||'{}')}catch(e){console.warn('[Forum] readForumConfig 读取 forum_config 失败，按默认配置继续',e);return {}}}
 const THEME_PRESETS={
  reality:{name:'现代都市',english:'CITY / EVERYDAY',tagline:'城市日常 / 把普通日子里的细节，留在这里。',motto:'LIFE IN THE EVERYDAY',featureTitle:'今天的城市生活，又有什么新鲜事？',featureDeck:'生活观察、工作见闻、邻里小事与临时起意的分享，都可以在这里慢慢聊。',topics:['全部','今日话题','生活观察','职场见闻','邻里闲谈','深夜碎念','随手分享']},
@@ -480,21 +536,33 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     const r=detailResident(item&&item.residentId,index),text=String(item&&item.text||'').trim().slice(0,260);
     if(!text)return null;
     const now=Date.now();
-    const replies=(Array.isArray(item.replies)?item.replies:[]).slice(0,2).map((x,j)=>{
+    // AI output may contain null/scalar nested entries. Skip malformed rows
+    // before the two-reply limit so a bad row does not hide a valid response.
+    const nested=Array.isArray(item&&item.replies)
+      ?item.replies.filter(x=>x&&typeof x==='object'&&!Array.isArray(x)).slice(0,2):[];
+    const replies=nested.map((x,j)=>{
       const rr=detailResident(x.residentId,index+j+3),replyText=String(x.text||'').trim().slice(0,220);
       return replyText?{name:rr.name,avatar:'#'+['333333','555555','777777','444444'][j%4],residentId:rr.id,owner:'community',source:'forum-ai',text:replyText,time:now-(j+1)*70000,replyTo:String(x.replyTo||r.name),likes:0}:null;
     }).filter(Boolean);
     return {name:r.name,avatar:'#'+['333333','555555','777777','444444'][index%4],residentId:r.id,owner:'community',source:'forum-ai',text:text,time:now-index*50000,likes:0,replies:replies};
   }
+  // Scoped per-post so an overlapping call cannot buy two AI generations or
+  // append two "first batches". This is transient and never persisted.
+  const pendingInitialAIComments=new WeakSet();
   async function generateInitialAIComments(){
-    if(!post||post.aiCommentBatch==='v1')return;
+    if(!post||post.aiCommentBatch==='v1'||pendingInitialAIComments.has(post))return;
+    // A deferred AI response belongs to the post that initiated it, never to
+    // a different post that may have become active before it returned.
+    const initialPost=post;
+    pendingInitialAIComments.add(initialPost);
     const status=document.getElementById('aiCommentStatus');
     if(status)status.textContent='社区里有人正在看这条帖子…';
     try{
       const residents=DETAIL_RESIDENTS.map((r,i)=>detailResident(r.id,i)).map(r=>({id:r.id,name:r.name,style:r.style}));
       const existing=post.comments.slice(-5).map(c=>({name:c.name,text:c.text,replies:(c.replies||[]).map(x=>x.text)}));
       const prompt='请为下面这条论坛帖子补上第一批自然的网友讨论。只返回 JSON。\n固定路人：'+JSON.stringify(residents)+'\n帖子：'+JSON.stringify({author:post.name,title:postTitle(),body:postBody(),topic:post.topic||''})+'\n已有评论（不要重复）：'+JSON.stringify(existing)+'\n要求：生成 3-4 条评论，至少有两种不同态度；评论要抓住帖子细节，有人追问、有人分享经历、有人补充或温和反对。选择 1-2 条评论加一条楼中楼回复，让讨论有来有回。禁止每条都夸楼主或只说“确实”“哈哈”。所有 residentId 必须来自固定路人。格式：{"comments":[{"residentId":"路人id","text":"评论内容","replies":[{"residentId":"路人id","text":"回复内容","replyTo":"被回复昵称"}]}]}';
-      const result=await forumAIJSON(prompt,0.93,post.mediaAssetIds);
+      const result=await forumAIJSON(prompt,0.93,initialPost.mediaAssetIds);
+      if(post!==initialPost||initialPost.aiCommentBatch==='v1')return;
       if(!result||!result.ok||!result.data||!Array.isArray(result.data.comments))throw new Error('评论生成结果无效');
       const added=result.data.comments.slice(0,4).map((x,i)=>makeDetailAIComment(x,i)).filter(Boolean);
       if(added.length){
@@ -515,8 +583,11 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       }else if(status){status.textContent='暂时还没人接话，过会儿再来看看'}
     }catch(error){
       console.warn('[Forum] 首批路人评论生成失败',error);
+      if(post!==initialPost)return;
       // 打开帖子时自动触发的后台生成：评论区内联 status 已是可见提示，再弹 toast 会在每次打开帖子时重复打扰，故此处只用状态文案。
       if(status)status.textContent=(post.mediaAssetIds||[]).length?'图片已经保留；当前 API 或模型可能不支持看图，暂时无法生成图片讨论':'路人暂时没有赶来，稍后重新打开帖子再试试';
+    }finally{
+      pendingInitialAIComments.delete(initialPost);
     }
   }
 
@@ -922,7 +993,10 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       renderComments();renderPost();
       return;
     }
-    if(replyToIdx>=i)cancelReply();
+    // Deleting an earlier comment shifts indices, but the selected reply
+    // target still exists. Only cancel when the actual target was removed.
+    if(replyToIdx===i)cancelReply();
+    else if(replyToIdx>i)replyToIdx--;
     if(removed.id&&Array.isArray(removed.mediaAssetIds)&&window.ForumMedia)
       ForumMedia.release(removed.mediaAssetIds,'forum-comment',removed.id);
     renderComments();renderPost();
@@ -1131,6 +1205,10 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
 
   async function generateRepliesToUserComment(target,text,submittedImageIds){
     if(!target)return;
+    // The AI call may finish after a comment is deleted or the page changes post.
+    // Keep the original post identity; do not write orphaned replies or report success.
+    const replyPost=post;
+    if(!replyPost||!Array.isArray(replyPost.comments)||!replyPost.comments.includes(target))return;
     if(!gossipSeriesRunning&&window.ForumGossip&&ForumGossip.isGossipPost(post)&&!ForumGossip.progress(post).finished&&
        readForumConfig().gossipAutoContinue!==false&&ForumGossip.wantsContinuation(text)){
       await generateGossipAuthorContinuation(target,text);
@@ -1149,13 +1227,28 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       const prompt='论坛里刚出现一条新留言，请让 1-2 位不同的路人自然回应它。只返回 JSON。\n路人资料：'+JSON.stringify(residents)+'\n帖子：'+JSON.stringify({title:postTitle(),body:postBody(),topic:post.topic||''})+'\n当前讨论串：'+JSON.stringify(threadContext)+'\n用户刚刚说：'+JSON.stringify(text)+'\n要求：回复要直接回应这句话和上下文，不要泛泛夸赞或重复已有内容；可以追问、分享相似经历或有礼貌地提出不同看法。最多两条，第二条可以接第一条的话。每条 10-55 字，保持口语和各自性格。格式：{"replies":[{"residentId":"路人id","text":"回复","replyTo":"我"}]}';
       const imageIds=Array.from(new Set([].concat(post.mediaAssetIds||[],target.mediaAssetIds||[],submittedImageIds||[]))).slice(0,2);
       const result=await forumAIJSON(prompt,0.94,imageIds);
+      // Never persist generated replies to a deleted target or an old post.
+      if(post!==replyPost||!Array.isArray(replyPost.comments)||!replyPost.comments.includes(target)){
+        if(status&&post===replyPost)status.textContent='原评论已删除，本次网友回复已取消';
+        return;
+      }
       if(!result||!result.ok||!result.data||!Array.isArray(result.data.replies))throw new Error('回复生成结果无效');
+      // Validate the complete AI batch before touching stored comments.
+      // Empty or malformed JSON entries must never create a phantom success
+      // or leave an unsaved partial reply in the in-memory post.
+      const addedReplies=[];
+      result.data.replies.slice(0,2).forEach((x,i)=>{
+        if(!x||typeof x!=='object')return;
+        const c=makeDetailAIComment({residentId:x.residentId,text:x.text},i);
+        if(c)addedReplies.push({name:c.name,avatar:c.avatar,residentId:c.residentId,owner:'community',source:'forum-ai',text:c.text,time:Date.now()+i*1000,replyTo:String(x.replyTo||'我'),likes:0});
+      });
+      if(!addedReplies.length){
+        if(status)status.textContent='暂时没有新的回应，稍后再看看';
+        return;
+      }
       const previousReplies=Array.isArray(target.replies)?target.replies.slice():[];
       if(!Array.isArray(target.replies))target.replies=[];
-      result.data.replies.slice(0,2).forEach((x,i)=>{
-        const c=makeDetailAIComment({residentId:x.residentId,text:x.text},i);
-        if(c)target.replies.push({name:c.name,avatar:c.avatar,residentId:c.residentId,owner:'community',source:'forum-ai',text:c.text,time:Date.now()+i*1000,replyTo:String(x.replyTo||'我'),likes:0});
-      });
+      target.replies.push(...addedReplies);
       if(!saveNow()){
         target.replies=previousReplies;
         renderComments();renderPost();
@@ -1179,20 +1272,38 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     if(bar)bar.classList.remove('has-images');
   }
   async function sendComment() {
-    const input=document.getElementById('commentInput'),text=input.value.trim();
+    const input=document.getElementById('commentInput'),draftAtSend=input.value,text=draftAtSend.trim();
     const files=commentImageFiles.slice();
     if(!text&&!files.length){toast('写一句话或添加一张图片吧');input.focus();return}
     const button=document.querySelector('.comment-bar .send-btn');
     if(button&&button.disabled)return;
     if(button)button.disabled=true;
     const replying=replyToIdx;
+    // Never persist an upload to a different post if the active post changes
+    // while its media is being saved.
+    const sourcePost=post;
+    // Capture the actual reply target before the asynchronous image upload.
+    // Comment indices can shift while the user deletes another comment.
+    const replyTarget=replying>=0?post.comments[replying]:null;
     const commentId='forum_comment_'+Date.now().toString(36);
     let assetIds=[];
     try{
       assetIds=await ForumMedia.upload(files,'forum-comment',commentId);
+      if(post!==sourcePost||!sourcePost||!Array.isArray(sourcePost.comments)){
+        await ForumMedia.release(assetIds,'forum-comment',commentId);
+        toast('帖子已切换，评论未发送，请重新确认');
+        return;
+      }
       let replyContainer,savedItem;
       if(replying>=0){
-        const target=post.comments[replying];
+        // Never attach a reply to a different comment at a stale array index.
+        // If the selected target was removed while uploading, keep the draft.
+        if(!replyTarget||!post.comments.includes(replyTarget)){
+          await ForumMedia.release(assetIds,'forum-comment',commentId);
+          toast('回复对象已不存在，请重新选择');
+          return;
+        }
+        const target=replyTarget;
         if(!target.replies)target.replies=[];
         savedItem={id:commentId,name:'我',avatar:'#222',owner:'me',text:text,time:Date.now(),replyTo:target.name,mediaAssetIds:assetIds};
         target.replies.push(savedItem);
@@ -1203,14 +1314,21 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
         replyContainer=savedItem;
       }
       if(!saveNow()){
-        if(replying>=0){const target=post.comments[replying];target.replies=target.replies.filter(item=>item!==savedItem)}
+        if(replying>=0){replyTarget.replies=replyTarget.replies.filter(item=>item!==savedItem)}
         else post.comments=post.comments.filter(item=>item!==savedItem);
         await ForumMedia.release(assetIds,'forum-comment',commentId);
         return;
       }
-      input.value='';
-      clearCommentImages();
-      cancelReply();
+      // The composer stays editable during async image upload. Clear only the
+      // draft/images actually submitted; never erase newly typed or selected
+      // content from a later draft.
+      const draftUnchanged=input.value===draftAtSend;
+      if(draftUnchanged)input.value='';
+      const imagesUnchanged=commentImageFiles.length===files.length&&
+        commentImageFiles.every((file,i)=>file===files[i]);
+      if(imagesUnchanged)clearCommentImages();
+      const activeReplyTarget=replyToIdx>=0?post.comments[replyToIdx]:null;
+      if(draftUnchanged&&imagesUnchanged&&activeReplyTarget===replyTarget)cancelReply();
       // After posting from author-only view, reveal the reader's saved comment.
       if(gossipView==='author')gossipView='all';
       renderPost();renderComments();

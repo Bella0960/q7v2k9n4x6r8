@@ -26,7 +26,7 @@
     /* ========== 单次 completion ========== */
 
     NS.complete = function (opts) {
-        // opts: { system, user, messages, temperature, model, timeoutMs }
+        // opts: { system, user, messages, temperature, model, timeoutMs, signal? }
         var config = Storage ? Storage.getApiConfig() : {};
         var apiKey = (config.apiKey || '').trim();
         if (!apiKey) {
@@ -59,7 +59,19 @@
 
         var start = Date.now();
         var controller = new AbortController();
-        var timer = setTimeout(function () { controller.abort(); }, timeoutMs);
+        var externalSignal = opts && opts.signal;
+        var cancelledByCaller = false;
+        var timedOut = false;
+        function onCallerAbort() {
+            cancelledByCaller = true;
+            controller.abort();
+        }
+        // 可选取消接口，供番外暂停等调用方使用；旧 API 调用不传 signal 时行为不变。
+        if (externalSignal && typeof externalSignal.addEventListener === 'function') {
+            if (externalSignal.aborted) onCallerAbort();
+            else externalSignal.addEventListener('abort', onCallerAbort, { once: true });
+        }
+        var timer = setTimeout(function () { timedOut = true; controller.abort(); }, timeoutMs);
 
         return fetch(baseUrl + '/chat/completions', {
             method: 'POST',
@@ -85,12 +97,18 @@
             log('success', model, start);
             return text;
         }).catch(function (err) {
-            clearTimeout(timer);
             if (err && err.name === 'AbortError') {
-                err = new Error('请求超时（' + timeoutMs + 'ms）');
+                err = new Error(cancelledByCaller ? '请求已取消' :
+                    (timedOut ? '请求超时（' + timeoutMs + 'ms）' : '请求已中断'));
+                if (cancelledByCaller) err.name = 'AbortError';
             }
             log('error', model, start, err && err.message ? err.message : String(err));
             throw err;
+        }).finally(function () {
+            clearTimeout(timer);
+            if (externalSignal && typeof externalSignal.removeEventListener === 'function') {
+                externalSignal.removeEventListener('abort', onCallerAbort);
+            }
         });
     };
 
