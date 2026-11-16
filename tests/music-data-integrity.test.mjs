@@ -59,7 +59,7 @@ test('DATA-003: full backup stores actual audio bytes and fails atomically on la
 });
 
 test('DATA-003: actual import guard refuses legacy metadata-only music backups', () => {
-  const start = backup.indexOf('function backupMissingMusicBytes(obj)');
+  const start = backup.indexOf('function musicBackupBlobEncoded(value)');
   const end = backup.indexOf('function handleImportFile(file)', start);
   assert.ok(start > 0 && end > start);
   const fn = backup.slice(start, end);
@@ -70,6 +70,10 @@ test('DATA-003: actual import guard refuses legacy metadata-only music backups',
   assert.equal(run({data:{music_local_tracks:catalog},indexedDB:{'maomao-media-store':{audio:[{id:'local_1',blob:'AQID'}]}}}), false);
   assert.equal(run({data:{music_local_tracks:'{broken'},indexedDB:{}}), true);
   assert.equal(run({data:{},indexedDB:{}}), false);
+  assert.equal(run({data:{},indexedDB:{'maomao-media-store':{audio:[{id:'local_legacy'}]}}}), true,
+    'legacy archive with audio metadata but no catalog must not overwrite existing audio');
+  assert.equal(run({data:{music_local_tracks:catalog},indexedDB:{'maomao-media-store':{audio:[{id:'local_1',blob:'###'}]}}}), true,
+    'corrupt audio encoding must be rejected before restore clears the store');
 });
 
 test('MUSIC-UI-001: actual saveLocalTracksMeta reports quota errors instead of swallowing them', () => {
@@ -95,7 +99,7 @@ test('DATA-003: cover/background references cannot silently make a scoped backup
 });
 
 test('DATA-003: an actual missing music image blocks restore; complete media allows restore', () => {
-  const start = backup.indexOf('function backupMissingMusicImages(obj)');
+  const start = backup.indexOf('function musicBackupBlobEncoded(value)');
   const end = backup.indexOf('function backupMissingMusicBytes(obj)', start);
   assert.ok(start > 0 && end > start);
   const fn = backup.slice(start, end);
@@ -106,6 +110,8 @@ test('DATA-003: an actual missing music image blocks restore; complete media all
     music_background_asset_v1: asset
   };
   assert.equal(run({ data: refs, indexedDB: {} }), true);
+  assert.equal(run({ data: refs, indexedDB: { 'maomao-assets': { blobs: [{assetId:asset,blob:'X'}] } } }), true,
+    'corrupt cover encoding must be rejected before restore');
   assert.equal(run({ data: refs, indexedDB: { 'maomao-assets': { blobs: [{assetId:asset,blob:'AAE='}] } } }), false);
   assert.equal(run({ data: { music_cover_assets_v1: '{invalid' }, indexedDB: {} }), true);
   assert.equal(run({ data: {}, indexedDB: {} }), false);
