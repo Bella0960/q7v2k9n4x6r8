@@ -156,3 +156,10 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **改动**：原 `GroupGameSessions` 新增只读、失败关闭的 `readInbox`，用于角色游戏上下文、私聊发送、群主收件箱及群主与单角色会话。缺少键仍返回空数组；存在但损坏/不可读的键返回 `CORRUPT_INBOX` 或 `STORAGE_UNAVAILABLE`，不写入、不给模型伪造无私聊的上下文。 `tests/group-game-boundary.test.mjs` 增加损坏 JSON、读取抛错、原始内容保留、角色/群主信息隔离用例。
 - **核对方式**：已从 GitHub 读回最新源码与 PR HEAD，确认代码/测试已写入同一个 Draft 分支；未获得本会话完整仓库工作树，**NOT RUN**：真实 Node 新用例、`npm run test:group:governance`、群 UI/E2E、`npm run test:chat:contract`、`npm run build`、Chromium、Android/iPhone。
 - **QA 整合阻塞**：目前原唯一 QA 整合分支 `integration/account-fanwai-stack-20261115` 不含 `shared/js/phone/group-game-session.js` 及 `tests/group-game-boundary.test.mjs`；#298 与 QA 分支历史明显分叉，不可整页覆盖其账号/PWA 安全代码。应只由唯一 QA 整合负责人按文件/逻辑移植，并先运行完整原生 Node、Vite、浏览器门禁，再通过既有 `scripts/qa-direct-release.mjs --qa-only` 发布到唯一 QA Worker。绝不直接发布 main/正式版。
+
+## 2026-11-17｜群聊游戏验票修复与 33 项源测试回归
+
+- **实际复现**：原 `voteFor` 只校验候选属于本局成员；异常的已保存票据 `voterId===targetId`（自投自己）会被计作有效票，群主提前结算甚至可能生成错误票数。这不符合原 `castVote` 严禁自投票的规则。
+- **准确提交**：`639d4d4c` 在 `shared/js/phone/group-game-session.js` 的旧票读取层拒绝自投票与空/非正的时间戳；`a76f5f82` 在 `tests/group-game-boundary.test.mjs` 添加异常自投票、阻断继续投票/揭晓、原数据保留、群主安全取消、异常时间戳等回归。不改变合法选票格式或历史。
+- **本会话真实执行**：直接用 GitHub PR #298 最新源码在隔离 V8 中先执行 **6/6** 私聊保护行为检查，再执行 **12/12** 验票与正常揭晓针对性检查；额外读取完整 `tests/group-game-boundary.test.mjs` 及其 9 份源码依赖，用 V8 兼容 `node:test`/`assert`/`vm` 夹具实际跑该文件 **33/33** 用例（包括新增两例），全部通过。**这些数字不是原生 Node runner，不是完整工程、浏览器/真机验收。**
+- **QA 继续门禁**：从本 PR 最新 SHA 继续在现有 #299 分支安全移植并复跑原生 `npm run test:group:governance`、群 UI/邀请 E2E、`test:chat:contract`、`npm run build`、浏览器 375/390/430；通过后再经现有 `scripts/qa-direct-release.mjs --qa-only` 更新唯一 `preview.mao520.com`。现阶段**没有**声称群聊已在 QA 或正式版上线，#298 保持 Draft。
