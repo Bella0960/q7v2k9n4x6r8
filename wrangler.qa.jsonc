@@ -2,6 +2,8 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "maomao-aw-qa-20261114",
   "main": "worker.js",
+  "workers_dev": true,
+  "preview_urls": false,
   "compatibility_date": "2026-10-27",
   "compatibility_flags": ["nodejs_compat"],
   "keep_vars": true,
