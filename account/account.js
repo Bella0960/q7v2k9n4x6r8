@@ -359,7 +359,9 @@
       if (delegatedIdentity) {
         document.querySelectorAll('[data-show="registerPanel"]').forEach(button => { button.hidden = true; });
         const subtitle = byId('loginPanel')?.querySelector('.lead');
-        if (subtitle) subtitle.textContent = '用你原来的 MAO 账号登录。管理员 001 不需要邀请码，也不需要重复注册。';
+        if (subtitle) subtitle.textContent = status.qaIdentityCore === true
+          ? 'QA 测试版：使用原管理员用户名或永久 ID，以及为 QA 单独设置的密码。不要输入正式版密码。'
+          : '用你原来的 MAO 账号登录。管理员 001 不需要邀请码，也不需要重复注册。';
         delegatedSignInReady = status.signInReady === true;
         const unavailable = !delegatedSignInReady;
         const loginForm = byId('loginForm');
@@ -369,7 +371,9 @@
           });
         }
         if (unavailable) {
-          setError('loginError', '统一身份验证尚未接通。本测试版不会要求你重新注册，请暂时不要输入管理员密码。');
+          setError('loginError', status.qaIdentityCore === true
+            ? 'QA 独立身份服务尚未就绪。请先完成 QA 专用初始化，不要填写正式版密码或重复注册。'
+            : '统一身份验证尚未接通。本测试版不会要求你重新注册，请暂时不要输入管理员密码。');
         }
       }
     } catch {
