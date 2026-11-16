@@ -745,6 +745,14 @@
                 if (rawValue.id != null) idForReport = rawValue.id;       // inline keyPath 的 id 字段
                 else idForReport = rawKey != null ? String(rawKey) : '#' + idx;
 
+                // DATA-003：禁止将缺少音频二进制的记录当成可恢复歌曲。
+                if (storeDef.store === 'audio' && blobFields.indexOf('blob') !== -1
+                        && !(rawValue.blob instanceof Blob)) {
+                    skipped.push({ id: idForReport, reason: '音频原文件不存在', bytes: 0 });
+                    idx++;
+                    continue;
+                }
+
                 // ---- 体积检查（拿到 value 后立即判断；blob 还没做转换） ----
                 var skipThis = false;
                 var skipReason = '';
