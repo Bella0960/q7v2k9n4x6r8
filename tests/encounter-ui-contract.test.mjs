@@ -45,6 +45,13 @@ function setup(initial={}) {
     getAttribute(k){return this.attrs[k];}
     setPointerCapture(){}
     querySelector(selector){
+      if(['[data-return-collection]','[data-reunion-profile]','[data-reunion-chat]'].includes(selector)){
+        if(!this.reunionActionCache || this.reunionActionHtml!==this.innerHTML){
+          this.reunionActionHtml=this.innerHTML;this.reunionActionCache={};
+        }
+        if(!this.reunionActionCache[selector])this.reunionActionCache[selector]=new FakeEl(selector);
+        return this.reunionActionCache[selector];
+      }
       if(selector==='[data-blind-reveal]'){
         if(this.blindRevealSource!==this.innerHTML){
           this.blindRevealSource=this.innerHTML;
@@ -55,6 +62,23 @@ function setup(initial={}) {
       return new FakeEl('close');
     }
     querySelectorAll(selector){
+      if(selector==='[data-reunion]' || selector==='[data-reunion-scene]'){
+        // 相同 HTML 片段返回同一批节点，才能真实模拟 addEventListener。
+        if(!this.reunionCache || this.reunionCacheHtml!==this.innerHTML){
+          this.reunionCacheHtml=this.innerHTML;this.reunionCache={};
+        }
+        if(!this.reunionCache[selector]){
+          const attr=selector==='[data-reunion]'?'reunion':'reunion-scene';
+          const re=new RegExp('data-'+attr+'="([^"]+)"','g');
+          this.reunionCache[selector]=[...this.innerHTML.matchAll(re)].map(m=>{
+            const item=new FakeEl(attr);
+            if(attr==='reunion')item.dataset.reunion=m[1];
+            else item.dataset.reunionScene=m[1];
+            return item;
+          });
+        }
+        return this.reunionCache[selector];
+      }
       if(selector==='[data-blind-choice]'){
         // 模拟真正 DOM：同一轮 innerHTML 的查询必须返回同一批已绑定事件的节点。
         if(this.blindChoicesSource!==this.innerHTML){
@@ -189,3 +213,47 @@ test('性格盲测先猜再揭晓，未选前不泄露姓名，猜测不更改�
   assert.equal(h.window.MAOMAOEncounter.getCandidates().value.length,0);
 });
 
+
+
+test('已相识人物支持再次相遇的三条分支，主动选择才进入原聊天，保存内容不动',()=>{
+  const met={id:'role_enc_memo',name:'顾清越',persona:'旧人设不得改写',encounterOrigin:{
+    version:1,sourceCandidateId:'enc_memo',era:'西方奇幻',
+    job:'档案员',object:'一本旧书',originalFate:'正在寻找旧友'
+  }};
+  const value=JSON.stringify([{id:'old',name:'旧角色',persona:'保留'},met]);
+  const h=setup({'ai_custom_characters':value});
+  h.el('savedButton').fire('click');
+  const sheet=h.el('sheet');
+  assert.match(sheet.innerHTML,/已相识/);
+  const reopen=sheet.querySelectorAll('[data-reunion]');
+  assert.equal(reopen.length,1,'已相识只应列出一位符合来源的角色');
+  reopen[0].fire('click');
+  assert.match(sheet.innerHTML,/再次相遇/);
+  assert.match(sheet.innerHTML,/旧书/);
+  const options=sheet.querySelectorAll('[data-reunion-scene]');
+  assert.equal(options.length,3);
+  options[2].fire('click');
+  assert.match(sheet.innerHTML,/命运回声/);
+  assert.match(sheet.innerHTML,/寻找旧友/);
+  assert.match(sheet.innerHTML,/aria-pressed="true">命运回声/);
+  assert.equal(h.window.location.href,undefined,'预览不得自动打开聊天');
+  assert.equal(h.localStorage.getItem('ai_custom_characters'),value);
+  assert.equal(h.window.MAOMAOEncounter.getCandidates().value.length,0);
+  sheet.querySelector('[data-reunion-chat]').fire('click');
+  assert.match(h.window.location.href,/chat-detail\.html\?v=.*&id=role_enc_memo$/);
+  assert.equal(h.localStorage.getItem('ai_custom_characters'),value);
+});
+
+test('再遇界面打开后角色被删除或当前账号不可读，点击聊天应拒绝旧入口',()=>{
+  const met={id:'role_enc_gone',name:'原角色',encounterOrigin:{
+    version:1,sourceCandidateId:'enc_gone'
+  }};
+  const h=setup({'ai_custom_characters':JSON.stringify([met])});
+  h.el('savedButton').fire('click');
+  const sheet=h.el('sheet');
+  sheet.querySelectorAll('[data-reunion]')[0].fire('click');
+  h.localStorage.setItem('ai_custom_characters','[]');
+  sheet.querySelector('[data-reunion-chat]').fire('click');
+  assert.equal(h.window.location.href,undefined,'删除角色后不能继续进入失效聊天');
+  assert.match(h.el('notice').textContent,/当前角色库/);
+});
