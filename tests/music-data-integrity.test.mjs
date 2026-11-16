@@ -84,3 +84,52 @@ test('MUSIC-UI-001: actual saveLocalTracksMeta reports quota errors instead of s
   assert.throws(() => runInNewContext('let musicMetaReadFailure = null;\n' + fn + '\nsaveLocalTracksMeta([{id:"local_b"}])',
     {localStorage:{setItem(){throw new Error('QuotaExceededError')},getItem(){return null}}, LOCAL_TRACKS_KEY:'music_local_tracks'}), /QuotaExceededError/);
 });
+
+test('DATA-003: cover/background references cannot silently make a scoped backup complete', () => {
+  assert.match(backup, /var missingMusicMedia = \[\]/);
+  assert.match(backup, /missingMusicMedia\.length === 0/);
+  assert.match(backup, /missingMusicMedia: missingMusicMedia\.length/);
+  assert.match(backup, /backupMissingMusicImages\(obj\)/);
+  assert.match(backup, /music_background_asset_v1/);
+  assert.match(backup, /music_cover_assets_v1/);
+});
+
+test('DATA-003: an actual missing music image blocks restore; complete media allows restore', () => {
+  const start = backup.indexOf('function backupMissingMusicImages(obj)');
+  const end = backup.indexOf('function backupMissingMusicBytes(obj)', start);
+  assert.ok(start > 0 && end > start);
+  const fn = backup.slice(start, end);
+  const run = archive => runInNewContext(fn + '\nbackupMissingMusicImages(archive)', { archive });
+  const asset = 'as_' + 'A'.repeat(32);
+  const refs = {
+    music_cover_assets_v1: JSON.stringify({ local_1: asset }),
+    music_background_asset_v1: asset
+  };
+  assert.equal(run({ data: refs, indexedDB: {} }), true);
+  assert.equal(run({ data: refs, indexedDB: { 'maomao-assets': { blobs: [{assetId:asset,blob:'AAE='}] } } }), false);
+  assert.equal(run({ data: { music_cover_assets_v1: '{invalid' }, indexedDB: {} }), true);
+  assert.equal(run({ data: {}, indexedDB: {} }), false);
+});
+
+test('MUSIC-UI-001: LRC, image backgrounds and playlists persist through dedicated keys', () => {
+  for (const key of ['music_lyrics_v1','music_playlists_v1','music_background_asset_v1']) {
+    assert.ok(music.includes(key), key);
+  }
+  assert.match(music, /function parseMusicLyrics\(text\)/);
+  assert.match(music, /musicWriteMap\(MUSIC_LYRICS_KEY, lyricMap\)/);
+  assert.match(music, /musicWriteMap\(MUSIC_PLAYLISTS_KEY, playlists\)/);
+  assert.match(music, /musicMedia\.putBlob\(file,/);
+  assert.match(music, /function showMusicPlaylists\(/);
+  assert.match(music, /data-maomao-system-statusbar/);
+});
+
+test('MUSIC-UI-001: imported filenames are escaped everywhere and wiping audio needs confirmation', () => {
+  for (const fn of ['renderRecent','renderAlbum','renderSearch','renderFav']) {
+    const at = music.indexOf('function ' + fn + '(');
+    assert.ok(at >= 0, fn);
+    assert.match(music.slice(at, at + 1400), /musicSafeText\(t\.name\)/);
+  }
+  assert.match(music, /window\.confirm\('这会清除本设备的本地歌曲/);
+  assert.match(music, /await clearAudioStore\(\)/);
+  assert.match(music, /musicMedia\.removeRef\(assetId, ownerType, ownerId\)/);
+});
