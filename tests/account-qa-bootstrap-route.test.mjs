@@ -143,6 +143,7 @@ test('QA login page uses QA-only password hint without changing legacy gateway U
     '(async function (status) {\n' +
     '  let delegatedIdentity = false;\n' +
     '  let delegatedSignInReady = true;\n' +
+    '  const isKnownQaHost = status.__qaHost === true;\n' +
     '  const link = { hidden: false };\n' +
     '  const subtitle = { textContent: "", classList: { tokens: new Set(), ' +
     'toggle(name, value) { if (value) this.tokens.add(name); else this.tokens.delete(name); }, ' +
@@ -156,7 +157,7 @@ test('QA login page uses QA-only password hint without changing legacy gateway U
     '    loginPanel: { querySelector: () => subtitle },\n' +
     '    loginForm: { querySelectorAll: () => fields } })[id];\n' +
     '  const document = { querySelectorAll: () => register };\n' +
-    '  const api = async () => status;\n' +
+    '  const api = async () => { if (status.__offline === true) throw Error("offline"); return status; };\n' +
     '  const setError = (id, message) => errors.push({ id, message });\n' +
     actualHandler + '\n' +
     '  await checkCreatorBootstrapEntry();\n' +
@@ -202,6 +203,23 @@ test('QA login page uses QA-only password hint without changing legacy gateway U
     });
     assert.equal(blocked.link.hidden, true, 'unverified QA setup entry must stay hidden');
   }
+  const wrongQaIdentity = await mount({
+    __qaHost: true, identityMode: 'local',
+    bootstrapAllowed: true, initialized: false, configured: true
+  });
+  assert.equal(wrongQaIdentity.link.hidden, true);
+  assert.ok(wrongQaIdentity.fields.every(field => field.disabled));
+  assert.ok(wrongQaIdentity.register.every(button => button.hidden));
+  assert.match(wrongQaIdentity.errors[0]?.message || '', /QA 身份状态异常/);
+  const unreachableQa = await mount({ __qaHost: true, __offline: true });
+  assert.equal(unreachableQa.link.hidden, true);
+  assert.ok(unreachableQa.fields.every(field => field.disabled));
+  assert.ok(unreachableQa.register.every(button => button.hidden));
+  assert.match(unreachableQa.errors[0]?.message || '', /QA 身份服务连接失败/);
+  assert.match(loginSource, /let delegatedIdentity = isKnownQaHost/);
+  assert.match(loginSource, /let delegatedSignInReady = !isKnownQaHost/);
+  assert.match(loginSource, /syncLoginAvailability\(\);\s+function showPanel\(/,
+    'known QA must begin with disabled login before its status request completes');
   const legacy = await mount({
     identityMode: 'delegated', qaIdentityCore: false, initialized: true,
     bootstrapAllowed: false, signInReady: true
