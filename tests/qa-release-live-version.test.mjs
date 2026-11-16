@@ -82,7 +82,7 @@ const smokeSource = source.slice(smokeStart, smokeEnd);
 function runHttpSmoke(coreInitialized, { overrides = {}, html = '<form id="loginForm"></form>' } = {}) {
   const calls = [];
   const status = {
-    ok: true, identityMode: 'delegated',
+    ok: true, identityMode: 'delegated', qaIdentityCore: true,
     identityAuthorityConnected: true,
     identityAuthorityInitialized: coreInitialized,
     initialized: coreInitialized, configured: true,
@@ -124,6 +124,9 @@ test('original QA URL smoke accepts first-run setup and a ready disabled setup',
 test('QA URL smoke blocks a disconnected core, inconsistent setup, or missing login HTML', async () => {
   await assert.rejects(runHttpSmoke(false, {
     overrides: { identityAuthorityConnected: false }
+  }).promise);
+  await assert.rejects(runHttpSmoke(false, {
+    overrides: { qaIdentityCore: false }
   }).promise);
   await assert.rejects(runHttpSmoke(true, {
     overrides: { signInReady: false }
