@@ -163,3 +163,12 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **已执行（V8，真实更新后的源码）**：引擎/页面内联 JS 语法检查 PASS；性格选项稳定性/不重复/真正性格单次出现及不写存储 PASS；模拟卡片点击 → 三选一 → 查看档案 → 猜测反馈，且原角色及候选收藏不变，PASS。首次模拟点击测试未通过，原因是 Fake DOM 查询每次创建新假按钮；修复该测试替身后重新执行 PASS。
 - **NOT VERIFIED**：原生 Node CLI `npm run test:encounter`、Vite `npm run build`、Playwright 真浏览器、Android/iOS、云端 QA 均未在本会话执行；此次提交不能称已发布或手机可玩。原 PR 保留 Draft。
 - **后续**：其他窗口继续并行；本功能等唯一 QA 完成本轮部署后在 PR 评论提供的 SHA 按序接入下轮 QA，先实际浏览器验收，再由用户手机验收，正式版独立审批。
+
+## FEATURE-ENCOUNTER-001｜2026-11-17 已相识 · 再次相遇
+- **本轮范围**：仅原 PR #297 的原分支；PR #299 唯一 QA 整合窗口目前冻结，不直接推送、不部署正式站、不创建新 PR。
+- **功能**：已相识且拥有合法 `encounterOrigin` 的正式角色，收藏抽屉出现「再遇」。支持三条本地文本故事开头（「日常偶遇」「旧物线索」「命运回声」），取自原角色时代、职业、重要物件及原命运线索。可以「返回收藏」「去档案」，明确按下「去聊天」后才使用现有 `chat/chat/chat-detail.html` 和已保存正式 role.id 路由。没有消息自动发送、API 请求、生图、新增持久化键或人物/聊天/记忆更改。
+- **读保护**：每次换场景、去聊天/档案都调用 `getReunionScenes(roleId)` 重新读原角色库及当前账号作用域；角色消失、未通过账号检查或读取失败直接中止，不复活旧角色或按姓名重新关联。
+- **本轮提交**：`11c978faeb56277d3f95aaf71ef7d2ef4c85d3a6` 引擎、UI、Node 合同；`7bc6cb40860fd8e6ec043565383fc384a96d4658` UI 模拟测试；`c07f765042228cc5b005fb8d8ef8174c7ed081c3` 修正默认情境与旧物情境测试预期；`bf8129bbae732bc915041dae68cc119e43911f36` Playwright/发布 gate/规格文档。
+- **执行验证**：实际更新后的引擎/页面内联 JS 在 V8 语法检查通过；场景生成、正式 ID 校验及零写入的动态运行检查通过。重跑原 UI 测试主体于 V8 兼容适配器，**8/8 PASS**（包括再遇、故事切换、显式聊天入口与删除角色后拒绝跳转）。40 个合同测试于 V8 适配器中 **27 PASS / 13 未成功适配**；后 13 项主要缺少 Node VM 全局 `console`、`URL`、`URLSearchParams`、VM 返回表达式等，并非已证实的业务失败；不能声称合同全通过。浏览器脚本与发布 gate 经移除 import/shebang 的等价语法解析 PASS。
+- **NOT VERIFIED**：完整 Node `--test`、Vite `npm run build`、Playwright Chromium、真机 Android / iOS、Cloudflare QA 部署均未实际执行；上述 V8 是逻辑模拟不等于正式验收。原 PR 保持 Draft。
+- **下一轮交接**：唯一 QA #299 当前部署结束之后，按顺序提取原 PR 最新 SHA，使用正式依赖环境运行 `npm run test:encounter`、`npm run build`、`npm run test:encounter:browser`、`npm run gate:encounter`；回执须含 `reunionNativeChat` 并对应同一 Git HEAD。用户手机验收前不得合 main 或正式发布。
