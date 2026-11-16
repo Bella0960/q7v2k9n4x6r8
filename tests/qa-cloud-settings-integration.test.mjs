@@ -23,7 +23,7 @@ test('cloud page loads the existing cloud client and reports unverified backgrou
   assert.match(html, /云端独立运行 AI 生成尚未验收/);
   assert.match(js, /\/api\/push\/subscriptions/);
   assert.match(js, /\/api\/autonomy\/readiness/);
-  assert.match(js, /\/api\/accounts\/me/);
+  assert.match(js, /registerDeviceForCurrentAccount/);
   assert.doesNotMatch(js, /VAPID_PRIVATE_KEY|AUTONOMY_MODEL_API_KEY\s*=/);
   assert.doesNotThrow(() => new Script(js, { filename: 'cloud-push-client.js' }));
 });
