@@ -246,9 +246,14 @@ async function retryPendingRoleAvatarCleanup() {
         attempted += 1;
         try {
             const result = await library.removeRole(item.roleId);
-            if (!result || !result.ok) {
+            // A successful character deletion also owns the autonomous
+            // selection cooldown. Retry both cleanup tasks if either fails.
+            const choice = window.RoleAvatarChoice;
+            const cooldownCleared = !!choice && typeof choice.clearRole === 'function' &&
+                choice.clearRole(item.roleId);
+            if (!result || !result.ok || !cooldownCleared) {
                 pending.push(item);
-                console.warn('角色头像清理仍未完成，将在下次打开角色档案页时重试:', item.roleId);
+                console.warn('角色头像或自主选择记录清理仍未完成，将在下次打开角色档案页时重试:', item.roleId);
             }
         } catch (error) {
             pending.push(item);
@@ -1504,6 +1509,14 @@ async function handleDeleteRole(id) {
         console.warn('角色已删除，但角色列表刷新失败:', error);
     }
 
+    // Only remove the role's cooldown after the character list save succeeds.
+    // If local storage fails, keep a retry record instead of claiming cleanup.
+    const choice = window.RoleAvatarChoice;
+    const cooldownCleared = !!choice && typeof choice.clearRole === 'function' &&
+        choice.clearRole(String(id));
+    if (!cooldownCleared && !enqueueRoleAvatarCleanup(id)) {
+        console.warn('角色已删除，但自主换头像的历史记录未清理且重试队列无法保存。');
+    }
     const library = window.RoleAvatarLibrary;
     if (!library || typeof library.removeRole !== 'function') {
         const queued = enqueueRoleAvatarCleanup(id);
