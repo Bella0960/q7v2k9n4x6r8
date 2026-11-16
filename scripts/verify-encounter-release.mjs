@@ -116,13 +116,13 @@ if(built && browsed) {
     errors.push('缺少 375/390/430px 全尺寸真实浏览器验收');
   const mustCheck=['cardSwap','swipeRebound','fingerSwipeLeft','candidatePersistence','roleCreation',
     'jsonRoundTrip','thirdPartyJsonRejected','freeDrawNoApi','blindPersonaGuess','objectIdentityGuess',
-    'maskedClueSteps','reunionNativeChat'];
+    'maskedClueSteps','reunionNativeChat','fateChoicePersistence'];
   for(const item of mustCheck)if(browsed.checked?.[item]!==true)errors.push('未实际完成浏览器断言：'+item);
   for(const name of [
     'encounter-375.png','encounter-390.png','encounter-430.png',
     'encounter-original-role-editor.png','encounter-object-concealed.png',
     'encounter-object-guess-390.png','encounter-blind-guess-390.png',
-    'encounter-masked-clues-390.png'
+    'encounter-masked-clues-390.png','encounter-fate-persisted-390.png'
   ]){
     const info=browsed.captured?.[name];
     const filename='test-results/'+name;

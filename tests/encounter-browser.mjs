@@ -300,11 +300,55 @@ try {
     if(jsErrors.length)failures.push(...jsErrors.map(e=>viewport.width+': '+e));
     await context.close();
   }
+  // 另建隔离浏览器上下文测试命运选择：不碰上述普通相遇的既有候选和截图。
+  const fateContext=await browser.newContext({
+    viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:2,
+    reducedMotion:'reduce'
+  });
+  try {
+    const fate=await fateContext.newPage();
+    await fate.goto(base+'/encounter/encounter.html',{waitUntil:'load'});
+    await fate.evaluate(() => localStorage.setItem('maomao_encounter_preferences_v1',
+      JSON.stringify({type:'命运分支'})));
+    await fate.reload({waitUntil:'load'});
+    await fate.locator('#frontCard').click();
+    await fate.locator('[data-fate]').first().waitFor();
+    const firstChoice=await fate.locator('[data-fate]').first().innerText();
+    await fate.locator('[data-fate]').first().click();
+    assert.equal(await fate.locator('[data-fate].selected').count(),1);
+    assert.ok((await fate.locator('#sheet .story-preview').innerText()).includes(firstChoice),
+      '未收藏候选也应显示刚选择的故事片段');
+    await fate.keyboard.press('Escape');
+    await fate.locator('#likeButton').click();
+    await fate.waitForTimeout(380);
+    assert.equal(await fate.locator('#savedCount').innerText(),'01');
+    await fate.locator('#savedButton').click();
+    await fate.locator('[data-preview]').first().click();
+    assert.equal(await fate.locator('[data-fate].selected').first().innerText(),firstChoice,
+      '收藏后的第一次打开必须保留选过的故事起点');
+    const secondChoice=await fate.locator('[data-fate]').nth(1).innerText();
+    await fate.locator('[data-fate]').nth(1).click();
+    await fate.waitForFunction(choice=>{
+      const result=window.MAOMAOEncounter.getCandidates();
+      return result.ok && result.value.some(card=>card.selectedChoice===choice);
+    },secondChoice);
+    assert.equal(await fate.locator('[data-fate].selected').first().innerText(),secondChoice);
+    await fate.screenshot({path:resolve(artifacts,'encounter-fate-persisted-390.png')});
+    await fate.reload({waitUntil:'load'});
+    await fate.locator('#savedButton').click();
+    await fate.locator('[data-preview]').first().click();
+    assert.equal(await fate.locator('[data-fate].selected').first().innerText(),secondChoice,
+      '刷新后收藏档案必须保持用户最后确认的分支，而非恢复旧选项');
+    assert.ok((await fate.locator('#sheet .story-preview').innerText()).includes(secondChoice),
+      '选中分支必须呈现一致的开场故事');
+  } finally {
+    await fateContext.close();
+  }
   if(failures.length)throw new Error('Browser JS errors:\n'+failures.join('\n'));
   const files=['encounter-375.png','encounter-390.png','encounter-430.png',
     'encounter-original-role-editor.png','encounter-object-concealed.png',
     'encounter-object-guess-390.png','encounter-blind-guess-390.png',
-    'encounter-masked-clues-390.png'];
+    'encounter-masked-clues-390.png','encounter-fate-persisted-390.png'];
   const captured={};
   for(const name of files){
     const stat=await fs.stat(resolve(artifacts,name));
@@ -319,7 +363,7 @@ try {
       cardSwap:true,swipeRebound:true,fingerSwipeLeft:true,candidatePersistence:true,
       roleCreation:true,jsonRoundTrip:true,thirdPartyJsonRejected:true,
       freeDrawNoApi:true,blindPersonaGuess:true,objectIdentityGuess:true,
-      maskedClueSteps:true,reunionNativeChat:true
+      maskedClueSteps:true,reunionNativeChat:true,fateChoicePersistence:true
     },captured
   };
   await fs.writeFile(receiptPath,JSON.stringify(receipt,null,2)+'\n','utf8');
