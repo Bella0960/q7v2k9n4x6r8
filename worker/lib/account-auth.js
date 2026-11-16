@@ -6,6 +6,7 @@ import {
   assertTrustedIdentityIssuerRequest, probeExistingIdentityAuthority,
   usesExistingAccountAuthority
 } from './identity-bridge.js';
+import { qaIsolatedSetupEnabled, isolatedQaAuthorityFounderId, resolveQaAuthorityFounderId, initializeIsolatedQaAuthority } from './qa-identity-bootstrap.js';
 
 const SESSION_COOKIE = 'MAO_SESSION';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -224,7 +225,7 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
 
   async function bootstrap(request) {
     if (delegated) {
-      throw new ApiError(403, 'DELEGATED_FOUNDER_BOOTSTRAP_DISABLED', '你已有唯一管理员身份，测试版禁止创建第二个 001');
+      return await initializeIsolatedQaAuthority({ env, store, request });
     }
     if (store.hasMaoSuperAdminAccount()) {
       throw new ApiError(409, 'ADMIN_ALREADY_INITIALIZED', '超级管理员已经初始化');
@@ -269,7 +270,7 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     const passwordHash = await passwordDigest(password, salt);
     const timestamp = now();
     const account = {
-      id: 'MAO-' + randomToken(12).replace(/[-_]/g, 'X').toUpperCase(),
+      id: resolveQaAuthorityFounderId(env, () => 'MAO-' + randomToken(12).replace(/[-_]/g, 'X').toUpperCase()),
       username: identity.username,
       usernameKey: identity.usernameKey,
       passwordSalt: salt,
@@ -958,13 +959,18 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
           ? await probeExistingIdentityAuthority(env)
           : null;
         const initialized = delegated ? authority.initialized : store.hasMaoSuperAdminAccount();
+        const qaSetup = delegated && qaIsolatedSetupEnabled(env);
+        const qaCoreFounder = !delegated ? isolatedQaAuthorityFounderId(env) : null;
         return ok({
           initialized,
-          configured: !delegated &&
+          configured: qaSetup ? authority.configured : !delegated &&
             String(env.MAO_SUPER_ADMIN_BOOTSTRAP_SECRET || '').length >= 32 &&
             String(env.DEVICE_SECRET_PEPPER || '').length >= 32,
           identityMode: delegated ? 'delegated' : 'local',
-          bootstrapAllowed: !delegated,
+          bootstrapAllowed: !delegated || qaSetup,
+          qaSetupAllowed: qaSetup,
+          qaIsolatedAuthority: !!qaCoreFounder,
+          qaExpectedFounderId: qaCoreFounder || undefined,
           identityAuthorityConnected: delegated ? authority.connected : undefined,
           identityAuthorityInitialized: delegated ? authority.initialized : undefined,
           signInReady: !delegated || (
