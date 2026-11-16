@@ -110,7 +110,9 @@
       }
       if (status.configured === false) {
         // Never present a form that the server cannot accept yet.
-        statusNode.textContent = '账号测试环境尚未配置安全密钥，请按下方说明设置后重新检查。';
+        statusNode.textContent = qaSetup
+          ? 'QA 独立身份服务暂未通过连接或配置检查。若密钥已经设置，请勿重新生成；先检查身份 Worker 绑定，再重新检查。'
+          : '账号测试环境尚未配置安全密钥，请按下方说明设置后重新检查。';
         retryButton.hidden = false;
         if (setupHelp) setupHelp.hidden = qaSetup;
         if (qaHelp) qaHelp.hidden = !qaSetup;
