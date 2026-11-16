@@ -57,6 +57,18 @@ try {
       assert.equal(response.status(), 200, 'music page HTTP 200');
       await page.locator('#musicImport').waitFor();
       await page.screenshot({ path: join(shots, 'home-' + width + '.png') });
+      await page.evaluate(() => {
+        localStorage.setItem('settings_statusbar', '0');
+        window.__statusbarControlApply();
+      });
+      assert.equal(await page.locator('.statusbar').evaluate(el => getComputedStyle(el).display), 'none',
+        'global statusbar off must hide music bar');
+      await page.evaluate(() => {
+        localStorage.setItem('settings_statusbar', '1');
+        window.__statusbarControlApply();
+      });
+      assert.notEqual(await page.locator('.statusbar').evaluate(el => getComputedStyle(el).display), 'none',
+        'global statusbar on must restore music bar');
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
       assert.ok(overflow <= 1, width + 'px layout overflow ' + overflow);
       await page.locator('#musicImport').setInputFiles({
@@ -86,7 +98,12 @@ try {
       assert.ok(audioInfo.size >= 44, 'actual WAV binary persisted');
       await page.reload({ waitUntil: 'domcontentloaded' });
       assert.equal(await page.evaluate(id => JSON.parse(localStorage.getItem('music_local_tracks'))[0].id === id, trackId), true);
-      await page.evaluate(id => playTrack(id), trackId);
+      // Critical: after reload, local audio has no object URL until user plays.
+      await page.evaluate(() => togglePlay());
+      await page.waitForFunction(() => window.audio && window.audio.currentSrc.startsWith('blob:'),
+        { timeout: 10000 }).catch(() => {});
+      assert.ok(await page.evaluate(() => window.audio && window.audio.src.startsWith('blob:')),
+        'resume must recreate local Blob URL after refresh');
       await page.waitForFunction(id => document.getElementById('npTitle')?.textContent === 'QA 轻声', trackId);
       await page.locator('#coverUpload').setInputFiles({ name:'cover.png', mimeType:'image/png', buffer:png });
       await page.waitForFunction(id => {
