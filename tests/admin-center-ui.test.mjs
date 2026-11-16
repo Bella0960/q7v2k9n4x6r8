@@ -21,9 +21,9 @@ test('temporary session or API failures do not masquerade as a missing super-adm
     'transient failures must keep the page open and offer a retry');
   assert.match(adminScript, /function showError\(message, retry\)/);
   assert.match(adminScript, /'重新检查'/);
-  assert.equal((adminScript.match(/error\\.status === 401 && error\\.code === 'ACCOUNT_SESSION_REQUIRED'/g) || []).length, 5,
+  assert.equal((adminScript.match(/error\.status === 401 && error\.code === 'ACCOUNT_SESSION_REQUIRED'/g) || []).length, 5,
     'all admin loaders and actions must distinguish a missing session from QA management API 403');
-  assert.doesNotMatch(adminScript, /error\\.status === 401 \\|\\| error\\.status === 403/,
+  assert.doesNotMatch(adminScript, /error\.status === 401 \|\| error\.status === 403/,
     'a forbidden admin endpoint must never trigger a login loop');
 });
 
