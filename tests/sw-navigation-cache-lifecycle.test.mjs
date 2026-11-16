@@ -169,6 +169,12 @@ test('场景1：命中缓存立即返回，网络照常后台更新，缓存写�
     '后台请求必须保留导航 Accept，避免与 Vary: Accept 响应不一致');
   assert.equal(harness.fetchCalls[0].credentials, 'include',
     '后台请求必须保留导航 credentials');
+  assert.equal(harness.fetchCalls[0].cache, 'no-store',
+    '后台刷新必须绕过 HTTP 缓存，避免重复取得过期 HTML');
+  assert.equal(harness.fetchCalls[0].redirect, 'follow',
+    '后台刷新必须保留导航重定向模式');
+  assert.equal(harness.fetchCalls[0].url, NAV_URL,
+    '后台刷新不得改变原始页面路径');
   assert.equal(lifecycleState.value, 'pending', '网络尚未返回时 waitUntil 不应结束');
 
   networkGate.resolve(htmlResponse('fresh-page'));
