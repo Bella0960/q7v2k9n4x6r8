@@ -22,6 +22,13 @@ export function qaIsolatedSetupEnabled(env = {}) {
     typeof env.MAO_IDENTITY_AUTHORITY?.fetch === 'function';
 }
 
+export function isolatedQaAuthorityFounderId(env = {}) {
+  if (env.MAO_QA_ISOLATED_IDENTITY_CORE !== 'true' ||
+      env.MAO_IDENTITY_MODE === 'delegated_preview' ||
+      !ACCOUNT_ID.test(String(env.MAO_QA_FOUNDER_ID || ''))) return null;
+  return String(env.MAO_QA_FOUNDER_ID);
+}
+
 export function resolveQaAuthorityFounderId(env = {}, makeRandomId) {
   const fixed = env.MAO_QA_FOUNDER_ID;
   const flag = env.MAO_QA_ISOLATED_IDENTITY_CORE;
@@ -70,7 +77,8 @@ export async function initializeIsolatedQaAuthority({ env = {}, store, request }
   try { status = await preflight.json(); } catch {}
   if (!preflight.ok || status?.ok !== true || status.identityMode !== 'local' ||
       status.bootstrapAllowed !== true || status.configured !== true ||
-      status.initialized !== false) {
+      status.initialized !== false || status.qaIsolatedAuthority !== true ||
+      status.qaExpectedFounderId !== expectedId) {
     throw new ApiError(409, 'QA_AUTHORITY_NOT_EMPTY_OR_NOT_READY',
       '独立 QA 身份库未通过空库和安全配置校验，已阻止初始化');
   }
