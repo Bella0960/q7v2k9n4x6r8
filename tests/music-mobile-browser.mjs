@@ -207,6 +207,17 @@ try {
       await page.waitForFunction(id =>
         window.MAOMAOMusicQueue.getState().currentTrackId === id, secondTrackId);
       assert.equal(await page.locator('#npTitle').textContent(), 'QA 第二首');
+      assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('music_state')).playlistName),
+        '已改名', 'playlist context must persist with playback position');
+      await page.reload({ waitUntil:'domcontentloaded' });
+      assert.equal(await page.evaluate(() => window.MAOMAOMusicQueue.getState().playlistName),
+        '已改名', 'reopening the phone must restore active playlist');
+      await page.evaluate(() => togglePlay());
+      await page.waitForFunction(id => {
+        const state = window.MAOMAOMusicQueue.getState();
+        return state.playlistName === '已改名' && state.currentTrackId === id &&
+          window.audio.currentSrc.startsWith('blob:');
+      }, secondTrackId, { timeout:10000 });
       await page.evaluate(() => {
         hideNP();
         showMusicPlaylistTracks('已改名');
