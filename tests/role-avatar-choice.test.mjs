@@ -130,3 +130,36 @@ test('asynchronous autonomous switch must not repaint a different chat header', 
   assert.match(detail, /if \(autonomousApplied && autonomousApplied\.ok\) \{[\s\S]*?String\(aliasRoleId \|\| currentCharacter\.id\) === String\(avatarRoleId\)/);
   assert.match(detail, /isCurrent: function \(\) \{[\s\S]*?var liveRole = getRoleById\(avatarRoleId\)/);
 });
+
+
+test('clear do-not-change commands prevent avatar selection even during normal auto window', () => {
+  const { api } = createChoice();
+  for (const text of [
+    '不换头像', '今天不想换头像', '这回不改头像', '先别换头像',
+    '不要换头像', 'do not change avatar', "don't change avatar"
+  ]) {
+    assert.equal(api.prepare('role-A', makeLibrary(), text, { now: 100000000 }).prompt, '', text);
+  }
+});
+
+test('direct role-avatar commands override cooldown without forcing a replacement', () => {
+  const { api } = createChoice();
+  const lib = makeLibrary();
+  api.recordApplied('role-A', 100000000);
+  for (const text of [
+    '换头像', '换个头像', '帮我换个头像', '请换头像',
+    '你自己挑个头像', '把你的头像换成别的'
+  ]) {
+    const plan = api.prepare('role-A', lib, text, { now: 100000001 });
+    assert.ok(plan.prompt, text);
+    assert.equal(plan.explicit, true, text);
+    assert.equal(plan.candidates.length, 2);
+  }
+  assert.equal(api.prepare('role-A', lib, '今天聊聊天', { now: 100000001 }).prompt, '');
+  assert.equal(api.prepare('role-B', lib, '今天聊聊天', { now: 100000001 }).candidates.length, 2);
+});
+
+test('explicit choice cannot bypass a role disabling avatar autonomy', () => {
+  const { api } = createChoice();
+  assert.equal(api.prepare('role-A', makeLibrary(), '换个头像', { enabled: false }).prompt, '');
+});
