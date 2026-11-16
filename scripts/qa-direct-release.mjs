@@ -31,6 +31,8 @@ const TESTS = [
   ['npm', ['run', 'test:chat:contract']],
   ['npm', ['run', 'test:pwa:navigation']],
   ['npm', ['run', 'build']],
+  // A full Node suite catches regressions outside the narrower account/chat scripts.
+  ['node', ['--test']],
   ['npx', ['playwright', 'install', 'chromium']],
   ['npm', ['run', 'test:fanwai:browser:build']]
 ];
@@ -55,6 +57,13 @@ function preflightCheckout() {
     'Only the original #299 integration branch may be used for the QA release');
   const origin = run('git', ['remote', 'get-url', 'origin'], true);
   assert.match(origin, /(?:github\.com[:/])Bella0960\/MAOMAO(?:\.git)?$/, 'Unexpected repository origin');
+  // A clean local branch can still be stale: never release an older #299 HEAD.
+  const localSha = run('git', ['rev-parse', 'HEAD'], true);
+  const remoteLine = run('git', ['ls-remote', '--heads', 'origin', BRANCH], true);
+  const [remoteSha, remoteRef] = remoteLine.split(/\s+/);
+  assert.match(remoteSha || '', /^[a-f0-9]{40}$/, 'Cannot verify remote #299 HEAD');
+  assert.equal(remoteRef, 'refs/heads/' + BRANCH, 'Unexpected remote branch ref');
+  assert.equal(localSha, remoteSha, 'Local #299 HEAD is stale: fetch the latest before QA release');
   assert.equal(run('git', ['status', '--porcelain'], true), '', 'Checkout must be clean');
   for (const path of ['package-lock.json', 'worker.js', 'vite.config.js']) {
     assert.ok(existsSync(path), 'Missing complete repository file: ' + path);
