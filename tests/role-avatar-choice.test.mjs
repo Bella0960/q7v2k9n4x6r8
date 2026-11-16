@@ -640,3 +640,19 @@ test('deleted role in another tab safely returns profile to character list', () 
   assert.deepEqual(f.calls.view, ['listView']);
   assert.equal(f.calls.library.length, 0);
 });
+
+
+test('fallback initials update after external role rename without rewriting unsaved controls', () => {
+  const f = makeCharacterProfileStorageHarness();
+  f.roles['role-A'].avatar = '';
+  f.fire('window', 'storage', { key: 'ai_custom_characters' });
+  f.flush();
+  assert.equal(f.avatar.tagName, 'DIV');
+  assert.equal(f.avatar.textContent, 'A');
+  f.roles['role-A'].name = 'Beatrice';
+  f.fire('window', 'storage', { key: 'ai_custom_characters' });
+  f.flush();
+  assert.equal(f.avatar.tagName, 'DIV');
+  assert.equal(f.avatar.textContent, 'B');
+  assert.equal(f.calls.library.length, 2);
+});
