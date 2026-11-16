@@ -7,6 +7,10 @@
  * Deploy ONLY existing QA workers, after complete regression and preflight:
  *   MAOMAO_QA_DEPLOY_CONFIRM=maomao-aw-qa-20261114 node scripts/qa-direct-release.mjs --deploy
  *
+ * Update ONLY the existing QA web Worker when identity core is already initialized:
+ *   MAOMAO_QA_DEPLOY_CONFIRM=maomao-aw-qa-20261114 node scripts/qa-direct-release.mjs --qa-only
+ * The --qa-only mode never uploads or redeploys the identity core.
+ *
  * Requires a full checkout of the existing #299 integration branch, Node 22,
  * npm, Playwright Chromium, CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN.
  * Never touches main, mao, mao-auth-preview, curly-dream-324c or app.mao520.com.
@@ -41,6 +45,8 @@ const TESTS = [
   // A fresh Codespace may already have chrome-headless-shell but lack
   // libnspr4.so; plain "playwright install chromium" does not install OS deps.
   ['npx', ['playwright', 'install', '--with-deps', 'chromium']],
+  // Music now-playing visual QA must pass before replacing static assets on the existing QA Worker.
+  ['node', ['tests/music-mobile-browser.mjs']],
   // A full Node suite catches regressions outside the narrower account/chat scripts.
   ['node', ['--test']],
   ['npm', ['run', 'test:fanwai:browser:build']]
@@ -379,8 +385,11 @@ async function cloudflarePreflight() {
 }
 
 async function main() {
-  const deploy = process.argv.includes('--deploy');
-  assert.ok(process.argv.slice(2).every(x => x === '--deploy'), 'Unsupported arguments');
+  const qaOnly = process.argv.includes('--qa-only');
+  const deploy = qaOnly || process.argv.includes('--deploy');
+  const flags = process.argv.slice(2);
+  assert.ok(flags.length <= 1 && flags.every(x => x === '--deploy' || x === '--qa-only'),
+    'Unsupported or conflicting release arguments');
   preflightCheckout();
   console.log('Validating original MAOMAO QA candidate; production is never targeted.');
   for (const [command, args] of TESTS) run(command, args);
@@ -395,30 +404,42 @@ async function main() {
     await cloudflarePreflight();
   const corePrevious = await liveWorkerVersion(CORE);
   const qaPrevious = await liveWorkerVersion(QA);
-  assertReadyForUpload();
-  run('npx', ['--yes', 'wrangler@4', 'deploy', '--config', 'wrangler.qa-identity-core.jsonc']);
-  const coreVersion = await liveWorkerVersion(CORE);
-  await verifyWorkerPublicRoutes();
-  assert.notEqual(coreVersion.versionId, corePrevious.versionId,
-    'Identity core deployment version did not advance');
-  assert.equal(coreVersion.source, 'wrangler',
-    'Identity core latest deployment is not a Wrangler release');
-  const core = await cloudflare('/workers/scripts/' + CORE + '/settings');
-  const coreBinding = name => core.bindings?.find(x => x.name === name);
-  assert.deepEqual(secretNames(core), originalCoreSecrets,
-    'QA identity core secrets changed during deployment');
-  assert.equal(coreBinding('CLOUD_DB')?.namespace_id, CORE_DB);
-  assert.equal(coreBinding('MAO_IDENTITY_MODE')?.text, 'local', 'Core identity mode did not deploy');
-  assert.equal(coreBinding('MAO_QA_ISOLATED_IDENTITY_CORE')?.text, 'true', 'Isolated QA identity mode did not deploy');
-  assert.equal(coreBinding('MAO_QA_FOUNDER_ID')?.text, FOUNDER, 'QA founder continuity config did not deploy');
-  for (const name of ['MAO_SUPER_ADMIN_BOOTSTRAP_SECRET', 'DEVICE_SECRET_PEPPER']) {
-    assert.equal(coreBinding(name)?.type, 'secret_text', 'Core QA-only secret lost after deploy: ' + name);
+  let coreVersion = corePrevious;
+  if (qaOnly) {
+    assert.equal(coreInitialized, true,
+      'Refusing QA-only release until the existing isolated identity core is initialized');
+    console.log('QA-only release: identity core will remain untouched.');
+  } else {
+    assertReadyForUpload();
+    run('npx', ['--yes', 'wrangler@4', 'deploy', '--config', 'wrangler.qa-identity-core.jsonc']);
+    coreVersion = await liveWorkerVersion(CORE);
+    await verifyWorkerPublicRoutes();
+    assert.notEqual(coreVersion.versionId, corePrevious.versionId,
+      'Identity core deployment version did not advance');
+    assert.equal(coreVersion.source, 'wrangler',
+      'Identity core latest deployment is not a Wrangler release');
+    const core = await cloudflare('/workers/scripts/' + CORE + '/settings');
+    const coreBinding = name => core.bindings?.find(x => x.name === name);
+    assert.deepEqual(secretNames(core), originalCoreSecrets,
+      'QA identity core secrets changed during deployment');
+    assert.equal(coreBinding('CLOUD_DB')?.namespace_id, CORE_DB);
+    assert.equal(coreBinding('MAO_IDENTITY_MODE')?.text, 'local', 'Core identity mode did not deploy');
+    assert.equal(coreBinding('MAO_QA_ISOLATED_IDENTITY_CORE')?.text, 'true', 'Isolated QA identity mode did not deploy');
+    assert.equal(coreBinding('MAO_QA_FOUNDER_ID')?.text, FOUNDER, 'QA founder continuity config did not deploy');
+    for (const name of ['MAO_SUPER_ADMIN_BOOTSTRAP_SECRET', 'DEVICE_SECRET_PEPPER']) {
+      assert.equal(coreBinding(name)?.type, 'secret_text',
+        'Core QA-only secret lost after deploy: ' + name);
+    }
   }
   // Do not switch QA's old authority until the isolated core is configured.
   // The second remote check prevents an old PR build from switching QA.
   assertReadyForUpload();
   run('npx', ['--yes', 'wrangler@4', 'deploy', '--config', 'wrangler.qa.jsonc']);
   const qaVersion = await liveWorkerVersion(QA);
+  // A music-only release must not advance any identity-core deployment.
+  const coreAfter = await liveWorkerVersion(CORE);
+  assert.equal(coreAfter.versionId, coreVersion.versionId,
+    'Identity core changed unexpectedly during QA web release');
   await verifyWorkerPublicRoutes();
   assert.notEqual(qaVersion.versionId, qaPrevious.versionId,
     'QA deployment version did not advance');
