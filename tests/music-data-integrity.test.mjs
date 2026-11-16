@@ -213,7 +213,8 @@ test('MUSIC-UI-001: local toast exists and favorites/progress fail closed withou
         getItem:k => k === 'music_state' ? originalState : null,
         setItem() { throw Error('QuotaExceededError'); }
       }, musicWarnOnce: (key, message) => warnings.push(message),
-      tracks:[{id:'local_1'}],currentIdx:0,playing:true,window:{audio:{currentTime:35}}
+      tracks:[{id:'local_1'}],currentIdx:0,playing:true,musicPlaybackQueue:null,
+      window:{audio:{currentTime:35}}
     });
   assert.equal(saveState(), false);
   assert.ok(warnings.some(message => message.includes('保存失败')));
@@ -447,4 +448,59 @@ test('MUSIC-UI-001: playback context changes only after real audio success, and 
   assert.match(music, /if \(started\) document\.getElementById\('musicPlaylistView'\)\.style\.display = 'none'/);
   assert.match(music, /nextTrack\(true\)/);
   assert.match(music, /if \(fromEnded && index === ids\.length - 1 && window\.loopState !== 1\)/);
+});
+
+test('MUSIC-UI-001: playlist session survives refresh, while legacy or stale queue state safely falls back', () => {
+  const start = music.indexOf('function saveState()');
+  const end = music.indexOf('// ===== Now Playing 三点菜单 =====', start);
+  assert.ok(start > 0 && end > start);
+  const code = music.slice(start, end);
+  const tracks = [
+    {id:'local_1', name:'本地歌曲', artist:'用户导入', source:'local'},
+    {id:'local_2', name:'另一首', artist:'用户导入', source:'local'}
+  ];
+  const currentPlaylist = { name:'清晨' };
+  const storage = new Map();
+  const mock = {
+    localStorage: {
+      getItem: k => storage.get(k) ?? null,
+      setItem: (k, v) => storage.set(k, v)
+    },
+    tracks, currentIdx:0, playing:true, musicPlaybackQueue:currentPlaylist,
+    window:{
+      audio:{currentTime:23,src:''},
+      MAOMAOMusicPlaylists:{
+        getTrackIds:name => name === '清晨' ? ['local_1', 'local_2'] : null
+      }
+    },
+    musicQueuePublish() {}, musicWarnOnce() {},
+    getTrackById:id => tracks.find(t => t.id === id) || null,
+    updateHeartIcon() {}, renderAlbum() {}, renderTrackLyrics() {},
+    document:{
+      getElementById() {return {textContent:''};}
+    }
+  };
+  const runner = (payload, playlist) => runInNewContext(
+    'let currentIdx=0;let musicPlaybackQueue=' + (playlist ? '{name:"清晨"}' : 'null') + ';\n' +
+    code + '\n({saveState, loadState, state:()=>musicPlaybackQueue})',
+    { ...mock, musicPlaybackQueue:undefined }
+  );
+  const saveFns = runner();
+  assert.equal(saveFns.saveState(), true);
+  const saved = JSON.parse(storage.get('music_state'));
+  assert.equal(saved.id, 'local_1');
+  assert.equal(saved.playlistName, '清晨');
+  const restored = runner();
+  restored.loadState();
+  assert.equal(restored.state().name, '清晨');
+  storage.set('music_state', JSON.stringify({id:'local_1', idx:0, time:9, playing:false}));
+  const legacy = runner();
+  legacy.loadState();
+  assert.equal(legacy.state(), null, 'old records have no queue and must still load');
+  storage.set('music_state', JSON.stringify({id:'local_1', playlistName:'已删除歌单', time:8}));
+  const stale = runner();
+  stale.loadState();
+  assert.equal(stale.state(), null, 'deleted playlist must not be resurrected');
+  assert.match(music, /playlistName:musicPlaybackQueue \? musicPlaybackQueue\.name : null/);
+  assert.match(music, /await playTrack\(selected\.id,\s*musicPlaybackQueue \? \{ playlistName:musicPlaybackQueue\.name \} : undefined\)/);
 });
