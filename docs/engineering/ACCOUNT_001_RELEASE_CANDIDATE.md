@@ -2,7 +2,7 @@
 
 本分支以最新 `main` 为基础，只提取此前已经开发的登录、注册、邀请码、账号管理、001 管理员 UI、自托管花笺图片、客户端账户隔离和独立测试。不引入主题商城、钱包、旧 Worker，也不修改正式 `mao` 或 `curly-dream-324c` 配置。
 
-**仍未获准正式切换**：目前 Cloudflare 生产 `mao` Durable Object 账号库有 0 个管理员、0 个账号；独立 QA 原管理员 `001` 仍为唯一 active super_admin。正式 `app.mao520.com` 是纯静态 ASSETS Worker，登录页面使用同源 `/api/accounts/*`，该域名尚未接入有权限的正式账号后端。禁止仅凭 UI 测试通过就绑定正式域名或新增第二个管理员。
+**仍未获准正式切换（2026-11-16 只读重新核实）**：遗留 `mao` Worker 自有 Durable Object 账号库确实为 0，但**实际正式账号服务是 `mao-auth-preview`**（Worker 名字含 preview 不代表它是测试库），该账号库已有 3 个账号、1 个启用的 `super_admin`，永久 ID 与现有管理员 001 一致；不得迁移、覆盖、重建或修改这三个账号。唯一 QA 的独立库有 1 位 active 管理员，但审计确认它是 `identity_authority_import` 委托影子身份，不具备独立可用密码。正式 `app.mao520.com` 的完整同源账号路由尚未验收通过，禁止仅凭 UI 或 PR 可合并就切换正式域名。
 
 发布门槛：服务端真实管理员身份在稳定生产 authority 上保持同一永久 ID 并能原密码登录；旧用户隔离与邀请码注册流程都通过；同域路由和 PWA 私有页面缓存门禁完全生效；Android 与 iPhone 双端分别验收。正式生产账号迁移不是将 QA 测试库直接复制/覆盖，也不得从公开 GitHub 导出凭据。
 
