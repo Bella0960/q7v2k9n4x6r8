@@ -52,7 +52,7 @@ QA 首次上线后由用户进入原 QA 域名的账号初始化页，可使用*
 
 ## 2026-11-16｜QA 手机端实际可见性与旧缓存发布保护（本轮）
 - 修复 `account/account.js` 的 QA 专用密码说明被 `account/ivory-entry.css` 隐藏的问题：只在确认独立 QA 时启用低干扰 `qa-login-hint`，原有普通登录布局不变。
-- 修复 QA 身份尚未就绪时，`setAuthBusy(false)` 或其他表单操作可能重新启用登录提交按钮的问题；登录提交逻辑也会先检查 `delegatedSignInReady`，拒绝向未就绪的委托核心发送密码。
+- 修复 QA 身份尚未就绪时，`setAuthBusy(false)` 或其他表单操作可能重新启用登录提交按钮的问题；登录提交逻辑也会先检查 `delegatedSignInReady`，拒绝向未就绪的委托核心发送密码。**唯一 QA workers.dev 地址从页面加载起即保持登录禁用**，如果状态接口报错、无法连接或意外声明 `local` 模式，也会隐藏注册入口、阻止提交密码；其他正式/本地账号入口的默认行为保持原样。
 - 因 `sw.js` 对静态资源使用缓存优先策略，`account/index.html` 的登录 JS/CSS 及 `account/bootstrap.html` 的初始化 JS 已切换 `v=20261116-qa1`，避免原手机 PWA 继续读取相同 URL 的旧文件。本轮没有修改 Service Worker 的存储或账号缓存隔离规则。
 - 现有 `scripts/qa-direct-release.mjs` 的 QA HTTP smoke 进一步要求原 QA workers.dev 入口实际返回**六项基础资源**：状态接口、登录 HTML、登录 JS、登录源 CSS、初始化 HTML、初始化 JS；另外解析登录 HTML 实际引用的**全部样式表**并逐个同源 GET，检查内容确实包含 `qa-login-hint`。这样兼容 Vite 合并/指纹化后的 CSS 路径，也避免仅有源 CSS 而页面实际加载旧 CSS。任何缺失、跨源链接、旧缓存或身份状态异常均不允许报告 QA 通过。
 - `assertReadyForUpload()` 也追加 `dist/account/bootstrap.js` 和 `dist/account/ivory-entry.css` 构建产物检查。原 `tests/account-qa-bootstrap-route.test.mjs` 及 `tests/qa-release-live-version.test.mjs` 已增加相应回归。
