@@ -118,7 +118,7 @@ try {
       viewportWidth:document.documentElement.clientWidth,
       actionHeight:document.querySelector('#likeButton')?.getBoundingClientRect().height,
       swapHeight:document.querySelector('#swapButton')?.getBoundingClientRect().height,
-      statusDisplay:getComputedStyle(document.querySelector('.status-bar')).display,
+      fakeStatusCount:document.querySelectorAll('.status-bar,.status-marks,#deviceTime').length,
       menuRight:document.querySelector('#moreButton').getBoundingClientRect().right,
       savedRight:document.querySelector('#savedButton').getBoundingClientRect().right,
       cardBottom:document.querySelector('#frontCard').getBoundingClientRect().bottom,
@@ -128,7 +128,7 @@ try {
       viewportHeight:window.innerHeight
     }));
     assert.ok(ui.scrollWidth <= ui.viewportWidth+1,'整页不能出现横向溢出');
-    assert.equal(ui.statusDisplay,'none','手机端不能叠加绘制第二套状态栏');
+    assert.equal(ui.fakeStatusCount,0,'所有视口都不得含模拟系统时间、信号或电量的假状态栏');
     assert.ok(ui.menuRight <= ui.viewportWidth-12,'右上角设置菜单必须留在安全横向边距内');
     assert.ok(ui.savedRight <= ui.viewportWidth-12,'收藏计数不能靠屏幕边缘或溢出');
     assert.ok(ui.buttonsTop >= ui.cardBottom && ui.buttonsTop-ui.cardBottom <= 40,
