@@ -214,7 +214,12 @@
   function redactPublicStreamText(input) {
     var output=String(input==null?'':input);
     output=output.replace(/\[游戏揭晓\]?/g,'');
-    output=output.replace(/\[(?:游戏私聊|群私聊|游戏猜测)[:：][\s\S]*?(?:\]|$)/g,'');
+    // A nested ']' in a private directive can terminate a non-greedy regex
+    // early and expose the rest of its secret to streaming bubbles/snapshots.
+    // Private actions are defined as end-of-reply directives; drop the entire
+    // suffix from the first private action marker, including malformed payloads.
+    var firstPrivate=/\[(?:游戏私聊|群私聊|游戏猜测)[:：]/.exec(output);
+    if(firstPrivate) output=output.slice(0,firstPrivate.index);
     var last=output.match(/\[[^\]\r\n]{0,200}$/);
     if(last) {
       var tail=last[0].slice(1), names=['游戏私聊','群私聊','游戏猜测','游戏揭晓'];
