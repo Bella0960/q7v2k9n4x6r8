@@ -390,11 +390,22 @@ test('封面：两套独立封面都存在时，编辑 myProfile.cover 不改变
 
 /* ---------- 名片：真实执行 chat-detail.html 的历史读写函数 ---------- */
 
-function loadHistoryFunctions(storageSlots) {
+function loadHistoryFunctions(storageSlots, contactId = 'roleA', sharedStorage) {
+  // Real chat pages bind storageKey to the role opened at page load. A role
+  // switch requires a new page; changing the global role must never reroute
+  // reads or writes to a different conversation.
+  const localStorage = sharedStorage || createLocalStorage();
+  for (const [id, history] of Object.entries(storageSlots)) {
+    const key = 'chat_history_' + id;
+    if (localStorage.getItem(key) === null) {
+      localStorage.setItem(key, JSON.stringify(history));
+    }
+  }
   const sandbox = {
     console,
-    localStorage: createLocalStorage(),
-    currentCharacter: { id: 'roleA' },
+    localStorage,
+    currentCharacter: { id: contactId },
+    storageKey: 'chat_history_' + contactId,
     removeLegacyStickerCaptions: (list) => list,
     getInitialMessages: () => [],
     _resetWarnCooldown() {},
@@ -402,22 +413,28 @@ function loadHistoryFunctions(storageSlots) {
     _chatHistoryUnreadable: false,
     showToast() {},
     _storage: {
-      getChatHistory(contactId) {
-        const slot = storageSlots[contactId];
-        return Array.isArray(slot) ? slot.slice() : [];
+      getChatHistory(id) {
+        const raw = localStorage.getItem('chat_history_' + id);
+        if (raw === null) return [];
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) throw new Error('chat history is not an array');
+        return parsed;
       },
-      saveChatHistory(contactId, list) {
-        storageSlots[contactId] = JSON.parse(JSON.stringify(list));
+      saveChatHistory(id, list) {
+        // Simulate the real PhoneStorage contract: persist to the authoritative
+        // per-role key so chat-detail can independently verify the readback.
+        if (typeof id !== 'string' || !id || !Array.isArray(list)) return false;
+        const key = 'chat_history_' + id;
+        const before = localStorage.getItem(key);
+        if (before !== null && !Array.isArray(JSON.parse(before))) return false;
+        const bytes = JSON.stringify(list);
+        localStorage.setItem(key, bytes);
+        if (localStorage.getItem(key) !== bytes) return false;
+        storageSlots[id] = JSON.parse(bytes);
         return true;
       }
     }
   };
-  Object.defineProperty(sandbox, 'storageKey', {
-    enumerable: true,
-    get() {
-      return 'chat_history_' + (sandbox.currentCharacter && sandbox.currentCharacter.id);
-    }
-  });
   const code = ['_messageIdentity', '_readBackHistory', '_verifyHistoryRoundTrip', 'loadMessages', 'saveMessages']
     .map((name) => extractFunction(chatDetailSource, name))
     .join('\n');
@@ -427,7 +444,8 @@ function loadHistoryFunctions(storageSlots) {
 
 test('名片：卡片快照只写入当前会话历史，不在其他会话出现', () => {
   const slots = {};
-  const sandbox = loadHistoryFunctions(slots);
+  const shared = createLocalStorage();
+  const roleA = loadHistoryFunctions(slots, 'roleA', shared);
   const card = {
     role: 'user',
     type: 'card',
@@ -436,17 +454,17 @@ test('名片：卡片快照只写入当前会话历史，不在其他会话出�
     mid: 'm1'
   };
 
-  sandbox.currentCharacter = { id: 'roleA' };
-  const listA = sandbox.loadMessages();
+  const listA = roleA.loadMessages();
   listA.push(card);
-  assert.equal(sandbox.saveMessages(listA), true);
-  assert.deepEqual(sandbox.loadMessages(), [card]);
+  assert.equal(roleA.saveMessages(listA), true);
+  assert.deepEqual(roleA.loadMessages(), [card]);
   assert.match(JSON.stringify(slots.roleA), /卡片甲/);
+  assert.match(shared.getItem('chat_history_roleA'), /卡片甲/);
 
-  sandbox.currentCharacter = { id: 'roleB' };
-  assert.deepEqual(sandbox.loadMessages(), []);
+  const roleB = loadHistoryFunctions(slots, 'roleB', shared);
+  assert.deepEqual(roleB.loadMessages(), []);
   assert.equal(JSON.stringify(slots.roleB || []).includes('卡片甲'), false);
-  assert.equal(sandbox.localStorage.getItem('chat_history_roleB'), null);
+  assert.equal((shared.getItem('chat_history_roleB') || '').includes('卡片甲'), false);
 });
 
 test('名片：刷新后仍只从所属会话读回，不与其他角色共享存储槽', () => {
@@ -454,18 +472,32 @@ test('名片：刷新后仍只从所属会话读回，不与其他角色共享�
     roleA: [{ role: 'user', type: 'card', card: { id: 'card-1', name: '卡片甲', avatar: '' }, time: 1, mid: 'm1' }],
     roleB: [{ role: 'received', text: 'B 的普通消息', time: 2, mid: 'm2' }]
   };
-  const sandbox = loadHistoryFunctions(slots);
-
-  sandbox.currentCharacter = { id: 'roleA' };
-  const reloadedA = sandbox.loadMessages();
+  const shared = createLocalStorage();
+  const roleA = loadHistoryFunctions(slots, 'roleA', shared);
+  const reloadedA = roleA.loadMessages();
   assert.equal(reloadedA.length, 1);
   assert.equal(reloadedA[0].card.name, '卡片甲');
 
-  sandbox.currentCharacter = { id: 'roleB' };
-  const reloadedB = sandbox.loadMessages();
+  const roleB = loadHistoryFunctions(slots, 'roleB', shared);
+  const reloadedB = roleB.loadMessages();
   assert.equal(reloadedB.length, 1);
   assert.equal(reloadedB[0].text, 'B 的普通消息');
   assert.equal(reloadedB.some((msg) => msg.type === 'card'), false);
+});
+
+test('名片：页面打开后角色 ID 变化不能将名片写入另一会话', () => {
+  const slots = { roleB: [{ role: 'received', text: '原角色 B 的消息', mid: 'b1' }] };
+  const shared = createLocalStorage();
+  const roleA = loadHistoryFunctions(slots, 'roleA', shared);
+  roleA.loadMessages();
+  const originalB = shared.getItem('chat_history_roleB');
+  roleA.currentCharacter = { id: 'roleB' };
+  assert.deepEqual(roleA.loadMessages(), []);
+  assert.equal(roleA.saveMessages([
+    { role: 'user', type: 'card', card: { name: '不应串写的名片' }, mid: 'm2' }
+  ]), false);
+  assert.equal(shared.getItem('chat_history_roleB'), originalB);
+  assert.equal(JSON.stringify(slots.roleB).includes('不应串写的名片'), false);
 });
 
 
