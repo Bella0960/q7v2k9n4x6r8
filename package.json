@@ -59,6 +59,7 @@
     "qa:release:check": "node scripts/qa-direct-release.mjs",
     "qa:release:deploy": "node scripts/qa-direct-release.mjs --deploy",
     "qa:release:worker-only": "node scripts/qa-direct-release.mjs --qa-only",
+    "test:encounter:account": "npm run test:account:release-gate && node --test tests/encounter-actual-scope.test.mjs && node scripts/record-encounter-tests.mjs account",
     "test:encounter": "node --test tests/encounter-contract.test.mjs tests/encounter-ui-contract.test.mjs tests/encounter-actual-scope.test.mjs && node scripts/record-encounter-tests.mjs encounter",
     "test:encounter:browser": "node tests/encounter-browser.mjs",
     "gate:encounter": "node scripts/verify-encounter-release.mjs"
