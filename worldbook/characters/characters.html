@@ -863,6 +863,20 @@
         .avatar-library-status { min-height:16px; padding-top:9px; color:#999; font-size:9px; line-height:1.5; }
         .avatar-library-status[data-state="error"] { color:#777; }
         .avatar-library-status[data-state="success"] { color:#555; }
+        /* 次要的配对操作默认隐藏，用户主动打开时才显示；遵循头像收藏原有字号。 */
+        .avatar-pair-disclosure { margin:11px 0 14px; border-top:1px solid #E6E6E3; color:#333; font-family:inherit; }
+        .avatar-pair-summary { display:flex; align-items:center; justify-content:space-between; min-height:40px; padding:9px 2px; color:#555; font-family:inherit; font-size:11px; font-weight:500; line-height:1.5; list-style:none; cursor:pointer; }
+        .avatar-pair-summary::-webkit-details-marker { display:none; }
+        .avatar-pair-summary::after { content:''; width:6px; height:6px; border-right:1px solid #888; border-bottom:1px solid #888; transform:rotate(45deg); transition:transform .15s ease; }
+        .avatar-pair-disclosure[open] .avatar-pair-summary::after { transform:rotate(225deg); }
+        .avatar-pair-summary:focus-visible { outline:2px solid #777; outline-offset:2px; }
+        .avatar-pair-panel { padding:3px 0 9px; font-family:inherit; font-size:10px; line-height:1.5; }
+        .avatar-pair-panel .avatar-pair-builder, .avatar-pair-panel .avatar-pair-card-head { font-family:inherit; font-size:10px; line-height:1.5; }
+        .avatar-pair-panel .avatar-pair-builder button, .avatar-pair-panel .avatar-pair-label-input, .avatar-pair-panel .avatar-pair-actions button, .avatar-library-grid .avatar-pair-pick { font-family:inherit; font-size:10px; line-height:1.5; letter-spacing:normal; }
+        .avatar-pair-panel .avatar-pair-actions button { border:0; border-radius:9px; background:#F7F7F9; color:#555; padding:6px 9px; cursor:pointer; }
+        .avatar-pair-panel .avatar-pair-actions .avatar-pair-swap { background:#111; color:#fff; }
+        .avatar-pair-disclosure:not([open]) ~ .avatar-library-grid .avatar-pair-pick { display:none; }
+        @media (prefers-reduced-motion:reduce) { .avatar-pair-summary::after { transition:none; } }
         .avatar-library-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px 10px; padding:3px 0 20px; }
         .avatar-library-card { min-width:0; }
         .avatar-library-preview { display:block; width:100%; padding:0; border:1px solid transparent; background:transparent; color:#222; text-align:left; cursor:pointer; font:inherit; }
@@ -1212,7 +1226,7 @@
     <script src="../../shared/js/phone/role-avatar-library.js?v=20261113v1"></script>
     <script src="../../shared/js/phone/phone_api.js?v=20261115a"></script>
     <script src="../../encounter/encounter-engine.js?v=20261115v1"></script>
-    <script src="js/characters-manager.js?v=20261115-encounter1"></script>
+    <script src="js/characters-manager.js?v=20261118-avatar-fold1"></script>
     <script src="../../shared/js/nav.js"></script>
 <script src="../../shared/js/statusbar-control.js"></script>
 </body>
