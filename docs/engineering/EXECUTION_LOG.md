@@ -1,5 +1,17 @@
 # MAOMAO Execution Log
 
+## 2026-11-17｜BUG-ADMIN-QA · 管理中心登录循环（PR #290）
+
+- **视频现象**：测试版已登录创始管理员，从桌面进入管理中心时列表长时间显示「正在读取账号」，随后自动返回账号授权页；再进入小手机又可复现。
+- **源码根因**：委托模式 `worker/lib/account-auth.js` 无条件拒绝非 social 管理接口 403，同时 `admin/admin-center.js` 在五处把这些 403 视为退出登录，自动 `location.replace`。实际 QA 设置中，隔离服务绑定指向 `maomao-identity-core`，开关 `MAO_DELEGATED_ADMIN_MANAGEMENT_ENABLED=true`。
+- **修复**：严格白名单、只在原创始管理员会话与隔离身份服务只读核验通过时，将 QA 管理接口经内部绑定代理；不转发 Cookie/Set-Cookie，不重试结果不确定的写请求；修正管理员会话 `account_id` 核对；管理中心只对明确 `401 + ACCOUNT_SESSION_REQUIRED` 导回登录。其余状态保留页面显示错误与重试。
+- **本轮相关文件**：`worker/lib/account-auth.js`、`admin/admin-center.js`、`tests/account-qa-admin-proxy.test.mjs`、`tests/admin-center-ui.test.mjs`、`package.json`。
+- **回归**：新增 Node `test:account:release-gate` 用例由 5 扩到 9 项（尚无 Node CLI 成功回执）；本轮从原 PR #290 实际源文件运行 V8 内存模拟 **10/10 PASS**，覆盖允许/拒绝、非管理员、隔离权威失效、403、异常响应、未确认写请求与撤销会话；这不等于完整 Node/Vite/Chromium/手机通过。
+- **云端只读核对**：Cloudflare 已确认 `preview.mao520.com` 绑定唯一 `maomao-aw-qa-20261114`；该 Worker 的 `MAO_IDENTITY_AUTHORITY` Service Binding 指向独立 `maomao-identity-core`，隔离身份服务设置 `MAO_QA_ISOLATED_IDENTITY_CORE=true`、`MAO_QA_FOUNDER_ID=MAO-OXHBDBWCOIHPBBYN`。测试版最近部署为 2026-11-16 21:19 UTC，早于本 Bug 修复提交，因此线上尚未验证。
+- **整合阻塞**：原 PR #290 已提交；现有唯一 QA PR #299 与 #290 分支已分歧（#299 截止核对时 Draft、`mergeable=false`），#299 中仍含旧的 403 拦截。遵守集中 QA 流程，暂不直接写 #299，也不新建 PR。交由当前 QA 负责人做最小范围代码整合和冲突消解，优先检查 `worker/lib/account-auth.js`、`package.json`，保留 #299 其他更新。
+- **验收与发布门禁**：隔离身份安全只读核对、`npm ci && npm run build`、`npm run test:account:ui-candidate`、`npm run test:account:release-gate`、Chromium/Android/iOS 登录→管理中心→返回→重新进入（含异常 API 测试），再部署到唯一 `https://preview.mao520.com/` 请用户验收。正式版 `main`、管理员 001、正式存储均不更改；不得提前称完成。
+
+
 This is the durable checkpoint for owner-assigned, multi-step work. Update it after meaningful milestones and before ending a session.
 
 ## 2026-11-16｜PR #290 账号安全专项 · 恢复教程门禁
