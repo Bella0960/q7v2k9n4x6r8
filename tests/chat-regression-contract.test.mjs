@@ -321,7 +321,10 @@ test('shared context policy preserves local historical recall query and budget r
   );
   assert.match(detail, /ChatContextPolicy\.buildHistoricalRecallRequest/);
   assert.match(detail, /Compatibility fallback: preserve the original backwards query scan and limits/);
-  assert.match(detail, /buildHistoricalRecallText\(historyList, recallQuery, recallOptions\)/);
+  assert.match(detail, /buildHistoricalRecallText\(recallableHistory, recallQuery, recallOptions\)/);
+  assert.match(detail, /if \(isGroupChat\) recallOptions\.groupPublicOnly = true/);
+  assert.match(detail, /m\.type !== 'group_game_private'/);
+  assert.match(detail, /m\.visibility !== 'role_only'/);
 });
 
 test('shared context policy keeps explicitly scoped user memories role-isolated while preserving legacy globals', () => {
@@ -965,7 +968,7 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
   assert.match(detail, /relationshipDynamicsEnabled !== false && isGroupFollowup/);
   assert.match(detail, /applyRelationshipEvent/);
   assert.match(detail, /群关系变化/);
-  assert.match(detail, /processGroupInteractionMarkers\(fullText, groupReplyPick, historyList, isRegen, isGroupFollowup\)/);
+  assert.match(detail, /processGroupInteractionMarkers\(fullText, groupReplyPick, historyList, isRegen, isGroupFollowup, streamResult\.ok,/);
   assert.match(detail, /!isGroupFollowup \|\| !speaker/);
   assert.match(groupPlay, /data-setting="relationshipDynamicsEnabled"/);
   assert.match(groupPlay, /近期关系变化/);
@@ -982,11 +985,11 @@ test('shared policy is loaded by both relevant pages and precached for PWA', () 
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
-  assert.match(detail, /chat-context-policy\.js\?v=20261107vision1/);
+  assert.match(detail, /chat-context-policy\.js\?v=20261115gameprivacy1/);
   assert.match(detail, /function buildCharacterSocialPrompt\(role\)/);
   assert.match(detail, /role\.npcCharacters/);
   assert.match(detail, /relationshipRole/);
-  assert.match(serviceWorker, /chat-context-policy\.js\?v=20261107vision1/);
+  assert.match(serviceWorker, /chat-context-policy\.js\?v=20261115gameprivacy1/);
   assert.match(serviceWorker, /group-chat-policy\.js\?v=20261102v5/);
   assert.match(serviceWorker, /phone_context\.js\?v=20261102npc1/);
   const contractFiles = packageJson.scripts['test:chat:contract'].split(/\s+/);
@@ -1055,7 +1058,7 @@ test('context size controls and local historical recall remain bounded', () => {
   assert.match(detail, /worldbook: 8000/);
   assert.match(detail, /rpComposed: 16000/);
   assert.match(detail, /recentHistory = historyList\.slice\(-memoryLimit\)/);
-  assert.match(detail, /buildHistoricalRecallText\(historyList, recallQuery/);
+  assert.match(detail, /buildHistoricalRecallText\(recallableHistory, recallQuery/);
   assert.match(detail, /maxItems: 2/);
   assert.match(detail, /maxChars: 540/);
   assert.match(detail, /maxScan: 2500/);
@@ -2434,7 +2437,12 @@ test('chat detail: AI transfer-decision state is committed with its reply and ro
 test('chat detail: group interaction state and private-message entry require verified persistence', () => {
   assert.match(detail, /groupHistoryRollback\.push\(\{[\s\S]*?kind: 'votes'/);
   assert.match(detail, /groupHistoryRollback\.push\(\{[\s\S]*?kind: 'entries'/);
-  assert.match(detail, /if \(changedHistory && !saveMessages\(historyList\)\)[\s\S]*?groupHistoryRollback\.forEach/);
+  // Group actions now share the verified reply-save transaction.
+  // Failure rolls staged vote/chain changes back through registered undo.
+  assert.match(detail, /turnEffects\.registerUndo\(function \(\) \{/);
+  assert.match(detail, /groupHistoryRollback\.length-1/);
+  assert.match(detail, /var replySaved = saveMessages\(historyList\)/);
+  assert.match(detail, /groupTurnEffects\.finalize\(replySaved\)/);
   assert.match(detail, /privateSaved = privateSaved && Array\.isArray\(verifiedPrivate\)/);
   assert.match(detail, /if \(!privateSaved\)[\s\S]*?未显示已发送状态/);
 });

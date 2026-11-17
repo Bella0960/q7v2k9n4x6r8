@@ -138,6 +138,9 @@
     // Never export login sessions, account passwords or identity tokens,
     // even if the optional API-key export checkbox is enabled.
     function neverBackupKey(key) {
+        // Active hidden-identity games are ephemeral: never put role cards or
+        // an incomplete public session in ordinary unencrypted backups.
+        if (/^phone_group_game_(?:private_)?v1_/.test(String(key || ''))) return true;
         return /^(access_token|refresh_token|session_token|auth_token|password|api_key|private_key)$/i.test(key) ||
             /(?:^|[_-])(?:session|auth|access|refresh)[_-]?token(?:$|[_-])/i.test(key) ||
             /(?:^|[_-])(?:password|private[_-]?key|secret)(?:$|[_-])/i.test(key) ||

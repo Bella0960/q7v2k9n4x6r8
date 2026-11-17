@@ -36,7 +36,10 @@
       if (!m || m.isError || m.role === 'system_error' || m.sendFailed) return;
       // A group-private message belongs only to its author's direct conversation.
       // Never feed this private payload into the shared group transcript.
-      if (isGroupChat && m.type === 'group_private') return;
+      if (isGroupChat && (m.type === 'group_private' ||
+          m.type === 'group_game_private' ||
+          m.visibility === 'private' ||
+          m.visibility === 'role_only')) return;
 
       // Stickers are represented as short semantic instructions to the model,
       // not by sending the UI's image metadata into the text context.

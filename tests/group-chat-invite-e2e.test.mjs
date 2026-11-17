@@ -62,6 +62,24 @@ async function setupGroup(page, groups, roles) {
   await seed(page, { phone_groups: groups, ai_custom_characters: roles, api_settings: apiSeed() });
 }
 
+
+async function openGroupCategory(page, category) {
+  await page.locator(
+    '[data-open-category="' + category + '"]'
+  ).click();
+
+  await page.locator(
+    '[data-group-category="' + category + '"]'
+  ).waitFor({ state: 'visible' });
+}
+
+async function openAtmosphereAdvanced(page) {
+  await openGroupCategory(page, 'atmosphere');
+  await page.locator(
+    '[data-group-category="atmosphere"] details.category-more > summary'
+  ).click();
+}
+
 before(async () => {
   await startServer();
   baseUrl = 'http://127.0.0.1:' + server.address().port;
@@ -135,6 +153,7 @@ test('C6-C8 chat.html -> chat-detail renders 3 members and request context conta
     const detailSeedPage = await context.newPage();
     await detailSeedPage.goto(baseUrl + '/chat/chat/group-play.html?id=g1', { waitUntil: 'load' });
     await detailSeedPage.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 3);
+    await openGroupCategory(detailSeedPage, 'members');
     const c1Card = detailSeedPage.locator('#membersList .member[data-member-id="c1"]');
     await c1Card.locator('.member-toggle').click();
     await c1Card.locator('[data-member-field="muted"]').check();
@@ -236,6 +255,7 @@ test('C9 spectatorMode saved in settings page is reflected in a fresh chat-detai
     await setupGroup(settings, groups, roles);
     await settings.goto(baseUrl + '/chat/chat/group-play.html?id=g1', { waitUntil: 'load' });
     await settings.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 3);
+    await openAtmosphereAdvanced(settings);
     await settings.locator('input[data-setting="spectatorMode"]').check();
     let stored = await read(settings, 'phone_groups');
     assert.equal(stored[0].settings.spectatorMode, true, 'spectatorMode must be persisted by the settings page');
@@ -345,6 +365,7 @@ test('C9 spectatorMode saved in settings page is reflected in a fresh chat-detai
     const settings2 = await context.newPage();
     await settings2.goto(baseUrl + '/chat/chat/group-play.html?id=g1', { waitUntil: 'load' });
     await settings2.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 3);
+    await openAtmosphereAdvanced(settings2);
     await settings2.locator('input[data-setting="spectatorMode"]').uncheck();
     stored = await read(settings2, 'phone_groups');
     assert.equal(stored[0].settings.spectatorMode, false);

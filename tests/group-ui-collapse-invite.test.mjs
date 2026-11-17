@@ -109,6 +109,18 @@ async function withPage(seed, urlPath, fn) {
   }
 }
 
+async function openGroupCategory(page, category) {
+  const entry = page.locator(
+    '[data-open-category="' + category + '"]'
+  );
+  await entry.waitFor({ state: 'visible' });
+  await entry.click();
+
+  await page.locator(
+    '[data-group-category="' + category + '"]'
+  ).waitFor({ state: 'visible' });
+}
+
 async function readStorage(page, key) {
   return page.evaluate((k) => {
     const raw = localStorage.getItem(k);
@@ -198,6 +210,7 @@ test('1b. status compacts keep avatar, nickname, role name and group nickname', 
   await withPage({ phone_groups: [makeGroup('g1', '测试群', members)], ai_custom_characters: makeRoles(4) },
     '/chat/chat/group-play.html?id=g1', async (page) => {
       await page.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 2);
+      await openGroupCategory(page, 'members');
       const card = page.locator('#membersList .member').first();
       assert.ok(await card.locator('.avatar').isVisible());
       assert.equal((await card.locator('.member-name').innerText()).trim(), '小一');
@@ -215,6 +228,7 @@ test('2. member cards open and close independently', async () => {
   await withPage({ phone_groups: [makeGroup('g1', '测试群', members)], ai_custom_characters: makeRoles(5) },
     '/chat/chat/group-play.html?id=g1', async (page) => {
       await page.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 3);
+      await openGroupCategory(page, 'members');
       const cards = page.locator('#membersList .member');
       const states = async () => page.$$eval('#membersList .member', (list) => list.map((c) => c.classList.contains('is-open')));
       assert.deepEqual(await states(), [false, false, false]);
@@ -245,6 +259,7 @@ test('3. editing fields after expanding still persists and keeps the card open',
   await withPage({ phone_groups: [makeGroup('g1', '测试群', members)], ai_custom_characters: makeRoles(4) },
     '/chat/chat/group-play.html?id=g1', async (page) => {
       await page.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 2);
+      await openGroupCategory(page, 'members');
       const card = page.locator('.member[data-member-id="c1"]');
       await card.locator('.member-toggle').click();
 
@@ -286,6 +301,7 @@ test('4. relationship pairs collapse one by one and keep saving fields', async (
   await withPage({ phone_groups: [makeGroup('g1', '测试群', members)], ai_custom_characters: makeRoles(5) },
     '/chat/chat/group-play.html?id=g1', async (page) => {
       await page.waitForFunction(() => document.querySelectorAll('.relationship').length === 3);
+      await openGroupCategory(page, 'members');
       const pairs = page.locator('.relationship');
       const states = async () => page.$$eval('.relationship', (list) => list.map((c) => c.classList.contains('is-open')));
       assert.deepEqual(await states(), [false, false, false]);
@@ -411,6 +427,7 @@ test('8. members and per-member config survive a reload on both pages', async ()
   await withPage({ phone_groups: [group], ai_custom_characters: makeRoles(5) },
     '/chat/chat/group-play.html?id=g1', async (page) => {
       await page.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 1);
+      await openGroupCategory(page, 'members');
       await page.locator('.member-toggle').click();
       await page.locator('[data-member-field="nickname"]').fill('阿一');
       await page.keyboard.press('Tab');
@@ -422,6 +439,7 @@ test('8. members and per-member config survive a reload on both pages', async ()
 
       await page.reload({ waitUntil: 'load' });
       await page.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 1);
+      await openGroupCategory(page, 'members');
 
       const saved = await readStorage(page, 'phone_groups');
       assert.equal(saved[0].members[0].nickname, '阿一');
@@ -472,6 +490,11 @@ test('10. legacy group-play and group-management controls still work', async () 
   await withPage({ phone_groups: [makeGroup('g1', '旧群名', members)], ai_custom_characters: makeRoles(4) },
     '/chat/chat/group-play.html?id=g1', async (page) => {
       await page.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 2);
+      await openGroupCategory(page, 'atmosphere');
+
+      await page.locator(
+        '[data-group-category="atmosphere"] details.category-more > summary'
+      ).click();
 
       await page.locator('input[data-setting="scheduleEnabled"]').check();
       const stored = await readStorage(page, 'phone_groups');
@@ -480,6 +503,16 @@ test('10. legacy group-play and group-management controls still work', async () 
       await page.locator('#groupChatMode').selectOption('offline');
       const stored2 = await readStorage(page, 'phone_groups');
       assert.equal(stored2[0].settings.chatMode, 'offline');
+
+      await page.locator(
+        '[data-group-category="atmosphere"] [data-category-back]'
+      ).click();
+
+      await openGroupCategory(page, 'owner');
+
+      await page.locator(
+        '[data-group-category="owner"] details.category-more > summary'
+      ).click();
 
       page.once('dialog', (dialog) => dialog.accept());
       await page.locator('#ownerSelect').selectOption('c2');
