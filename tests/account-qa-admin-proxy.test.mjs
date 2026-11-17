@@ -6,7 +6,7 @@ const FOUNDER_ID = 'MAO-SYNTHFOUNDER001';
 const TOKEN = 'syntheticQaTokenForContractTests123456789012345';
 const ORIGIN = 'https://mao520.com';
 
-function fixture({ role = 'super_admin', disabled = false, wrongAuthority = false } = {}) {
+function fixture({ role = 'super_admin', disabled = false, wrongAuthority = false, authorityError = '', revokedSession = false } = {}) {
   const calls = [];
   const account = {
     id: role === 'super_admin' ? FOUNDER_ID : 'MAO-SYNTHACCOUNT001',
@@ -22,7 +22,7 @@ function fixture({ role = 'super_admin', disabled = false, wrongAuthority = fals
       username: account.username,
       role: account.role,
       status: 'active',
-      session_revoked_at: null,
+      session_revoked_at: revokedSession ? Date.now() : null,
       expires_at: Date.now() + 86400000
     }),
     touchMaoAccountSession: () => true
@@ -37,6 +37,18 @@ function fixture({ role = 'super_admin', disabled = false, wrongAuthority = fals
         origin: request.headers.get('origin'),
         body: request.method === 'POST' ? await request.text() : ''
       });
+      if (url.pathname.startsWith('/api/admin/') && authorityError === 'forbidden') {
+        return Response.json({ ok: false, error: { code: 'DELEGATED_ACCOUNT_MANAGED_CENTRALLY',
+          message: '管理权限尚未接通' } }, {
+          status: 403, headers: { 'set-cookie': 'MAO_SESSION=forbidden-cookie; HttpOnly' }
+        });
+      }
+      if (url.pathname.startsWith('/api/admin/') && authorityError === 'invalid') {
+        return new Response('not-json', { status: 200, headers: { 'content-type': 'text/plain' } });
+      }
+      if (url.pathname.startsWith('/api/admin/') && authorityError === 'offline') {
+        throw new Error('synthetic QA identity connection loss');
+      }
       if (url.pathname === '/api/accounts/me') {
         return Response.json({ ok: true, account });
       }
@@ -140,4 +152,33 @@ test('a non-super-admin session never reaches an admin directory or mutation', a
   await assert.rejects(invoke('/api/admin/accounts'), error =>
     error.code === 'ADMIN_ONLY');
   assert.deepEqual(calls.map(call => call.path), ['/api/accounts/me']);
+});
+
+test('a forwarded QA 403 stays an API permission error, never a login redirect', async () => {
+  const { invoke } = fixture({ authorityError: 'forbidden' });
+  const response = await invoke('/api/admin/accounts?limit=50');
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).error.code, 'DELEGATED_ACCOUNT_MANAGED_CENTRALLY');
+  assert.equal(response.headers.get('set-cookie'), null);
+  assert.equal(response.headers.get('location'), null);
+});
+
+test('malformed identity-core response fails closed instead of inventing admin data', async () => {
+  const { invoke } = fixture({ authorityError: 'invalid' });
+  await assert.rejects(invoke('/api/admin/accounts'), error =>
+    error.code === 'QA_ADMIN_RESPONSE_INVALID');
+});
+
+test('ambiguous failure on a delegated admin write is not retried automatically', async () => {
+  const { calls, invoke } = fixture({ authorityError: 'offline' });
+  await assert.rejects(invoke('/api/admin/invites', 'POST', { targetAccountId: 'MAO-SYNTHACCOUNT001' }),
+    error => error.code === 'QA_ADMIN_RESULT_UNCONFIRMED');
+  assert.equal(calls.filter(call => call.path === '/api/admin/invites').length, 1);
+});
+
+test('revoked QA session cannot reach the central admin service', async () => {
+  const { calls, invoke } = fixture({ revokedSession: true });
+  await assert.rejects(invoke('/api/admin/accounts'), error =>
+    error.code === 'ACCOUNT_SESSION_REQUIRED');
+  assert.equal(calls.length, 0);
 });
