@@ -362,7 +362,7 @@ function openDetail(card,fromSaved,revealBlind,blindGuess,revealObject,objectGue
    c.choices.map(function(t){return '<button class="fate-button '+(c.selectedChoice===t?'selected':'')+'" data-fate="'+escapeHtml(t)+'">'+escapeHtml(t)+'</button>';}).join('')+'</div>';
    if(c.selectedChoice&&engine.storyOpening){
      var opening=engine.storyOpening(c,c.selectedChoice);
-     if(opening)html+='<p class="story-preview">'+escapeHtml(opening)+'</p>';
+     if(opening)html+='<p class="story-preview"><strong>故事起点 · '+escapeHtml(c.selectedChoice)+'</strong><span>'+escapeHtml(opening)+'</span></p>';
    }
  }
  if(c.type==='性格盲测'&&revealBlind&&typeof blindGuess==='string'&&
