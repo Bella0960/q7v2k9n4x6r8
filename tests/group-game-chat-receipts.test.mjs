@@ -210,7 +210,7 @@ test('game result is a non-AI system receipt and page uses a genuine chat card',
   const page = read('chat/chat/group-play.html');
   assert.match(page, /group-game-chat-receipts\.js\?v=20261116receipt2/);
   const sw = read('sw.js');
-  assert.match(sw, /phone-app-pwa-v227/);
+  assert.match(sw, /phone-app-pwa-v228/);
   assert.match(sw, /group-game-chat-receipts\.js\?v=20261116receipt2/);
 });
 
