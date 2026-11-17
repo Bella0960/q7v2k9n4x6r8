@@ -137,8 +137,17 @@ button, a, textarea, select { font: inherit; }
   font-size: 14px;
 }
 #fanwaiLayer.fw-standalone .fw-reader-more { flex-basis: auto; }
-#fanwaiLayer.fw-standalone .fw-reader-more-menu {
-  max-width: min(290px, calc(100vw - 36px));
+#fanwaiLayer.fw-standalone .fw-reader-menu {
+  width: 100%;
+  max-width: 100%;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+#fanwaiLayer.fw-standalone .fw-reader-menu .fw-btn {
+  flex: 0 1 auto;
+  min-height: 38px;
+  font-size: 12px;
 }
 @media (max-width: 360px) {
   #fanwaiLayer.fw-standalone .fw-card { min-height: 120px; }
@@ -165,3 +174,15 @@ button, a, textarea, select { font: inherit; }
   pointer-events: none;
   box-shadow: 0 3px 14px rgba(0,0,0,.08);
 }
+
+/* 阅读与列表实际字号：页面扩大后不能再沿用聊天小弹层的 10–12px 文字。 */
+#fanwaiLayer.fw-standalone .fw-section-title { font-size: 22px; }
+#fanwaiLayer.fw-standalone .fw-preview-description { font-size: 14px; line-height: 1.8; }
+#fanwaiLayer.fw-standalone .fw-saved-title { font-size: 14px; }
+#fanwaiLayer.fw-standalone .fw-saved-meta { font-size: 12px; }
+#fanwaiLayer.fw-standalone .fw-custom { font-size: 14px; line-height: 1.75; }
+#fanwaiLayer.fw-standalone .fw-custom-hint { font-size: 13px; }
+#fanwaiLayer.fw-standalone .fw-settings-label,
+#fanwaiLayer.fw-standalone .fw-settings-help,
+#fanwaiLayer.fw-standalone .fw-context-title { font-size: 12px; }
+#fanwaiLayer.fw-standalone .fw-memory-mode { min-height: 42px; font-size: 13px; }

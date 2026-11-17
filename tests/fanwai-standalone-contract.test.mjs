@@ -75,3 +75,10 @@ test('独立页缺少聊天 Toast 时提供可见且安全的错误提示', () =
   assert.match(css, /\.fw-notice\[hidden\]/);
   assert.match(css, /safe-area-inset-bottom/);
 });
+
+test('独立页列表/阅读字号放大，更多操作不会横向溢出', () => {
+  const css = read('fanwai/fanwai.css');
+  assert.match(css, /fw-saved-title \{ font-size: 14px/);
+  assert.match(css, /fw-preview-description \{ font-size: 14px/);
+  assert.match(css, /fw-reader-menu \{[^}]*flex-wrap: wrap/);
+});
