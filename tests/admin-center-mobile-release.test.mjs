@@ -23,7 +23,7 @@ test('admin script and CSS versions match the current PWA cache, not the old mob
   assert.ok(html.includes('./admin-center.js?v=' + version));
   assert.ok(sw.includes("'./admin/admin-center.css?v=" + version + "'"));
   assert.ok(sw.includes("'./admin/admin-center.js?v=" + version + "'"));
-  assert.match(sw, /const CACHE_NAME = 'phone-app-pwa-v240'/);
+  assert.match(sw, /const CACHE_NAME = 'phone-app-pwa-v243'/);
   assert.doesNotMatch(html, /20261112-nav2/);
 });
 
