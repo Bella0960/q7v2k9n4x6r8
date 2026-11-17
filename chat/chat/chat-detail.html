@@ -2086,8 +2086,9 @@
 <script src="../../shared/js/chat-page-theme.js?v=20261105v1"></script>
 <link rel="stylesheet" href="../../shared/css/silver-butterfly-theme.css?v=20261102v5">
 <link rel="stylesheet" href="../../shared/css/wechat-theme-refinements.css?v=20261105v2">
+<link rel="stylesheet" href="../../shared/css/chat-light-surfaces.css?v=20261118v3">
 </head>
-<body>
+<body class="chat-light-detail">
     <div class="phone-mockup">
         <div class="status-bar">
             <span>4:41</span>
@@ -10594,7 +10595,27 @@ form#chat-form .send-icon-btn { display: flex !important; visibility: visible !i
       : 'position:absolute;right:14px;bottom:8px;width:36px;height:36px;border-radius:50%;background:#fff;border:none;box-shadow:0 1px 4px rgba(0,0,0,.1);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:60;color:#111;';
     b.innerHTML = wechat ? SEND_ICON : HEART_ICON;
   }
-  function sync(){ force(); fixAll(); }
+  function sync(){
+    var shell = document.querySelector('.phone-mockup');
+    var preset = shell && shell.getAttribute('data-chat-theme-preset');
+    if (!preset || preset === 'default' || preset === 'imessage') {
+      var floating = document.getElementById('myFloatSend');
+      if (floating) floating.remove();
+      var form = document.getElementById('chat-form');
+      if (form) {
+        ['background','background-color','border-top','backdrop-filter','-webkit-backdrop-filter'].forEach(function(key){ form.style.removeProperty(key); });
+        var capsule = form.querySelector('.input-capsule');
+        if (capsule) capsule.style.removeProperty('margin-right');
+        var nativeSend = form.querySelector('.send-icon-btn');
+        if (nativeSend) {
+          nativeSend.style.removeProperty('display');
+          nativeSend.style.removeProperty('visibility');
+        }
+      }
+      return;
+    }
+    force(); fixAll();
+  }
   sync();
   window.addEventListener('load', function(){ setTimeout(sync, 100); setTimeout(sync, 500); });
   window.addEventListener('pageshow', function(){ setTimeout(sync, 0); });
