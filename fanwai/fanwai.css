@@ -94,3 +94,53 @@ button, a, textarea, select { font: inherit; }
   .fw-role-picker { max-width: 790px; margin: 0 auto; }
   #fanwaiLayer.fw-standalone .fw-sheet { padding-left: max(18px, calc((100vw - 760px)/2)); padding-right: max(18px, calc((100vw - 760px)/2)); }
 }
+
+/* 独立页的内容排版：不再沿用聊天弹窗里厚重的封面与装饰。 */
+#fanwaiLayer.fw-standalone .fw-card {
+  min-height: 134px;
+  background: #f2f2f1;
+  border: 1px solid rgba(30,30,30,.055);
+  border-radius: 11px;
+}
+#fanwaiLayer.fw-standalone .fw-card::before,
+#fanwaiLayer.fw-standalone .fw-card::after { display: none; }
+#fanwaiLayer.fw-standalone .fw-card-daily,
+#fanwaiLayer.fw-standalone .fw-card-lateNight { min-height: 132px; }
+#fanwaiLayer.fw-standalone .fw-card-copy,
+#fanwaiLayer.fw-standalone .fw-card-daily .fw-card-copy,
+#fanwaiLayer.fw-standalone .fw-card-lateNight .fw-card-copy { margin: auto 0 4px; }
+#fanwaiLayer.fw-standalone .fw-card-english,
+#fanwaiLayer.fw-standalone .fw-index,
+#fanwaiLayer.fw-standalone .fw-preview-number,
+#fanwaiLayer.fw-standalone .fw-preview-en,
+#fanwaiLayer.fw-standalone .fw-section-overline { display: none; }
+#fanwaiLayer.fw-standalone .fw-preview-cover,
+#fanwaiLayer.fw-standalone [class*="fw-scene-"] {
+  background: #eff0ef;
+  border: 0;
+  border-radius: 11px;
+  box-shadow: none;
+}
+#fanwaiLayer.fw-standalone .fw-preview-cover::before { display: none; }
+#fanwaiLayer.fw-standalone .fw-reader-title { font-size: clamp(29px, 7.2vw, 35px); }
+#fanwaiLayer.fw-standalone .fw-bubble { font-size: 15px; line-height: 1.7; }
+#fanwaiLayer.fw-standalone .fw-empty-chat {
+  padding: 27px 0;
+  font-size: 13px;
+  color: #999;
+}
+#fanwaiLayer.fw-standalone .fw-primary {
+  background: #373b38;
+  border-color: #373b38;
+  color: #fff;
+  border-radius: 8px;
+  font-size: 14px;
+}
+#fanwaiLayer.fw-standalone .fw-reader-more { flex-basis: auto; }
+#fanwaiLayer.fw-standalone .fw-reader-more-menu {
+  max-width: min(290px, calc(100vw - 36px));
+}
+@media (max-width: 360px) {
+  #fanwaiLayer.fw-standalone .fw-card { min-height: 120px; }
+  #fanwaiLayer.fw-standalone .fw-bubble { font-size: 14px; }
+}

@@ -43,3 +43,18 @@ test('旧聊天入口跳独立页面，原引擎复用而不删除存档与续�
   assert.match(engine, /function openBranchPreview\(\)/);
   assert.match(engine, /state\.root\.hidden = false/);
 });
+
+test('g 开头的普通角色仍可选择，实际群聊由群列表排除', () => {
+  const picker = read('fanwai/fanwai-app.js');
+  const engine = read('chat/chat/js/chat-fanwai.js');
+  assert.match(picker, /groupIds\.has\(String\(role\.id\)\)/);
+  assert.doesNotMatch(picker, /!\/\^g\/i/);
+  assert.match(engine, /phone_groups/);
+  assert.match(engine, /if \(isGroup\) return;/);
+});
+
+test('账号门禁在故事扩展注册之前；独立页面不绕过隔离', () => {
+  const engine = read('chat/chat/js/chat-fanwai.js');
+  assert.ok(engine.indexOf("var earlyMeta = document.querySelector") < engine.indexOf("var TEMPLATES = ["));
+  assert.match(engine, /earlyScope\.accountId !== earlyId/);
+});

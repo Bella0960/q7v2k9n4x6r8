@@ -42,12 +42,21 @@
     }
   }
   var roles = [];
+  var groupIds = new Set();
+  try {
+    var rawGroups = JSON.parse(global.localStorage.getItem('phone_groups') || '[]');
+    if (Array.isArray(rawGroups)) {
+      rawGroups.forEach(function (group) {
+        if (group && group.id !== undefined) groupIds.add(String(group.id));
+      });
+    }
+  } catch (error) {}
   try {
     var stored = JSON.parse(global.localStorage.getItem('ai_custom_characters') || '[]');
     if (Array.isArray(stored)) {
       roles = stored.filter(function (role) {
         return role && role.id !== undefined && String(role.id).trim() &&
-          !/^g/i.test(String(role.id));
+          !groupIds.has(String(role.id));
       });
     }
   } catch (error) {
@@ -85,7 +94,7 @@
   } else {
     var list = element('div', 'fw-role-list');
     roles.forEach(function (role) {
-      var name = String(role.name || role.nickname || '未命名角色').trim().slice(0, 80);
+      var name = String(role.name || role.nickname || '未命名角色').trim().slice(0, 80) || '未命名角色';
       var row = link('', 'fanwai.html?id=' + encodeURIComponent(String(role.id)), 'fw-role-row');
       var initial = element('span', 'fw-role-initial', name.slice(0, 1));
       initial.setAttribute('aria-hidden', 'true');

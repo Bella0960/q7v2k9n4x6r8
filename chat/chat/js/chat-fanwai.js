@@ -2,6 +2,20 @@
 (function (global) {
   'use strict';
 
+  // 在暴露任何角色上下文/番外扩展 API 前验证真实账号作用域。
+  if (typeof document !== 'undefined' && document.querySelector) {
+    var earlyMeta = document.querySelector('meta[name="mao-account-id"]');
+    if (earlyMeta) {
+      var earlyId = earlyMeta.getAttribute('content') || '';
+      var earlyScope = global.__MAO_ACCOUNT_SCOPE__;
+      if (!/^MAO-[A-Z0-9]{12,24}$/.test(earlyId) ||
+          !earlyScope || earlyScope.ready !== true || earlyScope.accountId !== earlyId) {
+        console.warn('[Fanwai] 账号隔离尚未就绪，拒绝加载番外与角色插件');
+        return;
+      }
+    }
+  }
+
   var TEMPLATES = [
     { id: 'daily', name: '日常篇', subtitle: '突然想找你说说话', target: 80,
       scenario: '一个普通的日子，用户主动向角色发消息；从生活小事自然聊开。不要强制改变角色已有的关系设定。' },
@@ -295,7 +309,7 @@
 
   var standalone = !!(document.body && document.body.dataset && document.body.dataset.fanwaiStandalone === 'true');
   var roleId = new URLSearchParams(global.location.search).get('id') || '';
-  if (!roleId || /^g/i.test(roleId)) return; // 群聊保持原样。
+  if (!roleId) return; // 独立页由角色选择器提供 id。
   var accountMeta = document.querySelector('meta[name="mao-account-id"]');
   var accountId = accountMeta ? accountMeta.getAttribute('content') : '';
   var canPersist = /^MAO-[A-Z0-9]{12,24}$/.test(accountId);
@@ -306,6 +320,26 @@
       trustedAccountScope.accountId !== accountId)) {
     console.warn('[Fanwai] 已登录页面缺少匹配的账号隔离运行时，拒绝启动番外');
     return;
+  }
+  // 不用 /^g/i 误判角色：导入的普通角色 ID 也可能以 g 开头。
+  // 先看实际群聊库，仅对无法确认的传统群 ID 使用保守兜底。
+  var isGroup = false;
+  try {
+    var groups = JSON.parse(global.localStorage.getItem('phone_groups') || '[]');
+    isGroup = Array.isArray(groups) && groups.some(function (g) {
+      return g && String(g.id) === roleId;
+    });
+  } catch (error) {}
+  if (isGroup) return;
+  if (/^(?:g[0-9]{12,}|group[-_])/i.test(roleId)) {
+    var isCharacter = false;
+    try {
+      var roleRecords = JSON.parse(global.localStorage.getItem('ai_custom_characters') || '[]');
+      isCharacter = Array.isArray(roleRecords) && roleRecords.some(function (r) {
+        return r && String(r.id) === roleId;
+      });
+    } catch (error) {}
+    if (!isCharacter) return;
   }
   var scope = canPersist ? accountId : 'temporary:' + Math.random().toString(36).slice(2);
   var state = {
@@ -925,7 +959,7 @@
       row.appendChild(bubble);
       messages.appendChild(row);
     });
-    if (!episode.messages.length) messages.appendChild(label('p', 'fw-empty-chat', '第一页还没有写下文字。'));
+    if (!episode.messages.length) messages.appendChild(label('p', 'fw-empty-chat', state.busy ? '正在写下故事的开头…' : '这一页还没有内容。'))
     sheet.appendChild(messages);
     var status = label('p', 'fw-status', state.busy
       ? '正在续写… ' + episode.messages.length + '/' + episode.target
