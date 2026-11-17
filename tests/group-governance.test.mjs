@@ -307,3 +307,39 @@ test('declining stale invitations never depends on deleted roles or groups', () 
   }).ok, true, 'removed original groups cannot trap old invite receipts');
   assert.deepEqual(JSON.parse(h2.values.get('phone_groups')), []);
 });
+
+test('declining a pending invite works despite a corrupted group index', () => {
+  const h = harness();
+  const offer = h.api.offerNewGroupInvitation({
+    storage:h.storage, inviterId:'c1', groupName:'校验中',
+    memberIds:['c2']
+  });
+  assert.equal(offer.ok, true);
+  const corruptBytes = '{"groups":"unreadable"';
+  h.values.set('phone_groups', corruptBytes);
+  const declined = h.api.resolveInvitation({
+    storage:h.storage, id:offer.invitation.id, accept:false
+  });
+  assert.equal(declined.ok, true,
+    'decline must not depend on parsing unrelated group data');
+  assert.equal(declined.accepted, false);
+  assert.equal(h.values.get('phone_groups'), corruptBytes,
+    'corrupt group data must remain unchanged');
+  assert.equal(JSON.parse(h.values.get('phone_group_invitations'))[0].status,
+    'declined');
+
+  const h2 = harness();
+  const pending = h2.api.offerNewGroupInvitation({
+    storage:h2.storage, inviterId:'c1', groupName:'候选群',
+    memberIds:['c2']
+  });
+  assert.equal(pending.ok, true);
+  h2.values.set('phone_groups', corruptBytes);
+  assert.equal(h2.api.resolveInvitation({
+    storage:h2.storage, id:pending.invitation.id, accept:true
+  }).code, 'INVALID_STORAGE',
+  'accept must still fail closed if the group index cannot be read');
+  assert.equal(h2.values.get('phone_groups'), corruptBytes);
+  assert.equal(JSON.parse(h2.values.get('phone_group_invitations'))[0].status,
+    'pending');
+});
