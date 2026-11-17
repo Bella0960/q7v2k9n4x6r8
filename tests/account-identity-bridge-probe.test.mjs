@@ -85,8 +85,8 @@ test('an apparently ready identity authority without the QA proof remains untrus
     assert.equal(r.connected, true, 'availability remains separately observable');
     assert.equal(r.qaIsolatedAuthority, candidate.qaIsolatedAuthority === true);
     assert.equal(r.qaExpectedFounderId, candidate.qaExpectedFounderId || null);
-    assert.ok(!(r.qaIsolatedAuthority === true &&
-      r.qaExpectedFounderId === 'MAO-SYNTHFOUNDER001') ||
-      candidate.qaIsolatedAuthority === true && candidate.qaExpectedFounderId === 'MAO-SYNTHFOUNDER001');
+    const isAuthorizedQaFounder = r.qaIsolatedAuthority === true &&
+      r.qaExpectedFounderId === 'MAO-SYNTHFOUNDER001';
+    assert.equal(isAuthorizedQaFounder, false, 'unattested or wrong-founder authority must fail closed');
   }
 });
