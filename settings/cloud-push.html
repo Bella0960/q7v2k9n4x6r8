@@ -20,27 +20,29 @@
     })();
     </script>
     <style>
-        body { background: var(--bg); align-items: stretch; }
-        .phone-mockup {
+        /* Page-level selectors must win even when Vite emits shared settings.css later. */
+        body.cloud-push-page { background: var(--bg); align-items: stretch; }
+        body.cloud-push-page > .phone-mockup {
             width: min(520px, 100vw);
             height: 100dvh;
             min-height: 100vh;
             border: 0;
             border-radius: 0;
             box-shadow: none;
+            padding: 0;
         }
         /* Native OS indicators only; no simulated status bar. */
-        .phone-mockup > .status-bar { display: none !important; }
-        .header {
+        body.cloud-push-page > .phone-mockup > .status-bar { display: none !important; }
+        body.cloud-push-page > .phone-mockup > .header {
             padding: max(12px, env(safe-area-inset-top, 0px)) 22px 12px;
             min-height: 56px;
             align-items: center;
             justify-content: flex-start;
         }
-        .header-left { flex-direction: row; align-items: center; gap: 10px; }
-        .header .back-btn { width: 34px; height: 38px; margin-inline-start: -4px; }
-        .header-title { font-size: 29px; line-height: 1.2; font-weight: 750; letter-spacing: -0.5px; }
-        .content { padding: 0 22px calc(28px + env(safe-area-inset-bottom)); }
+        body.cloud-push-page > .phone-mockup > .header .header-left { flex-direction: row; align-items: center; gap: 10px; }
+        body.cloud-push-page > .phone-mockup > .header .back-btn { width: 34px; height: 38px; margin-inline-start: -4px; }
+        body.cloud-push-page > .phone-mockup > .header .header-title { font-size: 29px; line-height: 1.2; font-weight: 750; letter-spacing: -0.5px; }
+        body.cloud-push-page > .phone-mockup > .content { padding: 0 22px calc(28px + env(safe-area-inset-bottom)); }
         .cloud-intro-disclosure { color: var(--aux); font-size: 12px; margin: 1px 0 5px; }
         .cloud-intro-disclosure summary {
             display: inline-flex;
@@ -355,7 +357,7 @@
         html.dark .cloud-control-row select { background: var(--card-2); }
     </style>
 </head>
-<body>
+<body class="cloud-push-page">
 <div class="phone-mockup">
 
     <header class="header">
