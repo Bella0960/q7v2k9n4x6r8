@@ -28,11 +28,17 @@ const requirePattern=(name,regex,why)=>{
   if(!regex.test(source))errors.push(name+' 验证失败：'+why);
   else results.push(name+' '+why);
 };
+const forbidPattern=(name,regex,why)=>{
+  const source=read(name);
+  if(regex.test(source))errors.push(name+' 验证失败：'+why);
+  else results.push(name+' '+why);
+};
 
 requireFile('account/index.html','必须先整合并验收正式 MAO 登录（账号 PR #290）');
 requireFile('account/account.js','必须复用已验证的 MAO 账号入口');
 requireFile('shared/js/mao-account-scope.js','禁止新建第二套账号隔离');
 requireFile('encounter/encounter.html','抽卡页面未进入工程');
+forbidPattern('encounter/encounter.html',/\b(?:status-bar|status-marks|deviceTime)\b|function clock\(/,'严禁邂逅页面重新加入模拟系统状态栏或假时间计时器');
 requireFile('encounter/encounter-engine.js','本地候选引擎缺失');
 requireFile('tests/encounter-contract.test.mjs','无角色/存储合同测试');
 requireFile('tests/encounter-actual-scope.test.mjs','缺真实账号隔离测试');
