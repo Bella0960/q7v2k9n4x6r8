@@ -14,9 +14,9 @@ function loadCore() {
 }
 
 test('QA compatible chat still loads only one fanwai engine', () => {
-  assert.equal((extras.match(/fanwaiScript\\.src/g) || []).length, 1);
-  assert.match(extras, /fanwaiScript\\.src\\s*=\\s*'js\\/chat-fanwai\\.js\\?v=20261116v23'/);
-  assert.match(extras, /stopImmediatePropagation\\(\\)/);
+  assert.equal(extras.split('fanwaiScript.src').length - 1, 1);
+  assert.ok(extras.includes("fanwaiScript.src = 'js/chat-fanwai.js?v=20261116v23'"));
+  assert.ok(extras.includes('event.stopImmediatePropagation()'));
 });
 
 test('six story templates are available without replacing the existing chat UI', () => {
