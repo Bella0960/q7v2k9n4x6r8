@@ -170,3 +170,17 @@ body.chat-light-list .phone-mockup:is(:not([data-chat-theme-preset]),[data-chat-
   body.chat-light-detail .phone-mockup:is(:not([data-chat-theme-preset]),[data-chat-theme-preset="default"],[data-chat-theme-preset="imessage"]) > .chat-header { grid-template-columns:66px minmax(0,1fr) 66px; padding-inline:8px !important; }
   body.chat-light-detail .phone-mockup:is(:not([data-chat-theme-preset]),[data-chat-theme-preset="default"],[data-chat-theme-preset="imessage"]) .chat-stage { padding-inline:12px !important; }
 }
+
+
+/* Override the legacy #chat-messages forced gray background without touching saved artwork. */
+body.chat-light-detail .phone-mockup:is(:not([data-chat-theme-preset]),[data-chat-theme-preset="default"],[data-chat-theme-preset="imessage"]) #chat-messages.chat-stage {
+  background-color:transparent !important;
+  background-image:var(--chat-bg-image,none) !important;
+}
+/* The native iMessage send icon is an arrow, not two stacked SVGs. */
+body.chat-light-detail .phone-mockup:is(:not([data-chat-theme-preset]),[data-chat-theme-preset="default"]) form#chat-form .imessage-send-svg { display:none !important; }
+body.chat-light-detail .phone-mockup[data-chat-theme-preset="imessage"] form#chat-form .default-send-svg { display:none !important; }
+body.chat-light-detail .phone-mockup[data-chat-theme-preset="imessage"] form#chat-form .imessage-send-svg { display:block !important; }
+/* Preserve iMessage's existing voice-when-empty, send-when-typing interaction. */
+body.chat-light-detail .phone-mockup[data-chat-theme-preset="imessage"] form#chat-form:has(.send-icon-btn.disabled) .send-icon-btn { display:none !important; }
+body.chat-light-detail .phone-mockup[data-chat-theme-preset="imessage"] form#chat-form:has(.send-icon-btn:not(.disabled)) .voice-input-btn { display:none !important; }
