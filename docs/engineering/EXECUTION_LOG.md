@@ -187,3 +187,11 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **新增实际回归**：`c8192e4d` 在 `tests/group-game-boundary.test.mjs` 覆盖流式和隐私标记闭合情况；`03655662` 在 `tests/group-turn-integration.test.mjs` 验证公开文本、禁排队和禁落地私聊。同步 `sw.js` PWA 缓存 `v225→v226`，群游戏脚本查询版本 `game9→game10` 及相应页面、测试；旧回执契约测试的 PWA 版本断言也同步。
 - **测试级别**：从 GitHub 直接读取原有七套 Node 风格测试和运行模块，在隔离 V8 兼容 `node:test`/`assert`/`vm`/`fs` 的夹具里逐份真实执行，**87/87**：边界 37/37、群治理 8/8、群设置/记忆 5/5、游戏结果卡 10/10、回合保存屏障 8/8、回合整合 10/10、普通私聊回执恢复 9/9。另检查准确群分支五个 HTML 页面（群消息、群设置、群管理、聊天列表、记忆空间）的 17 个内联普通脚本均通过 V8 语法解析；外部脚本/模块脚本没有据此宣称已执行。**均不是原生 Node/Vite/Playwright/Android/iPhone 的验收。**
 - **仍未交付事实**：唯一 QA #299 尚未实际移植本群功能（9 个运行模块仍缺）；Cloudflare 现有 QA Worker `maomao-aw-qa-20261114` 最后部署仍为 2026-11-16 21:19:39Z 版本 `597166f2-4e59-48d3-9046-10f517cd7dd0`。整合时要在 QA 自有 `sw.js` 缓存 `v241` 基础上递增，不能直接回退到本功能分支 `v226`；必须在 QA 发布门禁明确加入原生群治理+UI/邀请浏览器测试，不覆盖管理员 001、Push 或正式数据。唯一手机入口 https://preview.mao520.com，未通过真实发布与用户手机验收前仍不得宣布「群聊第一批完整交付」。
+
+## 2026-11-17｜群权限与邀请关闭路径：保存抛错回滚、过期邀请可拒绝
+
+- **复现**：从原 #298 的准确 `shared/js/group-governance.js` 执行 `GroupGovernance.apply({save(){throw Error('QuotaExceededError')}})` 和 `leave({save(){throw ...}})`，旧实现均抛异常且**保留错误的内存变更**（角色已被标记管理员 / 用户已退群），实际落库失败。修复提交 `1c1858b2`：统一捕获保存回调异常，返回 `SAVE_FAILED`，回滚群资料，并且不提前触发治理/退群事件；保留旧数据格式。
+- **复现**：角色主动创建的新群邀请仍 pending，但某候选角色已删除时，旧 `resolveInvitation({accept:false})` 因 `MISSING_ROLE` 拒绝处理；群已从 `phone_groups` 删除时亦然。修复提交 `6bb16814`：拒绝邀请只关闭该 pending 邀请条目，毋须验证已过时的角色或目标群；接受邀请仍完整校验候选存在且不重复入群。
+- **新增额外边界**：`4b25791f` 允许在 `phone_groups` 读取格式异常时**仅拒绝邀请**，不触碰已损坏群数据；接收入群仍 fail-closed，禁止覆盖。回归 `bff37930`、`3b032ff8`、`e3ac8ea3`。
+- **验证事实**：连接器从 GitHub 获取的最终原测试主体 `tests/group-governance.test.mjs`，隔离 V8 shim 实际运行 **11/11**（包括三项新回归）；此数字不是原生 Node。首次修复前另有直接真实源码复现，能观察到上述三种失败路径。此次仅修改原 #298 功能分支与原测试、日志，没有新建 PR 或向 QA #299 推提交。
+- **阻塞现状**：同日只读核对 #299 HEAD `6521e43e` 尚未引入群模块；GitHub REST `mergeable_state=dirty`，但 `compare(base,qa-head)` 又显示 QA HEAD 基于当前目标分支额外领先 338 个提交，合并状态与祖先关系不一致，暂不推断为已确证代码冲突，要求 QA 负责人复核。QA 尚未完整 Node/Vite/Chromium + Android/iPhone 验收，原 Worker 未更新群模块，不能宣布交付或动正式版。
