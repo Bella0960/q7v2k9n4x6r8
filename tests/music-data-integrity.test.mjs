@@ -25,6 +25,31 @@ test('MUSIC-UI-001: native-status ownership, favorites and playback remain', () 
   assert.match(music, /window\.audio\.play\(\)/);
 });
 
+test('MUSIC-IMPORT-002: existing settings opens multi-file MP3 picker without removing earlier controls', () => {
+  const setting = music.slice(music.indexOf('<div class="modal-sheet" id="settingSheet">'),
+    music.indexOf('<!-- 歌单管理', music.indexOf('<div class="modal-sheet" id="settingSheet">')));
+  assert.match(setting, /aria-label="导入音乐，支持批量选择 MP3 等音频文件"/);
+  assert.match(setting, /onclick="openMusicImportFromSettings\(\)"/);
+  assert.match(setting, /睡眠定时/);
+  assert.match(setting, /自动滚动歌词/);
+  assert.match(music, /id="musicImport"[^>]*accept="[^"]*audio\/\*[^"]*\.mp3[^"]*"[^>]*multiple/);
+  assert.match(music, /function openMusicImportFromSettings\(\)\s*\{[\s\S]*?getElementById\('musicImport'\)\.click\(\);[\s\S]*?closeSetting\(\)/);
+  assert.match(music, /Array\.from\(e\.target\.files \|\| \[\]\)/);
+});
+
+test('MUSIC-IMPORT-002: tapping a song image uploads only to that song and preserves Blob backing', () => {
+  assert.match(music, /function pickMusicCoverForTrack\(trackId\)/);
+  assert.match(music, /musicPendingCoverTrackId = trackId/);
+  assert.match(music, /var file = e\.target\.files\[0\], t = getTrackById\(trackId\)/);
+  assert.match(music, /ownerType: 'music-cover', ownerId: t\.id/);
+  for (const id of ['recent-list', 'search-results', 'favList']) {
+    assert.ok(music.includes("'" + id + "'"), 'cover picker list missing: ' + id);
+  }
+  assert.match(music, /event\.stopPropagation\(\)/);
+  assert.match(music, /musicWriteMap\(MUSIC_COVERS_KEY, covers\)/);
+  assert.match(music, /musicMedia\.putBlob\(file,/);
+});
+
 test('MUSIC-UI-001: import persists binary then catalog, rejects quota errors, preserves references', () => {
   const start = music.indexOf("document.getElementById('musicImport').addEventListener");
   const end = music.indexOf('// ===== 断点续播 =====', start);
