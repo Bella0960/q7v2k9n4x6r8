@@ -791,9 +791,13 @@ function renderRoleProfile() {
                 '<button class="avatar-library-autonomy-toggle" type="button" data-profile-action="avatar-autonomy" aria-pressed="' + (role.avatarAutonomyEnabled !== false ? 'true' : 'false') + '">' +
                 (role.avatarAutonomyEnabled !== false ? '已开启' : '已关闭') + '</button></div>' +
             '<div class="avatar-library-status" id="avatarLibraryStatus" aria-live="polite" role="status"></div>' +
-            '<div class="avatar-pair-heading"><h4>配对头像</h4><p>识别为一组的两张图片会并排关联保存，也可以手动选择。</p></div>' +
-            '<div id="avatarPairBuilder" class="avatar-pair-builder"></div>' +
-            '<div id="avatarPairList" class="avatar-pair-container"></div>' +
+            '<details class="avatar-pair-disclosure" id="avatarPairDisclosure">' +
+                '<summary class="avatar-pair-summary">配对头像</summary>' +
+                '<div class="avatar-pair-panel">' +
+                    '<div id="avatarPairBuilder" class="avatar-pair-builder"></div>' +
+                    '<div id="avatarPairList" class="avatar-pair-container"></div>' +
+                '</div>' +
+            '</details>' +
             '<div class="avatar-library-grid" id="avatarLibraryGrid"><div class="avatar-library-empty">正在载入头像…</div></div>' +
         '</section>' +
         '<div class="profile-section-kicker">CHARACTER SETTINGS / 角色设定</div>' +
