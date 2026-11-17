@@ -13,6 +13,12 @@ function loadCore() {
   return context.window.MAOMAOFanwaiCore;
 }
 
+test('QA compatible chat still loads only one fanwai engine', () => {
+  assert.equal((extras.match(/fanwaiScript\\.src/g) || []).length, 1);
+  assert.match(extras, /fanwaiScript\\.src\\s*=\\s*'js\\/chat-fanwai\\.js\\?v=20261116v23'/);
+  assert.match(extras, /stopImmediatePropagation\\(\\)/);
+});
+
 test('six story templates are available without replacing the existing chat UI', () => {
   const core = loadCore();
   assert.deepEqual(Array.from(core.templates.map(t => t.id)), [

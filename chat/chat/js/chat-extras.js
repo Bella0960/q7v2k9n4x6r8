@@ -114,6 +114,12 @@
     });
   }
 
+  // 原 QA 加号面板初始化后单次加载番外引擎；保留其账号/存档保护。
+  var fanwaiScript = document.createElement('script');
+  fanwaiScript.src = 'js/chat-fanwai.js?v=20261116v23';
+  fanwaiScript.onerror = function () { console.warn('[Fanwai] 扩展模块加载失败'); };
+  document.body.appendChild(fanwaiScript);
+
   // 手机返回键（popstate）关闭顶层弹层
   window.addEventListener('popstate', function () {
     if (modalOverlay && modalOverlay.classList.contains('active')) closeModal();
@@ -1257,10 +1263,5 @@
       window.location.assign(destination);
     }, true);
   }
-
-  var fanwaiScript = document.createElement('script');
-  fanwaiScript.src = 'js/chat-fanwai.js?v=20261115v6';
-  fanwaiScript.onerror = function () { console.warn('[Fanwai] 扩展模块加载失败'); };
-  document.body.appendChild(fanwaiScript);
 
 })();

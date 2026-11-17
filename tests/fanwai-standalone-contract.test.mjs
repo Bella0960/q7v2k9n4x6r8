@@ -127,3 +127,9 @@ test('不替换 QA 引擎也能挂载独立全屏：兼容旧 plus 与 phone 锚
   assert.match(css, /#fanwaiLayer\.fw-standalone\.fw-legacy-engine/);
   assert.match(css, /height: 100dvh/);
 });
+
+test('聊天页仅保留单次原 QA 引擎加载，避免初始化重复', () => {
+  const extras = read('chat/chat/js/chat-extras.js');
+  assert.equal((extras.match(/fanwaiScript\\.src/g) || []).length, 1);
+  assert.match(extras, /20261116v23/);
+});
