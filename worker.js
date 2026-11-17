@@ -276,7 +276,17 @@ export default {
       return authorizedAccount ? await injectAccountScope(response, authorizedAccount) : response;
     }
     if (env.ASSETS) {
-      const response = await env.ASSETS.fetch(request);
+      let assetRequest = request;
+      if (isHtmlDocument && authorizedAccount) {
+        // A conditional 304 from static assets has no HTML body to inject.
+        // Never let the browser reuse a stale, unscoped private document.
+        const headers = new Headers(request.headers);
+        for (const name of ['if-none-match', 'if-modified-since', 'if-range', 'range']) {
+          headers.delete(name);
+        }
+        assetRequest = new Request(request, { headers });
+      }
+      const response = await env.ASSETS.fetch(assetRequest);
       return isHtmlDocument && authorizedAccount
         ? await injectAccountScope(response, authorizedAccount)
         : response;
