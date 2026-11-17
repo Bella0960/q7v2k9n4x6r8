@@ -111,6 +111,19 @@ test('character profile keeps an explicit role-scoped opt-out across open chat t
 });
 
 
+test('portrait pairing stays collapsed until requested and keeps archive typography', () => {
+  const manager = fs.readFileSync(path.join(root, 'worldbook/characters/js/characters-manager.js'), 'utf8');
+  const characterPage = fs.readFileSync(path.join(root, 'worldbook/characters/characters.html'), 'utf8');
+  assert.ok(manager.includes("'<details class=\\\"avatar-pair-disclosure\\\" id=\\\"avatarPairDisclosure\\\">")); 
+  assert.ok(manager.includes("'<summary class=\\\"avatar-pair-summary\\\">配对头像</summary>"));
+  assert.ok(manager.includes("'<div id=\\\"avatarPairBuilder\\\" class=\\\"avatar-pair-builder\\\"></div>'"));
+  assert.ok(manager.includes("'<div id=\\\"avatarPairList\\\" class=\\\"avatar-pair-container\\\"></div>'"));
+  assert.equal(manager.includes('avatar-pair-heading'), false, 'old always-visible heading is removed');
+  assert.ok(characterPage.includes('.avatar-pair-disclosure:not([open]) ~ .avatar-library-grid .avatar-pair-pick'));
+  assert.ok(characterPage.includes('.avatar-pair-panel .avatar-pair-actions button'));
+  assert.ok(characterPage.includes('.avatar-pair-summary:focus-visible'));
+});
+
 test('avatar-control marker is honored only at the end of a completed assistant reply', () => {
   const { api } = createChoice();
   const plan = api.prepare('role-A', makeLibrary(), '普通聊天', { now: 100000000 });
