@@ -173,11 +173,16 @@ export async function sendWebPush(
   subscription,
   payloadText,
   keys,
-  { nowMs = Date.now(), fetchImpl = fetch, beforeSend = null } = {}
+  { nowMs = Date.now(), fetchImpl = fetch, beforeSend = null, deliveryMode = 'encrypted' } = {}
 ) {
+  if (deliveryMode !== 'encrypted' && deliveryMode !== 'no_payload') {
+    throw new PushConfigError('不支持的 Web Push 投递模式');
+  }
   const endpoint = subscription.endpoint;
   const authorization = await buildVapidAuthorization(endpoint, keys, nowMs);
-  const body = await encryptPayload(subscription, payloadText);
+  // "远程空载测试"不携带密文或 Content-Encoding，真正将加密阶段排除。
+  // 正常消息继续使用原 RFC 8291 aes128gcm 加密，不改变角色通知行为。
+  const body = deliveryMode === 'no_payload' ? null : await encryptPayload(subscription, payloadText);
 
   // This callback must be synchronous: it runs after asynchronous crypto work
   // and immediately before fetchImpl is invoked, with no intervening await.
@@ -199,12 +204,14 @@ export async function sendWebPush(
       redirect: 'error',
       headers: {
         Authorization: authorization,
-        'Content-Encoding': 'aes128gcm',
-        'Content-Type': 'application/octet-stream',
+        ...(body ? {
+          'Content-Encoding': 'aes128gcm',
+          'Content-Type': 'application/octet-stream'
+        } : {}),
         TTL: String(PUSH_TTL_SECONDS),
         Urgency: 'normal'
       },
-      body,
+      ...(body ? { body } : {}),
       signal: controller?.signal
     });
   } catch (error) {
