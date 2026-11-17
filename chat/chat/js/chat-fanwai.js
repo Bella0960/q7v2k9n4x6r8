@@ -293,6 +293,7 @@
   });
   if (typeof document === 'undefined' || !document.createElement) return;
 
+  var standalone = !!(document.body && document.body.dataset && document.body.dataset.fanwaiStandalone === 'true');
   var roleId = new URLSearchParams(global.location.search).get('id') || '';
   if (!roleId || /^g/i.test(roleId)) return; // 群聊保持原样。
   var accountMeta = document.querySelector('meta[name="mao-account-id"]');
@@ -548,12 +549,24 @@
   function topBar(sheet, title, secondaryAction, secondaryLabel) {
     var bar = document.createElement('div');
     bar.className = 'fw-head';
-    bar.append(
-      label('span', 'fw-brandline', '番外  /  STORIES'),
-      button(secondaryAction || 'close', secondaryLabel || '关闭', 'fw-close')
-    );
+    if (standalone) {
+      var switchButton = button('switch-role', '‹', 'fw-switch-role');
+      switchButton.setAttribute('aria-label', '更换番外角色');
+      var nextAction = secondaryAction === 'close' ? 'back' : (secondaryAction || 'home');
+      var nextLabel = secondaryAction === 'close' ? '目录' : (secondaryLabel || '桌面');
+      bar.append(
+        switchButton,
+        label('span', 'fw-brandline', '番外'),
+        button(nextAction, nextLabel, 'fw-close')
+      );
+    } else {
+      bar.append(
+        label('span', 'fw-brandline', '番外  /  STORIES'),
+        button(secondaryAction || 'close', secondaryLabel || '关闭', 'fw-close')
+      );
+    }
     sheet.appendChild(bar);
-    if (title) sheet.appendChild(label('div', 'fw-topline', title));
+    if (title && !standalone) sheet.appendChild(label('div', 'fw-topline', title));
   }
 
   function countPicker(id, suggestedCount) {
@@ -969,6 +982,10 @@
 
   function close() {
     if (state.busy) pause();
+    if (standalone) {
+      global.location.assign('fanwai.html');
+      return;
+    }
     state.opened = false;
     state.viewSerial++;
     state.branchSource = null;
@@ -1107,6 +1124,11 @@
     var node = event.target.closest('[data-action]');
     if (!node || !state.root.contains(node)) return;
     var key = node.dataset.action;
+    if (standalone && (key === 'switch-role' || key === 'home')) {
+      if (state.busy) pause();
+      global.location.assign(key === 'home' ? '../index.html' : 'fanwai.html');
+      return;
+    }
     if (key === 'toggle-settings') {
       var drawer = state.root.querySelector('.fw-settings-drawer');
       if (!drawer) return;
@@ -1192,23 +1214,29 @@
   }
 
   function init() {
-    var grid = document.querySelector('#plusPanelOverlay .plus-grid');
-    var shell = document.querySelector('.phone-mockup');
-    if (!grid || !shell || grid.querySelector('[data-feat="fanwai"]')) return;
-    var item = document.createElement('button');
-    item.className = 'plus-item'; item.type = 'button'; item.dataset.feat = 'fanwai';
-    item.innerHTML = '<span class="plus-icon-circle"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span><span class="plus-label">番外</span>';
-    item.addEventListener('click', function () {
-      if (typeof global.closePlusPanel === 'function') global.closePlusPanel();
-      openPicker();
-    });
-    grid.appendChild(item);
-    var style = document.createElement('link'); style.rel = 'stylesheet';
-    style.href = 'js/chat-fanwai.css?v=20261115softcore5';
-    document.head.appendChild(style);
+    var grid = standalone ? null : document.querySelector('#plusPanelOverlay .plus-grid');
+    var shell = standalone ? document.getElementById('fanwaiApp') : document.querySelector('.phone-mockup');
+    if (!shell || (!standalone && (!grid || grid.querySelector('[data-feat="fanwai"]')))) return;
+    if (!standalone) {
+      var item = document.createElement('button');
+      item.className = 'plus-item'; item.type = 'button'; item.dataset.feat = 'fanwai';
+      item.innerHTML = '<span class="plus-icon-circle"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span><span class="plus-label">番外</span>';
+      item.addEventListener('click', function () {
+        if (typeof global.closePlusPanel === 'function') global.closePlusPanel();
+        openPicker();
+      });
+      grid.appendChild(item);
+      var style = document.createElement('link'); style.rel = 'stylesheet';
+      style.href = 'js/chat-fanwai.css?v=20261115softcore5';
+      document.head.appendChild(style);
+    }
     var root = document.createElement('div');
-    root.id = 'fanwaiLayer'; root.className = 'fw-layer'; root.hidden = true;
-    root.innerHTML = '<div class="fw-backdrop" data-action="close"></div><section class="fw-sheet" role="dialog" aria-modal="true" aria-label="番外剧场"></section>';
+    root.id = 'fanwaiLayer';
+    root.className = 'fw-layer' + (standalone ? ' fw-standalone' : '');
+    root.hidden = true;
+    root.innerHTML = standalone
+      ? '<section class="fw-sheet" role="main" aria-label="番外剧场"></section>'
+      : '<div class="fw-backdrop" data-action="close"></div><section class="fw-sheet" role="dialog" aria-modal="true" aria-label="番外剧场"></section>';
     root.addEventListener('click', action);
     root.addEventListener('change', function (event) {
       var target = event.target;
@@ -1224,6 +1252,7 @@
       if (event.key === 'Escape' && state.opened) close();
     });
     global.addEventListener('pagehide', function () { if (state.busy) pause(); });
+    if (standalone) openPicker();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });

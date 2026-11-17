@@ -115,3 +115,11 @@ npm run build
 - 本阶段的独立番外属于**本机存储**，不等于跨设备云端同步，也未合并到正式版。后续接云存储须另做服务器端身份校验与迁移验收。
 - 「参考角色记忆」目前只读取当前角色记录的 `memory` 与已确认的 `MemoryRecall` 长期记忆，不读取所有世界书、原始聊天历史或其他账号数据。其他只读来源请通过 `registerContextProvider` 接入，并由用户明确选择启用。
 - 隐藏的篇幅与记忆偏好会记住当前**账号 + 角色**的选择（同一浏览器的独立番外库），不意味着跨设备同步。
+
+## 2026-11-18 · 桌面独立应用迁移（源 PR #296，待 QA 整合）
+
+- 入口新增 `fanwai/fanwai.html` 桌面应用图标 `app_fanwai`；旧桌面布局只追加该图标，保留已保存的布局与移除状态。聊天「＋」入口只做当前角色的深链跳转，**不再加载半屏弹窗**。
+- `fanwai/fanwai-app.js` 先进行账号隔离检查，再列出当前账号本机 `ai_custom_characters` 中的可用单人角色；选择后以 URL `?id=<roleId>` 加载同一份 `chat-fanwai.js` 引擎。不存在的角色不会进入生成页。账号 scope 不 ready 时不读取角色列表。
+- 独立页用 `data-fanwai-standalone=true` 开启整屏阅读适配；无假的手机状态栏、不叠加底部导航或顶层封面；顶部仅一行轻薄导航。核心 `maomao-fanwai-v1` IndexedDB、账号/角色隔离、生成/断点续写/分支机制不变，无迁移和数据删除。
+- Vite 原生 MPA 自动扫描新 HTML；CSS 只在独立页叠加作用域，不影响聊天主题。源分支不具备 #290 账号资源，**本 PR 不可单独合并或部署**；由唯一 QA 整合分支按文件合入，不能用源分支旧版 SW 覆盖新安全版本。
+- 验收还需真实 `npm run build`、`node --test tests/fanwai-standalone-contract.test.mjs`、375/390/430 视口、Android 与 iPhone 真机、真实 AI 与账号切换测试。

@@ -1,0 +1,96 @@
+/* 番外独立应用：整屏、细顶部、留足阅读空间。所有选择器仅在本页生效。 */
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+html, body { width: 100%; min-height: 100%; margin: 0; }
+body {
+  background: #f8f8f8; color: #252525;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+button, a, textarea, select { font: inherit; }
+#fanwaiApp { min-height: 100vh; min-height: 100dvh; }
+.fw-role-picker[hidden] { display: none !important; }
+.fw-role-picker { min-height: 100vh; min-height: 100dvh; padding: max(4px, env(safe-area-inset-top, 0px)) 18px max(16px, env(safe-area-inset-bottom, 0px)); }
+.fw-app-header { position: relative; height: 44px; display: flex; align-items: center; justify-content: space-between; }
+.fw-app-back { width: 40px; height: 40px; display: grid; place-items: center; color: #222; text-decoration: none; }
+.fw-app-name { position: absolute; left: 50%; transform: translateX(-50%); margin: 0; font-size: 15px; font-weight: 550; letter-spacing: .06em; }
+.fw-header-spacer { display: block; width: 40px; }
+.fw-role-content { max-width: 680px; margin: 35px auto 0; }
+.fw-role-title { margin: 0 0 24px; font: 400 31px/1.35 "Songti SC", STSong, Georgia, serif; color: #262626; }
+.fw-role-hint { color: #858585; font-size: 14px; line-height: 1.8; }
+.fw-role-list { display: flex; flex-direction: column; }
+.fw-role-row { display: flex; align-items: center; gap: 13px; min-height: 72px; border-bottom: 1px solid #e8e8e8; color: #303030; text-decoration: none; }
+.fw-role-row:active { opacity: .58; }
+.fw-role-initial { width: 38px; height: 38px; flex: 0 0 38px; display: grid; place-items: center; border-radius: 50%; background: #eeefef; color: #686868; font: 400 17px Georgia, serif; }
+.fw-role-name { flex: 1; min-width: 0; font-size: 15px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+.fw-role-arrow { color: #888; font-size: 23px; font-weight: 300; }
+.fw-role-retry { display: inline-block; margin: 12px 0; padding: 10px 0; color: #444; font-size: 14px; text-underline-offset: 3px; }
+
+#fanwaiLayer.fw-standalone { position: fixed; inset: 0; z-index: 1; display: block; background: #fafafa; }
+#fanwaiLayer.fw-standalone .fw-backdrop { display: none; }
+#fanwaiLayer.fw-standalone .fw-sheet {
+  width: 100%; height: 100vh; height: 100dvh; max-height: none;
+  padding: max(4px, env(safe-area-inset-top, 0px)) 18px max(14px, env(safe-area-inset-bottom, 0px));
+  background: #fafafa; border-radius: 0; box-shadow: none; animation: none;
+  overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
+}
+#fanwaiLayer.fw-standalone .fw-sheet::before,
+#fanwaiLayer.fw-standalone .fw-sheet::after { display: none; }
+#fanwaiLayer.fw-standalone .fw-head {
+  height: 44px; min-height: 44px; margin: 0 0 18px; padding: 0;
+  display: flex; align-items: center; justify-content: space-between;
+  position: relative; background: transparent;
+}
+#fanwaiLayer.fw-standalone .fw-brandline {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  margin: 0; padding: 0; color: #292929; font: 550 15px/1.2 -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+  letter-spacing: .06em;
+}
+#fanwaiLayer.fw-standalone .fw-switch-role,
+#fanwaiLayer.fw-standalone .fw-close {
+  background: transparent; border: 0; box-shadow: none;
+  min-width: 44px; height: 44px; border-radius: 0;
+  display: flex; align-items: center; justify-content: center; padding: 0;
+  color: #424242; font-size: 13px;
+}
+#fanwaiLayer.fw-standalone .fw-switch-role { justify-content: flex-start; font-size: 31px; font-weight: 300; }
+#fanwaiLayer.fw-standalone .fw-close { justify-content: flex-end; }
+#fanwaiLayer.fw-standalone .fw-topline { display: none; }
+#fanwaiLayer.fw-standalone .fw-hero {
+  min-height: 118px; height: auto; padding: 17px 4px 23px; margin: 0 0 24px;
+  background: transparent; box-shadow: none; border-radius: 0; border: 0;
+}
+#fanwaiLayer.fw-standalone .fw-hero::before,
+#fanwaiLayer.fw-standalone .fw-hero::after,
+#fanwaiLayer.fw-standalone .fw-hero-object,
+#fanwaiLayer.fw-standalone .fw-hero-overline,
+#fanwaiLayer.fw-standalone .fw-hero-edition { display: none; }
+#fanwaiLayer.fw-standalone .fw-hero-title { margin: 0 0 8px; font-size: 29px; line-height: 1.3; color: #292929; }
+#fanwaiLayer.fw-standalone .fw-hero-caption { font-size: 13px; color: #999; }
+#fanwaiLayer.fw-standalone .fw-grid { gap: 12px; }
+#fanwaiLayer.fw-standalone .fw-card { min-height: 153px; padding: 15px; border-radius: 13px; box-shadow: none; }
+#fanwaiLayer.fw-standalone .fw-card-title { font-size: 21px; }
+#fanwaiLayer.fw-standalone .fw-card-sub { font-size: 11px; }
+#fanwaiLayer.fw-standalone .fw-preview { padding-bottom: max(22px, env(safe-area-inset-bottom, 0px)); }
+#fanwaiLayer.fw-standalone .fw-preview-cover { min-height: 220px; }
+#fanwaiLayer.fw-standalone .fw-preview-title { font-size: 35px; }
+#fanwaiLayer.fw-standalone .fw-reading {
+  display: flex; flex-direction: column;
+  height: 100%; min-height: 0; max-height: none; overflow: hidden;
+  padding-bottom: max(14px, env(safe-area-inset-bottom, 0px));
+}
+#fanwaiLayer.fw-standalone .fw-reading .fw-head { margin-bottom: 8px; }
+#fanwaiLayer.fw-standalone .fw-reader-heading { margin: 0 0 12px; }
+#fanwaiLayer.fw-standalone .fw-reader-title { font-size: clamp(27px, 7vw, 36px); margin: 0; }
+#fanwaiLayer.fw-standalone .fw-progress { margin-bottom: 9px; }
+#fanwaiLayer.fw-standalone .fw-messages { min-height: 0; padding: 16px 1px; flex: 1 1 auto; }
+#fanwaiLayer.fw-standalone .fw-bubble { max-width: 92%; font-size: 14px; line-height: 1.72; padding: 11px 14px; border-radius: 12px; }
+#fanwaiLayer.fw-standalone .fw-user .fw-bubble { border-radius: 12px; background: #414541; }
+#fanwaiLayer.fw-standalone .fw-status { font-size: 12px; margin: 8px 0; }
+#fanwaiLayer.fw-standalone .fw-actions { gap: 8px; margin: 0; }
+#fanwaiLayer.fw-standalone .fw-actions .fw-primary { flex: 1 1 auto; min-height: 44px; }
+#fanwaiLayer.fw-standalone .fw-reader-more-toggle { min-height: 44px; }
+@media (min-width: 700px) {
+  .fw-role-picker { max-width: 790px; margin: 0 auto; }
+  #fanwaiLayer.fw-standalone .fw-sheet { padding-left: max(18px, calc((100vw - 760px)/2)); padding-right: max(18px, calc((100vw - 760px)/2)); }
+}
