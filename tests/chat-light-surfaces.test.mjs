@@ -78,3 +78,20 @@ test('clean chat layout is scoped to its own pages, and no fake status bars rema
  assert.match(css,/grid-template-columns:88px minmax\(0,1fr\) 88px/);
  assert.match(css,/max\(8px,env\(safe-area-inset-bottom,0px\)\)/);
 });
+
+
+test('iMessage compact header overrides original 126px absolute layout and keeps original actions',()=>{
+ const runtime=read('shared/css/chat-beauty-runtime.css');
+ const css=read('shared/css/chat-light-surfaces.css');
+ assert.match(runtime,/flex:0 0 126px !important/,'regression must model old runtime CSS');
+ assert.match(runtime,/top:24px !important/,'regression must model old absolute title');
+ assert.match(runtime,/padding:15px 16px calc\(82px \+ env\(safe-area-inset-bottom\)\) !important/);
+ assert.match(css,/flex:0 0 auto !important/);
+ assert.match(css,/height:auto !important/);
+ assert.match(css,/position:static !important/);
+ assert.match(css,/\.chat-header-avatar \{\s*display:none !important;/);
+ assert.match(css,/\.chat-status-sub \{\s*display:block !important;/);
+ assert.match(css,/\.chat-header-actions \{\s*display:flex !important;/);
+ assert.match(css,/min-width:44px !important;/);
+ assert.match(css,/#chat-messages\.chat-stage \{\s*background-color:transparent !important;/);
+});
