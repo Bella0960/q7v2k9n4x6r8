@@ -743,9 +743,9 @@
     params.set('limit', '50');
     if (cursor) params.set('cursor', cursor);
     try {
-      const result = await api(
+      const result = verifiedDirectoryPayload(await api(
         '/api/admin/accounts/' + encodeURIComponent(accountId) + '/audit?' + params.toString()
-      );
+      ), 'records');
       if (selectedAccountId !== accountId || requestSequence !== auditRequestSequence) return;
       const records = Array.isArray(result.records) ? result.records : [];
       if (reset) list.replaceChildren();
