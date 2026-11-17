@@ -146,3 +146,32 @@ test('partial directory failures preserve the other successful mobile list', asy
     }
   }
 });
+
+test('failed retries show updated errors instead of an unhandled rejection', async () => {
+  const begin = source.indexOf('  function showError(message, retry) {');
+  const finish = source.indexOf('\n\n  function hideError()', begin);
+  assert.ok(begin >= 0 && finish > begin, 'existing retry display is available');
+  let errorPanel = null;
+  const element = (tag, className, text) => ({
+    tag, className, textContent: text, children: [], isConnected: true, disabled: false,
+    replaceChildren(...children) { this.children = children; },
+    appendChild(child) { this.children.push(child); },
+    addEventListener(type, listener) { if (type === 'click') this.click = listener; }
+  });
+  const create = new Function('document', 'el', '$', 'setButtonsDisabled', 'busy',
+    source.slice(begin, finish) + '\nreturn showError;');
+  const showError = create(
+    {
+      querySelector: () => ({ after(node) { errorPanel = node; } })
+    },
+    element,
+    id => id === 'adminError' ? errorPanel : null,
+    () => {},
+    false
+  );
+  showError('首次错误', async () => { throw new Error('连接尚未恢复'); });
+  assert.equal(errorPanel.children[0].textContent, '首次错误');
+  await errorPanel.children[1].click();
+  assert.equal(errorPanel.children[0].textContent, '连接尚未恢复');
+  assert.equal(errorPanel.children[1].textContent, '重新检查');
+});
