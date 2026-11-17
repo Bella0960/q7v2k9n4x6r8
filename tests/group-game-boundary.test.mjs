@@ -129,6 +129,48 @@ test('a role card from another group cannot be used for game reveal', () => {
   assert.equal(h.game.getPublic('g1').status, 'active');
 });
 
+test('duplicated or impossible persisted players never enter public game vote counts', () => {
+  const invalidPlayers = [
+    ['r1', 'r1', 'r2'],
+    ['r1', '__user', 'r2'],
+    ['r1', 'r2', 100],
+    ['r1'],
+    Array.from({length:25}, (_, i) => 'r' + i)
+  ];
+  for (const players of invalidPlayers) {
+    const h = harness();
+    assert.equal(begin(h).ok, true);
+    const publicKey = 'phone_group_game_v1_g1';
+    const prior = JSON.parse(h.records.get(publicKey));
+    prior.players = players;
+    const damaged = JSON.stringify(prior);
+    const privateBefore = [...h.records.keys()].filter(k =>
+      k.startsWith('phone_group_game_private_v1_')).sort();
+    h.storage.setItem(publicKey, damaged);
+    assert.equal(h.game.getPublic('g1'), null,
+      'invalid player roster must not be accepted as a valid session');
+    assert.equal(begin(h).code, 'CORRUPT_SESSION',
+      'new round cannot silently overwrite corrupted old session');
+    assert.equal(h.records.get(publicKey), damaged,
+      'original persisted bytes must remain for recovery');
+    assert.deepEqual([...h.records.keys()].filter(k =>
+      k.startsWith('phone_group_game_private_v1_')).sort(), privateBefore,
+      'invalid public record cannot trigger cleanup of private cards');
+  }
+});
+
+test('legacy group user entry cannot become an AI secret-game player', () => {
+  const h = harness();
+  const g = group();
+  g.members.push({id:'__user', name:'用户'});
+  const result = begin(h, {group:g});
+  assert.equal(result.ok, true);
+  assert.deepEqual(Array.from(result.session.players), ['r1', 'r2', 'r3']);
+  assert.equal(result.session.players.includes('__user'), false);
+  assert.equal(h.game.buildRoleContext({groupId:'g1', roleId:'__user'}).code,
+    'NOT_PLAYER', 'user metadata cannot act as a secret AI role');
+});
+
 test('corrupt existing public game state is never overwritten by a new round', () => {
   const h = harness();
   const corrupted = '{"status":"active","unparseable":';
