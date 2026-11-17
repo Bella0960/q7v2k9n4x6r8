@@ -1241,23 +1241,26 @@
     oldHandleFeature(feat);
   };
 
-  // 番外已迁至桌面独立应用：原聊天「＋」仅保留直达当前角色的快捷入口。
-  // 不再在聊天里载入半屏弹层，也不触碰主线消息和角色数据。
+  // 保留 QA 已验收的番外插件加载链，不再创建第二个入口。
+  // 通过捕获阶段仅改写「＋」里番外按钮的点击目标：不再弹小窗。
   var fanwaiGrid = document.querySelector('#plusPanelOverlay .plus-grid');
-  if (fanwaiGrid && !fanwaiGrid.querySelector('[data-feat="fanwai"]')) {
-    var fanwaiEntry = document.createElement('button');
-    fanwaiEntry.type = 'button';
-    fanwaiEntry.className = 'plus-item';
-    fanwaiEntry.dataset.feat = 'fanwai';
-    fanwaiEntry.innerHTML = '<span class="plus-icon-circle"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span><span class="plus-label">番外</span>';
-    fanwaiEntry.addEventListener('click', function () {
+  if (fanwaiGrid) {
+    fanwaiGrid.addEventListener('click', function (event) {
+      var entry = event.target && event.target.closest('[data-feat="fanwai"]');
+      if (!entry || !fanwaiGrid.contains(entry)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation(); // 原引擎不再在聊天里弹半屏
       if (typeof closePlusPanel === 'function') closePlusPanel();
       var selectedRole = new URLSearchParams(window.location.search).get('id');
       var destination = '../../fanwai/fanwai.html';
-      if (selectedRole && !/^g/i.test(selectedRole)) destination += '?id=' + encodeURIComponent(selectedRole);
+      if (selectedRole) destination += '?id=' + encodeURIComponent(selectedRole);
       window.location.assign(destination);
-    });
-    fanwaiGrid.appendChild(fanwaiEntry);
+    }, true);
   }
+
+  var fanwaiScript = document.createElement('script');
+  fanwaiScript.src = 'js/chat-fanwai.js?v=20261115v6';
+  fanwaiScript.onerror = function () { console.warn('[Fanwai] 扩展模块加载失败'); };
+  document.body.appendChild(fanwaiScript);
 
 })();

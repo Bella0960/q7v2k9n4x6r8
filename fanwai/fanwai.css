@@ -189,3 +189,48 @@ button, a, textarea, select { font: inherit; }
 
 /* 返回箭头始终是真正的上一级；只有阅读/预览页显示右侧角色切换。 */
 #fanwaiLayer.fw-standalone .fw-header-spacer { width: 44px; height: 44px; flex: 0 0 44px; }
+
+
+/* #299 新版安全引擎无须修改源码：兼容旧手机挂载点但完全摊开视口。 */
+#fanwaiLegacyHost { display: contents; }
+#fanwaiLegacyHost .fw-legacy-plus { display: none !important; }
+#fanwaiLegacyHost .phone-mockup {
+  position: static;
+  width: 100%;
+  height: 100dvh;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+#fanwaiLayer.fw-standalone.fw-legacy-engine .fw-sheet {
+  padding-top: calc(58px + env(safe-area-inset-top, 0px));
+}
+#fanwaiLayer.fw-standalone.fw-legacy-engine .fw-head { display: none; }
+#fanwaiLayer.fw-standalone.fw-legacy-engine .fw-reading { height: 100%; }
+#fanwaiLayer.fw-standalone.fw-legacy-engine .fw-reading .fw-head { display: none; }
+#fanwaiLayer.fw-standalone.fw-legacy-engine .fw-backdrop { display: none; }
+.fw-app-header.fw-bridge-nav {
+  position: fixed;
+  top: max(4px, env(safe-area-inset-top, 0px));
+  left: 18px; right: 18px;
+  height: 44px;
+  z-index: 2100;
+  background: #fafafa;
+}
+.fw-app-switch {
+  min-width: 40px;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  font-size: 13px;
+  color: #444;
+  text-decoration: none;
+}
+.fw-app-switch[hidden] { display: none !important; }
+@media (min-width: 700px) {
+  .fw-app-header.fw-bridge-nav {
+    left: max(18px, calc((100vw - 760px)/2));
+    right: max(18px, calc((100vw - 760px)/2));
+  }
+}

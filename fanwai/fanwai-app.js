@@ -99,8 +99,89 @@
       return;
     }
     container.hidden = true;
+
+    // QA #299 的引擎有更新的暂停/存档保护，不应该被旧番外引擎覆盖。
+    // 提前提供旧引擎需要的两个挂载锚点；新版引擎会自动使用 #fanwaiApp。
+    var appHost = document.getElementById('fanwaiApp');
+    if (appHost) {
+      var legacyHost = element('div', 'fw-legacy-host');
+      legacyHost.id = 'fanwaiLegacyHost';
+      var oldPanel = element('div', 'fw-legacy-plus');
+      oldPanel.id = 'plusPanelOverlay';
+      oldPanel.hidden = true;
+      oldPanel.appendChild(element('div', 'plus-grid'));
+      var oldPhone = element('div', 'phone-mockup');
+      legacyHost.append(oldPanel, oldPhone);
+      appHost.appendChild(legacyHost);
+    }
+
+    function installLegacyNavigation(layer) {
+      layer.classList.add('fw-standalone', 'fw-legacy-engine');
+      var sheet = layer.querySelector('.fw-sheet');
+      if (!sheet) return false;
+      sheet.setAttribute('role', 'main');
+      sheet.removeAttribute('aria-modal');
+      var top = baseHeader();
+      top.classList.add('fw-bridge-nav');
+      var back = top.querySelector('.fw-app-back');
+      var switchRole = link('角色', 'fanwai.html', 'fw-app-switch');
+      var spacer = top.querySelector('.fw-header-spacer');
+      if (spacer) spacer.replaceWith(switchRole);
+      back.removeAttribute('href');
+      back.setAttribute('aria-label', '返回上一级');
+      back.addEventListener('click', function (event) {
+        event.preventDefault();
+        if (sheet.classList.contains('fw-reading')) {
+          var readerBack = sheet.querySelector('.fw-reader-menu [data-action="back"]');
+          if (readerBack) readerBack.click(); // QA 引擎自己等待 pause / 未保存内容
+          return;
+        }
+        var innerBack = sheet.querySelector('.fw-head [data-action="back"], .fw-head [data-action="return-story"]');
+        if (innerBack) {
+          innerBack.click();
+          return;
+        }
+        global.location.assign('fanwai.html'); // 目录 -> 选角色
+      });
+      appHost.appendChild(top);
+      function refreshSwitch() {
+        // 仅在故事目录提供切换角色；阅读中绝不能绕过引擎的保存门禁。
+        switchRole.hidden = !sheet.querySelector('.fw-grid');
+      }
+      refreshSwitch();
+      if (typeof global.MutationObserver === 'function') {
+        var observer = new global.MutationObserver(refreshSwitch);
+        observer.observe(sheet, { childList: true });
+      }
+      var entry = document.querySelector('#plusPanelOverlay .plus-grid [data-feat="fanwai"]');
+      if (!entry) return false;
+      entry.click();
+      return true;
+    }
     var script = document.createElement('script');
-    script.src = '../chat/chat/js/chat-fanwai.js?v=20261118desktop1';
+    script.src = '../chat/chat/js/chat-fanwai.js?v=20261118desktop2';
+    script.onload = function () {
+      var layer = document.getElementById('fanwaiLayer');
+      if (!layer) {
+        container.hidden = false;
+        notice('番外加载失败', '角色数据或番外模块没有准备好，请返回角色列表重试。');
+        return;
+      }
+      // 新引擎原生支持整页模式；旧 QA 安全引擎则使用兼容挂载层，
+      // 不改动其 IndexedDB、暂停、删除与重新生成过程。
+      if (!layer.classList.contains('fw-standalone')) {
+        if (!appHost || !installLegacyNavigation(layer)) {
+          container.hidden = false;
+          notice('番外加载失败', '独立页面初始化没有完成，请重新进入。');
+          return;
+        }
+      }
+      // QA 旧引擎使用聊天相对 CSS 路径，在独立路由下修正为原文件地址。
+      var oldStyles = document.querySelectorAll('link[rel="stylesheet"][href^="js/chat-fanwai.css"]');
+      oldStyles.forEach(function (linkNode) {
+        linkNode.href = '../chat/chat/js/chat-fanwai.css?v=20261118desktop2';
+      });
+    };
     script.onerror = function () {
       container.hidden = false;
       notice('番外加载失败', '请检查网络或刷新页面，原有故事存档不会被删除。');

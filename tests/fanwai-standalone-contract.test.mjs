@@ -36,7 +36,8 @@ test('旧聊天入口跳独立页面，原引擎复用而不删除存档与续�
   const extras = read('chat/chat/js/chat-extras.js');
   const engine = read('chat/chat/js/chat-fanwai.js');
   assert.match(extras, /\.\.\/\.\.\/fanwai\/fanwai\.html/);
-  assert.doesNotMatch(extras, /fanwaiScript\.src/);
+  assert.match(extras, /fanwaiScript\.src/);
+  assert.match(extras, /stopImmediatePropagation/);
   assert.match(engine, /if \(standalone\) openPicker\(\);/);
   assert.match(engine, /var DB_NAME = 'maomao-fanwai-v1'/);
   assert.match(engine, /async function generate\(\)/);
@@ -109,4 +110,16 @@ test('阅读页返回目录前等待保存；保存失败时保留当前内存�
   assert.match(engine, /await episodeWriteQueue;\s*if \(canPersist && persistenceFailed && state\.active && state\.active\.messages\.length\)/);
   assert.match(engine, /showNotice\('故事保存失败，请先复制当前文字/);
   assert.match(engine, /renderReader\(\);\s*return;\s*\}\s*\}\s*openPicker\(\)/);
+});
+
+test('不替换 QA 引擎也能挂载独立全屏：兼容旧 plus 与 phone 锚点', () => {
+  const app = read('fanwai/fanwai-app.js');
+  const css = read('fanwai/fanwai.css');
+  assert.match(app, /legacyHost\.id = 'fanwaiLegacyHost'/);
+  assert.match(app, /oldPanel\.id = 'plusPanelOverlay'/);
+  assert.match(app, /oldPhone = element\('div', 'phone-mockup'\)/);
+  assert.match(app, /entry\.click\(\)/);
+  assert.match(app, /\.fw-reader-menu \[data-action="back"\]/);
+  assert.match(css, /#fanwaiLayer\.fw-standalone\.fw-legacy-engine/);
+  assert.match(css, /height: 100dvh/);
 });
