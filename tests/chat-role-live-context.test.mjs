@@ -66,3 +66,26 @@ test('角色的最新人设、说话习惯、生活线、记忆与邂逅来源�
   assert.match(detail, /buildHistoricalRecallText\(recallableHistory, recallQuery, recallOptions\)/);
   assert.match(detail, /roleModelHistory !== historyList \? null : cachedVoiceProfile/);
 });
+
+test('全局世界书保持可用，只有当前角色和会话绑定的局部世界书参与单聊', () => {
+  const books = [
+    { id: 'global_1', scope: 'global', title: '通用世界' },
+    { id: 'local_a', scope: 'local', title: '角色A秘密' },
+    { id: 'local_b', scope: 'local', title: '角色B经历' },
+    { id: 'legacy_1', title: '旧版未分类世界书' }
+  ];
+  const original = JSON.stringify(books);
+  const a = { id: 'role_a', worldBookIds: ['local_a'] };
+  assert.deepEqual(
+    Array.from(policy.selectWorldbooksForRole(books, a, []), b => b.id),
+    ['global_1', 'local_a', 'legacy_1']);
+  assert.deepEqual(
+    Array.from(policy.selectWorldbooksForRole(books, a, ['local_b']), b => b.id),
+    ['global_1', 'local_a', 'local_b', 'legacy_1']);
+  assert.deepEqual(
+    Array.from(policy.selectWorldbooksForRole(books, { id: 'role_c' }, []), b => b.id),
+    ['global_1', 'legacy_1']);
+  assert.equal(JSON.stringify(books), original, '过滤不得改写原始世界书');
+  assert.match(detail, /MAOMAOChatRoleContext\.selectWorldbooksForRole\(/);
+  assert.match(detail, /wbList, roleForTurn, roleMountedIds/);
+});
