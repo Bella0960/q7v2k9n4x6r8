@@ -36,6 +36,9 @@ const TESTS = [
   ['npm', ['run', 'test:integration:account-fanwai']],
   ['npm', ['run', 'test:tutorial']],
   ['npm', ['run', 'test:chat:contract']],
+  // Group chat governance, secret-game boundaries and receipt recovery are release blockers.
+  // Run the dedicated suite early; the full Node suite remains a separate regression gate.
+  ['npm', ['run', 'test:group:governance']],
   ['node', ['--test', 'tests/qa-cloud-settings-integration.test.mjs']],
   // The PWA navigation suite reads dist/index.html and dist/pwa-pages.json.
   // Build first so this works on a clean checkout, not only after an older build.
