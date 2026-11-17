@@ -46,3 +46,35 @@ test('both HTML pages retain parseable inline scripts',()=>{
   }
  }
 });
+
+test('iMessage native composer restores the button and avoids the extra floating send control',()=>{
+ const html=read('chat/chat/chat-detail.html');
+ const source=html.match(/function sync\(\)\{\s*var shell = document.querySelector\('\.phone-mockup'\);[\s\S]*?\n  \}/)?.[0];
+ assert.ok(source,'compatibility sync must be present');
+ for(const preset of ['default','imessage']){
+  let removed=0,legacy=0;const cleared=[];
+  const button={style:{removeProperty:key=>cleared.push('send:'+key)}};
+  const capsule={style:{removeProperty:key=>cleared.push('capsule:'+key)}};
+  const form={style:{removeProperty:key=>cleared.push('form:'+key)},querySelector:selector=>selector==='.send-icon-btn'?button:capsule};
+  const document={
+   querySelector:()=>({getAttribute:()=>preset}),
+   getElementById:id=>id==='myFloatSend'?{remove:()=>removed++}:id==='chat-form'?form:null
+  };
+  vm.runInNewContext(source+';sync();',{document,force:()=>legacy++,fixAll:()=>legacy++});
+  assert.equal(removed,1, preset+' removes old extra button');
+  assert.equal(legacy,0,preset+' must not create floating send');
+  assert.ok(cleared.includes('send:display'));
+  assert.ok(cleared.includes('send:visibility'));
+  assert.ok(cleared.includes('capsule:margin-right'));
+ }
+});
+test('clean chat layout is scoped to its own pages, and no fake status bars remain',()=>{
+ const css=read('shared/css/chat-light-surfaces.css');
+ for(const route of ['chat/chat/chat.html','chat/chat/chat-detail.html']){
+  assert.match(read(route),/chat-light-surfaces\.css\?v=20261118v2/);
+ }
+ assert.match(css,/body\.chat-light-list \.phone-mockup > \.status-bar,\s*body\.chat-light-detail \.phone-mockup > \.status-bar \{ display:none !important; \}/);
+ assert.match(css,/data-chat-theme-preset="imessage"/);
+ assert.match(css,/grid-template-columns:76px minmax\(0,1fr\) 76px/);
+ assert.match(css,/max\(8px,env\(safe-area-inset-bottom,0px\)\)/);
+});
