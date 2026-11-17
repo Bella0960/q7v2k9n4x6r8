@@ -205,3 +205,13 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **实际修复**：71fa52e 调整移动端顶部菜单/计数、卡片与背卡底部对齐、真实 safe-area 与按钮间距；4fe77fa 彻底移除假状态栏 DOM、样式与 clock 计时器，不依赖 CSS 隐藏（覆盖横屏/大屏）；be3dcc8 修改浏览器断言；eceb079/aa2433a 增加源码合同检查并修正正则转义；5d4fcad/f42705e 把 nativeSystemStatusBar 标记加入真浏览器测试回执与发布门禁。
 - **检查结论**：已从连接的 GitHub 当前原分支重新读取页面和测试，完成 9/9 条源码静态条件确认（没有假栏节点/定时器、上下安全区、三尺寸浏览器断言与检查标记）。**不能替代真实 node --test、npm run build、Playwright 或 Android/iOS 真机。**
 - **剩余门禁**：使用依赖已整合的完整工程执行 npm run test:encounter、npm run build、npm run test:encounter:browser、npm run gate:encounter；查看手机 375/390/430 屏幕与横屏安全区；由唯一 QA 集成窗口按既有顺序引入 #297 新 SHA 后在 preview.mao520.com 验收。QA 当前冻结时不可直接推送；正式发布需独立审批。
+
+
+## FEATURE-ENCOUNTER-001｜2026-11-17 本地浏览器测试解除账号页依赖，继续保留发布安全门禁
+- 实际检查：当前原功能分支 PR #297 存在 encounter/encounter.html 及引擎，但没有 account/index.html、account/account.js；账号原文件在 PR #290 分支 integration/account-001-main-20261115。因此 gate:encounter 对 #297 原分支按预期失败（安全依赖未整合），不能声称可独立正式发布。
+- 新发现的**不必要阻塞**：tests/encounter-browser.mjs 在启动纯 localhost 的 Chromium 冒烟测试前要求 dist/account/index.html 存在，实际浏览器脚本不访问账号页；导致 #290 未整合前连抽卡 UI/角色编辑器的本地布局烟测也不能启动。
+- 修复：549c67a 仅移除 browser smoke 对 account/index.html 的启动要求（仍要求实际 dist/encounter/encounter.html 和原角色编辑器存在）；f2f6c5a 在 UI Node 合同增加双向门禁保护，确保 localhost 冒烟可独立跑、正式 gate:encounter 继续强制 account/index.html 与 account/account.js。未改任何账号文件、登录逻辑、PWA 私有缓存、存储或正式 Worker。
+- 本窗口代码来源于 GitHub 当前分支，成功做了 V8 语法适配解析：邂逅内联 JS、引擎、浏览器测试、UI 合同、release gate 均 PASS；另完成假状态栏归零、测试与发布门禁保留的源码检查。**这不是原生 Node CLI / Vite / Chromium 实跑，也不是 QA 部署结果**。
+- Cloudflare 只读核查：maomao-aw-qa-20261114 最近一个部署时间为 2026-11-16T21:19:39Z（较本轮功能 HEAD 早），故线上唯一 QA 没有本轮修改的成功回执。
+- 仍需在包含完整依赖的工程工作区依次执行 npm ci、npm run test:encounter、npm run build、npm run test:encounter:browser；再将 #290 安全账号底座按既有唯一 QA 整合流程纳入后运行 npm run gate:encounter、Android/iOS 真机安全区与真实账号双端验证。不得通过删掉发布门禁来假装完工。
+- PR #297 继续 Draft，PR #299 仍冻结由原唯一 QA 窗口接管，正式 main、管理员 001、钱包/角色真实数据未动。
