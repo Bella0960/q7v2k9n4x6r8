@@ -7792,11 +7792,12 @@
 
         // 只携带白名单字段，避免把本地状态（mid/status/translation/isError）带过去引发二次余额逻辑
         async function forwardMessage(resolved, targetId, targetName) {
+            var historyStorage = _storage && _storage.result;
+            if (!historyStorage || typeof historyStorage.appendChatHistory !== 'function' || !targetId) {
+                if (typeof showToast === 'function') showToast('目标会话或存储不可用，转发未完成');
+                return;
+            }
             var msg = resolved.message;
-            var key = 'chat_history_' + targetId;
-            var arr = [];
-            try { arr = JSON.parse(localStorage.getItem(key) || '[]'); } catch (e) { arr = []; }
-            if (!Array.isArray(arr)) arr = [];
             var fwd = {
                 role: 'user',
                 time: Date.now(),
@@ -7815,7 +7816,13 @@
                     fwd.assetId = String(msg.assetId);
                     fwd.desc = msg.desc || '';
                     ensureMid(fwd);
-                    var linked = await _chatImageMediaRepo.addRef(fwd.assetId, 'chat-message', String(fwd.mid));
+                    var linked;
+                    try {
+                        linked = await _chatImageMediaRepo.addRef(fwd.assetId, 'chat-message', String(fwd.mid));
+                    } catch (e) {
+                        if (typeof showToast === 'function') showToast('图片引用建立失败，转发未完成');
+                        return;
+                    }
                     if (!linked || !linked.ok) {
                         if (typeof showToast === 'function') showToast('图片引用建立失败，转发未完成');
                         return;
@@ -7834,18 +7841,20 @@
                 }
             }
             ensureMid(fwd);
-            arr.push(fwd);
-            try {
-                localStorage.setItem(key, JSON.stringify(arr));
-                var readBack = JSON.parse(localStorage.getItem(key) || '[]');
-                if (!Array.isArray(readBack) || !readBack.some(function (item) {
-                    return String(item && item.mid || '') === String(fwd.mid || '');
-                })) throw new Error('转发记录读回校验失败');
-            } catch (e) {
-                if (linkedImageRef) {
+            // Read the target only after any media await, so intervening messages are included.
+            var saved = historyStorage.appendChatHistory(targetId, fwd);
+            if (!saved.ok) {
+                var unverified = saved.meta && saved.meta.writeMayHavePersisted;
+                if (linkedImageRef && !unverified) {
                     try { await _chatImageMediaRepo.removeRef(fwd.assetId, 'chat-message', String(fwd.mid)); } catch (cleanupError) {}
                 }
-                if (typeof showToast === 'function') showToast('转发失败：本地存储空间不足');
+                if (typeof showToast === 'function') {
+                    var code = saved.error.code;
+                    if (unverified) showToast('无法确认转发是否保存，请先查看目标会话');
+                    else if (code === 'CORRUPT_DATA') showToast('目标会话记录异常，已停止转发以保护原始数据');
+                    else if (code === 'QUOTA_EXCEEDED') showToast('转发失败：本地存储空间不足');
+                    else showToast('转发未完成：目标会话或存储暂不可用');
+                }
                 return;
             }
             if (typeof showToast === 'function') showToast('已转发给 ' + targetName);
