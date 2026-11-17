@@ -61,6 +61,35 @@ test('failed account or invitation request displays an error instead of a false 
   assert.ok(source.includes("暂时无法确认管理员身份，请重试"));
 });
 
+test('filter taps during an active fetch queue a refresh instead of silently failing', () => {
+  const controls = [
+    ["document.querySelectorAll('[data-audit-filter]').forEach(button => {",
+      "document.querySelectorAll('[data-audit-range]').forEach(button => {",
+      'globalAuditSearchRefreshPending'],
+    ["document.querySelectorAll('[data-audit-range]').forEach(button => {",
+      "$('refreshGlobalAudit').addEventListener",
+      'globalAuditSearchRefreshPending'],
+    ["document.querySelectorAll('[data-account-filter]').forEach(button => {",
+      "document.querySelectorAll('[data-invite-filter]').forEach(button => {",
+      'accountSearchRefreshPending'],
+    ["document.querySelectorAll('[data-invite-filter]').forEach(button => {",
+      '  function activateTab(name)',
+      'inviteSearchRefreshPending']
+  ];
+  for (const [begin, finish, pendingFlag] of controls) {
+    const start = source.indexOf(begin);
+    const end = source.indexOf(finish, start + begin.length);
+    assert.ok(start >= 0 && end > start, 'filter handler must exist: ' + begin);
+    const handler = source.slice(start, end);
+    assert.ok(handler.includes('if (busy) {'));
+    assert.ok(handler.includes(pendingFlag + ' = true;'));
+    assert.ok(handler.includes('return;'));
+  }
+  assert.match(source, /const reloadAccounts = accountSearchRefreshPending/);
+  assert.match(source, /const reloadInvites = inviteSearchRefreshPending/);
+  assert.match(source, /const reloadAudit = globalAuditSearchRefreshPending/);
+});
+
 test('a destructive account confirmation always targets its originally selected account', async () => {
   const start = source.indexOf('  function createActionButton(');
   const end = source.indexOf('\n\n  async function renderAccountDetail(', start);
