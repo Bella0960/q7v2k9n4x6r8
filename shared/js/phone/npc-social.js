@@ -635,7 +635,7 @@
           String(role.npcFriendRequestId || '') === String(request.id) &&
           String(role.npcOriginMainRoleId || '') === roleId;
       });
-      if (existing && hasWelcomeMessage(existing.id, request)) {
+      if (existing && (!cleanText(request.npc.greeting, 180) || hasWelcomeMessage(existing.id, request))) {
         request.status = 'accepted';
         request.acceptedAt = request.updatedAt = Date.now();
         changed = true;
