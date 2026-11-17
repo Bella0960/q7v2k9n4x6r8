@@ -197,6 +197,30 @@ async function verifyPage(browser, base, width) {
     assert.equal(await page.evaluate(() => localStorage.getItem('myProfile')),
       '{"avatar":"sentinel-only"}');
 
+    // Navigate in the SAME browser context: role B must never inherit
+    // role A's portraits, pair assignment, or autonomy preference.
+    await page.goto(base + '/chat/chat/avatar-manager.html?roleId=role-B', {
+      waitUntil: 'domcontentloaded'
+    });
+    await page.waitForFunction(() => Boolean(window.RoleAvatarLibrary));
+    assert.equal(await page.locator('#roleName').textContent(), '测试角色乙');
+    assert.equal(await page.locator('#album .portrait').count(), 0,
+      'another role must have an empty independent portrait collection');
+    assert.equal(await page.locator('#pairList .pair').count(), 0);
+    assert.equal(await page.locator('#autonomyToggle').isChecked(), true,
+      'role B preference must survive edits to role A');
+    assert.equal(await page.evaluate(() =>
+      localStorage.getItem('maomao_chat_pair_user_avatar_v1_role-B')), null,
+      'chat pairing must never leak to another role');
+
+    await page.goto(address, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() =>
+      document.querySelectorAll('#album .portrait').length === 1,
+      null, { timeout: 12000 });
+    assert.equal(await page.locator('#autonomyToggle').isChecked(), false);
+    assert.equal(await page.evaluate(() => localStorage.getItem('myProfile')),
+      '{"avatar":"sentinel-only"}');
+
     const geometry = await page.evaluate(() => {
       const frame = document.querySelector('.phone').getBoundingClientRect();
       const scroll = document.querySelector('.scroll').getBoundingClientRect();
