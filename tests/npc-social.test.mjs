@@ -548,3 +548,19 @@ test('already-accepted NPC requests verify original contact ownership before ide
   assert.throws(() => h.context.NPCSocial.accept(request.id), /联系人缺失/);
   assert.equal(h.roles.some(role => role.id === accepted.roleId), false, 'must not silently recreate a missing accepted contact');
 });
+
+test('NPC reconciliation recovers a saved contact without a greeting and does not cross roles', () => {
+  const h = createHarness();
+  const key = 'npc_friend_requests_v2_main-role';
+  const request = {id:'req-no-greeting',mainRoleId:'main-role',status:'pending',
+    npc:{id:'npc-no-greeting',name:'虚构邻居',persona:'日常人物',greeting:''}};
+  h.data.set(key,JSON.stringify([request]));
+  h.roles.push({id:request.npc.id,npcSocialRole:true,
+    npcFriendRequestId:request.id,npcOriginMainRoleId:'other-role'});
+  h.context.NPCSocial.reconcileAccepted();
+  assert.equal(JSON.parse(h.data.get(key))[0].status,'pending','foreign contact must not be accepted');
+  h.roles[h.roles.length-1].npcOriginMainRoleId='main-role';
+  h.context.NPCSocial.reconcileAccepted();
+  assert.equal(JSON.parse(h.data.get(key))[0].status,'accepted','saved contact without a greeting can recover');
+  assert.equal(h.histories[request.npc.id],undefined,'reconciliation must not invent chat messages');
+});
