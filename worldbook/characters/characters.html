@@ -897,12 +897,26 @@
         .avatar-library-empty-mark { color:#999; font:400 22px Georgia,serif; }
         @media (prefers-reduced-motion:reduce) { .avatar-library-photo img { transition:none; } }
 
+
+        /* UI-CHROME-001：手机上移除双重顶部安全区/状态栏留白。
+           PC 预览仍保持原来的编辑式画布，所有档案及子页面共用同一薄顶栏。 */
+        @media (max-width: 480px) {
+            .phone-mockup > .view-section > .header {
+                padding: 8px 20px !important;
+                min-height: 52px;
+                flex: 0 0 auto;
+            }
+            .phone-mockup > .view-section > .header .header-title {
+                min-width: 0;
+                overflow-wrap: anywhere;
+            }
+        }
     </style>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
 </head>
 <body>
     <div class="phone-mockup">
-        <div class="status-bar"><span>09:41</span></div>
+        <!-- 真机状态栏由系统绘制，角色档案不再渲染模拟时间。 -->
         
         <!-- 角色列表界面 -->
         <div class="view-section" id="listView">
