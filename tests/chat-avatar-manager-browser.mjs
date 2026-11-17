@@ -89,6 +89,11 @@ async function verifyPage(browser, base, width) {
     assert.equal(navigation?.status(), 200, 'portrait route must be served');
     await page.waitForFunction(() => Boolean(window.RoleAvatarLibrary), null, { timeout: 15000 });
     assert.equal(await page.locator('#roleName').textContent(), '测试角色甲');
+    assert.equal(await page.locator('h1').textContent(), '头像管理');
+    const topHeight = await page.locator('.top').evaluate(el => el.getBoundingClientRect().height);
+    assert.ok(topHeight <= 68, 'mobile header cannot reserve fake system-status-bar space');
+    assert.equal(await page.locator('.kicker, .fake-statusbar, .fake-status-bar').count(), 0,
+      'no decorative header or simulated status bar may be rendered');
     assert.equal(await page.locator('#album .portrait').count(), 0);
     assert.equal(await page.locator('#advancedMenu').count(), 1);
 
