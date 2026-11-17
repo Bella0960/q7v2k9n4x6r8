@@ -65,7 +65,10 @@
         member: find(g, target), options: request.options || {}, members: members(g) });
     } catch (e) { restore(); return fail('ACTION_FAILED', '群管理操作失败'); }
     if (!result || !result.ok) { restore(); return result || fail('ACTION_FAILED', '群管理操作失败'); }
-    if (typeof request.save !== 'function' || request.save() !== true) {
+    var actionSaved = false;
+    try { actionSaved = typeof request.save === 'function' && request.save() === true; }
+    catch (e) { actionSaved = false; }
+    if (!actionSaved) {
       restore(); return fail('SAVE_FAILED', '保存失败，操作未生效');
     }
     emit('group:changed', { groupId: id(g.id), actorId: actor, action: name, targetId: target });
@@ -264,10 +267,15 @@
     req = req || {};
     var g = req.group;
     if (!joined(g)) return fail('NOT_JOINED', '你当前不在群里');
-    var before = JSON.stringify(g);
+    var before;
+    try { before = JSON.stringify(g); }
+    catch (e) { return fail('INVALID_GROUP', '群聊数据无效'); }
     g.userMembership = 'left';
     g.lastUserExit = { at: Date.now(), reason: 'user_left', groupName: id(g.name).slice(0, 30) };
-    if (typeof req.save !== 'function' || req.save() !== true) {
+    var leaveSaved = false;
+    try { leaveSaved = typeof req.save === 'function' && req.save() === true; }
+    catch (e) { leaveSaved = false; }
+    if (!leaveSaved) {
       Object.keys(g).forEach(function (k) { delete g[k]; }); Object.assign(g, JSON.parse(before));
       return fail('SAVE_FAILED', '退群保存失败');
     }
