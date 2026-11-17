@@ -99,18 +99,20 @@ try {
       const fit = await sheet.evaluate(el => {
         const r = el.getBoundingClientRect();
         // 新版原生引擎用内部薄头；QA 老引擎兼容适配用外层 44px 导航。
-        const head = el.classList.contains('fw-legacy-engine')
+        const legacyQa = el.closest('#fanwaiLayer')?.classList.contains('fw-legacy-engine');
+        const head = legacyQa
           ? document.querySelector('.fw-bridge-nav') : el.querySelector('.fw-head');
         return {
           top: r.top, bottom: r.bottom, width: r.width,
           viewW: innerWidth, viewH: innerHeight, overflow: el.scrollWidth > el.clientWidth + 1,
-          headerHeight: Math.round(head.getBoundingClientRect().height)
+          headerHeight: head ? Math.round(head.getBoundingClientRect().height) : -1,
+          legacyQa: !!legacyQa
         };
       });
       assert.equal(fit.overflow, false, width + ': 不可横向溢出');
       assert.ok(fit.width <= width + 1, width + ': 整页宽度异常');
       assert.ok(fit.bottom <= fit.viewH + 1, width + ': 整页高度异常');
-      assert.equal(fit.headerHeight, 44, width + ': 顶栏必须轻薄');
+      assert.equal(fit.headerHeight, 44, width + ': 顶栏必须轻薄（原生/兼容模式）' + JSON.stringify(fit));
       // 阻止真实请求：模型只执行此页注入的本地测试实现。
       await page.evaluate(() => {
         window.__fanwaiMockCalls = 0;
