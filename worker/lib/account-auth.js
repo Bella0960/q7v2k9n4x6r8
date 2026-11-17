@@ -253,9 +253,11 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     // Probe proves the binding targets the opt-in isolated authority with
     // this exact founder ID, not an old gateway or a production account store.
     const authority = await probeExistingIdentityAuthority(env);
-    if (!authority.connected || !authority.initialized || !authority.configured) {
+    if (!authority.connected || !authority.initialized || !authority.configured ||
+        authority.qaIsolatedAuthority !== true ||
+        authority.qaExpectedFounderId !== env.MAO_EXPECTED_FOUNDER_ID) {
       throw new ApiError(503, 'QA_ADMIN_AUTHORITY_UNAVAILABLE',
-        '测试版独立管理员服务尚未就绪，请稍后重新检查');
+        '测试版独立管理员身份与隔离服务未通过安全核对，已停止管理操作');
     }
 
     const token = cookieValue(request);
