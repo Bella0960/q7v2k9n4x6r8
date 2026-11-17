@@ -465,15 +465,27 @@ test('9. groups do not leak members into each other', async () => {
   await withPage(seed, '/chat/chat/chat-settings.html?roleId=g1', async (page) => {
     await page.waitForFunction(() => document.querySelectorAll('.gp-member-row').length === 2);
     await page.locator('#actionGroupManage').click();
-    await page.locator('#gpInviteToggle').click();
-    await page.locator('.gp-invite-row').first().waitFor({ state: 'visible' });
-    const ids = await page.$$eval('.gp-invite-row', (rows) => rows.map((r) => r.getAttribute('data-role-id')));
+    // The collapsed-by-default behavior is tested in case 5; this case
+    // verifies that invitations affect only the selected group.
+    await page.locator('#gpManageCard.is-open #gpInviteToggle').waitFor({ state: 'visible' });
+    const inviteToggle = page.locator('#gpInviteToggle');
+    if (await inviteToggle.getAttribute('aria-expanded') !== 'true') {
+      await inviteToggle.click();
+    }
+    await page.locator('#gpInviteToggle[aria-expanded="true"]').waitFor({ state: 'visible' });
+    await page.locator('#gpInviteBlock.is-open .gp-invite-row').first().waitFor({ state: 'visible' });
+    const ids = await page.$eval('#gpInviteBlock.is-open .gp-invite-row',
+      (rows) => rows.map((r) => r.getAttribute('data-role-id')));
     assert.deepEqual(ids.sort(), ['c3', 'c4', 'c5'], 'only members of the current group are excluded from the invite list');
 
     await page.locator('.gp-invite-row[data-role-id="c3"] .gp-invite-add').click();
     const stored = await readStorage(page, 'phone_groups');
+    const current = stored.find((item) => String(item.id) === 'g1');
     const other = stored.find((item) => String(item.id) === 'g2');
-    assert.deepEqual(other.members.map((m) => String(m.id)), ['c4']);
+    assert.deepEqual(current.members.map((m) => String(m.id)), ['c1', 'c2', 'c3'],
+      'invite must update only the currently selected group');
+    assert.deepEqual(other.members.map((m) => String(m.id)), ['c4'],
+      'inviting into g1 must not change the member list of g2');
   });
 
   await withPage(seed, '/chat/chat/group-play.html?id=g2', async (page) => {
