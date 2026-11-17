@@ -13,7 +13,17 @@ function makeEnv(account = null, overrides = {}) {
   const calls = { auth: [], assets: [], api: [] };
   const assets = {
     async fetch(request) {
-      calls.assets.push({ method: request.method, path: new URL(request.url).pathname });
+      calls.assets.push({
+        method: request.method,
+        path: new URL(request.url).pathname,
+        ifNoneMatch: request.headers.get('if-none-match'),
+        ifModifiedSince: request.headers.get('if-modified-since'),
+        range: request.headers.get('range'),
+        ifRange: request.headers.get('if-range')
+      });
+      if (overrides.conditional304 && request.headers.has('if-none-match')) {
+        return new Response(null, { status: 304, headers: { etag: '"old-etag"' } });
+      }
       if (overrides.noHead) return new Response('<html><body>no head</body></html>', {
         headers: { 'content-type': 'text/html' }
       });
@@ -109,6 +119,27 @@ test('active founder alone can load admin HTML with founder scope', async () => 
   const r = await worker.fetch(req('/admin/admin-center.html'), env);
   assert.equal(r.status, 200);
   assert.match(await r.text(), /meta name="mao-account-role" content="super_admin"/);
+});
+
+test('conditional admin navigation cannot bypass founder scope injection through a 304', async () => {
+  const { env, calls } = makeEnv(active('super_admin'), { conditional304: true });
+  const r = await worker.fetch(req('/admin/admin-center.html', {
+    headers: {
+      cookie: 'mao_session=fake-test',
+      'if-none-match': '"old-etag"',
+      'if-modified-since': 'Wed, 21 Oct 2015 07:28:00 GMT',
+      range: 'bytes=0-1024',
+      'if-range': '"old-etag"'
+    }
+  }), env);
+  assert.equal(r.status, 200, 'private HTML must not reuse a browser-cached 304 body');
+  assert.match(await r.text(), /meta name="mao-account-id" content="MAO-AAAAAAAAAAAA"/);
+  assert.equal(r.headers.get('cache-control'), 'private, no-store, max-age=0');
+  assert.equal(calls.assets.length, 1);
+  assert.equal(calls.assets[0].ifNoneMatch, null);
+  assert.equal(calls.assets[0].ifModifiedSince, null);
+  assert.equal(calls.assets[0].range, null);
+  assert.equal(calls.assets[0].ifRange, null);
 });
 
 test('pending and disabled accounts cannot open private HTML', async () => {
