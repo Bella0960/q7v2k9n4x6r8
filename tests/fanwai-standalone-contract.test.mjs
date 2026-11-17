@@ -133,3 +133,11 @@ test('聊天页仅保留单次原 QA 引擎加载，避免初始化重复', () =
   assert.equal(extras.split('fanwaiScript.src').length - 1, 1);
   assert.match(extras, /20261116v23/);
 });
+
+test('构建浏览器验收从外层识别 QA 兼容模式并实测 44px 导航', () => {
+  const smoke = read('tests/fanwai-standalone-build-browser.smoke.mjs');
+  assert.match(smoke, /el\.closest\('#fanwaiLayer'\)\?\.classList\.contains\('fw-legacy-engine'\)/);
+  assert.match(smoke, /document\.querySelector\('\.fw-bridge-nav'\)/);
+  assert.match(smoke, /assert\.equal\(fit\.headerHeight, 44,/);
+  assert.doesNotMatch(smoke, /el\.classList\.contains\('fw-legacy-engine'\)/);
+});
