@@ -63,6 +63,13 @@
     return payload;
   }
 
+  // A real expired session has one of these exact 401 codes.
+  // Delegated QA admin 403/503 failures are not proof of logout.
+  function isConfirmedSessionExpired(error) {
+    return error && error.status === 401 &&
+      (error.code === 'LOGIN_REQUIRED' || error.code === 'ACCOUNT_SESSION_REQUIRED');
+  }
+
   function formatTime(value) {
     const stamp = Number(value);
     if (!Number.isFinite(stamp) || stamp <= 0) return '时间未知';
@@ -181,7 +188,7 @@
         window.location.replace('/account/index.html?disabled=1');
         return;
       }
-      if (error.status === 401 && error.code === 'ACCOUNT_SESSION_REQUIRED') {
+      if (isConfirmedSessionExpired(error)) {
         window.location.replace('/account/index.html?admin=1');
         return;
       }
@@ -527,7 +534,7 @@
         window.location.replace('/account/index.html?disabled=1');
         return;
       }
-      if (error.status === 401 && error.code === 'ACCOUNT_SESSION_REQUIRED') {
+      if (isConfirmedSessionExpired(error)) {
         window.location.replace('/account/index.html?admin=1');
         return;
       }
@@ -722,7 +729,7 @@
         window.location.replace('/account/index.html?disabled=1');
         return;
       }
-      if (error.status === 401 && error.code === 'ACCOUNT_SESSION_REQUIRED') {
+      if (isConfirmedSessionExpired(error)) {
         window.location.replace('/account/index.html?admin=1');
         return;
       }
@@ -855,7 +862,7 @@
         window.location.replace('/account/index.html?disabled=1');
         return;
       }
-      if (error.status === 401 && error.code === 'ACCOUNT_SESSION_REQUIRED') {
+      if (isConfirmedSessionExpired(error)) {
         window.location.replace('/account/index.html?admin=1');
         return;
       }
@@ -1076,7 +1083,7 @@
         window.location.replace('/account/index.html?disabled=1');
         return;
       }
-      if (error.status === 401 && error.code === 'ACCOUNT_SESSION_REQUIRED') {
+      if (isConfirmedSessionExpired(error)) {
         window.location.replace('/account/index.html?admin=1');
         return;
       }
