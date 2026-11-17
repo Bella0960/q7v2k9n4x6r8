@@ -1244,7 +1244,25 @@
     if (key === 'fork') { openBranchPreview(); return; }
     if (key === 'create-fork') { await createFork(); return; }
     if (key === 'close') { close(); return; }
-    if (key === 'back') { if (state.busy) pause(); openPicker(); return; }
+    if (key === 'back') {
+      // 独立阅读器返回目录之前必须确认暂停/批量写入已成功。
+      // 丢存档时留在当前故事，以便用户复制未保存内容。
+      if (standalone && state.creating) {
+        showNotice('故事正在创建，请完成保存后再返回');
+        return;
+      }
+      if (state.busy) pause();
+      if (standalone) {
+        await episodeWriteQueue;
+        if (canPersist && persistenceFailed && state.active && state.active.messages.length) {
+          showNotice('故事保存失败，请先复制当前文字，暂时不要返回目录');
+          renderReader();
+          return;
+        }
+      }
+      openPicker();
+      return;
+    }
     if (key === 'pause') { pause(); return; }
     if (key === 'resume') { generate(); return; }
     if (key === 'template') {

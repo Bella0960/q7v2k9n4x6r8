@@ -102,3 +102,11 @@ test('独立页返回箭头按页面层级导航，切换角色独立放在右�
   assert.match(engine, /button\('switch-role', '角色', 'fw-close'\)/);
   assert.match(engine, /backAction === 'home' \? '返回桌面'/);
 });
+
+test('阅读页返回目录前等待保存；保存失败时保留当前内存故事可复制', () => {
+  const engine = read('chat/chat/js/chat-fanwai.js');
+  assert.match(engine, /if \(key === 'back'\) \{/);
+  assert.match(engine, /await episodeWriteQueue;\s*if \(canPersist && persistenceFailed && state\.active && state\.active\.messages\.length\)/);
+  assert.match(engine, /showNotice\('故事保存失败，请先复制当前文字/);
+  assert.match(engine, /renderReader\(\);\s*return;\s*\}\s*\}\s*openPicker\(\)/);
+});
