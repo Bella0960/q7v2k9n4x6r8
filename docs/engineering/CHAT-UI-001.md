@@ -58,3 +58,16 @@ Rollback: revert only these commits in PR #264 or undo their focused cherry-pick
 - STATIC V8 SYNTAX: all 9 inline scripts of chat-detail.html, all 3 of chat.html, plus both updated test scripts parsed with no syntax errors (12 inline scripts, 2 scripts). Import lines were stripped only for static syntax parsing, so this is not the full Node test run.
 - CSS brace count and exact stylesheet references in both HTML entry pages verified at this PR HEAD.
 - Remaining release blockers above still apply. Preserve the existing 001 account/QA base on integration; do not directly merge this old chat HTML over it.
+
+
+### 2026-11-18 — True iMessage 126px header root cause
+
+Latest inspection of shared/css/chat-beauty-runtime.css confirms the old preset unconditionally forces the iMessage header to flex-basis/height/min-height **126px !important**, positions the title absolutely at top:24px, shows a 48px portrait, hides the mode-switch status label and paints the title/action icons white. It also reserves an 82px bottom gap on the message stage for an absolutely positioned composer. Changing only outer padding cannot remove the screenshot's huge white band. A late inline rule also forces #chat-messages back to gray.
+
+Fixes implemented only in the dedicated CHAT-UI-001 stylesheet: override the exact iMessage header flex/height/min-height to auto+56px minimum, center the title in a normal CSS grid and hide the redundant top portrait, restore visible mode-switch status, normalize action icon contrast and 44px hit targets, clear the old overlay gap, and keep native input row in flex flow. The existing selected bubble colors/background variables remain authoritative. Both HTML pages now reference chat-light-surfaces.css?v=20261118v3.
+
+New browser assertions target actual header bounding-box height below 96px, iMessage title position:static, no top portrait, visible mode-switch, more-menu 40+px hit area, stage padding-bottom below 48px, no floating duplicate send button, and input expansion. These checks run in the authored Playwright script but are not yet executed.
+
+Latest isolated V8 and source checks: 18/18 targeted assertions successful; both pages' 12 inline scripts and both test scripts parse. Earlier exact production sync() tests were 3/3; actual Node CLI, installed-repository Vite production build, Playwright browser, Android/iPhone real-device UI, QA release and PWA cache remain NOT VERIFIED.
+
+Unique QA integration branch is actively deploying and has its own newer account/role/group code. Avoid pushing to #299 while QA deployment runs. The integrator should carry only this scoped stylesheet, tiny HTML <link>/body changes, tested native-submit synchronization, and beauty defaults, then verify on the latest unique QA head. Do not merge the whole old chat-detail.html, chat.html or Service Worker. No production action was taken.
