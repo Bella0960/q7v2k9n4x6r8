@@ -1,5 +1,15 @@
 # MAOMAO Execution Log
 
+## 2026-11-17｜QA-ACCOUNT-CONTEXT-304｜管理员 001 页面缓存上下文恢复（已提交，未部署）
+
+- **用户现象：** `https://preview.mao520.com/admin/admin-center.html` 显示 `ACCOUNT_CONTEXT_REQUIRED`，账号统计和列表无法读取；不是零账号的成功回执。
+- **Cloudflare 只读核查：** `preview.mao520.com` 的 Worker 自定义域名绑定为现有 `maomao-aw-qa-20261114`，该 Worker 的 `MAO_IDENTITY_AUTHORITY` 指向现有 `maomao-identity-core`；线上已部署版本 `10d77af9-e4fb-4678-90f8-ab1010202954`（2026-11-17T14:51:27Z），其脚本资源设置 `raw_run_worker_first=true`。未读取或修改用户资料/账号记录。
+- **代码级缺口与修复：** 原 `worker.js` 把带条件缓存头的私有 HTML 原样转交静态资源，若静态服务返回 `304`，`injectAccountScope` 因响应非 `ok` 而直接返回，浏览器会重用没有账号注入的旧 HTML。仅在已确认会话的私有 HTML 导航中移除 `if-none-match`、`if-modified-since`、`if-range`、`range`，强制得到可注入的 HTML；旧会话/权限门禁未放宽。`admin/admin-center.html`、`sw.js` 的管理脚本 URL 升为 `20261117-ui3`，避免复用旧管理脚本。
+- **回归：** `tests/worker-page-auth-runtime.test.mjs` 新增条件 `304` 模拟断言，验证必须收到账号 meta、200、no-store；原 `tests/admin-center-mobile-release.test.mjs` 同步版本校验。GitHub 上五个文件的当前文本/版本已再次读取，静态断言 5/5 成立，**未执行 Node/Vite/Chromium 或真机**。
+- **提交：** `7e33e7c`、`3798163`、`02df2fd`、`81fb54d`、`f3373d6`，均提交在已有 PR #299 的 `integration/account-fanwai-stack-20261115` 分支。
+- **剩余阻塞：** 先在完整现有 Codespaces checkout 中执行 `node --test tests/worker-page-auth-runtime.test.mjs tests/admin-center-mobile-release.test.mjs`、`npm run qa:release:check`；全部通过后仅按原安全发布脚本执行已有 QA Worker-only 发布，再核对新 Cloudflare 版本和 `preview.mao520.com` 实际管理员登录页。未授权正式版、main 或 identity core 变更；现在线上截图所见问题不能声称已修复。
+
+
 ## 2026-11-17｜MUSIC-UI-001｜同步现有 QA 整合分支（代码已到，云端未发布）
 
 - **用户确认需求：** 复核音乐首页与播放页整体效果，并尽快在手机上通过现有唯一 QA 测试。坚守只合到 QA、不合并 main、不触动正式服务及管理员账号。
