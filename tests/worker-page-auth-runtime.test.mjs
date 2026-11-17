@@ -114,14 +114,27 @@ test('active founder alone can load admin HTML with founder scope', async () => 
 test('pending and disabled accounts cannot open private HTML', async () => {
   for (const scenario of [
     { account: { id: ACCOUNT_ID, status: 'pending_invite', role: 'user' } },
-    { account: null, options: { disabled: true } }
+    { account: null, options: { disabled: true }, disabledRedirect: true },
+    { account: { id: ACCOUNT_ID, status: 'disabled', role: 'user' }, disabledRedirect: true },
+    { account: { id: ACCOUNT_ID, status: 'revoked', role: 'user' }, disabledRedirect: true }
   ]) {
     const { env, calls } = makeEnv(scenario.account, scenario.options);
     const r = await worker.fetch(req('/chat/chat/chat-detail.html'), env);
     assert.equal(r.status, 302);
     assert.equal(new URL(r.headers.get('location')).pathname, '/account/index.html');
     assert.equal(calls.assets.length, 0);
-    if (scenario.options?.disabled) assert.equal(new URL(r.headers.get('location')).searchParams.get('disabled'), '1');
+    if (scenario.disabledRedirect) assert.equal(new URL(r.headers.get('location')).searchParams.get('disabled'), '1');
+  }
+});
+
+test('unknown positive identity responses never masquerade as verified pending accounts', async () => {
+  for (const status of ['', 'unrecognized', 'service_unavailable']) {
+    const { env, calls } = makeEnv({ id: ACCOUNT_ID, role: 'user', status });
+    const r = await worker.fetch(req('/chat/chat/chat-detail.html'), env);
+    assert.equal(r.status, 503, status);
+    assert.equal(r.headers.get('location'), null);
+    assert.equal(r.headers.get('cache-control'), 'no-store');
+    assert.equal(calls.assets.length, 0);
   }
 });
 
