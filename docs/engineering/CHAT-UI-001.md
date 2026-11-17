@@ -25,3 +25,27 @@ User request (2026-11-12 Asia/Shanghai): apply the supplied minimal chat referen
 ## Rollback
 
 Revert this commit. No migration or user-data cleanup is required. No production deployment or APK changes are part of this task.
+
+
+## 2026-11-18 — Opera screenshot follow-up
+
+Owner feedback: the real mobile screenshot still has an oversized empty header, cramped message canvas, and a detached plus/heart near the composer. The screen shows a blue outgoing bubble, so the default-only CSS baseline is insufficient for the iMessage preset.
+
+### Implemented in the existing PR #264 branch
+- Keep actual system UI; hide the fake status bar in the chat list and detail only. No new status bar is added.
+- Default and iMessage detail: compact the header with real safe-area top padding, center the title within a symmetric grid, preserve the mode-switch button and actions, add purposeful message-stage breathing room.
+- Keep theme and per-role bubble color/background variables intact. Default-only light bubbles remain default-only; iMessage keeps its blue bubble identity while removing frosted chrome from its header and input.
+- Make the existing native submit button the only send action for default and iMessage. When switching away from legacy themes, remove the redundant floating button and legacy inline right margin; retain WeChat's separate compatibility handler until its own owner reviews it.
+- Place plus/input/send on one flow row, reserve real flex space for multi-line input and the quote bar, respect the safe-area bottom and 375–430px widths.
+- Bump the stylesheet URL only in both original chat HTML entry pages to avoid mobile stale CSS.
+
+Files: shared/css/chat-light-surfaces.css, chat/chat/chat-detail.html, chat/chat/chat.html, tests/chat-light-surfaces.test.mjs, tests/chat-light-surfaces-browser.mjs, this scoped handoff. No storage keys, history objects, role IDs, theme preferences, API prompts, or Worker/backend files are changed.
+
+### Verification status and release gate
+- SOURCE VERIFIED: GitHub connector read the original branch and changed only these scoped paths. CSS brace balance and exact patch/link presence were checked.
+- TESTS ADDED, NOT EXECUTED: two Node regression tests covering the native composer, cleanup, and statusbar; mobile browser smoke now covers default and iMessage at 375 / 390 / 430 / 1280px.
+- NOT VERIFIED: full node --test, npm run build, actual Playwright, Android Opera/PWA keyboard and safe-area, iOS Safari, rich message cards, theme switching on a real phone, and the live Cloudflare QA asset. Do not announce completed deployment.
+- Integration blocker: original PR #264 is older than current main and unique QA integration PR #299; it was 33 commits behind main before these updates. The QA owner must cherry-pick or transplant only the focused layout changes onto the newest integration source and rerun contract/build/browser acceptance. Never replace the entire current chat-detail.html, the Service Worker, the account integration, or the phone chat storage with this old branch.
+- Existing chat visual customization still takes precedence for saved bubble colors, spacing variables, avatar settings, and backgrounds; manual phone acceptance must check those preferences.
+
+Rollback: revert only these commits in PR #264 or undo their focused cherry-pick; no data migration. Production and canonical QA are unchanged.
