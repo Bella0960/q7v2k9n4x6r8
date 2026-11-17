@@ -1,5 +1,18 @@
 # MAOMAO Execution Log
 
+## 2026-11-17｜BUG-ADMIN-QA 第六阶段 · 手机端页面收口（排队第 3 项）
+
+- **用户优先级**：首要修复管理中心页面本身，尽量在 QA 整合前把 375/390/430px 手机布局、加载状态、按钮可点击性及错误恢复做完整；禁止任何模拟时间/网络/电量状态栏。继续只在原账号 PR #290 修补，用户发出「3号执行」前不得写 QA #299、合并或部署。
+- **布局重整（`admin/admin-center.html`、`admin/admin-center.css`）**：去掉重复英文眉题和无意义盾牌/列表头像图形，压缩手机首屏顶部和大型介绍卡，把独立统计卡收为轻量单排统计区，保留全部管理入口和 001 权限标识。搜索、刷新、标签页、筛选、详情、复制、撤销、确认及重试控件增强触控高度；提高列表文字可读性。iPhone 端搜索和确认备注输入使用 16px，避免 Safari 聚焦自动放大；不添加假系统状态栏。
+- **UI 失败状态（`admin/admin-center.js`）**：账号和邀请码列表分别维护失败状态并显示可重试文案；`refreshAll` 使用 `Promise.allSettled`，一方接口报错不再抹掉另一方成功读取内容，也不把未知账号状态伪装成 0 个用户。身份探针失败时明确显示尚未验证而非永久「正在读取」。从邀请码进入账号详情时，若用户不存在则显示恢复提示而不是无限 loading。错误重试按钮再次遇到异常也显示错误，不产生未处理 rejection。
+- **响应可信性**：新增 `verifiedDirectoryPayload` 严格核对 accounts/invites/audit 列表和分页字段；API HTTP 200 但缺失数组、游标或页码时不再显示「暂无记录」，而是反馈真实异常且允许刷新。
+- **忙状态交互**：保持标签页、状态和审计筛选按钮在网络请求期间可操作；将点击排队为最近一次条件，防止用户看到按钮已选中但内容未更新。危险账号写操作、分页和刷新仍防重复提交；原有「确认对象不可串号」安全修复保持有效。
+- **PWA 防旧缓存**：管理中心 HTML 的 CSS/JS URL 使用 `?v=20261117-ui1`；在本 PR #290 旧 SW v239 基线上升级到 `phone-app-pwa-v240`，对应预缓存同步。**实际唯一 QA #299 缓存基线高于 #290，整合时必须在 #299 最新缓存版本上继续递增，并只合入管理中心两个资产的版本条目；禁止整份 SW 回退覆盖。**
+- **真实测试阻塞已修**：原 `tests/admin-center-ui.test.mjs` 早前插入回归时发生拼接损坏和大量重复代码，已经恢复为有效的 21 项测试并更新 `Promise.allSettled`/40px 移动点击契约；新增独立 `tests/admin-center-mobile-release.test.mjs` 10 项，其中真实函数抽取模拟确认目标、异常部分成功、错误重试、忙时锁定与过滤器排队及不可信分页；`package.json` 的 `test:account:ui-candidate` 已纳入新测试。
+- **回归证据**：从本分支最新 GitHub 文件实际执行这两套 Node test 的完整测试主体（隔离 V8 兼容夹具，模拟 `readFileSync` 和断言）**31/31 PASS**；`admin/admin-center.js`、`sw.js` 脚本语法 PASS；**这不等于原生 Node CLI、Vite、真实 Chromium、375/390/430 像素截图或 Android/iPhone 验收**。缺乏完整仓库本地检出环境/CI runner 回执，未做部署。
+- **交付边界**：原账号 PR #290 保留 Draft，等第 3 项时交由唯一 QA #299 当前负责人按语义整合，仅部署 `https://preview.mao520.com/` 真实验收。绝不更改 main、正式 Worker、生产账户数据或管理员永久 ID `MAO-OXHBDBWCOIHPBBYN`。
+
+
 ## 2026-11-17｜BUG-ADMIN-QA 第五阶段 · 管理操作绑定确认对象（第 3 项候补）
 
 - **代码真实问题**：`admin/admin-center.js` 的账号停用／恢复／永久撤销确认弹窗，展示的是打开时 `selectedAccountId`，但最终提交时再次读取可变的全局 `selectedAccountId`。异步状态变化会导致「确认账号 A、执行账号 B」的错误目标风险。
