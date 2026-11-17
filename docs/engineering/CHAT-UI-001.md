@@ -49,3 +49,12 @@ Files: shared/css/chat-light-surfaces.css, chat/chat/chat-detail.html, chat/chat
 - Existing chat visual customization still takes precedence for saved bubble colors, spacing variables, avatar settings, and backgrounds; manual phone acceptance must check those preferences.
 
 Rollback: revert only these commits in PR #264 or undo their focused cherry-pick; no data migration. Production and canonical QA are unchanged.
+
+
+### Final targeted review (same branch)
+- The detail page also has a late inline ID-level forced-gray rule for #chat-messages; the scoped stylesheet now wins that exact cascade without changing any saved chat background image.
+- The iMessage composer retains its original behavior: voice input when empty; on typing, the native send control appears with its existing arrow SVG, never an extra floating heart. The default theme continues using its original submit button.
+- ISOLATED V8 EXECUTION: extracted the production sync() function from this PR HEAD; default, iMessage, and WeChat mocked branch behavior all passed (3/3). This is not Node CLI or real browser testing.
+- STATIC V8 SYNTAX: all 9 inline scripts of chat-detail.html, all 3 of chat.html, plus both updated test scripts parsed with no syntax errors (12 inline scripts, 2 scripts). Import lines were stripped only for static syntax parsing, so this is not the full Node test run.
+- CSS brace count and exact stylesheet references in both HTML entry pages verified at this PR HEAD.
+- Remaining release blockers above still apply. Preserve the existing 001 account/QA base on integration; do not directly merge this old chat HTML over it.
