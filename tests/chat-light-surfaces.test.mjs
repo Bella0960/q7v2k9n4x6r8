@@ -105,3 +105,14 @@ test('background custom properties remain inheritable for individual bubbles',()
  assert.match(css,/background:var\(--chat-bubble-ta-bg,#e5e5ea\) !important/);
  assert.match(css,/background:var\(--chat-bubble-my-bg,#18181a\) !important/);
 });
+
+test('beauty editor defaults respect the current page preset',()=>{
+ const light=beauty();
+ assert.equal(light.getDefaults().avatarSize,36);
+ assert.equal(light.getDefaults().myBubbleFontSize,14.5);
+ for(const preset of ['imessage','wechat','silver-butterfly','qq']){
+  const classic=beauty({maomao_chat_theme_preset:preset});
+  assert.equal(classic.getDefaults().avatarSize,30,preset+' must keep its original editor defaults');
+  assert.equal(classic.getDefaults().myBubbleFontSize,12,preset+' must not inherit default font sizing');
+ }
+});
