@@ -788,3 +788,15 @@ body.settings-home .phone-mockup > .content .menu-info .menu-title {
     font-size: 16px;
     font-weight: 600;
 }
+
+/* The API panel is a nested full-screen view; it must not reserve fake statusbar space. */
+body.settings-home .phone-mockup > #api-panel > .header {
+    min-height: 56px;
+    padding: max(12px, env(safe-area-inset-top, 0px)) var(--settings-gutter, 22px) 12px;
+    align-items: center;
+}
+body.settings-home .phone-mockup > #api-panel > .header .header-title {
+    font-size: 29px;
+    line-height: 1.2;
+    font-weight: 750;
+}
