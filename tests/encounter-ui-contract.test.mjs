@@ -36,6 +36,24 @@ test('邂逅浏览器冒烟测试与正式账号发布门禁分离', () => {
     '正式发布门禁必须继续验证账号脚本');
 });
 
+test('发布门禁识别安全账号注入脚本 v2 和 v3，拒绝缺失保护标记', () => {
+  const gateSource=fs.readFileSync(new URL('../scripts/verify-encounter-release.mjs',import.meta.url),'utf8');
+  const workerSource=fs.readFileSync(new URL('../worker.js',import.meta.url),'utf8');
+  const line=gateSource.split('\n').find(row=>row.startsWith("requirePattern('worker.js',"));
+  assert.ok(line,'发布门禁必须包含 Worker 账号作用域检查');
+  const from=line.indexOf("requirePattern('worker.js',")+"requirePattern('worker.js',".length;
+  const to=line.indexOf(",'Worker",from);
+  assert.ok(to>from,'发布门禁必须保留明确的 Worker 注入检查描述');
+  const pattern=vm.runInThisContext(line.slice(from,to));
+  assert.match(workerSource,pattern,'原账号注入代码必须匹配发布检查');
+  const nextVersion=workerSource.replace(/scope\.js\?v=[1-9]\d*/, 'scope.js?v=3');
+  assert.match(nextVersion,pattern,'账号版本升级到 v3 不能错误拦截已保护的页面');
+  assert.doesNotMatch(nextVersion.replace(' data-mao-account-scope',''),pattern,
+    '缺少账号保护标记必须拒绝');
+  assert.doesNotMatch(nextVersion.replace('scope.js?v=3','scope.js?v=invalid'),pattern,
+    '无效账号脚本版本必须拒绝');
+});
+
 function setup(initial={}) {
   const rows=new Map(Object.entries(initial));
   const localStorage={
