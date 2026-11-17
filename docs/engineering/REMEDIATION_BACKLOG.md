@@ -391,6 +391,25 @@ Acceptance:
 - Unsupported or platform-limited capabilities are listed honestly; static build success alone is not treated as device verification.
 - No production deployment, Android release, or existing user data is changed without separate approval.
 
+### GAME-UNLOCK-001 — Detective case unlock and save-state consistency
+**Priority:** P1 · **Status:** FIXED (2026-11-17, branch `GAME-UNLOCK-001/case-unlock-save-consistency`; pending review/merge)
+
+Symptom (historical, BUG-REPORT-案件解锁.md): case 01 was solved and stored, but case 02 still showed「完成上一案后解锁」and case 01 kept its「可调查」status.
+
+Verified root causes and fixes:
+- Cross-role progress leak: `healCaseProgress`/`readSolvedIndexesFromStorage` merged the legacy global `immCasesDone` mirror into every viewed role and `startCase()` persisted it, so role A's solves silently landed in role B's save. Now the global mirror is only a one-time fallback for roles with no own progress; roles with own progress never absorb it. immersive no longer appends to the global mirror; the archive done-badge reads per-role progress.
+- Fake success on storage failure: immersive verdict and the classic verdict celebrated before/while the write could silently fail (empty catch), leaving the archive locked while UI claimed success. Writes now verify read-back; celebration/「已结案」stamp only happens after a verified save, and failures show explicit messages (toast + verdict banner / classic verdict feedback).
+- Stale cache: `sw.js` CACHE_NAME bumped to v206 and games.html references `js/immersive-v21.js?v=50` so installed clients receive the fixed scripts.
+
+Compatibility: legacy saves (`completed`, solved `notes`, and the global `immCasesDone` mirror) keep unlocking; nothing is deleted or overwritten; per-role records stay isolated.
+
+Acceptance:
+- Case 01 solved → progress persisted and shown as 已结案.
+- Case 02 unlocks automatically and stays unlocked after refresh/re-enter.
+- Progress is isolated per role; legacy saves stay compatible.
+- Storage write failure is visible and never reported as success.
+- Regression: `npm run test:detective:unlock` (23 Node tests) and `npm run test:detective:unlock:browser` (5 Chromium scenarios incl. 375/390/430px).
+
 ## Parallel work plan
 
 Safe to parallelize:

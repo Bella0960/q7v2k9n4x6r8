@@ -908,23 +908,30 @@ function healCaseProgress(progress){
  if(!progress||typeof progress!=='object')progress={};
  if(!Array.isArray(progress.completed))progress.completed=[];
  if(!progress.notes||typeof progress.notes!=='object')progress.notes={};
+ // 先判定该角色是否已有「自己的」进度：有则绝不再吸收全局遗留镜像，
+ // 否则 A 角色的结案会被持久化进 B 角色的存档（跨角色进度串档）。
+ var hadOwnProgress=progress.completed.length>0;
  CASES.forEach(function(c,idx){
   var n=progress.notes[c&&c.title];
-  if(n&&n.result==='solved'&&progress.completed.indexOf(idx)<0)progress.completed.push(idx);
+  if(n&&n.result==='solved'){if(progress.completed.indexOf(idx)<0)progress.completed.push(idx);hadOwnProgress=true;}
  });
- // 沉浸式流程写入的全局 immCasesDone 可能与按角色存档错位（见 immersive-v21.js 的 key 漂移），这里做一次合并。
- try{
-  var legacyDone=JSON.parse(localStorage.getItem('immCasesDone')||'[]');
-  if(Array.isArray(legacyDone)){
-   var today=new Date().toISOString().slice(0,10);
-   legacyDone.forEach(function(v){
-    var n=Number(v);
-    if(!isFinite(n)||n<0||Math.floor(n)!==n||!CASES[n])return;
-    if(progress.completed.indexOf(n)<0)progress.completed.push(n);
-    if(!progress.notes[CASES[n].title])progress.notes[CASES[n].title]={result:'solved',day:today,legacy:true};
-   });
-  }
- }catch(e){}
+ // 全局 immCasesDone 只是旧版本的遗留镜像（新结案不再写入它，见 immersive-v21.js）。
+ // 仅当该角色还没有任何自己的进度时才做一次性兜底合并（等效迁移，兼容历史存档），
+ // 合并结果会随 saveCaseProgress 持久化成该角色自己的记录，此后不再依赖全局镜像。
+ if(!hadOwnProgress&&progress.completed.length===0){
+  try{
+   var legacyDone=JSON.parse(localStorage.getItem('immCasesDone')||'[]');
+   if(Array.isArray(legacyDone)){
+    var today=new Date().toISOString().slice(0,10);
+    legacyDone.forEach(function(v){
+     var n=Number(v);
+     if(!isFinite(n)||n<0||Math.floor(n)!==n||!CASES[n])return;
+     if(progress.completed.indexOf(n)<0)progress.completed.push(n);
+     if(!progress.notes[CASES[n].title])progress.notes[CASES[n].title]={result:'solved',day:today,legacy:true};
+    });
+   }
+  }catch(e){}
+ }
  var seen={},clean=[];
  progress.completed.forEach(function(v){
   var n=Number(v);
@@ -975,17 +982,28 @@ migrateReplacedCaseSlots();
 function isCaseSolved(i){return caseSolvedIndexes().indexOf(Number(i))>=0;}
 function readSolvedIndexesFromStorage(){
  // 供主 IIFE 之外的脚本使用：不依赖内部函数，直接从 localStorage 还原已结案列表。
+ // 与 healCaseProgress 保持同一套算法：角色自己的记录优先，
+ // 全局 immCasesDone 只在该角色没有任何自己的进度时作为历史兜底，避免跨角色串档。
  var key=activeRoleKey();
  try{key=localStorage.getItem('maomao_game_role')||key;}catch(e){}
- var done=[];
+ var done=[],hasOwn=false;
  try{
   var all=JSON.parse(localStorage.getItem('maomao_detective_progress_v1')||'{}')||{};
   var p=all[key]&&typeof all[key]==='object'?all[key]:{};
-  if(Array.isArray(p.completed))done=p.completed;
+  if(Array.isArray(p.completed)){
+   if(p.completed.length)hasOwn=true;
+   p.completed.forEach(function(v){var n=Number(v);if(isFinite(n)&&done.indexOf(n)<0)done.push(n);});
+  }
+  if(p.notes&&typeof p.notes==='object'){
+   CASES.forEach(function(c,idx){
+    var n=p.notes[c&&c.title];
+    if(n&&n.result==='solved'){hasOwn=true;if(done.indexOf(idx)<0)done.push(idx);}
+   });
+  }
  }catch(e){}
  try{
   var legacy=JSON.parse(localStorage.getItem('immCasesDone')||'[]');
-  if(Array.isArray(legacy))legacy.forEach(function(v){var n=Number(v);if(isFinite(n)&&done.indexOf(n)<0)done.push(n);});
+  if(Array.isArray(legacy)&&!hasOwn)legacy.forEach(function(v){var n=Number(v);if(isFinite(n)&&done.indexOf(n)<0)done.push(n);});
  }catch(e){}
  var out=[];done.forEach(function(v){var n=Number(v);if(isFinite(n)&&n>=0&&Math.floor(n)===n&&out.indexOf(n)<0)out.push(n);});
  return out;
@@ -993,7 +1011,16 @@ function readSolvedIndexesFromStorage(){
 function caseProgress(){var all=caseProgressRoot(),key=activeRoleKey();if(!all[key])all[key]={completed:[],attempts:{},notes:{},campaign:{trust:{},flags:[],threads:[],choices:[]}};if(!all[key].campaign)all[key].campaign={trust:{},flags:[],threads:[],choices:[]};if(!all[key].campaign.trust)all[key].campaign.trust={};if(!Array.isArray(all[key].campaign.flags))all[key].campaign.flags=[];if(!Array.isArray(all[key].campaign.threads))all[key].campaign.threads=[];if(!Array.isArray(all[key].campaign.choices))all[key].campaign.choices=[];return all[key];}
 function saveCampaignChoice(caseTitle,choice,result){var p=caseProgress(),c=p.campaign;c.choices.push({caseTitle:caseTitle,choice:choice,result:result,at:new Date().toISOString()});var flag='choice:'+caseTitle+':'+choice;if(c.flags.indexOf(flag)<0)c.flags.push(flag);c.threads.push({caseTitle:caseTitle,summary:result,choice:choice});saveCaseProgress(p);}
 function campaignBrief(){var c=caseProgress().campaign,trust=Object.keys(c.trust||{}).map(function(k){return k+'：'+c.trust[k];}).join('；');return '过往选择：'+(c.choices.slice(-8).map(function(x){return x.caseTitle+'：选择 '+x.choice+'；结果 '+x.result;}).join('；')||'暂无')+'。持续伏笔：'+(c.threads.slice(-8).map(function(x){return x.caseTitle+'留下：'+x.summary;}).join('；')||'暂无')+'。调查队信任记录：'+(trust||'尚未形成')+'。';}
-function saveCaseProgress(progress){var all=caseProgressRoot();all[activeRoleKey()]=progress||caseProgress();localStorage.setItem('maomao_detective_progress_v1',JSON.stringify(all));}
+function saveCaseProgress(progress){
+ // 返回 true 表示确实写入并被浏览器持久化（含读回校验，防隐私模式静默丢弃）。
+ // 写失败必须返回 false 让调用方如实提示，禁止把失败当成功上报。
+ var all=caseProgressRoot();
+ all[activeRoleKey()]=progress||caseProgress();
+ var payload='';
+ try{payload=JSON.stringify(all);}catch(e){return false;}
+ try{localStorage.setItem('maomao_detective_progress_v1',payload);}catch(e){return false;}
+ try{return localStorage.getItem('maomao_detective_progress_v1')===payload;}catch(e){return false;}
+}
 var detectiveGeneratedCasesLoaded=false;
 function loadGeneratedDetectiveCases(){if(detectiveGeneratedCasesLoaded)return;detectiveGeneratedCasesLoaded=true;try{var saved=JSON.parse(localStorage.getItem('maomao_detective_generated_cases_v1')||'[]');if(Array.isArray(saved))saved.forEach(function(c){if(c&&c.title&&Array.isArray(c.evidence)&&Array.isArray(c.suspects)&&!CASES.some(function(x){return x.title===c.title;}))CASES.push(c);});}catch(e){}}
 function detectiveTeamRoot(){try{return JSON.parse(localStorage.getItem('maomao_detective_team_v1')||'[]');}catch(e){return [];}}
@@ -1017,7 +1044,10 @@ function setDetectiveVersionBadge(visible){}
 function startCase(){
  document.body.classList.remove('detective-case-mode','case-modal-open');document.body.removeAttribute('data-case-theme');setDetectiveVersionBadge(true);
  loadGeneratedDetectiveCases();setRoundLabel();var progress=healCaseProgress(caseProgress()),team=detectiveTeam();
- saveCaseProgress(progress);var solved=progress.completed.slice();
+ // 先持久化再渲染：保存失败必须可见（toast），且渲染内容以存储里的真实状态为准，
+ // 避免「界面显示已解锁、刷新后又被存档锁回去」的假成功。
+ if(!saveCaseProgress(progress))showToast('案件进度保存失败，解锁状态可能无法保留。请检查浏览器存储空间或隐私模式。');
+ progress=healCaseProgress(caseProgress());var solved=progress.completed.slice();
  byId('gameContent').innerHTML='<div class="board-panel detective-bureau-page"><div class="panel-kicker">DETECTIVE BUREAU / CASE ARCHIVE</div><div class="prompt-title">长线案件档案室</div><div class="prompt-copy">组建你的 AI 角色调查小队，从独立案件逐步追踪同一条暗线。证据、证词和时间线都会影响结案判断。</div><div class="case-progress-strip"><span>已结案件</span><strong>'+progress.completed.length+' / '+CASES.length+'</strong></div><div class="divider-label">调查小队 · 可同时加入多位角色</div><div class="detective-team-picker">'+roleList.map(function(r){var chosen=team.some(function(x){return String(x.id)===String(r.id);});return '<button type="button" class="detective-team-chip '+(chosen?'selected':'')+'" data-team-role="'+esc(r.id)+'" aria-pressed="'+chosen+'">'+avatarMarkup(r,'')+'<span>'+esc(roleName(r))+'</span><small>'+(chosen?'已加入小队':'点击加入')+'</small></button>';}).join('')+'</div><div class="team-caption">当前队伍：'+esc(team.map(roleName).join('、'))+'。不同角色将以各自的人设参与调查讨论。</div><div class="case-ai-create"><div><strong>AI SERIAL CASE / 连载案件生成</strong><p>需要已配置的角色 API 来生成新剧情、证据、证词和后续主线；未配置时仍可游玩内置案件。</p></div><button type="button" class="secondary-btn" id="generateDetectiveCase">生成新案</button></div><div class="case-archive-heading"><span class="panel-kicker">AVAILABLE FILES / 内置案件</span><span class="case-archive-count">先展示 3 宗 · 共 '+CASES.length+' 宗</span></div><div class="case-archive-list" id="caseArchiveList">'+CASES.map(function(c,i){var done=solved.indexOf(i)>=0,locked=i>0&&solved.indexOf(i-1)<0;return '<button class="case-archive-item '+(i>=3?'case-archive-hidden':'')+'" data-open-case="'+i+'" '+(locked?'disabled':'')+'><span class="case-archive-no">CASE / '+String(i+1).padStart(2,'0')+'</span><strong>'+esc(c.title)+'</strong><span class="case-archive-desc">'+esc(c.intro)+'</span><span class="case-archive-status">'+(done?'✓ 已结案':locked?'完成上一案后解锁':i===0?'可调查':'待调查')+'</span></button>';}).join('')+'</div><button type="button" class="case-archive-more" id="caseArchiveMore" aria-expanded="false">展开全部案件 <span>＋</span></button></div>';
  var archiveMore=byId('caseArchiveMore'),archiveList=byId('caseArchiveList');if(archiveMore&&archiveList){archiveMore.addEventListener('click',function(){var expanded=archiveMore.getAttribute('aria-expanded')==='true';archiveMore.setAttribute('aria-expanded',String(!expanded));archiveList.classList.toggle('expanded',!expanded);archiveMore.innerHTML=expanded?'展开全部案件 <span>＋</span>':'收起案件列表 <span>−</span>';});}
  byId('gameContent').querySelectorAll('[data-team-role]').forEach(function(b){b.addEventListener('click',function(){toggleDetectiveRole(b.getAttribute('data-team-role'));});});
@@ -1261,7 +1291,7 @@ function chooseSuspect(i){
  if(Object.keys(gameState.revealed).length<Math.min(2,c.evidence.length)||Object.keys(gameState.interviewed).length<Math.min(2,c.suspects.length)){showToast('先查看至少两条线索，并听取至少两位人物的证词，就可以尝试指认。');return;}
  gameState.ended=true;progress.attempts[c.title]=(progress.attempts[c.title]||0)+1;
  var correct=i===c.answer;var campaign=progress.campaign||(progress.campaign={trust:{},flags:[],threads:[],choices:[]});campaign.trust=campaign.trust||{};var trustKey='investigation-team';campaign.trust[trustKey]=Math.max(-5,Math.min(5,Number(campaign.trust[trustKey]||0)+(correct?1:-1)));
- if(correct){buttons[i].classList.add('correct');showCaseClosedCelebration(c.title,function(){showCaseStoryReveal(c);});var closedCover=document.querySelector('.case-notebook .notebook-cover');if(closedCover&&!closedCover.querySelector('.case-closed-stamp')){var closedStamp=document.createElement('div');closedStamp.className='case-closed-stamp';closedStamp.setAttribute('aria-label','案件已结案');closedStamp.innerHTML='<span>CASE CLOSED</span><strong>已结案</strong><small>ARCHIVED · '+new Date().getFullYear()+'</small>';closedCover.appendChild(closedStamp);closedCover.classList.add('is-case-closed');}byId('caseFeedback').innerHTML='<strong>案件侦破 · 推理成立。</strong> '+esc(c.explain);if(progress.completed.indexOf(gameState.caseIndex)<0)progress.completed.push(gameState.caseIndex);progress.notes[c.title]={result:'solved',day:new Date().toISOString().slice(0,10),suspect:c.suspects[i].name,evidence:Object.keys(gameState.revealed).length};saveCaseProgress(progress);saveCampaignChoice(c.title,c.suspects[i].name,'正确指认；调查队信任上升，后续案件会参考这次判断。');saveStat('detective','win');roleLine('玩家正确侦破案件“'+c.title+'”。结论：'+c.explain+' 请用角色语气自然夸赞搭档。','漂亮，证据和证词终于对上了。我们把这案子正式归档。');}
+ if(correct){buttons[i].classList.add('correct');if(progress.completed.indexOf(gameState.caseIndex)<0)progress.completed.push(gameState.caseIndex);progress.notes[c.title]={result:'solved',day:new Date().toISOString().slice(0,10),suspect:c.suspects[i].name,evidence:Object.keys(gameState.revealed).length};var caseSaved=saveCaseProgress(progress);if(caseSaved){saveCampaignChoice(c.title,c.suspects[i].name,'正确指认；调查队信任上升，后续案件会参考这次判断。');saveStat('detective','win');var closedCover=document.querySelector('.case-notebook .notebook-cover');if(closedCover&&!closedCover.querySelector('.case-closed-stamp')){var closedStamp=document.createElement('div');closedStamp.className='case-closed-stamp';closedStamp.setAttribute('aria-label','案件已结案');closedStamp.innerHTML='<span>CASE CLOSED</span><strong>已结案</strong><small>ARCHIVED · '+new Date().getFullYear()+'</small>';closedCover.appendChild(closedStamp);closedCover.classList.add('is-case-closed');}showCaseClosedCelebration(c.title,function(){showCaseStoryReveal(c);});byId('caseFeedback').innerHTML='<strong>案件侦破 · 推理成立。</strong> '+esc(c.explain);roleLine('玩家正确侦破案件“'+c.title+'”。结论：'+c.explain+' 请用角色语气自然夸赞搭档。','漂亮，证据和证词终于对上了。我们把这案子正式归档。');}else{byId('caseFeedback').innerHTML='<strong>指认正确，但结案进度保存失败：</strong>浏览器存储暂时不可用，本案件的解锁状态可能不会保留。请检查存储空间或隐私模式后，点「重新调查」再次提交指认。';}}
  else{buttons[c.answer].classList.add('correct');byId('caseFeedback').innerHTML='<strong>指认有误，案件复盘：</strong> '+esc(c.explain)+' 正确指向：'+esc(c.suspects[c.answer].name)+'。你可以回看证据，再重新调查。';progress.notes[c.title]={result:'review',suspect:c.suspects[i].name};saveCaseProgress(progress);saveCampaignChoice(c.title,c.suspects[i].name,'误判后进入复盘；队员会在后续调查中提醒你重新核对证据。');saveStat('detective','loss');roleLine('玩家在案件“'+c.title+'”中指认错误。正确对象是'+c.suspects[c.answer].name+'。鼓励玩家复盘证据，语气友好。','差一点就抓住关键了。回看一下时间线，我们再试一次。');}
  buttons.forEach(function(b){b.disabled=true;});
  var phase=document.querySelector('[data-phase-mark="accuse"]');if(phase)phase.classList.add('complete');
@@ -3437,6 +3467,6 @@ body.detective-case-mode .detective-chat-mode .investigation-actions button{
 </style>
 
 <script src="js/interrogation-v20.js?v=20"></script>
-<script src="js/immersive-v21.js?v=49"></script>
+<script src="js/immersive-v21.js?v=50"></script>
 </body>
 </html>

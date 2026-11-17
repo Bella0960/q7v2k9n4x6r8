@@ -596,3 +596,223 @@ test('09 Service Worker 导航：缓存优先 + 后台更新，且不使用桌�
   assert.doesNotMatch(nav, /caches\.match\('\.\/index\.html'\)/, '不得用桌面 index.html 作为其它应用的兜底');
   assert.match(sw, /const CACHE_NAME = 'phone-app-pwa-v\d+';/, '缓存版本必须保持递增');
 });
+
+/* ==================== GAME-UNLOCK-001 回归补充 ====================
+ * 结案写入与解锁读取必须是同一份真实数据：
+ * A. 角色隔离——全局遗留镜像不得把 A 的结案持久化进 B 的存档；
+ * B. 历史兼容——从未玩过的角色仍可通过遗留镜像继承旧记录；
+ * C. 不假成功——写入失败（抛错/静默丢弃）必须返回 false 并如实提示；
+ * D. immersive——不再写全局镜像，结案庆祝以保存结果为门控；
+ * E. 缓存——SW 版本与脚本引用版本必须一起升级，否则用户拿不到修复。
+ * ---------------------------------------------------------------- */
+
+test('16 角色隔离：已有自己进度的角色不会被全局遗留镜像放大或串档', () => {
+  // role_2 自己只结案了案件01；role_3 结案了 01+02；全局遗留 immCasesDone=[0,1,2]。
+  const seed = {
+    maomao_game_role: 'role_2',
+    maomao_detective_progress_v1: JSON.stringify({
+      role_3: { completed: [0, 1], notes: { '潮汐档案室的最后一夜': { result: 'solved', source: 'immersive' } } },
+      role_2: { completed: [0], notes: { '潮汐档案室的最后一夜': { result: 'solved' } } }
+    }),
+    immCasesDone: JSON.stringify([0, 1, 2])
+  };
+  const { api, storage } = buildProgressScope({ seed, roleId: 'role_2' });
+  const solved = toLocalArray(api.caseSolvedIndexes());
+  assert.deepEqual([...solved], [0], 'role_2 只应看到自己的进度，不应吸收全局镜像里的 1、2');
+  const cards = computeCards(solved, api.CASES.length);
+  assert.equal(cards[1].done, false, 'role_2 未结案案件02');
+  assert.equal(cards[1].locked, false, 'role_2 已结案案件01，案件02 应对其解锁');
+  assert.equal(cards[2].locked, true, '案件03 对 role_2 保持锁定');
+
+  // 存档不被污染：heal + save 之后 role_2.completed 仍是 [0]，role_3 原样保留
+  api.saveCaseProgress(api.healCaseProgress(api.caseProgress()));
+  const saved = JSON.parse(storage.getItem('maomao_detective_progress_v1'));
+  assert.deepEqual([...toLocalArray(saved.role_2.completed)], [0], 'role_2 的存档被全局镜像污染了');
+  assert.deepEqual([...toLocalArray(saved.role_3.completed)], [0, 1], 'role_3 的存档不应被改动');
+});
+
+test('17 遗留兜底：从未玩过的角色可继承旧版全局记录（历史合法存档兼容）', () => {
+  const seed = {
+    maomao_game_role: 'role_9',
+    maomao_detective_progress_v1: JSON.stringify({ role_3: { completed: [0] } }),
+    immCasesDone: JSON.stringify([0, 1])
+  };
+  const { api, storage } = buildProgressScope({ seed, roleId: 'role_9' });
+  const solved = toLocalArray(api.caseSolvedIndexes());
+  assert.deepEqual([...solved], [0, 1], '没有自己进度的角色应通过遗留镜像解锁 01、02');
+  assert.equal(computeCards(solved, api.CASES.length)[2].disabled, false, '案件03 应解锁');
+  // 兜底合并结果会持久化为该角色自己的记录，此后不再依赖全局镜像
+  api.saveCaseProgress(api.healCaseProgress(api.caseProgress()));
+  const saved = JSON.parse(storage.getItem('maomao_detective_progress_v1'));
+  assert.deepEqual([...toLocalArray(saved.role_9.completed)], [0, 1], '兜底结果应写为角色自己的记录');
+});
+
+/** 与 buildProgressScope 相同的函数集合，便于换用不同 localStorage 桩 */
+function progressScopeSources() {
+  return [
+    extractCases(gamesHtml),
+    `var activeRole = ${JSON.stringify({ id: 'role_3' })};`,
+    extractFunction(gamesHtml, 'caseProgressRoot'),
+    extractFunction(gamesHtml, 'activeRoleKey'),
+    extractFunction(gamesHtml, 'caseProgress'),
+    extractFunction(gamesHtml, 'healCaseProgress'),
+    extractFunction(gamesHtml, 'caseSolvedIndexes'),
+    extractFunction(gamesHtml, 'isCaseSolved'),
+    extractFunction(gamesHtml, 'readSolvedIndexesFromStorage'),
+    extractFunction(gamesHtml, 'saveCaseProgress')
+  ].join('\n');
+}
+
+test('18 存储写入失败不假成功：saveCaseProgress 必须返回 false（含静默丢弃）', () => {
+  // 18a：setItem 直接抛错（配额满 / 隐私模式拦截）
+  const throwing = {
+    _map: new Map(),
+    getItem: function (k) { return this._map.has(k) ? this._map.get(k) : null; },
+    setItem: function () { throw new Error('QuotaExceededError'); },
+    removeItem: function (k) { this._map.delete(k); }
+  };
+  const sb1 = { localStorage: throwing };
+  runInNewContext(progressScopeSources(), sb1);
+  assert.equal(sb1.saveCaseProgress(sb1.caseProgress()), false, '写入抛错时必须返回 false');
+  assert.equal(throwing.getItem('maomao_detective_progress_v1'), null, '失败时不得留下半截数据');
+
+  // 18b：setItem 假成功（写入后读回不一致，如隐私模式静默丢弃）
+  const silent = {
+    _map: new Map(),
+    getItem: function (k) { return this._map.has(k) ? this._map.get(k) : null; },
+    setItem: function (k, v) { this._map.set(k, 'x' + String(v)); },
+    removeItem: function (k) { this._map.delete(k); }
+  };
+  const sb2 = { localStorage: silent };
+  runInNewContext(progressScopeSources(), sb2);
+  assert.equal(sb2.saveCaseProgress(sb2.caseProgress()), false, '读回不一致时必须返回 false');
+
+  // 18c：正常写入返回 true
+  const ok = makeStorage({});
+  const sb3 = { localStorage: ok };
+  runInNewContext(progressScopeSources(), sb3);
+  assert.equal(sb3.saveCaseProgress(sb3.caseProgress()), true, '正常写入应返回 true');
+});
+
+test('19 immersive 结案：按角色写入、不再写全局镜像、失败返回 false', () => {
+  const immersive = readFileSync(resolve(root, 'games/js/immersive-v21.js'), 'utf8');
+  const casesSb = {};
+  const cs = gamesHtml.indexOf('var CASES=[');
+  runInNewContext(gamesHtml.slice(cs, gamesHtml.indexOf('];', cs) + 2), casesSb);
+  const CASES = casesSb.CASES;
+
+  function buildRecordSandbox(storage) {
+    const ctx = {
+      localStorage: storage,
+      window: {},
+      console: { warn() {} },
+      IMM: { caseIndex: 0, accusation: 1, revealed: { 0: true, 1: true } },
+      c: () => CASES[0]
+    };
+    runInNewContext(extractFunction(immersive, 'detectiveProgressKey'), ctx);
+    runInNewContext(extractFunction(immersive, 'recordSolvedCaseInArchive'), ctx);
+    return ctx;
+  }
+
+  // 19a：成功路径——写进当前角色槽，且不碰全局 immCasesDone
+  const store = makeStorage({ immCasesDone: JSON.stringify([0]) });
+  const ctx = buildRecordSandbox(store);
+  assert.equal(ctx.recordSolvedCaseInArchive(), true, '正常写入应返回 true');
+  const saved = JSON.parse(store.getItem('maomao_detective_progress_v1'));
+  assert.ok(saved['default-partner'], '无 window.activeRoleKey 时按兜底 key（当前角色）写入');
+  assert.deepEqual([...toLocalArray(saved['default-partner'].completed)], [0]);
+  assert.equal(saved['default-partner'].notes[CASES[0].title].suspect, CASES[0].suspects[1].name, '结案笔记应记录被指认者');
+  assert.deepEqual(JSON.parse(store.getItem('immCasesDone')), [0], '不得再写全局 immCasesDone 镜像');
+
+  // 19b：失败路径——setItem 抛错时返回 false，不假装结案成功
+  const throwing = {
+    getItem: () => null,
+    setItem: () => { throw new Error('QuotaExceededError'); },
+    removeItem: () => {}
+  };
+  const ctx2 = buildRecordSandbox(throwing);
+  assert.equal(ctx2.recordSolvedCaseInArchive(), false, '写入失败必须返回 false');
+});
+
+test('20 immersive 迁移：遗留进度写入失败时不落 marker，下次仍会重试', () => {
+  const immersive = readFileSync(resolve(root, 'games/js/immersive-v21.js'), 'utf8');
+  const casesSb = {};
+  const cs = gamesHtml.indexOf('var CASES=[');
+  runInNewContext(gamesHtml.slice(cs, gamesHtml.indexOf('];', cs) + 2), casesSb);
+
+  function buildMigrateSandbox(storage) {
+    const ctx = {
+      localStorage: storage,
+      window: { CASES: casesSb.CASES },
+      console: { warn() {} },
+      detectiveProgressKey: () => 'role_3'
+    };
+    runInNewContext(extractFunction(immersive, 'migrateLegacyImmersiveProgress'), ctx);
+    return ctx;
+  }
+
+  // 成功：迁移写入 + 落 marker
+  const okStore = makeStorage({ immCasesDone: JSON.stringify([0]) });
+  buildMigrateSandbox(okStore).migrateLegacyImmersiveProgress();
+  const migrated = JSON.parse(okStore.getItem('maomao_detective_progress_v1'));
+  assert.deepEqual([...toLocalArray(migrated.role_3.completed)], [0]);
+  assert.equal(okStore.getItem('maomao_detective_immersive_progress_migrated_v1'), '1');
+
+  // 失败：setItem 抛错 → marker 不落，下次载入重试
+  const throwing = {
+    getItem: (k) => (k === 'immCasesDone' ? JSON.stringify([0]) : null),
+    setItem: () => { throw new Error('QuotaExceededError'); },
+    removeItem: () => {}
+  };
+  buildMigrateSandbox(throwing).migrateLegacyImmersiveProgress();
+  assert.equal(throwing.getItem('maomao_detective_immersive_progress_migrated_v1'), null, '迁移失败时不得写 marker');
+});
+
+test('21 源码守卫：immersive 不再写全局镜像，结案庆祝以保存结果为门控', () => {
+  const immersive = readFileSync(resolve(root, 'games/js/immersive-v21.js'), 'utf8');
+  const code = stripLineComments(immersive);
+  assert.doesNotMatch(code, /localStorage\.setItem\(\s*'immCasesDone'/, 'immersive 不得再写全局 immCasesDone');
+  assert.ok(
+    code.includes('var progressSaved = correct ? recordSolvedCaseInArchive() : true;'),
+    '结案渲染必须以保存结果为门控'
+  );
+  assert.ok(code.includes("progressSaved ? '已结案' : '未归档'"), '保存失败时不得盖「已结案」章');
+  assert.match(code, /结案进度保存失败：浏览器存储暂时不可用/, '保存失败必须给用户明确提示');
+  // 角标按角色进度判定
+  const tagStart = immersive.indexOf('function tagArchive()');
+  assert.notEqual(tagStart, -1, '未找到 tagArchive');
+  const tag = stripLineComments(immersive.slice(tagStart));
+  assert.ok(tag.includes('window.caseSolvedIndexes'), '角标应优先使用按角色的 caseSolvedIndexes');
+  assert.doesNotMatch(tag, /immCasesDone/, '角标不得再读全局 immCasesDone');
+});
+
+test('22 缓存一致性：SW 版本升级且 games.html 引用新的 immersive 脚本版本', () => {
+  const sw = readFileSync(resolve(root, 'sw.js'), 'utf8');
+  const m = sw.match(/const CACHE_NAME = 'phone-app-pwa-v(\d+)';/);
+  assert.ok(m, '未找到 CACHE_NAME');
+  assert.ok(
+    Number(m[1]) >= 206,
+    `SW 缓存版本必须 ≥ v206（当前 v${m[1]}），否则已安装用户拿不到修复后的 games.html`
+  );
+  const q = gamesHtml.match(/js\/immersive-v21\.js\?v=(\d+)/);
+  assert.ok(q, 'games.html 未引用带版本号的 immersive 脚本');
+  assert.ok(Number(q[1]) >= 50, `immersive 脚本引用版本必须 ≥ 50（当前 v${q[1]}）`);
+});
+
+test('23 档案室与经典结案：先保存后渲染/庆祝，失败必须可见', () => {
+  const startFn = extractFunction(gamesHtml, 'startCase');
+  assert.match(startFn, /if\(!saveCaseProgress\(progress\)\)showToast\(/, 'startCase 必须在保存失败时给出 toast');
+  assert.ok(
+    startFn.indexOf('saveCaseProgress(progress)') < startFn.indexOf('var solved=progress.completed.slice()'),
+    '渲染数据必须以保存后的存储状态为准'
+  );
+
+  const verdictIdx = gamesHtml.indexOf('var caseSaved=saveCaseProgress(progress)');
+  assert.notEqual(verdictIdx, -1, '经典结案必须先保存并校验结果');
+  const verdictLine = gamesHtml.slice(verdictIdx, gamesHtml.indexOf('\n', verdictIdx));
+  const celebrateIdx = verdictLine.indexOf('showCaseClosedCelebration(c.title');
+  assert.ok(celebrateIdx > -1, '保存成功后应庆祝结案');
+  assert.ok(celebrateIdx > verdictLine.indexOf('if(caseSaved){'), '庆祝必须发生在保存成功分支内');
+  assert.match(verdictLine, /结案进度保存失败/, '经典结案保存失败必须如实提示');
+  assert.match(verdictLine, /showCaseStoryReveal\(c\)/, '庆祝回调仍应展示完整真相');
+});

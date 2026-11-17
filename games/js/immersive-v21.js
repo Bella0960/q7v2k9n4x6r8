@@ -967,6 +967,7 @@
 
   // 旧版只写入 immCasesDone，新档案则读取 maomao_detective_progress_v1。
   // 首次载入时把已有的旧记录迁移一次，避免已结案件仍锁住下一案。
+  // 迁移写入失败时不落 marker，下次载入自动重试，避免遗留进度被永久跳过。
   function migrateLegacyImmersiveProgress() {
     var marker = 'maomao_detective_immersive_progress_migrated_v1';
     try {
@@ -976,6 +977,7 @@
       if (legacy.length) {
         var all = {};
         try { all = JSON.parse(localStorage.getItem('maomao_detective_progress_v1') || '{}') || {}; } catch (e) { all = {}; }
+        if (!all || typeof all !== 'object') all = {};
         var key = detectiveProgressKey();
         var progress = all[key] && typeof all[key] === 'object' ? all[key] : {};
         if (!Array.isArray(progress.completed)) progress.completed = [];
@@ -991,7 +993,12 @@
           }
         });
         all[key] = progress;
-        localStorage.setItem('maomao_detective_progress_v1', JSON.stringify(all));
+        var payload = JSON.stringify(all);
+        localStorage.setItem('maomao_detective_progress_v1', payload);
+        if (localStorage.getItem('maomao_detective_progress_v1') !== payload) {
+          console.warn('[immersive-v21] legacy progress migration not persisted; will retry next load');
+          return;
+        }
       }
       localStorage.setItem(marker, '1');
     } catch (e) {
@@ -1000,44 +1007,55 @@
   }
 
   // 只有正确指认才记为结案，并同步到档案列表使用的进度存储。
+  // 按角色写入 maomao_detective_progress_v1，不再追加全局 immCasesDone 镜像：
+  // 全局镜像会把 A 角色的结案泄漏给其它角色（跨角色串档）。
+  // 返回 true 表示进度确实持久化成功（含读回校验）；失败必须返回 false，
+  // 由结案页如实提示，禁止假装结案成功。
   function recordSolvedCaseInArchive() {
     var cc = c();
     var today = new Date().toISOString().slice(0, 10);
+    var all;
     try {
-      var done = JSON.parse(localStorage.getItem('immCasesDone') || '[]');
-      if (!Array.isArray(done)) done = [];
-      if (done.indexOf(IMM.caseIndex) < 0) done.push(IMM.caseIndex);
-      localStorage.setItem('immCasesDone', JSON.stringify(done));
-    } catch (e) {}
-
-    try {
-      var all = JSON.parse(localStorage.getItem('maomao_detective_progress_v1') || '{}') || {};
-      var key = detectiveProgressKey();
-      var progress = all[key] && typeof all[key] === 'object' ? all[key] : {};
-      if (!Array.isArray(progress.completed)) progress.completed = [];
-      if (progress.completed.indexOf(IMM.caseIndex) < 0) progress.completed.push(IMM.caseIndex);
-      if (!progress.notes || typeof progress.notes !== 'object') progress.notes = {};
-      if (!progress.attempts || typeof progress.attempts !== 'object') progress.attempts = {};
-      if (!progress.campaign || typeof progress.campaign !== 'object') {
-        progress.campaign = { trust: {}, flags: [], threads: [], choices: [] };
-      }
-      if (!progress.campaign.trust || typeof progress.campaign.trust !== 'object') progress.campaign.trust = {};
-      if (!Array.isArray(progress.campaign.flags)) progress.campaign.flags = [];
-      if (!Array.isArray(progress.campaign.threads)) progress.campaign.threads = [];
-      if (!Array.isArray(progress.campaign.choices)) progress.campaign.choices = [];
-      var suspect = cc.suspects && cc.suspects[IMM.accusation] ? cc.suspects[IMM.accusation].name : '';
-      progress.notes[cc.title] = {
-        result: 'solved',
-        day: today,
-        suspect: suspect,
-        evidence: Object.keys(IMM.revealed || {}).length,
-        source: 'immersive'
-      };
-      all[key] = progress;
-      localStorage.setItem('maomao_detective_progress_v1', JSON.stringify(all));
-    } catch (e) {
-      console.warn('[immersive-v21] archive progress sync failed', e);
+      all = JSON.parse(localStorage.getItem('maomao_detective_progress_v1') || '{}') || {};
+    } catch (e) { all = {}; }
+    if (!all || typeof all !== 'object') all = {};
+    var key = detectiveProgressKey();
+    var progress = all[key] && typeof all[key] === 'object' ? all[key] : {};
+    if (!Array.isArray(progress.completed)) progress.completed = [];
+    if (progress.completed.indexOf(IMM.caseIndex) < 0) progress.completed.push(IMM.caseIndex);
+    if (!progress.notes || typeof progress.notes !== 'object') progress.notes = {};
+    if (!progress.attempts || typeof progress.attempts !== 'object') progress.attempts = {};
+    if (!progress.campaign || typeof progress.campaign !== 'object') {
+      progress.campaign = { trust: {}, flags: [], threads: [], choices: [] };
     }
+    if (!progress.campaign.trust || typeof progress.campaign.trust !== 'object') progress.campaign.trust = {};
+    if (!Array.isArray(progress.campaign.flags)) progress.campaign.flags = [];
+    if (!Array.isArray(progress.campaign.threads)) progress.campaign.threads = [];
+    if (!Array.isArray(progress.campaign.choices)) progress.campaign.choices = [];
+    var suspect = cc.suspects && cc.suspects[IMM.accusation] ? cc.suspects[IMM.accusation].name : '';
+    progress.notes[cc.title] = {
+      result: 'solved',
+      day: today,
+      suspect: suspect,
+      evidence: Object.keys(IMM.revealed || {}).length,
+      source: 'immersive'
+    };
+    all[key] = progress;
+    var payload;
+    try { payload = JSON.stringify(all); } catch (e) { return false; }
+    try {
+      localStorage.setItem('maomao_detective_progress_v1', payload);
+    } catch (e) {
+      console.warn('[immersive-v21] archive progress save failed', e);
+      return false;
+    }
+    try {
+      if (localStorage.getItem('maomao_detective_progress_v1') !== payload) {
+        console.warn('[immersive-v21] archive progress not persisted (read-back mismatch)');
+        return false;
+      }
+    } catch (e) { return false; }
+    return true;
   }
 
   /* ---------- 08 结案 ---------- */
@@ -1056,7 +1074,8 @@
     }
 
     // 仅在指认正确时标记已结案，并同步档案室的解锁进度。
-    if (correct) recordSolvedCaseInArchive();
+    // 保存失败时照常展示真相复盘，但必须如实提示进度未保存，不展示「已结案」。
+    var progressSaved = correct ? recordSolvedCaseInArchive() : true;
 
     var wrap = document.createElement('div');
     wrap.style.cssText = 'padding:40px 24px 60px;background:linear-gradient(180deg,#1a1a24,#0a0a10);min-height:100%;box-sizing:border-box;position:relative;';
@@ -1064,13 +1083,16 @@
       // 盖章：右上角 absolute，从天而降，盖完停住
       '<div style="position:absolute;top:70px;right:20px;z-index:5;pointer-events:none;">' +
       '  <div style="width:100px;height:100px;border:4px solid #8b3a3a;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#8b3a3a;font-family:Georgia,"Songti SC",serif;animation:immStampDrop .7s cubic-bezier(.3,1.5,.5,1) .4s both, immStampRing .5s ease-out .7s both;opacity:0;">' +
-      '    <div style="font-size:16px;font-weight:700;letter-spacing:.2em;">' + (correct ? '已结案' : '待复盘') + '</div>' +
+      '    <div style="font-size:16px;font-weight:700;letter-spacing:.2em;">' + (correct ? (progressSaved ? '已结案' : '未归档') : '待复盘') + '</div>' +
       '    <div style="width:32px;height:1px;background:#8b3a3a;margin:5px 0;"></div>' +
-      '    <div style="font-size:8px;letter-spacing:.1em;">' + (correct ? '指认正确' : '指认有误') + '</div>' +
+      '    <div style="font-size:8px;letter-spacing:.1em;">' + (correct ? (progressSaved ? '指认正确' : '进度未保存') : '指认有误') + '</div>' +
       '  </div>' +
       '</div>' +
 
-      '<span style="display:inline-block;padding:6px 14px;border:1px solid #e8c9a0;color:#e8c9a0;font-size:10px;letter-spacing:.3em;margin-bottom:20px;">' + (correct ? 'CASE CLOSED / 指认正确' : 'CASE REVIEW / 指认有误') + '</span>' +
+      '<span style="display:inline-block;padding:6px 14px;border:1px solid #e8c9a0;color:#e8c9a0;font-size:10px;letter-spacing:.3em;margin-bottom:20px;">' + (correct ? (progressSaved ? 'CASE CLOSED / 指认正确' : 'SAVE FAILED / 进度未保存') : 'CASE REVIEW / 指认有误') + '</span>' +
+      (correct && !progressSaved
+        ? '<div style="background:rgba(139,58,58,.18);border:1px solid #8b3a3a;color:#e8b7b7;padding:12px 14px;margin-bottom:16px;font-size:12px;line-height:1.9;">结案进度保存失败：浏览器存储暂时不可用，本案件可能无法解锁下一案。请检查存储空间或隐私模式后，点下方「重新调查本案」再次提交指认。</div>'
+        : '') +
       '<div style="' + S.kicker + '">VERDICT / 最终报告</div>' +
       '<h2 style="font-family:Georgia,serif;font-size:26px;margin:10px 0 20px;font-weight:500;color:#f2f1ee;">' + esc(cc.title) + '</h2>' +
       '<p style="font-size:13px;line-height:2.1;color:#b0b0b8;margin-bottom:16px;">' + esc(cc.story || cc.intro) + '</p>' +
@@ -1203,11 +1225,16 @@
     }, true);
 
     // 档案室只显示结案状态，不再注入旧版调查入口。
+    // 角标按当前角色的进度判定（与档案室解锁算法一致），不再读全局 immCasesDone。
     function tagArchive() {
       var list = document.getElementById('caseArchiveList');
       if (!list) return;
       var done = [];
-      try { done = JSON.parse(localStorage.getItem('immCasesDone') || '[]'); } catch (e) {}
+      try {
+        if (typeof window.caseSolvedIndexes === 'function') done = window.caseSolvedIndexes() || [];
+        else if (typeof window.readSolvedIndexesFromStorage === 'function') done = window.readSolvedIndexesFromStorage() || [];
+      } catch (e) { done = []; }
+      if (!Array.isArray(done)) done = [];
       var items = list.querySelectorAll('.case-archive-item');
       items.forEach(function (item) {
         $all('.case-imm-mode-tag', item).forEach(function (tag) { tag.remove(); });

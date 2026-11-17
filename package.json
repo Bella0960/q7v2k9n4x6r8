@@ -15,6 +15,7 @@
     "test:tutorial": "node --test tests/tutorial-page-contract.test.mjs",
     "test:inspect:contract": "node --test tests/inspect-feature-contract.test.mjs",
     "test:detective:unlock": "node --test tests/detective-case-unlock.test.mjs",
+    "test:detective:unlock:browser": "npm run build && node tests/detective-case-unlock.browser.mjs",
     "perf:bench": "node perf/bench.mjs",
     "perf:bench:mobile": "THROTTLE=4 node perf/bench.mjs",
     "perf:ab": "THROTTLE=4 node perf/ab.mjs",

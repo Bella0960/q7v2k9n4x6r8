@@ -1,8 +1,9 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v205';
+const CACHE_NAME = 'phone-app-pwa-v206';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
+// v206 release: detective case-unlock/save consistency fix (games.html + immersive-v21.js v50).
 // v196 release: sweep orphaned role-owned media refs during avatar cleanup.
 const APP_SHELL = [
   './',
