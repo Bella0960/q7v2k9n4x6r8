@@ -297,7 +297,6 @@
 
     filtered.forEach(account => {
       const row = el('div', 'account-row', '');
-      const avatar = el('div', 'row-avatar', 'M');
       const main = el('div', 'row-main', '');
       const subline = account.id + ' · 创建于 ' + formatTime(account.created_at);
       main.append(
@@ -308,7 +307,7 @@
       const button = el('button', 'open-detail', '详情');
       button.type = 'button';
       button.addEventListener('click', () => openAccount(account.id));
-      row.append(avatar, main, status, button);
+      row.append(main, status, button);
       list.appendChild(row);
     });
     if (busy) setButtonsDisabled(true);
@@ -376,7 +375,6 @@
         pending: '待使用'
       };
       const row = el('div', 'invite-row', '');
-      const icon = el('div', 'row-avatar', '⌁');
       const main = el('div', 'row-main', '');
       const target = invite.target_account_id || invite.target_email || '未指定';
       main.append(
@@ -387,7 +385,7 @@
       );
       const stateClass = state === 'pending' ? 'status-pending' : (state === 'used' ? 'status-active' : 'status-revoked');
       const meta = el('div', 'row-status ' + stateClass, stateLabels[state]);
-      row.append(icon, main, meta);
+      row.append(main, meta);
       if (invite.target_account_id) {
         const detailButton = el('button', 'open-detail', '查看账号');
         detailButton.type = 'button';
