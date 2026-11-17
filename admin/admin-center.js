@@ -12,6 +12,8 @@
   let inviteTotalCount = 0;
   let accountSummary = null;
   let inviteSummary = null;
+  let accountPageError = false;
+  let invitePageError = false;
   let accountSearchTimer = 0;
   let inviteSearchTimer = 0;
   let globalAuditSearchTimer = 0;
@@ -262,6 +264,13 @@
   function renderAccounts() {
     const list = $('accountsList');
     list.replaceChildren();
+    if (accountPageError) {
+      $('accountResultCount').textContent = '账号暂时无法读取';
+      $('accountLimitNotice').hidden = true;
+      $('loadMoreAccounts').hidden = true;
+      list.appendChild(el('p', 'empty-note', '账号读取失败，请点击右上角的刷新重新检查。'));
+      return;
+    }
     const query = String($('accountSearch').value || '').trim().toLocaleLowerCase();
     const searched = accounts.filter(account =>
       [account.id, account.username, account.qq_email]
@@ -330,6 +339,13 @@
   function renderInvites() {
     const list = $('invitesList');
     list.replaceChildren();
+    if (invitePageError) {
+      $('inviteResultCount').textContent = '邀请码暂时无法读取';
+      $('inviteLimitNotice').hidden = true;
+      $('loadMoreInvites').hidden = true;
+      list.appendChild(el('p', 'empty-note', '邀请码读取失败，请点击右上角的刷新重新检查。'));
+      return;
+    }
     const query = String($('inviteSearch').value || '').trim().toLocaleLowerCase();
     const searched = invites.filter(invite =>
       [invite.id, invite.target_account_id, invite.target_email, invite.target_username]
@@ -417,7 +433,24 @@
       search,
       accountFilter,
       cursor
-    ));
+    )).catch(error => {
+      if (restart) {
+        accountPageError = true;
+        accounts = [];
+        accountDirectoryKey = '';
+        accountNextCursor = '';
+        accountHasMore = false;
+        accountTotalCount = 0;
+        accountSummary = null;
+        renderAccounts();
+        for (const id of ['statTotal', 'statPending', 'statActive', 'statDisabled',
+          'filterCountAll', 'filterCountPending', 'filterCountActive', 'filterCountRestricted']) {
+          $(id).textContent = '—';
+        }
+      }
+      throw error;
+    });
+    accountPageError = false;
     const next = Array.isArray(result.accounts) ? result.accounts : [];
     accountDirectoryKey = key;
     accounts = restart ? next : accounts.concat(next);
@@ -440,7 +473,24 @@
       search,
       inviteFilter,
       cursor
-    ));
+    )).catch(error => {
+      if (restart) {
+        invitePageError = true;
+        invites = [];
+        inviteDirectoryKey = '';
+        inviteNextCursor = '';
+        inviteHasMore = false;
+        inviteTotalCount = 0;
+        inviteSummary = null;
+        renderInvites();
+        for (const id of ['inviteCountAll', 'inviteCountPending', 'inviteCountUsed',
+          'inviteCountExpired', 'inviteCountRevoked']) {
+          $(id).textContent = '—';
+        }
+      }
+      throw error;
+    });
+    invitePageError = false;
     const next = Array.isArray(result.invites) ? result.invites : [];
     inviteDirectoryKey = key;
     invites = restart ? next : invites.concat(next);
@@ -453,13 +503,16 @@
   }
 
   async function refreshAll() {
-    await Promise.all([loadAccountPage(true), loadInvitePage(true)]);
+    // Do not cancel the other directory's successful state when one API fails.
+    const checks = await Promise.allSettled([loadAccountPage(true), loadInvitePage(true)]);
     if (selectedAccountId && !$('accountDetail').hidden) {
-      const account = accounts.find(item => item.id === selectedAccountId);
+      const account = accountPageError ? null : accounts.find(item => item.id === selectedAccountId);
       if (account) await renderAccountDetail(account);
       else closeDetail();
     }
     if (busy) setButtonsDisabled(true);
+    const failed = checks.find(result => result.status === 'rejected');
+    if (failed) throw failed.reason;
   }
 
   async function openAccount(accountId) {
@@ -1046,7 +1099,12 @@
     });
     run(async () => {
       await loadAccountPage(true);
-      openAccount(accountId);
+      if (!accounts.some(account => account.id === accountId)) {
+        showError('暂时找不到这位账号，请重新检查后再打开详情。',
+          () => openAccountFromInvite(accountId));
+        return;
+      }
+      await openAccount(accountId);
     });
   }
 
@@ -1076,12 +1134,14 @@
   async function init() {
     if (initializing) return;
     initializing = true;
+    let sessionVerified = false;
     try {
       const me = await api('/api/accounts/me');
       if (!me.account || me.account.role !== 'super_admin' || me.account.status !== 'active') {
         window.location.replace('/account/index.html?admin=1');
         return;
       }
+      sessionVerified = true;
       await refreshAll();
       if (new URLSearchParams(window.location.search).get('tab') === 'invites') activateTab('invites');
       hideError();
@@ -1094,8 +1154,12 @@
         window.location.replace('/account/index.html?admin=1');
         return;
       }
-      $('accountsList').replaceChildren(el('p', 'empty-note', '账号数据暂未加载，请重新检查。'));
-      $('invitesList').replaceChildren(el('p', 'empty-note', '邀请码数据暂未加载，请重新检查。'));
+      if (!sessionVerified) {
+        $('accountResultCount').textContent = '管理员身份尚未核对';
+        $('inviteResultCount').textContent = '管理员身份尚未核对';
+        $('accountsList').replaceChildren(el('p', 'empty-note', '暂时无法确认管理员身份，请重试。'));
+        $('invitesList').replaceChildren(el('p', 'empty-note', '暂时无法确认管理员身份，请重试。'));
+      }
       showError(
         error.message || '暂时无法连接服务器，管理员身份尚未重新验证。管理数据尚未加载，请重试。',
         () => init()
