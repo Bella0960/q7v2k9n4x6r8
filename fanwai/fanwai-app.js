@@ -131,7 +131,7 @@
         if (layer.hidden || sheet.classList.contains('fw-reading') ||
             !sheet.querySelector('.fw-grid')) {
           event.preventDefault();
-          showNotice('请先返回番外目录，保存当前故事后再切换角色');
+          global.showToast('请先返回番外目录，保存当前故事后再切换角色');
         }
       });
       var spacer = top.querySelector('.fw-header-spacer');
