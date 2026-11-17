@@ -2058,7 +2058,7 @@
 <script src="../../shared/js/chat-page-theme.js?v=20261105v1"></script>
 <link rel="stylesheet" href="../../shared/css/silver-butterfly-theme.css?v=20261102v5">
 <link rel="stylesheet" href="../../shared/css/wechat-theme-refinements.css?v=20261105v2">
-<link rel="stylesheet" href="../../shared/css/chat-light-surfaces.css?v=20261112v1">
+<link rel="stylesheet" href="../../shared/css/chat-light-surfaces.css?v=20261118v2">
 </head>
 <body class="chat-light-detail">
     <div class="phone-mockup">
@@ -9442,14 +9442,19 @@ form#chat-form .send-icon-btn { display: flex !important; visibility: visible !i
   function sync(){
     var shell = document.querySelector('.phone-mockup');
     var preset = shell && shell.getAttribute('data-chat-theme-preset');
-    if (!preset || preset === 'default') {
+    if (!preset || preset === 'default' || preset === 'imessage') {
       var floating = document.getElementById('myFloatSend');
       if (floating) floating.remove();
       var form = document.getElementById('chat-form');
       if (form) {
         ['background','background-color','border-top','backdrop-filter','-webkit-backdrop-filter'].forEach(function(key){ form.style.removeProperty(key); });
+        var capsule = form.querySelector('.input-capsule');
+        if (capsule) capsule.style.removeProperty('margin-right');
         var nativeSend = form.querySelector('.send-icon-btn');
-        if (nativeSend) nativeSend.style.removeProperty('display');
+        if (nativeSend) {
+          nativeSend.style.removeProperty('display');
+          nativeSend.style.removeProperty('visibility');
+        }
       }
       return;
     }
