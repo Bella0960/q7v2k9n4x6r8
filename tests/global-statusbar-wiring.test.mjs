@@ -76,7 +76,11 @@ test('explicitly marked native custom system bars reuse the same controller', ()
     assert.match(html, /<script\b[^>]*src=["'][^"']*shared\/js\/statusbar-control\.js/i,
       'custom system status bar missing shared control: ' + path.relative(projectRoot, page));
   }
-  assert.ok(marked >= 3, 'expected the three custom system bars to be marked');
+  // The music app deliberately removed its simulated bar; remaining opt-in bars still use this controller.
+  assert.ok(marked >= 2, 'expected the remaining custom system bars to retain shared control');
+  const musicHtml = fs.readFileSync(path.join(projectRoot, 'music/music.html'), 'utf8');
+  assert.doesNotMatch(musicHtml, /<(?:div|header)\b[^>]*\bdata-maomao-system-statusbar\b/,
+    'music must not reintroduce a fake system statusbar');
 });
 
 test('hidden preference applies immediately and covers dynamically added bars through CSS', () => {
