@@ -134,6 +134,10 @@
         retryButton.disabled = true;
         try {
           await retry();
+        } catch (error) {
+          // The recovery button itself must never fail silently or leave an
+          // unhandled rejected promise on a phone with intermittent service.
+          showError(error?.message || '重新核对失败，请稍后再试。', retry);
         } finally {
           if (retryButton.isConnected) retryButton.disabled = false;
         }
