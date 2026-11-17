@@ -12,7 +12,9 @@ test('MUSIC-UI-001: light default contains no built-in dark image display paths'
 });
 
 test('MUSIC-UI-001: native local import and playback remain wired', () => {
-  assert.match(music, /id="musicImport"[^>]*accept="audio\/\*"/);
+  // Browser accepts audio/* plus explicit MP3/M4A suffixes for phones whose file MIME is missing.
+  assert.match(music, /id="musicImport"[^>]*accept="audio\/\*[^"]*"[^>]*multiple/);
+  assert.match(music, /id="musicImport"[^>]*accept="[^"]*\.mp3[^"]*"/);
   assert.match(music, /class="music-import-link"[^>]*musicImport/);
   assert.match(music, /const MEDIA_DB_NAME\s*=\s*'maomao-media-store'/);
   assert.match(music, /const LOCAL_TRACKS_KEY\s*=\s*'music_local_tracks'/);
