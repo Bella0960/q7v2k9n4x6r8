@@ -279,13 +279,37 @@
           sourceCandidateId: sourceId,
           era: String(role.encounterOrigin.era || ''),
           trait: String(role.encounterOrigin.trait || ''),
-          storyChoice: String(role.encounterOrigin.storyChoice || '')
+          storyChoice: String(role.encounterOrigin.storyChoice || ''),
+          job: String(role.encounterOrigin.job || ''),
+          object: String(role.encounterOrigin.object || ''),
+          fate: String(role.encounterOrigin.originalFate || role.encounterOrigin.fate || '')
         });
       });
       return ok(records);
     } catch (error) {
       return fail('已相识人物读取失败，原角色档案未修改');
     }
+  }
+
+  // 只按已存在的正式角色 ID 读取已相识资料；不建新角色、不写对话或存储。
+  // 每次生成故事重新读取当前账号的角色，防止换号、删除角色后的旧资料继续使用。
+  function getReunionScenes(roleId) {
+    if (typeof roleId !== 'string' || !roleId) return fail('请选择已相识的角色');
+    var current = getEncounteredRoles();
+    if (!current.ok) return current;
+    var role = current.value.find(function(item) { return item.id === roleId; });
+    if (!role) return fail('这位人物已不在当前角色库，请返回相遇收藏刷新');
+    function brief(value, fallback) {
+      return String(value || fallback).replace(/[\r\n\t]+/g,' ').trim().slice(0,72);
+    }
+    var name=brief(role.name,'这位旧识'), era=brief(role.era,'熟悉的地方');
+    var job=brief(role.job,'自己的工作'), object=brief(role.object,'那件旧物');
+    var fate=brief(role.fate || role.storyChoice,'尚未讲完的往事');
+    return ok({id:role.id,name:role.name,scenes:[
+      {id:'everyday',title:'日常偶遇',text:'在'+era+'，你再次遇见'+name+'。TA正忙着'+job+'的事情，偶然抬头，认出了曾见过的面孔。'},
+      {id:'keepsake',title:'旧物线索',text:'关于「'+object+'」的一点消息，让你和'+name+'又一次相遇。线索并不完整，TA也正想弄清它从何而来。'},
+      {id:'turning',title:'命运回声',text:'在'+era+'，与「'+fate+'」有关的往事有了新变化。'+name+'正站在另一条路的起点。'}
+    ]});
   }
 
   function getReservedNames() {
@@ -431,13 +455,31 @@
   async function withCandidateLock(operation) {
     var scope = checkAccountScope();
     if (!scope.ok) return scope;
+    // Web Locks 可能排队：A 账号排队的旧请求不能拿到锁后写入 B 账号的存储。
+    function guardAccount() {
+      var latest = checkAccountScope();
+      if (!latest.ok) return latest;
+      if (latest.value.id !== scope.value.id || latest.value.role !== scope.value.role) {
+        return fail('等待期间账号已切换，操作已取消；请重新打开人物收藏');
+      }
+      return ok(latest.value);
+    }
+    function runGuarded() {
+      var checked = guardAccount();
+      return checked.ok ? operation() : checked;
+    }
     var manager = global.navigator && global.navigator.locks;
     try {
+      var result;
       if (manager && typeof manager.request === 'function') {
-        return await manager.request('maomao:encounter:v2:' + scope.value.id,
-          {mode:'exclusive'}, operation);
+        result = await manager.request('maomao:encounter:v2:' + scope.value.id,
+          {mode:'exclusive'}, runGuarded);
+      } else {
+        result = runGuarded();
       }
-      return operation();
+      // 写入和异步返回之间也可能换号；旧结果不得冒充新账号操作成功。
+      var after = guardAccount();
+      return after.ok ? result : after;
     } catch (error) {
       return fail('候选跨标签页操作失败，已保留现有资料，请重新尝试');
     }
@@ -484,6 +526,64 @@
     return withCandidateLock(function() { return updateCandidateStoryChoice(id,choice); });
   }
   // 选故事不请求 AI：同一个人物和选项始终给出稳定的开场，正式角色设定也可继承。
+
+  // 性格盲测只展示基于原人设的固定三选一；不增加存储键、不改人物 ID，也不调用 AI。
+  // 同一候选的选项顺序稳定，返回值不暴露为新的“性格评判”或角色修改指令。
+
+  // 「以物识人」只在所属世界的原生职业池挑三项，不泄露真名与身份。
+  // 按同一人物 ID 稳定选择与排列；不修改候选和正式角色，也不消耗 API。
+  // 蒙面档案逐条展示已有世界设定，不在揭晓前包含姓名、职业或正式 ID。
+  // 按已有人物数据生成临时线索；不写角色、候选、聊天或记忆。
+  function getMaskedClues(card) {
+    if (!card || card.type !== '蒙面档案' || typeof card.id !== 'string' ||
+        !card.id || typeof card.era !== 'string' || !card.era ||
+        typeof card.species !== 'string' || !card.species ||
+        typeof card.object !== 'string' || !card.object) return [];
+    return [
+      {id:'origin',title:'来处',text:'这个人的故事发生在「' + card.era + '」。'},
+      {id:'kind',title:'身份轮廓',text:'TA 属于「' + card.species + '」，但还没有留下姓名。'},
+      {id:'keepsake',title:'随身之物',text:'TA 留下了一件线索：「' + card.object + '」。'}
+    ];
+  }
+
+  function getObjectOptions(card) {
+    if (!card || card.type !== '以物识人' || typeof card.job !== 'string' ||
+        typeof card.id !== 'string' || !card.id) return [];
+    var world = worlds.find(function(item) {
+      return item.era === card.era && item.species === card.species &&
+        item.jobs.indexOf(card.job) !== -1;
+    });
+    if (!world) return [];
+    var others = world.jobs.filter(function(job) { return job !== card.job; });
+    if (others.length < 2) return [];
+    var seed = card.id + ':object';
+    var hash = 2166136261;
+    for (var i = 0; i < seed.length && i < 96; i++) {
+      hash = Math.imul(hash ^ seed.charCodeAt(i), 16777619) >>> 0;
+    }
+    var first = others.splice(hash % others.length, 1)[0];
+    var second = others[(hash >>> 8) % others.length];
+    var choices = [first, second];
+    choices.splice((hash >>> 16) % 3, 0, card.job);
+    return choices;
+  }
+
+  function getBlindOptions(card) {
+    if (!card || typeof card.trait !== 'string' || !card.trait.trim()) return [];
+    var others = archetypes.map(function(item) { return item.trait; })
+      .filter(function(trait) { return trait !== card.trait; });
+    if (others.length < 2) return [];
+    var seed = String(card.id || '');
+    var hash = 2166136261;
+    for (var i = 0; i < seed.length && i < 96; i++) {
+      hash = Math.imul(hash ^ seed.charCodeAt(i), 16777619) >>> 0;
+    }
+    var first = others.splice(hash % others.length, 1)[0];
+    var second = others[(hash >>> 8) % others.length];
+    var choices = [first, second];
+    choices.splice((hash >>> 16) % 3, 0, card.trait);
+    return choices;
+  }
   function storyOpening(card, choice) {
     if (!card || !Array.isArray(card.choices) || card.choices.indexOf(choice) === -1) return '';
     var name = String(card.name || '这位陌生人');
@@ -520,7 +620,9 @@
     removeCandidate:removeCandidate, saveCandidateSafe:saveCandidateSafe,
     removeCandidateSafe:removeCandidateSafe, updateCandidateStoryChoiceSafe:updateCandidateStoryChoiceSafe,
     getPreferences:getPreferences, savePreferences:savePreferences,
-    formatBrief:formatBrief, storyOpening:storyOpening, getEncounteredRoles:getEncounteredRoles, normalizeName:normalizeName,
+    formatBrief:formatBrief, storyOpening:storyOpening, getBlindOptions:getBlindOptions,
+    getObjectOptions:getObjectOptions, getMaskedClues:getMaskedClues,
+    getEncounteredRoles:getEncounteredRoles, getReunionScenes:getReunionScenes, normalizeName:normalizeName,
     checkAccountScope:checkAccountScope, verifyLiveAccountContext:verifyLiveAccountContext,
     registerCardDecorator:function(fn) {
       if (typeof fn !== 'function') return function(){};
