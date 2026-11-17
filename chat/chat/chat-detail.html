@@ -16,6 +16,8 @@
     <script src="../../shared/js/phone/role-avatar-library.js?v=20261113v1"></script>
     <script src="../../shared/js/phone/role-sticker-library.js?v=20261107v2"></script>
     <script src="../../shared/js/phone/chat-image-vision.js?v=20261113v1"></script>
+    <script src="../../shared/js/phone/rp-default-protocol.js?v=20261118v1"></script>
+    <script src="../../shared/js/phone/chat-role-context.js?v=20261118v1"></script>
     <script src="../../shared/js/phone/phone_api.js?v=20261115cancel1"></script>
     <script src="../../shared/js/phone/image-generation.js?v=20261106v1"></script>
     <script src="../../shared/js/phone/role-gallery-image-autonomy.js?v=20261111v2"></script>
@@ -1543,6 +1545,13 @@
                 border-radius: 0;
                 box-shadow: none;
             }
+            /* 手机上由系统绘制状态栏，禁止页面再次模拟状态栏或堆出大块顶部留白。 */
+            .phone-mockup > .status-bar { display: none !important; }
+            .phone-mockup > .chat-header {
+                padding: calc(8px + env(safe-area-inset-top, 0px)) 14px 8px !important;
+                min-height: 58px;
+                flex: 0 0 auto;
+            }
         }
 
         /* ===== iOS-inspired floating glass utility panel ===== */
@@ -2843,14 +2852,57 @@
 
         const storageKey = `chat_history_${currentCharacter.id}`;
 
+        /* ENCOUNTER_CHAT_POLICY_BEGIN */
+        // 邂逅角色原始资料为人物专属只读背景；老角色和群聊保持原有开场和提示词。
+        function getEncounterRoleGreeting(role) {
+            var origin = role && role.encounterOrigin;
+            if (!origin || origin.version !== 1) return '';
+            var trait = String(origin.trait || '').trim();
+            if (/清冷|寡言|理性|敏锐/.test(trait)) return '嗯，是你。';
+            if (/毒舌|幽默/.test(trait)) return '还真来找我了。';
+            if (/古灵精怪/.test(trait)) return '哎，你怎么找到这里来的？';
+            if (/傲娇|倔强/.test(trait)) return '……你来得还挺巧。';
+            if (/阴郁|慢热/.test(trait)) return '……你来了。';
+            if (/慵懒|随性/.test(trait)) return '哟，又碰面了。';
+            if (/阳光|直率|勇敢/.test(trait)) return '哎，竟然又碰见你了。';
+            if (/优雅|疏离/.test(trait)) return '没想到会在这里见到你。';
+            if (/温柔|克制|温和/.test(trait)) return '原来是你。';
+            return '是你呀。';
+        }
+        function buildEncounterIdentityContext(role) {
+            var origin = role && role.encounterOrigin;
+            if (!origin || origin.version !== 1) return '';
+            var lines = ['【当前角色的邂逅来源资料】'];
+            [
+                ['时代与世界', origin.era],
+                ['种族', origin.species],
+                ['身份与职业', origin.job],
+                ['外在性格', origin.trait],
+                ['内在反差', origin.contrast],
+                ['与人相处气质', origin.relationVibe],
+                ['重要物件（私人线索）', origin.object],
+                ['过去经历与命运线索（未必公开）', origin.originalFate || origin.fate],
+                ['已选择的故事分支', origin.storyChoice],
+                ['故事起点（不代表已与用户共同经历）', origin.storyOpening]
+            ].forEach(function(field) {
+                var value = String(field[1] || '').trim();
+                if (value) lines.push(field[0] + '：' + value.slice(0, 220));
+            });
+            lines.push('【邂逅聊天要求】用户之后手动修改的人设与说话习惯优先于旧来源线索。职业、背景、性格是日常判断和用语的依据，不是每轮要复述的清单。自然回应具体问题，有自己的生活和安排；不要默认永远有空，也不要总用“有什么可以帮你”“想聊什么”式客服套话或每句都反问。慢慢让经历浮现，不要刚认识就泄露秘密、擅自制造共同回忆或预设亲密关系。');
+            return lines.join('\n').slice(0, 1700);
+        }
+        /* ENCOUNTER_CHAT_POLICY_END */
+
         function getInitialMessages() {
             if (isGroupChat) {
                 return [
                     { role: 'received', text: `欢迎来到「${contactName}」群聊，一起聊聊吧。` }
                 ];
             }
+            // 只影响首次创建空历史的邂逅角色；已保存聊天不会重新生成或覆写。
+            var encounterGreeting = getEncounterRoleGreeting(currentCharacter);
             return [
-                { role: 'received', text: `你好，我是${contactName}！很高兴和你聊天。` }
+                { role: 'received', text: encounterGreeting || `你好，我是${contactName}！很高兴和你聊天。` }
             ];
         }
 
@@ -5622,6 +5674,18 @@
                 }
             }
 
+            // 单聊每轮从同一角色 ID 只读最新档案；不沿用页面打开时的旧快照。
+            const roleForTurn = !isGroupChat
+                ? (window.MAOMAOChatRoleContext && typeof window.MAOMAOChatRoleContext.resolveRole === 'function'
+                    ? window.MAOMAOChatRoleContext.resolveRole(currentCharacter.id, currentCharacter, getRoleById)
+                    : (getRoleById(currentCharacter.id) || currentCharacter))
+                : currentCharacter;
+            // 历史错误身份仅从新邂逅普通角色的 AI 输入里剔除，不改一条历史消息。
+            const roleModelHistory = !isGroupChat && window.MAOMAOChatRoleContext &&
+                typeof window.MAOMAOChatRoleContext.getModelHistory === 'function'
+                ? window.MAOMAOChatRoleContext.getModelHistory(historyList, roleForTurn)
+                : historyList;
+
             // ===== R2 字符预算：上下文各段落设上限，超长静默截断降级（防 400 context_length_exceeded） =====
             // 阈值按中文 ≈0.6~1 token/字 估算；最坏组合 ~30k 字，适配主流 32k+ 上下文模型。要调就改这里。
             var CTX_CAP = {
@@ -5732,8 +5796,12 @@
                     }
                 }
             } else {
-                rolePersona = (currentCharacter.persona || currentCharacter.prompt || '').trim()
-                    || '你是一个善解人意、回复自然的AI助手。';
+                var rawCurrentPersona = (roleForTurn.persona || roleForTurn.prompt || '').trim();
+                rolePersona = (window.MAOMAOChatRoleContext &&
+                    typeof window.MAOMAOChatRoleContext.stripEncounterEditorNote === 'function'
+                    ? window.MAOMAOChatRoleContext.stripEncounterEditorNote(rawCurrentPersona, roleForTurn)
+                    : rawCurrentPersona).trim()
+                    || '你正在以此角色身份发消息。根据档案与已知背景说话，不自称 AI 助手，不编造职业或经历。';
             }
             // An explicitly addressed admin order should be answered by the addressed admin,
             // not a randomly selected member (and never by the muted target).
@@ -5851,7 +5919,7 @@
 
             var relationshipRole = isGroupChat
                 ? (groupReplyPick ? getRoleById(groupReplyPick.id) : null)
-                : currentCharacter;
+                : roleForTurn;
             var characterSocialPrompt = '';
             try { characterSocialPrompt = buildCharacterSocialPrompt(relationshipRole); } catch (socialContextError) {
                 console.warn('[CharacterSocialContext] skipped:', socialContextError);
@@ -5906,7 +5974,7 @@
                 ? '本群仅通过经过公开范围过滤的共同记忆接口读取历史。'
                 : capText(buildWeightedMemoryText(
                     typeof aliasRoleId !== 'undefined' ? aliasRoleId : roleId,
-                    (currentCharacter.memory || '').trim()
+                    (roleForTurn.memory || '').trim()
                 ) || '暂无记忆', CTX_CAP.memory);
 
             // 实时状态（记忆空间子系统：当前心情 + 今日事件）
@@ -5943,7 +6011,9 @@
                     }
                 }
             } catch (e) {}
-            rpProtocol = capText(rpProtocol.trim(), CTX_CAP.rpProtocol);
+            // 设置页展示的默认协议，即使尚未显式保存，聊天也应真实使用。
+            // 已保存的非空协议优先，读取不隐式修改用户设置。
+            rpProtocol = capText(rpProtocol.trim() || String(window.MAOMAO_RP_DEFAULT_PROTOCOL || ''), CTX_CAP.rpProtocol);
 
             // 世界书：召回当前话题相关条目；兼容旧版只有 content 的整本设定
             let worldbookText = '';
@@ -5961,6 +6031,21 @@
                       wbList = wbList.filter(function (book) { return book && mountedIds.indexOf(String(book.id)) !== -1; });
                     }
                   }
+                } else if (window.MAOMAOChatRoleContext &&
+                           typeof window.MAOMAOChatRoleContext.selectWorldbooksForRole === 'function') {
+                  // 单聊读取当前角色绑定的局部世界书，不允许其他人物的局部背景串入。
+                  var roleMountedIds = [];
+                  var roleMountRaw = localStorage.getItem('chat_worldbooks_' + aliasRoleId);
+                  if (roleMountRaw != null) {
+                    try {
+                      var parsedRoleMount = JSON.parse(roleMountRaw);
+                      if (Array.isArray(parsedRoleMount)) roleMountedIds = parsedRoleMount;
+                    } catch (mountError) {
+                      // 无法解析挂载列表时只使用角色档案绑定，不覆盖原始记录。
+                    }
+                  }
+                  wbList = window.MAOMAOChatRoleContext.selectWorldbooksForRole(
+                    wbList, roleForTurn, roleMountedIds);
                 }
                 if (window.ChatContextPolicy &&
                     typeof window.ChatContextPolicy.buildWorldbookInjectionText === 'function') {
@@ -5969,7 +6054,7 @@
                     recentMessages: (isGroupChat ? historyList.filter(function (m) {
                         return m && m.type !== 'group_private' && m.type !== 'group_game_private' &&
                             m.visibility !== 'private' && m.visibility !== 'role_only';
-                    }) : historyList).slice(-8),
+                    }) : roleModelHistory).slice(-8),
                     maxEntries: 32,
                     maxChars: CTX_CAP.worldbook
                   });
@@ -5985,7 +6070,7 @@
             // 协议变量替换：{{char}} {{user}} {{persona}} {{memory}} {{worldbook}}
             function applyProtocolVars(text) {
                 return String(text || '')
-                    .replace(/\{\{char\}\}/g, currentCharacter.name || '角色')
+                    .replace(/\{\{char\}\}/g, roleForTurn.name || '角色')
                     .replace(/\{\{user\}\}/g, userName)
                     .replace(/\{\{persona\}\}/g, rolePersona)
                     .replace(/\{\{memory\}\}/g, roleMemory)
@@ -6157,7 +6242,7 @@
             }
 
             // ========== 身份锁：最外层强制协议，优先级最高，不可被覆盖 ==========
-            const charName = currentCharacter.name || '角色';
+            const charName = roleForTurn.name || '角色';
             const IDENTITY_LOCK = [
               '═══════════════════════════════════',
               '【身份锚定】',
@@ -6201,7 +6286,11 @@
               '',
               '【以下为当前角色完整资料与对话背景】'
             ].join('\n');
-            systemPrompt = IDENTITY_LOCK + (characterSocialPrompt ? '\n\n' + characterSocialPrompt + '\n\n' : '') + systemPrompt;
+            // 当前单聊的邂逅职业、经历与性格进入每轮请求；不混入其他角色/群聊。
+            var encounterIdentityContext = !isGroupChat ? buildEncounterIdentityContext(roleForTurn) : '';
+            systemPrompt = IDENTITY_LOCK
+                + (encounterIdentityContext ? '\n\n' + encounterIdentityContext + '\n\n' : '')
+                + (characterSocialPrompt ? '\n\n' + characterSocialPrompt + '\n\n' : '') + systemPrompt;
             if (isGroupChat && currentGroup) {
               const groupMode = currentGroup.settings && currentGroup.settings.chatMode === 'offline' ? 'offline' : 'online';
               if (groupMode === 'offline') {
@@ -6254,7 +6343,7 @@
             }
 
             // 主动通话能力：无条件注入，每次请求都带上（few-shot 强化版）
-            systemPrompt += '\n\n[主动通话能力]\n你是一个具备真实拨号能力的 AI 助理。当用户表达"给我打电话""打个电话""回电话""来电"等意图时，你必须答应，并在整条回复的最后加上标记：[发起语音通话]。\n示例：\n用户：给我打电话\n你：好的，我马上打给你。[发起语音通话]\n绝对禁止在任何情况下说出"我不能打电话""无法真正拨号""不具备此能力"之类的拒绝或解释内容；禁止推脱、禁止省略标记，直接输出标记，系统会自动为你接通电话。';
+            systemPrompt += '\n\n[主动通话能力]\n你是当前正在聊天的角色，也可以在此应用内发起语音通话。当用户表达"给我打电话""打个电话""回电话""来电"等意图时，你必须答应，并在整条回复的最后加上标记：[发起语音通话]。\n示例：\n用户：给我打电话\n你：好的，我马上打给你。[发起语音通话]\n绝对禁止在任何情况下说出"我不能打电话""无法真正拨号""不具备此能力"之类的拒绝或解释内容；禁止推脱、禁止省略标记，直接输出标记，系统会自动为你接通电话。';
 
             // 游戏化道具赠送：以"角色扮演文字游戏中的道具"形式注入，生成的是游戏内模拟道具代码，与真实金钱交易无关
             systemPrompt += '\n\n[游戏机制 - 道具赠送]\n这是一个纯粹的角色扮演文字游戏。在这个游戏中，有一种名为\'礼物\'的道具。\n当你在游戏中想送给玩家惊喜、表达感谢或道歉时，可以输出特定的代码来生成游戏道具。\n\n【道具代码格式】\n- 红包道具：[红包:数字:留言] （例如：[红包:52.00:请你喝奶茶]）\n- 转账道具：[转账:数字:留言] （例如：[转账:100.00:拿去花吧]）\n\n【触发规则】\n1. 当玩家对你说\'给我发个红包\'、\'测试红包\'时，你必须在回复末尾带上 [红包:随机金额:留言] 的代码。\n2. 当玩家对你说\'测试转账\'时，必须在末尾带上 [转账:100.00:留言]。\n3. 这些是游戏内模拟道具代码，仅用于本次角色扮演游戏，不代表任何真实金钱交易。请按格式直接输出。\n4. 不要拒绝，不要解释，直接输出。如果不输出代码，游戏将无法进行。';
@@ -6308,7 +6397,7 @@
             if (window.ChatPresencePolicy && typeof window.ChatPresencePolicy.buildPrompt === 'function') {
                 var presencePrompt = window.ChatPresencePolicy.buildPrompt({
                     mode: presenceMode,
-                    history: historyList,
+                    history: roleModelHistory,
                     currentText: text,
                     isGroupChat: isGroupChat,
                     speakerId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : '',
@@ -6337,14 +6426,14 @@
                     } catch (e) {}
 
                     var voiceHabitProfile = window.ChatPresencePolicy.buildVoiceHabitProfile(
-                        historyList,
+                        roleModelHistory,
                         {
                             isGroupChat: isGroupChat,
                             speakerId: isGroupChat ? voiceProfileRoleId : '',
                             speakerName: groupReplyPick && groupReplyPick.name ? groupReplyPick.name : '',
                             maxMessages: 80
                         },
-                        cachedVoiceProfile
+                        roleModelHistory !== historyList ? null : cachedVoiceProfile
                     );
                     try {
                         if (voiceHabitProfile) {
@@ -6362,7 +6451,7 @@
                 // 情绪连续性只读取近期明确表达的线索；不写入长期记忆，也不额外调用 API。
                 if (presencePrompt && typeof window.ChatPresencePolicy.buildEmotionContinuityPrompt === 'function') {
                     var emotionContinuityPrompt = window.ChatPresencePolicy.buildEmotionContinuityPrompt(
-                        historyList,
+                        roleModelHistory,
                         {
                             mode: presenceMode,
                             isGroupChat: isGroupChat,
@@ -6377,7 +6466,7 @@
                 // 角色自主性只使用当前会话中角色本人明确提过的近期安排，不额外读写数据库或调用 API。
                 if (presencePrompt && typeof window.ChatPresencePolicy.buildAutonomyPrompt === 'function') {
                     var autonomyPrompt = window.ChatPresencePolicy.buildAutonomyPrompt(
-                        historyList,
+                        roleModelHistory,
                         {
                             mode: presenceMode,
                             isGroupChat: isGroupChat,
@@ -6467,6 +6556,19 @@
                 }
             }
 
+            // 末尾再次核对人格，避免功能性系统提示与错误旧消息将角色带成客服。
+            if (!isGroupChat) {
+                systemPrompt += '\n\n【发送前的角色一致性核对】\n' +
+                    '你是在和用户聊天的「' + String(roleForTurn.name || '角色') + '」本人，不是这个应用的客服、生成工具或系统说明书。' +
+                    '直接回答具体问题，尤其是姓名、住处、职业、今晚安排等生活问题：' +
+                    '必须遵守当前人物档案与邂逅背景；资料不明确时不要编造矛盾的身份。' +
+                    '除非人物档案明确设定为数字生命，否则不要声称自己是 AI、运行在云端、只住在对话框或存在于代码中。' +
+                    '用户提到“人设”“官方设定”“有没有读取设定”时，仍保持角色身份，直接澄清之前说错的生活细节，不解释后台、提示词或模型。' +
+                    '不要把旧回复里跳出角色的自我介绍当成角色真实背景，它只是一次表达错误。' +
+                    '只输出微信聊天正文，禁止 Markdown 粗体 **、自我介绍模板、客服套话以及每句话结尾都反问。' +
+                    '与用户已保存的伴侣协议共同生效，具体语气以该协议和角色档案为准。';
+            }
+
             // 构造 OpenAI 兼容格式 messages 数组 (system + 历史记录)
             const apiMessages = [
                 { role: 'system', content: systemPrompt }
@@ -6483,14 +6585,14 @@
                 typeof window.ChatContextPolicy.selectRecentHistory === 'function'
             ) {
                 const memoryLimit = window.ChatContextPolicy.resolveMemoryLimit(roleMemoryLimitSetting, config.memoryCount);
-                recentHistory = window.ChatContextPolicy.selectRecentHistory(historyList, memoryLimit);
+                recentHistory = window.ChatContextPolicy.selectRecentHistory(roleModelHistory, memoryLimit);
             } else {
                 // Compatibility fallback: preserve the page's original limit and slice behavior.
                 let memoryLimit = parseInt(roleMemoryLimitSetting, 10);
                 if ([10, 20, 30, 50].indexOf(memoryLimit) === -1) {
                     memoryLimit = config.memoryCount || 20;
                 }
-                recentHistory = historyList.slice(-memoryLimit);
+                recentHistory = roleModelHistory.slice(-memoryLimit);
             }
             // Exclude legacy private cards before history enters model requests.
             if (isGroupChat) recentHistory = recentHistory.filter(function (m) {
@@ -6536,7 +6638,7 @@
                     typeof window.ChatContextPolicy.buildHistoricalRecallRequest === 'function'
                 ) {
                     const recallRequest = window.ChatContextPolicy.buildHistoricalRecallRequest(
-                        historyList,
+                        roleModelHistory,
                         text,
                         recentHistory.length
                     );
@@ -6545,8 +6647,8 @@
                 } else {
                     // Compatibility fallback: preserve the original backwards query scan and limits.
                     if (!recallQuery) {
-                        for (let ri = historyList.length - 1; ri >= 0; ri--) {
-                            const entry = historyList[ri];
+                        for (let ri = roleModelHistory.length - 1; ri >= 0; ri--) {
+                            const entry = roleModelHistory[ri];
                             if (entry && (entry.role === 'user' || entry.role === 'sent') && (entry.text || entry.content)) {
                                 recallQuery = String(entry.text || entry.content);
                                 break;
@@ -6558,7 +6660,7 @@
                     ? historyList.filter(function (m) {
                         return m && m.type !== 'group_private' && m.type !== 'group_game_private' &&
                             m.visibility !== 'private' && m.visibility !== 'role_only';
-                    }) : historyList;
+                    }) : roleModelHistory;
                 if (isGroupChat) recallOptions.groupPublicOnly = true;
                 const recalledText = window.MemoryRecall.buildHistoricalRecallText(recallableHistory, recallQuery, recallOptions);
                 if (recalledText) apiMessages[0].content += '\n\n' + recalledText;

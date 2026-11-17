@@ -1057,7 +1057,7 @@ test('context size controls and local historical recall remain bounded', () => {
   assert.match(detail, /userMemory: 2000/);
   assert.match(detail, /worldbook: 8000/);
   assert.match(detail, /rpComposed: 16000/);
-  assert.match(detail, /recentHistory = historyList\.slice\(-memoryLimit\)/);
+  assert.match(detail, /recentHistory = roleModelHistory\.slice\(-memoryLimit\)/);
   assert.match(detail, /buildHistoricalRecallText\(recallableHistory, recallQuery/);
   assert.match(detail, /maxItems: 2/);
   assert.match(detail, /maxChars: 540/);

@@ -612,7 +612,7 @@
         ? ['【故事起点】' + card.selectedChoice, '【开场片段】' + storyOpening(card, card.selectedChoice)] : []),
       '【相遇类型】' + (card.rarity || '普通') + '（稀有仅表示故事线索较特别，不代表人物等级）',
       '【说话气质】' + card.quote,
-      '【创作说明】以上为简要原创设定。正式聊天前可在角色档案补全经历、习惯、动机与表达方式。'
+      '【生活线索】作为' + card.job + '，有自己的工作节奏与私下习惯；重要物件「' + card.object + '」牵连着过去的经历。'
     ].join('\n');
   }
   global.MAOMAOEncounter = Object.freeze({
