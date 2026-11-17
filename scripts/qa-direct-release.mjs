@@ -32,7 +32,9 @@ const QA_SETUP_CLOSED = 'disabled';
 const TESTS = [
   ['npm', ['ci', '--no-audit', '--no-fund']],
   ['npm', ['run', 'test:account:ui-candidate']],
-  ['node', ['scripts/record-encounter-tests.mjs', 'account']],
+  // Account evidence is issued only after the real account release gate and
+  // encounter account-scope tests succeed. Never sign a standalone receipt.
+  ['npm', ['run', 'test:encounter:account']],
   ['npm', ['run', 'test:integration:account-fanwai']],
   ['npm', ['run', 'test:tutorial']],
   ['npm', ['run', 'test:chat:contract']],
