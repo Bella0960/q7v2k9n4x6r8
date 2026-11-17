@@ -22,8 +22,8 @@
   button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible { outline:2px solid #555; outline-offset:3px; }
   .phone { width:min(390px,calc(100vw - 24px)); height:min(844px,calc(100dvh - 24px)); overflow:hidden; position:relative;
     display:flex; flex-direction:column; border:1px solid rgba(0,0,0,.06); border-radius:42px; background:var(--paper); box-shadow:0 12px 36px rgba(0,0,0,.065); }
-  .top { display:flex; align-items:center; justify-content:space-between; min-height:104px;
-    padding:calc(48px + env(safe-area-inset-top,0px)) 23px 15px; flex:none; background:#fff; z-index:3; }
+  .top { display:flex; align-items:center; justify-content:space-between; min-height:64px;
+    padding:calc(12px + env(safe-area-inset-top,0px)) 23px 12px; flex:none; background:#fff; z-index:3; }
   .back { color:#292929; display:flex; align-items:center; gap:8px; text-decoration:none; padding:7px 2px; font-size:11px; }
   .back svg { width:16px; height:16px; stroke-width:1.5; }
   .top-title { color:#777; font:500 11px/1 -apple-system,BlinkMacSystemFont,sans-serif; letter-spacing:.13em; }
@@ -43,7 +43,6 @@
   .toggle:checked:before { transform:translateX(15px); }
   .scroll { flex:1; min-height:0; overflow-y:auto; scrollbar-width:none; padding:1px 23px calc(38px + env(safe-area-inset-bottom,0px)); overscroll-behavior:contain; }
   .scroll::-webkit-scrollbar { display:none; }
-  .kicker { font-size:9px; color:#9B9B9B; letter-spacing:.15em; text-transform:uppercase; font-weight:500; }
   h1,h2,h3,p { margin:0; }
   h1 { margin:8px 0 6px; font:400 39px/1.02 Georgia,"Noto Serif SC","Songti SC",serif; letter-spacing:-.04em; }
   .page-note { color:#929292; font-size:11px; line-height:1.65; margin-bottom:27px; }
@@ -131,7 +130,7 @@
   @media(max-width:480px) {
     body { display:block; background:#fff; }
     .phone { width:100%; height:100dvh; min-height:100dvh; border:none; border-radius:0; box-shadow:none; }
-    .top { padding-top:calc(27px + env(safe-area-inset-top,0px)); min-height:80px; }
+    .top { padding-top:calc(12px + env(safe-area-inset-top,0px)); min-height:64px; }
   }
   @media(prefers-reduced-motion:reduce) {
     .thumb,.status,.toggle,.toggle:before { transition:none; }
@@ -145,7 +144,7 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
       返回
     </a>
-    <div class="top-title">CHAT / PORTRAITS</div>
+    <div class="top-title">聊天设置</div>
     <details class="more" id="advancedMenu">
       <summary aria-label="更多头像设置" title="更多头像设置">···</summary>
       <div class="more-panel">
@@ -159,11 +158,10 @@
   </header>
 
   <div class="scroll" id="avatarScroll">
-    <div class="kicker">PRIVATE COLLECTION / CHARACTER</div>
-    <h1>Portraits.</h1>
-    <p class="page-note">每一张照片，都只属于这段对话。</p>
+    <h1>头像管理</h1>
+    <p class="page-note">从这里管理 TA 的头像，和只属于这段聊天的情头。</p>
 
-    <div class="section-top"><h2 class="section-title">当前头像</h2><span class="section-number">01</span></div>
+    <div class="section-top"><h2 class="section-title">当前头像</h2></div>
     <div class="current" id="currentCard">
       <div class="current-picture" id="currentPicture" aria-hidden="true"></div>
       <div class="current-info">
