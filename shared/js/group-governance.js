@@ -237,7 +237,9 @@
   function resolveInvitation(req) {
     req = req || {};
     var storage = req.storage || root.localStorage, all = read(storage, 'phone_groups'), inbox = read(storage, INVITATIONS);
-    if (!all || !inbox) return fail('INVALID_STORAGE', '群邀请存储不可用');
+    // Declining uses only the invitation inbox. A damaged group index must
+    // not prevent safely dismissing an invitation or overwrite group data.
+    if (!inbox) return fail('INVALID_STORAGE', '群邀请存储不可用');
     var inv = inbox.find(function (x) { return x && x.status === 'pending' && id(x.id) === id(req.id); });
     if (!inv) return fail('NOT_FOUND', '邀请已处理或不存在');
     var accepted = req.accept === true;
@@ -252,6 +254,7 @@
         inviterId:id(inv.inviterId) });
       return { ok:true, accepted:false, groupId:id(inv.groupId) };
     }
+    if (!all) return fail('INVALID_STORAGE', '群资料存储不可用，不能接受邀请');
     var g = inv.draftGroup || all.find(function (x) { return x && id(x.id) === id(inv.groupId); });
     if (inv.draftGroup) {
       if (!g || id(g.ownerId) !== id(inv.inviterId) || !find(g, inv.inviterId) ||
