@@ -9,9 +9,10 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { createReadStream, existsSync } from 'node:fs';
 import { resolve, relative, extname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
-const ROOT = resolve(new URL('../dist/', import.meta.url).pathname);
+const ROOT = fileURLToPath(new URL('../dist/', import.meta.url));
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',
