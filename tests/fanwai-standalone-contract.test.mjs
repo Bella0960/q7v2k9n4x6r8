@@ -82,3 +82,15 @@ test('独立页列表/阅读字号放大，更多操作不会横向溢出', () =
   assert.match(css, /fw-preview-description \{ font-size: 14px/);
   assert.match(css, /fw-reader-menu \{[^}]*flex-wrap: wrap/);
 });
+
+test('创建过程禁止跨页导航，防止异步初次存档后在已离开页面启动模型', () => {
+  const engine = read('chat/chat/js/chat-fanwai.js');
+  assert.match(engine, /if \(standalone && state\.creating\)/);
+  assert.match(engine, /if \(state\.creating\) \{\s*showNotice\('故事正在创建/);
+});
+
+test('存储故障仍可主动复制正在阅读的未落盘番外', () => {
+  const engine = read('chat/chat/js/chat-fanwai.js');
+  assert.match(engine, /button\('copy-unsaved', '复制当前文字'/);
+  assert.match(engine, /clipboard\.writeText\(content\)/);
+});

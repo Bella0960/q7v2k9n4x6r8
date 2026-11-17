@@ -978,6 +978,10 @@
     var morePanel = document.createElement('div');
     morePanel.className = 'fw-reader-menu';
     morePanel.hidden = true;
+    // 存档故障时，允许主动复制未落盘内容，不依赖可能失效的浏览器存储。
+    if (canPersist && persistenceFailed && episode.messages.length) {
+      morePanel.appendChild(button('copy-unsaved', '复制当前文字', ''));
+    }
     if (!state.busy && episode.messages.length >= 12) {
       morePanel.appendChild(button('fork', '另一种走向', ''));
     }
@@ -1015,6 +1019,10 @@
   }
 
   async function close() {
+    if (standalone && state.creating) {
+      showNotice('故事正在创建，请完成保存后再返回');
+      return;
+    }
     if (state.busy) pause();
     if (standalone) {
       // 离开独立页前等暂停/最后一次写入完成，防止用户点击返回时丢失进度。
@@ -1165,6 +1173,10 @@
     if (!node || !state.root.contains(node)) return;
     var key = node.dataset.action;
     if (standalone && (key === 'switch-role' || key === 'home')) {
+      if (state.creating) {
+        showNotice('故事正在创建，请完成保存后再切换页面');
+        return;
+      }
       if (state.busy) pause();
       await episodeWriteQueue;
       if (canPersist && persistenceFailed) {
@@ -1191,6 +1203,26 @@
         option.classList.toggle('fw-mode-active', selected);
       });
       saveSettings();
+      return;
+    }
+    if (key === 'copy-unsaved') {
+      var unsaved = state.active;
+      if (!unsaved || !persistenceFailed || !Array.isArray(unsaved.messages) || !unsaved.messages.length) return;
+      var clipboard = global.navigator && global.navigator.clipboard;
+      if (!clipboard || typeof clipboard.writeText !== 'function') {
+        showNotice('复制功能不可用，请长按消息文字手动备份');
+        return;
+      }
+      var content = String(unsaved.name || '番外') + '\n\n' +
+        unsaved.messages.map(function (message) {
+          return (message.role === 'user' ? '我' : '角色') + '：' + message.text;
+        }).join('\n\n');
+      try {
+        await clipboard.writeText(content);
+        showNotice('当前故事文字已复制，可保存到备忘录');
+      } catch (error) {
+        showNotice('复制失败，请长按消息文字手动备份');
+      }
       return;
     }
     if (key === 'toggle-reader-menu') {
