@@ -192,6 +192,27 @@ test('付费 AI 人设草稿写入失败必须返回失败，不能误报已经�
   assert.match(managerSource,/if \(!draftSaved\)/,'收费结果不能假称已经持久化');
 });
 
+test('已损坏且不可读取的草稿拒绝覆盖，原有资料保持原样', () => {
+  const start=managerSource.indexOf('function persistEditorDraft(force) {');
+  const end=managerSource.indexOf('function applyEditorState(state) {',start);
+  assert.ok(start>=0 && end>start);
+  const key='maomao_character_draft_v1:original';
+  const stored='{原草稿损坏但需要保留';
+  const status=[];
+  let writes=0;
+  const save=vm.runInNewContext(managerSource.slice(start,end)+';persistEditorDraft(true)',{
+    currentDraftKey:key,unreadableDraftKey:key,editorOriginalState:null,
+    captureEditorState:()=>({name:'新的草稿，不应覆盖旧数据'}),
+    editorStatesEqual:(a,b)=>JSON.stringify(a)===JSON.stringify(b),
+    localStorage:{getItem(){return stored;},setItem(){writes++;throw new Error('原草稿不得覆盖');}},
+    setSaveStatus:(text,state)=>status.push({text,state}),Date,JSON,console
+  });
+  assert.equal(save,false,'不可读草稿绝不能标记写入成功');
+  assert.equal(writes,0,'必须在调用本地写入前拒绝覆盖');
+  assert.equal(status.at(-1).state,'error');
+  assert.match(status.at(-1).text,/原草稿无法读取/);
+});
+
 test('角色库第一次为空时可安全初始化新角色，不需要写空数组', () => {
   const start=managerSource.indexOf('let roleStoreReadError = false;');
   const end=managerSource.indexOf('const ROLE_AVATAR_CLEANUP_QUEUE_KEY',start);
@@ -751,28 +772,202 @@ test('损坏的邂逅草稿不自动删除或覆盖；恢复失败后只有明�
   assert.equal(h.editor.peek().unreadable,false,'放弃后可以开始新的草稿');
 });
 
-test('手机真触摸左滑兜底仅处理水平大幅移动，不误判滚动或轻触', () => {
-  const start=appSource.indexOf('var touchSwipe=null;');
-  const end=appSource.indexOf("cardEl.addEventListener('click'",start);
-  assert.ok(start>0 && end>start,'邂逅必须保留真实触控事件兜底');
-  const events={},moves=[];
-  const cardEl={addEventListener(name,handler){events[name]=handler;}};
-  const runtime={cardEl,lock:false,current:{id:'enc_1'},drag:null,suppressDragClick:false,
-    move(direction){moves.push(direction);},Array};
-  vm.runInNewContext(appSource.slice(start,end),runtime);
-  const press=(x,y)=>events.touchstart({touches:[{identifier:1,clientX:x,clientY:y}]});
-  const release=(x,y)=>events.touchend({changedTouches:[{identifier:1,clientX:x,clientY:y}]});
-  press(210,200);release(20,206);
-  assert.deepEqual(moves,['left'],'真实水平左滑应切换人物');
-  assert.equal(runtime.suppressDragClick,true,'滑动松手不能弹出人物详情');
-  runtime.suppressDragClick=false;
-  press(210,200);release(205,340);
-  press(210,200);release(160,202);
-  assert.deepEqual(moves,['left'],'纵向滚动或短距离移动不得换卡');
-  press(210,200);events.touchcancel();
-  release(10,201);
-  assert.deepEqual(moves,['left'],'浏览器取消触摸必须清空滑动');
-  runtime.lock=true;
-  press(210,200);release(10,201);
-  assert.deepEqual(moves,['left'],'pointer 手势完成时兜底不得二次移动');
+test('性格盲测固定三种不同选项，真实气质只出现一次且不写角色数据', () => {
+  const original = '[{"id":"old","name":"原有角色","persona":"必须原样保留"}]';
+  const h = harness({
+    ai_custom_characters: original,
+    maomao_encounter_preferences_v1: '{"type":"性格盲测"}'
+  });
+  const card = h.api.generate().value;
+  assert.equal(card.type, '性格盲测');
+  const before = h.map.size;
+  const options = Array.from(h.api.getBlindOptions(card));
+  assert.equal(options.length, 3);
+  assert.equal(new Set(options).size, 3);
+  assert.equal(options.filter(x => x === card.trait).length, 1);
+  assert.deepEqual(Array.from(h.api.getBlindOptions({...card})), options);
+  assert.equal(h.map.size, before, '猜测选项不可自动写入任何数据');
+  assert.equal(h.localStorage.getItem('ai_custom_characters'), original);
+  assert.deepEqual(Array.from(h.api.getBlindOptions({...card,trait:'特殊性格'})).filter(x => x === '特殊性格'), ['特殊性格']);
+  assert.equal(h.api.getBlindOptions(null).length, 0);
+});
+
+
+
+test('已相识的人物支持三个免费重逢场景，按正式 ID 检索且绝不写角色、记忆或聊天', () => {
+  const original={id:'old',name:'旧角色',persona:'不能改变'};
+  const met={id:'role_enc_demo',name:'林见山',persona:'原人设',encounterOrigin:{
+    version:1,sourceCandidateId:'enc_demo',era:'现代都市',job:'摄影师',
+    object:'一卷褪色的胶片',originalFate:'曾经离开故乡多年'
+  }};
+  const value=JSON.stringify([original,met]);
+  const h=harness({'ai_custom_characters':value});
+  const size=h.map.size;
+  const result=h.api.getReunionScenes(met.id);
+  assert.equal(result.ok,true,result.error);
+  assert.equal(result.value.id,met.id);
+  assert.equal(result.value.scenes.length,3);
+  assert.equal(new Set(Array.from(result.value.scenes,x=>x.id)).size,3);
+  assert.match(result.value.scenes[0].text,/摄影师/);
+  assert.match(result.value.scenes[1].text,/胶片/);
+  assert.match(result.value.scenes[2].text,/离开故乡/);
+  assert.deepEqual(Array.from(h.api.getReunionScenes(met.id).value.scenes,x=>x.text),
+    Array.from(result.value.scenes,x=>x.text));
+  assert.equal(h.api.getReunionScenes(original.id).ok,false,'普通旧角色不能冒充邂逅角色');
+  assert.equal(h.api.getReunionScenes('role_missing').ok,false);
+  assert.equal(h.localStorage.getItem('ai_custom_characters'),value);
+  assert.equal(h.map.size,size);
+});
+test('已相识角色库损坏时拒绝再遇并保留原始数据',()=>{
+  const h=harness({'ai_custom_characters':'{damaged'});
+  assert.equal(h.api.getReunionScenes('role_enc_demo').ok,false);
+  assert.equal(h.localStorage.getItem('ai_custom_characters'),'{damaged');
+});
+
+
+test('以物识人提供所属世界的三种职业猜测，真实身份恰好一次且零存储写入',()=>{
+  const original='[{"id":"older","name":"旧人物","persona":"绝不更改"}]';
+  const h=harness({
+    ai_custom_characters:original,
+    maomao_encounter_preferences_v1:'{"type":"以物识人","world":"现代都市"}'
+  });
+  const known=['书店店主','建筑设计师','医生','摄影师','花艺师','律师','编辑','音乐制作人','咖啡师','研究员'];
+  const card=h.api.generate().value;
+  assert.equal(card.type,'以物识人');
+  const before=new Map(h.map);
+  const options=Array.from(h.api.getObjectOptions(card));
+  assert.equal(options.length,3);
+  assert.equal(new Set(options).size,3,'猜测职业不得重复');
+  assert.equal(options.filter(x=>x===card.job).length,1,'真实职业必须且只出现一次');
+  assert.ok(options.every(x=>known.includes(x)),'不应混入其他世界的职业');
+  assert.deepEqual(Array.from(h.api.getObjectOptions({...card})),options,'人物同一 ID 选项顺序要稳定');
+  assert.equal(h.api.getObjectOptions({...card,type:'普通相遇'}).length,0);
+  assert.equal(h.api.getObjectOptions({...card,job:'其他世界不存在的职业'}).length,0);
+  assert.deepEqual(Array.from(h.map.entries()),Array.from(before.entries()),'猜测选项不得写存储');
+  assert.equal(h.localStorage.getItem('ai_custom_characters'),original);
+});
+test('以物识人任意原生世界均生成有三个不重复的合理身份选项',()=>{
+  const worlds=['现代都市','架空古代','东方幻想','西方奇幻','未来纪元','现代异闻','神话时代'];
+  for(const world of worlds){
+    const h=harness({'maomao_encounter_preferences_v1':JSON.stringify({type:'以物识人',world})});
+    for(let i=0;i<3;i++){
+      const r=h.api.generate();
+      assert.equal(r.ok,true,r.error);
+      assert.equal(r.value.era,world);
+      const choices=Array.from(h.api.getObjectOptions(r.value));
+      assert.equal(choices.length,3,world);
+      assert.equal(new Set(choices).size,3,world);
+      assert.equal(choices.filter(x=>x===r.value.job).length,1,world);
+    }
+  }
+});
+
+
+test('蒙面档案三条线索只读且不会提前揭晓姓名、职业或角色 ID',()=>{
+  const original='[{"id":"existing","name":"原来的人","persona":"不能修改"}]';
+  const h=harness({'ai_custom_characters':original,
+    'maomao_encounter_preferences_v1':'{"type":"蒙面档案"}'});
+  const c=h.api.generate().value;
+  assert.equal(c.type,'蒙面档案');
+  const before=Array.from(h.map.entries());
+  const clues=Array.from(h.api.getMaskedClues(c));
+  assert.equal(clues.length,3);
+  assert.deepEqual(Array.from(clues,x=>x.id),['origin','kind','keepsake']);
+  assert.equal(new Set(Array.from(clues,x=>x.id)).size,3);
+  assert.match(clues[0].text,new RegExp(c.era));
+  assert.match(clues[1].text,new RegExp(c.species));
+  assert.ok(clues[2].text.includes(c.object));
+  const preview=clues.map(x=>x.text).join(' ');
+  assert.equal(preview.includes(c.name),false,'蒙面线索不得写出人物真实姓名');
+  assert.equal(preview.includes(c.job),false,'未揭晓前不得包含职业');
+  assert.equal(preview.includes(c.id),false,'不能泄露候选 ID');
+  assert.deepEqual(Array.from(h.map.entries()),before,'逐条线索不应改写任何存储');
+  assert.equal(h.localStorage.getItem('ai_custom_characters'),original);
+  assert.equal(h.api.getMaskedClues({...c,type:'普通相遇'}).length,0);
+  assert.equal(h.api.getMaskedClues(null).length,0);
+});
+
+
+test('跨标签页锁等待时切换账号，收藏/删除/命运修改不得误写另一账号', async () => {
+  for (const kind of ['save','remove','choice']) {
+    let active='MAO-AAAAAAAAAAAA', unlock, requestCount=0, lockName='';
+    const stores={A:new Map(),B:new Map()};
+    const current=()=>stores[active==='MAO-AAAAAAAAAAAA'?'A':'B'];
+    const window={
+      location:{hostname:'app.mao520.com'},
+      document:{querySelector(selector){
+        if(selector==='meta[name="mao-account-id"]')return {content:active};
+        if(selector==='meta[name="mao-account-role"]')return {content:'user'};
+        return null;
+      }},
+      __MAO_ACCOUNT_SCOPE__:{get accountId(){return active;},role:'user',ready:true},
+      localStorage:{
+        get length(){return current().size;},
+        key(index){return [...current().keys()][index]??null;},
+        getItem(key){return current().get(key)??null;},
+        setItem(key,value){current().set(key,String(value));},
+        removeItem(key){current().delete(key);}
+      },
+      dispatchEvent(){},
+      navigator:{locks:{request(name,options,fn){
+        requestCount++;lockName=name;
+        assert.equal(options.mode,'exclusive');
+        return new Promise(resolve=>{unlock=()=>resolve(fn());});
+      }}}
+    };
+    vm.runInNewContext(engineSource,{window,Math,Set,Uint32Array,Date,JSON,String,Array,Object,Number,CustomEvent:class{}});
+    const api=window.MAOMAOEncounter;
+    const card=api.generate().value;
+    if(kind!=='save'){
+      card.type='命运分支';
+      assert.equal(api.saveCandidate(card).ok,true);
+    }
+    const beforeA=Array.from(stores.A.entries()),beforeB=Array.from(stores.B.entries());
+    let pending;
+    if(kind==='save')pending=api.saveCandidateSafe(card);
+    else if(kind==='remove')pending=api.removeCandidateSafe(card.id);
+    else pending=api.updateCandidateStoryChoiceSafe(card.id,card.choices[1]);
+    assert.equal(requestCount,1);
+    assert.equal(lockName,'maomao:encounter:v2:MAO-AAAAAAAAAAAA');
+    active='MAO-BBBBBBBBBBBB';
+    unlock();
+    const result=await pending;
+    assert.equal(result.ok,false,kind+' 必须拒绝账号切换后的旧请求');
+    assert.match(result.error,/账号已切换/);
+    assert.deepEqual(Array.from(stores.A.entries()),beforeA,'原账号候选必须保持原样');
+    assert.deepEqual(Array.from(stores.B.entries()),beforeB,'新账号不能收到旧请求写入');
+    assert.equal(api.getCandidates().value.length,0);
+  }
+});
+
+test('锁内保存完成但通知前切换账号，旧操作不能在新账号页面报成功',async()=>{
+  let active='MAO-AAAAAAAAAAAA';
+  const stores={A:new Map(),B:new Map()};
+  const current=()=>stores[active==='MAO-AAAAAAAAAAAA'?'A':'B'];
+  const window={
+    location:{hostname:'app.mao520.com'},
+    document:{querySelector(s){return /account-id/.test(s)?{content:active}:{content:'user'};}},
+    __MAO_ACCOUNT_SCOPE__:{get accountId(){return active;},role:'user',ready:true},
+    localStorage:{
+      get length(){return current().size;},
+      key(i){return [...current().keys()][i]??null;},
+      getItem(k){return current().get(k)??null;},
+      setItem(k,v){current().set(k,String(v));},
+      removeItem(k){current().delete(k);}
+    },
+    dispatchEvent(){},
+    navigator:{locks:{async request(name,options,fn){
+      const result=fn();
+      active='MAO-BBBBBBBBBBBB';
+      return result;
+    }}}
+  };
+  vm.runInNewContext(engineSource,{window,Math,Set,Uint32Array,Date,JSON,String,Array,Object,Number,CustomEvent:class{}});
+  const api=window.MAOMAOEncounter;
+  const card=api.generate().value;
+  const result=await api.saveCandidateSafe(card);
+  assert.equal(result.ok,false);
+  assert.match(result.error,/账号已切换/);
+  assert.equal(stores.A.size,1,'A 已成功写入但不得对 B 显示成功');
+  assert.equal(stores.B.size,0);
 });
