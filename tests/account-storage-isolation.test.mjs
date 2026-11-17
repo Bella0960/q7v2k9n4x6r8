@@ -361,12 +361,12 @@ test('Worker 只对已授权账号页面注入数据命名空间，并禁止缓�
   assert.match(workerSource, /meta name="mao-account-id"/);
   assert.match(workerSource, /mao-account-role/);
   assert.ok(workerSource.includes('shared/js/mao-account-scope.js'));
-  assert.match(workerSource, /mao-account-scope\.js\?v=2/,
+  assert.match(workerSource, /mao-account-scope\.js\?v=3/,
     'Worker 注入的账号隔离脚本必须使用本次更新版本，避免旧 PWA 缓存继续加载 v1');
-  assert.match(serviceWorkerSource, /mao-account-scope\.js\?v=2/,
+  assert.match(serviceWorkerSource, /mao-account-scope\.js\?v=3/,
     'Service Worker 预缓存必须与 Worker 注入版本一致');
-  assert.doesNotMatch(workerSource, /mao-account-scope\.js\?v=1/);
-  assert.doesNotMatch(serviceWorkerSource, /mao-account-scope\.js\?v=1/);
+  assert.doesNotMatch(workerSource, /mao-account-scope\.js\?v=2/);
+  assert.doesNotMatch(serviceWorkerSource, /mao-account-scope\.js\?v=2/);
   assert.match(scopeSource, /fetch\('\/api\/accounts\/me'/);
   assert.match(scopeSource, /setInterval\(verifyAccountSession, 30000\)/);
   assert.match(workerSource, /cache-control', 'private, no-store, max-age=0/);
