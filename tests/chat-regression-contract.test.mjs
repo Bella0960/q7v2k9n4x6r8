@@ -1897,8 +1897,12 @@ test('Cloudflare Worker preserves explicit HTML routes and maps only the root to
   assert.equal(wranglerConfig.assets.html_handling, 'none');
   assert.equal(wranglerConfig.assets.run_worker_first, true);
   assert.match(worker, /url\.pathname === "\/"[\s\S]*?new URL\("\/index\.html", url\)/);
-  assert.match(worker, /const response = await env\.ASSETS\.fetch\(request\)/,
-    'non-root app routes must be passed through unchanged instead of falling back to index.html');
+  assert.match(worker, /let assetRequest = request;/,
+    'non-root routes must start with the original request and URL');
+  assert.match(worker, /assetRequest = new Request\(request, \{ headers \}\)/,
+    'private HTML may strip conditional cache headers without changing the requested route');
+  assert.match(worker, /const response = await env\.ASSETS\.fetch\(assetRequest\)/,
+    'non-root app routes must be served from their original URL, not rewritten to index.html');
   assert.match(worker, /isHtmlDocument && authorizedAccount/,
     'private HTML must preserve server-verified account isolation');
   assert.match(serviceWorker, /!isPublicAccountPage && \(url\.pathname === '\/' \|\|/,
