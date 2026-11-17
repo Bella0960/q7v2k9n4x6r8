@@ -135,6 +135,35 @@
     );
   }
 
+  function canShowLocalNotification() {
+    return Boolean(global.isSecureContext !== false &&
+      'serviceWorker' in navigator && 'Notification' in global);
+  }
+
+  function notificationPermissionMessage(permission) {
+    var host = global.location && global.location.hostname || '当前网站';
+    var isOpera = /(?:OPR|OPT)\/|Opera/i.test(String(navigator.userAgent || ''));
+    var browser = isOpera ? 'Opera' : '浏览器';
+    if (permission === 'denied') {
+      return host + ' 的网站通知已被' + browser + '拒绝。请打开地址栏旁的网站权限设置，将「通知」改为允许；仅开启手机里的' + browser + '应用通知还不够。';
+    }
+    return host + ' 尚未获得网站通知授权。点击推送开关并在弹窗选择「允许」；如果没有弹窗，请检查' + browser + '的本站通知权限。手机应用通知开关与网站授权是两回事。';
+  }
+
+  async function requestNotificationPermissionFromGesture() {
+    if (!canShowLocalNotification()) throw new Error(pushSupportMessage());
+    var permission = Notification.permission;
+    if (permission === 'default' && typeof Notification.requestPermission === 'function') {
+      var requested = await Notification.requestPermission();
+      // Opera/Android may update the returned permission before the property refreshes.
+      permission = requested === 'granted' ? 'granted' :
+        Notification.permission === 'granted' ? 'granted' :
+          requested || Notification.permission;
+    }
+    if (permission !== 'granted') throw new Error(notificationPermissionMessage(permission));
+    return permission;
+  }
+
   function pushSupportMessage() {
     var agent = String(navigator.userAgent || '');
     var isiOS = /iPad|iPhone|iPod/i.test(agent) ||
@@ -204,28 +233,40 @@
   // network request first loses transient user activation on some browsers.
   async function requestPushPermissionFromGesture() {
     if (!isSupported()) throw new Error(pushSupportMessage());
-    if (Notification.permission === 'default') {
-      await Notification.requestPermission();
-    }
-    if (Notification.permission !== 'granted') {
-      throw new Error('通知权限未开启，请在系统或浏览器设置中允许通知');
-    }
+    return requestNotificationPermissionFromGesture();
   }
 
   async function enablePush(userInitiated, enrollmentToken) {
     if (!isSupported()) throw new Error(pushSupportMessage());
-    if (userInitiated) await requestPushPermissionFromGesture();
-    if (Notification.permission !== 'granted') {
-      throw new Error('通知权限未开启，请在系统或浏览器设置中允许通知');
+    var permission = userInitiated
+      ? await requestPushPermissionFromGesture() : Notification.permission;
+    if (permission !== 'granted') {
+      throw new Error(notificationPermissionMessage(permission));
     }
     var device = await registerDeviceForCurrentAccount(enrollmentToken);
     var publicKey = await fetchPublicKey();
     var registration = await getRegistration();
+    if (!registration.pushManager || typeof registration.pushManager.subscribe !== 'function') {
+      throw new Error(pushSupportMessage());
+    }
     var existing = await registration.pushManager.getSubscription();
-    var subscription = existing || await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: base64UrlToUint8Array(publicKey)
-    });
+    var subscription = existing;
+    if (!subscription) {
+      try {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: base64UrlToUint8Array(publicKey)
+        });
+      } catch (error) {
+        if (/NotAllowedError|SecurityError/.test(String(error && error.name))) {
+          throw new Error(notificationPermissionMessage(Notification.permission));
+        }
+        if (/NotSupportedError|AbortError|InvalidStateError/.test(String(error && error.name))) {
+          throw new Error('当前浏览器无法建立 Web Push 订阅。若网站通知已允许，可能是浏览器推送服务不可用；Android 上可用 Chrome 或 Edge 对照测试。');
+        }
+        throw error;
+      }
+    }
 
     await requestJson('/api/push/subscriptions', {
       method: 'POST',
@@ -1361,9 +1402,10 @@
       }
     }
     if (!status.message) {
-      if (!status.vapidConfigured) status.message = '云端尚未配置 VAPID 密钥';
+      if (status.permission === 'denied') status.message = '网站通知被浏览器拒绝，请检查本站权限';
+      else if (status.permission === 'default') status.message = '网站通知尚未授权 · 点击推送开关';
+      else if (!status.vapidConfigured) status.message = '云端尚未配置 VAPID 密钥';
       else if (!device) status.message = '设备尚未连接，开启推送后自动注册';
-      else if (status.permission === 'denied') status.message = '通知权限被拒绝，请在系统设置中允许';
       else if (status.subscriptionCount > 0 && status.currentBrowserMatched === false) {
         status.message = status.currentBrowserHasSubscription
           ? '云端存有 ' + status.subscriptionCount + ' 条订阅，但当前浏览器的订阅未同步'
@@ -1392,17 +1434,8 @@
 
   async function refreshSettings() {
     var status = await getStatus();
-    var registration = null;
-    try {
-      if ('serviceWorker' in navigator) registration = await navigator.serviceWorker.getRegistration();
-    } catch (error) {
-      registration = null;
-    }
-    var subscribed = false;
-    if (registration && registration.pushManager) {
-      subscribed = Boolean(await registration.pushManager.getSubscription());
-    }
-    setToggle(subscribed);
+    // A local PushSubscription alone is not a completed cloud connection.
+    setToggle(status.permission === 'granted' && status.currentBrowserMatched === true);
     var contextSharingToggle = document.getElementById('cloudContextSharingToggle');
     if (contextSharingToggle) {
       contextSharingToggle.disabled = true;
@@ -1746,9 +1779,12 @@
           }
         } catch (error) {
           toggle.checked = !desired;
-          setStatusText(error.message || '操作失败');
+          var reason = error.message || '操作失败';
+          setStatusText(reason);
+          var pushResult = document.getElementById('cloudPushResult');
+          if (pushResult) pushResult.textContent = reason;
         }
-        refreshSettings();
+        await refreshSettings();
       });
     }
 
@@ -1890,10 +1926,8 @@
         localTestRow.disabled = true;
         report('正在检查当前浏览器的系统通知能力…');
         try {
-          if (!isSupported()) throw new Error(pushSupportMessage());
-          if (Notification.permission !== 'granted') {
-            throw new Error('网站通知权限未允许，请先在浏览器中开启');
-          }
+          // The local test must work without any device pairing or server API.
+          await requestNotificationPermissionFromGesture();
           var registration = await getRegistration();
           if (!registration || !registration.active || typeof registration.showNotification !== 'function') {
             throw new Error('当前浏览器的 Service Worker 没有正常激活');
