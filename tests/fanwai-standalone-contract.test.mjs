@@ -94,3 +94,11 @@ test('存储故障仍可主动复制正在阅读的未落盘番外', () => {
   assert.match(engine, /button\('copy-unsaved', '复制当前文字'/);
   assert.match(engine, /clipboard\.writeText\(content\)/);
 });
+
+test('独立页返回箭头按页面层级导航，切换角色独立放在右侧', () => {
+  const engine = read('chat/chat/js/chat-fanwai.js');
+  assert.match(engine, /var backAction = secondaryAction === 'close' \? 'back'/);
+  assert.match(engine, /button\(backAction, '‹', 'fw-switch-role'\)/);
+  assert.match(engine, /button\('switch-role', '角色', 'fw-close'\)/);
+  assert.match(engine, /backAction === 'home' \? '返回桌面'/);
+});

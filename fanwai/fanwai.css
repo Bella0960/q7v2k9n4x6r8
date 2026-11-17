@@ -186,3 +186,6 @@ button, a, textarea, select { font: inherit; }
 #fanwaiLayer.fw-standalone .fw-settings-help,
 #fanwaiLayer.fw-standalone .fw-context-title { font-size: 12px; }
 #fanwaiLayer.fw-standalone .fw-memory-mode { min-height: 42px; font-size: 13px; }
+
+/* 返回箭头始终是真正的上一级；只有阅读/预览页显示右侧角色切换。 */
+#fanwaiLayer.fw-standalone .fw-header-spacer { width: 44px; height: 44px; flex: 0 0 44px; }

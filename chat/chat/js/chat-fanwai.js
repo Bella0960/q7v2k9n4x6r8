@@ -584,15 +584,15 @@
     var bar = document.createElement('div');
     bar.className = 'fw-head';
     if (standalone) {
-      var switchButton = button('switch-role', '‹', 'fw-switch-role');
-      switchButton.setAttribute('aria-label', '更换番外角色');
-      var nextAction = secondaryAction === 'close' ? 'back' : (secondaryAction || 'home');
-      var nextLabel = secondaryAction === 'close' ? '目录' : (secondaryLabel || '桌面');
-      bar.append(
-        switchButton,
-        label('span', 'fw-brandline', '番外'),
-        button(nextAction, nextLabel, 'fw-close')
-      );
+      // 独立应用返回键遵循页面层级，不把返回箭头误设为切换角色。
+      var backAction = secondaryAction === 'close' ? 'back' : (secondaryAction || 'home');
+      var backButton = button(backAction, '‹', 'fw-switch-role');
+      backButton.setAttribute('aria-label', backAction === 'home' ? '返回桌面' :
+        backAction === 'return-story' ? '返回故事' : '返回番外目录');
+      var rightAction = secondaryAction
+        ? button('switch-role', '角色', 'fw-close')
+        : label('span', 'fw-header-spacer', '');
+      bar.append(backButton, label('span', 'fw-brandline', '番外'), rightAction);
     } else {
       bar.append(
         label('span', 'fw-brandline', '番外  /  STORIES'),
