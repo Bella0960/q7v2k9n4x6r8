@@ -20,7 +20,10 @@
   function rank(g, who) {
     who = id(who);
     if (!g || !who) return 0;
-    if (who === '__user') return id(g.ownerId || '__user') === '__user' ? 3 : 0;
+    // A departed user must not retain owner powers over their old group.
+    // Role-owned groups may continue their own role actions independently.
+    if (who === '__user')
+      return joined(g) && id(g.ownerId || '__user') === '__user' ? 3 : 0;
     var m = find(g, who);
     if (!m || id(m.id) !== who) return 0;
     return id(g.ownerId || '__user') === who ? 3 : m.isAdmin === true ? 2 : 1;
