@@ -68,6 +68,19 @@ test('发布门禁拒绝 QA 旧版假系统栏，避免旧页面被误报完整�
   assert.match(html+'deviceTime',blocked,'旧版时间模拟脚本必须触发发布阻断');
 });
 
+test('账号测试回执必须在真正的账号发布回归后生成', () => {
+  const packageText=fs.readFileSync(new URL('../package.json',import.meta.url),'utf8');
+  const scripts=JSON.parse(packageText).scripts;
+  const account=String(scripts['test:encounter:account'] || '');
+  assert.match(account,/^npm run test:account:release-gate && node --test tests\/encounter-actual-scope\.test\.mjs && node scripts\/record-encounter-tests\.mjs account$/,
+    '先执行账号发布门禁及邂逅账号隔离测试，均成功后才可签发账号回执');
+  const gate=fs.readFileSync(new URL('../scripts/verify-encounter-release.mjs',import.meta.url),'utf8');
+  assert.match(gate,/parseReceipt\('test-results\/encounter-account-test-receipt\.json'\)/,
+    '发布门禁不得跳过账号回执');
+  assert.match(gate,/test:encounter:account/,
+    '发布门禁必须检查账号回执生成流程');
+});
+
 function setup(initial={}) {
   const rows=new Map(Object.entries(initial));
   const localStorage={
