@@ -195,3 +195,11 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **新增额外边界**：`4b25791f` 允许在 `phone_groups` 读取格式异常时**仅拒绝邀请**，不触碰已损坏群数据；接收入群仍 fail-closed，禁止覆盖。回归 `bff37930`、`3b032ff8`、`e3ac8ea3`。
 - **验证事实**：连接器从 GitHub 获取的最终原测试主体 `tests/group-governance.test.mjs`，隔离 V8 shim 实际运行 **11/11**（包括三项新回归）；此数字不是原生 Node。首次修复前另有直接真实源码复现，能观察到上述三种失败路径。此次仅修改原 #298 功能分支与原测试、日志，没有新建 PR 或向 QA #299 推提交。
 - **阻塞现状**：同日只读核对 #299 HEAD `6521e43e` 尚未引入群模块；GitHub REST `mergeable_state=dirty`，但 `compare(base,qa-head)` 又显示 QA HEAD 基于当前目标分支额外领先 338 个提交，合并状态与祖先关系不一致，暂不推断为已确证代码冲突，要求 QA 负责人复核。QA 尚未完整 Node/Vite/Chromium + Android/iPhone 验收，原 Worker 未更新群模块，不能宣布交付或动正式版。
+
+## 2026-11-17｜群游戏玩家名册损坏拒绝（交付数据安全回归）
+
+- **原代码实际复现**：旧的 `GroupGameSessions.game()` 对从本地存储读取的 `session.players` 只验证 ID 格式，不检查重复玩家、最低/最高人数或非法用户 `__user`。将正常游戏持久化状态改为 `['r1','r1','r2']` 后，旧 `getPublic('g1')` 仍返回 `active`，可能使实际投票人数、主持人自动揭晓条件和结果统计失准。
+- **修复提交 `6058d0ae`**：读取已有游戏时校验玩家 2–24 人、全部是有效角色字符串 ID、不含 `__user`、不重复，且角色主持人与玩家身份不得重叠。损坏记录 fail-closed：不返回有效对局、不允许新建覆盖，也不删除原身份牌；新开局从遗留群成员列表中排除 `__user`，保留原用户参与渠道。
+- **回归提交 `41955e0e`**：测试重复成员、非法 `__user`、数字玩家 ID、单人、超过 24 人、失败后完整保留公共旧数据和私有角色身份牌，以及新游戏过滤遗留用户条目。
+- **本轮精确验证**：从 #298 当前 GitHub 源码执行七份原 `tests/*group*.test.mjs` 的测试主体，隔离 V8 `node:test` / `assert` / `fs` / `vm` 兼容夹具结果 **92/92**：秘密边界 39/39、治理 11/11、五分类记忆 5/5、游戏聊天回执 10/10、回合保存屏障 8/8、回合整合 10/10、私聊回执恢复 9/9。**这不是原生 `node --test`、`npm run build`、Chromium 或手机验收；不得当作完整交付。**
+- **当前关键依赖**：唯一 #299 HEAD `6521e43e` 仍无这批群游戏模块；QA Worker 仍是 2026-11-16 21:19:39Z 部署版本 `597166f2-4e59-48d3-9046-10f517cd7dd0`。当前容器仅有 Node 22 和空工作目录，**没有 MAOMAO 完整 checkout**；GitHub/Cloudflare connector 可读写 repo/API，但不可替代本机完整 Node/Vite/浏览器/移动端交付门禁。遵守多窗口代码所有权，不越过 #299 QA 集成窗口直接改 QA 分支。正式生产无改动。
