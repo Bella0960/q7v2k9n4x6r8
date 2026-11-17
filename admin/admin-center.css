@@ -43,11 +43,10 @@ h1{margin:0;font-size:21px;letter-spacing:-.035em;font-weight:650}
 .records-card{overflow:hidden;border:1px solid var(--line);border-radius:15px;background:rgba(255,255,255,.94);padding:0 14px}
 .account-row,.invite-row{display:flex;align-items:center;gap:11px;padding:14px 0;border-bottom:1px solid #f0f0f2}
 .account-row:last-child,.invite-row:last-child{border-bottom:0}
-.row-avatar{width:35px;height:35px;flex:0 0 auto;border-radius:11px;background:#f1f2f4;display:grid;place-items:center;color:#555a63;font-size:13px}
 .row-main{min-width:0;flex:1}
-.row-title{font-size:12px;font-weight:620;overflow-wrap:anywhere}
-.row-sub{font-size:10px;color:#9599a1;margin-top:4px;line-height:1.5;overflow-wrap:anywhere}
-.row-status{flex:0 0 auto;text-align:right;font-size:10px}
+.row-title{font-size:13px;font-weight:620;overflow-wrap:anywhere}
+.row-sub{font-size:11px;color:#848892;margin-top:4px;line-height:1.55;overflow-wrap:anywhere}
+.row-status{flex:0 0 auto;text-align:right;font-size:11px}
 .status-pending{color:#777b83}.status-active{color:#191a1e}.status-disabled,.status-revoked{color:#555b65}
 .open-detail{min-height:40px;border:1px solid var(--line);border-radius:9px;background:#fff;color:#555a62;padding:8px 11px;font-size:11px;white-space:nowrap}
 .empty-note,.helper-note{font-size:11px;color:#9699a1;line-height:1.75;margin:13px 0}
@@ -101,7 +100,7 @@ h1{margin:0;font-size:21px;letter-spacing:-.035em;font-weight:650}
 .dark-button{width:100%;min-height:47px;border:0;border-radius:12px;background:#23252a;color:#fff;font-size:12px;font-weight:600}
 .admin-footer{text-align:center;color:#a2a5ad;font-size:10px;line-height:1.7;margin:18px 0 0}
 .page-error{margin:10px 0;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:#f7f7f8;color:#555b65;font-size:11px;line-height:1.6}
-@media(max-width:380px){.admin-shell{padding-left:13px;padding-right:13px}.stats-grid{gap:5px}.stat-card{padding:10px 7px}.stat-card span{font-size:9px}.row-sub{font-size:9px}}
+@media(max-width:380px){.admin-shell{padding-left:13px;padding-right:13px}.stats-grid{gap:5px}.stat-card{padding:10px 7px} .stat-card span{font-size:9px}}
 
 
 /* Keep recovery controls reachable on narrow mobile screens. */
