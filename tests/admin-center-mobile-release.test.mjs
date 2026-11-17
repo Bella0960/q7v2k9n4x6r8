@@ -20,10 +20,11 @@ test('mobile admin uses the native status bar and a compact, functional heading'
 test('admin script and CSS versions match the current PWA cache, not the old mobile shell', () => {
   const version = '20261117-ui1';
   assert.ok(html.includes('./admin-center.css?v=' + version));
-  assert.ok(html.includes('./admin-center.js?v=' + version));
+  assert.ok(html.includes('./admin-center.js?v=20261117-ui2'));
+  assert.ok(!html.includes('./admin-center.js?v=20261117-ui1'));
   assert.ok(sw.includes("'./admin/admin-center.css?v=" + version + "'"));
-  assert.ok(sw.includes("'./admin/admin-center.js?v=" + version + "'"));
-  assert.match(sw, /const CACHE_NAME = 'phone-app-pwa-v243'/);
+  assert.ok(sw.includes("'./admin/admin-center.js?v=20261117-ui2'"));
+  assert.match(sw, /const CACHE_NAME = 'phone-app-pwa-v244'/);
   assert.doesNotMatch(html, /20261112-nav2/);
 });
 
@@ -48,6 +49,41 @@ test('375-430px mobile layout keeps accessible input and action targets', () => 
   for (const id of ['accountsList', 'invitesList', 'globalAuditList', 'accountDetail', 'inviteCodeSheet', 'adminConfirmDialog']) {
     assert.ok(html.includes('id="' + id + '"'), 'existing admin functionality must remain: ' + id);
   }
+});
+
+
+test('admin API always sends the authenticated page account context', async () => {
+  const contextStart = source.indexOf('  function pageAccountContext() {');
+  const apiStart = source.indexOf("  async function api(path, method = 'GET', body = null) {", contextStart);
+  const apiEnd = source.indexOf('\n\n  // A real expired session', apiStart);
+  assert.ok(contextStart >= 0 && apiStart > contextStart && apiEnd > apiStart);
+  const code = source.slice(contextStart, apiEnd) + '\nreturn { pageAccountContext, api };';
+  const calls = [];
+  const makeHarness = (scope, metaId) => new Function(
+    'window', 'document', 'fetch', 'Headers', code
+  )(
+    { __MAO_ACCOUNT_SCOPE__: scope },
+    { querySelector: selector => selector === 'meta[name="mao-account-id"]' && metaId
+      ? { content: metaId } : null },
+    async (path, options) => {
+      calls.push({ path, options });
+      return { ok: true, json: async () => ({ ok: true }) };
+    },
+    Headers
+  );
+  const id = 'MAO-AAAAAAAAAAAA';
+  const scoped = makeHarness({ ready: true, accountId: id }, id);
+  await scoped.api('/api/admin/accounts?limit=50');
+  assert.equal(calls.at(-1).options.headers.get('x-mao-account-context'), id);
+  const metaFallback = makeHarness(undefined, id);
+  await metaFallback.api('/api/admin/invites?limit=50');
+  assert.equal(calls.at(-1).options.headers.get('x-mao-account-context'), id);
+  const mismatch = makeHarness({ ready: true, accountId: id }, 'MAO-BBBBBBBBBBBB');
+  await assert.rejects(() => mismatch.api('/api/admin/accounts'), /账号上下文已变化/);
+  const missing = makeHarness(undefined, '');
+  await assert.rejects(() => missing.api('/api/admin/accounts'), /没有收到服务器注入/);
+  await missing.api('/api/accounts/me');
+  assert.equal(calls.at(-1).options.headers.get('x-mao-account-context'), null);
 });
 
 test('failed account or invitation request displays an error instead of a false empty directory', () => {
