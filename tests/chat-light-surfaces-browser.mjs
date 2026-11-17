@@ -105,8 +105,18 @@ try {
         const plus = await page.locator('#plus-action-btn').boundingBox();
         assert.ok(stage.y + stage.height <= form.y + 1, 'composer must not cover messages');
         assert.ok(form.y <= plus.y && plus.y + plus.height <= form.y + form.height + 1, 'plus button stays inside the input row');
+        assert.ok(plus.width >= 44, 'plus target must be at least 44px wide');
+        assert.ok((await send.boundingBox()).width >= 44, 'send target must be at least 44px wide');
         await page.locator('#plus-action-btn').click();
         await page.locator('.plus-panel-sheet').waitFor({ state: 'visible' });
+        if (theme === 'imessage') {
+          const panelAppearance = await page.locator('.plus-panel-sheet').evaluate(el => {
+            const styles = getComputedStyle(el);
+            return { blur: styles.backdropFilter, background: styles.backgroundColor };
+          });
+          assert.equal(panelAppearance.blur, 'none', 'iMessage more panel must not inherit frosted glass');
+          assert.equal(panelAppearance.background, 'rgb(255, 255, 255)', 'iMessage more panel stays paper white');
+        }
         assert.equal(errors.length, 0, errors.join('\n'));
         console.log(width + 'px / ' + theme + ': header, status bar, overflow, input and features passed');
       } finally {
