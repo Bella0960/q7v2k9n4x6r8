@@ -192,7 +192,7 @@ test('账号停用、恢复和永久撤销的审计时间线展示状态迁移',
 test('普通操作异常也提供重新拉取账号、邀请码和审计状态的恢复入口', () => {
   assert.match(adminScript, /showError\(error\.message \|\| '操作失败，请稍后重试。', \(\) => refreshAll\(\)\)/);
   assert.match(adminScript, /async function refreshAll\(\)/);
-  assert.match(adminScript, /await Promise\.all\(\[loadAccountPage\(true\), loadInvitePage\(true\)\]\)/);
+  assert.match(adminScript, /await Promise\.allSettled\(\[loadAccountPage\(true\), loadInvitePage\(true\)\]\)/);
   assert.match(adminScript, /if \(selectedAccountId && !\$\('accountDetail'\)\.hidden\)/);
   assert.match(adminScript, /await renderAccountDetail\(account\)/);
 });
