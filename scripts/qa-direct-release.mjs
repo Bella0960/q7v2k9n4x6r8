@@ -38,6 +38,7 @@ const TESTS = [
   ['npm', ['run', 'test:integration:account-fanwai']],
   ['npm', ['run', 'test:tutorial']],
   ['npm', ['run', 'test:chat:contract']],
+  ['node', ['--test', 'tests/chat-light-surfaces.test.mjs']],
   // Group chat governance, secret-game boundaries and receipt recovery are release blockers.
   // Run the dedicated suite early; the full Node suite remains a separate regression gate.
   ['npm', ['run', 'test:group:governance']],
@@ -57,6 +58,8 @@ const TESTS = [
   ['npm', ['run', 'test:encounter:browser']],
   // Music now-playing visual QA must pass before replacing static assets on the existing QA Worker.
   ['node', ['tests/music-mobile-browser.mjs']],
+  // Chat whitespace and iMessage layout must pass on real built pages at 375/390/430px.
+  ['node', ['tests/chat-light-surfaces-browser.mjs']],
   // A full Node suite catches regressions outside the narrower account/chat scripts.
   ['node', ['--test']],
   ['npm', ['run', 'gate:encounter']],
