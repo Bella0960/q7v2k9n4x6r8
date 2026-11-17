@@ -154,6 +154,26 @@ try {
       await page.locator('.fw-saved-row').first().click();
       assert.equal(await page.locator('.fw-bubble').count(), 40);
       assert.deepEqual(errors, [], width + ': 浏览器发生脚本异常');
+      // 错账号 HTML 不得看到角色，亦不得装载故事引擎。
+      const guarded = await context.newPage();
+      try {
+        await guarded.route('**/fanwai/fanwai.html*', async route => {
+          const response = await route.fetch();
+          const original = await response.text();
+          const blocked = original.replace(/<head>/i,
+            '<head><meta name="mao-account-id" content="MAO-BBBBBBBBBBBB">');
+          await route.fulfill({ response, body: blocked });
+        });
+        await guarded.goto(origin + '/fanwai/fanwai.html', { waitUntil: 'load' });
+        assert.match(await guarded.locator('.fw-role-title').textContent(),
+          /暂时无法打开番外/, '错账号必须给出可见的安全错误');
+        assert.equal(await guarded.locator('.fw-role-row').count(), 0,
+          '错账号禁止显示任何角色入口');
+        assert.equal(await guarded.locator('#fanwaiLayer').count(), 0,
+          '错账号禁止初始化故事引擎');
+      } finally {
+        await guarded.close();
+      }
       console.log('PASS standalone Chromium touch ' + width + 'x812: ' +
         JSON.stringify({ thinHeader: 44, templates: 6, messages: 40, persistedAfterReload: true, offlineMock: true }));
     } finally {
