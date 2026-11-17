@@ -39,8 +39,11 @@ try {
 
         assert.equal(await page.locator('#myFloatSend').count(), 0, 'no duplicate floating send');
         const send = page.locator('#chat-form .send-icon-btn');
-        assert.equal(await send.evaluate(e => getComputedStyle(e).display), 'flex', 'native send must be visible');
+        if (theme === 'imessage') {
+          assert.equal(await send.evaluate(e => getComputedStyle(e).display), 'none', 'iMessage shows voice until text is entered');
+        }
         await page.locator('#chat-input').fill('检查输入框换行\n第二行\n第三行');
+        assert.equal(await send.evaluate(e => getComputedStyle(e).display), 'flex', 'native send must appear on text input');
         const stage = await page.locator('#chat-messages').boundingBox();
         const form = await page.locator('#chat-form').boundingBox();
         const plus = await page.locator('#plus-action-btn').boundingBox();
