@@ -18,7 +18,10 @@ test('single-chat settings exposes one role-scoped portrait entry and hides it i
 });
 
 test('portrait editor is an original minimal second-level mobile page with no external decorative imagery', () => {
-  assert.match(page, /<h1>Portraits\.<\/h1>/);
+  assert.match(page, /<h1>头像管理<\/h1>/);
+  assert.doesNotMatch(page, /CHAT \/ PORTRAITS|PRIVATE COLLECTION|Portraits\./);
+  assert.doesNotMatch(page, /calc\((?:27|48)px \+ env\(safe-area-inset-top/);
+  assert.match(page, /min-height:64px/);
   assert.match(page, /id="currentPicture"/);
   assert.match(page, /id="album"/);
   assert.match(page, /id="pairList"/);
@@ -59,6 +62,8 @@ test('editor routes all mutations to existing role-scoped library APIs, not new 
   assert.match(controller, /new URLSearchParams\(window\.location\.search\)\.get\('roleId'\)/);
   assert.match(controller, /String\(role\.id\) === roleId/);
   assert.match(controller, /STORAGE_FAILED/);
+  assert.match(controller, /PAIR_CONFLICT/);
+  assert.match(controller, /CORRUPT_DATA/);
   assert.match(controller, /PARTIAL_ROLLBACK/);
   assert.match(controller, /if \(busy\) return/);
   assert.match(controller, /function confirmInSheet\(/);
