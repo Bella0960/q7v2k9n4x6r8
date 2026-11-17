@@ -1014,9 +1014,15 @@
     renderReader();
   }
 
-  function close() {
+  async function close() {
     if (state.busy) pause();
     if (standalone) {
+      // 离开独立页前等暂停/最后一次写入完成，防止用户点击返回时丢失进度。
+      await episodeWriteQueue;
+      if (canPersist && persistenceFailed) {
+        showNotice('故事保存失败，请先复制当前内容，暂时不要离开');
+        return;
+      }
       global.location.assign('fanwai.html');
       return;
     }
@@ -1160,6 +1166,11 @@
     var key = node.dataset.action;
     if (standalone && (key === 'switch-role' || key === 'home')) {
       if (state.busy) pause();
+      await episodeWriteQueue;
+      if (canPersist && persistenceFailed) {
+        showNotice('故事保存失败，请先复制当前内容，暂时不要离开');
+        return;
+      }
       global.location.assign(key === 'home' ? '../index.html' : 'fanwai.html');
       return;
     }
