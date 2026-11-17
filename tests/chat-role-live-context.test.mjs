@@ -1,0 +1,68 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { runInNewContext } from 'node:vm';
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const read = path => readFileSync(resolve(root, path), 'utf8');
+const script = read('shared/js/phone/chat-role-context.js');
+const detail = read('chat/chat/chat-detail.html');
+const sandbox = { window: {} };
+runInNewContext(script, sandbox);
+const policy = sandbox.window.MAOMAOChatRoleContext;
+
+test('每轮读取同一角色ID的最新人设，不替换成其他角色或修改旧数据', () => {
+  const old = { id: 'role_r1', persona: '安静寡言', lifeLine: '经营一间书店' };
+  const fresh = { id: 'role_r1', persona: '清冷但细心', tone: '慢条斯理', lifeLine: '店里正在修缮', lifeEvents: [{ title: '周六修书架', status: 'planned' }] };
+  const original = JSON.stringify(old);
+  assert.equal(policy.resolveRole('role_r1', old, id => id === 'role_r1' ? fresh : null), fresh);
+  assert.equal(policy.resolveRole('role_r1', old, () => ({ id: 'role_other', persona: '其他人' })), old);
+  assert.equal(policy.resolveRole('role_r1', old, () => { throw new Error('storage unavailable'); }), old);
+  assert.equal(JSON.stringify(old), original);
+});
+
+test('普通邂逅角色的错误 AI 自述只在模型上下文排除，旧聊天记录完整保留', () => {
+  const role = { encounterOrigin: { version: 1, species: '人类', trait: '温柔克制' } };
+  const history = [
+    { mid: 'm1', role: 'user', text: '你叫什么名字？' },
+    { mid: 'm2', role: 'assistant', text: '我叫阮映雪。' },
+    { mid: 'm3', role: 'assistant', text: '作为一个人工智能，我的家就在云端。' },
+    { mid: 'm4', role: 'assistant', text: '刚才把官方设定吐出来了。' },
+    { mid: 'm5', role: 'user', text: '你是 AI 吗？' }
+  ];
+  const snapshot = JSON.stringify(history);
+  const result = policy.getModelHistory(history, role);
+  assert.deepEqual(Array.from(result, item => item.mid), ['m1', 'm2', 'm5']);
+  assert.equal(JSON.stringify(history), snapshot);
+  assert.equal(policy.getModelHistory(history, { name: '旧角色' }), history);
+});
+
+test('明确设定为仿生人时不把合法身份当作错误；普通 AI 话题也不误删', () => {
+  const history = [
+    { role: 'assistant', text: '作为一个人工智能，我研究记忆。' },
+    { role: 'assistant', text: '我今天看了一篇人工智能的报道。' }
+  ];
+  const synthetic = { encounterOrigin: { version: 1, species: '仿生人' } };
+  const ordinary = { encounterOrigin: { version: 1, species: '人类' } };
+  assert.equal(policy.getModelHistory(history, synthetic), history);
+  assert.equal(policy.getModelHistory(history, ordinary).length, 1);
+  assert.equal(policy.getModelHistory(history, ordinary)[0], history[1]);
+});
+
+test('角色的最新人设、说话习惯、生活线、记忆与邂逅来源进入同一轮请求', () => {
+  assert.match(detail, /const roleForTurn = !isGroupChat/);
+  assert.match(detail, /resolveRole\(currentCharacter\.id, currentCharacter, getRoleById\)/);
+  assert.match(detail, /rolePersona = \(roleForTurn\.persona \|\| roleForTurn\.prompt/);
+  assert.match(detail, /var relationshipRole = isGroupChat[\s\S]*?: roleForTurn/);
+  assert.match(detail, /buildCharacterSocialPrompt\(relationshipRole\)/);
+  assert.match(detail, /role\.lifeLine/);
+  assert.match(detail, /role\.lifeEvents/);
+  assert.match(detail, /roleForTurn\.memory/);
+  assert.match(detail, /buildEncounterIdentityContext\(roleForTurn\)/);
+  assert.match(detail, /MAOMAOChatRoleContext\.getModelHistory\(historyList, roleForTurn\)/);
+  assert.match(detail, /selectRecentHistory\(roleModelHistory, memoryLimit\)/);
+  assert.match(detail, /buildHistoricalRecallText\(recallableHistory, recallQuery, recallOptions\)/);
+  assert.match(detail, /roleModelHistory !== historyList \? null : cachedVoiceProfile/);
+});
