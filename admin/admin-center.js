@@ -1027,6 +1027,10 @@
         item.classList.toggle('active', active);
         item.setAttribute('aria-pressed', active ? 'true' : 'false');
       });
+      if (busy) {
+        globalAuditSearchRefreshPending = true;
+        return;
+      }
       run(() => loadGlobalAudit(true));
     });
   });
@@ -1047,6 +1051,10 @@
         item.classList.toggle('active', active);
         item.setAttribute('aria-pressed', active ? 'true' : 'false');
       });
+      if (busy) {
+        globalAuditSearchRefreshPending = true;
+        return;
+      }
       run(() => loadGlobalAudit(true));
     });
   });
@@ -1061,6 +1069,10 @@
         item.classList.toggle('active', active);
         item.setAttribute('aria-pressed', active ? 'true' : 'false');
       });
+      if (busy) {
+        accountSearchRefreshPending = true;
+        return;
+      }
       run(() => loadAccountPage(true));
     });
   });
@@ -1072,6 +1084,10 @@
         item.classList.toggle('active', active);
         item.setAttribute('aria-pressed', active ? 'true' : 'false');
       });
+      if (busy) {
+        inviteSearchRefreshPending = true;
+        return;
+      }
       run(() => loadInvitePage(true));
     });
   });
