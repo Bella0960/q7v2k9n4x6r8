@@ -90,6 +90,10 @@ try {
       assert.equal(await page.locator('.fw-app-header').evaluate(e => Math.round(e.getBoundingClientRect().height)), 44);
       await page.locator('.fw-role-row').click();
       await page.locator('#fanwaiLayer .fw-card').first().waitFor({ state: 'visible' });
+      // Independent app must surface errors to the user rather than console-only logs.
+      await page.evaluate(() => window.showToast('番外测试提示'));
+      await page.locator('#fanwaiNotice').waitFor({ state: 'visible' });
+      assert.equal(await page.locator('#fanwaiNotice').textContent(), '番外测试提示');
       assert.equal(await page.locator('#fanwaiLayer .fw-card').count(), 6);
       const sheet = page.locator('#fanwaiLayer .fw-sheet');
       const fit = await sheet.evaluate(el => {

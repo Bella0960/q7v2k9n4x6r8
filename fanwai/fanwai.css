@@ -144,3 +144,24 @@ button, a, textarea, select { font: inherit; }
   #fanwaiLayer.fw-standalone .fw-card { min-height: 120px; }
   #fanwaiLayer.fw-standalone .fw-bubble { font-size: 14px; }
 }
+
+/* Error and API feedback is visible only while needed; no permanent thick footer. */
+.fw-notice[hidden] { display: none !important; }
+.fw-notice {
+  position: fixed;
+  z-index: 5000;
+  left: 18px;
+  right: 18px;
+  bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 12px 15px;
+  border-radius: 10px;
+  background: rgba(45, 47, 45, .96);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  box-shadow: 0 3px 14px rgba(0,0,0,.08);
+}

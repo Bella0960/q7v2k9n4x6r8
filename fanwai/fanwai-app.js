@@ -4,6 +4,32 @@
   var container = document.getElementById('fanwaiRolePicker');
   if (!container) return;
 
+  // 独立页面没有聊天内的 showToast；所有生成/存储错误必须真实可见。
+  // 仅在需要时创建，避免为了提示条在首屏增加常驻占位。
+  if (typeof global.showToast !== 'function') {
+    var noticeTimer = null;
+    global.showToast = function (message) {
+      var text = String(message || '').trim().slice(0, 240);
+      if (!text) return;
+      var toast = document.getElementById('fanwaiNotice');
+      if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'fanwaiNotice';
+        toast.className = 'fw-notice';
+        toast.setAttribute('role', 'status');
+        toast.setAttribute('aria-live', 'polite');
+        document.body.appendChild(toast);
+      }
+      toast.textContent = text; // never render model/error text as markup
+      toast.hidden = false;
+      if (noticeTimer !== null) global.clearTimeout(noticeTimer);
+      noticeTimer = global.setTimeout(function () {
+        toast.hidden = true;
+        noticeTimer = null;
+      }, 4500);
+    };
+  }
+
   function element(tag, className, text) {
     var node = document.createElement(tag);
     node.className = className || '';

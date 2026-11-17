@@ -65,3 +65,13 @@ test('切换角色或退出前等待番外保存队列，避免未落盘便换�
   assert.match(engine, /await episodeWriteQueue;/);
   assert.match(engine, /if \(canPersist && persistenceFailed\) \{/);
 });
+
+test('独立页缺少聊天 Toast 时提供可见且安全的错误提示', () => {
+  const picker = read('fanwai/fanwai-app.js');
+  const css = read('fanwai/fanwai.css');
+  assert.match(picker, /typeof global\.showToast !== 'function'/);
+  assert.match(picker, /toast\.textContent = text/);
+  assert.match(picker, /toast\.setAttribute\('role', 'status'\)/);
+  assert.match(css, /\.fw-notice\[hidden\]/);
+  assert.match(css, /safe-area-inset-bottom/);
+});
