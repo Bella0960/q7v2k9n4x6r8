@@ -161,27 +161,45 @@
     var script = document.createElement('script');
     script.src = '../chat/chat/js/chat-fanwai.js?v=20261118desktop2';
     script.onload = function () {
-      var layer = document.getElementById('fanwaiLayer');
-      if (!layer) {
-        container.hidden = false;
-        notice('番外加载失败', '角色数据或番外模块没有准备好，请返回角色列表重试。');
-        return;
-      }
-      // 新引擎原生支持整页模式；旧 QA 安全引擎则使用兼容挂载层，
-      // 不改动其 IndexedDB、暂停、删除与重新生成过程。
-      if (!layer.classList.contains('fw-standalone')) {
-        if (!appHost || !installLegacyNavigation(layer)) {
-          layer.hidden = true;
-          container.hidden = false;
-          notice('番外加载失败', '独立页面初始化没有完成，请重新进入。');
-          return;
+      var completed = false;
+      var observer = null;
+      function activateWhenMounted() {
+        if (completed) return true;
+        var layer = document.getElementById('fanwaiLayer');
+        if (!layer) return false; // QA may register its init for DOMContentLoaded.
+        completed = true;
+        if (observer) observer.disconnect();
+        // 新引擎原生支持整页模式；旧 QA 安全引擎则使用兼容挂载层，
+        // 不改动其 IndexedDB、暂停、删除与重新生成过程。
+        if (!layer.classList.contains('fw-standalone')) {
+          if (!appHost || !installLegacyNavigation(layer)) {
+            layer.hidden = true;
+            container.hidden = false;
+            notice('番外加载失败', '独立页面初始化没有完成，请重新进入。');
+            return true;
+          }
         }
+        // 旧引擎用聊天相对路径追加 CSS，在独立路由下修正为原文件地址。
+        var oldStyles = document.querySelectorAll('link[rel="stylesheet"][href^="js/chat-fanwai.css"]');
+        oldStyles.forEach(function (linkNode) {
+          linkNode.href = '../chat/chat/js/chat-fanwai.css?v=20261118desktop2';
+        });
+        return true;
       }
-      // QA 旧引擎使用聊天相对 CSS 路径，在独立路由下修正为原文件地址。
-      var oldStyles = document.querySelectorAll('link[rel="stylesheet"][href^="js/chat-fanwai.css"]');
-      oldStyles.forEach(function (linkNode) {
-        linkNode.href = '../chat/chat/js/chat-fanwai.css?v=20261118desktop2';
-      });
+      if (activateWhenMounted()) return;
+      // 避免脚本先加载、DOMContentLoaded 后触发 init 的竞态。
+      document.addEventListener('DOMContentLoaded', activateWhenMounted, { once: true });
+      if (appHost && typeof global.MutationObserver === 'function') {
+        observer = new global.MutationObserver(activateWhenMounted);
+        observer.observe(appHost, { childList: true, subtree: true });
+      }
+      // 仅在引擎确实没有挂载时失败，不能让页面永远停在空白状态。
+      global.setTimeout(function () {
+        if (activateWhenMounted()) return;
+        if (observer) observer.disconnect();
+        container.hidden = false;
+        notice('番外加载失败', '角色数据或番外模块尚未就绪，请返回角色列表重试。');
+      }, 3000);
     };
     script.onerror = function () {
       container.hidden = false;
