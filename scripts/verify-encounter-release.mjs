@@ -3,8 +3,9 @@
  * 「邂逅」本地发布门禁。只读检查；不会合并 PR、部署 Worker 或写真实账号数据库。
  * 推荐执行顺序：
  *   npm ci
- *   npm run build
  *   npm run test:encounter
+ *   npm run test:encounter:account  // 须先整合原账号 PR #290 的正式账号回归
+ *   npm run build
  *   npm run test:encounter:browser
  *   npm run gate:encounter
  *
@@ -34,6 +35,16 @@ const forbidPattern=(name,regex,why)=>{
   else results.push(name+' '+why);
 };
 
+const pkg = (() => {
+  try { return JSON.parse(read('package.json')); }
+  catch (error) { errors.push('package.json 无法解析，拒绝认可测试回执'); return {}; }
+})();
+const accountTestScript = String(pkg.scripts?.['test:encounter:account'] || '');
+if (!accountTestScript.includes('npm run test:account:release-gate') ||
+    !accountTestScript.includes('node --test tests/encounter-actual-scope.test.mjs') ||
+    !accountTestScript.includes('node scripts/record-encounter-tests.mjs account')) {
+  errors.push('缺少真正运行账号发布回归后再生成账号测试回执的脚本 test:encounter:account');
+}
 requireFile('account/index.html','必须先整合并验收正式 MAO 登录（账号 PR #290）');
 requireFile('account/account.js','必须复用已验证的 MAO 账号入口');
 requireFile('shared/js/mao-account-scope.js','禁止新建第二套账号隔离');
