@@ -218,7 +218,16 @@ export async function probeExistingIdentityAuthority(env) {
         typeof data.configured !== 'boolean') {
       return { connected: false, initialized: false, configured: false };
     }
-    return { connected: true, initialized: data.initialized, configured: data.configured };
+    // Expose the authority's own QA isolation attestation to privileged callers.
+    // Connectivity and a matching Worker name alone never prove storage isolation.
+    return {
+      connected: true,
+      initialized: data.initialized,
+      configured: data.configured,
+      qaIsolatedAuthority: data.qaIsolatedAuthority === true,
+      qaExpectedFounderId: typeof data.qaExpectedFounderId === 'string'
+        ? data.qaExpectedFounderId : null
+    };
   } catch {
     return { connected: false, initialized: false, configured: false };
   }
