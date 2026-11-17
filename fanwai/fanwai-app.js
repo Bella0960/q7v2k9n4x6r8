@@ -171,6 +171,7 @@
       // 不改动其 IndexedDB、暂停、删除与重新生成过程。
       if (!layer.classList.contains('fw-standalone')) {
         if (!appHost || !installLegacyNavigation(layer)) {
+          layer.hidden = true;
           container.hidden = false;
           notice('番外加载失败', '独立页面初始化没有完成，请重新进入。');
           return;

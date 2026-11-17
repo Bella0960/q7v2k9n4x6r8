@@ -60,7 +60,7 @@ class Element {
   }
 }
 
-function mount() {
+function mount({ engineRoot = true } = {}) {
   const body = new Element('body');
   const main = new Element('main'); main.id = 'fanwaiApp';
   const picker = new Element('section'); picker.id = 'fanwaiRolePicker';
@@ -75,7 +75,7 @@ function mount() {
   const document = {
     body,
     createElement: tag => new Element(tag),
-    getElementById: id => ({ fanwaiApp: main, fanwaiRolePicker: picker, fanwaiLayer: layer })[id] || null,
+    getElementById: id => ({ fanwaiApp: main, fanwaiRolePicker: picker, fanwaiLayer: engineRoot ? layer : null })[id] || null,
     querySelector: selector => {
       if (selector.startsWith('meta[')) return meta;
       if (selector === '#plusPanelOverlay .plus-grid [data-feat="fanwai"]') return engineEntry;
@@ -143,8 +143,11 @@ test('legacy story directory lets user return to role picker', () => {
 });
 
 test('missing QA engine root fails visibly without accessing an empty story UI', () => {
-  const app = mount();
-  // Separate from normal mount: onload should show recovery if engine did not create a root.
-  const originalGet = app.main.walk().some(node => node.id === 'fanwaiLegacyHost');
-  assert.equal(originalGet, true);
+  const app = mount({ engineRoot: false });
+  app.engineScript.onload();
+  assert.equal(app.picker.hidden, false);
+  const title = app.picker.walk().find(node => node.className === 'fw-role-title');
+  assert.ok(title);
+  assert.match(title.textContent, /番外加载失败/);
+  assert.equal(app.main.walk().filter(node => node.classes.has('fw-bridge-nav')).length, 0);
 });

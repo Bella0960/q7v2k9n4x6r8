@@ -98,7 +98,9 @@ try {
       const sheet = page.locator('#fanwaiLayer .fw-sheet');
       const fit = await sheet.evaluate(el => {
         const r = el.getBoundingClientRect();
-        const head = el.querySelector('.fw-head');
+        // 新版原生引擎用内部薄头；QA 老引擎兼容适配用外层 44px 导航。
+        const head = el.classList.contains('fw-legacy-engine')
+          ? document.querySelector('.fw-bridge-nav') : el.querySelector('.fw-head');
         return {
           top: r.top, bottom: r.bottom, width: r.width,
           viewW: innerWidth, viewH: innerHeight, overflow: el.scrollWidth > el.clientWidth + 1,
@@ -154,14 +156,25 @@ try {
       await page.locator('.fw-saved-row').first().click();
       assert.equal(await page.locator('.fw-bubble').count(), 40);
       // 返回键真的回到目录，不能把读者直接踢回角色选择。
-      const back = page.locator('.fw-reading .fw-head [data-action="back"]');
+      const legacyQa = await page.locator('#fanwaiLayer.fw-legacy-engine').count() > 0;
+      const back = legacyQa
+        ? page.locator('.fw-bridge-nav .fw-app-back')
+        : page.locator('.fw-reading .fw-head [data-action="back"]');
       assert.equal(await back.count(), 1, '阅读页左上角必须是返回目录');
       await back.click();
       await page.locator('#fanwaiLayer .fw-card').first().waitFor({ state: 'visible' });
       assert.equal(await page.locator('#fanwaiLayer .fw-card').count(), 6);
       await page.locator('#fanwaiLayer .fw-card').first().click();
-      assert.equal(await page.locator('.fw-preview .fw-head [data-action="switch-role"]').count(), 1);
-      await page.locator('.fw-preview .fw-head [data-action="switch-role"]').click();
+      const roleSwitch = legacyQa
+        ? page.locator('.fw-bridge-nav .fw-app-switch')
+        : page.locator('.fw-preview .fw-head [data-action="switch-role"]');
+      assert.equal(await roleSwitch.count(), 1);
+      // QA 兼容层只在目录显示切换角色，先使用 QA 自己的安全 back。
+      if (legacyQa) {
+        await page.locator('.fw-bridge-nav .fw-app-back').click();
+        await page.locator('#fanwaiLayer .fw-card').first().waitFor({ state: 'visible' });
+      }
+      await roleSwitch.click();
       await page.locator('#fanwaiRolePicker .fw-role-row').first().waitFor({ state: 'visible' });
       assert.equal(new URL(page.url()).searchParams.has('id'), false, '切换角色后不应保留旧 id');
       assert.deepEqual(errors, [], width + ': 浏览器发生脚本异常');
