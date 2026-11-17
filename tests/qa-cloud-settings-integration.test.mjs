@@ -70,3 +70,52 @@ test('music-only QA release never redeploys or alters the isolated identity core
   assert.match(runner, /\['node', \['tests\/music-mobile-browser\.mjs'\]\]/);
   assert.match(runner, /'wrangler\.qa\.jsonc'/);
 });
+
+
+test('Opera site permission flow keeps browser and website grants separate', async () => {
+  const js = read('shared/js/cloud-push-client.js');
+  const html = read('settings/cloud-push.html');
+  assert.match(html, /cloud-push-client\\.js\\?v=20261118opera1/);
+  assert.match(js, /setToggle\\(status\\.permission === 'granted' && status\\.currentBrowserMatched === true\\)/);
+  assert.match(js, /localTestRow\\.addEventListener\\('click'[\\s\\S]*?await requestNotificationPermissionFromGesture\\(\\)/);
+
+  function environment(initialPermission, promptResult) {
+    let prompts = 0;
+    const notification = {
+      permission: initialPermission,
+      requestPermission: async () => { prompts += 1; return promptResult; }
+    };
+    const window = {
+      isSecureContext: true,
+      location: { hostname: 'preview.mao520.com' },
+      Notification: notification,
+      PushManager: function PushManager() {}
+    };
+    const context = {
+      window,
+      document: { currentScript: { src: 'https://preview.mao520.com/shared/js/cloud-push-client.js' } },
+      navigator: { userAgent: 'Mozilla/5.0 (Linux; Android 15) OPT/80.0', serviceWorker: {} },
+      Notification: notification,
+      localStorage: { getItem: () => null },
+      URL
+    };
+    new Script(js, { filename: 'cloud-push-client.js' }).runInNewContext(context);
+    return { api: window.MaomaoCloud._internal, count: () => prompts };
+  }
+
+  const freshGrant = environment('default', 'granted');
+  assert.equal(await freshGrant.api.requestNotificationPermissionFromGesture(), 'granted');
+  assert.equal(freshGrant.count(), 1, 'site prompt is called once from user gesture');
+
+  const alreadyGranted = environment('granted', 'denied');
+  assert.equal(await alreadyGranted.api.requestNotificationPermissionFromGesture(), 'granted');
+  assert.equal(alreadyGranted.count(), 0, 'do not re-prompt an authorized site');
+
+  const denied = environment('denied', 'granted');
+  await assert.rejects(denied.api.requestNotificationPermissionFromGesture(), /Opera.*通知|Opera.*应用通知/);
+  assert.equal(denied.count(), 0, 'a rejected site cannot be re-prompted');
+
+  const dismissed = environment('default', 'default');
+  await assert.rejects(dismissed.api.requestNotificationPermissionFromGesture(), /preview\\.mao520\\.com/);
+  assert.equal(dismissed.count(), 1);
+});
