@@ -46,12 +46,42 @@
   let initializing = false;
   const busyButtonState = new WeakMap();
 
+  function pageAccountContext() {
+    const scope = window.__MAO_ACCOUNT_SCOPE__;
+    const scopedId = scope && scope.ready === true
+      ? String(scope.accountId || '').trim()
+      : '';
+    const meta = document.querySelector('meta[name="mao-account-id"]');
+    const metaId = String(meta && meta.content || '').trim();
+    if (scopedId && metaId && scopedId !== metaId) {
+      const error = new Error('管理中心账号上下文已变化，请从桌面重新进入。');
+      error.code = 'ACCOUNT_CONTEXT_CHANGED';
+      throw error;
+    }
+    const accountId = scopedId || metaId;
+    return /^MAO-[A-Z0-9]{12,24}$/.test(accountId) ? accountId : '';
+  }
+
   async function api(path, method = 'GET', body = null) {
+    const headers = new Headers(body
+      ? { 'content-type': 'application/json', accept: 'application/json' }
+      : { accept: 'application/json' });
+    const accountId = pageAccountContext();
+    if (accountId) {
+      // Bind the admin request explicitly as well as through the shared
+      // account-scope fetch wrapper. The Worker verifies this against the
+      // authenticated session, so a stale or forged page ID cannot authorize it.
+      headers.set('x-mao-account-context', accountId);
+    } else if (!['/api/accounts/me', '/api/admin/bootstrap/status'].includes(String(path).split('?')[0])) {
+      const error = new Error('管理中心没有收到服务器注入的 MAO 账号上下文，请从桌面重新进入管理中心。');
+      error.code = 'ACCOUNT_CONTEXT_REQUIRED';
+      throw error;
+    }
     const response = await fetch(path, {
       method,
       credentials: 'same-origin',
       cache: 'no-store',
-      headers: body ? { 'content-type': 'application/json', accept: 'application/json' } : { accept: 'application/json' },
+      headers,
       body: body ? JSON.stringify(body) : undefined
     });
     let payload = {};
