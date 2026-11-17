@@ -1162,7 +1162,9 @@
                 <!-- 6. 导入角色 JSON -->
                 <div class="editor-field-group">
                     <label class="field-label" style="color: #8E8E93;">导入角色</label>
-                    <button type="button" id="btnImportRole" class="import-json-btn">选择角色 JSON 文件</button>
+                    <button type="button" id="btnImportRole" class="import-json-btn">导入 MAOMAO JSON / TXT</button>
+                    <button type="button" id="btnExportRole" class="import-json-btn">导出当前角色 JSON</button>
+                    <button type="button" id="btnExpandEncounterPersona" class="import-json-btn hidden">AI 完善人设 · 使用 API</button>
                     <input type="file" id="roleImportFile" accept=".json,.txt,application/json,text/plain" class="hidden">
                 </div>
 
@@ -1208,7 +1210,9 @@
     <script src="../../shared/js/phone/storage/repository.js"></script>
     <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
     <script src="../../shared/js/phone/role-avatar-library.js?v=20261113v1"></script>
-    <script src="js/characters-manager.js?v=20261107v11"></script>
+    <script src="../../shared/js/phone/phone_api.js?v=20261115a"></script>
+    <script src="../../encounter/encounter-engine.js?v=20261115v1"></script>
+    <script src="js/characters-manager.js?v=20261115-encounter1"></script>
     <script src="../../shared/js/nav.js"></script>
 <script src="../../shared/js/statusbar-control.js"></script>
 </body>

@@ -108,3 +108,143 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 5. Break cloud-push work into small, reviewable milestones. A code-only PR is not proof of scheduled execution, server model response, OS push delivery, or two-device message persistence.
 6. No merge to main, production deployment, APK update, Worker secret configuration, or destructive user-data operation without explicit owner approval.
 7. This conversation cannot run after the chat/session is closed. Leave this checkpoint so the next session can resume without asking the owner to repeat the task.
+
+## FEATURE-ENCOUNTER-001 — 2026-11-15 邂逅角色抽卡
+- 用户授权实施新功能；偏好：低饱和冷灰黑白、首页极简、无额外装饰、真实互动、本地 0 API 初筛、原角色库对接、强制姓名查重、相似人设可保留、独立扩展接口。
+- Base: main @ a5415d7e28280fd07cea4d02e19e87d9ec36083e
+- Branch: FEATURE-ENCOUNTER-001-initial-experience
+- Draft PR: https://github.com/Bella0960/MAOMAO/pull/297
+- 新增：encounter/encounter.html；encounter/encounter-engine.js；tests/encounter-contract.test.mjs；docs/features/ENCOUNTER_SPEC.md。
+- 修改：index.html 桌面入口；worldbook/characters/characters.html / js/characters-manager.js 候选进入原编辑器、导出 MAOMAO JSON 与仅支持原生 JSON 导入。
+- 不修改正式角色/聊天/账户数据库记录；未触碰 Cloudflare 正式部署与管理员身份；未合并 main。
+- 代码已提交；10 项合同测试已写，当前执行环境无法直接运行本仓库 Node/Vite/真机浏览器，测试、npm run build、UI 实际效果均为 NOT VERIFIED。不得把提交代码等同于验收通过。
+- 后续同分支新增原有 PhoneAPI.complete 的按需 AI 人设扩写按钮、付费确认与草稿保护、第三方 JSON 伪装 TXT 拦截和超长字段拒绝（避免静默裁剪）。真实 API 返回与费用尚未验证。
+- 后续：优先真实浏览器测试滑动和草稿恢复、修复实际失败、建设显式 AI 人设完善按钮（用户确认时调用 API）、扩展人物关系/稀有卡；通过验收后再申请合并。
+- 2026-11-15 本窗口补充可核验结果：V8 语法编译三个改动脚本均通过；隔离引擎实际运行 50 张不同姓名人物卡、收藏/删除/偏好/原角色隔离通过；损坏候选/配额错误/后发撞名均被拒绝。仍须运行 Node/Vite 与真实浏览器测试。
+- 正式角色创建时同步存入 encounterOrigin v1 结构化来源字段（只对邂逅新角色），为以物识人/命运分支/关联角色模块保留数据接口，旧角色结构不动。
+- 最终复核：e7ac66f 提交后的分支仍仅领先 main，PR #297 为 open/draft；抽卡引擎、UI 脚本、角色编辑器的 JavaScript 编译检查通过。隔离环境连续生成 75 张人物卡，姓名不重复，性别/关系气质字段有效；旧角色未被写动，候选收藏成功。此复核不是 Node/Vite 构建或真机浏览器验收。
+
+- 2026-11-15 邂逅第二轮严格推进：修复原角色库 loadRoles 在读取异常后写回空数组的丢失风险，改为阻止写入与显式警示。PhoneStorage.result.getCharacters 的错误码位于 error.code，抽卡出错时 fail-closed。另修合成 click 拦截过久、短篇 AI 付费结果丢失、AI 草稿持久化假成功与删除候选后仍发起计费请求。原角色正式保存后仍能按需 AI 完善。
+- 校对 chat/chat/chat.html：聊天列表确实读取 ai_custom_characters，现有 role.id 兼容。
+- 本会话使用 V8 内存执行真实分支来源的 17 个合同测试 + 4 个模拟 DOM 手势测试，21/21 PASS（经适配的 JS 测试，不等于完整 Node test / Playwright 真浏览器 / 构建）。原始损坏数据未被修改；正常空角色库可首次保存。
+- PR #297 保持 Draft、未 merge、未 deploy；CI 依旧步骤 0/日志缺失，根因 NOT VERIFIED。下一步必须运行本机 Node、Vite build、Playwright 三视口与真实 Android/iOS 交互，再申请合并。
+- 安全门禁补充：新候选键目前是同源浏览器本地全局键；跨账号隔离及备份恢复需与统一账户系统再验收，NOT VERIFIED。暂不擅自创建第二套登录、迁移正式数据或改动 Cloudflare 账号。
+
+- 2026-11-15 邂逅第三轮：复用账号整合 PR #290 既有 Worker meta + __MAO_ACCOUNT_SCOPE__ 契约（PR #290 尚未在 main），正式域名缺少有效账号作用域时 fail-closed；收费 API 前调用 /api/accounts/me 再验证会话；本地 localhost 保留离线开发能力。未创建新登录，不改正式管理员。
+- 补全两位独立抽卡候选与切换操作；增加 2 卡切换/分别保存回归；候选及偏好本地写后读回校验；坏偏好不被静默覆盖；扩展玩法不得改写 ID/版本。
+- 将 maomao_encounter_* 纳入现有备份注册表 characters 类别。隔离模拟验证备份包含候选和设置，排除 API Key。
+- 本轮最终隔离 V8 合同 + 模拟 UI 检查 **28/28 PASS**，4 个 JS 脚本语法通过，均非原生 Node/Vite/真实浏览器结果。发布前仍须完成 PR #290 依赖与真实账号隔离验证、Playwright+Android+iPhone、构建，以及候选跨标签页并发风险的处置。PR #297 保持 Draft。
+
+### FEATURE-ENCOUNTER-001 — 2026-11-15 第四轮严格发布门禁
+- **PR 分支：** FEATURE-ENCOUNTER-001-initial-experience；PR #297 仍为 Draft，正式 main 未合并，未部署 app.mao520.com，未写 Cloudflare 管理员/钱包/账户数据库。
+- **与 PR #290 安全依赖：** main Worker 已尝试注入 /shared/js/mao-account-scope.js?v=2，但 main 中尚缺该脚本；开发分支原样复用 PR #290 的账号隔离脚本、sw.js 私有 HTML/字体缓存保护、shared/js/font-loader.js。PR #290 的 account/index.html/account.js 仍未进入 main，账号登录入口是明确阻碍；不能假称完整整合已发布。
+- **多标签页候选保护：** 改为 per-card V2 独立键，V1 旧候选数组只读合并，删除墓碑 prevent stale reappear；有 navigator.locks 的浏览器通过同账号独占锁封装 saveCandidateSafe/removeCandidateSafe；无 Web Locks 的环境保留独立键后备。不声称已解决整个原角色库跨标签页事务问题。
+- **关键 UI 修复：** 默认桌面之前未分配 app_encounter 导致无法看到新图标；现已加入人物档案旁，并为已有自定义桌面做幂等插入，尊重 removed 清单。
+- **备份：** settings/js/backup-modules.js 角色分类收录 maomao_encounter_*，覆盖 V1/V2/删除墓碑/偏好，仍排除 API Key。
+- **测试：** tests/encounter-contract.test.mjs 新增并发同存储、旧数组只读兼容、Web Locks 序列化、独立键测试。tests/encounter-actual-scope.test.mjs 对原版 PR290 作用域实际执行模拟；修复 Playwright 中读取废弃 V1 数组的断言。同步更新 PWA、字体与桌面旧式缓存假设的测试。package.json 新增 test:encounter、test:encounter:browser、gate:encounter。
+- **本轮非原生校验回执：** 当前分支源码经 V8 适配执行 28 项合同 + 5 项交互 = 33/33；原版 MAO 账号隔离与引擎兼容 4/4；PWA/字体缓存/桌面静态合同 16/16。未执行真实 npm ci、npm run build、Node原生 test、Playwright 运行截图、Android/iPhone 真机或真实账号切换/正式恢复验证。
+- **正式发布 gate：** scripts/verify-encounter-release.mjs 只读检查账号入口、构建、PWA、三尺寸及角色编辑器验收截图，缺一项明确拒绝通过。当前因账号入口尚未安全整合、dist 与截图不存在，此 gate 不能通过。不得绕过原管理员独立备份及隔离恢复门禁。
+
+
+### FEATURE-ENCOUNTER-001 — 2026-11-15 持续修复：邂逅草稿隔离与备份安全
+
+- **开发对象：** 原功能 PR #297（FEATURE-ENCOUNTER-001-initial-experience）；所有交付同步到唯一整合 QA 分支 integration/encounter-account-acceptance-20261115，未建立第二个测试环境。
+- **实际缺陷：** 邂逅候选导入角色编辑器之前调用 openAddRole()，会读取普通新建角色的 `maomao_character_draft_v1:new`；后续强制 persistEditorDraft(true) 也写到同一键，可能覆盖原本未保存的手动角色草稿或阻断候选导入。
+- **已修：** 新增 `getEncounterDraftKey(candidateId)`，为每张候选使用 `maomao_character_draft_v1:encounter:<id>`；从候选进入时绕过普通新角色的草稿恢复，先带入候选人设，再检查该候选自己的待恢复草稿，不强制覆盖原文。普通新建角色仍使用旧键，旧草稿不迁移/不删除。
+- **损坏数据保护：** 原 offerDraftRecovery 会在解析失败时静默 removeItem；现保留原始键值并禁用同键自动暂存/角色保存，取消编辑不删除，只有用户点击既有“放弃草稿”按钮且成功清理后才继续。
+- **备份分类：** 角色分类增加 `maomao_character_draft_v1:` 前缀，涵盖手动新建、旧角色编辑、邂逅候选草稿；保留 API 密钥排除规则。无 schema 迁移、角色数据修改或云端账号写入。
+- **实际执行的检查：** 通过从当前 GitHub 原文件提取并运行的 V8 隔离编辑器流程：手动新角色草稿保留、候选独立草稿保存、退出重进恢复、旧草稿恢复、损坏草稿保留/禁止覆写/显式放弃、备份归类与密钥排除。新增两项原有 Node 回归用例并在 V8 适配执行 PASS；**未执行原生 node --test、npm ci/build、Playwright Chromium、Android/iOS 或统一线上 QA 验收**。不得将模拟当作真实整体验收。
+- **当前状态：** 开发中；PR #297 保留 Draft，统一整合测试分支只作待验收源码；未合并 main、未部署测试/正式环境。下一步依照 GOV PR #300 的 RELEASE_PLAYBOOK：先取得真实自动构建回执，再部署唯一 QA 供用户整体试玩；失败返回原 PR 修复。
+
+## FEATURE-ENCOUNTER-001｜2026-11-17 性格盲测三选一交互
+- **范围/分支**：只继续原 `FEATURE-ENCOUNTER-001-initial-experience` / Draft PR #297，不向 PR #299 或正式 main 提交；QA 部署窗口不受影响。
+- **玩法**：性格盲测从“点开直接看答案”升级为“按台词猜三种性格之一 → 揭晓人设/反差”，可以直接揭晓。选项按候选 ID 稳定排列，真性格只出现一次。收藏候选仍直接打开档案；不改变已有角色、候选保存格式、账号隔离、JSON、命运分支，不增加 localStorage key 或 AI 调用。
+- **提交**：`696727437a7d1611034e8d5256be80220aac7523` 功能/合同/模拟 UI；`2e3e9daee05282b314cc23ca16ed13998089eb42` 修复测试 Fake DOM 重新创建按钮导致绑定丢失的测试替身；`df47b6f3a3b6c6be46a6d8b602f4d93701a29089` 增加 Playwright 390px 性格猜测/揭晓断言、截图及相同 Git HEAD 发布门禁。
+- **已执行（V8，真实更新后的源码）**：引擎/页面内联 JS 语法检查 PASS；性格选项稳定性/不重复/真正性格单次出现及不写存储 PASS；模拟卡片点击 → 三选一 → 查看档案 → 猜测反馈，且原角色及候选收藏不变，PASS。首次模拟点击测试未通过，原因是 Fake DOM 查询每次创建新假按钮；修复该测试替身后重新执行 PASS。
+- **NOT VERIFIED**：原生 Node CLI `npm run test:encounter`、Vite `npm run build`、Playwright 真浏览器、Android/iOS、云端 QA 均未在本会话执行；此次提交不能称已发布或手机可玩。原 PR 保留 Draft。
+- **后续**：其他窗口继续并行；本功能等唯一 QA 完成本轮部署后在 PR 评论提供的 SHA 按序接入下轮 QA，先实际浏览器验收，再由用户手机验收，正式版独立审批。
+
+## FEATURE-ENCOUNTER-001｜2026-11-17 已相识 · 再次相遇
+- **本轮范围**：仅原 PR #297 的原分支；PR #299 唯一 QA 整合窗口目前冻结，不直接推送、不部署正式站、不创建新 PR。
+- **功能**：已相识且拥有合法 `encounterOrigin` 的正式角色，收藏抽屉出现「再遇」。支持三条本地文本故事开头（「日常偶遇」「旧物线索」「命运回声」），取自原角色时代、职业、重要物件及原命运线索。可以「返回收藏」「去档案」，明确按下「去聊天」后才使用现有 `chat/chat/chat-detail.html` 和已保存正式 role.id 路由。没有消息自动发送、API 请求、生图、新增持久化键或人物/聊天/记忆更改。
+- **读保护**：每次换场景、去聊天/档案都调用 `getReunionScenes(roleId)` 重新读原角色库及当前账号作用域；角色消失、未通过账号检查或读取失败直接中止，不复活旧角色或按姓名重新关联。
+- **本轮提交**：`11c978faeb56277d3f95aaf71ef7d2ef4c85d3a6` 引擎、UI、Node 合同；`7bc6cb40860fd8e6ec043565383fc384a96d4658` UI 模拟测试；`c07f765042228cc5b005fb8d8ef8174c7ed081c3` 修正默认情境与旧物情境测试预期；`bf8129bbae732bc915041dae68cc119e43911f36` Playwright/发布 gate/规格文档。
+- **执行验证**：实际更新后的引擎/页面内联 JS 在 V8 语法检查通过；场景生成、正式 ID 校验及零写入的动态运行检查通过。重跑原 UI 测试主体于 V8 兼容适配器，**8/8 PASS**（包括再遇、故事切换、显式聊天入口与删除角色后拒绝跳转）。40 个合同测试于 V8 适配器中 **27 PASS / 13 未成功适配**；后 13 项主要缺少 Node VM 全局 `console`、`URL`、`URLSearchParams`、VM 返回表达式等，并非已证实的业务失败；不能声称合同全通过。浏览器脚本与发布 gate 经移除 import/shebang 的等价语法解析 PASS。
+- **NOT VERIFIED**：完整 Node `--test`、Vite `npm run build`、Playwright Chromium、真机 Android / iOS、Cloudflare QA 部署均未实际执行；上述 V8 是逻辑模拟不等于正式验收。原 PR 保持 Draft。
+- **下一轮交接**：唯一 QA #299 当前部署结束之后，按顺序提取原 PR 最新 SHA，使用正式依赖环境运行 `npm run test:encounter`、`npm run build`、`npm run test:encounter:browser`、`npm run gate:encounter`；回执须含 `reunionNativeChat` 并对应同一 Git HEAD。用户手机验收前不得合 main 或正式发布。
+
+
+## FEATURE-ENCOUNTER-001｜2026-11-17 以物识人猜职业
+- 原 PR #297 分支继续开发，不修改 #299 或正式版。提交 b8a574825fc60f49c4a83f925ef69841db6b00cd：以物识人三职业猜测与直接揭晓，职业选项按已有世界/种族与候选 ID 稳定生成；零 API、零写入，不修改旧角色、候选、消息、记忆。
+- 更新文件：encounter/encounter-engine.js、encounter/encounter.html、tests/encounter-contract.test.mjs、tests/encounter-ui-contract.test.mjs、tests/encounter-browser.mjs、scripts/verify-encounter-release.mjs。新门禁需 objectIdentityGuess 和 encounter-object-guess-390.png。
+- 已执行：更新后的引擎/页面脚本 V8 语法及真实逻辑检查通过；全部模拟 UI 10/10 PASS；新增 Node 合同测试主体 2/2 在 V8 适配环境通过，覆盖七种世界、选项去重、真实职业、稳定 ID 和零写入。
+- NOT VERIFIED：原生 Node CLI、完整 Vite 构建、Playwright 真浏览器、Android/iPhone 真机。PR 保留 Draft；等待唯一 QA 本轮部署完成后按顺序纳入。不得据此合并 main 或发布正式环境。
+
+
+## FEATURE-ENCOUNTER-001｜2026-11-17 蒙面档案逐层寻迹
+- 继续原 PR #297 的 FEATURE-ENCOUNTER-001-initial-experience 分支；唯一 QA PR #299 的冻结整合分支保持不动，不建重复 PR、不部署正式环境。
+- 本轮功能提交 ec49160e68dc7d2447b64041e83567bb61b239d0：蒙面档案先显示台词与 00/03 提示，逐次点击展开来处/身份轮廓/随身之物，明确点击才揭晓姓名和完整角色信息；任意阶段可直接揭晓。扩展只读 API getMaskedClues(card)，不写角色、聊天、记忆、候选或新增存储，不调用 API。
+- 实际修改六处：encounter/encounter-engine.js、encounter/encounter.html、tests/encounter-contract.test.mjs、tests/encounter-ui-contract.test.mjs、tests/encounter-browser.mjs、scripts/verify-encounter-release.mjs。浏览器新增 390px 逐层线索截图 encounter-masked-clues-390.png 和门禁 maskedClueSteps。
+- 已执行验证：实际 GitHub 更新后的引擎/页面内联 JS 语法与运行时只读逻辑 PASS；浏览器脚本及 gate 在去掉 ES 模块壳的等价语法检查 PASS；来自已提交源码的 V8 模拟 DOM 全回归 12/12 PASS，新增独立合同 1/1 PASS。其他模式的原测试主体也包含在 12 项中。
+- NOT VERIFIED：未在完整仓库执行 Node CLI、Vite 生产构建、Playwright 真 Chromium、Android/iOS 真机或 QA 部署。仅测试模拟完成，不能声称线上可用或合并就绪。PR #297 Draft 保留。
+- 集成规则：当前 QA #299 部署完成后再由整合窗口按序取原 PR 最新 SHA，运行 npm run test:encounter、npm run build、npm run test:encounter:browser、npm run gate:encounter，取得与同一 Git HEAD 对应的回执后给用户手机验收；正式版另行审批。
+
+
+## FEATURE-ENCOUNTER-001｜2026-11-17 命运分支异步保护与账号锁验收
+- 原 PR #297 功能分支继续开发；唯一 QA #299 冻结期间不推送、不新建 PR、不修改正式版或管理员 001 数据。
+- 提交 b3b123c5692386c148be29c6676f780cc4b541d1：修复跨标签 Web Lock 排队时账号切换，候选收藏/移除/故事更新拿锁后复核当前账号与请求前 ID/role；锁返回后再次检查，不误写其他账号、不假报成功。
+- 提交 f757a7149d4ec2828bb8c47075f3a9764aa25860：命运分支收藏状态下选择只允许一个待处理操作；全部选项禁用，抽屉关闭或转到其他页面时丢弃旧回调，避免重新弹出旧人物。
+- 提交 8cf4cfacee29691a36e27d510fbe0d6c6f54cec9：Playwright 390px 独立上下文验证故事起点选择、收藏、改选、刷新后保持，并要求新 release gate 回执 fateChoicePersistence 与截图 encounter-fate-persisted-390.png。
+- 已实际执行：本轮已提交代码的 V8 适配模拟 DOM 回归 14/14 PASS，新增账号等待锁/返回边界合同 2/2 PASS，Playwright 与 release gate 的 JS 语法解析 PASS。未实际运行完整 Node CLI、Vite build、Playwright Chromium 或 Android/iPhone；不能宣称 QA 通过或上线。
+- 下轮 QA 部署冻结结束后，唯一整合窗口按顺序接入 PR #297 最新 SHA，运行 npm run test:encounter、npm run build、npm run test:encounter:browser、npm run gate:encounter；Android/iOS 验收后才考虑合 main，正式发布另行批准。
+
+
+## FEATURE-ENCOUNTER-001｜2026-11-17 顶部与底部布局（截图反馈）及假状态栏禁令
+- **范围**：沿用原功能 Draft PR #297 与 FEATURE-ENCOUNTER-001-initial-experience；唯一 QA #299 未被本轮修改；不新建 PR，不动 main、正式 Worker、管理员 001、角色存档。
+- **原因**：用户 Android 截图显示系统原生状态栏与自绘时间/信号/电量重复；三个点菜单和候选收藏数字布局松散，背卡拉到主卡下方，PASS/收藏接近底部手势区。
+- **实际修复**：71fa52e 调整移动端顶部菜单/计数、卡片与背卡底部对齐、真实 safe-area 与按钮间距；4fe77fa 彻底移除假状态栏 DOM、样式与 clock 计时器，不依赖 CSS 隐藏（覆盖横屏/大屏）；be3dcc8 修改浏览器断言；eceb079/aa2433a 增加源码合同检查并修正正则转义；5d4fcad/f42705e 把 nativeSystemStatusBar 标记加入真浏览器测试回执与发布门禁。
+- **检查结论**：已从连接的 GitHub 当前原分支重新读取页面和测试，完成 9/9 条源码静态条件确认（没有假栏节点/定时器、上下安全区、三尺寸浏览器断言与检查标记）。**不能替代真实 node --test、npm run build、Playwright 或 Android/iOS 真机。**
+- **剩余门禁**：使用依赖已整合的完整工程执行 npm run test:encounter、npm run build、npm run test:encounter:browser、npm run gate:encounter；查看手机 375/390/430 屏幕与横屏安全区；由唯一 QA 集成窗口按既有顺序引入 #297 新 SHA 后在 preview.mao520.com 验收。QA 当前冻结时不可直接推送；正式发布需独立审批。
+
+
+## FEATURE-ENCOUNTER-001｜2026-11-17 本地浏览器测试解除账号页依赖，继续保留发布安全门禁
+- 实际检查：当前原功能分支 PR #297 存在 encounter/encounter.html 及引擎，但没有 account/index.html、account/account.js；账号原文件在 PR #290 分支 integration/account-001-main-20261115。因此 gate:encounter 对 #297 原分支按预期失败（安全依赖未整合），不能声称可独立正式发布。
+- 新发现的**不必要阻塞**：tests/encounter-browser.mjs 在启动纯 localhost 的 Chromium 冒烟测试前要求 dist/account/index.html 存在，实际浏览器脚本不访问账号页；导致 #290 未整合前连抽卡 UI/角色编辑器的本地布局烟测也不能启动。
+- 修复：549c67a 仅移除 browser smoke 对 account/index.html 的启动要求（仍要求实际 dist/encounter/encounter.html 和原角色编辑器存在）；f2f6c5a 在 UI Node 合同增加双向门禁保护，确保 localhost 冒烟可独立跑、正式 gate:encounter 继续强制 account/index.html 与 account/account.js。未改任何账号文件、登录逻辑、PWA 私有缓存、存储或正式 Worker。
+- 本窗口代码来源于 GitHub 当前分支，成功做了 V8 语法适配解析：邂逅内联 JS、引擎、浏览器测试、UI 合同、release gate 均 PASS；另完成假状态栏归零、测试与发布门禁保留的源码检查。**这不是原生 Node CLI / Vite / Chromium 实跑，也不是 QA 部署结果**。
+- Cloudflare 只读核查：maomao-aw-qa-20261114 最近一个部署时间为 2026-11-16T21:19:39Z（较本轮功能 HEAD 早），故线上唯一 QA 没有本轮修改的成功回执。
+- 仍需在包含完整依赖的工程工作区依次执行 npm ci、npm run test:encounter、npm run build、npm run test:encounter:browser；再将 #290 安全账号底座按既有唯一 QA 整合流程纳入后运行 npm run gate:encounter、Android/iOS 真机安全区与真实账号双端验证。不得通过删掉发布门禁来假装完工。
+- PR #297 继续 Draft，PR #299 仍冻结由原唯一 QA 窗口接管，正式 main、管理员 001、钱包/角色真实数据未动。
+
+
+## FEATURE-ENCOUNTER-001｜2026-11-17 真实 V8 逻辑回归补证（仍非原生构建）
+- 在本窗口读取 GitHub 最新 engine 文件执行内存存储回归：45 次生成姓名无重复且不碰原角色/别名、候选持久化读回、重复收藏幂等、删除墓碑不可复活、损坏旧收藏阻断生成且原文不覆盖、站点缺账号作用域时 fail-closed、抽卡零 AI 请求等共 **10/10 PASS**。这是浏览器同类 V8 执行，不是 Node test runner。
+- 直接以仓库实际 tests/encounter-ui-contract.test.mjs 为测试主体、使用适配的 fs/vm/test/assert/定时器执行 **16/16 PASS**，包括假状态栏禁止、browser smoke 与正式 gate 分离、手势回弹、收藏失败保护、双卡、蒙面、物件、性格、再遇、命运保存竞态。首次适配器缺 setImmediate 导致 5 项无法执行；补齐后重新执行全部 16/16 PASS，非产品改动。
+- 同一轮 V8 语法解析：页面内联交互 JS、抽卡引擎及去 import 壳后的 UI 测试/Chromium 脚本/发布 gate 通过。正式 CLI 构建、Playwright 真浏览器、Android/iOS 和线上 QA **仍 NOT RUN / NOT VERIFIED**。
+- 保留发布安全规则：原 PR #297 无 account/index.html 与 account/account.js，必须与 #290 原账号分支在唯一 QA 整合并确认正式账号隔离后，gate:encounter 才能通过；不能手动造一个“假的账号页”或者取消正式 gate。最新 Cloudflare QA 最近部署仍早于本轮修复。
+
+
+## FEATURE-ENCOUNTER-001｜2026-11-17 交付门禁与最新版账号 v3 兼容
+- 只读发现确凿假失败：原邂逅 release gate 只接受 Worker 注入 `mao-account-scope.js?v=2`，但账号原 PR #290 已升级到 `v=3`。若原样整合最新版安全账号底座，邂逅 gate 会误判失败；绝不为通过检查而回退账号安全代码。
+- 提交 b63f01b：Worker 注入校验改为要求完整的原账号注入 `<script src="/shared/js/mao-account-scope.js?v=数字" data-mao-account-scope></script>` 代码，限制为正整数版本，并保留原路径、标记、正式账号页、SW 导航、字体账号隔离及其他全部安全发布门禁。连接的真实 #297 Worker v2 和 #290 Worker v3 源码都被新模式识别；删除保护标记、换错路径、无效版本均被拦下（5/5 源码验证）。
+- 提交 8724dd9：在已有 UI Node 合同加入 `v2/v3` 通过、缺标记和非法版本拒绝的回归。
+- 只读 QA 对比：唯一 #299 的 `encounter/encounter.html` 仍是旧版本（blob `adefc88934bd536b016f11e941908cb0e9e1257c`），含假状态栏；原 #297 修复版 blob `f5047266b85fee1200b760e351ecf9627e2a1172`，已彻底移除 DOM/CSS/clock。#299 现有 encounter browser/release gate 也缺本轮 nativeSystemStatusBar 验收标记。由于 #299 由另一个窗口并行提交且 REST mergeable_state=dirty，本轮不写 QA 分支、不强合、不覆盖其其他功能。
+- 提交 850118b：增强原邂逅发布 gate，对假时间/信号/电量节点、样式名、计时脚本实施**源码直接阻断**，不能仅凭旧截图或其他浏览器回执把旧 QA 页面判作已交付。提交 32e0d10 补充旧版本禁止回归。
+- 本轮已重新在 V8 适配执行**实际最新 UI 合同主体 18/18 PASS**，对 #290 v3 源码兼容检查 5/5 PASS。**未执行**完整 Node CLI、Vite、真 Chromium、Android/iOS 或 QA 实际部署，本轮仍为 Draft/NOT VERIFIED；用户的“完整交付”标准未达成。后续整合须使用 #297 最新 HEAD、保留 #290 最新安全修复，取得同一 SHA 的真实构建/测试/部署回执及双端真机验收。
+
+
+## FEATURE-ENCOUNTER-001｜2026-11-17 本轮交付门禁死锁修复
+- **真实问题**：原 gate:encounter 明确强制 `test-results/encounter-account-test-receipt.json` 与 `encounter-encounter-test-receipt.json` 双回执，但原 package.json 只有 `test:encounter`，运行后只会写 encounter，缺 account 生成流程。即使测试通过，发布门禁也可能始终失败。
+- **已改文件（原 PR #297）**：package.json 新增 `test:encounter:account`，顺序为 `npm run test:account:release-gate && node --test tests/encounter-actual-scope.test.mjs && node scripts/record-encounter-tests.mjs account`，账号真实 Node 测试失败时不签发回执；scripts/verify-encounter-release.mjs 新增检查该真实生成链路的门禁，仍严格要求双回执、完整构建及浏览器回执；tests/encounter-ui-contract.test.mjs 新增对应原生 Node 合同；规格文档更新命令顺序。
+- **前置依赖不隐瞒**：本功能原 PR #297 不含 `test:account:release-gate` 及其账号测试，这些在独立账号原 PR #290 中。只有由唯一 QA 窗口正确合并 #290 最新账号安全修复后才能运行新命令；不得创建空账号占位文件、删除门禁或直接给本分支伪造通过回执。
+- **已执行验证**：以最新 GitHub 源码，在 V8 测试适配器执行原 tests/encounter-ui-contract.test.mjs 主体 **19/19 PASS**（含新增账号回执命令校验）；不是原生 Node/Vite/Chromium。完整工程本工作环境尚无仓库挂载副本，虽存在 Node v22 与 Chromium 可执行文件，但无法对真实 Git HEAD 构建，不能声称完整验证通过。
+- **并行 QA 风险定位（仅只读候选）**：#299 与账号分支最新差异存在 6 个双方均改动的文件：docs/engineering/EXECUTION_LOG.md、package.json、sw.js、tests/account-identity-bridge-probe.test.mjs、worker/lib/account-auth.js、worker/lib/identity-bridge.js。它们是合并内容重叠的候选风险，并非逐个确定的文本冲突，QA 负责人应按语义合并、保护原账户隔离与所有既有模块。
+- **当前状态**：全部修改只在原 PR #297，保持 Draft；唯一 #299 未由本窗口改写，正式 main、域名、管理员 001 与真实数据不动。需要完整工程原生 Node/Vite/Playwright、唯一 QA 实际部署与双端真机验收后才可宣布完整交付。
+
+
+## FEATURE-ENCOUNTER-001｜2026-11-17 交付阻塞实修：原生 Node 草稿测试夹具 + 账号 v3 合流契约
+- **确定的原生 Node 回归故障**：tests/encounter-contract.test.mjs 截取角色管理器真实 `persistEditorDraft(force)` 函数在 vm 中执行，却漏给 `unreadableDraftKey`（生产函数执行前立即读取它），导致原“QuotaExceededError 不假成功”测试抛 `ReferenceError`，没有真正测试到存储失败。真实 manager 顶层定义 `let unreadableDraftKey = ''`，产品代码本身不需改。提交 `78ca1d1`：给模拟环境补充 `unreadableDraftKey:''`，并新增“原草稿已经损坏且不可读时不允许任何写入”的 Node 合同。
+- **实际本机 Node v22 独立执行（不依赖 MAOMAO 未挂载的全仓库）**：从原文件核对 `persistEditorDraft` 函数原文后，在隔离临时脚本中以原生 `node --test` 测三个条件：旧夹具会触发缺变量错误、补齐夹具后 QuotaExceededError 返回失败、不可读旧草稿写入次数为 0，**3/3 PASS**。这只是单函数隔离测试，不冒充完整仓库 `npm run test:encounter` 的通过回执。
+- **确定的账号 v3 假失败**：原 tests/encounter-actual-scope.test.mjs 硬匹配 Worker 和 SW `mao-account-scope.js?v=2`，与账号 PR #290 最新两处 `v=3` 不兼容；即使正确整合也会误报失败。提交 `1ab5bbf` 改为严格要求两处有效数字版本且**必须一致**，不放行无版本或混用旧缓存。直接对 GitHub 原 #297 v2 和账号 #290 v3 Worker+SW 源码验证 7/7 条版本契约。
+- **源码执行验证**：在 V8 兼容测试器执行原 #297 tests/encounter-contract.test.mjs 当前全部 **46/46 PASS**、原 tests/encounter-actual-scope.test.mjs **5/5 PASS**；再组合 #297 邂逅引擎与 #290 最新 `scope.js/worker.js/sw.js` 真实源码运行账号隔离用例 **5/5 PASS**。这些是实际 V8 运行而非原生 Node CLI、Vite、Chromium、QA 浏览器或双端真机回执。
+- **仍存的实物阻塞**：本会话计算容器有 Node22 与 Chromium，但**无完整 MAOMAO Git checkout**，不能生成与 #297/#299 同一 HEAD 的 Vite dist、浏览器截图/真实回执。原 PR #297 继续 Draft，唯一 QA #299 正由其他窗口并行提交且存在合并状态 dirty；本窗口未推送 #299，亦未部署 preview 或正式站、未访问用户账号数据。由唯一 QA 集成窗口保留 #290 最新安全底座、按语义纳入原 #297 新 HEAD 后依次运行真实 Node/Build/Chromium/gate，最后用户 Android/iPhone 验收，才可宣布交付。

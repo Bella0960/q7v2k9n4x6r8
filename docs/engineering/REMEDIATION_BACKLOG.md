@@ -414,3 +414,12 @@ Do not parallelize:
 5. Agent E: PERF-001 — image asset inventory and safe optimization recommendations, no replacements yet.
 
 Only after these reports are reviewed should implementation tasks be assigned.
+
+## Product feature — 邂逅角色抽卡
+
+### FEATURE-ENCOUNTER-001 — 原生邂逅：轻量抽卡、候选收藏、角色库对接
+**Priority:** P2 · **Status:** IN PROGRESS (2026-11-15)
+
+Scope: 新建独立 MPA 页面与低饱和编辑式 UI；本地短卡零 API；姓名排除现有角色；相似度允许偏好；候选持久化与失败保护；借用原角色编辑器；MAOMAO JSON 格式边界；开放后续玩法扩展 API。不得自动合并/部署正式版。
+
+Acceptance: Node 合同测试与生产构建通过；375–430px 手机和桌面外壳浏览器实测；Android / iOS 真机分别确认；人物编辑、JSON 导入导出、原有聊天与存储无回归；用户明确批准后方可合并。完整设计见 docs/features/ENCOUNTER_SPEC.md。

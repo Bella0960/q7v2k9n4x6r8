@@ -8,7 +8,8 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
-assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v203'/);
+const pwaVersion = Number(serviceWorker.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m)?.[1] || 0);
+assert.ok(pwaVersion >= 203, 'PWA shell must preserve at least the original icon preset cache version');
 const viteConfig = read('vite.config.js');
 
 test('build emits a manifest containing every HTML entry point', () => {
@@ -20,6 +21,7 @@ test('build emits a manifest containing every HTML entry point', () => {
   assert.ok(pageManifest.includes('chat/chat/chat.html'));
   assert.ok(pageManifest.includes('worldbook/worldbook/worldbook.html'));
   assert.ok(pageManifest.includes('forum/forum.html'));
+  assert.ok(pageManifest.includes('encounter/encounter.html'),'邂逅必须出现在实际构建的 PWA 页面清单中');
   assert.ok(pageManifest.every(page => typeof page === 'string' && page.endsWith('.html')));
 });
 
@@ -37,16 +39,22 @@ test('every desktop app shortcut is emitted as a real HTML page in the productio
   }
 });
 
-test('service worker precaches all HTML routes listed by the build manifest', () => {
+test('service worker 不预缓存账号私有 HTML，保留公共登录页和静态资源', () => {
   assert.match(serviceWorker, /fetch\('\.\/pwa-pages\.json'/);
   assert.match(serviceWorker, /APP_SHELL\.concat\(pageEntries\)/);
   assert.match(serviceWorker, /cache\.add\(url\)/);
+  assert.match(serviceWorker, /\.filter\(url => url === '\.\/account\/index\.html'/);
+  assert.match(serviceWorker, /!\/\\\.html\(\?:\\\?\|\$\)\/i\.test\(url\)/);
+  assert.match(serviceWorker, /if \(!isPublicAccountPage && \(url\.pathname === '\/' \|\| \/\\\.html\$\/i\.test\(url\.pathname\)\)\)/);
 });
 
-test('mobile navigation serves cached app pages before waiting for network', () => {
-  assert.match(serviceWorker, /var cachedPromise = caches\.match\(req\)/);
-  assert.match(serviceWorker, /if \(cached\) return cached/);
-  assert.match(serviceWorker, /event\.waitUntil\(updatePromise/);
+test('private mobile navigations always revalidate the account with Worker; only sign-in has offline fallback', () => {
+  assert.match(serviceWorker, /req\.mode === 'navigate' && !isPublicAccountPage/);
+  assert.match(serviceWorker, /return await fetch\(req\)/);
+  assert.match(serviceWorker, /if \(req\.mode === 'navigate' && isPublicAccountPage\)/);
+  assert.match(serviceWorker, /var cached = await caches\.match\(req\)/);
+  assert.match(serviceWorker, /cache: 'no-store'/);
+  assert.match(serviceWorker, /status: 503/);
 });
 
 

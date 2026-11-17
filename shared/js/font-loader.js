@@ -12,8 +12,16 @@
     var FONT_CACHE_FORMAT_PREFIX = 'maomao_font_cache_format_';
     var loaderScript = document.currentScript;
     var fontAssetBaseUrl = '';
+    var maoScope = window.__MAO_ACCOUNT_SCOPE__ || null;
+    var fontAssetPath = '../../__maomao_fonts/';
+    if (maoScope && maoScope.ready && maoScope.role !== 'super_admin' &&
+        /^MAO-[A-Z0-9]{12,24}$/.test(String(maoScope.accountId || ''))) {
+        // Ordinary accounts use a permanent-ID qualified font URL so a stale
+        // tab cannot read the other account's cached private font assets.
+        fontAssetPath += encodeURIComponent(maoScope.accountId) + '/';
+    }
     try {
-        fontAssetBaseUrl = new URL('../../__maomao_fonts/', loaderScript && loaderScript.src ? loaderScript.src : document.baseURI).href;
+        fontAssetBaseUrl = new URL(fontAssetPath, loaderScript && loaderScript.src ? loaderScript.src : document.baseURI).href;
     } catch (e) {}
 
     /* 1. 注入根变量默认值与根字号公式：14px 基准时 1rem = 16px */
