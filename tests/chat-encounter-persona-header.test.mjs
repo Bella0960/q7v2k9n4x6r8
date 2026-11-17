@@ -32,7 +32,7 @@ test('邂逅每轮对话保留职业、背景、命运线索，不泄露到普�
     for (const item of ['清冷寡言', '现代都市', '书店店主', '曾经离开故乡多年',
         '一张明信片', '用户之后手动修改的人设']) assert.ok(context.includes(item), item);
     assert.equal(policy.buildEncounterIdentityContext({ name: '老角色' }), '');
-    assert.match(chat, /!isGroupChat \? buildEncounterIdentityContext\(currentCharacter\) : ''/);
+    assert.match(chat, /!isGroupChat \? buildEncounterIdentityContext\(roleForTurn\) : ''/);
 });
 
 test('手机端顶部紧凑且不再展示虚拟状态栏，桌面样式保留', () => {
