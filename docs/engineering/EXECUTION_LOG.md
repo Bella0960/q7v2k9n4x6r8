@@ -1,5 +1,13 @@
 # MAOMAO Execution Log
 
+## 2026-11-17｜BUG-ADMIN-QA 第四阶段 · 真过期会话与免 Actions 交付路线
+
+- **已修复**：`admin/admin-center.js` 的 5 处明确 401 判断从仅 `ACCOUNT_SESSION_REQUIRED` 改为严格共享函数 `isConfirmedSessionExpired`，接受 `LOGIN_REQUIRED`（首次 `/api/accounts/me` 真过期时实际返回）和 `ACCOUNT_SESSION_REQUIRED`；普通 403/503 仍停留页面、允许重试。只改原 #290，未覆盖 QA 正在并行更新的文件。
+- **测试**：`tests/admin-center-ui.test.mjs` 新增运行实际分类函数的 7 种输入（包括过期账号、过期管理员、403/503、未知 401），全部 7/7 V8 模拟通过；5 处调用静态核查一致。**没有原生 Node/Vite/浏览器/真机通过回执**。
+- **构建路径已核查**：Cloudflare read-only 显示 `has_reached_build_minutes_limit=true`，原 QA Worker 未设置 Workers Builds 触发器；#299 已有 `scripts/qa-direct-release.mjs` 使用**完整工程环境中的 Node/Vite/Chromium + Wrangler 直接发布**，无需 GitHub Actions/Cloudflare Builds。该脚本严守原 #299 受控 HEAD、独立 QA Worker 与隔离身份库及部署前验收；严禁绕过测试门槛直接上传未经构建的资源。
+- **待交付**：现有 #299 负责人在原 QA 分支吸收所有 #290 修复，验证 Node/Vite/Chromium、375/390/430 及 Android/iOS，之后只更新 `preview.mao520.com`；正式版、真实账号数据和管理员 001 均保持不变。
+
+
 ## 2026-11-17｜BUG-ADMIN-QA 第三阶段 · 修复 QA 身份服务误接生产风险
 
 - **真实发现的安全缺口**：账号管理代理在调用 `probeExistingIdentityAuthority` 时，仅检查 `connected/initialized/configured`。探针自身不返回服务声明的 `qaIsolatedAuthority` 与 `qaExpectedFounderId`，因此注释所说「验证独立 QA 身份库」在代码层实际上没有实现；独立 Worker 名称环境变量不足以证明底层服务实际指向隔离库。
