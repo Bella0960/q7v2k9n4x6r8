@@ -1,5 +1,14 @@
 # MAOMAO Execution Log
 
+## 2026-11-18｜CHAT-UI-001｜聊天留白进入唯一 QA 整合分支
+
+- **从原 PR #264 对接原 #299，不新建 PR/Worker/数据库。** QA 起点 `81ec1e81b06f3e63f3cc46da27310f9f7c5f3eec`，从原 PR #264 定向复制 `shared/css/chat-light-surfaces.css`，仅在当前 QA 的 56 万字符聊天详情页精确加入 body class / CSS link / 默认与 iMessage 的原生发送按钮同步（增加约 1010 字符），聊天列表仅增加 109 字符；`shared/js/chat-beauty.js` 仅添加默认主题独立参数（890 字符），不覆盖 QA 新账号/人设/群聊/番外。
+- **修复主题设置兼容：** 在原 PR 与 QA 双分支将 `getDefaults()` 的 light 值仅限 `default` 预设，微信/iMessage/QQ/银蝶继续自己的默认值，角色自定义颜色/背景优先级不变。两侧新增跨主题回归；本轮未迁移存储、不改历史键值或账号后端。
+- **真实验证边界：** 从已整合的 QA 真实 GitHub 源码读取相关 HTML、JS、CSS，使用隔离 V8 与 Node API 兼容桩执行原专项测试，**13/13 PASS**；这是源码逻辑执行，不是完整 `node --test`。Chromium 浏览器脚本原来依赖外部 localhost:3000，已改成在本地启动已有 Vite preview、读取真实 `dist`、仅允许回环网络，禁止请求线上账户/AI/推送。脚本解析通过，**仍未实际跑 Playwright**。
+- **发布门禁：** QA 现有 `scripts/qa-direct-release.mjs` TESTS 增加真实 `node --test tests/chat-light-surfaces.test.mjs` 和 `node tests/chat-light-surfaces-browser.mjs`（在 build 后执行）；不新建 Actions，未触发任何现有部署或发布。后续需完整私有 checkout 执行 `npm ci` / Node / Vite / Playwright，确认 375/390/430 手机视口及真机输入法/保存/主题兼容，QA 通过才允许仅现有 Worker-only 部署。
+- **QA 状态：** 代码已集成且保留旧 QA 测试数据；线上 `preview.mao520.com` **尚未通过本次部署验收**，不宣称用户已看到新样式，更不能当正式发布。失败仅回原 #264 修复再定向同步。没有触碰 `main`、正式域名、身份核心、数据库或密钥。
+
+
 ## 2026-11-17｜QA-ACCOUNT-CONTEXT-304｜管理员 001 页面缓存上下文恢复（已提交，未部署）
 
 - **用户现象：** `https://preview.mao520.com/admin/admin-center.html` 显示 `ACCOUNT_CONTEXT_REQUIRED`，账号统计和列表无法读取；不是零账号的成功回执。
