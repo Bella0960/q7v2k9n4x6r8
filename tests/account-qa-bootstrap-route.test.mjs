@@ -3,57 +3,73 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
-// Exercise the deployed route guard from its actual source, rather than a
-// copied condition that could drift from the auth handler.
+// Use the actual route guards from the worker source; protected delegated
+// admin requests now pass ONLY through the isolated, founder-verified proxy.
+// Never treat an admin proxy as access to the local QA account database.
 const source = readFileSync(new URL('../worker/lib/account-auth.js', import.meta.url), 'utf8');
 const guard = source.match(/      if \(delegated && \([\s\S]*?throw new ApiError\(403, 'DELEGATED_ACCOUNT_MANAGED_CENTRALLY'[\s\S]*?\n      \}/)?.[0];
-assert.ok(guard, 'account router must preserve its delegated-admin guard');
-assert.match(source.slice(source.indexOf(guard) + guard.length),
+const proxyGuard = source.match(/      if \(delegated && path\.startsWith\('\/api\/admin\/'\)[\s\S]*?return await proxyIsolatedQaAdminRequest\(request, path, method\);[\s\S]*?\n      \}/)?.[0];
+assert.ok(guard && proxyGuard, 'QA router must preserve private account block and isolated admin proxy');
+assert.match(source, /async function proxyIsolatedQaAdminRequest\(request, path, method\)/);
+assert.match(source, /authority\.qaIsolatedAuthority !== true/);
+assert.match(source, /authority\.qaExpectedFounderId !== env\.MAO_EXPECTED_FOUNDER_ID/);
+assert.match(source.slice(source.indexOf(proxyGuard) + proxyGuard.length),
   /if \(path === '\/api\/admin\/bootstrap' && method === 'POST'\) return await bootstrap\(request\)/,
-  'approved QA bootstrap must remain reachable after the delegated guard');
+  'approved QA setup route stays reachable after both delegated guards');
 
 const runGuard = vm.runInNewContext(
-  '(function (delegated, path, method, qaEnabled) {\n' +
+  '(async function (delegated, path, method, qaEnabled, proxyReady) {\n' +
   '  const env = {};\n' +
+  '  const request = {};\n' +
   '  const qaIsolatedSetupEnabled = () => qaEnabled;\n' +
+  '  const proxyIsolatedQaAdminRequest = async () => {\n' +
+  '    if (!proxyReady) throw new ApiError(403, "DELEGATED_ACCOUNT_MANAGED_CENTRALLY");\n' +
+  '    return "proxied";\n' +
+  '  };\n' +
   '  class ApiError extends Error { constructor(status, code) { super(code); this.status=status; this.code=code; } }\n' +
-  guard + '\nreturn "allowed";\n})'
+  guard + '\n' + proxyGuard + '\nreturn "allowed";\n})'
 );
 
-test('QA bootstrap POST reaches handler only if isolated QA is enabled', () => {
-  assert.equal(runGuard(true, '/api/admin/bootstrap', 'POST', true), 'allowed');
+test('QA bootstrap POST reaches handler only while isolated setup is enabled', async () => {
+  assert.equal(await runGuard(true, '/api/admin/bootstrap', 'POST', true, false), 'allowed');
   for (const enabled of [false, null, undefined, 0, '']) {
-    assert.throws(() => runGuard(true, '/api/admin/bootstrap', 'POST', enabled),
+    await assert.rejects(runGuard(true, '/api/admin/bootstrap', 'POST', enabled, false),
       error => error.code === 'DELEGATED_ACCOUNT_MANAGED_CENTRALLY');
   }
 });
 
-test('QA flag does not reopen other delegated admin and account management APIs', () => {
-  const guarded = [
+test('QA account mutation remains blocked; admin routes must enter guarded proxy', async () => {
+  for (const [method, path] of [
     ['POST', '/api/accounts/register'],
     ['POST', '/api/accounts/password/change'],
-    ['POST', '/api/accounts/invites/redeem'],
+    ['POST', '/api/accounts/invites/redeem']
+  ]) {
+    await assert.rejects(runGuard(true, path, method, true, true),
+      error => error.code === 'DELEGATED_ACCOUNT_MANAGED_CENTRALLY');
+  }
+  for (const [method, path] of [
     ['GET', '/api/admin/accounts'],
     ['POST', '/api/admin/accounts'],
     ['POST', '/api/admin/bootstrap/secret'],
     ['GET', '/api/admin/bootstrap'],
     ['POST', '/api/admin/invites']
-  ];
-  for (const [method, path] of guarded) {
-    assert.throws(() => runGuard(true, path, method, true),
+  ]) {
+    await assert.rejects(runGuard(true, path, method, true, false),
       error => error.code === 'DELEGATED_ACCOUNT_MANAGED_CENTRALLY',
-      'must block ' + method + ' ' + path);
+      'unverified delegated admin route must fail closed: ' + method + ' ' + path);
   }
+  assert.equal(await runGuard(true, '/api/admin/accounts', 'GET', false, true), 'proxied');
+  assert.equal(await runGuard(true, '/api/admin/invites', 'POST', false, true), 'proxied');
 });
 
-test('social admin endpoints and ordinary non-delegated mode keep existing dispatch', () => {
-  assert.equal(runGuard(true, '/api/admin/social/friends', 'GET', true), 'allowed');
-  assert.equal(runGuard(true, '/api/admin/social/friends', 'POST', false), 'allowed');
-  assert.equal(runGuard(false, '/api/admin/accounts', 'GET', false), 'allowed');
-  assert.equal(runGuard(false, '/api/admin/bootstrap', 'POST', false), 'allowed');
+test('social admin and normal local mode preserve their old dispatch', async () => {
+  assert.equal(await runGuard(true, '/api/admin/social/friends', 'GET', true, false), 'allowed');
+  assert.equal(await runGuard(true, '/api/admin/social/friends', 'POST', false, false), 'allowed');
+  assert.equal(await runGuard(false, '/api/admin/accounts', 'GET', false, false), 'allowed');
+  assert.equal(await runGuard(false, '/api/admin/bootstrap', 'POST', false, false), 'allowed');
 });
 
- 
+
 // Run the actual account-auth bootstrap STATUS route, with only its service
 // bindings and data store simulated. This covers readiness after QA setup closes.
 const statusStart = source.indexOf("      if ((path === '/api/admin/bootstrap/status'");
