@@ -663,7 +663,7 @@ test('PWA shell caches the role portrait archive and its runtime', () => {
   const currentCacheVersion = Number(serviceWorker.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m)?.[1] || 0);
   assert.ok(currentCacheVersion >= 203, 'PWA app shell must not regress below feature minimum v203');
   assert.ok(serviceWorker.includes("'./worldbook/characters/characters.html'"));
-  assert.ok(serviceWorker.includes("'./worldbook/characters/js/characters-manager.js?v=20261115-encounter1'"));
+  assert.ok(serviceWorker.includes("'./worldbook/characters/js/characters-manager.js?v=20261118-avatar-fold1'"));
   assert.ok(serviceWorker.includes("'./shared/js/phone/role-avatar-library.js?v=20261113v1'"));
 });
 
