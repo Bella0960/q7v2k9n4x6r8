@@ -2142,6 +2142,6 @@
     getStatus: getStatus,
     refreshSettings: refreshSettings,
     mountSettings: mountSettings,
-    _internal: { ensureDevice: ensureDevice, readDevice: readDevice, clearDevice: clearDevice, registerDeviceForCurrentAccount: registerDeviceForCurrentAccount, getPresenceRenewInterval: getPresenceRenewInterval, fingerprintCharacterHistory: fingerprintCharacterHistory }
+    _internal: { ensureDevice: ensureDevice, readDevice: readDevice, clearDevice: clearDevice, registerDeviceForCurrentAccount: registerDeviceForCurrentAccount, getPresenceRenewInterval: getPresenceRenewInterval, requestNotificationPermissionFromGesture: requestNotificationPermissionFromGesture, notificationPermissionMessage: notificationPermissionMessage, fingerprintCharacterHistory: fingerprintCharacterHistory }
   };
 })(typeof window !== 'undefined' ? window : self);
