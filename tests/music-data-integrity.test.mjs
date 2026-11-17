@@ -16,9 +16,9 @@ test('MUSIC-UI-001: actual embedded player script is syntactically valid', () =>
   assert.doesNotThrow(() => new Script(scripts[0][1], { filename: 'music/music.html:inline' }));
 });
 
-test('MUSIC-UI-001: statusbar #301, favorites #273 and native playback remain', () => {
+test('MUSIC-UI-001: native-status ownership, favorites and playback remain', () => {
   assert.match(music, /src="\.\.\/shared\/js\/statusbar-control\.js"/);
-  assert.match(music, /data-maomao-system-statusbar/);
+  assert.doesNotMatch(music, /<(?:div|header)\b[^>]*data-maomao-system-statusbar\b/);
   assert.match(music, /location\.hash === '#favorites'\) showFav\(\)/);
   assert.match(music, /id="audioPlayer"/);
   assert.match(music, /await getAudioBlob\(t\.id\)/);
@@ -126,7 +126,7 @@ test('MUSIC-UI-001: LRC, image backgrounds and playlists persist through dedicat
   assert.match(music, /musicWriteMap\(MUSIC_PLAYLISTS_KEY, playlists\)/);
   assert.match(music, /musicMedia\.putBlob\(file,/);
   assert.match(music, /function showMusicPlaylists\(/);
-  assert.match(music, /data-maomao-system-statusbar/);
+  assert.match(music, /id="lyricsUpload"/);
 });
 
 test('MUSIC-UI-001: imported filenames are escaped everywhere and wiping audio needs confirmation', () => {
@@ -163,10 +163,10 @@ test('MUSIC-UI-001: saved covers appear as original images in every song list wi
   assert.match(music, /event\.persisted/);
 });
 
-test('MUSIC-UI-001: global statusbar visibly responds and local song can resume after reload', () => {
-  assert.match(music, /class="statusbar status-bar" data-maomao-system-statusbar/);
-  assert.match(music, /function updateMusicStatusClock\(\)/);
-  assert.doesNotMatch(music, /\.statusbar\s*\{\s*display:\s*none/);
+test('MUSIC-UI-001: no fake statusbar and local audio can resume after reload', () => {
+  assert.doesNotMatch(music, /class="statusbar status-bar" data-maomao-system-statusbar/);
+  assert.doesNotMatch(music, /<div class="phone-camera"><\/div>/);
+  assert.match(music, /src="\.\.\/shared\/js\/statusbar-control\.js"/);
   const play = music.slice(music.indexOf('async function togglePlay()'), music.indexOf('// 音频事件', music.indexOf('async function togglePlay()')));
   assert.match(play, /selected\.source === 'local' && !currentBlobUrl/);
   assert.match(play, /await playTrack\(selected\.id\)/);
