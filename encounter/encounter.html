@@ -161,7 +161,7 @@ async function move(direction){
  setTimeout(function(){lock=false;drawNew();},240);
 }
 function snap(){cardEl.classList.remove('dragging');cardEl.classList.add('moving');cardEl.style.transform='translate3d(0,0,0) rotate(0deg)';cardEl.style.opacity='1';setTimeout(function(){cardEl.classList.remove('moving');},260);}
-cardEl.addEventListener('pointerdown',function(e){if(e.button!==0||lock||!current)return;suppressDragClick=false;drag={id:e.pointerId,x:e.clientX,y:e.clientY,dx:0,dy:0,horizontal:false};});
+cardEl.addEventListener('pointerdown',function(e){if(e.pointerType==='touch'||e.button!==0||lock||!current)return;suppressDragClick=false;drag={id:e.pointerId,x:e.clientX,y:e.clientY,dx:0,dy:0,horizontal:false};});
 cardEl.addEventListener('pointermove',function(e){
  if(!drag||drag.id!==e.pointerId||lock)return;
  drag.dx=e.clientX-drag.x;drag.dy=e.clientY-drag.y;
@@ -184,6 +184,56 @@ function finish(e){
 cardEl.addEventListener('pointerup',finish);
 cardEl.addEventListener('pointercancel',function(){if(drag){suppressDragClick=true;drag=null;snap();}});
 cardEl.addEventListener('lostpointercapture',function(){if(drag&&drag.horizontal){suppressDragClick=true;drag=null;snap();}});
+
+// Use native touch events for fingers: mobile browsers may cancel PointerEvents
+// when deciding whether a gesture is a page scroll. A horizontal swipe must
+// not become a no-op or open the detail sheet after touchend.
+var fingerDrag=null;
+function fingerAt(list,id){
+ for(var i=0;i<list.length;i++)if(list[i].identifier===id)return list[i];
+ return null;
+}
+cardEl.addEventListener('touchstart',function(e){
+ if(lock||!current||fingerDrag||e.touches.length!==1)return;
+ var t=e.changedTouches[0];
+ if(!t)return;
+ suppressDragClick=false;
+ fingerDrag={id:t.identifier,x:t.clientX,y:t.clientY,dx:0,dy:0,horizontal:false};
+},{passive:true});
+cardEl.addEventListener('touchmove',function(e){
+ if(!fingerDrag||lock)return;
+ var t=fingerAt(e.touches,fingerDrag.id);
+ if(!t)return;
+ fingerDrag.dx=t.clientX-fingerDrag.x;
+ fingerDrag.dy=t.clientY-fingerDrag.y;
+ if(!fingerDrag.horizontal&&Math.abs(fingerDrag.dx)>9&&
+    Math.abs(fingerDrag.dx)>Math.abs(fingerDrag.dy)*1.3)fingerDrag.horizontal=true;
+ if(!fingerDrag.horizontal)return;
+ // Only cancel horizontal gestures; normal vertical scrolling stays native.
+ if(e.cancelable)e.preventDefault();
+ suppressDragClick=true;
+ cardEl.classList.remove('moving');cardEl.classList.add('dragging');
+ var angle=Math.max(-13,Math.min(13,fingerDrag.dx/19));
+ cardEl.style.transform='translate3d('+fingerDrag.dx+'px,'+(Math.abs(fingerDrag.dx)/14)+'px,0) rotate('+angle+'deg)';
+ cardEl.style.opacity=String(Math.max(.52,1-Math.abs(fingerDrag.dx)/600));
+},{passive:false});
+cardEl.addEventListener('touchend',function(e){
+ if(!fingerDrag)return;
+ var t=fingerAt(e.changedTouches,fingerDrag.id);
+ if(!t)return;
+ var dx=t.clientX-fingerDrag.x,dy=t.clientY-fingerDrag.y;
+ var horizontal=fingerDrag.horizontal||
+    (Math.abs(dx)>9&&Math.abs(dx)>Math.abs(dy)*1.3);
+ fingerDrag=null;
+ if(Math.abs(dx)>8||Math.abs(dy)>8)suppressDragClick=true;
+ if(!horizontal)return;
+ if(dx>95)move('right');else if(dx< -95)move('left');else snap();
+},{passive:true});
+cardEl.addEventListener('touchcancel',function(){
+ if(!fingerDrag)return;
+ suppressDragClick=true;fingerDrag=null;snap();
+},{passive:true});
+
 cardEl.addEventListener('click',function(e){
  if(lock||!current||drag||suppressDragClick){suppressDragClick=false;e.preventDefault();return;}
  openDetail();
