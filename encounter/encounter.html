@@ -364,8 +364,17 @@ function openSettings(){
  '<p class="tiny">初始人物由本地素材组合，免费抽卡。不读取你的聊天记录，也不自动调用生图或聊天 API。人物相似度不强制排除。</p>',
  '抽卡偏好');
  sheet.querySelectorAll('[data-setting]').forEach(function(s){s.addEventListener('change',function(){
-   var patch={};patch[s.dataset.setting]=s.value;var r=engine.savePreferences(patch);
-   if(!r.ok){notify(r.error);return;}
+   var field=s.dataset.setting;
+   var fallback={type:'全部',world:'全部',gender:'全部',similarity:'完全随机'};
+   var previous=p[field]||fallback[field];
+   var patch={};patch[field]=s.value;var r=engine.savePreferences(patch);
+   if(!r.ok){
+     // 失败时显示已成功持久化的原值，避免设置页出现假成功。
+     s.value=previous;
+     notify(r.error);
+     return;
+   }
+   p[field]=s.value;
    // 筛选变更后的另一张卡必须按新偏好生成，不能沿用旧筛选缓存。
    alternate=null;
    var switchButton=document.getElementById('swapButton');
