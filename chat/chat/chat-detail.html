@@ -7802,7 +7802,7 @@
                 role: 'user',
                 time: Date.now(),
                 forwarded: true,
-                forwardFrom: { id: String(aliasRoleId), name: roleDisplayName },
+                forwardFrom: { id: String(aliasRoleId), name: (chatTitle && chatTitle.textContent) || contactName },
                 text: String(resolved.text || '') || plainTextOf(msg)
             };
             var linkedImageRef = false;
