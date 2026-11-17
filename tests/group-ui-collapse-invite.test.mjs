@@ -474,7 +474,7 @@ test('9. groups do not leak members into each other', async () => {
     }
     await page.locator('#gpInviteToggle[aria-expanded="true"]').waitFor({ state: 'visible' });
     await page.locator('#gpInviteBlock.is-open .gp-invite-row').first().waitFor({ state: 'visible' });
-    const ids = await page.$eval('#gpInviteBlock.is-open .gp-invite-row',
+    const ids = await page.$$eval('#gpInviteBlock.is-open .gp-invite-row',
       (rows) => rows.map((r) => r.getAttribute('data-role-id')));
     assert.deepEqual(ids.sort(), ['c3', 'c4', 'c5'], 'only members of the current group are excluded from the invite list');
 
