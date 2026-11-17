@@ -190,3 +190,16 @@ test('legacy switch-role link refuses clicks while reader is active', () => {
     'hidden links and programmatic clicks cannot bypass QA pending-save guard');
   assert.equal(app.window.location.destination, undefined);
 });
+
+test('late engine DOM mount cannot reopen a timed-out failed role page', () => {
+  const app = mount({ engineRoot: false });
+  app.engineScript.onload();
+  app.timers.at(-1)(); // timeout fired, error is visible
+  assert.equal(app.picker.hidden, false);
+  assert.equal(app.engineEntry.clicked, 0);
+  app.mountEngineRoot();
+  app.fireDOMContentLoaded(); // late event must be ignored
+  assert.equal(app.engineEntry.clicked, 0, 'never launch old engine after an error has been shown');
+  assert.equal(app.picker.hidden, false, 'user can still see recovery message');
+  assert.equal(app.main.walk().filter(node => node.classes.has('fw-bridge-nav')).length, 0);
+});

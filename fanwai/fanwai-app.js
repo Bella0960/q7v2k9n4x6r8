@@ -205,6 +205,9 @@
       // 仅在引擎确实没有挂载时失败，不能让页面永远停在空白状态。
       global.setTimeout(function () {
         if (activateWhenMounted()) return;
+        // 一旦给出明确失败提示，就终止这次挂载；迟到的初始化事件
+        // 不能在错误页面上再次打开旧故事，避免出现两个并存的界面。
+        completed = true;
         if (observer) observer.disconnect();
         container.hidden = false;
         notice('番外加载失败', '角色数据或番外模块尚未就绪，请返回角色列表重试。');
