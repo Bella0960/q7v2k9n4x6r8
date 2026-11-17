@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 const source = readFileSync(new URL('../admin/admin-center.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../admin/admin-center.css', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../admin/admin-center.html', import.meta.url), 'utf8');
+const sw = readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
 
 test('mobile admin uses the native status bar and a compact, functional heading', () => {
   assert.doesNotMatch(html, /class="(?:status-bar|fake-status-bar|mock-status-bar)"/);
@@ -14,6 +15,16 @@ test('mobile admin uses the native status bar and a compact, functional heading'
   assert.ok(css.includes('.admin-shell{width:min(100%,620px);min-height:100svh;margin:0 auto;padding:max(8px,env(safe-area-inset-top))'));
   assert.ok(css.includes('.admin-intro{display:block;padding:0;background:transparent;border:0'));
   assert.ok(css.includes('grid-template-columns:repeat(4,minmax(0,1fr));gap:0;margin:12px 0 13px'));
+});
+
+test('admin script and CSS versions match the current PWA cache, not the old mobile shell', () => {
+  const version = '20261117-ui1';
+  assert.ok(html.includes('./admin-center.css?v=' + version));
+  assert.ok(html.includes('./admin-center.js?v=' + version));
+  assert.ok(sw.includes("'./admin/admin-center.css?v=" + version + "'"));
+  assert.ok(sw.includes("'./admin/admin-center.js?v=" + version + "'"));
+  assert.match(sw, /const CACHE_NAME = 'phone-app-pwa-v240'/);
+  assert.doesNotMatch(html, /20261112-nav2/);
 });
 
 test('375-430px mobile layout keeps accessible input and action targets', () => {
