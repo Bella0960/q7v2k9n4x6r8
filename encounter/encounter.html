@@ -11,8 +11,6 @@
 *{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;color:var(--ink);background:#e9e9e7}button,select{font:inherit}button{cursor:pointer}button:focus-visible,[role=button]:focus-visible{outline:2px solid #50514e;outline-offset:4px}
 .stage{min-height:100dvh;display:grid;place-items:center;padding:12px}
 .phone{width:min(402px,100%);height:min(860px,calc(100dvh - 24px));min-height:570px;background:var(--paper);border:1px solid #e3e3e1;border-radius:32px;overflow:hidden;position:relative;display:flex;flex-direction:column;isolation:isolate}
-.status-bar{height:31px;padding:13px 28px 0;display:flex;align-items:center;justify-content:space-between;color:#353631;font-size:11px;letter-spacing:.05em;flex-shrink:0}
-.status-marks{display:flex;gap:7px;align-items:center}.cell{height:10px;display:flex;gap:2px;align-items:flex-end}.cell i{width:2px;background:#666;height:4px}.cell i:nth-child(2){height:6px}.cell i:nth-child(3){height:8px}.cell i:nth-child(4){height:10px}.battery{width:19px;height:10px;border:1px solid #777;border-radius:3px;padding:1px;position:relative}.battery:after{content:"";width:2px;height:4px;background:#777;position:absolute;right:-4px;top:2px;border-radius:0 2px 2px 0}.battery b{display:block;background:#777;height:100%;width:72%;border-radius:1px}
 .header{height:77px;display:flex;align-items:center;justify-content:space-between;padding:10px 24px 0;flex-shrink:0}.back{width:42px;height:42px;display:grid;place-items:center;color:var(--ink);text-decoration:none}.back svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.4}.page-title{font-family:var(--serif);font-weight:400;letter-spacing:.12em;font-size:21px;margin:0}.menu-button{border:0;background:transparent;color:var(--ink);font-size:21px;letter-spacing:2px;width:42px;height:42px;padding:0 0 9px}
 .intro{padding:9px 29px 0;display:flex;justify-content:space-between;align-items:flex-end;flex-shrink:0}.intro-copy{font-size:11px;letter-spacing:.15em;color:var(--muted)}.intro-sub{font-family:var(--serif);font-style:italic;font-size:14px;color:#757672;margin-top:5px}.collection-link{border:0;background:transparent;font-size:11px;color:#646662;padding:8px 0;white-space:nowrap;letter-spacing:.06em}
 .deck-wrap{position:relative;flex:1;min-height:0;margin:15px 0 8px;display:flex;justify-content:center;align-items:center;padding:5px 28px;touch-action:pan-y}
@@ -40,15 +38,30 @@
 .fate-button{width:100%;display:block;text-align:left;margin:8px 0;padding:15px;border:1px solid #e0e1de;border-radius:12px;background:#f5f5f3;color:#444742;font-size:12px}.fate-button.selected{border-color:#676963;background:#ebebea}
 .saved-section-title{margin:23px 0 12px;font-family:var(--serif);font-size:17px;font-weight:400;letter-spacing:.035em}.saved-section-count{margin-left:6px;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;color:#999;font-size:11px}.met-archive{margin-top:24px;padding-top:2px}.met-role-button{border:0;background:transparent;padding:0;text-align:left;color:inherit;width:100%}.met-role-button:focus-visible{outline:2px solid #777;outline-offset:3px}.met-role-hint{margin-top:4px;font-size:10px;color:#939590}.saved-list{display:flex;flex-direction:column;gap:9px}.saved-item{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding:13px 11px;background:#f3f3f1;border-radius:13px}.saved-name{font-family:var(--serif);font-size:17px}.saved-preview{display:block;width:100%;padding:0;border:0;background:transparent;text-align:left;color:var(--ink);font-weight:400}.saved-preview:after{content:"  ＋";font:12px sans-serif;color:#92948f}.saved-detail-actions{display:flex;justify-content:flex-end;gap:9px;flex-wrap:wrap;margin-top:23px}.story-preview{background:#f1f1ef;border-radius:12px;padding:14px 16px;line-height:1.9;font-size:12px;color:#61635f;white-space:pre-line}.saved-meta{color:#939590;font-size:10px;margin-top:4px}.saved-actions{display:flex;gap:7px}.mini{font-size:11px;border:1px solid #dcddda;border-radius:9px;padding:9px 11px;color:#4f514d;background:transparent}.mini.dark{background:#343633;color:#fff;border-color:#343633}
 .empty{font-size:12px;color:#8b8d89;line-height:2;padding:22px 0}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
-@media(max-width:480px){body{background:var(--paper)}.stage{padding:0;display:block}.phone{width:100%;height:100dvh;min-height:0;border:0;border-radius:0}.status-bar{padding-top:max(13px,env(safe-area-inset-top,13px));height:calc(31px + env(safe-area-inset-top,0px))}.header{height:70px}.deck-wrap{margin-top:11px;margin-bottom:7px;padding:4px 27px}.card{padding:22px 24px}.name{font-size:31px}}
-@media(max-height:720px){.header{height:60px}.intro{padding-top:0}.deck-wrap{margin-top:8px}.portrait{min-height:100px}.ring{width:88px;height:88px;border-width:13px}.ring:after{width:29px;height:29px;top:-21px;right:-22px}.portrait-caption{margin-top:17px}.quote{margin:10px 0}.card{padding-top:19px;padding-bottom:18px}.name{font-size:28px}.bottom{padding-bottom:max(13px,env(safe-area-inset-bottom,10px))}}
+@media(max-width:480px){
+  body{background:var(--paper)}
+  .stage{padding:0;display:block}
+  .phone{width:100%;height:100dvh;min-height:0;border:0;border-radius:0;padding-top:env(safe-area-inset-top,0px)}
+  .header{height:65px;padding:0 19px}
+  .menu-button{display:grid;place-items:center;font:20px/1 Arial,sans-serif;letter-spacing:0;padding:0;white-space:nowrap}
+  .intro{padding:6px 24px 0;align-items:center;gap:12px}
+  .intro-sub{line-height:1.45}
+  .collection-link{display:inline-flex;align-items:baseline;gap:6px;padding:7px 0;font-variant-numeric:tabular-nums}
+  /* 底部操作区与卡片相邻，后景卡片跟随主卡片高度，而不是拉满空白。 */
+  .deck-wrap{margin:11px 0 5px;padding:4px 27px;align-items:flex-end}
+  .card{max-height:min(580px,100%);padding:22px 24px}
+  .back-card{top:auto;bottom:4px;height:min(580px,calc(100% - 8px))}
+  .name{font-size:31px}
+  .bottom{padding:6px 27px calc(14px + env(safe-area-inset-bottom,0px))}
+  .bottom-copy{margin-top:8px}
+}
+@media(max-height:720px){.header{height:60px}.intro{padding-top:0}.deck-wrap{margin-top:8px}.portrait{min-height:100px}.ring{width:88px;height:88px;border-width:13px}.ring:after{width:29px;height:29px;top:-21px;right:-22px}.portrait-caption{margin-top:17px}.quote{margin:10px 0}.card{padding-top:19px;padding-bottom:18px}.name{font-size:28px}.bottom{padding-bottom:calc(13px + env(safe-area-inset-bottom,0px))}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 </style>
 </head>
 <body>
 <div class="stage">
 <main class="phone" aria-label="邂逅人物抽卡">
-  <div class="status-bar"><span id="deviceTime">09:41</span><div class="status-marks"><span class="cell" aria-hidden="true"><i></i><i></i><i></i><i></i></span><svg width="15" height="11" viewBox="0 0 20 15" aria-hidden="true"><path d="M1 4Q10 -3 19 4M4 7Q10 2 16 7M8 11Q10 9 12 11" stroke="#777" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg><span class="battery" aria-hidden="true"><b></b></span></div></div>
   <header class="header"><a class="back" href="../index.html" aria-label="返回桌面"><svg viewBox="0 0 24 24"><path d="M15 5 8 12l7 7"/></svg></a><h1 class="page-title">邂逅</h1><button class="menu-button" id="moreButton" aria-label="抽卡偏好及玩法设置">···</button></header>
   <section class="intro"><div><div class="intro-sub">一次未曾预料的相遇</div></div><button class="collection-link" id="savedButton">候选收藏 <span id="savedCount">00</span></button></section>
   <section class="deck-wrap" id="deckArea" aria-label="左右滑动人物卡片，向左跳过，向右收藏">
@@ -72,9 +85,8 @@
 var engine=window.MAOMAOEncounter;
 var cardEl=document.getElementById('frontCard'),sheet=document.getElementById('sheet'),overlay=document.getElementById('overlay'),noticeEl=document.getElementById('notice');
 var current=null,alternate=null,position=0,drag=null,lock=false,noticeTimer=0,suppressDragClick=false,returnFocus=null;
+var sheetVersion=0,storyChoicePending=false;
 function escapeHtml(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
-function clock(){var d=new Date();document.getElementById('deviceTime').textContent=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
-clock();setInterval(clock,30000);
 function notify(text){noticeEl.textContent=text;noticeEl.classList.add('show');clearTimeout(noticeTimer);noticeTimer=setTimeout(function(){noticeEl.classList.remove('show');},2400);}
 function count(){var r=engine.getCandidates();document.getElementById('savedCount').textContent=r.ok?String(r.value.length).padStart(2,'0'):'!';}
 function modeCaption(c){if(c.rarity==='特别邂逅'&&c.type==='普通相遇')return 'SPECIAL / 特别邂逅';return c.type==='蒙面档案'?'UNKNOWN / 另一种身份':c.type==='以物识人'?'OBJECT / 一件遗留物':c.type==='命运分支'?'FATE / 两种可能':c.type==='性格盲测'?'VOICE / 先听他说': 'PERSONA / 人物档案';}
@@ -94,13 +106,13 @@ function render(){
  if(!current)return;
  var c=current,masked=c.type==='蒙面档案',obj=c.type==='以物识人',blind=c.type==='性格盲测';
  cardEl.dataset.candidateId=c.id;
- cardEl.setAttribute('aria-label',(masked||obj||blind?'揭晓当前陌生人物的身份':'查看 '+c.name+' 的人物档案'));
+ cardEl.setAttribute('aria-label',(masked?'逐步查看蒙面人物的线索':obj||blind?'揭晓当前陌生人物的身份':'查看 '+c.name+' 的人物档案'));
  cardEl.innerHTML='<div class="card-top"><span>'+escapeHtml(modeCaption(c))+'</span><span class="card-number">'+String(position).padStart(2,'0')+'</span></div>'+
  '<div class="portrait">'+(obj?objectArt(c.object):'<div class="ring" aria-hidden="true"></div>')+
  '<span class="portrait-caption">'+(obj?'物件里的线索':masked?'身份尚未揭晓':'尚未相识')+'</span></div>'+
  '<h2 class="name">'+escapeHtml(masked?'未署名的旅人':obj?'失主未详':blind?'一段陌生的声音':c.name)+'</h2>'+
  '<p class="hint">'+escapeHtml(masked?'身份暂未公开':blind?'先凭一句话，认识这个人':obj?c.object:c.job+' · '+c.era+' · '+c.gender+' · '+c.age+'岁')+'</p>'+
- '<div class="tags">'+(masked?'<span class="tag">身份未知</span><span class="tag">点击揭晓</span>':obj?'<span class="tag">遗留物件</span><span class="tag">寻找主人</span>':blind?'<span class="tag">先听 TA 说</span><span class="tag">点击揭晓</span>':'<span class="tag">'+escapeHtml(c.species)+'</span><span class="tag">'+escapeHtml(c.trait)+'</span><span class="tag">'+escapeHtml(c.era)+'</span>')+'</div>'+
+ '<div class="tags">'+(masked?'<span class="tag">身份未知</span><span class="tag">逐步寻迹</span>':obj?'<span class="tag">遗留物件</span><span class="tag">寻找主人</span>':blind?'<span class="tag">先听 TA 说</span><span class="tag">点击揭晓</span>':'<span class="tag">'+escapeHtml(c.species)+'</span><span class="tag">'+escapeHtml(c.trait)+'</span><span class="tag">'+escapeHtml(c.era)+'</span>')+'</div>'+
  '<p class="quote">「'+escapeHtml(obj?'这件东西的主人，留下一段没有讲完的故事。':c.quote)+'」</p>'+
  '<div class="card-footer"><span>一位尚未认识的人</span><span class="look">轻触翻阅档案　＋</span></div>';
  document.getElementById('cardSequence').textContent=String(position).padStart(2,'0')+' / ∞';
@@ -172,27 +184,6 @@ function finish(e){
 cardEl.addEventListener('pointerup',finish);
 cardEl.addEventListener('pointercancel',function(){if(drag){suppressDragClick=true;drag=null;snap();}});
 cardEl.addEventListener('lostpointercapture',function(){if(drag&&drag.horizontal){suppressDragClick=true;drag=null;snap();}});
-// Some mobile browsers cancel Pointer Events while negotiating the page gesture.
-// A real touchend can still finish a horizontal card swipe, never a vertical scroll.
-var touchSwipe=null;
-cardEl.addEventListener('touchstart',function(e){
- if(lock||!current||e.touches.length!==1){touchSwipe=null;return;}
- var finger=e.touches[0];
- touchSwipe={id:finger.identifier,x:finger.clientX,y:finger.clientY};
-},{passive:true});
-cardEl.addEventListener('touchend',function(e){
- if(!touchSwipe)return;
- var initial=touchSwipe;touchSwipe=null;
- if(lock||!current)return; // Pointer Events have already completed this swipe.
- var finger=Array.from(e.changedTouches).find(function(t){return t.identifier===initial.id;});
- if(!finger)return;
- var dx=finger.clientX-initial.x,dy=finger.clientY-initial.y;
- if(Math.abs(dx)<=95||Math.abs(dx)<=Math.abs(dy)*1.3)return;
- suppressDragClick=true;
- drag=null;
- move(dx>0?'right':'left');
-},{passive:true});
-cardEl.addEventListener('touchcancel',function(){touchSwipe=null;},{passive:true});
 cardEl.addEventListener('click',function(e){
  if(lock||!current||drag||suppressDragClick){suppressDragClick=false;e.preventDefault();return;}
  openDetail();
@@ -204,10 +195,12 @@ document.getElementById('swapButton').addEventListener('click',switchCandidate);
 document.getElementById('alternateCard').addEventListener('click',switchCandidate);
 function openSheet(content,title){
  if(!overlay.classList.contains('open')) returnFocus=document.activeElement instanceof HTMLElement?document.activeElement:null;
+ sheetVersion++;
  sheet.setAttribute('aria-label',title);sheet.innerHTML=content;overlay.classList.add('open');
  overlay.setAttribute('aria-hidden','false');var close=sheet.querySelector('.close');if(close)close.focus();
 }
 function closeSheet(){
+ sheetVersion++;
  overlay.classList.remove('open');overlay.setAttribute('aria-hidden','true');
  if(returnFocus&&document.contains(returnFocus))returnFocus.focus();
  else document.getElementById('moreButton').focus();
@@ -226,8 +219,77 @@ window.addEventListener('keydown',function(e){
 });
 function head(k,t){return '<div class="sheet-head"><div><div class="sheet-kicker">'+escapeHtml(k)+'</div><h2 class="sheet-title">'+escapeHtml(t)+'</h2></div><button class="close" aria-label="关闭">×</button></div>';}
 function row(label,value){return '<div class="sheet-row"><span>'+escapeHtml(label)+'</span><strong>'+escapeHtml(value)+'</strong></div>';}
-function openDetail(card,fromSaved){
+
+function openBlindGuess(card) {
+ var options=engine.getBlindOptions(card);
+ if(options.length!==3){openDetail(card,false,true);return;}
+ var html=head('VOICE / FIRST IMPRESSION','性格盲测')+
+  '<div class="sheet-quote">「'+escapeHtml(card.quote)+'」</div>'+
+  '<p class="tiny">只凭这一句话，你觉得 TA 更接近哪种性格？没有分数，也不会改变人物设定。</p>'+
+  '<div class="field"><label>选择你的第一印象</label>'+
+  options.map(function(choice){return '<button type="button" class="fate-button" data-blind-choice="'+escapeHtml(choice)+'">'+escapeHtml(choice)+'</button>';}).join('')+
+  '</div><div class="saved-detail-actions"><button type="button" class="mini" data-blind-reveal>直接揭晓</button></div>';
+ openSheet(html,'性格盲测');
+ sheet.querySelectorAll('[data-blind-choice]').forEach(function(button){
+   button.addEventListener('click',function(){
+     var guess=button.dataset.blindChoice;
+     if(options.indexOf(guess)===-1)return;
+     openDetail(card,false,true,guess);
+   });
+ });
+ var reveal=sheet.querySelector('[data-blind-reveal]');
+ if(reveal)reveal.addEventListener('click',function(){openDetail(card,false,true);});
+}
+
+function openObjectGuess(card){
+ var choices=engine.getObjectOptions(card);
+ if(choices.length!==3){openDetail(card,false,false,undefined,true);return;}
+ var html=head('OBJECT / CLUES','以物识人')+
+  '<div class="sheet-quote">「'+escapeHtml(card.object)+'」</div>'+
+  '<p class="tiny">这件东西留下了一段故事。只凭物件和线索，猜猜主人平时做什么。没有对错惩罚。</p>'+
+  '<p class="sheet-text">线索：'+escapeHtml(card.fate)+'</p>'+
+  '<div class="field"><label>你猜 TA 的身份是？</label>'+
+  choices.map(function(job){return '<button type="button" class="fate-button" data-object-choice="'+escapeHtml(job)+'">'+escapeHtml(job)+'</button>';}).join('')+
+  '</div><div class="saved-detail-actions"><button type="button" class="mini" data-object-reveal>直接揭晓</button></div>';
+ openSheet(html,'以物识人');
+ sheet.querySelectorAll('[data-object-choice]').forEach(function(button){
+   button.addEventListener('click',function(){
+     var guess=button.dataset.objectChoice;
+     if(choices.indexOf(guess)===-1)return;
+     openDetail(card,false,false,undefined,true,guess);
+   });
+ });
+ var reveal=sheet.querySelector('[data-object-reveal]');
+ if(reveal)reveal.addEventListener('click',function(){openDetail(card,false,false,undefined,true);});
+}
+function openMaskedClues(card,shown){
+ var clues=engine.getMaskedClues(card);
+ if(clues.length!==3){openDetail(card,false,false,undefined,false,undefined,true);return;}
+ var count=Math.max(0,Math.min(clues.length,Math.floor(Number(shown)||0)));
+ var html=head('UNKNOWN / CLUES','蒙面档案')+
+   '<div class="sheet-quote">「'+escapeHtml(card.quote)+'」</div>'+
+   '<p class="tiny">身份仍然保密。你可以逐条查看线索，也可以随时直接揭晓。</p>'+
+   '<p class="tiny" aria-live="polite">线索 '+String(count).padStart(2,'0')+' / 03</p>'+
+   (count?'<div class="masked-clues">'+clues.slice(0,count).map(function(item){
+     return '<div class="story-preview"><strong>'+escapeHtml(item.title)+'</strong>'+
+       '<p class="sheet-text">'+escapeHtml(item.text)+'</p></div>';
+   }).join('')+'</div>':'<p class="sheet-text">还没有打开任何线索。</p>')+
+   '<div class="saved-detail-actions">'+
+   (count<clues.length?'<button type="button" class="mini" data-mask-next>查看下一条线索</button>':'')+
+   '<button type="button" class="mini dark" data-mask-reveal>揭晓身份</button></div>';
+ openSheet(html,'蒙面档案');
+ var next=sheet.querySelector('[data-mask-next]');
+ if(next)next.addEventListener('click',function(){openMaskedClues(card,count+1);});
+ var reveal=sheet.querySelector('[data-mask-reveal]');
+ if(reveal)reveal.addEventListener('click',function(){
+   openDetail(card,false,false,undefined,false,undefined,true);
+ });
+}
+function openDetail(card,fromSaved,revealBlind,blindGuess,revealObject,objectGuess,revealMasked){
  if(!card&&!current)return;var c=card||current;
+ if(c.type==='蒙面档案'&&!fromSaved&&!revealMasked){openMaskedClues(c,0);return;}
+ if(c.type==='性格盲测'&&!fromSaved&&!revealBlind){openBlindGuess(c);return;}
+ if(c.type==='以物识人'&&!fromSaved&&!revealObject){openObjectGuess(c);return;}
  var html=head('PERSONA / 01','人物档案')+'<div class="sheet-quote">「'+escapeHtml(c.quote)+'」</div>'+
  row('姓名',c.name)+row('性别',c.gender)+row('关系气质',c.relationVibe)+row('身份',c.job)+row('种族',c.species)+row('年龄',String(c.age))+
  row('世界',c.era)+row('外在',c.trait)+row('内在反差',c.contrast)+(c.rarity==='特别邂逅'?row('相遇','特别邂逅 · 无付费'): '')+
@@ -240,6 +302,18 @@ function openDetail(card,fromSaved){
      if(opening)html+='<p class="story-preview">'+escapeHtml(opening)+'</p>';
    }
  }
+ if(c.type==='性格盲测'&&revealBlind&&typeof blindGuess==='string'&&
+    engine.getBlindOptions(c).indexOf(blindGuess)!==-1) {
+   html+='<p class="story-preview">'+(blindGuess===c.trait
+     ? '你的第一印象恰好是「'+escapeHtml(c.trait)+'」。继续看看 TA 不轻易显露的另一面。'
+     : '你原以为 TA 更接近「'+escapeHtml(blindGuess)+'」，其实外在气质是「'+escapeHtml(c.trait)+'」。每个人都不止一面。')+'</p>';
+ }
+ if(c.type==='以物识人'&&revealObject&&typeof objectGuess==='string'&&
+    engine.getObjectOptions(c).indexOf(objectGuess)!==-1) {
+   html+='<p class="story-preview">'+(objectGuess===c.job
+     ? '你猜对了，TA 确实是「'+escapeHtml(c.job)+'」。这件旧物背后还有没有讲完的故事。'
+     : '你猜 TA 是「'+escapeHtml(objectGuess)+'」，其实 TA 的身份是「'+escapeHtml(c.job)+'」。物件未必能讲出一个人的全部。')+'</p>';
+ }
  html+='<p class="tiny">本地免费生成的简要设定。成为正式角色后，还能继续完善经历、习惯与故事。</p>';
  if(fromSaved){
    html+='<div class="saved-detail-actions"><button type="button" class="mini" data-return-collection>返回收藏</button>'+
@@ -249,9 +323,22 @@ function openDetail(card,fromSaved){
  sheet.querySelectorAll('[data-fate]').forEach(function(btn){btn.addEventListener('click',async function(){
    var chosen=btn.dataset.fate;
    if(fromSaved){
-     btn.disabled=true;
-     var result=await engine.updateCandidateStoryChoiceSafe(c.id,chosen);
-     if(!result.ok){btn.disabled=false;notify(result.error);return;}
+     // 同一时刻只允许一次候选命运写入；其它按钮一起禁用，避免排队覆盖。
+     if(storyChoicePending)return;
+     storyChoicePending=true;
+     var viewVersion=sheetVersion;
+     var buttons=Array.from(sheet.querySelectorAll('[data-fate]'));
+     buttons.forEach(function(button){button.disabled=true;});
+     var result;
+     try { result=await engine.updateCandidateStoryChoiceSafe(c.id,chosen); }
+     catch(error){result={ok:false,error:'故事保存异常，请重新打开收藏检查'};}
+     finally {
+       storyChoicePending=false;
+       buttons.forEach(function(button){button.disabled=false;});
+     }
+     // 如果弹层已关闭或已转到另一人物，旧异步回调不能覆写新抽屉。
+     if(viewVersion!==sheetVersion)return;
+     if(!result.ok){notify(result.error);return;}
      c=result.value;
    }else{
      c.selectedChoice=chosen;
@@ -277,8 +364,17 @@ function openSettings(){
  '<p class="tiny">初始人物由本地素材组合，免费抽卡。不读取你的聊天记录，也不自动调用生图或聊天 API。人物相似度不强制排除。</p>',
  '抽卡偏好');
  sheet.querySelectorAll('[data-setting]').forEach(function(s){s.addEventListener('change',function(){
-   var patch={};patch[s.dataset.setting]=s.value;var r=engine.savePreferences(patch);
-   if(!r.ok){notify(r.error);return;}
+   var field=s.dataset.setting;
+   var fallback={type:'全部',world:'全部',gender:'全部',similarity:'完全随机'};
+   var previous=p[field]||fallback[field];
+   var patch={};patch[field]=s.value;var r=engine.savePreferences(patch);
+   if(!r.ok){
+     // 失败时显示已成功持久化的原值，避免设置页出现假成功。
+     s.value=previous;
+     notify(r.error);
+     return;
+   }
+   p[field]=s.value;
    // 筛选变更后的另一张卡必须按新偏好生成，不能沿用旧筛选缓存。
    alternate=null;
    var switchButton=document.getElementById('swapButton');
@@ -289,6 +385,42 @@ function openSettings(){
    backButton.setAttribute('aria-label','新的筛选会在下一张人物卡生效');
    notify('偏好已保存，下一张卡片起生效');
  });});
+}
+function openReunion(roleId,sceneId){
+ var result=engine.getReunionScenes(roleId);
+ if(!result.ok){notify(result.error);return;}
+ var reunion=result.value;
+ var scene=reunion.scenes.find(function(item){return item.id===sceneId;})||reunion.scenes[0];
+ var html=head('ENCOUNTER / AGAIN','再次相遇')+
+ '<p class="tiny">与 '+escapeHtml(reunion.name)+' 的另一种相遇。选一个故事起点，只在这里预览，不会自动写进聊天或角色记忆。</p>'+
+ '<div class="field"><label>这一次，在哪里相遇？</label>'+
+ reunion.scenes.map(function(item){
+   return '<button type="button" class="fate-button '+(item.id===scene.id?'selected':'')+
+      '" data-reunion-scene="'+escapeHtml(item.id)+'" aria-pressed="'+(item.id===scene.id?'true':'false')+'">'+escapeHtml(item.title)+'</button>';
+ }).join('')+'</div>'+
+ '<p class="story-preview" role="status">'+escapeHtml(scene.text)+'</p>'+
+ '<div class="saved-detail-actions"><button type="button" class="mini" data-return-collection>返回收藏</button>'+
+ '<button type="button" class="mini" data-reunion-profile>去档案</button>'+
+ '<button type="button" class="mini dark" data-reunion-chat>去聊天</button></div>';
+ openSheet(html,'再次相遇');
+ sheet.querySelectorAll('[data-reunion-scene]').forEach(function(button){
+   button.addEventListener('click',function(){openReunion(roleId,button.dataset.reunionScene);});
+ });
+ var back=sheet.querySelector('[data-return-collection]');
+ if(back)back.addEventListener('click',openSaved);
+ var profile=sheet.querySelector('[data-reunion-profile]');
+ if(profile)profile.addEventListener('click',function(){
+   var fresh=engine.getReunionScenes(roleId);
+   if(!fresh.ok){notify(fresh.error);return;}
+   window.location.href='../worldbook/characters/characters.html?from=encounter&encounterRole='+encodeURIComponent(fresh.value.id);
+ });
+ var chat=sheet.querySelector('[data-reunion-chat]');
+ if(chat)chat.addEventListener('click',function(){
+   // 仅复用现有聊天路由；故事预览不被塞入聊天输入框，也不自动发送。
+   var fresh=engine.getReunionScenes(roleId);
+   if(!fresh.ok){notify(fresh.error);return;}
+   window.location.href='../chat/chat/chat-detail.html?v=20261028modes1&id='+encodeURIComponent(fresh.value.id);
+ });
 }
 function openSaved(){
  var r=engine.getCandidates();if(!r.ok){notify(r.error);return;}
@@ -308,7 +440,8 @@ function openSaved(){
  (met.value.length?'<div class="saved-list">'+met.value.map(function(role){
    return '<div class="saved-item"><div><button type="button" class="saved-name met-role-button" data-visit-role="'+escapeHtml(role.id)+'" aria-label="返回'+escapeHtml(role.name)+'的角色档案">'+escapeHtml(role.name)+'</button>'+
    '<div class="met-role-hint">'+escapeHtml([role.era,role.trait,role.storyChoice].filter(Boolean).join(' · ')||'已加入角色库')+'</div></div>'+
-   '<button type="button" class="mini dark" data-visit-role="'+escapeHtml(role.id)+'">去档案</button></div>';
+   '<div class="saved-actions"><button type="button" class="mini" data-reunion="'+escapeHtml(role.id)+'">再遇</button>'+
+   '<button type="button" class="mini dark" data-visit-role="'+escapeHtml(role.id)+'">去档案</button></div></div>';
  }).join('')+'</div>':'<p class="tiny">收藏人物创建成功后，就可以从这里再次找到 TA。</p>')+'</section>';
  openSheet(html,'相遇收藏');
  sheet.querySelectorAll('[data-preview]').forEach(function(b){b.addEventListener('click',function(){
@@ -323,6 +456,9 @@ function openSaved(){
    var candidate=waiting.find(function(c){return c.id===b.dataset.create;});
    if(!candidate){notify('候选已变化，请重新打开收藏');return;}
    window.location.href='../worldbook/characters/characters.html?encounterDraft='+encodeURIComponent(candidate.id);
+ });});
+ sheet.querySelectorAll('[data-reunion]').forEach(function(b){b.addEventListener('click',function(){
+   openReunion(b.dataset.reunion);
  });});
  sheet.querySelectorAll('[data-visit-role]').forEach(function(b){b.addEventListener('click',function(){
    var role=met.value.find(function(item){return item.id===b.dataset.visitRole;});
