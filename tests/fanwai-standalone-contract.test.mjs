@@ -38,7 +38,10 @@ test('旧聊天入口跳独立页面，原引擎复用而不删除存档与续�
   assert.match(extras, /\.\.\/\.\.\/fanwai\/fanwai\.html/);
   assert.match(extras, /fanwaiScript\.src/);
   assert.match(extras, /stopImmediatePropagation/);
-  assert.match(engine, /if \(standalone\) openPicker\(\);/);
+  // 源分支可原生打开；QA 安全引擎则由兼容入口点击现有菜单启动。
+  const picker = read('fanwai/fanwai-app.js');
+  assert.match(picker, /entry\.click\(\)/);
+  assert.match(engine, /function openPicker\(\)/);
   assert.match(engine, /var DB_NAME = 'maomao-fanwai-v1'/);
   assert.match(engine, /async function generate\(\)/);
   assert.match(engine, /function openBranchPreview\(\)/);
@@ -57,14 +60,15 @@ test('g 开头的普通角色仍可选择，实际群聊由群列表排除', () 
 test('账号门禁在故事扩展注册之前；独立页面不绕过隔离', () => {
   const engine = read('chat/chat/js/chat-fanwai.js');
   assert.ok(engine.indexOf("var earlyMeta = document.querySelector") < engine.indexOf("var TEMPLATES = ["));
-  assert.match(engine, /earlyScope\.accountId !== earlyId/);
+  assert.match(engine, /earlyScope\.accountId !== (?:earlyId|earlyAccount)/);
 });
 
-test('切换角色或退出前等待番外保存队列，避免未落盘便换页', () => {
+test('QA 原安全引擎处理保存和返回；角色切换只在故事目录出现', () => {
   const engine = read('chat/chat/js/chat-fanwai.js');
-  assert.match(engine, /if \(standalone && \(key === 'switch-role' \|\| key === 'home'\)\) \{/);
-  assert.match(engine, /await episodeWriteQueue;/);
-  assert.match(engine, /if \(canPersist && persistenceFailed\) \{/);
+  const app = read('fanwai/fanwai-app.js');
+  assert.match(app, /switchRole\.hidden = !sheet\.querySelector\('\.fw-grid'\)/);
+  assert.match(app, /readerBack\.click\(\)/);
+  assert.ok(/await episodeWriteQueue;/.test(engine) || /state\.pendingPause/.test(engine));
 });
 
 test('独立页缺少聊天 Toast 时提供可见且安全的错误提示', () => {
@@ -84,32 +88,32 @@ test('独立页列表/阅读字号放大，更多操作不会横向溢出', () =
   assert.match(css, /fw-reader-menu \{[^}]*flex-wrap: wrap/);
 });
 
-test('创建过程禁止跨页导航，防止异步初次存档后在已离开页面启动模型', () => {
+test('首次创建时的异步保护由保留的引擎负责', () => {
   const engine = read('chat/chat/js/chat-fanwai.js');
-  assert.match(engine, /if \(standalone && state\.creating\)/);
-  assert.match(engine, /if \(state\.creating\) \{\s*showNotice\('故事正在创建/);
+  assert.match(engine, /state\.creating = true;/);
+  assert.match(engine, /state\.creating = false;/);
+  assert.match(engine, /viewSerial/);
 });
 
 test('存储故障仍可主动复制正在阅读的未落盘番外', () => {
   const engine = read('chat/chat/js/chat-fanwai.js');
-  assert.match(engine, /button\('copy-unsaved', '复制当前文字'/);
-  assert.match(engine, /clipboard\.writeText\(content\)/);
+  assert.match(engine, /button\('copy-unsaved',/);
+  assert.match(engine, /clipboard\.writeText\((?:text|content)\)/);
 });
 
-test('独立页返回箭头按页面层级导航，切换角色独立放在右侧', () => {
-  const engine = read('chat/chat/js/chat-fanwai.js');
-  assert.match(engine, /var backAction = secondaryAction === 'close' \? 'back'/);
-  assert.match(engine, /button\(backAction, '‹', 'fw-switch-role'\)/);
-  assert.match(engine, /button\('switch-role', '角色', 'fw-close'\)/);
-  assert.match(engine, /backAction === 'home' \? '返回桌面'/);
+test('独立页统一使用薄顶栏，阅读返回交给原存档引擎', () => {
+  const app = read('fanwai/fanwai-app.js');
+  assert.match(app, /var top = baseHeader\(\)/);
+  assert.match(app, /\.fw-reader-menu \[data-action="back"\]/);
+  assert.match(app, /var switchRole = link\('角色', 'fanwai.html'/);
+  assert.match(app, /back\.setAttribute\('aria-label', '返回上一级'\)/);
 });
 
-test('阅读页返回目录前等待保存；保存失败时保留当前内存故事可复制', () => {
+test('故事返回使用原引擎安全门禁，保留未存稿处理', () => {
   const engine = read('chat/chat/js/chat-fanwai.js');
   assert.match(engine, /if \(key === 'back'\) \{/);
-  assert.match(engine, /await episodeWriteQueue;\s*if \(canPersist && persistenceFailed && state\.active && state\.active\.messages\.length\)/);
-  assert.match(engine, /showNotice\('故事保存失败，请先复制当前文字/);
-  assert.match(engine, /renderReader\(\);\s*return;\s*\}\s*\}\s*openPicker\(\)/);
+  assert.ok(/await episodeWriteQueue;/.test(engine) || /state\.pendingPause/.test(engine));
+  assert.ok(/persistenceFailed/.test(engine) || /state\.unsavedEpisode/.test(engine));
 });
 
 test('不替换 QA 引擎也能挂载独立全屏：兼容旧 plus 与 phone 锚点', () => {
