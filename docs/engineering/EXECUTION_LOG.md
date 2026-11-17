@@ -203,3 +203,9 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **回归提交 `41955e0e`**：测试重复成员、非法 `__user`、数字玩家 ID、单人、超过 24 人、失败后完整保留公共旧数据和私有角色身份牌，以及新游戏过滤遗留用户条目。
 - **本轮精确验证**：从 #298 当前 GitHub 源码执行七份原 `tests/*group*.test.mjs` 的测试主体，隔离 V8 `node:test` / `assert` / `fs` / `vm` 兼容夹具结果 **92/92**：秘密边界 39/39、治理 11/11、五分类记忆 5/5、游戏聊天回执 10/10、回合保存屏障 8/8、回合整合 10/10、私聊回执恢复 9/9。**这不是原生 `node --test`、`npm run build`、Chromium 或手机验收；不得当作完整交付。**
 - **当前关键依赖**：唯一 #299 HEAD `6521e43e` 仍无这批群游戏模块；QA Worker 仍是 2026-11-16 21:19:39Z 部署版本 `597166f2-4e59-48d3-9046-10f517cd7dd0`。当前容器仅有 Node 22 和空工作目录，**没有 MAOMAO 完整 checkout**；GitHub/Cloudflare connector 可读写 repo/API，但不可替代本机完整 Node/Vite/浏览器/移动端交付门禁。遵守多窗口代码所有权，不越过 #299 QA 集成窗口直接改 QA 分支。正式生产无改动。
+
+## 2026-11-17｜手机 PWA 群游戏与治理脚本缓存同步
+
+- 本轮在原群聊功能分支修复玩家名册读取校验（`6058d0ae`）后，为防手机已安装 PWA 继续使用旧缓存，已同步升级功能分支 `sw.js` 的 `phone-app-pwa-v226 → v227`，群游戏模块 `group-game-session.js?v=20261116game10 → game11`，群管理模块 `group-governance.js?v=20261115g2 → g3`；精确同步 `chat/chat/chat-detail.html`、`chat/chat/chat.html`、`chat/chat/group-play.html`、`sw.js` 与两份含硬编码版本的原群测试。
+- 新代码、脚本引用与预缓存列表属于同一分支，避免缓存存在旧群权限或旧玩家计票代码；QA 整合时仍应在 **#299 自有的 v241+ 缓存版本基础上升级**，不得拿功能分支 v227 覆盖 QA 的新版本及账号/Push 资源。
+- 修正缓存相关旧断言后，再次以 GitHub 最新源文件在隔离 V8 兼容夹具执行七套原测试主体：**92/92**（39+11+5+10+8+10+9）；此前一次本地夹具的依赖注入/标识符重复错误仅是夹具代码问题，纠正后原用例均通过。**未运行 native Node/Vite/Chromium/真机，未部署唯一 QA。**
