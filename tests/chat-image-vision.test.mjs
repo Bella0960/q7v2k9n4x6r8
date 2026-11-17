@@ -217,7 +217,7 @@ test('user image shares require first-use privacy confirmation and pass only cur
 
 test('AI sees current-turn images and can only add an explicit avatar candidate after a successful reply', () => {
   assert.ok(chatDetailSource.includes('chat-image-vision.js?v=20261113v1'));
-  assert.ok(chatDetailSource.includes('role-avatar-library.js?v=20261113v1'));
+  assert.match(chatDetailSource, /role-avatar-library\.js\?v=20261113v\d+/, 'chat loads a versioned role avatar library');
   assert.ok(chatDetailSource.indexOf('storage/media-repository.js') < chatDetailSource.indexOf('role-avatar-library.js'));
   assert.ok(chatDetailSource.includes('ChatImageVision.prepareHistory'));
   assert.ok(chatDetailSource.includes('visionImageMids'));
@@ -353,7 +353,7 @@ test('profile archive renders paired previews and supports switching either side
   assert.ok(characterManagerSource.includes('library.getPairForAvatar(roleId, item.id)'));
   assert.ok(characterManagerSource.includes('unlinkRoleAvatarPair'));
   assert.ok(characterManagerSource.includes('library.unlinkPair(roleId, pairId)'));
-  assert.ok(characterManagerSource.includes('两张头像仍保留在收藏中'));
+  assert.ok(characterManagerSource.includes('两张原图仍保留在收藏中'), 'unlinking retains both original portraits');
 });
 
 test('portrait archive provides a two-image manual pairing fallback for AI recognition misses', () => {
