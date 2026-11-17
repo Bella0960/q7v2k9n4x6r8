@@ -1814,7 +1814,7 @@
       event.stopPropagation();
       pickMusicCoverForTrack(cover.dataset.musicTrackId);
     }
-    list.addEventListener('click', chooseFromCover);
+    list.addEventListener('click', chooseFromCover, true); // 捕获阶段先于整行 onclick 播放
     list.addEventListener('keydown', function(event) {
       if (event.key === 'Enter' || event.key === ' ') {
         if (!event.target.closest('.t-cover[data-music-track-id]')) return;
