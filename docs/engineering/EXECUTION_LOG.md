@@ -1,5 +1,13 @@
 # MAOMAO Execution Log
 
+## 2026-11-17｜BUG-ADMIN-QA 第五阶段 · 管理操作绑定确认对象（第 3 项候补）
+
+- **代码真实问题**：`admin/admin-center.js` 的账号停用／恢复／永久撤销确认弹窗，展示的是打开时 `selectedAccountId`，但最终提交时再次读取可变的全局 `selectedAccountId`。异步状态变化会导致「确认账号 A、执行账号 B」的错误目标风险。
+- **修复**：`createActionButton` 创建时绑定 `targetAccountId`，弹窗文案与实际写入 URL 使用同一固定 ID；在用户点击按钮及最终确认提交两个位置校验当前选中账号仍与目标一致，若已变化则拒绝操作且不向服务器发送管理写入。保留原确认弹窗、后台权限与其他账号功能。
+- **回归**：`tests/admin-center-ui.test.mjs` 新增实用例，实际抽取最新 `createActionButton` 源码，模拟 A 打开确认、切换 B、原弹窗提交被拒、旧按钮不可重新打开、B 新弹窗只提交 B。独立 V8 场景 8/8 断言 PASS；**完整 Node CLI / Vite / Chromium / 双端真机仍未执行，不能称正式交付**。
+- **交付队列**：按用户要求，该管理中心问题列为 **第 3 项**。修复只提交原账号 PR #290；在用户明确发出「3号执行」前，不主动写入当前正在整合的 QA PR #299，不合并、不部署，保留前两项的测试版窗口与正式环境。
+
+
 ## 2026-11-17｜BUG-ADMIN-QA 第四阶段 · 真过期会话与免 Actions 交付路线
 
 - **已修复**：`admin/admin-center.js` 的 5 处明确 401 判断从仅 `ACCOUNT_SESSION_REQUIRED` 改为严格共享函数 `isConfirmedSessionExpired`，接受 `LOGIN_REQUIRED`（首次 `/api/accounts/me` 真过期时实际返回）和 `ACCOUNT_SESSION_REQUIRED`；普通 403/503 仍停留页面、允许重试。只改原 #290，未覆盖 QA 正在并行更新的文件。
