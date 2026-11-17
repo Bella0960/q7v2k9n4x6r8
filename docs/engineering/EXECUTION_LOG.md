@@ -240,3 +240,11 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **已执行验证**：以最新 GitHub 源码，在 V8 测试适配器执行原 tests/encounter-ui-contract.test.mjs 主体 **19/19 PASS**（含新增账号回执命令校验）；不是原生 Node/Vite/Chromium。完整工程本工作环境尚无仓库挂载副本，虽存在 Node v22 与 Chromium 可执行文件，但无法对真实 Git HEAD 构建，不能声称完整验证通过。
 - **并行 QA 风险定位（仅只读候选）**：#299 与账号分支最新差异存在 6 个双方均改动的文件：docs/engineering/EXECUTION_LOG.md、package.json、sw.js、tests/account-identity-bridge-probe.test.mjs、worker/lib/account-auth.js、worker/lib/identity-bridge.js。它们是合并内容重叠的候选风险，并非逐个确定的文本冲突，QA 负责人应按语义合并、保护原账户隔离与所有既有模块。
 - **当前状态**：全部修改只在原 PR #297，保持 Draft；唯一 #299 未由本窗口改写，正式 main、域名、管理员 001 与真实数据不动。需要完整工程原生 Node/Vite/Playwright、唯一 QA 实际部署与双端真机验收后才可宣布完整交付。
+
+
+## FEATURE-ENCOUNTER-001｜2026-11-17 交付阻塞实修：原生 Node 草稿测试夹具 + 账号 v3 合流契约
+- **确定的原生 Node 回归故障**：tests/encounter-contract.test.mjs 截取角色管理器真实 `persistEditorDraft(force)` 函数在 vm 中执行，却漏给 `unreadableDraftKey`（生产函数执行前立即读取它），导致原“QuotaExceededError 不假成功”测试抛 `ReferenceError`，没有真正测试到存储失败。真实 manager 顶层定义 `let unreadableDraftKey = ''`，产品代码本身不需改。提交 `78ca1d1`：给模拟环境补充 `unreadableDraftKey:''`，并新增“原草稿已经损坏且不可读时不允许任何写入”的 Node 合同。
+- **实际本机 Node v22 独立执行（不依赖 MAOMAO 未挂载的全仓库）**：从原文件核对 `persistEditorDraft` 函数原文后，在隔离临时脚本中以原生 `node --test` 测三个条件：旧夹具会触发缺变量错误、补齐夹具后 QuotaExceededError 返回失败、不可读旧草稿写入次数为 0，**3/3 PASS**。这只是单函数隔离测试，不冒充完整仓库 `npm run test:encounter` 的通过回执。
+- **确定的账号 v3 假失败**：原 tests/encounter-actual-scope.test.mjs 硬匹配 Worker 和 SW `mao-account-scope.js?v=2`，与账号 PR #290 最新两处 `v=3` 不兼容；即使正确整合也会误报失败。提交 `1ab5bbf` 改为严格要求两处有效数字版本且**必须一致**，不放行无版本或混用旧缓存。直接对 GitHub 原 #297 v2 和账号 #290 v3 Worker+SW 源码验证 7/7 条版本契约。
+- **源码执行验证**：在 V8 兼容测试器执行原 #297 tests/encounter-contract.test.mjs 当前全部 **46/46 PASS**、原 tests/encounter-actual-scope.test.mjs **5/5 PASS**；再组合 #297 邂逅引擎与 #290 最新 `scope.js/worker.js/sw.js` 真实源码运行账号隔离用例 **5/5 PASS**。这些是实际 V8 运行而非原生 Node CLI、Vite、Chromium、QA 浏览器或双端真机回执。
+- **仍存的实物阻塞**：本会话计算容器有 Node22 与 Chromium，但**无完整 MAOMAO Git checkout**，不能生成与 #297/#299 同一 HEAD 的 Vite dist、浏览器截图/真实回执。原 PR #297 继续 Draft，唯一 QA #299 正由其他窗口并行提交且存在合并状态 dirty；本窗口未推送 #299，亦未部署 preview 或正式站、未访问用户账号数据。由唯一 QA 集成窗口保留 #290 最新安全底座、按语义纳入原 #297 新 HEAD 后依次运行真实 Node/Build/Chromium/gate，最后用户 Android/iPhone 验收，才可宣布交付。
