@@ -209,3 +209,11 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 本轮在原群聊功能分支修复玩家名册读取校验（`6058d0ae`）后，为防手机已安装 PWA 继续使用旧缓存，已同步升级功能分支 `sw.js` 的 `phone-app-pwa-v226 → v227`，群游戏模块 `group-game-session.js?v=20261116game10 → game11`，群管理模块 `group-governance.js?v=20261115g2 → g3`；精确同步 `chat/chat/chat-detail.html`、`chat/chat/chat.html`、`chat/chat/group-play.html`、`sw.js` 与两份含硬编码版本的原群测试。
 - 新代码、脚本引用与预缓存列表属于同一分支，避免缓存存在旧群权限或旧玩家计票代码；QA 整合时仍应在 **#299 自有的 v241+ 缓存版本基础上升级**，不得拿功能分支 v227 覆盖 QA 的新版本及账号/Push 资源。
 - 修正缓存相关旧断言后，再次以 GitHub 最新源文件在隔离 V8 兼容夹具执行七套原测试主体：**92/92**（39+11+5+10+8+10+9）；此前一次本地夹具的依赖注入/标识符重复错误仅是夹具代码问题，纠正后原用例均通过。**未运行 native Node/Vite/Chromium/真机，未部署唯一 QA。**
+
+## 2026-11-17｜退群后群主管理越权关闭与 PWA 缓存同步
+
+- **真实源码复现**：在 `GroupGovernance` 中，以 `ownerId:'__user',userMembership:'left'` 的旧群调用 `apply({actorId:'__user',action:'promote',target:'c1',save:()=>true})`，原来仍返回 `ok:true` 并在群数据中任命管理员。这是退群后权限残留，不是展示问题。
+- **修复**：`d6c1e301` 使 `rank(group,'__user')` 先核对群参与状态。退群或拒绝入群的用户获得 0 级管理权限；正常已加入、兼容旧群不含 userMembership 的群主仍有原权限。角色管理模式不被修改。
+- **回归**：`80d51a4d` 增加旧群状态 `left`、`declined` 禁任命、禁持久化写入及禁对象变更的测试，同时保护旧群正常群主操作。最新原 `tests/group-governance.test.mjs` 以独立 V8 原源码兼容夹具执行 **12/12**；游戏结果卡 **10/10** 同样在刷新缓存版本后通过。注意均非原生 Node/Vite/浏览器测试。
+- **手机 PWA**：原功能分支 `sw.js` 缓存由 v227 升 v228，`group-governance.js?v=20261115g3` 升 g4；`chat/chat/chat.html`、`chat/chat/chat-detail.html`、`chat/chat/group-play.html` 和两份硬编码版本回归测试同步更新。唯一 QA #299 已包含自己的 v241+ Push/PWA 配置，必须以 QA 版本向上递增，禁止把本分支 v228 的整个 sw.js 直接覆盖 QA。
+- **交付 blocker**：2026-11-17 只读确认 QA #299 已由别的窗口推进至 `f2e70fe1fdb49a428ddbbbbf79fd7349f5d40918`，该批变更主要为 Settings 和 Cloud Push UI；群聊独有文件尚未整合。当前本窗口只写 #298，不争用唯一 QA 正在开发的文件。没有完整 checkout，不可宣称原生构建或 QA 发布成功。
