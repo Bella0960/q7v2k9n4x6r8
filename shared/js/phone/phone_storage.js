@@ -223,10 +223,29 @@
     };
 
     // 聊天记录（按角色）
+    function _inspectChatPrimary(contactId) {
+        try {
+            var raw = localStorage.getItem('chat_history_' + contactId);
+            if (raw === null) return { state: 'missing' };
+            try {
+                var parsed = JSON.parse(raw);
+                return Array.isArray(parsed)
+                    ? { state: 'ok', value: parsed, raw: raw }
+                    : { state: 'corrupt' };
+            } catch (err) {
+                return { state: 'corrupt' };
+            }
+        } catch (err) {
+            return { state: 'unavailable' };
+        }
+    }
+
     NS.getChatHistory = function (contactId) {
-        var v = NS.rawGet('chat_history_' + contactId, null);
-        if (Array.isArray(v)) return v;
-        // 兼容历史版本：如果旧 key 不存在，尝试读取 phone_data_v2 中已有的副本。
+        var primary = _inspectChatPrimary(contactId);
+        if (primary.state === 'ok') return primary.value;
+        // Keep the legacy [] return contract, but never surface a stale duplicate
+        // when the authoritative record is present, corrupt, or cannot be read.
+        if (primary.state !== 'missing') return [];
         var root = NS._getRoot();
         var bucket = root[contactId];
         if (bucket && bucket.chat && Array.isArray(bucket.chat.history)) return bucket.chat.history;
@@ -234,9 +253,24 @@
     };
 
     NS.saveChatHistory = function (contactId, list) {
-        // 聊天记录可能很大。先写入当前主 key，成功后再移除 phone_data_v2 中的重复副本。
-        var saved = NS.rawSet('chat_history_' + contactId, Array.isArray(list) ? list : []);
+        // Reject missing/invalid targets before constructing any storage key.
+        if (typeof contactId !== 'string' || !contactId.trim()) return false;
+        // Do not silently coerce invalid payloads to [], or overwrite broken data.
+        if (!Array.isArray(list)) return false;
+        var primary = _inspectChatPrimary(contactId);
+        if (primary.state !== 'ok' && primary.state !== 'missing') return false;
+        var key = 'chat_history_' + contactId;
+        var expected;
+        try { expected = JSON.stringify(list); } catch (err) { return false; }
+        var saved = NS.rawSet(key, expected);
         if (!saved) return false;
+        // rawSet may report success even when a browser/storage shim drops the write.
+        // Only a verified primary write authorizes v2 duplicate cleanup.
+        try {
+            if (localStorage.getItem(key) !== expected) return false;
+        } catch (err) {
+            return false;
+        }
         var root = NS._getRoot();
         var bucket = root[contactId];
         if (bucket && bucket.chat != null) {
@@ -736,11 +770,15 @@
 
         R.getChatHistory = function (contactId) {
             var probe = _probe('chat_history_' + contactId);
-            if (probe.state === 'corrupt') {
-                return failResult(ERR.CORRUPT_DATA,
-                    'chat_history_' + contactId + ' corrupt', false, { raw: probe.raw });
+            if (probe.state === 'unavailable') {
+                return failResult(ERR.DB_UNAVAILABLE, 'chat history unavailable', true);
             }
-            if (probe.state === 'ok' && Array.isArray(probe.parsed)) {
+            if (probe.state === 'corrupt' ||
+                (probe.state === 'ok' && !Array.isArray(probe.parsed))) {
+                return failResult(ERR.CORRUPT_DATA,
+                    'chat_history_' + contactId + ' corrupt', false);
+            }
+            if (probe.state === 'ok') {
                 return okResult(probe.parsed,
                     { found: true, source: 'chat_history_' + contactId });
             }
@@ -756,10 +794,37 @@
             return failResult(ERR.NOT_FOUND, 'chat history not found for ' + contactId, false);
         };
 
-        R.saveChatHistory = function (contactId, list) {
-            var arr = Array.isArray(list) ? list : [];
-            var out = _write('chat_history_' + contactId, arr);
-            if (out.state !== 'ok') return _writeToResult(out, 'chat_history_' + contactId);
+        R.saveChatHistory = function (contactId, list, expectedPrimary) {
+            if (typeof contactId !== 'string' || !contactId.trim()) {
+                return failResult(ERR.VALIDATION_FAILED, 'chat history requires a target', false);
+            }
+            var key = 'chat_history_' + contactId;
+            if (!Array.isArray(list)) {
+                return failResult(ERR.VALIDATION_FAILED, 'chat history must be an array', false);
+            }
+            var before = _probe(key);
+            if (before.state === 'unavailable') {
+                return failResult(ERR.DB_UNAVAILABLE, 'chat history unavailable', true);
+            }
+            if (before.state === 'corrupt' ||
+                (before.state === 'ok' && !Array.isArray(before.parsed))) {
+                return failResult(ERR.CORRUPT_DATA, 'chat history primary is corrupt', false);
+            }
+            if (expectedPrimary !== undefined && before.raw !== expectedPrimary) {
+                return failResult(ERR.CONFLICT, 'chat history changed before append', true);
+            }
+            var expected;
+            try { expected = JSON.stringify(list); } catch (err) {
+                return failResult(ERR.VALIDATION_FAILED, 'chat history cannot be serialized', false);
+            }
+            var out = _write(key, expected);
+            if (out.state !== 'ok') return _writeToResult(out, key);
+            var verified = _probe(key);
+            if (verified.state !== 'ok' || verified.raw !== expected) {
+                return failResult(ERR.DB_UNAVAILABLE, 'chat history write not verified', true, {
+                    writeMayHavePersisted: verified.state === 'unavailable' || verified.raw !== before.raw
+                });
+            }
             // 清除 phone_data_v2 中的重复副本（与原 saveChatHistory 行为一致）
             var rootRes = R.getRoot();
             if (rootRes.ok && rootRes.value) {
@@ -776,6 +841,32 @@
                 }
             }
             return okResult(true, { written: 'chat_history_' + contactId });
+        };
+
+        R.appendChatHistory = function (contactId, message) {
+            if (typeof contactId !== 'string' || !contactId.trim() ||
+                !message || typeof message !== 'object' || Array.isArray(message)) {
+                return failResult(ERR.VALIDATION_FAILED, 'chat append requires a target and message', false);
+            }
+            var primary = _probe('chat_history_' + contactId);
+            var history = [];
+            if (primary.state === 'missing') {
+                var root = R.getRoot();
+                if (!root.ok) return root;
+                var bucket = Object.prototype.hasOwnProperty.call(root.value, contactId)
+                    ? root.value[contactId] : null;
+                if (bucket && bucket.chat != null) {
+                    if (!Array.isArray(bucket.chat.history)) {
+                        return failResult(ERR.CORRUPT_DATA, 'legacy chat history is not an array', false);
+                    }
+                    history = bucket.chat.history;
+                }
+            } else {
+                var read = _probeToResult(primary, 'array');
+                if (!read.ok) return read;
+                history = read.value;
+            }
+            return R.saveChatHistory(contactId, history.concat([message]), primary.raw);
         };
 
         R.getMemories = function (contactId) {
