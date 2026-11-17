@@ -234,3 +234,38 @@ test('silent storage writes cannot create phantom old/new group invitations or j
   assert.equal(n.api.pendingInvitations().length, 0);
   assert.equal(JSON.parse(n.storage.getItem('phone_groups')).length, 0);
 });
+
+test('thrown persistence errors restore in-memory admin changes and group membership', () => {
+  const g = group();
+  const h = harness([g]);
+  const before = JSON.stringify(g);
+  let events = 0;
+  h.api.on('group:changed', () => { events++; });
+  h.api.on('group:user-left', () => { events++; });
+  const explodingSave = () => { throw Error('QuotaExceededError'); };
+
+  const appointed = h.api.apply({
+    group: g, actorId: '__user', action: 'promote',
+    target: 'c1', save: explodingSave
+  });
+  assert.equal(appointed.code, 'SAVE_FAILED',
+    'quota failures must be reported instead of throwing into the UI');
+  assert.equal(JSON.stringify(g), before,
+    'failed admin appointment cannot remain visible in memory');
+  assert.equal(events, 0, 'unsaved admin actions emit no events');
+
+  const left = h.api.leave({ group: g, save: explodingSave });
+  assert.equal(left.code, 'SAVE_FAILED',
+    'quota failure on leave must return a recoverable result');
+  assert.equal(JSON.stringify(g), before,
+    'unsaved leave must not hide the group or create fake exit metadata');
+  assert.equal(events, 0, 'unsaved departures emit no events');
+
+  assert.equal(h.api.apply({
+    group: g, actorId: '__user', action: 'promote',
+    target: 'c1', save: save(h.storage, g)
+  }).ok, true, 'normal persisted admin actions still work');
+  assert.equal(h.api.leave({ group:g, save: save(h.storage, g) }).ok,
+    true, 'normal saved leave still works');
+  assert.equal(g.userMembership, 'left');
+});
