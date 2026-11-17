@@ -24,7 +24,7 @@ test('admin script and CSS versions match the current PWA cache, not the old mob
   assert.ok(!html.includes('./admin-center.js?v=20261117-ui1'));
   assert.ok(sw.includes("'./admin/admin-center.css?v=" + version + "'"));
   assert.ok(sw.includes("'./admin/admin-center.js?v=20261117-ui3'"));
-  const cacheVersion = Number(sw.match(/const CACHE_NAME = 'phone-app-pwa-v(\\d+)'/)?.[1] || 0);
+  const cacheVersion = Number(sw.match(/const CACHE_NAME = 'phone-app-pwa-v(\d+)'/)?.[1] || 0);
   assert.ok(cacheVersion >= 244, 'PWA cache must retain the verified mobile admin baseline');
   assert.doesNotMatch(html, /20261112-nav2/);
 });
