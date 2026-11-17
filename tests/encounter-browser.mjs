@@ -35,9 +35,10 @@ const server = http.createServer(async (req, res) => {
     res.end(await fs.readFile(file));
   } catch { res.writeHead(404);res.end('Not found'); }
 });
-for(const required of ['encounter/encounter.html','worldbook/characters/characters.html','account/index.html']){
+// localhost 浏览器冒烟测试不需要真实账号页面；账号安全仍由 gate:encounter 独立强制校验。
+for(const required of ['encounter/encounter.html','worldbook/characters/characters.html']){
   if(!existsSync(resolve(siteRoot,required)))
-    throw new Error('完整 Vite 构建缺少 '+required+'，请先在整合分支 npm run build');
+    throw new Error('浏览器冒烟测试缺少构建后的 '+required+'，请先运行 npm run build');
 }
 await new Promise(r => server.listen(0, '127.0.0.1', r));
 const base = 'http://127.0.0.1:' + server.address().port;
