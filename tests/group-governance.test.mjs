@@ -343,3 +343,30 @@ test('declining a pending invite works despite a corrupted group index', () => {
   assert.equal(JSON.parse(h2.values.get('phone_group_invitations'))[0].status,
     'pending');
 });
+
+
+test('departed owner cannot continue to administer the old group', () => {
+  for (const status of ['left', 'declined']) {
+    const g = group();
+    g.userMembership = status;
+    const h = harness([g]);
+    const before = JSON.stringify(g);
+    let saved = 0;
+    const result = h.api.apply({
+      group: g, actorId: '__user', action: 'promote',
+      target: 'c1', save() { saved++; return true; }
+    });
+    assert.equal(h.api.rank(g, '__user'), 0, 'former owner has no active rights');
+    assert.equal(result.code, 'NO_PERMISSION');
+    assert.equal(saved, 0, 'no storage write after permission denial');
+    assert.equal(JSON.stringify(g), before, 'no group mutation');
+  }
+
+  const g = group();
+  const h = harness([g]);
+  assert.equal(h.api.rank(g, '__user'), 3, 'legacy joined group retains owner powers');
+  assert.equal(h.api.apply({
+    group: g, actorId: '__user', action: 'promote',
+    target: 'c1', save: save(h.storage, g)
+  }).ok, true, 'joined owner remains authorized');
+});
