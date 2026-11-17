@@ -541,3 +541,46 @@ test('设置页接线：复用 ai_custom_characters，三选一模式，不新�
   assert.match(settingsSource, /data-mode="multi"/);
   assert.ok(!/localStorage\.setItem\('chat_reply_bubble/.test(settingsSource));
 });
+
+test('cloud outbound turn preserves exact multi-bubble boundaries and one envelope ACK', () => {
+  const serverMessageId = 'cloud_server_message_0001';
+  const bubbles = ['先和你说一件小事。', '还有一个相关的小发现。', '晚点再慢慢聊。'];
+  const text = bubbles.join(String.fromCharCode(10, 10));
+  const messages = policy.buildCloudOutboundMessages(text, serverMessageId, {
+    time: 1800000000000,
+    turnId: 'cloud-turn-0001',
+    bubbles
+  });
+  assert.equal(messages.length, 3);
+  assert.deepEqual(Array.from(messages, (message) => message.text), bubbles);
+  assert.equal(new Set(Array.from(messages, (message) => message.mid)).size, 3);
+  assert.ok(messages.every((message, index) => message.cloudEnvelopeId === serverMessageId &&
+    message.cloudBubbleIndex === index && message.cloudBubbleCount === 3));
+  assert.equal(messages[0].serverMessageId, undefined);
+  assert.equal(messages[1].serverMessageId, undefined);
+  assert.equal(messages[2].serverMessageId, serverMessageId);
+  assert.equal(policy.inspectCloudOutboundHistory(messages, serverMessageId, text, bubbles), 'match');
+  assert.equal(policy.inspectCloudOutboundHistory(messages.slice(0, 2), serverMessageId, text, bubbles), 'conflict',
+    'partial batch must never be acknowledged as fully saved');
+  const changed = messages.map((message) => ({ ...message }));
+  changed[1].text = '被改动的消息';
+  assert.equal(policy.inspectCloudOutboundHistory(changed, serverMessageId, text, bubbles), 'conflict');
+
+  const legacyCombined = [{ role: 'assistant', text, serverMessageId }];
+  assert.equal(policy.inspectCloudOutboundHistory(legacyCombined, serverMessageId, text, bubbles), 'match',
+    'older single-envelope history remains idempotently ACKable');
+});
+
+test('cloud outbound preserves a role configured for one combined bubble', () => {
+  const serverMessageId = 'cloud_server_message_0002';
+  const singleBubble = '第一层意思。' + String.fromCharCode(10) + '第二层意思。';
+  const messages = policy.buildCloudOutboundMessages(singleBubble, serverMessageId, {
+    time: 1800000000001,
+    bubbles: [singleBubble]
+  });
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].text, singleBubble);
+  assert.equal(messages[0].serverMessageId, serverMessageId);
+  assert.equal(policy.inspectCloudOutboundHistory(messages, serverMessageId, singleBubble, [singleBubble]), 'match');
+});
+

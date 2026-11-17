@@ -18,6 +18,7 @@ const takeoutPage = read('wallet/takeout.html');
 const walletPage = read('wallet/wallet.html');
 const closePayPage = read('wallet/close-pay.html');
 const roleFamilyCardsSource = read('shared/js/phone/role_family_cards.js');
+const familyCardsPage = read('wallet/family-cards.html');
 const chatNotifier = read('shared/js/chat-notifier.js');
 const navPage = read('shared/js/nav.js');
 const homePage = read('index.html');
@@ -40,6 +41,7 @@ const date = read('chat/date/date.html');
 const journey = read('chat/date/journey.html');
 const fixtures = JSON.parse(readFileSync(resolve(root, 'tests/fixtures/chat-message-cases.json'), 'utf8'));
 const policySource = read('shared/js/phone/chat-message-policy.js');
+const presencePolicySource = read('shared/js/phone/chat-presence-policy.js');
 const policyWindow = {};
 runInNewContext(policySource, { window: policyWindow, globalThis: {} });
 const policy = policyWindow.ChatMessagePolicy;
@@ -64,7 +66,7 @@ const followUpPolicyWindow = {};
 runInNewContext(followUpPolicySource, { window: followUpPolicyWindow, globalThis: followUpPolicyWindow });
 const followUpPolicy = followUpPolicyWindow.ChatFollowUpPolicy;
 
-const presencePolicySource = read('shared/js/phone/chat-presence-policy.js');
+
 const presencePolicyWindow = {};
 runInNewContext(presencePolicySource, { window: presencePolicyWindow });
 const presencePolicy = presencePolicyWindow.ChatPresencePolicy;
@@ -982,10 +984,10 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
 });
 
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
-  assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
-  assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.ok(serviceWorker.includes('phone-app-pwa-v217'));
-  assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
+  assert.match(detail, /chat-message-policy\.js\?v=20261111cloudbubble1/);
+  assert.match(search, /chat-message-policy\.js\?v=20261111cloudbubble1/);
+  assert.ok(serviceWorker.includes('phone-app-pwa-v221'));
+  assert.match(serviceWorker, /chat-message-policy\.js\?v=20261111cloudbubble1/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(detail, /chat-context-policy\.js\?v=20261031v1/);
@@ -1296,10 +1298,10 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 });
 
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
-  assert.match(detail, /chat-presence-policy\.js\?v=20261102v19/);
+  assert.match(detail, /chat-presence-policy\.js\?v=20261111firstcontact1/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v217/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v19/);
+  assert.match(serviceWorker, /phone-app-pwa-v221/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261111firstcontact1/);
 });
 
 
@@ -1420,8 +1422,8 @@ test('chat detail persists voice habits per character and per group session with
   assert.match(detail, /buildVoiceHabitPrompt\(voiceHabitProfile\)/);
   assert.match(detail, /buildEmotionContinuityPrompt/);
   assert.match(detail, /maxScan: 24/);
-  assert.match(serviceWorker, /phone-app-pwa-v217/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v19/);
+  assert.match(serviceWorker, /phone-app-pwa-v221/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261111firstcontact1/);
 });
 
 
@@ -1606,9 +1608,9 @@ test('chat detail injects the role autonomy prompt and precaches the updated pol
   assert.ok(detail.includes('ChatPresencePolicy.buildAutonomyPrompt'));
   assert.ok(detail.includes('maxNotes: 3'));
   assert.ok(detail.includes('maxTurns: 4'));
-  assert.ok(detail.includes('chat-presence-policy.js?v=20261102v19'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v217'));
-  assert.ok(serviceWorker.includes('chat-presence-policy.js?v=20261102v19'));
+  assert.ok(detail.includes('chat-presence-policy.js?v=20261111firstcontact1'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v221'));
+  assert.ok(serviceWorker.includes('chat-presence-policy.js?v=20261111firstcontact1'));
 });
 
 
@@ -1847,6 +1849,15 @@ test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat
   assert.match(chatSettings, /value="24"/);
   assert.match(chatSettings, /value="48"/);
   assert.match(chatSettings, /value="72"/);
+  assert.match(chatSettings, /chat_proactive_contact_enabled_at_/);
+  assert.match(chatSettings, /新角色开启后也可以主动发出第一条开场消息/);
+  assert.match(chatNotifier, /evaluateInitialProactiveContact/);
+  assert.match(chatNotifier, /PROACTIVE_INITIAL_DELAY_MS = 2 \* 60 \* 1000/);
+  assert.match(chatNotifier, /chat_proactive_first_contact_sent_/);
+  assert.match(chatNotifier, /cloud\.noteCharacterContextChanged\(roleId, candidate\.history\)/);
+  assert.match(chatNotifier, /function hasConversationActivity\(history\)/);
+  assert.match(chatNotifier, /function proactiveHistoryUnchanged\(candidate, history\)/);
+  assert.match(presencePolicySource, /NS\.evaluateInitialProactiveContact = evaluateInitialProactiveContact/);
 
   assert.match(chatNotifier, /document\.visibilityState === 'hidden'/);
   assert.match(chatNotifier, /PROACTIVE_GLOBAL_COOLDOWN_MS = 24 \* 60 \* 60 \* 1000/);
@@ -1881,7 +1892,7 @@ test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat
     'each proactive bubble must be persisted as its own message');
   assert.match(chatNotifier, /messages\[messages\.length - 1\]\.serverMessageId = serverMessageId/,
     'the server outbound receipt must attach to the final bubble so read acknowledgement remains intact');
-  assert.match(chatNotifier, /chat-message-policy\.js\?v=20261029v5/,
+  assert.match(chatNotifier, /chat-message-policy\.js\?v=20261111cloudbubble1/,
     'the home-page proactive scheduler must load the shared bubble identity policy');
   assert.match(chatNotifier, /buildVoiceHabitProfile\(\s*candidate\.history/);
   assert.match(chatNotifier, /chat_voice_habits_v1_/);
@@ -1909,22 +1920,22 @@ test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat
   assert.match(chatNotifier, /getCharacterContextVersion\(roleId\)/);
   assert.match(chatNotifier, /enqueueAutonomyActivity\(roleId, Number\(context\.version\)\)/);
   assert.match(chatNotifier, /claimAutonomyActivity\(roleId\)/);
-  assert.match(chatNotifier, /completeAutonomyActivity\(activity, content\)/);
+  assert.match(chatNotifier, /completeAutonomyActivity\(activity, cloudMessageText, \{/);
   assert.match(chatNotifier, /skipAutonomyActivity\(activity, 'no_worthy_message'\)/);
   assert.match(chatNotifier, /messages\[messages\.length - 1\]\.serverMessageId = serverMessageId/);
 
 });
 
 test('proactive contact notifier is loaded on home and navigation pages and precached by PWA', () => {
-  assert.match(homePage, /chat-notifier\.js\?v=20261107v7/);
-  assert.match(navPage, /chat-notifier\.js\?v=20261107v7/);
-  assert.match(detail, /chat-notifier\.js\?v=20261107v7/);
-  assert.match(detail, /cloud-push-client\.js\?v=20261107v2/);
-  assert.match(detail, /chat-presence-policy\.js\?v=20261102v19/);
-  assert.match(serviceWorker, /phone-app-pwa-v217/);
-  assert.match(serviceWorker, /chat-notifier\.js\?v=20261107v7/);
-  assert.match(serviceWorker, /cloud-push-client\.js\?v=20261107v2/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v19/);
+  assert.match(homePage, /chat-notifier\.js\?v=20261111cloudpush1/);
+  assert.match(navPage, /chat-notifier\.js\?v=20261111cloudpush1/);
+  assert.match(detail, /chat-notifier\.js\?v=20261111cloudpush1/);
+  assert.match(detail, /cloud-push-client\.js\?v=20261111cloudpush1/);
+  assert.match(detail, /chat-presence-policy\.js\?v=20261111firstcontact1/);
+  assert.match(serviceWorker, /phone-app-pwa-v221/);
+  assert.match(serviceWorker, /chat-notifier\.js\?v=20261111cloudpush1/);
+  assert.match(serviceWorker, /cloud-push-client\.js\?v=20261111cloudpush1/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261111firstcontact1/);
   assert.match(serviceWorker, /chat-followup-policy/);
 });
 
@@ -1978,7 +1989,7 @@ test('chat, group chat and Moments prompts consume the same public timeline with
   assert.ok(detail.includes('PhoneStorage.getMoments()'));
   assert.ok(momentsPage.includes('role-public-timeline.js?v=20261102v1'));
   assert.ok(momentsPage.includes('RolePublicTimeline.buildRolePrompt'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v217'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v221'));
   assert.ok(serviceWorker.includes('role-public-timeline.js?v=20261102v1'));
 });
   
@@ -2019,7 +2030,7 @@ test('Messages chat-list theme is isolated, cache-busted, grayscale and hides in
 
   assert.ok(chatHome.includes('chat-list-editorial-theme.css?v=20261104v2'));
   assert.ok(chatHome.includes('chat-list-theme.js?v=20261104v2'));
-  assert.match(serviceWorker, /phone-app-pwa-v217/);
+  assert.match(serviceWorker, /phone-app-pwa-v221/);
   assert.ok(serviceWorker.includes('./shared/css/chat-list-editorial-theme.css?v=20261104v2'));
   assert.ok(serviceWorker.includes('./shared/js/chat-list-theme.js?v=20261104v2'));
 
@@ -2161,7 +2172,7 @@ test('whole-chat theme is refreshed when a chat page is restored from browser hi
   ]) {
     assert.ok(read(path).includes('chat-page-theme.js?v=20261105v1'), path + ' should load the refreshed theme bridge');
   }
-  assert.match(serviceWorker, /phone-app-pwa-v217/, 'the PhoneAPI and settings changes require the refreshed PWA cache');
+  assert.match(serviceWorker, /phone-app-pwa-v221/, 'the PhoneAPI and settings changes require the refreshed PWA cache');
 });
 
 
@@ -2316,7 +2327,7 @@ test('WeChat page refinements load on all five core pages and stay isolated from
     'message bubbles must remain under ChatBeauty customization'
   );
   assert.ok(serviceWorker.includes("'./shared/css/wechat-theme-refinements.css?v=20261105v2'"));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v217'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v221'));
   assert.ok(
     wechatThemeCss.includes('.floating-nav .nav-tab > span:nth-of-type(2)::after'),
     'WeChat labels must attach to the second span, not the optional unread badge'
@@ -2375,10 +2386,11 @@ test('AI 等待回复期间收到主动消息时，最终落库会合并最新�
   const sendStart = detail.indexOf('async function sendMsg(opts)');
   const snapshotRefresh = detail.indexOf('historyList = refreshSendHistorySnapshot(', sendStart);
   const retryMutation = detail.indexOf('var retryRemarked = false', snapshotRefresh);
-  const aiAppend = detail.indexOf('historyList.push(aiMsg)', snapshotRefresh);
+  const aiAppend = detail.indexOf('replyMessages.forEach(function (message) { historyList.push(message); });', snapshotRefresh);
+  const assistantSave = detail.indexOf('if (!saveMessages(historyList))', aiAppend);
   assert.ok(sendStart >= 0 && snapshotRefresh > sendStart,
     'sendMsg must refresh history after the asynchronous model request returns');
-  assert.ok(retryMutation > snapshotRefresh && aiAppend > snapshotRefresh,
+  assert.ok(retryMutation > snapshotRefresh && aiAppend > retryMutation && assistantSave > aiAppend,
     'both retry-error and successful reply persistence must use the refreshed history');
 
   const helperStart = detail.indexOf('function refreshSendHistorySnapshot(');
@@ -2410,7 +2422,7 @@ test('AI 等待回复期间收到主动消息时，最终落库会合并最新�
 
 test('AI 气泡动画结束后，红包/转账/图片/通话卡统一使用最新历史', () => {
   const sendStart = detail.indexOf('async function sendMsg(opts)');
-  const pacingAwait = detail.indexOf('await appendAiMessageWithPacing(aiMsg, aiMessageIndex)', sendStart);
+  const pacingAwait = detail.indexOf('await appendReplyMessagesWithPacing(replyMessages, aiMessageIndex)', sendStart);
   const refreshAfterPacing = detail.indexOf('historyList = refreshHistoryAfterAssistantPacing(', pacingAwait);
   const callCard = detail.indexOf('insertIncomingCallCard(historyList)', refreshAfterPacing);
   const payCards = detail.indexOf('insertPayCards(historyList, parsedPay.items)', callCard);
@@ -2422,7 +2434,7 @@ test('AI 气泡动画结束后，红包/转账/图片/通话卡统一使用最�
   assert.ok(callCard > refreshAfterPacing && payCards > refreshAfterPacing &&
     familyCards > refreshAfterPacing && heartCards > refreshAfterPacing && imageCards > refreshAfterPacing,
     'all follow-up card handlers must receive the refreshed history after the only pacing await');
-  assert.match(detail, /persistedAssistantMessage = aiMsg/);
+  assert.match(detail, /persistedAssistantMessage = replyMessages/);
   assert.match(detail, /if \(!Array\.isArray\(historyList\)\)/);
 });
 
@@ -2496,8 +2508,8 @@ test('cloud outbound 多气泡仅在最后一条进入视口后标记已读，�
   assert.match(appendSource, /extraRow\.dataset\.serverMessageId = String\(msg\.serverMessageId\)/);
   assert.match(appendSource, /host\.appendChild\(el\);[\s\S]{0,180}observeCloudOutboundReadRow\(el\)/);
 
-  const paceStart = detail.indexOf('function appendAiMessageWithPacing');
-  const paceEnd = detail.indexOf('// ================= 虚拟列表', paceStart);
+  const paceStart = detail.indexOf('function appendMessagesWithPacing(messages, startIdx, options)');
+  const paceEnd = detail.indexOf('function appendAiMessageWithPacing', paceStart);
   assert.ok(paceStart >= 0 && paceEnd > paceStart);
   const pacingSource = detail.slice(paceStart, paceEnd);
   assert.match(pacingSource, /chatMessages\.appendChild\(node\);[\s\S]{0,120}observeCloudOutboundReadRow\(node\)/);
@@ -2590,13 +2602,14 @@ test('图片卡批量保存失败时不显示半批内容，红包转账失败�
   assert.match(paySandbox.toast, /红包\/转账卡片未能保存/);
 });
 
-test('亲属卡独立存储成功但聊天记录失败时，不伪造聊天卡片已保存', () => {
-  const start = detail.indexOf('function insertRoleFamilyCardInvitations(historyList, cardSpecs)');
-  const end = detail.indexOf('\n\n        window.handle', start);
+test('亲属卡独立存储成功但聊天记录失败时，不伪造聊天卡片已保存', async () => {
+  const start = detail.indexOf('async function insertRoleFamilyCardInvitations(historyList, cardSpecs)');
+  const end = detail.indexOf('\n\n        var pendingRoleFamilyCardActions', start);
   assert.ok(start >= 0 && end > start, 'role-family invitation handler must be present');
   let createdExternalCard = false;
   let rendered = 0;
   let toast = '';
+  let lockDepth = 0;
   const sandbox = {
     isGroupChat: false,
     aliasRoleId: 'role-1',
@@ -2604,9 +2617,22 @@ test('亲属卡独立存储成功但聊天记录失败时，不伪造聊天卡�
     currentCharacter: { id: 'role-1', name: '角色' },
     contactName: '角色',
     window: {
+      MaoMaoWalletLedger: {
+        supportsCrossTabLock: () => true,
+        runExclusive: async (task) => {
+          lockDepth += 1;
+          try { return await task(); }
+          finally { lockDepth -= 1; }
+        }
+      },
       RoleFamilyCards: {
+        readState: () => ({ ok: true, reason: '', value: [] }),
         findForRole: () => [],
-        createInvite: () => { createdExternalCard = true; return { id: 'family-card-1' }; }
+        createInvite: () => {
+          assert.equal(lockDepth, 1, 'AI issued card must be created inside the shared wallet lock');
+          createdExternalCard = true;
+          return { id: 'family-card-1' };
+        }
       }
     },
     saveMessages: () => false,
@@ -2615,10 +2641,11 @@ test('亲属卡独立存储成功但聊天记录失败时，不伪造聊天卡�
   };
   runInNewContext(detail.slice(start, end), sandbox);
   const history = [{ mid: 'existing' }];
-  assert.equal(sandbox.insertRoleFamilyCardInvitations(history, [{
+  assert.equal(await sandbox.insertRoleFamilyCardInvitations(history, [{
     kind: 'standard', monthlyLimit: 500, singleLimit: 100, note: '测试'
   }]), false);
   assert.equal(createdExternalCard, true, 'the separate role-family store may already contain the invite');
+  assert.equal(lockDepth, 0, 'the wallet lock must be released after chat persistence fails');
   assert.equal(history.length, 1, 'the unsaved chat invitation must be rolled back');
   assert.equal(rendered, 0, 'the unsaved chat card must not be displayed as persisted');
   assert.match(toast, /聊天记录未能保存/);
@@ -2665,7 +2692,10 @@ test('钱包流水已落库但聊天状态写入失败时，下一次点击只�
     },
     currentCharacter: { name: '角色' }
   };
-  const walletWindow = { navigator: {}, localStorage: sandbox.localStorage };
+  const walletWindow = {
+    navigator: { locks: { request: (_name, _options, callback) => Promise.resolve().then(callback) } },
+    localStorage: sandbox.localStorage
+  };
   runInNewContext(walletLedgerSource, { window: walletWindow });
   sandbox.window = walletWindow;
   runInNewContext(handlerSource, sandbox);
@@ -2756,7 +2786,7 @@ test('退回卡按 returnOfPaymentId 更新原转账，等额的另一笔转账�
   ];
   let finance = '[]';
   const sandbox = {
-    window: { MaoMaoWalletLedger: { runExclusive: task => task() } },
+    window: { MaoMaoWalletLedger: { runExclusive: task => task(), supportsCrossTabLock: () => true } },
     loadMessages: () => clone(persisted),
     ensureMid: message => message.mid,
     getWorkData: () => clone(wallet),
@@ -2803,7 +2833,7 @@ test('旧退回卡缺少原交易编号且有多笔等额候选时，必须停�
   let finance = '[]';
   const toasts = [];
   const sandbox = {
-    window: { MaoMaoWalletLedger: { runExclusive: task => task() } },
+    window: { MaoMaoWalletLedger: { runExclusive: task => task(), supportsCrossTabLock: () => true } },
     loadMessages: () => clone(persisted),
     ensureMid: message => message.mid,
     getWorkData: () => clone(wallet),
@@ -2843,6 +2873,8 @@ test('订单售后申请关联原支付流水且重复提交保持同一申请�
       getItem: key => state.has(key) ? state.get(key) : null,
       setItem: (key, value) => state.set(key, String(value))
     },
+    // These journal tests emulate the browser's available origin-wide lock.
+    navigator: { locks: { request: (_name, _opts, task) => Promise.resolve().then(task) } },
     MaoMaoWalletLedger: { runExclusive: task => Promise.resolve().then(task) },
     crypto: { randomUUID: () => 'stable-after-sales-id' },
     console
@@ -2902,6 +2934,8 @@ test('订单售后在财务流水已关联但订单最终确认失败时，可�
         state.set(key, String(value));
       }
     },
+    // These journal tests emulate the browser's available origin-wide lock.
+    navigator: { locks: { request: (_name, _opts, task) => Promise.resolve().then(task) } },
     MaoMaoWalletLedger: { runExclusive: task => Promise.resolve().then(task) },
     crypto: { randomUUID: () => 'takeout-after-sales-id' },
     console
@@ -2946,6 +2980,8 @@ test('原支出流水缺失或金额不匹配时，不创建售后申请', async
       getItem: key => state.has(key) ? state.get(key) : null,
       setItem: (key, value) => state.set(key, String(value))
     },
+    // These journal tests emulate the browser's available origin-wide lock.
+    navigator: { locks: { request: (_name, _opts, task) => Promise.resolve().then(task) } },
     MaoMaoWalletLedger: { runExclusive: task => Promise.resolve().then(task) },
     console
   };
@@ -2980,7 +3016,7 @@ test('记账页能从原支出行追溯订单售后申请，且申请期间不�
 
 test('商店与外卖售后入口只对可核验的原始支付流水开放，且明确不自动退款', () => {
   for (const [name, page] of [['shop', shopPage], ['takeout', takeoutPage]]) {
-    assert.ok(page.includes('order-after-sales.js?v=20261107v2'));
+    assert.ok(page.includes('order-after-sales.js?v=20261114v3'));
     assert.match(page, /MaoMaoOrderAfterSales\.canSubmit/);
     assert.match(page, /MaoMaoOrderAfterSales|journal\.submit/);
     assert.match(page, /不会自动退款/);
@@ -3038,11 +3074,96 @@ test('商店旧订单按原时间线补齐进度且损坏订单存储不被空�
   assert.match(shopPage, /订单数据异常，已停止覆盖保存/);
 });
 
+test('亲属卡存储损坏时，所有写入口必须拒绝覆盖并保留原始数据', () => {
+  assert.match(shopPage, /亲属卡数据异常，已暂停使用和扣款/);
+  assert.match(takeoutPage, /亲属卡数据异常，已暂停使用和扣款/);
+  assert.match(shopPage, /if \(!roleCardState\.ok\)[\s\S]*?ledger\.cancelPendingCheckout\(transactionId\)/);
+  assert.match(takeoutPage, /if \(!roleCardState\.ok\)[\s\S]*?ledger\.cancelPendingCheckout\(transactionId\)/);
+
+  const malformedStores = [
+    '{broken-json',
+    '{"not":"an-array"}',
+    '[null]',
+    '[{"roleId":"role-1"}]',
+    '[{"id":"same"},{"id":"same"}]',
+    '[{"id":"card-1","history":{}}]',
+    '[{"id":"card-1","paymentReceipts":{}}]'
+  ];
+
+  for (const raw of malformedStores) {
+    let writes = 0;
+    const storage = {
+      getItem: () => raw,
+      setItem: () => { writes += 1; }
+    };
+    const sandbox = { window: {}, localStorage: storage };
+    runInNewContext(roleFamilyCardsSource, sandbox);
+    const api = sandbox.window.RoleFamilyCards;
+    const state = api.readState();
+    assert.equal(state.ok, false, 'malformed card store must be reported as unreadable');
+    assert.equal(api.createInvite({
+      roleId: 'role-new', monthlyLimit: 50, singleLimit: 20
+    }), null, 'new invites must not replace malformed saved cards');
+    assert.equal(api.update('card-1', 'accept').reason, 'invalid');
+    assert.equal(api.applyRoleChange('role-1', {
+      action: 'revoke'
+    }).reason, 'invalid');
+    assert.equal(api.consume('card-1', 5, '商店', 'shop', 'damaged-payment').reason, 'invalid');
+    assert.equal(api.writeAll([]), false, 'even the exposed write helper must fail closed');
+    assert.equal(writes, 0, 'no storage mutation may be attempted on a malformed store');
+  }
+});
+
+test('亲属卡写入接口在存储正常时也拒绝无效的新数据载荷', () => {
+  let stored = '[]';
+  let writes = 0;
+  const storage = {
+    getItem: () => stored,
+    setItem: (key, value) => { writes += 1; stored = String(value); }
+  };
+  const sandbox = { window: {
+      // Unit fixture: simulate the shared lock already held. An integration
+      // test below exercises the actual Web Locks coordination.
+      MaoMaoWalletLedger: { hasActiveMutationLock: () => true }
+    }, localStorage: storage };
+  runInNewContext(roleFamilyCardsSource, sandbox);
+  const api = sandbox.window.RoleFamilyCards;
+
+  const invalidPayloads = [
+    [{ id: 'same' }, { id: 'same' }],
+    [{ id: 'bad-history', history: {} }],
+    [{ id: 'bad-history-row', history: [null] }],
+    [{ id: 'bad-receipts', paymentReceipts: {} }],
+    [{ id: 'bad-receipt-row', paymentReceipts: [{ amount: 5 }] }],
+    [{ id: 'bad-limit', monthlyLimit: 'not-a-number' }],
+    [{ id: 'bad-status', status: 'unknown' }]
+  ];
+  for (const payload of invalidPayloads) {
+    assert.equal(api.writeAll(payload), false,
+      'invalid payload must be rejected before storage write: ' + JSON.stringify(payload));
+    assert.equal(stored, '[]', 'existing valid cards must remain unchanged');
+    assert.equal(writes, 0, 'invalid payload must not call localStorage.setItem');
+  }
+
+  const validLegacy = [{
+    id: 'legacy-card', roleId: 'role-1', status: 'active',
+    monthlyLimit: 100, singleLimit: 30,
+    history: [{ amount: '12.50', time: Date.now(), note: '旧记录' }]
+  }];
+  assert.equal(api.writeAll(validLegacy), true, 'valid legacy card records remain writable');
+  assert.equal(writes, 1);
+  assert.equal(api.find('legacy-card').history.length, 1);
+});
+
 test('亲属卡状态变更必须通过本地存储写后读回确认', () => {
   let stored = '[]';
   let silentlyDropWrites = false;
   const sandbox = {
-    window: {},
+    window: {
+      // Unit fixture: simulate the shared lock already held. An integration
+      // test below exercises the actual Web Locks coordination.
+      MaoMaoWalletLedger: { hasActiveMutationLock: () => true }
+    },
     localStorage: {
       getItem: () => stored,
       setItem: (key, value) => {
@@ -3152,16 +3273,18 @@ test('多个标签页并发领取时，全局钱包锁串行化不同交易并�
   assert.equal(renders, 2);
 });
 
-test('浏览器不支持 Web Locks 时保留本页防连点，并明确提醒跨页面限制', async () => {
+test('浏览器不支持 Web Locks 时红包收款直接拒绝且不访问钱包', async () => {
   const start = detail.indexOf('const pendingPaymentOperations = new Set();');
   const end = detail.indexOf('// ===== 群投票', start);
   let walletReads = 0;
+  let walletWrites = 0;
+  let chatWrites = 0;
   const sandbox = {
     loadMessages: () => [{ role: 'assistant', type: 'redpacket', amount: '1.00', status: 'unopened', mid: 'fallback-pay' }],
     ensureMid: (message) => message.mid,
     getWorkData: () => { walletReads += 1; return { balance: 0, history: [] }; },
-    saveWorkData: () => true,
-    saveMessages: () => true,
+    saveWorkData: () => { walletWrites++; return true; },
+    saveMessages: () => { chatWrites++; return true; },
     showToast: (message) => { sandbox.toasts.push(message); },
     renderAllMessages: () => {},
     openPayResult: () => {},
@@ -3179,7 +3302,10 @@ test('浏览器不支持 Web Locks 时保留本页防连点，并明确提醒跨
     sandbox.handlePayCardClick(event)
   ]);
   assert.match(sandbox.toasts[0], /不支持跨页面钱包锁/);
-  assert.equal(walletReads, 2, 'the second same-page click must be blocked before it can read or mutate the wallet');
+  assert.equal(walletReads, 0, 'no wallet read may start without cross-tab locking');
+  assert.equal(walletWrites, 0, 'no balance credit is allowed');
+  assert.equal(chatWrites, 0, 'no chat receipt acknowledgement is allowed');
+  assert.equal(sandbox.toasts.length, 2, 'both attempts explain the safe block');
 });
 
 
@@ -3239,26 +3365,453 @@ test('统一钱包锁会串行化同源不同页面的入账与支出', async ()
   assert.deepEqual(operations, ['chat-in', 'chat-out', 'shop-in', 'shop-out', 'wallet-in', 'wallet-out']);
 });
 
-test('不支持 Web Locks 的浏览器只提供页面内队列并明确暴露降级', async () => {
-  const sandbox = { window: { navigator: {} } };
-  runInNewContext(walletLedgerSource, sandbox);
-  const ledger = sandbox.window.MaoMaoWalletLedger;
-  assert.equal(ledger.supportsCrossTabLock(), false);
-  const notices = [];
-  const order = [];
-  await Promise.all([
-    ledger.runExclusive(async () => {
-      order.push('first-start');
-      await Promise.resolve();
-      order.push('first-end');
-    }, { onFallback: () => notices.push('fallback') }),
-    ledger.runExclusive(async () => {
-      order.push('second-start');
-      order.push('second-end');
-    }, { onFallback: () => notices.push('fallback') })
+test('共享钱包锁在无 Web Locks 时始终拒绝执行，禁止页内降级队列写入', async () => {
+  for (const navigator of [undefined, {}, { locks: { request: null } }]) {
+    const sandbox = { window: { navigator } };
+    runInNewContext(walletLedgerSource, sandbox);
+    const ledger = sandbox.window.MaoMaoWalletLedger;
+    assert.equal(ledger.supportsCrossTabLock(), false);
+    let executions = 0;
+    const attempts = [ledger.runExclusive(() => { executions++; }, { onFallback: () => {} }),
+      ledger.runExclusive(() => { executions++; })];
+    for (const attempt of attempts) {
+      await assert.rejects(attempt, error => error.code === 'cross-tab-lock-unavailable');
+    }
+    assert.equal(executions, 0, 'neither task must run on the page-local fallback');
+  }
+});
+
+test('聊天详情页的多气泡呈现队列只声明一次', () => {
+  assert.equal((detail.match(/let aiBubblePacingRunId = 0;/g) || []).length, 1,
+    'the chat detail script must declare its pacing generation counter exactly once');
+  assert.equal((detail.match(/let aiBubblePacingQueue = Promise\.resolve\(\);/g) || []).length, 1,
+    'the chat detail script must declare its pacing queue exactly once');
+});
+
+test('亲属卡所有状态变更与商店外卖消费共用钱包锁', async () => {
+  assert.match(familyCardsPage, /wallet-ledger\.js\?v=20261114v12/);
+  assert.match(familyCardsPage, /async function runAction\(action, id\)/);
+  assert.match(familyCardsPage, /await ledger\.runExclusive\(function \(\)/);
+  assert.match(familyCardsPage, /api\.update\(id, action\)/);
+  assert.match(detail, /async function applyRoleFamilyCardChanges\(changes\)/);
+  assert.match(detail, /async function insertRoleFamilyCardInvitations\(historyList, cardSpecs\)/);
+  assert.match(detail, /await ledger\.runExclusive\(function \(\)/);
+  assert.match(detail, /await applyRoleFamilyCardChanges\(parsedRoleFamilyCard\.changes\)/);
+  assert.match(detail, /await insertRoleFamilyCardInvitations\(historyList, parsedRoleFamilyCard\.cards\)/);
+  assert.match(detail, /window\.handleRoleFamilyCardAction = async function/);
+  assert.match(detail, /return window\.RoleFamilyCards\.update\(cardId, action\)/);
+
+  // Execute the real AI-initiated role adjustment path and prove the card module
+  // is invoked while the origin-wide wallet lock is held.
+  const roleChangeStart = detail.indexOf('async function applyRoleFamilyCardChanges(changes)');
+  const roleChangeEnd = detail.indexOf('async function insertRoleFamilyCardInvitations(historyList, cardSpecs)', roleChangeStart);
+  assert.ok(roleChangeStart >= 0 && roleChangeEnd > roleChangeStart,
+    'AI role-change function must be extractable');
+  let roleLockDepth = 0;
+  let roleLockQueue = Promise.resolve();
+  const roleChanges = [];
+  const roleSandbox = {
+    isGroupChat: false,
+    aliasRoleId: 'role-ai',
+    currentRoleId: 'role-ai',
+    currentCharacter: { id: 'role-ai', name: '角色' },
+    window: {
+      MaoMaoWalletLedger: {
+        supportsCrossTabLock: () => true,
+        runExclusive: task => {
+          const run = roleLockQueue.then(async () => {
+            roleLockDepth += 1;
+            try { return await task(); }
+            finally { roleLockDepth -= 1; }
+          });
+          roleLockQueue = run.catch(() => {});
+          return run;
+        }
+      },
+      RoleFamilyCards: {
+        applyRoleChange: (roleId, change) => {
+          assert.equal(roleLockDepth, 1,
+            'AI-issued card adjustment/revocation must execute inside the shared lock');
+          roleChanges.push({ roleId: roleId, action: change.action });
+          return { ok: true };
+        }
+      }
+    },
+    showToast: () => {},
+    console: { warn: () => {} }
+  };
+  runInNewContext(detail.slice(roleChangeStart, roleChangeEnd), roleSandbox);
+  const changed = await roleSandbox.applyRoleFamilyCardChanges([
+    { action: 'adjust', monthlyLimit: 100, singleLimit: 50 },
+    { action: 'revoke' }
   ]);
-  assert.deepEqual(order, ['first-start', 'first-end', 'second-start', 'second-end']);
-  assert.deepEqual(notices, ['fallback'], 'fallback warning is emitted only once per page');
+  assert.equal(changed, true);
+  assert.deepEqual(roleChanges, [
+    { roleId: 'role-ai', action: 'adjust' },
+    { roleId: 'role-ai', action: 'revoke' }
+  ]);
+  assert.equal(roleLockDepth, 0, 'AI role-change lock must be released after completion');
+
+  // Execute the real card-wallet page action wrapper and assert that its storage
+  // mutation is called only from inside the shared wallet lock.
+  const actionStart = familyCardsPage.indexOf('var pendingCardActions = new Set();');
+  const actionEnd = familyCardsPage.indexOf("\n\n  document.querySelector('.filters')", actionStart);
+  assert.ok(actionStart >= 0 && actionEnd > actionStart,
+    'family card page action wrapper must be extractable');
+  let lockDepth = 0;
+  let lockQueue = Promise.resolve();
+  const updatedCards = [];
+  const pageSandbox = {
+    window: {
+      MaoMaoWalletLedger: {
+        supportsCrossTabLock: () => true,
+        runExclusive: (task) => {
+          const next = lockQueue.then(async () => {
+            lockDepth += 1;
+            try { return await task(); }
+            finally { lockDepth -= 1; }
+          });
+          lockQueue = next.catch(() => {});
+          return next;
+        }
+      }
+    },
+    api: {
+      find: id => ({ id: id, roleId: 'role-' + id }),
+      update: (id, action) => {
+        assert.equal(lockDepth, 1,
+          'card status storage mutation must execute inside the shared wallet lock');
+        updatedCards.push({ id: id, action: action });
+        return { ok: true, card: { id: id, roleId: 'role-' + id } };
+      }
+    },
+    appendRoleNotice: () => {},
+    render: () => {},
+    toast: () => {},
+    console: { warn: () => {} }
+  };
+  runInNewContext(familyCardsPage.slice(actionStart, actionEnd), pageSandbox);
+  await Promise.all([
+    pageSandbox.runAction('accept', 'card-a'),
+    pageSandbox.runAction('pause', 'card-b')
+  ]);
+  assert.deepEqual(updatedCards, [
+    { id: 'card-a', action: 'accept' },
+    { id: 'card-b', action: 'pause' }
+  ]);
+  assert.equal(lockDepth, 0, 'the card page must release the shared lock after each action');
+
+  // Exercise the shared lock contract: an update from the card wallet page must
+  // not overlap a consume operation from a commerce page.
+  let tail = Promise.resolve();
+  let active = 0;
+  let maxActive = 0;
+  const window = {
+    navigator: {
+      locks: {
+        request: (_name, options, callback) => {
+          assert.equal(options.mode, 'exclusive');
+          const run = tail.then(async () => {
+            active += 1;
+            maxActive = Math.max(maxActive, active);
+            try { return await callback(); }
+            finally { active -= 1; }
+          });
+          tail = run.catch(() => {});
+          return run;
+        }
+      }
+    }
+  };
+  runInNewContext(walletLedgerSource, { window });
+  const ledger = window.MaoMaoWalletLedger;
+  const order = [];
+  return Promise.all([
+    ledger.runExclusive(async () => { order.push('consume:start'); await Promise.resolve(); order.push('consume:end'); }),
+    ledger.runExclusive(async () => { order.push('card-update:start'); await Promise.resolve(); order.push('card-update:end'); })
+  ]).then(() => {
+    assert.equal(maxActive, 1, 'commerce consumption and card status writes must never overlap');
+    assert.deepEqual(order, [
+      'consume:start', 'consume:end', 'card-update:start', 'card-update:end'
+    ]);
+  });
+});
+
+test('亲属卡实际消费与卡包暂停操作不会互相覆盖记录', async () => {
+  const values = new Map();
+  const localStorage = {
+    getItem: key => values.has(key) ? values.get(key) : null,
+    setItem: (key, value) => { values.set(key, String(value)); },
+    removeItem: key => { values.delete(key); }
+  };
+  let queue = Promise.resolve();
+  let active = 0;
+  let maxActive = 0;
+  const locks = {
+    request: (_name, options, callback) => {
+      assert.equal(options.mode, 'exclusive');
+      const run = queue.then(async () => {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        try { return await callback(); }
+        finally { active -= 1; }
+      });
+      queue = run.catch(() => {});
+      return run;
+    }
+  };
+  const window = {
+    navigator: { locks: locks },
+    localStorage: localStorage,
+    console: { warn: () => {} }
+  };
+  const sandbox = { window, localStorage, console: window.console };
+  runInNewContext(walletLedgerSource, sandbox);
+  runInNewContext(roleFamilyCardsSource, sandbox);
+  const api = window.RoleFamilyCards;
+  const card = await window.MaoMaoWalletLedger.runExclusive(() => api.createInvite({
+    roleId: 'role-1', roleName: '角色',
+    kind: 'family', monthlyLimit: 100, singleLimit: 50
+  }));
+  assert.ok(card);
+  assert.equal((await window.MaoMaoWalletLedger.runExclusive(() =>
+    api.update(card.id, 'accept'))).ok, true);
+
+  const actionStart = familyCardsPage.indexOf('var pendingCardActions = new Set();');
+  const actionEnd = familyCardsPage.indexOf("\n\n  document.querySelector('.filters')", actionStart);
+  sandbox.api = api;
+  sandbox.appendRoleNotice = () => {};
+  sandbox.render = () => {};
+  sandbox.toast = () => {};
+  runInNewContext(familyCardsPage.slice(actionStart, actionEnd), sandbox);
+
+  // The commerce debit obtains the lock first. The card page pauses the card only
+  // after the receipt is committed, preserving its newly written history.
+  const spendPromise = window.MaoMaoWalletLedger.runExclusive(() =>
+    api.consume(card.id, 12, '商店消费', 'shop', 'shop-payment-concurrent')
+  );
+  const pausePromise = sandbox.runAction('pause', card.id);
+  const spend = await spendPromise;
+  await pausePromise;
+
+  assert.equal(spend.ok, true);
+  assert.equal(maxActive, 1, 'commerce spend and card status update must be serialized');
+  const saved = api.find(card.id);
+  assert.equal(saved.status, 'paused');
+  assert.equal(saved.history.length, 1, 'pausing a card must not overwrite its committed spend row');
+  assert.equal(saved.history[0].paymentId, 'shop-payment-concurrent');
+  assert.equal(api.usedThisMonth(saved), 12);
+});
+
+test('并发重复提交售后申请只创建一个申请编号和一组财务关联', async () => {
+  const state = new Map([
+    ['shop_orders', JSON.stringify([{
+      paymentId: 'parallel-shop-payment', total: 10, payMethod: 'normal', ts: 1000,
+      items: [{ cn: '商品A', price: 6 }, { cn: '商品B', price: 4 }]
+    }])],
+    ['finance_records', JSON.stringify([
+      { paymentId: 'parallel-shop-payment', paymentLineIndex: 0, amount: 6, type: 'expense', category: '购物' },
+      { paymentId: 'parallel-shop-payment', paymentLineIndex: 1, amount: 4, type: 'expense', category: '购物' }
+    ])]
+  ]);
+  const localStorage = {
+    getItem: key => state.has(key) ? state.get(key) : null,
+    setItem: (key, value) => { state.set(key, String(value)); }
+  };
+  let queue = Promise.resolve();
+  let active = 0;
+  let maxActive = 0;
+  let lockCalls = 0;
+  const window = {
+    navigator: {
+      locks: {
+        request: (name, options, callback) => {
+          lockCalls += 1;
+          assert.equal(name, 'maomao-wallet-ledger-v1');
+          assert.equal(options.mode, 'exclusive');
+          const run = queue.then(async () => {
+            active += 1;
+            maxActive = Math.max(maxActive, active);
+            try { return await callback(); }
+            finally { active -= 1; }
+          });
+          queue = run.catch(() => {});
+          return run;
+        }
+      }
+    },
+    localStorage: localStorage,
+    crypto: { randomUUID: () => 'parallel-after-sales-id' },
+    console: { warn: () => {} }
+  };
+  const sandbox = { window, localStorage, console: window.console };
+  runInNewContext(walletLedgerSource, sandbox);
+  runInNewContext(orderAfterSalesSource, sandbox);
+  const api = window.MaoMaoOrderAfterSales;
+  const input = {
+    channel: 'shop', ordersKey: 'shop_orders', financeKey: 'finance_records',
+    paymentId: 'parallel-shop-payment', amount: 10, paymentMethod: 'normal',
+    type: 'cancel', reason: '下错订单'
+  };
+
+  const results = await Promise.all([api.submit(input), api.submit(input)]);
+  assert.ok(results.every(result => result.ok));
+  assert.equal(new Set(results.map(result => result.request.requestId)).size, 1,
+    'concurrent retries must reuse the same application ID');
+  assert.equal(results.filter(result => result.replayed).length, 1,
+    'exactly one of the serialized submissions should be a replay');
+  assert.equal(lockCalls, 2);
+  assert.equal(maxActive, 1, '售后申请与原财务流水的关联必须串行写入');
+  const orders = JSON.parse(state.get('shop_orders'));
+  const finances = JSON.parse(state.get('finance_records'));
+  assert.equal(orders[0].afterSales.status, 'pending_review');
+  assert.equal(orders[0].afterSales.journalStatus, 'linked');
+  assert.equal(finances.length, 2, 'no duplicate or synthetic refund row may be created');
+  assert.ok(finances.every(row =>
+    row.afterSalesRequestId === orders[0].afterSales.requestId &&
+    row.afterSalesStatus === 'pending_review'
+  ));
+});
+
+test('商店与外卖亲密付使用严格钱包快照，损坏的既有余额数据必须停止', () => {
+  function makeLedger(raw, exists = true) {
+    const localStorage = {
+      getItem: () => exists ? raw : null
+    };
+    const window = { navigator: {}, localStorage };
+    runInNewContext(walletLedgerSource, { window });
+    return window.MaoMaoWalletLedger;
+  }
+
+  const firstUse = makeLedger(null, false).readWalletForMutation();
+  assert.deepEqual(JSON.parse(JSON.stringify(firstUse)), { balance: 1000, history: [] },
+    'only a genuinely missing wallet record may use the first-use balance');
+
+  const legacy = makeLedger('{"balance":42.5}').readWalletForMutation();
+  assert.equal(legacy.balance, 42.5, 'a valid legacy wallet without history keeps its balance');
+  assert.deepEqual(JSON.parse(JSON.stringify(legacy.history)), []);
+
+  const valid = makeLedger(JSON.stringify({
+    balance: 23.75,
+    history: [{ paymentId: 'existing-payment', amount: 4 }]
+  })).readWalletForMutation();
+  assert.equal(valid.balance, 23.75);
+  assert.equal(valid.history[0].paymentId, 'existing-payment');
+
+  for (const raw of [
+    '{broken-json',
+    'null',
+    '[]',
+    '{"balance":"42.5","history":[]}',
+    '{"balance":-1,"history":[]}',
+    '{"balance":42.5,"history":{}}'
+  ]) {
+    assert.equal(makeLedger(raw).readWalletForMutation(), null,
+      'malformed existing wallet data must fail closed: ' + raw);
+  }
+
+  for (const [name, source] of [['shop', shopPage], ['takeout', takeoutPage]]) {
+    assert.match(source, /ledger\.readWalletForMutation\('workData', oldWalletRaw\)/,
+      name + ' must use the strict shared wallet reader');
+    assert.match(source, /钱包数据异常，已停止亲密付扣款/,
+      name + ' must stop instead of fabricating a replacement balance');
+    assert.doesNotMatch(source, /JSON\.parse\(oldWalletRaw \|\| 'null'\) \|\| \{ balance: 1000, history: \[\] \}/,
+      name + ' must not replace malformed persisted wallet data with 1000');
+  }
+});
+
+test('聊天收款入口也拒绝损坏的钱包数据，不再把余额重置成 1000', async () => {
+  const readerStart = detail.indexOf("const WORK_DATA_KEY = 'workData';");
+  const readerEnd = detail.indexOf('function saveWorkData(wd)', readerStart);
+  assert.ok(readerStart >= 0 && readerEnd > readerStart, 'chat wallet reader must be present');
+  const readerSource = detail.slice(readerStart, readerEnd);
+
+  function readChatWallet(raw, exists = true) {
+    const localStorage = { getItem: () => exists ? raw : null };
+    const window = { navigator: {}, localStorage };
+    runInNewContext(walletLedgerSource, { window });
+    const sandbox = { window, localStorage };
+    runInNewContext(readerSource, sandbox);
+    return sandbox.getWorkData();
+  }
+
+  assert.deepEqual(JSON.parse(JSON.stringify(readChatWallet(null, false))),
+    { balance: 1000, history: [] }, 'first-use wallet initialization remains compatible');
+  assert.equal(readChatWallet('{broken-json'), null,
+    'corrupt JSON must block receipt before any balance mutation');
+  assert.equal(readChatWallet('{"balance":"60","history":[]}'), null,
+    'a string balance must not be converted into a fabricated wallet balance');
+  assert.equal(readChatWallet('{"balance":60,"history":{}}'), null,
+    'a malformed history store must not be silently erased');
+  const legacy = readChatWallet('{"balance":60}');
+  assert.equal(legacy.balance, 60);
+  assert.deepEqual(JSON.parse(JSON.stringify(legacy.history)), []);
+
+  assert.match(detail, /return ledger\.readWalletForMutation\(WORK_DATA_KEY\)/);
+  assert.doesNotMatch(detail, /wd = \{ balance: 1000 \}/,
+    'chat receipts must not silently replace malformed wallet data');
+
+  const paymentStart = detail.indexOf('const pendingPaymentOperations = new Set();');
+  const paymentEnd = detail.indexOf('// ===== 群投票', paymentStart);
+  assert.ok(paymentStart >= 0 && paymentEnd > paymentStart,
+    'chat payment receipt handler must be present');
+  const paymentSource = detail.slice(paymentStart, paymentEnd);
+
+  const values = new Map([
+    ['workData', '{broken-json'],
+    ['finance_records', '[]']
+  ]);
+  const writes = [];
+  let history = [{
+    role: 'assistant', type: 'redpacket', amount: '10.00',
+    status: 'unopened', mid: 'corrupt-wallet-redpacket'
+  }];
+  const localStorage = {
+    getItem: key => values.has(key) ? values.get(key) : null,
+    setItem: (key, value) => {
+      writes.push(key);
+      values.set(key, String(value));
+    }
+  };
+  const window = {
+    navigator: {
+      locks: { request: (_name, _options, callback) => Promise.resolve().then(callback) }
+    },
+    localStorage
+  };
+  runInNewContext(walletLedgerSource, { window });
+  const toasts = [];
+  const sandbox = {
+    window, localStorage,
+    loadMessages: () => JSON.parse(JSON.stringify(history)),
+    ensureMid: message => message.mid,
+    saveWorkData: () => false,
+    saveMessages: next => {
+      writes.push('chat-history');
+      history = JSON.parse(JSON.stringify(next));
+      return true;
+    },
+    showToast: message => toasts.push(message),
+    renderAllMessages: () => writes.push('render'),
+    openPayResult: () => writes.push('success-popup'),
+    currentCharacter: { name: '角色' },
+    console: { warn: () => {} }
+  };
+  runInNewContext(readerSource + paymentSource, sandbox);
+  await sandbox.handlePayCardClick({
+    currentTarget: {
+      getAttribute: name => name === 'data-mid' ? 'corrupt-wallet-redpacket' : null,
+      setAttribute: () => {},
+      removeAttribute: () => {}
+    }
+  });
+  assert.equal(values.get('workData'), '{broken-json',
+    'a failed wallet read must preserve the original corrupt data for recovery');
+  assert.deepEqual(writes, [],
+    'a corrupt wallet must not be changed, acknowledged in chat, or shown as successful');
+  assert.equal(history[0].status, 'unopened',
+    'the red packet must remain unopened until the wallet is readable');
+  assert.match(toasts.at(-1), /钱包数据读取失败/);
 });
 
 test('聊天、商店、外卖和钱包充值提现统一使用同一个钱包锁', () => {
@@ -3268,16 +3821,16 @@ test('聊天、商店、外卖和钱包充值提现统一使用同一个钱包�
     ['takeout', takeoutPage],
     ['wallet', walletPage]
   ]) {
-    assert.match(source, /wallet-ledger\.js\?v=20261107v6/,
+    assert.match(source, /wallet-ledger\.js\?v=20261114v12/,
       name + ' must load the shared wallet ledger coordinator');
     assert.match(source, /MaoMaoWalletLedger\.runExclusive|ledger\.runExclusive/,
       name + ' must route balance mutations through the shared lock');
   }
-  assert.match(shopPage, /localStorage\.getItem\('workData'\) !== walletSerialized/,
+  assert.match(shopPage, /ledger\.commitWalletSnapshot\(wd, oldWalletRaw\)/,
     'shop intimacy-pay must read back the wallet debit');
-  assert.match(takeoutPage, /localStorage\.getItem\('workData'\) !== walletSerialized/,
+  assert.match(takeoutPage, /ledger\.commitWalletSnapshot\(wd, oldWalletRaw\)/,
     'takeout intimacy-pay must read back the wallet debit');
-  assert.match(walletPage, /localStorage\.getItem\('workData'\) !== serialized/,
+  assert.match(walletPage, /ledger\.commitWalletSnapshot\(wd\)/,
     'manual charge / withdrawal must read back the new balance');
   assert.match(shopPage, /wd\.balance < total/,
     'shop must not spend more than the wallet balance');
@@ -3287,7 +3840,7 @@ test('聊天、商店、外卖和钱包充值提现统一使用同一个钱包�
 
 
 test('亲密付额度、对象和开关设置也与商店及外卖结算共用钱包锁', () => {
-  assert.match(closePayPage, /wallet-ledger\.js\?v=20261107v6/);
+  assert.match(closePayPage, /wallet-ledger\.js\?v=20261114v12/);
   assert.match(closePayPage, /async function mutateData\(mutator\)/);
   assert.match(closePayPage, /ledger\.runExclusive\(function \(\)/);
   assert.match(closePayPage, /localStorage\.getItem\(KEY\) !== serialized/,
@@ -3301,6 +3854,237 @@ test('亲密付额度、对象和开关设置也与商店及外卖结算共用�
   }
 });
 
+test('亲密付设置数据损坏时，设置页和交易模块都拒绝恢复默认值并覆盖原记录', async () => {
+  const corruptedValues = [
+    '{broken-json',
+    'null',
+    '[]',
+    '{"enabled":"true","limit":500,"used":0,"history":[]}',
+    '{"enabled":true,"limit":"not-a-number","used":0,"history":[]}',
+    '{"enabled":true,"limit":500,"used":0,"history":{}}',
+    '{"enabled":true,"limit":500,"used":0,"history":[{"amount":10,"time":1},{"amount":10,"time":2,"paymentId":"same"},{"amount":10,"time":3,"paymentId":"same"}]}'
+  ];
+
+  for (const raw of corruptedValues) {
+    const values = new Map([['close_pay', raw]]);
+    const writes = [];
+    const localStorage = {
+      getItem: key => values.has(key) ? values.get(key) : null,
+      setItem: (key, value) => {
+        writes.push(key);
+        values.set(key, String(value));
+      }
+    };
+    const window = {
+      navigator: {
+        locks: {
+          request: (_name, _options, callback) => Promise.resolve().then(callback)
+        }
+      },
+      localStorage
+    };
+    runInNewContext(walletLedgerSource, { window });
+    const state = window.MaoMaoWalletLedger.readClosePayState('close_pay');
+    assert.equal(state.ok, false, 'corrupted close-pay data must be rejected: ' + raw);
+    assert.equal(window.MaoMaoWalletLedger.readClosePayForMutation('close_pay'), null);
+
+    const sandbox = {
+      window,
+      localStorage,
+      console: { warn: () => {} },
+      toast: () => {}
+    };
+    const start = closePayPage.indexOf("var KEY = 'close_pay';");
+    const end = closePayPage.indexOf('function getCharacters()', start);
+    assert.ok(start >= 0 && end > start, 'close-pay storage mutation code must be extractable');
+    runInNewContext(closePayPage.slice(start, end), sandbox);
+    assert.equal(sandbox.getDataState().ok, false);
+    assert.equal(sandbox.getData(), null);
+    const outcome = await sandbox.mutateData(data => {
+      data.limit = 1;
+      return true;
+    });
+    assert.equal(outcome.ok, false);
+    assert.equal(outcome.reason, 'invalid');
+    assert.deepEqual(writes, [], 'invalid settings must not trigger any storage write');
+    assert.equal(values.get('close_pay'), raw, 'the original broken setting must be preserved');
+  }
+
+  for (const source of [shopPage, takeoutPage]) {
+    assert.match(source, /ledger\.readClosePayForMutation\('close_pay'\)/,
+      'checkout must use the strict shared close-pay reader');
+    assert.match(source, /亲密付设置数据异常，已暂停扣款/,
+      'checkout must visibly distinguish corrupted close-pay settings');
+    assert.match(source, /readClosePayState\('close_pay'\)/,
+      'checkout UI must inspect the close-pay storage state');
+  }
+
+  // Only genuinely absent settings are initialized with first-use defaults.
+  const values = new Map();
+  const writes = [];
+  const localStorage = {
+    getItem: key => values.has(key) ? values.get(key) : null,
+    setItem: (key, value) => { writes.push(key); values.set(key, String(value)); }
+  };
+  const window = {
+    navigator: {
+      locks: { request: (_name, _options, callback) => Promise.resolve().then(callback) }
+    },
+    localStorage
+  };
+  runInNewContext(walletLedgerSource, { window });
+  const defaults = window.MaoMaoWalletLedger.readClosePayState('close_pay');
+  assert.equal(defaults.ok, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(defaults.value)), {
+    enabled: false, roleId: '', roleName: '', limit: 500, used: 0, history: []
+  });
+  const sandbox = { window, localStorage, console: { warn: () => {} }, toast: () => {} };
+  const start = closePayPage.indexOf("var KEY = 'close_pay';");
+  const end = closePayPage.indexOf('function getCharacters()', start);
+  runInNewContext(closePayPage.slice(start, end), sandbox);
+  const saved = await sandbox.mutateData(data => {
+    data.roleId = 'role-1';
+    data.roleName = '角色';
+    return true;
+  });
+  assert.equal(saved.ok, true);
+  assert.equal(JSON.parse(values.get('close_pay')).roleId, 'role-1');
+  assert.deepEqual(writes, ['close_pay']);
+});
+
+test('账本财务记录损坏时拒绝显示为空并阻止覆盖，正常写入与订单使用同一把锁', async () => {
+  assert.match(financePage, /账本数据异常，已暂停新增和批注/);
+  assert.match(financePage, /async function mutateFinanceRecords\(mutator\)/);
+  assert.match(financePage, /ledger\.runExclusive\(function \(\)/);
+  assert.match(financePage, /if \(!list\) return;/,
+    'the AI finance annotation path must stop when records are unreadable');
+  assert.match(financePage, /if \(loadRecords\(\) === null\)/,
+    'the manual entry sheet must not open over corrupted finance records');
+
+  const start = financePage.indexOf('  function readFinanceRecordsState()');
+  const end = financePage.indexOf('  function escapeFinanceText(value)', start);
+  assert.ok(start >= 0 && end > start, 'finance storage and mutation helpers must be extractable');
+  const helperSource = financePage.slice(start, end);
+
+  for (const raw of ['{broken-json', 'null', '{}', '[null]', '[{"amount":"not-a-number"}]', '[{"type":"expense"}]']) {
+    const values = new Map([['finance_records', raw]]);
+    const writes = [];
+    const localStorage = {
+      getItem: key => values.has(key) ? values.get(key) : null,
+      setItem: (key, value) => {
+        writes.push(key);
+        values.set(key, String(value));
+      }
+    };
+    const window = {
+      navigator: { locks: { request: (_name, _options, callback) => Promise.resolve().then(callback) } },
+      localStorage
+    };
+    runInNewContext(walletLedgerSource, { window });
+    const sandbox = {
+      window, localStorage,
+      console: { warn: () => {} },
+      showToast: () => {}
+    };
+    runInNewContext(helperSource, sandbox);
+    assert.equal(sandbox.loadRecords(), null, 'invalid finance storage must remain distinguishable from an empty ledger');
+    const outcome = await sandbox.mutateFinanceRecords(list => {
+      list.push({ id: 'should-not-write', amount: 5, type: 'expense' });
+      return true;
+    });
+    assert.equal(outcome.ok, false);
+    assert.equal(outcome.reason, 'invalid');
+    assert.deepEqual(writes, [], 'corrupted finance data must never be overwritten');
+    assert.equal(values.get('finance_records'), raw);
+  }
+
+  // Old finance rows without IDs must retain the same generated ID through a
+  // locked mutation so the AI annotation path can still update that legacy row.
+  const legacyValues = new Map([['finance_records', JSON.stringify([{
+    amount: 6, type: 'expense', category: '餐饮', note: '旧记录', time: '11月10日'
+  }])]]);
+  const legacyLocalStorage = {
+    getItem: key => legacyValues.has(key) ? legacyValues.get(key) : null,
+    setItem: (key, value) => { legacyValues.set(key, String(value)); }
+  };
+  const legacyWindow = {
+    navigator: { locks: { request: (_name, _options, callback) => Promise.resolve().then(callback) } },
+    localStorage: legacyLocalStorage
+  };
+  runInNewContext(walletLedgerSource, { window: legacyWindow });
+  const legacySandbox = {
+    window: legacyWindow, localStorage: legacyLocalStorage,
+    console: { warn: () => {} }, showToast: () => {}
+  };
+  runInNewContext(helperSource, legacySandbox);
+  const legacyRow = legacySandbox.loadRecords()[0];
+  assert.ok(legacyRow.id.startsWith('f_legacy_'));
+  const legacyUpdate = await legacySandbox.mutateFinanceRecords(list => {
+    const target = list.find(row => row.id === legacyRow.id);
+    assert.ok(target, 'the legacy finance row must be found after lock re-read');
+    target.charComments = [{ id: 'legacy-comment', text: '仍能批注' }];
+    return true;
+  });
+  assert.equal(legacyUpdate.ok, true);
+  const legacyPersisted = JSON.parse(legacyValues.get('finance_records'))[0];
+  assert.equal(legacyPersisted.id, legacyRow.id);
+  assert.equal(legacyPersisted.charComments[0].text, '仍能批注');
+
+  const values = new Map();
+  const writes = [];
+  const localStorage = {
+    getItem: key => values.has(key) ? values.get(key) : null,
+    setItem: (key, value) => {
+      writes.push(key);
+      values.set(key, String(value));
+    }
+  };
+  let queue = Promise.resolve();
+  let active = 0;
+  let maxActive = 0;
+  const window = {
+    navigator: {
+      locks: {
+        request: (_name, options, callback) => {
+          assert.equal(options.mode, 'exclusive');
+          const run = queue.then(async () => {
+            active += 1;
+            maxActive = Math.max(maxActive, active);
+            try { return await callback(); }
+            finally { active -= 1; }
+          });
+          queue = run.catch(() => {});
+          return run;
+        }
+      }
+    },
+    localStorage
+  };
+  runInNewContext(walletLedgerSource, { window });
+  const sandbox = {
+    window, localStorage,
+    console: { warn: () => {} },
+    showToast: () => {}
+  };
+  runInNewContext(helperSource, sandbox);
+  assert.deepEqual(JSON.parse(JSON.stringify(sandbox.loadRecords())), []);
+  const results = await Promise.all([
+    sandbox.mutateFinanceRecords(list => {
+      list.push({ id: 'manual-entry-1', amount: 8, type: 'expense', category: '餐饮' });
+      return { id: 'manual-entry-1' };
+    }),
+    sandbox.mutateFinanceRecords(list => {
+      list.push({ id: 'manual-entry-2', amount: 12, type: 'income', category: '其他' });
+      return { id: 'manual-entry-2' };
+    })
+  ]);
+  assert.ok(results.every(result => result.ok));
+  assert.equal(maxActive, 1, 'manual ledger writes and checkout writes must serialize on the shared wallet lock');
+  const persisted = JSON.parse(values.get('finance_records'));
+  assert.deepEqual(persisted.map(row => row.id).sort(), ['manual-entry-1', 'manual-entry-2']);
+  assert.equal(writes.length, 2);
+});
+
 test('商店、外卖亲密付必须验证额度和余额，且扣款未确认不能继续下单', () => {
   for (const [name, source] of [['shop', shopPage], ['takeout', takeoutPage]]) {
     assert.match(source, /async function doPay\(\)/, name + ' checkout must await the ledger lock');
@@ -3310,7 +4094,7 @@ test('商店、外卖亲密付必须验证额度和余额，且扣款未确认�
     assert.match(source, /!walletAlreadyCommitted && !quotaAlreadyCommitted &&[\s\S]*?Number\(cp\.limit\)/,
       name + ' must revalidate quota before the first wallet or quota write, but finish a partial commit');
     assert.match(source, /wd\.balance < total/, name + ' must reject insufficient balance');
-    assert.match(source, /localStorage\.getItem\('workData'\) !== walletSerialized/,
+    assert.match(source, /ledger\.commitWalletSnapshot\(wd, oldWalletRaw\)/,
       name + ' must verify wallet write before continuing');
     assert.match(source, /closePayQuotaCommitted = true/,
       name + ' must distinguish quota commit from an incomplete transaction');
@@ -3335,7 +4119,8 @@ test('用户发出的红包/转账在钱包扣款后聊天保存失败时可恢�
   const sandbox = {
     window: {
       MaoMaoWalletLedger: {
-        runExclusive: (task) => Promise.resolve().then(task)
+        runExclusive: (task) => Promise.resolve().then(task),
+        supportsCrossTabLock: () => true
       }
     },
     payAmountInput: { value: '12.50' },
@@ -3386,8 +4171,8 @@ test('用户发出的红包/转账在钱包扣款后聊天保存失败时可恢�
 });
 
 test('用户红包/转账发送入口也使用共享钱包锁并刷新 chat-extras 脚本', () => {
-  assert.match(detail, /wallet-ledger\.js\?v=20261107v6/);
-  assert.match(detail, /chat-extras\.js\?t=20261107wallet2/);
+  assert.match(detail, /wallet-ledger\.js\?v=20261114v12/);
+  assert.match(detail, /chat-extras\.js\?t=20261114wallet-lock4/);
   assert.match(chatExtrasSource, /ledger\.runExclusive\(function \(\)/);
   assert.match(chatExtrasSource, /paymentId: paymentId/);
   assert.match(chatExtrasSource, /pendingChatMessage: specialMsg/);
@@ -3396,17 +4181,17 @@ test('用户红包/转账发送入口也使用共享钱包锁并刷新 chat-extr
 });
 
 
-test('钱包结算编号跨页面刷新复用，支付方式不能在未完成交易中被偷偷更换', () => {
+test('钱包结算编号跨页面刷新复用，支付方式不能在未完成交易中被偷偷更换', async () => {
   const values = new Map();
   const storage = {
     getItem: (key) => values.has(key) ? values.get(key) : null,
     setItem: (key, value) => { values.set(key, String(value)); },
     removeItem: (key) => { values.delete(key); }
   };
-  const firstWindow = { navigator: {}, localStorage: storage };
+  const firstWindow = { navigator: { locks: { request: (_name,_options,task) => Promise.resolve().then(task) } }, localStorage: storage };
   runInNewContext(walletLedgerSource, { window: firstWindow });
   const firstLedger = firstWindow.MaoMaoWalletLedger;
-  const firstId = firstLedger.getOrCreatePendingCheckout('shop', '[{"sku":1}]', 'close_pay');
+  const firstId = (await firstLedger.runExclusive(() => firstLedger.getOrCreatePendingCheckout('shop', '[{"sku":1}]', 'close_pay')));
   assert.ok(firstId, 'a pending checkout ID must be persisted before payment');
   assert.equal(firstLedger.isPendingCheckout(firstId), true,
     'the ledger must report a readable pending transaction');
@@ -3417,33 +4202,58 @@ test('钱包结算编号跨页面刷新复用，支付方式不能在未完成�
   assert.equal(firstLedger.getPendingCheckout('missing'), undefined,
     'a readable store with no matching transaction is different from an unreadable store');
 
-  const secondWindow = { navigator: {}, localStorage: storage };
+  const secondWindow = { navigator: { locks: { request: (_name,_options,task) => Promise.resolve().then(task) } }, localStorage: storage };
   runInNewContext(walletLedgerSource, { window: secondWindow });
   const secondLedger = secondWindow.MaoMaoWalletLedger;
   assert.equal(
-    secondLedger.getOrCreatePendingCheckout('shop', '[{"sku":1}]', 'close_pay'),
+    (await secondLedger.runExclusive(() => secondLedger.getOrCreatePendingCheckout('shop', '[{"sku":1}]', 'close_pay'))),
     firstId,
     'a reload must recover the same transaction ID'
   );
   assert.equal(
-    secondLedger.getOrCreatePendingCheckout('shop', '[{"sku":1}]', 'normal'),
+    (await secondLedger.runExclusive(() => secondLedger.getOrCreatePendingCheckout('shop', '[{"sku":1}]', 'normal'))),
     null,
     'an unfinished transaction cannot silently switch payment methods'
   );
   assert.equal(
-    secondLedger.getOrCreatePendingCheckout('shop', '[{"sku":2}]', 'close_pay'),
+    (await secondLedger.runExclusive(() => secondLedger.getOrCreatePendingCheckout('shop', '[{"sku":2}]', 'close_pay'))),
     null,
     'changing cart contents cannot bypass an unresolved checkout on the same channel'
   );
-  assert.equal(secondLedger.completePendingCheckout(firstId), true);
+  assert.equal((await secondLedger.runExclusive(() => secondLedger.completePendingCheckout(firstId))), true);
   assert.equal(secondLedger.isPendingCheckout(firstId), false,
     'a completed transaction must no longer block a new checkout');
   const storedAfterCompletion = JSON.parse(storage.getItem('maomao_wallet_pending_checkouts_v1'));
   assert.equal(storedAfterCompletion.find((item) => item.id === firstId).status, 'completed',
     'completion must be persisted before a checkout can be discarded');
-  const nextId = secondLedger.getOrCreatePendingCheckout('shop', '[{"sku":1}]', 'normal');
+  const nextId = (await secondLedger.runExclusive(() => secondLedger.getOrCreatePendingCheckout('shop', '[{"sku":1}]', 'normal')));
   assert.ok(nextId);
   assert.notEqual(nextId, firstId, 'a completed checkout allows a new intentional purchase');
+  const storedAfterNextCheckout = JSON.parse(storage.getItem('maomao_wallet_pending_checkouts_v1'));
+  assert.equal(storedAfterNextCheckout.find((item) => item.id === firstId).status, 'completed',
+    'starting a new checkout must preserve earlier completed receipts');
+  const cancelledId = (await secondLedger.runExclusive(() => secondLedger.getOrCreatePendingCheckout('takeout', '[{"sku":9}]', 'normal')));
+  assert.ok(cancelledId, 'a separate channel can start an independent checkout');
+  assert.equal((await secondLedger.runExclusive(() => secondLedger.cancelPendingCheckout(cancelledId))), true,
+    'an unfinished checkout can be cancelled');
+  const storedAfterCancellation = JSON.parse(storage.getItem('maomao_wallet_pending_checkouts_v1'));
+  assert.equal(storedAfterCancellation.find((item) => item.id === firstId).status, 'completed',
+    'cancelling an unfinished checkout must preserve completed transaction receipts');
+  assert.equal(storedAfterCancellation.some((item) => item.id === cancelledId), false,
+    'cancellation must remove only the requested pending transaction');
+  assert.equal((await secondLedger.runExclusive(() => secondLedger.cancelPendingCheckout(cancelledId))), true,
+    'repeating cancellation after the pending row is gone is idempotent');
+  assert.equal((await secondLedger.runExclusive(() => secondLedger.cancelPendingCheckout(firstId))), false,
+    'a completed transaction must not be cancellable');
+  assert.equal((await secondLedger.runExclusive(() => secondLedger.completePendingCheckout(firstId))), true,
+    'repeating confirmation is idempotent only for a persisted completed receipt');
+  const ledgerBeforeMissing = storage.getItem('maomao_wallet_pending_checkouts_v1');
+  assert.equal((await secondLedger.runExclusive(() => secondLedger.completePendingCheckout('missing-checkout-id'))), false,
+    'a missing checkout receipt must not be reported as completed');
+  assert.equal((await secondLedger.runExclusive(() => secondLedger.completePendingCheckout(cancelledId))), false,
+    'a cancelled unfinished checkout cannot later be confirmed as successful');
+  assert.equal(storage.getItem('maomao_wallet_pending_checkouts_v1'), ledgerBeforeMissing,
+    'failed confirmation must not mutate other checkout receipts');
 
   const blockedStorage = {
     getItem: () => '',
@@ -3477,32 +4287,37 @@ test('钱包结算编号跨页面刷新复用，支付方式不能在未完成�
   );
 });
 
-test('亲属卡按交易编号幂等消费，重试不会再次占用额度', () => {
+test('亲属卡按交易编号幂等消费，重试不会再次占用额度', async () => {
   const values = new Map();
   const storage = {
     getItem: (key) => values.has(key) ? values.get(key) : null,
     setItem: (key, value) => { values.set(key, String(value)); },
     removeItem: (key) => { values.delete(key); }
   };
-  const cardWindow = {};
+  const cardWindow = {
+    navigator: { locks: { request: (_name, _opts, callback) => Promise.resolve().then(callback) } },
+    localStorage: storage
+  };
+  runInNewContext(walletLedgerSource, { window: cardWindow });
   runInNewContext(roleFamilyCardsSource, { window: cardWindow, localStorage: storage });
   const api = cardWindow.RoleFamilyCards;
-  const invite = api.createInvite({
+  const ledger = cardWindow.MaoMaoWalletLedger;
+  const invite = await ledger.runExclusive(() => api.createInvite({
     roleId: 'role-1', roleName: '角色', monthlyLimit: 50, singleLimit: 20
-  });
+  }));
   assert.ok(invite);
-  assert.equal(api.update(invite.id, 'accept').ok, true);
+  assert.equal((await ledger.runExclusive(() => api.update(invite.id, 'accept'))).ok, true);
 
-  const first = api.consume(invite.id, 12, '商店 · 商品', 'shop', 'checkout-1');
+  const first = await ledger.runExclusive(() => api.consume(invite.id, 12, '商店 · 商品', 'shop', 'checkout-1'));
   assert.equal(first.ok, true);
   assert.equal(first.replayed, false);
-  const replay = api.consume(invite.id, 12, '商店 · 商品', 'shop', 'checkout-1');
+  const replay = await ledger.runExclusive(() => api.consume(invite.id, 12, '商店 · 商品', 'shop', 'checkout-1'));
   assert.equal(replay.ok, true);
   assert.equal(replay.replayed, true);
   assert.equal(api.find(invite.id).history.length, 1);
   assert.equal(api.usedThisMonth(api.find(invite.id)), 12);
 
-  const conflict = api.consume(invite.id, 15, '商店 · 商品', 'shop', 'checkout-1');
+  const conflict = await ledger.runExclusive(() => api.consume(invite.id, 15, '商店 · 商品', 'shop', 'checkout-1'));
   assert.equal(conflict.ok, false);
   assert.equal(conflict.reason, 'transaction-conflict');
   assert.equal(api.find(invite.id).history.length, 1);
@@ -3523,8 +4338,8 @@ test('商店和外卖结算的扣款、财务明细、订单都使用同一 paym
   }
   assert.match(shopPage, /function saveOrders\(o\)[\s\S]*?getItem\('shop_orders'\) === serialized/,
     'shop orders require exact readback');
-  assert.match(takeoutPage, /getItem\('takeout_orders'\) !== ordersSerialized/,
-    'takeout orders require exact readback');
+  assert.match(takeoutPage, /function saveTakeoutOrders\(rows\)[\s\S]*?setItem\('takeout_orders', serialized\);[\s\S]*?getItem\('takeout_orders'\) === serialized/,
+    'takeout orders require exact readback after the shared save helper persists the serialized snapshot');
 });
 
 
@@ -3543,8 +4358,10 @@ test('亲密付已有部分扣款时，设置变化不能取消原交易恢复�
 });
 
 test('外卖交易签名包含餐厅，且亲属卡通知只在订单和购物车结算确认后发出', () => {
-  assert.match(takeoutPage, /checkoutSignature = JSON\.stringify\(\{\s*shopId: orderShop\.id/,
+  assert.match(takeoutPage, /function buildTakeoutCheckoutSignature\(items, orderShop, total\)[\s\S]*?return JSON\.stringify\(\{\s*shopId: orderShop\.id/,
     'same dishes from different restaurants must not share a checkout ID');
+  assert.match(takeoutPage, /buildTakeoutCheckoutSignature\(items, orderShop, total\)/,
+    'checkout must use the restaurant-bound signature helper');
   const cartClear = takeoutPage.indexOf('if (!saveCart())');
   const complete = takeoutPage.indexOf('completePendingCheckout(transactionId)', cartClear);
   const notify = takeoutPage.indexOf('notifyRoleCardIssuer(roleFamilyCard', complete);
@@ -3731,18 +4548,19 @@ test('旧版合法钱包缺少 history 时保留余额，空字符串或损坏�
   const helperStart = walletPage.indexOf('  function getWorkDataForMutation()');
   const helperEnd = walletPage.indexOf('  function getWorkData()', helperStart);
   const helper = walletPage.slice(helperStart, helperEnd);
-  const legacy = { localStorage: { getItem: () => '{"balance":42.5}' } };
-  runInNewContext(helper, legacy);
-  assert.equal(legacy.getWorkDataForMutation().balance, 42.5);
-  assert.deepEqual(JSON.parse(JSON.stringify(legacy.getWorkDataForMutation().history)), []);
-
-  const empty = { localStorage: { getItem: () => '' } };
-  runInNewContext(helper, empty);
-  assert.equal(empty.getWorkDataForMutation(), null);
-
-  const malformed = { localStorage: { getItem: () => '{"balance":42,"history":{}}' } };
-  runInNewContext(helper, malformed);
-  assert.equal(malformed.getWorkDataForMutation(), null);
+  function readWithSharedLedger(raw) {
+    const localStorage = { getItem: () => raw };
+    const window = { localStorage, navigator: {} };
+    runInNewContext(walletLedgerSource, { window });
+    const sandbox = { localStorage, window };
+    runInNewContext(helper, sandbox);
+    return sandbox.getWorkDataForMutation();
+  }
+  const legacy = readWithSharedLedger('{"balance":42.5}');
+  assert.equal(legacy.balance, 42.5);
+  assert.deepEqual(JSON.parse(JSON.stringify(legacy.history)), []);
+  assert.equal(readWithSharedLedger(''), null);
+  assert.equal(readWithSharedLedger('{"balance":42,"history":{}}'), null);
 });
 
 test('offline face-to-face role card customizer exposes persisted styles and content layout controls', () => {
@@ -3780,4 +4598,839 @@ test('offline face-to-face role card customizer exposes persisted styles and con
   assert.match(date, /applyProfileCardPreset\('transparent'\)/, 'reset should restore the transparent style');
   assert.ok(date.includes('id="dateForm"') && date.includes('id="replyOptionsBtn"') && date.includes('id="bgImageFile"'),
     'existing story composer, reply helper, and background upload should remain present');
+});
+
+
+test('共享账本补齐财务流水时只初始化真正不存在的记录，并对重试保持幂等', async () => {
+  const values = new Map();
+  const writes = [];
+  const localStorage = {
+    getItem: (key) => values.has(key) ? values.get(key) : null,
+    setItem: (key, value) => { writes.push([key, String(value)]); values.set(key, String(value)); }
+  };
+  const window = {
+    navigator: { locks: {
+      request: (_name, _opts, callback) => Promise.resolve().then(callback)
+    } },
+    localStorage
+  };
+  runInNewContext(walletLedgerSource, { window });
+  const rows = [
+    { amount: 12, type: 'expense', category: '购物', note: '商品A', time: '11月10日', paymentLineIndex: 0 },
+    { amount: 8, type: 'expense', category: '购物', note: '商品B', time: '11月10日', paymentLineIndex: 1 }
+  ];
+  const first = await window.MaoMaoWalletLedger.runExclusive(() =>
+    window.MaoMaoWalletLedger.recordFinanceLines('checkout-1', rows, 'finance_records'));
+  assert.equal(first.ok, true);
+  assert.equal(first.replayed, false);
+  const stored = JSON.parse(values.get('finance_records'));
+  assert.equal(stored.length, 2);
+  assert.deepEqual(stored.map((row) => row.paymentId), ['checkout-1', 'checkout-1']);
+  assert.deepEqual(stored.map((row) => row.paymentLineIndex), [0, 1]);
+  const replay = await window.MaoMaoWalletLedger.runExclusive(() =>
+    window.MaoMaoWalletLedger.recordFinanceLines('checkout-1', rows, 'finance_records'));
+  assert.equal(replay.ok, true);
+  assert.equal(replay.replayed, true);
+  assert.equal(JSON.parse(values.get('finance_records')).length, 2);
+  assert.equal(writes.length, 1, 'replay must not write duplicate records');
+});
+
+test('共享账本遇到空字符串、损坏 JSON 或非数组财务记录时拒绝覆盖', async () => {
+  for (const raw of ['', '{broken-json', 'null', '{}']) {
+    const values = new Map([['finance_records', raw]]);
+    let writes = 0;
+    const localStorage = {
+      getItem: (key) => values.has(key) ? values.get(key) : null,
+      setItem: (key, value) => { writes += 1; values.set(key, String(value)); }
+    };
+    const window = { navigator: {
+      locks: { request: (_name, _opts, callback) => Promise.resolve().then(callback) }
+    }, localStorage };
+    runInNewContext(walletLedgerSource, { window });
+    const result = await window.MaoMaoWalletLedger.runExclusive(() =>
+      window.MaoMaoWalletLedger.recordFinanceLines('checkout-2', [
+      { amount: 10, type: 'expense', category: '外卖', paymentLineIndex: 0 }
+    ], 'finance_records'));
+    assert.equal(result.ok, false, 'invalid value must fail closed');
+    assert.equal(values.get('finance_records'), raw, 'original bytes must remain unchanged');
+    assert.equal(writes, 0, 'invalid finance records must not be overwritten');
+  }
+});
+
+test('共享账本遇到同交易编号的重复行或冲突金额时停止自动补账', async () => {
+  const cases = [
+    [
+      { amount: 9, type: 'expense', category: '购物', paymentId: 'checkout-3', paymentLineIndex: 0 },
+      { amount: 9, type: 'expense', category: '购物', paymentId: 'checkout-3', paymentLineIndex: 0 }
+    ],
+    [{ amount: 99, type: 'expense', category: '购物', paymentId: 'checkout-3', paymentLineIndex: 0 }],
+    [{ amount: 9, type: 'income', category: '购物', paymentId: 'checkout-3', paymentLineIndex: 0 }]
+  ];
+  for (const initial of cases) {
+    const raw = JSON.stringify(initial);
+    const values = new Map([['finance_records', raw]]);
+    let writes = 0;
+    const localStorage = {
+      getItem: (key) => values.has(key) ? values.get(key) : null,
+      setItem: (key, value) => { writes += 1; values.set(key, String(value)); }
+    };
+    const window = { navigator: {
+      locks: { request: (_name, _opts, callback) => Promise.resolve().then(callback) }
+    }, localStorage };
+    runInNewContext(walletLedgerSource, { window });
+    const result = await window.MaoMaoWalletLedger.runExclusive(() =>
+      window.MaoMaoWalletLedger.recordFinanceLines('checkout-3', [
+      { amount: 9, type: 'expense', category: '购物', paymentLineIndex: 0 },
+      { amount: 4, type: 'expense', category: '购物', paymentLineIndex: 1 }
+    ], 'finance_records'));
+    assert.equal(result.ok, false);
+    assert.equal(values.get('finance_records'), raw);
+    assert.equal(writes, 0);
+  }
+});
+
+test('商店与外卖刷新后都从待结算快照恢复原支付方式，不允许将原交易换成新付款方式', () => {
+  assert.match(shopPage, /function restorePendingShopCheckout\(\)/);
+  assert.match(shopPage, /getPendingCheckout\('shop'\)/);
+  assert.match(shopPage, /source: payFromCart \? 'cart' : 'direct'/);
+  assert.match(shopPage, /pendingShopCheckoutSignature \|\| currentCheckoutSignature/);
+  assert.match(shopPage, /currentLegacyCheckoutSignature/);
+  assert.match(shopPage, /Older pending checkouts did not store the source/);
+  assert.match(shopPage, /restorePendingShopCheckout\(\);/);
+  assert.match(takeoutPage, /function restorePendingTakeoutCheckout\(\)/);
+  assert.match(takeoutPage, /getPendingCheckout\('takeout'\)/);
+  assert.match(takeoutPage, /pendingTakeoutCheckoutSignature \|\| currentCheckoutSignature/);
+  assert.match(takeoutPage, /buildTakeoutCheckoutSignature/);
+  assert.match(takeoutPage, /restorePendingTakeoutCheckout\(\);/);
+  assert.match(shopPage, /这笔结算必须沿用原支付方式/);
+  assert.match(takeoutPage, /这笔结算必须沿用原支付方式/);
+});
+
+test('亲属卡页面只加载一个共享钱包锁实例，避免重复初始化锁队列', () => {
+  assert.equal((familyCardsPage.match(/wallet-ledger\.js/g) || []).length, 1);
+});
+
+test('记账页面实际加载共享钱包锁模块，财务写入与订单结算使用同一模块', () => {
+  assert.match(financePage, /wallet-ledger\.js\?v=20261114v12/);
+  assert.match(shopPage, /recordFinanceLines\(transactionId, financeRows, 'finance_records'\)/);
+  assert.match(takeoutPage, /recordFinanceLines\(transactionId, financeRows, 'finance_records'\)/);
+  assert.doesNotMatch(shopPage, /JSON\.parse\(localStorage\.getItem\('finance_records'\) \|\| '\[\]'\)/);
+  assert.doesNotMatch(takeoutPage, /JSON\.parse\(localStorage\.getItem\('finance_records'\) \|\| '\[\]'\)/);
+});
+
+
+test('即时收款在聊天状态保存失败后，重试只入账一次并补齐财务流水', async () => {
+  const readerStart = detail.indexOf("const WORK_DATA_KEY = 'workData';");
+  const readerEnd = detail.indexOf('function saveWorkData(wd)', readerStart);
+  const paymentStart = detail.indexOf('const pendingPaymentOperations = new Set();');
+  const paymentEnd = detail.indexOf('// ===== 群投票', paymentStart);
+  assert.ok(readerStart >= 0 && readerEnd > readerStart);
+  assert.ok(paymentStart >= 0 && paymentEnd > paymentStart);
+  const readerSource = detail.slice(readerStart, readerEnd);
+  const paymentSource = detail.slice(paymentStart, paymentEnd);
+
+  const values = new Map([
+    ['workData', JSON.stringify({ balance: 50, history: [] })],
+    ['finance_records', '[]']
+  ]);
+  let history = [{
+    role: 'assistant', type: 'redpacket', amount: '10.00',
+    status: 'unopened', mid: 'receipt-recovery-001'
+  }];
+  let failFirstChatSave = true;
+  const writes = [];
+  const toasts = [];
+  let rendered = 0;
+  const localStorage = {
+    getItem: key => values.has(key) ? values.get(key) : null,
+    setItem: (key, value) => {
+      writes.push(key);
+      values.set(key, String(value));
+    },
+    removeItem: key => values.delete(key)
+  };
+  const window = {
+    navigator: {
+      locks: { request: (_name, _options, callback) => Promise.resolve().then(callback) }
+    },
+    localStorage
+  };
+  runInNewContext(walletLedgerSource, { window });
+
+  const sandbox = {
+    window,
+    localStorage,
+    loadMessages: () => JSON.parse(JSON.stringify(history)),
+    ensureMid: message => message.mid,
+    saveWorkData: next => {
+      const serialized = JSON.stringify(next);
+      localStorage.setItem('workData', serialized);
+      return localStorage.getItem('workData') === serialized;
+    },
+    saveMessages: next => {
+      if (failFirstChatSave) {
+        failFirstChatSave = false;
+        return false;
+      }
+      history = JSON.parse(JSON.stringify(next));
+      return true;
+    },
+    showToast: message => toasts.push(message),
+    renderAllMessages: () => { rendered += 1; },
+    openPayResult: () => {},
+    currentCharacter: { name: '角色' },
+    console: { warn: () => {} }
+  };
+  runInNewContext(readerSource + paymentSource, sandbox);
+
+  const clickReceipt = () => sandbox.handlePayCardClick({
+    currentTarget: {
+      getAttribute: name => name === 'data-mid' ? 'receipt-recovery-001' : null,
+      setAttribute: () => {},
+      removeAttribute: () => {}
+    }
+  });
+
+  await clickReceipt();
+  let wallet = JSON.parse(values.get('workData'));
+  assert.equal(wallet.balance, 60, 'first receipt credits the wallet');
+  assert.equal(wallet.history.length, 1);
+  assert.equal(wallet.history[0].paymentId, 'receipt-recovery-001');
+  assert.equal(history[0].status, 'unopened',
+    'failed chat persistence must not falsely mark the receipt card as received');
+  assert.equal(JSON.parse(values.get('finance_records')).length, 0);
+
+  await clickReceipt();
+  wallet = JSON.parse(values.get('workData'));
+  assert.equal(wallet.balance, 60, 'retry must not credit the same receipt twice');
+  assert.equal(wallet.history.length, 1);
+  assert.equal(history[0].status, 'opened', 'retry must restore the card status');
+  const financeRows = JSON.parse(values.get('finance_records'));
+  assert.equal(financeRows.length, 1);
+  assert.equal(financeRows[0].paymentId, 'receipt-recovery-001');
+  assert.equal(financeRows[0].type, '收入');
+  assert.equal(financeRows[0].category, '红包');
+
+  await clickReceipt();
+  wallet = JSON.parse(values.get('workData'));
+  assert.equal(wallet.balance, 60, 'reopening a completed card must remain idempotent');
+  assert.equal(wallet.history.length, 1);
+  assert.equal(JSON.parse(values.get('finance_records')).length, 1);
+  assert.equal(rendered, 1);
+});
+
+test('聊天即时收款遇到损坏的既有财务流水时保留原值，不将其当作空账本覆盖', () => {
+  const start = detail.indexOf('function ensureFinanceRecord()');
+  const end = detail.indexOf('function persistReceiptStatus()', start);
+  assert.ok(start >= 0 && end > start);
+  const source = detail.slice(start, end);
+  assert.match(source, /financeRaw === ''/);
+  assert.match(source, /financeRaw == null/);
+  assert.doesNotMatch(source, /getItem\\('finance_records'\\)\\s*\\|\\|\\s*'\\[\\]'/);
+});
+
+test('unified wallet writes: shared ledger validates commits and conditional rollbacks', async () => {
+  const stored = new Map([['workData', JSON.stringify({
+    balance: 90, history: [{ type: 'expense', paymentId: 'old', amount: 10 }]
+  })]]);
+  let writeCount = 0;
+  const storage = {
+    getItem: key => stored.has(key) ? stored.get(key) : null,
+    setItem: (key, value) => { writeCount += 1; stored.set(key, String(value)); },
+    removeItem: key => { writeCount += 1; stored.delete(key); }
+  };
+  const window = { navigator: { locks: { request: (_name,_options,task) => Promise.resolve().then(task) } }, localStorage: storage };
+  runInNewContext(walletLedgerSource, { window });
+  const ledger = window.MaoMaoWalletLedger;
+  const before = stored.get('workData');
+  const next = ledger.readWalletForMutation('workData');
+  next.balance = 75;
+  next.history.unshift({ type: 'expense', category: 'shop', amount: 15, paymentId: 'new' });
+  const committed = (await ledger.runExclusive(() => ledger.commitWalletSnapshot(next, before)));
+  assert.equal(committed.ok, true);
+  assert.equal(stored.get('workData'), committed.raw);
+  assert.equal(ledger.readWalletForMutation('workData').balance, 75);
+  assert.equal(ledger.readWalletForMutation('workData').history.length, 2);
+  assert.equal((await ledger.runExclusive(() => ledger.commitWalletSnapshot(next, before))).reason, 'stale-wallet');
+  assert.equal((await ledger.runExclusive(() => ledger.commitWalletSnapshot({ balance: Number.NaN, history: [] }))).ok, false);
+  assert.equal((await ledger.runExclusive(() => ledger.commitWalletSnapshot({ balance: 3, history: {} }))).ok, false);
+  assert.equal(writeCount, 1, 'invalid and stale transactions must never reach storage');
+  assert.equal((await ledger.runExclusive(() => ledger.restoreWalletSnapshot('wrong-version', before))), false);
+  assert.equal((await ledger.runExclusive(() => ledger.restoreWalletSnapshot(committed.raw, before))), true);
+  assert.equal(stored.get('workData'), before);
+  assert.equal(writeCount, 2);
+  assert.equal((await ledger.runExclusive(() => ledger.restoreWalletSnapshot(committed.raw, before))), false, 'rollback can never apply twice');
+
+  const broken = '{invalid-wallet';
+  stored.set('workData', broken);
+  assert.equal((await ledger.runExclusive(() => ledger.commitWalletSnapshot({ balance: 1000, history: [] }))).reason, 'invalid-store');
+  assert.equal(stored.get('workData'), broken, 'damaged wallet remains available for recovery');
+  assert.equal((await ledger.runExclusive(() => ledger.restoreWalletSnapshot(broken, '{invalid-previous'))), false);
+
+  stored.delete('workData');
+  const firstUse = ledger.readWalletForMutation('workData');
+  assert.equal(firstUse.balance, 1000);
+  assert.equal((await ledger.runExclusive(() => ledger.commitWalletSnapshot(firstUse, null))).ok, true);
+});
+
+test('unified wallet writes: chat, shop, takeout and wallet page use the same commit API', () => {
+  for (const [name, source] of [
+    ['chat', detail], ['shop', shopPage], ['takeout', takeoutPage], ['wallet', walletPage]
+  ]) {
+    assert.match(source, /ledger\.commitWalletSnapshot\(wd/,
+      name + ' balance operations must use shared wallet commit');
+    assert.doesNotMatch(source, /localStorage\.setItem\('workData'/,
+      name + ' must not write the wallet directly');
+  }
+  assert.match(walletLedgerSource, /function restoreWalletSnapshot\(/);
+  for (const source of [shopPage, takeoutPage]) {
+    assert.match(source, /ledger\.restoreWalletSnapshot\(walletSerialized, oldWalletRaw\)/);
+    assert.match(source, /ledger\.readWalletForMutation\('workData', oldWalletRaw\)/);
+  }
+  assert.match(walletPage, /return ledger && typeof ledger\.readWalletForMutation/);
+});
+
+
+test('unified wallet writes: automatic snapshots reject stale balance overwrites', async () => {
+  const storageValues = new Map([['workData', JSON.stringify({
+    balance: 100, history: [{ paymentId: 'initial', amount: 5 }]
+  })]]);
+  let writes = 0;
+  const storage = {
+    getItem: key => storageValues.has(key) ? storageValues.get(key) : null,
+    setItem: (key, value) => { writes++; storageValues.set(key, String(value)); },
+    removeItem: key => { storageValues.delete(key); }
+  };
+  const window = { localStorage: storage, navigator: { locks: { request: (_name,_options,task) => Promise.resolve().then(task) } } };
+  runInNewContext(walletLedgerSource, { window });
+  const ledger = window.MaoMaoWalletLedger;
+
+  const first = ledger.readWalletForMutation('workData');
+  const second = ledger.readWalletForMutation('workData');
+  second.balance -= 10;
+  second.history.unshift({ paymentId: 'second', amount: 10 });
+  assert.equal((await ledger.runExclusive(() => ledger.commitWalletSnapshot(second))).ok, true);
+  assert.equal(ledger.readWalletForMutation('workData').balance, 90);
+
+  first.balance -= 20;
+  first.history.unshift({ paymentId: 'first', amount: 20 });
+  assert.equal((await ledger.runExclusive(() => ledger.commitWalletSnapshot(first))).reason, 'stale-wallet',
+    'a snapshot read before a second tab wrote must not overwrite the new balance');
+  assert.equal(ledger.readWalletForMutation('workData').balance, 90);
+  assert.equal(ledger.readWalletForMutation('workData').history.length, 2);
+  assert.equal(writes, 1);
+
+  const fresh = ledger.readWalletForMutation('workData');
+  fresh.balance -= 20;
+  fresh.history.unshift({ paymentId: 'first', amount: 20 });
+  assert.equal((await ledger.runExclusive(() => ledger.commitWalletSnapshot(fresh))).ok, true);
+  assert.equal(ledger.readWalletForMutation('workData').balance, 70);
+  assert.equal(writes, 2);
+
+  const unsourced = { balance: 0, history: [] };
+  assert.equal((await ledger.runExclusive(() => ledger.commitWalletSnapshot(unsourced))).reason, 'snapshot-required',
+    'an unversioned wallet snapshot must not replace existing wallet data');
+  assert.equal(writes, 2);
+
+  const beforeMissing = ledger.readWalletForMutation('workData');
+  storageValues.delete('workData');
+  assert.equal((await ledger.runExclusive(() => ledger.commitWalletSnapshot(beforeMissing))).reason, 'stale-wallet',
+    'disappearing storage also invalidates the previously read version');
+  const trulyFresh = ledger.readWalletForMutation('workData');
+  assert.equal(trulyFresh.balance, 1000);
+  storageValues.set('workData', JSON.stringify({ balance: 200, history: [] }));
+  assert.equal((await ledger.runExclusive(() => ledger.commitWalletSnapshot(trulyFresh))).reason, 'stale-wallet',
+    'two first-use tabs must not replace whichever initialized the wallet first');
+  storageValues.delete('workData');
+  assert.equal((await ledger.runExclusive(() => ledger.commitWalletSnapshot(trulyFresh))).ok, true);
+  assert.equal(ledger.readWalletForMutation('workData').balance, 1000);
+});
+
+
+test('chat outgoing payments reject malformed or sub-cent amounts before wallet lock', async () => {
+  const begin = extras.indexOf('  var submitPayInProgress = false;');
+  const end = extras.indexOf("  if (payConfirmBtn) payConfirmBtn.addEventListener('click', submitPayMessage)", begin);
+  assert.ok(begin >= 0 && end > begin, 'shared-wallet chat payment handler must be present');
+  const section = extras.slice(begin, end);
+  let locks = 0;
+  let reads = 0;
+  const toasts = [];
+  const sandbox = {
+    payAmountInput: { value: '' },
+    payMessageInput: { value: '' },
+    PAY_DEFAULT_MESSAGE: '',
+    showToast: text => toasts.push(text),
+    getWorkData: () => { reads++; return { balance: 100, history: [] }; },
+    saveWorkData: () => { throw new Error('unexpected wallet write'); },
+    loadMessages: () => [],
+    saveMessages: () => { throw new Error('unexpected message save'); },
+    window: {
+      MaoMaoWalletLedger: {
+        runExclusive: async () => { locks++; }
+      }
+    },
+    payConfirmBtn: { disabled: false },
+    currentCharacter: { id: 'role-test' },
+    console: { warn: () => {} }
+  };
+  runInNewContext(section + '\nglobalThis.submitOutgoingWalletTest = submitPayMessage;', sandbox);
+  for (const invalid of [
+    '', '0', '0.00', '0.001', '1.234', '12abc', '1e3', '-5',
+    'Infinity', 'NaN', '1.', '9007199254740992'
+  ]) {
+    sandbox.payAmountInput.value = invalid;
+    await sandbox.submitOutgoingWalletTest();
+    assert.equal(locks, 0, 'invalid amount must not acquire wallet lock: ' + invalid);
+    assert.equal(reads, 0, 'invalid amount must not read or mutate wallet: ' + invalid);
+    assert.equal(sandbox.payConfirmBtn.disabled, false);
+  }
+  assert.ok(toasts.length >= 12, 'invalid amounts should receive actionable feedback');
+
+  sandbox.payAmountInput.value = '12.30';
+  await sandbox.submitOutgoingWalletTest();
+  assert.equal(locks, 1, 'valid cent-precision amount reaches shared wallet lock');
+  assert.equal(reads, 0, 'mock lock does not execute a simulated transaction');
+  assert.equal(sandbox.payConfirmBtn.disabled, false);
+});
+
+
+test('聊天收款遇到重复或冲突的 paymentId 必须停止修复卡片和财务流水', async () => {
+  const start = detail.indexOf('const pendingPaymentOperations = new Set();');
+  const end = detail.indexOf('// ===== 群投票', start);
+  assert.ok(start >= 0 && end > start);
+  const handlerSource = detail.slice(start, end);
+  const baseRow = {
+    paymentId: 'same-receipt-id', type: 'income',
+    category: 'redpacket', amount: 12
+  };
+  const conflicts = [
+    ['amount mismatch', [{ ...baseRow, amount: 9 }]],
+    ['duplicate receipt ID', [{ ...baseRow }, { ...baseRow }]],
+    ['outgoing row', [{ ...baseRow, type: 'expense' }]],
+    ['wrong category', [{ ...baseRow, category: 'transfer' }]]
+  ];
+  for (const [caseName, rows] of conflicts) {
+    const before = { balance: 112, history: rows };
+    let wallet = JSON.parse(JSON.stringify(before));
+    let history = [{
+      role: 'assistant', type: 'redpacket', amount: '12.00',
+      status: 'unopened', mid: 'same-receipt-id'
+    }];
+    const toasts = [];
+    let walletWrites = 0;
+    let messageWrites = 0;
+    let financeWrites = 0;
+    let popups = 0;
+    const localStorage = {
+      getItem: key => key === 'finance_records' ? '[]' : null,
+      setItem: key => { if (key === 'finance_records') financeWrites++; }
+    };
+    const walletWindow = {
+      navigator: {
+        locks: { request: (_name, _options, callback) => Promise.resolve().then(callback) }
+      },
+      localStorage
+    };
+    runInNewContext(walletLedgerSource, { window: walletWindow });
+    const sandbox = {
+      window: walletWindow,
+      localStorage,
+      loadMessages: () => JSON.parse(JSON.stringify(history)),
+      ensureMid: msg => msg.mid,
+      getWorkData: () => JSON.parse(JSON.stringify(wallet)),
+      saveWorkData: next => { walletWrites++; wallet = next; return true; },
+      saveMessages: next => { messageWrites++; history = next; return true; },
+      showToast: message => toasts.push(message),
+      renderAllMessages: () => {},
+      openPayResult: () => { popups++; },
+      currentCharacter: { name: '角色' },
+      console: { warn: () => {} }
+    };
+    runInNewContext(handlerSource, sandbox);
+    await sandbox.handlePayCardClick({
+      currentTarget: {
+        getAttribute: name => name === 'data-mid' ? 'same-receipt-id' : null,
+        setAttribute: () => {},
+        removeAttribute: () => {}
+      }
+    });
+    assert.equal(walletWrites, 0, caseName + ': no new income or overwrite');
+    assert.equal(messageWrites, 0, caseName + ': no false received status');
+    assert.equal(financeWrites, 0, caseName + ': no false finance entry');
+    assert.equal(popups, 0, caseName + ': no success popup');
+    assert.equal(history[0].status, 'unopened');
+    assert.deepEqual(wallet, before);
+    assert.match(toasts.at(-1), /重复或金额、类型冲突/, caseName);
+  }
+});
+
+
+test('售后申请在缺少跨标签 Web Locks 时拒绝修改订单与财务流水', async () => {
+  for (const navigator of [undefined, {}, { locks: { request: null } }]) {
+    const originalOrders = JSON.stringify([{
+      paymentId: 'no-lock-order', total: 12, payMethod: 'normal'
+    }]);
+    const originalFinance = JSON.stringify([{
+      paymentId: 'no-lock-order', paymentLineIndex: 0,
+      type: 'expense', amount: 12
+    }]);
+    const records = new Map([
+      ['shop_orders', originalOrders],
+      ['finance_records', originalFinance]
+    ]);
+    let writes = 0;
+    let lockCalls = 0;
+    const sandboxWindow = {
+      navigator,
+      localStorage: {
+        getItem: key => records.has(key) ? records.get(key) : null,
+        setItem: (key, value) => {
+          writes += 1;
+          records.set(key, String(value));
+        }
+      },
+      MaoMaoWalletLedger: {
+        runExclusive: callback => {
+          lockCalls += 1;
+          return Promise.resolve().then(callback);
+        }
+      },
+      crypto: { randomUUID: () => 'no-lock-request' },
+      console: { warn: () => {} }
+    };
+    runInNewContext(orderAfterSalesSource, { window: sandboxWindow });
+    const result = await sandboxWindow.MaoMaoOrderAfterSales.submit({
+      channel: 'shop', ordersKey: 'shop_orders', financeKey: 'finance_records',
+      paymentId: 'no-lock-order', amount: 12, paymentMethod: 'normal',
+      type: 'cancel', reason: '测试'
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, 'cross-tab-lock-unavailable');
+    assert.equal(lockCalls, 0, 'unsafe page-local fallback must not be invoked');
+    assert.equal(writes, 0, 'no partial or fabricated after-sales journal writes');
+    assert.equal(records.get('shop_orders'), originalOrders);
+    assert.equal(records.get('finance_records'), originalFinance);
+  }
+});
+
+
+test('无跨标签 Web Locks 时发送红包和修改亲密付均不写入', async () => {
+  const start = chatExtrasSource.indexOf('  var submitPayInProgress = false;');
+  const end = chatExtrasSource.indexOf("  if (payConfirmBtn) payConfirmBtn.addEventListener('click', submitPayMessage);", start);
+  assert.ok(start >= 0 && end > start);
+  const effects = { reads: 0, wallet: 0, chat: 0, lock: 0, ai: 0, toasts: [] };
+  const sandbox = {
+    window: { MaoMaoWalletLedger: {
+      runExclusive: () => { effects.lock++; return Promise.resolve(); },
+      supportsCrossTabLock: () => false
+    } },
+    payAmountInput: { value: '12.50' },
+    payMessageInput: { value: '测试' }, payConfirmBtn: { disabled: false },
+    PAY_DEFAULT_MESSAGE: '', payMode: 'redpacket',
+    currentCharacter: { id: 'role-1' },
+    getWorkData: () => { effects.reads++; return { balance: 100, history: [] }; },
+    saveWorkData: () => { effects.wallet++; return true; },
+    loadMessages: () => { effects.reads++; return []; },
+    saveMessages: () => { effects.chat++; return true; },
+    sendSilentInstruction: () => { effects.ai++; },
+    showToast: text => effects.toasts.push(text)
+  };
+  runInNewContext(chatExtrasSource.slice(start, end), sandbox);
+  await sandbox.submitPayMessage();
+  assert.deepEqual([effects.reads, effects.wallet, effects.chat, effects.lock, effects.ai], [0,0,0,0,0]);
+  assert.equal(sandbox.payConfirmBtn.disabled, false);
+  assert.match(effects.toasts.at(-1), /不支持跨页面钱包锁.*未扣款/);
+
+  const original = JSON.stringify({
+    enabled: true, roleId: 'role-1', roleName: '角色',
+    limit: 500, used: 0, history: []
+  });
+  const values = new Map([['close_pay', original]]);
+  let writes = 0;
+  const localStorage = {
+    getItem: key => values.has(key) ? values.get(key) : null,
+    setItem: (key, value) => { writes++; values.set(key, String(value)); }
+  };
+  const window = { navigator: {}, localStorage };
+  runInNewContext(walletLedgerSource, { window });
+  const pageStart = closePayPage.indexOf("var KEY = 'close_pay';");
+  const pageEnd = closePayPage.indexOf('function getCharacters()', pageStart);
+  assert.ok(pageStart >= 0 && pageEnd > pageStart);
+  const settings = { window, localStorage, console: { warn: () => {} }, toast: () => {} };
+  runInNewContext(closePayPage.slice(pageStart, pageEnd), settings);
+  const result = await settings.mutateData(data => { data.limit = 1; return true; });
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'cross-tab-lock-unavailable');
+  assert.equal(writes, 0);
+  assert.equal(values.get('close_pay'), original);
+  assert.match(settings.mutationErrorMessage(result.reason), /不支持跨页面钱包锁/);
+});
+
+
+test('商店外卖与钱包余额操作缺少 Web Locks 时在交易前失败关闭', async () => {
+  for (const [name, page, busyFlag] of [
+    ['shop', shopPage, 'shopPaymentInProgress'],
+    ['takeout', takeoutPage, 'takeoutPaymentInProgress']
+  ]) {
+    const start = page.indexOf('  async function doPay()');
+    assert.ok(start >= 0);
+    const match = /^  async function doPay\(\) \{[\s\S]*?\n  \}/.exec(page.slice(start));
+    assert.ok(match, name + ' payment handler must be extractable');
+    let attemptedLocks = 0;
+    const toasts = [];
+    const sandbox = {
+      window: {
+        MaoMaoWalletLedger: {
+          runExclusive: () => { attemptedLocks++; throw new Error('unsafe lock fallback'); },
+          supportsCrossTabLock: () => false
+        }
+      },
+      console: { warn: () => {} },
+      showToast: text => toasts.push(text),
+      toast: text => toasts.push(text)
+    };
+    runInNewContext('var ' + busyFlag + ' = false;\n' + match[0] + '\n' +
+      'globalThis.triggerPayment = doPay;', sandbox);
+    await sandbox.triggerPayment();
+    assert.equal(attemptedLocks, 0, name + ' must not enter any checkout writer');
+    assert.match(toasts.at(-1), /不支持跨页面钱包锁.*未扣款/,
+      name + ' must explain that no balance has been deducted');
+  }
+
+  const start = walletPage.indexOf('  var walletAmountMutationInProgress = false;');
+  assert.ok(start >= 0);
+  const match = /^  var walletAmountMutationInProgress = false;[\s\S]*?\n  \}\);/.exec(walletPage.slice(start));
+  assert.ok(match, 'wallet amount handler must be extractable');
+  let handler;
+  let attemptedLocks = 0;
+  const button = {
+    disabled: false,
+    addEventListener: (_type, callback) => { handler = callback; }
+  };
+  const amountError = { textContent: '' };
+  const sandbox = {
+    window: {
+      MaoMaoWalletLedger: {
+        supportsCrossTabLock: () => false,
+        getOrCreatePendingCheckout: () => { throw new Error('unexpected checkout'); },
+        runExclusive: () => { attemptedLocks++; throw new Error('unsafe lock fallback'); }
+      }
+    },
+    amountConfirm: button,
+    amountInput: { value: '5.00' },
+    amountMode: 'charge',
+    amountError,
+    console: { warn: () => {} }
+  };
+  runInNewContext(match[0], sandbox);
+  assert.equal(typeof handler, 'function');
+  await handler();
+  assert.equal(attemptedLocks, 0, 'wallet top-up or withdrawal must not enter a writer');
+  assert.equal(button.disabled, false, 'blocked wallet submit should restore the button');
+  assert.match(amountError.textContent, /不支持跨页面钱包锁.*未修改余额/);
+});
+
+
+test('亲属卡写入必须持有真实共享 Web Lock，直接调用与缺锁写入均被拒绝', async () => {
+  const values = new Map();
+  let writes = 0;
+  const storage = {
+    getItem: key => values.has(key) ? values.get(key) : null,
+    setItem: (key, value) => { writes++; values.set(key, String(value)); }
+  };
+  const window = { navigator: {}, localStorage: storage };
+  runInNewContext(walletLedgerSource, { window });
+  runInNewContext(roleFamilyCardsSource, { window, localStorage: storage });
+  const cards = window.RoleFamilyCards;
+  const ledger = window.MaoMaoWalletLedger;
+  const input = { roleId: 'role-1', monthlyLimit: 100, singleLimit: 25 };
+  assert.equal(cards.createInvite(input), null, 'direct invite cannot bypass lock');
+  await assert.rejects(ledger.runExclusive(() => cards.createInvite(input)),
+    error => error.code === 'cross-tab-lock-unavailable');
+  assert.equal(writes, 0, 'no missing-lock card write');
+  assert.equal(ledger.hasActiveMutationLock(), false);
+
+  let tail = Promise.resolve();
+  window.navigator.locks = {
+    request: (_name, options, callback) => {
+      assert.equal(options.mode, 'exclusive');
+      const next = tail.then(callback);
+      tail = next.catch(() => {});
+      return next;
+    }
+  };
+  assert.equal(cards.createInvite(input), null, 'Web Locks support alone does not grant write access');
+  const invite = await ledger.runExclusive(() => cards.createInvite(input));
+  assert.ok(invite, 'locked invite must succeed');
+  assert.equal((await ledger.runExclusive(() => cards.update(invite.id, 'accept'))).ok, true);
+  const first = await ledger.runExclusive(() =>
+    cards.consume(invite.id, 12, '测试', 'shop', 'payment-id-1'));
+  const replay = await ledger.runExclusive(() =>
+    cards.consume(invite.id, 12, '测试', 'shop', 'payment-id-1'));
+  assert.equal(first.ok, true);
+  assert.equal(replay.ok, true);
+  assert.equal(replay.replayed, true);
+  assert.equal(cards.find(invite.id).history.length, 1, 'replay cannot consume quota twice');
+  assert.equal(ledger.hasActiveMutationLock(), false, 'lease must end after successful write');
+  await assert.rejects(ledger.runExclusive(() => { throw new Error('injected'); }), /injected/);
+  assert.equal(ledger.hasActiveMutationLock(), false, 'lease must also end after thrown error');
+  assert.equal(cards.update(invite.id, 'pause').ok, false, 'no post-lock status change');
+});
+
+test('财务记账和亲属卡页面缺锁时拒绝写入，正常锁内记账仍可执行', async () => {
+  const records = JSON.stringify([{ id: 'f1', type: 'expense', amount: 8, category: '餐饮' }]);
+  const values = new Map([['finance_records', records]]);
+  let writes = 0;
+  const localStorage = {
+    getItem: key => values.has(key) ? values.get(key) : null,
+    setItem: (key, value) => { writes++; values.set(key, String(value)); }
+  };
+  const window = { navigator: {}, localStorage };
+  runInNewContext(walletLedgerSource, { window });
+  const fstart = financePage.indexOf('  function readFinanceRecordsState()');
+  const fend = financePage.indexOf('  function escapeFinanceText(value)', fstart);
+  assert.ok(fstart >= 0 && fend > fstart);
+  const financeSandbox = {
+    window, localStorage, console: { warn: () => {} }, showToast: () => {}
+  };
+  runInNewContext(financePage.slice(fstart, fend), financeSandbox);
+  let financeMutatorCalls = 0;
+  const blocked = await financeSandbox.mutateFinanceRecords(rows => {
+    financeMutatorCalls++;
+    rows.push({ id: 'f2', type: 'income', amount: 9 });
+  });
+  assert.equal(blocked.reason, 'cross-tab-lock-unavailable');
+  assert.equal(financeMutatorCalls, 0);
+  assert.equal(writes, 0);
+  assert.equal(values.get('finance_records'), records);
+  assert.match(financeSandbox.financeMutationError(blocked.reason), /未修改账目/);
+
+  const actionStart = familyCardsPage.indexOf('var pendingCardActions = new Set();');
+  const actionEnd = familyCardsPage.indexOf("\n\n  document.querySelector('.filters')", actionStart);
+  assert.ok(actionStart >= 0 && actionEnd > actionStart);
+  let cardUpdateCalls = 0;
+  const toasts = [];
+  const actionSandbox = {
+    window,
+    api: {
+      find: id => ({ id }),
+      update: () => { cardUpdateCalls++; return { ok: true }; }
+    },
+    appendRoleNotice: () => {}, render: () => {},
+    toast: text => toasts.push(text), console: { warn: () => {} }
+  };
+  runInNewContext(familyCardsPage.slice(actionStart, actionEnd), actionSandbox);
+  await actionSandbox.runAction('pause', 'test-card');
+  assert.equal(cardUpdateCalls, 0, 'no card status write without the shared lock');
+  assert.match(toasts.at(-1), /亲属卡操作已暂停/);
+
+  window.navigator.locks = {
+    request: (_name, _options, callback) => Promise.resolve().then(callback)
+  };
+  const good = await financeSandbox.mutateFinanceRecords(rows => {
+    rows.push({ id: 'f2', type: 'income', amount: 9 });
+    return true;
+  });
+  assert.equal(good.ok, true);
+  assert.equal(JSON.parse(values.get('finance_records')).length, 2);
+});
+
+
+test('共享财务流水写入 API 不可绕过锁，持锁重试只保存一份明细', async () => {
+  const values = new Map();
+  let writes = 0;
+  const localStorage = {
+    getItem: key => values.has(key) ? values.get(key) : null,
+    setItem: (key, value) => { writes++; values.set(key, String(value)); }
+  };
+  const window = {
+    navigator: { locks: {
+      request: (_name, options, callback) => {
+        assert.equal(options.mode, 'exclusive');
+        return Promise.resolve().then(callback);
+      }
+    } },
+    localStorage
+  };
+  runInNewContext(walletLedgerSource, { window });
+  const ledger = window.MaoMaoWalletLedger;
+  const rows = [{ amount: 12, type: 'expense', category: '购物', paymentLineIndex: 0 }];
+  const direct = ledger.recordFinanceLines('finance-payment-1', rows, 'finance_records');
+  assert.equal(direct.ok, false);
+  assert.equal(direct.reason, 'mutation-lock-required');
+  assert.equal(writes, 0);
+  const saved = await ledger.runExclusive(() =>
+    ledger.recordFinanceLines('finance-payment-1', rows, 'finance_records'));
+  assert.equal(saved.ok, true);
+  assert.equal(saved.replayed, false);
+  const repeated = await ledger.runExclusive(() =>
+    ledger.recordFinanceLines('finance-payment-1', rows, 'finance_records'));
+  assert.equal(repeated.ok, true);
+  assert.equal(repeated.replayed, true);
+  assert.equal(writes, 1, 'a replay must not duplicate the stored payment row');
+  assert.equal(JSON.parse(values.get('finance_records')).length, 1);
+  assert.equal(ledger.hasActiveMutationLock(), false);
+});
+
+
+test('钱包所有底层写口必须持有 Web Lock：余额、回滚、待结算与恢复幂等', async () => {
+  const values = new Map();
+  let writes = 0;
+  const storage = {
+    getItem: key => values.has(key) ? values.get(key) : null,
+    setItem: (key, value) => { writes++; values.set(key, String(value)); },
+    removeItem: key => { writes++; values.delete(key); }
+  };
+  const window = { navigator: {}, localStorage: storage };
+  runInNewContext(walletLedgerSource, { window });
+  const ledger = window.MaoMaoWalletLedger;
+  const direct = ledger.readWalletForMutation('workData');
+  direct.balance = 900;
+  assert.equal(ledger.commitWalletSnapshot(direct).reason, 'mutation-lock-required');
+  assert.equal(ledger.restoreWalletSnapshot('old-write', null), false);
+  assert.equal(ledger.getOrCreatePendingCheckout('shop', 'cart-a', 'normal'), null);
+  assert.equal(writes, 0, 'missing Web Locks must not write any wallet or checkout store');
+  let executed = 0;
+  await assert.rejects(ledger.runExclusive(() => { executed++; }),
+    error => error.code === 'cross-tab-lock-unavailable');
+  assert.equal(executed, 0);
+
+  window.navigator.locks = {
+    request: (_name, options, task) => {
+      assert.equal(options.mode, 'exclusive');
+      return Promise.resolve().then(task);
+    }
+  };
+  assert.equal(ledger.commitWalletSnapshot(direct).reason, 'mutation-lock-required',
+    'Web Locks availability is not permission to write without holding one');
+  const id = await ledger.runExclusive(() =>
+    ledger.getOrCreatePendingCheckout('shop', 'cart-a', 'normal'));
+  assert.ok(id);
+  assert.equal(ledger.isPendingCheckout(id), true);
+  const next = ledger.readWalletForMutation('workData');
+  next.balance = 900;
+  next.history.push({ paymentId: id, type: 'expense', amount: 100 });
+  const committed = await ledger.runExclusive(() => ledger.commitWalletSnapshot(next));
+  assert.equal(committed.ok, true);
+  assert.equal(ledger.readWalletForMutation('workData').balance, 900);
+  assert.equal(await ledger.runExclusive(() =>
+    ledger.restoreWalletSnapshot('invalid-baseline', null)), false);
+  assert.equal(await ledger.runExclusive(() => ledger.completePendingCheckout(id)), true);
+  assert.equal(await ledger.runExclusive(() => ledger.completePendingCheckout(id)), true,
+    'repeated confirmation of a persisted receipt is idempotent');
+  assert.equal(ledger.isPendingCheckout(id), false);
+  assert.equal(ledger.readWalletForMutation('workData').balance, 900,
+    'repeated confirmation must not change the wallet balance');
+  assert.equal(await ledger.runExclusive(() =>
+    ledger.restoreWalletSnapshot(committed.raw, null)), true);
+  assert.equal(storage.getItem('workData'), null,
+    'conditional rollback can restore the original first-use wallet state');
+
+  const cancelledId = await ledger.runExclusive(() =>
+    ledger.getOrCreatePendingCheckout('takeout', 'cart-b', 'normal'));
+  assert.ok(cancelledId);
+  assert.equal(await ledger.runExclusive(() =>
+    ledger.cancelPendingCheckout(cancelledId)), true);
+  assert.equal(ledger.isPendingCheckout(cancelledId), false);
+  assert.equal(ledger.hasActiveMutationLock(), false, 'no active lease may leak');
 });

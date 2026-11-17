@@ -25,5 +25,8 @@
       "tag": "v1",
       "new_sqlite_classes": ["CloudDatabase"]
     }
-  ]
+  ],
+  "triggers": {
+    "crons": ["* * * * *"]
+  }
 }

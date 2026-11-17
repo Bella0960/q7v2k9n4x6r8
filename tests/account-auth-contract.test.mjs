@@ -127,8 +127,17 @@ test('创作者管理中心的危险操作必须先居中确认，取消不得�
     '确认框必须覆盖页面并居中显示');
   assert.match(css, /\.admin-confirm-dialog::backdrop\{background:/,
     '确认时必须弱化背景，避免误点底层页面');
-  assert.match(css, /\.admin-confirm-actions button\.danger\{[^}]*background:#e5e6e9/i,
-    '危险确认按钮使用浅灰色而不是黑底');
+  assert.match(css, /\.admin-confirm-actions button\.danger\{[^}]*background:var\(--danger\)[^}]*color:#fff/i,
+    '危险确认按钮必须使用明确的红色风险提示');
+  assert.match(css, /--danger:#c9343d/);
+  assert.match(css, /\.action-button\.danger\{[^}]*color:var\(--danger\)/,
+    '停用和永久撤销操作在账号详情中必须显红');
+  assert.match(css, /\.invite-revoke-button\{[^}]*color:var\(--danger\)/,
+    '当前邀请码撤销按钮必须显红');
+  assert.match(css, /\.open-detail\.danger\{[^}]*color:var\(--danger\)/,
+    '邀请码目录的撤销按钮必须显红');
+  assert.match(script, /dialog\.classList\.toggle\('is-danger', Boolean\(options\.danger\)\)/,
+    '危险确认弹窗应切换风险样式');
   assert.match(script, /function openAdminConfirmation\(options\)/);
   assert.match(script, /dialog\.showModal\(\)/);
   assert.match(script, /adminConfirmDialog'\)\.addEventListener\('cancel'/,
@@ -204,6 +213,30 @@ test('账号安全操作共享忙碌锁，并恢复按钮原始禁用状态', ()
   assert.match(passwordHandler, /passwordMessage/);
   assert.doesNotMatch(script, /querySelectorAll\('button'\)\.forEach\(button => \{ button\.disabled = false;/,
     '操作结束不能无条件重新启用所有按钮');
+});
+
+test('管理员中心返回桌面仅显示独立图标，并保留可访问名称', () => {
+  const html = readFileSync(new URL('../admin/admin-center.html', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../admin/admin-center.css', import.meta.url), 'utf8');
+  const link = /<a class="back-link" href="\.\.\/index\.html" aria-label="返回桌面" title="返回桌面">([\s\S]*?)<\/a>/.exec(html);
+  assert.ok(link, '返回桌面入口必须保留正确目标和可访问名称');
+  assert.match(link[0], /title="返回桌面"/, '悬停时应保留简短功能提示');
+  assert.match(link[1], /<svg[\s\S]*?aria-hidden="true"/,
+    '返回桌面应使用独立 SVG 图标，而不是大段文字');
+  assert.doesNotMatch(link[1], /返回桌面/,
+    '按钮可见区域不得再显示四个大字');
+  assert.match(css, /\.back-link\{[^}]*flex:0 0 38px/,
+    '图标按钮宽度必须固定，不能挤压标题');
+  assert.match(css, /\.back-link:focus-visible/,
+    '图标按钮必须保留键盘焦点提示');
+});
+
+const accountAuthSource = readFileSync(new URL('../worker/lib/account-auth.js', import.meta.url), 'utf8');
+const passwordIterations = Number(/const PASSWORD_ITERATIONS = (\d+);/.exec(accountAuthSource)?.[1] || NaN);
+
+test('Cloudflare Workers PBKDF2 stays within the WebCrypto iteration limit', () => {
+  assert.ok(Number.isInteger(passwordIterations) && passwordIterations <= 100000,
+    'Cloudflare Workers rejects PBKDF2 iteration counts above 100,000');
 });
 
 const BOOTSTRAP_SECRET = 'test-mao-super-admin-bootstrap-secret-32-characters';
@@ -529,6 +562,56 @@ test('管理员初始化唯一、账号注册先生成永久 ID 并保持待授�
   assert.equal(registrationAudit.length, 1);
   assert.equal(registrationAudit[0].action, 'account_register');
   assert.equal(registrationAudit[0].actor_account_id, registered.payload.account.id);
+});
+
+test('同一超级管理员账号在两个独立登录会话中都保留管理员权限', async () => {
+  const ctx = setupTestStore(openTestDb(), { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const bootstrap = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator-multi-device',
+      password: 'creator-multi-device-password-123',
+      confirmPassword: 'creator-multi-device-password-123'
+    }
+  });
+  assert.equal(bootstrap.status, 200);
+  const firstClientCookie = cookieFrom(bootstrap);
+
+  // A second browser/device logs into the same creator account independently.
+  const secondLogin = await ctx.fetchTo('/api/accounts/login', {
+    method: 'POST',
+    body: {
+      identifier: 'creator-multi-device',
+      password: 'creator-multi-device-password-123'
+    }
+  });
+  assert.equal(secondLogin.status, 200);
+  const secondClientCookie = cookieFrom(secondLogin);
+  assert.notEqual(secondClientCookie, firstClientCookie,
+    'each device/client must receive its own independent session cookie');
+
+  const [firstMe, secondMe] = await Promise.all([
+    ctx.fetchTo('/api/accounts/me', { headers: { cookie: firstClientCookie } }),
+    ctx.fetchTo('/api/accounts/me', { headers: { cookie: secondClientCookie } })
+  ]);
+  const firstAccount = await json(firstMe);
+  const secondAccount = await json(secondMe);
+  assert.equal(firstAccount.status, 200);
+  assert.equal(secondAccount.status, 200);
+  assert.equal(firstAccount.payload.account.id, secondAccount.payload.account.id,
+    'both clients must resolve to the same permanent MAO account ID');
+  assert.equal(firstAccount.payload.account.role, 'super_admin');
+  assert.equal(secondAccount.payload.account.role, 'super_admin');
+
+  const [firstAdminAccess, secondAdminAccess] = await Promise.all([
+    ctx.fetchTo('/api/admin/invites', { headers: { cookie: firstClientCookie } }),
+    ctx.fetchTo('/api/admin/invites', { headers: { cookie: secondClientCookie } })
+  ]);
+  assert.equal(firstAdminAccess.status, 200,
+    'the creator account must access the admin API from the first client');
+  assert.equal(secondAdminAccess.status, 200,
+    'the same creator account must access the admin API from the second client');
 });
 
 test('登录会话与旧标签页 MAO 上下文不一致时，所有账号 API 都必须拒绝', async () => {

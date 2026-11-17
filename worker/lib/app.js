@@ -225,10 +225,18 @@ function validateScheduleInput(body) {
  * Build a privacy-safe notification for an already-persisted chat outbox row.
  * Message text is intentionally omitted so lock-screen previews reveal no chat content.
  */
-export function buildOutboundPushPayload({ characterId, serverMessageId, timestamp, accountId = OWNER_USER_ID }) {
+export function buildOutboundPushPayload({ characterId, serverMessageId, timestamp, accountId = OWNER_USER_ID, characterName = '', bubbleCount = 1 }) {
   const roleId = String(characterId || '');
   const messageId = String(serverMessageId || '');
   const maoAccountId = String(accountId || OWNER_USER_ID);
+  let safeName = '';
+  for (const character of String(characterName || '')) {
+    const code = character.codePointAt(0);
+    if (code >= 32 && code !== 127 && character !== '<' && character !== '>') safeName += character;
+  }
+  safeName = safeName.trim().slice(0, 48);
+  const count = Number(bubbleCount);
+  const safeCount = Number.isSafeInteger(count) && count >= 1 && count <= 4 ? count : 1;
   if (!roleId || roleId.length > 96 ||
       !/^[A-Za-z0-9_-]{16,128}$/.test(messageId) ||
       !(maoAccountId === OWNER_USER_ID || /^MAO-[A-Z0-9]{12,24}$/.test(maoAccountId))) {
@@ -237,15 +245,14 @@ export function buildOutboundPushPayload({ characterId, serverMessageId, timesta
   return {
     type: 'chat_message',
     accountId: maoAccountId,
-    title: '新消息',
-    body: '有一位角色刚刚联系你，打开聊天查看。',
+    title: safeName ? safeName + ' 给你发来消息' : 'MAOMAO 新消息',
+    body: safeCount > 1 ? '给你发来了 ' + safeCount + ' 条消息，打开聊天查看。' : '给你发来一条新消息，打开聊天查看。',
     url: './chat/chat/chat-detail.html?id=' + encodeURIComponent(roleId),
     tag: 'maomao-chat-' + messageId,
     dedupeKey: ('outbound:' + messageId).slice(0, 96),
     timestamp: Number(timestamp)
   };
 }
-
 /**
  * Send due notifications for pending outbound chat rows. Every subscription
  * has its own durable lease/dedupe row, so Cron recovery and an API-triggered
@@ -326,7 +333,9 @@ export async function dispatchPendingOutboundPushes({
         accountId: candidate.target_account_id || OWNER_USER_ID,
         characterId: candidate.character_id,
         serverMessageId: candidate.server_message_id,
-        timestamp: Number(candidate.created_at || timestamp)
+        timestamp: Number(candidate.created_at || timestamp),
+        characterName: candidate.character_name || '',
+        bubbleCount: Number(candidate.bubble_count || 1)
       });
       outcome = await sendWebPush(
         {
@@ -1582,26 +1591,58 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
   async function completeAutonomyActivity(request, activityId) {
     const device = await authenticate(request);
     const body = await readJsonBody(request);
+    const hasBubbles = !!body && Object.prototype.hasOwnProperty.call(body, 'bubbles');
+    const hasDisplayName = !!body && Object.prototype.hasOwnProperty.call(body, 'displayName');
     if (!body || typeof body !== 'object' || Array.isArray(body) ||
-        Object.keys(body).some(key => !['attemptCount', 'text'].includes(key)) ||
+        Object.keys(body).some(key => !['attemptCount', 'text', 'bubbles', 'displayName'].includes(key)) ||
         !Object.prototype.hasOwnProperty.call(body, 'attemptCount') ||
-        !Object.prototype.hasOwnProperty.call(body, 'text')) {
-      throw new ApiError(400, 'INVALID_ACTIVITY_RESULT', '完成请求只允许包含 attemptCount 和 text');
+        !Object.prototype.hasOwnProperty.call(body, 'text') || hasBubbles !== hasDisplayName) {
+      throw new ApiError(400, 'INVALID_ACTIVITY_RESULT', '完成请求只允许 attemptCount/text，以及成对提供的 bubbles/displayName');
     }
+    const hasUnsafeText = (value, allowLineFeed = false) => {
+      const text = String(value || '');
+      if (text.includes('<') || text.includes('>')) return true;
+      const lower = text.toLowerCase();
+      if (lower.includes('http://') || lower.includes('https://')) return true;
+      for (const character of text) {
+        const code = character.codePointAt(0);
+        if (code < 32 && !(allowLineFeed && code === 10)) return true;
+        if (code === 127) return true;
+      }
+      return false;
+    };
     const attemptCount = Number(body.attemptCount);
     const messageText = String(body.text || '').trim();
     if (!Number.isSafeInteger(attemptCount) || attemptCount < 1 ||
         messageText.length < 2 || Array.from(messageText).length > 220 ||
-        /[<>\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(messageText) ||
-        /https?:\/\//i.test(messageText)) {
+        hasUnsafeText(messageText, true)) {
       throw new ApiError(400, 'INVALID_ACTIVITY_RESULT', '主动消息必须是 2–220 字的普通文字');
+    }
+    let outboundPayload = { type: 'text', text: messageText };
+    if (hasBubbles) {
+      if (!Array.isArray(body.bubbles) || body.bubbles.length < 1 || body.bubbles.length > 4 ||
+          typeof body.displayName !== 'string' || Array.from(body.displayName).length > 48 ||
+          hasUnsafeText(body.displayName)) {
+        throw new ApiError(400, 'INVALID_ACTIVITY_RESULT', '主动消息气泡列表或角色名称无效');
+      }
+      const bubbles = body.bubbles.map(value => typeof value === 'string' ? value.trim() : '');
+      if (bubbles.some(value => value.length < 2 || Array.from(value).length > 220 || hasUnsafeText(value, true)) ||
+          bubbles.join(String.fromCharCode(10, 10)) !== messageText) {
+        throw new ApiError(400, 'INVALID_ACTIVITY_RESULT', '主动消息气泡边界或正文不匹配');
+      }
+      outboundPayload = {
+        type: 'text',
+        text: messageText,
+        bubbles: bubbles,
+        displayName: body.displayName.trim(),
+        bubbleCount: bubbles.length
+      };
     }
 
     const timestamp = now();
     const activity = await store.getActivity(activityId);
     const serverMessageId = 'autonomy_' + activityId + '_' + attemptCount;
     const outboundDedupeKey = 'autonomy:' + activityId + ':' + attemptCount;
-    const outboundPayload = { type: 'text', text: messageText };
 
     // A retry after a lost HTTP response is accepted only when it is byte-for-byte
     // the same completed message; different text cannot replace the first result.

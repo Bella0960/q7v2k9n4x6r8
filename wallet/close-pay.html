@@ -6,7 +6,7 @@
 <title>亲密付 · 小手机</title>
 <script src="../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../shared/js/native-feel.js"></script>
-<script src="../shared/js/phone/wallet-ledger.js?v=20261107v6"></script>
+<script src="../shared/js/phone/wallet-ledger.js?v=20261114v12"></script>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -74,6 +74,14 @@
     background: #fff; border-radius: 18px; padding: 20px;
     margin-bottom: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.04);
   }
+  .cp-data-warning {
+    display:none; padding:13px 15px; margin-bottom:12px;
+    border-radius:14px; background:#F0F0F3; color:#555;
+    font-size:.75rem; line-height:1.65;
+  }
+  .cp-data-warning.visible { display:block; }
+  .cp-switch:disabled { opacity:.45; cursor:not-allowed; }
+
 
   /* 亲密付对象 */
   .cp-person {
@@ -199,6 +207,10 @@
       <button class="cp-switch" id="cpSwitch" aria-label="开关"></button>
     </div>
 
+    <div class="cp-data-warning" id="closePayDataWarning" role="alert">
+      亲密付数据异常，已暂停修改和扣款。原始设置与交易记录未被覆盖，请先恢复本地数据。
+    </div>
+
     <!-- 选择对象 -->
     <div class="cp-card" id="personCard">
       <div class="cp-person" id="personRow">
@@ -259,28 +271,59 @@
 <script>
   var KEY = 'close_pay';
 
-  function getData() {
-    try {
-      var d = JSON.parse(localStorage.getItem(KEY) || 'null');
-      if (d && typeof d === 'object') return d;
-    } catch (e) {}
-    return { enabled: false, roleId: '', roleName: '', limit: 500, used: 0, history: [] };
+  function getDataState() {
+    var ledger = window.MaoMaoWalletLedger;
+    if (!ledger || typeof ledger.readClosePayState !== 'function') {
+      return { ok: false, reason: 'module', value: null };
+    }
+    return ledger.readClosePayState(KEY);
   }
+
+  function getData() {
+    var state = getDataState();
+    return state.ok ? state.value : null;
+  }
+
+  function mutationErrorMessage(reason, fallback) {
+    if (reason === 'invalid') return '亲密付数据异常，已暂停修改；请先恢复原始数据';
+    if (reason === 'storage') return '亲密付保存失败，请检查手机存储空间';
+    if (reason === 'module') return '亲密付保护模块未加载，请刷新页面后重试';
+    if (reason === 'cross-tab-lock-unavailable') return '当前浏览器不支持跨页面钱包锁，亲密付设置已暂停，未修改数据';
+    return fallback || '亲密付设置保存失败，请重试';
+  }
+
   async function mutateData(mutator) {
     var ledger = window.MaoMaoWalletLedger;
-    if (!ledger || typeof ledger.runExclusive !== 'function') {
+    if (!ledger || typeof ledger.runExclusive !== 'function' ||
+        typeof ledger.readClosePayState !== 'function') {
       return { ok: false, reason: 'module' };
+    }
+    // A page-local queue cannot protect these settings against a checkout in
+    // another tab. Never write a new limit, recipient or enable flag unlocked.
+    if (typeof ledger.supportsCrossTabLock !== 'function' ||
+        !ledger.supportsCrossTabLock()) {
+      return { ok: false, reason: 'cross-tab-lock-unavailable' };
     }
     try {
       return await ledger.runExclusive(function () {
-        // 在锁内读取最新设置，避免旧页面快照覆盖结算刚写入的额度。
-        var data = getData();
+        // 在锁内重新读取；已有损坏数据绝不回落成默认额度或空交易记录。
+        var state = ledger.readClosePayState(KEY);
+        if (!state.ok) return { ok: false, reason: state.reason || 'invalid' };
+        var data = state.value;
         var result = typeof mutator === 'function' ? mutator(data) : null;
         if (result && result.abort) return { ok: false, reason: result.abort };
+
         var serialized = JSON.stringify(data);
+        var payload = ledger.readClosePayState(KEY, serialized);
+        if (!payload.ok) return { ok: false, reason: 'invalid' };
+
         localStorage.setItem(KEY, serialized);
         if (localStorage.getItem(KEY) !== serialized) return { ok: false, reason: 'storage' };
-        return { ok: true, data: data, result: result };
+        var verified = ledger.readClosePayState(KEY);
+        if (!verified.ok || JSON.stringify(verified.value) !== serialized) {
+          return { ok: false, reason: 'storage' };
+        }
+        return { ok: true, data: verified.value, result: result };
       }, {
         onFallback: function () {
           toast('当前浏览器不支持跨页面设置互斥，请避免同时在多个页面修改亲密付');
@@ -323,8 +366,34 @@
   }
 
   function render() {
-    var d = getData();
+    var state = getDataState();
+    var warning = document.getElementById('closePayDataWarning');
     var sw = document.getElementById('cpSwitch');
+    var personRow = document.getElementById('personRow');
+    var limitInput = document.getElementById('limitInput');
+
+    if (!state.ok) {
+      if (warning) warning.classList.add('visible');
+      sw.disabled = true;
+      personRow.style.pointerEvents = 'none';
+      personRow.setAttribute('aria-disabled', 'true');
+      limitInput.disabled = true;
+      document.getElementById('personName').textContent = '数据异常，已暂停修改';
+      document.getElementById('limitValue').textContent = '—';
+      document.getElementById('progressText').textContent = '暂不可读取';
+      document.getElementById('progressFill').style.width = '0%';
+      document.getElementById('remainValue').textContent = '—';
+      document.getElementById('recordList').innerHTML =
+        '<div class="cp-empty">交易记录无法安全读取，原始数据已保留</div>';
+      return;
+    }
+
+    if (warning) warning.classList.remove('visible');
+    sw.disabled = false;
+    personRow.style.pointerEvents = '';
+    personRow.removeAttribute('aria-disabled');
+    limitInput.disabled = false;
+    var d = state.value;
     sw.classList.toggle('on', !!d.enabled);
 
     // 对象
@@ -386,7 +455,7 @@
       return { enabled: d.enabled };
     });
     if (!outcome.ok) {
-      toast(outcome.reason === 'missing-role' ? '请先选择亲密付对象' : '亲密付设置保存失败，请重试');
+      toast(outcome.reason === 'missing-role' ? '请先选择亲密付对象' : mutationErrorMessage(outcome.reason));
       return;
     }
     toast(outcome.data.enabled ? '亲密付已开启' : '亲密付已关闭');
@@ -429,7 +498,7 @@
       return true;
     });
     if (!outcome.ok) {
-      toast('亲密付对象保存失败，请重试');
+      toast(mutationErrorMessage(outcome.reason, '亲密付对象保存失败，请重试'));
       return;
     }
     this.classList.remove('open');
@@ -447,7 +516,7 @@
       return true;
     });
     if (!outcome.ok) {
-      toast('月额度保存失败，请重试');
+      toast(mutationErrorMessage(outcome.reason, '月额度保存失败，请重试'));
       return;
     }
     toast('月额度已设为 ¥' + outcome.data.limit);

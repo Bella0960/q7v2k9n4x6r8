@@ -7,7 +7,9 @@ const LOGIN_RATE_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_IP_MAX_ATTEMPTS = 120;
 const LOGIN_ACCOUNT_IP_MAX_ATTEMPTS = 8;
 const LOGIN_RATE_RETENTION_MS = 60 * 60 * 1000;
-const PASSWORD_ITERATIONS = 210000;
+// Cloudflare Workers WebCrypto rejects PBKDF2 iteration counts above 100,000.
+// Keep this shared work factor compatible with registration, login, bootstrap and password changes.
+const PASSWORD_ITERATIONS = 100000;
 const USERNAME_RE = /^[\p{L}\p{N}_-]{2,24}$/u;
 const ACCOUNT_ID_RE = /^MAO-[A-Z0-9]{12,24}$/;
 const INVITE_RE = /^[A-Za-z0-9_-]{32,128}$/;

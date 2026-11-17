@@ -353,6 +353,7 @@
     var PROACTIVE_CHECK_MS = 5 * 60 * 1000;
     var PROACTIVE_GLOBAL_COOLDOWN_MS = 24 * 60 * 60 * 1000;
     var PROACTIVE_MIN_IDLE_MS = 8 * 60 * 60 * 1000;
+    var PROACTIVE_INITIAL_DELAY_MS = 2 * 60 * 1000;
     var PROACTIVE_LOCK_KEY = 'chat_proactive_request_lock';
     var proactiveSchedulerStarted = false;
     var proactiveRequestPending = false;
@@ -377,7 +378,7 @@
     function ensureOptionalCloudClient() {
         if (global.MaomaoCloud) return Promise.resolve(true);
         return loadProactiveScript(
-            proactiveAsset('shared/js/cloud-push-client.js'),
+            proactiveAsset('shared/js/cloud-push-client.js?v=20261111cloudpush1'),
             function () { return !!global.MaomaoCloud; }
         ).then(function () { return true; });
     }
@@ -387,7 +388,8 @@
             global.ChatMessagePolicy && typeof global.ChatMessagePolicy.buildReplyMessages === 'function' &&
             global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function' &&
             typeof global.ChatPresencePolicy.normalizeProactiveBubbles === 'function' &&
-            typeof global.ChatPresencePolicy.buildVoiceHabitProfile === 'function') {
+            typeof global.ChatPresencePolicy.buildVoiceHabitProfile === 'function' &&
+            typeof global.ChatPresencePolicy.evaluateInitialProactiveContact === 'function') {
             return ensureOptionalCloudClient();
         }
         if (proactiveDependenciesPromise) return proactiveDependenciesPromise;
@@ -403,16 +405,17 @@
         }).then(function (ok) {
             if (!ok) return false;
             return loadProactiveScript(
-                proactiveAsset('shared/js/phone/chat-message-policy.js?v=20261029v5'),
+                proactiveAsset('shared/js/phone/chat-message-policy.js?v=20261111cloudbubble1'),
                 function () { return !!global.ChatMessagePolicy && typeof global.ChatMessagePolicy.buildReplyMessages === 'function'; }
             );
         }).then(function (ok) {
             if (!ok) return false;
             return loadProactiveScript(
-                proactiveAsset('shared/js/phone/chat-presence-policy.js?v=20261102v19'),
+                proactiveAsset('shared/js/phone/chat-presence-policy.js?v=20261111firstcontact1'),
                 function () { return !!global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function' &&
                     typeof global.ChatPresencePolicy.normalizeProactiveBubbles === 'function' &&
-                    typeof global.ChatPresencePolicy.buildVoiceHabitProfile === 'function'; }
+                    typeof global.ChatPresencePolicy.buildVoiceHabitProfile === 'function' &&
+                    typeof global.ChatPresencePolicy.evaluateInitialProactiveContact === 'function'; }
             );
         }).then(function (ok) {
             if (!ok) {
@@ -466,6 +469,23 @@
         return null;
     }
 
+    function hasConversationActivity(history) {
+        return (Array.isArray(history) ? history : []).some(function (item) {
+            if (!item || item.silent || item.isError || item.role === 'system_error') return false;
+            if (item.role !== 'user' && item.role !== 'sent' &&
+                item.role !== 'assistant' && item.role !== 'received') return false;
+            return !!String(item.text || item.content || '').trim() ||
+                !!item.type || !!item.image || !!item.voice || !!item.attachment;
+        });
+    }
+
+    function proactiveHistoryUnchanged(candidate, history) {
+        if (candidate && candidate.isInitialContact) return !hasConversationActivity(history);
+        var latest = newestMeaningfulMessage(history);
+        return !!latest && !!candidate && !!candidate.latest &&
+            latest.time === candidate.latest.time && latest.text === candidate.latest.text;
+    }
+
     function chooseProactiveCandidate(now) {
         var globalAttemptAt = Number(safeGet('chat_proactive_global_attempt_at')) || 0;
         if (globalAttemptAt && now - globalAttemptAt >= 0 &&
@@ -482,7 +502,49 @@
             var history = readHistory(id);
             var intervalMs = proactiveIntervalHours(id) * 60 * 60 * 1000;
             var roleAttemptAt = Number(safeGet('chat_proactive_last_attempt_' + id)) || 0;
-            var evaluation = global.ChatPresencePolicy.evaluateProactiveContact(history, {
+            var latest = newestMeaningfulMessage(history);
+            var evaluation;
+            var isInitialContact = !hasConversationActivity(history);
+
+            if (isInitialContact) {
+                var enabledAtKey = 'chat_proactive_contact_enabled_at_' + id;
+                var enabledAt = Number(safeGet(enabledAtKey)) || 0;
+                // Older saved opt-ins have no activation timestamp. Start their
+                // first-contact delay now rather than sending immediately on upgrade.
+                if (!enabledAt) {
+                    enabledAt = now;
+                    safeSet(enabledAtKey, String(enabledAt));
+                }
+                if (safeGet('chat_proactive_first_contact_sent_' + id) === 'true') return;
+                evaluation = global.ChatPresencePolicy.evaluateInitialProactiveContact({
+                    enabled: true,
+                    blocked: false,
+                    pageVisible: true,
+                    hasHistory: false,
+                    firstContactSent: false,
+                    enabledAt: enabledAt,
+                    initialDelayMs: PROACTIVE_INITIAL_DELAY_MS,
+                    now: now,
+                    globalCooldownMs: PROACTIVE_GLOBAL_COOLDOWN_MS,
+                    roleCooldownMs: intervalMs,
+                    globalLastAttemptAt: globalAttemptAt,
+                    roleLastAttemptAt: roleAttemptAt,
+                    quietStartHour: 9,
+                    quietEndHour: 22
+                });
+                if (!evaluation.eligible) return;
+                candidates.push({
+                    contact: contact,
+                    history: history,
+                    evaluation: evaluation,
+                    latest: null,
+                    lastUserMessageAt: 0,
+                    isInitialContact: true
+                });
+                return;
+            }
+
+            evaluation = global.ChatPresencePolicy.evaluateProactiveContact(history, {
                 enabled: true,
                 blocked: false,
                 pageVisible: true,
@@ -496,15 +558,14 @@
                 quietStartHour: 9,
                 quietEndHour: 22
             });
-            if (!evaluation.eligible) return;
-            var latest = newestMeaningfulMessage(history);
-            if (!latest || latest.time !== evaluation.lastMessageAt) return;
+            if (!evaluation.eligible || !latest || latest.time !== evaluation.lastMessageAt) return;
             candidates.push({
                 contact: contact,
                 history: history,
                 evaluation: evaluation,
                 latest: latest,
-                lastUserMessageAt: evaluation.lastUserMessageAt
+                lastUserMessageAt: evaluation.lastUserMessageAt,
+                isInitialContact: false
             });
         });
 
@@ -580,7 +641,13 @@
         });
         var serverMessageId = String(options.serverMessageId || '');
         if (serverMessageId) {
-            // The final bubble acknowledges the one server outbound row after it is actually read.
+            // One cloud outbox envelope represents this turn. Every local bubble
+            // carries the envelope identity; only the final bubble owns its ACK.
+            messages.forEach(function (message, index) {
+                message.cloudEnvelopeId = serverMessageId;
+                message.cloudBubbleIndex = index;
+                message.cloudBubbleCount = messages.length;
+            });
             messages[messages.length - 1].serverMessageId = serverMessageId;
         }
         return messages;
@@ -679,6 +746,16 @@
 
         var context;
         try {
+            // A first-contact character may have an empty local history. Create
+            // its opaque context-version event so the same account/device lease
+            // and queue fencing still apply; no chat text or persona is uploaded.
+            if (candidate.isInitialContact) {
+                if (typeof cloud.noteCharacterContextChanged !== 'function') {
+                    resetProactiveAttempt(roleId);
+                    return true;
+                }
+                await cloud.noteCharacterContextChanged(roleId, candidate.history);
+            }
             // Flush and confirm local ownership before taking a role lease;
             // a device with stale local history must not block the true owner.
             if (typeof cloud.flushCharacterContextVersion === 'function') {
@@ -759,14 +836,25 @@
             // Re-check the local chat after generation. No message body, persona
             // or history has been sent to the Worker; only this result is handed off.
             var freshHistory = readHistory(roleId);
-            var freshLatest = newestMeaningfulMessage(freshHistory);
-            if (!freshLatest || freshLatest.time !== candidate.latest.time ||
-                freshLatest.text !== candidate.latest.text) {
+            if (!proactiveHistoryUnchanged(candidate, freshHistory)) {
                 await cloud.skipAutonomyActivity(activity, 'context_changed');
                 return true;
             }
 
-            var completion = await cloud.completeAutonomyActivity(activity, content);
+            var notificationMessages = buildProactiveReplyMessages(content, candidate.contact, {
+                time: Date.now(),
+                source: 'cloud_autonomous'
+            });
+            if (!notificationMessages.length) {
+                await cloud.skipAutonomyActivity(activity, 'invalid_generation');
+                return true;
+            }
+            var cloudBubbles = notificationMessages.map(function (message) { return String(message.text || '').trim(); });
+            var cloudMessageText = cloudBubbles.join(String.fromCharCode(10, 10));
+            var completion = await cloud.completeAutonomyActivity(activity, cloudMessageText, {
+                displayName: candidate.contact.name,
+                bubbles: cloudBubbles
+            });
             // The server may accept the task but skip its stale result after a
             // final gate re-check. This is a terminal decision, not a transient
             // generation failure; do not immediately requeue it.
@@ -777,29 +865,34 @@
                 return true;
             }
 
-            // Mirror the accepted outbound message into this device's existing
-            // local conversation. The outbox keeps it pending until local
-            // history write/read-back is verified by the chat-detail receiver.
-            if (!freshHistory.some(function (item) {
-                return item && String(item.serverMessageId || '') === serverMessageId;
-            })) {
-                var proactiveMessages = buildProactiveReplyMessages(content, candidate.contact, {
+            // Mirror the exact bubble batch accepted by the server into this
+            // device's local history. Only the final bubble carries the ACK ID.
+            var policy = global.ChatMessagePolicy;
+            if (!policy || typeof policy.inspectCloudOutboundHistory !== 'function') return true;
+            var localState = policy.inspectCloudOutboundHistory(
+                freshHistory, serverMessageId, cloudMessageText, cloudBubbles
+            );
+            if (localState === 'conflict') return true;
+            if (localState === 'missing') {
+                var proactiveMessages = buildProactiveReplyMessages(cloudMessageText, candidate.contact, {
                     time: Date.now(),
                     source: 'cloud_autonomous',
                     serverMessageId: serverMessageId
                 });
-                if (!proactiveMessages.length) return true;
-                // Keep the server receipt on the final bubble only; the other bubbles
-                // remain independent local messages under the same turnId.
+                if (proactiveMessages.length !== cloudBubbles.length) return true;
                 freshHistory.push.apply(freshHistory, proactiveMessages);
                 var saved = global.PhoneStorage && typeof global.PhoneStorage.saveChatHistory === 'function'
                     ? global.PhoneStorage.saveChatHistory(roleId, freshHistory)
                     : safeSet('chat_history_' + roleId, freshHistory);
-                var verified = readHistory(roleId).some(function (item) {
-                    return item && String(item.serverMessageId || '') === serverMessageId;
-                });
-                if (saved && verified) tick();
+                var verified = policy.inspectCloudOutboundHistory(
+                    readHistory(roleId), serverMessageId, cloudMessageText, cloudBubbles
+                ) === 'match';
+                if (!saved || !verified) return true;
             }
+            if (candidate.isInitialContact) {
+                safeSet('chat_proactive_first_contact_sent_' + roleId, 'true');
+            }
+            tick();
             return true;
         } catch (error) {
             if (activity) {
@@ -827,6 +920,7 @@
         var ready = await ensureProactiveDependencies();
         if (!ready || !global.ChatPresencePolicy ||
             typeof global.ChatPresencePolicy.evaluateProactiveContact !== 'function' ||
+            typeof global.ChatPresencePolicy.evaluateInitialProactiveContact !== 'function' ||
             typeof global.ChatPresencePolicy.buildProactiveContactPrompt !== 'function' ||
             !global.PhoneAPI || typeof global.PhoneAPI.completeJSON !== 'function') return;
 
@@ -869,7 +963,7 @@
             var system = global.ChatPresencePolicy.buildProactiveContactPrompt(
                 candidate.contact,
                 candidate.history,
-                { localTime: localTime, voiceProfile: voiceProfile }
+                { localTime: localTime, voiceProfile: voiceProfile, initialContact: candidate.isInitialContact === true }
             );
             var messages = [{ role: 'system', content: system }];
             messages.push.apply(messages, historyForProactivePrompt(candidate.history));
@@ -894,9 +988,7 @@
 
             // 请求期间若用户又发了消息，放弃这条过时的主动联系。
             var freshHistory = readHistory(candidate.contact.id);
-            var freshLatest = newestMeaningfulMessage(freshHistory);
-            if (!freshLatest || freshLatest.time !== candidate.latest.time ||
-                freshLatest.text !== candidate.latest.text) return;
+            if (!proactiveHistoryUnchanged(candidate, freshHistory)) return;
 
             var proactiveMessages = buildProactiveReplyMessages(content, candidate.contact, {
                 time: Date.now(),
@@ -908,6 +1000,9 @@
                 ? global.PhoneStorage.saveChatHistory(candidate.contact.id, freshHistory)
                 : safeSet('chat_history_' + candidate.contact.id, freshHistory);
             if (!saved) return;
+            if (candidate.isInitialContact) {
+                safeSet('chat_proactive_first_contact_sent_' + candidate.contact.id, 'true');
+            }
             tick();
         } catch (error) {
             // 自动联系失败不打断当前页面；本次尝试已有冷却记录，避免重复消耗 API。

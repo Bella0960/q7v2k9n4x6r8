@@ -7,9 +7,9 @@
 <title>外卖 · 小手机</title>
 <script src="../shared/js/native-feel.js"></script>
 <script src="../shared/js/phone/phone_storage.js"></script>
-<script src="../shared/js/phone/role_family_cards.js?v=20261107v2"></script>
-<script src="../shared/js/phone/wallet-ledger.js?v=20261107v6"></script>
-<script src="../shared/js/phone/order-after-sales.js?v=20261107v2"></script>
+<script src="../shared/js/phone/role_family_cards.js?v=20261114v4"></script>
+<script src="../shared/js/phone/wallet-ledger.js?v=20261114v12"></script>
+<script src="../shared/js/phone/order-after-sales.js?v=20261114v3"></script>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -530,11 +530,9 @@
   }
 
   function getClosePay() {
-    try {
-      var d = JSON.parse(localStorage.getItem('close_pay') || 'null');
-      if (d && typeof d === 'object') return d;
-    } catch(e) {}
-    return null;
+    var ledger = window.MaoMaoWalletLedger;
+    if (!ledger || typeof ledger.readClosePayForMutation !== 'function') return null;
+    return ledger.readClosePayForMutation('close_pay');
   }
 
   function escapeFamilyCardText(value) {
@@ -769,7 +767,8 @@
         'order-payment-conflict': '订单支付信息与原流水不一致，已停止申请',
         'finance-invalid': '财务记录异常，已停止申请',
         'finance-missing': '找不到财务记录，已停止申请',
-        'request-conflict': '已有售后申请与当前信息冲突'
+        'request-conflict': '已有售后申请与当前信息冲突',
+        'cross-tab-lock-unavailable': '当前浏览器不支持安全的跨页面钱包锁，已暂停售后申请，未修改账目'
       };
       toast(messages[result.reason] || '申请暂未同步成功，可再次点击恢复');
     } else {
@@ -1039,6 +1038,18 @@
 
   // ===== 结算 =====
   let payMethod = 'normal';
+  let pendingTakeoutCheckoutSignature = '';
+
+  function buildTakeoutCheckoutSignature(items, orderShop, total) {
+    return JSON.stringify({
+      shopId: orderShop.id,
+      items: items.map(function (item) {
+        return { id: item.dish.id || item.dish.name, name: item.dish.name, price: item.dish.price, qty: item.qty };
+      }),
+      total: total
+    });
+  }
+
   function openCheckout() {
     closeCart();
     var items = cartItems();
@@ -1049,6 +1060,26 @@
       return;
     }
     var total = cartTotal();
+    var checkoutSignature = buildTakeoutCheckoutSignature(items, orderShop, total);
+    var checkoutLedger = window.MaoMaoWalletLedger;
+    var pending = checkoutLedger && typeof checkoutLedger.getPendingCheckout === 'function'
+      ? checkoutLedger.getPendingCheckout('takeout') : undefined;
+    if (pending === null) {
+      toast('未完成结算记录无法读取，已停止恢复');
+      return;
+    }
+    var resumingPending = !!(pending && pending.signature === checkoutSignature);
+    if (pending && !resumingPending) {
+      toast('检测到另一笔未完成外卖结算；已停止新结算，请先恢复原购物车');
+      return;
+    }
+    if (resumingPending) {
+      payMethod = String(pending.paymentMethod);
+      pendingTakeoutCheckoutSignature = String(pending.signature);
+    } else if (pendingTakeoutCheckoutSignature && pendingTakeoutCheckoutSignature !== checkoutSignature) {
+      toast('当前购物车与原外卖交易不一致，已停止结算');
+      return;
+    }
 
     // 商品列表
     document.getElementById('checkoutItems').innerHTML =
@@ -1064,31 +1095,47 @@
     '</div>';
 
     // 原有的「我给角色代付」亲密付继续保留；下面另列出角色赠予我的卡。
-    var cp = getClosePay();
+    var cpState = window.MaoMaoWalletLedger &&
+      typeof window.MaoMaoWalletLedger.readClosePayState === 'function'
+      ? window.MaoMaoWalletLedger.readClosePayState('close_pay') : { ok: false, reason: 'module' };
+    var cp = cpState.ok ? cpState.value : null;
+    var closePayDataInvalid = !cpState.ok && cpState.reason !== 'module';
     var canClose = cp && cp.enabled && cp.roleName &&
                    (Number(cp.used)||0) + total <= (Number(cp.limit)||0);
     var roleCardApi = window.RoleFamilyCards;
-    var roleCards = roleCardApi ? roleCardApi.readAll().filter(function (card) {
-      return card && card.status === 'active';
-    }) : [];
-    if (payMethod.indexOf('role_card:') === 0) {
+    var roleCardState = roleCardApi && typeof roleCardApi.readState === 'function'
+      ? roleCardApi.readState() : { ok: !roleCardApi, value: [] };
+    var roleCardDataInvalid = !!(roleCardApi && !roleCardState.ok);
+    var roleCards = roleCardApi && roleCardState.ok
+      ? roleCardState.value.filter(function (card) { return card && card.status === 'active'; })
+      : [];
+    if (!resumingPending && payMethod.indexOf('role_card:') === 0) {
       var selectedCard = getRoleCardFromMethod(payMethod);
       if (!selectedCard || !canUseRoleCard(selectedCard, total)) payMethod = 'normal';
     }
-    if (!payMethod || (payMethod === 'close_pay' && !canClose)) payMethod = 'normal';
+    if (!resumingPending && (!payMethod || (payMethod === 'close_pay' && !canClose))) payMethod = 'normal';
 
-    var html =
+    var html = resumingPending
+      ? '<div style="padding:12px 14px;border-radius:14px;background:#F7F7F9;color:#555;font-size:.75rem;line-height:1.6;margin-bottom:10px;">检测到一笔未完成结算，已恢复原商品与支付方式。请确认继续原交易，不会创建第二笔订单。</div>'
+      : '';
+    html += closePayDataInvalid
+      ? '<div style="padding:12px 14px;border-radius:14px;background:#F7F7F9;color:#666;font-size:.75rem;line-height:1.6;margin-bottom:10px;">亲密付设置数据异常，已暂停扣款。原设置与交易记录未被修改，请先恢复数据。</div>'
+      : '';
+    html +=
       '<div class="pay-method' + (payMethod==='normal'?' active':'') + '" data-m="normal">' +
         '<div><div class="pay-method-name">日常账户</div>' +
         '<div class="pay-method-sub">5292 •••• •••• 3123</div></div>' +
         '<div class="pay-method-radio"></div>' +
       '</div>';
-    if (canClose) {
+    if (canClose || (resumingPending && payMethod === 'close_pay' && cp)) {
       html += '<div class="pay-method' + (payMethod==='close_pay'?' active':'') + '" data-m="close_pay">' +
         '<div><div class="pay-method-name">亲密付 · ' + escapeFamilyCardText(cp.roleName) + '</div>' +
         '<div class="pay-method-sub">剩余 ¥' + Math.max(0, Number(cp.limit)-Number(cp.used)).toFixed(2) + ' / 月</div></div>' +
         '<div class="pay-method-radio"></div>' +
       '</div>';
+    }
+    if (roleCardDataInvalid) {
+      html += '<div style="padding:12px 14px;border-radius:14px;background:#F7F7F9;color:#666;font-size:.75rem;line-height:1.6;margin-bottom:10px;">亲属卡数据异常，已暂停使用和扣款。原始卡片记录未被修改，请先恢复卡片数据。</div>';
     }
     roleCards.forEach(function (card) {
       var method = 'role_card:' + card.id;
@@ -1111,6 +1158,10 @@
     document.querySelectorAll('#payMethods .pay-method').forEach(el => {
       el.addEventListener('click', function(){
         if (!el.dataset.m) return;
+        if (pendingTakeoutCheckoutSignature && el.dataset.m !== payMethod) {
+          toast('这笔结算必须沿用原支付方式；请先完成原交易恢复');
+          return;
+        }
         payMethod = el.dataset.m;
         openCheckout();
       });
@@ -1119,6 +1170,69 @@
     document.getElementById('checkoutOverlay').classList.add('open');
   }
     function closeCheckout() { document.getElementById('checkoutOverlay').classList.remove('open'); }
+
+  function restorePendingTakeoutCheckout() {
+    var ledger = window.MaoMaoWalletLedger;
+    if (!ledger || typeof ledger.getPendingCheckout !== 'function') return;
+    var pending = ledger.getPendingCheckout('takeout');
+    if (pending === undefined) return;
+    if (pending === null) {
+      toast('未完成外卖结算记录无法读取，已停止自动恢复');
+      return;
+    }
+    var snapshot;
+    try { snapshot = JSON.parse(pending.signature); }
+    catch (error) { toast('原外卖订单快照损坏，已停止恢复'); return; }
+    var shop = snapshot && getShopById(snapshot.shopId);
+    if (!shop || !Array.isArray(snapshot.items) || !snapshot.items.length ||
+        !isFinite(Number(snapshot.total)) || Number(snapshot.total) < 0 || !pending.paymentMethod) {
+      toast('原外卖订单快照缺少必要信息，已停止恢复');
+      return;
+    }
+    var restoredCart = {};
+    var computedTotal = 0;
+    for (var i = 0; i < snapshot.items.length; i++) {
+      var saved = snapshot.items[i];
+      var dish = saved && shop.dishes.find(function (item) { return String(item.id) === String(saved.id); });
+      var qty = Number(saved && saved.qty);
+      if (!dish || dish.name !== saved.name || Number(dish.price) !== Number(saved.price) ||
+          !Number.isInteger(qty) || qty < 1 || restoredCart[dish.id]) {
+        toast('原菜品与当前餐厅菜单不一致，已停止恢复');
+        return;
+      }
+      restoredCart[dish.id] = { dish:dish, qty:qty };
+      computedTotal += Number(dish.price) * qty;
+    }
+    if (Math.round(computedTotal * 100) !== Math.round(Number(snapshot.total) * 100)) {
+      toast('原外卖订单金额校验未通过，已停止恢复');
+      return;
+    }
+    var oldCart = cart;
+    var oldShopId = cartShopId;
+    var oldCartRaw = localStorage.getItem('takeout_cart');
+    var oldShopRaw = localStorage.getItem('takeout_cart_shop_id');
+    cart = restoredCart;
+    cartShopId = shop.id;
+    if (!saveCart()) {
+      cart = oldCart;
+      cartShopId = oldShopId;
+      try {
+        if (oldCartRaw == null) localStorage.removeItem('takeout_cart');
+        else localStorage.setItem('takeout_cart', oldCartRaw);
+        if (oldShopRaw == null) localStorage.removeItem('takeout_cart_shop_id');
+        else localStorage.setItem('takeout_cart_shop_id', oldShopRaw);
+      } catch (restoreError) {}
+      updateCartUI();
+      toast('原外卖购物车恢复失败，未继续结算');
+      return;
+    }
+    pendingTakeoutCheckoutSignature = String(pending.signature);
+    payMethod = String(pending.paymentMethod);
+    updateCartUI();
+    openCheckout();
+    toast('已恢复原餐厅、菜品和支付方式；点击确认只会继续原交易');
+  }
+
 
   var takeoutPaymentInProgress = false;
 
@@ -1129,6 +1243,11 @@
       var ledger = window.MaoMaoWalletLedger;
       if (!ledger || typeof ledger.runExclusive !== 'function') {
         toast('钱包保护模块尚未加载，请刷新页面后重试');
+        return;
+      }
+      if (typeof ledger.supportsCrossTabLock !== 'function' ||
+          !ledger.supportsCrossTabLock()) {
+        toast('当前浏览器不支持跨页面钱包锁，外卖结算已暂停，未扣款');
         return;
       }
       await ledger.runExclusive(function () {
@@ -1142,13 +1261,12 @@
               return;
             }
             var total = cartTotal();
-            var checkoutSignature = JSON.stringify({
-              shopId: orderShop.id,
-              items: items.map(function (item) {
-                return { id: item.dish.id || item.dish.name, name: item.dish.name, price: item.dish.price, qty: item.qty };
-              }),
-              total: total,
-            });
+            var currentCheckoutSignature = buildTakeoutCheckoutSignature(items, orderShop, total);
+            if (pendingTakeoutCheckoutSignature && pendingTakeoutCheckoutSignature !== currentCheckoutSignature) {
+              toast('当前购物车与未完成原交易不一致，已停止结算；请恢复原购物车后重试');
+              return;
+            }
+            var checkoutSignature = pendingTakeoutCheckoutSignature || currentCheckoutSignature;
             var transactionId = ledger.getOrCreatePendingCheckout('takeout', checkoutSignature, payMethod);
             if (!transactionId) {
               toast('存在未完成的结算；请恢复上次商品和支付方式后继续，避免重复扣款');
@@ -1156,6 +1274,13 @@
             }
             var roleFamilyCard = getRoleCardFromMethod(payMethod);
             if (payMethod.indexOf('role_card:') === 0) {
+              var roleCardState = window.RoleFamilyCards && typeof window.RoleFamilyCards.readState === 'function'
+                ? window.RoleFamilyCards.readState() : { ok: false, reason: 'module' };
+              if (!roleCardState.ok) {
+                ledger.cancelPendingCheckout(transactionId);
+                toast('亲属卡数据异常，已停止扣款；请先恢复卡片数据');
+                return;
+              }
               if (!roleFamilyCard) {
                 ledger.cancelPendingCheckout(transactionId);
                 toast('这张亲属卡不存在或已失效');
@@ -1168,10 +1293,13 @@
                 roleFamilyCard.id, total, '外卖 · ' + items.map(function (it) { return it.dish.name + '×' + it.qty; }).join('、'), 'takeout', transactionId
               );
               if (!familySpend || !familySpend.ok) {
-                if (familySpend && (familySpend.reason === 'limit' || familySpend.reason === 'missing')) {
+                if (familySpend && ['limit', 'missing', 'invalid'].indexOf(familySpend.reason) !== -1) {
                   ledger.cancelPendingCheckout(transactionId);
                 }
-                toast(familySpend && familySpend.reason === 'storage' ? '亲属卡记录保存失败，请重试' : '亲属卡额度已变化，请重新选择');
+                toast(familySpend && familySpend.reason === 'invalid'
+                  ? '亲属卡数据异常，已停止扣款；请先恢复卡片数据'
+                  : (familySpend && familySpend.reason === 'storage'
+                    ? '亲属卡记录保存失败，请重试' : '亲属卡额度已变化，请重新选择'));
                 closeCheckout();
                 openCheckout();
                 return;
@@ -1200,9 +1328,11 @@
             return row && row.paymentId === transactionId;
           });
           oldWalletRaw = localStorage.getItem('workData');
-          var wd = JSON.parse(oldWalletRaw || 'null') || { balance: 1000, history: [] };
-          if (typeof wd.balance !== 'number' || !isFinite(wd.balance)) wd.balance = 1000;
-          if (!Array.isArray(wd.history)) wd.history = [];
+          var wd = ledger.readWalletForMutation('workData', oldWalletRaw);
+          if (!wd) {
+            toast('钱包数据异常，已停止亲密付扣款；请先修复或恢复钱包数据，原交易编号保留');
+            return;
+          }
           var walletAlreadyCommitted = wd.history.some(function (row) {
             return row && row.paymentId === transactionId;
           });
@@ -1229,12 +1359,12 @@
             wd.history.unshift({ type:'expense', category:'close_pay',
               title: '外卖亲密付 · ' + cp.roleName + ' · ' + itemsDesc,
               amount: total, time: Date.now(), paymentId: transactionId });
-            walletSerialized = JSON.stringify(wd);
-            localStorage.setItem('workData', walletSerialized);
-            if (localStorage.getItem('workData') !== walletSerialized) {
+            var walletCommit = ledger.commitWalletSnapshot(wd, oldWalletRaw);
+            if (!walletCommit.ok) {
               toast('钱包扣款未能确认；再次提交会核对原交易，不会盲目重复扣款');
               return;
             }
+            walletSerialized = walletCommit.raw;
           } else {
             walletSerialized = oldWalletRaw || JSON.stringify(wd);
           }
@@ -1247,10 +1377,7 @@
             localStorage.setItem('close_pay', closePaySerialized);
             if (localStorage.getItem('close_pay') !== closePaySerialized) {
               try {
-                if (localStorage.getItem('workData') === walletSerialized) {
-                  if (oldWalletRaw == null) localStorage.removeItem('workData');
-                  else localStorage.setItem('workData', oldWalletRaw);
-                }
+                ledger.restoreWalletSnapshot(walletSerialized, oldWalletRaw);
               } catch (rollbackError) {}
               toast('亲密付额度未能保存，已尝试撤回钱包扣款；请重试核对原交易');
               return;
@@ -1278,10 +1405,7 @@
               } catch(e) {
                 if (!closePayQuotaCommitted && walletSerialized) {
                   try {
-                    if (localStorage.getItem('workData') === walletSerialized) {
-                      if (oldWalletRaw == null) localStorage.removeItem('workData');
-                      else localStorage.setItem('workData', oldWalletRaw);
-                    }
+                    ledger.restoreWalletSnapshot(walletSerialized, oldWalletRaw);
                   } catch (rollbackError) {}
                 }
                 toast('亲密付操作未能确认，订单未完成');
@@ -1289,35 +1413,22 @@
               }
             }
 
-            // 财务明细按交易 ID + 商品序号幂等写入；失败时保留待恢复交易。
-            try {
-              var list = JSON.parse(localStorage.getItem('finance_records') || '[]');
-              if (!Array.isArray(list)) throw new Error('finance_records is not an array');
-              items.forEach(function (item, index) {
-                var exists = list.some(function (row) {
-                  return row && row.paymentId === transactionId && Number(row.paymentLineIndex) === index;
-                });
-                if (!exists) list.push({
-                  amount: item.dish.price * item.qty,
-                  type: 'expense',
-                  category: payMethod === 'close_pay' ? '亲密付' : (payMethod.indexOf('role_card:') === 0 ? '亲属卡' : '外卖'),
-                  note: (payMethod === 'close_pay'
-                    ? '亲密付给' + (getClosePay()||{}).roleName + ' · '
-                    : (roleFamilyCard ? roleFamilyCard.roleName + ' 亲属卡代付 · ' : '外卖 · ')) + itemsDesc,
-                  time: timeStr,
-                  paymentId: transactionId,
-                  paymentLineIndex: index
-                });
-              });
-              var financeSerialized = JSON.stringify(list);
-              localStorage.setItem('finance_records', financeSerialized);
-              if (localStorage.getItem('finance_records') !== financeSerialized) {
-                toast('支付已记录，但财务明细未保存；再次提交会补齐且不会重复扣款');
-                return;
-              }
-            } catch (financeError) {
-              console.warn('[takeout] 财务明细保存失败', financeError);
-              toast('财务明细保存失败；再次提交可恢复原交易');
+            // 共享账本严格校验原流水，再按 paymentId + 菜品序号幂等补齐。
+            var financeRows = items.map(function (item, index) {
+              return {
+                amount: item.dish.price * item.qty,
+                type: 'expense',
+                category: payMethod === 'close_pay' ? '亲密付' : (payMethod.indexOf('role_card:') === 0 ? '亲属卡' : '外卖'),
+                note: (payMethod === 'close_pay'
+                  ? '亲密付给' + (getClosePay()||{}).roleName + ' · '
+                  : (roleFamilyCard ? roleFamilyCard.roleName + ' 亲属卡代付 · ' : '外卖 · ')) + itemsDesc,
+                time: timeStr,
+                paymentLineIndex: index
+              };
+            });
+            var financeResult = ledger.recordFinanceLines(transactionId, financeRows, 'finance_records');
+            if (!financeResult.ok) {
+              toast('财务流水异常或与原交易冲突，已停止写入；原交易仍保留待恢复');
               return;
             }
 
@@ -1406,6 +1517,7 @@
               }
               return;
             }
+            pendingTakeoutCheckoutSignature = '';
             try {
               if (roleFamilyCard) {
                             notifyRoleCardIssuer(roleFamilyCard,
@@ -1487,6 +1599,7 @@
   renderCats();
   renderShops();
   updateCartUI();
+  restorePendingTakeoutCheckout();
 </script>
 </body>
 </html>

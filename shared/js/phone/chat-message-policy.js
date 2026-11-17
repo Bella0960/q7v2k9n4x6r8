@@ -392,6 +392,123 @@
     return text;
   }
 
+  function hasUnsafeCloudText(value, allowLineFeed) {
+    var text = String(value || '');
+    if (text.indexOf('<') !== -1 || text.indexOf('>') !== -1) return true;
+    var lower = text.toLowerCase();
+    if (lower.indexOf('http://') !== -1 || lower.indexOf('https://') !== -1) return true;
+    for (var i = 0; i < text.length; i += 1) {
+      var code = text.charCodeAt(i);
+      if (code < 32 && !(allowLineFeed === true && code === 10)) return true;
+      if (code === 127) return true;
+    }
+    return false;
+  }
+
+  function normalizeCloudBubbleTexts(rawText, suppliedBubbles) {
+    if (Array.isArray(suppliedBubbles)) {
+      if (!suppliedBubbles.length || suppliedBubbles.length > 4) return [];
+      var cleaned = [];
+      for (var i = 0; i < suppliedBubbles.length; i += 1) {
+        if (typeof suppliedBubbles[i] !== 'string') return [];
+        var bubble = suppliedBubbles[i].trim();
+        var length = Array.from(bubble).length;
+        if (length < 2 || length > 220 || hasUnsafeCloudText(bubble, true)) return [];
+        cleaned.push(bubble);
+      }
+      if (cleaned.join(String.fromCharCode(10, 10)) !== String(rawText || '').trim()) return [];
+      return cleaned;
+    }
+    return parseReplyContent(String(rawText || ''), 'legacy').bubbles;
+  }
+
+  // Cloud autonomous replies use one durable outbox envelope per turn, but
+  // every generated bubble becomes its own local message with stable identity.
+  function buildCloudOutboundMessages(rawText, serverMessageId, meta) {
+    var messageId = String(serverMessageId || '');
+    var text = typeof rawText === 'string' ? rawText.trim() : '';
+    if (!/^[A-Za-z0-9_-]{16,128}$/.test(messageId) || !text || text.length > 10000) return [];
+    meta = meta && typeof meta === 'object' ? meta : {};
+    var bubbleTexts = normalizeCloudBubbleTexts(text, meta.bubbles);
+    if (!bubbleTexts.length) return [];
+    var serialized = bubbleTexts.join(String.fromCharCode(10, 10));
+    var time = Number(meta.time) || Date.now();
+    var turnId = String(meta.turnId || ('cloud_' + messageId));
+    var messages = buildReplyMessages(serialized, 'legacy', {
+      time: time,
+      turnId: turnId,
+      voiceMode: String(meta.voiceMode || 'online')
+    });
+    if (!Array.isArray(messages) || messages.length !== bubbleTexts.length) return [];
+    var count = messages.length;
+    messages.forEach(function (message, index) {
+      message.role = 'assistant';
+      message.source = 'cloud_autonomous';
+      message.cloudEnvelopeId = messageId;
+      message.cloudBubbleIndex = index;
+      message.cloudBubbleCount = count;
+    });
+    messages[count - 1].serverMessageId = messageId;
+    return messages;
+  }
+
+  // Idempotency check shared by cloud inbox receivers. Supports older builds
+  // that stored one combined message or only attached the receipt to the final
+  // bubble, while rejecting partial/corrupted batches instead of ACKing them.
+  function inspectCloudOutboundHistory(history, serverMessageId, expectedText, suppliedBubbles) {
+    if (!Array.isArray(history)) return 'conflict';
+    var messageId = String(serverMessageId || '');
+    var text = typeof expectedText === 'string' ? expectedText.trim() : '';
+    if (!/^[A-Za-z0-9_-]{16,128}$/.test(messageId) || !text) return 'conflict';
+    var expected = normalizeCloudBubbleTexts(text, suppliedBubbles);
+    if (!expected.length) return 'conflict';
+
+    var tagged = history.filter(function (item) {
+      return item && String(item.cloudEnvelopeId || '') === messageId;
+    });
+    if (tagged.length) {
+      if (tagged.length !== expected.length) return 'conflict';
+      tagged.sort(function (a, b) {
+        return Number(a.cloudBubbleIndex) - Number(b.cloudBubbleIndex);
+      });
+      for (var i = 0; i < expected.length; i += 1) {
+        var row = tagged[i];
+        if (row.role !== 'assistant' ||
+            Number(row.cloudBubbleIndex) !== i ||
+            Number(row.cloudBubbleCount) !== expected.length ||
+            String(row.text || row.content || '').trim() !== expected[i] ||
+            (i === expected.length - 1 && String(row.serverMessageId || '') !== messageId) ||
+            (i !== expected.length - 1 && row.serverMessageId)) return 'conflict';
+      }
+      return 'match';
+    }
+
+    var receiptRows = history.filter(function (item) {
+      return item && String(item.serverMessageId || '') === messageId;
+    });
+    if (!receiptRows.length) return 'missing';
+    if (receiptRows.length !== 1 || receiptRows[0].role !== 'assistant') return 'conflict';
+    var receiptRow = receiptRows[0];
+    var receiptText = String(receiptRow.text || receiptRow.content || '').trim();
+    if (receiptText === text) return 'match';
+
+    // Intermediate compatibility: sender builds before cloud completion may
+    // have independent bubbles + one receipt on the final bubble, but no
+    // cloudEnvelopeId metadata yet.
+    var turnId = String(receiptRow.turnId || '');
+    if (!turnId) return 'conflict';
+    var turnRows = history.filter(function (item) {
+      return item && item.role === 'assistant' && String(item.turnId || '') === turnId;
+    }).sort(function (a, b) {
+      return Number(a.bubbleIndex) - Number(b.bubbleIndex);
+    });
+    if (turnRows.length !== expected.length) return 'conflict';
+    for (var j = 0; j < expected.length; j += 1) {
+      if (String(turnRows[j].text || turnRows[j].content || '').trim() !== expected[j]) return 'conflict';
+    }
+    return String(turnRows[turnRows.length - 1].serverMessageId || '') === messageId
+      ? 'match' : 'conflict';
+  }
   function isHiddenFromOnlineTimeline(message) {
     if (!message) return false;
     // 线下剧情消息、静默指令、线下到达开场（老数据可能没打 mode 但带 arrivalStart）
@@ -437,6 +554,8 @@
     extractMemoryMarkers: extractMemoryMarkers,
     parseReplyContent: parseReplyContent,
     buildReplyMessages: buildReplyMessages,
+    buildCloudOutboundMessages: buildCloudOutboundMessages,
+    inspectCloudOutboundHistory: inspectCloudOutboundHistory,
     bubbleIdFor: bubbleIdFor,
     parseBubbleId: parseBubbleId,
     getMessageBubbles: getMessageBubbles,

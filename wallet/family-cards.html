@@ -8,7 +8,8 @@
 <script src="../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../shared/js/native-feel.js"></script>
 <script src="../shared/js/phone/phone_storage.js"></script>
-<script src="../shared/js/phone/role_family_cards.js?v=20261107v2"></script>
+<script src="../shared/js/phone/wallet-ledger.js?v=20261114v12"></script>
+<script src="../shared/js/phone/role_family_cards.js?v=20261114v4"></script>
 <style>
 :root{color-scheme:light;--ink:#111;--muted:#8e8e93;--line:#e5e5ea;--paper:#f7f7f9;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -166,8 +167,10 @@ button,a{font:inherit}
     return ({ pending:'待领取', active:'可使用', paused:'已暂停', revoked:'已撤销', rejected:'已婉拒' })[status] || '不可用';
   }
   function getCards() {
-    if (!api) return [];
-    return api.readAll().slice().sort(function (a, b) {
+    if (!api || typeof api.readState !== 'function') return null;
+    var state = api.readState();
+    if (!state || !state.ok || !Array.isArray(state.value)) return null;
+    return state.value.slice().sort(function (a, b) {
       return (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0);
     });
   }
@@ -241,6 +244,13 @@ button,a{font:inherit}
       return;
     }
     var cards = getCards();
+    if (!cards) {
+      document.getElementById('activeCount').textContent = '—';
+      document.getElementById('remainingTotal').textContent = '暂不可用';
+      document.getElementById('cardCountNote').textContent = '数据读取失败';
+      cardList.innerHTML = '<div class="empty"><strong>卡包数据异常</strong>已保存的卡片数据无法安全读取。为避免覆盖原始记录，当前已暂停领取、调整和消费相关操作；请先恢复本地数据，再刷新此页面。</div>';
+      return;
+    }
     var activeCards = cards.filter(function (card) { return card.status === 'active'; });
     var remaining = activeCards.reduce(function (sum, card) {
       return sum + Math.max(0, (Number(card.monthlyLimit) || 0) - api.usedThisMonth(card));
@@ -289,24 +299,53 @@ button,a{font:inherit}
       }
     } catch (e) {}
   }
-  function runAction(action, id) {
-    if (!api) return;
-    var before = api.find(id);
-    var result = api.update(id, action);
-    if (!result || !result.ok) {
-      toast(result && result.reason === 'storage' ? '保存失败，请检查手机存储空间' : '这张卡目前无法执行该操作');
+  var pendingCardActions = new Set();
+  async function runAction(action, id) {
+    if (!api || !id) return;
+    var actionKey = String(id) + ':' + String(action || '');
+    if (pendingCardActions.has(actionKey)) return;
+    var ledger = window.MaoMaoWalletLedger;
+    if (!ledger || typeof ledger.runExclusive !== 'function') {
+      toast('钱包保护模块未加载，亲属卡操作已暂停，请刷新页面重试');
       return;
     }
-    var card = result.card || before;
-    var verb = ({
-      accept:'我收下你送给我的卡了，谢谢你。',
-      reject:'谢谢你的心意，不过这张卡我暂时先不收。',
-      pause:'我先把你给我的卡暂停使用了。',
-      resume:'我恢复使用你给我的卡了。'
-    })[action];
-    if (verb) appendRoleNotice(card, verb);
-    render();
-    toast(({accept:'已领取，可以在商店和外卖结算使用',reject:'已婉拒这张卡',pause:'卡片已暂停',resume:'卡片已恢复使用'})[action] || '已更新');
+    if (typeof ledger.supportsCrossTabLock !== 'function' ||
+        !ledger.supportsCrossTabLock()) {
+      toast('当前浏览器不支持跨页面钱包锁，亲属卡操作已暂停，未修改卡片');
+      return;
+    }
+    pendingCardActions.add(actionKey);
+    try {
+      var outcome = await ledger.runExclusive(function () {
+        var before = api.find(id);
+        var result = api.update(id, action);
+        return { before: before, result: result };
+      }, {
+        onFallback: function () {
+          toast('当前浏览器不支持跨页面钱包锁，请避免同时在多个页面操作亲属卡和结算');
+        }
+      });
+      var result = outcome && outcome.result;
+      if (!result || !result.ok) {
+        toast(result && result.reason === 'invalid' ? '卡片数据异常，已停止修改；请先恢复本地数据' : (result && result.reason === 'storage' ? '保存失败，请检查手机存储空间' : '这张卡目前无法执行该操作'));
+        return;
+      }
+      var card = result.card || outcome.before;
+      var verb = ({
+        accept:'我收下你送给我的卡了，谢谢你。',
+        reject:'谢谢你的心意，不过这张卡我暂时先不收。',
+        pause:'我先把你给我的卡暂停使用了。',
+        resume:'我恢复使用你给我的卡了。'
+      })[action];
+      if (verb) appendRoleNotice(card, verb);
+      render();
+      toast(({accept:'已领取，可以在商店和外卖结算使用',reject:'已婉拒这张卡',pause:'卡片已暂停',resume:'卡片已恢复使用'})[action] || '已更新');
+    } catch (error) {
+      console.warn('[family-cards] 卡片状态变更失败', error);
+      toast('亲属卡操作暂未完成，请稍后重试');
+    } finally {
+      pendingCardActions.delete(actionKey);
+    }
   }
 
   document.querySelector('.filters').addEventListener('click', function (event) {

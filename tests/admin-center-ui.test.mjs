@@ -44,14 +44,34 @@ test('audit request failures offer a retry but authentication failures leave the
   assert.match(audit, /retryButton\.addEventListener\('click', \(\) => loadAudit\(accountId, reset\)\)/);
 });
 
-test('new one-time invitation codes are scrolled into view before a follow-up refresh can fail', () => {
-  assert.match(adminHtml, /id="inviteCodeSheet" hidden/);
+test('new one-time invitation code is placed at the top of account detail and brought into view', () => {
+  const detailStart = adminHtml.indexOf('<section class="detail-sheet" id="accountDetail" hidden>');
+  const codeStart = adminHtml.indexOf('<section class="code-sheet" id="inviteCodeSheet" hidden>');
+  const accountIdentity = adminHtml.indexOf('<div class="detail-id">', detailStart);
+  const detailEnd = adminHtml.indexOf('</section>', accountIdentity);
+  assert.ok(detailStart >= 0 && codeStart > detailStart && codeStart < accountIdentity && accountIdentity < detailEnd,
+    'the one-time code panel must be inside account detail, immediately above account identity and the lower detail content');
+
   const reveal = adminScript.indexOf("$('inviteCodeSheet').hidden = false;");
   const scroll = adminScript.indexOf("$('inviteCodeSheet').scrollIntoView", reveal);
   const refresh = adminScript.indexOf('await refreshAll();', reveal);
   assert.ok(reveal >= 0 && scroll > reveal && refresh > scroll,
-    'the code must be visible on a phone even if the subsequent directory refresh fails');
+    'the code must be revealed and brought into view before a follow-up directory refresh');
+  assert.match(adminScript, /inviteCodeSheet'\)\.scrollIntoView\(\{ behavior: 'smooth', block: 'start' \}\)/);
+  assert.match(adminCss, /\.detail-sheet \.code-sheet\{margin:0 0 16px/);
   assert.match(adminCss, /\.generated-code[\s\S]*user-select:all/);
+});
+
+test('one-time invitation text is cleared when leaving the account or switching users', () => {
+  const openStart = adminScript.indexOf('  async function openAccount(accountId) {');
+  const renderStart = adminScript.indexOf('  function createActionButton(', openStart);
+  const openAccount = adminScript.slice(openStart, renderStart);
+  assert.match(openAccount, /selectedAccountId !== accountId[\s\S]*generatedCode = ''[\s\S]*inviteCodeSheet'\)\.hidden = true/);
+
+  const closeStart = adminScript.indexOf('  function closeDetail() {');
+  const closeEnd = adminScript.indexOf('\n  }', closeStart) + '\n  }'.length;
+  const closeDetail = adminScript.slice(closeStart, closeEnd);
+  assert.match(closeDetail, /generatedCode = ''[\s\S]*generatedCode'\)\.textContent = ''[\s\S]*inviteCodeSheet'\)\.hidden = true/);
 });
 
 test('retry controls remain touchable and readable at narrow phone widths', () => {
@@ -207,6 +227,23 @@ test('所有危险操作使用屏幕中央原生模态确认，不再使用浏�
   assert.match(adminCss, /\.admin-confirm-dialog\{position:fixed;inset:0/);
   assert.match(adminCss, /\.admin-confirm-dialog::backdrop/);
   assert.match(adminCss, /\.admin-confirm-actions/);
+});
+
+test('撤销、停用和永久撤销均以红色标记，确认弹窗同步提示风险', () => {
+  assert.match(adminHtml, /danger-zone-heading[\s\S]*risk-hint[\s\S]*红色标记为高风险/);
+  assert.match(adminScript, /el\('button', 'open-detail danger', '撤销'\)/);
+  assert.match(adminScript, /el\('button', 'invite-revoke-button', '撤销当前邀请码'\)/);
+  assert.match(adminScript, /createActionButton\('停用账号', 'danger', 'disable', true\)/);
+  assert.match(adminScript, /createActionButton\('永久撤销', 'danger', 'revoke', true\)/);
+  assert.match(adminScript, /dialog\.classList\.toggle\('is-danger', Boolean\(options\.danger\)\)/);
+  assert.match(adminScript, /dialog\?\.classList\.remove\('is-danger'\)/);
+  assert.match(adminCss, /--danger:#c9343d/);
+  assert.match(adminCss, /\.status-disabled,\.status-revoked\{color:var\(--danger\)/);
+  assert.match(adminCss, /\.open-detail\.danger\{[^}]*color:var\(--danger\)/);
+  assert.match(adminCss, /\.invite-revoke-button\{[^}]*color:var\(--danger\)/);
+  assert.match(adminCss, /\.action-button\.danger\{[^}]*color:var\(--danger\)/);
+  assert.match(adminCss, /\.admin-confirm-dialog\.is-danger \.eyebrow[\s\S]*\.admin-confirm-content h2\{color:var\(--danger\)\}/);
+  assert.match(adminCss, /\.admin-confirm-actions button\.danger\{border-color:var\(--danger\);background:var\(--danger\);color:#fff\}/);
 });
 
 test('账号危险操作区位于账号详情与审计记录之后的页面底部', () => {

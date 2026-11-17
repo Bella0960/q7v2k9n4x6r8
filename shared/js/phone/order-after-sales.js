@@ -255,6 +255,13 @@
     if (!ledger || typeof ledger.runExclusive !== 'function') {
       return Promise.resolve({ ok: false, reason: 'module' });
     }
+    // This request writes both the order and finance journal. The ledger's
+    // page-local fallback cannot serialize another tab's writes, so never
+    // start or resume an after-sales request without an origin-wide Web Lock.
+    var locks = global.navigator && global.navigator.locks;
+    if (!locks || typeof locks.request !== 'function') {
+      return Promise.resolve({ ok: false, reason: 'cross-tab-lock-unavailable' });
+    }
     return ledger.runExclusive(function () {
       return submitLocked(input);
     }, {

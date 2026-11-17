@@ -91,6 +91,7 @@
     }
     if (dialog.open) dialog.close();
     pendingConfirmation = options;
+    dialog.classList.toggle('is-danger', Boolean(options.danger));
     $('adminConfirmTitle').textContent = options.title || '请确认操作';
     $('adminConfirmDescription').textContent = options.description || '请核对操作对象和影响范围。';
     $('adminConfirmSubmit').textContent = options.confirmLabel || '确认操作';
@@ -105,6 +106,7 @@
   function closeAdminConfirmation() {
     const dialog = $('adminConfirmDialog');
     pendingConfirmation = null;
+    dialog?.classList.remove('is-danger');
     if (dialog?.open) dialog.close();
     $('adminConfirmReason').value = '';
   }
@@ -372,7 +374,7 @@
         row.appendChild(detailButton);
       }
       if (state === 'pending') {
-        const button = el('button', 'open-detail', '撤销');
+        const button = el('button', 'open-detail danger', '撤销');
         button.type = 'button';
         button.addEventListener('click', () => openAdminConfirmation({
           title: '确认撤销邀请码？',
@@ -456,6 +458,11 @@
   }
 
   async function openAccount(accountId) {
+    if (selectedAccountId !== accountId) {
+      generatedCode = '';
+      $('generatedCode').textContent = '';
+      $('inviteCodeSheet').hidden = true;
+    }
     selectedAccountId = accountId;
     $('accountDetail').hidden = false;
     $('detailUsername').textContent = '正在读取…';
@@ -623,7 +630,7 @@
             $('generatedCode').textContent = generatedCode;
             $('copyInviteCode').textContent = '复制邀请码';
             $('inviteCodeSheet').hidden = false;
-            $('inviteCodeSheet').scrollIntoView({ behavior: 'smooth', block: 'center' });
+            $('inviteCodeSheet').scrollIntoView({ behavior: 'smooth', block: 'start' });
             await refreshAll();
           }
         }));
@@ -871,6 +878,9 @@
 
   function closeDetail() {
     selectedAccountId = '';
+    generatedCode = '';
+    $('generatedCode').textContent = '';
+    $('inviteCodeSheet').hidden = true;
     auditRequestSequence += 1;
     accountDetailRequestSequence += 1;
     $('accountDetail').hidden = true;

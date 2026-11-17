@@ -38,7 +38,7 @@
     "test:chat:isolation:browser": "node tests/chat-data-isolation-browser.mjs",
     "test:icons:presets": "node --test tests/icon-presets-contract.test.mjs",
     "test:images": "node --test tests/image-generation-pipeline.test.mjs",
-    "test:accounts": "node --test tests/account-auth-contract.test.mjs tests/account-storage-isolation.test.mjs",
+    "test:accounts": "node --test tests/account-auth-contract.test.mjs tests/account-storage-isolation.test.mjs tests/wallet-account-scope-integration.test.mjs",
     "test:accounts:gate-contract": "node --test tests/account-auth-gate-contract.test.mjs",
     "test:accounts:local": "node scripts/run-account-auth-gate.mjs",
     "test:admin:center": "node --test tests/admin-center-ui.test.mjs",
@@ -50,7 +50,9 @@
     "test:accounts:all": "npm run test:accounts:gate-contract && npm run test:accounts && npm run test:admin:center && npm run test:preview:config && npm run build && npm run test:cloud:push && npm run test:font:runtime && npm run test:desktop:layout && npm run test:pwa:navigation",
     "test:cloud-push:acceptance": "node scripts/run-cloud-push-acceptance.mjs",
     "test:chat:reply": "node --test tests/chat-reply-bubble-mode.test.mjs tests/chat-proactive-bubbles.test.mjs",
-    "test:chat:bubbles": "node tests/chat-reply-bubbles-browser.mjs"
+    "test:chat:bubbles": "node tests/chat-reply-bubbles-browser.mjs",
+    "test:wallet:mobile-engines": "node tests/wallet-mobile-engines.browser.mjs",
+    "test:wallet:gate": "node --test tests/chat-regression-contract.test.mjs tests/wallet-account-scope-integration.test.mjs && npm run build && npm run test:wallet:mobile-engines"
   },
   "devDependencies": {
     "playwright": "^1.64.1",

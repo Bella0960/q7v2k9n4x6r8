@@ -719,9 +719,14 @@
   async function submitPayMessage() {
     if (submitPayInProgress) return;
     var amountStr = String((payAmountInput && payAmountInput.value) || '').trim();
-    var amountNum = parseFloat(amountStr);
-    if (!amountStr || !isFinite(amountNum) || amountNum <= 0) {
-      if (typeof showToast === 'function') showToast('请输入金额');
+    // parseFloat('12abc') and amounts rounded down to zero must never be charged.
+    if (!/^\d+(?:\.\d{1,2})?$/.test(amountStr)) {
+      if (typeof showToast === 'function') showToast('请输入有效金额（最多两位小数）');
+      return;
+    }
+    var amountNum = Number(amountStr);
+    if (!isFinite(amountNum) || amountNum <= 0 || !Number.isSafeInteger(Math.round(amountNum * 100))) {
+      if (typeof showToast === 'function') showToast('金额超出有效范围，未发送');
       return;
     }
     amountNum = Math.round(amountNum * 100) / 100;
@@ -733,8 +738,15 @@
     }
 
     var ledger = window.MaoMaoWalletLedger;
-    if (!ledger || typeof ledger.runExclusive !== 'function') {
+    if (!ledger || typeof ledger.runExclusive !== 'function' ||
+        typeof ledger.supportsCrossTabLock !== 'function') {
       if (typeof showToast === 'function') showToast('钱包保护模块尚未加载，请刷新页面后重试');
+      return;
+    }
+    // A page-local fallback cannot safely serialize balance deductions in
+    // another chat tab. Never debit or recover a card without the shared lock.
+    if (!ledger.supportsCrossTabLock()) {
+      if (typeof showToast === 'function') showToast('当前浏览器不支持跨页面钱包锁，红包和转账发送已暂停，未扣款');
       return;
     }
 

@@ -516,22 +516,44 @@
     });
   }
 
-  function completeAutonomyActivity(activity, text) {
+  function completeAutonomyActivity(activity, text, options) {
     if (!activity || !/^[A-Za-z0-9_-]{16,64}$/.test(String(activity.id || ''))) {
       return Promise.reject(new Error('自主活动 ID 无效'));
     }
     var attemptCount = Number(activity.attemptCount);
     var message = String(text || '').trim();
+    options = options && typeof options === 'object' ? options : {};
+    var displayName = Array.from(String(options.displayName || '').replace(/[<>]/g, ' ').trim()).slice(0, 48).join('');
+    var body = { attemptCount: attemptCount, text: message };
+    if (Array.isArray(options.bubbles)) {
+      var bubbles = options.bubbles.map(function (value) {
+        return typeof value === 'string' ? value.trim() : '';
+      });
+      var invalidBubble = bubbles.some(function (bubble) {
+        var length = Array.from(bubble).length;
+        if (length < 2 || length > 220 || bubble.indexOf('http://') !== -1 || bubble.indexOf('https://') !== -1) return true;
+        for (var i = 0; i < bubble.length; i += 1) {
+          var code = bubble.charCodeAt(i);
+          if (code < 32 && code !== 10) return true;
+        }
+        return false;
+      });
+      if (!bubbles.length || bubbles.length > 4 || invalidBubble ||
+          bubbles.join(String.fromCharCode(10, 10)) !== message) {
+        return Promise.reject(new Error('主动消息气泡内容无效'));
+      }
+      body.bubbles = bubbles;
+      body.displayName = displayName;
+    }
     if (!Number.isSafeInteger(attemptCount) || attemptCount < 1 || message.length < 2) {
       return Promise.reject(new Error('自主活动结果无效'));
     }
     return requestDeviceMetadata(
       '/api/autonomy/activities/' + encodeURIComponent(activity.id) + '/complete',
       'POST',
-      { attemptCount: attemptCount, text: message }
+      body
     );
   }
-
   function skipAutonomyActivity(activity, reasonCode) {
     if (!activity || !/^[A-Za-z0-9_-]{16,64}$/.test(String(activity.id || ''))) {
       return Promise.reject(new Error('自主活动 ID 无效'));

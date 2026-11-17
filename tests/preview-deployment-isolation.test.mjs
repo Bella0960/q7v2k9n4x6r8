@@ -41,11 +41,15 @@ test('preview owns its SQLite Durable Object binding and bootstrap migration', (
   );
 });
 
-test('preview has the same protected app asset behavior and no production routes or cron', () => {
+test('preview keeps protected app assets and runs isolated one-minute maintenance delivery only', () => {
   assert.deepEqual(preview.assets, production.assets);
   assert.equal(Object.hasOwn(preview, 'routes'), false);
-  assert.equal(Object.hasOwn(preview, 'triggers'), false,
-    'preview does not start scheduled autonomous activity or maintenance jobs');
+  assert.deepEqual(preview.triggers?.crons, ['* * * * *'],
+    'preview runs maintenance and pending push delivery every minute for device acceptance');
+  assert.deepEqual(production.triggers?.crons, ['17 3 * * *'],
+    'the production Worker cron schedule must remain unchanged');
+  assert.notEqual(preview.name, production.name,
+    'the preview cron must execute only under the isolated preview Worker');
 });
 
 test('preview workflow only deploys the account-auth branch with dedicated credentials', () => {

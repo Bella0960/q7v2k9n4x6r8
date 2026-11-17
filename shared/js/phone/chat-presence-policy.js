@@ -615,6 +615,47 @@
     };
   }
 
+  // A role with no meaningful conversation can make one low-pressure first opening
+  // after the user explicitly enables proactive contact. This is separate from
+  // the idle-after-conversation policy below.
+  function evaluateInitialProactiveContact(options) {
+    options = options || {};
+    var now = Number(options.now);
+    var enabled = options.enabled === true;
+    if (!enabled) return { eligible: false, reason: 'disabled' };
+    if (options.blocked === true) return { eligible: false, reason: 'blocked' };
+    if (options.pageVisible === false) return { eligible: false, reason: 'page-hidden' };
+    if (options.hasHistory === true) return { eligible: false, reason: 'history-exists' };
+    if (options.firstContactSent === true) return { eligible: false, reason: 'already-sent' };
+    if (!Number.isFinite(now) || now <= 0) return { eligible: false, reason: 'invalid-timestamp' };
+
+    var hour = options.localHour == null ? new Date(now).getHours() : Number(options.localHour);
+    var quietStart = Math.max(0, Math.min(23, Number(options.quietStartHour == null ? 9 : options.quietStartHour)));
+    var quietEnd = Math.max(1, Math.min(24, Number(options.quietEndHour == null ? 22 : options.quietEndHour)));
+    if (!Number.isFinite(hour) || hour < quietStart || hour >= quietEnd) {
+      return { eligible: false, reason: 'quiet-hours' };
+    }
+
+    var enabledAt = Number(options.enabledAt) || 0;
+    if (!enabledAt || enabledAt > now) return { eligible: false, reason: 'missing-enable-time' };
+    var initialDelayMs = Math.max(0, Number(options.initialDelayMs) || 0);
+    if (now - enabledAt < initialDelayMs) {
+      return { eligible: false, reason: 'initial-delay', remainingMs: initialDelayMs - (now - enabledAt) };
+    }
+
+    var globalCooldownMs = Math.max(1, Number(options.globalCooldownMs) || 24 * 60 * 60 * 1000);
+    var roleCooldownMs = Math.max(globalCooldownMs, Number(options.roleCooldownMs) || globalCooldownMs);
+    var globalLastAttemptAt = Number(options.globalLastAttemptAt) || 0;
+    var roleLastAttemptAt = Number(options.roleLastAttemptAt) || 0;
+    if (globalLastAttemptAt && now - globalLastAttemptAt >= 0 && now - globalLastAttemptAt < globalCooldownMs) {
+      return { eligible: false, reason: 'global-cooldown' };
+    }
+    if (roleLastAttemptAt && now - roleLastAttemptAt >= 0 && now - roleLastAttemptAt < roleCooldownMs) {
+      return { eligible: false, reason: 'role-cooldown' };
+    }
+
+    return { eligible: true, reason: 'eligible', enabledAt: enabledAt, idleMs: now - enabledAt };
+  }
   function normalizeProactiveBubbles(value) {
     var source = value;
     if (source && typeof source === 'object' && !Array.isArray(source)) {
@@ -663,13 +704,20 @@
       '不连续追发，不强行制造问题，不输出动作旁白、隐藏机器标记、红包/转账/通话/图片指令或 Markdown。',
       '若确实适合发送，只输出 JSON：{"send":true,"bubbles":["第一条独立消息","第二条独立消息"]}；条数按语境变化，也可只返回一个元素。若不适合，输出 {"send":false,"bubbles":[]}。不要在 JSON 外添加任何文字。'
     ];
+    if (options.initialContact === true) {
+      lines.push('', '【第一次主动开场】',
+        '这是你们第一次在聊天中开口，当前没有任何聊天记录。不要假装以前聊过、见过、约定过或共同经历过任何事情。',
+        '只根据明确提供的角色设定和关系称呼，自然地做一个简短开场；可以分享一个符合人设的当下话题，也可以选择不发送。',
+        '不要把用户未提供的信息当成事实，不要声称正在现实地点或执行现实行动。不要要求对方立即回复，也不要用愧疚、占有或催促来制造回应。');
+    }
     var relationship = contact && typeof contact.relationship === 'string'
       ? contact.relationship.trim().slice(0, 40) : '';
     if (relationship) {
       lines.push('', '【当前关系设定】' + relationship + '。只按已明确设定和真实互动决定熟悉程度；不要擅自升级关系，不制造占有、愧疚或依赖。');
     }
     if (persona) lines.push('', '【角色设定】', persona);
-    var voicePrompt = buildPrompt({ mode: 'online', history: history, maxSamples: 2, maxSampleChars: 72 });
+    var voicePrompt = options.initialContact === true ? '' :
+      buildPrompt({ mode: 'online', history: history, maxSamples: 2, maxSampleChars: 72 });
     if (voicePrompt) lines.push('', voicePrompt);
     var habitPrompt = buildVoiceHabitPrompt(options.voiceProfile);
     if (habitPrompt) lines.push('', habitPrompt);
@@ -737,6 +785,7 @@
   NS.collectLifeContinuityNotes = collectLifeContinuityNotes;
   NS.buildAutonomyPrompt = buildAutonomyPrompt;
   NS.evaluateProactiveContact = evaluateProactiveContact;
+  NS.evaluateInitialProactiveContact = evaluateInitialProactiveContact;
   NS.buildProactiveContactPrompt = buildProactiveContactPrompt;
   NS.normalizeProactiveBubbles = normalizeProactiveBubbles;
   NS.getBubbleDelayMs = getBubbleDelayMs;

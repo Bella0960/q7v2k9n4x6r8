@@ -6,8 +6,8 @@
 <title>钱包 · 小手机</title>
 <script src="../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../shared/js/native-feel.js"></script>
-<script src="../shared/js/phone/role_family_cards.js?v=20261107v2"></script>
-<script src="../shared/js/phone/wallet-ledger.js?v=20261107v6"></script>
+<script src="../shared/js/phone/role_family_cards.js?v=20261114v4"></script>
+<script src="../shared/js/phone/wallet-ledger.js?v=20261114v12"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   body {
@@ -731,7 +731,13 @@
       familyCardSummary.textContent = '查看角色送来的额度卡';
       return;
     }
-    var cards = window.RoleFamilyCards.readAll();
+    var cardState = typeof window.RoleFamilyCards.readState === 'function'
+      ? window.RoleFamilyCards.readState() : { ok: false };
+    if (!cardState.ok || !Array.isArray(cardState.value)) {
+      familyCardSummary.textContent = '卡片数据异常，已暂停修改';
+      return;
+    }
+    var cards = cardState.value;
     var activeCount = cards.filter(function (card) { return card.status === 'active'; }).length;
     var pendingCount = cards.filter(function (card) { return card.status === 'pending'; }).length;
     familyCardSummary.textContent = activeCount || pendingCount
@@ -748,18 +754,9 @@
   var balanceAmountEl = document.getElementById('balanceAmount');
 
   function getWorkDataForMutation() {
-    var raw = null;
-    try { raw = localStorage.getItem('workData'); } catch (error) { return null; }
-    if (raw == null) return { balance: 1000, history: [] };
-
-    var wd = null;
-    try { wd = JSON.parse(raw); } catch (error) { return null; }
-    if (!wd || typeof wd !== 'object' || Array.isArray(wd) ||
-        typeof wd.balance !== 'number' || !isFinite(wd.balance) || wd.balance < 0) return null;
-    // Older wallet snapshots may predate the history array; preserve their valid balance.
-    if (!('history' in wd)) wd.history = [];
-    else if (!Array.isArray(wd.history)) return null;
-    return wd;
+    var ledger = window.MaoMaoWalletLedger;
+    return ledger && typeof ledger.readWalletForMutation === 'function'
+      ? ledger.readWalletForMutation('workData') : null;
   }
 
   function getWorkData() {
@@ -854,6 +851,11 @@
         amountError.textContent = '钱包保护模块尚未加载，请刷新页面后重试';
         return;
       }
+      if (typeof ledger.supportsCrossTabLock !== 'function' ||
+          !ledger.supportsCrossTabLock()) {
+        amountError.textContent = '当前浏览器不支持跨页面钱包锁，充值和提现已暂停，未修改余额';
+        return;
+      }
       await ledger.runExclusive(function () {
         var signature = JSON.stringify({ mode: selectedMode, amount: val });
         var transactionId = ledger.getOrCreatePendingCheckout(
@@ -909,15 +911,9 @@
             });
           }
 
-          var serialized = JSON.stringify(wd);
-          try {
-            localStorage.setItem('workData', serialized);
-            if (localStorage.getItem('workData') !== serialized) {
-              amountError.textContent = '钱包记录未能确认；再次确认会先核对原交易，不会盲目重复修改余额';
-              return;
-            }
-          } catch (error) {
-            amountError.textContent = '保存失败：本地存储空间不足；原交易编号已保留，可恢复确认';
+          var savedWallet = ledger.commitWalletSnapshot(wd);
+          if (!savedWallet.ok) {
+            amountError.textContent = '钱包记录未能确认；原交易编号已保留，再次确认会先核对原流水';
             return;
           }
         }

@@ -2529,6 +2529,9 @@ test('sw.js 保留缓存与离线导航，并新增 push / notificationclick', a
   assert.equal(sw.notifications.length, 1);
   assert.equal(sw.notifications[0].title, '测试');
   assert.equal(sw.notifications[0].options.tag, 't1');
+  assert.deepEqual(Array.from(sw.notifications[0].options.vibrate), [120, 60, 120]);
+  assert.equal(sw.notifications[0].options.requireInteraction, false);
+  assert.equal(sw.notifications[0].options.actions[0].title, '查看聊天');
   assert.equal(
     sw.notifications[0].options.data.url,
     'https://mao.test/chat/chat/chat-detail.html?id=heroine',
@@ -3712,12 +3715,14 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
 
   assert.ok(chat.includes('../../shared/js/cloud-push-client.js'),
     '聊天页必须加载云端收件箱客户端');
+  assert.ok(chat.includes('inspectCloudOutboundHistory(history, serverMessageId, messageText, payload.bubbles)'),
+    '收件端必须将云端 bubbles 数组传给完整性校验');
   assert.ok(chat.includes('function persistCloudOutboundMessage(payload, envelope)'),
     '聊天页必须有写入现有消息历史的适配器');
-  assert.ok(chat.includes("item && String(item.serverMessageId || '') === serverMessageId"),
-    '重复投递必须先按稳定 serverMessageId 查重');
-  assert.ok(chat.includes("mid: 'cloud_' + serverMessageId"),
-    '云端消息必须有稳定本地 mid');
+  assert.ok(chat.includes('return policy.inspectCloudOutboundHistory(history, serverMessageId, expectedText, bubbles);'),
+    '云端重复投递必须校验完整气泡批次和稳定 envelope ID');
+  assert.ok(chat.includes('policy.buildCloudOutboundMessages(messageText, serverMessageId'),
+    '云端收件箱必须将一条 envelope 还原为多个独立本地消息');
   assert.ok(chat.includes("msg.serverMessageId != null"),
     '写后读回校验必须包含云端服务端消息 ID');
   assert.ok(chat.includes('row.dataset.serverMessageId = String(msg.serverMessageId)'),
@@ -3733,31 +3738,29 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
   const adapterStart = chat.indexOf('function persistCloudOutboundMessage(payload, envelope)');
   const adapterEnd = chat.indexOf('// 同一角色优先用 Web Locks 串行接收', adapterStart);
   assert.ok(adapterStart >= 0 && adapterEnd > adapterStart);
-  const helperStart = chat.indexOf('function inspectCloudOutboundHistory(');
-  const helperEnd = chat.indexOf('        // 云端主动消息进入现有聊天历史', helperStart);
-  assert.ok(helperStart >= 0 && helperEnd > helperStart,
-    '云端重复消息必须提供本地记录完整性检查');
-  const helperSource = chat.slice(helperStart, helperEnd).trim();
-  const inspectHistory = vm.runInNewContext('(' + helperSource + ')');
+  const messagePolicySource = fs.readFileSync(path.join(rootDir, 'shared/js/phone/chat-message-policy.js'), 'utf8');
+  const policyWindow = {};
+  vm.runInNewContext(messagePolicySource, { window: policyWindow, globalThis: policyWindow });
+  const messagePolicy = policyWindow.ChatMessagePolicy;
   const serverMessageId = 'cloud_integrity_message_123456';
-  const expectedText = '完整的云端正文';
-  assert.equal(inspectHistory([], serverMessageId, expectedText), 'missing');
-  assert.equal(inspectHistory([{
-    role: 'assistant', serverMessageId, text: expectedText
-  }], serverMessageId, expectedText), 'match');
-  assert.equal(inspectHistory([{
-    role: 'assistant', serverMessageId, text: '被截断的正文'
-  }], serverMessageId, expectedText), 'conflict',
+  const expectedBubbles = ['第一条独立消息。', '第二条独立消息。'];
+  const expectedText = expectedBubbles.join(String.fromCharCode(10, 10));
+  assert.equal(messagePolicy.inspectCloudOutboundHistory([], serverMessageId, expectedText, expectedBubbles), 'missing');
+  const savedBubbles = messagePolicy.buildCloudOutboundMessages(expectedText, serverMessageId, {
+    time: 1800000000000, bubbles: expectedBubbles
+  });
+  assert.equal(savedBubbles.length, 2);
+  assert.equal(messagePolicy.inspectCloudOutboundHistory(savedBubbles, serverMessageId, expectedText, expectedBubbles), 'match');
+  assert.equal(messagePolicy.inspectCloudOutboundHistory(savedBubbles.slice(0, 1), serverMessageId, expectedText, expectedBubbles), 'conflict',
+    '只保存部分气泡时不得确认整组云端消息');
+  const tampered = savedBubbles.map(item => ({ ...item }));
+  tampered[0].text = '被截断的正文';
+  assert.equal(messagePolicy.inspectCloudOutboundHistory(tampered, serverMessageId, expectedText, expectedBubbles), 'conflict',
     '正文不一致时必须保持云端消息未确认');
-  assert.equal(inspectHistory([{
-    role: 'sent', serverMessageId, text: expectedText
-  }], serverMessageId, expectedText), 'conflict',
-    '错误角色不能冒充已保存的角色消息');
-  assert.equal(inspectHistory([
-    { role: 'assistant', serverMessageId, text: expectedText },
-    { role: 'assistant', serverMessageId, text: expectedText }
-  ], serverMessageId, expectedText), 'conflict',
-    '本地存在重复服务端 ID 时不得提前确认');
+  assert.equal(messagePolicy.inspectCloudOutboundHistory([{
+    role: 'assistant', serverMessageId, text: expectedText
+  }], serverMessageId, expectedText, expectedBubbles), 'match',
+    '旧版本整段消息仍可补做幂等 ACK');
 
   const adapter = chat.slice(adapterStart, adapterEnd);
   assert.ok(adapter.includes("existingState === 'match'"));
@@ -3765,7 +3768,7 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
     '本地记录内容冲突时必须保留云端待同步状态');
   const saveIndex = adapter.indexOf('if (!saveMessages(history))');
   const renderIndex = adapter.indexOf('if (_vl) {');
-  const pacedRenderIndex = adapter.indexOf('await appendAiMessageWithPacing(');
+  const pacedRenderIndex = adapter.indexOf('await appendReplyMessagesWithPacing(messages, appendIndex');
   assert.ok(saveIndex >= 0 && renderIndex > saveIndex &&
     pacedRenderIndex > renderIndex,
     '必须先验证本地保存成功，再走任一消息渲染分支');
@@ -4288,11 +4291,17 @@ test('本机主动消息完成后会立即发送不含正文的角色聊天 Push
   assert.equal(claimed.status, 200);
   const activity = claimed.payload.activity;
 
-  const proactiveMessage = '我刚刚想到一件想和你分享的事。\n\n另外还有一件小事，也想顺便告诉你。';
+  const proactiveBubbles = ['我刚刚想到一件想和你分享的事。', '另外还有一件小事，也想顺便告诉你。'];
+  const proactiveMessage = proactiveBubbles.join(String.fromCharCode(10, 10));
   const completed = await ctx.asJson('/api/autonomy/activities/' + activity.id + '/complete', {
     method: 'POST',
     device,
-    body: { attemptCount: activity.attemptCount, text: proactiveMessage }
+    body: {
+      attemptCount: activity.attemptCount,
+      text: proactiveMessage,
+      bubbles: proactiveBubbles,
+      displayName: '林深'
+    }
   });
   assert.equal(completed.status, 200);
   assert.equal(completed.payload.completed, true);
@@ -4313,12 +4322,17 @@ test('本机主动消息完成后会立即发送不含正文的角色聊天 Push
   assert.equal(outboundInbox.payload.messages.length, 1);
   assert.equal(outboundInbox.payload.messages[0].payload.type, 'text');
   assert.equal(outboundInbox.payload.messages[0].payload.text, proactiveMessage,
-    '云端收件箱必须原样保留用于拆分气泡的空行分隔符');
+    '云端收件箱必须原样保留气泡边界');
+  assert.deepEqual(outboundInbox.payload.messages[0].payload.bubbles, proactiveBubbles);
+  assert.equal(outboundInbox.payload.messages[0].payload.displayName, '林深');
+  assert.equal(outboundInbox.payload.messages[0].payload.bubbleCount, 2);
 
   const notification = buildOutboundPushPayload({
     characterId: 'char-push',
     serverMessageId,
-    timestamp: now
+    timestamp: now,
+    characterName: '林深',
+    bubbleCount: 2
   });
   assert.equal(notification.url, './chat/chat/chat-detail.html?id=char-push');
   assert.equal(notification.type, 'chat_message');
@@ -4336,7 +4350,8 @@ test('本机主动消息完成后会立即发送不含正文的角色聊天 Push
     serverMessageId,
     timestamp: now
   }), /outbound push target is invalid/);
-  assert.match(notification.body, /有一位角色刚刚联系你/);
+  assert.equal(notification.title, '林深 给你发来消息');
+  assert.match(notification.body, /2 条消息/);
   assert.equal(notification.body.includes('我刚刚想到'), false,
     '锁屏通知不得暴露主动消息正文');
   assert.equal(notification.dedupeKey, 'outbound:' + serverMessageId);
@@ -4344,12 +4359,42 @@ test('本机主动消息完成后会立即发送不含正文的角色聊天 Push
   const repeated = await ctx.asJson('/api/autonomy/activities/' + activity.id + '/complete', {
     method: 'POST',
     device,
-    body: { attemptCount: activity.attemptCount, text: proactiveMessage }
+    body: {
+      attemptCount: activity.attemptCount,
+      text: proactiveMessage,
+      bubbles: proactiveBubbles,
+      displayName: '林深'
+    }
   });
   assert.equal(repeated.status, 200);
   assert.equal(repeated.payload.alreadyCompleted, true);
   assert.equal(repeated.payload.pushDispatch.sent, 0);
   assert.equal(pushFetch.calls.length, 1, '重复完成请求不得重复推送');
+
+  const invalidBatch = await ctx.asJson('/api/autonomy/activities/' + activity.id + '/complete', {
+    method: 'POST',
+    device,
+    body: {
+      attemptCount: activity.attemptCount,
+      text: proactiveMessage,
+      bubbles: ['与正文不匹配的第一条。', '与正文不匹配的第二条。'],
+      displayName: '林深'
+    }
+  });
+  assert.equal(invalidBatch.status, 400, '气泡数组与原文边界不一致时必须拒绝');
+  assert.equal(invalidBatch.payload.error.code, 'INVALID_ACTIVITY_RESULT');
+  assert.equal(pushFetch.calls.length, 1, '无效气泡批次不能触发第二条系统通知');
+
+  const safeLabelNotification = buildOutboundPushPayload({
+    characterId: 'char-push',
+    serverMessageId,
+    timestamp: now,
+    characterName: '林深' + String.fromCharCode(0, 10),
+    bubbleCount: 9
+  });
+  assert.equal(safeLabelNotification.title, '林深 给你发来消息');
+  assert.match(safeLabelNotification.body, /一条新消息/);
+  assert.equal(safeLabelNotification.body.includes('我刚刚想到'), false);
 });
 
 test('聊天 Push 失败会写入退避记录，并由后续维护重试同一条通知', async () => {
