@@ -10,6 +10,7 @@ const compact = css.slice(css.lastIndexOf('/* Settings home only: compact header
 
 test('Settings uses a native status bar without an extra simulated top strip', () => {
   assert.match(html, /<body class="settings-home">/);
+  assert.doesNotMatch(html, /<div class="status-bar">/, 'no fake status strip, including nested API view');
   assert.match(compact, /body\.settings-home \.phone-mockup > \.status-bar/);
   assert.ok(compact, 'compact Settings styles should exist');
   assert.match(compact, /\.phone-mockup\s*>\s*\.status-bar\s*\{\s*display:\s*none\s*!important\s*;?\s*\}/);
@@ -32,7 +33,8 @@ test('Settings remains a working scrollable menu with existing routes and accoun
   assert.match(compact, /\.phone-mockup\s*>\s*\.content\s+\.menu-row\s*\{/);
 });
 
-test('Settings compact overrides are scoped to the main page, not the nested API panel', () => {
+test('Settings compact overrides stay scoped, while the nested API header also stays compact', () => {
+  assert.match(compact, /#api-panel > \.header \{/);
   assert.match(compact, /\.phone-mockup\s*>\s*\.header/);
   assert.match(compact, /\.phone-mockup\s*>\s*\.content/);
   assert.doesNotMatch(compact, /(^|\n)\s*\.header\s*\{/);
