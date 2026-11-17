@@ -107,7 +107,9 @@ async function verifyPage(browser, base, width) {
     await page.waitForFunction(() => !!JSON.parse(
       localStorage.getItem('ai_custom_characters') || '[]'
     ).find(role => role.id === 'role-A')?.avatarAssetId, null, { timeout: 12000 });
-    assert.equal(await page.locator('#currentState').textContent(), '已应用');
+    await page.waitForFunction(() =>
+      document.querySelector('#currentState')?.textContent === '已应用',
+      null, { timeout: 12000 });
     await page.locator('#startPair').click();
     await first.click();
     await page.locator('#album .portrait').nth(1).click();
@@ -141,9 +143,15 @@ async function verifyPage(browser, base, width) {
       document.querySelector('#pairList .pair strong')?.textContent === '晨雨',
       null, { timeout: 12000 });
 
+    const beforeSwap = await page.evaluate(() =>
+      window.RoleAvatarLibrary.getPairs('role-A')[0].avatarIds.slice());
     await page.locator('#pairList .pair').click();
     await page.getByRole('button', { name: '交换 A / B 顺序' }).click();
-    await page.waitForFunction(() => document.querySelector('#pairList .pair') !== null);
+    await page.waitForFunction(previous => {
+      const pair = window.RoleAvatarLibrary.getPairs('role-A')[0];
+      return !!pair && pair.avatarIds[0] === previous[1] &&
+        pair.avatarIds[1] === previous[0];
+    }, beforeSwap, { timeout: 12000 });
     assert.equal(await page.locator('#pairList .pair').count(), 1);
 
     await page.locator('#advancedMenu summary').click();
