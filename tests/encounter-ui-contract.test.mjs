@@ -25,6 +25,17 @@ test('全局禁用假状态栏：邂逅不能自绘系统时间、信号、电�
     '底部操作区必须兼容真实系统手势安全区');
 });
 
+test('邂逅浏览器冒烟测试与正式账号发布门禁分离', () => {
+  const browserSource=fs.readFileSync(new URL('./encounter-browser.mjs',import.meta.url),'utf8');
+  const gateSource=fs.readFileSync(new URL('../scripts/verify-encounter-release.mjs',import.meta.url),'utf8');
+  assert.doesNotMatch(browserSource, /for\(const required of \[[^\]]*account\/index\.html/,
+    'localhost 冒烟测试不得因账号页尚未整合而提前退出');
+  assert.match(gateSource, /requireFile\('account\/index\.html'/,
+    '正式发布门禁必须继续验证账号页');
+  assert.match(gateSource, /requireFile\('account\/account\.js'/,
+    '正式发布门禁必须继续验证账号脚本');
+});
+
 function setup(initial={}) {
   const rows=new Map(Object.entries(initial));
   const localStorage={
