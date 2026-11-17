@@ -30,7 +30,10 @@ test('cloud page loads the existing cloud client and reports unverified backgrou
 
 test('QA keeps protected PWA HTML network-first while adding real account-gated push', () => {
   const sw = read('sw.js');
-  assert.match(sw, /phone-app-pwa-v241/);
+  const cacheVersion = Number(
+    sw.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m)?.[1] || 0
+  );
+  assert.ok(cacheVersion >= 241, 'QA PWA security baseline must remain at v241 or higher');
   assert.match(sw, /cacheablePublicResponse/);
   assert.match(sw, /if \(!isPublicAccountPage && \(url\.pathname === '\/' \|\| \/\\\.html\$\/i\.test\(url\.pathname\)\)\)/);
   assert.match(sw, /self\.addEventListener\('push'/);
