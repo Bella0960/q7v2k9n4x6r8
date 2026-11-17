@@ -416,21 +416,33 @@
     window.__rpToastTimer = setTimeout(function () { t.classList.remove('show'); }, 1500);
   }
 
-  // 保存
+  // 保存时读回校验，防止本地存储异常时误报成功。
   document.getElementById('btnSave').addEventListener('click', function () {
     try {
       localStorage.setItem(STORAGE_KEY, textarea.value);
+      if (localStorage.getItem(STORAGE_KEY) !== textarea.value) throw new Error('protocol write not confirmed');
     } catch (e) {
-      showToast('保存失败：本地存储空间不足');
+      showToast('协议未保存，请检查存储空间');
       return;
     }
     showToast('协议已保存');
   });
 
-  // 恢复默认
+  // 用户主动恢复默认时立即保存；不要显示“已恢复”却继续沿用旧协议。
   document.getElementById('btnReset').addEventListener('click', function () {
+    if (!DEFAULT_PROTOCOL) {
+      showToast('默认协议尚未加载，请刷新页面');
+      return;
+    }
     textarea.value = DEFAULT_PROTOCOL;
-    showToast('已恢复默认协议');
+    try {
+      localStorage.setItem(STORAGE_KEY, DEFAULT_PROTOCOL);
+      if (localStorage.getItem(STORAGE_KEY) !== DEFAULT_PROTOCOL) throw new Error('default protocol write not confirmed');
+    } catch (e) {
+      showToast('默认协议尚未保存，请检查存储空间');
+      return;
+    }
+    showToast('已恢复并保存默认协议');
   });
 
   // 预览
