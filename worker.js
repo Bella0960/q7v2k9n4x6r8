@@ -19,6 +19,22 @@ import { createSchedulerGate } from './worker/lib/scheduler-gate.js';
 
 const INSTANCE_NAME = 'maomao-global';
 
+function accountAuthenticationUnavailable() {
+  // A temporary identity-service failure is not proof that the user logged out.
+  // Never serve account-owned HTML when authority cannot verify the session.
+  return new Response(
+    '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>MAO · 服务暂不可用</title></head><body style="margin:0;padding:12vh 8vw;color:#222;background:#f7f7f8;font:15px/1.8 -apple-system,BlinkMacSystemFont,sans-serif"><h1 style="font-size:20px;font-weight:500">暂时无法确认登录状态</h1><p>账号验证服务暂不可用，原有登录与数据没有被修改。请稍后重新打开此页面。</p></body></html>',
+    {
+      status: 503,
+      headers: {
+        'content-type': 'text/html; charset=UTF-8',
+        'cache-control': 'no-store',
+        'retry-after': '10'
+      }
+    }
+  );
+}
+
 async function injectAccountScope(response, account) {
   if (!response || !response.ok || !String(response.headers.get('content-type') || '').toLowerCase().includes('text/html')) {
     return response;
@@ -216,21 +232,26 @@ export default {
         });
         const authResponse = await stub.fetch(authRequest);
         const authPayload = await authResponse.json().catch(() => ({}));
-        if (
-          !authResponse.ok ||
-          authPayload?.account?.status !== 'active'
-        ) {
-          const disabled = authPayload?.error?.code === 'ACCOUNT_DISABLED';
-          const target = new URL('/account/index.html', url);
-          if (disabled) target.searchParams.set('disabled', '1');
-          return Response.redirect(target, 302);
+        if (!authResponse.ok) {
+          const errorCode = authPayload?.error?.code;
+          if (authResponse.status === 401 ||
+              (authResponse.status === 403 && errorCode === 'ACCOUNT_DISABLED')) {
+            const target = new URL('/account/index.html', url);
+            if (errorCode === 'ACCOUNT_DISABLED') target.searchParams.set('disabled', '1');
+            return Response.redirect(target, 302);
+          }
+          // 403 from an identity authority or 5xx is not a confirmed logout.
+          return accountAuthenticationUnavailable();
+        }
+        if (authPayload?.account?.status !== 'active') {
+          return accountAuthenticationUnavailable();
         }
         authorizedAccount = authPayload.account;
         if (url.pathname.startsWith('/admin/') && authorizedAccount.role !== 'super_admin') {
           return Response.redirect(new URL('/index.html', url), 302);
         }
       } catch {
-        return Response.redirect(new URL('/account/index.html', url), 302);
+        return accountAuthenticationUnavailable();
       }
     }
 
