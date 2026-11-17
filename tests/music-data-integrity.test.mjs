@@ -45,6 +45,8 @@ test('MUSIC-IMPORT-002: tapping a song image uploads only to that song and prese
   for (const id of ['recent-list', 'search-results', 'favList']) {
     assert.ok(music.includes("'" + id + "'"), 'cover picker list missing: ' + id);
   }
+  assert.match(music, /list\.addEventListener\('click', chooseFromCover, true\)/,
+    'capture click before existing song-row playback');
   assert.match(music, /event\.stopPropagation\(\)/);
   assert.match(music, /musicWriteMap\(MUSIC_COVERS_KEY, covers\)/);
   assert.match(music, /musicMedia\.putBlob\(file,/);
