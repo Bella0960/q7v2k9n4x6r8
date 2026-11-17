@@ -36,6 +36,14 @@ try {
         const header = await page.locator('.chat-header').boundingBox();
         assert.ok(header.y - shellBox.y < 30, 'header must start near top, not under fake status area');
         assert.ok(header.height < 96, 'header must stay slim');
+        if (theme === 'imessage') {
+          assert.equal(await page.locator('.chat-title-box').evaluate(e => getComputedStyle(e).position), 'static', 'title must participate in the slim header layout');
+          assert.equal(await page.locator('#chat-header-avatar').evaluate(e => getComputedStyle(e).display), 'none', 'large header portrait must not increase the top bar');
+          assert.notEqual(await page.locator('#chat-status-sub').evaluate(e => getComputedStyle(e).display), 'none', 'online/offline mode entry stays available');
+        }
+        assert.ok((await page.locator('#btn-more-menu').boundingBox()).width >= 40, 'more menu has a generous touch area');
+        const stagePadding = await page.locator('#chat-messages').evaluate(e => parseFloat(getComputedStyle(e).paddingBottom));
+        assert.ok(stagePadding < 48, 'stage must not keep the legacy 82px composer overlay gap');
 
         assert.equal(await page.locator('#myFloatSend').count(), 0, 'no duplicate floating send');
         const send = page.locator('#chat-form .send-icon-btn');
