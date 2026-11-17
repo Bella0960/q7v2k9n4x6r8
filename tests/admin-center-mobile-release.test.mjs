@@ -36,6 +36,10 @@ test('375-430px mobile layout keeps accessible input and action targets', () => 
     '.close-detail{width:42px;height:42px',
     '.error-retry,.audit-retry{min-height:40px',
     '.search-box{min-height:44px',
+    '.invite-revoke-button{justify-self:start;min-height:42px',
+    '.copy-detail-id{flex:0 0 auto;min-height:40px',
+    '.audit-open-account{justify-self:start;min-height:40px',
+    '@media(max-width:620px){.search-box input,.admin-confirm-reason textarea{font-size:16px}',
     '@media(max-width:380px)'
   ]) assert.ok(css.includes(needle), 'missing mobile interaction layout: ' + needle);
   for (const label of ['搜索账号', '搜索邀请码', '搜索审计记录']) {
@@ -44,6 +48,17 @@ test('375-430px mobile layout keeps accessible input and action targets', () => 
   for (const id of ['accountsList', 'invitesList', 'globalAuditList', 'accountDetail', 'inviteCodeSheet', 'adminConfirmDialog']) {
     assert.ok(html.includes('id="' + id + '"'), 'existing admin functionality must remain: ' + id);
   }
+});
+
+test('failed account or invitation request displays an error instead of a false empty directory', () => {
+  assert.match(source, /if \(accountPageError\) \{[\s\S]*'账号暂时无法读取'/);
+  assert.match(source, /if \(invitePageError\) \{[\s\S]*'邀请码暂时无法读取'/);
+  assert.ok(source.includes("账号读取失败，请点击右上角的刷新重新检查"));
+  assert.ok(source.includes("邀请码读取失败，请点击右上角的刷新重新检查"));
+  assert.ok(source.includes("await Promise.allSettled([loadAccountPage(true), loadInvitePage(true)])"));
+  assert.ok(source.includes("const failed = checks.find(result => result.status === 'rejected')"));
+  assert.ok(source.includes("sessionVerified = true;"));
+  assert.ok(source.includes("暂时无法确认管理员身份，请重试"));
 });
 
 test('a destructive account confirmation always targets its originally selected account', async () => {
