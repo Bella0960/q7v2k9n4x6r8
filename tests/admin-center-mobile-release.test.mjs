@@ -77,3 +77,72 @@ test('a destructive account confirmation always targets its originally selected 
     body: { action: 'disable', reason: 'confirmed' }
   }]);
 });
+
+test('partial directory failures preserve the other successful mobile list', async () => {
+  const begin = source.indexOf('  async function loadAccountPage(reset = false) {');
+  const finish = source.indexOf('\n\n  async function openAccount(', begin);
+  assert.ok(begin >= 0 && finish > begin, 'directory loaders and refreshAll must be present');
+  const states = [
+    { failure: 'accounts', expectAccounts: 0, expectInvites: 1 },
+    { failure: 'invites', expectAccounts: 1, expectInvites: 0 },
+    { failure: '', expectAccounts: 1, expectInvites: 1 }
+  ];
+  for (const scenario of states) {
+    const dom = new Map();
+    const get = id => {
+      if (!dom.has(id)) dom.set(id, { value: '', textContent: '', hidden: false });
+      return dom.get(id);
+    };
+    const directoryApi = async path => {
+      if (scenario.failure === 'accounts' && path.startsWith('/api/admin/accounts')) {
+        throw new Error('accounts offline');
+      }
+      if (scenario.failure === 'invites' && path.startsWith('/api/admin/invites')) {
+        throw new Error('invites offline');
+      }
+      if (path.startsWith('/api/admin/accounts')) {
+        return { accounts: [{ id: 'MAO-AAAAAAAAAAAA' }], page: { totalCount: 1 }, summary: { total: 1 } };
+      }
+      if (path.startsWith('/api/admin/invites')) {
+        return { invites: [{ id: 'TESTINVITE' }], page: { totalCount: 1 }, summary: { total: 1 } };
+      }
+      throw new Error('unexpected endpoint: ' + path);
+    };
+    let renderedAccounts = 0;
+    let renderedInvites = 0;
+    const constructor = new Function(
+      '$', 'api', 'directoryPath', 'renderAccounts', 'renderInvites',
+      'updateStats', 'updateAccountFilterCounts', 'updateInviteFilterCounts',
+      'renderAccountDetail', 'closeDetail', 'setButtonsDisabled',
+      "let accountDirectoryKey='',accountNextCursor='',accountFilter='all',accountHasMore=false," +
+      "accountTotalCount=0,accountSummary=null,accountPageError=false,accounts=[]," +
+      "inviteDirectoryKey='',inviteNextCursor='',inviteFilter='all',inviteHasMore=false," +
+      "inviteTotalCount=0,inviteSummary=null,invitePageError=false,invites=[]," +
+      "selectedAccountId='',busy=false;\n" +
+      source.slice(begin, finish) +
+      "\nreturn {refreshAll, state:()=>({accountPageError,invitePageError,accounts,invites})};"
+    );
+    const app = constructor(
+      get, directoryApi, path => path,
+      () => { renderedAccounts++; }, () => { renderedInvites++; },
+      () => {}, () => {}, () => {}, async () => {}, () => {}, () => {}
+    );
+    if (scenario.failure) {
+      await assert.rejects(() => app.refreshAll(), /offline/);
+    } else {
+      await app.refreshAll();
+    }
+    const state = app.state();
+    assert.equal(state.accounts.length, scenario.expectAccounts, 'account result preserved independently');
+    assert.equal(state.invites.length, scenario.expectInvites, 'invite result preserved independently');
+    assert.equal(state.accountPageError, scenario.failure === 'accounts');
+    assert.equal(state.invitePageError, scenario.failure === 'invites');
+    assert.ok(renderedAccounts >= 1 && renderedInvites >= 1, 'both directories settle and render');
+    if (scenario.failure === 'accounts') {
+      assert.equal(get('statTotal').textContent, '—', 'an outage must not pretend no accounts exist');
+    }
+    if (scenario.failure === 'invites') {
+      assert.equal(get('inviteCountAll').textContent, '—', 'an outage must not pretend no invitations exist');
+    }
+  }
+});
