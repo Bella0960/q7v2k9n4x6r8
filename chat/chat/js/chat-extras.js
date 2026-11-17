@@ -114,6 +114,12 @@
     });
   }
 
+  // 原 QA 加号面板初始化后单次加载番外引擎；保留其账号/存档保护。
+  var fanwaiScript = document.createElement('script');
+  fanwaiScript.src = 'js/chat-fanwai.js?v=20261116v23';
+  fanwaiScript.onerror = function () { console.warn('[Fanwai] 扩展模块加载失败'); };
+  document.body.appendChild(fanwaiScript);
+
   // 手机返回键（popstate）关闭顶层弹层
   window.addEventListener('popstate', function () {
     if (modalOverlay && modalOverlay.classList.contains('active')) closeModal();
@@ -1240,5 +1246,22 @@
     if(feat==='copy-last'){coreCopyLast();return;}
     oldHandleFeature(feat);
   };
+
+  // 保留 QA 已验收的番外插件加载链，不再创建第二个入口。
+  // 通过捕获阶段仅改写「＋」里番外按钮的点击目标：不再弹小窗。
+  var fanwaiGrid = document.querySelector('#plusPanelOverlay .plus-grid');
+  if (fanwaiGrid) {
+    fanwaiGrid.addEventListener('click', function (event) {
+      var entry = event.target && event.target.closest('[data-feat="fanwai"]');
+      if (!entry || !fanwaiGrid.contains(entry)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation(); // 原引擎不再在聊天里弹半屏
+      if (typeof closePlusPanel === 'function') closePlusPanel();
+      var selectedRole = new URLSearchParams(window.location.search).get('id');
+      var destination = '../../fanwai/fanwai.html';
+      if (selectedRole) destination += '?id=' + encodeURIComponent(selectedRole);
+      window.location.assign(destination);
+    }, true);
+  }
 
 })();

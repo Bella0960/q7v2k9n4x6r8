@@ -304,6 +304,15 @@
                   <span class="ds-del" title="移除">×</span>
                 </button>
 
+                <!-- 番外：独立整页应用，沿用原有角色与存档 -->
+                <button class="app-card app-tile" type="button" data-href="fanwai/fanwai.html" data-drag="app_fanwai" data-name="番外" title="番外">
+                  <span class="app-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3.5h11.5A2.5 2.5 0 0 1 19 6v14.5H7.5A2.5 2.5 0 0 1 5 18z"/><path d="M8 8h8M8 12h8M8 16h5M7.5 20.5A2.5 2.5 0 0 1 5 18"/></svg>
+                  </span>
+                  <span class="app-name">番外</span>
+                  <span class="ds-del" title="移除">×</span>
+                </button>
+
                 <!-- ========== 明信片组件（4×2）：3层设计 ========== -->
                 <div class="ds-postcard ds-widget" data-drag="postcard">
                   <div class="pc-bg-top" id="pcBgTop"></div>
@@ -656,7 +665,7 @@
           pages: [
             ['clock-lg', 'app_inspect', 'app_worldbook', 'app_memory', 'app_forum', 'duo', 'photowall', 'app_wallet', 'app_music', 'app_beauty', 'app_theme_store'],
             ['app_characters', 'app_footprint', 'app_settings', 'app_tutorial', 'app_finance', 'app_takeout', 'app_couple', 'app_growth', 'app_companion', 'app_games', 'app_cafe', 'app_live_room', 'app_poster'],
-            ['app_library', 'app_envelope', 'app_diary', 'app_novelstudio', 'app_dreamtravel', 'app_date']
+            ['app_library', 'app_envelope', 'app_diary', 'app_novelstudio', 'app_dreamtravel', 'app_date', 'app_fanwai']
           ],
           dock: ['app_chat', 'app_shop'],
           removed: ['image', 'postcard', 'polaroid', 'dialog', 'music', 'clock', 'todo', 'calendar', 'countdown', 'note', 'social', 'triple', 'ins', 'profile', 'stack']
@@ -751,6 +760,21 @@
         if (pageIndex < 0) pageIndex = 0;
         while (currentLayout.pages.length <= pageIndex) currentLayout.pages.push([]);
         var anchor = currentLayout.pages[pageIndex].indexOf('app_settings');
+        currentLayout.pages[pageIndex].splice(anchor >= 0 ? anchor + 1 : currentLayout.pages[pageIndex].length, 0, id);
+        saveLayout(currentLayout);
+      })();
+
+      // 新番外应用加入旧桌面时只补一个图标，保留现有页序、Dock、移除记录。
+      (function addFanwaiShortcutToExistingLayouts() {
+        var id = 'app_fanwai';
+        var exists = (currentLayout.pages || []).some(function (page) { return page.indexOf(id) !== -1; })
+          || (currentLayout.dock || []).indexOf(id) !== -1
+          || (currentLayout.removed || []).indexOf(id) !== -1;
+        if (exists) return;
+        var pageIndex = (currentLayout.pages || []).findIndex(function (page) { return page.indexOf('app_date') !== -1; });
+        if (pageIndex < 0) pageIndex = Math.max(0, (currentLayout.pages || []).length - 1);
+        while (currentLayout.pages.length <= pageIndex) currentLayout.pages.push([]);
+        var anchor = currentLayout.pages[pageIndex].indexOf('app_date');
         currentLayout.pages[pageIndex].splice(anchor >= 0 ? anchor + 1 : currentLayout.pages[pageIndex].length, 0, id);
         saveLayout(currentLayout);
       })();

@@ -8,7 +8,9 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
-assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v203'/);
+const version = serviceWorker.match(/const CACHE_NAME = 'phone-app-pwa-v(\d+)'/);
+  assert.ok(version, 'PWA must use a versioned app-shell cache');
+  assert.ok(Number(version[1]) >= 206, 'account-private cache fix must invalidate older PWA installs');
 const viteConfig = read('vite.config.js');
 
 test('build emits a manifest containing every HTML entry point', () => {
@@ -37,9 +39,10 @@ test('every desktop app shortcut is emitted as a real HTML page in the productio
   }
 });
 
-test('service worker precaches all HTML routes listed by the build manifest', () => {
+test('service worker checks cache policy before precaching HTML routes', () => {
   assert.match(serviceWorker, /fetch\('\.\/pwa-pages\.json'/);
   assert.match(serviceWorker, /APP_SHELL\.concat\(pageEntries\)/);
+  assert.match(serviceWorker, /isPrivateResponse\(response\)/);
   assert.match(serviceWorker, /cache\.add\(url\)/);
 });
 

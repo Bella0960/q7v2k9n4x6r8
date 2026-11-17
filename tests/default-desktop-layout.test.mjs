@@ -53,7 +53,9 @@ test('the mobile home grid keeps four columns and supports vertical page scrolli
   assert.match(desktopCss, /#gridPage0 > \[data-drag\]:nth-child\(6\)[^{]*\{ grid-column: 3 \/ 5 !important; grid-row: 3 \/ 5 !important;/);
   assert.match(mobileCss, /#gridPage0 > \[data-drag\]:nth-child\(7\)[^{]*\{ grid-column: 1 \/ 3 !important; grid-row: 5 \/ 7 !important;/);
   assert.match(mobileCss, /\.maomao-home \.home-page[\s\S]*?overflow-y:\s*auto\s*!important/);
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v203'/);
+  const version = serviceWorker.match(/const CACHE_NAME = 'phone-app-pwa-v(\d+)'/);
+  assert.ok(version, 'PWA must use a versioned app-shell cache');
+  assert.ok(Number(version[1]) >= 206, 'account-private cache fix must invalidate older PWA installs');
 });
 
 
