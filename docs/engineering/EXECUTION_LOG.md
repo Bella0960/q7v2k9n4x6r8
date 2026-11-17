@@ -11,6 +11,7 @@
   - `sw.js` 和 `worker.js` 的账号隔离脚本资源 URL 同步升级到 `?v=3`；**原 #290 PWA 缓存 v238 → v239。QA #299 已是 v241，整合时必须在 #299 基线上升为 v242 或更新缓存名，绝对不能用 #290 的整份旧 SW 替换 #299**。
   - `tests/worker-page-auth-runtime.test.mjs` 与 `tests/account-storage-isolation.test.mjs` 增加 403、503、无身份库、身份变化、无私有 HTML 回退和 PWA 版本断言。
 - **验证回执**：隔离 JS V8 实际执行 #290 的 `worker.js` 主入口 **6/6 PASS**；隔离 JS V8 实际执行账号会话复核函数 **9/9 PASS**（含网络异常、401、403、503、切换 ID）。另做资源路径/源码条件静态检查 **9/9 PASS**。这些是代码仿真，不等价原生 Node test、Vite、Chromium、Android 或 iPhone。
+- **QA 入口额外风险**：唯一自定义测试域名 `preview.mao520.com` 正常指向 QA Worker，但 #299 当前 `account/account.js` 的 `isKnownQaHost` 仅匹配旧 `maomao-aw-qa-20261114.miamor520000.workers.dev`。QA 整合窗口需把自定义域名纳入相同的初始「禁止重复注册／身份未验证前禁止提交登录」保护，不能迁就旧 Worker 域名作为额外测试入口。保持现有 #299 较新的账号 UI 代码，不要用 #290 旧版 `account/account.js` 整份覆盖。
 - **遗留硬阻塞**：无法在此会话的容器中获取完整私有仓库构建产物；连接的 GitHub Actions 没有有效 runner 回执，需在实际含 Node/Vite/Chromium 的完整 QA 工作区进行执行。#299 与 #290 当前 head 分歧，合并需谨慎处理 worker/admin/账号测试/package.json/sw.js 的逐文件重叠，同时保留 #299 v241 安全 SW 和番外功能。
 - **下步交付**：原 #299 负责窗口在冻结结束后逐项吸收 #290 最新补丁，运行完整 Node/构建/浏览器验收，仅部署 `https://preview.mao520.com/`；用户在现有 Android 真机回归「管理中心 → 切换标签 → 返回桌面 → 再进」且不误退出后可宣布该 Bug 完整交付。生产身份、钱包、真实数据保持不动。
 
