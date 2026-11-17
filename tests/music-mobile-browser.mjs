@@ -59,18 +59,27 @@ try {
       await page.locator('.music-import-link').waitFor({ state: 'visible' });
       await page.locator('#musicImport').waitFor({ state: 'attached' });
       await page.screenshot({ path: join(shots, 'home-' + width + '.png') });
-      await page.evaluate(() => {
+      // 真机状态栏交给 OS 绘制；音乐页不能生成第二条模拟时间/信号栏。
+      const chrome = await page.evaluate(() => {
         localStorage.setItem('settings_statusbar', '0');
         window.__statusbarControlApply();
-      });
-      assert.equal(await page.locator('.statusbar').evaluate(el => getComputedStyle(el).display), 'none',
-        'global statusbar off must hide music bar');
-      await page.evaluate(() => {
         localStorage.setItem('settings_statusbar', '1');
         window.__statusbarControlApply();
+        const height = selector => document.querySelector(selector)?.getBoundingClientRect().height;
+        return {
+          fakeStatusCount: document.querySelectorAll('.statusbar, .status-bar, .phone-camera').length,
+          headerHeight: height('#page-home > .navbar'),
+          tabbarHeight: height('.tabbar'),
+          miniPlayerHeight: height('.mini-player')
+        };
       });
-      assert.notEqual(await page.locator('.statusbar').evaluate(el => getComputedStyle(el).display), 'none',
-        'global statusbar on must restore music bar');
+      assert.equal(chrome.fakeStatusCount, 0, 'music should never draw a fake phone status bar');
+      assert.ok(chrome.headerHeight > 0 && chrome.headerHeight <= 54,
+        width + 'px music top too tall: ' + JSON.stringify(chrome));
+      assert.ok(chrome.tabbarHeight > 0 && chrome.tabbarHeight <= 56,
+        width + 'px music bottom navigation too tall: ' + JSON.stringify(chrome));
+      assert.ok(chrome.miniPlayerHeight > 0 && chrome.miniPlayerHeight <= 54,
+        width + 'px music mini player too tall: ' + JSON.stringify(chrome));
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
       assert.ok(overflow <= 1, width + 'px layout overflow ' + overflow);
       await page.locator('#musicImport').setInputFiles({
