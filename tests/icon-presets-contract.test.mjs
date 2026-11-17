@@ -15,8 +15,8 @@ test('icon preset controls live at the bottom of the existing icon upload page',
   assert.match(iconSettings, /id="saveIconPresetBtn"/);
   assert.match(iconSettings, /id="iconPresetList"/);
   assert.match(iconSettings, /id="resetAllIconsBtn"/);
-  assert.match(iconSettings, /data-act="change"/);
-  assert.match(iconSettings, /data-act="restore"/);
+  assert.match(iconSettings, /changeButton\.dataset\.act = 'change'/);
+  assert.match(iconSettings, /restoreButton\.dataset\.act = 'restore'/);
 });
 
 test('preset metadata stays small while image copies use the existing IndexedDB wallpaper store', () => {
@@ -49,4 +49,15 @@ test('switching and resetting icons can roll back, while deleting a preset does 
 test('service worker cache version changes so installed PWA users receive the updated icon page', () => {
   const version = Number(serviceWorker.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m)?.[1] || 0);
   assert.ok(version >= 241, 'icon preset cache must not regress below v203');
+});
+
+
+test('icon settings derive app rows from current desktop inventory and never draw a fake statusbar', () => {
+  assert.match(iconSettings, /fetch\('\.\.\/index\.html'/);
+  assert.match(iconSettings, /querySelectorAll\('button\[data-drag\^="app_"\]'\)/);
+  assert.match(iconSettings, /var APPS = \[\]/);
+  assert.doesNotMatch(iconSettings, /09:41/);
+  const tiles = [...home.matchAll(/<button\b[^>]*\bdata-drag="app_[^"]+"[^>]*>/g)];
+  assert.ok(tiles.length >= 20, 'the real desktop launcher must expose its current app icons');
+  assert.equal(new Set(tiles.map(x => x[0].match(/data-drag="([^"]+)"/)[1])).size, tiles.length);
 });
