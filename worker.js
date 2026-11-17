@@ -245,7 +245,19 @@ export default {
           // 403 from an identity authority or 5xx is not a confirmed logout.
           return accountAuthenticationUnavailable();
         }
-        if (authPayload?.account?.status !== 'active') {
+        const accountStatus = authPayload?.account?.status;
+        if (accountStatus === 'pending_invite' ||
+            accountStatus === 'disabled' || accountStatus === 'revoked') {
+          // The central authority confirmed a real account that is not
+          // permitted to enter private pages. This is not a service outage.
+          const target = new URL('/account/index.html', url);
+          if (accountStatus === 'disabled' || accountStatus === 'revoked') {
+            target.searchParams.set('disabled', '1');
+          }
+          return Response.redirect(target, 302);
+        }
+        if (accountStatus !== 'active') {
+          // Missing or unfamiliar identity data is not proof of logout.
           return accountAuthenticationUnavailable();
         }
         authorizedAccount = authPayload.account;
