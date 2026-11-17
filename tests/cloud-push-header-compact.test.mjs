@@ -15,7 +15,7 @@ test('Cloud push removes the simulated strip and compacts the real page header',
 });
 
 test('Cloud push moves verbose explanation into a native collapsed disclosure', () => {
-  assert.match(html, /<details class="cloud-intro-disclosure">\s*<summary>关于云端推送<\/summary>/);
+  assert.match(html, /<details class="cloud-intro-disclosure">\s*<summary>关于云端推送 · 后台 AI 未就绪<\/summary>/);
   assert.doesNotMatch(html, /<details class="cloud-intro-disclosure"\s+open\b/);
   assert.match(html, /当前 QA 已有设备订阅、测试推送与角色作息接口/);
   assert.match(html, /\.cloud-intro-disclosure summary\s*\{[^}]*min-height:\s*36px/s);
