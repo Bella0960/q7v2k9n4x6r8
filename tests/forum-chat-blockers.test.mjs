@@ -486,7 +486,7 @@ test('retry API failure re-marks the same user message instead of creating a new
     _markUserSendFailed: helpers._markUserSendFailed
   };
   new Function('context', 'with (context) { ' +
-    extractBlock(chatDetail, 'var retryRemarked = false;', '\n            try {') + ' }')(context);
+    extractBlock(chatDetail, 'var retryRemarked = false;', '\n            // Shared verified-write barrier') + ' }')(context);
 
   assert.equal(historyList.length, 2, '不得新增第二条用户消息');
   assert.equal(historyList.filter((m) => m.role === 'user').length, 1);
@@ -500,7 +500,7 @@ test('retry API failure re-marks the same user message instead of creating a new
   // API 成功时不得误打失败标记。
   const okList = clone(original);
   new Function('context', 'with (context) { ' +
-    extractBlock(chatDetail, 'var retryRemarked = false;', '\n            try {') + ' }')({
+    extractBlock(chatDetail, 'var retryRemarked = false;', '\n            // Shared verified-write barrier') + ' }')({
     historyList: okList,
     streamResult: { ok: true },
     retryTarget: { mid: 'm2', time: 2 },
