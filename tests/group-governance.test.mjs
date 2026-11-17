@@ -269,3 +269,41 @@ test('thrown persistence errors restore in-memory admin changes and group member
     true, 'normal saved leave still works');
   assert.equal(g.userMembership, 'left');
 });
+
+test('declining stale invitations never depends on deleted roles or groups', () => {
+  const h = harness();
+  const offer = h.api.offerNewGroupInvitation({
+    storage: h.storage, inviterId: 'c1', groupName: '临时组',
+    memberIds: ['c2']
+  });
+  assert.equal(offer.ok, true);
+  const originalGroups = h.values.get('phone_groups');
+  h.values.set('ai_custom_characters', JSON.stringify([roles[0]]));
+  const survivingRoles = h.values.get('ai_custom_characters');
+  const declined = h.api.resolveInvitation({
+    storage:h.storage, id:offer.invitation.id, accept:false
+  });
+  assert.equal(declined.ok, true, 'deleting a candidate role cannot trap an invite');
+  assert.equal(declined.accepted, false);
+  assert.equal(h.values.get('phone_groups'), originalGroups,
+    'declining cannot silently create or join a group');
+  assert.equal(h.values.get('ai_custom_characters'), survivingRoles,
+    'declining must never rewrite character profiles');
+  const entry = JSON.parse(h.values.get('phone_group_invitations'))[0];
+  assert.equal(entry.status, 'declined');
+  assert.equal(h.api.resolveInvitation({
+    storage:h.storage, id:offer.invitation.id, accept:false
+  }).code, 'NOT_FOUND', 'a dismissed invitation cannot be declined twice');
+
+  const g = group(); g.userMembership = 'left';
+  const h2 = harness([g]);
+  const old = h2.api.offerInvitation({
+    storage:h2.storage, groupId:g.id, inviterId:'c1'
+  });
+  assert.equal(old.ok, true);
+  h2.values.set('phone_groups', '[]');
+  assert.equal(h2.api.resolveInvitation({
+    storage:h2.storage, id:old.invitation.id, accept:false
+  }).ok, true, 'removed original groups cannot trap old invite receipts');
+  assert.deepEqual(JSON.parse(h2.values.get('phone_groups')), []);
+});
