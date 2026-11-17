@@ -61,6 +61,36 @@ test('failed account or invitation request displays an error instead of a false 
   assert.ok(source.includes("暂时无法确认管理员身份，请重试"));
 });
 
+test('pending network requests leave tabs and filters usable but lock account-changing actions', () => {
+  const begin = source.indexOf('  function setButtonsDisabled(disabled) {');
+  const finish = source.indexOf('\n\n  async function run(action)', begin);
+  assert.ok(begin >= 0 && finish > begin);
+  const makeButton = (names, disabled = false) => ({
+    disabled,
+    classList: { contains(name) { return names.includes(name); } }
+  });
+  const nav = makeButton(['tab-button']);
+  const filter = makeButton(['filter-button']);
+  const action = makeButton(['action-button']);
+  const previouslyDisabled = makeButton(['action-button'], true);
+  const buttons = [nav, filter, action, previouslyDisabled];
+  const busyButtonState = new WeakMap();
+  const lock = new Function('document', 'busyButtonState',
+    source.slice(begin, finish) + '\nreturn setButtonsDisabled;')(
+    { querySelectorAll: () => buttons },
+    busyButtonState
+  );
+  lock(true);
+  assert.equal(nav.disabled, false, 'tabs must remain navigable');
+  assert.equal(filter.disabled, false, 'filter taps must remain possible');
+  assert.equal(action.disabled, true, 'account mutation buttons must be locked');
+  assert.equal(previouslyDisabled.disabled, true);
+  lock(false);
+  assert.equal(action.disabled, false, 'temporary lock is released');
+  assert.equal(previouslyDisabled.disabled, true, 'pre-existing disabled state is preserved');
+  assert.match(source, /if \(tab === 'audit'\) \{[\s\S]*if \(busy\) globalAuditSearchRefreshPending = true;/);
+});
+
 test('filter taps during an active fetch queue a refresh instead of silently failing', () => {
   const controls = [
     ["document.querySelectorAll('[data-audit-filter]').forEach(button => {",
