@@ -186,6 +186,10 @@
 
   function setButtonsDisabled(disabled) {
     document.querySelectorAll('button').forEach(button => {
+      // Keep navigation and filters responsive while reading. Only writes,
+      // pagers, refresh actions and confirmations need the busy lock.
+      if (button.classList.contains('tab-button') ||
+          button.classList.contains('filter-button')) return;
       if (disabled) {
         if (!busyButtonState.has(button)) busyButtonState.set(button, button.disabled);
         button.disabled = true;
@@ -1144,7 +1148,10 @@
     button.addEventListener('click', () => {
       const tab = button.dataset.tab;
       activateTab(tab);
-      if (tab === 'audit') run(() => loadGlobalAudit(true));
+      if (tab === 'audit') {
+        if (busy) globalAuditSearchRefreshPending = true;
+        else run(() => loadGlobalAudit(true));
+      }
     });
   });
 
