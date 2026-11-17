@@ -51,9 +51,20 @@
     });
   }
 
+  // 旧版邂逅人物档案末行含“创作说明/正式聊天前”等编辑器提示。
+  // 它不是人物经历，不应被模型当成自我身份。只移除系统生成的那一行，不改已保存的人设。
+  function stripEncounterEditorNote(persona, role) {
+    var text = String(persona == null ? '' : persona);
+    if (!role || !role.encounterOrigin || role.encounterOrigin.version !== 1) return text;
+    return text.split(/\r?\n/).filter(function (line) {
+      return !/^\s*【创作说明】以上为简要原创设定。正式聊天前可在角色档案补全经历、习惯、动机与表达方式。\s*$/.test(line);
+    }).join('\n');
+  }
+
   global.MAOMAOChatRoleContext = Object.freeze({
     version: 1,
     resolveRole: resolveRole,
+    stripEncounterEditorNote: stripEncounterEditorNote,
     getModelHistory: getModelHistory,
     selectWorldbooksForRole: selectWorldbooksForRole,
     isBrokenAssistantIdentity: isBrokenAssistantIdentity
