@@ -803,6 +803,11 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
   async function testPush(request) {
     const device = await authenticate(request);
     const body = await readJsonBody(request);
+    // 旧客户端缺省仍发送正常加密测试；空载诊断只在显式请求时启用。
+    if (body.deliveryMode != null && !['encrypted', 'no_payload'].includes(body.deliveryMode)) {
+      throw new ApiError(400, 'INVALID_DELIVERY_MODE', '测试投递模式无效');
+    }
+    const deliveryMode = body.deliveryMode === 'no_payload' ? 'no_payload' : 'encrypted';
     const timestamp = now();
     let keys;
     try {
@@ -903,11 +908,12 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       try {
         outcome = await sendWebPush(
           { endpoint: subscription.endpoint, p256dh: subscription.p256dh, auth: subscription.auth_key },
-          payload,
+          deliveryMode === 'no_payload' ? null : payload,
           keys,
           {
             nowMs: timestamp,
             fetchImpl,
+            deliveryMode,
             beforeSend: () => store.isActivePushSubscription(
               subscription.id,
               device.id
@@ -915,17 +921,19 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
           }
         );
       } catch (error) {
-        // A network failure can happen after the push service accepted the
-        // request but before the Worker received its response. Treat it as
-        // retryable (at-least-once), never as a confirmed delivery.
+        // 不回传原始异常/订阅地址/加密材料，仅返回稳定的故障类别。
+        // 网络响应丢失时仍可能已送达，保持原有的 at-least-once 重试策略。
         outcome = {
           ok: false,
-          // Invalid local VAPID/crypto/subscription data is not a transient
-          // network failure and should not be retried five times.
           statusCode: error instanceof PushConfigError
             ? 400
             : Number(error?.statusCode || 0),
-          gone: false
+          gone: false,
+          failurePhase: ['vapid', 'encrypt', 'transport'].includes(error?.failurePhase)
+            ? error.failurePhase : 'unknown',
+          failureKind: error?.failureKind === 'request_timeout' ? 'request_timeout'
+            : error?.failureKind === 'network_error' ? 'network_error'
+              : error instanceof PushConfigError ? 'invalid_push_key_or_subscription' : 'unclassified_error'
         };
       }
 
@@ -1014,7 +1022,11 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
           subscriptionId: subscription.id,
           status: canRetry ? 'retry_scheduled' : 'failed',
           httpStatus: statusCode,
-          nextAttemptAt
+          nextAttemptAt,
+          failurePhase: outcome.failurePhase || 'provider_http',
+          failureKind: outcome.failureKind || (statusCode ? 'http_' + statusCode : 'unknown'),
+          failureDiagnostic: outcome.failurePhase ? 'PUSH_CLIENT_' + outcome.failurePhase.toUpperCase()
+            : statusCode ? 'PUSH_PROVIDER_HTTP_' + statusCode : 'PUSH_UNKNOWN'
         });
       }
     }
