@@ -34,3 +34,11 @@ test('Cloud push description markup is balanced and avoids a second fake device 
   assert.equal((html.match(/<header class="header">/g)||[]).length, 1);
   assert.ok(html.includes('class="phone-mockup"'));
 });
+
+test('Cloud push retains compact layout even when Vite loads shared Settings CSS last', () => {
+  assert.match(html, /<body class="cloud-push-page">/);
+  assert.match(html, /body\.cloud-push-page\s*>\s*\.phone-mockup\s*\{[^}]*border-radius:\s*0\s*;/s);
+  assert.match(html, /body\.cloud-push-page\s*>\s*\.phone-mockup\s*>\s*\.header\s*\{[^}]*padding:\s*max\(12px,/s);
+  assert.match(html, /body\.cloud-push-page\s*>\s*\.phone-mockup\s*>\s*\.header\s+\.header-title\s*\{[^}]*font-size:\s*29px/s);
+  assert.match(html, /body\.cloud-push-page\s*>\s*\.phone-mockup\s*>\s*\.content\s*\{/);
+});
