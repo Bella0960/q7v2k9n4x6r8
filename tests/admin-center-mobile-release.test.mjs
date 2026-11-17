@@ -20,10 +20,10 @@ test('mobile admin uses the native status bar and a compact, functional heading'
 test('admin script and CSS versions match the current PWA cache, not the old mobile shell', () => {
   const version = '20261117-ui1';
   assert.ok(html.includes('./admin-center.css?v=' + version));
-  assert.ok(html.includes('./admin-center.js?v=20261117-ui2'));
+  assert.ok(html.includes('./admin-center.js?v=20261117-ui3'));
   assert.ok(!html.includes('./admin-center.js?v=20261117-ui1'));
   assert.ok(sw.includes("'./admin/admin-center.css?v=" + version + "'"));
-  assert.ok(sw.includes("'./admin/admin-center.js?v=20261117-ui2'"));
+  assert.ok(sw.includes("'./admin/admin-center.js?v=20261117-ui3'"));
   assert.match(sw, /const CACHE_NAME = 'phone-app-pwa-v244'/);
   assert.doesNotMatch(html, /20261112-nav2/);
 });
