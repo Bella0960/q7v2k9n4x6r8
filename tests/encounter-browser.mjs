@@ -171,7 +171,12 @@ try {
       await page.waitForTimeout(16);
     }
     await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
-    await page.waitForTimeout(400);
+    // The card redraws after its 240ms exit animation. Await a real ID
+    // change rather than assuming a busy headless Chromium meets 400ms.
+    await page.waitForFunction(previous => {
+      const current=document.querySelector('#frontCard')?.getAttribute('data-candidate-id');
+      return !!current && current!==previous;
+    },beforeTouch,{timeout:3000});
     const afterTouch=await page.locator('#frontCard').getAttribute('data-candidate-id');
     assert.notEqual(afterTouch,beforeTouch,'真实手指左滑必须切换到下一位人物');
     assert.equal(await page.locator('#savedCount').innerText(),'01','手指左滑 PASS 不得增加收藏');
