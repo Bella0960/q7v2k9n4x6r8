@@ -31,8 +31,11 @@ function makeEnv(account = null, overrides = {}) {
         if (overrides.authUnavailable) {
           return Response.json({ ok: false, error: { code: 'IDENTITY_AUTHORITY_UNAVAILABLE' } }, { status: 503 });
         }
-        if (overrides.authDenied) {
+        if (overrides.identitySwitched) {
           return Response.json({ ok: false, error: { code: 'IDENTITY_AUTHORITY_CHANGED' } }, { status: 403 });
+        }
+        if (overrides.authDenied) {
+          return Response.json({ ok: false, error: { code: 'DELEGATED_ACCOUNT_MANAGED_CENTRALLY' } }, { status: 403 });
         }
         if (overrides.badIdentityResponse) {
           return Response.json({ ok: true, account: null });
@@ -122,11 +125,22 @@ test('pending and disabled accounts cannot open private HTML', async () => {
   }
 });
 
-test('missing database binding remains gated without exposing private HTML', async () => {
+test('missing database binding returns a safe 503 without misleading login redirect', async () => {
   const { env, calls } = makeEnv(null, { withoutDb: true });
   const r = await worker.fetch(req('/chat/chat/chat-detail.html'), env);
+  assert.equal(r.status, 503);
+  assert.equal(r.headers.get('location'), null);
+  assert.equal(r.headers.get('cache-control'), 'no-store');
+  assert.equal(calls.assets.length, 0);
+});
+
+test('server-confirmed identity switch leaves protected page for sign-in', async () => {
+  const { env, calls } = makeEnv(active('super_admin'), { identitySwitched: true });
+  const r = await worker.fetch(req('/admin/admin-center.html'), env);
   assert.equal(r.status, 302);
-  assert.equal(new URL(r.headers.get('location')).pathname, '/account/index.html');
+  const destination = new URL(r.headers.get('location'));
+  assert.equal(destination.pathname, '/account/index.html');
+  assert.equal(destination.searchParams.get('switched'), '1');
   assert.equal(calls.assets.length, 0);
 });
 
