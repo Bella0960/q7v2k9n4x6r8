@@ -93,12 +93,12 @@ test('isolated QA core readiness does not require retired gateway secret', async
   env.MAO_QA_AUTHORITY_WORKER = 'maomao-identity-core';
   env.MAO_EXPECTED_FOUNDER_ID = founder;
   assert.deepEqual(await probeExistingIdentityAuthority(env),
-    { connected: true, initialized: false, configured: true });
+    { connected: true, initialized: false, configured: true, qaIsolatedAuthority: true, qaExpectedFounderId: founder });
   // Closing the one-time setup switch must not restore a dependency on the
   // retired gateway key. Logins still need a properly initialized core.
   delete env.MAO_QA_IDENTITY_SETUP;
   assert.deepEqual(await probeExistingIdentityAuthority(env),
-    { connected: true, initialized: false, configured: true });
+    { connected: true, initialized: false, configured: true, qaIsolatedAuthority: true, qaExpectedFounderId: founder });
   assert.equal(calls, 2);
 });
 
@@ -141,4 +141,22 @@ test('isolated QA readiness rejects wrong authority, wrong founder and malformed
   foreign.MAO_EXPECTED_FOUNDER_ID = founder;
   assert.deepEqual(await probeExistingIdentityAuthority(foreign), OFFLINE);
   assert.equal(calls, 0);
+});
+
+test('isolated QA proof includes founder identity after successful verified bootstrap probe', async () => {
+  const founder = 'MAO-SYNTHFOUNDER001';
+  const env = delegated({
+    fetch: async () => Response.json({
+      ok: true, initialized: true, configured: true, identityMode: 'local',
+      bootstrapAllowed: true, qaIsolatedAuthority: true, qaExpectedFounderId: founder
+    })
+  });
+  delete env.MAO_IDENTITY_BRIDGE_SECRET;
+  env.MAO_IDENTITY_AUTHORITY_MODE = 'existing_worker';
+  env.MAO_QA_AUTHORITY_WORKER = 'maomao-identity-core';
+  env.MAO_EXPECTED_FOUNDER_ID = founder;
+  assert.deepEqual(await probeExistingIdentityAuthority(env), {
+    connected: true, initialized: true, configured: true,
+    qaIsolatedAuthority: true, qaExpectedFounderId: founder
+  });
 });

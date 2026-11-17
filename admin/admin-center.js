@@ -12,6 +12,8 @@
   let inviteTotalCount = 0;
   let accountSummary = null;
   let inviteSummary = null;
+  let accountPageError = false;
+  let invitePageError = false;
   let accountSearchTimer = 0;
   let inviteSearchTimer = 0;
   let globalAuditSearchTimer = 0;
@@ -59,6 +61,27 @@
       error.code = payload.error?.code || 'REQUEST_FAILED';
       error.status = response.status;
       throw error;
+    }
+    return payload;
+  }
+
+  // A real expired session has one of these exact 401 codes.
+  // Delegated QA admin 403/503 failures are not proof of logout.
+  function isConfirmedSessionExpired(error) {
+    return error && error.status === 401 &&
+      (error.code === 'LOGIN_REQUIRED' || error.code === 'ACCOUNT_SESSION_REQUIRED');
+  }
+
+  // A 200 response with missing rows or pagination is a failed directory read,
+  // never proof that the user has no accounts or audit records.
+  function verifiedDirectoryPayload(payload, key) {
+    const page = payload?.page;
+    if (!Array.isArray(payload?.[key]) ||
+        !payload[key].every(row => row && typeof row === 'object' && typeof row.id === 'string') ||
+        !page || !Number.isSafeInteger(page.totalCount) || page.totalCount < 0 ||
+        typeof page.hasMore !== 'boolean' ||
+        (page.hasMore && (typeof page.nextCursor !== 'string' || !page.nextCursor))) {
+      throw new Error('服务器返回的管理记录不完整，请重新检查。');
     }
     return payload;
   }
@@ -125,6 +148,10 @@
         retryButton.disabled = true;
         try {
           await retry();
+        } catch (error) {
+          // The recovery button itself must never fail silently or leave an
+          // unhandled rejected promise on a phone with intermittent service.
+          showError(error?.message || '重新核对失败，请稍后再试。', retry);
         } finally {
           if (retryButton.isConnected) retryButton.disabled = false;
         }
@@ -159,6 +186,10 @@
 
   function setButtonsDisabled(disabled) {
     document.querySelectorAll('button').forEach(button => {
+      // Keep navigation and filters responsive while reading. Only writes,
+      // pagers, refresh actions and confirmations need the busy lock.
+      if (button.classList.contains('tab-button') ||
+          button.classList.contains('filter-button')) return;
       if (disabled) {
         if (!busyButtonState.has(button)) busyButtonState.set(button, button.disabled);
         button.disabled = true;
@@ -181,7 +212,7 @@
         window.location.replace('/account/index.html?disabled=1');
         return;
       }
-      if (error.status === 401 || error.status === 403 || error.code === 'ADMIN_ONLY') {
+      if (isConfirmedSessionExpired(error)) {
         window.location.replace('/account/index.html?admin=1');
         return;
       }
@@ -255,6 +286,13 @@
   function renderAccounts() {
     const list = $('accountsList');
     list.replaceChildren();
+    if (accountPageError) {
+      $('accountResultCount').textContent = '账号暂时无法读取';
+      $('accountLimitNotice').hidden = true;
+      $('loadMoreAccounts').hidden = true;
+      list.appendChild(el('p', 'empty-note', '账号读取失败，请点击右上角的刷新重新检查。'));
+      return;
+    }
     const query = String($('accountSearch').value || '').trim().toLocaleLowerCase();
     const searched = accounts.filter(account =>
       [account.id, account.username, account.qq_email]
@@ -281,7 +319,6 @@
 
     filtered.forEach(account => {
       const row = el('div', 'account-row', '');
-      const avatar = el('div', 'row-avatar', 'M');
       const main = el('div', 'row-main', '');
       const subline = account.id + ' · 创建于 ' + formatTime(account.created_at);
       main.append(
@@ -292,7 +329,7 @@
       const button = el('button', 'open-detail', '详情');
       button.type = 'button';
       button.addEventListener('click', () => openAccount(account.id));
-      row.append(avatar, main, status, button);
+      row.append(main, status, button);
       list.appendChild(row);
     });
     if (busy) setButtonsDisabled(true);
@@ -323,6 +360,13 @@
   function renderInvites() {
     const list = $('invitesList');
     list.replaceChildren();
+    if (invitePageError) {
+      $('inviteResultCount').textContent = '邀请码暂时无法读取';
+      $('inviteLimitNotice').hidden = true;
+      $('loadMoreInvites').hidden = true;
+      list.appendChild(el('p', 'empty-note', '邀请码读取失败，请点击右上角的刷新重新检查。'));
+      return;
+    }
     const query = String($('inviteSearch').value || '').trim().toLocaleLowerCase();
     const searched = invites.filter(invite =>
       [invite.id, invite.target_account_id, invite.target_email, invite.target_username]
@@ -353,7 +397,6 @@
         pending: '待使用'
       };
       const row = el('div', 'invite-row', '');
-      const icon = el('div', 'row-avatar', '⌁');
       const main = el('div', 'row-main', '');
       const target = invite.target_account_id || invite.target_email || '未指定';
       main.append(
@@ -364,7 +407,7 @@
       );
       const stateClass = state === 'pending' ? 'status-pending' : (state === 'used' ? 'status-active' : 'status-revoked');
       const meta = el('div', 'row-status ' + stateClass, stateLabels[state]);
-      row.append(icon, main, meta);
+      row.append(main, meta);
       if (invite.target_account_id) {
         const detailButton = el('button', 'open-detail', '查看账号');
         detailButton.type = 'button';
@@ -410,7 +453,24 @@
       search,
       accountFilter,
       cursor
-    ));
+    )).then(payload => verifiedDirectoryPayload(payload, 'accounts')).catch(error => {
+      if (restart) {
+        accountPageError = true;
+        accounts = [];
+        accountDirectoryKey = '';
+        accountNextCursor = '';
+        accountHasMore = false;
+        accountTotalCount = 0;
+        accountSummary = null;
+        renderAccounts();
+        for (const id of ['statTotal', 'statPending', 'statActive', 'statDisabled',
+          'filterCountAll', 'filterCountPending', 'filterCountActive', 'filterCountRestricted']) {
+          $(id).textContent = '—';
+        }
+      }
+      throw error;
+    });
+    accountPageError = false;
     const next = Array.isArray(result.accounts) ? result.accounts : [];
     accountDirectoryKey = key;
     accounts = restart ? next : accounts.concat(next);
@@ -433,7 +493,24 @@
       search,
       inviteFilter,
       cursor
-    ));
+    )).then(payload => verifiedDirectoryPayload(payload, 'invites')).catch(error => {
+      if (restart) {
+        invitePageError = true;
+        invites = [];
+        inviteDirectoryKey = '';
+        inviteNextCursor = '';
+        inviteHasMore = false;
+        inviteTotalCount = 0;
+        inviteSummary = null;
+        renderInvites();
+        for (const id of ['inviteCountAll', 'inviteCountPending', 'inviteCountUsed',
+          'inviteCountExpired', 'inviteCountRevoked']) {
+          $(id).textContent = '—';
+        }
+      }
+      throw error;
+    });
+    invitePageError = false;
     const next = Array.isArray(result.invites) ? result.invites : [];
     inviteDirectoryKey = key;
     invites = restart ? next : invites.concat(next);
@@ -446,13 +523,16 @@
   }
 
   async function refreshAll() {
-    await Promise.all([loadAccountPage(true), loadInvitePage(true)]);
+    // Do not cancel the other directory's successful state when one API fails.
+    const checks = await Promise.allSettled([loadAccountPage(true), loadInvitePage(true)]);
     if (selectedAccountId && !$('accountDetail').hidden) {
-      const account = accounts.find(item => item.id === selectedAccountId);
+      const account = accountPageError ? null : accounts.find(item => item.id === selectedAccountId);
       if (account) await renderAccountDetail(account);
       else closeDetail();
     }
     if (busy) setButtonsDisabled(true);
+    const failed = checks.find(result => result.status === 'rejected');
+    if (failed) throw failed.reason;
   }
 
   async function openAccount(accountId) {
@@ -469,9 +549,13 @@
   }
 
   function createActionButton(label, className, action, requiresReason = false) {
+    // Bind this button to the account whose verified detail created it.
+    // Never let an asynchronous selection change retarget a destructive action.
+    const targetAccountId = selectedAccountId;
     const button = el('button', 'action-button ' + (className || ''), label);
     button.type = 'button';
     button.addEventListener('click', () => {
+      if (selectedAccountId !== targetAccountId) return;
       const descriptions = {
         disable: '账号将暂时无法使用，所有登录设备和会话凭据会失效；关联的有效邀请码也会自动撤销。',
         restore: '系统会按账号停用前保存的授权状态恢复，不能借此跳过邀请码验证。',
@@ -485,12 +569,15 @@
       const confirmLabels = { disable: '确认停用', restore: '确认恢复', revoke: '确认永久撤销' };
       openAdminConfirmation({
         title: titles[action] || ('确认' + label + '？'),
-        description: (descriptions[action] || '请核对账号及本次操作影响。') + ' 目标账号：' + selectedAccountId,
+        description: (descriptions[action] || '请核对账号及本次操作影响。') + ' 目标账号：' + targetAccountId,
         confirmLabel: confirmLabels[action] || '确认操作',
         danger: action === 'disable' || action === 'revoke',
         requiresReason,
         onConfirm: async reason => {
-          await api('/api/admin/accounts/' + encodeURIComponent(selectedAccountId) + '/action', 'POST', {
+          if (selectedAccountId !== targetAccountId) {
+            throw new Error('当前查看的账号已变化，操作已取消。请重新打开详情核对。');
+          }
+          await api('/api/admin/accounts/' + encodeURIComponent(targetAccountId) + '/action', 'POST', {
             action,
             reason: String(reason || '').trim()
           });
@@ -527,7 +614,7 @@
         window.location.replace('/account/index.html?disabled=1');
         return;
       }
-      if (error.status === 401 || error.status === 403 || error.code === 'ADMIN_ONLY') {
+      if (isConfirmedSessionExpired(error)) {
         window.location.replace('/account/index.html?admin=1');
         return;
       }
@@ -660,9 +747,9 @@
     params.set('limit', '50');
     if (cursor) params.set('cursor', cursor);
     try {
-      const result = await api(
+      const result = verifiedDirectoryPayload(await api(
         '/api/admin/accounts/' + encodeURIComponent(accountId) + '/audit?' + params.toString()
-      );
+      ), 'records');
       if (selectedAccountId !== accountId || requestSequence !== auditRequestSequence) return;
       const records = Array.isArray(result.records) ? result.records : [];
       if (reset) list.replaceChildren();
@@ -722,7 +809,7 @@
         window.location.replace('/account/index.html?disabled=1');
         return;
       }
-      if (error.status === 401 || error.status === 403 || error.code === 'ADMIN_ONLY') {
+      if (isConfirmedSessionExpired(error)) {
         window.location.replace('/account/index.html?admin=1');
         return;
       }
@@ -829,7 +916,7 @@
     if (globalAuditSince != null) params.set('since', String(globalAuditSince));
     if (cursor) params.set('cursor', cursor);
     try {
-      const result = await api('/api/admin/audit?' + params.toString());
+      const result = verifiedDirectoryPayload(await api('/api/admin/audit?' + params.toString()), 'records');
       if (requestSequence !== globalAuditRequestSequence) return;
       const records = Array.isArray(result.records) ? result.records : [];
       if (restart) list.replaceChildren();
@@ -855,7 +942,7 @@
         window.location.replace('/account/index.html?disabled=1');
         return;
       }
-      if (error.status === 401 || error.status === 403 || error.code === 'ADMIN_ONLY') {
+      if (isConfirmedSessionExpired(error)) {
         window.location.replace('/account/index.html?admin=1');
         return;
       }
@@ -958,6 +1045,10 @@
         item.classList.toggle('active', active);
         item.setAttribute('aria-pressed', active ? 'true' : 'false');
       });
+      if (busy) {
+        globalAuditSearchRefreshPending = true;
+        return;
+      }
       run(() => loadGlobalAudit(true));
     });
   });
@@ -978,6 +1069,10 @@
         item.classList.toggle('active', active);
         item.setAttribute('aria-pressed', active ? 'true' : 'false');
       });
+      if (busy) {
+        globalAuditSearchRefreshPending = true;
+        return;
+      }
       run(() => loadGlobalAudit(true));
     });
   });
@@ -992,6 +1087,10 @@
         item.classList.toggle('active', active);
         item.setAttribute('aria-pressed', active ? 'true' : 'false');
       });
+      if (busy) {
+        accountSearchRefreshPending = true;
+        return;
+      }
       run(() => loadAccountPage(true));
     });
   });
@@ -1003,6 +1102,10 @@
         item.classList.toggle('active', active);
         item.setAttribute('aria-pressed', active ? 'true' : 'false');
       });
+      if (busy) {
+        inviteSearchRefreshPending = true;
+        return;
+      }
       run(() => loadInvitePage(true));
     });
   });
@@ -1032,7 +1135,12 @@
     });
     run(async () => {
       await loadAccountPage(true);
-      openAccount(accountId);
+      if (!accounts.some(account => account.id === accountId)) {
+        showError('暂时找不到这位账号，请重新检查后再打开详情。',
+          () => openAccountFromInvite(accountId));
+        return;
+      }
+      await openAccount(accountId);
     });
   }
 
@@ -1040,7 +1148,10 @@
     button.addEventListener('click', () => {
       const tab = button.dataset.tab;
       activateTab(tab);
-      if (tab === 'audit') run(() => loadGlobalAudit(true));
+      if (tab === 'audit') {
+        if (busy) globalAuditSearchRefreshPending = true;
+        else run(() => loadGlobalAudit(true));
+      }
     });
   });
 
@@ -1062,12 +1173,14 @@
   async function init() {
     if (initializing) return;
     initializing = true;
+    let sessionVerified = false;
     try {
       const me = await api('/api/accounts/me');
       if (!me.account || me.account.role !== 'super_admin' || me.account.status !== 'active') {
         window.location.replace('/account/index.html?admin=1');
         return;
       }
+      sessionVerified = true;
       await refreshAll();
       if (new URLSearchParams(window.location.search).get('tab') === 'invites') activateTab('invites');
       hideError();
@@ -1076,12 +1189,16 @@
         window.location.replace('/account/index.html?disabled=1');
         return;
       }
-      if (error.status === 401 || error.status === 403 || error.code === 'ADMIN_ONLY') {
+      if (isConfirmedSessionExpired(error)) {
         window.location.replace('/account/index.html?admin=1');
         return;
       }
-      $('accountsList').replaceChildren(el('p', 'empty-note', '账号数据暂未加载，请重新检查。'));
-      $('invitesList').replaceChildren(el('p', 'empty-note', '邀请码数据暂未加载，请重新检查。'));
+      if (!sessionVerified) {
+        $('accountResultCount').textContent = '管理员身份尚未核对';
+        $('inviteResultCount').textContent = '管理员身份尚未核对';
+        $('accountsList').replaceChildren(el('p', 'empty-note', '暂时无法确认管理员身份，请重试。'));
+        $('invitesList').replaceChildren(el('p', 'empty-note', '暂时无法确认管理员身份，请重试。'));
+      }
       showError(
         error.message || '暂时无法连接服务器，管理员身份尚未重新验证。管理数据尚未加载，请重试。',
         () => init()

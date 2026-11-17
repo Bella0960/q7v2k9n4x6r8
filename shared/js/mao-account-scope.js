@@ -144,15 +144,23 @@
             current.status === 'active') {
           return null;
         }
-        var disabled = payload && payload.error && payload.error.code === 'ACCOUNT_DISABLED';
-        if (response.ok && current && current.id !== accountId) {
+        var errorCode = payload && payload.error && payload.error.code;
+        if (response.ok && current && (current.id !== accountId || current.role !== role)) {
           redirectToAccountEntry('switched=1');
-        } else if (response.ok && current && current.role !== role) {
+        } else if (errorCode === 'ACCOUNT_DISABLED' ||
+                   (response.ok && current && (current.status === 'disabled' || current.status === 'revoked'))) {
+          redirectToAccountEntry('disabled=1');
+        } else if (response.status === 401) {
+          redirectToAccountEntry('');
+        } else if (errorCode === 'IDENTITY_AUTHORITY_CHANGED') {
           redirectToAccountEntry('switched=1');
-        } else {
-          redirectToAccountEntry(disabled ? 'disabled=1' : '');
+        } else if (response.ok && current && current.status !== 'active') {
+          redirectToAccountEntry('');
         }
-        return false;
+        // 403 without confirmed identity change, 5xx, and invalid responses
+        // do not establish that this account logged out. Keep local data intact
+        // while server-enforced API and page protections remain fail-closed.
+        return null;
       });
     }).catch(function () {
       // A transient network error does not erase local data. Cloud APIs remain

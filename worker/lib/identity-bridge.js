@@ -236,7 +236,17 @@ export async function probeExistingIdentityAuthority(env) {
       data.qaIsolatedAuthority !== true ||
       data.qaExpectedFounderId !== expectedQaFounder
     )) return unavailable;
-    return { connected: true, initialized: data.initialized, configured: data.configured };
+    return {
+      connected: true,
+      initialized: data.initialized,
+      configured: data.configured,
+      ...(isolatedQaCore ? {
+        // The private service-bound response was already validated above.
+        // Admin operations require this exact proof, not merely connectivity.
+        qaIsolatedAuthority: data.qaIsolatedAuthority === true,
+        qaExpectedFounderId: data.qaExpectedFounderId
+      } : {})
+    };
   } catch {
     return unavailable;
   }

@@ -230,6 +230,49 @@ test('账号会话仍属于当前 MAO ID 和角色时，页面不应误退出', 
   assert.equal(a.window.redirectedTo, undefined);
 });
 
+test('QA session probe failure must not redirect a verified account page', async () => {
+  const accountId = 'MAO-AAAAAAAAAAAA';
+  for (const scenario of [
+    { label: 'temporary unavailable', status: 503, code: 'IDENTITY_AUTHORITY_UNAVAILABLE' },
+    { label: 'API forbidden without proof of logout', status: 403, code: 'DELEGATED_ACCOUNT_MANAGED_CENTRALLY' },
+    { label: 'invalid response', status: 200, code: '', ok: true }
+  ]) {
+    const a = createScope({
+      accountId,
+      role: 'super_admin',
+      fetchImpl: async () => ({
+        ok: scenario.ok === true,
+        status: scenario.status,
+        json: async () => scenario.code
+          ? { ok: false, error: { code: scenario.code } }
+          : { ok: true }
+      })
+    });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(a.window.redirectedTo, undefined, scenario.label);
+    assert.equal(a.window.__MAO_ACCOUNT_SCOPE__?.ready, true, scenario.label);
+  }
+});
+
+test('confirmed session expiry, disabled account and identity switch still redirect', async () => {
+  const scenarios = [
+    { status: 401, code: 'LOGIN_REQUIRED', expected: '/account/index.html' },
+    { status: 403, code: 'ACCOUNT_DISABLED', expected: '/account/index.html?disabled=1' },
+    { status: 403, code: 'IDENTITY_AUTHORITY_CHANGED', expected: '/account/index.html?switched=1' }
+  ];
+  for (const scenario of scenarios) {
+    const a = createScope({
+      accountId: 'MAO-AAAAAAAAAAAA', role: 'super_admin',
+      fetchImpl: async () => ({
+        ok: false, status: scenario.status,
+        json: async () => ({ ok: false, error: { code: scenario.code } })
+      })
+    });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(a.window.redirectedTo, scenario.expected, scenario.code);
+  }
+});
+
 test('不同 MAO 永久 ID 的 localStorage、IndexedDB 与 CacheStorage 相互隔离', async () => {
   const sharedCaches = createNativeCacheStorage();
   await sharedCaches.open('shared-app-shell');
@@ -318,12 +361,12 @@ test('Worker 只对已授权账号页面注入数据命名空间，并禁止缓�
   assert.match(workerSource, /meta name="mao-account-id"/);
   assert.match(workerSource, /mao-account-role/);
   assert.ok(workerSource.includes('shared/js/mao-account-scope.js'));
-  assert.match(workerSource, /mao-account-scope\.js\?v=2/,
+  assert.match(workerSource, /mao-account-scope\.js\?v=3/,
     'Worker 注入的账号隔离脚本必须使用本次更新版本，避免旧 PWA 缓存继续加载 v1');
-  assert.match(serviceWorkerSource, /mao-account-scope\.js\?v=2/,
+  assert.match(serviceWorkerSource, /mao-account-scope\.js\?v=3/,
     'Service Worker 预缓存必须与 Worker 注入版本一致');
-  assert.doesNotMatch(workerSource, /mao-account-scope\.js\?v=1/);
-  assert.doesNotMatch(serviceWorkerSource, /mao-account-scope\.js\?v=1/);
+  assert.doesNotMatch(workerSource, /mao-account-scope\.js\?v=2/);
+  assert.doesNotMatch(serviceWorkerSource, /mao-account-scope\.js\?v=2/);
   assert.match(scopeSource, /fetch\('\/api\/accounts\/me'/);
   assert.match(scopeSource, /setInterval\(verifyAccountSession, 30000\)/);
   assert.match(workerSource, /cache-control', 'private, no-store, max-age=0/);

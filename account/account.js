@@ -8,8 +8,9 @@
   let authBusy = false;
   // The one approved QA origin must fail closed until the authority is
   // confirmed. Other account origins retain their existing login behavior.
-  const isKnownQaHost = window.location.hostname ===
-    'maomao-aw-qa-20261114.miamor520000.workers.dev';
+  const isKnownQaHost =
+    window.location.hostname === 'preview.mao520.com' ||
+    window.location.hostname === 'maomao-aw-qa-20261114.miamor520000.workers.dev';
   let delegatedIdentity = isKnownQaHost;
   let delegatedSignInReady = !isKnownQaHost;
 
