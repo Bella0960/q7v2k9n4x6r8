@@ -231,3 +231,12 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 只读 QA 对比：唯一 #299 的 `encounter/encounter.html` 仍是旧版本（blob `adefc88934bd536b016f11e941908cb0e9e1257c`），含假状态栏；原 #297 修复版 blob `f5047266b85fee1200b760e351ecf9627e2a1172`，已彻底移除 DOM/CSS/clock。#299 现有 encounter browser/release gate 也缺本轮 nativeSystemStatusBar 验收标记。由于 #299 由另一个窗口并行提交且 REST mergeable_state=dirty，本轮不写 QA 分支、不强合、不覆盖其其他功能。
 - 提交 850118b：增强原邂逅发布 gate，对假时间/信号/电量节点、样式名、计时脚本实施**源码直接阻断**，不能仅凭旧截图或其他浏览器回执把旧 QA 页面判作已交付。提交 32e0d10 补充旧版本禁止回归。
 - 本轮已重新在 V8 适配执行**实际最新 UI 合同主体 18/18 PASS**，对 #290 v3 源码兼容检查 5/5 PASS。**未执行**完整 Node CLI、Vite、真 Chromium、Android/iOS 或 QA 实际部署，本轮仍为 Draft/NOT VERIFIED；用户的“完整交付”标准未达成。后续整合须使用 #297 最新 HEAD、保留 #290 最新安全修复，取得同一 SHA 的真实构建/测试/部署回执及双端真机验收。
+
+
+## FEATURE-ENCOUNTER-001｜2026-11-17 本轮交付门禁死锁修复
+- **真实问题**：原 gate:encounter 明确强制 `test-results/encounter-account-test-receipt.json` 与 `encounter-encounter-test-receipt.json` 双回执，但原 package.json 只有 `test:encounter`，运行后只会写 encounter，缺 account 生成流程。即使测试通过，发布门禁也可能始终失败。
+- **已改文件（原 PR #297）**：package.json 新增 `test:encounter:account`，顺序为 `npm run test:account:release-gate && node --test tests/encounter-actual-scope.test.mjs && node scripts/record-encounter-tests.mjs account`，账号真实 Node 测试失败时不签发回执；scripts/verify-encounter-release.mjs 新增检查该真实生成链路的门禁，仍严格要求双回执、完整构建及浏览器回执；tests/encounter-ui-contract.test.mjs 新增对应原生 Node 合同；规格文档更新命令顺序。
+- **前置依赖不隐瞒**：本功能原 PR #297 不含 `test:account:release-gate` 及其账号测试，这些在独立账号原 PR #290 中。只有由唯一 QA 窗口正确合并 #290 最新账号安全修复后才能运行新命令；不得创建空账号占位文件、删除门禁或直接给本分支伪造通过回执。
+- **已执行验证**：以最新 GitHub 源码，在 V8 测试适配器执行原 tests/encounter-ui-contract.test.mjs 主体 **19/19 PASS**（含新增账号回执命令校验）；不是原生 Node/Vite/Chromium。完整工程本工作环境尚无仓库挂载副本，虽存在 Node v22 与 Chromium 可执行文件，但无法对真实 Git HEAD 构建，不能声称完整验证通过。
+- **并行 QA 风险定位（仅只读候选）**：#299 与账号分支最新差异存在 6 个双方均改动的文件：docs/engineering/EXECUTION_LOG.md、package.json、sw.js、tests/account-identity-bridge-probe.test.mjs、worker/lib/account-auth.js、worker/lib/identity-bridge.js。它们是合并内容重叠的候选风险，并非逐个确定的文本冲突，QA 负责人应按语义合并、保护原账户隔离与所有既有模块。
+- **当前状态**：全部修改只在原 PR #297，保持 Draft；唯一 #299 未由本窗口改写，正式 main、域名、管理员 001 与真实数据不动。需要完整工程原生 Node/Vite/Playwright、唯一 QA 实际部署与双端真机验收后才可宣布完整交付。
