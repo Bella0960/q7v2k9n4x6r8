@@ -72,10 +72,14 @@ function mount({ engineRoot = true } = {}) {
   layer.append(sheet);
   const engineEntry = new Element('button'); engineEntry.dataset.feat = 'fanwai';
   const meta = { content: 'MAO-AAAAAAAAAAAA', getAttribute() { return this.content; } };
+  var rootAvailable = engineRoot;
+  const lifecycle = new Map();
+  const timers = [];
   const document = {
     body,
     createElement: tag => new Element(tag),
-    getElementById: id => ({ fanwaiApp: main, fanwaiRolePicker: picker, fanwaiLayer: engineRoot ? layer : null })[id] || null,
+    getElementById: id => ({ fanwaiApp: main, fanwaiRolePicker: picker, fanwaiLayer: rootAvailable ? layer : null })[id] || null,
+    addEventListener(type, callback) { lifecycle.set(type, callback); },
     querySelector: selector => {
       if (selector.startsWith('meta[')) return meta;
       if (selector === '#plusPanelOverlay .plus-grid [data-feat="fanwai"]') return engineEntry;
@@ -95,13 +99,20 @@ function mount({ engineRoot = true } = {}) {
       search: '?id=g-bookworm',
       assign(path) { this.destination = path; }
     },
-    setTimeout() { return 1; },
+    setTimeout(callback) { timers.push(callback); return timers.length; },
     clearTimeout() {}
   };
   runInNewContext(appCode, { window, document, URLSearchParams, console }, { filename: 'fanwai-app.js' });
   const engineScript = body.walk().find(node => node.tag === 'script');
   assert.ok(engineScript, 'the compatible QA engine must still load');
-  return { body, main, picker, sheet, layer, grid, engineEntry, engineScript, window };
+  return {
+    body, main, picker, sheet, layer, grid, engineEntry, engineScript, window, timers,
+    mountEngineRoot() { rootAvailable = true; },
+    fireDOMContentLoaded() {
+      const listener = lifecycle.get('DOMContentLoaded');
+      if (listener) listener();
+    }
+  };
 }
 
 test('legacy QA engine mounts into full screen with a single slim app bar', () => {
@@ -145,9 +156,23 @@ test('legacy story directory lets user return to role picker', () => {
 test('missing QA engine root fails visibly without accessing an empty story UI', () => {
   const app = mount({ engineRoot: false });
   app.engineScript.onload();
+  assert.equal(app.picker.hidden, true, 'wait before declaring an early script load failed');
+  app.timers.at(-1)(); // Simulate actual 3-second not-mounted deadline.
   assert.equal(app.picker.hidden, false);
   const title = app.picker.walk().find(node => node.className === 'fw-role-title');
   assert.ok(title);
   assert.match(title.textContent, /番外加载失败/);
   assert.equal(app.main.walk().filter(node => node.classes.has('fw-bridge-nav')).length, 0);
+});
+
+test('early script onload waits for DOMContentLoaded before mounting QA engine', () => {
+  const app = mount({ engineRoot: false });
+  app.engineScript.onload();
+  assert.equal(app.engineEntry.clicked, 0);
+  app.mountEngineRoot();
+  app.fireDOMContentLoaded();
+  assert.equal(app.engineEntry.clicked, 1);
+  assert.equal(app.picker.hidden, true);
+  app.timers.at(-1)();
+  assert.equal(app.picker.hidden, true, 'timeout callback after successful mount cannot blank page');
 });
