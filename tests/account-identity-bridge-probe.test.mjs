@@ -23,10 +23,10 @@ test('QA gateway bootstrap probe authenticates the server-only service request',
     assert.equal(request.headers.get('cookie'), null);
     assert.equal(request.headers.get('authorization'), null);
     assert.ok(!request.url.includes(SECRET), 'service secret must not appear in a URL');
-    return Response.json({ ok: true, initialized: true, configured: true });
+    return Response.json({ ok: true, initialized: true, configured: true, qaIsolatedAuthority: true, qaExpectedFounderId: 'MAO-SYNTHFOUNDER001' });
   } });
   assert.deepEqual(await probeExistingIdentityAuthority(env),
-    { connected: true, initialized: true, configured: true });
+    { connected: true, initialized: true, configured: true, qaIsolatedAuthority: true, qaExpectedFounderId: 'MAO-SYNTHFOUNDER001' });
   assert.equal(calls, 1);
 });
 
@@ -70,4 +70,23 @@ test('gateway probe stays disabled for non-delegated mode or absent binding', as
   assert.deepEqual(await probeExistingIdentityAuthority(env), OFFLINE);
   assert.equal(calls, 0);
   assert.deepEqual(await probeExistingIdentityAuthority(delegated(null)), OFFLINE);
+});
+
+test('an apparently ready identity authority without the QA proof remains untrusted for privileged operations', async () => {
+  const candidates = [
+    { ok: true, initialized: true, configured: true },
+    { ok: true, initialized: true, configured: true, qaIsolatedAuthority: false, qaExpectedFounderId: 'MAO-SYNTHFOUNDER001' },
+    { ok: true, initialized: true, configured: true, qaIsolatedAuthority: true, qaExpectedFounderId: 'MAO-DIFFERENTFOUNDER01' }
+  ];
+  for (const candidate of candidates) {
+    const r = await probeExistingIdentityAuthority(delegated({
+      fetch: async () => Response.json(candidate)
+    }));
+    assert.equal(r.connected, true, 'availability remains separately observable');
+    assert.equal(r.qaIsolatedAuthority, candidate.qaIsolatedAuthority === true);
+    assert.equal(r.qaExpectedFounderId, candidate.qaExpectedFounderId || null);
+    assert.ok(!(r.qaIsolatedAuthority === true &&
+      r.qaExpectedFounderId === 'MAO-SYNTHFOUNDER001') ||
+      candidate.qaIsolatedAuthority === true && candidate.qaExpectedFounderId === 'MAO-SYNTHFOUNDER001');
+  }
 });
