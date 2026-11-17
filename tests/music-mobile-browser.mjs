@@ -82,13 +82,24 @@ try {
         width + 'px music mini player too tall: ' + JSON.stringify(chrome));
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
       assert.ok(overflow <= 1, width + 'px layout overflow ' + overflow);
-      await page.locator('#musicImport').setInputFiles({
-        name: 'QA 轻声.wav', mimeType: 'audio/wav', buffer: makeWav()
-      });
+      // 真实点击 音乐个人页 → 设置 → 导入音乐，选择多个文件而非直接给隐藏 input 塞值。
+      await page.evaluate(() => showSetting());
+      const settingsImport = page.locator('#settingSheet [aria-label^="导入音乐"]');
+      await settingsImport.waitFor({ state: 'visible' });
+      const importPickerEvent = page.waitForEvent('filechooser');
+      await settingsImport.click();
+      const importPicker = await importPickerEvent;
+      assert.equal(importPicker.isMultiple(), true, 'settings must accept multiple local audio files');
+      await importPicker.setFiles([
+        { name: 'QA 轻声.wav', mimeType: 'audio/wav', buffer: makeWav() },
+        { name: 'QA 第二首.wav', mimeType: 'audio/wav', buffer: makeWav() }
+      ]);
       await page.waitForFunction(() => {
-        try { return JSON.parse(localStorage.getItem('music_local_tracks') || '[]').length > 0; }
+        try { return JSON.parse(localStorage.getItem('music_local_tracks') || '[]').length === 2; }
         catch { return false; }
       });
+      assert.equal(await page.locator('#settingSheet').evaluate(el => el.classList.contains('show')), false,
+        'settings drawer should close after invoking the picker');
       const trackId = await page.evaluate(() => JSON.parse(localStorage.getItem('music_local_tracks'))[0].id);
       assert.match(trackId, /^local_/);
       const audioInfo = await page.evaluate(async (id) => {
@@ -121,12 +132,22 @@ try {
       assert.ok(await page.evaluate(() => window.audio && window.audio.src.startsWith('blob:')),
         'resume must recreate local Blob URL after refresh');
       await page.waitForFunction(id => document.getElementById('npTitle')?.textContent === 'QA 轻声', trackId);
-      await page.locator('#coverUpload').setInputFiles({ name:'cover.png', mimeType:'image/png', buffer:png });
+      // 点已导入歌曲的默认方形封面，图片选择器必须绑定到该歌曲，而非误触播放。
+      await page.evaluate(() => { hideNP(); switchTab('home'); });
+      const thumbnailToEdit = page.locator('#recent-list [data-music-track-id="' + trackId + '"]');
+      await thumbnailToEdit.scrollIntoViewIfNeeded();
+      const coverPickerEvent = page.waitForEvent('filechooser');
+      await thumbnailToEdit.click();
+      await (await coverPickerEvent).setFiles({ name:'cover.png', mimeType:'image/png', buffer:png });
       await page.waitForFunction(id => {
         try { return !!JSON.parse(localStorage.getItem('music_cover_assets_v1') || '{}')[id]; }
         catch { return false; }
       }, trackId);
-      await page.evaluate(() => { hideNP(); switchTab('home'); });
+      assert.equal(await page.evaluate(id => {
+        const tracks = JSON.parse(localStorage.getItem('music_local_tracks') || '[]');
+        const covers = JSON.parse(localStorage.getItem('music_cover_assets_v1') || '{}');
+        return tracks.filter(t => t.id !== id).every(t => !covers[t.id]);
+      }, trackId), true, 'image must not leak to other imported songs');
       const thumbnail = page.locator('#recent-list [data-music-track-id="' + trackId + '"]');
       await thumbnail.scrollIntoViewIfNeeded();
       await page.waitForFunction(id => {
