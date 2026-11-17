@@ -72,6 +72,20 @@
       (error.code === 'LOGIN_REQUIRED' || error.code === 'ACCOUNT_SESSION_REQUIRED');
   }
 
+  // A 200 response with missing rows or pagination is a failed directory read,
+  // never proof that the user has no accounts or audit records.
+  function verifiedDirectoryPayload(payload, key) {
+    const page = payload?.page;
+    if (!Array.isArray(payload?.[key]) ||
+        !payload[key].every(row => row && typeof row === 'object' && typeof row.id === 'string') ||
+        !page || !Number.isSafeInteger(page.totalCount) || page.totalCount < 0 ||
+        typeof page.hasMore !== 'boolean' ||
+        (page.hasMore && (typeof page.nextCursor !== 'string' || !page.nextCursor))) {
+      throw new Error('服务器返回的管理记录不完整，请重新检查。');
+    }
+    return payload;
+  }
+
   function formatTime(value) {
     const stamp = Number(value);
     if (!Number.isFinite(stamp) || stamp <= 0) return '时间未知';
@@ -435,7 +449,7 @@
       search,
       accountFilter,
       cursor
-    )).catch(error => {
+    )).then(payload => verifiedDirectoryPayload(payload, 'accounts')).catch(error => {
       if (restart) {
         accountPageError = true;
         accounts = [];
@@ -475,7 +489,7 @@
       search,
       inviteFilter,
       cursor
-    )).catch(error => {
+    )).then(payload => verifiedDirectoryPayload(payload, 'invites')).catch(error => {
       if (restart) {
         invitePageError = true;
         invites = [];
@@ -898,7 +912,7 @@
     if (globalAuditSince != null) params.set('since', String(globalAuditSince));
     if (cursor) params.set('cursor', cursor);
     try {
-      const result = await api('/api/admin/audit?' + params.toString());
+      const result = verifiedDirectoryPayload(await api('/api/admin/audit?' + params.toString()), 'records');
       if (requestSequence !== globalAuditRequestSequence) return;
       const records = Array.isArray(result.records) ? result.records : [];
       if (restart) list.replaceChildren();
