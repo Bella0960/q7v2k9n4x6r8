@@ -357,3 +357,13 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **本轮已核实**：从 GitHub 提交后联合分支读取的源码，静态确认抽卡路由/桌面放置/角色锁/原角色存储保护/备份前缀/账号隔离和 QA 测试门禁在位。V8 编译 `encounter-engine.js`、`characters-manager.js`、邂逅页面 1 个及首页 6 个内联脚本，全部无语法错误。PR #297 原有 39/39 是交接中提供的**隔离测试**数据，未在本会话作为原生 Node 重新执行。QA 发布脚本是 ESM，不能用 `new Function` 模拟 node 编译。
 - **未完成/发布阻塞**：无完整仓库本地检出环境，本轮 **未运行** `npm ci`、原生 `node --test`、`npm run build`、Playwright 三手机宽度及 Android/iPhone 实机验证；**未上传** Cloudflare QA Worker，正式域名、main、管理员和任何数据库均未写动；不能称线上邂逅可测。
 - **统一验收下一步**：在真实工程 Codespace 完整检出该分支的最新 HEAD，运行 `npm run qa:release:check`（需既有环境所需的运行依赖），修复实测失败项；满足全部真实 Node/Vite/Playwright/账号门禁后，通过现有 `MAOMAO_QA_DEPLOY_CONFIRM=maomao-aw-qa-20261114 node scripts/qa-direct-release.mjs --qa-only` 只更新唯一 QA Worker，再由用户手机真实体验。先测试版，绝不部署 app.mao520.com 正式版。
+
+
+## 2026-11-17｜UI-SETTINGS-001 + CLOUD-PUSH-HEADER：顶部紧凑化进入唯一 QA（代码已整合，未发布）
+- **用户最新硬性要求**：MAOMAO 手机页面不再绘制第二套时间/网络/电量模拟状态栏；参考用户截图，设置页与云端推送页标题栏轻薄紧凑，不能为了假状态条留下顶部大空白；保留系统原生状态信息。禁止生图。
+- **来源与归属**：Settings 原 PR #267、云端推送原 PR #148。代码已按小范围变更移植到现有唯一 QA PR #299 / `integration/account-fanwai-stack-20261115`；不创建新测试站或重复 PR，不直接合并 main。
+- **实际源码提交**（按先后顺序）：`2be91f627d76e7ea6a743a0b111ad6168245ba94`（仅将设置首页 compact CSS 追加至原样式）、`192d4707e251c965e4517e4d994447d35e9b0666`（设置页 body 专属作用域 class）、`79b0a8bbbdbafed9bd2a0c002b99e2df2724557b`（云端推送页面收窄顶部与折叠说明，保持 QA 真实诊断文案与所有控件）、`a1ab657f2ef93ebdf870a8455ac11ae2c856347f` 与 `fc7e6c6c0e91f5b2c971f13cfc3cd077a2ea9713`（两个原生 Node 回归测试文件）。
+- **保护边界**：这 5 次提交自原 QA head `6521e43e` 的比较只触及 `settings/css/settings.css`、`settings/settings.html`、`settings/cloud-push.html` 和两份新测试。Settings scoped to `body.settings-home`，不会对其他共用 CSS 的设置子页全局施加紧凑布局；保留原账号跳转、备份、API 面板；Cloud 保留 QA 的 `cloudReadinessCheck`、`cloudLocalTestRow`、`cloudTestRow`、`cloudContextSharingToggle` 等控件，保留云端 AI 生成未就绪的真实警示。未改 Worker、SW、推送凭据、管理员/真实聊天/数据库 schema。
+- **核对证据**：通过连接的 GitHub 读取最终 QA 文件与比较五个提交，针对页面/作用域/开关/说明/平衡标签/测试文件/业务不回退共 **18/18 静态断言 PASS**；不是 Node CLI、Vite 或真实 Chromium。仓库内待执行的重点命令：`node --test tests/settings-header-compact.test.mjs tests/cloud-push-header-compact.test.mjs tests/qa-cloud-settings-integration.test.mjs`；之后 `npm run build`、QA release gate 与 375/390/430 浏览器/安卓/iOS 实机检查。
+- **部署状态与下一步**：连接的 Cloudflare 只读核查确认 `preview.mao520.com` 绑定 `maomao-aw-qa-20261114`，核对时最近已知部署为 `2026-11-16T21:19:39Z`，**早于上述 UI 提交**；截至本记录，没有新 UI 代码的 QA 部署成功回执，故标 `QA_CODE_INTEGRATED / NODE_NOT_RUN / BROWSER_NOT_RUN / QA_NOT_DEPLOYED / USER_NOT_ACCEPTED`。必须在完整工程环境执行真实 Node/Vite/浏览器测试，通过后原地部署同一 QA 并保留旧 QA 数据，由用户验收。正式版保持原样，等待单独许可。
+- **回退**：仅回退上述局部页面样式、`body` class 与测试文件即可；没有任何数据迁移或用户数据删除。
