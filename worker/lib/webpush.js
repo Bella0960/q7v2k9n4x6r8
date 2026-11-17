@@ -179,10 +179,16 @@ export async function sendWebPush(
     throw new PushConfigError('不支持的 Web Push 投递模式');
   }
   const endpoint = subscription.endpoint;
-  const authorization = await buildVapidAuthorization(endpoint, keys, nowMs);
+  let authorization;
+  try { authorization = await buildVapidAuthorization(endpoint, keys, nowMs); }
+  catch (error) { error.failurePhase = 'vapid'; throw error; }
   // "远程空载测试"不携带密文或 Content-Encoding，真正将加密阶段排除。
   // 正常消息继续使用原 RFC 8291 aes128gcm 加密，不改变角色通知行为。
-  const body = deliveryMode === 'no_payload' ? null : await encryptPayload(subscription, payloadText);
+  let body = null;
+  if (deliveryMode !== 'no_payload') {
+    try { body = await encryptPayload(subscription, payloadText); }
+    catch (error) { error.failurePhase = 'encrypt'; throw error; }
+  }
 
   // This callback must be synchronous: it runs after asynchronous crypto work
   // and immediately before fetchImpl is invoked, with no intervening await.
@@ -215,7 +221,10 @@ export async function sendWebPush(
       signal: controller?.signal
     });
   } catch (error) {
-    throw new PushSendError(0, `推送网络请求失败: ${error?.message || error}`);
+    const sendError = new PushSendError(0, '推送服务网络请求失败');
+    sendError.failurePhase = 'transport';
+    sendError.failureKind = error?.name === 'AbortError' ? 'request_timeout' : 'network_error';
+    throw sendError;
   } finally {
     if (timeoutId != null && typeof clearTimeout === 'function') clearTimeout(timeoutId);
   }
