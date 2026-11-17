@@ -476,9 +476,13 @@
   }
 
   function createActionButton(label, className, action, requiresReason = false) {
+    // Bind this button to the account whose verified detail created it.
+    // Never let an asynchronous selection change retarget a destructive action.
+    const targetAccountId = selectedAccountId;
     const button = el('button', 'action-button ' + (className || ''), label);
     button.type = 'button';
     button.addEventListener('click', () => {
+      if (selectedAccountId !== targetAccountId) return;
       const descriptions = {
         disable: '账号将暂时无法使用，所有登录设备和会话凭据会失效；关联的有效邀请码也会自动撤销。',
         restore: '系统会按账号停用前保存的授权状态恢复，不能借此跳过邀请码验证。',
@@ -492,12 +496,15 @@
       const confirmLabels = { disable: '确认停用', restore: '确认恢复', revoke: '确认永久撤销' };
       openAdminConfirmation({
         title: titles[action] || ('确认' + label + '？'),
-        description: (descriptions[action] || '请核对账号及本次操作影响。') + ' 目标账号：' + selectedAccountId,
+        description: (descriptions[action] || '请核对账号及本次操作影响。') + ' 目标账号：' + targetAccountId,
         confirmLabel: confirmLabels[action] || '确认操作',
         danger: action === 'disable' || action === 'revoke',
         requiresReason,
         onConfirm: async reason => {
-          await api('/api/admin/accounts/' + encodeURIComponent(selectedAccountId) + '/action', 'POST', {
+          if (selectedAccountId !== targetAccountId) {
+            throw new Error('当前查看的账号已变化，操作已取消。请重新打开详情核对。');
+          }
+          await api('/api/admin/accounts/' + encodeURIComponent(targetAccountId) + '/action', 'POST', {
             action,
             reason: String(reason || '').trim()
           });
