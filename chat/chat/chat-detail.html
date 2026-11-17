@@ -1543,6 +1543,13 @@
                 border-radius: 0;
                 box-shadow: none;
             }
+            /* 手机上由系统绘制状态栏，禁止页面再次模拟状态栏或堆出大块顶部留白。 */
+            .phone-mockup > .status-bar { display: none !important; }
+            .phone-mockup > .chat-header {
+                padding: calc(8px + env(safe-area-inset-top, 0px)) 14px 8px !important;
+                min-height: 58px;
+                flex: 0 0 auto;
+            }
         }
 
         /* ===== iOS-inspired floating glass utility panel ===== */
@@ -2843,14 +2850,57 @@
 
         const storageKey = `chat_history_${currentCharacter.id}`;
 
+        /* ENCOUNTER_CHAT_POLICY_BEGIN */
+        // 邂逅角色原始资料为人物专属只读背景；老角色和群聊保持原有开场和提示词。
+        function getEncounterRoleGreeting(role) {
+            var origin = role && role.encounterOrigin;
+            if (!origin || origin.version !== 1) return '';
+            var trait = String(origin.trait || '').trim();
+            if (/清冷|寡言|理性|敏锐/.test(trait)) return '嗯，是你。';
+            if (/毒舌|幽默/.test(trait)) return '还真来找我了。';
+            if (/古灵精怪/.test(trait)) return '哎，你怎么找到这里来的？';
+            if (/傲娇|倔强/.test(trait)) return '……你来得还挺巧。';
+            if (/阴郁|慢热/.test(trait)) return '……你来了。';
+            if (/慵懒|随性/.test(trait)) return '哟，又碰面了。';
+            if (/阳光|直率|勇敢/.test(trait)) return '哎，竟然又碰见你了。';
+            if (/优雅|疏离/.test(trait)) return '没想到会在这里见到你。';
+            if (/温柔|克制|温和/.test(trait)) return '原来是你。';
+            return '是你呀。';
+        }
+        function buildEncounterIdentityContext(role) {
+            var origin = role && role.encounterOrigin;
+            if (!origin || origin.version !== 1) return '';
+            var lines = ['【当前角色的邂逅来源资料】'];
+            [
+                ['时代与世界', origin.era],
+                ['种族', origin.species],
+                ['身份与职业', origin.job],
+                ['外在性格', origin.trait],
+                ['内在反差', origin.contrast],
+                ['与人相处气质', origin.relationVibe],
+                ['重要物件（私人线索）', origin.object],
+                ['过去经历与命运线索（未必公开）', origin.originalFate || origin.fate],
+                ['已选择的故事分支', origin.storyChoice],
+                ['故事起点（不代表已与用户共同经历）', origin.storyOpening]
+            ].forEach(function(field) {
+                var value = String(field[1] || '').trim();
+                if (value) lines.push(field[0] + '：' + value.slice(0, 220));
+            });
+            lines.push('【邂逅聊天要求】用户之后手动修改的人设与说话习惯优先于旧来源线索。职业、背景、性格是日常判断和用语的依据，不是每轮要复述的清单。自然回应具体问题，有自己的生活和安排；不要默认永远有空，也不要总用“有什么可以帮你”“想聊什么”式客服套话或每句都反问。慢慢让经历浮现，不要刚认识就泄露秘密、擅自制造共同回忆或预设亲密关系。');
+            return lines.join('\n').slice(0, 1700);
+        }
+        /* ENCOUNTER_CHAT_POLICY_END */
+
         function getInitialMessages() {
             if (isGroupChat) {
                 return [
                     { role: 'received', text: `欢迎来到「${contactName}」群聊，一起聊聊吧。` }
                 ];
             }
+            // 只影响首次创建空历史的邂逅角色；已保存聊天不会重新生成或覆写。
+            var encounterGreeting = getEncounterRoleGreeting(currentCharacter);
             return [
-                { role: 'received', text: `你好，我是${contactName}！很高兴和你聊天。` }
+                { role: 'received', text: encounterGreeting || `你好，我是${contactName}！很高兴和你聊天。` }
             ];
         }
 
@@ -6201,7 +6251,11 @@
               '',
               '【以下为当前角色完整资料与对话背景】'
             ].join('\n');
-            systemPrompt = IDENTITY_LOCK + (characterSocialPrompt ? '\n\n' + characterSocialPrompt + '\n\n' : '') + systemPrompt;
+            // 当前单聊的邂逅职业、经历与性格进入每轮请求；不混入其他角色/群聊。
+            var encounterIdentityContext = !isGroupChat ? buildEncounterIdentityContext(currentCharacter) : '';
+            systemPrompt = IDENTITY_LOCK
+                + (encounterIdentityContext ? '\n\n' + encounterIdentityContext + '\n\n' : '')
+                + (characterSocialPrompt ? '\n\n' + characterSocialPrompt + '\n\n' : '') + systemPrompt;
             if (isGroupChat && currentGroup) {
               const groupMode = currentGroup.settings && currentGroup.settings.chatMode === 'offline' ? 'offline' : 'online';
               if (groupMode === 'offline') {
