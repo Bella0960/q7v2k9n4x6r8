@@ -222,3 +222,12 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 直接以仓库实际 tests/encounter-ui-contract.test.mjs 为测试主体、使用适配的 fs/vm/test/assert/定时器执行 **16/16 PASS**，包括假状态栏禁止、browser smoke 与正式 gate 分离、手势回弹、收藏失败保护、双卡、蒙面、物件、性格、再遇、命运保存竞态。首次适配器缺 setImmediate 导致 5 项无法执行；补齐后重新执行全部 16/16 PASS，非产品改动。
 - 同一轮 V8 语法解析：页面内联交互 JS、抽卡引擎及去 import 壳后的 UI 测试/Chromium 脚本/发布 gate 通过。正式 CLI 构建、Playwright 真浏览器、Android/iOS 和线上 QA **仍 NOT RUN / NOT VERIFIED**。
 - 保留发布安全规则：原 PR #297 无 account/index.html 与 account/account.js，必须与 #290 原账号分支在唯一 QA 整合并确认正式账号隔离后，gate:encounter 才能通过；不能手动造一个“假的账号页”或者取消正式 gate。最新 Cloudflare QA 最近部署仍早于本轮修复。
+
+
+## FEATURE-ENCOUNTER-001｜2026-11-17 交付门禁与最新版账号 v3 兼容
+- 只读发现确凿假失败：原邂逅 release gate 只接受 Worker 注入 `mao-account-scope.js?v=2`，但账号原 PR #290 已升级到 `v=3`。若原样整合最新版安全账号底座，邂逅 gate 会误判失败；绝不为通过检查而回退账号安全代码。
+- 提交 b63f01b：Worker 注入校验改为要求完整的原账号注入 `<script src="/shared/js/mao-account-scope.js?v=数字" data-mao-account-scope></script>` 代码，限制为正整数版本，并保留原路径、标记、正式账号页、SW 导航、字体账号隔离及其他全部安全发布门禁。连接的真实 #297 Worker v2 和 #290 Worker v3 源码都被新模式识别；删除保护标记、换错路径、无效版本均被拦下（5/5 源码验证）。
+- 提交 8724dd9：在已有 UI Node 合同加入 `v2/v3` 通过、缺标记和非法版本拒绝的回归。
+- 只读 QA 对比：唯一 #299 的 `encounter/encounter.html` 仍是旧版本（blob `adefc88934bd536b016f11e941908cb0e9e1257c`），含假状态栏；原 #297 修复版 blob `f5047266b85fee1200b760e351ecf9627e2a1172`，已彻底移除 DOM/CSS/clock。#299 现有 encounter browser/release gate 也缺本轮 nativeSystemStatusBar 验收标记。由于 #299 由另一个窗口并行提交且 REST mergeable_state=dirty，本轮不写 QA 分支、不强合、不覆盖其其他功能。
+- 提交 850118b：增强原邂逅发布 gate，对假时间/信号/电量节点、样式名、计时脚本实施**源码直接阻断**，不能仅凭旧截图或其他浏览器回执把旧 QA 页面判作已交付。提交 32e0d10 补充旧版本禁止回归。
+- 本轮已重新在 V8 适配执行**实际最新 UI 合同主体 18/18 PASS**，对 #290 v3 源码兼容检查 5/5 PASS。**未执行**完整 Node CLI、Vite、真 Chromium、Android/iOS 或 QA 实际部署，本轮仍为 Draft/NOT VERIFIED；用户的“完整交付”标准未达成。后续整合须使用 #297 最新 HEAD、保留 #290 最新安全修复，取得同一 SHA 的真实构建/测试/部署回执及双端真机验收。
