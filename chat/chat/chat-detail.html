@@ -2878,10 +2878,35 @@
         // Keep its raw bytes for explicit backup/recovery rather than "repairing" on read.
         var _chatHistoryUnreadable = false;
         function loadMessages() {
+            // A conversation's storage key must not change when global/current role state changes.
+            if (storageKey !== 'chat_history_' + currentCharacter.id) {
+                _chatHistoryUnreadable = true;
+                console.warn('聊天角色标识发生变化，已阻止读取其他会话');
+                return [];
+            }
+            // The primary per-role key is authoritative. PhoneStorage's legacy getter
+            // returns [] for malformed JSON and may fall back to a v2 duplicate.
+            // Validate the primary bytes first, even if that duplicate is nonempty:
+            // otherwise a corrupt conversation can be hidden and overwritten.
+            try {
+                var primaryRaw = localStorage.getItem(storageKey);
+                if (primaryRaw !== null) {
+                    var primaryHistory = JSON.parse(primaryRaw);
+                    if (!Array.isArray(primaryHistory)) throw new Error('chat history is not an array');
+                    _chatHistoryUnreadable = false;
+                    return removeLegacyStickerCaptions(primaryHistory);
+                }
+            } catch (err) {
+                _chatHistoryUnreadable = true;
+                console.warn('读取主聊天记录失败，已暂停写入以保护原始数据:', err);
+                if (typeof showToast === 'function') showToast('聊天记录读取异常，已暂停保存以防覆盖原始数据');
+                return [];
+            }
             if (_storage) {
                 try {
                     var arr = _storage.getChatHistory(currentCharacter.id);
-                    if (Array.isArray(arr) && arr.length) return removeLegacyStickerCaptions(arr);
+                    if (!Array.isArray(arr)) throw new Error('legacy chat history is not an array');
+                    if (arr.length) return removeLegacyStickerCaptions(arr);
                 } catch (err) {
                     _chatHistoryUnreadable = true;
                     console.warn('读取历史聊天记录失败:', err);
@@ -2929,6 +2954,19 @@
         // 逐条按 角色 / 标识(mid|time) / 正文 做归属校验；读不回来、长度不一致、
         // 任意一条不一致或抛异常，都视为保存失败。
         function _readBackHistory() {
+            // A successful save must be visible in the authoritative per-role key.
+            // Never accept a stale phone_data_v2 duplicate as proof of persistence.
+            if (typeof localStorage !== 'undefined' && typeof localStorage.getItem === 'function') {
+                try {
+                    var raw = localStorage.getItem(storageKey);
+                    if (raw === null) return null;
+                    var parsed = JSON.parse(raw);
+                    return Array.isArray(parsed) ? parsed : null;
+                } catch (err) {
+                    return null;
+                }
+            }
+            // Kept for legacy isolated callers without a browser localStorage mock.
             if (_storage) {
                 try {
                     var stored = _storage.getChatHistory(currentCharacter.id);
@@ -2937,14 +2975,7 @@
                     return null;
                 }
             }
-            try {
-                const raw = localStorage.getItem(storageKey);
-                if (raw == null) return null;
-                const parsed = JSON.parse(raw);
-                return Array.isArray(parsed) ? parsed : null;
-            } catch (err) {
-                return null;
-            }
+            return null;
         }
 
         function _messageIdentity(msg) {
@@ -3011,6 +3042,26 @@
                     showToast('聊天记录异常，未覆盖原始数据；请先备份并修复存储');
                 }
                 return false;
+            }
+            if (storageKey !== 'chat_history_' + currentCharacter.id) {
+                console.warn('聊天角色标识发生变化，已阻止跨会话写入');
+                if (typeof showToast === 'function') showToast('会话已切换，请重新进入聊天后再发送');
+                return false;
+            }
+            // The primary history may have become corrupt in another tab after initial load.
+            // Fail closed rather than overwriting bytes which may still be recoverable.
+            if (typeof localStorage !== 'undefined' && typeof localStorage.getItem === 'function') {
+                try {
+                    var existingRaw = localStorage.getItem(storageKey);
+                    if (existingRaw !== null && !Array.isArray(JSON.parse(existingRaw))) {
+                        throw new Error('primary chat history is not an array');
+                    }
+                } catch (err) {
+                    _chatHistoryUnreadable = true;
+                    console.warn('聊天记录保存前校验失败，已保留原始数据:', err);
+                    if (typeof showToast === 'function') showToast('聊天记录读取异常，已暂停保存以防覆盖原始数据');
+                    return false;
+                }
             }
             var wrote = false;
             if (_storage) {
