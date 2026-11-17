@@ -297,8 +297,11 @@ test('forwarding an asset-backed chat image adds a destination chat reference', 
     'forwarded image ref is linked before writing destination history');
   assert.ok(chatDetailSource.includes("_chatImageMediaRepo.addRef(fwd.assetId, 'chat-message', String(fwd.mid))"));
   assert.ok(chatDetailSource.includes('fwd.assetId = String(msg.assetId)'));
-  assert.ok(chatDetailSource.includes('if (linkedImageRef)'));
-  assert.ok(chatDetailSource.includes('await _chatImageMediaRepo.removeRef(fwd.assetId'));
+  // A definitive failed append must roll back the image ref, but an uncertain
+  // readback may have persisted the message and must keep its media alive.
+  assert.ok(forwardBody.includes('var unverified = saved.meta && saved.meta.writeMayHavePersisted;'));
+  assert.ok(forwardBody.includes('if (linkedImageRef && !unverified)'));
+  assert.ok(forwardBody.includes('await _chatImageMediaRepo.removeRef(fwd.assetId'));
 });
 
 test('paired avatar markers resolve two distinct current images and never collapse into two unrelated singles', () => {
