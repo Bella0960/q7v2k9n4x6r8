@@ -6,7 +6,8 @@ import { resolve } from 'node:path';
 const root = resolve(import.meta.dirname, '..');
 const html = readFileSync(resolve(root, 'settings/cloud-push.html'), 'utf8');
 
-test('Cloud push hides only its simulated top strip and compacts the real page header', () => {
+test('Cloud push removes the simulated strip and compacts the real page header', () => {
+  assert.doesNotMatch(html, /<div class="status-bar">/);
   assert.match(html, /\.phone-mockup\s*>\s*\.status-bar\s*\{\s*display:\s*none\s*!important\s*;?\s*\}/);
   assert.match(html, /\.header\s*\{[^}]*padding:\s*max\(12px,\s*env\(safe-area-inset-top,[^)]*\)\)/s);
   assert.match(html, /\.header-left\s*\{[^}]*flex-direction:\s*row\s*;/s);
