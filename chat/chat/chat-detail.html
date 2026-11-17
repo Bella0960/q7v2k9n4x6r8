@@ -5796,7 +5796,11 @@
                     }
                 }
             } else {
-                rolePersona = (roleForTurn.persona || roleForTurn.prompt || '').trim()
+                var rawCurrentPersona = (roleForTurn.persona || roleForTurn.prompt || '').trim();
+                rolePersona = (window.MAOMAOChatRoleContext &&
+                    typeof window.MAOMAOChatRoleContext.stripEncounterEditorNote === 'function'
+                    ? window.MAOMAOChatRoleContext.stripEncounterEditorNote(rawCurrentPersona, roleForTurn)
+                    : rawCurrentPersona).trim()
                     || '你正在以此角色身份发消息。根据档案与已知背景说话，不自称 AI 助手，不编造职业或经历。';
             }
             // An explicitly addressed admin order should be answered by the addressed admin,
