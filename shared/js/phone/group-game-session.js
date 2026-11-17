@@ -91,7 +91,7 @@
   function groupMemberIds(group) {
     return group && Array.isArray(group.members) ? group.members.map(function (m) {
       return m && id(m.id);
-    }).filter(valid) : [];
+    }).filter(function (rid) { return valid(rid) && rid !== '__user'; }) : [];
   }
   function voteFor(session, rid, storage) {
     var key=voteKey(session.groupId,session.sessionId,rid), raw;
@@ -112,7 +112,10 @@
     if (!session || typeof session !== 'object' || session.groupId !== groupId ||
       !valid(session.sessionId) || !templates[session.gameId] ||
       ['active','finished','cancelled'].indexOf(session.status) === -1 ||
-      !Array.isArray(session.players) || session.players.some(function (x) { return !valid(x); }) ||
+      !Array.isArray(session.players) || session.players.length < 2 ||
+      session.players.length > 24 ||
+      session.players.some(function (x) { return typeof x !== 'string' || !valid(x) || x === '__user'; }) ||
+      new Set(session.players).size !== session.players.length ||
       (session.hostId!=='__user' && (!valid(session.hostId) ||
         session.players.indexOf(session.hostId)!==-1)))
       return null;
