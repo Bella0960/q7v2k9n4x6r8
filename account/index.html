@@ -3,51 +3,47 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#F7F7F8">
-  <meta name="description" content="MAO 账号入口">
-  <title>MAO · 账号入口</title>
-  <link rel="stylesheet" href="./account.css">
-  <script src="./account.js" defer></script>
+  <meta name="theme-color" content="#f9f6f3">
+  <meta name="description" content="MAO 独立账号入口 · 象牙花笺">
+  <title>MAO · 象牙花笺</title>
+  <link rel="stylesheet" href="/account/account.css">
+  <link rel="stylesheet" href="/account/ivory-entry.css?v=20261111-mobile2">
+  <script src="/account/account.js?v=20261111-flow1" defer></script>
 </head>
 <body>
-  <main class="account-shell">
-    <header class="brand-row">
-      <span class="brand-caption">ACCOUNT ACCESS</span>
-    </header>
-
-    <section class="panel welcome-panel" id="welcomePanel">
-      <div class="welcome-heading">
-        <div class="eyebrow welcome-eyebrow">PRIVATE SPACE</div>
-        <div class="hero-avatar" aria-hidden="true">
-          <div class="hero-avatar-frame">
-            <img class="hero-bunny" src="../assets/mao-bunny-192.png" alt="" width="88" height="88" decoding="async">
-          </div>
-          <span class="hero-avatar-caption">A QUIET LITTLE DETAIL</span>
-        </div>
-        <h1 class="welcome-title">欢迎使用 MAO</h1>
-        <p class="lead welcome-lead">给日常留一处只属于自己的空间。</p>
+  <main id="ivoryApp" class="account-shell app ivory-entry" data-view="welcome">
+    <div class="frame-stroke" aria-hidden="true"></div>
+    <div class="floral-shadow" aria-hidden="true"></div>
+    <div class="ornamental-frame" aria-hidden="true"></div>
+    <div class="content">
+      <header class="titlebar" aria-label="MAO 私人空间">
+        <div class="dots" aria-hidden="true"><span></span><span></span><span></span></div>
+        <span class="titlebar-title" id="ivoryWindowTitle">welcome.html — private space</span>
+      </header>
+      <div class="hero">
+        <img class="hero-image" src="../assets/ivory-mao/hero.webp"
+          alt="圆脸小白兔探出信笺，周围环绕浅粉百合、珍珠相框与薄纱" width="771" height="579" decoding="async" fetchpriority="high">
       </div>
-      <div class="welcome-content">
-        <div class="welcome-card">
-          <div class="welcome-card-copy">
-            <span class="card-eyebrow">YOUR PRIVATE SPACE</span>
-            <strong>属于你的独立空间</strong>
-            <span>账号身份与使用授权分别管理</span>
-          </div>
-          
-        </div>
-        <button class="primary-button" type="button" data-show="registerPanel">创建账号</button>
-        <button class="text-button" type="button" data-show="loginPanel">已有账号？<strong>登录</strong></button>
-        <div class="bottom-note"><span></span> 未经创作者授权的账号无法进入 MAO <span></span></div>
+      <div class="hairline" aria-hidden="true"></div>
+      <div class="story" aria-live="polite">
+        <div class="kicker" aria-hidden="true"><span class="kicker-star">✧</span><span id="ivoryKicker">PRIVATE SPACE</span><span class="kicker-star">✧</span></div>
+        <h1 id="ivoryHeading">欢迎来到 <span class="latin">MAO</span></h1>
+        <svg class="swash" viewBox="0 0 170 18" aria-hidden="true"><path d="M7 13C36 .5 54 6 72 8c15 2 16 10 29 7 13-3 20-12 45-9 8 1 14 4 17 7" stroke="#b6a69d" stroke-width=".95" stroke-linecap="round" fill="none"/><path d="M82 5c-4 3-4 7 0 10" stroke="#b6a69d" stroke-width=".7" fill="none"/></svg>
+        <p id="ivorySubtitle" class="subtitle">给日常留一处属于自己的空间。</p>
+        <p id="ivoryMeta" class="top-meta">a place of your own · vol. 01</p>
       </div>
-    </section>
-
-    <section class="panel form-panel" id="registerPanel" hidden>
+      <div class="actions">
+        <section class="panel welcome-panel view" id="welcomePanel">
+  <button class="primary-button" type="button" data-show="registerPanel">创建新账号 <span aria-hidden="true" class="ivory-arrow">→</span></button>
+  <button class="text-button" type="button" data-show="loginPanel">已有账号 · 登录</button>
+  <div class="ivory-welcome-admin"><span aria-hidden="true">✳</span><span>同一入口 · 独立账号</span></div>
+</section>
+        <section class="panel form-panel view" id="registerPanel" hidden>
       <button class="back-button" type="button" data-show="welcomePanel" aria-label="返回">返回</button>
       <div class="eyebrow">CREATE ACCOUNT · 02</div>
       <h1>创建账号</h1>
       <p class="lead">先建立你的永久身份，再完成邀请码验证。</p>
-      <form id="registerForm" novalidate>
+      <form id="registerForm" class="form" novalidate>
         <label>用户名<input name="username" autocomplete="username" minlength="2" maxlength="24" required placeholder="设置用户名"></label>
         <label>登录密码
           <span class="password-field">
@@ -75,13 +71,12 @@
         <p class="form-error" id="registerError" role="alert" aria-live="polite"></p>
       </form>
     </section>
-
-    <section class="panel form-panel" id="loginPanel" hidden>
+        <section class="panel form-panel view" id="loginPanel" hidden>
       <button class="back-button" type="button" data-show="welcomePanel" aria-label="返回">返回</button>
       <div class="eyebrow">SIGN IN</div>
       <h1>欢迎回来。</h1>
       <p class="lead">登录你的 MAO 独立账号，继续进入专属空间。</p>
-      <form id="loginForm" novalidate>
+      <form id="loginForm" class="form" novalidate>
         <label>用户名 / MAO 永久 ID<input name="identifier" autocomplete="username" required placeholder="请输入用户名或 MAO ID"></label>
         <label>登录密码
           <span class="password-field">
@@ -96,8 +91,7 @@
       </form>
       <button class="text-button" type="button" data-show="registerPanel">还没有账号？创建账号</button>
     </section>
-
-    <section class="panel form-panel" id="invitePanel" hidden>
+        <section class="panel form-panel view" id="invitePanel" hidden>
       <button class="back-button" type="button" data-show="loginPanel" aria-label="返回">返回</button>
       <div class="eyebrow">INVITATION · 04</div>
       <h1>邀请码验证</h1>
@@ -107,7 +101,7 @@
         <strong id="pendingAccountId">—</strong>
         <button type="button" class="copy-button" id="copyAccountId">复制</button>
       </div>
-      <form id="inviteForm" novalidate>
+      <form id="inviteForm" class="form" novalidate>
         <label>专属邀请码<input name="inviteCode" autocomplete="one-time-code" required maxlength="128" placeholder="输入管理员发放的随机邀请码"></label>
         <div class="notice-line">
           <span class="red-mark">!</span>
@@ -119,8 +113,7 @@
       </form>
       <p class="quiet-note">还没有邀请码？ <button class="creator-contact-link" id="creatorContactButton" type="button">请联系创作者</button></p>
     </section>
-
-    <section class="panel state-panel" id="authorizedPanel" hidden>
+        <section class="panel state-panel view" id="authorizedPanel" hidden>
       <div class="state-icon success-icon" aria-hidden="true">✓</div>
       <div class="eyebrow">AUTHORIZED</div>
       <h1>授权成功</h1>
@@ -131,15 +124,16 @@
       </div>
       <button class="primary-button" type="button" id="enterMao">进入 MAO</button>
     </section>
-
-    <section class="panel state-panel" id="blockedPanel" hidden>
+        <section class="panel state-panel view" id="blockedPanel" hidden>
       <div class="state-icon blocked-icon" aria-hidden="true">—</div>
       <div class="blocked-label">已被禁用</div>
       <h1>您的账号已被禁用</h1>
       <p class="lead">当前账号无法继续使用 MAO。</p>
     </section>
+      </div>
+      <footer class="footer" aria-label="花笺装饰"><div class="footer-divider" aria-hidden="true">✳</div></footer>
+    </div>
   </main>
-
   <dialog id="legalDialog" class="legal-dialog">
     <button class="dialog-close" type="button" id="closeLegal" aria-label="关闭">×</button>
     <div class="eyebrow">MAO · ACCESS POLICY</div>
@@ -160,3 +154,4 @@
   <footer class="page-footer">MAO <span>·</span> PRIVATE ACCOUNT ACCESS</footer>
 </body>
 </html>
+

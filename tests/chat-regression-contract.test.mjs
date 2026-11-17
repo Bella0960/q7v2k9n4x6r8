@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runInNewContext } from 'node:vm';
+import { runInNewContext, Script } from 'node:vm';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (relativePath) => readFileSync(resolve(root, relativePath), 'utf8');
@@ -2371,11 +2371,21 @@ test('cloud outbound bubbles persist first, then use serialized pacing without s
   assert.match(detail, /if \(!confirmed\) return false/);
 });
 
+
+test('chat detail shipped inline script parses before the UI can run', () => {
+  const scripts = [...detail.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)];
+  const mainScript = scripts.find(match => !/\bsrc=/.test(match[1]) && match[2].includes('function appendMessagesWithPacing('));
+  assert.ok(mainScript, 'the main chat script must be present in the shipped HTML');
+  assert.doesNotThrow(() => new Script(mainScript[2]),
+    'a duplicate lexical declaration or syntax error must never prevent the full chat page from loading');
+  assert.equal((mainScript[2].match(/let aiBubblePacingRunId = 0;/g) || []).length, 1);
+});
+
 test('AI 等待回复期间收到主动消息时，最终落库会合并最新历史而非写回旧快照', () => {
   const sendStart = detail.indexOf('async function sendMsg(opts)');
   const snapshotRefresh = detail.indexOf('historyList = refreshSendHistorySnapshot(', sendStart);
   const retryMutation = detail.indexOf('var retryRemarked = false', snapshotRefresh);
-  const aiAppend = detail.indexOf('historyList.push(aiMsg)', snapshotRefresh);
+  const aiAppend = detail.indexOf('replyMessages.forEach(function (message) { historyList.push(message); });', snapshotRefresh);
   assert.ok(sendStart >= 0 && snapshotRefresh > sendStart,
     'sendMsg must refresh history after the asynchronous model request returns');
   assert.ok(retryMutation > snapshotRefresh && aiAppend > snapshotRefresh,
@@ -2410,7 +2420,7 @@ test('AI 等待回复期间收到主动消息时，最终落库会合并最新�
 
 test('AI 气泡动画结束后，红包/转账/图片/通话卡统一使用最新历史', () => {
   const sendStart = detail.indexOf('async function sendMsg(opts)');
-  const pacingAwait = detail.indexOf('await appendAiMessageWithPacing(aiMsg, aiMessageIndex)', sendStart);
+  const pacingAwait = detail.indexOf('await appendReplyMessagesWithPacing(replyMessages, aiMessageIndex)', sendStart);
   const refreshAfterPacing = detail.indexOf('historyList = refreshHistoryAfterAssistantPacing(', pacingAwait);
   const callCard = detail.indexOf('insertIncomingCallCard(historyList)', refreshAfterPacing);
   const payCards = detail.indexOf('insertPayCards(historyList, parsedPay.items)', callCard);
@@ -2422,7 +2432,7 @@ test('AI 气泡动画结束后，红包/转账/图片/通话卡统一使用最�
   assert.ok(callCard > refreshAfterPacing && payCards > refreshAfterPacing &&
     familyCards > refreshAfterPacing && heartCards > refreshAfterPacing && imageCards > refreshAfterPacing,
     'all follow-up card handlers must receive the refreshed history after the only pacing await');
-  assert.match(detail, /persistedAssistantMessage = aiMsg/);
+  assert.match(detail, /persistedAssistantMessage = replyMessages/);
   assert.match(detail, /if \(!Array\.isArray\(historyList\)\)/);
 });
 
@@ -2496,11 +2506,11 @@ test('cloud outbound 多气泡仅在最后一条进入视口后标记已读，�
   assert.match(appendSource, /extraRow\.dataset\.serverMessageId = String\(msg\.serverMessageId\)/);
   assert.match(appendSource, /host\.appendChild\(el\);[\s\S]{0,180}observeCloudOutboundReadRow\(el\)/);
 
-  const paceStart = detail.indexOf('function appendAiMessageWithPacing');
+  const paceStart = detail.indexOf('function appendMessagesWithPacing');
   const paceEnd = detail.indexOf('// ================= 虚拟列表', paceStart);
   assert.ok(paceStart >= 0 && paceEnd > paceStart);
   const pacingSource = detail.slice(paceStart, paceEnd);
-  assert.match(pacingSource, /chatMessages\.appendChild\(node\);[\s\S]{0,120}observeCloudOutboundReadRow\(node\)/);
+  assert.match(pacingSource, /chatMessages\.appendChild\(node\);[\s\S]{0,120}if \(isMessageRow\) observeCloudOutboundReadRow\(node\)/);
   assert.match(pacingSource, /nodes\.forEach\(function \(node\)/);
 
   assert.match(detail, /new IntersectionObserver\(/);
@@ -3523,8 +3533,10 @@ test('商店和外卖结算的扣款、财务明细、订单都使用同一 paym
   }
   assert.match(shopPage, /function saveOrders\(o\)[\s\S]*?getItem\('shop_orders'\) === serialized/,
     'shop orders require exact readback');
-  assert.match(takeoutPage, /getItem\('takeout_orders'\) !== ordersSerialized/,
+  assert.match(takeoutPage, /localStorage\.getItem\('takeout_orders'\) === serialized/,
     'takeout orders require exact readback');
+  assert.match(takeoutPage, /if \(!saveTakeoutOrders\(orders\)\)/,
+    'takeout must not complete the payment until order persistence is verified');
 });
 
 

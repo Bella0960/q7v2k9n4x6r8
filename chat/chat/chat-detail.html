@@ -4215,11 +4215,6 @@
             }
         }
 
-        // 多气泡回复逐条呈现。消息已完整落库；队列只控制当前页面显示节奏。
-        // 普通 AI 回复与云端主动消息共用队列，避免多条消息的气泡动画互相取消。
-        // 全量重绘只递增 generation，即可取消当前及排队中的旧节点。
-        let aiBubblePacingRunId = 0;
-        let aiBubblePacingQueue = Promise.resolve();
         // 单条 AI 回复、逐条落库的多气泡回复、云端主动消息共用同一呈现队列。
         // 全量重绘会递增 generation，从而取消还未呈现的旧节点。
         let aiBubblePacingRunId = 0;

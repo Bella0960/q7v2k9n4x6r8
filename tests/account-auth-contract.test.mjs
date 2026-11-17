@@ -58,41 +58,38 @@ test('账号契约测试 Mock 对请求来源头的默认值、保留、覆盖�
     'fetchSite:false 必须只移除 Sec-Fetch-Site');
 });
 
-test('MAO 欢迎页遵循已确认的静态白底灰兔与单次渐变标题设计', () => {
+test('MAO 象牙花笺欢迎页保留真实账号入口、分步流程与自托管拼贴资源', () => {
   const html = readFileSync(new URL('../account/index.html', import.meta.url), 'utf8');
-  const css = readFileSync(new URL('../account/account.css', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../account/ivory-entry.css', import.meta.url), 'utf8');
   const script = readFileSync(new URL('../account/account.js', import.meta.url), 'utf8');
-  assert.doesNotMatch(html, /class="brand-mark"|class="brand-name"/,
-    '欢迎页不再显示左上角方框 M 和 MAO 字标');
-  assert.match(html, /class="brand-caption">ACCOUNT ACCESS/);
-  assert.match(html, /class="hero-avatar-frame"/, '兔子头像必须有独立白底');
-  assert.match(html, /class="hero-bunny" src="\.\.\/assets\/mao-bunny-192\.png"/,
-    '欢迎页应使用项目内已存在的小兔子素材');
-  assert.match(html, /class="hero-avatar-caption">A QUIET LITTLE DETAIL/);
-  assert.match(html, /class="welcome-title">欢迎使用 MAO<\/h1>/,
-    '欢迎标题只出现一次');
-  assert.match(html, /class="[^"]*\bwelcome-lead\b[^"]*">给日常留一处只属于自己的空间。/);
-  assert.doesNotMatch(html, /welcome-index|card-index|hero-orbit|hero-red-point|button-arrow|01\s*\/\s*04|↗|←|→/,
-    '欢迎页不应出现编号、轨道装饰或方向箭头');
-  assert.doesNotMatch(html, /唯一超级管理员/, '公开邀请码说明只称管理员');
-  assert.match(html, /邀请码由管理员发放，并绑定指定账号/);
-  assert.match(html, /id="creatorContactButton"/);
-  assert.match(html, /class="creator-contact-link"/);
-  assert.match(css, /\.hero-avatar-frame\s*\{[^}]*background:\s*#fff/i);
-  assert.doesNotMatch(css, /\.hero-avatar\s*\{[^}]*animation:/,
-    'the bunny avatar itself must remain static');
-  assert.match(css, /\.welcome-title\s*\{[^}]*linear-gradient/i);
-  assert.match(css, /@keyframes welcomeReveal/);
-  assert.doesNotMatch(css, /bunnyFloat|orbitDrift|pointPulse/,
-    '兔子与装饰轨道保持静态');
-  assert.equal((html.match(/data-password-toggle/g) || []).length, 3,
-    '注册密码、确认密码和登录密码都应有框内眼睛开关');
-  assert.match(css, /\.password-field\s*\{[^}]*border:\s*1px/);
-  assert.match(css, /\.password-field input\s*\{[^}]*border:\s*0/);
-  assert.match(script, /data-password-toggle/);
-  assert.match(script, /input\.type = visible \? 'text' : 'password'/);
-  assert.match(script, /creatorContactDialog\.showModal\(\)/);
-  assert.match(css, /prefers-reduced-motion:\s*reduce/);
+  assert.match(html, /id="ivoryApp" class="account-shell app ivory-entry"/);
+  assert.match(html, /欢迎来到 <span class="latin">MAO<\/span>/);
+  assert.match(html, /给日常留一处属于自己的空间。/);
+  assert.match(html, /class="ornamental-frame"/);
+  assert.match(html, /assets\/ivory-mao\/hero\.webp/);
+  assert.match(css, /assets\/ivory-mao\/ornament\.webp/);
+  assert.match(css, /assets\/ivory-mao\/leafshadow\.webp/);
+  assert.doesNotMatch(html, /assets\/mao-bunny-192\.png|账号身份与使用授权分别管理/);
+  const welcome = html.match(/<section class="panel welcome-panel view" id="welcomePanel">([\s\S]*?)<\/section>/)?.[1] || '';
+  assert.match(welcome, /data-show="registerPanel"/);
+  assert.match(welcome, /data-show="loginPanel"/);
+  assert.doesNotMatch(welcome, /id="loginForm"|id="registerForm"|id="inviteForm"/);
+  for (const formId of ['registerForm', 'loginForm', 'inviteForm']) {
+    assert.match(html, new RegExp('id="' + formId + '"'));
+  }
+  for (const fieldId of ['pendingAccountId', 'authorizedAccountId', 'registerPassword', 'registerConfirmPassword', 'loginPassword']) {
+    assert.match(html, new RegExp('id="' + fieldId + '"'));
+  }
+  assert.match(script, /function showPanel\(id\)/);
+  assert.match(script, /x-mao-account-context/);
+  assert.match(script, /await api\('\/api\/accounts\/register'/);
+  assert.match(script, /await api\('\/api\/accounts\/login'/);
+  assert.match(script, /await api\('\/api\/accounts\/invites\/redeem'/);
+  for (const name of ['hero.webp','ornament.webp','leafshadow.webp']) {
+    const data = readFileSync(new URL('../assets/ivory-mao/' + name, import.meta.url));
+    assert.equal(data.subarray(0, 4).toString(), 'RIFF', name + ' must be a real WebP image');
+    assert.ok(data.length > 1500);
+  }
 });
 
 test('注册创建成功但自动登录失败时，引导用户登录而不是重复注册', () => {
@@ -498,6 +495,7 @@ test('管理员初始化唯一、账号注册先生成永久 ID 并保持待授�
   assert.equal(firstResult.status, 200);
   assert.match(firstResult.payload.account.id, /^MAO-[A-Z0-9]{12,24}$/);
   assert.equal(firstResult.payload.account.role, 'super_admin');
+  assert.equal(firstResult.payload.account.founderNumber, '001', 'the sole creator receives the fixed founder number');
   const bootstrapAudit = ctx.query(
     "SELECT action, actor_account_id, target_account_id FROM mao_account_audit WHERE target_account_id = ?",
     firstResult.payload.account.id
@@ -521,6 +519,8 @@ test('管理员初始化唯一、账号注册先生成永久 ID 并保持待授�
   assert.equal(registered.status, 201);
   assert.match(registered.payload.account.id, /^MAO-[A-Z0-9]{12,24}$/);
   assert.equal(registered.payload.account.status, 'pending_invite');
+  assert.equal(Object.hasOwn(registered.payload.account, 'founderNumber'), false,
+    'ordinary registrations cannot claim the founder number');
   assert.notEqual(registered.payload.account.id, firstResult.payload.account.id);
   const registrationAudit = ctx.query(
     "SELECT action, actor_account_id, target_account_id FROM mao_account_audit WHERE target_account_id = ?",

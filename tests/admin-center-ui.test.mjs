@@ -275,3 +275,10 @@ test('后台设置为只读强制安全规则，不提供可以关闭的危险�
   assert.match(settingsView, /账号数据隔离/);
   assert.doesNotMatch(settingsView, /<input[^>]*type="checkbox"/);
 });
+
+test('creator center returns unauthorized visitors to account entry instead of an unrelated homepage', () => {
+  assert.doesNotMatch(adminScript, /window\.location\.replace\('\.\.\/index\.html'\)/);
+  assert.match(adminScript, /window\.location\.replace\('\/account\/index\.html\?admin=1'\)/);
+  assert.match(adminScript, /new URLSearchParams\(window\.location\.search\)\.get\('tab'\) === 'invites'/);
+  assert.match(adminScript, /activateTab\('invites'\)/);
+});

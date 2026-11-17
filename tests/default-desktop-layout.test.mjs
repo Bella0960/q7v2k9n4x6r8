@@ -49,6 +49,8 @@ test('every desktop app is assigned exactly once and dock apps stay in the dock'
   assert.match(index, /dock:\s*\['app_chat',\s*'app_shop'\]/);
   assert.match(index, /data-href="admin\/admin-center\.html" data-drag="app_admin_center"[^>]*hidden/);
   assert.match(index, /roleMeta\.content === 'super_admin'/, 'creator-only shortcut must require the server-injected admin role');
+  assert.match(index, /data-href="admin\/admin-center\.html" data-drag="app_admin_center"/);
+  assert.match(index, /configureCreatorAdminShortcut\(\)/);
 
 });
 

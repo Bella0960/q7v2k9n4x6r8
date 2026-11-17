@@ -38,7 +38,7 @@
     "test:chat:isolation:browser": "node tests/chat-data-isolation-browser.mjs",
     "test:icons:presets": "node --test tests/icon-presets-contract.test.mjs",
     "test:images": "node --test tests/image-generation-pipeline.test.mjs",
-    "test:accounts": "node --test tests/account-auth-contract.test.mjs tests/account-storage-isolation.test.mjs",
+    "test:accounts": "node --test tests/account-auth-contract.test.mjs tests/account-storage-isolation.test.mjs tests/account-entry-runtime.test.mjs",
     "test:accounts:gate-contract": "node --test tests/account-auth-gate-contract.test.mjs",
     "test:accounts:local": "node scripts/run-account-auth-gate.mjs",
     "test:admin:center": "node --test tests/admin-center-ui.test.mjs",
@@ -57,3 +57,4 @@
     "vite": "^6.2.0"
   }
 }
+
