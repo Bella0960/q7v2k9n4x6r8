@@ -189,8 +189,13 @@ test('已绑定的页面 meta / 作用域不一致时拒绝抽卡、收藏与付
 });
 
 test('Worker 与客户端作用域接口保持相同的注入版本和请求账号绑定',()=>{
-  assert.match(workerSource,/mao-account-scope\.js\?v=2/);
-  assert.match(serviceWorkerSource,/mao-account-scope\.js\?v=2/);
+  // #290 账号作用域脚本可安全升级版本，但 Worker / SW 必须指向同一版本。
+  // 固定 v=2 会让已升级到 v=3 的真实账号底座在整合时产生假失败。
+  const workerVersion=workerSource.match(/mao-account-scope\.js\?v=([1-9]\d*)/)?.[1];
+  const swVersion=serviceWorkerSource.match(/mao-account-scope\.js\?v=([1-9]\d*)/)?.[1];
+  assert.ok(workerVersion,'Worker 必须注入带有效版本号的账号隔离脚本');
+  assert.ok(swVersion,'Service Worker 必须识别带有效版本号的账号隔离脚本');
+  assert.equal(swVersion,workerVersion,'Worker 与 Service Worker 账号脚本版本必须一致，不能混用旧缓存');
   assert.match(appSource,/ACCOUNT_CONTEXT_CHANGED/);
   assert.match(scopeSource,/headers\.set\('x-mao-account-context', accountId\)/);
   assert.match(fontLoaderSource,/fontAssetPath \+= encodeURIComponent\(maoScope\.accountId\)/);
