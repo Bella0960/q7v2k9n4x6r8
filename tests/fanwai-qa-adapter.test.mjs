@@ -45,7 +45,9 @@ class Element {
   addEventListener(type, fn) { this.handlers[type] = fn; }
   click() {
     this.clicked++;
-    if (this.handlers.click) this.handlers.click({ preventDefault() {} });
+    const event = { defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+    if (this.handlers.click) this.handlers.click(event);
+    this.defaultPrevented = event.defaultPrevented;
   }
   walk() { return [this, ...this.children.flatMap(node => node.walk())]; }
   querySelector(selector) {
@@ -175,4 +177,16 @@ test('early script onload waits for DOMContentLoaded before mounting QA engine',
   assert.equal(app.picker.hidden, true);
   app.timers.at(-1)();
   assert.equal(app.picker.hidden, true, 'timeout callback after successful mount cannot blank page');
+});
+
+test('legacy switch-role link refuses clicks while reader is active', () => {
+  const app = mount();
+  app.engineScript.onload();
+  const switchRole = app.main.querySelector('.fw-app-switch');
+  assert.ok(switchRole);
+  app.sheet.classList.add('fw-reading');
+  switchRole.click();
+  assert.equal(switchRole.defaultPrevented, true,
+    'hidden links and programmatic clicks cannot bypass QA pending-save guard');
+  assert.equal(app.window.location.destination, undefined);
 });

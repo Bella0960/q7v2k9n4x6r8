@@ -125,6 +125,15 @@
       top.classList.add('fw-bridge-nav');
       var back = top.querySelector('.fw-app-back');
       var switchRole = link('角色', 'fanwai.html', 'fw-app-switch');
+      // 隐藏不等于导航安全：双击、辅助技术或旧事件处理器仍可能触发链接。
+      // 只有当前确实在故事目录时，才允许离开当前角色的存档上下文。
+      switchRole.addEventListener('click', function (event) {
+        if (layer.hidden || sheet.classList.contains('fw-reading') ||
+            !sheet.querySelector('.fw-grid')) {
+          event.preventDefault();
+          showNotice('请先返回番外目录，保存当前故事后再切换角色');
+        }
+      });
       var spacer = top.querySelector('.fw-header-spacer');
       if (spacer) spacer.replaceWith(switchRole);
       back.removeAttribute('href');
