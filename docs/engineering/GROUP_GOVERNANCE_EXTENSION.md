@@ -76,3 +76,39 @@
 - **故障范围**：本模块在下次打开群聊时修补“角色单聊成功、群入口写入失败”，是浏览器本地的幂等修复，不提供实时 Push，不保证页面永不崩溃、不涵盖管理员/关系/钱包的跨存储恢复，也不是服务端 ACID 事务。群内已失去成员资格的角色消息不会自动恢复，以免越权泄露。没有自动改写旧版已保存的含正文群私聊记录。
 - 新增 `tests/group-private-receipt-recovery.test.mjs` 并纳入 `npm run test:group:governance`，覆盖重复恢复、跨群拒绝、历史超 600 条、损坏/拒绝写入、读回不一致以及脚本和 PWA 接线。PWA 缓存更新至 `v216`。
 - 验证：从 GitHub 读取的 9/9 条恢复相关完整测试逻辑通过；从 GitHub 提取源码/测试并经 Blob SHA 验证一致，在原生 Node.js 22 下运行新模块 8/8 个行为测试通过；其余 1 项页面/PWA 接线测试基于 GitHub 原始页面在独立 V8 环境通过。此前原有五份群回归逻辑 39/39 通过。**尚未执行整仓原生 Node、Playwright、构建或 Android/iPhone 实机验收，PR 继续 Draft。**
+
+## 唯一 QA #299 安全整合文件清单（2026-11-17 实际文件树比对）
+
+针对原群聊 PR #298 与唯一 QA PR #299 的真实 Git tree 对照（QA 检查基线 `13c46fd9`），不得将本功能分支整棵树或完整 HTML/Service Worker 覆盖到 QA。文件清单只是**整合接线准备**，不是已完成整合或 QA 交付证明。
+
+**在 QA 当前不存在、可按原 blob 单文件增量引入的 9 个运行模块：**
+
+```text
+shared/js/group-governance.js
+shared/js/group-settings-layout.js
+shared/js/phone/group-game-chat-receipts.js
+shared/js/phone/group-game-panel.js
+shared/js/phone/group-game-session.js
+shared/js/phone/group-memory-events.js
+shared/js/phone/group-private-receipt-recovery.js
+shared/js/phone/group-turn-effects.js
+shared/js/phone/group_memory_view.js
+```
+
+**QA 当前不存在、需和模块一起引入的 7 份 Node 测试：**
+
+```text
+tests/group-game-boundary.test.mjs
+tests/group-game-chat-receipts.test.mjs
+tests/group-governance.test.mjs
+tests/group-private-receipt-recovery.test.mjs
+tests/group-social-settings-contract.test.mjs
+tests/group-turn-effects.test.mjs
+tests/group-turn-integration.test.mjs
+```
+
+**两边都有、内容分叉，必须逐处语义整合而非 `git checkout --` 覆盖：** `chat/chat/chat-detail.html`、`chat/chat/chat.html`、`chat/chat/group-play.html`、`chat/chat/chat-settings.html`、`chat/chat/js/chat-extras.js`、`settings/js/backup-modules.js`、`settings/js/backup.js`、`shared/js/phone/memory_recall.js`、`worldbook/memory/memory.html`、`package.json`、`sw.js`、`tests/backup-modules.test.mjs`、`tests/media-backup.test.mjs`。这些共享文件的差异并非全由群聊造成，必须保留 QA 上的账号、Push、邂逅、音乐、番外及安全修复。尤其 `chat-detail.html` 需要把群内权限、AI 回复保存屏障、秘密标记双路径脱敏、群游戏卡和当前 UI 的正常逻辑逐段并存。
+
+**QA 的发布门禁也必须增量加入**：沿用现有 `scripts/qa-direct-release.mjs`、身份权威与 Worker，只在其 `TESTS` 流程增加原生 `npm run test:group:governance`、`npm run test:group:ui`、`npm run test:group:invite-e2e`，并保持完整 chat contract、Vite build、Chromium 及现有安全检查。开发分支 PWA 版本当前 `phone-app-pwa-v228`、治理 `g4`、游戏 `game11`；QA 已有 `v241+`，必须在 QA 自己的 cache name 上向上递增，同时确保 HTML 的版本化脚本 URL 与预缓存条目严格一致。
+
+**宣布本批完整交付之前的缺一不可证据**：#299 最终合入后同一干净 SHA 的原生 Node/Vite、375/390/430 Chromium、QA Worker 实际静态资源与用户手机端权限/私聊/游戏/聊天历史恢复验收。唯一网址 `https://preview.mao520.com`，不动生产 Worker、正式账号数据库和管理员 001；此项目角色群是客户端功能，不冒充跨账号真人群的服务端安全交付。
