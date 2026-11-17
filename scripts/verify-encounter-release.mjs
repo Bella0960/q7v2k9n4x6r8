@@ -38,7 +38,7 @@ requireFile('tests/encounter-contract.test.mjs','无角色/存储合同测试');
 requireFile('tests/encounter-actual-scope.test.mjs','缺真实账号隔离测试');
 requireFile('tests/encounter-ui-contract.test.mjs','无真实手势状态模拟测试');
 requireFile('tests/encounter-browser.mjs','无浏览器端到端验收脚本');
-requirePattern('worker.js',/mao-account-scope\.js\?v=2/,'Worker 必须注入正式账号隔离脚本');
+requirePattern('worker.js',/'<script src="\/shared\/js\/mao-account-scope\.js\?v=[1-9]\d*" data-mao-account-scope><\/script>'/,'Worker 必须在 HTML 中注入可版本升级的正式账号隔离脚本');
 requirePattern('sw.js',/req\.mode === 'navigate' && !isPublicAccountPage/,'私有 HTML 导航必须走 Worker 验证');
 requirePattern('sw.js',/requestedAccountId !== account\.id/,'字体资源不得跨账号复用');
 requirePattern('shared/js/font-loader.js',/fontAssetPath \+= encodeURIComponent\(maoScope\.accountId\)/,'字体 URL 必须使用原账号隔离逻辑');
