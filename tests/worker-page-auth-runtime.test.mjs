@@ -28,6 +28,15 @@ function makeEnv(account = null, overrides = {}) {
       if (path === '/api/accounts/me') {
         calls.auth.push({ cookie: request.headers.get('cookie'), path, method: request.method });
         if (overrides.authFails) throw new Error('DO unavailable');
+        if (overrides.authUnavailable) {
+          return Response.json({ ok: false, error: { code: 'IDENTITY_AUTHORITY_UNAVAILABLE' } }, { status: 503 });
+        }
+        if (overrides.authDenied) {
+          return Response.json({ ok: false, error: { code: 'IDENTITY_AUTHORITY_CHANGED' } }, { status: 403 });
+        }
+        if (overrides.badIdentityResponse) {
+          return Response.json({ ok: true, account: null });
+        }
         if (overrides.disabled) {
           return Response.json({ ok: false, error: { code: 'ACCOUNT_DISABLED' } }, { status: 403 });
         }
@@ -113,13 +122,29 @@ test('pending and disabled accounts cannot open private HTML', async () => {
   }
 });
 
-test('missing DO and errors fail closed, without serving private shell', async () => {
-  for (const options of [{ withoutDb: true }, { authFails: true }]) {
-    const { env, calls } = makeEnv(null, options);
-    const r = await worker.fetch(req('/chat/chat/chat-detail.html'), env);
-    assert.equal(r.status, 302);
-    assert.equal(new URL(r.headers.get('location')).pathname, '/account/index.html');
-    assert.equal(calls.assets.length, 0);
+test('missing database binding remains gated without exposing private HTML', async () => {
+  const { env, calls } = makeEnv(null, { withoutDb: true });
+  const r = await worker.fetch(req('/chat/chat/chat-detail.html'), env);
+  assert.equal(r.status, 302);
+  assert.equal(new URL(r.headers.get('location')).pathname, '/account/index.html');
+  assert.equal(calls.assets.length, 0);
+});
+
+test('temporary identity service errors stay on a safe 503 page instead of faking logout', async () => {
+  for (const options of [
+    { authFails: true },
+    { authUnavailable: true },
+    { authDenied: true },
+    { badIdentityResponse: true }
+  ]) {
+    const { env, calls } = makeEnv(active('super_admin'), options);
+    const r = await worker.fetch(req('/admin/admin-center.html'), env);
+    assert.equal(r.status, 503, JSON.stringify(options));
+    assert.equal(r.headers.get('location'), null);
+    assert.equal(r.headers.get('cache-control'), 'no-store');
+    assert.equal(r.headers.get('retry-after'), '10');
+    assert.match(await r.text(), /暂时无法确认登录状态/);
+    assert.equal(calls.assets.length, 0, 'no unverified private HTML served');
   }
 });
 
