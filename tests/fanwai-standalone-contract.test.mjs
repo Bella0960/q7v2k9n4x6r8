@@ -58,3 +58,10 @@ test('账号门禁在故事扩展注册之前；独立页面不绕过隔离', ()
   assert.ok(engine.indexOf("var earlyMeta = document.querySelector") < engine.indexOf("var TEMPLATES = ["));
   assert.match(engine, /earlyScope\.accountId !== earlyId/);
 });
+
+test('切换角色或退出前等待番外保存队列，避免未落盘便换页', () => {
+  const engine = read('chat/chat/js/chat-fanwai.js');
+  assert.match(engine, /if \(standalone && \(key === 'switch-role' \|\| key === 'home'\)\) \{/);
+  assert.match(engine, /await episodeWriteQueue;/);
+  assert.match(engine, /if \(canPersist && persistenceFailed\) \{/);
+});
