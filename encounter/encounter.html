@@ -217,20 +217,33 @@ cardEl.addEventListener('touchmove',function(e){
  cardEl.style.transform='translate3d('+fingerDrag.dx+'px,'+(Math.abs(fingerDrag.dx)/14)+'px,0) rotate('+angle+'deg)';
  cardEl.style.opacity=String(Math.max(.52,1-Math.abs(fingerDrag.dx)/600));
 },{passive:false});
-cardEl.addEventListener('touchend',function(e){
- if(!fingerDrag)return;
- var t=fingerAt(e.changedTouches,fingerDrag.id);
- if(!t)return;
- var dx=t.clientX-fingerDrag.x,dy=t.clientY-fingerDrag.y;
- var horizontal=fingerDrag.horizontal||
-    (Math.abs(dx)>9&&Math.abs(dx)>Math.abs(dy)*1.3);
+// Keep the last measured displacement: an interrupted mobile gesture can
+// deliver stale or empty changedTouches at touchend.
+function finishFingerSwipe(dx,dy,horizontal){
  fingerDrag=null;
  if(Math.abs(dx)>8||Math.abs(dy)>8)suppressDragClick=true;
  if(!horizontal)return;
  if(dx>95)move('right');else if(dx< -95)move('left');else snap();
+}
+cardEl.addEventListener('touchend',function(e){
+ if(!fingerDrag)return;
+ var t=fingerAt(e.changedTouches,fingerDrag.id);
+ var endDx=t?t.clientX-fingerDrag.x:fingerDrag.dx;
+ var endDy=t?t.clientY-fingerDrag.y:fingerDrag.dy;
+ var dx=Math.abs(endDx)>=Math.abs(fingerDrag.dx)?endDx:fingerDrag.dx;
+ var dy=Math.abs(endDy)>=Math.abs(fingerDrag.dy)?endDy:fingerDrag.dy;
+ finishFingerSwipe(dx,dy,fingerDrag.horizontal||
+    (Math.abs(dx)>9&&Math.abs(dx)>Math.abs(dy)*1.3));
 },{passive:true});
 cardEl.addEventListener('touchcancel',function(){
  if(!fingerDrag)return;
+ // Only a proven >95px horizontal gesture may complete on browser cancel;
+ // short swipes and vertical scrolling still snap back without changing cards.
+ var dx=fingerDrag.dx,dy=fingerDrag.dy;
+ if(fingerDrag.horizontal&&Math.abs(dx)>95&&!lock){
+  finishFingerSwipe(dx,dy,true);
+  return;
+ }
  suppressDragClick=true;fingerDrag=null;snap();
 },{passive:true});
 
