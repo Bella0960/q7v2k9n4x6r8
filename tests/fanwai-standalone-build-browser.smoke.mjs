@@ -142,7 +142,7 @@ try {
       // 可见 40 条并不代表 IndexedDB 最后一笔事务已提交。
       // 等引擎给出「完成」状态（QA 安全引擎在 final persist 后才渲染），
       // 再 reload 验证存档恢复；否则慢设备上会出现虚假的数据丢失报告。
-      await page.locator('#fanwaiLayer .fw-status').getByText('这篇番外已经写完。', { exact: true })
+      await page.locator('#fanwaiLayer .fw-status').filter({ hasText: '这篇番外已经写完。' })
         .waitFor({ state: 'visible', timeout: 30000 });
       assert.ok((await page.evaluate(() => window.__fanwaiMockCalls)) >= 4);
       assert.equal(await page.evaluate(id => localStorage.getItem('chat_history_' + id), role.id),
