@@ -95,3 +95,13 @@ test('iMessage compact header overrides original 126px absolute layout and keeps
  assert.match(css,/min-width:44px !important;/);
  assert.match(css,/#chat-messages\.chat-stage \{\s*background-color:transparent !important;/);
 });
+
+
+test('background custom properties remain inheritable for individual bubbles',()=>{
+ const css=read('shared/css/chat-light-surfaces.css');
+ for(const field of ['ta','my']){
+   assert.doesNotMatch(css,new RegExp('--chat-bubble-'+field+'-bg\\s*:\\s*inherit\\s*!important'),'a per-message variable must not be forcibly replaced');
+ }
+ assert.match(css,/background:var\(--chat-bubble-ta-bg,#e5e5ea\) !important/);
+ assert.match(css,/background:var\(--chat-bubble-my-bg,#18181a\) !important/);
+});
