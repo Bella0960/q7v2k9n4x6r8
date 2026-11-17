@@ -43,7 +43,7 @@ JSON 导入只接受该格式与字段，不直接兼容酒馆、SillyTavern 等
 
 ## 6. 验收与后续
 
-回归：npm run test:encounter；构建：npm run build；浏览器：npm run test:encounter:browser；发布门禁：npm run gate:encounter。
+回归：npm run test:encounter；账号整合后运行：npm run test:encounter:account（真实账号发布回归 + 邂逅账号隔离测试成功后才生成账号回执）；构建：npm run build；浏览器：npm run test:encounter:browser；发布门禁：npm run gate:encounter。
 手机 375×812 / 390×844 / 430×932、桌面外壳，Android 和 iOS Safari 真实交互需要单独验收。
 重点：方向及回弹、滑卡点击互斥、候选刷新持久化、失败不假成功、角色姓名去重、编辑草稿恢复、保存与候选清理、JSON 导出再导入、第三方 JSON 拒绝、无自绘系统状态栏、真实安全区、PWA 路由/缓存、主系统其他功能不回归、抽卡 0 API。
 
@@ -154,3 +154,9 @@ JSON 导入只接受该格式与字段，不直接兼容酒馆、SillyTavern 等
 - 手机上的返回键、标题和「···」仍属于应用导航，按真实系统顶部安全区对齐；候选收藏数不得越界；主卡背后的叠卡跟随主卡尺寸，不再把背卡拉入操作区；PASS/收藏与底部候选切换尊重底部手势安全区。
 - tests/encounter-ui-contract.test.mjs 保护源码不能重新加入模拟系统状态栏；tests/encounter-browser.mjs 在 375/390/430 手机视口验证无假栏、菜单及计数边距、卡片与按钮间距、操作按钮和候选切换未截断；浏览器回执必须写入 nativeSystemStatusBar=true，scripts/verify-encounter-release.mjs 依此阻断未测版本发布。
 - 当前只确认 GitHub 分支源码回读与静态条件；未运行完整 Node、Vite、真实 Chromium、Android/iOS；未整合至唯一 QA，也未部署正式版。此变更不修改角色、聊天、记忆或候选存储。
+
+
+### 2026-11-17｜完整交付回执闭环修复
+- 发布门禁本来要求 encounter-account-test-receipt.json 与 encounter-encounter-test-receipt.json 两份回执，而旧 package.json 只会执行 record-encounter-tests.mjs encounter。现补齐 test:encounter:account：先执行原账号 release-gate 的实际 Node 用例，再执行邂逅账号隔离 Node 用例，全部成功后才调用原收据脚本写入 account 回执。原账号测试必须先随 #290 在唯一 QA 正确整合，不能在 #297 独立分支凭缺少文件冒充通过。
+- gate:encounter 继续要求账号页/脚本、Worker 注入、真实 PWA 构建、Chromium 三视口、同一 Git HEAD 的两份 Node 回执和浏览器截图；新增校验账号回执生成命令必须存在。所有发布回执只由实际本地命令生成，不能把适配器/V8 结果当成 Node 回执。
+- 本轮本分支完整界面合同经 V8 适配执行 19/19 PASS；原生 Node、Vite、Chromium 和 Android/iOS 仍未在本窗口完成，PR #297 继续 Draft。
