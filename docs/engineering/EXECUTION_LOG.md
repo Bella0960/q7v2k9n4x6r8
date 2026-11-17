@@ -1,5 +1,17 @@
 # MAOMAO Execution Log
 
+## 2026-11-17｜BUG-ADMIN-QA 第三阶段 · 修复 QA 身份服务误接生产风险
+
+- **真实发现的安全缺口**：账号管理代理在调用 `probeExistingIdentityAuthority` 时，仅检查 `connected/initialized/configured`。探针自身不返回服务声明的 `qaIsolatedAuthority` 与 `qaExpectedFounderId`，因此注释所说「验证独立 QA 身份库」在代码层实际上没有实现；独立 Worker 名称环境变量不足以证明底层服务实际指向隔离库。
+- **已提交到原 #290**：
+  - `worker/lib/identity-bridge.js`：把服务自身的 `qaIsolatedAuthority`（严格布尔）和 `qaExpectedFounderId` 从私有带密钥的 probe 返回给调用方；不改变其旧有 connected/initialized/configured 字段。
+  - `worker/lib/account-auth.js`：管理接口只在 `connected/initialized/configured`、`qaIsolatedAuthority === true`、`qaExpectedFounderId === MAO_EXPECTED_FOUNDER_ID` 全部符合时放行，否则不向身份服务发送敏感管理读写。
+  - `tests/account-identity-bridge-probe.test.mjs`：显式验证隔离字段和错误标记。
+  - `tests/account-qa-admin-proxy.test.mjs`：补充实际探针必需的 32 字符以上内部桥接测试密钥，并新增“错误创始管理员 ID 禁止读写”回归。此前测试夹具缺密钥，无法代表原生 Node 成功。
+- **验证**：使用 GitHub 提交后的**真实** `identity-bridge.js` + `account-auth.js` 联合源码，以隔离 V8 兼容环境验证 7/7 场景通过：合法隔离 QA 查询/写入均可达、身份服务非隔离/永久 ID 不一致禁止转发、非超级管理员/关开关/越权路由均拒绝。未执行原生 Node CLI、Vite、Chromium 和真机，不得称整体测试已通过。
+- **交付门禁**：当前 #299 同时由其他窗口更新，不并行写其功能文件；必须由唯一 QA 负责人在当前 head 上按语义吸收上述 4 文件改动，再做真实 Node/Vite/浏览器和独立身份库验收后仅部署到 `preview.mao520.com`。严格禁止把该测试桥接路径指向正式账号库；生产管理员 001 永久 ID `MAO-OXHBDBWCOIHPBBYN` 不变。
+
+
 ## 2026-11-17｜BUG-ADMIN-QA 第二阶段 · Worker + 全局会话守卫失效循环
 
 - **定位到同一现象的另外两处真实路径**：
