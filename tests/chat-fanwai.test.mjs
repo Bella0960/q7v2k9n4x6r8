@@ -22,7 +22,9 @@ test('six story templates are available without replacing the existing chat UI',
     assert.ok(t.name && t.scenario);
     assert.ok(t.target >= 80 && t.target <= 100);
   });
-  assert.match(extras, /fanwaiScript\.src\s*=\s*'js\/chat-fanwai\.js/);
+  assert.match(extras, /window\.location\.assign\(destination\)/);
+  assert.match(extras, /\.\.\/\.\.\/fanwai\/fanwai\.html/);
+  assert.doesNotMatch(extras, /fanwaiScript\.src/);
   assert.match(source, /#plusPanelOverlay \.plus-grid/);
   assert.match(source, /item\.dataset\.feat\s*=\s*'fanwai'/);
 });
