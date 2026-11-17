@@ -133,10 +133,37 @@ test('a destructive account confirmation always targets its originally selected 
   }]);
 });
 
+test('HTTP success without complete directory data never looks like an empty account list', () => {
+  const begin = source.indexOf('  function verifiedDirectoryPayload(payload, key) {');
+  const finish = source.indexOf('\n\n  function formatTime(', begin);
+  assert.ok(begin >= 0 && finish > begin);
+  const verify = new Function(source.slice(begin, finish) + '\nreturn verifiedDirectoryPayload;')();
+  const valid = { accounts: [{ id: 'MAO-AAAAAAAAAAAA' }],
+    page: { totalCount: 1, hasMore: false, nextCursor: null } };
+  assert.equal(verify(valid, 'accounts'), valid);
+  for (const payload of [
+    { page: valid.page },
+    { accounts: [], page: null },
+    { accounts: [null], page: valid.page },
+    { accounts: [{ id: 'MAO-AAAAAAAAAAAA' }], page: { totalCount: 0 } },
+    { accounts: [], page: { totalCount: 0, hasMore: true, nextCursor: null } }
+  ]) {
+    assert.throws(() => verify(payload, 'accounts'), /记录不完整/);
+  }
+  assert.throws(() => verify({ invites: [], page: { totalCount: -1, hasMore: false } }, 'invites'), /记录不完整/);
+  assert.throws(() => verify({ records: [], page: { totalCount: 0, hasMore: 'false' } }, 'records'), /记录不完整/);
+});
+
 test('partial directory failures preserve the other successful mobile list', async () => {
   const begin = source.indexOf('  async function loadAccountPage(reset = false) {');
   const finish = source.indexOf('\n\n  async function openAccount(', begin);
   assert.ok(begin >= 0 && finish > begin, 'directory loaders and refreshAll must be present');
+  const verifierBegin = source.indexOf('  function verifiedDirectoryPayload(payload, key) {');
+  const verifierEnd = source.indexOf('\n\n  function formatTime(', verifierBegin);
+  assert.ok(verifierBegin >= 0 && verifierEnd > verifierBegin);
+  const verifiedDirectoryPayload = new Function(
+    source.slice(verifierBegin, verifierEnd) + '\nreturn verifiedDirectoryPayload;'
+  )();
   const states = [
     { failure: 'accounts', expectAccounts: 0, expectInvites: 1 },
     { failure: 'invites', expectAccounts: 1, expectInvites: 0 },
@@ -156,10 +183,10 @@ test('partial directory failures preserve the other successful mobile list', asy
         throw new Error('invites offline');
       }
       if (path.startsWith('/api/admin/accounts')) {
-        return { accounts: [{ id: 'MAO-AAAAAAAAAAAA' }], page: { totalCount: 1 }, summary: { total: 1 } };
+        return { accounts: [{ id: 'MAO-AAAAAAAAAAAA' }], page: { totalCount: 1, hasMore: false }, summary: { total: 1 } };
       }
       if (path.startsWith('/api/admin/invites')) {
-        return { invites: [{ id: 'TESTINVITE' }], page: { totalCount: 1 }, summary: { total: 1 } };
+        return { invites: [{ id: 'TESTINVITE' }], page: { totalCount: 1, hasMore: false }, summary: { total: 1 } };
       }
       throw new Error('unexpected endpoint: ' + path);
     };
@@ -168,7 +195,7 @@ test('partial directory failures preserve the other successful mobile list', asy
     const constructor = new Function(
       '$', 'api', 'directoryPath', 'renderAccounts', 'renderInvites',
       'updateStats', 'updateAccountFilterCounts', 'updateInviteFilterCounts',
-      'renderAccountDetail', 'closeDetail', 'setButtonsDisabled',
+      'renderAccountDetail', 'closeDetail', 'setButtonsDisabled', 'verifiedDirectoryPayload',
       "let accountDirectoryKey='',accountNextCursor='',accountFilter='all',accountHasMore=false," +
       "accountTotalCount=0,accountSummary=null,accountPageError=false,accounts=[]," +
       "inviteDirectoryKey='',inviteNextCursor='',inviteFilter='all',inviteHasMore=false," +
@@ -180,7 +207,7 @@ test('partial directory failures preserve the other successful mobile list', asy
     const app = constructor(
       get, directoryApi, path => path,
       () => { renderedAccounts++; }, () => { renderedInvites++; },
-      () => {}, () => {}, () => {}, async () => {}, () => {}, () => {}
+      () => {}, () => {}, () => {}, async () => {}, () => {}, () => {}, verifiedDirectoryPayload
     );
     if (scenario.failure) {
       await assert.rejects(() => app.refreshAll(), /offline/);
