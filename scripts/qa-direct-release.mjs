@@ -52,11 +52,13 @@ const TESTS = [
   // A fresh Codespace may already have chrome-headless-shell but lack
   // libnspr4.so; plain "playwright install chromium" does not install OS deps.
   ['npx', ['playwright', 'install', '--with-deps', 'chromium']],
+  // Run the browser gesture gate before the expensive full 1000+ test Node suite:
+  // failures should stop early, never consume repeated full-suite minutes.
+  ['npm', ['run', 'test:encounter:browser']],
   // Music now-playing visual QA must pass before replacing static assets on the existing QA Worker.
   ['node', ['tests/music-mobile-browser.mjs']],
   // A full Node suite catches regressions outside the narrower account/chat scripts.
   ['node', ['--test']],
-  ['npm', ['run', 'test:encounter:browser']],
   ['npm', ['run', 'gate:encounter']],
   ['npm', ['run', 'test:fanwai:browser:build']]
 ];
