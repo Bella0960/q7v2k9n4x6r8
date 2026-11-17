@@ -222,7 +222,7 @@ export default {
     let authorizedAccount = null;
     if (isHtmlDocument && !isPublicAccountDocument) {
       if (!env.CLOUD_DB) {
-        return Response.redirect(new URL('/account/index.html', url), 302);
+        return accountAuthenticationUnavailable();
       }
       try {
         const stub = env.CLOUD_DB.get(env.CLOUD_DB.idFromName(INSTANCE_NAME));
@@ -235,9 +235,11 @@ export default {
         if (!authResponse.ok) {
           const errorCode = authPayload?.error?.code;
           if (authResponse.status === 401 ||
-              (authResponse.status === 403 && errorCode === 'ACCOUNT_DISABLED')) {
+              (authResponse.status === 403 &&
+                (errorCode === 'ACCOUNT_DISABLED' || errorCode === 'IDENTITY_AUTHORITY_CHANGED'))) {
             const target = new URL('/account/index.html', url);
             if (errorCode === 'ACCOUNT_DISABLED') target.searchParams.set('disabled', '1');
+            if (errorCode === 'IDENTITY_AUTHORITY_CHANGED') target.searchParams.set('switched', '1');
             return Response.redirect(target, 302);
           }
           // 403 from an identity authority or 5xx is not a confirmed logout.
