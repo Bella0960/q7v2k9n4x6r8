@@ -96,7 +96,9 @@
     NS.getDefaults = function () {
         var copy = {};
         for (var key in DEFAULTS) copy[key] = Array.isArray(DEFAULTS[key]) ? DEFAULTS[key].slice() : DEFAULTS[key];
-        for (var lightKey in LIGHT_DEFAULTS) copy[lightKey] = LIGHT_DEFAULTS[lightKey];
+        if (NS.getThemePreset() === 'default') {
+            for (var lightKey in LIGHT_DEFAULTS) copy[lightKey] = LIGHT_DEFAULTS[lightKey];
+        }
         return copy;
     };
 
