@@ -333,6 +333,42 @@ test('两位候选都是真实独立卡片，切换不会丢失任何一位',asy
   assert.ok(both.some(c=>c.name===second));
 });
 
+test('真实手机触摸左滑在 PointerEvent 被取消后仍切卡，不收藏也不误开详情',()=>{
+  const h=setup();
+  const card=h.el('frontCard');
+  const firstId=card.dataset.candidateId;
+  const initialSaved=h.window.MAOMAOEncounter.getCandidates().value.length;
+  const t=(x,y)=>({identifier:7,clientX:x,clientY:y});
+  // Chromium can cancel pointer events while evaluating a touch gesture;
+  // TouchEvent handling must independently complete the horizontal swipe.
+  card.fire('pointerdown',{pointerType:'touch'});
+  card.fire('pointercancel',{pointerType:'touch'});
+  card.fire('touchstart',{touches:[t(260,200)],changedTouches:[t(260,200)]});
+  let prevented=false;
+  for(const x of [225,170,110,65]){
+    card.fire('touchmove',{
+      touches:[t(x,202)],changedTouches:[],cancelable:true,
+      preventDefault(){prevented=true;}
+    });
+  }
+  card.fire('touchend',{touches:[],changedTouches:[t(65,202)]});
+  h.flush();
+  assert.ok(prevented,'横向原生触摸需要阻止浏览器抢走滑动');
+  assert.ok(card.dataset.candidateId && card.dataset.candidateId!==firstId,
+    '手机原生左滑必须切换真实候选 ID');
+  assert.equal(h.window.MAOMAOEncounter.getCandidates().value.length,initialSaved,
+    '左滑 PASS 不能误存收藏');
+  card.fire('click');
+  assert.equal(h.el('overlay').classList.contains('open'),false,'左滑结束不得误开档案');
+
+  const currentId=card.dataset.candidateId;
+  card.fire('touchstart',{touches:[t(240,200)],changedTouches:[t(240,200)]});
+  card.fire('touchmove',{touches:[t(238,320)],changedTouches:[],cancelable:true});
+  card.fire('touchend',{touches:[],changedTouches:[t(238,320)]});
+  h.flush();
+  assert.equal(card.dataset.candidateId,currentId,'纵向手指滚动不能误触左滑换卡');
+});
+
 test('左滑只跳过人物，不创建收藏',()=>{
   const h=setup();
   const card=h.el('frontCard');
