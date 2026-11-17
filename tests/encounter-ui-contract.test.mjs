@@ -81,6 +81,51 @@ test('账号测试回执必须在真正的账号发布回归后生成', () => {
     '发布门禁必须检查账号回执生成流程');
 });
 
+test('抽卡偏好写入失败时选择恢复原值，成功后新值成为回退基准', () => {
+  const start=uiSource.indexOf('function openSettings(){');
+  const end=uiSource.indexOf('function openReunion(',start);
+  assert.ok(start>=0 && end>start,'必须运行真实设置面板的保存事件');
+  const selector={
+    value:'女',dataset:{setting:'gender'},listeners:{},
+    addEventListener(type,fn){this.listeners[type]=fn;}
+  };
+  const saved={gender:'男'},notices=[],controls={
+    swapButton:{disabled:false,textContent:''},
+    alternateCard:{disabled:false,setAttribute(){}}
+  };
+  let blocked=true;
+  const state={
+    engine:{
+      getPreferences(){return {...saved};},
+      savePreferences(patch){
+        if(blocked)return {ok:false,error:'偏好写入失败'};
+        saved.gender=patch.gender;
+        return {ok:true,value:{...saved}};
+      }
+    },
+    sheet:{querySelectorAll(){return [selector];}},
+    head(){return '';},escapeHtml(value){return String(value);},openSheet(){},
+    notify(message){notices.push(message);},
+    document:{getElementById(id){return controls[id];}},
+    alternate:{id:'original-alternate'}
+  };
+  vm.runInNewContext(uiSource.slice(start,end)+';openSettings();',state);
+  assert.equal(typeof selector.listeners.change,'function');
+  selector.listeners.change();
+  assert.equal(selector.value,'男','存储失败必须恢复最后持久化的选项');
+  assert.equal(state.alternate.id,'original-alternate','失败不能清除用户已生成的第二张卡');
+  assert.equal(controls.swapButton.disabled,false,'失败不能锁住切卡入口');
+  assert.match(notices.at(-1),/失败/);
+
+  blocked=false;selector.value='女';selector.listeners.change();
+  assert.equal(saved.gender,'女','成功后才更新真实偏好');
+  assert.equal(state.alternate,null,'成功后才重新应用下张抽卡筛选');
+
+  blocked=true;selector.value='全部';selector.listeners.change();
+  assert.equal(selector.value,'女','二次失败必须恢复最近一次成功值，不能退回旧初始值');
+  assert.equal(saved.gender,'女','失败不得修改已经保存的设置');
+});
+
 function setup(initial={}) {
   const rows=new Map(Object.entries(initial));
   const localStorage={
