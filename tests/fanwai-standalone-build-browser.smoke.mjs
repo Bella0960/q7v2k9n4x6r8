@@ -153,6 +153,17 @@ try {
       await page.locator('.fw-saved-row').first().waitFor({ state: 'visible' });
       await page.locator('.fw-saved-row').first().click();
       assert.equal(await page.locator('.fw-bubble').count(), 40);
+      // 返回键真的回到目录，不能把读者直接踢回角色选择。
+      const back = page.locator('.fw-reading .fw-head [data-action="back"]');
+      assert.equal(await back.count(), 1, '阅读页左上角必须是返回目录');
+      await back.click();
+      await page.locator('#fanwaiLayer .fw-card').first().waitFor({ state: 'visible' });
+      assert.equal(await page.locator('#fanwaiLayer .fw-card').count(), 6);
+      await page.locator('#fanwaiLayer .fw-card').first().click();
+      assert.equal(await page.locator('.fw-preview .fw-head [data-action="switch-role"]').count(), 1);
+      await page.locator('.fw-preview .fw-head [data-action="switch-role"]').click();
+      await page.locator('#fanwaiRolePicker .fw-role-row').first().waitFor({ state: 'visible' });
+      assert.equal(new URL(page.url()).searchParams.has('id'), false, '切换角色后不应保留旧 id');
       assert.deepEqual(errors, [], width + ': 浏览器发生脚本异常');
       // 错账号 HTML 不得看到角色，亦不得装载故事引擎。
       const guarded = await context.newPage();
