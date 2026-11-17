@@ -457,12 +457,12 @@ test('名片：卡片快照只写入当前会话历史，不在其他会话出�
   const listA = roleA.loadMessages();
   listA.push(card);
   assert.equal(roleA.saveMessages(listA), true);
-  assert.deepEqual(roleA.loadMessages(), [card]);
+  assert.deepEqual(JSON.parse(JSON.stringify(roleA.loadMessages())), [card]);
   assert.match(JSON.stringify(slots.roleA), /卡片甲/);
   assert.match(shared.getItem('chat_history_roleA'), /卡片甲/);
 
   const roleB = loadHistoryFunctions(slots, 'roleB', shared);
-  assert.deepEqual(roleB.loadMessages(), []);
+  assert.deepEqual(JSON.parse(JSON.stringify(roleB.loadMessages())), []);
   assert.equal(JSON.stringify(slots.roleB || []).includes('卡片甲'), false);
   assert.equal((shared.getItem('chat_history_roleB') || '').includes('卡片甲'), false);
 });
@@ -492,7 +492,7 @@ test('名片：页面打开后角色 ID 变化不能将名片写入另一会话'
   roleA.loadMessages();
   const originalB = shared.getItem('chat_history_roleB');
   roleA.currentCharacter = { id: 'roleB' };
-  assert.deepEqual(roleA.loadMessages(), []);
+  assert.deepEqual(JSON.parse(JSON.stringify(roleA.loadMessages())), []);
   assert.equal(roleA.saveMessages([
     { role: 'user', type: 'card', card: { name: '不应串写的名片' }, mid: 'm2' }
   ]), false);
