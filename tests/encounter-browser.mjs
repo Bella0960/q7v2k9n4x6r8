@@ -35,9 +35,10 @@ const server = http.createServer(async (req, res) => {
     res.end(await fs.readFile(file));
   } catch { res.writeHead(404);res.end('Not found'); }
 });
-for(const required of ['encounter/encounter.html','worldbook/characters/characters.html','account/index.html']){
+// localhost 浏览器冒烟测试不需要真实账号页面；账号安全仍由 gate:encounter 独立强制校验。
+for(const required of ['encounter/encounter.html','worldbook/characters/characters.html']){
   if(!existsSync(resolve(siteRoot,required)))
-    throw new Error('完整 Vite 构建缺少 '+required+'，请先在整合分支 npm run build');
+    throw new Error('浏览器冒烟测试缺少构建后的 '+required+'，请先运行 npm run build');
 }
 await new Promise(r => server.listen(0, '127.0.0.1', r));
 const base = 'http://127.0.0.1:' + server.address().port;
@@ -117,9 +118,24 @@ try {
       scrollWidth:document.documentElement.scrollWidth,
       viewportWidth:document.documentElement.clientWidth,
       actionHeight:document.querySelector('#likeButton')?.getBoundingClientRect().height,
-      swapHeight:document.querySelector('#swapButton')?.getBoundingClientRect().height
+      swapHeight:document.querySelector('#swapButton')?.getBoundingClientRect().height,
+      fakeStatusCount:document.querySelectorAll('.status-bar,.status-marks,#deviceTime').length,
+      menuRight:document.querySelector('#moreButton').getBoundingClientRect().right,
+      savedRight:document.querySelector('#savedButton').getBoundingClientRect().right,
+      cardBottom:document.querySelector('#frontCard').getBoundingClientRect().bottom,
+      buttonsTop:document.querySelector('.buttons').getBoundingClientRect().top,
+      buttonsBottom:document.querySelector('.buttons').getBoundingClientRect().bottom,
+      footerBottom:document.querySelector('.bottom-copy').getBoundingClientRect().bottom,
+      viewportHeight:window.innerHeight
     }));
     assert.ok(ui.scrollWidth <= ui.viewportWidth+1,'整页不能出现横向溢出');
+    assert.equal(ui.fakeStatusCount,0,'所有视口都不得含模拟系统时间、信号或电量的假状态栏');
+    assert.ok(ui.menuRight <= ui.viewportWidth-12,'右上角设置菜单必须留在安全横向边距内');
+    assert.ok(ui.savedRight <= ui.viewportWidth-12,'收藏计数不能靠屏幕边缘或溢出');
+    assert.ok(ui.buttonsTop >= ui.cardBottom && ui.buttonsTop-ui.cardBottom <= 40,
+      '人物卡下方与 PASS/收藏按钮之间不应出现大块空白');
+    assert.ok(ui.buttonsBottom <= ui.viewportHeight-32,'操作按钮不能被系统底部导航遮挡');
+    assert.ok(ui.footerBottom <= ui.viewportHeight-8,'切换候选与卡片序号不能超出手机可视区');
     assert.ok(ui.actionHeight >= 44,'主要操作按钮须有移动端可触及面积');
     assert.ok(ui.swapHeight >= 30,'双卡切换应有可触及区域');
     await page.screenshot({path:resolve(artifacts, 'encounter-' + viewport.width + '.png')});
@@ -172,8 +188,59 @@ try {
       await page.screenshot({path:resolve(artifacts,'encounter-object-concealed.png')});
       await page.locator('#frontCard').click();
       await page.locator('#overlay.open').waitFor();
+      await page.locator('[data-object-choice]').first().waitFor();
+      assert.equal(await page.locator('[data-object-choice]').count(),3,
+        '以物识人必须呈现三种属于该人物世界的职业选项');
+      assert.equal(await page.locator('#sheet .sheet-row').count(),0,
+        '猜测身份之前不得展示完整姓名、性别或种族');
+      await page.screenshot({path:resolve(artifacts,'encounter-object-guess-390.png')});
+      await page.locator('[data-object-choice]').first().click();
       assert.match(await page.locator('#sheet').innerText(),/姓名/);
       assert.match(await page.locator('#sheet').innerText(),/女/);
+      assert.match(await page.locator('#sheet').innerText(),/你猜对了|你猜 TA 是/);
+      await page.keyboard.press('Escape');
+      // 「性格盲测」必须有真实的三选一流程，而不是点击就直接泄露人设。
+      await page.locator('#moreButton').click();
+      await page.locator('#setting-type').selectOption('性格盲测');
+      await page.keyboard.press('Escape');
+      await page.locator('#passButton').click();
+      await page.waitForTimeout(350);
+      assert.equal(await page.locator('#frontCard .name').innerText(),'一段陌生的声音');
+      await page.locator('#frontCard').click();
+      await page.locator('[data-blind-choice]').first().waitFor();
+      assert.equal(await page.locator('[data-blind-choice]').count(),3,
+        '盲测必须提供三个本地性格选项');
+      assert.equal(await page.locator('#sheet .sheet-row').count(),0,
+        '选择之前不得展示人物完整身份');
+      await page.screenshot({path:resolve(artifacts,'encounter-blind-guess-390.png')});
+      await page.locator('[data-blind-choice]').first().click();
+      assert.match(await page.locator('#sheet').innerText(),/姓名/);
+      assert.match(await page.locator('#sheet').innerText(),/内在反差/);
+      assert.match(await page.locator('#sheet').innerText(),/你的第一印象|你原以为/);
+      await page.keyboard.press('Escape');
+      // 蒙面档案必须逐层展示线索，玩家主动揭晓之前不得出现姓名或原职业。
+      await page.locator('#moreButton').click();
+      await page.locator('#setting-type').selectOption('蒙面档案');
+      await page.keyboard.press('Escape');
+      await page.locator('#passButton').click();
+      await page.waitForTimeout(350);
+      assert.equal(await page.locator('#frontCard .name').innerText(),'未署名的旅人');
+      await page.locator('#frontCard').click();
+      await page.locator('#overlay.open').waitFor();
+      assert.match(await page.locator('#sheet').innerText(),/线索 00 \/ 03/);
+      assert.equal(await page.locator('#sheet .sheet-row').count(),0);
+      await page.locator('[data-mask-next]').click();
+      assert.match(await page.locator('#sheet').innerText(),/线索 01 \/ 03/);
+      await page.locator('[data-mask-next]').click();
+      assert.match(await page.locator('#sheet').innerText(),/线索 02 \/ 03/);
+      assert.equal(await page.locator('#sheet .sheet-row').count(),0);
+      await page.screenshot({path:resolve(artifacts,'encounter-masked-clues-390.png')});
+      await page.locator('[data-mask-next]').click();
+      assert.match(await page.locator('#sheet').innerText(),/线索 03 \/ 03/);
+      assert.equal(await page.locator('[data-mask-next]').count(),0);
+      await page.locator('[data-mask-reveal]').click();
+      assert.match(await page.locator('#sheet').innerText(),/姓名/);
+      assert.match(await page.locator('#sheet').innerText(),/身份/);
       await page.keyboard.press('Escape');
     }
     await page.reload({waitUntil:'load'});
@@ -199,6 +266,26 @@ try {
       await page.reload({waitUntil:'load'});
       const afterReload = await page.evaluate(() => JSON.parse(localStorage.getItem('ai_custom_characters')));
       assert.ok(afterReload.some(r=>r.id===inserted.id),'刷新后正式角色仍应存在');
+      // 新标签页复用当前账号下的角色库；只按已创建角色的正式 ID 跳转原聊天。
+      const revisit=await context.newPage();
+      try {
+        await revisit.goto(base+'/encounter/encounter.html',{waitUntil:'load'});
+        await revisit.locator('#savedButton').click();
+        await revisit.locator('[data-reunion="'+inserted.id+'"]').click();
+        assert.match(await revisit.locator('#sheet').innerText(),/再次相遇/);
+        await revisit.locator('[data-reunion-scene="keepsake"]').click();
+        assert.ok((await revisit.locator('#sheet .story-preview').innerText())
+          .includes(inserted.encounterOrigin.object),'旧物线索应继承原人物物件');
+        assert.equal((await revisit.evaluate(() => JSON.parse(localStorage.getItem('ai_custom_characters'))))
+          .find(r=>r.id===inserted.id)?.persona,inserted.persona,
+          '再遇预览不得修改正式角色人设');
+        await revisit.locator('[data-reunion-chat]').click();
+        await revisit.waitForURL(/\/chat\/chat\/chat-detail\.html\?/);
+        assert.equal(new URL(revisit.url()).searchParams.get('id'),inserted.id,
+          '主动去聊天必须传已有正式角色 ID');
+      } finally {
+        await revisit.close();
+      }
       await page.locator('#roleListContainer .role-slim-bar[data-id="'+inserted.id+'"]').click();
       await page.locator('#profileContent').waitFor({state:'visible'});
       // 从档案页重新打开编辑器，以便检查 JSON 导出。
@@ -229,9 +316,55 @@ try {
     if(jsErrors.length)failures.push(...jsErrors.map(e=>viewport.width+': '+e));
     await context.close();
   }
+  // 另建隔离浏览器上下文测试命运选择：不碰上述普通相遇的既有候选和截图。
+  const fateContext=await browser.newContext({
+    viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:2,
+    reducedMotion:'reduce'
+  });
+  try {
+    const fate=await fateContext.newPage();
+    await fate.goto(base+'/encounter/encounter.html',{waitUntil:'load'});
+    await fate.evaluate(() => localStorage.setItem('maomao_encounter_preferences_v1',
+      JSON.stringify({type:'命运分支'})));
+    await fate.reload({waitUntil:'load'});
+    await fate.locator('#frontCard').click();
+    await fate.locator('[data-fate]').first().waitFor();
+    const firstChoice=await fate.locator('[data-fate]').first().innerText();
+    await fate.locator('[data-fate]').first().click();
+    assert.equal(await fate.locator('[data-fate].selected').count(),1);
+    assert.ok((await fate.locator('#sheet .story-preview').innerText()).includes(firstChoice),
+      '未收藏候选也应显示刚选择的故事片段');
+    await fate.keyboard.press('Escape');
+    await fate.locator('#likeButton').click();
+    await fate.waitForTimeout(380);
+    assert.equal(await fate.locator('#savedCount').innerText(),'01');
+    await fate.locator('#savedButton').click();
+    await fate.locator('[data-preview]').first().click();
+    assert.equal(await fate.locator('[data-fate].selected').first().innerText(),firstChoice,
+      '收藏后的第一次打开必须保留选过的故事起点');
+    const secondChoice=await fate.locator('[data-fate]').nth(1).innerText();
+    await fate.locator('[data-fate]').nth(1).click();
+    await fate.waitForFunction(choice=>{
+      const result=window.MAOMAOEncounter.getCandidates();
+      return result.ok && result.value.some(card=>card.selectedChoice===choice);
+    },secondChoice);
+    assert.equal(await fate.locator('[data-fate].selected').first().innerText(),secondChoice);
+    await fate.screenshot({path:resolve(artifacts,'encounter-fate-persisted-390.png')});
+    await fate.reload({waitUntil:'load'});
+    await fate.locator('#savedButton').click();
+    await fate.locator('[data-preview]').first().click();
+    assert.equal(await fate.locator('[data-fate].selected').first().innerText(),secondChoice,
+      '刷新后收藏档案必须保持用户最后确认的分支，而非恢复旧选项');
+    assert.ok((await fate.locator('#sheet .story-preview').innerText()).includes(secondChoice),
+      '选中分支必须呈现一致的开场故事');
+  } finally {
+    await fateContext.close();
+  }
   if(failures.length)throw new Error('Browser JS errors:\n'+failures.join('\n'));
   const files=['encounter-375.png','encounter-390.png','encounter-430.png',
-    'encounter-original-role-editor.png','encounter-object-concealed.png'];
+    'encounter-original-role-editor.png','encounter-object-concealed.png',
+    'encounter-object-guess-390.png','encounter-blind-guess-390.png',
+    'encounter-masked-clues-390.png','encounter-fate-persisted-390.png'];
   const captured={};
   for(const name of files){
     const stat=await fs.stat(resolve(artifacts,name));
@@ -245,7 +378,9 @@ try {
     source:'vite-dist',viewports:[375,390,430],checked:{
       cardSwap:true,swipeRebound:true,fingerSwipeLeft:true,candidatePersistence:true,
       roleCreation:true,jsonRoundTrip:true,thirdPartyJsonRejected:true,
-      freeDrawNoApi:true
+      freeDrawNoApi:true,blindPersonaGuess:true,objectIdentityGuess:true,
+      maskedClueSteps:true,reunionNativeChat:true,fateChoicePersistence:true,
+      nativeSystemStatusBar:true
     },captured
   };
   await fs.writeFile(receiptPath,JSON.stringify(receipt,null,2)+'\n','utf8');
