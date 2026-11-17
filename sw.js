@@ -197,7 +197,7 @@ self.addEventListener('fetch', event => {
         redirect: req.redirect,
         cache: 'no-store'
       })).then(function (response) {
-        if (response && response.ok) {
+        if (response && response.ok && /(?:^|\s|;)text\/html(?:\s*;|$)/i.test(response.headers.get('content-type') || '')) {
           var copy = response.clone();
           // 写回缓存单独成 Promise：失败只影响缓存，不影响已成功的网络响应。
           cacheWritePromise = caches.open(CACHE_NAME)
