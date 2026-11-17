@@ -1,14 +1,55 @@
-// Run against an installed source/build server: BASE_URL=http://localhost:3000 node tests/chat-light-surfaces-browser.mjs
-// Uses synthetic roles only; default + iMessage at real mobile viewports.
+/** Real Chromium smoke against the built Vite app (not a stand-alone fixture).
+ * Run after npm run build. The script starts its own local preview; no live API/data.
+ * BASE_URL may override only with a pre-existing localhost server.
+ */
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 
-const base = process.env.BASE_URL || 'http://localhost:3000';
-const browser = await chromium.launch();
+const PORT = Number(process.env.CHAT_UI_QA_PORT || 34279);
+const base = process.env.BASE_URL || 'http://127.0.0.1:' + PORT + '/';
+const parsedBase = new URL(base);
+if (parsedBase.protocol !== 'http:' ||
+    !['localhost', '127.0.0.1'].includes(parsedBase.hostname)) {
+  throw new Error('CHAT-UI-001 browser smoke only accepts a local preview origin');
+}
+
+let server, browser;
+async function startPreview() {
+  if (process.env.BASE_URL) return;
+  const vite = new URL('../node_modules/vite/bin/vite.js', import.meta.url);
+  server = spawn(process.execPath,
+    [vite.pathname, 'preview', '--host', '127.0.0.1', '--port', String(PORT), '--strictPort'],
+    { stdio: ['ignore', 'pipe', 'pipe'] });
+  const endpoint = new URL('chat/chat/chat.html', base);
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (server.exitCode !== null) throw new Error('Local Vite preview exited early');
+    try {
+      const response = await fetch(endpoint, { signal: AbortSignal.timeout(600) });
+      if (response.ok) return;
+    } catch {}
+    await new Promise(resolve => setTimeout(resolve, 150));
+  }
+  throw new Error('Local Vite preview did not become ready');
+}
+
 try {
+  await startPreview();
+  browser = await chromium.launch({ headless: true,
+    ...(process.env.MAOMAO_CHROMIUM_PATH
+      ? { executablePath: process.env.MAOMAO_CHROMIUM_PATH } : {}),
+    args: ['--no-sandbox'] });
   for (const width of [375, 390, 430, 1280]) {
     for (const theme of ['default', 'imessage']) {
-      const context = await browser.newContext({ viewport: { width, height: 844 } });
+      const context = await browser.newContext({
+        viewport: { width, height: 844 },
+        isMobile: width <= 430, hasTouch: width <= 430,
+        serviceWorkers: 'block'
+      });
+      // Never call any production/QA AI, account, push or wallet endpoint.
+      await context.route('**/*', route =>
+        route.request().url().startsWith(parsedBase.origin + '/')
+          ? route.continue() : route.abort());
       await context.addInitScript(themePreset => {
         localStorage.setItem('maomao_chat_theme_preset', themePreset);
         localStorage.setItem('ai_custom_characters', JSON.stringify([{ id: 'light-qa', name: '测试角色' }]));
@@ -74,5 +115,6 @@ try {
     }
   }
 } finally {
-  await browser.close();
+  if (browser) await browser.close();
+  if (server && server.exitCode === null) server.kill('SIGTERM');
 }
