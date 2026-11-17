@@ -150,3 +150,61 @@ test('result.getData(chat) falls back only for missing primary with a valid lega
   const validPrimary = fixture({ chat_history_A: '[{"text":"primary"}]', phone_data_v2: '{invalid-v2' });
   assert.equal(validPrimary.api.result.getData('A', 'chat').value.history[0].text, 'primary');
 });
+
+
+test('invalid conversation IDs never write phantom chat_history keys', () => {
+  const f = fixture({ chat_history_A: '[{"text":"keep"}]' });
+  for (const id of [undefined, null, '', '   ', 0, {}]) {
+    assert.equal(f.api.saveChatHistory(id, [{ text: 'wrong' }]), false);
+    assert.equal(f.api.result.saveChatHistory(id, [{ text: 'wrong' }]).error.code, 'VALIDATION_FAILED');
+    assert.equal(f.api.result.appendChatHistory(id, { text: 'wrong' }).error.code, 'VALIDATION_FAILED');
+  }
+  assert.equal(f.data.chat_history_A, '[{"text":"keep"}]');
+  assert.equal(f.writes.filter((key) => String(key).startsWith('chat_history_')).length, 0);
+});
+
+test('forward append rejects corrupt and non-array target without touching source role', () => {
+  for (const bad of ['{broken', '{"history":[]}', 'null']) {
+    const f = fixture({ chat_history_A: bad, chat_history_B: '[{"mid":"source"}]', phone_data_v2: root() });
+    const res = f.api.result.appendChatHistory('A', { mid: 'forward-1', assetId: 'synthetic-image' });
+    assert.equal(res.ok, false);
+    assert.equal(res.error.code, 'CORRUPT_DATA');
+    assert.equal(f.data.chat_history_A, bad);
+    assert.equal(f.data.chat_history_B, '[{"mid":"source"}]');
+    assert.equal(f.writes.filter((key) => key === 'chat_history_A').length, 0);
+  }
+});
+
+test('forward append handles quota and dropped writes without false success', () => {
+  for (const [options, code] of [[{ quotaThrows: true }, 'QUOTA_EXCEEDED'], [{ dropWrites: true }, 'DB_UNAVAILABLE']]) {
+    const f = fixture({ phone_data_v2: root(), chat_history_B: '[{"mid":"source"}]' }, options);
+    const res = f.api.result.appendChatHistory('A', { mid: 'forward-1', assetId: 'synthetic-image' });
+    assert.equal(res.ok, false);
+    assert.equal(res.error.code, code);
+    assert.equal(f.data.chat_history_A, undefined);
+    assert.equal(f.data.chat_history_B, '[{"mid":"source"}]');
+    assert.equal(JSON.parse(f.data.phone_data_v2).A.chat.history[0].text, 'stale A');
+  }
+});
+
+test('forward append migrates valid legacy v2 and keeps unrelated role intact', () => {
+  const f = fixture({ phone_data_v2: root('legacy A'), chat_history_B: '[{"mid":"source"}]' });
+  const res = f.api.result.appendChatHistory('A', { mid: 'forward-1', assetId: 'synthetic-image' });
+  assert.equal(res.ok, true);
+  const saved = JSON.parse(f.data.chat_history_A);
+  assert.equal(saved.length, 2);
+  assert.equal(saved[0].text, 'legacy A');
+  assert.equal(saved[1].mid, 'forward-1');
+  assert.equal(f.data.chat_history_B, '[{"mid":"source"}]');
+  assert.equal(JSON.parse(f.data.phone_data_v2).B.chat.history[0].text, 'untouched B');
+});
+
+test('forward append fails closed when v2 is malformed and primary absent', () => {
+  const malformed = '{"A":{"chat":{"history":{"text":"bad"}}}}';
+  const f = fixture({ phone_data_v2: malformed, chat_history_B: '[{"mid":"source"}]' });
+  const res = f.api.result.appendChatHistory('A', { mid: 'forward-1' });
+  assert.equal(res.ok, false);
+  assert.equal(res.error.code, 'CORRUPT_DATA');
+  assert.equal(f.data.phone_data_v2, malformed);
+  assert.equal(f.data.chat_history_A, undefined);
+});
