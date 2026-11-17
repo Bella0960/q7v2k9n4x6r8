@@ -71,7 +71,7 @@ test('iMessage native composer restores the button and avoids the extra floating
 test('clean chat layout is scoped to its own pages, and no fake status bars remain',()=>{
  const css=read('shared/css/chat-light-surfaces.css');
  for(const route of ['chat/chat/chat.html','chat/chat/chat-detail.html']){
-  assert.match(read(route),/chat-light-surfaces\.css\?v=20261118v3/);
+  assert.match(read(route),/chat-light-surfaces\.css\?v=20261118v4/);
  }
  assert.match(css,/body\.chat-light-list \.phone-mockup > \.status-bar,\s*body\.chat-light-detail \.phone-mockup > \.status-bar \{ display:none !important; \}/);
  assert.match(css,/data-chat-theme-preset="imessage"/);
@@ -115,4 +115,11 @@ test('beauty editor defaults respect the current page preset',()=>{
   assert.equal(classic.getDefaults().avatarSize,30,preset+' must keep its original editor defaults');
   assert.equal(classic.getDefaults().myBubbleFontSize,12,preset+' must not inherit default font sizing');
  }
+});
+
+
+test('composer buttons meet the mobile touch target and iMessage feature sheet is not frosted',()=>{
+ const css=read('shared/css/chat-light-surfaces.css');
+ assert.match(css,/form#chat-form \.plus-action-btn,\s*body\.chat-light-detail[\s\S]*?form#chat-form \.send-icon-btn \{\s*flex-basis:44px !important;\s*width:44px !important;\s*min-width:44px !important;/);
+ assert.match(css,/\.phone-mockup\[data-chat-theme-preset="imessage"\] \.plus-panel-sheet \{[\s\S]*?background:#fff !important;[\s\S]*?backdrop-filter:none !important;/);
 });
