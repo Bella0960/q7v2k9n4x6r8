@@ -332,3 +332,20 @@ test('场景6：网络返回非 2xx 时原样返回页面且不写缓存', async
   await flushAsync();
   assert.equal(lifecycleState.value, 'fulfilled', '非 2xx 路径的生命周期应正常结束');
 });
+
+test('场景7：导航请求收到非 HTML 的 200 响应时不污染页面缓存', async () => {
+  const harness = createHarness({
+    cachedResponse: null,
+    fetchImpl: () => Promise.resolve(new Response('{"ok":true}', {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    })),
+    putImpl: () => Promise.resolve()
+  });
+  const event = harness.dispatchNavigation();
+  const response = await event.responsePromise;
+  assert.equal(response.status, 200, '保留原始网络响应');
+  assert.equal(await response.text(), '{"ok":true}');
+  await Promise.all(event.lifecycle);
+  assert.equal(harness.putCalls.length, 0, '非 HTML 不得作为页面写入 Cache API');
+});
