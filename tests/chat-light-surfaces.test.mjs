@@ -75,6 +75,6 @@ test('clean chat layout is scoped to its own pages, and no fake status bars rema
  }
  assert.match(css,/body\.chat-light-list \.phone-mockup > \.status-bar,\s*body\.chat-light-detail \.phone-mockup > \.status-bar \{ display:none !important; \}/);
  assert.match(css,/data-chat-theme-preset="imessage"/);
- assert.match(css,/grid-template-columns:76px minmax\(0,1fr\) 76px/);
+ assert.match(css,/grid-template-columns:88px minmax\(0,1fr\) 88px/);
  assert.match(css,/max\(8px,env\(safe-area-inset-bottom,0px\)\)/);
 });
