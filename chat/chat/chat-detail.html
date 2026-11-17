@@ -17,6 +17,7 @@
     <script src="../../shared/js/phone/role-sticker-library.js?v=20261107v2"></script>
     <script src="../../shared/js/phone/chat-image-vision.js?v=20261113v1"></script>
     <script src="../../shared/js/phone/rp-default-protocol.js?v=20261118v1"></script>
+    <script src="../../shared/js/phone/chat-role-context.js?v=20261118v1"></script>
     <script src="../../shared/js/phone/phone_api.js?v=20261115cancel1"></script>
     <script src="../../shared/js/phone/image-generation.js?v=20261106v1"></script>
     <script src="../../shared/js/phone/role-gallery-image-autonomy.js?v=20261111v2"></script>
@@ -5673,6 +5674,18 @@
                 }
             }
 
+            // 单聊每轮从同一角色 ID 只读最新档案；不沿用页面打开时的旧快照。
+            const roleForTurn = !isGroupChat
+                ? (window.MAOMAOChatRoleContext && typeof window.MAOMAOChatRoleContext.resolveRole === 'function'
+                    ? window.MAOMAOChatRoleContext.resolveRole(currentCharacter.id, currentCharacter, getRoleById)
+                    : (getRoleById(currentCharacter.id) || currentCharacter))
+                : currentCharacter;
+            // 历史错误身份仅从新邂逅普通角色的 AI 输入里剔除，不改一条历史消息。
+            const roleModelHistory = !isGroupChat && window.MAOMAOChatRoleContext &&
+                typeof window.MAOMAOChatRoleContext.getModelHistory === 'function'
+                ? window.MAOMAOChatRoleContext.getModelHistory(historyList, roleForTurn)
+                : historyList;
+
             // ===== R2 字符预算：上下文各段落设上限，超长静默截断降级（防 400 context_length_exceeded） =====
             // 阈值按中文 ≈0.6~1 token/字 估算；最坏组合 ~30k 字，适配主流 32k+ 上下文模型。要调就改这里。
             var CTX_CAP = {
@@ -5783,7 +5796,7 @@
                     }
                 }
             } else {
-                rolePersona = (currentCharacter.persona || currentCharacter.prompt || '').trim()
+                rolePersona = (roleForTurn.persona || roleForTurn.prompt || '').trim()
                     || '你正在以此角色身份发消息。根据档案与已知背景说话，不自称 AI 助手，不编造职业或经历。';
             }
             // An explicitly addressed admin order should be answered by the addressed admin,
@@ -5902,7 +5915,7 @@
 
             var relationshipRole = isGroupChat
                 ? (groupReplyPick ? getRoleById(groupReplyPick.id) : null)
-                : currentCharacter;
+                : roleForTurn;
             var characterSocialPrompt = '';
             try { characterSocialPrompt = buildCharacterSocialPrompt(relationshipRole); } catch (socialContextError) {
                 console.warn('[CharacterSocialContext] skipped:', socialContextError);
@@ -5957,7 +5970,7 @@
                 ? '本群仅通过经过公开范围过滤的共同记忆接口读取历史。'
                 : capText(buildWeightedMemoryText(
                     typeof aliasRoleId !== 'undefined' ? aliasRoleId : roleId,
-                    (currentCharacter.memory || '').trim()
+                    (roleForTurn.memory || '').trim()
                 ) || '暂无记忆', CTX_CAP.memory);
 
             // 实时状态（记忆空间子系统：当前心情 + 今日事件）
@@ -6038,7 +6051,7 @@
             // 协议变量替换：{{char}} {{user}} {{persona}} {{memory}} {{worldbook}}
             function applyProtocolVars(text) {
                 return String(text || '')
-                    .replace(/\{\{char\}\}/g, currentCharacter.name || '角色')
+                    .replace(/\{\{char\}\}/g, roleForTurn.name || '角色')
                     .replace(/\{\{user\}\}/g, userName)
                     .replace(/\{\{persona\}\}/g, rolePersona)
                     .replace(/\{\{memory\}\}/g, roleMemory)
@@ -6210,7 +6223,7 @@
             }
 
             // ========== 身份锁：最外层强制协议，优先级最高，不可被覆盖 ==========
-            const charName = currentCharacter.name || '角色';
+            const charName = roleForTurn.name || '角色';
             const IDENTITY_LOCK = [
               '═══════════════════════════════════',
               '【身份锚定】',
@@ -6255,7 +6268,7 @@
               '【以下为当前角色完整资料与对话背景】'
             ].join('\n');
             // 当前单聊的邂逅职业、经历与性格进入每轮请求；不混入其他角色/群聊。
-            var encounterIdentityContext = !isGroupChat ? buildEncounterIdentityContext(currentCharacter) : '';
+            var encounterIdentityContext = !isGroupChat ? buildEncounterIdentityContext(roleForTurn) : '';
             systemPrompt = IDENTITY_LOCK
                 + (encounterIdentityContext ? '\n\n' + encounterIdentityContext + '\n\n' : '')
                 + (characterSocialPrompt ? '\n\n' + characterSocialPrompt + '\n\n' : '') + systemPrompt;
@@ -6365,7 +6378,7 @@
             if (window.ChatPresencePolicy && typeof window.ChatPresencePolicy.buildPrompt === 'function') {
                 var presencePrompt = window.ChatPresencePolicy.buildPrompt({
                     mode: presenceMode,
-                    history: historyList,
+                    history: roleModelHistory,
                     currentText: text,
                     isGroupChat: isGroupChat,
                     speakerId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : '',
@@ -6394,14 +6407,14 @@
                     } catch (e) {}
 
                     var voiceHabitProfile = window.ChatPresencePolicy.buildVoiceHabitProfile(
-                        historyList,
+                        roleModelHistory,
                         {
                             isGroupChat: isGroupChat,
                             speakerId: isGroupChat ? voiceProfileRoleId : '',
                             speakerName: groupReplyPick && groupReplyPick.name ? groupReplyPick.name : '',
                             maxMessages: 80
                         },
-                        cachedVoiceProfile
+                        roleModelHistory !== historyList ? null : cachedVoiceProfile
                     );
                     try {
                         if (voiceHabitProfile) {
@@ -6419,7 +6432,7 @@
                 // 情绪连续性只读取近期明确表达的线索；不写入长期记忆，也不额外调用 API。
                 if (presencePrompt && typeof window.ChatPresencePolicy.buildEmotionContinuityPrompt === 'function') {
                     var emotionContinuityPrompt = window.ChatPresencePolicy.buildEmotionContinuityPrompt(
-                        historyList,
+                        roleModelHistory,
                         {
                             mode: presenceMode,
                             isGroupChat: isGroupChat,
@@ -6434,7 +6447,7 @@
                 // 角色自主性只使用当前会话中角色本人明确提过的近期安排，不额外读写数据库或调用 API。
                 if (presencePrompt && typeof window.ChatPresencePolicy.buildAutonomyPrompt === 'function') {
                     var autonomyPrompt = window.ChatPresencePolicy.buildAutonomyPrompt(
-                        historyList,
+                        roleModelHistory,
                         {
                             mode: presenceMode,
                             isGroupChat: isGroupChat,
@@ -6527,7 +6540,7 @@
             // 末尾再次核对人格，避免功能性系统提示与错误旧消息将角色带成客服。
             if (!isGroupChat) {
                 systemPrompt += '\n\n【发送前的角色一致性核对】\n' +
-                    '你是在和用户聊天的「' + String(currentCharacter.name || '角色') + '」本人，不是这个应用的客服、生成工具或系统说明书。' +
+                    '你是在和用户聊天的「' + String(roleForTurn.name || '角色') + '」本人，不是这个应用的客服、生成工具或系统说明书。' +
                     '直接回答具体问题，尤其是姓名、住处、职业、今晚安排等生活问题：' +
                     '必须遵守当前人物档案与邂逅背景；资料不明确时不要编造矛盾的身份。' +
                     '除非人物档案明确设定为数字生命，否则不要声称自己是 AI、运行在云端、只住在对话框或存在于代码中。' +
@@ -6553,14 +6566,14 @@
                 typeof window.ChatContextPolicy.selectRecentHistory === 'function'
             ) {
                 const memoryLimit = window.ChatContextPolicy.resolveMemoryLimit(roleMemoryLimitSetting, config.memoryCount);
-                recentHistory = window.ChatContextPolicy.selectRecentHistory(historyList, memoryLimit);
+                recentHistory = window.ChatContextPolicy.selectRecentHistory(roleModelHistory, memoryLimit);
             } else {
                 // Compatibility fallback: preserve the page's original limit and slice behavior.
                 let memoryLimit = parseInt(roleMemoryLimitSetting, 10);
                 if ([10, 20, 30, 50].indexOf(memoryLimit) === -1) {
                     memoryLimit = config.memoryCount || 20;
                 }
-                recentHistory = historyList.slice(-memoryLimit);
+                recentHistory = roleModelHistory.slice(-memoryLimit);
             }
             // Exclude legacy private cards before history enters model requests.
             if (isGroupChat) recentHistory = recentHistory.filter(function (m) {
@@ -6606,7 +6619,7 @@
                     typeof window.ChatContextPolicy.buildHistoricalRecallRequest === 'function'
                 ) {
                     const recallRequest = window.ChatContextPolicy.buildHistoricalRecallRequest(
-                        historyList,
+                        roleModelHistory,
                         text,
                         recentHistory.length
                     );
@@ -6615,8 +6628,8 @@
                 } else {
                     // Compatibility fallback: preserve the original backwards query scan and limits.
                     if (!recallQuery) {
-                        for (let ri = historyList.length - 1; ri >= 0; ri--) {
-                            const entry = historyList[ri];
+                        for (let ri = roleModelHistory.length - 1; ri >= 0; ri--) {
+                            const entry = roleModelHistory[ri];
                             if (entry && (entry.role === 'user' || entry.role === 'sent') && (entry.text || entry.content)) {
                                 recallQuery = String(entry.text || entry.content);
                                 break;
@@ -6628,7 +6641,7 @@
                     ? historyList.filter(function (m) {
                         return m && m.type !== 'group_private' && m.type !== 'group_game_private' &&
                             m.visibility !== 'private' && m.visibility !== 'role_only';
-                    }) : historyList;
+                    }) : roleModelHistory;
                 if (isGroupChat) recallOptions.groupPublicOnly = true;
                 const recalledText = window.MemoryRecall.buildHistoricalRecallText(recallableHistory, recallQuery, recallOptions);
                 if (recalledText) apiMessages[0].content += '\n\n' + recalledText;
