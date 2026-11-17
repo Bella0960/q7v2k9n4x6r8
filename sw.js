@@ -18,7 +18,7 @@ const APP_SHELL = [
   './account/bootstrap.js',
   './account/bootstrap.html',
   './account/index.html',
-  './admin/admin-center.js?v=20261117-ui2',
+  './admin/admin-center.js?v=20261117-ui3',
   './admin/admin-center.css?v=20261117-ui1',
   './account/settings-link.js?v=1',
   './account/manage.js',
