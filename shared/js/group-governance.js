@@ -240,6 +240,18 @@
     if (!all || !inbox) return fail('INVALID_STORAGE', '群邀请存储不可用');
     var inv = inbox.find(function (x) { return x && x.status === 'pending' && id(x.id) === id(req.id); });
     if (!inv) return fail('NOT_FOUND', '邀请已处理或不存在');
+    var accepted = req.accept === true;
+    // Refusing an invitation must never depend on stale/deleted role profiles
+    // or group eligibility. It only closes this pending record and must not
+    // create or modify any group or role.
+    if (!accepted) {
+      inv.status = 'declined'; inv.resolvedAt = Date.now();
+      if (!write(storage, INVITATIONS, inbox))
+        return fail('SAVE_FAILED', '拒绝邀请的状态未保存');
+      emit('invitation:resolved', { groupId:id(inv.groupId), accepted:false,
+        inviterId:id(inv.inviterId) });
+      return { ok:true, accepted:false, groupId:id(inv.groupId) };
+    }
     var g = inv.draftGroup || all.find(function (x) { return x && id(x.id) === id(inv.groupId); });
     if (inv.draftGroup) {
       if (!g || id(g.ownerId) !== id(inv.inviterId) || !find(g, inv.inviterId) ||
@@ -249,7 +261,7 @@
       if (!roles || g.members.some(function (m) { return !roles.some(function (r) { return r && id(r.id) === id(m.id); }); }))
         return fail('MISSING_ROLE', '群成员已变化，无法创建');
     } else if (!eligible(g, inv.inviterId)) return fail('INELIGIBLE', '邀请已失效');
-    var original = JSON.stringify(all), accepted = req.accept === true;
+    var original = JSON.stringify(all);
     if (accepted) {
       g.userMembership = 'joined'; g.lastUserJoinedAt = Date.now();
       if (inv.draftGroup) all.push(g);
