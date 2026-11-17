@@ -367,3 +367,9 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **核对证据**：通过连接的 GitHub 读取最终 QA 文件与比较五个提交，针对页面/作用域/开关/说明/平衡标签/测试文件/业务不回退共 **18/18 静态断言 PASS**；不是 Node CLI、Vite 或真实 Chromium。仓库内待执行的重点命令：`node --test tests/settings-header-compact.test.mjs tests/cloud-push-header-compact.test.mjs tests/qa-cloud-settings-integration.test.mjs`；之后 `npm run build`、QA release gate 与 375/390/430 浏览器/安卓/iOS 实机检查。
 - **部署状态与下一步**：连接的 Cloudflare 只读核查确认 `preview.mao520.com` 绑定 `maomao-aw-qa-20261114`，核对时最近已知部署为 `2026-11-16T21:19:39Z`，**早于上述 UI 提交**；截至本记录，没有新 UI 代码的 QA 部署成功回执，故标 `QA_CODE_INTEGRATED / NODE_NOT_RUN / BROWSER_NOT_RUN / QA_NOT_DEPLOYED / USER_NOT_ACCEPTED`。必须在完整工程环境执行真实 Node/Vite/浏览器测试，通过后原地部署同一 QA 并保留旧 QA 数据，由用户验收。正式版保持原样，等待单独许可。
 - **回退**：仅回退上述局部页面样式、`body` class 与测试文件即可；没有任何数据迁移或用户数据删除。
+
+
+### 同日最终 UI 加固补充：不止隐藏，而是移除假状态栏 DOM
+- QA 原来还保留 3 个实际模拟条：`settings/settings.html` 主页面、同文件的 `#api-panel` 弹层、`settings/cloud-push.html`。已直接移除 3 处完整的 `09:41`、网络/电量模拟 DOM，未触碰操作系统真实栏。为 API 弹层新增独立紧凑 `#api-panel > .header` 样式，避免删除假条后仍保留 56px 顶部空白；更新两个回归测试，明确要求 HTML 不得再次引入 `<div class="status-bar">`。原功能 PR #267、#148 均同步修复，避免后续合入时回流。
+- 本轮 QA 尾部提交：`917c2f05`、`7f841282`、`bdd12982`、`3dc9af29`、`f2e70fe1`，按文件移除/样式/测试提交，未修改 worker/sw/账号/DB。最新 QA 源码 GitHub 回读新增 **15/15 静态断言 PASS**，包括三个条全部消失、API 弹层收窄、所有 QA 推送控件与原入口保留、差异文件仅在授权范围；并不代表 `node --test`、构建、Chromium 或手机验收已经执行。
+- **状态保持**：`QA_CODE_INTEGRATED`；完整 Node/Vite/浏览器测试与 QA 更新部署仍是 `NOT RUN / NOT DEPLOYED`。所有提交都在唯一 QA 分支中，不触碰正式域名/正式库。
