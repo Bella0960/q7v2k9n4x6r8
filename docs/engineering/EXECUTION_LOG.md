@@ -215,3 +215,10 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - Cloudflare 只读核查：maomao-aw-qa-20261114 最近一个部署时间为 2026-11-16T21:19:39Z（较本轮功能 HEAD 早），故线上唯一 QA 没有本轮修改的成功回执。
 - 仍需在包含完整依赖的工程工作区依次执行 npm ci、npm run test:encounter、npm run build、npm run test:encounter:browser；再将 #290 安全账号底座按既有唯一 QA 整合流程纳入后运行 npm run gate:encounter、Android/iOS 真机安全区与真实账号双端验证。不得通过删掉发布门禁来假装完工。
 - PR #297 继续 Draft，PR #299 仍冻结由原唯一 QA 窗口接管，正式 main、管理员 001、钱包/角色真实数据未动。
+
+
+## FEATURE-ENCOUNTER-001｜2026-11-17 真实 V8 逻辑回归补证（仍非原生构建）
+- 在本窗口读取 GitHub 最新 engine 文件执行内存存储回归：45 次生成姓名无重复且不碰原角色/别名、候选持久化读回、重复收藏幂等、删除墓碑不可复活、损坏旧收藏阻断生成且原文不覆盖、站点缺账号作用域时 fail-closed、抽卡零 AI 请求等共 **10/10 PASS**。这是浏览器同类 V8 执行，不是 Node test runner。
+- 直接以仓库实际 tests/encounter-ui-contract.test.mjs 为测试主体、使用适配的 fs/vm/test/assert/定时器执行 **16/16 PASS**，包括假状态栏禁止、browser smoke 与正式 gate 分离、手势回弹、收藏失败保护、双卡、蒙面、物件、性格、再遇、命运保存竞态。首次适配器缺 setImmediate 导致 5 项无法执行；补齐后重新执行全部 16/16 PASS，非产品改动。
+- 同一轮 V8 语法解析：页面内联交互 JS、抽卡引擎及去 import 壳后的 UI 测试/Chromium 脚本/发布 gate 通过。正式 CLI 构建、Playwright 真浏览器、Android/iOS 和线上 QA **仍 NOT RUN / NOT VERIFIED**。
+- 保留发布安全规则：原 PR #297 无 account/index.html 与 account/account.js，必须与 #290 原账号分支在唯一 QA 整合并确认正式账号隔离后，gate:encounter 才能通过；不能手动造一个“假的账号页”或者取消正式 gate。最新 Cloudflare QA 最近部署仍早于本轮修复。
