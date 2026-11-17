@@ -9,6 +9,8 @@ const html = readFileSync(resolve(root, 'settings/settings.html'), 'utf8');
 const compact = css.slice(css.lastIndexOf('/* Settings home only: compact header'));
 
 test('Settings uses a native status bar without an extra simulated top strip', () => {
+  assert.match(html, /<body class="settings-home">/);
+  assert.match(compact, /body\.settings-home \.phone-mockup > \.status-bar/);
   assert.ok(compact, 'compact Settings styles should exist');
   assert.match(compact, /\.phone-mockup\s*>\s*\.status-bar\s*\{\s*display:\s*none\s*!important\s*;?\s*\}/);
   assert.match(html, /<header class="header">/);
