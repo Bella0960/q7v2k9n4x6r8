@@ -6027,6 +6027,21 @@
                       wbList = wbList.filter(function (book) { return book && mountedIds.indexOf(String(book.id)) !== -1; });
                     }
                   }
+                } else if (window.MAOMAOChatRoleContext &&
+                           typeof window.MAOMAOChatRoleContext.selectWorldbooksForRole === 'function') {
+                  // 单聊读取当前角色绑定的局部世界书，不允许其他人物的局部背景串入。
+                  var roleMountedIds = [];
+                  var roleMountRaw = localStorage.getItem('chat_worldbooks_' + aliasRoleId);
+                  if (roleMountRaw != null) {
+                    try {
+                      var parsedRoleMount = JSON.parse(roleMountRaw);
+                      if (Array.isArray(parsedRoleMount)) roleMountedIds = parsedRoleMount;
+                    } catch (mountError) {
+                      // 无法解析挂载列表时只使用角色档案绑定，不覆盖原始记录。
+                    }
+                  }
+                  wbList = window.MAOMAOChatRoleContext.selectWorldbooksForRole(
+                    wbList, roleForTurn, roleMountedIds);
                 }
                 if (window.ChatContextPolicy &&
                     typeof window.ChatContextPolicy.buildWorldbookInjectionText === 'function') {
@@ -6035,7 +6050,7 @@
                     recentMessages: (isGroupChat ? historyList.filter(function (m) {
                         return m && m.type !== 'group_private' && m.type !== 'group_game_private' &&
                             m.visibility !== 'private' && m.visibility !== 'role_only';
-                    }) : historyList).slice(-8),
+                    }) : roleModelHistory).slice(-8),
                     maxEntries: 32,
                     maxChars: CTX_CAP.worldbook
                   });
