@@ -54,6 +54,20 @@ test('发布门禁识别安全账号注入脚本 v2 和 v3，拒绝缺失保护�
     '无效账号脚本版本必须拒绝');
 });
 
+test('发布门禁拒绝 QA 旧版假系统栏，避免旧页面被误报完整交付', () => {
+  const gate=fs.readFileSync(new URL('../scripts/verify-encounter-release.mjs',import.meta.url),'utf8');
+  const line=gate.split('\n').find(row=>row.startsWith("forbidPattern('encounter/encounter.html',"));
+  assert.ok(line,'发布门禁必须显式禁止系统状态栏复刻');
+  const from="forbidPattern('encounter/encounter.html',".length;
+  const to=line.indexOf(",'严禁",from);
+  assert.ok(to>from,'必须保留假状态栏禁令理由');
+  const blocked=vm.runInThisContext(line.slice(from,to));
+  assert.doesNotMatch(html,blocked,'最新邂逅源码不应含假状态栏');
+  assert.match(html+'<div class="status-bar"></div>',blocked,
+    '旧版手机状态栏 HTML 必须触发发布阻断');
+  assert.match(html+'deviceTime',blocked,'旧版时间模拟脚本必须触发发布阻断');
+});
+
 function setup(initial={}) {
   const rows=new Map(Object.entries(initial));
   const localStorage={
