@@ -178,7 +178,7 @@ test('付费 AI 人设草稿写入失败必须返回失败，不能误报已经�
   const status=[];
   const result=vm.runInNewContext(source+';persistEditorDraft(true)',
     {
-      currentDraftKey:'maomao_character_draft_v1:new',editorOriginalState:null,
+      currentDraftKey:'maomao_character_draft_v1:new',unreadableDraftKey:'',editorOriginalState:null,
       captureEditorState:()=>({name:'保留生成的角色',persona:'已经支付并得到返回值'}),
       editorStatesEqual:(a,b)=>JSON.stringify(a)===JSON.stringify(b),
       localStorage:{setItem(){throw new Error('QuotaExceededError');}},
@@ -190,6 +190,27 @@ test('付费 AI 人设草稿写入失败必须返回失败，不能误报已经�
   assert.match(status.at(-1).text,/草稿暂存失败/);
   assert.match(managerSource,/if \(!persistEditorDraft\(true\)\)/,'收费请求前必须先做存储预检');
   assert.match(managerSource,/if \(!draftSaved\)/,'收费结果不能假称已经持久化');
+});
+
+test('已损坏且不可读取的草稿拒绝覆盖，原有资料保持原样', () => {
+  const start=managerSource.indexOf('function persistEditorDraft(force) {');
+  const end=managerSource.indexOf('function applyEditorState(state) {',start);
+  assert.ok(start>=0 && end>start);
+  const key='maomao_character_draft_v1:original';
+  const stored='{原草稿损坏但需要保留';
+  const status=[];
+  let writes=0;
+  const save=vm.runInNewContext(managerSource.slice(start,end)+';persistEditorDraft(true)',{
+    currentDraftKey:key,unreadableDraftKey:key,editorOriginalState:null,
+    captureEditorState:()=>({name:'新的草稿，不应覆盖旧数据'}),
+    editorStatesEqual:(a,b)=>JSON.stringify(a)===JSON.stringify(b),
+    localStorage:{getItem(){return stored;},setItem(){writes++;throw new Error('原草稿不得覆盖');}},
+    setSaveStatus:(text,state)=>status.push({text,state}),Date,JSON,console
+  });
+  assert.equal(save,false,'不可读草稿绝不能标记写入成功');
+  assert.equal(writes,0,'必须在调用本地写入前拒绝覆盖');
+  assert.equal(status.at(-1).state,'error');
+  assert.match(status.at(-1).text,/原草稿无法读取/);
 });
 
 test('角色库第一次为空时可安全初始化新角色，不需要写空数组', () => {
