@@ -54,7 +54,7 @@ test('明确设定为仿生人时不把合法身份当作错误；普通 AI 话�
 test('角色的最新人设、说话习惯、生活线、记忆与邂逅来源进入同一轮请求', () => {
   assert.match(detail, /const roleForTurn = !isGroupChat/);
   assert.match(detail, /resolveRole\(currentCharacter\.id, currentCharacter, getRoleById\)/);
-  assert.match(detail, /rolePersona = \(roleForTurn\.persona \|\| roleForTurn\.prompt/);
+  assert.match(detail, /rawCurrentPersona = \(roleForTurn\.persona \|\| roleForTurn\.prompt/);
   assert.match(detail, /var relationshipRole = isGroupChat[\s\S]*?: roleForTurn/);
   assert.match(detail, /buildCharacterSocialPrompt\(relationshipRole\)/);
   assert.match(detail, /role\.lifeLine/);
