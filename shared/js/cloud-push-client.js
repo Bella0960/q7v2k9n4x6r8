@@ -1966,8 +1966,20 @@
           if (Number(summary.sent) > 0) {
             report('FCM 已接受空载远程推送。请查看通知栏是否出现“远程空载通知”；这仍不是手机已收到的证明。');
           } else {
+            var detail = (result.results || []).find(function (item) {
+              return item.status === 'failed' || item.status === 'retry_scheduled' || item.status === 'gone';
+            }) || {};
+            var phases = {
+              vapid: 'VAPID 签名异常',
+              encrypt: '载荷加密异常（空载模式不应发生）',
+              transport: 'Worker 连接推送服务失败',
+              provider_http: '推送服务 HTTP ' + (detail.httpStatus || '?'),
+              unknown: '发送阶段未能确认'
+            };
             report('空载远程测试未确认发送：' + (Number(summary.failed) > 0
-              ? '服务器投递失败' : '请求被去重、限流或延迟') + '。');
+              ? (phases[detail.failurePhase] || '服务器投递失败') +
+                (detail.failureDiagnostic ? '（' + detail.failureDiagnostic + '）' : '')
+              : '请求被去重、限流或延迟') + '。');
           }
         } catch (error) {
           report('空载远程测试失败：' + (error?.message || '未知错误'));
