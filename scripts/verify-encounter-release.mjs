@@ -28,17 +28,34 @@ const requirePattern=(name,regex,why)=>{
   if(!regex.test(source))errors.push(name+' 验证失败：'+why);
   else results.push(name+' '+why);
 };
+const forbidPattern=(name,regex,why)=>{
+  const source=read(name);
+  if(regex.test(source))errors.push(name+' 验证失败：'+why);
+  else results.push(name+' '+why);
+};
+
+const pkg = (() => {
+  try { return JSON.parse(read('package.json')); }
+  catch (error) { errors.push('package.json 无法解析，拒绝认可测试回执'); return {}; }
+})();
+const accountTestScript = String(pkg.scripts?.['test:encounter:account'] || '');
+if (!accountTestScript.includes('npm run test:account:release-gate') ||
+    !accountTestScript.includes('node --test tests/encounter-actual-scope.test.mjs') ||
+    !accountTestScript.includes('node scripts/record-encounter-tests.mjs account')) {
+  errors.push('缺少真正运行账号发布回归后再生成账号测试回执的脚本 test:encounter:account');
+}
 
 requireFile('account/index.html','必须先整合并验收正式 MAO 登录（账号 PR #290）');
 requireFile('account/account.js','必须复用已验证的 MAO 账号入口');
 requireFile('shared/js/mao-account-scope.js','禁止新建第二套账号隔离');
 requireFile('encounter/encounter.html','抽卡页面未进入工程');
+forbidPattern('encounter/encounter.html',/\b(?:status-bar|status-marks|deviceTime)\b|function clock\(/,'严禁邂逅页面重新加入模拟系统状态栏或假时间计时器');
 requireFile('encounter/encounter-engine.js','本地候选引擎缺失');
 requireFile('tests/encounter-contract.test.mjs','无角色/存储合同测试');
 requireFile('tests/encounter-actual-scope.test.mjs','缺真实账号隔离测试');
 requireFile('tests/encounter-ui-contract.test.mjs','无真实手势状态模拟测试');
 requireFile('tests/encounter-browser.mjs','无浏览器端到端验收脚本');
-requirePattern('worker.js',/mao-account-scope\.js\?v=3/,'Worker 必须注入当前正式账号隔离脚本 v3');
+requirePattern('worker.js',/'<script src="\/shared\/js\/mao-account-scope\.js\?v=[1-9]\d*" data-mao-account-scope><\/script>'/,'Worker 必须在 HTML 中注入可版本升级的正式账号隔离脚本');
 requirePattern('sw.js',/req\.mode === 'navigate' && !isPublicAccountPage/,'私有 HTML 导航必须走 Worker 验证');
 requirePattern('sw.js',/requestedAccountId !== account\.id/,'字体资源不得跨账号复用');
 requirePattern('shared/js/font-loader.js',/fontAssetPath \+= encodeURIComponent\(maoScope\.accountId\)/,'字体 URL 必须使用原账号隔离逻辑');
