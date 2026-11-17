@@ -53,6 +53,9 @@
       STALE_SELECTION: '角色资料已在其他页面更改。请刷新后再试，原头像没有被覆盖。',
       ROLE_DELETED: '这个角色已经被删除，不能继续修改头像。',
       PAIR_EXISTS: '请先解除这张照片原来的配对。',
+      PAIR_CONFLICT: '照片已属于另一组情头，请先解除原配对。',
+      CORRUPT_DATA: '头像资料读取异常，未执行修改。',
+      VALIDATION_FAILED: '当前操作不可用，请检查头像或配对是否仍存在。',
       DB_UNAVAILABLE: '本机媒体库暂时不可用，原数据保留。',
       PARTIAL_ROLLBACK: '操作未能完整恢复。请检查图库或备份后再操作。',
       STORAGE_FAILED: '保存失败，请检查浏览器剩余空间。',
@@ -187,7 +190,7 @@
     if (!items.length) {
       var hasLegacy = /^data:image\//i.test(String(role.avatar || '')) ||
         /^as_[A-Z2-7]{32}$/.test(String(role.avatarAssetId || ''));
-      album.appendChild(makeEmpty('01.', '这里还没有收藏。添加照片，建立 TA 的专属头像档案。',
+      album.appendChild(makeEmpty('暂无照片', '这里还没有收藏。添加照片，建立 TA 的专属头像档案。',
         hasLegacy ? '收录当前头像' : '添加第一张照片',
         hasLegacy ? importLegacy : function () { byId('avatarFiles').click(); }));
     }
