@@ -35,10 +35,27 @@
     return history.filter(function (item) { return !isBrokenAssistantIdentity(item); });
   }
 
+  // 全局世界书保持全局可见；局部世界书必须属于当前角色绑定或当前会话挂载。
+  // 缺失 scope 的旧世界书按历史全局规则保留，不更改已有资料结构。
+  function selectWorldbooksForRole(worldbooks, role, mountedIds) {
+    if (!Array.isArray(worldbooks)) return [];
+    var wanted = Object.create(null);
+    var selections = [].concat(
+      Array.isArray(role && role.worldBookIds) ? role.worldBookIds : [],
+      Array.isArray(mountedIds) ? mountedIds : []
+    );
+    selections.forEach(function (id) { if (id != null) wanted[String(id)] = true; });
+    return worldbooks.filter(function (book) {
+      return book && typeof book === 'object' &&
+        (book.scope !== 'local' || wanted[String(book.id)] === true);
+    });
+  }
+
   global.MAOMAOChatRoleContext = Object.freeze({
     version: 1,
     resolveRole: resolveRole,
     getModelHistory: getModelHistory,
+    selectWorldbooksForRole: selectWorldbooksForRole,
     isBrokenAssistantIdentity: isBrokenAssistantIdentity
   });
 })(window);
