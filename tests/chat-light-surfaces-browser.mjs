@@ -13,7 +13,7 @@ try {
         localStorage.setItem('maomao_chat_theme_preset', themePreset);
         localStorage.setItem('ai_custom_characters', JSON.stringify([{ id: 'light-qa', name: '测试角色' }]));
         localStorage.setItem('chat_history_light-qa', JSON.stringify(Array.from({ length: 30 }, (_, i) => ({
-          role: i % 2 ? 'user' : 'assistant',
+          role: i % 2 ? 'user' : 'received',
           text: i === 28 ? '长消息用于检查换行。'.repeat(20) : '测试消息 ' + i,
           time: Date.now() - 60000 + i * 1000
         }))));
@@ -32,6 +32,13 @@ try {
           assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'no horizontal scroll');
         }
 
+        // A page shell alone is not sufficient: verify the actual character and both directions of history.
+        await page.waitForFunction(() => {
+          const title = document.getElementById('chat-title');
+          return title && title.textContent.trim() === '测试角色' && document.querySelectorAll('#chat-messages .msg-row').length >= 20;
+        }, null, { timeout: 5000 });
+        assert.ok(await page.locator('#chat-messages .msg-row.sent').count() >= 8, 'seeded sent messages must render');
+        assert.ok(await page.locator('#chat-messages .msg-row.received').count() >= 8, 'seeded received messages must render');
         const shellBox = await page.locator('.phone-mockup').boundingBox();
         const header = await page.locator('.chat-header').boundingBox();
         assert.ok(header.y - shellBox.y < 30, 'header must start near top, not under fake status area');
