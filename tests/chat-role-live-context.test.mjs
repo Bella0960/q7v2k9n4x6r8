@@ -97,7 +97,7 @@ test('旧邂逅档案的编辑器说明不进入模型；保留全部真实人�
     '【世界背景】现代都市；身份：书店店主',
     '【命运线索】曾离开故乡多年',
     '【创作说明】以上为简要原创设定。正式聊天前可在角色档案补全经历、习惯、动机与表达方式。'
-  ].join('\\n');
+  ].join('\n');
   const cleaned = policy.stripEncounterEditorNote(saved, role);
   assert.match(cleaned, /阮映雪/);
   assert.match(cleaned, /书店店主/);
@@ -105,13 +105,13 @@ test('旧邂逅档案的编辑器说明不进入模型；保留全部真实人�
   assert.doesNotMatch(cleaned, /【创作说明】/);
   assert.match(saved, /【创作说明】/, '历史档案不能被修改');
   assert.equal(policy.stripEncounterEditorNote(saved, { id: 'old' }), saved, '普通旧角色原样保留');
-  assert.match(detail, /stripEncounterEditorNote\\(rawCurrentPersona, roleForTurn\\)/);
+  assert.match(detail, /stripEncounterEditorNote\(rawCurrentPersona, roleForTurn\)/);
 });
 
 test('邂逅新角色默认档案不再把后台编辑说明当成人物背景', () => {
   const engine = read('encounter/encounter-engine.js');
   assert.doesNotMatch(engine, /'【创作说明】以上为简要原创设定。正式聊天前/);
   assert.match(engine, /【生活线索】/);
-  assert.match(engine, /card\\.job/);
-  assert.match(engine, /card\\.object/);
+  assert.match(engine, /card\.job/);
+  assert.match(engine, /card\.object/);
 });
