@@ -75,9 +75,9 @@ test('music-only QA release never redeploys or alters the isolated identity core
 test('Opera site permission flow keeps browser and website grants separate', async () => {
   const js = read('shared/js/cloud-push-client.js');
   const html = read('settings/cloud-push.html');
-  assert.match(html, /cloud-push-client\\.js\\?v=20261118opera1/);
-  assert.match(js, /setToggle\\(status\\.permission === 'granted' && status\\.currentBrowserMatched === true\\)/);
-  assert.match(js, /localTestRow\\.addEventListener\\('click'[\\s\\S]*?await requestNotificationPermissionFromGesture\\(\\)/);
+  assert.match(html, /cloud-push-client\.js\?v=20261118opera1/);
+  assert.match(js, /setToggle\(status\.permission === 'granted' && status\.currentBrowserMatched === true\)/);
+  assert.match(js, /localTestRow\.addEventListener\('click'[\s\S]*?await requestNotificationPermissionFromGesture\(\)/);
 
   function environment(initialPermission, promptResult) {
     let prompts = 0;
@@ -116,6 +116,6 @@ test('Opera site permission flow keeps browser and website grants separate', asy
   assert.equal(denied.count(), 0, 'a rejected site cannot be re-prompted');
 
   const dismissed = environment('default', 'default');
-  await assert.rejects(dismissed.api.requestNotificationPermissionFromGesture(), /preview\\.mao520\\.com/);
+  await assert.rejects(dismissed.api.requestNotificationPermissionFromGesture(), /preview\.mao520\.com/);
   assert.equal(dismissed.count(), 1);
 });
