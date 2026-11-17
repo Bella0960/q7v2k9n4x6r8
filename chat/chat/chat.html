@@ -1564,18 +1564,17 @@
         backdrop.classList.remove('show');
       }
 
-      document.getElementById('groupEntryBtn').addEventListener('click', function(e) {
-        e.stopPropagation();
-        var menu = document.getElementById('wechatMenu');
-        var btnRect = e.currentTarget.getBoundingClientRect();
-        var parentRect = menu.parentElement.getBoundingClientRect();
-
-        // 定位到按钮正下方
-        menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
-        if (menu.style.display === 'block') {
-          menu.style.left = (btnRect.left - parentRect.left - 50) + 'px';
-          menu.style.top = (btnRect.bottom - parentRect.top + 8) + 'px';
-        }
+      // 微信顶部 + 仍保留原生菜单；其他主题和音乐卡片的创建入口应直接打开已有弹窗。
+      // menuGroup 的旧代理点击 groupEntryBtn，因此也会正确进入弹窗，不再反复弹菜单。
+      ['groupEntryBtn', 'silverGroupEntryBtn'].forEach(function(id) {
+        var entry = document.getElementById(id);
+        if (!entry) return;
+        entry.addEventListener('click', function(e) {
+          e.stopPropagation();
+          var menu = document.getElementById('wechatMenu');
+          if (menu) menu.style.display = 'none';
+          openModal();
+        });
       });
       document.getElementById('groupModalCancel').addEventListener('click', closeModal);
       backdrop.addEventListener('click', function(e) {
@@ -1593,21 +1592,46 @@
         var roles = loadCharacters();
         var memberIds = Object.keys(selected);
         var members = roles.filter(function(r) { return memberIds.indexOf(String(r.id)) !== -1; });
-        var groups = [];
+        if (!members.length) {
+          showToast('请先选择至少一位角色');
+          return;
+        }
+        // 旧数据损坏时严禁用新群覆盖已有群。保存失败要留在弹窗内供重试。
+        var groups;
         try {
           var raw = localStorage.getItem('phone_groups');
-          if (raw) groups = JSON.parse(raw);
-          if (!Array.isArray(groups)) groups = [];
-        } catch(e) {}
-        groups.push({
-          id: 'g' + Date.now(),
+          groups = raw === null ? [] : JSON.parse(raw);
+          if (!Array.isArray(groups)) throw new Error('invalid group list');
+        } catch(e) {
+          showToast('现有群聊记录读取异常，已停止创建以保护数据');
+          return;
+        }
+        var now = Date.now();
+        var groupId = 'g' + now;
+        while (groups.some(function(g) { return g && String(g.id) === groupId; })) {
+          now += 1;
+          groupId = 'g' + now;
+        }
+        var group = {
+          id: groupId,
           name: name,
           members: members.map(function(m) { return { id: String(m.id), name: m.name, avatar: m.avatar || '' }; }),
-          createdAt: Date.now()
-        });
-        localStorage.setItem('phone_groups', JSON.stringify(groups));
+          createdAt: now
+        };
+        try {
+          var updatedGroups = groups.concat([group]);
+          localStorage.setItem('phone_groups', JSON.stringify(updatedGroups));
+          var saved = JSON.parse(localStorage.getItem('phone_groups') || 'null');
+          if (!Array.isArray(saved) || !saved.some(function(g) { return g && g.id === groupId; })) {
+            throw new Error('group write not confirmed');
+          }
+        } catch(e) {
+          showToast('群聊保存失败，请检查存储空间后重试');
+          return;
+        }
         closeModal();
-        renderChatList();  // 群聊直接进入消息列表，不跳转
+        renderChatList();  // 已确认保存，重新渲染群聊列表
+        showToast('群聊已创建');
       });
     })();
   </script>
