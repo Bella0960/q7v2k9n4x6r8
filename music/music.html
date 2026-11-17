@@ -776,7 +776,7 @@
       <!-- 播放主体随屏幕高度垂直居中，短屏可滚动 -->
       <div class="np-main">
       <div class="np-cover-wrap" style="position:relative;height:280px;padding:8px 30px 0;">
-        <div class="np-cover" id="npCover" style="cursor:pointer" title="点击更换封面">
+        <div class="np-cover" id="npCover" style="cursor:pointer" role="button" tabindex="0" aria-label="添加或更换当前歌曲封面" title="点击更换封面">
           <span class="music-placeholder-art" aria-hidden="true"></span>
         </div>
         <!-- 歌词层：和封面重叠，默认隐藏，点"词"按钮切换 -->
@@ -964,6 +964,10 @@
     <div class="modal-handle"></div>
     <div class="modal-title">设置</div>
     <div class="modal-body">
+      <div class="setting-row" role="button" tabindex="0" aria-label="导入音乐，支持批量选择 MP3 等音频文件" onclick="openMusicImportFromSettings()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openMusicImportFromSettings();}">
+        <span class="sr-label">导入音乐</span>
+        <span class="sr-val">›</span>
+      </div>
       <div class="setting-row" onclick="closeSetting();showTimer()">
         <span class="sr-label">睡眠定时</span>
         <span class="sr-val" id="settingTimer">未开启 ›</span>
@@ -1013,7 +1017,7 @@
 <input type="file" id="lyricsUpload" accept=".lrc,.txt,text/plain" hidden>
 <input type="file" id="musicBackgroundUpload" accept="image/*" hidden>
 <!-- 导入本地音乐 -->
-<input type="file" id="musicImport" accept="audio/*" multiple hidden>
+<input type="file" id="musicImport" accept="audio/*,.mp3,.m4a,.wav,.aac,.ogg,.flac,.opus" multiple hidden>
 
 <script>
   // 音频播放器（最前面初始化，避免后面报错阻断）
@@ -1447,7 +1451,7 @@
       var t = getTrackById(tid);
       if (!t) return;
       recentList.innerHTML += `<div class="track-item" onclick="playTrack(${musicSafeText(JSON.stringify(t.id))})">
-        <div class="t-cover" data-music-track-id="${musicSafeText(t.id)}"><span class="music-placeholder-art" aria-hidden="true"></span></div>
+        <div class="t-cover" data-music-track-id="${musicSafeText(t.id)}" title="点击添加或更换封面" role="button" tabindex="0" aria-label="为${musicSafeText(t.name)}添加或更换封面"><span class="music-placeholder-art" aria-hidden="true"></span></div>
         <div class="t-info"><div class="t-name">${musicSafeText(t.name)}</div><div class="t-artist">${musicSafeText(t.artist)}</div></div>
         <div class="t-dur">${musicSafeText(t.dur)}</div></div>`;
     });
@@ -1479,7 +1483,7 @@
     list.forEach(function (t) {
       if (!t || !t.id) return;
       searchResults.innerHTML += `<div class="track-item" onclick="playTrack(${musicSafeText(JSON.stringify(t.id))})">
-        <div class="t-cover" data-music-track-id="${musicSafeText(t.id)}"><span class="music-placeholder-art" aria-hidden="true"></span></div>
+        <div class="t-cover" data-music-track-id="${musicSafeText(t.id)}" title="点击添加或更换封面" role="button" tabindex="0" aria-label="为${musicSafeText(t.name)}添加或更换封面"><span class="music-placeholder-art" aria-hidden="true"></span></div>
         <div class="t-info"><div class="t-name">${musicSafeText(t.name)}</div><div class="t-artist">${musicSafeText(t.artist)}</div></div></div>`;
     });
     musicApplyTrackThumbnails(searchResults);
@@ -1783,12 +1787,51 @@
     el.classList.add('active');
   }
 
-  // ===== 换封面：点封面上传自定义图 =====
-  document.getElementById('npCover').addEventListener('click', () => {
+  // ===== 换封面：点播放页或歌曲列表的默认图，为对应歌曲选择图片 =====
+  var musicPendingCoverTrackId = null;
+  function pickMusicCoverForTrack(trackId) {
+    if (!getTrackById(trackId)) return;
+    musicPendingCoverTrackId = trackId;
     document.getElementById('coverUpload').click();
+  }
+  var playerCover = document.getElementById('npCover');
+  playerCover.addEventListener('click', function() {
+    if (tracks[currentIdx]) pickMusicCoverForTrack(tracks[currentIdx].id);
+  });
+  playerCover.addEventListener('keydown', function(event) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      if (tracks[currentIdx]) pickMusicCoverForTrack(tracks[currentIdx].id);
+    }
+  });
+  // 列表中的图可单独点选，不触发外层歌曲的播放动作。
+  ['recent-list', 'search-results', 'favList'].forEach(function(id) {
+    var list = document.getElementById(id);
+    if (!list) return;
+    function chooseFromCover(event) {
+      var cover = event.target.closest('.t-cover[data-music-track-id]');
+      if (!cover || !list.contains(cover)) return;
+      event.stopPropagation();
+      pickMusicCoverForTrack(cover.dataset.musicTrackId);
+    }
+    list.addEventListener('click', chooseFromCover);
+    list.addEventListener('keydown', function(event) {
+      if (event.key === 'Enter' || event.key === ' ') {
+        if (!event.target.closest('.t-cover[data-music-track-id]')) return;
+        event.preventDefault();
+        chooseFromCover(event);
+      }
+    });
+  });
+  var miniCover = document.querySelector('.mini-player .m-cover');
+  if (miniCover) miniCover.addEventListener('click', function(event) {
+    event.stopPropagation();
+    if (tracks[currentIdx]) pickMusicCoverForTrack(tracks[currentIdx].id);
   });
   document.getElementById('coverUpload').addEventListener('change', async function(e) {
-    var file = e.target.files[0], t = tracks[currentIdx];
+    var trackId = musicPendingCoverTrackId || (tracks[currentIdx] && tracks[currentIdx].id);
+    musicPendingCoverTrackId = null;
+    var file = e.target.files[0], t = getTrackById(trackId);
     e.target.value = '';
     if (!file || !t) return;
     if (!file.type.startsWith('image/') || file.size > 15 * 1024 * 1024) {
@@ -2343,6 +2386,11 @@
     document.getElementById('settingMask').classList.add('show');
     document.getElementById('settingSheet').classList.add('show');
   }
+  function openMusicImportFromSettings() {
+    // 复用原有多文件导入与 IndexedDB 持久化，保持手机浏览器的同步用户手势。
+    document.getElementById('musicImport').click();
+    closeSetting();
+  }
   function closeSetting() {
     document.getElementById('settingMask').classList.remove('show');
     document.getElementById('settingSheet').classList.remove('show');
@@ -2392,7 +2440,7 @@
     box.innerHTML = '';
     list.forEach(function (t) {
       box.innerHTML += `<div class="track-item" onclick="playTrack(${musicSafeText(JSON.stringify(t.id))})">
-        <div class="t-cover" data-music-track-id="${musicSafeText(t.id)}"><span class="music-placeholder-art" aria-hidden="true"></span></div>
+        <div class="t-cover" data-music-track-id="${musicSafeText(t.id)}" title="点击添加或更换封面" role="button" tabindex="0" aria-label="为${musicSafeText(t.name)}添加或更换封面"><span class="music-placeholder-art" aria-hidden="true"></span></div>
         <div class="t-info"><div class="t-name">${musicSafeText(t.name)}</div><div class="t-artist">${musicSafeText(t.artist)}</div></div>
         <div class="t-dur">${musicSafeText(t.dur)}</div></div>`;
     });
