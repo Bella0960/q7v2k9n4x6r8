@@ -280,8 +280,21 @@ test('PWA shell and package contracts include the chat vision runtime', () => {
 
 
 test('forwarding an asset-backed chat image adds a destination chat reference', () => {
-  assert.match(chatDetailSource,
-    /async function forwardMessage\(resolved, targetId, targetName\)\s*\{\s*var msg = resolved\.message;/);
+  const forwardStart = chatDetailSource.indexOf('async function forwardMessage(resolved, targetId, targetName) {');
+  const forwardEnd = chatDetailSource.indexOf('// 点 AI 头像', forwardStart);
+  assert.ok(forwardStart >= 0 && forwardEnd > forwardStart, 'real forward handler must exist');
+  const forwardBody = chatDetailSource.slice(forwardStart, forwardEnd);
+  // The destination storage guard must run before any image ref is acquired.
+  // A previous test required 'var msg' to be the first statement and broke
+  // when forwarding was made safe against missing/corrupt target history.
+  const storageGuard = forwardBody.indexOf("typeof historyStorage.appendChatHistory !== 'function'");
+  const messageRead = forwardBody.indexOf('var msg = resolved.message;');
+  const imageRef = forwardBody.indexOf("_chatImageMediaRepo.addRef(fwd.assetId, 'chat-message', String(fwd.mid))");
+  const append = forwardBody.indexOf('historyStorage.appendChatHistory(targetId, fwd)');
+  assert.ok(storageGuard >= 0 && messageRead > storageGuard,
+    'destination storage is validated before accessing forwarded message');
+  assert.ok(imageRef > messageRead && append > imageRef,
+    'forwarded image ref is linked before writing destination history');
   assert.ok(chatDetailSource.includes("_chatImageMediaRepo.addRef(fwd.assetId, 'chat-message', String(fwd.mid))"));
   assert.ok(chatDetailSource.includes('fwd.assetId = String(msg.assetId)'));
   assert.ok(chatDetailSource.includes('if (linkedImageRef)'));
