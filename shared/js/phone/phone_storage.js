@@ -257,6 +257,8 @@
     };
 
     NS.saveChatHistory = function (contactId, list) {
+        // Reject missing/invalid targets before constructing any storage key.
+        if (typeof contactId !== 'string' || !contactId.trim()) return false;
         // Do not silently coerce invalid payloads to [], or overwrite broken data.
         if (!Array.isArray(list)) return false;
         var primary = _inspectChatPrimary(contactId);
@@ -803,6 +805,9 @@
         };
 
         R.saveChatHistory = function (contactId, list, expectedPrimary) {
+            if (typeof contactId !== 'string' || !contactId.trim()) {
+                return failResult(ERR.VALIDATION_FAILED, 'chat history requires a target', false);
+            }
             var key = 'chat_history_' + contactId;
             if (!Array.isArray(list)) {
                 return failResult(ERR.VALIDATION_FAILED, 'chat history must be an array', false);
