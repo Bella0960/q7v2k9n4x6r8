@@ -5,8 +5,9 @@ import { createAccountAuth } from '../worker/lib/account-auth.js';
 const FOUNDER_ID = 'MAO-SYNTHFOUNDER001';
 const TOKEN = 'syntheticQaTokenForContractTests123456789012345';
 const ORIGIN = 'https://mao520.com';
+const BRIDGE_SECRET = 'qa-admin-proxy-test-bridge-key-1234567890';
 
-function fixture({ role = 'super_admin', disabled = false, wrongAuthority = false, authorityError = '', revokedSession = false } = {}) {
+function fixture({ role = 'super_admin', disabled = false, wrongAuthority = false, wrongFounder = false, authorityError = '', revokedSession = false } = {}) {
   const calls = [];
   const account = {
     id: role === 'super_admin' ? FOUNDER_ID : 'MAO-SYNTHACCOUNT001',
@@ -53,10 +54,11 @@ function fixture({ role = 'super_admin', disabled = false, wrongAuthority = fals
         return Response.json({ ok: true, account });
       }
       if (url.pathname === '/api/admin/bootstrap/status') {
+        assert.equal(request.headers.get('x-mao-identity-bridge'), BRIDGE_SECRET);
         return Response.json({
           ok: true, identityMode: 'local',
           initialized: true, configured: true, bootstrapAllowed: true,
-          qaIsolatedAuthority: !wrongAuthority, qaExpectedFounderId: FOUNDER_ID
+          qaIsolatedAuthority: !wrongAuthority, qaExpectedFounderId: wrongFounder ? 'MAO-SYNTHOTHER001' : FOUNDER_ID
         });
       }
       if (url.pathname === '/api/admin/accounts') {
@@ -77,6 +79,7 @@ function fixture({ role = 'super_admin', disabled = false, wrongAuthority = fals
     MAO_QA_AUTHORITY_WORKER: 'maomao-identity-core',
     MAO_DELEGATED_ADMIN_MANAGEMENT_ENABLED: disabled ? 'false' : 'true',
     MAO_EXPECTED_FOUNDER_ID: FOUNDER_ID,
+    MAO_IDENTITY_BRIDGE_SECRET: BRIDGE_SECRET,
     MAO_IDENTITY_AUTHORITY: binding
   };
   const auth = createAccountAuth({ store, env });
@@ -181,4 +184,17 @@ test('revoked QA session cannot reach the central admin service', async () => {
   await assert.rejects(invoke('/api/admin/accounts'), error =>
     error.code === 'ACCOUNT_SESSION_REQUIRED');
   assert.equal(calls.length, 0);
+});
+
+test('a misbound authority with the wrong founder ID cannot receive privileged reads or writes', async () => {
+  const { calls, invoke } = fixture({ wrongFounder: true });
+  for (const method of ['GET', 'POST']) {
+    await assert.rejects(
+      invoke(method === 'GET' ? '/api/admin/accounts' : '/api/admin/invites', method,
+        method === 'POST' ? { targetAccountId: 'MAO-SYNTHACCOUNT001' } : undefined),
+      error => error.code === 'QA_ADMIN_AUTHORITY_UNAVAILABLE'
+    );
+  }
+  assert.equal(calls.filter(call => call.path === '/api/admin/accounts' ||
+    call.path === '/api/admin/invites').length, 0);
 });
