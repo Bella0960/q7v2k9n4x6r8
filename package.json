@@ -47,7 +47,7 @@
     "test:role:avatars": "node --test tests/role-avatar-library.test.mjs",
     "test:chat:image-vision": "node --test tests/chat-image-vision.test.mjs",
     "postbuild": "node --test tests/production-assets-isolation.test.mjs",
-    "test:account:ui-candidate": "node --test tests/admin-center-ui.test.mjs tests/account-bootstrap-runtime.test.mjs tests/account-password-kdf.test.mjs tests/account-session-expiry.test.mjs tests/worker-page-auth-runtime.test.mjs tests/account-storage-isolation.test.mjs && npm run test:account:release-gate && npm run test:account:registration-persistence",
+    "test:account:ui-candidate": "node --test tests/admin-center-ui.test.mjs tests/admin-center-mobile-release.test.mjs tests/account-bootstrap-runtime.test.mjs tests/account-password-kdf.test.mjs tests/account-session-expiry.test.mjs tests/worker-page-auth-runtime.test.mjs tests/account-storage-isolation.test.mjs && npm run test:account:release-gate && npm run test:account:registration-persistence",
     "test:account:release-gate": "node --test tests/account-cutover-guard.test.mjs tests/account-identity-bridge-probe.test.mjs tests/qa-identity-bootstrap.test.mjs tests/account-qa-bootstrap-route.test.mjs tests/account-qa-admin-proxy.test.mjs",
     "test:account:registration-persistence": "node --test tests/account-registration-persistence.test.mjs"
   },
