@@ -382,3 +382,9 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **无效检查不计 PASS**：Cloudflare 浏览器 6 条批量请求中部分遇到 HTTP 429 频率限制，未执行的尺寸不计通过；云推送优化后 375/390px 等待独立验证。现有局部浏览器证据不能替代完整工程 `npm ci`、`node --test`、`npm run build`、Playwright 集成和真机触摸验收，相关项仍 **NOT RUN / NOT VERIFIED**。
 - **生产与测试边界**：只读核查 QA Worker `maomao-aw-qa-20261114` 最新部署仍为 `2026-11-16T21:19:39.507439Z` / version `597166f2-4e59-48d3-9046-10f517cd7dd0`，早于 UI 源码更改。**新版尚未部署 `preview.mao520.com`**，用户实机不可验这份最新样式；不能宣布已交付。正式版、管理员永久 ID、数据库、已有 QA 数据与 secret 均未修改。
 - **剩余最短路径**：在完整工程检出最新 QA HEAD 后执行 `node --test tests/settings-header-compact.test.mjs tests/cloud-push-header-compact.test.mjs tests/qa-cloud-settings-integration.test.mjs`，再通过原 `scripts/qa-direct-release.mjs` 的完整 Node/Vite/Chromium/身份/资产发布门禁，按已核实配置仅将成功构建的新静态资源更新到唯一 QA，回读部署 version/SHAs，并由用户手机验收顶部；不能通过浏览器局部证据跳过这些步骤。不要触发 GitHub Actions 无额度构建。
+
+
+### 真实浏览器补测完成（同日）
+- Cloudflare Browser Rendering 继续单条执行以避开浏览器并发限流：**云推送最终紧凑版** 375、390、430px 三个视口，header 均 62px，首设置卡片 top 均 143px，0 假状态栏、0 横向溢出，纵向滚动正常；三档入口都保留「后台 AI 未就绪」醒目摘要。430px 已实际点击原生 disclosure 展开及收回，均 PASS。
+- Settings 375、390px header 62px、首卡 top 94px，430px 首页 header 62px/内嵌 API header 59px，点击 API 行成功打开且返回按钮成功关闭；三个视口均无假状态栏、横向溢出，主设置区仍可滚动。这是 GitHub QA 分支当前 HTML/CSS 加上项目 mobile-fit 的 **浏览器渲染/局部交互核验完成**，不涉及业务脚本执行。
+- 当前视觉页面 **SOURCE_BROWSER_LAYOUT_PASS**；整体工程依旧 `NODE_BUILD_NOT_RUN / QA_NOT_DEPLOYED / USER_QA_PENDING`。不允许据此宣布完整部署交付。
