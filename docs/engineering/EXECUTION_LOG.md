@@ -126,3 +126,12 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **测试代码补充**：`tests/group-profile-ui.test.mjs` 新增隐藏假状态栏、紧凑顶栏、上传互斥/错误恢复的源契约检查，并保留原有 375/390/430 视口及群聊邀请/封面隔离的浏览器测试用例。
 - **本轮核对**：GitHub 源文件结构静态检查 9/9 PASS；这不是运行 `node --test`、Playwright、构建或真机验证。后者仍 **NOT VERIFIED**。
 - **QA 发布门槛**：继续严格使用现有唯一 `https://preview.mao520.com`。需先完成真实浏览器验证、整合 #298 对 `chat-settings.html` 的并行修改、协调 #299 QA 解冻并通过定向回归；不可创建第二个测试地址或提前声称 QA 已更新。
+
+### GROUP-UI-002 视觉与成员交互续修（2026-11-19）
+
+- 群封面无图片时展示现有群头像；无群头像则展示已有成员照片拼贴或群名首字，避免空白灰块。群封面上传后隐藏该标识，避免遮挡用户照片；2/3/4 张成员照片拼贴布局分别处理。
+- 顶部成员列表中的头像改为可键盘操作的按钮，点击展开原 `gpManageCard` 并定位同一个 `data-mid` 成员行；仅导航/高亮，不写成员、角色、消息或身份数据。快捷邀请仍使用原 `gpInviteToggle` 和 `defaultGroupMember`，未复制既有表单或保存逻辑。
+- 首次无封面显示「上传封面」，保存后「更换封面」，恢复默认后「上传封面」。折叠内容加入 0.2 秒轻微入场；尊重 `prefers-reduced-motion`，不引入额外图片或颜色。
+- 在原 `tests/group-profile-ui.test.mjs` 增加：顶部默认图标与文案、成员卡片点击进入原管理面板、点击前后 `phone_groups` 字符串一致、封面上传→跨群查看隔离→重开→恢复默认→IDB 对应键清理等断言。这些是**新增测试源码，尚未执行**。
+- 由于 PR #298 正在更新群治理，原 `chat-settings.html` 的新 UI 挂载点仍等待与 #298 统一集成；没有更新 QA #299、正式版或其他测试域名。
+- 本轮验证状态：GitHub 远程源代码已读取/写回；可用完整本地仓库/浏览器环境未提供。Node、Playwright、build、375/390/430 真浏览器与真机 **NOT VERIFIED**。不得将静态代码检查称为自动回归通过。
