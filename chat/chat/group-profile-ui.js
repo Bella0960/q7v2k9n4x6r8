@@ -171,6 +171,7 @@
       var avatars=members.map(function(member){return safeImage(member && member.avatar);}).filter(Boolean).slice(0,4);
       if(avatars.length>=2){
         var collage=el('span','gp-emblem-collage');
+        collage.setAttribute('data-count',String(avatars.length));
         avatars.forEach(function(url){
           var image=el('img');
           image.src=url;
@@ -255,9 +256,10 @@
   }
   function showCover(dataUrl) {
     var generation=++coverGeneration;
-    if(!dataUrl){photo.removeAttribute('src');hero.classList.remove('has-photo','tone-dark');reset.hidden=true;return;}
+    if(!dataUrl){photo.removeAttribute('src');hero.classList.remove('has-photo','tone-dark');reset.hidden=true;pick.textContent='上传封面';return;}
     photo.src=dataUrl;
     hero.classList.add('has-photo');
+    pick.textContent='更换封面';
     hero.classList.remove('tone-dark');
     reset.hidden=false;
     if(window.MAOMAOWallpaperStore && typeof MAOMAOWallpaperStore.detectTone==='function'){
