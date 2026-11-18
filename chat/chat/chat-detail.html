@@ -4137,6 +4137,7 @@
 
             const avatar = document.createElement('div');
             avatar.className = 'msg-avatar';
+            let groupSender = null;
             if (isSent) {
                 fillAvatar(avatar, getMyAvatar(), USER_SVG);
             } else if (isError) {
@@ -4145,7 +4146,7 @@
                 avatar.style.color = '#666666';
             } else {
                 // Group replies show the speaking member's own avatar, not the group cover.
-                const groupSender = isGroupChat && currentGroup
+                groupSender = isGroupChat && currentGroup
                     ? (currentGroup.members || []).find(function (member) {
                         return member && ((msg.memberId && String(member.id) === String(msg.memberId)) ||
                             (msg.name && groupMemberDisplayName(member) === String(msg.name)));
