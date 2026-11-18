@@ -85,6 +85,11 @@
     '<input id="gpCoverFile" type="file" accept="image/*" hidden>';
   visual.appendChild(hero);
   var photo = hero.querySelector('.gp-cover-photo');
+  photo.addEventListener('error',function(){
+    // The stored image might have become unreadable; preserve the key so the owner can reset it.
+    hero.classList.remove('has-photo','tone-dark');
+    notify('群封面无法显示，请更换封面或恢复默认');
+  });
   var emblem = hero.querySelector('#gpCoverEmblem');
   var pick = hero.querySelector('#gpCoverChoose');
   var reset = hero.querySelector('#gpCoverReset');
@@ -164,8 +169,11 @@
     var groupAvatar=safeImage(group && group.avatar);
     if(groupAvatar) {
       var profileImage=el('img');
-      profileImage.src=groupAvatar;
       profileImage.alt='';
+      profileImage.addEventListener('error',function(){
+        if(profileImage.parentElement===emblem){emblem.replaceChildren();emblem.textContent=name.trim().slice(0,1)||'群';}
+      },{once:true});
+      profileImage.src=groupAvatar;
       emblem.appendChild(profileImage);
     } else {
       var avatars=members.map(function(member){return safeImage(member && member.avatar);}).filter(Boolean).slice(0,4);
@@ -174,8 +182,11 @@
         collage.setAttribute('data-count',String(avatars.length));
         avatars.forEach(function(url){
           var image=el('img');
-          image.src=url;
           image.alt='';
+          image.addEventListener('error',function(){
+            if(emblem.contains(image)){emblem.replaceChildren();emblem.textContent=name.trim().slice(0,1)||'群';}
+          },{once:true});
+          image.src=url;
           collage.appendChild(image);
         });
         emblem.appendChild(collage);
@@ -197,6 +208,9 @@
         var img = el('img');
         img.alt='';
         img.loading='lazy';
+        img.addEventListener('error',function(){
+          if(img.parentElement===avatar){avatar.replaceChildren();avatar.textContent=String(member && member.name||'成').slice(0,1);}
+        },{once:true});
         img.src=url;
         avatar.appendChild(img);
       } else avatar.textContent=String(member && member.name || '成').slice(0,1);
