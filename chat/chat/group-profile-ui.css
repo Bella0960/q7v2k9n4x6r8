@@ -25,7 +25,7 @@
 .gp-cover-control{
   height:32px;min-width:32px;padding:0 11px;border:1px solid rgba(50,50,50,.13);
   border-radius:999px;background:rgba(255,255,255,.83);color:#333;
-  font:500 11px/1 inherit;cursor:pointer;
+  font-family:inherit;font-size:11px;font-weight:500;line-height:1;cursor:pointer;
 }
 .gp-cover-hero.tone-dark .gp-cover-control{background:rgba(244,244,245,.89)}
 .gp-cover-control:active{transform:scale(.97)}
@@ -45,7 +45,7 @@
 button.gp-preview-person{border:0;background:transparent;color:inherit;cursor:pointer;font-family:inherit}
 .gp-preview-person.gp-add .gp-preview-avatar{border:1px dashed #bdbdc1;background:#fafafb;font-size:25px;font-weight:200}
 .gp-quick{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;padding:16px 0 24px}
-.gp-quick-button{border:0;background:transparent;color:var(--gp-ink);display:flex;align-items:center;flex-direction:column;gap:9px;padding:5px 0 2px;font:500 11px/1.3 inherit;cursor:pointer}
+.gp-quick-button{border:0;background:transparent;color:var(--gp-ink);display:flex;align-items:center;flex-direction:column;gap:9px;padding:5px 0 2px;font-family:inherit;font-size:11px;font-weight:500;line-height:1.3;cursor:pointer}
 .gp-quick-icon{width:48px;height:48px;display:grid;place-items:center;background:#fff;border:1px solid #ededee;border-radius:16px}
 .gp-quick-icon svg{width:20px;height:20px;stroke:currentColor;stroke-width:1.35;fill:none;stroke-linecap:round;stroke-linejoin:round}
 .gp-quick-button:active .gp-quick-icon{background:#e9e9eb;transform:scale(.97)}
