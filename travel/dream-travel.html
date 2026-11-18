@@ -14,8 +14,6 @@
 html,body{margin:0;min-height:100%;background:#ededed;color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue","PingFang SC","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased}
 button,input,textarea,select{font:inherit}button{color:inherit;cursor:pointer}button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid #777;outline-offset:3px}
 .phone-shell{position:relative;width:min(420px,calc(100vw - 24px));height:min(900px,calc(100dvh - 24px));min-height:630px;margin:12px auto;background:#fff;border:7px solid #fff;border-radius:43px;box-shadow:0 24px 80px rgba(0,0,0,.12);overflow:hidden;display:flex;flex-direction:column}
-.statusbar{height:34px;flex:0 0 34px;padding:7px 20px 0;display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:650;letter-spacing:.02em;background:rgba(255,255,255,.94);z-index:3}
-.status-right{display:flex;align-items:center;gap:6px;color:#222}.signal{display:flex;align-items:flex-end;gap:2px;height:11px}.signal i{display:block;width:3px;background:#222;border-radius:3px}.signal i:nth-child(1){height:4px}.signal i:nth-child(2){height:6px}.signal i:nth-child(3){height:8px}.signal i:nth-child(4){height:10px}.wifi{width:13px;height:9px;border:1.5px solid transparent;border-top-color:#222;border-radius:50%;position:relative;transform:translateY(2px)}.wifi:after{content:"";position:absolute;width:4px;height:4px;border:1.5px solid transparent;border-top-color:#222;border-radius:50%;left:3px;top:2px}.battery{width:19px;height:10px;border:1.4px solid #222;border-radius:3px;padding:1.5px;position:relative}.battery:before{content:"";position:absolute;right:-3px;top:2px;width:2px;height:4px;background:#222;border-radius:0 2px 2px 0}.battery b{display:block;background:#222;width:70%;height:100%;border-radius:1px}
 .topbar{display:flex;align-items:center;justify-content:space-between;flex:0 0 auto;padding:10px 20px 9px}.top-left{display:flex;align-items:center;gap:11px}.icon-button{width:35px;height:35px;border:1px solid #ededed;background:rgba(255,255,255,.84);border-radius:50%;display:grid;place-items:center;flex-shrink:0;transition:background .18s,transform .18s}.icon-button:active{background:#eee;transform:scale(.94)}.icon-button svg,.btn-icon svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}.wordmark{font-size:10px;letter-spacing:.21em;color:#777;font-weight:650}.submark{font-size:9px;color:#b1b1b1;margin-top:4px;letter-spacing:.08em}.top-actions{display:flex;gap:7px}
 .scroller{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:0 21px 20px;-webkit-overflow-scrolling:touch;scrollbar-width:none}.scroller::-webkit-scrollbar{display:none}
 .hero{padding:14px 0 20px;position:relative}.eyebrow{font-size:9px;color:#9b9b9b;letter-spacing:.2em;text-transform:uppercase;font-weight:700}.hero h1{font-size:39px;line-height:1.05;letter-spacing:-.075em;margin:10px 0 8px;font-weight:760}.hero p{font-size:11px;line-height:1.8;color:#888;margin:0;max-width:255px}.hero-aside{position:absolute;right:0;top:31px;text-align:right;color:#aaa}.hero-aside strong{display:block;font-size:27px;line-height:1;font-weight:350;letter-spacing:-.06em;color:#444}.hero-aside span{font-size:8px;letter-spacing:.13em}
@@ -303,7 +301,6 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
 </head>
 <body style="overflow: hidden;">
 <div class="phone-shell">
-  <div class="statusbar" data-maomao-system-statusbar><span id="statusTime">19:49</span></div>
   <header class="topbar">
     <div class="top-left"><button class="icon-button" id="backHome" aria-label="返回桌面"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"></path><path d="M9 12h11"></path></svg></button><div><div class="wordmark">TOUCH DREAM / TRAVEL</div><div class="submark">远方，也可以是一场梦</div></div></div>
     <div class="top-actions"><button class="icon-button" id="moreBtn" aria-label="更多选项" title="更多"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle></svg></button></div>
@@ -765,8 +762,7 @@ var open=c.classList.toggle('teared');
 var btn=$('posterActionBtn');if(btn)btn.textContent=open?'收起手札':'互动探索';
 if(open)toast('撕开海报 · 一段没有寄出的手札');
 });
-function updateTime(){var d=new Date();$('statusTime').textContent=d.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',hour12:false})}
-updateTime();setInterval(updateTime,30000);render();
+render();
 })();
 </script>
 
