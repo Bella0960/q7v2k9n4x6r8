@@ -5468,6 +5468,11 @@
                     preflightReason = 'group-unavailable';
                 } else preflightReason = 'ready';
             }
+            // 手动继续不能绕过已经拉黑的角色；不影响原有 contextOnly 后台任务。
+            if (isManualContinue && isBlocked(aliasRoleId)) {
+                if (typeof showToast === 'function') showToast('已拉黑的角色无法继续聊天');
+                return;
+            }
             // ChatSendPolicy 为历史 contextOnly 调用跳过成员校验；手动继续必须单独尊重禁言及空群。
             if (isManualContinue && isGroupChat && (!currentGroup || !getAvailableGroupMembers().length)) {
                 if (typeof showToast === 'function') showToast('当前没有可以发言的群成员');
