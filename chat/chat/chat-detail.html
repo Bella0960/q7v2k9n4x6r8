@@ -5762,7 +5762,7 @@
                 const availableMembers = getAvailableGroupMembers();
                 const personaLines = members.map(function (m, i) {
                     const r = getRoleById(m.id);
-                    const p = (r && (r.persona || r.prompt || '').trim()) || '一个善解人意的朋友';
+                    const p = (r && (r.persona || r.prompt || '').trim()) || '角色资料尚未填写；只按照此人已有的行为与谈话习惯发言，不编造固定性格或经历';
                     const labels = [];
                     if (m.title) labels.push('头衔：' + m.title);
                     if (m.isAdmin) labels.push('管理员');
@@ -5965,6 +5965,15 @@
             var relationshipRole = isGroupChat
                 ? (groupReplyPick ? getRoleById(groupReplyPick.id) : null)
                 : roleForTurn;
+            // Group name is the conversation title, NOT a character identity.
+            // Anchor this turn to the selected member's full role record.
+            const turnSpeakerName = isGroupChat && groupReplyPick
+                ? String((relationshipRole && relationshipRole.name) || groupReplyPick.name || '群成员')
+                : String(roleForTurn.name || '角色');
+            const turnSpeakerPersona = isGroupChat && groupReplyPick
+                ? String((relationshipRole && (relationshipRole.persona || relationshipRole.prompt)) ||
+                    groupReplyPick.persona || groupReplyPick.prompt || '').trim()
+                : rolePersona;
             var characterSocialPrompt = '';
             try { characterSocialPrompt = buildCharacterSocialPrompt(relationshipRole); } catch (socialContextError) {
                 console.warn('[CharacterSocialContext] skipped:', socialContextError);
@@ -6113,9 +6122,9 @@
             // 协议变量替换：{{char}} {{user}} {{persona}} {{memory}} {{worldbook}}
             function applyProtocolVars(text) {
                 return String(text || '')
-                    .replace(/\{\{char\}\}/g, roleForTurn.name || '角色')
+                    .replace(/\{\{char\}\}/g, turnSpeakerName)
                     .replace(/\{\{user\}\}/g, userName)
-                    .replace(/\{\{persona\}\}/g, rolePersona)
+                    .replace(/\{\{persona\}\}/g, turnSpeakerPersona || '根据此角色已知言行自然说话，不编造资料')
                     .replace(/\{\{memory\}\}/g, roleMemory)
                     .replace(/\{\{worldbook\}\}/g, worldbookText || '暂无世界书');
             }
@@ -6143,8 +6152,8 @@
                     '[回复要求]',
                     '像真人发微信一样回复，用口语化短句，不要写动作描述（如*动作*），不要写旁白，每次回复简短自然，1-5句话即可。'
                 ].join('\n');
-                if (currentCharacter.name) {
-                    systemPrompt = `你的名字是${currentCharacter.name}。\n${systemPrompt}`;
+                if (turnSpeakerName) {
+                    systemPrompt = `你的名字是${turnSpeakerName}。\n${systemPrompt}`;
                 }
             }
             // 角色主动邀请只针对确实退出过的群。历史群沿用默认“已加入”状态。
@@ -6285,7 +6294,7 @@
             }
 
             // ========== 身份锁：最外层强制协议，优先级最高，不可被覆盖 ==========
-            const charName = roleForTurn.name || '角色';
+            const charName = turnSpeakerName;
             const IDENTITY_LOCK = [
               '═══════════════════════════════════',
               '【身份锚定】',
@@ -6293,7 +6302,7 @@
               '',
               '【角色档案】',
               '以下资料是你稳定的性格、价值观、经历和表达习惯依据。认真遵守，但不要每轮复述，也不要把每个细节都当成必须表现的标签：',
-              rolePersona,
+              turnSpeakerPersona || '该成员尚未填写具体人设。沿用已发生的聊天语气，不能把空白档案当成温柔客服模板。',
               '',
               '【性格稳定与情绪变化】',
               '保持角色核心性格、判断方式和说话习惯的连续性；情绪可以随真实互动变化。温和不代表每次都要安慰，冷静不代表每次都冷淡，活泼也不代表每句话都兴奋。',
@@ -6340,6 +6349,7 @@
                 systemPrompt += '\n\n【群聊模式：线下共同场景】\n当前群成员处于同一个真实的线下场景中，不是隔着手机发微信。请以本轮指定成员的视角参与现场互动，可以写必要的环境、动作、神态和现场对话；其他成员可以成为场景中的互动对象，但不要替他们编写台词，也不要替用户决定动作、想法或回应。保持人物之间的空间位置和已发生事件连续，不要突然切场景。正文以自然叙事为主，约 100–260 字，场景简单时可以更短；旁白请使用 <narratage>...</narratage>，本轮角色自己的台词直接写出。';
               } else {
                 systemPrompt += '\n\n【群聊模式：线上消息】\n当前是隔着屏幕的群聊，只输出本轮成员发出的自然消息，不写面对面动作或全知旁白。保持微信式短句，不替其他成员发言。';
+                systemPrompt += '\n\n【群聊自然接话】\n根据刚刚发生的具体事情回应，不做客服式开场，不要无端说“欢迎来到群聊”“很高兴认识你”“我就在这里陪大家聊天”或主动介绍自己正在群里。用户只发“哈哈哈”等短句时，结合上一句话和这个成员的性格接梗、吐槽、简短回应或表达真实疑惑；不要把笑声扩写成一整段热情问候。不同成员应有不同的语气、长短和关注点，允许一条很短的回复，不必每次都问“你呢”“在干嘛”。不能凭空编造经历、情绪或群成员关系。';
               }
             }
             // 世界书内容拼进 systemPrompt；设定是生活背景，不是每轮背诵清单
