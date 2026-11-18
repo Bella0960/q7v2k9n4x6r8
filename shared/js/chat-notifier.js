@@ -62,6 +62,22 @@
         var arr = safeJsonParse(safeGet('chat_history_' + roleId));
         return Array.isArray(arr) ? arr : [];
     }
+    // Automatic AI generation must never treat a broken or unavailable chat
+    // history as a new conversation: it would spend API money but fail to save.
+    // Unlike the read-only unread badge, automatic writes require a valid
+    // existing primary history, with no old phone_data_v2 fallback.
+    function readAutomaticHistory(roleId) {
+        try {
+            var raw = localStorage.getItem('chat_history_' + roleId);
+            if (raw === null) return null;
+            var parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed : null;
+        } catch (error) { return null; }
+    }
+    function automaticStorageReady() {
+        return !!(global.navigator && global.navigator.locks &&
+            typeof global.navigator.locks.request === 'function');
+    }
     function readCharacters() {
         var arr = safeJsonParse(safeGet('ai_custom_characters'));
         return Array.isArray(arr) ? arr : [];
@@ -459,7 +475,8 @@
             if (!contact || contact.isGroup || safeGet('chat_proactive_contact_' + id) !== 'true') return;
             if (blocked.indexOf(String(id)) !== -1) return;
 
-            var history = readHistory(id);
+            var history = readAutomaticHistory(id);
+            if (!history) return;
             var intervalMs = proactiveIntervalHours(id) * 60 * 60 * 1000;
             var roleAttemptAt = Number(safeGet('chat_proactive_last_attempt_' + id)) || 0;
             var evaluation = global.ChatPresencePolicy.evaluateProactiveContact(history, {
@@ -529,6 +546,7 @@
     }
 
     async function checkProactiveContacts() {
+        if (!automaticStorageReady()) return;
         if (proactiveRequestPending || followUpRequestPending || document.visibilityState === 'hidden' || currentDetailRoleId()) return;
         var now = Date.now();
         var lockAt = Number(safeGet(PROACTIVE_LOCK_KEY)) || 0;
@@ -927,6 +945,7 @@
         tick();
     }
     async function checkFollowUpTasks() {
+        if (!automaticStorageReady()) return;
         if (followUpRequestPending || proactiveRequestPending || document.visibilityState === 'hidden') return;
         var now = Date.now();
         var lockAt = Number(safeGet(FOLLOW_UP_LOCK_KEY)) || 0;
@@ -939,7 +958,8 @@
         if (document.visibilityState === 'hidden') return;
         var candidates = [];
         enabled.forEach(function (entry) {
-            var history = readHistory(entry.contact.id);
+            var history = readAutomaticHistory(entry.contact.id);
+            if (!history) return;
             var candidate = getFollowUpCandidate(entry.scope, entry.contact, history, Date.now());
             if (candidate) candidates.push(candidate);
         });
