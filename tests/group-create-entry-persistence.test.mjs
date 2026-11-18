@@ -21,7 +21,13 @@ test('新群不覆盖损坏记录；需要成员；存储读回后才提示成�
 });
 
 function simulateCreate(scenario) {
-  const roles = [{ id: 'r_one', name: '角色甲', avatar: '' }, { id: 'r_two', name: '角色乙', avatar: '' }];
+  const roles = scenario === 'special'
+    ? [
+        { id: 'r_"unsafe', name: '甲"><img src=x onerror=alert(1)>', avatar: 'javascript:alert(1)' },
+        null,
+        { id: 'r_two', name: '角色乙', avatar: '' }
+      ]
+    : [{ id: 'r_one', name: '角色甲', avatar: '' }, { id: 'r_two', name: '角色乙', avatar: '' }];
   const store = new Map([
     ['ai_custom_characters', JSON.stringify(roles)],
     ['phone_groups', scenario === 'corrupt' ? '{{' : '[]']
@@ -57,7 +63,7 @@ function simulateCreate(scenario) {
     set(value) {
       memberMarkup = value;
       rows.length = 0;
-      for (const role of roles) {
+      for (const role of roles.filter(r => r && r.id != null && String(r.id).trim())) {
         const item = element('member');
         item.dataset.id = role.id;
         rows.push(item);
@@ -77,8 +83,16 @@ function simulateCreate(scenario) {
   const creationScript = scripts.find(src =>
     src.includes('function openModal()') && src.includes("getElementById('groupModalCreate')"));
   assert.ok(creationScript, '真实创建脚本必须存在');
-  new Function('document', 'localStorage', 'setTimeout', 'renderChatList', 'showToast', creationScript)(
-    fakeDocument, storage, () => 0, () => { renderCount++; }, text => notices.push(text)
+  // Extract the exact page helpers so test execution uses production escaping.
+  const helpersStart = chat.indexOf('    function escapeHtml(str) {');
+  const helpersEnd = chat.indexOf('    // 生成头像 HTML', helpersStart);
+  assert.ok(helpersStart > 0 && helpersEnd > helpersStart);
+  const helpers = new Function(chat.slice(helpersStart, helpersEnd) +
+    '\nreturn { escapeHtml, safeImgSrc };')();
+  new Function('document', 'localStorage', 'setTimeout', 'renderChatList', 'showToast',
+    'escapeHtml', 'safeImgSrc', creationScript)(
+    fakeDocument, storage, () => 0, () => { renderCount++; }, text => notices.push(text),
+    helpers.escapeHtml, helpers.safeImgSrc
   );
   elements.silverGroupEntryBtn.fire();
   assert.equal(elements.groupModalBackdrop.visible, true, '点击入口应出现创建弹窗');
@@ -87,7 +101,7 @@ function simulateCreate(scenario) {
   elements.groupModalCreate.fire();
   let saved = null;
   try { saved = JSON.parse(store.get('phone_groups')); } catch { /* 原记录被保护 */ }
-  return { saved, notices, renderCount, visible: elements.groupModalBackdrop.visible };
+  return { saved, notices, renderCount, visible: elements.groupModalBackdrop.visible, memberMarkup };
 }
 
 test('模拟用户点击主题入口，选角色后真正创建群', () => {
@@ -112,4 +126,20 @@ test('模拟浏览器存储空间不足，保持弹窗与成员选择', () => {
   assert.equal(result.renderCount, 0);
   assert.equal(result.visible, true);
   assert.match(result.notices.join(' '), /保存失败/);
+});
+
+test('导入角色含引号、HTML 或非法头像 URL 不应破坏成员选择，也不改变原始 ID', () => {
+  const result = simulateCreate('special');
+  assert.equal(result.saved.length, 1);
+  assert.equal(result.saved[0].members[0].id, 'r_"unsafe');
+  assert.equal(result.saved[0].members[0].name, '甲"><img src=x onerror=alert(1)>');
+  assert.match(result.memberMarkup, /data-id="r_&quot;unsafe"/);
+  assert.match(result.memberMarkup, /甲&quot;&gt;&lt;img/);
+  assert.doesNotMatch(result.memberMarkup, /src="javascript:/);
+  assert.equal(result.renderCount, 1);
+});
+
+test('群名缺失时显示清楚的错误，而不是点击无响应', () => {
+  assert.match(chat, /if \(!name\) \{\s*showToast\('请输入群聊名称'\)/);
+  assert.match(chat, /selected = Object\.create\(null\)/);
 });
