@@ -2513,10 +2513,12 @@
             }
             var oldName = String(message.name || message.senderName || '').trim();
             if (!oldName) return null;
-            return members.find(function (m) {
+            var matches = members.filter(function (m) {
                 return m && (groupMemberDisplayName(m) === oldName ||
                     String(m.name || '').trim() === oldName);
-            }) || null;
+            });
+            // A shared nickname is not proof of identity for old messages.
+            return matches.length === 1 ? matches[0] : null;
         }
         function groupSpeakerAvatarForMessage(message, speaker) {
             if (!isGroupChat) return currentCharacter.avatar || '';
@@ -2550,7 +2552,12 @@
         function getAvailableGroupMembers() {
             var members = (currentGroup && Array.isArray(currentGroup.members)) ? currentGroup.members : [];
             return members.filter(function(member) {
-                return member && !(window.GroupGovernance ? window.GroupGovernance.isMuted(member) : member.muted) && isGroupMemberInActiveHours(member);
+                if (!member || (window.GroupGovernance ? window.GroupGovernance.isMuted(member) : member.muted) ||
+                    !isGroupMemberInActiveHours(member)) return false;
+                // The current role library, not a copied group-member snapshot, owns
+                // the persona. Deleted or empty-persona characters cannot speak.
+                var liveRole = getRoleById(member.id);
+                return !!(liveRole && String(liveRole.persona || liveRole.prompt || '').trim());
             });
         }
         function saveCurrentGroupObject() {
@@ -6335,16 +6342,19 @@
                     });
                     if (publicGroupMemory) systemPrompt += '\n\n' + publicGroupMemory;
                 }
-                if (groupSettings.memorySharing && !groupGameActiveForPrompt) {
-                    const syncedMemoryLines = [];
-                    (currentGroup.members || []).forEach(function (member) {
-                        const role = getRoleById(member.id);
-                        if (!role) return;
-                        const memory = buildWeightedMemoryText(String(member.id), (role.memory || '').trim());
-                        if (memory && memory !== '暂无记忆') syncedMemoryLines.push('【' + groupMemberDisplayName(member) + '的单聊记忆】\n' + memory);
-                    });
-                    if (syncedMemoryLines.length) {
-                        systemPrompt += '\n\n[已启用成员单聊记忆同步]\n' + capText(syncedMemoryLines.join('\n\n'), 2200);
+                // CHAT-GROUP-MEMORY-BOUNDARY: private 1:1 memory never enters another member's turn.
+            if (groupSettings.memorySharing && !groupGameActiveForPrompt && relationshipRole) {
+                    // Even when memory sharing is enabled, one person's private 1:1
+                    // long-term memory is NOT knowledge possessed by other members.
+                    // A speaker may consult only their own saved direct-chat memory.
+                    // Verified PUBLIC group memories are injected separately above.
+                    const ownMemory = buildWeightedMemoryText(
+                        String(relationshipRole.id), (relationshipRole.memory || '').trim()
+                    );
+                    if (ownMemory && ownMemory !== '暂无记忆') {
+                        systemPrompt += '\n\n[当前发言者本人可参考的单聊长期记忆]\n' +
+                            capText(ownMemory, 2200) +
+                            '\n这只是你自己的既有记忆，不是其他群成员已知的事，也不能冒充群内公开共同经历。';
                     }
                 }
                 if (groupSettings.allowRoleActions) {
@@ -7364,7 +7374,10 @@
                             type: 'sticker',
                             img: sticker.img,
                             desc: sticker.desc,
-                            time: Date.now()
+                            time: Date.now(),
+                            name: groupReplyPick ? groupReplyPick.name : undefined,
+                            memberId: groupReplyPick && groupReplyPick.id != null
+                                ? String(groupReplyPick.id) : undefined
                         };
                         ensureMid(stickerMessage);
                         return stickerMessage;
