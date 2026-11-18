@@ -516,13 +516,23 @@
     }
   }
 
+  // The legacy getter returns [] even for corrupted stored history. Do not
+  // mistake that for a new conversation and overwrite the existing raw data.
+  function readGreetingHistory(roleId) {
+    var storage = global.PhoneStorage && global.PhoneStorage.result;
+    if (!storage || typeof storage.getChatHistory !== 'function') {
+      throw new Error('NPC 聊天记录安全读取接口不可用，未写入首次问候。');
+    }
+    var result = storage.getChatHistory(roleId);
+    if (result && result.ok === true && Array.isArray(result.value)) return result.value;
+    if (result && result.ok === false && result.error && result.error.code === 'NOT_FOUND') return [];
+    throw new Error('NPC 聊天记录读取失败或数据损坏，已保留原记录，未写入首次问候。');
+  }
   function hasWelcomeMessage(roleId, request) {
     var greeting = cleanText(request && request.npc && request.npc.greeting, 180);
     if (!greeting) return true;
-    if (!global.PhoneStorage || typeof global.PhoneStorage.getChatHistory !== 'function') return false;
     try {
-      var history = global.PhoneStorage.getChatHistory(roleId);
-      if (!Array.isArray(history)) return false;
+      var history = readGreetingHistory(roleId);
       return history.some(function (message) {
         if (!message || message.role !== 'assistant') return false;
         return message.npcFriendWelcome === true || cleanText(message.text, 180) === greeting;
@@ -593,8 +603,7 @@
           typeof global.PhoneStorage.saveChatHistory !== 'function') {
         throw new Error('聊天记录仓储暂不可用。NPC 已加入通讯录，但申请仍待完成；请稍后重试。');
       }
-      var initialHistory = global.PhoneStorage.getChatHistory(request.npc.id);
-      if (!Array.isArray(initialHistory)) initialHistory = [];
+      var initialHistory = readGreetingHistory(request.npc.id);
       if (!hasWelcomeMessage(request.npc.id, request)) {
         var nextHistory = initialHistory.slice();
         nextHistory.unshift({
