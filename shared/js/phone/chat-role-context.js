@@ -129,6 +129,59 @@
     };
   }
 
+  // All independent chat routes (including the two offline modes) use the same
+  // verified persisted sources and the same activation/mount rules.
+  function buildSavedSourceEnvelope(options) {
+    options = options && typeof options === 'object' ? options : {};
+    var store = options.storage || global.localStorage;
+    var role = options.role;
+    var policy = options.contextPolicy || global.ChatContextPolicy;
+    if (!store || !role || !String(role.id || '').trim()) return {ok:false,code:'role'};
+    var persona = stripEncounterEditorNote(String(role.persona || role.prompt || '').trim(), role).trim();
+    if (!persona) return {ok:false,code:'persona'};
+    var tone = String(role.tone || role.speechStyle || role.speech || '').trim();
+    var rawProtocol, rawBooks, rawMounts;
+    try {
+      rawProtocol = String(store.getItem('chat_rp_protocol_') || '').trim();
+      rawBooks = store.getItem('phone_worldbooks');
+      rawMounts = store.getItem('chat_worldbooks_' + String(options.conversationId || role.id));
+    } catch (_) { return {ok:false,code:'storage'}; }
+    var protocol = rawProtocol || String(options.defaultProtocol || global.MAOMAO_RP_DEFAULT_PROTOCOL || '').trim();
+    if (!protocol) return {ok:false,code:'protocol'};
+    if (!policy || typeof policy.buildWorldbookInjectionText !== 'function' ||
+        typeof selectWorldbooksForRole !== 'function') return {ok:false,code:'worldbook-policy'};
+    var books=[],mounts=[];
+    try {
+      if (rawBooks != null) { books=JSON.parse(rawBooks); if (!Array.isArray(books)) throw Error('books'); }
+      if (rawMounts != null) { mounts=JSON.parse(rawMounts); if (!Array.isArray(mounts)) throw Error('mounts'); }
+    } catch (_) { return {ok:false,code:'worldbook-storage'}; }
+    var chosen = selectWorldbooksForRole(books, role, mounts);
+    var maxEntries = Math.max(1, chosen.reduce(function(total, book) {
+      return total + (Array.isArray(book.entries) && book.entries.length ? book.entries.length : 1);
+    }, 0));
+    var worldbook = '';
+    try {
+      worldbook = policy.buildWorldbookInjectionText(chosen, {
+        currentText:String(options.currentText || ''),
+        recentMessages:Array.isArray(options.recentMessages) ? options.recentMessages.slice(-8) : [],
+        maxEntries:maxEntries,maxChars:1000000
+      });
+    } catch (_) { return {ok:false,code:'worldbook-activation'}; }
+    if(worldbook.length>32000)return {ok:false,code:'worldbook-too-long'};
+    var name = String(role.name || '').trim();
+    var userName = String(options.userName || '').trim() || '未知';
+    var memory = String(options.memory || role.memory || '').trim();
+    var expanded = protocol
+      .replace(/\{\{char\}\}/g,name)
+      .replace(/\{\{user\}\}/g,userName)
+      .replace(/\{\{persona\}\}/g,persona)
+      .replace(/\{\{memory\}\}/g,memory || '暂无')
+      .replace(/\{\{worldbook\}\}/g,worldbook || '暂无世界书');
+    return {ok:true,role:role,persona:persona,tone:tone,protocol:protocol,
+      expandedProtocol:expanded,worldbook:worldbook,
+      worldbookPolicyReady:true,activeBookCount:chosen.length};
+  }
+
   // Every generated message must use the user's saved context, not a generic fallback.
   // Validate the final payload, after all feature prompts have been appended.
   // Worldbooks can validly be empty when no entry is activated by the current topic.
@@ -168,6 +221,7 @@
     selectWorldbooksForRole: selectWorldbooksForRole,
     selectWorldbooksForGroup: selectWorldbooksForGroup,
     selectWorldbooksForGroupSpeaker: selectWorldbooksForGroupSpeaker,
+    buildSavedSourceEnvelope: buildSavedSourceEnvelope,
     validateFinalApiMessages: validateFinalApiMessages,
     validatePersonaRequest: validatePersonaRequest,
     isBrokenAssistantIdentity: isBrokenAssistantIdentity
