@@ -103,3 +103,23 @@ test('a single concise group correction replaces duplicated welcome rules', () =
   assert.match(html,/chat-presence-policy\.js\?v=20261118voicepurity1/);
   assert.match(html,/roleModelHistory = window\.MAOMAOChatRoleContext\.getGroupModelHistory/);
 });
+
+test('poisoned historical AI greetings are hidden from human model context but never deleted', () => {
+  const original = [
+    {role:'user',text:'你们现在忙吗？'},
+    {role:'received',type:'text',memberId:'member-a',text:'捕捉到一个元气满满的小伙伴！随时在线待命。'},
+    {role:'received',type:'text',memberId:'member-a',text:'我还在冲底片，晚上可以说。'},
+    {role:'received',type:'text',memberId:'member-b',text:'我今天在烤面包。'}
+  ];
+  const backup = JSON.stringify(original);
+  const single = role.getModelHistory(original, group[0]);
+  assert.equal(single.length,3);
+  assert.ok(single.some(m=>m.text==='我还在冲底片，晚上可以说。'));
+  const grouped = role.getGroupModelHistory(original,group,id=>group.find(x=>x.id===id));
+  assert.equal(grouped.length,3);
+  assert.ok(grouped.some(m=>m.text==='我今天在烤面包。'));
+  assert.equal(JSON.stringify(original),backup);
+  const digital = {...group[0],species:'数字生命'};
+  assert.equal(role.getModelHistory(original,digital).length,original.length,
+    'digital-role identity can legitimately differ from ordinary human persona');
+});
