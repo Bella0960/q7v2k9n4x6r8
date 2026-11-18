@@ -7,6 +7,7 @@
 <script src="../../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../../shared/js/native-feel.js"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
+<script src="../../shared/js/phone/chat-history-atomic.js?v=20261118v3"></script>
 <script src="../../shared/js/phone/phone_stream.js"></script>
 <style>
   /* ============================================================
@@ -2911,6 +2912,26 @@ body {
         }
     }
 
+    // Real send/reply paths use the same Web Lock as online chat and journey.
+    // Legacy synchronous previews/edits remain fail-closed via saveHistory.
+    async function appendDateMessage(message) {
+        if (_dateHistoryUnreadable || HISTORY_KEY !== 'chat_history_' + roleId ||
+            !window.ChatHistoryAtomic || typeof window.ChatHistoryAtomic.appendIf !== 'function') {
+            toast('当前聊天记录不可安全保存，请刷新后重试');
+            return false;
+        }
+        if (!message.mid) {
+            message.mid = 'date-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+        }
+        var outcome = await window.ChatHistoryAtomic.appendIf(roleId, message);
+        if (!outcome || !outcome.ok) {
+            toast('聊天记录保存失败，原消息已保留；请检查存储空间后重试');
+            return false;
+        }
+        history = loadHistory();
+        return true;
+    }
+
     /* ---------- 本地内容生成（预览用，不依赖 API） ----------
      * 进入即有完整示例：角色开场 → 我的长文 → 角色大篇幅回复，
      * 全部以气泡呈现，用于直接预览排版效果。 */
@@ -3008,14 +3029,13 @@ body {
         streamingP = null;
         streamingRow = null;
         var i = 0;
-        var timer = setInterval(function () {
+        var timer = setInterval(async function () {
             i += 8;
             paintStream(text.slice(0, i));
             if (i >= text.length) {
                 clearInterval(timer);
-                var previousHistory = history.slice();
-                history.push({ role: 'assistant', text: text, time: Date.now(), mode: 'date', scene: sceneName || undefined });
-                if (!saveHistory(history, previousHistory)) {
+                var offlineReply = { role: 'assistant', text: text, time: Date.now(), mode: 'date', scene: sceneName || undefined };
+                if (!await appendDateMessage(offlineReply)) {
                     appendSys('这段角色回复尚未保存，请先复制上方文字，再检查存储空间后重试。');
                     setSending(false);
                     scrollBottom();
@@ -3315,7 +3335,7 @@ body {
             maxTokens: cfg.maxTokens,
             topP: cfg.topP,
             onPaint: paintStream
-        }).then(function (result) {
+        }).then(async function (result) {
             var ind = document.getElementById('dateIndicator');
             if (ind) ind.remove();
             var fullText = (result.fullText || '').trim();
@@ -3330,9 +3350,7 @@ body {
                 if (fullText) {
                     appendSys('连接中断，以上为已写出的内容');
                     var aiPartial = { role: 'assistant', text: fullText, time: Date.now(), mode: 'date', scene: sceneName || undefined };
-                    var previousHistory = history.slice();
-                    history.push(aiPartial);
-                    if (!saveHistory(history, previousHistory)) {
+                    if (!await appendDateMessage(aiPartial)) {
                         appendSys('上方部分回复尚未保存，请先复制需要保留的文字，再检查存储空间后重试。');
                         setSending(false);
                         scrollBottom();
@@ -3362,9 +3380,7 @@ body {
                 .replace(/\n{3,}/g, '\n\n').trim();
 
             var aiMsg = { role: 'assistant', text: fullText, time: Date.now(), mode: 'date', scene: sceneName || undefined };
-            var previousHistory = history.slice();
-            history.push(aiMsg);
-            if (!saveHistory(history, previousHistory)) {
+            if (!await appendDateMessage(aiMsg)) {
                 appendSys('上方角色回复尚未保存，请先复制需要保留的文字，再检查存储空间后重试。');
                 setSending(false);
                 scrollBottom();
@@ -3609,16 +3625,14 @@ body {
     if (refreshReplyOptions) refreshReplyOptions.addEventListener('click', generateReplyOptions);
     if (closeReplyOptions) closeReplyOptions.addEventListener('click', closeReplyOptionsPanel);
 
-    function send() {
+    async function send() {
         var text = (input.value || '').trim();
         if (!text || sending || generatingReplyOptions) return;
         closeReplyOptionsPanel();
         setSending(true);
 
         var userMsg = { role: 'user', text: text, time: Date.now(), mode: 'date', scene: sceneName || undefined };
-        var previousHistory = history.slice();
-        history.push(userMsg);
-        if (!saveHistory(history, previousHistory)) {
+        if (!await appendDateMessage(userMsg)) {
             setSending(false);
             return;
         }
