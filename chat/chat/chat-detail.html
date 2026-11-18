@@ -6188,6 +6188,11 @@
             if (isGroupChat && groupReplyPick) {
                 const memberNames = (currentGroup.members || []).map(function (m) { return groupMemberDisplayName(m); }).join('、') || '暂无成员';
                 systemPrompt = '你正在群聊「' + currentGroup.name + '」中，群成员有：' + memberNames + '。本轮由你（' + groupReplyPick.name + '）以第一人称发言。\n' + systemPrompt;
+                // The active member's identity is anchored separately above. Preserve the
+                // complete group roster (names, titles and role backgrounds) as context,
+                // not as an alternative identity for the speaking character.
+                systemPrompt += '\n\n[群内成员资料：仅用来理解其他人]\n' + rolePersona +
+                    '\n这些是群内其他成员和你自己的背景资料；你只能以本轮指定成员的身份说话，不能把其他人的经历说成自己的。';
                 systemPrompt += '\n\n[群聊回复规则]\n直接输出' + groupReplyPick.name + '的聊天内容即可，不要输出名字前缀、不要用冒号开头、不要模拟其他成员发言，一次只由你一个人说话。';
                 if (groupReplyPick.isMentioned) {
                     systemPrompt += '\n\n[本轮被@点名] 用户刚刚明确提到了你。请优先直接回应与自己相关的内容，不要忽略这次点名，也不要替其他被提及的成员发言。';
