@@ -9,23 +9,43 @@
   'use strict';
 
   // ---------- 通用：向聊天插入一条展示消息（不触发 AI 请求） ----------
-  function insertChatMessage(msg) {
-    if (!msg || typeof msg !== 'object') return false;
-    if (!msg.time) msg.time = Date.now();
-    if (!msg.role) msg.role = 'user';
-    // Build a fresh snapshot: a failed write must not mutate a shared history array.
-    var saved = false;
+  function atomicChatWriter() {
+    var writer = window.ChatHistoryAtomic;
+    return writer && typeof writer.appendIf === 'function' &&
+      typeof writer.appendManyIf === 'function' &&
+      typeof writer.replaceIfUnchanged === 'function' ? writer : null;
+  }
+  function extrasRoleId() {
+    return currentCharacter && currentCharacter.id != null ?
+      String(currentCharacter.id) : '';
+  }
+  function extrasPrimaryHistory(id) {
     try {
-      var history = loadMessages();
-      if (Array.isArray(history)) saved = saveMessages(history.concat([msg])) === true;
-    } catch (error) {
-      saved = false;
-    }
-    if (!saved) {
-      if (typeof showToast === 'function') showToast('聊天记录保存失败，消息未发送');
+      var raw = localStorage.getItem('chat_history_' + id);
+      if (raw === null) return null;
+      var parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : null;
+    } catch (error) { return null; }
+  }
+  async function insertChatMessage(msg) {
+    if (!msg || typeof msg !== 'object') return false;
+    var roleId = extrasRoleId(), writer = atomicChatWriter();
+    if (!roleId || !writer || !extrasPrimaryHistory(roleId)) {
+      if (typeof showToast === 'function') showToast('聊天记录暂不能安全保存，请刷新后重试');
       return false;
     }
-    appendMessageToDOM(msg);
+    if (!msg.time) msg.time = Date.now();
+    if (!msg.role) msg.role = 'user';
+    if (!msg.mid) msg.mid = 'chat-plus-' + uid();
+    var result;
+    try { result = await writer.appendIf(roleId, msg); }
+    catch (error) { result = { ok: false }; }
+    if (!result || !result.ok) {
+      if (typeof showToast === 'function') showToast('聊天记录保存失败，消息未发送，请检查存储空间');
+      return false;
+    }
+    if (typeof renderAllMessages === 'function') renderAllMessages();
+    else if (typeof appendMessageToDOM === 'function') appendMessageToDOM(msg);
     if (chatMessages) chatMessages.scrollTop = chatMessages.scrollHeight;
     return true;
   }
@@ -137,12 +157,12 @@
       '</div>'
     );
     document.getElementById('locCancel').onclick = closeModal;
-    document.getElementById('locSend').onclick = function () {
+    document.getElementById('locSend').onclick = async function () {
       const place = document.getElementById('locPlace').value.trim() || '宇宙尽头';
       try { localStorage.setItem('myLocation', place); } catch (e) {}
       closeModal();
       // 展示：右侧位置卡片气泡
-      if (!insertChatMessage({ role: 'user', type: 'location', location: { label: place } })) return;
+      if (!await insertChatMessage({ role: 'user', type: 'location', location: { label: place } })) return;
       // 演绎：把「我在xxx」作为隐藏消息发给 AI，由 AI 按人设回应
       sendSilentInstruction('我在' + place);
     };
@@ -183,31 +203,31 @@
       '<button class="x-btn x-btn-primary" id="annivAdd">新增纪念日</button>';
     openModal('纪念日', html);
 
-    document.getElementById('annivAdd').onclick = function () {
+    document.getElementById('annivAdd').onclick = async function () {
       const name = document.getElementById('annivName').value.trim();
       const date = document.getElementById('annivDate').value;
       if (!name || !date) { showToast('请填写名称和日期'); return; }
       const list = lsGet(ANNIV_KEY, []);
       list.push({ id: uid(), name: name, date: date });
       lsSet(ANNIV_KEY, list);
-      if (!insertChatMessage({ role: 'user', type: 'anniversary', anniversary: { name: name, date: date, daysText: daysUntil(date) } })) { renderAnniversaryList(); return; }
+      if (!await insertChatMessage({ role: 'user', type: 'anniversary', anniversary: { name: name, date: date, daysText: daysUntil(date) } })) { renderAnniversaryList(); return; }
       sendSilentInstruction('[系统动作：我标记了一个纪念日「' + name + '」（' + date + '，' + daysUntil(date) + '）]');
       renderAnniversaryList();
     };
     modalBody.querySelectorAll('.anniv-del').forEach(function (b) {
-      b.onclick = function () {
+      b.onclick = async function () {
         const id = b.closest('[data-id]').getAttribute('data-id');
         lsSet(ANNIV_KEY, lsGet(ANNIV_KEY, []).filter(function (a) { return a.id !== id; }));
         renderAnniversaryList();
       };
     });
     modalBody.querySelectorAll('.anniv-send').forEach(function (b) {
-      b.onclick = function () {
+      b.onclick = async function () {
         const id = b.closest('[data-id]').getAttribute('data-id');
         const a = lsGet(ANNIV_KEY, []).find(function (x) { return x.id === id; });
         if (!a) return;
         closeModal();
-        if (!insertChatMessage({ role: 'user', type: 'anniversary', anniversary: { name: a.name, date: a.date, daysText: daysUntil(a.date) } })) return;
+        if (!await insertChatMessage({ role: 'user', type: 'anniversary', anniversary: { name: a.name, date: a.date, daysText: daysUntil(a.date) } })) return;
         sendSilentInstruction('[系统动作：我向你提到了纪念日「' + a.name + '」（' + a.date + '，' + daysUntil(a.date) + '）]');
       };
     });
@@ -243,7 +263,7 @@
       todoInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') add(); });
 
       modalBody.querySelectorAll('[data-act="toggle"]').forEach(function (c) {
-        c.onclick = function () {
+        c.onclick = async function () {
           const id = c.closest('[data-id]').getAttribute('data-id');
           const items = lsGet(key, []).map(function (t) { return t.id === id ? Object.assign({}, t, { done: !t.done }) : t; });
           lsSet(key, items);
@@ -251,17 +271,17 @@
         };
       });
       modalBody.querySelectorAll('.todo-del').forEach(function (b) {
-        b.onclick = function () {
+        b.onclick = async function () {
           const id = b.closest('[data-id]').getAttribute('data-id');
           lsSet(key, lsGet(key, []).filter(function (t) { return t.id !== id; }));
           render();
         };
       });
-      document.getElementById('todoSend').onclick = function () {
+      document.getElementById('todoSend').onclick = async function () {
         const items = lsGet(key, []);
         if (!items.length) { showToast('暂无待办可发送'); return; }
         closeModal();
-        if (!insertChatMessage({ role: 'user', type: 'todo', todo: { items: items } })) return;
+        if (!await insertChatMessage({ role: 'user', type: 'todo', todo: { items: items } })) return;
         const doneCount = items.filter(function (i) { return i.done; }).length;
         sendSilentInstruction('[系统动作：我 shared 了我们的待办清单（共 ' + items.length + ' 项，已完成 ' + doneCount + ' 项）：' + items.map(function (i) { return (i.done ? '✓' : '○') + i.text; }).join('、') + ']');
       };
@@ -304,7 +324,7 @@
     function p(n) { return n < 10 ? '0' + n : '' + n; }
     return p(Math.floor(sec / 60)) + ':' + p(sec % 60);
   }
-  function consumeCallResult() {
+  async function consumeCallResult() {
     if (typeof currentCharacter === 'undefined' || !currentCharacter || !currentCharacter.id) return;
     var key = 'call_result_' + currentCharacter.id;
     var raw = null;
@@ -313,10 +333,16 @@
     var result = null;
     try { result = JSON.parse(raw); } catch (e) { return; }
     if (!result || (result.type !== 'voice' && result.type !== 'video')) return;
+    if (!result.mid) {
+      result.mid = 'call-result-' + uid();
+      try { sessionStorage.setItem(key, JSON.stringify(result)); }
+      catch (error) { return; }
+    }
     var text = result.connected
       ? '通话时长 ' + formatCallDuration(result.duration || 0)
       : '已取消';
-    if (!insertChatMessage({ role: 'user', type: 'call', call: { type: result.type, text: text } })) return;
+    if (!await insertChatMessage({ role: 'user', type: 'call', mid: result.mid,
+      call: { type: result.type, text: text } })) return;
     // Keep the pending call result on write failure so a later page load can retry it.
     try { sessionStorage.removeItem(key); } catch (e) {}
   }
@@ -363,7 +389,7 @@
         '<button class="x-btn x-btn-primary" id="momAdd">记录这个时刻</button>';
       openModal('特别时刻', html);
 
-      document.getElementById('momAdd').onclick = function () {
+      document.getElementById('momAdd').onclick = async function () {
         const title = document.getElementById('momTitle').value.trim();
         const content = document.getElementById('momContent').value.trim();
         const date = document.getElementById('momDate').value;
@@ -372,23 +398,23 @@
         list.push({ id: uid(), title: title, content: content, date: date });
         lsSet(MOMENT_KEY, list);
         closeModal();
-        if (!insertChatMessage({ role: 'user', type: 'moment', moment: { title: title, content: content, date: date } })) return;
+        if (!await insertChatMessage({ role: 'user', type: 'moment', moment: { title: title, content: content, date: date } })) return;
         sendSilentInstruction('[系统动作：我记录了一个特别时刻「' + title + '」' + (content ? '：' + content : '') + (date ? '（' + date + '）' : '') + ']');
       };
       modalBody.querySelectorAll('.mom-del').forEach(function (b) {
-        b.onclick = function () {
+        b.onclick = async function () {
           const id = b.closest('[data-id]').getAttribute('data-id');
           lsSet(MOMENT_KEY, loadMomentList().filter(function (m) { return m.id !== id; }));
           render();
         };
       });
       modalBody.querySelectorAll('.mom-send').forEach(function (b) {
-        b.onclick = function () {
+        b.onclick = async function () {
           const id = b.closest('[data-id]').getAttribute('data-id');
           const m = loadMomentList().find(function (x) { return x.id === id; });
           if (!m) return;
           closeModal();
-          if (!insertChatMessage({ role: 'user', type: 'moment', moment: { title: m.title, content: m.content, date: m.date } })) return;
+          if (!await insertChatMessage({ role: 'user', type: 'moment', moment: { title: m.title, content: m.content, date: m.date } })) return;
           sendSilentInstruction('[系统动作：我向你分享了特别时刻「' + m.title + '」' + (m.content ? '：' + m.content : '') + ']');
         };
       });
@@ -445,12 +471,12 @@
     }).join('') + '</div>';
     openModal('分享名片', html);
     modalBody.querySelectorAll('.card-send').forEach(function (b) {
-      b.onclick = function () {
+      b.onclick = async function () {
         var idx = parseInt(b.closest('[data-idx]').getAttribute('data-idx'), 10);
         var r = roles[idx];
         if (!r) return;
         closeModal();
-        if (!insertChatMessage({ role: 'user', type: 'card', card: { id: String(r.id), name: r.name || '', avatar: r.avatar || '' } })) return;
+        if (!await insertChatMessage({ role: 'user', type: 'card', card: { id: String(r.id), name: r.name || '', avatar: r.avatar || '' } })) return;
         sendSilentInstruction('[系统动作：我发了一张「' + (r.name || '') + '」的名片给你]');
       };
     });
@@ -539,7 +565,7 @@
     var cancel = document.getElementById('chatImagePrivacyCancel');
     var proceed = document.getElementById('chatImagePrivacyContinue');
     if (cancel) cancel.onclick = closeModal;
-    if (proceed) proceed.onclick = function () {
+    if (proceed) proceed.onclick = async function () {
       try { localStorage.setItem(CHAT_IMAGE_PRIVACY_KEY, 'confirmed'); } catch (e) {}
       closeModal();
       if (typeof onContinue === 'function') onContinue();
@@ -598,20 +624,29 @@
     }
 
     if (!messages.length) return;
-
-    var history = loadMessages();
-    var next = history.concat(messages);
-    if (!saveMessages(next)) {
-      await storedAssets.reduce(function (chain, item) {
-        return chain.then(function () {
-          return chatImageMediaRepo.removeRef(item.assetId, 'chat-message', item.mid).then(function (released) {
-            if (released && released.ok && released.value && released.value.removed) {
-              return chatImageMediaRepo.removeAsset(item.assetId);
-            }
-          });
-        }).catch(function () {});
-      }, Promise.resolve());
-      if (typeof showToast === 'function') showToast('聊天记录保存失败，图片未发送');
+    var writer = atomicChatWriter(), roleId = extrasRoleId(), outcome = null;
+    try {
+      if (writer && roleId && extrasPrimaryHistory(roleId)) {
+        outcome = await writer.appendManyIf(roleId, messages);
+      }
+    } catch (error) { outcome = { ok: false }; }
+    // The write could already have committed when its readback fails. Check
+    // stable mids before reporting failure. Never release media refs here.
+    var committed = !!(outcome && outcome.ok);
+    if (!committed) {
+      var persisted = extrasPrimaryHistory(roleId);
+      committed = !!persisted && messages.every(function (item) {
+        return persisted.some(function (entry) {
+          return entry && entry.mid === item.mid && entry.assetId === item.assetId;
+        });
+      });
+    }
+    if (!committed) {
+      // Keep media refs for verified recovery rather than creating broken
+      // chat images. Reference GC requires a separate proven-safe scan.
+      if (typeof showToast === 'function') {
+        showToast('聊天记录未能确认保存，图片资源已保留，请检查后重试');
+      }
       return;
     }
 
@@ -667,7 +702,7 @@
     const chips = document.getElementById('vmChips');
     if (chips) {
       chips.querySelectorAll('.x-chip').forEach(function (b) {
-        b.onclick = function () {
+        b.onclick = async function () {
           picked = parseInt(b.getAttribute('data-sec'), 10) || 5;
           chips.querySelectorAll('.x-chip').forEach(function (x) { x.classList.remove('active'); });
           b.classList.add('active');
@@ -675,11 +710,11 @@
       });
     }
     document.getElementById('vmCancel').onclick = closeModal;
-    document.getElementById('vmSend').onclick = function () {
+    document.getElementById('vmSend').onclick = async function () {
       const t = document.getElementById('vmText').value.trim();
       if (!t) { showToast('请先写下要说的话'); return; }
       closeModal();
-      if (!insertChatMessage({ role: 'user', type: 'voice', duration: picked, text: t })) return;
+      if (!await insertChatMessage({ role: 'user', type: 'voice', duration: picked, text: t })) return;
       sendSilentInstruction('[语音消息] ' + t);
     };
   }
@@ -708,7 +743,7 @@
     var chips = document.getElementById('dateSceneChips');
     if (chips) {
       chips.querySelectorAll('.x-chip').forEach(function (b) {
-        b.onclick = function () {
+        b.onclick = async function () {
           chips.querySelectorAll('.x-chip').forEach(function (x) { x.classList.remove('active'); });
           b.classList.add('active');
           var inp = document.getElementById('dateSceneInput');
@@ -717,13 +752,13 @@
       });
     }
     document.getElementById('dateCancel').onclick = closeModal;
-    document.getElementById('dateGo').onclick = function () {
+    document.getElementById('dateGo').onclick = async function () {
       var scene = (document.getElementById('dateSceneInput').value || '').trim() || '咖啡馆';
       closeModal();
       try { localStorage.setItem('chat_mode_' + currentCharacter.id, 'offline-long'); } catch (e) {}
       window.location.href = '../date/date.html?v=20261028modes1&id=' + encodeURIComponent(currentCharacter.id) + '&scene=' + encodeURIComponent(scene);
     };
-    document.getElementById('dateJourneyGo').onclick = function () {
+    document.getElementById('dateJourneyGo').onclick = async function () {
       var scene = (document.getElementById('dateSceneInput').value || '').trim() || '咖啡馆';
       closeModal();
       try { localStorage.setItem('chat_mode_' + currentCharacter.id, 'offline-short'); } catch (e) {}
@@ -773,16 +808,16 @@
       });
     }
     pickBtns.forEach(function (b, i) {
-      b.onclick = function () { picked = i; refreshPick(); };
+      b.onclick = async function () { picked = i; refreshPick(); };
     });
     refreshPick();
 
     document.getElementById('giftCancel').onclick = closeModal;
-    document.getElementById('giftSend').onclick = function () {
+    document.getElementById('giftSend').onclick = async function () {
       var g = GIFT_CATALOG[picked];
       var msg = (document.getElementById('giftMsg').value || '').trim();
       closeModal();
-      if (!insertChatMessage({
+      if (!await insertChatMessage({
         role: 'user', type: 'gift',
         gift: { id: g.id, name: g.name, color: g.color, wrap: g.wrap, tag: g.tag,
                 img: g.img, message: msg },
@@ -1168,27 +1203,27 @@
       coreField('vimg-desc','图片描述','描述画面内容','一张安静的日落照片')+
       '<div class="x-core-actions"><button class="x-btn x-btn-ghost" id="vimg-cancel">取消</button><button class="x-btn x-btn-primary" id="vimg-send">发送</button></div></div>');
     document.getElementById('vimg-cancel').onclick=closeModal;
-    document.getElementById('vimg-send').onclick=function(){
+    document.getElementById('vimg-send').onclick = async function (){
       var title=document.getElementById('vimg-title').value.trim()||'图片';
       var desc=document.getElementById('vimg-desc').value.trim();
-      closeModal(); if (!insertChatMessage({role:'user',type:'virtual-image',title:title,description:desc,text:'[图片] '+title+(desc?'：'+desc:'')})) return;
+      closeModal(); if (!await insertChatMessage({role:'user',type:'virtual-image',title:title,description:desc,text:'[图片] '+title+(desc?'：'+desc:'')})) return;
       sendSilentInstruction('我给你发了一张图片，图片标题是「'+title+'」'+(desc?'，画面描述：'+desc:'')+'。请自然地回应。');
     };
   }
   function featureEmoji() {
     var chars=['微笑','开心','赞','爱心','抱抱','疑问','叹气','晚安','收到','谢谢','加油','无语'];
     openModal('表情', '<div class="x-core-grid">'+chars.map(function(x){return '<button data-word="'+x+'">'+x+'</button>';}).join('')+'</div>');
-    modalBody.querySelectorAll('[data-word]').forEach(function(b){b.onclick=function(){closeModal();if (!insertChatMessage({role:'user',type:'text',text:'['+b.dataset.word+']'})) return;if(typeof sendMsg==='function')sendMsg('['+b.dataset.word+']');};});
+    modalBody.querySelectorAll('[data-word]').forEach(function(b){b.onclick = async function (){closeModal();if (!await insertChatMessage({role:'user',type:'text',text:'['+b.dataset.word+']'})) return;if(typeof sendMsg==='function')sendMsg('['+b.dataset.word+']');};});
   }
   function featureAside() {
     openModal('旁白与动作', '<div class="x-core-card"><div class="x-core-muted">写下动作、神态或场景旁白</div><textarea class="x-core-input" id="asideText" rows="4" placeholder="例如：我轻轻推开门，探头看向你。"></textarea><div class="x-core-actions"><button class="x-btn x-btn-ghost" id="asideCancel">取消</button><button class="x-btn x-btn-primary" id="asideSend">发送并让角色回应</button></div></div>');
     document.getElementById('asideCancel').onclick=closeModal;
-    document.getElementById('asideSend').onclick=function(){var t=document.getElementById('asideText').value.trim();if(!t)return;closeModal();if (!insertChatMessage({role:'user',type:'aside',text:t})) return;sendSilentInstruction('[旁白/动作描写] '+t);};
+    document.getElementById('asideSend').onclick = async function (){var t=document.getElementById('asideText').value.trim();if(!t)return;closeModal();if (!await insertChatMessage({role:'user',type:'aside',text:t})) return;sendSilentInstruction('[旁白/动作描写] '+t);};
   }
   function coreClearChat() {
     openModal('清空聊天记录','<div class="x-core-card">此操作会清除此角色当前会话的聊天记录，无法撤销。<div class="x-core-actions"><button class="x-btn x-btn-ghost" id="clearNo">取消</button><button class="x-btn x-btn-primary" id="clearYes">确认清空</button></div></div>');
     document.getElementById('clearNo').onclick=closeModal;
-    document.getElementById('clearYes').onclick=function(){
+    document.getElementById('clearYes').onclick = async function (){
       closeModal();
       if(typeof saveMessages!=='function')return;
       var previousMessages=typeof loadMessages==='function'?(loadMessages()||[]):[];
@@ -1219,8 +1254,8 @@
     else chars.forEach(function(c,i){var name=c.name||c.nickname||('会话 '+(i+1));html+='<button data-forward="'+i+'">'+escapeHtml(name)+'</button>';});
     html+='</div><div class="x-core-actions"><button class="x-btn x-btn-ghost" id="forwardCopy">复制文本</button></div>';
     openModal('转发到其他会话',html);
-    modalBody.querySelectorAll('[data-forward]').forEach(function(b){b.onclick=function(){var idx=Number(b.dataset.forward), c=chars[idx];var key=c.id||c.characterId||c.name||c.nickname;var targetKey='chatMessages_'+key;try{var target=JSON.parse(localStorage.getItem(targetKey)||'[]');target.push({role:'user',type:'forwarded',text:text,forwarded:true,time:Date.now()});localStorage.setItem(targetKey,JSON.stringify(target));showToast&&showToast('已尝试转发到 '+(c.name||c.nickname||'目标会话'));}catch(e){showToast&&showToast('转发失败，请检查会话存储规则');}closeModal();};});
-    var cp=document.getElementById('forwardCopy');if(cp)cp.onclick=function(){closeModal();if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(function(){showToast&&showToast('已复制，可粘贴发送');});else window.prompt('复制消息文本',text);};
+    modalBody.querySelectorAll('[data-forward]').forEach(function(b){b.onclick = async function (){var idx=Number(b.dataset.forward), c=chars[idx];var key=c.id||c.characterId||c.name||c.nickname;var targetKey='chatMessages_'+key;try{var target=JSON.parse(localStorage.getItem(targetKey)||'[]');target.push({role:'user',type:'forwarded',text:text,forwarded:true,time:Date.now()});localStorage.setItem(targetKey,JSON.stringify(target));showToast&&showToast('已尝试转发到 '+(c.name||c.nickname||'目标会话'));}catch(e){showToast&&showToast('转发失败，请检查会话存储规则');}closeModal();};});
+    var cp=document.getElementById('forwardCopy');if(cp)cp.onclick = async function (){closeModal();if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(function(){showToast&&showToast('已复制，可粘贴发送');});else window.prompt('复制消息文本',text);};
   }
   // 给现有加号面板补充入口；不重复创建已有按钮
   function addPlusEntry(feat,label) {
