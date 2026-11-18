@@ -214,6 +214,7 @@
   .send-btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.45; stroke-linecap: round; }
   .comment-bar{flex-direction:column;align-items:stretch;gap:7px}.comment-input-row{display:flex;align-items:center;gap:8px;width:100%}.comment-input-row input{min-width:0}.comment-bar .forum-image-preview{width:100%}
   /* 仅通过评论栏原有的 ＋ 打开：工具不再占据正文和评论之间的空间。 */
+  .comment-bar { z-index:20; } /* 弹出的工具层需要盖过已存在的回复提示条，不改变评论栏定位 */
   .forum-more-panel {
     position:absolute;bottom:calc(100% + 8px);right:22px;z-index:40;
     width:min(340px,calc(100vw - 32px));max-height:min(68dvh,520px);
