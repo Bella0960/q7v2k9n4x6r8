@@ -73,6 +73,27 @@
     });
   }
 
+  // Every generated message must use the user's saved context, not a generic fallback.
+  // Validate the final payload, after all feature prompts have been appended.
+  // Worldbooks can validly be empty when no entry is activated by the current topic.
+  function validatePersonaRequest(input) {
+    input = input && typeof input === 'object' ? input : {};
+    var missing = [];
+    var role = input.role;
+    var persona = String(input.persona || '').trim();
+    var protocol = String(input.protocol || '').trim();
+    var expandedProtocol = String(input.expandedProtocol || '').trim();
+    var worldbook = String(input.worldbook || '').trim();
+    var systemPrompt = String(input.systemPrompt || '');
+    if (!role || typeof role !== 'object' || !String(role.id || '').trim()) missing.push('character');
+    if (!persona) missing.push('persona');
+    if (!protocol || !expandedProtocol || (expandedProtocol && systemPrompt.indexOf(expandedProtocol) < 0)) missing.push('protocol');
+    if (persona && systemPrompt.indexOf(persona) < 0) missing.push('persona-not-in-request');
+    if (input.worldbookPolicyReady !== true) missing.push('worldbook-policy');
+    if (worldbook && systemPrompt.indexOf(worldbook) < 0) missing.push('worldbook-not-in-request');
+    return { ok: missing.length === 0, missing: missing };
+  }
+
   // 旧版邂逅人物档案末行含“创作说明/正式聊天前”等编辑器提示。
   // 它不是人物经历，不应被模型当成自我身份。只移除系统生成的那一行，不改已保存的人设。
   function stripEncounterEditorNote(persona, role) {
@@ -90,6 +111,7 @@
     getModelHistory: getModelHistory,
     selectWorldbooksForRole: selectWorldbooksForRole,
     selectWorldbooksForGroup: selectWorldbooksForGroup,
+    validatePersonaRequest: validatePersonaRequest,
     isBrokenAssistantIdentity: isBrokenAssistantIdentity
   });
 })(window);
