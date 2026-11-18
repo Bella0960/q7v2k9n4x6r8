@@ -407,3 +407,12 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - Cloudflare Browser Rendering 继续单条执行以避开浏览器并发限流：**云推送最终紧凑版** 375、390、430px 三个视口，header 均 62px，首设置卡片 top 均 143px，0 假状态栏、0 横向溢出，纵向滚动正常；三档入口都保留「后台 AI 未就绪」醒目摘要。430px 已实际点击原生 disclosure 展开及收回，均 PASS。
 - Settings 375、390px header 62px、首卡 top 94px，430px 首页 header 62px/内嵌 API header 59px，点击 API 行成功打开且返回按钮成功关闭；三个视口均无假状态栏、横向溢出，主设置区仍可滚动。这是 GitHub QA 分支当前 HTML/CSS 加上项目 mobile-fit 的 **浏览器渲染/局部交互核验完成**，不涉及业务脚本执行。
 - 当前视觉页面 **SOURCE_BROWSER_LAYOUT_PASS**；整体工程依旧 `NODE_BUILD_NOT_RUN / QA_NOT_DEPLOYED / USER_QA_PENDING`。不允许据此宣布完整部署交付。
+
+
+## 2026-11-19｜SETTINGS-P0 修复交接：正则 / API 多方案 / MiniMax TTS
+- **分支**：`task-DATA-008/settings-regex-api-minimax-20261119` 从冻结 QA #299 HEAD `0f8235e04a6ecd9ee5e2b710ea3de1b5dcf79c9d` 分出；未直接改 QA、main 或生产。任务归属：DATA-008、QA-002、SEC-001；API 页面大范围视觉改造另案处理，**此 PR 不重做 API UI**。
+- **正则** `worldbook/settings/regex-settings.html`：旧 `regex_rules` 保持权威，不再因 `regex_rules_v2` 标记缺失或出现旧规则名而重置整个用户规则数组；无效/损坏 JSON 拒绝覆盖。修正内置四位 ID 捕获组和多行 XML；旧内置规则只按已知 ID+原始模式在读取时非破坏性修补。用户点击新增/开关后才持久化并读回；失败提示并保留原始数据。
+- **API** `settings/js/settings.js`：对 `api_profiles_v1`、`api_active_profile`、`api_settings` 三份配置执行逐键检查、写后校验和局部失败回滚，保留原存储契约及图片模型/高级参数；切换先确认当前已保存，失败不改用户当前方案；创建/删除同样需确认；显式温度 0 不再回退为 0.7。旧 API 配置迁移不再删除源键，补保留生图/时间/记忆字段。测试连接从仅 HTTP 200 改为要求有效的 `choices[0].message.content`，15s 超时和点击防重，仍需用户自身 provider 实测；一次连接测试可能消耗少量 Token。
+- **MiniMax TTS** `shared/js/phone/minimax-tts.js` 是新独立客户端：按原 `minimax_tts_config` 读 API Key、Group ID、区域及模型，向 `/v1/t2a_v2` 发送非流式音频合成请求，校验服务商错误码和音频内容，支持 Hex / Base64 音频解码；旧 speech-01/02 值在请求时映射到 turbo 模型，不改保存的用户数据。`settings/minimax-tts.html` 保存失败有提示和读回校验，用户可打开默认折叠试听区主动发起付费试听。角色的 `chat/chat/chat-settings.html` 增加默认折叠 Voice ID 与独立启用开关，存为新增 `minimax_voice_id_<roleId>` 和 `minimax_chat_enabled_<roleId>`；兼容已有角色 `voiceId`。全局及角色默认均关闭。聊天 `chat/chat/chat-detail.html` 长按收到的 AI 文字可选“语音朗读”，收到的语音气泡在该角色已启用后走真实 TTS，生成的音频置入原生 `audio controls`；原模拟语音在禁用时不变。音频仅本页内存缓存，不在 localStorage 存二进制；同一气泡的重开优先复用，避免无意多次扣费。
+- **测试**：新增 `tests/settings-regex-api-minimax.test.mjs` 14 个回归案例，`package.json` 注册 `npm run test:settings:repair`。已用 GitHub 当前分支源码在独立 V8 Mock 中实际执行 **14/14 PASS**，且对全部涉及页面的内联脚本做语法编译。**NOT VERIFIED**：真实 Node CLI `npm run test:settings:repair`、`npm run build`、Playwright/Chromium 完整业务逻辑、MiniMax 真实账号/区域/CORS/语音模型与发音结果、安卓及 iOS 真机，以及 QA 集中整合/部署。没有调用付费接口，也没有读取或提交真实 API Key。
+- **整合验收**：QA #299 已有其它聊天及设置改动。只按功能块核对差异，不整文件覆盖。完整 QA 整合后依次检验旧正则规则、API 多方案切换/重启/掉电/配额异常、模型连接返回空正文、MiniMax 试听及角色不同 Voice ID、不启用时零付费请求、长消息/群聊/后台场景，最后执行 Node/Vite/浏览器/真机/身份门禁。源码合格≠测试版已发布。
