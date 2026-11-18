@@ -5783,7 +5783,12 @@
                     '\n\n【其他群成员（仅为背景，不得冒用他们的身份）】\n' + rolePersona;
             }
             if (groupContextPrompt) rolePersona += '\n' + groupContextPrompt;
-            rolePersona = capText(rolePersona, CTX_CAP.persona);
+            // Never silently cut a user-authored role profile. A truncated
+            // persona is worse than an explicit retry request.
+            if (rolePersona.length > 24000) {
+                if (typeof showToast === 'function') showToast('当前角色人设过长，本轮未请求 AI；请整理后重试');
+                return;
+            }
 
             // 当前主角色专属的人物关系与生活线；群聊只读取本轮发言角色自己的关系资料。
             function buildCharacterSocialPrompt(role) {
@@ -5878,9 +5883,11 @@
             const userPersona = userFacts.length ? userFacts.join('\n') : '无';
 
             // ===== 用户动态记忆：聊天中 AI 自动记住的关于用户的事 =====
-            let userMemoryText = '（暂无）';
+            let userMemoryText = isGroupChat ? '（本群仅使用公开共同回忆）' : '（暂无）';
             try {
-                const um = JSON.parse(localStorage.getItem('user_memory') || '[]');
+                // Legacy user_memory can contain one-to-one facts without
+                // sharing consent. Never import them into a group prompt.
+                const um = isGroupChat ? [] : JSON.parse(localStorage.getItem('user_memory') || '[]');
                 if (Array.isArray(um) && um.length) {
                     // User facts saved by older builds may be global; new extracted memories are stored
                     // in chat_memories_<roleId>. Keep scoped legacy entries with their own character.
@@ -5900,10 +5907,12 @@
             userMemoryText = capText(userMemoryText, CTX_CAP.userMemory);
 
             // 长期记忆：权重分层（清晰记得/隐约记得），兼容原文本记忆
-            const roleMemory = capText(buildWeightedMemoryText(
-                speakingRoleId,
-                (speakingRole && speakingRole.memory || '').trim()
-            ) || '暂无记忆', CTX_CAP.memory);
+            const roleMemory = isGroupChat
+                ? '（群聊使用已公开群消息及经过授权的共同回忆，不读取成员个人私聊记忆）'
+                : capText(buildWeightedMemoryText(
+                    speakingRoleId,
+                    (speakingRole && speakingRole.memory || '').trim()
+                ) || '暂无记忆', CTX_CAP.memory);
 
             // 实时状态（记忆空间子系统：当前心情 + 今日事件）
             const memoryContext = (typeof memorySystem !== 'undefined')
@@ -5924,7 +5933,11 @@
                     if (legacyValue.trim()) rpProtocol = legacyValue;
                 }
             } catch (e) {}
-            rpProtocol = capText(rpProtocol.trim(), CTX_CAP.rpProtocol);
+            rpProtocol = String(rpProtocol || '').trim();
+            if (rpProtocol.length > 24000) {
+                if (typeof showToast === 'function') showToast('已保存的人设协议过长，本轮未请求 AI；请整理后重试');
+                return;
+            }
 
             // 世界书：召回当前话题相关条目；兼容旧版只有 content 的整本设定
             let worldbookText = '';
@@ -5955,8 +5968,13 @@
                   worldbookText = window.ChatContextPolicy.buildWorldbookInjectionText(wbList, {
                     currentText: text,
                     recentMessages: historyList.slice(-8),
-                    maxEntries: 32,
-                    maxChars: CTX_CAP.worldbook
+                    // Do not silently omit triggered user-authored entries;
+                    // validate total size after activation and stop visibly.
+                    maxEntries: Math.max(1, wbList.reduce(function(count, book) {
+                        return count + (book && Array.isArray(book.entries) && book.entries.length
+                            ? book.entries.length : 1);
+                    }, 0)),
+                    maxChars: 1000000
                   });
                 } else {
                   worldbookText = wbList.map(function(b){
@@ -5964,8 +5982,14 @@
                   }).join('\n\n');
                 }
               }
-            } catch(e) { worldbookText = ''; }
-            worldbookText = capText(worldbookText, CTX_CAP.worldbook);
+            } catch(e) {
+                if (typeof showToast === 'function') showToast('世界书读取失败，本轮未请求 AI；请检查本机设置');
+                return;
+            }
+            if (worldbookText.length > 32000) {
+                if (typeof showToast === 'function') showToast('已触发世界书内容过长，本轮未请求 AI；请调整条目');
+                return;
+            }
 
             // 协议变量替换：{{char}} {{user}} {{persona}} {{memory}} {{worldbook}}
             function applyProtocolVars(text) {
@@ -5980,7 +6004,11 @@
             let systemPrompt;
             if (rpProtocol) {
                 // 协议存在：替换变量后置于 System Prompt 最顶端（最高优先级，覆盖底层默认规则）
-                systemPrompt = capText(applyProtocolVars(rpProtocol), CTX_CAP.rpComposed);
+                systemPrompt = applyProtocolVars(rpProtocol);
+                if (systemPrompt.length > 48000) {
+                    if (typeof showToast === 'function') showToast('协议展开后过长，本轮未请求 AI；请缩短设定');
+                    return;
+                }
             } else {
                 // 协议不存在：使用原有的人设/用户信息/记忆/回复要求拼接逻辑
                 systemPrompt = [
