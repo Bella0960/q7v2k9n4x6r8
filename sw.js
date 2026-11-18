@@ -1,12 +1,18 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v250';
+const CACHE_NAME = 'phone-app-pwa-v251';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 function cacheablePublicResponse(response) {
   return !!(response && response.ok && !response.redirected &&
     !/(?:^|[,\s])(?:no-store|private)(?:[,\s]|$)/i.test(
       String(response.headers && response.headers.get('cache-control') || '')));
+}
+// Navigation HTML must not cache a JSON/API/error payload with a 200 status.
+// Keep static image, script and style caching on its existing independent path.
+function cacheablePublicNavigationHtml(response) {
+  return cacheablePublicResponse(response) && /^\s*text\/html\s*(?:;|$)/i.test(
+    String(response.headers && response.headers.get('content-type') || ''));
 }
 // v196 release: sweep orphaned role-owned media refs during avatar cleanup.
 const APP_SHELL = [
@@ -324,7 +330,7 @@ self.addEventListener('fetch', event => {
     event.respondWith((async function () {
       var cacheWritePromise = null;
       var networkPromise = fetch(req, { cache: 'no-store' }).then(function (response) {
-        if (cacheablePublicResponse(response)) {
+        if (cacheablePublicNavigationHtml(response)) {
           var copy = response.clone();
           cacheWritePromise = caches.open(CACHE_NAME)
             .then(function (cache) { return cache.put(req, copy); })
@@ -344,7 +350,7 @@ self.addEventListener('fetch', event => {
       var cached = await caches.open(CACHE_NAME).then(function (cache) {
         return cache.match(req);
       }).catch(function () { return null; });
-      if (cacheablePublicResponse(cached)) return cached;
+      if (cacheablePublicNavigationHtml(cached)) return cached;
 
       return new Response('此页面暂时无法连接，请检查网络后重试。', {
         status: 503,
