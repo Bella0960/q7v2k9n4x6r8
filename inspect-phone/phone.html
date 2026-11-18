@@ -7,7 +7,13 @@
 <script src="../shared/js/phone/phone_storage.js"></script>
 <script src="../shared/js/phone/phone_api.js"></script>
 <script src="../shared/js/statusbar-control.js"></script>
-<script src="./inspect-feature.js?v=20261111v1"></script>
+<script src="../shared/js/phone/inspect_account_guard.js?v=20261112v2"></script>
+<script src="../shared/js/phone/inspect_interaction_bridge.js?v=20261112v5"></script>
+<script src="./inspect-persona-web.js?v=20261112v3"></script>
+<script src="./inspect-life-clock.js?v=20261112v1"></script>
+<script src="./inspect-native-view.js?v=20261112v6"></script>
+<script src="./inspect-feature.js?v=20261112v8"></script>
+<link rel="stylesheet" href="./inspect-native.css?v=20261112v5">
 <style>
 :root{color-scheme:light;--ink:#222226;--muted:#8d8d95;--line:#e5e5ea;--bg:#f7f7f9;--card:#fff;font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif}
 *{box-sizing:border-box}
@@ -39,8 +45,8 @@ body{
 .lock-hint{position:absolute;bottom:36px;left:0;right:0;text-align:center;color:#787880;font-size:12px}
 .lock-hint svg{width:20px;height:20px;display:block;margin:0 auto 7px}
 .phone{position:absolute;inset:0;display:grid;grid-template-rows:34px 1fr;opacity:0;transition:opacity .24s ease}
-html[data-maomao-statusbar-hidden] #phone{grid-template-rows:minmax(0,1fr)}
 .phone.show{opacity:1}
+html[data-maomao-statusbar-hidden] #phone{grid-template-rows:minmax(0,1fr)}
 .statusbar{display:flex;align-items:center;justify-content:space-between;padding:0 16px;font-size:12px;color:#333;background:transparent;z-index:2}
 .status-icons{display:flex;align-items:center;gap:7px;color:#4d4d55}
 .status-icons svg{display:block}
@@ -55,7 +61,7 @@ html[data-maomao-statusbar-hidden] #phone{grid-template-rows:minmax(0,1fr)}
 .badge{position:absolute;top:-4px;right:8px;min-width:17px;height:17px;border-radius:999px;background:#e03131;color:#fff;font-size:10px;display:grid;place-items:center;padding:0 4px;border:2px solid #f6f6f8}
 .label{font-size:11px;color:#5c5c64}
 .dock{margin-top:auto;display:grid;grid-template-columns:repeat(2,1fr);gap:18px;padding:12px 10px 26px;background:rgba(255,255,255,.55);backdrop-filter:blur(10px);border-top:1px solid rgba(0,0,0,.05)}
-.gesture{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);width:120px;height:4px;border-radius:999px;background:rgba(0,0,0,.22);z-index:3}
+.gesture{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);width:120px;height:4px;border-radius:999px;background:rgba(0,0,0,.22);z-index:8;pointer-events:none}
 .app-layer{position:absolute;inset:0;z-index:4;display:flex;flex-direction:column;background:var(--bg);transform:scale(.28);opacity:0;pointer-events:none;transition:transform .26s cubic-bezier(.2,.8,.2,1),opacity .2s ease}
 .app-layer.open{transform:scale(1);opacity:1;pointer-events:auto}
 .app-bar{height:50px;display:grid;grid-template-columns:44px 1fr 44px;align-items:center;border-bottom:1px solid var(--line);background:rgba(255,255,255,.85)}
@@ -229,6 +235,7 @@ html[data-maomao-statusbar-hidden] #phone{grid-template-rows:minmax(0,1fr)}
           <header class="app-bar">
             <button class="back" id="appBack" aria-label="返回"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></button>
             <h2 class="app-title" id="appTitle"></h2>
+            <button class="inspect-reload" id="appReload" type="button" aria-label="更多操作" title="更多操作"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg></button>
           </header>
           <div class="app-body" id="appBody"></div>
         </section>
