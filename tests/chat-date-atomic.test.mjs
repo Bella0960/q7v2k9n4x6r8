@@ -49,7 +49,7 @@ function fixture(initial, shared, roleId = 'role') {
     runInNewContext(atomicSource, { window });
     const toasts = [];
     const page = createPage(window, localStorage, roleId, msg => toasts.push(msg), { error() {}, warn() {} });
-    return { ...page, localStorage, lock, toasts };
+    return { ...page, window, localStorage, lock, toasts };
 }
 
 test('online and long-offline concurrent append preserve all 2000 old messages', async () => {
