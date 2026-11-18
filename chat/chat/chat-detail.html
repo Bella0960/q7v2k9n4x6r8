@@ -7243,6 +7243,13 @@
             // Source proof contains LENGTHS only, never the personal contents themselves.
             console.info('[ChatPersonaSources] outbound source verified', finalPayloadAudit.evidence);
 
+            // Baseline for a destructive AI turn: a delayed result must not
+            // replace any new message that arrived in another tab.
+            const aiWriteExpected = loadMessages();
+            if (_chatHistoryUnreadable) {
+                if (typeof showToast === 'function') showToast('聊天记录读取异常，本轮未请求 AI');
+                return;
+            }
             // API 调用计时起点（用于调用记录）
             const apiCallStart = Date.now();
 
@@ -7645,7 +7652,34 @@
                                 delete retryResolved.message.sendFailedReason;
                             }
                         }
-                        var replySaved = saveMessages(historyList);
+                        // Plain reply bubbles are appends; edits to an earlier
+                        // turn (regeneration, retry status, wallet/group actions)
+                        // require an unchanged full-record baseline.
+                        var aiNewMessages = replyMessages.concat(aiStickerMessages, aiRoleGalleryMessages);
+                        aiNewMessages.forEach(function (item) { ensureMid(item); });
+                        var preReply = historyList.slice(0, historyList.length - aiNewMessages.length);
+                        var canAppendReply = !isRegen && aiNewMessages.length > 0 &&
+                            JSON.stringify(preReply) === JSON.stringify(aiWriteExpected);
+                        var replySaved;
+                        if (canAppendReply) {
+                            var dispatchUser = aiWriteExpected.slice().reverse().find(function (m) {
+                                return m && (m.role === 'user' || m.role === 'sent');
+                            });
+                            replySaved = await appendChatSafely(aiNewMessages, function (latest) {
+                                var currentUser = latest.slice().reverse().find(function (m) {
+                                    return m && (m.role === 'user' || m.role === 'sent');
+                                });
+                                if (!dispatchUser) return !currentUser;
+                                return !!currentUser &&
+                                    (dispatchUser.mid && currentUser.mid
+                                        ? String(dispatchUser.mid) === String(currentUser.mid)
+                                        : Number(dispatchUser.time || 0) === Number(currentUser.time || 0) &&
+                                          String(dispatchUser.text || '') === String(currentUser.text || ''));
+                            });
+                        } else {
+                            replySaved = await replaceChatSafely(aiWriteExpected, historyList);
+                        }
+                        if (replySaved) historyList = loadMessages();
                         // No secondary state change from a failed/partial/unpersisted turn.
                         if (replySaved && streamResult.ok) {
                             if (parsedMem.memories.length && !isGroupChat)
@@ -7763,18 +7797,15 @@
                                 var failedIndex = historyList.indexOf(message);
                                 if (failedIndex >= 0) historyList.splice(failedIndex, 1);
                             });
-                            if (aiRoleGalleryMessages.length && window.RoleGalleryImageAutonomy &&
-                                typeof window.RoleGalleryImageAutonomy.releaseReferences === 'function') {
-                                try { await window.RoleGalleryImageAutonomy.releaseReferences(aiRoleGalleryMessages); } catch (galleryRollbackError) {}
-                            }
+                            // A write can persist despite a failed readback.
+                            // Keep media refs until a verified orphan scan
+                            // proves they are not referenced by saved messages.
                             replyMessages = [];
                             aiStickerMessages = [];
                             aiRoleGalleryMessages = [];
-                            // Regeneration never deleted the saved old turn, so a
-                            // failed replacement write must not retry a filtered history.
-                            if (!isRegen) {
-                                try { saveMessages(historyList); } catch (rollbackError) {}
-                            }
+                            // Never rewrite the entire history to "undo" an
+                            // uncertain atomic write. The original record
+                            // remains authoritative for later reconciliation.
                             if (streamBubble && fullText) streamBubble.textContent = fullText;
                             if (typeof showToast === 'function') showToast('AI 回复尚未保存。上方文字暂留在当前页面，请先复制保留，再检查存储空间。');
                         } else {
