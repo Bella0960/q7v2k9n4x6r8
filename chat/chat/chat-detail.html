@@ -3156,7 +3156,13 @@
                 msg.poll && typeof msg.poll === 'object' ? JSON.stringify(msg.poll) : '',
                 msg.chain && typeof msg.chain === 'object' ? JSON.stringify(msg.chain) : '',
                 msg.groupGame && typeof msg.groupGame === 'object' ? JSON.stringify(msg.groupGame) : '',
-                msg.call && typeof msg.call === 'object' ? JSON.stringify(msg.call) : ''
+                msg.call && typeof msg.call === 'object' ? JSON.stringify(msg.call) : '',
+                // Rich messaging links are user data. A storage shim that drops
+                // only quote / vision references / per-bubble IDs is NOT a valid save.
+                msg.quote && typeof msg.quote === 'object' ? JSON.stringify(msg.quote) : '',
+                Array.isArray(msg.visionImageMids) ? JSON.stringify(msg.visionImageMids) : '',
+                msg.bubbleIndex == null ? '' : String(msg.bubbleIndex),
+                msg.bubbleCount == null ? '' : String(msg.bubbleCount)
             ];
             return String(msg.role || '') + '\u0001' + String(marker) + '\u0001' +
                 String(body) + '\u0001' + JSON.stringify(metadata);
