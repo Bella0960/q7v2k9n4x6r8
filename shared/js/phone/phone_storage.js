@@ -828,7 +828,21 @@
                 return failResult(ERR.VALIDATION_FAILED, 'chat history cannot be serialized', false);
             }
             var out = _write(key, expected);
-            if (out.state !== 'ok') return _writeToResult(out, key);
+            // Some storage adapters commit the bytes and then throw (or lose read
+            // access). Do not report a definite failure: the caller may otherwise
+            // remove a media reference that the persisted message still needs.
+            if (out.state !== 'ok') {
+                var afterError = _probe(key);
+                if (afterError.state === 'ok' && afterError.raw === expected) {
+                    return okResult(true, { written: key, verifiedAfterWriteError: true });
+                }
+                var failed = _writeToResult(out, key);
+                failed.meta = {
+                    writeMayHavePersisted: afterError.state === 'unavailable' ||
+                        (afterError.state !== 'missing' && afterError.raw !== before.raw)
+                };
+                return failed;
+            }
             var verified = _probe(key);
             if (verified.state !== 'ok' || verified.raw !== expected) {
                 return failResult(ERR.DB_UNAVAILABLE, 'chat history write not verified', true, {
