@@ -88,7 +88,7 @@ test('group shell is visually distinct, collapsed and remains operable on phone 
       assert.equal(await page.locator('#gpCoverName').innerText(),'夜航');
       assert.equal(await page.locator('#gpCoverCount').innerText(),'2 位成员');
       assert.equal((await page.locator('#gpCoverEmblem').innerText()).trim(),'夜');
-      assert.equal(await page.locator('.gp-preview-person button').count(),0);
+      assert.equal(await page.locator('#gpCoverChoose').innerText(),'上传封面');
       assert.equal(await page.locator('#gpProfileSettings').evaluate(e=>e.open),false);
       assert.equal(await page.locator('#gpManageCard').isVisible(),false);
       assert.equal(await page.locator('.status-bar').isVisible(),false, 'group page must not display a fake phone status bar');
@@ -96,10 +96,12 @@ test('group shell is visually distinct, collapsed and remains operable on phone 
       assert.ok(headerTop.y < 80, 'group topbar must not have an oversized blank header');
       const size=await page.locator('.gp-cover-hero').boundingBox();
       assert.ok(size.width>260 && size.width<=width && size.height>=200);
+      const beforeClick = await page.evaluate(() => localStorage.getItem('phone_groups'));
       await page.locator('.gp-preview-person').first().click();
       assert.equal(await page.locator('#gpProfileSettings').evaluate(e=>e.open),true);
       assert.equal(await page.locator('#gpManageCard').isVisible(),true);
       assert.equal(await page.locator('.gp-member-row[data-mid="c1"]').isVisible(),true);
+      assert.equal(await page.evaluate(() => localStorage.getItem('phone_groups')),beforeClick, 'viewing a member must not edit group data');
       await page.locator('.gp-add').click();
       await page.locator('.gp-invite-row').first().waitFor({state:'visible'});
       assert.equal((await page.locator('#gpInviteCount').innerText()).trim(),'1 位可邀请');
@@ -134,6 +136,7 @@ test('cover persists per group in IndexedDB without polluting chat backgrounds',
     const buffer=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jVkQAAAAASUVORK5CYII=','base64');
     await page.locator('#gpCoverFile').setInputFiles({name:'cover.png',mimeType:'image/png',buffer});
     await page.waitForFunction(() => document.querySelector('.gp-cover-hero').classList.contains('has-photo'));
+    assert.equal(await page.locator('#gpCoverChoose').innerText(),'更换封面');
     const state=await page.evaluate(async () => {
       const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('maomao-media-store',2);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
       const value=await new Promise((resolve,reject)=>{const r=db.transaction('wallpapers','readonly').objectStore('wallpapers').get('chat_group_profile_cover_v1_g1');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
