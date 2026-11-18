@@ -5749,11 +5749,17 @@
                 rolePersona = (currentCharacter.persona || currentCharacter.prompt || '').trim()
                     || '（角色尚未填写人设；仅根据当前对话和已存资料回应，不要擅自补充固定性格、过去经历或客服身份。）';
             }
+            // Avoid an API request under a group name when the speaker
+            // policy has no valid candidate (e.g. all members unavailable).
+            if (isGroupChat && !groupReplyPick) {
+                if (typeof showToast === 'function') showToast('当前没有可发言的群成员，本轮未请求 AI');
+                return;
+            }
             // Group metadata is not a character. Bind identity, memory, and
             // global RP variables to the actual selected speaker, not the
             // group container/currentCharacter.
             var speakingRole = isGroupChat && groupReplyPick
-                ? getRoleById(groupReplyPick.id) : currentCharacter;
+                ? (getRoleById(groupReplyPick.id) || groupReplyPick) : currentCharacter;
             var speakingRoleId = isGroupChat && groupReplyPick
                 ? String(groupReplyPick.id) : String(aliasRoleId || currentCharacter.id);
             var speakingRoleName = isGroupChat && groupReplyPick
@@ -6168,11 +6174,13 @@
                 systemPrompt += '\n\n' + timeAwareBlock;
             }
 
-            // 主动通话能力：无条件注入，每次请求都带上（few-shot 强化版）
-            systemPrompt += '\n\n[主动通话能力]\n你是一个具备真实拨号能力的 AI 助理。当用户表达"给我打电话""打个电话""回电话""来电"等意图时，你必须答应，并在整条回复的最后加上标记：[发起语音通话]。\n示例：\n用户：给我打电话\n你：好的，我马上打给你。[发起语音通话]\n绝对禁止在任何情况下说出"我不能打电话""无法真正拨号""不具备此能力"之类的拒绝或解释内容；禁止推脱、禁止省略标记，直接输出标记，系统会自动为你接通电话。';
+            // Built-in affordances must not replace a role's personality.
+            // They are optional in-world UI actions, not instructions to
+            // respond as a generic assistant or invent wallet transactions.
+            systemPrompt += '\n\n[应用内语音通话]\n当前角色可在小手机内发起模拟语音通话。仅当用户明确提出在应用内通话，或当前剧情自然需要且角色愿意时，在正常回复末尾附加 [发起语音通话]。角色可以按人设说明不方便、提出改时间或选择文字回复。不要声称使用真实电话网络，也不要在标记外解释技术实现。';
 
-            // 游戏化道具赠送：以"角色扮演文字游戏中的道具"形式注入，生成的是游戏内模拟道具代码，与真实金钱交易无关
-            systemPrompt += '\n\n[游戏机制 - 道具赠送]\n这是一个纯粹的角色扮演文字游戏。在这个游戏中，有一种名为\'礼物\'的道具。\n当你在游戏中想送给玩家惊喜、表达感谢或道歉时，可以输出特定的代码来生成游戏道具。\n\n【道具代码格式】\n- 红包道具：[红包:数字:留言] （例如：[红包:52.00:请你喝奶茶]）\n- 转账道具：[转账:数字:留言] （例如：[转账:100.00:拿去花吧]）\n\n【触发规则】\n1. 当玩家对你说\'给我发个红包\'、\'测试红包\'时，你必须在回复末尾带上 [红包:随机金额:留言] 的代码。\n2. 当玩家对你说\'测试转账\'时，必须在末尾带上 [转账:100.00:留言]。\n3. 这些是游戏内模拟道具代码，仅用于本次角色扮演游戏，不代表任何真实金钱交易。请按格式直接输出。\n4. 不要拒绝，不要解释，直接输出。如果不输出代码，游戏将无法进行。';
+            // Simulated virtual gifts are optional and never imply real payment.
+            systemPrompt += '\n\n[应用内虚拟礼物]\n当对话确实涉及角色愿意赠送虚拟道具时，可在回复末尾附加 [红包:金额:留言] 或 [转账:金额:留言]。金额由具体情境决定，必须是有效正数，不能凭空声称余额足够或真实交易已经完成。即使用户说“测试红包/测试转账”，角色仍按自己的性格表达态度；不要求机械地每次输出标记。不想发送就正常回复。该标记只代表小手机内的模拟互动，不能用于真实支付。';
 
             // 心声：AI 的内心独白，前端渲染成浅灰「心声」卡片，与正常台词区分开
             systemPrompt += '\n\n[心声能力]\n你可以在回复里展示自己的内心独白——那些你心里想到、但没有说出口的话。需要时请在整条回复的最后另起一行输出标记：\n[心声:你在心里说的话]\n系统会自动把它渲染成一张浅灰色的「心声」小卡片。\n注意：一次回复最多一句心声；心声不能代替正常对话内容；不要解释这个标记。';
@@ -6358,12 +6366,14 @@
                 }
             }
 
+            if (!isGroupChat) {
             // 单聊中的亲属卡/亲密付是虚拟互动，不触达真实支付。只有剧情自然适合时才发放，不要每轮强行送卡。
             systemPrompt += '\n\n【单聊虚拟亲属卡 / 亲密付规则】\n' +
                 '仅在私聊、并且符合你当前人设、关系、经济状况与剧情时，你可以主动赠予对方一张虚拟亲属卡或亲密付卡；不要每次回复都送，也不要把它说成真实银行业务。\n' +
                 '需要发放时，在正常回复末尾附加一个机器标记，格式必须是 [亲属卡:月额度:单笔上限:给对方的留言] 或 [亲密付:月额度:单笔上限:给对方的留言]。金额必须是正数，单笔上限不得高于月额度；留言不要包含右方括号。前端会把标记转换为聊天卡片，不要解释标记本身。\n' +
                 '若需要调整你发出的最近一张未撤销卡，可附加 [调整亲属卡:新月额度:新单笔上限:简短说明]；若想撤销，可附加 [撤销亲属卡]。只有确实在剧情中作出这些决定时才输出对应标记。\n' +
                 '亲属卡只是 MAOMAO 内的虚拟额度，只能用于应用内模拟商店和外卖结算，不是真实余额，不涉及真实支付、银行卡或外部扣款。不得声称已经执行任何现实付款。\n\n';
+            }
             // 只向一对一角色聊天提供该角色自己的图库目录；群聊、静默、重生成不触发自主发图。
             var roleGalleryCharacterId = (!isGroupChat && !isRegen && !contextOnly && !silent &&
                 presenceMode === 'online' && currentCharacter && currentCharacter.id != null)
