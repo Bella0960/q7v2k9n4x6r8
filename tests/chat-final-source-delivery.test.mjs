@@ -31,7 +31,7 @@ function request() {
   };
 }
 
-test('same user's saved role, tone, protocol and activated worldbook all reach final outbound messages', () => {
+test("same user's saved role, tone, protocol and activated worldbook all reach final outbound messages", () => {
   const result = policy.validateFinalApiMessages(request());
   assert.equal(result.ok,true, result.missing.join(','));
   assert.deepEqual(Array.from(result.missing),[]);
