@@ -5932,7 +5932,11 @@
                     const legacyValue = localStorage.getItem(globalRpKey + speakingRoleId) || '';
                     if (legacyValue.trim()) rpProtocol = legacyValue;
                 }
-            } catch (e) {}
+            } catch (e) {
+                console.warn('[ChatPersonaSources] RP protocol unavailable:', e);
+                if (typeof showToast === 'function') showToast('人设协议读取失败，本轮未请求 AI；请检查设置');
+                return;
+            }
             // QA's shared default is the same contract shown in Settings.
             // An explicitly saved global/role protocol always wins.
             rpProtocol = String(rpProtocol || '').trim() ||
