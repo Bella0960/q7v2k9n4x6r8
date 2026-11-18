@@ -27,7 +27,7 @@
     <script src="../../shared/js/phone/phone_stream.js"></script>
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v2"></script>
-    <script src="../../shared/js/phone/chat-context-policy.js?v=20261118groupvoice2"></script>
+    <script src="../../shared/js/phone/chat-context-policy.js?v=20261118historybudget1"></script>
     <script src="../../shared/js/phone/chat-presence-policy.js?v=20261118voicepurity1"></script>
     <script src="../../shared/js/phone/role-public-timeline.js?v=20261102v1"></script>
     <script src="../../shared/js/phone/group-chat-policy.js?v=20261118groupvoice1"></script>
@@ -6859,6 +6859,19 @@
                 return m && m.type !== 'group_private' && m.type !== 'group_game_private' &&
                     m.visibility !== 'private' && m.visibility !== 'role_only';
             });
+
+            // Limit ONLY the model-input history; preserve user storage and
+            // complete recent multi-bubble turns. Persona/protocol/lore remain intact.
+            if (window.ChatContextPolicy &&
+                typeof window.ChatContextPolicy.budgetRecentHistory === 'function') {
+                var historyBudget = window.ChatContextPolicy.budgetRecentHistory(recentHistory, 9000);
+                if (historyBudget.tooLong) {
+                    if (typeof showToast === 'function')
+                        showToast('本轮消息过长，超过聊天上下文容量；请分开发送，历史记录未更改');
+                    return;
+                }
+                recentHistory = historyBudget.history;
+            }
 
             // Decode only images explicitly attached to this send. DataURLs stay transient in memory.
             if (visionImageMids.length && window.ChatImageVision &&
