@@ -6624,6 +6624,12 @@
             }
 
             try {
+                // A group interaction or regenerated turn can modify earlier
+                // messages; preserve the pre-mutation snapshot for a strict
+                // locked compare-and-swap, never rewrite stale chat history.
+                var aiWriteBaseline = (isRegen || isGroupChat)
+                    ? JSON.parse(JSON.stringify(isRegen && regenBefore ? regenBefore : historyList))
+                    : null;
                 if (fullText) {
                     // ---- 标记剥离 → 清洗 → 落库 → 重渲染（成功与中断保文共用同一套收尾） ----
                     // 群投票/接龙/群管理标记先落到当前历史与群资料，再清理展示文本
@@ -6663,6 +6669,9 @@
                     fullText = parsedRoleFamilyCard.text;
                     const roleFamilyCardChanged = applyRoleFamilyCardChanges(parsedRoleFamilyCard.changes);
                     const parsedTransferDecision = extractTransferDecisionMarkers(fullText);
+                    if (!aiWriteBaseline && parsedTransferDecision.amounts && parsedTransferDecision.amounts.length) {
+                        aiWriteBaseline = JSON.parse(JSON.stringify(historyList));
+                    }
                     fullText = parsedTransferDecision.text;
                     // 转账状态会与本轮回复一并保存；若主回复写入失败，状态也回滚。
                     var transferDecisionSnapshots = [];
@@ -6741,7 +6750,16 @@
                         aiRoleGalleryMessages.forEach(function (galleryMessage) { historyList.push(galleryMessage); });
                         window.__groupPrivateCardPending = false;
                         transferDecisionSnapshots = applyTransferDecisionMarkers(historyList, parsedTransferDecision.amounts);
-                        var replySaved = saveMessages(historyList);
+                        // Plain text/sticker/gallery bubbles append to the
+                        // freshest persisted history under one lock. Group
+                        // interactions, transfers and regeneration may edit
+                        // previous records, so require an unchanged baseline.
+                        var aiNewMessages = replyMessages.concat(aiStickerMessages, aiRoleGalleryMessages);
+                        aiNewMessages.forEach(function (message) { ensureMid(message); });
+                        var replySaved = aiWriteBaseline
+                            ? await replaceChatSafely(aiWriteBaseline, historyList)
+                            : (aiNewMessages.length ? await appendChatSafely(aiNewMessages) : true);
+                        if (replySaved) historyList = loadMessages();
                         var replySaveFailed = !replySaved;
                         var avatarRoleId = aliasRoleId || currentCharacter.id;
                         if (replySaved && !isGroupChat && window.RoleAvatarLibrary &&
@@ -6823,9 +6841,9 @@
                             aiRoleGalleryMessages = [];
                             // Regeneration never deleted the saved old turn, so a
                             // failed replacement write must not retry a filtered history.
-                            if (!isRegen) {
-                                try { saveMessages(historyList); } catch (rollbackError) {}
-                            }
+                            // No second unlocked whole-history rewrite here:
+                            // a failed append/compare must leave other tabs'
+                            // newly saved messages and rich fields untouched.
                             if (streamBubble && fullText) streamBubble.textContent = fullText;
                             if (typeof showToast === 'function') showToast('AI 回复尚未保存。上方文字暂留在当前页面，请先复制保留，再检查存储空间。');
                         } else {
