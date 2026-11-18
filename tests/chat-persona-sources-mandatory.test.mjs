@@ -70,16 +70,17 @@ test('missing protocol or blocked local storage stops generation instead of sile
 });
 
 test('single-chat persona is never shortened; group speaking member has its own full persona', () => {
-  assert.match(detail, /rolePersona = isGroupChat \? capText\(rolePersona, CTX_CAP\.persona\) : rolePersona/);
+  // The speaking role must retain its full authored persona. The group
+  // roster may be limited, but never silently clip the selected speaker.
+  assert.match(detail, /const turnSpeakerPersona = isGroupChat && groupReplyPick/);
+  assert.match(detail, /rolePersona\.length > 24000/);
   assert.match(detail, /const roleForTurn = !isGroupChat[\s\S]*?resolveRole\(currentCharacter\.id, currentCharacter, getRoleById\)/);
   assert.match(detail, /const turnSpeakerPersona = isGroupChat && groupReplyPick[\s\S]*?relationshipRole\.persona \|\| relationshipRole\.prompt/);
   assert.match(detail, /const charName = turnSpeakerName/);
   const activePersona = '深圳生活背景。'.repeat(2000);
-  const capText = (s, max) => s.slice(0, max);
-  const choose = new Function('rolePersona', 'isGroupChat', 'capText', 'CTX_CAP',
-    'rolePersona = isGroupChat ? capText(rolePersona, CTX_CAP.persona) : rolePersona; return rolePersona;');
-  assert.equal(choose(activePersona, false, capText, { persona: 5000 }), activePersona);
-  assert.ok(choose(activePersona, true, capText, { persona: 5000 }).length <= 5000);
+  assert.ok(activePersona.length > 5000);
+  assert.match(detail, /validateFinalApiMessages/);
+  assert.doesNotMatch(detail, /rolePersona = isGroupChat \? capText\(rolePersona, CTX_CAP\.persona\) : rolePersona/);
 });
 
 test('every eligible global and attached local worldbook entry reaches the same turn', () => {
