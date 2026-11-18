@@ -5258,10 +5258,10 @@
                 var raw = String(inflightSnapshot.text || '').trim();
                 if (!raw) return;
                 var cleaned = stripInternalReasoning(raw)
-                    .replace(/<narratage\\b[^>]*>[\\s\\S]*?(?:<\\/narratage\\s*>|$)/gi, '')
-                    .replace(/<\\/?narratage\\b[^>]*>/gi, '')
-                    .replace(/\\[中译[:：][^\\]]{0,800}\\]/g, '')
-                    .replace(/\\n{3,}/g, '\\n\\n').trim();
+                    .replace(/<narratage\b[^>]*>[\s\S]*?(?:<\/narratage\s*>|$)/gi, '')
+                    .replace(/<\/?narratage\b[^>]*>/gi, '')
+                    .replace(/\[中译[:：][^\]]{0,800}\]/g, '')
+                    .replace(/\n{3,}/g, '\n\n').trim();
                 if (!cleaned) return;
                 localStorage.setItem(inflightJournalKey, JSON.stringify({
                     roleId: String(currentCharacter.id),
@@ -7856,6 +7856,9 @@
 
         renderAllMessages();
         highlightMessageFromUrl();
+        // Reconcile unsaved partial replies after restoring the page; the
+        // journal is removed only after a locked append/readback succeeds.
+        Promise.resolve().then(recoverInFlightJournals);
 
         // 美化中心保存后，页面从返回缓存恢复时重新读取最新配置。
         function refreshChatBeautyConfig() {
@@ -7867,6 +7870,7 @@
             } catch (e) {}
         }
         window.addEventListener('pageshow', refreshChatBeautyConfig);
+        window.addEventListener('pageshow', recoverInFlightJournals);
         document.addEventListener('visibilitychange', function () {
             if (!document.hidden) refreshChatBeautyConfig();
         });
