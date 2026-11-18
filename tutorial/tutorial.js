@@ -619,6 +619,18 @@
     $('walkNext').textContent = activeStepIndex === steps.length - 1 ? '完成引导' : '下一步';
     $('walkOpenPage').href = guide.href || '../index.html';
   }
+  // The book is a live reader: updating a chapter's progress must not
+  // rebuild the whole list and collapse the chapter the user was reading.
+  function refreshChapterProgress(guide) {
+    if (!guide || !$('guideGrid')) return;
+    var sheet = $('guideGrid').querySelector('[data-guide-id="' + guide.id + '"]');
+    var counter = sheet && sheet.querySelector('.guide-step-meta');
+    if (!counter) return;
+    var state = stepState(guide);
+    counter.textContent = (guide.steps || []).length + ' 个分步操作 · 已阅读 ' +
+      state.walked.length + ' 步';
+  }
+
   function startGuide(id) {
     var guide = GUIDES.find(function (item) { return item.id === id; });
     if (!guide) return;
@@ -644,6 +656,7 @@
       state.learned = state.walked.length === activeWalkthrough.steps.length;
       state.lastStep = activeStepIndex;
       saveWalkthroughState();
+      refreshChapterProgress(activeWalkthrough);
       closeGuide();
       return;
     }
@@ -651,7 +664,7 @@
     state.lastStep = activeStepIndex;
     saveWalkthroughState();
     renderWalkthrough();
-    renderGuides();
+    refreshChapterProgress(activeWalkthrough);
   }
 
   function exportProgress() {
@@ -701,7 +714,7 @@
     if (this.checked && index === -1) state.walked.push(activeStepIndex);
     if (!this.checked && index !== -1) state.walked.splice(index, 1);
     saveWalkthroughState();
-    renderGuides();
+    refreshChapterProgress(activeWalkthrough);
   });
   $('walkthroughModal').addEventListener('click', function (event) {
     if (event.target === $('walkthroughModal')) closeGuide();
