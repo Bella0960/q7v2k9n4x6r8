@@ -46,15 +46,15 @@ test('chat home actually renders an image and preserves old data key and cover i
   assert.match(home, /PROFILE_KEY = 'myProfile'/);
   assert.match(home, /CHAT_LIST_COVER_KEY = 'chat_list_cover_v1'/);
   assert.match(home, /renderProfile\(\);\s*renderChatList\(\)/);
-  assert.match(surfaces, /\.arch-avatar-bridge \{ top:12px; left:20px; transform:none; width:44px; height:44px/);
+  assert.match(surfaces, /\.arch-avatar-bridge \{ top:8px; left:20px; transform:none; width:44px; height:44px/);
   assert.match(surfaces, /\.avatar-circle img \{ display:block; width:100%; height:100%; object-fit:cover/);
 });
 
-test('minimal chat status never uses an arrow or active-system label', () => {
+test('minimal chat status uses English labels but no arrow or active-system suffix', () => {
   assert.doesNotMatch(detail, /ONLINE · ACTIVE|NARRATION · ACTIVE|chat-mode-arrow|chat-mode-chevron|⌄/);
-  assert.match(detail, /chatStatusSub\.textContent = initialChatMode === 'narration' \? '旁白模式' : '线上聊天'/);
-  assert.match(detail, /chatModeTrigger\.textContent = '线上聊天'/);
-  assert.match(detail, /chatModeTrigger\.textContent = '旁白模式'/);
+  assert.match(detail, /chatStatusSub\.textContent = initialChatMode === 'narration' \? 'NARRATION' : 'ONLINE'/);
+  assert.match(detail, /chatModeTrigger\.textContent = 'ONLINE'/);
+  assert.match(detail, /chatModeTrigger\.textContent = 'NARRATION'/);
   for (const mode of ['online','offline-short','offline-long','narration','cancel']) {
     assert.ok(detail.includes('data-chat-mode="' + mode + '"'), 'lost ' + mode);
   }
