@@ -8589,8 +8589,13 @@
             document.addEventListener('keydown', function (event) {
                 if (event.key === 'Escape' && composerOverlay && composerOverlay.classList.contains('active')) closeComposer();
             });
-            if (composerForm) composerForm.addEventListener('submit', function (event) {
+            var composerSubmitting = false;
+            if (composerForm) composerForm.addEventListener('submit', async function (event) {
                 event.preventDefault();
+                if (composerSubmitting) return;
+                composerSubmitting = true;
+                if (composerSubmit) composerSubmit.disabled = true;
+                try {
                 if (composerMode === 'poll') {
                     var question = composerQuestion.value.trim();
                     var options = composerOptions.value.split(/[\n|]/).map(function (item) { return item.trim().slice(0, 40); }).filter(Boolean).slice(0, 6);
@@ -8602,7 +8607,7 @@
                     var message = { role: 'user', type: 'group_poll', text: '', poll: { question: question.slice(0, 100), options: options, votes: {}, closed: false }, time: Date.now() };
                     ensureMid(message);
                     history.push(message);
-                    if (!saveMessages(history)) {
+                    if (!await appendChatSafely([message])) {
                         history.pop();
                         showToast('群投票没有保存成功，请检查本地存储空间');
                         return;
@@ -8620,7 +8625,7 @@
                     var chainMessage = { role: 'user', type: 'group_chain', text: '', chain: { title: title.slice(0, 80), entries: entries, closed: false }, time: Date.now() };
                     ensureMid(chainMessage);
                     chainHistory.push(chainMessage);
-                    if (!saveMessages(chainHistory)) {
+                    if (!await appendChatSafely([chainMessage])) {
                         chainHistory.pop();
                         showToast('群接龙没有保存成功，请检查本地存储空间');
                         return;
@@ -8633,6 +8638,7 @@
                     var entryText = composerEntry.value.trim();
                     if (!entryText) { composerEntry.focus(); showToast('写点内容再提交'); return; }
                     var joinHistory = loadMessages();
+                    var joinBaseline = JSON.parse(JSON.stringify(joinHistory));
                     var targetMessage = joinHistory.find(function (item) { return item && item.type === 'group_chain' && String(ensureMid(item)) === String(composerTargetMid); });
                     var targetChain = targetMessage && targetMessage.chain;
                     if (!targetChain || targetChain.closed) { closeComposer(); showToast('这条接龙已结束'); renderAllMessages(); return; }
@@ -8640,7 +8646,7 @@
                     if (targetChain.entries.some(function (entry) { return String(entry.memberId || '') === '__user'; })) { showToast('你已经参与过这条接龙'); return; }
                     var previousEntries = JSON.parse(JSON.stringify(targetChain.entries));
                     targetChain.entries.push({ memberId: '__user', name: '我', text: entryText.slice(0, 120), time: Date.now() });
-                    if (!saveMessages(joinHistory)) {
+                    if (!await replaceChatSafely(joinBaseline, joinHistory)) {
                         targetChain.entries = previousEntries;
                         showToast('接龙内容没有保存成功，请检查本地存储空间');
                         return;
@@ -8649,10 +8655,17 @@
                     renderAllMessages();
                     showToast('已加入接龙');
                 }
+                } catch (error) {
+                    console.warn('[GroupChat] group composer save failed:', error);
+                    showToast('群互动保存失败，请检查聊天记录后重试');
+                } finally {
+                    composerSubmitting = false;
+                    if (composerSubmit) composerSubmit.disabled = false;
+                }
             });
             var messageContainer = document.getElementById('chat-messages');
             if (!messageContainer) return;
-            messageContainer.addEventListener('click', function (event) {
+            messageContainer.addEventListener('click', async function (event) {
                 var privateOpenButton = event.target.closest('[data-private-open]');
                 if (privateOpenButton) {
                     var privateRoleId = privateOpenButton.getAttribute('data-private-open');
@@ -8662,6 +8675,7 @@
                 var voteButton = event.target.closest('[data-poll-mid][data-poll-option]');
                 if (voteButton) {
                     var history = loadMessages();
+                    var pollBaseline = JSON.parse(JSON.stringify(history));
                     var pollMessage = history.find(function (item) { return item && item.type === 'group_poll' && String(ensureMid(item)) === String(voteButton.getAttribute('data-poll-mid')); });
                     var poll = pollMessage && pollMessage.poll;
                     var optionIndex = parseInt(voteButton.getAttribute('data-poll-option'), 10);
@@ -8670,7 +8684,7 @@
                         ? JSON.parse(JSON.stringify(poll.votes)) : null;
                     poll.votes = poll.votes && typeof poll.votes === 'object' ? poll.votes : {};
                     poll.votes.__user = optionIndex;
-                    if (!saveMessages(history)) {
+                    if (!await replaceChatSafely(pollBaseline, history)) {
                         if (previousVotes) poll.votes = previousVotes;
                         else delete poll.votes;
                         showToast('投票没有保存成功，请检查本地存储空间');
@@ -8682,10 +8696,11 @@
                 var closePollButton = event.target.closest('[data-poll-close]');
                 if (closePollButton) {
                     var pollHistory = loadMessages();
+                    var pollCloseBaseline = JSON.parse(JSON.stringify(pollHistory));
                     var pollToClose = pollHistory.find(function (item) { return item && item.type === 'group_poll' && String(ensureMid(item)) === String(closePollButton.getAttribute('data-poll-close')); });
                     if (pollToClose && pollToClose.poll && !pollToClose.poll.closed) {
                         pollToClose.poll.closed = true;
-                        if (!saveMessages(pollHistory)) {
+                        if (!await replaceChatSafely(pollCloseBaseline, pollHistory)) {
                             pollToClose.poll.closed = false;
                             showToast('投票状态没有保存成功，请稍后重试');
                             return;
@@ -8707,10 +8722,11 @@
                 var closeChainButton = event.target.closest('[data-chain-close]');
                 if (closeChainButton) {
                     var closeHistory = loadMessages();
+                    var chainCloseBaseline = JSON.parse(JSON.stringify(closeHistory));
                     var chainToClose = closeHistory.find(function (item) { return item && item.type === 'group_chain' && String(ensureMid(item)) === String(closeChainButton.getAttribute('data-chain-close')); });
                     if (chainToClose && chainToClose.chain && !chainToClose.chain.closed) {
                         chainToClose.chain.closed = true;
-                        if (!saveMessages(closeHistory)) {
+                        if (!await replaceChatSafely(chainCloseBaseline, closeHistory)) {
                             chainToClose.chain.closed = false;
                             showToast('接龙状态没有保存成功，请稍后重试');
                             return;
