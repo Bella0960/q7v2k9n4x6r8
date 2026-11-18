@@ -16,7 +16,7 @@
  * Never touches main, mao, mao-auth-preview, curly-dream-324c or app.mao520.com.
  */
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { evaluateQaSnapshot } from './qa-snapshot-policy.mjs';
 import { spawnSync } from 'node:child_process';
 
@@ -138,6 +138,33 @@ function assertReadyForUpload({ allowPinned = false } = {}) {
   ]) {
     assert.ok(existsSync(path), 'QA Vite asset missing after build: ' + path);
   }
+}
+
+// The receipt is embedded only in the already-built QA assets. It contains
+// a source commit, never credentials, user data, account IDs or API keys.
+function stampQaBuildReceipt() {
+  const sourceCommit = run('git', ['rev-parse', 'HEAD'], true);
+  assert.match(sourceCommit, /^[0-9a-f]{40}$/, 'QA build commit is invalid');
+  writeFileSync('dist/qa-build-receipt.json',
+    JSON.stringify({ sourceCommit }) + '\n');
+  return sourceCommit;
+}
+
+async function verifyOwnerQaOrigin(expectedCommit) {
+  // Unlike workers.dev-only smoke tests, this validates the actual phone URL.
+  // The query makes each release check cache-distinct without touching user data.
+  const url = 'https://preview.mao520.com/qa-build-receipt.json?commit=' + expectedCommit;
+  const response = await fetch(url, {
+    method: 'GET',
+    cache: 'no-store',
+    redirect: 'manual',
+    headers: { accept: 'application/json' },
+    signal: AbortSignal.timeout(15000)
+  });
+  assert.equal(response.status, 200, 'The owner QA domain did not serve the build receipt');
+  const receipt = await response.json().catch(() => null);
+  assert.equal(receipt?.sourceCommit, expectedCommit,
+    'preview.mao520.com is serving a different QA build than the tested git SHA');
 }
 
 function secretNames(settings) {
@@ -480,6 +507,7 @@ async function main() {
   // QA-only can publish the tested snapshot on a clean fast-forward history.
   // Full --deploy (which can touch identity core) remains exact-HEAD-only.
   assertReadyForUpload({ allowPinned: qaOnly });
+  const testedCommit = stampQaBuildReceipt();
   run('npx', ['--yes', 'wrangler@4', 'deploy', '--config', 'wrangler.qa.jsonc']);
   const qaVersion = await liveWorkerVersion(QA);
   // A music-only release must not advance any identity-core deployment.
@@ -507,6 +535,7 @@ async function main() {
   assert.equal(qaBinding('MAO_QA_IDENTITY_SETUP')?.text,
     JSON.parse(readFileSync('wrangler.qa.jsonc', 'utf8')).vars?.MAO_QA_IDENTITY_SETUP);
   await qaHttpSmoke(coreInitialized);
+  await verifyOwnerQaOrigin(testedCommit);
   console.log('Cloudflare active QA identity core version: ' + coreVersion.versionId);
   console.log('Cloudflare active QA Worker version: ' + qaVersion.versionId);
   console.log('QA published tested git SHA: ' + run('git', ['rev-parse', 'HEAD'], true));
