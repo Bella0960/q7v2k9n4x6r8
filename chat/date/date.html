@@ -2913,7 +2913,7 @@ body {
     }
 
     // Real send/reply paths use the same Web Lock as online chat and journey.
-    // Legacy synchronous previews/edits remain fail-closed via saveHistory.
+    // Legacy synchronous preview/arrival writes remain fail-closed via saveHistory.
     var dateRerollPending = null;
     var dateReplyWasReplacement = false;
     async function appendDateMessage(message) {
@@ -2961,6 +2961,22 @@ body {
         }
         history = loadHistory();
         dateReplyWasReplacement = true;
+        return true;
+    }
+
+    async function replaceDateHistorySafely(expected, replacement) {
+        if (_dateHistoryUnreadable || HISTORY_KEY !== 'chat_history_' + roleId ||
+            !window.ChatHistoryAtomic || typeof window.ChatHistoryAtomic.replaceIfUnchanged !== 'function') {
+            toast('聊天记录不可安全修改，请刷新后重试');
+            return false;
+        }
+        var outcome = await window.ChatHistoryAtomic.replaceIfUnchanged(roleId, expected, replacement);
+        if (!outcome || !outcome.ok) {
+            toast('聊天已在其他窗口更新，修改已取消，原记录已保留');
+            history = loadHistory();
+            return false;
+        }
+        history = loadHistory();
         return true;
     }
 
@@ -3434,6 +3450,15 @@ body {
             else appendAiParagraphs(fullText, history.length - 1);
             setSending(false);
             scrollBottom();
+        }).catch(function (error) {
+            dateRerollPending = null;
+            // Preserve all persisted history even if the stream client
+            // unexpectedly rejects rather than returning its Result object.
+            appendSys('请求异常，原有记录已保留；如有未保存的内容请先复制');
+            if (streamingP) removeStreaming();
+            setSending(false);
+            scrollBottom();
+            console.warn('[Date] request failed:', error);
         });
     }
 
@@ -3857,20 +3882,26 @@ body {
         box.appendChild(actions);
         editAnchor.before(box);
 
-        btnSave.addEventListener('click', function () {
+        btnSave.addEventListener('click', async function () {
             var v = ta.value.trim();
             if (!v) { toast('内容不能为空'); return; }
-            var previousHistory = history.slice();
-            var previousText = history[idx].text;
-            history[idx].text = v;
-            if (!saveHistory(history, previousHistory, idx)) {
-                history[idx].text = previousText;
+            if (sending) { toast('角色正在回复，请稍后编辑'); return; }
+            var original = JSON.parse(JSON.stringify(history));
+            if (!original[idx]) { toast('这条消息已不存在'); return; }
+            var replacement = JSON.parse(JSON.stringify(original));
+            replacement[idx].text = v;
+            btnSave.disabled = true;
+            try {
+                if (!await replaceDateHistorySafely(original, replacement)) {
+                    renderAll();
+                    scrollBottom();
+                    return;
+                }
                 renderAll();
                 scrollBottom();
-                return;
+            } finally {
+                btnSave.disabled = false;
             }
-            renderAll();
-            scrollBottom();
         });
         btnCancel.addEventListener('click', function () {
             box.remove();
@@ -3880,19 +3911,19 @@ body {
     }
 
     // 删除：从剧情与聊天记录中移除这条回复
-    function deleteMsg(idx) {
-        if (history[idx]) {
-            var previousHistory = history.slice();
-            history.splice(idx, 1);
-            if (!saveHistory(history, previousHistory, Math.min(idx, history.length - 1))) {
-                renderAll();
-                scrollBottom();
-                return;
-            }
+    async function deleteMsg(idx) {
+        if (sending || !history[idx]) return;
+        var original = JSON.parse(JSON.stringify(history));
+        var replacement = JSON.parse(JSON.stringify(original));
+        replacement.splice(idx, 1);
+        if (!await replaceDateHistorySafely(original, replacement)) {
             renderAll();
             scrollBottom();
-            toast('已删除这条回复');
+            return;
         }
+        renderAll();
+        scrollBottom();
+        toast('已删除这条回复');
     }
 
     // 长按检测：移动端 touch 计时 450ms；桌面右键 contextmenu
