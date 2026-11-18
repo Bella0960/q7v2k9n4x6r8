@@ -28,9 +28,9 @@
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v2"></script>
     <script src="../../shared/js/phone/chat-context-policy.js?v=20261118groupvoice2"></script>
-    <script src="../../shared/js/phone/chat-presence-policy.js?v=20261102v17"></script>
+    <script src="../../shared/js/phone/chat-presence-policy.js?v=20261118groupvoice1"></script>
     <script src="../../shared/js/phone/role-public-timeline.js?v=20261102v1"></script>
-    <script src="../../shared/js/phone/group-chat-policy.js?v=20261102v5"></script>
+    <script src="../../shared/js/phone/group-chat-policy.js?v=20261118groupvoice1"></script>
     <script src="../../shared/js/group-governance.js?v=20261115g4"></script>
     <script src="../../shared/js/phone/group-game-session.js?v=20261116game11"></script>
     <script src="../../shared/js/phone/group-turn-effects.js?v=20261115gte2"></script>
@@ -2684,8 +2684,10 @@
                     if (byId) return byId;
                 }
                 if (item.name) {
-                    var byName = members.find(function (member) { return groupMemberDisplayName(member) === String(item.name); });
-                    if (byName) return byName;
+                    var matchingNames = members.filter(function (member) {
+                        return groupMemberDisplayName(member) === String(item.name);
+                    });
+                    if (matchingNames.length === 1) return matchingNames[0];
                 }
             }
             return null;
@@ -5873,7 +5875,8 @@
                             relationshipTargetId: isGroupFollowup && previousSpeaker ? previousSpeaker.id : '',
                             recentSpeakerIds: recentSpeakerIds,
                             relationships: currentGroup.relationships,
-                            context: detectedGroupContext
+                            context: detectedGroupContext,
+                            allowFallback: isManualContinue
                         });
                         if (speakerDecision && speakerDecision.member) {
                             groupReplyPick = Object.assign({}, speakerDecision.member, {
@@ -5943,6 +5946,13 @@
                         });
                     }
                 }
+            }
+            // No forced role impersonation when an automatic follow-up has no
+            // relevant/available next speaker. Explicit user sends still have fallback.
+            if (isGroupChat && isGroupFollowup && !groupReplyPick) {
+                if (isManualContinue && typeof showToast === 'function')
+                    showToast('当前没有可接话的群成员');
+                return;
             }
             if (groupContextPrompt) rolePersona += '\n' + groupContextPrompt;
             // Full saved persona remains authoritative for the active speaker.
@@ -6570,6 +6580,7 @@
                     isGroupChat: isGroupChat,
                     speakerId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : '',
                     speakerName: groupReplyPick && groupReplyPick.name ? groupReplyPick.name : '',
+                    groupMembers: currentGroup && Array.isArray(currentGroup.members) ? currentGroup.members : [],
                     maxSamples: 2,
                     maxSampleChars: 72
                 });
@@ -6599,6 +6610,7 @@
                             isGroupChat: isGroupChat,
                             speakerId: isGroupChat ? voiceProfileRoleId : '',
                             speakerName: groupReplyPick && groupReplyPick.name ? groupReplyPick.name : '',
+                            groupMembers: currentGroup && Array.isArray(currentGroup.members) ? currentGroup.members : [],
                             maxMessages: 80
                         },
                         roleModelHistory !== historyList ? null : cachedVoiceProfile
@@ -6625,6 +6637,7 @@
                             isGroupChat: isGroupChat,
                             speakerId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : '',
                             speakerName: groupReplyPick && groupReplyPick.name ? groupReplyPick.name : '',
+                            groupMembers: currentGroup && Array.isArray(currentGroup.members) ? currentGroup.members : [],
                             maxScan: 24
                         }
                     );
@@ -6640,6 +6653,7 @@
                             isGroupChat: isGroupChat,
                             speakerId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : '',
                             speakerName: groupReplyPick && groupReplyPick.name ? groupReplyPick.name : '',
+                            groupMembers: currentGroup && Array.isArray(currentGroup.members) ? currentGroup.members : [],
                             maxScan: 60,
                             maxNotes: 3,
                             maxTurns: 4
