@@ -166,8 +166,12 @@ test('页面同源 API 请求会自动绑定注入的 MAO 永久 ID', async () =
   await a.window.fetch('/api/accounts/security');
   assert.equal(requests[1].headers.get('x-mao-account-context'), accountId);
 
-  await a.window.fetch('https://external.example/resource');
+  await a.window.fetch('/shared/js/font-loader.js');
   assert.equal(requests[2].headers.has('x-mao-account-context'), false,
+    '同源静态资源不得被附加账号身份头');
+
+  await a.window.fetch('https://external.example/resource');
+  assert.equal(requests[3].headers.has('x-mao-account-context'), false,
     '不得给跨域请求增加 MAO 专用头，避免触发不必要的 CORS 预检');
 });
 
