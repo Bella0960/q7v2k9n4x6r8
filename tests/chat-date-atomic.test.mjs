@@ -135,6 +135,44 @@ test('long-offline reroll never deletes original message before API result', () 
     assert.match(pageSource, /await appendDateMessage\(userMsg\)/);
 });
 
+
+test('long-offline delete refuses to erase a message written by another tab', async () => {
+    const before = [
+        { mid: 'a', role: 'assistant', text: 'original' },
+        { mid: 'b', role: 'user', text: 'other' }
+    ];
+    const f = fixture(JSON.stringify(before));
+    const fragment = section('    async function deleteMsg(idx) {', '    // 长按检测：');
+    let persisted = f.getHistory();
+    const unsafeWriter = new Function('history', 'replaceDateHistorySafely', 'renderAll',
+        'scrollBottom', 'toast', 'sending', fragment + '\nreturn deleteMsg;');
+    const messages = [];
+    const remove = unsafeWriter(persisted, async (expected, next) => {
+        const result = await f.window.ChatHistoryAtomic.replaceIfUnchanged('role', expected, next);
+        return result.ok;
+    }, () => {}, () => {}, message => messages.push(message), false);
+    // Concurrent history write must make the editor's snapshot stale.
+    await f.window.ChatHistoryAtomic.appendIf('role', { mid: 'late', role: 'user', text: 'new' });
+    await remove(0);
+    assert.deepEqual(JSON.parse(f.localStorage.raw('chat_history_role')).map(m => m.mid), ['a', 'b', 'late']);
+});
+
+test('long-offline edit and delete callbacks use CAS and never call legacy whole-history save', () => {
+    const edit = section('    function editMsg(idx) {', '    // 删除：从剧情与聊天记录中移除');
+    const remove = section('    async function deleteMsg(idx) {', '    // 长按检测：');
+    assert.match(edit, /btnSave\.addEventListener\('click', async function/);
+    assert.match(edit, /await replaceDateHistorySafely\(original, replacement\)/);
+    assert.match(remove, /await replaceDateHistorySafely\(original, replacement\)/);
+    assert.doesNotMatch(edit + remove, /saveHistory\(/);
+});
+
+test('offline AI streaming has a rejection handler that clears pending regeneration', () => {
+    const request = section('    function requestReply(nudge) {', '    function setSending(on) {');
+    assert.match(request, /catch\(function \(error\) \{\s*dateRerollPending = null/);
+    assert.match(request, /setSending\(false\)/);
+    assert.match(request, /原有记录已保留/);
+});
+
 test('long-offline page retains valid JavaScript and existing UI structure', () => {
     const scripts = [...pageSource.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)]
         .map(m => m[1]).filter(Boolean);
