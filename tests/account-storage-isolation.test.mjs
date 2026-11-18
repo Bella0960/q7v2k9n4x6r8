@@ -258,7 +258,8 @@ test('confirmed session expiry, disabled account and identity switch still redir
   const scenarios = [
     { status: 401, code: 'LOGIN_REQUIRED', expected: '/account/index.html' },
     { status: 403, code: 'ACCOUNT_DISABLED', expected: '/account/index.html?disabled=1' },
-    { status: 403, code: 'IDENTITY_AUTHORITY_CHANGED', expected: '/account/index.html?switched=1' }
+    { status: 403, code: 'IDENTITY_AUTHORITY_CHANGED', expected: '/account/index.html?switched=1' },
+    { status: 409, code: 'ACCOUNT_CONTEXT_CHANGED', expected: '/account/index.html?switched=1' }
   ];
   for (const scenario of scenarios) {
     const a = createScope({
