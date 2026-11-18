@@ -146,3 +146,39 @@ test('group voice and recall changes reach real app and PWA without changing the
     assert.ok(sw.includes(key));
   }
 });
+
+
+test('human characters do not learn an incorrect old AI identity but digital characters retain it', () => {
+  const rolePolicy=load(read('shared/js/phone/chat-role-context.js'),'chat-role-context').MAOMAOChatRoleContext;
+  const history=[
+    {role:'assistant',memberId:'a',text:'我其实是人工智能。'},
+    {role:'assistant',memberId:'a',text:'我今天去书店买了本书。'},
+    {role:'assistant',memberId:'b',text:'我本来就是人工智能。'}
+  ];
+  const members=[{id:'a',name:'真人角色'},{id:'b',name:'数字生命'}];
+  const roles={a:{id:'a',persona:'在深圳开书店的普通人'},b:{id:'b',persona:'人工智能角色',species:'机器人'}};
+  const before=JSON.stringify(history);
+  const model=rolePolicy.getGroupModelHistory(history,members,id=>roles[id]);
+  assert.deepEqual(Array.from(model.map(m=>m.text)),[
+    '我今天去书店买了本书。','我本来就是人工智能。'
+  ]);
+  assert.equal(JSON.stringify(history),before);
+  assert.equal(rolePolicy.getGroupModelHistory(history,members,null).length,3);
+});
+
+test('online and offline group chats have non-contradictory style guidance for one speaker', () => {
+  const start=detail.indexOf('            const replyBubbleMode = getActiveReplyBubbleMode();');
+  const end=detail.indexOf('            if (!systemPrompt.includes(',start);
+  assert.ok(start>=0&&end>start);
+  const f=new Function('isGroupChat','currentGroup','getActiveReplyBubbleMode',
+    detail.slice(start,end)+'\nreturn {SPEAK_STYLE,isGroupOfflineMode};');
+  const online=f(true,{settings:{chatMode:'online'}},()=>'multi');
+  const offline=f(true,{settings:{chatMode:'offline'}},()=>'multi');
+  assert.equal(online.isGroupOfflineMode,false);
+  assert.equal(offline.isGroupOfflineMode,true);
+  assert.match(online.SPEAK_STYLE,/线上文字聊天/);
+  assert.doesNotMatch(offline.SPEAK_STYLE,/线上文字聊天|微信短句格式。\\n.*必须/);
+  assert.match(offline.SPEAK_STYLE,/线下共同场景/);
+  assert.match(detail,/if \(!isGroupChat && activeChatModeForPrompt === 'narration'\)/);
+  assert.match(detail,/if \(!isGroupOfflineMode\) \{\s*systemPrompt \+= '\\n\\n\[叙事总规范\]/);
+});
