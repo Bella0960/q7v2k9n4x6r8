@@ -192,6 +192,58 @@
     return slice;
   }
 
+  // Model-only recent context budget. A fixed message count is insufficient:
+  // a handful of pasted documents or long assistant replies can crowd out
+  // the user's authored persona, protocol and worldbook. Never mutate storage.
+  // Keep the newest contiguous turn intact; if it alone cannot fit, stop.
+  function budgetRecentHistory(history, maxCharacters) {
+    var list = Array.isArray(history) ? history : [];
+    var max = Number(maxCharacters);
+    if (!isFinite(max) || max < 2000) max = 9000;
+    max = Math.min(24000, Math.floor(max));
+    if (!list.length) return { history: [], omitted: 0, tooLong: false, usedChars: 0 };
+    var groups = [];
+    list.forEach(function (message, index) {
+      var turn = message && message.turnId != null ? String(message.turnId) : '';
+      var prev = groups[groups.length - 1];
+      if (turn && prev && prev.turnId === turn && prev.last === index - 1) {
+        prev.messages.push(message);
+        prev.last = index;
+      } else {
+        groups.push({ turnId: turn, first: index, last: index, messages: [message] });
+      }
+    });
+    function sizeOf(message) {
+      if (!message) return 0;
+      var val = message.text != null ? message.text : message.content;
+      if (Array.isArray(val)) {
+        val = val.map(function (item) { return item && item.type === 'text' ? item.text : ''; }).join('');
+      }
+      // A small allowance covers role/quote metadata without counting images twice.
+      return String(val == null ? '' : val).length +
+        String(message.quote && message.quote.text || '').length + 64;
+    }
+    var kept = [], used = 0, tooLong = false;
+    for (var i = groups.length - 1; i >= 0; i--) {
+      var group = groups[i];
+      var size = group.messages.reduce(function (sum, item) {
+        return sum + sizeOf(item);
+      }, 0);
+      if (used + size > max) {
+        if (!kept.length) tooLong = true;
+        break;
+      }
+      used += size;
+      kept.unshift.apply(kept, group.messages);
+    }
+    return {
+      history: kept,
+      omitted: list.length - kept.length,
+      tooLong: tooLong,
+      usedChars: used
+    };
+  }
+
   function buildHistoricalRecallRequest(history, currentText, recentHistoryLength) {
     history = Array.isArray(history) ? history : [];
     var query = currentText || '';
@@ -384,6 +436,7 @@
     mapHistoryToApiMessages: mapHistoryToApiMessages,
     resolveMemoryLimit: resolveMemoryLimit,
     selectRecentHistory: selectRecentHistory,
+    budgetRecentHistory: budgetRecentHistory,
     buildHistoricalRecallRequest: buildHistoricalRecallRequest,
     filterUserMemoriesForRole: filterUserMemoriesForRole,
     buildWeightedMemoryInjectionText: buildWeightedMemoryInjectionText,
