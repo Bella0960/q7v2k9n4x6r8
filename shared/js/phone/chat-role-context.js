@@ -43,6 +43,20 @@
     return filtered.length === history.length ? history : filtered;
   }
 
+  // Group chats share global lore plus books explicitly mounted on this group.
+  // Do not expose another character's private local books when the group has no mounts.
+  function selectWorldbooksForGroup(worldbooks, groupMountedIds) {
+    if (!Array.isArray(worldbooks)) return [];
+    var mounted = Object.create(null);
+    (Array.isArray(groupMountedIds) ? groupMountedIds : []).forEach(function (id) {
+      if (id != null) mounted[String(id)] = true;
+    });
+    return worldbooks.filter(function (book) {
+      return book && typeof book === 'object' &&
+        (book.scope !== 'local' || mounted[String(book.id)] === true);
+    });
+  }
+
   // 全局世界书保持全局可见；局部世界书必须属于当前角色绑定或当前会话挂载。
   // 缺失 scope 的旧世界书按历史全局规则保留，不更改已有资料结构。
   function selectWorldbooksForRole(worldbooks, role, mountedIds) {
@@ -75,6 +89,7 @@
     stripEncounterEditorNote: stripEncounterEditorNote,
     getModelHistory: getModelHistory,
     selectWorldbooksForRole: selectWorldbooksForRole,
+    selectWorldbooksForGroup: selectWorldbooksForGroup,
     isBrokenAssistantIdentity: isBrokenAssistantIdentity
   });
 })(window);
