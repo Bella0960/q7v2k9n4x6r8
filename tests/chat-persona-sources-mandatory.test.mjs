@@ -25,7 +25,8 @@ const loreSource = extract('            // 世界书：', '            // 协议
 const protocolRead = new Function('localStorage', 'window', 'aliasRoleId', 'currentCharacter', 'roleId', 'showToast',
   protocolSource + '\nreturn rpProtocol;');
 const loreRead = new Function('localStorage', 'window', 'aliasRoleId', 'roleForTurn', 'isGroupChat',
-  'historyList', 'roleModelHistory', 'text', 'showToast', loreSource + '\nreturn worldbookText;');
+  'historyList', 'roleModelHistory', 'text', 'showToast', 'groupReplyPick', 'getRoleById',
+  loreSource + '\nreturn worldbookText;');
 
 function storage(values) {
   const map = new Map(Object.entries(values || {}));
@@ -38,7 +39,8 @@ function getLore({ books, mount = [], speaker = { id: 'a', worldBookIds: ['local
   const db = storage({ phone_worldbooks: raw, ['chat_worldbooks_' + (group ? 'group' : 'a')]: JSON.stringify(mount) });
   const policyWindow = faults.moduleMissing ? { MAOMAOChatRoleContext: sandbox.window.MAOMAOChatRoleContext } : sandbox.window;
   const result = loreRead(db, policyWindow, group ? 'group' : 'a', speaker, group,
-    [], [], text, msg => alerts.push(msg));
+    [], [], text, msg => alerts.push(msg), group ? { id: speaker.id } : null,
+    id => String(id) === String(speaker.id) ? speaker : null);
   return { result, alerts, before: db.snapshot(), after: db.snapshot() };
 }
 
@@ -72,7 +74,8 @@ test('missing protocol or blocked local storage stops generation instead of sile
 test('single-chat persona is never shortened; group speaking member has its own full persona', () => {
   // The speaking role must retain its full authored persona. The group
   // roster may be limited, but never silently clip the selected speaker.
-  assert.match(detail, /const turnSpeakerPersona = isGroupChat && groupReplyPick/);
+  assert.match(detail, /const rawSpeakerPersona = isGroupChat && groupReplyPick/);
+  assert.match(detail, /const turnSpeakerPersona = \(window\.MAOMAOChatRoleContext/);
   assert.match(detail, /rolePersona\.length > 24000/);
   assert.match(detail, /const roleForTurn = !isGroupChat[\s\S]*?resolveRole\(currentCharacter\.id, currentCharacter, getRoleById\)/);
   assert.match(detail, /const turnSpeakerPersona = isGroupChat && groupReplyPick[\s\S]*?relationshipRole\.persona \|\| relationshipRole\.prompt/);
@@ -106,7 +109,9 @@ test('every eligible global and attached local worldbook entry reaches the same 
   const group = getLore({ books, group: true, mount: ['local_b'] });
   assert.match(group.result, /深圳在广东省|地铁正在运营/);
   assert.match(group.result, /B住在山上/);
-  assert.doesNotMatch(group.result, /A经营花店/);
+  // Group speaker A may use A's own local book; a group-mounted B
+  // book is also explicitly visible. Unmounted unrelated books remain hidden.
+  assert.match(group.result, /A经营花店/);
 });
 
 test('worldbook parse and activation errors block a turn; overbudget lore is reported instead of clipped', () => {
