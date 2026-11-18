@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="../call/call-overlay.css?v=20261105v1">
     <script src="../../shared/js/phone/phone_storage.js"></script>
 <script src="../../shared/js/phone/minimax-tts.js?v=20261119"></script>
+<script src="../../shared/js/phone/chat-regex-policy.js?v=20261119"></script>
     <script src="../../shared/js/phone/storage/repository.js"></script>
     <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
     <script src="../../shared/js/phone/role-avatar-library.js?v=20261113v1"></script>
@@ -5239,15 +5240,13 @@
                      .replace(/[ \t，、]+$/, '')
                      .trim();
             // 5) 用户在设置页自定义的规则（enabled:true 才跑）——保留入口，但不再硬编码删内容
-            try {
-                var userRules = JSON.parse(localStorage.getItem('regex_rules') || '[]');
-                if (Array.isArray(userRules)) {
-                    userRules.forEach(function (r) {
-                        if (!r || !r.enabled || !r.pattern) return;
-                        try { out = out.replace(new RegExp(r.pattern, 'g'), r.replacement || ''); } catch (e) {}
-                    });
-                }
-            } catch (e) {}
+            // The editor preview and the real reply use the SAME rules.
+            // No saved array = no active rules. Legacy built-in fixes run in
+            // memory, preserving the user's original storage bytes.
+            // If the shared policy cannot load, fail closed: no unverified regex.
+            if (window.ChatRegexPolicy && typeof window.ChatRegexPolicy.applySaved === 'function') {
+                out = window.ChatRegexPolicy.applySaved(out, localStorage);
+            }
             // 5b) 用户规则删完内容后可能留下 "。，。，" 这种句子边界标点残迹
             // 只清理：连续重复标点、逗号紧跟句号/句号紧跟逗号的组合；正常内部逗号不动
             out = out.replace(/([。！？])\1+/g, '$1')          // 。。。 → 。
