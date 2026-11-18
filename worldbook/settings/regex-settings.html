@@ -332,7 +332,7 @@
         {
             id: "r_builtin_xml",
             name: "XML 标签提取",
-            pattern: "<output>(.*?)</output>",
+            pattern: "<output>([\\s\\S]*?)</output>",
             replacement: "$1",
             enabled: true,
             builtin: true
@@ -340,7 +340,7 @@
         {
             id: "r_builtin_id",
             name: "ID 格式校验",
-            pattern: "^\\d{4}$",
+            pattern: "^(\\d{4})$",
             replacement: "$1",
             enabled: true,
             builtin: true
@@ -355,34 +355,41 @@
         }
     ];
 
+    // Existing user rules are authoritative. Old "v2" markers are *never* a
+    // reason to replace the whole list. The defaults are only initial values.
+    function repairKnownBuiltin(rule) {
+        if (!rule || typeof rule !== 'object') return rule;
+        var copy = Object.assign({}, rule);
+        if (copy.id === 'r_builtin_id' && copy.pattern === '^\\d{4}$' &&
+            copy.replacement === '$1') copy.pattern = '^(\\d{4})$';
+        if (copy.id === 'r_builtin_xml' && copy.pattern === '<output>(.*?)</output>' &&
+            copy.replacement === '$1') copy.pattern = '<output>([\\s\\S]*?)</output>';
+        return copy;
+    }
     function loadRules() {
         try {
-            // 版本标记：旧版规则（动作描写/烂俗比喻/爹味）自动重置为新格式规则
-            var LS_VER = 'regex_rules_v2';
             var raw = localStorage.getItem('regex_rules');
-            if (!raw) {
-                localStorage.setItem('regex_rules', JSON.stringify(DEFAULT_RULES));
-                localStorage.setItem(LS_VER, '1');
-                return DEFAULT_RULES.slice();
-            }
+            if (raw == null) return DEFAULT_RULES.map(repairKnownBuiltin);
             var arr = JSON.parse(raw);
-            if (!Array.isArray(arr)) return DEFAULT_RULES.slice();
-            // 检测是否为旧版规则（包含"去除动作"等旧名称）
-            var isOld = arr.some(function (r) {
-                return r.name && (r.name.indexOf('去除动作') !== -1 || r.name.indexOf('烂俗') !== -1 || r.name.indexOf('爹味') !== -1 || r.name.indexOf('管家婆') !== -1);
-            });
-            if (isOld || !localStorage.getItem(LS_VER)) {
-                localStorage.setItem('regex_rules', JSON.stringify(DEFAULT_RULES));
-                localStorage.setItem(LS_VER, '1');
-                return DEFAULT_RULES.slice();
-            }
-            return arr;
-        } catch (e) {
-            return DEFAULT_RULES.slice();
+            if (!Array.isArray(arr)) throw new Error('Regex rules are not an array');
+            return arr.map(repairKnownBuiltin);
+        } catch (error) {
+            // Never overwrite unreadable JSON: the user may have a backup copy.
+            window.__regexRulesReadError = true;
+            return [];
         }
     }
     function saveRules(arr) {
-        localStorage.setItem('regex_rules', JSON.stringify(arr));
+        try {
+            var prior = localStorage.getItem('regex_rules');
+            if (prior != null && !Array.isArray(JSON.parse(prior))) return false;
+            var encoded = JSON.stringify(arr);
+            localStorage.setItem('regex_rules', encoded);
+            if (localStorage.getItem('regex_rules') !== encoded) return false;
+            localStorage.setItem('regex_rules_v2', '1');
+            window.__regexRulesReadError = false;
+            return true;
+        } catch (error) { return false; }
     }
 
     function render() {
@@ -414,7 +421,7 @@
             btn.textContent = r.enabled ? 'ON' : 'OFF';
             btn.onclick = function () {
                 rules[idx].enabled = !rules[idx].enabled;
-                saveRules(rules);
+                if (!saveRules(rules)) alert('规则保存失败，已有规则已保留；请检查存储空间。');
                 render();
             };
 
@@ -447,7 +454,7 @@
             enabled: true,
             builtin: false
         });
-        saveRules(rules);
+        if (!saveRules(rules)) { alert('规则保存失败，已有数据已保留；请检查存储空间。'); return; }
         closeSheet();
         render();
     }
