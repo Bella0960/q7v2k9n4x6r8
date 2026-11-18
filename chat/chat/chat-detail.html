@@ -5667,7 +5667,7 @@
                 const availableMembers = getAvailableGroupMembers();
                 const personaLines = members.map(function (m, i) {
                     const r = getRoleById(m.id);
-                    const p = (r && (r.persona || r.prompt || '').trim()) || '一个善解人意的朋友';
+                    const p = (r && (r.persona || r.prompt || '').trim()) || '（尚未填写人设，请依据已发生的对话判断，不要假定统一的性格）';
                     const labels = [];
                     if (m.title) labels.push('头衔：' + m.title);
                     if (m.isAdmin) labels.push('管理员');
@@ -5747,7 +5747,25 @@
                 }
             } else {
                 rolePersona = (currentCharacter.persona || currentCharacter.prompt || '').trim()
-                    || '你是一个善解人意、回复自然的AI助手。';
+                    || '（角色尚未填写人设；仅根据当前对话和已存资料回应，不要擅自补充固定性格、过去经历或客服身份。）';
+            }
+            // Group metadata is not a character. Bind identity, memory, and
+            // global RP variables to the actual selected speaker, not the
+            // group container/currentCharacter.
+            var speakingRole = isGroupChat && groupReplyPick
+                ? getRoleById(groupReplyPick.id) : currentCharacter;
+            var speakingRoleId = isGroupChat && groupReplyPick
+                ? String(groupReplyPick.id) : String(aliasRoleId || currentCharacter.id);
+            var speakingRoleName = isGroupChat && groupReplyPick
+                ? String(groupReplyPick.name || (speakingRole && speakingRole.name) || '群成员')
+                : String(currentCharacter.name || '角色');
+            var speakingRolePersona = speakingRole
+                ? String(speakingRole.persona || speakingRole.prompt || '').trim() : '';
+            if (isGroupChat && groupReplyPick) {
+                rolePersona = '【本轮发言者（优先遵守）】\n姓名：' + speakingRoleName +
+                    '\n角色ID：' + speakingRoleId +
+                    '\n完整人设：' + (speakingRolePersona || '尚未填写，请勿自行编造人物经历或统一性格') +
+                    '\n\n【其他群成员（仅为背景，不得冒用他们的身份）】\n' + rolePersona;
             }
             if (groupContextPrompt) rolePersona += '\n' + groupContextPrompt;
             rolePersona = capText(rolePersona, CTX_CAP.persona);
@@ -5821,9 +5839,7 @@
                 return lines.join('\n').slice(0, 4000);
             }
 
-            var relationshipRole = isGroupChat
-                ? (groupReplyPick ? getRoleById(groupReplyPick.id) : null)
-                : currentCharacter;
+            var relationshipRole = isGroupChat ? speakingRole : currentCharacter;
             var characterSocialPrompt = '';
             try { characterSocialPrompt = buildCharacterSocialPrompt(relationshipRole); } catch (socialContextError) {
                 console.warn('[CharacterSocialContext] skipped:', socialContextError);
@@ -5870,8 +5886,8 @@
 
             // 长期记忆：权重分层（清晰记得/隐约记得），兼容原文本记忆
             const roleMemory = capText(buildWeightedMemoryText(
-                typeof aliasRoleId !== 'undefined' ? aliasRoleId : roleId,
-                (currentCharacter.memory || '').trim()
+                speakingRoleId,
+                (speakingRole && speakingRole.memory || '').trim()
             ) || '暂无记忆', CTX_CAP.memory);
 
             // 实时状态（记忆空间子系统：当前心情 + 今日事件）
@@ -5947,7 +5963,7 @@
             // 协议变量替换：{{char}} {{user}} {{persona}} {{memory}} {{worldbook}}
             function applyProtocolVars(text) {
                 return String(text || '')
-                    .replace(/\{\{char\}\}/g, currentCharacter.name || '角色')
+                    .replace(/\{\{char\}\}/g, speakingRoleName)
                     .replace(/\{\{user\}\}/g, userName)
                     .replace(/\{\{persona\}\}/g, rolePersona)
                     .replace(/\{\{memory\}\}/g, roleMemory)
@@ -6064,7 +6080,7 @@
             }
 
             // ========== 身份锁：最外层强制协议，优先级最高，不可被覆盖 ==========
-            const charName = currentCharacter.name || '角色';
+            const charName = speakingRoleName;
             const IDENTITY_LOCK = [
               '═══════════════════════════════════',
               '【身份锚定】',
