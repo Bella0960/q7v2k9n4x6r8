@@ -72,6 +72,9 @@ test('contract: group-only script, existing controls and valid JavaScript', () =
   assert.match(groupSource, /function setCoverBusy\(busy\)/);
   assert.match(groupSource, /coverTouched=true/);
   assert.match(groupSource, /reloadSavedCover\(\)/);
+  assert.match(groupSource, /function viewMember\(memberId\)/);
+  assert.match(groupCss, /\.gp-cover-emblem/);
+  assert.match(groupSource, /emblem\.appendChild\(profileImage\)/);
   assert.doesNotMatch(groupCss, /#(?:aliasCard|actionAlias)\s*\{/);
 });
 
@@ -84,6 +87,8 @@ test('group shell is visually distinct, collapsed and remains operable on phone 
       await page.goto(origin+'/chat/chat/chat-settings.html?roleId=g1');
       assert.equal(await page.locator('#gpCoverName').innerText(),'夜航');
       assert.equal(await page.locator('#gpCoverCount').innerText(),'2 位成员');
+      assert.equal((await page.locator('#gpCoverEmblem').innerText()).trim(),'夜');
+      assert.equal(await page.locator('.gp-preview-person button').count(),0);
       assert.equal(await page.locator('#gpProfileSettings').evaluate(e=>e.open),false);
       assert.equal(await page.locator('#gpManageCard').isVisible(),false);
       assert.equal(await page.locator('.status-bar').isVisible(),false, 'group page must not display a fake phone status bar');
@@ -91,6 +96,10 @@ test('group shell is visually distinct, collapsed and remains operable on phone 
       assert.ok(headerTop.y < 80, 'group topbar must not have an oversized blank header');
       const size=await page.locator('.gp-cover-hero').boundingBox();
       assert.ok(size.width>260 && size.width<=width && size.height>=200);
+      await page.locator('.gp-preview-person').first().click();
+      assert.equal(await page.locator('#gpProfileSettings').evaluate(e=>e.open),true);
+      assert.equal(await page.locator('#gpManageCard').isVisible(),true);
+      assert.equal(await page.locator('.gp-member-row[data-mid="c1"]').isVisible(),true);
       await page.locator('.gp-add').click();
       await page.locator('.gp-invite-row').first().waitFor({state:'visible'});
       assert.equal((await page.locator('#gpInviteCount').innerText()).trim(),'1 位可邀请');
