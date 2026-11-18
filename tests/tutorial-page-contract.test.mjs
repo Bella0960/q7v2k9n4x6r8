@@ -52,8 +52,15 @@ test('tutorial migration preserves custom pages, Dock and removal choices', () =
 });
 
 test('guide documents the merged chat features and correctly separates unverified push', () => {
-  assert.match(guideScript, /PR #241/);
-  assert.match(guideScript, /PR #240/);
+  // Reader-facing release notes are editorial, not a dump of internal PRs.
+  const bulletin = guideScript.slice(
+    guideScript.indexOf('var OFFICIAL_RELEASE_NOTES ='),
+    guideScript.indexOf('var GUIDES =')
+  );
+  assert.match(bulletin, /OFFICIAL_RELEASE_NOTES/);
+  assert.doesNotMatch(bulletin, /PR #|测试候选|修 bug/);
+  assert.match(guideScript, /release\.approved === true/);
+  assert.match(guideScript, /release\.status === 'published'/);
   assert.match(guideScript, /单条 \/ 自动 \/ 连续多条/);
   assert.match(guideScript, /头像收藏/);
   assert.match(guideScript, /建立配对/);
@@ -116,6 +123,25 @@ test('tutorial provides a real stepper, interface-location illustration, FAQ, an
   assert.equal((faqSection.match(/^    \['/gm) || []).length, 11, 'expected searchable FAQ entries');
 });
 
+test('manual is book-first: chapter index, readable sheets, official-only releases and folded private notebook', () => {
+  assert.match(guideHtml, /id="guideCoverTitle"/);
+  assert.match(guideHtml, /class="book-navigation"/);
+  assert.match(guideHtml, /id="release-notes"/);
+  assert.match(guideHtml, /id="book-index"/);
+  assert.match(guideHtml, /class="test-notebook"/);
+  assert.match(guideHtml, /id="guideSearch"/);
+  assert.match(guideHtml, /id="walkthroughModal"/);
+  assert.match(guideHtml, /tutorial\.js\?v=20261118book1/);
+  assert.match(guideScript, /<details class="guide-sheet">/);
+  assert.match(guideScript, /<summary class="guide-top">/);
+  assert.match(guideScript, /NO PUBLIC RELEASE YET/);
+  assert.doesNotMatch(guideScript.slice(guideScript.indexOf('function renderUpdates()'),guideScript.indexOf('function renderFilters()')),/GUIDE_UPDATES/);
+  // Do not lose the existing reader's saved test/progress storage schema.
+  assert.match(guideScript, /maomao_tutorial_progress_v1/);
+  assert.match(guideScript, /function startGuide/);
+  assert.match(guideScript, /function moveWalkthrough/);
+});
+
 test('composer menu guide covers the actual one-to-one and group menu entry labels', () => {
   for (const label of ['表情包','奔赴','重玩','位置','纪念日','旁白动作','直播间','音乐','语音通话','视频通话','发红包','转账','图片','语音','名片','送礼物','群投票','群接龙','群通话']) {
     assert.ok(guideScript.includes(label), 'missing composer menu guide label: ' + label);
@@ -141,7 +167,7 @@ test('PWA app shell caches the full guide bundle and has a matching test command
   assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v[0-9]+'/,
     'PWA shell must use a versioned cache without hard-coding an old release');
   assert.ok(serviceWorker.includes("'./tutorial/tutorial.html'"));
-  assert.ok(serviceWorker.includes("'./tutorial/tutorial.js?v=20261111v3'"));
+  assert.ok(serviceWorker.includes("'./tutorial/tutorial.js?v=20261118book1'"));
   assert.equal(packageJson.scripts['test:tutorial'], 'node --test tests/tutorial-page-contract.test.mjs');
 });
 
