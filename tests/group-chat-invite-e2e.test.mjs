@@ -58,6 +58,15 @@ async function seed(page, data) {
 async function read(page, key) {
   return page.evaluate((k) => JSON.parse(localStorage.getItem(k) || 'null'), key);
 }
+async function sendFromVisibleComposer(page) {
+  // The legacy floating send button only exists for non-default themes.
+  // In the default/iMessage themes the real form's native submit button is used.
+  const floating = page.locator('#myFloatSend');
+  const native = page.locator('#chat-form .send-icon-btn');
+  const button = await floating.isVisible() ? floating : native;
+  await button.waitFor({ state: 'visible', timeout: 10000 });
+  await button.click();
+}
 async function setupGroup(page, groups, roles) {
   await seed(page, { phone_groups: groups, ai_custom_characters: roles, api_settings: apiSeed() });
 }
@@ -222,7 +231,7 @@ test('C6-C8 chat.html -> chat-detail renders 3 members and request context conta
     assert.equal(parts[3], '线上');
 
     await page.locator('#chat-input').fill('大家好');
-    await page.locator('#myFloatSend').click();
+    await sendFromVisibleComposer(page);
     const body = await Promise.race([
       bodyPromise,
       new Promise((_, reject) => setTimeout(() => reject(new Error('no /chat/completions request captured')), 20000))
@@ -314,8 +323,7 @@ test('C9 spectatorMode saved in settings page is reflected in a fresh chat-detai
       await page.locator('#chat-input').fill(testMessage);
       const inputBeforeSend = await page.locator('#chat-input').inputValue();
       assert.equal(inputBeforeSend, testMessage, 'the real composer must contain the test message');
-      await page.locator('#myFloatSend').waitFor({ state: 'visible', timeout: 10000 });
-      await page.locator('#myFloatSend').click();
+      await sendFromVisibleComposer(page);
       let body;
       try {
         body = await Promise.race([
