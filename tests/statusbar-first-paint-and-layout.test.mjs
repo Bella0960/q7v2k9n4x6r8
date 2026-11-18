@@ -71,5 +71,8 @@ test('each affected entry uses the new early bootstrap; desktop edit controls ar
     assert.match(page,/native-feel\.js\?v=20261118statusbar1/);
   assert.match(desktop,/id="editModeIndicator"/);
   assert.match(desktop,/id="editDoneBtn"/);
+  assert.match(desktop,/id="maomao-statusbar-prepaint-root"/);
+  assert.match(desktop,/id="maomao-statusbar-early-root"/);
+  assert.ok(desktop.indexOf('maomao-statusbar-early-root') < desktop.indexOf('native-feel.js'));
   assert.match(desktop,/shared\/js\/statusbar-control\.js/);
 });
