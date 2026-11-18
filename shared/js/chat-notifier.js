@@ -403,7 +403,13 @@
             return loadProactiveScript(
                 proactiveAsset('shared/js/phone/chat-history-atomic.js?v=20261118v1'),
                 function () { return !!global.ChatHistoryAtomic && typeof global.ChatHistoryAtomic.appendIf === 'function'; }
-            );
+            ).then(function(ok) {
+                if (!ok) return false;
+                return loadProactiveScript(
+                    proactiveAsset('shared/js/phone/chat-context-policy.js?v=20261118persona1'),
+                    function () { return !!global.ChatContextPolicy && typeof global.ChatContextPolicy.buildWorldbookInjectionText === 'function'; }
+                );
+            });
         }
         if (proactiveDependenciesPromise) return proactiveDependenciesPromise;
         proactiveDependenciesPromise = loadProactiveScript(
@@ -426,6 +432,12 @@
             return loadProactiveScript(
                 proactiveAsset('shared/js/phone/chat-history-atomic.js?v=20261118v1'),
                 function () { return !!global.ChatHistoryAtomic && typeof global.ChatHistoryAtomic.appendIf === 'function'; }
+            );
+        }).then(function (ok) {
+            if (!ok) return false;
+            return loadProactiveScript(
+                proactiveAsset('shared/js/phone/chat-context-policy.js?v=20261118persona1'),
+                function () { return !!global.ChatContextPolicy && typeof global.ChatContextPolicy.buildWorldbookInjectionText === 'function'; }
             );
         }).then(function (ok) {
             if (!ok) proactiveDependenciesPromise = null;
@@ -686,6 +698,8 @@
     function followUpMessages(history) {
         return (Array.isArray(history) ? history : []).filter(function (item) {
             if (!item || item.silent || item.isError || item.role === 'system_error') return false;
+            if (item.type === 'group_private' || item.type === 'group_game_private' ||
+                item.visibility === 'private' || item.visibility === 'role_only') return false;
             if (item.role !== 'user' && item.role !== 'sent' && item.role !== 'assistant' && item.role !== 'received') return false;
             if (!(Number(item.time || item.timestamp) > 0)) return false;
             var isUserMessage = item.role === 'user' || item.role === 'sent';
