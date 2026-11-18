@@ -16,7 +16,7 @@ test('MUSIC-UI-001: native local import and playback remain wired', () => {
   assert.match(music, /class="music-import-link"[^>]*musicImport/);
   assert.match(music, /const MEDIA_DB_NAME\s*=\s*'maomao-media-store'/);
   assert.match(music, /const LOCAL_TRACKS_KEY\s*=\s*'music_local_tracks'/);
-  assert.match(music, /async function playTrack\(trackId\)/);
+  assert.match(music, /async function playTrack\(trackId(?:,\s*options)?\)/);
   assert.match(music, /await getAudioBlob\(t\.id\)/);
   assert.match(music, /id="coverUpload"/);
 });
