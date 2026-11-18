@@ -17,7 +17,7 @@
     <script src="../../shared/js/phone/role-sticker-library.js?v=20261107v2"></script>
     <script src="../../shared/js/phone/chat-image-vision.js?v=20261113v1"></script>
     <script src="../../shared/js/phone/rp-default-protocol.js?v=20261118v1"></script>
-    <script src="../../shared/js/phone/chat-role-context.js?v=20261118sourceaudit3"></script>
+    <script src="../../shared/js/phone/chat-role-context.js?v=20261118groupaudit1"></script>
     <script src="../../shared/js/phone/inspect_interaction_bridge.js?v=20261112v5"></script>
     <script src="../../shared/js/phone/phone_api.js?v=20261115cancel1"></script>
     <script src="../../shared/js/phone/image-generation.js?v=20261106v1"></script>
@@ -5783,7 +5783,7 @@
                     : (getRoleById(currentCharacter.id) || currentCharacter))
                 : currentCharacter;
             // 历史错误身份仅从新邂逅普通角色的 AI 输入里剔除，不改一条历史消息。
-            const roleModelHistory = !isGroupChat && window.MAOMAOChatRoleContext &&
+            let roleModelHistory = !isGroupChat && window.MAOMAOChatRoleContext &&
                 typeof window.MAOMAOChatRoleContext.getModelHistory === 'function'
                 ? window.MAOMAOChatRoleContext.getModelHistory(historyList, roleForTurn)
                 : historyList;
@@ -5953,6 +5953,15 @@
                 if (isManualContinue && typeof showToast === 'function')
                     showToast('当前没有可接话的群成员');
                 return;
+            }
+            // Only the model context is filtered, never the saved group messages.
+            // A human role's mistaken old AI self-claims must not seed fresh voice
+            // examples or historical recall. Digital roles remain untouched.
+            if (isGroupChat && window.MAOMAOChatRoleContext &&
+                typeof window.MAOMAOChatRoleContext.getGroupModelHistory === 'function') {
+                roleModelHistory = window.MAOMAOChatRoleContext.getGroupModelHistory(
+                    historyList, currentGroup && currentGroup.members, getRoleById
+                );
             }
             if (groupContextPrompt) rolePersona += '\n' + groupContextPrompt;
             // Full saved persona remains authoritative for the active speaker.
@@ -6904,7 +6913,7 @@
                     }
                 }
                 var recallableHistory = isGroupChat
-                    ? historyList.filter(function (m) {
+                    ? roleModelHistory.filter(function (m) {
                         return m && m.type !== 'group_private' && m.type !== 'group_game_private' &&
                             m.visibility !== 'private' && m.visibility !== 'role_only';
                     }) : roleModelHistory;
