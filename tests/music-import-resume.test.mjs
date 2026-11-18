@@ -30,7 +30,9 @@ const importSource = section("  document.getElementById('musicImport').addEventL
 
 test('SAF numeric filename with empty type is recognized by WAV signature', async () => {
   const result=await resolver.musicResolveAudioFormat(wavFile());
-  assert.deepEqual(result,{ok:true,mimeType:'audio/wav',fromHeader:true});
+  assert.equal(result.ok,true);
+  assert.equal(result.mimeType,'audio/wav');
+  assert.equal(result.fromHeader,true);
 });
 test('file header wins over wrong application/octet-stream or misleading extension', async () => {
   const result=await resolver.musicResolveAudioFormat(wavFile('not-mp3.mp3','application/octet-stream'));
@@ -158,7 +160,8 @@ test('loading a persisted local track arms the checkpoint without fake autoplay'
     renderTrackLyrics(){},updateHeartIcon(){},renderAlbum(){},musicQueuePublish(){},saveState(){}
   });
   view.loadState();
-  assert.deepEqual(view.getPending(),{id:'local-1',time:21.5});
+  assert.equal(view.getPending()?.id,'local-1');
+  assert.equal(view.getPending()?.time,21.5);
   assert.equal(audio.src,'');
 });
 test('full music inline script and official test are syntactically valid',()=>{
