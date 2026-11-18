@@ -5,47 +5,16 @@
 (function () {
   'use strict';
 
-  var GUIDE_VERSION = '2026.11.11 · v2';
+  // Reader-facing edition is NOT a software release number.
+  var GUIDE_VERSION = '2026.11 · 阅读版';
   var STORAGE_KEY = 'maomao_tutorial_progress_v1';
 
-  var GUIDE_UPDATES = [
-    {
-      "date": "2026-11-16",
-      "title": "番外剧场 · 测试候选",
-      "items": [
-        "在角色单聊输入栏「＋」中打开「番外」，可以从预设主题或自定义内容开始独立故事。",
-        "故事页面的「···」折叠入口提供「不带记忆 / 参考角色记忆」与短中长对话篇幅；角色人设始终保留，但番外内容不回写主线。",
-        "番外尚未完成完整构建、浏览器和真机 QA，保存失败不能当作成功，测试时应先使用非正式存档。"
-      ]
-    },
-    {
-      "date": "2026-11-16",
-      "title": "账号与管理员中心 · 测试候选",
-      "items": [
-        "账号入口支持已有账号登录；登录后可从设置顶部进入账号管理，查看永久 ID、登录设备与会话。",
-        "管理员中心须通过有效管理员会话进入，不提供绕过权限或重建原 001 账号的操作。",
-        "账号同源认证、云端可恢复备份和双端真机仍待 QA 验收；页面存在不代表正式切换已通过。"
-      ]
-    },
-    {
-      date: '2026-11-11',
-      title: '教程全面补全',
-      items: [
-        '新增逐步引导模式：一次显示一个操作步骤，带界面定位示意、真实页面入口、练习目标和本地步骤进度。',
-        '教程扩展到 50 项，覆盖全部 29 个桌面应用；聊天底部「＋」菜单 19 个入口单独说明，并增加常见问题。',
-        '补正头像配对和表情收藏操作名称；角色自主挑图只使用标记为「公开」的图片，并补上对话设置直达兜底。'
-      ]
-    },
-    {
-      date: '2026-11-11',
-      title: '聊天多媒体功能更新',
-      items: [
-        'PR #241：多气泡回复、角色专属表情收藏与自动发送、角色头像收藏、配对头像和图片识别。',
-        'PR #240：角色可以根据聊天语境，从自己的角色图片图库中自主挑图发送。',
-        '对话设置的「单条 / 自动 / 连续多条」入口已写入教程；主动联系与真实后台推送仍分开验收。'
-      ]
-    }
-  ];
+  // Only explicitly approved, publicly released versions belong here.
+  // Do not automatically promote PR numbers, QA patches, personal test notes,
+  // or unverified preview features to a product release announcement.
+  // Format: {version:'1.0.0', date:'YYYY-MM-DD', approved:true,
+  //          status:'published', title:'...', highlights:['...']}.
+  var OFFICIAL_RELEASE_NOTES = [];
 
   var GUIDES = [
     {
@@ -485,17 +454,34 @@
   function renderUpdates() {
     $('guideVersion').textContent = GUIDE_VERSION;
     $('footerVersion').textContent = GUIDE_VERSION;
-    var latest = GUIDE_UPDATES[0];
-    $('updatesDate').textContent = latest ? latest.date : '暂无记录';
-    $('updateList').innerHTML = '';
-    GUIDE_UPDATES.forEach(function (update) {
-      update.items.forEach(function (item) {
-        var row = document.createElement('div');
-        row.className = 'update-item';
-        row.innerHTML = '<span class="update-dot"></span><span>' + escapeHtml(item) + '</span>';
-        $('updateList').appendChild(row);
-      });
+    var published = OFFICIAL_RELEASE_NOTES.filter(function (release) {
+      return release && release.approved === true &&
+        release.status === 'published' && release.version &&
+        release.date && Array.isArray(release.highlights);
     });
+    var newest = published[0];
+    $('updatesDate').textContent = newest
+      ? ('VERSION ' + newest.version + ' / ' + newest.date)
+      : 'PUBLIC RELEASE NOTES';
+    if (!newest) {
+      $('updateList').innerHTML =
+        '<div class="release-empty">' +
+          '<div class="release-status">NO PUBLIC RELEASE YET · 尚未发布</div>' +
+          '<h3>正式更新公告将在发布后登载。</h3>' +
+          '<p>这里仅记录正式版本的重要新功能、核心体验改进与安全稳定性更新。' +
+          '开发测试、内部任务和零碎调整不作为版本公告发布。</p>' +
+        '</div>';
+      return;
+    }
+    $('updateList').innerHTML = published.map(function (release) {
+      return '<article class="release-entry">' +
+        '<div class="release-status">PUBLIC RELEASE / ' + escapeHtml(release.version) +
+          ' · ' + escapeHtml(release.date) + '</div>' +
+        '<h3>' + escapeHtml(release.title || '版本更新') + '</h3>' +
+        '<ul>' + release.highlights.slice(0, 4).map(function (item) {
+          return '<li>' + escapeHtml(item) + '</li>';
+        }).join('') + '</ul></article>';
+    }).join('');
   }
   function renderFilters() {
     $('guideFilters').innerHTML = categories.map(function (name) {
@@ -523,32 +509,44 @@
   var activeWalkthrough = null;
   var activeStepIndex = 0;
 
-  function guideCard(guide) {
+  function guideCard(guide, index) {
     var state = entryState(guide.id);
     var checked = state.done === true;
     var note = state.note == null ? (guide.defaultNote || '') : String(state.note);
     var walked = Array.isArray(state.walked) ? state.walked.length : 0;
     var status = guide.issue
       ? '<span class="status issue">待真机复测</span>'
-      : '<span class="status">操作指南</span>';
+      : '<span class="status">阅读指南</span>';
     var stepCount = (guide.steps || []).length;
     var open = guide.href
-      ? '<a class="open-link" href="' + escapeHtml(guide.href) + '" target="_blank" rel="noopener">' + escapeHtml(guide.action || '打开功能') +
-        '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></a>'
+      ? '<a class="open-link" href="' + escapeHtml(guide.href) +
+          '" target="_blank" rel="noopener">' +
+          escapeHtml(guide.action || '打开功能') + '</a>'
       : '';
+    var number = String(index + 1).padStart(2, '0');
     return '<article class="guide-card" data-guide-id="' + escapeHtml(guide.id) + '">' +
-      '<div class="guide-top"><div class="guide-title-wrap"><div class="guide-category">' + escapeHtml(guide.category.toUpperCase()) +
-      '</div><h3 class="guide-title">' + escapeHtml(guide.title) + '</h3><p class="guide-summary">' + escapeHtml(guide.summary) +
-      '</p></div>' + status + '</div>' +
-      '<div class="guide-location"><b>入口：</b>' + escapeHtml(guide.location) + '</div>' +
-      '<div class="test-description" style="margin-top:10px;">' + stepCount + ' 个分步操作 · 已走完 ' + walked + ' 步</div>' +
-      '<div class="test-box"><div class="test-title">本项怎么测</div><p class="test-description">' + escapeHtml(guide.test || '按步骤打开功能并确认页面正常。') + '</p>' +
-      '<label class="test-mark"><input type="checkbox" data-done="' + escapeHtml(guide.id) + '"' + (checked ? ' checked' : '') +
-      '> 我已经在手机上实际测试过这一项</label>' +
-      '<textarea class="note" data-note="' + escapeHtml(guide.id) + '" rows="2" placeholder="测试备注 / 遇到的问题">' + escapeHtml(note) + '</textarea></div>' +
-      '<div class="guide-actions"><button class="start-guide" type="button" data-start-guide="' + escapeHtml(guide.id) + '">一步一步跟着做</button>' +
-      open + '<span class="guide-hint">' + (guide.issue ? '有待真机复测记录；完成测试后请在备注写下设备和现象。' : '勾选状态和备注只保存在本浏览器。') + '</span></div>' +
-      '</article>';
+      '<details class="guide-sheet"><summary class="guide-top">' +
+      '<span class="guide-index">' + number + '</span>' +
+      '<span class="guide-title-wrap"><span class="guide-category">' +
+        escapeHtml(guide.category.toUpperCase()) +
+      '</span><span class="guide-title">' + escapeHtml(guide.title) +
+      '</span><span class="guide-summary">' + escapeHtml(guide.summary) + '</span></span>' +
+      '<span class="guide-read">阅读</span></summary>' +
+      '<div class="guide-details"><div class="guide-location"><b>操作入口</b>' +
+        escapeHtml(guide.location) + '</div>' +
+      '<p class="guide-step-meta">' + stepCount + ' 个分步操作 · 已阅读 ' +
+        walked + ' 步</p>' +
+      '<div class="guide-actions"><button class="start-guide" type="button" data-start-guide="' +
+        escapeHtml(guide.id) + '">开始逐步阅读</button>' + open + '</div>' +
+      '<div class="test-box"><div class="test-title">个人验证与笔记　' + status + '</div>' +
+      '<p class="test-description">' +
+        escapeHtml(guide.test || '按步骤打开功能并确认页面正常。') + '</p>' +
+      '<label class="test-mark"><input type="checkbox" data-done="' +
+        escapeHtml(guide.id) + '"' + (checked ? ' checked' : '') +
+        '> 我已在自己的设备上完成检查</label>' +
+      '<textarea class="note" data-note="' + escapeHtml(guide.id) +
+        '" rows="2" placeholder="随手记下操作结果和问题">' +
+        escapeHtml(note) + '</textarea></div></div></details></article>';
   }
   function renderGuides() {
     var query = String($('guideSearch').value || '').trim().toLowerCase();
@@ -601,16 +599,16 @@
     var target = typeof raw === 'object' && raw.target ? raw.target : targetLabel(text);
     var route = String(guide.location || '').split(/\s*→\s*/).filter(Boolean);
     $('walkTitle').textContent = guide.title;
-    $('walkStepCount').textContent = '第 ' + (activeStepIndex + 1) + ' 步 / 共 ' + steps.length + ' 步';
+    $('walkStepCount').textContent = 'PAGE ' + (activeStepIndex + 1) + ' / ' + steps.length;
     $('walkPercent').textContent = Math.round((activeStepIndex + 1) / steps.length * 100) + '%';
     $('walkProgressBar').style.width = ((activeStepIndex + 1) / steps.length * 100) + '%';
     $('walkRoute').innerHTML = route.map(function (part, index) {
-      return (index ? '<span class="walk-route-arrow">›</span>' : '') +
+      return (index ? '<span class="walk-route-separator" aria-hidden="true">/</span>' : '') +
         '<span class="walk-route-chip">' + escapeHtml(part) + '</span>';
     }).join('');
     $('walkPhoneTarget').textContent = target.slice(0, 15);
     $('walkVisualTarget').textContent = target;
-    $('walkStepTitle').textContent = '操作 ' + (activeStepIndex + 1);
+    $('walkStepTitle').textContent = 'STEP ' + String(activeStepIndex + 1).padStart(2, '0');
     $('walkStepCopy').textContent = text;
     $('walkStepTip').textContent = typeof raw === 'object' && raw.tip
       ? String(raw.tip) : '按当前步骤操作真实页面。若页面上的按钮名称或布局与这里不同，先不要猜，记录差异并在对应教程卡片里备注。';
