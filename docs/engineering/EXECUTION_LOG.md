@@ -119,3 +119,10 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **Validation:** GitHub 只读源码静态校验 7/7 PASS（挂载、群模式守卫、原控件 ID、只写 IDB、两组旧测试已适配、新测试存在）。`node --test tests/group-profile-ui.test.mjs`、`npm run test:group:ui`、`npm run test:group:invite-e2e`、`npm run build`、实际 Chromium 375/390/430 视口及 iOS/Android 真机 **NOT VERIFIED**（无仓库本地执行环境，不能声称通过）。
 - **Integration conflict:** PR #298 也编辑了 `chat/chat/chat-settings.html`；已在 #298 评论提示文件交集。禁止以本分支覆盖群治理逻辑；先协调冲突并验证。遵守 QA #299 冻结，未推送 QA/main、未部署。
 - **Known gaps:** 群解散时独立封面的自动清理尚未接入原解散操作，后续需要无损清理并覆盖回归测试；浏览器实际视觉与动效未验收。接下来只在这一路径完成验证/修正，私聊资料页开独立任务。
+
+### GROUP-UI-002 本轮续修（2026-11-19）
+
+- **完成在原开发分支上**：封面选择/恢复默认进行中的写入互斥；失败后读取原有封面以避免预览空白；新的图片检测明暗按版本避免旧异步结果覆盖；群聊独立去掉假状态栏并缩小头部空白；对上传照片使用局部轻薄标题衬底保证可读性。
+- **测试代码补充**：`tests/group-profile-ui.test.mjs` 新增隐藏假状态栏、紧凑顶栏、上传互斥/错误恢复的源契约检查，并保留原有 375/390/430 视口及群聊邀请/封面隔离的浏览器测试用例。
+- **本轮核对**：GitHub 源文件结构静态检查 9/9 PASS；这不是运行 `node --test`、Playwright、构建或真机验证。后者仍 **NOT VERIFIED**。
+- **QA 发布门槛**：继续严格使用现有唯一 `https://preview.mao520.com`。需先完成真实浏览器验证、整合 #298 对 `chat-settings.html` 的并行修改、协调 #299 QA 解冻并通过定向回归；不可创建第二个测试地址或提前声称 QA 已更新。
