@@ -6107,8 +6107,10 @@
             try {
               const rawWB = localStorage.getItem('phone_worldbooks');
               if (rawWB) {
-                let wbList = JSON.parse(rawWB) || [];
-                if (!Array.isArray(wbList)) wbList = [];
+                let wbList = JSON.parse(rawWB);
+                if (!Array.isArray(wbList)) {
+                    throw new Error('invalid worldbook collection');
+                }
                 // Single and group chats each read their own mounted lore. Global lore stays
                 // available; unmounted local lore from other roles never enters the AI request.
                 var mountedBookIds = [];
@@ -6116,25 +6118,23 @@
                   var mountedRaw = localStorage.getItem('chat_worldbooks_' + aliasRoleId);
                   if (mountedRaw != null) {
                     var parsedMounts = JSON.parse(mountedRaw);
-                    if (Array.isArray(parsedMounts)) mountedBookIds = parsedMounts;
+                    if (!Array.isArray(parsedMounts)) throw new Error('invalid worldbook mounts');
+                    mountedBookIds = parsedMounts;
                   }
                 } catch (mountError) {
-                  // Broken mount metadata must not expose local books by default.
+                  // A damaged mount must never make the system silently ignore lore.
+                  throw new Error('worldbook mount read failed: ' + String(mountError.message || mountError));
                 }
                 var roleBookPolicy = window.MAOMAOChatRoleContext;
+                if (!roleBookPolicy ||
+                    typeof roleBookPolicy.selectWorldbooksForGroup !== 'function' ||
+                    typeof roleBookPolicy.selectWorldbooksForRole !== 'function') {
+                    throw new Error('role-scoped worldbook selection unavailable');
+                }
                 if (isGroupChat) {
-                  wbList = roleBookPolicy && typeof roleBookPolicy.selectWorldbooksForGroup === 'function'
-                    ? roleBookPolicy.selectWorldbooksForGroup(wbList, mountedBookIds)
-                    : wbList.filter(function (book) {
-                        return book && (book.scope !== 'local' ||
-                          mountedBookIds.map(String).includes(String(book.id)));
-                      });
+                    wbList = roleBookPolicy.selectWorldbooksForGroup(wbList, mountedBookIds);
                 } else {
-                  wbList = roleBookPolicy && typeof roleBookPolicy.selectWorldbooksForRole === 'function'
-                    ? roleBookPolicy.selectWorldbooksForRole(wbList, roleForTurn, mountedBookIds)
-                    : wbList.filter(function (book) {
-                        return book && book.scope !== 'local';
-                      });
+                    wbList = roleBookPolicy.selectWorldbooksForRole(wbList, roleForTurn, mountedBookIds);
                 }
                 if (window.ChatContextPolicy &&
                     typeof window.ChatContextPolicy.buildWorldbookInjectionText === 'function') {
