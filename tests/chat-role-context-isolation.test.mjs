@@ -229,3 +229,30 @@ test('long saved lore or protocol is rejected before API instead of truncating s
   assert.doesNotMatch(detail,/systemPrompt = capText\(applyProtocolVars\(rpProtocol\)/);
 });
 
+
+
+test('group model context excludes game secrets and role-only messages without changing stored history',()=>{
+  const source=section('            const groupPublicHistory = isGroupChat',
+    '            let recentHistory;');
+  const select=new Function('isGroupChat','historyList',
+    source+'\nreturn groupPublicHistory;');
+  const raw=[
+    {mid:'public',role:'user',text:'大家好'},
+    {mid:'game-secret',role:'assistant',type:'group_game_private',text:'秘密身份'},
+    {mid:'role-only',role:'assistant',visibility:'role_only',text:'只给主持人'},
+    {mid:'private',role:'assistant',visibility:'private',text:'仅限私聊'},
+    {mid:'group-private',role:'assistant',type:'group_private',text:'私下说的话'},
+    {mid:'other',role:'assistant',text:'在群里公开说'}
+  ];
+  const before=JSON.stringify(raw);
+  assert.deepEqual(select(true,raw).map(m=>m.mid),['public','other']);
+  assert.deepEqual(select(false,raw).map(m=>m.mid),raw.map(m=>m.mid));
+  assert.equal(JSON.stringify(raw),before);
+});
+test('model history recall and worldbook keyword matching use a filtered group transcript',()=>{
+  assert.match(detail,/selectRecentHistory\(groupPublicHistory, memoryLimit\)/);
+  assert.match(detail,/buildHistoricalRecallText\(groupPublicHistory, recallQuery, recallOptions\)/);
+  const context=section("            let worldbookText = '';",'            // 协议变量替换：');
+  assert.match(context,/message\.type !== 'group_game_private'/);
+  assert.match(context,/message\.visibility !== 'role_only'/);
+});
