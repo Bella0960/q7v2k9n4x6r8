@@ -62,6 +62,34 @@
         var arr = safeJsonParse(safeGet('chat_history_' + roleId));
         return Array.isArray(arr) ? arr : [];
     }
+    // Automatic AI generation must never treat a broken or unavailable chat
+    // history as a new conversation: it would spend API money but fail to save.
+    // Unlike the read-only unread badge, automatic writes require a valid
+    // existing primary history, with no old phone_data_v2 fallback.
+    function readAutomaticHistory(roleId) {
+        try {
+            var raw = localStorage.getItem('chat_history_' + roleId);
+            if (raw === null) return null;
+            var parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed : null;
+        } catch (error) { return null; }
+    }
+    function automaticStorageReady() {
+        if (!(global.navigator && global.navigator.locks &&
+            typeof global.navigator.locks.request === 'function')) return false;
+        // A protected account page must not pay for AI generation before its
+        // localStorage proxy has been bound to the declared identity.
+        try {
+            var declared = global.document && typeof global.document.querySelector === 'function'
+                ? global.document.querySelector('meta[name="mao-account-id"]') : null;
+            var id = declared && String(declared.content || '').trim();
+            if (id) {
+                var scope = global.__MAO_ACCOUNT_SCOPE__;
+                if (!scope || scope.ready !== true || scope.accountId !== id) return false;
+            }
+            return true;
+        } catch (e) { return false; }
+    }
     function readCharacters() {
         var arr = safeJsonParse(safeGet('ai_custom_characters'));
         return Array.isArray(arr) ? arr : [];
@@ -372,7 +400,16 @@
     function ensureProactiveDependencies() {
         if (global.PhoneStorage && global.PhoneAPI && typeof global.PhoneAPI.completeJSON === 'function' &&
             global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function') {
-            return Promise.resolve(true);
+            return loadProactiveScript(
+                proactiveAsset('shared/js/phone/chat-history-atomic.js?v=20261118v1'),
+                function () { return !!global.ChatHistoryAtomic && typeof global.ChatHistoryAtomic.appendIf === 'function'; }
+            ).then(function(ok) {
+                if (!ok) return false;
+                return loadProactiveScript(
+                    proactiveAsset('shared/js/phone/chat-context-policy.js?v=20261118persona1'),
+                    function () { return !!global.ChatContextPolicy && typeof global.ChatContextPolicy.buildWorldbookInjectionText === 'function'; }
+                );
+            });
         }
         if (proactiveDependenciesPromise) return proactiveDependenciesPromise;
         proactiveDependenciesPromise = loadProactiveScript(
@@ -389,6 +426,18 @@
             return loadProactiveScript(
                 proactiveAsset('shared/js/phone/chat-presence-policy.js?v=20261102v17'),
                 function () { return !!global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function'; }
+            );
+        }).then(function (ok) {
+            if (!ok) return false;
+            return loadProactiveScript(
+                proactiveAsset('shared/js/phone/chat-history-atomic.js?v=20261118v1'),
+                function () { return !!global.ChatHistoryAtomic && typeof global.ChatHistoryAtomic.appendIf === 'function'; }
+            );
+        }).then(function (ok) {
+            if (!ok) return false;
+            return loadProactiveScript(
+                proactiveAsset('shared/js/phone/chat-context-policy.js?v=20261118persona1'),
+                function () { return !!global.ChatContextPolicy && typeof global.ChatContextPolicy.buildWorldbookInjectionText === 'function'; }
             );
         }).then(function (ok) {
             if (!ok) proactiveDependenciesPromise = null;
@@ -450,7 +499,8 @@
             if (!contact || contact.isGroup || safeGet('chat_proactive_contact_' + id) !== 'true') return;
             if (blocked.indexOf(String(id)) !== -1) return;
 
-            var history = readHistory(id);
+            var history = readAutomaticHistory(id);
+            if (!history) return;
             var intervalMs = proactiveIntervalHours(id) * 60 * 60 * 1000;
             var roleAttemptAt = Number(safeGet('chat_proactive_last_attempt_' + id)) || 0;
             var evaluation = global.ChatPresencePolicy.evaluateProactiveContact(history, {
@@ -508,6 +558,119 @@
         return result;
     }
 
+    // Autonomous responses do not run through chat-detail's system builder.
+    // Supply the same *saved* RP/persona and conversation-scoped lore before
+    // spending on model generation. Fail closed on corrupt or oversized lore.
+    // Group contexts deliberately omit each member's private one-to-one memory.
+    function buildAutonomousPersonaContext(role, scope, conversationId, history) {
+        if (!role || role.id == null || !conversationId ||
+            !global.ChatContextPolicy ||
+            typeof global.ChatContextPolicy.buildWorldbookInjectionText !== 'function') return null;
+        try {
+            var id = String(role.id);
+            var known = readCharacters().find(function (entry) {
+                return entry && String(entry.id) === id;
+            });
+            var activeRole = known || role;
+            var name = String((scope === 'group' ? role.name : activeRole.name) || role.name || '角色').trim();
+            var persona = String(activeRole.persona || activeRole.prompt || role.persona || '').trim();
+            if (persona.length > 24000) return null;
+            var userName = '用户';
+            var profileRaw = localStorage.getItem('myProfile');
+            if (profileRaw) {
+                var profile = JSON.parse(profileRaw);
+                if (profile && typeof profile.nickname === 'string' && profile.nickname.trim()) {
+                    userName = profile.nickname.trim().slice(0, 80);
+                }
+            }
+
+            var rp = String(localStorage.getItem('chat_rp_protocol_') || '').trim();
+            if (!rp) rp = String(localStorage.getItem('chat_rp_protocol_' + id) || '').trim();
+            if (!rp) rp = String(global.MAOMAO_RP_DEFAULT_PROTOCOL || '').trim();
+            if (rp.length > 24000) return null;
+            var rawBooks = localStorage.getItem('phone_worldbooks');
+            var books = rawBooks === null ? [] : JSON.parse(rawBooks);
+            if (!Array.isArray(books)) return null;
+            var mountRaw = localStorage.getItem('chat_worldbooks_' + String(conversationId));
+            if (mountRaw !== null) {
+                var mounts = JSON.parse(mountRaw);
+                if (!Array.isArray(mounts)) return null;
+                var ids = mounts.map(String);
+                books = books.filter(function (book) {
+                    return book && ids.indexOf(String(book.id)) !== -1;
+                });
+            } else {
+                books = books.filter(function (book) {
+                    return book && book.scope !== 'local';
+                });
+            }
+            var recent = scope === 'group'
+                ? followUpMessages(history).slice(-8)
+                : historyForProactivePrompt(history).slice(-8);
+            var last = recent.length ? recent[recent.length - 1] : null;
+            var latestText = last ? String(last.text || last.content || '') : '';
+            var lore = global.ChatContextPolicy.buildWorldbookInjectionText(books, {
+                currentText: latestText,
+                recentMessages: recent,
+                maxEntries: Math.max(1, books.reduce(function (count, book) {
+                    return count + (book && Array.isArray(book.entries) && book.entries.length
+                        ? book.entries.length : 1);
+                }, 0)),
+                maxChars: 1000000
+            });
+            if (lore.length > 32000) return null;
+            var memory = '';
+            if (scope !== 'group') {
+                // Match the main-chat role-scoped memory store. An autonomous
+                // message must not invent history or borrow another role's
+                // saved facts. Pending/unconfirmed memories stay excluded.
+                var memoryRaw = localStorage.getItem('chat_memories_' + id);
+                var records = memoryRaw === null ? [] : JSON.parse(memoryRaw);
+                if (!Array.isArray(records) ||
+                    typeof global.ChatContextPolicy.buildWeightedMemoryInjectionText !== 'function') return null;
+                var now = Date.now();
+                var halfLives = { key:365, anniversary:365, plot:21, detail:60, preference:60 };
+                var baseWeights = { key:1, anniversary:1, plot:0.45, detail:0.7, preference:0.7 };
+                var memoryWeight = function(entry) {
+                    var half = halfLives[entry.category] || 60;
+                    var base = baseWeights[entry.category] || 0.6;
+                    var days = Math.max(0, (now - Number(entry.lastReinforcedAt || entry.createdAt || now)) / 86400000);
+                    var importance = Math.max(1, Math.min(5, Number(entry.importance) || 3)) / 5;
+                    var reinforcement = Math.max(1, Number(entry.reinforcementCount) || 1);
+                    return importance * base * Math.pow(2, -days / half) *
+                        Math.min(1.45, 1 + (reinforcement - 1) * 0.08);
+                };
+                memory = global.ChatContextPolicy.buildWeightedMemoryInjectionText(
+                    records.filter(function(record) { return record && typeof record === 'object'; }),
+                    String(activeRole.memory || '').trim(),
+                    memoryWeight
+                );
+                if (memory === '暂无记忆') memory = '';
+                if (memory.length > 3000) return null;
+            }
+            var blocks = [
+                '【本轮角色身份（仅作用于 JSON.text 的内容和语气）】',
+                '姓名：' + name,
+                '人设档案：' + (persona || '未填写；不得编造身份经历或统一客服口吻')
+            ];
+            if (memory) blocks.push('已保存的角色个人背景：\n' + memory);
+            if (lore) blocks.push('当前会话允许触发的世界书：\n' + lore);
+            if (rp) {
+                blocks.push('【已保存的人设协议】\n' + rp
+                    .replace(/\{\{char\}\}/g, name)
+                    .replace(/\{\{user\}\}/g, userName)
+                    .replace(/\{\{persona\}\}/g, persona)
+                    .replace(/\{\{memory\}\}/g, memory || '无公开记忆')
+                    .replace(/\{\{worldbook\}\}/g, lore || '暂无世界书'));
+            }
+            blocks.push('以上身份与背景只约束角色说话内容。继续遵循原来的 send 决策与 JSON 输出格式；无话可说必须返回 send=false。群聊不得泄露成员的私人单聊记忆或秘密消息。');
+            var full = blocks.join('\n\n');
+            return full.length <= 48000 ? full : null;
+        } catch (error) {
+            return null;
+        }
+    }
+
     function cleanProactiveMessage(value) {
         var text = String(value == null ? '' : value)
             .replace(/<[^>]*>/g, ' ')
@@ -520,6 +683,7 @@
     }
 
     async function checkProactiveContacts() {
+        if (!automaticStorageReady()) return;
         if (proactiveRequestPending || followUpRequestPending || document.visibilityState === 'hidden' || currentDetailRoleId()) return;
         var now = Date.now();
         var lockAt = Number(safeGet(PROACTIVE_LOCK_KEY)) || 0;
@@ -569,11 +733,15 @@
                 String(currentTime.getHours()).padStart(2, '0') + ':' +
                 String(currentTime.getMinutes()).padStart(2, '0');
 
+            var roleContext = buildAutonomousPersonaContext(
+                candidate.contact, 'private', candidate.contact.id, candidate.history
+            );
+            if (!roleContext) return;
             var system = global.ChatPresencePolicy.buildProactiveContactPrompt(
                 candidate.contact,
                 candidate.history,
                 { localTime: localTime, voiceProfile: voiceProfile }
-            );
+            ) + '\n\n' + roleContext;
             var messages = [{ role: 'system', content: system }];
             messages.push.apply(messages, historyForProactivePrompt(candidate.history));
             messages.push({
@@ -592,12 +760,6 @@
             if (!content || safeGet('chat_proactive_contact_' + candidate.contact.id) !== 'true') return;
             if (document.visibilityState === 'hidden') return;
 
-            // 请求期间若用户又发了消息，放弃这条过时的主动联系。
-            var freshHistory = readHistory(candidate.contact.id);
-            var freshLatest = newestMeaningfulMessage(freshHistory);
-            if (!freshLatest || freshLatest.time !== candidate.latest.time ||
-                freshLatest.text !== candidate.latest.text) return;
-
             var newMessage = {
                 role: 'assistant',
                 text: content,
@@ -605,11 +767,15 @@
                 voiceMode: 'online',
                 proactiveContact: true
             };
-            freshHistory.push(newMessage);
-            var saved = global.PhoneStorage && typeof global.PhoneStorage.saveChatHistory === 'function'
-                ? global.PhoneStorage.saveChatHistory(candidate.contact.id, freshHistory)
-                : safeSet('chat_history_' + candidate.contact.id, freshHistory);
-            if (!saved) return;
+            // The model call can take seconds. Re-read AND validate under the
+            // per-conversation Web Lock; never save a stale whole-history copy.
+            var saved = await global.ChatHistoryAtomic.appendIf(candidate.contact.id, newMessage, function (latest) {
+                if (document.visibilityState === 'hidden' ||
+                    safeGet('chat_proactive_contact_' + candidate.contact.id) !== 'true') return false;
+                var last = newestMeaningfulMessage(latest);
+                return !!last && last.time === candidate.latest.time && last.text === candidate.latest.text;
+            });
+            if (!saved.ok) return;
             tick();
         } catch (error) {
             // 自动联系失败不打断当前页面；本次尝试已有冷却记录，避免重复消耗 API。
@@ -649,6 +815,8 @@
     function followUpMessages(history) {
         return (Array.isArray(history) ? history : []).filter(function (item) {
             if (!item || item.silent || item.isError || item.role === 'system_error') return false;
+            if (item.type === 'group_private' || item.type === 'group_game_private' ||
+                item.visibility === 'private' || item.visibility === 'role_only') return false;
             if (item.role !== 'user' && item.role !== 'sent' && item.role !== 'assistant' && item.role !== 'received') return false;
             if (!(Number(item.time || item.timestamp) > 0)) return false;
             var isUserMessage = item.role === 'user' || item.role === 'sent';
@@ -790,12 +958,6 @@
             lastUser: lastUser
         };
     }
-    function saveFollowUpHistory(id, history) {
-        if (global.PhoneStorage && typeof global.PhoneStorage.saveChatHistory === 'function') {
-            return !!global.PhoneStorage.saveChatHistory(id, history);
-        }
-        return safeSet('chat_history_' + id, history);
-    }
     function followUpContactList() {
         var contacts = buildContactIndex();
         var result = [];
@@ -833,13 +995,17 @@
             saveFollowUpState(scope, contact.id, noKeyState);
             return;
         }
+        var roleContext = buildAutonomousPersonaContext(
+            role, scope, contact.id, candidate.history
+        );
+        if (!roleContext) return;
         var prompt = global.ChatFollowUpPolicy.buildPrompt({
             name: role.name,
             persona: role.persona,
             relationship: role.relationship,
             round: candidate.round,
             context: followUpHistoryContext(candidate.history, scope === 'group')
-        });
+        }) + '\n\n' + roleContext;
         var messages = [{ role: 'system', content: prompt }];
         messages.push({
             role: 'user',
@@ -875,18 +1041,6 @@
             var currentGroup = readGroups().find(function (item) { return item && String(item.id) === String(contact.id); });
             if (!currentGroup || !currentGroup.settings || currentGroup.settings.followUpEnabled !== true) return;
         }
-        var freshHistory = readHistory(contact.id);
-        var freshMessages = followUpMessages(freshHistory);
-        var freshLast = freshMessages[freshMessages.length - 1];
-        if (!freshLast || Number(freshLast.time || freshLast.timestamp) !== candidate.lastAssistantAt ||
-            freshLast.proactiveFollowUp === true) return;
-        var freshUser = null;
-        for (var i = freshMessages.length - 1; i >= 0; i--) {
-            if (freshMessages[i].role === 'user' || freshMessages[i].role === 'sent') { freshUser = freshMessages[i]; break; }
-        }
-        if (!freshUser || Number(freshUser.time || freshUser.timestamp) !== candidate.lastUserAt) return;
-        if (global.document.visibilityState === 'hidden') return;
-
         var now = Date.now();
         var newMessage = {
             role: 'assistant',
@@ -899,8 +1053,24 @@
             followUpRound: candidate.round,
             followUpTopic: candidate.topic
         };
-        freshHistory.push(newMessage);
-        if (!saveFollowUpHistory(contact.id, freshHistory)) return;
+        var saved = await global.ChatHistoryAtomic.appendIf(contact.id, newMessage, function (freshHistory) {
+            if (global.document.visibilityState === 'hidden') return false;
+            if (scope === 'private' && safeGet('chat_followup_enabled_' + contact.id) !== 'true') return false;
+            if (scope === 'group') {
+                var group = readGroups().find(function (item) { return item && String(item.id) === String(contact.id); });
+                if (!group || !group.settings || group.settings.followUpEnabled !== true) return false;
+            }
+            var messages = followUpMessages(freshHistory);
+            var last = messages[messages.length - 1];
+            if (!last || Number(last.time || last.timestamp) !== candidate.lastAssistantAt ||
+                last.proactiveFollowUp === true) return false;
+            var user = null;
+            for (var i = messages.length - 1; i >= 0; i--) {
+                if (messages[i].role === 'user' || messages[i].role === 'sent') { user = messages[i]; break; }
+            }
+            return !!user && Number(user.time || user.timestamp) === candidate.lastUserAt;
+        });
+        if (!saved.ok) return;
         try {
             if (typeof global.CustomEvent === 'function') {
                 global.dispatchEvent(new global.CustomEvent('maomao:followup-message', {
@@ -922,6 +1092,7 @@
         tick();
     }
     async function checkFollowUpTasks() {
+        if (!automaticStorageReady()) return;
         if (followUpRequestPending || proactiveRequestPending || document.visibilityState === 'hidden') return;
         var now = Date.now();
         var lockAt = Number(safeGet(FOLLOW_UP_LOCK_KEY)) || 0;
@@ -934,7 +1105,8 @@
         if (document.visibilityState === 'hidden') return;
         var candidates = [];
         enabled.forEach(function (entry) {
-            var history = readHistory(entry.contact.id);
+            var history = readAutomaticHistory(entry.contact.id);
+            if (!history) return;
             var candidate = getFollowUpCandidate(entry.scope, entry.contact, history, Date.now());
             if (candidate) candidates.push(candidate);
         });

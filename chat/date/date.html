@@ -7,6 +7,7 @@
 <script src="../../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../../shared/js/native-feel.js"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
+<script src="../../shared/js/phone/chat-history-atomic.js?v=20261118v3"></script>
 <script src="../../shared/js/phone/phone_stream.js"></script>
 <style>
   /* ============================================================
@@ -2824,16 +2825,35 @@ body {
     /* ---------- 存取：与线上聊天共用 chat_history_<id> ---------- */
     var HISTORY_KEY = 'chat_history_' + roleId;
     var _storage = window.PhoneStorage;
+    var _dateHistoryRaw = null;
+    var _dateHistoryUnreadable = false;
     function loadHistory() {
-        if (_storage) {
-            var arr = _storage.getChatHistory(roleId);
-            if (arr && arr.length) return arr;
-        }
+        // Check the authoritative per-role primary before any legacy fallback.
+        // A malformed record must never be mistaken for an empty conversation.
         try {
             var raw = localStorage.getItem(HISTORY_KEY);
-            var parsed = raw ? JSON.parse(raw) : [];
-            if (Array.isArray(parsed) && parsed.length) return parsed;
-        } catch (e) {}
+            if (raw !== null) {
+                var primary = JSON.parse(raw);
+                if (!Array.isArray(primary)) throw new Error('chat history must be an array');
+                _dateHistoryRaw = raw;
+                _dateHistoryUnreadable = false;
+                return primary;
+            }
+            _dateHistoryRaw = null;
+        } catch (error) {
+            _dateHistoryUnreadable = true;
+            console.warn('[Date] malformed/unavailable primary chat history; writes suspended', error);
+            return [];
+        }
+        if (_storage && typeof _storage.getChatHistory === 'function') {
+            try {
+                var legacy = _storage.getChatHistory(roleId);
+                if (Array.isArray(legacy) && legacy.length) return legacy;
+            } catch (error) {
+                _dateHistoryUnreadable = true;
+                return [];
+            }
+        }
         return [];
     }
     // 写入后只核对数组长度和本次变更位置，避免为包含大图片的整份历史重复序列化。
@@ -2841,6 +2861,16 @@ body {
     function saveHistory(list, rollback, verifyIndex) {
         try {
             if (!Array.isArray(list)) throw new Error('聊天记录格式无效');
+            if (_dateHistoryUnreadable || HISTORY_KEY !== 'chat_history_' + roleId) {
+                throw new Error('原始聊天记录不可读或角色标识发生变化');
+            }
+            var latestRaw = localStorage.getItem(HISTORY_KEY);
+            if (latestRaw !== null && !Array.isArray(JSON.parse(latestRaw))) {
+                throw new Error('原始聊天记录已损坏，禁止覆盖');
+            }
+            if (latestRaw !== _dateHistoryRaw) {
+                throw new Error('其他窗口更新了聊天记录，禁止使用旧副本覆盖');
+            }
             var wrote = false;
             var verified;
             if (_storage && typeof _storage.saveChatHistory === 'function') {
@@ -2867,6 +2897,7 @@ body {
                     throw new Error('聊天记录写入后校验失败');
                 }
             }
+            _dateHistoryRaw = localStorage.getItem(HISTORY_KEY);
             return true;
         } catch (error) {
             if (Array.isArray(rollback) && Array.isArray(list)) {
@@ -2879,6 +2910,74 @@ body {
             toast('聊天记录保存失败，本次操作没有完成，请检查存储空间后重试');
             return false;
         }
+    }
+
+    // Real send/reply paths use the same Web Lock as online chat and journey.
+    // Legacy synchronous preview/arrival writes remain fail-closed via saveHistory.
+    var dateRerollPending = null;
+    var dateReplyWasReplacement = false;
+    async function appendDateMessage(message) {
+        if (_dateHistoryUnreadable || HISTORY_KEY !== 'chat_history_' + roleId ||
+            !window.ChatHistoryAtomic || typeof window.ChatHistoryAtomic.appendIf !== 'function') {
+            toast('当前聊天记录不可安全保存，请刷新后重试');
+            return false;
+        }
+        if (!message.mid) {
+            message.mid = 'date-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+        }
+        var outcome = await window.ChatHistoryAtomic.appendIf(roleId, message);
+        if (!outcome || !outcome.ok) {
+            toast('聊天记录保存失败，原消息已保留；请检查存储空间后重试');
+            return false;
+        }
+        history = loadHistory();
+        return true;
+    }
+
+    async function commitDateReply(message) {
+        dateReplyWasReplacement = false;
+        if (!dateRerollPending) return appendDateMessage(message);
+        var pending = dateRerollPending;
+        dateRerollPending = null;
+        if (_dateHistoryUnreadable || !window.ChatHistoryAtomic ||
+            typeof window.ChatHistoryAtomic.replaceIfUnchanged !== 'function') {
+            toast('重新生成无法安全保存，原回复已保留');
+            return false;
+        }
+        if (!message.mid) {
+            message.mid = 'date-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+        }
+        var replacement = JSON.parse(JSON.stringify(pending.baseline));
+        if (!replacement[pending.index] ||
+            (replacement[pending.index].role !== 'assistant' && replacement[pending.index].role !== 'received')) {
+            toast('目标回复已变化，原消息已保留');
+            return false;
+        }
+        replacement.splice(pending.index, 1, message);
+        var outcome = await window.ChatHistoryAtomic.replaceIfUnchanged(roleId, pending.baseline, replacement);
+        if (!outcome || !outcome.ok) {
+            toast('其他窗口更新了聊天记录，重新生成已取消，原回复已保留');
+            return false;
+        }
+        history = loadHistory();
+        dateReplyWasReplacement = true;
+        return true;
+    }
+
+    async function replaceDateHistorySafely(expected, replacement) {
+        if (_dateHistoryUnreadable || HISTORY_KEY !== 'chat_history_' + roleId ||
+            !window.ChatHistoryAtomic || typeof window.ChatHistoryAtomic.replaceIfUnchanged !== 'function') {
+            toast('聊天记录不可安全修改，请刷新后重试');
+            return false;
+        }
+        var outcome = await window.ChatHistoryAtomic.replaceIfUnchanged(roleId, expected, replacement);
+        if (!outcome || !outcome.ok) {
+            toast('聊天已在其他窗口更新，修改已取消，原记录已保留');
+            history = loadHistory();
+            return false;
+        }
+        history = loadHistory();
+        return true;
     }
 
     /* ---------- 本地内容生成（预览用，不依赖 API） ----------
@@ -2978,21 +3077,21 @@ body {
         streamingP = null;
         streamingRow = null;
         var i = 0;
-        var timer = setInterval(function () {
+        var timer = setInterval(async function () {
             i += 8;
             paintStream(text.slice(0, i));
             if (i >= text.length) {
                 clearInterval(timer);
-                var previousHistory = history.slice();
-                history.push({ role: 'assistant', text: text, time: Date.now(), mode: 'date', scene: sceneName || undefined });
-                if (!saveHistory(history, previousHistory)) {
+                var offlineReply = { role: 'assistant', text: text, time: Date.now(), mode: 'date', scene: sceneName || undefined };
+                if (!await commitDateReply(offlineReply)) {
                     appendSys('这段角色回复尚未保存，请先复制上方文字，再检查存储空间后重试。');
                     setSending(false);
                     scrollBottom();
                     return;
                 }
                 removeStreaming();
-                appendAiParagraphs(text, history.length - 1);
+                if (dateReplyWasReplacement) renderAll();
+                else appendAiParagraphs(text, history.length - 1);
                 setSending(false);
                 scrollBottom();
             }
@@ -3264,6 +3363,7 @@ body {
 
         var apiMessages = [{ role: 'system', content: buildSystemPrompt() }];
         history.slice(-12).forEach(function (m) {
+            if (dateRerollPending && history[dateRerollPending.index] === m) return;
             var t = String(m.text || m.content || '').trim();
             if (!t) return;
             t = capText(t, 800);
@@ -3285,12 +3385,20 @@ body {
             maxTokens: cfg.maxTokens,
             topP: cfg.topP,
             onPaint: paintStream
-        }).then(function (result) {
+        }).then(async function (result) {
             var ind = document.getElementById('dateIndicator');
             if (ind) ind.remove();
             var fullText = (result.fullText || '').trim();
 
             if (!result.ok) {
+                if (dateRerollPending) {
+                    dateRerollPending = null;
+                    appendSys('重新生成失败，原回复已保留');
+                    toast('重新生成失败，原回复已保留');
+                    setSending(false);
+                    scrollBottom();
+                    return;
+                }
                 var e = result.error || {};
                 var msg = e.kind === 'http'
                     ? '连接失败（HTTP ' + e.status + '）' + (e.detail ? '：' + e.detail : '')
@@ -3300,9 +3408,7 @@ body {
                 if (fullText) {
                     appendSys('连接中断，以上为已写出的内容');
                     var aiPartial = { role: 'assistant', text: fullText, time: Date.now(), mode: 'date', scene: sceneName || undefined };
-                    var previousHistory = history.slice();
-                    history.push(aiPartial);
-                    if (!saveHistory(history, previousHistory)) {
+                    if (!await appendDateMessage(aiPartial)) {
                         appendSys('上方部分回复尚未保存，请先复制需要保留的文字，再检查存储空间后重试。');
                         setSending(false);
                         scrollBottom();
@@ -3319,7 +3425,8 @@ body {
             }
 
             if (!fullText) {
-                appendSys('这一幕没有写出内容，再试一次吧');
+                dateRerollPending = null;
+                appendSys('这一幕没有写出内容，原回复已保留');
                 setSending(false);
                 return;
             }
@@ -3332,18 +3439,26 @@ body {
                 .replace(/\n{3,}/g, '\n\n').trim();
 
             var aiMsg = { role: 'assistant', text: fullText, time: Date.now(), mode: 'date', scene: sceneName || undefined };
-            var previousHistory = history.slice();
-            history.push(aiMsg);
-            if (!saveHistory(history, previousHistory)) {
+            if (!await commitDateReply(aiMsg)) {
                 appendSys('上方角色回复尚未保存，请先复制需要保留的文字，再检查存储空间后重试。');
                 setSending(false);
                 scrollBottom();
                 return;
             }
             if (streamingP) removeStreaming();
-            appendAiParagraphs(fullText, history.length - 1);
+            if (dateReplyWasReplacement) renderAll();
+            else appendAiParagraphs(fullText, history.length - 1);
             setSending(false);
             scrollBottom();
+        }).catch(function (error) {
+            dateRerollPending = null;
+            // Preserve all persisted history even if the stream client
+            // unexpectedly rejects rather than returning its Result object.
+            appendSys('请求异常，原有记录已保留；如有未保存的内容请先复制');
+            if (streamingP) removeStreaming();
+            setSending(false);
+            scrollBottom();
+            console.warn('[Date] request failed:', error);
         });
     }
 
@@ -3579,16 +3694,14 @@ body {
     if (refreshReplyOptions) refreshReplyOptions.addEventListener('click', generateReplyOptions);
     if (closeReplyOptions) closeReplyOptions.addEventListener('click', closeReplyOptionsPanel);
 
-    function send() {
+    async function send() {
         var text = (input.value || '').trim();
         if (!text || sending || generatingReplyOptions) return;
         closeReplyOptionsPanel();
         setSending(true);
 
         var userMsg = { role: 'user', text: text, time: Date.now(), mode: 'date', scene: sceneName || undefined };
-        var previousHistory = history.slice();
-        history.push(userMsg);
-        if (!saveHistory(history, previousHistory)) {
+        if (!await appendDateMessage(userMsg)) {
             setSending(false);
             return;
         }
@@ -3609,22 +3722,20 @@ body {
     // 重 Roll：删掉最后一条 AI 回复（仅一条），基于之前的行动重新生成
     function actReroll() {
         if (sending) return;
-        var last = history[history.length - 1];
+        var lastIndex = history.length - 1;
+        var last = history[lastIndex];
         if (!last || !(last.role === 'assistant' || last.role === 'received')) {
             toast('没有可以重写的回复');
             return;
         }
-        var previousHistory = history.slice();
-        history.pop();
-        if (!saveHistory(history, previousHistory)) {
-            renderAll();
-            scrollBottom();
-            return;
-        }
-        renderAll();   // 气泡结构统一重渲染，避免残留旧气泡
-        scrollBottom();
+        dateRerollPending = {
+            index: lastIndex,
+            baseline: JSON.parse(JSON.stringify(history))
+        };
+        // The original turn remains persisted and visible until replacement
+        // succeeds; failure never deletes it or moves the chat backwards.
         setSending(true);
-        requestReply(null);
+        requestReply('(请根据之前的剧情重新生成上一条回复，不重复原句)');
     }
     // 保存：把当前线下模式剧情导出为 .txt 文稿下载
     function actSave() {
@@ -3733,18 +3844,15 @@ body {
     function rerollMsg(idx) {
         if (sending) return;
         var m = history[idx];
-        if (!m || !(m.role === 'assistant' || m.role === 'received')) { toast('这条不是角色回复'); return; }
-        var previousHistory = history.slice();
-        history.splice(idx, 1);
-        if (!saveHistory(history, previousHistory)) {
-            renderAll();
-            scrollBottom();
-            return;
+        if (!m || !(m.role === 'assistant' || m.role === 'received')) {
+            toast('这条不是角色回复'); return;
         }
-        renderAll();
-        scrollBottom();
+        dateRerollPending = {
+            index: idx,
+            baseline: JSON.parse(JSON.stringify(history))
+        };
         setSending(true);
-        requestReply(null);
+        requestReply('(请重新生成选中的那条角色回复，保留其他剧情)');
     }
 
     // 编辑：就地改为可编辑文本，保存后写回聊天记录
@@ -3774,20 +3882,26 @@ body {
         box.appendChild(actions);
         editAnchor.before(box);
 
-        btnSave.addEventListener('click', function () {
+        btnSave.addEventListener('click', async function () {
             var v = ta.value.trim();
             if (!v) { toast('内容不能为空'); return; }
-            var previousHistory = history.slice();
-            var previousText = history[idx].text;
-            history[idx].text = v;
-            if (!saveHistory(history, previousHistory, idx)) {
-                history[idx].text = previousText;
+            if (sending) { toast('角色正在回复，请稍后编辑'); return; }
+            var original = JSON.parse(JSON.stringify(history));
+            if (!original[idx]) { toast('这条消息已不存在'); return; }
+            var replacement = JSON.parse(JSON.stringify(original));
+            replacement[idx].text = v;
+            btnSave.disabled = true;
+            try {
+                if (!await replaceDateHistorySafely(original, replacement)) {
+                    renderAll();
+                    scrollBottom();
+                    return;
+                }
                 renderAll();
                 scrollBottom();
-                return;
+            } finally {
+                btnSave.disabled = false;
             }
-            renderAll();
-            scrollBottom();
         });
         btnCancel.addEventListener('click', function () {
             box.remove();
@@ -3797,19 +3911,19 @@ body {
     }
 
     // 删除：从剧情与聊天记录中移除这条回复
-    function deleteMsg(idx) {
-        if (history[idx]) {
-            var previousHistory = history.slice();
-            history.splice(idx, 1);
-            if (!saveHistory(history, previousHistory, Math.min(idx, history.length - 1))) {
-                renderAll();
-                scrollBottom();
-                return;
-            }
+    async function deleteMsg(idx) {
+        if (sending || !history[idx]) return;
+        var original = JSON.parse(JSON.stringify(history));
+        var replacement = JSON.parse(JSON.stringify(original));
+        replacement.splice(idx, 1);
+        if (!await replaceDateHistorySafely(original, replacement)) {
             renderAll();
             scrollBottom();
-            toast('已删除这条回复');
+            return;
         }
+        renderAll();
+        scrollBottom();
+        toast('已删除这条回复');
     }
 
     // 长按检测：移动端 touch 计时 450ms；桌面右键 contextmenu
