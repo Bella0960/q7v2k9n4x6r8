@@ -142,6 +142,28 @@ test('manual is book-first: chapter index, readable sheets, official-only releas
   assert.match(guideScript, /function moveWalkthrough/);
 });
 
+test('book reader step navigation updates only the current chapter without rebuilding the open index', () => {
+  const counter = guideScript.slice(
+    guideScript.indexOf('  function refreshChapterProgress(guide) {'),
+    guideScript.indexOf('  function startGuide(id) {')
+  );
+  const stepper = guideScript.slice(
+    guideScript.indexOf('  function moveWalkthrough(delta) {'),
+    guideScript.indexOf('  function exportProgress() {')
+  );
+  const toggle = guideScript.slice(
+    guideScript.indexOf("  $('walkStepDone').addEventListener('change'"),
+    guideScript.indexOf("  $('walkthroughModal').addEventListener('click'")
+  );
+  assert.match(counter, /querySelector\('/);
+  assert.match(counter, /\.guide-step-meta/);
+  assert.match(counter, /counter\.textContent/);
+  assert.match(stepper, /refreshChapterProgress\(activeWalkthrough\)/);
+  assert.match(toggle, /refreshChapterProgress\(activeWalkthrough\)/);
+  assert.doesNotMatch(stepper, /renderGuides\(\)/);
+  assert.doesNotMatch(toggle, /renderGuides\(\)/);
+});
+
 test('composer menu guide covers the actual one-to-one and group menu entry labels', () => {
   for (const label of ['表情包','奔赴','重玩','位置','纪念日','旁白动作','直播间','音乐','语音通话','视频通话','发红包','转账','图片','语音','名片','送礼物','群投票','群接龙','群通话']) {
     assert.ok(guideScript.includes(label), 'missing composer menu guide label: ' + label);
