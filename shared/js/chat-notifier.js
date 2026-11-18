@@ -372,7 +372,10 @@
     function ensureProactiveDependencies() {
         if (global.PhoneStorage && global.PhoneAPI && typeof global.PhoneAPI.completeJSON === 'function' &&
             global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function') {
-            return Promise.resolve(true);
+            return loadProactiveScript(
+                proactiveAsset('shared/js/phone/chat-history-atomic.js?v=20261118v1'),
+                function () { return !!global.ChatHistoryAtomic && typeof global.ChatHistoryAtomic.appendIf === 'function'; }
+            );
         }
         if (proactiveDependenciesPromise) return proactiveDependenciesPromise;
         proactiveDependenciesPromise = loadProactiveScript(
@@ -389,6 +392,12 @@
             return loadProactiveScript(
                 proactiveAsset('shared/js/phone/chat-presence-policy.js?v=20261102v17'),
                 function () { return !!global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function'; }
+            );
+        }).then(function (ok) {
+            if (!ok) return false;
+            return loadProactiveScript(
+                proactiveAsset('shared/js/phone/chat-history-atomic.js?v=20261118v1'),
+                function () { return !!global.ChatHistoryAtomic && typeof global.ChatHistoryAtomic.appendIf === 'function'; }
             );
         }).then(function (ok) {
             if (!ok) proactiveDependenciesPromise = null;
@@ -592,12 +601,6 @@
             if (!content || safeGet('chat_proactive_contact_' + candidate.contact.id) !== 'true') return;
             if (document.visibilityState === 'hidden') return;
 
-            // 请求期间若用户又发了消息，放弃这条过时的主动联系。
-            var freshHistory = readHistory(candidate.contact.id);
-            var freshLatest = newestMeaningfulMessage(freshHistory);
-            if (!freshLatest || freshLatest.time !== candidate.latest.time ||
-                freshLatest.text !== candidate.latest.text) return;
-
             var newMessage = {
                 role: 'assistant',
                 text: content,
@@ -605,11 +608,15 @@
                 voiceMode: 'online',
                 proactiveContact: true
             };
-            freshHistory.push(newMessage);
-            var saved = global.PhoneStorage && typeof global.PhoneStorage.saveChatHistory === 'function'
-                ? global.PhoneStorage.saveChatHistory(candidate.contact.id, freshHistory)
-                : safeSet('chat_history_' + candidate.contact.id, freshHistory);
-            if (!saved) return;
+            // The model call can take seconds. Re-read AND validate under the
+            // per-conversation Web Lock; never save a stale whole-history copy.
+            var saved = await global.ChatHistoryAtomic.appendIf(candidate.contact.id, newMessage, function (latest) {
+                if (document.visibilityState === 'hidden' ||
+                    safeGet('chat_proactive_contact_' + candidate.contact.id) !== 'true') return false;
+                var last = newestMeaningfulMessage(latest);
+                return !!last && last.time === candidate.latest.time && last.text === candidate.latest.text;
+            });
+            if (!saved.ok) return;
             tick();
         } catch (error) {
             // 自动联系失败不打断当前页面；本次尝试已有冷却记录，避免重复消耗 API。
@@ -790,12 +797,6 @@
             lastUser: lastUser
         };
     }
-    function saveFollowUpHistory(id, history) {
-        if (global.PhoneStorage && typeof global.PhoneStorage.saveChatHistory === 'function') {
-            return !!global.PhoneStorage.saveChatHistory(id, history);
-        }
-        return safeSet('chat_history_' + id, history);
-    }
     function followUpContactList() {
         var contacts = buildContactIndex();
         var result = [];
@@ -875,18 +876,6 @@
             var currentGroup = readGroups().find(function (item) { return item && String(item.id) === String(contact.id); });
             if (!currentGroup || !currentGroup.settings || currentGroup.settings.followUpEnabled !== true) return;
         }
-        var freshHistory = readHistory(contact.id);
-        var freshMessages = followUpMessages(freshHistory);
-        var freshLast = freshMessages[freshMessages.length - 1];
-        if (!freshLast || Number(freshLast.time || freshLast.timestamp) !== candidate.lastAssistantAt ||
-            freshLast.proactiveFollowUp === true) return;
-        var freshUser = null;
-        for (var i = freshMessages.length - 1; i >= 0; i--) {
-            if (freshMessages[i].role === 'user' || freshMessages[i].role === 'sent') { freshUser = freshMessages[i]; break; }
-        }
-        if (!freshUser || Number(freshUser.time || freshUser.timestamp) !== candidate.lastUserAt) return;
-        if (global.document.visibilityState === 'hidden') return;
-
         var now = Date.now();
         var newMessage = {
             role: 'assistant',
@@ -899,8 +888,24 @@
             followUpRound: candidate.round,
             followUpTopic: candidate.topic
         };
-        freshHistory.push(newMessage);
-        if (!saveFollowUpHistory(contact.id, freshHistory)) return;
+        var saved = await global.ChatHistoryAtomic.appendIf(contact.id, newMessage, function (freshHistory) {
+            if (global.document.visibilityState === 'hidden') return false;
+            if (scope === 'private' && safeGet('chat_followup_enabled_' + contact.id) !== 'true') return false;
+            if (scope === 'group') {
+                var group = readGroups().find(function (item) { return item && String(item.id) === String(contact.id); });
+                if (!group || !group.settings || group.settings.followUpEnabled !== true) return false;
+            }
+            var messages = followUpMessages(freshHistory);
+            var last = messages[messages.length - 1];
+            if (!last || Number(last.time || last.timestamp) !== candidate.lastAssistantAt ||
+                last.proactiveFollowUp === true) return false;
+            var user = null;
+            for (var i = messages.length - 1; i >= 0; i--) {
+                if (messages[i].role === 'user' || messages[i].role === 'sent') { user = messages[i]; break; }
+            }
+            return !!user && Number(user.time || user.timestamp) === candidate.lastUserAt;
+        });
+        if (!saved.ok) return;
         try {
             if (typeof global.CustomEvent === 'function') {
                 global.dispatchEvent(new global.CustomEvent('maomao:followup-message', {
