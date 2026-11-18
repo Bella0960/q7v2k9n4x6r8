@@ -148,5 +148,18 @@ test('cover persists per group in IndexedDB without polluting chat backgrounds',
     assert.equal(state.background,null);
     await page.goto(origin+'/chat/chat/chat-settings.html?roleId=g2');
     assert.equal(await page.locator('.gp-cover-hero.has-photo').count(),0);
+    await page.goto(origin+'/chat/chat/chat-settings.html?roleId=g1');
+    await page.locator('.gp-cover-hero.has-photo').waitFor({state:'visible'});
+    assert.equal(await page.locator('#gpCoverChoose').innerText(),'更换封面');
+    await page.locator('#gpCoverReset').click();
+    await page.waitForFunction(() => !document.querySelector('.gp-cover-hero').classList.contains('has-photo'));
+    assert.equal(await page.locator('#gpCoverChoose').innerText(),'上传封面');
+    const afterReset=await page.evaluate(async () => {
+      const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('maomao-media-store',2);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
+      const key=await new Promise((resolve,reject)=>{const r=db.transaction('wallpapers','readonly').objectStore('wallpapers').get('chat_group_profile_cover_v1_g1');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
+      db.close();
+      return key;
+    });
+    assert.equal(afterReset,undefined,'reset should delete only the group cover IDB record');
   } finally {await ctx.close();}
 });
