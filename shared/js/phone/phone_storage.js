@@ -890,6 +890,35 @@
                 if (!read.ok) return read;
                 history = read.value;
             }
+            // A retry with the same stable mid must not duplicate an uncertain append.
+            // Only identical persisted payloads are idempotent. A reused mid carrying
+            // different data is a conflict, never permission to replace the old message.
+            var mid = message.mid == null ? '' : String(message.mid);
+            if (mid.trim()) {
+                var matched = null;
+                for (var i = 0; i < history.length; i++) {
+                    var previous = history[i];
+                    if (!previous || previous.mid == null || String(previous.mid) !== mid) continue;
+                    if (matched !== null) {
+                        return failResult(ERR.CONFLICT, 'duplicate message id in existing history', false);
+                    }
+                    matched = previous;
+                }
+                if (matched !== null) {
+                    var previousJSON;
+                    var nextJSON;
+                    try {
+                        previousJSON = JSON.stringify(matched);
+                        nextJSON = JSON.stringify(message);
+                    } catch (err) {
+                        return failResult(ERR.VALIDATION_FAILED, 'message cannot be serialized', false);
+                    }
+                    if (previousJSON !== nextJSON) {
+                        return failResult(ERR.CONFLICT, 'message id already exists with different content', false);
+                    }
+                    return okResult(true, { alreadyPersisted: true, messageId: mid });
+                }
+            }
             return R.saveChatHistory(contactId, history.concat([message]), primary.raw);
         };
 
