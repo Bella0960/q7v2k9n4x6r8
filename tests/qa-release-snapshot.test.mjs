@@ -62,3 +62,35 @@ test('QA release retains all existing gates and verifies the phone-facing domain
   assert.match(script, /https:\/\/preview\.mao520\.com\/qa-build-receipt\.json\?commit=/);
   assert.match(script, /JSON\.stringify\(\{ sourceCommit \}\)/);
 });
+
+test('QA explicit confirmation and live deployment baselines run BEFORE costly tests', () => {
+  const script = readFileSync(new URL('../scripts/qa-direct-release.mjs', import.meta.url), 'utf8');
+  const confirm = script.indexOf('if (deploy) {\n    assert.equal(process.env.MAOMAO_QA_DEPLOY_CONFIRM');
+  const baseline = script.indexOf('liveWorkerVersion(QA), liveWorkerVersion(CORE)');
+  const suite = script.indexOf('for (const [command, args] of TESTS) run(command, args);');
+  assert.ok(confirm >= 0 && confirm < baseline && baseline < suite);
+  assert.match(script, /if \(!deploy\) \{/);
+});
+
+test('QA release refuses concurrent Worker and identity-core deployments', () => {
+  const script = readFileSync(new URL('../scripts/qa-direct-release.mjs', import.meta.url), 'utf8');
+  const suite = script.indexOf('for (const [command, args] of TESTS) run(command, args);');
+  const baselineCheck = script.indexOf('qaPrevious.versionId, qaBaseline.versionId');
+  const coreBaselineCheck = script.indexOf('corePrevious.versionId, coreBaseline.versionId');
+  const beforeUploadCheck = script.indexOf('qaCurrent.versionId, qaPrevious.versionId');
+  const coreBeforeUploadCheck = script.indexOf('coreCurrent.versionId, coreVersion.versionId');
+  const publish = script.indexOf("run('npx', ['--yes', 'wrangler@4', 'deploy', '--config', 'wrangler.qa.jsonc']);");
+  assert.ok(suite < baselineCheck && suite < coreBaselineCheck);
+  assert.ok(baselineCheck < beforeUploadCheck && coreBaselineCheck < coreBeforeUploadCheck);
+  assert.ok(beforeUploadCheck < publish && coreBeforeUploadCheck < publish);
+  assert.match(script, /QA Worker was deployed by another release while tests ran/);
+  assert.match(script, /QA identity authority changed after preflight/);
+});
+
+test('QA-only still never deploys identity core and full release does not accept pinned stale HEAD', () => {
+  const script = readFileSync(new URL('../scripts/qa-direct-release.mjs', import.meta.url), 'utf8');
+  assert.match(script, /if \(qaOnly\) \{/);
+  assert.match(script, /if \(qaOnly\) \{[\s\S]*?\} else \{[\s\S]*?wrangler\.qa-identity-core\.jsonc/);
+  assert.match(script, /assertReadyForUpload\(\{ allowPinned: qaOnly \}\)/);
+  assert.match(script, /preflightCheckout\(\);/);
+});
