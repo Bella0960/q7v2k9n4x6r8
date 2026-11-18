@@ -70,12 +70,13 @@ function importFixture({failCatalog=false, autoPlayWorks=false}={}) {
 }
 test('actual multi-file import persists normalized binary, catalog and clear user feedback', async () => {
   const f=importFixture();
-  await f.boot.handler({target:{files:[wavFile('91337','application/octet-stream'),wavFile('a.wav','audio/wav')],value:'picked'}});
+  f.input.files=[wavFile('91337','application/octet-stream'),wavFile('a.wav','audio/wav')];
+  await f.boot.handler({target:f.input});
   await new Promise(resolve=>setImmediate(resolve));
   assert.equal(f.catalog.length,2);
   assert.equal(f.blobs.length,2);
   assert.ok(f.blobs.every(item=>item.mimeType==='audio/wav' && item.blob.type==='audio/wav'));
-  assert.equal(f.input.value,'selected');
+  assert.equal(f.input.value,'');
   assert.match(f.messages.join(' '),/已保存 2 首本地歌曲/);
   assert.match(f.messages.join(' '),/再次播放/);
   assert.equal(f.deleted.length,0);
@@ -83,7 +84,8 @@ test('actual multi-file import persists normalized binary, catalog and clear use
 });
 test('catalog quota failure rolls back only this new track and never reports import success', async () => {
   const f=importFixture({failCatalog:true});
-  await f.boot.handler({target:{files:[wavFile()],value:'selected'}});
+  f.input.files=[wavFile()];
+  await f.boot.handler({target:f.input});
   assert.equal(f.catalog.length,0);
   assert.equal(f.tracks.length,0);
   assert.equal(f.blobs.length,1);
