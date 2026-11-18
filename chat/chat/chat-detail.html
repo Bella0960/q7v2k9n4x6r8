@@ -5741,8 +5741,7 @@
                 memory: 3000,       // 分层长期记忆
                 userMemory: 2000,   // [记住:...] 用户侧记忆
                 worldbook: 8000,    // 世界书全量
-                rpProtocol: 6000,   // RP 协议原文
-                rpComposed: 16000   // 协议变量替换后的整段（协议 + 人设 + 世界书展开）
+                // 用户明确保存的全局协议不静默截断；其他独立资料仍有各自预算。
             };
             function capText(str, max) {
                 str = String(str || '');
@@ -6068,7 +6067,7 @@
             } catch (e) {}
             // 设置页展示的默认协议，即使尚未显式保存，聊天也应真实使用。
             // 已保存的非空协议优先，读取不隐式修改用户设置。
-            rpProtocol = capText(rpProtocol.trim() || String(window.MAOMAO_RP_DEFAULT_PROTOCOL || ''), CTX_CAP.rpProtocol);
+            rpProtocol = rpProtocol.trim() || String(window.MAOMAO_RP_DEFAULT_PROTOCOL || '');
 
             // 世界书：召回当前话题相关条目；兼容旧版只有 content 的整本设定
             let worldbookText = '';
@@ -6077,30 +6076,32 @@
               if (rawWB) {
                 let wbList = JSON.parse(rawWB) || [];
                 if (!Array.isArray(wbList)) wbList = [];
+                // Single and group chats each read their own mounted lore. Global lore stays
+                // available; unmounted local lore from other roles never enters the AI request.
+                var mountedBookIds = [];
+                try {
+                  var mountedRaw = localStorage.getItem('chat_worldbooks_' + aliasRoleId);
+                  if (mountedRaw != null) {
+                    var parsedMounts = JSON.parse(mountedRaw);
+                    if (Array.isArray(parsedMounts)) mountedBookIds = parsedMounts;
+                  }
+                } catch (mountError) {
+                  // Broken mount metadata must not expose local books by default.
+                }
+                var roleBookPolicy = window.MAOMAOChatRoleContext;
                 if (isGroupChat) {
-                  const mountRaw = localStorage.getItem('chat_worldbooks_' + aliasRoleId);
-                  if (mountRaw != null) {
-                    const mounted = JSON.parse(mountRaw);
-                    if (Array.isArray(mounted)) {
-                      const mountedIds = mounted.map(function (id) { return String(id); });
-                      wbList = wbList.filter(function (book) { return book && mountedIds.indexOf(String(book.id)) !== -1; });
-                    }
-                  }
-                } else if (window.MAOMAOChatRoleContext &&
-                           typeof window.MAOMAOChatRoleContext.selectWorldbooksForRole === 'function') {
-                  // 单聊读取当前角色绑定的局部世界书，不允许其他人物的局部背景串入。
-                  var roleMountedIds = [];
-                  var roleMountRaw = localStorage.getItem('chat_worldbooks_' + aliasRoleId);
-                  if (roleMountRaw != null) {
-                    try {
-                      var parsedRoleMount = JSON.parse(roleMountRaw);
-                      if (Array.isArray(parsedRoleMount)) roleMountedIds = parsedRoleMount;
-                    } catch (mountError) {
-                      // 无法解析挂载列表时只使用角色档案绑定，不覆盖原始记录。
-                    }
-                  }
-                  wbList = window.MAOMAOChatRoleContext.selectWorldbooksForRole(
-                    wbList, roleForTurn, roleMountedIds);
+                  wbList = roleBookPolicy && typeof roleBookPolicy.selectWorldbooksForGroup === 'function'
+                    ? roleBookPolicy.selectWorldbooksForGroup(wbList, mountedBookIds)
+                    : wbList.filter(function (book) {
+                        return book && (book.scope !== 'local' ||
+                          mountedBookIds.map(String).includes(String(book.id)));
+                      });
+                } else {
+                  wbList = roleBookPolicy && typeof roleBookPolicy.selectWorldbooksForRole === 'function'
+                    ? roleBookPolicy.selectWorldbooksForRole(wbList, roleForTurn, mountedBookIds)
+                    : wbList.filter(function (book) {
+                        return book && book.scope !== 'local';
+                      });
                 }
                 if (window.ChatContextPolicy &&
                     typeof window.ChatContextPolicy.buildWorldbookInjectionText === 'function') {
@@ -6114,9 +6115,9 @@
                     maxChars: CTX_CAP.worldbook
                   });
                 } else {
-                  worldbookText = wbList.map(function(b){
-                    return '【' + (b.title || '未命名') + '】\n' + (b.content || '');
-                  }).join('\n\n');
+                  // The policy module enforces worldbook activation modes, keyword
+                  // triggers and probability. Never inject everything if it fails to load.
+                  console.warn('[ChatContextPolicy] worldbook activation unavailable; skip lore for this turn');
                 }
               }
             } catch(e) { worldbookText = ''; }
@@ -6135,7 +6136,9 @@
             let systemPrompt;
             if (rpProtocol) {
                 // 协议存在：替换变量后置于 System Prompt 最顶端（最高优先级，覆盖底层默认规则）
-                systemPrompt = capText(applyProtocolVars(rpProtocol), CTX_CAP.rpComposed);
+                // Do not cut the user's saved text or the resolved {{persona}}/{{worldbook}}
+                // sections after expansion. A silent slice discards authored rules.
+                systemPrompt = applyProtocolVars(rpProtocol);
             } else {
                 // 协议不存在：使用原有的人设/用户信息/记忆/回复要求拼接逻辑
                 systemPrompt = [
@@ -6301,7 +6304,8 @@
                 systemPrompt += '\n\n' + SPEAK_STYLE;
             }
 
-            // ========== 身份锁：最外层强制协议，优先级最高，不可被覆盖 ==========
+            // Role identity and context boundaries apply to every chat; saved global RP
+            // protocol remains authoritative for voice, style and interaction choices.
             const charName = turnSpeakerName;
             const IDENTITY_LOCK = [
               '═══════════════════════════════════',
@@ -6361,7 +6365,9 @@
               }
             }
             // 世界书内容拼进 systemPrompt；设定是生活背景，不是每轮背诵清单
-            if (worldbookText) {
+            if (worldbookText && !rpProtocol.includes('{{worldbook}}')) {
+              // Templates with {{worldbook}} already contain the activated entries.
+              // Custom templates without it still receive the selected worldbook data.
               systemPrompt += '\n\n【世界书 / 角色生活背景】\n' + worldbookText;
             }
             systemPrompt += '\n\n【活人感世界书使用原则】\n' +
@@ -6629,6 +6635,12 @@
                     '只输出微信聊天正文，禁止 Markdown 粗体 **、自我介绍模板、客服套话以及每句话结尾都反问。' +
                     '与用户已保存的伴侣协议共同生效，具体语气以该协议和角色档案为准。';
             }
+
+            // Shared precedence for ALL direct and group roles: user-authored protocol
+            // owns voice / prose / interaction; current persona owns individual identity;
+            // scoped activated worldbooks supply factual setting. Built-in markers only
+            // control the app's transport/features and cannot invent a new personality.
+            systemPrompt += '\n\n【最终设定优先级】聊天人物必须遵守设置页保存的全局人设协议；具体身份与个性依据本轮角色完整档案；世界背景依据当前激活且允许在本对话使用的世界书。若内置功能说明与用户协议在语气、叙述风格、关系进展或互动方式上不同，以用户保存的协议为准；内置说明只负责必要的消息格式、功能标记和私密信息边界。不要把其他角色的人设套到当前角色上。';
 
             // 构造 OpenAI 兼容格式 messages 数组 (system + 历史记录)
             if (isManualContinue) {
