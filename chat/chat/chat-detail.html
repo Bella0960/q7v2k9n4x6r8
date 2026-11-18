@@ -5940,14 +5940,19 @@
             if (groupContextPrompt) rolePersona += '\n' + groupContextPrompt;
             // Full saved persona remains authoritative for the active speaker.
             // Only the auxiliary group roster is limited.
-            rolePersona = isGroupChat ? capText(rolePersona, CTX_CAP.persona) : rolePersona;
+            // Other group members' backgrounds must not be silently truncated; fail with
+            // an actionable message if a roster cannot fit the configured context.
+            if (isGroupChat && rolePersona.length > 24000) {
+                if (typeof showToast === 'function') showToast('群成员人设合计过长，无法完整加载，本轮已停止');
+                return;
+            }
 
             // 当前主角色专属的人物关系与生活线；群聊只读取本轮发言角色自己的关系资料。
             function buildCharacterSocialPrompt(role) {
                 if (!role || typeof role !== 'object') return '';
                 var lines = [];
                 var speechStyle = String(role.tone || role.speechStyle || role.speech || '').trim();
-                if (speechStyle) lines.push('【主角色说话与表达习惯】\n' + speechStyle.slice(0, 900));
+                if (speechStyle) lines.push('【主角色说话与表达习惯】\n' + speechStyle);
                 var npcs = Array.isArray(role.npcCharacters) ? role.npcCharacters : [];
                 var awarenessLabels = {
                     known: '用户已认识此人',
@@ -6008,7 +6013,7 @@
 
                 if (!lines.length) return '';
                 lines.push('生活连续性规则：把人物关系和生活线当作持续背景，而不是固定播报任务。计划中的事件不能说成已完成，过去事件不能随意改写；仅在话题相关、角色确实想到或适合分享时自然提起。');
-                return lines.join('\n').slice(0, 4000);
+                return lines.join('\n');
             }
 
             var relationshipRole = isGroupChat
@@ -6019,13 +6024,22 @@
             const turnSpeakerName = isGroupChat && groupReplyPick
                 ? String((relationshipRole && relationshipRole.name) || groupReplyPick.name || '群成员')
                 : String(roleForTurn.name || '角色');
-            const turnSpeakerPersona = isGroupChat && groupReplyPick
-                ? String((relationshipRole && (relationshipRole.persona || relationshipRole.prompt)) ||
-                    groupReplyPick.persona || groupReplyPick.prompt || '').trim()
+            const rawSpeakerPersona = isGroupChat && groupReplyPick
+                ? String(relationshipRole && (relationshipRole.persona || relationshipRole.prompt) || '').trim()
                 : rolePersona;
+            const turnSpeakerPersona = (window.MAOMAOChatRoleContext &&
+                typeof window.MAOMAOChatRoleContext.stripEncounterEditorNote === 'function')
+                ? window.MAOMAOChatRoleContext.stripEncounterEditorNote(rawSpeakerPersona, relationshipRole).trim()
+                : rawSpeakerPersona;
             var characterSocialPrompt = '';
             try { characterSocialPrompt = buildCharacterSocialPrompt(relationshipRole); } catch (socialContextError) {
-                console.warn('[CharacterSocialContext] skipped:', socialContextError);
+                console.error('[ChatPersonaSources] role social context unavailable:', socialContextError);
+                if (typeof showToast === 'function') showToast('角色生活资料读取失败，本轮已停止');
+                return;
+            }
+            if (characterSocialPrompt.length > 24000) {
+                if (typeof showToast === 'function') showToast('角色生活资料过长，请整理后重试；内容不会被悄悄截断');
+                return;
             }
 
 
@@ -6151,11 +6165,16 @@
                 var roleBookPolicy = window.MAOMAOChatRoleContext;
                 if (!roleBookPolicy ||
                     typeof roleBookPolicy.selectWorldbooksForGroup !== 'function' ||
+                    typeof roleBookPolicy.selectWorldbooksForGroupSpeaker !== 'function' ||
                     typeof roleBookPolicy.selectWorldbooksForRole !== 'function') {
                     throw new Error('role-scoped worldbook selection unavailable');
                 }
                 if (isGroupChat) {
-                    wbList = roleBookPolicy.selectWorldbooksForGroup(wbList, mountedBookIds);
+                    // Speaker's own local books are part of that person's saved identity.
+                    // Never include another member's locally bound books.
+                    wbList = roleBookPolicy.selectWorldbooksForGroupSpeaker(
+                        wbList, mountedBookIds, groupReplyPick && getRoleById(groupReplyPick.id)
+                    );
                 } else {
                     wbList = roleBookPolicy.selectWorldbooksForRole(wbList, roleForTurn, mountedBookIds);
                 }
@@ -6959,6 +6978,47 @@
                 box.appendChild(statusDiv);
                 scrollToBottom(true);
             }
+
+            // Final delivery barrier: verify what the model will actually receive.
+            // This is intentionally AFTER context selection / memory retrieval / history
+            // mapping, and BEFORE calling PhoneStream. No generic fallback is allowed.
+            const latestSpeaker = isGroupChat
+                ? (groupReplyPick && getRoleById(groupReplyPick.id))
+                : getRoleById(roleForTurn.id);
+            let storedProtocolAtSend = '';
+            try { storedProtocolAtSend = localStorage.getItem('chat_rp_protocol_') || ''; }
+            catch (protocolReadErr) {
+                if (typeof showToast === 'function') showToast('无法复核全局伴侣协议，本轮已停止');
+                return;
+            }
+            const canonicalProtocolAtSend = storedProtocolAtSend.trim() ||
+                String(window.MAOMAO_RP_DEFAULT_PROTOCOL || '').trim();
+            if (canonicalProtocolAtSend !== rpProtocol) {
+                if (typeof showToast === 'function') showToast('伴侣协议在聊天期间已变更，请重新发送以加载最新版');
+                return;
+            }
+            const finalRoleContract = window.MAOMAOChatRoleContext;
+            const finalPayloadAudit = finalRoleContract &&
+                typeof finalRoleContract.validateFinalApiMessages === 'function'
+                ? finalRoleContract.validateFinalApiMessages({
+                    role: latestSpeaker,
+                    speakerId: isGroupChat ? (groupReplyPick && groupReplyPick.id) : roleForTurn.id,
+                    persona: turnSpeakerPersona,
+                    tone: String(latestSpeaker && (latestSpeaker.tone || latestSpeaker.speechStyle || latestSpeaker.speech) || '').trim(),
+                    protocol: rpProtocol,
+                    expandedProtocol: applyProtocolVars(rpProtocol),
+                    worldbook: worldbookText,
+                    worldbookPolicyReady: !!(window.ChatContextPolicy &&
+                        typeof window.ChatContextPolicy.buildWorldbookInjectionText === 'function'),
+                    messages: apiMessages
+                }) : {ok:false,missing:['final-verifier']};
+            if (!finalPayloadAudit.ok) {
+                console.error('[ChatPersonaSources] outbound request refused, missing:', finalPayloadAudit.missing);
+                if (typeof showToast === 'function') showToast('聊天资料未完整进入请求（' + finalPayloadAudit.missing.join('、') + '），已停止发送');
+                return;
+            }
+            // Source proof contains LENGTHS only, never the personal contents themselves.
+            console.info('[ChatPersonaSources] outbound source verified', finalPayloadAudit.evidence);
 
             // API 调用计时起点（用于调用记录）
             const apiCallStart = Date.now();
