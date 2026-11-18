@@ -408,8 +408,17 @@
         window.addEventListener('maomao:themechange', schedule);
         if (window.MutationObserver) {
             var observer = new MutationObserver(schedule);
-            observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style', 'data-theme', 'data-wallpaper-tone'] });
-            if (document.body) observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class', 'style'] });
+            observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style', 'data-theme', 'data-wallpaper-tone', 'data-maomao-statusbar-hidden'] });
+            /* Most pages load native-feel.js in <head>; the body does not exist yet.
+             * Attach the existing observer once it is available so theme/status
+             * color sampling can react to later body/layout style changes. */
+            function observeBody() {
+                if (document.body) {
+                    observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class', 'style'] });
+                }
+            }
+            if (document.body) observeBody();
+            else document.addEventListener('DOMContentLoaded', observeBody, { once: true });
         }
     })();
 

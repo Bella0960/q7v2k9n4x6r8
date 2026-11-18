@@ -10,6 +10,14 @@ on:
       - 'shared/js/phone/**'
       - 'shared/js/chat-beauty.js'
       - 'shared/js/wallpaper-store.js'
+      - 'beauty/beauty.html'
+      - 'settings/settings.html'
+      - 'settings/appearance.html'
+      - 'shared/js/statusbar-control.js'
+      - 'shared/js/native-feel.js'
+      - 'music/music.html'
+      - 'inspect-phone/phone.html'
+      - 'travel/dream-travel.html'
       - 'sw.js'
       - 'tests/**'
       - 'docs/chat-architecture-contract.md'
@@ -24,6 +32,14 @@ on:
       - 'shared/js/phone/**'
       - 'shared/js/chat-beauty.js'
       - 'shared/js/wallpaper-store.js'
+      - 'beauty/beauty.html'
+      - 'settings/settings.html'
+      - 'settings/appearance.html'
+      - 'shared/js/statusbar-control.js'
+      - 'shared/js/native-feel.js'
+      - 'music/music.html'
+      - 'inspect-phone/phone.html'
+      - 'travel/dream-travel.html'
       - 'sw.js'
       - 'tests/**'
       - 'docs/chat-architecture-contract.md'
@@ -47,8 +63,12 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm ci
+      - name: Check global status bar wiring and preference behavior
+        run: node --test tests/global-statusbar-wiring.test.mjs
       - name: Install Chromium for mobile viewport checks
         run: npx playwright install --with-deps chromium
+      - name: Check global status bar DOM behavior in Chromium
+        run: node tests/global-statusbar-browser.mjs
       - name: Run chat regression contract tests
         run: |
           npm run test:chat:reply
