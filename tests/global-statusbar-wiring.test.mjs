@@ -76,8 +76,8 @@ test('explicitly marked native custom system bars reuse the same controller', ()
     assert.match(html, /<script\b[^>]*src=["'][^"']*shared\/js\/statusbar-control\.js/i,
       'custom system status bar missing shared control: ' + path.relative(projectRoot, page));
   }
-  // The music app deliberately removed its simulated bar; remaining opt-in bars still use this controller.
-  assert.ok(marked >= 2, 'expected the remaining custom system bars to retain shared control');
+  // Do not require a minimum number of simulated bars: they are being removed.
+  // Any remaining marked pages are still checked above for shared controller wiring.
   const musicHtml = fs.readFileSync(path.join(projectRoot, 'music/music.html'), 'utf8');
   assert.doesNotMatch(musicHtml, /<(?:div|header)\b[^>]*\bdata-maomao-system-statusbar\b/,
     'music must not reintroduce a fake system statusbar');
