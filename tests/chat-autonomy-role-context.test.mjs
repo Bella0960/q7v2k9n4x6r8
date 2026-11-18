@@ -101,6 +101,33 @@ test('group-private and role-only history are excluded at the source',()=>{
   assert.deepEqual(x.followUpMessages(sample).map(m=>m.text),
     ['最近在干什么','刚在楼顶看天']);
 });
+test('private autonomous contact reads only its own confirmed weighted memories',()=>{
+  const x=setup({
+    chat_memories_a:JSON.stringify([
+      {content:'固定：下周要看流星雨',status:'fixed',category:'key',importance:5},
+      {content:'确认：喜欢喝热茶',status:'confirmed',category:'preference',importance:5,createdAt:Date.now()},
+      {content:'未确认：与某人争吵',status:'pending',category:'key',importance:5}
+    ]),
+    chat_memories_b:JSON.stringify([
+      {content:'B的记忆：周末比赛',status:'fixed'}
+    ])
+  });
+  const a=x.buildAutonomousPersonaContext(roleA,'private','a',sample);
+  assert.match(a,/固定：下周要看流星雨/);
+  assert.match(a,/确认：喜欢喝热茶/);
+  assert.doesNotMatch(a,/未确认：与某人争吵|B的记忆：周末比赛/);
+  const b=x.buildAutonomousPersonaContext(roleB,'private','b',sample);
+  assert.match(b,/B的记忆：周末比赛/);
+  assert.doesNotMatch(b,/下周要看流星雨/);
+});
+test('corrupt private memory aborts only private generations; group never loads it',()=>{
+  const x=setup({chat_memories_a:'broken-json'});
+  assert.equal(x.buildAutonomousPersonaContext(roleA,'private','a',sample),null);
+  const group=x.buildAutonomousPersonaContext(roleA,'group','g1',sample);
+  assert.ok(group);
+  assert.doesNotMatch(group,/私人心事/);
+});
+
 test('both autonomous model calls require a verified RP/lore context',()=>{
   assert.match(notifier,/buildAutonomousPersonaContext\(\s*candidate\.contact, 'private'/);
   assert.match(notifier,/buildAutonomousPersonaContext\(\s*role, scope, contact\.id/);
