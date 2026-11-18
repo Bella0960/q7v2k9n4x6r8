@@ -6429,6 +6429,13 @@
                 }
             }
 
+            // Final request-size preflight: never bill the user's API for
+            // a prompt that we already know exceeds the supported budget.
+            // Do not silently slice away the user's persona or RP agreement.
+            if (systemPrompt.length > 48000) {
+                if (typeof showToast === 'function') showToast('人设与世界书合计过长，本轮未请求 AI；请调整设定后重试');
+                return;
+            }
             // 构造 OpenAI 兼容格式 messages 数组 (system + 历史记录)
             const apiMessages = [
                 { role: 'system', content: systemPrompt }
