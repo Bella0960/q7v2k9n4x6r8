@@ -76,7 +76,8 @@ test('explicitly marked native custom system bars reuse the same controller', ()
     assert.match(html, /<script\b[^>]*src=["'][^"']*shared\/js\/statusbar-control\.js/i,
       'custom system status bar missing shared control: ' + path.relative(projectRoot, page));
   }
-  assert.ok(marked >= 2, 'remaining custom bars still require shared control');
+  // Do not require simulated system bars to exist: the user explicitly banned them.
+  // Any remaining marked bars above are still checked for shared-controller wiring.
 });
 
 test('hidden preference applies immediately and covers dynamically added bars through CSS', () => {
