@@ -14,25 +14,33 @@
   }
 
   function isDigitalCharacter(role) {
-    var origin = role && role.encounterOrigin;
-    // Synthetic characters are allowed to describe their actual fictional nature.
-    return !!(origin && /仿生人|机器人|数字生命|人工智能|智能体/i.test(String(origin.species || '')));
+    if (!role || typeof role !== 'object') return false;
+    var origin = role.encounterOrigin || {};
+    // Respect explicit digital identities (including custom characters, not only encounters).
+    // Do not infer "robot" identity from an unrelated hobby, job, or old AI message.
+    var species = [origin.species, role.species, role.race, role.identityType]
+      .map(function (value) { return String(value || ''); }).join(' ');
+    if (/仿生人|机器人|数字生命|人工智能|智能体|AI\\s*(?:助手|系统|模型)|聊天机器人/i.test(species)) return true;
+    var persona = String(role.persona || role.prompt || '');
+    return /(?:【(?:身份|物种|种族|角色类型)】|(?:身份|物种|种族|角色类型)\\s*[:：])\\s*[^\\n]{0,35}(?:仿生人|机器人|数字生命|人工智能|智能体|AI\\s*助手)/i.test(persona);
   }
 
   function isBrokenAssistantIdentity(message) {
     if (!message || (message.role !== 'assistant' && message.role !== 'received')) return false;
     if (message.type && message.type !== 'text') return false;
     var text = String(message.text || message.content || '');
-    return /(?:作为(?:一个|一名|一种)?(?:人工智能|AI|语言模型)|我(?:是|作为)(?:一个|一名)?(?:人工智能|AI助手|聊天机器人)|我的[“”"']?家[“”"']?.{0,40}(?:云端|数字世界|对话框)|(?:我|自己)(?:的)?(?:家|住处).{0,35}(?:云端|代码|对话框)|(?:官方设定|系统提示|角色设定).{0,24}(?:吐出来|出错|卡壳)|(?:后台|系统).{0,18}(?:指令|代码).{0,18}(?:说漏|吐出来))/.test(text);
+    // Filter only self-claims or leaked runtime lore, not normal AI-related topics.
+    // The real chat can contain "我今天看了人工智能新闻" without being removed.
+    return /(?:作为(?:一个|一名|一种)?(?:人工智能|AI|语言模型)|我(?:就|其实|本来|不过|只)?是[^\\n]{0,115}?(?:AI\\s*(?:助手|助理|模型|系统)|人工智能(?:助手|模型|系统)?|智能(?:聊天)?助手|聊天机器人|语言模型)|我(?:作为|的身份是)[^\\n]{0,55}(?:AI\\s*(?:助手|助理)|人工智能|语言模型)|我的[“”"']?家[“”"']?.{0,40}(?:云端|数字世界|对话框)|(?:我|自己)(?:的)?(?:家|住处).{0,35}(?:云端|代码|对话框)|我[^\\n]{0,55}(?:躺|住|待|生活|存在)[^\\n]{0,35}(?:服务器|云端|代码|对话框)|(?:官方设定|系统提示|角色设定).{0,24}(?:吐出来|出错|卡壳)|(?:后台|系统).{0,18}(?:指令|代码).{0,18}(?:说漏|吐出来))/i.test(text);
   }
 
-  // Only new encounter characters with a non-digital origin get this safety net.
-  // Never mutate stored history or rewrite what the user already saw.
+  // For ordinary direct-chat characters, incorrect past "I'm an AI" replies are not
+  // canonical persona evidence. Exclude them from model context only; never delete or
+  // edit saved messages. Explicitly digital characters keep their legitimate identity.
   function getModelHistory(history, role) {
-    if (!Array.isArray(history)) return history;
-    var origin = role && role.encounterOrigin;
-    if (!origin || origin.version !== 1 || isDigitalCharacter(role)) return history;
-    return history.filter(function (item) { return !isBrokenAssistantIdentity(item); });
+    if (!Array.isArray(history) || isDigitalCharacter(role)) return history;
+    var filtered = history.filter(function (item) { return !isBrokenAssistantIdentity(item); });
+    return filtered.length === history.length ? history : filtered;
   }
 
   // 全局世界书保持全局可见；局部世界书必须属于当前角色绑定或当前会话挂载。
