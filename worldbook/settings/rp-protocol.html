@@ -376,21 +376,10 @@
   // 伴侣协议属于应用级设置，所有单聊与群聊共用同一份内容。
   var STORAGE_KEY = 'chat_rp_protocol_';
 
-  function migrateLegacyProtocol() {
-    try {
-      // 兼容旧版按角色保存的协议：只复制第一份可用内容，不删除旧键。
-      for (var i = 0; i < localStorage.length; i++) {
-        var key = localStorage.key(i);
-        if (!key || key === STORAGE_KEY || key.indexOf(STORAGE_KEY) !== 0) continue;
-        var value = localStorage.getItem(key);
-        if (value && value.trim()) {
-          localStorage.setItem(STORAGE_KEY, value);
-          return value;
-        }
-      }
-    } catch (e) {}
-    return '';
-  }
+  // Legacy per-role protocols remain attached to their original roles.
+  // Opening this global settings page must never promote the first old key
+  // to a global rule shared by every character and group.
+  // The user may still explicitly save their chosen text below.
 
   var textarea = document.getElementById('protocolText');
 
@@ -398,10 +387,10 @@
   // 核心升级：人设强制读取 + 语气红线 + 防漂移 + 活人感
   var DEFAULT_PROTOCOL = String(window.MAOMAO_RP_DEFAULT_PROTOCOL || '');
 
-  // 加载全局协议；若旧版本只保存过角色专属协议，则迁移一份为全局版本。
+  // Read only the app-wide agreement. A missing global key shows the
+  // shared default without mutating storage or another role's settings.
   try {
     var saved = localStorage.getItem(STORAGE_KEY);
-    if (saved == null || !saved.trim()) saved = migrateLegacyProtocol();
     textarea.value = saved != null && saved.trim() ? saved : DEFAULT_PROTOCOL;
   } catch (e) {
     textarea.value = DEFAULT_PROTOCOL;
