@@ -65,6 +65,8 @@ test('worldbook entries keep existing keyword/disabled activation semantics', ()
 test('settings and both chat modes use one global user-authored protocol; fail closed before API', () => {
   assert.match(settings, /chat_rp_protocol_/);
   assert.match(page, /localStorage\.getItem\(globalRpKey\)/);
+  assert.match(page, /\[aliasRoleId, currentCharacter && currentCharacter\.id, currentRoleId\]\.forEach/);
+  assert.doesNotMatch(page, /\[aliasRoleId, currentCharacter && currentCharacter\.id, roleId\]\.forEach/);
   assert.match(page, /const savedSpeaker = isGroupChat[\s\S]*?getRoleById\(groupReplyPick\.id\)/);
   assert.match(page, /validatePersonaRequest\(\{/);
   assert.match(page, /expandedProtocol: applyProtocolVars\(rpProtocol\)/);
