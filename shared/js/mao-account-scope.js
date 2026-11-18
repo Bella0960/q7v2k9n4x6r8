@@ -33,7 +33,8 @@
         } catch (error) {
           return nativeFetch(input, init);
         }
-        if (requestUrl.origin !== global.location.origin) {
+        if (requestUrl.origin !== global.location.origin ||
+            !/^\/api(?:\/|$)/.test(requestUrl.pathname)) {
           return nativeFetch(input, init);
         }
 
