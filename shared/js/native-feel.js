@@ -6,6 +6,27 @@
 (function () {
 'use strict';
 
+    /* Global first-paint statusbar setting: native-feel is loaded synchronously
+       in <head> on app pages. Apply the existing preference before any mock
+       statusbar is painted, even where statusbar-control.js loads at </body>.
+       This does not create a statusbar or change the Home Indicator. */
+    (function prepaintStatusbarVisibility() {
+        var attr = 'data-maomao-statusbar-hidden';
+        try {
+            if (window.localStorage.getItem('settings_statusbar') === '0') {
+                document.documentElement.setAttribute(attr, '');
+            } else {
+                document.documentElement.removeAttribute(attr);
+            }
+        } catch (_) { /* Same safe fallback as statusbar-control.js. */ }
+        if (document.getElementById('maomao-statusbar-prepaint')) return;
+        var rule = document.createElement('style');
+        rule.id = 'maomao-statusbar-prepaint';
+        rule.textContent = 'html[' + attr + '] .status-bar,' +
+            'html[' + attr + '] [data-maomao-system-statusbar]{display:none!important}';
+        (document.head || document.documentElement).appendChild(rule);
+    })();
+
     /* ---------- Theme layer: default stays Classic; glass is strictly opt-in ---------- */
     var MAOMAO_THEME_KEY = 'maomao_theme';
     var maomaoThemeRoot = document.documentElement;
