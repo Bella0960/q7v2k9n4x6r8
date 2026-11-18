@@ -6073,7 +6073,7 @@
                 // 一次性兼容旧版角色专属协议：优先迁移当前聊天角色，其余旧键仅作回退。
                 if (!rpProtocol.trim()) {
                     const legacyRpKeys = [];
-                    [aliasRoleId, currentCharacter && currentCharacter.id, roleId].forEach(function (id) {
+                    [aliasRoleId, currentCharacter && currentCharacter.id, currentRoleId].forEach(function (id) {
                         if (id != null && String(id).trim()) {
                             const key = globalRpKey + String(id);
                             if (legacyRpKeys.indexOf(key) === -1) legacyRpKeys.push(key);
