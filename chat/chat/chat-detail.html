@@ -5900,28 +5900,13 @@
                 const globalRpKey = 'chat_rp_protocol_';
                 rpProtocol = localStorage.getItem(globalRpKey) || '';
 
-                // 一次性兼容旧版角色专属协议：优先迁移当前聊天角色，其余旧键仅作回退。
-                if (!rpProtocol.trim()) {
-                    const legacyRpKeys = [];
-                    [aliasRoleId, currentCharacter && currentCharacter.id, roleId].forEach(function (id) {
-                        if (id != null && String(id).trim()) {
-                            const key = globalRpKey + String(id);
-                            if (legacyRpKeys.indexOf(key) === -1) legacyRpKeys.push(key);
-                        }
-                    });
-                    for (let i = 0; i < localStorage.length; i++) {
-                        const key = localStorage.key(i);
-                        if (key && key.indexOf(globalRpKey) === 0 && key !== globalRpKey &&
-                            legacyRpKeys.indexOf(key) === -1) legacyRpKeys.push(key);
-                    }
-                    for (let i = 0; i < legacyRpKeys.length; i++) {
-                        const legacyValue = localStorage.getItem(legacyRpKeys[i]) || '';
-                        if (legacyValue.trim()) {
-                            rpProtocol = legacyValue;
-                            localStorage.setItem(globalRpKey, legacyValue);
-                            break;
-                        }
-                    }
+                // A role-specific legacy protocol must never silently become
+                // the global protocol for *every* role. Only the speaking
+                // character may read its own legacy value; migration to the
+                // global setting is an explicit user action in settings.
+                if (!rpProtocol.trim() && speakingRoleId) {
+                    const legacyValue = localStorage.getItem(globalRpKey + speakingRoleId) || '';
+                    if (legacyValue.trim()) rpProtocol = legacyValue;
                 }
             } catch (e) {}
             rpProtocol = capText(rpProtocol.trim(), CTX_CAP.rpProtocol);
@@ -5933,15 +5918,22 @@
               if (rawWB) {
                 let wbList = JSON.parse(rawWB) || [];
                 if (!Array.isArray(wbList)) wbList = [];
-                if (isGroupChat) {
-                  const mountRaw = localStorage.getItem('chat_worldbooks_' + aliasRoleId);
-                  if (mountRaw != null) {
-                    const mounted = JSON.parse(mountRaw);
-                    if (Array.isArray(mounted)) {
-                      const mountedIds = mounted.map(function (id) { return String(id); });
-                      wbList = wbList.filter(function (book) { return book && mountedIds.indexOf(String(book.id)) !== -1; });
-                    }
-                  }
+                // Consistent across direct/group conversations: local books
+                // are visible ONLY in conversations that explicitly mount
+                // them. A missing mount key means global books only.
+                // If a mount key exists, its list is authoritative for the
+                // conversation (including an intentionally empty list).
+                const mountRaw = localStorage.getItem('chat_worldbooks_' + aliasRoleId);
+                if (mountRaw != null) {
+                  const mounted = JSON.parse(mountRaw);
+                  const mountedIds = Array.isArray(mounted) ? mounted.map(String) : [];
+                  wbList = wbList.filter(function (book) {
+                    return book && mountedIds.indexOf(String(book.id)) !== -1;
+                  });
+                } else {
+                  wbList = wbList.filter(function (book) {
+                    return book && book.scope !== 'local';
+                  });
                 }
                 if (window.ChatContextPolicy &&
                     typeof window.ChatContextPolicy.buildWorldbookInjectionText === 'function') {
