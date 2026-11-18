@@ -396,6 +396,29 @@ test('Worker 只对已授权账号页面注入数据命名空间，并禁止缓�
   assert.match(workerSource, /!\['user', 'super_admin'\]\.includes\(role\)/);
 });
 
+test('管理员接口必须经服务端活跃超级管理员会话验证，不能相信页面角色', () => {
+  const authSource = fs.readFileSync(root + '/worker/lib/account-auth.js', 'utf8');
+  const requireAdmin = authSource.match(
+    /async function requireActiveAdmin\(request\) \{([\s\S]*?)\n  \}/
+  );
+  assert.ok(requireAdmin, '管理员统一鉴权入口必须存在');
+  assert.match(requireAdmin[1], /await getAuthenticatedAccount\(request\)/);
+  assert.match(requireAdmin[1], /account\.status !== 'active' \|\| account\.role !== 'super_admin'/);
+  assert.match(requireAdmin[1], /throw new ApiError\(403, 'ADMIN_ONLY'/);
+  for (const handler of [
+    'adminAccounts', 'adminInvites', 'adminAccountDetail',
+    'adminActiveInvite', 'adminAudit', 'adminAccountAudit'
+  ]) {
+    const start = authSource.indexOf('async function ' + handler + '(');
+    assert.ok(start >= 0, handler + ' handler must exist');
+    const next = authSource.indexOf('\n  async function ', start + 1);
+    const body = authSource.slice(start, next < 0 ? undefined : next);
+    assert.match(body, /await requireActiveAdmin\(request\)/, handler + ' must check server-side admin session');
+  }
+  assert.match(authSource, /admin\.account_id !== env\.MAO_EXPECTED_FOUNDER_ID/,
+    '代理管理员请求必须再次核对权威创始人永久 ID');
+});
+
 test('Service Worker 按 MAO 会话读取对应账号的字体 CacheStorage，创作者旧缓存名保持兼容', () => {
   assert.match(serviceWorkerSource, /fetch\('\/api\/accounts\/me'/);
   assert.match(serviceWorkerSource, /account\.role === 'super_admin'[\s\S]*?FONT_ASSET_CACHE/);
