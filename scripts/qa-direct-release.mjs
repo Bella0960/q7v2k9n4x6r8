@@ -17,6 +17,7 @@
  */
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
+import { evaluateQaSnapshot } from './qa-snapshot-policy.mjs';
 import { spawnSync } from 'node:child_process';
 
 const QA = 'maomao-aw-qa-20261114';
@@ -81,19 +82,49 @@ function run(command, args, quiet = false) {
   return quiet ? String(result.stdout || '').trim() : '';
 }
 
-function assertLatestGitHead() {
-  // Remote #299 may advance while tests run: verify again immediately before uploads.
+function assertQaCandidate({ allowPinned = false } = {}) {
+  // Start of every release is strict: the checkout must be current #299 HEAD.
+  // Only AFTER all real tests pass, QA-only may deploy its immutable tested
+  // snapshot if other windows added new commits on top while tests were running.
   const localSha = run('git', ['rev-parse', 'HEAD'], true);
   const remoteLine = run('git', ['ls-remote', '--heads', 'origin', BRANCH], true);
   const [remoteSha, remoteRef] = remoteLine.split(/\s+/);
-  assert.match(remoteSha || '', /^[a-f0-9]{40}$/, 'Cannot verify remote #299 HEAD');
   assert.equal(remoteRef, 'refs/heads/' + BRANCH, 'Unexpected remote branch ref');
-  assert.equal(localSha, remoteSha, 'Local #299 HEAD is stale: fetch the latest before QA release');
+  let remoteDescendsFromCandidate = false;
+  if (allowPinned && localSha !== remoteSha) {
+    // Fetch only the QA branch; never check it out, merge, reset, or update dist.
+    run('git', ['fetch', '--quiet', '--no-tags', 'origin', BRANCH], true);
+    const fetchedSha = run('git', ['rev-parse', 'FETCH_HEAD'], true);
+    assert.equal(fetchedSha, remoteSha,
+      'Remote QA HEAD changed during ancestry verification; stop this release safely');
+    try {
+      run('git', ['merge-base', '--is-ancestor', localSha, remoteSha], true);
+      remoteDescendsFromCandidate = true;
+    } catch {
+      // Missing history / rewritten branch / git error must all fail closed.
+    }
+  }
+  const candidate = evaluateQaSnapshot({
+    candidateSha: localSha,
+    remoteSha,
+    allowPinned,
+    remoteDescendsFromCandidate
+  });
+  if (candidate.mode === 'tested-snapshot') {
+    console.log('QA snapshot is verified at ' + localSha +
+      '; newer #299 commits are queued for the NEXT release: ' + remoteSha);
+  }
+  return candidate;
 }
 
-function assertReadyForUpload() {
+function assertLatestGitHead() {
+  // Do not waste test time on a stale checkout at the START of the release.
+  assertQaCandidate();
+}
+
+function assertReadyForUpload({ allowPinned = false } = {}) {
   // npm/Vite/browser tests must not silently alter tracked source files.
-  assertLatestGitHead();
+  assertQaCandidate({ allowPinned });
   assert.equal(run('git', ['status', '--porcelain'], true), '',
     'Tests altered the checkout: refusing to upload uncommitted source');
   // Wrangler serves the Vite build, not the unbuilt checkout.
@@ -446,8 +477,9 @@ async function main() {
     }
   }
   // Do not switch QA's old authority until the isolated core is configured.
-  // The second remote check prevents an old PR build from switching QA.
-  assertReadyForUpload();
+  // QA-only can publish the tested snapshot on a clean fast-forward history.
+  // Full --deploy (which can touch identity core) remains exact-HEAD-only.
+  assertReadyForUpload({ allowPinned: qaOnly });
   run('npx', ['--yes', 'wrangler@4', 'deploy', '--config', 'wrangler.qa.jsonc']);
   const qaVersion = await liveWorkerVersion(QA);
   // A music-only release must not advance any identity-core deployment.
@@ -477,6 +509,7 @@ async function main() {
   await qaHttpSmoke(coreInitialized);
   console.log('Cloudflare active QA identity core version: ' + coreVersion.versionId);
   console.log('Cloudflare active QA Worker version: ' + qaVersion.versionId);
+  console.log('QA published tested git SHA: ' + run('git', ['rev-parse', 'HEAD'], true));
   console.log('QA deployed to the EXISTING Worker. Test bootstrap/login and disable one-time setup.');
 }
 
