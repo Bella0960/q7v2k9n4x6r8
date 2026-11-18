@@ -26,6 +26,8 @@
 .gp-cover-emblem>img{width:100%;height:100%;object-fit:cover}
 .gp-emblem-collage{height:100%;width:100%;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;overflow:hidden}
 .gp-emblem-collage img{width:100%;height:100%;object-fit:cover;min-width:0}
+.gp-emblem-collage[data-count="2"]{grid-template-rows:1fr}
+.gp-emblem-collage[data-count="3"] img:nth-child(3){grid-column:1/-1}
 .gp-cover-hero.has-photo .gp-cover-emblem{display:none}
 .gp-cover-hero.tone-dark{background:#777;color:#fff}
 .gp-cover-title{position:absolute;left:21px;bottom:36px;right:16px;z-index:1}
@@ -79,6 +81,8 @@ button.gp-preview-person:active .gp-preview-avatar{background:#e3e3e5;transform:
 .gp-fold-chevron{width:9px;height:9px;border-right:1px solid #8a8a8d;border-bottom:1px solid #8a8a8d;transform:rotate(45deg);transition:transform .2s ease;flex-shrink:0;margin-right:3px}
 .gp-profile-fold[open]>summary .gp-fold-chevron{transform:rotate(225deg)}
 .gp-fold-content{padding:0 11px 12px}
+.gp-profile-fold[open]>.gp-fold-content{animation:gp-fold-appear .2s ease-out both}
+@keyframes gp-fold-appear{from{opacity:.2;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
 .group-profile-page .gp-fold-content .section-label{display:none!important}
 .group-profile-page .gp-fold-content .settings-list{gap:0!important}
 .group-profile-page .gp-fold-content .settings-card{
@@ -95,4 +99,4 @@ button.gp-preview-person:active .gp-preview-avatar{background:#e3e3e5;transform:
 .group-profile-page .gp-profile-fold:focus-within{border-color:#d4d4d8}
 .group-profile-page button:focus-visible,.group-profile-page summary:focus-visible{outline:2px solid #666;outline-offset:2px}
 @media(max-width:360px){.gp-cover-emblem{width:72px;height:72px}.gp-cover-hero{height:204px}.gp-preview-members{gap:10px}.gp-preview-avatar{height:49px;width:49px}.gp-preview-person{width:49px;min-width:49px}.gp-quick-icon{height:43px;width:43px}}
-@media(prefers-reduced-motion:reduce){.gp-fold-chevron,.gp-quick-icon,.gp-cover-control{transition:none!important}}
+@media(prefers-reduced-motion:reduce){.gp-fold-chevron,.gp-quick-icon,.gp-cover-control{transition:none!important}.gp-profile-fold[open]>.gp-fold-content{animation:none!important}}
