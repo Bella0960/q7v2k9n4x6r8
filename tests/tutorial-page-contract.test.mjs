@@ -131,7 +131,7 @@ test('manual is book-first: chapter index, readable sheets, official-only releas
   assert.match(guideHtml, /class="test-notebook"/);
   assert.match(guideHtml, /id="guideSearch"/);
   assert.match(guideHtml, /id="walkthroughModal"/);
-  assert.match(guideHtml, /tutorial\.js\?v=20261118book1/);
+  assert.match(guideHtml, /tutorial\.js\?v=20261118book2/);
   assert.match(guideScript, /<details class="guide-sheet">/);
   assert.match(guideScript, /<summary class="guide-top">/);
   assert.match(guideScript, /NO PUBLIC RELEASE YET/);
@@ -189,7 +189,7 @@ test('PWA app shell caches the full guide bundle and has a matching test command
   assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v[0-9]+'/,
     'PWA shell must use a versioned cache without hard-coding an old release');
   assert.ok(serviceWorker.includes("'./tutorial/tutorial.html'"));
-  assert.ok(serviceWorker.includes("'./tutorial/tutorial.js?v=20261118book1'"));
+  assert.ok(serviceWorker.includes("'./tutorial/tutorial.js?v=20261118book2'"));
   assert.equal(packageJson.scripts['test:tutorial'], 'node --test tests/tutorial-page-contract.test.mjs');
 });
 
