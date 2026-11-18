@@ -46,7 +46,7 @@ test('offline/short routes load the same fresh source scripts, without fallback 
   assert.doesNotMatch(short,/messages:fallbackMessages\.slice\(\)/);
 });
 
-test('role's saved protocol, persona, tone and trigger-specific worldbooks pass outbound audit together', () => {
+test("role's saved protocol, persona, tone and trigger-specific worldbooks pass outbound audit together", () => {
   const a=envelope('巷子怎么走');
   assert.equal(a.ok,true);
   assert.match(a.expandedProtocol,/住在深圳，职业是摄影师/);
