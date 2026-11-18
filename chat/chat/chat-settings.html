@@ -8,6 +8,7 @@
 <script src="../../shared/js/native-feel.js"></script>
 <script src="../../shared/js/wallpaper-store.js?v=20261026v2"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
+<script src="../../shared/js/phone/chat-history-atomic.js?v=20261119qa1"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   body {
@@ -2314,26 +2315,69 @@
       showToast('群公告已发布');
     });
 
-    // 清理群记录（保留群本身，仅清空聊天记录）
-    document.getElementById('actionGpClearRecord').addEventListener('click', function () {
-      if (!window.confirm('确定清理该群的全部聊天记录吗？清理后不可恢复。')) return;
-      try { localStorage.removeItem('chat_history_' + roleId); } catch (e) {}
-      showToast('群记录已清理');
+    // A user's explicit clear is a destructive edit, not a stale-key delete.
+    // The protected writer refuses changed history and damaged JSON.
+    document.getElementById('actionGpClearRecord').addEventListener('click', async function () {
+      if (!window.confirm('确定清空本群的聊天记录吗？此操作不可撤销。请确认已备份重要聊天。')) return;
+      var atomic = window.ChatHistoryAtomic;
+      if (!atomic || typeof atomic.replaceIfUnchanged !== 'function') {
+        showToast('当前无法安全清空记录，请刷新或更新浏览器');
+        return;
+      }
+      var current;
+      try {
+        var raw = localStorage.getItem('chat_history_' + roleId);
+        if (raw === null) { showToast('本群没有需要清空的记录'); return; }
+        current = JSON.parse(raw);
+        if (!Array.isArray(current)) throw new Error('corrupt group history');
+      } catch (e) {
+        showToast('群聊天记录读取异常，原始记录已保留');
+        return;
+      }
+      var outcome = await atomic.replaceIfUnchanged(roleId, current, []);
+      if (!outcome || !outcome.ok) {
+        showToast('清空未完成：记录可能已更新或存储不可用，原记录保留');
+        return;
+      }
+      showToast('群记录已清空');
     });
 
-    // 解散群聊（置底卡片）
-    document.getElementById('actionGpDismiss').addEventListener('click', function () {
-      if (!window.confirm('解散群聊后将清空该群的聊天记录，且不可恢复。确定解散吗？')) return;
+    // Dismissal is a group-list action, not permission to wipe the
+    // conversation. Retain group history/aliases for backup and recovery.
+    // Avoid a half-delete if the group list cannot be committed/read back.
+    document.getElementById('actionGpDismiss').addEventListener('click', async function () {
+      if (!window.confirm('确定解散群聊吗？群将从列表移除，聊天历史会保留供备份和恢复。')) return;
+      if (!navigator.locks || typeof navigator.locks.request !== 'function') {
+        showToast('浏览器不支持安全解散，请更新后重试');
+        return;
+      }
+      var accountScope = window.__MAO_ACCOUNT_SCOPE__;
+      var scoped = accountScope && accountScope.ready === true && accountScope.accountId
+        ? encodeURIComponent(String(accountScope.accountId)) + ':' : '';
+      var success = false;
       try {
-        var raw = localStorage.getItem('phone_groups');
-        var arr = raw ? JSON.parse(raw) : [];
-        if (Array.isArray(arr)) {
-          localStorage.setItem('phone_groups', JSON.stringify(arr.filter(function (g) { return String(g.id) !== String(roleId); })));
-        }
-      } catch (e) {}
-      try { localStorage.removeItem('chat_history_' + roleId); } catch (e) {}
-      try { localStorage.removeItem(GP_ALIAS_KEY); } catch (e) {}
-      try { localStorage.removeItem(GP_NOTICE_KEY); } catch (e) {}
+        success = await navigator.locks.request(
+          'maomao:phone-groups:' + scoped + String(roleId), { mode: 'exclusive' },
+          function () {
+            var raw = localStorage.getItem('phone_groups');
+            if (!raw) return false;
+            var groups = JSON.parse(raw);
+            if (!Array.isArray(groups)) return false;
+            var updated = groups.filter(function (group) {
+              return group && String(group.id) !== String(roleId);
+            });
+            if (updated.length === groups.length) return false;
+            var serialized = JSON.stringify(updated);
+            localStorage.setItem('phone_groups', serialized);
+            return localStorage.getItem('phone_groups') === serialized;
+          }
+        );
+      } catch (e) { success = false; }
+      if (!success) {
+        showToast('解散未完成，群资料与历史记录已保留；请检查存储');
+        return;
+      }
+      // Do not delete chat_history_<groupId> or account media references.
       window.location.href = 'chat.html';
     });
 
