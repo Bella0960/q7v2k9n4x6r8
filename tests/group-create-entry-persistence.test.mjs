@@ -17,7 +17,7 @@ test('新群不覆盖损坏记录；需要成员；存储读回后才提示成�
   assert.match(chat,/if \(!Array\.isArray\(groups\)\) throw new Error/);
   assert.match(chat,/localStorage\.setItem\('phone_groups', JSON\.stringify\(updatedGroups\)\)/);
   assert.match(chat,/var saved = JSON\.parse\(localStorage\.getItem\('phone_groups'\)/);
-  assert.match(chat,/showToast\('群聊已创建'\)/);
+  assert.match(chat,/window\.location\.href = 'chat-detail\.html\?v=20261028modes1&id=' \+ encodeURIComponent\(groupId\)/);
 });
 
 function simulateCreate(scenario, doubleTap = false) {
