@@ -34,45 +34,47 @@ function setup(options={}) {
   let feedback=[];
   const fn=new Function('localStorage','storageKey','currentCharacter','_storage',
     '_chatHistoryUnreadable','showToast','_shouldWarnAgain','_resetWarnCooldown','console',
-    block+'\nreturn {saveMessages,_verifyHistoryRoundTrip,_messageIdentity};');
+    block+'\nreturn {saveMessages,_verifyHistoryRoundTrip,_messageIdentity,_rememberChatBaseline,_inheritChatBaseline};');
   const svc=fn(storage,options.storageKey||'chat_history_role1',
     {id:'role1'},null,false,text=>feedback.push(text),
     ()=>true,()=>{},{warn(){}});
-  return {svc,storage,data,feedback};
+  // The real chat loader attaches an exact snapshot version to each array.
+  const version=list=>svc._rememberChatBaseline(list,options.existing===undefined?null:options.existing);
+  return {svc,storage,data,feedback,version};
 }
 
 test('normal quoted-image multi-bubble user message roundtrips with all metadata',()=>{
-  const {svc,data}=setup();
+  const {svc,data,version}=setup();
   const message=structuredClone(initialRecord);
-  assert.equal(svc.saveMessages([message]),true);
+  assert.equal(svc.saveMessages(version([message])),true);
   assert.deepEqual(JSON.parse(data.get('chat_history_role1')),[message]);
 });
 
 test('silent storage shims dropping quote, vision IDs, or bubble metadata are never treated as saved',()=>{
   for(const flag of ['stripQuote','stripVision','stripBubble']){
-    const {svc,feedback}=setup({[flag]:true});
-    assert.equal(svc.saveMessages([structuredClone(initialRecord)]),false,flag);
+    const {svc,feedback,version}=setup({[flag]:true});
+    assert.equal(svc.saveMessages(version([structuredClone(initialRecord)])),false,flag);
     assert.ok(feedback.some(x=>x.includes('未能保存')),flag);
   }
 });
 
 test('full localStorage quota cannot silently drop or overwrite older chat history',()=>{
   const stored=JSON.stringify([{role:'user',mid:'old',text:'保留的旧消息'}]);
-  const {svc,data}=setup({existing:stored,quota:true});
-  assert.equal(svc.saveMessages([{...initialRecord}]),false);
+  const {svc,data,version}=setup({existing:stored,quota:true});
+  assert.equal(svc.saveMessages(version([{...initialRecord}])),false);
   assert.equal(data.get('chat_history_role1'),stored);
 });
 
 test('malformed primary chat JSON is guarded, never reset to empty history',()=>{
   const raw='[{"role":"user",garbled]';
-  const {svc,data}=setup({existing:raw});
-  assert.equal(svc.saveMessages([initialRecord]),false);
+  const {svc,data,version}=setup({existing:raw});
+  assert.equal(svc.saveMessages(version([initialRecord])),false);
   assert.equal(data.get('chat_history_role1'),raw);
 });
 
 test('a role mismatch is blocked before touching another contact history',()=>{
-  const {svc,data}=setup({storageKey:'chat_history_other'});
-  assert.equal(svc.saveMessages([initialRecord]),false);
+  const {svc,data,version}=setup({storageKey:'chat_history_other'});
+  assert.equal(svc.saveMessages(version([initialRecord])),false);
   assert.equal(data.size,0);
 });
 
@@ -82,8 +84,8 @@ test('long existing conversations remain intact on a successful verified append'
     text:'以前保存的消息 '+i+'。'.repeat(42)
   }));
   const saved=prev.concat([structuredClone(initialRecord)]);
-  const {svc,data}=setup({existing:JSON.stringify(prev)});
-  assert.equal(svc.saveMessages(saved),true);
+  const {svc,data,version}=setup({existing:JSON.stringify(prev)});
+  assert.equal(svc.saveMessages(version(saved)),true);
   const after=JSON.parse(data.get('chat_history_role1'));
   assert.equal(after.length,401);
   assert.equal(after[0].mid,'m0');
