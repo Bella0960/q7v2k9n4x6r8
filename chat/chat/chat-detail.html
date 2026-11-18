@@ -5933,7 +5933,10 @@
                     if (legacyValue.trim()) rpProtocol = legacyValue;
                 }
             } catch (e) {}
-            rpProtocol = String(rpProtocol || '').trim();
+            // QA's shared default is the same contract shown in Settings.
+            // An explicitly saved global/role protocol always wins.
+            rpProtocol = String(rpProtocol || '').trim() ||
+                String(window.MAOMAO_RP_DEFAULT_PROTOCOL || '').trim();
             if (rpProtocol.length > 24000) {
                 if (typeof showToast === 'function') showToast('已保存的人设协议过长，本轮未请求 AI；请整理后重试');
                 return;
