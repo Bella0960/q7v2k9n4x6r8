@@ -3250,6 +3250,17 @@
                     return false;
                 }
             }
+            // The authoritative storage format is JSON.stringify(list).
+            // Compare exact bytes on readback: it covers ALL fields (including future
+            // extensions), and avoids parsing then walking thousands of messages
+            // for every save in a long conversation.
+            var expectedSerialized;
+            try {
+                expectedSerialized = JSON.stringify(list);
+            } catch (serializationError) {
+                if (typeof showToast === 'function') showToast('聊天记录无法序列化，未写入任何数据');
+                return false;
+            }
             var wrote = false;
             if (_storage) {
                 try {
@@ -3260,19 +3271,31 @@
                 }
             } else {
                 try {
-                    localStorage.setItem(storageKey, JSON.stringify(list));
+                    localStorage.setItem(storageKey, expectedSerialized);
                     wrote = true;
                 } catch (err) {
                     console.warn('保存聊天记录失败:', err);
                     wrote = false;
                 }
             }
-            if (wrote && _verifyHistoryRoundTrip(list)) {
-                // A successful write advances this same array's baseline, allowing
-                // normal sequential message appends in one tab.
-                try { _rememberChatBaseline(list, localStorage.getItem(storageKey)); } catch (_) {}
-                _resetWarnCooldown('chat-save');
-                return true;
+            if (wrote) {
+                var persistedExactly = false;
+                var supportedDirectRead = typeof localStorage !== 'undefined' &&
+                    typeof localStorage.getItem === 'function';
+                if (supportedDirectRead) {
+                    try {
+                        persistedExactly = localStorage.getItem(storageKey) === expectedSerialized;
+                    } catch (readbackError) { persistedExactly = false; }
+                } else {
+                    // Isolated/legacy engines without localStorage retain the
+                    // previous verified structure-based fallback.
+                    persistedExactly = _verifyHistoryRoundTrip(list);
+                }
+                if (persistedExactly) {
+                    _rememberChatBaseline(list, expectedSerialized);
+                    _resetWarnCooldown('chat-save');
+                    return true;
+                }
             }
             if (_shouldWarnAgain('chat-save') && typeof showToast === 'function') {
                 showToast('聊天记录未能保存，请检查本地存储空间');
