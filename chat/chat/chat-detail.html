@@ -6353,7 +6353,7 @@
                     if (publicGroupMemory) systemPrompt += '\n\n' + publicGroupMemory;
                 }
                 // CHAT-GROUP-MEMORY-BOUNDARY: private 1:1 memory never enters another member's turn.
-            if (groupSettings.memorySharing && !groupGameActiveForPrompt && relationshipRole) {
+                if (groupSettings.memorySharing && !groupGameActiveForPrompt && relationshipRole) {
                     // Even when memory sharing is enabled, one person's private 1:1
                     // long-term memory is NOT knowledge possessed by other members.
                     // A speaker may consult only their own saved direct-chat memory.
