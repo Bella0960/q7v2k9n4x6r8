@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="../../shared/css/chat-beauty-runtime.css?v=20261031v1">
     <link rel="stylesheet" href="../call/call-overlay.css?v=20261105v1">
     <script src="../../shared/js/phone/phone_storage.js"></script>
+<script src="../../shared/js/phone/minimax-tts.js?v=20261119"></script>
     <script src="../../shared/js/phone/storage/repository.js"></script>
     <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
     <script src="../../shared/js/phone/role-avatar-library.js?v=20261113v1"></script>
@@ -8099,6 +8100,12 @@
             var hasText = !!String((msg.text || msg.content) || '').trim();
             var html = sheetItemHTML('select', '多选', MSG_ICON_SELECT, false);
             if (hasText) html += sheetItemHTML('copy', '复制文本', MSG_ICON_COPY, false);
+            // A paid TTS request is only available on explicit user action.
+            if (isAi && hasText && window.PhoneMiniMaxTTS &&
+                window.PhoneMiniMaxTTS.readConfig().enabled) {
+                html += sheetItemHTML('speak', '语音朗读',
+                    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 10v4h4l5 4V6L8 10H4Z"/><path d="M16 9a4 4 0 0 1 0 6"/><path d="M19 6a8 8 0 0 1 0 12"/></svg>', false);
+            }
             html += sheetItemHTML('forward', '转发给…', MSG_ICON_FORWARD, false);
             html += sheetItemHTML('quote', '引用回复', MSG_ICON_QUOTE, false);
             if (hasText) html += sheetItemHTML('translate', 'AI 翻译', MSG_ICON_TRANSLATE, false);
@@ -8179,6 +8186,44 @@
                 var bubbleText = String(resolved.text || '') || plainTextOf(msg);
                 if (act === 'select') { enterSelection(bubbleId); return; }
                 if (act === 'copy') { copyMessageText({ text: bubbleText }); return; }
+                if (act === 'speak') {
+                    var tts = window.PhoneMiniMaxTTS;
+                    var speakerId = String((msg.memberId || msg.speakerId) ||
+                        (currentCharacter && currentCharacter.id) || currentRoleId || '');
+                    if (!tts || !tts.isEnabledForRole(speakerId)) {
+                        showToast('请先在 MiniMax 设置与此角色的聊天设置中启用语音');
+                        return;
+                    }
+                    var voiceTarget = chatMessages.querySelector('.msg-row[data-bubble-id="' +
+                        String(bubbleId).replace(/"/g, '') + '"]');
+                    var existingPlayer = voiceTarget && voiceTarget.querySelector('audio.minimax-tts-audio');
+                    if (existingPlayer) { existingPlayer.focus(); return; }
+                    showToast('正在生成语音，可能消耗 MiniMax 额度…');
+                    var cacheKey = speakerId + ':' + resolved.mid + ':' + bubbleText;
+                    tts.cached(cacheKey, { roleId:speakerId, text:bubbleText }).then(function (blob) {
+                        var liveRow = chatMessages.querySelector('.msg-row[data-bubble-id="' +
+                            String(bubbleId).replace(/"/g, '') + '"]');
+                        if (!liveRow) { showToast('语音已生成，重新打开该消息可播放'); return; }
+                        if (liveRow.querySelector('audio.minimax-tts-audio')) return;
+                        var host = liveRow.querySelector('.msg-voice') || liveRow.querySelector('.msg-bubble');
+                        if (!host) return;
+                        var audio = document.createElement('audio');
+                        audio.className = 'minimax-tts-audio';
+                        audio.controls = true;
+                        audio.preload = 'none';
+                        audio.style.cssText = 'display:block;width:220px;max-width:100%;margin-top:8px;';
+                        var audioUrl = URL.createObjectURL(blob);
+                        audio.src = audioUrl;
+                        host.appendChild(audio);
+                        window.addEventListener('pagehide', function () {
+                            URL.revokeObjectURL(audioUrl);
+                        }, { once:true });
+                        showToast('语音已生成，点击播放器开始播放');
+                    }).catch(function (error) {
+                        showToast(error && error.message || '语音生成失败');
+                    });
+                    return;
+                }
                 if (act === 'forward') { openForwardSheet(bubbleId, resolved); return; }
                 if (act === 'quote') {
                     var quoteAuthorName = msg.name ||
