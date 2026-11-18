@@ -427,6 +427,9 @@
     var releaseDiscoveryLock = await acquireLock(roleId);
     if (!releaseDiscoveryLock) return { created: false, reason: 'locked' };
     busy = true;
+    // updateLastAttempt mutates settings; snapshot first so a cancelled request
+    // can restore the previous cooldown without charging the user's API quota.
+    var previousLastAttemptAt = Number(settings.lastAttemptAt) || 0;
     if (!updateLastAttempt(settings, now, roleId)) {
       busy = false;
       releaseDiscoveryLock();
@@ -436,7 +439,7 @@
     var attempt = {
       roleId: roleId,
       startedAt: now,
-      previousLastAttemptAt: Number(settings.lastAttemptAt) || 0,
+      previousLastAttemptAt: previousLastAttemptAt,
       controller: controller
     };
     activeDiscoveryAttempt = attempt;
