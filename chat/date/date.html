@@ -3737,16 +3737,14 @@ body {
     if (refreshReplyOptions) refreshReplyOptions.addEventListener('click', generateReplyOptions);
     if (closeReplyOptions) closeReplyOptions.addEventListener('click', closeReplyOptionsPanel);
 
-    function send() {
+    async function send() {
         var text = (input.value || '').trim();
         if (!text || sending || generatingReplyOptions) return;
         closeReplyOptionsPanel();
         setSending(true);
 
         var userMsg = { role: 'user', text: text, time: Date.now(), mode: 'date', scene: sceneName || undefined };
-        var previousHistory = history.slice();
-        history.push(userMsg);
-        if (!saveHistory(history, previousHistory)) {
+        if (!await appendDateMessage(userMsg)) {
             setSending(false);
             return;
         }
@@ -3764,23 +3762,18 @@ body {
         setSending(true);
         requestReply('(请继续当前剧情，自然地往下写)');
     }
-    // 重 Roll：删掉最后一条 AI 回复（仅一条），基于之前的行动重新生成
+    // Keep the old reply visible until the newly generated turn truly saves.
     function actReroll() {
         if (sending) return;
-        var last = history[history.length - 1];
+        var idx = history.length - 1, last = history[idx];
         if (!last || !(last.role === 'assistant' || last.role === 'received')) {
             toast('没有可以重写的回复');
             return;
         }
-        var previousHistory = history.slice();
-        history.pop();
-        if (!saveHistory(history, previousHistory)) {
-            renderAll();
-            scrollBottom();
-            return;
-        }
-        renderAll();   // 气泡结构统一重渲染，避免残留旧气泡
-        scrollBottom();
+        dateRerollPending = {
+            index: idx,
+            baseline: JSON.parse(JSON.stringify(history))
+        };
         setSending(true);
         requestReply(null);
     }
@@ -3887,20 +3880,17 @@ body {
         opsMenu.style.left = Math.max(0, Math.min(p.offsetLeft, storyEl.clientWidth - 170)) + 'px';
     }
 
-    // 重写：删掉这条角色回复，基于之前的剧情重新生成
+    // Replacement is an exact-baseline CAS; failed streams retain the old turn.
     function rerollMsg(idx) {
         if (sending) return;
         var m = history[idx];
-        if (!m || !(m.role === 'assistant' || m.role === 'received')) { toast('这条不是角色回复'); return; }
-        var previousHistory = history.slice();
-        history.splice(idx, 1);
-        if (!saveHistory(history, previousHistory)) {
-            renderAll();
-            scrollBottom();
-            return;
+        if (!m || !(m.role === 'assistant' || m.role === 'received')) {
+            toast('这条不是角色回复'); return;
         }
-        renderAll();
-        scrollBottom();
+        dateRerollPending = {
+            index: idx,
+            baseline: JSON.parse(JSON.stringify(history))
+        };
         setSending(true);
         requestReply(null);
     }
@@ -3932,20 +3922,20 @@ body {
         box.appendChild(actions);
         editAnchor.before(box);
 
-        btnSave.addEventListener('click', function () {
+        btnSave.addEventListener('click', async function () {
             var v = ta.value.trim();
-            if (!v) { toast('内容不能为空'); return; }
-            var previousHistory = history.slice();
-            var previousText = history[idx].text;
-            history[idx].text = v;
-            if (!saveHistory(history, previousHistory, idx)) {
-                history[idx].text = previousText;
-                renderAll();
-                scrollBottom();
-                return;
-            }
-            renderAll();
-            scrollBottom();
+            if (!v || sending) { toast('内容为空或角色仍在回复'); return; }
+            var original = JSON.parse(JSON.stringify(history));
+            if (!original[idx]) { toast('原消息已变化'); return; }
+            var replacement = JSON.parse(JSON.stringify(original));
+            replacement[idx].text = v;
+            btnSave.disabled = true;
+            try {
+                if (!await replaceDateHistorySafely(original, replacement)) {
+                    renderAll(); scrollBottom(); return;
+                }
+                renderAll(); scrollBottom();
+            } finally { btnSave.disabled = false; }
         });
         btnCancel.addEventListener('click', function () {
             box.remove();
@@ -3954,20 +3944,17 @@ body {
         setTimeout(function () { try { ta.focus(); } catch (e) {} }, 50);
     }
 
-    // 删除：从剧情与聊天记录中移除这条回复
-    function deleteMsg(idx) {
-        if (history[idx]) {
-            var previousHistory = history.slice();
-            history.splice(idx, 1);
-            if (!saveHistory(history, previousHistory, Math.min(idx, history.length - 1))) {
-                renderAll();
-                scrollBottom();
-                return;
-            }
-            renderAll();
-            scrollBottom();
-            toast('已删除这条回复');
+    // Delete only if no new message or edit has changed the saved baseline.
+    async function deleteMsg(idx) {
+        if (sending || !history[idx]) return;
+        var original = JSON.parse(JSON.stringify(history));
+        var replacement = JSON.parse(JSON.stringify(original));
+        replacement.splice(idx, 1);
+        if (!await replaceDateHistorySafely(original, replacement)) {
+            renderAll(); scrollBottom(); return;
         }
+        renderAll(); scrollBottom();
+        toast('已删除这条回复');
     }
 
     // 长按检测：移动端 touch 计时 450ms；桌面右键 contextmenu
