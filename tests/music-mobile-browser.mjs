@@ -303,6 +303,18 @@ try {
       assert.equal(numericRecord.type,'audio/wav');
       assert.equal(numericRecord.mimeType,'audio/wav');
       assert.ok(numericRecord.size>44);
+      // Imported filenames may contain apostrophes or HTML-like characters.
+      // The player must show their literal text and still open them from Queue.
+      await page.locator('#musicImport').setInputFiles({
+        name:"O'Neil <live>.wav", mimeType:'audio/wav', buffer:makeWav()
+      });
+      await page.waitForFunction(() => JSON.parse(localStorage.getItem('music_local_tracks') || '[]')
+        .some(track => track.name === "O'Neil <live>"), null, {timeout:10000});
+      await page.evaluate(() => showQueue());
+      await page.locator('#queueBody .queue-item')
+        .filter({hasText:"O'Neil <live>"}).click();
+      await page.waitForFunction(() => document.getElementById('npTitle')?.textContent === "O'Neil <live>",
+        null, {timeout:10000});
       assert.deepEqual(pageErrors, [], 'no uncaught JS errors at ' + width);
       console.log('PASS Chromium ' + width + 'px: viewport, import Blob, reload, playback, cover, LRC, playlist');
     } finally {
