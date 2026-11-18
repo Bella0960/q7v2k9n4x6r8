@@ -50,7 +50,7 @@
   /* 本页为全屏编辑类页面，隐藏全局悬浮导航（仅本页 CSS，不改 nav.js） */
   .floating-nav { display: none !important; }
 
-  /* 主滚动区（顶部 50px 让状态栏高度由 .wb-topbar 承担；左右 16；底部避让固定按钮） */
+  /* 主滚动区：顶部间距由标题栏按设备安全区单独处理；底部避让固定按钮 */
   .wb-stage {
     flex: 1;
     overflow-y: auto;
@@ -70,7 +70,13 @@
     align-items: center !important;
     justify-content: space-between !important;
     margin: 0 -16px !important;   /* 抵消 .wb-stage 的左右 16px，内边距由本栏自控 */
-    padding: calc(50px + env(safe-area-inset-top, 0px)) 16px 12px 16px !important;
+    padding: 50px 16px 12px 16px !important; /* 桌面模拟机保留既有外壳布局 */
+  }
+
+  /* 真机全屏：系统状态栏由操作系统绘制，不再预留额外的 50px 假状态栏空白。 */
+  @media (max-width: 480px) {
+    .phone-mockup > .status-bar { display: none !important; }
+    .wb-topbar { padding-top: max(12px, env(safe-area-inset-top, 0px)) !important; }
   }
   /* 左栏收窄，标题紧贴返回按钮 */
   .wb-top-left,
