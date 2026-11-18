@@ -213,6 +213,24 @@
   }
   .send-btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.45; stroke-linecap: round; }
   .comment-bar{flex-direction:column;align-items:stretch;gap:7px}.comment-input-row{display:flex;align-items:center;gap:8px;width:100%}.comment-input-row input{min-width:0}.comment-bar .forum-image-preview{width:100%}
+  /* 仅通过评论栏原有的 ＋ 打开：工具不再占据正文和评论之间的空间。 */
+  .forum-more-panel {
+    position:absolute;bottom:calc(100% + 8px);right:22px;z-index:40;
+    width:min(340px,calc(100vw - 32px));max-height:min(68dvh,520px);
+    overflow-y:auto;overscroll-behavior:contain;
+    padding:12px 14px;background:#fff;border:1px solid #e7e7e7;
+    box-shadow:0 4px 16px rgba(0,0,0,.045);text-align:left;
+  }
+  .forum-more-panel[hidden] { display:none !important; }
+  .forum-more-panel .forum-more-image {
+    display:block;width:100%;padding:10px 3px;border:0;border-bottom:1px solid #ebebeb;
+    background:transparent;color:#333;text-align:left;font:600 11px var(--sans);cursor:pointer;
+  }
+  .forum-more-panel .gossip-reader-tools { margin:7px 0 10px; }
+  .forum-more-panel .gossip-continue,.forum-more-panel .gossip-series { margin:7px 0; }
+  .forum-more-panel .world-thread-tools { margin:9px 0 4px; }
+  @media (max-width:480px) { .forum-more-panel {right:16px;} }
+
   /* 正文两段式：粗标题在上、细正文在下（编辑式） */
   .p-title { font-size: 15px; line-height: 1.55; font-weight: 650; letter-spacing: -.025em; color: var(--ink); overflow-wrap: anywhere; }
   .p-body { font-size: 11px; line-height: 1.95; color: #656565; margin: 9px 0 0; overflow-wrap: anywhere; white-space: pre-wrap; }
@@ -292,6 +310,17 @@
   <div class="comments">
     <div class="c-title" data-count="0">评论与回复</div>
     <div id="aiCommentStatus" class="ai-community-status" aria-live="polite"></div>
+    <div id="commentList"></div>
+  </div>
+
+  <div class="reply-hint" id="replyHint" style="display:none">
+    <span>回复</span><span class="rh-label" id="replyTargetName"></span>
+    <button onclick="cancelReply()">取消</button>
+  </div>
+
+  <div class="comment-bar">
+    <section id="forumMorePanel" class="forum-more-panel" aria-label="帖子更多操作" hidden>
+      <button type="button" id="forumMoreAddImage" class="forum-more-image">添加图片</button>
     <div id="gossipReaderTools" class="gossip-reader-tools" hidden>
       <div class="gossip-reader-top"><span id="gossipReaderProgress" class="gossip-reader-progress">连载 · 正在开篇</span></div>
       <div class="gossip-reader-actions">
@@ -310,17 +339,9 @@
       <p id="forumWorldProgress" class="world-thread-progress" aria-live="polite"></p>
       <button id="forumWorldContinue" class="gossip-continue" type="button" onclick="continueForumWorld()">让楼主补充新进展</button>
     </div>
-    <div id="commentList"></div>
-  </div>
-
-  <div class="reply-hint" id="replyHint" style="display:none">
-    <span>回复</span><span class="rh-label" id="replyTargetName"></span>
-    <button onclick="cancelReply()">取消</button>
-  </div>
-
-  <div class="comment-bar">
+    </section>
     <div class="comment-input-row"><input type="text" id="commentInput" placeholder="给这段表达留一句回应…">
-    <button type="button" class="comment-image-button" id="commentImageButton" aria-label="添加图片">＋</button>
+    <button type="button" class="comment-image-button" id="commentImageButton" aria-label="展开更多操作" aria-controls="forumMorePanel" aria-expanded="false">＋</button>
     <button class="send-btn" onclick="sendComment()">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
     </button></div>
@@ -1456,9 +1477,47 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
 
   const commentImageButton=document.getElementById('commentImageButton');
   const commentImagesInput=document.getElementById('commentImages');
-  if(commentImageButton&&commentImagesInput){
-    commentImageButton.addEventListener('click',function(){commentImagesInput.click()});
-    commentImagesInput.addEventListener('change',function(){commentImageFiles=Array.from(this.files||[]);ForumMedia.preview(commentImageFiles,document.getElementById('commentImagePreview'));document.querySelector('.comment-bar').classList.toggle('has-images',commentImageFiles.length>0)});
+  const forumMorePanel=document.getElementById('forumMorePanel');
+  const forumMoreAddImage=document.getElementById('forumMoreAddImage');
+  function closeForumMore(restoreFocus){
+    if(!forumMorePanel||forumMorePanel.hidden)return;
+    forumMorePanel.hidden=true;
+    if(commentImageButton){
+      commentImageButton.setAttribute('aria-expanded','false');
+      if(restoreFocus)commentImageButton.focus();
+    }
+  }
+  if(commentImageButton&&forumMorePanel){
+    commentImageButton.addEventListener('click',function(){
+      const opening=forumMorePanel.hidden;
+      forumMorePanel.hidden=!opening;
+      commentImageButton.setAttribute('aria-expanded',String(opening));
+    });
+    // 同一入口管理所有次要操作；点击外部和 Escape 都能收起。
+    document.addEventListener('pointerdown',function(e){
+      if(!forumMorePanel.hidden&&!forumMorePanel.contains(e.target)&&!commentImageButton.contains(e.target))closeForumMore(false);
+    });
+    document.addEventListener('keydown',function(e){
+      if(e.key==='Escape'&&!forumMorePanel.hidden){closeForumMore(true);e.preventDefault();}
+    });
+    forumMorePanel.addEventListener('click',function(e){
+      const action=e.target.closest('button');
+      if(!action)return;
+      if(['gossipResume','gossipJumpLatest','gossipViewAll','gossipViewAuthor','gossipContinue','forumWorldContinue'].includes(action.id))closeForumMore(false);
+    });
+  }
+  if(forumMoreAddImage&&commentImagesInput){
+    forumMoreAddImage.addEventListener('click',function(){
+      closeForumMore(false);
+      commentImagesInput.click();
+    });
+  }
+  if(commentImagesInput){
+    commentImagesInput.addEventListener('change',function(){
+      commentImageFiles=Array.from(this.files||[]);
+      ForumMedia.preview(commentImageFiles,document.getElementById('commentImagePreview'));
+      document.querySelector('.comment-bar').classList.toggle('has-images',commentImageFiles.length>0);
+    });
   }
   window.addEventListener('pagehide',function(){
     gossipSeriesStopRequested=true;
