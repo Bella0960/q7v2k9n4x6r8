@@ -2990,7 +2990,22 @@
             ];
         }
 
-        function removeLegacyStickerCaptions(list) {
+        // Every loaded conversation carries an exact authoritative snapshot.
+        // A delayed AI response must not overwrite edits saved by another tab.
+        // WeakMap keeps metadata out of exported messages and allows GC to reclaim it.
+        var _chatHistoryBaselines = new WeakMap();
+        function _rememberChatBaseline(list, raw) {
+            if (Array.isArray(list)) _chatHistoryBaselines.set(list, raw == null ? null : String(raw));
+            return list;
+        }
+        function _inheritChatBaseline(list, source) {
+            if (Array.isArray(list) && Array.isArray(source) && _chatHistoryBaselines.has(source)) {
+                _chatHistoryBaselines.set(list, _chatHistoryBaselines.get(source));
+            }
+            return list;
+        }
+
+        function removeLegacyStickerCaptions(list, rawBaseline) {
             if (!Array.isArray(list)) return [];
             var changed = false;
             var cleaned = list.filter(function (m, index) {
@@ -3005,8 +3020,12 @@
                 }
                 return true;
             });
-            // 清理旧版本遗留的独立文字消息，避免刷新后再次显示；表情图片本身保留。
-            if (changed) saveMessages(cleaned);
+            // Even a legacy cleanup must not overwrite a concurrent tab's changes.
+            _rememberChatBaseline(cleaned, rawBaseline);
+            if (changed && !saveMessages(cleaned)) {
+                // Do not pretend a cleanup succeeded if storage rejected it.
+                return _rememberChatBaseline(list, rawBaseline);
+            }
             return cleaned;
         }
 
@@ -3030,7 +3049,7 @@
                     var primaryHistory = JSON.parse(primaryRaw);
                     if (!Array.isArray(primaryHistory)) throw new Error('chat history is not an array');
                     _chatHistoryUnreadable = false;
-                    return removeLegacyStickerCaptions(primaryHistory);
+                    return removeLegacyStickerCaptions(primaryHistory, primaryRaw);
                 }
             } catch (err) {
                 _chatHistoryUnreadable = true;
@@ -3042,7 +3061,7 @@
                 try {
                     var arr = _storage.getChatHistory(currentCharacter.id);
                     if (!Array.isArray(arr)) throw new Error('legacy chat history is not an array');
-                    if (arr.length) return removeLegacyStickerCaptions(arr);
+                    if (arr.length) return removeLegacyStickerCaptions(arr, null);
                 } catch (err) {
                     _chatHistoryUnreadable = true;
                     console.warn('读取历史聊天记录失败:', err);
@@ -3055,7 +3074,7 @@
                     const parsed = JSON.parse(raw);
                     if (!Array.isArray(parsed)) throw new Error('chat history is not an array');
                     _chatHistoryUnreadable = false;
-                    return removeLegacyStickerCaptions(parsed);
+                    return removeLegacyStickerCaptions(parsed, raw);
                 }
             } catch (err) {
                 _chatHistoryUnreadable = true;
@@ -3065,7 +3084,7 @@
             }
 
             if (_chatHistoryUnreadable) return [];
-            const initial = getInitialMessages();
+            const initial = _rememberChatBaseline(getInitialMessages(), null);
             if (!saveMessages(initial)) return [];
             return initial;
         }
@@ -3190,11 +3209,20 @@
                 if (typeof showToast === 'function') showToast('会话已切换，请重新进入聊天后再发送');
                 return false;
             }
-            // The primary history may have become corrupt in another tab after initial load.
-            // Fail closed rather than overwriting bytes which may still be recoverable.
+            // Optimistic cross-tab protection: only a history loaded from the
+            // same saved version may replace it. No automated merge/deletion.
+            // This is exact byte comparison (not a lossy hash), and deliberately
+            // keeps localStorage writes synchronous for existing page callers.
             if (typeof localStorage !== 'undefined' && typeof localStorage.getItem === 'function') {
                 try {
                     var existingRaw = localStorage.getItem(storageKey);
+                    if (_chatHistoryBaselines.has(list) &&
+                        _chatHistoryBaselines.get(list) !== existingRaw) {
+                        if (typeof showToast === 'function') {
+                            showToast('聊天记录已在其他窗口更新，已阻止旧记录覆盖；请刷新后重试');
+                        }
+                        return false;
+                    }
                     if (existingRaw !== null && !Array.isArray(JSON.parse(existingRaw))) {
                         throw new Error('primary chat history is not an array');
                     }
@@ -3223,6 +3251,9 @@
                 }
             }
             if (wrote && _verifyHistoryRoundTrip(list)) {
+                // A successful write advances this same array's baseline, allowing
+                // normal sequential message appends in one tab.
+                try { _rememberChatBaseline(list, localStorage.getItem(storageKey)); } catch (_) {}
                 _resetWarnCooldown('chat-save');
                 return true;
             }
@@ -5776,6 +5807,7 @@
                     // The existing stored turn remains intact through network/API failures.
                     var regenTargetId = String(opts.regenTargetMid);
                     var regenBefore = historyList.slice();
+                    var regenSource = historyList;
                     if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.removeTurnFromHistory === 'function') {
                         historyList = window.ChatMessagePolicy.removeTurnFromHistory(historyList, regenTargetId);
                     } else {
@@ -5786,6 +5818,7 @@
                             return ensureMid(message) !== regenParsed.mid;
                         });
                     }
+                    _inheritChatBaseline(historyList, regenSource);
                     if (historyList.length === regenBefore.length) {
                         if (typeof showToast === 'function') showToast('旧回复已变化，重新生成已取消，请刷新聊天');
                         return;
