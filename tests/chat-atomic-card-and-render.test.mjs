@@ -118,10 +118,10 @@ test('display cleanup does not overwrite data on a rejected conflict', () => {
       assert.equal(list[0].text,'hello');
       return Promise.resolve({ok:false,error:{code:'CONFLICT'}});
     } } };
-  const render = new Function('loadMessages','window','ensureMid','stripInternalReasoning','console',
+  const render = new Function('loadMessages','window','ensureMid','stripInternalReasoning','console','currentCharacter',
     section('        function computeVisibleList() {','        // 复用 appendMessageToDOM：')
     + '\nreturn computeVisibleList;')(f.history,window,mid,
-      x=>x.replace(/<think>[\s\S]*?<\/think>/g,''),{warn(){}});
+      x=>x.replace(/<think>[\s\S]*?<\/think>/g,''),{warn(){}},{id:'role'});
   assert.equal(render()[0].text,'hello');
   assert.equal(attempted,1);
   assert.deepEqual(f.history(),original);
