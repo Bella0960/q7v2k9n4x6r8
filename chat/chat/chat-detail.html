@@ -7039,13 +7039,16 @@
                     if (replySaved && parsedCall.wantCall) {
                         // 只有 AI 回复和来电卡均持久化成功，才允许自动来电跳转。
                         if (await insertIncomingCallCard(historyList)) maybeAutoIncomingCall();
+                        historyList = loadMessages();
                     }
                     if (replySaved && parsedPay.items.length) {
                         // A failed AI response may not mint a payment card.
                         await insertPayCards(historyList, parsedPay.items);
+                        historyList = loadMessages();
                     }
                     if (replySaved && parsedRoleFamilyCard.cards.length) {
                         await insertRoleFamilyCardInvitations(historyList, parsedRoleFamilyCard.cards);
+                        historyList = loadMessages();
                     } else if (replySaved && roleFamilyCardChanged) {
                         renderAllMessages();
                     }
@@ -7054,6 +7057,7 @@
                     }
                     if (replySaved && parsedImg.images.length) {
                         await insertVImageCards(historyList, parsedImg.images);
+                        historyList = loadMessages();
                     }
                     if (!streamResult.ok) {
                         // 中断提示：放在已收到内容之后（保命语义：以上为已收到的回复）
