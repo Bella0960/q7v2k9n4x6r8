@@ -25,6 +25,10 @@ function fixture(seed = {}, options = {}) {
       }
       if (options.dropWrites && String(key).startsWith('chat_history_')) return;
       data[key] = String(value);
+      if (options.commitThenThrow && String(key).startsWith('chat_history_')) {
+        if (options.commitThenReadThrows) options.readThrows = true;
+        throw new Error('synthetic failure after commit');
+      }
     },
     removeItem(key) { delete data[key]; }
   };
@@ -207,4 +211,34 @@ test('forward append fails closed when v2 is malformed and primary absent', () =
   assert.equal(res.error.code, 'CORRUPT_DATA');
   assert.equal(f.data.phone_data_v2, malformed);
   assert.equal(f.data.chat_history_A, undefined);
+});
+
+test('post-commit write exception is verified success, preserving forwarded image reference', () => {
+  const f = fixture({ phone_data_v2: root(), chat_history_B: '[{"mid":"B"}]' },
+    { commitThenThrow: true });
+  const result = f.api.result.appendChatHistory('A', { mid: 'forward-image', assetId: 'asset-A' });
+  assert.equal(result.ok, true);
+  assert.equal(result.meta.verifiedAfterWriteError, true);
+  assert.equal(JSON.parse(f.data.chat_history_A).at(-1).assetId, 'asset-A');
+  assert.equal(f.data.chat_history_B, '[{"mid":"B"}]');
+});
+
+test('post-commit write with unreadable verification reports uncertainty, not definite rollback', () => {
+  const f = fixture({ phone_data_v2: root(), chat_history_B: '[{"mid":"B"}]' },
+    { commitThenThrow: true, commitThenReadThrows: true });
+  const result = f.api.result.appendChatHistory('A', { mid: 'forward-image', assetId: 'asset-A' });
+  assert.equal(result.ok, false);
+  assert.equal(result.meta.writeMayHavePersisted, true);
+  assert.equal(JSON.parse(f.data.chat_history_A).at(-1).assetId, 'asset-A');
+  assert.equal(f.data.chat_history_B, '[{"mid":"B"}]');
+});
+
+test('pre-commit quota exception remains a definite failure and does not append', () => {
+  const f = fixture({ chat_history_A: '[{"mid":"old"}]', phone_data_v2: root() },
+    { quotaThrows: true });
+  const result = f.api.result.appendChatHistory('A', { mid: 'not-saved' });
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, 'QUOTA_EXCEEDED');
+  assert.equal(result.meta.writeMayHavePersisted, false);
+  assert.equal(f.data.chat_history_A, '[{"mid":"old"}]');
 });
