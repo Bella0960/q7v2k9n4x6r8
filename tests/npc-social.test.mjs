@@ -69,6 +69,20 @@ function createHarness(options = {}) {
       return true;
     },
     result: {
+      getChatHistory(id) {
+        // Model PhoneStorage.result: distinguish absent history from corrupt data.
+        const key = 'chat_history_' + id;
+        if (data.has(key)) {
+          try {
+            const parsed = JSON.parse(data.get(key));
+            if (Array.isArray(parsed)) return { ok: true, value: parsed };
+          } catch (error) {}
+          return { ok: false, error: { code: 'CORRUPT_DATA' } };
+        }
+        return Array.isArray(histories[id])
+          ? { ok: true, value: histories[id] }
+          : { ok: false, error: { code: 'NOT_FOUND' } };
+      },
       getCharacters() { return { ok: true, value: roles.slice() }; },
       saveCharacters(next) {
         roles.splice(0, roles.length, ...next);
@@ -586,4 +600,34 @@ test('NPC settings edits fail closed when existing role settings cannot be read'
   };
   assert.throws(() => h.context.NPCSocial.setSettings({ enabled: true }), /NPC 设置读取失败/);
   assert.equal(h.data.get(key), before);
+});
+
+test('NPC acceptance never overwrites corrupt chat history with a welcome message', async () => {
+  const h = createHarness();
+  const { request } = await h.context.NPCSocial.discoverNow();
+  const key = 'chat_history_' + request.npc.id;
+  const damaged = '{broken-existing-chat';
+  h.data.set(key, damaged);
+  // Legacy getter would silently return [], even though the raw history exists.
+  assert.deepEqual(h.context.PhoneStorage.getChatHistory(request.npc.id), []);
+  assert.throws(() => h.context.NPCSocial.accept(request.id), /聊天记录读取失败或数据损坏/);
+  assert.equal(h.data.get(key), damaged, 'do not replace corrupt user data');
+  assert.equal(h.histories[request.npc.id], undefined, 'do not seed a replacement welcome');
+  assert.equal(h.context.NPCSocial.getPendingCount(), 1, 'request remains retryable');
+  // Once the user has recovered their history, the original request can finish.
+  h.data.delete(key);
+  const recovered = h.context.NPCSocial.accept(request.id);
+  assert.equal(recovered.ok, true);
+  assert.equal(h.histories[recovered.roleId].length, 1);
+});
+
+test('NPC acceptance fails closed on unavailable chat history repository', async () => {
+  const h = createHarness();
+  const { request } = await h.context.NPCSocial.discoverNow();
+  h.context.PhoneStorage.result.getChatHistory = () => ({
+    ok: false, error: { code: 'DB_UNAVAILABLE' }
+  });
+  assert.throws(() => h.context.NPCSocial.accept(request.id), /聊天记录读取失败或数据损坏/);
+  assert.equal(h.context.NPCSocial.getPendingCount(), 1);
+  assert.equal(h.histories[request.npc.id], undefined);
 });
