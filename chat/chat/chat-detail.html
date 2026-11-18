@@ -6704,7 +6704,8 @@
                 if (fullText) {
                     // ---- 标记剥离 → 清洗 → 落库 → 重渲染（成功与中断保文共用同一套收尾） ----
                     // 群投票/接龙/群管理标记先落到当前历史与群资料，再清理展示文本
-                    fullText = processGroupInteractionMarkers(fullText, groupReplyPick, historyList, isRegen, isGroupFollowup);
+                    var queuedGroupPrivateMessages = [];
+                    fullText = processGroupInteractionMarkers(fullText, groupReplyPick, historyList, isRegen, isGroupFollowup, queuedGroupPrivateMessages);
                     // 角色表情是现有回复的一部分，不发起额外 API。只接受完整成功的单聊线上回复。
                     var parsedRoleSticker = { text: fullText, stickers: [] };
                     if (roleStickerCatalog.length && !isGroupChat &&
@@ -6813,7 +6814,8 @@
                         }];
                     }
                     if (fullText || aiStickerMessages.length || aiRoleGalleryMessages.length || avatarCandidates.length || avatarPairs.length ||
-                        (parsedTransferDecision.amounts && parsedTransferDecision.amounts.length) || window.__groupHistoryMutationPending) {
+                        (parsedTransferDecision.amounts && parsedTransferDecision.amounts.length) || window.__groupHistoryMutationPending ||
+                        queuedGroupPrivateMessages.length) {
                         // 正文按角色气泡偏好拆分；表情与图库图片仍保留在同一回复回合中。
                         groupReplyVisible = !!fullText || aiStickerMessages.length > 0 || aiRoleGalleryMessages.length > 0;
                         replyMessages.forEach(function (message) { historyList.push(message); });
@@ -6837,6 +6839,24 @@
                             historyList = loadMessages();
                         }
                         var replySaveFailed = !replySaved;
+                        if (replySaved && queuedGroupPrivateMessages.length) {
+                            for (var deliveryIndex = 0; deliveryIndex < queuedGroupPrivateMessages.length; deliveryIndex++) {
+                                var delivery = queuedGroupPrivateMessages[deliveryIndex];
+                                var targetSaved = await window.ChatHistoryAtomic.appendIf(delivery.targetId, delivery.privateMsg);
+                                if (!targetSaved || !targetSaved.ok) {
+                                    if (typeof showToast === 'function') showToast('群私聊消息未能安全保存，未显示已发送');
+                                    continue;
+                                }
+                                var cardSaved = await window.ChatHistoryAtomic.appendIf(currentCharacter.id, delivery.groupMessage);
+                                if (cardSaved && cardSaved.ok) {
+                                    window.__groupPrivateCardPending = true;
+                                    showGroupPrivatePopup(delivery.displayName, delivery.targetId, delivery.privateMessageText);
+                                } else if (typeof showToast === 'function') {
+                                    showToast('私聊已保存，但群内私聊入口未能保存，请从对应角色聊天查看');
+                                }
+                            }
+                            historyList = loadMessages();
+                        }
                         var avatarRoleId = aliasRoleId || currentCharacter.id;
                         if (replySaved && !isGroupChat && window.RoleAvatarLibrary &&
                             typeof window.RoleAvatarLibrary.addAsset === 'function') {
@@ -8241,7 +8261,7 @@
 
 
         // ===== 群投票 / 群接龙 / 角色群管理标记 =====
-        function processGroupInteractionMarkers(rawText, speaker, historyList, isRegeneration, isGroupFollowup) {
+        function processGroupInteractionMarkers(rawText, speaker, historyList, isRegeneration, isGroupFollowup, queuedPrivateMessages) {
             var text = String(rawText || '');
             if (!isGroupChat || !currentGroup || !Array.isArray(historyList)) return text;
             var changedHistory = false;
@@ -8356,60 +8376,26 @@
                 var targetId = String(target.id);
                 var displayName = groupMemberDisplayName(target);
                 var privateMessageText = String(privateText).trim().slice(0, 300);
-                var privateMsg = { role: 'assistant', name: displayName, text: privateMessageText, time: Date.now(), fromGroupId: String(currentGroup.id), privateFromGroup: true };
-                var privateHistory = [];
-                var privateSaved = false;
-                try {
-                    if (window.PhoneStorage && typeof window.PhoneStorage.getChatHistory === 'function') {
-                        var storedHistory = window.PhoneStorage.getChatHistory(targetId);
-                        if (Array.isArray(storedHistory)) privateHistory = storedHistory.slice();
-                    }
-                    if (!privateHistory.length) {
-                        var rawPrivateHistory = localStorage.getItem('chat_history_' + targetId);
-                        var parsedPrivateHistory = rawPrivateHistory ? JSON.parse(rawPrivateHistory) : [];
-                        if (Array.isArray(parsedPrivateHistory)) privateHistory = parsedPrivateHistory;
-                    }
-                    privateHistory.push(privateMsg);
-                    if (window.PhoneStorage && typeof window.PhoneStorage.saveChatHistory === 'function') {
-                        privateSaved = window.PhoneStorage.saveChatHistory(targetId, privateHistory) === true;
-                    } else {
-                        localStorage.setItem('chat_history_' + targetId, JSON.stringify(privateHistory));
-                        privateSaved = true;
-                    }
-                    var verifiedPrivate = window.PhoneStorage && typeof window.PhoneStorage.getChatHistory === 'function'
-                        ? window.PhoneStorage.getChatHistory(targetId)
-                        : JSON.parse(localStorage.getItem('chat_history_' + targetId) || '[]');
-                    var lastPrivate = Array.isArray(verifiedPrivate) && verifiedPrivate.length
-                        ? verifiedPrivate[verifiedPrivate.length - 1] : null;
-                    privateSaved = privateSaved && Array.isArray(verifiedPrivate) &&
-                        verifiedPrivate.length === privateHistory.length && lastPrivate &&
-                        lastPrivate.role === privateMsg.role && lastPrivate.type === privateMsg.type &&
-                        lastPrivate.time === privateMsg.time && lastPrivate.text === privateMsg.text &&
-                        lastPrivate.fromGroupId === privateMsg.fromGroupId;
-                } catch (privateError) {
-                    privateSaved = false;
-                    console.error('[GroupChat] private message persistence failed:', privateError);
-                }
-                if (!privateSaved) {
-                    if (typeof showToast === 'function') showToast('群私聊消息没有保存成功，未显示已发送状态');
-                    return '';
-                }
-
+                // Defer cross-role delivery until the group AI turn itself is
+                // safely committed. In particular, never use a stale whole
+                // private-history snapshot to save another role's messages.
+                if (!Array.isArray(queuedPrivateMessages)) return '';
+                var privateMsg = {
+                    role: 'assistant', name: displayName, text: privateMessageText,
+                    time: Date.now(), fromGroupId: String(currentGroup.id), privateFromGroup: true
+                };
+                ensureMid(privateMsg);
                 var groupPrivateMessage = {
                     role: 'assistant', type: 'group_private', text: privateMessageText,
                     senderId: targetId, privateRoleId: targetId, senderName: displayName,
                     name: displayName, fromGroupId: String(currentGroup.id), time: Date.now()
                 };
                 ensureMid(groupPrivateMessage);
-                var previousGroupLength = historyList.length;
-                historyList.push(groupPrivateMessage);
-                if (!saveMessages(historyList)) {
-                    historyList.length = previousGroupLength;
-                    if (typeof showToast === 'function') showToast('私聊已保存，但群聊中的私聊入口没有保存成功');
-                    return '';
-                }
-                window.__groupPrivateCardPending = true;
-                showGroupPrivatePopup(displayName, targetId, privateMessageText);
+                queuedPrivateMessages.push({
+                    targetId: targetId, privateMsg: privateMsg,
+                    groupMessage: groupPrivateMessage, displayName: displayName,
+                    privateMessageText: privateMessageText
+                });
                 return '';
             });
             text = text.replace(/\[群动作[:：](改名|邀请|移除)[:：]([^\]]{1,40})\]/g, function (marker, action, targetName) {
