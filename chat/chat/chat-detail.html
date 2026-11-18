@@ -5915,7 +5915,9 @@
                 }
             }
             if (groupContextPrompt) rolePersona += '\n' + groupContextPrompt;
-            rolePersona = capText(rolePersona, CTX_CAP.persona);
+            // Full saved persona remains authoritative for the active speaker.
+            // Only the auxiliary group roster is limited.
+            rolePersona = isGroupChat ? capText(rolePersona, CTX_CAP.persona) : rolePersona;
 
             // 当前主角色专属的人物关系与生活线；群聊只读取本轮发言角色自己的关系资料。
             function buildCharacterSocialPrompt(role) {
@@ -6086,13 +6088,22 @@
                         }
                     }
                 }
-            } catch (e) {}
+            } catch (e) {
+                console.error('[ChatPersonaSources] saved global protocol unavailable:', e);
+                if (typeof showToast === 'function') showToast('人设协议读取失败，本轮已停止。请检查本机存储');
+                return;
+            }
             // 设置页展示的默认协议，即使尚未显式保存，聊天也应真实使用。
             // 已保存的非空协议优先，读取不隐式修改用户设置。
             rpProtocol = rpProtocol.trim() || String(window.MAOMAO_RP_DEFAULT_PROTOCOL || '');
+            if (!rpProtocol.trim()) {
+                if (typeof showToast === 'function') showToast('人设协议未加载，本轮已停止。请检查设置');
+                return;
+            }
 
             // 世界书：召回当前话题相关条目；兼容旧版只有 content 的整本设定
             let worldbookText = '';
+            let worldbookReadError = null;
             try {
               const rawWB = localStorage.getItem('phone_worldbooks');
               if (rawWB) {
@@ -6133,17 +6144,26 @@
                         return m && m.type !== 'group_private' && m.type !== 'group_game_private' &&
                             m.visibility !== 'private' && m.visibility !== 'role_only';
                     }) : roleModelHistory).slice(-8),
-                    maxEntries: 32,
-                    maxChars: CTX_CAP.worldbook
+                    // Collect all triggered entries; never silently send a partial lore entry.
+                    maxEntries: 5000,
+                    maxChars: 1000000
                   });
                 } else {
                   // The policy module enforces worldbook activation modes, keyword
                   // triggers and probability. Never inject everything if it fails to load.
-                  console.warn('[ChatContextPolicy] worldbook activation unavailable; skip lore for this turn');
+                  throw new Error('worldbook activation policy missing');
                 }
               }
-            } catch(e) { worldbookText = ''; }
-            worldbookText = capText(worldbookText, CTX_CAP.worldbook);
+            } catch(e) { worldbookReadError = e; }
+            if (worldbookReadError) {
+                console.error('[ChatPersonaSources] worldbook read/activation failed:', worldbookReadError);
+                if (typeof showToast === 'function') showToast('世界书读取失败，本轮已停止。请检查已挂载世界书');
+                return;
+            }
+            if (worldbookText.length > 32000) {
+                if (typeof showToast === 'function') showToast('当前触发的世界书过长，无法完整发送；请调整条目后重试');
+                return;
+            }
 
             // 协议变量替换：{{char}} {{user}} {{persona}} {{memory}} {{worldbook}}
             function applyProtocolVars(text) {
