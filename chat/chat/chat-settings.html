@@ -2658,8 +2658,12 @@
     try {
       var raw = localStorage.getItem(wbMountKey());
       if (raw === null) return [];
-      var arr = JSON.parse(raw);
-      return Array.isArray(arr) ? arr.map(String) : [];
+      var payload = JSON.parse(raw);
+      // Older persisted mounts used { worldbookIds: [...] }; preserve those
+      // bindings instead of showing an empty list and overwriting them.
+      var arr = Array.isArray(payload) ? payload :
+        (payload && Array.isArray(payload.worldbookIds) ? payload.worldbookIds : []);
+      return arr.map(String);
     } catch (e) { return []; }
   }
   function wbEsc(str) {
