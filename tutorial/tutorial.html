@@ -161,6 +161,135 @@
     }
 
     @media (min-width:620px) { .page { padding-left:26px; padding-right:26px; } .guide-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .guide-card { display:flex; flex-direction:column; } .guide-actions { margin-top:auto; padding-top:12px; } .app-list { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+
+    /* Editorial book edition: visual redesign only, no app-wide theme mutation. */
+    :root { --ink:#171717; --muted:#767676; --soft:#F8F8F6; --line:#E9E9E5; --red:#666; }
+    html { background:#F3F3F0; scroll-behavior:smooth; }
+    body { background:#F3F3F0; color:#171717; font-size:14px; }
+    .page { width:min(740px,100%); min-height:100dvh; padding:calc(15px + env(safe-area-inset-top)) 26px calc(44px + env(safe-area-inset-bottom)); background:#fff; box-shadow:0 0 45px rgba(0,0,0,.025); }
+    .topbar { padding:3px 0 28px; border-bottom:1px solid #ECECE8; }
+    .back { font-size:12px; }
+    .top-kicker,.chapter-kicker,.eyebrow { color:#888; font-size:10px; letter-spacing:.16em; font-weight:500; }
+    .hero { padding:46px 0 32px; }
+    .hero h1 { margin:22px 0 23px; font-family:Georgia,"Songti SC","Noto Serif CJK SC",serif; font-weight:400; font-size:clamp(45px,10vw,78px); line-height:1.18; letter-spacing:-.065em; }
+    .hero h1 em { color:#444; font-style:normal; }
+    .intro { max-width:460px; color:#626262; font-size:13px; line-height:2; letter-spacing:.025em; }
+    .hero-meta { display:flex; justify-content:space-between; align-items:center; gap:12px; padding-top:23px; margin-top:34px; border-top:1px solid #E9E9E7; color:#888; font-size:10px; letter-spacing:.1em; }
+    .book-navigation { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 24px; margin:8px 0 45px; padding:18px 0 0; }
+    .book-navigation .chapter-kicker { grid-column:1/-1; display:block; margin:0 0 10px; }
+    .book-navigation a { display:flex; gap:12px; align-items:center; padding:15px 2px; border-bottom:1px solid #ECECE9; text-decoration:none; color:#242424; font-size:14px; }
+    .book-navigation a span { font-family:Georgia,serif; color:#999; font-size:12px; }
+    .book-navigation a:focus-visible,.guide-top:focus-visible { outline:2px solid #666; outline-offset:3px; }
+    .updates { margin:0 0 54px; padding:28px 0 0; border:0; border-top:1px solid #E8E8E5; border-radius:0; background:transparent; }
+    .updates-head { align-items:flex-end; gap:14px; }
+    .updates-title { display:block; margin:9px 0 0; font-family:Georgia,"Songti SC","Noto Serif CJK SC",serif; font-size:27px; font-weight:400; letter-spacing:-.045em; }
+    .updates-date { max-width:180px; text-align:right; letter-spacing:.08em; line-height:1.7; }
+    .release-empty { margin-top:24px; padding:0; background:none; border:0; }
+    .release-empty .release-status,.release-status { color:#8b8b8b; font-family:Georgia,serif; font-size:10px; letter-spacing:.12em; }
+    .release-empty h3,.release-entry h3 { margin:14px 0 9px; color:#222; font-family:Georgia,"Songti SC","Noto Serif CJK SC",serif; font-weight:400; font-size:20px; line-height:1.5; }
+    .release-empty p,.release-entry li { max-width:570px; margin:0; color:#707070; font-size:12px; line-height:1.95; }
+    .release-entry { margin-top:22px; padding:19px 0 8px; border-top:1px solid #E9E9E6; }
+    .release-entry ul { margin:8px 0; padding-left:18px; }
+    .book-index { scroll-margin-top:20px; margin:0 0 16px; }
+    .section-head { align-items:flex-end; margin:0 0 13px; }
+    .section-head h2 { margin:8px 0 0; font-family:Georgia,"Songti SC","Noto Serif CJK SC",serif; font-weight:400; font-size:28px; line-height:1.4; letter-spacing:-.035em; }
+    .section-head span:not(.chapter-kicker) { color:#999; font-size:11px; }
+    .index-intro { margin:0 0 20px; color:#888; font-size:12px; line-height:1.85; }
+    .tools { margin:0 0 13px; }
+    .search { min-height:46px; height:46px; border-radius:4px; padding-left:39px; background:#FAFAF9; border-color:#E9E9E6; font-size:13px; }
+    .filters { gap:9px; margin:0; padding:0 0 18px; }
+    .filter { min-height:33px; border-radius:2px; border:0; border-bottom:1px solid #DDD; padding:0 4px; margin-right:6px; color:#777; font-size:12px; }
+    .filter[aria-pressed="true"] { background:transparent; color:#151515; border:0; border-bottom:2px solid #222; }
+    .test-notebook { margin:0 0 33px; padding:15px 0; border-top:1px solid #ECECE8; border-bottom:1px solid #ECECE8; }
+    .notebook-summary { display:flex; align-items:center; justify-content:space-between; gap:10px; cursor:pointer; list-style:none; color:#666; font-size:10px; letter-spacing:.04em; }
+    .notebook-summary::-webkit-details-marker,.guide-top::-webkit-details-marker { display:none; }
+    .notebook-summary::marker,.guide-top::marker { content:''; }
+    .notebook-summary .summary-count { font-family:Georgia,serif; font-size:11px; color:#555; white-space:nowrap; }
+    .test-notebook .summary-copy { display:block; margin:13px 0; font-size:11px; line-height:1.8; }
+    .progress-track { margin:0 0 14px; height:3px; }
+    .notebook-actions { display:flex; flex-wrap:wrap; gap:8px; }
+    .tool-btn { background:#fff; border-radius:3px; min-height:36px; font-size:11px; }
+    .guide-grid { display:block; border-top:1px solid #E9E9E6; }
+    .guide-card { margin:0; padding:0; border:0; border-bottom:1px solid #E9E9E6; border-radius:0; background:#fff; }
+    .guide-sheet { width:100%; }
+    .guide-top { display:grid; grid-template-columns:31px minmax(0,1fr) auto; align-items:start; gap:12px; padding:24px 0 25px; cursor:pointer; list-style:none; }
+    .guide-index { padding-top:3px; color:#999; font-family:Georgia,serif; font-size:13px; }
+    .guide-title-wrap { display:block; min-width:0; }
+    .guide-category { display:block; margin-bottom:6px; color:#aaa; font-family:Georgia,serif; font-size:10px; letter-spacing:.14em; }
+    .guide-title { display:block; margin:0 0 7px; font-family:Georgia,"Songti SC","Noto Serif CJK SC",serif; color:#222; font-size:19px; line-height:1.45; font-weight:400; letter-spacing:-.04em; }
+    .guide-summary { display:block; margin:0; color:#777; font-size:12px; line-height:1.75; }
+    .guide-read { padding-top:15px; color:#666; font-size:11px; white-space:nowrap; }
+    .guide-sheet[open] .guide-read { color:#999; }
+    .guide-sheet[open] .guide-read::before { content:'收起'; }
+    .guide-sheet[open] .guide-read { font-size:0; }
+    .guide-sheet[open] .guide-read::before { font-size:11px; }
+    .guide-details { margin:-2px 0 25px 43px; padding:0 0 0 17px; border-left:1px solid #E7E7E4; }
+    .guide-location { margin:0 0 14px; padding:0; border-radius:0; background:transparent; color:#666; font-size:12px; line-height:1.9; }
+    .guide-location b { display:block; color:#333; font-size:11px; font-weight:600; }
+    .guide-step-meta { margin:0 0 13px; color:#999; font-size:11px; }
+    .guide-actions { justify-content:flex-start; gap:8px; padding:0; margin:0 0 15px; }
+    .start-guide,.open-link { display:inline-flex; align-items:center; justify-content:center; min-height:39px; padding:0 13px; border-radius:3px; font-size:11px; }
+    .start-guide { background:#171717; border:1px solid #171717; color:#fff; }
+    .open-link { margin-right:0!important; background:#fff; border:1px solid #DDD; color:#222; }
+    .test-box { border-top:1px solid #F0F0EE; padding-top:16px; margin:17px 0 0; }
+    .test-title { font-size:12px; line-height:1.6; }
+    .test-description { font-size:11px; line-height:1.8; }
+    .test-mark { font-size:11px; }
+    .note { font-size:12px; border-radius:4px; background:#FBFBFA; }
+    .faq-section,.app-directory { margin-top:58px; padding-top:23px; border-top:1px solid #E9E9E5; scroll-margin-top:20px; }
+    .faq-item { border-radius:0; border:0; border-bottom:1px solid #E9E9E6; padding:17px 0; }
+    .faq-item summary { font-size:13px; font-weight:500; }
+    .faq-item p { font-size:12px; line-height:1.95; }
+    .app-list { grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+    .app-link { background:#FAFAF9; border:0; border-radius:4px; padding:15px; }
+    .app-open strong { font-size:13px; font-weight:500; }
+    .app-open span { font-size:11px; line-height:1.6; }
+    .app-guide-btn { border-radius:3px; font-size:11px; }
+    .footer { margin-top:65px; padding-top:16px; border-top:1px solid #E8E8E5; color:#8A8A8A; font-family:Georgia,"Songti SC",serif; font-size:11px; line-height:1.9; }
+    .footer-second { display:block; font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif; }
+    .walkthrough-backdrop { background:rgba(0,0,0,.5); }
+    .walkthrough { border-radius:7px; border:1px solid #EBEBE8; background:#fff; box-shadow:0 8px 50px rgba(0,0,0,.15); }
+    .walk-head { padding:24px 25px 15px; background:#fff; border:0; }
+    .walk-title { font-family:Georgia,"Songti SC",serif; font-size:25px; font-weight:400; }
+    .walk-close { border:0; font-size:19px; }
+    .walk-progress-wrap { padding:8px 25px 0; }
+    .walk-progress-copy { font-family:Georgia,serif; color:#888; letter-spacing:.09em; }
+    .walk-body { padding:18px 25px 28px; }
+    .walk-route { margin:0 0 23px; gap:8px; }
+    .walk-route-chip { border:0; border-radius:0; padding:0; background:transparent; color:#777; font-size:11px; }
+    .walk-route-separator { color:#aaa; font-size:11px; }
+    .walk-visual { display:block; padding:10px 0 18px; border:0; border-bottom:1px solid #EEE; border-radius:0; background:#fff; }
+    .walk-phone { display:none; }
+    .walk-visual-title { font-size:9px; }
+    .walk-visual-target { font-family:Georgia,"Songti SC",serif; font-weight:400; font-size:16px; }
+    .walk-visual-note { margin-top:6px; font-size:10px; }
+    .walk-step-title { margin-top:30px; color:#999; font-family:Georgia,serif; font-weight:400; font-size:12px; letter-spacing:.16em; }
+    .walk-step-copy { margin-top:13px; color:#333; font-size:15px; line-height:2.05; letter-spacing:.02em; }
+    .walk-tip { background:#FAFAF9; border-radius:3px; font-size:11px; line-height:1.9; }
+    .walk-practice { border:0; border-top:1px solid #EEE; padding:16px 0 0; border-radius:0; }
+    .walk-practice strong { font-size:11px; }
+    .walk-practice p { font-size:12px; line-height:1.9; }
+    .walk-done { font-size:11px; }
+    .walk-foot { border-top:1px solid #EEE; background:#fff; padding:16px 25px calc(17px + env(safe-area-inset-bottom)); }
+    .walk-foot button,.walk-foot a { border-radius:3px; font-size:11px; }
+    .modal { border-radius:7px; }
+    @media (max-width:580px) {
+      html,body { background:#fff; }
+      .page { padding-left:19px; padding-right:19px; box-shadow:none; }
+      .topbar { padding-bottom:20px; }
+      .hero { padding-top:34px; }
+      .book-navigation { gap:0 12px; margin-bottom:38px; }
+      .book-navigation a { font-size:12px; gap:7px; }
+      .updates { margin-bottom:48px; }
+      .guide-top { grid-template-columns:24px minmax(0,1fr) auto; gap:9px; }
+      .guide-title { font-size:18px; }
+      .guide-summary { font-size:11px; }
+      .guide-details { margin-left:33px; padding-left:13px; }
+      .walk-head,.walk-body { padding-left:19px; padding-right:19px; }
+      .walk-progress-wrap { padding-left:19px; padding-right:19px; }
+      .walk-foot { padding-left:12px; padding-right:12px; }
+    }
+    @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto!important; transition:none!important; } }
   </style>
 </head>
 <body>
@@ -170,50 +299,67 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
         <span>返回桌面</span>
       </a>
-      <span class="top-kicker">HOW TO USE / GUIDE</span>
+      <span class="top-kicker">THE USER MANUAL · 2026</span>
     </header>
 
-    <section class="hero">
-      <div class="eyebrow">MAOMAO PHONE · USER GUIDE</div>
-      <h1>使用教程</h1>
-      <p class="intro">功能在哪、怎么打开、应该怎么测，都放在这里。每项教程都能记录测试结果和问题，不用再靠记忆找入口。</p>
+    <section class="hero" aria-labelledby="guideCoverTitle">
+      <div class="eyebrow">A LITTLE BOOK FOR EVERYDAY USE</div>
+      <h1 id="guideCoverTitle">小手机<br><em>使用手册</em></h1>
+      <p class="intro">从第一次打开，到慢慢熟悉每个角落。像翻一本书那样，选一章，按照步骤读，再回到真实页面试试看。</p>
       <div class="hero-meta">
-        <span class="meta-chip">按功能查入口</span>
-        <span class="meta-chip">逐步操作</span>
-        <span class="meta-chip">记录测试与 Bug</span>
-        <span class="meta-chip" id="guideVersion">指南版本</span>
+        <span class="cover-rule">THE READER'S EDITION</span>
+        <span id="guideVersion">阅读版</span>
       </div>
     </section>
 
-    <section class="updates" aria-labelledby="updatesTitle">
+    <nav class="book-navigation" aria-label="使用手册目录">
+      <span class="chapter-kicker">CONTENTS / 目录</span>
+      <a href="#book-index"><span>01</span> 使用指南</a>
+      <a href="#release-notes"><span>02</span> 版本公告</a>
+      <a href="#faqTitle"><span>03</span> 常见问题</a>
+      <a href="#appDirectoryTitle"><span>04</span> 应用索引</a>
+    </nav>
+
+    <section class="updates" id="release-notes" aria-labelledby="updatesTitle">
       <div class="updates-head">
-        <span class="updates-title" id="updatesTitle">最近更新</span>
-        <span class="updates-date" id="updatesDate">更新记录</span>
+        <div>
+          <span class="chapter-kicker">02 / RELEASE BULLETIN</span>
+          <h2 class="updates-title" id="updatesTitle">版本公告</h2>
+        </div>
+        <span class="updates-date" id="updatesDate">PUBLIC RELEASE NOTES</span>
       </div>
-      <div class="update-list" id="updateList"><div class="update-item"><span class="update-dot"></span><span>正在读取更新记录…</span></div></div>
-      <p class="updates-foot">正式功能合并后同步补充入口和操作步骤；只有经过实际验收的项目才会标记为已验证。</p>
+      <div class="update-list" id="updateList"></div>
     </section>
 
-    <div class="test-summary">
-      <span class="summary-copy">你的手机测试进度会保存在当前浏览器，不会修改角色聊天数据。</span>
-      <span class="summary-count" id="testCount">0 / 0 已测试</span>
-    </div>
-    <div class="progress-track" aria-label="测试进度"><div class="progress-fill" id="progressFill"></div></div>
-
-    <div class="tools">
-      <label class="search-wrap">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"></circle><path d="m16 16 5 5"></path></svg>
-        <input class="search" id="guideSearch" type="search" placeholder="搜索功能名称、入口或操作…" autocomplete="off">
-      </label>
-      <button class="tool-btn" id="exportTests" type="button">导出测试记录</button>
-      <button class="tool-btn" id="resetTests" type="button">清空进度</button>
-    </div>
-    <nav class="filters" id="guideFilters" aria-label="教程分类"></nav>
-
-    <div class="section-head">
-      <h2>功能教程</h2>
-      <span id="visibleCount">正在载入…</span>
-    </div>
+    <section class="book-index" id="book-index" aria-labelledby="guideIndexTitle">
+      <div class="section-head">
+        <div>
+          <span class="chapter-kicker">01 / CHAPTER INDEX</span>
+          <h2 id="guideIndexTitle">使用指南</h2>
+        </div>
+        <span id="visibleCount">正在载入…</span>
+      </div>
+      <p class="index-intro">选择章节阅读，打开后可以进入真实页面。无需按顺序完成。</p>
+      <div class="tools">
+        <label class="search-wrap">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"></circle><path d="m16 16 5 5"></path></svg>
+          <input class="search" id="guideSearch" type="search" placeholder="搜索章节、操作或功能名称" autocomplete="off">
+        </label>
+      </div>
+      <nav class="filters" id="guideFilters" aria-label="教程分类"></nav>
+      <details class="test-notebook">
+        <summary class="notebook-summary">
+          <span>PERSONAL NOTES / 个人学习记录</span>
+          <span class="summary-count" id="testCount">0 / 0 已测试</span>
+        </summary>
+        <p class="summary-copy">学习进度和笔记只保存在此浏览器，不修改聊天记录或角色资料。</p>
+        <div class="progress-track" aria-label="测试进度"><div class="progress-fill" id="progressFill"></div></div>
+        <div class="notebook-actions">
+          <button class="tool-btn" id="exportTests" type="button">导出我的笔记</button>
+          <button class="tool-btn" id="resetTests" type="button">清空学习进度</button>
+        </div>
+      </details>
+    </section>
     <section class="guide-grid" id="guideGrid" aria-live="polite"></section>
 
 
@@ -234,7 +380,7 @@
     </section>
 
     <footer class="footer">
-      教程会随正式版本更新。若某项功能入口改变、页面打不开或实际行为与步骤不符，请在对应教程的测试备注中写下现象，再导出测试记录。当前版本：<span id="footerVersion"></span>。
+      使用手册 · <span id="footerVersion"></span><span class="footer-second">按章节阅读，必要时记下自己的使用心得。版本公告与个人学习记录分开维护。</span>
     </footer>
   </main>
 
@@ -254,7 +400,7 @@
     <section class="walkthrough" role="dialog" aria-modal="true" aria-labelledby="walkTitle">
       <header class="walk-head">
         <div>
-          <div class="walk-kicker">STEP-BY-STEP WALKTHROUGH</div>
+          <div class="walk-kicker">READING MODE / 分步阅读</div>
           <h2 class="walk-title" id="walkTitle">操作教程</h2>
         </div>
         <button class="walk-close" type="button" id="walkClose" aria-label="关闭教程">×</button>
@@ -291,12 +437,12 @@
       </div>
       <footer class="walk-foot">
         <button type="button" id="walkPrevious">上一步</button>
-        <a class="walk-open" id="walkOpenPage" href="../index.html" target="_blank" rel="noopener">打开真实页面 ↗</a>
+        <a class="walk-open" id="walkOpenPage" href="../index.html" target="_blank" rel="noopener">前往操作页面</a>
         <button type="button" id="walkNext" class="walk-primary">下一步</button>
       </footer>
     </section>
   </div>
 
-  <script src="tutorial.js?v=20261111v3"></script>
+  <script src="tutorial.js?v=20261118book1"></script>
 </body>
 </html>
