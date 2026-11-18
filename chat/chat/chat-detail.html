@@ -5747,7 +5747,7 @@
                 ensureMid(blockedMsg);
                 blockedHistory.push(blockedMsg);
                 // P0：用户消息必须真正落库后才生效；写失败就终止，保留输入与引用。
-                if (!saveMessages(blockedHistory)) {
+                if (!await appendChatSafely([blockedMsg])) {
                     if (previousGroupUserSend) lastGroupUserSend = previousGroupUserSend;
                     groupAutoFollowupToken = previousGroupAutoFollowupToken;
                     return;
@@ -5795,7 +5795,7 @@
                     historyList.push(userMsg);
 
                     // 先单独确认用户消息已落库；只有成功后才清空输入与引用。
-                    userSaved = saveMessages(historyList);
+                    userSaved = await appendChatSafely([userMsg]);
                     if (!userSaved) {
                         // P0：用户消息没有真正落库 → 立即终止本次发送。
                         // 不写 system_error、不渲染任何气泡，输入框原文与引用状态保持原样。
@@ -5822,8 +5822,8 @@
                 // isRegen / contextOnly 反复触发时，相同错误已经在历史尾部就不再重复入库、渲染。
                 if (!_isRepeatedSystemError(historyList, errMsg.text)) {
                     historyList.push(errMsg);
-                    // 第二次写入同样以读回结果为准；失败则不保留、不渲染无名错误记录。
-                    const errSaved = saveMessages(historyList);
+                    // One error bubble only, without overwriting a newer tab.
+                    const errSaved = await appendChatSafely([errMsg]);
                     if (!errSaved) historyList.pop();
                     if (_vl) {
                         vlRefresh();
@@ -5871,12 +5871,14 @@
                     if (blockedNow) userMsg.sendFailed = true;
                     historyList.push(userMsg);
                     // P0：用户消息必须真正落库后才继续；写失败立即终止，保留输入与引用。
-                    if (!saveMessages(historyList)) {
+                    if (!await appendChatSafely([userMsg])) {
                         historyList.pop();
                         if (previousGroupUserSend) lastGroupUserSend = previousGroupUserSend;
                         groupAutoFollowupToken = previousGroupAutoFollowupToken;
                         return;
                     }
+                    // Ensure the AI sees the persisted combined transcript.
+                    historyList = loadMessages();
                     if (isGroupChat && !silent) groupAutoFollowupToken += 1;
                     if (quoteSnapshot && typeof window.clearQuote === 'function') window.clearQuote();
                     if (!silent) {
