@@ -14,7 +14,8 @@ const chooseRoleSection=section('            // Group metadata is not a characte
   '            // 当前主角色专属的人物关系与生活线');
 const composeSpeaker=new Function('isGroupChat','groupReplyPick','getRoleById',
   'currentCharacter','aliasRoleId','groupContextPrompt','rolePersona',
-  'capText','CTX_CAP', chooseRoleSection+
+  'capText','CTX_CAP', 'var latestDirectRole = getRoleById(currentCharacter.id) || currentCharacter;\n' +
+  chooseRoleSection +
   '\nreturn {speakingRole,speakingRoleId,speakingRoleName,speakingRolePersona,rolePersona};');
 const rpSection=section("            let rpProtocol = '';",'            // 世界书：');
 const readRP=new Function('localStorage','speakingRoleId','capText','CTX_CAP',
@@ -150,3 +151,32 @@ test('family-card built-in prompt is limited to one-to-one conversations',()=>{
   assert.match(block,/\n            \}/);
 });
 
+
+
+test('direct character edits become visible to the very next AI turn',()=>{
+  const fragment=section('            // Re-read the direct role on every AI turn.',
+    '            // Assemble this turn');
+  const readLatest=new Function('isGroupChat','currentCharacter','getRoleById',
+    fragment+'\nreturn latestDirectRole;');
+  const old={id:'a',name:'林策',persona:'原人设'};
+  const updated={id:'a',name:'林策',persona:'更新后不喜欢客套话',memory:'新设定记忆'};
+  const resolved=readLatest(false,old,id=>id==='a'?updated:null);
+  assert.equal(resolved.persona,updated.persona);
+  assert.notEqual(resolved.persona,old.persona);
+  assert.match(detail,/rolePersona = \(latestDirectRole\.persona \|\| latestDirectRole\.prompt/);
+  assert.match(detail,/var speakingRole = isGroupChat && groupReplyPick[\s\S]*?latestDirectRole;/);
+});
+
+test('group prompt exposes member names, never copies other members private personas',()=>{
+  const roster=section('                // The group roster is public context',
+    '                if (availableMembers.length) {');
+  const make=new Function('currentGroup','groupMemberDisplayName','isGroupMemberInActiveHours',
+    'const members=currentGroup.members; var rolePersona;\n'+roster+'\nreturn rolePersona;');
+  const groupData={name:'班级群',ownerId:'__user',members:[
+    {id:'a',name:'林策',persona:'只对自己有用的机密爱好',secret:'A私密日记'},
+    {id:'b',name:'周遥',persona:'只属于B的隐藏经历',secret:'B私密日记'}
+  ]};
+  const rosterText=make(groupData,m=>m.name,()=>true);
+  assert.match(rosterText,/林策|周遥/);
+  assert.doesNotMatch(rosterText,/机密爱好|隐藏经历|私密日记/);
+});
