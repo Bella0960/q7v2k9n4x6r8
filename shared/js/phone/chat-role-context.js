@@ -107,6 +107,9 @@
     var worldbook = String(input.worldbook || '').trim();
     if (!speakerId || !role || String(role.id) !== speakerId) missing.push('speaker-identity');
     var savedPersona = String(role && (role.persona || role.prompt) || '').trim();
+    if (role && role.encounterOrigin && role.encounterOrigin.version === 1) {
+      savedPersona = stripEncounterEditorNote(savedPersona, role).trim();
+    }
     if (!savedPersona || !persona || persona !== savedPersona || system.indexOf(persona) === -1)
       missing.push('saved-role-persona');
     var savedTone = String(role && (role.tone || role.speechStyle || role.speech) || '').trim();
