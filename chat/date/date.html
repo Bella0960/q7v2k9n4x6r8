@@ -3080,21 +3080,21 @@ body {
         streamingP = null;
         streamingRow = null;
         var i = 0;
-        var timer = setInterval(function () {
+        var timer = setInterval(async function () {
             i += 8;
             paintStream(text.slice(0, i));
             if (i >= text.length) {
                 clearInterval(timer);
-                var previousHistory = history.slice();
-                history.push({ role: 'assistant', text: text, time: Date.now(), mode: 'date', scene: sceneName || undefined });
-                if (!saveHistory(history, previousHistory)) {
+                var simulatedReply = { role: 'assistant', text: text, time: Date.now(), mode: 'date', scene: sceneName || undefined };
+                if (!await commitDateReply(simulatedReply)) {
                     appendSys('这段角色回复尚未保存，请先复制上方文字，再检查存储空间后重试。');
                     setSending(false);
                     scrollBottom();
                     return;
                 }
                 removeStreaming();
-                appendAiParagraphs(text, history.length - 1);
+                if (dateReplyWasReplacement) renderAll();
+                else appendAiParagraphs(text, history.length - 1);
                 setSending(false);
                 scrollBottom();
             }
@@ -3363,7 +3363,11 @@ body {
         try { cfg = JSON.parse(localStorage.getItem('api_settings') || '{}') || {}; } catch (e) {}
         if (!(cfg.apiKey || '').trim()) {
             if (isPreview) localReplySim();
-            else toast('尚未配置聊天 API，本轮没有生成角色回复');
+            else {
+                toast('尚未配置聊天 API，本轮没有生成角色回复');
+                dateRerollPending = null;
+                setSending(false);
+            }
             return;
         }
         const currentRole = readRoles().find(function(item) {
@@ -3384,6 +3388,8 @@ body {
             }) : {ok:false,code:'resolver'};
         if (!source.ok) {
             toast('角色档案、伴侣协议或世界书未完整加载（' + source.code + '），本轮已停止');
+            dateRerollPending = null;
+            setSending(false);
             return;
         }
         // The scene may have been open for hours. Use the latest saved role.
@@ -3411,6 +3417,8 @@ body {
         if (!deliveryCheck.ok) {
             console.error('[ChatPersonaSources] offline-long source not delivered:', deliveryCheck.missing);
             toast('线下角色资料未完整进入请求，本轮已停止');
+            dateRerollPending = null;
+            setSending(false);
             return;
         }
         streamingP = null;
@@ -3423,7 +3431,7 @@ body {
             maxTokens: cfg.maxTokens,
             topP: cfg.topP,
             onPaint: paintStream
-        }).then(function (result) {
+        }).then(async function (result) {
             var ind = document.getElementById('dateIndicator');
             if (ind) ind.remove();
             var fullText = (result.fullText || '').trim();
@@ -3437,10 +3445,15 @@ body {
                         : '网络断开了，剧情停在这里等你回来';
                 if (fullText) {
                     appendSys('连接中断，以上为已写出的内容');
+                    if (dateRerollPending) {
+                        dateRerollPending = null;
+                        appendSys('重新生成中断，原回复已保留；部分内容请先复制');
+                        setSending(false);
+                        scrollBottom();
+                        return;
+                    }
                     var aiPartial = { role: 'assistant', text: fullText, time: Date.now(), mode: 'date', scene: sceneName || undefined };
-                    var previousHistory = history.slice();
-                    history.push(aiPartial);
-                    if (!saveHistory(history, previousHistory)) {
+                    if (!await appendDateMessage(aiPartial)) {
                         appendSys('上方部分回复尚未保存，请先复制需要保留的文字，再检查存储空间后重试。');
                         setSending(false);
                         scrollBottom();
@@ -3457,7 +3470,8 @@ body {
             }
 
             if (!fullText) {
-                appendSys('这一幕没有写出内容，再试一次吧');
+                dateRerollPending = null;
+                appendSys('这一幕没有写出内容，原回复已保留');
                 setSending(false);
                 return;
             }
@@ -3470,16 +3484,22 @@ body {
                 .replace(/\n{3,}/g, '\n\n').trim();
 
             var aiMsg = { role: 'assistant', text: fullText, time: Date.now(), mode: 'date', scene: sceneName || undefined };
-            var previousHistory = history.slice();
-            history.push(aiMsg);
-            if (!saveHistory(history, previousHistory)) {
+            if (!await commitDateReply(aiMsg)) {
                 appendSys('上方角色回复尚未保存，请先复制需要保留的文字，再检查存储空间后重试。');
                 setSending(false);
                 scrollBottom();
                 return;
             }
             if (streamingP) removeStreaming();
-            appendAiParagraphs(fullText, history.length - 1);
+            if (dateReplyWasReplacement) renderAll();
+            else appendAiParagraphs(fullText, history.length - 1);
+            setSending(false);
+            scrollBottom();
+        }).catch(function(error){
+            dateRerollPending = null;
+            console.warn('[Date] reply request failed, saved history retained:', error);
+            appendSys('请求异常，原回复已保留；未保存的内容请先复制');
+            if (streamingP) removeStreaming();
             setSending(false);
             scrollBottom();
         });
