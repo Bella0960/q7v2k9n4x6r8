@@ -51,9 +51,18 @@
       if (!name) return 'user';
       var aliases = [selectedSpeakerName];
       if (chosen) aliases.push(String(chosen.nickname || ''), String(chosen.name || ''));
-      return aliases.some(function (alias) {
+      var matchesSelected = aliases.some(function (alias) {
         return alias && alias.trim() === name;
-      }) ? 'assistant' : 'user';
+      });
+      if (!matchesSelected) return 'user';
+      // Names are not identifiers: an ambiguous legacy nickname must never
+      // turn another person's old line into this role's first-person memory.
+      var ambiguous = groupMembers.some(function (member) {
+        return member && String(member.id) !== selectedSpeakerId &&
+          (String(member.nickname || '').trim() === name ||
+            String(member.name || '').trim() === name);
+      });
+      return ambiguous ? 'user' : 'assistant';
     }
 
     // 多气泡回复逐条落库后，同一 turnId 的连续 assistant 消息要合并回一条，
