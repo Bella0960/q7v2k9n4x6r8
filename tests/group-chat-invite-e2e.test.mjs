@@ -219,16 +219,14 @@ test('C6-C8 chat.html -> chat-detail renders 3 members and request context conta
     ]);
     assert.ok(page.url().includes('id=g1'), 'must land on chat-detail with group id');
 
-    await page.waitForFunction(() => {
-      const el = document.getElementById('chat-status-sub');
-      return el && el.textContent.trim().length > 0;
-    });
-    const statusText = (await page.locator('#chat-status-sub').innerText()).trim();
-    const parts = statusText.split('·').map((s) => s.trim()).filter(Boolean);
-    assert.equal(parts.length, 4, 'status should list 3 member names plus mode');
-    assert.ok(parts.includes('阿五'), 'header renders the invited member nickname');
-    assert.ok(parts.includes('角色一') && parts.includes('角色二'));
-    assert.equal(parts[3], '线上');
+    // Group header is intentionally compact: 3 role members + user = 4.
+    // Nickname, roles, and member settings are still asserted against the real AI request below.
+    await page.waitForFunction(() =>
+      document.getElementById('chat-title')?.textContent?.trim() === '三人测试群（4）'
+    );
+    assert.equal((await page.locator('#chat-title').innerText()).trim(), '三人测试群（4）');
+    assert.equal(await page.locator('#chat-status-sub').isVisible(), false,
+      'group member/online subtitle must not appear as a gray header box');
 
     await page.locator('#chat-input').fill('大家好');
     await sendFromVisibleComposer(page);
@@ -308,12 +306,11 @@ test('C9 spectatorMode saved in settings page is reflected in a fresh chat-detai
       const detailGroup = detailGroups.find((item) => String(item.id) === 'g1');
       assert.equal(detailGroup?.settings?.spectatorMode, expectedSpectatorMode,
         'fresh chat-detail must load the persisted spectator setting before sending');
-      // The composer exists before group metadata finishes rendering; wait for the real group status
-      // before sending, matching the already-passing C6-C8 flow.
-      await page.waitForFunction(() => {
-        const status = document.getElementById('chat-status-sub');
-        return status && status.textContent.trim().length > 0;
-      });
+      // Wait for the populated compact group title, not the removed members/online subtitle.
+      await page.waitForFunction(() =>
+        document.getElementById('chat-title')?.textContent?.trim() === '旁观测试群（4）'
+      );
+      assert.equal(await page.locator('#chat-status-sub').isVisible(), false);
       await page.waitForFunction(() => document.querySelectorAll('#chat-input').length === 1);
       // Exercise the actual user path. Each mode gets a distinct message so the
       // group's duplicate-message guard does not reject the second request.
@@ -339,7 +336,7 @@ test('C9 spectatorMode saved in settings page is reflected in a fresh chat-detai
           const input = document.getElementById('chat-input');
           return {
             url: location.href,
-            status: document.getElementById('chat-status-sub')?.textContent || '',
+            groupTitle: document.getElementById('chat-title')?.textContent || '',
             inputValue: input?.value || '',
             apiKeyPresent: !!(api.apiKey && String(api.apiKey).trim()),
             apiBaseUrl: api.baseUrl || '',
