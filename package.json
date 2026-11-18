@@ -34,7 +34,7 @@
     "test:backup:modules": "node --test tests/backup-modules.test.mjs",
     "test:forum:media": "node --test tests/forum-media.test.mjs",
     "test:api:image": "node --test tests/phone-api-image-generation.test.mjs",
-    "test:settings:repair": "node --test tests/settings-regex-api-minimax.test.mjs",
+    "test:settings:repair": "node --test tests/settings-regex-api-minimax.test.mjs tests/regex-editor-ui.test.mjs",
     "test:forum:seed": "node --test tests/forum-seed-comments.test.mjs",
     "test:forum:mobile": "node tests/forum-media-mobile.mjs",
     "test:group:ui": "node --test tests/group-ui-collapse-invite.test.mjs",
