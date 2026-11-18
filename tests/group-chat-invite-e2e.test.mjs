@@ -85,6 +85,8 @@ test('C1-C5 invite writes group, role library unchanged, candidate disappears', 
     const snapshot = (await read(page, 'ai_custom_characters')).find((r) => r.id === 'c3');
     assert.deepEqual(snapshot, roles.find((r) => r.id === 'c3'));
 
+    await page.locator('#gpProfileSettings > summary').click();
+
     await page.locator('#actionGroupManage').click();
     await page.locator('#gpInviteToggle').click();
     await page.locator('.gp-invite-row').first().waitFor({ state: 'visible' });
@@ -122,6 +124,7 @@ test('C6-C8 chat.html -> chat-detail renders 3 members and request context conta
     await setupGroup(settingsPage, groups, roles);
     await settingsPage.goto(baseUrl + '/chat/chat/chat-settings.html?roleId=g1', { waitUntil: 'load' });
     await settingsPage.waitForFunction(() => document.querySelectorAll('.gp-member-row').length === 2);
+    await settingsPage.locator('#gpProfileSettings > summary').click();
     await settingsPage.locator('#actionGroupManage').click();
     await settingsPage.locator('#gpInviteToggle').click();
     await settingsPage.locator('.gp-invite-row').first().waitFor({ state: 'visible' });
