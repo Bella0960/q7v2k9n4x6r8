@@ -97,3 +97,34 @@ test('long chat requests preserve saved persona and select model-only bounded hi
   assert.match(detail,/validateFinalApiMessages\(/);
   assert.match(policy,/function budgetRecentHistory\(/);
 });
+
+
+test('premature HTTP-200 SSE EOF is NOT a successful short reply; partial text is retained',async()=>{
+  const run=client(async()=>response(200,[sse('partial reply without completion')]));
+  const result=await run({baseUrl:'https://example.invalid/v1',apiKey:'FAKE'});
+  assert.equal(result.ok,false);
+  assert.equal(result.error.kind,'stream');
+  assert.match(result.error.detail,/提前中断/);
+  assert.equal(result.fullText,'partial reply without completion');
+});
+
+test('provider finish_reason stop is a valid completion even without [DONE]',async()=>{
+  const content=sse('complete answer');
+  const finish='data: '+JSON.stringify({choices:[{delta:{},finish_reason:'stop'}]})+'\n\n';
+  const run=client(async()=>response(200,[content,finish]));
+  const result=await run({baseUrl:'https://example.invalid/v1',apiKey:'FAKE'});
+  assert.equal(result.ok,true);
+  assert.equal(result.error,null);
+  assert.equal(result.fullText,'complete answer');
+});
+
+test('finish_reason length and content_filter remain explicit errors even with [DONE]',async()=>{
+  for(const reason of ['length','content_filter']){
+    const finish='data: '+JSON.stringify({choices:[{delta:{},finish_reason:reason}]})+'\n\n';
+    const run=client(async()=>response(200,[sse('partial retained'),finish,'data: [DONE]\n\n']));
+    const result=await run({baseUrl:'https://example.invalid/v1',apiKey:'FAKE'});
+    assert.equal(result.ok,false);
+    assert.equal(result.error.kind,'stream');
+    assert.equal(result.fullText,'partial retained');
+  }
+});
