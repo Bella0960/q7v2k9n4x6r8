@@ -9,6 +9,7 @@
   var topbar = document.querySelector('.cs-topbar');
   if (!stage || !groupSection || !topbar || !document.getElementById('gpMembersList')) return;
   stage.classList.add('group-profile-page');
+  document.body.classList.add('group-profile-view');
   var title = topbar.querySelector('.cs-title');
   if (title) title.textContent = '群聊资料';
 
@@ -218,11 +219,17 @@
     if(!dataUrl){photo.removeAttribute('src');hero.classList.remove('has-photo','tone-dark');reset.hidden=true;return;}
     photo.src=dataUrl;
     hero.classList.add('has-photo');
+    hero.classList.remove('tone-dark');
     reset.hidden=false;
     if(window.MAOMAOWallpaperStore && typeof MAOMAOWallpaperStore.detectTone==='function'){
       MAOMAOWallpaperStore.detectTone(dataUrl).then(function(tone){
         if(generation===coverGeneration) hero.classList.toggle('tone-dark',tone==='dark');
       });
+    }
+  }
+  function reloadSavedCover() {
+    if(window.MAOMAOWallpaperStore && MAOMAOWallpaperStore.getByKey){
+      MAOMAOWallpaperStore.getByKey(coverKey).then(showCover).catch(function(){});
     }
   }
   if(window.MAOMAOWallpaperStore && MAOMAOWallpaperStore.getByKey){
@@ -255,11 +262,11 @@
         canvas.getContext('2d').drawImage(img,(img.width-sw)/2,(img.height-sh)/2,sw,sh,0,0,w,h);
         var data=canvas.toDataURL('image/jpeg',.79);
         imageStore('save',data).then(function(){showCover(data);notify('封面已保存');})
-          .catch(function(){notify('封面保存失败，请检查存储空间');})
+          .catch(function(){reloadSavedCover();notify('封面保存失败，请检查存储空间');})
           .finally(function(){setCoverBusy(false);});
-      }catch(e){setCoverBusy(false);notify('图片处理失败');}
+      }catch(e){setCoverBusy(false);reloadSavedCover();notify('图片处理失败');}
     };
-    img.onerror=function(){URL.revokeObjectURL(src);setCoverBusy(false);notify('图片无法读取');};
+    img.onerror=function(){URL.revokeObjectURL(src);setCoverBusy(false);reloadSavedCover();notify('图片无法读取');};
     img.src=src;
   });
   reset.addEventListener('click',function(){
@@ -267,6 +274,6 @@
     coverTouched=true;
     setCoverBusy(true);
     imageStore('remove').then(function(){showCover('');notify('已恢复默认封面');})
-      .catch(function(){notify('恢复失败，请重试');}).finally(function(){setCoverBusy(false);});
+      .catch(function(){reloadSavedCover();notify('恢复失败，请重试');}).finally(function(){setCoverBusy(false);});
   });
 })();
