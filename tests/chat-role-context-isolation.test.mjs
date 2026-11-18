@@ -114,11 +114,13 @@ test('explicit mount is scoped; empty or malformed mount never leaks local books
   data.chat_worldbooks_b='[]';
   assert.equal(context('b'),'');
   data.chat_worldbooks_b='not-json';
-  assert.equal(context('b'),'');
+  // Invalid mount data now fails the turn closed rather than silently
+  // pretending no lore exists.
+  assert.equal(context('b'),undefined);
 });
 test('main chat identity memory and group name references remain speaker-scoped',()=>{
   assert.match(detail,/const charName = speakingRoleName;/);
-  assert.match(detail,/const roleMemory = capText\(buildWeightedMemoryText\(\s*speakingRoleId,/);
+  assert.match(detail,/const roleMemory = isGroupChat[\s\S]*?buildWeightedMemoryText\(\s*speakingRoleId,/);
   assert.match(detail,/\.replace\(\/\\\{\\\{char\\\}\\\}\/g, speakingRoleName\)/);
   assert.match(detail,/relationshipRole = speakingRole;/);
   assert.doesNotMatch(rpSection,/localStorage\.setItem\(globalRpKey/);
@@ -180,3 +182,39 @@ test('group prompt exposes member names, never copies other members private pers
   assert.match(rosterText,/林策|周遥/);
   assert.doesNotMatch(rosterText,/机密爱好|隐藏经历|私密日记/);
 });
+
+
+test('group prompts exclude unscoped user memory and personal role memory',()=>{
+  const block=section('            let userMemoryText = isGroupChat',
+    '            // 实时状态（记忆空间子系统');
+  assert.match(block,/const um = isGroupChat \? \[\] : JSON\.parse/);
+  assert.match(block,/const roleMemory = isGroupChat/);
+  const code=section('            const roleMemory = isGroupChat',
+    '            // 实时状态（记忆空间子系统');
+  const getMemory=new Function('isGroupChat','speakingRoleId','speakingRole',
+    'buildWeightedMemoryText','capText','CTX_CAP',
+    code+'\nreturn roleMemory;');
+  const get=(_id,stored)=>'私人记忆：'+stored;
+  assert.doesNotMatch(
+    getMemory(true,'a',roles.a,get,capText,{memory:3000}),
+    /承诺去观星/);
+  assert.match(
+    getMemory(false,'a',roles.a,get,capText,{memory:3000}),
+    /承诺去观星/);
+});
+
+test('long saved lore or protocol is rejected before API instead of truncating silently',()=>{
+  const rpSource=section("            let rpProtocol = '';",'            // 世界书：');
+  const ls=storage({chat_rp_protocol_:'X'.repeat(24001)});
+  const prompt=readRP(ls,'a',capText,{rpProtocol:6000});
+  assert.equal(prompt,undefined);
+  const largeLore=storage({phone_worldbooks:JSON.stringify([
+    {id:'global',scope:'global',title:'长世界书',content:'Y'.repeat(32001)}
+  ])});
+  const books=readBooks(largeLore,'a',policy(),false,'',[],
+    {worldbook:8000},capText);
+  assert.equal(books,undefined);
+  assert.match(detail,/systemPrompt = applyProtocolVars\(rpProtocol\);/);
+  assert.doesNotMatch(detail,/systemPrompt = capText\(applyProtocolVars\(rpProtocol\)/);
+});
+
