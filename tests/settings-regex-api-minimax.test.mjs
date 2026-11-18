@@ -179,3 +179,34 @@ test('UI wiring preserves manually triggered speech only and critical syntax',()
         for(const m of scripts) if(m[1].trim())new Script(m[1]);
     }
 });
+
+
+test('MiniMax settings refuses fake save success on localStorage quota failure', () => {
+    const inline = ttsPage.match(/<script>\s*([\s\S]*?)<\/script>/)[1];
+    const els = {};
+    function element(id) {
+        return els[id] ||= {
+            id, value:'', checked:false, type:'password', textContent:'', hidden:false,
+            classList:{add(){},remove(){},toggle(){}},
+            addEventListener(event,fn){this['on'+event]=fn;},
+            querySelectorAll(){return []}
+        };
+    }
+    const localStorage=storage({},'minimax_tts_config');
+    const document={getElementById:element};
+    const window={PhoneMiniMaxTTS:{},addEventListener(){}};
+    new Function('document','localStorage','window','setTimeout','clearTimeout',inline)(
+        document,localStorage,window,()=>0,()=>{}
+    );
+    element('enableToggle').checked=true;
+    element('apiKey').value='mock-secret';
+    element('saveBtn').onclick();
+    assert.match(element('toast').textContent,/保存失败/);
+    assert.equal(localStorage.getItem('minimax_tts_config'),null);
+});
+test('MiniMax speech wiring is manually gated for received voice bubbles', () => {
+    assert.match(chat,/window\.PhoneMiniMaxTTS\.isEnabledForRole\(speakerId\)/);
+    assert.match(chat,/speakAIMessage\(message, voiceId/);
+    assert.match(chat,/if \(e\.target\.closest\('audio'\)\) return;/);
+    assert.match(chat,/if \(isAi && hasText && window\.PhoneMiniMaxTTS/);
+});
