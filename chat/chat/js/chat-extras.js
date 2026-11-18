@@ -1235,6 +1235,12 @@
     document.getElementById('clearNo').onclick = closeModal;
     document.getElementById('clearYes').onclick = async function () {
       var button = this, roleId = extrasRoleId(), writer = atomicChatWriter();
+      // A still-running AI stream could repopulate the conversation after
+      // the clear. Require the current response to finish or stop first.
+      if (typeof aiSending !== 'undefined' && aiSending) {
+        if (typeof showToast === 'function') showToast('角色正在回复，请结束回复后再清空');
+        return;
+      }
       if (button && button.disabled) return;
       if (button) button.disabled = true;
       try {
