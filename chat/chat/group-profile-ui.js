@@ -77,7 +77,7 @@
     '<img class="gp-cover-photo" alt="">' +
     '<div class="gp-cover-emblem" id="gpCoverEmblem" aria-hidden="true"></div>' +
     '<div class="gp-cover-controls">' +
-      '<button type="button" class="gp-cover-control" id="gpCoverChoose">更换封面</button>' +
+      '<button type="button" class="gp-cover-control" id="gpCoverChoose">上传封面</button>' +
       '<button type="button" class="gp-cover-control" id="gpCoverReset" hidden>恢复默认</button>' +
     '</div>' +
     '<div class="gp-cover-title"><div class="gp-cover-name" id="gpCoverName"></div>' +
