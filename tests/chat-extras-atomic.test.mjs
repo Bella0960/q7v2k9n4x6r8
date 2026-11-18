@@ -103,8 +103,9 @@ test('multi-image uses one locked batch; another tab message remains preserved',
     f.render,()=>{},()=>{calledAI++});
   await send([{name:'a.jpg'},{name:'b.jpg'}]);
   const saved=f.read();
-  assert.equal(saved.length,5);
-  assert.deepEqual(saved.slice(0,3).map(m=>m.mid),['old','remote','remote']);
+  assert.equal(saved.length,4);
+  // The synthetic other-tab replay uses one stable mid and must not duplicate.
+  assert.deepEqual(saved.slice(0,2).map(m=>m.mid),['old','remote']);
   assert.equal(saved.filter(m=>m.type==='image').length,2);
   assert.equal(calledAI,1);
   assert.equal(released,0);
