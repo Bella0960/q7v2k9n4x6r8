@@ -1232,21 +1232,40 @@
   }
   function coreClearChat() {
     openModal('清空聊天记录','<div class="x-core-card">此操作会清除此角色当前会话的聊天记录，无法撤销。<div class="x-core-actions"><button class="x-btn x-btn-ghost" id="clearNo">取消</button><button class="x-btn x-btn-primary" id="clearYes">确认清空</button></div></div>');
-    document.getElementById('clearNo').onclick=closeModal;
-    document.getElementById('clearYes').onclick = async function (){
-      closeModal();
-      if(typeof saveMessages!=='function')return;
-      var previousMessages=typeof loadMessages==='function'?(loadMessages()||[]):[];
-      if(!saveMessages([])){
-        if(typeof showToast==='function')showToast('清空失败，聊天记录和图片均已保留');
-        return;
+    document.getElementById('clearNo').onclick = closeModal;
+    document.getElementById('clearYes').onclick = async function () {
+      var button = this, roleId = extrasRoleId(), writer = atomicChatWriter();
+      if (button && button.disabled) return;
+      if (button) button.disabled = true;
+      try {
+        // Do not read a synthetic/welcome/filtered array; compare against the
+        // canonical primary and refuse to clear if another tab appended.
+        var before = extrasPrimaryHistory(roleId);
+        if (!writer || !roleId || !before) {
+          if (typeof showToast === 'function') showToast('聊天记录不可安全清空，原消息已保留');
+          return;
+        }
+        var outcome = await writer.replaceIfUnchanged(roleId, before, []);
+        if (!outcome || !outcome.ok) {
+          if (typeof showToast === 'function') showToast('其他窗口更新了聊天记录，未清空；请刷新后重试');
+          return;
+        }
+        closeModal();
+        if (typeof renderAllMessages === 'function') renderAllMessages();
+        else if (chatMessages) chatMessages.innerHTML = '';
+        // Media refs are cleaned only after the clear is verified persisted.
+        if (typeof window.releaseDeletedChatImageReferences === 'function') {
+          try { await window.releaseDeletedChatImageReferences(before); }
+          catch (error) {
+            if (typeof showToast === 'function') showToast('聊天已清空，图片资源清理稍后再处理');
+          }
+        }
+        if (typeof showToast === 'function') showToast('当前聊天记录已清空');
+      } catch (error) {
+        if (typeof showToast === 'function') showToast('清空操作失败，原聊天记录已保留');
+      } finally {
+        if (button) button.disabled = false;
       }
-      if(typeof window.releaseDeletedChatImageReferences==='function') {
-        window.releaseDeletedChatImageReferences(previousMessages);
-      }
-      if(typeof renderAllMessages==='function')renderAllMessages();
-      else if(chatMessages)chatMessages.innerHTML='';
-      if(typeof showToast==='function')showToast('当前聊天记录已清空');
     };
   }
   function coreCopyLast() {
@@ -1264,7 +1283,34 @@
     else chars.forEach(function(c,i){var name=c.name||c.nickname||('会话 '+(i+1));html+='<button data-forward="'+i+'">'+escapeHtml(name)+'</button>';});
     html+='</div><div class="x-core-actions"><button class="x-btn x-btn-ghost" id="forwardCopy">复制文本</button></div>';
     openModal('转发到其他会话',html);
-    modalBody.querySelectorAll('[data-forward]').forEach(function(b){b.onclick = async function (){var idx=Number(b.dataset.forward), c=chars[idx];var key=c.id||c.characterId||c.name||c.nickname;var targetKey='chatMessages_'+key;try{var target=JSON.parse(localStorage.getItem(targetKey)||'[]');target.push({role:'user',type:'forwarded',text:text,forwarded:true,time:Date.now()});localStorage.setItem(targetKey,JSON.stringify(target));showToast&&showToast('已尝试转发到 '+(c.name||c.nickname||'目标会话'));}catch(e){showToast&&showToast('转发失败，请检查会话存储规则');}closeModal();};});
+    modalBody.querySelectorAll('[data-forward]').forEach(function(b) {
+      b.onclick = async function () {
+        var idx = Number(b.dataset.forward), target = chars[idx];
+        var id = target && (target.id || target.characterId);
+        var writer = atomicChatWriter();
+        if (!id || !writer || !extrasPrimaryHistory(String(id))) {
+          if (typeof showToast === 'function') showToast('目标会话尚不可安全保存，请先打开目标聊天');
+          return;
+        }
+        if (b.disabled) return;
+        b.disabled = true;
+        var message = {
+          role: 'user', type: 'forwarded', text: text,
+          forwarded: true, time: Date.now(), mid: 'forward-' + uid()
+        };
+        try {
+          var result = await writer.appendIf(String(id), message);
+          if (!result || !result.ok) {
+            if (typeof showToast === 'function') showToast('转发失败，目标会话未被覆盖');
+            return;
+          }
+          if (typeof showToast === 'function') showToast('已转发到 ' + (target.name || target.nickname || '目标会话'));
+          closeModal();
+        } catch (error) {
+          if (typeof showToast === 'function') showToast('转发未保存，请检查存储空间');
+        } finally { b.disabled = false; }
+      };
+    });
     var cp=document.getElementById('forwardCopy');if(cp)cp.onclick = async function (){closeModal();if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(function(){showToast&&showToast('已复制，可粘贴发送');});else window.prompt('复制消息文本',text);};
   }
   // 给现有加号面板补充入口；不重复创建已有按钮
