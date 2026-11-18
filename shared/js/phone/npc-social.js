@@ -380,6 +380,19 @@
   NS.getPendingCount = function (roleId) { return countPending(readRequests(roleId)); };
   NS.setSettings = function (patch) {
     var roleId = activeRoleId();
+    // A damaged or unreadable role bucket must never be replaced with defaults.
+    var key = scopedKey(SETTINGS_KEY_PREFIX, roleId);
+    var raw;
+    try { raw = localStorage.getItem(key); }
+    catch (error) { throw new Error('NPC 设置读取失败，已保留原数据。'); }
+    if (raw !== null) {
+      var parsed;
+      try { parsed = JSON.parse(raw); }
+      catch (error) { throw new Error('NPC 设置数据损坏，已保留原数据。'); }
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('NPC 设置数据格式异常，已保留原数据。');
+      }
+    }
     var current = readSettings(roleId);
     if (patch && Object.prototype.hasOwnProperty.call(patch, 'enabled')) current.enabled = patch.enabled === true;
     if (patch && Object.prototype.hasOwnProperty.call(patch, 'intervalHours')) current.intervalHours = Number(patch.intervalHours);
