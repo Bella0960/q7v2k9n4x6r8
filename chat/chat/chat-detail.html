@@ -4157,10 +4157,12 @@
             }
 
             // 群聊：AI 成员回复在气泡上方显示成员名（逐条落库的后续气泡不重复显示）
-            if (isGroupChat && !isSent && !isError && msg.name && !(Number(msg.bubbleIndex) > 0)) {
+            if (isGroupChat && !isSent && !isError && (msg.name || groupSender) && !(Number(msg.bubbleIndex) > 0)) {
                 const nameTag = document.createElement('div');
                 nameTag.className = 'msg-sender';
-                nameTag.textContent = msg.name;
+                // Legacy bubbles may retain an old nickname; memberId identifies the
+                // real speaker so the current group nickname wins without mutating history.
+                nameTag.textContent = groupSender ? groupMemberDisplayName(groupSender) : msg.name;
                 row.classList.add('group-member-row');
                 row.appendChild(nameTag);
             }
