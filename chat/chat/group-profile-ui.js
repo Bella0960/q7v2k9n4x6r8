@@ -205,19 +205,22 @@
       };
     });
   }
+  var coverGeneration=0;
+  var coverTouched=false;
   function showCover(dataUrl) {
+    var generation=++coverGeneration;
     if(!dataUrl){photo.removeAttribute('src');hero.classList.remove('has-photo','tone-dark');reset.hidden=true;return;}
     photo.src=dataUrl;
     hero.classList.add('has-photo');
     reset.hidden=false;
     if(window.MAOMAOWallpaperStore && typeof MAOMAOWallpaperStore.detectTone==='function'){
       MAOMAOWallpaperStore.detectTone(dataUrl).then(function(tone){
-        hero.classList.toggle('tone-dark',tone==='dark');
+        if(generation===coverGeneration) hero.classList.toggle('tone-dark',tone==='dark');
       });
     }
   }
   if(window.MAOMAOWallpaperStore && MAOMAOWallpaperStore.getByKey){
-    MAOMAOWallpaperStore.getByKey(coverKey).then(showCover).catch(function(){});
+    MAOMAOWallpaperStore.getByKey(coverKey).then(function(value){if(!coverTouched)showCover(value);}).catch(function(){});
   }
   function notify(message){
     if(typeof showToast==='function') showToast(message);
@@ -227,6 +230,7 @@
     var file=input.files&&input.files[0];
     input.value='';
     if(!file) return;
+    coverTouched=true;
     if(!/^image\//.test(file.type)||file.size>10*1024*1024){notify('请选择10MB以内的图片');return;}
     var src=URL.createObjectURL(file);
     var img=new Image();
@@ -251,6 +255,7 @@
     img.src=src;
   });
   reset.addEventListener('click',function(){
+    coverTouched=true;
     reset.disabled=true;
     imageStore('remove').then(function(){showCover('');notify('已恢复默认封面');})
       .catch(function(){notify('恢复失败，请重试');}).finally(function(){reset.disabled=false;});
