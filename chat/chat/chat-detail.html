@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="../../shared/css/chat-beauty-runtime.css?v=20261031v1">
     <link rel="stylesheet" href="../call/call-overlay.css?v=20261105v1">
     <script src="../../shared/js/phone/phone_storage.js"></script>
+    <script src="../../shared/js/phone/chat-history-atomic.js?v=20261118v3"></script>
     <script src="../../shared/js/phone/storage/repository.js"></script>
     <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
     <script src="../../shared/js/phone/role-avatar-library.js?v=20261113v1"></script>
@@ -2972,6 +2973,43 @@
             return true;
         }
 
+        // Async chat operations must append under the shared per-conversation lock.
+        // Never silently fall back to rewriting a stale whole-history snapshot.
+        async function appendChatSafely(messages, guard) {
+            if (_chatHistoryUnreadable || storageKey !== 'chat_history_' + currentCharacter.id) {
+                if (typeof showToast === 'function') showToast('会话记录不可安全写入，请刷新后重试');
+                return false;
+            }
+            var atomic = window.ChatHistoryAtomic;
+            if (!atomic || typeof atomic.appendManyIf !== 'function') {
+                if (typeof showToast === 'function') showToast('浏览器暂不支持安全保存聊天，请更新浏览器');
+                return false;
+            }
+            var saved = await atomic.appendManyIf(currentCharacter.id, messages, guard);
+            if (!saved || !saved.ok) {
+                if (typeof showToast === 'function') showToast('消息未能安全保存，请检查存储空间或刷新后重试');
+                return false;
+            }
+            return true;
+        }
+        async function replaceChatSafely(expected, next) {
+            if (_chatHistoryUnreadable || storageKey !== 'chat_history_' + currentCharacter.id ||
+                !window.ChatHistoryAtomic || typeof window.ChatHistoryAtomic.replaceIfUnchanged !== 'function') {
+                if (typeof showToast === 'function') showToast('会话记录不可安全写入，请刷新后重试');
+                return false;
+            }
+            var saved = await window.ChatHistoryAtomic.replaceIfUnchanged(currentCharacter.id, expected, next);
+            if (!saved || !saved.ok) {
+                if (typeof showToast === 'function') showToast(
+                    saved && saved.error && saved.error.code === 'CONFLICT'
+                        ? '其他窗口更新了聊天记录，本次修改已取消，请刷新后重试'
+                        : '聊天记录保存失败，原记录已保留'
+                );
+                return false;
+            }
+            return true;
+        }
+
         function saveMessages(list) {
             if (_chatHistoryUnreadable) {
                 if (typeof showToast === 'function' && _shouldWarnAgain('chat-corrupt')) {
@@ -5340,7 +5378,7 @@
                 ensureMid(blockedMsg);
                 blockedHistory.push(blockedMsg);
                 // P0：用户消息必须真正落库后才生效；写失败就终止，保留输入与引用。
-                if (!saveMessages(blockedHistory)) {
+                if (!await appendChatSafely([blockedMsg])) {
                     if (previousGroupUserSend) lastGroupUserSend = previousGroupUserSend;
                     groupAutoFollowupToken = previousGroupAutoFollowupToken;
                     return;
@@ -5388,7 +5426,7 @@
                     historyList.push(userMsg);
 
                     // 先单独确认用户消息已落库；只有成功后才清空输入与引用。
-                    userSaved = saveMessages(historyList);
+                    userSaved = await appendChatSafely([userMsg]);
                     if (!userSaved) {
                         // P0：用户消息没有真正落库 → 立即终止本次发送。
                         // 不写 system_error、不渲染任何气泡，输入框原文与引用状态保持原样。
@@ -5416,7 +5454,7 @@
                 if (!_isRepeatedSystemError(historyList, errMsg.text)) {
                     historyList.push(errMsg);
                     // 第二次写入同样以读回结果为准；失败则不保留、不渲染无名错误记录。
-                    const errSaved = saveMessages(historyList);
+                    const errSaved = await appendChatSafely([errMsg]);
                     if (!errSaved) historyList.pop();
                     if (_vl) {
                         vlRefresh();
@@ -5464,12 +5502,14 @@
                     if (blockedNow) userMsg.sendFailed = true;
                     historyList.push(userMsg);
                     // P0：用户消息必须真正落库后才继续；写失败立即终止，保留输入与引用。
-                    if (!saveMessages(historyList)) {
+                    if (!await appendChatSafely([userMsg])) {
                         historyList.pop();
                         if (previousGroupUserSend) lastGroupUserSend = previousGroupUserSend;
                         groupAutoFollowupToken = previousGroupAutoFollowupToken;
                         return;
                     }
+                    // Include other tabs' newly persisted messages in the AI context.
+                    historyList = loadMessages();
                     if (isGroupChat && !silent) groupAutoFollowupToken += 1;
                     if (quoteSnapshot && typeof window.clearQuote === 'function') window.clearQuote();
                     if (!silent) {
