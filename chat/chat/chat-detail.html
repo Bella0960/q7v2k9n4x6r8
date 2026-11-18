@@ -6233,7 +6233,7 @@
                 systemPrompt += `\n补充要求: ${customPrompt}`;
             }
             // 说话方式强制约束（每次请求必注入）
-            const replyBubbleMode = isManualContinue ? 'auto' : getActiveReplyBubbleMode();
+            const replyBubbleMode = getActiveReplyBubbleMode();
             const bubbleSplitRule = replyBubbleMode === 'single'
                 ? '本轮只输出一条完整消息，不要用空行分隔多个气泡。'
                 : (replyBubbleMode === 'multi'
@@ -7138,7 +7138,7 @@
                     if (fullText && window.ChatMessagePolicy && typeof window.ChatMessagePolicy.buildReplyMessages === 'function') {
                         var replyTurnTime = Date.now();
                         var replyTurnId = 't' + replyTurnTime + Math.random().toString(36).slice(2, 6);
-                        replyMessages = window.ChatMessagePolicy.buildReplyMessages(fullText, replyBubbleMode, {
+                        replyMessages = window.ChatMessagePolicy.buildReplyMessages(fullText, getActiveReplyBubbleMode(), {
                             turnId: replyTurnId,
                             time: replyTurnTime,
                             voiceMode: presenceMode || 'online',
