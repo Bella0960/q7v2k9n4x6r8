@@ -5,7 +5,8 @@
   --gp-line:#e9e9eb;
   background:#fafafb; color:var(--gp-ink); padding:0 18px 48px;
 }
-.group-profile-page .cs-topbar{align-items:center!important;margin:0 -18px;padding:calc(52px + env(safe-area-inset-top,0px)) 22px 14px;gap:12px}
+.group-profile-view .phone-mockup > .status-bar{display:none!important}
+.group-profile-page .cs-topbar{align-items:center!important;margin:0 -18px;padding:calc(16px + env(safe-area-inset-top,0px)) 22px 14px;gap:12px}
 .group-profile-page .cs-circle-btn{height:40px;width:40px;border:1px solid #ededee;border-radius:50%;background:#fff}
 .group-profile-page .cs-circle-btn svg{width:16px;height:16px}
 .group-profile-page .cs-title{font-size:15px!important;letter-spacing:0!important;font-weight:600!important;color:#545458!important}
