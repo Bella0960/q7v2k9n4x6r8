@@ -207,6 +207,12 @@
   }
   var coverGeneration=0;
   var coverTouched=false;
+  var coverBusy=false;
+  function setCoverBusy(busy) {
+    coverBusy=Boolean(busy);
+    pick.disabled=coverBusy;
+    reset.disabled=coverBusy;
+  }
   function showCover(dataUrl) {
     var generation=++coverGeneration;
     if(!dataUrl){photo.removeAttribute('src');hero.classList.remove('has-photo','tone-dark');reset.hidden=true;return;}
@@ -225,14 +231,17 @@
   function notify(message){
     if(typeof showToast==='function') showToast(message);
   }
-  pick.addEventListener('click',function(){input.click();});
+  pick.addEventListener('click',function(){if(!coverBusy) input.click();});
   input.addEventListener('change',function(){
     var file=input.files&&input.files[0];
     input.value='';
-    if(!file) return;
+    if(!file || coverBusy) return;
+    if(!/^image\/(png|jpeg|webp|gif)$/.test(file.type)||file.size>10*1024*1024){notify('请选择10MB以内的 PNG、JPG、WebP 或 GIF 图片');return;}
     coverTouched=true;
-    if(!/^image\//.test(file.type)||file.size>10*1024*1024){notify('请选择10MB以内的图片');return;}
-    var src=URL.createObjectURL(file);
+    setCoverBusy(true);
+    var src;
+    try { src=URL.createObjectURL(file); }
+    catch(e){setCoverBusy(false);notify('无法读取图片');return;}
     var img=new Image();
     img.onload=function(){
       URL.revokeObjectURL(src);
@@ -245,19 +254,19 @@
         var sh=sourceRatio>target?img.height:img.width/target;
         canvas.getContext('2d').drawImage(img,(img.width-sw)/2,(img.height-sh)/2,sw,sh,0,0,w,h);
         var data=canvas.toDataURL('image/jpeg',.79);
-        pick.disabled=true;
         imageStore('save',data).then(function(){showCover(data);notify('封面已保存');})
           .catch(function(){notify('封面保存失败，请检查存储空间');})
-          .finally(function(){pick.disabled=false;});
-      }catch(e){notify('图片处理失败');}
+          .finally(function(){setCoverBusy(false);});
+      }catch(e){setCoverBusy(false);notify('图片处理失败');}
     };
-    img.onerror=function(){URL.revokeObjectURL(src);notify('图片无法读取');};
+    img.onerror=function(){URL.revokeObjectURL(src);setCoverBusy(false);notify('图片无法读取');};
     img.src=src;
   });
   reset.addEventListener('click',function(){
+    if(coverBusy) return;
     coverTouched=true;
-    reset.disabled=true;
+    setCoverBusy(true);
     imageStore('remove').then(function(){showCover('');notify('已恢复默认封面');})
-      .catch(function(){notify('恢复失败，请重试');}).finally(function(){reset.disabled=false;});
+      .catch(function(){notify('恢复失败，请重试');}).finally(function(){setCoverBusy(false);});
   });
 })();
