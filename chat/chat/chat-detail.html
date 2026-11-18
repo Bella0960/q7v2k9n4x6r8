@@ -7408,7 +7408,8 @@
                     fullText = parsedPay.text;
                     const parsedRoleFamilyCard = extractRoleFamilyCardMarkers(fullText);
                     fullText = parsedRoleFamilyCard.text;
-                    const roleFamilyCardChanged = applyRoleFamilyCardChanges(parsedRoleFamilyCard.changes);
+                    // A machine marker is not an authorized action before verified reply persistence.
+                    var roleFamilyCardChanged = false;
                     const parsedTransferDecision = extractTransferDecisionMarkers(fullText);
                     fullText = parsedTransferDecision.text;
                     // 转账状态会与本轮回复一并保存；若主回复写入失败，状态也回滚。
@@ -7419,8 +7420,7 @@
                     // Group secrets and per-role facts must never be promoted
                     // into global user_memory from an AI machine marker.
                     // Only confirmed public events use GroupMemoryEvents.
-                    if (parsedMem.memories.length && !isGroupChat && streamResult.ok)
-                        saveUserMemories(parsedMem.memories);
+                    // Defer personal memory writes until the visible reply commits.
                     // 剥离心声标记 [心声:内容] 与虚拟图片标记 [图片:描述]
                     const parsedHeart = extractHeartMarkers(fullText);
                     fullText = parsedHeart.text;
@@ -7494,7 +7494,8 @@
                         aiStickerMessages.forEach(function (stickerMessage) { historyList.push(stickerMessage); });
                         aiRoleGalleryMessages.forEach(function (galleryMessage) { historyList.push(galleryMessage); });
                         window.__groupPrivateCardPending = false;
-                        transferDecisionSnapshots = applyTransferDecisionMarkers(historyList, parsedTransferDecision.amounts);
+                        if (streamResult.ok)
+                            transferDecisionSnapshots = applyTransferDecisionMarkers(historyList, parsedTransferDecision.amounts);
                         // The retry marker is resolved only together with a truly
                         // successful, visible AI reply. If this write fails, restore
                         // the in-memory marker; storage still contains the failed user.
@@ -7512,6 +7513,13 @@
                             }
                         }
                         var replySaved = saveMessages(historyList);
+                        // No secondary state change from a failed/partial/unpersisted turn.
+                        if (replySaved && streamResult.ok) {
+                            if (parsedMem.memories.length && !isGroupChat)
+                                saveUserMemories(parsedMem.memories);
+                            if (parsedRoleFamilyCard.changes.length)
+                                roleFamilyCardChanged = applyRoleFamilyCardChanges(parsedRoleFamilyCard.changes);
+                        }
                         if (!replySaved && retryResolved) {
                             retryResolved.message.sendFailed = true;
                             if (retryResolved.reason != null)
@@ -7541,7 +7549,7 @@
                         // the AI reply. Deferred governance/relationships/DMs run
                         // strictly afterwards, not during marker parsing.
                         if (groupTurnEffects) {
-                            var settledGroupTurn = groupTurnEffects.finalize(replySaved);
+                            var settledGroupTurn = groupTurnEffects.finalize(replySaved && streamResult.ok);
                             groupTurnFinalized = true;
                             if (replySaved && !settledGroupTurn.ok && typeof showToast === 'function') {
                                 showToast(isGroupChat
@@ -7720,23 +7728,23 @@
                             renderAllMessages();
                         }
                     }
-                    if (parsedCall.wantCall) {
+                    if (streamResult.ok && replySaved && parsedCall.wantCall) {
                         // 只有聊天卡片持久化成功，才允许触发自动来电跳转。
                         if (insertIncomingCallCard(historyList)) maybeAutoIncomingCall();
                     }
-                    if (parsedPay.items.length) {
+                    if (streamResult.ok && replySaved && parsedPay.items.length) {
                         // AI 侧插入红包/转账卡片并落库，role='assistant' 可被用户点击领取
                         insertPayCards(historyList, parsedPay.items);
                     }
-                    if (parsedRoleFamilyCard.cards.length) {
+                    if (streamResult.ok && replySaved && parsedRoleFamilyCard.cards.length) {
                         insertRoleFamilyCardInvitations(historyList, parsedRoleFamilyCard.cards);
                     } else if (roleFamilyCardChanged) {
                         renderAllMessages();
                     }
-                    if (parsedHeart.hearts.length) {
+                    if (streamResult.ok && replySaved && parsedHeart.hearts.length) {
                         insertHeartCards(historyList, parsedHeart.hearts);
                     }
-                    if (parsedImg.images.length) {
+                    if (streamResult.ok && replySaved && parsedImg.images.length) {
                         insertVImageCards(historyList, parsedImg.images);
                     }
                     if (!streamResult.ok) {
