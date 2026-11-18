@@ -62,8 +62,12 @@ test('rejects a missing, split, or malformed deployment instead of reporting suc
 });
 
 test('direct QA release must compare pre/post versions of BOTH existing Workers', () => {
-  assert.match(source, /const corePrevious = await liveWorkerVersion\(CORE\)/);
-  assert.match(source, /const qaPrevious = await liveWorkerVersion\(QA\)/);
+  assert.match(source, /const \[corePrevious, qaPrevious\] = await Promise\.all\(\[/);
+  assert.match(source, /liveWorkerVersion\(CORE\), liveWorkerVersion\(QA\)/);
+  assert.match(source, /assert\.equal\(qaPrevious\.versionId, qaBaseline\.versionId/);
+  assert.match(source, /assert\.equal\(corePrevious\.versionId, coreBaseline\.versionId/);
+  assert.match(source, /assert\.equal\(qaCurrent\.versionId, qaPrevious\.versionId/);
+  assert.match(source, /assert\.equal\(coreCurrent\.versionId, coreVersion\.versionId/);
   assert.match(source, /assert\.notEqual\(coreVersion\.versionId, corePrevious\.versionId/);
   assert.match(source, /assert\.notEqual\(qaVersion\.versionId, qaPrevious\.versionId/);
   assert.match(source, /assert\.equal\(coreVersion\.source, 'wrangler'/);
@@ -183,7 +187,7 @@ test('accepts Vite fingerprinted stylesheet when the actual linked CSS contains 
 });
 
 
-const uploadGateStart = source.indexOf('function assertReadyForUpload() {');
+const uploadGateStart = source.indexOf('function assertReadyForUpload({ allowPinned = false } = {}) {');
 const uploadGateEnd = source.indexOf('\n\nfunction preflightCheckout()', uploadGateStart);
 assert.ok(uploadGateStart >= 0 && uploadGateEnd > uploadGateStart,
   'release upload source and secret preservation helpers must exist');
@@ -192,11 +196,16 @@ const uploadGateSource = source.slice(uploadGateStart, uploadGateEnd);
 function mountUploadGate({ dirty = false, missing = null } = {}) {
   const requested = [];
   let headChecks = 0;
+  const pinnedModes = [];
   const gate = vm.runInNewContext(
     uploadGateSource + '\n({ assertReadyForUpload, secretNames });',
     {
       assert,
-      assertLatestGitHead() { headChecks++; },
+      assertQaCandidate({ allowPinned = false } = {}) {
+        headChecks++;
+        pinnedModes.push(allowPinned);
+        return { mode: allowPinned ? 'tested-snapshot' : 'current' };
+      },
       run(command, args) {
         requested.push([command, ...args]);
         return dirty ? ' M worker/lib/account-auth.js' : '';
@@ -207,6 +216,7 @@ function mountUploadGate({ dirty = false, missing = null } = {}) {
   return {
     ...gate,
     requested,
+    pinnedModes,
     headCheckCount() { return headChecks; }
   };
 }
@@ -215,7 +225,11 @@ test('release checks a clean checkout and built app files before either upload',
   const gate = mountUploadGate();
   gate.assertReadyForUpload();
   assert.equal(gate.headCheckCount(), 1);
+  assert.deepEqual(gate.pinnedModes, [false]);
   assert.deepEqual(gate.requested, [['git', 'status', '--porcelain']]);
+  gate.assertReadyForUpload({ allowPinned: true });
+  assert.deepEqual(gate.pinnedModes, [false, true],
+    'only QA-only releases may allow tested, fast-forwarded snapshots');
 });
 
 test('release stops if tests change tracked files or if Vite output is missing', () => {
@@ -244,10 +258,10 @@ test('release retains the full core and QA secret sets and critical bindings', (
   assert.match(source, /assert\.deepEqual\(secretNames\(qa\), originalQaSecrets/);
   assert.match(source, /qaBinding\('AI'\)\?\.type, 'ai'/);
   assert.match(source, /qaBinding\('ASSETS'\)\?\.type, 'assets'/);
-  const protectedUploads = [...source.matchAll(/^[ \t]+assertReadyForUpload\(\);\n[ \t]+run\('npx', \['--yes', 'wrangler@4', 'deploy', '--config', '([^']+)'\]\);/gm)]
-    .map(match => match[1]).sort();
-  assert.deepEqual(protectedUploads, ['wrangler.qa-identity-core.jsonc', 'wrangler.qa.jsonc'],
-    'each Worker upload must recheck source and build artifacts');
+  assert.match(source, /assertReadyForUpload\(\);\s*run\('npx', \['--yes', 'wrangler@4', 'deploy', '--config', 'wrangler\.qa-identity-core\.jsonc'\]\)/,
+    'identity-core upload must require the strict latest HEAD');
+  assert.match(source, /assertReadyForUpload\(\{ allowPinned: qaOnly \}\);[\s\S]*?const testedCommit = stampQaBuildReceipt\(\);\s*run\('npx', \['--yes', 'wrangler@4', 'deploy', '--config', 'wrangler\.qa\.jsonc'\]\)/,
+    'web QA upload must recheck source, history, Worker versions and build receipt');
 });
 
 
