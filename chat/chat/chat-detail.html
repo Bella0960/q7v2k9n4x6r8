@@ -5657,26 +5657,35 @@
                 return str.slice(0, max) + '\n…（内容过长，已自动截断）';
             }
 
-            // 组装超级 System Prompt（角色设定 + 用户信息 + 长期记忆 + 回复要求）
-            // 群聊：合并全部成员人设，并随机选定本轮回复成员
+            // Re-read the direct role on every AI turn. The page-open
+            // currentCharacter may be stale after editing a role elsewhere.
+            const latestDirectRole = !isGroupChat && currentCharacter && currentCharacter.id != null
+                ? (getRoleById(currentCharacter.id) || currentCharacter)
+                : currentCharacter;
+            // Assemble this turn's system prompt from the active role.
             let rolePersona;
             let groupReplyPick = null;
             let groupContextPrompt = '';
             if (isGroupChat && currentGroup) {
                 const members = currentGroup.members || [];
                 const availableMembers = getAvailableGroupMembers();
+                // The group roster is public context, not a dump of every
+                // member's private persona. Only the chosen speaker's own
+                // current role profile is injected below.
                 const personaLines = members.map(function (m, i) {
-                    const r = getRoleById(m.id);
-                    const p = (r && (r.persona || r.prompt || '').trim()) || '（尚未填写人设，请依据已发生的对话判断，不要假定统一的性格）';
                     const labels = [];
                     if (m.title) labels.push('头衔：' + m.title);
                     if (m.isAdmin) labels.push('管理员');
                     if (String(currentGroup.ownerId || '__user') === String(m.id)) labels.push('群主');
                     if (m.muted) labels.push('禁言中');
                     else if (!isGroupMemberInActiveHours(m)) labels.push('当前休息中');
-                    return (i + 1) + '. ' + groupMemberDisplayName(m) + '（ID：' + String(m.id) + '）' + (labels.length ? '（' + labels.join('、') + '）' : '') + '：' + p;
+                    return (i + 1) + '. ' + groupMemberDisplayName(m) +
+                        '（ID：' + String(m.id) + '）' +
+                        (labels.length ? '（' + labels.join('、') + '）' : '');
                 });
-                rolePersona = '你是群聊「' + currentGroup.name + '」中的成员之一，成员名单如下：\n' + (personaLines.join('\n') || '暂无成员');
+                rolePersona = '群聊「' + currentGroup.name +
+                    '」的公开成员目录（不是其他成员的完整人设）：\n' +
+                    (personaLines.join('\n') || '暂无成员');
                 if (availableMembers.length) {
                     var previousSpeaker = findGroupSpeakerInHistory(historyList);
                     var selectionText = String(text || '');
@@ -5746,7 +5755,7 @@
                     }
                 }
             } else {
-                rolePersona = (currentCharacter.persona || currentCharacter.prompt || '').trim()
+                rolePersona = (latestDirectRole.persona || latestDirectRole.prompt || '').trim()
                     || '（角色尚未填写人设；仅根据当前对话和已存资料回应，不要擅自补充固定性格、过去经历或客服身份。）';
             }
             // Avoid an API request under a group name when the speaker
@@ -5759,12 +5768,12 @@
             // global RP variables to the actual selected speaker, not the
             // group container/currentCharacter.
             var speakingRole = isGroupChat && groupReplyPick
-                ? (getRoleById(groupReplyPick.id) || groupReplyPick) : currentCharacter;
+                ? (getRoleById(groupReplyPick.id) || groupReplyPick) : latestDirectRole;
             var speakingRoleId = isGroupChat && groupReplyPick
                 ? String(groupReplyPick.id) : String(aliasRoleId || currentCharacter.id);
             var speakingRoleName = isGroupChat && groupReplyPick
                 ? String(groupReplyPick.name || (speakingRole && speakingRole.name) || '群成员')
-                : String(currentCharacter.name || '角色');
+                : String(latestDirectRole.name || '角色');
             var speakingRolePersona = speakingRole
                 ? String(speakingRole.persona || speakingRole.prompt || '').trim() : '';
             if (isGroupChat && groupReplyPick) {
@@ -5845,7 +5854,7 @@
                 return lines.join('\n').slice(0, 4000);
             }
 
-            var relationshipRole = isGroupChat ? speakingRole : currentCharacter;
+            var relationshipRole = speakingRole;
             var characterSocialPrompt = '';
             try { characterSocialPrompt = buildCharacterSocialPrompt(relationshipRole); } catch (socialContextError) {
                 console.warn('[CharacterSocialContext] skipped:', socialContextError);
@@ -5991,8 +6000,8 @@
                     '[回复要求]',
                     '像真人发微信一样回复，用口语化短句，不要写动作描述（如*动作*），不要写旁白，每次回复简短自然，1-5句话即可。'
                 ].join('\n');
-                if (currentCharacter.name) {
-                    systemPrompt = `你的名字是${currentCharacter.name}。\n${systemPrompt}`;
+                if (speakingRoleName) {
+                    systemPrompt = `你的名字是${speakingRoleName}。\n${systemPrompt}`;
                 }
             }
             // 群聊：覆盖本轮发言者身份（无论是否使用协议均生效）
