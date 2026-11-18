@@ -1534,6 +1534,23 @@
         </div>
       </div>
 
+      <!-- Only one compact entry; advanced voice settings stay collapsed. -->
+      <details class="settings-card" id="minimaxPerChatCard" style="margin-top:10px;padding:12px 14px;">
+        <summary style="cursor:pointer;font-size:14px;color:inherit;">角色语音 · MiniMax</summary>
+        <div style="padding:12px 0 2px;font-size:12px;line-height:1.7;color:#888;">
+          仅手动点击角色消息的“语音朗读”时生成真实音频，可能消耗额度。
+        </div>
+        <label for="minimaxRoleVoiceId" style="display:block;font-size:12px;margin:8px 0 6px;">角色 Voice ID</label>
+        <input id="minimaxRoleVoiceId" type="text" autocomplete="off" placeholder="MiniMax 音色 ID"
+          style="width:100%;padding:12px;border:1px solid #e5e5ea;background:transparent;border-radius:10px;font:inherit;font-size:13px;color:inherit;">
+        <label style="display:flex;align-items:center;gap:10px;padding:14px 0;font-size:13px;">
+          <input id="minimaxRoleEnabled" type="checkbox"> 允许此角色的语音朗读
+        </label>
+        <button type="button" id="minimaxRoleSave"
+          style="width:100%;padding:12px;background:#111;color:#fff;border:0;border-radius:10px;font:inherit;font-size:13px;">保存语音设置</button>
+        <p id="minimaxRoleStatus" role="status" style="margin:8px 0 0;font-size:12px;color:#777;"></p>
+      </details>
+
       <!-- 社交媒体分组（上移到前面） -->
       <div class="section-label" style="margin-top:18px;" id="socialLabel">SOCIAL</div>
       <div class="settings-list" style="margin-top:0;" id="socialList">
@@ -1988,6 +2005,49 @@
   // 群聊：隐藏不适用的设置项（双方备注 / 通话设置 / 自动来电 / 社交自动化 / 手动生成动态）
   // 普通单聊不受影响
   var isGroupSetting = roleId && String(roleId).indexOf('g') === 0;
+  // Per-role MiniMax Voice ID: additive settings, no mutation of character
+  // arrays and no implicit API charges. Existing role.voiceId still works.
+  (function initMiniMaxRoleSettings() {
+    var card = document.getElementById('minimaxPerChatCard');
+    if (!card) return;
+    if (isGroupSetting || !roleId) { card.style.display = 'none'; return; }
+    var voice = document.getElementById('minimaxRoleVoiceId');
+    var enabled = document.getElementById('minimaxRoleEnabled');
+    var save = document.getElementById('minimaxRoleSave');
+    var status = document.getElementById('minimaxRoleStatus');
+    var voiceKey = 'minimax_voice_id_' + roleId;
+    var enabledKey = 'minimax_chat_enabled_' + roleId;
+    try {
+      voice.value = localStorage.getItem(voiceKey) ||
+        String(role.minimaxVoiceId || role.voiceId || role.voice_id || '');
+      enabled.checked = localStorage.getItem(enabledKey) === '1';
+    } catch (e) { status.textContent = '本地语音配置暂不可读取'; }
+    save.addEventListener('click', function () {
+      var beforeVoice, beforeEnabled, nextVoice = voice.value.trim();
+      var nextEnabled = enabled.checked ? '1' : '0';
+      try {
+        beforeVoice = localStorage.getItem(voiceKey);
+        beforeEnabled = localStorage.getItem(enabledKey);
+        if (nextVoice) localStorage.setItem(voiceKey, nextVoice);
+        else localStorage.removeItem(voiceKey);
+        if (localStorage.getItem(voiceKey) !== (nextVoice || null))
+          throw Error('Voice ID 未保存');
+        localStorage.setItem(enabledKey, nextEnabled);
+        if (localStorage.getItem(enabledKey) !== nextEnabled)
+          throw Error('语音开关未保存');
+        status.textContent = '角色语音配置已保存';
+      } catch (error) {
+        try {
+          if (beforeVoice == null) localStorage.removeItem(voiceKey);
+          else localStorage.setItem(voiceKey, beforeVoice);
+          if (beforeEnabled == null) localStorage.removeItem(enabledKey);
+          else localStorage.setItem(enabledKey, beforeEnabled);
+        } catch (ignore) {}
+        status.textContent = '保存失败，原有语音配置已保留';
+      }
+    });
+  })();
+
   if (isGroupSetting) {
     var hideIds = ['aliasCard', 'callSettingsCard', 'autoCallCard', 'socialLabel', 'socialList', 'smWarn', 'smGenWrap', 'clearRecordCard'];
     hideIds.forEach(function (id) {
