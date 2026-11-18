@@ -7404,8 +7404,9 @@
 
         // ---------- 单条删除 ----------
         // ---------- 单条删除（按气泡身份，只删目标气泡） ----------
-        function deleteOneMessage(bubbleId) {
+        async function deleteOneMessage(bubbleId) {
             var list = loadMessages();
+            var originalSnapshot = JSON.parse(JSON.stringify(list));
             var resolved = resolveBubbleInPage(bubbleId);
             var keep;
             if (resolved && window.ChatMessagePolicy && typeof window.ChatMessagePolicy.removeBubblesFromHistory === 'function') {
@@ -7420,14 +7421,14 @@
                 if (typeof showToast === 'function') showToast('消息已不存在');
                 return;
             }
-            if (!saveMessages(keep)) {
+            if (!await replaceChatSafely(originalSnapshot, keep)) {
                 if (typeof showToast === 'function') showToast('删除失败，消息和图片均已保留');
                 return;
             }
             var keptMids = new Set(keep.map(function (m) { return String(ensureMid(m)); }));
             var removedMessages = list.filter(function (m) { return !keptMids.has(String(ensureMid(m))); });
             if (removedMessages.length) releaseDeletedChatImageReferences(removedMessages);
-            rerenderFromList(keep);
+            rerenderFromList(loadMessages());
             if (typeof showToast === 'function') showToast('已删除 1 条消息');
         }
 
@@ -7459,7 +7460,7 @@
             setTimeout(function () { try { editInput.focus(); } catch (e) {} }, 60);
         }
 
-        function saveEditedMessage() {
+        async function saveEditedMessage() {
             var bubbleId = editMid;
             var resolved = resolveBubbleInPage(bubbleId);
             if (!resolved) {
@@ -7474,6 +7475,7 @@
             }
             if (newText === String(resolved.text || '').trim()) { closeEditSheet(); return; }
             var list = loadMessages();
+            var originalSnapshot = JSON.parse(JSON.stringify(list));
             var idx = -1;
             for (var i = 0; i < list.length; i++) { if (ensureMid(list[i]) === resolved.mid) { idx = i; break; } }
             if (idx === -1) {
@@ -7492,11 +7494,11 @@
             }
             msg.edited = true;
             msg.editedAt = Date.now();
-            if (!saveMessages(list)) {
+            if (!await replaceChatSafely(originalSnapshot, list)) {
                 if (typeof showToast === 'function') showToast('保存失败，未修改');
                 return;
             }
-            rerenderFromList(list);
+            rerenderFromList(loadMessages());
             closeEditSheet();
             if (typeof showToast === 'function') showToast('已保存');
         }
@@ -7740,10 +7742,11 @@
         });
 
         document.getElementById('selectCancelBtn').addEventListener('click', exitSelection);
-        document.getElementById('selectDeleteBtn').addEventListener('click', function () {
+        document.getElementById('selectDeleteBtn').addEventListener('click', async function () {
             if (!selectedBubbles.size) { exitSelection(); return; }
             var removedCount = selectedBubbles.size;
             var list = loadMessages();
+            var originalSnapshot = JSON.parse(JSON.stringify(list));
             var keep;
             if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.removeBubblesFromHistory === 'function') {
                 keep = window.ChatMessagePolicy.removeBubblesFromHistory(list, Array.from(selectedBubbles));
@@ -7752,13 +7755,13 @@
             }
             var keptMids = new Set(keep.map(function (m) { return String(ensureMid(m)); }));
             var removedMessages = list.filter(function (m) { return !keptMids.has(String(ensureMid(m))); });
-            if (!saveMessages(keep)) {
+            if (!await replaceChatSafely(originalSnapshot, keep)) {
                 if (typeof showToast === 'function') showToast('删除失败，消息和图片均已保留');
                 exitSelection();
                 return;
             }
             if (removedMessages.length) releaseDeletedChatImageReferences(removedMessages);
-            rerenderFromList(keep);
+            rerenderFromList(loadMessages());
             exitSelection();
             if (typeof showToast === 'function') showToast('已删除 ' + removedCount + ' 条消息');
         });
