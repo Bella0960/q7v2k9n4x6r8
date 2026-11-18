@@ -216,3 +216,88 @@ test('no legacy whole-history writes remain in the four priority paths', () => {
   assert.match(extras,/await insertChatMessage/);
   new Script(extras);
 });
+
+
+const walletSection = section('  async function submitPayMessageUnderLock() {',
+  '  // The virtual wallet');
+const walletFactory = new Function('loadMessages','saveMessages','getWorkData',
+  'saveWorkData','payAmountInput','payMessageInput','currentCharacter',
+  'outgoingWalletRecordValid','showToast','atomicChatWriter',
+  'extrasPrimaryHistory','PAY_DEFAULT_MESSAGE','payMode','uid',
+  'persistOutgoingWallet','readOutgoingHistorySnapshot',
+  'outgoingPaymentInHistory','settleOutgoingPayment','closePayDrawer',
+  'renderAllMessages','appendMessageToDOM','chatMessages',
+  'sendSilentInstruction',walletSection+'\nreturn submitPayMessageUnderLock;');
+function virtualWalletFixture(initialBalance=20, fail=false) {
+  const f=fixture({chat_history_role:'[]'},fail);
+  let ledger={balance:initialBalance,history:[]},aiCalls=0,closed=0;
+  const get=()=>JSON.parse(JSON.stringify(ledger));
+  const save=next=>{ledger=JSON.parse(JSON.stringify(next));return true};
+  const persist=(next,id,status)=>{
+    save(next);
+    const payment=ledger.history.find(e=>e.paymentId===id);
+    return !!payment && payment.status===status;
+  };
+  const settle=(id,persisted)=>{
+    const next=get(),item=next.history.find(e=>e.paymentId===id);
+    if(!item)return false;
+    if(item.status!=='pending-chat')return item.status===(persisted?'sent':'reversed');
+    item.status=persisted?'sent':'reversed';
+    if(!persisted)next.balance=Math.round((next.balance+item.amount)*100)/100;
+    return persist(next,id,item.status);
+  };
+  const util=insertFixture(f);
+  const submit=walletFactory(()=>f.read(),()=>{throw Error('legacy writer used');},get,save,
+    {value:'5.00'}, {value:'test message'}, f.role,
+    ()=>true,f.toast,util.atomicChatWriter,util.extrasPrimaryHistory,
+    '恭喜发财','redpacket',f.uid,persist,
+    ()=>f.read(),(messages,id)=>messages.some(m=>m.paymentId===id),settle,
+    ()=>{closed++;},f.render,()=>{},null,()=>{aiCalls++;});
+  return {...f,submit,getLedger:get,get aiCalls(){return aiCalls;},get closes(){return closed;}};
+}
+
+test('wallet payment writes the canonical card once and finalizes pending ledger', async () => {
+  const f=virtualWalletFixture();
+  await f.submit();
+  const wallet=f.getLedger();
+  assert.equal(wallet.balance,15);
+  assert.equal(wallet.history.length,1);
+  assert.equal(wallet.history[0].status,'sent');
+  assert.equal(f.read().length,1);
+  assert.equal(f.read()[0].paymentId,wallet.history[0].paymentId);
+  assert.equal(f.aiCalls,1);
+  assert.equal(f.closes,1);
+});
+
+test('definite wallet card quota failure reverses one pending debit without AI calls', async () => {
+  const f=virtualWalletFixture(20,true);
+  await f.submit();
+  const wallet=f.getLedger();
+  assert.equal(wallet.balance,20);
+  assert.equal(wallet.history.length,1);
+  assert.equal(wallet.history[0].status,'reversed');
+  assert.equal(f.read().length,0);
+  assert.equal(f.aiCalls,0);
+});
+
+test('uncertain wallet append never reverses debit or tells AI that the card was sent', async () => {
+  const f=virtualWalletFixture();
+  f.window.ChatHistoryAtomic.appendIf=async()=>({
+    ok:false,error:{code:'VERIFY_FAILED'},meta:{writeMayHavePersisted:true}
+  });
+  await f.submit();
+  assert.equal(f.getLedger().balance,15);
+  assert.equal(f.getLedger().history[0].status,'pending-chat');
+  assert.equal(f.read().length,0);
+  assert.equal(f.aiCalls,0);
+  assert.match(f.notes.join(' '),/待恢复/);
+});
+
+test('payment preflight rejects an unreadable primary before wallet deduction', async () => {
+  const f=virtualWalletFixture();
+  f.localStorage.setItem('chat_history_role','malformed-json');
+  await f.submit();
+  assert.equal(f.getLedger().balance,20);
+  assert.equal(f.getLedger().history.length,0);
+  assert.equal(f.aiCalls,0);
+});
