@@ -620,6 +620,13 @@
         if (greetingSaved !== true) {
           throw new Error('NPC 已加入通讯录，但首次问候保存失败。请重试接受申请以完成初始化。');
         }
+        // The legacy saveChatHistory can report true when storage ignores a write.
+        // Verify the complete snapshot before marking the request accepted.
+        var persistedHistory;
+        try { persistedHistory = readGreetingHistory(request.npc.id); } catch (error) {}
+        if (!persistedHistory || JSON.stringify(persistedHistory) !== JSON.stringify(nextHistory)) {
+          throw new Error('NPC 首次问候未确认保存成功，申请仍可重试，原聊天记录未清除。');
+        }
       }
     }
 
