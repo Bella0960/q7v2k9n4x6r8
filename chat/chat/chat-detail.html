@@ -27,7 +27,7 @@
     <script src="../../shared/js/phone/phone_stream.js"></script>
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v2"></script>
-    <script src="../../shared/js/phone/chat-context-policy.js?v=20261118groupvoice1"></script>
+    <script src="../../shared/js/phone/chat-context-policy.js?v=20261118groupvoice2"></script>
     <script src="../../shared/js/phone/chat-presence-policy.js?v=20261102v17"></script>
     <script src="../../shared/js/phone/role-public-timeline.js?v=20261102v1"></script>
     <script src="../../shared/js/phone/group-chat-policy.js?v=20261102v5"></script>
@@ -6889,9 +6889,18 @@
                 apiMessages.push.apply(apiMessages, window.ChatContextPolicy.mapHistoryToApiMessages(recentHistory, stripInternalReasoning, {
                     isGroupChat: isGroupChat,
                     groupMode: currentGroup && currentGroup.settings && currentGroup.settings.chatMode === 'offline' ? 'offline' : 'online',
-                    groupMembers: currentGroup && Array.isArray(currentGroup.members) ? currentGroup.members : []
+                    groupMembers: currentGroup && Array.isArray(currentGroup.members) ? currentGroup.members : [],
+                    speakerId: isGroupChat && groupReplyPick ? String(groupReplyPick.id) : '',
+                    speakerName: isGroupChat && groupReplyPick ? String(groupReplyPick.name || '') : ''
                 }));
             } else {
+                // In a group, an unscoped fallback would mark other members' words
+                // as the current speaker's own previous replies. Stop, do not blend voices.
+                if (isGroupChat) {
+                    console.error('[GroupChat] speaker-scoped history mapper unavailable');
+                    if (typeof showToast === 'function') showToast('群聊身份上下文未加载，本轮已停止；请重新打开聊天');
+                    return;
+                }
                 // Compatibility fallback: keep the legacy context mapping intact if the shared module fails to load.
                 recentHistory.forEach(m => {
                     if (m.isError || m.role === 'system_error' || m.sendFailed) return;
@@ -7093,7 +7102,9 @@
                 if (!streamBubble) {
                     const loadingEl = document.getElementById(statusId);
                     if (loadingEl) loadingEl.remove();
-                    var tmpStreamMsg = { role: 'assistant', text: tmpText, name: groupReplyPick ? groupReplyPick.name : undefined };
+                    var tmpStreamMsg = { role: 'assistant', text: tmpText,
+                        name: groupReplyPick ? groupReplyPick.name : undefined,
+                        memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined };
                     // 先用 DocumentFragment 组装，拿到本次临时消息的全部节点（主 row / 旁白 / 额外气泡）。
                     const sfrag = document.createDocumentFragment();
                     appendMessageToDOM(tmpStreamMsg, undefined, sfrag);
