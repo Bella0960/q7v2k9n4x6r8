@@ -5974,7 +5974,14 @@
                     typeof window.ChatContextPolicy.buildWorldbookInjectionText === 'function') {
                   worldbookText = window.ChatContextPolicy.buildWorldbookInjectionText(wbList, {
                     currentText: text,
-                    recentMessages: historyList.slice(-8),
+                    recentMessages: isGroupChat
+                        ? historyList.filter(function (message) {
+                            return message && message.type !== 'group_private' &&
+                                message.type !== 'group_game_private' &&
+                                message.visibility !== 'private' &&
+                                message.visibility !== 'role_only';
+                        }).slice(-8)
+                        : historyList.slice(-8),
                     // Do not silently omit triggered user-authored entries;
                     // validate total size after activation and stop visibly.
                     maxEntries: Math.max(1, wbList.reduce(function(count, book) {
@@ -6452,6 +6459,17 @@
             // 优先读每个角色独立设置 chat_memory_limit_<roleId>（对话设置页写入），
             // 非法/未设置时回退全局 API 配置 memoryCount，再回退默认 20
             const roleMemoryLimitSetting = localStorage.getItem('chat_memory_limit_' + aliasRoleId);
+            // Never feed role-only/game-private group messages into shared
+            // role generation, triggered lore, recall or speech examples.
+            // The saved conversation stays intact; this is model input only.
+            const groupPublicHistory = isGroupChat
+                ? historyList.filter(function (message) {
+                    return message && message.type !== 'group_private' &&
+                        message.type !== 'group_game_private' &&
+                        message.visibility !== 'private' &&
+                        message.visibility !== 'role_only';
+                })
+                : historyList;
             let recentHistory;
             if (
                 window.ChatContextPolicy &&
@@ -6459,14 +6477,14 @@
                 typeof window.ChatContextPolicy.selectRecentHistory === 'function'
             ) {
                 const memoryLimit = window.ChatContextPolicy.resolveMemoryLimit(roleMemoryLimitSetting, config.memoryCount);
-                recentHistory = window.ChatContextPolicy.selectRecentHistory(historyList, memoryLimit);
+                recentHistory = window.ChatContextPolicy.selectRecentHistory(groupPublicHistory, memoryLimit);
             } else {
                 // Compatibility fallback: preserve the page's original limit and slice behavior.
                 let memoryLimit = parseInt(roleMemoryLimitSetting, 10);
                 if ([10, 20, 30, 50].indexOf(memoryLimit) === -1) {
                     memoryLimit = config.memoryCount || 20;
                 }
-                recentHistory = historyList.slice(-memoryLimit);
+                recentHistory = groupPublicHistory.slice(-memoryLimit);
             }
 
             // Decode only images explicitly attached to this send. DataURLs stay transient in memory.
@@ -6507,7 +6525,7 @@
                     typeof window.ChatContextPolicy.buildHistoricalRecallRequest === 'function'
                 ) {
                     const recallRequest = window.ChatContextPolicy.buildHistoricalRecallRequest(
-                        historyList,
+                        groupPublicHistory,
                         text,
                         recentHistory.length
                     );
@@ -6516,8 +6534,8 @@
                 } else {
                     // Compatibility fallback: preserve the original backwards query scan and limits.
                     if (!recallQuery) {
-                        for (let ri = historyList.length - 1; ri >= 0; ri--) {
-                            const entry = historyList[ri];
+                        for (let ri = groupPublicHistory.length - 1; ri >= 0; ri--) {
+                            const entry = groupPublicHistory[ri];
                             if (entry && (entry.role === 'user' || entry.role === 'sent') && (entry.text || entry.content)) {
                                 recallQuery = String(entry.text || entry.content);
                                 break;
@@ -6525,7 +6543,7 @@
                         }
                     }
                 }
-                const recalledText = window.MemoryRecall.buildHistoricalRecallText(historyList, recallQuery, recallOptions);
+                const recalledText = window.MemoryRecall.buildHistoricalRecallText(groupPublicHistory, recallQuery, recallOptions);
                 if (recalledText) apiMessages[0].content += '\n\n' + recalledText;
             }
 
