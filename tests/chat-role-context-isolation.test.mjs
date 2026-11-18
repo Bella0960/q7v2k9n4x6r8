@@ -120,7 +120,7 @@ test('main chat identity memory and group name references remain speaker-scoped'
   assert.match(detail,/const charName = speakingRoleName;/);
   assert.match(detail,/const roleMemory = capText\(buildWeightedMemoryText\(\s*speakingRoleId,/);
   assert.match(detail,/\.replace\(\/\\\{\\\{char\\\}\\\}\/g, speakingRoleName\)/);
-  assert.match(detail,/relationshipRole = isGroupChat \? speakingRole : currentCharacter/);
+  assert.match(detail,/relationshipRole = speakingRole;/);
   assert.doesNotMatch(rpSection,/localStorage\.setItem\(globalRpKey/);
 });
 
