@@ -6,8 +6,10 @@
 (function (global) {
     'use strict';
 
-    function fail(code) {
-        return { ok: false, error: { code: code } };
+    function fail(code, meta) {
+        var result = { ok: false, error: { code: code } };
+        if (meta) result.meta = meta;
+        return result;
     }
 
     function validMessage(message) {
@@ -41,20 +43,43 @@
                 catch (e) { return fail('VALIDATION_FAILED'); }
                 if (!decision || decision.ok !== true) return decision || fail('VALIDATION_FAILED');
 
+                if (!Array.isArray(decision.value)) return fail('VALIDATION_FAILED');
+                var meta = { contactId: id, total: decision.value.length };
+                if (decision.alreadyPersisted) meta.alreadyPersisted = true;
+                // Replays with an already-persisted mid must not rewrite the
+                // entire history, which would also risk clobbering metadata.
+                if (decision.alreadyPersisted && decision.value === latest) {
+                    return { ok: true, value: decision.output, meta: meta };
+                }
                 var updated;
                 try { updated = JSON.stringify(decision.value); }
                 catch (e) { return fail('VALIDATION_FAILED'); }
                 if (typeof updated !== 'string') return fail('VALIDATION_FAILED');
+
+                // A browser adapter can commit setItem then throw, or reject a
+                // post-write read. Never tell a caller to roll back media refs
+                // unless we know the write did not persist.
+                var writeAttempted = false;
                 try {
+                    writeAttempted = true;
                     global.localStorage.setItem(key, updated);
-                    if (global.localStorage.getItem(key) !== updated) return fail('VERIFY_FAILED');
+                    if (global.localStorage.getItem(key) !== updated) {
+                        return fail('VERIFY_FAILED', { writeMayHavePersisted: true });
+                    }
                 } catch (e) {
-                    return fail(e && (e.name === 'QuotaExceededError' ||
-                        e.name === 'NS_ERROR_DOM_QUOTA_REACHED') ? 'QUOTA_EXCEEDED' : 'DB_UNAVAILABLE');
+                    var failure = e && (e.name === 'QuotaExceededError' ||
+                        e.name === 'NS_ERROR_DOM_QUOTA_REACHED') ? 'QUOTA_EXCEEDED' : 'DB_UNAVAILABLE';
+                    try {
+                        var found = global.localStorage.getItem(key);
+                        if (found === updated) {
+                            meta.verifiedAfterWriteError = true;
+                            return { ok: true, value: decision.output, meta: meta };
+                        }
+                        if (found === raw) return fail(failure);
+                    } catch (probeError) {}
+                    return fail(failure, writeAttempted ? { writeMayHavePersisted: true } : null);
                 }
-                return { ok: true, value: decision.output, meta: {
-                    contactId: id, total: decision.value.length
-                } };
+                return { ok: true, value: decision.output, meta: meta };
             });
         } catch (e) {
             return fail('LOCK_FAILED');
@@ -63,8 +88,11 @@
 
     function guardAllows(guard, latest) {
         if (!guard) return true;
-        try { return guard(latest) === true; }
-        catch (e) { return null; }
+        try {
+            // Guards are observers, never storage mutators. Give callbacks a
+            // separate snapshot so a badly behaved guard cannot alter data.
+            return guard(JSON.parse(JSON.stringify(latest))) === true;
+        } catch (e) { return null; }
     }
 
     var ChatHistoryAtomic = {
@@ -79,9 +107,37 @@
                 var allowed = guardAllows(guard, latest);
                 if (allowed === null) return fail('GUARD_FAILED');
                 if (!allowed) return fail('STALE_CONTEXT');
-                return { ok: true, value: latest.concat(messages), output: {
-                    appended: messages.length
-                } };
+
+                var pending = [];
+                var seen = Object.create(null);
+                for (var i = 0; i < messages.length; i++) {
+                    var item = messages[i];
+                    if (item.mid == null || String(item.mid) === '') {
+                        pending.push(item);
+                        continue;
+                    }
+                    var mid = String(item.mid);
+                    if (Object.prototype.hasOwnProperty.call(seen, mid)) return fail('CONFLICT');
+                    seen[mid] = true;
+                    var existing = null;
+                    for (var j = 0; j < latest.length; j++) {
+                        if (latest[j] && latest[j].mid != null && String(latest[j].mid) === mid) {
+                            existing = latest[j];
+                            break;
+                        }
+                    }
+                    if (existing) {
+                        if (JSON.stringify(existing) !== JSON.stringify(item)) return fail('CONFLICT');
+                    } else {
+                        pending.push(item);
+                    }
+                }
+                var skipped = messages.length - pending.length;
+                return {
+                    ok: true, value: pending.length ? latest.concat(pending) : latest,
+                    alreadyPersisted: pending.length === 0,
+                    output: { appended: pending.length, skipped: skipped }
+                };
             });
         },
 
