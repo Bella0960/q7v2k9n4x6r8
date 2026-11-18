@@ -126,6 +126,27 @@ test('private settings remain the original page, with no group cover UI', async 
   } finally {await ctx.close();}
 });
 
+test('imported group data is escaped without changing stored role names or IDs', async () => {
+  const ctx = await browser.newContext({viewport:{width:390,height:844}});
+  const page = await ctx.newPage();
+  try {
+    const source = group('g1','夜航');
+    source.avatar='https://example.org/cover.png" data-injected="true';
+    source.members[0].id='c1" data-injected="true';
+    source.members[0].name='<strong data-injected="true">晨</strong>';
+    source.members[0].avatar='https://example.org/member.png" data-injected="true';
+    await setup(page,{phone_groups:[source],ai_custom_characters:[person('c3','云')]});
+    await page.goto(origin+'/chat/chat/chat-settings.html?roleId=g1');
+    await page.locator('#gpProfileSettings > summary').click();
+    await page.locator('#actionGroupManage').click();
+    const name = await page.locator('.gp-member-name').first().innerText();
+    assert.equal(name,source.members[0].name,'imported names remain visible as literal text');
+    assert.equal(await page.locator('[data-injected]').count(),0,'imported attributes are never parsed as markup');
+    assert.equal(await page.locator('#gpMembersList .gp-member-row').first().getAttribute('data-mid'),source.members[0].id);
+    assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('phone_groups'))[0]),source,'display-only security patch must not rewrite group data');
+  } finally {await ctx.close();}
+});
+
 test('broken member portraits and group avatar display names rather than broken-image icons', async () => {
   const ctx=await browser.newContext({viewport:{width:390,height:844}});
   const page=await ctx.newPage();
