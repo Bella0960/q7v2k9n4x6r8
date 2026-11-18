@@ -1051,12 +1051,16 @@ test('unexpected stream rejection is converted to the normal error path and keep
 });
 
 
-test('context size controls and local historical recall remain bounded', () => {
+test('context budgets remain bounded without silently truncating the saved global RP protocol', () => {
   assert.match(detail, /persona: 5000/);
   assert.match(detail, /memory: 3000/);
   assert.match(detail, /userMemory: 2000/);
   assert.match(detail, /worldbook: 8000/);
-  assert.match(detail, /rpComposed: 16000/);
+  // Per-character memory and activated lore still have budgets. The user's own
+  // saved global protocol must not lose rules after {{persona}}/{{worldbook}} expansion.
+  assert.match(detail, /systemPrompt = applyProtocolVars\(rpProtocol\);/);
+  assert.doesNotMatch(detail, /capText\(applyProtocolVars\(rpProtocol\)/);
+  assert.doesNotMatch(detail, /rpComposed: 16000/);
   assert.match(detail, /recentHistory = roleModelHistory\.slice\(-memoryLimit\)/);
   assert.match(detail, /buildHistoricalRecallText\(recallableHistory, recallQuery/);
   assert.match(detail, /maxItems: 2/);
