@@ -107,3 +107,30 @@ test('journey page loads the shared helper before its inline script', () => {
     assert.match(pageSource, /async function appendJourneyMessage\(stageIndex\)/);
     assert.doesNotMatch(journeyWriterSource, /saveHistory\(/);
 });
+
+
+test('lock granted after a new journey starts cannot append obsolete stage', async () => {
+    let release;
+    const delayedLock = {
+        request(_key, _options, work) {
+            return new Promise(resolve => {
+                release = () => resolve(work());
+            });
+        }
+    };
+    const f = makeFixture('[]', delayedLock);
+    const pending = f.appendJourneyMessage(0);
+    f.state.startedAt = 99999;
+    release();
+    assert.equal(await pending, false);
+    assert.equal(f.localStorage.dump('chat_history_test-role'), '[]');
+});
+
+test('rejected lock requests do not become unhandled promise failures', async () => {
+    const f = makeFixture('[]', {
+        request() { throw new Error('browser lock failed'); }
+    });
+    assert.equal(await f.appendJourneyMessage(2), false);
+    assert.equal(f.localStorage.dump('chat_history_test-role'), '[]');
+    assert.equal(f.warnings(), 1);
+});
