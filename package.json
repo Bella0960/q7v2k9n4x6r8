@@ -13,6 +13,7 @@
     "test:chat:reply": "node --test tests/chat-reply-bubble-mode.test.mjs",
     "test:chat:isolation": "node --test tests/chat-data-isolation.test.mjs",
     "test:chat:history": "node --test tests/chat-history-corruption-guard.test.mjs",
+    "test:chat:atomic": "node --test tests/chat-primary-atomic-wire.test.mjs tests/chat-group-private-atomic.test.mjs tests/chat-image-retry-atomic.test.mjs tests/chat-group-interactions-atomic.test.mjs tests/chat-atomic-card-and-render.test.mjs",
     "test:chat:storage": "node --test tests/chat-phone-storage-primary-guard.test.mjs",
     "test:chat:storage:browser": "node tests/chat-phone-storage-browser.mjs",
     "test:chat:history:browser": "node tests/chat-history-corruption-browser.mjs",
