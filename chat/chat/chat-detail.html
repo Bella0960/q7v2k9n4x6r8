@@ -17,7 +17,7 @@
     <script src="../../shared/js/phone/role-sticker-library.js?v=20261107v2"></script>
     <script src="../../shared/js/phone/chat-image-vision.js?v=20261113v1"></script>
     <script src="../../shared/js/phone/rp-default-protocol.js?v=20261118v1"></script>
-    <script src="../../shared/js/phone/chat-role-context.js?v=20261118v3"></script>
+    <script src="../../shared/js/phone/chat-role-context.js?v=20261118v4"></script>
     <script src="../../shared/js/phone/phone_api.js?v=20261115cancel1"></script>
     <script src="../../shared/js/phone/image-generation.js?v=20261106v1"></script>
     <script src="../../shared/js/phone/role-gallery-image-autonomy.js?v=20261111v2"></script>
@@ -6689,6 +6689,32 @@
             // 构造 OpenAI 兼容格式 messages 数组 (system + 历史记录)
             if (isManualContinue) {
                 systemPrompt += '\n\n【自然继续对话】这次由角色主动接话，不要复述欢迎词或系统说明。依据真实人设、最近谈话、已知经历和当前场景自然延续；可以只说一条，也可以按性格连续说两条简短消息，不要刻意凑数量。群聊只替本轮选中的角色发言，不要代替其他群成员说话。';
+            }
+            // Mandatory preflight for every single/group/continue/regenerate AI turn.
+            // Never silently fall back to a generic chatbot when user-authored sources
+            // are unreadable, stale, or missing from the final system request.
+            const sourceContract = window.MAOMAOChatRoleContext;
+            const savedSpeaker = isGroupChat
+                ? (groupReplyPick && getRoleById(groupReplyPick.id))
+                : (roleForTurn && getRoleById(roleForTurn.id));
+            const personaAudit = sourceContract && typeof sourceContract.validatePersonaRequest === 'function'
+                ? sourceContract.validatePersonaRequest({
+                    role: savedSpeaker,
+                    persona: turnSpeakerPersona,
+                    protocol: rpProtocol,
+                    expandedProtocol: applyProtocolVars(rpProtocol),
+                    worldbook: worldbookText,
+                    worldbookPolicyReady: !!(window.ChatContextPolicy &&
+                        typeof window.ChatContextPolicy.buildWorldbookInjectionText === 'function'),
+                    systemPrompt: systemPrompt
+                })
+                : { ok: false, missing: ['validator'] };
+            if (!personaAudit.ok) {
+                console.error('[ChatPersonaSources] mandatory source check failed:', personaAudit.missing);
+                if (typeof showToast === 'function') {
+                    showToast('角色人设、世界书或设置协议未完整载入，本轮已停止。请检查对应资料');
+                }
+                return;
             }
             const apiMessages = [
                 { role: 'system', content: systemPrompt }
