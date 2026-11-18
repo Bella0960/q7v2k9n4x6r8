@@ -15,7 +15,7 @@ const BASE = 'http://127.0.0.1:' + PORT + '/music/music.html';
 const widths = [375, 390, 430];
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jxGkAAAAASUVORK5CYII=', 'base64');
 function makeWav() {
-  const sampleRate = 8000, frames = 8000;
+  const sampleRate = 8000, frames = 8000 * 8;
   const buf = Buffer.alloc(44 + frames * 2);
   buf.write('RIFF', 0); buf.writeUInt32LE(buf.length - 8, 4); buf.write('WAVE', 8);
   buf.write('fmt ', 12); buf.writeUInt32LE(16, 16); buf.writeUInt16LE(1, 20);
@@ -97,6 +97,9 @@ try {
       }, trackId);
       assert.ok(audioInfo.size >= 44, 'actual WAV binary persisted');
       await page.evaluate(id => playTrack(id), trackId);
+      await page.evaluate(() => { window.audio.currentTime = 3; saveState(); });
+      assert.ok(await page.evaluate(() => JSON.parse(localStorage.getItem('music_state')).time >= 2.9),
+        'local WAV checkpoint must save before reloading');
       await page.waitForFunction(id => {
         try { return JSON.parse(localStorage.getItem('music_state') || 'null')?.id === id; }
         catch { return false; }
@@ -109,6 +112,12 @@ try {
         null, { timeout: 10000 });
       assert.ok(await page.evaluate(() => window.audio && window.audio.src.startsWith('blob:')),
         'resume must recreate local Blob URL after refresh');
+      await page.waitForFunction(() =>
+        Number.isFinite(window.audio.currentTime) &&
+        window.audio.currentTime >= 2.75 && window.audio.currentTime < 6.75,
+        null, {timeout:10000});
+      assert.ok(await page.evaluate(() => window.audio.currentTime >= 2.75),
+        'local WAV must seek to the saved position instead of restarting');
       await page.waitForFunction(id => document.getElementById('npTitle')?.textContent === 'QA 轻声', trackId);
       await page.locator('#coverUpload').setInputFiles({ name:'cover.png', mimeType:'image/png', buffer:png });
       await page.waitForFunction(id => {
@@ -265,6 +274,35 @@ try {
       assert.equal(await page.evaluate(async id => (await getAudioBlob(id))?.size > 44,
         secondTrackId), true, 'restored local song retains original IndexedDB audio');
       await page.screenshot({ path: join(shots, 'local-manager-' + width + '.png') });
+      // Android document pickers can supply numeric names and generic MIME.
+      await page.locator('#musicImport').setInputFiles({
+        name:'318924510', mimeType:'application/octet-stream', buffer:makeWav()
+      });
+      await page.waitForFunction(() => {
+        try { return JSON.parse(localStorage.getItem('music_local_tracks') || '[]')
+          .some(track => track.name === '318924510'); }
+        catch { return false; }
+      }, null, {timeout:10000});
+      const numericId = await page.evaluate(() =>
+        JSON.parse(localStorage.getItem('music_local_tracks'))
+          .find(track => track.name === '318924510').id);
+      const numericRecord = await page.evaluate(id => new Promise((resolve,reject) => {
+        const open=indexedDB.open('maomao-media-store',2);
+        open.onerror=()=>reject(open.error);
+        open.onsuccess=()=>{
+          const db=open.result, req=db.transaction('audio','readonly')
+            .objectStore('audio').get(id);
+          req.onsuccess=()=>{
+            const value=req.result;
+            resolve({type:value?.blob?.type,mimeType:value?.mimeType,size:value?.blob?.size});
+            db.close();
+          };
+          req.onerror=()=>{db.close();reject(req.error);};
+        };
+      }),numericId);
+      assert.equal(numericRecord.type,'audio/wav');
+      assert.equal(numericRecord.mimeType,'audio/wav');
+      assert.ok(numericRecord.size>44);
       assert.deepEqual(pageErrors, [], 'no uncaught JS errors at ' + width);
       console.log('PASS Chromium ' + width + 'px: viewport, import Blob, reload, playback, cover, LRC, playlist');
     } finally {
