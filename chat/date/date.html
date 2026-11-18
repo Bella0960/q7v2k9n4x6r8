@@ -2824,16 +2824,35 @@ body {
     /* ---------- 存取：与线上聊天共用 chat_history_<id> ---------- */
     var HISTORY_KEY = 'chat_history_' + roleId;
     var _storage = window.PhoneStorage;
+    var _dateHistoryRaw = null;
+    var _dateHistoryUnreadable = false;
     function loadHistory() {
-        if (_storage) {
-            var arr = _storage.getChatHistory(roleId);
-            if (arr && arr.length) return arr;
-        }
+        // Check the authoritative per-role primary before any legacy fallback.
+        // A malformed record must never be mistaken for an empty conversation.
         try {
             var raw = localStorage.getItem(HISTORY_KEY);
-            var parsed = raw ? JSON.parse(raw) : [];
-            if (Array.isArray(parsed) && parsed.length) return parsed;
-        } catch (e) {}
+            if (raw !== null) {
+                var primary = JSON.parse(raw);
+                if (!Array.isArray(primary)) throw new Error('chat history must be an array');
+                _dateHistoryRaw = raw;
+                _dateHistoryUnreadable = false;
+                return primary;
+            }
+            _dateHistoryRaw = null;
+        } catch (error) {
+            _dateHistoryUnreadable = true;
+            console.warn('[Date] malformed/unavailable primary chat history; writes suspended', error);
+            return [];
+        }
+        if (_storage && typeof _storage.getChatHistory === 'function') {
+            try {
+                var legacy = _storage.getChatHistory(roleId);
+                if (Array.isArray(legacy) && legacy.length) return legacy;
+            } catch (error) {
+                _dateHistoryUnreadable = true;
+                return [];
+            }
+        }
         return [];
     }
     // 写入后只核对数组长度和本次变更位置，避免为包含大图片的整份历史重复序列化。
@@ -2841,6 +2860,16 @@ body {
     function saveHistory(list, rollback, verifyIndex) {
         try {
             if (!Array.isArray(list)) throw new Error('聊天记录格式无效');
+            if (_dateHistoryUnreadable || HISTORY_KEY !== 'chat_history_' + roleId) {
+                throw new Error('原始聊天记录不可读或角色标识发生变化');
+            }
+            var latestRaw = localStorage.getItem(HISTORY_KEY);
+            if (latestRaw !== null && !Array.isArray(JSON.parse(latestRaw))) {
+                throw new Error('原始聊天记录已损坏，禁止覆盖');
+            }
+            if (latestRaw !== _dateHistoryRaw) {
+                throw new Error('其他窗口更新了聊天记录，禁止使用旧副本覆盖');
+            }
             var wrote = false;
             var verified;
             if (_storage && typeof _storage.saveChatHistory === 'function') {
@@ -2867,6 +2896,7 @@ body {
                     throw new Error('聊天记录写入后校验失败');
                 }
             }
+            _dateHistoryRaw = localStorage.getItem(HISTORY_KEY);
             return true;
         } catch (error) {
             if (Array.isArray(rollback) && Array.isArray(list)) {
