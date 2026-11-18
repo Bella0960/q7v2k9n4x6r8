@@ -18,8 +18,10 @@ const composeSpeaker=new Function('isGroupChat','groupReplyPick','getRoleById',
   chooseRoleSection +
   '\nreturn {speakingRole,speakingRoleId,speakingRoleName,speakingRolePersona,rolePersona};');
 const rpSection=section("            let rpProtocol = '';",'            // 世界书：');
-const readRP=new Function('localStorage','speakingRoleId','capText','CTX_CAP',
+const buildRPReader=new Function('localStorage','speakingRoleId','capText','CTX_CAP','window',
   rpSection+'\nreturn rpProtocol;');
+const readRP=(localStorage, speakingRoleId, capText, ctxCap, window = {}) =>
+  buildRPReader(localStorage,speakingRoleId,capText,ctxCap,window);
 const worldbookSection=section("            let worldbookText = '';",'            // 协议变量替换：');
 const readBooks=new Function('localStorage','aliasRoleId','window','isGroupChat',
   'text','historyList','CTX_CAP','capText',worldbookSection+'\nreturn worldbookText;');
@@ -87,6 +89,15 @@ test('a role legacy protocol cannot be silently promoted to all characters',()=>
   data.chat_rp_protocol_='saved GLOBAL protocol';
   assert.equal(readRP(ls,'b',capText,{rpProtocol:6000}),'saved GLOBAL protocol');
 });
+test('saved RP protocol wins; the shared default is used only when none was saved',()=>{
+  const defaults={MAOMAO_RP_DEFAULT_PROTOCOL:'【默认协议】根据角色人设自然回复'};
+  const ls=storage({});
+  assert.equal(readRP(ls,'a',capText,{rpProtocol:6000},defaults),defaults.MAOMAO_RP_DEFAULT_PROTOCOL);
+  ls.setItem('chat_rp_protocol_','【用户自定义协议】照角色档案说话');
+  assert.equal(readRP(ls,'a',capText,{rpProtocol:6000},defaults),'【用户自定义协议】照角色档案说话');
+  assert.equal(ls.getItem('chat_rp_protocol_'),'【用户自定义协议】照角色档案说话');
+});
+
 test('without explicit mounts local worldbooks are excluded from any conversation',()=>{
   const data={phone_worldbooks:JSON.stringify([
     {id:'global',scope:'global',title:'共同世界',content:'一起生活在未来城'},
