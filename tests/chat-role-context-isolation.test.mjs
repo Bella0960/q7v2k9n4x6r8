@@ -122,3 +122,31 @@ test('main chat identity memory and group name references remain speaker-scoped'
   assert.match(detail,/relationshipRole = isGroupChat \? speakingRole : currentCharacter/);
   assert.doesNotMatch(rpSection,/localStorage\.setItem\(globalRpKey/);
 });
+
+
+test('missing group speaker stops before constructing a group identity prompt',()=>{
+  const block=section('            // Avoid an API request under a group name',
+    '            // 当前主角色专属的人物关系与生活线');
+  assert.match(block,/if \(isGroupChat && !groupReplyPick\)/);
+  assert.match(block,/return;/);
+  assert.match(block,/getRoleById\(groupReplyPick\.id\) \|\| groupReplyPick/);
+});
+
+test('built-in calling and virtual gifts honor persona rather than mandating actions',()=>{
+  const builtins=section('            // Built-in affordances must not replace a role',
+    '            // 心声：');
+  assert.match(builtins,/\[发起语音通话\]/);
+  assert.match(builtins,/\[红包:金额:留言\]/);
+  assert.match(builtins,/\[转账:金额:留言\]/);
+  assert.match(builtins,/角色可以按人设/);
+  assert.doesNotMatch(builtins,/具备真实拨号能力的 AI 助理|你必须答应|禁止推脱/);
+  assert.doesNotMatch(builtins,/测试转账.{0,30}必须/);
+});
+
+test('family-card built-in prompt is limited to one-to-one conversations',()=>{
+  const block=section('            if (!isGroupChat) {\n            // 单聊中的亲属卡',
+    '            // 只向一对一角色聊天提供该角色自己的图库目录');
+  assert.match(block,/亲属卡 \/ 亲密付规则/);
+  assert.match(block,/\n            \}/);
+});
+
