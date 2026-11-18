@@ -3297,7 +3297,7 @@
                 time: Date.now()
             };
             ensureMid(pending);
-            var withPending = prior.slice();
+            var withPending = _inheritChatBaseline(prior.slice(), prior);
             withPending.push(pending);
             if (!saveMessages(withPending)) {
                 if (typeof showToast === 'function') showToast('聊天记录无法保存，暂未开始生图');
@@ -4414,7 +4414,7 @@
                 const t = String((m && (m.text || m.content)) || '');
                 return !(t.indexOf('定位失败') !== -1 || t.indexOf('Timeout expired') !== -1);
             });
-            if (cleaned.length !== list.length) saveMessages(cleaned);
+            if (cleaned.length !== list.length) saveMessages(_inheritChatBaseline(cleaned, list));
             return cleaned.filter(m => {
                 if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.isHiddenFromOnlineTimeline === 'function') {
                     return !window.ChatMessagePolicy.isHiddenFromOnlineTimeline(m);
@@ -8207,7 +8207,7 @@
                 if (typeof showToast === 'function') showToast('消息已不存在');
                 return;
             }
-            if (!saveMessages(keep)) {
+            if (!saveMessages(_inheritChatBaseline(keep, list))) {
                 if (typeof showToast === 'function') showToast('删除失败，消息和图片均已保留');
                 return;
             }
@@ -8539,7 +8539,7 @@
             }
             var keptMids = new Set(keep.map(function (m) { return String(ensureMid(m)); }));
             var removedMessages = list.filter(function (m) { return !keptMids.has(String(ensureMid(m))); });
-            if (!saveMessages(keep)) {
+            if (!saveMessages(_inheritChatBaseline(keep, list))) {
                 if (typeof showToast === 'function') showToast('删除失败，消息和图片均已保留');
                 exitSelection();
                 return;
