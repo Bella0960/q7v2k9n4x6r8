@@ -8132,7 +8132,7 @@
         }
 
         // 红包/转账卡片点击：拆红包 / 收款（防重复领取，金额强转数字防字符串拼接）
-        function handlePayCardClick(event) {
+        async function handlePayCardClick(event) {
             const cardEl = event && event.currentTarget;
             if (!cardEl) return;
             const mid = cardEl.getAttribute('data-mid') || '';
@@ -8140,6 +8140,7 @@
 
             // 必须按稳定 mid 查全量历史，不能把过滤了 silent/date 的显示序号当数组下标。
             const list = loadMessages();
+            const paymentBaseline = JSON.parse(JSON.stringify(list));
             let index = mid ? list.findIndex(function (item) { return item && ensureMid(item) === mid; }) : -1;
             if (index < 0 && indexStr !== '' && indexStr != null) {
                 const legacyIndex = parseInt(indexStr, 10);
@@ -8200,7 +8201,7 @@
             if (wd.history.some(function (entry) { return entry && String(entry.paymentId || '') === String(paymentId); })) {
                 var duplicatePreviousStatus = msg.status;
                 msg.status = isRed ? 'opened' : 'received';
-                var duplicateStatusSaved = saveMessages(list);
+                var duplicateStatusSaved = await replaceChatSafely(paymentBaseline, list);
                 if (!duplicateStatusSaved) msg.status = duplicatePreviousStatus;
                 renderAllMessages();
                 showToast(duplicateStatusSaved
@@ -8240,7 +8241,7 @@
                 }
             }
             msg.status = isRed ? 'opened' : 'received';
-            var chatStatusSaved = saveMessages(list);
+            var chatStatusSaved = await replaceChatSafely(paymentBaseline, list);
             if (!chatStatusSaved) {
                 statusSnapshots.forEach(function (snapshot) {
                     if (snapshot.status == null) delete snapshot.message.status;
