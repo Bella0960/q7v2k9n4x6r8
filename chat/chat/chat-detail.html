@@ -5816,18 +5816,24 @@
             if (isGroupChat && currentGroup) {
                 const members = currentGroup.members || [];
                 const availableMembers = getAvailableGroupMembers();
+                // Only public group identities belong in the shared roster.
+                // Do not flood this member's request with all other roles' private
+                // persona text: it blurs voices and exposes facts they may not know.
+                // The chosen speaker's COMPLETE latest persona is anchored below.
                 const personaLines = members.map(function (m, i) {
-                    const r = getRoleById(m.id);
-                    const p = (r && (r.persona || r.prompt || '').trim()) || '角色资料尚未填写；只按照此人已有的行为与谈话习惯发言，不编造固定性格或经历';
                     const labels = [];
                     if (m.title) labels.push('头衔：' + m.title);
                     if (m.isAdmin) labels.push('管理员');
                     if (String(currentGroup.ownerId || '__user') === String(m.id)) labels.push('群主');
                     if (window.GroupGovernance ? window.GroupGovernance.isMuted(m) : m.muted) labels.push('禁言中');
                     else if (!isGroupMemberInActiveHours(m)) labels.push('当前休息中');
-                    return (i + 1) + '. ' + groupMemberDisplayName(m) + '（ID：' + String(m.id) + '）' + (labels.length ? '（' + labels.join('、') + '）' : '') + '：' + p;
+                    return (i + 1) + '. ' + groupMemberDisplayName(m) +
+                        '（ID：' + String(m.id) + '）' +
+                        (labels.length ? '（' + labels.join('、') + '）' : '');
                 });
-                rolePersona = '你是群聊「' + currentGroup.name + '」中的成员之一，成员名单如下：\n' + (personaLines.join('\n') || '暂无成员');
+                rolePersona = '群聊「' + currentGroup.name +
+                    '」的公开成员目录（不是任何人的完整人设）：\n' +
+                    (personaLines.join('\n') || '暂无成员');
                 if (availableMembers.length) {
                     var previousSpeaker = findGroupSpeakerInHistory(historyList);
                     var selectionText = String(text || '');
@@ -6307,11 +6313,10 @@
             if (isGroupChat && groupReplyPick) {
                 const memberNames = (currentGroup.members || []).map(function (m) { return groupMemberDisplayName(m); }).join('、') || '暂无成员';
                 systemPrompt = '你正在群聊「' + currentGroup.name + '」中，群成员有：' + memberNames + '。本轮由你（' + groupReplyPick.name + '）以第一人称发言。\n' + systemPrompt;
-                // The active member's identity is anchored separately above. Preserve the
-                // complete group roster (names, titles and role backgrounds) as context,
-                // not as an alternative identity for the speaking character.
+                // Public roster only; the sole authoritative full persona is the
+                // freshly loaded speaker record inside IDENTITY_LOCK.
                 systemPrompt += '\n\n[群内成员资料：仅用来理解其他人]\n' + rolePersona +
-                    '\n这些是群内其他成员和你自己的背景资料；你只能以本轮指定成员的身份说话，不能把其他人的经历说成自己的。';
+                    '\n不要把公开目录当成成员的人设，也不要冒用其他人的经历。';
                 systemPrompt += '\n\n[群聊回复规则]\n直接输出' + groupReplyPick.name + '的聊天内容即可，不要输出名字前缀、不要用冒号开头、不要模拟其他成员发言，一次只由你一个人说话。';
                 if (groupReplyPick.isMentioned) {
                     systemPrompt += '\n\n[本轮被@点名] 用户刚刚明确提到了你。请优先直接回应与自己相关的内容，不要忽略这次点名，也不要替其他被提及的成员发言。';
@@ -6486,11 +6491,10 @@
                 systemPrompt += '\n\n【群聊模式：线下共同场景】\n当前群成员处于同一个真实的线下场景中，不是隔着手机发微信。请以本轮指定成员的视角参与现场互动，可以写必要的环境、动作、神态和现场对话；其他成员可以成为场景中的互动对象，但不要替他们编写台词，也不要替用户决定动作、想法或回应。保持人物之间的空间位置和已发生事件连续，不要突然切场景。正文以自然叙事为主，约 100–260 字，场景简单时可以更短；旁白请使用 <narratage>...</narratage>，本轮角色自己的台词直接写出。';
               } else {
                 systemPrompt += '\n\n【群聊模式：线上消息】\n当前是隔着屏幕的群聊，只输出本轮成员发出的自然消息，不写面对面动作或全知旁白。保持微信式短句，不替其他成员发言。';
-                systemPrompt += '\n\n【群聊自然接话】\n根据刚刚发生的具体事情回应，不做客服式开场，不要无端说“欢迎来到群聊”“很高兴认识你”“我就在这里陪大家聊天”或主动介绍自己正在群里。用户只发“哈哈哈”等短句时，结合上一句话和这个成员的性格接梗、吐槽、简短回应或表达真实疑惑；不要把笑声扩写成一整段热情问候。不同成员应有不同的语气、长短和关注点，允许一条很短的回复，不必每次都问“你呢”“在干嘛”。不能凭空编造经历、情绪或群成员关系。';
                 // Group talk uses the chosen character's saved persona as the voice.
                 // Generic assistant copy is not a character trait and must not be learned
                 // from older incorrect replies. No scripted replacement messages.
-                systemPrompt += '\n\n【群聊口吻纠偏】\n你不是群里的主持人、迎宾客服或聊天机器人。直接对刚刚的具体消息作出该角色会有的反应，不重新欢迎入群、不做元气式开场、不向所有人推销话题。尤其不要套用“捕捉到一个元气满满的小伙伴”“随时在线待命”“有什么好玩的事想分享”“你今天有什么问题想聊”等模板。对“你们在忙吗”一类直接问题，按该角色已知的现实处境回答自己正在做什么、是否方便回应；资料没有交代时可简短说不确定或只回应当下，不编造工作和行程。不要每句都加👋✨或追问，除非该角色自己的既有人设明确这样说话。用户保存的协议、世界书和本轮角色档案始终优先，勿将此纠偏当作新的固定人格。';
+                systemPrompt += '\n\n【群聊口吻纠偏】\n按当前发言者保存的人设与聊天语气直接回应最近的具体消息，不是主持人、客服或其他群成员。不要套用“随时在线待命”“捕捉到一个元气满满的小伙伴”等旧 AI 迎宾模板。问题先回答，笑话可以接梗，也允许一句话结束；是否追问、活泼或简短均由该角色和情境决定。不编造未知的经历、日程或与其他成员的关系。用户保存的角色档案、伴侣协议和世界书始终优先。';
               }
             }
             // 世界书内容拼进 systemPrompt；设定是生活背景，不是每轮背诵清单
