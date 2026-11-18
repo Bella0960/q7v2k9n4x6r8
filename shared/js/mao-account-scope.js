@@ -152,7 +152,7 @@
           redirectToAccountEntry('disabled=1');
         } else if (response.status === 401) {
           redirectToAccountEntry('');
-        } else if (errorCode === 'IDENTITY_AUTHORITY_CHANGED') {
+        } else if (errorCode === 'IDENTITY_AUTHORITY_CHANGED' || errorCode === 'ACCOUNT_CONTEXT_CHANGED') {
           redirectToAccountEntry('switched=1');
         } else if (response.ok && current && current.status !== 'active') {
           redirectToAccountEntry('');
