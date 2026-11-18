@@ -2063,6 +2063,15 @@
         return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
       });
     }
+    // Restrict dynamic avatar URLs before interpolating into existing HTML views.
+    // Imported character/group data is user-controlled; escaping alone is insufficient for URL schemes.
+    function gpSafeAvatar(value) {
+      var url = String(value == null ? '' : value).trim();
+      if (/^data:image\/(?:png|jpeg|webp|gif);base64,[a-z0-9+/=]+$/i.test(url)) return url;
+      if (/^(?:https?:\/\/|blob:)[^\s"'<>]+$/i.test(url)) return url;
+      if (/^(?!\/\/)(?:\/|\.{1,2}\/|[a-z0-9_-])[a-z0-9_./%?=&+#-]*$/i.test(url)) return url;
+      return '';
+    }
     function readRolePool() {
       try {
         var raw = localStorage.getItem(ROLE_STORAGE_KEY);
@@ -2107,8 +2116,9 @@
         return;
       }
       gpInvitePanel.innerHTML = '<div class="gp-invite-list">' + roles.map(function (r) {
-        var av = r.avatar
-          ? '<img src="' + gpEscape(r.avatar) + '" alt="">'
+        var safeAvatar = gpSafeAvatar(r.avatar);
+        var av = safeAvatar
+          ? '<img src="' + gpEscape(safeAvatar) + '" alt="">'
           : PERSON_SVG;
         return '<div class="gp-invite-row" data-role-id="' + gpEscape(String(r.id)) + '">' +
           '<div class="gp-member-avatar">' + av + '</div>' +
@@ -2119,15 +2129,17 @@
     }
     function renderGroupAvatar(el, group) {
       if (!el) return;
-      if (group && group.avatar) {
-        el.innerHTML = '<img src="' + group.avatar + '" alt="">';
+      var coverAvatar = group && gpSafeAvatar(group.avatar);
+      if (coverAvatar) {
+        el.innerHTML = '<img src="' + gpEscape(coverAvatar) + '" alt="">';
         return;
       }
       var members = (group && group.members) || [];
       if (members.length) {
         var cells = members.slice(0, 4).map(function (m) {
-          return m.avatar
-            ? '<img class="gp-avatar-cell" src="' + m.avatar + '" alt="">'
+          var safeAvatar = gpSafeAvatar(m && m.avatar);
+          return safeAvatar
+            ? '<img class="gp-avatar-cell" src="' + gpEscape(safeAvatar) + '" alt="">'
             : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
         }).join('');
         el.innerHTML = cells;
@@ -2156,12 +2168,13 @@
       gpNoticeSub.textContent = notice ? (notice.length > 18 ? notice.slice(0, 18) + '…' : notice) : '未设置公告';
       // 成员列表
       gpMembersList.innerHTML = members.length ? members.map(function (m) {
-        var av = m.avatar
-          ? '<img src="' + m.avatar + '" alt="">'
+        var safeAvatar = gpSafeAvatar(m && m.avatar);
+        var av = safeAvatar
+          ? '<img src="' + gpEscape(safeAvatar) + '" alt="">'
           : PERSON_SVG;
-        return '<div class="gp-member-row" data-mid="' + String(m.id) + '">' +
+        return '<div class="gp-member-row" data-mid="' + gpEscape(m && m.id) + '">' +
           '<div class="gp-member-avatar">' + av + '</div>' +
-          '<span class="gp-member-name">' + String(m.name || '成员') + '</span>' +
+          '<span class="gp-member-name">' + gpEscape(m && m.name || '成员') + '</span>' +
           '<button type="button" class="gp-member-remove">移除</button>' +
         '</div>';
       }).join('') : '<div style="color:#999;font-size:12px;padding:6px 2px;">暂无成员</div>';
