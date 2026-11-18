@@ -6145,7 +6145,9 @@
                             m.visibility !== 'private' && m.visibility !== 'role_only';
                     }) : roleModelHistory).slice(-8),
                     // Collect all triggered entries; never silently send a partial lore entry.
-                    maxEntries: 5000,
+                    maxEntries: Math.max(1, wbList.reduce(function (count, book) {
+                        return count + (Array.isArray(book.entries) && book.entries.length ? book.entries.length : 1);
+                    }, 0)),
                     maxChars: 1000000
                   });
                 } else {
