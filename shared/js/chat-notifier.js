@@ -619,7 +619,35 @@
                 maxChars: 1000000
             });
             if (lore.length > 32000) return null;
-            var memory = scope === 'group' ? '' : String(activeRole.memory || '').trim().slice(0, 3000);
+            var memory = '';
+            if (scope !== 'group') {
+                // Match the main-chat role-scoped memory store. An autonomous
+                // message must not invent history or borrow another role's
+                // saved facts. Pending/unconfirmed memories stay excluded.
+                var memoryRaw = localStorage.getItem('chat_memories_' + id);
+                var records = memoryRaw === null ? [] : JSON.parse(memoryRaw);
+                if (!Array.isArray(records) ||
+                    typeof global.ChatContextPolicy.buildWeightedMemoryInjectionText !== 'function') return null;
+                var now = Date.now();
+                var halfLives = { key:365, anniversary:365, plot:21, detail:60, preference:60 };
+                var baseWeights = { key:1, anniversary:1, plot:0.45, detail:0.7, preference:0.7 };
+                var memoryWeight = function(entry) {
+                    var half = halfLives[entry.category] || 60;
+                    var base = baseWeights[entry.category] || 0.6;
+                    var days = Math.max(0, (now - Number(entry.lastReinforcedAt || entry.createdAt || now)) / 86400000);
+                    var importance = Math.max(1, Math.min(5, Number(entry.importance) || 3)) / 5;
+                    var reinforcement = Math.max(1, Number(entry.reinforcementCount) || 1);
+                    return importance * base * Math.pow(2, -days / half) *
+                        Math.min(1.45, 1 + (reinforcement - 1) * 0.08);
+                };
+                memory = global.ChatContextPolicy.buildWeightedMemoryInjectionText(
+                    records.filter(function(record) { return record && typeof record === 'object'; }),
+                    String(activeRole.memory || '').trim(),
+                    memoryWeight
+                );
+                if (memory === '暂无记忆') memory = '';
+                if (memory.length > 3000) return null;
+            }
             var blocks = [
                 '【本轮角色身份（仅作用于 JSON.text 的内容和语气）】',
                 '姓名：' + name,
