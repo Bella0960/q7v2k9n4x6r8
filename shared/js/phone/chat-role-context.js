@@ -73,6 +73,59 @@
     });
   }
 
+  // A group speaker can use their OWN attached local worldbooks, the group's
+  // explicitly mounted books and globally visible books. Other members' private
+  // local books do not enter this turn.
+  function selectWorldbooksForGroupSpeaker(worldbooks, groupMountedIds, speakerRole) {
+    if (!Array.isArray(worldbooks)) return [];
+    var allow = Object.create(null);
+    (Array.isArray(groupMountedIds) ? groupMountedIds : []).concat(
+      Array.isArray(speakerRole && speakerRole.worldBookIds) ? speakerRole.worldBookIds : []
+    ).forEach(function (id) {
+      if (id != null && String(id).trim()) allow[String(id)] = true;
+    });
+    return worldbooks.filter(function (book) {
+      return book && typeof book === 'object' &&
+        (book.scope !== 'local' || allow[String(book.id)] === true);
+    });
+  }
+
+  // Check the exact messages passed to PhoneStream.chat, not a preliminary
+  // prompt string. Do not log or persist the user's private source text.
+  function validateFinalApiMessages(input) {
+    input = input && typeof input === 'object' ? input : {};
+    var missing = [];
+    var messages = Array.isArray(input.messages) ? input.messages : [];
+    var system = messages.length && messages[0] && messages[0].role === 'system'
+      ? String(messages[0].content || '') : '';
+    var role = input.role;
+    var speakerId = String(input.speakerId == null ? '' : input.speakerId);
+    var persona = String(input.persona || '').trim();
+    var tone = String(input.tone || '').trim();
+    var protocol = String(input.protocol || '').trim();
+    var expanded = String(input.expandedProtocol || '').trim();
+    var worldbook = String(input.worldbook || '').trim();
+    if (!speakerId || !role || String(role.id) !== speakerId) missing.push('speaker-identity');
+    var savedPersona = String(role && (role.persona || role.prompt) || '').trim();
+    if (!savedPersona || !persona || persona !== savedPersona || system.indexOf(persona) === -1)
+      missing.push('saved-role-persona');
+    var savedTone = String(role && (role.tone || role.speechStyle || role.speech) || '').trim();
+    if (savedTone !== tone || (tone && system.indexOf(tone) === -1))
+      missing.push('saved-role-tone');
+    if (!protocol || !expanded || system.indexOf(expanded) === -1)
+      missing.push('global-protocol');
+    if (worldbook && system.indexOf(worldbook) === -1) missing.push('activated-worldbook');
+    if (input.worldbookPolicyReady !== true) missing.push('worldbook-policy');
+    if (!system) missing.push('system-message');
+    return {
+      ok: missing.length === 0, missing: missing,
+      evidence: {
+        personaChars: persona.length, toneChars: tone.length,
+        protocolChars: protocol.length, worldbookChars: worldbook.length
+      }
+    };
+  }
+
   // Every generated message must use the user's saved context, not a generic fallback.
   // Validate the final payload, after all feature prompts have been appended.
   // Worldbooks can validly be empty when no entry is activated by the current topic.
@@ -111,6 +164,8 @@
     getModelHistory: getModelHistory,
     selectWorldbooksForRole: selectWorldbooksForRole,
     selectWorldbooksForGroup: selectWorldbooksForGroup,
+    selectWorldbooksForGroupSpeaker: selectWorldbooksForGroupSpeaker,
+    validateFinalApiMessages: validateFinalApiMessages,
     validatePersonaRequest: validatePersonaRequest,
     isBrokenAssistantIdentity: isBrokenAssistantIdentity
   });
