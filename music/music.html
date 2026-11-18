@@ -2216,6 +2216,71 @@
     closeProfileEdit();
   }
 
+  // Android/SAF/cloud-drive pickers often give audio files numeric names and an
+  // empty or generic MIME type. Identify the file by its actual header first.
+  // This never uploads or decodes a song, and uses only the first 256 bytes.
+  function musicAudioTypeFromSignature(bytes) {
+    if (!bytes || !bytes.length) return '';
+    var has = function(pos, text) {
+      if (bytes.length < pos + text.length) return false;
+      for (var j = 0; j < text.length; j++) if (bytes[pos + j] !== text.charCodeAt(j)) return false;
+      return true;
+    };
+    if (has(0, 'ID3')) return 'audio/mpeg';
+    if (bytes.length >= 4 && bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0 &&
+        (bytes[1] & 0x06) !== 0 && (bytes[2] & 0xf0) !== 0xf0) return 'audio/mpeg';
+    if (has(0, 'RIFF') && has(8, 'WAVE')) return 'audio/wav';
+    if (has(0, 'fLaC')) return 'audio/flac';
+    if (has(0, 'OggS')) return 'audio/ogg';
+    if (bytes.length >= 2 && bytes[0] === 0xff &&
+        (bytes[1] & 0xf6) === 0xf0) return 'audio/aac';
+    if (has(4, 'ftyp')) {
+      // Audio MP4/M4A shares the ISO BMFF wrapper with video MP4. Only trust
+      // generic brands when the picker identifies the file as audio.
+      if (has(8, 'M4A ') || has(8, 'M4B ')) return 'audio/mp4';
+      if (has(8, 'mp41') || has(8, 'mp42') || has(8, 'isom')) return 'audio/mp4';
+    }
+    if (bytes.length >= 4 && bytes[0] === 0x1a && bytes[1] === 0x45 &&
+        bytes[2] === 0xdf && bytes[3] === 0xa3) {
+      // WebM/Matroska container: accept only a WebM signature within the EBML header.
+      var header = '';
+      for (var k = 0; k < Math.min(bytes.length, 128); k++) header += String.fromCharCode(bytes[k]);
+      if (/webm/i.test(header)) return 'audio/webm';
+    }
+    return '';
+  }
+  async function musicResolveAudioFormat(file) {
+    if (!file || typeof file.slice !== 'function' || !(file.size > 0))
+      return { ok: false, reason: 'empty' };
+    var signature;
+    try {
+      signature = musicAudioTypeFromSignature(
+        new Uint8Array(await file.slice(0, 256).arrayBuffer())
+      );
+    } catch (err) {
+      return { ok: false, reason: 'read', message: String(err && err.message || '') };
+    }
+    var mime = String(file.type || '').toLowerCase().split(';')[0].trim();
+    var ext = String(file.name || '').match(/\.([^.]+)$/);
+    ext = ext ? ext[1].toLowerCase() : '';
+    var byExtension = {
+      mp3:'audio/mpeg', m4a:'audio/mp4', m4b:'audio/mp4',
+      wav:'audio/wav', wave:'audio/wav', aac:'audio/aac',
+      ogg:'audio/ogg', oga:'audio/ogg', opus:'audio/ogg',
+      flac:'audio/flac', webm:'audio/webm'
+    };
+    var aliases = {
+      'audio/mp3':'audio/mpeg','audio/x-mp3':'audio/mpeg',
+      'audio/x-m4a':'audio/mp4','audio/m4a':'audio/mp4',
+      'audio/x-wav':'audio/wav','audio/wave':'audio/wav',
+      'audio/x-flac':'audio/flac','audio/x-aac':'audio/aac'
+    };
+    var pickedType = mime.indexOf('audio/') === 0 ? (aliases[mime] || mime) : '';
+    var detected = signature || pickedType || byExtension[ext] || '';
+    return detected ? { ok: true, mimeType: detected, fromHeader: !!signature }
+      : { ok: false, reason: 'unsupported' };
+  }
+
   document.getElementById('musicImport').addEventListener('change', async function(e) {
     var files = Array.from(e.target.files || []);
     e.target.value = '';
@@ -2223,8 +2288,12 @@
     if (musicMetaReadFailure) { toast('原歌曲列表读取失败，已停止导入，避免覆盖旧歌曲'); return; }
     for (var i = 0; i < files.length; i++) {
       var file = files[i];
-      if (!file.type.startsWith('audio/') && !/\.(mp3|m4a|wav|ogg|flac|aac|opus)$/i.test(file.name)) {
-        toast('已跳过不支持的音频格式：' + file.name); continue;
+      var resolvedFormat = await musicResolveAudioFormat(file);
+      if (!resolvedFormat.ok) {
+        toast((resolvedFormat.reason === 'read' ? '无法读取音频文件：' :
+          resolvedFormat.reason === 'empty' ? '空音频文件无法导入：' :
+          '无法识别音频文件格式：') + (file.name || '未命名文件'));
+        continue;
       }
       var tid = 'local_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2, 7);
       var name = file.name.replace(/\.[^.]+$/, '');
@@ -2232,8 +2301,12 @@
         dur: '本地', durSec: 0, source: 'local', lyrics: [] };
       try {
         // 先保存二进制，后保存目录；目录失败时只清理由本次新建的 ID。
+        // Normalize missing/misreported Android picker types before IndexedDB
+        // persistence, so the restored Blob URL has a meaningful audio MIME.
+        var audioBlob = file.type === resolvedFormat.mimeType ? file :
+          new Blob([file], { type: resolvedFormat.mimeType });
         await putAudioBlob({ id: tid, name: name, artist: track.artist,
-          mimeType: file.type || 'audio/mpeg', size: file.size, blob: file });
+          mimeType: resolvedFormat.mimeType, size: file.size, blob: audioBlob });
         try {
           saveLocalTracksMeta(localMeta.concat([track]));
         } catch (err) {
