@@ -22,7 +22,7 @@ function openTab(area) {
   const notices=[];
   const create=new Function('localStorage','storageKey','currentCharacter','_storage',
     'showToast','getInitialMessages','console',
-    code+'\nreturn {loadMessages,saveMessages,_inheritChatBaseline};');
+    code+'\nreturn {loadMessages,saveMessages,_inheritChatBaseline,removeLegacyStickerCaptions};');
   const instance=create(area,'chat_history_role1',{id:'role1'},null,
     message=>notices.push(message),
     ()=>[{role:'received',mid:'welcome',text:'欢迎'}],
@@ -125,4 +125,29 @@ test('large saved histories protect all entries during a concurrent append',()=>
   assert.equal(stored.length,601);
   assert.equal(stored[0].mid,'m1');
   assert.equal(stored.at(-1).mid,'m601');
+});
+
+
+test('ordinary long message lists are not copied during obsolete sticker-caption cleanup',()=>{
+  const shared=makeShared([]);
+  const tab=openTab(shared.area);
+  const records=Array.from({length:1200},(_,i)=>msg('m'+(i+1),'第 '+i+' 条历史消息'));
+  const cleaned=tab.removeLegacyStickerCaptions(records,JSON.stringify(records));
+  assert.equal(cleaned,records,'no duplicate captions should not allocate a second array');
+  assert.equal(records.length,1200);
+});
+
+test('a genuine legacy sticker-caption pair is cleaned once without deleting the sticker',()=>{
+  const records=[
+    {role:'assistant',type:'sticker',mid:'sticker1',desc:'早安',img:'asset:1'},
+    {role:'sent',mid:'caption1',text:'[发表情包：早安]'},
+    msg('m3','接着说话')
+  ];
+  const {area,map}=makeShared(records);
+  const a=openTab(area);
+  const list=a.loadMessages();
+  assert.deepEqual(list.map(m=>m.mid),['sticker1','m3']);
+  assert.deepEqual(JSON.parse(map.get('chat_history_role1')).map(m=>m.mid),['sticker1','m3']);
+  list.push(msg('m4','新的消息'));
+  assert.equal(a.saveMessages(list),true,'cleaned list baseline must advance after verified save');
 });
