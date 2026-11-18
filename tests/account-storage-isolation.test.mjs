@@ -166,12 +166,21 @@ test('页面同源 API 请求会自动绑定注入的 MAO 永久 ID', async () =
   await a.window.fetch('/api/accounts/security');
   assert.equal(requests[1].headers.get('x-mao-account-context'), accountId);
 
+  const originalRequest = new Request('https://mao.test/api/accounts/security', {
+    headers: { authorization: 'Bearer stale-account-token', 'x-mao-account-context': 'MAO-BBBBBBBBBBBB' }
+  });
+  await a.window.fetch(originalRequest, { headers: { accept: 'application/json' } });
+  assert.equal(requests[2].headers.get('authorization'), null,
+    '显式 init.headers 应替换 Request 原有敏感请求头，不能保留旧账号凭据');
+  assert.equal(requests[2].headers.get('x-mao-account-context'), accountId,
+    '页面账号绑定不能被 Request 原有的账号头覆盖');
+
   await a.window.fetch('/shared/js/font-loader.js');
-  assert.equal(requests[2].headers.has('x-mao-account-context'), false,
+  assert.equal(requests[3].headers.has('x-mao-account-context'), false,
     '同源静态资源不得被附加账号身份头');
 
   await a.window.fetch('https://external.example/resource');
-  assert.equal(requests[3].headers.has('x-mao-account-context'), false,
+  assert.equal(requests[4].headers.has('x-mao-account-context'), false,
     '不得给跨域请求增加 MAO 专用头，避免触发不必要的 CORS 预检');
 });
 
