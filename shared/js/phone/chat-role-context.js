@@ -43,6 +43,35 @@
     return filtered.length === history.length ? history : filtered;
   }
 
+  // Treat mistaken old "I'm the AI" replies as non-canonical evidence only
+  // for HUMAN characters. This is a read-only model-context view: original
+  // group messages, names and memories are NEVER edited or removed from storage.
+  function getGroupModelHistory(history, groupMembers, loadRole) {
+    if (!Array.isArray(history)) return history;
+    var members = Array.isArray(groupMembers) ? groupMembers : [];
+    var filtered = history.filter(function (message) {
+      if (!isBrokenAssistantIdentity(message)) return true;
+      var roleId = String(message && message.memberId == null ? '' :
+        message && message.memberId || '').trim();
+      if (!roleId) {
+        var name = String(message && message.name || '').trim();
+        if (!name) return true;
+        var matched = members.filter(function (member) {
+          return member && (String(member.nickname || '').trim() === name ||
+            String(member.name || '').trim() === name);
+        });
+        if (matched.length !== 1) return true;
+        roleId = String(matched[0].id);
+      }
+      if (typeof loadRole !== 'function') return true;
+      var role = null;
+      try { role = loadRole(roleId); } catch (_) { return true; }
+      // Explicitly digital characters are allowed to discuss their true identity.
+      return !role || isDigitalCharacter(role);
+    });
+    return filtered.length === history.length ? history : filtered;
+  }
+
   // Group chats share global lore plus books explicitly mounted on this group.
   // Do not expose another character's private local books when the group has no mounts.
   function selectWorldbooksForGroup(worldbooks, groupMountedIds) {
@@ -230,6 +259,7 @@
     resolveRole: resolveRole,
     stripEncounterEditorNote: stripEncounterEditorNote,
     getModelHistory: getModelHistory,
+    getGroupModelHistory: getGroupModelHistory,
     selectWorldbooksForRole: selectWorldbooksForRole,
     selectWorldbooksForGroup: selectWorldbooksForGroup,
     selectWorldbooksForGroupSpeaker: selectWorldbooksForGroupSpeaker,
