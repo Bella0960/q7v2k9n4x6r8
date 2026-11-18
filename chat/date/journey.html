@@ -348,6 +348,11 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
       if(state.sentStages.indexOf(stageIndex)===-1) state.sentStages.push(stageIndex);
       saveState();
       return true;
+    } catch(error) {
+      // The animation must never surface an unhandled rejection or assume
+      // persistence succeeded when browser storage/locking fails unexpectedly.
+      showStorageWarning();
+      return false;
     } finally {
       delete pendingJourneyStageWrites[stageIndex];
     }
