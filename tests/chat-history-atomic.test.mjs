@@ -278,3 +278,37 @@ test('readback mismatch reports uncertainty rather than claiming safe rollback',
     assert.equal(outcome.error.code, 'VERIFY_FAILED');
     assert.equal(outcome.meta.writeMayHavePersisted, true);
 });
+
+
+test('automatic notification candidate reader refuses corrupt, missing and unavailable primary history', () => {
+    const marker = 'function readAutomaticHistory(roleId) {';
+    const start = notifierSource.indexOf(marker);
+    assert.notEqual(start, -1);
+    const stop = notifierSource.indexOf('\n    function automaticStorageReady()', start);
+    assert.ok(stop > start);
+    const functionCode = notifierSource.slice(start, stop).trim();
+    function execute(seed, inaccessible = false) {
+        const mock = {
+            getItem(k) {
+                if (inaccessible) throw new Error('storage denied');
+                return Object.hasOwn(seed, k) ? seed[k] : null;
+            }
+        };
+        const fn = runInNewContext('(' + functionCode + ')', { localStorage: mock });
+        return fn('role-a');
+    }
+    const good = execute({ [key('role-a')]: JSON.stringify([{ mid: 'keep', type: 'image' }]) });
+    assert.equal(good[0].mid, 'keep');
+    assert.equal(execute({ [key('role-a')]: '[]' }).length, 0);
+    assert.equal(execute({}), null);
+    assert.equal(execute({ [key('role-a')]: 'broken' }), null);
+    assert.equal(execute({ [key('role-a')]: '{"wrong":"shape"}' }), null);
+    assert.equal(execute({}, true), null);
+});
+
+test('automatic paid AI schedulers check Web Locks before starting a request', () => {
+    assert.match(notifierSource, /async function checkProactiveContacts\(\) \{\s*if \(!automaticStorageReady\(\)\) return;/);
+    assert.match(notifierSource, /async function checkFollowUpTasks\(\) \{\s*if \(!automaticStorageReady\(\)\) return;/);
+    assert.match(notifierSource, /var history = readAutomaticHistory\(id\);\s*if \(!history\) return;/);
+    assert.match(notifierSource, /var history = readAutomaticHistory\(entry\.contact\.id\);\s*if \(!history\) return;/);
+});
