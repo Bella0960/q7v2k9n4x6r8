@@ -3007,6 +3007,23 @@
 
         function removeLegacyStickerCaptions(list, rawBaseline) {
             if (!Array.isArray(list)) return [];
+            // Most modern conversations have no legacy sticker-caption duplicate.
+            // Avoid cloning hundreds or thousands of messages on every read.
+            var mayNeedCleanup = false;
+            for (var checkIndex = 1; checkIndex < list.length; checkIndex++) {
+                var before = list[checkIndex - 1];
+                var current = list[checkIndex];
+                if (!before || before.type !== 'sticker' || !current ||
+                    (current.role !== 'user' && current.role !== 'sent')) continue;
+                var caption = typeof current.text === 'string' ? current.text :
+                    (typeof current.content === 'string' ? current.content : '');
+                var matchCaption = caption.match(/^\[发表情包：([\s\S]*)\]$/);
+                if (matchCaption && String(before.desc || '') === matchCaption[1]) {
+                    mayNeedCleanup = true;
+                    break;
+                }
+            }
+            if (!mayNeedCleanup) return _rememberChatBaseline(list, rawBaseline);
             var changed = false;
             var cleaned = list.filter(function (m, index) {
                 if (!m || (m.role !== 'user' && m.role !== 'sent')) return true;
