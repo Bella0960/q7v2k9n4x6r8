@@ -18,6 +18,7 @@
     <script src="../../shared/js/phone/chat-image-vision.js?v=20261113v1"></script>
     <script src="../../shared/js/phone/rp-default-protocol.js?v=20261118v1"></script>
     <script src="../../shared/js/phone/chat-role-context.js?v=20261118v4"></script>
+    <script src="../../shared/js/phone/inspect_interaction_bridge.js?v=20261112v5"></script>
     <script src="../../shared/js/phone/phone_api.js?v=20261115cancel1"></script>
     <script src="../../shared/js/phone/image-generation.js?v=20261106v1"></script>
     <script src="../../shared/js/phone/role-gallery-image-autonomy.js?v=20261111v2"></script>
@@ -6719,6 +6720,25 @@
                 }
                 return;
             }
+            // Existing virtual-phone notes/comments are role-local user-authored data.
+            // Only the addressed single-chat role may see its own recent interaction cues.
+            // Do not copy these cues into shared groups, automatic turns or a regeneration.
+            let inspectPromptPacket = null;
+            if (!isGroupChat && !silent && !contextOnly && !isRegen &&
+                window.InspectInteractionBridge &&
+                typeof window.InspectInteractionBridge.buildPromptPacket === 'function') {
+                try {
+                    inspectPromptPacket = window.InspectInteractionBridge.buildPromptPacket(
+                        String(currentRoleId || currentCharacter.id || ''),
+                        localStorage, Date.now(), { userText: text }
+                    );
+                    if (inspectPromptPacket && inspectPromptPacket.text) {
+                        systemPrompt += '\n\n' + inspectPromptPacket.text;
+                    }
+                } catch (inspectError) {
+                    console.warn('[ChatInspectContext] role-local phone clues unavailable:', inspectError);
+                }
+            }
             const apiMessages = [
                 { role: 'system', content: systemPrompt }
             ];
@@ -7302,6 +7322,18 @@
                         window.__groupPrivateCardPending = false;
                         transferDecisionSnapshots = applyTransferDecisionMarkers(historyList, parsedTransferDecision.amounts);
                         var replySaved = saveMessages(historyList);
+                        if (replySaved && streamResult.ok && inspectPromptPacket && window.InspectInteractionBridge &&
+                            typeof window.InspectInteractionBridge.markOffered === 'function') {
+                            try {
+                                window.InspectInteractionBridge.markOffered(
+                                    String(currentRoleId || currentCharacter.id || ''),
+                                    inspectPromptPacket.eventIds || [],
+                                    localStorage, Date.now(), inspectPromptPacket.focusId || null
+                                );
+                            } catch (inspectSaveError) {
+                                console.warn('[ChatInspectContext] failed to acknowledge role-local cue:', inspectSaveError);
+                            }
+                        }
                         // Poll/chain history changes share the SAME verified save as
                         // the AI reply. Deferred governance/relationships/DMs run
                         // strictly afterwards, not during marker parsing.
