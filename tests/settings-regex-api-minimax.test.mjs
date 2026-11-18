@@ -29,7 +29,7 @@ function storage(values={}, failKey='') {
 }
 function regexHarness(ls) {
     const inline = regexPage.match(/<script>\s*([\s\S]*?)<\/script>/)[1];
-    const source = fragment(inline, '    var DEFAULT_RULES = [','    function render() {');
+    const source = fragment(inline, 'var DEFAULT_RULES = [','    function render() {');
     return new Function('localStorage','window',source +
         '\nreturn {DEFAULT_RULES,loadRules,saveRules};')(ls,{});
 }
