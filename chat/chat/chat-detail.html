@@ -2500,6 +2500,32 @@
         function groupMemberDisplayName(member) {
             return String((member && (member.nickname || member.name)) || '成员').trim() || '成员';
         }
+        // Group cover is a conversation image, never a member's portrait.
+        // Resolve each displayed message from its immutable member ID first;
+        // use a legacy speaker name only when no ID was saved.
+        function groupSpeakerForMessage(message) {
+            if (!isGroupChat || !currentGroup || !message) return null;
+            var members = Array.isArray(currentGroup.members) ? currentGroup.members : [];
+            if (message.memberId != null && String(message.memberId).trim()) {
+                return members.find(function (m) {
+                    return m && String(m.id) === String(message.memberId);
+                }) || null;
+            }
+            var oldName = String(message.name || message.senderName || '').trim();
+            if (!oldName) return null;
+            return members.find(function (m) {
+                return m && (groupMemberDisplayName(m) === oldName ||
+                    String(m.name || '').trim() === oldName);
+            }) || null;
+        }
+        function groupSpeakerAvatarForMessage(message, speaker) {
+            if (!isGroupChat) return currentCharacter.avatar || '';
+            speaker = speaker || groupSpeakerForMessage(message);
+            if (!speaker) return ''; // No verified speaker: neutral fallback, not group cover.
+            var latestRole = getRoleById(speaker.id);
+            return (latestRole && (latestRole.avatar || latestRole.avatarUrl)) ||
+                speaker.avatar || speaker.avatarUrl || '';
+        }
         function getGroupSettings() {
             return (currentGroup && currentGroup.settings && typeof currentGroup.settings === 'object') ? currentGroup.settings : {};
         }
@@ -2945,7 +2971,7 @@
         function getInitialMessages() {
             if (isGroupChat) {
                 return [
-                    { role: 'received', text: `欢迎来到「${contactName}」群聊，一起聊聊吧。` }
+                    { role: 'received', type: 'group_welcome', text: `欢迎来到「${contactName}」群聊，一起聊聊吧。` }
                 ];
             }
             // 只影响首次创建空历史的邂逅角色；已保存聊天不会重新生成或覆写。
@@ -4116,7 +4142,7 @@
                             }
                             var extraAv = document.createElement('div');
                             extraAv.className = 'msg-avatar';
-                            fillAvatar(extraAv, currentCharacter.avatar, USER_SVG);
+                            fillAvatar(extraAv, groupSpeakerAvatarForMessage(msg), USER_SVG);
                             extraRow.appendChild(extraAv);
                             extraRow.appendChild(extraBubble);
                             _pendingExtras.push(extraRow);
@@ -4172,15 +4198,8 @@
                 avatar.style.color = '#666666';
             } else {
                 // Group replies show the speaking member's own avatar, not the group cover.
-                groupSender = isGroupChat && currentGroup
-                    ? (currentGroup.members || []).find(function (member) {
-                        return member && ((msg.memberId && String(member.id) === String(msg.memberId)) ||
-                            (msg.name && groupMemberDisplayName(member) === String(msg.name)));
-                    }) : null;
-                const groupRole = groupSender ? getRoleById(groupSender.id) : null;
-                const speakerAvatar = (groupSender && groupSender.avatar) ||
-                    (groupRole && (groupRole.avatar || groupRole.avatarUrl)) || currentCharacter.avatar;
-                fillAvatar(avatar, speakerAvatar, USER_SVG);
+                groupSender = groupSpeakerForMessage(msg);
+                fillAvatar(avatar, groupSpeakerAvatarForMessage(msg, groupSender), USER_SVG);
             }
 
             // 群聊：AI 成员回复在气泡上方显示成员名（逐条落库的后续气泡不重复显示）
@@ -6410,6 +6429,10 @@
               } else {
                 systemPrompt += '\n\n【群聊模式：线上消息】\n当前是隔着屏幕的群聊，只输出本轮成员发出的自然消息，不写面对面动作或全知旁白。保持微信式短句，不替其他成员发言。';
                 systemPrompt += '\n\n【群聊自然接话】\n根据刚刚发生的具体事情回应，不做客服式开场，不要无端说“欢迎来到群聊”“很高兴认识你”“我就在这里陪大家聊天”或主动介绍自己正在群里。用户只发“哈哈哈”等短句时，结合上一句话和这个成员的性格接梗、吐槽、简短回应或表达真实疑惑；不要把笑声扩写成一整段热情问候。不同成员应有不同的语气、长短和关注点，允许一条很短的回复，不必每次都问“你呢”“在干嘛”。不能凭空编造经历、情绪或群成员关系。';
+                // Group talk uses the chosen character's saved persona as the voice.
+                // Generic assistant copy is not a character trait and must not be learned
+                // from older incorrect replies. No scripted replacement messages.
+                systemPrompt += '\n\n【群聊口吻纠偏】\n你不是群里的主持人、迎宾客服或聊天机器人。直接对刚刚的具体消息作出该角色会有的反应，不重新欢迎入群、不做元气式开场、不向所有人推销话题。尤其不要套用“捕捉到一个元气满满的小伙伴”“随时在线待命”“有什么好玩的事想分享”“你今天有什么问题想聊”等模板。对“你们在忙吗”一类直接问题，按该角色已知的现实处境回答自己正在做什么、是否方便回应；资料没有交代时可简短说不确定或只回应当下，不编造工作和行程。不要每句都加👋✨或追问，除非该角色自己的既有人设明确这样说话。用户保存的协议、世界书和本轮角色档案始终优先，勿将此纠偏当作新的固定人格。';
               }
             }
             // 世界书内容拼进 systemPrompt；设定是生活背景，不是每轮背诵清单
