@@ -658,3 +658,43 @@ test('NPC acceptance fails closed on unavailable chat history repository', async
   assert.equal(h.context.NPCSocial.getPendingCount(), 1);
   assert.equal(h.histories[request.npc.id], undefined);
 });
+
+test('NPC acceptance refuses silently ignored welcome writes without losing prior messages', async () => {
+  const h = createHarness();
+  const { request } = await h.context.NPCSocial.discoverNow();
+  const original = [{ role: 'user', text: '此前的聊天记录', time: 1 }];
+  h.histories[request.npc.id] = original.slice();
+  const realSave = h.context.PhoneStorage.saveChatHistory;
+  h.context.PhoneStorage.saveChatHistory = () => true; // legacy storage silently ignores write
+  assert.throws(() => h.context.NPCSocial.accept(request.id), /首次问候未确认保存成功/);
+  assert.equal(h.context.NPCSocial.getPendingCount(), 1);
+  assert.deepEqual(h.histories[request.npc.id], original, 'original chat stays intact');
+  h.context.PhoneStorage.saveChatHistory = realSave;
+  const accepted = h.context.NPCSocial.accept(request.id);
+  assert.equal(accepted.ok, true);
+  assert.equal(h.histories[accepted.roleId].length, 2, 'welcome is prepended without dropping old chat');
+  assert.equal(h.histories[accepted.roleId][0].npcFriendWelcome, true);
+  assert.deepEqual(h.histories[accepted.roleId][1], original[0]);
+  assert.equal(h.context.NPCSocial.accept(request.id).alreadyAccepted, true);
+  assert.equal(h.histories[accepted.roleId].length, 2, 'retry never duplicates welcome');
+});
+
+test('NPC acceptance remains retryable if saved welcome cannot be verified on readback', async () => {
+  const h = createHarness();
+  const { request } = await h.context.NPCSocial.discoverNow();
+  const realRead = h.context.PhoneStorage.result.getChatHistory;
+  h.context.PhoneStorage.result.getChatHistory = id => {
+    const result = realRead(id);
+    if (result.ok && result.value.some(message => message.npcFriendWelcome)) {
+      return { ok: false, error: { code: 'DB_UNAVAILABLE' } };
+    }
+    return result;
+  };
+  assert.throws(() => h.context.NPCSocial.accept(request.id), /首次问候未确认保存成功/);
+  assert.equal(h.context.NPCSocial.getPendingCount(), 1);
+  assert.equal(h.histories[request.npc.id].length, 1, 'first write has happened but confirmation failed');
+  h.context.PhoneStorage.result.getChatHistory = realRead;
+  const accepted = h.context.NPCSocial.accept(request.id);
+  assert.equal(accepted.ok, true);
+  assert.equal(h.histories[accepted.roleId].length, 1, 'retry recognizes existing welcome');
+});
