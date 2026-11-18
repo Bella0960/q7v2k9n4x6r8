@@ -267,3 +267,23 @@ body.chat-light-detail .phone-mockup[data-chat-theme-preset="imessage"] form#cha
 body.chat-light-detail .phone-mockup[data-chat-theme-preset="imessage"] form#chat-form .plus-action-btn svg {
   stroke:#555 !important;
 }
+
+
+/* CHAT-UI-001: full 44px composer hit zones and paper-white iMessage action sheet. */
+/* 44px horizontal + vertical hit targets: no detached controls or horizontal overflow. */
+body.chat-light-detail .phone-mockup:is(:not([data-chat-theme-preset]),[data-chat-theme-preset="default"],[data-chat-theme-preset="imessage"]) form#chat-form .plus-action-btn,
+body.chat-light-detail .phone-mockup:is(:not([data-chat-theme-preset]),[data-chat-theme-preset="default"],[data-chat-theme-preset="imessage"]) form#chat-form .send-icon-btn {
+  flex-basis:44px !important;
+  width:44px !important;
+  min-width:44px !important;
+  height:44px !important;
+  box-sizing:border-box !important;
+}
+/* iMessage must not reintroduce the inherited translucent frosted action sheet. */
+body.chat-light-detail .phone-mockup[data-chat-theme-preset="imessage"] .plus-panel-sheet {
+  background:#fff !important;
+  border:1px solid #ebebed !important;
+  box-shadow:0 4px 18px rgba(0,0,0,.05) !important;
+  backdrop-filter:none !important;
+  -webkit-backdrop-filter:none !important;
+}
