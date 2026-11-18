@@ -312,3 +312,66 @@ test('automatic paid AI schedulers check Web Locks before starting a request', (
     assert.match(notifierSource, /var history = readAutomaticHistory\(id\);\s*if \(!history\) return;/);
     assert.match(notifierSource, /var history = readAutomaticHistory\(entry\.contact\.id\);\s*if \(!history\) return;/);
 });
+
+
+test('different authenticated accounts use separate locks even when character IDs match', async () => {
+    const names = [];
+    const lock = {
+        async request(name, options, work) {
+            names.push(name);
+            assert.equal(options.mode, 'exclusive');
+            return work();
+        }
+    };
+    function scopedTab(accountId, declaredId) {
+        const data = storage({ [key('same-role')]: '[]' });
+        const window = {
+            localStorage: data,
+            navigator: { locks: lock },
+            document: {
+                querySelector() {
+                    return { content: declaredId };
+                }
+            },
+            __MAO_ACCOUNT_SCOPE__: { ready: true, accountId }
+        };
+        runInNewContext(source, { window });
+        return { writer: window.ChatHistoryAtomic, data };
+    }
+    const a = scopedTab('MAO-ACCOUNT000001', 'MAO-ACCOUNT000001');
+    const b = scopedTab('MAO-ACCOUNT000002', 'MAO-ACCOUNT000002');
+    assert.equal((await a.writer.appendIf('same-role', { mid: 'a' })).ok, true);
+    assert.equal((await b.writer.appendIf('same-role', { mid: 'b' })).ok, true);
+    assert.notEqual(names[0], names[1]);
+    assert.equal(names[0], 'maomao:chat-history:MAO-ACCOUNT000001:same-role');
+    assert.equal(names[1], 'maomao:chat-history:MAO-ACCOUNT000002:same-role');
+    assert.deepEqual(JSON.parse(a.data.dump(key('same-role'))).map(m => m.mid), ['a']);
+    assert.deepEqual(JSON.parse(b.data.dump(key('same-role'))).map(m => m.mid), ['b']);
+});
+
+test('authenticated meta without a matching initialized scope refuses history writes', async () => {
+    const data = storage({ [key('role')]: '[]' });
+    const window = {
+        localStorage: data,
+        navigator: { locks: locks() },
+        document: { querySelector: () => ({ content: 'MAO-ACCOUNT000001' }) }
+    };
+    runInNewContext(source, { window });
+    const result = await window.ChatHistoryAtomic.appendIf('role', { mid: 'blocked' });
+    assert.equal(result.error.code, 'ACCOUNT_SCOPE_UNAVAILABLE');
+    assert.equal(data.dump(key('role')), '[]');
+});
+
+test('legacy unscoped pages retain their original lock name', async () => {
+    const names = [];
+    const data = storage({ [key('legacy')]: '[]' });
+    const lock = {
+        async request(name, _options, work) {
+            names.push(name);
+            return work();
+        }
+    };
+    const result = await tab(data, lock).appendIf('legacy', { mid: 'keep' });
+    assert.equal(result.ok, true);
+    assert.deepEqual(names, ['maomao:chat-history:legacy']);
+});
