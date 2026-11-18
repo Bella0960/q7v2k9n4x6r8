@@ -75,6 +75,7 @@
   var hero = el('div','gp-cover-hero');
   hero.innerHTML =
     '<img class="gp-cover-photo" alt="">' +
+    '<div class="gp-cover-emblem" id="gpCoverEmblem" aria-hidden="true"></div>' +
     '<div class="gp-cover-controls">' +
       '<button type="button" class="gp-cover-control" id="gpCoverChoose">更换封面</button>' +
       '<button type="button" class="gp-cover-control" id="gpCoverReset" hidden>恢复默认</button>' +
@@ -84,6 +85,7 @@
     '<input id="gpCoverFile" type="file" accept="image/*" hidden>';
   visual.appendChild(hero);
   var photo = hero.querySelector('.gp-cover-photo');
+  var emblem = hero.querySelector('#gpCoverEmblem');
   var pick = hero.querySelector('#gpCoverChoose');
   var reset = hero.querySelector('#gpCoverReset');
   var input = hero.querySelector('#gpCoverFile');
@@ -134,6 +136,18 @@
     var url = String(value || '');
     return /^(data:image\/(?:png|jpeg|webp|gif);|blob:|https?:\/\/|\.{0,2}\/)/i.test(url) ? url : '';
   }
+  function viewMember(memberId) {
+    groupFold.root.open=true;
+    openPanel('actionGroupManage','gpManageCard');
+    var target=Array.from(document.querySelectorAll('#gpMembersList .gp-member-row')).find(function(row){
+      return row.getAttribute('data-mid')===memberId;
+    });
+    if(target) {
+      target.scrollIntoView({behavior:'smooth',block:'nearest'});
+      target.classList.add('gp-member-highlight');
+      window.setTimeout(function(){target.classList.remove('gp-member-highlight');},1100);
+    }
+  }
   function invite() {
     groupFold.root.open=true;
     openPanel('actionGroupManage','gpManageCard');
@@ -146,11 +160,36 @@
     var name = group && group.name || '群聊';
     var members = group && Array.isArray(group.members) ? group.members : [];
     hero.querySelector('#gpCoverName').textContent=name;
+    emblem.replaceChildren();
+    var groupAvatar=safeImage(group && group.avatar);
+    if(groupAvatar) {
+      var profileImage=el('img');
+      profileImage.src=groupAvatar;
+      profileImage.alt='';
+      emblem.appendChild(profileImage);
+    } else {
+      var avatars=members.map(function(member){return safeImage(member && member.avatar);}).filter(Boolean).slice(0,4);
+      if(avatars.length>=2){
+        var collage=el('span','gp-emblem-collage');
+        avatars.forEach(function(url){
+          var image=el('img');
+          image.src=url;
+          image.alt='';
+          collage.appendChild(image);
+        });
+        emblem.appendChild(collage);
+      } else {
+        emblem.textContent=name.trim().slice(0,1)||'群';
+      }
+    }
     hero.querySelector('#gpCoverCount').textContent=members.length+' 位成员';
     counter.textContent=members.length+' 位';
     rail.replaceChildren();
     members.slice(0,6).forEach(function(member) {
-      var person = el('div','gp-preview-person');
+      var person = el('button','gp-preview-person');
+      person.type='button';
+      person.setAttribute('aria-label','查看成员 '+String(member && member.name||'角色'));
+      person.addEventListener('click',function(){viewMember(String(member && member.id));});
       var avatar = el('span','gp-preview-avatar');
       var url = safeImage(member && member.avatar);
       if (url) {
