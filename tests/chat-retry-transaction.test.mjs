@@ -22,7 +22,7 @@ function createRetryEnv(messages,sendMsg) {
     'aiSending','isBlocked','aliasRoleId','showToast','_locateRetryMessage','console',
     retryCode+'\nreturn _buildRetryModelHistory;');
   const project=init(window,config,()=>messages,sendMsg,false,()=>false,'role1',
-    ()=>{},locate,console);
+    ()=>{},locate,{warn(){}});
   return {window,project};
 }
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
@@ -64,7 +64,8 @@ test('old persisted failed marker is cleared only inside verified reply save, an
   const section=page.slice(a,b);
   const run=new Function('historyList','retryTarget','streamResult','replyMessages',
     'aiStickerMessages','aiRoleGalleryMessages','_locateRetryMessage','saveMessages',
-    'chatMessages',section+'\nreturn {replySaved,retryResolved};');
+    'chatMessages','parsedMem','isGroupChat','saveUserMemories',
+    'parsedRoleFamilyCard','applyRoleFamilyCardChanges',section+'\nreturn {replySaved,retryResolved};');
   const attempts=[false,true];
   for(const success of attempts) {
     const history=[failedMessage(),{role:'assistant',mid:'generated',text:'回复已经生成'}];
@@ -73,7 +74,7 @@ test('old persisted failed marker is cleared only inside verified reply save, an
     const result=run(history,{mid:'m1',time:1234},{ok:true},
       [history[1]],[],[],locate,
       list=>{written=list.map(m=>({...m}));return success;},
-      {querySelector:()=>row});
+      {querySelector:()=>row},{memories:[]},false,()=>{}, {changes:[]},()=>false);
     assert.equal(result.replySaved,success);
     assert.equal(history.filter(m=>m.role==='user').length,1);
     assert.equal(history[0].sendFailed,success?undefined:true);
@@ -88,10 +89,11 @@ test('partial API results preserve retry affordance and never resolve failed inp
   const pageEnd=page.indexOf('                        if (replySaved && streamResult.ok && inspectPromptPacket',pageStart);
   const commit=new Function('historyList','retryTarget','streamResult','replyMessages',
     'aiStickerMessages','aiRoleGalleryMessages','_locateRetryMessage','saveMessages',
-    'chatMessages',page.slice(pageStart,pageEnd)+'\nreturn {replySaved,retryResolved};');
+    'chatMessages','parsedMem','isGroupChat','saveUserMemories',
+    'parsedRoleFamilyCard','applyRoleFamilyCardChanges',page.slice(pageStart,pageEnd)+'\nreturn {replySaved,retryResolved};');
   const history=[failedMessage(),{role:'assistant',text:'服务器中途断开，只收到半句'}];
   const result=commit(history,{mid:'m1',time:1234},{ok:false},[history[1]],[],[],
-    locate,()=>true,{querySelector:()=>null});
+    locate,()=>true,{querySelector:()=>null},{memories:[]},false,()=>{},{changes:[]},()=>false);
   assert.equal(result.retryResolved,null);
   assert.equal(history[0].sendFailed,true);
   assert.equal(history.filter(m=>m.role==='user').length,1);
