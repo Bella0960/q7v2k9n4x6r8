@@ -972,13 +972,21 @@
       var data = loadProfile();
       Object.keys(patch).forEach(function (k) { data[k] = patch[k]; });
       try {
-        if (_storage) { _storage.saveMyProfile(data); return true; }
-        localStorage.setItem(PROFILE_KEY, JSON.stringify(data));
+        // PhoneStorage.saveMyProfile() intentionally has no return value. It may silently
+        // swallow QuotaExceededError; do not mistake that for a saved avatar.
+        if (_storage) _storage.saveMyProfile(data);
+        else localStorage.setItem(PROFILE_KEY, JSON.stringify(data));
+        var persisted = JSON.parse(localStorage.getItem(PROFILE_KEY) || 'null');
+        if (!persisted || typeof persisted !== 'object' ||
+            !Object.keys(patch).every(function (key) { return persisted[key] === patch[key]; })) {
+          throw new Error('myProfile write was not persisted');
+        }
+        return true;
       } catch (err) {
-        alert('存储空间不足，请压缩图片');
+        console.warn('[Chat] profile persist failed', err);
+        alert('资料保存失败，请检查本机存储空间后重试');
         return false;
       }
-      return true;
     }
 
     /* ================= 图片 Canvas 压缩（最长边 400，质量 0.7） ================= */
@@ -1004,7 +1012,7 @@
               canvas.height = Math.max(1, Math.round(h * scale));
               ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
             }
-            cb(canvas.toDataURL('image/jpeg', 0.88));
+            cb(canvas.toDataURL('image/jpeg', mode === 'cover' ? 0.78 : 0.88));
           } catch (err) {
             alert('图片处理失败，请更换图片重试');
             cb('');
@@ -1033,11 +1041,24 @@
       }
 
       var avatarBox = document.getElementById('avatarBox');
-      if (profile.avatar) {
-        avatarBox.style.backgroundImage = "url('" + profile.avatar + "')";
-        avatarBox.innerHTML = '';
+      // A real <img> avoids CSS background shorthand/theme overrides hiding the
+      // uploaded portrait. Preserve the original data URL and fail gracefully.
+      avatarBox.style.backgroundImage = 'none';
+      avatarBox.textContent = '';
+      var avatarUrl = typeof profile.avatar === 'string' ? profile.avatar.trim() : '';
+      if (/^(data:image\/(?:png|jpe?g|webp|gif|avif|svg\+xml)[;,]|https?:\/\/|blob:|\/(?!\/)|\.\.?\/)/i.test(avatarUrl)) {
+        var avatarImg = document.createElement('img');
+        avatarImg.alt = '我的头像';
+        avatarImg.decoding = 'async';
+        avatarImg.referrerPolicy = 'no-referrer';
+        avatarImg.onerror = function () {
+          if (avatarImg.parentNode !== avatarBox) return;
+          avatarBox.textContent = '';
+          avatarBox.innerHTML = USER_SVG;
+        };
+        avatarImg.src = avatarUrl;
+        avatarBox.appendChild(avatarImg);
       } else {
-        avatarBox.style.backgroundImage = '';
         avatarBox.innerHTML = USER_SVG;
       }
 
@@ -1114,7 +1135,7 @@
     document.getElementById('avatarInput').addEventListener('change', function (e) {
       var file = e.target.files[0];
       if (!file) return;
-      compressImage(file, 400, 'cover', function (dataUrl) {
+      compressImage(file, 320, 'cover', function (dataUrl) {
         if (dataUrl && mergeProfile({ avatar: dataUrl })) renderProfile();
       });
       e.target.value = '';
@@ -1492,7 +1513,11 @@
     
     // 页面重新显示时（从设置页返回），重新渲染列表，置顶生效
     window.addEventListener('pageshow', function() {
+      renderProfile();
       renderChatList();
+    });
+    window.addEventListener('storage', function(event) {
+      if (event.key === PROFILE_KEY) renderProfile();
     });
   </script>
 <script src="../../shared/js/statusbar-control.js"></script>
