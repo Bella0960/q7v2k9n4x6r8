@@ -300,3 +300,42 @@ test('场景6：网络返回非 2xx 时原样返回页面且不写缓存', async
   await flushAsync();
   assert.equal(lifecycleState.value, 'fulfilled', '非 2xx 路径的生命周期应正常结束');
 });
+
+
+test('场景7：非 HTML 的 200 导航响应不得写入登录页缓存，但网络响应应原样返回', async () => {
+  const nonHtml = new Response('{"error":"not-an-html-page"}', {
+    status: 200, headers: { 'Content-Type': 'application/json; charset=UTF-8' }
+  });
+  const harness = createHarness({
+    fetchImpl: () => Promise.resolve(nonHtml),
+    putImpl: () => Promise.reject(new Error('non-HTML must not be cached'))
+  });
+  const event = harness.dispatchNavigation();
+  const state = trackState(event.lifecycle[0]);
+  const response = await event.responsePromise;
+  assert.equal(response, nonHtml);
+  assert.equal(await response.text(), '{"error":"not-an-html-page"}');
+  assert.equal(harness.putCalls.length, 0, '成功状态码不能替代 HTML 类型验证');
+  await flushAsync();
+  assert.equal(state.value, 'fulfilled');
+});
+
+test('场景8：离线时不能从旧缓存显示非 HTML 的 200 数据，应返回原有 503 兜底', async () => {
+  const oldCorruptCache = new Response('{"not":"a-login-page"}', {
+    status: 200, headers: { 'Content-Type': 'application/json' }
+  });
+  const harness = createHarness({
+    cachedResponse: oldCorruptCache,
+    fetchImpl: () => Promise.reject(new Error('offline')),
+    putImpl: () => Promise.reject(new Error('must not write on offline path'))
+  });
+  const event = harness.dispatchNavigation();
+  const state = trackState(event.lifecycle[0]);
+  const response = await event.responsePromise;
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get('Content-Type'), 'text/plain; charset=UTF-8');
+  assert.equal(await response.text(), '此页面暂时无法连接，请检查网络后重试。');
+  assert.equal(harness.putCalls.length, 0);
+  await flushAsync();
+  assert.equal(state.value, 'fulfilled');
+});
