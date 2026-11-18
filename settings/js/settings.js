@@ -12,9 +12,11 @@ const API_STORAGE_KEY = 'api_settings';
             if (raw) {
                 const parsed = JSON.parse(raw);
                 if (parsed) {
-                    localStorage.setItem(API_STORAGE_KEY, JSON.stringify(parsed));
-                    localStorage.removeItem(oldKey);
-                    console.log('[迁移] 旧配置 ' + oldKey + ' → ' + API_STORAGE_KEY);
+                    var mirror = JSON.stringify(parsed);
+                    localStorage.setItem(API_STORAGE_KEY, mirror);
+                    if (localStorage.getItem(API_STORAGE_KEY) !== mirror) throw Error('旧 API 迁移未确认');
+                    // Keep the legacy key as a rollback copy, never delete it.
+                    console.log('[API 设置] 旧配置兼容读取成功');
                     return;
                 }
             }
@@ -44,6 +46,10 @@ const API_STORAGE_KEY = 'api_settings';
             baseUrl: legacy.baseUrl || 'https://api.openai.com/v1',
             apiKey: legacy.apiKey || '',
             model: legacy.model || '',
+            imageModel: legacy.imageModel || '',
+            imageEndpoint: legacy.imageEndpoint || '',
+            memoryCount: legacy.memoryCount != null ? legacy.memoryCount : 20,
+            timeAware: legacy.timeAware !== false,
             temperature: legacy.temperature != null ? legacy.temperature : 0.7,
             maxTokens: legacy.maxTokens != null ? legacy.maxTokens : '',
             topP: legacy.topP != null ? legacy.topP : '',
@@ -51,8 +57,11 @@ const API_STORAGE_KEY = 'api_settings';
             createdAt: now,
             updatedAt: now
         };
-        localStorage.setItem('api_profiles_v1', JSON.stringify([profile]));
+        var encoded = JSON.stringify([profile]);
+        localStorage.setItem('api_profiles_v1', encoded);
+        if (localStorage.getItem('api_profiles_v1') !== encoded) throw Error('迁移方案未确认');
         localStorage.setItem('api_active_profile', profile.id);
+        if (localStorage.getItem('api_active_profile') !== profile.id) throw Error('迁移激活状态未确认');
         console.log('[API 设置] 旧配置已迁移到多方案结构');
     } catch (e) {
         console.error('[API 设置] 多方案迁移失败:', e);
@@ -350,69 +359,65 @@ function friendlyHttpError(status, detail) {
 // ========== 测试连接 ==========
 async function testConnection() {
     const apiKey = (apiKeyInput.value || '').trim();
-    let baseUrl = (apiUrlInput.value || '').trim();
+    let baseUrl = (apiUrlInput.value || '').trim().replace(/\/+$/, '');
     const model = (apiModelInput.value || '').trim();
     const msgEl = document.getElementById('test-msg');
-
-    if (!msgEl) return;
-
-    if (!apiKey) { msgEl.innerText = '❌ 请先填写 API Key'; msgEl.style.color = '#ff3b30'; return; }
-    if (!baseUrl) { msgEl.innerText = '❌ 请先填写 Base URL'; msgEl.style.color = '#ff3b30'; return; }
-    if (!model) { msgEl.innerText = '❌ 请先填写模型名称'; msgEl.style.color = '#ff3b30'; return; }
-
-    if (!baseUrl.endsWith('/')) baseUrl += '/';
-    const testUrl = baseUrl + 'chat/completions';
-    const t0 = Date.now();
-
-    msgEl.innerText = '⏳ 正在测试连接...';
-    msgEl.style.color = '#007aff';
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
-
+    const button = document.getElementById('btn-test-connection');
+    if (!msgEl || (button && button.disabled)) return;
+    if (!apiKey || !baseUrl || !model) {
+        msgEl.textContent = '请先填写 API Key、接口地址及模型名称';
+        msgEl.style.color = '#9A3333'; return;
+    }
     try {
-        const response = await fetch(testUrl, {
-            method: 'POST',
-            headers: {
-                'Authorization': 'Bearer ' + apiKey,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                model: model,
-                messages: [{ role: 'user', content: 'hi' }],
-                max_tokens: 5
-            }),
-            signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-
-        if (response.status === 200) {
-            msgEl.innerText = '✅ 连接成功 · ' + (Date.now() - t0) + 'ms · ' + model;
-            msgEl.style.color = '#34c759';
-            return;
-        }
-
-        let detail = '';
-        try {
-            const body = await response.text();
-            const parsed = JSON.parse(body);
-            detail = (parsed.error && parsed.error.message) ? parsed.error.message : response.statusText;
-        } catch (e) {
-            detail = response.statusText;
-        }
-
-        msgEl.innerText = '❌ ' + friendlyHttpError(response.status, detail);
-        msgEl.style.color = '#ff3b30';
+        var parsedUrl = new URL(baseUrl);
+        if (!/^https?:$/.test(parsedUrl.protocol) || parsedUrl.username || parsedUrl.password)
+            throw Error('unsupported URL');
     } catch (error) {
-        clearTimeout(timeoutId);
-        if (error.name === 'AbortError') {
-            msgEl.innerText = '❌ 请求超时，请检查网络或 API 地址';
-        } else if (error.message && error.message.includes('Failed to fetch')) {
-            msgEl.innerText = '❌ 网络错误（可能是跨域或地址不正确）';
-        } else {
-            msgEl.innerText = '❌ ' + (error.message || '未知错误');
+        msgEl.textContent = '请输入有效的 HTTP(S) API 地址';
+        msgEl.style.color = '#9A3333'; return;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    const startedAt = Date.now();
+    if (button) button.disabled = true;
+    msgEl.textContent = '正在验证模型实际回复…';
+    msgEl.style.color = '#666666';
+    try {
+        const response = await fetch(baseUrl + '/chat/completions', {
+            method: 'POST',
+            headers: { Authorization:'Bearer ' + apiKey, 'Content-Type':'application/json' },
+            body: JSON.stringify({
+                model: model, messages:[{role:'user',content:'请回复：OK'}],
+                max_tokens:32, stream:false
+            }),
+            signal:controller.signal
+        });
+        if (!response.ok) {
+            var detail = '';
+            try {
+                var errorBody = await response.json();
+                detail = errorBody && errorBody.error && errorBody.error.message || '';
+            } catch (ignore) {}
+            throw Error(friendlyHttpError(response.status, detail));
         }
-        msgEl.style.color = '#ff3b30';
+        var payload = await response.json();
+        var choice = payload && Array.isArray(payload.choices) && payload.choices[0];
+        var content = choice && choice.message && choice.message.content;
+        if (Array.isArray(content)) content = content.map(function (part) {
+            return part && part.text ? part.text : '';
+        }).join('');
+        if (typeof content !== 'string' || !content.trim())
+            throw Error('接口返回了 HTTP 200，但没有可用回复；请检查模型兼容性或输出额度');
+        msgEl.textContent = '连接可用 · ' + (Date.now() - startedAt) + 'ms · ' + model;
+        msgEl.style.color = '#333333';
+    } catch (error) {
+        msgEl.textContent = error && error.name === 'AbortError'
+            ? '连接超时，请检查接口地址或网络'
+            : '测试失败：' + String(error && error.message || '网络或模型错误').slice(0, 120);
+        msgEl.style.color = '#9A3333';
+    } finally {
+        clearTimeout(timer);
+        if (button) button.disabled = false;
     }
 }
 
