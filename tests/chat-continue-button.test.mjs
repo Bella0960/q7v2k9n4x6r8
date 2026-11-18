@@ -24,6 +24,9 @@ test('CHAT-MIC-001: direct and group continuation reuse sendMsg without saving a
   assert.match(main, /sendState\.isGroupFollowup \|\| \(isManualContinue && isGroupChat\)/);
   assert.match(main, /buildReplyMessages\(fullText, replyBubbleMode,/);
   assert.match(main, /manualContinue: isManualContinue/);
+  assert.match(main, /const continuationCue = isGroupChat/);
+  assert.match(main, /isManualContinue && isBlocked\(aliasRoleId\)/);
+  assert.match(main, /isManualContinue && isGroupChat && \(!currentGroup \|\| !getAvailableGroupMembers\(\)\.length\)/);
 });
 
 test('CHAT-MIC-001: manually continued replies do not show typing state or stream fragments', () => {
