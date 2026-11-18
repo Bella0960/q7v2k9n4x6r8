@@ -78,3 +78,13 @@ test('corrupt saved worldbook or missing persona fails closed rather than genera
   assert.match(short,/Only publish a role-verified, actually generated message/);
   assert.match(long,/source\.expandedProtocol \+ '\\n\\n' \+ parts\.join/);
 });
+
+test('legacy object worldbook mounts remain readable and never turn into empty bindings', () => {
+  const oldShape = JSON.stringify({ worldbookIds: ['r1-local'], enabled: true });
+  assert.deepEqual(Array.from(policy.parseWorldbookMountIds(oldShape)), ['r1-local']);
+  assert.deepEqual(Array.from(policy.parseWorldbookMountIds('["r1-local"]')), ['r1-local']);
+  assert.deepEqual(Array.from(policy.parseWorldbookMountIds(null)), []);
+  assert.equal(envelope('巷子', { chat_worldbooks_r1: oldShape }).ok, true);
+  assert.equal(envelope('巷子', { chat_worldbooks_r1: '{"unexpected":42}' }).ok, false);
+  assert.equal(envelope('巷子', { chat_worldbooks_r1: 'bad json' }).ok, false);
+});
