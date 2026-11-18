@@ -113,3 +113,23 @@ test('derived write paths remain source-tracked in the real chat page',()=>{
   assert.match(page,/saveMessages\(_inheritChatBaseline\(cleaned, list\)\)/);
   assert.match(page,/_inheritChatBaseline\(historyList, regenSource\)/);
 });
+
+
+test('untracked replacement arrays fail closed instead of bypassing the cross-tab revision check',()=>{
+  const key='chat_history_cross-tab-untracked';
+  records.set(key,JSON.stringify([make('first','preserved')]));
+  const tab=makeTab('cross-tab-untracked');
+  const before=records.get(key);
+  assert.equal(tab.saveMessages([make('new','unsourced')]),false);
+  assert.equal(records.get(key),before);
+});
+
+test('group receipt repair reads versioned history and carries its version into the saved result',()=>{
+  const start=page.indexOf('var receiptOriginalGroupHistory = null;');
+  const end=page.indexOf('readRoleHistory: function (roleId)',start);
+  assert.ok(start>0 && end>start);
+  const callbacks=page.slice(start,end);
+  assert.match(callbacks,/var versioned = loadMessages\(\)/);
+  assert.match(callbacks,/_inheritChatBaseline\(messages, receiptOriginalGroupHistory\)/);
+  assert.doesNotMatch(callbacks,/var versioned = _readBackHistory\(\)/);
+});
