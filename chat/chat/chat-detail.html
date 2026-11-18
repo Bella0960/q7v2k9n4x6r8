@@ -5997,11 +5997,9 @@
                             if (legacyRpKeys.indexOf(key) === -1) legacyRpKeys.push(key);
                         }
                     });
-                    for (let i = 0; i < localStorage.length; i++) {
-                        const key = localStorage.key(i);
-                        if (key && key.indexOf(globalRpKey) === 0 && key !== globalRpKey &&
-                            legacyRpKeys.indexOf(key) === -1) legacyRpKeys.push(key);
-                    }
+                    // Do not migrate another character's legacy RP rules into
+                    // this chat: only IDs belonging to the current conversation
+                    // may seed the shared protocol. All other keys stay untouched.
                     for (let i = 0; i < legacyRpKeys.length; i++) {
                         const legacyValue = localStorage.getItem(legacyRpKeys[i]) || '';
                         if (legacyValue.trim()) {
