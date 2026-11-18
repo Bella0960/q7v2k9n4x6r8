@@ -7,6 +7,7 @@
 <script src="../../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../../shared/js/native-feel.js"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
+<script src="../../shared/js/phone/chat-history-atomic.js?v=20261119qa1"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   body {
@@ -496,7 +497,10 @@
   });
 
   // ================= 挂断：写 sessionStorage 后返回聊天页 =================
-  function endCall() {
+  var endCallPending = false;
+  async function endCall() {
+    if (endCallPending) return;
+    endCallPending = true;
     if (connectTimer) clearTimeout(connectTimer);
     if (tickTimer) clearInterval(tickTimer);
     try {
@@ -510,16 +514,6 @@
     if (isGroupCall && currentGroup) {
       var callHistorySaved = false;
       try {
-        var history = [];
-        if (window.PhoneStorage && typeof window.PhoneStorage.getChatHistory === 'function') {
-          var stored = window.PhoneStorage.getChatHistory(roleId);
-          if (Array.isArray(stored)) history = stored.slice();
-        } else {
-          var rawHistory = localStorage.getItem('chat_history_' + roleId);
-          var parsedHistory = rawHistory ? JSON.parse(rawHistory) : [];
-          if (Array.isArray(parsedHistory)) history = parsedHistory;
-        }
-
         var durationText = connected ? formatTime(seconds) : '未接通';
         var callTime = Date.now();
         var callMessage = {
@@ -535,30 +529,14 @@
             participants: (currentGroup.members || []).map(function (member) { return member.nickname || member.name || '群成员'; })
           }
         };
-        var nextHistory = history.slice();
-        nextHistory.push(callMessage);
-
-        var wrote = false;
-        if (window.PhoneStorage && typeof window.PhoneStorage.saveChatHistory === 'function') {
-          wrote = window.PhoneStorage.saveChatHistory(roleId, nextHistory) === true;
-        } else {
-          localStorage.setItem('chat_history_' + roleId, JSON.stringify(nextHistory));
-          wrote = true;
+        var atomic = window.ChatHistoryAtomic;
+        if (!atomic || typeof atomic.appendIf !== 'function') {
+          throw new Error('群通话安全存储不可用');
         }
-        if (!wrote) throw new Error('群通话结果写入失败');
-
-        var verifiedHistory = window.PhoneStorage && typeof window.PhoneStorage.getChatHistory === 'function'
-          ? window.PhoneStorage.getChatHistory(roleId)
-          : JSON.parse(localStorage.getItem('chat_history_' + roleId) || '[]');
-        var lastMessage = Array.isArray(verifiedHistory) && verifiedHistory.length
-          ? verifiedHistory[verifiedHistory.length - 1] : null;
-        if (!Array.isArray(verifiedHistory) || verifiedHistory.length !== nextHistory.length ||
-            !lastMessage || lastMessage.role !== 'user' || lastMessage.type !== 'call' ||
-            lastMessage.time !== callTime ||
-            !lastMessage.call || lastMessage.call.title !== '群语音通话' ||
-            lastMessage.call.duration !== callMessage.call.duration) {
-          throw new Error('群通话结果写入后校验失败');
-        }
+        // The receipt is appended under the same group history lock as chat.
+        // A stale snapshot must never replace a newer member message.
+        var saved = await atomic.appendIf(roleId, callMessage);
+        if (!saved || !saved.ok) throw new Error('群通话结果未安全落库');
         callHistorySaved = true;
       } catch (error) {
         console.error('[Call] group call history persistence failed:', error);
