@@ -14,6 +14,22 @@
     <link rel="manifest" href="%BASE_URL%manifest.json" />
     <link rel="icon" type="image/png" sizes="192x192" href="%BASE_URL%assets/mao-bunny-192.png" />
     <link rel="apple-touch-icon" href="%BASE_URL%assets/mao-bunny-192.png" />
+    <!-- Apply the saved fake-statusbar visibility before the first rendered frame.
+         The editor toolbar below still exists and the Home Indicator is independent. -->
+    <style id="maomao-statusbar-prepaint-root">
+      html[data-maomao-statusbar-hidden] .status-bar,
+      html[data-maomao-statusbar-hidden] [data-maomao-system-statusbar] { display: none !important; }
+    </style>
+    <script id="maomao-statusbar-early-root">
+      (function () {
+        try {
+          if (localStorage.getItem('settings_statusbar') === '0')
+            document.documentElement.setAttribute('data-maomao-statusbar-hidden', '');
+          else
+            document.documentElement.removeAttribute('data-maomao-statusbar-hidden');
+        } catch (e) {}
+      })();
+    </script>
     <script>
       // Start with the approved component-first desktop. Remove obsolete layout records only;
       // wallpaper, widget content, chat, profiles, and other app data remain untouched.
