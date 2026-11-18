@@ -2817,6 +2817,10 @@
         // A damaged history must never be silently replaced with a welcome message.
         // Keep its raw bytes for explicit backup/recovery rather than "repairing" on read.
         var _chatHistoryUnreadable = false;
+        // Compatibility guard for older synchronous card/status writers.
+        // Their last-read snapshot must still be current at save time.
+        // This is a fail-closed guard, not a replacement for Web Locks.
+        var _lastReadChatRaw = null;
         function loadMessages() {
             // A conversation's storage key must not change when global/current role state changes.
             if (storageKey !== 'chat_history_' + currentCharacter.id) {
@@ -2834,6 +2838,7 @@
                     var primaryHistory = JSON.parse(primaryRaw);
                     if (!Array.isArray(primaryHistory)) throw new Error('chat history is not an array');
                     _chatHistoryUnreadable = false;
+                    _lastReadChatRaw = primaryRaw;
                     return removeLegacyStickerCaptions(primaryHistory);
                 }
             } catch (err) {
@@ -2846,7 +2851,10 @@
                 try {
                     var arr = _storage.getChatHistory(currentCharacter.id);
                     if (!Array.isArray(arr)) throw new Error('legacy chat history is not an array');
-                    if (arr.length) return removeLegacyStickerCaptions(arr);
+                    if (arr.length) {
+                        _lastReadChatRaw = null;
+                        return removeLegacyStickerCaptions(arr);
+                    }
                 } catch (err) {
                     _chatHistoryUnreadable = true;
                     console.warn('读取历史聊天记录失败:', err);
@@ -2859,6 +2867,7 @@
                     const parsed = JSON.parse(raw);
                     if (!Array.isArray(parsed)) throw new Error('chat history is not an array');
                     _chatHistoryUnreadable = false;
+                    _lastReadChatRaw = raw;
                     return removeLegacyStickerCaptions(parsed);
                 }
             } catch (err) {
@@ -3030,6 +3039,10 @@
                     if (existingRaw !== null && !Array.isArray(JSON.parse(existingRaw))) {
                         throw new Error('primary chat history is not an array');
                     }
+                    if (existingRaw !== _lastReadChatRaw) {
+                        if (typeof showToast === 'function') showToast('其他窗口更新了聊天记录，请刷新后再操作');
+                        return false;
+                    }
                 } catch (err) {
                     _chatHistoryUnreadable = true;
                     console.warn('聊天记录保存前校验失败，已保留原始数据:', err);
@@ -3055,6 +3068,7 @@
                 }
             }
             if (wrote && _verifyHistoryRoundTrip(list)) {
+                try { _lastReadChatRaw = localStorage.getItem(storageKey); } catch (e) {}
                 _resetWarnCooldown('chat-save');
                 return true;
             }
