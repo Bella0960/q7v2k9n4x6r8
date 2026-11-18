@@ -2809,8 +2809,15 @@
                 }
                 return true;
             });
-            // 清理旧版本遗留的独立文字消息，避免刷新后再次显示；表情图片本身保留。
-            if (changed) saveMessages(cleaned);
+            // Keep the old visual behavior, but never rewrite the full
+            // conversation synchronously during a read. The cleanup is an
+            // optional, conflict-checked migration; failing it leaves the
+            // original bytes intact and the duplicate caption hidden here.
+            if (changed && window.ChatHistoryAtomic &&
+                typeof window.ChatHistoryAtomic.replaceIfUnchanged === 'function') {
+                void window.ChatHistoryAtomic.replaceIfUnchanged(currentCharacter.id, list, cleaned)
+                    .catch(function (err) { console.warn('[Chat] legacy caption cleanup deferred:', err); });
+            }
             return cleaned;
         }
 
@@ -4165,6 +4172,9 @@
         // 抽成独立函数，renderAllMessages 与 vlRefresh 共用，避免逻辑分叉。
         function computeVisibleList() {
             const list = loadMessages();
+            // Read-time display normalization must never persist stale arrays.
+            // Save only by an unchanged-snapshot CAS and do not block painting.
+            const originalList = JSON.parse(JSON.stringify(list));
             let midAdded = false, reasoningRemoved = false;
             list.forEach(function (m) {
                 if (!m) return;
@@ -4178,12 +4188,16 @@
                 }
                 if (!m.mid || !m.time) { ensureMid(m); midAdded = true; }
             });
-            if (midAdded || reasoningRemoved) saveMessages(list);
             const cleaned = list.filter(m => {
                 const t = String((m && (m.text || m.content)) || '');
                 return !(t.indexOf('定位失败') !== -1 || t.indexOf('Timeout expired') !== -1);
             });
-            if (cleaned.length !== list.length) saveMessages(cleaned);
+            if ((midAdded || reasoningRemoved || cleaned.length !== list.length) &&
+                window.ChatHistoryAtomic &&
+                typeof window.ChatHistoryAtomic.replaceIfUnchanged === 'function') {
+                void window.ChatHistoryAtomic.replaceIfUnchanged(currentCharacter.id, originalList, cleaned)
+                    .catch(function (err) { console.warn('[Chat] display cleanup deferred:', err); });
+            }
             return cleaned.filter(m => {
                 if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.isHiddenFromOnlineTimeline === 'function') {
                     return !window.ChatMessagePolicy.isHiddenFromOnlineTimeline(m);
