@@ -205,6 +205,7 @@
             if (raw == null) return DEFAULT_RULES.map(repairKnownBuiltin);
             var arr = JSON.parse(raw);
             if (!Array.isArray(arr)) throw new Error('Regex rules are not an array');
+            window.__regexRulesReadError = false;
             return arr.map(repairKnownBuiltin);
         } catch (error) {
             // Never overwrite unreadable JSON: the user may have a backup copy.
