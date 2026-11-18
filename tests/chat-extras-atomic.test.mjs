@@ -129,15 +129,15 @@ test('quota-exceeded batch preserves old data and media refs', async () => {
 const clearSection = section('  function coreClearChat() {','  function coreCopyLast() {');
 const clearFactory = new Function('openModal','document','closeModal','extrasRoleId',
   'atomicChatWriter','extrasPrimaryHistory','showToast','renderAllMessages',
-  'chatMessages','window',clearSection+'\nreturn coreClearChat;');
-function clearHarness(f, release) {
+  'chatMessages','window','aiSending',clearSection+'\nreturn coreClearChat;');
+function clearHarness(f, release, aiSending = false) {
   let clearButton={disabled:false},cleans=0;
   const open=()=>{};
   const dom={getElementById(id) { return id==='clearYes'?clearButton:{onclick:null}; }};
   f.window.releaseDeletedChatImageReferences=async(before)=>{cleans++;if(release)release(before)};
   const util=insertFixture(f);
   const clear=clearFactory(open,dom,()=>{},util.extrasRoleId,
-    util.atomicChatWriter,util.extrasPrimaryHistory,f.toast,f.render,{innerHTML:'x'},f.window);
+    util.atomicChatWriter,util.extrasPrimaryHistory,f.toast,f.render,{innerHTML:'x'},f.window,aiSending);
   clear();
   return {click:()=>clearButton.onclick.call(clearButton),get cleans(){return cleans}};
 }
@@ -152,6 +152,15 @@ test('clear chat fails closed after another tab appends and retains all media re
   await flow.click();
   assert.deepEqual(f.read().map(m=>m.mid),['old','new']);
   assert.equal(flow.cleans,0);
+});
+
+test('clear is refused while an AI stream is still generating', async () => {
+  const f=fixture({chat_history_role:'[{"mid":"old","text":"keep"}]'});
+  const flow=clearHarness(f,undefined,true);
+  await flow.click();
+  assert.equal(f.read().length,1);
+  assert.equal(flow.cleans,0);
+  assert.match(f.notes.join(' '),/正在回复/);
 });
 
 test('verified clear removes only the confirmed old snapshot references', async () => {
