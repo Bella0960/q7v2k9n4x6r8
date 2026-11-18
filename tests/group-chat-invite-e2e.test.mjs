@@ -196,6 +196,12 @@ test('C6-C8 chat.html -> chat-detail renders 3 members and request context conta
 
     // 从 chat.html 真实点击群条目
     const page = await context.newPage();
+    const personaDiagnostics = [];
+    page.on('console', (msg) => {
+      if (msg.type() === 'error' && msg.text().includes('[ChatPersonaSources] mandatory source check failed')) {
+        personaDiagnostics.push(msg.text());
+      }
+    });
     await page.route('https://mock.local/**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
     let resolveBody;
     const bodyPromise = new Promise((resolve) => { resolveBody = resolve; });
@@ -230,10 +236,18 @@ test('C6-C8 chat.html -> chat-detail renders 3 members and request context conta
 
     await page.locator('#chat-input').fill('大家好');
     await sendFromVisibleComposer(page);
-    const body = await Promise.race([
-      bodyPromise,
-      new Promise((_, reject) => setTimeout(() => reject(new Error('no /chat/completions request captured')), 20000))
-    ]);
+    let body;
+    try {
+      body = await Promise.race([
+        bodyPromise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('no /chat/completions request captured')), 20000))
+      ]);
+    } catch (error) {
+      if (personaDiagnostics.length) {
+        throw new Error('persona source preflight blocked: ' + personaDiagnostics.join(' | '));
+      }
+      throw error;
+    }
     const system = (body.messages || []).filter((m) => m.role === 'system').map((m) => String(m.content || '')).join('\n\n');
     assert.ok(system.length > 0, 'system prompt must exist');
     assert.ok(system.includes('群成员有：'), 'group member roster present');
