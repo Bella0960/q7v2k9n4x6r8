@@ -3133,7 +3133,7 @@
                     var raw = localStorage.getItem(storageKey);
                     if (raw === null) return null;
                     var parsed = JSON.parse(raw);
-                    return Array.isArray(parsed) ? parsed : null;
+                    return Array.isArray(parsed) ? _rememberChatBaseline(parsed, raw) : null;
                 } catch (err) {
                     return null;
                 }
@@ -3142,7 +3142,7 @@
             if (_storage) {
                 try {
                     var stored = _storage.getChatHistory(currentCharacter.id);
-                    return Array.isArray(stored) ? stored : null;
+                    return Array.isArray(stored) ? _rememberChatBaseline(stored, null) : null;
                 } catch (err) {
                     return null;
                 }
@@ -3224,6 +3224,15 @@
             if (storageKey !== 'chat_history_' + currentCharacter.id) {
                 console.warn('聊天角色标识发生变化，已阻止跨会话写入');
                 if (typeof showToast === 'function') showToast('会话已切换，请重新进入聊天后再发送');
+                return false;
+            }
+            // Detached arrays must not lose their original version and overwrite
+            // edits from another tab. The initial greeting has an explicit null
+            // baseline; every other writer must inherit a verified snapshot.
+            if (!_chatHistoryBaselines.has(list)) {
+                if (typeof showToast === 'function' && _shouldWarnAgain('chat-untracked')) {
+                    showToast('无法确认聊天记录版本，已阻止覆盖；请刷新后重试');
+                }
                 return false;
             }
             // Optimistic cross-tab protection: only a history loaded from the
@@ -8683,10 +8692,19 @@
             !window.__groupPrivateReceiptRecoveryRunning) {
             window.__groupPrivateReceiptRecoveryRunning = true;
             try {
+                var receiptOriginalGroupHistory = null;
                 var privateReceiptRepair = window.GroupPrivateReceiptRecovery.reconcile({
                     group: currentGroup,
-                    readGroupHistory: function () { return _readBackHistory(); },
-                    saveGroupHistory: function (messages) { return saveMessages(messages); },
+                    readGroupHistory: function () {
+                        var versioned = _readBackHistory();
+                        if (receiptOriginalGroupHistory === null && Array.isArray(versioned))
+                            receiptOriginalGroupHistory = versioned;
+                        return versioned;
+                    },
+                    saveGroupHistory: function (messages) {
+                        if (!receiptOriginalGroupHistory || !Array.isArray(messages)) return false;
+                        return saveMessages(_inheritChatBaseline(messages, receiptOriginalGroupHistory));
+                    },
                     readRoleHistory: function (roleId) {
                         try {
                             if (window.PhoneStorage && typeof window.PhoneStorage.getChatHistory === 'function') {
