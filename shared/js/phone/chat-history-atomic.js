@@ -24,9 +24,21 @@
         var lockManager = global.navigator && global.navigator.locks;
         if (!lockManager || typeof lockManager.request !== 'function') return fail('LOCK_UNAVAILABLE');
 
+        // Authenticated MAO pages expose a scoped Storage proxy. Match its
+        // account identity in the lock name so two users with the same role
+        // ID cannot block each other's browser tabs. Legacy pages keep the
+        // original lock name for backward compatibility.
+        var accountScope = global.__MAO_ACCOUNT_SCOPE__;
+        var identityMeta = global.document && typeof global.document.querySelector === 'function'
+            ? global.document.querySelector('meta[name="mao-account-id"]') : null;
+        var declaredAccount = identityMeta && String(identityMeta.content || '').trim();
+        if (declaredAccount && (!accountScope || accountScope.ready !== true ||
+            accountScope.accountId !== declaredAccount)) return fail('ACCOUNT_SCOPE_UNAVAILABLE');
+        var lockScope = accountScope && accountScope.ready === true && accountScope.accountId
+            ? encodeURIComponent(String(accountScope.accountId)) + ':' : '';
         var key = 'chat_history_' + id;
         try {
-            return await lockManager.request('maomao:chat-history:' + id, { mode: 'exclusive' }, function () {
+            return await lockManager.request('maomao:chat-history:' + lockScope + id, { mode: 'exclusive' }, function () {
                 var raw;
                 try { raw = global.localStorage.getItem(key); }
                 catch (e) { return fail('DB_UNAVAILABLE'); }
