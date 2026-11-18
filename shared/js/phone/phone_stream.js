@@ -223,6 +223,14 @@
                         buffer = '';
                     }
                     streamDone = true;
+                    // Some OpenAI-compatible endpoints return HTTP 200 with an empty
+                    // SSE body or only heartbeats. Treat that as failure, not a
+                    // successful empty character reply. Never erase partial text.
+                    if (!fullText.trim()) {
+                        var emptyStreamError = new Error('API 已连接，但没有返回可用的聊天正文');
+                        emptyStreamError.__streamError = true;
+                        throw emptyStreamError;
+                    }
                     // 兜底：同步补一次渲染，保证最后一段增量上屏
                     if (fullText && typeof opts.onPaint === 'function') opts.onPaint(fullText);
                 });
