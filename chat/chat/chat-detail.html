@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="../../shared/css/chat-beauty-runtime.css?v=20261031v1">
     <link rel="stylesheet" href="../call/call-overlay.css?v=20261105v1">
     <script src="../../shared/js/phone/phone_storage.js"></script>
+    <script src="../../shared/js/phone/chat-history-atomic.js?v=20261119qa1"></script>
     <script src="../../shared/js/phone/storage/repository.js"></script>
     <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
     <script src="../../shared/js/phone/role-avatar-library.js?v=20261113v1"></script>
@@ -3210,6 +3211,48 @@
             if (!stored || stored.length !== written.length) return false;
             for (var i = 0; i < written.length; i++) {
                 if (_messageIdentity(written[i]) !== _messageIdentity(stored[i])) return false;
+            }
+            return true;
+        }
+
+        // Cooperative cross-tab appends and version-checked replacements.
+        // Existing synchronous editors still retain their exact baseline CAS.
+        async function appendChatSafely(messages, guard) {
+            if (_chatHistoryUnreadable || storageKey !== 'chat_history_' + currentCharacter.id) {
+                if (typeof showToast === 'function') showToast('聊天记录不可安全保存，请刷新后重试');
+                return false;
+            }
+            var atomic = window.ChatHistoryAtomic;
+            if (!atomic || typeof atomic.appendManyIf !== 'function') {
+                if (typeof showToast === 'function') showToast('安全存储模块不可用，本轮未发送');
+                return false;
+            }
+            var outcome = await atomic.appendManyIf(currentCharacter.id, messages, guard);
+            if (!outcome || !outcome.ok) {
+                if (typeof showToast === 'function') showToast(
+                    outcome && outcome.error && outcome.error.code === 'STALE_CONTEXT'
+                        ? '其他窗口已有新消息，已停止过期回复；刷新后重试'
+                        : '消息未能安全保存，原聊天记录已保留'
+                );
+                return false;
+            }
+            return true;
+        }
+        async function replaceChatSafely(expected, next) {
+            if (_chatHistoryUnreadable || storageKey !== 'chat_history_' + currentCharacter.id ||
+                !window.ChatHistoryAtomic ||
+                typeof window.ChatHistoryAtomic.replaceIfUnchanged !== 'function') {
+                if (typeof showToast === 'function') showToast('聊天记录版本不可确认，未改动原数据');
+                return false;
+            }
+            var outcome = await window.ChatHistoryAtomic.replaceIfUnchanged(currentCharacter.id, expected, next);
+            if (!outcome || !outcome.ok) {
+                if (typeof showToast === 'function') showToast(
+                    outcome && outcome.error && outcome.error.code === 'CONFLICT'
+                        ? '其他窗口已更新记录，本次修改取消，请刷新后重试'
+                        : '聊天记录未能安全更新，原内容已保留'
+                );
+                return false;
             }
             return true;
         }
