@@ -76,7 +76,7 @@ test('explicitly marked native custom system bars reuse the same controller', ()
     assert.match(html, /<script\b[^>]*src=["'][^"']*shared\/js\/statusbar-control\.js/i,
       'custom system status bar missing shared control: ' + path.relative(projectRoot, page));
   }
-  assert.ok(marked >= 3, 'expected the three custom system bars to be marked');
+  assert.ok(marked >= 2, 'remaining custom bars still require shared control');
 });
 
 test('hidden preference applies immediately and covers dynamically added bars through CSS', () => {
@@ -474,4 +474,13 @@ test('Android PWA color observer attaches after body is created', () => {
   const before = frames;
   bodySubscription.observer.callback([{ type: 'attributes', attributeName: 'style', target: document.body }]);
   assert.equal(frames, before + 1, 'later body style changes must schedule native theme-color refresh');
+});
+
+
+test('dream travel contains no simulated phone time bar or timer', () => {
+  const travel = fs.readFileSync(path.join(projectRoot, 'travel/dream-travel.html'), 'utf8');
+  assert.doesNotMatch(travel, /<div\b[^>]*\bdata-maomao-system-statusbar\b/i);
+  assert.doesNotMatch(travel, /id=["']statusTime["']/i);
+  assert.doesNotMatch(travel, /setInterval\(updateTime/);
+  assert.match(travel, /<header class="topbar">/, 'retain the actual app navigation header');
 });
