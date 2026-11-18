@@ -8,6 +8,7 @@
 <script src="../../shared/js/font-loader.js?v=20261028modes"></script>
 <script src="../../shared/js/native-feel.js"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
+<script src="../../shared/js/phone/chat-history-atomic.js?v=20261118v3"></script>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
 <style>
 :root{--ink:#171715;--muted:#777771;--soft:#a7a7a0;--line:#e6e6e1;--paper:#fff;--wash:#f7f7f4;--sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",sans-serif}
@@ -281,41 +282,75 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
     if(stage===2) return fallbackMessages[2];
     return fallbackMessages[3];
   }
-  function appendJourneyMessage(stageIndex){
-    if(!state || stageIndex<0 || stageIndex>3) return false;
-    state.sentStages=Array.isArray(state.sentStages)?state.sentStages:[];
-    var journeyId=String(state.startedAt);
-    var list=loadHistory();
-    // 历史是最终事实来源：即使行程状态保存失败，刷新后也不会重复插入同一阶段消息。
-    var existing=list.some(function(message){
-      return message && message.mode==='journey' &&
-        String(message.journeyId||'')===journeyId &&
+  // Each journey stage is a guarded append, not a stale whole-history overwrite.
+  // The map prevents the 60fps animation loop from starting parallel writes.
+  var pendingJourneyStageWrites=Object.create(null);
+  function readJourneyPrimary(){
+    try {
+      var raw=localStorage.getItem(historyKey);
+      if(raw===null) return null;
+      var parsed=JSON.parse(raw);
+      return Array.isArray(parsed)?parsed:null;
+    } catch(e) { return null; }
+  }
+  function hasJourneyStage(list,journeyId,stageIndex){
+    return Array.isArray(list)&&list.some(function(message){
+      return message&&message.mode==='journey'&&
+        String(message.journeyId||'')===journeyId&&
         Number(message.journeyStage)===stageIndex;
     });
-    if(existing){
+  }
+  async function appendJourneyMessage(stageIndex){
+    if(!state||stageIndex<0||stageIndex>3||pendingJourneyStageWrites[stageIndex]) return false;
+    var journeyId=String(state.startedAt);
+    var initial=readJourneyPrimary();
+    // Never spend model/API money or overwrite corrupt/missing primary history.
+    if(!initial){showStorageWarning();return false;}
+    if(hasJourneyStage(initial,journeyId,stageIndex)){
+      state.sentStages=Array.isArray(state.sentStages)?state.sentStages:[];
       if(state.sentStages.indexOf(stageIndex)===-1) state.sentStages.push(stageIndex);
       saveState();
       return true;
     }
-    if(state.sentStages.indexOf(stageIndex)!==-1) return true;
-
     var messageList=Array.isArray(state.messages)?state.messages:fallbackMessages;
     var text=String(messageList[stageIndex]||generateFallbackText(stageIndex)).trim();
     if(!text) text=generateFallbackText(stageIndex);
-    var messageTime=Number(state.startedAt||Date.now()) + stages[stageIndex].at;
-    var entry={role:'assistant',text:text,time:messageTime,mode:'journey',journeyId:journeyId,journeyStage:stageIndex,scene:state.scene,type:'text'};
+    var messageTime=Number(state.startedAt||Date.now())+stages[stageIndex].at;
+    var entry={
+      role:'assistant',text:text,time:messageTime,mode:'journey',journeyId:journeyId,
+      journeyStage:stageIndex,scene:state.scene,type:'text'
+    };
     if(stageIndex===0){
       entry.type='location';
       entry.location={label:'已开启位置共享：正在前往'+state.scene+' · 预计30秒到达'};
     }
-    list.push(entry);
-    if(!saveHistory(list)){
-      showStorageWarning();
-      return false;
+    pendingJourneyStageWrites[stageIndex]=true;
+    try {
+      var atomic=window.ChatHistoryAtomic;
+      if(!atomic||typeof atomic.appendIf!=='function'){showStorageWarning();return false;}
+      var result=await atomic.appendIf(roleId,entry,function(latest){
+        return !hasJourneyStage(latest,journeyId,stageIndex);
+      });
+      if(!result.ok){
+        // Another tab may already have committed this stage under the lock.
+        // Verify the actual primary before treating that as an idempotent save.
+        if(result.error&&result.error.code==='STALE_CONTEXT'&&
+            hasJourneyStage(readJourneyPrimary(),journeyId,stageIndex)){
+          result={ok:true,meta:{alreadyPersisted:true}};
+        } else {
+          showStorageWarning();
+          return false;
+        }
+      }
+      // A new journey may have started while the lock was queued.
+      if(!state||String(state.startedAt)!==journeyId) return true;
+      state.sentStages=Array.isArray(state.sentStages)?state.sentStages:[];
+      if(state.sentStages.indexOf(stageIndex)===-1) state.sentStages.push(stageIndex);
+      saveState();
+      return true;
+    } finally {
+      delete pendingJourneyStageWrites[stageIndex];
     }
-    state.sentStages.push(stageIndex);
-    saveState();
-    return true;
   }
   var storageWarned=false;
   function showStorageWarning(){
