@@ -233,6 +233,33 @@ test('NPC discovery aborts its AI request and discards the result when the page 
   assert.equal(h.context.NPCSocial.getSettings().lastAttemptAt, 0, 'foreground cancellation must not consume the next auto-discovery cooldown');
 });
 
+test('foreground cancellation restores an existing NPC discovery cooldown timestamp', async () => {
+  const h = createHarness();
+  const prior = 12345;
+  h.data.set('npc_friend_discovery_settings_v2_main-role',
+    JSON.stringify({ enabled: false, intervalHours: 24, lastAttemptAt: prior }));
+  let requestSignal;
+  h.setCompleteJSONHandler(({ signal }) => {
+    requestSignal = signal;
+    return new Promise((resolve, reject) => {
+      signal.addEventListener('abort', () => {
+        const error = new Error('aborted');
+        error.name = 'AbortError';
+        reject(error);
+      });
+    });
+  });
+  const pending = h.context.NPCSocial.discoverNow();
+  for (let i = 0; i < 10 && !requestSignal; i++) await Promise.resolve();
+  assert.ok(requestSignal);
+  h.context.document.visibilityState = 'hidden';
+  h.dispatchDocumentEvent('visibilitychange');
+  const result = await pending;
+  assert.equal(result.reason, 'page-hidden');
+  assert.equal(h.context.NPCSocial.getSettings().lastAttemptAt, prior,
+    'cancellation must restore the earlier cooldown, not the newly written timestamp');
+});
+
 test('NPC validator rejects English relationship and offline-meeting language before storing requests', async () => {
   const safeCandidate = {
     create: true,
