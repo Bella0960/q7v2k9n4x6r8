@@ -6,7 +6,10 @@ const html=readFileSync(new URL('../chat/chat/chat-detail.html',import.meta.url)
 const a=html.indexOf('        function _readBackHistory() {');
 const b=html.indexOf('        // /photo 为用户显式触发',a);
 assert.ok(a>=0 && b>a,'actual persistence functions unavailable');
-const block=html.slice(a,b);
+const helperA=html.indexOf('        var _chatHistoryBaselines = new WeakMap();');
+const helperB=html.indexOf('        function removeLegacyStickerCaptions(',helperA);
+assert.ok(helperA>=0 && helperB>helperA,'baseline helpers unavailable');
+const block=html.slice(helperA,helperB) + html.slice(a,b);
 
 const initialRecord={
   role:'user',mid:'u1',time:1234,text:'图片在这儿',sendFailed:false,
