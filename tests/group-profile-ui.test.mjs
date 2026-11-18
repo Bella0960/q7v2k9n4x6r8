@@ -126,6 +126,23 @@ test('private settings remain the original page, with no group cover UI', async 
   } finally {await ctx.close();}
 });
 
+test('broken member portraits and group avatar display names rather than broken-image icons', async () => {
+  const ctx=await browser.newContext({viewport:{width:390,height:844}});
+  const page=await ctx.newPage();
+  try {
+    const g=group('g1','夜航');
+    g.avatar='data:image/png;base64,not-a-real-image';
+    g.members[0].avatar='data:image/png;base64,not-a-real-image';
+    await setup(page,{phone_groups:[g],ai_custom_characters:[person('c1','晨'),person('c2','月')]});
+    await page.goto(origin+'/chat/chat/chat-settings.html?roleId=g1');
+    await page.waitForFunction(() => document.querySelector('#gpCoverEmblem').textContent === '夜');
+    await page.waitForFunction(() => document.querySelector('.gp-preview-avatar').textContent === '晨');
+    assert.equal((await page.locator('#gpCoverEmblem').innerText()).trim(),'夜');
+    assert.equal((await page.locator('.gp-preview-person').first().locator('.gp-preview-avatar').innerText()).trim(),'晨');
+    assert.equal(await page.locator('.gp-cover-hero').isVisible(),true);
+  } finally {await ctx.close();}
+});
+
 test('cover persists per group in IndexedDB without polluting chat backgrounds', async () => {
   const ctx=await browser.newContext({viewport:{width:390,height:844}});
   const page=await ctx.newPage();
