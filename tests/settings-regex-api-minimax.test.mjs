@@ -6,6 +6,7 @@ import {runInNewContext, Script} from 'node:vm';
 const read = path => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
 const regexPage = read('worldbook/settings/regex-settings.html');
 const regexPolicySource = read('shared/js/phone/chat-regex-policy.js');
+const regexEditorSource = read('worldbook/settings/regex-editor.js');
 const api = read('settings/js/settings.js');
 const tts = read('shared/js/phone/minimax-tts.js');
 const ttsPage = read('settings/minimax-tts.html');
@@ -102,8 +103,8 @@ test('unsaved visible presets do not silently run, and preview only uses persist
     assert.equal(h.policy.applySaved('<output>你好</output>',ls),'<output>你好</output>');
     assert.equal(h.saveRules(h.loadRules()),true);
     assert.equal(h.policy.applySaved('<output>你好</output>',ls),'你好');
-    assert.match(regexPage,/预览已保存规则/);
-    assert.match(regexPage,/尚未生效/);
+    assert.match(regexPage,/只运行已保存并启用的规则/);
+    assert.match(regexEditorSource,/当前不会处理 AI 回复/);
 });
 test('JSON repair presets cannot rewrite ordinary conversation text',()=>{
     const ls=storage({regex_rules:JSON.stringify([
