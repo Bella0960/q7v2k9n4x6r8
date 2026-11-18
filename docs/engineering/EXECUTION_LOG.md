@@ -108,3 +108,14 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 5. Break cloud-push work into small, reviewable milestones. A code-only PR is not proof of scheduled execution, server model response, OS push delivery, or two-device message persistence.
 6. No merge to main, production deployment, APK update, Worker secret configuration, or destructive user-data operation without explicit owner approval.
 7. This conversation cannot run after the chat/session is closed. Leave this checkpoint so the next session can resume without asking the owner to repeat the task.
+
+## GROUP-UI-002 · 群聊资料页视觉重构（2026-11-19，独立开发分支）
+
+- **Owner requirement:** 私聊资料页与群聊资料页要做成两种不同结构；先群聊，吸收 QQ/微信和用户截图/旧视频的美感及交互；原功能全部保留。私聊、聊天加号菜单和首页布局本轮不修改。
+- **Branch:** `task-GROUP-UI-002/editorial-group-profile-20261119`（base=current main）。
+- **Changed paths:** `chat/chat/group-profile-ui.css`、`chat/chat/group-profile-ui.js`、`chat/chat/chat-settings.html`（仅挂载两项资源）、`tests/group-profile-ui.test.mjs`、`tests/group-ui-collapse-invite.test.mjs`、`tests/group-chat-invite-e2e.test.mjs`（现有测试适配外层折叠）。
+- **UI behavior:** 群聊顶部独立可上传封面 / 恢复默认、标题/人数、紧凑成员横排和邀请快捷入口、少量快捷操作；既有群资料、公告、成员管理、玩法设置及其他对话设置均保留在分类折叠里。私聊模式不会安装群聊视觉布局。
+- **Storage:** 用户封面按群 ID 使用已有 `maomao-media-store` v2 的 `wallpapers` object store，存储键 `chat_group_profile_cover_v1_<groupId>`。写入使用 IDB 事务完成回调，失败明确提示；不写入 `phone_groups` 或新增大图 localStorage key。聊天背景键保持不变。无需迁移现有群记录。
+- **Validation:** GitHub 只读源码静态校验 7/7 PASS（挂载、群模式守卫、原控件 ID、只写 IDB、两组旧测试已适配、新测试存在）。`node --test tests/group-profile-ui.test.mjs`、`npm run test:group:ui`、`npm run test:group:invite-e2e`、`npm run build`、实际 Chromium 375/390/430 视口及 iOS/Android 真机 **NOT VERIFIED**（无仓库本地执行环境，不能声称通过）。
+- **Integration conflict:** PR #298 也编辑了 `chat/chat/chat-settings.html`；已在 #298 评论提示文件交集。禁止以本分支覆盖群治理逻辑；先协调冲突并验证。遵守 QA #299 冻结，未推送 QA/main、未部署。
+- **Known gaps:** 群解散时独立封面的自动清理尚未接入原解散操作，后续需要无损清理并覆盖回归测试；浏览器实际视觉与动效未验收。接下来只在这一路径完成验证/修正，私聊资料页开独立任务。
