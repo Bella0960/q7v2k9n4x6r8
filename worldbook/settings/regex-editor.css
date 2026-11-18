@@ -137,7 +137,7 @@ details[open] > .system-summary .chevron {transform:rotate(225deg);}
 .field label {display:block;margin:0 0 7px;font-size:11px;color:#7b7b81;}
 .field input,.field textarea {
   width:100%;border:1px solid #ececee;border-radius:9px;
-  padding:11px 12px;color:var(--ink);background:#fafafa;font:12px/1.5 inherit;
+  padding:11px 12px;color:var(--ink);background:#fafafa;font-size:12px;line-height:1.5;font-family:inherit;
 }
 .field input:focus,.field textarea:focus {outline:none;border-color:#aaa;}
 .field-hint {font-size:10px;color:#999;margin-top:5px;line-height:1.5;}
