@@ -11,20 +11,49 @@
     var isGroupChat = options.isGroupChat === true;
     var groupMode = options.groupMode === 'offline' ? 'offline' : 'online';
     var groupMembers = Array.isArray(options.groupMembers) ? options.groupMembers : [];
+    // The model represents ONE selected speaker. Other characters' past lines
+    // are participants' input, never this speaker's own assistant history.
+    // Without a speakerId, keep the previous mapping for legacy callers.
+    var selectedSpeakerId = isGroupChat && options.speakerId != null
+      ? String(options.speakerId).trim() : '';
+    var selectedSpeakerName = isGroupChat ? String(options.speakerName || '').trim() : '';
     var cleanReasoning = typeof stripInternalReasoning === 'function'
       ? stripInternalReasoning
       : function (raw) { return String(raw || ''); };
 
+    function memberForMessage(message) {
+      if (!message || message.memberId == null || String(message.memberId).trim() === '') return null;
+      return groupMembers.find(function (item) {
+        return item && String(item.id) === String(message.memberId);
+      }) || null;
+    }
+
     function groupSpeakerPrefix(message) {
       if (!isGroupChat) return '';
-      var speakerName = String(message && message.name || '').trim();
-      if (!speakerName && message && message.memberId != null) {
-        var member = groupMembers.find(function (item) {
-          return item && String(item.id) === String(message.memberId);
-        });
-        if (member) speakerName = String(member.nickname || member.name || '').trim();
-      }
+      var member = memberForMessage(message);
+      // Stable memberId takes priority over an obsolete or incorrect saved nickname.
+      var speakerName = String(member && (member.nickname || member.name) ||
+        message && message.name || '').trim();
       return '【群成员' + (speakerName ? ' ' + speakerName : '') + '】\n';
+    }
+
+    function historyRoleForGroupMember(message) {
+      if (!isGroupChat || !selectedSpeakerId) return 'assistant';
+      var memberId = message && message.memberId == null ? '' :
+        String(message && message.memberId || '').trim();
+      if (memberId) return memberId === selectedSpeakerId ? 'assistant' : 'user';
+      // Legacy messages sometimes had a name but no memberId. Match only the
+      // SELECTED member's known aliases; unknown speakers cannot impersonate it.
+      var chosen = groupMembers.find(function (member) {
+        return member && String(member.id) === selectedSpeakerId;
+      });
+      var name = String(message && message.name || '').trim();
+      if (!name) return 'user';
+      var aliases = [selectedSpeakerName];
+      if (chosen) aliases.push(String(chosen.nickname || ''), String(chosen.name || ''));
+      return aliases.some(function (alias) {
+        return alias && alias.trim() === name;
+      }) ? 'assistant' : 'user';
     }
 
     // 多气泡回复逐条落库后，同一 turnId 的连续 assistant 消息要合并回一条，
@@ -51,13 +80,16 @@
       // not by sending the UI's image metadata into the text context.
       if (m.type === 'sticker') {
         var stickerMeaning = String(m.desc || '').trim();
-        var stickerRole = (m.role === 'received' || m.role === 'assistant') ? 'assistant' : 'user';
+        var stickerRole = (m.role === 'received' || m.role === 'assistant')
+          ? historyRoleForGroupMember(m) : 'user';
         var stickerContent = stickerMeaning
-          ? '[用户发送了一张表情包，表达的意思是：' + stickerMeaning + '。请理解其含义并自然回应，不要复述这段说明。]'
-          : '[用户发送了一张表情包，请结合语境自然回应。]';
+          ? '[发送了一张表情包，表达的意思是：' + stickerMeaning + '。请理解其含义并自然回应，不要复述这段说明。]'
+          : '[发送了一张表情包，请结合语境自然回应。]';
+        if (!isGroupChat) stickerContent = stickerContent.replace(/^\[发送/, '[用户发送');
         apiMessages.push({
           role: stickerRole,
-          content: stickerRole === 'assistant' ? groupSpeakerPrefix(m) + stickerContent : stickerContent
+          content: isGroupChat && (m.role === 'received' || m.role === 'assistant')
+            ? groupSpeakerPrefix(m) + stickerContent : stickerContent
         });
         if (stickerRole === 'assistant' && m.turnId) lastAssistantTurnId = String(m.turnId);
         return;
@@ -103,14 +135,16 @@
         }
         apiMessages.push({ role: 'user', content: userContent });
       } else if (m.role === 'received' || m.role === 'assistant') {
+        var mappedRole = historyRoleForGroupMember(m);
         var previous = apiMessages[apiMessages.length - 1];
-        if (m.turnId && String(m.turnId) === previousAssistantTurnId && previous && previous.role === 'assistant') {
-          // 同一轮回复的后续气泡：并入上一条 assistant，群成员前缀只保留一次。
+        if (mappedRole === 'assistant' && m.turnId &&
+            String(m.turnId) === previousAssistantTurnId && previous && previous.role === 'assistant') {
+          // Only the SAME speaker's continuous bubbles merge into its assistant turn.
           previous.content = previous.content + '\n\n' + content;
         } else {
-          apiMessages.push({ role: 'assistant', content: groupSpeakerPrefix(m) + content });
+          apiMessages.push({ role: mappedRole, content: groupSpeakerPrefix(m) + content });
         }
-        lastAssistantTurnId = m.turnId ? String(m.turnId) : null;
+        lastAssistantTurnId = mappedRole === 'assistant' && m.turnId ? String(m.turnId) : null;
       } else {
         // 其它角色（如系统提示）不参与合并。
         lastAssistantTurnId = null;
