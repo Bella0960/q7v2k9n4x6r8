@@ -251,7 +251,8 @@ test('C6-C8 chat.html -> chat-detail renders 3 members and request context conta
     assert.ok(system.includes('【群聊自然接话】'), 'natural group dialogue should suppress canned greetings');
     const received = page.locator('.msg-row.received.group-member-row').last();
     await received.waitFor({ state: 'visible', timeout: 12000 });
-    assert.equal((await received.locator('.msg-sender').innerText()).trim(), '阿五');
+    await received.scrollIntoViewIfNeeded();
+    assert.equal((await received.locator('.msg-sender').textContent() || '').trim(), '阿五');
     for (const width of [375, 390, 430]) {
       await page.setViewportSize({ width, height: 844 });
       const layout = await received.evaluate((row) => {
