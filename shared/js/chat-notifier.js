@@ -75,8 +75,20 @@
         } catch (error) { return null; }
     }
     function automaticStorageReady() {
-        return !!(global.navigator && global.navigator.locks &&
-            typeof global.navigator.locks.request === 'function');
+        if (!(global.navigator && global.navigator.locks &&
+            typeof global.navigator.locks.request === 'function')) return false;
+        // A protected account page must not pay for AI generation before its
+        // localStorage proxy has been bound to the declared identity.
+        try {
+            var declared = global.document && typeof global.document.querySelector === 'function'
+                ? global.document.querySelector('meta[name="mao-account-id"]') : null;
+            var id = declared && String(declared.content || '').trim();
+            if (id) {
+                var scope = global.__MAO_ACCOUNT_SCOPE__;
+                if (!scope || scope.ready !== true || scope.accountId !== id) return false;
+            }
+            return true;
+        } catch (e) { return false; }
     }
     function readCharacters() {
         var arr = safeJsonParse(safeGet('ai_custom_characters'));
