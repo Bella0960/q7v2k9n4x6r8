@@ -18,6 +18,15 @@
 }
 .gp-cover-photo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none}
 .gp-cover-hero.has-photo .gp-cover-photo{display:block}
+.gp-cover-emblem{
+  position:absolute;left:22px;top:46px;width:82px;height:82px;display:grid;place-items:center;
+  background:rgba(255,255,255,.55);border:1px solid rgba(255,255,255,.75);
+  border-radius:19px;color:#66676a;font:400 42px/1 Georgia,"Songti SC",serif;overflow:hidden;
+}
+.gp-cover-emblem>img{width:100%;height:100%;object-fit:cover}
+.gp-emblem-collage{height:100%;width:100%;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;overflow:hidden}
+.gp-emblem-collage img{width:100%;height:100%;object-fit:cover;min-width:0}
+.gp-cover-hero.has-photo .gp-cover-emblem{display:none}
 .gp-cover-hero.tone-dark{background:#777;color:#fff}
 .gp-cover-title{position:absolute;left:21px;bottom:36px;right:16px;z-index:1}
 .gp-cover-name{font:500 clamp(26px,7.4vw,34px)/1.15 Georgia,"Songti SC","Noto Serif SC",serif;letter-spacing:.02em;overflow-wrap:anywhere;max-height:2.4em;overflow:hidden}
@@ -52,7 +61,9 @@
 }
 .gp-preview-avatar img{height:100%;width:100%;object-fit:cover}
 .gp-preview-person small{display:block;font-size:11px;color:#737377;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-button.gp-preview-person{border:0;background:transparent;color:inherit;cursor:pointer;font-family:inherit}
+button.gp-preview-person{border:0;background:transparent;color:inherit;cursor:pointer;font-family:inherit;padding:0}
+button.gp-preview-person:active .gp-preview-avatar{background:#e3e3e5;transform:scale(.97)}
+.group-profile-page .gp-member-row.gp-member-highlight{outline:1px solid #c8c8cc;background:#f1f1f3!important;transition:background .2s ease}
 .gp-preview-person.gp-add .gp-preview-avatar{border:1px dashed #bdbdc1;background:#fafafb;font-size:25px;font-weight:200}
 .gp-quick{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;padding:16px 0 24px}
 .gp-quick-button{border:0;background:transparent;color:var(--gp-ink);display:flex;align-items:center;flex-direction:column;gap:9px;padding:5px 0 2px;font-family:inherit;font-size:11px;font-weight:500;line-height:1.3;cursor:pointer}
@@ -83,5 +94,5 @@ button.gp-preview-person{border:0;background:transparent;color:inherit;cursor:po
 .group-profile-page .gp-fold-content .gp-invite-block{border-top:1px solid #e9e9eb}
 .group-profile-page .gp-profile-fold:focus-within{border-color:#d4d4d8}
 .group-profile-page button:focus-visible,.group-profile-page summary:focus-visible{outline:2px solid #666;outline-offset:2px}
-@media(max-width:360px){.gp-cover-hero{height:204px}.gp-preview-members{gap:10px}.gp-preview-avatar{height:49px;width:49px}.gp-preview-person{width:49px;min-width:49px}.gp-quick-icon{height:43px;width:43px}}
+@media(max-width:360px){.gp-cover-emblem{width:72px;height:72px}.gp-cover-hero{height:204px}.gp-preview-members{gap:10px}.gp-preview-avatar{height:49px;width:49px}.gp-preview-person{width:49px;min-width:49px}.gp-quick-icon{height:43px;width:43px}}
 @media(prefers-reduced-motion:reduce){.gp-fold-chevron,.gp-quick-icon,.gp-cover-control{transition:none!important}}
