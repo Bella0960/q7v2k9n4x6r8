@@ -141,6 +141,54 @@ test('post-reply card actions require successful reply persistence and latest hi
   assert.doesNotMatch(part,/saveMessages\(/);
 });
 
+test('wallet receipt click uses one ledger entry on repeated clicks', async () => {
+  const f=fixture([{mid:'payment-1',role:'assistant',type:'redpacket',amount:'12.00',status:'unopened'}]);
+  let ledger={balance:0,history:[]},displays=0;
+  const factory=new Function('loadMessages','ensureMid','replaceChatSafely','getWorkData',
+    'saveWorkData','showToast','renderAllMessages','localStorage','currentCharacter',
+    'openPayResult',
+    section('        async function handlePayCardClick(event) {','        // ===== 群投票')
+      + '\nreturn handlePayCardClick;');
+  const receive=factory(f.history,mid,f.safe.replaceChatSafely,
+    ()=>JSON.parse(JSON.stringify(ledger)),
+    next=>{ledger=JSON.parse(JSON.stringify(next));return true;},
+    m=>f.notes.push(m),f.render,f.localStorage,{id:'role',name:'角色'},()=>{displays++;});
+  const event={currentTarget:{getAttribute(key){return key==='data-mid'?'payment-1':null;}}};
+  await receive(event);
+  await receive(event);
+  assert.equal(ledger.balance,12);
+  assert.equal(ledger.history.length,1);
+  assert.equal(f.history()[0].status,'opened');
+  assert.equal(displays,1);
+});
+
+test('wallet receipt conflict preserves remote messages and reconciles on retry', async () => {
+  const f=fixture([{mid:'payment-2',role:'assistant',type:'redpacket',amount:'5.00',status:'unopened'}]);
+  let ledger={balance:0,history:[]},first=true;
+  const replace=async (before,next)=>{
+    if(first){first=false;await f.window.ChatHistoryAtomic.appendIf('role',{mid:'remote',role:'user',text:'new'});}
+    return f.safe.replaceChatSafely(before,next);
+  };
+  const factory=new Function('loadMessages','ensureMid','replaceChatSafely','getWorkData',
+    'saveWorkData','showToast','renderAllMessages','localStorage','currentCharacter',
+    'openPayResult',
+    section('        async function handlePayCardClick(event) {','        // ===== 群投票')
+      + '\nreturn handlePayCardClick;');
+  const receive=factory(f.history,mid,replace,
+    ()=>JSON.parse(JSON.stringify(ledger)),
+    next=>{ledger=JSON.parse(JSON.stringify(next));return true;},
+    m=>f.notes.push(m),f.render,f.localStorage,{id:'role',name:'角色'},()=>{});
+  const event={currentTarget:{getAttribute(key){return key==='data-mid'?'payment-2':null;}}};
+  await receive(event);
+  assert.deepEqual(f.history().map(m=>m.mid),['payment-2','remote']);
+  assert.equal(f.history()[0].status,'unopened');
+  await receive(event);
+  assert.equal(f.history()[0].status,'opened');
+  assert.equal(ledger.balance,5);
+  assert.equal(ledger.history.length,1);
+  assert.deepEqual(f.history().map(m=>m.mid),['payment-2','remote']);
+});
+
 test('receipt status checks use CAS and all chat scripts still parse', () => {
   const pay = section('        async function handlePayCardClick(event) {','        // ===== 群投票');
   assert.match(pay,/paymentBaseline/);
