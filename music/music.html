@@ -1028,7 +1028,7 @@
 <input type="file" id="lyricsUpload" accept=".lrc,.txt,text/plain" hidden>
 <input type="file" id="musicBackgroundUpload" accept="image/*" hidden>
 <!-- 导入本地音乐 -->
-<input type="file" id="musicImport" accept="audio/*" multiple hidden>
+<input type="file" id="musicImport" accept="audio/*,.mp3,.m4a,.m4b,.wav,.aac,.ogg,.oga,.opus,.flac,.webm" multiple hidden>
 
 <script>
   // 音频播放器（最前面初始化，避免后面报错阻断）
@@ -1520,6 +1520,38 @@
   window.lastLyricLine = -1;
   let progress = 64; // 当前播放秒数
   let playTimer = null;
+  // Restored local audio has no Blob URL until user playback. Keep its
+  // last confirmed position until the new media element loads metadata.
+  let musicResumeCheckpoint = null;
+  let musicResumeMetadataListener = null;
+  function musicCancelPendingResumeListener() {
+    if (musicResumeMetadataListener) {
+      window.audio.removeEventListener('loadedmetadata', musicResumeMetadataListener);
+      musicResumeMetadataListener = null;
+    }
+  }
+  function musicApplyPendingResume(track, request) {
+    if (!track || !musicResumeCheckpoint ||
+        String(musicResumeCheckpoint.id) !== String(track.id)) return;
+    const pending = musicResumeCheckpoint;
+    const onMetadata = function () {
+      if (request !== playbackRevision ||
+          musicResumeCheckpoint !== pending || !window.audio) return;
+      if (!Number.isFinite(window.audio.duration) || window.audio.duration <= 0) return;
+      try {
+        window.audio.currentTime = Math.min(pending.time,
+          Math.max(0, window.audio.duration - 0.25));
+        musicResumeCheckpoint = null;
+        saveState();
+      } catch (error) {
+        // Do not overwrite the persisted checkpoint with zero.
+      }
+      musicCancelPendingResumeListener();
+    };
+    musicResumeMetadataListener = onMetadata;
+    window.audio.addEventListener('loadedmetadata', onMetadata);
+    if (window.audio.readyState >= 1) onMetadata();
+  }
   // timeupdate 会在同一秒触发数次；同一曲目/秒数最多写入一次。
   let musicLastPersistedProgressKey = '';
 
@@ -1615,6 +1647,7 @@
     // 否则保持原曲与旧收藏/进度，不显示假成功。
     // 等待真实音频拿到后才切换，失败不移除旧收藏或历史
     var playRequest = ++playbackRevision;
+    musicCancelPendingResumeListener();
     if (t.source === 'local') {
       try {
         var blob = await getAudioBlob(t.id);
@@ -1627,6 +1660,7 @@
         revokeCurrentUrl();
         currentBlobUrl = url;
         window.audio.src = url;
+        musicApplyPendingResume(t, playRequest);
       } catch (e) {
         toast('音频加载失败');
         return false;
@@ -1638,13 +1672,18 @@
     if (playRequest !== playbackRevision) return false;
     try { await window.audio.play(); }
     catch (e) {
+      musicCancelPendingResumeListener();
       playing = false;
       updatePlayIcon();
-      toast('无法开始播放，请检查音频来源或手机播放权限');
+      toast(e && e.name === 'NotAllowedError'
+        ? '手机阻止了自动播放，歌曲已保存，请点击播放键'
+        : '无法开始播放，请检查音频来源或手机播放权限');
       return false;
     }
     if (playRequest !== playbackRevision) return false; // 前一个异步切歌不得覆盖新请求
     currentIdx = tracks.indexOf(t);
+    if (musicResumeCheckpoint && String(musicResumeCheckpoint.id) !== String(t.id))
+      musicResumeCheckpoint = null;
     musicQueueAssign(t.id, options);
     document.getElementById('miniName').textContent = t.name;
     document.getElementById('miniArtist').textContent = t.artist;
@@ -1716,14 +1755,11 @@
           if (saved && String(saved.id) === String(selected.id))
             resumeTime = Math.max(0, Number(saved.time) || 0);
         } catch (err) {}
-        await playTrack(selected.id,
+        if (resumeTime > 0 && selected.source === 'local' && !musicResumeCheckpoint)
+          musicResumeCheckpoint = { id:selected.id, time:resumeTime };
+        const started = await playTrack(selected.id,
           musicPlaybackQueue ? { playlistName:musicPlaybackQueue.name } : undefined);
-        if (!window.audio.paused && resumeTime > 0 && Number.isFinite(window.audio.duration)) {
-          try {
-            window.audio.currentTime = Math.min(resumeTime, Math.max(0, window.audio.duration - 0.1));
-            saveState();
-          } catch (err) { toast('当前音频无法恢复原播放进度'); }
-        }
+        if (!started) return;
         return;
       }
       try { await window.audio.play(); }
@@ -2638,15 +2674,84 @@
     closeProfileEdit();
   }
 
+  // Android/SAF/cloud-drive pickers often give audio files numeric names and an
+  // empty or generic MIME type. Identify the file by its actual header first.
+  // This never uploads or decodes a song, and uses only the first 256 bytes.
+  function musicAudioTypeFromSignature(bytes) {
+    if (!bytes || !bytes.length) return '';
+    var has = function(pos, text) {
+      if (bytes.length < pos + text.length) return false;
+      for (var j = 0; j < text.length; j++) if (bytes[pos + j] !== text.charCodeAt(j)) return false;
+      return true;
+    };
+    if (has(0, 'ID3')) return 'audio/mpeg';
+    if (bytes.length >= 4 && bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0 &&
+        (bytes[1] & 0x06) !== 0 && (bytes[2] & 0xf0) !== 0xf0) return 'audio/mpeg';
+    if (has(0, 'RIFF') && has(8, 'WAVE')) return 'audio/wav';
+    if (has(0, 'fLaC')) return 'audio/flac';
+    if (has(0, 'OggS')) return 'audio/ogg';
+    if (bytes.length >= 2 && bytes[0] === 0xff &&
+        (bytes[1] & 0xf6) === 0xf0) return 'audio/aac';
+    if (has(4, 'ftyp')) {
+      // Audio MP4/M4A shares the ISO BMFF wrapper with video MP4. Only trust
+      // generic brands when the picker identifies the file as audio.
+      if (has(8, 'M4A ') || has(8, 'M4B ')) return 'audio/mp4';
+      if (has(8, 'mp41') || has(8, 'mp42') || has(8, 'isom')) return 'audio/mp4';
+    }
+    if (bytes.length >= 4 && bytes[0] === 0x1a && bytes[1] === 0x45 &&
+        bytes[2] === 0xdf && bytes[3] === 0xa3) {
+      // WebM/Matroska container: accept only a WebM signature within the EBML header.
+      var header = '';
+      for (var k = 0; k < Math.min(bytes.length, 128); k++) header += String.fromCharCode(bytes[k]);
+      if (/webm/i.test(header)) return 'audio/webm';
+    }
+    return '';
+  }
+  async function musicResolveAudioFormat(file) {
+    if (!file || typeof file.slice !== 'function' || !(file.size > 0))
+      return { ok: false, reason: 'empty' };
+    var signature;
+    try {
+      signature = musicAudioTypeFromSignature(
+        new Uint8Array(await file.slice(0, 256).arrayBuffer())
+      );
+    } catch (err) {
+      return { ok: false, reason: 'read', message: String(err && err.message || '') };
+    }
+    var mime = String(file.type || '').toLowerCase().split(';')[0].trim();
+    var ext = String(file.name || '').match(/\.([^.]+)$/);
+    ext = ext ? ext[1].toLowerCase() : '';
+    var byExtension = {
+      mp3:'audio/mpeg', m4a:'audio/mp4', m4b:'audio/mp4',
+      wav:'audio/wav', wave:'audio/wav', aac:'audio/aac',
+      ogg:'audio/ogg', oga:'audio/ogg', opus:'audio/ogg',
+      flac:'audio/flac', webm:'audio/webm'
+    };
+    var aliases = {
+      'audio/mp3':'audio/mpeg','audio/x-mp3':'audio/mpeg',
+      'audio/x-m4a':'audio/mp4','audio/m4a':'audio/mp4',
+      'audio/x-wav':'audio/wav','audio/wave':'audio/wav',
+      'audio/x-flac':'audio/flac','audio/x-aac':'audio/aac'
+    };
+    var pickedType = mime.indexOf('audio/') === 0 ? (aliases[mime] || mime) : '';
+    var detected = signature || pickedType || byExtension[ext] || '';
+    return detected ? { ok: true, mimeType: detected, fromHeader: !!signature }
+      : { ok: false, reason: 'unsupported' };
+  }
+
   document.getElementById('musicImport').addEventListener('change', async function(e) {
     var files = Array.from(e.target.files || []);
     e.target.value = '';
-    var localMeta = readLocalTracksMeta(), lastImported = null;
+    var localMeta = readLocalTracksMeta(), lastImported = null, importedCount = 0;
     if (musicMetaReadFailure) { toast('原歌曲列表读取失败，已停止导入，避免覆盖旧歌曲'); return; }
     for (var i = 0; i < files.length; i++) {
       var file = files[i];
-      if (!file.type.startsWith('audio/') && !/\.(mp3|m4a|wav|ogg|flac|aac|opus)$/i.test(file.name)) {
-        toast('已跳过不支持的音频格式：' + file.name); continue;
+      var resolvedFormat = await musicResolveAudioFormat(file);
+      if (!resolvedFormat.ok) {
+        toast((resolvedFormat.reason === 'read' ? '无法读取音频文件：' :
+          resolvedFormat.reason === 'empty' ? '空音频文件无法导入：' :
+          '无法识别音频文件格式：') + (file.name || '未命名文件'));
+        continue;
       }
       var tid = 'local_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2, 7);
       var name = file.name.replace(/\.[^.]+$/, '');
@@ -2654,8 +2759,10 @@
         dur: '本地', durSec: 0, source: 'local', lyrics: [] };
       try {
         // 先保存二进制，后保存目录；目录失败时只清理由本次新建的 ID。
+        var audioBlob = file.type === resolvedFormat.mimeType ? file :
+          new Blob([file], { type: resolvedFormat.mimeType });
         await putAudioBlob({ id: tid, name: name, artist: track.artist,
-          mimeType: file.type || 'audio/mpeg', size: file.size, blob: file });
+          mimeType: resolvedFormat.mimeType, size: file.size, blob: audioBlob });
         try {
           saveLocalTracksMeta(localMeta.concat([track]));
         } catch (err) {
@@ -2666,12 +2773,20 @@
         localMeta.push(track);
         tracks.push(track);
         lastImported = track;
+        importedCount++;
       } catch (err) { toast('音频未导入：' + err.message); }
     }
     renderAlbum();
     renderRecent();
     renderSearch(tracks);
-    if (lastImported) playTrack(lastImported.id);
+    if (importedCount) toast('已保存 ' + importedCount + ' 首本地歌曲');
+    if (lastImported) {
+      playTrack(lastImported.id).then(function (started) {
+        if (!started) toast('歌曲已保存，可在本地曲库中点击再次播放');
+      }).catch(function () {
+        toast('歌曲已保存，自动播放失败；请点击歌曲重试');
+      });
+    }
   });
 
   // ===== 断点续播 =====
@@ -2683,7 +2798,10 @@
       var payload = JSON.stringify({
         id: currentT ? currentT.id : null,
         idx: currentIdx,
-        time: window.audio.currentTime || 0,
+        time: musicResumeCheckpoint && currentT &&
+          String(musicResumeCheckpoint.id) === String(currentT.id) &&
+          window.audio.currentTime < 1
+          ? musicResumeCheckpoint.time : (window.audio.currentTime || 0),
         playing: playing,
         // 可选扩展字段：旧 music_state 仍兼容，歌单文件仍独立保存在 music_playlists_v1。
         playlistName:musicPlaybackQueue ? musicPlaybackQueue.name : null
@@ -2723,7 +2841,10 @@
       document.getElementById('npTitle').textContent = t.name;
       document.getElementById('npArtist').textContent = t.artist;
       renderTrackLyrics(t);
-      // 本地曲的 audio.src 延迟到用户点击播放时再走 playTrack 的 async 分支
+      // Local Blob URL is recreated when the user presses play. Persist the
+      // prior position until loadedmetadata; never auto-play on app launch.
+      musicResumeCheckpoint = t.source === 'local' && Number.isFinite(Number(s.time)) &&
+        Number(s.time) > 0 ? { id:t.id, time:Number(s.time) } : null;
       if (t.source !== 'local') {
         window.audio.src = t.url;
         if (s.time) window.audio.currentTime = s.time;
