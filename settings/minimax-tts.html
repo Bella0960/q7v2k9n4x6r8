@@ -470,6 +470,16 @@
 
         <!-- 第四步：保存 -->
         <button type="button" class="btn-save" id="saveBtn">保存 TTS 设置</button>
+        <details class="card" style="margin-top:14px;padding:14px 16px;">
+            <summary style="cursor:pointer;font-size:13px;color:inherit;">合成试听（会消耗 MiniMax 额度）</summary>
+            <div class="field" style="margin-top:12px;">
+                <label for="previewVoiceId">试听 Voice ID</label>
+                <input type="text" id="previewVoiceId" placeholder="请输入用于试听的音色 ID" autocomplete="off">
+            </div>
+            <button type="button" class="btn-save" id="testTtsBtn">生成试听音频</button>
+            <p id="ttsTestStatus" role="status" style="font-size:12px;line-height:1.6;"></p>
+            <audio id="ttsPreviewAudio" controls preload="none" hidden style="width:100%;margin-top:8px;"></audio>
+        </details>
 
         <div class="notice">
             <b>注意：</b>MiniMax 语音功能的完整开启还需要两步 ——<br>
@@ -481,6 +491,7 @@
     <div class="toast" id="toast">已保存 TTS 设置</div>
 </div>
 
+<script src="../shared/js/phone/minimax-tts.js?v=20261119"></script>
 <script>
 (function () {
     var STORAGE_KEY = 'minimax_tts_config';
@@ -503,7 +514,11 @@
         }
     }
     function save(cfg) {
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg)); } catch (e) {}
+        try {
+            var value = JSON.stringify(cfg);
+            localStorage.setItem(STORAGE_KEY, value);
+            return localStorage.getItem(STORAGE_KEY) === value;
+        } catch (e) { return false; }
     }
 
     var cfg = load();
@@ -573,10 +588,56 @@
         cfg.enabled = enableToggle.checked;
         cfg.apiKey = apiKeyInput.value.trim();
         cfg.groupId = groupIdInput.value.trim();
-        save(cfg);
-        showToast('已保存 TTS 设置');
+        if (!save(cfg)) {
+            showToast('保存失败，原有语音配置已保留；请检查存储空间');
+            return;
+        }
+        showToast('TTS 设置已保存');
     });
 
+    var testButton = document.getElementById('testTtsBtn');
+    var testVoice = document.getElementById('previewVoiceId');
+    var testStatus = document.getElementById('ttsTestStatus');
+    var audio = document.getElementById('ttsPreviewAudio');
+    var previewUrl = '';
+    testButton.addEventListener('click', async function () {
+        if (testButton.disabled) return;
+        if (!window.PhoneMiniMaxTTS) {
+            testStatus.textContent = '语音服务未加载，请刷新后重试';
+            return;
+        }
+        var voiceId = testVoice.value.trim();
+        if (!voiceId) { testStatus.textContent = '请先填写试听 Voice ID'; return; }
+        if (!save(Object.assign({}, cfg, {
+            enabled:enableToggle.checked,
+            apiKey:apiKeyInput.value.trim(),
+            groupId:groupIdInput.value.trim()
+        }))) {
+            testStatus.textContent = '保存失败，未发起试听请求';
+            return;
+        }
+        cfg.enabled = enableToggle.checked;
+        cfg.apiKey = apiKeyInput.value.trim();
+        cfg.groupId = groupIdInput.value.trim();
+        testButton.disabled = true;
+        testStatus.textContent = '正在生成试听…';
+        try {
+            var blob = await window.PhoneMiniMaxTTS.synthesize({
+                preview:true,voiceId:voiceId,text:'你好，这是角色的语音试听。'
+            });
+            if (previewUrl) URL.revokeObjectURL(previewUrl);
+            previewUrl = URL.createObjectURL(blob);
+            audio.src = previewUrl;
+            audio.hidden = false;
+            testStatus.textContent = '试听已生成，点击下方播放器播放';
+        } catch (error) {
+            testStatus.textContent = error && error.message || '语音生成失败';
+        } finally { testButton.disabled = false; }
+    });
+    window.addEventListener('pagehide', function () {
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+        previewUrl = '';
+    });
     var toastTimer = null;
     function showToast(msg) {
         toast.textContent = msg;
