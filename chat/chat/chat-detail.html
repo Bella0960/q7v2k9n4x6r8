@@ -2042,10 +2042,13 @@
 </style>
 
 <style id="chatModeSwitchStyles">
+/* 留白顶部模式入口仅显示当前模式文字：不使用下拉箭头、符号或胶囊按钮。 */
 .chat-status-sub.chat-mode-trigger{
-  min-height:25px;padding:4px 7px;margin-top:1px;
-  border:0;background:transparent;appearance:none;-webkit-appearance:none;
-  cursor:pointer;line-height:1.5;border-radius:4px;
+  display:inline-block;min-height:26px;padding:3px 0;margin:1px 0 0;
+  border:0;border-radius:0;background:transparent;box-shadow:none;
+  appearance:none;-webkit-appearance:none;
+  font:500 11px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;
+  letter-spacing:.01em;color:#85858a;text-align:left;cursor:pointer;
   transition:opacity .16s ease,color .16s ease;
 }
 .chat-status-sub.chat-mode-trigger:active{opacity:.55}
@@ -2124,7 +2127,7 @@
             <div class="chat-title-box">
                 <div class="chat-header-avatar" id="chat-header-avatar" aria-hidden="true"></div>
                 <span class="chat-user-name" id="chat-title">聊天</span>
-                <button class="chat-status-sub chat-mode-trigger" id="chat-status-sub" type="button" aria-label="切换聊天模式" title="切换线上、线下与旁白模式">ONLINE · ACTIVE</button>
+                <button class="chat-status-sub chat-mode-trigger" id="chat-status-sub" type="button" aria-label="切换聊天模式" title="切换线上、线下与旁白模式">线上聊天</button>
                 <span class="chat-notice-bar" id="chat-notice-bar" style="display:none;"></span>
             </div>
             <div class="chat-header-actions">
@@ -2869,7 +2872,7 @@
                 initialChatMode = 'online';
                 try { localStorage.setItem('chat_mode_' + currentCharacter.id, 'online'); } catch (e) {}
             }
-            chatStatusSub.textContent = initialChatMode === 'narration' ? 'NARRATION · ACTIVE' : 'ONLINE · ACTIVE';
+            chatStatusSub.textContent = initialChatMode === 'narration' ? '旁白模式' : '线上聊天';
         }
 
         // ================= 拉黑态（键 chat_blocked_ids：能发消息但显示红色感叹号，无回复） =================
@@ -8474,13 +8477,13 @@
                 }
                 if (selected === 'narration') {
                     try { localStorage.setItem(modeKey, 'narration'); } catch (e) {}
-                    if (chatModeTrigger) chatModeTrigger.textContent = 'NARRATION · ACTIVE';
+                    if (chatModeTrigger) chatModeTrigger.textContent = '旁白模式';
                     closeModeSheet();
                     if (typeof showToast === 'function') showToast('旁白模式已开启；再次选择线上聊天即可切回');
                     return;
                 }
                 try { localStorage.setItem(modeKey, 'online'); } catch (e) {}
-                if (chatModeTrigger) chatModeTrigger.textContent = 'ONLINE · ACTIVE';
+                if (chatModeTrigger) chatModeTrigger.textContent = '线上聊天';
                 closeModeSheet();
                 if (typeof showToast === 'function') showToast('已切回线上聊天');
             });
