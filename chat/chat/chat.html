@@ -1517,6 +1517,7 @@
       var nameInput = document.getElementById('groupNameInput');
       var membersList = document.getElementById('groupMembersList');
       var selected = {};
+      var modalOpen = false;
 
       function loadCharacters() {
         try {
@@ -1553,14 +1554,17 @@
       }
 
       function openModal() {
+        if (modalOpen) return;
         selected = {};
         if (nameInput) nameInput.value = '';
         renderMembers();
+        modalOpen = true;
         backdrop.classList.add('show');
         setTimeout(function(){ if (nameInput) nameInput.focus(); }, 60);
       }
 
       function closeModal() {
+        modalOpen = false;
         backdrop.classList.remove('show');
       }
 
@@ -1582,6 +1586,8 @@
       });
 
       document.getElementById('groupModalCreate').addEventListener('click', function() {
+        // A queued second tap must not create a duplicate group after the first save.
+        if (!modalOpen) return;
         var name = nameInput ? nameInput.value.trim() : '';
         if (!name) {
           nameInput.focus();
@@ -1630,8 +1636,13 @@
           return;
         }
         closeModal();
-        renderChatList();  // 已确认保存，重新渲染群聊列表
-        showToast('群聊已创建');
+        // Enter the new group only after the group record has passed write/readback.
+        try {
+          window.location.href = 'chat-detail.html?v=20261028modes1&id=' + encodeURIComponent(groupId);
+        } catch (e) {
+          renderChatList();
+          showToast('群聊已创建，请点击群聊进入');
+        }
       });
     })();
   </script>
