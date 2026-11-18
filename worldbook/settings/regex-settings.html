@@ -245,6 +245,12 @@
     }
     .btn-cancel { background: #F2F2F7; color: #666666; }
     .btn-save { background: #111111; color: #FFFFFF; }
+    .regex-status { font-size:12px;color:#777;line-height:1.6;padding:10px 6px; }
+    .regex-extra { margin-top:12px;background:#fff;border-radius:16px;padding:14px; }
+    .regex-extra summary { font-size:13px;font-weight:600;cursor:pointer; }
+    .regex-extra textarea { width:100%;min-height:78px;resize:vertical;border:1px solid #eee;border-radius:8px;padding:10px;margin:10px 0;font:inherit;font-size:12px;color:inherit;background:#fafafa;user-select:text; }
+    .regex-extra button { width:100%;border:0;border-radius:8px;background:#111;color:white;padding:11px;font:inherit;font-size:12px; }
+    #regexPreviewOutput { display:block;white-space:pre-wrap;word-break:break-word;font-size:12px;line-height:1.6;color:#555;margin-top:10px; }
 </style>
 </head>
 <body>
@@ -266,6 +272,14 @@
     <div class="content">
         <div class="card" id="ruleList"></div>
         <div class="empty" id="emptyTip" style="display:none;">暂无规则，点击右下角新增</div>
+        <div class="regex-status" id="regexPersistStatus" role="status"></div>
+        <button type="button" class="btn-save" id="regexApplyPreset" onclick="applyPresetRules()" style="display:none;width:100%;margin-top:8px;">启用当前预设规则</button>
+        <details class="regex-extra">
+            <summary>测试规则实际效果</summary>
+            <textarea id="regexPreviewInput" aria-label="测试原文" placeholder="输入一段聊天回复，看看哪些已保存规则会生效"></textarea>
+            <button type="button" onclick="previewRegex()">预览已保存规则</button>
+            <output id="regexPreviewOutput" role="status">此处会显示原文经过正则处理后的结果。</output>
+        </details>
     </div>
 
     <button class="add-fab" onclick="openSheet()" aria-label="新增规则">
@@ -295,6 +309,7 @@
     </div>
 </div>
 
+<script src="../../shared/js/phone/chat-regex-policy.js?v=20261119"></script>
 <script>
     var DEFAULT_RULES = [
         {
@@ -310,7 +325,7 @@
             name: "JSON 数组包裹",
             pattern: "^(\\{[\\s\\S]*\\})$",
             replacement: "$1",
-            enabled: true,
+            enabled: false,
             builtin: true
         },
         {
@@ -318,7 +333,7 @@
             name: "缺少逗号修复",
             pattern: "\\}\\s*\\{",
             replacement: "},{",
-            enabled: true,
+            enabled: false,
             builtin: true
         },
         {
@@ -326,7 +341,7 @@
             name: "尾随逗号修复",
             pattern: ",\\s*([\\]\\}])",
             replacement: "$1",
-            enabled: true,
+            enabled: false,
             builtin: true
         },
         {
@@ -342,7 +357,7 @@
             name: "ID 格式校验",
             pattern: "^(\\d{4})$",
             replacement: "$1",
-            enabled: true,
+            enabled: false,
             builtin: true
         },
         {
@@ -358,13 +373,9 @@
     // Existing user rules are authoritative. Old "v2" markers are *never* a
     // reason to replace the whole list. The defaults are only initial values.
     function repairKnownBuiltin(rule) {
-        if (!rule || typeof rule !== 'object') return rule;
-        var copy = Object.assign({}, rule);
-        if (copy.id === 'r_builtin_id' && copy.pattern === '^\\d{4}$' &&
-            copy.replacement === '$1') copy.pattern = '^(\\d{4})$';
-        if (copy.id === 'r_builtin_xml' && copy.pattern === '<output>(.*?)</output>' &&
-            copy.replacement === '$1') copy.pattern = '<output>([\\s\\S]*?)</output>';
-        return copy;
+        if (window.ChatRegexPolicy) return window.ChatRegexPolicy.repairKnownBuiltin(rule);
+        // Fail closed when the same engine used by chat has not loaded.
+        return rule;
     }
     function loadRules() {
         try {
@@ -386,7 +397,7 @@
             var encoded = JSON.stringify(arr);
             localStorage.setItem('regex_rules', encoded);
             if (localStorage.getItem('regex_rules') !== encoded) return false;
-            localStorage.setItem('regex_rules_v2', '1');
+            // No extra version-marker write: the array is the sole commit.
             window.__regexRulesReadError = false;
             return true;
         } catch (error) { return false; }
@@ -394,6 +405,16 @@
 
     function render() {
         var rules = loadRules();
+        var status = document.getElementById('regexPersistStatus');
+        var applyPreset = document.getElementById('regexApplyPreset');
+        var saved = null;
+        try { saved = localStorage.getItem('regex_rules'); } catch (error) {}
+        if (status) status.textContent = window.__regexRulesReadError
+            ? '旧规则无法读取：原数据已保留，禁止覆盖。请先备份或修复存储。'
+            : saved === null
+                ? '当前显示的是未启用的预设清单，聊天中尚未生效。请按需开关，或手动启用预设。'
+                : '下方 ON 的规则会处理后续 AI 回复；不会修改历史聊天记录。';
+        if (applyPreset) applyPreset.style.display = saved === null ? 'block' : 'none';
         var list = document.getElementById('ruleList');
         var empty = document.getElementById('emptyTip');
         list.innerHTML = '';
@@ -431,6 +452,25 @@
         });
     }
 
+    function applyPresetRules() {
+        var present;
+        try { present = localStorage.getItem('regex_rules'); } catch (error) { return; }
+        if (present !== null) { render(); return; }
+        if (!saveRules(loadRules())) {
+            alert('预设启用失败，请检查存储空间；旧数据未被覆盖。');
+        }
+        render();
+    }
+    function previewRegex() {
+        var source = document.getElementById('regexPreviewInput').value;
+        var target = document.getElementById('regexPreviewOutput');
+        if (!window.ChatRegexPolicy) {
+            target.textContent = '正则引擎没有加载，无法预览；聊天中也不会启用规则。';
+            return;
+        }
+        if (!source.trim()) { target.textContent = '请先输入一段测试原文。'; return; }
+        target.textContent = window.ChatRegexPolicy.applySaved(source, localStorage);
+    }
     function openSheet() { document.getElementById('sheetMask').classList.add('show'); }
     function closeSheet() {
         document.getElementById('sheetMask').classList.remove('show');
