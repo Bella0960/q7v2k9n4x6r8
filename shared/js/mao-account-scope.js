@@ -38,12 +38,13 @@
           return nativeFetch(input, init);
         }
 
-        var headers = new global.Headers(input && input.headers ? input.headers : undefined);
-        if (init && init.headers) {
-          new global.Headers(init.headers).forEach(function (value, key) {
-            headers.set(key, value);
-          });
-        }
+        // fetch(Request, { headers }) replaces Request headers rather than merging
+        // them. Preserve that behavior so stale credentials cannot leak through.
+        var headers = new global.Headers(
+          init && init.headers !== undefined
+            ? init.headers
+            : (input && input.headers ? input.headers : undefined)
+        );
         headers.set('x-mao-account-context', accountId);
         var nextInit = Object.assign({}, init || {});
         nextInit.headers = headers;
