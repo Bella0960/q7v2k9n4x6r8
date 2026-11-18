@@ -3114,7 +3114,7 @@
             ensureMid(pending);
             var withPending = prior.slice();
             withPending.push(pending);
-            if (!saveMessages(withPending)) {
+            if (!await appendChatSafely([pending])) {
                 if (typeof showToast === 'function') showToast('聊天记录无法保存，暂未开始生图');
                 return;
             }
@@ -3133,6 +3133,7 @@
                     throw new Error('图片已保存到角色图库，但聊天引用没有写入；请到设置中的角色图库查看。');
                 }
                 var latest = loadMessages();
+                var imageEditBaseline = JSON.parse(JSON.stringify(latest));
                 var index = latest.findIndex(function (item) { return String(item.mid || '') === String(pending.mid); });
                 if (index < 0) return;
                 latest[index] = Object.assign({}, latest[index], {
@@ -3142,12 +3143,13 @@
                     desc: result.sceneDescription,
                     isPrivate: true
                 });
-                if (!saveMessages(latest)) {
+                if (!await replaceChatSafely(imageEditBaseline, latest)) {
                     if (typeof showToast === 'function') showToast('图片已生成并保存到图库，但聊天记录保存失败');
                 }
                 renderAllMessages();
             } catch (error) {
                 var failed = loadMessages();
+                var imageFailureBaseline = JSON.parse(JSON.stringify(failed));
                 var pendingIndex = failed.findIndex(function (item) {
                     return String(item.mid || '') === String(pending.mid);
                 });
@@ -3158,7 +3160,7 @@
                         text: '图片生成失败：' + window.PhoneImageGeneration.safeFailure(error),
                         time: Date.now()
                     });
-                    saveMessages(failed);
+                    await replaceChatSafely(imageFailureBaseline, failed);
                     renderAllMessages();
                 }
             } finally {
@@ -3310,7 +3312,8 @@
             return timeIndex;
         }
 
-        function _markUserSendFailed(list, mid, time, reason) {
+        async function _markUserSendFailed(list, mid, time, reason) {
+            var originalSnapshot = JSON.parse(JSON.stringify(list));
             var idx = _locateUserMessageIndex(list, mid, time);
             if (idx === -1) return false;
             var message = list[idx];
@@ -3318,7 +3321,7 @@
             var previousReason = message.sendFailedReason;
             message.sendFailed = true;
             message.sendFailedReason = reason || 'api-error';
-            if (!saveMessages(list)) {
+            if (!await replaceChatSafely(originalSnapshot, list)) {
                 // 标记只在真正落库后才生效；写失败就回滚内存状态，交由调用方继续按既有规则处理错误提示。
                 if (previousFailed) message.sendFailed = true;
                 else delete message.sendFailed;
@@ -3330,7 +3333,7 @@
         }
 
         // 一键重试：复用已落库的原用户消息，只发起 AI 回合（contextOnly），不会插入第二条用户消息。
-        window.retryFailedMessage = function (mid, time) {
+        window.retryFailedMessage = async function (mid, time) {
             if (aiSending) {
                 if (typeof showToast === 'function') showToast('TA 正在回复中，稍等一下');
                 return;
@@ -3345,12 +3348,13 @@
                 return;
             }
             var list = loadMessages();
+            var originalSnapshot = JSON.parse(JSON.stringify(list));
             var prepared = _prepareRetryMessage(list, mid, time);
             if (!prepared) {
                 if (typeof showToast === 'function') showToast('这条消息已不存在或无需重试');
                 return;
             }
-            if (!saveMessages(list)) {
+            if (!await replaceChatSafely(originalSnapshot, list)) {
                 // 失败标记只在保存成功后移除；写失败就原样回滚，避免界面与存储不一致。
                 prepared.message.sendFailed = true;
                 if (prepared.previous.sendFailedReason != null) {
@@ -5189,6 +5193,7 @@
                 return;
             }
             const list = loadMessages();
+            const originalSnapshot = JSON.parse(JSON.stringify(list));
             var idx = -1;
             for (let i = 0; i < list.length; i++) {
                 if (ensureMid(list[i]) === resolved.mid) { idx = i; break; }
@@ -5204,11 +5209,11 @@
                 msg.translation = out;
                 msg.translationAt = Date.now();
             }
-            if (!saveMessages(list)) {
+            if (!await replaceChatSafely(originalSnapshot, list)) {
                 if (typeof showToast === 'function') showToast('保存失败，未写入翻译');
                 return;
             }
-            rerenderFromList(list);
+            rerenderFromList(loadMessages());
             if (typeof showToast === 'function') showToast('已翻译');
         }
 
@@ -6691,7 +6696,7 @@
             // 再按既有 _isRepeatedSystemError 去重规则处理错误提示。
             var retryRemarked = false;
             if (!streamResult.ok && retryTarget) {
-                retryRemarked = _markUserSendFailed(historyList, retryTarget.mid, retryTarget.time);
+                retryRemarked = await _markUserSendFailed(historyList, retryTarget.mid, retryTarget.time);
             }
 
             try {
