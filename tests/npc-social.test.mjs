@@ -564,3 +564,26 @@ test('NPC reconciliation recovers a saved contact without a greeting and does no
   assert.equal(JSON.parse(h.data.get(key))[0].status,'accepted','saved contact without a greeting can recover');
   assert.equal(h.histories[request.npc.id],undefined,'reconciliation must not invent chat messages');
 });
+
+test('NPC settings edits preserve corrupt role-scoped data instead of replacing it', () => {
+  for (const damaged of ['{broken-json', '[]', 'null', '"unexpected"']) {
+    const h = createHarness();
+    const key = 'npc_friend_discovery_settings_v2_main-role';
+    h.data.set(key, damaged);
+    assert.throws(() => h.context.NPCSocial.setSettings({ enabled: true }), /NPC 设置数据/);
+    assert.equal(h.data.get(key), damaged, 'invalid settings must be kept byte-for-byte for recovery');
+  }
+});
+
+test('NPC settings edits fail closed when existing role settings cannot be read', () => {
+  const h = createHarness();
+  const key = 'npc_friend_discovery_settings_v2_main-role';
+  const before = h.data.get(key);
+  const originalGet = h.context.localStorage.getItem;
+  h.context.localStorage.getItem = name => {
+    if (name === key) throw new Error('storage unavailable');
+    return originalGet(name);
+  };
+  assert.throws(() => h.context.NPCSocial.setSettings({ enabled: true }), /NPC 设置读取失败/);
+  assert.equal(h.data.get(key), before);
+});
