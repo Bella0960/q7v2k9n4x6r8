@@ -8696,7 +8696,9 @@
                 var privateReceiptRepair = window.GroupPrivateReceiptRecovery.reconcile({
                     group: currentGroup,
                     readGroupHistory: function () {
-                        var versioned = _readBackHistory();
+                        // loadMessages attaches the exact raw snapshot; _readBackHistory
+                        // alone returns an untracked array and fail-closed writes reject it.
+                        var versioned = loadMessages();
                         if (receiptOriginalGroupHistory === null && Array.isArray(versioned))
                             receiptOriginalGroupHistory = versioned;
                         return versioned;
