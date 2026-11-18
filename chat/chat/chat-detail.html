@@ -4485,16 +4485,14 @@
         }
         // 命中标记：在 AI 侧（左侧）插入一张黑底白字「发起语音通话」卡，并写入聊天记录
         // historyList 是 sendMsg 内的局部变量，由调用方传入
-        function insertIncomingCallCard(historyList) {
+        async function insertIncomingCallCard(historyList) {
             const cardMsg = {
                 role: 'assistant', type: 'call',
                 call: { type: 'voice', title: '发起语音通话', text: '', theme: 'dark' },
                 time: Date.now()
             };
-            var previousLength = historyList.length;
-            historyList.push(cardMsg);
-            if (!saveMessages(historyList)) {
-                historyList.length = previousLength;
+            ensureMid(cardMsg);
+            if (!await appendChatSafely([cardMsg])) {
                 if (typeof showToast === 'function') showToast('来电卡没有保存到聊天记录，未自动进入通话');
                 return false;
             }
@@ -4556,7 +4554,7 @@
         }
 
         // 虚拟图片落库：role=assistant + type=image（无 img 走占位图渲染），text 让 AI 后续也能"记得"发过图
-        function insertVImageCards(historyList, descs) {
+        async function insertVImageCards(historyList, descs) {
             var descriptions = Array.isArray(descs) ? descs : [];
             if (!descriptions.length) return true;
             var previousLength = historyList.length;
@@ -4569,19 +4567,14 @@
                     time: Date.now()
                 };
             });
-            Array.prototype.push.apply(historyList, cards);
-            if (!saveMessages(historyList)) {
-                historyList.length = previousLength;
+            cards.forEach(ensureMid);
+            if (!await appendChatSafely(cards)) {
                 if (typeof showToast === 'function') showToast('图片消息没有保存到聊天记录，请检查本地存储空间');
                 return false;
             }
-            if (_vl) {
-                vlRefresh();
-            } else {
-                cards.forEach(function (card, offset) {
-                    appendMessageToDOM(card, previousLength + offset);
-                });
-            }
+            // Re-read the authoritative order: another tab may have appended
+            // between AI completion and the virtual image marker.
+            renderAllMessages();
             scrollToBottom(true);
             return true;
         }
@@ -4739,7 +4732,7 @@
             return changed;
         }
 
-        function insertRoleFamilyCardInvitations(historyList, cardSpecs) {
+        async function insertRoleFamilyCardInvitations(historyList, cardSpecs) {
             if (!Array.isArray(cardSpecs) || !cardSpecs.length || isGroupChat ||
                 !window.RoleFamilyCards || typeof window.RoleFamilyCards.createInvite !== 'function') return false;
             var roleId = String(aliasRoleId || currentRoleId || (currentCharacter && currentCharacter.id) || '');
@@ -4784,7 +4777,9 @@
                 });
                 inserted = true;
             });
-            if (historyList.length > previousHistoryLength && !saveMessages(historyList)) {
+            var newCards = historyList.slice(previousHistoryLength);
+            newCards.forEach(ensureMid);
+            if (newCards.length && !await appendChatSafely(newCards)) {
                 historyList.length = previousHistoryLength;
                 if (typeof showToast === 'function') showToast('虚拟卡资料已处理，但聊天卡片没有保存成功；原有聊天记录已保留');
                 return false;
@@ -4889,9 +4884,10 @@
             } catch(e) {}
         }
         // 命中红包/转账标记：在 AI 侧插入对应卡片并落库，role='assistant' 可被用户领取
-        function insertPayCards(historyList, items) {
+        async function insertPayCards(historyList, items) {
             if (!items || !items.length) return;
             var previousLength = historyList.length;
+            var originalHistory = JSON.parse(JSON.stringify(historyList));
             var previousTransferStates = [];
             items.forEach(function (item) {
                 if (item.type === 'transfer' && /退回|退还|还给你/.test(String(item.message || ''))) {
@@ -4919,9 +4915,10 @@
                     status: 'unopened',
                     timestamp: Date.now()
                 };
+                ensureMid(payMsg);
                 historyList.push(payMsg);
             });
-            if (!saveMessages(historyList)) {
+            if (!await replaceChatSafely(originalHistory, historyList)) {
                 historyList.length = previousLength;
                 previousTransferStates.forEach(function (snapshot) {
                     if (snapshot.status == null) delete snapshot.message.status;
@@ -7025,24 +7022,24 @@
                             renderAllMessages();
                         }
                     }
-                    if (parsedCall.wantCall) {
-                        // 只有聊天卡片持久化成功，才允许触发自动来电跳转。
-                        if (insertIncomingCallCard(historyList)) maybeAutoIncomingCall();
+                    if (replySaved && parsedCall.wantCall) {
+                        // 只有 AI 回复和来电卡均持久化成功，才允许自动来电跳转。
+                        if (await insertIncomingCallCard(historyList)) maybeAutoIncomingCall();
                     }
-                    if (parsedPay.items.length) {
-                        // AI 侧插入红包/转账卡片并落库，role='assistant' 可被用户点击领取
-                        insertPayCards(historyList, parsedPay.items);
+                    if (replySaved && parsedPay.items.length) {
+                        // A failed AI response may not mint a payment card.
+                        await insertPayCards(historyList, parsedPay.items);
                     }
-                    if (parsedRoleFamilyCard.cards.length) {
-                        insertRoleFamilyCardInvitations(historyList, parsedRoleFamilyCard.cards);
-                    } else if (roleFamilyCardChanged) {
+                    if (replySaved && parsedRoleFamilyCard.cards.length) {
+                        await insertRoleFamilyCardInvitations(historyList, parsedRoleFamilyCard.cards);
+                    } else if (replySaved && roleFamilyCardChanged) {
                         renderAllMessages();
                     }
-                    if (parsedHeart.hearts.length) {
+                    if (replySaved && parsedHeart.hearts.length) {
                         insertHeartCards(historyList, parsedHeart.hearts);
                     }
-                    if (parsedImg.images.length) {
-                        insertVImageCards(historyList, parsedImg.images);
+                    if (replySaved && parsedImg.images.length) {
+                        await insertVImageCards(historyList, parsedImg.images);
                     }
                     if (!streamResult.ok) {
                         // 中断提示：放在已收到内容之后（保命语义：以上为已收到的回复）
@@ -8961,7 +8958,7 @@
                 if (event.target === overlay) overlay.classList.remove('is-show');
             });
 
-            function sendSticker(sticker) {
+            async function sendSticker(sticker) {
                 var msg = {
                     role: 'user',
                     type: 'sticker',
@@ -8969,10 +8966,8 @@
                     desc: sticker.desc,
                     time: Date.now()
                 };
-                var list = loadMessages();
-                list.push(msg);
-                if (!saveMessages(list)) {
-                    list.pop();
+                ensureMid(msg);
+                if (!await appendChatSafely([msg])) {
                     if (typeof showToast === 'function') showToast('表情没有保存到聊天记录，请检查本地存储空间');
                     return false;
                 }
