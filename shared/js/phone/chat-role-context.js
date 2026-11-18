@@ -73,6 +73,18 @@
     });
   }
 
+  // Historical WorldbookRepository accepts BOTH persisted shapes:
+  // ['book-a'] and {worldbookIds:['book-a'], enabled:true}.
+  // A valid legacy object must not make chats silently lose role context.
+  function parseWorldbookMountIds(raw) {
+    if (raw == null) return [];
+    var value = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (Array.isArray(value)) return value;
+    if (value && typeof value === 'object' && Array.isArray(value.worldbookIds))
+      return value.worldbookIds;
+    throw new Error('invalid-worldbook-mounts');
+  }
+
   // A group speaker can use their OWN attached local worldbooks, the group's
   // explicitly mounted books and globally visible books. Other members' private
   // local books do not enter this turn.
@@ -153,7 +165,7 @@
     var books=[],mounts=[];
     try {
       if (rawBooks != null) { books=JSON.parse(rawBooks); if (!Array.isArray(books)) throw Error('books'); }
-      if (rawMounts != null) { mounts=JSON.parse(rawMounts); if (!Array.isArray(mounts)) throw Error('mounts'); }
+      if (rawMounts != null) mounts=parseWorldbookMountIds(rawMounts);
     } catch (_) { return {ok:false,code:'worldbook-storage'}; }
     var chosen = selectWorldbooksForRole(books, role, mounts);
     var maxEntries = Math.max(1, chosen.reduce(function(total, book) {
@@ -221,6 +233,7 @@
     selectWorldbooksForRole: selectWorldbooksForRole,
     selectWorldbooksForGroup: selectWorldbooksForGroup,
     selectWorldbooksForGroupSpeaker: selectWorldbooksForGroupSpeaker,
+    parseWorldbookMountIds: parseWorldbookMountIds,
     buildSavedSourceEnvelope: buildSavedSourceEnvelope,
     validateFinalApiMessages: validateFinalApiMessages,
     validatePersonaRequest: validatePersonaRequest,
