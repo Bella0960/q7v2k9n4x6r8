@@ -2914,6 +2914,8 @@ body {
 
     // Real send/reply paths use the same Web Lock as online chat and journey.
     // Legacy synchronous previews/edits remain fail-closed via saveHistory.
+    var dateRerollPending = null;
+    var dateReplyWasReplacement = false;
     async function appendDateMessage(message) {
         if (_dateHistoryUnreadable || HISTORY_KEY !== 'chat_history_' + roleId ||
             !window.ChatHistoryAtomic || typeof window.ChatHistoryAtomic.appendIf !== 'function') {
@@ -2929,6 +2931,36 @@ body {
             return false;
         }
         history = loadHistory();
+        return true;
+    }
+
+    async function commitDateReply(message) {
+        dateReplyWasReplacement = false;
+        if (!dateRerollPending) return appendDateMessage(message);
+        var pending = dateRerollPending;
+        dateRerollPending = null;
+        if (_dateHistoryUnreadable || !window.ChatHistoryAtomic ||
+            typeof window.ChatHistoryAtomic.replaceIfUnchanged !== 'function') {
+            toast('重新生成无法安全保存，原回复已保留');
+            return false;
+        }
+        if (!message.mid) {
+            message.mid = 'date-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+        }
+        var replacement = JSON.parse(JSON.stringify(pending.baseline));
+        if (!replacement[pending.index] ||
+            (replacement[pending.index].role !== 'assistant' && replacement[pending.index].role !== 'received')) {
+            toast('目标回复已变化，原消息已保留');
+            return false;
+        }
+        replacement.splice(pending.index, 1, message);
+        var outcome = await window.ChatHistoryAtomic.replaceIfUnchanged(roleId, pending.baseline, replacement);
+        if (!outcome || !outcome.ok) {
+            toast('其他窗口更新了聊天记录，重新生成已取消，原回复已保留');
+            return false;
+        }
+        history = loadHistory();
+        dateReplyWasReplacement = true;
         return true;
     }
 
@@ -3035,14 +3067,15 @@ body {
             if (i >= text.length) {
                 clearInterval(timer);
                 var offlineReply = { role: 'assistant', text: text, time: Date.now(), mode: 'date', scene: sceneName || undefined };
-                if (!await appendDateMessage(offlineReply)) {
+                if (!await commitDateReply(offlineReply)) {
                     appendSys('这段角色回复尚未保存，请先复制上方文字，再检查存储空间后重试。');
                     setSending(false);
                     scrollBottom();
                     return;
                 }
                 removeStreaming();
-                appendAiParagraphs(text, history.length - 1);
+                if (dateReplyWasReplacement) renderAll();
+                else appendAiParagraphs(text, history.length - 1);
                 setSending(false);
                 scrollBottom();
             }
@@ -3314,6 +3347,7 @@ body {
 
         var apiMessages = [{ role: 'system', content: buildSystemPrompt() }];
         history.slice(-12).forEach(function (m) {
+            if (dateRerollPending && history[dateRerollPending.index] === m) return;
             var t = String(m.text || m.content || '').trim();
             if (!t) return;
             t = capText(t, 800);
@@ -3341,6 +3375,14 @@ body {
             var fullText = (result.fullText || '').trim();
 
             if (!result.ok) {
+                if (dateRerollPending) {
+                    dateRerollPending = null;
+                    appendSys('重新生成失败，原回复已保留');
+                    toast('重新生成失败，原回复已保留');
+                    setSending(false);
+                    scrollBottom();
+                    return;
+                }
                 var e = result.error || {};
                 var msg = e.kind === 'http'
                     ? '连接失败（HTTP ' + e.status + '）' + (e.detail ? '：' + e.detail : '')
@@ -3367,7 +3409,8 @@ body {
             }
 
             if (!fullText) {
-                appendSys('这一幕没有写出内容，再试一次吧');
+                dateRerollPending = null;
+                appendSys('这一幕没有写出内容，原回复已保留');
                 setSending(false);
                 return;
             }
@@ -3380,14 +3423,15 @@ body {
                 .replace(/\n{3,}/g, '\n\n').trim();
 
             var aiMsg = { role: 'assistant', text: fullText, time: Date.now(), mode: 'date', scene: sceneName || undefined };
-            if (!await appendDateMessage(aiMsg)) {
+            if (!await commitDateReply(aiMsg)) {
                 appendSys('上方角色回复尚未保存，请先复制需要保留的文字，再检查存储空间后重试。');
                 setSending(false);
                 scrollBottom();
                 return;
             }
             if (streamingP) removeStreaming();
-            appendAiParagraphs(fullText, history.length - 1);
+            if (dateReplyWasReplacement) renderAll();
+            else appendAiParagraphs(fullText, history.length - 1);
             setSending(false);
             scrollBottom();
         });
@@ -3653,22 +3697,20 @@ body {
     // 重 Roll：删掉最后一条 AI 回复（仅一条），基于之前的行动重新生成
     function actReroll() {
         if (sending) return;
-        var last = history[history.length - 1];
+        var lastIndex = history.length - 1;
+        var last = history[lastIndex];
         if (!last || !(last.role === 'assistant' || last.role === 'received')) {
             toast('没有可以重写的回复');
             return;
         }
-        var previousHistory = history.slice();
-        history.pop();
-        if (!saveHistory(history, previousHistory)) {
-            renderAll();
-            scrollBottom();
-            return;
-        }
-        renderAll();   // 气泡结构统一重渲染，避免残留旧气泡
-        scrollBottom();
+        dateRerollPending = {
+            index: lastIndex,
+            baseline: JSON.parse(JSON.stringify(history))
+        };
+        // The original turn remains persisted and visible until replacement
+        // succeeds; failure never deletes it or moves the chat backwards.
         setSending(true);
-        requestReply(null);
+        requestReply('(请根据之前的剧情重新生成上一条回复，不重复原句)');
     }
     // 保存：把当前线下模式剧情导出为 .txt 文稿下载
     function actSave() {
@@ -3777,18 +3819,15 @@ body {
     function rerollMsg(idx) {
         if (sending) return;
         var m = history[idx];
-        if (!m || !(m.role === 'assistant' || m.role === 'received')) { toast('这条不是角色回复'); return; }
-        var previousHistory = history.slice();
-        history.splice(idx, 1);
-        if (!saveHistory(history, previousHistory)) {
-            renderAll();
-            scrollBottom();
-            return;
+        if (!m || !(m.role === 'assistant' || m.role === 'received')) {
+            toast('这条不是角色回复'); return;
         }
-        renderAll();
-        scrollBottom();
+        dateRerollPending = {
+            index: idx,
+            baseline: JSON.parse(JSON.stringify(history))
+        };
         setSending(true);
-        requestReply(null);
+        requestReply('(请重新生成选中的那条角色回复，保留其他剧情)');
     }
 
     // 编辑：就地改为可编辑文本，保存后写回聊天记录
