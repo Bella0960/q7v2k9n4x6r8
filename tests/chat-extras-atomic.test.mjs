@@ -36,7 +36,10 @@ function locks() {
 let midCounter = 0;
 function fixture(initial = { chat_history_role: '[]' }, fail = false) {
   const localStorage = storage(initial, fail);
-  const window = { localStorage, navigator: { locks: locks() } };
+  const window = {
+    localStorage, navigator: { locks: locks() },
+    PhoneStorage: { MediaRepository: function () {} }
+  };
   runInNewContext(atomicSource, { window });
   const notes = [];
   let renderCount = 0;
@@ -163,7 +166,8 @@ test('verified clear removes only the confirmed old snapshot references', async 
 const forwardSection = section('  function coreForward() {','  // 给现有加号面板补充入口');
 const forwardFactory = new Function('loadMessages','showToast','localStorage',
   'modalBody','openModal','closeModal','atomicChatWriter','extrasPrimaryHistory','uid',
-  'navigator','window',forwardSection+'\nreturn coreForward;');
+  'navigator','window','escapeHtml','document',
+  forwardSection+'\nreturn coreForward;');
 test('forward saves only the canonical target role history, no legacy chatMessages key', async () => {
   const f=fixture({chat_history_role:'[]',chat_history_target:'[{"mid":"existing","text":"keep"}]',
     characters:JSON.stringify([{id:'target',name:'目标'}])});
@@ -172,7 +176,7 @@ test('forward saves only the canonical target role history, no legacy chatMessag
   const open=()=>{},close=()=>{};
   const forward=forwardFactory(()=>[{text:'分享给你'}],f.toast,f.localStorage,modalBody,
     open,close,util.atomicChatWriter,util.extrasPrimaryHistory,f.uid,
-    {clipboard:{}},f.window);
+    {clipboard:{}},f.window,x=>String(x),{getElementById:()=>null});
   forward();await button.onclick();
   assert.deepEqual(f.read('target').map(m=>m.mid).slice(0,1),['existing']);
   assert.equal(f.read('target').length,2);
@@ -187,9 +191,9 @@ test('wallet lock callback must return and await the asynchronous action', async
     held=true;
     try{return await callback({});}finally{held=false;}
   }}}};
-  const create=new Function('window','showToast',script+
+  const create=new Function('window','showToast','_outgoingPaymentBusy',script+
     '\nreturn runOutgoingPaymentExclusive;');
-  const run=create(win,()=>{});
+  const run=create(win,()=>{},false);
   const job=run(async()=>{busy=held;await new Promise(r=>{resolveAppend=r});return true},true);
   await Promise.resolve();
   await Promise.resolve();
