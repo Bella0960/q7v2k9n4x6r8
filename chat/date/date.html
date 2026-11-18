@@ -8,6 +8,9 @@
 <script src="../../shared/js/native-feel.js"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
 <script src="../../shared/js/phone/phone_stream.js"></script>
+<script src="../../shared/js/phone/rp-default-protocol.js?v=20261118v1"></script>
+<script src="../../shared/js/phone/chat-context-policy.js?v=20261118groupvoice1"></script>
+<script src="../../shared/js/phone/chat-role-context.js?v=20261118sourceaudit2"></script>
 <style>
   /* ============================================================
    * 线下模式 · 沉浸式剧情 —— 小说沉浸式排版
@@ -3149,8 +3152,11 @@ body {
         }
         return str.slice(0, max) + '\n…（内容过长，已自动截断）';
     }
-    function buildSystemPrompt() {
-        var persona = capText((character.persona || character.prompt || '').trim() || '一个真实、有生活气息的人。', 5000);
+    function buildSystemPrompt(source) {
+        // Build from the same fresh saved role/protocol/activated lore used online.
+        // Never truncate a user's persona into a generic offline placeholder.
+        var persona = source.persona;
+        var tone = source.tone;
         var parts = [];
 
         parts.push('【叙事总规范 · 线上与线下通用】');
@@ -3183,6 +3189,11 @@ body {
         parts.push('【你的人设】');
         parts.push('你是' + charName + '。');
         parts.push(persona);
+        if (tone) {
+            parts.push('');
+            parts.push('【该角色本人在档案中保存的聊天语气】');
+            parts.push(tone);
+        }
         var activeCharacterStyle = selectedCharacterStyles()[0];
         if (activeCharacterStyle && activeCharacterStyle.prompt) {
             parts.push('');
@@ -3191,18 +3202,13 @@ body {
             parts.push('此预设只调整叙述节奏、描写密度、台词口吻与段落风格；不得覆盖上方角色人设、既有经历、关系设定、世界书及记忆，也不要为了套用风格而写成固定模板。');
         }
 
-        // 世界书：线下剧情的舞台背景
-        try {
-            var wbList = JSON.parse(localStorage.getItem('phone_worldbooks') || '[]');
-            if (Array.isArray(wbList) && wbList.length) {
-                var wbText = wbList.map(function (b) {
-                    return '【' + (b.title || '未命名') + '】\n' + (b.content || '');
-                }).join('\n\n');
-                parts.push('');
-                parts.push('【世界书 · 你生活的世界】');
-                parts.push(capText(wbText, 6000));
-            }
-        } catch (e) {}
+        // Only worldbook entries activated for this speaker are eligible.
+        // Bound local lore and keyword/probability triggers follow the shared policy.
+        if (source.worldbook) {
+            parts.push('');
+            parts.push('【世界书 · 角色已知的世界背景】');
+            parts.push(source.worldbook);
+        }
 
         // 长期记忆（精简版：fixed + confirmed，按重要性取前 12 条）
         var memLines = [];
@@ -3248,7 +3254,7 @@ body {
         parts.push('【最近发生的事（线上与线下的连续剧情）】');
         parts.push(dialogLines.length ? capText(dialogLines.join('\n'), 4000) : '（刚开始）');
 
-        return parts.join('\n');
+        return source.expandedProtocol + '\n\n' + parts.join('\n');
     }
 
     /* ---------- 流式请求（send / continue / reroll 共用） ----------
@@ -3257,12 +3263,34 @@ body {
         var cfg = {};
         try { cfg = JSON.parse(localStorage.getItem('api_settings') || '{}') || {}; } catch (e) {}
         if (!(cfg.apiKey || '').trim()) {
-            // 未配置 API：使用本地模拟回复，保证可以直接预览气泡效果
-            localReplySim();
+            if (isPreview) localReplySim();
+            else toast('尚未配置聊天 API，本轮没有生成角色回复');
             return;
         }
-
-        var apiMessages = [{ role: 'system', content: buildSystemPrompt() }];
+        const currentRole = readRoles().find(function(item) {
+            return item && String(item.id) === String(roleId);
+        }) || null;
+        var savedUserName = '';
+        try {
+            savedUserName = String(JSON.parse(localStorage.getItem('myProfile') || '{}').nickname || '');
+        } catch (_) {}
+        const sourceResolver = window.MAOMAOChatRoleContext;
+        const source = sourceResolver && typeof sourceResolver.buildSavedSourceEnvelope === 'function'
+            ? sourceResolver.buildSavedSourceEnvelope({
+                role:currentRole, storage:localStorage, conversationId:roleId,
+                contextPolicy:window.ChatContextPolicy,
+                currentText:String(nudge || '') + ' ' + String(sceneName || ''),
+                recentMessages:loadHistory(), userName:savedUserName,
+                defaultProtocol:window.MAOMAO_RP_DEFAULT_PROTOCOL
+            }) : {ok:false,code:'resolver'};
+        if (!source.ok) {
+            toast('角色档案、伴侣协议或世界书未完整加载（' + source.code + '），本轮已停止');
+            return;
+        }
+        // The scene may have been open for hours. Use the latest saved role.
+        character = currentRole;
+        charName = String(currentRole.name || 'TA');
+        var apiMessages = [{ role: 'system', content: buildSystemPrompt(source) }];
         history.slice(-12).forEach(function (m) {
             var t = String(m.text || m.content || '').trim();
             if (!t) return;
@@ -3275,6 +3303,17 @@ body {
         var last = apiMessages[apiMessages.length - 1];
         if (last && last.role === 'assistant') apiMessages.push({ role: 'user', content: '(继续)' });
 
+        const deliveryCheck = sourceResolver.validateFinalApiMessages({
+            role:currentRole,speakerId:roleId,persona:source.persona,tone:source.tone,
+            protocol:source.protocol,expandedProtocol:source.expandedProtocol,
+            worldbook:source.worldbook,worldbookPolicyReady:source.worldbookPolicyReady,
+            messages:apiMessages
+        });
+        if (!deliveryCheck.ok) {
+            console.error('[ChatPersonaSources] offline-long source not delivered:', deliveryCheck.missing);
+            toast('线下角色资料未完整进入请求，本轮已停止');
+            return;
+        }
         streamingP = null;
         PhoneStream.chat({
             baseUrl: cfg.baseUrl || 'https://api.openai.com/v1',
