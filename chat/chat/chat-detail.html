@@ -5244,38 +5244,93 @@
                 ? policy.getReplyDelayMs()
                 : 1500;
         }
-        // 正在流式输出中的半截消息快照：用户中途退出去刷空间/朋友圈时，
-        // 在 pagehide 里把它落库为一条 assistant 消息，从而变成未读 + 顶部弹窗，
-        // 还原 QQ/微信里"你切出去对方消息照到"的真实感。
+        // The pagehide event cannot await Web Locks. Store the visible partial
+        // reply in its own per-tab journal; never write a stale full history
+        // synchronously while leaving the page. Recovery is idempotent and
+        // replays only after acquiring the normal conversation lock.
         let inflightSnapshot = null;
-
-        // 页面被切走（返回列表/刷空间/发动态）时：如果 AI 还在说话，
-        // 把已经流出来的那半截消息立刻落库。localStorage 写入是同步的，
-        // 在页面卸载前一定完成，下一页轮询时就能读到未读 + 弹窗。
+        var inflightJournalToken = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+        var inflightJournalKey = 'chat_inflight_journal_' + currentCharacter.id + '_' + inflightJournalToken;
+        var inflightRecoveryRunning = false;
         window.addEventListener('pagehide', function () {
             try {
                 if (!aiSending || !inflightSnapshot) return;
                 var raw = String(inflightSnapshot.text || '').trim();
                 if (!raw) return;
                 var cleaned = stripInternalReasoning(raw)
-                    .replace(/<narratage\b[^>]*>[\s\S]*?(?:<\/narratage\s*>|$)/gi, '')
-                    .replace(/<\/?narratage\b[^>]*>/gi, '')
-                    .replace(/\[中译[:：][^\]]{0,800}\]/g, '')
-                    .replace(/\n{3,}/g, '\n\n')
-                    .trim();
+                    .replace(/<narratage\\b[^>]*>[\\s\\S]*?(?:<\\/narratage\\s*>|$)/gi, '')
+                    .replace(/<\\/?narratage\\b[^>]*>/gi, '')
+                    .replace(/\\[中译[:：][^\\]]{0,800}\\]/g, '')
+                    .replace(/\\n{3,}/g, '\\n\\n').trim();
                 if (!cleaned) return;
-                var list = loadMessages();
-                list.push({
-                    role: 'assistant',
-                    text: cleaned,
-                    time: Date.now(),
-                    voiceMode: inflightSnapshot.voiceMode || 'online',
-                    name: inflightSnapshot.groupName,
-                    memberId: inflightSnapshot.memberId
-                });
-                saveMessages(list);
-            } catch (e) {}
+                localStorage.setItem(inflightJournalKey, JSON.stringify({
+                    roleId: String(currentCharacter.id),
+                    message: {
+                        role: 'assistant', mid: 'inflight:' + inflightJournalToken,
+                        text: cleaned, time: Date.now(),
+                        voiceMode: inflightSnapshot.voiceMode || 'online',
+                        name: inflightSnapshot.groupName,
+                        memberId: inflightSnapshot.memberId
+                    }
+                }));
+            } catch (error) {
+                console.warn('[Chat] partial reply journal could not be saved:', error);
+            }
         });
+        async function recoverInFlightJournals() {
+            if (inflightRecoveryRunning || _chatHistoryUnreadable) return;
+            inflightRecoveryRunning = true;
+            try {
+                var prefix = 'chat_inflight_journal_' + currentCharacter.id + '_';
+                var keys = [];
+                for (var i = 0; i < localStorage.length; i++) {
+                    var key = localStorage.key(i);
+                    if (key && key.indexOf(prefix) === 0) keys.push(key);
+                }
+                for (var j = 0; j < keys.length; j++) {
+                    var stored;
+                    try { stored = JSON.parse(localStorage.getItem(keys[j])); }
+                    catch (error) { continue; }
+                    if (!stored || String(stored.roleId) !== String(currentCharacter.id) ||
+                        !stored.message || !String(stored.message.mid || '').startsWith('inflight:')) continue;
+                    var entry = stored.message;
+                    var alreadySaved = false;
+                    var latest = loadMessages();
+                    // A reply that completed after pagehide takes precedence
+                    // over its shorter partial snapshot.
+                    alreadySaved = latest.some(function (message) {
+                        return message && (
+                            message.mid === entry.mid ||
+                            ((message.role === 'assistant' || message.role === 'received') &&
+                                Math.abs(Number(message.time) - Number(entry.time)) < 120000 &&
+                                String(message.text || '').indexOf(String(entry.text || '')) === 0)
+                        );
+                    });
+                    if (alreadySaved) {
+                        localStorage.removeItem(keys[j]);
+                        continue;
+                    }
+                    var recovered = await appendChatSafely([entry], function (now) {
+                        return !now.some(function (message) {
+                            return message && (
+                                message.mid === entry.mid ||
+                                ((message.role === 'assistant' || message.role === 'received') &&
+                                    Math.abs(Number(message.time) - Number(entry.time)) < 120000 &&
+                                    String(message.text || '').indexOf(String(entry.text || '')) === 0)
+                            );
+                        });
+                    });
+                    if (recovered) {
+                        localStorage.removeItem(keys[j]);
+                        if (_vl) vlRefresh(); else renderAllMessages();
+                    }
+                }
+            } catch (error) {
+                console.warn('[Chat] partial reply recovery postponed:', error);
+            } finally {
+                inflightRecoveryRunning = false;
+            }
+        }
 
         // 3. 核心真实 AI 聊天发送逻辑 (含历史记录、人设构造与 15 秒超时控制)
         async function sendMsg(opts) {
