@@ -57,7 +57,19 @@
     if (speakerId) {
       var messageId = message.memberId == null ? '' : String(message.memberId);
       if (messageId) return messageId === speakerId;
-      return !!speakerName && String(message.name || '').trim() === speakerName;
+      // Old rows without memberId may use an obsolete display nickname.
+      // Never learn the wrong character's voice from an ambiguous nickname.
+      var savedName = String(message.name || '').trim();
+      if (!speakerName || savedName !== speakerName) return false;
+      var members = Array.isArray(options.groupMembers) ? options.groupMembers : [];
+      if (members.length) {
+        var matched = members.filter(function (member) {
+          return member && (String(member.nickname || '').trim() === savedName ||
+            String(member.name || '').trim() === savedName);
+        });
+        if (matched.length !== 1 || String(matched[0].id) !== speakerId) return false;
+      }
+      return true;
     }
     return !!speakerName && String(message.name || '').trim() === speakerName;
   }
@@ -462,7 +474,8 @@
       var belongsToSpeaker = !options.isGroupChat || !isAssistant || matchesSpeaker(message, {
         isGroupChat: true,
         speakerId: speakerId,
-        speakerName: speakerName
+        speakerName: speakerName,
+        groupMembers: options.groupMembers
       });
 
       if (!isAssistant) {
