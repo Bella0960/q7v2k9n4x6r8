@@ -326,6 +326,7 @@ test('5. inviting a role from chat-settings writes it into the current group', a
   await withPage({ phone_groups: [group], ai_custom_characters: makeRoles(4) },
     '/chat/chat/chat-settings.html?roleId=g1', async (page) => {
       await page.waitForFunction(() => document.querySelectorAll('.gp-member-row').length === 2);
+      await page.locator('#gpProfileSettings > summary').click();
       await page.locator('#actionGroupManage').click();
       await page.locator('#gpInviteToggle').waitFor({ state: 'visible' });
       assert.equal(await page.locator('#gpInvitePanel').isVisible(), false, 'invite library must be collapsed by default');
@@ -362,6 +363,7 @@ test('6. roles already in the group are not offered again', async () => {
   await withPage({ phone_groups: [group], ai_custom_characters: makeRoles(4) },
     '/chat/chat/chat-settings.html?roleId=g1', async (page) => {
       await page.waitForFunction(() => document.querySelectorAll('.gp-member-row').length === 2);
+      await page.locator('#gpProfileSettings > summary').click();
       await page.locator('#actionGroupManage').click();
       await page.locator('#gpInviteToggle').click();
       await page.locator('.gp-invite-row').first().waitFor({ state: 'visible' });
@@ -385,6 +387,7 @@ test('7. a removed member becomes invitable again', async () => {
   await withPage({ phone_groups: [group], ai_custom_characters: makeRoles(4) },
     '/chat/chat/chat-settings.html?roleId=g1', async (page) => {
       await page.waitForFunction(() => document.querySelectorAll('.gp-member-row').length === 2);
+      await page.locator('#gpProfileSettings > summary').click();
       await page.locator('#actionGroupManage').click();
       await page.locator('#gpInviteToggle').click();
       await page.locator('.gp-invite-row').first().waitFor({ state: 'visible' });
@@ -446,6 +449,7 @@ test('9. groups do not leak members into each other', async () => {
 
   await withPage(seed, '/chat/chat/chat-settings.html?roleId=g1', async (page) => {
     await page.waitForFunction(() => document.querySelectorAll('.gp-member-row').length === 2);
+    await page.locator('#gpProfileSettings > summary').click();
     await page.locator('#actionGroupManage').click();
     await page.locator('#gpInviteToggle').click();
     await page.locator('.gp-invite-row').first().waitFor({ state: 'visible' });
