@@ -375,3 +375,26 @@ test('legacy unscoped pages retain their original lock name', async () => {
     assert.equal(result.ok, true);
     assert.deepEqual(names, ['maomao:chat-history:legacy']);
 });
+
+
+test('automatic AI preflight rejects accounts whose scoped storage is not ready', () => {
+    const marker = 'function automaticStorageReady() {';
+    const start = notifierSource.indexOf(marker);
+    const stop = notifierSource.indexOf('\n    function readCharacters()', start);
+    assert.ok(start >= 0 && stop > start);
+    const code = notifierSource.slice(start, stop).trim();
+    function ready(accountMeta, scope, hasLocks = true) {
+        const window = {
+            navigator: hasLocks ? { locks: { request() {} } } : {},
+            document: { querySelector: () => accountMeta ? { content: accountMeta } : null },
+            __MAO_ACCOUNT_SCOPE__: scope
+        };
+        const fn = runInNewContext('(' + code + ')', { global: window });
+        return fn();
+    }
+    assert.equal(ready('', null, true), true);
+    assert.equal(ready('MAO-ACCOUNT000001', null, true), false);
+    assert.equal(ready('MAO-ACCOUNT000001', { ready: true, accountId: 'MAO-ACCOUNT000002' }), false);
+    assert.equal(ready('MAO-ACCOUNT000001', { ready: true, accountId: 'MAO-ACCOUNT000001' }), true);
+    assert.equal(ready('', null, false), false);
+});
