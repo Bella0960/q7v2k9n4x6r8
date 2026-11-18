@@ -3064,13 +3064,10 @@ body {
             return;
         }
 
-        // 真实使用：只在还没有任何赴约剧情时补一条角色开场白。
-        // 线上聊天与路上消息保留在同一历史中，但不属于小说正文。
-        var hasDateMsg = history.some(function (m) { return m && m.mode === 'date'; });
-        if (hasDateMsg) return;
-        var previousHistory = history.slice();
-        history.push({ role: 'assistant', text: buildLocalOpening(), time: Date.now(), mode: 'date', scene: sceneName || undefined });
-        saveHistory(history, previousHistory);
+        // Real chat must not persist a generic prewritten opening under an
+        // existing character's identity. Only explicit preview mode uses
+        // sample narration; real character text comes from verified AI turns.
+        return;
     }
     // 本地模拟流式：逐字上屏，最终落库并渲染为气泡
     function localReplySim() {
@@ -3395,6 +3392,15 @@ body {
         // The scene may have been open for hours. Use the latest saved role.
         character = currentRole;
         charName = String(currentRole.name || 'TA');
+        // Source envelope was read from the saved store; refresh the
+        // transcript too before deciding what the role actually replies to.
+        history = loadHistory();
+        if (_dateHistoryUnreadable) {
+            toast('聊天记录暂不能读取，本轮未调用 API');
+            dateRerollPending = null;
+            setSending(false);
+            return;
+        }
         var apiMessages = [{ role: 'system', content: buildSystemPrompt(source) }];
         history.slice(-12).forEach(function (m) {
             var t = String(m.text || m.content || '').trim();
