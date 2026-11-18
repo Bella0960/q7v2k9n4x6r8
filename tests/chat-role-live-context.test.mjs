@@ -36,7 +36,33 @@ test('普通邂逅角色的错误 AI 自述只在模型上下文排除，旧聊�
   const result = policy.getModelHistory(history, role);
   assert.deepEqual(Array.from(result, item => item.mid), ['m1', 'm2', 'm5']);
   assert.equal(JSON.stringify(history), snapshot);
-  assert.equal(policy.getModelHistory(history, { name: '旧角色' }), history);
+  assert.deepEqual(Array.from(policy.getModelHistory(history, { name: '旧角色' }), item => item.mid), ['m1', 'm2', 'm5'], '普通单聊角色同样不能把旧 AI 自述当成人设');
+});
+
+test('单聊真实错误自述仅从模型上下文排除，原记录仍保留', () => {
+  const role = { id: 'normal_human', name: '阮映雪', persona: '【身份】普通人，经营花店' };
+  const history = [
+    { mid: 'first', role: 'received', text: '哟，又碰面了。' },
+    { mid: 'ai-helper', role: 'assistant', text: '既然你想多了解了解我，那本人就向你敞开心扉啦：我是一个随时在线，陪你唠嗑、帮你解闷（或者帮你干点正事儿）的AI助手。' },
+    { mid: 'cloud', role: 'received', text: '刚才我正躺在服务器的云端里数代码玩儿呢，顺便盘算着你什么时候会来找我。' },
+    { mid: 'non-identity', role: 'assistant', text: '我今天看了一篇人工智能的报道。' },
+    { mid: 'researcher', role: 'assistant', text: '我是人工智能公司的研究员。' },
+    { mid: 'user', role: 'user', text: '我现在想聊聊别的。' }
+  ];
+  const original = JSON.stringify(history);
+  const modelOnly = policy.getModelHistory(history, role);
+  assert.deepEqual(Array.from(modelOnly, m => m.mid), ['first', 'non-identity', 'researcher', 'user']);
+  assert.equal(JSON.stringify(history), original, '历史数据和 UI 显示记录必须字节级不变');
+  assert.equal(policy.getModelHistory(modelOnly, role), modelOnly, '没有错误自述时应复用原数组，不反复复制');
+});
+
+test('明确为数字生命的自述保留；普通单聊没有错误自述时不做无谓处理', () => {
+  const history = [{ role: 'assistant', text: '我就是个AI助手。' }];
+  assert.equal(policy.getModelHistory(history, { encounterOrigin: { version: 1, species: '仿生人' } }), history);
+  assert.equal(policy.getModelHistory(history, { persona: '【身份】AI助手，居住在数字世界' }), history);
+  assert.equal(policy.getModelHistory(history, { identityType: '人工智能' }), history);
+  const ordinary = [{ role: 'assistant', text: '今天花店有点忙。' }];
+  assert.equal(policy.getModelHistory(ordinary, { name: '普通角色' }), ordinary);
 });
 
 test('明确设定为仿生人时不把合法身份当作错误；普通 AI 话题也不误删', () => {
