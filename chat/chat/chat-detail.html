@@ -4144,7 +4144,16 @@
                 avatar.style.backgroundColor = '#E5E5EA';
                 avatar.style.color = '#666666';
             } else {
-                fillAvatar(avatar, currentCharacter.avatar, USER_SVG);
+                // Group replies show the speaking member's own avatar, not the group cover.
+                const groupSender = isGroupChat && currentGroup
+                    ? (currentGroup.members || []).find(function (member) {
+                        return member && ((msg.memberId && String(member.id) === String(msg.memberId)) ||
+                            (msg.name && groupMemberDisplayName(member) === String(msg.name)));
+                    }) : null;
+                const groupRole = groupSender ? getRoleById(groupSender.id) : null;
+                const speakerAvatar = (groupSender && groupSender.avatar) ||
+                    (groupRole && (groupRole.avatar || groupRole.avatarUrl)) || currentCharacter.avatar;
+                fillAvatar(avatar, speakerAvatar, USER_SVG);
             }
 
             // 群聊：AI 成员回复在气泡上方显示成员名（逐条落库的后续气泡不重复显示）
@@ -4152,6 +4161,7 @@
                 const nameTag = document.createElement('div');
                 nameTag.className = 'msg-sender';
                 nameTag.textContent = msg.name;
+                row.classList.add('group-member-row');
                 row.appendChild(nameTag);
             }
 
@@ -10181,6 +10191,42 @@
 .msg-row.sent .msg-sender,
 .msg-row.right .msg-sender {
   display: none !important;
+}
+/* CHAT-GROUP-LAYOUT-001: existing name/avatar/message elements are one two-column unit.
+   The sender label must not consume a third flex column and push the bubble right. */
+.msg-row.group-member-row.received {
+  display: grid !important;
+  grid-template-columns: 34px minmax(0, 1fr) !important;
+  grid-template-rows: auto auto;
+  column-gap: 10px !important;
+  row-gap: 4px !important;
+  align-items: start !important;
+  width: min(86%, 540px);
+  max-width: 86%;
+}
+.msg-row.group-member-row.received > .msg-sender {
+  grid-column: 2;
+  grid-row: 1;
+  flex-basis: auto;
+  min-width: 0;
+  margin: 0 !important;
+  color: #999 !important;
+  font-size: 11px !important;
+  line-height: 1.3;
+}
+.msg-row.group-member-row.received > .msg-avatar {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  align-self: start !important;
+}
+.msg-row.group-member-row.received > :last-child:not(.msg-sender):not(.msg-avatar) {
+  grid-column: 2;
+  grid-row: 2;
+  min-width: 0;
+  max-width: 100%;
+  width: fit-content;
+  justify-self: start;
+  margin-left: 0 !important;
 }
 </style>
 
