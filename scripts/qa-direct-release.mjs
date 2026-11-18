@@ -463,6 +463,18 @@ async function main() {
   assert.ok(flags.length <= 1 && flags.every(x => x === '--deploy' || x === '--qa-only'),
     'Unsupported or conflicting release arguments');
   preflightCheckout();
+  // Fail fast on a missing explicit QA-only confirmation or Cloudflare access,
+  // instead of burning an entire expensive test suite before discovering it.
+  let qaBaseline = null;
+  let coreBaseline = null;
+  if (deploy) {
+    assert.equal(process.env.MAOMAO_QA_DEPLOY_CONFIRM, QA,
+      'Set MAOMAO_QA_DEPLOY_CONFIRM to the exact existing QA Worker name');
+    [qaBaseline, coreBaseline] = await Promise.all([
+      liveWorkerVersion(QA), liveWorkerVersion(CORE)
+    ]);
+    console.log('Pinned existing QA Worker version before tests: ' + qaBaseline.versionId);
+  }
   console.log('Validating original MAOMAO QA candidate; production is never targeted.');
   for (const [command, args] of TESTS) run(command, args);
   console.log('Node, Vite and Chromium tests passed.');
@@ -470,12 +482,17 @@ async function main() {
     console.log('Validation only. No Cloudflare release attempted.');
     return;
   }
-  assert.equal(process.env.MAOMAO_QA_DEPLOY_CONFIRM, QA,
-    'Set MAOMAO_QA_DEPLOY_CONFIRM to the exact existing QA Worker name');
   const { coreInitialized, originalQaSecrets, originalCoreSecrets } =
     await cloudflarePreflight();
-  const corePrevious = await liveWorkerVersion(CORE);
-  const qaPrevious = await liveWorkerVersion(QA);
+  const [corePrevious, qaPrevious] = await Promise.all([
+    liveWorkerVersion(CORE), liveWorkerVersion(QA)
+  ]);
+  // Another release may have completed while the full suite was running.
+  // Never overwrite it with this older, though tested, candidate.
+  assert.equal(qaPrevious.versionId, qaBaseline.versionId,
+    'QA Worker was deployed by another release while tests ran; refusing to overwrite it');
+  assert.equal(corePrevious.versionId, coreBaseline.versionId,
+    'QA identity core changed while tests ran; refusing to use stale identity evidence');
   let coreVersion = corePrevious;
   if (qaOnly) {
     assert.equal(coreInitialized, true,
@@ -507,6 +524,15 @@ async function main() {
   // QA-only can publish the tested snapshot on a clean fast-forward history.
   // Full --deploy (which can touch identity core) remains exact-HEAD-only.
   assertReadyForUpload({ allowPinned: qaOnly });
+  // Re-check immediately before Wrangler upload. This narrows the race window
+  // and protects both the existing phone build and its identity authority.
+  const [qaCurrent, coreCurrent] = await Promise.all([
+    liveWorkerVersion(QA), liveWorkerVersion(CORE)
+  ]);
+  assert.equal(qaCurrent.versionId, qaPrevious.versionId,
+    'QA Worker changed after preflight; refusing to replace a newer deployment');
+  assert.equal(coreCurrent.versionId, coreVersion.versionId,
+    'QA identity authority changed after preflight; refusing unsafe QA deployment');
   const testedCommit = stampQaBuildReceipt();
   run('npx', ['--yes', 'wrangler@4', 'deploy', '--config', 'wrangler.qa.jsonc']);
   const qaVersion = await liveWorkerVersion(QA);
