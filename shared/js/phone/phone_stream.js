@@ -124,6 +124,8 @@
              * 高频 delta 在此被合并，长回复不再逐帧打满 CPU。 */
             var paintScheduled = false;
             var streamDone = false;
+            var doneMarkerSeen = false;
+            var finishReason = '';
             function schedulePaint() {
                 if (paintScheduled || streamDone) return;
                 paintScheduled = true;
@@ -177,7 +179,7 @@
                     if (line.indexOf('data:') !== 0) return;
 
                     var payload = line.slice(5).trim();
-                    if (payload === '[DONE]') { streamDone = true; return; }
+                    if (payload === '[DONE]') { doneMarkerSeen = true; streamDone = true; return; }
 
                     var json;
                     try { json = JSON.parse(payload); }
@@ -189,7 +191,9 @@
                         throw se;
                     }
 
-                    var delta = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content;
+                    var choice = json.choices && json.choices[0];
+                    if (choice && choice.finish_reason != null) finishReason = String(choice.finish_reason);
+                    var delta = choice && choice.delta && choice.delta.content;
                     if (delta) {
                         fullText += delta;
                         schedulePaint();
@@ -223,6 +227,22 @@
                         buffer = '';
                     }
                     streamDone = true;
+                    // A socket can close gracefully after sending part of an answer.
+                    // HTTP 200 + a few SSE deltas is not proof of completion.
+                    // Respect either OpenAI [DONE] or an explicit stop finish_reason.
+                    // A length/content_filter finish reason is not a complete reply.
+                    if (finishReason === 'length' || finishReason === 'content_filter') {
+                        var incompleteReason = new Error(finishReason === 'length'
+                            ? '回复超过 API 生成上限，未完整返回'
+                            : '回复被服务商过滤，未完整返回');
+                        incompleteReason.__streamError = true;
+                        throw incompleteReason;
+                    }
+                    if (!doneMarkerSeen && finishReason !== 'stop') {
+                        var prematureEnd = new Error('API 流式响应提前中断，未收到完成标记');
+                        prematureEnd.__streamError = true;
+                        throw prematureEnd;
+                    }
                     // Some OpenAI-compatible endpoints return HTTP 200 with an empty
                     // SSE body or only heartbeats. Treat that as failure, not a
                     // successful empty character reply. Never erase partial text.
