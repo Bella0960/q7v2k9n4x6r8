@@ -8,6 +8,9 @@
 <script src="../../shared/js/font-loader.js?v=20261028modes"></script>
 <script src="../../shared/js/native-feel.js"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
+<script src="../../shared/js/phone/rp-default-protocol.js?v=20261118v1"></script>
+<script src="../../shared/js/phone/chat-context-policy.js?v=20261118groupvoice1"></script>
+<script src="../../shared/js/phone/chat-role-context.js?v=20261118sourceaudit2"></script>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
 <style>
 :root{--ink:#171715;--muted:#777771;--soft:#a7a7a0;--line:#e6e6e1;--paper:#fff;--wash:#f7f7f4;--sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",sans-serif}
@@ -299,9 +302,11 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
     }
     if(state.sentStages.indexOf(stageIndex)!==-1) return true;
 
-    var messageList=Array.isArray(state.messages)?state.messages:fallbackMessages;
-    var text=String(messageList[stageIndex]||generateFallbackText(stageIndex)).trim();
-    if(!text) text=generateFallbackText(stageIndex);
+    // Only publish a role-verified, actually generated message. Do not pass a
+    // generic stage template off as this character's speech.
+    var messageList=Array.isArray(state.messages)?state.messages:[];
+    var text=String(messageList[stageIndex]||'').trim();
+    if(!text) return false;
     var messageTime=Number(state.startedAt||Date.now()) + stages[stageIndex].at;
     var entry={role:'assistant',text:text,time:messageTime,mode:'journey',journeyId:journeyId,journeyStage:stageIndex,scene:state.scene,type:'text'};
     if(stageIndex===0){
@@ -375,13 +380,15 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
     for(var i=0;i<stages.length;i++){if(elapsed>=stages[i].at)stageIndex=i;}
     if(state.lastStage!==stageIndex){state.lastStage=stageIndex;saveState();updateStage(stageIndex);}
     // 保存失败时在后续帧重试；appendJourneyMessage 会先检查历史避免重复写入。
-    if(stageIndex<4) appendJourneyMessage(stageIndex);
+    // Generated messages may arrive after stage 0; catch up in order without
+    // changing historical messages or creating duplicates.
+    for(var priorStage=0;priorStage<=stageIndex&&priorStage<4;priorStage++)appendJourneyMessage(priorStage);
     if(elapsed>=totalDuration){gotoStory();return;}
     animationId=window.requestAnimationFrame(tick);
   }
   function startJourney(scene){
     if(!roleId || !character){ alert('没有找到这个角色，请先回到聊天页选择角色。'); return; }
-    state={scene:scene,startedAt:Date.now(),status:'travelling',sentStages:[],lastStage:-1,messages:fallbackMessages.slice()};
+    state={scene:scene,startedAt:Date.now(),status:'travelling',sentStages:[],lastStage:-1,messages:[]};
     startedJourneyId=String(state.startedAt);
     try { localStorage.setItem(modeKey,'offline-short'); } catch(e) {}
     saveState();
@@ -392,12 +399,55 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
   async function generateCharacterMessages(){
     var cfg={};
     try{cfg=JSON.parse(localStorage.getItem('api_settings')||'{}')||{};}catch(e){}
-    if(!cfg.apiKey) return;
-    var context=loadHistory().slice(-8).filter(function(m){return m && m.mode!=='date' && !m.silent && (m.role==='user'||m.role==='assistant'||m.role==='sent'||m.role==='received');}).map(function(m){
+    if(!cfg.apiKey){
+      document.getElementById('routeMetaLeft').textContent='未配置聊天 API，途中不会发送通用模板';
+      return;
+    }
+    var freshRole=null;
+    try{
+      var roles=JSON.parse(localStorage.getItem('ai_custom_characters')||'[]');
+      if(Array.isArray(roles))freshRole=roles.find(function(item){return item&&String(item.id)===String(roleId)})||null;
+    }catch(e){}
+    var meName='';
+    try{meName=String(JSON.parse(localStorage.getItem('myProfile')||'{}').nickname||'')}catch(e){}
+    var recent=loadHistory().slice(-8).filter(function(m){return m && m.mode!=='date' && !m.silent && (m.role==='user'||m.role==='assistant'||m.role==='sent'||m.role==='received');});
+    var context=recent.map(function(m){
       var role=(m.role==='user'||m.role==='sent')?'我':charName;
-      return role+'：'+String(m.text||m.content||'').slice(0,100);
+      return role+'：'+String(m.text||m.content||'').slice(0,140);
     }).join('\n');
-    var system='你正在扮演角色「'+charName+'」，人设如下：'+String(character.persona||character.prompt||character.description||'保持自然、符合角色性格。').slice(0,1800)+'。你正在去与对方见面，目的地是「'+state.scene+'」。请根据人设与最近聊天，写出四条短微信消息，分别表达：刚出门、正在路上、途中路况变化（可提到堵车但不要每次都强行堵车）、快到了。每条 8-35 个汉字，口语自然、有角色个性，不要写动作括号、标题、编号或解释。只输出 JSON 字符串数组，例如 ["消息1","消息2","消息3","消息4"]。';
+    var sources=window.MAOMAOChatRoleContext &&
+        typeof window.MAOMAOChatRoleContext.buildSavedSourceEnvelope==='function'
+      ? window.MAOMAOChatRoleContext.buildSavedSourceEnvelope({
+          role:freshRole,storage:localStorage,conversationId:roleId,
+          contextPolicy:window.ChatContextPolicy,
+          currentText:String(state.scene||''),recentMessages:recent,userName:meName,
+          defaultProtocol:window.MAOMAO_RP_DEFAULT_PROTOCOL
+        }) : {ok:false,code:'resolver'};
+    if(!sources.ok){
+      document.getElementById('routeMetaLeft').textContent='角色资料未加载（'+sources.code+'），途中消息已停止';
+      return;
+    }
+    var system=sources.expandedProtocol+'\n\n【当前发言者的完整角色档案】\n'+sources.persona+
+      (sources.tone?'\n【保存的聊天语气】\n'+sources.tone:'')+
+      (sources.worldbook?'\n【本角色已激活的世界书】\n'+sources.worldbook:'')+
+      '\n【当前赴约场景】\n你正前往「'+state.scene+'」与对方见面。' +
+      '根据本角色的生活背景、已发生的聊天内容和明确的语气习惯，写出四条简短路上消息：刚出门、在路上、途中动态、快到了。' +
+      '不强制制造堵车或其他事件。不要模板化欢迎，不编造既成的共同经历，不要代替其他人说话。' +
+      '仅返回合法 JSON 字符串数组，无标题、编号或解释。';
+    var requestMessages=[
+      {role:'system',content:system},
+      {role:'user',content:'最近聊天：\n'+(context||'暂时没有聊天记录。')+'\n请输出四条符合当前人物的路上消息。'}
+    ];
+    var roleAudit=window.MAOMAOChatRoleContext.validateFinalApiMessages({
+      role:freshRole,speakerId:roleId,persona:sources.persona,tone:sources.tone,
+      protocol:sources.protocol,expandedProtocol:sources.expandedProtocol,
+      worldbook:sources.worldbook,worldbookPolicyReady:sources.worldbookPolicyReady,
+      messages:requestMessages
+    });
+    if(!roleAudit.ok){
+      document.getElementById('routeMetaLeft').textContent='角色资料未完整进入请求，途中消息已停止';
+      return;
+    }
     var ctrl=new AbortController();
     var timer=setTimeout(function(){ctrl.abort();},12000);
     try{
@@ -405,7 +455,7 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
       var model=String(cfg.model || 'gpt-3.5-turbo').trim();
       var response=await fetch(base+'/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+cfg.apiKey},signal:ctrl.signal,body:JSON.stringify({
         model:model,
-        messages:[{role:'system',content:system},{role:'user',content:'最近聊天：\n'+(context||'暂时没有聊天记录。')+'\n请生成四条路上消息。'}],
+        messages:requestMessages,
         temperature:typeof cfg.temperature==='number'?cfg.temperature:0.75,
         max_tokens:180
       })});
@@ -417,8 +467,9 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
       if(!Array.isArray(parsed) || parsed.length<4) return;
       var next=parsed.slice(0,4).map(function(value,index){
         var line=String(value||'').replace(/^\s*[-\d.、)）]+\s*/,'').trim();
-        return line.slice(0,70) || fallbackMessages[index];
+        return line.slice(0,70);
       });
+      if(next.some(function(line){return !line}))return;
       if(state && state.status==='travelling' && String(state.startedAt)===String(startedJourneyId)){
         state.messages=next;saveState();
       }
