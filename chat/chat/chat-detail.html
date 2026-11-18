@@ -2518,8 +2518,8 @@
                 var storedGroupRaw = JSON.stringify(groups);
                 localStorage.setItem('phone_groups', storedGroupRaw);
                 if (localStorage.getItem('phone_groups') !== storedGroupRaw) return false;
-                var status = document.getElementById('chat-status-sub');
-                if (status) status.textContent = (currentGroup.members || []).map(groupMemberDisplayName).join(' · ') || '群聊';
+                // Group membership changes update the compact header count, not a secondary status box.
+                refreshChatTitle();
                 return true;
             } catch (e) { return false; }
         }
@@ -2786,7 +2786,20 @@
                 } catch (e) {}
             }
             const displayName = (isGroupChat && gAlias) ? gAlias : (alias.roleAlias || contactName);
-            if (chatTitle) chatTitle.textContent = displayName;
+            if (chatTitle) {
+                if (isGroupChat) {
+                    // The user participates in every group shown here, but isn't necessarily
+                    // represented in group.members. Count them once alongside unique role IDs.
+                    const latestGroup = loadGroupById(currentRoleId) || currentGroup;
+                    const memberIds = new Set((latestGroup && Array.isArray(latestGroup.members) ? latestGroup.members : [])
+                        .map(function (member) { return String(member && member.id || '').trim(); })
+                        .filter(Boolean));
+                    if (latestGroup) memberIds.add('__user');
+                    chatTitle.textContent = displayName + (latestGroup ? '（' + memberIds.size + '）' : '');
+                } else {
+                    chatTitle.textContent = displayName;
+                }
+            }
         }
         refreshChatTitle();
         // 从对话设置页/线下剧情页 history.back() 返回时（bfcache 恢复），
@@ -2797,14 +2810,23 @@
                 renderAllMessages();
             }
         });
-        // 群聊：副标题显示成员名单；普通聊天保持 ONLINE
+        // A group edited in another open tab should show its current participant count.
+        if (isGroupChat) {
+            window.addEventListener('storage', function (event) {
+                if (event.key === 'phone_groups' || event.key === 'chat_group_alias_' + aliasRoleId) {
+                    refreshChatTitle();
+                }
+            });
+        }
+        // 群聊只在主标题显示人数。成员名单和在线状态不再占用顶部空间。
         const chatStatusSub = document.getElementById('chat-status-sub');
         if (isGroupChat && chatStatusSub) {
-            const names = (currentGroup && currentGroup.members || []).map(groupMemberDisplayName).filter(Boolean);
-            const groupModeLabel = currentGroup && currentGroup.settings && currentGroup.settings.chatMode === 'offline' ? '线下' : '线上';
-            chatStatusSub.textContent = (names.length ? names.join(' · ') : '群聊') + ' · ' + groupModeLabel;
+            chatStatusSub.textContent = '';
             chatStatusSub.disabled = true;
             chatStatusSub.classList.remove('chat-mode-trigger');
+            chatStatusSub.hidden = true;
+            // Some themes force button display; keep this group-only hide authoritative.
+            chatStatusSub.style.setProperty('display', 'none', 'important');
             // 群聊：显示群公告横条（chat_group_notice_<gid>）
             const chatNoticeBar = document.getElementById('chat-notice-bar');
             if (chatNoticeBar) {
