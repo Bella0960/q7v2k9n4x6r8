@@ -246,7 +246,8 @@ test('C6-C8 chat.html -> chat-detail renders 3 members and request context conta
     assert.ok(system.includes('本轮由你（阿五）'), 'reply pick is the invited member');
     assert.ok(system.includes('你以【角色三】的身份参与'), 'identity lock must use the selected role, not the group name');
     assert.ok(!system.includes('你以【三人测试群】的身份参与'), 'group title is not a speaker persona');
-    assert.ok(system.includes('【角色档案】\\n夜班编辑人设'), 'selected member persona must anchor the reply');
+    const anchoredPersona = (system.split('【角色档案】')[1] || '').split('【性格稳定与情绪变化】')[0];
+    assert.ok(anchoredPersona.includes('夜班编辑人设'), 'selected member persona must anchor the reply');
     assert.ok(system.includes('【群聊自然接话】'), 'natural group dialogue should suppress canned greetings');
     const received = page.locator('.msg-row.received.group-member-row').last();
     await received.waitFor({ state: 'visible', timeout: 12000 });
