@@ -22,7 +22,7 @@ test('CHAT-MIC-001: direct and group continuation reuse sendMsg without saving a
   assert.match(continuation, /sendMsg\(\{contextOnly:true,manualContinue:true\}\)/);
   assert.match(main, /const text = isManualContinue \? '' : sendState\.text/);
   assert.match(main, /sendState\.isGroupFollowup \|\| \(isManualContinue && isGroupChat\)/);
-  assert.match(main, /buildReplyMessages\(fullText, replyBubbleMode,/);
+  assert.match(main, /buildReplyMessages\(fullText, getActiveReplyBubbleMode\(\),/);
   assert.match(main, /manualContinue: isManualContinue/);
   assert.match(main, /const continuationCue = isGroupChat/);
   assert.match(main, /isManualContinue && isBlocked\(aliasRoleId\)/);
@@ -33,7 +33,7 @@ test('CHAT-MIC-001: manually continued replies do not show typing state or strea
   assert.match(main, /if \(!isManualContinue && chatTitleEl\)/);
   assert.match(main, /if \(!isManualContinue\) \{[\s\S]*?statusDiv\.innerText = '对方正在输入\.\.\.'/);
   assert.match(main, /if \(isManualContinue\) return;[\s\S]*?if \(!tmpText\) return;/);
-  assert.match(main, /isManualContinue \? 'auto' : getActiveReplyBubbleMode\(\)/);
+  assert.match(main, /const replyBubbleMode = getActiveReplyBubbleMode\(\)/);
 });
 
 test('CHAT-MIC-001: changed inline scripts are syntactically valid', () => {
