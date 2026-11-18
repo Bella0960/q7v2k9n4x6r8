@@ -242,3 +242,65 @@ test('pre-commit quota exception remains a definite failure and does not append'
   assert.equal(result.meta.writeMayHavePersisted, false);
   assert.equal(f.data.chat_history_A, '[{"mid":"old"}]');
 });
+
+test('retry after an uncertain forward commit is idempotent for an identical mid and payload', () => {
+  const msg = { mid: 'forward-uncertain-1', role: 'user', type: 'image', assetId: 'synthetic-asset-A' };
+  const f = fixture({ chat_history_A: '[]', chat_history_B: '[{"mid":"B-1"}]' });
+  assert.equal(f.api.result.appendChatHistory('A', msg).ok, true);
+  const before = f.data.chat_history_A;
+  const writes = f.writes.filter(key => key === 'chat_history_A').length;
+  const retry = f.api.result.appendChatHistory('A', { ...msg });
+  assert.equal(retry.ok, true);
+  assert.equal(retry.meta.alreadyPersisted, true);
+  assert.equal(retry.meta.messageId, msg.mid);
+  assert.equal(f.data.chat_history_A, before);
+  assert.equal(f.writes.filter(key => key === 'chat_history_A').length, writes);
+  assert.equal(JSON.parse(f.data.chat_history_A).length, 1);
+  assert.equal(f.data.chat_history_B, '[{"mid":"B-1"}]');
+});
+
+test('duplicate mid with different media is a conflict, preserving the original bytes', () => {
+  const previous = { mid: 'fwd-1', role: 'user', assetId: 'asset-A' };
+  const raw = JSON.stringify([previous]);
+  const f = fixture({ chat_history_A: raw, chat_history_B: '[{"mid":"B"}]' });
+  const res = f.api.result.appendChatHistory('A', { ...previous, assetId: 'asset-B' });
+  assert.equal(res.ok, false);
+  assert.equal(res.error.code, 'CONFLICT');
+  assert.equal(f.data.chat_history_A, raw);
+  assert.equal(f.data.chat_history_B, '[{"mid":"B"}]');
+  assert.equal(f.writes.filter(key => key === 'chat_history_A').length, 0);
+});
+
+test('identical forwarded mids can exist in separately isolated role histories', () => {
+  const msg = { mid: 'same-mid', text: 'synthetic' };
+  const f = fixture({ chat_history_A: '[]', chat_history_B: '[]' });
+  assert.equal(f.api.result.appendChatHistory('A', msg).ok, true);
+  assert.equal(f.api.result.appendChatHistory('B', msg).ok, true);
+  assert.equal(JSON.parse(f.data.chat_history_A).length, 1);
+  assert.equal(JSON.parse(f.data.chat_history_B).length, 1);
+});
+
+test('corrupt primary blocks idempotent retry despite a matching legacy copy', () => {
+  const raw = '{broken-primary';
+  const duplicate = { mid: 'fwd-1', text: 'synthetic' };
+  const f = fixture({
+    chat_history_A: raw,
+    phone_data_v2: JSON.stringify({ A: { chat: { history: [duplicate] } } })
+  });
+  const res = f.api.result.appendChatHistory('A', duplicate);
+  assert.equal(res.ok, false);
+  assert.equal(res.error.code, 'CORRUPT_DATA');
+  assert.equal(f.data.chat_history_A, raw);
+  assert.equal(f.writes.filter(key => key === 'chat_history_A').length, 0);
+});
+
+test('retry against identical legacy v2 record does not create another primary copy', () => {
+  const previous = { mid: 'v2-1', text: 'legacy synthetic' };
+  const legacy = JSON.stringify({ A: { chat: { history: [previous] } } });
+  const f = fixture({ phone_data_v2: legacy });
+  const res = f.api.result.appendChatHistory('A', { ...previous });
+  assert.equal(res.ok, true);
+  assert.equal(res.meta.alreadyPersisted, true);
+  assert.equal(f.data.phone_data_v2, legacy);
+  assert.equal(f.data.chat_history_A, undefined);
+});
