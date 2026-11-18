@@ -2890,9 +2890,9 @@
     body.innerHTML = '';
     tracks.forEach(function (t, i) {
       var isCur = i === currentIdx;
-      body.innerHTML += `<div class="queue-item ${isCur ? 'playing' : ''}" onclick="closeQueue();playTrack('${t.id}')">
+      body.innerHTML += `<div class="queue-item ${isCur ? 'playing' : ''}" onclick="closeQueue();playTrack(${musicSafeText(JSON.stringify(t.id))})">
         <div class="t-cover" style="width:40px;height:40px;flex-shrink:0;"><span class="music-placeholder-art" aria-hidden="true"></span></div>
-        <div style="flex:1;"><div class="qi-name">${t.name}</div><div class="qi-artist">${t.artist} · ${t.dur}</div></div>
+        <div style="flex:1;"><div class="qi-name">${musicSafeText(t.name)}</div><div class="qi-artist">${musicSafeText(t.artist)} · ${musicSafeText(t.dur)}</div></div>
         ${isCur ? '<span style="color:#000;font-size:12px;">正在播放</span>' : ''}
       </div>`;
     });
