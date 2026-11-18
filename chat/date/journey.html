@@ -329,7 +329,10 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
       var atomic=window.ChatHistoryAtomic;
       if(!atomic||typeof atomic.appendIf!=='function'){showStorageWarning();return false;}
       var result=await atomic.appendIf(roleId,entry,function(latest){
-        return !hasJourneyStage(latest,journeyId,stageIndex);
+        // A queued lock may be granted after the user starts a new journey.
+        // In that case do not insert a stage from an obsolete trip.
+        return !!state&&String(state.startedAt)===journeyId&&
+          !hasJourneyStage(latest,journeyId,stageIndex);
       });
       if(!result.ok){
         // Another tab may already have committed this stage under the lock.
@@ -362,7 +365,7 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
     if(storageWarned) return;
     storageWarned=true;
     var label=document.getElementById('routeMetaLeft');
-    if(label) label.textContent='本地空间不足，途中消息未能保存';
+    if(label) label.textContent='聊天记录暂不能安全保存，途中消息未写入';
   }
   function updateStage(index){
     var stage=stages[index];
