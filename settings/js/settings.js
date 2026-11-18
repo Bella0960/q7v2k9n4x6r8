@@ -12,9 +12,11 @@ const API_STORAGE_KEY = 'api_settings';
             if (raw) {
                 const parsed = JSON.parse(raw);
                 if (parsed) {
-                    localStorage.setItem(API_STORAGE_KEY, JSON.stringify(parsed));
-                    localStorage.removeItem(oldKey);
-                    console.log('[迁移] 旧配置 ' + oldKey + ' → ' + API_STORAGE_KEY);
+                    var mirror = JSON.stringify(parsed);
+                    localStorage.setItem(API_STORAGE_KEY, mirror);
+                    if (localStorage.getItem(API_STORAGE_KEY) !== mirror) throw Error('旧 API 迁移未确认');
+                    // Keep the legacy key as a rollback copy, never delete it.
+                    console.log('[API 设置] 旧配置兼容读取成功');
                     return;
                 }
             }
@@ -44,6 +46,10 @@ const API_STORAGE_KEY = 'api_settings';
             baseUrl: legacy.baseUrl || 'https://api.openai.com/v1',
             apiKey: legacy.apiKey || '',
             model: legacy.model || '',
+            imageModel: legacy.imageModel || '',
+            imageEndpoint: legacy.imageEndpoint || '',
+            memoryCount: legacy.memoryCount != null ? legacy.memoryCount : 20,
+            timeAware: legacy.timeAware !== false,
             temperature: legacy.temperature != null ? legacy.temperature : 0.7,
             maxTokens: legacy.maxTokens != null ? legacy.maxTokens : '',
             topP: legacy.topP != null ? legacy.topP : '',
@@ -51,8 +57,11 @@ const API_STORAGE_KEY = 'api_settings';
             createdAt: now,
             updatedAt: now
         };
-        localStorage.setItem('api_profiles_v1', JSON.stringify([profile]));
+        var encoded = JSON.stringify([profile]);
+        localStorage.setItem('api_profiles_v1', encoded);
+        if (localStorage.getItem('api_profiles_v1') !== encoded) throw Error('迁移方案未确认');
         localStorage.setItem('api_active_profile', profile.id);
+        if (localStorage.getItem('api_active_profile') !== profile.id) throw Error('迁移激活状态未确认');
         console.log('[API 设置] 旧配置已迁移到多方案结构');
     } catch (e) {
         console.error('[API 设置] 多方案迁移失败:', e);
@@ -66,10 +75,43 @@ function getProfiles() {
         return Array.isArray(v) ? v : [];
     } catch (e) { return []; }
 }
+// Keep the three legacy keys unchanged; verify and roll back partial writes.
+function commitApiSettings(list, id, mirror) {
+    var keys = ['api_profiles_v1', 'api_active_profile', API_STORAGE_KEY];
+    var previous = {}, written = [];
+    try {
+        keys.forEach(function (key) { previous[key] = localStorage.getItem(key); });
+        if (previous.api_profiles_v1 !== null &&
+            !Array.isArray(JSON.parse(previous.api_profiles_v1))) return false;
+        if (previous.api_settings !== null) {
+            var old = JSON.parse(previous.api_settings);
+            if (!old || Array.isArray(old) || typeof old !== 'object') return false;
+        }
+        var values = [JSON.stringify(list), id ? String(id) : null, JSON.stringify(mirror)];
+        for (var i = 0; i < keys.length; i++) {
+            if (localStorage.getItem(keys[i]) !== previous[keys[i]]) throw Error('配置被其他页面修改');
+            if (values[i] === null) localStorage.removeItem(keys[i]);
+            else localStorage.setItem(keys[i], values[i]);
+            if (localStorage.getItem(keys[i]) !== values[i]) throw Error('配置保存校验失败');
+            written.push({key: keys[i], value: values[i]});
+        }
+        return true;
+    } catch (error) {
+        // Restore only our own bytes. Do not overwrite a newer tab's value.
+        for (var j = written.length - 1; j >= 0; j--) try {
+            var item = written[j];
+            if (localStorage.getItem(item.key) !== item.value) continue;
+            if (previous[item.key] === null) localStorage.removeItem(item.key);
+            else localStorage.setItem(item.key, previous[item.key]);
+        } catch (ignore) {}
+        return false;
+    }
+}
 function saveProfiles(list) {
-    if (window.PhoneStorage) { PhoneStorage.saveApiProfiles(list); return true; }
-    try { localStorage.setItem('api_profiles_v1', JSON.stringify(list || [])); return true; }
-    catch (e) { return false; }
+    try {
+        var mirror = JSON.parse(localStorage.getItem(API_STORAGE_KEY) || '{}');
+        return commitApiSettings(list, localStorage.getItem('api_active_profile'), mirror);
+    } catch (error) { return false; }
 }
 function getActiveProfile() {
     var list = getProfiles();
@@ -94,7 +136,7 @@ function collectFormFields() {
         imageModel: apiImageModelInput ? apiImageModelInput.value.trim() : '',
         imageEndpoint: apiImageEndpointInput ? apiImageEndpointInput.value.trim() : '',
         prompt: apiPromptInput ? apiPromptInput.value.trim() : (window.__loadedPrompt || ''),
-        temperature: parseFloat(apiTemperatureInput.value) || 0.7,
+        temperature: apiTemperatureInput.value === '' ? 0.7 : Number(apiTemperatureInput.value),
         maxTokens: apiMaxTokensInput ? apiMaxTokensInput.value.trim() : '',
         topP: apiTopPInput && apiTopPInput.value !== '' ? Number(apiTopPInput.value) : '',
         memoryCount: parseInt(apiMemoryInput.value, 10) || 20,
@@ -103,45 +145,41 @@ function collectFormFields() {
 }
 
 // 把方案对象写成 api_settings 镜像（extra 可覆盖 memoryCount/timeAware 等聊天行为项）
-function writeMirrorFromProfile(profile, extra) {
+function mirrorFromProfile(profile, extra) {
     profile = profile || {};
-    var mirror = {
-        name: profile.name || '',
-        provider: profile.provider || 'custom',
+    return {
+        name: profile.name || '', provider: profile.provider || 'custom',
         baseUrl: profile.baseUrl || 'https://api.openai.com/v1',
-        apiKey: profile.apiKey || '',
-        model: profile.model || '',
-        imageModel: profile.imageModel || '',
-        imageEndpoint: profile.imageEndpoint || '',
+        apiKey: profile.apiKey || '', model: profile.model || '',
+        imageModel: profile.imageModel || '', imageEndpoint: profile.imageEndpoint || '',
         prompt: profile.prompt || '',
         temperature: profile.temperature != null ? profile.temperature : 0.7,
         maxTokens: profile.maxTokens != null ? profile.maxTokens : '',
         topP: profile.topP != null ? profile.topP : '',
-        memoryCount: (extra && extra.memoryCount != null) ? extra.memoryCount : 20,
-        timeAware: !(extra && extra.timeAware === false)
+        memoryCount: extra && extra.memoryCount != null ? extra.memoryCount :
+            (profile.memoryCount != null ? profile.memoryCount : 20),
+        timeAware: extra && extra.timeAware != null ? extra.timeAware !== false :
+            profile.timeAware !== false
     };
-    try { localStorage.setItem(API_STORAGE_KEY, JSON.stringify(mirror)); return true; }
-    catch (e) { return false; }
 }
-
-// 把表单字段写入激活方案，并重写 api_settings 镜像；memoryCount/timeAware 是聊天行为项，仅进镜像不进方案
+function writeMirrorFromProfile(profile, extra) {
+    try {
+        var value = JSON.stringify(mirrorFromProfile(profile, extra));
+        localStorage.setItem(API_STORAGE_KEY, value);
+        return localStorage.getItem(API_STORAGE_KEY) === value;
+    } catch (error) { return false; }
+}
 function saveActiveProfile(fields) {
     try {
-        var list = getProfiles();
+        var list = getProfiles().map(function (p) { return Object.assign({}, p); });
         var active = getActiveProfile();
-        if (!active) {
-            active = { id: 'p' + Date.now().toString(36), createdAt: Date.now() };
-            list.push(active);
-        }
-        for (var k in fields) active[k] = fields[k];
-        active.updatedAt = Date.now();
-        if (!saveProfiles(list)) return false;
-        if (window.PhoneStorage) PhoneStorage.setActiveProfileId(active.id);
-        else try { localStorage.setItem('api_active_profile', active.id); } catch (e) {}
-        return writeMirrorFromProfile(active, fields);
-    } catch (e) {
-        return false;
-    }
+        var id = active ? active.id : 'p' + Date.now().toString(36);
+        var row = list.find(function (p) { return String(p.id) === String(id); });
+        if (!row) { row = {id:id,createdAt:Date.now()}; list.push(row); }
+        Object.keys(fields).forEach(function (k) { row[k] = fields[k]; });
+        row.updatedAt = Date.now();
+        return commitApiSettings(list, id, mirrorFromProfile(row, fields));
+    } catch (error) { return false; }
 }
 
 let allModels = null;
@@ -229,23 +267,19 @@ function renderProfilePills() {
 function switchProfile(id) {
     var current = getActiveProfile();
     if (!id || (current && String(current.id) === String(id))) return;
-    // 静默自动保存：当前表单写回当前方案，改动不丢
-    saveActiveProfile(collectFormFields());
-    // 切换指针 → 重写镜像 → 回填表单
-    if (window.PhoneStorage) PhoneStorage.setActiveProfileId(id);
-    else try { localStorage.setItem('api_active_profile', id); } catch (e) {}
-    var next = getActiveProfile();
-    if (next) {
-        writeMirrorFromProfile(next, {
-            memoryCount: parseInt(apiMemoryInput.value, 10) || 20,
-            timeAware: apiTimeAwareInput.checked
-        });
+    var target = getProfiles().find(function (p) { return String(p.id) === String(id); });
+    if (!target) { showToast('目标方案不存在，请刷新页面'); return; }
+    if (!saveActiveProfile(collectFormFields())) {
+        showToast('当前方案保存失败，未切换'); return;
     }
-    loadConfig();
-    syncParamLabels();
-    renderProfilePills();
-    resetTestMsg();
-    showToast('已切换到「' + (next && next.name ? next.name : '方案') + '」');
+    var list = getProfiles();
+    target = list.find(function (p) { return String(p.id) === String(id); });
+    if (!target || !commitApiSettings(list, id, mirrorFromProfile(target))) {
+        showToast('方案切换失败，已保留原配置'); return;
+    }
+    allModels = null; loadConfig(); syncParamLabels();
+    renderProfilePills(); resetTestMsg();
+    showToast('已切换到「' + (target.name || '方案') + '」');
 }
 
 // 快捷预设：一键填地址 + 模型 + 服务商，绝不动 API Key
@@ -271,57 +305,31 @@ function renderPresetChips() {
 
 // 新建方案：以当前表单为模板复制一份，自动切换过去
 function createProfile() {
-    var fields = collectFormFields();
-    var list = getProfiles();
-    var now = Date.now();
-    var p = {
-        id: 'p' + now.toString(36),
-        name: (fields.name || '方案') + ' 副本',
-        provider: fields.provider,
-        baseUrl: fields.baseUrl,
-        apiKey: fields.apiKey,
-        model: fields.model,
-        imageModel: fields.imageModel,
-        imageEndpoint: fields.imageEndpoint,
-        temperature: fields.temperature,
-        maxTokens: fields.maxTokens,
-        topP: fields.topP,
-        prompt: fields.prompt,
-        createdAt: now,
-        updatedAt: now
-    };
-    list.push(p);
-    if (!saveProfiles(list)) { showToast('新建失败：存储空间不足'); return; }
-    if (window.PhoneStorage) PhoneStorage.setActiveProfileId(p.id);
-    else try { localStorage.setItem('api_active_profile', p.id); } catch (e) {}
-    writeMirrorFromProfile(p, { memoryCount: fields.memoryCount, timeAware: fields.timeAware });
-    loadConfig();
-    syncParamLabels();
-    renderProfilePills();
-    showToast('已新建「' + p.name + '」');
+    var fields = collectFormFields(), list = getProfiles().map(function(p) {
+        return Object.assign({},p);
+    }), now = Date.now(), id = 'p' + now.toString(36), suffix = 0;
+    while (list.some(function (p) { return String(p.id) === id; })) id = 'p' + now.toString(36) + '-' + (++suffix);
+    var profile = Object.assign({},fields,{
+        id:id, name:(fields.name || '方案') + ' 副本', createdAt:now, updatedAt:now
+    });
+    list.push(profile);
+    if (!commitApiSettings(list,id,mirrorFromProfile(profile,fields))) {
+        showToast('新建失败，原配置已保留'); return;
+    }
+    allModels = null; loadConfig(); syncParamLabels(); renderProfilePills();
+    showToast('已新建「' + profile.name + '」');
 }
-
 function deleteActiveProfile() {
     var list = getProfiles();
     if (list.length <= 1) { showToast('至少保留一个方案'); return; }
     var active = getActiveProfile();
-    if (!active) return;
-    if (!confirm('确定删除方案「' + (active.name || '未命名') + '」？不可恢复。')) return;
-    var rest = list.filter(function (p) { return String(p.id) !== String(active.id); });
-    saveProfiles(rest);
-    var next = rest[0] || null;
-    if (window.PhoneStorage) PhoneStorage.setActiveProfileId(next ? next.id : '');
-    else try { localStorage.setItem('api_active_profile', next ? next.id : ''); } catch (e) {}
-    if (next) {
-        writeMirrorFromProfile(next, {
-            memoryCount: parseInt(apiMemoryInput.value, 10) || 20,
-            timeAware: apiTimeAwareInput.checked
-        });
+    if (!active || !confirm('确定删除方案「' + (active.name || '未命名') + '」？不可恢复。')) return;
+    var rest = list.filter(function(p){return String(p.id)!==String(active.id);});
+    var next = rest[0];
+    if (!next || !commitApiSettings(rest,next.id,mirrorFromProfile(next))) {
+        showToast('删除失败，原配置已保留'); return;
     }
-    loadConfig();
-    syncParamLabels();
-    renderProfilePills();
-    resetTestMsg();
+    allModels = null; loadConfig(); syncParamLabels(); renderProfilePills(); resetTestMsg();
     showToast('方案已删除');
 }
 
@@ -351,69 +359,65 @@ function friendlyHttpError(status, detail) {
 // ========== 测试连接 ==========
 async function testConnection() {
     const apiKey = (apiKeyInput.value || '').trim();
-    let baseUrl = (apiUrlInput.value || '').trim();
+    let baseUrl = (apiUrlInput.value || '').trim().replace(/\/+$/, '');
     const model = (apiModelInput.value || '').trim();
     const msgEl = document.getElementById('test-msg');
-
-    if (!msgEl) return;
-
-    if (!apiKey) { msgEl.innerText = '❌ 请先填写 API Key'; msgEl.style.color = '#ff3b30'; return; }
-    if (!baseUrl) { msgEl.innerText = '❌ 请先填写 Base URL'; msgEl.style.color = '#ff3b30'; return; }
-    if (!model) { msgEl.innerText = '❌ 请先填写模型名称'; msgEl.style.color = '#ff3b30'; return; }
-
-    if (!baseUrl.endsWith('/')) baseUrl += '/';
-    const testUrl = baseUrl + 'chat/completions';
-    const t0 = Date.now();
-
-    msgEl.innerText = '⏳ 正在测试连接...';
-    msgEl.style.color = '#007aff';
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
-
+    const button = document.getElementById('btn-test-connection');
+    if (!msgEl || (button && button.disabled)) return;
+    if (!apiKey || !baseUrl || !model) {
+        msgEl.textContent = '请先填写 API Key、接口地址及模型名称';
+        msgEl.style.color = '#9A3333'; return;
+    }
     try {
-        const response = await fetch(testUrl, {
-            method: 'POST',
-            headers: {
-                'Authorization': 'Bearer ' + apiKey,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                model: model,
-                messages: [{ role: 'user', content: 'hi' }],
-                max_tokens: 5
-            }),
-            signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-
-        if (response.status === 200) {
-            msgEl.innerText = '✅ 连接成功 · ' + (Date.now() - t0) + 'ms · ' + model;
-            msgEl.style.color = '#34c759';
-            return;
-        }
-
-        let detail = '';
-        try {
-            const body = await response.text();
-            const parsed = JSON.parse(body);
-            detail = (parsed.error && parsed.error.message) ? parsed.error.message : response.statusText;
-        } catch (e) {
-            detail = response.statusText;
-        }
-
-        msgEl.innerText = '❌ ' + friendlyHttpError(response.status, detail);
-        msgEl.style.color = '#ff3b30';
+        var parsedUrl = new URL(baseUrl);
+        if (!/^https?:$/.test(parsedUrl.protocol) || parsedUrl.username || parsedUrl.password)
+            throw Error('unsupported URL');
     } catch (error) {
-        clearTimeout(timeoutId);
-        if (error.name === 'AbortError') {
-            msgEl.innerText = '❌ 请求超时，请检查网络或 API 地址';
-        } else if (error.message && error.message.includes('Failed to fetch')) {
-            msgEl.innerText = '❌ 网络错误（可能是跨域或地址不正确）';
-        } else {
-            msgEl.innerText = '❌ ' + (error.message || '未知错误');
+        msgEl.textContent = '请输入有效的 HTTP(S) API 地址';
+        msgEl.style.color = '#9A3333'; return;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    const startedAt = Date.now();
+    if (button) button.disabled = true;
+    msgEl.textContent = '正在验证模型实际回复…';
+    msgEl.style.color = '#666666';
+    try {
+        const response = await fetch(baseUrl + '/chat/completions', {
+            method: 'POST',
+            headers: { Authorization:'Bearer ' + apiKey, 'Content-Type':'application/json' },
+            body: JSON.stringify({
+                model: model, messages:[{role:'user',content:'请回复：OK'}],
+                max_tokens:32, stream:false
+            }),
+            signal:controller.signal
+        });
+        if (!response.ok) {
+            var detail = '';
+            try {
+                var errorBody = await response.json();
+                detail = errorBody && errorBody.error && errorBody.error.message || '';
+            } catch (ignore) {}
+            throw Error(friendlyHttpError(response.status, detail));
         }
-        msgEl.style.color = '#ff3b30';
+        var payload = await response.json();
+        var choice = payload && Array.isArray(payload.choices) && payload.choices[0];
+        var content = choice && choice.message && choice.message.content;
+        if (Array.isArray(content)) content = content.map(function (part) {
+            return part && part.text ? part.text : '';
+        }).join('');
+        if (typeof content !== 'string' || !content.trim())
+            throw Error('接口返回了 HTTP 200，但没有可用回复；请检查模型兼容性或输出额度');
+        msgEl.textContent = '连接可用 · ' + (Date.now() - startedAt) + 'ms · ' + model;
+        msgEl.style.color = '#333333';
+    } catch (error) {
+        msgEl.textContent = error && error.name === 'AbortError'
+            ? '连接超时，请检查接口地址或网络'
+            : '测试失败：' + String(error && error.message || '网络或模型错误').slice(0, 120);
+        msgEl.style.color = '#9A3333';
+    } finally {
+        clearTimeout(timer);
+        if (button) button.disabled = false;
     }
 }
 
@@ -603,7 +607,7 @@ settingsForm.addEventListener('submit', function(e) {
         imageModel: apiImageModelInput ? apiImageModelInput.value.trim() : '',
         imageEndpoint: apiImageEndpointInput ? apiImageEndpointInput.value.trim() : '',
         prompt: apiPromptInput ? apiPromptInput.value.trim() : (window.__loadedPrompt || ''),
-        temperature: parseFloat(apiTemperatureInput.value) || 0.7,
+        temperature: apiTemperatureInput.value === '' ? 0.7 : Number(apiTemperatureInput.value),
         maxTokens: maxTokVal,
         topP: apiTopPInput && apiTopPInput.value !== '' ? Number(apiTopPInput.value) : '',
         memoryCount: parseInt(apiMemoryInput.value, 10) || 20,

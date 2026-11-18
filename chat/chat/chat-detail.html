@@ -11,6 +11,8 @@
     <link rel="stylesheet" href="../../shared/css/chat-beauty-runtime.css?v=20261031v1">
     <link rel="stylesheet" href="../call/call-overlay.css?v=20261105v1">
     <script src="../../shared/js/phone/phone_storage.js"></script>
+<script src="../../shared/js/phone/minimax-tts.js?v=20261119"></script>
+<script src="../../shared/js/phone/chat-regex-policy.js?v=20261119"></script>
     <script src="../../shared/js/phone/storage/repository.js"></script>
     <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
     <script src="../../shared/js/phone/role-avatar-library.js?v=20261113v1"></script>
@@ -5238,15 +5240,13 @@
                      .replace(/[ \t，、]+$/, '')
                      .trim();
             // 5) 用户在设置页自定义的规则（enabled:true 才跑）——保留入口，但不再硬编码删内容
-            try {
-                var userRules = JSON.parse(localStorage.getItem('regex_rules') || '[]');
-                if (Array.isArray(userRules)) {
-                    userRules.forEach(function (r) {
-                        if (!r || !r.enabled || !r.pattern) return;
-                        try { out = out.replace(new RegExp(r.pattern, 'g'), r.replacement || ''); } catch (e) {}
-                    });
-                }
-            } catch (e) {}
+            // The editor preview and the real reply use the SAME rules.
+            // No saved array = no active rules. Legacy built-in fixes run in
+            // memory, preserving the user's original storage bytes.
+            // If the shared policy cannot load, fail closed: no unverified regex.
+            if (window.ChatRegexPolicy && typeof window.ChatRegexPolicy.applySaved === 'function') {
+                out = window.ChatRegexPolicy.applySaved(out, localStorage);
+            }
             // 5b) 用户规则删完内容后可能留下 "。，。，" 这种句子边界标点残迹
             // 只清理：连续重复标点、逗号紧跟句号/句号紧跟逗号的组合；正常内部逗号不动
             out = out.replace(/([。！？])\1+/g, '$1')          // 。。。 → 。
@@ -8099,6 +8099,12 @@
             var hasText = !!String((msg.text || msg.content) || '').trim();
             var html = sheetItemHTML('select', '多选', MSG_ICON_SELECT, false);
             if (hasText) html += sheetItemHTML('copy', '复制文本', MSG_ICON_COPY, false);
+            // A paid TTS request is only available on explicit user action.
+            if (isAi && hasText && window.PhoneMiniMaxTTS &&
+                window.PhoneMiniMaxTTS.readConfig().enabled) {
+                html += sheetItemHTML('speak', '语音朗读',
+                    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 10v4h4l5 4V6L8 10H4Z"/><path d="M16 9a4 4 0 0 1 0 6"/><path d="M19 6a8 8 0 0 1 0 12"/></svg>', false);
+            }
             html += sheetItemHTML('forward', '转发给…', MSG_ICON_FORWARD, false);
             html += sheetItemHTML('quote', '引用回复', MSG_ICON_QUOTE, false);
             if (hasText) html += sheetItemHTML('translate', 'AI 翻译', MSG_ICON_TRANSLATE, false);
@@ -8166,6 +8172,50 @@
         }, { passive: true });
         // 虚拟列表：滚动时按位置窗口化重渲染（rAF 节流；流式期间跳过，避免打断打字）
         chatMessages.addEventListener('scroll', vlOnScroll, { passive: true });
+        // One manual TTS entry for both message-sheet text and received voice
+        // bubbles. No synthesis runs automatically while rendering/reloading.
+        function speakAIMessage(msg, bubbleId, bubbleText, mid) {
+            var tts = window.PhoneMiniMaxTTS;
+            var speakerId = String((msg && (msg.memberId || msg.speakerId)) ||
+                (currentCharacter && currentCharacter.id) || currentRoleId || '');
+            if (!tts || !tts.isEnabledForRole(speakerId)) {
+                showToast('请先在 MiniMax 设置与此角色的聊天设置中启用语音');
+                return;
+            }
+            var safeBubbleId = String(bubbleId || '').replace(/"/g, '');
+            var findRow = function () {
+                return chatMessages.querySelector('.msg-row[data-bubble-id="' + safeBubbleId + '"]') ||
+                    chatMessages.querySelector('.msg-row[data-mid="' + String(mid || '').replace(/"/g, '') + '"]');
+            };
+            var existing = findRow() && findRow().querySelector('audio.minimax-tts-audio');
+            if (existing) { existing.focus(); return; }
+            showToast('正在生成语音，可能消耗 MiniMax 额度…');
+            var cfg = tts.readConfig();
+            var cacheKey = speakerId + ':' + mid + ':' + bubbleText +
+                ':' + tts.voiceForRole(speakerId) + ':' + String(cfg.model || '');
+            tts.cached(cacheKey, {roleId:speakerId,text:bubbleText}).then(function (blob) {
+                var row = findRow();
+                if (!row) { showToast('语音已生成，重新打开该消息可播放'); return; }
+                if (row.querySelector('audio.minimax-tts-audio')) return;
+                var host = row.querySelector('.msg-voice') || row.querySelector('.msg-bubble');
+                if (!host) return;
+                var audio = document.createElement('audio');
+                audio.className = 'minimax-tts-audio';
+                audio.controls = true;
+                audio.preload = 'none';
+                audio.style.cssText = 'display:block;width:220px;max-width:100%;margin-top:8px;';
+                var url = URL.createObjectURL(blob);
+                audio.src = url;
+                host.appendChild(audio);
+                window.addEventListener('pagehide', function () {
+                    URL.revokeObjectURL(url);
+                }, {once:true});
+                showToast('语音已生成，点击播放器开始播放');
+            }).catch(function (error) {
+                showToast(error && error.message || '语音生成失败');
+            });
+        }
+
         if (msgSheetList) {
             msgSheetList.addEventListener('click', function (e) {
                 var btn = e.target.closest('.msg-sheet-item');
@@ -8179,6 +8229,10 @@
                 var bubbleText = String(resolved.text || '') || plainTextOf(msg);
                 if (act === 'select') { enterSelection(bubbleId); return; }
                 if (act === 'copy') { copyMessageText({ text: bubbleText }); return; }
+                if (act === 'speak') {
+                    speakAIMessage(msg, bubbleId, bubbleText, resolved.mid);
+                    return;
+                }
                 if (act === 'forward') { openForwardSheet(bubbleId, resolved); return; }
                 if (act === 'quote') {
                     var quoteAuthorName = msg.name ||
@@ -8532,6 +8586,21 @@
         chatMessages.addEventListener('click', function (e) {
             var vbubble = e.target.closest('.msg-bubble');
             if (!vbubble || !vbubble.classList.contains('bubble-voice')) return;
+            if (e.target.closest('audio')) return;
+            var voiceRow = vbubble.closest('.msg-row');
+            if (voiceRow && voiceRow.classList.contains('received') &&
+                window.PhoneMiniMaxTTS) {
+                var voiceId = voiceRow.dataset.bubbleId || voiceRow.dataset.mid;
+                var voiceResolved = resolveBubbleInPage(voiceId);
+                var message = voiceResolved && voiceResolved.message;
+                var speakerId = String((message && (message.memberId || message.speakerId)) ||
+                    (currentCharacter && currentCharacter.id) || currentRoleId || '');
+                if (message && message.text &&
+                    window.PhoneMiniMaxTTS.isEnabledForRole(speakerId)) {
+                    speakAIMessage(message, voiceId, String(message.text), voiceResolved.mid);
+                    return;
+                }
+            }
             var wave = vbubble.querySelector('.voice-wave');
             if (!wave || wave.dataset.playing === '1') return;
             wave.dataset.playing = '1';
