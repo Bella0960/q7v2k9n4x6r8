@@ -209,3 +209,72 @@ test('verify-after-write mismatch is reported rather than silently succeeding', 
     const result = await tab(s, locks()).appendIf('r', { mid: 'add' });
     assert.equal(result.error.code, 'VERIFY_FAILED');
 });
+
+
+test('same-mid retries cannot duplicate messages or rewrite the saved record', async () => {
+    const s = storage({ [key('r')]: '[]' });
+    const helper = tab(s, locks());
+    const message = { mid: 'stable-1', type: 'image', assetId: 'media-7', scene: 'date' };
+    const first = await helper.appendIf('r', message);
+    const again = await helper.appendIf('r', message);
+    assert.equal(first.ok, true);
+    assert.equal(again.ok, true);
+    assert.equal(again.meta.alreadyPersisted, true);
+    assert.deepEqual(JSON.parse(s.dump(key('r'))), [message]);
+});
+
+test('same mid but different message payload is a conflict, never overwritten', async () => {
+    const raw = JSON.stringify([{ mid: 'stable-1', text: 'original' }]);
+    const s = storage({ [key('r')]: raw });
+    const failed = await tab(s, locks()).appendIf('r', { mid: 'stable-1', text: 'changed' });
+    assert.equal(failed.error.code, 'CONFLICT');
+    assert.equal(s.dump(key('r')), raw);
+});
+
+test('batch retry appends missing messages once and leaves existing IDs alone', async () => {
+    const s = storage({ [key('r')]: JSON.stringify([{ mid: 'a', text: 'old' }]) });
+    const out = await tab(s, locks()).appendManyIf('r', [
+        { mid: 'a', text: 'old' },
+        { mid: 'b', text: 'new' },
+        { mid: 'c', text: 'another' }
+    ]);
+    assert.equal(out.ok, true);
+    assert.equal(out.value.appended, 2);
+    assert.equal(out.value.skipped, 1);
+    assert.deepEqual(JSON.parse(s.dump(key('r'))).map(m => m.mid), ['a', 'b', 'c']);
+});
+
+test('guards are read-only and cannot mutate existing stored messages', async () => {
+    const s = storage({ [key('r')]: JSON.stringify([{ mid: 'a', data: { value: 1 } }]) });
+    const out = await tab(s, locks()).appendIf('r', { mid: 'b' }, list => {
+        list[0].data.value = 999;
+        return true;
+    });
+    assert.equal(out.ok, true);
+    assert.equal(JSON.parse(s.dump(key('r')))[0].data.value, 1);
+});
+
+test('post-commit storage throw uses readback to confirm success', async () => {
+    const s = storage({ [key('r')]: '[]' });
+    const originalSet = s.setItem.bind(s);
+    s.setItem = (keyName, value) => {
+        originalSet(keyName, value);
+        throw new Error('post-commit browser adapter failure');
+    };
+    const result = await tab(s, locks()).appendIf('r', { mid: 'a' });
+    assert.equal(result.ok, true);
+    assert.equal(result.meta.verifiedAfterWriteError, true);
+    assert.deepEqual(JSON.parse(s.dump(key('r'))).map(m => m.mid), ['a']);
+});
+
+test('readback mismatch reports uncertainty rather than claiming safe rollback', async () => {
+    const s = storage({ [key('r')]: '[]' });
+    s.setItem = (keyName, value) => {
+        Object.defineProperty(s, 'getItem', {
+            configurable: true, value: () => JSON.stringify([{ mid: 'changed by legacy writer' }])
+        });
+    };
+    const outcome = await tab(s, locks()).appendIf('r', { mid: 'a' });
+    assert.equal(outcome.error.code, 'VERIFY_FAILED');
+    assert.equal(outcome.meta.writeMayHavePersisted, true);
+});
