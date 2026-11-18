@@ -1517,7 +1517,7 @@
       var backdrop = document.getElementById('groupModalBackdrop');
       var nameInput = document.getElementById('groupNameInput');
       var membersList = document.getElementById('groupMembersList');
-      var selected = {};
+      var selected = Object.create(null);
 
       function loadCharacters() {
         try {
@@ -1528,19 +1528,24 @@
       }
 
       function renderMembers() {
-        var roles = loadCharacters();
+        // Imported role records may contain nulls, quotes or untrusted URLs.
+        // Select only valid IDs, and escape every dynamic attribute and label.
+        var roles = loadCharacters().filter(function (r) {
+          return r && r.id != null && String(r.id).trim();
+        });
         if (!roles.length) {
           membersList.innerHTML = '<div style="text-align:center;color:#999;font-size:13px;padding:14px 0;">暂无角色，先去通讯录添加</div>';
           return;
         }
         membersList.innerHTML = roles.map(function(r) {
           var id = String(r.id);
-          var av = r.avatar
-            ? '<img src="' + r.avatar + '" alt="">'
+          var safeAvatar = safeImgSrc(r.avatar);
+          var av = safeAvatar
+            ? '<img src="' + escapeHtml(safeAvatar) + '" alt="">'
             : '<svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
-          return '<div class="group-member-item" data-id="' + id + '">' +
+          return '<div class="group-member-item" data-id="' + escapeHtml(id) + '">' +
             '<div class="group-member-avatar">' + av + '</div>' +
-            '<div class="group-member-name">' + (r.name || '未命名') + '</div>' +
+            '<div class="group-member-name">' + escapeHtml(String(r.name || '未命名')) + '</div>' +
             '<div class="group-member-check"><svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>' +
             '</div>';
         }).join('');
@@ -1554,7 +1559,7 @@
       }
 
       function openModal() {
-        selected = {};
+        selected = Object.create(null);
         if (nameInput) nameInput.value = '';
         renderMembers();
         backdrop.classList.add('show');
@@ -1585,12 +1590,15 @@
       document.getElementById('groupModalCreate').addEventListener('click', function() {
         var name = nameInput ? nameInput.value.trim() : '';
         if (!name) {
+          showToast('请输入群聊名称');
           nameInput.focus();
           nameInput.style.boxShadow = 'inset 0 0 0 1.5px #999';
           setTimeout(function(){ nameInput.style.boxShadow = ''; }, 800);
           return;
         }
-        var roles = loadCharacters();
+        var roles = loadCharacters().filter(function (r) {
+          return r && r.id != null && String(r.id).trim();
+        });
         var memberIds = Object.keys(selected);
         var members = roles.filter(function(r) { return memberIds.indexOf(String(r.id)) !== -1; });
         if (!members.length) {
