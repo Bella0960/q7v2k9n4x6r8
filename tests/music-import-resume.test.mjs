@@ -164,6 +164,28 @@ test('loading a persisted local track arms the checkpoint without fake autoplay'
   assert.equal(view.getPending()?.time,21.5);
   assert.equal(audio.src,'');
 });
+test('queue accepts imported song names with quotes and HTML without changing their text',()=>{
+  const escapeSource=section('  function musicSafeText(value) {','  function musicReadMap(key) {');
+  const queueSource=section('  function renderQueue() {','  // ===== 睡眠定时');
+  const unsafe={id:"local_O'Neil",name:"O'Neil <img src=x onerror=alert(1)>",
+    artist:'用户上传 & 合辑',dur:'本地',source:'local'};
+  const body={innerHTML:''};
+  const api=runInNewContext(escapeSource+'\n'+queueSource+'\n({renderQueue})',
+    {document:{getElementById(id){assert.equal(id,'queueBody');return body;}},
+      tracks:[unsafe],currentIdx:0});
+  api.renderQueue();
+  assert.match(body.innerHTML,/O&#39;Neil &lt;img/);
+  assert.doesNotMatch(body.innerHTML,/<img src=x|onerror=alert/);
+  assert.match(body.innerHTML,/用户上传 &amp; 合辑/);
+  assert.ok(body.innerHTML.includes('playTrack(&quot;local_O&#39;Neil&quot;)'));
+  assert.equal(unsafe.name,"O'Neil <img src=x onerror=alert(1)>");
+});
+test('queue uses escaped JSON string IDs rather than composing single-quoted JavaScript',()=>{
+  const queueSource=section('  function renderQueue() {','  // ===== 睡眠定时');
+  assert.match(queueSource,/musicSafeText\(JSON\.stringify\(t\.id\)\)/);
+  assert.doesNotMatch(queueSource,/playTrack\('\\$\{t\.id\}'\)/);
+});
+
 test('full music inline script and official test are syntactically valid',()=>{
   const scripts=[...music.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)]
     .map(m=>m[1]).filter(s=>s.trim());
