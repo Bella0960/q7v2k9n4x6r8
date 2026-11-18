@@ -186,5 +186,6 @@ test('main chat script parses and all P0 routes use protected save functions', (
     assert.match(detail, /await appendChatSafely\(aiNewMessages\)/);
     assert.match(detail, /await replaceChatSafely\(aiWriteBaseline, historyList\)/);
     assert.match(detail, /await replaceChatSafely\(originalSnapshot, keep\)/);
-    assert.doesNotMatch(journal, /saveMessages\(/);
+    const journalSource = section('        let inflightSnapshot = null;', '        // 3. 核心真实 AI 聊天发送逻辑');
+    assert.doesNotMatch(journalSource, /saveMessages\(/);
 });
