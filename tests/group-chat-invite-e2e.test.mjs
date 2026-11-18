@@ -244,6 +244,30 @@ test('C6-C8 chat.html -> chat-detail renders 3 members and request context conta
     assert.ok(system.includes('话唠度=90/100'), 'invited member talkativeness in context');
     assert.ok(system.includes('兴趣=推理、音乐'), 'invited member interests in context');
     assert.ok(system.includes('本轮由你（阿五）'), 'reply pick is the invited member');
+    assert.ok(system.includes('你以【角色三】的身份参与'), 'identity lock must use the selected role, not the group name');
+    assert.ok(!system.includes('你以【三人测试群】的身份参与'), 'group title is not a speaker persona');
+    assert.ok(system.includes('【角色档案】\\n夜班编辑人设'), 'selected member persona must anchor the reply');
+    assert.ok(system.includes('【群聊自然接话】'), 'natural group dialogue should suppress canned greetings');
+    const received = page.locator('.msg-row.received.group-member-row').last();
+    await received.waitFor({ state: 'visible', timeout: 12000 });
+    assert.equal((await received.locator('.msg-sender').innerText()).trim(), '阿五');
+    for (const width of [375, 390, 430]) {
+      await page.setViewportSize({ width, height: 844 });
+      const layout = await received.evaluate((row) => {
+        const name = row.querySelector('.msg-sender');
+        const avatar = row.querySelector('.msg-avatar');
+        const bubble = row.querySelector('.msg-bubble');
+        const a = avatar.getBoundingClientRect(), n = name.getBoundingClientRect(), b = bubble.getBoundingClientRect();
+        return { display: getComputedStyle(row).display, avatarLeft: a.left, avatarRight: a.right,
+          nameLeft: n.left, nameTop: n.top, bubbleLeft: b.left, bubbleTop: b.top, bubbleRight: b.right,
+          viewport: innerWidth };
+      });
+      assert.equal(layout.display, 'grid', width + ': group message must use two-column layout');
+      assert.ok(layout.avatarRight < layout.nameLeft, width + ': avatar must sit left of name');
+      assert.ok(Math.abs(layout.nameLeft - layout.bubbleLeft) <= 4, width + ': name and message must share left edge');
+      assert.ok(layout.nameTop < layout.bubbleTop, width + ': sender name must appear above the message');
+      assert.ok(layout.bubbleRight <= layout.viewport + 1, width + ': bubble must stay within viewport');
+    }
     await page.close();
   } finally {
     await context.close();
