@@ -36,7 +36,11 @@ test('plus menu retains image upload; original comment composer stays fixed', ()
   assert.match(html, /forumMoreAddImage\.addEventListener\('click'/);
   assert.match(html, /commentImagesInput\.click\(\)/);
   assert.match(html, /id="commentImages"[^>]*accept="image\/jpeg/);
-  assert.match(html, /position: fixed; bottom: var\(--maomao-home-indicator-comment-bottom/);
+  assert.match(html, /position: fixed; bottom: 0; left: 50%/);
+  assert.match(html, /body \.comment-bar \{\s*bottom: 0 !important;/);
+  assert.match(html, /padding-bottom: calc\(var\(--maomao-home-indicator-comment-padding-bottom/);
+  assert.match(html, /\+ var\(--maomao-home-indicator-comment-bottom/);
+  assert.doesNotMatch(html, /position: fixed; bottom: var\(--maomao-home-indicator-comment-bottom/);
   assert.match(html, /\.forum-more-panel \{[\s\S]*?bottom:calc\(100% \+ 8px\)/);
   for (const name of ['renderPost()', 'renderComments()', 'sendComment()', 'continueGossip()',
     'finishGossipSeries()', 'continueForumWorld()']) {
