@@ -238,11 +238,6 @@
                         incompleteReason.__streamError = true;
                         throw incompleteReason;
                     }
-                    if (!doneMarkerSeen && finishReason !== 'stop') {
-                        var prematureEnd = new Error('API 流式响应提前中断，未收到完成标记');
-                        prematureEnd.__streamError = true;
-                        throw prematureEnd;
-                    }
                     // Some OpenAI-compatible endpoints return HTTP 200 with an empty
                     // SSE body or only heartbeats. Treat that as failure, not a
                     // successful empty character reply. Never erase partial text.
@@ -250,6 +245,11 @@
                         var emptyStreamError = new Error('API 已连接，但没有返回可用的聊天正文');
                         emptyStreamError.__streamError = true;
                         throw emptyStreamError;
+                    }
+                    if (!doneMarkerSeen && finishReason !== 'stop') {
+                        var prematureEnd = new Error('API 流式响应提前中断，未收到完成标记');
+                        prematureEnd.__streamError = true;
+                        throw prematureEnd;
                     }
                     // 兜底：同步补一次渲染，保证最后一段增量上屏
                     if (fullText && typeof opts.onPaint === 'function') opts.onPaint(fullText);
