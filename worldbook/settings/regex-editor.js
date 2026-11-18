@@ -30,7 +30,8 @@
     try {
       snapshot = localStorage.getItem('regex_rules');
       invalid = false;
-      rules = loadRules();
+      // An unsaved preset catalog is visual guidance, not live rules.
+      rules = snapshot === null ? [] : loadRules();
       if (global.__regexRulesReadError) invalid = true;
     } catch (error) {
       snapshot = null;
