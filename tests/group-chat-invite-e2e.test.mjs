@@ -243,10 +243,24 @@ test('C6-C8 chat.html -> chat-detail renders 3 members and request context conta
         new Promise((_, reject) => setTimeout(() => reject(new Error('no /chat/completions request captured')), 20000))
       ]);
     } catch (error) {
-      if (personaDiagnostics.length) {
-        throw new Error('persona source preflight blocked: ' + personaDiagnostics.join(' | '));
-      }
-      throw error;
+      const details = await page.evaluate(() => ({
+        toast: String(document.getElementById('detailToast')?.textContent || ''),
+        roleModule: !!window.MAOMAOChatRoleContext,
+        defaultProtocol: !!window.MAOMAO_RP_DEFAULT_PROTOCOL,
+        contextPolicy: !!window.ChatContextPolicy,
+        sendFunction: typeof window.sendMsg === 'function'
+      }));
+      const reason = details.toast.includes('世界书') ? 'lore-read'
+        : details.toast.includes('人设协议') ? 'protocol-read'
+        : details.toast.includes('角色人设') ? 'persona-read'
+        : details.toast.includes('API') ? 'api-config'
+        : details.toast ? 'other-toast' : 'no-toast';
+      throw new Error('no request; reason=' + reason +
+        '; roleModule=' + details.roleModule +
+        '; defaultProtocol=' + details.defaultProtocol +
+        '; contextPolicy=' + details.contextPolicy +
+        '; sendFunction=' + details.sendFunction +
+        '; errorEvents=' + personaDiagnostics.length);
     }
     const system = (body.messages || []).filter((m) => m.role === 'system').map((m) => String(m.content || '')).join('\n\n');
     assert.ok(system.length > 0, 'system prompt must exist');
