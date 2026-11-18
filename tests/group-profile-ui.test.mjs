@@ -68,6 +68,10 @@ test('contract: group-only script, existing controls and valid JavaScript', () =
   assert.match(groupSource, /indexedDB\.open\('maomao-media-store',2\)/);
   assert.doesNotMatch(groupSource, /localStorage\.setItem\(coverKey/);
   assert.match(groupCss, /\.group-profile-page/);
+  assert.match(groupCss, /\.group-profile-view \.phone-mockup > \.status-bar\{display:none!important\}/);
+  assert.match(groupSource, /function setCoverBusy\(busy\)/);
+  assert.match(groupSource, /coverTouched=true/);
+  assert.match(groupSource, /reloadSavedCover\(\)/);
   assert.doesNotMatch(groupCss, /#(?:aliasCard|actionAlias)\s*\{/);
 });
 
@@ -82,6 +86,9 @@ test('group shell is visually distinct, collapsed and remains operable on phone 
       assert.equal(await page.locator('#gpCoverCount').innerText(),'2 位成员');
       assert.equal(await page.locator('#gpProfileSettings').evaluate(e=>e.open),false);
       assert.equal(await page.locator('#gpManageCard').isVisible(),false);
+      assert.equal(await page.locator('.status-bar').isVisible(),false, 'group page must not display a fake phone status bar');
+      const headerTop=await page.locator('.cs-topbar').boundingBox();
+      assert.ok(headerTop.y < 80, 'group topbar must not have an oversized blank header');
       const size=await page.locator('.gp-cover-hero').boundingBox();
       assert.ok(size.width>260 && size.width<=width && size.height>=200);
       await page.locator('.gp-add').click();
