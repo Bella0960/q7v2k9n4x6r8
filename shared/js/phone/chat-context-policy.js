@@ -34,6 +34,12 @@
       var previousAssistantTurnId = lastAssistantTurnId;
       lastAssistantTurnId = null;
       if (!m || m.isError || m.role === 'system_error' || m.sendFailed) return;
+      // The original group welcome is UI chrome, not a real member's message.
+      // Do not prime later AI turns with this artificial line. Keep all stored
+      // historical messages untouched; older groups may lack the type flag.
+      if (isGroupChat && (m.type === 'group_welcome' ||
+          (!m.memberId && !m.name && (m.role === 'received' || m.role === 'assistant') &&
+            /^欢迎来到「[^」]*」群聊，一起聊聊吧。$/.test(String(m.text || m.content || '').trim())))) return;
       // A group-private message belongs only to its author's direct conversation.
       // Never feed this private payload into the shared group transcript.
       if (isGroupChat && (m.type === 'group_private' ||
