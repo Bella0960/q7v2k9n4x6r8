@@ -34,12 +34,25 @@
     return /(?:作为(?:一个|一名|一种)?(?:人工智能|AI|语言模型)|我(?:就|其实|本来|不过|只)?是[^\n]{0,115}?(?:AI\s*(?:助手|助理|模型|系统)|人工智能(?:助手|模型|系统|智能体)?(?=$|[，。,！!？?\s])|智能(?:聊天)?助手|聊天机器人|语言模型)|我(?:作为|的身份是)[^\n]{0,55}(?:AI\s*(?:助手|助理)|人工智能|语言模型)|我的[“”"']?家[“”"']?.{0,40}(?:云端|数字世界|对话框)|(?:我|自己)(?:的)?(?:家|住处).{0,35}(?:云端|代码|对话框)|我[^\n]{0,55}(?:躺|住|待|生活|存在)[^\n]{0,35}(?:服务器|云端|代码|对话框)|(?:官方设定|系统提示|角色设定).{0,24}(?:吐出来|出错|卡壳)|(?:后台|系统).{0,18}(?:指令|代码).{0,18}(?:说漏|吐出来))/i.test(text);
   }
 
+  // The previously shipped generic AI greetings must not be reused as
+  // context evidence for a human role. The voice learner owns the precise
+  // phrase recognizer; do not create a broad keyword blacklist here.
+  function isGenericContextContamination(message) {
+    if (!message || (message.role !== 'assistant' && message.role !== 'received')) return false;
+    if (message.type && message.type !== 'text') return false;
+    var policy = global.ChatPresencePolicy;
+    return !!(policy && typeof policy.isGenericAssistantBoilerplate === 'function' &&
+      policy.isGenericAssistantBoilerplate(message.text || message.content || ''));
+  }
+
   // For ordinary direct-chat characters, incorrect past "I'm an AI" replies are not
   // canonical persona evidence. Exclude them from model context only; never delete or
   // edit saved messages. Explicitly digital characters keep their legitimate identity.
   function getModelHistory(history, role) {
     if (!Array.isArray(history) || isDigitalCharacter(role)) return history;
-    var filtered = history.filter(function (item) { return !isBrokenAssistantIdentity(item); });
+    var filtered = history.filter(function (item) {
+      return !isBrokenAssistantIdentity(item) && !isGenericContextContamination(item);
+    });
     return filtered.length === history.length ? history : filtered;
   }
 
@@ -50,7 +63,7 @@
     if (!Array.isArray(history)) return history;
     var members = Array.isArray(groupMembers) ? groupMembers : [];
     var filtered = history.filter(function (message) {
-      if (!isBrokenAssistantIdentity(message)) return true;
+      if (!isBrokenAssistantIdentity(message) && !isGenericContextContamination(message)) return true;
       var roleId = String(message && message.memberId == null ? '' :
         message && message.memberId || '').trim();
       if (!roleId) {
