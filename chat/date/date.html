@@ -7,6 +7,7 @@
 <script src="../../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../../shared/js/native-feel.js"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
+<script src="../../shared/js/phone/chat-history-atomic.js?v=20261119qa1"></script>
 <script src="../../shared/js/phone/phone_stream.js?v=20261118streamcomplete2"></script>
 <script src="../../shared/js/phone/rp-default-protocol.js?v=20261118v1"></script>
 <script src="../../shared/js/phone/chat-context-policy.js?v=20261118groupvoice1"></script>
@@ -2827,16 +2828,35 @@ body {
     /* ---------- 存取：与线上聊天共用 chat_history_<id> ---------- */
     var HISTORY_KEY = 'chat_history_' + roleId;
     var _storage = window.PhoneStorage;
+    var _dateHistoryRaw = null;
+    var _dateHistoryUnreadable = false;
     function loadHistory() {
-        if (_storage) {
-            var arr = _storage.getChatHistory(roleId);
-            if (arr && arr.length) return arr;
-        }
+        // Check the authoritative per-role primary before any legacy fallback.
+        // A malformed record must never be mistaken for an empty conversation.
         try {
             var raw = localStorage.getItem(HISTORY_KEY);
-            var parsed = raw ? JSON.parse(raw) : [];
-            if (Array.isArray(parsed) && parsed.length) return parsed;
-        } catch (e) {}
+            if (raw !== null) {
+                var primary = JSON.parse(raw);
+                if (!Array.isArray(primary)) throw new Error('chat history must be an array');
+                _dateHistoryRaw = raw;
+                _dateHistoryUnreadable = false;
+                return primary;
+            }
+            _dateHistoryRaw = null;
+        } catch (error) {
+            _dateHistoryUnreadable = true;
+            console.warn('[Date] malformed/unavailable primary chat history; writes suspended', error);
+            return [];
+        }
+        if (_storage && typeof _storage.getChatHistory === 'function') {
+            try {
+                var legacy = _storage.getChatHistory(roleId);
+                if (Array.isArray(legacy) && legacy.length) return legacy;
+            } catch (error) {
+                _dateHistoryUnreadable = true;
+                return [];
+            }
+        }
         return [];
     }
     // 写入后只核对数组长度和本次变更位置，避免为包含大图片的整份历史重复序列化。
@@ -2844,6 +2864,16 @@ body {
     function saveHistory(list, rollback, verifyIndex) {
         try {
             if (!Array.isArray(list)) throw new Error('聊天记录格式无效');
+            if (_dateHistoryUnreadable || HISTORY_KEY !== 'chat_history_' + roleId) {
+                throw new Error('原始聊天记录不可读或角色标识发生变化');
+            }
+            var latestRaw = localStorage.getItem(HISTORY_KEY);
+            if (latestRaw !== null && !Array.isArray(JSON.parse(latestRaw))) {
+                throw new Error('原始聊天记录已损坏，禁止覆盖');
+            }
+            if (latestRaw !== _dateHistoryRaw) {
+                throw new Error('其他窗口更新了聊天记录，禁止使用旧副本覆盖');
+            }
             var wrote = false;
             var verified;
             if (_storage && typeof _storage.saveChatHistory === 'function') {
@@ -2870,6 +2900,7 @@ body {
                     throw new Error('聊天记录写入后校验失败');
                 }
             }
+            _dateHistoryRaw = localStorage.getItem(HISTORY_KEY);
             return true;
         } catch (error) {
             if (Array.isArray(rollback) && Array.isArray(list)) {
@@ -2882,6 +2913,74 @@ body {
             toast('聊天记录保存失败，本次操作没有完成，请检查存储空间后重试');
             return false;
         }
+    }
+
+    // Real send/reply paths use the same Web Lock as online chat and journey.
+    // Legacy synchronous preview/arrival writes remain fail-closed via saveHistory.
+    var dateRerollPending = null;
+    var dateReplyWasReplacement = false;
+    async function appendDateMessage(message) {
+        if (_dateHistoryUnreadable || HISTORY_KEY !== 'chat_history_' + roleId ||
+            !window.ChatHistoryAtomic || typeof window.ChatHistoryAtomic.appendIf !== 'function') {
+            toast('当前聊天记录不可安全保存，请刷新后重试');
+            return false;
+        }
+        if (!message.mid) {
+            message.mid = 'date-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+        }
+        var outcome = await window.ChatHistoryAtomic.appendIf(roleId, message);
+        if (!outcome || !outcome.ok) {
+            toast('聊天记录保存失败，原消息已保留；请检查存储空间后重试');
+            return false;
+        }
+        history = loadHistory();
+        return true;
+    }
+
+    async function commitDateReply(message) {
+        dateReplyWasReplacement = false;
+        if (!dateRerollPending) return appendDateMessage(message);
+        var pending = dateRerollPending;
+        dateRerollPending = null;
+        if (_dateHistoryUnreadable || !window.ChatHistoryAtomic ||
+            typeof window.ChatHistoryAtomic.replaceIfUnchanged !== 'function') {
+            toast('重新生成无法安全保存，原回复已保留');
+            return false;
+        }
+        if (!message.mid) {
+            message.mid = 'date-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+        }
+        var replacement = JSON.parse(JSON.stringify(pending.baseline));
+        if (!replacement[pending.index] ||
+            (replacement[pending.index].role !== 'assistant' && replacement[pending.index].role !== 'received')) {
+            toast('目标回复已变化，原消息已保留');
+            return false;
+        }
+        replacement.splice(pending.index, 1, message);
+        var outcome = await window.ChatHistoryAtomic.replaceIfUnchanged(roleId, pending.baseline, replacement);
+        if (!outcome || !outcome.ok) {
+            toast('其他窗口更新了聊天记录，重新生成已取消，原回复已保留');
+            return false;
+        }
+        history = loadHistory();
+        dateReplyWasReplacement = true;
+        return true;
+    }
+
+    async function replaceDateHistorySafely(expected, replacement) {
+        if (_dateHistoryUnreadable || HISTORY_KEY !== 'chat_history_' + roleId ||
+            !window.ChatHistoryAtomic || typeof window.ChatHistoryAtomic.replaceIfUnchanged !== 'function') {
+            toast('聊天记录不可安全修改，请刷新后重试');
+            return false;
+        }
+        var outcome = await window.ChatHistoryAtomic.replaceIfUnchanged(roleId, expected, replacement);
+        if (!outcome || !outcome.ok) {
+            toast('聊天已在其他窗口更新，修改已取消，原记录已保留');
+            history = loadHistory();
+            return false;
+        }
+        history = loadHistory();
+        return true;
     }
 
     /* ---------- 本地内容生成（预览用，不依赖 API） ----------
