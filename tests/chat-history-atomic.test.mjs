@@ -113,3 +113,99 @@ test('notifier loads the helper and routes both async automatic writers through 
     assert.equal((notifierSource.match(/ChatHistoryAtomic\.appendIf\(/g) || []).length, 2);
     assert.doesNotMatch(notifierSource, /saveFollowUpHistory/);
 });
+
+
+test('batch appends across private and group histories preserve full rich-message arrays', async () => {
+    const privateBefore = [{ mid: 'a', type: 'image', assetId: 'blob-x', data: { keep: true } }];
+    const groupBefore = [{ mid: 'g', memberId: 'role-1', poll: { choice: 2 } }];
+    const s = storage({
+        [key('private')]: JSON.stringify(privateBefore),
+        [key('group')]: JSON.stringify(groupBefore)
+    });
+    const lock = locks();
+    const [privateResult, groupResult] = await Promise.all([
+        tab(s, lock).appendManyIf('private', [{ mid: 'b', text: '1' }, { mid: 'c', text: '2' }]),
+        tab(s, lock).appendManyIf('group', [
+            { mid: 'h', memberId: 'role-2', type: 'voice', duration: 4 },
+            { mid: 'i', memberId: 'role-3', type: 'text', text: 'hello' }
+        ])
+    ]);
+    assert.equal(privateResult.ok, true);
+    assert.equal(groupResult.ok, true);
+    assert.equal(privateResult.value.appended, 2);
+    assert.deepEqual(JSON.parse(s.dump(key('private'))).slice(0, 1), privateBefore);
+    assert.deepEqual(JSON.parse(s.dump(key('group'))).slice(0, 1), groupBefore);
+    assert.deepEqual(JSON.parse(s.dump(key('private'))).map(m => m.mid), ['a', 'b', 'c']);
+    assert.deepEqual(JSON.parse(s.dump(key('group'))).map(m => m.mid), ['g', 'h', 'i']);
+});
+
+test('conflicting edit cannot erase a message appended by another window', async () => {
+    const original = [{ mid: 'old', text: 'before' }];
+    const s = storage({ [key('r')]: JSON.stringify(original) });
+    const lock = locks();
+    const tabA = tab(s, lock);
+    const tabB = tab(s, lock);
+    const appended = await tabB.appendIf('r', { mid: 'new', text: 'from other tab' });
+    assert.equal(appended.ok, true);
+    const conflict = await tabA.replaceIfUnchanged('r', original, [{ mid: 'old', text: 'edited' }]);
+    assert.equal(conflict.error.code, 'CONFLICT');
+    assert.deepEqual(JSON.parse(s.dump(key('r'))).map(m => m.mid), ['old', 'new']);
+});
+
+test('unchanged snapshot permits edit and deletion without modifying unrelated fields', async () => {
+    const original = [
+        { mid: 'old', type: 'image', assetId: 'preserve', scene: 'date' },
+        { mid: 'other', text: 'hello', metadata: { count: 2 } }
+    ];
+    const replacement = [{ ...original[0], desc: 'updated' }];
+    const s = storage({ [key('r')]: JSON.stringify(original) });
+    const out = await tab(s, locks()).replaceIfUnchanged('r', original, replacement);
+    assert.equal(out.ok, true);
+    assert.equal(out.value.replaced, true);
+    assert.deepEqual(JSON.parse(s.dump(key('r'))), replacement);
+});
+
+test('simultaneous edit and append serialize; stale editor is never accepted', async () => {
+    const initial = [{ mid: 'anchor', text: 'start' }];
+    const s = storage({ [key('r')]: JSON.stringify(initial) });
+    const lock = locks();
+    const outcomes = await Promise.all([
+        tab(s, lock).appendIf('r', { mid: 'append', text: 'message' }),
+        tab(s, lock).replaceIfUnchanged('r', initial, [{ mid: 'anchor', text: 'changed' }])
+    ]);
+    assert.equal(outcomes[0].ok, true);
+    assert.equal(outcomes[1].error.code, 'CONFLICT');
+    assert.deepEqual(JSON.parse(s.dump(key('r'))).map(m => m.mid), ['anchor', 'append']);
+});
+
+test('guard failure refuses all batch writes before touching storage', async () => {
+    const raw = JSON.stringify([{ mid: 'last' }]);
+    const s = storage({ [key('g')]: raw });
+    const rejected = await tab(s, locks()).appendManyIf('g', [{ mid: 'a' }], () => false);
+    assert.equal(rejected.error.code, 'STALE_CONTEXT');
+    const thrown = await tab(s, locks()).appendManyIf('g', [{ mid: 'b' }], () => { throw new Error('unexpected'); });
+    assert.equal(thrown.error.code, 'GUARD_FAILED');
+    assert.equal(s.dump(key('g')), raw);
+});
+
+test('invalid batches, missing primary, corrupt primary and unavailable Web Locks fail closed', async () => {
+    const initial = JSON.stringify([{ mid: 'one' }]);
+    const s = storage({ [key('r')]: initial, [key('broken')]: 'invalid json' });
+    const active = tab(s, locks());
+    assert.equal((await active.appendManyIf('r', [])).error.code, 'VALIDATION_FAILED');
+    assert.equal((await active.appendManyIf('r', [null])).error.code, 'VALIDATION_FAILED');
+    assert.equal((await active.replaceIfUnchanged('missing', [], [])).error.code, 'NOT_FOUND');
+    assert.equal((await active.replaceIfUnchanged('broken', [], [])).error.code, 'CORRUPT_DATA');
+    assert.equal((await tab(s).replaceIfUnchanged('r', [], [])).error.code, 'LOCK_UNAVAILABLE');
+    assert.equal(s.dump(key('r')), initial);
+    assert.equal(s.dump(key('broken')), 'invalid json');
+});
+
+test('verify-after-write mismatch is reported rather than silently succeeding', async () => {
+    const raw = JSON.stringify([{ mid: 'keep' }]);
+    const s = storage({ [key('r')]: raw });
+    const originalSet = s.setItem.bind(s);
+    s.setItem = (keyName, value) => originalSet(keyName, JSON.stringify([{ mid: 'other' }]));
+    const result = await tab(s, locks()).appendIf('r', { mid: 'add' });
+    assert.equal(result.error.code, 'VERIFY_FAILED');
+});
