@@ -175,7 +175,8 @@ test('queue accepts imported song names with quotes and HTML without changing th
       tracks:[unsafe],currentIdx:0});
   api.renderQueue();
   assert.match(body.innerHTML,/O&#39;Neil &lt;img/);
-  assert.doesNotMatch(body.innerHTML,/<img src=x|onerror=alert/);
+  assert.doesNotMatch(body.innerHTML,/<img src=x/);
+  assert.match(body.innerHTML,/&lt;img src=x onerror=alert\(1\)&gt;/);
   assert.match(body.innerHTML,/用户上传 &amp; 合辑/);
   assert.ok(body.innerHTML.includes('playTrack(&quot;local_O&#39;Neil&quot;)'));
   assert.equal(unsafe.name,"O'Neil <img src=x onerror=alert(1)>");
