@@ -1018,7 +1018,7 @@
   }
 
   // Debit first with a durable pending ledger entry; only announce a send after card persistence.
-  function submitPayMessageUnderLock() {
+  async function submitPayMessageUnderLock() {
     if (typeof loadMessages !== 'function' || typeof saveMessages !== 'function' ||
         typeof getWorkData !== 'function' || typeof saveWorkData !== 'function') {
       if (typeof showToast === 'function') showToast('聊天或钱包暂不可用，未发送');
@@ -1033,6 +1033,13 @@
     var roleId = currentCharacter && currentCharacter.id != null ? String(currentCharacter.id) : '';
     if (!roleId) {
       if (typeof showToast === 'function') showToast('角色信息不可用，未发送');
+      return;
+    }
+    // Refuse payment before touching the wallet if chat cannot be committed.
+    // This avoids spending money against a missing/corrupt conversation.
+    var atomicWriter = atomicChatWriter();
+    if (!atomicWriter || !extrasPrimaryHistory(roleId)) {
+      if (typeof showToast === 'function') showToast('当前聊天暂不能安全保存，未扣款；请刷新后重试');
       return;
     }
     if (!outgoingWalletRecordValid()) {
@@ -1076,26 +1083,28 @@
       message: msgText, status: 'unopened',
       paymentId: paymentId, mid: paymentId, time: now, timestamp: now
     };
-    var history;
-    var cardSaved = false;
+    var cardSaved = false, cardResult = null;
     try {
-      history = loadMessages();
-      if (Array.isArray(history)) cardSaved = saveMessages(history.concat([specialMsg])) === true;
-    } catch (error) {
-      cardSaved = false;
-    }
+      cardResult = await atomicWriter.appendIf(roleId, specialMsg);
+      cardSaved = !!(cardResult && cardResult.ok);
+    } catch (error) { cardSaved = false; }
     if (!cardSaved) {
       // A failed readback might still have written the card; only refund when
       // the raw role history is legible and confirms the card is absent.
       var storedHistory = readOutgoingHistorySnapshot(roleId);
       var readable = Array.isArray(storedHistory);
       var storedCard = readable && outgoingPaymentInHistory(storedHistory, paymentId);
-      var recovered = readable && settleOutgoingPayment(paymentId, storedCard);
+      // Do not refund a transaction when a write might have committed,
+      // even if a later legacy writer removed it before our readback.
+      var uncertain = !!(cardResult && cardResult.meta &&
+        cardResult.meta.writeMayHavePersisted);
+      var recovered = readable && (storedCard || !uncertain) &&
+        settleOutgoingPayment(paymentId, storedCard);
       if (typeof showToast === 'function') {
-        showToast(!readable
-          ? '聊天记录无法核实，扣款待恢复；请检查存储，暂勿重复发送'
+        showToast(!readable || uncertain
+          ? '聊天卡片状态无法核实，扣款待恢复；请勿重复付款'
           : storedCard
-            ? '聊天卡片保存状态不确定，请刷新检查，暂未通知角色'
+            ? '聊天卡片保存状态已确认，请刷新检查，暂未通知角色'
             : recovered
               ? '聊天卡片保存失败，扣款已退回，消息未发送'
               : '聊天保存失败，扣款等待恢复；请检查钱包记录，暂勿重复发送');
@@ -1147,8 +1156,9 @@
             }
             return false;
           }
-          action(); // Read balance and perform all wallet/chat writes while holding the lock.
-          return true;
+          // Keep the wallet lock until the asynchronous chat append has
+          // completed; otherwise a second tab can debit concurrently.
+          return action();
         }
       );
     } catch (error) {
