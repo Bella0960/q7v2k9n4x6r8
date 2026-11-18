@@ -139,9 +139,11 @@ test('both autonomous model calls require a verified RP/lore context',()=>{
   const follow=section('        var roleContext = buildAutonomousPersonaContext(',
     '        var messages = [{ role:');
   assert.match(follow,/if \(!roleContext\) return;/);
-  const deps=section('    function ensureProactiveDependencies() {',
-    '    function ensureFollowUpDependencies() {');
+  const deps=section('    function ensureAutonomousRoleSources() {',
+    '    function ensureProactiveDependencies() {');
   assert.match(deps,/chat-context-policy\.js/);
+  assert.match(deps,/rp-default-protocol\.js/);
+  assert.match(deps,/chat-role-context\.js/);
   assert.match(notifier,/item\.visibility === 'role_only'/);
 });
 
