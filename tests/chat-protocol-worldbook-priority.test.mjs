@@ -99,7 +99,7 @@ test('worldbook activation settings still decide which entries enter an AI turn'
   assert.ok(!initial.includes('地铁终点') && !initial.includes('不能出现在群里'));
   assert.ok(triggered.includes('地铁终点'));
   assert.ok(!triggered.includes('隐藏的怪物'));
-  assert.match(detail, /roleBookPolicy\.selectWorldbooksForGroup\(wbList, mountedBookIds\)/);
+  assert.match(detail, /roleBookPolicy\.selectWorldbooksForGroupSpeaker\(/);
   assert.match(detail, /roleBookPolicy\.selectWorldbooksForRole\(wbList, roleForTurn, mountedBookIds\)/);
 });
 
