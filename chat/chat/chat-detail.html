@@ -5278,7 +5278,9 @@
             }
         });
         async function recoverInFlightJournals() {
-            if (inflightRecoveryRunning || _chatHistoryUnreadable) return;
+            // A bfcache-restored page may still finish the original stream.
+            // Wait for that stream rather than inserting its partial twice.
+            if (inflightRecoveryRunning || _chatHistoryUnreadable || aiSending) return;
             inflightRecoveryRunning = true;
             try {
                 var prefix = 'chat_inflight_journal_' + currentCharacter.id + '_';
@@ -6814,7 +6816,12 @@
                         var replySaved = aiWriteBaseline
                             ? await replaceChatSafely(aiWriteBaseline, historyList)
                             : (aiNewMessages.length ? await appendChatSafely(aiNewMessages) : true);
-                        if (replySaved) historyList = loadMessages();
+                        if (replySaved) {
+                            // If the stream finished after pagehide, prefer its
+                            // complete reply and retire only this page's journal.
+                            try { localStorage.removeItem(inflightJournalKey); } catch (e) {}
+                            historyList = loadMessages();
+                        }
                         var replySaveFailed = !replySaved;
                         var avatarRoleId = aliasRoleId || currentCharacter.id;
                         if (replySaved && !isGroupChat && window.RoleAvatarLibrary &&
