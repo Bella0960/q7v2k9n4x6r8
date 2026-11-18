@@ -3477,9 +3477,12 @@
             return true;
         }
 
-        // 一键重试：复用已落库的原用户消息，只发起 AI 回合（contextOnly），不会插入第二条用户消息。
+        // Retry is a read-only request until an AI reply has been confirmed in storage.
+        // Never clear the original failed marker before source/API preflight: any early
+        // exit must leave the user's retry affordance intact.
+        var _retryInFlight = false;
         window.retryFailedMessage = function (mid, time) {
-            if (aiSending) {
+            if (aiSending || _retryInFlight) {
                 if (typeof showToast === 'function') showToast('TA 正在回复中，稍等一下');
                 return;
             }
@@ -3493,31 +3496,39 @@
                 return;
             }
             var list = loadMessages();
-            var prepared = _prepareRetryMessage(list, mid, time);
-            if (!prepared) {
+            var idx = _locateRetryMessage(list, mid, time);
+            if (idx === -1) {
                 if (typeof showToast === 'function') showToast('这条消息已不存在或无需重试');
                 return;
             }
-            if (!saveMessages(list)) {
-                // 失败标记只在保存成功后移除；写失败就原样回滚，避免界面与存储不一致。
-                prepared.message.sendFailed = true;
-                if (prepared.previous.sendFailedReason != null) {
-                    prepared.message.sendFailedReason = prepared.previous.sendFailedReason;
-                }
-                return;
-            }
-            var rowMid = mid || prepared.message.mid || '';
-            var row = rowMid ? chatMessages.querySelector('.msg-row[data-mid="' + rowMid + '"]') : null;
-            if (!row && time != null) {
-                row = chatMessages.querySelector('.msg-row[data-time="' + String(time) + '"]');
-            }
-            if (row) {
-                var mark = row.querySelector('.msg-send-failed');
-                if (mark) mark.remove();
-            }
-            // 把重试目标交给 sendMsg：API 失败时据此重新标记同一条用户消息。
-            sendMsg({ contextOnly: true, retryTarget: { mid: rowMid, time: time } });
+            // No user bubble inserted, no localStorage write and no fake success here.
+            var original = list[idx];
+            var rowMid = mid || original.mid || '';
+            _retryInFlight = true;
+            Promise.resolve().then(function () {
+                return sendMsg({ contextOnly: true, retryTarget: { mid: rowMid, time: time } });
+            }).catch(function (error) {
+                console.warn('[ChatRetry] failed without changing the saved user message:', error);
+                if (typeof showToast === 'function') showToast('重试未完成，原消息仍可再次重试');
+            }).finally(function () {
+                _retryInFlight = false;
+            });
         };
+
+        // Only the model's TEMPORARY history sees this failed user message as
+        // retried. The persisted copy remains sendFailed until the successful
+        // assistant reply and cleared marker are verified in the same write.
+        function _buildRetryModelHistory(list, target) {
+            if (!target) return list;
+            var index = _locateRetryMessage(list, target.mid, target.time);
+            if (index < 0) return null;
+            var projected = list.slice();
+            var copy = Object.assign({}, projected[index]);
+            delete copy.sendFailed;
+            delete copy.sendFailedReason;
+            projected[index] = copy;
+            return projected;
+        }
 
         // ================= 礼物拆开动画 =================
         function openGiftUnwrap(msg) {
@@ -5776,6 +5787,12 @@
                 }
             }
 
+            var modelHistoryList = _buildRetryModelHistory(historyList, retryTarget);
+            if (!modelHistoryList) {
+                if (typeof showToast === 'function') showToast('原失败消息已变更，重试已停止，记录未被修改');
+                return;
+            }
+
             // 单聊每轮从同一角色 ID 只读最新档案；不沿用页面打开时的旧快照。
             const roleForTurn = !isGroupChat
                 ? (window.MAOMAOChatRoleContext && typeof window.MAOMAOChatRoleContext.resolveRole === 'function'
@@ -5785,8 +5802,8 @@
             // 历史错误身份仅从新邂逅普通角色的 AI 输入里剔除，不改一条历史消息。
             let roleModelHistory = !isGroupChat && window.MAOMAOChatRoleContext &&
                 typeof window.MAOMAOChatRoleContext.getModelHistory === 'function'
-                ? window.MAOMAOChatRoleContext.getModelHistory(historyList, roleForTurn)
-                : historyList;
+                ? window.MAOMAOChatRoleContext.getModelHistory(modelHistoryList, roleForTurn)
+                : modelHistoryList;
 
             // ===== R2 字符预算：上下文各段落设上限，超长静默截断降级（防 400 context_length_exceeded） =====
             // 阈值按中文 ≈0.6~1 token/字 估算；最坏组合 ~30k 字，适配主流 32k+ 上下文模型。要调就改这里。
@@ -5966,7 +5983,7 @@
             if (isGroupChat && window.MAOMAOChatRoleContext &&
                 typeof window.MAOMAOChatRoleContext.getGroupModelHistory === 'function') {
                 roleModelHistory = window.MAOMAOChatRoleContext.getGroupModelHistory(
-                    historyList, currentGroup && currentGroup.members, getRoleById
+                    modelHistoryList, currentGroup && currentGroup.members, getRoleById
                 );
             }
             if (groupContextPrompt) rolePersona += '\n' + groupContextPrompt;
@@ -7285,12 +7302,8 @@
                 return;
             }
 
-            // 重试后 API 失败：先把同一条用户消息重新标记为失败并落库，
-            // 再按既有 _isRepeatedSystemError 去重规则处理错误提示。
-            var retryRemarked = false;
-            if (!streamResult.ok && retryTarget) {
-                retryRemarked = _markUserSendFailed(historyList, retryTarget.mid, retryTarget.time);
-            }
+            // Failed retries leave the original sendFailed marker untouched.
+            // A success clears it transactionally together with the saved reply.
 
             // Shared verified-write barrier for group turns AND role-DM group invitations.
             // An invitation may only appear after the AI reply has actually persisted.
@@ -7482,7 +7495,36 @@
                         aiRoleGalleryMessages.forEach(function (galleryMessage) { historyList.push(galleryMessage); });
                         window.__groupPrivateCardPending = false;
                         transferDecisionSnapshots = applyTransferDecisionMarkers(historyList, parsedTransferDecision.amounts);
+                        // The retry marker is resolved only together with a truly
+                        // successful, visible AI reply. If this write fails, restore
+                        // the in-memory marker; storage still contains the failed user.
+                        var retryResolved = null;
+                        if (retryTarget && streamResult.ok &&
+                            (replyMessages.length || aiStickerMessages.length || aiRoleGalleryMessages.length)) {
+                            var retryIndex = _locateRetryMessage(historyList, retryTarget.mid, retryTarget.time);
+                            if (retryIndex >= 0) {
+                                retryResolved = {
+                                    message: historyList[retryIndex],
+                                    reason: historyList[retryIndex].sendFailedReason
+                                };
+                                delete retryResolved.message.sendFailed;
+                                delete retryResolved.message.sendFailedReason;
+                            }
+                        }
                         var replySaved = saveMessages(historyList);
+                        if (!replySaved && retryResolved) {
+                            retryResolved.message.sendFailed = true;
+                            if (retryResolved.reason != null)
+                                retryResolved.message.sendFailedReason = retryResolved.reason;
+                        }
+                        if (replySaved && retryResolved) {
+                            var retryRowMid = String(retryTarget.mid || retryResolved.message.mid || '');
+                            var retryRow = retryRowMid ? chatMessages.querySelector('.msg-row[data-mid="' + retryRowMid + '"]') : null;
+                            if (!retryRow && retryTarget.time != null)
+                                retryRow = chatMessages.querySelector('.msg-row[data-time="' + String(retryTarget.time) + '"]');
+                            var retryMark = retryRow && retryRow.querySelector('.msg-send-failed');
+                            if (retryMark) retryMark.remove();
+                        }
                         if (replySaved && streamResult.ok && inspectPromptPacket && window.InspectInteractionBridge &&
                             typeof window.InspectInteractionBridge.markOffered === 'function') {
                             try {
@@ -7736,10 +7778,6 @@
                             appendMessageToDOM(errorMsg);
                         }
                     }
-                }
-                if (retryRemarked) {
-                    // 失败标记已落库：重新渲染一次，让用户消息重新出现可点击的重试入口。
-                    if (_vl) vlRefresh(); else renderAllMessages();
                 }
                 scrollToBottom(true);
             } catch (postErr) {
