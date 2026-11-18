@@ -558,6 +558,91 @@
         return result;
     }
 
+    // Autonomous responses do not run through chat-detail's system builder.
+    // Supply the same *saved* RP/persona and conversation-scoped lore before
+    // spending on model generation. Fail closed on corrupt or oversized lore.
+    // Group contexts deliberately omit each member's private one-to-one memory.
+    function buildAutonomousPersonaContext(role, scope, conversationId, history) {
+        if (!role || role.id == null || !conversationId ||
+            !global.ChatContextPolicy ||
+            typeof global.ChatContextPolicy.buildWorldbookInjectionText !== 'function') return null;
+        try {
+            var id = String(role.id);
+            var known = readCharacters().find(function (entry) {
+                return entry && String(entry.id) === id;
+            });
+            var activeRole = known || role;
+            var name = String((scope === 'group' ? role.name : activeRole.name) || role.name || '角色').trim();
+            var persona = String(activeRole.persona || activeRole.prompt || role.persona || '').trim();
+            if (persona.length > 24000) return null;
+            var userName = '用户';
+            var profileRaw = localStorage.getItem('myProfile');
+            if (profileRaw) {
+                var profile = JSON.parse(profileRaw);
+                if (profile && typeof profile.nickname === 'string' && profile.nickname.trim()) {
+                    userName = profile.nickname.trim().slice(0, 80);
+                }
+            }
+
+            var rp = String(localStorage.getItem('chat_rp_protocol_') || '').trim();
+            if (!rp) rp = String(localStorage.getItem('chat_rp_protocol_' + id) || '').trim();
+            if (!rp) rp = String(global.MAOMAO_RP_DEFAULT_PROTOCOL || '').trim();
+            if (rp.length > 24000) return null;
+            var rawBooks = localStorage.getItem('phone_worldbooks');
+            var books = rawBooks === null ? [] : JSON.parse(rawBooks);
+            if (!Array.isArray(books)) return null;
+            var mountRaw = localStorage.getItem('chat_worldbooks_' + String(conversationId));
+            if (mountRaw !== null) {
+                var mounts = JSON.parse(mountRaw);
+                if (!Array.isArray(mounts)) return null;
+                var ids = mounts.map(String);
+                books = books.filter(function (book) {
+                    return book && ids.indexOf(String(book.id)) !== -1;
+                });
+            } else {
+                books = books.filter(function (book) {
+                    return book && book.scope !== 'local';
+                });
+            }
+            var recent = scope === 'group'
+                ? followUpMessages(history).slice(-8)
+                : historyForProactivePrompt(history).slice(-8);
+            var last = recent.length ? recent[recent.length - 1] : null;
+            var latestText = last ? String(last.text || last.content || '') : '';
+            var lore = global.ChatContextPolicy.buildWorldbookInjectionText(books, {
+                currentText: latestText,
+                recentMessages: recent,
+                maxEntries: Math.max(1, books.reduce(function (count, book) {
+                    return count + (book && Array.isArray(book.entries) && book.entries.length
+                        ? book.entries.length : 1);
+                }, 0)),
+                maxChars: 1000000
+            });
+            if (lore.length > 32000) return null;
+            var memory = scope === 'group' ? '' : String(activeRole.memory || '').trim().slice(0, 3000);
+            var blocks = [
+                '【本轮角色身份（仅作用于 JSON.text 的内容和语气）】',
+                '姓名：' + name,
+                '人设档案：' + (persona || '未填写；不得编造身份经历或统一客服口吻')
+            ];
+            if (memory) blocks.push('已保存的角色个人背景：\n' + memory);
+            if (lore) blocks.push('当前会话允许触发的世界书：\n' + lore);
+            if (rp) {
+                blocks.push('【已保存的人设协议】\n' + rp
+                    .replace(/\{\{char\}\}/g, name)
+                    .replace(/\{\{user\}\}/g, userName)
+                    .replace(/\{\{persona\}\}/g, persona)
+                    .replace(/\{\{memory\}\}/g, memory || '无公开记忆')
+                    .replace(/\{\{worldbook\}\}/g, lore || '暂无世界书'));
+            }
+            blocks.push('以上身份与背景只约束角色说话内容。继续遵循原来的 send 决策与 JSON 输出格式；无话可说必须返回 send=false。群聊不得泄露成员的私人单聊记忆或秘密消息。');
+            var full = blocks.join('\n\n');
+            return full.length <= 48000 ? full : null;
+        } catch (error) {
+            return null;
+        }
+    }
+
     function cleanProactiveMessage(value) {
         var text = String(value == null ? '' : value)
             .replace(/<[^>]*>/g, ' ')
@@ -620,11 +705,15 @@
                 String(currentTime.getHours()).padStart(2, '0') + ':' +
                 String(currentTime.getMinutes()).padStart(2, '0');
 
+            var roleContext = buildAutonomousPersonaContext(
+                candidate.contact, 'private', candidate.contact.id, candidate.history
+            );
+            if (!roleContext) return;
             var system = global.ChatPresencePolicy.buildProactiveContactPrompt(
                 candidate.contact,
                 candidate.history,
                 { localTime: localTime, voiceProfile: voiceProfile }
-            );
+            ) + '\n\n' + roleContext;
             var messages = [{ role: 'system', content: system }];
             messages.push.apply(messages, historyForProactivePrompt(candidate.history));
             messages.push({
@@ -878,13 +967,17 @@
             saveFollowUpState(scope, contact.id, noKeyState);
             return;
         }
+        var roleContext = buildAutonomousPersonaContext(
+            role, scope, contact.id, candidate.history
+        );
+        if (!roleContext) return;
         var prompt = global.ChatFollowUpPolicy.buildPrompt({
             name: role.name,
             persona: role.persona,
             relationship: role.relationship,
             round: candidate.round,
             context: followUpHistoryContext(candidate.history, scope === 'group')
-        });
+        }) + '\n\n' + roleContext;
         var messages = [{ role: 'system', content: prompt }];
         messages.push({
             role: 'user',
