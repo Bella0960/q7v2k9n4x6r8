@@ -116,3 +116,9 @@ test('beauty editor defaults respect the current page preset',()=>{
   assert.equal(classic.getDefaults().myBubbleFontSize,12,preset+' must not inherit default font sizing');
  }
 });
+
+test('composer buttons meet the mobile touch target and iMessage feature sheet is not frosted',()=>{
+ const css=read('shared/css/chat-light-surfaces.css');
+ assert.match(css,/form#chat-form \.plus-action-btn,\s*body\.chat-light-detail[\s\S]*?form#chat-form \.send-icon-btn \{\s*flex-basis:44px !important;\s*width:44px !important;\s*min-width:44px !important;/);
+ assert.match(css,/\.phone-mockup\[data-chat-theme-preset="imessage"\] \.plus-panel-sheet \{[\s\S]*?background:#fff !important;[\s\S]*?backdrop-filter:none !important;/);
+});
