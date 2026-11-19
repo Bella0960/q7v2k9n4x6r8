@@ -538,7 +538,13 @@
       var history = readGreetingHistory(roleId);
       return history.some(function (message) {
         if (!message || message.role !== 'assistant') return false;
-        return message.npcFriendWelcome === true || cleanText(message.text, 180) === greeting;
+        // A welcome marker from a different request must not complete this one.
+        // Older welcome messages have no request ID; match their original text.
+        if (message.npcFriendRequestId) {
+          return message.npcFriendWelcome === true &&
+            String(message.npcFriendRequestId) === String(request.id);
+        }
+        return cleanText(message.text, 180) === greeting;
       });
     } catch (error) { return false; }
   }
@@ -614,7 +620,8 @@
           text: greeting,
           time: Date.now(),
           voiceMode: 'online',
-          npcFriendWelcome: true
+          npcFriendWelcome: true,
+          npcFriendRequestId: request.id
         });
         var greetingSaved = global.PhoneStorage.saveChatHistory(request.npc.id, nextHistory);
         if (greetingSaved !== true) {
