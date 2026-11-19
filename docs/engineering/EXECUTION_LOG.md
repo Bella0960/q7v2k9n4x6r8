@@ -119,3 +119,14 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **Verification actually executed:** GitHub connector fetched edited branch source; isolated V8 execution of the actual bridge + PhoneContext with synthetic localStorage and roles verified role-only/legacy-only/conflict/clear/disabled/group/storage failure/role isolation and prompt content. Earlier 18/18 and final 17/17 checks passed; changed chat pages' inline scripts, manager and PhoneContext parse. New Node tests are checked into `tests/role-worldbook-bindings.test.mjs` and included in `test:chat:contract`; **Node CLI was NOT RUN**, full `npm ci`, Vite build, actual Chromium/UI clicks, Android/iOS devices, real API calls and unified QA are **NOT VERIFIED**.
 - **Integration:** maintain the single frozen QA #299, preserve newer AI pre-send/persona fixes there, review conflicts by file and hand off this branch for inclusion; no direct push to #299, no merge to main, no deployment of production or QA in this checkpoint.
 - **Next proof:** run `npm run test:chat:contract` and `npm run build` in checkout with dependencies; test 375/390/430 UI role edit -> chat settings -> save -> refresh -> back, and the reverse; test group selected member and disabled/malformed data; capture final system prompt via synthetic local model (no billable API) and verify actual Android/iPhone; integrate into the single QA process only after passing checks.
+
+
+### CHAT-WORLDBOOK-001 第二轮回归补强（2026-11-19）
+
+- **发现并修复**：上轮按绑定筛选会使未显式设置挂载的老角色失去原先自动加载的全局世界书。现在只在没有 `chat_worldbooks_<id>` 明确设置时，把仍启用且 `scope !== 'local'` 的世界书作为可见的默认勾选；显式保存任何选择（包括空数组）后不再自动恢复全局书。对话设置明确清空优先于旧角色字段，避免“取消后又出现”。
+- **保存安全**：两个界面的选择列表不再在渲染时过滤/销毁暂时找不到的绑定 ID；原有书丢失/重新导入时保留引用并给出提示。写入顺序先小的挂载键，再整份角色资料；大数据配额写入失败时自动恢复小键，减少角色资料回滚失败风险。恢复时跳过内容未变化的键。
+- **跨应用一致**：`phone_context.js` 在未加载桥的旧页面中，同样遵守老角色全局默认与显式空挂载的规则；群聊使用实际本轮发言成员＋群显式挂载，不直接读全站局部世界书。
+- **本轮在当前 GitHub 分支源码执行的检查**：隔离 V8 的模块/页面脚本解析＋角色上下文、全局/局部、显式清空/刷新、隔离共 **25/25 通过**；从真实对话设置脚本提取事件处理片段进行模拟 DOM 点击/保存/重进＋角色编辑器绑定渲染共 **14/14 通过**；额度不足、静默写入拒绝、损坏数据、失败回滚共 **5/5 通过**。这些是代码执行与模拟 DOM，不是原生 Node runner/真实 Chrome/手机。
+- **可重跑的回归已提交**：`tests/role-worldbook-bindings.test.mjs` 扩展全局默认、显式清空和两种配额失败用例，新增从实际 `chat-settings.html` 提取事件处理逻辑的交互测试；纳入 `test:chat:contract`。该 Node CLI 测试、`npm run build`、375/390/430 真浏览器、Android/iPhone、真实 API/唯一 QA 仍 **NOT VERIFIED**。
+- **PWA 整合注意**：新增桥脚本 `shared/js/phone/role-worldbook-bindings.js?v=20261119a` 需进入最终唯一 QA 的 PWA 缓存清单和版本更新。由于 QA #299 使用不同的账号安全 SW 基线，**不能用这个 main 基础上的旧 sw.js 覆盖 QA**；由唯一整合窗口按 QA 当前版本增量纳入，不单独造第二个测试域。
+- **治理边界**：只修改原 #307 草稿分支，未改 main、正式 Worker 或账号数据库；#299 继续冻结直接写入，整合后统一更新 https://preview.mao520.com。
