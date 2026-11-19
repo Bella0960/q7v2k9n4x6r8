@@ -2351,24 +2351,45 @@
     // 清理群记录（保留群本身，仅清空聊天记录）
     document.getElementById('actionGpClearRecord').addEventListener('click', function () {
       if (!window.confirm('确定清理该群的全部聊天记录吗？清理后不可恢复。')) return;
-      try { localStorage.removeItem('chat_history_' + roleId); } catch (e) {}
+      try { localStorage.removeItem('chat_history_' + roleId); }
+      catch (e) { showToast('群记录清理失败，记录仍然保留'); return; }
       showToast('群记录已清理');
     });
 
-    // 解散群聊（置底卡片）
+    // 解散群聊：必须确认群列表成功写入，不能失败时仍跳走并误报成功。
     document.getElementById('actionGpDismiss').addEventListener('click', function () {
       if (!window.confirm('解散群聊后将清空该群的聊天记录，且不可恢复。确定解散吗？')) return;
       try {
         var raw = localStorage.getItem('phone_groups');
         var arr = raw ? JSON.parse(raw) : [];
-        if (Array.isArray(arr)) {
-          localStorage.setItem('phone_groups', JSON.stringify(arr.filter(function (g) { return String(g.id) !== String(roleId); })));
+        if (!Array.isArray(arr) || !arr.some(function (g) { return String(g.id) === String(roleId); })) {
+          showToast('群聊不存在，请刷新后再试');
+          return;
         }
-      } catch (e) {}
-      try { localStorage.removeItem('chat_history_' + roleId); } catch (e) {}
-      try { localStorage.removeItem(GP_ALIAS_KEY); } catch (e) {}
-      try { localStorage.removeItem(GP_NOTICE_KEY); } catch (e) {}
-      window.location.href = 'chat.html';
+        localStorage.setItem('phone_groups', JSON.stringify(arr.filter(function (g) { return String(g.id) !== String(roleId); })));
+      } catch (e) { showToast('解散失败，群聊仍然保留'); return; }
+
+      var cleanupFailed = false;
+      ['chat_history_' + roleId, GP_ALIAS_KEY, GP_NOTICE_KEY].forEach(function (key) {
+        try { localStorage.removeItem(key); } catch (e) { cleanupFailed = true; }
+      });
+      // Group covers live in a separate, group-scoped IndexedDB key.
+      // Complete the asset cleanup before navigation; don't wait indefinitely if IDB is blocked.
+      var store = window.MAOMAOWallpaperStore;
+      var navigated = false;
+      function finish() {
+        if (navigated) return;
+        navigated = true;
+        window.location.href = 'chat.html';
+      }
+      if (!store || typeof store.removeByKey !== 'function') { finish(); return; }
+      var timeout = setTimeout(finish, 1200);
+      try {
+        Promise.resolve(store.removeByKey('chat_group_profile_cover_v1_' + roleId))
+          .catch(function () { cleanupFailed = true; })
+          .then(function () { clearTimeout(timeout); finish(); });
+      } catch (e) { clearTimeout(timeout); finish(); }
+      if (cleanupFailed) showToast('群已解散，部分旧数据清理失败');
     });
 
     var gpAdvancedEntry = document.getElementById('gpAdvancedEntry');
