@@ -1236,10 +1236,10 @@ test('partner protocol is managed globally from desktop settings and shared by e
   assert.match(globalSettings, /伴侣协议/);
   assert.doesNotMatch(chatSettings, /rp-protocol\.html|伴侣协议/);
   assert.match(rpProtocolPage, /var STORAGE_KEY = 'chat_rp_protocol_';/);
-  assert.match(rpProtocolPage, /function migrateLegacyProtocol\(\)/);
+  assert.doesNotMatch(rpProtocolPage, /function migrateLegacyProtocol\(\)/);
   assert.doesNotMatch(rpProtocolPage, /getRoleIdFromUrl/);
   assert.match(detail, /localStorage\.getItem\(globalRpKey\)/);
-  assert.match(detail, /localStorage\.setItem\(globalRpKey, legacyValue\)/);
+  assert.doesNotMatch(detail, /localStorage\.setItem\(globalRpKey, legacyValue\)/);
   assert.doesNotMatch(detail, /localStorage\.getItem\('chat_rp_protocol_' \+ aliasRoleId\)/);
 });
 
@@ -1305,10 +1305,10 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 });
 
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
-  assert.match(detail, /chat-presence-policy\.js\?v=20261118voicepurity1/);
+  assert.match(detail, /chat-presence-policy\.js\?v=20261119scheduled1/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
   assert.ok(pwaCacheVersion >= 204, 'PWA cache must not regress below v204');
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261118voicepurity1/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261119scheduled1/);
 });
 
 
@@ -1430,7 +1430,7 @@ test('chat detail persists voice habits per character and per group session with
   assert.match(detail, /buildEmotionContinuityPrompt/);
   assert.match(detail, /maxScan: 24/);
   assert.ok(pwaCacheVersion >= 204, 'PWA cache must not regress below v204');
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261118voicepurity1/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261119scheduled1/);
 });
 
 
@@ -1615,9 +1615,9 @@ test('chat detail injects the role autonomy prompt and precaches the updated pol
   assert.ok(detail.includes('ChatPresencePolicy.buildAutonomyPrompt'));
   assert.ok(detail.includes('maxNotes: 3'));
   assert.ok(detail.includes('maxTurns: 4'));
-  assert.ok(detail.includes('chat-presence-policy.js?v=20261118voicepurity1'));
+  assert.ok(detail.includes('chat-presence-policy.js?v=20261119scheduled1'));
   assert.ok(pwaCacheVersion >= 204, 'PWA cache must not regress below v204');
-  assert.ok(serviceWorker.includes('chat-presence-policy.js?v=20261118voicepurity1'));
+  assert.ok(serviceWorker.includes('chat-presence-policy.js?v=20261119scheduled1'));
 });
 
 
@@ -1822,13 +1822,13 @@ test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat
 });
 
 test('proactive contact notifier is loaded on home and navigation pages and precached by PWA', () => {
-  assert.match(homePage, /chat-notifier\.js\?v=20261119atomic1/);
-  assert.match(navPage, /chat-notifier\.js\?v=20261119atomic1/);
-  assert.match(detail, /chat-notifier\.js\?v=20261119atomic1/);
-  assert.match(detail, /chat-presence-policy\.js\?v=20261118voicepurity1/);
+  assert.match(homePage, /chat-notifier\.js\?v=20261119scheduled1/);
+  assert.match(navPage, /chat-notifier\.js\?v=20261119scheduled1/);
+  assert.match(detail, /chat-notifier\.js\?v=20261119scheduled1/);
+  assert.match(detail, /chat-presence-policy\.js\?v=20261119scheduled1/);
   assert.ok(pwaCacheVersion >= 204, 'PWA cache must not regress below v204');
-  assert.match(serviceWorker, /chat-notifier\.js\?v=20261119atomic1/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261118voicepurity1/);
+  assert.match(serviceWorker, /chat-notifier\.js\?v=20261119scheduled1/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261119scheduled1/);
   assert.match(serviceWorker, /chat-followup-policy/);
 });
 
