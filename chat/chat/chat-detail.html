@@ -7303,12 +7303,9 @@
                     memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined
                 };
                 // 手动继续聊天只在完整回复成功落库后显示，绝不渲染打字中状态。
-                // Online group answers are provisional until verified against the
-                // selected speaker. Keep the normal typing indicator instead of
-                // briefly showing a wrong AI identity during streaming.
-                var provisionalGroupReply = isGroupChat && currentGroup &&
-                    (!currentGroup.settings || currentGroup.settings.chatMode !== 'offline');
-                if (isManualContinue || provisionalGroupReply) return;
+                // Valid group messages keep the native streaming bubble.
+                // Only an already-detected identity violation is hidden below.
+                if (isManualContinue) return;
                 /* 推理标签可能先于正文到达；在真正有可见聊天文字前，不创建气泡。 */
                 var tmpText = stripInternalReasoning(extractVoiceCallMarker(text).text);
                 tmpText = tmpText
@@ -7331,6 +7328,25 @@
                 }
                 tmpText = redactGroupPrivateStream(tmpText).trim();
                 if (!tmpText) return;
+
+                // Do not reveal a clearly out-of-character *partial* answer.
+                // Keep the existing stream-bubble lifecycle for valid replies:
+                // the final persistence and DOM code depends on that row.
+                if (isGroupChat && currentGroup && groupReplyPick &&
+                    (!currentGroup.settings || currentGroup.settings.chatMode !== 'offline') &&
+                    window.MAOMAOChatRoleContext &&
+                    typeof window.MAOMAOChatRoleContext.validateGroupOnlineReply === 'function') {
+                    var partialQuality = window.MAOMAOChatRoleContext.validateGroupOnlineReply({
+                        role: getRoleById(groupReplyPick.id),
+                        text: tmpText,
+                        latestUserText: text
+                    });
+                    if (!partialQuality.ok) {
+                        inflightSnapshot = null;
+                        if (streamBubble) streamBubble.textContent = '';
+                        return;
+                    }
+                }
 
                 if (!streamBubble) {
                     const loadingEl = document.getElementById(statusId);
