@@ -20,6 +20,9 @@
     }
 
     var NS = global.PhoneAPI = {};
+    // The existing complete()/completeJSON() path forwards opts.signal to fetch
+    // and aborts on pagehide. Advertise that verified contract to NPC discovery.
+    NS.supportsAbortSignal = true;
 
     var DEFAULT_TIMEOUT = 15000;
 
