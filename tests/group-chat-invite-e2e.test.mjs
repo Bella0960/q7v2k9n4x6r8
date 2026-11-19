@@ -276,7 +276,7 @@ test('C6-C8 chat.html -> chat-detail renders 3 members and request context conta
     assert.ok(!system.includes('你以【三人测试群】的身份参与'), 'group title is not a speaker persona');
     const anchoredPersona = (system.split('【角色档案】')[1] || '').split('【性格稳定与情绪变化】')[0];
     assert.ok(anchoredPersona.includes('夜班编辑人设'), 'selected member persona must anchor the reply');
-    assert.ok(system.includes('【群聊自然接话】'), 'natural group dialogue should suppress canned greetings');
+    assert.ok(system.includes('【群聊口吻纠偏】') && system.includes('[群成员自然互动]'), 'current group context must suppress canned greetings and allow role-to-role dialogue');
     const received = page.locator('.msg-row.received.group-member-row').last();
     await received.waitFor({ state: 'visible', timeout: 12000 });
     await received.scrollIntoViewIfNeeded();
