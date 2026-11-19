@@ -67,7 +67,7 @@ function environment(opts={}) {
   };
   const factory=new Function(...Object.keys(scope),
     'let currentIdx=0, playing=true, playbackRevision=0;\n'+
-    'let currentBlobUrl="blob:old", musicStagedBlobUrl=null;\n'+
+    'let currentBlobUrl="blob:old", musicStagedBlobUrl=null, musicPlaybackPending=false;\n'+
     'let musicConfirmedSource={src:"blob:old",blobUrl:"blob:old",trackId:"old",time:42,wasPlaying:true};\n'+
     'let musicResumeCheckpoint=null;\n'+
     playSource+
@@ -226,7 +226,7 @@ test('explicitly removing a song releases both staged and confirmed Blob URLs',(
   const code=music.slice(start,end);
   const revoked=[];
   const result=new Function('URL',
-    'let currentBlobUrl="blob:old",musicStagedBlobUrl="blob:pending";\n'+
+    'let currentBlobUrl="blob:old",musicStagedBlobUrl="blob:pending",musicPlaybackPending=true;\n'+
     'let musicConfirmedSource={src:"blob:old",trackId:"old"};\n'+
     code+
     '\nrevokeCurrentUrl();\nreturn {currentBlobUrl,musicStagedBlobUrl,musicConfirmedSource};'
