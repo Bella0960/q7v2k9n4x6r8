@@ -20,7 +20,7 @@
     <script src="../../shared/js/phone/chat-image-vision.js?v=20261113v1"></script>
     <script src="../../shared/js/phone/rp-default-protocol.js?v=20261118v1"></script>
     <script src="../../shared/js/phone/role-worldbook-bindings.js?v=20261119-qa1"></script>
-    <script src="../../shared/js/phone/chat-role-context.js?v=20261119directreply1"></script>
+    <script src="../../shared/js/phone/chat-role-context.js?v=20261119identity2"></script>
     <script src="../../shared/js/phone/inspect_interaction_bridge.js?v=20261112v5"></script>
     <script src="../../shared/js/phone/phone_api.js?v=20261115cancel1"></script>
     <script src="../../shared/js/phone/image-generation.js?v=20261106v1"></script>
@@ -6682,7 +6682,11 @@
             ].join('\n');
             // 当前单聊的邂逅职业、经历与性格进入每轮请求；不混入其他角色/群聊。
             var encounterIdentityContext = !isGroupChat ? buildEncounterIdentityContext(roleForTurn) : '';
+            var identityAnswerGuidance = !isGroupChat && window.MAOMAOChatRoleContext &&
+                typeof window.MAOMAOChatRoleContext.buildIdentityAnswerGuidance === 'function'
+                ? window.MAOMAOChatRoleContext.buildIdentityAnswerGuidance(roleForTurn) : '';
             systemPrompt = IDENTITY_LOCK
+                + (identityAnswerGuidance ? '\n\n' + identityAnswerGuidance : '')
                 + (encounterIdentityContext ? '\n\n' + encounterIdentityContext + '\n\n' : '')
                 + (characterSocialPrompt ? '\n\n' + characterSocialPrompt + '\n\n' : '') + systemPrompt;
             if (isGroupChat && currentGroup) {
