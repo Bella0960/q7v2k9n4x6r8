@@ -2054,20 +2054,20 @@
       return false;
     }
     function saveCurrentGroup(group) {
-      if (!canManageGroup(group)) return false;
+      // This is an editor, never a group-creation path. A stale settings tab must
+      // neither resurrect a deleted group nor regain privileges after ownership transfer.
+      if (!group || String(group.id) !== String(roleId) || !canManageGroup(group)) return false;
       try {
         var raw = localStorage.getItem('phone_groups');
-        var arr = raw ? JSON.parse(raw) : [];
-        if (!Array.isArray(arr)) arr = [];
-        var hit = false;
-        for (var i = 0; i < arr.length; i++) {
-          if (String(arr[i].id) === String(group.id)) { arr[i] = group; hit = true; break; }
-        }
-        if (!hit) arr.push(group);
+        if (!raw) return false;
+        var arr = JSON.parse(raw);
+        if (!Array.isArray(arr)) return false;
+        var index = arr.findIndex(function (g) { return g && String(g.id) === String(group.id); });
+        if (index === -1 || !canManageGroup(arr[index])) return false;
+        arr[index] = group;
         var serialized = JSON.stringify(arr);
         localStorage.setItem('phone_groups', serialized);
-        // localStorage shims and full storage can silently swallow writes.
-        // Never display a success toast unless the authoritative group list was saved.
+        // Silent storage failures are not success, and edits must not destroy other groups.
         return localStorage.getItem('phone_groups') === serialized;
       } catch (e) { return false; }
     }
