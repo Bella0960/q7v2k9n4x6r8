@@ -130,3 +130,11 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **可重跑的回归已提交**：`tests/role-worldbook-bindings.test.mjs` 扩展全局默认、显式清空和两种配额失败用例，新增从实际 `chat-settings.html` 提取事件处理逻辑的交互测试；纳入 `test:chat:contract`。该 Node CLI 测试、`npm run build`、375/390/430 真浏览器、Android/iPhone、真实 API/唯一 QA 仍 **NOT VERIFIED**。
 - **PWA 整合注意**：新增桥脚本 `shared/js/phone/role-worldbook-bindings.js?v=20261119a` 需进入最终唯一 QA 的 PWA 缓存清单和版本更新。由于 QA #299 使用不同的账号安全 SW 基线，**不能用这个 main 基础上的旧 sw.js 覆盖 QA**；由唯一整合窗口按 QA 当前版本增量纳入，不单独造第二个测试域。
 - **治理边界**：只修改原 #307 草稿分支，未改 main、正式 Worker 或账号数据库；#299 继续冻结直接写入，整合后统一更新 https://preview.mao520.com。
+
+
+### CHAT-WORLDBOOK-001 第三轮：跨页覆盖与失败重试（2026-11-19）
+
+- **实际复现的回归风险**：编辑角色档案时若另一个页面已经保存新世界书绑定，旧编辑器随后保存人设会把更新后的绑定覆盖回去。修复为：保存角色前重新读取绑定；本页未改世界书则保留外部最新绑定并回显；两边均改动且不相同时阻止保存、保留草稿并明确提示，不假报成功。旧 ID 匹配继续用字符串转换，其他人设字段不做重构。
+- **AI 请求失败真实可见**：聊天世界书读取现在即使 `phone_worldbooks` 未创建也检查挂载键，异常时停止在 `PhoneStream.chat` 之前；已落库的本轮用户消息标记 `sendFailedReason='worldbook-read'` 并通过现有重渲染/一键重试机制反馈，避免出现正常外观却没有角色回复的消息。contextOnly 重试仍指向原消息，不重复添加用户消息；新增对应失败提示文案。
+- **本轮确实执行的代码级模拟**：从当前 PR 分支提取实际 `handleSaveRole` 执行，合成两页面角色绑定变更、旧编辑器保存和冲突回滚，7/7 通过（首轮模拟曾因错误假设所有无 scope 的测试书是局部导致 1 项测试夹具误判，纠正为真实 `scope='local'` 后通过）；从聊天详情当前实际世界书上下文代码提取执行，正常私聊、损坏挂载、缺失书列表、坏 JSON、群角色＋群挂载、重试重标记 6/6 通过；变化页面 JS 解析成功。新增两项可执行的 `tests/role-worldbook-bindings.test.mjs` 回归源文件，文件可解析，但原生 Node runner 未执行。
+- **上线门槛尚未通过**：Node 原生测试、完整 Vite 构建、Chromium 点击/真实 API、Android/iPhone PWA、#299 唯一 QA 合并/部署均 NOT VERIFIED。此前的 JS 模拟不冒充端到端验收。严禁触碰正式版、账号安全与冻结 QA #299。
