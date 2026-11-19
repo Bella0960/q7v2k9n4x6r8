@@ -9,6 +9,9 @@ const chat=readFileSync(path.join(root,'chat/chat/chat.html'),'utf8');
 const phoneStorageSource=readFileSync(path.join(root,'shared/js/phone/phone_storage.js'),'utf8');
 const atomicSource=readFileSync(path.join(root,'shared/js/phone/chat-history-atomic.js'),'utf8');
 const detail=readFileSync(path.join(root,'chat/chat/chat-detail.html'),'utf8');
+const chatExtras=readFileSync(path.join(root,'chat/chat/js/chat-extras.js'),'utf8');
+const groupPlay=readFileSync(path.join(root,'chat/chat/group-play.html'),'utf8');
+const chatSettings=readFileSync(path.join(root,'chat/chat/chat-settings.html'),'utf8');
 test('聊天列表所有创建群入口都通向真实创建弹窗',()=>{
   assert.match(chat,/\['groupEntryBtn', 'silverGroupEntryBtn'\]\.forEach/);
   assert.match(chat,/entry\.addEventListener\('click',[\s\S]*?openModal\(\)/);
@@ -350,4 +353,91 @@ test('浏览器存储读取受阻时可见提示，不伪装无聊天', () => {
   assert.match(out.html, /group-data-warning/);
   assert.doesNotMatch(out.html, /暂无聊天消息/);
   assert.equal(out.writes, 0);
+});
+
+
+test('接龙逐级返回不会直接离开群聊，工具弹层每层有独立历史入口', () => {
+  assert.match(chatExtras, /history\.pushState\(state, '', window\.location\.href\)/);
+  assert.match(chatExtras, /pushChatLayer\('plus'\)/);
+  assert.match(chatExtras, /pushChatLayer\('modal'\)/);
+  assert.match(chatExtras, /pushChatLayer\('pay'\)/);
+  assert.match(chatExtras, /window\.addEventListener\('popstate', function \(\) \{[\s\S]*?activeChatLayer\(\)/);
+  assert.match(detail, /ChatBackLayers\.push\('group-composer'\)/);
+  assert.match(detail, /ChatBackLayers\.isTop\('group-composer'\)/);
+  assert.match(detail, /window\.addEventListener\('popstate', function \(\) \{[\s\S]*?closeComposer\(\)/);
+  assert.match(detail, /openComposer\('chain'\)/);
+  assert.match(detail, /openComposer\('poll'\)/);
+  assert.match(detail, /openComposer\('join',/);
+});
+
+function getReturnClick(source, start, end, environment) {
+  const begin=source.indexOf(start), finish=source.indexOf(end, begin);
+  assert.ok(begin>=0 && finish>begin, '原页面返回处理不存在');
+  let listener;
+  const doc={
+    referrer:environment.referrer||'',
+    getElementById() {
+      return {addEventListener(type, fn) { if (type==='click') listener=fn; }};
+    }
+  };
+  const destination={
+    replaced:null, href:null, wentBack:0
+  };
+  const address={href:environment.address};
+  const browser={
+    history:{length:environment.historyLength,back(){destination.wentBack++;}},
+    location:{replace(value){destination.replaced=value;},set href(value){destination.href=value;}}
+  };
+  const code=source.slice(begin,finish);
+  if (environment.groupPlay) {
+    new Function('document','location','window','groupId',code)(doc,address,browser,environment.id);
+  } else {
+    new Function('document','window','roleId','isGroupSetting',code)(
+      doc,browser,environment.id,String(environment.id).startsWith('g')
+    );
+  }
+  assert.equal(typeof listener,'function');
+  listener();
+  return destination;
+}
+
+test('高级群管理从本群设置进入时，返回只回上一层而不是再创建设置页面', () => {
+  const result=getReturnClick(
+    groupPlay,
+    "  document.getElementById('backBtn').addEventListener('click',function(){",
+    '\n})();',
+    {groupPlay:true,id:'g123',historyLength:4,
+      address:'https://preview.mao520.com/chat/chat/group-play.html?id=g123',
+      referrer:'https://preview.mao520.com/chat/chat/chat-settings.html?roleId=g123'}
+  );
+  assert.equal(result.wentBack,1);
+  assert.equal(result.replaced,null);
+});
+
+test('高级群管理深链接和跨群来源只替换页面，不产生设置与高级页死循环', () => {
+  for(const referrer of ['', 'https://another.example/chat-settings.html?roleId=g123',
+    'https://preview.mao520.com/chat/chat/chat-settings.html?roleId=g999']) {
+    const result=getReturnClick(
+      groupPlay,
+      "  document.getElementById('backBtn').addEventListener('click',function(){",
+      '\n})();',
+      {groupPlay:true,id:'g123',historyLength:4,
+        address:'https://preview.mao520.com/chat/chat/group-play.html?id=g123',referrer}
+    );
+    assert.equal(result.wentBack,0);
+    assert.equal(result.replaced,'chat-settings.html?roleId=g123');
+  }
+});
+
+test('群设置返回本群，普通私聊仍保留原生历史返回', () => {
+  const prefix="  document.getElementById('btnBack').addEventListener('click', function () {";
+  const end="  // ================= 社交媒体自动化";
+  const group=getReturnClick(chatSettings,prefix,end,{
+    id:'g123',historyLength:4,address:'https://preview.mao520.com/chat/chat/chat-settings.html?roleId=g123'
+  });
+  assert.equal(group.replaced,'chat-detail.html?id=g123');
+  const privateChat=getReturnClick(chatSettings,prefix,end,{
+    id:'r123',historyLength:4,address:'https://preview.mao520.com/chat/chat/chat-settings.html?roleId=r123'
+  });
+  assert.equal(privateChat.wentBack,1);
 });
