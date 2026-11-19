@@ -44,13 +44,13 @@ test('new cache revision lists exact storefront resources and retains legacy the
  for(const name of ['preview-scene.js']){assert.ok(page.includes(name+'?v=20261113m7'));assert.ok(sw.includes('./theme-store/'+name+'?v=20261113m7'));}
   assert.ok(page.includes('preview-scene.css?v=20261113m7'));
   assert.ok(sw.includes('./theme-store/preview-scene.css?v=20261113m7'));
-  assert.ok(page.includes('storefront.css?v=20261113m13'));
-  assert.ok(sw.includes('./theme-store/storefront.css?v=20261113m13'));
-  assert.ok(page.includes('storefront.js?v=20261113m12'));
-  assert.ok(sw.includes('./theme-store/storefront.js?v=20261113m12'))
+  assert.ok(page.includes('storefront.css?v=20261119isolated1'));
+  assert.ok(sw.includes('./theme-store/storefront.css?v=20261119isolated1'));
+  assert.ok(page.includes('storefront.js?v=20261119isolated1'));
+  assert.ok(sw.includes('./theme-store/storefront.js?v=20261119isolated1'))
   assert.ok(page.includes('collection-store.js?v=20261112m3'));
   assert.ok(sw.includes('./theme-store/collection-store.js?v=20261112m3'));
- assert.ok(sw.includes("phone-app-pwa-v229"));
+ assert.ok(sw.includes("phone-app-pwa-v230"));
  for(const id of ['default','wechat','imessage','qq','silver-butterfly','atmosphere'])assert.ok(page.includes("id:'"+id+"'"));
 });
 test('outfit editing can narrow scope or explicitly recapture without duplicating or applying it',async()=>{
@@ -105,4 +105,58 @@ test('missing icon preset images are preflighted before editing any current icon
   x.pictures.set('home_icon_img_app_chat','data:image/png;base64,BEFORE');
   await assert.rejects(x.model.applyOutfit(item,['icons']),/不完整/);
   assert.equal(x.pictures.get('home_icon_img_app_chat'),'data:image/png;base64,BEFORE');
+});
+
+
+test('six themes render in separate scoped DOM sections without changing persisted settings',()=>{
+  const x=setup();
+  const source=readFileSync(new URL('../theme-store/storefront.js',import.meta.url),'utf8');
+  const css=readFileSync(new URL('../theme-store/storefront.css',import.meta.url),'utf8');
+  const themes=['default','wechat','imessage','qq','silver-butterfly','atmosphere'];
+  const win={
+    MAOMAOMarketCollection:x.model,
+    ChatBeauty:x.beauty
+  };
+  const document={
+    addEventListener(){},
+    getElementById(){return {querySelectorAll(){return [];}}}
+  };
+  vm.runInNewContext(source,{window:win,document});
+  win.MAOMAOStorefront.init({
+    themes:themes.map(id=>({id,name:id,desc:'演示用外观'})),
+    nativeArt:t=>'<div class="product-art theme-art-'+t.id+'"></div>',
+    listCard:()=>'<div class="chat-list-theme-grid">独立列表主题</div>',
+    market:{renderWallpapers:()=>''}
+  });
+  const before=JSON.stringify([...x.disk.entries()]);
+  const html=win.MAOMAOStorefront.render('themes');
+  assert.equal((html.match(/class="sf-theme-item sf-product"/g)||[]).length,6);
+  for(const id of themes){
+    assert.ok(html.includes('data-theme-id="'+id+'"'),'theme section '+id);
+    assert.ok(css.includes('.sf-theme-item[data-theme-id="'+id+'"]'),'scoped paint for '+id);
+  }
+  assert.ok(html.includes('chat-list-theme-grid'),'Messages list theme remains separate');
+  assert.ok(html.includes('仅聊天详情'),'iMessage does not advertise unrelated page coverage');
+  assert.equal(JSON.stringify([...x.disk.entries()]),before,'render must be read-only');
+  assert.equal((win.MAOMAOStorefront.render('discover').match(/class="sf-theme-item sf-product"/g)||[]).length,3,'home shows three concise product excerpts');
+});
+test('switching each built-in theme retains independent chat-list, role bubble and wallpaper settings',async()=>{
+  const x=setup();
+  x.beauty.save('A',{myBubbleBg:'#999999',chatBg:'isolated-role'});
+  x.disk.set('maomao_chat_list_theme_preset_v1','editorial');
+  x.disk.set('home_custom_wallpaper','wallpaper-persisted');
+  const priorBubble=x.disk.get('beauty_chat_A');
+  for(const id of ['wechat','qq','imessage','silver-butterfly','atmosphere','default']){
+    assert.equal(x.beauty.setThemePreset(id),true);
+    assert.equal(x.beauty.getThemePreset(),id);
+    assert.equal(x.disk.get('beauty_chat_A'),priorBubble);
+    assert.equal(x.disk.get('maomao_chat_list_theme_preset_v1'),'editorial');
+    assert.equal(x.disk.get('home_custom_wallpaper'),'wallpaper-persisted');
+  }
+  const item=await x.model.saveOutfit('仅主题',['theme']);
+  x.beauty.setThemePreset('wechat');
+  await x.model.applyOutfit(item,['theme']);
+  assert.equal(x.beauty.getThemePreset(),'default');
+  assert.equal(x.disk.get('beauty_chat_A'),priorBubble);
+  assert.equal(x.disk.get('maomao_chat_list_theme_preset_v1'),'editorial');
 });
