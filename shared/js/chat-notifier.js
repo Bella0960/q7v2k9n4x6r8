@@ -62,6 +62,34 @@
         var arr = safeJsonParse(safeGet('chat_history_' + roleId));
         return Array.isArray(arr) ? arr : [];
     }
+    // Automatic AI generation must never treat a broken or unavailable chat
+    // history as a new conversation: it would spend API money but fail to save.
+    // Unlike the read-only unread badge, automatic writes require a valid
+    // existing primary history, with no old phone_data_v2 fallback.
+    function readAutomaticHistory(roleId) {
+        try {
+            var raw = localStorage.getItem('chat_history_' + roleId);
+            if (raw === null) return null;
+            var parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed : null;
+        } catch (error) { return null; }
+    }
+    function automaticStorageReady() {
+        if (!(global.navigator && global.navigator.locks &&
+            typeof global.navigator.locks.request === 'function')) return false;
+        // A protected account page must not pay for AI generation before its
+        // localStorage proxy has been bound to the declared identity.
+        try {
+            var declared = global.document && typeof global.document.querySelector === 'function'
+                ? global.document.querySelector('meta[name="mao-account-id"]') : null;
+            var id = declared && String(declared.content || '').trim();
+            if (id) {
+                var scope = global.__MAO_ACCOUNT_SCOPE__;
+                if (!scope || scope.ready !== true || scope.accountId !== id) return false;
+            }
+            return true;
+        } catch (e) { return false; }
+    }
     function readCharacters() {
         var arr = safeJsonParse(safeGet('ai_custom_characters'));
         return Array.isArray(arr) ? arr : [];
@@ -372,7 +400,10 @@
     function ensureProactiveDependencies() {
         if (global.PhoneStorage && global.PhoneAPI && typeof global.PhoneAPI.completeJSON === 'function' &&
             global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function') {
-            return Promise.resolve(true);
+            return loadProactiveScript(
+                proactiveAsset('shared/js/phone/chat-history-atomic.js?v=20261118v3'),
+                function () { return !!global.ChatHistoryAtomic && typeof global.ChatHistoryAtomic.appendIf === 'function'; }
+            );
         }
         if (proactiveDependenciesPromise) return proactiveDependenciesPromise;
         proactiveDependenciesPromise = loadProactiveScript(
@@ -389,6 +420,12 @@
             return loadProactiveScript(
                 proactiveAsset('shared/js/phone/chat-presence-policy.js?v=20261102v17'),
                 function () { return !!global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function'; }
+            );
+        }).then(function (ok) {
+            if (!ok) return false;
+            return loadProactiveScript(
+                proactiveAsset('shared/js/phone/chat-history-atomic.js?v=20261118v3'),
+                function () { return !!global.ChatHistoryAtomic && typeof global.ChatHistoryAtomic.appendIf === 'function'; }
             );
         }).then(function (ok) {
             if (!ok) proactiveDependenciesPromise = null;
@@ -450,7 +487,8 @@
             if (!contact || contact.isGroup || safeGet('chat_proactive_contact_' + id) !== 'true') return;
             if (blocked.indexOf(String(id)) !== -1) return;
 
-            var history = readHistory(id);
+            var history = readAutomaticHistory(id);
+            if (!history) return;
             var intervalMs = proactiveIntervalHours(id) * 60 * 60 * 1000;
             var roleAttemptAt = Number(safeGet('chat_proactive_last_attempt_' + id)) || 0;
             var evaluation = global.ChatPresencePolicy.evaluateProactiveContact(history, {
@@ -520,6 +558,7 @@
     }
 
     async function checkProactiveContacts() {
+        if (!automaticStorageReady()) return;
         if (proactiveRequestPending || followUpRequestPending || document.visibilityState === 'hidden' || currentDetailRoleId()) return;
         var now = Date.now();
         var lockAt = Number(safeGet(PROACTIVE_LOCK_KEY)) || 0;
@@ -592,12 +631,7 @@
             if (!content || safeGet('chat_proactive_contact_' + candidate.contact.id) !== 'true') return;
             if (document.visibilityState === 'hidden') return;
 
-            // 请求期间若用户又发了消息，放弃这条过时的主动联系。
-            var freshHistory = readHistory(candidate.contact.id);
-            var freshLatest = newestMeaningfulMessage(freshHistory);
-            if (!freshLatest || freshLatest.time !== candidate.latest.time ||
-                freshLatest.text !== candidate.latest.text) return;
-
+            // 只在同一会话独占锁内复核历史锚点与开关，绝不覆盖其他标签页刚写入的消息。
             var newMessage = {
                 role: 'assistant',
                 text: content,
@@ -605,11 +639,13 @@
                 voiceMode: 'online',
                 proactiveContact: true
             };
-            freshHistory.push(newMessage);
-            var saved = global.PhoneStorage && typeof global.PhoneStorage.saveChatHistory === 'function'
-                ? global.PhoneStorage.saveChatHistory(candidate.contact.id, freshHistory)
-                : safeSet('chat_history_' + candidate.contact.id, freshHistory);
-            if (!saved) return;
+            var saved = await global.ChatHistoryAtomic.appendIf(candidate.contact.id, newMessage, function (latest) {
+                if (document.visibilityState === 'hidden' ||
+                    safeGet('chat_proactive_contact_' + candidate.contact.id) !== 'true') return false;
+                var last = newestMeaningfulMessage(latest);
+                return !!last && last.time === candidate.latest.time && last.text === candidate.latest.text;
+            });
+            if (!saved.ok) return;
             tick();
         } catch (error) {
             // 自动联系失败不打断当前页面；本次尝试已有冷却记录，避免重复消耗 API。
@@ -649,6 +685,8 @@
     function followUpMessages(history) {
         return (Array.isArray(history) ? history : []).filter(function (item) {
             if (!item || item.silent || item.isError || item.role === 'system_error') return false;
+            if (item.type === 'group_private' || item.type === 'group_game_private' ||
+                item.visibility === 'private' || item.visibility === 'role_only') return false;
             if (item.role !== 'user' && item.role !== 'sent' && item.role !== 'assistant' && item.role !== 'received') return false;
             if (!(Number(item.time || item.timestamp) > 0)) return false;
             var isUserMessage = item.role === 'user' || item.role === 'sent';
@@ -790,12 +828,6 @@
             lastUser: lastUser
         };
     }
-    function saveFollowUpHistory(id, history) {
-        if (global.PhoneStorage && typeof global.PhoneStorage.saveChatHistory === 'function') {
-            return !!global.PhoneStorage.saveChatHistory(id, history);
-        }
-        return safeSet('chat_history_' + id, history);
-    }
     function followUpContactList() {
         var contacts = buildContactIndex();
         var result = [];
@@ -875,18 +907,6 @@
             var currentGroup = readGroups().find(function (item) { return item && String(item.id) === String(contact.id); });
             if (!currentGroup || !currentGroup.settings || currentGroup.settings.followUpEnabled !== true) return;
         }
-        var freshHistory = readHistory(contact.id);
-        var freshMessages = followUpMessages(freshHistory);
-        var freshLast = freshMessages[freshMessages.length - 1];
-        if (!freshLast || Number(freshLast.time || freshLast.timestamp) !== candidate.lastAssistantAt ||
-            freshLast.proactiveFollowUp === true) return;
-        var freshUser = null;
-        for (var i = freshMessages.length - 1; i >= 0; i--) {
-            if (freshMessages[i].role === 'user' || freshMessages[i].role === 'sent') { freshUser = freshMessages[i]; break; }
-        }
-        if (!freshUser || Number(freshUser.time || freshUser.timestamp) !== candidate.lastUserAt) return;
-        if (global.document.visibilityState === 'hidden') return;
-
         var now = Date.now();
         var newMessage = {
             role: 'assistant',
@@ -899,8 +919,24 @@
             followUpRound: candidate.round,
             followUpTopic: candidate.topic
         };
-        freshHistory.push(newMessage);
-        if (!saveFollowUpHistory(contact.id, freshHistory)) return;
+        var saved = await global.ChatHistoryAtomic.appendIf(contact.id, newMessage, function (freshHistory) {
+            if (global.document.visibilityState === 'hidden') return false;
+            if (scope === 'private' && safeGet('chat_followup_enabled_' + contact.id) !== 'true') return false;
+            if (scope === 'group') {
+                var group = readGroups().find(function (item) { return item && String(item.id) === String(contact.id); });
+                if (!group || !group.settings || group.settings.followUpEnabled !== true) return false;
+            }
+            var messages = followUpMessages(freshHistory);
+            var last = messages[messages.length - 1];
+            if (!last || Number(last.time || last.timestamp) !== candidate.lastAssistantAt ||
+                last.proactiveFollowUp === true) return false;
+            var user = null;
+            for (var i = messages.length - 1; i >= 0; i--) {
+                if (messages[i].role === 'user' || messages[i].role === 'sent') { user = messages[i]; break; }
+            }
+            return !!user && Number(user.time || user.timestamp) === candidate.lastUserAt;
+        });
+        if (!saved.ok) return;
         try {
             if (typeof global.CustomEvent === 'function') {
                 global.dispatchEvent(new global.CustomEvent('maomao:followup-message', {
@@ -922,6 +958,7 @@
         tick();
     }
     async function checkFollowUpTasks() {
+        if (!automaticStorageReady()) return;
         if (followUpRequestPending || proactiveRequestPending || document.visibilityState === 'hidden') return;
         var now = Date.now();
         var lockAt = Number(safeGet(FOLLOW_UP_LOCK_KEY)) || 0;
@@ -934,7 +971,8 @@
         if (document.visibilityState === 'hidden') return;
         var candidates = [];
         enabled.forEach(function (entry) {
-            var history = readHistory(entry.contact.id);
+            var history = readAutomaticHistory(entry.contact.id);
+            if (!history) return;
             var candidate = getFollowUpCandidate(entry.scope, entry.contact, history, Date.now());
             if (candidate) candidates.push(candidate);
         });
