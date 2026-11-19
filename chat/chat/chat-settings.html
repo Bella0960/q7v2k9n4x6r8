@@ -3358,8 +3358,25 @@
     });
   }
 
-  // ================= 返回上一页；无历史时兜底回聊天列表 =================
+  // ================= 返回上一层：群资料 -> 原群聊 =================
+  // Browser history length includes the PWA shell, unrelated screens and
+  // group-play loops. Only trust it if referrer identifies THIS conversation.
   document.getElementById('btnBack').addEventListener('click', function () {
+    if (roleId && String(roleId).indexOf('g') === 0) {
+      var parentIsGroupChat=false;
+      try {
+        var parent=new URL(document.referrer,window.location.href);
+        parentIsGroupChat=parent.origin===window.location.origin &&
+          /\/chat-detail\.html$/.test(parent.pathname) &&
+          parent.searchParams.get('id')===String(roleId);
+      } catch (error) {}
+      if (parentIsGroupChat && window.history.length>1) {
+        window.history.back();
+        return;
+      }
+      window.location.replace('chat-detail.html?id='+encodeURIComponent(roleId));
+      return;
+    }
     if (window.history.length > 1) {
       window.history.back();
     } else {
