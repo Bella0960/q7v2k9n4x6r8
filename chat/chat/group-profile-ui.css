@@ -18,6 +18,10 @@
 }
 .gp-cover-photo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none}
 .gp-cover-hero.has-photo .gp-cover-photo{display:block}
+.gp-cover-hero.is-deleted{height:164px;background:#f0f0f2}
+.gp-cover-hero.is-deleted .gp-cover-emblem,
+.gp-cover-hero.is-deleted .gp-cover-controls{display:none}
+.gp-preview-head[hidden],.gp-quick[hidden],.gp-profile-folds[hidden]{display:none!important}
 .gp-cover-emblem{
   position:absolute;left:22px;top:46px;width:82px;height:82px;display:grid;place-items:center;
   background:rgba(255,255,255,.55);border:1px solid rgba(255,255,255,.75);
