@@ -112,3 +112,20 @@ tests/group-turn-integration.test.mjs
 **QA 的发布门禁也必须增量加入**：沿用现有 `scripts/qa-direct-release.mjs`、身份权威与 Worker，只在其 `TESTS` 流程增加原生 `npm run test:group:governance`、`npm run test:group:ui`、`npm run test:group:invite-e2e`，并保持完整 chat contract、Vite build、Chromium 及现有安全检查。开发分支 PWA 版本当前 `phone-app-pwa-v228`、治理 `g4`、游戏 `game11`；QA 已有 `v241+`，必须在 QA 自己的 cache name 上向上递增，同时确保 HTML 的版本化脚本 URL 与预缓存条目严格一致。
 
 **宣布本批完整交付之前的缺一不可证据**：#299 最终合入后同一干净 SHA 的原生 Node/Vite、375/390/430 Chromium、QA Worker 实际静态资源与用户手机端权限/私聊/游戏/聊天历史恢复验收。唯一网址 `https://preview.mao520.com`，不动生产 Worker、正式账号数据库和管理员 001；此项目角色群是客户端功能，不冒充跨账号真人群的服务端安全交付。
+
+
+## 2026-11-19｜GROUP-NAV-002 群互动与群资料逐层返回
+
+**用户反馈复现路径**：从群聊打开投票或接龙弹层，点击手机系统返回可能直接离开当前聊天；从群聊打开群资料 → 群高级设置再返回，原 `group-play.html` 用 `location.href` 再推入一个相同的群资料页面，导致历史栈多一层或回退到不相关的主页。高级设置深链接或 PWA 单页入口原来没有经过验证的父页面路由。
+
+**原分支已实施**（PR #298，未直接修改冻结 QA #299）：
+
+1. `chat/chat/chat-detail.html` 的接龙/投票/参与弹层，打开时只增加一个同 URL 的专用历史条目 `__maomaoGroupComposer`。Android 系统返回/侧滑由 `popstate` 优先关闭弹层，不离开群聊、不清空正在写的表单外的聊天历史；“取消”、点遮罩或提交成功则消费本弹层的历史条目。重复点开不叠加多个后退条目，AI 正回复时仍禁止开启新互动；无 `pushState` 权限时至少保留显式关闭和 Escape 兜底。无聊天存储键/权限/AI 业务逻辑修改。
+2. `chat/chat/group-play.html` 高级设置返回：只有 `document.referrer` 是**同源、同 groupId 的群资料页面**且浏览器确实有历史时才调用 `history.back()`；其他深链接直接 `location.replace('chat-settings.html?roleId=...')`。避免历史栈反复追加同一个群资料页或跳到首页。
+3. `chat/chat/chat-settings.html` 群资料返回：同源、同群 ID、来自 `chat-detail.html?id=` 时调用浏览器后退；否则直接 `location.replace('chat-detail.html?id=...')`。原单聊设置后退保持不变。聊天详情左上角仍返回聊天列表，所以完整关系是“弹层 → 群聊 → 群资料 → 高级设置”，沿相反方向每次退一层。
+
+**真实源码回归**：新增 `tests/group-navigation-stack.test.mjs`，已纳入现有 `npm run test:group:governance`。用当前 GitHub HEAD 抽取并执行原有页面的事件绑定、历史栈与弹层关闭逻辑，验证 Android Back、Cancel、连续打开、AI 正忙、参与接龙、同群/跨群深链接和从高级设置返回群聊的完整两步，共 **11/11 通过**；原群治理权限/禁言/邀请/持久化回滚 **12/12 通过**；三份页面内联 JS 无语法错误。测试执行方式为隔离 V8/模拟导航回调，不等同真实 Android/iOS 浏览器、完整 Vite 构建或用户手机验收。
+
+**共享 QA 状态说明**：旧段落“QA 当前不存在若干模块”是基于 2026-11-17 的历史比较，不能沿用为今天的事实。截至目前已核对的 #299 HEAD `0f8235e04a6ecd9ee5e2b710ea3de1b5dcf79c9d` 已包含群治理/游戏相关文件。整合本轮**必须以最新 #299 文件为基准逐函数合并**，尤其保留 chat-detail 中更新的角色人设、隐私过滤、存储安全和 UI、群资料原有样式；不能将旧 #298 的完整聊天 HTML 或 chat-settings HTML 覆盖 QA。正式版不动，唯一测试 Worker `maomao-aw-qa-20261114`，唯一地址 `https://preview.mao520.com`。本轮仍在独立 PR 开发分支，未合入 QA、未真实部署。
+
+**验收操作**（整合并经门禁通过后在手机确认）：打开一个已有群聊 → 加号 → 群接龙 → Android 返回一次应仍在群聊且原消息未丢 → 再打开投票后点取消仍停留原群聊 → 打开群资料 → 群高级设置 → 返回应回到对应群资料 → 再返回应回到原群聊 → 最后从聊天左上角返回才进入聊天列表。必须覆盖从高级设置深链接进入和多个群交替打开的情况，确保不能串群或直跳主页。
