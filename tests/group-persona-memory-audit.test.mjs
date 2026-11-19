@@ -183,3 +183,45 @@ test('online and offline group chats have non-contradictory style guidance for o
   assert.match(detail,/if \(!isGroupChat && activeChatModeForPrompt === 'narration'\)/);
   assert.match(detail,/if \(!isGroupOfflineMode\) \{\s*systemPrompt \+= '\\n\\n\[叙事总规范\]/);
 });
+
+
+test('online group output rejects a generic AI identity but honors an explicitly digital character', () => {
+  const context=load(read('shared/js/phone/chat-role-context.js'),'chat-role-context').MAOMAOChatRoleContext;
+  const person={id:'real',name:'洛景辞',persona:'在深圳生活、喜欢和朋友聊天的普通人'};
+  const digital={id:'robot',name:'阿机',persona:'机械仿生人',species:'机器人'};
+  const awkward='哈哈你好呀！虽然我是一个人工智能，没办法跟你一起开黑打游戏，但我可以给你推荐文字游戏。';
+  const before=JSON.stringify(person);
+  assert.equal(context.validateGroupOnlineReply({role:person,text:awkward,latestUserText:'有没有人想玩游戏'}).code,'identity-drift');
+  assert.equal(context.validateGroupOnlineReply({role:digital,text:awkward,latestUserText:'有没有人想玩游戏'}).ok,true);
+  assert.equal(context.validateGroupOnlineReply({role:person,text:'今天我看了一篇人工智能相关的新闻，挺有意思。',latestUserText:'看什么新闻呢'}).ok,true);
+  assert.equal(context.validateGroupOnlineReply({role:person,text:'有啊，你想玩什么？',latestUserText:'有没有人想玩游戏'}).ok,true);
+  assert.equal(context.validateGroupOnlineReply({role:null,text:'有啊'}).code,'speaker');
+  assert.equal(JSON.stringify(person),before,'must not change persona data');
+});
+
+test('online group output blocks unsolicited long markdown game catalogues, not requested lists', () => {
+  const context=load(read('shared/js/phone/chat-role-context.js'),'chat-role-context').MAOMAOChatRoleContext;
+  const role={id:'a',persona:'普通群友'};
+  const menu='要不玩几个？\\n1. **文字冒险** 你当主角，在故事里探索各种谜题，体验不同世界的情节和分支。\\n2. **成语接龙** 我们可以一人接一个成语，还可以规定不同的主题和难度。\\n3. **脑筋急转弯** 我可以出很多问题，或者由你来给大家出题。\\n4. **猜数字** 也可以设置规则、范围和计分方式。';
+  assert.ok(menu.length>=150);
+  assert.equal(context.validateGroupOnlineReply({role,text:menu,latestUserText:'有没有人想玩游戏'}).code,'unsolicited-menu');
+  assert.equal(context.validateGroupOnlineReply({role,text:menu,latestUserText:'帮我列几个玩法介绍'}).ok,true);
+  assert.equal(context.validateGroupOnlineReply({role,text:'我想玩桌游，你们呢？',latestUserText:'有没有人想玩游戏'}).ok,true);
+});
+
+test('group persona output guard is before persistence and leaves offline/role data unchanged', () => {
+  const rolePolicy=read('shared/js/phone/chat-role-context.js');
+  const guard=detail.indexOf('const qualityResult = qualityPolicy &&');
+  const marker=detail.indexOf('fullText = processGroupInteractionMarkers(fullText',guard);
+  const save=detail.indexOf('var replySaved = saveMessages(historyList)',guard);
+  assert.ok(guard>0 && marker>guard && save>marker);
+  assert.match(detail,/qualityPolicy\\.validateGroupOnlineReply\\(/);
+  assert.match(detail,/if \\(!qualityResult\\.ok\\) \\{[\\s\\S]{0,1000}inflightSnapshot = null;/);
+  assert.match(detail,/if \\(isManualContinue \\|\\| provisionalGroupReply\\) return;/);
+  assert.match(detail,/currentGroup\\.settings\\.chatMode !== 'offline'/);
+  assert.match(detail,/chat-role-context\\.js\\?v=20261119groupreply1/);
+  assert.match(rolePolicy,/validateGroupOnlineReply: validateGroupOnlineReply/);
+  assert.ok(sw.includes('chat-role-context.js?v=20261119groupreply1'));
+  const version=Number(sw.match(/phone-app-pwa-v(\\d+)/)?.[1]||0);
+  assert.ok(version>=258);
+});
