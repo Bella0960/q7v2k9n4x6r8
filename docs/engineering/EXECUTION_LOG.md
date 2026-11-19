@@ -425,3 +425,11 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 **Actual Cloudflare read-only check:** existing `maomao-aw-qa-20261114` latest live version identified as `2dff7092-4c8d-4267-bb83-80efb85511cf` from 2026-11-18 12:58:57 UTC (as of this check). Cloudflare Workers Builds build-minute limit is reached until its reported Nov 30 refresh; configured QA Build trigger is `MAOMAO sole QA — manual validation build, deploy paused`, with deploy command intentionally set to an echo. **It must not be used to claim a QA deployment.** The existing true QA deploy is `scripts/qa-direct-release.mjs --qa-only` run from a full authorized Node 22 checkout after its complete test and account preflight gates; this session's runtime does not contain the repository checkout/dependencies. Do not deploy without the full suite and expected Cloudflare build receipt, do not change production or identity core.
 
 **Status:** QA integration source candidate only, until the latest QA ref fast-forward and complete release verification. The real owner test URL is still `https://preview.mao520.com`. Do not report browser availability of this worldbook change until its `qa-build-receipt.json` matches the deployed QA Git SHA.
+
+
+## 2026-11-19｜DATA-008｜自动联系／自动追问原子落库 · 唯一 QA 增量候选
+
+- 起点：原 #299 HEAD `bba964b22b46f5f66cb8f1fa27f05f547faef5a3`；原需求/实现来源 #305。只在 `shared/js/chat-notifier.js` 迁移后台自动写入。保留已在 QA 的 `ChatHistoryAtomic`、人设/世界书绑定、群聊私密数据、聊天主发送接口，不使用 #305 中尚未融合的旧世界书 prompt 实现覆盖 QA。
+- 主动联系、私聊和群聊的自动追问使用现有共享 Web Lock 内的 `ChatHistoryAtomic.appendIf`，在锁内重新核对最新对话锚点、启用开关和页面可见性。原始聊天主键不可读、缺少锁或账号 scope 未准备好时在发起计费请求前停止。禁止回退为整份旧历史覆盖。群内私密消息不参与自动追问上下文。
+- 增加 `tests/chat-history-atomic.test.mjs` 26 项回归并接入 `test:chat:contract`；更新 SW v256→v257 和已有通知器在 SW、聊天详情与导航内的静态引用，原账号 SW 安全策略未改。
+- 此记录写入时状态：**独立 staging 分支候选，原生 Node/Vite/Chromium/唯一 QA-only Cloudflare 发布 NOT VERIFIED**。下一步：回读源码、快进原 #299 QA、封闭完整验收，通过后只更新原 QA Worker，验证 `preview.mao520.com/qa-build-receipt.json`、Cloudflare 100% 版本和身份核心不变。正式版、main 和正式数据库不触碰。
