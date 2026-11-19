@@ -71,7 +71,22 @@ test('worldbook deletion does not mutate stale references on read', () => {
   assert.deepEqual([...binding.read('role_a').ids], ['a', 'deleted']);
   assert.deepEqual(JSON.parse(storage.getItem('chat_worldbooks_role_a')), ['deleted']);
 });
-test('failed second key write rolls back role data and never reports success', () => {
+test('failed large character write rolls back small mount, preserving both records', () => {
+  const { binding, storage } = harness({ ai_custom_characters: json(roles) });
+  const original = storage.getItem('ai_custom_characters');
+  const realSet = storage.setItem;
+  storage.setItem = (key, value) => {
+    if (key === 'ai_custom_characters') throw new Error('QuotaExceededError');
+    realSet(key, value);
+  };
+  const result = binding.save('role_a', ['changed']);
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'STORAGE_WRITE_FAILED');
+  assert.equal(storage.getItem('ai_custom_characters'), original);
+  assert.equal(storage.getItem('chat_worldbooks_role_a'), null);
+});
+
+test('failed small mount write never overwrites the large character array', () => {
   const { binding, storage } = harness({ ai_custom_characters: json(roles) });
   const original = storage.getItem('ai_custom_characters');
   const realSet = storage.setItem;
