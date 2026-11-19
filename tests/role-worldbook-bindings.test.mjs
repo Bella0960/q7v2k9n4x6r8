@@ -180,3 +180,67 @@ test('role editor and chat settings both load the same bridge before handlers', 
   assert.match(detail, /本轮未请求 AI/);
   assert.match(context, /RoleWorldbookBindings\.filterBooks\(/);
 });
+
+test('chat settings real event handlers: expand, mount, save, reopen, unmount', () => {
+  const { binding, storage } = harness({
+    ai_custom_characters: json([{ id: 'role_a', worldBookIds: [] }]),
+    phone_worldbooks: json([
+      { id: 'global', title: '全局', scope: 'global' },
+      { id: 'local', title: '局部', scope: 'local' }
+    ]),
+    worldbook_categories: '[]'
+  });
+  const source = read('chat/chat/chat-settings.html');
+  const start = source.indexOf('  // ================= 世界书绑定');
+  const end = source.indexOf('  // ================= 双方备注', start);
+  assert.ok(start >= 0 && end > start, 'must exercise actual worldbook-settings handlers');
+  const elements = new Map();
+  for (const id of ['wbCard', 'actionMount', 'wbMountList', 'wbSaveBtn', 'mountSub']) {
+    const classes = new Set();
+    elements.set(id, {
+      innerHTML: '',
+      textContent: '',
+      listeners: {},
+      classList: {
+        contains: (name) => classes.has(name),
+        add: (name) => classes.add(name),
+        remove: (name) => classes.delete(name)
+      },
+      addEventListener(type, handler) { this.listeners[type] = handler; }
+    });
+  }
+  const document = { getElementById: (id) => elements.get(id) };
+  const notifications = [];
+  vm.runInNewContext(
+    'var RoleWorldbookBindings = window.RoleWorldbookBindings;\n' + source.slice(start, end),
+    { window: { RoleWorldbookBindings: binding }, localStorage: storage, document,
+      roleId: 'role_a', showToast: (value) => notifications.push(value) }
+  );
+  const el = (id) => elements.get(id);
+  const row = (id) => {
+    const item = {
+      getAttribute: (name) => name === 'data-wb-id' ? id : null,
+      setAttribute() {},
+      classList: { toggle() {} },
+      closest: () => item
+    };
+    return item;
+  };
+  assert.equal(el('mountSub').textContent, '已挂载 1 本世界书');
+  el('actionMount').listeners.click();
+  assert.equal(el('wbCard').classList.contains('is-open'), true);
+  assert.match(el('wbMountList').innerHTML, /data-wb-id="global"/);
+  el('wbMountList').listeners.click({ target: row('local') });
+  el('wbSaveBtn').listeners.click();
+  assert.deepEqual(JSON.parse(storage.getItem('chat_worldbooks_role_a')), ['global', 'local']);
+  assert.deepEqual(JSON.parse(storage.getItem('ai_custom_characters'))[0].worldBookIds, ['global', 'local']);
+  assert.equal(el('mountSub').textContent, '已挂载 2 本世界书');
+  el('actionMount').listeners.click();
+  assert.match(el('wbMountList').innerHTML, /data-wb-id="local"/);
+  el('wbMountList').listeners.click({ target: row('global') });
+  el('wbMountList').listeners.click({ target: row('local') });
+  el('wbSaveBtn').listeners.click();
+  assert.deepEqual([...binding.read('role_a').ids], []);
+  assert.equal(notifications.at(-1), '挂载设置已保存');
+});
+
