@@ -92,9 +92,14 @@
       var nextRoles = roles.slice();
       if (index >= 0) {
         nextRoles[index] = Object.assign({}, roles[index], { worldBookIds: values.slice() });
+      }
+      // Persist the small binding first. If the large character record then
+      // exceeds quota, only the small key needs rollback; the original role
+      // list has never been overwritten.
+      localStorage.setItem(legacyKey, JSON.stringify(values));
+      if (index >= 0) {
         localStorage.setItem(CHARACTERS, JSON.stringify(nextRoles));
       }
-      localStorage.setItem(legacyKey, JSON.stringify(values));
       var stored = decode(readRaw(legacyKey), null);
       var actualRoles = decode(readRaw(CHARACTERS), []);
       var actual = Array.isArray(actualRoles) && actualRoles.find(function (item) {
