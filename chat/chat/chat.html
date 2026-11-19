@@ -1671,11 +1671,12 @@
           return;
         }
         closeModal();
-        // Enter only after the saved group was read back, and keep the list as a fallback.
-        renderChatList();
+        // No full-list rerender is needed before entering a newly saved group.
+        // A malformed legacy list must not block a successful new-group navigation.
         try {
           window.location.href = 'chat-detail.html?v=20261028modes1&id=' + encodeURIComponent(groupId);
         } catch (e) {
+          try { renderChatList(); } catch (renderError) {}
           showToast('群聊已创建，请点击群聊进入');
         }
       });
