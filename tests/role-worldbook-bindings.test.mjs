@@ -176,7 +176,7 @@ test('role editor and chat settings both load the same bridge before handlers', 
   assert.match(manager, /RoleWorldbookBindings\.save\(savedRoleId/);
   assert.match(settings, /RoleWorldbookBindings\.read\(roleId/);
   assert.match(settings, /RoleWorldbookBindings\.save\(roleId, mountIds/);
-  assert.match(detail, /RoleWorldbookBindings\.filterBooks\(/);
+  assert.match(detail, /bindingBridge\.filterBooks\(/);
   assert.match(detail, /本轮未请求 AI/);
   assert.match(context, /RoleWorldbookBindings\.filterBooks\(/);
 });
@@ -292,6 +292,7 @@ test('character save preserves newer worldbook mounts from another open page', (
       let selectedWorldBookIds = initialIds.slice();
       let editorOriginalState = { roleId: 'role_a', worldBookIds: ['a'] };
       let avatarDataUrl = '', selectedColor = '#ccc', currentDraftKey = 'draft:role_a';
+      let unreadableDraftKey = '', activeEncounterDraftId = '', roleStoreReadError = false;
       let latestStatus = '', draftSaved = false;
       const loadRoles = () => JSON.parse(localStorage.getItem('ai_custom_characters'));
       const setSaveStatus = (text) => { latestStatus = text; };
@@ -355,9 +356,11 @@ test('chat AI context validation marks saved user bubble retryable without makin
   };
   const execute = new Function('environment', `
     const { window, localStorage, result } = environment;
+    const console = { error() {} };
     const RoleWorldbookBindings = window.RoleWorldbookBindings;
     const aliasRoleId = 'role_a', currentRoleId = 'role_a', roleId = 'role_a';
-    const currentCharacter = { id: 'role_a' }, isGroupChat = false;
+    const currentCharacter = { id: 'role_a' }, roleForTurn = currentCharacter,
+      isGroupChat = false;
     const groupReplyPick = null, retryTarget = null, isRegen = false, contextOnly = false;
     const silent = false, text = 'hello', CTX_CAP = { worldbook: 8000 };
     const historyList = [{ role: 'user', mid: 'm1', time: 1, text: 'hello' }];
