@@ -253,7 +253,8 @@
                             (legacy && Array.isArray(legacy.worldbookIds) ?
                                 (legacy.enabled === false ? [] : legacy.worldbookIds) : null);
                         if (!legacyIds) throw new Error('Corrupt legacy worldbook binding');
-                        boundIds = boundIds.concat(legacyIds.map(String));
+                        boundIds = legacy && legacy.enabled === false ? [] :
+                            boundIds.concat(legacyIds.map(String));
                     }
                 } catch (legacyError) {
                     boundIds = []; // Never inject unrelated lore on a damaged binding.
