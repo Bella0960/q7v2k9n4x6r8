@@ -419,6 +419,24 @@ test('管理员接口必须经服务端活跃超级管理员会话验证，不�
     '代理管理员请求必须再次核对权威创始人永久 ID');
 });
 
+test('管理员写操作必须校验真实会话且持久层复核操作者会话', () => {
+  const authSource = fs.readFileSync(root + '/worker/lib/account-auth.js', 'utf8');
+  for (const handler of ['createInvite', 'accountAction', 'revokeInvite']) {
+    const start = authSource.indexOf('async function ' + handler + '(');
+    assert.ok(start >= 0, handler + ' handler must exist');
+    const next = authSource.indexOf('\n  async function ', start + 1);
+    const body = authSource.slice(start, next < 0 ? undefined : next);
+    assert.match(body, /await requireActiveAdmin\(request\)/,
+      handler + ' must verify the authenticated server-side admin role');
+    assert.match(body, /actor\.session_id/,
+      handler + ' must pass the authenticated session to the atomic store operation');
+    assert.match(body, /actor_session_invalid/,
+      handler + ' must reject an admin session revoked during the write');
+  }
+  assert.match(authSource, /\['disable', 'restore', 'revoke'\]\.includes\(action\)/,
+    'account state mutation must use an explicit action allowlist');
+});
+
 test('Service Worker 按 MAO 会话读取对应账号的字体 CacheStorage，创作者旧缓存名保持兼容', () => {
   assert.match(serviceWorkerSource, /fetch\('\/api\/accounts\/me'/);
   assert.match(serviceWorkerSource, /account\.role === 'super_admin'[\s\S]*?FONT_ASSET_CACHE/);
