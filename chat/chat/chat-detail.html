@@ -24,10 +24,16 @@
     <script src="../../shared/js/phone/phone_stream.js"></script>
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v2"></script>
-    <script src="../../shared/js/phone/chat-context-policy.js?v=20261107vision1"></script>
+    <script src="../../shared/js/phone/chat-context-policy.js?v=20261115gameprivacy1"></script>
     <script src="../../shared/js/phone/chat-presence-policy.js?v=20261102v17"></script>
     <script src="../../shared/js/phone/role-public-timeline.js?v=20261102v1"></script>
     <script src="../../shared/js/phone/group-chat-policy.js?v=20261102v5"></script>
+    <script src="../../shared/js/group-governance.js?v=20261115g4"></script>
+    <script src="../../shared/js/phone/group-game-session.js?v=20261116game11"></script>
+    <script src="../../shared/js/phone/group-turn-effects.js?v=20261115gte2"></script>
+    <script src="../../shared/js/phone/group-private-receipt-recovery.js?v=20261115gpr1"></script>
+    <script src="../../shared/js/phone/group-memory-events.js?v=20261116gme4"></script>
+    <script src="../../shared/js/phone/group-game-chat-receipts.js?v=20261116receipt2"></script>
     <script src="../../shared/js/chat-notifier.js?v=20261102v3"></script>
     <style>
         * {
@@ -1952,6 +1958,19 @@
 </style><style id="group-interaction-style">
 .bubble-group-interaction{max-width:min(290px,calc(100vw - 112px))!important;width:100%;padding:0!important;background:transparent!important;border:0!important;box-shadow:none!important}
 .group-interaction-card{width:100%;min-width:230px;max-width:290px;background:#fff;border:1px solid #e7e7eb;border-radius:15px;padding:13px;color:#111;box-shadow:0 3px 14px rgba(0,0,0,.035);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
+/* Game receipts use the SAME message timeline; no floating or parallel game feed. */
+.msg-row.group-game-result-row{justify-content:center!important;align-items:center!important;padding:7px 10px!important}
+.msg-row.group-game-result-row .msg-avatar{display:none!important}
+.msg-row.group-game-result-row .bubble-group-game-result{width:100%!important;max-width:min(310px,calc(100vw - 46px))!important}
+.group-game-result-card{border:1px solid #e8e8eb;border-radius:15px;background:#fafafa;padding:14px 15px;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;text-align:left;color:#222}
+.group-game-result-kicker{font:10px/1.5 -apple-system,BlinkMacSystemFont,sans-serif;letter-spacing:.07em;color:#999}
+.group-game-result-title{font:500 19px/1.5 Georgia,"Songti SC",serif;margin:8px 0 5px;color:#161616}
+.group-game-result-meta{font:11px/1.8 -apple-system,BlinkMacSystemFont,sans-serif;color:#777}
+.group-game-result-more{border-top:1px solid #e8e8eb;margin-top:12px;padding-top:10px;font:11px/1.7 -apple-system,BlinkMacSystemFont,sans-serif}
+.group-game-result-more summary{cursor:pointer;color:#555}
+.group-game-result-more ul{padding:7px 0 0;margin:0;list-style:none}
+.group-game-result-more li{display:flex;justify-content:space-between;gap:18px;padding:3px 0;color:#666}
+
 .group-interaction-head{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:10px;letter-spacing:.5px;color:#888;padding-bottom:9px;border-bottom:1px solid #f0f0f3}
 .group-interaction-title{font-size:14px;font-weight:600;line-height:1.5;margin:10px 0 12px;overflow-wrap:anywhere}
 .group-poll-options{display:flex;flex-direction:column;gap:7px}
@@ -2436,6 +2455,10 @@
         let currentGroup = null;
         if (isGroupChat) {
             currentGroup = loadGroupById(currentRoleId);
+            if (currentGroup && window.GroupGovernance && !window.GroupGovernance.userIsInGroup(currentGroup)) {
+                currentGroup = null;
+                location.replace('chat.html');
+            }
         }
 
         function groupMemberDisplayName(member) {
@@ -2465,7 +2488,7 @@
         function getAvailableGroupMembers() {
             var members = (currentGroup && Array.isArray(currentGroup.members)) ? currentGroup.members : [];
             return members.filter(function(member) {
-                return member && !member.muted && isGroupMemberInActiveHours(member);
+                return member && !(window.GroupGovernance ? window.GroupGovernance.isMuted(member) : member.muted) && isGroupMemberInActiveHours(member);
             });
         }
         function saveCurrentGroupObject() {
@@ -2482,7 +2505,9 @@
                     }
                 }
                 if (!found) return false;
-                localStorage.setItem('phone_groups', JSON.stringify(groups));
+                var storedGroupRaw = JSON.stringify(groups);
+                localStorage.setItem('phone_groups', storedGroupRaw);
+                if (localStorage.getItem('phone_groups') !== storedGroupRaw) return false;
                 var status = document.getElementById('chat-status-sub');
                 if (status) status.textContent = (currentGroup.members || []).map(groupMemberDisplayName).join(' · ') || '群聊';
                 return true;
@@ -2543,6 +2568,42 @@
                 if (!Array.isArray(direction.eventHistory)) direction.eventHistory = [];
             });
             return relation;
+        }
+        // Deferred relationship effects use the latest saved group, not the
+        // stale model-prompt snapshot. Failed group writes restore local changes.
+        function commitDeferredGroupRelationship(speakerId, targetId, updateRelation) {
+            var liveGroup = loadGroupById(currentRoleId);
+            if (!liveGroup || !Array.isArray(liveGroup.members) ||
+                (window.GroupGovernance && !window.GroupGovernance.userIsInGroup(liveGroup)))
+                return { ok:false, code:'GROUP_CHANGED' };
+            var activeSpeaker = liveGroup.members.find(function (m) {
+                return m && String(m.id) === String(speakerId);
+            });
+            var target = liveGroup.members.find(function (m) {
+                return m && String(m.id) === String(targetId);
+            });
+            if (!activeSpeaker || !target || activeSpeaker === target ||
+                (window.GroupGovernance && window.GroupGovernance.isMuted(activeSpeaker)))
+                return { ok:false, code:'MEMBERSHIP_CHANGED' };
+            var before;
+            try { before = JSON.stringify(liveGroup.relationships || {}); }
+            catch (e) { return { ok:false, code:'CORRUPT_RELATIONSHIPS' }; }
+            currentGroup = liveGroup;
+            try {
+                var relation = getOrCreateGroupRelationship(activeSpeaker, target);
+                if (!relation || updateRelation(relation, activeSpeaker, target) !== true) {
+                    liveGroup.relationships = JSON.parse(before);
+                    return { ok:false, code:'RELATION_NOT_APPLIED' };
+                }
+                if (!saveCurrentGroupObject()) {
+                    liveGroup.relationships = JSON.parse(before);
+                    return { ok:false, code:'SAVE_FAILED' };
+                }
+                return { ok:true };
+            } catch (e) {
+                liveGroup.relationships = JSON.parse(before);
+                return { ok:false, code:'RELATION_FAILED' };
+            }
         }
         function findGroupSpeakerInHistory(historyList) {
             var members = currentGroup && Array.isArray(currentGroup.members) ? currentGroup.members : [];
@@ -2920,11 +2981,14 @@
                 msg.gift && typeof msg.gift === 'object' ? JSON.stringify(msg.gift) : '',
                 msg.fromGroupId || '',
                 msg.privateRoleId || '',
+                msg.privateMessageId || '',
+                msg.privateGroupReceiptV1 ? '1' : '0',
                 msg.privateFromGroup ? '1' : '0',
                 msg.senderId || '',
                 msg.memberId || '',
                 msg.poll && typeof msg.poll === 'object' ? JSON.stringify(msg.poll) : '',
                 msg.chain && typeof msg.chain === 'object' ? JSON.stringify(msg.chain) : '',
+                msg.groupGame && typeof msg.groupGame === 'object' ? JSON.stringify(msg.groupGame) : '',
                 msg.call && typeof msg.call === 'object' ? JSON.stringify(msg.call) : ''
             ];
             return String(msg.role || '') + '\u0001' + String(marker) + '\u0001' +
@@ -3678,12 +3742,45 @@
                     <div class="msg-card-body">${escHtml(m.content || '')}</div>
                     <div class="msg-card-meta">${escHtml(m.date || '')}</div>
                 </div>`;
+            } else if (msg.type === 'group_game_result' && isGroupChat) {
+                // Saved to chat_history_<groupId> with a deterministic mid. The result
+                // is a public receipt, NEVER a private card or an AI-authored win claim.
+                row.classList.add('group-game-result-row');
+                bubble.classList.add('bubble-group-interaction', 'bubble-group-game-result');
+                var gameResult = msg.groupGame || {};
+                var gameFinished = gameResult.status === 'finished';
+                var tally = Array.isArray(gameResult.voteTally) ? gameResult.voteTally : [];
+                var hostName = String(gameResult.hostName || '群主').slice(0, 36);
+                var winnerName = String(gameResult.revealedName || '群成员').slice(0, 36);
+                var participants = Math.max(0, Math.min(24, Number(gameResult.playersCount) || 0));
+                var votesDone = Math.max(0, Math.min(participants, Number(gameResult.voteCount) || 0));
+                var correctDone = Math.max(0, Math.min(votesDone, Number(gameResult.correctVotes) || 0));
+                var voteList = tally.filter(function (vote) {
+                    return vote && Number.isInteger(Number(vote.count)) && Number(vote.count) >= 0;
+                }).slice(0, 24).map(function (vote) {
+                    return '<li><span>' + escHtml(String(vote.name || '成员').slice(0, 36)) + '</span><span>' +
+                        Number(vote.count) + ' 票</span></li>';
+                }).join('');
+                bubble.innerHTML = '<section class="group-game-result-card">' +
+                    '<div class="group-game-result-kicker">GROUP GAME / ' + (gameFinished ? 'RESULT' : 'CANCELLED') + '</div>' +
+                    '<div class="group-game-result-title">' +
+                    (gameFinished ? '本局身份已揭晓' : '本局已取消') + '</div>' +
+                    '<div class="group-game-result-meta">本局主持：' + escHtml(hostName) + '</div>' +
+                    '<div class="group-game-result-meta">' +
+                    (gameFinished
+                        ? '坏人：' + escHtml(winnerName) + '<br>' + votesDone + ' / ' + participants +
+                          ' 人投票，' + correctDone + ' 人猜对'
+                        : '未公布身份 · 没有胜负结果') +
+                    '</div>' +
+                    (gameFinished && voteList
+                        ? '<details class="group-game-result-more"><summary>查看各角色得票</summary><ul>' +
+                          voteList + '</ul></details>' : '') + '</section>';
             } else if (msg.type === 'group_private') {
                 const privateRoleId = String(msg.privateRoleId || msg.senderId || '');
                 bubble.classList.add('bubble-group-interaction');
                 bubble.innerHTML = '<div class="group-private-card"><div class="group-private-label">群成员私聊 · ' + escHtml(msg.senderName || msg.name || '群成员') + '</div>' +
                     '<div class="group-private-sender">' + escHtml(msg.senderName || msg.name || '群成员') + ' 悄悄说</div>' +
-                    '<div class="group-private-text">' + escHtml(msg.text || '') + '</div>' +
+                    '<div class="group-private-text">' + escHtml(msg.text || '私聊内容仅在角色单聊中查看') + '</div>' +
                     '<button type="button" class="group-private-open" data-private-open="' + escHtml(privateRoleId) + '">打开与 TA 的私聊</button></div>';
             } else if (msg.type === 'group_poll') {
                 const poll = msg.poll || {};
@@ -5215,6 +5312,22 @@
             const isGroupFollowup = sendState.isGroupFollowup;
             const groupAutoDepth = sendState.groupAutoDepth;
             const text = sendState.text;
+            // A role in an active NO-PRIVATE game cannot receive regular 1:1
+            // messages as a loophole around the game's frozen private rules.
+            // Reject BEFORE writing user text or starting an API request.
+            if (!isGroupChat && window.GroupGameSessions &&
+                typeof window.GroupGameSessions.checkDirectPrivateAllowed === 'function') {
+                var gamePrivateGate = window.GroupGameSessions.checkDirectPrivateAllowed({
+                    roleId: aliasRoleId || currentRoleId
+                });
+                if (!gamePrivateGate.ok || gamePrivateGate.allowed === false) {
+                    if (typeof showToast === 'function') showToast(
+                        gamePrivateGate.message ||
+                        '角色正在参与禁止私聊的群游戏，结束该局后恢复私聊'
+                    );
+                    return;
+                }
+            }
             // 重试调用携带的目标：API 失败时据此把原用户消息重新标记为可重试。
             const retryTarget = (opts && opts.retryTarget && typeof opts.retryTarget === 'object')
                 ? {
@@ -5494,7 +5607,7 @@
                     if (m.title) labels.push('头衔：' + m.title);
                     if (m.isAdmin) labels.push('管理员');
                     if (String(currentGroup.ownerId || '__user') === String(m.id)) labels.push('群主');
-                    if (m.muted) labels.push('禁言中');
+                    if (window.GroupGovernance ? window.GroupGovernance.isMuted(m) : m.muted) labels.push('禁言中');
                     else if (!isGroupMemberInActiveHours(m)) labels.push('当前休息中');
                     return (i + 1) + '. ' + groupMemberDisplayName(m) + '（ID：' + String(m.id) + '）' + (labels.length ? '（' + labels.join('、') + '）' : '') + '：' + p;
                 });
@@ -5570,6 +5683,48 @@
             } else {
                 rolePersona = (currentCharacter.persona || currentCharacter.prompt || '').trim()
                     || '你是一个善解人意、回复自然的AI助手。';
+            }
+            // An explicitly addressed admin order should be answered by the addressed admin,
+            // not a randomly selected member (and never by the muted target).
+            if (isGroupChat && currentGroup && !isGroupFollowup && !isRegen && window.GroupGovernance) {
+                var directed = window.GroupGovernance.naturalModeration(text, currentGroup);
+                if (directed) {
+                    var addressedAdmin = getAvailableGroupMembers().find(function (m) {
+                        return m && String(m.id) === directed.actorId;
+                    });
+                    if (addressedAdmin) {
+                        groupReplyPick = Object.assign({}, addressedAdmin, {
+                            name: groupMemberDisplayName(addressedAdmin), isMentioned: true
+                        });
+                    }
+                }
+            }
+            // Keep the appointed moderator conversationally active: let them
+            // open the game once and announce the verified result after every
+            // player votes. Explicit @mentions and admin orders still win.
+            if (isGroupChat && currentGroup && !isRegen && !contextOnly &&
+                window.GroupGameSessions && (!groupReplyPick || !groupReplyPick.isMentioned)) {
+                var hostRound = window.GroupGameSessions.getPublic(String(currentGroup.id));
+                if (hostRound && hostRound.status === 'active' &&
+                    hostRound.hostId && hostRound.hostId !== '__user' && !hostRound.voteError) {
+                    var roleHost = getAvailableGroupMembers().find(function (m) {
+                        return m && String(m.id) === String(hostRound.hostId);
+                    });
+                    var moderatorSpoke = historyList.some(function (m) {
+                        return m && (m.role === 'assistant' || m.role === 'received') &&
+                            String(m.memberId || '') === String(hostRound.hostId) &&
+                            Number(m.time || 0) >= Number(hostRound.createdAt || 0);
+                    });
+                    var allVoted = hostRound.voteCount === hostRound.players.length;
+                    var lastGameSpeaker = findGroupSpeakerInHistory(historyList);
+                    if (roleHost && (!moderatorSpoke ||
+                        (allVoted && (!isGroupFollowup || !lastGameSpeaker ||
+                            String(lastGameSpeaker.id) !== String(hostRound.hostId))))) {
+                        groupReplyPick = Object.assign({}, roleHost, {
+                            name: groupMemberDisplayName(roleHost), isMentioned: false
+                        });
+                    }
+                }
             }
             if (groupContextPrompt) rolePersona += '\n' + groupContextPrompt;
             rolePersona = capText(rolePersona, CTX_CAP.persona);
@@ -5669,9 +5824,11 @@
             const userPersona = userFacts.length ? userFacts.join('\n') : '无';
 
             // ===== 用户动态记忆：聊天中 AI 自动记住的关于用户的事 =====
-            let userMemoryText = '（暂无）';
+            let userMemoryText = isGroupChat ? '（本群仅使用已确认的公开共同回忆）' : '（暂无）';
             try {
-                const um = JSON.parse(localStorage.getItem('user_memory') || '[]');
+                // Legacy user_memory includes unscoped one-to-one facts. Never
+                // import that untrusted global cache into a group AI prompt.
+                const um = !isGroupChat ? JSON.parse(localStorage.getItem('user_memory') || '[]') : [];
                 if (Array.isArray(um) && um.length) {
                     // User facts saved by older builds may be global; new extracted memories are stored
                     // in chat_memories_<roleId>. Keep scoped legacy entries with their own character.
@@ -5691,10 +5848,15 @@
             userMemoryText = capText(userMemoryText, CTX_CAP.userMemory);
 
             // 长期记忆：权重分层（清晰记得/隐约记得），兼容原文本记忆
-            const roleMemory = capText(buildWeightedMemoryText(
-                typeof aliasRoleId !== 'undefined' ? aliasRoleId : roleId,
-                (currentCharacter.memory || '').trim()
-            ) || '暂无记忆', CTX_CAP.memory);
+            // Group memories have a separate verified public allowlist below.
+            // Never inject raw chat_memories_<groupId> or a legacy group.memory blob
+            // through the unrestricted single-character memory path.
+            const roleMemory = isGroupChat
+                ? '本群仅通过经过公开范围过滤的共同记忆接口读取历史。'
+                : capText(buildWeightedMemoryText(
+                    typeof aliasRoleId !== 'undefined' ? aliasRoleId : roleId,
+                    (currentCharacter.memory || '').trim()
+                ) || '暂无记忆', CTX_CAP.memory);
 
             // 实时状态（记忆空间子系统：当前心情 + 今日事件）
             const memoryContext = (typeof memorySystem !== 'undefined')
@@ -5753,7 +5915,10 @@
                     typeof window.ChatContextPolicy.buildWorldbookInjectionText === 'function') {
                   worldbookText = window.ChatContextPolicy.buildWorldbookInjectionText(wbList, {
                     currentText: text,
-                    recentMessages: historyList.slice(-8),
+                    recentMessages: (isGroupChat ? historyList.filter(function (m) {
+                        return m && m.type !== 'group_private' && m.type !== 'group_game_private' &&
+                            m.visibility !== 'private' && m.visibility !== 'role_only';
+                    }) : historyList).slice(-8),
                     maxEntries: 32,
                     maxChars: CTX_CAP.worldbook
                   });
@@ -5803,6 +5968,34 @@
                     systemPrompt = `你的名字是${currentCharacter.name}。\n${systemPrompt}`;
                 }
             }
+            // 角色主动邀请只针对确实退出过的群。历史群沿用默认“已加入”状态。
+            // 不替角色编造台词：提供离群事实，让当前角色按照人设决定是否追问。
+            if (!isGroupChat && window.GroupGovernance && presenceMode === 'online') {
+                var groupsToInvite = window.GroupGovernance.unjoinedGroupsForRole(aliasRoleId || currentRoleId);
+                if (groupsToInvite.length) {
+                    systemPrompt += '\n\n[群聊邀请与离群事件]\n用户已经退出以下与你有关的群聊：' +
+                        groupsToInvite.map(function (g) {
+                            return '「' + g.name + '」(群ID=' + g.id + ')' +
+                              (g.lastUserExit && g.lastUserExit.at ? '；离群时间=' + new Date(g.lastUserExit.at).toLocaleString() : '');
+                        }).join('；') +
+                        '。可根据你本人的性格、真实关系和最近对话，自然问问用户为什么退出，或选择不追问。' +
+                        '如果确实希望邀请用户重新入群，在正常回复末尾添加一次隐藏标记 [群邀请:准确群ID]；不要每轮都邀请，不要伪造用户已加入。系统只会创建待确认邀请，接受或拒绝由用户决定。';
+                }
+                // 仅邀请角色库里已有的人，用户同意前只生成请求，不创建群或修改角色资料。
+                var rolePool = [];
+                try { rolePool = JSON.parse(localStorage.getItem('ai_custom_characters') || '[]'); } catch (e) {}
+                var groupCandidates = Array.isArray(rolePool) ? rolePool.filter(function (role) {
+                    return role && role.id != null && String(role.id) !== String(aliasRoleId || currentRoleId);
+                }).slice(0, 12) : [];
+                if (groupCandidates.length) {
+                    systemPrompt += '\n\n[可以提出新的群聊邀请]\n你可以根据你的人设、生活背景和最近谈话，在有真正理由时邀请用户参加你创建的新群聊。' +
+                      '可选择的其他现有角色为：' + groupCandidates.map(function (role) {
+                        return String(role.name || '角色') + '(ID=' + String(role.id) + ')';
+                      }).join('、') +
+                      '。如果情境自然，且确实愿意拉上至少一位其他现有角色，可在正常回复末尾附上 [建群邀请:新群名:另一角色ID]，多个角色ID用英文逗号分隔。' +
+                      '不准虚构新角色、凭空声明用户已入群或每轮都邀请。系统只建立待确认邀请，用户接受后才真正建群；同一角色24小时内最多发起一次新建群邀请。';
+                }
+            }
             // 群聊：覆盖本轮发言者身份（无论是否使用协议均生效）
             if (isGroupChat && groupReplyPick) {
                 const memberNames = (currentGroup.members || []).map(function (m) { return groupMemberDisplayName(m); }).join('、') || '暂无成员';
@@ -5829,7 +6022,34 @@
                 if (groupSettings.spectatorMode) {
                     systemPrompt += '\n\n[旁观模式]\n用户当前是旁观者。用户发来的文字是剧情走向提示或导演指令；角色之间优先自然交流、争论、互相回应，不要每句话都直接向用户提问或称呼用户，也不要替用户发言。';
                 }
-                if (groupSettings.memorySharing) {
+                // A role receives only its own game card, not another player's secret.
+                // Group public memories are filtered separately from role-private vaults.
+                var groupGameActiveForPrompt = false;
+                var groupGameSessionForPrompt = '';
+                if (window.GroupGameSessions) {
+                    var ownGameContext = window.GroupGameSessions.buildRoleContext({
+                        groupId: String(currentGroup.id), roleId: String(groupReplyPick.id)
+                    });
+                    if (!ownGameContext.ok) {
+                        if (typeof showToast === 'function') showToast(ownGameContext.message || '游戏身份牌不可用，本轮回复已停止');
+                        return;
+                    }
+                    if (ownGameContext.active) {
+                        groupGameActiveForPrompt = true;
+                        groupGameSessionForPrompt = String(ownGameContext.sessionId || '');
+                        systemPrompt += '\n\n' + ownGameContext.text;
+                        if (ownGameContext.canWhisper) {
+                            systemPrompt += '\n你可以在必要时私下给本局其他角色或主持人（主持人的收件人ID为__user）发一条不超过240字的游戏消息：在回复末尾附 [游戏私聊:准确角色ID:内容]。每轮最多一条，只向这个收件人开放，不要在公开正文复述。';
+                        }
+                    }
+                }
+                if (window.GroupMemoryEvents) {
+                    var publicGroupMemory = window.GroupMemoryEvents.getPublicPrompt({
+                        groupId:String(currentGroup.id), activeGame:groupGameActiveForPrompt, maxChars:440
+                    });
+                    if (publicGroupMemory) systemPrompt += '\n\n' + publicGroupMemory;
+                }
+                if (groupSettings.memorySharing && !groupGameActiveForPrompt) {
                     const syncedMemoryLines = [];
                     (currentGroup.members || []).forEach(function (member) {
                         const role = getRoleById(member.id);
@@ -5842,9 +6062,9 @@
                     }
                 }
                 if (groupSettings.allowRoleActions) {
-                    systemPrompt += '\n\n[群管理行动]\n只有带有管理员或群主身份的成员才可以根据剧情执行群管理操作。若剧情确实需要，可在正常台词末尾附加一个隐藏标记：改群名用 [群动作:改名:新群名]；邀请角色库中已有角色用 [群动作:邀请:角色名]；移除成员用 [群动作:移除:角色名]。不要向用户解释标记，系统会处理。不要重复邀请已有成员，不要移除最后一名群成员。';
+                    systemPrompt += '\n\n[群管理行动]\n只有带有管理员或群主身份的成员才可以根据剧情执行群管理操作。若用户明确要求且你具有管理权限，可在正常台词末尾添加隐藏标记：[群动作:禁言:成员姓名或ID] 或 [群动作:解禁:成员姓名或ID]；也支持 [群动作:改名:新群名]、[群动作:邀请:角色名]、[群动作:移除:角色名]、[群动作:头衔:成员ID|新头衔]（仅普通成员，头衔不超过20字）。不能禁言群主、不能越权管理其他管理员；未获允许不要擅自操作。系统会验证身份并保存，不要向用户解释隐藏标记。';
                 }
-                if (groupSettings.allowPrivateMessages !== false) {
+                if (groupSettings.allowPrivateMessages !== false && !groupGameActiveForPrompt) {
                     systemPrompt += '\n\n[群成员私聊能力]\n你可以偶尔向用户发起私聊，但不要每轮都触发，仅在出现适合单独说的话、想补充秘密或想私下安慰用户时使用。仅允许给自己发私聊：在本轮正常群聊回复末尾另起一行写 [群私聊:你的准确角色ID:私聊内容]。角色ID必须从群成员名单中选择，并且应当是本轮发言者自己的ID；私聊内容控制在1-3句，不要解释标记。标记会保存到你的单聊历史，并在群聊里弹出私聊小窗。每轮最多一条。';
                 }
                 const activePolls = historyList.filter(function (item) { return item && item.type === 'group_poll' && item.poll && !item.poll.closed; }).slice(-3);
@@ -6221,6 +6441,11 @@
                 }
                 recentHistory = historyList.slice(-memoryLimit);
             }
+            // Exclude legacy private cards before history enters model requests.
+            if (isGroupChat) recentHistory = recentHistory.filter(function (m) {
+                return m && m.type !== 'group_private' && m.type !== 'group_game_private' &&
+                    m.visibility !== 'private' && m.visibility !== 'role_only';
+            });
 
             // Decode only images explicitly attached to this send. DataURLs stay transient in memory.
             if (visionImageMids.length && window.ChatImageVision &&
@@ -6278,7 +6503,13 @@
                         }
                     }
                 }
-                const recalledText = window.MemoryRecall.buildHistoricalRecallText(historyList, recallQuery, recallOptions);
+                var recallableHistory = isGroupChat
+                    ? historyList.filter(function (m) {
+                        return m && m.type !== 'group_private' && m.type !== 'group_game_private' &&
+                            m.visibility !== 'private' && m.visibility !== 'role_only';
+                    }) : historyList;
+                if (isGroupChat) recallOptions.groupPublicOnly = true;
+                const recalledText = window.MemoryRecall.buildHistoricalRecallText(recallableHistory, recallQuery, recallOptions);
                 if (recalledText) apiMessages[0].content += '\n\n' + recalledText;
             }
 
@@ -6299,7 +6530,8 @@
                 // Compatibility fallback: keep the legacy context mapping intact if the shared module fails to load.
                 recentHistory.forEach(m => {
                     if (m.isError || m.role === 'system_error' || m.sendFailed) return;
-                    if (isGroupChat && m.type === 'group_private') return;
+                    if (isGroupChat && (m.type === 'group_private' || m.type === 'group_game_private' ||
+                        m.visibility === 'private' || m.visibility === 'role_only')) return;
                     if (m.type === 'sticker') {
                         var stickerMeaning = String(m.desc || '').trim();
                         var stickerRole = (m.role === 'received' || m.role === 'assistant') ? 'assistant' : 'user';
@@ -6383,6 +6615,15 @@
 
             // R4 渲染回调：交给 PhoneStream 每帧节流调用（正则清洗 + DOM 写入 + 滚动）
             // 引擎已抽离至 shared/js/phone/phone_stream.js（三段式超时/SSE 解析/残留收尾）
+            function redactGroupPrivateStream(value) {
+                var source = String(value == null ? '' : value);
+                if (!isGroupChat) return source;
+                if (window.GroupGameSessions && typeof window.GroupGameSessions.redactPublicStreamText === 'function')
+                    return window.GroupGameSessions.redactPublicStreamText(source);
+                // Privacy fallback if the external script fails to load.
+                return source.replace(/\[游戏揭晓\]?/g, '').replace(/\[(?:游戏私聊|群私聊|游戏猜测)[:：][\s\S]*/g, '')
+                    .replace(/\[(?:游|游戏|游戏私|游戏私聊|游戏猜|游戏猜测|游戏揭|游戏揭晓|群|群私|群私聊)[^\]\r\n]{0,1000}$/g, '');
+            }
             function paintStreamLive(text) {
                 // 保留原始累计文本：若流引擎意外抛错，收尾仍可走既有清洗与落库流程。
                 lastPaintedStreamText = typeof text === 'string' ? text : '';
@@ -6396,7 +6637,8 @@
                         if (window.ChatImageVision && typeof window.ChatImageVision.stripAvatarCandidateMarker === 'function') {
                             snapshotText = window.ChatImageVision.stripAvatarCandidateMarker(snapshotText);
                         }
-                        return snapshotText;
+                        return redactGroupPrivateStream(snapshotText.replace(/\[群邀请[:：][^\]]{0,100}\]/g, '').replace(/\[群邀请[:：][^\]]{0,}$/g, '')
+                            .replace(/\[建群邀请[:：][^\]]{0,180}\]/g, '').replace(/\[建群邀请[:：][^\]]{0,}$/g, ''));
                     })(),
                     voiceMode: presenceMode || 'online',
                     groupName: groupReplyPick ? groupReplyPick.name : undefined,
@@ -6409,6 +6651,10 @@
                     .replace(/<\/?narratage\b[^>]*>/gi, '')
                     .replace(/\[中译[:：][^\]]{0,800}\]/g, '')
                     .replace(/\[中译[:：][^\]]{0,}$/g, '')
+                    .replace(/\[群邀请[:：][^\]]{0,100}\]/g, '')
+                    .replace(/\[群邀请[:：][^\]]{0,}$/g, '')
+                    .replace(/\[建群邀请[:：][^\]]{0,180}\]/g, '')
+                    .replace(/\[建群邀请[:：][^\]]{0,}$/g, '')
                     .replace(/\n{3,}/g, '\n\n')
                     .trim();
 
@@ -6418,6 +6664,7 @@
                 if (window.ChatImageVision && typeof window.ChatImageVision.stripAvatarCandidateMarker === 'function') {
                     tmpText = window.ChatImageVision.stripAvatarCandidateMarker(tmpText);
                 }
+                tmpText = redactGroupPrivateStream(tmpText).trim();
                 if (!tmpText) return;
 
                 if (!streamBubble) {
@@ -6482,6 +6729,22 @@
                 ? streamResult.fullText
                 : lastPaintedStreamText;
 
+            // Recheck live membership before committing the reply: a muted/removed role
+            // must not speak even if another tab changed permissions mid-stream.
+            if (isGroupChat && currentGroup && groupReplyPick && window.GroupGovernance) {
+                var liveGroup = loadGroupById(currentRoleId);
+                var liveSpeaker = liveGroup && (liveGroup.members || []).find(function (m) {
+                    return m && String(m.id) === String(groupReplyPick.id);
+                });
+                if (!liveGroup || !window.GroupGovernance.userIsInGroup(liveGroup) ||
+                    !liveSpeaker || window.GroupGovernance.isMuted(liveSpeaker)) {
+                    fullText = '';
+                    if (typeof showToast === 'function') showToast('这位成员已不在可发言状态，本轮回复已取消');
+                } else {
+                    currentGroup = liveGroup;
+                }
+            }
+
             // 流内一直没出现 loading 移除（零 delta 兜底）
             const loadingEl2 = document.getElementById(statusId);
             if (loadingEl2) loadingEl2.remove();
@@ -6532,11 +6795,76 @@
                 retryRemarked = _markUserSendFailed(historyList, retryTarget.mid, retryTarget.time);
             }
 
+            // Shared verified-write barrier for group turns AND role-DM group invitations.
+            // An invitation may only appear after the AI reply has actually persisted.
+            // If the helper is unavailable, hidden actions fail closed.
+            var groupTurnEffects = window.GroupTurnEffects
+                ? window.GroupTurnEffects.create() : null;
+            var groupTurnFinalized = false;
+            var groupAutoRevealReceipt = null;
             try {
                 if (fullText) {
                     // ---- 标记剥离 → 清洗 → 落库 → 重渲染（成功与中断保文共用同一套收尾） ----
                     // 群投票/接龙/群管理标记先落到当前历史与群资料，再清理展示文本
-                    fullText = processGroupInteractionMarkers(fullText, groupReplyPick, historyList, isRegen, isGroupFollowup);
+                    var pendingGameWhisper = null;
+                    fullText = processGroupInteractionMarkers(fullText, groupReplyPick, historyList, isRegen, isGroupFollowup, streamResult.ok, groupGameSessionForPrompt, function (event) {
+                        pendingGameWhisper = event;
+                    }, groupTurnEffects, function(receipt){
+                        groupAutoRevealReceipt = receipt;
+                        if (receipt && !historyList.some(function(m){return m && m.mid === receipt.mid;}))
+                            historyList.push(receipt);
+                    });
+                    // Game-only whisper is an ordinary deferred effect: it must
+                    // share the same verified reply barrier as every other action.
+                    if (pendingGameWhisper && groupTurnEffects && window.GroupGameSessions) {
+                        groupTurnEffects.afterSave(function () {
+                            var result = window.GroupGameSessions.sendWhisper(pendingGameWhisper);
+                            if (!result.ok && typeof showToast === 'function')
+                                showToast(result.message || '游戏私聊没有保存成功');
+                            else if (result.ok && result.activitySynced === false && typeof showToast === 'function')
+                                showToast('游戏私聊已送达，但私聊动向还没有同步');
+                            return result;
+                        });
+                    }
+                    // 私聊角色可以发出待同意的群邀请；必须等模型完整成功，不允许中断回复改变入群状态。
+                    if (window.GroupGovernance) {
+                        fullText = fullText.replace(/\[群邀请[:：]([^\]]{1,100})\]/g, function (marker, proposedGroupId) {
+                            if (!isGroupChat && streamResult.ok && !isRegen && !contextOnly && !silent &&
+                                presenceMode === 'online' && groupTurnEffects) {
+                                var deferredGroupId = String(proposedGroupId).trim();
+                                var deferredInviterId = aliasRoleId || currentRoleId;
+                                groupTurnEffects.afterSave(function () {
+                                    var invited = window.GroupGovernance.offerInvitation({
+                                        groupId: deferredGroupId, inviterId: deferredInviterId
+                                    });
+                                    if (invited && invited.ok && typeof showToast === 'function')
+                                        showToast('TA 发来一条群聊邀请，可在聊天列表决定是否加入');
+                                    return invited;
+                                });
+                            }
+                            return '';
+                        });
+                    }
+                    if (window.GroupGovernance) {
+                        fullText = fullText.replace(/\[建群邀请[:：]([^:：\]]{1,20})[:：]([^\]]{1,150})\]/g, function (marker, name, memberIds) {
+                            if (!isGroupChat && streamResult.ok && !isRegen && !contextOnly && !silent &&
+                                presenceMode === 'online' && groupTurnEffects) {
+                                var deferredGroupName = name;
+                                var deferredMemberIds = String(memberIds).split(/[,，、]/).map(function (s) { return s.trim(); });
+                                var deferredInviterId = aliasRoleId || currentRoleId;
+                                groupTurnEffects.afterSave(function () {
+                                    var offered = window.GroupGovernance.offerNewGroupInvitation({
+                                        inviterId: deferredInviterId, groupName: deferredGroupName,
+                                        memberIds: deferredMemberIds
+                                    });
+                                    if (offered && offered.ok && typeof showToast === 'function')
+                                        showToast('TA 邀请你加入新群聊，可在聊天列表选择是否加入');
+                                    return offered;
+                                });
+                            }
+                            return '';
+                        });
+                    }
                     // 角色表情是现有回复的一部分，不发起额外 API。只接受完整成功的单聊线上回复。
                     var parsedRoleSticker = { text: fullText, stickers: [] };
                     if (roleStickerCatalog.length && !isGroupChat &&
@@ -6578,7 +6906,11 @@
                     // 剥离自动记忆标记 [记住:xxx]，并存进 user_memory
                     const parsedMem = extractMemoryMarkers(fullText);
                     fullText = parsedMem.text;
-                    if (parsedMem.memories.length) saveUserMemories(parsedMem.memories);
+                    // Group secrets and per-role facts must never be promoted
+                    // into global user_memory from an AI machine marker.
+                    // Only confirmed public events use GroupMemoryEvents.
+                    if (parsedMem.memories.length && !isGroupChat && streamResult.ok)
+                        saveUserMemories(parsedMem.memories);
                     // 剥离心声标记 [心声:内容] 与虚拟图片标记 [图片:描述]
                     const parsedHeart = extractHeartMarkers(fullText);
                     fullText = parsedHeart.text;
@@ -6651,6 +6983,18 @@
                         window.__groupPrivateCardPending = false;
                         transferDecisionSnapshots = applyTransferDecisionMarkers(historyList, parsedTransferDecision.amounts);
                         var replySaved = saveMessages(historyList);
+                        // Poll/chain history changes share the SAME verified save as
+                        // the AI reply. Deferred governance/relationships/DMs run
+                        // strictly afterwards, not during marker parsing.
+                        if (groupTurnEffects) {
+                            var settledGroupTurn = groupTurnEffects.finalize(replySaved);
+                            groupTurnFinalized = true;
+                            if (replySaved && !settledGroupTurn.ok && typeof showToast === 'function') {
+                                showToast(isGroupChat
+                                    ? '群互动部分操作未成功，请检查群设置与存储'
+                                    : '群邀请未成功保存，请检查本地存储');
+                            }
+                        }
                         var replySaveFailed = !replySaved;
                         var avatarRoleId = aliasRoleId || currentCharacter.id;
                         if (replySaved && !isGroupChat && window.RoleAvatarLibrary &&
@@ -6717,6 +7061,7 @@
                             }
                         }
                         if (!replySaved) {
+                            groupReplyVisible = false;
                             rollbackTransferDecisionMarkers(transferDecisionSnapshots);
                             // 持久化失败时不把未保存的文字或表情渲染成已发送消息。
                             replyMessages.concat(aiStickerMessages, aiRoleGalleryMessages).forEach(function (message) {
@@ -6800,6 +7145,12 @@
                                         appendMessageToDOM(galleryMessage, galleryMessageIndex);
                                     });
                                 }
+                                if (groupAutoRevealReceipt &&
+                                    !chatMessages.querySelector('.msg-row[data-mid="' +
+                                        String(groupAutoRevealReceipt.mid) + '"]')) {
+                                    appendMessageToDOM(groupAutoRevealReceipt,
+                                        chatMessages.querySelectorAll('.msg-row[data-idx]').length);
+                                }
                                 scrollToBottom(true);
                             }
                         }
@@ -6882,6 +7233,8 @@
             } catch (postErr) {
                 // 收尾处理自身的异常：仅记录，不伪装成网络错误
                 console.error('[chat-detail] 流式收尾处理异常:', postErr);
+            } finally {
+                if (groupTurnEffects && !groupTurnFinalized) groupTurnEffects.finalize(false);
             }
 
             aiSending = false;   // R3：所有出口统一解锁
@@ -7682,6 +8035,36 @@
         syncChatThemeLayout();
 
         renderAllMessages();
+        // Repair a metadata-only group entry if a previous private DM survived
+        // but its companion public card failed to save. Never copy DM body.
+        if (isGroupChat && currentGroup && window.GroupPrivateReceiptRecovery &&
+            !window.__groupPrivateReceiptRecoveryRunning) {
+            window.__groupPrivateReceiptRecoveryRunning = true;
+            try {
+                var privateReceiptRepair = window.GroupPrivateReceiptRecovery.reconcile({
+                    group: currentGroup,
+                    readGroupHistory: function () { return _readBackHistory(); },
+                    saveGroupHistory: function (messages) { return saveMessages(messages); },
+                    readRoleHistory: function (roleId) {
+                        try {
+                            if (window.PhoneStorage && typeof window.PhoneStorage.getChatHistory === 'function') {
+                                var roleItems = window.PhoneStorage.getChatHistory(roleId);
+                                if (Array.isArray(roleItems) && roleItems.length) return roleItems;
+                            }
+                            var raw = localStorage.getItem('chat_history_' + roleId);
+                            if (raw === null) return [];
+                            var parsed = JSON.parse(raw);
+                            return Array.isArray(parsed) ? parsed : null;
+                        } catch(e) { return null; }
+                    }
+                });
+                if (privateReceiptRepair && privateReceiptRepair.repaired > 0) renderAllMessages();
+            } catch (e) {
+                console.warn('[GroupChat] private receipt recovery paused:', e);
+            } finally {
+                window.__groupPrivateReceiptRecoveryRunning = false;
+            }
+        }
         highlightMessageFromUrl();
 
         // 美化中心保存后，页面从返回缓存恢复时重新读取最新配置。
@@ -8040,65 +8423,152 @@
 
 
         // ===== 群投票 / 群接龙 / 角色群管理标记 =====
-        function processGroupInteractionMarkers(rawText, speaker, historyList, isRegeneration, isGroupFollowup) {
+        function processGroupInteractionMarkers(rawText, speaker, historyList, isRegeneration, isGroupFollowup, isCompleted, expectedGameSessionId, queueGameWhisper, turnEffects, queueGameReveal) {
             var text = String(rawText || '');
             if (!isGroupChat || !currentGroup || !Array.isArray(historyList)) return text;
+            // Hidden private actions must be complete, flat end-of-reply tokens.
+            // Nested brackets, line breaks and trailing public-looking text are
+            // ambiguous: discard that entire suffix BEFORE any side effect is
+            // queued. Otherwise the first ']' could prematurely end a marker and
+            // leave confidential text in the saved public chat history.
+            var privateMarker=/\[(?:游戏私聊|群私聊|游戏猜测)[:：]/.exec(text);
+            if (privateMarker) {
+                var privateTail=text.slice(privateMarker.index);
+                if (!/^(?:\[(?:游戏私聊|群私聊|游戏猜测)[:：][^\[\]\r\n]{1,500}\][ \t\r\n]*)+$/.test(privateTail))
+                    text=text.slice(0,privateMarker.index);
+            }
+            if (!turnEffects || typeof turnEffects.afterSave !== 'function' ||
+                typeof turnEffects.registerUndo !== 'function') {
+                return text.replace(/\[(?:群关系变化|群关系互动|群投票|群接龙|群私聊|游戏私聊|游戏猜测|游戏揭晓|群动作|群聊结束)[:：]?[^\]\r\n]{0,600}\]?/g, '').replace(/\[(?:游戏私聊|群私聊|游戏猜测)[:：][\s\S]*/g, '').trim();
+            }
             var changedHistory = false;
             var groupHistoryRollback = [];
+            // Register BEFORE parsing any model marker; even if parsing throws
+            // halfway through, the outer finally restores staged mutations.
+            turnEffects.registerUndo(function () {
+                for (var i=groupHistoryRollback.length-1;i>=0;i--) {
+                    var snapshot=groupHistoryRollback[i], targetMessage=snapshot.message;
+                    if(!targetMessage)continue;
+                    if(snapshot.kind==='votes') {
+                        if(snapshot.hadVotes)targetMessage.poll.votes=snapshot.votes;
+                        else delete targetMessage.poll.votes;
+                    } else if(snapshot.kind==='entries') {
+                        if(snapshot.hadEntries)targetMessage.chain.entries=snapshot.entries;
+                        else delete targetMessage.chain.entries;
+                    }
+                }
+            });
+            // An incomplete/aborted AI turn may be displayed for recovery, but
+            // can never cast votes, modify relationships, create DMs or govern
+            // the group. Strip action markers rather than exposing them publicly.
+            if (!isCompleted || isRegeneration || contextOnly) {
+                return text.replace(/\[(?:群关系变化|群关系互动|群投票|群接龙|群私聊|游戏私聊|游戏猜测|游戏揭晓|群动作|群聊结束)[:：]?[^\]\r\n]{0,600}\]?/g, '')
+                    .replace(/\[(?:游戏私聊|群私聊|游戏猜测)[:：][\s\S]*/g, '').trim();
+            }
             var relationshipEventSeen = false;
+            var queuedGovernance = Object.create(null);
+            // An explicit user instruction is still checked against live group
+            // permissions; execution waits until this AI reply is persisted.
+            if (!isGroupFollowup && window.GroupGovernance) {
+                var lastUserMessage = historyList.slice().reverse().find(function (msg) {
+                    return msg && msg.role === 'user' && !msg.silent && !msg.sendFailed;
+                });
+                if (lastUserMessage && lastUserMessage.mid &&
+                    String(currentGroup.lastModerationMid || '') !== String(lastUserMessage.mid)) {
+                    var requestedModeration = window.GroupGovernance.naturalModeration(
+                        lastUserMessage.text, currentGroup
+                    );
+                    if (requestedModeration) {
+                        queuedGovernance[requestedModeration.actorId + '|' + requestedModeration.action + '|' + requestedModeration.target] = true;
+                        var moderationMid = String(lastUserMessage.mid);
+                        var moderationText = String(lastUserMessage.text || '');
+                        turnEffects.afterSave(function () {
+                            var liveGroup = loadGroupById(currentRoleId);
+                            if (!liveGroup || !window.GroupGovernance.userIsInGroup(liveGroup))
+                                return { ok:false, code:'GROUP_CHANGED' };
+                            currentGroup = liveGroup;
+                            if (String(liveGroup.lastModerationMid || '') === moderationMid) return { ok:true };
+                            var rechecked = window.GroupGovernance.naturalModeration(moderationText, liveGroup);
+                            if (!rechecked || rechecked.actorId !== requestedModeration.actorId ||
+                                rechecked.target !== requestedModeration.target ||
+                                rechecked.action !== requestedModeration.action)
+                                return { ok:false, code:'PERMISSION_CHANGED' };
+                            var oldMid = liveGroup.lastModerationMid;
+                            liveGroup.lastModerationMid = moderationMid;
+                            var result = window.GroupGovernance.apply({
+                                group:liveGroup, actorId:rechecked.actorId,
+                                action:rechecked.action, target:rechecked.target,
+                                save:saveCurrentGroupObject
+                            });
+                            if (!result.ok) liveGroup.lastModerationMid = oldMid;
+                            else if (typeof showToast === 'function')
+                                showToast(result.message || '群管理已生效');
+                            return result;
+                        });
+                    }
+                }
+            }
             text = text.replace(/\[群关系变化[:：]([^:：\]]{1,100})[:：]([^:：\]]{1,20})[:：]([+-]?\d{1,3})[:：]([+-]?\d{1,3})[:：]([^\]]{1,120})\]/gi, function (marker, targetKey, level, intimacyDelta, trustDelta, summary) {
                 if (relationshipEventSeen) return '';
                 relationshipEventSeen = true;
-                if (isRegeneration || !isGroupFollowup || !speaker || speaker.id == null || getGroupSettings().relationshipDynamicsEnabled === false) return '';
+                if (!isGroupFollowup || !speaker || speaker.id == null ||
+                    getGroupSettings().relationshipDynamicsEnabled === false) return '';
                 var targetId = String(targetKey || '').trim();
                 var members = Array.isArray(currentGroup.members) ? currentGroup.members : [];
-                var target = members.find(function (member) { return member && String(member.id) === targetId; });
+                var target = members.find(function (m) { return m && String(m.id) === targetId; });
                 if (!target || String(target.id) === String(speaker.id)) return '';
-                var previousSpeaker = findGroupSpeakerInHistory(historyList);
-                if (!previousSpeaker || String(previousSpeaker.id) !== String(target.id)) return '';
-                var relation = getOrCreateGroupRelationship(speaker, target);
-                var direction = relation && relation.directions && relation.directions[String(speaker.id)];
-                var policy = window.GroupChatPolicy;
-                if (!direction || !policy || typeof policy.applyRelationshipEvent !== 'function') return '';
-                var applied = policy.applyRelationshipEvent(direction, {
+                var prior = findGroupSpeakerInHistory(historyList);
+                if (!prior || String(prior.id) !== targetId) return '';
+                var fromId = String(speaker.id);
+                var evidence = {
                     level: String(level || '').toLowerCase(),
                     intimacyDelta: Number(intimacyDelta),
                     trustDelta: Number(trustDelta),
                     summary: String(summary || '').trim()
-                }, Date.now());
-                if (applied) {
-                    relation.lastInteractionAt = Date.now();
-                    saveCurrentGroupObject();
-                }
+                };
+                turnEffects.afterSave(function () {
+                    return commitDeferredGroupRelationship(fromId, targetId, function (relation) {
+                        var direction = relation.directions && relation.directions[fromId];
+                        var policy = window.GroupChatPolicy;
+                        if (!direction || !policy || typeof policy.applyRelationshipEvent !== 'function')
+                            return false;
+                        var applied = policy.applyRelationshipEvent(direction, evidence, Date.now());
+                        if (applied) relation.lastInteractionAt = Date.now();
+                        return applied === true;
+                    });
+                });
                 return '';
             });
             text = text.replace(/\[群关系互动[:：]([^:：\]]{1,100})(?:[:：]([^\]]{1,160}))?\]/g, function (marker, targetKey, memorySummary) {
-                if (isRegeneration || !speaker || speaker.id == null) return '';
+                if (!speaker || speaker.id == null) return '';
                 var targetId = String(targetKey || '').trim();
                 var members = Array.isArray(currentGroup.members) ? currentGroup.members : [];
-                var target = members.find(function (member) { return member && String(member.id) === targetId; });
+                var target = members.find(function (m) { return m && String(m.id) === targetId; });
                 if (!target || String(target.id) === String(speaker.id)) return '';
-                var previousSpeaker = findGroupSpeakerInHistory(historyList);
-                if (!previousSpeaker || String(previousSpeaker.id) !== String(target.id)) return '';
-                var relation = getOrCreateGroupRelationship(speaker, target);
-                if (relation) {
-                    relation.interactions = Math.max(0, parseInt(relation.interactions, 10) || 0) + 1;
-                    relation.lastInteractionAt = Date.now();
-                    var summary = String(memorySummary || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140);
-                    if (summary) {
-                        var direction = relation.directions && relation.directions[String(speaker.id)];
-                        if (direction) {
-                            if (!Array.isArray(direction.sharedEvents)) direction.sharedEvents = [];
-                            direction.sharedEvents.push({ summary: summary, time: Date.now(), fromId: String(speaker.id), toId: String(target.id) });
-                            direction.sharedEvents = direction.sharedEvents.filter(function (item) { return item && String(item.summary || '').trim(); }).slice(-6);
-                            direction.lastInteractionAt = Date.now();
+                var prior = findGroupSpeakerInHistory(historyList);
+                if (!prior || String(prior.id) !== targetId) return '';
+                var fromId = String(speaker.id);
+                var summary = String(memorySummary || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0,140);
+                turnEffects.afterSave(function () {
+                    return commitDeferredGroupRelationship(fromId, targetId, function (relation) {
+                        relation.interactions = Math.max(0,parseInt(relation.interactions,10)||0)+1;
+                        relation.lastInteractionAt = Date.now();
+                        if (summary) {
+                            var direction = relation.directions && relation.directions[fromId];
+                            var event = {summary:summary,time:Date.now(),fromId:fromId,toId:targetId};
+                            if (direction) {
+                                if (!Array.isArray(direction.sharedEvents)) direction.sharedEvents=[];
+                                direction.sharedEvents.push(event);
+                                direction.sharedEvents=direction.sharedEvents.filter(function(x){return x&&String(x.summary||'').trim();}).slice(-6);
+                                direction.lastInteractionAt=event.time;
+                            }
+                            if (!Array.isArray(relation.memories)) relation.memories=[];
+                            relation.memories.push(event);
+                            relation.memories=relation.memories.filter(function(x){return x&&String(x.summary||'').trim();}).slice(-6);
                         }
-                        if (!Array.isArray(relation.memories)) relation.memories = [];
-                        relation.memories.push({ summary: summary, time: Date.now(), fromId: String(speaker.id), toId: String(target.id) });
-                        relation.memories = relation.memories.filter(function (item) { return item && String(item.summary || '').trim(); }).slice(-6);
-                    }
-                    saveCurrentGroupObject();
-                }
+                        return true;
+                    });
+                });
                 return '';
             });
             text = text.replace(/\[群投票:([^\]:]+):(\d{1,2})\]/g, function (marker, pollMid, optionNumber) {
@@ -8138,9 +8608,145 @@
                 }
                 return '';
             });
-            var settings = getGroupSettings();
+            // Only the owner-appointed moderator can initiate an autonomous reveal.
+            // The marker is never rendered; the real closure and receipt happen
+            // after a verified public reply write, never during token streaming.
+            var gameRevealSeen=false;
+            text=text.replace(/\[游戏揭晓\]/g,function(){
+                if(gameRevealSeen)return '';
+                gameRevealSeen=true;
+                if(!isCompleted || isRegeneration || contextOnly ||
+                    !speaker || speaker.id == null || !window.GroupGameSessions ||
+                    !expectedGameSessionId || typeof queueGameReveal!=='function')return '';
+                var session=window.GroupGameSessions.getPublic(String(currentGroup.id));
+                var hostId=String(speaker.id);
+                if(!session || session.status!=='active' ||
+                    session.sessionId!==expectedGameSessionId ||
+                    session.hostId!==hostId || hostId==='__user' ||
+                    session.voteError || session.voteCount!==session.players.length)return '';
+                var ownGroupId=String(currentGroup.id), roundId=expectedGameSessionId;
+                turnEffects.afterSave(function(){
+                    var liveGroup=loadGroupById(ownGroupId);
+                    var now=window.GroupGameSessions.getPublic(ownGroupId);
+                    if(!liveGroup || !now || now.status!=='active' ||
+                        now.sessionId!==roundId || now.hostId!==hostId)
+                        return {ok:false,code:'STALE_SESSION'};
+                    var finished=window.GroupGameSessions.finish({
+                        group:liveGroup,groupId:ownGroupId,sessionId:roundId,actorId:hostId
+                    });
+                    if(!finished.ok)return finished;
+                    var receipt=window.GroupGameChatReceipts &&
+                        window.GroupGameChatReceipts.publish({
+                            group:liveGroup,session:finished.session,actorId:'__user'
+                        });
+                    if(receipt && receipt.ok && receipt.record)queueGameReveal(receipt.record);
+                    if(window.GroupMemoryEvents) {
+                        var publicMemory=window.GroupMemoryEvents.recordGameClosure({
+                            group:liveGroup,session:finished.session
+                        });
+                        if(!publicMemory.ok && typeof showToast==='function')
+                            showToast(publicMemory.message||'游戏已揭晓，但群记忆没有保存');
+                    }
+                    if(!receipt || !receipt.ok) {
+                        if(typeof showToast==='function')
+                            showToast('游戏已揭晓，但群聊结果卡尚未保存；可在群设置补发');
+                        return {ok:false,code:'RECEIPT_SAVE_FAILED'};
+                    }
+                    if(finished.cleanupComplete===false && typeof showToast==='function')
+                        showToast('游戏临时记录尚未完全清理，请到群设置重试');
+                    return {ok:true};
+                });
+                return '';
+            });
+            text=text.replace(/\[游戏揭晓[^\]\r\n]{0,80}\]?/g,'');
+            // Commit a role's guess only AFTER its public reply was verified saved.
+            // The guessed target remains private in the ballot vault until reveal.
+            var gameGuessSeen = false;
+            text = text.replace(/\[游戏猜测[:：]([A-Za-z0-9_-]{1,90})\]/g, function (marker, guessedId) {
+                if (gameGuessSeen) return '';
+                gameGuessSeen = true;
+                if (!isCompleted || isRegeneration || contextOnly ||
+                    !speaker || speaker.id == null || !window.GroupGameSessions ||
+                    typeof window.GroupGameSessions.castVote !== 'function') return '';
+                var activeGuessGame = window.GroupGameSessions.getPublic(String(currentGroup.id));
+                var voterId = String(speaker.id), targetId = String(guessedId).trim();
+                if (!activeGuessGame || activeGuessGame.status !== 'active' ||
+                    !expectedGameSessionId || activeGuessGame.sessionId !== expectedGameSessionId ||
+                    activeGuessGame.voteError || activeGuessGame.players.indexOf(voterId) === -1 ||
+                    activeGuessGame.players.indexOf(targetId) === -1 || voterId === targetId) return '';
+                var roundId = expectedGameSessionId;
+                var voteEventId = 'gv' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+                turnEffects.afterSave(function () {
+                    var liveGroup = loadGroupById(currentRoleId);
+                    if (!liveGroup || !Array.isArray(liveGroup.members) ||
+                        !liveGroup.members.some(function(m) { return m && String(m.id) === voterId &&
+                            !(window.GroupGovernance && window.GroupGovernance.isMuted(m)); }))
+                        return { ok:false, code:'VOTER_LEFT' };
+                    var result = window.GroupGameSessions.castVote({
+                        groupId:String(currentGroup.id), sessionId:roundId,
+                        voterId:voterId, targetId:targetId, eventId:voteEventId
+                    });
+                    if (!result.ok && result.code !== 'ALREADY_VOTED' && typeof showToast === 'function')
+                        showToast(result.message || '游戏投票没有保存成功');
+                    return result;
+                });
+                return '';
+            });
+            text = text.replace(/\[游戏猜测[:：][\s\S]*?(?:\]|$)/g, '');
+            // Parse and authorize at most one secret whisper per successful role reply.
+            // The hidden marker is never added to public group chat history.
+            var gameWhisperSeen = false;
+            text = text.replace(/\[游戏私聊[:：]([^:：\]]{1,90})[:：]([^\]]{1,240})\]/g, function (marker, recipientKey, whisperText) {
+                if (gameWhisperSeen) return '';
+                gameWhisperSeen = true;
+                if (!isCompleted || isRegeneration || contextOnly || !speaker || speaker.id == null ||
+                    !window.GroupGameSessions || typeof queueGameWhisper !== 'function') return '';
+                var activeGame = window.GroupGameSessions.getPublic(String(currentGroup.id));
+                var senderId = String(speaker.id), recipientId = String(recipientKey).trim();
+                if (!activeGame || activeGame.status !== 'active' ||
+                    !expectedGameSessionId || activeGame.sessionId !== expectedGameSessionId ||
+                    activeGame.players.indexOf(senderId) === -1 ||
+                    (recipientId !== '__user' && activeGame.players.indexOf(recipientId) === -1) ||
+                    senderId === recipientId) return '';
+                queueGameWhisper({
+                    groupId: String(currentGroup.id), sessionId: expectedGameSessionId,
+                    fromId: senderId, toId: recipientId, text: String(whisperText).trim(),
+                    eventId: 'gw' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12)
+                });
+                return '';
+            });
+            // Malformed private markers are dropped, never rendered as public speech.
+            text = text.replace(/\[游戏私聊[:：][\s\S]*/g, '');
+            var regularPrivateMarkerSeen = false;
             text = text.replace(/\[群私聊[:：]([^:：\]]+)[:：]([^\]]{1,300})\]/g, function (marker, targetKey, privateText) {
-                if (settings.allowPrivateMessages === false) return '';
+                // Limit ordinary private DMs to one per AI turn; an AI-produced
+                // batch of markers must not spam multiple persistent histories.
+                if (regularPrivateMarkerSeen) return '';
+                regularPrivateMarkerSeen = true;
+                // Persistent role DMs are deferred; no private data is written
+                // before the public AI reply has been durably saved.
+                turnEffects.afterSave(function () {
+                var liveGroup = loadGroupById(currentRoleId);
+                if (!liveGroup || !window.GroupGovernance ||
+                    !window.GroupGovernance.userIsInGroup(liveGroup))
+                    return { ok:false, code:'GROUP_CHANGED' };
+                currentGroup = liveGroup;
+                var liveSpeaker = (liveGroup.members || []).find(function (m) {
+                    return m && String(m.id) === String(speaker && speaker.id || '');
+                });
+                if (!liveSpeaker || window.GroupGovernance.isMuted(liveSpeaker) ||
+                    getGroupSettings().allowPrivateMessages === false)
+                    return { ok:false, code:'PRIVATE_DISABLED' };
+                if (window.GroupGameSessions) {
+                    var privateRule = window.GroupGameSessions.canWhisper({
+                        groupId:String(currentGroup.id),
+                        fromId:String(speaker && speaker.id || ''),
+                        toId:'__user'
+                    });
+                    // Game-only private traffic belongs to the session inbox.
+                    // Never mirror an in-game secret into the permanent 1:1 history.
+                    if (privateRule.active) return '';
+                }
                 var members = Array.isArray(currentGroup.members) ? currentGroup.members : [];
                 var target = members.find(function (member) {
                     return member && (String(member.id) === String(targetKey).trim() ||
@@ -8152,7 +8758,9 @@
                 var targetId = String(target.id);
                 var displayName = groupMemberDisplayName(target);
                 var privateMessageText = String(privateText).trim().slice(0, 300);
-                var privateMsg = { role: 'assistant', name: displayName, text: privateMessageText, time: Date.now(), fromGroupId: String(currentGroup.id), privateFromGroup: true };
+                var privateMsg = { role: 'assistant', name: displayName, text: privateMessageText, time: Date.now(),
+                    fromGroupId: String(currentGroup.id), privateFromGroup: true, privateGroupReceiptV1: true };
+                ensureMid(privateMsg);
                 var privateHistory = [];
                 var privateSaved = false;
                 try {
@@ -8181,6 +8789,8 @@
                         verifiedPrivate.length === privateHistory.length && lastPrivate &&
                         lastPrivate.role === privateMsg.role && lastPrivate.type === privateMsg.type &&
                         lastPrivate.time === privateMsg.time && lastPrivate.text === privateMsg.text &&
+                        String(lastPrivate.mid || '') === String(privateMsg.mid) &&
+                        lastPrivate.privateGroupReceiptV1 === true &&
                         lastPrivate.fromGroupId === privateMsg.fromGroupId;
                 } catch (privateError) {
                     privateSaved = false;
@@ -8191,8 +8801,11 @@
                     return '';
                 }
 
+                // Public group history contains a pointer, never the private
+                // message body; the actual message exists only in this role DM.
                 var groupPrivateMessage = {
-                    role: 'assistant', type: 'group_private', text: privateMessageText,
+                    role: 'assistant', type: 'group_private', text: '',
+                    privateMessageId: String(privateMsg.mid),
                     senderId: targetId, privateRoleId: targetId, senderName: displayName,
                     name: displayName, fromGroupId: String(currentGroup.id), time: Date.now()
                 };
@@ -8206,62 +8819,86 @@
                 }
                 window.__groupPrivateCardPending = true;
                 showGroupPrivatePopup(displayName, targetId, privateMessageText);
+                return { ok:true };
+                });
                 return '';
             });
-            text = text.replace(/\[群动作[:：](改名|邀请|移除)[:：]([^\]]{1,40})\]/g, function (marker, action, targetName) {
-                var isOwner = currentGroup && String(currentGroup.ownerId || '__user') === String(speaker && speaker.id || '');
-                if (!settings.allowRoleActions || !speaker || (!speaker.isAdmin && !isOwner)) return '';
-                targetName = String(targetName || '').trim();
-                if (!targetName) return '';
-                var actionMessage = '';
-                if (action === '改名') {
-                    currentGroup.name = targetName.slice(0, 20);
-                    currentCharacter.name = currentGroup.name;
-                    var title = document.getElementById('chat-title');
-                    if (title) title.textContent = currentGroup.name;
-                    actionMessage = '群管理员将群名修改为「' + currentGroup.name + '」';
-                } else if (action === '邀请') {
-                    var roles = [];
-                    try { roles = JSON.parse(localStorage.getItem('ai_custom_characters') || '[]'); } catch (e) {}
-                    var targetRole = Array.isArray(roles) ? roles.find(function (role) { return role && (String(role.id) === targetName || String(role.name || '').trim() === targetName); }) : null;
-                    if (targetRole && !(currentGroup.members || []).some(function (member) { return String(member.id) === String(targetRole.id); })) {
-                        if (!Array.isArray(currentGroup.members)) currentGroup.members = [];
-                        currentGroup.members.push({ id: String(targetRole.id), name: targetRole.name || '角色', avatar: targetRole.avatar || '', nickname: '', title: '', isAdmin: false, muted: false, activeFrom: '08:00', activeTo: '23:00' });
-                        actionMessage = '群管理员邀请「' + (targetRole.name || '角色') + '」加入群聊';
-                    }
-                } else if (action === '移除') {
-                    var existing = (currentGroup.members || []).find(function (member) { return String(member.id) === targetName || String(member.name || '').trim() === targetName || groupMemberDisplayName(member) === targetName; });
-                    if (existing && (currentGroup.members || []).length > 1) {
-                        currentGroup.members = currentGroup.members.filter(function (member) { return String(member.id) !== String(existing.id); });
-                        if (String(currentGroup.ownerId || '') === String(existing.id)) currentGroup.ownerId = '__user';
-                        actionMessage = '群管理员将「' + groupMemberDisplayName(existing) + '」移出群聊';
-                    }
+            // 统一通过权限网关处理，模型隐藏标记本身不是授权凭证。
+            text = text.replace(/\[群动作[:：](改名|邀请|移除|禁言|解禁|头衔)[:：]([^\]]{1,80})\]/g, function (marker, action, targetName) {
+                if (!window.GroupGovernance || !speaker || speaker.id == null || isRegeneration) return '';
+                var nameMap = { '改名':'rename', '邀请':'invite', '移除':'remove', '禁言':'mute', '解禁':'unmute', '头衔':'set-title' };
+                var titleValue = '';
+                var actionTarget = String(targetName || '').trim();
+                if (action === '头衔') {
+                    var titleSeparator = actionTarget.indexOf('|');
+                    if (titleSeparator < 1) return '';
+                    titleValue = actionTarget.slice(titleSeparator + 1).trim();
+                    actionTarget = actionTarget.slice(0, titleSeparator).trim();
                 }
-                if (actionMessage) {
-                    saveCurrentGroupObject();
-                    if (typeof showToast === 'function') showToast(actionMessage);
+                var roles = [];
+                if (action === '邀请') try { roles = JSON.parse(localStorage.getItem('ai_custom_characters') || '[]'); } catch (e) {}
+                var actorId = String(speaker.id), taskAction = nameMap[action];
+                // A direct addressed admin request and an AI-generated marker
+                // may describe the same action. Commit it at most once per turn.
+                if (taskAction === 'mute' || taskAction === 'unmute') {
+                    var matchingTargets = (currentGroup.members || []).filter(function (m) {
+                        return m && (String(m.id) === actionTarget ||
+                            String(m.name || '') === actionTarget ||
+                            String(m.nickname || '') === actionTarget);
+                    });
+                    var canonicalTarget = matchingTargets.length === 1
+                        ? String(matchingTargets[0].id) : actionTarget;
+                    var moderationKey = actorId + '|' + taskAction + '|' + canonicalTarget;
+                    if (queuedGovernance[moderationKey]) return '';
+                    queuedGovernance[moderationKey] = true;
                 }
+                turnEffects.afterSave(function () {
+                    var liveGroup = loadGroupById(currentRoleId);
+                    if (!liveGroup || !window.GroupGovernance.userIsInGroup(liveGroup))
+                        return { ok:false, code:'GROUP_CHANGED' };
+                    currentGroup = liveGroup;
+                    var liveSpeaker = (liveGroup.members || []).find(function(m) {
+                        return m && String(m.id) === actorId;
+                    });
+                    if (!liveSpeaker || window.GroupGovernance.isMuted(liveSpeaker))
+                        return { ok:false, code:'SPEAKER_CHANGED' };
+                    var result = window.GroupGovernance.apply({
+                        group: liveGroup, actorId: actorId, action: taskAction,
+                        target: actionTarget, options: { roles: roles, title: titleValue },
+                        save: saveCurrentGroupObject
+                    });
+                    if (result.ok) {
+                        if (action === '改名') {
+                            currentCharacter.name = liveGroup.name;
+                            var title = document.getElementById('chat-title');
+                            if (title) title.textContent = liveGroup.name;
+                        }
+                        if (typeof showToast === 'function')
+                            showToast(result.message || '群管理已生效');
+                    } else if (result.code !== 'DISABLED' && typeof showToast === 'function') {
+                        showToast(result.message || '群管理操作未成功');
+                    }
+                    return result;
+                });
                 return '';
             });
             text = text.replace(/\[群聊结束\]/g, function () {
-                window.__groupAutoStopRequested = true;
+                // A stop marker cannot change group scheduling before reply save.
+                turnEffects.afterSave(function () {
+                    window.__groupAutoStopRequested = true;
+                    return { ok:true };
+                });
                 return '';
             });
             text = text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
-            if (changedHistory && !saveMessages(historyList)) {
-                groupHistoryRollback.forEach(function (snapshot) {
-                    var targetMessage = snapshot.message;
-                    if (!targetMessage) return;
-                    if (snapshot.kind === 'votes') {
-                        if (snapshot.hadVotes) targetMessage.poll.votes = snapshot.votes;
-                        else delete targetMessage.poll.votes;
-                    } else if (snapshot.kind === 'entries') {
-                        if (snapshot.hadEntries) targetMessage.chain.entries = snapshot.entries;
-                        else delete targetMessage.chain.entries;
-                    }
-                });
-                if (typeof showToast === 'function') showToast('群投票/接龙回应没有保存成功，原有互动状态已恢复');
-            }
+            // Before writing a public group reply, discard malformed or
+            // multiline private directives that escaped the normal parser.
+            text = window.GroupGameSessions &&
+                typeof window.GroupGameSessions.redactPublicStreamText === 'function'
+                    ? window.GroupGameSessions.redactPublicStreamText(text)
+                    : text.replace(/\[(?:游戏私聊|群私聊|游戏猜测)[:：][\s\S]*/g, '');
+            // Votes/chains stay staged in this in-memory array until the same
+            // verified save as the reply. The registered undo covers failure.
             return text;
         }
 
@@ -8315,6 +8952,11 @@
             var composerSubmit = document.getElementById('groupComposerSubmit');
             var composerMode = '';
             var composerTargetMid = '';
+            var composerHistoryToken = '';
+            // Browser history.back() is asynchronous; do not push another modal
+            // entry until the previous one has actually been consumed.
+            var composerHistoryPending = false;
+            var composerQueuedOpen = null;
             if (!isGroupChat) {
                 if (pollAction) pollAction.style.display = 'none';
                 if (chainAction) chainAction.style.display = 'none';
@@ -8331,13 +8973,47 @@
                 var overlay = document.querySelector('.plus-panel-overlay');
                 if (overlay) overlay.classList.remove('active');
             }
-            function closeComposer() {
+            function dismissComposerView() {
                 if (!composerOverlay) return;
                 composerOverlay.classList.remove('active');
                 composerOverlay.setAttribute('aria-hidden', 'true');
                 composerMode = '';
                 composerTargetMid = '';
+                composerHistoryToken = '';
             }
+            function closeComposer() {
+                if (!composerOverlay || !composerOverlay.classList.contains('active')) return;
+                // Consume only this modal's history entry, not the chat page.
+                var popOwnEntry = !!(composerHistoryToken && window.history.state &&
+                    window.history.state.__maomaoGroupComposer === composerHistoryToken);
+                dismissComposerView();
+                if (popOwnEntry) {
+                    composerHistoryPending = true;
+                    try {
+                        window.history.back();
+                    } catch (error) {
+                        // Do not permanently block the next interaction if back fails.
+                        composerHistoryPending = false;
+                        composerQueuedOpen = null;
+                    }
+                }
+            }
+            window.addEventListener('popstate', function (event) {
+                if (composerHistoryPending) {
+                    // Only after the old history entry is gone may a quick second
+                    // tap open a new poll/chain. Otherwise an old popstate closes it.
+                    composerHistoryPending = false;
+                    var queued = composerQueuedOpen;
+                    composerQueuedOpen = null;
+                    if (queued) openComposer(queued.mode, queued.targetMid);
+                    return;
+                }
+                if (!composerOverlay || !composerOverlay.classList.contains('active')) return;
+                if (!event.state || event.state.__maomaoGroupComposer !== composerHistoryToken) {
+                    // System Back/edge-swipe closes this overlay, preserving the chat.
+                    dismissComposerView();
+                }
+            });
             function maybeStartGroupActivity() {
                 const settings = getGroupSettings();
                 const rounds = Number(settings.autoTalkRounds);
@@ -8355,7 +9031,12 @@
                 }, activityDelay);
             }
             function openComposer(mode, targetMid) {
+                if (composerHistoryPending) {
+                    composerQueuedOpen = { mode: mode, targetMid: targetMid };
+                    return;
+                }
                 if (!composerOverlay || !composerForm) { showToast('互动面板暂时无法打开'); return; }
+                if (composerOverlay.classList.contains('active')) return;
                 if (aiSending) { showToast('等当前角色回复结束后再发起互动'); return; }
                 composerMode = mode;
                 composerTargetMid = targetMid || '';
@@ -8386,9 +9067,21 @@
                     composerEntry.placeholder = '写下这一条内容';
                     composerSubmit.textContent = '提交内容';
                 }
+                try {
+                    composerHistoryToken = 'group-interaction-' + Date.now() + '-' +
+                        Math.random().toString(36).slice(2);
+                    window.history.pushState(Object.assign({}, window.history.state || {}, {
+                        __maomaoGroupComposer: composerHistoryToken
+                    }), '', window.location.href);
+                } catch (error) {
+                    // Browser environments that prohibit pushState still have
+                    // the explicit Cancel and Escape buttons.
+                    composerHistoryToken = '';
+                }
                 composerOverlay.classList.add('active');
                 composerOverlay.setAttribute('aria-hidden', 'false');
                 setTimeout(function () {
+                    if (!composerOverlay.classList.contains('active')) return;
                     var focusTarget = mode === 'join' ? composerEntry : composerQuestion;
                     if (focusTarget) focusTarget.focus();
                 }, 80);
@@ -8534,7 +9227,15 @@
                             return;
                         }
                         renderAllMessages();
-                        showToast('接龙已结束');
+                        if (window.GroupMemoryEvents) {
+                            var rememberedChain = window.GroupMemoryEvents.recordChainClosure({
+                                group: currentGroup, message: chainToClose
+                            });
+                            showToast(rememberedChain.ok ? '接龙已结束，已记入本群共同回忆' :
+                                '接龙已结束，但群记忆未写入：' + (rememberedChain.message || '请稍后重试'));
+                        } else {
+                            showToast('接龙已结束');
+                        }
                     }
                 }
             });
