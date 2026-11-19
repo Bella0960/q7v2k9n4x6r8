@@ -267,6 +267,25 @@
     }).join('\n');
   }
 
+  // Direct online replies need the same high-confidence role-identity barrier
+  // as online groups. The system prompt and saved persona can be correct while
+  // the model still emits a generic assistant introduction. This is a pure
+  // check: never modify/delete stored history or a role's saved identity.
+  function validateDirectOnlineReply(input) {
+    input = input && typeof input === 'object' ? input : {};
+    var role = input.role;
+    var reply = String(input.text || '').trim();
+    if (!role || role.id == null || !String(role.id).trim())
+      return {ok:false,code:'speaker'};
+    if (!reply) return {ok:false,code:'empty'};
+    // A character explicitly authored as digital is allowed to identify as AI.
+    if (isDigitalCharacter(role)) return {ok:true};
+    var candidate = {role:'assistant',text:reply};
+    if (isBrokenAssistantIdentity(candidate) || isGenericContextContamination(candidate))
+      return {ok:false,code:'identity-drift'};
+    return {ok:true};
+  }
+
   // A successful HTTP response is not proof that the generated group message
   // actually belongs to its saved speaker. Only block clear, high-confidence
   // drift; never rewrite the person's persisted messages or custom persona.
@@ -310,6 +329,7 @@
     validateFinalApiMessages: validateFinalApiMessages,
     validatePersonaRequest: validatePersonaRequest,
     isBrokenAssistantIdentity: isBrokenAssistantIdentity,
+    validateDirectOnlineReply: validateDirectOnlineReply,
     validateGroupOnlineReply: validateGroupOnlineReply
   });
 })(window);
