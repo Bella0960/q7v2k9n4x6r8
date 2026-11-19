@@ -137,11 +137,11 @@ test('group voice and recall changes reach real app and PWA without changing the
   assert.match(detail,/roleMemory.*isGroupChat/);
   assert.match(detail,/groupMembers: currentGroup && Array\.isArray\(currentGroup\.members\)/);
   assert.match(detail,/recallOptions\.groupMembers/);
-  assert.match(detail,/chat-presence-policy\.js\?v=20261118groupvoice1/);
+  assert.match(detail,/chat-presence-policy\.js\?v=20261118voicepurity1/);
   assert.match(detail,/group-chat-policy\.js\?v=20261118groupvoice1/);
   assert.match(detail,/memory_recall\.js\?v=20261118groupmemory1/);
-  assert.match(sw,/phone-app-pwa-v252/);
-  for(const key of ['chat-presence-policy.js?v=20261118groupvoice1',
+  assert.match(sw,/phone-app-pwa-v254/);
+  for(const key of ['chat-presence-policy.js?v=20261118voicepurity1',
     'group-chat-policy.js?v=20261118groupvoice1','memory_recall.js?v=20261118groupmemory1']) {
     assert.ok(sw.includes(key));
   }
