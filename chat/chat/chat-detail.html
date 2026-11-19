@@ -17,6 +17,7 @@
     <script src="../../shared/js/phone/role-sticker-library.js?v=20261107v2"></script>
     <script src="../../shared/js/phone/chat-image-vision.js?v=20261113v1"></script>
     <script src="../../shared/js/phone/rp-default-protocol.js?v=20261118v1"></script>
+    <script src="../../shared/js/phone/role-worldbook-bindings.js?v=20261119-qa1"></script>
     <script src="../../shared/js/phone/chat-role-context.js?v=20261118historypurity1"></script>
     <script src="../../shared/js/phone/inspect_interaction_bridge.js?v=20261112v5"></script>
     <script src="../../shared/js/phone/phone_api.js?v=20261115cancel1"></script>
@@ -4325,7 +4326,8 @@
                     var failedMark = document.createElement('span');
                     failedMark.className = 'msg-send-failed';
                     failedMark.textContent = '!';
-                    failedMark.title = (msg.sendFailedReason === 'missing-api-key' ? '尚未配置 API Key；消息已保存' : '消息已发出，但被对方拒收了') + '，点击重试';
+                    failedMark.title = (msg.sendFailedReason === 'worldbook-read' ? '世界书读取失败，AI 尚未回复' :
+                        (msg.sendFailedReason === 'missing-api-key' ? '尚未配置 API Key；消息已保存' : '消息已发出，但被对方拒收了')) + '，点击重试';
                     failedMark.setAttribute('role', 'button');
                     failedMark.setAttribute('tabindex', '0');
                     var startRetry = function (event) {
@@ -6280,11 +6282,11 @@
             let worldbookReadError = null;
             try {
               const rawWB = localStorage.getItem('phone_worldbooks');
-              if (rawWB) {
-                let wbList = JSON.parse(rawWB);
-                if (!Array.isArray(wbList)) {
-                    throw new Error('invalid worldbook collection');
-                }
+              let wbList = rawWB === null ? [] : JSON.parse(rawWB);
+              if (!Array.isArray(wbList)) throw new Error('invalid worldbook collection');
+              {
+                // Validate mounts even when a user has not created any worldbooks.
+                // A corrupted binding must never silently become an empty prompt.
                 // Single and group chats each read their own mounted lore. Global lore stays
                 // available; unmounted local lore from other roles never enters the AI request.
                 var mountedBookIds = [];
@@ -6307,14 +6309,42 @@
                     typeof roleBookPolicy.selectWorldbooksForRole !== 'function') {
                     throw new Error('role-scoped worldbook selection unavailable');
                 }
+                const bindingBridge = window.RoleWorldbookBindings;
+                if (!bindingBridge || typeof bindingBridge.filterBooks !== 'function') {
+                    throw new Error('shared role-worldbook binding unavailable');
+                }
                 if (isGroupChat) {
-                    // Speaker's own local books are part of that person's saved identity.
-                    // Never include another member's locally bound books.
+                    // Use the actual speaker, not the group itself, as the role
+                    // identity. Include only the books explicitly mounted by
+                    // that speaker or this group (plus legacy global defaults).
+                    if (!groupReplyPick || groupReplyPick.id == null) {
+                        throw new Error('group speaker is missing');
+                    }
+                    const speakerId = String(groupReplyPick.id);
+                    const speakerRole = getRoleById(speakerId);
+                    const speakerSelection = bindingBridge.read(speakerId, speakerRole);
+                    const groupSelection = bindingBridge.read(aliasRoleId);
+                    if (!speakerSelection.ok || !groupSelection.ok) {
+                        throw new Error('group role-worldbook binding read failed');
+                    }
+                    const allowed = speakerSelection.ids.concat(groupSelection.ids);
+                    wbList = wbList.filter(function (book) {
+                        return book && allowed.indexOf(String(book.id)) !== -1;
+                    });
+                    mountedBookIds = groupSelection.ids;
                     wbList = roleBookPolicy.selectWorldbooksForGroupSpeaker(
-                        wbList, mountedBookIds, groupReplyPick && getRoleById(groupReplyPick.id)
+                        wbList, mountedBookIds, speakerRole
                     );
                 } else {
-                    wbList = roleBookPolicy.selectWorldbooksForRole(wbList, roleForTurn, mountedBookIds);
+                    const selected = bindingBridge.filterBooks(
+                        String(roleForTurn && roleForTurn.id || aliasRoleId),
+                        wbList, roleForTurn
+                    );
+                    if (!selected.ok) throw new Error('role-worldbook binding read failed');
+                    mountedBookIds = selected.ids;
+                    wbList = roleBookPolicy.selectWorldbooksForRole(
+                        selected.books, roleForTurn, mountedBookIds
+                    );
                 }
                 if (window.ChatContextPolicy &&
                     typeof window.ChatContextPolicy.buildWorldbookInjectionText === 'function') {
@@ -6339,7 +6369,30 @@
             } catch(e) { worldbookReadError = e; }
             if (worldbookReadError) {
                 console.error('[ChatPersonaSources] worldbook read/activation failed:', worldbookReadError);
-                if (typeof showToast === 'function') showToast('世界书读取失败，本轮已停止。请检查已挂载世界书');
+                // The user's bubble was already persisted before prompt construction.
+                // Reuse the existing failed-message/retry path; do not duplicate
+                // messages, and do not request the model with incomplete lore.
+                let wbFailureTarget = retryTarget;
+                if (!wbFailureTarget && !isRegen && !contextOnly && !silent) {
+                    for (let i = historyList.length - 1; i >= 0; i--) {
+                        const item = historyList[i];
+                        if (item && item.role === 'user' &&
+                            String(item.text || '') === String(text || '')) {
+                            wbFailureTarget = { mid: item.mid, time: item.time };
+                            break;
+                        }
+                    }
+                }
+                const wbMarked = !!(wbFailureTarget && _markUserSendFailed(
+                    historyList, wbFailureTarget.mid, wbFailureTarget.time, 'worldbook-read'
+                ));
+                if (wbMarked) {
+                    if (_vl) vlRefresh();
+                    else renderAllMessages();
+                }
+                if (typeof showToast === 'function') showToast(wbMarked
+                    ? '世界书读取失败，本轮未请求 AI。检查挂载后点击消息旁的感叹号重试'
+                    : '世界书读取失败，本轮未请求 AI。请检查挂载和本机存储');
                 return;
             }
             if (worldbookText.length > 32000) {
