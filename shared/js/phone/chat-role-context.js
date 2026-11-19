@@ -20,7 +20,7 @@
     // Do not infer "robot" identity from an unrelated hobby, job, or old AI message.
     var species = [origin.species, role.species, role.race, role.identityType]
       .map(function (value) { return String(value || ''); }).join(' ');
-    if (/仿生人|机器人|数字生命|人工智能|智能体|AI\s*(?:助手|系统|模型)|聊天机器人/i.test(species)) return true;
+    if (/仿生人|机器人|数字生命|数字居民|人工智能|智能体|AI\s*(?:助手|系统|模型)|聊天机器人/i.test(species)) return true;
     var persona = String(role.persona || role.prompt || '');
     return /(?:【(?:身份|物种|种族|角色类型)】|(?:身份|物种|种族|角色类型)\s*[:：])\s*[^\n]{0,35}(?:仿生人|机器人|数字生命|数字居民|人工智能|智能体|AI\s*助手)/i.test(persona);
   }
@@ -33,7 +33,10 @@
     var origin = role.encounterOrigin || {};
     var species = [origin.species, role.species, role.race, role.identityType]
       .map(function (value) { return String(value || ''); }).join(' ');
-    return /(?:精灵|妖怪|妖族|魔族|吸血鬼|人鱼|神族|神明|鬼魂|幽灵|外星|兽人|龙族|不死族)/.test(species);
+    var nonHuman = /(?:精灵|妖怪|妖族|魔族|吸血鬼|人鱼|神族|神明|鬼魂|幽灵|外星|兽人|龙族|不死族)/;
+    if (nonHuman.test(species)) return true;
+    var persona = String(role.persona || role.prompt || '');
+    return /(?:【(?:身份|物种|种族)】|(?:身份|物种|种族)\\s*[:：])\\s*[^\\n]{0,35}(?:精灵|妖族|魔族|吸血鬼|人鱼|神明|鬼魂|幽灵|外星人|兽人|龙族)/.test(persona);
   }
 
   // These specific first-person identity substitutions were missed by the
@@ -307,7 +310,7 @@
     if (!hasAuthoredNonHumanIdentity(role)) {
       lines.push('除非用户已保存的设定明确如此，不要凭空给角色新增“数字居民”“云端生命”“没有人类年龄概念”等身份。');
     }
-    return lines.join('\\n');
+    return lines.join('\n');
   }
 
   // Direct online replies need the same high-confidence role-identity barrier
