@@ -433,3 +433,12 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 主动联系、私聊和群聊的自动追问使用现有共享 Web Lock 内的 `ChatHistoryAtomic.appendIf`，在锁内重新核对最新对话锚点、启用开关和页面可见性。原始聊天主键不可读、缺少锁或账号 scope 未准备好时在发起计费请求前停止。禁止回退为整份旧历史覆盖。群内私密消息不参与自动追问上下文。
 - 增加 `tests/chat-history-atomic.test.mjs` 26 项回归并接入 `test:chat:contract`；更新 SW v256→v257 和已有通知器在 SW、聊天详情与导航内的静态引用，原账号 SW 安全策略未改。
 - 此记录写入时状态：**独立 staging 分支候选，原生 Node/Vite/Chromium/唯一 QA-only Cloudflare 发布 NOT VERIFIED**。下一步：回读源码、快进原 #299 QA、封闭完整验收，通过后只更新原 QA Worker，验证 `preview.mao520.com/qa-build-receipt.json`、Cloudflare 100% 版本和身份核心不变。正式版、main 和正式数据库不触碰。
+
+
+## 2026-11-19｜QA-001 / 群聊人物身份漂移：截图反馈修复候选
+
+- 用户真机测试群聊截屏：名为「洛景辞」的群成员面对「有没有人想玩游戏」自称人工智能，提供编号的文字游戏服务菜单、粗体 Markdown，违背角色扮演的自然聊天体验。截图仅作问题复现描述，不保存其真实对话内容至仓库。
+- 原 QA 来源：PR #299，起点 `e7ef707c6a82c22b9713992e50d3f7c2808a81f2`。旧代码已在人设、世界书、全局协议、群发言成员上做请求前校验，但生成后未核对是否回到通用聊天 AI 身份。不得把这判成角色数据未加载的既定事实。
+- 变更范围：`shared/js/phone/chat-role-context.js` 仅增纯策略 `validateGroupOnlineReply`，对普通人物明确自称聊天机器人/AI、未经要求的长篇编号服务菜单拒绝写入；明确数字生命保留原设定，允许正常讨论 AI 或应用户要求列清单；不删除旧消息或改写用户人设。现有群聊发送页的完整角色/协议/世界书请求链路保留，增加最后一层自然群聊提示，并在处理群功能标记与写入消息**之前**拦截违规回复。在线群聊暂不渲染未经验证的流式正文，仍有既有打字提示；不额外偷偷进行一次计费 API 重试。线下群聊、单聊、正式账号/数据库、旧消息格式不动。
+- `tests/group-persona-memory-audit.test.mjs` 新增 3 项回归；聊天页引用新策略版本，SW v257→v258 且新增静态缓存资源，账号登录页安全缓存逻辑保留。
+- 状态：本条为**待验收**修复。原生 Node、Vite、Chromium、唯一 QA-only 发布和 Android/iPhone 真机尚未在本条记录时确认。发布前必须按原 `docs/engineering/QA_TEST_RELEASE_RUNBOOK.md` 完整验证，成功后回查固定 SHA、100% Cloudflare 流量、身份核心连续性。
