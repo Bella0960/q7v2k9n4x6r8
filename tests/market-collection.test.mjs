@@ -50,7 +50,7 @@ test('new cache revision lists exact storefront resources and retains legacy the
   assert.ok(sw.includes('./theme-store/storefront.js?v=20261119isolated3'))
   assert.ok(page.includes('collection-store.js?v=20261112m3'));
   assert.ok(sw.includes('./theme-store/collection-store.js?v=20261112m3'));
- assert.ok(sw.includes("phone-app-pwa-v233"));
+ assert.ok(sw.includes("phone-app-pwa-v234"));
  for(const id of ['default','wechat','imessage','qq','silver-butterfly','atmosphere'])assert.ok(page.includes("id:'"+id+"'"));
 });
 test('outfit editing can narrow scope or explicitly recapture without duplicating or applying it',async()=>{
@@ -363,5 +363,26 @@ test('all shared chat surfaces preload the same scoped page bridge and SW has on
  assert.equal((sw.match(/shared\/js\/chat-page-theme\.js\?v=/g)||[]).length,1,'no stale duplicate bridge precache');
  assert.ok(sw.includes('./shared/js/'+pageTag));
  assert.ok(sw.includes('./shared/js/'+listTag));
- assert.ok(sw.includes("phone-app-pwa-v233"));
+ assert.ok(sw.includes("phone-app-pwa-v234"));
+});
+
+
+test('WeChat and Silver visual CSS are separate, and loaded in original cascade order',()=>{
+ const silver=readFileSync(new URL('../shared/css/silver-butterfly-theme.css',import.meta.url),'utf8');
+ const wechat=readFileSync(new URL('../shared/css/wechat-theme-base.css',import.meta.url),'utf8');
+ const sw=readFileSync(new URL('../sw.js',import.meta.url),'utf8');
+ assert.doesNotMatch(silver,/data-chat-theme-preset="wechat"/,'Silver Butterfly must not contain WeChat rules');
+ assert.match(wechat,/data-chat-theme-preset="wechat"/);
+ assert.doesNotMatch(wechat,/data-chat-theme-preset="silver-butterfly"/,'WeChat base must not own Silver rules');
+ for(const page of ['chat/chat/chat.html','chat/chat/chat-detail.html','chat/contacts/contacts.html','chat/moments/moments.html']){
+  const html=readFileSync(new URL('../'+page,import.meta.url),'utf8');
+  const silverIndex=html.indexOf('silver-butterfly-theme.css');
+  const wechatBaseIndex=html.indexOf('wechat-theme-base.css?v=20261119scope1');
+  const refinementsIndex=html.indexOf('wechat-theme-refinements.css');
+  assert.ok(silverIndex>=0&&wechatBaseIndex>silverIndex&&refinementsIndex>wechatBaseIndex,'style cascade preserved: '+page);
+ }
+ const profile=readFileSync(new URL('../profile/profile.html',import.meta.url),'utf8');
+ assert.ok(!profile.includes('wechat-theme-base.css'),'profile did not load the Silver sheet before split and must not gain extra base styles');
+ assert.ok(sw.includes('./shared/css/wechat-theme-base.css?v=20261119scope1'));
+ assert.ok(sw.includes("phone-app-pwa-v234"));
 });
