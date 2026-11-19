@@ -5800,7 +5800,9 @@
                 else renderAllMessages();
               }
               if (typeof showToast === 'function') {
-                showToast('世界书读取失败，本轮未请求 AI。消息已保留，请检查挂载后重试');
+                showToast(wbMarked
+                  ? '世界书读取失败，本轮未请求 AI。检查挂载后点击消息旁的感叹号重试'
+                  : '世界书读取失败，本轮未请求 AI。重试标记保存失败，请检查存储空间');
               }
               return;
             }
