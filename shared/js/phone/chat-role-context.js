@@ -288,8 +288,8 @@
     // for a list, options, instructions or recommendations remains permitted.
     var question = String(input.latestUserText || '');
     var asksForList = /(?:列(?:出|表|举)|清单|菜单|推荐(?:几|一些|几款|几种)|有哪些|有哪几|多少种|分[几0-9一二三四五六七八九十]?(?:步|点)|步骤|攻略|教程|选项|规则|玩法介绍)/.test(question);
-    var numbered = (reply.match(/(?:^|[\\n\\r]|\\s)\\d{1,2}[.、)]\\s*\\S/g) || []).length;
-    var heavyBold = (reply.match(/\\*\\*[^*\\n]{1,90}\\*\\*/g) || []).length;
+    var numbered = (reply.match(/(?:^|[\n\r]|\s)\d{1,2}[.、)]\s*\S/g) || []).length;
+    var heavyBold = (reply.match(/\*\*[^*\n]{1,90}\*\*/g) || []).length;
     if (!asksForList && reply.length >= 150 && numbered >= 3 && heavyBold >= 2) {
       return {ok:false,code:'unsolicited-menu'};
     }
