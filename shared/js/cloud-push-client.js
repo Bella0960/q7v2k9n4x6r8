@@ -77,6 +77,13 @@
       createdAt: Date.now()
     };
     writeDevice(device);
+    // A device credential that was not persisted cannot safely be regarded as connected.
+    // In particular, localStorage quota failures must not create a server-only device
+    // that the browser immediately forgets on its next navigation.
+    var saved = readDevice();
+    if (!saved || saved.deviceId !== device.deviceId || saved.secret !== device.secret) {
+      throw new Error('设备凭据未能保存到本机，已停止连接。请先备份本地数据并检查浏览器存储空间，勿清空聊天记录。');
+    }
     return device;
   }
 
@@ -195,6 +202,28 @@
     return payload.publicKey;
   }
 
+  var pushPrerequisitesPromise = null;
+  function preparePushPrerequisites() {
+    if (!isSupported()) return Promise.reject(new Error(pushSupportMessage()));
+    if (!pushPrerequisitesPromise) {
+      // Warm both dependencies when Settings opens. On browsers with short user
+      // activation windows, do not do account/device/network registration
+      // between the user's permission gesture and PushManager.subscribe().
+      pushPrerequisitesPromise = Promise.all([fetchPublicKey(), getRegistration()])
+        .then(function (values) {
+          if (!values[0] || !values[1] || !values[1].pushManager) {
+            throw new Error('推送服务尚未准备完成，请检查云端连接');
+          }
+          return { publicKey: values[0], registration: values[1] };
+        })
+        .catch(function (error) {
+          pushPrerequisitesPromise = null; // A transient outage is retryable.
+          throw error;
+        });
+    }
+    return pushPrerequisitesPromise;
+  }
+
   async function registerDevice(device, enrollmentToken) {
     var body = {
       deviceId: device.deviceId,
@@ -243,9 +272,8 @@
     if (permission !== 'granted') {
       throw new Error(notificationPermissionMessage(permission));
     }
-    var device = await registerDeviceForCurrentAccount(enrollmentToken);
-    var publicKey = await fetchPublicKey();
-    var registration = await getRegistration();
+    var prerequisites = await preparePushPrerequisites();
+    var registration = prerequisites.registration;
     if (!registration.pushManager || typeof registration.pushManager.subscribe !== 'function') {
       throw new Error(pushSupportMessage());
     }
@@ -255,7 +283,7 @@
       try {
         subscription = await registration.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: base64UrlToUint8Array(publicKey)
+          applicationServerKey: base64UrlToUint8Array(prerequisites.publicKey)
         });
       } catch (error) {
         if (/NotAllowedError|SecurityError/.test(String(error && error.name))) {
@@ -268,6 +296,10 @@
       }
     }
 
+    // Enroll only after obtaining a browser subscription; keep subscription
+    // and device API calls serialized so a failed account check never reports
+    // a successfully saved cloud subscription.
+    var device = await registerDeviceForCurrentAccount(enrollmentToken);
     await requestJson('/api/push/subscriptions', {
       method: 'POST',
       device: device,
@@ -2107,6 +2139,11 @@
     }
 
     var supported = isSupported();
+    if (supported) {
+      // Read-only public key/SW preparation: no notification prompt or device
+      // registration until the person explicitly turns on the push switch.
+      preparePushPrerequisites().catch(function () {});
+    }
     if (!supported) {
       setToggle(false);
       setStatusText(pushSupportMessage());
