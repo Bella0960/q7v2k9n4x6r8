@@ -453,3 +453,11 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 聊天页面提前加载 QA 已存在的 `chat-history-atomic.js?v=20261118v3`；新增 `tests/chat-primary-send-lock.test.mjs`（含并发 2000 条富消息、修改冲突、坏数据与锁缺失及源码入口覆盖）并接入 `test:chat:contract`；SW 版本仅增量 v258→v259，不动认证网络优先策略及任何账号/世界书/角色数据键。
 - **此记录时状态：仅 QA 派生工作分支，不代表完整验收或发布成功**。下一步原隔离执行器完整 Node/Vite/Chromium 验证并按既有 QA-only 发布手册核实源提交、Worker 流量、身份核心及 `preview.mao520.com` 同源回执。
 - 未迁移的 AI 最终回复、群互动、图片/转发/编辑/清空仍有独立保护范围，应逐项测试合入；本次不能宣称 #282 全部完成。
+
+
+### 2026-11-19｜P0 发送保护全量测试定位与修复（续）
+
+- 受限唯一 QA 验证 #44483703226 在原安全门禁第 17/19 项（完整 `node --test --test-concurrency=1`）未通过，前 16 项（专项/构建/Chromium）通过，不准直接发布。
+- 在私有隔离环境按保密策略只输出失败文件编号，诊断 #44486630038 确认 **7 条失败全部来自现有 `tests/forum-chat-blockers.test.mjs`**。该测试仍将真实 `sendMsg` 片段按同步 `saveMessages` 提取执行，新增受保护发送改为 `await appendChatSafely` 后导致七条旧夹具无法执行异步分支；不是七项独立用户数据损坏。
+- 定向维护该测试文件：真实 `sendMsg` 源片段仍逐项执行，六项缺 API 与一项被拉黑消息断言保留，夹具改成 async 并模拟按最新已落库快照追加，覆盖失败不清空输入、不显示未存错误、稳定 mid 不重复、无新消息不积累错误、引用保持。未修改原版正式功能，没有移除或跳过测试。
+- 此记录时新提交**尚未完成完整 Node/Vite/Chromium 重新验证**，因此不能称本次 QA 已发布。须经过原封闭完整验证成功后才能启用 QA-only 发布。
