@@ -219,6 +219,24 @@ test('Android-style delayed metadata restores previous song position after faile
   assert.equal(f.getState().id,'old');
 });
 
+test('explicitly removing a song releases both staged and confirmed Blob URLs',()=>{
+  const start=music.indexOf('  function revokeCurrentUrl() {');
+  const end=music.indexOf('  // ===== IndexedDB',start);
+  assert.ok(start>0&&end>start);
+  const code=music.slice(start,end);
+  const revoked=[];
+  const result=new Function('URL',
+    'let currentBlobUrl="blob:old",musicStagedBlobUrl="blob:pending";\n'+
+    'let musicConfirmedSource={src:"blob:old",trackId:"old"};\n'+
+    code+
+    '\nrevokeCurrentUrl();\nreturn {currentBlobUrl,musicStagedBlobUrl,musicConfirmedSource};'
+  )({revokeObjectURL(url){revoked.push(url);}});
+  assert.deepEqual(revoked,['blob:pending','blob:old']);
+  assert.equal(result.currentBlobUrl,null);
+  assert.equal(result.musicStagedBlobUrl,null);
+  assert.equal(result.musicConfirmedSource,null);
+});
+
 test('last confirmed source is kept until successful audio play returns',()=>{
   assert.match(playSource,/const oldBlobUrl = currentBlobUrl;/);
   assert.match(playSource,/await window\.audio\.play\(\);/);
