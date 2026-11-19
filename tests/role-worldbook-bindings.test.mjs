@@ -211,10 +211,16 @@ test('chat settings real event handlers: expand, mount, save, reopen, unmount', 
   }
   const document = { getElementById: (id) => elements.get(id) };
   const notifications = [];
+  const storageListeners = {};
+  const viewWindow = {
+    RoleWorldbookBindings: binding,
+    addEventListener: (type, handler) => { storageListeners[type] = handler; }
+  };
   vm.runInNewContext(
     'var RoleWorldbookBindings = window.RoleWorldbookBindings;\n' + source.slice(start, end),
-    { window: { RoleWorldbookBindings: binding }, localStorage: storage, document,
-      roleId: 'role_a', showToast: (value) => notifications.push(value) }
+    { window: viewWindow, localStorage: storage, document,
+      ROLE_STORAGE_KEY: 'ai_custom_characters', roleId: 'role_a',
+      showToast: (value) => notifications.push(value) }
   );
   const el = (id) => elements.get(id);
   const row = (id) => {
@@ -242,6 +248,20 @@ test('chat settings real event handlers: expand, mount, save, reopen, unmount', 
   el('wbSaveBtn').listeners.click();
   assert.deepEqual([...binding.read('role_a').ids], []);
   assert.equal(notifications.at(-1), '挂载设置已保存');
+
+  // Another browser tab changes the same role while this settings page stays open.
+  assert.equal(binding.save('role_a', ['local']).ok, true);
+  storageListeners.storage({ key: 'chat_worldbooks_role_a' });
+  assert.equal(el('mountSub').textContent, '已挂载 1 本世界书');
+  el('actionMount').listeners.click();
+  assert.match(el('wbMountList').innerHTML, /data-wb-id="local"/);
+  // The user begins a draft, then another tab overwrites the server-side mount.
+  el('wbMountList').listeners.click({ target: row('global') });
+  assert.equal(binding.save('role_a', ['global']).ok, true);
+  storageListeners.storage({ key: 'chat_worldbooks_role_a' });
+  el('wbSaveBtn').listeners.click();
+  assert.deepEqual([...binding.read('role_a').ids], ['global']);
+  assert.match(notifications.at(-1), /重新展开确认/);
 });
 
 
@@ -358,4 +378,52 @@ test('chat AI context validation marks saved user bubble retryable without makin
   assert.equal(result.rendered, true);
   assert.match(result.notifications[0], /本轮未请求 AI/);
   assert.match(detail, /msg\.sendFailedReason === 'worldbook-read'/);
+});
+
+
+test('open character editor follows remote mount changes without losing local draft', () => {
+  const manager = read('worldbook/characters/js/characters-manager.js');
+  const start = manager.indexOf('// Keep an already open character editor in sync');
+  const end = manager.indexOf('function getRandomColor()', start);
+  assert.ok(start >= 0 && end > start, 'must execute actual storage-event handler');
+  const listenerCode = manager.slice(start, end);
+  const { binding, storage } = harness({
+    ai_custom_characters: json([{ id: 'role_a', worldBookIds: ['a'] }]),
+    phone_worldbooks: json([{ id: 'a', scope: 'local' }, { id: 'b', scope: 'local' },
+      { id: 'c', scope: 'local' }]),
+    chat_worldbooks_role_a: json(['a'])
+  });
+  const callbacks = {};
+  const window = {
+    RoleWorldbookBindings: binding,
+    addEventListener: (kind, callback) => { callbacks[kind] = callback; }
+  };
+  const current = { value: 'role_a' };
+  const editorView = { classList: { contains: () => false } };
+  const document = { getElementById: id => id === 'editRoleId' ? current : editorView };
+  const state = new Function('window', 'document', `
+    const RoleWorldbookBindings = window.RoleWorldbookBindings;
+    let selectedWorldBookIds = ['a'];
+    let editorOriginalState = { roleId: 'role_a', worldBookIds: ['a'] };
+    let message = '';
+    const renderWorldBookBinder = ids => { selectedWorldBookIds = ids.slice(); };
+    const setSaveStatus = text => { message = text; };
+    ${listenerCode}
+    return {
+      ids: () => selectedWorldBookIds.slice(),
+      change: ids => { selectedWorldBookIds = ids.slice(); },
+      original: () => editorOriginalState.worldBookIds.slice(),
+      notice: () => message
+    };
+  `)(window, document);
+  assert.equal(binding.save('role_a', ['b']).ok, true);
+  callbacks.storage({ key: 'chat_worldbooks_role_a' });
+  assert.deepEqual(state.ids(), ['b']);
+  assert.deepEqual(state.original(), ['b']);
+  state.change(['c']);
+  assert.equal(binding.save('role_a', ['a']).ok, true);
+  callbacks.storage({ key: 'chat_worldbooks_role_a' });
+  assert.deepEqual(state.ids(), ['c']);
+  assert.deepEqual(state.original(), ['b']);
+  assert.match(state.notice(), /其他页面修改/);
 });
