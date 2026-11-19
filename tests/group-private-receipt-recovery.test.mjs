@@ -147,8 +147,8 @@ test('recovery wiring only runs in existing group page and never reads private t
   assert.ok(sw.includes(asset));
   assert.match(detail,/privateGroupReceiptV1: true/);
   assert.match(detail,/GroupPrivateReceiptRecovery\.reconcile/);
-  assert.match(detail,/readGroupHistory: function \(\) \{ return _readBackHistory\(\); \}/);
-  assert.match(detail,/saveGroupHistory: function \(messages\) \{ return saveMessages\(messages\); \}/);
+  assert.match(detail,/readGroupHistory: function \(\) \{[\s\S]*?var versioned = loadMessages\(\);[\s\S]*?return versioned;/);
+  assert.match(detail,/saveGroupHistory: function \(messages\) \{[\s\S]*?return saveMessages\(_inheritChatBaseline\(messages, receiptOriginalGroupHistory\)\);/);
   for(const [index,script] of [...detail.matchAll(/<script(?:\s+[^>]*)?>([\s\S]*?)<\/script>/gi)].entries())
     assert.doesNotThrow(()=>new vm.Script(script[1],{filename:'chat-detail:inline'+index}));
 });
