@@ -1270,6 +1270,13 @@
   let musicConfirmedSource = null;
   let musicStagedBlobUrl = null;
   function revokeCurrentUrl() {
+    // Explicitly leaving/removing a song cancels speculative loads too.
+    // Otherwise a rapid hide while a new audio.play() is pending can leak a
+    // temporary Blob URL even though no track was committed.
+    if (musicStagedBlobUrl && musicStagedBlobUrl !== currentBlobUrl) {
+      try { URL.revokeObjectURL(musicStagedBlobUrl); } catch (e) {}
+    }
+    musicStagedBlobUrl = null;
     if (currentBlobUrl) {
       try { URL.revokeObjectURL(currentBlobUrl); } catch (e) {}
       currentBlobUrl = null;
