@@ -123,6 +123,8 @@ test('existing group guard stays independent, all offline modes keep their own f
   assert.match(detail, /if \(!isGroupChat && presenceMode === 'online' && String\(fullText \|\| ''\)\.trim\(\)\)/);
   assert.match(detail, /chat-role-context\.js\?v=20261119identity2/);
   assert.match(sw, /chat-role-context\.js\?v=20261119identity2/);
-  assert.match(sw, /phone-app-pwa-v262/);
+  const swVersion = Number(sw.match(/phone-app-pwa-v(\\d+)/)?.[1] || 0);
+  assert.ok(swVersion >= 262, 'identity guard must retain the protected v262+ cache baseline');
+  assert.match(sw, /chat-role-context\\.js\\?v=20261119offlinebinding1/);
   assert.match(detail, /buildIdentityAnswerGuidance\(roleForTurn\)/);
 });
