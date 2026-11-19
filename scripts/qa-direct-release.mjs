@@ -324,7 +324,7 @@ async function qaHttpSmoke(coreInitialized) {
   const loginHtml = await loginResponse.text();
   assert.ok(/<form\b[^>]*\bid=["']loginForm["']/i.test(loginHtml),
     'The existing QA login form is missing from the served HTML');
-  assert.ok(loginHtml.includes('/account/account.js?v=20261116-qa1'),
+  assert.ok(loginHtml.includes('/account/account.js?v=20261119reconnect1'),
     'QA login HTML is still referencing cached older JavaScript');
   // Vite may fingerprint or merge stylesheets. Verify what the login HTML
   // actually loads rather than requiring the pre-build CSS href to survive.
