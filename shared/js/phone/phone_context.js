@@ -235,6 +235,42 @@
         // 2. 世界书：只带入此刻相关的生活细节，不把整本设定反复塞给模型
         try {
             var wbs = Storage.getWorldbooks();
+            var selection = global.RoleWorldbookBindings &&
+                global.RoleWorldbookBindings.filterBooks(contactId, wbs, role);
+            // PhoneContext may also be used by non-chat pages that have not loaded
+            // the optional bridge; in that case use the role's explicit ID list.
+            if (selection) {
+                wbs = selection.ok ? selection.books : [];
+            } else {
+                var boundIds = Array.isArray(role.worldBookIds) ? role.worldBookIds.map(String) : [];
+                // Older PhoneContext callers do not necessarily load the shared bridge.
+                // Preserve chat-settings-only legacy bindings in those callers too.
+                try {
+                    var legacyRaw = localStorage.getItem('chat_worldbooks_' + contactId);
+                    if (legacyRaw == null) {
+                        // Preserve globally scoped lore for old characters until
+                        // they explicitly save their own mount selection.
+                        boundIds = boundIds.concat((Array.isArray(wbs) ? wbs : [])
+                            .filter(function (book) {
+                                return book && book.enabled !== false && book.scope !== 'local';
+                            }).map(function (book) { return String(book.id); }));
+                    }
+                    if (legacyRaw != null) {
+                        var legacy = JSON.parse(legacyRaw);
+                        var legacyIds = Array.isArray(legacy) ? legacy :
+                            (legacy && Array.isArray(legacy.worldbookIds) ?
+                                (legacy.enabled === false ? [] : legacy.worldbookIds) : null);
+                        if (!legacyIds) throw new Error('Corrupt legacy worldbook binding');
+                        boundIds = (legacy && legacy.enabled === false) || legacyIds.length === 0 ? [] :
+                            boundIds.concat(legacyIds.map(String));
+                    }
+                } catch (legacyError) {
+                    boundIds = []; // Never inject unrelated lore on a damaged binding.
+                }
+                wbs = (Array.isArray(wbs) ? wbs : []).filter(function (book) {
+                    return book && boundIds.indexOf(String(book.id)) !== -1;
+                });
+            }
             var recentForWorldbook = Storage.getChatHistory(contactId) || [];
             var wbText = NS.buildWorldbookInjectionText(wbs, {
                 recentMessages: recentForWorldbook.slice(-8),
