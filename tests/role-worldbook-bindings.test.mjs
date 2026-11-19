@@ -321,7 +321,7 @@ test('character save preserves newer worldbook mounts from another open page', (
   unchanged.editor.save();
   assert.equal(unchanged.getRole().persona, 'updated persona');
   assert.deepEqual(unchanged.getRole().worldBookIds, ['b']);
-  assert.deepEqual(unchanged.editor.ids(), ['b']);
+  assert.deepEqual(Array.from(unchanged.editor.ids()), ['b']);
 
   const conflict = makeEditor(['c']);
   assert.equal(conflict.binding.save('role_a', ['b']).ok, true);
@@ -421,13 +421,13 @@ test('open character editor follows remote mount changes without losing local dr
   `)(window, document);
   assert.equal(binding.save('role_a', ['b']).ok, true);
   callbacks.storage({ key: 'chat_worldbooks_role_a' });
-  assert.deepEqual(state.ids(), ['b']);
-  assert.deepEqual(state.original(), ['b']);
+  assert.deepEqual(Array.from(state.ids()), ['b']);
+  assert.deepEqual(Array.from(state.original()), ['b']);
   state.change(['c']);
   assert.equal(binding.save('role_a', ['a']).ok, true);
   callbacks.storage({ key: 'chat_worldbooks_role_a' });
-  assert.deepEqual(state.ids(), ['c']);
-  assert.deepEqual(state.original(), ['b']);
+  assert.deepEqual(Array.from(state.ids()), ['c']);
+  assert.deepEqual(Array.from(state.original()), ['b']);
   assert.match(state.notice(), /其他页面修改/);
 });
 
