@@ -9673,6 +9673,7 @@
             var composerSubmit = document.getElementById('groupComposerSubmit');
             var composerMode = '';
             var composerTargetMid = '';
+            var composerOpenedFromPlus = false;
             if (!isGroupChat) {
                 if (pollAction) pollAction.style.display = 'none';
                 if (chainAction) chainAction.style.display = 'none';
@@ -9689,17 +9690,23 @@
                 var overlay = document.querySelector('.plus-panel-overlay');
                 if (overlay) overlay.classList.remove('active');
             }
-            function closeComposer() {
+            function closeComposer(showSavedResult) {
                 if (!composerOverlay) return;
                 var wasOpen = composerOverlay.classList.contains('active');
+                var fromPlus = composerOpenedFromPlus;
                 composerOverlay.classList.remove('active');
                 composerOverlay.setAttribute('aria-hidden', 'true');
                 composerMode = '';
                 composerTargetMid = '';
-                // Explicit close consumes only this form's history entry.
-                // A hardware Back popstate is already at the preceding entry.
+                composerOpenedFromPlus = false;
                 if (wasOpen && window.ChatBackLayers && window.ChatBackLayers.isTop('group-composer')) {
-                    window.history.back();
+                    // Cancel/Back exposes the previous plus layer. A successful
+                    // save returns to the conversation so the new card is visible.
+                    if (showSavedResult === true && fromPlus && typeof window.history.go === 'function') {
+                        window.history.go(-2);
+                    } else {
+                        window.history.back();
+                    }
                 }
             }
             function maybeStartGroupActivity() {
@@ -9752,6 +9759,7 @@
                 }
                 if (!composerOverlay.classList.contains('active') &&
                     window.ChatBackLayers && typeof window.ChatBackLayers.push === 'function') {
+                    composerOpenedFromPlus = window.ChatBackLayers.isTop('plus');
                     window.ChatBackLayers.push('group-composer');
                 }
                 composerOverlay.classList.add('active');
@@ -9801,7 +9809,7 @@
                         showToast('群投票没有保存成功，请检查本地存储空间');
                         return;
                     }
-                    closeComposer();
+                    closeComposer(true);
                     renderAllMessages();
                     showToast('群投票已发起');
                     maybeStartGroupActivity();
@@ -9819,7 +9827,7 @@
                         showToast('群接龙没有保存成功，请检查本地存储空间');
                         return;
                     }
-                    closeComposer();
+                    closeComposer(true);
                     renderAllMessages();
                     showToast('群接龙已发起');
                     maybeStartGroupActivity();
@@ -9839,7 +9847,7 @@
                         showToast('接龙内容没有保存成功，请检查本地存储空间');
                         return;
                     }
-                    closeComposer();
+                    closeComposer(true);
                     renderAllMessages();
                     showToast('已加入接龙');
                 }
