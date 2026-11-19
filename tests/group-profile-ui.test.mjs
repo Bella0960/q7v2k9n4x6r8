@@ -147,6 +147,47 @@ test('imported group data is escaped without changing stored role names or IDs',
   } finally {await ctx.close();}
 });
 
+test('member removal requires confirmation and leaves other group data untouched', async () => {
+  const ctx=await browser.newContext({viewport:{width:390,height:844}});
+  const page=await ctx.newPage();
+  try {
+    const original=group('g1','夜航');
+    original.members[0].nickname='已保存的专属称呼';
+    original.members[0].title='管理中';
+    await setup(page,{phone_groups:[original],ai_custom_characters:[person('c1','晨'),person('c2','月')]});
+    await page.goto(origin+'/chat/chat/chat-settings.html?roleId=g1');
+    await page.locator('#gpProfileSettings > summary').click();
+    await page.locator('#actionGroupManage').click();
+    page.once('dialog', async dialog => {assert.match(dialog.message(),/晨/);await dialog.dismiss();});
+    await page.locator('.gp-member-row[data-mid="c1"] .gp-member-remove').click();
+    assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('phone_groups'))[0]),original,
+      'cancel must preserve the original member profile and role list');
+    page.once('dialog', async dialog => {assert.match(dialog.message(),/晨/);await dialog.accept();});
+    await page.locator('.gp-member-row[data-mid="c1"] .gp-member-remove').click();
+    const saved=await page.evaluate(() => JSON.parse(localStorage.getItem('phone_groups'))[0]);
+    assert.deepEqual(saved.members.map(m=>m.id),['c2']);
+    assert.equal(saved.name,'夜航');
+    assert.equal(await page.locator('#gpCoverCount').innerText(),'1 位成员');
+  } finally {await ctx.close();}
+});
+
+test('oversized group avatar fails before decoding and does not overwrite saved group', async () => {
+  const ctx=await browser.newContext({viewport:{width:390,height:844}});
+  const page=await ctx.newPage();
+  try {
+    const original=group('g1','夜航');
+    await setup(page,{phone_groups:[original]});
+    await page.goto(origin+'/chat/chat/chat-settings.html?roleId=g1');
+    await page.locator('#gpProfileSettings > summary').click();
+    await page.locator('#actionGroupInfo').click();
+    await page.locator('#gpAvatarInput').setInputFiles({
+      name:'too-large.png',mimeType:'image/png',buffer:Buffer.alloc(10*1024*1024+1)
+    });
+    assert.match(await page.locator('#csToast').innerText(),/10MB/);
+    assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('phone_groups'))[0]),original);
+  } finally {await ctx.close();}
+});
+
 test('broken member portraits and group avatar display names rather than broken-image icons', async () => {
   const ctx=await browser.newContext({viewport:{width:390,height:844}});
   const page=await ctx.newPage();
