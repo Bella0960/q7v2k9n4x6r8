@@ -293,7 +293,18 @@
       if(list.indexOf(active)<0)list.push(active);
       return list;
     }
-    function setOwned(list){return writeJSON(OWN_KEY,list);}
+    function setOwned(list){
+      // Never overwrite a malformed pre-existing collection. The old read path
+      // may display a safe fallback, but a write must preserve recoverable bytes.
+      if(!Array.isArray(list))return false;
+      try{
+        var existing=localStorage.getItem(OWN_KEY);
+        if(existing!==null&&!Array.isArray(JSON.parse(existing)))return false;
+        var encoded=JSON.stringify(list);
+        localStorage.setItem(OWN_KEY,encoded);
+        return localStorage.getItem(OWN_KEY)===encoded;
+      }catch(error){return false;}
+    }
     function getChatListTheme(){try{return localStorage.getItem(CHAT_LIST_THEME_KEY)==='editorial'?'editorial':'';}catch(e){return '';}}
     function readVisualPresets(){
       var list=readJSON(VISUAL_KEY,[]),deleted=readJSON(DELETED_KEY,[]);
