@@ -246,3 +246,28 @@ test('modal focus survives theme apply and favorite re-render without trapping t
   assert.equal(shell.inert,false);
   assert.ok(renderCount>=2);
 });
+
+
+test('legacy owned-theme corruption is not replaced and silent storage failure is rejected',()=>{
+  const page=readFileSync(new URL('../theme-store/theme-store.html',import.meta.url),'utf8');
+  const a=page.indexOf('    function setOwned(list){'),b=page.indexOf('    function getChatListTheme(){',a);
+  assert.ok(a>=0&&b>a,'source owned setter');
+  const source=page.slice(a,b);
+  let raw='{broken',writes=0;
+  const storage={
+    getItem(){return raw;},
+    setItem(key,value){writes++;raw=value;}
+  };
+  const apply=vm.runInNewContext(source+'setOwned',{localStorage:storage,OWN_KEY:'maomao_theme_store_owned_v1'});
+  assert.equal(apply(['default','wechat']),false);
+  assert.equal(raw,'{broken');
+  assert.equal(writes,0);
+  raw='["default"]';
+  assert.equal(apply(['default','wechat']),true);
+  assert.equal(raw,'["default","wechat"]');
+  const silent=vm.runInNewContext(source+'setOwned',{
+    localStorage:{getItem(){return '[]';},setItem(){}},
+    OWN_KEY:'maomao_theme_store_owned_v1'
+  });
+  assert.equal(silent(['qq']),false,'no-op browser storage must not report success');
+});
