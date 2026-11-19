@@ -121,7 +121,8 @@ test('existing group guard stays independent, all offline modes keep their own f
   assert.match(detail, /qualityPolicy\.validateGroupOnlineReply\(/);
   assert.match(detail, /if \(!isGroupChat && presenceMode === 'online'/);
   assert.match(detail, /if \(!isGroupChat && presenceMode === 'online' && String\(fullText \|\| ''\)\.trim\(\)\)/);
-  assert.match(detail, /chat-role-context\.js\?v=20261119directreply1/);
-  assert.match(sw, /chat-role-context\.js\?v=20261119directreply1/);
-  assert.match(sw, /phone-app-pwa-v261/);
+  assert.match(detail, /chat-role-context\.js\?v=20261119identity2/);
+  assert.match(sw, /chat-role-context\.js\?v=20261119identity2/);
+  assert.match(sw, /phone-app-pwa-v262/);
+  assert.match(detail, /buildIdentityAnswerGuidance\(roleForTurn\)/);
 });
