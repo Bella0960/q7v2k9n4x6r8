@@ -243,6 +243,21 @@
                 wbs = selection.ok ? selection.books : [];
             } else {
                 var boundIds = Array.isArray(role.worldBookIds) ? role.worldBookIds.map(String) : [];
+                // Older PhoneContext callers do not necessarily load the shared bridge.
+                // Preserve chat-settings-only legacy bindings in those callers too.
+                try {
+                    var legacyRaw = localStorage.getItem('chat_worldbooks_' + contactId);
+                    if (legacyRaw != null) {
+                        var legacy = JSON.parse(legacyRaw);
+                        var legacyIds = Array.isArray(legacy) ? legacy :
+                            (legacy && Array.isArray(legacy.worldbookIds) ?
+                                (legacy.enabled === false ? [] : legacy.worldbookIds) : null);
+                        if (!legacyIds) throw new Error('Corrupt legacy worldbook binding');
+                        boundIds = boundIds.concat(legacyIds.map(String));
+                    }
+                } catch (legacyError) {
+                    boundIds = []; // Never inject unrelated lore on a damaged binding.
+                }
                 wbs = (Array.isArray(wbs) ? wbs : []).filter(function (book) {
                     return book && boundIds.indexOf(String(book.id)) !== -1;
                 });
