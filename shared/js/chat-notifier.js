@@ -437,6 +437,65 @@
         return proactiveDependenciesPromise;
     }
 
+
+    // Lazy load the same canonical persona/protocol/worldbook reader as online
+    // and offline chat. If any source fails, scheduled messages fail closed.
+    var scheduledSourcesPromise = null;
+    function ensureScheduledSources() {
+        if (global.ChatScheduledRoleContext && typeof global.ChatScheduledRoleContext.build === 'function')
+            return Promise.resolve(true);
+        if (scheduledSourcesPromise) return scheduledSourcesPromise;
+        var required = [
+            ['shared/js/phone/rp-default-protocol.js?v=20261118v1', function () { return !!global.MAOMAO_RP_DEFAULT_PROTOCOL; }],
+            ['shared/js/phone/chat-context-policy.js?v=20261118historybudget1', function () { return !!global.ChatContextPolicy && typeof global.ChatContextPolicy.buildWorldbookInjectionText === 'function'; }],
+            ['shared/js/phone/role-worldbook-bindings.js?v=20261119-qa1', function () { return !!global.RoleWorldbookBindings && typeof global.RoleWorldbookBindings.filterBooks === 'function'; }],
+            ['shared/js/phone/chat-role-context.js?v=20261119source3', function () { return !!global.MAOMAOChatRoleContext && typeof global.MAOMAOChatRoleContext.buildSavedSourceEnvelope === 'function'; }],
+            ['shared/js/phone/chat-scheduled-role-context.js?v=20261119scheduled1', function () { return !!global.ChatScheduledRoleContext && typeof global.ChatScheduledRoleContext.build === 'function'; }]
+        ];
+        scheduledSourcesPromise = required.reduce(function (promise, step) {
+            return promise.then(function (ok) {
+                return ok ? loadProactiveScript(proactiveAsset(step[0]), step[1]) : false;
+            });
+        }, Promise.resolve(true)).then(function (ok) {
+            if (!ok) scheduledSourcesPromise = null;
+            return ok;
+        }).catch(function () {
+            scheduledSourcesPromise = null;
+            return false;
+        });
+        return scheduledSourcesPromise;
+    }
+
+    function buildScheduledSource(roleId, conversation, history, contextText, isGroup) {
+        var characters = readCharacters();
+        var role = characters.find(function (item) { return item && String(item.id) === String(roleId); });
+        if (!role || !global.ChatScheduledRoleContext) return { ok: false, code: 'missing-role' };
+        var profile = safeJsonParse(safeGet('myProfile')) || {};
+        var roleMemories = [];
+        try {
+            if (global.PhoneStorage && typeof global.PhoneStorage.getMemories === 'function')
+                roleMemories = global.PhoneStorage.getMemories(String(roleId)) || [];
+        } catch (_) { return {ok:false,code:'memory-read'}; }
+        if (!Array.isArray(roleMemories)) return {ok:false,code:'memory-invalid'};
+        return global.ChatScheduledRoleContext.build({
+            role: role, storage: localStorage, history: history,
+            currentText: contextText, userName: String(profile.nickname || ''),
+            memories: roleMemories,
+            groupId: isGroup ? String(conversation.id) : '',
+            groupMembers: isGroup ? conversation.members : undefined,
+            roleLoader: isGroup ? function (id) {
+                return characters.find(function (item) { return item && String(item.id) === String(id); }) || null;
+            } : undefined
+        });
+    }
+
+    function scheduledReplyMatchesIdentity(role, text, isGroup, latestUserText) {
+        var policy = global.MAOMAOChatRoleContext;
+        var method = isGroup ? 'validateGroupOnlineReply' : 'validateDirectOnlineReply';
+        return !!(policy && typeof policy[method] === 'function' &&
+            policy[method]({role:role,text:text,latestUserText:latestUserText}).ok === true);
+    }
+
     function ensureFollowUpDependencies() {
         return ensureProactiveDependencies().then(function (ok) {
             if (!ok) return false;
@@ -573,7 +632,7 @@
             now - globalAttemptAt < PROACTIVE_GLOBAL_COOLDOWN_MS) return;
 
         var ready = await ensureProactiveDependencies();
-        if (!ready || !global.ChatPresencePolicy ||
+        if (!ready || !(await ensureScheduledSources()) || !global.ChatPresencePolicy ||
             typeof global.ChatPresencePolicy.evaluateProactiveContact !== 'function' ||
             typeof global.ChatPresencePolicy.buildProactiveContactPrompt !== 'function' ||
             !global.PhoneAPI || typeof global.PhoneAPI.completeJSON !== 'function') return;
@@ -608,13 +667,18 @@
                 String(currentTime.getHours()).padStart(2, '0') + ':' +
                 String(currentTime.getMinutes()).padStart(2, '0');
 
-            var system = global.ChatPresencePolicy.buildProactiveContactPrompt(
-                candidate.contact,
-                candidate.history,
-                { localTime: localTime, voiceProfile: voiceProfile }
+            var scheduled = buildScheduledSource(
+                candidate.contact.id, candidate.contact, candidate.history,
+                candidate.latest.text, false
             );
+            if (!scheduled.ok) return;
+            var system = scheduled.system + '\n\n' +
+                global.ChatPresencePolicy.buildProactiveContactPrompt(
+                    scheduled.role, scheduled.history,
+                    { localTime: localTime, voiceProfile: voiceProfile }
+                );
             var messages = [{ role: 'system', content: system }];
-            messages.push.apply(messages, historyForProactivePrompt(candidate.history));
+            messages.push.apply(messages, historyForProactivePrompt(scheduled.history));
             messages.push({
                 role: 'user',
                 content: '请判断现在是否真的有值得主动分享的一件事。若没有，请明确返回 send=false。只按系统要求输出 JSON。'
@@ -628,7 +692,8 @@
             if (!result || result.ok !== true || !result.data || result.data.send !== true) return;
 
             var content = cleanProactiveMessage(result.data.text);
-            if (!content || safeGet('chat_proactive_contact_' + candidate.contact.id) !== 'true') return;
+            if (!content || !scheduledReplyMatchesIdentity(scheduled.role, content, false, candidate.latest.text) ||
+                safeGet('chat_proactive_contact_' + candidate.contact.id) !== 'true') return;
             if (document.visibilityState === 'hidden') return;
 
             // 只在同一会话独占锁内复核历史锚点与开关，绝不覆盖其他标签页刚写入的消息。
@@ -865,12 +930,18 @@
             saveFollowUpState(scope, contact.id, noKeyState);
             return;
         }
-        var prompt = global.ChatFollowUpPolicy.buildPrompt({
-            name: role.name,
-            persona: role.persona,
+        var latestText = candidate.lastUser && String(candidate.lastUser.text || candidate.lastUser.content || '') || '';
+        var scheduled = buildScheduledSource(
+            role.id, scope === 'group' ? contact.group : contact, candidate.history,
+            latestText, scope === 'group'
+        );
+        if (!scheduled.ok) return;
+        var prompt = scheduled.system + '\n\n' + global.ChatFollowUpPolicy.buildPrompt({
+            name: scheduled.role.name,
+            persona: scheduled.source.persona,
             relationship: role.relationship,
             round: candidate.round,
-            context: followUpHistoryContext(candidate.history, scope === 'group')
+            context: followUpHistoryContext(scheduled.history, scope === 'group')
         });
         var messages = [{ role: 'system', content: prompt }];
         messages.push({
@@ -895,7 +966,8 @@
             return;
         }
         var content = String(result.data.text || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-        if (content.length < 2 || Array.from(content).length > 20 || /\[[^\]]{1,100}\]/.test(content) || /https?:\/\//i.test(content)) {
+        if (content.length < 2 || Array.from(content).length > 20 || /\[[^\]]{1,100}\]/.test(content) || /https?:\/\//i.test(content) ||
+            !scheduledReplyMatchesIdentity(scheduled.role, content, scope === 'group', latestText)) {
             var invalidState = readFollowUpState(scope, contact.id);
             invalidState.dueAt = 0;
             saveFollowUpState(scope, contact.id, invalidState);
@@ -966,7 +1038,7 @@
         var enabled = followUpContactList();
         if (!enabled.length) return;
         var ready = await ensureFollowUpDependencies();
-        if (!ready || !global.ChatFollowUpPolicy || !global.PhoneAPI ||
+        if (!ready || !(await ensureScheduledSources()) || !global.ChatFollowUpPolicy || !global.PhoneAPI ||
             typeof global.PhoneAPI.completeJSON !== 'function') return;
         if (document.visibilityState === 'hidden') return;
         var candidates = [];
