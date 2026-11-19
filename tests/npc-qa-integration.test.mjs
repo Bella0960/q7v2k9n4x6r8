@@ -10,6 +10,7 @@ const nav = read('shared/js/nav.js');
 const worker = read('worker.js');
 const scope = read('shared/js/mao-account-scope.js');
 const sw = read('sw.js');
+const api = read('shared/js/phone/phone_api.js');
 
 test('NPC request entry uses existing Contacts layout and routes to original page', () => {
   assert.match(contacts, /id="goManageRole"/);
@@ -45,4 +46,14 @@ test('PWA includes NPC assets and preserves secured account navigation', () => {
   assert.match(sw, /shared\/js\/phone\/npc-social\.js\?v=20261108i/);
   assert.match(sw, /accountPath/);
   assert.match(sw, /no-store/);
+});
+
+
+test('QA PhoneAPI truthfully advertises abort support required by NPC discovery', () => {
+  assert.match(api, /NS\.supportsAbortSignal = true/);
+  assert.match(api, /var externalSignal = opts && opts\.signal/);
+  assert.match(api, /externalSignal\.addEventListener\('abort', onCallerAbort/);
+  assert.match(api, /NS\.completeJSON = function \(opts\)/);
+  assert.match(api, /return NS\.complete\(opts\)/);
+  assert.match(npc, /supportsAbortSignal === true/);
 });
