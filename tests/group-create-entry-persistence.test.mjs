@@ -448,3 +448,14 @@ test('群设置返回本群，普通私聊仍保留原生历史返回', () => {
   });
   assert.equal(privateChat.wentBack,1);
 });
+
+
+test('群接龙和投票保存成功后直接回到聊天内容，取消操作仍逐层返回', () => {
+  assert.match(detail, /var composerOpenedFromPlus = false/);
+  assert.match(detail, /showSavedResult === true && fromPlus && typeof window\.history\.go === 'function'/);
+  assert.match(detail, /window\.history\.go\(-2\)/);
+  assert.match(detail, /window\.history\.back\(\)/);
+  for (const result of ['群投票已发起', '群接龙已发起', '已加入接龙']) {
+    assert.match(detail, new RegExp('closeComposer\\(true\\);[\\s\\S]{0,140}showToast\\(\\x27' + result + '\\x27\\)'));
+  }
+});
