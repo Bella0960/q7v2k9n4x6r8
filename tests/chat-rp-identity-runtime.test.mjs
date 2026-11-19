@@ -30,7 +30,7 @@ test('单聊旧协议迁移只读取当前角色，不拿别的角色协议覆�
   const end = detail.indexOf('            // 设置页展示的默认协议', start);
   assert.ok(start >= 0 && end > start, '应取到真实聊天协议兼容逻辑');
   const run = new Function('localStorage', 'aliasRoleId', 'currentCharacter', 'roleId',
-    detail.slice(start, end) + '\nreturn rpProtocol;');
+    'const currentRoleId = roleId;\n' + detail.slice(start, end) + '\nreturn rpProtocol;');
   function storage(values) {
     const data = new Map(Object.entries(values));
     return {
