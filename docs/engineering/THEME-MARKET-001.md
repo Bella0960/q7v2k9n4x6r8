@@ -137,3 +137,12 @@ User acceptance criteria clarified: **MAOMAO theme-store is an expansion of the 
 - Node 新增源级弹窗焦点链与损坏收录记录回归，**本轮尚未执行 node --test**。不得把 V8 的受控事件模拟冒充成真实 Chromium/Android/iOS 验收。
 
 **发布/集成门禁保持不变**：PR #275 Draft，仍未写入冻结 #299 或生产。此分支的 SW v231 属于旧基线、不可直接替换当前安全 QA SW。只有从原 PR 挑选主题商城的 HTML/CSS/JS 与相关测试增量加入最新集成基线后，在能执行 npm run build、Node、真实 Chromium 的环境里完成 375/390/430 验收，并检查账号与 SW 安全行为，才可更新唯一测试地址 preview.mao520.com。
+
+
+### 2026-11-19 第三项：去除无效卡片生成（移动端主题页轻量化）
+
+本轮进一步发现商城为了从原始主题页提取留白 Messages 列表主题单卡，原 adapter 的 listCard() 会生成整个 renderThemes()（六个旧主题 + 额外推荐和其 HTML），插入离屏容器再查询一张卡的 outerHTML。现抽出单一 renderChatListCard()，真实“留白 Messages”应用/恢复逻辑、原卡片 DOM class 和旧 renderThemes() 回退继续复用同一函数，商城主题页直接取得单张卡 HTML，不再无谓构造六款隐藏主题。
+
+V8 运行新函数验证：未收录按钮“免费获取并应用”；已启用按钮“恢复默认”；两种状态都只生成一个 product-card。追加 Node 回归源码，未取得 Node CLI 执行回执。HTML 模板改动后本功能分支 PWA shell 更新至 v232 并同步缓存相关回归；此旧分支 SW 不允许直接替代最新账号安全基线。
+
+最终再次从 GitHub 读取当前分支文件做源级检查：六套原主题 ID 保留、页面及商城脚本/内联脚本/SW/两份回归文件 V8 语法解析成功、CSS 结构平衡、HTML 与 SW 主题 JS/CSS 资源版本一致。**没有真实 Chromium、手机/PWA、npm build 验收，不宣称 QA 已更新。**
