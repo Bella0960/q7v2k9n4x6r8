@@ -91,9 +91,15 @@ function simulateCreate(scenario, doubleTap = false) {
   const helpers = new Function(chat.slice(helpersStart, helpersEnd) +
     '\nreturn { escapeHtml, safeImgSrc };')();
   const browser = { location: { href: '' } };
+  if (scenario === 'navigation-blocked') {
+    Object.defineProperty(browser.location, 'href', {
+      get() { return ''; },
+      set() { throw new Error('navigation rejected'); }
+    });
+  }
   new Function('document', 'localStorage', 'setTimeout', 'renderChatList', 'showToast',
     'escapeHtml', 'safeImgSrc', 'window', creationScript)(
-    fakeDocument, storage, () => 0, () => { renderCount++; }, text => notices.push(text),
+    fakeDocument, storage, () => 0, () => { if (scenario === 'render-error') throw new Error('bad legacy list'); renderCount++; }, text => notices.push(text),
     helpers.escapeHtml, helpers.safeImgSrc, browser
   );
   elements.silverGroupEntryBtn.fire();
@@ -112,7 +118,7 @@ test('模拟用户点击主题入口，选角色后真正创建群', () => {
   assert.equal(result.saved.length, 1);
   assert.equal(result.saved[0].name, '周末聊天群');
   assert.equal(result.saved[0].members[0].id, 'r_one');
-  assert.equal(result.renderCount, 1);
+  assert.equal(result.renderCount, 0);
   assert.equal(result.visible, false);
   assert.equal(result.href, 'chat-detail.html?v=20261028modes1&id=' + result.saved[0].id);
 });
@@ -141,7 +147,7 @@ test('导入角色含引号、HTML 或非法头像 URL 不应破坏成员选择�
   assert.match(result.memberMarkup, /data-id="r_&quot;unsafe"/);
   assert.match(result.memberMarkup, /甲&quot;&gt;&lt;img/);
   assert.doesNotMatch(result.memberMarkup, /src="javascript:/);
-  assert.equal(result.renderCount, 1);
+  assert.equal(result.renderCount, 0);
 });
 
 test('群名缺失时显示清楚的错误，而不是点击无响应', () => {
@@ -174,4 +180,20 @@ test('群名为空时实际点击也明确提示且不会写群记录', () => {
   assert.equal(result.visible, true);
   assert.equal(result.href, '');
   assert.match(result.notices.join(' '), /请输入群聊名称/);
+});
+
+test('旧聊天列表渲染异常不影响创建完成后的直接进入', () => {
+  const result = simulateCreate('render-error');
+  assert.equal(result.saved.length, 1);
+  assert.equal(result.renderCount, 0);
+  assert.match(result.href, /chat-detail\.html\?v=20261028modes1&id=g\d+$/);
+});
+
+test('导航被浏览器拦截时已保存群仍在，显示可理解的回退提示', () => {
+  const result = simulateCreate('navigation-blocked');
+  assert.equal(result.saved.length, 1);
+  assert.equal(result.renderCount, 1);
+  assert.equal(result.visible, false);
+  assert.equal(result.href, '');
+  assert.match(result.notices.join(' '), /群聊已创建，请点击群聊进入/);
 });
