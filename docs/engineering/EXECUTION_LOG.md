@@ -485,3 +485,13 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 从 #299 当前基线 `7060d2bd32e346513518c0e8ef9398afe817b6d9` 局部修改 `shared/js/phone/chat-role-context.js` 和 `chat/chat/chat-detail.html`：新增纯函数 `validateDirectOnlineReply`，只拒绝普通角色明显冒认 AI/模型/客服身份；真实数字生命或自定义机器人角色保留本人设定。单聊流式实时显示与最终落库前均执行角色审核，失败清理临时消息并提示手动重试；不额外收费重试，不回写、删除或纠正任何已存历史。
 - 仅调整 SW 缓存号 v260→v261 与 `chat-role-context` 资源查询版本；保留群聊守卫、世界书/全局协议请求校验、线下剧情、账号安全及图片/转账/记忆后置副作用。新增 `tests/chat-direct-online-identity-guard.test.mjs` 6 项并接入原 `test:chat:contract`，同步修正群聊历史资源版本断言。
 - **当前仅为待验证候选：未完成完整 Node/Vite/Chromium，也未部署。** 必须按原 `docs/engineering/QA_TEST_RELEASE_RUNBOOK.md` 验证并 QA-only 发布，独立复核同源 sourceCommit 与身份核心不变。正式版、main、正式数据库、管理员 001 均不涉及。
+
+
+## 2026-11-19｜CHAT-WORLDBOOK-001｜线下两种聊天模式和线上世界书绑定统一（待 QA 门禁）
+
+- 唯一 QA #299 基线：`82befda4afb717c29914f8f487ea4b4678c246cf`。当时另一条 `CHAT-RP-001` 私聊人设纠偏 QA-only 验证/发布正在运行，故先在独立任务分支小步修复，暂不抢写 #299 或触碰 Cloudflare。
+- **定位的具体数据入口不一致**：线上聊天经 `RoleWorldbookBindings.filterBooks` 按用户明确选中/取消、旧格式和禁用状态读取；但 `MAOMAOChatRoleContext.buildSavedSourceEnvelope`（用于 `chat/date/date.html` 与 `chat/date/journey.html`）仍直接拼旧角色 `worldBookIds` 与 `chat_worldbooks_<id>`，会把显式取消或 `enabled:false` 的旧局部书重新注入线下 AI，造成页面间对同一绑定的不同理解。
+- 改为在线下角色上下文里调用**同一个共享绑定桥**读取允许的书，再按原来的触发词/概率/禁用语义构建内容；读取失败/模块缺失时在模型请求前拒绝，不以空白通用 AI 回复冒充设定已加载。线上、角色编辑器、群聊现有路径完全不改；所有角色、世界书、协议及聊天历史原始数据不改写。
+- 两个原线下 HTML 在原共享角色上下文前按顺序加载已有桥，更新角色脚本版本；SW 仅递增原 shell v262→v263 并增加已有模块的新离线缓存 URL，保留登录/身份核心安全策略。
+- 新增 `tests/offline-worldbook-binding-parity.test.mjs` 8 组真实模块 Node VM 行为与页面接线断言，纳入现有 `test:chat:contract`；覆盖明确解绑、禁用对象、旧全局默认、跨角色隔离、触发词、损坏数据拒发、缺桥拒发与两个线下页的脚本引用。
+- 当前状态：**独立 QA 派生 staging 分支，尚未运行原生 Node/Vite/Chromium 全套门禁，尚未合入唯一 QA，未发布**。必须等待并行发布结束、比对当时最新 #299 HEAD 后再做安全快进；随后完整测试并 QA-only 发布且核对同源回执与账号身份核心不变。**不要虚报用户现有手机链接已经包含这次补丁。**
