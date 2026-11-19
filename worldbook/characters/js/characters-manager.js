@@ -92,15 +92,15 @@ function renderWorldBookBinder(selectedIds) {
     const wanted = Array.isArray(selectedIds) ? selectedIds.map(String) : [];
 
     const books = loadWorldBooks();
+    // Preserve missing IDs: a temporarily unavailable/imported book must not be
+    // silently unmounted just because the user edits a name or avatar.
+    selectedWorldBookIds = [...new Set(wanted)];
     if (!books.length) {
-        selectedWorldBookIds = [];
-        container.innerHTML = '<div class="wb-bind-empty">暂无世界书，请先在世界书页面创建</div>';
+        container.innerHTML = '<div class="wb-bind-empty">暂无可用世界书。原有挂载仍保留，重新导入后可恢复。</div>';
         return;
     }
-
-    // 仅保留「仍存在的世界书」ID，自动剔除已被删除的失效绑定
     const existingIds = books.map(b => String(b.id));
-    selectedWorldBookIds = wanted.filter(id => existingIds.indexOf(id) !== -1);
+    const missingCount = selectedWorldBookIds.filter(id => !existingIds.includes(id)).length;
 
     container.innerHTML = books.map(book => {
         const id = String(book.id);
@@ -112,7 +112,8 @@ function renderWorldBookBinder(selectedIds) {
                 <span class="wb-bind-circle" aria-hidden="true"></span>
             </div>
         `;
-    }).join('');
+    }).join('') + (missingCount ?
+        '<div class="wb-bind-empty">另有 ' + missingCount + ' 本暂不可用的绑定，已保留。</div>' : '');
 }
 
 // 面板级事件委托：点击行切换勾选（容器在脚本执行时已存在，直接绑定一次）
@@ -1360,7 +1361,12 @@ function openAddRole() {
     selectedColor = getRandomColor();
     avatarDataUrl = '';
     updateAvatarPreview();
-    renderWorldBookBinder([]);   // 新角色默认不绑定任何世界书
+    // Legacy global lore was always available in single chat. Make it visible
+    // as preselected defaults for newly created characters, while allowing
+    // people to uncheck and explicitly save an empty selection.
+    renderWorldBookBinder(loadWorldBooks().filter(function (book) {
+        return book.scope !== 'local' && book.enabled !== false;
+    }).map(function (book) { return String(book.id); }));
     currentDraftKey = getDraftKey('');
     editorOriginalState = captureEditorState();
     showView('editor');
