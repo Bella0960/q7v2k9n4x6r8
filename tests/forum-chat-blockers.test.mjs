@@ -278,7 +278,9 @@ test('saveMessages read-back verification also covers the localStorage fallback 
   assert.equal(loadSaveMessages(staleSandbox)(target), false);
 });
 
-function runMissingApiKeyBranch(options) {
+async function runMissingApiKeyBranch(options) {
+  // Model a guarded atomic append: each attempt sees the latest persisted snapshot.
+  let persisted = clone(options.history || [{ role: 'assistant', text: '旧消息' }]);
   const saves = [];
   const renders = [];
   let quoteClears = 0;
@@ -300,10 +302,13 @@ function runMissingApiKeyBranch(options) {
     ensureMid: loadEnsureMid(),
     _isRepeatedSystemError: loadSystemErrorDedupe(),
     input,
-    loadMessages: () => clone(options.history || [{ role: 'assistant', text: '旧消息' }]),
-    saveMessages: (list) => {
-      saves.push(clone(list));
-      return options.saveResults[Math.min(saves.length - 1, options.saveResults.length - 1)];
+    loadMessages: () => clone(persisted),
+    appendChatSafely: async (batch) => {
+      const next = persisted.concat(clone(batch));
+      saves.push(clone(next));
+      const ok = !!options.saveResults[Math.min(saves.length - 1, options.saveResults.length - 1)];
+      if (ok) persisted = next;
+      return ok;
     },
     acceptGroupUserMessage: () => true,
     appendMessageToDOM: (msg) => renders.push(msg),
@@ -316,12 +321,12 @@ function runMissingApiKeyBranch(options) {
   };
   const sendStart = chatDetail.indexOf('async function sendMsg(opts)');
   const branch = extractBlock(chatDetail, 'if (!apiKey)', '\n            baseUrl = baseUrl.replace', sendStart);
-  new Function('context', 'with (context) { ' + branch + ' }')(context);
-  return { saves, renders, input, quoteClears, context };
+  await new Function('context', 'with (context) { return (async function () { ' + branch + ' }).call(context); }')(context);
+  return { saves, renders, input, quoteClears, context, persisted };
 }
 
-test('missing API key: a failed user-message save stops the send and writes no error record', () => {
-  const result = runMissingApiKeyBranch({ saveResults: [false] });
+test('missing API key: a failed user-message save stops the send and writes no error record', async () => {
+  const result = await runMissingApiKeyBranch({ saveResults: [false] });
   assert.equal(result.saves.length, 1, '只有用户消息的一次写入尝试');
   assert.equal(result.saves[0].length, 2);
   assert.equal(result.saves[0][1].role, 'user');
@@ -333,8 +338,8 @@ test('missing API key: a failed user-message save stops the send and writes no e
   assert.equal(result.context.groupAutoFollowupToken, 5, '群聊防重复占位必须回滚');
 });
 
-test('missing API key: a failed second save never leaves an error bubble that storage does not contain', () => {
-  const result = runMissingApiKeyBranch({ saveResults: [true, false] });
+test('missing API key: a failed second save never leaves an error bubble that storage does not contain', async () => {
+  const result = await runMissingApiKeyBranch({ saveResults: [true, false] });
   assert.equal(result.saves.length, 2);
   assert.equal(result.renders.length, 1);
   assert.equal(result.renders[0].role, 'user');
@@ -342,8 +347,8 @@ test('missing API key: a failed second save never leaves an error bubble that st
   assert.equal(result.input.value, '');
 });
 
-test('missing API key: successful saves keep the existing user-then-error behavior', () => {
-  const result = runMissingApiKeyBranch({ saveResults: [true, true] });
+test('missing API key: successful saves keep the existing user-then-error behavior', async () => {
+  const result = await runMissingApiKeyBranch({ saveResults: [true, true] });
   assert.equal(result.saves.length, 2);
   assert.equal(result.renders.length, 2);
   assert.equal(result.renders[0].role, 'user');
@@ -354,14 +359,14 @@ test('missing API key: successful saves keep the existing user-then-error behavi
   assert.equal(result.quoteClears, 1);
 });
 
-test('missing API key without a new user message never renders an unsaved error record', () => {
-  const result = runMissingApiKeyBranch({ isRegen: true, saveResults: [false] });
+test('missing API key without a new user message never renders an unsaved error record', async () => {
+  const result = await runMissingApiKeyBranch({ isRegen: true, saveResults: [false] });
   assert.equal(result.saves.length, 1);
   assert.equal(result.renders.length, 0);
 });
 
-test('new failed user messages persist a stable mid without duplicating the record on the second save', () => {
-  const result = runMissingApiKeyBranch({ saveResults: [true, true] });
+test('new failed user messages persist a stable mid without duplicating the record on the second save', async () => {
+  const result = await runMissingApiKeyBranch({ saveResults: [true, true] });
   const user = result.saves[0][1];
   assert.equal(user.role, 'user');
   assert.ok(typeof user.mid === 'string' && user.mid.length > 0, '用户消息必须带稳定 mid');
@@ -370,21 +375,21 @@ test('new failed user messages persist a stable mid without duplicating the reco
   assert.equal(result.saves[0].filter((m) => m.role === 'user').length, 1);
 });
 
-test('missing API key: repeated regen/contextOnly triggers do not accumulate the same system_error', () => {
-  const first = runMissingApiKeyBranch({ isRegen: true, saveResults: [true] });
+test('missing API key: repeated regen/contextOnly triggers do not accumulate the same system_error', async () => {
+  const first = await runMissingApiKeyBranch({ isRegen: true, saveResults: [true] });
   assert.equal(first.saves.length, 1);
   assert.equal(first.saves[0].filter((m) => m.role === 'system_error').length, 1);
 
   const stored = clone(first.saves[first.saves.length - 1]);
-  const second = runMissingApiKeyBranch({ isRegen: true, history: stored, saveResults: [true] });
+  const second = await runMissingApiKeyBranch({ isRegen: true, history: stored, saveResults: [true] });
   assert.equal(second.saves.length, 0, '相同错误已在历史尾部时不再重复写入');
   assert.equal(second.renders.length, 0, '不得重复渲染相同错误提示');
   assert.equal(stored.filter((m) => m.role === 'system_error').length, 1);
 
-  const contextFirst = runMissingApiKeyBranch({ contextOnly: true, saveResults: [true] });
+  const contextFirst = await runMissingApiKeyBranch({ contextOnly: true, saveResults: [true] });
   assert.equal(contextFirst.saves.length, 1);
   const contextStored = clone(contextFirst.saves[contextFirst.saves.length - 1]);
-  const contextSecond = runMissingApiKeyBranch({ contextOnly: true, history: contextStored, saveResults: [true] });
+  const contextSecond = await runMissingApiKeyBranch({ contextOnly: true, history: contextStored, saveResults: [true] });
   assert.equal(contextSecond.saves.length, 0, 'contextOnly 重复触发同样不得累积');
   assert.equal(contextStored.filter((m) => m.role === 'system_error').length, 1);
 });
@@ -560,7 +565,7 @@ test('retry uses a temporary model copy for legacy messages without migrating th
   assert.deepEqual(h.messages,h.original);
 });
 
-test('blocked send also stops when the user message cannot be persisted', () => {
+test('blocked send also stops when the user message cannot be persisted', async () => {
   const saves = [];
   const renders = [];
   let quoteClears = 0;
@@ -581,7 +586,10 @@ test('blocked send also stops when the user message cannot be persisted', () => 
     input,
     acceptGroupUserMessage: () => true,
     loadMessages: () => clone([{ role: 'assistant', text: '旧消息' }]),
-    saveMessages: (list) => { saves.push(clone(list)); return false; },
+    appendChatSafely: async (batch) => {
+      saves.push(clone([{ role: 'assistant', text: '旧消息' }, ...batch]));
+      return false;
+    },
     appendMessageToDOM: (msg) => renders.push(msg),
     vlRefresh: () => {},
     updateSendBtnState: () => {},
@@ -595,7 +603,7 @@ test('blocked send also stops when the user message cannot be persisted', () => 
     'if (isBlocked(aliasRoleId) && !isRegen && !contextOnly) {',
     '\n            const config = getAiConfig();'
   );
-  new Function('context', 'with (context) { ' + branch + ' }')(context);
+  await new Function('context', 'with (context) { return (async function () { ' + branch + ' }).call(context); }')(context);
   assert.equal(saves.length, 1);
   assert.equal(renders.length, 0);
   assert.equal(input.value, '未发送原文');
