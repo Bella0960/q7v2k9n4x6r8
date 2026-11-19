@@ -25,18 +25,31 @@ const loreSource = extract('            // 世界书：', '            // 协议
 const protocolRead = new Function('localStorage', 'window', 'aliasRoleId', 'currentCharacter', 'roleId', 'showToast',
   protocolSource + '\nreturn rpProtocol;');
 const loreRead = new Function('localStorage', 'window', 'aliasRoleId', 'roleForTurn', 'isGroupChat',
-  'historyList', 'roleModelHistory', 'text', 'showToast', loreSource + '\nreturn worldbookText;');
+  'historyList', 'roleModelHistory', 'text', 'showToast',
+  "const groupReplyPick = isGroupChat ? { id: roleForTurn.id } : null;" +
+  "const getRoleById = id => String(id) === String(roleForTurn.id) ? roleForTurn : null;" +
+  "const retryTarget=null,isRegen=false,contextOnly=false,silent=false,_vl=null;" +
+  "const renderAllMessages=()=>{}, vlRefresh=()=>{}, _markUserSendFailed=()=>false;" +
+  loreSource + '\nreturn worldbookText;');
 
 function storage(values) {
   const map = new Map(Object.entries(values || {}));
   return { getItem: key => map.get(key) ?? null, setItem: (key, val) => map.set(key, val),
     snapshot: () => JSON.stringify([...map.entries()]) };
 }
-function getLore({ books, mount = [], speaker = { id: 'a', worldBookIds: ['local_a'] },
+function getLore({ books, mount, speaker = { id: 'a', worldBookIds: ['local_a'] },
                    group = false, text = '深圳的地铁', faults = {}, alerts = [] } = {}) {
   const raw = faults.raw ?? JSON.stringify(books || []);
-  const db = storage({ phone_worldbooks: raw, ['chat_worldbooks_' + (group ? 'group' : 'a')]: JSON.stringify(mount) });
-  const policyWindow = faults.moduleMissing ? { MAOMAOChatRoleContext: sandbox.window.MAOMAOChatRoleContext } : sandbox.window;
+  const initial = { phone_worldbooks: raw };
+  if (mount !== undefined) initial['chat_worldbooks_' + (group ? 'group' : 'a')] = JSON.stringify(mount);
+  const db = storage(initial);
+  const policyWindow = faults.moduleMissing
+    ? { MAOMAOChatRoleContext: sandbox.window.MAOMAOChatRoleContext }
+    : { ...sandbox.window };
+  if (!faults.moduleMissing) {
+    vm.runInNewContext(read('shared/js/phone/role-worldbook-bindings.js'),
+      { window: policyWindow, localStorage: db });
+  }
   const result = loreRead(db, policyWindow, group ? 'group' : 'a', speaker, group,
     [], [], text, msg => alerts.push(msg));
   return { result, alerts, before: db.snapshot(), after: db.snapshot() };
@@ -99,10 +112,10 @@ test('every eligible global and attached local worldbook entry reaches the same 
   assert.match(a.result, /A经营花店/);
   assert.doesNotMatch(a.result, /B住在山上|隐藏剧情/);
   const b = getLore({ books, speaker: { id: 'b', worldBookIds: [] },
-    text: '今天好热', mount: [] });
+    text: '今天好热' });
   assert.match(b.result, /深圳在广东省/);
   assert.doesNotMatch(b.result, /A经营花店|B住在山上|地铁正在运营/);
-  const group = getLore({ books, group: true, mount: ['local_b'] });
+  const group = getLore({ books, group: true, speaker: { id: 'b', worldBookIds: [] }, mount: ['local_b'] });
   assert.match(group.result, /深圳在广东省|地铁正在运营/);
   assert.match(group.result, /B住在山上/);
   assert.doesNotMatch(group.result, /A经营花店/);
