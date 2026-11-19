@@ -5760,7 +5760,13 @@
                   }).join('\n\n');
                 }
               }
-            } catch(e) { worldbookText = ''; }
+            } catch(e) {
+              // Do not bill an AI request with missing or cross-role lore.
+              if (typeof showToast === 'function') {
+                showToast('世界书读取失败，本轮未请求 AI。请检查挂载设置后重试');
+              }
+              return;
+            }
             worldbookText = capText(worldbookText, CTX_CAP.worldbook);
 
             // 协议变量替换：{{char}} {{user}} {{persona}} {{memory}} {{worldbook}}
