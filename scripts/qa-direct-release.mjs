@@ -291,7 +291,7 @@ async function qaHttpSmoke(coreInitialized) {
   const paths = [
     '/api/admin/bootstrap/status',
     '/account/index.html',
-    '/account/account.js?v=20261116-qa1',
+    '/account/account.js?v=20261119reconnect1',
     '/account/ivory-entry.css?v=20261116-qa1',
     '/account/bootstrap.html',
     '/account/bootstrap.js?v=20261116-qa1'
