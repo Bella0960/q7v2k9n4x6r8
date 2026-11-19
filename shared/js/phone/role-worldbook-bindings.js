@@ -53,7 +53,11 @@
       }
       // An explicitly disabled legacy object is a user opt-out, not a stale list.
       var suspended = legacy && !Array.isArray(legacy) && legacy.enabled === false;
-      var ids = suspended ? [] : idsOf(primary.concat(legacyIds, defaults));
+      // An explicitly saved empty chat mount must win over a stale role field.
+      // Otherwise unchecking the last book in chat settings could silently
+      // resurrect that same book from old character data.
+      var explicitClear = legacyRaw != null && legacyIds.length === 0;
+      var ids = suspended || explicitClear ? [] : idsOf(primary.concat(legacyIds, defaults));
       return {
         ok: true, ids: ids,
         hasBinding: !!(role && Array.isArray(role.worldBookIds)) || legacyRaw != null,
