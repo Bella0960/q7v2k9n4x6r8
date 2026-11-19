@@ -291,6 +291,31 @@ test('group-play back chain returns settings -> current chat, never loops', asyn
   } finally {await ctx.close();}
 });
 
+test('deleted group shows an unavailable state and returns to chat list, not a dead chat', async () => {
+  const ctx=await browser.newContext({viewport:{width:390,height:844}});
+  const page=await ctx.newPage();
+  try {
+    await setup(page,{phone_groups:[group('g1','即将删除的群'),group('g2','其他群')]});
+    await page.goto(origin+'/chat/chat/chat-settings.html?roleId=g1');
+    assert.equal(await page.locator('#gpCoverName').innerText(),'即将删除的群');
+    await page.evaluate(() => {
+      const list=JSON.parse(localStorage.getItem('phone_groups'));
+      localStorage.setItem('phone_groups',JSON.stringify(list.filter(g=>g.id!=='g1')));
+      // Simulate the storage notification another browser tab would send.
+      window.dispatchEvent(new StorageEvent('storage',{key:'phone_groups'}));
+    });
+    assert.equal(await page.locator('#gpCoverName').innerText(),'群聊已不存在');
+    assert.equal(await page.locator('.gp-profile-folds').isVisible(),false);
+    assert.equal(await page.locator('.gp-quick').isVisible(),false);
+    assert.equal(await page.locator('.gp-preview-head').isVisible(),false);
+    assert.equal(await page.locator('#gpCoverChoose').isDisabled(),true);
+    await page.locator('#btnBack').click();
+    await page.waitForURL('**/chat/chat/chat.html');
+    const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('phone_groups')));
+    assert.deepEqual(saved.map(g=>g.id),['g2']);
+  } finally {await ctx.close();}
+});
+
 test('group deleted elsewhere cannot be recreated by the still-open settings page', async () => {
   const ctx=await browser.newContext({viewport:{width:390,height:844}});
   const page=await ctx.newPage();
