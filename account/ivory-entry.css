@@ -1,5 +1,5 @@
 /* MAO 象牙花笺 / approved visual language; assets self-hosted */
-:root{--paper:#f9f6f3;--paper-light:#fdfbf9;--ink:#504944;--text:#68615c;--muted:#968c85;--delicate:#b1a59b;--stroke:#e4dcd6;--bloom:#d8b6b9;--serif:Georgia,'Songti SC','STSong','Noto Serif CJK SC','Source Han Serif SC','SimSun',serif;--sans:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft Yahei',sans-serif;--hero:url('../assets/ivory-mao/hero.webp');--frame:url('../assets/ivory-mao/ornament.webp');--foliage:url('../assets/ivory-mao/leafshadow.webp')}
+:root{--paper:#f9f6f3;--paper-light:#fdfbf9;--ink:#504944;--text:#68615c;--muted:#968c85;--delicate:#b1a59b;--stroke:#e4dcd6;--bloom:#d8b6b9;--serif:Georgia,'Songti SC','STSong','Noto Serif CJK SC','Source Han Serif SC','SimSun',serif;--sans:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft Yahei',sans-serif;--hero:url('../assets/ivory-mao/hero.webp?v=8a2b38cd');--frame:url('../assets/ivory-mao/ornament.webp?v=56f3b700');--foliage:url('../assets/ivory-mao/leafshadow.webp?v=8b966580')}
 
 *{box-sizing:border-box}
 html{min-width:300px;min-height:100%;background:#eeebe8}
