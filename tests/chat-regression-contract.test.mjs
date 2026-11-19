@@ -985,11 +985,11 @@ test('shared policy is loaded by both relevant pages and precached for PWA', () 
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
-  assert.match(detail, /chat-context-policy\.js\?v=20261115gameprivacy1/);
+  assert.match(detail, /chat-context-policy\.js\?v=20261118historybudget1/);
   assert.match(detail, /function buildCharacterSocialPrompt\(role\)/);
   assert.match(detail, /role\.npcCharacters/);
   assert.match(detail, /relationshipRole/);
-  assert.match(serviceWorker, /chat-context-policy\.js\?v=20261115gameprivacy1/);
+  assert.match(serviceWorker, /chat-context-policy\.js\?v=20261118historybudget1/);
   assert.match(serviceWorker, /group-chat-policy\.js\?v=20261118groupvoice1/);
   assert.match(serviceWorker, /phone_context\.js\?v=20261102npc1/);
   const contractFiles = packageJson.scripts['test:chat:contract'].split(/\s+/);
@@ -1004,7 +1004,7 @@ test('chat detail retains the legacy load/save entry points and role-scoped stor
   assert.match(detail, /_storage\.getChatHistory\(currentCharacter\.id\)/);
   assert.match(detail, /_storage\.saveChatHistory\(currentCharacter\.id, list\)/);
   assert.match(detail, /localStorage\.getItem\(storageKey\)/);
-  assert.match(detail, /localStorage\.setItem\(storageKey, JSON\.stringify\(list\)\)/);
+  assert.match(detail, /localStorage\.setItem\(storageKey, expectedSerialized\)/);
 });
 
 test('online rendering and search preserve date/silent filtering and error exclusion', () => {
@@ -1300,10 +1300,10 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 });
 
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
-  assert.match(detail, /chat-presence-policy\.js\?v=20261118groupvoice1/);
+  assert.match(detail, /chat-presence-policy\.js\?v=20261118voicepurity1/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
   assert.ok(pwaCacheVersion >= 204, 'PWA cache must not regress below v204');
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261118groupvoice1/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261118voicepurity1/);
 });
 
 
@@ -1425,7 +1425,7 @@ test('chat detail persists voice habits per character and per group session with
   assert.match(detail, /buildEmotionContinuityPrompt/);
   assert.match(detail, /maxScan: 24/);
   assert.ok(pwaCacheVersion >= 204, 'PWA cache must not regress below v204');
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261118groupvoice1/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261118voicepurity1/);
 });
 
 
@@ -1610,9 +1610,9 @@ test('chat detail injects the role autonomy prompt and precaches the updated pol
   assert.ok(detail.includes('ChatPresencePolicy.buildAutonomyPrompt'));
   assert.ok(detail.includes('maxNotes: 3'));
   assert.ok(detail.includes('maxTurns: 4'));
-  assert.ok(detail.includes('chat-presence-policy.js?v=20261118groupvoice1'));
+  assert.ok(detail.includes('chat-presence-policy.js?v=20261118voicepurity1'));
   assert.ok(pwaCacheVersion >= 204, 'PWA cache must not regress below v204');
-  assert.ok(serviceWorker.includes('chat-presence-policy.js?v=20261118groupvoice1'));
+  assert.ok(serviceWorker.includes('chat-presence-policy.js?v=20261118voicepurity1'));
 });
 
 
@@ -1817,10 +1817,10 @@ test('proactive contact notifier is loaded on home and navigation pages and prec
   assert.match(homePage, /chat-notifier\.js\?v=20261102v3/);
   assert.match(navPage, /chat-notifier\.js\?v=20261102v3/);
   assert.match(detail, /chat-notifier\.js\?v=20261102v3/);
-  assert.match(detail, /chat-presence-policy\.js\?v=20261118groupvoice1/);
+  assert.match(detail, /chat-presence-policy\.js\?v=20261118voicepurity1/);
   assert.ok(pwaCacheVersion >= 204, 'PWA cache must not regress below v204');
   assert.match(serviceWorker, /chat-notifier\.js\?v=20261102v3/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261118groupvoice1/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261118voicepurity1/);
   assert.match(serviceWorker, /chat-followup-policy/);
 });
 
@@ -2450,7 +2450,7 @@ test('chat detail: group interaction state and private-message entry require ver
   assert.match(detail, /turnEffects\.registerUndo\(function \(\) \{/);
   assert.match(detail, /groupHistoryRollback\.length-1/);
   assert.match(detail, /var replySaved = saveMessages\(historyList\)/);
-  assert.match(detail, /groupTurnEffects\.finalize\(replySaved\)/);
+  assert.match(detail, /groupTurnEffects\.finalize\(replySaved && streamResult\.ok\)/);
   assert.match(detail, /privateSaved = privateSaved && Array\.isArray\(verifiedPrivate\)/);
   assert.match(detail, /if \(!privateSaved\)[\s\S]*?未显示已发送状态/);
 });
