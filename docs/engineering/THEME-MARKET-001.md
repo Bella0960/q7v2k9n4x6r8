@@ -146,3 +146,26 @@ User acceptance criteria clarified: **MAOMAO theme-store is an expansion of the 
 V8 运行新函数验证：未收录按钮“免费获取并应用”；已启用按钮“恢复默认”；两种状态都只生成一个 product-card。追加 Node 回归源码，未取得 Node CLI 执行回执。HTML 模板改动后本功能分支 PWA shell 更新至 v232 并同步缓存相关回归；此旧分支 SW 不允许直接替代最新账号安全基线。
 
 最终再次从 GitHub 读取当前分支文件做源级检查：六套原主题 ID 保留、页面及商城脚本/内联脚本/SW/两份回归文件 V8 语法解析成功、CSS 结构平衡、HTML 与 SW 主题 JS/CSS 资源版本一致。**没有真实 Chromium、手机/PWA、npm build 验收，不宣称 QA 已更新。**
+
+
+## 2026-11-19｜整套主题的跨页面独占显示与代码隔离（新增交付）
+
+用户要求“切换主题后返回聊天，各页是一整套；不能把微信/QQ/留白混在一起”。本轮从实际代码查到两个跨主题显示入口和一个文件归属混杂问题：
+
+1. 旧 chat-list-theme.js 仅排除薄影，用户保存了「留白 Messages」时，微信、QQ、银蝶也会同时被列表独立样式覆盖。现仅允许默认主题与「仅详情」iMessage 在用户已选留白 Messages 时展示此列表；微信、QQ、银蝶、薄影始终使用各自完整列表。不会删除留白 Messages 的已保存偏好，切回适用主题可恢复。
+2. 旧 chat-page-theme.js 将 iMessage 全局主题标识带入联系人、动态及个人页，与主题商城的“仅聊天详情”文案冲突。现在非 chat-detail.html 页面显示默认主题属性，详情仍是 iMessage，原始主题选择仍保留。其它完整主题不被此条件影响。
+3. 原 silver-butterfly-theme.css 从后半段开始混入了完整 WeChat CSS，虽大部分已通过 data-chat-theme-preset 属性限定，仍违反独立维护的边界。现移动到新 shared/css/wechat-theme-base.css；银蝶 CSS 只剩银蝶规则和其默认可见性守卫；微信原始整段 17,993 字符/130 处微信选择器与迁移前历史提交对比一致。四个真实页面 chat.html、chat-detail.html、contacts.html、moments.html 按原层叠顺序加载 银蝶 → 微信基础 → 微信细化；profile.html 原先不加载银蝶基础，此次也不额外加载新微信基础。三个历史全局隐藏守卫改成明确在非微信主题生效的 :where(:not([data-chat-theme-preset="wechat"]))，银蝶默认隐藏也限制为非银蝶主题；不变更实际显隐意图。
+4. 同步六个真实页面的桥接脚本引用、聊天首页独立列表脚本引用、四个页面的 CSS 引用；旧功能分支 SW 缓存升级至 v235，并撤销冗余旧 chat-page-theme 预缓存条目。**注意：这是原开发分支的 SW，不可直接覆盖最新唯一 QA 的安全 SW。**
+
+### 已执行检查
+
+- PASS：用真实 ChatBeauty 源码（非假设实现）和实际两个主题桥接 JS 在 V8 运行，完整六套主题 × 六个页面，共 36 个界面作用域组合的切换和读回正确。已保存留白 Messages 只在默认/iMessage 列表有效；角色 A/B 的气泡、聊天背景和两份模拟聊天历史不变；保存的独立列表偏好也不丢失。
+- PASS：WeChat 基础 CSS 与旧提交原段内容逐字比较（迁移步骤时）：17,993 字符及 130 个微信选择器未缺漏；Silver 原有视觉规则仅发生后部拆分。其后非目标主题显隐守卫显式限定，不再由无作用域的规则跨主题控制。
+- PASS：从 GitHub 当前 HEAD 逐文件核查六个 HTML 页面资源引用、四个实际 CSS 加载顺序、CSS 结构平衡、旧/新 JS 与 SW 的语法、新 PWA v235 的资源预缓存项。扩充了测试/market-collection.test.mjs：整套主题/独立列表冲突矩阵、iMessage 详情范围、微信 CSS 选择器、文件归属、页面加载顺序、SW 版本一致性。
+- **NOT VERIFIED**：未运行完整仓库 node --test / npm build / Chromium / Android / iOS / PWA/离线及真实视觉截图；不能以隔离 V8 模拟替代真实设备。当前分支与 main/QA 已分叉，无法宣称这些代码已进入 preview.mao520.com。
+
+### 数据 / 向下兼容 / 集成边界
+
+未改主题 key、角色/群聊数据、ChatBeauty 的全局主题 ID 或角色气泡存储；只变更页面上主题标识和独立列表适用优先级。原有留白 Messages 偏好保留而不是清空。回滚可恢复两份桥接 JS 和对应资源引用，银蝶/微信 CSS 可按原拆分前顺序拼接恢复，用户数据不需回滚。
+
+因 shared/js/chat-page-theme.js、shared/js/chat-list-theme.js 及基础 CSS 与 THEME-ATMOSPHERE-001 的现有样式所有权相邻，合入最新安全 QA 需要 #273 原主题 owner/唯一集成者逐文件审核。**禁止整份复制此旧分支的 chat.html、chat-detail.html、sw.js 去覆盖新版聊天/账号安全基线**。下一步强制真实验证：选微信 → 聊天列表/详情/联系人/动态/我的；选 QQ → 同样五页；选银蝶/薄影 → 适配页面；选 iMessage → 仅详情；回默认 → 原有留白 Messages 可恢复；每轮观察底部导航、输入栏、照片/封面、群聊与独立气泡设置是否仍正常，再做 PWA 刷新/后台回前台。用户数据、真实聊天及支付流程不得被主题变更写动。
