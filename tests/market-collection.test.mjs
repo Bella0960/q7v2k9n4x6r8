@@ -44,10 +44,10 @@ test('new cache revision lists exact storefront resources and retains legacy the
  for(const name of ['preview-scene.js']){assert.ok(page.includes(name+'?v=20261113m7'));assert.ok(sw.includes('./theme-store/'+name+'?v=20261113m7'));}
   assert.ok(page.includes('preview-scene.css?v=20261113m7'));
   assert.ok(sw.includes('./theme-store/preview-scene.css?v=20261113m7'));
-  assert.ok(page.includes('storefront.css?v=20261119isolated1'));
-  assert.ok(sw.includes('./theme-store/storefront.css?v=20261119isolated1'));
-  assert.ok(page.includes('storefront.js?v=20261119isolated1'));
-  assert.ok(sw.includes('./theme-store/storefront.js?v=20261119isolated1'))
+  assert.ok(page.includes('storefront.css?v=20261119isolated2'));
+  assert.ok(sw.includes('./theme-store/storefront.css?v=20261119isolated2'));
+  assert.ok(page.includes('storefront.js?v=20261119isolated2'));
+  assert.ok(sw.includes('./theme-store/storefront.js?v=20261119isolated2'))
   assert.ok(page.includes('collection-store.js?v=20261112m3'));
   assert.ok(sw.includes('./theme-store/collection-store.js?v=20261112m3'));
  assert.ok(sw.includes("phone-app-pwa-v230"));
