@@ -470,3 +470,11 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 不替换整个聊天页面、`phone_storage.js` 或删除其他会话内容；保留账号/persona/世界书/记忆、消息 mid、图片仓库引用。新增 `tests/chat-selection-delete-atomic.test.mjs` 7 个针对真实源 handler 与原原子模块的回归，纳入 `test:chat:contract`；PWA v259→v260 只增静态缓存版本，不调整安全缓存策略。
 - **当前记录状态：仅 staging 分支。Node/Vite/Chromium 完整验证、实际 QA-only 发布、Android/iPhone 真机均 NOT VERIFIED。** 遵循 `docs/engineering/QA_TEST_RELEASE_RUNBOOK.md`，整合唯一 QA 后通过原隔离执行器测试，不允许漏掉第 17 项完整回归；通过后发布原 Worker 并核对 `preview.mao520.com/qa-build-receipt.json`、Cloudflare 100% 和身份核心未重部署。
 - 后续 #282/#305 主消息图片、转发、线下聊天编辑及其他全量写入者仍按原 PR 分项治理，不能将本项视为全系统绝对原子写入。
+
+
+### 2026-11-19｜多选删除完整聊天合约回归定位与修正
+
+- 原唯一 QA 候选 `7fa607d14faf16c5c1abdf7e711d081a4b44fba6` 的隔离验证 `44495269090` 在原门禁 6/19 `npm run test:chat:contract` 失败，不允许发布。新增 `tests/chat-selection-delete-atomic.test.mjs` 7/7 单项在隔离 Runner 运行 `44495623055` 中真实 PASS。
+- 追查发现既有 `tests/chat-image-vision.test.mjs` 的「删除图片仅在保存成功后释放引用」用例将**单条删除和多选删除都固定要求旧同步 `saveMessages`**。多选删除已改为更安全的会话锁 `replaceChatSafely(originalSnapshot, keep)`，旧源代码字符串断言与真实行为不兼容。
+- 本轮只细化该原有合约：单条删除仍必须验证原保存门禁，多选删除必须验证新的异步锁保存门禁；两路均保留「保存失败不释放图片资源」及「成功保存后清理引用」的原测试目标。没有删测试、跳过门禁、放宽存储安全，也没有更改聊天运行时代码。
+- **待重新完整 Node/Vite/Chromium 验证、再 QA-only 部署。** 不将失败候选冒充已发布。
