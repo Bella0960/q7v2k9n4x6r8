@@ -7450,7 +7450,7 @@
                     typeof qualityPolicy.validateGroupOnlineReply === 'function'
                     ? qualityPolicy.validateGroupOnlineReply({
                         role: getRoleById(groupReplyPick.id),
-                        text: fullText,
+                        text: stripInternalReasoning(fullText),
                         latestUserText: text
                     }) : {ok:false,code:'quality-policy-missing'};
                 if (!qualityResult.ok) {
