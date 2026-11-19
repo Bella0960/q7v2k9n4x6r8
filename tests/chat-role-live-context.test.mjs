@@ -39,6 +39,25 @@ test('普通邂逅角色的错误 AI 自述只在模型上下文排除，旧聊�
   assert.deepEqual(Array.from(policy.getModelHistory(history, { name: '旧角色' }), item => item.mid), ['m1', 'm2', 'm5'], '普通单聊角色同样不能把旧 AI 自述当成人设');
 });
 
+test('系统生成的初始欢迎词不再被当作角色人设示范，旧消息保留', () => {
+  const role = {id:'role_1',name:'顾知秋',persona:'沉默而不冷淡的旧书修复师'};
+  const history = [
+    {mid:'welcome',role:'received',text:'你好，我是顾知秋！很高兴和你聊天。'},
+    {mid:'user',role:'user',text:'今天忙吗？'},
+    {mid:'genuine',role:'assistant',text:'我刚修好一册旧书，还行。'},
+    {mid:'later',role:'assistant',text:'你好，我是顾知秋！很高兴和你聊天。'}
+  ];
+  const saved = JSON.stringify(history);
+  const filtered = policy.getModelHistory(history,role);
+  assert.deepEqual(Array.from(filtered,m=>m.mid),['user','genuine','later'],
+    'only the exact first system-produced greeting is noncanonical');
+  assert.equal(JSON.stringify(history),saved,'stored records are byte-for-byte intact');
+  assert.equal(policy.getModelHistory(history,{id:'role_2',name:'另一角色'}),history,
+    'another name is never used to suppress messages');
+  assert.equal(policy.getModelHistory(history.slice(1),role).length,3,
+    'a repeated user-authored sentence later is not filtered');
+});
+
 test('单聊真实错误自述仅从模型上下文排除，原记录仍保留', () => {
   const role = { id: 'normal_human', name: '阮映雪', persona: '【身份】普通人，经营花店' };
   const history = [
