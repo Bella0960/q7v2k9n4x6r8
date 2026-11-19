@@ -1,0 +1,141 @@
+/* MAOMAO WeChat theme base. Moved verbatim from the old Silver Butterfly
+ * sheet so WeChat/QQ/Silver code ownership is explicit. Keep before
+ * wechat-theme-refinements.css to preserve the original cascade. */
+/* 微信整页主题：页面结构与消息气泡分离。本段不设置 .msg-bubble 的颜色、背景或圆角。 */
+.phone-mockup[data-chat-theme-preset="wechat"]{--wechat-green:#07C160;--wechat-page:#F7F7F7;position:relative;isolation:isolate;background:var(--wechat-page)!important;border-color:#fff;box-shadow:0 18px 48px rgba(0,0,0,.12);color:#191919}
+.phone-mockup[data-chat-theme-preset="wechat"]::before{display:none!important}
+.phone-mockup[data-chat-theme-preset="wechat"] .status-bar{color:#111!important;text-shadow:none!important}
+/* Bottom tabs */
+.phone-mockup[data-chat-theme-preset="wechat"] .floating-nav{position:absolute!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;max-width:none!important;margin:0!important;padding:7px 8px calc(5px + env(safe-area-inset-bottom,0px))!important;gap:0!important;justify-content:space-around!important;border:0!important;border-top:1px solid #e7e7e7!important;border-radius:0!important;background:rgba(249,249,249,.97)!important;box-shadow:none!important;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
+.phone-mockup[data-chat-theme-preset="wechat"] .floating-nav .nav-tab{flex:1 1 0!important;min-width:0;gap:3px!important;padding:2px 4px!important;color:#777!important;font-size:0!important;font-weight:400!important}
+.phone-mockup[data-chat-theme-preset="wechat"] .floating-nav .nav-tab:nth-child(1)>span:last-child::after{content:"微信"}
+.phone-mockup[data-chat-theme-preset="wechat"] .floating-nav .nav-tab:nth-child(2)>span:last-child::after{content:"通讯录"}
+.phone-mockup[data-chat-theme-preset="wechat"] .floating-nav .nav-tab:nth-child(3)>span:last-child::after{content:"发现"}
+.phone-mockup[data-chat-theme-preset="wechat"] .floating-nav .nav-tab:nth-child(4)>span:last-child::after{content:"我"}
+.phone-mockup[data-chat-theme-preset="wechat"] .floating-nav .nav-tab>span:last-child::after{display:block;font-size:10px;line-height:1.25;color:inherit}
+.phone-mockup[data-chat-theme-preset="wechat"] .floating-nav .nav-ico{width:23px;height:23px;border-radius:0;background:transparent!important;transform:none!important}
+.phone-mockup[data-chat-theme-preset="wechat"] .floating-nav .nav-ico svg{width:21px!important;height:21px!important;stroke-width:1.7!important}
+.phone-mockup[data-chat-theme-preset="wechat"] .floating-nav .nav-tab.active,.phone-mockup[data-chat-theme-preset="wechat"] .floating-nav .nav-tab.active>span:last-child::after{color:var(--wechat-green)!important;font-weight:600!important}
+/* Chat list */
+.phone-mockup .wechat-home-header{display:none}
+.phone-mockup[data-chat-theme-preset="wechat"] .main-stage{padding:0 0 78px!important;background:var(--wechat-page)!important}
+.phone-mockup[data-chat-theme-preset="wechat"] .cover-gradient-banner,.phone-mockup[data-chat-theme-preset="wechat"] .cover-click-area,.phone-mockup[data-chat-theme-preset="wechat"] .cover-spacer,.phone-mockup[data-chat-theme-preset="wechat"] .chat-theme-header{display:none!important}
+.phone-mockup[data-chat-theme-preset="wechat"] .wechat-home-header{display:flex;flex:0 0 auto;align-items:center;justify-content:space-between;min-height:48px;padding:48px 16px 10px;background:var(--wechat-page);border-bottom:1px solid rgba(0,0,0,.025)}
+.phone-mockup[data-chat-theme-preset="wechat"] .wechat-home-header h1{color:#191919;font-size:20px;line-height:1.2;font-weight:650;letter-spacing:-.3px}
+.phone-mockup[data-chat-theme-preset="wechat"] .wechat-home-actions{display:flex;align-items:center;gap:18px}
+.phone-mockup[data-chat-theme-preset="wechat"] .wechat-home-actions button{width:30px;height:30px;padding:0;display:flex;align-items:center;justify-content:center;border:0;border-radius:50%;background:transparent;color:#191919;cursor:pointer}
+.phone-mockup[data-chat-theme-preset="wechat"] .wechat-home-actions svg{width:21px;height:21px;display:block}
+.phone-mockup[data-chat-theme-preset="wechat"] .white-profile-stage{display:block;flex:1;min-height:0;margin:0;padding:0 0 16px!important;background:#fff!important;border-radius:0;box-shadow:none}
+.phone-mockup[data-chat-theme-preset="wechat"] .white-profile-stage .arch-avatar-bridge,.phone-mockup[data-chat-theme-preset="wechat"] .white-profile-stage>#avatarInput,.phone-mockup[data-chat-theme-preset="wechat"] .user-id-text,.phone-mockup[data-chat-theme-preset="wechat"] .floating-music-card{display:none!important}
+.phone-mockup[data-chat-theme-preset="wechat"] .tier4-floating-stream{display:block}
+.phone-mockup[data-chat-theme-preset="wechat"] #chatListContainer{display:flex;flex-direction:column;gap:0;padding:0 0 10px;background:#fff}
+.phone-mockup[data-chat-theme-preset="wechat"] .chat-slim-card{min-height:70px;padding:10px 15px;gap:11px;border:0;border-radius:0;border-bottom:1px solid #f0f0f0;background:#fff;box-shadow:none}
+.phone-mockup[data-chat-theme-preset="wechat"] .chat-slim-card:active{background:#f0f0f0;transform:none}
+.phone-mockup[data-chat-theme-preset="wechat"] .chat-avatar{width:47px;height:47px;flex:0 0 47px;border-radius:5px;background:#e5e5e5;box-shadow:none}
+.phone-mockup[data-chat-theme-preset="wechat"] .chat-name{color:#191919;font-size:15px;font-weight:500}
+.phone-mockup[data-chat-theme-preset="wechat"] .chat-time{color:#b2b2b2;font-size:10px;font-family:inherit}
+.phone-mockup[data-chat-theme-preset="wechat"] .chat-last-msg{color:#999;font-size:12px}
+.phone-mockup[data-chat-theme-preset="wechat"] .empty-tip{padding:38px 20px;color:#aaa}
+/* Conversation shell only */
+.phone-mockup[data-chat-theme-preset="wechat"]{background:#ededed!important}
+.phone-mockup[data-chat-theme-preset="wechat"] .chat-header{background:#f7f7f7!important;border-bottom:1px solid #e5e5e5;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none}
+.phone-mockup[data-chat-theme-preset="wechat"] .chat-user-name{color:#191919;font-size:16px;font-weight:600}
+.phone-mockup[data-chat-theme-preset="wechat"] .chat-status-sub,.phone-mockup[data-chat-theme-preset="wechat"] .chat-notice-bar{color:#8a8a8a}
+.phone-mockup[data-chat-theme-preset="wechat"] .nav-circle-btn{color:#191919}
+.phone-mockup[data-chat-theme-preset="wechat"] .chat-stage{background:#ededed!important;padding:14px 12px 18px;gap:12px}
+.phone-mockup[data-chat-theme-preset="wechat"] .message-time{color:#999;background:transparent;border:0;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none}
+.phone-mockup[data-chat-theme-preset="wechat"] .msg-avatar{border-radius:5px;border:0;box-shadow:none}
+.phone-mockup[data-chat-theme-preset="wechat"] .input-dock{background:#f7f7f7;border-top:1px solid #e2e2e2;backdrop-filter:none;-webkit-backdrop-filter:none}
+.phone-mockup[data-chat-theme-preset="wechat"] .input-capsule{background:#fff;border:1px solid #e4e4e4;border-radius:6px;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none}
+.phone-mockup[data-chat-theme-preset="wechat"] .input-capsule:focus-within{background:#fff;border-color:#d6d6d6;box-shadow:none}
+.phone-mockup[data-chat-theme-preset="wechat"] .send-icon-btn{background:var(--wechat-green)}
+/* Contacts */
+.phone-mockup[data-chat-theme-preset="wechat"] .top-nav{padding:48px 16px 12px;background:#f7f7f7!important;border:0}
+.phone-mockup[data-chat-theme-preset="wechat"] .top-nav-title{color:#191919;font-size:20px;font-weight:650;letter-spacing:-.3px}
+.phone-mockup[data-chat-theme-preset="wechat"] .search-wrap{padding:7px 12px 10px;background:#f7f7f7!important}
+.phone-mockup[data-chat-theme-preset="wechat"] .search-box{height:34px;border-radius:5px;background:#ededed;border:0}
+.phone-mockup[data-chat-theme-preset="wechat"] .search-box svg{stroke:#929292}
+.phone-mockup[data-chat-theme-preset="wechat"] .contact-stage{background:#fff!important;padding:0 0 90px}
+.phone-mockup[data-chat-theme-preset="wechat"] .quick-entry-list{margin:0 0 8px;padding:0;background:#fff}
+.phone-mockup[data-chat-theme-preset="wechat"] .quick-entry{min-height:58px;padding:10px 16px;background:#fff;border-bottom:1px solid #f0f0f0}
+.phone-mockup[data-chat-theme-preset="wechat"] .quick-entry-icon{width:34px;height:34px;border-radius:4px;margin-right:13px;background:var(--wechat-green)}
+.phone-mockup[data-chat-theme-preset="wechat"] .quick-entry-label{color:#191919;font-size:14px}
+.phone-mockup[data-chat-theme-preset="wechat"] .contact-section-title{padding:13px 15px 6px;color:#999;background:#fff;font-size:11px;letter-spacing:.02em}
+.phone-mockup[data-chat-theme-preset="wechat"] #contactList{background:#fff}
+.phone-mockup[data-chat-theme-preset="wechat"] .contact-item{min-height:59px;padding:8px 15px;background:#fff;border-bottom:1px solid #f0f0f0}
+.phone-mockup[data-chat-theme-preset="wechat"] .contact-avatar{width:41px;height:41px;border-radius:4px;background:#e5e5e5}
+.phone-mockup[data-chat-theme-preset="wechat"] .contact-name{color:#191919;font-size:14px;font-weight:500}
+.phone-mockup[data-chat-theme-preset="wechat"] .contact-info{margin-left:12px}
+/* Moments */
+.phone-mockup[data-chat-theme-preset="wechat"] .space-stage{padding:48px 0 88px;gap:0;background:#fff!important}
+.phone-mockup[data-chat-theme-preset="wechat"] .cover-block{width:100%;height:238px;flex:0 0 238px;padding:0;margin:0 0 26px;border:0;border-radius:0;box-shadow:none;background-color:#d5d5d5;background-position:center;background-size:cover}
+.phone-mockup[data-chat-theme-preset="wechat"] .cover-block::before{content:"朋友圈";position:absolute;left:16px;top:-33px;color:#191919;font-size:20px;line-height:1.2;font-weight:650}
+.phone-mockup[data-chat-theme-preset="wechat"] .cover-block::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.02),rgba(0,0,0,.08));pointer-events:none}
+.phone-mockup[data-chat-theme-preset="wechat"] .cover-avatar-left{position:absolute;left:auto;right:17px;bottom:-18px;width:60px;height:60px;border-radius:5px;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.12);z-index:2}
+.phone-mockup[data-chat-theme-preset="wechat"] .cover-add-btn{top:11px;right:14px;width:34px;height:34px;border-radius:50%;background:rgba(0,0,0,.18);z-index:4}
+.phone-mockup[data-chat-theme-preset="wechat"] .cover-add-btn svg{stroke:#fff}
+.phone-mockup[data-chat-theme-preset="wechat"] .moments-main-panel{padding:0 15px 90px;border:0;border-radius:0;box-shadow:none;background:#fff;backdrop-filter:none;-webkit-backdrop-filter:none}
+.phone-mockup[data-chat-theme-preset="wechat"] .post-item{gap:11px;padding:15px 0;border-bottom:1px solid #eee}
+.phone-mockup[data-chat-theme-preset="wechat"] .post-item .moment-avatar{width:41px;height:41px;border-radius:4px}
+.phone-mockup[data-chat-theme-preset="wechat"] .post-item:last-child{border-bottom:0}
+.phone-mockup[data-chat-theme-preset="wechat"] .cover-menu{top:48px;right:13px;border:0;border-radius:7px;background:rgba(45,45,45,.93);box-shadow:0 8px 24px rgba(0,0,0,.18)}
+.phone-mockup[data-chat-theme-preset="wechat"] .cover-menu-item{color:#fff;border-radius:5px}
+.phone-mockup[data-chat-theme-preset="wechat"] .cover-menu-item svg{stroke:#fff}
+
+/* WeChat refinement / second pass */
+.phone-mockup[data-chat-theme-preset="wechat"] .chat-slim-card{min-height:76px;padding:11px 15px;gap:12px;border-bottom:1px solid #ededed}
+.phone-mockup[data-chat-theme-preset="wechat"] .chat-avatar{width:48px;height:48px;flex:0 0 48px;border-radius:5px;overflow:hidden}
+.phone-mockup[data-chat-theme-preset="wechat"] .chat-meta{min-width:0;align-self:stretch;justify-content:center;gap:4px}
+.phone-mockup[data-chat-theme-preset="wechat"] .chat-title-row{align-items:center;gap:8px;min-width:0}
+.phone-mockup[data-chat-theme-preset="wechat"] .chat-name{font-size:15px;font-weight:500;min-width:0}
+.phone-mockup[data-chat-theme-preset="wechat"] .chat-time{flex:0 0 auto;color:#B2B2B2;font-size:10px;white-space:nowrap}
+.phone-mockup[data-chat-theme-preset="wechat"] .chat-last-msg{font-size:12px;color:#999;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.phone-mockup[data-chat-theme-preset="wechat"] .chat-group-card .group-avatar{border-radius:5px;overflow:hidden}
+.phone-mockup[data-chat-theme-preset="wechat"] .chat-group-card .group-avatar img{width:100%;height:100%;object-fit:cover}
+.phone-mockup[data-chat-theme-preset="wechat"] .chat-group-card .group-avatar svg{width:26px;height:26px}
+
+/* Contacts: grouped sections and a compact, scrollable index */
+.phone-mockup[data-chat-theme-preset="wechat"] .top-nav{height:91px;min-height:91px;align-items:flex-end;padding:0 16px 12px;background:#F7F7F7!important}
+.phone-mockup[data-chat-theme-preset="wechat"] .wechat-contact-add{width:30px;height:30px;display:flex;align-items:center;justify-content:center;border:0;background:transparent;color:#191919;font-size:27px;font-weight:300;line-height:1}
+.phone-mockup[data-chat-theme-preset="wechat"] .contact-stage{position:relative;scrollbar-width:none}
+.phone-mockup[data-chat-theme-preset="wechat"] .contact-letter-group{background:#fff}
+.phone-mockup[data-chat-theme-preset="wechat"] .contact-section-title{position:sticky;top:0;z-index:2;height:25px;padding:7px 15px 4px;background:#F7F7F7;color:#777;font-size:10px;line-height:1.2}
+.phone-mockup[data-chat-theme-preset="wechat"] .contact-item{min-height:62px;padding:9px 15px;gap:0;border-bottom:1px solid #F0F0F0}
+.phone-mockup[data-chat-theme-preset="wechat"] .contact-avatar{width:43px;height:43px;flex:0 0 43px;border-radius:5px}
+.phone-mockup[data-chat-theme-preset="wechat"] .contact-name{font-size:14px;font-weight:400}
+.phone-mockup[data-chat-theme-preset="wechat"] .contact-info{margin-left:12px}
+.phone-mockup .wechat-contact-index{display:none}
+.phone-mockup[data-chat-theme-preset="wechat"] .wechat-contact-index{display:flex;position:absolute;z-index:80;right:3px;top:52%;transform:translateY(-50%);flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:5px 2px;border-radius:10px;background:rgba(255,255,255,.72);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.phone-mockup[data-chat-theme-preset="wechat"] .wechat-index-letter{width:14px;height:13px;padding:0;border:0;background:transparent;color:#777;font:9px/13px -apple-system,BlinkMacSystemFont,sans-serif;text-align:center}
+.phone-mockup[data-chat-theme-preset="wechat"] .wechat-index-letter:active{color:#07C160;font-weight:700}
+
+/* Moments: actual top bar, cover identity, and WeChat-style feed rhythm */
+.phone-mockup .wechat-moments-toolbar{display:none}
+.phone-mockup[data-chat-theme-preset="wechat"] .space-stage{position:relative;padding:0 0 88px!important;gap:0;background:#fff!important}
+.phone-mockup[data-chat-theme-preset="wechat"] .wechat-moments-toolbar{display:flex;position:relative;z-index:8;flex:0 0 88px;height:88px;align-items:flex-end;justify-content:space-between;padding:0 15px 10px;background:#F7F7F7;border-bottom:1px solid #EAEAEA}
+.phone-mockup[data-chat-theme-preset="wechat"] .wechat-moments-toolbar strong{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);color:#191919;font-size:16px;font-weight:600;letter-spacing:.2px}
+.phone-mockup[data-chat-theme-preset="wechat"] .wechat-moments-back{width:28px;height:28px;display:flex;align-items:center;color:#191919;text-decoration:none}
+.phone-mockup[data-chat-theme-preset="wechat"] .wechat-moments-back svg{width:20px;height:20px}
+.phone-mockup[data-chat-theme-preset="wechat"] .wechat-moments-toolbar button{width:30px;height:28px;display:flex;align-items:center;justify-content:center;border:0;background:transparent;color:#191919;padding:0}
+.phone-mockup[data-chat-theme-preset="wechat"] .wechat-moments-toolbar button svg{width:21px;height:21px}
+.phone-mockup[data-chat-theme-preset="wechat"] .cover-block{height:238px;flex:0 0 238px;margin:0 0 30px;background-color:#D6D6D6}
+.phone-mockup[data-chat-theme-preset="wechat"] .cover-block::before{display:none;content:none}
+.phone-mockup[data-chat-theme-preset="wechat"] .cover-block::after{background:linear-gradient(180deg,rgba(0,0,0,.02) 58%,rgba(0,0,0,.12) 100%)}
+.phone-mockup[data-chat-theme-preset="wechat"] .cover-avatar-left{right:17px;bottom:-22px;width:66px;height:66px;border-radius:5px}
+.phone-mockup[data-chat-theme-preset="wechat"] .wechat-cover-name{position:absolute;right:94px;bottom:-8px;z-index:3;max-width:calc(100% - 120px);color:#fff;font-size:15px;font-weight:600;text-align:right;text-shadow:0 1px 3px rgba(0,0,0,.45);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.phone-mockup[data-chat-theme-preset="wechat"] .cover-add-btn{display:none!important}
+.phone-mockup[data-chat-theme-preset="wechat"] .moments-main-panel{padding:0 15px 90px;border:0;border-radius:0;box-shadow:none;background:#fff}
+.phone-mockup[data-chat-theme-preset="wechat"] .post-item{align-items:flex-start;gap:11px;padding:15px 0;border-bottom:1px solid #F0F0F0}
+.phone-mockup[data-chat-theme-preset="wechat"] .post-item .moment-avatar{width:42px;height:42px;flex:0 0 42px;border-radius:5px}
+.phone-mockup[data-chat-theme-preset="wechat"] .post-content-box{gap:7px}
+.phone-mockup[data-chat-theme-preset="wechat"] .post-header{display:flex;flex-direction:column;align-items:flex-start;gap:3px}
+.phone-mockup[data-chat-theme-preset="wechat"] .post-name{color:#576B95;font-size:14px;font-weight:600}
+.phone-mockup[data-chat-theme-preset="wechat"] .post-time{color:#B2B2B2;font-size:10px;font-family:inherit}
+.phone-mockup[data-chat-theme-preset="wechat"] .post-text{color:#191919;font-size:13px;line-height:1.55}
+.phone-mockup[data-chat-theme-preset="wechat"] .post-image{width:min(100%,230px);max-height:230px;object-fit:cover;border-radius:2px}
+.phone-mockup[data-chat-theme-preset="wechat"] .post-comments{margin-top:3px;padding:8px 9px;border-radius:2px;background:#F7F7F7}
+.phone-mockup[data-chat-theme-preset="wechat"] .comment-name{color:#576B95}
+.phone-mockup[data-chat-theme-preset="wechat"] .post-actions{justify-content:flex-start;gap:18px;margin-top:2px;padding-top:2px}
+.phone-mockup[data-chat-theme-preset="wechat"] .post-actions .action-btn{color:#576B95;font-size:11px}
+.phone-mockup[data-chat-theme-preset="wechat"] .post-actions .action-btn svg{width:14px;height:14px;stroke:#576B95}
+
