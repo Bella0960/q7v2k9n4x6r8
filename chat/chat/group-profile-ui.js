@@ -224,7 +224,10 @@
     more.appendChild(el('span','gp-preview-avatar','+'));
     more.appendChild(el('small','','邀请'));
     more.addEventListener('click',invite);
-    rail.appendChild(more);
+    // This preview uses the same ownership rule as the existing settings.
+    // Role-owned/departed groups are readable, but must not advertise a dead invite.
+    if (group && String(group.ownerId || '__user') === '__user' &&
+        group.userMembership !== 'left' && group.userMembership !== 'declined') rail.appendChild(more);
   }
   sync();
   var membersList=document.getElementById('gpMembersList');
