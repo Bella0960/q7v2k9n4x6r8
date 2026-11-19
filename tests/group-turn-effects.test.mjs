@@ -98,7 +98,7 @@ test('chat detail commits group effects only beyond verified reply save barrier'
   const detail = read('chat/chat/chat-detail.html');
   const parse = detail.indexOf('fullText = processGroupInteractionMarkers(');
   const save = detail.indexOf('var replySaved = saveMessages(historyList);', parse);
-  const finalize = detail.indexOf('groupTurnEffects.finalize(replySaved)', save);
+  const finalize = detail.indexOf('groupTurnEffects.finalize(replySaved && streamResult.ok)', save);
   const privateGame = detail.indexOf('GroupGameSessions.sendWhisper(pendingGameWhisper)', parse);
   assert.ok(parse > 0 && save > parse);
   assert.ok(privateGame > parse && privateGame < save && finalize > save,
@@ -111,7 +111,7 @@ test('chat detail commits group effects only beyond verified reply save barrier'
   assert.match(detail, /storedGroupRaw = JSON\.stringify\(groups\)/);
   assert.match(detail, /msg\.privateMessageId \|\| ''/, 'receipt ID is verified during history round-trip');
   assert.match(detail, /let userMemoryText = isGroupChat/);
-  assert.match(detail, /if \(parsedMem\.memories\.length && !isGroupChat && streamResult\.ok\)/);
+  assert.match(detail, /if \(replySaved && streamResult\.ok\) \{[\s\S]*?if \(parsedMem\.memories\.length && !isGroupChat\)/);
   const processStart = detail.indexOf('function processGroupInteractionMarkers(');
   const processEnd = detail.indexOf('function showGroupPrivatePopup(', processStart);
   assert.ok(processEnd > processStart);
@@ -142,7 +142,7 @@ test('role-DM old/new group invitations are deferred until the AI reply save is 
   assert.ok(start >= 0 && end > start, 'the chat reply must stage invitations');
   const source = detail.slice(start, end);
   const save = detail.indexOf('var replySaved = saveMessages(historyList);', end);
-  const commit = detail.indexOf('groupTurnEffects.finalize(replySaved)', save);
+  const commit = detail.indexOf('groupTurnEffects.finalize(replySaved && streamResult.ok)', save);
   assert.ok(save > end && commit > save, 'finalization must follow verified reply save');
   assert.match(source, /groupTurnEffects\.afterSave\(function \(\) \{[\s\S]*?GroupGovernance\.offerInvitation/);
   assert.match(source, /groupTurnEffects\.afterSave\(function \(\) \{[\s\S]*?GroupGovernance\.offerNewGroupInvitation/);
