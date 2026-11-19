@@ -188,6 +188,65 @@ test('oversized group avatar fails before decoding and does not overwrite saved 
   } finally {await ctx.close();}
 });
 
+test('group back returns to the current conversation, or to the matching prior group page', async () => {
+  const ctx=await browser.newContext({viewport:{width:390,height:844}});
+  const page=await ctx.newPage();
+  try {
+    await setup(page,{phone_groups:[group('g1','夜航')]});
+    await page.goto(origin+'/chat/chat/chat-settings.html?roleId=g1');
+    await page.locator('#btnBack').click();
+    await page.waitForURL('**/chat/chat/chat-detail.html?id=g1');
+    await page.goto(origin+'/chat/chat/group-play.html?id=g1');
+    await page.goto(origin+'/chat/chat/chat-settings.html?roleId=g1');
+    await page.locator('#btnBack').click();
+    await page.waitForURL('**/chat/chat/group-play.html?id=g1');
+  } finally {await ctx.close();}
+});
+
+test('failed chat clearing never falsely reports success or removes data', async () => {
+  const ctx=await browser.newContext({viewport:{width:390,height:844}});
+  const page=await ctx.newPage();
+  try {
+    const oldHistory=[{role:'user',text:'这是之前的聊天'}];
+    await setup(page,{phone_groups:[group('g1','夜航')],chat_history_g1:oldHistory});
+    await page.goto(origin+'/chat/chat/chat-settings.html?roleId=g1');
+    await page.evaluate(() => {
+      window.confirm=()=>true;
+      const remove=Storage.prototype.removeItem;
+      Storage.prototype.removeItem=function(key){
+        if(key==='chat_history_g1') throw new Error('storage blocked');
+        return remove.call(this,key);
+      };
+      document.getElementById('actionGpClearRecord').click();
+    });
+    assert.match(await page.locator('#csToast').innerText(),/清理失败/);
+    assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('chat_history_g1'))),oldHistory);
+  } finally {await ctx.close();}
+});
+
+test('failed group removal leaves the group intact instead of navigating away', async () => {
+  const ctx=await browser.newContext({viewport:{width:390,height:844}});
+  const page=await ctx.newPage();
+  try {
+    const original=group('g1','夜航');
+    await setup(page,{phone_groups:[original]});
+    await page.goto(origin+'/chat/chat/chat-settings.html?roleId=g1');
+    const currentUrl=page.url();
+    await page.evaluate(() => {
+      window.confirm=()=>true;
+      const set=Storage.prototype.setItem;
+      Storage.prototype.setItem=function(key,value){
+        if(key==='phone_groups') throw new Error('write denied');
+        return set.call(this,key,value);
+      };
+      document.getElementById('actionGpDismiss').click();
+    });
+    assert.equal(page.url(),currentUrl);
+    assert.match(await page.locator('#csToast').innerText(),/解散失败/);
+    assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('phone_groups'))[0]),original);
+  } finally {await ctx.close();}
+});
+
 test('broken member portraits and group avatar display names rather than broken-image icons', async () => {
   const ctx=await browser.newContext({viewport:{width:390,height:844}});
   const page=await ctx.newPage();
