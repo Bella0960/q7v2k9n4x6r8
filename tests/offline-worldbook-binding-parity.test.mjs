@@ -121,7 +121,7 @@ test('both existing offline pages load the shared binding before the updated res
     assert.match(page,/buildSavedSourceEnvelope\(/);
     assert.match(page,/validateFinalApiMessages\(/);
   }
-  assert.match(sw,/phone-app-pwa-v264/);
+  assert.match(sw,/phone-app-pwa-v265/);
   assert.ok(sw.includes(binder));
   assert.ok(sw.includes(role));
 });
