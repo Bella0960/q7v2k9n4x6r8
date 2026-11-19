@@ -1813,18 +1813,21 @@ test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat
   assert.match(chatNotifier, /PhoneAPI\.completeJSON/);
   assert.match(chatNotifier, /chat_proactive_global_attempt_at/);
   assert.match(chatNotifier, /proactiveContact: true/);
-  assert.match(chatNotifier, /saveChatHistory\(candidate\.contact\.id, freshHistory\)/);
+  assert.match(chatNotifier, /ChatHistoryAtomic\.appendIf\(candidate\.contact\.id, newMessage/);
+  assert.match(chatNotifier, /ChatHistoryAtomic\.appendIf\(contact\.id, newMessage/);
+  assert.doesNotMatch(chatNotifier, /saveFollowUpHistory/);
+  assert.match(chatNotifier, /automaticStorageReady\(\)/);
   assert.match(chatNotifier, /tick\(\);/);
   assert.match(chatNotifier, /startProactiveScheduler\(\)/);
 });
 
 test('proactive contact notifier is loaded on home and navigation pages and precached by PWA', () => {
-  assert.match(homePage, /chat-notifier\.js\?v=20261102v3/);
-  assert.match(navPage, /chat-notifier\.js\?v=20261102v3/);
-  assert.match(detail, /chat-notifier\.js\?v=20261102v3/);
+  assert.match(homePage, /chat-notifier\.js\?v=20261119atomic1/);
+  assert.match(navPage, /chat-notifier\.js\?v=20261119atomic1/);
+  assert.match(detail, /chat-notifier\.js\?v=20261119atomic1/);
   assert.match(detail, /chat-presence-policy\.js\?v=20261118voicepurity1/);
   assert.ok(pwaCacheVersion >= 204, 'PWA cache must not regress below v204');
-  assert.match(serviceWorker, /chat-notifier\.js\?v=20261102v3/);
+  assert.match(serviceWorker, /chat-notifier\.js\?v=20261119atomic1/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261118voicepurity1/);
   assert.match(serviceWorker, /chat-followup-policy/);
 });
