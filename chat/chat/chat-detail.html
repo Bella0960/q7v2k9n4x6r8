@@ -5740,12 +5740,26 @@
               if (rawWB) {
                 let wbList = JSON.parse(rawWB) || [];
                 if (!Array.isArray(wbList)) wbList = [];
+                // Group turns use the speaking member's role ID, not the group ID.
+                // Explicit group-level mounts remain available as shared group lore.
+                const speakingRoleId = isGroupChat && groupReplyPick && groupReplyPick.id != null
+                  ? String(groupReplyPick.id) : String(aliasRoleId || currentRoleId || roleId);
+                const speakingRole = isGroupChat ? getRoleById(speakingRoleId) : currentCharacter;
                 const selectedWorldbooks = window.RoleWorldbookBindings &&
-                  RoleWorldbookBindings.filterBooks(aliasRoleId || currentRoleId || roleId, wbList, currentCharacter);
+                  RoleWorldbookBindings.filterBooks(speakingRoleId, wbList, speakingRole);
                 if (!selectedWorldbooks || !selectedWorldbooks.ok) {
-                  throw new Error('世界书挂载读取失败');
+                  throw new Error('角色世界书挂载读取失败');
                 }
-                wbList = selectedWorldbooks.books;
+                if (isGroupChat) {
+                  const groupMount = RoleWorldbookBindings.filterBooks(aliasRoleId, wbList);
+                  if (!groupMount.ok) throw new Error('群世界书挂载读取失败');
+                  const allowedIds = selectedWorldbooks.ids.concat(groupMount.ids);
+                  wbList = wbList.filter(function (book) {
+                    return book && allowedIds.indexOf(String(book.id)) !== -1;
+                  });
+                } else {
+                  wbList = selectedWorldbooks.books;
+                }
                 if (window.ChatContextPolicy &&
                     typeof window.ChatContextPolicy.buildWorldbookInjectionText === 'function') {
                   worldbookText = window.ChatContextPolicy.buildWorldbookInjectionText(wbList, {
