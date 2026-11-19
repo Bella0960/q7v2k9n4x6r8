@@ -176,6 +176,72 @@ test('member removal requires confirmation and leaves other group data untouched
   } finally {await ctx.close();}
 });
 
+test('role-owned groups are read-only: no edit, member removal or invite shortcut', async () => {
+  const ctx=await browser.newContext({viewport:{width:390,height:844}});
+  const page=await ctx.newPage();
+  try {
+    const original=group('g1','夜航');
+    original.ownerId='c1';
+    original.members[0].isAdmin=true;
+    await setup(page,{phone_groups:[original],ai_custom_characters:[person('c3','云')]});
+    await page.goto(origin+'/chat/chat/chat-settings.html?roleId=g1');
+    assert.equal(await page.locator('.gp-add').count(),0,'no fake invitation affordance');
+    await page.locator('#gpProfileSettings > summary').click();
+    assert.equal(await page.locator('#gpInfoSaveBtn').isDisabled(),true);
+    assert.equal(await page.locator('#gpNoticeSaveBtn').isDisabled(),true);
+    assert.equal(await page.locator('#gpInviteBlock').isVisible(),false);
+    assert.equal(await page.locator('.gp-member-remove').count(),0);
+    await page.evaluate(() => {
+      window.confirm=()=>true;
+      document.getElementById('actionGpDismiss').click();
+    });
+    assert.match(await page.locator('#csToast').innerText(),/只有当前群主/);
+    assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('phone_groups'))[0]),original,
+      'non-owner cannot edit or dissolve group');
+  } finally {await ctx.close();}
+});
+
+test('the last member cannot be accidentally removed', async () => {
+  const ctx=await browser.newContext({viewport:{width:390,height:844}});
+  const page=await ctx.newPage();
+  try {
+    const original=group('g1','夜航');
+    original.members=original.members.slice(0,1);
+    await setup(page,{phone_groups:[original]});
+    await page.goto(origin+'/chat/chat/chat-settings.html?roleId=g1');
+    await page.locator('#gpProfileSettings > summary').click();
+    await page.locator('#actionGroupManage').click();
+    assert.equal(await page.locator('.gp-member-remove').count(),0);
+    assert.equal(await page.locator('.gp-add').count(),1);
+    assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('phone_groups'))[0]),original);
+  } finally {await ctx.close();}
+});
+
+test('ownership change during the remove confirmation cannot delete another owner member', async () => {
+  const ctx=await browser.newContext({viewport:{width:390,height:844}});
+  const page=await ctx.newPage();
+  try {
+    const original=group('g1','夜航');
+    await setup(page,{phone_groups:[original]});
+    await page.goto(origin+'/chat/chat/chat-settings.html?roleId=g1');
+    await page.locator('#gpProfileSettings > summary').click();
+    await page.locator('#actionGroupManage').click();
+    await page.evaluate(() => {
+      window.confirm=() => {
+        const groups=JSON.parse(localStorage.getItem('phone_groups'));
+        groups[0].ownerId='c1';
+        localStorage.setItem('phone_groups',JSON.stringify(groups));
+        return true;
+      };
+      document.querySelector('.gp-member-row[data-mid="c1"] .gp-member-remove').click();
+    });
+    const saved=await page.evaluate(() => JSON.parse(localStorage.getItem('phone_groups'))[0]);
+    assert.equal(saved.ownerId,'c1');
+    assert.deepEqual(saved.members.map(m=>m.id),['c1','c2']);
+    assert.match(await page.locator('#csToast').innerText(),/只有当前群主/);
+  } finally {await ctx.close();}
+});
+
 test('oversized group avatar fails before decoding and does not overwrite saved group', async () => {
   const ctx=await browser.newContext({viewport:{width:390,height:844}});
   const page=await ctx.newPage();
