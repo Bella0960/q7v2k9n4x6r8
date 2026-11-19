@@ -36,7 +36,7 @@
     var nonHuman = /(?:精灵|妖怪|妖族|魔族|吸血鬼|人鱼|神族|神明|鬼魂|幽灵|外星|兽人|龙族|不死族)/;
     if (nonHuman.test(species)) return true;
     var persona = String(role.persona || role.prompt || '');
-    return /(?:【(?:身份|物种|种族)】|(?:身份|物种|种族)\\s*[:：])\\s*[^\\n]{0,35}(?:精灵|妖族|魔族|吸血鬼|人鱼|神明|鬼魂|幽灵|外星人|兽人|龙族)/.test(persona);
+    return /(?:【(?:身份|物种|种族)】|(?:身份|物种|种族)\s*[:：])\s*[^\n]{0,35}(?:精灵|妖族|魔族|吸血鬼|人鱼|神明|鬼魂|幽灵|外星人|兽人|龙族)/.test(persona);
   }
 
   // These specific first-person identity substitutions were missed by the
