@@ -2617,6 +2617,13 @@
   var wbSaveBtn = document.getElementById('wbSaveBtn');
   var mountSub = document.getElementById('mountSub');
   var mountIds = [];   // 当前展开会话内勾选的世界书 ID
+  var mountOpenedIds = []; // 本次展开时的持久化快照，防止覆盖其他窗口的新修改
+  function sameMountIds(a, b) {
+    return JSON.stringify((a || []).map(String).sort()) === JSON.stringify((b || []).map(String).sort());
+  }
+  function hasMountDraft() {
+    return !sameMountIds(mountIds, mountOpenedIds);
+  }
 
   function wbMountKey() {
     return 'chat_worldbooks_' + roleId;
@@ -2714,6 +2721,7 @@
       var newestIds = readMountedIds();
       if (newestIds === null) return;
       mountIds = newestIds;   // 展开时重新读取角色档案和旧挂载数据
+      mountOpenedIds = newestIds.slice();
       renderMountList();
       wbCard.classList.add('is-open');
     } else {
@@ -2736,12 +2744,29 @@
 
   // 保存挂载
   wbSaveBtn.addEventListener('click', function () {
+    // 两个浏览器页面可以同时打开：保存前重读，不能用旧选择静默
+    // 覆盖角色档案或另一窗口刚保存的世界书。
+    var latestIds = readMountedIds();
+    if (latestIds === null) return;
+    if (!sameMountIds(latestIds, mountOpenedIds)) {
+      if (!hasMountDraft()) {
+        mountIds = latestIds.slice();
+        mountOpenedIds = latestIds.slice();
+        renderMountList();
+        refreshMountSub();
+        showToast('其他页面的世界书挂载已同步');
+      } else {
+        showToast('世界书已在其他页面修改，请收起后重新展开确认，当前选择未覆盖');
+      }
+      return;
+    }
     var saved = window.RoleWorldbookBindings && RoleWorldbookBindings.save(roleId, mountIds);
     if (!saved || !saved.ok) {
       showToast('保存失败，原有世界书挂载未被确认修改');
       return;
     }
     mountIds = saved.ids;
+    mountOpenedIds = saved.ids.slice();
     refreshMountSub();
     wbCard.classList.remove('is-open');
     showToast('挂载设置已保存');
@@ -2749,7 +2774,29 @@
 
   // 进入页面即显示当前已挂载数量（不展开）
   mountIds = readMountedIds() || [];
+  mountOpenedIds = mountIds.slice();
   refreshMountSub();
+
+  // 另一个标签页修改了角色资料 / 世界书：未在编辑时立即更新数字与勾选；
+  // 已有待保存选择时只提醒，避免覆盖用户当前操作。
+  window.addEventListener('storage', function (event) {
+    if (event && event.key !== null &&
+        event.key !== wbMountKey() && event.key !== ROLE_STORAGE_KEY &&
+        event.key !== WB_STORAGE_KEY && event.key !== WB_CATEGORY_KEY) return;
+    var latestIds = readMountedIds();
+    if (latestIds === null) return;
+    if (wbCard.classList.contains('is-open') && hasMountDraft()) {
+      // 未保存的本地勾选优先展示，但下次点击保存会再检查并发版本。
+      if (!sameMountIds(latestIds, mountOpenedIds)) {
+        showToast('世界书已在其他页面更新，当前选择未被覆盖');
+      }
+      return;
+    }
+    mountIds = latestIds.slice();
+    mountOpenedIds = latestIds.slice();
+    refreshMountSub();
+    if (wbCard.classList.contains('is-open')) renderMountList();
+  });
 
   // ================= 双方备注（chat_alias_<roleId> = {myAlias, roleAlias}） =================
   var ALIAS_KEY = 'chat_alias_' + roleId;
