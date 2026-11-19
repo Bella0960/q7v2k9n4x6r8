@@ -8953,6 +8953,10 @@
             var composerMode = '';
             var composerTargetMid = '';
             var composerHistoryToken = '';
+            // Browser history.back() is asynchronous; do not push another modal
+            // entry until the previous one has actually been consumed.
+            var composerHistoryPending = false;
+            var composerQueuedOpen = null;
             if (!isGroupChat) {
                 if (pollAction) pollAction.style.display = 'none';
                 if (chainAction) chainAction.style.display = 'none';
@@ -8979,18 +8983,34 @@
             }
             function closeComposer() {
                 if (!composerOverlay || !composerOverlay.classList.contains('active')) return;
-                // "Cancel"/tap-outside/submit consumes only this modal entry,
-                // not the group conversation underneath it.
+                // Consume only this modal's history entry, not the chat page.
                 var popOwnEntry = !!(composerHistoryToken && window.history.state &&
                     window.history.state.__maomaoGroupComposer === composerHistoryToken);
                 dismissComposerView();
-                if (popOwnEntry) window.history.back();
+                if (popOwnEntry) {
+                    composerHistoryPending = true;
+                    try {
+                        window.history.back();
+                    } catch (error) {
+                        // Do not permanently block the next interaction if back fails.
+                        composerHistoryPending = false;
+                        composerQueuedOpen = null;
+                    }
+                }
             }
             window.addEventListener('popstate', function (event) {
+                if (composerHistoryPending) {
+                    // Only after the old history entry is gone may a quick second
+                    // tap open a new poll/chain. Otherwise an old popstate closes it.
+                    composerHistoryPending = false;
+                    var queued = composerQueuedOpen;
+                    composerQueuedOpen = null;
+                    if (queued) openComposer(queued.mode, queued.targetMid);
+                    return;
+                }
                 if (!composerOverlay || !composerOverlay.classList.contains('active')) return;
                 if (!event.state || event.state.__maomaoGroupComposer !== composerHistoryToken) {
-                    // Android system back/edge-swipe closes the interaction
-                    // first; the chat itself remains mounted and scroll intact.
+                    // System Back/edge-swipe closes this overlay, preserving the chat.
                     dismissComposerView();
                 }
             });
@@ -9011,6 +9031,10 @@
                 }, activityDelay);
             }
             function openComposer(mode, targetMid) {
+                if (composerHistoryPending) {
+                    composerQueuedOpen = { mode: mode, targetMid: targetMid };
+                    return;
+                }
                 if (!composerOverlay || !composerForm) { showToast('互动面板暂时无法打开'); return; }
                 if (composerOverlay.classList.contains('active')) return;
                 if (aiSending) { showToast('等当前角色回复结束后再发起互动'); return; }
