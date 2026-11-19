@@ -222,22 +222,32 @@
     var persona = stripEncounterEditorNote(String(role.persona || role.prompt || '').trim(), role).trim();
     if (!persona) return {ok:false,code:'persona'};
     var tone = String(role.tone || role.speechStyle || role.speech || '').trim();
-    var rawProtocol, rawBooks, rawMounts;
+    var rawProtocol, rawBooks;
     try {
       rawProtocol = String(store.getItem('chat_rp_protocol_') || '').trim();
       rawBooks = store.getItem('phone_worldbooks');
-      rawMounts = store.getItem('chat_worldbooks_' + String(options.conversationId || role.id));
     } catch (_) { return {ok:false,code:'storage'}; }
     var protocol = rawProtocol || String(options.defaultProtocol || global.MAOMAO_RP_DEFAULT_PROTOCOL || '').trim();
     if (!protocol) return {ok:false,code:'protocol'};
-    if (!policy || typeof policy.buildWorldbookInjectionText !== 'function' ||
-        typeof selectWorldbooksForRole !== 'function') return {ok:false,code:'worldbook-policy'};
-    var books=[],mounts=[];
+    if (!policy || typeof policy.buildWorldbookInjectionText !== 'function')
+      return {ok:false,code:'worldbook-policy'};
+    // The online editor, chat settings and offline routes must use the SAME
+    // explicit binding decision. The legacy union reader here could resurrect
+    // a role's stale worldBookIds after the user disabled/cleared the mount.
+    var bridge = options.bindingBridge || global.RoleWorldbookBindings;
+    if (!bridge || typeof bridge.filterBooks !== 'function')
+      return {ok:false,code:'worldbook-binding-policy'};
+    var books=[], chosen=[];
     try {
-      if (rawBooks != null) { books=JSON.parse(rawBooks); if (!Array.isArray(books)) throw Error('books'); }
-      if (rawMounts != null) mounts=parseWorldbookMountIds(rawMounts);
+      if (rawBooks != null) {
+        books = JSON.parse(rawBooks);
+        if (!Array.isArray(books)) throw Error('books');
+      }
+      var selected = bridge.filterBooks(String(options.conversationId || role.id), books, role);
+      if (!selected || selected.ok !== true || !Array.isArray(selected.books))
+        throw Error('binding-read');
+      chosen = selected.books;
     } catch (_) { return {ok:false,code:'worldbook-storage'}; }
-    var chosen = selectWorldbooksForRole(books, role, mounts);
     var maxEntries = Math.max(1, chosen.reduce(function(total, book) {
       return total + (Array.isArray(book.entries) && book.entries.length ? book.entries.length : 1);
     }, 0));
