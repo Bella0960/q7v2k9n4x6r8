@@ -2064,8 +2064,11 @@
           if (String(arr[i].id) === String(group.id)) { arr[i] = group; hit = true; break; }
         }
         if (!hit) arr.push(group);
-        localStorage.setItem('phone_groups', JSON.stringify(arr));
-        return true;
+        var serialized = JSON.stringify(arr);
+        localStorage.setItem('phone_groups', serialized);
+        // localStorage shims and full storage can silently swallow writes.
+        // Never display a success toast unless the authoritative group list was saved.
+        return localStorage.getItem('phone_groups') === serialized;
       } catch (e) { return false; }
     }
 
@@ -2364,7 +2367,10 @@
     // 保存群备注
     document.getElementById('gpAliasSaveBtn').addEventListener('click', function () {
       var val = gpAliasInput.value.trim();
-      try { localStorage.setItem(GP_ALIAS_KEY, val); } catch (e) { showToast('保存失败，请重试'); return; }
+      try {
+        localStorage.setItem(GP_ALIAS_KEY, val);
+        if (localStorage.getItem(GP_ALIAS_KEY) !== val) throw new Error('Group alias write not persisted');
+      } catch (e) { showToast('群备注保存失败，请重试'); return; }
       renderGroupInfo();
       document.getElementById('gpAliasCard').classList.remove('is-open');
       showToast('群备注已保存');
@@ -2374,7 +2380,10 @@
     document.getElementById('gpNoticeSaveBtn').addEventListener('click', function () {
       if (!requireGroupOwner(loadCurrentGroup())) return;
       var val = gpNoticeInput.value.trim();
-      try { localStorage.setItem(GP_NOTICE_KEY, val); } catch (e) { showToast('保存失败，请重试'); return; }
+      try {
+        localStorage.setItem(GP_NOTICE_KEY, val);
+        if (localStorage.getItem(GP_NOTICE_KEY) !== val) throw new Error('Group notice write not persisted');
+      } catch (e) { showToast('群公告保存失败，请重试'); return; }
       renderGroupInfo();
       document.getElementById('gpNoticeCard').classList.remove('is-open');
       showToast('群公告已发布');
@@ -2383,8 +2392,11 @@
     // 清理群记录（保留群本身，仅清空聊天记录）
     document.getElementById('actionGpClearRecord').addEventListener('click', function () {
       if (!window.confirm('确定清理该群的全部聊天记录吗？清理后不可恢复。')) return;
-      try { localStorage.removeItem('chat_history_' + roleId); }
-      catch (e) { showToast('群记录清理失败，记录仍然保留'); return; }
+      try {
+        var historyKey = 'chat_history_' + roleId;
+        localStorage.removeItem(historyKey);
+        if (localStorage.getItem(historyKey) !== null) throw new Error('Group record clear did not persist');
+      } catch (e) { showToast('群记录清理失败，请重试'); return; }
       showToast('群记录已清理');
     });
 
@@ -2401,7 +2413,9 @@
         }
         var current = arr.find(function (g) { return g && String(g.id) === String(roleId); });
         if (!requireGroupOwner(current)) return;
-        localStorage.setItem('phone_groups', JSON.stringify(arr.filter(function (g) { return String(g.id) !== String(roleId); })));
+        var remaining = JSON.stringify(arr.filter(function (g) { return String(g.id) !== String(roleId); }));
+        localStorage.setItem('phone_groups', remaining);
+        if (localStorage.getItem('phone_groups') !== remaining) throw new Error('Group removal write not persisted');
       } catch (e) { showToast('解散失败，群聊仍然保留'); return; }
 
       var cleanupFailed = false;
