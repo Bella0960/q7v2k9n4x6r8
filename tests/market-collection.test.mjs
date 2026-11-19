@@ -50,7 +50,7 @@ test('new cache revision lists exact storefront resources and retains legacy the
   assert.ok(sw.includes('./theme-store/storefront.js?v=20261119isolated3'))
   assert.ok(page.includes('collection-store.js?v=20261112m3'));
   assert.ok(sw.includes('./theme-store/collection-store.js?v=20261112m3'));
- assert.ok(sw.includes("phone-app-pwa-v231"));
+ assert.ok(sw.includes("phone-app-pwa-v232"));
  for(const id of ['default','wechat','imessage','qq','silver-butterfly','atmosphere'])assert.ok(page.includes("id:'"+id+"'"));
 });
 test('outfit editing can narrow scope or explicitly recapture without duplicating or applying it',async()=>{
