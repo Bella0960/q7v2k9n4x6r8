@@ -614,8 +614,23 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
     });
     renderSettings();renderMembers();renderOwner();renderRelationships();
   }
+  // One level back: advanced group controls -> this group's info page.
+  // Use the real history entry when it points at the same group's settings;
+  // a new location.href here used to create a duplicate settings entry.
   document.getElementById('backBtn').addEventListener('click',function(){
-    location.href='chat-settings.html?roleId='+encodeURIComponent(groupId);
+    var parentIsSettings=false;
+    try {
+      var parent=new URL(document.referrer,location.href);
+      parentIsSettings=parent.origin===location.origin &&
+        /\/chat-settings\.html$/.test(parent.pathname) &&
+        parent.searchParams.get('roleId')===String(groupId);
+    } catch (error) {}
+    if (parentIsSettings && window.history.length>1) {
+      window.history.back();
+      return;
+    }
+    // Direct/deep links have no verified parent. Never jump to home/chat list.
+    location.replace('chat-settings.html?roleId='+encodeURIComponent(groupId));
   });
 })();
 </script>
