@@ -389,10 +389,18 @@
         '<div class="editorial-mini-row"><b class="editorial-mini-avatar"></b><span class="editorial-mini-copy"><b></b><em></em></span><i class="editorial-mini-time"></i></div>'+
       '</div>';
     }
+    function renderChatListCard(){
+      var owned=getOwned(),listActive=getChatListTheme()==='editorial';
+      var listOwned=owned.indexOf('messages-editorial')>=0;
+      var label=listActive?'恢复默认':(listOwned?'应用设计':'免费获取并应用');
+      return '<div class="chat-list-theme-grid">'+
+        '<article class="product-card chat-list-theme-card">'+editorialListArt()+
+          '<div class="product-meta"><span class="product-eyebrow">01 / MESSAGES EDITION</span><strong class="product-title">留白 Messages</strong><span class="product-desc">中性灰白底色、克制字重与轻分隔。聊天列表独立换肤，不影响其他页面。</span></div>'+
+          '<div class="product-foot"><span class="product-price">'+(listOwned?'已收录':'FREE')+'</span><button type="button" class="action-btn '+(listActive?'light':'')+'" data-action="chat-list-theme-toggle">'+label+'</button></div>'+
+        '</article></div>';
+    }
     function renderThemes(){
       var active=window.ChatBeauty&&ChatBeauty.getThemePreset?ChatBeauty.getThemePreset():'default',owned=getOwned();
-      var listActive=getChatListTheme()==='editorial',listOwned=owned.indexOf('messages-editorial')>=0;
-      var listButtonLabel=listActive?'恢复默认':(listOwned?'应用设计':'免费获取并应用');
       // Source-owned completed themes come first. The standalone Messages list theme
       // and featured new-theme gallery remain available below the six real products.
       var html='<div class="section-head sf-native-section"><div><h3>原有主题</h3></div><p>六套独立外观 · 原有功能保留</p></div><div class="product-grid">';
@@ -403,12 +411,7 @@
       });
       html+='</div>'+
         '<div class="section-head sf-list-theme-section"><div><h3>聊天列表专属主题</h3></div><p>单独切换，不影响聊天详情</p></div>'+
-        '<div class="chat-list-theme-grid">'+
-          '<article class="product-card chat-list-theme-card">'+editorialListArt()+
-            '<div class="product-meta"><span class="product-eyebrow">01 / MESSAGES EDITION</span><strong class="product-title">留白 Messages</strong><span class="product-desc">中性灰白底色、克制字重与轻分隔。聊天列表独立换肤，不影响其他页面。</span></div>'+
-            '<div class="product-foot"><span class="product-price">'+(listOwned?'已收录':'FREE')+'</span><button type="button" class="action-btn '+(listActive?'light':'')+'" data-action="chat-list-theme-toggle">'+listButtonLabel+'</button></div>'+
-          '</article>'+
-        '</div>';
+        renderChatListCard();
       if(market)html+=market.renderThemeFeature();
       html+='<div class="helper-row"><p>主题与聊天气泡可以分别设置。原来的角色消息、联系人和动态数据不会因切换主题清空。</p><button class="text-link" data-action="open-beauty" type="button">进入聊天美化</button></div>';
       return html;
@@ -735,7 +738,7 @@
     document.addEventListener('visibilitychange',function(){if(!document.hidden)refreshAll();});
     window.MAOMAOStorefront.init({themes:defaultThemes, market:market, render:render,
       navigate:setCategory, applyTheme:applyTheme, toast:toast, scope:function(){return bubbleScopeValue;},
-      using:function(){var box=document.createElement('div');box.innerHTML=renderMine();box.querySelectorAll('.mine-item').forEach(function(item){if(item.querySelector('.mine-status').textContent!=='正在使用')item.remove();});box.querySelector('.mine-filter')?.remove();return box.innerHTML;}, nativeThemes:renderThemes, nativeArt:themeArt, listCard:function(){var box=document.createElement('div');box.innerHTML=renderThemes();return box.querySelector('.chat-list-theme-grid').outerHTML;}});
+      using:function(){var box=document.createElement('div');box.innerHTML=renderMine();box.querySelectorAll('.mine-item').forEach(function(item){if(item.querySelector('.mine-status').textContent!=='正在使用')item.remove();});box.querySelector('.mine-filter')?.remove();return box.innerHTML;}, nativeThemes:renderThemes, nativeArt:themeArt, listCard:renderChatListCard});
     document.querySelectorAll('#categoryNav button').forEach(function(button,index){
       button.insertAdjacentHTML('afterbegin',window.MAOMAOStorefront.svg(['home','theme','category','mine'][index]));
     });
