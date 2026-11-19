@@ -90,3 +90,28 @@ User acceptance criteria clarified: **MAOMAO theme-store is an expansion of the 
 - Original live QQ, WeChat, iMessage, Silver Butterfly and other chat theme files are **not modified in PR #275**. The branch is a **draft and is not merged to main**; Cloudflare Worker preview deployments are isolated from the actual production Worker deployments.
 - Explicit release blockers remain: browser rendering/gestures in real Chromium & WebKit, physical Android/iPhone, installed PWA upgrade and true screenshot parity with each native theme. Source contracts and Cloudflare build are not substitutes for those device checks.
 - No right/up arrows in new UI, left-back arrow permitted (per prior clarified user rule). These design constraints are global to the MAOMAO project, not an instruction to edit unrelated legacy theme internals here.
+
+
+## 2026-11-19 — 逐主题视觉隔断与应用一致性（本 PR 续接，未发布）
+
+### 用户可感知的变化（已写入原功能分支）
+
+- 主题栏目六套独立主题不再挤在横向卡片轨道；每套都有独立版面区块、序号、名称、适用范围、原主题封面与预览/应用/收藏入口。保留工程原生 themeArt，不假称是实际页面截图。
+- default、wechat、imessage、qq、silver-butterfly、atmosphere 使用独立 data-theme-id 容器，新增商城私有 CSS 按主题 ID 限定。留白 Messages 聊天列表主题在整套主题以外独立呈现，主题预览不改列表设置。首页展示三款精选，完整六款在主题栏目；收藏同样复用独立展示。
+- 详情说明覆盖范围和独立设置，只有薄影有虚构六场景布局演示，其他原有主题保留各自真实工程封面示意。点击应用需要确认。
+- 修复收录主题失败时原主题已切换的半成功路径：真实主题写入后再写收录标记；标记失败时回滚到之前主题，并明确提示恢复状态；拒绝非法主题 ID。不另造一套主题引擎。
+
+### 已执行检查与证据边界
+
+- PASS（隔离 V8 源码执行）：商城渲染六个独立 theme-id，首页三款，留白 Messages 独立分区；渲染不更改任何测试存储。
+- PASS（隔离 V8 源码执行）：ChatBeauty 对六款主题依次 set/get；两个模拟角色独立气泡和背景不变；独立聊天列表主题存储不变；仅主题范围的已保存搭配可重新应用，不串到其他范围。
+- PASS（隔离 V8 源码执行）：原生主题应用函数的正常保存、收录失败回滚与非法 ID 拦截。
+- PASS（V8 语法解析）：修改的商城 JS、HTML 内联脚本、SW JS。
+- NOT VERIFIED：此次新加的 Node 测试与 Playwright 浏览器测试仅已提交、语法/静态检查；没有 node --test、npm run build、Chromium 真正运行、Android/iOS/PWA 真机的本轮成功回执。先前独立原型的通过记录不能冒充本轮完整验收。
+- NOT DEPLOYED：只更新原 PR #275 分支，未合并主线、未修改唯一 QA #299、未发布 preview.mao520.com、未改正式站点或真实数据。仍须验证 375/390/430 手机视口、页面点击、导航、刷新恢复、滚动无溢出及原主题跨页面一致性。
+
+### 数据边界 / 后续安全集成
+
+没有修改已有主题 ID 与存储 schema。保留 maomao_chat_theme_preset、beauty_chat_<role>、maomao_chat_list_theme_preset_v1、maomao_market_collection_v1、原有桌面壁纸与 IndexedDB 素材引用。回滚商城界面代码不删除用户数据。
+
+原开发分支与 main 已分叉，本分支 SW v230 不等于最新账号安全整合 SW。未来只能在统一 QA 的最新账号安全基线上逐文件移植商城 CSS/JS、HTML 资源引用与测试，再增量合入缓存清单；不能回灌旧 SW 或整份旧商城覆盖新的账号和聊天集成。必须通过 npm run test:theme:market、npm run test:theme:market:browser、npm run build、真实浏览器与 Android/iPhone 验收后，才能在唯一 QA 预览站交付。
