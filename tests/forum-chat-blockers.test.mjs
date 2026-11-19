@@ -486,83 +486,78 @@ test('zero-content API error bubble is written and rendered only when persistenc
   assert.deepEqual(saved.toasts, []);
 });
 
-test('retry API failure re-marks the same user message instead of creating a new one', () => {
-  const writes = [];
-  const helpers = loadRetryLifecycleHelpers((list) => { writes.push(clone(list)); return true; });
-  const original = [
-    { role: 'assistant', text: '欢迎', time: 1, mid: 'm1' },
-    { role: 'user', text: '在吗', time: 2, mid: 'm2' }
-  ];
-  const historyList = clone(original);
-  const context = {
-    historyList,
-    streamResult: { ok: false, error: { kind: 'http', status: 503 } },
-    retryTarget: { mid: 'm2', time: 2 },
-    _markUserSendFailed: helpers._markUserSendFailed
-  };
-  new Function('context', 'with (context) { ' +
-    extractBlock(chatDetail, 'var retryRemarked = false;', '\n            // Shared verified-write barrier') + ' }')(context);
+// The current retry flow deliberately leaves the saved failed message intact
+// until its assistant reply commits. Run the actual production retry handler.
+function currentRetryFixture(seed) {
+  const original=clone(seed);
+  const messages=clone(seed), sends=[],toasts=[];
+  const locateStart=chatDetail.indexOf('function _locateRetryMessage(');
+  const locateEnd=chatDetail.indexOf('function _prepareRetryMessage(', locateStart);
+  const retryStart=chatDetail.indexOf('var _retryInFlight = false;');
+  const retryEnd=chatDetail.indexOf('// ================= 礼物', retryStart);
+  assert.ok(locateStart>0&&locateEnd>locateStart&&retryStart>0&&retryEnd>retryStart);
+  const source=chatDetail.slice(locateStart,locateEnd)+'\n'+
+    chatDetail.slice(retryStart,retryEnd);
+  const env={window:{},messages,sends,toasts,Promise};
+  const setup=new Function('env',`
+    const {window,messages,sends,toasts,Promise}=env;
+    const aliasRoleId='role-1',isBlocked=()=>false;
+    const getAiConfig=()=>({apiKey:'synthetic-key'});
+    const loadMessages=()=>messages;
+    const showToast=text=>toasts.push(text);
+    const sendMsg=opts=>{sends.push(opts);return Promise.reject(Error('synthetic-api-unavailable'));};
+    const console={warn(){}};
+    var aiSending=false;
+    ${source}
+    return {retry:window.retryFailedMessage,project:_buildRetryModelHistory};
+  `);
+  return {original,messages,sends,toasts,run:setup(env)};
+}
 
-  assert.equal(historyList.length, 2, '不得新增第二条用户消息');
-  assert.equal(historyList.filter((m) => m.role === 'user').length, 1);
-  assert.equal(historyList[1].mid, 'm2', 'mid 必须保持不变');
-  assert.equal(historyList[1].sendFailed, true, 'API 失败后必须重新打失败标记');
-  assert.equal(historyList[1].sendFailedReason, 'api-error');
-  assert.deepEqual(historyList[0], original[0], '已成功的历史不得改动');
-  assert.equal(writes.length, 1);
-  assert.equal(writes[0].filter((m) => m.role === 'user').length, 1);
-
-  // API 成功时不得误打失败标记。
-  const okList = clone(original);
-  new Function('context', 'with (context) { ' +
-    extractBlock(chatDetail, 'var retryRemarked = false;', '\n            // Shared verified-write barrier') + ' }')({
-    historyList: okList,
-    streamResult: { ok: true },
-    retryTarget: { mid: 'm2', time: 2 },
-    _markUserSendFailed: helpers._markUserSendFailed
-  });
-  assert.equal(okList[1].sendFailed, undefined);
-  assert.equal(writes.length, 1, '成功路径不得写入失败标记');
+test('retry API failure keeps the saved failed bubble and starts no duplicate send', async () => {
+  const h=currentRetryFixture([
+    {role:'assistant',text:'欢迎',mid:'m1',time:1},
+    {role:'user',text:'在吗',mid:'m2',time:2,sendFailed:true,sendFailedReason:'api-error'}
+  ]);
+  h.run.retry('m2',2);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(h.messages,h.original,'early API failure must not change persisted content');
+  assert.equal(h.sends.length,1);
+  assert.deepEqual(h.sends[0],{contextOnly:true,retryTarget:{mid:'m2',time:2}});
+  assert.equal(h.messages.filter(x=>x.role==='user').length,1);
+  assert.match(h.toasts[0],/原消息仍可再次重试/);
 });
 
-test('two consecutive retry failures keep exactly one failed user message', () => {
-  const writes = [];
-  const helpers = loadRetryLifecycleHelpers((list) => { writes.push(clone(list)); return true; });
-  const list = [
-    { role: 'assistant', text: '欢迎', time: 1, mid: 'm1' },
-    { role: 'user', text: '在吗', time: 2, mid: 'm2', sendFailed: true, sendFailedReason: 'missing-api-key' }
-  ];
-
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const prepared = helpers._prepareRetryMessage(list, 'm2');
-    assert.ok(prepared, '第 ' + (attempt + 1) + ' 次重试必须能接管上一条失败消息');
-    assert.equal(list.filter((m) => m.role === 'user').length, 1);
-    assert.ok(helpers._markUserSendFailed(list, 'm2', undefined, 'api-error'));
-    assert.equal(list.length, 2, '连续重试不得产生重复记录');
-    assert.equal(list[1].mid, 'm2');
-    assert.equal(list[1].text, '在吗');
-    assert.equal(list[1].sendFailed, true);
-  }
-
-  assert.equal(writes.length, 2);
-  assert.ok(writes.every((snapshot) => snapshot.filter((m) => m.role === 'user').length === 1));
+test('two consecutive failed retries keep exactly one failed user message', async () => {
+  const h=currentRetryFixture([
+    {role:'assistant',text:'欢迎',mid:'m1',time:1},
+    {role:'user',text:'在吗',mid:'m2',time:2,sendFailed:true,sendFailedReason:'api-error'}
+  ]);
+  h.run.retry('m2',2);
+  await new Promise(resolve=>setImmediate(resolve));
+  h.run.retry('m2',2);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(h.sends.length,2);
+  assert.deepEqual(h.messages,h.original);
+  assert.equal(h.messages.filter(x=>x.role==='user').length,1);
 });
 
-test('retry API failure re-marks legacy messages without mid by time and never migrates them', () => {
-  const helpers = loadRetryLifecycleHelpers(() => true);
-  const list = [
-    { role: 'assistant', text: '欢迎', time: 1 },
-    { role: 'user', text: '旧失败消息', time: 2, sendFailed: true, sendFailedReason: 'missing-api-key' }
-  ];
-
-  assert.ok(helpers._prepareRetryMessage(list, 'm_generated_at_render', 2), '旧消息按 time 进入重试');
-  assert.equal(list[1].sendFailed, undefined);
-  assert.ok(helpers._markUserSendFailed(list, 'm_generated_at_render', 2, 'api-error'),
-    'API 失败后按 time 回退重新标记');
-  assert.equal(list.length, 2);
-  assert.equal(list[1].sendFailed, true);
-  assert.equal(list[1].mid, undefined, '不得为旧消息补写 mid 或迁移历史数据');
-  assert.equal(list[1].text, '旧失败消息');
+test('retry uses a temporary model copy for legacy messages without migrating their IDs', async () => {
+  const h=currentRetryFixture([
+    {role:'assistant',text:'欢迎',time:1},
+    {role:'user',text:'旧失败消息',time:2,sendFailed:true,sendFailedReason:'missing-api-key'}
+  ]);
+  const projected=h.run.project(h.messages,{mid:'m_generated_at_render',time:2});
+  assert.ok(projected);
+  assert.equal(projected[1].sendFailed,undefined);
+  assert.equal(projected[1].mid,undefined);
+  assert.equal(h.messages[1].sendFailed,true);
+  h.run.retry('m_generated_at_render',2);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(h.sends.length,1);
+  assert.equal(h.sends[0].retryTarget.time,2);
+  assert.equal(h.messages[1].mid,undefined,'old user data must not migrate');
+  assert.deepEqual(h.messages,h.original);
 });
 
 test('blocked send also stops when the user message cannot be persisted', () => {
