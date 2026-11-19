@@ -38,9 +38,22 @@
         else return { ok: false, error: 'CORRUPT_LEGACY_BINDING' };
       }
       var primary = role && Array.isArray(role.worldBookIds) ? role.worldBookIds : [];
+      // Previously, single-chat prompts loaded every global book, regardless of
+      // the role binder. On the first upgrade, keep that legacy behaviour visible
+      // as checked defaults. A saved chat mount (including []) is an explicit
+      // user decision, so never silently add global books back after that.
+      var defaults = [];
+      if (role && legacyRaw == null) {
+        var definitionsRaw = readRaw('phone_worldbooks');
+        var definitions = decode(definitionsRaw, []);
+        if (!Array.isArray(definitions)) return { ok: false, error: 'CORRUPT_WORLDBOOKS' };
+        defaults = idsOf(definitions.filter(function (book) {
+          return book && book.enabled !== false && book.scope !== 'local';
+        }).map(function (book) { return book.id; }));
+      }
       // An explicitly disabled legacy object is a user opt-out, not a stale list.
       var suspended = legacy && !Array.isArray(legacy) && legacy.enabled === false;
-      var ids = suspended ? [] : idsOf(primary.concat(legacyIds));
+      var ids = suspended ? [] : idsOf(primary.concat(legacyIds, defaults));
       return {
         ok: true, ids: ids,
         hasBinding: !!(role && Array.isArray(role.worldBookIds)) || legacyRaw != null,
