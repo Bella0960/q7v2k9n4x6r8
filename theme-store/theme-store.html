@@ -565,16 +565,40 @@
     }
     function applyChatListTheme(){
       var enabling=getChatListTheme()!=='editorial';
-      if(enabling){
-        var owned=getOwned();
-        if(owned.indexOf('messages-editorial')<0){owned.push('messages-editorial');if(!setOwned(owned)){toast('收录失败，请检查本机存储空间');return;}}
-        try{localStorage.setItem(CHAT_LIST_THEME_KEY,'editorial');}catch(e){toast('主题保存失败，请检查本机存储空间');return;}
-      }else{
-        try{localStorage.removeItem(CHAT_LIST_THEME_KEY);}catch(e){toast('恢复失败，请检查本机存储空间');return;}
+      var previousTheme,previousOwned;
+      try {
+        previousTheme=localStorage.getItem(CHAT_LIST_THEME_KEY);
+        previousOwned=localStorage.getItem(OWN_KEY);
+        if(enabling){
+          // The independent list preference remains separate from ChatBeauty theme and bubbles.
+          localStorage.setItem(CHAT_LIST_THEME_KEY,'editorial');
+          if(localStorage.getItem(CHAT_LIST_THEME_KEY)!=='editorial')throw Error('未能保存列表主题');
+          var owned=getOwned();
+          if(owned.indexOf('messages-editorial')<0){
+            owned.push('messages-editorial');
+            if(!setOwned(owned))throw Error('未能保存主题收录记录');
+          }
+        }else{
+          localStorage.removeItem(CHAT_LIST_THEME_KEY);
+          if(localStorage.getItem(CHAT_LIST_THEME_KEY)!==null)throw Error('未能恢复默认列表');
+        }
+      }catch(error){
+        var restored=true;
+        try{
+          if(previousTheme===null)localStorage.removeItem(CHAT_LIST_THEME_KEY);
+          else if(previousTheme!==undefined)localStorage.setItem(CHAT_LIST_THEME_KEY,previousTheme);
+          if(previousOwned===null)localStorage.removeItem(OWN_KEY);
+          else if(previousOwned!==undefined)localStorage.setItem(OWN_KEY,previousOwned);
+          if(previousTheme!==undefined&&localStorage.getItem(CHAT_LIST_THEME_KEY)!==previousTheme)restored=false;
+          if(previousOwned!==undefined&&localStorage.getItem(OWN_KEY)!==previousOwned)restored=false;
+        }catch(rollback){restored=false;}
+        toast(restored?'列表主题没有保存成功，已恢复原设置':'列表主题保存失败且恢复未完成，请检查存储空间');
+        return false;
       }
       try{window.dispatchEvent(new CustomEvent('maomao:chat-list-theme-change',{detail:{theme:enabling?'editorial':'default'}}));}catch(e){}
       toast(enabling?'已应用「留白 Messages」':'已恢复聊天列表默认样式');
       render();
+      return true;
     }
     function applyTheme(id){
       if(!window.ChatBeauty||!ChatBeauty.setThemePreset){toast('聊天主题模块暂不可用');return false;}
