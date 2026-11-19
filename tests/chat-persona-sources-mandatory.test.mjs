@@ -23,7 +23,7 @@ function extract(after, before) {
 const protocolSource = extract("            let rpProtocol = '';", '            // 世界书：');
 const loreSource = extract('            // 世界书：', '            // 协议变量替换：');
 const protocolRead = new Function('localStorage', 'window', 'aliasRoleId', 'currentCharacter', 'roleId', 'showToast',
-  protocolSource + '\nreturn rpProtocol;');
+  'const currentRoleId = roleId;\n' + protocolSource + '\nreturn rpProtocol;');
 const loreRead = new Function('localStorage', 'window', 'aliasRoleId', 'roleForTurn', 'isGroupChat',
   'historyList', 'roleModelHistory', 'text', 'showToast',
   "const groupReplyPick = isGroupChat ? { id: roleForTurn.id } : null;" +
@@ -82,17 +82,20 @@ test('missing protocol or blocked local storage stops generation instead of sile
   assert.match(missing[0], /协议未加载/);
 });
 
-test('single-chat persona is never shortened; group speaking member has its own full persona', () => {
-  assert.match(detail, /rolePersona = isGroupChat \? capText\(rolePersona, CTX_CAP\.persona\) : rolePersona/);
+test('single-chat full persona and group selected-speaker persona are never silently shortened', () => {
   assert.match(detail, /const roleForTurn = !isGroupChat[\s\S]*?resolveRole\(currentCharacter\.id, currentCharacter, getRoleById\)/);
-  assert.match(detail, /const turnSpeakerPersona = isGroupChat && groupReplyPick[\s\S]*?relationshipRole\.persona \|\| relationshipRole\.prompt/);
-  assert.match(detail, /const charName = turnSpeakerName/);
-  const activePersona = '深圳生活背景。'.repeat(2000);
-  const capText = (s, max) => s.slice(0, max);
-  const choose = new Function('rolePersona', 'isGroupChat', 'capText', 'CTX_CAP',
-    'rolePersona = isGroupChat ? capText(rolePersona, CTX_CAP.persona) : rolePersona; return rolePersona;');
-  assert.equal(choose(activePersona, false, capText, { persona: 5000 }), activePersona);
-  assert.ok(choose(activePersona, true, capText, { persona: 5000 }).length <= 5000);
+  assert.match(detail, /const rawSpeakerPersona = isGroupChat && groupReplyPick/);
+  assert.match(detail, /relationshipRole && \(relationshipRole\.persona \|\| relationshipRole\.prompt\)/);
+  assert.match(detail, /stripEncounterEditorNote\(rawSpeakerPersona, relationshipRole\)/);
+  assert.doesNotMatch(detail, /rolePersona = isGroupChat \? capText\(rolePersona/);
+  const start = detail.indexOf('const rawSpeakerPersona = isGroupChat && groupReplyPick');
+  const finish = detail.indexOf('const turnSpeakerPersona =', start);
+  assert.ok(start > 0 && finish > start, 'must execute actual persona selection');
+  const select = new Function('isGroupChat', 'groupReplyPick', 'relationshipRole', 'rolePersona',
+    detail.slice(start, finish) + '\nreturn rawSpeakerPersona;');
+  const persona = '长篇深圳人物经历。'.repeat(1200);
+  assert.equal(select(false, null, null, persona), persona);
+  assert.equal(select(true, {id:'a'}, {persona}, '仅公开成员目录'), persona);
 });
 
 test('every eligible global and attached local worldbook entry reaches the same turn', () => {
