@@ -2042,7 +2042,19 @@
       } catch (e) {}
       return null;
     }
+    // Match group governance's existing owner / departed-user policy.
+    // A role-owned group remains viewable, but the user may not silently take over.
+    function canManageGroup(group) {
+      return !!(group && String(group.ownerId || '__user') === '__user' &&
+        group.userMembership !== 'left' && group.userMembership !== 'declined');
+    }
+    function requireGroupOwner(group) {
+      if (canManageGroup(group)) return true;
+      showToast('只有当前群主可以修改群资料');
+      return false;
+    }
     function saveCurrentGroup(group) {
+      if (!canManageGroup(group)) return false;
       try {
         var raw = localStorage.getItem('phone_groups');
         var arr = raw ? JSON.parse(raw) : [];
@@ -2152,7 +2164,16 @@
       if (!g) return;
       gpNameText.textContent = g.name || '群聊';
       var members = Array.isArray(g.members) ? g.members : [];
-      gpMetaSub.textContent = '成员 · ' + members.length + '人';
+      var canManage = canManageGroup(g);
+      gpMetaSub.textContent = '成员 · ' + members.length + '人' + (canManage ? '' : ' · 只读');
+      document.getElementById('gpInfoSaveBtn').disabled = !canManage;
+      document.getElementById('gpNoticeSaveBtn').disabled = !canManage;
+      var avatarEdit = document.getElementById('gpAvatarEditBtn');
+      if (avatarEdit) {
+        avatarEdit.style.display = canManage ? '' : 'none';
+        avatarEdit.setAttribute('aria-disabled', canManage ? 'false' : 'true');
+      }
+      if (gpInviteBlock) gpInviteBlock.style.display = canManage ? '' : 'none';
       renderGroupAvatar(gpAvatar, g);
       renderGroupAvatar(gpAvatarEdit, g);
       gpNameInput.value = g.name || '';
@@ -2175,7 +2196,8 @@
         return '<div class="gp-member-row" data-mid="' + gpEscape(m && m.id) + '">' +
           '<div class="gp-member-avatar">' + av + '</div>' +
           '<span class="gp-member-name">' + gpEscape(m && m.name || '成员') + '</span>' +
-          '<button type="button" class="gp-member-remove">移除</button>' +
+          (canManage && members.length > 1 && String(m.id) !== String(g.ownerId || '__user')
+            ? '<button type="button" class="gp-member-remove">移除</button>' : '') +
         '</div>';
       }).join('') : '<div style="color:#999;font-size:12px;padding:6px 2px;">暂无成员</div>';
       gpMembersList.querySelectorAll('.gp-member-remove').forEach(function (btn) {
@@ -2183,14 +2205,21 @@
           var row = btn.closest('.gp-member-row');
           var mid = row.getAttribute('data-mid');
           var g2 = loadCurrentGroup();
+          if (!requireGroupOwner(g2)) return;
           if (!g2 || !Array.isArray(g2.members)) { showToast('群成员已变化，请重新打开'); return; }
+          if (g2.members.length < 2 || String(g2.ownerId || '__user') === String(mid)) {
+            showToast('不能移除群主或最后一位群成员');
+            return;
+          }
           var targetMember = g2.members.find(function (m) { return String(m.id) === String(mid); });
           if (!targetMember) { showToast('该成员已不在群中'); renderGroupInfo(); return; }
           // Prevent a stray tap on "移除" from erasing member-specific group settings.
           if (!window.confirm('确定将「' + String(targetMember.name || '该成员') + '」移出群聊吗？')) return;
           // Re-read after confirmation: another tab may have changed the group meanwhile.
           g2 = loadCurrentGroup();
-          if (!g2 || !Array.isArray(g2.members) ||
+          if (!requireGroupOwner(g2)) return;
+          if (!g2 || !Array.isArray(g2.members) || g2.members.length < 2 ||
+              String(g2.ownerId || '__user') === String(mid) ||
               !g2.members.some(function (m) { return String(m.id) === String(mid); })) {
             showToast('群成员已变化，请重新打开');
             renderGroupInfo();
@@ -2248,6 +2277,7 @@
         var rid = btn.getAttribute('data-invite-role');
         var g = loadCurrentGroup();
         if (!g) { showToast('群聊已不存在，邀请失败'); return; }
+        if (!requireGroupOwner(g)) return;
         if (!Array.isArray(g.members)) g.members = [];
         if (g.members.some(function (m) { return String(m.id) === String(rid); })) {
           showToast('该角色已在群中');
@@ -2270,12 +2300,13 @@
 
     // 群头像上传（压缩 200px）
     document.getElementById('gpAvatarEditBtn').addEventListener('click', function () {
+      if (!requireGroupOwner(loadCurrentGroup())) return;
       gpAvatarInput.click();
     });
     gpAvatarInput.addEventListener('change', function () {
       var file = gpAvatarInput.files[0];
       gpAvatarInput.value = '';
-      if (!file) return;
+      if (!file || !requireGroupOwner(loadCurrentGroup())) return;
       // Decode only supported, bounded images; protect mobile memory and localStorage.
       if (!/^image\/(?:jpeg|png|webp|gif)$/i.test(file.type) ||
           file.size === 0 || file.size > 10 * 1024 * 1024) {
@@ -2295,7 +2326,7 @@
             canvas.getContext('2d').drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, 200, 200);
             var dataUrl = canvas.toDataURL('image/jpeg', 0.72);
             var g = loadCurrentGroup();
-            if (!g) return;
+            if (!requireGroupOwner(g)) return;
             g.avatar = dataUrl;
             if (saveCurrentGroup(g)) {
               renderGroupInfo();
@@ -2319,7 +2350,7 @@
       var name = gpNameInput.value.trim();
       if (!name) { showToast('群名称不能为空'); return; }
       var g = loadCurrentGroup();
-      if (!g) return;
+      if (!requireGroupOwner(g)) return;
       g.name = name;
       if (saveCurrentGroup(g)) {
         renderGroupInfo();
@@ -2341,6 +2372,7 @@
 
     // 保存群公告
     document.getElementById('gpNoticeSaveBtn').addEventListener('click', function () {
+      if (!requireGroupOwner(loadCurrentGroup())) return;
       var val = gpNoticeInput.value.trim();
       try { localStorage.setItem(GP_NOTICE_KEY, val); } catch (e) { showToast('保存失败，请重试'); return; }
       renderGroupInfo();
@@ -2358,6 +2390,7 @@
 
     // 解散群聊：必须确认群列表成功写入，不能失败时仍跳走并误报成功。
     document.getElementById('actionGpDismiss').addEventListener('click', function () {
+      if (!requireGroupOwner(loadCurrentGroup())) return;
       if (!window.confirm('解散群聊后将清空该群的聊天记录，且不可恢复。确定解散吗？')) return;
       try {
         var raw = localStorage.getItem('phone_groups');
@@ -2366,6 +2399,8 @@
           showToast('群聊不存在，请刷新后再试');
           return;
         }
+        var current = arr.find(function (g) { return g && String(g.id) === String(roleId); });
+        if (!requireGroupOwner(current)) return;
         localStorage.setItem('phone_groups', JSON.stringify(arr.filter(function (g) { return String(g.id) !== String(roleId); })));
       } catch (e) { showToast('解散失败，群聊仍然保留'); return; }
 
