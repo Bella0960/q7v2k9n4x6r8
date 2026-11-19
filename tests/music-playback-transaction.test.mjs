@@ -162,6 +162,63 @@ test('no failing switch emits successful playback or touches favorites/playlist 
   assert.deepEqual(f.logs.recent,['old']);
   assert.equal(f.getState().id,'old');
 });
+
+test('two rapid successful switches commit only the latest chosen song',async()=>{
+  let releaseFirst,entered;
+  const pending=new Promise(resolve=>{releaseFirst=resolve;});
+  const started=new Promise(resolve=>{entered=resolve;});
+  const f=environment({playDecision:async src=>{
+    if(src==='blob:new'){entered();await pending;}
+  }});
+  const first=f.playTrack('new');
+  await started;
+  assert.equal(await f.playTrack('remote'),true);
+  releaseFirst();
+  assert.equal(await first,false);
+  assert.equal(f.getState().id,'remote');
+  assert.equal(f.audio.src,'https://audio.example/ok.mp3');
+  assert.deepEqual(f.logs.events,['play']);
+  assert.ok(f.logs.revoked.includes('blob:new'));
+  assert.ok(f.logs.revoked.includes('blob:old'));
+});
+test('failed src assignment reverts without freeing prior audio Blob',async()=>{
+  const f=environment();
+  let underlying=f.audio.src;
+  Object.defineProperty(f.audio,'src',{
+    get(){return underlying;},
+    set(value){if(value==='blob:bad')throw new Error('assign source failed');underlying=value;}
+  });
+  assert.equal(await f.playTrack('bad'),false);
+  assert.equal(f.audio.src,'blob:old');
+  assert.equal(f.getState().id,'old');
+  assert.deepEqual(f.logs.events,[]);
+  assert.ok(f.logs.revoked.includes('blob:bad'));
+  assert.ok(!f.logs.revoked.includes('blob:old'));
+});
+test('Android-style delayed metadata restores previous song position after failed switch',async()=>{
+  const f=environment({playDecision:unsupported});
+  let source='blob:old',time=42,metadataLoaded=true,onMetadata;
+  Object.defineProperty(f.audio,'src',{
+    get(){return source;},
+    set(value){source=value;metadataLoaded=false;time=0;}
+  });
+  Object.defineProperty(f.audio,'currentTime',{
+    get(){return time;},
+    set(value){if(!metadataLoaded)throw new Error('HAVE_NOTHING');time=value;}
+  });
+  f.audio.addEventListener=(event,fn)=>{
+    if(event==='loadedmetadata')onMetadata=fn;
+  };
+  assert.equal(await f.playTrack('bad'),false);
+  assert.equal(source,'blob:old');
+  assert.equal(time,0);
+  assert.equal(typeof onMetadata,'function');
+  metadataLoaded=true;
+  onMetadata();
+  assert.equal(time,42);
+  assert.equal(f.getState().id,'old');
+});
+
 test('last confirmed source is kept until successful audio play returns',()=>{
   assert.match(playSource,/const oldBlobUrl = currentBlobUrl;/);
   assert.match(playSource,/await window\.audio\.play\(\);/);
