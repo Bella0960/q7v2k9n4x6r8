@@ -406,7 +406,7 @@ function loadHistoryFunctions(storageSlots, contactId = 'roleA', sharedStorage) 
     localStorage,
     currentCharacter: { id: contactId },
     storageKey: 'chat_history_' + contactId,
-    removeLegacyStickerCaptions: (list) => list,
+    removeLegacyStickerCaptions: (list, raw) => sandbox._rememberChatBaseline(list, raw),
     getInitialMessages: () => [],
     _resetWarnCooldown() {},
     _shouldWarnAgain: () => false,
@@ -435,7 +435,8 @@ function loadHistoryFunctions(storageSlots, contactId = 'roleA', sharedStorage) 
       }
     }
   };
-  const code = ['_messageIdentity', '_readBackHistory', '_verifyHistoryRoundTrip', 'loadMessages', 'saveMessages']
+  const code = 'var _chatHistoryBaselines = new WeakMap();\\n' +
+    ['_rememberChatBaseline', '_inheritChatBaseline', '_messageIdentity', '_readBackHistory', '_verifyHistoryRoundTrip', 'loadMessages', 'saveMessages']
     .map((name) => extractFunction(chatDetailSource, name))
     .join('\n');
   runInNewContext(code, sandbox, { filename: 'chat/chat/chat-detail.html#history' });
