@@ -32,7 +32,7 @@ test('CHAT-MIC-001: direct and group continuation reuse sendMsg without saving a
 test('CHAT-MIC-001: manually continued replies do not show typing state or stream fragments', () => {
   assert.match(main, /if \(!isManualContinue && chatTitleEl\)/);
   assert.match(main, /if \(!isManualContinue\) \{[\s\S]*?statusDiv\.innerText = '对方正在输入\.\.\.'/);
-  assert.match(main, /if \(isManualContinue\) return;[\s\S]*?if \(!tmpText\) return;/);
+  assert.match(main, /if \(isManualContinue \|\| provisionalGroupReply\) return;[\s\S]*?if \(!tmpText\) return;/);
   assert.match(main, /const replyBubbleMode = getActiveReplyBubbleMode\(\)/);
 });
 
