@@ -1387,7 +1387,12 @@ function openEditRole(id) {
     avatarDataUrl = target.avatar || '';
     updateAvatarPreview();
     // 回填已绑定的世界书：老角色无该字段时按空数组处理；已被删除的书因不在列表中不会被勾选
-    renderWorldBookBinder(Array.isArray(target.worldBookIds) ? target.worldBookIds : []);
+    const bindings = window.RoleWorldbookBindings && RoleWorldbookBindings.read(target.id, target);
+    if (!bindings || !bindings.ok) {
+        setSaveStatus('世界书挂载读取异常：请检查存储，当前资料没有被修改。', 'error');
+        return;
+    }
+    renderWorldBookBinder(bindings.ids);
     currentDraftKey = getDraftKey(target.id);
     editorOriginalState = captureEditorState();
     showView('editor');
@@ -1445,8 +1450,10 @@ function handleSaveRole() {
         });
     }
 
-    if (!saveRoles(roles)) {
-        setSaveStatus('保存失败：浏览器可能没有可用存储空间。修改仍保留，请重试。', 'error');
+    const bindingSave = window.RoleWorldbookBindings &&
+        RoleWorldbookBindings.save(savedRoleId, selectedWorldBookIds, { roles: roles, requireRole: true });
+    if (!bindingSave || !bindingSave.ok) {
+        setSaveStatus('保存失败：角色资料与世界书挂载未能同时保存，请检查存储后重试。', 'error');
         persistEditorDraft(true);
         return;
     }
