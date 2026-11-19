@@ -247,6 +247,14 @@
                 // Preserve chat-settings-only legacy bindings in those callers too.
                 try {
                     var legacyRaw = localStorage.getItem('chat_worldbooks_' + contactId);
+                    if (legacyRaw == null) {
+                        // Preserve globally scoped lore for old characters until
+                        // they explicitly save their own mount selection.
+                        boundIds = boundIds.concat((Array.isArray(wbs) ? wbs : [])
+                            .filter(function (book) {
+                                return book && book.enabled !== false && book.scope !== 'local';
+                            }).map(function (book) { return String(book.id); }));
+                    }
                     if (legacyRaw != null) {
                         var legacy = JSON.parse(legacyRaw);
                         var legacyIds = Array.isArray(legacy) ? legacy :
