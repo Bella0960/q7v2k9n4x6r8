@@ -13,6 +13,28 @@
     window.location.hostname === 'maomao-aw-qa-20261114.miamor520000.workers.dev';
   let delegatedIdentity = isKnownQaHost;
   let delegatedSignInReady = !isKnownQaHost;
+  let qaIdentityCheckInFlight = false;
+  let qaIdentityRetryTimer = null;
+  let qaIdentityRetryFailures = 0;
+
+  function clearQaIdentityRetry() {
+    if (qaIdentityRetryTimer !== null) {
+      clearTimeout(qaIdentityRetryTimer);
+      qaIdentityRetryTimer = null;
+    }
+  }
+
+  function scheduleQaIdentityRetry() {
+    // Keep login fail-closed until the original authority has confirmed readiness.
+    // A single temporary network/timeout error must not lock the user indefinitely.
+    if (!isKnownQaHost || delegatedSignInReady || qaIdentityRetryTimer !== null ||
+        document.visibilityState === 'hidden') return;
+    const delay = Math.min(30000, 1000 * (2 ** Math.min(qaIdentityRetryFailures, 5)));
+    qaIdentityRetryTimer = setTimeout(() => {
+      qaIdentityRetryTimer = null;
+      void checkCreatorBootstrapEntry();
+    }, delay);
+  }
 
   function syncLoginAvailability() {
     // Auth-state readiness and busy state are independent. Finishing an
@@ -389,9 +411,12 @@
 
   async function checkCreatorBootstrapEntry() {
     const link = byId('creatorBootstrapLink');
-    if (!link) return;
+    if (!link || qaIdentityCheckInFlight) return;
+    qaIdentityCheckInFlight = true;
     try {
       const status = await api('/api/admin/bootstrap/status');
+      qaIdentityRetryFailures = 0;
+      clearQaIdentityRetry();
       const reportedDelegated = status.identityMode === 'delegated';
       if (isKnownQaHost && !reportedDelegated) {
         delegatedIdentity = true;
@@ -402,6 +427,7 @@
           button.hidden = true;
         });
         setError('loginError', 'QA 身份状态异常，已暂停登录。不要输入正式版密码或重新注册。');
+        scheduleQaIdentityRetry();
         return;
       }
       delegatedIdentity = reportedDelegated;
@@ -432,6 +458,15 @@
         }
         delegatedSignInReady = status.signInReady === true;
         syncLoginAvailability();
+        if (delegatedSignInReady) {
+          // Only remove a transient status-probe error, never a password/login error.
+          const loginError = byId('loginError');
+          if (loginError && String(loginError.textContent || '').startsWith('QA 身份服务连接失败')) {
+            setError('loginError');
+          }
+        } else {
+          scheduleQaIdentityRetry();
+        }
         if (!delegatedSignInReady) {
           setError('loginError', canQaSetup
             ? 'QA 独立身份服务已就绪。请先点击「设置 QA 独立账号密码」完成一次性初始化，不要使用正式版密码。'
@@ -449,9 +484,25 @@
         document.querySelectorAll('[data-show="registerPanel"]').forEach(button => {
           button.hidden = true;
         });
-        setError('loginError', 'QA 身份服务连接失败，登录已暂停。请检查连接，不要提交密码。');
+        qaIdentityRetryFailures += 1;
+        setError('loginError', 'QA 身份服务连接失败，正在自动重试。登录暂时暂停，请勿提交密码。');
+        scheduleQaIdentityRetry();
       }
+    } finally {
+      qaIdentityCheckInFlight = false;
     }
+  }
+
+  function retryQaIdentityOnForeground() {
+    if (!isKnownQaHost || delegatedSignInReady || qaIdentityCheckInFlight ||
+        document.visibilityState === 'hidden') return;
+    clearQaIdentityRetry();
+    void checkCreatorBootstrapEntry();
+  }
+
+  if (isKnownQaHost) {
+    window.addEventListener('online', retryQaIdentityOnForeground);
+    document.addEventListener('visibilitychange', retryQaIdentityOnForeground);
   }
 
   (async function restoreSession() {
