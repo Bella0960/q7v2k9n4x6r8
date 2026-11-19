@@ -87,7 +87,7 @@ test('角色的最新人设、说话习惯、生活线、记忆与邂逅来源�
   assert.match(detail, /role\.lifeEvents/);
   assert.match(detail, /roleForTurn\.memory/);
   assert.match(detail, /buildEncounterIdentityContext\(roleForTurn\)/);
-  assert.match(detail, /MAOMAOChatRoleContext\.getModelHistory\(historyList, roleForTurn\)/);
+  assert.match(detail, /MAOMAOChatRoleContext\.getModelHistory\(modelHistoryList, roleForTurn\)/);
   assert.match(detail, /selectRecentHistory\(roleModelHistory, memoryLimit\)/);
   assert.match(detail, /buildHistoricalRecallText\(recallableHistory, recallQuery, recallOptions\)/);
   assert.match(detail, /roleModelHistory !== historyList \? null : cachedVoiceProfile/);
