@@ -217,7 +217,9 @@ test('group persona output guard is before persistence and leaves offline/role d
   assert.ok(guard>0 && marker>guard && save>marker);
   assert.match(detail,/qualityPolicy\.validateGroupOnlineReply\(/);
   assert.match(detail,/if \(!qualityResult\.ok\) \{[\s\S]{0,1000}inflightSnapshot = null;/);
-  assert.match(detail,/if \(isManualContinue \|\| provisionalGroupReply\) return;/);
+  assert.match(detail,/if \(isManualContinue\) return;/);
+  assert.match(detail,/var partialQuality = window\.MAOMAOChatRoleContext\.validateGroupOnlineReply\(\{/);
+  assert.match(detail,/if \(!partialQuality\.ok\) \{[\s\S]{0,140}inflightSnapshot = null;/);
   assert.match(detail,/currentGroup\.settings\.chatMode !== 'offline'/);
   assert.match(detail,/chat-role-context\.js\?v=20261119groupreply1/);
   assert.match(rolePolicy,/validateGroupOnlineReply: validateGroupOnlineReply/);
