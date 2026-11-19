@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v266';
+const CACHE_NAME = 'phone-app-pwa-v267';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 function cacheablePublicResponse(response) {
   return !!(response && response.ok && !response.redirected &&
@@ -382,6 +382,65 @@ self.addEventListener('fetch', event => {
         });
       })
     );
+    return;
+  }
+
+  // Welcome page artwork/styles only: network-first, cached fallback when offline.
+  // All other app assets keep the existing cache-first strategy below.
+  // The welcome page's Vite CSS may be emitted under /assets with a content hash,
+  // so scope that stylesheet by its SAME-ORIGIN welcome document referrer.
+  const welcomePagePath = accountPath + 'index.html';
+  let fromWelcomePage = false;
+  if (req.destination === 'style' && req.referrer) {
+    try {
+      const referringPage = new URL(req.referrer);
+      fromWelcomePage = referringPage.origin === self.location.origin &&
+        (referringPage.pathname === welcomePagePath ||
+          referringPage.pathname === accountPath);
+    } catch (error) {
+      fromWelcomePage = false;
+    }
+  }
+  const isWelcomeStyle = (url.pathname === accountPath + 'account.css' ||
+    url.pathname === accountPath + 'ivory-entry.css') ||
+    (req.destination === 'style' && fromWelcomePage && /\\.css$/i.test(url.pathname));
+  const welcomeArtPath = new URL('assets/ivory-mao/', self.registration.scope).pathname;
+  const isWelcomeArtwork = url.pathname === welcomeArtPath + 'hero.webp' ||
+    url.pathname === welcomeArtPath + 'ornament.webp' ||
+    url.pathname === welcomeArtPath + 'leafshadow.webp';
+  if (isWelcomeStyle || isWelcomeArtwork) {
+    event.respondWith((async function () {
+      var cacheWritePromise = null;
+      var networkPromise = fetch(req, { cache: 'no-store' }).then(function (response) {
+        const type = String(response.headers && response.headers.get('content-type') || '');
+        const correctType = isWelcomeStyle
+          ? /^\\s*text\\/css\\s*(?:;|$)/i.test(type)
+          : /^\\s*image\\/webp\\s*(?:;|$)/i.test(type);
+        if (correctType && cacheablePublicResponse(response)) {
+          const copy = response.clone();
+          cacheWritePromise = caches.open(CACHE_NAME)
+            .then(function (cache) { return cache.put(req, copy); })
+            .catch(function () { return undefined; });
+        }
+        return response;
+      }).catch(function () { return null; });
+      event.waitUntil(networkPromise.then(function () { return cacheWritePromise; })
+        .then(function () { return undefined; }));
+
+      const fresh = await networkPromise;
+      if (fresh) return fresh;
+      const cached = await caches.open(CACHE_NAME).then(function (cache) {
+        return cache.match(req).then(function (hit) {
+          // Welcome-only offline compatibility for previous versioned asset URLs.
+          return hit || cache.match(req, { ignoreSearch: true });
+        });
+      }).catch(function () { return null; });
+      const cachedType = String(cached && cached.headers && cached.headers.get('content-type') || '');
+      if (cacheablePublicResponse(cached) && (isWelcomeStyle
+        ? /^\\s*text\\/css\\s*(?:;|$)/i.test(cachedType)
+        : /^\\s*image\\/webp\\s*(?:;|$)/i.test(cachedType))) return cached;
+      return new Response('', { status: 503, headers: { 'Cache-Control': 'no-store' } });
+    })());
     return;
   }
 
