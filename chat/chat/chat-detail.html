@@ -19,7 +19,7 @@
     <script src="../../shared/js/phone/chat-image-vision.js?v=20261113v1"></script>
     <script src="../../shared/js/phone/rp-default-protocol.js?v=20261118v1"></script>
     <script src="../../shared/js/phone/role-worldbook-bindings.js?v=20261119-qa1"></script>
-    <script src="../../shared/js/phone/chat-role-context.js?v=20261118historypurity1"></script>
+    <script src="../../shared/js/phone/chat-role-context.js?v=20261119groupreply1"></script>
     <script src="../../shared/js/phone/inspect_interaction_bridge.js?v=20261112v5"></script>
     <script src="../../shared/js/phone/phone_api.js?v=20261115cancel1"></script>
     <script src="../../shared/js/phone/image-generation.js?v=20261106v1"></script>
@@ -6930,6 +6930,16 @@
                     '与用户已保存的伴侣协议共同生效，具体语气以该协议和角色档案为准。';
             }
 
+            if (isGroupChat && currentGroup &&
+                (!currentGroup.settings || currentGroup.settings.chatMode !== 'offline')) {
+                systemPrompt += '\n\n【本轮普通群聊的说话方式】\n' +
+                    '用本轮角色的身份，先回应刚刚发生的具体事情。比如有人问“有没有人想玩游戏”，' +
+                    '就按人物的兴趣与现实情况自然接话，不要回答自己是 AI、不能实际陪玩、在线待命或介绍模型功能。' +
+                    '除非角色档案明确设定为数字生命，否则任何“我是人工智能/聊天机器人”都不是角色身份。' +
+                    '不要把日常邀约变成“我可以提供以下几项服务”的编号菜单、Markdown 粗体或大段活动主持词。' +
+                    '一般一两句即可，话多话少按已保存的人设及协议；对方明确要求清单、教程或角色本就使用这种文风时不强制省略。' +
+                    '不模仿历史中跑偏的 AI 自我介绍，相关记录只作系统错误看待，不是人物设定。';
+            }
             // Shared precedence for ALL direct and group roles: user-authored protocol
             // owns voice / prose / interaction; current persona owns individual identity;
             // scoped activated worldbooks supply factual setting. Built-in markers only
@@ -7293,7 +7303,12 @@
                     memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined
                 };
                 // 手动继续聊天只在完整回复成功落库后显示，绝不渲染打字中状态。
-                if (isManualContinue) return;
+                // Online group answers are provisional until verified against the
+                // selected speaker. Keep the normal typing indicator instead of
+                // briefly showing a wrong AI identity during streaming.
+                var provisionalGroupReply = isGroupChat && currentGroup &&
+                    (!currentGroup.settings || currentGroup.settings.chatMode !== 'offline');
+                if (isManualContinue || provisionalGroupReply) return;
                 /* 推理标签可能先于正文到达；在真正有可见聊天文字前，不创建气泡。 */
                 var tmpText = stripInternalReasoning(extractVoiceCallMarker(text).text);
                 tmpText = tmpText
@@ -7421,6 +7436,40 @@
                 logApiCall(apiModel, 'error', apiCallStart, errText);
             } else {
                 logApiCall(apiModel, 'success', apiCallStart);
+            }
+
+            // A valid provider response can still be a generic AI service menu
+            // instead of this saved person's reply. Refuse only clear online-group
+            // drift, before parsing any feature marker or committing any message.
+            // No automatic second paid request; the user may retry explicitly.
+            if (streamResult.ok && isGroupChat && currentGroup && groupReplyPick &&
+                (!currentGroup.settings || currentGroup.settings.chatMode !== 'offline') &&
+                String(fullText || '').trim()) {
+                const qualityPolicy = window.MAOMAOChatRoleContext;
+                const qualityResult = qualityPolicy &&
+                    typeof qualityPolicy.validateGroupOnlineReply === 'function'
+                    ? qualityPolicy.validateGroupOnlineReply({
+                        role: getRoleById(groupReplyPick.id),
+                        text: fullText,
+                        latestUserText: text
+                    }) : {ok:false,code:'quality-policy-missing'};
+                if (!qualityResult.ok) {
+                    inflightSnapshot = null;
+                    for (var invalidNode = 0; invalidNode < streamNodes.length; invalidNode++) {
+                        if (streamNodes[invalidNode] && streamNodes[invalidNode].parentNode) {
+                            streamNodes[invalidNode].parentNode.removeChild(streamNodes[invalidNode]);
+                        }
+                    }
+                    streamNodes = [];
+                    if (_vl) _vl.streaming = false;
+                    aiSending = false;
+                    if (chatTitleEl) chatTitleEl.textContent = originalTitleText;
+                    if (_vl) vlRefresh(); else renderAllMessages();
+                    if (typeof showToast === 'function') {
+                        showToast('这条群聊回复跳出了角色设定，已拦截；可点继续聊天重试');
+                    }
+                    return;
+                }
             }
 
             // Regeneration is replacement, not deletion: a failed/empty AI turn must
