@@ -25,7 +25,7 @@ test('提示词不再自称 AI 助理，回复前重申角色身份与反客服�
  assert.match(detail,/禁止 Markdown 粗体/);
 });
 
-test('单聊旧协议迁移只读取当前角色，不拿别的角色协议覆盖', () => {
+test('空全局协议不自动挪用任何角色旧协议，保留全部旧值供用户恢复', () => {
   const start = detail.indexOf("            let rpProtocol = '';");
   const end = detail.indexOf('            // 设置页展示的默认协议', start);
   assert.ok(start >= 0 && end > start, '应取到真实聊天协议兼容逻辑');
@@ -48,8 +48,11 @@ test('单聊旧协议迁移只读取当前角色，不拿别的角色协议覆�
     chat_rp_protocol_other: '其他角色私有协议',
     chat_rp_protocol_current: '当前角色旧协议'
   });
-  assert.equal(run(own, 'current', { id: 'current' }, 'current'), '当前角色旧协议');
-  assert.equal(own.read('chat_rp_protocol_'), '当前角色旧协议');
+  assert.equal(run(own, 'current', { id: 'current' }, 'current'), '');
+  assert.equal(own.read('chat_rp_protocol_'), null,
+    '没有明确保存的全局协议时，不能把当前角色旧协议强行推广给其他人');
+  assert.equal(own.read('chat_rp_protocol_current'), '当前角色旧协议',
+    '当前角色旧协议原文仍供用户按需恢复');
   assert.equal(own.read('chat_rp_protocol_other'), '其他角色私有协议',
     '其他角色原始数据不得修改');
 
