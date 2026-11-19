@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v264';
+const CACHE_NAME = 'phone-app-pwa-v265';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 function cacheablePublicResponse(response) {
   return !!(response && response.ok && !response.redirected &&
@@ -125,10 +125,11 @@ const APP_SHELL = [
   './shared/js/phone/chat-image-vision.js?v=20261113v1',
   'shared/js/phone/chat-send-policy.js?v=20261029v2',
   'shared/js/phone/chat-context-policy.js?v=20261118historybudget1',
-  './shared/js/phone/chat-presence-policy.js?v=20261118voicepurity1',
+  './shared/js/phone/chat-presence-policy.js?v=20261119scheduled1',
   './shared/js/phone/role-public-timeline.js?v=20261102v1',
   './shared/js/phone/group-chat-policy.js?v=20261118groupvoice1',
   './shared/js/phone/chat-role-context.js?v=20261119source3',
+  './shared/js/phone/chat-scheduled-role-context.js?v=20261119scheduled1',
   './shared/js/group-governance.js?v=20261115g4',
   './shared/js/phone/group-game-session.js?v=20261116game11',
   './shared/js/phone/group-turn-effects.js?v=20261115gte2',
@@ -138,11 +139,11 @@ const APP_SHELL = [
   './shared/js/phone/group-game-chat-receipts.js?v=20261116receipt2',
   './shared/js/group-settings-layout.js?v=20261115s1',
   './shared/js/phone/group_memory_view.js?v=20261115gm1',
-  './shared/js/phone/chat-followup-policy.js?v=20261102v1',
+  './shared/js/phone/chat-followup-policy.js?v=20261119scheduled1',
   'shared/js/phone/phone_stream.js',
   'shared/js/phone/memory_recall.js?v=20261118groupmemory1',
   'shared/js/phone/memory_space_v2.js?v=20261024v1',
-  './shared/js/chat-notifier.js?v=20261119atomic1',
+  './shared/js/chat-notifier.js?v=20261119scheduled1',
   'shared/js/phone/storage/repository.js',
   'shared/js/phone/storage/media-repository.js?v=20261107v2',
   './shared/js/phone/role-sticker-library.js?v=20261107v2',
