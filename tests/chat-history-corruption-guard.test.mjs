@@ -12,12 +12,16 @@ assert.ok(from >= 0 && to > from && saveFrom > to && saveTo > saveFrom,
   'real chat source must expose the read/write guard blocks');
 const readFrom = detail.indexOf('        function _readBackHistory() {', to);
 assert.ok(readFrom > to && readFrom < saveFrom, 'readback must use real production helpers');
-const code = detail.slice(from, to) + '\n' + detail.slice(readFrom, saveTo);
+// Reuse the real cross-tab version helpers that now precede loadMessages.
+const baselineFrom = detail.indexOf('        var _chatHistoryBaselines = new WeakMap();');
+assert.ok(baselineFrom >= 0 && baselineFrom < from, 'real history baseline helpers are required');
+const code = detail.slice(baselineFrom, to) + '\n' + detail.slice(readFrom, saveTo);
 
 function fixture(raw, options = {}) {
   let bytes = raw;
   let writes = 0;
   let initialized = 0;
+  let lastRead = null;
   const toasts = [];
   const sandbox = {
     _storage: options.storage || null,
@@ -37,8 +41,13 @@ function fixture(raw, options = {}) {
   vm.createContext(sandbox);
   vm.runInContext(code + '\nglobalThis.chatGuard = { loadMessages, saveMessages };', sandbox);
   return {
-    read: () => sandbox.chatGuard.loadMessages(),
-    write: list => sandbox.chatGuard.saveMessages(list),
+    read: () => {
+      lastRead = sandbox.chatGuard.loadMessages();
+      return lastRead;
+    },
+    write: list => sandbox.chatGuard.saveMessages(
+      lastRead ? sandbox._inheritChatBaseline(list, lastRead) : list
+    ),
     bytes: () => bytes,
     setRaw: value => { bytes = value; },
     setRole: roleId => { sandbox.currentCharacter.id = roleId; },
