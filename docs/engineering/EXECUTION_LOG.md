@@ -407,3 +407,21 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - Cloudflare Browser Rendering 继续单条执行以避开浏览器并发限流：**云推送最终紧凑版** 375、390、430px 三个视口，header 均 62px，首设置卡片 top 均 143px，0 假状态栏、0 横向溢出，纵向滚动正常；三档入口都保留「后台 AI 未就绪」醒目摘要。430px 已实际点击原生 disclosure 展开及收回，均 PASS。
 - Settings 375、390px header 62px、首卡 top 94px，430px 首页 header 62px/内嵌 API header 59px，点击 API 行成功打开且返回按钮成功关闭；三个视口均无假状态栏、横向溢出，主设置区仍可滚动。这是 GitHub QA 分支当前 HTML/CSS 加上项目 mobile-fit 的 **浏览器渲染/局部交互核验完成**，不涉及业务脚本执行。
 - 当前视觉页面 **SOURCE_BROWSER_LAYOUT_PASS**；整体工程依旧 `NODE_BUILD_NOT_RUN / QA_NOT_DEPLOYED / USER_QA_PENDING`。不允许据此宣布完整部署交付。
+
+
+## CHAT-WORLDBOOK-001 · Integrate worldbook dual-binding into latest sole QA source (2026-11-19)
+
+**Source of truth:** latest `integration/account-fanwai-stack-20261115` QA HEAD at integration start `0f8235e04a6ecd9ee5e2b710ea3de1b5dcf79c9d`. Dev source PR #307 was reviewed but not copied as an entire old QA page. Integration staged on `CHAT-WORLDBOOK-001/qa-latest-integration-20261119` as a direct descendant of the existing QA HEAD, with no new QA site.
+
+**New user-visible behavior:**
+- Character editor and chat settings read and save a common effective worldbook ID set; save either side updates the other. Old `worldBookIds`, `chat_worldbooks_<id>` arrays and legacy objects remain compatible. Explicit empty selection stays empty; missing book IDs are retained rather than deleted by an unrelated edit.
+- Both open pages handle cross-tab `storage` events: reflect the latest mounts when not editing, preserve an in-progress selection, reject conflicting saves instead of overwriting another tab.
+- Latest QA chat persona/group/hidden-game policy remains intact. Actual main chat request filters the current speaker's private books, group's explicit mounts and applicable historic global defaults. Damaged bindings stop before AI request, and already-saved messages use the existing failed-bubble/retry path.
+- `PhoneContext` uses a bridge when available with backward-compatible read-only role/worldbook fallback. No role IDs, history, API settings, account model, group secrets, candidate story data or production bindings changed.
+- `sw.js` cache version increments v252 -> v253 and pre-caches `role-worldbook-bindings.js?v=20261119-qa1`.
+
+**Actual verification:** 16/16 static integration and JS syntax assertions on current integration source; 20/20 cases from the committed Node test file run by a V8 `node:test`-compatible shim, including the actual latest QA prompt block; separate prompt content/error simulation found 9/10 passing on its first pass, with the single miss caused by a mistaken expectation that global defaults stay visible after an explicit saved mount. Corrected expected legacy union matches the bridge, and the comprehensive 20-case suite passes. **No real Node CLI runner or Vite build, Chromium, Android/iOS, paid AI request, or QA domain deployment has run here.**
+
+**Actual Cloudflare read-only check:** existing `maomao-aw-qa-20261114` latest live version identified as `2dff7092-4c8d-4267-bb83-80efb85511cf` from 2026-11-18 12:58:57 UTC (as of this check). Cloudflare Workers Builds build-minute limit is reached until its reported Nov 30 refresh; configured QA Build trigger is `MAOMAO sole QA — manual validation build, deploy paused`, with deploy command intentionally set to an echo. **It must not be used to claim a QA deployment.** The existing true QA deploy is `scripts/qa-direct-release.mjs --qa-only` run from a full authorized Node 22 checkout after its complete test and account preflight gates; this session's runtime does not contain the repository checkout/dependencies. Do not deploy without the full suite and expected Cloudflare build receipt, do not change production or identity core.
+
+**Status:** QA integration source candidate only, until the latest QA ref fast-forward and complete release verification. The real owner test URL is still `https://preview.mao520.com`. Do not report browser availability of this worldbook change until its `qa-build-receipt.json` matches the deployed QA Git SHA.
