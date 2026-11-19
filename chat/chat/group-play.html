@@ -546,7 +546,22 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
     renderSettings();renderMembers();renderOwner();renderRelationships();
   }
   document.getElementById('backBtn').addEventListener('click',function(){
-    location.href='chat-settings.html?roleId='+encodeURIComponent(groupId);
+    // Return to the actual parent settings screen, preserving its open section.
+    // A new location.href created settings -> group-play -> settings loops.
+    var fromSettings=false;
+    try {
+      var previous=new URL(document.referrer);
+      var priorId=previous.searchParams.get('roleId');
+      fromSettings=previous.origin===location.origin &&
+        /\/chat\/chat-settings\.html$/.test(previous.pathname) &&
+        priorId===String(groupId);
+    } catch(e) {}
+    if(fromSettings && history.length>1){
+      history.back();
+    } else {
+      // Direct/deep-linked group-play page: don't leave it in the back stack.
+      location.replace('chat-settings.html?roleId='+encodeURIComponent(groupId));
+    }
   });
 })();
 </script>
