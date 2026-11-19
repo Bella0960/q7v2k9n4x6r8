@@ -237,3 +237,117 @@ test('新群首次打开初始化历史后才能安全发送，刷新不丢且�
   const missing = await one.ChatHistoryAtomic.appendIf('g_missing',{mid:'x',text:'勿创建已删除会话'});
   assert.equal(missing.ok,false, '禁止原子写入器静默复活不存在的聊天');
 });
+
+
+// Test the page's actual list functions, not a reimplementation.
+// One broken imported group must never make all healthy chats disappear.
+function renderGroupListFixture(raw, options = {}) {
+  const saved = new Map();
+  if (raw !== undefined) saved.set('phone_groups', raw);
+  const container = {
+    innerHTML: '',
+    listeners: [],
+    querySelectorAll(selector) {
+      if (selector !== '.chat-group-card') return [];
+      const matches = [...this.innerHTML.matchAll(/class="chat-slim-card chat-group-card" data-gid="([^"]+)"/g)];
+      return matches.map(match => ({
+        getAttribute(name) { return name === 'data-gid' ? match[1] : null; },
+        addEventListener(event, fn) {
+          if (event === 'click') container.listeners.push(fn);
+        }
+      }));
+    }
+  };
+  let writes = 0;
+  const local = {
+    getItem(key) {
+      if (options.throwOnRead && key === 'phone_groups') throw new Error('storage blocked');
+      return saved.has(key) ? saved.get(key) : null;
+    },
+    setItem(key, value) {
+      writes++;
+      saved.set(key, String(value));
+    }
+  };
+  const document = { getElementById(id) { return id === 'chatListContainer' ? container : null; } };
+  const browser = {
+    GroupGovernance: { pendingInvitations() { return []; }, userIsInGroup() { return true; } },
+    location: { href: '' }
+  };
+  const start = chat.indexOf('var _groupListReadError = false;');
+  const end = chat.indexOf('    /* 轻提示（本页自用', start);
+  const helperStart = chat.indexOf('function escapeHtml(str) {');
+  const helperEnd = chat.indexOf('    // 生成头像 HTML', helperStart);
+  const listStart = chat.indexOf('function renderChatList()');
+  const listEnd = chat.indexOf('    /* ================= 初始化', listStart);
+  assert.ok(start >= 0 && end > start && helperEnd > helperStart && listEnd > listStart);
+  const source = chat.slice(start, end) + chat.slice(helperStart, helperEnd) +
+    chat.slice(listStart, listEnd) + '\nreturn renderChatList;';
+  const render = new Function(
+    'window', 'document', 'localStorage', 'getHiddenChatIds',
+    'loadCharacters', 'getConversationMeta', 'formatConversationTime', 'USER_SVG_SMALL', source
+  )(
+    browser, document, local, () => [],
+    () => options.roles || [], () => ({time:0, preview:''}), () => '', '<svg></svg>'
+  );
+  render();
+  return {
+    html: container.innerHTML,
+    writes,
+    original: saved.get('phone_groups'),
+    clickFirstGroup() { if (container.listeners.length) container.listeners[0](); return browser.location.href; }
+  };
+}
+
+test('群聊存储损坏不再冒充暂无聊天，也不修改原始数据', () => {
+  const out = renderGroupListFixture('{');
+  assert.match(out.html, /group-data-warning/);
+  assert.doesNotMatch(out.html, /暂无聊天消息/);
+  assert.equal(out.original, '{');
+  assert.equal(out.writes, 0);
+});
+test('正常缺失群数据仍显示原空列表，不误报损坏', () => {
+  const out = renderGroupListFixture(undefined);
+  assert.match(out.html, /暂无聊天消息/);
+  assert.doesNotMatch(out.html, /group-data-warning/);
+});
+test('异常群列表不影响原角色显示', () => {
+  const out = renderGroupListFixture('{', {roles:[{id:'r_keep',name:'旧角色',avatar:''}]});
+  assert.match(out.html, /旧角色/);
+  assert.match(out.html, /group-data-warning/);
+});
+test('混合异常与有效群时有效群可显示、点击并进入', () => {
+  const raw = JSON.stringify([null, 'broken', {id:'g_healthy',name:'保留的群',members:[{id:'r1',name:'角色甲'}]}]);
+  const out = renderGroupListFixture(raw);
+  assert.match(out.html, /保留的群/);
+  assert.match(out.html, /group-data-warning/);
+  assert.match(out.clickFirstGroup(), /chat-detail\.html\?v=20261028modes1&id=g_healthy$/);
+  assert.equal(out.original, raw);
+  assert.equal(out.writes, 0);
+});
+test('旧群成员异常不让整个群列表崩溃', () => {
+  const raw = JSON.stringify([{id:'g_legacy',name:'旧群',members:[null,{id:'r1',name:'角色甲'}]}]);
+  const out = renderGroupListFixture(raw);
+  assert.match(out.html, /旧群/);
+  assert.match(out.html, /group-data-warning/);
+  assert.match(out.clickFirstGroup(), /id=g_legacy$/);
+});
+test('旧群 members 不是数组时，列表仍能显示且不会改存储', () => {
+  const raw = JSON.stringify([{id:'g_legacy',name:'旧群',members:{bad:true}}]);
+  const out = renderGroupListFixture(raw);
+  assert.match(out.html, /旧群/);
+  assert.match(out.html, /group-data-warning/);
+  assert.equal(out.writes, 0);
+});
+test('群名含 HTML 字符被安全转义，正常群无误报', () => {
+  const raw = JSON.stringify([{id:'g_safe',name:'<img src=x onerror=alert(1)>',members:[]}]);
+  const out = renderGroupListFixture(raw);
+  assert.match(out.html, /&lt;img src=x onerror=alert\(1\)&gt;/);
+  assert.doesNotMatch(out.html, /group-data-warning/);
+});
+test('浏览器存储读取受阻时可见提示，不伪装无聊天', () => {
+  const out = renderGroupListFixture(undefined,{throwOnRead:true});
+  assert.match(out.html, /group-data-warning/);
+  assert.doesNotMatch(out.html, /暂无聊天消息/);
+  assert.equal(out.writes, 0);
+});
