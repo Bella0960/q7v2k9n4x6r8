@@ -23,11 +23,18 @@ function envelope(currentText, overrides={}) {
       {id:'r1-local',scope:'local',title:'个人',entries:[{name:'巷子',injectMode:'keyword',keywords:['巷子'],content:'转角是书店'}]},
       {id:'r2-private',scope:'local',title:'其他人',content:'不能泄露'}
     ]),
-    chat_worldbooks_r1:'[]'
+    // An explicitly checked mount is authoritative; [] would mean the user unmounted every book.
+    chat_worldbooks_r1:JSON.stringify(['global','r1-local'])
   };
   Object.assign(records, overrides);
+  const storage = {getItem:key=>records[key]??null};
+  // The real offline routes load the same binding bridge as the role editor
+  // and online chat; do not pretend the old unbound selection is still valid.
+  const bindingWindow = {};
+  runInNewContext(src('shared/js/phone/role-worldbook-bindings.js'),
+    {window:bindingWindow,localStorage:storage});
   return policy.buildSavedSourceEnvelope({
-    role,storage:{getItem:key=>records[key]??null},contextPolicy:context,
+    role,storage,contextPolicy:context,bindingBridge:bindingWindow.RoleWorldbookBindings,
     conversationId:'r1',currentText,recentMessages:[],userName:'玩家',
     defaultProtocol:'默认协议备用'
   });
@@ -38,6 +45,8 @@ test('offline/short routes load the same fresh source scripts, without fallback 
     assert.match(page,/rp-default-protocol\.js/);
     assert.match(page,/chat-context-policy\.js/);
     assert.match(page,/chat-role-context\.js/);
+    assert.match(page,/role-worldbook-bindings\.js/);
+    assert.ok(page.indexOf('role-worldbook-bindings.js') < page.indexOf('chat-role-context.js'));
     assert.match(page,/buildSavedSourceEnvelope\(/);
     assert.match(page,/validateFinalApiMessages\(/);
   }
@@ -87,4 +96,15 @@ test('legacy object worldbook mounts remain readable and never turn into empty b
   assert.equal(envelope('巷子', { chat_worldbooks_r1: oldShape }).ok, true);
   assert.equal(envelope('巷子', { chat_worldbooks_r1: '{"unexpected":42}' }).ok, false);
   assert.equal(envelope('巷子', { chat_worldbooks_r1: 'bad json' }).ok, false);
+});
+
+
+test('offline saved explicit unmount and disabled legacy binding never resurrect old role or global lore', () => {
+  for (const legacy of ['[]', JSON.stringify({enabled:false,worldbookIds:['r1-local']})]) {
+    const result=envelope('巷子怎么走',{chat_worldbooks_r1:legacy});
+    assert.equal(result.ok,true);
+    assert.equal(result.worldbook,'');
+    assert.equal(result.activeBookCount,0);
+    assert.doesNotMatch(result.expandedProtocol,/转角是书店|住在南方/);
+  }
 });
