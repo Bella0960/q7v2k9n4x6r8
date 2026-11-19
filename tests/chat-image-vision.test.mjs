@@ -266,12 +266,12 @@ test('deleted chat images release only chat references after single or bulk dele
     const save = handler.indexOf(saveCall);
     const release = handler.indexOf('releaseDeletedChatImageReferences(removedMessages)');
     assert.ok(save >= 0 && release > save, 'reference cleanup must follow a successful, verified save');
-    assert.match(handler.slice(save, release), /删除失败[\\s\\S]*?return;/);
-    assert.match(handler.slice(0, release), /removedMessages = list\\.filter\\(function \\(m\\) \\{ return !keptMids\\.has/);
+    assert.match(handler.slice(save, release), /删除失败[\s\S]*?return;/);
+    assert.match(handler.slice(0, release), /removedMessages = list\.filter\(function \(m\) \{ return !keptMids\.has/);
   }
-  assert.match(bulk, /await replaceChatSafely\\(originalSnapshot, keep\\)/);
+  assert.match(bulk, /await replaceChatSafely\(originalSnapshot, keep\)/);
   assert.doesNotMatch(bulk.slice(0, bulk.indexOf('releaseDeletedChatImageReferences(removedMessages)')),
-    /saveMessages\\(/);
+    /saveMessages\(/);
   assert.ok(chatExtrasSource.includes('releaseDeletedChatImageReferences(previousMessages)'));
   assert.ok(chatDetailSource.includes('window.releaseDeletedChatImageReferences = releaseDeletedChatImageReferences'));
 });
