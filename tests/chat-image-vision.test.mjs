@@ -257,13 +257,21 @@ test('deleted chat images release only chat references after single or bulk dele
   assert.ok(chatDetailSource.includes("String(message.assetId),\n                        'chat-message',"));
   const single = chatDetailSource.slice(chatDetailSource.indexOf('function deleteOneMessage(bubbleId)'));
   const bulk = chatDetailSource.slice(chatDetailSource.indexOf("document.getElementById('selectDeleteBtn').addEventListener"));
-  for (const handler of [single, bulk]) {
-    const save = handler.indexOf('if (!saveMessages(_inheritChatBaseline(keep, list)))');
+  // The single-message route retains its optimistic sync version check;
+  // the bulk route now uses the cross-tab Web Lock / compare-and-swap path.
+  for (const [handler, saveCall] of [
+    [single, 'if (!saveMessages(_inheritChatBaseline(keep, list)))'],
+    [bulk, 'if (!await replaceChatSafely(originalSnapshot, keep))']
+  ]) {
+    const save = handler.indexOf(saveCall);
     const release = handler.indexOf('releaseDeletedChatImageReferences(removedMessages)');
-    assert.ok(save >= 0 && release > save, 'reference cleanup must follow a successful save');
-    assert.match(handler.slice(save, release), /删除失败[\s\S]*?return;/);
-    assert.match(handler.slice(0, release), /removedMessages = list\.filter\(function \(m\) \{ return !keptMids\.has/);
+    assert.ok(save >= 0 && release > save, 'reference cleanup must follow a successful, verified save');
+    assert.match(handler.slice(save, release), /删除失败[\\s\\S]*?return;/);
+    assert.match(handler.slice(0, release), /removedMessages = list\\.filter\\(function \\(m\\) \\{ return !keptMids\\.has/);
   }
+  assert.match(bulk, /await replaceChatSafely\\(originalSnapshot, keep\\)/);
+  assert.doesNotMatch(bulk.slice(0, bulk.indexOf('releaseDeletedChatImageReferences(removedMessages)')),
+    /saveMessages\\(/);
   assert.ok(chatExtrasSource.includes('releaseDeletedChatImageReferences(previousMessages)'));
   assert.ok(chatDetailSource.includes('window.releaseDeletedChatImageReferences = releaseDeletedChatImageReferences'));
 });
