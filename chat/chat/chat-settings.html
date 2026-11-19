@@ -3406,9 +3406,13 @@
     });
   }
 
-  // ================= 返回上一页；无历史时兜底回聊天列表 =================
+  // ================= 返回：群资料逐级回到所属群聊，私聊沿用原规则 =================
   document.getElementById('btnBack').addEventListener('click', function () {
-    if (window.history.length > 1) {
+    if (isGroupSetting && roleId) {
+      // history.back() can revisit group-play after its explicit fallback.
+      // Always return to this group's conversation; never jump to the desktop.
+      window.location.replace('chat-detail.html?id=' + encodeURIComponent(roleId));
+    } else if (window.history.length > 1) {
       window.history.back();
     } else {
       window.location.href = 'chat.html';
