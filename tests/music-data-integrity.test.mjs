@@ -487,7 +487,7 @@ test('MUSIC-UI-001: playlist session survives refresh, while legacy or stale que
     code + '\n({saveState, loadState, state:()=>musicPlaybackQueue})',
     { ...mock, musicPlaybackQueue:undefined }
   );
-  const saveFns = runner();
+  const saveFns = runner(undefined, true); // An active playlist is required for this saved-state case.
   assert.equal(saveFns.saveState(), true);
   const saved = JSON.parse(storage.get('music_state'));
   assert.equal(saved.id, 'local_1');
