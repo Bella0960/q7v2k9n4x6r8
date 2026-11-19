@@ -343,7 +343,7 @@ test('PWA uses the updated game scripts and installs the entire feature bundle',
     assert.ok(settings.includes(name), name);
   }
   assert.ok(worker.includes('group-game-panel.js?v=20261116gpanel6'));
-  assert.ok(worker.includes('chat-context-policy.js?v=20261115gameprivacy1'));
+  assert.ok(worker.includes('chat-context-policy.js?v=20261118historybudget1'));
 });
 
 test('corrupt game metadata fails closed for AI identity and all private routes', () => {
