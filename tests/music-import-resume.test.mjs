@@ -131,11 +131,11 @@ test('interrupted previous-track metadata cannot seek the newly selected track',
   assert.equal(f.api.getPending().time,44);
 });
 test('saveState preserves a pending checkpoint instead of writing zero at playback start',()=>{
-  const stateSource=section('  function saveState() {','  function loadState() {');
+  const stateSource=section('  function saveState() {','  // A phone may suspend');
   const data=new Map();
   const tracks=[{id:'local1',name:'User WAV',source:'local'}];
   const current=runInNewContext(
-    'let musicResumeCheckpoint={id:"local1",time:42};\n'+stateSource+'\n({saveState})',
+    'let musicPlaybackPending=false;let musicResumeCheckpoint={id:"local1",time:42};\n'+stateSource+'\n({saveState})',
     {window:{audio:{currentTime:0}},tracks,currentIdx:0,playing:true,musicPlaybackQueue:null,
       localStorage:{
         getItem:key=>data.get(key)||null,
