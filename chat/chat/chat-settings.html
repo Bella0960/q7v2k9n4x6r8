@@ -3409,9 +3409,22 @@
   // ================= 返回：群资料逐级回到所属群聊，私聊沿用原规则 =================
   document.getElementById('btnBack').addEventListener('click', function () {
     if (isGroupSetting && roleId) {
-      // history.back() can revisit group-play after its explicit fallback.
-      // Always return to this group's conversation; never jump to the desktop.
-      window.location.replace('chat-detail.html?id=' + encodeURIComponent(roleId));
+      // If settings came from this group conversation, pop the real entry:
+      // replacing it with another copy of chat-detail creates an invisible extra Back.
+      var fromOwnConversation = false;
+      try {
+        var previous = new URL(document.referrer);
+        var current = new URL(window.location.href);
+        fromOwnConversation = previous.origin === current.origin &&
+          /\/chat-detail\.html$/.test(previous.pathname) &&
+          previous.searchParams.get('id') === String(roleId);
+      } catch (error) {}
+      if (fromOwnConversation && window.history.length > 1) {
+        window.history.back();
+      } else {
+        // Deep link or group-play fallback: do not go to an unrelated page.
+        window.location.replace('chat-detail.html?id=' + encodeURIComponent(roleId));
+      }
     } else if (window.history.length > 1) {
       window.history.back();
     } else {
