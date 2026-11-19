@@ -134,6 +134,43 @@ if (worldBookBindListEl) {
     });
 }
 
+// Keep an already open character editor in sync with a chat-settings tab.
+// The user may be editing the persona at the same time: update ONLY the
+// worldbook selection, and never discard a locally edited selection or draft.
+window.addEventListener('storage', function (event) {
+    if (event && event.key !== null && event.key !== 'ai_custom_characters' &&
+        event.key !== 'phone_worldbooks' &&
+        event.key !== 'chat_worldbooks_' + String(document.getElementById('editRoleId').value || '')) return;
+    const editor = document.getElementById('editorView');
+    const roleId = String(document.getElementById('editRoleId').value || '').trim();
+    if (!roleId || !editor || editor.classList.contains('hidden') ||
+        !editorOriginalState || String(editorOriginalState.roleId || '') !== roleId) return;
+    const latest = window.RoleWorldbookBindings && RoleWorldbookBindings.read(roleId);
+    if (!latest || !latest.ok) {
+        setSaveStatus('世界书更新读取失败，原有编辑内容已保留。', 'error');
+        return;
+    }
+    const normalizeIds = function (arr) {
+        return JSON.stringify([...new Set((arr || []).map(String))].sort());
+    };
+    const previous = editorOriginalState.worldBookIds || [];
+    if (normalizeIds(latest.ids) === normalizeIds(previous)) {
+        // Worldbook titles and availability might have changed.
+        if (normalizeIds(selectedWorldBookIds) === normalizeIds(previous)) {
+            renderWorldBookBinder(latest.ids);
+        }
+        return;
+    }
+    if (normalizeIds(selectedWorldBookIds) !== normalizeIds(previous)) {
+        setSaveStatus('世界书已在其他页面修改。当前勾选保留，保存时会检查冲突。', 'error');
+        return;
+    }
+    // No local worldbook changes: repaint, and advance only this part of the
+    // editor snapshot. Any unsaved text/portrait fields remain untouched.
+    renderWorldBookBinder(latest.ids);
+    editorOriginalState.worldBookIds = latest.ids.slice();
+});
+
 function getRandomColor() {
     return AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
 }
