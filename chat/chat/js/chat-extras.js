@@ -87,6 +87,31 @@
     });
   }
 
+  // The browser must consume an overlay history entry before leaving this chat.
+  // Preserve other pages' history.state fields and never alter the visible URL.
+  var chatLayerSession = Date.now().toString(36) + Math.random().toString(36).slice(2);
+  function activeChatLayer() {
+    var state = window.history && window.history.state;
+    var layer = state && state.__maomaoChatLayer;
+    return layer && layer.session === chatLayerSession ? layer.name : '';
+  }
+  function pushChatLayer(name) {
+    if (activeChatLayer() === name) return true;
+    try {
+      var previous = window.history.state;
+      var state = previous && typeof previous === 'object' ? Object.assign({}, previous) : {};
+      state.__maomaoChatLayer = { session: chatLayerSession, name: name };
+      window.history.pushState(state, '', window.location.href);
+      return true;
+    } catch (error) { return false; }
+  }
+  function leaveChatLayer(name) {
+    if (activeChatLayer() !== name) return;
+    try { window.history.back(); } catch (error) {}
+  }
+  // Group poll/chain forms share the same browser-return stack as the plus tools.
+  window.ChatBackLayers = Object.freeze({ push: pushChatLayer, isTop: function (name) { return activeChatLayer() === name; } });
+
   // ---------- 通用弹窗 ----------
   const modalOverlay = document.getElementById('xModalOverlay');
   const modalTitle = document.getElementById('xModalTitle');
@@ -95,10 +120,14 @@
   function openModal(title, bodyHTML) {
     if (modalTitle) modalTitle.textContent = title;
     if (modalBody) modalBody.innerHTML = bodyHTML;
-    if (modalOverlay) modalOverlay.classList.add('active');
+    if (modalOverlay) {
+      pushChatLayer('modal');
+      modalOverlay.classList.add('active');
+    }
   }
   function closeModal() {
     if (modalOverlay) modalOverlay.classList.remove('active');
+    leaveChatLayer('modal');
   }
   if (modalOverlay) {
     document.getElementById('xModalBackdrop').addEventListener('click', closeModal);
@@ -110,10 +139,17 @@
   const plusBtn = document.getElementById('plus-action-btn');
 
   function openPlusPanel() {
-    if (panelOverlay) panelOverlay.classList.add('active');
+    if (panelOverlay) {
+      pushChatLayer('plus');
+      panelOverlay.classList.add('active');
+    }
+  }
+  function hidePlusPanel() {
+    if (panelOverlay) panelOverlay.classList.remove('active');
   }
   function closePlusPanel() {
-    if (panelOverlay) panelOverlay.classList.remove('active');
+    hidePlusPanel();
+    leaveChatLayer('plus');
   }
   function togglePlusPanel() {
     if (panelOverlay && panelOverlay.classList.contains('active')) closePlusPanel();
@@ -128,7 +164,9 @@
     panelOverlay.querySelectorAll('.plus-item').forEach(function (btn) {
       btn.addEventListener('click', function () {
         const feat = btn.getAttribute('data-feat');
-        closePlusPanel();
+        // Keep the underlying plus state when a tool opens its own child sheet.
+        // One Back then closes the child; the next Back closes the plus sheet.
+        hidePlusPanel();
         handleFeature(feat);
       });
     });
@@ -141,11 +179,14 @@
   fanwaiScript.onerror = function () { console.warn('[Fanwai] 扩展模块加载失败'); };
   document.body.appendChild(fanwaiScript);
 
-  // 手机返回键（popstate）关闭顶层弹层
+  // Android Back, iPhone Safari history swipe, browser arrows: restore the
+  // previous visible layer instead of falling through to the desktop.
   window.addEventListener('popstate', function () {
-    if (modalOverlay && modalOverlay.classList.contains('active')) closeModal();
-    else if (panelOverlay && panelOverlay.classList.contains('active')) closePlusPanel();
-    else if (payOverlay && payOverlay.classList.contains('active')) closePayDrawer();
+    var layer = activeChatLayer();
+    if (modalOverlay) modalOverlay.classList.toggle('active', layer === 'modal');
+    if (panelOverlay) panelOverlay.classList.toggle('active', layer === 'plus');
+    if (payOverlay) payOverlay.classList.toggle('active', layer === 'pay');
+    // The group composer is closed by its own listener after this event.
   });
 
   // ============================================================
@@ -881,11 +922,15 @@
     if (payAmountInput) payAmountInput.value = '';
     if (payMessageInput) payMessageInput.value = payMode === 'transfer' ? '给你转一点，拿着吧' : PAY_DEFAULT_MESSAGE;
     if (payConfirmBtn) payConfirmBtn.textContent = payMode === 'transfer' ? '确认转账' : '塞钱进红包';
-    if (payOverlay) payOverlay.classList.add('active');
+    if (payOverlay) {
+      pushChatLayer('pay');
+      payOverlay.classList.add('active');
+    }
   }
 
   function closePayDrawer() {
     if (payOverlay) payOverlay.classList.remove('active');
+    leaveChatLayer('pay');
   }
 
   // 金额输入框：只允许数字与一个小数点，小数最多两位
