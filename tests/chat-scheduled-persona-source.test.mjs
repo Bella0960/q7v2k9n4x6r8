@@ -13,7 +13,7 @@ const followup = read('shared/js/phone/chat-followup-policy.js');
 const scheduleSource = read('shared/js/phone/chat-scheduled-role-context.js');
 const roles = [
   {id:'a',name:'许川', persona:'深圳一家修书铺的主人。'.repeat(500),tone:'惜字如金',
-   memory:'喜欢收集旧书签',worldBookIds:['a-local']},
+   memory:'喜欢收集旧书签',worldBookIds:['a-local','global']},
   {id:'b',name:'秦葵',persona:'经营一间花房',tone:'直接',worldBookIds:['b-local']}
 ];
 const books = [
@@ -30,7 +30,7 @@ function harness(values={}) {
     ai_custom_characters:JSON.stringify(roles),
     phone_worldbooks:JSON.stringify(books),
     chat_rp_protocol_:'按人物原有的语气表达，不要以客服身份说话。\\n{{char}}\\n{{persona}}\\n{{worldbook}}\\n{{memory}}',
-    chat_worldbooks_a:JSON.stringify(['a-local']),
+    chat_worldbooks_a:JSON.stringify(['a-local','global']),
     chat_worldbooks_b:JSON.stringify(['b-local']),
     ...values
   }));
