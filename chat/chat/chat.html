@@ -1268,14 +1268,32 @@
       return [];
     }
 
+    var _groupListReadError = false;
     function loadGroups() {
+      _groupListReadError = false;
       try {
         var raw = localStorage.getItem('phone_groups');
-        var arr = raw ? JSON.parse(raw) : [];
-        return Array.isArray(arr) ? arr.filter(function (g) {
+        if (raw === null) return [];
+        var arr = JSON.parse(raw);
+        if (!Array.isArray(arr)) throw new Error('invalid group list');
+        return arr.filter(function (g) {
+          // Preserve malformed imported records in storage for backup/recovery.
+          // One bad entry must not hide every valid group or crash the list.
+          if (!g || typeof g !== 'object' || Array.isArray(g) ||
+              g.id == null || !String(g.id).trim()) {
+            _groupListReadError = true;
+            return false;
+          }
+          if ((g.members != null && !Array.isArray(g.members)) ||
+              (Array.isArray(g.members) && g.members.some(function (m) {
+                return !m || typeof m !== 'object' || Array.isArray(m);
+              }))) _groupListReadError = true;
           return !window.GroupGovernance || window.GroupGovernance.userIsInGroup(g);
-        }) : [];
-      } catch (e) { return []; }
+        });
+      } catch (e) {
+        _groupListReadError = true;
+        return [];
+      }
     }
 
     /* 轻提示（本页自用，样式与其他页面一致） */
@@ -1395,8 +1413,11 @@
       });
 
       var groupInvites = window.GroupGovernance ? window.GroupGovernance.pendingInvitations() : [];
+      var groupWarningHTML = _groupListReadError
+        ? '<div class="group-data-warning" role="status">部分群聊资料无法读取，原始记录已保留。请先在设置中备份，再检查或恢复数据。</div>'
+        : '';
       if (roles.length === 0 && groups.length === 0 && groupInvites.length === 0) {
-        container.innerHTML = '<div class="empty-tip">暂无聊天消息</div>';
+        container.innerHTML = groupWarningHTML || '<div class="empty-tip">暂无聊天消息</div>';
         return;
       }
 
@@ -1405,7 +1426,9 @@
         if (g && g.avatar && safeImgSrc(g.avatar)) {
           return '<img src="' + escapeHtml(safeImgSrc(g.avatar)) + '" alt="">';
         }
-        var members = g.members || [];
+        var members = Array.isArray(g.members) ? g.members.filter(function (m) {
+          return m && typeof m === 'object' && !Array.isArray(m);
+        }) : [];
         if (members.length === 0) {
           return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
         }
@@ -1417,15 +1440,20 @@
       }
 
       var groupsHTML = groups.map(function (g) {
-        var gid = g.id;
-        var displayName = g.name || '群聊';
+        var gid = String(g.id);
+        var displayName = String(g.name || '群聊');
         try {
           var alias = localStorage.getItem('chat_group_alias_' + gid);
           if (alias) displayName = alias;
         } catch (e) {}
         var isCustomAv = !!(g && g.avatar);
         var groupMeta = cachedMeta(gid,displayName);
-        var groupPreview = groupMeta.time ? groupMeta.preview : (g.members || []).map(function(m) { return m.name; }).join('、');
+        var groupMembers = Array.isArray(g.members) ? g.members.filter(function (m) {
+          return m && typeof m === 'object' && !Array.isArray(m);
+        }) : [];
+        var groupPreview = groupMeta.time ? groupMeta.preview : groupMembers.map(function(m) {
+          return String(m.name || '成员');
+        }).join('、');
         return '' +
           '<div class="chat-slim-card chat-group-card" data-gid="' + escapeHtml(gid) + '">' +
             '<div class="chat-avatar group-avatar' + (isCustomAv ? ' group-avatar-custom' : '') + '">' + groupAvatarHTML(g) + '</div>' +
@@ -1470,7 +1498,7 @@
           '<button type="button" class="group-invite-accept" style="border:0;border-radius:9px;padding:8px 10px;background:#111;color:white">加入</button>' +
         '</div>';
       }).join('');
-      container.innerHTML = inviteHTML + groupsHTML + rolesHTML;
+      container.innerHTML = groupWarningHTML + inviteHTML + groupsHTML + rolesHTML;
       container.querySelectorAll('.group-invitation-card').forEach(function (card) {
         card.addEventListener('click', function (event) {
           var accept = event.target.closest('.group-invite-accept');
