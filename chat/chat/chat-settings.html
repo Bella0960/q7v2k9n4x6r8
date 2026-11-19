@@ -8,6 +8,7 @@
 <script src="../../shared/js/native-feel.js"></script>
 <script src="../../shared/js/wallpaper-store.js?v=20261026v2"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
+<script src="../../shared/js/phone/role-worldbook-bindings.js?v=20261119-qa1"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   body {
@@ -2607,7 +2608,7 @@
     }
   });
 
-  // ================= 挂载世界书（独立存储键 chat_worldbooks_<roleId>，不注入发消息逻辑） =================
+  // ================= 世界书绑定（与角色档案、AI 上下文共用关系） =================
   var WB_STORAGE_KEY = 'phone_worldbooks';
   var WB_CATEGORY_KEY = 'worldbook_categories';
   var wbCard = document.getElementById('wbCard');
@@ -2616,6 +2617,13 @@
   var wbSaveBtn = document.getElementById('wbSaveBtn');
   var mountSub = document.getElementById('mountSub');
   var mountIds = [];   // 当前展开会话内勾选的世界书 ID
+  var mountOpenedIds = []; // 本次展开时的持久化快照，防止覆盖其他窗口的新修改
+  function sameMountIds(a, b) {
+    return JSON.stringify((a || []).map(String).sort()) === JSON.stringify((b || []).map(String).sort());
+  }
+  function hasMountDraft() {
+    return !sameMountIds(mountIds, mountOpenedIds);
+  }
 
   function wbMountKey() {
     return 'chat_worldbooks_' + roleId;
@@ -2655,16 +2663,12 @@
   }
   // 读取当前角色已挂载 ID（null/损坏兜底为空数组）
   function readMountedIds() {
-    try {
-      var raw = localStorage.getItem(wbMountKey());
-      if (raw === null) return [];
-      var payload = JSON.parse(raw);
-      // Older persisted mounts used { worldbookIds: [...] }; preserve those
-      // bindings instead of showing an empty list and overwriting them.
-      var arr = Array.isArray(payload) ? payload :
-        (payload && Array.isArray(payload.worldbookIds) ? payload.worldbookIds : []);
-      return arr.map(String);
-    } catch (e) { return []; }
+    var result = window.RoleWorldbookBindings && RoleWorldbookBindings.read(roleId);
+    if (!result || !result.ok) {
+      showToast('世界书挂载读取失败，请检查本机存储');
+      return null;
+    }
+    return result.ids;
   }
   function wbEsc(str) {
     return String(str == null ? '' : str)
@@ -2680,12 +2684,14 @@
   function renderMountList() {
     var books = loadWorldBooks();
     if (!books.length) {
-      wbMountList.innerHTML = '<div class="wb-mount-empty">暂无世界书</div>';
+      wbMountList.innerHTML = '<div class="wb-mount-empty">' + (mountIds.length
+        ? '世界书列表暂不可用，原有 ' + mountIds.length + ' 本挂载已保留。'
+        : '暂无世界书') + '</div>';
       return;
     }
-    // 自动剔除已删除世界书的失效 ID
+    // Missing books may later be restored. Preserve their IDs on every save.
     var existingIds = books.map(function (b) { return String(b.id); });
-    mountIds = mountIds.filter(function (id) { return existingIds.indexOf(id) !== -1; });
+    var missingCount = mountIds.filter(function (id) { return existingIds.indexOf(id) === -1; }).length;
 
     var catMap = loadCategoryNameMap();
     var html = '';
@@ -2703,14 +2709,19 @@
           '<span class="wb-mount-circle" aria-hidden="true"></span>' +
         '</div>';
     }
-    wbMountList.innerHTML = html;
+    wbMountList.innerHTML = html + (missingCount
+      ? '<div class="wb-mount-empty">另外 ' + missingCount + ' 本世界书暂不可用，原绑定已保留。</div>'
+      : '');
   }
 
   // 点卡片行：展开 / 收起
   actionMount.addEventListener('click', function () {
     var willOpen = !wbCard.classList.contains('is-open');
     if (willOpen) {
-      mountIds = readMountedIds();   // 展开时读取已挂载数据用于回显
+      var newestIds = readMountedIds();
+      if (newestIds === null) return;
+      mountIds = newestIds;   // 展开时重新读取角色档案和旧挂载数据
+      mountOpenedIds = newestIds.slice();
       renderMountList();
       wbCard.classList.add('is-open');
     } else {
@@ -2733,20 +2744,59 @@
 
   // 保存挂载
   wbSaveBtn.addEventListener('click', function () {
-    try {
-      localStorage.setItem(wbMountKey(), JSON.stringify(mountIds));
-    } catch (e) {
-      showToast('保存失败，请重试');
+    // 两个浏览器页面可以同时打开：保存前重读，不能用旧选择静默
+    // 覆盖角色档案或另一窗口刚保存的世界书。
+    var latestIds = readMountedIds();
+    if (latestIds === null) return;
+    if (!sameMountIds(latestIds, mountOpenedIds)) {
+      if (!hasMountDraft()) {
+        mountIds = latestIds.slice();
+        mountOpenedIds = latestIds.slice();
+        renderMountList();
+        refreshMountSub();
+        showToast('其他页面的世界书挂载已同步');
+      } else {
+        showToast('世界书已在其他页面修改，请收起后重新展开确认，当前选择未覆盖');
+      }
       return;
     }
+    var saved = window.RoleWorldbookBindings && RoleWorldbookBindings.save(roleId, mountIds);
+    if (!saved || !saved.ok) {
+      showToast('保存失败，原有世界书挂载未被确认修改');
+      return;
+    }
+    mountIds = saved.ids;
+    mountOpenedIds = saved.ids.slice();
     refreshMountSub();
     wbCard.classList.remove('is-open');
     showToast('挂载设置已保存');
   });
 
   // 进入页面即显示当前已挂载数量（不展开）
-  mountIds = readMountedIds();
+  mountIds = readMountedIds() || [];
+  mountOpenedIds = mountIds.slice();
   refreshMountSub();
+
+  // 另一个标签页修改了角色资料 / 世界书：未在编辑时立即更新数字与勾选；
+  // 已有待保存选择时只提醒，避免覆盖用户当前操作。
+  window.addEventListener('storage', function (event) {
+    if (event && event.key !== null &&
+        event.key !== wbMountKey() && event.key !== ROLE_STORAGE_KEY &&
+        event.key !== WB_STORAGE_KEY && event.key !== WB_CATEGORY_KEY) return;
+    var latestIds = readMountedIds();
+    if (latestIds === null) return;
+    if (wbCard.classList.contains('is-open') && hasMountDraft()) {
+      // 未保存的本地勾选优先展示，但下次点击保存会再检查并发版本。
+      if (!sameMountIds(latestIds, mountOpenedIds)) {
+        showToast('世界书已在其他页面更新，当前选择未被覆盖');
+      }
+      return;
+    }
+    mountIds = latestIds.slice();
+    mountOpenedIds = latestIds.slice();
+    refreshMountSub();
+    if (wbCard.classList.contains('is-open')) renderMountList();
+  });
 
   // ================= 双方备注（chat_alias_<roleId> = {myAlias, roleAlias}） =================
   var ALIAS_KEY = 'chat_alias_' + roleId;
