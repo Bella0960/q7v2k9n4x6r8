@@ -1424,6 +1424,37 @@ function handleSaveRole() {
 
     const roles = loadRoles();
     let savedRoleId = roleId;
+    // A second open page may have changed this character's worldbooks after
+    // the editor was opened. Avoid overwriting that newer choice when saving
+    // unrelated persona/portrait edits.
+    let idsToSave = selectedWorldBookIds.slice();
+    if (roleId) {
+        const latestBinding = window.RoleWorldbookBindings &&
+            RoleWorldbookBindings.read(roleId);
+        if (!latestBinding || !latestBinding.ok) {
+            setSaveStatus('世界书挂载读取失败，角色资料未保存，请检查存储后重试。', 'error');
+            persistEditorDraft(true);
+            return;
+        }
+        const originalIds = editorOriginalState &&
+            String(editorOriginalState.roleId || '') === String(roleId) &&
+            Array.isArray(editorOriginalState.worldBookIds)
+            ? editorOriginalState.worldBookIds.map(String) : null;
+        if (originalIds) {
+            const normalizedIds = function (arr) {
+                return JSON.stringify([...new Set(arr.map(String))].sort());
+            };
+            const changedHere = normalizedIds(idsToSave) !== normalizedIds(originalIds);
+            const changedElsewhere = normalizedIds(latestBinding.ids) !== normalizedIds(originalIds);
+            if (changedHere && changedElsewhere &&
+                normalizedIds(idsToSave) !== normalizedIds(latestBinding.ids)) {
+                setSaveStatus('世界书已在其他页面修改，当前改动未覆盖。请重新打开角色档案后确认选择。', 'error');
+                persistEditorDraft(true);
+                return;
+            }
+            if (!changedHere) idsToSave = latestBinding.ids.slice();
+        }
+    }
 
     if (roleId) {
         const target = roles.find(r => String(r.id) === String(roleId));
@@ -1439,7 +1470,7 @@ function handleSaveRole() {
         if (String(target.avatar || '') !== String(avatarDataUrl || '')) target.avatarAssetId = '';
         target.avatar = avatarDataUrl || '';
         target.avatarBg = selectedColor;
-        target.worldBookIds = selectedWorldBookIds.slice();
+        target.worldBookIds = idsToSave.slice();
     } else {
         savedRoleId = 'role_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
         roles.unshift({
@@ -1451,13 +1482,13 @@ function handleSaveRole() {
             tone: toneVal,
             appearanceDescription: appearanceVal,
             styleKeywords: styleKeywordsVal,
-            worldBookIds: selectedWorldBookIds.slice(),
+            worldBookIds: idsToSave.slice(),
             replyBubbleMode: 'auto'
         });
     }
 
     const bindingSave = window.RoleWorldbookBindings &&
-        RoleWorldbookBindings.save(savedRoleId, selectedWorldBookIds, { roles: roles, requireRole: true });
+        RoleWorldbookBindings.save(savedRoleId, idsToSave, { roles: roles, requireRole: true });
     if (!bindingSave || !bindingSave.ok) {
         setSaveStatus('保存失败：角色资料与世界书挂载未能同时保存，请检查存储后重试。', 'error');
         persistEditorDraft(true);
@@ -1474,6 +1505,7 @@ function handleSaveRole() {
     if (currentDraftKey) {
         try { localStorage.removeItem(currentDraftKey); } catch (e) {}
     }
+    renderWorldBookBinder(bindingSave.ids);
     editorOriginalState = captureEditorState();
     setSaveStatus('已保存', 'success');
 }
