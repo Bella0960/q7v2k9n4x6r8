@@ -98,6 +98,58 @@ test('group without corresponding role still uses its legacy mount, never rewrit
   assert.deepEqual([...binding.read('group_1').ids], ['book_1']);
   assert.equal(storage.getItem('ai_custom_characters'), json(roles));
 });
+test('legacy global books remain selected by default; local books stay private', () => {
+  const { binding } = harness({
+    ai_custom_characters: json([{ id: 'role_a', worldBookIds: ['local_a'] },
+      { id: 'role_b', worldBookIds: [] }]),
+    phone_worldbooks: json([
+      { id: 'shared', scope: 'global', content: '共享背景' },
+      { id: 'old_global', content: '老版全局背景' },
+      { id: 'local_a', scope: 'local', content: '专属设定' },
+      { id: 'disabled_global', scope: 'global', enabled: false }
+    ])
+  });
+  assert.deepEqual([...binding.read('role_a').ids], ['local_a', 'shared', 'old_global']);
+  assert.deepEqual([...binding.read('role_b').ids], ['shared', 'old_global']);
+  assert.deepEqual([...binding.filterBooks('role_b', [
+    { id: 'shared' }, { id: 'old_global' }, { id: 'local_a' }
+  ]).books].map(x => x.id), ['shared', 'old_global']);
+});
+
+test('explicitly cleared chat mount cannot resurrect old character or global lore', () => {
+  const { binding, storage } = harness({
+    ai_custom_characters: json(roles),
+    phone_worldbooks: json([{ id: 'global', scope: 'global' }]),
+    chat_worldbooks_role_a: '[]'
+  });
+  assert.deepEqual([...binding.read('role_a').ids], []);
+  assert.deepEqual([...binding.filterBooks('role_a', [
+    { id: 'a' }, { id: 'global' }
+  ]).books], []);
+  assert.equal(binding.save('role_a', []).ok, true);
+  assert.deepEqual(JSON.parse(storage.getItem('ai_custom_characters'))[0].worldBookIds, []);
+});
+
+test('explicitly saved partial selection never auto-readds unrelated global books', () => {
+  const { binding } = harness({
+    ai_custom_characters: json(roles),
+    phone_worldbooks: json([{ id: 'global', scope: 'global' }]),
+    chat_worldbooks_role_a: json(['a'])
+  });
+  assert.deepEqual([...binding.read('role_a').ids], ['a']);
+});
+
+test('missing book IDs remain in stored binding when visible library is incomplete', () => {
+  const { binding, storage } = harness({
+    ai_custom_characters: json([{ id: 'role_a', worldBookIds: ['missing_book'] }]),
+    phone_worldbooks: json([{ id: 'present', scope: 'global' }]),
+    chat_worldbooks_role_a: json(['missing_book'])
+  });
+  assert.deepEqual([...binding.read('role_a').ids], ['missing_book']);
+  assert.deepEqual([...binding.filterBooks('role_a', [{ id: 'present' }]).books], []);
+  assert.deepEqual(JSON.parse(storage.getItem('chat_worldbooks_role_a')), ['missing_book']);
+});
+
 test('role editor and chat settings both load the same bridge before handlers', () => {
   const editor = read('worldbook/characters/characters.html');
   const manager = read('worldbook/characters/js/characters-manager.js');
