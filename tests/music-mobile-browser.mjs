@@ -347,6 +347,33 @@ try {
       assert.equal(rollback.restoredSrc,rollback.previousSrc,'previous audio URL must return');
       assert.equal(rollback.title,rollback.previousTitle,'now playing should keep previous title');
       assert.equal(rollback.previousBlobUsable,true,'old WAV Blob must not be prematurely revoked');
+      // Force a staged replacement through real HTMLAudioElement media events;
+      // the old song's stored id/time must survive the failed decode.
+      const background = await page.evaluate(() => {
+        window.audio.currentTime = 3.25;
+        const beforePaused = window.audio.paused;
+        const existing = Object.getOwnPropertyDescriptor(document,'visibilityState');
+        try {
+          Object.defineProperty(document,'visibilityState',{
+            configurable:true,get:()=> 'hidden'
+          });
+          document.dispatchEvent(new Event('visibilitychange'));
+        } finally {
+          if (existing) Object.defineProperty(document,'visibilityState',existing);
+          else delete document.visibilityState;
+        }
+        return {
+          pausedBefore:beforePaused,pausedAfter:window.audio.paused,
+          progress:JSON.parse(localStorage.getItem('music_state') || 'null'),
+          currentId:tracks[currentIdx]?.id
+        };
+      });
+      assert.equal(background.progress?.id,background.currentId,
+        'background checkpoint must belong to the confirmed track');
+      assert.ok(background.progress?.time >= 3,
+        'background checkpoint must save current confirmed playback time');
+      assert.equal(background.pausedAfter,background.pausedBefore,
+        'background checkpoint must not force audio to pause');
       assert.deepEqual(pageErrors, [], 'no uncaught JS errors at ' + width);
       console.log('PASS Chromium ' + width + 'px: viewport, import Blob, reload, playback, cover, LRC, playlist');
     } finally {
