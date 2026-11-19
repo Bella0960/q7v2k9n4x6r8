@@ -2677,7 +2677,9 @@
   function renderMountList() {
     var books = loadWorldBooks();
     if (!books.length) {
-      wbMountList.innerHTML = '<div class="wb-mount-empty">暂无世界书</div>';
+      wbMountList.innerHTML = '<div class="wb-mount-empty">' + (mountIds.length
+        ? '世界书列表暂不可用，原有 ' + mountIds.length + ' 本挂载已保留。'
+        : '暂无世界书') + '</div>';
       return;
     }
     // Missing books may later be restored. Preserve their IDs on every save.
