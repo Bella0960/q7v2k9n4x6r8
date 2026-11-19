@@ -36,7 +36,7 @@
 }
 
 /* Chat home */
-.phone-mockup .chat-theme-header { display: none; }
+.phone-mockup:where(:not([data-chat-theme-preset="silver-butterfly"])) .chat-theme-header { display: none; }
 .phone-mockup[data-chat-theme-preset="silver-butterfly"] .chat-theme-header { display: flex; }
 .phone-mockup[data-chat-theme-preset="silver-butterfly"] .main-stage {
   background: transparent !important;
