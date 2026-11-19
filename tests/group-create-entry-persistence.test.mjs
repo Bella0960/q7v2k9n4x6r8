@@ -386,7 +386,7 @@ function getReturnClick(source, start, end, environment) {
   const address={href:environment.address};
   const browser={
     history:{length:environment.historyLength,back(){destination.wentBack++;}},
-    location:{replace(value){destination.replaced=value;},set href(value){destination.href=value;}}
+    location:{get href(){return address.href;},replace(value){destination.replaced=value;},set href(value){destination.href=value;}}
   };
   const code=source.slice(begin,finish);
   if (environment.groupPlay) {
@@ -433,9 +433,16 @@ test('群设置返回本群，普通私聊仍保留原生历史返回', () => {
   const prefix="  document.getElementById('btnBack').addEventListener('click', function () {";
   const end="  // ================= 社交媒体自动化";
   const group=getReturnClick(chatSettings,prefix,end,{
+    id:'g123',historyLength:4,address:'https://preview.mao520.com/chat/chat/chat-settings.html?roleId=g123',
+    referrer:'https://preview.mao520.com/chat/chat/chat-detail.html?id=g123'
+  });
+  assert.equal(group.wentBack,1);
+  assert.equal(group.replaced,null);
+  const deepLink=getReturnClick(chatSettings,prefix,end,{
     id:'g123',historyLength:4,address:'https://preview.mao520.com/chat/chat/chat-settings.html?roleId=g123'
   });
-  assert.equal(group.replaced,'chat-detail.html?id=g123');
+  assert.equal(deepLink.wentBack,0);
+  assert.equal(deepLink.replaced,'chat-detail.html?id=g123');
   const privateChat=getReturnClick(chatSettings,prefix,end,{
     id:'r123',historyLength:4,address:'https://preview.mao520.com/chat/chat/chat-settings.html?roleId=r123'
   });
