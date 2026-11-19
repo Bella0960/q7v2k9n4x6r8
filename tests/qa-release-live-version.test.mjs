@@ -114,6 +114,7 @@ function runHttpSmoke(coreInitialized, {
       const assets = {
         '/account/index.html': html,
         '/account/account.js?v=20261119reconnect1': loginJs,
+        '/account/ivory-entry.css?v=20261116-qa1': loginCss,
         '/account/ivory-entry.css?v=f81232e2': loginCss,
         '/account/account.css?v=62fd2c1a':
           readFileSync(new URL('../account/account.css', import.meta.url), 'utf8'),
@@ -139,7 +140,7 @@ test('original QA URL smoke accepts first-run setup and a ready disabled setup',
       'https://maomao-aw-qa-20261114.miamor520000.workers.dev/api/admin/bootstrap/status',
       'https://maomao-aw-qa-20261114.miamor520000.workers.dev/account/index.html',
       'https://maomao-aw-qa-20261114.miamor520000.workers.dev/account/account.js?v=20261119reconnect1',
-      'https://maomao-aw-qa-20261114.miamor520000.workers.dev/account/ivory-entry.css?v=f81232e2',
+      'https://maomao-aw-qa-20261114.miamor520000.workers.dev/account/ivory-entry.css?v=20261116-qa1',
       'https://maomao-aw-qa-20261114.miamor520000.workers.dev/account/bootstrap.html',
       'https://maomao-aw-qa-20261114.miamor520000.workers.dev/account/bootstrap.js?v=20261116-qa1',
       'https://maomao-aw-qa-20261114.miamor520000.workers.dev/account/account.css?v=62fd2c1a',
