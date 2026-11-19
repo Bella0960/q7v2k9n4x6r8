@@ -422,7 +422,7 @@ test('QA release builds the Vite dist before navigation and full Node tests', ()
   const build = tasks.indexOf("['npm', ['run', 'build']]");
   const navigation = tasks.indexOf("['npm', ['run', 'test:pwa:navigation']]");
   const browserInstall = tasks.indexOf("['npx', ['playwright', 'install', '--with-deps', 'chromium']]");
-  const fullNode = tasks.indexOf("['node', ['--test']]");
+  const fullNode = tasks.indexOf("['node', ['--test', '--test-concurrency=1']]");
   assert.ok(build >= 0 && navigation >= 0 && browserInstall >= 0 && fullNode >= 0,
     'Vite build, PWA navigation, Chromium install and full Node regression are required');
   assert.ok(build < navigation,
