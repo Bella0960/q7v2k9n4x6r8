@@ -198,3 +198,51 @@ test('storefront theme and independent list theme do not report success on faile
   assert.equal(failList.records.get('maomao_chat_list_theme_preset_v1'),undefined,'list preference rolled back');
   assert.equal(failList.events.length,0,'no list change event after failure');
 });
+
+
+test('modal focus survives theme apply and favorite re-render without trapping the shop',async()=>{
+  const js=readFileSync(new URL('../theme-store/storefront.js',import.meta.url),'utf8');
+  let clickHandler,overlay,active='default',renderCount=0;
+  const shell={inert:false},document={activeElement:null};
+  const old={dataset:{sf:'detail',id:'wechat'},isConnected:true,disabled:false,focus(){document.activeElement=this},closest(){return this}};
+  const live={dataset:{sf:'detail',id:'wechat'},isConnected:false,disabled:false,focus(){document.activeElement=this},closest(){return this}};
+  document.activeElement=old;
+  document.addEventListener=(type,fn)=>{if(type==='click')clickHandler=fn;};
+  document.createElement=()=>({
+    isConnected:false,addEventListener(){},remove(){this.isConnected=false;},
+    querySelector(selector){if(selector==='button')return {focus(){document.activeElement=this}};if(selector==='.sf-error')return {textContent:''};return null;},
+    querySelectorAll(){return [];}
+  });
+  document.body={append(node){overlay=node;node.isConnected=true;}};
+  document.querySelector=selector=>selector==='.store-app'?shell:null;
+  document.querySelectorAll=selector=>selector==='[data-sf]'?[live]:[];
+  document.getElementById=id=>id==='categoryNav'?{querySelectorAll(){return []}}:null;
+  const favorites=[];
+  const window={
+    ChatBeauty:{getThemePreset:()=>active},
+    MAOMAOMarketCollection:{read:()=>({favorites:[...favorites],outfits:[],creations:[]}),favorite(id){const i=favorites.indexOf(id);if(i>=0)favorites.splice(i,1);else favorites.push(id);}}
+  };
+  vm.runInNewContext(js,{window,document});
+  const refresh=()=>{renderCount++;old.isConnected=false;live.isConnected=true;};
+  window.MAOMAOStorefront.init({
+    themes:[{id:'wechat',name:'微信',desc:'演示主题'}],nativeArt:()=>'<div class="product-art"></div>',
+    render:refresh,applyTheme:id=>{active=id;refresh();return true;},toast(){},market:{renderWallpapers:()=>''}
+  });
+  const action=(sf,id)=>({dataset:{sf,id},disabled:false,closest(){return this;}});
+  const click=target=>clickHandler({target,preventDefault(){}});
+  await click(old);assert.equal(shell.inert,true);
+  await click(action('apply-theme','wechat'));
+  await click(action('confirm-apply-theme','wechat'));
+  assert.equal(active,'wechat');
+  assert.equal(document.activeElement,live,'return focus to live replacement after theme apply');
+  assert.equal(shell.inert,false,'inert storefront must be released');
+  assert.equal(overlay.isConnected,false,'confirmation modal must close');
+  await click(live);
+  await click(action('favorite','wechat'));
+  assert.ok(favorites.includes('wechat'));
+  assert.equal(overlay.isConnected,true,'favorite keeps preview open');
+  await click(action('close',''));
+  assert.equal(document.activeElement,live);
+  assert.equal(shell.inert,false);
+  assert.ok(renderCount>=2);
+});
