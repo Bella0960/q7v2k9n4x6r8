@@ -47,6 +47,16 @@ test('conflicting old mounts are temporarily unioned; explicit save becomes auth
   assert.equal(binding.read('role_a').hasConflict, false);
   assert.deepEqual(JSON.parse(storage.getItem('ai_custom_characters'))[1].worldBookIds, ['b']);
 });
+test('disabled legacy binding cannot inject lore until user explicitly saves', () => {
+  const { binding } = harness({
+    ai_custom_characters: json(roles),
+    chat_worldbooks_role_a: json({ enabled: false, worldbookIds: ['a'] })
+  });
+  assert.deepEqual([...binding.read('role_a').ids], []);
+  assert.deepEqual([...binding.filterBooks('role_a', [{ id: 'a' }]).books], []);
+  assert.equal(binding.save('role_a', ['a']).ok, true);
+  assert.deepEqual([...binding.read('role_a').ids], ['a']);
+});
 test('explicit unmount persists after a fresh read', () => {
   const { binding } = harness({ ai_custom_characters: json(roles), chat_worldbooks_role_a: json(['a']) });
   assert.equal(binding.save('role_a', []).ok, true);
