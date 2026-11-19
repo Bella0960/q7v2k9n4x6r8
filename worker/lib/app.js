@@ -933,7 +933,11 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
             ? error.failurePhase : 'unknown',
           failureKind: error?.failureKind === 'request_timeout' ? 'request_timeout'
             : error?.failureKind === 'network_error' ? 'network_error'
-              : error instanceof PushConfigError ? 'invalid_push_key_or_subscription' : 'unclassified_error'
+              : error instanceof PushConfigError ? 'invalid_push_key_or_subscription' : 'unclassified_error',
+          // Whitelisted diagnostic only: never return raw causes or endpoint URLs.
+          transportReason: error?.failurePhase === 'transport' &&
+            ['tls', 'dns', 'redirect', 'egress', 'connection'].includes(error?.transportReason)
+              ? error.transportReason : null
         };
       }
 
@@ -1025,8 +1029,10 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
           nextAttemptAt,
           failurePhase: outcome.failurePhase || 'provider_http',
           failureKind: outcome.failureKind || (statusCode ? 'http_' + statusCode : 'unknown'),
-          failureDiagnostic: outcome.failurePhase ? 'PUSH_CLIENT_' + outcome.failurePhase.toUpperCase()
-            : statusCode ? 'PUSH_PROVIDER_HTTP_' + statusCode : 'PUSH_UNKNOWN'
+          failureDiagnostic: outcome.failurePhase === 'transport' && outcome.transportReason
+            ? 'PUSH_CLIENT_TRANSPORT_' + outcome.transportReason.toUpperCase()
+            : outcome.failurePhase ? 'PUSH_CLIENT_' + outcome.failurePhase.toUpperCase()
+              : statusCode ? 'PUSH_PROVIDER_HTTP_' + statusCode : 'PUSH_UNKNOWN'
         });
       }
     }
