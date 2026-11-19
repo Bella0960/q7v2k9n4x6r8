@@ -38,7 +38,9 @@
         else return { ok: false, error: 'CORRUPT_LEGACY_BINDING' };
       }
       var primary = role && Array.isArray(role.worldBookIds) ? role.worldBookIds : [];
-      var ids = idsOf(primary.concat(legacyIds));
+      // An explicitly disabled legacy object is a user opt-out, not a stale list.
+      var suspended = legacy && !Array.isArray(legacy) && legacy.enabled === false;
+      var ids = suspended ? [] : idsOf(primary.concat(legacyIds));
       return {
         ok: true, ids: ids,
         hasBinding: !!(role && Array.isArray(role.worldBookIds)) || legacyRaw != null,
