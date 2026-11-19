@@ -188,18 +188,30 @@ test('oversized group avatar fails before decoding and does not overwrite saved 
   } finally {await ctx.close();}
 });
 
-test('group back returns to the current conversation, or to the matching prior group page', async () => {
+test('group-play back chain returns settings -> current chat, never loops', async () => {
   const ctx=await browser.newContext({viewport:{width:390,height:844}});
   const page=await ctx.newPage();
   try {
     await setup(page,{phone_groups:[group('g1','夜航')]});
     await page.goto(origin+'/chat/chat/chat-settings.html?roleId=g1');
+    // Directly opened group settings should return to its group, not another page.
     await page.locator('#btnBack').click();
     await page.waitForURL('**/chat/chat/chat-detail.html?id=g1');
-    await page.goto(origin+'/chat/chat/group-play.html?id=g1');
+    // Real interaction: profile -> group-play -> profile -> group chat.
     await page.goto(origin+'/chat/chat/chat-settings.html?roleId=g1');
-    await page.locator('#btnBack').click();
+    await page.locator('#gpProfileSettings > summary').click();
+    await page.locator('#gpAdvancedEntry').click();
     await page.waitForURL('**/chat/chat/group-play.html?id=g1');
+    await page.locator('#backBtn').click();
+    await page.waitForURL('**/chat/chat/chat-settings.html?roleId=g1');
+    await page.locator('#btnBack').click();
+    await page.waitForURL('**/chat/chat/chat-detail.html?id=g1');
+    // Deep link into group-play does not leave another group-play page in history.
+    await page.goto(origin+'/chat/chat/group-play.html?id=g1');
+    await page.locator('#backBtn').click();
+    await page.waitForURL('**/chat/chat/chat-settings.html?roleId=g1');
+    await page.locator('#btnBack').click();
+    await page.waitForURL('**/chat/chat/chat-detail.html?id=g1');
   } finally {await ctx.close();}
 });
 
