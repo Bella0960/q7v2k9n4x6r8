@@ -217,3 +217,12 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **回归**：`80d51a4d` 增加旧群状态 `left`、`declined` 禁任命、禁持久化写入及禁对象变更的测试，同时保护旧群正常群主操作。最新原 `tests/group-governance.test.mjs` 以独立 V8 原源码兼容夹具执行 **12/12**；游戏结果卡 **10/10** 同样在刷新缓存版本后通过。注意均非原生 Node/Vite/浏览器测试。
 - **手机 PWA**：原功能分支 `sw.js` 缓存由 v227 升 v228，`group-governance.js?v=20261115g3` 升 g4；`chat/chat/chat.html`、`chat/chat/chat-detail.html`、`chat/chat/group-play.html` 和两份硬编码版本回归测试同步更新。唯一 QA #299 已包含自己的 v241+ Push/PWA 配置，必须以 QA 版本向上递增，禁止把本分支 v228 的整个 sw.js 直接覆盖 QA。
 - **交付 blocker**：2026-11-17 只读确认 QA #299 已由别的窗口推进至 `f2e70fe1fdb49a428ddbbbbf79fd7349f5d40918`，该批变更主要为 Settings 和 Cloud Push UI；群聊独有文件尚未整合。当前本窗口只写 #298，不争用唯一 QA 正在开发的文件。没有完整 checkout，不可宣称原生构建或 QA 发布成功。
+
+## 2026-11-19｜GROUP-NAV-002：群投票/接龙快速切换时的异步返回竞态
+- 归属：原群聊 Draft PR #298，原分支 `feat/group-governance-extensibility-20261115`；不改 main、不直推冻结中的 QA #299、不碰正式版。
+- 复查源码：原 `closeComposer()` 在调用异步 `history.back()` 后立即允许再次 `openComposer()`；若用户快速取消/切换互动，迟到的旧 `popstate` 会关掉刚打开的新弹层。
+- 修复提交：`9099024fcbe579f940ddb28937df8759892fdbfa`。旧 modal history entry 消费期间记录 pending；快速点击以最新操作排队；收到旧 popstate 后才创建新的 modal 条目；Android Back 仍仅关闭当前弹层。未改群记录、人设、世界书、API、群隐私或存储 schema。
+- 回归用例提交：`39bbd1fe7b41e1625a9c4888d4a2498d88a0fe5f`，扩展 `tests/group-navigation-stack.test.mjs` 的异步 `history.back` 夹具和 2 个测试（快速重开 / 连点最后操作生效）。
+- 实际验证：独立 Node 22 `vm` 同算法行为模拟 **5/5 PASS**；本地真实 Chromium `about:blank` 隔离页面（移植核心 History API 逻辑，并非完整 MAOMAO 页面）在 **375/390/430px 各 1/1 PASS**，实际使用 `pushState/back/popstate`。已通过 GitHub 回读确认生产文件和测试文件均含新增逻辑。
+- **NOT VERIFIED**：仓库原生 `node --test tests/group-navigation-stack.test.mjs`、`npm run test:group:governance`、Vite build、完整真实 MAOMAO 页面 UI / Android / iPhone / 人设及 API 交互、`preview.mao520.com` 部署。不可把隔离浏览器测试等同于手机 QA。
+- 回滚：如真实页面出现历史层级回归，仅在本分支撤销上述两个窄范围提交；保留原聊天记录与用户数据不动。整合时必须按函数级择取，不能整份覆盖 QA 的聊天详情或 PWA。
