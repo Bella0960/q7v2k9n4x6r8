@@ -794,12 +794,14 @@
             }
             // 回退到 phone_data_v2
             var rootRes = R.getRoot();
-            if (rootRes.ok && rootRes.value) {
-                var bucket = rootRes.value[contactId];
-                if (bucket && bucket.chat && Array.isArray(bucket.chat.history)) {
-                    return okResult(bucket.chat.history,
-                        { found: true, source: 'phone_data_v2' });
+            if (!rootRes.ok) return rootRes;
+            var bucket = rootRes.value[contactId];
+            if (bucket && bucket.chat != null) {
+                if (!Array.isArray(bucket.chat.history)) {
+                    return failResult(ERR.CORRUPT_DATA, 'legacy chat history is not an array', false);
                 }
+                return okResult(bucket.chat.history,
+                    { found: true, source: 'phone_data_v2' });
             }
             return failResult(ERR.NOT_FOUND, 'chat history not found for ' + contactId, false);
         };
