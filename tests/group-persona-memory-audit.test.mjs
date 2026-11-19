@@ -221,7 +221,7 @@ test('group persona output guard is before persistence and leaves offline/role d
   assert.match(detail,/var partialQuality = window\.MAOMAOChatRoleContext\.validateGroupOnlineReply\(\{/);
   assert.match(detail,/if \(!partialQuality\.ok\) \{[\s\S]{0,140}inflightSnapshot = null;/);
   assert.match(detail,/currentGroup\.settings\.chatMode !== 'offline'/);
-  assert.match(detail,/chat-role-context\.js\?v=20261119groupreply1/);
+  assert.match(detail,/chat-role-context\.js\?v=20261119directreply1/);
   assert.match(rolePolicy,/validateGroupOnlineReply: validateGroupOnlineReply/);
   assert.ok(sw.includes('chat-role-context.js?v=20261119directreply1'));
   const version=Number(sw.match(/phone-app-pwa-v(\d+)/)?.[1]||0);
