@@ -162,3 +162,11 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 `tests/group-profile-ui.test.mjs` 新增 7 项操作/错误路径回归场景：误删取消与确认、过大头像拒绝、回群聊/回群玩法、清聊天记录写失败、解散群写失败、解散后清理群独立封面且其他群不受影响。
 
 **证据界限**：提交和静态源断言已验证；没有在此执行 Node/Playwright、真实浏览器、手机、完整构建，也没有验证 AI 角色人设/世界书/记忆/RP 协议。这些不能被计为通过。由于 PR #298 同样变更 `chat-settings.html`，需和原群治理分支手动处理集成冲突。QA #299、主线、正式版和唯一预览 Worker 均未修改。
+
+### GROUP-UI-002 返回链路闭环修复（2026-11-19）
+
+- **复现来源（代码路径）**：`chat/chat/chat-settings.html` 旧组页返回判断把 `group-play.html` 视为可后退父级，同时 `chat/chat/group-play.html` 原按钮用 `location.href` 再开一个群资料页；从「本群聊天 → 群资料 → 玩法设置 → 返回群资料 → 返回」会回到玩法设置，形成双页返回循环。
+- **修复**：`chat-settings.html` 只有同源同群的 `chat-detail.html` 或聊天列表 `chat.html` 可以作为父级历史返回；来自玩法设置/搜索页的历史不再反向回去，而是落到当前群聊。`group-play.html` 的返回按钮从当前群的真实资料页进入时改用 `history.back()`，以恢复前一页已有的展开状态；深链接进入时使用 `location.replace` 进入本群资料页，避免新建重复的历史条目。
+- **测试源码更新**：`tests/group-profile-ui.test.mjs` 将过时的「返回玩法页」断言改为完整操作链（群资料→玩法→群资料→群聊，含深链路径），新增对两端防循环处理的静态回归契约。
+- **本地验证尝试**：环境有 Python Playwright 与 Chromium，但该容器安全策略拦截了所有本地和模拟域网页导航（`net::ERR_BLOCKED_BY_ADMINISTRATOR`）；仅 `page.set_content` 可以进行局部 DOM 交互，不满足真实页面加载测试。故**尚未通过真实 Playwright E2E / 手机 / 打包构建**；不得声称完整路径已运行通过。没有触发 GitHub Actions，也未消耗用户 CI/部署额度。
+- **集成风险**：原 PR #298 同时修改 `group-play.html` 和 `chat-settings.html`，必须按原 PR 所有权交接、逐段合并，确保群治理和秘密玩法的已有脚本不被覆盖。QA #299 和正式版未改。
