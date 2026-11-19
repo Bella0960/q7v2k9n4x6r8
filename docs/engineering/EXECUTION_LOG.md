@@ -170,3 +170,8 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **测试源码更新**：`tests/group-profile-ui.test.mjs` 将过时的「返回玩法页」断言改为完整操作链（群资料→玩法→群资料→群聊，含深链路径），新增对两端防循环处理的静态回归契约。
 - **本地验证尝试**：环境有 Python Playwright 与 Chromium，但该容器安全策略拦截了所有本地和模拟域网页导航（`net::ERR_BLOCKED_BY_ADMINISTRATOR`）；仅 `page.set_content` 可以进行局部 DOM 交互，不满足真实页面加载测试。故**尚未通过真实 Playwright E2E / 手机 / 打包构建**；不得声称完整路径已运行通过。没有触发 GitHub Actions，也未消耗用户 CI/部署额度。
 - **集成风险**：原 PR #298 同时修改 `group-play.html` 和 `chat-settings.html`，必须按原 PR 所有权交接、逐段合并，确保群治理和秘密玩法的已有脚本不被覆盖。QA #299 和正式版未改。
+
+#### 返回导航本轮补充测试证据
+- 本地 Node 独立运行 9 个导航路由决策断言，全部 **9/9 PASS**：群资料来源为群玩法、搜索、本群聊天、其他群、聊天列表、跨源；群玩法来源为本群资料、其他群资料、深链接。该测试基于同样的 URL/来源判断逻辑，是**隔离单元验证**，不是加载真实工程页面的浏览器 E2E。
+- Github 分支源文件核对 **5/5 PASS**（`chat-settings.html` 父级过滤、`group-play.html` 真实返回和深链替换、测试覆盖、私聊分支不改）。
+- Chromium 本地启动可用，但 `page.goto(localhost|file|mock-route)` 均报 `ERR_BLOCKED_BY_ADMINISTRATOR`。实际端到端测试、手机视觉验收及 QA 集成继续标记 **NOT VERIFIED**；未触发 CI。
