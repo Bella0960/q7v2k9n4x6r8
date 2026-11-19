@@ -258,7 +258,7 @@ test('deleted chat images release only chat references after single or bulk dele
   const single = chatDetailSource.slice(chatDetailSource.indexOf('function deleteOneMessage(bubbleId)'));
   const bulk = chatDetailSource.slice(chatDetailSource.indexOf("document.getElementById('selectDeleteBtn').addEventListener"));
   for (const handler of [single, bulk]) {
-    const save = handler.indexOf('if (!saveMessages(keep))');
+    const save = handler.indexOf('if (!saveMessages(_inheritChatBaseline(keep, list)))');
     const release = handler.indexOf('releaseDeletedChatImageReferences(removedMessages)');
     assert.ok(save >= 0 && release > save, 'reference cleanup must follow a successful save');
     assert.match(handler.slice(save, release), /删除失败[\s\S]*?return;/);
