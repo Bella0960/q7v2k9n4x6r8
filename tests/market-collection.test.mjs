@@ -293,3 +293,57 @@ test('independent Messages list-theme entry avoids off-screen legacy gallery ren
  assert.match(selected,/恢复默认/);
  assert.equal((selected.match(/class="product-card/g)||[]).length,1);
 });
+
+
+test('whole chat themes suppress independent Editorial overlay without erasing the saved preference',()=>{
+ const pageSource=readFileSync(new URL('../shared/js/chat-page-theme.js',import.meta.url),'utf8');
+ const listSource=readFileSync(new URL('../shared/js/chat-list-theme.js',import.meta.url),'utf8');
+ const store=new Map([['maomao_chat_theme_preset','default'],['maomao_chat_list_theme_preset_v1','editorial']]);
+ const attr={};const listeners=new Map();
+ const shell={setAttribute(key,value){attr[key]=value;},removeAttribute(key){delete attr[key];}};
+ const document={readyState:'complete',querySelector:()=>shell,querySelectorAll:()=>[shell],addEventListener(){}};
+ const storage={getItem:key=>store.get(key)??null,setItem:(key,value)=>store.set(key,String(value)),removeItem:key=>store.delete(key)};
+ const window={localStorage:storage,ChatBeauty:{getThemePreset:()=>store.get('maomao_chat_theme_preset')},location:{pathname:'/chat/chat/chat.html'},addEventListener(type,fn){listeners.set(type,[...(listeners.get(type)||[]),fn]);}};
+ const ctx={window,document};
+ vm.runInNewContext(pageSource,ctx);
+ vm.runInNewContext(listSource,ctx);
+ const refresh=type=>(listeners.get(type)||[]).forEach(fn=>fn({key:type==='storage'?'maomao_chat_theme_preset':undefined}));
+ const matrix=[
+  ['default',true],['wechat',false],['qq',false],
+  ['silver-butterfly',false],['atmosphere',false],['imessage',true],['default',true]
+ ];
+ for(const [id,editorialAllowed] of matrix){
+  store.set('maomao_chat_theme_preset',id);
+  refresh('maomao:chat-theme-change');
+  assert.equal(attr['data-chat-theme-preset'],id==='imessage'?'default':id,id+' effective page theme');
+  assert.equal(attr['data-chat-list-theme']==='editorial',editorialAllowed,id+' list overlay isolation');
+  assert.equal(store.get('maomao_chat_list_theme_preset_v1'),'editorial','do not delete prior explicit list preference');
+ }
+});
+test('iMessage theme applies only on real detail route; whole-page themes retain their own surfaces',()=>{
+ const source=readFileSync(new URL('../shared/js/chat-page-theme.js',import.meta.url),'utf8');
+ const paths=['/chat/chat/chat.html','/chat/chat/chat-detail.html','/chat/contacts/contacts.html','/chat/moments/moments.html','/profile/profile.html','/chat/moments/my-moments.html'];
+ const records=new Map();let theme='imessage';
+ const shell={setAttribute(k,v){records.set(k,v);}};
+ const events={};
+ const window={ChatBeauty:{getThemePreset:()=>theme},location:{pathname:paths[0]},addEventListener(type,fn){events[type]=fn}};
+ const document={readyState:'complete',querySelectorAll(){return [shell];},addEventListener(){}};
+ vm.runInNewContext(source,{window,document});
+ for(const p of paths){
+  window.location.pathname=p;events.pageshow();
+  assert.equal(records.get('data-chat-theme-preset'),p.endsWith('/chat-detail.html')?'imessage':'default',p);
+ }
+ for(const id of ['wechat','qq','silver-butterfly','atmosphere','default']){
+  theme=id;events['maomao:chat-theme-change']();
+  assert.equal(records.get('data-chat-theme-preset'),id,'full theme not disabled by iMessage-only route guard');
+ }
+});
+test('shared WeChat visual rules require active WeChat shell, not a global CSS override',()=>{
+ const css=readFileSync(new URL('../shared/css/wechat-theme-refinements.css',import.meta.url),'utf8');
+ const selectors=css.match(/[^{}]+\{/g)||[];
+ for(const raw of selectors){
+  const selector=raw.slice(0,-1).replace(/\/\*[\s\S]*?\*\//g,'').trim();
+  if(!selector||selector.startsWith('@')||selector.startsWith('from')||selector.startsWith('to')||/^\d+%$/.test(selector))continue;
+  assert.match(selector,/data-chat-theme-preset="wechat"/,'WeChat CSS must not style another theme: '+selector.slice(0,110));
+ }
+});
