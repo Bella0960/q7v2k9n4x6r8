@@ -1122,9 +1122,14 @@ test('known external history writers remain on the migration inventory', () => {
   ];
   for (const caller of callers) {
     const source = read(caller);
+    // Group calls now append through the guarded writer, never a stale array.
+    // Other external callers remain on the migration inventory.
+    const atomicGroupCall = caller === 'chat/call/call.html' &&
+      source.includes('chat-history-atomic.js') &&
+      /await atomic\.appendIf\(roleId,callMessage\)/.test(source);
     assert.ok(
-      source.includes('chat_history_') || source.includes('saveChatHistory'),
-      `${caller} no longer appears to use the documented chat-history contract; review before migrating it`
+      source.includes('chat_history_') || source.includes('saveChatHistory') || atomicGroupCall,
+      `${caller} must retain a verifiable chat-history write contract`
     );
   }
 });
