@@ -261,7 +261,7 @@
                             (legacy && Array.isArray(legacy.worldbookIds) ?
                                 (legacy.enabled === false ? [] : legacy.worldbookIds) : null);
                         if (!legacyIds) throw new Error('Corrupt legacy worldbook binding');
-                        boundIds = legacy && legacy.enabled === false ? [] :
+                        boundIds = (legacy && legacy.enabled === false) || legacyIds.length === 0 ? [] :
                             boundIds.concat(legacyIds.map(String));
                     }
                 } catch (legacyError) {
