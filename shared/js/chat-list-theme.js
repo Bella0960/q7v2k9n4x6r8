@@ -16,8 +16,17 @@
     var shell = document.querySelector('.phone-mockup');
     if (!shell) return;
 
-    var pageTheme = global.ChatBeauty && global.ChatBeauty.getThemePreset ? global.ChatBeauty.getThemePreset() : '';
-    if (readTheme() === THEME_ID && pageTheme !== 'atmosphere') {
+    // Only the default chat list (and iMessage, which skins chat detail only)
+    // may host the independently opted-in Messages layout. Whole-page themes
+    // must render their own list, never a blend of WeChat/QQ/Silver/Atmosphere
+    // and Editorial. Keep the saved opt-in value for return to the default.
+    var pageTheme = 'default';
+    try {
+      pageTheme = global.ChatBeauty && global.ChatBeauty.getThemePreset
+        ? global.ChatBeauty.getThemePreset()
+        : (global.localStorage.getItem('maomao_chat_theme_preset') || 'default');
+    } catch (error) {}
+    if (readTheme() === THEME_ID && (pageTheme === 'default' || pageTheme === 'imessage')) {
       shell.setAttribute('data-chat-list-theme', THEME_ID);
     } else {
       shell.removeAttribute('data-chat-list-theme');
