@@ -16,7 +16,9 @@ for(const width of [320,375,390,430,1280]){
  await page.goto(base+'/theme-store/theme-store.html');await page.waitForSelector('.sf-product');
  assert.deepEqual(await page.locator('#categoryNav button').allTextContents(),['首页','主题','分类','我的']);
  const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);assert.equal(overflow,false);
- const columns=await page.locator('.sf-grid').first().evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length);assert.equal(columns,2);
+ const cover=await page.locator('.sf-theme-cover').first().boundingBox();
+ const card=await page.locator('.sf-theme-item').first().boundingBox();
+ assert.ok(cover.width>=card.width*.84,'native multi-screen art must remain readable on mobile');
  const nav=await page.locator('#categoryNav').boundingBox();assert.ok(nav.y+nav.height<=845);assert.ok(nav.y>700);
  const rail=page.locator('.sf-featured');
  const touch=await ctx.newCDPSession(page),railBox=await rail.boundingBox();
@@ -57,18 +59,29 @@ for(const width of [320,375,390,430,1280]){
  }
  assert.equal(await page.locator('.sf-theme-collection .sf-theme-item').count(),6,'six theme product sections');
  assert.ok(await page.locator('.sf-theme-collection').evaluate(el=>el.getBoundingClientRect().top<el.ownerDocument.querySelector('.chat-list-theme-grid').getBoundingClientRect().top),'original themes must appear before list-theme promotion');
- assert.equal(await page.locator('.sf-theme-layout').first().evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length),2,'independent theme section contains two-column editorial composition');
+ assert.equal(await page.locator('.sf-theme-layout').first().evaluate(el=>getComputedStyle(el).flexDirection),'column','phone theme preview occupies its own full-width visual row');
+ const themeBox=await page.locator('.sf-theme-collection .sf-theme-item').first().boundingBox();
+ const artBox=await page.locator('.sf-theme-cover').first().boundingBox();
+ assert.ok(artBox.width>=themeBox.width*.84,'individual art is not squeezed into a narrow half-column');
  assert.equal(await page.locator('.chat-list-theme-grid .product-card').count(),1,'existing independent Messages list theme stays available');
  for(const id of ['wechat','imessage','qq','silver-butterfly','atmosphere','default']){
   await page.locator('.sf-theme-cover[data-sf="detail"][data-id="'+id+'"]').click();await page.locator('[data-sf="apply-theme"]').click();await page.locator('[data-sf="confirm-apply-theme"]').click();
   assert.equal(await page.evaluate(()=>ChatBeauty.getThemePreset()),id);
+  assert.equal(await page.locator('.sf-theme-item[data-theme-id="'+id+'"] .sf-theme-current').count(),1,'applied status must be visible');
+  assert.equal(await page.evaluate(()=>document.activeElement?.getAttribute('data-id')),id,'dialog focus returns to original theme after rerender');
  }
  await page.locator('.sf-theme-cover[data-sf="detail"][data-id="wechat"]').click();
  assert.equal(await page.locator('.sf-dialog [data-sf="favorite"]').getAttribute('aria-pressed'),'false');
  await page.locator('.sf-dialog [data-sf="favorite"]').click();
  assert.equal(await page.locator('.sf-dialog [data-sf="favorite"]').getAttribute('aria-pressed'),'true');
+ assert.ok(await page.locator('.sf-dialog').isVisible(),'favoriting must not close detail dialog');
  assert.match(await page.locator('.sf-dialog [data-sf="favorite"]').innerText(),/已收藏/);
  await page.locator('[data-sf="close"]').click();
+ assert.equal(await page.evaluate(()=>document.activeElement?.getAttribute('data-id')),'wechat','closing after favorites rerender restores theme focus');
+ await page.locator('#storeContent').evaluate(el=>{el.scrollTop=325;});
+ const remembered=await page.locator('#storeContent').evaluate(el=>el.scrollTop);
+ await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pageshow')));
+ assert.ok(Math.abs(await page.locator('#storeContent').evaluate(el=>el.scrollTop)-remembered)<5,'history restore must not jump to top');
  await page.locator('[data-category="mine"]').click();assert.equal(await page.locator('.sf-product').count(),1);
  await page.locator('[data-sf="mine-tab"][data-id="outfits"]').click();await page.locator('[data-sf="save-outfit"]').click();
  assert.deepEqual(await page.locator('[name="scope"]:checked').evaluateAll(nodes=>nodes.map(el=>el.value)),['theme'],'save outfit only captures theme by default');
