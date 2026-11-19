@@ -418,7 +418,7 @@
         }).then(function (ok) {
             if (!ok) return false;
             return loadProactiveScript(
-                proactiveAsset('shared/js/phone/chat-presence-policy.js?v=20261102v17'),
+                proactiveAsset('shared/js/phone/chat-presence-policy.js?v=20261119scheduled1'),
                 function () { return !!global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function'; }
             );
         }).then(function (ok) {
@@ -501,7 +501,7 @@
             if (!ok) return false;
             if (global.ChatFollowUpPolicy && typeof global.ChatFollowUpPolicy.calculateDelay === 'function') return true;
             return loadProactiveScript(
-                proactiveAsset('shared/js/phone/chat-followup-policy.js?v=20261102v1'),
+                proactiveAsset('shared/js/phone/chat-followup-policy.js?v=20261119scheduled1'),
                 function () { return !!global.ChatFollowUpPolicy && typeof global.ChatFollowUpPolicy.calculateDelay === 'function'; }
             );
         });
