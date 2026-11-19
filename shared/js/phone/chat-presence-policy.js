@@ -645,7 +645,7 @@
   function buildProactiveContactPrompt(contact, history, options) {
     options = options || {};
     var name = String(contact && contact.name || '角色').trim() || '角色';
-    var persona = String(contact && (contact.persona || contact.prompt) || '').trim().slice(0, 5000);
+    var persona = String(contact && (contact.persona || contact.prompt) || '').trim();
     var lines = [
       '【MAOMAO 主动联系时机判断】',
       '你是「' + name + '」，现在不是在回复一条新消息，而是在考虑是否值得主动发一条简短的线上聊天消息。',
