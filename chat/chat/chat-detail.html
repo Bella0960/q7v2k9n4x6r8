@@ -3939,7 +3939,8 @@
                     var failedMark = document.createElement('span');
                     failedMark.className = 'msg-send-failed';
                     failedMark.textContent = '!';
-                    failedMark.title = (msg.sendFailedReason === 'missing-api-key' ? '尚未配置 API Key；消息已保存' : '消息已发出，但被对方拒收了') + '，点击重试';
+                    failedMark.title = (msg.sendFailedReason === 'worldbook-read' ? '世界书读取失败，AI 尚未回复' :
+                        (msg.sendFailedReason === 'missing-api-key' ? '尚未配置 API Key；消息已保存' : '消息已发出，但被对方拒收了')) + '，点击重试';
                     failedMark.setAttribute('role', 'button');
                     failedMark.setAttribute('tabindex', '0');
                     var startRetry = function (event) {
@@ -5737,9 +5738,12 @@
             let worldbookText = '';
             try {
               const rawWB = localStorage.getItem('phone_worldbooks');
-              if (rawWB) {
-                let wbList = JSON.parse(rawWB) || [];
-                if (!Array.isArray(wbList)) wbList = [];
+              // Validate bindings even when the worldbook library is empty.
+              // Otherwise malformed mounts silently bypass validation and the
+              // AI receives a prompt that does not match the user's selection.
+              let wbList = rawWB == null ? [] : JSON.parse(rawWB);
+              if (!Array.isArray(wbList)) throw new Error('世界书列表格式异常');
+              {
                 // Group turns use the speaking member's role ID, not the group ID.
                 // Explicit group-level mounts remain available as shared group lore.
                 const speakingRoleId = isGroupChat && groupReplyPick && groupReplyPick.id != null
@@ -5775,9 +5779,28 @@
                 }
               }
             } catch(e) {
-              // Do not bill an AI request with missing or cross-role lore.
+              // The user message was already saved before context assembly.
+              // Mark that SAME message retryable instead of leaving a normal
+              // outgoing bubble with no reply, and never call the paid model.
+              var failedTarget = retryTarget;
+              if (!failedTarget && !isRegen && !contextOnly && !silent) {
+                for (var wbRetryIndex = historyList.length - 1; wbRetryIndex >= 0; wbRetryIndex--) {
+                  var wbLast = historyList[wbRetryIndex];
+                  if (wbLast && wbLast.role === 'user' && String(wbLast.text || '') === String(text || '')) {
+                    failedTarget = { mid: wbLast.mid, time: wbLast.time };
+                    break;
+                  }
+                }
+              }
+              var wbMarked = !!(failedTarget && _markUserSendFailed(
+                historyList, failedTarget.mid, failedTarget.time, 'worldbook-read'
+              ));
+              if (wbMarked) {
+                if (_vl) vlRefresh();
+                else renderAllMessages();
+              }
               if (typeof showToast === 'function') {
-                showToast('世界书读取失败，本轮未请求 AI。请检查挂载设置后重试');
+                showToast('世界书读取失败，本轮未请求 AI。消息已保留，请检查挂载后重试');
               }
               return;
             }
