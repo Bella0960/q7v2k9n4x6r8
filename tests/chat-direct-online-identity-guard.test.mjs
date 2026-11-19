@@ -121,10 +121,10 @@ test('existing group guard stays independent, all offline modes keep their own f
   assert.match(detail, /qualityPolicy\.validateGroupOnlineReply\(/);
   assert.match(detail, /if \(!isGroupChat && presenceMode === 'online'/);
   assert.match(detail, /if \(!isGroupChat && presenceMode === 'online' && String\(fullText \|\| ''\)\.trim\(\)\)/);
-  assert.match(detail, /chat-role-context\.js\?v=20261119identity2/);
-  assert.match(sw, /chat-role-context\.js\?v=20261119identity2/);
+  assert.match(detail, /chat-role-context\.js\?v=20261119source3/);
+  assert.match(sw, /chat-role-context\.js\?v=20261119source3/);
   const swVersion = Number(sw.match(/phone-app-pwa-v(\d+)/)?.[1] || 0);
   assert.ok(swVersion >= 262, 'identity guard must retain the protected v262+ cache baseline');
-  assert.match(sw, /chat-role-context\.js\?v=20261119offlinebinding1/);
+  assert.match(sw, /chat-role-context\.js\?v=20261119source3/);
   assert.match(detail, /buildIdentityAnswerGuidance\(roleForTurn\)/);
 });
