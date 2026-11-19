@@ -160,3 +160,41 @@ test('switching each built-in theme retains independent chat-list, role bubble a
   assert.equal(x.disk.get('beauty_chat_A'),priorBubble);
   assert.equal(x.disk.get('maomao_chat_list_theme_preset_v1'),'editorial');
 });
+
+
+test('storefront theme and independent list theme do not report success on failed persistence',()=>{
+  const source=readFileSync(new URL('../theme-store/theme-store.html',import.meta.url),'utf8');
+  function extract(start,end){
+    const at=source.indexOf('    function '+start+'('),until=source.indexOf('    function '+end+'(',at+1);
+    assert.ok(at>=0 && until>at,'storefront handler '+start+' exists');
+    return source.slice(at,until);
+  }
+  function fake(failKey=''){
+    const records=new Map([['maomao_chat_theme_preset','wechat']]),alerts=[],events=[];
+    const storage={getItem:k=>records.get(k)??null,setItem(k,v){if(k===failKey)throw Error('quota');records.set(k,String(v));},removeItem(k){if(k===failKey)throw Error('quota');records.delete(k);}};
+    const window={ChatBeauty:{getThemePreset:()=>records.get('maomao_chat_theme_preset')||'default',setThemePreset:id=>{storage.setItem('maomao_chat_theme_preset',id);return storage.getItem('maomao_chat_theme_preset')===id;}},dispatchEvent:event=>events.push(event.type)};
+    const ctx={
+      localStorage:storage,window,ChatBeauty:window.ChatBeauty,CHAT_LIST_THEME_KEY:'maomao_chat_list_theme_preset_v1',OWN_KEY:'maomao_theme_store_owned_v1',
+      defaultThemes:[{id:'wechat',name:'微信'},{id:'qq',name:'QQ'}],
+      getChatListTheme:()=>storage.getItem('maomao_chat_list_theme_preset_v1')==='editorial'?'editorial':'',
+      getOwned:()=>['default','wechat'],setOwned:list=>{try{storage.setItem('maomao_theme_store_owned_v1',JSON.stringify(list));return true;}catch{return false;}},
+      toast:msg=>alerts.push(msg),render(){},CustomEvent:class{constructor(type){this.type=type;}}
+    };
+    return {records,alerts,events,ctx};
+  }
+  const normal=fake();
+  const nativeApply=vm.runInNewContext(extract('applyTheme','openFontDBRecord')+'applyTheme',normal.ctx);
+  assert.equal(nativeApply('qq'),true);
+  assert.equal(normal.records.get('maomao_chat_theme_preset'),'qq');
+  const fail=fake('maomao_theme_store_owned_v1');
+  const failApply=vm.runInNewContext(extract('applyTheme','openFontDBRecord')+'applyTheme',fail.ctx);
+  assert.equal(failApply('qq'),false,'failed ownership must be reported');
+  assert.equal(fail.records.get('maomao_chat_theme_preset'),'wechat','failed ownership rolls theme back');
+  assert.equal(fail.events.length,0,'no change event on failed application');
+  assert.equal(failApply('invalid'),false,'unknown theme ID rejected');
+  const failList=fake('maomao_theme_store_owned_v1');
+  const listApply=vm.runInNewContext(extract('applyChatListTheme','applyTheme')+'applyChatListTheme',failList.ctx);
+  assert.equal(listApply(),false,'list theme owned record failure must be reported');
+  assert.equal(failList.records.get('maomao_chat_list_theme_preset_v1'),undefined,'list preference rolled back');
+  assert.equal(failList.events.length,0,'no list change event after failure');
+});
