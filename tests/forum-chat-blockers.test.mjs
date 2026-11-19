@@ -89,7 +89,22 @@ function loadSaveMessages(sandbox) {
   const start = chatDetail.indexOf('function _readBackHistory()');
   const end = chatDetail.indexOf('\n        // 头像占位', start);
   assert.ok(start >= 0 && end > start, 'saveMessages read-back helpers should be isolated');
-  return runInNewContext(chatDetail.slice(start, end) + '\nsaveMessages;', sandbox);
+  // Match the real role-scoped optimistic write barrier. Older isolated
+  // fixtures passed unversioned arrays and were correctly refused by chat.
+  const baselineStart = chatDetail.indexOf('var _chatHistoryBaselines = new WeakMap();');
+  const baselineEnd = chatDetail.indexOf('function removeLegacyStickerCaptions(', baselineStart);
+  assert.ok(baselineStart >= 0 && baselineEnd > baselineStart);
+  const versioned = runInNewContext(
+    chatDetail.slice(baselineStart, baselineEnd) + '\n' + chatDetail.slice(start, end) +
+    '\n({ saveMessages, _rememberChatBaseline });', sandbox
+  );
+  return function (list) {
+    let raw = null;
+    if (sandbox.localStorage && typeof sandbox.localStorage.getItem === 'function') {
+      raw = sandbox.localStorage.getItem(sandbox.storageKey);
+    }
+    return versioned.saveMessages(versioned._rememberChatBaseline(list, raw));
+  };
 }
 
 function createSandboxBase() {
