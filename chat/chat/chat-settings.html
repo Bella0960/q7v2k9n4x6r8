@@ -2171,6 +2171,10 @@
       gpMetaSub.textContent = '成员 · ' + members.length + '人' + (canManage ? '' : ' · 只读');
       document.getElementById('gpInfoSaveBtn').disabled = !canManage;
       document.getElementById('gpNoticeSaveBtn').disabled = !canManage;
+      gpNameInput.readOnly = !canManage;
+      gpNoticeInput.readOnly = !canManage;
+      var dismissCard = document.getElementById('gpDismissCard');
+      if (dismissCard) dismissCard.style.display = canManage ? '' : 'none';
       var avatarEdit = document.getElementById('gpAvatarEditBtn');
       if (avatarEdit) {
         avatarEdit.style.display = canManage ? '' : 'none';
