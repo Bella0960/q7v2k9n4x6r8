@@ -33,11 +33,12 @@ function createHarness(writeMode='normal') {
       raw = value;
     }
   };
-  const context=vm.createContext({localStorage,showToast:message=>notices.push(message)});
+  const context=vm.createContext({localStorage,roleId:'g1',showToast:message=>notices.push(message)});
   new vm.Script(source,{filename:'chat-settings.html#group-persistence'}).runInContext(context);
   return { save: group => context.saveCurrentGroup(group),
     canManage: group => context.canManageGroup(group),
-    getGroupList: () => JSON.parse(raw), notices };
+    getGroupList: () => JSON.parse(raw), setGroups: groups => { raw=JSON.stringify(groups); },
+    setRaw: value => { raw=value; }, raw:()=>raw, notices };
 }
 
 test('group rename persists without damaging the other group', () => {
@@ -68,10 +69,35 @@ test('legacy group without ownerId is still editable by user', () => {
   assert.equal(h.save({id:'g1',name:'兼容旧群',members:[{id:'c1'}]}),true);
   assert.equal(h.getGroupList()[0].name,'兼容旧群');
 });
-test('group owner can create a new group record with existing records intact', () => {
+test('settings cannot create a new group, even if caller is the user', () => {
   const h=createHarness();
-  assert.equal(h.save({id:'g3',name:'新群',ownerId:'__user'}),true);
-  assert.deepEqual(h.getGroupList().map(g=>g.id),['g1','g2','g3']);
+  assert.equal(h.save({id:'g3',name:'新群',ownerId:'__user'}),false);
+  assert.deepEqual(h.getGroupList(),original);
+});
+test('deleted group cannot be resurrected from a stale settings tab', () => {
+  const h=createHarness();
+  const old={...original[0],name:'旧页面尝试重新保存'};
+  h.getGroupList();
+  // Simulate deletion in another tab after settings loaded.
+  h.setGroups([original[1]]);
+  assert.equal(h.save(old),false);
+  assert.deepEqual(h.getGroupList(),[original[1]]);
+});
+test('transferred ownership in another tab blocks stale user save', () => {
+  const h=createHarness();
+  h.setGroups([{...original[0],ownerId:'c1'},original[1]]);
+  assert.equal(h.save({...original[0],name:'不该保存'}),false);
+  assert.equal(h.getGroupList()[0].ownerId,'c1');
+  assert.equal(h.getGroupList()[0].name,'旧群名');
+});
+test('corrupt or missing group index cannot be overwritten by the settings editor', () => {
+  const h=createHarness();
+  h.setRaw('{bad-json');
+  assert.equal(h.save({...original[0],name:'不该保存'}),false);
+  assert.equal(h.raw(),'{bad-json');
+  h.setRaw(null);
+  assert.equal(h.save({...original[0],name:'不该保存'}),false);
+  assert.equal(h.raw(),null);
 });
 test('source must guard destructive paths and validate read-back', () => {
   assert.match(html, /localStorage\.getItem\('phone_groups'\) === serialized/);
