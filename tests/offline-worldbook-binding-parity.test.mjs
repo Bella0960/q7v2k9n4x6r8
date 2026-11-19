@@ -49,7 +49,7 @@ function make(seed={}, binder=true) {
 }
 
 test('offline chat uses the exact checked selection shared with the character editor and online chat',()=>{
-  const h=make({chat_worldbooks_role_a:JSON.stringify(['local-a'])});
+  const h=make({'chat_worldbooks_role-a':JSON.stringify(['local-a'])});
   const selected=h.bridge.read('role-a');
   assert.equal(selected.ok,true);
   assert.deepEqual(Array.from(selected.ids),['local-a']);
@@ -62,7 +62,7 @@ test('offline chat uses the exact checked selection shared with the character ed
 });
 
 test('explicitly empty mount cannot resurrect stale role worldBookIds or legacy global defaults',()=>{
-  const h=make({chat_worldbooks_role_a:'[]'});
+  const h=make({'chat_worldbooks_role-a':'[]'});
   assert.deepEqual(Array.from(h.bridge.read('role-a').ids),[]);
   const result=h.resolve();
   assert.equal(result.ok,true);
@@ -72,7 +72,7 @@ test('explicitly empty mount cannot resurrect stale role worldBookIds or legacy 
 });
 
 test('legacy object with enabled:false is a real opt-out in offline prompts too',()=>{
-  const h=make({chat_worldbooks_role_a:JSON.stringify({enabled:false,worldbookIds:['local-a']})});
+  const h=make({'chat_worldbooks_role-a':JSON.stringify({enabled:false,worldbookIds:['local-a']})});
   assert.deepEqual(Array.from(h.bridge.read('role-a').ids),[]);
   const result=h.resolve();
   assert.equal(result.ok,true);
@@ -90,7 +90,7 @@ test('without explicit legacy mount, old global books and role-local selection r
 });
 
 test('damaged legacy mount blocks both offline routes before any request, without writing data',()=>{
-  const h=make({chat_worldbooks_role_a:'{bad'});
+  const h=make({'chat_worldbooks_role-a':'{bad'});
   const before=JSON.stringify(Array.from(h.data.entries()));
   assert.equal(h.resolve().ok,false);
   assert.equal(h.resolve().code,'worldbook-storage');
@@ -104,7 +104,7 @@ test('missing shared binder fails closed rather than silently using the obsolete
 });
 
 test('entry keyword activation still uses latest user input without leaking untriggered entries',()=>{
-  const h=make({chat_worldbooks_role_a:JSON.stringify(['local-a'])});
+  const h=make({'chat_worldbooks_role-a':JSON.stringify(['local-a'])});
   assert.doesNotMatch(h.resolve().worldbook,/角色A雨天会去老街/);
   const rainy=h.resolve({currentText:'雨天'});
   assert.equal(rainy.ok,true);
