@@ -3,8 +3,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { runInNewContext } from 'node:vm';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const chat=readFileSync(path.join(root,'chat/chat/chat.html'),'utf8');
+const phoneStorageSource=readFileSync(path.join(root,'shared/js/phone/phone_storage.js'),'utf8');
+const atomicSource=readFileSync(path.join(root,'shared/js/phone/chat-history-atomic.js'),'utf8');
 const detail=readFileSync(path.join(root,'chat/chat/chat-detail.html'),'utf8');
 test('聊天列表所有创建群入口都通向真实创建弹窗',()=>{
   assert.match(chat,/\['groupEntryBtn', 'silverGroupEntryBtn'\]\.forEach/);
@@ -196,4 +199,41 @@ test('导航被浏览器拦截时已保存群仍在，显示可理解的回退�
   assert.equal(result.visible, false);
   assert.equal(result.href, '');
   assert.match(result.notices.join(' '), /群聊已创建，请点击群聊进入/);
+});
+
+test('新群首次打开初始化历史后才能安全发送，刷新不丢且两个标签不互相覆盖', async () => {
+  const group = { id: 'g123', name: '周末群', members: [{ id: 'r1', name: '角色甲' }] };
+  const map = new Map([['phone_groups', JSON.stringify([group])]]);
+  const storage = {
+    getItem(key) { return map.has(key) ? map.get(key) : null; },
+    setItem(key,value) { map.set(key,String(value)); },
+    removeItem(key) { map.delete(key); }
+  };
+  const pending = new Map();
+  const locks = { request(name, opts, fn) {
+    assert.equal(opts.mode, 'exclusive');
+    const op = (pending.get(name) || Promise.resolve()).then(fn);
+    pending.set(name, op.catch(() => {}));
+    return op;
+  }};
+  const one = { localStorage:storage, navigator:{locks} };
+  runInNewContext(phoneStorageSource,{window:one,localStorage:storage,console});
+  assert.equal(storage.getItem('chat_history_g123'), null, '新群尚无消息键');
+  const welcome = [{role:'received',type:'group_welcome',text:'欢迎来到「周末群」'}];
+  assert.equal(one.PhoneStorage.saveChatHistory('g123',welcome), true, '首次进群先持久化欢迎消息');
+  runInNewContext(atomicSource,{window:one,localStorage:storage,console});
+  const two = { localStorage:storage, navigator:{locks} };
+  runInNewContext(atomicSource,{window:two,localStorage:storage,console});
+  const [a,b] = await Promise.all([
+    one.ChatHistoryAtomic.appendIf('g123',{mid:'u1',role:'user',text:'今天有空吗？'}),
+    two.ChatHistoryAtomic.appendIf('g123',{mid:'a1',role:'assistant',memberId:'r1',text:'刚忙完，可以聊'})
+  ]);
+  assert.equal(a.ok,true,JSON.stringify(a));
+  assert.equal(b.ok,true,JSON.stringify(b));
+  const refresh = JSON.parse(storage.getItem('chat_history_g123'));
+  assert.equal(refresh.length,3);
+  assert.deepEqual(refresh.map(m => m.mid || m.type),['group_welcome','u1','a1']);
+  assert.equal(JSON.parse(storage.getItem('phone_groups'))[0].members[0].id,'r1');
+  const missing = await one.ChatHistoryAtomic.appendIf('g_missing',{mid:'x',text:'勿创建已删除会话'});
+  assert.equal(missing.ok,false, '禁止原子写入器静默复活不存在的聊天');
 });
