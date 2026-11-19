@@ -77,7 +77,8 @@ test('server honors explicit no_payload and does not return arbitrary exception 
   const scope = app.slice(start, end);
   assert.match(scope, /deliveryMode === 'no_payload' \? null : payload/);
   assert.match(scope, /failurePhase: outcome\.failurePhase \|\| 'provider_http'/);
-  assert.match(scope, /failureDiagnostic: outcome\.failurePhase \?/);
+  assert.match(scope, /failureDiagnostic: outcome\.failurePhase === 'transport' && outcome\.transportReason/);
+  assert.match(scope, /: outcome\.failurePhase \? 'PUSH_CLIENT_' \+/);
   assert.doesNotMatch(scope, /failureDiagnostic:\s*error\.message/);
   const sw = readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
   assert.match(sw, /if \(!event\.data\)/);
