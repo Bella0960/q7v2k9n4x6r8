@@ -3481,6 +3481,18 @@
   // ================= 返回上一页：群聊资料优先回有效来源，否则进入该群对话 =================
   document.getElementById('btnBack').addEventListener('click', function () {
     if (isGroupSetting) {
+      // A deleted group must return to the list, not reopen a dead chat detail.
+      var groupStillExists = false;
+      try {
+        var indexedGroups = JSON.parse(localStorage.getItem('phone_groups') || '[]');
+        groupStillExists = Array.isArray(indexedGroups) && indexedGroups.some(function (g) {
+          return g && String(g.id) === String(roleId);
+        });
+      } catch (e) {}
+      if (!groupStillExists) {
+        window.location.href = 'chat.html';
+        return;
+      }
       var validGroupReferrer = false;
       try {
         var previous = new URL(document.referrer);
