@@ -183,4 +183,12 @@
     var notifierScript = document.createElement('script');
     notifierScript.src = appBase + 'shared/js/chat-notifier.js?v=20261119scheduled1';
     document.head.appendChild(notifierScript);
+
+    // NPC discovery is opt-in and runs only on foreground chat/Contacts pages.
+    // Authenticated MAO pages receive the existing account-scoped storage bootstrap.
+    if (currentPage === 'chat.html' || currentPage === 'contacts.html') {
+        var npcSocialScript = document.createElement('script');
+        npcSocialScript.src = appBase + 'shared/js/phone/npc-social.js?v=20261108i';
+        document.head.appendChild(npcSocialScript);
+    }
 })();
