@@ -267,6 +267,35 @@
     }).join('\n');
   }
 
+  // A successful HTTP response is not proof that the generated group message
+  // actually belongs to its saved speaker. Only block clear, high-confidence
+  // drift; never rewrite the person's persisted messages or custom persona.
+  function validateGroupOnlineReply(input) {
+    input = input && typeof input === 'object' ? input : {};
+    var role = input.role;
+    var reply = String(input.text || '').trim();
+    if (!role || role.id == null || !String(role.id).trim()) return {ok:false,code:'speaker'};
+    if (!reply) return {ok:false,code:'empty'};
+    // Custom digital / robot characters are allowed to describe themselves as such.
+    if (isDigitalCharacter(role)) return {ok:true};
+    var candidate = {role:'assistant',text:reply};
+    if (isBrokenAssistantIdentity(candidate) || isGenericContextContamination(candidate)) {
+      return {ok:false,code:'identity-drift'};
+    }
+
+    // Casual invitations such as "有没有人想玩游戏" should elicit a personal
+    // answer, not a model's numbered service catalogue. An explicit request
+    // for a list, options, instructions or recommendations remains permitted.
+    var question = String(input.latestUserText || '');
+    var asksForList = /(?:列(?:出|表|举)|清单|菜单|推荐(?:几|一些|几款|几种)|有哪些|有哪几|多少种|分[几0-9一二三四五六七八九十]?(?:步|点)|步骤|攻略|教程|选项|规则|玩法介绍)/.test(question);
+    var numbered = (reply.match(/(?:^|[\\n\\r]|\\s)\\d{1,2}[.、)]\\s*\\S/g) || []).length;
+    var heavyBold = (reply.match(/\\*\\*[^*\\n]{1,90}\\*\\*/g) || []).length;
+    if (!asksForList && reply.length >= 150 && numbered >= 3 && heavyBold >= 2) {
+      return {ok:false,code:'unsolicited-menu'};
+    }
+    return {ok:true};
+  }
+
   global.MAOMAOChatRoleContext = Object.freeze({
     version: 1,
     resolveRole: resolveRole,
@@ -280,6 +309,7 @@
     buildSavedSourceEnvelope: buildSavedSourceEnvelope,
     validateFinalApiMessages: validateFinalApiMessages,
     validatePersonaRequest: validatePersonaRequest,
-    isBrokenAssistantIdentity: isBrokenAssistantIdentity
+    isBrokenAssistantIdentity: isBrokenAssistantIdentity,
+    validateGroupOnlineReply: validateGroupOnlineReply
   });
 })(window);
