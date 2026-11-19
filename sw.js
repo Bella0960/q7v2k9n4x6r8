@@ -403,7 +403,7 @@ self.addEventListener('fetch', event => {
   }
   const isWelcomeStyle = (url.pathname === accountPath + 'account.css' ||
     url.pathname === accountPath + 'ivory-entry.css') ||
-    (req.destination === 'style' && fromWelcomePage && /\\.css$/i.test(url.pathname));
+    (req.destination === 'style' && fromWelcomePage && /\.css$/i.test(url.pathname));
   const welcomeArtPath = new URL('assets/ivory-mao/', self.registration.scope).pathname;
   const isWelcomeArtwork = url.pathname === welcomeArtPath + 'hero.webp' ||
     url.pathname === welcomeArtPath + 'ornament.webp' ||
@@ -414,8 +414,8 @@ self.addEventListener('fetch', event => {
       var networkPromise = fetch(req, { cache: 'no-store' }).then(function (response) {
         const type = String(response.headers && response.headers.get('content-type') || '');
         const correctType = isWelcomeStyle
-          ? /^\\s*text\\/css\\s*(?:;|$)/i.test(type)
-          : /^\\s*image\\/webp\\s*(?:;|$)/i.test(type);
+          ? /^\s*text\/css\s*(?:;|$)/i.test(type)
+          : /^\s*image\/webp\s*(?:;|$)/i.test(type);
         if (correctType && cacheablePublicResponse(response)) {
           const copy = response.clone();
           cacheWritePromise = caches.open(CACHE_NAME)
@@ -437,8 +437,8 @@ self.addEventListener('fetch', event => {
       }).catch(function () { return null; });
       const cachedType = String(cached && cached.headers && cached.headers.get('content-type') || '');
       if (cacheablePublicResponse(cached) && (isWelcomeStyle
-        ? /^\\s*text\\/css\\s*(?:;|$)/i.test(cachedType)
-        : /^\\s*image\\/webp\\s*(?:;|$)/i.test(cachedType))) return cached;
+        ? /^\s*text\/css\s*(?:;|$)/i.test(cachedType)
+        : /^\s*image\/webp\s*(?:;|$)/i.test(cachedType))) return cached;
       return new Response('', { status: 503, headers: { 'Cache-Control': 'no-store' } });
     })());
     return;
