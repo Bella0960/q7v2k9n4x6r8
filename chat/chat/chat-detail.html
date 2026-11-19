@@ -9691,10 +9691,16 @@
             }
             function closeComposer() {
                 if (!composerOverlay) return;
+                var wasOpen = composerOverlay.classList.contains('active');
                 composerOverlay.classList.remove('active');
                 composerOverlay.setAttribute('aria-hidden', 'true');
                 composerMode = '';
                 composerTargetMid = '';
+                // Explicit close consumes only this form's history entry.
+                // A hardware Back popstate is already at the preceding entry.
+                if (wasOpen && window.ChatBackLayers && window.ChatBackLayers.isTop('group-composer')) {
+                    window.history.back();
+                }
             }
             function maybeStartGroupActivity() {
                 const settings = getGroupSettings();
@@ -9744,6 +9750,10 @@
                     composerEntry.placeholder = '写下这一条内容';
                     composerSubmit.textContent = '提交内容';
                 }
+                if (!composerOverlay.classList.contains('active') &&
+                    window.ChatBackLayers && typeof window.ChatBackLayers.push === 'function') {
+                    window.ChatBackLayers.push('group-composer');
+                }
                 composerOverlay.classList.add('active');
                 composerOverlay.setAttribute('aria-hidden', 'false');
                 setTimeout(function () {
@@ -9757,6 +9767,14 @@
             if (chainAction) chainAction.addEventListener('click', function (event) {
                 event.preventDefault(); event.stopImmediatePropagation(); closePlusPanel(); openComposer('chain');
             }, true);
+            // The composer is a nested view, not an entire route: Back closes
+            // it first, revealing the previous plus panel or group conversation.
+            window.addEventListener('popstate', function () {
+                if (composerOverlay && composerOverlay.classList.contains('active') &&
+                    (!window.ChatBackLayers || !window.ChatBackLayers.isTop('group-composer'))) {
+                    closeComposer();
+                }
+            });
             if (composerOverlay) composerOverlay.addEventListener('click', function (event) {
                 if (event.target === composerOverlay) closeComposer();
             });
