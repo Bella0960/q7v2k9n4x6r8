@@ -151,3 +151,11 @@ test('a wrong identity mode fails closed even when signInReady is true', async (
   assert.equal(h.button.disabled, true);
   assert.match(h.error, /身份状态异常/);
 });
+
+test('QA account entry changes script URL so existing mobile PWA caches cannot serve the old login code', () => {
+  const html = readFileSync(new URL('../account/index.html', import.meta.url), 'utf8');
+  assert.match(html, /\/account\/account\.js\?v=20261119reconnect1/);
+  assert.doesNotMatch(html, /\/account\/account\.js\?v=20261116-qa1/);
+  const release = readFileSync(new URL('../scripts/qa-direct-release.mjs', import.meta.url), 'utf8');
+  assert.match(release, /account\.js\?v=20261119reconnect1/);
+});
