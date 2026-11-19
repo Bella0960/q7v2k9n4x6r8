@@ -31,7 +31,7 @@
     "test:font:runtime": "node --test tests/font-runtime-performance.test.mjs",
     "test:chat:call": "node --test tests/chat-call-experience.test.mjs",
     "test:media:backup": "node --test tests/media-backup.test.mjs",
-    "test:music:experience": "node --test tests/music-lightweight-default.test.mjs tests/music-data-integrity.test.mjs tests/music-import-resume.test.mjs",
+    "test:music:experience": "node --test tests/music-lightweight-default.test.mjs tests/music-data-integrity.test.mjs tests/music-import-resume.test.mjs tests/music-playback-transaction.test.mjs",
     "test:backup:modules": "node --test tests/backup-modules.test.mjs",
     "test:forum:media": "node --test tests/forum-media.test.mjs",
     "test:api:image": "node --test tests/phone-api-image-generation.test.mjs",
