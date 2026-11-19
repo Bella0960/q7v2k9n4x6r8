@@ -202,7 +202,7 @@ test('online group output rejects a generic AI identity but honors an explicitly
 test('online group output blocks unsolicited long markdown game catalogues, not requested lists', () => {
   const context=load(read('shared/js/phone/chat-role-context.js'),'chat-role-context').MAOMAOChatRoleContext;
   const role={id:'a',persona:'普通群友'};
-  const menu='要不玩几个？\\n1. **文字冒险** 你当主角，在故事里探索各种谜题，体验不同世界的情节和分支。\\n2. **成语接龙** 我们可以一人接一个成语，还可以规定不同的主题和难度。\\n3. **脑筋急转弯** 我可以出很多问题，或者由你来给大家出题。\\n4. **猜数字** 也可以设置规则、范围和计分方式。';
+  const menu='要不玩几个？\n1. **文字冒险** 你当主角，在故事里探索各种谜题，体验不同世界的情节和分支。\n2. **成语接龙** 我们可以一人接一个成语，还可以规定不同的主题和难度。\n3. **脑筋急转弯** 我可以出很多问题，或者由你来给大家出题。\n4. **猜数字** 也可以设置规则、范围和计分方式。';
   assert.ok(menu.length>=150);
   assert.equal(context.validateGroupOnlineReply({role,text:menu,latestUserText:'有没有人想玩游戏'}).code,'unsolicited-menu');
   assert.equal(context.validateGroupOnlineReply({role,text:menu,latestUserText:'帮我列几个玩法介绍'}).ok,true);
@@ -215,13 +215,13 @@ test('group persona output guard is before persistence and leaves offline/role d
   const marker=detail.indexOf('fullText = processGroupInteractionMarkers(fullText',guard);
   const save=detail.indexOf('var replySaved = saveMessages(historyList)',guard);
   assert.ok(guard>0 && marker>guard && save>marker);
-  assert.match(detail,/qualityPolicy\\.validateGroupOnlineReply\\(/);
-  assert.match(detail,/if \\(!qualityResult\\.ok\\) \\{[\\s\\S]{0,1000}inflightSnapshot = null;/);
-  assert.match(detail,/if \\(isManualContinue \\|\\| provisionalGroupReply\\) return;/);
-  assert.match(detail,/currentGroup\\.settings\\.chatMode !== 'offline'/);
-  assert.match(detail,/chat-role-context\\.js\\?v=20261119groupreply1/);
+  assert.match(detail,/qualityPolicy\.validateGroupOnlineReply\(/);
+  assert.match(detail,/if \(!qualityResult\.ok\) \{[\s\S]{0,1000}inflightSnapshot = null;/);
+  assert.match(detail,/if \(isManualContinue \|\| provisionalGroupReply\) return;/);
+  assert.match(detail,/currentGroup\.settings\.chatMode !== 'offline'/);
+  assert.match(detail,/chat-role-context\.js\?v=20261119groupreply1/);
   assert.match(rolePolicy,/validateGroupOnlineReply: validateGroupOnlineReply/);
   assert.ok(sw.includes('chat-role-context.js?v=20261119groupreply1'));
-  const version=Number(sw.match(/phone-app-pwa-v(\\d+)/)?.[1]||0);
+  const version=Number(sw.match(/phone-app-pwa-v(\d+)/)?.[1]||0);
   assert.ok(version>=258);
 });
