@@ -72,7 +72,7 @@ test('settings and both chat modes use one global user-authored protocol; fail c
   assert.match(page, /expandedProtocol: applyProtocolVars\(rpProtocol\)/);
   assert.match(page, /worldbook: worldbookText/);
   assert.match(page, /if \(!personaAudit\.ok\) \{/);
-  assert.match(page, /chat-role-context\.js\?v=20261118v4/);
+  assert.match(page, /chat-role-context\.js\?v=20261118historypurity1/);
   assert.match(page, /invalid worldbook collection/);
   assert.match(page, /invalid worldbook mounts/);
   assert.match(page, /worldbook mount read failed/);
