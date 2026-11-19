@@ -76,8 +76,23 @@ function mine(){
  if((mineTab==='favorites'&&!data.favorites.length)||(mineTab==='outfits'&&!data.outfits.length)||(mineTab==='creations'&&!data.creations.length))body+='<p class="sf-empty">'+({favorites:'喜欢的主题，点封面下方的星标收藏。',outfits:'保存现在的搭配，下次可以按范围重新应用。',creations:'添加自己的图片，或进入聊天美化保存方案。'})[mineTab]+'</p>';
  return heading('我的','收藏灵感，也保存自己的搭配')+'<div class="sf-mine-tabs">'+[['favorites','我的收藏'],['outfits','我的搭配'],['creations','我的创作'],['using','正在使用']].map(([id,label])=>button(label,'mine-tab',id,'sf-chip'+(mineTab===id?' active':''))).join('')+'</div>'+body;
 }
-function close(){if(!overlay)return;overlay.remove();overlay=null;document.querySelector('.store-app').inert=false;focusBefore?.focus();}
-function modal(title,body){close();focusBefore=document.activeElement;overlay=document.createElement('div');overlay.className='sf-overlay';overlay.innerHTML='<section role="dialog" aria-modal="true" aria-label="'+e(title)+'" class="sf-dialog"><header><h2>'+e(title)+'</h2>'+button(svg('close'),'close','','sf-close')+'</header>'+body+'<p class="sf-error" role="alert"></p></section>';document.body.append(overlay);document.querySelector('.store-app').inert=true;overlay.querySelector('button').focus();overlay.addEventListener('click',ev=>{if(ev.target===overlay)close();});overlay.addEventListener('keydown',ev=>{if(ev.key==='Escape')close();if(ev.key==='Tab'){const all=[...overlay.querySelectorAll('button,input,select')].filter(x=>!x.disabled&&x.getClientRects().length);const first=all[0],last=all.at(-1);if(ev.shiftKey&&document.activeElement===first){ev.preventDefault();last.focus();}else if(!ev.shiftKey&&document.activeElement===last){ev.preventDefault();first.focus();}}});}
+function close(){
+ if(!overlay)return;
+ overlay.remove();overlay=null;
+ const shell=document.querySelector('.store-app');
+ if(shell)shell.inert=false;
+ // The gallery may have re-rendered while the dialog was open (favorite/apply).
+ // Restore to the matching live item, never a detached, invisible button.
+ let target=focusBefore;
+ if(target&&!target.isConnected){
+   const action=target.dataset?.sf,id=target.dataset?.id;
+   if(action&&id)target=[...document.querySelectorAll('[data-sf]')].find(node=>node.dataset.sf===action&&node.dataset.id===id&&!node.disabled);
+ }
+ if(!target?.isConnected)target=document.querySelector('#categoryNav [aria-current="page"]')||document.getElementById('backButton');
+ if(target?.isConnected)target.focus({preventScroll:true});
+ focusBefore=null;
+}
+function modal(title,body){if(overlay){overlay.remove();overlay=null;}else focusBefore=document.activeElement;overlay=document.createElement('div');overlay.className='sf-overlay';overlay.innerHTML='<section role="dialog" aria-modal="true" aria-label="'+e(title)+'" class="sf-dialog"><header><h2>'+e(title)+'</h2>'+button(svg('close'),'close','','sf-close')+'</header>'+body+'<p class="sf-error" role="alert"></p></section>';document.body.append(overlay);document.querySelector('.store-app').inert=true;overlay.querySelector('button').focus();overlay.addEventListener('click',ev=>{if(ev.target===overlay)close();});overlay.addEventListener('keydown',ev=>{if(ev.key==='Escape')close();if(ev.key==='Tab'){const all=[...overlay.querySelectorAll('button,input,select')].filter(x=>!x.disabled&&x.getClientRects().length);const first=all[0],last=all.at(-1);if(ev.shiftKey&&document.activeElement===first){ev.preventDefault();last.focus();}else if(!ev.shiftKey&&document.activeElement===last){ev.preventDefault();first.focus();}}});}
 function detail(id){
  const t=api.themes.find(x=>x.id===id);if(!t)return;
  const info=themeProfiles[id]||{type:'聊天主题',scope:'以实际页面为准',note:'继续由原有主题系统管理外观。'};
