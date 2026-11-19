@@ -45,6 +45,54 @@ test('author-authored digital identities and normal AI discussions stay valid', 
   }
 });
 
+test('ordinary role rejects synthetic age and digital-resident claims from the reported scenario', () => {
+  const humanRecord = JSON.stringify(human);
+  for (const text of [
+    '哈哈，作为这位角色，我其实没有人类那样的年龄概念啦！',
+    '不过我还是年轻的数字居民。',
+    '你可以把我当作一个随时陪你聊天、分享想法，或者帮你解答问题的朋友。'
+  ]) {
+    assert.equal(policy.validateDirectOnlineReply({ role: human, text }).code,
+      'identity-drift', text);
+  }
+  assert.equal(JSON.stringify(human), humanRecord, 'saved character is immutable');
+});
+
+test('old fabricated identities are filtered only from model input, not stored chats', () => {
+  const history = [
+    {role:'user', text:'你多大了？'},
+    {role:'assistant', text:'我没有人类那样的年龄概念啦！'},
+    {role:'assistant', text:'我还是个年轻的数字居民。'},
+    {role:'assistant', text:'我住在书店楼上，最近有点忙。'}
+  ];
+  const copy = JSON.stringify(history);
+  const model = policy.getModelHistory(history, human);
+  assert.equal(model.length, 2);
+  assert.equal(model[0].role, 'user');
+  assert.match(model[1].text, /书店/);
+  assert.equal(JSON.stringify(history), copy, 'all original message history remains untouched');
+});
+
+test('author-defined non-human origins remain free to answer their own age accurately', () => {
+  const elf = {id:'elf',persona:'异世界的长寿精灵',species:'精灵'};
+  const digitalResident = {id:'digital',persona:'【身份】数字居民，在虚拟城市工作'};
+  const claim = '我没有人类那样的年龄概念。';
+  assert.equal(policy.validateDirectOnlineReply({role:elf,text:claim}).ok,true);
+  assert.equal(policy.validateDirectOnlineReply({role:digitalResident,text:'我是数字居民。'}).ok,true);
+  assert.equal(policy.getModelHistory([{role:'assistant',text:claim}],elf).length,1);
+});
+
+test('age grounding is sourced only from saved character fields and does not invent missing age', () => {
+  const grounded = policy.buildIdentityAnswerGuidance({
+    id:'age-role',persona:'旧书店主人',age:26
+  });
+  assert.match(grounded,/26/);
+  assert.match(grounded,/世界书和全局人设协议/);
+  const unknown = policy.buildIdentityAnswerGuidance(human);
+  assert.doesNotMatch(unknown,/已保存年龄字段/);
+  assert.match(unknown,/没有人类年龄/);
+});
+
 test('missing speaker or empty direct reply fails closed, never rewrites history', () => {
   assert.equal(policy.validateDirectOnlineReply({ role: null, text: '你好' }).code, 'speaker');
   assert.equal(policy.validateDirectOnlineReply({ role: human, text: '  ' }).code, 'empty');
