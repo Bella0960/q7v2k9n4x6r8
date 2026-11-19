@@ -3427,11 +3427,14 @@
       var validGroupReferrer = false;
       try {
         var previous = new URL(document.referrer);
-        var sameApp = previous.origin === window.location.origin &&
-          /\/chat\/(?:chat-detail|group-play|chat-search|chat)\.html$/.test(previous.pathname);
+        // Only navigate backward to a true parent page. Group-play / chat-search
+        // return to settings themselves; treating them as a parent causes a loop:
+        // settings -> group-play -> settings -> group-play...
+        var fromChatDetail = /\/chat\/chat-detail\.html$/.test(previous.pathname);
         var fromChatList = /\/chat\/chat\.html$/.test(previous.pathname);
         var priorId = previous.searchParams.get('id') || previous.searchParams.get('roleId');
-        validGroupReferrer = sameApp && (fromChatList || priorId === String(roleId));
+        validGroupReferrer = previous.origin === window.location.origin &&
+          (fromChatList || (fromChatDetail && priorId === String(roleId)));
       } catch (e) {}
       if (validGroupReferrer && window.history.length > 1) {
         window.history.back();
