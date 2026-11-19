@@ -304,3 +304,26 @@ test('retry against identical legacy v2 record does not create another primary c
   assert.equal(f.data.phone_data_v2, legacy);
   assert.equal(f.data.chat_history_A, undefined);
 });
+
+test('result.getChatHistory reports corrupt legacy v2 instead of false NOT_FOUND', () => {
+  const badRoot = fixture({ phone_data_v2: '{broken-v2' });
+  assert.equal(badRoot.api.result.getChatHistory('A').error.code, 'CORRUPT_DATA');
+  const wrongShape = fixture({
+    phone_data_v2: JSON.stringify({ A: { chat: { history: { text: 'not-array' } } } })
+  });
+  assert.equal(wrongShape.api.result.getChatHistory('A').error.code, 'CORRUPT_DATA');
+  const badNull = fixture({
+    phone_data_v2: JSON.stringify({ A: { chat: { history: null } } })
+  });
+  assert.equal(badNull.api.result.getChatHistory('A').error.code, 'CORRUPT_DATA');
+});
+
+test('result.getChatHistory keeps valid legacy fallback and primary precedence', () => {
+  const legacy = root('legacy A');
+  const fallback = fixture({ phone_data_v2: legacy });
+  assert.equal(fallback.api.result.getChatHistory('A').value[0].text, 'legacy A');
+  const primary = fixture({ chat_history_A: '[]', phone_data_v2: '{broken-v2' });
+  assert.equal(primary.api.result.getChatHistory('A').ok, true);
+  assert.equal(primary.api.result.getChatHistory('A').value.length, 0);
+  assert.equal(primary.data.phone_data_v2, '{broken-v2');
+});
