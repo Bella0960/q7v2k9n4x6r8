@@ -7374,6 +7374,21 @@
                 tmpText = redactGroupPrivateStream(tmpText).trim();
                 if (!tmpText) return;
 
+                // Direct-chat characters must not flash generic AI introductions
+                // before the final reply validation. The saved role remains intact.
+                if (!isGroupChat && presenceMode === 'online' &&
+                    window.MAOMAOChatRoleContext &&
+                    typeof window.MAOMAOChatRoleContext.validateDirectOnlineReply === 'function') {
+                    var directPartialQuality = window.MAOMAOChatRoleContext.validateDirectOnlineReply({
+                        role: getRoleById(roleForTurn.id), text: tmpText
+                    });
+                    if (!directPartialQuality.ok) {
+                        inflightSnapshot = null;
+                        if (streamBubble) streamBubble.textContent = '';
+                        return;
+                    }
+                }
+
                 // Do not reveal a clearly out-of-character *partial* answer.
                 // Keep the existing stream-bubble lifecycle for valid replies:
                 // the final persistence and DOM code depends on that row.
@@ -7528,6 +7543,38 @@
                     if (_vl) vlRefresh(); else renderAllMessages();
                     if (typeof showToast === 'function') {
                         showToast('这条群聊回复跳出了角色设定，已拦截；可点继续聊天重试');
+                    }
+                    return;
+                }
+            }
+
+            // Single-chat replies also require a final role-identity check.
+            // The API request may contain the complete persona, worldbook and
+            // RP protocol yet still return a generic assistant advertisement.
+            // Refuse before any markers, side effects or chat history writes.
+            // Do not automatically spend another API request.
+            if (!isGroupChat && presenceMode === 'online' && String(fullText || '').trim()) {
+                const directPolicy = window.MAOMAOChatRoleContext;
+                const directQuality = directPolicy &&
+                    typeof directPolicy.validateDirectOnlineReply === 'function'
+                    ? directPolicy.validateDirectOnlineReply({
+                        role: getRoleById(roleForTurn.id),
+                        text: stripInternalReasoning(fullText)
+                    }) : {ok:false,code:'quality-policy-missing'};
+                if (!directQuality.ok) {
+                    inflightSnapshot = null;
+                    for (var rejectedNode = 0; rejectedNode < streamNodes.length; rejectedNode++) {
+                        if (streamNodes[rejectedNode] && streamNodes[rejectedNode].parentNode) {
+                            streamNodes[rejectedNode].parentNode.removeChild(streamNodes[rejectedNode]);
+                        }
+                    }
+                    streamNodes = [];
+                    if (_vl) _vl.streaming = false;
+                    aiSending = false;
+                    if (chatTitleEl) chatTitleEl.textContent = originalTitleText;
+                    if (_vl) vlRefresh(); else renderAllMessages();
+                    if (typeof showToast === 'function') {
+                        showToast('回复偏离了角色设定，已拦截；可点继续聊天重试');
                     }
                     return;
                 }
