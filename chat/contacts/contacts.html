@@ -260,6 +260,15 @@
             </svg>
           </span>
         </div>
+        <div class="quick-entry" id="goNpcRequests" role="link" tabindex="0" aria-label="NPC 好友申请">
+          <div class="quick-entry-icon">
+            <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 6h16v11H9l-5 3V6z"></path><path d="M8 10h8M8 13h5"></path>
+            </svg>
+          </div>
+          <span class="quick-entry-label">NPC 好友申请</span>
+          <span class="quick-entry-arrow"><svg viewBox="0 0 24 24" fill="none"><polyline points="9 18 15 12 9 6"></polyline></svg></span>
+        </div>
       </div>
 
       <div id="contactList"></div>
@@ -401,6 +410,16 @@
     });
 
   /* mobile fullscreen: no rounded shell */
+    document.getElementById('goNpcRequests').addEventListener('click', function () {
+      window.location.href = 'npc-friends.html';
+    });
+    document.getElementById('goNpcRequests').addEventListener('keydown', function (event) {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        window.location.href = 'npc-friends.html';
+      }
+    });
+
     renderList();
   </script>
   <script src="../../shared/js/statusbar-control.js"></script>
