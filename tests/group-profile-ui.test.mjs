@@ -247,6 +247,49 @@ test('failed group removal leaves the group intact instead of navigating away', 
   } finally {await ctx.close();}
 });
 
+test('group dissolution clears its dedicated cover and does not remove another group', async () => {
+  const ctx=await browser.newContext({viewport:{width:390,height:844}});
+  const page=await ctx.newPage();
+  try {
+    await setup(page,{phone_groups:[group('g1','夜航'),group('g2','另一群')]});
+    await page.goto(origin+'/chat/chat/chat-settings.html?roleId=g1');
+    await page.evaluate(async () => {
+      await new Promise((resolve,reject) => {
+        const req=indexedDB.open('maomao-media-store',2);
+        req.onupgradeneeded=() => {
+          if(!req.result.objectStoreNames.contains('wallpapers')) req.result.createObjectStore('wallpapers');
+          if(!req.result.objectStoreNames.contains('audio')) req.result.createObjectStore('audio',{keyPath:'id'});
+        };
+        req.onerror=() => reject(req.error);
+        req.onsuccess=() => {
+          const db=req.result;
+          const tx=db.transaction('wallpapers','readwrite');
+          tx.objectStore('wallpapers').put({dataUrl:'data:image/png;base64,AA=='},'chat_group_profile_cover_v1_g1');
+          tx.oncomplete=() => {db.close();resolve();};
+          tx.onerror=() => reject(tx.error);
+        };
+      });
+      window.confirm=()=>true;
+      document.getElementById('actionGpDismiss').click();
+    });
+    await page.waitForURL('**/chat/chat/chat.html',{timeout:5000});
+    const state=await page.evaluate(async () => {
+      const db=await new Promise((resolve,reject) => {
+        const r=indexedDB.open('maomao-media-store',2);
+        r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);
+      });
+      const value=await new Promise((resolve,reject) => {
+        const r=db.transaction('wallpapers','readonly').objectStore('wallpapers').get('chat_group_profile_cover_v1_g1');
+        r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);
+      });
+      db.close();
+      return {cover:value,groups:JSON.parse(localStorage.getItem('phone_groups'))};
+    });
+    assert.equal(state.cover,undefined);
+    assert.deepEqual(state.groups.map(g=>g.id),['g2']);
+  } finally {await ctx.close();}
+});
+
 test('broken member portraits and group avatar display names rather than broken-image icons', async () => {
   const ctx=await browser.newContext({viewport:{width:390,height:844}});
   const page=await ctx.newPage();
