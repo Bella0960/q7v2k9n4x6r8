@@ -69,6 +69,32 @@ test('the saved global protocol is loaded verbatim and used for every role', () 
   assert.match(detail, /turnSpeakerPersona \|\| '该成员尚未填写具体人设/);
 });
 
+test('old per-character protocol remains untouched and cannot be silently promoted globally', () => {
+  const db = storage({
+    chat_rp_protocol_role_a: 'A专属旧规则',
+    chat_rp_protocol_role_b: 'B专属旧规则'
+  });
+  const before = db.snapshot();
+  const def = {MAOMAO_RP_DEFAULT_PROTOCOL: '应用默认共用协议'};
+  const a = protocolRead(db, def, 'role_a', {id:'role_a'}, 'role_a', () => {});
+  const b = protocolRead(db, def, 'role_b', {id:'role_b'}, 'role_b', () => {});
+  assert.equal(a, '应用默认共用协议');
+  assert.equal(b, '应用默认共用协议');
+  assert.equal(db.snapshot(), before, 'opening two chats never writes global or legacy keys');
+
+  // Execute the real settings-page load block with fake inputs, not a copy
+  // of its implementation. Opening settings is read-only until Save/Reset.
+  const begin = settings.indexOf("  var textarea = document.getElementById('protocolText');");
+  const end = settings.indexOf('  // Toast', begin);
+  assert.ok(begin > 0 && end > begin);
+  const textarea = {value: ''};
+  const editorRead = new Function('localStorage', 'window', 'document',
+    settings.slice(begin, end) + '\nreturn textarea.value;');
+  assert.equal(editorRead(db, def, {getElementById: () => textarea}), '应用默认共用协议');
+  assert.equal(db.snapshot(), before, 'opening settings cannot import unrelated role rules');
+  assert.equal(db.getItem('chat_rp_protocol_'), null);
+});
+
 test('missing protocol or blocked local storage stops generation instead of silently using an unrelated default', () => {
   const alerts = [];
   const broken = { getItem() { throw new Error('storage blocked'); } };
