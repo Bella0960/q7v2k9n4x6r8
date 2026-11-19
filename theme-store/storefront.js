@@ -80,20 +80,19 @@ function close(){if(!overlay)return;overlay.remove();overlay=null;document.query
 function modal(title,body){close();focusBefore=document.activeElement;overlay=document.createElement('div');overlay.className='sf-overlay';overlay.innerHTML='<section role="dialog" aria-modal="true" aria-label="'+e(title)+'" class="sf-dialog"><header><h2>'+e(title)+'</h2>'+button(svg('close'),'close','','sf-close')+'</header>'+body+'<p class="sf-error" role="alert"></p></section>';document.body.append(overlay);document.querySelector('.store-app').inert=true;overlay.querySelector('button').focus();overlay.addEventListener('click',ev=>{if(ev.target===overlay)close();});overlay.addEventListener('keydown',ev=>{if(ev.key==='Escape')close();if(ev.key==='Tab'){const all=[...overlay.querySelectorAll('button,input,select')].filter(x=>!x.disabled&&x.getClientRects().length);const first=all[0],last=all.at(-1);if(ev.shiftKey&&document.activeElement===first){ev.preventDefault();last.focus();}else if(!ev.shiftKey&&document.activeElement===last){ev.preventDefault();first.focus();}}});}
 function detail(id){
  const t=api.themes.find(x=>x.id===id);if(!t)return;
+ const info=themeProfiles[id]||{type:'聊天主题',scope:'以实际页面为准',note:'继续由原有主题系统管理外观。'};
  if(id!=='atmosphere'){
-   // Keep the original product visual from this project's existing themeArt().
-   // No generic six-page reconstruction is presented as if it were the real QQ/
-   // WeChat/iMessage/Silver Butterfly interface.
-   modal(t.name,'<p class="sf-caption">主题独立预览 · 这里不会改变当前设置</p>'+
-    '<div class="sf-native-detail-art">'+nativeArt(t)+'</div>'+
-    '<p class="sf-caption">'+e(t.desc)+'</p>'+
-    '<p class="sf-caption">这里只展示原有主题素材。真实聊天页面及其气泡、联系人、动态等功能，仍由原项目的主题系统控制。</p>'+
-    '<footer>'+button(model.read().favorites.includes(id)?'已收藏 · 点击取消':'收藏主题','favorite',id)+button('应用原主题','apply-theme',id,'sf-button primary')+'</footer>');
+   // The five original products keep their genuine artwork; a mock is not a live screen.
+   modal(t.name,'<div class="sf-theme-detail-meta" data-theme-id="'+e(id)+'"><small>'+e(info.type)+'</small><strong>'+e(info.scope)+'</strong></div>'+
+    '<div class="sf-native-detail-art sf-theme-detail-cover" data-theme-id="'+e(id)+'">'+nativeArt(t)+'</div>'+
+    '<div class="sf-theme-detail-copy"><strong>主题说明</strong><p>'+e(t.desc)+'</p><strong>独立设置</strong><p>'+e(info.note)+'</p></div>'+
+    '<p class="sf-caption">此处是原主题封面示意，不读取真实聊天；确认后才切换。独立气泡、壁纸和留白 Messages 不会重置。</p>'+
+    '<footer>'+button(model.read().favorites.includes(id)?'已收藏 · 点击取消':'收藏主题','favorite',id)+button('应用这套主题','apply-theme',id,'sf-button primary')+'</footer>');
    return;
  }
  previewTone='light';previewPage='detail';
  const toneControls=id==='atmosphere'?'<div class="sf-preview-tones" role="group" aria-label="预览明暗模式">'+button('浅色','tone','light','sf-chip active')+button('深色','tone','dark','sf-chip')+'</div>':'';
- modal(t.name,'<p class="sf-caption">独立虚构示例 · 不读取聊天或个人资料</p><div class="sf-preview-tabs" aria-label="选择预览页面">'+
+ modal(t.name,'<p class="sf-caption">'+e(info.scope)+' · 虚构布局演示，不读取聊天或个人资料</p><div class="sf-preview-tabs" aria-label="选择预览页面">'+
  pages.map(([p,label])=>button(label,'page',p,'sf-chip')).join('')+
  '</div>'+toneControls+'<div id="sfPreview" tabindex="0" aria-label="手机预览，左右滑动切换页面" data-theme="'+e(id)+'"></div>'+
  '<p class="sf-preview-help">左右滑动预览，或点击上方页面名称</p><p id="sfScope" class="sf-caption" aria-live="polite"></p>'+
