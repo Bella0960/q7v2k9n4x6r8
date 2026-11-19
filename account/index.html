@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#f9f6f3">
   <meta name="description" content="MAO 独立账号入口 · 象牙花笺">
   <title>MAO · 象牙花笺</title>
-  <link rel="stylesheet" href="/account/account.css?v=20261111-nav1">
-  <link rel="stylesheet" href="/account/ivory-entry.css?v=20261116-qa1">
+  <link rel="stylesheet" href="/account/account.css?v=62fd2c1a">
+  <link rel="stylesheet" href="/account/ivory-entry.css?v=f81232e2">
   <script src="/account/account.js?v=20261119reconnect1" defer></script>
 </head>
 <body>
@@ -22,7 +22,7 @@
         <span class="titlebar-title" id="ivoryWindowTitle">welcome.html — private space</span>
       </header>
       <div class="hero">
-        <img class="hero-image" src="../assets/ivory-mao/hero.webp"
+        <img class="hero-image" src="../assets/ivory-mao/hero.webp?v=8a2b38cd"
           alt="圆脸小白兔探出信笺，周围环绕浅粉百合、珍珠相框与薄纱" width="771" height="579" decoding="async" fetchpriority="high">
       </div>
       <div class="hairline" aria-hidden="true"></div>
@@ -147,6 +147,19 @@
     <button class="primary-button" type="button" id="confirmCreatorContact">我知道了</button>
   </dialog>
   <a id="creatorBootstrapLink" class="creator-bootstrap-link" href="./bootstrap.html" hidden>创作者首次初始化</a>
+  <script>
+    // Check for an existing PWA update when the public welcome page is opened.
+    // Do not unregister the worker: it owns notifications and offline app data.
+    if ('serviceWorker' in navigator && location.protocol === 'https:') {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.getRegistration()
+          .then(function (registration) {
+            if (registration) return registration.update();
+          })
+          .catch(function () { /* Offline visitors keep their current PWA. */ });
+      }, { once: true });
+    }
+  </script>
 </body>
 </html>
 
