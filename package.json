@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:npc:social": "node --test tests/npc-social.test.mjs tests/npc-qa-integration.test.mjs",
     "test:chat:primary:atomic": "node --test tests/chat-primary-send-lock.test.mjs",
     "dev": "vite --host 0.0.0.0 --port 3000",
     "build": "vite build",
