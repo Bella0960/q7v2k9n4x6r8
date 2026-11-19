@@ -291,6 +291,49 @@ test('group-play back chain returns settings -> current chat, never loops', asyn
   } finally {await ctx.close();}
 });
 
+test('group deleted elsewhere cannot be recreated by the still-open settings page', async () => {
+  const ctx=await browser.newContext({viewport:{width:390,height:844}});
+  const page=await ctx.newPage();
+  try {
+    const first=group('g1','原来的群'), second=group('g2','另一个群');
+    await setup(page,{phone_groups:[first,second]});
+    await page.goto(origin+'/chat/chat/chat-settings.html?roleId=g1');
+    await page.locator('#gpProfileSettings > summary').click();
+    await page.locator('#actionGroupInfo').click();
+    await page.locator('#gpNameInput').fill('旧页面想重建的名字');
+    await page.evaluate(() => {
+      const groups=JSON.parse(localStorage.getItem('phone_groups'));
+      localStorage.setItem('phone_groups',JSON.stringify(groups.filter(g=>g.id!=='g1')));
+    });
+    await page.locator('#gpInfoSaveBtn').click();
+    assert.match(await page.locator('#csToast').innerText(),/群聊已不存在/);
+    assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('phone_groups'))),[second]);
+  } finally {await ctx.close();}
+});
+
+test('group owner transfer elsewhere prevents stale settings from editing the group', async () => {
+  const ctx=await browser.newContext({viewport:{width:390,height:844}});
+  const page=await ctx.newPage();
+  try {
+    const original=group('g1','原来的群');
+    await setup(page,{phone_groups:[original]});
+    await page.goto(origin+'/chat/chat/chat-settings.html?roleId=g1');
+    await page.locator('#gpProfileSettings > summary').click();
+    await page.locator('#actionGroupInfo').click();
+    await page.locator('#gpNameInput').fill('未经允许的改名');
+    await page.evaluate(() => {
+      const groups=JSON.parse(localStorage.getItem('phone_groups'));
+      groups[0].ownerId='c1';
+      localStorage.setItem('phone_groups',JSON.stringify(groups));
+    });
+    await page.locator('#gpInfoSaveBtn').click();
+    assert.match(await page.locator('#csToast').innerText(),/只有当前群主/);
+    const saved=await page.evaluate(() => JSON.parse(localStorage.getItem('phone_groups'))[0]);
+    assert.equal(saved.name,'原来的群');
+    assert.equal(saved.ownerId,'c1');
+  } finally {await ctx.close();}
+});
+
 test('silently swallowed group saves do not claim success or erase the previous value', async () => {
   const ctx=await browser.newContext({viewport:{width:390,height:844}});
   const page=await ctx.newPage();
