@@ -430,3 +430,75 @@ test('open character editor follows remote mount changes without losing local dr
   assert.deepEqual(state.original(), ['b']);
   assert.match(state.notice(), /其他页面修改/);
 });
+
+test('latest QA AI prompt actually filters private/group lore and blocks bad storage before model', () => {
+  const detail = read('chat/chat/chat-detail.html');
+  const policySource = read('shared/js/phone/chat-role-context.js');
+  const start = detail.indexOf('            // 世界书：召回当前话题相关条目');
+  const end = detail.indexOf('            // 协议变量替换', start);
+  assert.ok(start >= 0 && end > start, 'QA prompt builder must be accessible');
+  const snippet = detail.slice(start, end);
+  const roles = [
+    { id: 'role_a', name: 'A', worldBookIds: ['localA'] },
+    { id: 'role_b', name: 'B', worldBookIds: ['localB'] }
+  ];
+  const books = [
+    { id: 'global', title: 'Common', scope: 'global' },
+    { id: 'localA', title: 'Secret A', scope: 'local' },
+    { id: 'localB', title: 'Secret B', scope: 'local' },
+    { id: 'group', title: 'Shared Group', scope: 'local' }
+  ];
+  function execute(opts = {}) {
+    const initial = {
+      ai_custom_characters: json(roles),
+      phone_worldbooks: json(books),
+      ...(opts.mounts || {})
+    };
+    if (opts.noBooks) delete initial.phone_worldbooks;
+    const { binding, storage } = harness(initial);
+    const window = {
+      RoleWorldbookBindings: binding,
+      ChatContextPolicy: {
+        buildWorldbookInjectionText(selected) { return selected.map(b => b.title).join('|'); }
+      }
+    };
+    vm.runInNewContext(policySource, { window });
+    const result = { stopped: true, text: null, failures: [], notices: [] };
+    const task = new Function('env', `
+      const { window, localStorage, roles, result, opts } = env;
+      const console = { error() {} };
+      const roleForTurn = roles[0], currentCharacter = roleForTurn;
+      const isGroupChat = !!opts.group, aliasRoleId = isGroupChat ? 'g1' : 'role_a';
+      const roleId = aliasRoleId, currentRoleId = aliasRoleId;
+      const groupReplyPick = isGroupChat ? { id: 'role_a' } : null;
+      const text = 'hello', retryTarget = null, isRegen = false;
+      const contextOnly = false, silent = false, CTX_CAP = { worldbook: 8000 };
+      const historyList = [{ role: 'user', mid: 'm1', time: 1, text: 'hello' }];
+      const roleModelHistory = historyList;
+      const _vl = null, vlRefresh = () => {}, renderAllMessages = () => {};
+      const showToast = message => result.notices.push(message);
+      const getRoleById = id => roles.find(role => role.id === id) || null;
+      const capText = value => String(value || '');
+      const _markUserSendFailed = (items, mid, time, reason) => {
+        result.failures.push({ mid, time, reason }); return true;
+      };
+      ${snippet}
+      result.stopped = false;
+      result.text = worldbookText;
+    `);
+    task({ window, localStorage: storage, roles, result, opts });
+    return result;
+  }
+  const own = execute();
+  assert.equal(own.stopped, false);
+  assert.equal(own.text, 'Common|Secret A');
+  const group = execute({ group: true, mounts: { chat_worldbooks_g1: json(['group']) } });
+  assert.equal(group.stopped, false);
+  assert.equal(group.text, 'Common|Secret A|Shared Group');
+  const clear = execute({ mounts: { chat_worldbooks_role_a: '[]' } });
+  assert.equal(clear.text, '');
+  const malformed = execute({ noBooks: true, mounts: { chat_worldbooks_role_a: '{broken' } });
+  assert.equal(malformed.stopped, true);
+  assert.deepEqual(malformed.failures, [{ mid: 'm1', time: 1, reason: 'worldbook-read' }]);
+  assert.match(malformed.notices[0], /本轮未请求 AI/);
+});
