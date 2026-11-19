@@ -50,7 +50,7 @@ test('new cache revision lists exact storefront resources and retains legacy the
   assert.ok(sw.includes('./theme-store/storefront.js?v=20261119isolated3'))
   assert.ok(page.includes('collection-store.js?v=20261112m3'));
   assert.ok(sw.includes('./theme-store/collection-store.js?v=20261112m3'));
- assert.ok(sw.includes("phone-app-pwa-v232"));
+ assert.ok(sw.includes("phone-app-pwa-v233"));
  for(const id of ['default','wechat','imessage','qq','silver-butterfly','atmosphere'])assert.ok(page.includes("id:'"+id+"'"));
 });
 test('outfit editing can narrow scope or explicitly recapture without duplicating or applying it',async()=>{
@@ -346,4 +346,22 @@ test('shared WeChat visual rules require active WeChat shell, not a global CSS o
   if(!selector||selector.startsWith('@')||selector.startsWith('from')||selector.startsWith('to')||/^\d+%$/.test(selector))continue;
   assert.match(selector,/data-chat-theme-preset="wechat"/,'WeChat CSS must not style another theme: '+selector.slice(0,110));
  }
+});
+
+
+test('all shared chat surfaces preload the same scoped page bridge and SW has only one version',()=>{
+ const sw=readFileSync(new URL('../sw.js',import.meta.url),'utf8');
+ const pageTag='chat-page-theme.js?v=20261119scope1';
+ const listTag='chat-list-theme.js?v=20261119scope1';
+ const pages=['chat/chat/chat.html','chat/chat/chat-detail.html','chat/contacts/contacts.html',
+              'chat/moments/moments.html','profile/profile.html','chat/moments/my-moments.html'];
+ for(const file of pages){
+  const content=readFileSync(new URL('../'+file,import.meta.url),'utf8');
+  assert.ok(content.includes(pageTag),'page uses scoped bridge: '+file);
+ }
+ assert.ok(readFileSync(new URL('../chat/chat/chat.html',import.meta.url),'utf8').includes(listTag));
+ assert.equal((sw.match(/shared\/js\/chat-page-theme\.js\?v=/g)||[]).length,1,'no stale duplicate bridge precache');
+ assert.ok(sw.includes('./shared/js/'+pageTag));
+ assert.ok(sw.includes('./shared/js/'+listTag));
+ assert.ok(sw.includes("phone-app-pwa-v233"));
 });
