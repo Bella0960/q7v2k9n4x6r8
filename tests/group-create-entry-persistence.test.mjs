@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const chat=readFileSync(path.join(root,'chat/chat/chat.html'),'utf8');
+const detail=readFileSync(path.join(root,'chat/chat/chat-detail.html'),'utf8');
 test('聊天列表所有创建群入口都通向真实创建弹窗',()=>{
   assert.match(chat,/\['groupEntryBtn', 'silverGroupEntryBtn'\]\.forEach/);
   assert.match(chat,/entry\.addEventListener\('click',[\s\S]*?openModal\(\)/);
@@ -17,10 +18,10 @@ test('新群不覆盖损坏记录；需要成员；存储读回后才提示成�
   assert.match(chat,/if \(!Array\.isArray\(groups\)\) throw new Error/);
   assert.match(chat,/localStorage\.setItem\('phone_groups', JSON\.stringify\(updatedGroups\)\)/);
   assert.match(chat,/var saved = JSON\.parse\(localStorage\.getItem\('phone_groups'\)/);
-  assert.match(chat,/showToast\('群聊已创建'\)/);
+  assert.match(chat,/window\.location\.href = 'chat-detail\.html\?v=20261028modes1&id=' \+ encodeURIComponent\(groupId\)/);
 });
 
-function simulateCreate(scenario) {
+function simulateCreate(scenario, doubleTap = false) {
   const roles = scenario === 'special'
     ? [
         { id: 'r_"unsafe', name: '甲"><img src=x onerror=alert(1)>', avatar: 'javascript:alert(1)' },
@@ -89,19 +90,21 @@ function simulateCreate(scenario) {
   assert.ok(helpersStart > 0 && helpersEnd > helpersStart);
   const helpers = new Function(chat.slice(helpersStart, helpersEnd) +
     '\nreturn { escapeHtml, safeImgSrc };')();
+  const browser = { location: { href: '' } };
   new Function('document', 'localStorage', 'setTimeout', 'renderChatList', 'showToast',
-    'escapeHtml', 'safeImgSrc', creationScript)(
+    'escapeHtml', 'safeImgSrc', 'window', creationScript)(
     fakeDocument, storage, () => 0, () => { renderCount++; }, text => notices.push(text),
-    helpers.escapeHtml, helpers.safeImgSrc
+    helpers.escapeHtml, helpers.safeImgSrc, browser
   );
   elements.silverGroupEntryBtn.fire();
   assert.equal(elements.groupModalBackdrop.visible, true, '点击入口应出现创建弹窗');
-  elements.groupNameInput.value = '周末聊天群';
+  elements.groupNameInput.value = scenario === 'empty-name' ? '' : '周末聊天群';
   rows[0].fire();
   elements.groupModalCreate.fire();
+  if (doubleTap) elements.groupModalCreate.fire();
   let saved = null;
   try { saved = JSON.parse(store.get('phone_groups')); } catch { /* 原记录被保护 */ }
-  return { saved, notices, renderCount, visible: elements.groupModalBackdrop.visible, memberMarkup };
+  return { saved, notices, renderCount, visible: elements.groupModalBackdrop.visible, memberMarkup, href: browser.location.href };
 }
 
 test('模拟用户点击主题入口，选角色后真正创建群', () => {
@@ -111,13 +114,14 @@ test('模拟用户点击主题入口，选角色后真正创建群', () => {
   assert.equal(result.saved[0].members[0].id, 'r_one');
   assert.equal(result.renderCount, 1);
   assert.equal(result.visible, false);
-  assert.ok(result.notices.includes('群聊已创建'));
+  assert.equal(result.href, 'chat-detail.html?v=20261028modes1&id=' + result.saved[0].id);
 });
 test('模拟旧群数据损坏，不覆盖原始记录也不假报创建成功', () => {
   const result = simulateCreate('corrupt');
   assert.equal(result.saved, null);
   assert.equal(result.renderCount, 0);
   assert.equal(result.visible, true);
+  assert.equal(result.href, '');
   assert.match(result.notices.join(' '), /保护数据/);
 });
 test('模拟浏览器存储空间不足，保持弹窗与成员选择', () => {
@@ -125,6 +129,7 @@ test('模拟浏览器存储空间不足，保持弹窗与成员选择', () => {
   assert.deepEqual(result.saved, []);
   assert.equal(result.renderCount, 0);
   assert.equal(result.visible, true);
+  assert.equal(result.href, '');
   assert.match(result.notices.join(' '), /保存失败/);
 });
 
@@ -142,4 +147,31 @@ test('导入角色含引号、HTML 或非法头像 URL 不应破坏成员选择�
 test('群名缺失时显示清楚的错误，而不是点击无响应', () => {
   assert.match(chat, /if \(!name\) \{\s*showToast\('请输入群聊名称'\)/);
   assert.match(chat, /selected = Object\.create\(null\)/);
+});
+
+test('保存成功后连点创建不会生成两个群', () => {
+  const result = simulateCreate('ok', true);
+  assert.equal(result.saved.length, 1);
+  assert.equal(result.visible, false);
+  assert.match(result.href, /chat-detail\.html\?v=20261028modes1&id=g\d+$/);
+});
+
+test('刷新进入群聊详情后仍按 ID 读取持久化群资料', () => {
+  const result = simulateCreate('ok');
+  const fn = detail.match(/function loadGroupById\(gid\) \{[\s\S]*?\n        \}/);
+  assert.ok(fn, '未找到详情页真实群资料读取函数');
+  const readOnReload = new Function('localStorage', 'return (' + fn[0] + ');')({
+    getItem(key) { return key === 'phone_groups' ? JSON.stringify(result.saved) : null; }
+  });
+  assert.equal(readOnReload(result.saved[0].id).name, '周末聊天群');
+  assert.equal(readOnReload('g_nonexistent'), null);
+  assert.match(detail, /const isGroupChat = !!currentRoleId && String\(currentRoleId\)\.indexOf\('g'\) === 0/);
+});
+
+test('群名为空时实际点击也明确提示且不会写群记录', () => {
+  const result = simulateCreate('empty-name');
+  assert.deepEqual(result.saved, []);
+  assert.equal(result.visible, true);
+  assert.equal(result.href, '');
+  assert.match(result.notices.join(' '), /请输入群聊名称/);
 });
