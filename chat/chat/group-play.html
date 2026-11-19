@@ -615,7 +615,18 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
     renderSettings();renderMembers();renderOwner();renderRelationships();
   }
   document.getElementById('backBtn').addEventListener('click',function(){
-    location.href='chat-settings.html?roleId='+encodeURIComponent(groupId);
+    // This page normally opens from the group settings. Going to that URL
+    // again with href would add a duplicate history entry and create a loop.
+    var fromSettings=false;
+    try {
+      var previous=new URL(document.referrer);
+      var here=new URL(location.href);
+      fromSettings=previous.origin===here.origin &&
+        /\/chat-settings\.html$/.test(previous.pathname) &&
+        previous.searchParams.get('roleId')===String(groupId);
+    } catch(e) {}
+    if(fromSettings && window.history.length>1) window.history.back();
+    else window.location.replace('chat-settings.html?roleId='+encodeURIComponent(groupId));
   });
 })();
 </script>
