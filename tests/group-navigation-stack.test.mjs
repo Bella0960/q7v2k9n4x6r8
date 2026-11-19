@@ -21,30 +21,32 @@ function element() {
     setAttribute(k,v){this[k]=v;},reset(){this.value='';},
     focus(){this.focused=true;}};
 }
-function modalFixture(busy=false) {
+function modalFixture(busy=false, deferBack=false) {
   const nodes=Object.fromEntries([
     'composerOverlay','composerForm','composerQuestion','composerQuestionWrap',
     'composerOptionsWrap','composerOptions','composerEntryWrap','composerEntryLabel',
     'composerEntry','composerQuestionLabel','composerTitle','composerDesc',
     'composerSubmit'].map(k=>[k,element()]));
-  const states=[{chat:true}],events={},trace=[],toasts=[];
+  const states=[{chat:true}],events={},trace=[],toasts=[],pendingBack=[];
   const url='https://preview.mao520.com/chat/chat/chat-detail.html?id=g001';
   const history={
     get length(){return states.length;},
     get state(){return states.at(-1);},
     pushState(v,_,target){assert.equal(target,url);states.push(v);trace.push('push');},
-    back(){if(states.length>1)states.pop();trace.push('back');
-      events.popstate?.({state:this.state});}
+    back(){trace.push('back');
+      const finish=()=>{if(states.length>1)states.pop();events.popstate?.({state:this.state});};
+      if(deferBack)pendingBack.push(finish);else finish();}
   };
   const window={location:{href:url},history,
     addEventListener(k,fn){events[k]=fn;}};
   const scope={...nodes,window,aiSending:busy,Date,Math,Object,
     showToast:t=>toasts.push(t),setTimeout:fn=>fn()};
   const make=new Function(...Object.keys(scope),
-    "var composerMode='', composerTargetMid='', composerHistoryToken='';\n"+
+    "var composerMode='', composerTargetMid='', composerHistoryToken='', composerHistoryPending=false, composerQueuedOpen=null;\n"+
     closeBlock+'\n'+openBlock+
     '\nreturn {openComposer,closeComposer,mode:()=>composerMode,target:()=>composerTargetMid};');
-  return {...make(...Object.values(scope)),nodes,history,trace,toasts};
+  return {...make(...Object.values(scope)),nodes,history,trace,toasts,
+    flushBack(){assert.ok(pendingBack.length,'no pending navigation');pendingBack.shift()();}};
 }
 test('Android back closes the poll modal without leaving the group chat',()=>{
   const x=modalFixture();
@@ -88,6 +90,34 @@ test('busy AI response must block opening group interaction',()=>{
   assert.equal(x.history.length,1);
   assert.equal(x.nodes.composerOverlay.classList.contains('active'),false);
   assert.match(x.toasts.join(''),/当前角色回复/);
+});
+test('fast reopen waits for the previous async history pop before creating next modal',()=>{
+  const x=modalFixture(false,true);
+  x.openComposer('poll');
+  x.closeComposer();
+  assert.equal(x.history.length,2,'browser has not popped the old entry yet');
+  x.openComposer('chain');
+  assert.equal(x.history.length,2,'a quick tap must not push a duplicate entry');
+  assert.equal(x.nodes.composerOverlay.classList.contains('active'),false);
+  x.flushBack();
+  assert.equal(x.mode(),'chain','queued tap opens after history settles');
+  assert.equal(x.history.length,2,'only one fresh modal entry remains');
+  assert.equal(x.nodes.composerOverlay.classList.contains('active'),true);
+  x.history.back(); // Android system Back after the queued modal opens.
+  x.flushBack();
+  assert.equal(x.nodes.composerOverlay.classList.contains('active'),false);
+  assert.equal(x.history.length,1,'system Back returns to chat, not home');
+});
+test('when multiple buttons are tapped during async close, the last chosen mode wins',()=>{
+  const x=modalFixture(false,true);
+  x.openComposer('poll');
+  x.closeComposer();
+  x.openComposer('chain');
+  x.openComposer('join','mid-13');
+  x.flushBack();
+  assert.equal(x.mode(),'join');
+  assert.equal(x.target(),'mid-13');
+  assert.equal(x.history.length,2);
 });
 const backAdvanced=extract(advanced,"  document.getElementById('backBtn').addEventListener('click'",
   '})();');
