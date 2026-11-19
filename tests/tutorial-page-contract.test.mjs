@@ -178,62 +178,7 @@ test('chapter progress function updates the label in place without replacing a r
     assert.equal(selector, '[data-guide-id="app-chat"]');
     return sheet;
   } };
-  const run = new Function('
-  for (const label of ['表情包','奔赴','重玩','位置','纪念日','旁白动作','直播间','音乐','语音通话','视频通话','发红包','转账','图片','语音','名片','送礼物','群投票','群接龙','群通话']) {
-    assert.ok(guideScript.includes(label), 'missing composer menu guide label: ' + label);
-  }
-});
-
-test('conversation settings has a direct navigation fallback and is cached in the PWA shell', () => {
-  assert.match(chatDetail, /onclick="if\(this\.dataset\.navBound!=='1'\)/);
-  assert.match(chatDetail, /btnMoreMenu\.dataset\.navBound = '1'/);
-  assert.match(chatDetail, /btnMoreMenu\.addEventListener\('click'/);
-  assert.ok(serviceWorker.includes("'./chat/chat/chat-settings.html'"));
-});
-
-test('tutorial workflow enforces a guide update when user-facing app pages change', () => {
-  assert.match(tutorialWorkflow, /pull_request:/);
-  assert.match(tutorialWorkflow, /npm run test:tutorial/);
-  assert.match(tutorialWorkflow, /User-facing MAOMAO files changed without updating tutorial\/tutorial\.js/);
-  assert.match(tutorialWorkflow, /execFileSync\('git', \['diff', '--name-only',/);
-  assert.match(tutorialWorkflow, /tutorial\/tutorial\.js/);
-});
-
-test('PWA app shell caches the full guide bundle and has a matching test command', () => {
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v[0-9]+'/,
-    'PWA shell must use a versioned cache without hard-coding an old release');
-  assert.ok(serviceWorker.includes("'./tutorial/tutorial.html'"));
-  assert.ok(serviceWorker.includes("'./tutorial/tutorial.js?v=20261118book2'"));
-  assert.equal(packageJson.scripts['test:tutorial'], 'node --test tests/tutorial-page-contract.test.mjs');
-});
-
-test('chat detail scripts parse so the conversation settings handler can bind', () => {
-  const scripts = [...chatDetail.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)]
-    .filter(([, attributes]) => !/\bsrc\s*=|\btype\s*=/.test(attributes));
-  assert.ok(scripts.some(([, , source]) => /async function sendMsg\(/.test(source)));
-  for (const [, , source] of scripts) new Function(source);
-});
-
-test('account release candidate guide documents the existing login path and QA safety boundary', () => {
-  assert.match(guideScript, /"id"\s*:\s*"account-qa"/);
-  assert.match(guideScript, /已有账号 · 登录/);
-  assert.match(guideScript, /管理员中心（QA 待验收）/);
-  assert.match(guideScript, /"href"\s*:\s*"\.\.\/account\/index\.html"/);
-  assert.match(guideScript, /本机备份不等于云端账号的可恢复备份/);
-  assert.match(guideScript, /不得对正式账号执行停用、重置或清空/);
-});
-
-test('fanwai tutorial exposes hidden story preferences without claiming production acceptance', () => {
-  assert.match(guideScript, /"id"\s*:\s*"fanwai-story-qa"/);
-  assert.match(guideScript, /番外剧场与隐藏故事设置（QA 待验收）/);
-  assert.match(guideScript, /输入栏「＋」→「番外」/);
-  assert.match(guideScript, /不带记忆/);
-  assert.match(guideScript, /参考角色记忆/);
-  assert.match(guideScript, /短篇 40 条、中篇 80 条、长篇 100 条/);
-  assert.match(guideScript, /不能当作成功/);
-  assert.match(guideScript, /不允许写入原聊天、长期记忆或钱包/);
-});
-,'stepState',
+  const run = new Function('$', 'stepState',
     source + '\nreturn refreshChapterProgress;'
   )(id => { assert.equal(id,'guideGrid'); return grid; },
     () => ({walked:[0,1]}));
