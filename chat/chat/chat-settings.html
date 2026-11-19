@@ -2380,16 +2380,24 @@
       function finish() {
         if (navigated) return;
         navigated = true;
-        window.location.href = 'chat.html';
+        if (cleanupFailed) {
+          showToast('群已解散，但部分旧数据清理失败');
+          setTimeout(function () { window.location.href = 'chat.html'; }, 1800);
+        } else {
+          window.location.href = 'chat.html';
+        }
       }
-      if (!store || typeof store.removeByKey !== 'function') { finish(); return; }
-      var timeout = setTimeout(finish, 1200);
+      if (!store || typeof store.removeByKey !== 'function') {
+        cleanupFailed = true;
+        finish();
+        return;
+      }
+      var timeout = setTimeout(function () { cleanupFailed = true; finish(); }, 1200);
       try {
         Promise.resolve(store.removeByKey('chat_group_profile_cover_v1_' + roleId))
           .catch(function () { cleanupFailed = true; })
           .then(function () { clearTimeout(timeout); finish(); });
-      } catch (e) { clearTimeout(timeout); finish(); }
-      if (cleanupFailed) showToast('群已解散，部分旧数据清理失败');
+      } catch (e) { cleanupFailed = true; clearTimeout(timeout); finish(); }
     });
 
     var gpAdvancedEntry = document.getElementById('gpAdvancedEntry');
