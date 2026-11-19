@@ -138,3 +138,11 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **AI 请求失败真实可见**：聊天世界书读取现在即使 `phone_worldbooks` 未创建也检查挂载键，异常时停止在 `PhoneStream.chat` 之前；已落库的本轮用户消息标记 `sendFailedReason='worldbook-read'` 并通过现有重渲染/一键重试机制反馈，避免出现正常外观却没有角色回复的消息。contextOnly 重试仍指向原消息，不重复添加用户消息；新增对应失败提示文案。
 - **本轮确实执行的代码级模拟**：从当前 PR 分支提取实际 `handleSaveRole` 执行，合成两页面角色绑定变更、旧编辑器保存和冲突回滚，7/7 通过（首轮模拟曾因错误假设所有无 scope 的测试书是局部导致 1 项测试夹具误判，纠正为真实 `scope='local'` 后通过）；从聊天详情当前实际世界书上下文代码提取执行，正常私聊、损坏挂载、缺失书列表、坏 JSON、群角色＋群挂载、重试重标记 6/6 通过；变化页面 JS 解析成功。新增两项可执行的 `tests/role-worldbook-bindings.test.mjs` 回归源文件，文件可解析，但原生 Node runner 未执行。
 - **上线门槛尚未通过**：Node 原生测试、完整 Vite 构建、Chromium 点击/真实 API、Android/iPhone PWA、#299 唯一 QA 合并/部署均 NOT VERIFIED。此前的 JS 模拟不冒充端到端验收。严禁触碰正式版、账号安全与冻结 QA #299。
+
+
+### CHAT-WORLDBOOK-001 第四轮：双入口跨标签页实时回显与覆盖保护（2026-11-19）
+
+- **可见体验**：对话设置中的「已挂载 N 本」和勾选列表，在另一浏览器标签页调整同一角色绑定后可响应原生 `storage` 事件同步；编辑中的本地选择不被意外清空，保存前重新核对打开时绑定快照并阻止旧面板覆盖新选择，提示收起重新展开确认。角色档案编辑页同样监听外部绑定变化，在该页没有修改世界书时自动更新勾选与原快照；有未保存选择时保留草稿并提示冲突，不篡改人设、头像输入字段。
+- **实测源码回归**：使用当前 #307 提交的桥模块、真实对话设置事件代码和模拟浏览器 storage 事件的隔离 V8 检查 **8/8 通过**。进一步直接执行 `tests/role-worldbook-bindings.test.mjs` 中 **19/19 实际测试回调**，通过 V8 shim 实现 test/assert/fs/vm 依赖，原始 JS 源码从 GitHub 当前分支读取；该结果是 **V8 模拟 Node 环境运行，并非原生 node --test**，不能冒充 GitHub Actions 或真实浏览器/手机运行结果。
+- **新增回归**：同步增加 chat-settings 真实保存事件跨窗口更新及冲突覆盖拦截的断言；角色档案 storage 事件“未编辑则跟随，已编辑则保护本地草稿”的断言。测试文件语法解析成功。
+- **发布状态**：仅在原 #307 草稿分支提交；冻结 #299 未直接改写，唯一 `preview.mao520.com` 尚未整合更新；未碰 main、正式 Worker、用户数据。仍需原生 Node CLI、Vite 构建、375/390/430 实际浏览器、Android/iOS 真机与 AI 请求验证，**NOT VERIFIED**。
