@@ -17,6 +17,13 @@
 
   function applyTheme() {
     var theme = getTheme();
+    // iMessage is a chat-detail-only theme. Other pages keep their base
+    // presentation rather than inheriting a mismatched blue profile skin.
+    // This is visual only; the selected preset remains globally persisted.
+    if (theme === 'imessage') {
+      var pathname = String(global.location && global.location.pathname || '');
+      if (pathname.split('/').pop().toLowerCase() !== 'chat-detail.html') theme = 'default';
+    }
     var shells = document.querySelectorAll('.phone-mockup');
     for (var i = 0; i < shells.length; i++) {
       shells[i].setAttribute('data-chat-theme-preset', theme);
