@@ -23,27 +23,41 @@ function scene(id,page='detail'){
 }
 function heading(title,sub){return '<div class="sf-heading"><h2>'+title+'</h2><p>'+sub+'</p></div>';}
 function nativeArt(t){return typeof api.nativeArt==='function'?api.nativeArt(t):scene(t.id,'detail');}
-function card(t){
- const fav=model.read().favorites.includes(t.id);
- const active=global.ChatBeauty?.getThemePreset?.()===t.id;
- const scope=t.id==='imessage'?'聊天详情专属':t.id==='atmosphere'?'新主题 · 薄影':t.id==='default'?'原生聊天外观':'现有完整主题';
- return '<article class="sf-product"><button class="sf-cover sf-native-cover" data-sf="detail" data-id="'+e(t.id)+'" aria-label="查看主题「'+e(t.name)+'」">'+nativeArt(t)+'</button>'+
- '<div class="sf-product-meta"><div><strong>'+e(t.name)+'</strong><small>'+(active?'正在使用 · ':'')+scope+'</small></div>'+
+// Individual theme gallery metadata: display only, not a second theme engine.
+const themeProfiles=Object.freeze({
+ default:{type:'基础主题',scope:'默认聊天样式',note:'恢复原生视觉。已保存的背景、气泡和角色资料不会被覆盖。'},
+ wechat:{type:'完整聊天主题',scope:'聊天 · 联系人 · 动态',note:'微信式列表和会话布局；微信气泡仍可以单独选择。'},
+ imessage:{type:'局部聊天主题',scope:'仅聊天详情',note:'短信对话布局；其他页面继续保留自己的样式。'},
+ qq:{type:'聊天主题',scope:'QQ 聊天外观',note:'沿用已有 QQ 样式，不替换消息或角色设定。'},
+ 'silver-butterfly':{type:'完整聊天主题',scope:'聊天 · 联系人 · 动态',note:'银灰光影层次；独立保留封面与头像。'},
+ atmosphere:{type:'氛围主题',scope:'聊天 · 动态 · 个人页',note:'薄影留白与深浅模式；不会重置单独选择的气泡。'}
+});
+function card(t,index=0){
+ const fav=model.read().favorites.includes(t.id),active=global.ChatBeauty?.getThemePreset?.()===t.id;
+ const info=themeProfiles[t.id]||{type:'聊天主题',scope:'以实际页面适配为准',note:'只改变原主题设置，不改变个人内容。'};
+ return '<article class="sf-theme-item sf-product" data-theme-id="'+e(t.id)+'" aria-label="主题：'+e(t.name)+'">'+
+ '<header class="sf-theme-item-header"><span class="sf-theme-index">'+String(index+1).padStart(2,'0')+'</span><div class="sf-theme-titles"><small>'+e(info.type)+'</small><h3>'+e(t.name)+'</h3></div>'+
+ (active?'<span class="sf-theme-current">正在使用</span>':'')+'</header>'+
+ '<div class="sf-theme-layout"><button type="button" class="sf-cover sf-theme-cover sf-native-cover" data-sf="detail" data-id="'+e(t.id)+'" aria-label="预览「'+e(t.name)+'」">'+nativeArt(t)+'</button>'+
+ '<div class="sf-theme-info"><p>'+e(t.desc)+'</p><div class="sf-theme-scope"><span>作用范围</span><strong>'+e(info.scope)+'</strong></div><p class="sf-theme-note">'+e(info.note)+'</p></div></div>'+
+ '<div class="sf-theme-actions">'+button('查看细节','detail',t.id,'sf-button sf-theme-view')+
+ (active?'<span class="sf-theme-active-label">已应用</span>':button('应用这套主题','apply-theme',t.id,'sf-button primary sf-theme-apply'))+
  button(svg('star'),'favorite',t.id,'sf-favorite'+(fav?' selected':''))+'</div></article>';
 }
+function gallery(items){return '<div class="sf-theme-collection">'+items.map(card).join('')+'</div>';}
 function themes(){
- // Native theme catalogue is the single source of truth: keep original product artwork,
- // real buy/apply buttons, separate Messages list theme and the existing theme IDs.
- return heading('主题','原有主题与应用功能完整保留')+
- (typeof api.nativeThemes==='function'?api.nativeThemes():'<div class="sf-grid">'+api.themes.map(card).join('')+'</div>');
+ return heading('主题','每一套独立展示，预览不修改当前设置')+gallery(api.themes)+
+ '<section class="sf-theme-list-only">'+heading('聊天列表专属','这项只调整聊天首页，不与整套主题合并')+
+ (typeof api.listCard==='function'?api.listCard():'')+'</section>'+
+ '<p class="sf-theme-help">整套主题、聊天列表、气泡、壁纸分开管理。切换主题不会清空角色、聊天记录或个人素材。</p>';
 }
 function discover(){
  const featured=['wechat','qq','atmosphere'].map(id=>api.themes.find(t=>t.id===id)).filter(Boolean);
  return '<div class="sf-section-line"><h2>本期精选</h2><span>左右滑动</span></div>'+
  '<div class="sf-featured" tabindex="0" aria-label="热门精选，可左右滑动">'+
  featured.map((t,i)=>'<button class="sf-feature" data-sf="detail" data-id="'+e(t.id)+'"><div><small>精选 / 0'+(i+1)+'</small><h2>'+e(t.name)+'</h2><p>'+e(t.desc)+'</p><span>查看原主题</span></div><div class="sf-feature-scene sf-native-feature">'+nativeArt(t)+'</div></button>').join('')+'</div>'+
- heading('原有主题','直接接入已经完成的聊天主题')+
- '<div class="sf-grid">'+api.themes.map(card).join('')+'</div>'+api.market.renderWallpapers();
+ heading('主题选集','各套主题都有独立预览与应用入口')+
+ gallery(api.themes.slice(0,3))+button('查看全部主题','category','themes','sf-button sf-all-themes')+api.market.renderWallpapers();
 }
 const categories=[
  ['整套主题',[['themes','完整主题','聊天外观与适配范围']]],
@@ -55,7 +69,7 @@ function categoryView(){return heading('分类','从整体到细节，分别搭�
 function recordCard(item,type){return '<article class="sf-record"><button class="sf-record-main" data-sf="record-preview" data-id="'+e(type+':'+item.id)+'"><strong>'+e(item.name)+'</strong><small>'+e(type==='outfits'?item.scopes.map(s=>model.scopes[s]).join(' · '):'自己的壁纸与主题素材')+'</small></button><div>'+button('预览与应用','record-preview',type+':'+item.id)+button('编辑','rename',type+':'+item.id)+button('删除','delete',type+':'+item.id)+'</div></article>';}
 function mine(){
  const data=model.read();let body='';
- if(mineTab==='favorites')body='<div class="sf-grid">'+api.themes.filter(t=>data.favorites.includes(t.id)).map(card).join('')+'</div>';
+ if(mineTab==='favorites')body=gallery(api.themes.filter(t=>data.favorites.includes(t.id)));
  if(mineTab==='outfits')body=button(svg('plus')+' 保存当前搭配','save-outfit')+data.outfits.map(x=>recordCard(x,'outfits')).join('');
  if(mineTab==='creations')body=button(svg('plus')+' 添加壁纸 / 主题素材','upload')+button('编辑气泡与美化方案','category','beauty')+data.creations.map(x=>recordCard(x,'creations')).join('');
  if(mineTab==='using')body=api.using()+api.market.renderMineExtra();
@@ -70,7 +84,7 @@ function detail(id){
    // Keep the original product visual from this project's existing themeArt().
    // No generic six-page reconstruction is presented as if it were the real QQ/
    // WeChat/iMessage/Silver Butterfly interface.
-   modal(t.name,'<p class="sf-caption">已有主题 · 使用原商城的主题封面与说明</p>'+
+   modal(t.name,'<p class="sf-caption">主题独立预览 · 这里不会改变当前设置</p>'+
     '<div class="sf-native-detail-art">'+nativeArt(t)+'</div>'+
     '<p class="sf-caption">'+e(t.desc)+'</p>'+
     '<p class="sf-caption">这里只展示原有主题素材。真实聊天页面及其气泡、联系人、动态等功能，仍由原项目的主题系统控制。</p>'+
