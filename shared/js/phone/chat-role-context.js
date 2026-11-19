@@ -22,7 +22,31 @@
       .map(function (value) { return String(value || ''); }).join(' ');
     if (/仿生人|机器人|数字生命|人工智能|智能体|AI\s*(?:助手|系统|模型)|聊天机器人/i.test(species)) return true;
     var persona = String(role.persona || role.prompt || '');
-    return /(?:【(?:身份|物种|种族|角色类型)】|(?:身份|物种|种族|角色类型)\s*[:：])\s*[^\n]{0,35}(?:仿生人|机器人|数字生命|人工智能|智能体|AI\s*助手)/i.test(persona);
+    return /(?:【(?:身份|物种|种族|角色类型)】|(?:身份|物种|种族|角色类型)\s*[:：])\s*[^\n]{0,35}(?:仿生人|机器人|数字生命|数字居民|人工智能|智能体|AI\s*助手)/i.test(persona);
+  }
+
+  // Only authored non-human identities may use age/life-cycle claims that would
+  // otherwise be a model inventing a digital persona for an ordinary role.
+  function hasAuthoredNonHumanIdentity(role) {
+    if (!role || typeof role !== 'object') return false;
+    if (isDigitalCharacter(role)) return true;
+    var origin = role.encounterOrigin || {};
+    var species = [origin.species, role.species, role.race, role.identityType]
+      .map(function (value) { return String(value || ''); }).join(' ');
+    return /(?:精灵|妖怪|妖族|魔族|吸血鬼|人鱼|神族|神明|鬼魂|幽灵|外星|兽人|龙族|不死族)/.test(species);
+  }
+
+  // These specific first-person identity substitutions were missed by the
+  // original generic-AI phrase matcher. They must not become canonical
+  // conversation or learned voice samples for an ordinary character.
+  function isSyntheticIdentityDrift(message, role) {
+    if (!message || (message.role !== 'assistant' && message.role !== 'received')) return false;
+    if (message.type && message.type !== 'text') return false;
+    if (hasAuthoredNonHumanIdentity(role)) return false;
+    var text = String(message.text || message.content || '').replace(/\s+/g, '');
+    return /(?:我|自己)[^。！？\n]{0,30}(?:没有|不存在|不具备|没有什么)[^。！？\n]{0,24}(?:人类[^。！？\n]{0,9}(?:年龄|岁数)|年龄概念)/.test(text) ||
+      /(?:我是|我还是|我其实是|我算是|我属于)[^。！？\n]{0,18}(?:数字居民|云端居民|虚拟居民|虚拟生命|数字生命)/.test(text) ||
+      /(?:你可以|可以)把我当(?:成|作)[^。！？\n]{0,38}(?:随时陪你聊天|解答问题|答疑|聊天百宝箱)/.test(text);
   }
 
   function isBrokenAssistantIdentity(message) {
@@ -51,7 +75,8 @@
   function getModelHistory(history, role) {
     if (!Array.isArray(history) || isDigitalCharacter(role)) return history;
     var filtered = history.filter(function (item) {
-      return !isBrokenAssistantIdentity(item) && !isGenericContextContamination(item);
+      return !isBrokenAssistantIdentity(item) && !isGenericContextContamination(item) &&
+        !isSyntheticIdentityDrift(item, role);
     });
     return filtered.length === history.length ? history : filtered;
   }
@@ -267,6 +292,24 @@
     }).join('\n');
   }
 
+  // Reinforce authored facts at the point of generation, not a fabricated age.
+  // The saved persona, worldbooks and global protocol remain authoritative.
+  function buildIdentityAnswerGuidance(role) {
+    if (!role || typeof role !== 'object') return '';
+    var lines = [
+      '[角色身份答问边界]',
+      '当对方问你是谁、几岁、做什么时，直接按当前已保存的角色资料、世界书和全局人设协议自然回答；不要改用客服介绍或功能推销。',
+      '档案未给出的个人事实不能凭空编造；不知道年龄不等于没有人类年龄。'
+    ];
+    if (role.age != null && String(role.age).trim()) {
+      lines.push('已保存年龄字段：' + String(role.age).trim().slice(0, 80) + '。回答年龄时以此字段及完整人设为准。');
+    }
+    if (!hasAuthoredNonHumanIdentity(role)) {
+      lines.push('除非用户已保存的设定明确如此，不要凭空给角色新增“数字居民”“云端生命”“没有人类年龄概念”等身份。');
+    }
+    return lines.join('\\n');
+  }
+
   // Direct online replies need the same high-confidence role-identity barrier
   // as online groups. The system prompt and saved persona can be correct while
   // the model still emits a generic assistant introduction. This is a pure
@@ -281,7 +324,8 @@
     // A character explicitly authored as digital is allowed to identify as AI.
     if (isDigitalCharacter(role)) return {ok:true};
     var candidate = {role:'assistant',text:reply};
-    if (isBrokenAssistantIdentity(candidate) || isGenericContextContamination(candidate))
+    if (isBrokenAssistantIdentity(candidate) || isGenericContextContamination(candidate) ||
+        isSyntheticIdentityDrift(candidate, role))
       return {ok:false,code:'identity-drift'};
     return {ok:true};
   }
@@ -329,6 +373,7 @@
     validateFinalApiMessages: validateFinalApiMessages,
     validatePersonaRequest: validatePersonaRequest,
     isBrokenAssistantIdentity: isBrokenAssistantIdentity,
+    buildIdentityAnswerGuidance: buildIdentityAnswerGuidance,
     validateDirectOnlineReply: validateDirectOnlineReply,
     validateGroupOnlineReply: validateGroupOnlineReply
   });
