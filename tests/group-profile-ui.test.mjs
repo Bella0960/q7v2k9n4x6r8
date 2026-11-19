@@ -11,6 +11,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const base = path.join(root, 'chat/chat');
 const pageSource = fs.readFileSync(path.join(base, 'chat-settings.html'), 'utf8');
 const groupSource = fs.readFileSync(path.join(base, 'group-profile-ui.js'), 'utf8');
+const groupPlaySource = fs.readFileSync(path.join(base, 'group-play.html'), 'utf8');
 const groupCss = fs.readFileSync(path.join(base, 'group-profile-ui.css'), 'utf8');
 let server, browser, origin;
 
@@ -73,6 +74,10 @@ test('contract: group-only script, existing controls and valid JavaScript', () =
   assert.match(groupSource, /coverTouched=true/);
   assert.match(groupSource, /reloadSavedCover\(\)/);
   assert.match(groupSource, /function viewMember\(memberId\)/);
+  assert.match(groupPlaySource, /if\(fromSettings && history\.length>1\)\{\s*history\.back\(\)/);
+  assert.match(groupPlaySource, /location\.replace\('chat-settings\.html\?roleId='/);
+  assert.match(pageSource, /fromChatDetail && priorId === String\(roleId\)/);
+  assert.doesNotMatch(pageSource, /\(\?:chat-detail\|group-play\|chat-search\|chat\)/);
   assert.match(groupCss, /\.gp-cover-emblem/);
   assert.match(groupSource, /emblem\.appendChild\(profileImage\)/);
   assert.doesNotMatch(groupCss, /#(?:aliasCard|actionAlias)\s*\{/);
