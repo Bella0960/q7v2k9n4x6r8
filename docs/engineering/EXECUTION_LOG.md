@@ -191,3 +191,18 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 本轮在本地 Node `vm` 中使用从 GitHub 最新分支源提取的实际 `canManageGroup` / `saveCurrentGroup` 函数，独立测试正常保存、其他群不受影响、silent no-op、QuotaExceededError、群主转让、离群、旧群兼容、新建群共 **7/7 场景通过**；之前的群主权限 gate 额外 **18 项断言通过**。
 - 远程分支结构检查 **10/10 通过**；这些是源代码契约核对，不是功能 E2E。新提交到仓库的 Node 读取源码测试文件尚未在完整仓库环境运行。浏览器/真机、构建、角色对话与模型 prompt 注入未完成实测，仍是 **NOT VERIFIED**。
 - PR #298 与本分支共同编辑 `chat/chat/chat-settings.html` 和 `chat/chat/group-play.html`，整合时不得整文件覆盖，需保留角色群主、管理员、邀请与秘密游戏权限。QA #299 冻结，唯一预览域 `https://preview.mao520.com` 未更新，正式版未动。
+
+### GROUP-UI-002 数据源变更后旧页面复活群 Bug 闭环（2026-11-19）
+
+**触发与危害（从实际源码定位）**：原 `saveCurrentGroup` 在 `phone_groups` 中找不到当前群时执行 `arr.push(group)`。这让已删除群的旧设置页面或失效请求有机会把旧群重新创建；只检查传入对象的 `ownerId`，未重新校验存储中的真实当前群主，转让群主期间还可能用旧权限覆盖新状态。
+
+**已修复**：
+- `chat-settings.html` 的 `saveCurrentGroup` 改为**仅更新当前 roleId 对应的已存在群**；缺少群数据、群列表损坏、群在另一页删除、用户失去群主身份，都拒绝写入，不再创建群。错误动作可提示「群聊已不存在，请返回聊天列表」。
+- 返回按钮会重新确认群存在；不存在时进 `chat.html`，不打开失效的群聊天详情。
+- `group-profile-ui.js/.css` 在跨标签删除（`storage` 事件）后显示「群聊已不存在／请返回聊天列表」，隐藏成员、快捷操作及旧设置折叠，禁用封面操作；上传中的封面发现群已删除时清理无主资源，不假报保存成功。
+- 更新 `tests/group-profile-data-integrity.test.mjs`：移除过时的“设置页可以创建群”断言，新增删除后不复活、转让群主后不越权、存储损坏/缺失不覆盖、其他群隔离；`tests/group-profile-ui.test.mjs` 增加跨标签删除的视觉状态、返回及陈旧页面保存测试。
+
+**验证证据**：
+- 在本轮 `functions.exec` V8 中直接从**当前分支实际 `chat-settings.html`** 提取 `canManageGroup`、`requireGroupOwner`、`saveCurrentGroup` 执行 14 个独立案例，结果 **14/14 PASS**（正常保存、静默丢失、配额错误、非群主、已离群、不同群、删除后的幽灵群、转让期间旧操作、损坏列表、历史数据兼容、友好错误提示等）。
+- 三个被改动的真实脚本（`chat-settings.html` 内联脚本、`group-play.html` 内联脚本、`group-profile-ui.js`）在 V8 中 **3/3 语法解析 PASS**；源码契约核对 **9/9**。
+- **限制**：本地 Chromium 能启动，但页面导航返回 `net::ERR_BLOCKED_BY_ADMINISTRATOR`，不能完成全页 Playwright、375/390/430 实际可视、手机、构建、API/角色回复测试；浏览器 E2E 测试只是更新了源码，**NOT RUN**。未触发 CI/Actions、未整合 PR #298/#299、未部署 QA 或正式版。不能将单元检查说成真实用户验收。
