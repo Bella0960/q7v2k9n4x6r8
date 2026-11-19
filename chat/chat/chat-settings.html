@@ -3421,8 +3421,25 @@
     });
   }
 
-  // ================= 返回上一页；无历史时兜底回聊天列表 =================
+  // ================= 返回上一页：群聊资料优先回有效来源，否则进入该群对话 =================
   document.getElementById('btnBack').addEventListener('click', function () {
+    if (isGroupSetting) {
+      var validGroupReferrer = false;
+      try {
+        var previous = new URL(document.referrer);
+        var sameApp = previous.origin === window.location.origin &&
+          /\/chat\/(?:chat-detail|group-play|chat-search|chat)\.html$/.test(previous.pathname);
+        var fromChatList = /\/chat\/chat\.html$/.test(previous.pathname);
+        var priorId = previous.searchParams.get('id') || previous.searchParams.get('roleId');
+        validGroupReferrer = sameApp && (fromChatList || priorId === String(roleId));
+      } catch (e) {}
+      if (validGroupReferrer && window.history.length > 1) {
+        window.history.back();
+      } else {
+        window.location.href = 'chat-detail.html?id=' + encodeURIComponent(roleId);
+      }
+      return;
+    }
     if (window.history.length > 1) {
       window.history.back();
     } else {
