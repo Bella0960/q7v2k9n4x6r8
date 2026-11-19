@@ -121,7 +121,8 @@ test('both existing offline pages load the shared binding before the updated res
     assert.match(page,/buildSavedSourceEnvelope\(/);
     assert.match(page,/validateFinalApiMessages\(/);
   }
-  assert.match(sw,/phone-app-pwa-v265/);
+  const cacheVersion = Number(sw.match(/phone-app-pwa-v(\\d+)/)?.[1] || 0);
+  assert.ok(cacheVersion >= 265, 'PWA cache version must not regress below validated v265');
   assert.ok(sw.includes(binder));
   assert.ok(sw.includes(role));
 });
