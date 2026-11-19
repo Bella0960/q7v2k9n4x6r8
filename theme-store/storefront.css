@@ -188,3 +188,60 @@
 @media(max-height:640px){
  .store-app .category-nav{padding-bottom:calc(17px + env(safe-area-inset-bottom,0px))}
 }
+
+
+/* THEME-MARKET-001: isolated gallery. Every rule stays inside the theme store
+   and every visual variant is keyed by one immutable built-in theme ID. */
+.store-app .sf-theme-collection{display:flex;flex-direction:column;gap:0;margin:8px 0 14px}
+.store-app .sf-theme-item{display:flex;flex-direction:column;gap:12px;min-width:0;padding:20px 0 22px;margin:0;border-bottom:1px solid #ebebed;background:transparent}
+.store-app .sf-theme-item:first-child{padding-top:8px}
+.store-app .sf-theme-item:last-child{border-bottom:0}
+.store-app .sf-theme-item-header{display:flex;align-items:center;gap:10px;min-width:0}
+.store-app .sf-theme-index{font:400 11px/1 Georgia,serif;color:#999;letter-spacing:.04em;min-width:22px}
+.store-app .sf-theme-titles{flex:1;min-width:0}
+.store-app .sf-theme-titles small{display:block;margin-bottom:4px;color:#939393;font-size:9px;line-height:1.3}
+.store-app .sf-theme-titles h3{font:400 22px/1.2 Georgia,"Songti SC",serif;letter-spacing:-.025em;color:#171717}
+.store-app .sf-theme-current{font-size:10px;color:#555;white-space:nowrap;border:1px solid #dedede;border-radius:20px;padding:6px 9px}
+.store-app .sf-theme-layout{display:grid;grid-template-columns:minmax(0,47%) minmax(0,1fr);gap:14px;align-items:start}
+.store-app .sf-theme-cover{display:block;min-width:0;width:100%;height:186px;padding:0;border:0;border-radius:12px;overflow:hidden;box-shadow:none;transform:none;cursor:pointer}
+.store-app .sf-theme-cover .product-art{height:186px!important;min-height:186px!important;max-height:186px!important;border-radius:12px;margin:0;transform:none}
+.store-app .sf-theme-info{display:flex;flex-direction:column;gap:11px;min-width:0}
+.store-app .sf-theme-info>p:first-child{font-size:11px;line-height:1.7;color:#4c4c4c;margin:0;overflow-wrap:anywhere}
+.store-app .sf-theme-scope{display:flex;flex-direction:column;gap:4px}
+.store-app .sf-theme-scope span{font-size:9px;color:#a0a0a0}
+.store-app .sf-theme-scope strong{font-size:10px;font-weight:550;line-height:1.45;color:#333}
+.store-app .sf-theme-note{margin:0;font-size:10px;line-height:1.55;color:#888;overflow-wrap:anywhere}
+.store-app .sf-theme-actions{display:flex;align-items:center;gap:8px;min-height:44px}
+.store-app .sf-theme-actions .sf-button{margin:0;min-height:43px;border-radius:9px;font-size:11px;padding:10px 13px}
+.store-app .sf-theme-actions .sf-theme-view{flex:1}
+.store-app .sf-theme-actions .sf-theme-apply,.store-app .sf-theme-active-label{flex:1.3}
+.store-app .sf-theme-active-label{display:flex;align-items:center;justify-content:center;min-height:43px;background:#f4f4f4;color:#6e6e6e;border-radius:9px;font-size:11px}
+.store-app .sf-theme-actions .sf-favorite{flex:0 0 44px;min-height:44px;width:44px;height:44px;display:grid;place-items:center}
+.store-app .sf-theme-collection .sf-cover:focus-visible,.store-app .sf-theme-collection .sf-button:focus-visible,
+.store-app .sf-theme-collection .sf-favorite:focus-visible{outline:2px solid #555;outline-offset:3px}
+.store-app .sf-theme-item[data-theme-id="default"] .sf-theme-cover{background:#f6f6f6}
+.store-app .sf-theme-item[data-theme-id="wechat"] .sf-theme-cover{background:#e8ebe8}
+.store-app .sf-theme-item[data-theme-id="imessage"] .sf-theme-cover{background:#f2f3f5}
+.store-app .sf-theme-item[data-theme-id="qq"] .sf-theme-cover{background:#f0f0f2}
+.store-app .sf-theme-item[data-theme-id="silver-butterfly"] .sf-theme-cover{background:#e6e6e8}
+.store-app .sf-theme-item[data-theme-id="atmosphere"] .sf-theme-cover{background:#eeeeeb}
+.store-app .sf-theme-list-only{margin:26px 0 8px;padding-top:6px;border-top:1px solid #ececed}
+.store-app .sf-theme-list-only .sf-heading{margin:13px 0 15px}
+.store-app .sf-theme-list-only .chat-list-theme-grid{margin-top:4px}
+.store-app .sf-theme-help{font-size:11px;line-height:1.7;color:#888;margin:18px 0 22px}
+.store-app .sf-all-themes{width:100%;margin:4px 0 14px;min-height:44px}
+@media(min-width:560px){
+ .store-app .sf-theme-layout{grid-template-columns:210px minmax(0,1fr);gap:20px}
+ .store-app .sf-theme-cover,.store-app .sf-theme-cover .product-art{height:208px!important;min-height:208px!important;max-height:208px!important}
+}
+@media(max-width:360px){
+ .store-app .sf-theme-layout{grid-template-columns:minmax(0,45%) minmax(0,1fr);gap:11px}
+ .store-app .sf-theme-cover,.store-app .sf-theme-cover .product-art{height:171px!important;min-height:171px!important;max-height:171px!important}
+ .store-app .sf-theme-titles h3{font-size:20px}
+ .store-app .sf-theme-info{gap:8px}
+ .store-app .sf-theme-note{font-size:9px}
+ .store-app .sf-theme-actions .sf-button{padding:9px 8px;font-size:10px}
+}
+@media(prefers-reduced-motion:reduce){
+ .store-app .sf-theme-item,.store-app .sf-theme-cover{animation:none!important;transition:none!important}
+}
