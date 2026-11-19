@@ -152,13 +152,19 @@ test('legacy gateway and ordinary local account status behavior stays unchanged'
 test('QA login page uses QA-only password hint without changing legacy gateway UI', async () => {
   const loginSource = readFileSync(new URL('../account/account.js', import.meta.url), 'utf8');
   const begin = loginSource.indexOf('  async function checkCreatorBootstrapEntry() {');
-  const finish = loginSource.indexOf('\n\n  (async function restoreSession()', begin);
+  const finish = loginSource.indexOf('\n\n  function retryQaIdentityOnForeground()', begin);
   assert.ok(begin >= 0 && finish > begin, 'actual login readiness handler must exist');
   const actualHandler = loginSource.slice(begin, finish);
   const mount = vm.runInNewContext(
     '(async function (status) {\n' +
     '  let delegatedIdentity = false;\n' +
     '  let delegatedSignInReady = true;\n' +
+    // The runtime handler now guards in-flight checks and schedules a retry;
+    // this legacy test isolates its fail-closed and QA password-hint semantics.
+    // End-to-end retry/timer behavior is exercised in qa-identity-reconnect.test.mjs.
+    '  let qaIdentityCheckInFlight = false, qaIdentityRetryFailures = 0;\n' +
+    '  const clearQaIdentityRetry = () => {};\n' +
+    '  const scheduleQaIdentityRetry = () => {};\n' +
     '  const isKnownQaHost = status.__qaHost === true;\n' +
     '  const link = { hidden: false };\n' +
     '  const subtitle = { textContent: "", classList: { tokens: new Set(), ' +
