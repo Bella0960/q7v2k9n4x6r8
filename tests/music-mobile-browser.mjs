@@ -315,6 +315,38 @@ try {
         .filter({hasText:"O'Neil <live>"}).click();
       await page.waitForFunction(() => document.getElementById('npTitle')?.textContent === "O'Neil <live>",
         null, {timeout:10000});
+      // A corrupted song must fail to play while the previous local WAV and
+      // its object URL remain usable, without changing queue/current title.
+      const rollback = await page.evaluate(async () => {
+        const previousId = tracks[currentIdx]?.id;
+        const previousSrc = window.audio.src;
+        const previousTitle = document.getElementById('npTitle')?.textContent;
+        const brokenId = 'qa-broken-' + Date.now();
+        tracks.push({id:brokenId,name:'损坏音频',artist:'QA',source:'local',
+          lyrics:[],dur:'本地',durSec:0});
+        try {
+          await putAudioBlob({id:brokenId,name:'损坏音频',artist:'QA',
+            mimeType:'audio/wav',size:20,
+            blob:new Blob([new Uint8Array(20).fill(0xa5)],{type:'audio/wav'})});
+          const started=await playTrack(brokenId);
+          let previousBlobUsable=false;
+          try {previousBlobUsable=(await fetch(previousSrc)).ok;} catch {}
+          return {
+            started, currentId:tracks[currentIdx]?.id, previousId,
+            previousSrc, restoredSrc:window.audio.src,
+            previousTitle, title:document.getElementById('npTitle')?.textContent,
+            previousBlobUsable
+          };
+        } finally {
+          tracks.splice(tracks.findIndex(t=>t.id===brokenId),1);
+          await deleteAudioBlob(brokenId);
+        }
+      });
+      assert.equal(rollback.started,false,'corrupt WAV must not report successful playback');
+      assert.equal(rollback.currentId,rollback.previousId,'failed next song must not replace current');
+      assert.equal(rollback.restoredSrc,rollback.previousSrc,'previous audio URL must return');
+      assert.equal(rollback.title,rollback.previousTitle,'now playing should keep previous title');
+      assert.equal(rollback.previousBlobUsable,true,'old WAV Blob must not be prematurely revoked');
       assert.deepEqual(pageErrors, [], 'no uncaught JS errors at ' + width);
       console.log('PASS Chromium ' + width + 'px: viewport, import Blob, reload, playback, cover, LRC, playlist');
     } finally {
