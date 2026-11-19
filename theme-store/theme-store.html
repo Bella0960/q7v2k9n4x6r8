@@ -578,11 +578,22 @@
     }
     function applyTheme(id){
       if(!window.ChatBeauty||!ChatBeauty.setThemePreset){toast('聊天主题模块暂不可用');return false;}
-      var owned=getOwned();
-      if(owned.indexOf(id)<0){owned.push(id);if(!setOwned(owned)){toast('收录失败，请检查本机存储空间');return false;}}
-      if(!ChatBeauty.setThemePreset(id)){toast('主题应用失败');return false;}
+      var chosen=defaultThemes.filter(function(t){return t.id===id;})[0];
+      if(!chosen){toast('主题不存在，请刷新商城后重试');return false;}
+      // Write the actual theme first. If the ownership marker then fails, restore
+      // the prior theme; never display a false "applied" success.
+      var previous=ChatBeauty.getThemePreset(),owned=getOwned();
+      if(!ChatBeauty.setThemePreset(id)){toast('主题保存失败，请检查本机存储空间');return false;}
+      if(owned.indexOf(id)<0){
+        owned.push(id);
+        if(!setOwned(owned)){
+          var restored=ChatBeauty.setThemePreset(previous);
+          toast(restored?'主题未能收录，已恢复之前的外观':'主题收录失败且恢复未成功，请立即检查当前主题及存储空间');
+          return false;
+        }
+      }
       try{window.dispatchEvent(new CustomEvent('maomao:chat-theme-change',{detail:{theme:id}}));}catch(e){}
-      toast('已应用「'+(defaultThemes.filter(function(t){return t.id===id;})[0]||{}).name+'」');
+      toast('已应用「'+chosen.name+'」');
       render();
       return true;
     }
