@@ -62,7 +62,10 @@ const TESTS = [
   // Chat whitespace and iMessage layout must pass on real built pages at 375/390/430px.
   ['node', ['tests/chat-light-surfaces-browser.mjs']],
   // A full Node suite catches regressions outside the narrower account/chat scripts.
-  ['node', ['--test']],
+  // Full Node discovery includes multiple real Chromium suites. Running those
+  // concurrently on the small QA runner can exhaust browser resources and
+  // produce unrelated hook failures; execute ALL suites sequentially instead.
+  ['node', ['--test', '--test-concurrency=1']],
   ['npm', ['run', 'gate:encounter']],
   ['npm', ['run', 'test:fanwai:browser:build']]
 ];
