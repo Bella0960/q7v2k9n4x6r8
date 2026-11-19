@@ -461,3 +461,12 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 在私有隔离环境按保密策略只输出失败文件编号，诊断 #44486630038 确认 **7 条失败全部来自现有 `tests/forum-chat-blockers.test.mjs`**。该测试仍将真实 `sendMsg` 片段按同步 `saveMessages` 提取执行，新增受保护发送改为 `await appendChatSafely` 后导致七条旧夹具无法执行异步分支；不是七项独立用户数据损坏。
 - 定向维护该测试文件：真实 `sendMsg` 源片段仍逐项执行，六项缺 API 与一项被拉黑消息断言保留，夹具改成 async 并模拟按最新已落库快照追加，覆盖失败不清空输入、不显示未存错误、稳定 mid 不重复、无新消息不积累错误、引用保持。未修改原版正式功能，没有移除或跳过测试。
 - 此记录时新提交**尚未完成完整 Node/Vite/Chromium 重新验证**，因此不能称本次 QA 已发布。须经过原封闭完整验证成功后才能启用 QA-only 发布。
+
+
+## 2026-11-19｜CHAT-HISTORY-001 / DATA-008｜多选删除消息并发保护 · 唯一 QA 候选
+
+- 基线：原唯一 QA #299 `23821dea67a92e4c970bf7389751eb1b05a5d448`；来源：#282（`fix/chat-primary-history-precedence-20261114`）经过原文件比对。
+- **只**将聊天详情页 `selectDeleteBtn` 多选删除操作改为使用现有 `replaceChatSafely(originalSnapshot, keep)`，在会话独占锁内检验历史完整快照。其他标签页新消息插入、损坏主存储、锁缺失、账号范围不匹配、容量不足，均拒绝删除而不清理图片引用；成功后重新读取已持久化的历史再渲染，避免错误显示旧快照。
+- 不替换整个聊天页面、`phone_storage.js` 或删除其他会话内容；保留账号/persona/世界书/记忆、消息 mid、图片仓库引用。新增 `tests/chat-selection-delete-atomic.test.mjs` 7 个针对真实源 handler 与原原子模块的回归，纳入 `test:chat:contract`；PWA v259→v260 只增静态缓存版本，不调整安全缓存策略。
+- **当前记录状态：仅 staging 分支。Node/Vite/Chromium 完整验证、实际 QA-only 发布、Android/iPhone 真机均 NOT VERIFIED。** 遵循 `docs/engineering/QA_TEST_RELEASE_RUNBOOK.md`，整合唯一 QA 后通过原隔离执行器测试，不允许漏掉第 17 项完整回归；通过后发布原 Worker 并核对 `preview.mao520.com/qa-build-receipt.json`、Cloudflare 100% 和身份核心未重部署。
+- 后续 #282/#305 主消息图片、转发、线下聊天编辑及其他全量写入者仍按原 PR 分项治理，不能将本项视为全系统绝对原子写入。
