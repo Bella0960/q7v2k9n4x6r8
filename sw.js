@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v265';
+const CACHE_NAME = 'phone-app-pwa-v266';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 function cacheablePublicResponse(response) {
   return !!(response && response.ok && !response.redirected &&
@@ -44,6 +44,8 @@ const APP_SHELL = [
   './theme-store/theme-store.html',
   './chat/chat/chat.html',
   './chat/contacts/contacts.html',
+  './chat/contacts/npc-friends.html',
+  './shared/js/phone/npc-social.js?v=20261108i',
   './chat/moments/moments.html',
   './chat/footprint/footprint.html',
   './wallet/takeout.html',
