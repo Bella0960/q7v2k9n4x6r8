@@ -8,6 +8,7 @@
 <script src="../../shared/js/native-feel.js"></script>
 <script src="../../shared/js/wallpaper-store.js?v=20261026v2"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
+<script src="../../shared/js/phone/role-worldbook-bindings.js?v=20261119a"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   body {
@@ -2607,7 +2608,7 @@
     }
   });
 
-  // ================= 挂载世界书（独立存储键 chat_worldbooks_<roleId>，不注入发消息逻辑） =================
+  // ================= 世界书绑定（与角色档案、AI 上下文共用关系） =================
   var WB_STORAGE_KEY = 'phone_worldbooks';
   var WB_CATEGORY_KEY = 'worldbook_categories';
   var wbCard = document.getElementById('wbCard');
@@ -2655,12 +2656,12 @@
   }
   // 读取当前角色已挂载 ID（null/损坏兜底为空数组）
   function readMountedIds() {
-    try {
-      var raw = localStorage.getItem(wbMountKey());
-      if (raw === null) return [];
-      var arr = JSON.parse(raw);
-      return Array.isArray(arr) ? arr.map(String) : [];
-    } catch (e) { return []; }
+    var result = window.RoleWorldbookBindings && RoleWorldbookBindings.read(roleId);
+    if (!result || !result.ok) {
+      showToast('世界书挂载读取失败，请检查本机存储');
+      return null;
+    }
+    return result.ids;
   }
   function wbEsc(str) {
     return String(str == null ? '' : str)
@@ -2706,7 +2707,9 @@
   actionMount.addEventListener('click', function () {
     var willOpen = !wbCard.classList.contains('is-open');
     if (willOpen) {
-      mountIds = readMountedIds();   // 展开时读取已挂载数据用于回显
+      var newestIds = readMountedIds();
+      if (newestIds === null) return;
+      mountIds = newestIds;   // 展开时重新读取角色档案和旧挂载数据
       renderMountList();
       wbCard.classList.add('is-open');
     } else {
@@ -2729,19 +2732,19 @@
 
   // 保存挂载
   wbSaveBtn.addEventListener('click', function () {
-    try {
-      localStorage.setItem(wbMountKey(), JSON.stringify(mountIds));
-    } catch (e) {
-      showToast('保存失败，请重试');
+    var saved = window.RoleWorldbookBindings && RoleWorldbookBindings.save(roleId, mountIds);
+    if (!saved || !saved.ok) {
+      showToast('保存失败，原有世界书挂载未被确认修改');
       return;
     }
+    mountIds = saved.ids;
     refreshMountSub();
     wbCard.classList.remove('is-open');
     showToast('挂载设置已保存');
   });
 
   // 进入页面即显示当前已挂载数量（不展开）
-  mountIds = readMountedIds();
+  mountIds = readMountedIds() || [];
   refreshMountSub();
 
   // ================= 双方备注（chat_alias_<roleId> = {myAlias, roleAlias}） =================
