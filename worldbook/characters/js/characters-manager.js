@@ -94,15 +94,15 @@ function renderWorldBookBinder(selectedIds) {
     const wanted = Array.isArray(selectedIds) ? selectedIds.map(String) : [];
 
     const books = loadWorldBooks();
+    // Preserve missing IDs: a temporarily unavailable/imported book must not be
+    // silently unmounted just because the user edits a name or avatar.
+    selectedWorldBookIds = [...new Set(wanted)];
     if (!books.length) {
-        selectedWorldBookIds = [];
-        container.innerHTML = '<div class="wb-bind-empty">暂无世界书，请先在世界书页面创建</div>';
+        container.innerHTML = '<div class="wb-bind-empty">暂无可用世界书。原有挂载仍保留，重新导入后可恢复。</div>';
         return;
     }
-
-    // 仅保留「仍存在的世界书」ID，自动剔除已被删除的失效绑定
     const existingIds = books.map(b => String(b.id));
-    selectedWorldBookIds = wanted.filter(id => existingIds.indexOf(id) !== -1);
+    const missingCount = selectedWorldBookIds.filter(id => !existingIds.includes(id)).length;
 
     container.innerHTML = books.map(book => {
         const id = String(book.id);
@@ -114,7 +114,8 @@ function renderWorldBookBinder(selectedIds) {
                 <span class="wb-bind-circle" aria-hidden="true"></span>
             </div>
         `;
-    }).join('');
+    }).join('') + (missingCount ?
+        '<div class="wb-bind-empty">另有 ' + missingCount + ' 本暂不可用的绑定，已保留。</div>' : '');
 }
 
 // 面板级事件委托：点击行切换勾选（容器在脚本执行时已存在，直接绑定一次）
@@ -134,6 +135,43 @@ if (worldBookBindListEl) {
         item.setAttribute('aria-checked', idx === -1 ? 'true' : 'false');
     });
 }
+
+// Keep an already open character editor in sync with a chat-settings tab.
+// The user may be editing the persona at the same time: update ONLY the
+// worldbook selection, and never discard a locally edited selection or draft.
+window.addEventListener('storage', function (event) {
+    if (event && event.key !== null && event.key !== 'ai_custom_characters' &&
+        event.key !== 'phone_worldbooks' &&
+        event.key !== 'chat_worldbooks_' + String(document.getElementById('editRoleId').value || '')) return;
+    const editor = document.getElementById('editorView');
+    const roleId = String(document.getElementById('editRoleId').value || '').trim();
+    if (!roleId || !editor || editor.classList.contains('hidden') ||
+        !editorOriginalState || String(editorOriginalState.roleId || '') !== roleId) return;
+    const latest = window.RoleWorldbookBindings && RoleWorldbookBindings.read(roleId);
+    if (!latest || !latest.ok) {
+        setSaveStatus('世界书更新读取失败，原有编辑内容已保留。', 'error');
+        return;
+    }
+    const normalizeIds = function (arr) {
+        return JSON.stringify([...new Set((arr || []).map(String))].sort());
+    };
+    const previous = editorOriginalState.worldBookIds || [];
+    if (normalizeIds(latest.ids) === normalizeIds(previous)) {
+        // Worldbook titles and availability might have changed.
+        if (normalizeIds(selectedWorldBookIds) === normalizeIds(previous)) {
+            renderWorldBookBinder(latest.ids);
+        }
+        return;
+    }
+    if (normalizeIds(selectedWorldBookIds) !== normalizeIds(previous)) {
+        setSaveStatus('世界书已在其他页面修改。当前勾选保留，保存时会检查冲突。', 'error');
+        return;
+    }
+    // No local worldbook changes: repaint, and advance only this part of the
+    // editor snapshot. Any unsaved text/portrait fields remain untouched.
+    renderWorldBookBinder(latest.ids);
+    editorOriginalState.worldBookIds = latest.ids.slice();
+});
 
 function getRandomColor() {
     return AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
@@ -1410,7 +1448,9 @@ function openAddRole(options) {
     selectedColor = getRandomColor();
     avatarDataUrl = '';
     updateAvatarPreview();
-    renderWorldBookBinder([]);   // 新角色默认不绑定任何世界书
+    renderWorldBookBinder(loadWorldBooks().filter(function (book) {
+        return book.scope !== 'local' && book.enabled !== false;
+    }).map(function (book) { return String(book.id); }));
     currentDraftKey = getDraftKey('');
     editorOriginalState = captureEditorState();
     showView('editor');
@@ -1443,8 +1483,13 @@ function openEditRole(id) {
     selectedColor = target.avatarBg || AVATAR_COLORS[0];
     avatarDataUrl = target.avatar || '';
     updateAvatarPreview();
-    // 回填已绑定的世界书：老角色无该字段时按空数组处理；已被删除的书因不在列表中不会被勾选
-    renderWorldBookBinder(Array.isArray(target.worldBookIds) ? target.worldBookIds : []);
+    // 两个入口共用角色绑定，旧挂载与全局书默认规则由共享桥负责。
+    const bindings = window.RoleWorldbookBindings && RoleWorldbookBindings.read(target.id, target);
+    if (!bindings || !bindings.ok) {
+        setSaveStatus('世界书挂载读取失败，当前资料未被修改。', 'error');
+        return;
+    }
+    renderWorldBookBinder(bindings.ids);
     currentDraftKey = getDraftKey(target.id);
     editorOriginalState = captureEditorState();
     showView('editor');
@@ -1473,6 +1518,11 @@ function handleSaveRole() {
     }
 
     const roles = loadRoles();
+    if (roleStoreReadError) {
+        setSaveStatus('角色资料读取失败，当前更改未保存，请检查本机存储。', 'error');
+        persistEditorDraft(true);
+        return;
+    }
     // 候选只可创建一次；两个标签页重复保存必须拒绝，而不是生成两个相同角色。
     if (!roleId && activeEncounterDraftId) {
         const origin = String(activeEncounterDraftId);
@@ -1509,6 +1559,32 @@ function handleSaveRole() {
             return;
         }
     }
+    let idsToSave = selectedWorldBookIds.slice();
+    if (roleId) {
+        const latest = window.RoleWorldbookBindings && RoleWorldbookBindings.read(roleId);
+        if (!latest || !latest.ok) {
+            setSaveStatus('世界书挂载读取失败，角色资料尚未保存，请检查本机存储。', 'error');
+            persistEditorDraft(true);
+            return;
+        }
+        const originalIds = editorOriginalState &&
+            String(editorOriginalState.roleId || '') === String(roleId) &&
+            Array.isArray(editorOriginalState.worldBookIds)
+            ? editorOriginalState.worldBookIds.map(String) : null;
+        if (originalIds) {
+            const normalizedIds = arr => JSON.stringify([...new Set(arr.map(String))].sort());
+            const changedHere = normalizedIds(idsToSave) !== normalizedIds(originalIds);
+            const changedElsewhere = normalizedIds(latest.ids) !== normalizedIds(originalIds);
+            if (changedHere && changedElsewhere &&
+                normalizedIds(idsToSave) !== normalizedIds(latest.ids)) {
+                setSaveStatus('世界书已在其他页面修改，当前改动未覆盖。请重新打开角色档案确认选择。', 'error');
+                persistEditorDraft(true);
+                return;
+            }
+            if (!changedHere) idsToSave = latest.ids.slice();
+        }
+    }
+
     let savedRoleId = roleId;
 
     if (roleId) {
@@ -1525,7 +1601,7 @@ function handleSaveRole() {
         if (String(target.avatar || '') !== String(avatarDataUrl || '')) target.avatarAssetId = '';
         target.avatar = avatarDataUrl || '';
         target.avatarBg = selectedColor;
-        target.worldBookIds = selectedWorldBookIds.slice();
+        target.worldBookIds = idsToSave.slice();
     } else {
         // 候选来源固定映射到同一正式角色 ID。即使旧 Safari 没有 Web Locks、
         // 两个标签页并发保存同一候选，也不能凭随机 ID 生成两个独立角色。
@@ -1567,14 +1643,16 @@ function handleSaveRole() {
             tone: toneVal,
             appearanceDescription: appearanceVal,
             styleKeywords: styleKeywordsVal,
-            worldBookIds: selectedWorldBookIds.slice(),
+            worldBookIds: idsToSave.slice(),
             replyBubbleMode: 'auto',
             ...(encounterOrigin ? { encounterOrigin: encounterOrigin } : {})
         });
     }
 
-    if (!saveRoles(roles)) {
-        setSaveStatus('保存失败：浏览器可能没有可用存储空间。修改仍保留，请重试。', 'error');
+    const bindingSave = window.RoleWorldbookBindings &&
+        RoleWorldbookBindings.save(savedRoleId, idsToSave, { roles: roles, requireRole: true });
+    if (!bindingSave || !bindingSave.ok) {
+        setSaveStatus('保存失败：角色资料与世界书挂载未能一致保存，修改已保留。', 'error');
         persistEditorDraft(true);
         return;
     }
@@ -1589,6 +1667,7 @@ function handleSaveRole() {
     if (currentDraftKey) {
         try { localStorage.removeItem(currentDraftKey); } catch (e) {}
     }
+    renderWorldBookBinder(bindingSave.ids);
     editorOriginalState = captureEditorState();
     if (activeEncounterDraftId && !roleId && window.MAOMAOEncounter) {
         const result = window.MAOMAOEncounter.removeCandidate(activeEncounterDraftId);
