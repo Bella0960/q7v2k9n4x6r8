@@ -8952,6 +8952,7 @@
             var composerSubmit = document.getElementById('groupComposerSubmit');
             var composerMode = '';
             var composerTargetMid = '';
+            var composerHistoryToken = '';
             if (!isGroupChat) {
                 if (pollAction) pollAction.style.display = 'none';
                 if (chainAction) chainAction.style.display = 'none';
@@ -8968,13 +8969,31 @@
                 var overlay = document.querySelector('.plus-panel-overlay');
                 if (overlay) overlay.classList.remove('active');
             }
-            function closeComposer() {
+            function dismissComposerView() {
                 if (!composerOverlay) return;
                 composerOverlay.classList.remove('active');
                 composerOverlay.setAttribute('aria-hidden', 'true');
                 composerMode = '';
                 composerTargetMid = '';
+                composerHistoryToken = '';
             }
+            function closeComposer() {
+                if (!composerOverlay || !composerOverlay.classList.contains('active')) return;
+                // "Cancel"/tap-outside/submit consumes only this modal entry,
+                // not the group conversation underneath it.
+                var popOwnEntry = !!(composerHistoryToken && window.history.state &&
+                    window.history.state.__maomaoGroupComposer === composerHistoryToken);
+                dismissComposerView();
+                if (popOwnEntry) window.history.back();
+            }
+            window.addEventListener('popstate', function (event) {
+                if (!composerOverlay || !composerOverlay.classList.contains('active')) return;
+                if (!event.state || event.state.__maomaoGroupComposer !== composerHistoryToken) {
+                    // Android system back/edge-swipe closes the interaction
+                    // first; the chat itself remains mounted and scroll intact.
+                    dismissComposerView();
+                }
+            });
             function maybeStartGroupActivity() {
                 const settings = getGroupSettings();
                 const rounds = Number(settings.autoTalkRounds);
@@ -8993,6 +9012,7 @@
             }
             function openComposer(mode, targetMid) {
                 if (!composerOverlay || !composerForm) { showToast('互动面板暂时无法打开'); return; }
+                if (composerOverlay.classList.contains('active')) return;
                 if (aiSending) { showToast('等当前角色回复结束后再发起互动'); return; }
                 composerMode = mode;
                 composerTargetMid = targetMid || '';
@@ -9023,9 +9043,21 @@
                     composerEntry.placeholder = '写下这一条内容';
                     composerSubmit.textContent = '提交内容';
                 }
+                try {
+                    composerHistoryToken = 'group-interaction-' + Date.now() + '-' +
+                        Math.random().toString(36).slice(2);
+                    window.history.pushState(Object.assign({}, window.history.state || {}, {
+                        __maomaoGroupComposer: composerHistoryToken
+                    }), '', window.location.href);
+                } catch (error) {
+                    // Browser environments that prohibit pushState still have
+                    // the explicit Cancel and Escape buttons.
+                    composerHistoryToken = '';
+                }
                 composerOverlay.classList.add('active');
                 composerOverlay.setAttribute('aria-hidden', 'false');
                 setTimeout(function () {
+                    if (!composerOverlay.classList.contains('active')) return;
                     var focusTarget = mode === 'join' ? composerEntry : composerQuestion;
                     if (focusTarget) focusTarget.focus();
                 }, 80);
