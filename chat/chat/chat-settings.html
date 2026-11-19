@@ -2049,6 +2049,10 @@
         group.userMembership !== 'left' && group.userMembership !== 'declined');
     }
     function requireGroupOwner(group) {
+      if (!group) {
+        showToast('群聊已不存在，请返回聊天列表');
+        return false;
+      }
       if (canManageGroup(group)) return true;
       showToast('只有当前群主可以修改群资料');
       return false;
