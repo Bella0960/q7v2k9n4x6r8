@@ -15,6 +15,7 @@ const chatDetailSource = read('chat/chat/chat-detail.html');
 const datePageSource = read('chat/date/date.html');
 const forumDetailSource = read('forum/forum-detail.html');
 const callPageSource = read('chat/call/call.html');
+const atomicCallSource = read('shared/js/phone/chat-history-atomic.js');
 const couplePageSource = read('couple/couple.html');
 const shopPageSource = read('wallet/shop.html');
 const takeoutPageSource = read('wallet/takeout.html');
@@ -647,14 +648,30 @@ test('论坛分享：保存并读回目标角色消息后才显示成功', () =>
 });
 
 
-function loadGroupCallEndCall(storage, localStorage = createLocalStorage()) {
+function loadGroupCallEndCall(options = {}) {
   const alerts = [];
   const sessionValues = {};
+  const original = options.history || [{ mid: 'saved', type: 'image', assetId: 'old-photo' }];
+  const localStorage = createLocalStorage({
+    chat_history_groupA: JSON.stringify(original)
+  });
+  const callWindow = {
+    localStorage,
+    navigator: options.withLocks === false ? {} : {
+      locks: { request: async (_name, _opts, callback) => callback() }
+    },
+    location: { href: '' }
+  };
+  runInNewContext(atomicCallSource, { window: callWindow }, {
+    filename: 'shared/js/phone/chat-history-atomic.js'
+  });
+  const hangup = { disabled: false };
   const sandbox = {
     connectTimer: null,
     tickTimer: null,
     clearTimeout() {},
     clearInterval() {},
+    document: { getElementById: () => hangup },
     sessionStorage: {
       setItem(key, value) { sessionValues[key] = String(value); }
     },
@@ -664,45 +681,50 @@ function loadGroupCallEndCall(storage, localStorage = createLocalStorage()) {
     seconds: 65,
     isGroupCall: true,
     currentGroup: { members: [{ nickname: '成员甲' }] },
-    window: { PhoneStorage: storage, location: { href: '' } },
+    window: callWindow,
     localStorage,
     formatTime: (seconds) => String(seconds),
     alert: (message) => alerts.push(message),
     console: { error() {} },
     encodeURIComponent
   };
-  runInNewContext(extractFunction(callPageSource, 'endCall'), sandbox, {
+  // endCall is now async; extractFunction handles the body but not the prefix.
+  runInNewContext('var endingCall=false;\nasync ' +
+    extractFunction(callPageSource, 'endCall'), sandbox, {
     filename: 'chat/call/call.html#endCall'
   });
-  return { endCall: sandbox.endCall, alerts, sessionValues, window: sandbox.window };
+  return {
+    endCall: sandbox.endCall, alerts, sessionValues, window: callWindow,
+    hangup, history: () => JSON.parse(localStorage.getItem('chat_history_groupA'))
+  };
 }
 
-test('群通话：保存并读回通话卡片后才视为聊天记录已保存', () => {
-  let persisted = [];
-  const sandbox = loadGroupCallEndCall({
-    getChatHistory: () => JSON.parse(JSON.stringify(persisted)),
-    saveChatHistory: (id, list) => {
-      assert.equal(id, 'groupA');
-      persisted = JSON.parse(JSON.stringify(list));
-      return true;
-    }
-  });
-
-  sandbox.endCall();
-  assert.equal(persisted.length, 1);
-  assert.equal(persisted[0].type, 'call');
-  assert.equal(persisted[0].call.title, '群语音通话');
+test('群通话：安全追加通话卡片，保留原消息及媒体字段', async () => {
+  const sandbox = loadGroupCallEndCall();
+  await sandbox.endCall();
+  const history = sandbox.history();
+  assert.equal(history.length, 2);
+  assert.deepEqual(history[0], { mid: 'saved', type: 'image', assetId: 'old-photo' });
+  assert.equal(history[1].type, 'call');
+  assert.equal(history[1].call.title, '群语音通话');
+  assert.deepEqual(Array.from(history[1].call.participants), ['成员甲']);
+  assert.equal(sandbox.hangup.disabled, true);
   assert.deepEqual(sandbox.alerts, []);
   assert.match(sandbox.window.location.href, /chat-detail\.html\?id=groupA/);
 });
 
-test('群通话：PhoneStorage 写入失败时明确提示，不把失败当成功', () => {
-  const sandbox = loadGroupCallEndCall({
-    getChatHistory: () => [],
-    saveChatHistory: () => false
-  });
+test('群通话：重复点击挂断只产生一张通话卡片', async () => {
+  const sandbox = loadGroupCallEndCall();
+  await Promise.all([sandbox.endCall(), sandbox.endCall()]);
+  assert.equal(sandbox.history().length, 2);
+});
 
-  sandbox.endCall();
+test('群通话：锁不可用时保留原聊天并明确提示', async () => {
+  const sandbox = loadGroupCallEndCall({ withLocks: false });
+  await sandbox.endCall();
+  assert.deepEqual(sandbox.history(), [
+    { mid: 'saved', type: 'image', assetId: 'old-photo' }
+  ]);
   assert.equal(sandbox.alerts.length, 1);
   assert.match(sandbox.alerts[0], /群通话记录未能保存/);
   assert.match(sandbox.window.location.href, /chat-detail\.html\?id=groupA/);
