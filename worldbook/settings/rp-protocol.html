@@ -376,21 +376,10 @@
   // 伴侣协议属于应用级设置，所有单聊与群聊共用同一份内容。
   var STORAGE_KEY = 'chat_rp_protocol_';
 
-  function migrateLegacyProtocol() {
-    try {
-      // 兼容旧版按角色保存的协议：只复制第一份可用内容，不删除旧键。
-      for (var i = 0; i < localStorage.length; i++) {
-        var key = localStorage.key(i);
-        if (!key || key === STORAGE_KEY || key.indexOf(STORAGE_KEY) !== 0) continue;
-        var value = localStorage.getItem(key);
-        if (value && value.trim()) {
-          localStorage.setItem(STORAGE_KEY, value);
-          return value;
-        }
-      }
-    } catch (e) {}
-    return '';
-  }
+  // Legacy per-character keys are deliberately read-only here. Selecting the
+  // first one as an app-wide protocol could silently replace every character's
+  // user-authored rules with an unrelated character's old instructions.
+  // Preserve all legacy values for explicit recovery; only Save/Reset may write.
 
   var textarea = document.getElementById('protocolText');
 
@@ -398,10 +387,10 @@
   // 核心升级：人设强制读取 + 语气红线 + 防漂移 + 活人感
   var DEFAULT_PROTOCOL = String(window.MAOMAO_RP_DEFAULT_PROTOCOL || '');
 
-  // 加载全局协议；若旧版本只保存过角色专属协议，则迁移一份为全局版本。
+  // The editor and every online/offline AI turn read the same canonical key.
+  // Absence means use the shared default in memory, not auto-copy a role key.
   try {
     var saved = localStorage.getItem(STORAGE_KEY);
-    if (saved == null || !saved.trim()) saved = migrateLegacyProtocol();
     textarea.value = saved != null && saved.trim() ? saved : DEFAULT_PROTOCOL;
   } catch (e) {
     textarea.value = DEFAULT_PROTOCOL;
