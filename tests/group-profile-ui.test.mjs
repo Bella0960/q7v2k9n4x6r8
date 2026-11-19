@@ -189,6 +189,9 @@ test('role-owned groups are read-only: no edit, member removal or invite shortcu
     await page.locator('#gpProfileSettings > summary').click();
     assert.equal(await page.locator('#gpInfoSaveBtn').isDisabled(),true);
     assert.equal(await page.locator('#gpNoticeSaveBtn').isDisabled(),true);
+    assert.equal(await page.locator('#gpNameInput').evaluate(el=>el.readOnly),true);
+    assert.equal(await page.locator('#gpNoticeInput').evaluate(el=>el.readOnly),true);
+    assert.equal(await page.locator('#gpDismissCard').isVisible(),false);
     await page.locator('#actionGroupManage').click();
     assert.equal(await page.locator('#gpManageCard').isVisible(),true);
     assert.equal(await page.locator('#gpInviteBlock').isVisible(),false);
