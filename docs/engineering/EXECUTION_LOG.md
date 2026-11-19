@@ -444,3 +444,12 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 状态：本条为**待验收**修复。原生 Node、Vite、Chromium、唯一 QA-only 发布和 Android/iPhone 真机尚未在本条记录时确认。发布前必须按原 `docs/engineering/QA_TEST_RELEASE_RUNBOOK.md` 完整验证，成功后回查固定 SHA、100% Cloudflare 流量、身份核心连续性。
 
 - **回归诊断补充**：统一 QA 第 17 道全量 Node 测试初次失败，保密隔离分类定位旧版静态断言在 `tests/chat-continue-button.test.mjs`、`tests/chat-persona-source-contract.test.mjs`；已增量同步新脚本版本及手动继续合同。另发现 `tests/group-chat-invite-e2e.test.mjs` 的浏览器真实显示回归：此前完全隐藏群流式正文，会跳过既有临时气泡创建，导致成功模型回复未按原页面链路显示。现已撤回这个广泛抑制，仅对确定跑偏的片段清空显示，保留完整正常流式 DOM 生命周期。此修复需再跑真实 Chromium 与完整 QA-only 发布门禁，不提前宣称通过。
+
+
+## 2026-11-19｜DATA-008 / CHAT-HISTORY-001｜P0 主聊天发送会话锁保护 · QA 候选
+
+- 基于唯一 QA #299 `d6664ea8212fc4a44277939b47f1e3599597bec0`，定向移植原 #282 的 `appendChatSafely` / `replaceChatSafely` 适配层；仅迁移普通用户消息、屏蔽状态消息、缺少 API Key 时的用户消息及提示为 `ChatHistoryAtomic.appendManyIf` 会话独占锁提交。不把 #282 旧版完整聊天页覆盖到 QA。
+- 常规发送持久化成功后重新读取最新对话快照再组装 AI 上下文；保存失败仍保留输入、引用与旧记录。拒绝无锁浏览器、损坏的原始 JSON、账号 scope 不匹配等风险，不退回旧全量覆盖。
+- 聊天页面提前加载 QA 已存在的 `chat-history-atomic.js?v=20261118v3`；新增 `tests/chat-primary-send-lock.test.mjs`（含并发 2000 条富消息、修改冲突、坏数据与锁缺失及源码入口覆盖）并接入 `test:chat:contract`；SW 版本仅增量 v258→v259，不动认证网络优先策略及任何账号/世界书/角色数据键。
+- **此记录时状态：仅 QA 派生工作分支，不代表完整验收或发布成功**。下一步原隔离执行器完整 Node/Vite/Chromium 验证并按既有 QA-only 发布手册核实源提交、Worker 流量、身份核心及 `preview.mao520.com` 同源回执。
+- 未迁移的 AI 最终回复、群互动、图片/转发/编辑/清空仍有独立保护范围，应逐项测试合入；本次不能宣称 #282 全部完成。
