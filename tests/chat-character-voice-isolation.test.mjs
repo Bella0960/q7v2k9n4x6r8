@@ -100,7 +100,7 @@ test('a single concise group correction replaces duplicated welcome rules', () =
   assert.equal(html.split('【群聊口吻纠偏】').length-1,1);
   assert.doesNotMatch(html,/【群聊自然接话】/);
   assert.match(html,/随时在线待命/);
-  assert.match(html,/chat-presence-policy\.js\?v=20261118voicepurity1/);
+  assert.match(html,/chat-presence-policy\.js\?v=20261119scheduled1/);
   assert.match(html,/roleModelHistory = window\.MAOMAOChatRoleContext\.getGroupModelHistory/);
 });
 
