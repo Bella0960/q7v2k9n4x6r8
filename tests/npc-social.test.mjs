@@ -698,3 +698,32 @@ test('NPC acceptance remains retryable if saved welcome cannot be verified on re
   assert.equal(accepted.ok, true);
   assert.equal(h.histories[accepted.roleId].length, 1, 'retry recognizes existing welcome');
 });
+
+test('NPC welcome marker from a different request cannot accept a pending friend', async () => {
+  const h = createHarness();
+  const { request } = await h.context.NPCSocial.discoverNow();
+  h.histories[request.npc.id] = [{
+    role: 'assistant', text: '别人的问候', npcFriendWelcome: true,
+    npcFriendRequestId: 'other-request'
+  }];
+  h.setGreetingSaveFailure(true);
+  assert.throws(() => h.context.NPCSocial.accept(request.id), /首次问候保存失败/);
+  assert.equal(h.context.NPCSocial.getPendingCount(), 1);
+  h.context.NPCSocial.reconcileAccepted();
+  assert.equal(h.context.NPCSocial.getPendingCount(), 1, 'foreign marker cannot reconcile acceptance');
+  h.setGreetingSaveFailure(false);
+  h.context.NPCSocial.accept(request.id);
+  assert.equal(h.histories[request.npc.id].length, 2);
+  assert.equal(h.histories[request.npc.id][0].npcFriendRequestId, request.id);
+});
+
+test('NPC legacy welcome text remains compatible without a request ID', async () => {
+  const h = createHarness();
+  const { request } = await h.context.NPCSocial.discoverNow();
+  h.histories[request.npc.id] = [{
+    role: 'assistant', text: request.npc.greeting, npcFriendWelcome: true
+  }];
+  const accepted = h.context.NPCSocial.accept(request.id);
+  assert.equal(accepted.ok, true);
+  assert.equal(h.histories[request.npc.id].length, 1, 'legacy welcome must not duplicate');
+});
