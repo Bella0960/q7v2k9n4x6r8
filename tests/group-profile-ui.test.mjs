@@ -288,6 +288,106 @@ test('group-play back chain returns settings -> current chat, never loops', asyn
   } finally {await ctx.close();}
 });
 
+test('silently swallowed group saves do not claim success or erase the previous value', async () => {
+  const ctx=await browser.newContext({viewport:{width:390,height:844}});
+  const page=await ctx.newPage();
+  try {
+    const original=group('g1','夜航');
+    await setup(page,{phone_groups:[original]});
+    await page.goto(origin+'/chat/chat/chat-settings.html?roleId=g1');
+    await page.locator('#gpProfileSettings > summary').click();
+    await page.locator('#actionGroupInfo').click();
+    await page.locator('#gpNameInput').fill('新的群名');
+    await page.evaluate(() => {
+      const originalSet=Storage.prototype.setItem;
+      Storage.prototype.setItem=function(key,value){
+        if(key==='phone_groups') return; // simulate a silent storage quota shim
+        return originalSet.call(this,key,value);
+      };
+    });
+    await page.locator('#gpInfoSaveBtn').click();
+    assert.match(await page.locator('#csToast').innerText(),/保存失败/);
+    assert.equal(await page.locator('#gpNameText').innerText(),'夜航');
+    assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('phone_groups'))[0]),original);
+  } finally {await ctx.close();}
+});
+
+test('silently swallowed alias or notice saves are reported as failures', async () => {
+  const ctx=await browser.newContext({viewport:{width:390,height:844}});
+  const page=await ctx.newPage();
+  try {
+    await setup(page,{phone_groups:[group('g1','夜航')]});
+    await page.goto(origin+'/chat/chat/chat-settings.html?roleId=g1');
+    await page.locator('#gpProfileSettings > summary').click();
+    await page.evaluate(() => {
+      const originalSet=Storage.prototype.setItem;
+      Storage.prototype.setItem=function(key,value){
+        if(key==='chat_group_alias_g1' || key==='chat_group_notice_g1') return;
+        return originalSet.call(this,key,value);
+      };
+    });
+    await page.locator('#actionGroupAlias').click();
+    await page.locator('#gpAliasInput').fill('我的群备注');
+    await page.locator('#gpAliasSaveBtn').click();
+    assert.match(await page.locator('#csToast').innerText(),/群备注保存失败/);
+    await page.locator('#actionGroupNotice').click();
+    await page.locator('#gpNoticeInput').fill('一条公告');
+    await page.locator('#gpNoticeSaveBtn').click();
+    assert.match(await page.locator('#csToast').innerText(),/群公告保存失败/);
+    const values=await page.evaluate(() => [
+      localStorage.getItem('chat_group_alias_g1'),
+      localStorage.getItem('chat_group_notice_g1')
+    ]);
+    assert.deepEqual(values,[null,null]);
+  } finally {await ctx.close();}
+});
+
+test('silently swallowed chat deletion cannot produce a false success toast', async () => {
+  const ctx=await browser.newContext({viewport:{width:390,height:844}});
+  const page=await ctx.newPage();
+  try {
+    const history=[{role:'user',text:'必须保留'}];
+    await setup(page,{phone_groups:[group('g1','夜航')],chat_history_g1:history});
+    await page.goto(origin+'/chat/chat/chat-settings.html?roleId=g1');
+    await page.evaluate(() => {
+      window.confirm=()=>true;
+      const originalRemove=Storage.prototype.removeItem;
+      Storage.prototype.removeItem=function(key) {
+        if(key==='chat_history_g1') return; // silent no-op deletion
+        return originalRemove.call(this,key);
+      };
+      document.getElementById('actionGpClearRecord').click();
+    });
+    assert.match(await page.locator('#csToast').innerText(),/清理失败/);
+    assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('chat_history_g1'))),history);
+  } finally {await ctx.close();}
+});
+
+test('silently swallowed group dissolution cannot delete chat history or navigate away', async () => {
+  const ctx=await browser.newContext({viewport:{width:390,height:844}});
+  const page=await ctx.newPage();
+  try {
+    const original=group('g1','夜航');
+    const history=[{role:'user',text:'这是原来的聊天'}];
+    await setup(page,{phone_groups:[original],chat_history_g1:history});
+    await page.goto(origin+'/chat/chat/chat-settings.html?roleId=g1');
+    const pageUrl=page.url();
+    await page.evaluate(() => {
+      window.confirm=()=>true;
+      const originalSet=Storage.prototype.setItem;
+      Storage.prototype.setItem=function(key,value) {
+        if(key==='phone_groups') return;
+        return originalSet.call(this,key,value);
+      };
+      document.getElementById('actionGpDismiss').click();
+    });
+    assert.equal(page.url(),pageUrl);
+    assert.match(await page.locator('#csToast').innerText(),/解散失败/);
+    assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('phone_groups'))[0]),original);
+    assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('chat_history_g1'))),history);
+  } finally {await ctx.close();}
+});
+
 test('failed chat clearing never falsely reports success or removes data', async () => {
   const ctx=await browser.newContext({viewport:{width:390,height:844}});
   const page=await ctx.newPage();
