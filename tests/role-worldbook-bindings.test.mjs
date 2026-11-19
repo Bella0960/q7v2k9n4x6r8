@@ -244,3 +244,118 @@ test('chat settings real event handlers: expand, mount, save, reopen, unmount', 
   assert.equal(notifications.at(-1), '挂载设置已保存');
 });
 
+
+
+test('character save preserves newer worldbook mounts from another open page', () => {
+  const manager = read('worldbook/characters/js/characters-manager.js');
+  const start = manager.indexOf('function handleSaveRole() {');
+  const end = manager.indexOf('// 删除角色', start);
+  assert.ok(start >= 0 && end > start, 'must test actual character save handler');
+  const snippet = manager.slice(start, end);
+
+  function makeEditor(initialIds) {
+    const { binding, storage } = harness({
+      ai_custom_characters: json([{ id: 'role_a', name: 'Alpha', persona: 'old persona',
+        avatar: '', avatarBg: '#ccc', tone: '', styleKeywords: [], worldBookIds: ['a'] }]),
+      phone_worldbooks: json([{ id: 'a', scope: 'local' }, { id: 'b', scope: 'local' },
+        { id: 'c', scope: 'local' }])
+    });
+    const fieldValues = {
+      editRoleId: 'role_a', editRoleName: 'Alpha', editRolePersona: 'updated persona',
+      editRoleTone: '', editRoleAppearance: '', editRoleStyleKeywords: ''
+    };
+    const document = { getElementById: id => ({
+      value: fieldValues[id] || '', focus() {}
+    }) };
+    const setup = new Function('window', 'localStorage', 'document', 'initialIds', `
+      const RoleWorldbookBindings = window.RoleWorldbookBindings;
+      let selectedWorldBookIds = initialIds.slice();
+      let editorOriginalState = { roleId: 'role_a', worldBookIds: ['a'] };
+      let avatarDataUrl = '', selectedColor = '#ccc', currentDraftKey = 'draft:role_a';
+      let latestStatus = '', draftSaved = false;
+      const loadRoles = () => JSON.parse(localStorage.getItem('ai_custom_characters'));
+      const setSaveStatus = (text) => { latestStatus = text; };
+      const persistEditorDraft = (force) => { draftSaved = !!force; };
+      const renderWorldBookBinder = (ids) => { selectedWorldBookIds = ids.slice(); };
+      const getDraftKey = (id) => 'draft:' + id;
+      const captureEditorState = () => ({
+        roleId: document.getElementById('editRoleId').value,
+        worldBookIds: selectedWorldBookIds.slice()
+      });
+      ${snippet}
+      return {
+        save: handleSaveRole,
+        ids: () => selectedWorldBookIds.slice(),
+        status: () => latestStatus,
+        drafted: () => draftSaved
+      };
+    `);
+    const editor = setup({ RoleWorldbookBindings: binding }, storage, document, initialIds);
+    const getRole = () => JSON.parse(storage.getItem('ai_custom_characters'))[0];
+    return { binding, editor, getRole };
+  }
+
+  const unchanged = makeEditor(['a']);
+  assert.equal(unchanged.binding.save('role_a', ['b']).ok, true);
+  unchanged.editor.save();
+  assert.equal(unchanged.getRole().persona, 'updated persona');
+  assert.deepEqual(unchanged.getRole().worldBookIds, ['b']);
+  assert.deepEqual(unchanged.editor.ids(), ['b']);
+
+  const conflict = makeEditor(['c']);
+  assert.equal(conflict.binding.save('role_a', ['b']).ok, true);
+  conflict.editor.save();
+  assert.equal(conflict.getRole().persona, 'old persona');
+  assert.deepEqual(conflict.getRole().worldBookIds, ['b']);
+  assert.match(conflict.editor.status(), /已在其他页面修改/);
+  assert.equal(conflict.editor.drafted(), true);
+
+  const localOnly = makeEditor(['c']);
+  localOnly.editor.save();
+  assert.equal(localOnly.getRole().persona, 'updated persona');
+  assert.deepEqual(localOnly.getRole().worldBookIds, ['c']);
+});
+
+test('chat AI context validation marks saved user bubble retryable without making an API request', () => {
+  const detail = read('chat/chat/chat-detail.html');
+  const start = detail.indexOf('            // 世界书：召回当前话题相关条目');
+  const end = detail.indexOf('            // 协议变量替换', start);
+  assert.ok(start >= 0 && end > start, 'must test the actual chat context block');
+  const snippet = detail.slice(start, end);
+  const { binding, storage } = harness({
+    ai_custom_characters: json([{ id: 'role_a', worldBookIds: ['a'] }]),
+    // The mounted relationship is damaged; even with no worldbook list the
+    // request must not silently omit it and proceed to a paid API call.
+    chat_worldbooks_role_a: '{broken'
+  });
+  const result = { failed: [], notifications: [], rendered: false };
+  const environment = {
+    window: { RoleWorldbookBindings: binding },
+    localStorage: storage, result
+  };
+  const execute = new Function('environment', `
+    const { window, localStorage, result } = environment;
+    const RoleWorldbookBindings = window.RoleWorldbookBindings;
+    const aliasRoleId = 'role_a', currentRoleId = 'role_a', roleId = 'role_a';
+    const currentCharacter = { id: 'role_a' }, isGroupChat = false;
+    const groupReplyPick = null, retryTarget = null, isRegen = false, contextOnly = false;
+    const silent = false, text = 'hello', CTX_CAP = { worldbook: 8000 };
+    const historyList = [{ role: 'user', mid: 'm1', time: 1, text: 'hello' }];
+    const getRoleById = () => null, capText = x => String(x || '');
+    const showToast = text => result.notifications.push(text);
+    const _vl = null, vlRefresh = () => {}, renderAllMessages = () => {
+      result.rendered = true;
+    };
+    const _markUserSendFailed = (list, mid, time, reason) => {
+      result.failed.push({ mid, time, reason }); return true;
+    };
+    ${snippet}
+    result.validated = true;
+  `);
+  execute(environment);
+  assert.equal(result.validated, undefined, 'failed context must return before AI construction');
+  assert.deepEqual(result.failed, [{ mid: 'm1', time: 1, reason: 'worldbook-read' }]);
+  assert.equal(result.rendered, true);
+  assert.match(result.notifications[0], /本轮未请求 AI/);
+  assert.match(detail, /msg\.sendFailedReason === 'worldbook-read'/);
+});
