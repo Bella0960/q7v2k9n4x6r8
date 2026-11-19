@@ -238,6 +238,19 @@ Acceptance before implementation:
 
 ## Feature implementation
 
+### CHAT-WORLDBOOK-001 — Synchronize character and chat worldbook mounts
+**Priority:** P0 · **Status:** DEVELOPED ON DRAFT BRANCH; NODE/BROWSER/QA NOT VERIFIED (2026-11-19)
+
+User-visible acceptance:
+- The role editor and chat-settings worldbook binder read the same effective selected IDs, including legacy `chat_worldbooks_<id>` arrays/objects.
+- Explicit save at either entry mirrors the role's `worldBookIds` and old chat mount; failure restores original values and never displays success.
+- Conflicting historical bindings remain readable (non-destructive union), then become identical on the next explicit save; explicit removal is respected.
+- AI private-chat context contains only the selected role's lore; group turns contain only the speaking member's lore plus explicitly mounted group lore. PhoneContext callers also respect legacy mounts.
+- Character/group IDs, worldbook definitions, worldbook entries, memory, message history, API settings and protocol rules are unchanged.
+- Synthetic role isolation, legacy format, clear, disabled, corruption, storage failure and prompt selection regression passes; Node/Vite/Android/iPhone and the only QA site require independent proof.
+
+Implementation branch: `CHAT-WORLDBOOK-001/binding-sync-20261119`. Do not merge before integration review and real-device acceptance. The only QA release target remains `preview.mao520.com` via PR #299's controlled process.
+
 ### AI-IMG-001 — Complete role-based image generation and gallery
 **Priority:** P1 · **Status:** IN PROGRESS
 
