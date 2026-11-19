@@ -435,7 +435,7 @@ function loadHistoryFunctions(storageSlots, contactId = 'roleA', sharedStorage) 
       }
     }
   };
-  const code = 'var _chatHistoryBaselines = new WeakMap();\\n' +
+  const code = 'var _chatHistoryBaselines = new WeakMap();\n' +
     ['_rememberChatBaseline', '_inheritChatBaseline', '_messageIdentity', '_readBackHistory', '_verifyHistoryRoundTrip', 'loadMessages', 'saveMessages']
     .map((name) => extractFunction(chatDetailSource, name))
     .join('\n');
