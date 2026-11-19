@@ -260,3 +260,34 @@
 .sf-dialog .sf-theme-detail-copy{display:grid;gap:5px;margin:15px 0}
 .sf-dialog .sf-theme-detail-copy strong{font-weight:550;font-size:11px;color:#333}
 .sf-dialog .sf-theme-detail-copy p{font-size:11px;line-height:1.65;color:#777;margin:0 0 8px;overflow-wrap:anywhere}
+
+
+/* Theme covers need enough horizontal space for native multi-screen art on phones.
+   Keep each theme as a clearly separated editorial spread, not a cramped half card. */
+.store-app .sf-theme-collection{gap:17px}
+.store-app .sf-theme-item{
+ padding:18px 15px 17px;margin:0;border:1px solid #ededed;border-radius:14px;
+ background:#fbfbfb;box-shadow:0 2px 10px rgba(0,0,0,.018)
+}
+.store-app .sf-theme-item:first-child{padding-top:18px}
+.store-app .sf-theme-item:last-child{border-bottom:1px solid #ededed}
+.store-app .sf-theme-layout{display:flex;flex-direction:column;gap:12px;align-items:stretch}
+.store-app .sf-theme-cover{height:177px;width:100%;flex:none}
+.store-app .sf-theme-cover .product-art{height:177px!important;min-height:177px!important;max-height:177px!important}
+.store-app .sf-theme-info{display:grid;grid-template-columns:minmax(0,1fr) minmax(104px,36%);column-gap:14px;row-gap:6px}
+.store-app .sf-theme-info>p:first-child{align-self:start;font-size:11px;line-height:1.6}
+.store-app .sf-theme-scope{align-self:start;padding-left:10px;border-left:1px solid #e4e4e4}
+.store-app .sf-theme-note{grid-column:1/-1;font-size:10px;color:#888;line-height:1.55}
+.store-app .sf-theme-collection .sf-theme-item .sf-favorite{border-radius:9px;color:#777}
+.store-app .sf-theme-collection .sf-theme-item .sf-favorite.selected{color:#222}
+@media(min-width:560px){
+ .store-app .sf-theme-cover,.store-app .sf-theme-cover .product-art{height:207px!important;min-height:207px!important;max-height:207px!important}
+}
+@media(max-width:360px){
+ .store-app .sf-theme-collection{gap:13px}
+ .store-app .sf-theme-item{padding:15px 12px;gap:10px}
+ .store-app .sf-theme-cover,.store-app .sf-theme-cover .product-art{height:152px!important;min-height:152px!important;max-height:152px!important}
+ .store-app .sf-theme-info{grid-template-columns:minmax(0,1fr) minmax(93px,36%);column-gap:9px}
+ .store-app .sf-theme-info>p:first-child{font-size:10px}
+ .store-app .sf-theme-scope{padding-left:8px}
+}
