@@ -64,6 +64,31 @@ export function parseVapidKeys(env) {
   };
 }
 
+// Only stable, non-secret reason categories may leave the transport layer.
+// Never surface subscription URLs, raw error messages or provider token strings.
+function classifyTransportReason(error) {
+  const diagnostics = [
+    error?.name, error?.code, error?.message,
+    error?.cause?.name, error?.cause?.code, error?.cause?.message
+  ].map(value => String(value || '').slice(0, 400)).join(' ');
+  if (/CERT_|ERR_TLS_|ERR_SSL_|SSL_|TLS |certificate|handshake|UNABLE_TO_VERIFY/i.test(diagnostics)) {
+    return 'tls';
+  }
+  if (/ENOTFOUND|EAI_AGAIN|DNS|name resolution|getaddrinfo/i.test(diagnostics)) {
+    return 'dns';
+  }
+  if (/redirect|too many redirects/i.test(diagnostics)) {
+    return 'redirect';
+  }
+  if (/subrequest|access denied|forbidden egress|not allowed to fetch|connection limit/i.test(diagnostics)) {
+    return 'egress';
+  }
+  if (/ECONNRESET|ECONNREFUSED|ETIMEDOUT|connection reset|socket hang up|connection refused/i.test(diagnostics)) {
+    return 'connection';
+  }
+  return null;
+}
+
 function endpointAudience(endpoint) {
   const url = new URL(endpoint);
   return `${url.protocol}//${url.host}`;
@@ -205,25 +230,52 @@ export async function sendWebPush(
     if (controller && typeof setTimeout === 'function') {
       timeoutId = setTimeout(() => controller.abort(), PUSH_SEND_TIMEOUT_MS);
     }
-    response = await fetchImpl(endpoint, {
-      method: 'POST',
-      redirect: 'error',
-      headers: {
-        Authorization: authorization,
-        ...(body ? {
-          'Content-Encoding': 'aes128gcm',
-          'Content-Type': 'application/octet-stream'
-        } : {}),
-        TTL: String(PUSH_TTL_SECONDS),
-        Urgency: 'normal'
-      },
-      ...(body ? { body } : {}),
-      signal: controller?.signal
-    });
+    // A redirect: 'error' makes a provider's 307/308 indistinguishable
+    // from a TLS/DNS fetch failure. Inspect redirects without following
+    // cross-origin URLs or ever forwarding VAPID auth to a different origin.
+    const originalOrigin = new URL(endpoint).origin;
+    let requestUrl = endpoint;
+    let redirects = 0;
+    while (true) {
+      response = await fetchImpl(requestUrl, {
+        method: 'POST',
+        redirect: 'manual',
+        headers: {
+          Authorization: authorization,
+          ...(body ? {
+            'Content-Encoding': 'aes128gcm',
+            'Content-Type': 'application/octet-stream'
+          } : {}),
+          TTL: String(PUSH_TTL_SECONDS),
+          Urgency: 'normal'
+        },
+        ...(body ? { body } : {}),
+        signal: controller?.signal
+      });
+
+      // 307/308 preserve method/body. A single HTTPS same-origin hop is safe;
+      // 301/302/303 or cross-origin/invalid redirects remain HTTP failures.
+      const isPreservingRedirect = response.status === 307 || response.status === 308;
+      const location = isPreservingRedirect ? response.headers?.get?.('location') : null;
+      if (!location || redirects >= 1) break;
+      let target;
+      try { target = new URL(location, requestUrl); } catch { break; }
+      if (target.protocol !== 'https:' ||
+          target.origin !== originalOrigin ||
+          target.username || target.password || target.hash) break;
+      // Revocation can occur while the first request is in flight.
+      if (typeof beforeSend === 'function' && !beforeSend()) {
+        return { ok: false, statusCode: 0, gone: false, skipped: true };
+      }
+      requestUrl = target.href;
+      redirects += 1;
+    }
   } catch (error) {
     const sendError = new PushSendError(0, '推送服务网络请求失败');
     sendError.failurePhase = 'transport';
-    sendError.failureKind = error?.name === 'AbortError' ? 'request_timeout' : 'network_error';
+    sendError.failureKind = error?.name === 'AbortError' || controller?.signal?.aborted
+      ? 'request_timeout' : 'network_error';
+    sendError.transportReason = classifyTransportReason(error);
     throw sendError;
   } finally {
     if (timeoutId != null && typeof clearTimeout === 'function') clearTimeout(timeoutId);
