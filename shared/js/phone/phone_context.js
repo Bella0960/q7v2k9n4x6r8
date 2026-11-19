@@ -235,6 +235,18 @@
         // 2. 世界书：只带入此刻相关的生活细节，不把整本设定反复塞给模型
         try {
             var wbs = Storage.getWorldbooks();
+            var selection = global.RoleWorldbookBindings &&
+                global.RoleWorldbookBindings.filterBooks(contactId, wbs, role);
+            // PhoneContext may also be used by non-chat pages that have not loaded
+            // the optional bridge; in that case use the role's explicit ID list.
+            if (selection) {
+                wbs = selection.ok ? selection.books : [];
+            } else {
+                var boundIds = Array.isArray(role.worldBookIds) ? role.worldBookIds.map(String) : [];
+                wbs = (Array.isArray(wbs) ? wbs : []).filter(function (book) {
+                    return book && boundIds.indexOf(String(book.id)) !== -1;
+                });
+            }
             var recentForWorldbook = Storage.getChatHistory(contactId) || [];
             var wbText = NS.buildWorldbookInjectionText(wbs, {
                 recentMessages: recentForWorldbook.slice(-8),
