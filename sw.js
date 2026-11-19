@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v232';
+const CACHE_NAME = 'phone-app-pwa-v233';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 // v196 release: sweep orphaned role-owned media refs during avatar cleanup.
 const APP_SHELL = [
@@ -59,13 +59,12 @@ const APP_SHELL = [
   './assets/takeout/d15-croissant.jpg',
   './assets/takeout/d16-bento.jpg',
   './shared/js/chat-beauty.js?v=20261102v3',
-  './shared/js/chat-page-theme.js?v=20261102v1',
   './shared/js/wallpaper-store.js?v=20261026v2',
   './shared/css/chat-beauty-runtime.css?v=20261031v1',
   './shared/css/silver-butterfly-theme.css?v=20261102v5',
   './shared/css/wechat-theme-refinements.css?v=20261105v2',
   './shared/css/chat-list-editorial-theme.css?v=20261104v2',
-  './shared/js/chat-list-theme.js?v=20261112at1',
+  './shared/js/chat-list-theme.js?v=20261119scope1',
   './shared/css/atmosphere-theme.css?v=20261112v3',
   './shared/js/atmosphere-theme.js?v=20261112v1',
   './shared/js/atmosphere-composer.js?v=20261112c1',
@@ -75,7 +74,7 @@ const APP_SHELL = [
   './shared/css/atmosphere-my-home.css?v=20261112h2',
   './shared/js/atmosphere-my-home.js?v=20261112h3',
   './shared/js/chat-beauty.js?v=20261112at1',
-  './shared/js/chat-page-theme.js?v=20261105v1',
+  './shared/js/chat-page-theme.js?v=20261119scope1',
   './shared/assets/silver-butterfly-photo.webp',
   './games/games.html',
   './games/cooking.html',
