@@ -202,7 +202,7 @@ test('online group output rejects a generic AI identity but honors an explicitly
 test('online group output blocks unsolicited long markdown game catalogues, not requested lists', () => {
   const context=load(read('shared/js/phone/chat-role-context.js'),'chat-role-context').MAOMAOChatRoleContext;
   const role={id:'a',persona:'普通群友'};
-  const menu='要不玩几个？\n1. **文字冒险** 你当主角，在故事里探索各种谜题，体验不同世界的情节和分支。\n2. **成语接龙** 我们可以一人接一个成语，还可以规定不同的主题和难度。\n3. **脑筋急转弯** 我可以出很多问题，或者由你来给大家出题。\n4. **猜数字** 也可以设置规则、范围和计分方式。';
+  const menu='要不玩几个？\n1. **文字冒险** 你当主角，在故事里探索各种谜题，体验不同世界的情节和分支。\n2. **成语接龙** 我们可以一人接一个成语，还可以规定不同的主题和难度。\n3. **脑筋急转弯** 我可以出很多问题，或者由你来给大家出题。\n4. **猜数字** 也可以设置规则、范围和计分方式，大家一起玩也方便。';
   assert.ok(menu.length>=150);
   assert.equal(context.validateGroupOnlineReply({role,text:menu,latestUserText:'有没有人想玩游戏'}).code,'unsolicited-menu');
   assert.equal(context.validateGroupOnlineReply({role,text:menu,latestUserText:'帮我列几个玩法介绍'}).ok,true);
