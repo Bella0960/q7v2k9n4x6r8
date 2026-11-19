@@ -347,8 +347,24 @@
         var sh=sourceRatio>target?img.height:img.width/target;
         canvas.getContext('2d').drawImage(img,(img.width-sw)/2,(img.height-sh)/2,sw,sh,0,0,w,h);
         var data=canvas.toDataURL('image/jpeg',.79);
-        imageStore('save',data).then(function(){showCover(data);notify('封面已保存');})
-          .catch(function(){reloadSavedCover();notify('封面保存失败，请检查存储空间');})
+        if(!currentGroup()){
+          setCoverBusy(false);
+          sync();
+          notify('群聊已不存在，封面未保存');
+          return;
+        }
+        imageStore('save',data).then(function(){
+          if(!currentGroup()) {
+            // Another tab deleted this group while IndexedDB was writing.
+            // Remove the now-orphaned asset rather than reporting false success.
+            return imageStore('remove').catch(function(){}).then(function(){
+              sync();
+              notify('群聊已不存在，封面未保存');
+            });
+          }
+          showCover(data);
+          notify('封面已保存');
+        }).catch(function(){reloadSavedCover();notify('封面保存失败，请检查存储空间');})
           .finally(function(){setCoverBusy(false);});
       }catch(e){setCoverBusy(false);reloadSavedCover();notify('图片处理失败');}
     };
