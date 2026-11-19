@@ -71,7 +71,7 @@ test('iMessage native composer restores the button and avoids the extra floating
 test('clean chat layout is scoped to its own pages, and no fake status bars remain',()=>{
  const css=read('shared/css/chat-light-surfaces.css');
  for(const route of ['chat/chat/chat.html','chat/chat/chat-detail.html']){
-  assert.match(read(route),/chat-light-surfaces\.css\?v=20261118v5/);
+  assert.match(read(route),/chat-light-surfaces\.css\?v=20261118v6/);
  }
  assert.match(css,/body\.chat-light-list \.phone-mockup > \.status-bar,\s*body\.chat-light-detail \.phone-mockup > \.status-bar \{ display:none !important; \}/);
  assert.match(css,/data-chat-theme-preset="imessage"/);
