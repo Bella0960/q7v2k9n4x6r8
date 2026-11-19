@@ -1269,6 +1269,9 @@
   // revoke it or leave the player pointing at an unplayable temporary URL.
   let musicConfirmedSource = null;
   let musicStagedBlobUrl = null;
+  // A tentative audio source must never overwrite the previous song's
+  // progress, trigger next-track behavior or publish fake playback.
+  let musicPlaybackPending = false;
   function revokeCurrentUrl() {
     // Explicitly leaving/removing a song cancels speculative loads too.
     // Otherwise a rapid hide while a new audio.play() is pending can leak a
@@ -1277,6 +1280,7 @@
       try { URL.revokeObjectURL(musicStagedBlobUrl); } catch (e) {}
     }
     musicStagedBlobUrl = null;
+    musicPlaybackPending = false;
     if (currentBlobUrl) {
       try { URL.revokeObjectURL(currentBlobUrl); } catch (e) {}
       currentBlobUrl = null;
@@ -1714,6 +1718,7 @@
         }
       } catch (error) {}
       if (playRequest !== playbackRevision) return;
+      musicPlaybackPending = false;
       playing = !!previous.src && !window.audio.paused;
       updatePlayIcon();
     }
@@ -1722,7 +1727,7 @@
       try {
         const blob = await getAudioBlob(t.id);
         if (!blob) {
-          if (playRequest === playbackRevision && musicStagedBlobUrl)
+          if (playRequest === playbackRevision && musicPlaybackPending)
             await restorePreviousTrack();
           toast('本地音频暂时无法读取，请保留原文件并检查存储或备份；收藏不会删除');
           return false;
@@ -1731,14 +1736,14 @@
         candidateBlobUrl = URL.createObjectURL(blob);
         candidateSrc = candidateBlobUrl;
       } catch (error) {
-        if (playRequest === playbackRevision && musicStagedBlobUrl)
+        if (playRequest === playbackRevision && musicPlaybackPending)
           await restorePreviousTrack();
         if (playRequest === playbackRevision) toast('音频加载失败，请检查本机音乐文件');
         return false;
       }
     } else {
       if (!t.url || typeof t.url !== 'string') {
-        if (playRequest === playbackRevision && musicStagedBlobUrl)
+        if (playRequest === playbackRevision && musicPlaybackPending)
           await restorePreviousTrack();
         toast('当前歌曲没有可播放的音源，请选择其他歌曲');
         return false;
@@ -1755,6 +1760,7 @@
       try { URL.revokeObjectURL(musicStagedBlobUrl); } catch (error) {}
     }
     musicStagedBlobUrl = candidateBlobUrl;
+    musicPlaybackPending = true;
     try {
       window.audio.src = candidateSrc;
       if (t.source === 'local') musicApplyPendingResume(t, playRequest);
@@ -1775,6 +1781,7 @@
     const oldBlobUrl = currentBlobUrl;
     currentBlobUrl = candidateBlobUrl;
     musicStagedBlobUrl = null;
+    musicPlaybackPending = false;
     if (oldBlobUrl && oldBlobUrl !== candidateBlobUrl) {
       try { URL.revokeObjectURL(oldBlobUrl); } catch (error) {}
     }
@@ -1881,6 +1888,7 @@
 
   // 音频事件：进度更新
   window.audio.addEventListener('timeupdate', () => {
+    if (musicPlaybackPending) return;
     if (musicConfirmedSource && window.audio.src === musicConfirmedSource.src &&
         Number.isFinite(window.audio.currentTime))
       musicConfirmedSource.time = window.audio.currentTime;
@@ -1945,11 +1953,12 @@
   });
   // 手动拖动进度与硬件媒体控制可在 5 秒窗口外发生，保存必须即时。
   window.audio.addEventListener('seeked', function () {
-    if (Number.isFinite(window.audio.currentTime)) saveState();
+    if (!musicPlaybackPending && Number.isFinite(window.audio.currentTime)) saveState();
   });
 
   // 播完自动切下一首
   window.audio.addEventListener('ended', async function () {
+    if (musicPlaybackPending) return;
     playing = false;
     updatePlayIcon();
     saveState();
@@ -2898,6 +2907,9 @@
 
   // ===== 断点续播 =====
   function saveState() {
+    // Never let the candidate audio's initial time=0 destroy the confirmed
+    // song's checkpoint while audio.play() is pending.
+    if (musicPlaybackPending) return false;
     try {
       var oldState = localStorage.getItem('music_state');
       if (oldState) JSON.parse(oldState); // 损坏的旧播放进度不准静默覆盖
@@ -2922,6 +2934,12 @@
       return false;
     }
   }
+  // A phone may suspend or close this page before the five-second timer.
+  // Preserve the last confirmed position, without pausing background audio.
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') saveState();
+  });
+  window.addEventListener('pagehide', function () { saveState(); });
   function loadState() {
     try {
       var s = JSON.parse(localStorage.getItem('music_state') || 'null');
