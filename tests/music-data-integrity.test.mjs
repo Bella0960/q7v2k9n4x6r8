@@ -207,10 +207,10 @@ test('MUSIC-UI-001: local toast exists and favorites/progress fail closed withou
   assert.equal(values.get('music_fav_list'), '{invalid', 'must not overwrite damaged archive');
 
   const stateStart = music.indexOf('function saveState()');
-  const stateEnd = music.indexOf('function loadState()', stateStart);
+  const stateEnd = music.indexOf('// A phone may suspend', stateStart);
   assert.ok(stateStart >= 0 && stateEnd > stateStart);
   const originalState = JSON.stringify({ id:'local_1', time:20 });
-  const saveState = runInNewContext(music.slice(stateStart, stateEnd) + '\nsaveState',
+  const saveState = runInNewContext('let musicPlaybackPending=false;let musicResumeCheckpoint=null;\n' + music.slice(stateStart, stateEnd) + '\nsaveState',
     { localStorage: {
         getItem:k => k === 'music_state' ? originalState : null,
         setItem() { throw Error('QuotaExceededError'); }
@@ -245,7 +245,7 @@ test('MUSIC-UI-001: timeupdate stores once per 5-second bucket, while seek store
     querySelectorAll() { return []; }
   };
   runInNewContext(
-    "let musicLastPersistedProgressKey = ''; let currentIdx = 0;let musicConfirmedSource = null;\n" +
+    "let musicLastPersistedProgressKey = ''; let currentIdx = 0;let musicConfirmedSource = null;let musicPlaybackPending=false;\n" +
     music.slice(start, end) + '\n' + music.slice(seekStart, seekEnd),
     {
       window: { audio, lastLyricLine: -1 }, tracks: [{ id: 'local_1' }],
@@ -473,17 +473,19 @@ test('MUSIC-UI-001: playlist session survives refresh, while legacy or stale que
       audio:{currentTime:23,src:''},
       MAOMAOMusicPlaylists:{
         getTrackIds:name => name === '清晨' ? ['local_1', 'local_2'] : null
-      }
+      },
+      addEventListener() {}
     },
     musicQueuePublish() {}, musicWarnOnce() {},
     getTrackById:id => tracks.find(t => t.id === id) || null,
     updateHeartIcon() {}, renderAlbum() {}, renderTrackLyrics() {},
     document:{
+      addEventListener() {},
       getElementById() {return {textContent:''};}
     }
   };
   const runner = (payload, playlist) => runInNewContext(
-    'let currentIdx=0;let musicResumeCheckpoint=null;let musicPlaybackQueue=' + (playlist ? '{name:"清晨"}' : 'null') + ';\n' +
+    'let currentIdx=0;let musicPlaybackPending=false;let musicResumeCheckpoint=null;let musicPlaybackQueue=' + (playlist ? '{name:"清晨"}' : 'null') + ';\n' +
     code + '\n({saveState, loadState, state:()=>musicPlaybackQueue})',
     { ...mock, musicPlaybackQueue:undefined }
   );
