@@ -111,9 +111,9 @@
       return { ok: true, ids: values, updatedRole: index >= 0 };
     } catch (e) {
       var rollbackOk = true;
-      try { if (beforeChars !== undefined) restore(CHARACTERS, beforeChars); }
+      try { if (beforeChars !== undefined && readRaw(CHARACTERS) !== beforeChars) restore(CHARACTERS, beforeChars); }
       catch (ignored) { rollbackOk = false; }
-      try { if (beforeLegacy !== undefined) restore(legacyKey, beforeLegacy); }
+      try { if (beforeLegacy !== undefined && readRaw(legacyKey) !== beforeLegacy) restore(legacyKey, beforeLegacy); }
       catch (ignored) { rollbackOk = false; }
       return { ok: false, error: rollbackOk ? 'STORAGE_WRITE_FAILED' : 'ROLLBACK_FAILED' };
     }
