@@ -140,6 +140,18 @@ test('group information direct link does not jump home or into unrelated history
     assert.deepEqual(x.trace,['replace:chat-detail.html?id=g001']);
   }
 });
+test('full visible route backs out one layer at a time, not straight to home',()=>{
+  const advancedPage=navigationFixture('advanced',
+    'https://preview.mao520.com/chat/chat/chat-settings.html?roleId=g001');
+  advancedPage.click();
+  const settingsPage=navigationFixture('settings',
+    'https://preview.mao520.com/chat/chat/chat-detail.html?id=g001');
+  settingsPage.click();
+  assert.deepEqual([...advancedPage.trace,...settingsPage.trace],
+    ['history.back','history.back']);
+  assert.match(chat,/href="chat\.html" aria-label="返回联系人列表"/);
+});
+
 test('private chat settings still use the original browser-back behavior',()=>{
   const x=navigationFixture('settings',
     'https://preview.mao520.com/chat/chat/chat-detail.html?id=p001','p001');
