@@ -34,10 +34,12 @@ test('MUSIC-UI-001: import persists binary then catalog, rejects quota errors, p
   assert.ok(code.indexOf('await putAudioBlob(') < code.indexOf('saveLocalTracksMeta(localMeta.concat([track]))'));
   assert.match(code, /catch \(err\) \{\s*try \{ await deleteAudioBlob\(tid\)/);
   assert.match(music, /if \(musicMetaReadFailure\) throw new Error/);
-  const play = music.slice(music.indexOf('async function playTrack(trackId)'), music.indexOf('function prevTrack()'));
+  const play = music.slice(music.indexOf('async function playTrack(trackId, options)'),
+    music.indexOf('function musicNavigateTrack(direction, fromEnded)'));
   assert.doesNotMatch(play, /removeTrackFromFav\(/);
   assert.doesNotMatch(play, /removeTrackFromRecent\(/);
-  assert.match(play, /try \{ await window\.audio\.play\(\); \}/);
+  assert.match(play, /await window\.audio\.play\(\);/);
+  assert.match(play, /await restorePreviousTrack\(\)/);
 });
 
 test('MUSIC-UI-001: real cover assets and no base64 music image persistence', () => {
@@ -124,7 +126,7 @@ test('MUSIC-UI-001: LRC, image backgrounds and playlists persist through dedicat
   }
   assert.match(music, /function parseMusicLyrics\(text\)/);
   assert.match(music, /musicWriteMap\(MUSIC_LYRICS_KEY, lyricMap\)/);
-  assert.match(music, /musicWriteMap\(MUSIC_PLAYLISTS_KEY, playlists\)/);
+  assert.match(music, /musicWriteMap\(MUSIC_PLAYLISTS_KEY, data\)/);
   assert.match(music, /musicMedia\.putBlob\(file,/);
   assert.match(music, /function showMusicPlaylists\(/);
   assert.match(music, /data-maomao-system-statusbar/);
@@ -170,7 +172,7 @@ test('MUSIC-UI-001: global statusbar visibly responds and local song can resume 
   assert.doesNotMatch(music, /\.statusbar\s*\{\s*display:\s*none/);
   const play = music.slice(music.indexOf('async function togglePlay()'), music.indexOf('// 音频事件', music.indexOf('async function togglePlay()')));
   assert.match(play, /selected\.source === 'local' && !currentBlobUrl/);
-  assert.match(play, /await playTrack\(selected\.id\)/);
+  assert.match(play, /await playTrack\(selected\.id,\s*/);
   assert.match(play, /resumeTime > 0/);
 });
 
@@ -243,7 +245,7 @@ test('MUSIC-UI-001: timeupdate stores once per 5-second bucket, while seek store
     querySelectorAll() { return []; }
   };
   runInNewContext(
-    "let musicLastPersistedProgressKey = ''; let currentIdx = 0;\n" +
+    "let musicLastPersistedProgressKey = ''; let currentIdx = 0;let musicConfirmedSource = null;\n" +
     music.slice(start, end) + '\n' + music.slice(seekStart, seekEnd),
     {
       window: { audio, lastLyricLine: -1 }, tracks: [{ id: 'local_1' }],
@@ -395,7 +397,7 @@ test('MUSIC-UI-001: actual queue traversal follows selected playlist through rep
         constructor(type, opts) { this.type = type; this.detail = opts.detail; }
       }, getTrackById: id => tracks.find(t => t.id === id) || null,
       playTrack: (id, opts) => { calls.push({id, opts}); return Promise.resolve(true); },
-      toast() {}, Math: Object.assign(Object.create(Math), {random: () => 0}) }
+      toast() {}, saveState() {}, Math: Object.assign(Object.create(Math), {random: () => 0}) }
   );
   api.setCurrent('a');
   api.select('a', {playlistName:'晨间'});
@@ -481,7 +483,7 @@ test('MUSIC-UI-001: playlist session survives refresh, while legacy or stale que
     }
   };
   const runner = (payload, playlist) => runInNewContext(
-    'let currentIdx=0;let musicPlaybackQueue=' + (playlist ? '{name:"清晨"}' : 'null') + ';\n' +
+    'let currentIdx=0;let musicResumeCheckpoint=null;let musicPlaybackQueue=' + (playlist ? '{name:"清晨"}' : 'null') + ';\n' +
     code + '\n({saveState, loadState, state:()=>musicPlaybackQueue})',
     { ...mock, musicPlaybackQueue:undefined }
   );
