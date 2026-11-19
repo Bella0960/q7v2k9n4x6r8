@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="../../shared/css/chat-beauty-runtime.css?v=20261031v1">
     <link rel="stylesheet" href="../call/call-overlay.css?v=20261105v1">
     <script src="../../shared/js/phone/phone_storage.js"></script>
+    <script src="../../shared/js/phone/role-worldbook-bindings.js?v=20261119a"></script>
     <script src="../../shared/js/phone/storage/repository.js"></script>
     <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
     <script src="../../shared/js/phone/role-avatar-library.js?v=20261113v1"></script>
@@ -5739,16 +5740,12 @@
               if (rawWB) {
                 let wbList = JSON.parse(rawWB) || [];
                 if (!Array.isArray(wbList)) wbList = [];
-                if (isGroupChat) {
-                  const mountRaw = localStorage.getItem('chat_worldbooks_' + aliasRoleId);
-                  if (mountRaw != null) {
-                    const mounted = JSON.parse(mountRaw);
-                    if (Array.isArray(mounted)) {
-                      const mountedIds = mounted.map(function (id) { return String(id); });
-                      wbList = wbList.filter(function (book) { return book && mountedIds.indexOf(String(book.id)) !== -1; });
-                    }
-                  }
+                const selectedWorldbooks = window.RoleWorldbookBindings &&
+                  RoleWorldbookBindings.filterBooks(aliasRoleId || currentRoleId || roleId, wbList, currentCharacter);
+                if (!selectedWorldbooks || !selectedWorldbooks.ok) {
+                  throw new Error('世界书挂载读取失败');
                 }
+                wbList = selectedWorldbooks.books;
                 if (window.ChatContextPolicy &&
                     typeof window.ChatContextPolicy.buildWorldbookInjectionText === 'function') {
                   worldbookText = window.ChatContextPolicy.buildWorldbookInjectionText(wbList, {
