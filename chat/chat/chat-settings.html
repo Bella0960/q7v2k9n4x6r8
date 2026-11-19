@@ -2183,8 +2183,20 @@
           var row = btn.closest('.gp-member-row');
           var mid = row.getAttribute('data-mid');
           var g2 = loadCurrentGroup();
-          if (!g2) return;
-          g2.members = Array.isArray(g2.members) ? g2.members.filter(function (m) { return String(m.id) !== String(mid); }) : [];
+          if (!g2 || !Array.isArray(g2.members)) { showToast('群成员已变化，请重新打开'); return; }
+          var targetMember = g2.members.find(function (m) { return String(m.id) === String(mid); });
+          if (!targetMember) { showToast('该成员已不在群中'); renderGroupInfo(); return; }
+          // Prevent a stray tap on "移除" from erasing member-specific group settings.
+          if (!window.confirm('确定将「' + String(targetMember.name || '该成员') + '」移出群聊吗？')) return;
+          // Re-read after confirmation: another tab may have changed the group meanwhile.
+          g2 = loadCurrentGroup();
+          if (!g2 || !Array.isArray(g2.members) ||
+              !g2.members.some(function (m) { return String(m.id) === String(mid); })) {
+            showToast('群成员已变化，请重新打开');
+            renderGroupInfo();
+            return;
+          }
+          g2.members = g2.members.filter(function (m) { return String(m.id) !== String(mid); });
           if (!saveCurrentGroup(g2)) {
             showToast('移除失败，请重试');
             return;
@@ -2262,8 +2274,16 @@
     });
     gpAvatarInput.addEventListener('change', function () {
       var file = gpAvatarInput.files[0];
+      gpAvatarInput.value = '';
       if (!file) return;
+      // Decode only supported, bounded images; protect mobile memory and localStorage.
+      if (!/^image\/(?:jpeg|png|webp|gif)$/i.test(file.type) ||
+          file.size === 0 || file.size > 10 * 1024 * 1024) {
+        showToast('请选择 10MB 以内的 JPG、PNG、WebP 或 GIF 图片');
+        return;
+      }
       var reader = new FileReader();
+      reader.onerror = function () { showToast('无法读取图片，请重新选择'); };
       reader.onload = function (ev) {
         var img = new Image();
         img.onload = function () {
@@ -2290,8 +2310,8 @@
         img.onerror = function () { showToast('图片读取失败'); };
         img.src = ev.target.result;
       };
-      reader.readAsDataURL(file);
-      gpAvatarInput.value = '';
+      try { reader.readAsDataURL(file); }
+      catch (e) { showToast('无法读取图片，请重新选择'); }
     });
 
     // 保存群名
