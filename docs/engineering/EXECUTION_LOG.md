@@ -478,3 +478,10 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 追查发现既有 `tests/chat-image-vision.test.mjs` 的「删除图片仅在保存成功后释放引用」用例将**单条删除和多选删除都固定要求旧同步 `saveMessages`**。多选删除已改为更安全的会话锁 `replaceChatSafely(originalSnapshot, keep)`，旧源代码字符串断言与真实行为不兼容。
 - 本轮只细化该原有合约：单条删除仍必须验证原保存门禁，多选删除必须验证新的异步锁保存门禁；两路均保留「保存失败不释放图片资源」及「成功保存后清理引用」的原测试目标。没有删测试、跳过门禁、放宽存储安全，也没有更改聊天运行时代码。
 - **待重新完整 Node/Vite/Chromium 验证、再 QA-only 部署。** 不将失败候选冒充已发布。
+
+## 2026-11-19｜CHAT-RP-001｜单聊角色冒充 AI 客服 · 手机 QA 待验候选
+
+- 用户真机截图：普通单聊角色自称“人工智能 / 专属聊天搭子”，且反复输出客服式问候。现有唯一 QA 已在出站模型上下文校验保存人设、世界书与全局协议，历史错误回复也会在单聊模型上下文中过滤；问题出在 **群聊有流式及落库前身份拦截，单聊缺少相同闭环**。
+- 从 #299 当前基线 `7060d2bd32e346513518c0e8ef9398afe817b6d9` 局部修改 `shared/js/phone/chat-role-context.js` 和 `chat/chat/chat-detail.html`：新增纯函数 `validateDirectOnlineReply`，只拒绝普通角色明显冒认 AI/模型/客服身份；真实数字生命或自定义机器人角色保留本人设定。单聊流式实时显示与最终落库前均执行角色审核，失败清理临时消息并提示手动重试；不额外收费重试，不回写、删除或纠正任何已存历史。
+- 仅调整 SW 缓存号 v260→v261 与 `chat-role-context` 资源查询版本；保留群聊守卫、世界书/全局协议请求校验、线下剧情、账号安全及图片/转账/记忆后置副作用。新增 `tests/chat-direct-online-identity-guard.test.mjs` 6 项并接入原 `test:chat:contract`，同步修正群聊历史资源版本断言。
+- **当前仅为待验证候选：未完成完整 Node/Vite/Chromium，也未部署。** 必须按原 `docs/engineering/QA_TEST_RELEASE_RUNBOOK.md` 验证并 QA-only 发布，独立复核同源 sourceCommit 与身份核心不变。正式版、main、正式数据库、管理员 001 均不涉及。
