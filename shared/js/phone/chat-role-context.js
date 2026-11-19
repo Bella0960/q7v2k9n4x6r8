@@ -72,13 +72,29 @@
       policy.isGenericAssistantBoilerplate(message.text || message.content || ''));
   }
 
-  // For ordinary direct-chat characters, incorrect past "I'm an AI" replies are not
-  // canonical persona evidence. Exclude them from model context only; never delete or
-  // edit saved messages. Explicitly digital characters keep their legitimate identity.
+  // The first on-screen hello created by older versions is app UI copy,
+  // not evidence of how this user-authored person talks. Keep the message
+  // exactly as saved and visible, but do not teach its generic tone to the AI.
+  // Only the exact generated first line is excluded; an authored greeting or
+  // the same words later in a conversation remain ordinary history.
+  function isInitialGeneratedGreeting(message, role, index) {
+    if (index !== 0 || !message || !role) return false;
+    if (message.role !== 'assistant' && message.role !== 'received') return false;
+    if (message.type && message.type !== 'text') return false;
+    var name = String(role.name || '').trim();
+    if (!name) return false;
+    return String(message.text || message.content || '').trim() ===
+      '你好，我是' + name + '！很高兴和你聊天。';
+  }
+
+  // Only the model-input view is filtered. Never delete, edit or relabel the
+  // original saved messages; explicitly authored digital identities remain.
   function getModelHistory(history, role) {
     if (!Array.isArray(history) || isDigitalCharacter(role)) return history;
-    var filtered = history.filter(function (item) {
-      return !isBrokenAssistantIdentity(item) && !isGenericContextContamination(item) &&
+    var filtered = history.filter(function (item, index) {
+      return !isInitialGeneratedGreeting(item, role, index) &&
+        !isBrokenAssistantIdentity(item) &&
+        !isGenericContextContamination(item) &&
         !isSyntheticIdentityDrift(item, role);
     });
     return filtered.length === history.length ? history : filtered;
