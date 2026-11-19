@@ -162,7 +162,27 @@
   }
   function sync() {
     var group = currentGroup();
-    var name = group && group.name || '群聊';
+    if (!group) {
+      hero.querySelector('#gpCoverName').textContent='群聊已不存在';
+      hero.querySelector('#gpCoverCount').textContent='请返回聊天列表';
+      emblem.replaceChildren();
+      photo.removeAttribute('src');
+      hero.classList.remove('has-photo','tone-dark');
+      hero.classList.add('is-deleted');
+      pick.disabled=true;
+      reset.hidden=true;
+      previewHeader.hidden=true;
+      rail.replaceChildren();
+      quick.hidden=true;
+      folds.hidden=true;
+      return;
+    }
+    hero.classList.remove('is-deleted');
+    pick.disabled=Boolean(coverBusy);
+    previewHeader.hidden=false;
+    quick.hidden=false;
+    folds.hidden=false;
+    var name = group.name || '群聊';
     var members = group && Array.isArray(group.members) ? group.members : [];
     hero.querySelector('#gpCoverName').textContent=name;
     emblem.replaceChildren();
@@ -235,6 +255,9 @@
   var observer=new MutationObserver(sync);
   observer.observe(membersList,{childList:true});
   if (originalName) observer.observe(originalName,{childList:true,characterData:true,subtree:true});
+  window.addEventListener('storage',function(event){
+    if(event.key==='phone_groups') sync();
+  });
 
   // Existing wallpaper database, separate key per group; IDB-only write.
   // Never put user-supplied cover binaries into localStorage/phone_groups.
@@ -268,11 +291,12 @@
   var coverBusy=false;
   function setCoverBusy(busy) {
     coverBusy=Boolean(busy);
-    pick.disabled=coverBusy;
-    reset.disabled=coverBusy;
+    pick.disabled=coverBusy || !currentGroup();
+    reset.disabled=coverBusy || !currentGroup();
   }
   function showCover(dataUrl) {
     var generation=++coverGeneration;
+    if(!currentGroup()) return;
     if(!dataUrl){photo.removeAttribute('src');hero.classList.remove('has-photo','tone-dark');reset.hidden=true;pick.textContent='上传封面';return;}
     photo.src=dataUrl;
     hero.classList.add('has-photo');
@@ -296,11 +320,15 @@
   function notify(message){
     if(typeof showToast==='function') showToast(message);
   }
-  pick.addEventListener('click',function(){if(!coverBusy) input.click();});
+  pick.addEventListener('click',function(){
+    if(!currentGroup()){notify('群聊已不存在，请返回聊天列表');sync();return;}
+    if(!coverBusy) input.click();
+  });
   input.addEventListener('change',function(){
     var file=input.files&&input.files[0];
     input.value='';
     if(!file || coverBusy) return;
+    if(!currentGroup()){notify('群聊已不存在，请返回聊天列表');sync();return;}
     if(!/^image\/(png|jpeg|webp|gif)$/.test(file.type)||file.size>10*1024*1024){notify('请选择10MB以内的 PNG、JPG、WebP 或 GIF 图片');return;}
     coverTouched=true;
     setCoverBusy(true);
@@ -329,6 +357,7 @@
   });
   reset.addEventListener('click',function(){
     if(coverBusy) return;
+    if(!currentGroup()){notify('群聊已不存在，请返回聊天列表');sync();return;}
     coverTouched=true;
     setCoverBusy(true);
     imageStore('remove').then(function(){showCover('');notify('已恢复默认封面');})
