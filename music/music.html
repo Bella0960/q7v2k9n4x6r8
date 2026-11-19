@@ -1683,7 +1683,18 @@
         if (previous.src) {
           window.audio.src = previous.src;
           if (Number.isFinite(previous.time) && previous.time > 0) {
-            try { window.audio.currentTime = previous.time; } catch (error) {}
+            try { window.audio.currentTime = previous.time; }
+            catch (error) {
+              // Some Android audio engines reject seeking until the old
+              // source has loaded metadata again. Restore once it is ready.
+              if (typeof window.audio.addEventListener === 'function') {
+                window.audio.addEventListener('loadedmetadata', function () {
+                  if (playRequest !== playbackRevision ||
+                      window.audio.src !== previous.src) return;
+                  try { window.audio.currentTime = previous.time; } catch (seekError) {}
+                }, { once: true });
+              }
+            }
           }
           if (previous.wasPlaying) {
             try { await window.audio.play(); } catch (error) {}
