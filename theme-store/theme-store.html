@@ -528,6 +528,9 @@
     }
     function render(){
       var content=document.getElementById('storeContent');
+      // An in-place refresh (pageshow, storage change, favorite, apply) must not
+      // throw the user back to the top of a long six-theme collection.
+      var previousScroll=content.scrollTop;
       document.querySelectorAll('.category-tab').forEach(function(button){button.classList.toggle('active',button.dataset.category===currentCategory);});
       var storefrontHTML=window.MAOMAOStorefront.render(currentCategory);
       if(storefrontHTML!==null)content.innerHTML=storefrontHTML;
@@ -545,6 +548,7 @@
       if(currentCategory==='mine')document.querySelectorAll('[data-filter]').forEach(function(button){button.classList.toggle('active',button.dataset.filter===mineFilter);});
 
       updateOwnedCount();
+      if(previousScroll>0)content.scrollTop=previousScroll;
     }
     function setCategory(category){
       if(categories.indexOf(category)<0)return;
@@ -705,8 +709,12 @@
       if(event.target&&event.target.id==='bubbleScope'){bubbleScopeValue=event.target.value||'global';render();}
     });
     function refreshAll(){
-      loadFonts().then(function(){render();bindFontSpecimens();});
-      if(currentCategory==='bubbles'||currentCategory==='mine')render();
+      // Immediately re-read the active theme when returning from another page.
+      // Font IndexedDB can be slow and must not delay the visible theme state.
+      render();
+      loadFonts().then(function(){
+        if(currentCategory==='fonts'){render();bindFontSpecimens();}
+      });
     }
     document.addEventListener('maomao:market-apply-atmosphere',function(){applyTheme('atmosphere');});
     window.addEventListener('pageshow',refreshAll);
