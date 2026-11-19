@@ -115,3 +115,7 @@ User acceptance criteria clarified: **MAOMAO theme-store is an expansion of the 
 没有修改已有主题 ID 与存储 schema。保留 maomao_chat_theme_preset、beauty_chat_<role>、maomao_chat_list_theme_preset_v1、maomao_market_collection_v1、原有桌面壁纸与 IndexedDB 素材引用。回滚商城界面代码不删除用户数据。
 
 原开发分支与 main 已分叉，本分支 SW v230 不等于最新账号安全整合 SW。未来只能在统一 QA 的最新账号安全基线上逐文件移植商城 CSS/JS、HTML 资源引用与测试，再增量合入缓存清单；不能回灌旧 SW 或整份旧商城覆盖新的账号和聊天集成。必须通过 npm run test:theme:market、npm run test:theme:market:browser、npm run build、真实浏览器与 Android/iPhone 验收后，才能在唯一 QA 预览站交付。
+
+### 2026-11-19 补充：独立聊天列表主题保存失败回滚
+
+在 theme-store/theme-store.html 中修复留白 Messages 列表主题的启用/恢复流程：启用先写独立列表偏好并读回，再写已收录标记；任一存储步骤失败尝试回滚两份存储且不触发成功事件，提示恢复状态。保留与整套 ChatBeauty 主题、角色气泡的原有隔离。隔离 V8 函数执行对列表主题正常启用、恢复和模拟收录失败回滚通过；上述路径及整套主题收录失败回滚已增加 Node 测试源码，但实际 Node CLI 未在本次执行。
