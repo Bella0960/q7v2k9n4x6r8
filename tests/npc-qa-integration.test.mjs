@@ -41,7 +41,8 @@ test('existing authenticated MAO Worker scopes NPC HTML and local data per accou
 });
 
 test('PWA includes NPC assets and preserves secured account navigation', () => {
-  assert.match(sw, /phone-app-pwa-v266/);
+  assert.ok(Number(sw.match(/const CACHE_NAME = 'phone-app-pwa-v(\d+)'/)?.[1] || 0) >= 267,
+    'SW cache version must include the welcome asset refresh baseline');
   assert.match(sw, /chat\/contacts\/npc-friends\.html/);
   assert.match(sw, /shared\/js\/phone\/npc-social\.js\?v=20261108i/);
   assert.match(sw, /accountPath/);
