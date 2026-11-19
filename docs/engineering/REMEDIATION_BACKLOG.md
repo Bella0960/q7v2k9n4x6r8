@@ -414,3 +414,11 @@ Do not parallelize:
 5. Agent E: PERF-001 — image asset inventory and safe optimization recommendations, no replacements yet.
 
 Only after these reports are reviewed should implementation tasks be assigned.
+
+### CHAT-RP-001 — Keep direct online AI replies in the saved character identity
+**Priority:** P0 · **Status:** IN PROGRESS (2026-11-19)
+
+- User mobile evidence: an ordinary human direct-chat character repeatedly answered as a generic AI service assistant, despite saved persona, worldbooks and global RP protocol.
+- Required: use verified same-role saved sources as before; before displaying streamed text or saving a generated direct online response, refuse high-confidence generic AI self-identification and assistant boilerplate for ordinary roles. Explicitly digital/AI-authored characters must retain their chosen identity.
+- Preserve saved history, message format, all character data, worldbooks, offline routes, group guard, and the existing one-QA-release safety process. Do not silently re-request paid AI completions.
+- Acceptance: real Node/Vite/Chromium, direct/group role-policy regression, same-origin QA release receipt, account/core unchanged; device verification remains a separate human acceptance step.
