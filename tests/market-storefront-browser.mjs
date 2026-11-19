@@ -41,7 +41,13 @@ for(const width of [320,375,390,430,1280]){
  await page.locator('[data-sf="page"][data-id="detail"]').click();
  assert.equal(await page.evaluate(()=>JSON.stringify({...localStorage})),before,'preview must not change storage');
  await page.locator('[data-sf="close"]').click();
- // Old built-in themes render their original project-owned artwork, not fake phone templates.
+ // Preserve original project artwork; six theme sections remain isolated.
+ await page.locator('[data-category="themes"]').click();
+ assert.equal(await page.locator('.sf-theme-collection .sf-theme-item').count(),6,'six distinct showcase sections');
+ assert.equal(await page.locator('.sf-theme-list-only .chat-list-theme-grid').count(),1,'independent Messages list theme');
+ for(const id of ['default','wechat','imessage','qq','silver-butterfly','atmosphere'])assert.equal(await page.locator('.sf-theme-item[data-theme-id="'+id+'"]').count(),1,'one section for '+id);
+ assert.match(await page.locator('.sf-theme-item[data-theme-id="imessage"] .sf-theme-scope').innerText(),/仅聊天详情/);
+ // Old built-in themes retain their artwork, not fictitious full-page renderings.
  for(const theme of ['wechat','qq','imessage','silver-butterfly','default']){
   await page.locator('.sf-cover[data-id="'+theme+'"]').click();
   assert.equal(await page.locator('.sf-native-detail-art .theme-art-'+theme).count(),1,'original '+theme+' theme artwork');
@@ -49,16 +55,15 @@ for(const width of [320,375,390,430,1280]){
   assert.equal(await page.evaluate(()=>JSON.stringify({...localStorage})),before,'original theme preview is read-only');
   await page.locator('[data-sf="close"]').click();
  }
- await page.locator('[data-category="themes"]').click();
- assert.equal(await page.locator('.product-grid .product-card').count(),6,'six original theme products stay in native catalogue');
- assert.ok(await page.locator('.product-grid').evaluate(el=>el.getBoundingClientRect().top<el.ownerDocument.querySelector('.chat-list-theme-grid').getBoundingClientRect().top),'original themes must appear before list-theme promotion');
- assert.equal(await page.locator('.product-grid').evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length),2,'original theme cards use two-column store shelf');
+ assert.equal(await page.locator('.sf-theme-collection .sf-theme-item').count(),6,'six theme product sections');
+ assert.ok(await page.locator('.sf-theme-collection').evaluate(el=>el.getBoundingClientRect().top<el.ownerDocument.querySelector('.chat-list-theme-grid').getBoundingClientRect().top),'original themes must appear before list-theme promotion');
+ assert.equal(await page.locator('.sf-theme-layout').first().evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length),2,'independent theme section contains two-column editorial composition');
  assert.equal(await page.locator('.chat-list-theme-grid .product-card').count(),1,'existing independent Messages list theme stays available');
  for(const id of ['wechat','imessage','qq','silver-butterfly','atmosphere','default']){
-  await page.locator('.product-grid [data-sf="detail"][data-id="'+id+'"]').click();await page.locator('[data-sf="apply-theme"]').click();await page.locator('[data-sf="confirm-apply-theme"]').click();
+  await page.locator('.sf-theme-cover[data-sf="detail"][data-id="'+id+'"]').click();await page.locator('[data-sf="apply-theme"]').click();await page.locator('[data-sf="confirm-apply-theme"]').click();
   assert.equal(await page.evaluate(()=>ChatBeauty.getThemePreset()),id);
  }
- await page.locator('.product-grid [data-sf="detail"][data-id="wechat"]').click();
+ await page.locator('.sf-theme-cover[data-sf="detail"][data-id="wechat"]').click();
  assert.equal(await page.locator('.sf-dialog [data-sf="favorite"]').getAttribute('aria-pressed'),'false');
  await page.locator('.sf-dialog [data-sf="favorite"]').click();
  assert.equal(await page.locator('.sf-dialog [data-sf="favorite"]').getAttribute('aria-pressed'),'true');
