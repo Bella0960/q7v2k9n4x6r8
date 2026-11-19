@@ -16,6 +16,7 @@
 - **DEVELOPMENT_GOVERNANCE.md** — GitHub workflow, branch/PR policy, tests, security, asset rules, AI collaboration.
 - **REMEDIATION_BACKLOG.md** — phased tasks, dependencies, parallel work lanes, acceptance criteria.
 - **AI_HANDOFF_PROMPT.md** — copyable prompt and task assignment template for other AIs.
+- **QA_TEST_RELEASE_RUNBOOK.md** — 2026-11-19 verified single-QA phone release steps (QA-only), sealed runner fallback, success evidence, and strict production boundaries. This newer runbook supersedes historical deployment notes, but not AGENTS.md or current code.
 
 Existing references which remain important:
 
