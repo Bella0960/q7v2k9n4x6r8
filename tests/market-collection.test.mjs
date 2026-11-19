@@ -271,3 +271,25 @@ test('legacy owned-theme corruption is not replaced and silent storage failure i
   });
   assert.equal(silent(['qq']),false,'no-op browser storage must not report success');
 });
+
+
+test('independent Messages list-theme entry avoids off-screen legacy gallery rendering',()=>{
+ const html=readFileSync(new URL('../theme-store/theme-store.html',import.meta.url),'utf8');
+ const a=html.indexOf('    function renderChatListCard(){');
+ const b=html.indexOf('    function renderThemes(){',a);
+ assert.ok(a>=0&&b>a);
+ assert.match(html,/listCard:renderChatListCard/,'standalone adapter used');
+ assert.doesNotMatch(html,/listCard:function\(\)\{var box=/,'do not construct six hidden cards');
+ const code=html.slice(a,b);
+ const initial=vm.runInNewContext(code+'renderChatListCard()',{
+  getOwned:()=>['default'],getChatListTheme:()=>'',editorialListArt:()=>'<div class="theme-art-editorial-list"></div>'
+ });
+ assert.match(initial,/免费获取并应用/);
+ assert.equal((initial.match(/class="product-card/g)||[]).length,1);
+ const selected=vm.runInNewContext(code+'renderChatListCard()',{
+  getOwned:()=>['default','messages-editorial'],getChatListTheme:()=> 'editorial',
+  editorialListArt:()=>'<div></div>'
+ });
+ assert.match(selected,/恢复默认/);
+ assert.equal((selected.match(/class="product-card/g)||[]).length,1);
+});
