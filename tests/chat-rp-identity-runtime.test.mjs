@@ -17,12 +17,16 @@ test('默认协议由设置页与聊天页共用，空存储时聊天仍加载',
  assert.match(detail,/rpProtocol\.trim\(\) \|\| String\(window\.MAOMAO_RP_DEFAULT_PROTOCOL \|\| ''\)/);
  assert.match(detail,/const globalRpKey = 'chat_rp_protocol_';/);
 });
-test('提示词不再自称 AI 助理，回复前重申角色身份与反客服约束',()=>{
+test('source-first prompt preserves saved protocol and persona, without duplicate identity lectures',()=>{
  assert.doesNotMatch(detail,/你是一个具备真实拨号能力的 AI 助理/);
- assert.match(detail,/【发送前的角色一致性核对】/);
- assert.match(detail,/不要把旧回复里跳出角色的自我介绍当成角色真实背景/);
- assert.match(detail,/不要声称自己是 AI、运行在云端/);
- assert.match(detail,/禁止 Markdown 粗体/);
+ assert.match(detail,/systemPrompt = applyProtocolVars\(rpProtocol\);/);
+ assert.match(detail,/systemPrompt \+= '\\n\\n' \+ IDENTITY_LOCK/);
+ assert.match(detail,/【角色档案 · 当前发言者】/);
+ assert.match(detail,/以此角色保存的身份、经历、性格和表达习惯自然回应/);
+ assert.match(detail,/角色如明确设定为数字生命/);
+ assert.match(detail,/【最终设定优先级】/);
+ assert.match(detail,/if \(regexSystemHead\) systemPrompt = regexSystemHead/);
+ assert.doesNotMatch(detail,/【发送前的角色一致性核对】/);
 });
 
 test('空全局协议不自动挪用任何角色旧协议，保留全部旧值供用户恢复', () => {
