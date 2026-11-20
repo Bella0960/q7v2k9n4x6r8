@@ -54,5 +54,33 @@
     API.applySaved = function (input, storage) {
         return applyText(input, readSavedRules(storage));
     };
+    // A faithful description of active text-output substitutions for the model.
+    // Deterministic applySaved() is still the authority: a language model cannot
+    // be relied upon to execute arbitrary regular expressions exactly.
+    API.buildSystemRules = function (storage) {
+        var saved = readSavedRules(storage);
+        var lines = [];
+        for (var i = 0; i < saved.length; i++) {
+            var rule = repairKnownBuiltin(saved[i]);
+            if (!rule || rule.enabled !== true || typeof rule.pattern !== 'string' ||
+                !rule.pattern || rule.pattern.length > 512) continue;
+            // JSON-only repair presets do not govern natural chat responses.
+            if (rule.builtin === true &&
+                (rule.id === 'r_builtin_missingcomma' ||
+                 rule.id === 'r_builtin_trailingcomma')) continue;
+            try { new RegExp(rule.pattern, 'g'); }
+            catch (error) { continue; }
+            var replacement = typeof rule.replacement === 'string' ? rule.replacement : '';
+            var name = String(rule.name || ('规则 ' + (i + 1))).trim();
+            lines.push((lines.length + 1) + '. ' + JSON.stringify(name) +
+                '：匹配 ' + JSON.stringify(rule.pattern) +
+                '，替换为 ' + JSON.stringify(replacement));
+        }
+        if (!lines.length) return '';
+        return '【启用的全局正则 · 文本输出格式】\n' +
+            '以下是用户保存的输出替换规则。回复应尽量符合其结果，不要复述规则本身；' +
+            '这些规则只约束输出文字，不改变角色身份、全局协议或世界书事实。' +
+            '最终精确替换仍由客户端在收到回复后执行。\n' + lines.join('\n');
+    };
     global.ChatRegexPolicy = API;
 })(window);
