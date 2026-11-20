@@ -109,3 +109,84 @@ test('inline chat message pipeline still compiles after the unified prompt fix',
   assert.ok(main);
   assert.doesNotThrow(() => new vm.Script(main));
 });
+
+test('source-first system stack preserves complete protocol, selected persona and lore without repeat copies', () => {
+  const start = detail.indexOf('            let systemPrompt;');
+  const end = detail.indexOf('            // 角色主动邀请只针对确实退出过的群。', start);
+  assert.ok(start >= 0 && end > start, 'real top-of-system assembly must be present');
+  const builder = new Function(
+    'rpProtocol', 'applyProtocolVars', 'turnSpeakerName', 'turnSpeakerPersona',
+    'rolePersona', 'userName', 'userPersona', 'roleMemory', 'memoryContext', 'worldbookText',
+    detail.slice(start, end) + '\nreturn systemPrompt;'
+  );
+  const persona = '深圳本地花店经营者，喜欢直接说话。'.repeat(240);
+  const lore = '这座城市的花市每周三开门。';
+  const protocol = '用户自己写的全局协议：角色自由表达；{{char}}；{{persona}}；{{worldbook}}';
+  const expand = text => text
+    .replace(/\{\{char\}\}/g, '阮映雪')
+    .replace(/\{\{persona\}\}/g, persona)
+    .replace(/\{\{worldbook\}\}/g, lore);
+  const a = builder(protocol, expand, '阮映雪', persona, persona, '用户', '', '', '', lore);
+  assert.ok(a.startsWith('用户自己写的全局协议：'), 'user protocol must precede generated mechanic rules');
+  assert.ok(a.includes(persona));
+  assert.ok(a.includes(lore));
+  assert.equal(a.split(persona).length - 1, 1, 'expanded persona must not be duplicated');
+  assert.equal(a.split(lore).length - 1, 1, 'expanded worldbook must not be duplicated');
+  assert.ok(a.indexOf('【本轮角色档案') > a.indexOf('用户自己写的全局协议'));
+  const customProtocol = '用户自定义协议：不要所有角色都使用一个模板。';
+  const b = builder(customProtocol, () => customProtocol, '陆昭辰', persona,
+    persona, '用户', '', '', '', lore);
+  assert.ok(b.indexOf('【本轮角色档案') >= 0);
+  assert.ok(b.includes(persona), 'protocol without {{persona}} must still get saved persona');
+  assert.ok(b.includes(lore), 'protocol without {{worldbook}} must still get activated lore');
+  assert.ok(b.indexOf(persona) < b.indexOf(lore), 'persona and worldbook enter before feature sections');
+  assert.equal(b.split(lore).length - 1, 1);
+});
+
+test('enabled regex formatting prefixes final System; invalid rules fail without sending', () => {
+  const policySource = read('shared/js/phone/chat-regex-policy.js');
+  const global = {window:{}};
+  vm.runInNewContext(policySource,global);
+  const regexPolicy=global.window.ChatRegexPolicy;
+  const start=detail.indexOf("            let regexSystemHead = '';");
+  const end=detail.indexOf('            // Mandatory preflight for every single/group/continue/regenerate AI turn.',start);
+  assert.ok(start>0 && end>start, 'actual regex preflight section must exist');
+  const render = new Function('window','localStorage','systemPrompt','stopForMissingRoleSource','console',
+    detail.slice(start,end)+'\nreturn {systemPrompt,regexSystemHead};');
+  const stored = JSON.stringify([
+    {id:'format',name:'输出前缀',enabled:true,pattern:'^\\[output\\]',replacement:''},
+    {id:'disabled',name:'禁用规则',enabled:false,pattern:'secret',replacement:'[hidden]'}
+  ]);
+  const enabledStore={getItem:key=>key==='regex_rules'?stored:null};
+  const notices=[];
+  const got=render({ChatRegexPolicy:regexPolicy},enabledStore,'【全局伴侣协议】\n用户自己的原文',
+    (reason,message)=>notices.push([reason,message]),console);
+  assert.ok(got.systemPrompt.startsWith('【启用的全局正则'));
+  assert.ok(got.systemPrompt.includes('输出前缀'));
+  assert.ok(!got.systemPrompt.includes('禁用规则'));
+  assert.ok(got.systemPrompt.includes('【全局伴侣协议】\n用户自己的原文'));
+  assert.deepEqual(notices,[]);
+  assert.equal(regexPolicy.applySaved('[output]内容',enabledStore),'内容',
+    'deterministic reply cleanup still executes actual regex');
+  const malformedStore={getItem:key=>key==='regex_rules'?'{"bad":true}':null};
+  const errors=[];
+  const denied=render({ChatRegexPolicy:regexPolicy},malformedStore,'【全局伴侣协议】',
+    (reason,message)=>errors.push(reason), {error(){}});
+  assert.equal(denied,undefined,'corrupt saved regex cannot silently send incomplete prompt');
+  assert.deepEqual(errors,['regex-read']);
+});
+
+test('final outbound audit fails safely, and long built-in character lectures are not reintroduced', () => {
+  assert.match(detail,/const missingRegex = regexSystemHead/);
+  assert.match(detail,/stopForMissingRoleSource\('final-source-audit'/);
+  assert.match(detail,/stopForMissingRoleSource\('protocol-recheck'/);
+  assert.match(detail,/stopForMissingRoleSource\('protocol-updated'/);
+  assert.doesNotMatch(detail,/【活人感世界书使用原则】/);
+  assert.doesNotMatch(detail,/【发送前的角色一致性核对】/);
+  assert.match(detail,/const IDENTITY_LOCK = \[/);
+  assert.match(detail,/【本轮输出形式】/);
+  const a=detail.indexOf('            // Persona/protocol/worldbook are all placed');
+  const b=detail.indexOf('            // 角色主动邀请只针对确实退出过的群。',a);
+  assert.ok(a>0 && b>a);
+  assert.match(detail.slice(a,b),/【最终设定优先级】/);
+});

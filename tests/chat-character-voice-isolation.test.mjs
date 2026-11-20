@@ -96,10 +96,11 @@ test('final payload checks the active speaker, its exact saved persona and proto
   ]}).ok,false);
 });
 
-test('a single concise group correction replaces duplicated welcome rules', () => {
-  assert.equal(html.split('【群聊口吻纠偏】').length-1,1);
+test('group voice uses selected member and saved sources without redundant bot lecture', () => {
+  assert.equal(html.split('【群聊口吻纠偏】').length-1,0);
   assert.doesNotMatch(html,/【群聊自然接话】/);
-  assert.match(html,/随时在线待命/);
+  assert.match(html,/【本轮角色档案 · 身份依据】/);
+  assert.match(html,/const rawSpeakerPersona = isGroupChat && groupReplyPick/);
   assert.match(html,/chat-presence-policy\.js\?v=20261119scheduled1/);
   assert.match(html,/roleModelHistory = window\.MAOMAOChatRoleContext\.getGroupModelHistory/);
 });

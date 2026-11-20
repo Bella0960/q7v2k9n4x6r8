@@ -6495,6 +6495,23 @@
                     systemPrompt = `你的名字是${turnSpeakerName}。\n${systemPrompt}`;
                 }
             }
+            // Persona/protocol/worldbook are all placed before dynamic feature rules.
+            // A {{persona}} expansion already contains the authored text; avoid
+            // adding another long copy when the user's protocol supplied it.
+            systemPrompt += '\n\n【本轮角色档案 · 身份依据】\n姓名：' + turnSpeakerName;
+            if (!rpProtocol.includes('{{persona}}')) {
+                systemPrompt += '\n' + (turnSpeakerPersona || '该成员尚未填写具体人设。沿用已发生的聊天语气，不能把空白档案当成温柔客服模板。');
+            }
+            systemPrompt += '\n\n【最终设定优先级】角色身份、性格与语气以当前角色档案和全局伴侣协议为准；世界事实以当前激活的世界书为准。以下功能说明仅定义消息标记、权限和形式；冲突时以用户保存的协议为准。';
+            // Put activated lore ahead of group/transport instructions, including
+            // custom protocols without a {{worldbook}} placeholder.
+            // 世界书内容拼进 systemPrompt；设定是生活背景，不是每轮背诵清单
+            if (worldbookText && !rpProtocol.includes('{{worldbook}}')) {
+              // Templates with {{worldbook}} already contain the activated entries.
+              // Custom templates without it still receive the selected worldbook data.
+              systemPrompt += '\n\n【世界书 / 角色生活背景】\n' + worldbookText;
+            }
+
             // 角色主动邀请只针对确实退出过的群。历史群沿用默认“已加入”状态。
             // 不替角色编造台词：提供离群事实，让当前角色按照人设决定是否追问。
             if (!isGroupChat && window.GroupGovernance && presenceMode === 'online') {
@@ -6631,17 +6648,9 @@
             const isGroupOfflineMode = !!(isGroupChat && currentGroup &&
                 currentGroup.settings && currentGroup.settings.chatMode === 'offline');
             const SPEAK_STYLE = isGroupOfflineMode
-                ? '[说话方式强制约束]\n' +
-                  '1. 当前是群聊线下共同场景，用本轮成员的视角作出自然反应，不要套用线上微信短句格式。\n' +
-                  '2. 允许必要的现场动作、神态及环境，但不要替其他群成员或用户说话和决定行动。\n' +
-                  '3. 不输出思维链或生成过程；长度由现场事件决定，不要硬凑固定字数。'
-                : '[说话方式强制约束]\n' +
-                '1. 当前是线上文字聊天，优先使用角色自然会发出的对话，不要写成小说、说明文或客服答复。\n' +
-                '2. 不写星号包裹的动作或括号心理描写；确有必要的简短神态/环境内容才使用 <narratage>...</narratage>。\n' +
-                '3. 直接输出自然的聊天正文，不输出思维链、分析过程、推理草稿或 <think>/<reasoning>/<analysis> 标签。\n' +
-                '4. 默认简短；' + bubbleSplitRule + '不要强制固定句数或字数。\n' +
-                '5. 不要每句话都加表情、颜文字或语气词，按角色自己的习惯表达。\n' +
-                '6. 不使用“作为AI”“我是语言模型”等助手式自我说明。';
+                ? '[说话方式强制约束]\n按当前群聊线下场景自然描写必要的动作与对话，不替其他成员或用户发言；不输出推理过程。'
+                : '[说话方式强制约束]\n以角色自己的语气发日常聊天消息，不写客服或模板说明；' +
+                    bubbleSplitRule + '不输出推理过程，必要旁白使用 <narratage>...</narratage>。';
             if (!systemPrompt.includes('[说话方式强制约束]')) {
                 systemPrompt += '\n\n' + SPEAK_STYLE;
             }
@@ -6649,21 +6658,20 @@
             // Role identity and context boundaries apply to every chat; saved global RP
             // protocol remains authoritative for voice, style and interaction choices.
             const charName = turnSpeakerName;
+            // Persona is already ahead of all feature rules; only transport format
+            // belongs here. Do not repeat the role's full biography as a second lock.
             const IDENTITY_LOCK = [
-              '【角色档案 · 当前发言者】',
-              '姓名：' + turnSpeakerName,
-              turnSpeakerPersona || '该成员尚未填写具体人设。沿用已发生的聊天语气，不能把空白档案当成温柔客服模板。',
-              '以此角色保存的身份、经历、性格和表达习惯自然回应；不以通用客服口吻替代个人判断。',
-              '角色如明确设定为数字生命，遵照该身份；其他角色不主动自称 AI 助手。',
               '【本轮输出形式】',
               isGroupOfflineMode
-                ? '群聊线下场景：以本角色视角写必要的环境与对话，不代替其他成员或用户发言。'
+                ? '群聊线下场景：以本角色视角写必要环境与对话，不代替其他成员或用户发言。'
                 : (replyBubbleMode === 'single'
-                    ? '线上模式：一条自然消息，必要时使用 <narratage>...</narratage>。'
+                    ? '线上模式：只发一条自然消息。'
                     : (replyBubbleMode === 'multi'
-                        ? '线上模式：按语义拆成 2–5 条短消息，必要时使用 <narratage>...</narratage>。'
-                        : '线上模式：根据语义分段，最多 5 条，必要时使用 <narratage>...</narratage>。')),
-              '不要重复解释这些规则或输出机器标记的含义。'
+                        ? '线上模式：按语义拆成 2–5 条短消息。'
+                        : (replyBubbleMode === 'legacy'
+                            ? '线上模式：沿用角色原有自然分段，不强加条数。'
+                            : '线上模式：根据语义决定分段，最多 5 条。'))),
+              '不要输出规则解释或机器标记说明。'
             ].join('\n');
             // 当前单聊的邂逅职业、经历与性格进入每轮请求；不混入其他角色/群聊。
             var encounterIdentityContext = !isGroupChat ? buildEncounterIdentityContext(roleForTurn) : '';
@@ -6685,19 +6693,7 @@
 
               }
             }
-            // 世界书内容拼进 systemPrompt；设定是生活背景，不是每轮背诵清单
-            if (worldbookText && !rpProtocol.includes('{{worldbook}}')) {
-              // Templates with {{worldbook}} already contain the activated entries.
-              // Custom templates without it still receive the selected worldbook data.
-              systemPrompt += '\n\n【世界书 / 角色生活背景】\n' + worldbookText;
-            }
-            systemPrompt += '\n\n【活人感世界书使用原则】\n' +
-              '把设定当成你真实生活过的背景，而不是每轮要复述的资料。\n' +
-              '只使用当前已触发、与你有关、且你有理由知道的信息；未知、隐瞒或只属于作者视角的事实，不可擅自说出来。\n' +
-              '日常习惯、偏好、关系和经历应体现在选择、语气与细节里，不要直接背诵条目。\n' +
-              '合适时可以顺口提起一个生活细节或旧事；不必每轮主动提，不要为了证明记忆而硬提。\n' +
-              '角色有自己的安排、注意力和短期事务；状态变化要有缘由，并与稳定性格一致。\n' +
-              '不要把“可能发生”当成“已经发生”，不要替用户补写共同经历；设定冲突或不确定时，先自然询问。';
+            systemPrompt += '\n\n【世界书使用边界】只使用已触发且本角色有理由知道的事实；不要把未知或计划中的事当成已发生，也不要替用户编造经历。';
             // 重玩方向：用户对上次回复不满意，按新方向重写
             if (isRegen && regenDirection) {
                 systemPrompt += '\n\n[重玩要求]\n刚才那条回复不满意，请按这个方向重新回复：' + regenDirection + '。直接输出新的回复内容即可，不要解释为什么换了。';
@@ -6950,21 +6946,28 @@
                 }
             }
 
-            // Shared precedence for ALL direct and group roles: user-authored protocol
-            // owns voice / prose / interaction; current persona owns individual identity;
-            // scoped activated worldbooks supply factual setting. Built-in markers only
-            // control the app's transport/features and cannot invent a new personality.
-            systemPrompt += '\n\n【最终设定优先级】聊天人物必须遵守设置页保存的全局人设协议；具体身份与个性依据本轮角色完整档案；世界背景依据当前激活且允许在本对话使用的世界书。若内置功能说明与用户协议在语气、叙述风格、关系进展或互动方式上不同，以用户保存的协议为准；内置说明只负责必要的消息格式、功能标记和私密信息边界。不要把其他角色的人设套到当前角色上。';
-
             // 构造 OpenAI 兼容格式 messages 数组 (system + 历史记录)
             if (isManualContinue) {
                 systemPrompt += '\n\n【自然继续对话】这次由角色主动接话，不要复述欢迎词或系统说明。依据真实人设、最近谈话、已知经历和当前场景自然延续；可以只说一条，也可以按性格连续说两条简短消息，不要刻意凑数量。群聊只替本轮选中的角色发言，不要代替其他群成员说话。';
             }
-            // User-enabled output regexes precede the rest of System. They are
-            // formatting expectations only; deterministic post-processing stays active.
-            const regexSystemHead = window.ChatRegexPolicy &&
-                typeof window.ChatRegexPolicy.buildSystemRules === 'function'
-                ? window.ChatRegexPolicy.buildSystemRules(localStorage) : '';
+            // Enabled saved regex is FORMAT DATA, not another persona. The
+            // deterministic reply-side regular-expression engine remains in place.
+            let regexSystemHead = '';
+            try {
+                if (!window.ChatRegexPolicy ||
+                    typeof window.ChatRegexPolicy.buildSystemRules !== 'function') {
+                    throw new Error('regex policy unavailable');
+                }
+                var savedRegexRaw = localStorage.getItem('regex_rules');
+                if (savedRegexRaw !== null && !Array.isArray(JSON.parse(savedRegexRaw))) {
+                    throw new Error('invalid saved regex rules');
+                }
+                regexSystemHead = window.ChatRegexPolicy.buildSystemRules(localStorage);
+            } catch (regexSourceError) {
+                console.error('[ChatPersonaSources] regex rules unavailable:', regexSourceError);
+                stopForMissingRoleSource('regex-read', '全局正则读取失败，本轮未请求 AI；请检查正则设置');
+                return;
+            }
             if (regexSystemHead) systemPrompt = regexSystemHead + '\n\n' + systemPrompt;
 
             // Mandatory preflight for every single/group/continue/regenerate AI turn.
@@ -7242,13 +7245,13 @@
             let storedProtocolAtSend = '';
             try { storedProtocolAtSend = localStorage.getItem('chat_rp_protocol_') || ''; }
             catch (protocolReadErr) {
-                if (typeof showToast === 'function') showToast('无法复核全局伴侣协议，本轮已停止');
+                stopForMissingRoleSource('protocol-recheck', '无法复核全局伴侣协议，本轮已停止');
                 return;
             }
             const canonicalProtocolAtSend = storedProtocolAtSend.trim() ||
                 String(window.MAOMAO_RP_DEFAULT_PROTOCOL || '').trim();
             if (canonicalProtocolAtSend !== rpProtocol) {
-                if (typeof showToast === 'function') showToast('伴侣协议在聊天期间已变更，请重新发送以加载最新版');
+                stopForMissingRoleSource('protocol-updated', '伴侣协议在聊天期间已变更，本轮已停止；请重试加载最新版');
                 return;
             }
             const finalRoleContract = window.MAOMAOChatRoleContext;
@@ -7266,9 +7269,18 @@
                         typeof window.ChatContextPolicy.buildWorldbookInjectionText === 'function'),
                     messages: apiMessages
                 }) : {ok:false,missing:['final-verifier']};
-            if (!finalPayloadAudit.ok) {
-                console.error('[ChatPersonaSources] outbound request refused, missing:', finalPayloadAudit.missing);
-                if (typeof showToast === 'function') showToast('聊天资料未完整进入请求（' + finalPayloadAudit.missing.join('、') + '），已停止发送');
+            // The last barrier checks the actual messages passed to PhoneStream,
+            // not only a preliminary systemPrompt assembled before other features.
+            const missingRegex = regexSystemHead &&
+                (!apiMessages[0] || apiMessages[0].role !== 'system' ||
+                    !String(apiMessages[0].content || '').startsWith(regexSystemHead));
+            if (!finalPayloadAudit.ok || missingRegex) {
+                const missingSources = (finalPayloadAudit.missing || []).concat(
+                    missingRegex ? ['enabled-regex-system'] : []
+                );
+                console.error('[ChatPersonaSources] outbound request refused, missing:', missingSources);
+                stopForMissingRoleSource('final-source-audit',
+                    '聊天资料未完整进入请求（' + missingSources.join('、') + '），本轮已停止');
                 return;
             }
             // Source proof contains LENGTHS only, never the personal contents themselves.
