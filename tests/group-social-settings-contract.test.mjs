@@ -11,7 +11,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 test('group chat has one categorized page; preserves all original editable controls', () => {
   const html = read('chat/chat/group-play.html');
   const js = read('shared/js/group-settings-layout.js');
-  assert.match(html, /group-settings-layout\.js\?v=20261115s1/);
+  assert.match(html, /group-settings-layout\.js\?v=20261121group1/);
   assert.doesNotThrow(() => new vm.Script(js));
   for (const category of ['atmosphere', 'members', 'memory', 'games', 'owner']) {
     assert.match(js, new RegExp('\\b' + category + ':'));
@@ -74,7 +74,7 @@ test('PWA includes both group modules and opens genuine existing group/memory pa
   const sw = read('sw.js');
   const cacheVersion = Number((sw.match(/phone-app-pwa-v(\d+)/) || [])[1]) || 0;
   assert.ok(cacheVersion >= 209, 'group game privacy fixes require PWA cache v209+');
-  for (const resource of ['group-settings-layout.js?v=20261115s1',
+  for (const resource of ['group-settings-layout.js?v=20261121group1',
     'group_memory_view.js?v=20261121memory1']) {
     assert.ok(sw.includes(resource), resource);
   }

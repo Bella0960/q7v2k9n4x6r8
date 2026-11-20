@@ -340,7 +340,24 @@
       }
       roles.sort(compareContactNames);
 
-      if (!roles.length) {
+      var savedGroups = [];
+      try {
+        var storedGroups = JSON.parse(localStorage.getItem('phone_groups') || '[]');
+        if (Array.isArray(storedGroups)) savedGroups = storedGroups.filter(function (group) {
+          return group && group.preferences?.savedToContacts === true &&
+            !['left', 'declined'].includes(group.userMembership) &&
+            String(group.name || '').toLowerCase().includes(query);
+        });
+      } catch (error) {}
+      var savedGroupHtml = savedGroups.length ?
+        '<section class="contact-letter-group"><div class="contact-section-title">群聊</div>' +
+        savedGroups.map(function (group) {
+          var name = group.name || '群聊';
+          return '<div class="contact-item" data-id="' + escapeHtml(group.id) + '">' +
+            avatarFallback(name) + '<div class="contact-info"><div class="contact-name">' +
+            escapeHtml(name) + '</div></div></div>';
+        }).join('') + '</section>' : '';
+      if (!roles.length && !savedGroups.length) {
         list.innerHTML =
           '<div class="empty-state">' +
             '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
@@ -364,7 +381,7 @@
       var letters = Object.keys(groups).sort(function(a,b){
         if(a==='#')return 1;if(b==='#')return -1;return a.localeCompare(b);
       });
-      var html = '';
+      var html = savedGroupHtml;
       letters.forEach(function(letter){
         html += '<section class="contact-letter-group" id="contactSection' + letter + '">' +
           '<div class="contact-section-title">' + letter + '</div>';

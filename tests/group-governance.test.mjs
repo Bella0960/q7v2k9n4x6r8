@@ -146,7 +146,7 @@ test('new role-owned group stays a draft until accepted and keeps existing roles
 test('all touched pages compile and refer to the shared bridge; backup and PWA include it', () => {
   for (const filename of ['chat/chat/chat.html', 'chat/chat/chat-detail.html', 'chat/chat/group-play.html']) {
     const html = load(filename);
-    assert.match(html, /group-governance\.js\?v=20261115g4/, filename);
+    assert.match(html, /group-governance\.js\?v=20261121group1/, filename);
     const inline = [...html.matchAll(/<script(?:\s+[^>]*)?>([\s\S]*?)<\/script>/gi)];
     for (const [index, match] of inline.entries()) {
       assert.doesNotThrow(() => new vm.Script(match[1], { filename: filename + ':inline' + index }));
@@ -159,7 +159,7 @@ test('all touched pages compile and refer to the shared bridge; backup and PWA i
   assert.match(detail, /群动作:禁言:/);
   assert.match(load('chat/chat/chat.html'), /pendingInvitations/);
   assert.match(load('chat/chat/group-play.html'), /GroupGovernance\.leave/);
-  assert.match(load('sw.js'), /group-governance\.js\?v=20261115g4/);
+  assert.match(load('sw.js'), /group-governance\.js\?v=20261121group1/);
   assert.match(load('settings/js/backup-modules.js'), /phone_group_invitations/);
 });
 
@@ -369,4 +369,27 @@ test('departed owner cannot continue to administer the old group', () => {
     group: g, actorId: '__user', action: 'promote',
     target: 'c1', save: save(h.storage, g)
   }).ok, true, 'joined owner remains authorized');
+});
+
+test('member permission fields remain compatible and changes are scoped to the active group', () => {
+  const first = group();
+  const second = {...group(), id:'g2'};
+  const {api, storage} = harness([first, second]);
+  const commit = () => { storage.setItem('phone_groups', JSON.stringify([first, second])); return true; };
+  const apply = (action, target) => api.apply({group:first, actorId:'__user', action, target, save:commit});
+  assert.equal(apply('promote', 'c1').ok, true);
+  assert.equal(first.members[0].memberRole, 'admin');
+  assert.equal(api.rank(first, 'c1'), 2);
+  assert.equal(api.rank(second, 'c1'), 1);
+  assert.equal(apply('mute', 'c1').ok, true);
+  assert.equal(first.members[0].isMuted, true);
+  assert.equal(api.isMuted(first.members[0]), true);
+  assert.equal(api.isMuted(second.members[0]), false);
+  assert.equal(apply('unmute', 'c1').ok, true);
+  assert.equal(first.members[0].isMuted, false);
+  assert.equal(apply('demote', 'c1').ok, true);
+  assert.equal(first.members[0].memberRole, 'member');
+  first.ownerId = 'c2';
+  assert.equal(apply('promote', 'c1').code, 'NO_PERMISSION');
+  assert.equal(apply('mute', 'c1').code, 'NO_PERMISSION');
 });

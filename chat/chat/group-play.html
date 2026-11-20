@@ -6,13 +6,16 @@
 <title>群聊玩法 · 小手机</title>
 <script src="../../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../../shared/js/native-feel.js"></script>
-<script src="../../shared/js/group-governance.js?v=20261115g4"></script>
+<script src="../../shared/js/group-governance.js?v=20261121group1"></script>
 <script src="../../shared/js/phone/memory_recall.js?v=20261024v2"></script>
 <script src="../../shared/js/phone/group-game-session.js?v=20261116game11"></script>
 <script src="../../shared/js/phone/group-memory-events.js?v=20261116gme4"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
 <script src="../../shared/js/phone/group-game-chat-receipts.js?v=20261116receipt2"></script>
-<script src="../../shared/js/group-settings-layout.js?v=20261115s1" defer></script>
+<script src="../../shared/js/wallpaper-store.js?v=20261026v2"></script>
+<script src="../../shared/js/group-settings-home.js?v=20261121group1" defer></script>
+<link rel="stylesheet" href="../../shared/css/group-settings-home.css?v=20261121group1">
+<script src="../../shared/js/group-settings-layout.js?v=20261121group1" defer></script>
 <script src="../../shared/js/phone/group-game-panel.js?v=20261116gpanel6" defer></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
@@ -269,7 +272,7 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
     return readArray('phone_groups').find(function(g){return g&&String(g.id)===String(groupId);})||null;
   }
   var group=findGroup();
-  if(!group || String(group.id).charAt(0)!=='g'){
+  if(!group || String(group.id).charAt(0)!=='g'||!window.GroupGovernance?.userIsInGroup(group)){
     document.getElementById('mainContent').innerHTML='<div class="error">没有找到这条群聊记录。<br>可能群聊已经被解散，或链接已失效。</div>';
     document.getElementById('groupTitle').textContent='群聊不存在';
   }else{
@@ -287,7 +290,7 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
         if(String(groups[i]&&groups[i].id)===String(group.id)){groups[i]=group;found=true;break;}
       }
       if(!found){notify('群聊已不存在，保存失败');return false;}
-      try{localStorage.setItem('phone_groups',JSON.stringify(groups));if(message)notify(message);return true;}
+      try{var encoded=JSON.stringify(groups);localStorage.setItem('phone_groups',encoded);if(localStorage.getItem('phone_groups')!==encoded)return false;if(message)notify(message);return true;}
       catch(e){notify('保存失败：本地存储空间不足');return false;}
     }
     if (!group.ownerId) group.ownerId='__user';
@@ -542,7 +545,7 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       var nextName=nextOwner?(nextOwner.nickname||nextOwner.name||'群成员'):'你自己';
       if(!confirm('确定将群主转让给「'+nextName+'」吗？转让后你不能自行收回群主权限。'))return;
       group.ownerId=nextOwner?String(nextOwner.id):'__user';
-      if(nextOwner)nextOwner.isAdmin=true;
+      if(nextOwner){nextOwner.isAdmin=true;nextOwner.memberRole='owner';}
       persist('群主已更新');
       renderMembers();renderOwner();
     });
@@ -615,7 +618,8 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
     renderSettings();renderMembers();renderOwner();renderRelationships();
   }
   document.getElementById('backBtn').addEventListener('click',function(){
-    location.href='chat-settings.html?roleId='+encodeURIComponent(groupId);
+    var advanced=params.get('panel')==='advanced'||params.has('category');
+    location.href=(advanced?'group-play.html':'chat-detail.html')+'?id='+encodeURIComponent(groupId);
   });
 })();
 </script>

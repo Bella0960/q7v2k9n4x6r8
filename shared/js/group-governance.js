@@ -26,10 +26,13 @@
       return joined(g) && id(g.ownerId || '__user') === '__user' ? 3 : 0;
     var m = find(g, who);
     if (!m || id(m.id) !== who) return 0;
-    return id(g.ownerId || '__user') === who ? 3 : m.isAdmin === true ? 2 : 1;
+    return id(g.ownerId || '__user') === who ? 3 : isAdmin(m) ? 2 : 1;
+  }
+  function isAdmin(m) {
+    return m && (typeof m.isAdmin === 'boolean' ? m.isAdmin : m.memberRole === 'admin');
   }
   function muted(m, now) {
-    return !!(m && m.muted === true &&
+    return !!(m && (typeof m.muted === 'boolean' ? m.muted : m.isMuted === true) &&
       (!(Number(m.mutedUntil) > 0) || Number(m.mutedUntil) > (now || Date.now())));
   }
   function joined(g) { return !!g && g.userMembership !== 'left' && g.userMembership !== 'declined'; }
@@ -83,20 +86,20 @@
     if (!m) return fail('TARGET_NOT_FOUND', '没有找到唯一的目标成员');
     if (id(m.id) === ctx.actor) return fail('SELF_ACTION', '不能管理自己');
     if (id(ctx.group.ownerId || '__user') === id(m.id)) return fail('OWNER_PROTECTED', '不能对群主操作');
-    if (ctx.actorRank < 3 && m.isAdmin === true) return fail('ADMIN_PROTECTED', '管理员不能操作其他管理员');
+    if (ctx.actorRank < 3 && isAdmin(m)) return fail('ADMIN_PROTECTED', '管理员不能操作其他管理员');
     return { ok: true };
   }
   registerAction('mute', { scope: 'admin', run: function (c) {
     var check = editable(c); if (!check.ok) return check;
     var minutes = Number(c.options.minutes);
-    c.member.muted = true;
+    c.member.muted = true; c.member.isMuted = true;
     c.member.mutedUntil = Number.isFinite(minutes) && minutes > 0
       ? Date.now() + Math.min(43200, Math.floor(minutes)) * 60000 : 0;
     return { ok: true, message: '已禁言「' + (c.member.nickname || c.member.name || '成员') + '」' };
   }});
   registerAction('unmute', { scope: 'admin', run: function (c) {
     var check = editable(c); if (!check.ok) return check;
-    c.member.muted = false; c.member.mutedUntil = 0;
+    c.member.muted = false; c.member.isMuted = false; c.member.mutedUntil = 0;
     return { ok: true, message: '已解除禁言' };
   }});
   // Custom group title is group-local. Never edit the character's original profile.
@@ -111,7 +114,7 @@
   }});
   registerAction('promote', { scope: 'owner', run: function (c) {
     if (!c.member || id(c.member.id) === id(c.group.ownerId)) return fail('INVALID_TARGET', '不能修改群主身份');
-    c.member.isAdmin = true;
+    c.member.isAdmin = true; c.member.memberRole = 'admin';
     if (!c.group.settings || typeof c.group.settings !== 'object') c.group.settings = {};
     // Appointing a role is an explicit owner authorization for its ordinary group actions.
     c.group.settings.allowRoleActions = true;
@@ -119,7 +122,7 @@
   }});
   registerAction('demote', { scope: 'owner', run: function (c) {
     if (!c.member || id(c.member.id) === id(c.group.ownerId)) return fail('INVALID_TARGET', '不能修改群主身份');
-    c.member.isAdmin = false; return { ok: true, message: '已取消群管理员' };
+    c.member.isAdmin = false; c.member.memberRole = 'member'; return { ok: true, message: '已取消群管理员' };
   }});
   registerAction('rename', { scope: 'admin', run: function (c) {
     if (!c.target) return fail('INVALID_NAME', '群名不能为空');
@@ -138,7 +141,7 @@
     var role = matches[0];
     if (c.members.some(function (m) { return id(m.id) === id(role.id); })) return fail('ALREADY_MEMBER', '角色已在群里');
     c.group.members.push({ id: id(role.id), name: role.name || '角色', avatar: role.avatar || '',
-      nickname: '', title: '', isAdmin: false, muted: false, activeFrom: '08:00', activeTo: '23:00' });
+      nickname: '', title: '', isAdmin: false, memberRole: 'member', muted: false, isMuted: false, activeFrom: '08:00', activeTo: '23:00' });
     return { ok: true, message: '已邀请角色入群' };
   }});
   function read(storage, key) {
@@ -205,7 +208,7 @@
       id: gid, name: title, avatar: '', ownerId: id(inviter.id), userMembership: 'left',
       members: selected.map(function (role) {
         return { id: id(role.id), name: role.name || '角色', avatar: role.avatar || '', nickname: '',
-          title: '', isAdmin: false, muted: false, activeFrom: '08:00', activeTo: '23:00' };
+          title: '', isAdmin: false, memberRole: 'member', muted: false, isMuted: false, activeFrom: '08:00', activeTo: '23:00' };
       }), relationships: {}, settings: { allowRoleActions: true, allowRoleInvitations: true }
     };
     var invitation = { id: 'gi_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 9),
@@ -338,7 +341,7 @@
   }
   root.GroupGovernance = Object.freeze({
     on: on, registerAction: registerAction, apply: apply, rank: rank, findMember: find,
-    isMuted: muted, userIsInGroup: joined, naturalModeration: naturalModeration,
+    isMuted: muted, isAdmin: isAdmin, userIsInGroup: joined, naturalModeration: naturalModeration,
     offerInvitation: offerInvitation, offerNewGroupInvitation: offerNewGroupInvitation,
     pendingInvitations: pendingInvitations,
     resolveInvitation: resolveInvitation, leave: leave, unjoinedGroupsForRole: unjoinedGroupsForRole

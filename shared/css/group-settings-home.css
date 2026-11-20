@@ -1,0 +1,41 @@
+#groupCategoryHome.group-home{display:grid;gap:18px}
+#groupCategoryHome[hidden]{display:none}
+.group-home h2,.group-settings-dialog h2{font:500 19px/1.3 Georgia,"Songti SC",serif;margin:6px 0 0}
+.group-home button,.group-settings-dialog button{font:inherit;color:#171717;cursor:pointer}
+.group-home button:disabled,.group-settings-dialog button:disabled{opacity:.42;cursor:default}
+.group-home-cover{position:relative;display:grid;place-items:center;isolation:isolate;overflow:hidden;min-height:130px;border:1px solid #eee;border-radius:16px;background:#f7f7f7}
+.group-home-photo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:brightness(.55)}
+.group-home-cover button{position:relative;min-height:120px;width:100%;padding:16px;background:none;border:0;font:500 26px/1.2 Georgia,"Songti SC",serif;overflow-wrap:anywhere}
+.group-home-cover.has-photo button{color:#fff}
+.group-home-cover small{display:block;margin:8px 0 0;font:12px/1.3 system-ui,sans-serif;opacity:.8}
+.group-home-assets,.group-home-member-actions{display:flex;gap:10px}
+.group-home-assets button,.group-home-member-actions button{display:flex;align-items:center;justify-content:center;gap:8px;flex:1;border:1px solid #e9e9e9;border-radius:10px;background:#fff;min-height:42px}
+.group-home-assets .group-home-avatar{width:24px;height:24px;border-radius:5px}
+.group-home-avatar{display:grid;place-items:center;width:46px;height:46px;overflow:hidden;border-radius:10px;background:#f0f0f0;color:#515151;font-size:13px}
+.group-home-avatar img{width:100%;height:100%;object-fit:cover}
+.group-home-members{display:flex;gap:15px;overflow-x:auto;overscroll-behavior-inline:contain;scrollbar-width:none;padding:1px 0 3px}
+.group-home-members::-webkit-scrollbar{display:none}
+.group-home-members button{min-width:54px;max-width:70px;display:grid;justify-items:center;gap:6px;border:0;background:none;font-size:11px}
+.group-home-members button span:last-child{max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.group-home-member-actions{margin-top:-8px}
+.group-home-tools,.group-home-quick{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(75px,1fr))}
+.group-home-tools button,.group-home-quick button{min-height:65px;display:grid;align-content:center;justify-items:center;gap:8px;padding:6px 2px;border:0;border-radius:10px;background:#f7f7f7;font-size:11px;text-align:center}
+.group-home-tools svg{width:20px;height:20px;stroke:currentColor;stroke-width:1.4;fill:none;stroke-linejoin:round;stroke-linecap:round}
+.group-home-quick{grid-template-columns:repeat(3,minmax(0,1fr))}
+.group-home-quick button{font-size:12px}
+.group-home-row{width:100%;min-height:47px;display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:start;padding:8px 2px;background:#fff;border:0;border-bottom:1px solid #eee;font-size:14px}
+.group-home-row small{min-width:0;max-width:55%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#767676}
+.group-home-track{display:inline-flex;align-items:center;flex:none;width:34px;height:20px;padding:2px;border-radius:100px;background:#d2d2d2}
+.group-home-track::after{content:"";width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .15s}
+[aria-checked=true] .group-home-track{background:#222}
+[aria-checked=true] .group-home-track::after{transform:translateX(14px)}
+.group-settings-status{color:#4c4c4c;font-size:12px}
+.group-settings-status:empty{display:none}
+.group-settings-dialog{position:fixed;inset:0;margin:auto;width:min(calc(100% - 30px),400px);max-height:75dvh;overflow:auto;border:1px solid #e9e9e9;border-radius:17px;background:#fff;padding:20px;color:#111}
+.group-settings-dialog::backdrop{background:#0005}
+.group-settings-dialog[open],.group-settings-dialog form,.group-dialog-members{display:grid;gap:12px}
+.group-settings-dialog button,.group-settings-dialog input,.group-settings-dialog textarea{padding:10px;border:1px solid #e5e5e5;border-radius:8px;background:#fff;min-width:0}
+.group-settings-dialog a{color:inherit;font-size:14px}
+.group-dialog-member{display:flex;align-items:center;flex-wrap:wrap;gap:8px;border-bottom:1px solid #eee;padding-block:8px}
+.group-dialog-member strong,.group-dialog-member small,.group-dialog-member button{font-size:12px}
+.group-dialog-member .group-home-avatar{width:32px;height:32px}

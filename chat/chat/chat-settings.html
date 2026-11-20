@@ -7,6 +7,7 @@
 <script src="../../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../../shared/js/native-feel.js"></script>
 <script src="../../shared/js/wallpaper-store.js?v=20261026v2"></script>
+<script src="../../shared/js/group-governance.js?v=20261121group1"></script>
 <script src="../../shared/js/phone/phone_storage.js?v=20261121memory1"></script>
 <script src="../../shared/js/phone/role-worldbook-bindings.js?v=20261119-qa1"></script>
 <style>
@@ -1981,7 +1982,9 @@
     return null;
   }
 
-  var role = getRoleById(roleId) || { id: roleId || 'default', name: '聊天' };
+  var storedRole = getRoleById(roleId);
+  var role = storedRole || { id: roleId || 'default', name: '聊天' };
+  var selectedGroup = null;
   // 群聊支持：roleId 以 g 开头时从 phone_groups 读取群信息
   if (!getRoleById(roleId) && roleId && String(roleId).indexOf('g') === 0) {
     try {
@@ -1991,7 +1994,8 @@
         if (Array.isArray(groups)) {
           for (var gi = 0; gi < groups.length; gi++) {
             if (String(groups[gi].id) === String(roleId)) {
-              role = { id: roleId, name: groups[gi].name };
+              selectedGroup = groups[gi];
+              role = { id: roleId, name: selectedGroup.name };
               break;
             }
           }
@@ -2003,7 +2007,12 @@
 
   // 群聊：隐藏不适用的设置项（双方备注 / 通话设置 / 自动来电 / 社交自动化 / 手动生成动态）
   // 普通单聊不受影响
-  var isGroupSetting = roleId && String(roleId).indexOf('g') === 0;
+  var isGroupSetting = !!selectedGroup;
+  if (isGroupSetting && (!window.GroupGovernance?.userIsInGroup(selectedGroup) ||
+      new URLSearchParams(location.search).get('groupOptions') !== '1')) {
+    location.replace('group-play.html?id=' + encodeURIComponent(roleId));
+    return;
+  }
   if (isGroupSetting) {
     var hideIds = ['aliasCard', 'avatarManageCard', 'callSettingsCard', 'autoCallCard', 'socialLabel', 'socialList', 'smWarn', 'smGenWrap', 'clearRecordCard'];
     hideIds.forEach(function (id) {
@@ -2058,6 +2067,7 @@
       return null;
     }
     function saveCurrentGroup(group) {
+      if (window.GroupGovernance.rank(loadCurrentGroup(), '__user') < 3) return false;
       try {
         var raw = localStorage.getItem('phone_groups');
         var arr = raw ? JSON.parse(raw) : [];
@@ -2339,6 +2349,7 @@
 
     // 解散群聊（置底卡片）
     document.getElementById('actionGpDismiss').addEventListener('click', function () {
+      if (window.GroupGovernance.rank(loadCurrentGroup(), '__user') < 3) { showToast('只有群主可以解散群聊'); return; }
       if (!window.confirm('解散群聊后将清空该群的聊天记录，且不可恢复。确定解散吗？')) return;
       try {
         var raw = localStorage.getItem('phone_groups');
@@ -2360,9 +2371,7 @@
       });
     }
 
-    groupInfoSection.style.display = '';
-    renderGroupInfo();
-    renderInviteCandidates();
+    groupInfoSection.style.display = 'none';
   }
   var storageKey = 'chat_history_' + role.id;
 

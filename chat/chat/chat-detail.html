@@ -37,7 +37,7 @@
     <script src="../../shared/js/phone/chat-presence-policy.js?v=20261119scheduled1"></script>
     <script src="../../shared/js/phone/role-public-timeline.js?v=20261102v1"></script>
     <script src="../../shared/js/phone/group-chat-policy.js?v=20261118groupvoice1"></script>
-    <script src="../../shared/js/group-governance.js?v=20261115g4"></script>
+    <script src="../../shared/js/group-governance.js?v=20261121group1"></script>
     <script src="../../shared/js/phone/group-game-session.js?v=20261116game11"></script>
     <script src="../../shared/js/phone/group-turn-effects.js?v=20261115gte2"></script>
     <script src="../../shared/js/phone/group-private-receipt-recovery.js?v=20261115gpr1"></script>
@@ -2454,8 +2454,19 @@
             }
         }
 
+        if (isGroupChat && currentGroup) {
+            const markGroupRead = function () {
+                if (document.visibilityState === 'hidden') return;
+                try { localStorage.setItem('chat_group_read_' + currentRoleId, String(Date.now())); } catch (error) {}
+            };
+            markGroupRead();
+            document.addEventListener('visibilitychange', markGroupRead);
+            window.addEventListener('pagehide', markGroupRead);
+        }
+
         function groupMemberDisplayName(member) {
-            return String((member && (member.nickname || member.name)) || '成员').trim() || '成员';
+            const showNickname = currentGroup?.preferences?.showMemberNicknames !== false;
+            return String((member && ((showNickname && member.nickname) || member.name)) || '成员').trim() || '成员';
         }
         // Group cover is a conversation image, never a member's portrait.
         // Resolve each displayed message from its immutable member ID first;
@@ -6277,7 +6288,7 @@
                 const rawProfile = localStorage.getItem('myProfile');
                 if (rawProfile) myProfile = JSON.parse(rawProfile) || {};
             } catch (e) {}
-            const userName = (myProfile.nickname || '').trim() || '未知';
+            const userName = ((isGroupChat && currentGroup?.preferences?.myNickname) || myProfile.nickname || '').trim() || '未知';
             // 把用户人设拆成结构化字段，拼给 AI
             const userFacts = [];
             if (myProfile.age) userFacts.push('年龄：' + myProfile.age + '岁');

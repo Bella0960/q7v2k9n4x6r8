@@ -20,7 +20,7 @@
       var groups = JSON.parse(root.localStorage.getItem('phone_groups') || '[]');
       if (Array.isArray(groups)) group = groups.find(function (g) { return g && String(g.id) === String(gid); }) || null;
     } catch (e) {}
-    if (!group) return;
+    if (!group || !root.GroupGovernance?.userIsInGroup(group)) return;
 
     var names = {
       atmosphere: ['群聊氛围', '互动节奏、作息与接话'],
@@ -188,6 +188,16 @@
     });
     var first = params.get('category');
     showCategory(first && paneMap[first] ? first : 'home');
+    if (!first && params.get('panel') !== 'advanced' && root.GroupSettingsHome) {
+      hero.hidden = true;
+      home.classList.add('group-home');
+      root.GroupSettingsHome.mount(home, function () {
+        root.location.href = 'group-play.html?id=' + encodeURIComponent(gid) + '&panel=advanced';
+      });
+      if (headTitle) headTitle.textContent = '群聊设置';
+      var kicker = document.querySelector('.top-copy .kicker');
+      if (kicker) kicker.hidden = true;
+    }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
