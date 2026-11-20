@@ -232,10 +232,11 @@ test('chat settings real event handlers: expand, mount, save, reopen, unmount', 
     };
     return item;
   };
-  assert.equal(el('mountSub').textContent, '已挂载 1 本世界书');
+  assert.equal(el('mountSub').textContent, '已挂载 0 本世界书');
   el('actionMount').listeners.click();
   assert.equal(el('wbCard').classList.contains('is-open'), true);
   assert.match(el('wbMountList').innerHTML, /data-wb-id="global"/);
+  el('wbMountList').listeners.click({ target: row('global') });
   el('wbMountList').listeners.click({ target: row('local') });
   el('wbSaveBtn').listeners.click();
   assert.deepEqual(JSON.parse(storage.getItem('chat_worldbooks_role_a')), ['global', 'local']);
@@ -491,10 +492,10 @@ test('latest QA AI prompt actually filters private/group lore and blocks bad sto
   }
   const own = execute();
   assert.equal(own.stopped, false);
-  assert.equal(own.text, 'Common|Secret A');
+  assert.equal(own.text, 'Secret A');
   const group = execute({ group: true, mounts: { chat_worldbooks_g1: json(['group']) } });
   assert.equal(group.stopped, false);
-  assert.equal(group.text, 'Common|Secret A|Shared Group');
+  assert.equal(group.text, 'Secret A|Shared Group');
   const clear = execute({ mounts: { chat_worldbooks_role_a: '[]' } });
   assert.equal(clear.text, '');
   const malformed = execute({ noBooks: true, mounts: { chat_worldbooks_role_a: '{broken' } });
