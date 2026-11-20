@@ -32,7 +32,7 @@
             const parsed = new URL(url, window.location.href);
             if (!['https:', 'http:'].includes(parsed.protocol)) return '—';
             const pieces = parsed.pathname.split('/').filter(Boolean);
-            const safe = /^(?:api|openai|compatible-mode|v\d+(?:alpha|beta)?\d*|chat|completions)$/i;
+            const safe = /^(?:api|openai|compatible-mode|v\d+(?:alpha|beta)?\d*|chat|completions|images|generations)$/i;
             const path = pieces.map(piece => safe.test(piece) ? piece : '…').join('/');
             return (parsed.origin + '/' + path).slice(0, 300);
         } catch { return '—'; }
@@ -80,7 +80,7 @@
                 const reasons = { connect: '连接超时', watchdog: '响应超时', total: '总时限超时' };
                 code = reasons[error.reason] || '超时';
             } else {
-                code = error.kind === 'stream' ? '流式错误' : '连接失败';
+                code = { stream: '流式错误', cancelled: '请求已取消' }[error.kind] || '连接失败';
             }
         } else {
             const input = usage?.prompt_tokens ?? usage?.input_tokens;
