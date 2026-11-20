@@ -71,7 +71,9 @@ test('random results are generated locally before character response', () => {
 test('app is integrated with desktop drag layout and icon customization', () => {
   assert.match(index, /data-drag="app_luckroom"/);
   assert.match(index, /addLuckRoomShortcutToExistingLayouts/);
-  assert.match(icons, /id: 'app_luckroom'/);
+  // The current icon manager discovers all desktop tiles dynamically (no stale hard-coded catalogue).
+  assert.match(icons, /querySelectorAll\('\[data-drag\]'\)/);
+  assert.match(icons, /svgNode\.innerHTML/);
 });
 
 test('custom templates and history have a dedicated persistent data domain', () => {
