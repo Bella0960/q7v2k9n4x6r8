@@ -572,6 +572,12 @@ function drawTarot() {
   var runRole = snapshotCurrentRole();
   tarotDrawRole = runRole;
   button.disabled = true;
+  // A repeated draw must hide the previous spread until the new shuffle finishes.
+  // Otherwise browser and user can read stale old cards during the transition.
+  $('tarotSpread').hidden = true;
+  $('tarotReadings').hidden = true;
+  $('tarotDisclaimer').hidden = true;
+  $('tarotRoleReaction').hidden = true;
   requestRoleStart('塔罗牌');
   $('tarotDeckScene').hidden = false;
   $('tarotDeckScene').classList.remove('shuffling');
