@@ -69,7 +69,7 @@ test('the saved global protocol is loaded verbatim and used for every role', () 
   assert.equal(resultB, raw);
   assert.deepEqual(alerts, []);
   assert.match(detail, /systemPrompt = applyProtocolVars\(rpProtocol\)/);
-  assert.match(detail, /turnSpeakerPersona \|\| '该成员尚未填写具体人设/);
+  assert.match(detail, /personaPolicy\.MINIMAL_PERSONA_PROMPT/);
 });
 
 test('old per-character protocol remains untouched and cannot be silently promoted globally', () => {
@@ -127,7 +127,7 @@ test('single-chat full persona and group selected-speaker persona are never sile
   assert.equal(select(true, {id:'a'}, {persona}, '仅公开成员目录'), persona);
 });
 
-test('every eligible global and attached local worldbook entry reaches the same turn', () => {
+test('only explicitly mounted global and local books enter the selected role turn', () => {
   const books = [
     { id: 'global', scope: 'global', title: '公共深圳背景',
       entries: [
@@ -138,17 +138,17 @@ test('every eligible global and attached local worldbook entry reaches the same 
     { id: 'local_a', scope: 'local', title: 'A的私有世界书', content: 'A经营花店' },
     { id: 'local_b', scope: 'local', title: 'B的私有世界书', content: 'B住在山上' }
   ];
-  const a = getLore({ books });
+  const a = getLore({ books, mount: ['global', 'local_a'] });
   assert.match(a.result, /深圳在广东省/);
   assert.match(a.result, /地铁正在运营/);
   assert.match(a.result, /A经营花店/);
   assert.doesNotMatch(a.result, /B住在山上|隐藏剧情/);
   const b = getLore({ books, speaker: { id: 'b', worldBookIds: [] },
     text: '今天好热' });
-  assert.match(b.result, /深圳在广东省/);
+  assert.equal(b.result, '');
   assert.doesNotMatch(b.result, /A经营花店|B住在山上|地铁正在运营/);
   const group = getLore({ books, group: true, speaker: { id: 'b', worldBookIds: [] }, mount: ['local_b'] });
-  assert.match(group.result, /深圳在广东省|地铁正在运营/);
+  assert.doesNotMatch(group.result, /深圳在广东省|地铁正在运营/);
   assert.match(group.result, /B住在山上/);
   assert.doesNotMatch(group.result, /A经营花店/);
 });
@@ -163,7 +163,7 @@ test('worldbook parse and activation errors block a turn; overbudget lore is rep
     faults: { moduleMissing: true } });
   assert.equal(missing.result, undefined);
   assert.match(missing.alerts[0], /世界书读取失败/);
-  const tooLong = getLore({ books });
+  const tooLong = getLore({ books, mount: ['global'] });
   assert.equal(tooLong.result, undefined);
   assert.match(tooLong.alerts[0], /世界书过长/);
   assert.match(detail, /maxEntries: Math\.max\(1, wbList\.reduce/);
