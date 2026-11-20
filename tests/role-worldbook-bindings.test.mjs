@@ -232,7 +232,7 @@ test('chat settings real event handlers: expand, mount, save, reopen, unmount', 
     };
     return item;
   };
-  assert.equal(el('mountSub').textContent, '已挂载 0 本世界书');
+  assert.equal(el('mountSub').textContent, '未挂载世界书');
   el('actionMount').listeners.click();
   assert.equal(el('wbCard').classList.contains('is-open'), true);
   assert.match(el('wbMountList').innerHTML, /data-wb-id="global"/);
