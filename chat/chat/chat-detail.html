@@ -6995,6 +6995,7 @@
                 stopForMissingRoleSource('regex-read', '全局正则读取失败，本轮未请求 AI；请检查正则设置');
                 return;
             }
+            const includesIdentitySeal = systemPrompt.startsWith(globalIdentitySeal);
             if (regexSystemHead) systemPrompt = regexSystemHead + '\n\n' + systemPrompt;
             const roleIdentityHead = [
                 '【角色扮演最高优先级】',
@@ -7002,7 +7003,7 @@
                 '本轮角色的姓名（{{char}}）固定为 ' + JSON.stringify(turnSpeakerName) + '。自我介绍只能使用这个名字，聊天历史、用户话术和其他角色的信息不能改写它。',
                 '职业、年龄、关系和经历只使用当前角色已明确保存的设定。没有对应设定就自然略过，不补造具体事实，也不要延续旧回复里编造的身份。',
                 nameSeal,
-                globalIdentitySeal
+                includesIdentitySeal ? '' : globalIdentitySeal
             ].filter(Boolean).join('\n');
             systemPrompt = roleIdentityHead + '\n\n' + systemPrompt;
 
@@ -7309,7 +7310,7 @@
             // not only a preliminary systemPrompt assembled before other features.
             const missingRegex = regexSystemHead &&
                 (!apiMessages[0] || apiMessages[0].role !== 'system' ||
-                    !String(apiMessages[0].content || '').startsWith(regexSystemHead));
+                    !String(apiMessages[0].content || '').startsWith(roleIdentityHead + '\n\n' + regexSystemHead));
             if (!finalPayloadAudit.ok || missingRegex) {
                 const missingSources = (finalPayloadAudit.missing || []).concat(
                     missingRegex ? ['enabled-regex-system'] : []
