@@ -431,3 +431,12 @@ Only after these reports are reviewed should implementation tasks be assigned.
 - Preserve plain dialogue, model stream errors/partials, narration/translation/role markers, role/group IDs, persona/worldbooks/global protocol, legacy historical bubbles, account boundaries and all persisted records.
 - Business JSON must still satisfy each app's own schema; fallback plaintext is allowed only for user-facing reply suggestions. No fabricated persistence or successful HTTP/API responses.
 - Acceptance: shared parser behavior tests, parser-load order, existing Node/Vite/Chromium full regression, original QA-only source receipt and identity-core continuity. Android/iPhone manual experience test separately.
+
+### MUSIC-IMPORT-003 — Restore actual audio bytes from Android SAF false-zero file picks
+
+**Priority:** P1 · **Status:** IMPLEMENTED ON TASK BRANCH; QA/DEVICE NOT VERIFIED (2026-11-20)
+
+- Android SAF/file/cloud pickers may report missing/zero `File.size` for audio with unreadable or recoverable contents. Probe bytes before declaring empty; a read/permission failure must have a distinct user-facing error and bounded retry, without silent success.
+- Preserve original file-name support, 256-byte header detection for normal tracks, MP3/M4A/WAV signature rules, IndexedDB-first catalog commit, old playlist data, music UI and backup format.
+- Recover a nonempty Blob from actual bytes when picker metadata or sliced bytes are unreliable; verify Blob size before persistence; do not overwrite existing tracks when checks fail.
+- Acceptance: focused Node suites, production build/Chromium, Android SAF/cloud-picker and iPhone Files device checks, original QA-only pipeline. No deployment or merging before review.

@@ -504,3 +504,10 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 浏览器页面只新增共享脚本标签（多数仅 1 处引用），不改 UI/CSS、钱包数据格式、SW、安全配置或 Worker。
 - 独立专项 Node 真实隔离测试：44703025637、44703616046 均 PASS。原 QA TESTS 定义的完整 Node/Vite/Chromium 逐项门禁在固定代码快照上执行：44703782100 PASS。相关记录在 Bella0960/web-runtime-lab Actions。
 - 本条记录时 QA #299 尚未整合新解析器、Cloudflare 未更新、Android/iOS 真机未验收；最终整合后需要对原 QA 新提交完整复测，且仅通过既有 QA-only 发布路径，核对同源构建回执和身份核心不变。
+
+## 2026-11-20｜MUSIC-IMPORT-003｜Android 文件选择器音频空文件误判
+
+- 本任务从唯一 QA #299 `818753615da5ea88b719587d3bc65ce21ff39a8e` 创建独立分支 `task/MUSIC-IMPORT-003-android-picker-read-20261120`，仅修改 `music/music.html` 的格式探测及导入处理，以及已有 `tests/music-extensionless-import.test.mjs`。不修改主题、聊天、音频 UI、音乐数据键、IndexedDB schema 或正式环境。
+- Android 文件名可能是纯数字且 `size:0` 或缺失；旧版直接返回 `reason: empty`。新增实际字节探测与受限重试（`arrayBuffer` / `FileReader`），并区分空数据与读取错误。正常正数大小保持仅抽取 256 字节文件头。异常选择器以实际读取内容重建 Blob，用真实大小存入既有 IndexedDB；持久化前拒绝空 Blob，原目录与旧曲目不被改写。
+- 测试：原 `tests/music-extensionless-import.test.mjs` 扩展实际零字节误报、FileReader 恢复、重试、空文件、权限错误、数字文件名、存储回滚；连同 `tests/music-data-integrity.test.mjs` 在封闭公共隔离执行器通过：[运行 #44708572456](https://github.com/Bella0960/web-runtime-lab/actions/runs/44708572456) PASS（固定功能代码 `867ce2e3946542f5adcca3a83f6a131b5d259411`）。
+- 当前仅为**独立任务代码和专项 Node 回归通过**；完整 Node/Vite/Chromium、真实 Android/iPhone 文件选择器与 QA-only 版本发布均**未验收**。禁止将此状态称作手机已修复；下一步审核 PR 并按原完整门禁后方可合入 QA 和部署。

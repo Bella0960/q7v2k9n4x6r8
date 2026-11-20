@@ -101,3 +101,134 @@ test('unsupported files and failed storage do not overwrite or delete prior trac
   assert.ok(messages.some(x=>x.includes('无法识别音频文件格式')));
   assert.ok(messages.some(x=>x.includes('音频未导入')));
 });
+
+
+test('Android SAF false-zero and missing size are recovered from actual bytes', async () => {
+  for (const reportedSize of [0, undefined]) {
+    const picked = {
+      name: '1000245123', type: 'application/octet-stream', size: reportedSize,
+      slice() { return new Blob([]); },
+      async arrayBuffer() { return Uint8Array.from(mp3).buffer; }
+    };
+    const result = await detect(picked);
+    assert.equal(result.ok, true);
+    assert.equal(result.mimeType, 'audio/mpeg');
+    assert.equal(result.fromHeader, true);
+    assert.equal(result.sourceBlob.size, mp3.length, 'recover actual bytes, not the empty picker wrapper');
+  }
+});
+
+test('temporary file read error is retried once before rejecting permission', async () => {
+  let attempts = 0;
+  const picked = {
+    name: '1000245123', type: '', size: 0,
+    async arrayBuffer() {
+      if (++attempts === 1) throw new Error('SAF unavailable briefly');
+      return Uint8Array.from(mp3).buffer;
+    }
+  };
+  const result = await detect(picked);
+  assert.equal(result.ok, true);
+  assert.equal(result.sourceBlob.size, mp3.length);
+  assert.equal(attempts, 2);
+});
+
+test('FileReader is used when the first arrayBuffer read is denied', async () => {
+  let readerReads = 0;
+  class SimulatedFileReader {
+    readAsArrayBuffer(source) {
+      readerReads++;
+      Promise.resolve().then(() => {
+        this.result = Uint8Array.from(source.realBytes).buffer;
+        this.onload();
+      });
+    }
+  }
+  const withReader = new Function('FileReader', html.slice(detectorStart, detectorEnd) +
+    '\nreturn musicResolveAudioFormat;')(SimulatedFileReader);
+  const chosen = {
+    name: '1000245123', type: '', size: 0, realBytes: mp3,
+    async arrayBuffer() { throw new Error('Android content read permission transient'); }
+  };
+  const result = await withReader(chosen);
+  assert.equal(result.ok, true);
+  assert.equal(result.mimeType, 'audio/mpeg');
+  assert.equal(result.sourceBlob.size, mp3.length);
+  assert.equal(readerReads, 1);
+});
+
+test('persist repaired bytes and real size for numeric-name zero-size Android audio', async () => {
+  let saved=[], record=null, played=[], messages=[];
+  const listener=installImport({
+    readMeta:()=>saved.slice(), tracks:[],
+    toast:message=>messages.push(message),
+    putBlob:async data=>{record=data;},
+    saveMeta:list=>{saved=list.slice();},
+    deleteBlob:async()=>{throw Error('must not delete any prior audio');},
+    play:async id=>played.push(id)
+  });
+  const picker={files:[{
+    name:'1000245123', type:'application/octet-stream', size:0,
+    slice(){return new Blob([]);},
+    async arrayBuffer(){return Uint8Array.from(mp3).buffer;}
+  }],value:'selected'};
+  await listener({target:picker});
+  assert.equal(picker.value,'');
+  assert.equal(record?.size,mp3.length);
+  assert.equal(record?.blob?.size,mp3.length);
+  assert.equal(record?.mimeType,'audio/mpeg');
+  assert.equal(record?.blob?.type,'audio/mpeg');
+  assert.deepEqual(Array.from(new Uint8Array(await record.blob.arrayBuffer())),mp3);
+  assert.equal(saved.length,1);
+  assert.equal(saved[0].name,'1000245123');
+  assert.equal(played[0],saved[0].id);
+  assert.deepEqual(messages,[]);
+});
+
+test('genuine empty file and unreadable file have distinct errors and do not overwrite old tracks', async () => {
+  const empty = {name:'1000245123',size:0,type:'',
+    async arrayBuffer(){return new ArrayBuffer(0);}};
+  let deniedCount = 0;
+  const denied = {name:'1000245123',size:0,type:'',
+    async arrayBuffer(){deniedCount++; throw new Error('permission denied');}};
+  assert.equal((await detect(empty)).reason,'empty');
+  assert.equal((await detect(denied)).reason,'read');
+  assert.equal(deniedCount,2);
+  const old = {id:'local_previous',source:'local',name:'Existing song'};
+  let stored=[old], trackList=[old], notices=[], putCalls=0;
+  const listener=installImport({
+    readMeta:()=>stored.slice(), tracks:trackList,
+    toast:s=>notices.push(s),
+    putBlob:async()=>{putCalls++;},
+    saveMeta:meta=>{stored=meta.slice();},
+    deleteBlob:async()=>{throw Error('must not touch saved music');},
+    play:async()=>{throw Error('must not attempt playback');}
+  });
+  await listener({target:{files:[empty,denied],value:'selected'}});
+  assert.equal(putCalls,0);
+  assert.deepEqual(stored,[old]);
+  assert.deepEqual(trackList,[old]);
+  assert.ok(notices.some(s=>s.includes('音频内容为空')));
+  assert.ok(notices.some(s=>s.includes('音频读取失败')));
+});
+
+test('positive-size picker with unreadable slice recovers original bytes, never saves the empty slice', async () => {
+  let savedRecord=null, catalog=[], warnings=[];
+  const listener=installImport({
+    readMeta:()=>catalog.slice(), tracks:[],
+    toast:s=>warnings.push(s), putBlob:async r=>{savedRecord=r;},
+    saveMeta:items=>{catalog=items.slice();},
+    deleteBlob:async()=>{throw Error('must not delete previous music');},
+    play:async()=>{}
+  });
+  const file={
+    name:'1000245123',type:'',size:mp3.length,
+    slice(){return new Blob([]);},
+    async arrayBuffer(){return Uint8Array.from(mp3).buffer;}
+  };
+  await listener({target:{files:[file],value:'selected'}});
+  assert.equal(savedRecord?.size,mp3.length);
+  assert.deepEqual(Array.from(new Uint8Array(await savedRecord.blob.arrayBuffer())),mp3);
+  assert.equal(catalog.length,1);
+  assert.deepEqual(warnings,[]);
+});
