@@ -52,11 +52,11 @@ function installImport(ports) {
   const doc={getElementById(id){assert.equal(id,'musicImport');return input;}};
   new Function('document','musicResolveAudioFormat','readLocalTracksMeta','musicMetaReadFailure',
     'toast','putAudioBlob','saveLocalTracksMeta','deleteAudioBlob','tracks',
-    'renderAlbum','renderRecent','renderSearch','playTrack','Blob','window',
+    'renderAlbum','renderRecent','renderSearch','playTrack','Blob','window','musicScheduleLocalDuration',
     html.slice(listenerStart, listenerEnd)
   )(doc,ports.detect || detect,ports.readMeta,false,ports.toast,ports.putBlob,ports.saveMeta,ports.deleteBlob,
     ports.tracks,()=>{},()=>{},()=>{},ports.play,Blob,
-    { alert: ports.alert || ports.toast });
+    { alert: ports.alert || ports.toast },ports.scheduleDuration || (() => {}));
   return handler;
 }
 
@@ -306,4 +306,28 @@ test('a file provider that never resolves eventually exits the read state', asyn
   assert.equal(result.ok,false);
   assert.equal(result.reason,'read');
   assert.ok(Date.now() - started < 1500, 'bounded retries must not hang');
+});
+
+test('import queues metadata duration only after successful Blob and catalog persistence', async () => {
+  var persisted = false, tasks = [];
+  var catalog = [];
+  var handler = installImport({
+    tracks: [], readMeta: () => catalog.slice(),
+    saveMeta: records => { catalog = records.slice(); persisted = true; },
+    putBlob: async () => {},
+    deleteBlob: async () => {},
+    play: async () => {},
+    toast: () => {},
+    scheduleDuration: (track, blob) => {
+      assert.equal(persisted, true);
+      assert.equal(blob.type, 'audio/mpeg');
+      tasks.push({ track, blob });
+    }
+  });
+  await handler({ target: { files: [selectedFile(mp3, 'local-audio.mp3', 'audio/mpeg')], value: 'chosen' } });
+  assert.equal(tasks.length, 1);
+  assert.equal(tasks[0].track.artist, '未知歌手');
+  assert.equal(tasks[0].track.dur, '--:--');
+  assert.equal(tasks[0].track.durSec, 0);
+  assert.equal(catalog[0].id, tasks[0].track.id);
 });
