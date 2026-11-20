@@ -22,6 +22,7 @@
     <script src="../../shared/js/phone/role-worldbook-bindings.js?v=20261119-qa1"></script>
     <script src="../../shared/js/phone/chat-role-context.js?v=20261119source3"></script>
     <script src="../../shared/js/phone/inspect_interaction_bridge.js?v=20261112v5"></script>
+    <script src="../../shared/js/phone/ai-response-parser.js?v=20261120parser1"></script>
     <script src="../../shared/js/phone/phone_api.js?v=20261115cancel1"></script>
     <script src="../../shared/js/phone/image-generation.js?v=20261106v1"></script>
     <script src="../../shared/js/phone/role-gallery-image-autonomy.js?v=20261111v2"></script>
@@ -7458,6 +7459,14 @@
             fullText = typeof streamResult.fullText === 'string'
                 ? streamResult.fullText
                 : lastPaintedStreamText;
+
+            // Shared format adapter for NEW successful model replies only.
+            // Keeps normal prose/markup, failed partial streams and legacy history intact.
+            // Private chats, groups, multi-bubble and regenerate all use this sendMsg path.
+            if (streamResult.ok && window.AIResponseParser &&
+                typeof window.AIResponseParser.chatText === 'function') {
+                fullText = window.AIResponseParser.chatText(fullText);
+            }
 
             // Recheck live membership before committing the reply: a muted/removed role
             // must not speak even if another tab changed permissions mid-stream.
