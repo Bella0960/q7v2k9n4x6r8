@@ -113,7 +113,7 @@ test('group without corresponding role still uses its legacy mount, never rewrit
   assert.deepEqual([...binding.read('group_1').ids], ['book_1']);
   assert.equal(storage.getItem('ai_custom_characters'), json(roles));
 });
-test('legacy global books remain selected by default; local books stay private', () => {
+test('unmounted global books never enter a role context, including old global definitions', () => {
   const { binding } = harness({
     ai_custom_characters: json([{ id: 'role_a', worldBookIds: ['local_a'] },
       { id: 'role_b', worldBookIds: [] }]),
@@ -124,11 +124,11 @@ test('legacy global books remain selected by default; local books stay private',
       { id: 'disabled_global', scope: 'global', enabled: false }
     ])
   });
-  assert.deepEqual([...binding.read('role_a').ids], ['local_a', 'shared', 'old_global']);
-  assert.deepEqual([...binding.read('role_b').ids], ['shared', 'old_global']);
+  assert.deepEqual([...binding.read('role_a').ids], ['local_a']);
+  assert.deepEqual([...binding.read('role_b').ids], []);
   assert.deepEqual([...binding.filterBooks('role_b', [
     { id: 'shared' }, { id: 'old_global' }, { id: 'local_a' }
-  ]).books].map(x => x.id), ['shared', 'old_global']);
+  ]).books].map(x => x.id), []);
 });
 
 test('explicitly cleared chat mount cannot resurrect old character or global lore', () => {
