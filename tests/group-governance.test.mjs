@@ -144,7 +144,7 @@ test('new role-owned group stays a draft until accepted and keeps existing roles
 });
 
 test('all touched pages compile and refer to the shared bridge; backup and PWA include it', () => {
-  for (const filename of ['chat/chat/chat.html', 'chat/chat/chat-detail.html', 'chat/chat/group-play.html']) {
+  for (const filename of ['chat/chat/chat.html', 'chat/chat/chat-detail.html', 'chat/chat/group-play.html', 'chat/chat/chat-settings.html']) {
     const html = load(filename);
     assert.match(html, /group-governance\.js\?v=20261121group1/, filename);
     const inline = [...html.matchAll(/<script(?:\s+[^>]*)?>([\s\S]*?)<\/script>/gi)];

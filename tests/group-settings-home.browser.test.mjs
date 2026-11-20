@@ -9,11 +9,13 @@ const group = {id:'g-test', name:'每周碰面', ownerId:'__user', members:[
   {id:'a',name:'甲'},{id:'b',name:'乙'}
 ]};
 
-test('group settings support extension tiles, member controls and persisted preferences', async () => {
+test('group settings support extension tiles, member controls and persisted preferences', {timeout:60000}, async () => {
   const browser = await chromium.launch();
   try {
     for (const owner of ['__user', 'a']) {
       const page = await browser.newPage({viewport:{width:390,height:844},hasTouch:true,isMobile:true});
+      page.setDefaultTimeout(10000);
+      page.setDefaultNavigationTimeout(10000);
       await page.route('**/*', async route => {
         const url = new URL(route.request().url());
         if (url.origin !== origin) return route.abort();

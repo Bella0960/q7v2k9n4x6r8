@@ -2011,8 +2011,7 @@
   if (isGroupSetting && (!window.GroupGovernance?.userIsInGroup(selectedGroup) ||
       new URLSearchParams(location.search).get('groupOptions') !== '1')) {
     location.replace('group-play.html?id=' + encodeURIComponent(roleId));
-    return;
-  }
+  } else {
   if (isGroupSetting) {
     var hideIds = ['aliasCard', 'avatarManageCard', 'callSettingsCard', 'autoCallCard', 'socialLabel', 'socialList', 'smWarn', 'smGenWrap', 'clearRecordCard'];
     hideIds.forEach(function (id) {
@@ -3792,6 +3791,7 @@
   })();
 
   refreshMeta();
+  }
 </script>
 <script src="../../shared/js/statusbar-control.js"></script>
 </body>
