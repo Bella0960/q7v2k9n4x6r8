@@ -14,7 +14,7 @@ test('默认协议由设置页与聊天页共用，空存储时聊天仍加载',
  assert.ok(state.window.MAOMAO_RP_DEFAULT_PROTOCOL.length>2500);
  assert.match(state.window.MAOMAO_RP_DEFAULT_PROTOCOL,/你就是【\{\{char\}\}】/);
  assert.match(rp,/var DEFAULT_PROTOCOL = String\(window\.MAOMAO_RP_DEFAULT_PROTOCOL \|\| ''\)/);
- assert.match(detail,/rpProtocol\.trim\(\) \|\| String\(window\.MAOMAO_RP_DEFAULT_PROTOCOL \|\| ''\)/);
+ assert.match(detail,/rpProtocol\.trim\(\) \|\| \(personaIncomplete/);
  assert.match(detail,/const globalRpKey = 'chat_rp_protocol_';/);
 });
 test('source-first prompt uses the current saved persona, not stale assistant lectures',()=>{
@@ -22,7 +22,7 @@ test('source-first prompt uses the current saved persona, not stale assistant le
  assert.doesNotMatch(detail,/【发送前的角色一致性核对】/);
  assert.match(detail,/【本轮角色档案 · 身份依据】/);
  assert.match(detail,/【最终设定优先级】/);
- assert.match(detail,/turnSpeakerPersona \|\| '该成员尚未填写具体人设/);
+ assert.match(detail,/personaPolicy\.MINIMAL_PERSONA_PROMPT/);
  assert.match(detail,/stopForMissingRoleSource\('final-source-audit'/);
 });
 
