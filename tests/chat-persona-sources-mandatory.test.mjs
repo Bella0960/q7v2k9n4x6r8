@@ -23,13 +23,16 @@ function extract(after, before) {
 const protocolSource = extract("            let rpProtocol = '';", '            // 世界书：');
 const loreSource = extract('            // 世界书：', '            // 协议变量替换：');
 const protocolRead = new Function('localStorage', 'window', 'aliasRoleId', 'currentCharacter', 'roleId', 'showToast',
-  'const currentRoleId = roleId;\n' + protocolSource + '\nreturn rpProtocol;');
+  'const currentRoleId = roleId;\n' +
+  'const stopForMissingRoleSource = (reason, message) => showToast(message);\n' +
+  protocolSource + '\nreturn rpProtocol;');
 const loreRead = new Function('localStorage', 'window', 'aliasRoleId', 'roleForTurn', 'isGroupChat',
   'historyList', 'roleModelHistory', 'text', 'showToast',
   "const groupReplyPick = isGroupChat ? { id: roleForTurn.id } : null;" +
   "const getRoleById = id => String(id) === String(roleForTurn.id) ? roleForTurn : null;" +
   "const retryTarget=null,isRegen=false,contextOnly=false,silent=false,_vl=null;" +
   "const renderAllMessages=()=>{}, vlRefresh=()=>{}, _markUserSendFailed=()=>false;" +
+  "const stopForMissingRoleSource=(reason,message)=>showToast(message);" +
   loreSource + '\nreturn worldbookText;');
 
 function storage(values) {

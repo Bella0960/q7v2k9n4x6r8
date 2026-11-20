@@ -5831,8 +5831,29 @@
 
             baseUrl = baseUrl.replace(/\/+$/, '');
 
+            // A user bubble can already be persisted before persona/protocol checks.
+            // Preserve its original mid and make it retryable if a mandatory source fails.
+            let sourceGateUser = null;
             // 重玩模式：不新增用户消息，直接基于现有历史重新请求
             let historyList = loadMessages();
+            function stopForMissingRoleSource(reason, message) {
+                var marked = !!(sourceGateUser && _markUserSendFailed(
+                    historyList, sourceGateUser.mid, sourceGateUser.time, reason
+                ));
+                if (marked) {
+                    if (_vl) vlRefresh();
+                    else renderAllMessages();
+                }
+                if (typeof showToast === 'function') {
+                    showToast(marked
+                        ? message + '；请修复资料后点击原消息旁的感叹号重试'
+                        : retryTarget
+                            ? message + '；原失败消息已保留，请修复后重试'
+                            : message + (sourceGateUser
+                                ? '；消息已保留，但重试状态未能保存，请刷新检查'
+                                : ''));
+                }
+            }
             if (retryTarget && !visionImageMids.length) {
                 var retrySource = historyList.find(function (item) {
                     return item && String(item.mid || '') === String(retryTarget.mid || '');
@@ -5879,6 +5900,7 @@
                         if (typeof showToast === 'function') showToast('消息已保存，但会话更新未确认，请重新进入聊天');
                         return;
                     }
+                    sourceGateUser = { mid: userMsg.mid, time: userMsg.time };
                     if (isGroupChat && !silent) groupAutoFollowupToken += 1;
                     if (quoteSnapshot && typeof window.clearQuote === 'function') window.clearQuote();
                     if (!silent) {
@@ -6125,7 +6147,8 @@
             // Other group members' backgrounds must not be silently truncated; fail with
             // an actionable message if a roster cannot fit the configured context.
             if (isGroupChat && rolePersona.length > 24000) {
-                if (typeof showToast === 'function') showToast('群成员人设合计过长，无法完整加载，本轮已停止');
+                stopForMissingRoleSource('group-persona-too-long',
+                    '群成员人设合计过长，无法完整加载，本轮已停止');
                 return;
             }
 
@@ -6292,14 +6315,14 @@
                 // historical keys without writes for explicit user recovery.
             } catch (e) {
                 console.error('[ChatPersonaSources] saved global protocol unavailable:', e);
-                if (typeof showToast === 'function') showToast('人设协议读取失败，本轮已停止。请检查本机存储');
+                stopForMissingRoleSource('protocol-read', '人设协议读取失败，本轮已停止。请检查本机存储');
                 return;
             }
             // 设置页展示的默认协议，即使尚未显式保存，聊天也应真实使用。
             // 已保存的非空协议优先，读取不隐式修改用户设置。
             rpProtocol = rpProtocol.trim() || String(window.MAOMAO_RP_DEFAULT_PROTOCOL || '');
             if (!rpProtocol.trim()) {
-                if (typeof showToast === 'function') showToast('人设协议未加载，本轮已停止。请检查设置');
+                stopForMissingRoleSource('protocol-missing', '人设协议未加载，本轮已停止。请检查设置');
                 return;
             }
 
@@ -6422,7 +6445,7 @@
                 return;
             }
             if (worldbookText.length > 32000) {
-                if (typeof showToast === 'function') showToast('当前触发的世界书过长，无法完整发送；请调整条目后重试');
+                stopForMissingRoleSource('worldbook-too-long', '当前触发的世界书过长，无法完整发送；请调整条目后重试');
                 return;
             }
 
@@ -7004,9 +7027,8 @@
                 : { ok: false, missing: ['validator'] };
             if (!personaAudit.ok) {
                 console.error('[ChatPersonaSources] mandatory source check failed:', personaAudit.missing);
-                if (typeof showToast === 'function') {
-                    showToast('角色人设、世界书或设置协议未完整载入，本轮已停止。请检查对应资料');
-                }
+                stopForMissingRoleSource('persona-sources-incomplete',
+                    '角色人设、世界书或设置协议未完整载入，本轮已停止。请检查对应资料');
                 return;
             }
             // Existing virtual-phone notes/comments are role-local user-authored data.
