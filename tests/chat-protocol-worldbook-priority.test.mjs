@@ -33,9 +33,9 @@ test('one global protocol key is shared by settings, direct chat, and group chat
   assert.match(detail, /const globalRpKey = 'chat_rp_protocol_';/);
   assert.match(detail, /rpProtocol = localStorage\.getItem\(globalRpKey\) \|\| ''/);
   // An empty or name-only dossier must not replace the application-wide RP agreement.
-  assert.match(detail, /rpProtocol = rpProtocol\\.trim\\(\\) \\|\\| String\\(window\\.MAOMAO_RP_DEFAULT_PROTOCOL \\|\\| ''\\)\\.trim\\(\\)/);
-  assert.doesNotMatch(detail, /rpProtocol = rpProtocol\\.trim\\(\\) \\|\\| \\(personaIncomplete/);
-  assert.match(detail, /const canonicalProtocolAtSend = storedProtocolAtSend\\.trim\\(\\) \\|\\|\\s*String\\(window\\.MAOMAO_RP_DEFAULT_PROTOCOL \\|\\| ''\\)\\.trim\\(\\)/);
+  assert.match(detail, /rpProtocol = rpProtocol\.trim\(\) \|\| String\(window\.MAOMAO_RP_DEFAULT_PROTOCOL \|\| ''\)\.trim\(\)/);
+  assert.doesNotMatch(detail, /rpProtocol = rpProtocol\.trim\(\) \|\| \(personaIncomplete/);
+  assert.match(detail, /const canonicalProtocolAtSend = storedProtocolAtSend\.trim\(\) \|\|\s*String\(window\.MAOMAO_RP_DEFAULT_PROTOCOL \|\| ''\)\.trim\(\)/);
   assert.match(detail, /const turnSpeakerName = isGroupChat && groupReplyPick/);
   assert.match(detail, /const roleForTurn = !isGroupChat/);
 });
