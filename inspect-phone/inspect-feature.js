@@ -355,18 +355,14 @@
     return {risk:risk,caught:caught,evidence:caught?'角色注意到锁定区域被打开过。':'没有新的提示',aftermath:caught?'角色收回查看许可，暂时不再分享。':'角色仍保持原来的态度'};
   }
   function promptFor(id,role,data,now) {
-    var f=JSON.stringify(data.facts);
-    var old=JSON.stringify(data.sections[id]||{}).slice(0,6500);
-    var other=JSON.stringify(data.sections.notes&&data.sections.notes.notes||[]).slice(0,1000);
+    var f=JSON.stringify(id==='wallet'||id==='map'?arr(data.facts).slice(-4):[]);
     return [
       '为完全虚构的角色创建「查手机」剧情，不是真实设备记录。只返回 JSON 对象，不要前言或 markdown。',
-      '当前本地时间：'+new Date(now).toISOString()+'；角色人设（姓名/年龄/职业/教育/消费/性格均优先）：'+roleContext(role),
+      '当前本地时间：'+new Date(now).toISOString()+'；角色人设（姓名/年龄/职业/教育/消费/性格均优先）：'+compactPersona(role),
       '角色与玩家是不同人。手机主人发言 side=me，联系人发言 side=ai，撤回系统提示 side=system。',
       '统一生活事实时间线（不可修改，跨板块必须对应）：'+f,
       '统一秘密线索（禁止写入公开记录，锁定备忘录/隐藏相册必须复用，不能互相矛盾）：'+
         JSON.stringify(arr(data.secrets)).slice(0,1300),
-      '现有该板块内容（仅为避免重复，可以续写，不要复制）：'+old,
-      '其他已存在的生活线索：'+other,
       '必须：时间戳为13位毫秒且不能晚于现在；内容全部虚构，不涉及真实地址/账号/号码。',
       '不能写性格年龄职业消费能力不符的剧情；具体关系称谓不少于5人；内容包含自然的犹豫和未说出口的话，但避免无缘无故的重大反转。',
       '与未改动板块发生的事实一致，单板块刷新不能修改其他板块；每次生成新的细节，不重复旧记录。',
@@ -478,19 +474,56 @@
     });
     return false;
   }
-  function personalPrompt(role,ids,now) {
-    var requirements={
-      chat:'3–5 位具名联系人，包含一个群聊。每位 3–5 条聊天。为角色创作独有的人际关系，不能套用阿诺、阿川、小林等预置人物。id 唯一；手机主人的发言 side=me，对方 side=ai。',
-      moments:'3 条朋友圈，配图使用文本描述，每条至少一条自然评论。已有联系人可出现在评论中。',
-      notes:'3 条公开备忘录。围绕角色本人具体的工作、习惯或愿望写标题和正文；locked 固定为 []。'
+  function inspectApiConfig() {
+    var storage=global.PhoneStorage;
+    if(!storage)return {};
+    var active=storage.getActiveProfileId?.();
+    var profile=active&&arr(storage.getApiProfiles?.()).find(function(item){return item&&String(item.id)===active;});
+    return profile||storage.getApiConfig?.()||{};
+  }
+
+  function compactPersona(role) {
+    var setting=clean(role.persona||role.setting||role.description||role.bio||role.prompt,360);
+    var occupation=clean(role.job||role.occupation||role.work,48);
+    return [clean(role.name,32),clean(role.gender||role.sex,16),occupation,setting].filter(Boolean).join('，');
+  }
+
+  function personalPrompt(role,ids) {
+    var shapes={
+      chat:'"chat":{"contacts":[{"name":"姓名","relationship":"关系","messages":[{"side":"me","text":"短句"},{"side":"ai","text":"短句"},{"side":"me","text":"短句"}]}]}。3位联系人，其中一位是群聊。',
+      moments:'"moments":{"moments":[{"text":"动态","image":"配图描述","comments":[{"name":"昵称","text":"评论"}]}]}。3条。',
+      notes:'"notes":{"notes":[{"title":"标题","text":"正文"}]}。3条。'
     };
-    return [
-      '一次生成同一虚构角色手机中的以下板块：'+ids.join('、')+'。只返回 JSON 对象，键为板块名。',
-      '角色档案：'+roleContext(role),
-      '当前时间毫秒戳：'+now+'。时间戳用整数毫秒，不晚于当前时间；聊天按时间从早到晚排序。',
-      '角色的职业、兴趣、关系须符合档案。三个板块共享具体的日常事件和人物。每条消息 1–2 句，每篇备忘录不超过 200 字。只写虚构内容。',
-      ids.map(function(id){return id+'：'+requirements[id]+' 结构 '+FIELDS[id];}).join('\n')
-    ].join('\n');
+    return '角色：'+compactPersona(role)+'。按该角色设定写同一段虚构日常，避免预置人物。只返回一个 JSON 对象。每条不超过60字。'+
+      ids.map(function(id){return shapes[id];}).join(' ');
+  }
+
+  function prepareGeneratedSection(id,section,now) {
+    if(!section||typeof section!=='object')return section;
+    if(id==='chat'){
+      return {contacts:arr(section.contacts).map(function(c,i){
+        if(!c||typeof c!=='object')return c;
+        var time=now-i*60000;
+        return Object.assign({},c,{id:c.id||'contact-'+i,unread:c.unread??0,lastTime:c.lastTime??time,
+          messages:arr(c.messages).map(function(m,j,all){
+            return m&&typeof m==='object'?Object.assign({},m,{time:m.time??time-(all.length-j)*1000}):m;
+          })});
+      })};
+    }
+    if(id==='moments')return {moments:arr(section.moments).map(function(m,i){
+      return m&&typeof m==='object'?Object.assign({},m,{time:m.time??now-i*60000}):m;
+    })};
+    return {locked:[],notes:arr(section.notes).map(function(note,i){
+      var time=now-i*60000;
+      return note&&typeof note==='object'?Object.assign({},note,{
+        createdAt:note.createdAt??time,updatedAt:note.updatedAt??note.createdAt??time
+      }):note;
+    })};
+  }
+
+  function inspectDiagnostic(event) {
+    // Record the response shape and failure stage, never account settings or story contents.
+    global.console?.info('[inspect-phone] generation',event);
   }
 
   function keepPlayerChatTurns(oldSection,nextSection) {
@@ -623,7 +656,7 @@
       if(personalPending)return personalPending;
       if(!PERSONAL_APPS.some(function(id){return data.source[id]!=='ai';}))return;
       var api=global.PhoneAPI;
-      var config=global.PhoneStorage&&global.PhoneStorage.getApiConfig?global.PhoneStorage.getApiConfig():{};
+      var config=inspectApiConfig();
       if(!api||typeof api.completeJSON!=='function'||!config||!clean(config.apiKey))return;
       personalError='';
       async function generate(){
@@ -632,21 +665,47 @@
         adoptPersonalCache(cached,false);
         var ids=PERSONAL_APPS.filter(function(id){return data.source[id]!=='ai';});
         if(!ids.length)return;
-        var result=await api.completeJSON({
-          system:'你负责为虚构角色创作手机里的日常。严格遵循角色档案，只输出合法 JSON。',
-          user:personalPrompt(role,ids,started),timeoutMs:60000,temperature:.8
-        });
+        var responseInfo=null,requestInfo=null;
+        var result;
+        try{
+          result=await api.completeJSON({
+            system:'按角色档案创作虚构手机记录。只输出 JSON。',
+            user:personalPrompt(role,ids),apiConfig:inspectApiConfig(),timeoutMs:60000,
+            onDiagnostic:function(event){
+              if(event.stage==='response')responseInfo=event;
+              if(event.stage==='request-error')requestInfo=event;
+              inspectDiagnostic(event);
+            }
+          });
+        }catch(error){
+          if(requestInfo?.status)throw new Error('API 请求失败（HTTP '+requestInfo.status+'），请检查当前方案。');
+          if(requestInfo?.timedOut)throw new Error('API 响应超时，可以重试。');
+          throw new Error('无法读取 API 响应，请检查网络或当前方案。');
+        }
         if(accountGuard&&JSON.stringify(accountGuard.state())!==guardScope)return;
-        if(!result||!result.ok||!ids.every(function(id){
-          return valid(id,result.data&&result.data[id],started,data.facts,true);
-        }))throw new Error('角色记录生成失败，可以重试。');
+        if(!result?.ok){
+          if(responseInfo?.finish==='length')throw new Error('模型输出被截断，请调高当前方案的输出上限。');
+          if(responseInfo?.reasoningOnly||responseInfo?.characters===0)throw new Error('模型没有返回正文，可以重试。');
+          throw new Error('模型正文无法解析为 JSON，可以重试。');
+        }
+        var generatedSections={};
+        var rejected=ids.filter(function(id){
+          var section=prepareGeneratedSection(id,result.data?.[id],started);
+          generatedSections[id]=section;
+          return !valid(id,section,started,data.facts,true);
+        });
+        if(rejected.length){
+          inspectDiagnostic({stage:'schema',rejected:rejected});
+          throw new Error('模型返回的'+ITEMS.filter(function(item){return rejected.includes(item.id);})
+            .map(function(item){return item.name;}).join('、')+'记录缺少必要字段，可以重试。');
+        }
         var latest=read(roleId,new Date())||data;
         var next=Object.assign({},latest,{sections:Object.assign({},latest.sections),
           source:Object.assign({},latest.source),updatedAt:Date.now()});
         ids.forEach(function(id){
           if(next.source[id]==='ai')return;
           var previous=next.sections[id];
-          var generated=result.data[id];
+          var generated=generatedSections[id];
           if(id==='notes')generated=Object.assign({},generated,{locked:previous.locked,archive:previous.archive});
           next.sections[id]=id==='chat'?keepPlayerChatTurns(previous,generated):preserveUserEntries(id,previous,generated);
           next.source[id]='ai';
@@ -886,13 +945,13 @@
     }
     function refreshSection() {
       if(waiting)return;
-      var id=current,api=global.PhoneAPI,cfg=global.PhoneStorage&&global.PhoneStorage.getApiConfig?global.PhoneStorage.getApiConfig():{};
+      var id=current,api=global.PhoneAPI,cfg=inspectApiConfig();
       if(!permission||selected.indexOf(id)<0){hint('这个板块尚未获得角色分享许可。');return;}
       if(pendingChat&&id==='chat'){hint('请先等待当前联系人的回复，避免覆盖发送中的消息。');return;}
       if(!api||typeof api.completeJSON!=='function'||!clean(cfg.apiKey)){refreshOffline(id);return;}
       waiting=true;notice='正在生成当前板块，不会重写其他板块。';render();
       var requestRoleId=roleId,requestNow=Date.now();
-      api.completeJSON({system:'你是一位虚构角色生活资料编剧，只返回合法 JSON，不涉及真实用户隐私。',user:promptFor(id,role,data,requestNow),timeoutMs:60000,temperature:.85}).then(function(result){
+      api.completeJSON({system:'你是一位虚构角色生活资料编剧，只返回合法 JSON，不涉及真实用户隐私。',user:promptFor(id,role,data,requestNow),apiConfig:cfg,timeoutMs:60000,temperature:.85}).then(function(result){
         if(!result||!result.ok||!valid(id,result.data,requestNow,data.facts))throw new Error('生成内容结构、数量或时间不合要求，原记录已保留');
         if(roleId!==requestRoleId)return;
         if(localDay(new Date())!==localDay(new Date(requestNow)))throw new Error('已跨入新的一天，请重新打开本板块刷新。');
@@ -936,15 +995,14 @@
       view={kind:'browser-results',query:q};notice='';render();
       // A configured AI may write *fictional* reference pages for unknown
       // queries. This is not internet browsing and never claims live merchants.
-      var cfg=global.PhoneStorage&&global.PhoneStorage.getApiConfig?
-        global.PhoneStorage.getApiConfig():{},api=global.PhoneAPI;
+      var cfg=inspectApiConfig(),api=global.PhoneAPI;
       if(personaWeb.find(q,personaWeb.persona(role),section).length||
         !cfg||!String(cfg.apiKey||'').trim()||!api||typeof api.completeJSON!=='function'||waiting)return;
       waiting=true;notice='正在生成虚构网页资料（非实时网络搜索）';render();
       var requestId=roleId,searchQuery=q,beforeAI=JSON.stringify(section);
       api.completeJSON({
         system:'你是角色私有浏览器里的虚构网页资料编辑，只创作安全、准确、日常的原创中文参考文章。不是实时联网搜索；禁止杜撰真实商家、网址、价格、联系方式或已发生的交易。必须返回 JSON 对象。',
-        user:'角色背景：'+roleContext(role).slice(0,1100)+'\n搜索词：'+searchQuery+
+        apiConfig:cfg,user:'角色背景：'+compactPersona(role)+'\n搜索词：'+searchQuery+
           '\n仅生成完全虚构的网页参考资料，至少2条最多4条，标题与正文不能互相重复。JSON格式：{"pages":[{"title":"完整文章标题","snippet":"一句有信息量的摘要","paragraphs":["至少25字的正文段落1","至少25字的正文段落2"]}]}。无需真实链接。论坛和原始角色数据不要修改。',
         temperature:.7,timeoutMs:45000
       }).then(function(result){
@@ -1261,15 +1319,15 @@
         contact.messages=oldMessages;contact.lastTime=oldLastTime;
         notice='消息保存失败，未发送给 AI。请检查手机存储空间。';render();return;
       }
-      var cfg=global.PhoneStorage&&global.PhoneStorage.getApiConfig?global.PhoneStorage.getApiConfig():{},api=global.PhoneAPI;
+      var cfg=inspectApiConfig(),api=global.PhoneAPI;
       if(!api||!clean(cfg.apiKey)){
         notice='消息已保存为虚构剧情；未配置 API，暂不能生成对方回复。';render();return;
       }
       pendingChat=contact.id||contact.name;notice='正在等待联系人回复…';render();
       var promptText='以下是完全虚构的聊天记录。你扮演联系人 '+clean(contact.name,60)+'，与角色 '+clean(role.name,60)+' 交谈。'+
         '关系：'+clean(contact.relationship,50)+'。请根据双方已有对话自然回复，不要扮演用户，也不要生成长篇小说，只回复1-2句普通聊天文本。\n'+
-        '角色设定：'+roleContext(role)+'\n近期消息：'+JSON.stringify(contact.messages.slice(-10));
-      api.complete({system:'你正在模拟虚构的手机联系人。只输出联系人回复。',user:promptText,timeoutMs:30000}).then(function(reply){
+        '角色设定：'+compactPersona(role)+'\n刚收到的消息：'+clean(contact.messages[contact.messages.length-1]?.text,240);
+      api.complete({apiConfig:cfg,system:'你正在模拟虚构的手机联系人。只输出联系人回复。',user:promptText,timeoutMs:30000}).then(function(reply){
         if(!clean(reply,240))throw new Error('回复为空');
         var oldReplyMessages=contact.messages.slice(),oldReplyTime=contact.lastTime;
         contact.messages=oldReplyMessages.concat([{side:'ai',text:clean(reply,240),time:Date.now(),status:'sent',origin:'generated_contact_reply'}]).slice(-60);

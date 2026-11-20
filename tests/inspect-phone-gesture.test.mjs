@@ -387,25 +387,35 @@ async function main() {
     const { browser, page } = await freshPage({ width, height: 844 });
     const requests = [];
     try {
-      await page.exposeFunction('recordInspectGeneration', prompt => requests.push(prompt));
+      await page.route('**/fixture/v1/chat/completions', async route => {
+        const body=route.request().postDataJSON();
+        const prompt=body.messages[1].content;
+        requests.push(prompt);
+        assert(body.model === 'active-model' && route.request().headers().authorization === 'Bearer fixture-key', '请求使用激活方案而非旧镜像');
+        assert(prompt.length < 950 && !prompt.includes('禁止发送的旧历史'), '生成请求不夹带旧历史');
+        const painter=prompt.includes('水彩展');
+        const title=painter?'买颜料':'准备预算会议';
+        const data={
+          chat:{contacts:['小祝','小郑','筹备群'].map((name,i)=>({
+            name:(painter?'画室·':'公司·')+name,relationship:i===2?'工作群':'同事',
+            messages:[0,1,2].map(j=>({side:j%2?'me':'ai',text:title+' '+j}))
+          }))},
+          moments:{moments:[0,1,2].map(i=>({text:title+'的近况 '+i,image:'工作台',comments:[{name:'小祝',text:'期待'}]}))},
+          notes:{notes:[0,1,2].map(i=>({title:title+' '+i,text:title}))}
+        };
+        const fence=String.fromCharCode(96).repeat(3);
+        const fenced=fence+'json\n'+JSON.stringify(data)+'\n'+fence;
+        await route.fulfill({json:{choices:[{finish_reason:'stop',message:{content:painter?fenced:[{type:'text',text:fenced}]}}]}});
+      });
       async function enter(roleId) {
-        await page.goto(BASE + '/inspect-phone/phone.html?id=' + roleId);
+        await page.goto(BASE+'/inspect-phone/phone.html?id='+roleId);
         await page.evaluate(() => {
-          window.PhoneStorage.getApiConfig = () => ({ apiKey: 'stub' });
-          window.PhoneAPI.completeJSON = async request => {
-            await window.recordInspectGeneration(request.user);
-            const painter = request.user.includes('水彩展');
-            const title = painter ? '买颜料' : '准备预算会议';
-            const time = Date.now() - 60000;
-            return { ok: true, data: {
-              chat: { contacts: ['小祝', '小郑', '筹备群'].map((name, i) => ({
-                id: 'known-' + i, name: (painter ? '画室·' : '公司·') + name, relationship: i === 2 ? '工作群' : '同事', lastTime: time, unread: 0,
-                messages: [0, 1, 2].map(j => ({ side: j % 2 ? 'me' : 'ai', time: time - 2000 + 1000 * j, text: title + ' ' + j }))
-              })) },
-              moments: { moments: [0, 1, 2].map(i => ({ text: title + '的近况 ' + i, time, image: '工作台', comments: [{ name: '小祝', text: '期待' }] })) },
-              notes: { locked: [], notes: [0, 1, 2].map(i => ({ title: title + ' ' + i, text: title, createdAt: time, updatedAt: time })) }
-            }};
-          };
+          localStorage.setItem('api_settings',JSON.stringify({apiKey:'stale',baseUrl:'/unused',model:'old-model'}));
+          localStorage.setItem('api_active_profile','fixture-active');
+          localStorage.setItem('api_profiles_v1',JSON.stringify([{
+            id:'fixture-active',apiKey:'fixture-key',baseUrl:location.origin+'/fixture/v1/chat/completions',model:'active-model'
+          }]));
+          localStorage.setItem('chat_history_pw-test',JSON.stringify([{text:'禁止发送的旧历史'}]));
         });
         await page.locator('#lock').click();
       }

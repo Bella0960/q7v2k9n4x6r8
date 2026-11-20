@@ -42,7 +42,7 @@
 
     NS.complete = function (opts) {
         // opts: { system, user, messages, temperature, model, timeoutMs, signal? }
-        var config = Storage ? Storage.getApiConfig() : {};
+        var config = opts.apiConfig || (Storage ? Storage.getApiConfig() : {});
         var apiKey = (config.apiKey || '').trim();
         if (!apiKey) {
             var err = new Error('未配置 API Key');
@@ -88,7 +88,7 @@
         }
         var timer = setTimeout(function () { timedOut = true; controller.abort(); }, timeoutMs);
 
-        var requestUrl = baseUrl + '/chat/completions';
+        var requestUrl = /\/chat\/completions$/i.test(baseUrl) ? baseUrl : baseUrl + '/chat/completions';
         var observe = observeRequest(requestUrl, body.messages);
         var httpStatus;
         return fetch(requestUrl, {
@@ -100,19 +100,27 @@
             signal: controller.signal,
             body: JSON.stringify(body)
         }).then(function (response) {
-            clearTimeout(timer);
             if (!response.ok) {
                 httpStatus = response.status;
                 return response.text().then(function (txt) {
-                    var e = new Error('HTTP ' + response.status + ' ' + txt.slice(0, 200));
+                    var e = new Error('HTTP ' + response.status + (opts.onDiagnostic ? '' : ' ' + txt.slice(0, 200)));
+                    e.status = response.status;
                     log('error', model, start, e.message);
                     throw e;
                 });
             }
             return response.json();
         }).then(function (data) {
-            var text = (((data || {}).choices || [])[0] || {}).message
-                ? (data.choices[0].message.content || '') : '';
+            var choice = data?.choices?.[0];
+            var content = choice?.message?.content;
+            var text = typeof content === 'string' ? content : Array.isArray(content)
+                ? content.map(function (part) { return typeof part?.text === 'string' ? part.text : ''; }).join('')
+                : '';
+            reportDiagnostic(opts, {
+                stage: 'response', characters: text.length, fenced: /\x60\x60\x60/.test(text),
+                finish: choice?.finish_reason === 'length' ? 'length' : choice?.finish_reason === 'stop' ? 'stop' : 'other',
+                reasoningOnly: !text && Boolean(choice?.message?.reasoning_content || choice?.message?.reasoning)
+            });
             observe?.(text, null, data?.usage);
             log('success', model, start);
             return text;
@@ -120,6 +128,7 @@
             observe?.('', httpStatus ? { kind: 'http', status: httpStatus }
                 : timedOut ? { kind: 'abort', reason: 'connect' }
                 : { kind: err?.name === 'AbortError' ? 'cancelled' : 'network' });
+            reportDiagnostic(opts, { stage: 'request-error', status: httpStatus || 0, timedOut: timedOut });
             if (err && err.name === 'AbortError') {
                 err = new Error(cancelledByCaller ? '请求已取消' :
                     (timedOut ? '请求超时（' + timeoutMs + 'ms）' : '请求已中断'));
@@ -272,9 +281,16 @@
     // 约定：prompt 里已经告诉 AI 只返回 JSON。
     // 这里负责清洗 + 解析 + 失败兜底。
 
+    function reportDiagnostic(opts, details) {
+        if (typeof opts.onDiagnostic !== 'function') return;
+        try { opts.onDiagnostic(details); } catch (_) {}
+    }
+
     NS.completeJSON = function (opts) {
         return NS.complete(opts).then(function (raw) {
-            return cleanJSON(raw);
+            var parsed = cleanJSON(raw);
+            if (opts.onDiagnostic) reportDiagnostic(opts, { stage: 'parse', ok: parsed.ok });
+            return parsed;
         });
     };
 
