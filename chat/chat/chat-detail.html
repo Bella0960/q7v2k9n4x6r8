@@ -10564,6 +10564,7 @@
     overlay.style.display = 'none';
   }
   async function doSummarize() {
+    var revision = window.PhoneStorage?.getMemoryArchive(rid).revision;
     btnConfirm.disabled = true;
     btnConfirm.textContent = '整理中...';
     try {
@@ -10576,11 +10577,13 @@
 
       var history = getHistory(), startIndex = getProcessedCount();
       if (startIndex > history.length) startIndex = 0;
+      var archive = window.PhoneStorage?.getMemoryArchiveEntries(rid, history);
+      var visible = archive ? new Set(archive.map(function (entry) { return entry.index; })) : null;
       var hardEnd = Math.min(history.length, startIndex + Math.min(20, getInterval()));
       var endIndex = startIndex, transcriptLines = [], transcriptChars = 0;
       while (endIndex < hardEnd) {
         var m = history[endIndex], line = '';
-        if (m && !m.isError && m.role !== 'system_error') {
+        if ((!visible || visible.has(endIndex)) && m && !m.isError && m.role !== 'system_error') {
           var who = (m.role === 'sent' || m.role === 'user') ? '用户' : '角色';
           var content = String(m.text || m.content || m.desc || '').trim();
           if (content) line = who + '：' + content;
@@ -10627,6 +10630,7 @@
       clearTimeout(timer);
       if (!resp.ok) { sumToast(friendlyHttpError(resp.status, '')); overlay.style.display = 'none'; return; }
       var data = await resp.json();
+      if (window.PhoneStorage?.getMemoryArchive(rid).revision !== revision) return;
       var text = data && data.choices && data.choices[0] && data.choices[0].message ? (data.choices[0].message.content || '').trim() : '';
       var jsonMatch = text.match(/\[[\s\S]*\]/);
       if (!jsonMatch) throw new Error('memory-json-invalid');
