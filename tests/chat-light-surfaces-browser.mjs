@@ -147,7 +147,7 @@ try {
         await page.locator('#plus-action-btn').click();
         await panel.locator('[data-feat="favorites"]').click();
         await page.locator('#stickerPanelOverlay.is-show').waitFor({state:'visible'});
-        assert.equal(await page.locator('#stickerRoleTab').getAttribute('aria-selected'), 'true');
+        assert.equal(await page.locator('#stickerRoleTab').getAttribute('aria-pressed'), 'true', 'role sticker favorites are selected');
         await panel.waitFor({state:'hidden'});
         assert.equal(errors.length, 0, errors.join('\n'));
         console.log(width + 'px / ' + theme + ': header, status bar, overflow, input and features passed');
