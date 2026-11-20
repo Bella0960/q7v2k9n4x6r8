@@ -64,8 +64,8 @@ test('group member uses group book mounts plus OWN bound local lore, not other m
     {id:'speaker-local',scope:'local'}, {id:'other-member-private',scope:'local'}
   ];
   const chosen=policy.selectWorldbooksForGroupSpeaker(books,['group-bound'],speaker);
-  assert.deepEqual(Array.from(chosen.map(x=>x.id)),['global','group-bound','speaker-local']);
-  assert.deepEqual(Array.from(policy.selectWorldbooksForGroupSpeaker(books,[],null).map(x=>x.id)),['global']);
+  assert.deepEqual(Array.from(chosen.map(x=>x.id)),['group-bound','speaker-local']);
+  assert.deepEqual(Array.from(policy.selectWorldbooksForGroupSpeaker(books,[],null).map(x=>x.id)),[]);
   assert.match(detail,/selectWorldbooksForGroupSpeaker\(/);
   assert.match(detail,/groupReplyPick && getRoleById\(groupReplyPick\.id\)/);
 });
