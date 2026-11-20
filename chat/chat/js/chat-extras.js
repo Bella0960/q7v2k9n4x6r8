@@ -327,12 +327,9 @@
       window.MAOMAOCallExperience.start(mode, currentCharacter);
       return;
     }
-    var cid = encodeURIComponent(currentCharacter.id);
-    if (mode === 'video') {
-      window.location.href = '../call/call.html?id=' + cid + '&type=video';
-    } else {
-      window.location.href = '../call/call-ui.html?roleId=' + cid;
-    }
+    // An unavailable call layer is an error, not a reason to silently downgrade
+    // to the superseded standalone call screens.
+    showToast('通话暂不可用，请刷新后重试');
   }
 
   // ---------- 通话返回：读取 sessionStorage 结果，插入一张通话卡（不发 AI 指令） ----------

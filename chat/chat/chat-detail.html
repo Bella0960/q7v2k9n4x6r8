@@ -9,7 +9,7 @@
     <script src="../../shared/js/wallpaper-store.js?v=20261026v2"></script>
     <script src="../../shared/js/chat-beauty.js?v=20261102v3"></script>
     <link rel="stylesheet" href="../../shared/css/chat-beauty-runtime.css?v=20261031v1">
-    <link rel="stylesheet" href="../call/call-overlay.css?v=20261105v1">
+    <link rel="stylesheet" href="../call/call-overlay.css?v=20261121call1">
     <script src="../../shared/js/phone/phone_storage.js"></script>
     <script src="../../shared/js/phone/chat-history-atomic.js?v=20261118v3"></script>
     <script src="../../shared/js/phone/chat-regex-policy.js?v=20261120prompt1"></script>
@@ -4792,16 +4792,22 @@
             }
             return true;
         }
-        // 自动来电：仅当该角色独立开关 chat_auto_call_<roleId> 为 'true' 时，延迟 1.5s 进入来电页
-        // 关闭（false/null/脏值）时只保留卡片，绝不跳转
+        // AI 来电遵守当前角色的独立开关，并在本聊天页显示新版接听/拒绝界面。
+        // 未打开开关时只保留已保存的通话卡，不导航到任何旧通话页。
         function maybeAutoIncomingCall() {
-            let enabled = false;
+            if (isGroupChat) return;
             try {
-                enabled = localStorage.getItem('chat_auto_call_' + aliasRoleId) === 'true';
-            } catch (e) { enabled = false; }
-            if (!enabled) return;
+                if (localStorage.getItem('chat_auto_call_' + aliasRoleId) !== 'true') return;
+            } catch (e) { return; }
             setTimeout(function () {
-                window.location.href = '../call/call-ui.html?roleId=' + encodeURIComponent(aliasRoleId) + '&type=incoming';
+                try {
+                    if (localStorage.getItem('chat_auto_call_' + aliasRoleId) !== 'true') return;
+                } catch (e) { return; }
+                if (!currentCharacter || String(currentCharacter.id) !== String(aliasRoleId)) return;
+                var calls = window.MAOMAOCallExperience;
+                if (!calls || typeof calls.invite !== 'function' || !calls.invite(currentCharacter)) {
+                    if (typeof showToast === 'function') showToast('语音来电暂不可用，请刷新后重试');
+                }
             }, 1500);
         }
 
@@ -9852,7 +9858,11 @@
             if (callAction) callAction.addEventListener('click', function (event) {
                 event.preventDefault(); event.stopImmediatePropagation();
                 if (window.closePlusPanel) window.closePlusPanel();
-                location.href = '../call/call.html?id=' + encodeURIComponent(currentRoleId) + '&group=1&type=voice';
+                var calls = window.MAOMAOCallExperience;
+                if (!calls || typeof calls.start !== 'function' ||
+                    !calls.start('group', currentCharacter)) {
+                    if (typeof showToast === 'function') showToast('群通话暂不可用，请刷新后重试');
+                }
             }, true);
             function closePlusPanel() {
                 if (window.closePlusPanel) window.closePlusPanel();
@@ -10076,7 +10086,7 @@
 
     </script>
     <script src="js/chat-extras.js?t=20261120fanwai24"></script>
-    <script src="../call/call-overlay.js?v=20261105v1"></script>
+    <script src="../call/call-overlay.js?v=20261121call1"></script>
     <script>
     function openNarrationModal() {
         var m = document.createElement('div');

@@ -5,6 +5,7 @@
   if (global.MAOMAOCallExperience) return;
 
   var activeSession = null;
+  var activeInvitation = null;
 
   function safeImageSource(value) {
     var source = String(value || '').trim();
@@ -107,6 +108,8 @@
       activeSession.open();
       return true;
     }
+    // An explicit outgoing call supersedes an unanswered incoming invitation.
+    if (activeInvitation) activeInvitation.close();
 
     var host = document.querySelector('.phone-mockup') || document.body;
     var fixedLayer = host === document.body;
@@ -654,5 +657,57 @@
     return true;
   }
 
-  global.MAOMAOCallExperience = { start: start };
+  // Incoming calls use the same in-chat engine; never navigate to the legacy call page.
+  // A call may start only after the person taps Accept.
+  function invite(character) {
+    if (!character || !character.id || activeSession) return false;
+    var roleId = String(character.id);
+    if (activeInvitation) {
+      if (activeInvitation.roleId === roleId) return true;
+      activeInvitation.close();
+    }
+    var host = document.querySelector('.phone-mockup') || document.body;
+    var panel = document.createElement('section');
+    panel.className = 'maomao-call-invite' + (host === document.body ? ' is-fixed' : '');
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-modal', 'true');
+    panel.setAttribute('aria-label', '语音来电');
+    panel.innerHTML = [
+      '<div class="maomao-call-invite-card">',
+        '<div class="maomao-call-invite-avatar" data-invite-avatar></div>',
+        '<strong class="maomao-call-invite-name" data-invite-name></strong>',
+        '<p class="maomao-call-invite-caption">邀请你语音通话</p>',
+        '<div class="maomao-call-invite-actions">',
+          '<button type="button" data-invite-action="decline">拒绝</button>',
+          '<button type="button" data-invite-action="accept">接听</button>',
+        '</div>',
+      '</div>'
+    ].join('');
+    panel.querySelector('[data-invite-name]').textContent = String(character.name || '联系人');
+    createAvatar(panel.querySelector('[data-invite-avatar]'),
+      character.avatar || character.avatarUrl || '', character.name);
+    function onKeydown(event) {
+      if (event.key === 'Escape') dismiss();
+    }
+    function dismiss() {
+      panel.remove();
+      document.removeEventListener('keydown', onKeydown);
+      if (activeInvitation && activeInvitation.element === panel) activeInvitation = null;
+    }
+    panel.addEventListener('click', function (event) {
+      var button = event.target.closest ? event.target.closest('[data-invite-action]') : null;
+      if (!button || !panel.contains(button)) return;
+      var action = button.getAttribute('data-invite-action');
+      dismiss();
+      if (action === 'accept' && !start('voice', character)) {
+        if (typeof global.showToast === 'function') global.showToast('语音通话暂不可用');
+      }
+    });
+    host.appendChild(panel);
+    document.addEventListener('keydown', onKeydown);
+    activeInvitation = { roleId: roleId, element: panel, close: dismiss };
+    return true;
+  }
+
+  global.MAOMAOCallExperience = { start: start, invite: invite };
 })(window);
