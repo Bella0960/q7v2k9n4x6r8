@@ -245,6 +245,7 @@
 
     // 聊天记录（按角色）
     NS.getChatHistory = function (contactId) {
+        if (typeof contactId !== 'string' || !contactId.trim()) return [];
         var primary = _inspectChatPrimary(contactId);
         if (primary.state === 'ok') return primary.value;
         // Keep the legacy [] return contract, but never surface a stale duplicate
@@ -649,6 +650,9 @@
 
         // getData —— 重现 getData 的双查逻辑，但给结果对象
         R.getData = function (contactId, appId) {
+            if (appId === 'chat' && (typeof contactId !== 'string' || !contactId.trim())) {
+                return failResult(ERR.VALIDATION_FAILED, 'chat history requires a valid target', false);
+            }
             // 先查 phone_data_v2
             var rootRes = R.getRoot();
             var bucket;
@@ -779,6 +783,9 @@
         /* ---------- Chat history / Memories（per-contact，旧 key 为主） ---------- */
 
         R.getChatHistory = function (contactId) {
+            if (typeof contactId !== 'string' || !contactId.trim()) {
+                return failResult(ERR.VALIDATION_FAILED, 'chat history requires a valid target', false);
+            }
             var probe = _probe('chat_history_' + contactId);
             if (probe.state === 'unavailable') {
                 return failResult(ERR.DB_UNAVAILABLE, 'chat history unavailable', true);
