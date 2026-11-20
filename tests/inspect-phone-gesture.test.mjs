@@ -410,10 +410,10 @@ async function main() {
       async function enter(roleId) {
         await page.goto(BASE+'/inspect-phone/phone.html?id='+roleId);
         await page.evaluate(() => {
-          localStorage.setItem('api_settings',JSON.stringify({apiKey:'stale',baseUrl:'/unused',model:'old-model'}));
+          localStorage.setItem('api_settings',JSON.stringify({apiKey:'fixture-key',baseUrl:location.origin+'/fixture/v1',model:'old-model'}));
           localStorage.setItem('api_active_profile','fixture-active');
           localStorage.setItem('api_profiles_v1',JSON.stringify([{
-            id:'fixture-active',apiKey:'fixture-key',baseUrl:location.origin+'/fixture/v1/chat/completions',model:'active-model'
+            id:'fixture-active',apiKey:'',baseUrl:location.origin+'/fixture/v1/chat/completions',model:'active-model'
           }]));
           localStorage.setItem('chat_history_pw-test',JSON.stringify([{text:'禁止发送的旧历史'}]));
         });
@@ -427,6 +427,13 @@ async function main() {
       await enter('pw-test');
       await page.locator('#appHome').tap();
       assert(await page.locator('#appHome').isHidden(), width + 'px 请求页可返回桌面');
+      const dockCentered = await page.locator('.dock').evaluate(dock => {
+        const icons = [...dock.querySelectorAll('.app')].map(button => button.getBoundingClientRect());
+        const bounds = dock.getBoundingClientRect();
+        return icons.length === 2 && Math.abs(icons[0].y - icons[1].y) < 1 &&
+          Math.abs((icons[0].left + icons[1].right) / 2 - (bounds.left + bounds.right) / 2) < 1;
+      });
+      assert(dockCentered, width + 'px 两个 Dock 图标居中对齐');
       await page.locator('.dock [data-app="chat"]').tap();
       await authorize();
       await page.locator('.dock [data-app="chat"]').tap();
@@ -443,7 +450,7 @@ async function main() {
       });
       assert(aligned, width + 'px 微信四个图标均匀且水平对齐');
       await page.locator('.nv-contact').first().tap();
-      await page.locator('#appHome').tap();
+      await page.locator('#appHome').tap({ position: { x: 22, y: 22 } });
       assert(await page.locator('#appHome').isHidden(), '微信聊天详情可直返桌面');
       await page.locator('.grid [data-app="notes"]').tap();
       await page.locator('[data-detail="note"]').first().tap();
