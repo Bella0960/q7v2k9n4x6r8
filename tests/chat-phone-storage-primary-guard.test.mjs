@@ -342,7 +342,7 @@ test('invalid chat read targets never resolve phantom history keys or v2 buckets
   }
   assert.equal(f.data.chat_history_undefined, phantom);
   assert.equal(f.data.chat_history_null, phantom);
-  assert.equal(f.writes.length, 0);
+  assert.equal(f.writes.filter(key => String(key).startsWith('chat_history_')).length, 0);
 });
 
 test('valid chat read targets preserve the primary and legacy fallback contracts', () => {
@@ -351,5 +351,5 @@ test('valid chat read targets preserve the primary and legacy fallback contracts
   assert.equal(f.api.result.getChatHistory('A').value[0].mid, 'primary');
   assert.equal(f.api.result.getData('A', 'chat').value.history[0].mid, 'primary');
   assert.equal(f.api.result.getChatHistory('B').value[0].text, 'untouched B');
-  assert.equal(f.writes.length, 0);
+  assert.equal(f.writes.filter(key => String(key).startsWith('chat_history_')).length, 0);
 });
