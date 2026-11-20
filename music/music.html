@@ -2292,23 +2292,21 @@
       try { probe = file.slice(0, 256); } catch (err) { probe = file; }
     }
     var read = await musicReadAudioBytes(probe);
-    var recoveredBlob = null;
+    var usedOriginal = probe === file;
 
     // If a positive-size picker's header is unreadable, retry the original
     // file rather than treating its empty slice as proof of empty content.
-    if (!read.ok && probe !== file) {
+    if (!read.ok && !usedOriginal) {
       read = await musicReadAudioBytes(file);
+      usedOriginal = true;
       if (!read.ok && read.reason === 'empty') read = { ok: false, reason: 'read' };
     }
     if (!read.ok) return { ok: false, reason: read.reason };
 
     // For an inaccurate size, missing slice(), or failed header slice, only
     // a Blob reconstructed from bytes actually read may be persisted.
-    if (probe === file || read.bytes.length > 256) {
-      recoveredBlob = new Blob([read.bytes], { type: String(file.type || '') });
-    } else if (!normalSize) {
-      recoveredBlob = new Blob([read.bytes], { type: String(file.type || '') });
-    }
+    var recoveredBlob = usedOriginal
+      ? new Blob([read.bytes], { type: String(file.type || '') }) : null;
     var signature = musicAudioTypeFromSignature(read.bytes.subarray(0, 256));
     var mime = String(file.type || '').toLowerCase().split(';')[0].trim();
     var ext = String(file.name || '').match(/\.([^.]+)$/);
