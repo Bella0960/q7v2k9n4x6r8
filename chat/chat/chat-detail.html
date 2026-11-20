@@ -29,7 +29,7 @@
     <script src="../../shared/js/phone/role-gallery-image-autonomy.js?v=20261111v2"></script>
     <script src="../../shared/js/phone/role_family_cards.js?v=20261028v3"></script>
     <script src="../../shared/js/phone/memory_recall.js?v=20261118groupmemory1"></script>
-    <script src="../../shared/js/phone/phone_stream.js?v=20261118streamcomplete2"></script>
+    <script src="../../shared/js/phone/phone_stream.js?v=20261120capacity1"></script>
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v2"></script>
     <script src="../../shared/js/phone/chat-context-policy.js?v=20261118historybudget1"></script>
@@ -7425,6 +7425,8 @@
                     apiKey: apiKey,
                     model: apiModel,
                     messages: apiMessages,
+                    fallbackModels: Array.isArray(config.fallbackModels) ? config.fallbackModels
+                        : (apiModel === 'gemini-3-flash' ? ['gemini-2.5-flash'] : []),
                     temperature: config.temperature != null ? config.temperature : 0.7,
                     maxTokens: config.maxTokens,
                     topP: config.topP,
@@ -7484,7 +7486,9 @@
             var errText = '';
             if (!streamResult.ok) {
                 const e = streamResult.error || {};
-                if (e.kind === 'http') {
+                if (e.kind === 'capacity') {
+                    errText = '服务器开小差了，请稍后重试';
+                } else if (e.kind === 'http') {
                     errText = friendlyHttpError(e.status, e.detail || '');
                 } else if (e.kind === 'abort') {
                     errText = e.reason === 'watchdog'
@@ -8053,6 +8057,8 @@
                             }
                         }
                     }
+                } else if (streamResult.error && streamResult.error.kind === 'capacity') {
+                    if (typeof showToast === 'function') showToast(errText);
                 } else if (!streamResult.ok) {
                     // 零内容错误：HTTP/超时/网络 → 错误气泡（文案已在上方按类别组装）
                     if (!_isRepeatedSystemError(historyList, errText)) {
