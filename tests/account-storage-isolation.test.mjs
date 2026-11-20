@@ -190,7 +190,12 @@ test('旧页面使用 XMLHttpRequest 请求同源 API 时也会绑定页面 MAO 
 
   const privateRequest = new a.window.XMLHttpRequest();
   privateRequest.open('POST', '/api/accounts/security');
+  privateRequest.setRequestHeader('X-Mao-Account-Context', 'MAO-BBBBBBBBBBBB');
+  privateRequest.setRequestHeader('content-type', 'application/json');
   privateRequest.send('{}');
+  assert.equal(privateRequest.headers['content-type'], 'application/json');
+  assert.equal(Object.keys(privateRequest.headers).filter(key => key === 'x-mao-account-context').length, 1,
+    '旧账号请求头不能与当前页面账号头并存');
   assert.equal(privateRequest.headers['x-mao-account-context'], accountId,
     '旧式 XHR 也必须显式携带当前页面的 MAO 账号上下文');
 
