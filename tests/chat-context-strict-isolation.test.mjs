@@ -21,11 +21,11 @@ test('unscoped and other-role memories are never selected',()=>{
   const input=[{text:'legacy'},{sourceRoleId:'b',text:'other'},{sourceRoleId:'a',text:'mine'}];
   assert.deepEqual(Array.from(window.ChatContextPolicy.filterUserMemoriesForRole(input,'a'),m=>m.text),['mine']);
   assert.deepEqual(Array.from(window.ChatContextPolicy.filterUserMemoriesForRole(input,'')),[]);
-  assert.match(detail,/!!m\.sourceRoleId && String\(m\.sourceRoleId\) === activeMemoryRoleId/);
+  assert.match(detail,/String\(m\.sourceRoleId\)\.trim\(\) === activeMemoryRoleId/);
 });
 test('missing or name-only persona uses short no-invention notice, not generic default',()=>{
-  assert.match(detail,/const thinPersona =/);
+  assert.match(detail,/const personaIncomplete =/);
   assert.match(detail,/注意：当前角色档案缺失，请保持简短回应，绝对不要自行编造姓名或职业/);
-  assert.match(detail,/if \(thinPersona && !String\(localStorage\.getItem\('chat_rp_protocol_'\)/);
-  assert.match(detail,/persona: thinPersona \? missingPersonaNotice : turnSpeakerPersona/);
+  assert.match(detail,/rpProtocol = rpProtocol\.trim\(\) \|\| \(personaIncomplete/);
+  assert.match(detail,/const turnSpeakerPersona = personaIncomplete/);
 });
