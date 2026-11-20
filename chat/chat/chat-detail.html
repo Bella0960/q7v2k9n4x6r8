@@ -6291,7 +6291,7 @@
                     )
                         ? window.ChatContextPolicy.filterUserMemoriesForRole(um, activeMemoryRoleId)
                         : um.filter(function(m) {
-                            // Compatibility fallback: legacy entries without a role ID remain globally visible.
+                            // Strict fallback: discard legacy entries without an exact role source ID.
                             return m && m.sourceRoleId != null && activeMemoryRoleId &&
                                 String(m.sourceRoleId).trim() === activeMemoryRoleId;
                         });
