@@ -59,7 +59,7 @@ test('unmounted global books and private books never enter single or group AI co
   assert.deepEqual(Array.from(binding.filterBooks('role_b',two).books,x=>x.id),['global']);
   assert.equal(binding.save('group_1',['local_a']).ok,true);
   assert.deepEqual(Array.from(role.selectWorldbooksForGroupSpeaker(
-    two,Array.from(binding.read('group_1').ids),roles[1]),x=>x.id),['local_a','global']);
+    two,Array.from(binding.read('group_1').ids),roles[1]),x=>x.id),['global','local_a']);
   assert.ok(data.has('phone_worldbooks'),'book data never removed');
 });
 
