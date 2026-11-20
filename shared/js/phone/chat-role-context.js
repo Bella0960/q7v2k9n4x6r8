@@ -129,7 +129,7 @@
     return filtered.length === history.length ? history : filtered;
   }
 
-  // Group lore is loaded ONLY from explicit group mounts.
+  // Group chats share global lore plus books explicitly mounted on this group.
   // Do not expose another character's private local books when the group has no mounts.
   function selectWorldbooksForGroup(worldbooks, groupMountedIds) {
     if (!Array.isArray(worldbooks)) return [];
@@ -139,11 +139,12 @@
     });
     return worldbooks.filter(function (book) {
       return book && typeof book === 'object' &&
-        (mounted[String(book.id)] === true);
+        mounted[String(book.id)] === true;
     });
   }
 
-  // Every book, including global legacy entries, requires an explicit role or chat mount.
+  // 全局世界书保持全局可见；局部世界书必须属于当前角色绑定或当前会话挂载。
+  // 缺失 scope 的旧世界书按历史全局规则保留，不更改已有资料结构。
   function selectWorldbooksForRole(worldbooks, role, mountedIds) {
     if (!Array.isArray(worldbooks)) return [];
     var wanted = Object.create(null);
@@ -154,7 +155,7 @@
     selections.forEach(function (id) { if (id != null) wanted[String(id)] = true; });
     return worldbooks.filter(function (book) {
       return book && typeof book === 'object' &&
-        (wanted[String(book.id)] === true);
+        wanted[String(book.id)] === true;
     });
   }
 
@@ -170,8 +171,9 @@
     throw new Error('invalid-worldbook-mounts');
   }
 
-  // A group speaker may use only their own explicitly bound books and explicitly
-  // mounted group books. Never inherit another member's books or global defaults.
+  // A group speaker can use their OWN attached local worldbooks, the group's
+  // explicitly mounted books and globally visible books. Other members' private
+  // local books do not enter this turn.
   function selectWorldbooksForGroupSpeaker(worldbooks, groupMountedIds, speakerRole) {
     if (!Array.isArray(worldbooks)) return [];
     var allow = Object.create(null);
@@ -182,22 +184,21 @@
     });
     return worldbooks.filter(function (book) {
       return book && typeof book === 'object' &&
-        (allow[String(book.id)] === true);
+        allow[String(book.id)] === true;
     });
   }
 
-  // A name alone is not a character dossier. Preserve the role's stored text;
-  // this rule only controls what is sent to the model.
+  // An empty or name-only dossier is not a personality. Do not invent one.
   var MINIMAL_PERSONA_PROMPT = '注意：当前角色档案缺失，请保持简短回应，绝对不要自行编造姓名或职业。';
   function isPersonaIncomplete(role) {
     if (!role || typeof role !== 'object') return true;
-    var source = stripEncounterEditorNote(String(role.persona || role.prompt || '').trim(), role).trim();
-    if (!source) return true;
+    var raw = stripEncounterEditorNote(String(role.persona || role.prompt || '').trim(), role).trim();
+    if (!raw) return true;
     var name = String(role.name || '').trim();
     if (!name) return false;
-    var reduced = source.replace(/^(?:姓名|名字|角色名)\s*[:：]\s*/, '')
+    var nameOnly = raw.replace(/^(?:姓名|名字|角色名)\s*[:：]\s*/, '')
       .replace(/[\s。.!！]+$/g, '').trim();
-    return reduced === name;
+    return nameOnly === name;
   }
 
   // Check the exact messages passed to PhoneStream.chat, not a preliminary
@@ -220,10 +221,14 @@
     if (role && role.encounterOrigin && role.encounterOrigin.version === 1) {
       savedPersona = stripEncounterEditorNote(savedPersona, role).trim();
     }
+    // Allow only the exact, explicit minimal instruction for an existing role
+    // whose saved dossier is empty/name-only. Any richer saved persona must match
+    // verbatim; missing role IDs are rejected above.
     if (isPersonaIncomplete(role)) {
       if (persona !== MINIMAL_PERSONA_PROMPT || system.indexOf(MINIMAL_PERSONA_PROMPT) === -1)
         missing.push('saved-role-persona');
-    } else if (!savedPersona || !persona || persona !== savedPersona || system.indexOf(persona) === -1) {
+    } else if (!savedPersona || !persona || persona !== savedPersona ||
+               system.indexOf(persona) === -1) {
       missing.push('saved-role-persona');
     }
     var savedTone = String(role && (role.tone || role.speechStyle || role.speech) || '').trim();
@@ -251,14 +256,17 @@
     var role = options.role;
     var policy = options.contextPolicy || global.ChatContextPolicy;
     if (!store || !role || !String(role.id || '').trim()) return {ok:false,code:'role'};
-    var persona = isPersonaIncomplete(role) ? MINIMAL_PERSONA_PROMPT : stripEncounterEditorNote(String(role.persona || role.prompt || '').trim(), role).trim();
+    var minimalPersona = isPersonaIncomplete(role);
+    var persona = minimalPersona ? MINIMAL_PERSONA_PROMPT
+      : stripEncounterEditorNote(String(role.persona || role.prompt || '').trim(), role).trim();
     var tone = String(role.tone || role.speechStyle || role.speech || '').trim();
     var rawProtocol, rawBooks;
     try {
       rawProtocol = String(store.getItem('chat_rp_protocol_') || '').trim();
       rawBooks = store.getItem('phone_worldbooks');
     } catch (_) { return {ok:false,code:'storage'}; }
-    var protocol = rawProtocol || (isPersonaIncomplete(role) ? MINIMAL_PERSONA_PROMPT : String(options.defaultProtocol || global.MAOMAO_RP_DEFAULT_PROTOCOL || '').trim());
+    var protocol = rawProtocol || (minimalPersona ? MINIMAL_PERSONA_PROMPT
+      : String(options.defaultProtocol || global.MAOMAO_RP_DEFAULT_PROTOCOL || '').trim());
     if (!protocol) return {ok:false,code:'protocol'};
     if (!policy || typeof policy.buildWorldbookInjectionText !== 'function')
       return {ok:false,code:'worldbook-policy'};
@@ -318,7 +326,8 @@
     var worldbook = String(input.worldbook || '').trim();
     var systemPrompt = String(input.systemPrompt || '');
     if (!role || typeof role !== 'object' || !String(role.id || '').trim()) missing.push('character');
-    if (isPersonaIncomplete(role) && persona !== MINIMAL_PERSONA_PROMPT) missing.push('minimal-persona');
+    if (isPersonaIncomplete(role) && persona !== MINIMAL_PERSONA_PROMPT)
+      missing.push('minimal-persona');
     if (!persona) missing.push('persona');
     if (!protocol || !expandedProtocol || (expandedProtocol && systemPrompt.indexOf(expandedProtocol) < 0)) missing.push('protocol');
     if (persona && systemPrompt.indexOf(persona) < 0) missing.push('persona-not-in-request');
@@ -408,10 +417,10 @@
     version: 1,
     resolveRole: resolveRole,
     stripEncounterEditorNote: stripEncounterEditorNote,
-    MINIMAL_PERSONA_PROMPT: MINIMAL_PERSONA_PROMPT,
-    isPersonaIncomplete: isPersonaIncomplete,
     getModelHistory: getModelHistory,
     getGroupModelHistory: getGroupModelHistory,
+    MINIMAL_PERSONA_PROMPT: MINIMAL_PERSONA_PROMPT,
+    isPersonaIncomplete: isPersonaIncomplete,
     selectWorldbooksForRole: selectWorldbooksForRole,
     selectWorldbooksForGroup: selectWorldbooksForGroup,
     selectWorldbooksForGroupSpeaker: selectWorldbooksForGroupSpeaker,
