@@ -110,6 +110,7 @@
             // 导致 ok 被改回 true、error 被清空 —— 401/429 在调用方表现为"成功但无内容"。
             var settled = false;
             var monitor;
+            var request;
             var usage;
             function finish(err) {
                 if (settled) return;
@@ -119,7 +120,7 @@
                 result.error = err || null;
                 resolve(result);
                 try {
-                    monitor?.record(requestUrl, body.messages, fullText, err, usage);
+                    if (request) monitor.complete(request, body.messages, fullText, err, usage);
                 } catch { /* Diagnostics must never affect the chat result. */ }
             }
 
@@ -200,7 +201,8 @@
             /* ---------- 主流程 ---------- */
             var requestUrl = baseUrl + '/chat/completions';
             try {
-                if (global.PhoneApiMonitor?.enabled()) monitor = global.PhoneApiMonitor;
+                monitor = global.PhoneApiMonitor;
+                request = monitor?.begin(requestUrl);
             } catch { /* Monitoring is optional. */ }
             fetch(requestUrl, {
                 method: 'POST',

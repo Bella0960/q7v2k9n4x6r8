@@ -591,3 +591,8 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 设置底部增加默认关闭的开发者监控，线上聊天和赴约共用悬浮球。PhoneStream 按实际尝试记录 HTTP、超时和连接结果，保留现有请求参数与重试行为。
 - 仅记录计数、时间、分类及脱敏端点，保留最近 50 条。明文请求、回复、查询参数和 API 凭证不写入诊断日志。旧数据无需迁移，回退代码即可撤销功能。
 - 新增原生 Node 和 Chromium 合同检查，完整回归通过后才发布手机 QA。
+
+## 2026-11-21 · DATA-004 global diagnostics
+
+- The common HTML build hook injects the monitor on each application page. The setting changes visibility only. A shared PhoneStream attempt persists a pending entry before dispatch and updates usage or the error when it settles. The existing diagnostic ledger and its latest-50 limit are preserved.
+- Legacy API logs are incomplete summaries without usage and endpoint data and can overlap the monitor ledger. They are left intact, without silently importing duplicate or fabricated accounting. No historical Token reconstruction is possible for requests that were never captured.

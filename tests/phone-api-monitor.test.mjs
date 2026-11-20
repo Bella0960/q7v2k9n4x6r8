@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { chromium } from 'playwright';
+import { fileURLToPath } from 'node:url';
+import config from '../vite.config.js';
 
 const read = path => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
 const monitorSource = read('shared/js/phone/phone_api_monitor.js');
@@ -14,6 +16,7 @@ function runtime(fetch) {
     const entries = new Map();
     const window = {
         location: { href: 'https://example.test/' },
+        PhoneStorage: { getApiConfig: () => ({ apiKey: 'fixture', baseUrl: 'https://example.test' }), pushApiLog() {} },
         localStorage: {
             getItem: key => entries.get(key) ?? null,
             setItem: (key, value) => entries.set(key, value)
@@ -22,10 +25,11 @@ function runtime(fetch) {
     const context = { window, URL, AbortController, TextDecoder, fetch, setTimeout, clearTimeout, requestAnimationFrame: queueMicrotask };
     runInNewContext(monitorSource, context);
     runInNewContext(streamSource, context);
+    runInNewContext(read('shared/js/phone/phone_api.js'), context);
     return { window, entries };
 }
 
-test('monitor disabled by default, then counts every fallback attempt without logging contents', async () => {
+test('monitor counts before activation and records every fallback attempt without logging contents', async () => {
     let attempts = 0;
     const success = () => new Response('data: {"choices":[{"delta":{"content":"secret reply"}}]}\n\ndata: {"usage":{"prompt_tokens":12,"completion_tokens":7}}\n\ndata: [DONE]\n');
     const { window, entries } = runtime(async () => ++attempts === 2
@@ -39,26 +43,37 @@ test('monitor disabled by default, then counts every fallback attempt without lo
         messages: [{ role: 'system', content: 'secret persona' }]
     };
     assert.equal((await window.PhoneStream.chat(request)).ok, true);
-    assert.equal(entries.has(ledgerKey), false);
+    assert.equal(JSON.parse(entries.get(ledgerKey)).requests, 1);
     entries.set(enabledKey, '1');
     assert.equal((await window.PhoneStream.chat(request)).ok, true);
     const raw = entries.get(ledgerKey);
     const data = JSON.parse(raw);
-    assert.deepEqual([data.requests, data.input, data.output, data.estimated], [2, 12, 7, false]);
-    assert.deepEqual(data.logs.map(log => log.code), ['503', 'OK']);
-    assert.equal(data.logs[0].url, 'https://example.test/…/v1/chat/completions');
+    assert.deepEqual([data.requests, data.input, data.output, data.estimated], [3, 24, 14, false]);
+    assert.deepEqual(data.logs.map(log => log.code), ['OK', '503', 'OK']);
+    assert.equal(data.logs[1].url, 'https://example.test/…/v1/chat/completions');
     assert.doesNotMatch(raw, /password|private-token|api-secret|secret persona|secret reply/);
+});
+
+test('shared non-stream completion collects usage before the ball is enabled', async () => {
+    const { window, entries } = runtime(async () => Response.json({
+        choices: [{ message: { content: 'hello' } }],
+        usage: { prompt_tokens: 8, completion_tokens: 2 }
+    }));
+    const result = await window.PhoneAPI.complete({ messages: [] });
+    assert.equal(result, 'hello');
+    const data = JSON.parse(entries.get(ledgerKey));
+    assert.deepEqual([data.requests, data.input, data.output], [1, 8, 2]);
 });
 
 test('latest 50 entries, sanitized connection and timeout errors, and cumulative totals', () => {
     const { window, entries } = runtime();
     entries.set(enabledKey, '1');
-    const monitor = window.PhoneApiMonitor;
+    const { begin, complete } = window.PhoneApiMonitor;
     for (let index = 0; index < 55; index++) {
-        monitor.record('https://example.test/v1/chat/completions?token=hidden', [{ content: '你好' }], '好', null);
+        complete(begin('https://example.test/v1/chat/completions?token=hidden'), [{ content: '你好' }], '好', null);
     }
-    monitor.record('https://example.test/', [], '', { kind: 'network', detail: 'Failed to fetch private detail' });
-    monitor.record('https://example.test/', [], '', { kind: 'abort', reason: 'watchdog' });
+    complete(begin('https://example.test/'), [], '', { kind: 'network', detail: 'Failed to fetch private detail' });
+    complete(begin('https://example.test/'), [], '', { kind: 'abort', reason: 'watchdog' });
     const raw = entries.get(ledgerKey);
     const data = JSON.parse(raw);
     assert.equal(data.logs.length, 50);
@@ -74,6 +89,27 @@ test('storage failure does not change a successful chat result', async () => {
     const result = await window.PhoneStream.chat({ baseUrl: 'https://example.test', apiKey: 'fixture' });
     assert.equal(result.ok, true);
     assert.equal(result.fullText, 'ok');
+});
+
+test('the global build hook injects both assets at root and nested routes', () => {
+    const hook = config.plugins.find(plugin => plugin.name === 'phone-api-monitor-shell').transformIndexHtml.handler;
+    for (const [route, prefix] of [['index.html', './'], ['chat/chat/chat-detail.html', '../../'], ['settings/settings.html', '../']]) {
+        const filename = fileURLToPath(new URL('../' + route, import.meta.url));
+        const [css, script] = hook('', { filename });
+        assert.equal(css.attrs.href, prefix + 'shared/css/phone-api-monitor.css');
+        assert.match(script.attrs.src, /phone_api_monitor\.js/);
+        assert.ok(script.attrs.src.startsWith(prefix + 'shared/'));
+    }
+});
+
+test('request is persisted as pending before response and updates after it settles', async () => {
+    let respond;
+    const { window, entries } = runtime(() => new Promise(resolve => { respond = resolve; }));
+    const send = window.PhoneStream.chat({ baseUrl: 'https://example.test', apiKey: 'fixture' });
+    assert.deepEqual(JSON.parse(entries.get(ledgerKey)).logs.map(log => log.code), ['请求中']);
+    respond(new Response('unavailable', { status: 503 }));
+    await send;
+    assert.deepEqual(JSON.parse(entries.get(ledgerKey)).logs.map(log => log.code), ['503']);
 });
 
 test('mobile monitor supports switch, drag, copy, clear, and close', async () => {
@@ -100,7 +136,8 @@ test('mobile monitor supports switch, drag, copy, clear, and close', async () =>
         assert.ok((await ball.boundingBox()).x < rect.x - 50);
         await page.evaluate(() => {
             Object.defineProperty(navigator, 'clipboard', { value: { writeText: value => { window.copied = value; } } });
-            window.PhoneApiMonitor.record('https://example.test/v1/chat/completions', [], '', { kind: 'http', status: 503 });
+            const monitor = window.PhoneApiMonitor;
+            monitor.complete(monitor.begin('https://example.test/v1/chat/completions'), [], '', { kind: 'http', status: 503 });
         });
         await ball.tap();
         assert.equal(await dialog.isVisible(), true);

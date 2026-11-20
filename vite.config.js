@@ -1,6 +1,6 @@
 // build-trigger: 2026-10-27 (v2)
 import { defineConfig } from 'vite';
-import { resolve } from 'path';
+import { dirname, relative, resolve, sep } from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 
@@ -29,6 +29,19 @@ const privateRuntimeDirs = new Set(['worker', 'scripts']);
 export default defineConfig({
   base: './',
   plugins: [{
+    name: 'phone-api-monitor-shell',
+    transformIndexHtml: {
+      order: 'post',
+      handler(_html, context) {
+        const depth = relative(__dirname, dirname(context.filename)).split(sep).filter(Boolean).length;
+        const shared = (depth > 0 ? '../'.repeat(depth) : './') + 'shared/';
+        return [
+          { tag: 'link', attrs: { rel: 'stylesheet', href: shared + 'css/phone-api-monitor.css' }, injectTo: 'head-prepend' },
+          { tag: 'script', attrs: { src: shared + 'js/phone/phone_api_monitor.js?v=20261121global2' }, injectTo: 'head-prepend' }
+        ];
+      }
+    }
+  }, {
     name: 'copy-static-web-resources',
     apply: 'build',
     generateBundle() {
