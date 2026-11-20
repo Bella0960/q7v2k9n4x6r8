@@ -221,7 +221,7 @@ test('game result is a non-AI system receipt and page uses a genuine chat card',
 
 test('game pane is mounted only after its five-category settings container exists', () => {
   const page = read('chat/chat/group-play.html');
-  const settingsScript = page.indexOf('group-settings-layout.js?v=20261115s1');
+  const settingsScript = page.search(/group-settings-layout\.js\?v=[\w-]+[^>]*\bdefer\b/);
   const gameScript = page.indexOf('group-game-panel.js?v=20261116gpanel6');
   assert.ok(settingsScript > 0 && gameScript > settingsScript,
     'both deferred scripts run at interactive/DOMContentLoaded; settings must mount before game panel');
