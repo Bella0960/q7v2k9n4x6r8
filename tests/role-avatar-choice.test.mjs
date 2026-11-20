@@ -87,7 +87,7 @@ test('chat saves the assistant response before applying a role-scoped selection'
   assert.ok(detail.includes('role-avatar-choice.js?v=20261113v1'));
   assert.ok(detail.includes('RoleAvatarChoice.prepare('));
   assert.ok(detail.includes('RoleAvatarChoice.parseReply('));
-  assert.ok(detail.includes('if (replySaved && replyMessages.some(function (msg)'));
+  assert.ok(detail.includes('replySaved && streamResult.ok &&'));
   assert.ok(detail.includes('RoleAvatarLibrary.applyToCharacter('));
   assert.ok(detail.includes('RoleAvatarChoice.recordApplied(avatarRoleId)'));
   assert.ok(detail.includes('snapshotText = window.RoleAvatarChoice.strip(snapshotText)'));
@@ -105,9 +105,9 @@ test('character profile keeps an explicit role-scoped opt-out across open chat t
   assert.ok(manager.includes('renderRoleProfile();'));
   assert.ok(characterPage.includes('.avatar-library-autonomy-toggle'));
   assert.ok(detail.includes('var liveAvatarChoiceRole = getRoleById(aliasRoleId || currentCharacter.id)'));
-  assert.ok(detail.includes('currentAvatarChoiceRole && currentAvatarChoiceRole.avatarAutonomyEnabled !== false'));
-  assert.ok(detail.includes('var liveRole = getRoleById(avatarRoleId)'));
-  assert.ok(detail.includes('!!liveRole && liveRole.avatarAutonomyEnabled !== false'));
+  assert.ok(detail.includes('liveChoiceRole.avatarAutonomyEnabled !== false'));
+  assert.ok(detail.includes('var latestRole = getRoleById(avatarRoleId)'));
+  assert.ok(detail.includes('!!latestRole && latestRole.avatarAutonomyEnabled !== false'));
 });
 
 
@@ -134,15 +134,15 @@ test('avatar-control marker is honored only at the end of a completed assistant 
 });
 
 test('a machine-only marker cannot be treated as a delivered chat reply or trigger avatar mutation', () => {
-  assert.ok(detail.includes('// A machine-only avatar marker is not a delivered AI reply.'));
+  assert.ok(detail.includes('// Do not change an avatar on failed, empty or marker-only replies.'));
   assert.ok(!detail.includes('                        parsedRoleAvatarChoice.avatarId ||\n'));
-  assert.ok(detail.includes('if (replySaved && replyMessages.some(function (msg)'));
+  assert.ok(detail.includes('replySaved && streamResult.ok &&'));
   assert.ok(detail.includes("return !!String(msg.text || '').trim()"));
 });
 
 test('asynchronous autonomous switch must not repaint a different chat header', () => {
   assert.match(detail, /if \(autonomousApplied && autonomousApplied\.ok\) \{[\s\S]*?String\(aliasRoleId \|\| currentCharacter\.id\) === String\(avatarRoleId\)/);
-  assert.match(detail, /isCurrent: function \(\) \{[\s\S]*?var liveRole = getRoleById\(avatarRoleId\)/);
+  assert.match(detail, /isCurrent: function \(\) \{[\s\S]*?var latestRole = getRoleById\(avatarRoleId\)/);
 });
 
 
@@ -184,13 +184,13 @@ test('one saved AI turn never replaces the role avatar twice', () => {
   assert.match(detail, /if \(changeRequested && !avatarChangedFromNewCandidate &&/);
   assert.match(detail, /if \(avatarApplied && avatarApplied\.ok\) \{\s*avatarChangedFromNewCandidate = true;/);
   assert.match(detail, /replySaved && replyMessages\.some\(function \(msg\)/);
-  assert.match(detail, /!avatarChangedFromNewCandidate &&\s*!isGroupChat && parsedRoleAvatarChoice\.avatarId/);
+  assert.match(detail, /!avatarChangedFromNewCandidate && !isGroupChat &&\s*parsedRoleAvatarChoice\.avatarId/);
   assert.match(detail, /for \(var avatarCandidateIndex/); // Every additional candidate remains collectable.
 });
 
 test('newly generated avatar never paints into a different role after asynchronous reads', () => {
   assert.match(detail,
-    /if \(avatarApplied && avatarApplied\.ok\) \{[\s\S]*?if \(String\(aliasRoleId \|\| currentCharacter\.id\) === String\(avatarRoleId\)\) \{[\s\S]*?chatHeaderAvatar\.replaceChildren\(updatedAvatarImage\)/);
+    /if \(avatarApplied && avatarApplied\.ok\) \{[\s\S]*?if \(String\(aliasRoleId \|\| currentCharacter\.id\) !== String\(avatarRoleId\)\) continue;[\s\S]*?chatHeaderAvatar\.replaceChildren\(updatedAvatarImage\)/);
   assert.match(detail, /isCurrent: function \(\) \{[\s\S]*?String\(aliasRoleId \|\| currentCharacter\.id\) === String\(avatarRoleId\)/);
 });
 
@@ -320,7 +320,7 @@ test('character deletion cleans cooldown only after save, with the existing retr
   assert.match(manager, /const cooldownCleared = !!choice && typeof choice\.clearRole === 'function' &&\s*choice\.clearRole\(item\.roleId\)/);
   assert.match(manager, /!result \|\| !result\.ok \|\| !cooldownCleared/);
   assert.ok(characterPage.includes('../../shared/js/phone/role-avatar-choice.js?v=20261113v1'));
-  assert.ok(characterPage.indexOf('role-avatar-choice.js?v=20261113v1') < characterPage.indexOf('characters-manager.js?v=20261113v2'));
+  assert.ok(characterPage.indexOf('role-avatar-choice.js?v=20261113v1') < characterPage.indexOf('characters-manager.js?v=20261121avatar1'));
 });
 
 
@@ -361,6 +361,7 @@ function makeChatPairSyncHarness() {
     currentCharacter: { id: 'role-A' }, aliasRoleId: 'role-A',
     USER_SVG: '<svg></svg>',
     localStorage: { getItem: () => state.localProfile },
+    getRoleById: () => null, chatHeaderAvatar: null,
     fillAvatar(node, avatar) { painting.push(avatar); node.avatar = avatar; }
   };
   vm.runInNewContext(fragment +
@@ -509,7 +510,7 @@ test('pair editing and portrait removal discard stale status after leaving profi
 function makeCharacterProfileStorageHarness() {
   const manager = fs.readFileSync(path.join(root, 'worldbook/characters/js/characters-manager.js'), 'utf8');
   const start = manager.indexOf('(function watchExternalRoleAvatarChanges() {');
-  const end = manager.indexOf('// 页面初始化', start);
+  const end = manager.indexOf('// 从邂逅候选收藏进入原有角色编辑器', start);
   assert.ok(start >= 0 && end > start, 'cross-tab character-profile watcher must exist');
   const code = manager.slice(start, end);
   const winListeners = {};
