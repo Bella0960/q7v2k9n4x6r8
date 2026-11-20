@@ -19,7 +19,12 @@ try {
         await page.addInitScript(() => {
             if (localStorage.getItem('memory-browser-seeded')) return;
             localStorage.setItem('memory-browser-seeded', '1');
-            localStorage.setItem('ai_custom_characters', JSON.stringify([{ id: 'solo', name: '测试角色' }]));
+            localStorage.setItem('ai_custom_characters', JSON.stringify([
+                { id: 'solo', name: '旧版角色' },
+                { id: 'single', name: '单人角色', type: 'single' },
+                { id: 'group', name: '群聊副本' },
+                { id: 'g-tagged', name: '群聊类型', type: 'group' }
+            ]));
             localStorage.setItem('phone_groups', JSON.stringify([{ id: 'group', name: '测试群', members: [{ id: 'solo', name: '测试角色' }] }]));
             const history = [{ id: 'one', role: 'sent', text: '待删除原文' }, { id: 'two', role: 'received', text: '保留原文' }];
             localStorage.setItem('chat_history_solo', JSON.stringify(history));
@@ -30,6 +35,31 @@ try {
             localStorage.setItem('phone_data_v2', JSON.stringify({ group: { chat: { history }, memories: { items: [{ content: '群记忆' }] } } }));
         });
         await page.goto(base + '/worldbook/memory/memory.html');
+        assert.deepEqual(await page.locator('#charPicker .char-item').evaluateAll(items =>
+            items.map(item => item.dataset.id)), ['solo', 'single']);
+        const layout = await page.locator('#mem-list').evaluate(list => {
+            const [first, second] = list.querySelectorAll('.memory-archive-entry');
+            const search = document.querySelector('.memory-search-wrap');
+            const [bookmark, remove] = first.querySelectorAll('button');
+            const center = element => {
+                const rect = element.getBoundingClientRect();
+                return rect.top + rect.height / 2;
+            };
+            return {
+                searchHeight: search.getBoundingClientRect().height,
+                searchFont: getComputedStyle(search.querySelector('input')).fontSize,
+                alignment: Math.abs(center(bookmark) - center(remove)),
+                actionFonts: [getComputedStyle(bookmark).fontSize, getComputedStyle(remove).fontSize],
+                gap: second.getBoundingClientRect().top - first.getBoundingClientRect().bottom,
+                leftBorders: [first, document.querySelector('.memory-latest-card')].map(card => getComputedStyle(card).borderLeftWidth),
+                bodyFont: getComputedStyle(first.querySelector('.memory-archive-text')).fontSize,
+                timeColor: getComputedStyle(first.querySelector('.memory-archive-time')).color
+            };
+        });
+        assert.deepEqual(layout, {
+            searchHeight: 36, searchFont: '12px', alignment: 0, actionFonts: ['12px', '12px'],
+            gap: 12, leftBorders: ['0px', '0px'], bodyFont: '14px', timeColor: 'rgb(153, 153, 153)'
+        });
         await page.locator('.memory-archive-entry').filter({ hasText: '待删除原文' }).getByRole('button', { name: '删除', exact: true }).click();
         await page.reload();
         assert.equal(await page.locator('.memory-archive-entry').count(), 1);
