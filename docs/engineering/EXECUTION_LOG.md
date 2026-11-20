@@ -517,3 +517,10 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 手机真实问题：`SettingsClipRings` 一类可能受系统保护的文件来源出现 `音频读取失败：1000133976`。仅以用户描述推测 Scoped Storage，不能仅凭文件名绝对证明权限拒绝。
 - 基于唯一 QA #299 `b9558fb349776ba338d222b868877410d1289e6f` 创建独立分支 `task/MUSIC-IMPORT-004-protected-file-notice-20261120`。仅修改 `music/music.html` 的文件探测读取超时、读取异常后提醒与批量跳过；已有 `tests/music-extensionless-import.test.mjs` 新增异常抛出、连续文件、受保护文件重复提示去重、悬而未决的读取超时的测试；不改音乐库数据存储、聊天、UI 主题、账号、Worker 或正式版。
 - 受保护文件读取拒绝会显示不带技术错误码的友好提示，建议复制/移动到普通手机本地存储「下载」目录，允许重新选文件；再次尝试不修改旧歌曲。受限公共测试运行 [#44711875620](https://github.com/Bella0960/web-runtime-lab/actions/runs/44711875620) **专项 PASS**；完整 Node/Vite/Chromium、QA-only 正式发布与真机「下载」MP3 测试仍以稍后真实记录为准。
+
+## 2026-11-20｜MUSIC-UI-004｜音乐列表真实时长与副标题
+
+- 用户手机已验证 Android 下载 MP3 可以正常导入播放，要求移除最近播放中“本地导入”副标题，把右侧“本地”替换为真实音频时长并收敛字号、灰阶，暂未读取成功的歌曲显示 `--:--`。
+- 基于唯一 QA #299 `2f5268fde0bc8b3a619ee70864b1515e4b30e07d` 创建独立 `task/MUSIC-UI-004-duration-artist-list-20261120`，仅修改 `music/music.html`、对应测试。已有导入/Blob/播放/账号协议不改。旧 `artist:本地导入` 仅 UI 兼容展示为未知歌手，不修改旧资料；新导入默认未知歌手、duration:--:--。
+- 用独立 Audio + Blob URL 异步读取 metadata.duration，限时后释放资源；真实时长只在能成功保存到当前 catalog 时更新 UI，逐条恢复旧歌曲的缺失时长，保持 `music_local_tracks` 与 IndexedDB 原 schema。
+- 原公共隔离 Runner 真实三组音乐专项测试：[44716624928](https://github.com/Bella0960/web-runtime-lab/actions/runs/44716624928) PASS，固定代码快照 `1f6ebfecaa7e3b07bfab88a92c928c75e382689f`。QA-only 完整 Node/Vite/Chromium / Cloudflare 发版和 Android 真机 UI 验收待以本轮实际回执为准。

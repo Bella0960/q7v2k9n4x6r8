@@ -448,3 +448,12 @@ Only after these reports are reviewed should implementation tasks be assigned.
 - 仅调整 `music/music.html` 文件导入中的读取失败处理：首次读取、FileReader 重试均失败时提供可理解的本地「下载」文件夹迁移建议，禁止在提醒中暴露异常对象、文件系统路径或内部错误码。
 - 文件读取超时必须有界（每次最长 10 秒），批量选择中的受保护文件失败不能阻塞后续可读取文件；同一批选择只弹出一次提醒；重选文件输入控件可再次打开。
 - 原音乐库、索引、Blob、曲目 ID、播放与导入事务保持不变，不更改权限或读写其他系统受保护目录。
+
+### MUSIC-UI-004 — Show actual local music duration and human-friendly artist in lists
+
+**Priority:** P1 · **Status:** implemented on task branch, targeted Node PASS; QA-only release pending (2026-11-20).
+
+- Display: legacy "本地导入" artists render as "未知歌手" without changing old metadata; new imports use "未知歌手" directly. Local placeholder "本地" becomes "--:--"; actual duration is zero-padded mm:ss (hh:mm:ss for long tracks). Demo track display unchanged.
+- Use a separate Audio(metadata) probe with object-URL cleanup and timeout, no playback or primary player source mutation. Probe asynchronously *after* safe IndexedDB/catalog import, and recover unmeasured older songs sequentially after reload.
+- Save only duration fields for the matching track after re-reading current catalog; never overwrite other tracks/lyrics or falsely mark metadata saved on storage error. Any failure leaves "--:--" and normal playback intact.
+- Affected: music/music.html, tests/music-extensionless-import.test.mjs, tests/music-duration-display.test.mjs. No DB migration, no external service, no chat, theme or Worker changes.
