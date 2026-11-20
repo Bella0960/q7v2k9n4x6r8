@@ -615,3 +615,4 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 微信首次生成和手动刷新均要求首条为用户与当前角色的虚构单聊。对少量有效聊天和旧时间格式做规范化，异常条目按条过滤，并保留已发生的玩家操作。
 - 查手机实时读取激活 API 方案，兼容旧镜像。微信四个导航等宽，底部桌面返回按钮覆盖整个手势条。
 - 本地 Node 查手机专项 16/16。Vite、Chromium 全量和 Cloudflare QA 以本次固定提交的发布回执为准。
+- 完整 Node 诊断中，Chromium 手势与微信场景已通过。修正两处文本契约：保留非微信板块原有刷新合并调用形式，更新测试断言中的两条 CSS/JS 缓存版本。

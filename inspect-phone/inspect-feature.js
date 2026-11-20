@@ -993,7 +993,7 @@
         var oldSection=data.sections[id],oldSource=data.source[id],oldUpdated=data.updatedAt;
         if(id!=='chat'&&JSON.stringify(generated)===JSON.stringify(oldSection))
           throw new Error('新内容与旧记录完全相同，已保留原内容。');
-        var nextSection=id==='chat'?keepPlayerChatTurns(oldSection,ensurePlayerChat(generated,oldSection,role,roleId,requestNow)):preserveUserEntries(id,oldSection,generated);
+        var nextSection=id==='chat'?keepPlayerChatTurns(oldSection,ensurePlayerChat(generated,oldSection,role,roleId,requestNow)):preserveUserEntries(id,oldSection,result.data);
         data.sections[id]=nextSection;data.source[id]='ai';data.updatedAt=Date.now();
         if(!save(data)){
           data.sections[id]=oldSection;data.source[id]=oldSource;data.updatedAt=oldUpdated;
