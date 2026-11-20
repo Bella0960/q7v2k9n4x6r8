@@ -109,7 +109,8 @@ test('offline source envelope shares strict mounts and minimal persona without m
     bindingBridge:binding,defaultProtocol:'所有人都很温柔',currentText:'阿晴是谁'});
   assert.equal(a.ok,true);
   assert.equal(a.persona,role.MINIMAL_PERSONA_PROMPT);
-  assert.equal(a.protocol,role.MINIMAL_PERSONA_PROMPT,'must not inject generic default for name-only dossier');
+  assert.equal(a.protocol,'所有人都很温柔','name-only role must retain the global default protocol');
+  assert.match(a.expandedProtocol,/所有人都很温柔/);
   assert.equal(a.worldbook,'');
   const b=role.buildSavedSourceEnvelope({role:roles[1],storage,contextPolicy:context,
     bindingBridge:binding,defaultProtocol:'原有默认协议',currentText:'你好'});
@@ -120,11 +121,41 @@ test('offline source envelope shares strict mounts and minimal persona without m
   assert.equal(JSON.stringify(Array.from(data.entries())),before);
 });
 
+test('weak persona does not override saved or default global protocol, and missing protocol fails closed',()=>{
+  const {role,context,binding,storage,data}=fixture({phone_worldbooks:'[]'});
+  const weak={id:'weak',name:'测试一号',persona:''};
+  const defaultValue='【第一优先级】你就是测试一号，不是客服。';
+  const fromDefault=role.buildSavedSourceEnvelope({role:weak,storage,contextPolicy:context,
+    bindingBridge:binding,defaultProtocol:defaultValue});
+  assert.equal(fromDefault.ok,true);
+  assert.equal(fromDefault.persona,role.MINIMAL_PERSONA_PROMPT);
+  assert.equal(fromDefault.protocol,defaultValue);
+  assert.ok(fromDefault.expandedProtocol.startsWith(defaultValue));
+  assert.notEqual(fromDefault.protocol,role.MINIMAL_PERSONA_PROMPT);
+  data.set('chat_rp_protocol_','用户已保存的协议：按角色本人发言。{{char}} / {{persona}}');
+  const saved=role.buildSavedSourceEnvelope({role:weak,storage,contextPolicy:context,
+    bindingBridge:binding,defaultProtocol:defaultValue});
+  assert.equal(saved.ok,true);
+  assert.equal(saved.protocol,'用户已保存的协议：按角色本人发言。{{char}} / {{persona}}');
+  assert.match(saved.expandedProtocol,/测试一号/);
+  assert.match(saved.expandedProtocol,/当前角色档案缺失/);
+  assert.doesNotMatch(saved.expandedProtocol,/第一优先级/);
+  data.delete('chat_rp_protocol_');
+  const missing=role.buildSavedSourceEnvelope({role:weak,storage,contextPolicy:context,
+    bindingBridge:binding,defaultProtocol:''});
+  assert.equal(missing.ok,false);
+  assert.equal(missing.code,'protocol');
+  assert.equal(data.has('chat_rp_protocol_'),false,'source resolution never writes storage');
+});
+
 test('online system uses same minimal fallback and preserves current persona source barriers',()=>{
   assert.match(detail,/const personaIncomplete = !!\(relationshipRole && personaPolicy/);
   assert.match(detail,/personaPolicy\.isPersonaIncomplete\(relationshipRole\)/);
   assert.match(detail,/const turnSpeakerPersona = personaIncomplete/);
-  assert.match(detail,/personaIncomplete\s*\?\s*String\(personaPolicy/);
+  assert.match(detail,/rpProtocol = rpProtocol\.trim\(\) \|\| String\(window\.MAOMAO_RP_DEFAULT_PROTOCOL \|\| ''\)\.trim\(\)/);
+  assert.match(detail,/const canonicalProtocolAtSend = storedProtocolAtSend\.trim\(\) \|\|\s*String\(window\.MAOMAO_RP_DEFAULT_PROTOCOL \|\| ''\)\.trim\(\)/);
+  assert.doesNotMatch(detail,/rpProtocol\.trim\(\) \|\| \(personaIncomplete/);
+  assert.doesNotMatch(detail,/systemPrompt = '你正在群聊/);
   assert.match(detail,/stopForMissingRoleSource\('persona-sources-incomplete'/);
   assert.match(detail,/stopForMissingRoleSource\('final-source-audit'/);
   const sections=[...detail.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map(x=>x[1]);

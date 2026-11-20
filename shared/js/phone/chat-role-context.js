@@ -265,8 +265,9 @@
       rawProtocol = String(store.getItem('chat_rp_protocol_') || '').trim();
       rawBooks = store.getItem('phone_worldbooks');
     } catch (_) { return {ok:false,code:'storage'}; }
-    var protocol = rawProtocol || (minimalPersona ? MINIMAL_PERSONA_PROMPT
-      : String(options.defaultProtocol || global.MAOMAO_RP_DEFAULT_PROTOCOL || '').trim());
+    // An incomplete dossier may substitute only its persona, never the global RP contract.
+    var protocol = rawProtocol ||
+      String(options.defaultProtocol || global.MAOMAO_RP_DEFAULT_PROTOCOL || '').trim();
     if (!protocol) return {ok:false,code:'protocol'};
     if (!policy || typeof policy.buildWorldbookInjectionText !== 'function')
       return {ok:false,code:'worldbook-policy'};
