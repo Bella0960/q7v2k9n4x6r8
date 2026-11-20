@@ -6287,8 +6287,8 @@
                     )
                         ? window.ChatContextPolicy.filterUserMemoriesForRole(um, activeMemoryRoleId)
                         : um.filter(function(m) {
-                            // Compatibility fallback: legacy entries without a role ID remain globally visible.
-                            return !m.sourceRoleId || String(m.sourceRoleId) === activeMemoryRoleId;
+                            // Strict isolation: unscoped legacy memories never enter a character prompt.
+                            return !!m.sourceRoleId && String(m.sourceRoleId) === activeMemoryRoleId;
                         });
                     userMemoryText = roleScoped.slice(-30).map(function(m){ return '· ' + (m.text || m.content || ''); }).join('\n');
                 }
