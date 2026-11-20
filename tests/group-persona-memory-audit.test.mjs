@@ -177,9 +177,9 @@ test('online and offline group chats have non-contradictory style guidance for o
   const offline=f(true,{settings:{chatMode:'offline'}},()=>'multi');
   assert.equal(online.isGroupOfflineMode,false);
   assert.equal(offline.isGroupOfflineMode,true);
-  assert.match(online.SPEAK_STYLE,/线上文字聊天/);
-  assert.doesNotMatch(offline.SPEAK_STYLE,/线上文字聊天|微信短句格式。\\n.*必须/);
-  assert.match(offline.SPEAK_STYLE,/线下共同场景/);
+  assert.match(online.SPEAK_STYLE,/角色自己的语气发日常聊天消息/);
+  assert.doesNotMatch(offline.SPEAK_STYLE,/线上文字聊天|日常聊天消息|微信短句格式。\\n.*必须/);
+  assert.match(offline.SPEAK_STYLE,/群聊线下场景/);
   assert.match(detail,/if \(!isGroupChat && activeChatModeForPrompt === 'narration'\)/);
   assert.match(detail,/if \(!isGroupOfflineMode\) \{\s*systemPrompt \+= '\\n\\n\[叙事总规范\]/);
 });
