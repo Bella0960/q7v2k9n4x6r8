@@ -119,7 +119,7 @@ test('single-chat full persona and group selected-speaker persona are never sile
   assert.match(detail, /stripEncounterEditorNote\(rawSpeakerPersona, relationshipRole\)/);
   assert.doesNotMatch(detail, /rolePersona = isGroupChat \? capText\(rolePersona/);
   const start = detail.indexOf('const rawSpeakerPersona = isGroupChat && groupReplyPick');
-  const finish = detail.indexOf('const turnSpeakerPersona =', start);
+  const finish = detail.indexOf('const personaPolicy =', start);
   assert.ok(start > 0 && finish > start, 'must execute actual persona selection');
   const select = new Function('isGroupChat', 'groupReplyPick', 'relationshipRole', 'rolePersona',
     detail.slice(start, finish) + '\nreturn rawSpeakerPersona;');
