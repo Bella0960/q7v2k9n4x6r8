@@ -96,8 +96,8 @@ test('QA five-tap opt-in displays exact full payload on device before fetch, cop
   await Promise.resolve();
   assert.equal(finished,false,'network must wait for user to close preview');
   assert.equal(f.logs.length,2);
-  assert.equal(f.logs[0][2],msgs[0].content);
-  assert.ok(f.logs[1][2].includes('用户私人聊天文字'));
+  assert.equal(f.logs[0][1],msgs[0].content);
+  assert.ok(f.logs[1][1].includes('用户私人聊天文字'));
   const areas=f.body.find('TEXTAREA');
   assert.equal(areas.length,2);
   assert.equal(areas[0].value,msgs[0].content);
