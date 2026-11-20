@@ -32,6 +32,7 @@ const loreRead = new Function('localStorage', 'window', 'aliasRoleId', 'roleForT
   "const getRoleById = id => String(id) === String(roleForTurn.id) ? roleForTurn : null;" +
   "const retryTarget=null,isRegen=false,contextOnly=false,silent=false,_vl=null;" +
   "const renderAllMessages=()=>{}, vlRefresh=()=>{}, _markUserSendFailed=()=>false;" +
+  "const stopForMissingRoleSource=(reason,message)=>showToast(message);" +
   loreSource + '\nreturn worldbookText;');
 
 function storage(values) {
