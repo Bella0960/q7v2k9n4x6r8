@@ -69,7 +69,7 @@ test('the saved global protocol is loaded verbatim and used for every role', () 
   assert.equal(resultB, raw);
   assert.deepEqual(alerts, []);
   assert.match(detail, /systemPrompt = applyProtocolVars\(rpProtocol\)/);
-  assert.match(detail, /turnSpeakerPersona \|\| '该成员尚未填写具体人设/);
+  assert.match(detail, /thinPersona \? missingPersonaNotice : turnSpeakerPersona/);
 });
 
 test('old per-character protocol remains untouched and cannot be silently promoted globally', () => {
