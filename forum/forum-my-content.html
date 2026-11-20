@@ -103,7 +103,19 @@
   function pTitle(p){ return p.title || p.content || ''; }
   const sortT = (a,b) => (typeof b.time==='number'?b.time:(b.created||0)) - (typeof a.time==='number'?a.time:(a.created||0));
 
-  const posts = JSON.parse(localStorage.getItem('forum_posts') || '[]');
+  function readArchivePosts() {
+    try {
+      const raw = localStorage.getItem('forum_posts');
+      if (raw === null) return [];
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) throw new TypeError('forum_posts is not an array');
+      return parsed.filter(post => post && typeof post === 'object' && !Array.isArray(post));
+    } catch (error) {
+      console.warn('[Forum archive] Unable to read posts; original data preserved', error);
+      return [];
+    }
+  }
+  const posts = readArchivePosts();
   const tab = new URLSearchParams(location.search).get('tab') || 'posts';
 
   const META_TABLE = {
