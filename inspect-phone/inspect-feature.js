@@ -39,6 +39,7 @@
     device:'{ "screenMinutes":254,"nightMinutes":42,"apps":[{"name":"微信","minutes":80}],"battery":67,"wifi":"Home-5G","model":"某型号手机","storageUsedGb":51,"storageTotalGb":128,"pickups":43,"focusMinutes":60,"relaxMinutes":40,"location":"家" }',
     forum:'{ "posts":[{"title":"帖子标题","text":"正文","time":时间戳,"comments":[{"name":"昵称","text":"评论"}]}] }'
   };
+  var PERSONAL_APPS = ['chat','moments','notes'];
   var LIMIT = {chat:5,moments:3,browser:5,notes:3,wallet:6,music:5,map:3,album:5,device:5,forum:3};
   function clean(x, max) {return String(x == null ? '' : x).replace(/[\u0000-\u001f]/g,' ').trim().slice(0,max||300);}
   function html(x) {return clean(x,1200).replace(/[&<>"']/g,function (c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
@@ -134,8 +135,16 @@
     return copy;
   }
   function roleContext(role) {
-    return [role.name,role.age,role.job,role.work,role.occupation,role.education,role.school,role.consumptionLevel,role.spending,role.income,role.description,role.bio,role.personality,role.character,role.speechStyle,role.prompt,role.systemPrompt]
-      .filter(Boolean).map(function(x){return clean(x,500);}).join('；').slice(0,3000);
+    return [
+      ['姓名',role.name],['人设',role.persona],['人物设定',role.setting],
+      ['档案',role.description],['经历',role.background],['简介',role.bio],
+      ['性格',role.personality],['角色设定',role.character],['说话方式',role.speechStyle],
+      ['年龄',role.age],['职业',role.job||role.work||role.occupation],['教育',role.education||role.school],
+      ['兴趣',role.hobbies||role.interests],['关系',role.relationship],
+      ['消费',role.consumptionLevel||role.spending||role.income],
+      ['角色指令',role.prompt],['补充设定',role.systemPrompt]
+    ].filter(function(field){return typeof field[1]==='string'||typeof field[1]==='number'||Array.isArray(field[1]);})
+      .map(function(field){return field[0]+'：'+clean(field[1],1500);}).join('；').slice(0,5600);
   }
   function profile(role) {
     var text=roleContext(role),work=/公司|职员|上班|设计师|工程师|教师|工作|医生|店员|律师|图书编辑|工程|毕业|自由职业/.test(text);
@@ -368,12 +377,12 @@
       '优先复用上述事件ID涉及的人物、地点、价格与日期。不添加与现有板块冲突的事件。只输出单个板块的JSON对象。'
     ].join('\n');
   }
-  function valid(id,data,now,facts) {
+  function valid(id,data,now,facts,initial) {
     if(!Object.prototype.hasOwnProperty.call(LIMIT,id)||
        !data||typeof data!=='object'||Array.isArray(data))return false;
     var lists={chat:'contacts',moments:'moments',browser:'searchHistory',notes:'notes',wallet:'transactions',music:'recent',map:'stops',album:'photos',device:'apps',forum:'posts'};
     var list=data[lists[id]];
-    if(!Array.isArray(list)||list.length<LIMIT[id]||list.length>60)return false;
+    if(!Array.isArray(list)||list.length<(initial&&id==='chat'?3:LIMIT[id])||list.length>60)return false;
     var serialized;
     try{serialized=JSON.stringify(data);}catch(error){return false;}
     if(!serialized||serialized.length>45000)return false;
@@ -393,9 +402,14 @@
     if(!good)return false;
     if(id==='chat'){
       var names={};var group=false;var hasUser=false;
-      if(list.length<5||list.length>8)return false;
+      if(list.length<(initial?3:5)||list.length>(initial?5:8))return false;
+      var ids=new Set();
       if(!list.every(function(c){
-        if(!c||!named(c.name)||!named(c.relationship)||!compact(c.messages,8,12))return false;
+        if(!c||!named(c.name)||!named(c.relationship)||!compact(c.messages,initial?3:8,initial?5:12))return false;
+        if(initial){
+          if(!named(c.id)||ids.has(c.id)||/阿诺|阿川|小林/.test(c.name))return false;
+          ids.add(c.id);
+        }
         if(names[c.name])return false;names[c.name]=true;
         if(/群/.test(c.name)||/群/.test(c.relationship))group=true;
         if(c.id==='user'||c.name==='你'||c.name==='用户')hasUser=true;
@@ -407,6 +421,7 @@
             (i===0||m.time>=c.messages[i-1].time);
         });
       }))return false;
+      if(initial)return group;
       return group&&hasUser&&list.some(function(c){
         return c.messages.some(function(m){return m.status==='recalled';});
       })&&list.some(function(c){
@@ -416,13 +431,13 @@
     if(id==='moments')return compact(list,3,5)&&list.every(function(m){
       return named(m.text)&&hasTime(m)&&named(m.image)&&compact(m.comments,1,8)&&
         m.comments.every(function(c){return named(c.name)&&named(c.text);});
-    })&&list.some(function(m){return m.hesitated||m.visibility==='部分可见';});
+    })&&(initial||list.some(function(m){return m.hesitated||m.visibility==='部分可见';}));
     if(id==='browser')return compact(list,5,8)&&list.every(function(h){return named(h.query)&&hasTime(h);})&&
       list.filter(function(h){var hr=new Date(h.time).getHours();return hr>=0&&hr<4;}).length>=2&&
       list.some(function(h){return h.deleted===true||/清除|删除/.test(h.query);})&&
       list.some(function(h){return /你|喜欢|关系|聊天|好友|在意|特别|感情/.test(h.query);})&&
       compact(data.bookmarks,2,3)&&data.bookmarks.every(function(b){return named(b.title)&&named(b.summary);});
-    if(id==='notes')return compact(list,3,5)&&compact(data.locked,2,3)&&
+    if(id==='notes')return compact(list,3,5)&&compact(data.locked,initial?0:2,initial?0:3)&&
       list.concat(data.locked).every(function(n){
         return named(n.title)&&named(n.text)&&hasTime(n,'createdAt')&&hasTime(n,'updatedAt')&&n.createdAt<=n.updatedAt;
       });
@@ -463,6 +478,21 @@
     });
     return false;
   }
+  function personalPrompt(role,ids,now) {
+    var requirements={
+      chat:'3–5 位具名联系人，包含一个群聊。每位 3–5 条聊天。为角色创作独有的人际关系，不能套用阿诺、阿川、小林等预置人物。id 唯一；手机主人的发言 side=me，对方 side=ai。',
+      moments:'3 条朋友圈，配图使用文本描述，每条至少一条自然评论。已有联系人可出现在评论中。',
+      notes:'3 条公开备忘录。围绕角色本人具体的工作、习惯或愿望写标题和正文；locked 固定为 []。'
+    };
+    return [
+      '一次生成同一虚构角色手机中的以下板块：'+ids.join('、')+'。只返回 JSON 对象，键为板块名。',
+      '角色档案：'+roleContext(role),
+      '当前时间毫秒戳：'+now+'。时间戳用整数毫秒，不晚于当前时间；聊天按时间从早到晚排序。',
+      '角色的职业、兴趣、关系须符合档案。三个板块共享具体的日常事件和人物。每条消息 1–2 句，每篇备忘录不超过 200 字。只写虚构内容。',
+      ids.map(function(id){return id+'：'+requirements[id]+' 结构 '+FIELDS[id];}).join('\n')
+    ].join('\n');
+  }
+
   function keepPlayerChatTurns(oldSection,nextSection) {
     if(!oldSection||!Array.isArray(oldSection.contacts)||!Array.isArray(nextSection.contacts))return nextSection;
     var next=Object.assign({},nextSection,{contacts:nextSection.contacts.map(function(c){
@@ -511,13 +541,23 @@
     var data=existing?carryForward(existing,role,roleId,now):fallback(role,roleId,now);
     var appLayer=opts.appLayer,appBody=opts.appBody,appTitle=opts.appTitle;
     var grid=document.querySelector('.grid'),dock=document.querySelector('.dock'),back=document.getElementById('appBack');
+    var home=opts.appHome;
     // 每次实际进入手机都重新询问，不沿用上次页面留下的许可。
     var current='',view=null,selected=arr(data.selected),permission=null,waiting=false;
     var unlockedNotes=false,unlockedAlbum=false,pinView='',sessionStarted=Date.now(),switches=0,lockedAttempts=0,pendingChat=null;
     var affection=num(role.affection,num(role.favorability,num(role.intimacy,60)));
     var revealCount=affection>=80?3:affection>=60?2:affection>=35?1:0;
-    var notice='',accessType='';
+    var notice='',accessType='',personalPending=null,personalError='';
+    function adoptPersonalCache(latest, onlyMissing){
+      if(!latest||!latest.source)return;
+      PERSONAL_APPS.forEach(function(id){
+        if(latest.source[id]==='ai'&&(!onlyMissing||data.source[id]!=='ai')){
+          data.sections[id]=latest.sections[id];data.source[id]='ai';
+        }
+      });
+    }
     function commit(){
+      adoptPersonalCache(read(roleId,new Date()),true);
       data.selected=selected;data.permission=permission;data.updatedAt=Date.now();
       var ok=save(data);
       if(!ok)notice='当前存储空间不足，改动无法持久保存。';
@@ -569,12 +609,62 @@
       var topMore=document.getElementById('appReload');
       if(topMore&&topMore.style)topMore.style.visibility=nativePage?'visible':'hidden';
       appLayer.classList.add('open');
+      if(home)home.hidden=false;
       if(nativePage&&typeof appBody.querySelector==='function'){
         var scrollable=appBody.querySelector('.nv-content');
         if(scrollable)scrollable.scrollTop=(current==='chat'&&view&&view.kind==='chat')?scrollable.scrollHeight:0;
       }else appBody.scrollTop=0;
     }
-    function close(){appLayer.classList.remove('open');current='';view=null;notice='';}
+    function close(){
+      appLayer.classList.remove('open');current='';view=null;pinView='';notice='';
+      if(home)home.hidden=true;
+    }
+    function preparePersonalApps(){
+      if(personalPending)return personalPending;
+      if(!PERSONAL_APPS.some(function(id){return data.source[id]!=='ai';}))return;
+      var api=global.PhoneAPI;
+      var config=global.PhoneStorage&&global.PhoneStorage.getApiConfig?global.PhoneStorage.getApiConfig():{};
+      if(!api||typeof api.completeJSON!=='function'||!config||!clean(config.apiKey))return;
+      personalError='';
+      async function generate(){
+        var guardScope=accountGuard&&JSON.stringify(accountGuard.state());
+        var started=Date.now(),cached=read(roleId,new Date(started));
+        adoptPersonalCache(cached,false);
+        var ids=PERSONAL_APPS.filter(function(id){return data.source[id]!=='ai';});
+        if(!ids.length)return;
+        var result=await api.completeJSON({
+          system:'你负责为虚构角色创作手机里的日常。严格遵循角色档案，只输出合法 JSON。',
+          user:personalPrompt(role,ids,started),timeoutMs:60000,temperature:.8
+        });
+        if(accountGuard&&JSON.stringify(accountGuard.state())!==guardScope)return;
+        if(!result||!result.ok||!ids.every(function(id){
+          return valid(id,result.data&&result.data[id],started,data.facts,true);
+        }))throw new Error('角色记录生成失败，可以重试。');
+        var latest=read(roleId,new Date())||data;
+        var next=Object.assign({},latest,{sections:Object.assign({},latest.sections),
+          source:Object.assign({},latest.source),updatedAt:Date.now()});
+        ids.forEach(function(id){
+          if(next.source[id]==='ai')return;
+          var previous=next.sections[id];
+          var generated=result.data[id];
+          if(id==='notes')generated=Object.assign({},generated,{locked:previous.locked,archive:previous.archive});
+          next.sections[id]=id==='chat'?keepPlayerChatTurns(previous,generated):preserveUserEntries(id,previous,generated);
+          next.source[id]='ai';
+        });
+        if(!save(next))throw new Error('角色记录未能保存，可以重试。');
+        adoptPersonalCache(next,false);
+      }
+      var locks=global.navigator&&global.navigator.locks;
+      personalPending=Promise.resolve().then(function(){
+        return locks?locks.request('inspect-personal-v1:'+roleId,generate):generate();
+      }).catch(function(error){
+        personalError=clean(error&&error.message,160)||'角色记录生成失败，可以重试。';
+      }).finally(function(){
+        personalPending=null;
+        if(PERSONAL_APPS.indexOf(current)>=0)render();
+      });
+      return personalPending;
+    }
     function chooseScreen(){
       current='choose';view=null;
       var cards=ITEMS.map(function(it){
@@ -603,6 +693,12 @@
         '<p class="inspect-muted">之后角色会更谨慎。请尊重其决定。</p>'+button('结束查看','stop','primary'));return;}
       if(!current)return;
       var body='',section=data.sections[current]||{};
+      if(PERSONAL_APPS.indexOf(current)>=0&&data.source[current]!=='ai'&&(personalPending||personalError)&&!view){
+        open((ITEMS.find(function(item){return item.id===current;})||{}).name||'角色手机',
+          '<p class="inspect-muted" role="status">'+html(personalPending?'正在根据角色档案生成手机记录…':personalError)+'</p>'+
+          (personalPending?'':button('重试生成','retryPersonal','primary')));
+        return;
+      }
       // Native app pages share the same data, role permissions, caches and AI writer.
       // The legacy flat renderer below remains a no-op fallback for old cached clients.
       if(global.InspectPhoneNative && typeof global.InspectPhoneNative.render==='function'){
@@ -1216,6 +1312,7 @@
         '<button type="button" data-action="dismissMenu">取消</button>'+
         '</div></div>');
     });
+    if(home)home.addEventListener('click',close);
     back.addEventListener('click',function(){
       if(current==='browser'&&view&&view.kind==='browser-article'){
         view={kind:'browser-results',query:view.query||data.sections.browser.activeQuery||''};render();return;
@@ -1311,10 +1408,11 @@
         }
         notice='';chooseScreen();return;
       }
+      if(a==='retryPersonal'){preparePersonalApps();render();return;}
       if(a==='start'){
         if(!selected.length){hint('请至少选择一个板块。');return;}
         if(!commit()){chooseScreen();return;}
-        close();return;
+        close();preparePersonalApps();return;
       }
       if(a==='all'){
         var beforeSelected=selected.slice();

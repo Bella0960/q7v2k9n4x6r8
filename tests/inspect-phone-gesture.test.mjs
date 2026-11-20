@@ -74,7 +74,10 @@ async function startLocalTestServer() {
 let localTestServer = null;
 let BASE = (process.env.BASE_URL || '').replace(/\/$/, '');
 let URL = BASE ? `${BASE}/inspect-phone/phone.html?id=pw-test` : '';
-const ROLE_SEED = JSON.stringify([{ id: 'pw-test', name: 'PW测试', description: 'test role' }]);
+const ROLE_SEED = JSON.stringify([
+  { id: 'pw-test', name: 'PW测试', persona: '住在海边的画师，最近准备水彩展', relationship: '朋友' },
+  { id: 'pw-boss', name: '另一位角色', persona: '总裁，上午主持预算会议', relationship: '朋友' }
+]);
 
 let totalAssertions = 0;
 let passedAssertions = 0;
@@ -377,6 +380,81 @@ async function main() {
     assert(l.br && l.br !== '0px', `桌面有 border-radius: ${l.br}`);
     assert(l.centered, '桌面外壳居中');
     await browser.close();
+  }
+
+  // The structured response stands in for the user's configured model.
+  for (const width of [375, 390, 430]) {
+    const { browser, page } = await freshPage({ width, height: 844 });
+    const requests = [];
+    try {
+      await page.exposeFunction('recordInspectGeneration', prompt => requests.push(prompt));
+      async function enter(roleId) {
+        await page.goto(BASE + '/inspect-phone/phone.html?id=' + roleId);
+        await page.evaluate(() => {
+          window.PhoneStorage.getApiConfig = () => ({ apiKey: 'stub' });
+          window.PhoneAPI.completeJSON = async request => {
+            await window.recordInspectGeneration(request.user);
+            const painter = request.user.includes('水彩展');
+            const title = painter ? '买颜料' : '准备预算会议';
+            const time = Date.now() - 60000;
+            return { ok: true, data: {
+              chat: { contacts: ['小祝', '小郑', '筹备群'].map((name, i) => ({
+                id: 'known-' + i, name: (painter ? '画室·' : '公司·') + name, relationship: i === 2 ? '工作群' : '同事', lastTime: time, unread: 0,
+                messages: [0, 1, 2].map(j => ({ side: j % 2 ? 'me' : 'ai', time: time - 2000 + 1000 * j, text: title + ' ' + j }))
+              })) },
+              moments: { moments: [0, 1, 2].map(i => ({ text: title + '的近况 ' + i, time, image: '工作台', comments: [{ name: '小祝', text: '期待' }] })) },
+              notes: { locked: [], notes: [0, 1, 2].map(i => ({ title: title + ' ' + i, text: title, createdAt: time, updatedAt: time })) }
+            }};
+          };
+        });
+        await page.locator('#lock').click();
+      }
+      async function authorize() {
+        await page.locator('[data-action="grant"]').click();
+        if (!await page.locator('[data-choose="chat"]').isChecked()) await page.locator('[data-action="all"]').click();
+        await page.locator('[data-action="start"]').click();
+      }
+      await enter('pw-test');
+      await page.locator('#appHome').tap();
+      assert(await page.locator('#appHome').isHidden(), width + 'px 请求页可返回桌面');
+      await page.locator('.dock [data-app="chat"]').tap();
+      await authorize();
+      await page.locator('.dock [data-app="chat"]').tap();
+      await page.locator('.nv-contact').first().waitFor();
+      assert((await page.locator('.nv-chat-list').innerText()).includes('买颜料'), '画师聊天按本人档案生成');
+      const aligned = await page.locator('.nv-tabbar').evaluate(bar => {
+        const icons = [...bar.querySelectorAll('.nv-tab-icon')].map(icon => {
+          const rect = icon.getBoundingClientRect();
+          return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+        });
+        const gaps = icons.slice(1).map((entry,i) => entry.x - icons[i].x);
+        return icons.length === 4 && icons.every(icon => Math.abs(icon.y - icons[0].y) < 1) &&
+          Math.max(...gaps) - Math.min(...gaps) < 1;
+      });
+      assert(aligned, width + 'px 微信四个图标均匀且水平对齐');
+      await page.locator('.nv-contact').first().tap();
+      await page.locator('#appHome').tap();
+      assert(await page.locator('#appHome').isHidden(), '微信聊天详情可直返桌面');
+      await page.locator('.grid [data-app="notes"]').tap();
+      await page.locator('[data-detail="note"]').first().tap();
+      assert((await page.locator('#appBody').innerText()).includes('买颜料'), '备忘录按画师档案生成');
+      await page.locator('#appHome').tap();
+      assert(await page.locator('#appHome').isHidden(), '备忘录正文可直返桌面');
+      const moments = await page.evaluate(() => JSON.parse(localStorage.getItem('inspect_story_v1_pw-test')).sections.moments.moments);
+      assert(moments.some(moment => moment.text.includes('买颜料')), '朋友圈与画师聊天同源生成');
+      await enter('pw-boss');
+      await authorize();
+      await page.locator('.dock [data-app="chat"]').tap();
+      await page.locator('.nv-contact').first().waitFor();
+      assert((await page.locator('.nv-chat-list').innerText()).includes('预算会议'), '读取第二个角色自己的档案');
+      await enter('pw-test');
+      await authorize();
+      await page.locator('.dock [data-app="chat"]').tap();
+      await page.locator('.nv-contact').first().waitFor();
+      assert(requests.length === 2 && requests[0].includes('水彩展') && requests[1].includes('预算会议'), '两个角色各生成一次，重开复用本地缓存');
+    } finally {
+      await browser.close();
+    }
   }
 
   // ---- 总结 ----

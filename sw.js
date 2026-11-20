@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v278';
+const CACHE_NAME = 'phone-app-pwa-v279';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 function cacheablePublicResponse(response) {
   return !!(response && response.ok && !response.redirected &&
@@ -38,7 +38,8 @@ const APP_SHELL = [
   './forum/forum-world-events.js?v=20261111v1',
   './inspect-phone/select.html',
   './inspect-phone/phone.html',
-  './inspect-phone/inspect-feature.js?v=20261111v1',
+  './inspect-phone/inspect-feature.js?v=20261121v9',
+  './inspect-phone/inspect-native.css?v=20261121v6',
   './tutorial/tutorial.js?v=20261118book2',
   './beauty/beauty.html',
   './theme-store/theme-store.html',
