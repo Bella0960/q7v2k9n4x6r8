@@ -32,7 +32,7 @@ test('one global protocol key is shared by settings, direct chat, and group chat
   assert.match(settings, /var STORAGE_KEY = 'chat_rp_protocol_';/);
   assert.match(detail, /const globalRpKey = 'chat_rp_protocol_';/);
   assert.match(detail, /rpProtocol = localStorage\.getItem\(globalRpKey\) \|\| ''/);
-  assert.match(detail, /rpProtocol = rpProtocol\.trim\(\) \|\| String\(window\.MAOMAO_RP_DEFAULT_PROTOCOL \|\| ''\)/);
+  assert.match(detail, /rpProtocol = rpProtocol\.trim\(\) \|\| \(personaIncomplete/);
   assert.match(detail, /const turnSpeakerName = isGroupChat && groupReplyPick/);
   assert.match(detail, /const roleForTurn = !isGroupChat/);
 });
