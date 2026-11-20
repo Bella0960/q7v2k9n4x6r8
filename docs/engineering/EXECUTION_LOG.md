@@ -537,3 +537,9 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 从唯一 QA #299 `5b16f7890b302810039d59970ce75451d2fadc47` 排查世界书/人设/发送链：旧世界书绑定分支内容已经进入 QA，未重新合并或覆盖。实际 P0 缺口出在 `chat/chat/chat-detail.html` 保存用户消息后但发起 PhoneStream 前的 required-source 检查：缺少/读取失败的全局协议、最终人设源校验失败、世界书或群人物设定过长会直接 return，导致已经存下的用户气泡不带失败感叹号且无法快速重试。
 - 在 `task-CHAT-RP-001/required-source-retry-20261120` 最小修复：仅在当前用户消息经过安全写入和 MID 校验后抓取同一个 MID；复用 `_markUserSendFailed` 写入失败原因，显示已有 UI 感叹号，不重复提交、不绕过必需的人设/协议/世界书 API 前置保护。若标记落库失败，真实告警、不报成功；重生成/继续聊天和既有 retryTarget 不追加消息。
 - 影响文件：`chat/chat/chat-detail.html`, `tests/chat-required-source-retry.test.mjs`, `package.json`, 工程记录。角色用户数据结构、worldbook、原全局人设协议、群身份和正式 Worker 均未更改。专项、完整 QA、Cloudflare 发布结果以实际独立运行回执为准。
+
+## 2026-11-20｜CHAT-PROMPT-001｜提示词源优先与手机本机诊断
+
+- 从唯一 QA #299 `8d2267b1e69ff8f643fad533bf1250f6023efcc1` 出发。此前手机实际回复仍可能出戏，但静态代码确实组装了角色人设、触发世界书和全局保存协议，发送前只记录长度而无法验明手机实际请求全文。此轮不声称已获取手机本地的真实人设文本。
+- 在 `task-CHAT-PROMPT-001/qa-payload-debug-source-first-20261120` 按最小范围处理：`chat/chat/chat-detail.html` 缩短重复的内置人格说教，保持保存的协议原文处在角色模板之前；`shared/js/phone/chat-regex-policy.js` 向 System 头部提供启用、合法且可作用于自然语言的正则规则说明，同时 **不更改** 回复确定性清理行为；新 `shared/js/phone/prompt-diagnostic.js` 仅在 QA 经五连点标题主动开启后查看和复制完整原始请求；新增 `tests/chat-prompt-payload-diagnostic.test.mjs` 并合入聊天契约测试。
+- 不改 worldbook 绑定、角色 ID、聊天历史数据、协议存储键、API Key、支付/账号、正式 Worker。每轮诊断只留在用户设备的页面和本人控制台，不上传至公共回归日志。发布后用户需在测试手机上以本机测试角色自行查看真实请求，以区分上下文拼装缺失与模型没有遵循设定。
