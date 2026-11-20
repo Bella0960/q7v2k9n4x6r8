@@ -6334,7 +6334,7 @@
             }
             // 设置页展示的默认协议，即使尚未显式保存，聊天也应真实使用。
             // 已保存的非空协议优先，读取不隐式修改用户设置。
-            rpProtocol = rpProtocol.trim() || (thinPersona ? missingPersonaNotice : String(window.MAOMAO_RP_DEFAULT_PROTOCOL || ''));
+            rpProtocol = rpProtocol.trim() || String(window.MAOMAO_RP_DEFAULT_PROTOCOL || '');
             if (!rpProtocol.trim()) {
                 stopForMissingRoleSource('protocol-missing', '人设协议未加载，本轮已停止。请检查设置');
                 return;
@@ -6478,7 +6478,9 @@
                 // 协议存在：替换变量后置于 System Prompt 最顶端（最高优先级，覆盖底层默认规则）
                 // Do not cut the user's saved text or the resolved {{persona}}/{{worldbook}}
                 // sections after expansion. A silent slice discards authored rules.
-                systemPrompt = applyProtocolVars(rpProtocol);
+                systemPrompt = thinPersona && !String(localStorage.getItem('chat_rp_protocol_') || '').trim()
+                    ? missingPersonaNotice
+                    : applyProtocolVars(rpProtocol);
             } else {
                 // 协议不存在：使用原有的人设/用户信息/记忆/回复要求拼接逻辑
                 systemPrompt = [
