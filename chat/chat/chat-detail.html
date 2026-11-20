@@ -6331,10 +6331,9 @@
                 return;
             }
             // 设置页展示的默认协议，即使尚未显式保存，聊天也应真实使用。
-            // 已保存的非空协议优先，读取不隐式修改用户设置。
-            rpProtocol = rpProtocol.trim() || (personaIncomplete
-                ? String(personaPolicy && personaPolicy.MINIMAL_PERSONA_PROMPT || '')
-                : String(window.MAOMAO_RP_DEFAULT_PROTOCOL || ''));
+            // 已保存的非空协议优先。空白人设只影响角色档案片段，
+            // NEVER replaces the global protocol (the editor shows this same default).
+            rpProtocol = rpProtocol.trim() || String(window.MAOMAO_RP_DEFAULT_PROTOCOL || '').trim();
             if (!rpProtocol.trim()) {
                 stopForMissingRoleSource('protocol-missing', '人设协议未加载，本轮已停止。请检查设置');
                 return;
@@ -6550,7 +6549,8 @@
             // 群聊：覆盖本轮发言者身份（无论是否使用协议均生效）
             if (isGroupChat && groupReplyPick) {
                 const memberNames = (currentGroup.members || []).map(function (m) { return groupMemberDisplayName(m); }).join('、') || '暂无成员';
-                systemPrompt = '你正在群聊「' + currentGroup.name + '」中，群成员有：' + memberNames + '。本轮由你（' + groupReplyPick.name + '）以第一人称发言。\n' + systemPrompt;
+                // Group routing follows the app-wide protocol instead of preceding it.
+                systemPrompt += '\n\n【本轮群聊参与者】你正在群聊「' + currentGroup.name + '」中，群成员有：' + memberNames + '。本轮由你（' + groupReplyPick.name + '）以第一人称发言。';
                 // Public roster only; the sole authoritative full persona is the
                 // freshly loaded speaker record inside IDENTITY_LOCK.
                 systemPrompt += '\n\n[群内成员资料：仅用来理解其他人]\n' + rolePersona +
@@ -7256,9 +7256,7 @@
                 return;
             }
             const canonicalProtocolAtSend = storedProtocolAtSend.trim() ||
-                (personaIncomplete
-                    ? String(personaPolicy && personaPolicy.MINIMAL_PERSONA_PROMPT || '').trim()
-                    : String(window.MAOMAO_RP_DEFAULT_PROTOCOL || '').trim());
+                String(window.MAOMAO_RP_DEFAULT_PROTOCOL || '').trim();
             if (canonicalProtocolAtSend !== rpProtocol) {
                 stopForMissingRoleSource('protocol-updated', '伴侣协议在聊天期间已变更，本轮已停止；请重试加载最新版');
                 return;
