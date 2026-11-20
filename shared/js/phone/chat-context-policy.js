@@ -273,7 +273,7 @@
     if (!Array.isArray(memories)) return [];
     var activeRoleId = String(roleId || '');
     return memories.filter(function (memory) {
-      return !memory.sourceRoleId || String(memory.sourceRoleId) === activeRoleId;
+      return !!activeRoleId && !!memory && !!memory.sourceRoleId && String(memory.sourceRoleId) === activeRoleId;
     });
   }
 
