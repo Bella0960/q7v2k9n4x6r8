@@ -113,7 +113,7 @@ test('group without corresponding role still uses its legacy mount, never rewrit
   assert.deepEqual([...binding.read('group_1').ids], ['book_1']);
   assert.equal(storage.getItem('ai_custom_characters'), json(roles));
 });
-test('legacy global books remain selected by default; local books stay private', () => {
+test('unmounted global books never enter a role context, including old global definitions', () => {
   const { binding } = harness({
     ai_custom_characters: json([{ id: 'role_a', worldBookIds: ['local_a'] },
       { id: 'role_b', worldBookIds: [] }]),
@@ -124,11 +124,11 @@ test('legacy global books remain selected by default; local books stay private',
       { id: 'disabled_global', scope: 'global', enabled: false }
     ])
   });
-  assert.deepEqual([...binding.read('role_a').ids], ['local_a', 'shared', 'old_global']);
-  assert.deepEqual([...binding.read('role_b').ids], ['shared', 'old_global']);
+  assert.deepEqual([...binding.read('role_a').ids], ['local_a']);
+  assert.deepEqual([...binding.read('role_b').ids], []);
   assert.deepEqual([...binding.filterBooks('role_b', [
     { id: 'shared' }, { id: 'old_global' }, { id: 'local_a' }
-  ]).books].map(x => x.id), ['shared', 'old_global']);
+  ]).books].map(x => x.id), []);
 });
 
 test('explicitly cleared chat mount cannot resurrect old character or global lore', () => {
@@ -232,10 +232,11 @@ test('chat settings real event handlers: expand, mount, save, reopen, unmount', 
     };
     return item;
   };
-  assert.equal(el('mountSub').textContent, '已挂载 1 本世界书');
+  assert.equal(el('mountSub').textContent, '未挂载世界书');
   el('actionMount').listeners.click();
   assert.equal(el('wbCard').classList.contains('is-open'), true);
   assert.match(el('wbMountList').innerHTML, /data-wb-id="global"/);
+  el('wbMountList').listeners.click({ target: row('global') });
   el('wbMountList').listeners.click({ target: row('local') });
   el('wbSaveBtn').listeners.click();
   assert.deepEqual(JSON.parse(storage.getItem('chat_worldbooks_role_a')), ['global', 'local']);
@@ -491,10 +492,10 @@ test('latest QA AI prompt actually filters private/group lore and blocks bad sto
   }
   const own = execute();
   assert.equal(own.stopped, false);
-  assert.equal(own.text, 'Common|Secret A');
+  assert.equal(own.text, 'Secret A');
   const group = execute({ group: true, mounts: { chat_worldbooks_g1: json(['group']) } });
   assert.equal(group.stopped, false);
-  assert.equal(group.text, 'Common|Secret A|Shared Group');
+  assert.equal(group.text, 'Secret A|Shared Group');
   const clear = execute({ mounts: { chat_worldbooks_role_a: '[]' } });
   assert.equal(clear.text, '');
   const malformed = execute({ noBooks: true, mounts: { chat_worldbooks_role_a: '{broken' } });
