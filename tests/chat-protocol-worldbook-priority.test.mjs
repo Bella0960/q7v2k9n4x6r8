@@ -23,9 +23,9 @@ function actualProtocolRenderer({ name, persona, memory, worldbook, user = '用�
   const end = detail.indexOf('\n            let systemPrompt;', start);
   assert.ok(start >= 0 && end > start);
   const body = detail.slice(start, end);
-  const compile = new Function('turnSpeakerName', 'userName', 'turnSpeakerPersona', 'roleMemory', 'worldbookText',
+  const compile = new Function('turnSpeakerName', 'userName', 'turnSpeakerPersona', 'roleMemory', 'worldbookText', 'thinPersona', 'missingPersonaNotice',
     body + '\nreturn applyProtocolVars;');
-  return compile(name, user, persona, memory, worldbook);
+  return compile(name, user, persona, memory, worldbook, false, '注意：当前角色档案缺失');
 }
 
 test('one global protocol key is shared by settings, direct chat, and group chat', () => {
