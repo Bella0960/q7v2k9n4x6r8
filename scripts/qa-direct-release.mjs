@@ -57,6 +57,7 @@ const TESTS = [
   // Run the browser gesture gate before the expensive full 1000+ test Node suite:
   // failures should stop early, never consume repeated full-suite minutes.
   ['npm', ['run', 'test:encounter:browser']],
+  ['npm', ['run', 'test:role:avatars:browser']],
   // Music now-playing visual QA must pass before replacing static assets on the existing QA Worker.
   ['node', ['tests/music-mobile-browser.mjs']],
   // Chat whitespace and iMessage layout must pass on real built pages at 375/390/430px.
