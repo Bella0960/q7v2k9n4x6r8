@@ -139,7 +139,7 @@
     });
     return worldbooks.filter(function (book) {
       return book && typeof book === 'object' &&
-        (book.scope !== 'local' || mounted[String(book.id)] === true);
+        mounted[String(book.id)] === true;
     });
   }
 
@@ -155,7 +155,7 @@
     selections.forEach(function (id) { if (id != null) wanted[String(id)] = true; });
     return worldbooks.filter(function (book) {
       return book && typeof book === 'object' &&
-        (book.scope !== 'local' || wanted[String(book.id)] === true);
+        wanted[String(book.id)] === true;
     });
   }
 
@@ -184,7 +184,7 @@
     });
     return worldbooks.filter(function (book) {
       return book && typeof book === 'object' &&
-        (book.scope !== 'local' || allow[String(book.id)] === true);
+        allow[String(book.id)] === true;
     });
   }
 
