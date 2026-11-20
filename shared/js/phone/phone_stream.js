@@ -25,6 +25,7 @@
      *   apiKey      {String}          Bearer 凭证
      *   model       {String}          模型 ID
      *   messages    {Array}           OpenAI 格式消息 [{role, content}]
+     *   fallbackModels {String[]?}    同一 API 上的备用模型（最多两个）
      *   temperature {Number?=0.7}     温度（总是发送）
      *   maxTokens   {*=undefined}     仅当 Number > 0 时发送 max_tokens（floor 取整）
      *   topP        {*=undefined}     仅当 0 < topP < 1 时发送 top_p；=1 或未设置不发送
@@ -42,8 +43,62 @@
      *                           status?, detail?, reason? }
      *   abort.reason ∈ 'connect'(连接超时) | 'watchdog'(无数据) | 'total'(总上限)
      */
-    NS.chat = function (opts) {
+    NS.chat = async function (opts) {
         opts = opts || {};
+        var fallbackModels = Array.isArray(opts.fallbackModels) ? opts.fallbackModels : [];
+        var primary = String(opts.model || 'gpt-3.5-turbo');
+        var models = [primary];
+        for (var candidate of fallbackModels) {
+            if (models.length === 3) break;
+            if (typeof candidate !== 'string') continue;
+            candidate = candidate.trim();
+            if (candidate && !models.includes(candidate)) models.push(candidate);
+        }
+
+        try {
+            var messages = Array.isArray(opts.messages) ? opts.messages : [];
+            // Capture the complete validated payload before the first network await.
+            if (models.length > 1) messages = JSON.parse(JSON.stringify(messages));
+            var result = await chatOnce({ ...opts, messages: messages });
+            if (!isCapacityError(result)) return result;
+
+            // Once a response has started, never splice a different model into it.
+            if (result.fullText) return result;
+
+            if (!messages.some(function (message) {
+                return message && message.role === 'system' &&
+                    typeof message.content === 'string' && message.content.trim();
+            })) {
+                return { ok: false, fullText: '', error: { kind: 'capacity' } };
+            }
+            var deadline = Date.now() + (opts.totalMs ?? 120000);
+            for (var model of models.slice(1)) {
+                var remaining = deadline - Date.now();
+                if (remaining <= 0) break;
+                // Buffer a backup response until it is complete so a failed backup
+                // cannot leave a provisional character bubble in the conversation.
+                result = await chatOnce({
+                    ...opts, messages: messages, model: model, onPaint: undefined,
+                    connectMs: Math.min(opts.connectMs ?? 15000, remaining),
+                    totalMs: remaining
+                });
+                if (result.ok) return result;
+            }
+            return { ok: false, fullText: '', error: { kind: 'capacity' } };
+        } catch (error) {
+            return { ok: false, fullText: '', error: { kind: 'network', detail: error && error.message } };
+        }
+    };
+
+    function isCapacityError(result) {
+        var error = result.error;
+        return !result.ok && error &&
+            ((error.kind === 'http' && error.status === 503) ||
+             ((error.kind === 'http' || error.kind === 'stream') &&
+              /\b(?:no capacity available|model (?:is )?overloaded|resource_exhausted.*capacity)\b/i.test(error.detail)));
+    }
+
+    function chatOnce(opts) {
         return new Promise(function (resolve) {
 
             /* ---------- 出参组装 ---------- */
@@ -150,13 +205,14 @@
 
                 /* -- HTTP 层错误（401/404/429/5xx 等）：读 body 提取详情，不进入流解析 -- */
                 if (!response.ok || !response.body) {
-                    clearAllTimers();
+                    enterStreamMode();
                     return response.text().catch(function () { return ''; }).then(function (bodyText) {
                         var detail = '';
                         try {
                             var parsed = JSON.parse(bodyText);
                             detail = (parsed.error && parsed.error.message) || bodyText;
                         } catch (e) { detail = bodyText; }
+                        clearAllTimers();
                         finish({ kind: 'http', status: response.status, detail: detail || response.statusText });
                     });
                 }
@@ -271,5 +327,5 @@
                 finish(e);
             });
         });
-    };
+    }
 })(window);

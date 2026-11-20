@@ -565,3 +565,9 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 
 - PR #326 在最终聊天 System 首部固定角色身份和档案姓名，按原样展开变量，空档案不得虚构职业、年龄或经历。线上聊天的响应头与流式空闲等待均为 60 秒。
 - 本地从 QA 源码及候选改动运行提示词专项，7/7 通过。完整 QA 回归和发布须以公共隔离通道回执为准。
+
+## 2026-11-20 · CHAT-PROMPT-001 capacity fallback
+
+- From QA `3cf0aac74bcc667639bd7dcf51c1cec66a9a248b`: PhoneStream previously sent one request per invocation and forwarded raw capacity errors. Manual retry re-enters the same source assembly and preflight, so the reported screenshot alone does not establish a missing System message.
+- Same-endpoint fallback snapshots the validated messages, only swaps the model, and refuses fallback without a character System message or after primary output. Exhausted capacity shows a short toast. No schema migration. Revert this task's commits to roll back.
+- Local targeted Node capacity suite: 5/5. Full isolated QA gates and mobile deployment pending.
