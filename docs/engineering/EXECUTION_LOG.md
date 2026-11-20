@@ -596,3 +596,7 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 
 - The common HTML build hook injects the monitor on each application page. The setting changes visibility only. A shared PhoneStream attempt persists a pending entry before dispatch and updates usage or the error when it settles. The existing diagnostic ledger and its latest-50 limit are preserved.
 - Legacy API logs are incomplete summaries without usage and endpoint data and can overlap the monitor ledger. They are left intact, without silently importing duplicate or fabricated accounting. No historical Token reconstruction is possible for requests that were never captured.
+
+## 2026-11-21｜群聊一轮一条与头像心声
+
+- 新建群显式关闭作息。群聊正文统一为一条，完成解析后呈现；成员名使用浅灰小字。心声随群成员回复保存，头像弹窗读取，兼容旧正文标记。

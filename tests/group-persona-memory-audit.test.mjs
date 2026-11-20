@@ -168,7 +168,7 @@ test('human characters do not learn an incorrect old AI identity but digital cha
 });
 
 test('online and offline group chats have non-contradictory style guidance for one speaker', () => {
-  const start=detail.indexOf('            const replyBubbleMode = getActiveReplyBubbleMode();');
+  const start=detail.indexOf("            const replyBubbleMode = isGroupChat ? 'single' : getActiveReplyBubbleMode();");
   const end=detail.indexOf('            if (!systemPrompt.includes(',start);
   assert.ok(start>=0&&end>start);
   const f=new Function('isGroupChat','currentGroup','getActiveReplyBubbleMode',
