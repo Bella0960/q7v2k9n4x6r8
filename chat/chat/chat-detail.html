@@ -9584,6 +9584,51 @@
             });
             // Malformed private markers are dropped, never rendered as public speech.
             text = text.replace(/\[游戏私聊[:：][\s\S]*/g, '');
+            // CHAT-HISTORY-001: the target role's primary history is authoritative.
+            // Never trust a stale phone_data_v2 duplicate or rewrite a detached
+            // whole-history snapshot when a group member sends a private receipt.
+            function saveGroupPrivateRoleMessageSafely(roleId, message) {
+                var id = String(roleId || '').trim();
+                if (!id || !message || !message.mid || !message.privateGroupReceiptV1) return false;
+                var key = 'chat_history_' + id;
+                try {
+                    var versioned = window.PhoneStorage && window.PhoneStorage.result;
+                    if (versioned && typeof versioned.appendChatHistory === 'function') {
+                        // The existing storage adapter verifies the primary JSON,
+                        // checks the old-key baseline and confirms the write.
+                        var appended = versioned.appendChatHistory(id, message);
+                        if (!appended || appended.ok !== true) return false;
+                    } else {
+                        // Never use PhoneStorage's legacy read-first API: its cached
+                        // v2 copy could mask a corrupt or concurrently changed key.
+                        if (window.PhoneStorage) return false;
+                        // Standalone legacy/browser harness fallback; still fail
+                        // closed on damaged data and require matching raw baseline.
+                        var original = localStorage.getItem(key);
+                        var history = original === null ? [] : JSON.parse(original);
+                        if (!Array.isArray(history)) return false;
+                        if (localStorage.getItem(key) !== original) return false;
+                        localStorage.setItem(key, JSON.stringify(history.concat([message])));
+                    }
+                    // Never accept the legacy duplicate as proof of success.
+                    var verifiedRaw = localStorage.getItem(key);
+                    var verified = verifiedRaw === null ? null : JSON.parse(verifiedRaw);
+                    if (!Array.isArray(verified)) return false;
+                    var matches = verified.filter(function (item) {
+                        return item && String(item.mid || '') === String(message.mid);
+                    });
+                    return matches.length === 1 &&
+                        matches[0].role === message.role &&
+                        matches[0].text === message.text &&
+                        matches[0].time === message.time &&
+                        matches[0].fromGroupId === message.fromGroupId &&
+                        matches[0].privateGroupReceiptV1 === true;
+                } catch (err) {
+                    // Do not print content from a private conversation.
+                    console.warn('[GroupChat] private history append was not verified');
+                    return false;
+                }
+            }
             var regularPrivateMarkerSeen = false;
             text = text.replace(/\[群私聊[:：]([^:：\]]+)[:：]([^\]]{1,300})\]/g, function (marker, targetKey, privateText) {
                 // Limit ordinary private DMs to one per AI turn; an AI-produced
@@ -9628,41 +9673,9 @@
                 var privateMsg = { role: 'assistant', name: displayName, text: privateMessageText, time: Date.now(),
                     fromGroupId: String(currentGroup.id), privateFromGroup: true, privateGroupReceiptV1: true };
                 ensureMid(privateMsg);
-                var privateHistory = [];
-                var privateSaved = false;
-                try {
-                    if (window.PhoneStorage && typeof window.PhoneStorage.getChatHistory === 'function') {
-                        var storedHistory = window.PhoneStorage.getChatHistory(targetId);
-                        if (Array.isArray(storedHistory)) privateHistory = storedHistory.slice();
-                    }
-                    if (!privateHistory.length) {
-                        var rawPrivateHistory = localStorage.getItem('chat_history_' + targetId);
-                        var parsedPrivateHistory = rawPrivateHistory ? JSON.parse(rawPrivateHistory) : [];
-                        if (Array.isArray(parsedPrivateHistory)) privateHistory = parsedPrivateHistory;
-                    }
-                    privateHistory.push(privateMsg);
-                    if (window.PhoneStorage && typeof window.PhoneStorage.saveChatHistory === 'function') {
-                        privateSaved = window.PhoneStorage.saveChatHistory(targetId, privateHistory) === true;
-                    } else {
-                        localStorage.setItem('chat_history_' + targetId, JSON.stringify(privateHistory));
-                        privateSaved = true;
-                    }
-                    var verifiedPrivate = window.PhoneStorage && typeof window.PhoneStorage.getChatHistory === 'function'
-                        ? window.PhoneStorage.getChatHistory(targetId)
-                        : JSON.parse(localStorage.getItem('chat_history_' + targetId) || '[]');
-                    var lastPrivate = Array.isArray(verifiedPrivate) && verifiedPrivate.length
-                        ? verifiedPrivate[verifiedPrivate.length - 1] : null;
-                    privateSaved = privateSaved && Array.isArray(verifiedPrivate) &&
-                        verifiedPrivate.length === privateHistory.length && lastPrivate &&
-                        lastPrivate.role === privateMsg.role && lastPrivate.type === privateMsg.type &&
-                        lastPrivate.time === privateMsg.time && lastPrivate.text === privateMsg.text &&
-                        String(lastPrivate.mid || '') === String(privateMsg.mid) &&
-                        lastPrivate.privateGroupReceiptV1 === true &&
-                        lastPrivate.fromGroupId === privateMsg.fromGroupId;
-                } catch (privateError) {
-                    privateSaved = false;
-                    console.error('[GroupChat] private message persistence failed:', privateError);
-                }
+                // Append only one receipt through the guarded primary-key adapter.
+                // No legacy getter and no detached array rewriting.
+                var privateSaved = saveGroupPrivateRoleMessageSafely(targetId, privateMsg);
                 if (!privateSaved) {
                     if (typeof showToast === 'function') showToast('群私聊消息没有保存成功，未显示已发送状态');
                     return '';

@@ -524,3 +524,10 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 基于唯一 QA #299 `2f5268fde0bc8b3a619ee70864b1515e4b30e07d` 创建独立 `task/MUSIC-UI-004-duration-artist-list-20261120`，仅修改 `music/music.html`、对应测试。已有导入/Blob/播放/账号协议不改。旧 `artist:本地导入` 仅 UI 兼容展示为未知歌手，不修改旧资料；新导入默认未知歌手、duration:--:--。
 - 用独立 Audio + Blob URL 异步读取 metadata.duration，限时后释放资源；真实时长只在能成功保存到当前 catalog 时更新 UI，逐条恢复旧歌曲的缺失时长，保持 `music_local_tracks` 与 IndexedDB 原 schema。
 - 原公共隔离 Runner 真实三组音乐专项测试：[44716624928](https://github.com/Bella0960/web-runtime-lab/actions/runs/44716624928) PASS，固定代码快照 `1f6ebfecaa7e3b07bfab88a92c928c75e382689f`。QA-only 完整 Node/Vite/Chromium / Cloudflare 发版和 Android 真机 UI 验收待以本轮实际回执为准。
+
+## 2026-11-20｜CHAT-HISTORY-001｜群聊私聊回执防旧记录覆盖
+
+- 清道夫检查了已有 PR #305（后台消息已在 QA 使用 ChatHistoryAtomic）、#282（主记录优先已进入 QA）、#307（世界书另有整合），发现现有唯一 QA `1710f69f970312543ea66848cd7c7204fc7dc1f1` 的 `chat/chat/chat-detail.html` 群私聊回执仍然先取 PhoneStorage 旧副本、再整份写回目标角色聊天历史，可能覆盖新的或异常的原始记录。
+- 只修一个 DATA/CHAT-HISTORY-001 问题：从当前 QA 创建 `task-CHAT-HISTORY-001/group-private-safe-append-20261120`，只修改群私聊回执的目标角色写入路径：优先现有 `PhoneStorage.result.appendChatHistory`，对读回的原始 `chat_history_<id>` 做 MID/身份/群来源验证；失败不生成公开群私聊卡，也不误提示保存成功。不重新写普通私聊、世界书、外观或推送。
+- 追加 `tests/group-turn-integration.test.mjs` 的五类损坏主键/旧 v2 副本/保留图片与引用字段/伪成功/空数组主键回归，原合同测试保持。已有公共隔离 Runner 定向五组测试 [#44719212719](https://github.com/Bella0960/web-runtime-lab/actions/runs/44719212719) **PASS**，固定功能提交 `282be457deb747b3838c26b2d9290bf79a9fc251`。
+- 完整 Node/Vite/Chromium 和唯一 Cloudflare QA-only 发版尚待最终回执；真实 Android/iOS 群聊私聊验收仍需用户确认。正式 main、身份核心和生产账号未变。

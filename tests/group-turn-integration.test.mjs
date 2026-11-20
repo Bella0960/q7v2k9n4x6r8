@@ -44,7 +44,32 @@ function harness(options = {}) {
       data.set(key,String(value));
     }
   };
+  if (Object.prototype.hasOwnProperty.call(options, 'initialPrivateRaw'))
+    data.set('chat_history_r1', options.initialPrivateRaw);
   const window = {GroupGovernance:governance, GroupGameSessions:null};
+  if (options.storageMode === 'legacy') {
+    window.PhoneStorage = {
+      getChatHistory() { return [{mid:'stale',text:'旧版历史副本'}]; },
+      saveChatHistory() { throw Error('legacy whole-history overwrite must not execute'); }
+    };
+  } else if (options.storageMode === 'result') {
+    window.PhoneStorage = {
+      getChatHistory() { throw Error('legacy getter must not execute'); },
+      result: {
+        appendChatHistory(id, message) {
+          const key = 'chat_history_' + id;
+          const raw = storage.getItem(key);
+          let arr;
+          try { arr = raw === null ? [] : JSON.parse(raw); }
+          catch { return {ok:false,error:{code:'CORRUPT_DATA'}}; }
+          if (!Array.isArray(arr)) return {ok:false,error:{code:'CORRUPT_DATA'}};
+          if (options.fakeResultSuccess) return {ok:true};
+          storage.setItem(key, JSON.stringify(arr.concat([message])));
+          return {ok:true};
+        }
+      }
+    };
+  }
   new Function('window',gameSource)(window);
   const environment = {
     window, currentGroup:group, currentRoleId:'g1', isGroupChat:true,
@@ -229,4 +254,70 @@ test('malformed nested private directives cannot escape into saved group replies
   assert.equal(h.data.has('chat_history_r1'), false,
     'malformed ordinary DMs must not reach the character private history');
   assert.equal(h.history.some(m => m.type === 'group_private'), false);
+});
+
+test('corrupt private primary is never overwritten using a stale legacy history', () => {
+  for (const value of ['{corrupted-primary', '{"history":[{"text":"original"}]}']) {
+    const h = harness({initialPrivateRaw:value,storageMode:'legacy'});
+    const tx = h.createTurn();
+    h.parse('回复 [群私聊:r1:秘密]', h.group.members[0],
+      h.history, false, false, true, '', () => {}, tx);
+    const result = tx.finalize(true);
+    assert.equal(result.ok,false);
+    assert.equal(h.data.get('chat_history_r1'),value);
+    assert.equal(h.history.filter(m=>m.type==='group_private').length,0);
+    assert.equal(h.privatePopupCount,0);
+  }
+});
+
+test('verified adapter appends to current primary without resurrecting stale v2 duplicate', () => {
+  const prior = {mid:'legacy-preserved',type:'image',assetId:'keep-media',
+    quote:{mid:'q1'},text:'原始记录'};
+  const h = harness({initialPrivateRaw:JSON.stringify([prior]),storageMode:'result'});
+  const tx=h.createTurn();
+  h.parse('回复 [群私聊:r1:新私聊]',h.group.members[0],
+    h.history,false,false,true,'',()=>{},tx);
+  assert.equal(tx.finalize(true).ok,true);
+  const saved=JSON.parse(h.data.get('chat_history_r1'));
+  assert.deepEqual(saved[0],prior);
+  assert.equal(saved[1].text,'新私聊');
+  assert.equal(saved.length,2);
+  assert.equal(h.privatePopupCount,1);
+  assert.equal(h.history.filter(m=>m.type==='group_private').length,1);
+});
+
+test('result adapter rejects non-array or damaged primary without fake sent status', () => {
+  for (const value of ['{damaged','{"history":[]}']) {
+    const h=harness({initialPrivateRaw:value,storageMode:'result'});
+    const tx=h.createTurn();
+    h.parse('回复 [群私聊:r1:不要覆盖原记录]',h.group.members[0],
+      h.history,false,false,true,'',()=>{},tx);
+    assert.equal(tx.finalize(true).ok,false);
+    assert.equal(h.data.get('chat_history_r1'),value);
+    assert.equal(h.privatePopupCount,0);
+  }
+});
+
+test('an adapter reporting success without primary readback cannot generate a private receipt', () => {
+  const raw='[]';
+  const h=harness({initialPrivateRaw:raw,storageMode:'result',fakeResultSuccess:true});
+  const tx=h.createTurn();
+  h.parse('回复 [群私聊:r1:没有真正保存]',h.group.members[0],
+    h.history,false,false,true,'',()=>{},tx);
+  assert.equal(tx.finalize(true).ok,false);
+  assert.equal(h.data.get('chat_history_r1'),raw);
+  assert.equal(h.history.filter(m=>m.type==='group_private').length,0);
+  assert.equal(h.privatePopupCount,0);
+});
+
+test('existing valid empty primary stays authoritative without importing old duplicate', () => {
+  const h=harness({initialPrivateRaw:'[]',storageMode:'result'});
+  const tx=h.createTurn();
+  h.parse('回复 [群私聊:r1:只追加这一条]',h.group.members[0],
+    h.history,false,false,true,'',()=>{},tx);
+  assert.equal(tx.finalize(true).ok,true);
+  const saved=JSON.parse(h.data.get('chat_history_r1'));
+  assert.equal(saved.length,1);
+  assert.equal(saved[0].text,'只追加这一条');
+  assert.equal(h.privatePopupCount,1);
 });
