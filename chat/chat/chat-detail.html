@@ -16,7 +16,8 @@
     <script src="../../shared/js/phone/prompt-diagnostic.js?v=20261120qa1"></script>
     <script src="../../shared/js/phone/storage/repository.js"></script>
     <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
-    <script src="../../shared/js/phone/role-avatar-library.js?v=20261113v1"></script>
+    <script src="../../shared/js/phone/role-avatar-library.js?v=20261121avatar1"></script>
+    <script src="../../shared/js/phone/role-avatar-choice.js?v=20261113v1"></script>
     <script src="../../shared/js/phone/role-sticker-library.js?v=20261107v2"></script>
     <script src="../../shared/js/phone/chat-image-vision.js?v=20261113v1"></script>
     <script src="../../shared/js/phone/rp-default-protocol.js?v=20261120identity2"></script>
@@ -3462,12 +3463,55 @@
             }
             if (token !== _chatPairAvatarToken ||
                 String(aliasRoleId || currentCharacter.id || '') !== roleId) return;
+            if (_chatPairAvatarUrl === nextUrl) return;
             _chatPairAvatarUrl = nextUrl;
             document.querySelectorAll('.msg-row.sent .msg-avatar').forEach(function (avatarNode) {
                 fillAvatar(avatarNode, getMyAvatar(), USER_SVG);
             });
         }
         void refreshChatPairUserAvatar();
+
+        // Refresh only the current role after a profile edit or cross-tab change.
+        function refreshLiveRolePortrait() {
+            if (isGroupChat) return;
+            var roleId = String(aliasRoleId || currentCharacter.id || '');
+            var latest = getRoleById(roleId);
+            if (!latest || String(latest.id) !== roleId) return;
+            var next = String(latest.avatar || latest.avatarUrl || '');
+            if (next === String(currentCharacter.avatar || currentCharacter.avatarUrl || '') &&
+                String(latest.avatarAssetId || '') === String(currentCharacter.avatarAssetId || '')) return;
+            currentCharacter.avatar = next;
+            currentCharacter.avatarAssetId = latest.avatarAssetId || '';
+            if (chatHeaderAvatar) {
+                if (next.startsWith('data:image/') || next.startsWith('blob:') || /^https?:/i.test(next)) {
+                    var image = document.createElement('img');
+                    image.src = next; image.alt = '';
+                    chatHeaderAvatar.replaceChildren(image);
+                } else {
+                    chatHeaderAvatar.textContent = String(latest.name || '').slice(0, 1);
+                }
+            }
+            document.querySelectorAll('.msg-row.received .msg-avatar').forEach(function (node) {
+                fillAvatar(node, next, CHARACTER_SVG);
+            });
+        }
+        var portraitRoleKey = 'maomao_role_avatar_library_v1_' + encodeURIComponent(String(aliasRoleId || currentCharacter.id || ''));
+        var portraitPairKey = 'maomao_chat_pair_user_avatar_v1_' + encodeURIComponent(String(aliasRoleId || currentCharacter.id || ''));
+        window.addEventListener('storage', function (event) {
+            if (isGroupChat || !event) return;
+            if (event.key === null || event.key === 'ai_custom_characters') refreshLiveRolePortrait();
+            if (event.key === null || event.key === portraitPairKey || event.key === portraitRoleKey)
+                void refreshChatPairUserAvatar();
+        });
+        window.addEventListener('pageshow', function () {
+            refreshLiveRolePortrait();
+            if (!isGroupChat) void refreshChatPairUserAvatar();
+        });
+        document.addEventListener('visibilitychange', function () {
+            if (isGroupChat || document.hidden) return;
+            refreshLiveRolePortrait();
+            void refreshChatPairUserAvatar();
+        });
 
         // ================= 消息稳定标识：单条操作（复制/转发/翻译/编辑/删除）都依赖 mid =================
         function ensureMid(msg) {
@@ -7137,6 +7181,18 @@
                 if (avatarCandidatePrompt) apiMessages[0].content += '\n\n' + avatarCandidatePrompt;
             }
 
+            var roleAvatarChoicePlan = null;
+            if (!isGroupChat && !isRegen && !contextOnly && !silent &&
+                presenceMode === 'online' && !avatarCandidateImages.length &&
+                window.RoleAvatarChoice && window.RoleAvatarLibrary) {
+                var liveAvatarChoiceRole = getRoleById(aliasRoleId || currentCharacter.id);
+                roleAvatarChoicePlan = window.RoleAvatarChoice.prepare(
+                    aliasRoleId || currentCharacter.id, window.RoleAvatarLibrary, text,
+                    { enabled: !!liveAvatarChoiceRole && liveAvatarChoiceRole.avatarAutonomyEnabled !== false }
+                );
+                if (roleAvatarChoicePlan.prompt) apiMessages[0].content += '\n\n' + roleAvatarChoicePlan.prompt;
+            }
+
             if (window.ChatContextPolicy && typeof window.ChatContextPolicy.mapHistoryToApiMessages === 'function') {
                 apiMessages.push.apply(apiMessages, window.ChatContextPolicy.mapHistoryToApiMessages(recentHistory, stripInternalReasoning, {
                     isGroupChat: isGroupChat,
@@ -7328,6 +7384,9 @@
                         if (window.ChatImageVision && typeof window.ChatImageVision.stripAvatarCandidateMarker === 'function') {
                             snapshotText = window.ChatImageVision.stripAvatarCandidateMarker(snapshotText);
                         }
+                        if (window.RoleAvatarChoice && typeof window.RoleAvatarChoice.strip === 'function') {
+                            snapshotText = window.RoleAvatarChoice.strip(snapshotText);
+                        }
                         return redactGroupPrivateStream(snapshotText.replace(/\[群邀请[:：][^\]]{0,100}\]/g, '').replace(/\[群邀请[:：][^\]]{0,}$/g, '')
                             .replace(/\[建群邀请[:：][^\]]{0,180}\]/g, '').replace(/\[建群邀请[:：][^\]]{0,}$/g, ''));
                     })(),
@@ -7358,6 +7417,9 @@
                 }
                 if (window.ChatImageVision && typeof window.ChatImageVision.stripAvatarCandidateMarker === 'function') {
                     tmpText = window.ChatImageVision.stripAvatarCandidateMarker(tmpText);
+                }
+                if (window.RoleAvatarChoice && typeof window.RoleAvatarChoice.strip === 'function') {
+                    tmpText = window.RoleAvatarChoice.strip(tmpText);
                 }
                 tmpText = redactGroupPrivateStream(tmpText).trim();
                 if (!tmpText) return;
@@ -7692,6 +7754,16 @@
                         );
                         fullText = parsedRoleSticker.text;
                     }
+
+                    var parsedRoleAvatarChoice = { text: fullText, avatarId: '' };
+                    if (window.RoleAvatarChoice && typeof window.RoleAvatarChoice.parseReply === 'function') {
+                        parsedRoleAvatarChoice = window.RoleAvatarChoice.parseReply(
+                            fullText, roleAvatarChoicePlan,
+                            streamResult.ok && !isGroupChat && !isRegen && !contextOnly &&
+                            !silent && presenceMode === 'online'
+                        );
+                        fullText = parsedRoleAvatarChoice.text;
+                    }
                     var parsedAvatarCandidate = { text: fullText, candidates: [], pairs: [] };
                     if (window.ChatImageVision && typeof window.ChatImageVision.parseAvatarCandidateReply === 'function') {
                         var avatarCandidateLimit = streamResult.ok && !isGroupChat && !isRegen &&
@@ -7863,6 +7935,7 @@
                         }
                         var replySaveFailed = !replySaved;
                         var avatarRoleId = aliasRoleId || currentCharacter.id;
+                        var avatarChangedFromNewCandidate = false;
                         if (replySaved && !isGroupChat && window.RoleAvatarLibrary &&
                             typeof window.RoleAvatarLibrary.addAsset === 'function') {
                             for (var avatarPairIndex = 0; avatarPairIndex < avatarPairs.length; avatarPairIndex++) {
@@ -7895,7 +7968,7 @@
                                 if (candidateResult && candidateResult.ok) {
                                     var changeRequested = window.ChatImageVision.requestsAvatarChange &&
                                         window.ChatImageVision.requestsAvatarChange(text);
-                                    if (changeRequested && window.RoleAvatarLibrary.applyToCharacter) {
+                                    if (changeRequested && !avatarChangedFromNewCandidate && window.RoleAvatarLibrary.applyToCharacter) {
                                         var avatarApplied = await window.RoleAvatarLibrary.applyToCharacter(
                                             avatarRoleId, candidateResult.value.id, {
                                                 isCurrent: function () {
@@ -7904,6 +7977,8 @@
                                             }
                                         );
                                         if (avatarApplied && avatarApplied.ok) {
+                                            avatarChangedFromNewCandidate = true;
+                                            if (String(aliasRoleId || currentCharacter.id) !== String(avatarRoleId)) continue;
                                             currentCharacter.avatar = avatarApplied.value.avatar;
                                             currentCharacter.avatarAssetId = avatarApplied.value.avatarAssetId;
                                             if (chatHeaderAvatar) {
@@ -7924,6 +7999,33 @@
                                 } else if (typeof showToast === 'function') {
                                     showToast('头像候选保存失败，原头像没有变化');
                                 }
+                            }
+                        }
+
+                        // Do not change an avatar on failed, empty or marker-only replies.
+                        var liveChoiceRole = getRoleById(avatarRoleId);
+                        if (replySaved && streamResult.ok &&
+                            replyMessages.some(function (msg) { return !!String(msg.text || '').trim(); }) &&
+                            !avatarChangedFromNewCandidate && !isGroupChat &&
+                            parsedRoleAvatarChoice.avatarId && liveChoiceRole &&
+                            liveChoiceRole.avatarAutonomyEnabled !== false &&
+                            window.RoleAvatarLibrary && typeof window.RoleAvatarLibrary.applyToCharacter === 'function') {
+                            var autonomousApplied = await window.RoleAvatarLibrary.applyToCharacter(
+                                avatarRoleId, parsedRoleAvatarChoice.avatarId, {
+                                    isCurrent: function () {
+                                        var latestRole = getRoleById(avatarRoleId);
+                                        return String(aliasRoleId || currentCharacter.id) === String(avatarRoleId) &&
+                                            !!latestRole && latestRole.avatarAutonomyEnabled !== false;
+                                    }
+                                }
+                            );
+                            if (autonomousApplied && autonomousApplied.ok) {
+                                if (window.RoleAvatarChoice && typeof window.RoleAvatarChoice.recordApplied === 'function')
+                                    window.RoleAvatarChoice.recordApplied(avatarRoleId);
+                                if (String(aliasRoleId || currentCharacter.id) === String(avatarRoleId))
+                                    refreshLiveRolePortrait();
+                            } else if (typeof showToast === 'function') {
+                                showToast('头像切换未成功，原头像已保留');
                             }
                         }
                         if (!replySaved) {
