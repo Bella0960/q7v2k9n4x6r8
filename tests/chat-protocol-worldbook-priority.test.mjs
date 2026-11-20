@@ -74,22 +74,26 @@ test('actual online System adds universal role seal before saved agreement and e
   const begin=detail.indexOf('            const globalIdentitySeal = ');
   const end=detail.indexOf('            // 角色主动邀请只针对确实退出过的群。',begin);
   assert.ok(begin>0&&end>begin,'actual outbound identity seal section must be present');
+  const headStart=detail.indexOf('            const includesIdentitySeal = ');
+  const headEnd=detail.indexOf('            // Mandatory preflight',headStart);
   const build=new Function('window','personaPolicy','personaIncomplete','turnSpeakerName',
     'systemPrompt','stopForMissingRoleSource',
-    detail.slice(begin,end)+'\nreturn systemPrompt;');
+    detail.slice(begin,end)+'\nconst regexSystemHead = "";\n'+detail.slice(headStart,headEnd)+'\nreturn systemPrompt;');
   const reasons=[];
   const stopForMissingRoleSource=reason=>reasons.push(reason);
   const custom='用户已保存的独立协议：{{char}} {{persona}}';
   const complete=build(defaultWin,roles,false,'测试一号',custom,stopForMissingRoleSource);
-  assert.ok(complete.startsWith(globalSeal),'even custom saved agreements get the top rule');
+  assert.ok(complete.startsWith('【角色扮演最高优先级】'));
+  assert.ok(complete.indexOf(globalSeal) < complete.indexOf(custom));
   assert.ok(complete.endsWith(custom),'never delete or rewrite saved agreement');
   assert.equal(complete.split(custom).length-1,1,'custom agreement appears only once');
   const incomplete=build(defaultWin,roles,true,'测试一号',custom,stopForMissingRoleSource);
-  assert.ok(incomplete.startsWith(roles.buildWeakPersonaNameGuard('测试一号')));
+  assert.ok(incomplete.indexOf(roles.buildWeakPersonaNameGuard('测试一号')) < incomplete.indexOf(custom));
+  assert.ok(incomplete.includes(roles.buildWeakPersonaNameGuard('测试一号')));
   assert.match(incomplete,/你的名字就是测试一号/);
   assert.ok(incomplete.indexOf(globalSeal)<incomplete.indexOf(custom));
   assert.equal(build(defaultWin,roles,false,'张三',globalSeal+'\n\n'+custom,
-    stopForMissingRoleSource),globalSeal+'\n\n'+custom,'do not duplicate default seal');
+    stopForMissingRoleSource).split(globalSeal).length-1,1,'do not duplicate default seal');
   assert.deepEqual(reasons,[]);
   const missing=build({},roles,true,'测试一号',custom,stopForMissingRoleSource);
   assert.equal(missing,undefined);
@@ -176,7 +180,7 @@ test('source-first system stack preserves complete protocol, selected persona an
   assert.equal(b.split(lore).length - 1, 1);
 });
 
-test('enabled regex formatting prefixes final System; invalid rules fail without sending', () => {
+test('enabled regex follows the identity rules; invalid rules fail without sending', () => {
   const policySource = read('shared/js/phone/chat-regex-policy.js');
   const global = {window:{}};
   vm.runInNewContext(policySource,global);
@@ -184,7 +188,7 @@ test('enabled regex formatting prefixes final System; invalid rules fail without
   const start=detail.indexOf("            let regexSystemHead = '';");
   const end=detail.indexOf('            // Mandatory preflight for every single/group/continue/regenerate AI turn.',start);
   assert.ok(start>0 && end>start, 'actual regex preflight section must exist');
-  const render = new Function('window','localStorage','systemPrompt','stopForMissingRoleSource','console',
+  const render = new Function('window','localStorage','systemPrompt','stopForMissingRoleSource','console','turnSpeakerName','nameSeal','globalIdentitySeal',
     detail.slice(start,end)+'\nreturn {systemPrompt,regexSystemHead};');
   const stored = JSON.stringify([
     {id:'format',name:'输出前缀',enabled:true,pattern:'^\\[output\\]',replacement:''},
@@ -193,8 +197,9 @@ test('enabled regex formatting prefixes final System; invalid rules fail without
   const enabledStore={getItem:key=>key==='regex_rules'?stored:null};
   const notices=[];
   const got=render({ChatRegexPolicy:regexPolicy},enabledStore,'【全局伴侣协议】\n用户自己的原文',
-    (reason,message)=>notices.push([reason,message]),console);
-  assert.ok(got.systemPrompt.startsWith('【启用的全局正则'));
+    (reason,message)=>notices.push([reason,message]),console,'测试一号','','身份规则');
+  assert.ok(got.systemPrompt.startsWith('【角色扮演最高优先级】'));
+  assert.ok(got.systemPrompt.includes('身份规则\n\n【启用的全局正则'));
   assert.ok(got.systemPrompt.includes('输出前缀'));
   assert.ok(!got.systemPrompt.includes('禁用规则'));
   assert.ok(got.systemPrompt.includes('【全局伴侣协议】\n用户自己的原文'));
