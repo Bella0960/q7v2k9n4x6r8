@@ -17,7 +17,7 @@ const lore = sandbox.window.ChatContextPolicy;
 
 test('all direct/group requests require saved persona + RP protocol + activated lore in final system message', () => {
   const good = {
-    role: { id: 'char_1', name: '任意人物' },
+    role: { id: 'char_1', name: '任意人物', persona: '生长在深圳，喜欢街巷摄影' },
     persona: '生长在深圳，喜欢街巷摄影',
     protocol: '用户自己写的全局协议 {{char}}',
     expandedProtocol: '用户自己写的全局协议 任意人物',
