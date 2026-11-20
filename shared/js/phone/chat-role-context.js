@@ -201,6 +201,17 @@
     return nameOnly === name;
   }
 
+  // A name-only character has one authoritative display name, never a self-chosen alias.
+  // This is a dynamic prompt section; it is NOT persisted to the user's persona.
+  function buildWeakPersonaNameGuard(name) {
+    var exactName = String(name == null ? '' : name).trim();
+    if (!exactName) return '';
+    return '【空白人设姓名锁定】你的名字就是' + exactName +
+      '，你绝对不能给自己捏造其他名字。被问姓名时只说' + exactName +
+      '；不要根据聊天历史里曾经编造的别名，自称新名字、昵称或曾用名。' +
+      '档案未写明的职业、关系与经历不要虚构。';
+  }
+
   // Check the exact messages passed to PhoneStream.chat, not a preliminary
   // prompt string. Do not log or persist the user's private source text.
   function validateFinalApiMessages(input) {
@@ -225,7 +236,9 @@
     // whose saved dossier is empty/name-only. Any richer saved persona must match
     // verbatim; missing role IDs are rejected above.
     if (isPersonaIncomplete(role)) {
-      if (persona !== MINIMAL_PERSONA_PROMPT || system.indexOf(MINIMAL_PERSONA_PROMPT) === -1)
+      var weakNameGuard = buildWeakPersonaNameGuard(role && role.name);
+      if (persona !== MINIMAL_PERSONA_PROMPT || system.indexOf(MINIMAL_PERSONA_PROMPT) === -1 ||
+          !weakNameGuard || system.indexOf(weakNameGuard) === -1)
         missing.push('saved-role-persona');
     } else if (!savedPersona || !persona || persona !== savedPersona ||
                system.indexOf(persona) === -1) {
@@ -236,6 +249,10 @@
       missing.push('saved-role-tone');
     if (!protocol || !expanded || system.indexOf(expanded) === -1)
       missing.push('global-protocol');
+    // Check the effective global identity seal, not merely the stored agreement.
+    var globalGuard = String(global.MAOMAO_RP_IDENTITY_GUARD || '').trim();
+    if (globalGuard && system.indexOf(globalGuard) === -1)
+      missing.push('global-identity-seal');
     if (worldbook && system.indexOf(worldbook) === -1) missing.push('activated-worldbook');
     if (input.worldbookPolicyReady !== true) missing.push('worldbook-policy');
     if (!system) missing.push('system-message');
@@ -309,6 +326,16 @@
       .replace(/\{\{persona\}\}/g,persona)
       .replace(/\{\{memory\}\}/g,memory || '暂无')
       .replace(/\{\{worldbook\}\}/g,worldbook || '暂无世界书');
+    // The saved agreement remains byte-for-byte intact; only the effective turn
+    // receives the global role seal ahead of custom or default protocol content.
+    var globalGuard = String(global.MAOMAO_RP_IDENTITY_GUARD || '').trim();
+    if (globalGuard && !expanded.startsWith(globalGuard))
+      expanded = globalGuard + '\n\n' + expanded;
+    if (minimalPersona) {
+      var nameGuard = buildWeakPersonaNameGuard(name);
+      if (!nameGuard) return {ok:false,code:'speaker-name'};
+      expanded = nameGuard + '\n\n' + expanded;
+    }
     return {ok:true,role:role,persona:persona,tone:tone,protocol:protocol,
       expandedProtocol:expanded,worldbook:worldbook,
       worldbookPolicyReady:true,activeBookCount:chosen.length};
@@ -421,6 +448,7 @@
     getModelHistory: getModelHistory,
     getGroupModelHistory: getGroupModelHistory,
     MINIMAL_PERSONA_PROMPT: MINIMAL_PERSONA_PROMPT,
+    buildWeakPersonaNameGuard: buildWeakPersonaNameGuard,
     isPersonaIncomplete: isPersonaIncomplete,
     selectWorldbooksForRole: selectWorldbooksForRole,
     selectWorldbooksForGroup: selectWorldbooksForGroup,

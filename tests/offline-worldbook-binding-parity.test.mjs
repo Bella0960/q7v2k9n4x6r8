@@ -113,7 +113,7 @@ test('entry keyword activation still uses latest user input without leaking untr
 
 test('both existing offline pages load the shared binding before the updated resolver; PWA caches the same assets',()=>{
   const binder='role-worldbook-bindings.js?v=20261119-qa1';
-  const role='chat-role-context.js?v=20261119source3';
+  const role='chat-role-context.js?v=20261120identity2';
   for(const page of [datePage,journeyPage]){
     assert.ok(page.includes(binder));
     assert.ok(page.includes(role));

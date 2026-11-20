@@ -81,6 +81,16 @@
       .replace(/\{\{persona\}\}/g, source.persona)
       .replace(/\{\{memory\}\}/g, memoryText || '暂无')
       .replace(/\{\{worldbook\}\}/g, worldbook || '暂无世界书');
+    // Group lore is re-expanded above; preserve the same universal identity
+    // and empty-dossier name guards used by direct and offline turns.
+    var identitySeal = str(global.MAOMAO_RP_IDENTITY_GUARD);
+    if (!identitySeal) return fail('global-identity-seal');
+    if (!expanded.startsWith(identitySeal)) expanded = identitySeal + '\n\n' + expanded;
+    if (contract.isPersonaIncomplete(role)) {
+      var nameSeal = contract.buildWeakPersonaNameGuard(role.name);
+      if (!nameSeal) return fail('speaker-name');
+      expanded = nameSeal + '\n\n' + expanded;
+    }
     var parts = [expanded, '【本轮发言者的完整角色档案】\n' + source.persona];
     if (source.tone) parts.push('【已保存说话方式】\n' + source.tone);
     if (worldbook && source.protocol.indexOf('{{worldbook}}') === -1)

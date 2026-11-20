@@ -7,6 +7,7 @@ const read = path => fs.readFileSync(new URL('../' + path, import.meta.url), 'ut
 const detail = read('chat/chat/chat-detail.html');
 const memories = read('shared/js/phone/chat-context-policy.js');
 const roles = read('shared/js/phone/chat-role-context.js');
+const defaultProtocolScript = read('shared/js/phone/rp-default-protocol.js');
 const bridge = read('shared/js/phone/role-worldbook-bindings.js');
 
 function fixture(init = {}) {
@@ -73,7 +74,7 @@ test('blank, name-only and explicitly labeled name-only dossiers get only minima
     assert.equal(role.validateFinalApiMessages({
       role:source,speakerId:'a',persona:minimal,protocol:minimal,
       expandedProtocol:minimal,worldbookPolicyReady:true,
-      messages:[{role:'system',content:minimal}]
+      messages:[{role:'system',content:role.buildWeakPersonaNameGuard('陆昭辰')+'\n'+minimal}]
     }).ok,true);
     const wrong=role.validateFinalApiMessages({
       role:source,speakerId:'a',persona:'AI助手默认人设',protocol:minimal,
@@ -130,7 +131,8 @@ test('weak persona does not override saved or default global protocol, and missi
   assert.equal(fromDefault.ok,true);
   assert.equal(fromDefault.persona,role.MINIMAL_PERSONA_PROMPT);
   assert.equal(fromDefault.protocol,defaultValue);
-  assert.ok(fromDefault.expandedProtocol.startsWith(defaultValue));
+  assert.match(fromDefault.expandedProtocol,/你的名字就是测试一号/);
+  assert.ok(fromDefault.expandedProtocol.includes(defaultValue));
   assert.notEqual(fromDefault.protocol,role.MINIMAL_PERSONA_PROMPT);
   data.set('chat_rp_protocol_','用户已保存的协议：按角色本人发言。{{char}} / {{persona}}');
   const saved=role.buildSavedSourceEnvelope({role:weak,storage,contextPolicy:context,
@@ -146,6 +148,51 @@ test('weak persona does not override saved or default global protocol, and missi
   assert.equal(missing.ok,false);
   assert.equal(missing.code,'protocol');
   assert.equal(data.has('chat_rp_protocol_'),false,'source resolution never writes storage');
+});
+
+test('global identity seal leads default and saved agreements; weak role identity remains exact',()=>{
+  const {window,context,role,data,storage,binding}=fixture({phone_worldbooks:'[]'});
+  vm.runInNewContext(defaultProtocolScript,{window});
+  const seal=window.MAOMAO_RP_IDENTITY_GUARD;
+  assert.ok(seal.startsWith('【全局身份封印'), 'must export a shared top-of-System identity seal');
+  assert.match(seal,/绝对不允许说自己是虚拟人物、虚拟朋友、程序或模型/);
+  assert.match(seal,/以当前角色的口吻简短反问用户/);
+  assert.ok(window.MAOMAO_RP_DEFAULT_PROTOCOL.startsWith(seal));
+  const weak={id:'id-test-1',name:'测试一号',persona:''};
+  const before=JSON.stringify([...data.entries()]);
+  const fallback=role.buildSavedSourceEnvelope({
+    role:weak,storage,contextPolicy:window.ChatContextPolicy,bindingBridge:binding
+  });
+  assert.equal(fallback.ok,true);
+  assert.ok(fallback.expandedProtocol.startsWith(role.buildWeakPersonaNameGuard('测试一号')));
+  assert.match(fallback.expandedProtocol,/你的名字就是测试一号/);
+  assert.ok(fallback.expandedProtocol.includes(seal));
+  assert.ok(fallback.expandedProtocol.includes('【第一优先级 · 你就是这个人】'));
+  assert.doesNotMatch(fallback.expandedProtocol,/你的名字就是阿屿/);
+  const messages=[{role:'system',content:fallback.expandedProtocol}];
+  const check={role:weak,speakerId:weak.id,persona:fallback.persona,tone:'',
+    protocol:fallback.protocol,expandedProtocol:fallback.expandedProtocol,
+    worldbookPolicyReady:true,messages};
+  assert.equal(role.validateFinalApiMessages(check).ok,true);
+  assert.ok(role.validateFinalApiMessages({
+    ...check,messages:[{role:'system',content:fallback.expandedProtocol.replace(
+      role.buildWeakPersonaNameGuard('测试一号'),'')}]
+  }).missing.includes('saved-role-persona'));
+  assert.ok(role.validateFinalApiMessages({
+    ...check,messages:[{role:'system',content:fallback.expandedProtocol.replace(seal,'')}]
+  }).missing.includes('global-identity-seal'));
+  data.set('chat_rp_protocol_','我的自定义协议：{{char}} ｜ {{persona}}');
+  const custom=role.buildSavedSourceEnvelope({
+    role:weak,storage,contextPolicy:window.ChatContextPolicy,bindingBridge:binding
+  });
+  assert.equal(custom.ok,true);
+  assert.equal(custom.protocol,'我的自定义协议：{{char}} ｜ {{persona}}');
+  assert.ok(custom.expandedProtocol.includes('我的自定义协议：测试一号'));
+  assert.ok(custom.expandedProtocol.indexOf(seal) <
+            custom.expandedProtocol.indexOf('我的自定义协议：测试一号'));
+  assert.equal(data.get('chat_rp_protocol_'),'我的自定义协议：{{char}} ｜ {{persona}}');
+  data.delete('chat_rp_protocol_');
+  assert.equal(JSON.stringify([...data.entries()]),before,'no stored values change');
 });
 
 test('online system uses same minimal fallback and preserves current persona source barriers',()=>{

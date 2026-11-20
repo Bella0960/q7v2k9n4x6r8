@@ -19,9 +19,9 @@
     <script src="../../shared/js/phone/role-avatar-library.js?v=20261113v1"></script>
     <script src="../../shared/js/phone/role-sticker-library.js?v=20261107v2"></script>
     <script src="../../shared/js/phone/chat-image-vision.js?v=20261113v1"></script>
-    <script src="../../shared/js/phone/rp-default-protocol.js?v=20261118v1"></script>
+    <script src="../../shared/js/phone/rp-default-protocol.js?v=20261120identity2"></script>
     <script src="../../shared/js/phone/role-worldbook-bindings.js?v=20261119-qa1"></script>
-    <script src="../../shared/js/phone/chat-role-context.js?v=20261119source3"></script>
+    <script src="../../shared/js/phone/chat-role-context.js?v=20261120identity2"></script>
     <script src="../../shared/js/phone/inspect_interaction_bridge.js?v=20261112v5"></script>
     <script src="../../shared/js/phone/ai-response-parser.js?v=20261120parser1"></script>
     <script src="../../shared/js/phone/phone_api.js?v=20261115cancel1"></script>
@@ -6516,6 +6516,27 @@
               // Templates with {{worldbook}} already contain the activated entries.
               // Custom templates without it still receive the selected worldbook data.
               systemPrompt += '\n\n【世界书 / 角色生活背景】\n' + worldbookText;
+            }
+
+            // Role-level identity seals belong ahead of all feature mechanics.
+            // A saved custom global agreement stays untouched in localStorage;
+            // the seal is added to this turn's effective System only.
+            const globalIdentitySeal = String(window.MAOMAO_RP_IDENTITY_GUARD || '').trim();
+            if (!globalIdentitySeal) {
+                stopForMissingRoleSource('identity-guard-missing', '全局身份约束未加载，请刷新后重试');
+                return;
+            }
+            if (!systemPrompt.startsWith(globalIdentitySeal)) {
+                systemPrompt = globalIdentitySeal + '\n\n' + systemPrompt;
+            }
+            if (personaIncomplete) {
+                const nameSeal = personaPolicy && typeof personaPolicy.buildWeakPersonaNameGuard === 'function'
+                    ? personaPolicy.buildWeakPersonaNameGuard(turnSpeakerName) : '';
+                if (!nameSeal) {
+                    stopForMissingRoleSource('speaker-name-missing', '当前角色姓名读取失败，本轮未请求 AI');
+                    return;
+                }
+                systemPrompt = nameSeal + '\n\n' + systemPrompt;
             }
 
             // 角色主动邀请只针对确实退出过的群。历史群沿用默认“已加入”状态。

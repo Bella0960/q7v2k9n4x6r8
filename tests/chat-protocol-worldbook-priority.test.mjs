@@ -66,6 +66,36 @@ test('custom protocol without a {{worldbook}} placeholder still gets activated l
   assert.match(detail, /const apiMessages = \[[\s\S]*?role: 'system', content: systemPrompt/);
 });
 
+test('actual online System adds universal role seal before saved agreement and exact weak name',()=>{
+  const protocolSource = read('shared/js/phone/rp-default-protocol.js');
+  const defaultWin={};
+  vm.runInNewContext(protocolSource,{window:defaultWin});
+  const globalSeal=defaultWin.MAOMAO_RP_IDENTITY_GUARD;
+  const begin=detail.indexOf('            const globalIdentitySeal = ');
+  const end=detail.indexOf('            // 角色主动邀请只针对确实退出过的群。',begin);
+  assert.ok(begin>0&&end>begin,'actual outbound identity seal section must be present');
+  const build=new Function('window','personaPolicy','personaIncomplete','turnSpeakerName',
+    'systemPrompt','stopForMissingRoleSource',
+    detail.slice(begin,end)+'\nreturn systemPrompt;');
+  const reasons=[];
+  const stopForMissingRoleSource=reason=>reasons.push(reason);
+  const custom='用户已保存的独立协议：{{char}} {{persona}}';
+  const complete=build(defaultWin,roles,false,'测试一号',custom,stopForMissingRoleSource);
+  assert.ok(complete.startsWith(globalSeal),'even custom saved agreements get the top rule');
+  assert.ok(complete.endsWith(custom),'never delete or rewrite saved agreement');
+  assert.equal(complete.split(custom).length-1,1,'custom agreement appears only once');
+  const incomplete=build(defaultWin,roles,true,'测试一号',custom,stopForMissingRoleSource);
+  assert.ok(incomplete.startsWith(roles.buildWeakPersonaNameGuard('测试一号')));
+  assert.match(incomplete,/你的名字就是测试一号/);
+  assert.ok(incomplete.indexOf(globalSeal)<incomplete.indexOf(custom));
+  assert.equal(build(defaultWin,roles,false,'张三',globalSeal+'\n\n'+custom,
+    stopForMissingRoleSource),globalSeal+'\n\n'+custom,'do not duplicate default seal');
+  assert.deepEqual(reasons,[]);
+  const missing=build({},roles,true,'测试一号',custom,stopForMissingRoleSource);
+  assert.equal(missing,undefined);
+  assert.deepEqual(reasons,['identity-guard-missing']);
+});
+
 test('even global lore requires an explicit mount before it can enter a chat', () => {
   const books = [
     { id: 'global', scope: 'global', title: '全局设定', content: '城市有高架桥' },
@@ -115,7 +145,7 @@ test('inline chat message pipeline still compiles after the unified prompt fix',
 
 test('source-first system stack preserves complete protocol, selected persona and lore without repeat copies', () => {
   const start = detail.indexOf('            let systemPrompt;');
-  const end = detail.indexOf('            // 角色主动邀请只针对确实退出过的群。', start);
+  const end = detail.indexOf('            // Role-level identity seals belong ahead of all feature mechanics.', start);
   assert.ok(start >= 0 && end > start, 'real top-of-system assembly must be present');
   const builder = new Function(
     'rpProtocol', 'applyProtocolVars', 'turnSpeakerName', 'turnSpeakerPersona',

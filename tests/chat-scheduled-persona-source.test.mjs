@@ -65,6 +65,7 @@ test('scheduled proactive/follow-up sees complete current persona, global RP, ac
   assert.ok(result.system.includes(roles[0].persona),'full untruncated persona');
   assert.match(result.system,/惜字如金/);
   assert.match(result.system,/按人物原有的语气表达/);
+  assert.match(result.system,/【全局身份封印 · 所有角色生效】/);
   assert.match(result.system,/公共事实/);
   assert.match(result.system,/私人收藏室在二楼/);
   assert.doesNotMatch(result.system,/花房主人自己的手记/);
@@ -88,6 +89,29 @@ test('scheduled group speaker gets own and group books, never another member pri
   assert.match(result.system,/群聊聚会约在剧院/);
   assert.doesNotMatch(result.system,/花房主人自己的手记/);
   assert.equal(h.snapshot(),before);
+});
+
+test('scheduled weak direct and group roles retain exact authored name and identity seal',()=>{
+  const h=harness();
+  const weak={...roles[0],name:'测试一号',persona:''};
+  const original=h.snapshot();
+  for(const input of [
+    {role:weak,storage:h.store,currentText:'你叫什么名字？'},
+    {role:weak,storage:h.store,groupId:'g1',
+      groupMembers:[{id:'a',name:'测试一号'},{id:'b',name:'秦葵'}],
+      roleLoader:id=>id==='a'?weak:roles[1],currentText:'你叫什么名字？',
+      history:[{role:'user',text:'你叫什么？'}]}
+  ]){
+    const result=h.window.ChatScheduledRoleContext.build(input);
+    assert.equal(result.ok,true,result.code);
+    assert.match(result.system,/你的名字就是测试一号/);
+    assert.match(result.system,/你绝对不能给自己捏造其他名字/);
+    assert.match(result.system,/【全局身份封印 · 所有角色生效】/);
+    assert.ok(result.system.indexOf('【全局身份封印')<
+      result.system.indexOf('按人物原有的语气表达'));
+    assert.doesNotMatch(result.system,/你的名字就是阿屿/);
+  }
+  assert.equal(h.snapshot(),original,'must not mutate user role/protocol/worldbook/history');
 });
 
 test('corrupt worldbook source fails closed without a generic response or writes',()=>{
