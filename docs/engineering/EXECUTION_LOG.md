@@ -602,3 +602,10 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - Scoped cleanup now removes primary and legacy memory records together. Chat settings also removes the selected conversation history, while the Memory Space action retains chat originals and removes existing entries from the local archive view.
 - The versioned archive key stores only message identifiers and a revision. Existing records need no migration. A storage write failure is reported and earlier writes are rolled back.
 - Added Node coverage for conversation isolation, legacy fallback, retained chat, newer archive entries and rollback, plus Chromium coverage at 375, 390, 430 and 1100 px.
+
+### 2026-11-21 · INSPECT-001 · Role phone navigation and initial stories
+
+- The simulated home indicator dismisses the current app or detail while leaving the session and share permissions intact.
+- WeChat tabs use uniform flex children and equal icon boxes.
+- The first authorized visit uses one request for unseeded WeChat, Moments and Notes. The existing account-scoped per-role story stores results. Already-generated sections and user interactions are preserved. Invalid results leave the previous cache intact.
+- Node contracts and the mobile gesture suite cover the existing flows and the new persona, cache and navigation behavior.

@@ -145,6 +145,12 @@ function setupInteractive(role={id:'interactive-role',name:'测试',relationship
     preventDefault(){}
   });
   const start=()=>{
+    if(apiKey&&!read()){
+      mount();
+      const cached=read();
+      Object.assign(cached.source,{chat:'ai',moments:'ai',notes:'ai'});
+      storage.setItem(key,JSON.stringify(cached));
+    }
     mount();window.InspectPhoneFeature.onUnlock();
     action('grant');action('all');action('start');
   };
