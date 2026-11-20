@@ -57,7 +57,7 @@ test('chat binds the saved role name literally and puts the identity rules befor
   const scope = {
     turnSpeakerName: '测试一号 $& {{user}}', userName: '用户',
     turnSpeakerPersona: '{{memory}}', roleMemory: '旧回复自称阿晴',
-    worldbookText: '', nameSeal: '空白档案姓名约束', globalIdentitySeal: '全局身份约束'
+    worldbookText: '', includesIdentitySeal: false, nameSeal: '空白档案姓名约束', globalIdentitySeal: '全局身份约束'
   };
   const prompt = vm.runInNewContext(
     expand + '\nlet systemPrompt = "正则\\n" + applyProtocolVars("{{char}} / {{user}} / {{persona}} / {{memory}}");\n' +
