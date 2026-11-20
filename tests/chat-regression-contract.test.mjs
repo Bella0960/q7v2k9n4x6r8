@@ -2369,8 +2369,12 @@ test('chat detail: payment ledger success is independent from chat-card status p
 });
 
 test('chat detail: group private messages require both the target history and group entry to persist', () => {
-  assert.match(detail, /privateSaved = window\.PhoneStorage\.saveChatHistory\(targetId, privateHistory\) === true/);
-  assert.match(detail, /verifiedPrivate\.length === privateHistory\.length/);
+  // The old full-history PhoneStorage write would resurrect stale legacy data.
+  // The actual group-private receipt now uses a verified append-only adapter.
+  assert.match(detail, /versioned\.appendChatHistory\(id, message\)/);
+  assert.match(detail, /var verifiedRaw = localStorage\.getItem\(key\)/);
+  assert.match(detail, /matches\.length === 1/);
+  assert.doesNotMatch(detail, /privateSaved = window\.PhoneStorage\.saveChatHistory\(targetId, privateHistory\)/);
   assert.match(detail, /if \(!privateSaved\)[\s\S]*?未显示已发送状态[\s\S]*?return ''/);
   assert.match(detail, /if \(!saveMessages\(historyList\)\)[\s\S]*?群聊中的私聊入口没有保存成功/);
   assert.match(detail, /showGroupPrivatePopup\(displayName, targetId, privateMessageText\)/);
@@ -2459,7 +2463,7 @@ test('chat detail: group interaction state and private-message entry require ver
   assert.match(detail, /groupHistoryRollback\.length-1/);
   assert.match(detail, /var replySaved = saveMessages\(historyList\)/);
   assert.match(detail, /groupTurnEffects\.finalize\(replySaved && streamResult\.ok\)/);
-  assert.match(detail, /privateSaved = privateSaved && Array\.isArray\(verifiedPrivate\)/);
+  assert.match(detail, /var privateSaved = saveGroupPrivateRoleMessageSafely\(targetId, privateMsg\)/);
   assert.match(detail, /if \(!privateSaved\)[\s\S]*?未显示已发送状态/);
 });
 
