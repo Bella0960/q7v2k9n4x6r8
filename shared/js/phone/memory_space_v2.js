@@ -43,21 +43,21 @@
     style.id = 'memory-archive-v2-style';
     style.textContent = `
       .memory-overview { margin: 18px 0; }
-      .memory-metrics { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; }
-      .memory-metrics > div { display: flex; flex-direction: column; gap: 6px; padding: 10px 6px; text-align: center; }
+      .memory-metrics { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: clamp(12px, 4vw, 24px); }
+      .memory-metrics > div { display: flex; flex-direction: column; gap: 6px; padding: 10px 0; text-align: center; }
       .memory-metrics span { color: #777; font-size: 10px; white-space: nowrap; }
       .memory-metrics strong { color: #111; font: 22px Georgia, serif; }
       .memory-archive-tools { margin: 10px 0 16px; }
-      .memory-search-wrap { display: flex; padding: 12px; border-radius: 12px; box-shadow: 0 2px 12px #0000000e; }
-      .memory-search-wrap input { width: 100%; min-width: 0; border: 0; background: #fff; color: #111; font-size: 16px; }
-      #mem-list .memory-archive-entry { display: block; margin: 0 0 12px; padding: 12px 14px; border: 0; border-radius: 16px; background: #fff; box-shadow: 0 2px 12px #00000012; }
-      .memory-archive-entry .mem-line-time { color: #777 !important; font-size: 11px !important; }
-      .memory-archive-entry .mem-line-content { display: block; color: #333 !important; font-size: 13px !important; line-height: 1.7 !important; white-space: pre-wrap; overflow-wrap: anywhere; }
-      .memory-archive-actions { display: flex; justify-content: flex-end; align-items: center; gap: 6px; }
-      .memory-archive-actions button, .memory-archive-more { min-height: 44px; border: 0; background: #fff; color: #555; font-size: 12px; }
-      .memory-save-as-longterm { display: grid; width: 44px; place-items: center; }
+      .memory-search-wrap { display: flex; align-items: center; box-sizing: border-box; height: 36px; padding: 0 10px; gap: 6px; border-radius: 7px; background: #f5f5f5; color: #888; font-size: 12px; }
+      .memory-search-wrap input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; color: #333; font-size: 12px; }
+      #mem-list .memory-archive-entry { margin: 0 0 12px; padding: 12px 14px; border: 0; border-radius: 10px; background: #fff; box-shadow: 0 2px 10px #00000010; }
+      .memory-archive-time { display: block; color: #999; font-size: 10px; line-height: 1.4; font-variant-numeric: tabular-nums; }
+      .memory-archive-text { display: block; margin-top: 5px; color: #333; font-size: 14px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
+      .memory-archive-actions { display: flex; justify-content: flex-end; align-items: center; gap: 4px; }
+      .memory-archive-actions button { display: flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 44px; height: 44px; margin: 0; padding: 0; border: 0; background: transparent; color: #888; font: 12px/1 var(--sans, sans-serif); }
+      .memory-archive-more { min-height: 44px; border: 0; background: #fff; color: #555; font-size: 12px; }
       .memory-save-as-longterm:disabled { opacity: .45; }
-      .memory-save-as-longterm svg { width: 18px; height: 18px; }
+      .memory-save-as-longterm svg { display: block; width: 12px; height: 12px; }
       .memory-archive-empty { padding: 26px 6px; color: #777; font-size: 13px; }
       .memory-archive-more[hidden] { display: none; }
     `;
@@ -161,9 +161,9 @@
           if (!memory) return false;
           return (window.MemoryRecall ? window.MemoryRecall.normalize(memory.content || memory.text || '') : String(memory.content || memory.text || '').trim().toLowerCase()) === normalized;
         });
-        return '<div class="mem-line memory-archive-entry" data-index="' + entry.index + '">' +
-          '<span class="mem-line-time">' + esc(stamp(m.time || m.timestamp)) + '</span>' +
-          '<span class="mem-line-content"><span class="memory-archive-role">' + msgRole(m) + '</span> ' + esc(content) + '</span>' +
+        return '<div class="memory-archive-entry" data-index="' + entry.index + '">' +
+          '<span class="memory-archive-time">' + esc(stamp(m.time || m.timestamp)) + '</span>' +
+          '<span class="memory-archive-text"><span class="memory-archive-role">' + msgRole(m) + '</span> ' + esc(content) + '</span>' +
           '<div class="memory-archive-actions">' +
           '<button type="button" class="memory-save-as-longterm" data-action="remember" data-index="' + entry.position + '"' +
           (already ? ' disabled aria-label="已加入长期记忆"' : ' aria-label="加入长期记忆"') +

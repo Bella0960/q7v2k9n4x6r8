@@ -652,7 +652,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
 .mem-section-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:23px 0 9px 0!important;padding:0 0 8px!important;border-bottom:1px solid #F0F0F0;color:#888!important;font:600 8px/1.25 var(--sans)!important;letter-spacing:.17em!important;text-transform:uppercase}
 .mem-section-title:first-child{margin-top:17px!important}
 .mem-card-glass{margin:0 0 16px!important;padding:13px 0 16px!important;border:0!important;border-bottom:1px solid #F0F0F0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
-.mem-card-glass:has(.mem-mood-text){margin:0 0 19px!important;padding:13px 0 17px 14px!important;border-left:1px solid #171717!important;border-bottom:1px solid #e7e7e7!important;background:transparent!important}
+.mem-card-glass:has(.mem-mood-text){margin:0 0 19px!important;padding:13px 0 17px 14px!important;border:0!important;background:transparent!important}
 .mem-label{margin:0 0 9px!important;color:#999!important;font:600 8px/1.4 var(--sans)!important;letter-spacing:.16em!important}
 .mem-mood-text{margin:0 0 6px!important;color:#171717!important;font:400 20px/1.45 var(--sans)!important;letter-spacing:-.035em}
 .mem-event-text{color:#777!important;font:10px/1.85 var(--sans)!important}
@@ -749,7 +749,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
 </style>
 <style>
     body, body .mem-card-glass, body .fold-card, body .mem-stream-panel { background: #fff !important; }
-    body .mem-card-glass, body .fold-card, body .mem-stream-panel, body .lib-item {
+    body .mem-card-glass, body .fold-card, body .lib-item {
         border: 0 !important; border-radius: 16px !important; box-shadow: 0 2px 14px #00000010 !important;
     }
     body .lib-item { padding: 14px; margin: 0 0 12px; background: #fff; }
@@ -1106,11 +1106,13 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
     // ---- 角色选择器 ----
     function renderCharPicker() {
         const picker = document.getElementById('charPicker');
-        const chars = loadCharacters();
-        const groups = loadGroups();
-        const items = chars.map(c => ({ id: c.id, name: c.name, avatar: c.avatar }))
-            .concat(groups.map(g => ({ id: g.id, name: g.name, avatar: g.avatar })));
+        const groupIds = new Set(loadGroups().filter(group => group?.id != null).map(group => String(group.id)));
+        const items = loadCharacters().filter(character => (
+            character?.id != null && character.type !== 'group' && character.isGroup !== true &&
+            !groupIds.has(String(character.id))
+        ));
         if (!items.length) {
+            currentMemId = null;
             picker.innerHTML = '<div style="font-size:0.75rem;color:#999;padding:8px 0;">还没有角色，去联系人页添加吧</div>';
             return;
         }
@@ -1679,6 +1681,6 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
 
 })();
 </script>
-<script src="../../shared/js/phone/memory_space_v2.js?v=20261121v1"></script>
+<script src="../../shared/js/phone/memory_space_v2.js?v=20261121v2"></script>
 </body>
 </html>
