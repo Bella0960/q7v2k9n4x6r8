@@ -6,7 +6,7 @@
     <title>记忆空间 · 小手机</title>
     <script src="../../shared/js/font-loader.js?v=20261022v1"></script>
     <script src="../../shared/js/native-feel.js"></script>
-    <script src="../../shared/js/phone/phone_storage.js"></script>
+    <script src="../../shared/js/phone/phone_storage.js?v=20261121memory1"></script>
     <script src="../../shared/js/phone/memory_recall.js?v=20261024v2"></script>
     <style>
         /* 全局重置 */
@@ -746,21 +746,20 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
 .mem-back svg{display:block!important;width:16px!important;height:16px!important}
 @media(max-width:480px){.mem-tabs{padding-left:23px;padding-right:23px}}
 /* 概览面板：默认收拢为一行摘要，点击展开（面板内容由 v2 注入） */
-#memory-overview{margin:14px 0 0!important;padding:0!important;border:0!important}
-#memory-overview.open{margin:17px 0 22px!important;padding:17px 0 15px!important;border-top:1px solid #171717!important;border-bottom:1px solid #d9d9d9!important}
-#memory-overview>.memory-overview-kicker,
-#memory-overview>.memory-overview-title,
-#memory-overview>.memory-overview-note,
-#memory-overview>.memory-metrics,
-#memory-overview>.memory-archive-cta{display:none!important}
-#memory-overview.open>.memory-overview-kicker,
-#memory-overview.open>.memory-overview-title,
-#memory-overview.open>.memory-overview-note{display:block!important}
-#memory-overview.open>.memory-metrics{display:grid!important}
-#memory-overview.open>.memory-archive-cta{display:flex!important}
-.mem-overview-fold{display:flex;align-items:baseline;justify-content:space-between;gap:12px;width:100%;margin:0;padding:9px 0;border:0;border-bottom:1px solid #171717;background:transparent;color:#777;font:10px/1.5 var(--sans);text-align:left;cursor:pointer}
-.mem-overview-fold b{color:#171717;font-weight:650;font-variant-numeric:tabular-nums}
-.mem-overview-fold .fold-mark{flex-shrink:0;color:#555;font:italic 13px/1 var(--serif)}
+</style>
+<style>
+    body, body .mem-card-glass, body .fold-card, body .mem-stream-panel { background: #fff !important; }
+    body .mem-card-glass, body .fold-card, body .mem-stream-panel, body .lib-item {
+        border: 0 !important; border-radius: 16px !important; box-shadow: 0 2px 14px #00000010 !important;
+    }
+    body .lib-item { padding: 14px; margin: 0 0 12px; background: #fff; }
+    body .lib-text { color: #333; font-size: 14px; overflow-wrap: anywhere; }
+    body .fold-head, body .mem-subtabs, body .mem-stream-heading, body .mem-subtab { border: 0 !important; }
+    body .mem-subtab.active { background: #f5f5f5; border-radius: 10px; color: #111; }
+    body .mem-stream-panel .mem-list-container { max-height: none !important; overflow: visible !important; }
+    #memoryClear { min-height: 44px; padding: 0 8px; background: #fff; color: #444; border: 0; font-size: 12px; }
+    #memoryClear:disabled { opacity: .45; }
+    .memory-view-actions { display: flex; justify-content: flex-end; margin: 8px 0; }
 </style>
 </head>
 <body>
@@ -811,17 +810,15 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
                     <button type="button" class="mem-subtab" data-sub="library">记忆库</button>
                 </div>
 
+                <div class="memory-view-actions"><button type="button" id="memoryClear">清空当前记忆</button></div>
+
                 <div class="mem-subview" data-sub="stream">
                     <div class="mem-stream-drawer open" id="mem-stream-drawer">
                         <section class="mem-drawer-panel mem-stream-panel" role="region" aria-label="聊天时间流">
                             <div class="mem-stream-heading">
-                                <strong>Memory</strong>
-                                <span>PERSONAL NOTES</span>
+                                <strong>聊天时间流</strong>
                             </div>
                             <div id="mem-list" class="mem-list-container"></div>
-                            <button type="button" class="mem-stream-toggle" id="memStreamToggle" aria-label="展开/收起全部记忆">
-                                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-                            </button>
                         </section>
                     </div>
                 </div>
@@ -839,8 +836,6 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
                     </div>
                 </div>
 
-                <!-- 概览面板「回看真实聊天」的桥接按钮，不可见 -->
-                <button type="button" class="mem-preview-open" id="mem-preview-open" hidden>打开时间流</button>
             </section>
 
             <!-- ===== 整理：只做 ===== -->
@@ -1084,8 +1079,8 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         } catch (e) { return []; }
     }
     function saveMemories(id, arr) {
-        if (_storage) { _storage.saveMemories(id, arr); return; }
-        try { localStorage.setItem('chat_memories_' + id, JSON.stringify(arr)); } catch (e) {}
+        if (_storage) return _storage.saveMemories(id, arr);
+        try { localStorage.setItem('chat_memories_' + id, JSON.stringify(arr)); return true; } catch (e) { return false; }
     }
     function readHistory(id) {
         if (_storage) return _storage.getChatHistory(id);
@@ -1151,8 +1146,8 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
     // ---- 记忆库 ----
     function refreshLibSub() {
         const arr = loadMemories(currentMemId);
-        const pending = arr.filter(m => m.status === 'pending').length;
-        const fixed = arr.filter(m => m.status === 'fixed').length;
+        const pending = arr.filter(m => m && m.status === 'pending').length;
+        const fixed = arr.filter(m => m && m.status === 'fixed').length;
         const el = document.getElementById('libSub');
         if (!arr.length) { el.textContent = '暂无记忆'; return; }
         let parts = [arr.length + '条记忆'];
@@ -1160,17 +1155,19 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         if (fixed) parts.push(fixed + '条已固定');
         el.textContent = parts.join(' · ');
     }
+    let renderedMemories = [];
     function renderLib() {
         const list = document.getElementById('libList');
-        const arr = loadMemories(currentMemId);
+        renderedMemories = loadMemories(currentMemId);
+        const arr = renderedMemories.map((memory, index) => ({ memory, index })).filter(entry => entry.memory);
         refreshLibSub();
         if (!arr.length) {
             list.innerHTML = '<div class="lib-empty">暂无记忆，总结后会自动生成</div>';
             return;
         }
         const order = { fixed: 0, pending: 1, confirmed: 2 };
-        arr.sort((a, b) => (order[a.status] || 3) - (order[b.status] || 3));
-        list.innerHTML = arr.map((m, i) => {
+        arr.sort((a, b) => (order[a.memory.status] ?? 3) - (order[b.memory.status] ?? 3));
+        list.innerHTML = arr.map(({ memory: m, index: i }) => {
             const st = m.status || 'confirmed';
             const tagCls = st === 'pending' ? 'pending' : (st === 'fixed' ? 'fixed' : '');
             let btns = '';
@@ -1186,7 +1183,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
                        '<button type="button" class="lib-btn ghost" data-act="del" data-i="' + i + '">删除</button>';
             }
             return '<div class="lib-item">' +
-                '<div class="lib-text">' + escapeHtml(m.content) + '</div>' +
+                '<div class="lib-text">' + escapeHtml(m.content || m.text) + '</div>' +
                 '<div class="lib-meta">' +
                     '<span class="lib-tag ' + tagCls + '">' + (STATUS_LABEL[st] || '已确认') + '</span>' +
                     '<span class="lib-tag">' + (CAT_LABEL[m.category] || '生活细节') + '</span>' +
@@ -1212,6 +1209,8 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         try { return JSON.parse(localStorage.getItem('api_settings') || '{}'); } catch (e) { return {}; }
     }
     async function runSummary(historySlice, isAll, processedTo) {
+        const summaryId = currentMemId;
+        const revision = _storage.getMemoryArchive(summaryId).revision;
         const config = getAiConfig();
         const apiKey = (config.apiKey || '').trim();
         if (!apiKey) { alert('请先到设置页配置 API Key'); return; }
@@ -1252,6 +1251,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
             clearTimeout(timer);
             if (!resp.ok) { alert('总结失败（HTTP ' + resp.status + '）'); return; }
             const data = await resp.json();
+            if (_storage.getMemoryArchive(summaryId).revision !== revision) return;
             const text = data.choices && data.choices[0] && data.choices[0].message
                 ? (data.choices[0].message.content || '').trim() : '';
             const jsonMatch = text.match(/\[[\s\S]*\]/);
@@ -1260,7 +1260,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
             try { items = JSON.parse(jsonMatch[0]); } catch (e) { throw new Error('memory-json-invalid'); }
             if (!Array.isArray(items)) throw new Error('memory-json-invalid');
 
-            const mems = loadMemories(currentMemId);
+            const mems = loadMemories(summaryId);
             const now = Date.now();
             let autoN = 0, pendingN = 0, reinforcedN = 0;
             items.forEach(it => {
@@ -1292,17 +1292,17 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
                     lastReinforcedAt: now,
                     reinforcementCount: 1,
                     source: 'manual-summary',
-                    sourceRoleId: String(currentMemId),
+                    sourceRoleId: String(summaryId),
                     sourceMessageCount: historySlice.length
                 });
             });
-            saveMemories(currentMemId, mems);
+            if (!saveMemories(summaryId, mems)) { alert('记忆保存失败，请重试'); return; }
             // Only chronological "next batch" summaries advance this cursor.
             // Summarizing recent N messages must never mark older history as processed.
             if (isAll && Number.isFinite(Number(processedTo))) {
-                try { localStorage.setItem('chat_summary_processed_' + currentMemId, String(Number(processedTo))); } catch (e) {}
+                try { localStorage.setItem('chat_summary_processed_' + summaryId, String(Number(processedTo))); } catch (e) {}
             }
-            try { localStorage.setItem('chat_last_summary_' + currentMemId, String(now)); } catch (e) {}
+            try { localStorage.setItem('chat_last_summary_' + summaryId, String(now)); } catch (e) {}
             let msg = '已整理：' + autoN + ' 条新记忆';
             if (pendingN > 0) msg += '，' + pendingN + ' 条待确认';
             if (reinforcedN > 0) msg += '，强化旧记忆 ' + reinforcedN + ' 条';
@@ -1520,6 +1520,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
 
     // ---- 汇总刷新 ----
     function refreshAll() {
+        document.getElementById('memoryClear').disabled = !currentMemId;
         if (!currentMemId) return;
         refreshAutoUI();
         refreshManual();
@@ -1557,7 +1558,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
     // 手动总结按钮
     document.getElementById('btnManualRecent').addEventListener('click', () => {
         const n = parseInt(document.getElementById('manualRange').value, 10);
-        const slice = readHistory(currentMemId).slice(-(isNaN(n) || n < 1 ? 30 : n));
+        const slice = _storage.getMemoryArchiveEntries(currentMemId).slice(-(isNaN(n) || n < 1 ? 30 : n)).map(entry => entry.message);
         runSummary(slice, false);
     });
     document.getElementById('btnManualAll').addEventListener('click', () => {
@@ -1565,10 +1566,12 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         const total = history.length;
         let start = readProcessed(currentMemId);
         if (start > total) start = 0;
+        const visible = new Set(_storage.getMemoryArchiveEntries(currentMemId, history).map(entry => entry.index));
+        while (start < total && !visible.has(start)) start++;
         const hardEnd = Math.min(total, start + 30);
         let end = start, chars = 0;
         while (end < hardEnd) {
-            const m = history[end] || {};
+            const m = (visible.has(end) && history[end]) || {};
             const content = (m.isError || m.role === 'system_error') ? '' : String(m.text || m.content || m.desc || '').trim();
             const line = content ? (((m.role === 'sent' || m.role === 'user') ? '用户：' : '角色：') + content) : '';
             if (line && chars > 0 && chars + line.length + 1 > 4000) break;
@@ -1576,9 +1579,16 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
             if (line) chars += line.length + 1;
             if (chars >= 4000) break;
         }
-        const slice = history.slice(start, end);
-        if (!slice.length) { alert('没有未整理的历史记录'); return; }
+        const slice = history.slice(start, end).filter((message, offset) => visible.has(start + offset));
+        if (!slice.length) { alert('本批没有可整理的记录'); return; }
         runSummary(slice, true, end);
+    });
+
+    document.addEventListener('memory-space-change', refreshAll);
+    document.getElementById('memoryClear').addEventListener('click', () => {
+        if (!currentMemId || !confirm('清空当前会话的时间流和长期记忆？聊天原文会保留。')) return;
+        if (!_storage.clearConversationMemory(currentMemId, false)) { alert('清空失败，请重试'); return; }
+        document.dispatchEvent(new Event('memory-space-change'));
     });
 
     // 记忆库操作（事件委托）
@@ -1588,13 +1598,19 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         const act = btn.getAttribute('data-act');
         const idx = parseInt(btn.getAttribute('data-i'), 10);
         const arr = loadMemories(currentMemId);
-        if (isNaN(idx) || !arr[idx]) return;
+        if (isNaN(idx) || !renderedMemories[idx]) return;
+        if (act === 'del') {
+            if (!confirm('删除这条记忆？')) return;
+            if (!_storage.deleteMemoryEntry(currentMemId, renderedMemories[idx])) { alert('删除失败，请重试'); return; }
+            document.dispatchEvent(new Event('memory-space-change'));
+            return;
+        }
+        if (JSON.stringify(arr[idx]) !== JSON.stringify(renderedMemories[idx])) { renderLib(); return; }
         if (act === 'confirm') arr[idx].status = 'confirmed';
         else if (act === 'fix') arr[idx].status = 'fixed';
         else if (act === 'unfix') arr[idx].status = 'confirmed';
-        else if (act === 'del') { if (!confirm('删除这条记忆？')) return; arr.splice(idx, 1); }
-        saveMemories(currentMemId, arr);
-        renderLib();
+        if (!saveMemories(currentMemId, arr)) { alert('保存失败，请重试'); return; }
+        document.dispatchEvent(new Event('memory-space-change'));
     });
 
     // 记忆工具
@@ -1619,7 +1635,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
 </script>
 <script src="../../shared/js/statusbar-control.js"></script>
 
-<script src="../../shared/js/phone/group_memory_view.js?v=20261115gm1"></script>
+<script src="../../shared/js/phone/group_memory_view.js?v=20261121memory1"></script>
 <script id="memory-space-framework">
 /* 框架脚本：只做视图切换。不改动任何业务函数与存储键。 */
 (function () {
@@ -1661,81 +1677,8 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         });
     }
 
-    // 概览面板「回看真实聊天」→ 回到记忆页的时间流
-    var previewOpen = document.querySelector('.mem-preview-open');
-    if (previewOpen) {
-        previewOpen.addEventListener('click', function () { setTab('memory'); setSub('stream'); });
-    }
-
-    // 记忆流折叠/展开
-    (function() {
-        var list = document.getElementById('mem-list');
-        var toggle = document.getElementById('memStreamToggle');
-        if (!list || !toggle) return;
-        
-        function checkHeight() {
-            // 先临时去掉max-height测真实高度
-            var old = list.style.maxHeight;
-            list.style.maxHeight = 'none';
-            var realHeight = list.scrollHeight;
-            list.style.maxHeight = old;
-            
-            if (realHeight > 260) {
-                toggle.classList.add('show');
-            } else {
-                toggle.classList.remove('show');
-            }
-        }
-        
-        toggle.addEventListener('click', function() {
-            var expanded = list.classList.toggle('expanded');
-            toggle.classList.toggle('expanded', expanded);
-            toggle.setAttribute('aria-expanded', String(expanded));
-        });
-        
-        // 等内容渲染完再检查
-        setTimeout(checkHeight, 300);
-        // 切换标签后再检查
-        window.addEventListener('resize', checkHeight);
-    })();
-
-    // 概览面板：默认收一行摘要，点击展开（面板由 v2 注入，需等其就绪）
-    function syncOverviewFold(btn) {
-        var get = function (id) { var e = document.getElementById(id); return e ? e.textContent : '0'; };
-        var text = btn.querySelector('.fold-text');
-        if (text) {
-            text.innerHTML = '真实消息 <b>' + get('memory-stat-messages') + '</b> · 长期记忆 <b>' +
-                get('memory-stat-long') + '</b> · 待确认 <b>' + get('memory-stat-pending') + '</b>';
-        }
-    }
-    function setupOverviewFold(ov) {
-        if (ov.querySelector('.mem-overview-fold')) return;
-        var btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'mem-overview-fold';
-        btn.innerHTML = '<span class="fold-text"></span><span class="fold-mark">展开 +</span>';
-        ov.insertBefore(btn, ov.firstChild);
-        syncOverviewFold(btn);
-        btn.addEventListener('click', function () {
-            var open = ov.classList.toggle('open');
-            btn.querySelector('.fold-mark').textContent = open ? '收起 −' : '展开 +';
-        });
-        if (window.MutationObserver) {
-            var obs = new MutationObserver(function () { syncOverviewFold(btn); });
-            ['memory-stat-messages', 'memory-stat-long', 'memory-stat-pending'].forEach(function (id) {
-                var e = document.getElementById(id);
-                if (e) obs.observe(e, { childList: true, characterData: true, subtree: true });
-            });
-        }
-    }
-    function whenOverviewReady(tries) {
-        var ov = document.getElementById('memory-overview');
-        if (ov) { setupOverviewFold(ov); return; }
-        if (tries > 0) setTimeout(function () { whenOverviewReady(tries - 1); }, 150);
-    }
-    whenOverviewReady(20);
 })();
 </script>
-<script src="../../shared/js/phone/memory_space_v2.js?v=20261024v1"></script>
+<script src="../../shared/js/phone/memory_space_v2.js?v=20261121v1"></script>
 </body>
 </html>

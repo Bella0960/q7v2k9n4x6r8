@@ -596,3 +596,9 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 
 - The common HTML build hook injects the monitor on each application page. The setting changes visibility only. A shared PhoneStream attempt persists a pending entry before dispatch and updates usage or the error when it settles. The existing diagnostic ledger and its latest-50 limit are preserved.
 - Legacy API logs are incomplete summaries without usage and endpoint data and can overlap the monitor ledger. They are left intact, without silently importing duplicate or fabricated accounting. No historical Token reconstruction is possible for requests that were never captured.
+
+### 2026-11-21 · DATA-008 · Memory Space cleanup
+
+- Scoped cleanup now removes primary and legacy memory records together. Chat settings also removes the selected conversation history, while the Memory Space action retains chat originals and removes existing entries from the local archive view.
+- The versioned archive key stores only message identifiers and a revision. Existing records need no migration. A storage write failure is reported and earlier writes are rolled back.
+- Added Node coverage for conversation isolation, legacy fallback, retained chat, newer archive entries and rollback, plus Chromium coverage at 375, 390, 430 and 1100 px.

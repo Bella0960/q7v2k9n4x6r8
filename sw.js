@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v276';
+const CACHE_NAME = 'phone-app-pwa-v277';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 function cacheablePublicResponse(response) {
   return !!(response && response.ok && !response.redirected &&
@@ -124,6 +124,7 @@ const APP_SHELL = [
   'shared/js/font-loader.js',
   'shared/js/native-feel.js',
   'shared/js/phone/phone_storage.js',
+  'shared/js/phone/phone_storage.js?v=20261121memory1',
   './shared/js/phone/phone_context.js?v=20261102npc1',
   'shared/js/phone/chat-message-policy.js?v=20261029v5',
   './shared/js/phone/chat-image-vision.js?v=20261113v1',
@@ -143,13 +144,13 @@ const APP_SHELL = [
   './shared/js/phone/group-game-panel.js?v=20261116gpanel6',
   './shared/js/phone/group-game-chat-receipts.js?v=20261116receipt2',
   './shared/js/group-settings-layout.js?v=20261115s1',
-  './shared/js/phone/group_memory_view.js?v=20261115gm1',
+  './shared/js/phone/group_memory_view.js?v=20261121memory1',
   './shared/js/phone/chat-followup-policy.js?v=20261119scheduled1',
   'shared/js/phone/phone_stream.js',
   'shared/js/phone/phone_api_monitor.js',
   'shared/css/phone-api-monitor.css',
   'shared/js/phone/memory_recall.js?v=20261118groupmemory1',
-  'shared/js/phone/memory_space_v2.js?v=20261024v1',
+  'shared/js/phone/memory_space_v2.js?v=20261121v1',
   './shared/js/chat-notifier.js?v=20261119scheduled1',
   'shared/js/phone/storage/repository.js',
   'shared/js/phone/storage/media-repository.js?v=20261107v2',

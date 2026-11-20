@@ -7,7 +7,7 @@
 <script src="../../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../../shared/js/native-feel.js"></script>
 <script src="../../shared/js/wallpaper-store.js?v=20261026v2"></script>
-<script src="../../shared/js/phone/phone_storage.js"></script>
+<script src="../../shared/js/phone/phone_storage.js?v=20261121memory1"></script>
 <script src="../../shared/js/phone/role-worldbook-bindings.js?v=20261119-qa1"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -2332,8 +2332,8 @@
 
     // 清理群记录（保留群本身，仅清空聊天记录）
     document.getElementById('actionGpClearRecord').addEventListener('click', function () {
-      if (!window.confirm('确定清理该群的全部聊天记录吗？清理后不可恢复。')) return;
-      try { localStorage.removeItem('chat_history_' + roleId); } catch (e) {}
+      if (!window.confirm('确定清空该群的聊天记录和记忆吗？清空后不可恢复。')) return;
+      if (!window.PhoneStorage?.clearConversationMemory(roleId, true)) { showToast('清空失败，请重试'); return; }
       showToast('群记录已清理');
     });
 
@@ -2444,8 +2444,8 @@
 
   // ================= 清空聊天记录 =================
   document.getElementById('actionClear').addEventListener('click', function () {
-    if (!confirm('确定要清空与「' + contactName + '」的所有聊天记录吗？')) return;
-    try { localStorage.removeItem(storageKey); } catch (e) {}
+    if (!confirm('确定要清空与「' + contactName + '」的聊天记录和记忆吗？清空后不可恢复。')) return;
+    if (!window.PhoneStorage?.clearConversationMemory(role.id, true)) { showToast('清空失败，请重试'); return; }
     refreshMeta();
     showToast('已清空聊天记录');
   });

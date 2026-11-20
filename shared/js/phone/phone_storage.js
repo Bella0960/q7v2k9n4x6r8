@@ -307,6 +307,113 @@
         return true;
     };
 
+    NS.deleteMemoryEntry = function (contactId, expected) {
+        if (!contactId || !expected) return false;
+        var list = NS.getMemories(contactId);
+        var snapshot = JSON.stringify(expected);
+        var index = list.findIndex(function (entry) { return JSON.stringify(entry) === snapshot; });
+        if (index < 0) return false;
+        list.splice(index, 1);
+        return NS.saveMemories(contactId, list);
+    };
+
+    function archiveKey(contactId) { return 'chat_memory_archive_v1_' + contactId; }
+
+    NS.getMemoryArchive = function (contactId) {
+        var state = NS.rawGet(archiveKey(contactId), null);
+        return state && Array.isArray(state.hidden) ? state : { revision: '', hidden: [] };
+    };
+
+    function archiveEntries(history) {
+        var occurrences = new Map();
+        return history.map(function (message, index) {
+            var m = message || {};
+            var identity = m.mid ?? m.id ?? m.messageId;
+            if (identity == null) {
+                var text = String(m.text || m.content || m.desc || '');
+                var hash = 2166136261;
+                for (var i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619);
+                identity = JSON.stringify([m.time || m.timestamp || 0, m.role, text.length, hash >>> 0]);
+                identity = 'legacy:' + identity;
+            } else {
+                identity = 'id:' + identity;
+            }
+            var occurrence = (occurrences.get(identity) || 0) + 1;
+            occurrences.set(identity, occurrence);
+            return { key: identity + ':' + occurrence, index: index, message: message };
+        });
+    }
+
+    NS.getMemoryArchiveEntries = function (contactId, history) {
+        if (!contactId) return [];
+        var hidden = new Set(NS.getMemoryArchive(contactId).hidden);
+        return archiveEntries(history || NS.getChatHistory(contactId)).filter(function (entry) {
+            return !hidden.has(entry.key);
+        });
+    };
+
+    NS.hideMemoryArchiveEntry = function (contactId, entryKey) {
+        if (!contactId || !entryKey) return false;
+        var state = NS.getMemoryArchive(contactId);
+        if (state.hidden.includes(entryKey)) return true;
+        state.hidden.push(entryKey);
+        state.revision = newArchiveRevision();
+        return NS.rawSet(archiveKey(contactId), state);
+    };
+
+    function newArchiveRevision() { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
+
+    // Clear primary keys and their legacy fallback as a single synchronous operation.
+    // Restore already-written keys if a later localStorage call fails.
+    NS.clearConversationMemory = function (contactId, includeChat) {
+        if (contactId == null || String(contactId).trim() === '') return false;
+        var changes = new Map();
+        var before = new Map();
+        var applied = [];
+        try {
+            var raw = localStorage.getItem(PHONE_DATA_KEY);
+            var root = raw == null ? {} : JSON.parse(raw);
+            if (!root || typeof root !== 'object' || Array.isArray(root)) return false;
+            var bucket = Object.hasOwn(root, contactId) ? root[contactId] : null;
+            if (bucket && typeof bucket === 'object') {
+                delete bucket.memories;
+                if (includeChat) delete bucket.chat;
+                if (!Object.keys(bucket).length) delete root[contactId];
+                changes.set(PHONE_DATA_KEY, JSON.stringify(root));
+            }
+            changes.set('chat_memories_' + contactId, null);
+            if (includeChat) changes.set('chat_history_' + contactId, null);
+            changes.set('chat_last_summary_' + contactId, null);
+            var history = includeChat ? [] : NS.getChatHistory(contactId);
+            changes.set('chat_summary_processed_' + contactId, includeChat ? null : String(history.length));
+            changes.set(archiveKey(contactId), JSON.stringify({
+                revision: newArchiveRevision(),
+                hidden: archiveEntries(history).map(function (entry) { return entry.key; })
+            }));
+            changes.forEach(function (_, key) { before.set(key, localStorage.getItem(key)); });
+            changes.forEach(function (value, key) {
+                if (before.get(key) === value) return;
+                if (value === null) localStorage.removeItem(key);
+                else localStorage.setItem(key, value);
+                applied.push(key);
+                if (localStorage.getItem(key) !== value) throw new Error('Storage did not apply the change');
+            });
+            return true;
+        } catch (error) {
+            while (applied.length) {
+                var key = applied.pop();
+                var original = before.get(key);
+                try {
+                    if (original === null) localStorage.removeItem(key);
+                    else localStorage.setItem(key, original);
+                } catch (rollbackError) {
+                    console.warn('[PhoneStorage] Conversation memory rollback failed');
+                }
+            }
+            return false;
+        }
+    };
+
     /* ========== 本地空间整理 ========== */
 
     // 删除 phone_data_v2 中与旧 key 完全相同的聊天/记忆副本。

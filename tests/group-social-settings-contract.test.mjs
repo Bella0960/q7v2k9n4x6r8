@@ -33,7 +33,7 @@ test('group chat has one categorized page; preserves all original editable contr
 test('memory groups integrate into original Memory Space and share MemoryRecall', () => {
   const html = read('worldbook/memory/memory.html');
   const js = read('shared/js/phone/group_memory_view.js');
-  assert.match(html, /group_memory_view\.js\?v=20261115gm1/);
+  assert.match(html, /group_memory_view\.js\?v=20261121memory1/);
   assert.ok(html.indexOf('group_memory_view.js') < html.indexOf('<script id="memory-space-framework"'),
     'group tab must exist before old framework binds tab clicks');
   assert.doesNotThrow(() => new vm.Script(js));
@@ -75,7 +75,7 @@ test('PWA includes both group modules and opens genuine existing group/memory pa
   const cacheVersion = Number((sw.match(/phone-app-pwa-v(\d+)/) || [])[1]) || 0;
   assert.ok(cacheVersion >= 209, 'group game privacy fixes require PWA cache v209+');
   for (const resource of ['group-settings-layout.js?v=20261115s1',
-    'group_memory_view.js?v=20261115gm1']) {
+    'group_memory_view.js?v=20261121memory1']) {
     assert.ok(sw.includes(resource), resource);
   }
   assert.match(sw, /APP_SHELL\.concat\(pageEntries\)/,
