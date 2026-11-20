@@ -543,3 +543,12 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 从唯一 QA #299 `8d2267b1e69ff8f643fad533bf1250f6023efcc1` 出发。此前手机实际回复仍可能出戏，但静态代码确实组装了角色人设、触发世界书和全局保存协议，发送前只记录长度而无法验明手机实际请求全文。此轮不声称已获取手机本地的真实人设文本。
 - 在 `task-CHAT-PROMPT-001/qa-payload-debug-source-first-20261120` 按最小范围处理：`chat/chat/chat-detail.html` 缩短重复的内置人格说教，保持保存的协议原文处在角色模板之前；`shared/js/phone/chat-regex-policy.js` 向 System 头部提供启用、合法且可作用于自然语言的正则规则说明，同时 **不更改** 回复确定性清理行为；新 `shared/js/phone/prompt-diagnostic.js` 仅在 QA 经五连点标题主动开启后查看和复制完整原始请求；新增 `tests/chat-prompt-payload-diagnostic.test.mjs` 并合入聊天契约测试。
 - 不改 worldbook 绑定、角色 ID、聊天历史数据、协议存储键、API Key、支付/账号、正式 Worker。每轮诊断只留在用户设备的页面和本人控制台，不上传至公共回归日志。发布后用户需在测试手机上以本机测试角色自行查看真实请求，以区分上下文拼装缺失与模型没有遵循设定。
+
+
+## 2026-11-20｜CHAT-PROTOCOL-001｜空白人设错误覆盖全局伴侣协议（PR #319 真机验收）
+
+- **手机复现：** 只有角色名的「测试一号」回复自称“人工智能”，与用户在全局伴侣协议页显示的身份/语气约束相冲突。截图本身不能证明当前协议编辑内容已经点击保存，故不假设设备的真实 localStorage 值。
+- **证据与根因：** #299 QA 基线 `3ce5e2357c7b9c71be12cbcac25bb4f5461a2694` 的 `chat/chat/chat-detail.html` 在线首轮读取、发送前复核以及 `shared/js/phone/chat-role-context.js` 共用来源封装中，均错误地用 `personaIncomplete ? MINIMAL_PERSONA_PROMPT : DEFAULT_PROTOCOL` 选择协议；当角色空白而全局协议键尚未显式保存时，会吞掉编辑器展示的应用级默认协议。群聊还将成员说明置于已展开协议前。
+- **最小修复：** 空白人设只用 `MINIMAL_PERSONA_PROMPT` 代替缺失的角色档案片段；无论档案是否完整，协议来源始终为 `chat_rp_protocol_` 非空已保存值，否则为应用级默认协议；两个来源都缺失则停止生成，不用角色兜底冒充协议。群聊参与者说明追加在协议之后。保持所有角色、记忆、世界书、原始本地存储和 UI 不变。
+- **源码验证：** 独立分支 `task-CHAT-PROTOCOL-001/weak-persona-preserve-global-rp-20261120`；隔离 JS/V8 执行真实来源模块、系统源码断言和主脚本语法校验 **15/15 通过**，覆盖默认协议、已保存自定义协议、弱人设变量替换、缺失协议阻断与群聊段落顺序。更新 `tests/chat-strict-role-isolation.test.mjs` 的旧错误期望及新回归；**完整 Node CLI / Vite / Chromium / Android / iOS 尚未运行，不能视为验收完成**。
+- **发布保护：** 本分支只供 PR 审查，尚未合并 #299 或部署 QA；`main`、正式 Worker、身份核心、数据库、用户协议原文与聊天记录不变。下一步需要受限公共 Runner 完整回归成功后才能合入同一 QA 并 QA-only 发布，再用手机复测“你叫什么 / 什么工作 / 你认识阿晴吗”。
