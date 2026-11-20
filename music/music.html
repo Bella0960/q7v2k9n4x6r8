@@ -448,6 +448,11 @@
   .album-cover { border-radius: 10px; }
   .album-item .name, .t-name, .song-row .s-name { font-weight: 550; color: var(--music-ink); }
   .album-item .artist, .t-artist, .t-dur, .song-row .s-artist, .song-row .s-dur { color: var(--music-muted); }
+  .track-item .t-dur {
+    min-width: 42px; flex-shrink: 0; text-align: right;
+    color: #a5a5ad; font-size: 11px; font-weight: 400;
+    font-variant-numeric: tabular-nums; letter-spacing: .015em;
+  }
   .track-item { padding: 9px 0; margin: 0; border-radius: 8px; }
   .t-cover { border-radius: 9px; }
   .search-box { border-radius: 12px; padding: 12px 14px; background: #fff; box-shadow: none; }
@@ -1424,6 +1429,115 @@
   // ===== Helper =====
   function getTrackById(id) {
     return tracks.find(function (t) { return t && t.id === id; }) || null;
+  }
+
+  // 旧版“本地导入 / 本地”只作展示兼容；历史歌曲及 ID 不迁移。
+  function musicDisplayArtist(t) {
+    return t && t.source === 'local' &&
+      (!t.artist || t.artist === '本地导入') ? '未知歌手'
+      : String(t && t.artist || '未知歌手');
+  }
+  function musicFormatDuration(value) {
+    var sec = Number(value);
+    if (!Number.isFinite(sec) || sec <= 0) return '--:--';
+    sec = Math.floor(sec);
+    if (!sec) return '--:--';
+    var hour = Math.floor(sec / 3600);
+    var min = Math.floor(sec % 3600 / 60);
+    var s = sec % 60;
+    var pad = function(n) { return String(n).padStart(2, '0'); };
+    return hour ? pad(hour) + ':' + pad(min) + ':' + pad(s)
+      : pad(min) + ':' + pad(s);
+  }
+  function musicTrackDurationLabel(t) {
+    if (!t) return '--:--';
+    return t.source === 'local'
+      ? musicFormatDuration(t.durSec) : String(t.dur || '--:--');
+  }
+
+  // 独立的音频对象只读取 metadata，不抢占主播放器或自动播放。
+  function musicProbeAudioDuration(blob) {
+    return new Promise(function(resolve) {
+      if (!blob || typeof Audio !== 'function') { resolve(0); return; }
+      var probe = null, url = null, timer = null, finished = false;
+      function finish(value) {
+        if (finished) return;
+        finished = true;
+        if (timer !== null) clearTimeout(timer);
+        if (probe) {
+          probe.onloadedmetadata = null;
+          probe.ondurationchange = null;
+          probe.onerror = null;
+          try { probe.removeAttribute('src'); probe.load(); } catch (e) {}
+        }
+        if (url) try { URL.revokeObjectURL(url); } catch (e) {}
+        resolve(Number.isFinite(value) && value > 0 ? value : 0);
+      }
+      try {
+        url = URL.createObjectURL(blob);
+        probe = new Audio();
+        probe.preload = 'metadata';
+        probe.onloadedmetadata = probe.ondurationchange = function() {
+          if (Number.isFinite(probe.duration) && probe.duration > 0)
+            finish(probe.duration);
+        };
+        probe.onerror = function() { finish(0); };
+        timer = setTimeout(function() { finish(0); }, 8000);
+        probe.src = url;
+        if (typeof probe.load === 'function') probe.load();
+      } catch (e) { finish(0); }
+    });
+  }
+
+  var musicDurationPending = new Set();
+  async function musicScheduleLocalDuration(track, importedBlob) {
+    if (!track || track.source !== 'local' || !track.id ||
+        (Number.isFinite(Number(track.durSec)) && Number(track.durSec) > 0) ||
+        musicDurationPending.has(track.id)) return false;
+    musicDurationPending.add(track.id);
+    try {
+      var blob = importedBlob || await getAudioBlob(track.id);
+      if (!blob) return false;
+      var duration = await musicProbeAudioDuration(blob);
+      var seconds = Math.floor(Number(duration));
+      if (!Number.isFinite(seconds) || seconds <= 0) return false;
+      // Read current catalog each time; preserve concurrent imports/edits/deletes.
+      var existing = readLocalTracksMeta();
+      if (musicMetaReadFailure) return false;
+      var index = existing.findIndex(function(t) { return t && t.id === track.id; });
+      if (index < 0) return false;
+      var updated = existing.slice();
+      updated[index] = Object.assign({}, existing[index], {
+        dur: musicFormatDuration(seconds), durSec: seconds
+      });
+      saveLocalTracksMeta(updated);
+      var live = getTrackById(track.id);
+      if (live) {
+        live.durSec = seconds;
+        live.dur = musicFormatDuration(seconds);
+        renderRecent();
+        renderAlbum();
+        renderSearch(tracks);
+        var favView = document.getElementById('favView');
+        if (favView && favView.style.display !== 'none') renderFav();
+      }
+      return true;
+    } catch (err) {
+      musicWarnOnce('music-duration-save', '音频仍可播放，时长暂未保存');
+      return false;
+    } finally {
+      musicDurationPending.delete(track.id);
+    }
+  }
+  function musicRecoverExistingDurations() {
+    // Sequential recovery avoids reading every old song into memory at once.
+    var missing = tracks.filter(function(t) {
+      return t && t.source === 'local' && !(Number(t.durSec) > 0);
+    });
+    (async function() {
+      for (var i = 0; i < missing.length; i++)
+        await musicScheduleLocalDuration(missing[i]);
+    })().catch(function() { /* Unreadable old files keep --:-- and remain playable. */ });
   }
   function isLocalTrackPlayable(t) {
     // 仅判断 blob 是否在 IndexedDB 里；async 检测在播放时做
