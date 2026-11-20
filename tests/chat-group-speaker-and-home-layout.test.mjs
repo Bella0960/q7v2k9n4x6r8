@@ -37,11 +37,14 @@ test('synthetic group welcome remains visible but never primes AI group history'
   assert.equal(convert([{role:'received',type:'group_welcome',text:'自定义欢迎'}],String,{isGroupChat:true}).length,0);
 });
 
-test('group persona instruction rejects generic greeting without replacing saved persona', () => {
-  assert.match(detail, /【群聊口吻纠偏】/);
-  assert.match(detail, /随时在线待命/);
-  assert.match(detail, /用户保存的协议、世界书和本轮角色档案始终优先/);
+test('group sender uses its saved persona and protocol with compact source-first instruction', () => {
+  assert.match(detail, /const rawSpeakerPersona = isGroupChat && groupReplyPick/);
+  assert.match(detail, /getRoleById\(groupReplyPick\.id\)/);
+  assert.match(detail, /turnSpeakerPersona \|\| '该成员尚未填写具体人设/);
+  assert.match(detail, /【群聊模式：线上消息】/);
+  assert.match(detail, /【最终设定优先级】/);
   assert.match(detail, /sourceContract\.validatePersonaRequest/);
+  assert.doesNotMatch(detail, /【群聊口吻纠偏】/);
 });
 
 test('white chat home is compact and mode label is English without arrows', () => {
