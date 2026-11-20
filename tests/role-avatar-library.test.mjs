@@ -607,7 +607,7 @@ test('character profile loads the shared media stack before the avatar library a
   const storage = characterPage.indexOf('phone_storage.js');
   const repository = characterPage.indexOf('storage/repository.js');
   const media = characterPage.indexOf('storage/media-repository.js');
-  const avatars = characterPage.indexOf('role-avatar-library.js?v=20261113v1');
+  const avatars = characterPage.indexOf('role-avatar-library.js?v=20261121avatar1');
   const manager = characterPage.indexOf('js/characters-manager.js?v=');
   assert.ok(storage >= 0 && repository > storage && media > repository && avatars > media && manager > avatars);
   assert.ok(characterPage.includes('id="avatarLibraryFileInput"'));

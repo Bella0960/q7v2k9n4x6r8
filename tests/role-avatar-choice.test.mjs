@@ -183,7 +183,7 @@ test('one saved AI turn never replaces the role avatar twice', () => {
   assert.match(detail, /var avatarChangedFromNewCandidate = false/);
   assert.match(detail, /if \(changeRequested && !avatarChangedFromNewCandidate &&/);
   assert.match(detail, /if \(avatarApplied && avatarApplied\.ok\) \{\s*avatarChangedFromNewCandidate = true;/);
-  assert.match(detail, /replySaved && replyMessages\.some\(function \(msg\)/);
+  assert.match(detail, /replySaved && streamResult\.ok &&\s*replyMessages\.some\(function \(msg\)/);
   assert.match(detail, /!avatarChangedFromNewCandidate && !isGroupChat &&\s*parsedRoleAvatarChoice\.avatarId/);
   assert.match(detail, /for \(var avatarCandidateIndex/); // Every additional candidate remains collectable.
 });
