@@ -231,6 +231,9 @@
 }
 .native-surface .nv-content::-webkit-scrollbar{display:none}
 .native-surface .nv-tabbar{
+  display:flex;
+  justify-content:center;
+  align-items:stretch;
   position:relative;
   flex:0 0 60px;
   margin:0;
@@ -246,6 +249,8 @@
   box-shadow:none;
 }
 .native-surface .nv-tabbar button{
+  flex:1 1 0;
+  height:auto;
   padding:0;
   gap:4px;
   color:#96969a;
@@ -351,10 +356,10 @@
   .app-bar{height:48px;min-height:48px}
   .app-body.native-surface{padding:0!important}
   .native-surface .nv-tabbar{
-    height:calc(58px + env(safe-area-inset-bottom,0px));
-    min-height:calc(58px + env(safe-area-inset-bottom,0px));
-    flex-basis:calc(58px + env(safe-area-inset-bottom,0px));
-    padding-bottom:env(safe-area-inset-bottom,0px);
+    height:58px;
+    min-height:58px;
+    flex-basis:58px;
+    padding-bottom:0;
   }
   .native-surface .nv-compose{
     padding-bottom:calc(9px + env(safe-area-inset-bottom,0px));

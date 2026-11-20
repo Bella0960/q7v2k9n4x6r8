@@ -39,6 +39,8 @@
     device:'{ "screenMinutes":254,"nightMinutes":42,"apps":[{"name":"微信","minutes":80}],"battery":67,"wifi":"Home-5G","model":"某型号手机","storageUsedGb":51,"storageTotalGb":128,"pickups":43,"focusMinutes":60,"relaxMinutes":40,"location":"家" }',
     forum:'{ "posts":[{"title":"帖子标题","text":"正文","time":时间戳,"comments":[{"name":"昵称","text":"评论"}]}] }'
   };
+  var PLAYER_CHAT_RULE = 'contacts[0] 必须为用户「我」与当前角色的单聊（id 为 user，name 为我）。当前角色发言用 side=me，用户发言用 side=ai。先写这段双向对话，再写其他 NPC 和群聊。';
+  var STRICT_JSON = '只输出合法 JSON 对象。键和字符串用双引号，不加注释、尾逗号或 Markdown 围栏。';
   var PERSONAL_APPS = ['chat','moments','notes'];
   var LIMIT = {chat:5,moments:3,browser:5,notes:3,wallet:6,music:5,map:3,album:5,device:5,forum:3};
   function clean(x, max) {return String(x == null ? '' : x).replace(/[\u0000-\u001f]/g,' ').trim().slice(0,max||300);}
@@ -368,6 +370,7 @@
       '与未改动板块发生的事实一致，单板块刷新不能修改其他板块；每次生成新的细节，不重复旧记录。',
       id==='forum'?'论坛要符合角色自己的职业、兴趣、年龄、关系与最近浏览主题；角色本人发帖使用 authorId='+JSON.stringify(String(data.roleId))+'、author='+JSON.stringify(clean(role.name,30))+'，其他社区成员可评论但不能假装真实人员；已有浏览和日记线索可作为发帖动机。':'',
       id==='browser'?'浏览器记录是角色虚构的个人搜索历史，不是联网搜索。按人设生成具体搜索词；若处于恋爱关系，可合理出现“如何给女朋友买鲜花”“玫瑰和郁金香怎么选”等搜索，其他关系不能强行套用。保留已有用户搜索和浏览记录；返回 JSON 仅更新角色搜索史。':'',
+      id==='chat'?PLAYER_CHAT_RULE:'',
       '当前板块：'+id+'。JSON结构示例：'+FIELDS[id],
       '数量：微信至少5位具名联系人(含群聊)且每位8-12条对话；朋友圈至少3条；浏览器至少5条搜索(含两次0:00-4:00深夜和删除痕迹)与2个书签；备忘录至少3条公开和2条锁定；钱包1-2笔收入、5-8笔支出；音乐至少5首和2个歌单；地图3-5停留；相册至少5张与3张隐藏；设备APP排行5项；论坛至少3帖。',
       '优先复用上述事件ID涉及的人物、地点、价格与日期。不添加与现有板块冲突的事件。只输出单个板块的JSON对象。'
@@ -376,9 +379,10 @@
   function valid(id,data,now,facts,initial) {
     if(!Object.prototype.hasOwnProperty.call(LIMIT,id)||
        !data||typeof data!=='object'||Array.isArray(data))return false;
-    var lists={chat:'contacts',moments:'moments',browser:'searchHistory',notes:'notes',wallet:'transactions',music:'recent',map:'stops',album:'photos',device:'apps',forum:'posts'};
+    if(id==='chat')return Boolean(normalizeChat(data,now));
+    var lists={moments:'moments',browser:'searchHistory',notes:'notes',wallet:'transactions',music:'recent',map:'stops',album:'photos',device:'apps',forum:'posts'};
     var list=data[lists[id]];
-    if(!Array.isArray(list)||list.length<(initial&&id==='chat'?3:LIMIT[id])||list.length>60)return false;
+    if(!Array.isArray(list)||list.length<LIMIT[id]||list.length>60)return false;
     var serialized;
     try{serialized=JSON.stringify(data);}catch(error){return false;}
     if(!serialized||serialized.length>45000)return false;
@@ -396,34 +400,6 @@
     }
     scan(data,0);
     if(!good)return false;
-    if(id==='chat'){
-      var names={};var group=false;var hasUser=false;
-      if(list.length<(initial?3:5)||list.length>(initial?5:8))return false;
-      var ids=new Set();
-      if(!list.every(function(c){
-        if(!c||!named(c.name)||!named(c.relationship)||!compact(c.messages,initial?3:8,initial?5:12))return false;
-        if(initial){
-          if(!named(c.id)||ids.has(c.id)||/阿诺|阿川|小林/.test(c.name))return false;
-          ids.add(c.id);
-        }
-        if(names[c.name])return false;names[c.name]=true;
-        if(/群/.test(c.name)||/群/.test(c.relationship))group=true;
-        if(c.id==='user'||c.name==='你'||c.name==='用户')hasUser=true;
-        if(!hasTime(c,'lastTime')||c.lastTime<c.messages[c.messages.length-1].time)return false;
-        if(num(c.unread,-1)<0||num(c.unread,-1)>99)return false;
-        return c.messages.every(function(m,i){
-          return m&&['me','ai','system'].indexOf(m.side)>=0&&named(m.text)&&hasTime(m)&&
-            (m.side!=='system'||m.status==='recalled')&&
-            (i===0||m.time>=c.messages[i-1].time);
-        });
-      }))return false;
-      if(initial)return group;
-      return group&&hasUser&&list.some(function(c){
-        return c.messages.some(function(m){return m.status==='recalled';});
-      })&&list.some(function(c){
-        return c.messages.some(function(m){return m.status==='read_no_reply';});
-      });
-    }
     if(id==='moments')return compact(list,3,5)&&list.every(function(m){
       return named(m.text)&&hasTime(m)&&named(m.image)&&compact(m.comments,1,8)&&
         m.comments.every(function(c){return named(c.name)&&named(c.text);});
@@ -474,19 +450,74 @@
     });
     return false;
   }
+  function isPlayerContact(contact) {
+    return contact&&(contact.id==='user'||/^(我|你|用户|玩家)$/.test(clean(contact.name)));
+  }
+
+  function normalizeChat(section,now) {
+    if(!Array.isArray(section?.contacts))return null;
+    function time(value,fallback) {
+      var stamp=typeof value==='number'?value:typeof value==='string'&&/^\d+$/.test(value.trim())?
+        Number(value):typeof value==='string'&&/^\d{4}-\d{2}-\d{2}/.test(value.trim())?Date.parse(value):NaN;
+      if(stamp>=1e9&&stamp<1e11)stamp*=1000;
+      return Number.isFinite(stamp)?clampTime(Math.round(stamp),new Date(now)):fallback;
+    }
+    var candidates=section.contacts.slice(0,60).sort(function(a,b){
+      return Number(Boolean(isPlayerContact(b)))-Number(Boolean(isPlayerContact(a)));
+    });
+    var contacts=[];
+    candidates.forEach(function(c,index){
+      if(contacts.length>=8||typeof c?.name!=='string'||!clean(c.name))return;
+      var player=isPlayerContact(c),name=player?'我':clean(c.name,80);
+      var id=player?'user':clean(c.id,120)||'contact-'+index;
+      if(contacts.some(function(item){return item.id===id||item.name===name;}))return;
+      var lastTime=time(c.lastTime,now-index*60000);
+      var messages=arr(c.messages).slice(0,20).flatMap(function(m,i,list){
+        if(typeof m?.text!=='string'||!clean(m.text)||!['me','ai','system'].includes(m.side))return [];
+        var status=['sent','recalled','read_no_reply'].includes(m.status)?m.status:'sent';
+        return [{side:m.side,text:clean(m.text,320),time:time(m.time,lastTime-(list.length-1-i)*1000),status:status}];
+      }).sort(function(a,b){return a.time-b.time;});
+      if(!messages.length)return;
+      var contact={id:id,name:name,relationship:clean(c.relationship,80)||(player?'特别联系人':'联系人'),
+        avatar:clean(c.avatar,80),unread:Math.min(99,Math.max(0,Math.floor(num(c.unread,0)))),
+        lastTime:Math.max(lastTime,messages[messages.length-1].time),messages:messages};
+      if(JSON.stringify({contacts:contacts.concat(contact)}).length<=45000)contacts.push(contact);
+    });
+    return contacts.length?{contacts:contacts}:null;
+  }
+
+  function ensurePlayerChat(section,previous,role,roleId,now) {
+    var contacts=arr(section.contacts);
+    var player=contacts.find(isPlayerContact)||arr(previous?.contacts).find(isPlayerContact);
+    if(!player)player=fallback(role,roleId,new Date(now)).sections.chat.contacts[0];
+    return Object.assign({},section,{contacts:[Object.assign({},player,{id:'user',name:'我'})].concat(
+      contacts.filter(function(c){return !isPlayerContact(c);})
+    )});
+  }
+
   function inspectApiConfig() {
     var storage=global.PhoneStorage;
-    if(!storage)return {};
-    var active=String(storage.getActiveProfileId?.()||'');
-    var profile=active&&arr(storage.getApiProfiles?.()).find(function(item){return item&&String(item.id)===active;});
-    var saved=storage.getApiConfig?.()||{};
-    if(clean(profile?.apiKey))return profile;
-    // Older settings can save the key only in the current configuration mirror.
-    // Reuse a key with profile fields only when both describe the same endpoint.
-    var endpoint=function(value){return String(value||'').trim().replace(/\/+$/,'').replace(/\/chat\/completions$/i,'');};
-    if(clean(saved.apiKey)&&profile&&endpoint(profile.baseUrl)===endpoint(saved.baseUrl))
-      return Object.assign({},saved,profile,{apiKey:saved.apiKey});
-    return saved;
+    function read(key,fallback) {
+      try {
+        var value=localStorage.getItem(key);
+        if(value==null)return fallback;
+        try{return JSON.parse(value);}catch(error){return value;}
+      }catch(error){return fallback;}
+    }
+    var active=storage?.getActiveProfileId?.()||read('api_active_profile','');
+    var profiles=arr(storage?.getApiProfiles?.());
+    if(!profiles.length)profiles=arr(read('api_profiles_v1',[]));
+    var profile=profiles.find(function(item){return item&&String(item.id)===String(active);})||profiles[0];
+    var saved=storage?.getApiConfig?.()||{};
+    if(!clean(saved.apiKey))saved=Object.assign({},saved,read('api_settings',{}));
+    if(!profile)return saved;
+    if(clean(profile.apiKey))return profile;
+    var endpoint=function(value){
+      return String(value||'https://api.openai.com/v1').trim().replace(/\/+$/,'').replace(/\/chat\/completions$/i,'');
+    };
+    var matchingMirror=endpoint(profile.baseUrl)===endpoint(saved.baseUrl)&&
+      (!profile.name||!saved.name||profile.name===saved.name);
+    return matchingMirror?Object.assign({},saved,profile,{apiKey:saved.apiKey}):profile;
   }
 
   function compactPersona(role) {
@@ -497,7 +528,7 @@
 
   function personalPrompt(role,ids) {
     var shapes={
-      chat:'"chat":{"contacts":[{"name":"姓名","relationship":"关系","messages":[{"side":"me","text":"短句"},{"side":"ai","text":"短句"},{"side":"me","text":"短句"}]}]}。3位联系人，其中一位是群聊。',
+      chat:'"chat":{"contacts":[{"name":"姓名","relationship":"关系","messages":[{"side":"me","text":"短句"},{"side":"ai","text":"短句"},{"side":"me","text":"短句"}]}]}。3位联系人，其中一位是群聊。'+PLAYER_CHAT_RULE,
       moments:'"moments":{"moments":[{"text":"动态","image":"配图描述","comments":[{"name":"昵称","text":"评论"}]}]}。3条。',
       notes:'"notes":{"notes":[{"title":"标题","text":"正文"}]}。3条。'
     };
@@ -507,16 +538,7 @@
 
   function prepareGeneratedSection(id,section,now) {
     if(!section||typeof section!=='object')return section;
-    if(id==='chat'){
-      return {contacts:arr(section.contacts).map(function(c,i){
-        if(!c||typeof c!=='object')return c;
-        var time=now-i*60000;
-        return Object.assign({},c,{id:c.id||'contact-'+i,unread:c.unread??0,lastTime:c.lastTime??time,
-          messages:arr(c.messages).map(function(m,j,all){
-            return m&&typeof m==='object'?Object.assign({},m,{time:m.time??time-(all.length-j)*1000}):m;
-          })});
-      })};
-    }
+    if(id==='chat')return normalizeChat(section,now);
     if(id==='moments')return {moments:arr(section.moments).map(function(m,i){
       return m&&typeof m==='object'?Object.assign({},m,{time:m.time??now-i*60000}):m;
     })};
@@ -547,7 +569,6 @@
           (c.name&&oldContact.name&&c.name===oldContact.name);
       });
       if(!target){
-        if(next.contacts.length>=8)throw new Error('新生成的联系人和已有互动无法对应，旧聊天已保留。');
         target=Object.assign({},oldContact,{messages:arr(oldContact.messages).slice()});
         next.contacts.push(target);
         return;
@@ -618,6 +639,7 @@
     });
     if(!data.source||typeof data.source!=='object')data.source={};
     if(!Array.isArray(data.secrets)||!data.secrets.length)data.secrets=fallback(role,roleId,now).secrets;
+    data.sections.chat=ensurePlayerChat(data.sections.chat,null,role,roleId,now.getTime());
     // Storyline catch-up is pure, idempotent, role scoped and local only.
     // It must never be described as a server-side timer: it runs on re-entry.
     var lifeResult=global.InspectPhoneLifeClock&&global.InspectPhoneLifeClock.advance?
@@ -659,7 +681,7 @@
       appLayer.classList.remove('open');current='';view=null;pinView='';notice='';
       if(home)home.hidden=true;
     }
-    function preparePersonalApps(){
+    function preparePersonalApps(openedApp){
       if(personalPending)return personalPending;
       if(!PERSONAL_APPS.some(function(id){return data.source[id]!=='ai';}))return;
       var api=global.PhoneAPI;
@@ -670,13 +692,13 @@
         var guardScope=accountGuard&&JSON.stringify(accountGuard.state());
         var started=Date.now(),cached=read(roleId,new Date(started));
         adoptPersonalCache(cached,false);
-        var ids=PERSONAL_APPS.filter(function(id){return data.source[id]!=='ai';});
+        var ids=(openedApp==='chat'?['chat']:PERSONAL_APPS.filter(function(id){return id!=='chat';})).filter(function(id){return data.source[id]!=='ai';});
         if(!ids.length)return;
         var responseInfo=null,requestInfo=null;
         var result;
         try{
           result=await api.completeJSON({
-            system:'按角色档案创作虚构手机记录。只输出 JSON。',
+            system:'按角色档案创作虚构手机记录。'+STRICT_JSON+(ids.includes('chat')?PLAYER_CHAT_RULE:''),
             user:personalPrompt(role,ids),apiConfig:inspectApiConfig(),timeoutMs:60000,
             onDiagnostic:function(event){
               if(event.stage==='response')responseInfo=event;
@@ -713,6 +735,7 @@
           if(next.source[id]==='ai')return;
           var previous=next.sections[id];
           var generated=generatedSections[id];
+          if(id==='chat')generated=ensurePlayerChat(generated,previous,role,roleId,started);
           if(id==='notes')generated=Object.assign({},generated,{locked:previous.locked,archive:previous.archive});
           next.sections[id]=id==='chat'?keepPlayerChatTurns(previous,generated):preserveUserEntries(id,previous,generated);
           next.source[id]='ai';
@@ -759,7 +782,7 @@
         '<p class="inspect-muted">之后角色会更谨慎。请尊重其决定。</p>'+button('结束查看','stop','primary'));return;}
       if(!current)return;
       var body='',section=data.sections[current]||{};
-      if(PERSONAL_APPS.indexOf(current)>=0&&data.source[current]!=='ai'&&(personalPending||personalError)&&!view){
+      if(PERSONAL_APPS.indexOf(current)>=0&&data.source[current]!=='ai'&&(personalPending||personalError)&&!view&&current!=='chat'){
         open((ITEMS.find(function(item){return item.id===current;})||{}).name||'角色手机',
           '<p class="inspect-muted" role="status">'+html(personalPending?'正在根据角色档案生成手机记录…':personalError)+'</p>'+
           (personalPending?'':button('重试生成','retryPersonal','primary')));
@@ -788,7 +811,9 @@
           });
         }
         if(nativeScreen){
-          var nativeNotice=notice?'<p class="inspect-alert" role="status">'+html(notice)+'</p>':'';
+          var message=notice||(current==='chat'&&data.source.chat!=='ai'?
+            (personalPending?'正在生成微信记录…':personalError):'');
+          var nativeNotice=message?'<p class="inspect-alert" role="status">'+html(message)+'</p>':'';
           var nativeMarkup=nativeNotice?
             nativeScreen.body.replace('<div class="nv-content">','<div class="nv-content">'+nativeNotice):
             nativeScreen.body;
@@ -959,19 +984,22 @@
       if(!api||typeof api.completeJSON!=='function'){hint('请求模块加载失败，请刷新查手机页面后重试。');return;}
       waiting=true;notice='正在生成当前板块，不会重写其他板块。';render();
       var requestRoleId=roleId,requestNow=Date.now();
-      api.completeJSON({system:'你是一位虚构角色生活资料编剧，只返回合法 JSON，不涉及真实用户隐私。',user:promptFor(id,role,data,requestNow),apiConfig:cfg,timeoutMs:60000,temperature:.85}).then(function(result){
-        if(!result||!result.ok||!valid(id,result.data,requestNow,data.facts))throw new Error('生成内容结构、数量或时间不合要求，原记录已保留');
+      api.completeJSON({system:'你是一位虚构角色生活资料编剧。'+STRICT_JSON+(id==='chat'?PLAYER_CHAT_RULE:''),user:promptFor(id,role,data,requestNow),apiConfig:cfg,timeoutMs:60000,temperature:.85}).then(function(result){
+        var generated=result?.ok?(id==='chat'?normalizeChat(result.data,requestNow):result.data):null;
+        if(!generated||(id!=='chat'&&!valid(id,generated,requestNow,data.facts)))
+          throw new Error(id==='chat'?'没有读到有效的聊天消息，原记录已保留。':'生成内容结构、数量或时间不合要求，原记录已保留');
         if(roleId!==requestRoleId)return;
         if(localDay(new Date())!==localDay(new Date(requestNow)))throw new Error('已跨入新的一天，请重新打开本板块刷新。');
         var oldSection=data.sections[id],oldSource=data.source[id],oldUpdated=data.updatedAt;
-        if(JSON.stringify(result.data)===JSON.stringify(oldSection))
+        if(id!=='chat'&&JSON.stringify(generated)===JSON.stringify(oldSection))
           throw new Error('新内容与旧记录完全相同，已保留原内容。');
-        var nextSection=id==='chat'?keepPlayerChatTurns(oldSection,result.data):preserveUserEntries(id,oldSection,result.data);
+        var nextSection=id==='chat'?keepPlayerChatTurns(oldSection,ensurePlayerChat(generated,oldSection,role,roleId,requestNow)):preserveUserEntries(id,oldSection,generated);
         data.sections[id]=nextSection;data.source[id]='ai';data.updatedAt=Date.now();
         if(!save(data)){
           data.sections[id]=oldSection;data.source[id]=oldSource;data.updatedAt=oldUpdated;
           throw new Error('手机存储空间不足，原有记录没有被覆盖。');
         }
+        if(id==='chat'&&current===id)view=null;
         notice='当前板块已更新，其他板块没有改变。';
       }).catch(function(err){notice=clean(err&&err.message,180)||'生成失败，原记录保留。';})
       .finally(function(){waiting=false;if(current===id)render();});
@@ -1360,7 +1388,7 @@
       if(!permission){requestScreen();return;}
       if(selected.indexOf(b.dataset.app)<0){chooseScreen();return;}
       current=b.dataset.app;view=null;notice='';switches++;
-      if(PERSONAL_APPS.includes(current)&&!personalError)preparePersonalApps();
+      if(PERSONAL_APPS.includes(current)&&(!personalError||current==='chat'))preparePersonalApps(current);
       render();
     });});
     var reload=document.getElementById('appReload');
@@ -1450,7 +1478,7 @@
           var nextApp=kind.slice(7);
           if(!permission||selected.indexOf(nextApp)<0){chooseScreen();return;}
           current=nextApp;view=null;notice='';
-          if(PERSONAL_APPS.includes(current)&&!personalError)preparePersonalApps();
+          if(PERSONAL_APPS.includes(current)&&!personalError)preparePersonalApps(current);
           render();return;
         }
         if(current==='browser'&&/^browser-/.test(kind)){
@@ -1478,11 +1506,11 @@
         }
         notice='';chooseScreen();return;
       }
-      if(a==='retryPersonal'){preparePersonalApps();render();return;}
+      if(a==='retryPersonal'){preparePersonalApps(current);render();return;}
       if(a==='start'){
         if(!selected.length){hint('请至少选择一个板块。');return;}
         if(!commit()){chooseScreen();return;}
-        close();preparePersonalApps();return;
+        close();return;
       }
       if(a==='all'){
         var beforeSelected=selected.slice();

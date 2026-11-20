@@ -11,9 +11,9 @@
 <script src="../shared/js/phone/inspect_interaction_bridge.js?v=20261112v5"></script>
 <script src="./inspect-persona-web.js?v=20261112v3"></script>
 <script src="./inspect-life-clock.js?v=20261112v1"></script>
-<script src="./inspect-native-view.js?v=20261112v6"></script>
-<script src="./inspect-feature.js?v=20261121v11"></script>
-<link rel="stylesheet" href="./inspect-native.css?v=20261121v6">
+<script src="./inspect-native-view.js?v=20261121v7"></script>
+<script src="./inspect-feature.js?v=20261121v12"></script>
+<link rel="stylesheet" href="./inspect-native.css?v=20261121v7">
 <style>
 :root{color-scheme:light;--ink:#222226;--muted:#8d8d95;--line:#e5e5ea;--bg:#f7f7f9;--card:#fff;font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif}
 *{box-sizing:border-box}
@@ -62,10 +62,10 @@ html[data-maomao-statusbar-hidden] #phone{grid-template-rows:minmax(0,1fr)}
 .label{font-size:11px;color:#5c5c64}
 .dock{margin:auto auto 14px;width:min(100%,232px);display:flex;justify-content:center;align-items:center;gap:28px;padding:10px 18px;background:rgba(255,255,255,.66);border:1px solid rgba(0,0,0,.05);border-radius:18px}
 .dock .app{flex:0 0 66px}
-.gesture{position:absolute;inset:auto 0 0;width:100%;height:44px;border:0;padding:0;background:transparent;z-index:8;display:grid;place-items:center;cursor:pointer;touch-action:manipulation}
+.gesture{position:absolute;inset:auto 0 0;width:100%;height:calc(44px + env(safe-area-inset-bottom,0px));box-sizing:border-box;border:0;padding:0 0 env(safe-area-inset-bottom,0px);background:transparent;z-index:2147483647;display:flex;align-items:center;justify-content:center;cursor:pointer;touch-action:manipulation}
 .gesture::after{content:"";width:120px;height:4px;border-radius:999px;background:rgba(0,0,0,.32)}
 .gesture[hidden]{display:none}
-.gesture:not([hidden]) + .app-layer{padding-bottom:44px}
+.gesture:not([hidden]) + .app-layer{padding-bottom:calc(44px + env(safe-area-inset-bottom,0px))}
 .app-layer{position:absolute;inset:0;z-index:4;display:flex;flex-direction:column;background:var(--bg);transform:scale(.28);opacity:0;pointer-events:none;transition:transform .26s cubic-bezier(.2,.8,.2,1),opacity .2s ease}
 .app-layer.open{transform:scale(1);opacity:1;pointer-events:auto}
 .app-bar{height:50px;display:grid;grid-template-columns:44px 1fr 44px;align-items:center;border-bottom:1px solid var(--line);background:rgba(255,255,255,.85)}

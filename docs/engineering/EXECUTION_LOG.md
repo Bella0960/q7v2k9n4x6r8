@@ -609,3 +609,9 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - WeChat tabs use uniform flex children and equal icon boxes.
 - The first authorized visit uses one request for unseeded WeChat, Moments and Notes. The existing account-scoped per-role story stores results. Already-generated sections and user interactions are preserved. Invalid results leave the previous cache intact.
 - Node contracts and the mobile gesture suite cover the existing flows and the new persona, cache and navigation behavior.
+
+## 2026-11-21｜INSPECT-PHONE-P0 查手机微信
+
+- 微信首次生成和手动刷新均要求首条为用户与当前角色的虚构单聊。对少量有效聊天和旧时间格式做规范化，异常条目按条过滤，并保留已发生的玩家操作。
+- 查手机实时读取激活 API 方案，兼容旧镜像。微信四个导航等宽，底部桌面返回按钮覆盖整个手势条。
+- 本地 Node 查手机专项 16/16。Vite、Chromium 全量和 Cloudflare QA 以本次固定提交的发布回执为准。

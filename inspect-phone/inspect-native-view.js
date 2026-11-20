@@ -74,7 +74,7 @@
           '</div>';
       } else {
         title='微信';tab='chats';
-        var list=arr(s.contacts).map(function(c,i){return {c:c,i:i};}).sort(function(a,b){return n(b.c.lastTime)-n(a.c.lastTime);});
+        var list=arr(s.contacts).map(function(c,i){return {c:c,i:i};}).sort(function(a,b){return Number(b.c.id==='user')-Number(a.c.id==='user')||n(b.c.lastTime)-n(a.c.lastTime);});
         body=searchbar('搜索')+'<div class="nv-chat-list">'+list.map(function(p){
           var c=p.c,last=arr(c.messages).slice(-1)[0]||{},unread=n(c.unread);
           return tap('chat',p.i,avatar(c.avatar||c.name)+
