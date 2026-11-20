@@ -109,14 +109,46 @@ try {
         assert.ok((await send.boundingBox()).width >= 44, 'send target must be at least 44px wide');
         await page.locator('#plus-action-btn').click();
         await page.locator('.plus-panel-sheet').waitFor({ state: 'visible' });
-        if (theme === 'imessage') {
-          const panelAppearance = await page.locator('.plus-panel-sheet').evaluate(el => {
-            const styles = getComputedStyle(el);
-            return { blur: styles.backdropFilter, background: styles.backgroundColor };
+        const panel = page.locator('.plus-panel-sheet');
+        await panel.evaluate(async el => { await Promise.all(el.getAnimations().map(a => a.finished)); });
+        const openForm = await page.locator('#chat-form').boundingBox();
+        const sheet = await panel.boundingBox();
+        assert.ok(openForm.y + openForm.height <= sheet.y + 1, 'sheet stays below the composer');
+        assert.ok(Math.abs(sheet.y + sheet.height - (shellBox.y + shellBox.height)) <= 2, 'sheet meets the bottom edge');
+        const layout = await panel.evaluate(el => {
+          const styles = getComputedStyle(el);
+          const rows = [...el.querySelectorAll('.plus-action-row')].map(row => {
+            const buttons = [...row.children];
+            return {
+              labels: buttons.map(button => button.innerText.trim()),
+              oneLine: buttons.every(button => button.offsetTop === buttons[0].offsetTop),
+              fits: buttons.every(button => button.scrollWidth <= button.clientWidth + 1)
+            };
           });
-          assert.equal(panelAppearance.blur, 'none', 'iMessage more panel must not inherit frosted glass');
-          assert.equal(panelAppearance.background, 'rgb(255, 255, 255)', 'iMessage more panel stays paper white');
-        }
+          return { rows, blur: styles.backdropFilter, background: styles.backgroundColor, shadow: styles.boxShadow };
+        });
+        assert.deepEqual(layout.rows.map(row => row.labels), [
+          ['相片', '位置', '红包', '转账', '语音通话'],
+          ['礼物', '语音输入', '收藏', '群组工具', '更多']
+        ]);
+        assert.ok(layout.rows.every(row => row.oneLine && row.fits), 'both rows stay single line and unclipped');
+        assert.equal(layout.blur, 'none');
+        assert.equal(layout.shadow, 'none');
+        assert.equal(layout.background, 'rgb(255, 255, 255)');
+        await send.click({ trial: true });
+        assert.ok(await page.locator('[data-plus-section="group"]').isDisabled(), 'group actions are disabled in direct chat');
+        const more = page.locator('[data-plus-section="more"]');
+        await more.click();
+        await page.locator('#plusMoreActions [data-feat="regenerate"]').waitFor({state:'visible'});
+        await page.keyboard.press('Escape');
+        await panel.waitFor({state:'hidden'});
+        assert.equal(await more.getAttribute('aria-expanded'), 'false');
+        assert.equal(await page.locator('#chat-input').inputValue(), '检查输入框换行\n第二行\n第三行');
+        await page.locator('#plus-action-btn').click();
+        await panel.locator('[data-feat="favorites"]').click();
+        await page.locator('#stickerPanelOverlay.is-show').waitFor({state:'visible'});
+        assert.equal(await page.locator('#stickerRoleTab').getAttribute('aria-selected'), 'true');
+        await panel.waitFor({state:'hidden'});
         assert.equal(errors.length, 0, errors.join('\n'));
         console.log(width + 'px / ' + theme + ': header, status bar, overflow, input and features passed');
       } finally {
