@@ -327,3 +327,29 @@ test('result.getChatHistory keeps valid legacy fallback and primary precedence',
   assert.equal(primary.api.result.getChatHistory('A').value.length, 0);
   assert.equal(primary.data.phone_data_v2, '{broken-v2');
 });
+
+test('invalid chat read targets never resolve phantom history keys or v2 buckets', () => {
+  const phantom = '[{"mid":"phantom"}]';
+  const f = fixture({
+    chat_history_undefined: phantom,
+    chat_history_null: phantom,
+    phone_data_v2: JSON.stringify({ undefined: { chat: { history: [{ mid: 'v2-phantom' }] } } })
+  });
+  for (const id of [undefined, null, '', '   ', 0, {}]) {
+    assert.equal(f.api.getChatHistory(id).length, 0);
+    assert.equal(f.api.result.getChatHistory(id).error.code, 'VALIDATION_FAILED');
+    assert.equal(f.api.result.getData(id, 'chat').error.code, 'VALIDATION_FAILED');
+  }
+  assert.equal(f.data.chat_history_undefined, phantom);
+  assert.equal(f.data.chat_history_null, phantom);
+  assert.equal(f.writes.length, 0);
+});
+
+test('valid chat read targets preserve the primary and legacy fallback contracts', () => {
+  const f = fixture({ chat_history_A: '[{"mid":"primary"}]', phone_data_v2: root('legacy B') });
+  assert.equal(f.api.getChatHistory('A')[0].mid, 'primary');
+  assert.equal(f.api.result.getChatHistory('A').value[0].mid, 'primary');
+  assert.equal(f.api.result.getData('A', 'chat').value.history[0].mid, 'primary');
+  assert.equal(f.api.result.getChatHistory('B').value[0].text, 'untouched B');
+  assert.equal(f.writes.length, 0);
+});
