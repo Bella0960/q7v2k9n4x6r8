@@ -206,7 +206,7 @@
       members: selected.map(function (role) {
         return { id: id(role.id), name: role.name || '角色', avatar: role.avatar || '', nickname: '',
           title: '', isAdmin: false, muted: false, activeFrom: '08:00', activeTo: '23:00' };
-      }), relationships: {}, settings: { allowRoleActions: true, allowRoleInvitations: true }
+      }), relationships: {}, settings: { scheduleEnabled: false, allowRoleActions: true, allowRoleInvitations: true }
     };
     var invitation = { id: 'gi_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 9),
       groupId: gid, inviterId: id(inviter.id), status: 'pending', createdAt: Date.now(), draftGroup: draft };

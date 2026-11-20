@@ -1649,6 +1649,7 @@
         var group = {
           id: groupId,
           name: name,
+          settings: { scheduleEnabled: false },
           members: members.map(function(m) { return { id: String(m.id), name: m.name, avatar: m.avatar || '' }; }),
           createdAt: now
         };
