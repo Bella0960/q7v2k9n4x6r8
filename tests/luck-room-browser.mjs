@@ -122,8 +122,12 @@ async function main() {
 
   await page.locator('#tarotSpreadSelect').selectOption('3');
   await page.locator('#drawTarotBtn').click();
+  // The previous single-card DOM must be concealed while the new shuffle runs.
+  // A flex rule previously overrode [hidden] and exposed stale cards to users and tests.
+  assert(await page.locator('#tarotSpread').isHidden(), 'Old tarot spread must stay hidden during reshuffle');
   await page.locator('#tarotSpread').waitFor({ state: 'visible', timeout: 4000 });
   assert(await page.locator('.tarot-crystal-card').count() === 3, 'Three-card spread should draw three different cards');
+  assert(await page.locator('#tarotDeckScene').isHidden(), 'Tarot deck must disappear after the new spread is ready');
   const names = await page.locator('.tarot-card-name').allTextContents();
   assert(new Set(names).size === 3, 'Three-card spread must not contain duplicate cards');
   await page.screenshot({ path: path.join(artifactDir, 'luck-room-tarot-three-card-back.png'), fullPage: true });
