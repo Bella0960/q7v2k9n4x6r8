@@ -38,26 +38,16 @@
         else return { ok: false, error: 'CORRUPT_LEGACY_BINDING' };
       }
       var primary = role && Array.isArray(role.worldBookIds) ? role.worldBookIds : [];
-      // Previously, single-chat prompts loaded every global book, regardless of
-      // the role binder. On the first upgrade, keep that legacy behaviour visible
-      // as checked defaults. A saved chat mount (including []) is an explicit
-      // user decision, so never silently add global books back after that.
-      var defaults = [];
-      if (role && legacyRaw == null) {
-        var definitionsRaw = readRaw('phone_worldbooks');
-        var definitions = decode(definitionsRaw, []);
-        if (!Array.isArray(definitions)) return { ok: false, error: 'CORRUPT_WORLDBOOKS' };
-        defaults = idsOf(definitions.filter(function (book) {
-          return book && book.enabled !== false && book.scope !== 'local';
-        }).map(function (book) { return book.id; }));
-      }
+      // Nothing is mounted by default, including books marked global.
+      // A character's explicit worldBookIds or saved chat mount is required.
+      // Read-only change: do not rewrite or delete any legacy stored binding.
       // An explicitly disabled legacy object is a user opt-out, not a stale list.
       var suspended = legacy && !Array.isArray(legacy) && legacy.enabled === false;
       // An explicitly saved empty chat mount must win over a stale role field.
       // Otherwise unchecking the last book in chat settings could silently
       // resurrect that same book from old character data.
       var explicitClear = legacyRaw != null && legacyIds.length === 0;
-      var ids = suspended || explicitClear ? [] : idsOf(primary.concat(legacyIds, defaults));
+      var ids = suspended || explicitClear ? [] : idsOf(primary.concat(legacyIds));
       return {
         ok: true, ids: ids,
         hasBinding: !!(role && Array.isArray(role.worldBookIds)) || legacyRaw != null,
