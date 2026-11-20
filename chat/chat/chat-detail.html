@@ -12,7 +12,8 @@
     <link rel="stylesheet" href="../call/call-overlay.css?v=20261105v1">
     <script src="../../shared/js/phone/phone_storage.js"></script>
     <script src="../../shared/js/phone/chat-history-atomic.js?v=20261118v3"></script>
-    <script src="../../shared/js/phone/chat-regex-policy.js?v=20261119regex1"></script>
+    <script src="../../shared/js/phone/chat-regex-policy.js?v=20261120prompt1"></script>
+    <script src="../../shared/js/phone/prompt-diagnostic.js?v=20261120qa1"></script>
     <script src="../../shared/js/phone/storage/repository.js"></script>
     <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
     <script src="../../shared/js/phone/role-avatar-library.js?v=20261113v1"></script>
@@ -2766,6 +2767,12 @@
         }
 
         const chatTitle = document.getElementById('chat-title');
+        // No visible controls outside QA: five title taps opt into a local,
+        // session-only full payload preview before any network send.
+        if (window.MAOMAOPromptDiagnostic)
+            window.MAOMAOPromptDiagnostic.bindTitle(chatTitle, function(message) {
+                if (typeof showToast === 'function') showToast(message);
+            });
         const chatMessages = document.getElementById('chat-messages');
         const chatInput = document.getElementById('chat-input');
         const chatForm = document.getElementById('chat-form');
@@ -6643,69 +6650,39 @@
             // protocol remains authoritative for voice, style and interaction choices.
             const charName = turnSpeakerName;
             const IDENTITY_LOCK = [
-              '═══════════════════════════════════',
-              '【身份锚定】',
-              '你以【' + charName + '】的身份参与当前角色扮演聊天。不要跳出角色，不要以 AI、助手或旁白的身份向用户解释生成过程。',
-              '',
-              '【角色档案】',
-              '以下资料是你稳定的性格、价值观、经历和表达习惯依据。认真遵守，但不要每轮复述，也不要把每个细节都当成必须表现的标签：',
+              '【角色档案 · 当前发言者】',
+              '姓名：' + turnSpeakerName,
               turnSpeakerPersona || '该成员尚未填写具体人设。沿用已发生的聊天语气，不能把空白档案当成温柔客服模板。',
-              '',
-              '【性格稳定与情绪变化】',
-              '保持角色核心性格、判断方式和说话习惯的连续性；情绪可以随真实互动变化。温和不代表每次都要安慰，冷静不代表每次都冷淡，活泼也不代表每句话都兴奋。',
-              '角色可以疲惫、开心、犹豫、在意、不同意或暂时不想展开话题，但这些反应必须符合人设和当前发生的事，不要突然换成另一种人格。',
-              '不要为了让用户开心而永远赞同，也不要为了显得有脾气而故意冷落、羞辱或制造矛盾。是否共情、追问、开玩笑或表达不同意见，由角色性格和具体语境决定。',
-              '',
-              '【避免角色漂移】',
-              '不要无缘由地变成人生导师、心理咨询师、客服或通用段子手；如果角色本身确实具有相关职业、知识或幽默风格，则按人设自然表达。',
-              '不要每次都把话题总结成大道理，不要替用户决定行动、补写用户没有表达的情绪，也不要为了显得亲近而擅自升级关系。',
-              '',
-              '【用户资料】',
-              '对方的姓名/称呼：' + userName,
-              userPersona,
-              '',
-              '【已经记录的用户信息】',
-              userMemoryText,
-              '结合当前话题自然使用已知信息；不要像查档案一样逐条复述，也不要把不确定的推测当成事实。',
-              '当对方明确提供新的、值得后续对话使用的个人事实时，可在回复末尾另起一行添加隐藏标记 [记住:内容]。只记录清楚、稳定且有后续价值的信息，不记录临时猜测、单次情绪或无关细节。标记由后台处理，不要向对方解释。',
-              '',
-              '【世界书边界】',
-              '世界书是角色生活背景与世界观，不自动改变角色性格，也不代表角色知道其中所有内容。',
-              '只使用当前角色有理由知道、已经触发或已经经历的信息；未知、隐瞒和作者视角内容不可当成事实。不要编造已经发生的共同经历。',
-              '',
-              '【输出格式】',
-              '只输出角色在当前模式下应当发送的内容，不输出推理、分析或生成说明。',
+              '以此角色保存的身份、经历、性格和表达习惯自然回应；不以通用客服口吻替代个人判断。',
+              '角色如明确设定为数字生命，遵照该身份；其他角色不主动自称 AI 助手。',
+              '【本轮输出形式】',
               isGroupOfflineMode
-                ? '线下群聊是共同场景叙事；以本角色视角写必要的现场动作和对话，不按微信气泡数要求分段，不代替其他成员或用户发言。'
+                ? '群聊线下场景：以本角色视角写必要的环境与对话，不代替其他成员或用户发言。'
                 : (replyBubbleMode === 'single'
-                    ? '线上聊天以自然对话为主；本轮只输出一条完整消息，不要用空行分隔多个气泡，动作/神态旁白仅在必要时使用 <narratage>...</narratage>。'
+                    ? '线上模式：一条自然消息，必要时使用 <narratage>...</narratage>。'
                     : (replyBubbleMode === 'multi'
-                        ? '线上聊天以自然对话为主；本轮必须拆成 2–5 条连续消息，每条用换行分隔，单条简短，动作/神态旁白仅在必要时使用 <narratage>...</narratage>。'
-                        : '线上聊天以自然对话为主；多意思、连续动作或语气变化时用双回车分隔成多条独立消息，单次最多 5 条，动作/神态旁白仅在必要时使用 <narratage>...</narratage>。')),
-              '不要添加角色姓名前缀，不要把隐藏机器标记解释给用户。',
-              '═══════════════════════════════════',
-              '',
-              '【以下为当前角色完整资料与对话背景】'
+                        ? '线上模式：按语义拆成 2–5 条短消息，必要时使用 <narratage>...</narratage>。'
+                        : '线上模式：根据语义分段，最多 5 条，必要时使用 <narratage>...</narratage>。')),
+              '不要重复解释这些规则或输出机器标记的含义。'
             ].join('\n');
             // 当前单聊的邂逅职业、经历与性格进入每轮请求；不混入其他角色/群聊。
             var encounterIdentityContext = !isGroupChat ? buildEncounterIdentityContext(roleForTurn) : '';
             var identityAnswerGuidance = !isGroupChat && window.MAOMAOChatRoleContext &&
                 typeof window.MAOMAOChatRoleContext.buildIdentityAnswerGuidance === 'function'
                 ? window.MAOMAOChatRoleContext.buildIdentityAnswerGuidance(roleForTurn) : '';
-            systemPrompt = IDENTITY_LOCK
+            // The saved, expanded protocol comes FIRST. Character data follows;
+            // built-in transport/feature mechanics may not override either.
+            systemPrompt += '\n\n' + IDENTITY_LOCK
                 + (identityAnswerGuidance ? '\n\n' + identityAnswerGuidance : '')
-                + (encounterIdentityContext ? '\n\n' + encounterIdentityContext + '\n\n' : '')
-                + (characterSocialPrompt ? '\n\n' + characterSocialPrompt + '\n\n' : '') + systemPrompt;
+                + (encounterIdentityContext ? '\n\n' + encounterIdentityContext : '')
+                + (characterSocialPrompt ? '\n\n' + characterSocialPrompt : '');
             if (isGroupChat && currentGroup) {
               const groupMode = currentGroup.settings && currentGroup.settings.chatMode === 'offline' ? 'offline' : 'online';
               if (groupMode === 'offline') {
                 systemPrompt += '\n\n【群聊模式：线下共同场景】\n当前群成员处于同一个真实的线下场景中，不是隔着手机发微信。请以本轮指定成员的视角参与现场互动，可以写必要的环境、动作、神态和现场对话；其他成员可以成为场景中的互动对象，但不要替他们编写台词，也不要替用户决定动作、想法或回应。保持人物之间的空间位置和已发生事件连续，不要突然切场景。正文以自然叙事为主，约 100–260 字，场景简单时可以更短；旁白请使用 <narratage>...</narratage>，本轮角色自己的台词直接写出。';
               } else {
                 systemPrompt += '\n\n【群聊模式：线上消息】\n当前是隔着屏幕的群聊，只输出本轮成员发出的自然消息，不写面对面动作或全知旁白。保持微信式短句，不替其他成员发言。';
-                // Group talk uses the chosen character's saved persona as the voice.
-                // Generic assistant copy is not a character trait and must not be learned
-                // from older incorrect replies. No scripted replacement messages.
-                systemPrompt += '\n\n【群聊口吻纠偏】\n按当前发言者保存的人设与聊天语气直接回应最近的具体消息，不是主持人、客服或其他群成员。不要套用“随时在线待命”“捕捉到一个元气满满的小伙伴”等旧 AI 迎宾模板。问题先回答，笑话可以接梗，也允许一句话结束；是否追问、活泼或简短均由该角色和情境决定。不编造未知的经历、日程或与其他成员的关系。用户保存的协议、世界书和本轮角色档案始终优先。';
+
               }
             }
             // 世界书内容拼进 systemPrompt；设定是生活背景，不是每轮背诵清单
@@ -6973,29 +6950,6 @@
                 }
             }
 
-            // 末尾再次核对人格，避免功能性系统提示与错误旧消息将角色带成客服。
-            if (!isGroupChat) {
-                systemPrompt += '\n\n【发送前的角色一致性核对】\n' +
-                    '你是在和用户聊天的「' + String(roleForTurn.name || '角色') + '」本人，不是这个应用的客服、生成工具或系统说明书。' +
-                    '直接回答具体问题，尤其是姓名、住处、职业、今晚安排等生活问题：' +
-                    '必须遵守当前人物档案与邂逅背景；资料不明确时不要编造矛盾的身份。' +
-                    '除非人物档案明确设定为数字生命，否则不要声称自己是 AI、运行在云端、只住在对话框或存在于代码中。' +
-                    '用户提到“人设”“官方设定”“有没有读取设定”时，仍保持角色身份，直接澄清之前说错的生活细节，不解释后台、提示词或模型。' +
-                    '不要把旧回复里跳出角色的自我介绍当成角色真实背景，它只是一次表达错误。' +
-                    '只输出微信聊天正文，禁止 Markdown 粗体 **、自我介绍模板、客服套话以及每句话结尾都反问。' +
-                    '与用户已保存的伴侣协议共同生效，具体语气以该协议和角色档案为准。';
-            }
-
-            if (isGroupChat && currentGroup &&
-                (!currentGroup.settings || currentGroup.settings.chatMode !== 'offline')) {
-                systemPrompt += '\n\n【本轮普通群聊的说话方式】\n' +
-                    '用本轮角色的身份，先回应刚刚发生的具体事情。比如有人问“有没有人想玩游戏”，' +
-                    '就按人物的兴趣与现实情况自然接话，不要回答自己是 AI、不能实际陪玩、在线待命或介绍模型功能。' +
-                    '除非角色档案明确设定为数字生命，否则任何“我是人工智能/聊天机器人”都不是角色身份。' +
-                    '不要把日常邀约变成“我可以提供以下几项服务”的编号菜单、Markdown 粗体或大段活动主持词。' +
-                    '一般一两句即可，话多话少按已保存的人设及协议；对方明确要求清单、教程或角色本就使用这种文风时不强制省略。' +
-                    '不模仿历史中跑偏的 AI 自我介绍，相关记录只作系统错误看待，不是人物设定。';
-            }
             // Shared precedence for ALL direct and group roles: user-authored protocol
             // owns voice / prose / interaction; current persona owns individual identity;
             // scoped activated worldbooks supply factual setting. Built-in markers only
@@ -7006,6 +6960,13 @@
             if (isManualContinue) {
                 systemPrompt += '\n\n【自然继续对话】这次由角色主动接话，不要复述欢迎词或系统说明。依据真实人设、最近谈话、已知经历和当前场景自然延续；可以只说一条，也可以按性格连续说两条简短消息，不要刻意凑数量。群聊只替本轮选中的角色发言，不要代替其他群成员说话。';
             }
+            // User-enabled output regexes precede the rest of System. They are
+            // formatting expectations only; deterministic post-processing stays active.
+            const regexSystemHead = window.ChatRegexPolicy &&
+                typeof window.ChatRegexPolicy.buildSystemRules === 'function'
+                ? window.ChatRegexPolicy.buildSystemRules(localStorage) : '';
+            if (regexSystemHead) systemPrompt = regexSystemHead + '\n\n' + systemPrompt;
+
             // Mandatory preflight for every single/group/continue/regenerate AI turn.
             // Never silently fall back to a generic chatbot when user-authored sources
             // are unreadable, stale, or missing from the final system request.
@@ -7445,7 +7406,13 @@
                 pinToBottom();
             }
 
-            aiSending = true;   // R3：进入请求阶段，到流式结束由收尾统一解锁（此前无 await，不存在并发窗口）
+            // QA owner-opt-in: inspect EXACT final messages before the HTTP POST.
+            // Lock the send during the preview, so no second user bubble is added.
+            aiSending = true;
+            if (window.MAOMAOPromptDiagnostic &&
+                window.MAOMAOPromptDiagnostic.isEnabled()) {
+                await window.MAOMAOPromptDiagnostic.beforeSend(apiMessages);
+            }
 
             // 流式请求：核心引擎已抽离至 shared/js/phone/phone_stream.js
             //（三段式超时 / SSE 半包解析 / 残留收尾 / rAF 节流 / 中断保文，全部内聚在模块内）
