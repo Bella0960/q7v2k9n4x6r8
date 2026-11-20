@@ -272,11 +272,11 @@ test('C6-C8 chat.html -> chat-detail renders 3 members and request context conta
     assert.ok(system.includes('话唠度=90/100'), 'invited member talkativeness in context');
     assert.ok(system.includes('兴趣=推理、音乐'), 'invited member interests in context');
     assert.ok(system.includes('本轮由你（阿五）'), 'reply pick is the invited member');
-    assert.ok(system.includes('你以【角色三】的身份参与'), 'identity lock must use the selected role, not the group name');
-    assert.ok(!system.includes('你以【三人测试群】的身份参与'), 'group title is not a speaker persona');
-    const anchoredPersona = (system.split('【角色档案】')[1] || '').split('【性格稳定与情绪变化】')[0];
-    assert.ok(anchoredPersona.includes('夜班编辑人设'), 'selected member persona must anchor the reply');
-    assert.ok(system.includes('【群聊口吻纠偏】') && system.includes('[群成员自然互动]'), 'current group context must suppress canned greetings and allow role-to-role dialogue');
+    assert.ok(system.includes('姓名：角色三'), 'source-first identity must use selected role, not group title');
+    assert.ok(!system.includes('姓名：三人测试群'), 'group title is not the speaker identity');
+    const anchoredPersona = (system.split('【角色档案 · 当前发言者】')[1] || '').split('【本轮输出形式】')[0];
+    assert.ok(anchoredPersona.includes('夜班编辑人设'), 'full saved speaker persona must anchor model request');
+    assert.ok(system.includes('【群聊模式：线上消息】') && system.includes('[群成员自然互动]'), 'group prompt must retain natural role-to-role interaction and correct mode');
     const received = page.locator('.msg-row.received.group-member-row').last();
     await received.waitFor({ state: 'visible', timeout: 12000 });
     await received.scrollIntoViewIfNeeded();
