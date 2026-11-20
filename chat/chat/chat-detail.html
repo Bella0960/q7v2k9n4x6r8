@@ -6087,8 +6087,7 @@
                 rolePersona = (window.MAOMAOChatRoleContext &&
                     typeof window.MAOMAOChatRoleContext.stripEncounterEditorNote === 'function'
                     ? window.MAOMAOChatRoleContext.stripEncounterEditorNote(rawCurrentPersona, roleForTurn)
-                    : rawCurrentPersona).trim()
-                    || '你正在以此角色身份发消息。根据档案与已知背景说话，不自称 AI 助手，不编造职业或经历。';
+                    : rawCurrentPersona).trim();
             }
             // An explicitly addressed admin order should be answered by the addressed admin,
             // not a randomly selected member (and never by the muted target).
@@ -6239,10 +6238,15 @@
             const rawSpeakerPersona = isGroupChat && groupReplyPick
                 ? String(relationshipRole && (relationshipRole.persona || relationshipRole.prompt) || '').trim()
                 : rolePersona;
-            const turnSpeakerPersona = (window.MAOMAOChatRoleContext &&
-                typeof window.MAOMAOChatRoleContext.stripEncounterEditorNote === 'function')
-                ? window.MAOMAOChatRoleContext.stripEncounterEditorNote(rawSpeakerPersona, relationshipRole).trim()
-                : rawSpeakerPersona;
+            const personaPolicy = window.MAOMAOChatRoleContext;
+            const personaIncomplete = !!(relationshipRole && personaPolicy &&
+                typeof personaPolicy.isPersonaIncomplete === 'function' &&
+                personaPolicy.isPersonaIncomplete(relationshipRole));
+            const turnSpeakerPersona = personaIncomplete
+                ? personaPolicy.MINIMAL_PERSONA_PROMPT
+                : (personaPolicy && typeof personaPolicy.stripEncounterEditorNote === 'function'
+                    ? personaPolicy.stripEncounterEditorNote(rawSpeakerPersona, relationshipRole).trim()
+                    : rawSpeakerPersona);
             var characterSocialPrompt = '';
             try { characterSocialPrompt = buildCharacterSocialPrompt(relationshipRole); } catch (socialContextError) {
                 console.error('[ChatPersonaSources] role social context unavailable:', socialContextError);
@@ -6288,7 +6292,8 @@
                         ? window.ChatContextPolicy.filterUserMemoriesForRole(um, activeMemoryRoleId)
                         : um.filter(function(m) {
                             // Compatibility fallback: legacy entries without a role ID remain globally visible.
-                            return !m.sourceRoleId || String(m.sourceRoleId) === activeMemoryRoleId;
+                            return m && m.sourceRoleId != null && activeMemoryRoleId &&
+                                String(m.sourceRoleId).trim() === activeMemoryRoleId;
                         });
                     userMemoryText = roleScoped.slice(-30).map(function(m){ return '· ' + (m.text || m.content || ''); }).join('\n');
                 }
@@ -6327,7 +6332,9 @@
             }
             // 设置页展示的默认协议，即使尚未显式保存，聊天也应真实使用。
             // 已保存的非空协议优先，读取不隐式修改用户设置。
-            rpProtocol = rpProtocol.trim() || String(window.MAOMAO_RP_DEFAULT_PROTOCOL || '');
+            rpProtocol = rpProtocol.trim() || (personaIncomplete
+                ? String(personaPolicy && personaPolicy.MINIMAL_PERSONA_PROMPT || '')
+                : String(window.MAOMAO_RP_DEFAULT_PROTOCOL || ''));
             if (!rpProtocol.trim()) {
                 stopForMissingRoleSource('protocol-missing', '人设协议未加载，本轮已停止。请检查设置');
                 return;
@@ -6461,7 +6468,7 @@
                 return String(text || '')
                     .replace(/\{\{char\}\}/g, turnSpeakerName)
                     .replace(/\{\{user\}\}/g, userName)
-                    .replace(/\{\{persona\}\}/g, turnSpeakerPersona || '根据此角色已知言行自然说话，不编造资料')
+                    .replace(/\{\{persona\}\}/g, turnSpeakerPersona)
                     .replace(/\{\{memory\}\}/g, roleMemory)
                     .replace(/\{\{worldbook\}\}/g, worldbookText || '暂无世界书');
             }
@@ -6500,7 +6507,7 @@
             // adding another long copy when the user's protocol supplied it.
             systemPrompt += '\n\n【本轮角色档案 · 身份依据】\n姓名：' + turnSpeakerName;
             if (!rpProtocol.includes('{{persona}}')) {
-                systemPrompt += '\n' + (turnSpeakerPersona || '该成员尚未填写具体人设。沿用已发生的聊天语气，不能把空白档案当成温柔客服模板。');
+                systemPrompt += '\n' + turnSpeakerPersona;
             }
             systemPrompt += '\n\n【最终设定优先级】角色身份、性格与语气以当前角色档案和全局伴侣协议为准；世界事实以当前激活的世界书为准。以下功能说明仅定义消息标记、权限和形式；冲突时以用户保存的协议为准。';
             // Put activated lore ahead of group/transport instructions, including
@@ -7249,7 +7256,9 @@
                 return;
             }
             const canonicalProtocolAtSend = storedProtocolAtSend.trim() ||
-                String(window.MAOMAO_RP_DEFAULT_PROTOCOL || '').trim();
+                (personaIncomplete
+                    ? String(personaPolicy && personaPolicy.MINIMAL_PERSONA_PROMPT || '').trim()
+                    : String(window.MAOMAO_RP_DEFAULT_PROTOCOL || '').trim());
             if (canonicalProtocolAtSend !== rpProtocol) {
                 stopForMissingRoleSource('protocol-updated', '伴侣协议在聊天期间已变更，本轮已停止；请重试加载最新版');
                 return;
