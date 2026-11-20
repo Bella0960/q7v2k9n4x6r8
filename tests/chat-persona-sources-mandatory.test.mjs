@@ -24,6 +24,7 @@ const protocolSource = extract("            let rpProtocol = '';", '            
 const loreSource = extract('            // 世界书：', '            // 协议变量替换：');
 const protocolRead = new Function('localStorage', 'window', 'aliasRoleId', 'currentCharacter', 'roleId', 'showToast',
   'const currentRoleId = roleId;\n' +
+  'const personaIncomplete = false, personaPolicy = window.MAOMAOChatRoleContext;\n' +
   'const stopForMissingRoleSource = (reason, message) => showToast(message);\n' +
   protocolSource + '\nreturn rpProtocol;');
 const loreRead = new Function('localStorage', 'window', 'aliasRoleId', 'roleForTurn', 'isGroupChat',
