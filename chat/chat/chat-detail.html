@@ -6243,6 +6243,13 @@
                 typeof window.MAOMAOChatRoleContext.stripEncounterEditorNote === 'function')
                 ? window.MAOMAOChatRoleContext.stripEncounterEditorNote(rawSpeakerPersona, relationshipRole).trim()
                 : rawSpeakerPersona;
+            // A missing/name-only profile is not a license to invent a biography.
+            const savedPersonaText = String(relationshipRole &&
+                (relationshipRole.persona || relationshipRole.prompt) || '').trim();
+            const thinPersona = !savedPersonaText ||
+                savedPersonaText.replace(/[\s，。,.：:【】\[\]()（）"'“”‘’]/g, '') ===
+                String(turnSpeakerName).replace(/\s/g, '');
+            const missingPersonaNotice = '注意：当前角色档案缺失，请保持简短回应，绝对不要自行编造姓名或职业。';
             var characterSocialPrompt = '';
             try { characterSocialPrompt = buildCharacterSocialPrompt(relationshipRole); } catch (socialContextError) {
                 console.error('[ChatPersonaSources] role social context unavailable:', socialContextError);
@@ -6327,7 +6334,7 @@
             }
             // 设置页展示的默认协议，即使尚未显式保存，聊天也应真实使用。
             // 已保存的非空协议优先，读取不隐式修改用户设置。
-            rpProtocol = rpProtocol.trim() || String(window.MAOMAO_RP_DEFAULT_PROTOCOL || '');
+            rpProtocol = rpProtocol.trim() || (thinPersona ? missingPersonaNotice : String(window.MAOMAO_RP_DEFAULT_PROTOCOL || ''));
             if (!rpProtocol.trim()) {
                 stopForMissingRoleSource('protocol-missing', '人设协议未加载，本轮已停止。请检查设置');
                 return;
@@ -6500,7 +6507,7 @@
             // adding another long copy when the user's protocol supplied it.
             systemPrompt += '\n\n【本轮角色档案 · 身份依据】\n姓名：' + turnSpeakerName;
             if (!rpProtocol.includes('{{persona}}')) {
-                systemPrompt += '\n' + (turnSpeakerPersona || '该成员尚未填写具体人设。沿用已发生的聊天语气，不能把空白档案当成温柔客服模板。');
+                systemPrompt += '\n' + (thinPersona ? missingPersonaNotice : turnSpeakerPersona);
             }
             systemPrompt += '\n\n【最终设定优先级】角色身份、性格与语气以当前角色档案和全局伴侣协议为准；世界事实以当前激活的世界书为准。以下功能说明仅定义消息标记、权限和形式；冲突时以用户保存的协议为准。';
             // Put activated lore ahead of group/transport instructions, including
@@ -6968,6 +6975,7 @@
                 stopForMissingRoleSource('regex-read', '全局正则读取失败，本轮未请求 AI；请检查正则设置');
                 return;
             }
+            if (thinPersona) systemPrompt = missingPersonaNotice + '\n\n' + systemPrompt;
             if (regexSystemHead) systemPrompt = regexSystemHead + '\n\n' + systemPrompt;
 
             // Mandatory preflight for every single/group/continue/regenerate AI turn.
@@ -6980,7 +6988,7 @@
             const personaAudit = sourceContract && typeof sourceContract.validatePersonaRequest === 'function'
                 ? sourceContract.validatePersonaRequest({
                     role: savedSpeaker,
-                    persona: turnSpeakerPersona,
+                    persona: thinPersona ? missingPersonaNotice : turnSpeakerPersona,
                     protocol: rpProtocol,
                     expandedProtocol: applyProtocolVars(rpProtocol),
                     worldbook: worldbookText,
