@@ -477,9 +477,16 @@
   function inspectApiConfig() {
     var storage=global.PhoneStorage;
     if(!storage)return {};
-    var active=storage.getActiveProfileId?.();
+    var active=String(storage.getActiveProfileId?.()||'');
     var profile=active&&arr(storage.getApiProfiles?.()).find(function(item){return item&&String(item.id)===active;});
-    return profile||storage.getApiConfig?.()||{};
+    var saved=storage.getApiConfig?.()||{};
+    if(clean(profile?.apiKey))return profile;
+    // Older settings can save the key only in the current configuration mirror.
+    // Reuse a key with profile fields only when both describe the same endpoint.
+    var endpoint=function(value){return String(value||'').trim().replace(/\/+$/,'').replace(/\/chat\/completions$/i,'');};
+    if(clean(saved.apiKey)&&profile&&endpoint(profile.baseUrl)===endpoint(saved.baseUrl))
+      return Object.assign({},saved,profile,{apiKey:saved.apiKey});
+    return saved;
   }
 
   function compactPersona(role) {
@@ -944,11 +951,12 @@
       notice='已切换到下一段预置的虚构剧情（离线演示，未调用 AI）。';render();
     }
     function refreshSection() {
-      if(waiting)return;
+      if(waiting||personalPending)return;
       var id=current,api=global.PhoneAPI,cfg=inspectApiConfig();
       if(!permission||selected.indexOf(id)<0){hint('这个板块尚未获得角色分享许可。');return;}
       if(pendingChat&&id==='chat'){hint('请先等待当前联系人的回复，避免覆盖发送中的消息。');return;}
-      if(!api||typeof api.completeJSON!=='function'||!clean(cfg.apiKey)){refreshOffline(id);return;}
+      if(!clean(cfg.apiKey)){refreshOffline(id);return;}
+      if(!api||typeof api.completeJSON!=='function'){hint('请求模块加载失败，请刷新查手机页面后重试。');return;}
       waiting=true;notice='正在生成当前板块，不会重写其他板块。';render();
       var requestRoleId=roleId,requestNow=Date.now();
       api.completeJSON({system:'你是一位虚构角色生活资料编剧，只返回合法 JSON，不涉及真实用户隐私。',user:promptFor(id,role,data,requestNow),apiConfig:cfg,timeoutMs:60000,temperature:.85}).then(function(result){
@@ -1351,7 +1359,9 @@
       var b=e.target.closest('[data-app]');if(!b)return;
       if(!permission){requestScreen();return;}
       if(selected.indexOf(b.dataset.app)<0){chooseScreen();return;}
-      current=b.dataset.app;view=null;notice='';switches++;render();
+      current=b.dataset.app;view=null;notice='';switches++;
+      if(PERSONAL_APPS.includes(current)&&!personalError)preparePersonalApps();
+      render();
     });});
     var reload=document.getElementById('appReload');
     if(reload)reload.addEventListener('click',function(){
@@ -1439,7 +1449,9 @@
         if(kind.indexOf('switch-')===0){
           var nextApp=kind.slice(7);
           if(!permission||selected.indexOf(nextApp)<0){chooseScreen();return;}
-          current=nextApp;view=null;notice='';render();return;
+          current=nextApp;view=null;notice='';
+          if(PERSONAL_APPS.includes(current)&&!personalError)preparePersonalApps();
+          render();return;
         }
         if(current==='browser'&&/^browser-/.test(kind)){
           browserOpen(kind,index);return;

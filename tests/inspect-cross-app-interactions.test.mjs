@@ -166,6 +166,7 @@ test('AI刷新不能删除用户亲手写的备忘录和朋友圈评论',async()
   for(let i=0;i<7;i++)await Promise.resolve();
   assert.ok(u.read().sections.notes.notes.some(n=>n.title==='我写的不能丢'));
   assert.ok(u.read().sections.notes.notes.some(n=>n.title==='AI 新剧情更新'));
+  u.window.PhoneStorage.getApiConfig=()=>({});
   u.app('moments');u.detail('moment',0);
   u.submit('inspectMomentComment',{text:'这句话是我写给角色的评论'});
   const next=u.read(),generated=JSON.parse(JSON.stringify(next.sections.moments));
