@@ -75,7 +75,7 @@ test('group public roster excludes every private full persona while preserving I
   assert.match(roster,/管理员/);
   assert.doesNotMatch(roster,/在深圳拍胶片|热情的烘焙师/);
   assert.doesNotMatch(fragment,/getRoleById|\.persona|\.prompt/);
-  assert.match(html,/turnSpeakerPersona \|\| '该成员尚未填写具体人设/);
+  assert.match(html,/personaPolicy\.MINIMAL_PERSONA_PROMPT/);
   assert.match(html,/validateFinalApiMessages\(/);
 });
 
