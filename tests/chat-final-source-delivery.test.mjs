@@ -75,7 +75,8 @@ test('chat always verifies last assembled apiMessages before PhoneStream.chat an
   const send=detail.indexOf('streamResult = await PhoneStream.chat(',audit);
   assert.ok(audit>0&&send>audit,'final audit must precede transport');
   assert.match(detail.slice(audit,send),/messages: apiMessages/);
-  assert.match(detail.slice(audit,send),/if \(!finalPayloadAudit\.ok\)\s*\{/);
+  assert.match(detail.slice(audit,send),/if \(!finalPayloadAudit\.ok \|\| missingRegex\)\s*\{/);
+  assert.match(detail.slice(audit,send),/stopForMissingRoleSource\('final-source-audit'/);
   assert.match(detail.slice(audit,send),/return;/);
   assert.match(detail,/const rawSpeakerPersona = isGroupChat && groupReplyPick[\s\S]*?String\(relationshipRole/);
   assert.doesNotMatch(detail,/groupReplyPick\.persona \|\| groupReplyPick\.prompt/);
