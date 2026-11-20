@@ -89,6 +89,14 @@
         this[marker] = bindContext;
         return nativeOpen.apply(this, arguments);
       };
+      prototype.setRequestHeader = function (name, value) {
+        // Do not allow a stale tab or caller to append a second account ID.
+        // The server must receive exactly the page-bound identity context.
+        if (this[marker] && String(name).toLowerCase() === 'x-mao-account-context') {
+          return;
+        }
+        return nativeSetRequestHeader.apply(this, arguments);
+      };
       prototype.send = function () {
         if (this[marker]) {
           try {
