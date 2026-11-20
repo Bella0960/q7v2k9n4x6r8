@@ -217,7 +217,7 @@ test('user image shares require first-use privacy confirmation and pass only cur
 
 test('AI sees current-turn images and can only add an explicit avatar candidate after a successful reply', () => {
   assert.ok(chatDetailSource.includes('chat-image-vision.js?v=20261113v1'));
-  assert.match(chatDetailSource, /role-avatar-library\.js\?v=20261113v\d+/, 'chat loads a versioned role avatar library');
+  assert.match(chatDetailSource, /role-avatar-library\.js\?v=20261121avatar\d+/, 'chat loads a versioned role avatar library');
   assert.ok(chatDetailSource.indexOf('storage/media-repository.js') < chatDetailSource.indexOf('role-avatar-library.js'));
   assert.ok(chatDetailSource.includes('ChatImageVision.prepareHistory'));
   assert.ok(chatDetailSource.includes('visionImageMids'));
