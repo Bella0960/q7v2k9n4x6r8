@@ -125,13 +125,27 @@ try {
               fits: buttons.every(button => button.scrollWidth <= button.clientWidth + 1)
             };
           });
-          return { rows, blur: styles.backdropFilter, background: styles.backgroundColor, shadow: styles.boxShadow };
+          const primary = el.querySelector('.plus-primary-actions');
+          const primaryStyle = getComputedStyle(primary);
+          const buttons = [...primary.children];
+          const firstWidth = buttons[0].getBoundingClientRect().width;
+          return { rows, primary: {
+            display: primaryStyle.display, distribution: primaryStyle.justifyContent,
+            background: primaryStyle.backgroundColor, radius: parseFloat(primaryStyle.borderTopLeftRadius),
+            transparent: buttons.every(button => getComputedStyle(button).backgroundColor === 'rgba(0, 0, 0, 0)'),
+            iconSpacing: buttons.every(button => parseFloat(getComputedStyle(button).gap) >= 7),
+            equalWidths: buttons.every(button => Math.abs(button.getBoundingClientRect().width - firstWidth) <= 1)
+          }, blur: styles.backdropFilter, background: styles.backgroundColor, shadow: styles.boxShadow };
         });
         assert.deepEqual(layout.rows.map(row => row.labels), [
           ['相片', '位置', '红包', '转账', '语音通话'],
           ['礼物', '语音输入', '收藏', '群组工具', '更多']
         ]);
         assert.ok(layout.rows.every(row => row.oneLine && row.fits), 'both rows stay single line and unclipped');
+        assert.deepEqual(layout.primary, {
+          display: 'flex', distribution: 'space-around', background: 'rgb(245, 245, 247)',
+          radius: 14, transparent: true, iconSpacing: true, equalWidths: true
+        }, 'first row is one continuous rounded strip with transparent buttons');
         assert.equal(layout.blur, 'none');
         assert.equal(layout.shadow, 'none');
         assert.equal(layout.background, 'rgb(255, 255, 255)');
