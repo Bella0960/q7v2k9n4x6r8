@@ -2249,17 +2249,67 @@
     }
     return '';
   }
-  async function musicResolveAudioFormat(file) {
-    if (!file || typeof file.slice !== 'function' || !(file.size > 0))
-      return { ok: false, reason: 'empty' };
-    var signature;
-    try {
-      signature = musicAudioTypeFromSignature(
-        new Uint8Array(await file.slice(0, 256).arrayBuffer())
-      );
-    } catch (err) {
-      return { ok: false, reason: 'read', message: String(err && err.message || '') };
+  // Some Android SAF/cloud pickers report size: 0 even while the selected
+  // file can be read. Probe actual bytes, falling back to FileReader once.
+  // An inaccessible file must NOT be classified as a confirmed empty audio.
+  async function musicReadAudioBytes(source) {
+    var lastError = null, sawEmptyRead = false;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        var buffer;
+        if ((attempt === 0 || typeof FileReader !== 'function') &&
+            source && typeof source.arrayBuffer === 'function') {
+          buffer = await source.arrayBuffer();
+        } else if (typeof FileReader === 'function') {
+          buffer = await new Promise(function(resolve, reject) {
+            var reader = new FileReader();
+            reader.onload = function() { resolve(reader.result); };
+            reader.onerror = function() { reject(reader.error || new Error('音频读取失败')); };
+            reader.onabort = function() { reject(new Error('音频读取被中断')); };
+            reader.readAsArrayBuffer(source);
+          });
+        } else {
+          throw new Error('浏览器无法读取所选文件');
+        }
+        if (!(buffer instanceof ArrayBuffer)) throw new Error('无效的音频读取结果');
+        if (buffer.byteLength > 0) return { ok: true, bytes: new Uint8Array(buffer) };
+        sawEmptyRead = true;
+      } catch (err) {
+        lastError = err;
+      }
     }
+    return { ok: false, reason: lastError ? 'read' : sawEmptyRead ? 'empty' : 'read' };
+  }
+
+  async function musicResolveAudioFormat(file) {
+    if (!file) return { ok: false, reason: 'read' };
+    var reportedSize = Number(file.size);
+    var normalSize = Number.isFinite(reportedSize) && reportedSize > 0;
+    // Normal files: read just the header, never copy the entire song to RAM.
+    // Missing/zero size: read the original file once, despite its metadata.
+    var probe = file;
+    if (normalSize && typeof file.slice === 'function') {
+      try { probe = file.slice(0, 256); } catch (err) { probe = file; }
+    }
+    var read = await musicReadAudioBytes(probe);
+    var recoveredBlob = null;
+
+    // If a positive-size picker's header is unreadable, retry the original
+    // file rather than treating its empty slice as proof of empty content.
+    if (!read.ok && probe !== file) {
+      read = await musicReadAudioBytes(file);
+      if (!read.ok && read.reason === 'empty') read = { ok: false, reason: 'read' };
+    }
+    if (!read.ok) return { ok: false, reason: read.reason };
+
+    // For an inaccurate size, missing slice(), or failed header slice, only
+    // a Blob reconstructed from bytes actually read may be persisted.
+    if (probe === file || read.bytes.length > 256) {
+      recoveredBlob = new Blob([read.bytes], { type: String(file.type || '') });
+    } else if (!normalSize) {
+      recoveredBlob = new Blob([read.bytes], { type: String(file.type || '') });
+    }
+    var signature = musicAudioTypeFromSignature(read.bytes.subarray(0, 256));
     var mime = String(file.type || '').toLowerCase().split(';')[0].trim();
     var ext = String(file.name || '').match(/\.([^.]+)$/);
     ext = ext ? ext[1].toLowerCase() : '';
@@ -2277,8 +2327,10 @@
     };
     var pickedType = mime.indexOf('audio/') === 0 ? (aliases[mime] || mime) : '';
     var detected = signature || pickedType || byExtension[ext] || '';
-    return detected ? { ok: true, mimeType: detected, fromHeader: !!signature }
-      : { ok: false, reason: 'unsupported' };
+    if (!detected) return { ok: false, reason: 'unsupported' };
+    var result = { ok: true, mimeType: detected, fromHeader: !!signature };
+    if (recoveredBlob) result.sourceBlob = recoveredBlob;
+    return result;
   }
 
   document.getElementById('musicImport').addEventListener('change', async function(e) {
@@ -2290,8 +2342,8 @@
       var file = files[i];
       var resolvedFormat = await musicResolveAudioFormat(file);
       if (!resolvedFormat.ok) {
-        toast((resolvedFormat.reason === 'read' ? '无法读取音频文件：' :
-          resolvedFormat.reason === 'empty' ? '空音频文件无法导入：' :
+        toast((resolvedFormat.reason === 'read' ? '音频读取失败，请检查文件权限后重新选择：' :
+          resolvedFormat.reason === 'empty' ? '音频内容为空，请确认原文件后重新选择：' :
           '无法识别音频文件格式：') + (file.name || '未命名文件'));
         continue;
       }
@@ -2303,10 +2355,12 @@
         // 先保存二进制，后保存目录；目录失败时只清理由本次新建的 ID。
         // Normalize missing/misreported Android picker types before IndexedDB
         // persistence, so the restored Blob URL has a meaningful audio MIME.
-        var audioBlob = file.type === resolvedFormat.mimeType ? file :
-          new Blob([file], { type: resolvedFormat.mimeType });
+        var sourceBlob = resolvedFormat.sourceBlob || file;
+        var audioBlob = sourceBlob.type === resolvedFormat.mimeType ? sourceBlob :
+          new Blob([sourceBlob], { type: resolvedFormat.mimeType });
+        if (!(audioBlob.size > 0)) throw new Error('音频没有可保存的内容，请重新选择文件');
         await putAudioBlob({ id: tid, name: name, artist: track.artist,
-          mimeType: resolvedFormat.mimeType, size: file.size, blob: audioBlob });
+          mimeType: resolvedFormat.mimeType, size: audioBlob.size, blob: audioBlob });
         try {
           saveLocalTracksMeta(localMeta.concat([track]));
         } catch (err) {
