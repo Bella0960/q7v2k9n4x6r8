@@ -4,7 +4,8 @@ html,body{margin:0;min-height:100%;background:var(--soft);color:var(--ink);font-
 body{overflow-x:hidden}
 button,input,select{font:inherit}
 button{color:inherit}
-.luck-app{width:min(100%,520px);min-height:100vh;margin:0 auto;padding:calc(env(safe-area-inset-top) + 8px) 22px calc(env(safe-area-inset-bottom) + 28px);background:#fff;position:relative;overflow:hidden}
+.luck-app{width:min(100%,520px);height:100vh;height:100dvh;min-height:0;margin:0 auto;padding:calc(env(safe-area-inset-top) + 8px) 22px calc(env(safe-area-inset-bottom) + 28px);background:#fff;position:relative;overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;-ms-overflow-style:none}
+.luck-app::-webkit-scrollbar{display:none}
 .topbar{height:42px;display:flex;align-items:center;justify-content:space-between}
 .back-link{width:34px;height:34px;display:flex;align-items:center;justify-content:center;color:var(--ink);text-decoration:none}
 .back-link svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
@@ -151,7 +152,7 @@ button{color:inherit}
 .page-foot{text-align:center;font:italic 11px var(--serif);color:#aaa;padding:22px 0 0}
 .toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 22px);transform:translate(-50%,12px);background:#171717;color:#fff;border-radius:2px;padding:9px 14px;font-size:11px;opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;z-index:30;max-width:calc(100vw - 40px);text-align:center}
 .toast.show{opacity:1;transform:translate(-50%,0)}
-@media(min-width:600px){body{background:#e9e9eb}.luck-app{margin:18px auto;min-height:calc(100vh - 36px);box-shadow:0 12px 40px #0000000b}}
+@media(min-width:600px){body{background:#e9e9eb}.luck-app{margin:18px auto;height:calc(100vh - 36px);height:calc(100dvh - 36px);box-shadow:0 12px 40px #0000000b}}
 @media(max-width:370px){.luck-app{padding-left:16px;padding-right:16px}.panel-heading h2{font-size:24px}.panel-heading>p{font-size:9px}.play-tab{font-size:12px}.tarot-spread{gap:4px;margin-left:-9px;margin-right:-9px}.tarot-spread[data-count="3"] .tarot-crystal-card{max-width:100px}.tarot-card-name{font-size:10px}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 
