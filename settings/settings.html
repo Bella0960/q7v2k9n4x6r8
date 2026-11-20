@@ -19,6 +19,8 @@
     })();
     </script>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
+    <link rel="stylesheet" href="../shared/css/phone-api-monitor.css">
+    <script defer src="../shared/js/phone/phone_api_monitor.js?v=20261121monitor1"></script>
 </head>
 <body class="settings-home">
     <div class="phone-mockup">
@@ -208,6 +210,14 @@
                 <p style="font-size:11px;line-height:1.7;color:var(--aux,#888);margin:8px 0 0;">云端账号的可恢复备份尚需独立验收。本机导出成功，不代表云端账号已备份。</p>
             </section>
 
+            <div class="group-title" id="phone-api-monitor-setting-title">开发者选项</div>
+            <section class="card" aria-labelledby="phone-api-monitor-setting-title">
+                <label class="menu-row phone-api-monitor-setting">
+                    <span class="menu-title"><span class="t-cn">显示系统监控悬浮球</span></span>
+                    <input type="checkbox" role="switch" id="phone-api-monitor-toggle">
+                </label>
+                <div id="phone-api-monitor-setting-status" role="status"></div>
+            </section>
         </main>
 
         <!-- ========== API 设置弹窗 ========== -->
