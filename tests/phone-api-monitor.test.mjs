@@ -24,6 +24,7 @@ function runtime(fetch) {
     const context = { window, URL, AbortController, TextDecoder, fetch, setTimeout, clearTimeout, requestAnimationFrame: queueMicrotask };
     runInNewContext(monitorSource, context);
     runInNewContext(streamSource, context);
+    runInNewContext(read('shared/js/phone/phone_api.js'), context);
     return { window, entries };
 }
 
@@ -50,6 +51,17 @@ test('monitor counts before activation and records every fallback attempt withou
     assert.deepEqual(data.logs.map(log => log.code), ['OK', '503', 'OK']);
     assert.equal(data.logs[1].url, 'https://example.test/…/v1/chat/completions');
     assert.doesNotMatch(raw, /password|private-token|api-secret|secret persona|secret reply/);
+});
+
+test('shared non-stream completion collects usage before the ball is enabled', async () => {
+    const { window, entries } = runtime(async () => Response.json({
+        choices: [{ message: { content: 'hello' } }],
+        usage: { prompt_tokens: 8, completion_tokens: 2 }
+    }));
+    const result = await window.PhoneAPI.complete({ baseUrl: 'https://example.test', apiKey: 'fixture', messages: [] });
+    assert.equal(result, 'hello');
+    const data = JSON.parse(entries.get(ledgerKey));
+    assert.deepEqual([data.requests, data.input, data.output], [1, 8, 2]);
 });
 
 test('latest 50 entries, sanitized connection and timeout errors, and cumulative totals', () => {
