@@ -281,7 +281,10 @@ test('PWA shell and package contracts include the chat vision runtime', () => {
   assert.ok(currentCacheVersion >= 203, 'PWA app shell must not regress below feature minimum v203');
   assert.ok(serviceWorkerSource.includes('chat-image-vision.js?v=20261113v1'));
   assert.ok(serviceWorkerSource.includes('chat-context-policy.js?v=20261118historybudget1'));
-  assert.ok(serviceWorkerSource.includes('chat-extras.js?t=20261107imagevision1'));
+  const extrasVersion = chatDetailSource.match(/src="js\/(chat-extras\.js\?t=[^"]+)"/)?.[1];
+  assert.ok(extrasVersion, 'chat details load versioned extras');
+  assert.ok(serviceWorkerSource.includes("'./chat/chat/js/" + extrasVersion + "'"),
+    'PWA precaches the exact extras URL used by chat details');
   assert.ok(packageJson.scripts['test:chat:image-vision']);
   assert.ok(packageJson.scripts['test:chat:contract'].includes('tests/chat-image-vision.test.mjs'));
 });

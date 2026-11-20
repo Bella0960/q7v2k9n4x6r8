@@ -122,6 +122,7 @@ try {
       assert.equal(await entry.count(), 1, 'exactly one entry in existing plus menu');
       stage = 'opening + panel';
       await page.locator('#plus-action-btn').click();
+      await page.locator('[data-plus-section="more"]').click();
       await entry.click();
       stage = 'opening fanwai picker';
       const sheet = page.locator('#fanwaiLayer .fw-sheet');

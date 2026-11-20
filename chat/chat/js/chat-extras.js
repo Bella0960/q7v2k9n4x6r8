@@ -89,11 +89,25 @@
   const panelOverlay = document.getElementById('plusPanelOverlay');
   const plusBtn = document.getElementById('plus-action-btn');
 
+  const sectionButtons = panelOverlay ? panelOverlay.querySelectorAll('[data-plus-section]') : [];
+  function setPlusSection(name) {
+    sectionButtons.forEach(function (button) {
+      const selected = button.dataset.plusSection === name;
+      button.setAttribute('aria-expanded', String(selected));
+      document.getElementById(button.getAttribute('aria-controls')).hidden = !selected;
+    });
+  }
+
   function openPlusPanel() {
-    if (panelOverlay) panelOverlay.classList.add('active');
+    if (!panelOverlay) return;
+    panelOverlay.classList.add('active');
+    if (plusBtn) plusBtn.setAttribute('aria-expanded', 'true');
   }
   function closePlusPanel() {
-    if (panelOverlay) panelOverlay.classList.remove('active');
+    if (!panelOverlay) return;
+    panelOverlay.classList.remove('active');
+    if (plusBtn) plusBtn.setAttribute('aria-expanded', 'false');
+    setPlusSection('');
   }
   function togglePlusPanel() {
     if (panelOverlay && panelOverlay.classList.contains('active')) closePlusPanel();
@@ -104,13 +118,29 @@
 
   if (plusBtn) plusBtn.addEventListener('click', togglePlusPanel);
   if (panelOverlay) {
-    document.getElementById('plusPanelBackdrop').addEventListener('click', closePlusPanel);
-    panelOverlay.querySelectorAll('.plus-item').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        const feat = btn.getAttribute('data-feat');
-        closePlusPanel();
-        handleFeature(feat);
+    sectionButtons.forEach(function (button) {
+      button.addEventListener('click', function () {
+        setPlusSection(button.getAttribute('aria-expanded') === 'true' ? '' : button.dataset.plusSection);
       });
+    });
+    panelOverlay.querySelectorAll('.plus-item[data-feat]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        closePlusPanel();
+        handleFeature(btn.dataset.feat);
+      });
+    });
+    document.addEventListener('click', function (event) {
+      if (panelOverlay.classList.contains('active') &&
+          !panelOverlay.contains(event.target) && !event.target.closest('#chat-form')) {
+        closePlusPanel();
+      }
+    });
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape' && panelOverlay.classList.contains('active')) {
+        const restoreFocus = panelOverlay.contains(document.activeElement);
+        closePlusPanel();
+        if (restoreFocus && plusBtn) plusBtn.focus();
+      }
     });
   }
 
@@ -820,9 +850,17 @@
       case 'date': featDate(); break;
       case 'gift': featGift(); break;
       case 'narration': featureAside(); break;
+      case 'favorites':
       case 'sticker':
         var stickerBtn = document.getElementById('stickerOpenBtn');
-        if (stickerBtn) stickerBtn.click();
+        if (stickerBtn) {
+          if (feat === 'favorites') stickerBtn.dataset.stickerView = 'role';
+          try {
+            stickerBtn.click();
+          } finally {
+            delete stickerBtn.dataset.stickerView;
+          }
+        }
         break;
     }
   }

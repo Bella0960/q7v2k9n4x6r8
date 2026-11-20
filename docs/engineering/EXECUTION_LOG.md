@@ -571,3 +571,8 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - From QA `3cf0aac74bcc667639bd7dcf51c1cec66a9a248b`: PhoneStream previously sent one request per invocation and forwarded raw capacity errors. Manual retry re-enters the same source assembly and preflight, so the reported screenshot alone does not establish a missing System message.
 - Same-endpoint fallback snapshots the validated messages, only swaps the model, and refuses fallback without a character System message or after primary output. Exhausted capacity shows a short toast. No schema migration. Revert this task's commits to roll back.
 - Local targeted Node capacity suite: 5/5. Full isolated QA gates and mobile deployment pending.
+
+## 2026-11-20｜CHAT-UI-001｜聊天底部功能面板
+
+- 底部面板采用五个常用功能和五个胶囊入口，群组工具与更多按需展开。使用现有交互处理器、角色表情收藏和语音消息编辑器。面板在输入栏下方占据布局空间。
+- 更新现有 Chromium 几何、交互和番外路径测试，并同步 PWA 资源版本。通过公共隔离通道运行完整 QA 门禁。
