@@ -169,19 +169,18 @@ test('human characters do not learn an incorrect old AI identity but digital cha
 
 test('online and offline group chats have non-contradictory style guidance for one speaker', () => {
   const start=detail.indexOf('            const replyBubbleMode = getActiveReplyBubbleMode();');
-  const end=detail.indexOf('            if (!systemPrompt.includes(',start);
+  const end=detail.indexOf('            // 当前单聊的邂逅职业',start);
   assert.ok(start>=0&&end>start);
   const f=new Function('isGroupChat','currentGroup','getActiveReplyBubbleMode',
-    detail.slice(start,end)+'\nreturn {SPEAK_STYLE,isGroupOfflineMode};');
+    detail.slice(start,end)+'\nreturn {outputFormat,isGroupOfflineMode};');
   const online=f(true,{settings:{chatMode:'online'}},()=>'multi');
   const offline=f(true,{settings:{chatMode:'offline'}},()=>'multi');
   assert.equal(online.isGroupOfflineMode,false);
   assert.equal(offline.isGroupOfflineMode,true);
-  assert.match(online.SPEAK_STYLE,/角色自己的语气发日常聊天消息/);
-  assert.doesNotMatch(offline.SPEAK_STYLE,/线上文字聊天|日常聊天消息|微信短句格式。\\n.*必须/);
-  assert.match(offline.SPEAK_STYLE,/群聊线下场景/);
+  assert.match(online.outputFormat,/2–5 条消息，每条以换行分隔/);
+  assert.doesNotMatch(offline.outputFormat,/2–5 条消息|换行分隔/);
+  assert.match(detail,/【群聊模式：线下共同场景】/);
   assert.match(detail,/if \(!isGroupChat && activeChatModeForPrompt === 'narration'\)/);
-  assert.match(detail,/if \(!isGroupOfflineMode\) \{\s*systemPrompt \+= '\\n\\n\[叙事总规范\]/);
 });
 
 
