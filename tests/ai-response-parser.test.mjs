@@ -92,3 +92,70 @@ test('chatText does not turn malformed provider output or unrelated object into 
         assert.equal(parser.chatText(raw), raw);
     }
 });
+
+
+test('all relevant PhoneAPI page imports load the shared adapter before phone_api.js', () => {
+    const pages = [
+        'chat/chat/chat-detail.html', 'chat/moments/moments.html',
+        'chat/footprint/footprint.html', 'chat/shake/shake.html',
+        'games/cooking.html', 'cafe/cafe.html', 'wallet/finance.html',
+        'forum/forum.html', 'forum/forum-detail.html', 'diary/diary.html',
+        'games/games.html', 'library/library.html',
+        'settings/image-generation.html', 'inspect-phone/phone.html',
+        'envelope/envelope.html'
+    ];
+    for (const path of pages) {
+        const page = readFileSync(new URL('../' + path, import.meta.url), 'utf8');
+        const shared = page.indexOf('ai-response-parser.js?v=20261120parser1');
+        const api = page.indexOf('phone_api.js');
+        assert.ok(shared >= 0 && api > shared, path + ' must load the shared adapter first');
+    }
+});
+
+test('model reply paths share one adapter without migrating stored history', () => {
+    const chat = readFileSync(new URL('../chat/chat/chat-detail.html', import.meta.url), 'utf8');
+    const date = readFileSync(new URL('../chat/date/date.html', import.meta.url), 'utf8');
+    const journey = readFileSync(new URL('../chat/date/journey.html', import.meta.url), 'utf8');
+    const api = readFileSync(new URL('../shared/js/phone/phone_api.js', import.meta.url), 'utf8');
+    const notifier = readFileSync(new URL('../shared/js/chat-notifier.js', import.meta.url), 'utf8');
+    assert.match(chat, /fullText = window\.AIResponseParser\.chatText\(fullText\)/);
+    assert.match(date, /window\.AIResponseParser\.replyOptions\(rawText, expectedStyles\)/);
+    assert.match(journey, /window\.AIResponseParser\.parseJSON\(raw,/);
+    assert.match(api, /global\.AIResponseParser\.parseJSON\(raw\)/);
+    assert.match(notifier, /ai-response-parser\.js\?v=20261120parser1/);
+    assert.match(chat, /parseReplyContent\(raw, 'legacy'\)/);
+    assert.match(chat, /sendMsg\(\{ isRegenerate: true/);
+    assert.match(chat, /removeTurnFromHistory\(historyList, regenTargetId\)/);
+});
+
+test('PhoneAPI.completeJSON uses the shared parser but does not accept prose as business data', async () => {
+    const code = readFileSync(new URL('../shared/js/phone/phone_api.js', import.meta.url), 'utf8');
+    let responseText = '说明如下：{"items":[{"id":1}]} 多余文字';
+    const fake = {
+        AIResponseParser: parser,
+        PhoneStorage: {
+            getApiConfig() { return { apiKey: 'synthetic-only', baseUrl: 'https://example.invalid/v1', model: 'test' }; },
+            pushApiLog() {}
+        }
+    };
+    const ctx = {
+        window: fake,
+        AbortController,
+        setTimeout,
+        clearTimeout,
+        URL,
+        console,
+        fetch: async () => ({
+            ok: true,
+            json: async () => ({ choices: [{ message: { content: responseText } }] })
+        })
+    };
+    runInNewContext(code, ctx);
+    const good = await fake.PhoneAPI.completeJSON({ user: 'synthetic example' });
+    assert.equal(good.ok, true);
+    assert.equal(good.data.items[0].id, 1);
+    responseText = 'this is just text';
+    const bad = await fake.PhoneAPI.completeJSON({ user: 'synthetic example' });
+    assert.equal(bad.ok, false);
+    assert.equal(bad.data, null);
+});
