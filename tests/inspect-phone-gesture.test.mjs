@@ -393,13 +393,14 @@ async function main() {
         requests.push(prompt);
         assert(body.model === 'active-model' && route.request().headers().authorization === 'Bearer fixture-key', '请求使用激活方案而非旧镜像');
         assert(prompt.length < 950 && !prompt.includes('禁止发送的旧历史'), '生成请求不夹带旧历史');
+        assert(body.messages[0].content.includes('contacts[0]'), '系统提示强制首条用户单聊');
         const painter=prompt.includes('水彩展');
         const title=painter?'买颜料':'准备预算会议';
         const data={
-          chat:{contacts:['小祝','小郑','筹备群'].map((name,i)=>({
+          chat:{contacts:[...['小祝','筹备群'].map((name,i)=>({
             name:(painter?'画室·':'公司·')+name,relationship:i===2?'工作群':'同事',
-            messages:[0,1,2].map(j=>({side:j%2?'me':'ai',text:title+' '+j}))
-          }))},
+            messages:[{side:'ai',text:title+' 0',time:new Date().toISOString()}]
+          })),{id:'user',name:'我',messages:[{side:'me',text:'晚点见。'}]}]},
           moments:{moments:[0,1,2].map(i=>({text:title+'的近况 '+i,image:'工作台',comments:[{name:'小祝',text:'期待'}]}))},
           notes:{notes:[0,1,2].map(i=>({title:title+' '+i,text:title}))}
         };
@@ -439,6 +440,7 @@ async function main() {
       await page.locator('.dock [data-app="chat"]').tap();
       await page.locator('.nv-contact').first().waitFor();
       assert((await page.locator('.nv-chat-list').innerText()).includes('买颜料'), '画师聊天按本人档案生成');
+      assert((await page.locator('.nv-contact strong').first().textContent())==='我','用户单聊固定首位');
       const aligned = await page.locator('.nv-tabbar').evaluate(bar => {
         const icons = [...bar.querySelectorAll('.nv-tab-icon')].map(icon => {
           const rect = icon.getBoundingClientRect();
@@ -450,7 +452,7 @@ async function main() {
       });
       assert(aligned, width + 'px 微信四个图标均匀且水平对齐');
       await page.locator('.nv-contact').first().tap();
-      await page.locator('#appHome').tap({ position: { x: 22, y: 22 } });
+      await page.locator('#appHome').tap({ position: { x: 3, y: 22 } });
       assert(await page.locator('#appHome').isHidden(), '微信聊天详情可直返桌面');
       await page.locator('.grid [data-app="notes"]').tap();
       await page.locator('[data-detail="note"]').first().tap();

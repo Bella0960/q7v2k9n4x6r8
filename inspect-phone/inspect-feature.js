@@ -681,7 +681,7 @@
       appLayer.classList.remove('open');current='';view=null;pinView='';notice='';
       if(home)home.hidden=true;
     }
-    function preparePersonalApps(openedApp){
+    function preparePersonalApps(){
       if(personalPending)return personalPending;
       if(!PERSONAL_APPS.some(function(id){return data.source[id]!=='ai';}))return;
       var api=global.PhoneAPI;
@@ -692,7 +692,7 @@
         var guardScope=accountGuard&&JSON.stringify(accountGuard.state());
         var started=Date.now(),cached=read(roleId,new Date(started));
         adoptPersonalCache(cached,false);
-        var ids=(openedApp==='chat'?['chat']:PERSONAL_APPS.filter(function(id){return id!=='chat';})).filter(function(id){return data.source[id]!=='ai';});
+        var ids=PERSONAL_APPS.filter(function(id){return data.source[id]!=='ai';});
         if(!ids.length)return;
         var responseInfo=null,requestInfo=null;
         var result;
@@ -723,8 +723,8 @@
           generatedSections[id]=section;
           return !valid(id,section,started,data.facts,true);
         });
-        if(rejected.length){
-          inspectDiagnostic({stage:'schema',rejected:rejected});
+        if(rejected.length)inspectDiagnostic({stage:'schema',rejected:rejected});
+        if(rejected.length===ids.length){
           throw new Error('模型返回的'+ITEMS.filter(function(item){return rejected.includes(item.id);})
             .map(function(item){return item.name;}).join('、')+'记录缺少必要字段，可以重试。');
         }
@@ -732,7 +732,7 @@
         var next=Object.assign({},latest,{sections:Object.assign({},latest.sections),
           source:Object.assign({},latest.source),updatedAt:Date.now()});
         ids.forEach(function(id){
-          if(next.source[id]==='ai')return;
+          if(next.source[id]==='ai'||rejected.includes(id))return;
           var previous=next.sections[id];
           var generated=generatedSections[id];
           if(id==='chat')generated=ensurePlayerChat(generated,previous,role,roleId,started);
@@ -782,7 +782,7 @@
         '<p class="inspect-muted">之后角色会更谨慎。请尊重其决定。</p>'+button('结束查看','stop','primary'));return;}
       if(!current)return;
       var body='',section=data.sections[current]||{};
-      if(PERSONAL_APPS.indexOf(current)>=0&&data.source[current]!=='ai'&&(personalPending||personalError)&&!view&&current!=='chat'){
+      if(PERSONAL_APPS.indexOf(current)>=0&&data.source[current]!=='ai'&&(personalPending||(personalError&&current!=='chat'))&&!view){
         open((ITEMS.find(function(item){return item.id===current;})||{}).name||'角色手机',
           '<p class="inspect-muted" role="status">'+html(personalPending?'正在根据角色档案生成手机记录…':personalError)+'</p>'+
           (personalPending?'':button('重试生成','retryPersonal','primary')));
@@ -1388,7 +1388,7 @@
       if(!permission){requestScreen();return;}
       if(selected.indexOf(b.dataset.app)<0){chooseScreen();return;}
       current=b.dataset.app;view=null;notice='';switches++;
-      if(PERSONAL_APPS.includes(current)&&(!personalError||current==='chat'))preparePersonalApps(current);
+      if(PERSONAL_APPS.includes(current)&&(!personalError||current==='chat'))preparePersonalApps();
       render();
     });});
     var reload=document.getElementById('appReload');
@@ -1478,7 +1478,7 @@
           var nextApp=kind.slice(7);
           if(!permission||selected.indexOf(nextApp)<0){chooseScreen();return;}
           current=nextApp;view=null;notice='';
-          if(PERSONAL_APPS.includes(current)&&!personalError)preparePersonalApps(current);
+          if(PERSONAL_APPS.includes(current)&&!personalError)preparePersonalApps();
           render();return;
         }
         if(current==='browser'&&/^browser-/.test(kind)){
@@ -1506,11 +1506,11 @@
         }
         notice='';chooseScreen();return;
       }
-      if(a==='retryPersonal'){preparePersonalApps(current);render();return;}
+      if(a==='retryPersonal'){preparePersonalApps();render();return;}
       if(a==='start'){
         if(!selected.length){hint('请至少选择一个板块。');return;}
         if(!commit()){chooseScreen();return;}
-        close();return;
+        close();preparePersonalApps();return;
       }
       if(a==='all'){
         var beforeSelected=selected.slice();
