@@ -3,6 +3,7 @@
 
     const enabledKey = 'phone_api_monitor_enabled_v1';
     const ledgerKey = 'phone_api_monitor_ledger_v1';
+    const positionKey = 'phone_api_monitor_position_v1';
     const number = value => Number.isSafeInteger(value) && value >= 0 ? value : 0;
     const validCount = value => Number.isSafeInteger(value) && value >= 0;
     let updatePanel;
@@ -17,6 +18,7 @@
         try { data = JSON.parse(window.localStorage.getItem(ledgerKey)); }
         catch { /* Storage may be unavailable. */ }
         return {
+            generation: typeof data?.generation === 'string' ? data.generation : '',
             input: number(data?.input),
             output: number(data?.output),
             requests: number(data?.requests),
@@ -52,10 +54,24 @@
         }, 0);
     }
 
-    function record(url, messages, output, error, usage) {
-        if (!enabled()) return;
+    function persist(data) {
+        window.localStorage.setItem(ledgerKey, JSON.stringify(data));
+        updatePanel?.();
+    }
+
+    function begin(url) {
         const data = snapshot();
+        const id = window.crypto?.randomUUID?.() || Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
         data.requests++;
+        data.logs = [...data.logs, { id, time: Date.now(), code: '请求中', url: endpoint(url), error: false }].slice(-50);
+        persist(data);
+        return { id, generation: data.generation };
+    }
+
+    function complete(request, messages, output, error, usage) {
+        const data = snapshot();
+        if (request.generation !== data.generation) return;
+        const log = data.logs.find(entry => entry?.id === request.id);
         let code = 'OK';
         if (error) {
             if (error.kind === 'http' && Number.isInteger(error.status) && error.status > 0) {
@@ -73,12 +89,14 @@
             data.output += validCount(completed) ? completed : estimate(output);
             data.estimated ||= !validCount(input) || !validCount(completed);
         }
-        data.logs = [...data.logs, { time: Date.now(), code, url: endpoint(url), error: Boolean(error) }].slice(-50);
-        window.localStorage.setItem(ledgerKey, JSON.stringify(data));
-        updatePanel?.();
+        if (log) {
+            log.code = code;
+            log.error = Boolean(error);
+        }
+        persist(data);
     }
 
-    window.PhoneApiMonitor = { enabled, record };
+    window.PhoneApiMonitor = { begin, complete };
 
     function mount() {
         const doc = window.document;
@@ -140,6 +158,7 @@
             if (toggle) toggle.checked = on;
             ball.hidden = !on;
             if (!on && panel.open) panel.close();
+            if (on && !ball.style.left) restorePosition();
             updatePanel();
         }
 
@@ -157,6 +176,14 @@
 
         let drag;
         let moved = false;
+        function restorePosition() {
+            try {
+                const position = JSON.parse(window.localStorage.getItem(positionKey));
+                if (Number.isFinite(position?.left) && Number.isFinite(position?.top)) {
+                    place(position.left, position.top);
+                }
+            } catch { /* Use the default edge position. */ }
+        }
         function place(left, top) {
             const margin = 6;
             ball.style.left = Math.max(margin, Math.min(left, window.innerWidth - ball.offsetWidth - margin)) + 'px';
@@ -175,6 +202,13 @@
             const dy = event.clientY - drag.y;
             moved ||= Math.hypot(dx, dy) > 6;
             if (moved) place(drag.left + dx, drag.top + dy);
+        });
+        ball.addEventListener('pointerup', event => {
+            if (drag?.id !== event.pointerId || !moved) return;
+            const rect = ball.getBoundingClientRect();
+            try {
+                window.localStorage.setItem(positionKey, JSON.stringify({ left: rect.left, top: rect.top }));
+            } catch { /* Keep the current position on this page. */ }
         });
         for (const type of ['lostpointercapture', 'pointercancel', 'pointerup']) {
             ball.addEventListener(type, event => { if (drag?.id === event.pointerId) drag = undefined; });
@@ -201,7 +235,7 @@
         });
         clear.addEventListener('click', () => {
             try {
-                window.localStorage.removeItem(ledgerKey);
+                persist({ generation: Date.now().toString(36) + '-' + Math.random().toString(36).slice(2) });
                 status.textContent = '日志和统计已清空';
                 updatePanel();
             } catch { status.textContent = '清空失败，请重试'; }
