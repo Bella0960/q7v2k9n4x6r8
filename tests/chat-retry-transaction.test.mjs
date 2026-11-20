@@ -111,7 +111,7 @@ test('wallet, memory, calls and group actions require complete saved replies',()
   assert.match(page,/if \(streamResult\.ok && replySaved && parsedPay\.items\.length\)/);
   assert.match(page,/if \(streamResult\.ok && replySaved && parsedCall\.wantCall\)/);
   assert.match(page,/if \(streamResult\.ok && replySaved && parsedRoleFamilyCard\.cards\.length\)/);
-  assert.match(page,/if \(streamResult\.ok && replySaved && parsedHeart\.hearts\.length\)/);
+  assert.match(page,/if \(!isGroupChat && streamResult\.ok && replySaved && parsedHeart\.hearts\.length\)/);
   assert.match(page,/if \(streamResult\.ok && replySaved && parsedImg\.images\.length\)/);
   assert.match(page,/groupTurnEffects\.finalize\(replySaved && streamResult\.ok\)/);
 });
