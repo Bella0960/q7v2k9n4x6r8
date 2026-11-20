@@ -55,7 +55,7 @@ test('chat binds the saved role name literally and puts the identity rules befor
   const expand = detail.match(/function applyProtocolVars\(text\) \{[\s\S]*?\n {12}\}/)[0];
   const identity = detail.match(/const roleIdentityHead = \[[\s\S]*?systemPrompt = roleIdentityHead \+ '\\n\\n' \+ systemPrompt;/)[0];
   const scope = {
-    turnSpeakerName: '测试一号 test('all actual inline {{user}}', userName: '用户',
+    turnSpeakerName: '测试一号 $& {{user}}', userName: '用户',
     turnSpeakerPersona: '{{memory}}', roleMemory: '旧回复自称阿晴',
     worldbookText: '', nameSeal: '空白档案姓名约束', globalIdentitySeal: '全局身份约束'
   };
@@ -65,7 +65,7 @@ test('chat binds the saved role name literally and puts the identity rules befor
   assert.ok(prompt.startsWith('【角色扮演最高优先级】'));
   assert.match(prompt, /不要自称 AI/);
   assert.match(prompt, /没有对应设定就自然略过/);
-  assert.ok(prompt.includes('正则\n测试一号 test('all actual inline {{user}} / 用户 / {{memory}} / 旧回复自称阿晴'));
+  assert.ok(prompt.includes('正则\n测试一号 $& {{user}} / 用户 / {{memory}} / 旧回复自称阿晴'));
   assert.ok(detail.indexOf(identity) < detail.indexOf('const apiMessages = ['));
 });
 test('chat gives both response headers and stream inactivity a 60 second budget', () => {
