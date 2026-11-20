@@ -46,11 +46,11 @@ try {
                 return rect.top + rect.height / 2;
             };
             return {
-                searchHeight: search.getBoundingClientRect().height,
+                searchHeight: Math.round(search.getBoundingClientRect().height),
                 searchFont: getComputedStyle(search.querySelector('input')).fontSize,
                 alignment: Math.abs(center(bookmark) - center(remove)),
                 actionFonts: [getComputedStyle(bookmark).fontSize, getComputedStyle(remove).fontSize],
-                gap: second.getBoundingClientRect().top - first.getBoundingClientRect().bottom,
+                gap: Math.round(second.getBoundingClientRect().top - first.getBoundingClientRect().bottom),
                 leftBorders: [first, document.querySelector('.memory-latest-card')].map(card => getComputedStyle(card).borderLeftWidth),
                 bodyFont: getComputedStyle(first.querySelector('.memory-archive-text')).fontSize,
                 timeColor: getComputedStyle(first.querySelector('.memory-archive-time')).color
