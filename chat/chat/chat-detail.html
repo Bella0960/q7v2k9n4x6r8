@@ -3756,7 +3756,8 @@
         // 已存内容按原文分段渲染：回复模式只影响新生成/落库，不重排或截断历史气泡。
         function parseReplyContent(raw) {
             if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.parseReplyContent === 'function') {
-                return window.ChatMessagePolicy.parseReplyContent(raw, isGroupChat ? 'single' : 'legacy');
+                return isGroupChat ? window.ChatMessagePolicy.parseReplyContent(raw, 'single')
+                    : window.ChatMessagePolicy.parseReplyContent(raw, 'legacy');
             }
             // Compatibility fallback: preserve the original parser if the shared module is unavailable.
             var text = stripInternalReasoning(raw);
