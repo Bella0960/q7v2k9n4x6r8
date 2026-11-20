@@ -52,10 +52,11 @@ function installImport(ports) {
   const doc={getElementById(id){assert.equal(id,'musicImport');return input;}};
   new Function('document','musicResolveAudioFormat','readLocalTracksMeta','musicMetaReadFailure',
     'toast','putAudioBlob','saveLocalTracksMeta','deleteAudioBlob','tracks',
-    'renderAlbum','renderRecent','renderSearch','playTrack','Blob',
+    'renderAlbum','renderRecent','renderSearch','playTrack','Blob','window',
     html.slice(listenerStart, listenerEnd)
-  )(doc,detect,ports.readMeta,false,ports.toast,ports.putBlob,ports.saveMeta,ports.deleteBlob,
-    ports.tracks,()=>{},()=>{},()=>{},ports.play,Blob);
+  )(doc,ports.detect || detect,ports.readMeta,false,ports.toast,ports.putBlob,ports.saveMeta,ports.deleteBlob,
+    ports.tracks,()=>{},()=>{},()=>{},ports.play,Blob,
+    { alert: ports.alert || ports.toast });
   return handler;
 }
 
@@ -209,7 +210,7 @@ test('genuine empty file and unreadable file have distinct errors and do not ove
   assert.deepEqual(stored,[old]);
   assert.deepEqual(trackList,[old]);
   assert.ok(notices.some(s=>s.includes('音频内容为空')));
-  assert.ok(notices.some(s=>s.includes('音频读取失败')));
+  assert.ok(notices.some(s=>s.includes('可能受手机系统保护')));
 });
 
 test('positive-size picker with unreadable slice recovers original bytes, never saves the empty slice', async () => {
@@ -231,4 +232,78 @@ test('positive-size picker with unreadable slice recovers original bytes, never 
   assert.deepEqual(Array.from(new Uint8Array(await savedRecord.blob.arrayBuffer())),mp3);
   assert.equal(catalog.length,1);
   assert.deepEqual(warnings,[]);
+});
+
+
+test('protected Android file prompts once and continues to next readable MP3 in same selection', async () => {
+  const notices = [], saved = [], played = [], records = [];
+  const original = { id:'local_prior', source:'local', name:'之前的歌曲' };
+  let meta = [original];
+  const listener = installImport({
+    tracks: [original],
+    readMeta: () => meta.slice(),
+    saveMeta: next => { meta = next.slice(); },
+    putBlob: async data => { records.push(data); },
+    deleteBlob: async () => { throw Error('Never delete existing files'); },
+    play: async id => { played.push(id); },
+    toast: message => { notices.push('toast:' + message); },
+    alert: message => { notices.push('alert:' + message); }
+  });
+  const denied = {
+    name: '1000133976', size: 0, type: '',
+    async arrayBuffer() { throw Error('NotReadableError: Permission denied'); }
+  };
+  const picker = {
+    value:'selected',
+    files:[denied, denied, selectedFile(mp3,'downloaded.mp3','audio/mpeg')]
+  };
+  await listener({target:picker});
+  assert.equal(picker.value,'', 'picker must be reset for a future selection');
+  assert.equal(notices.length, 1, 'one friendly prompt for the blocked files');
+  assert.match(notices[0], /^alert:当前音频文件可能受手机系统保护/);
+  assert.match(notices[0], /下载/);
+  assert.doesNotMatch(notices[0], /NotReadableError|1000133976|Permission denied/);
+  assert.equal(records.length, 1, 'the following accessible file must import');
+  assert.equal(meta.length, 2);
+  assert.equal(meta[0].id, original.id, 'existing music cannot be discarded');
+  assert.equal(meta[1].name, 'downloaded');
+  assert.equal(played.length, 1);
+});
+
+test('unexpected picker read rejection is handled and does not block another selection', async () => {
+  const notices = [], played = [];
+  let meta = [];
+  const listener = installImport({
+    readMeta: () => meta.slice(), tracks:[],
+    saveMeta: next => { meta = next.slice(); },
+    putBlob: async () => {},
+    deleteBlob: async () => {},
+    play: async id => { played.push(id); },
+    toast: message => { notices.push(message); },
+    alert: message => { notices.push(message); },
+    detect: async file => {
+      if (file.name === 'unavailable') throw Error('Android file provider internal exception');
+      return detect(file);
+    }
+  });
+  await listener({target:{files:[{ name:'unavailable' }],value:'selected'}});
+  assert.equal(meta.length,0);
+  assert.equal(notices.length,1);
+  await listener({target:{files:[selectedFile(mp3,'second.mp3','audio/mpeg')],value:'selected'}});
+  assert.equal(meta.length,1);
+  assert.equal(meta[0].name,'second');
+  assert.equal(played.length,1);
+});
+
+test('a file provider that never resolves eventually exits the read state', async () => {
+  const api = new Function(html.slice(detectorStart, detectorEnd) +
+    '\nreturn musicReadAudioBytes;')();
+  const stuck = {
+    async arrayBuffer() { return new Promise(() => {}); }
+  };
+  const started = Date.now();
+  const result = await api(stuck, 20);
+  assert.equal(result.ok,false);
+  assert.equal(result.reason,'read');
+  assert.ok(Date.now() - started < 1500, 'bounded retries must not hang');
 });

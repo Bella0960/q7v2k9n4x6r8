@@ -440,3 +440,11 @@ Only after these reports are reviewed should implementation tasks be assigned.
 - Preserve original file-name support, 256-byte header detection for normal tracks, MP3/M4A/WAV signature rules, IndexedDB-first catalog commit, old playlist data, music UI and backup format.
 - Recover a nonempty Blob from actual bytes when picker metadata or sliced bytes are unreliable; verify Blob size before persistence; do not overwrite existing tracks when checks fail.
 - Acceptance: focused Node suites, production build/Chromium, Android SAF/cloud-picker and iPhone Files device checks, original QA-only pipeline. No deployment or merging before review.
+
+### MUSIC-IMPORT-004 — Android 受保护文件读取失败友好提示
+
+**优先级：** P1 · **状态：** 独立任务分支，专项回归通过，完整 QA/手机验收待执行（2026-11-20）。
+
+- 仅调整 `music/music.html` 文件导入中的读取失败处理：首次读取、FileReader 重试均失败时提供可理解的本地「下载」文件夹迁移建议，禁止在提醒中暴露异常对象、文件系统路径或内部错误码。
+- 文件读取超时必须有界（每次最长 10 秒），批量选择中的受保护文件失败不能阻塞后续可读取文件；同一批选择只弹出一次提醒；重选文件输入控件可再次打开。
+- 原音乐库、索引、Blob、曲目 ID、播放与导入事务保持不变，不更改权限或读写其他系统受保护目录。

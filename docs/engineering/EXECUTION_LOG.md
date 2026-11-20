@@ -511,3 +511,9 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - Android 文件名可能是纯数字且 `size:0` 或缺失；旧版直接返回 `reason: empty`。新增实际字节探测与受限重试（`arrayBuffer` / `FileReader`），并区分空数据与读取错误。正常正数大小保持仅抽取 256 字节文件头。异常选择器以实际读取内容重建 Blob，用真实大小存入既有 IndexedDB；持久化前拒绝空 Blob，原目录与旧曲目不被改写。
 - 测试：原 `tests/music-extensionless-import.test.mjs` 扩展实际零字节误报、FileReader 恢复、重试、空文件、权限错误、数字文件名、存储回滚；连同 `tests/music-data-integrity.test.mjs` 在封闭公共隔离执行器通过：[运行 #44708572456](https://github.com/Bella0960/web-runtime-lab/actions/runs/44708572456) PASS（固定功能代码 `867ce2e3946542f5adcca3a83f6a131b5d259411`）。
 - 当前仅为**独立任务代码和专项 Node 回归通过**；完整 Node/Vite/Chromium、真实 Android/iPhone 文件选择器与 QA-only 版本发布均**未验收**。禁止将此状态称作手机已修复；下一步审核 PR 并按原完整门禁后方可合入 QA 和部署。
+
+## 2026-11-20｜MUSIC-IMPORT-004｜安卓受保护文件容错提示
+
+- 手机真实问题：`SettingsClipRings` 一类可能受系统保护的文件来源出现 `音频读取失败：1000133976`。仅以用户描述推测 Scoped Storage，不能仅凭文件名绝对证明权限拒绝。
+- 基于唯一 QA #299 `b9558fb349776ba338d222b868877410d1289e6f` 创建独立分支 `task/MUSIC-IMPORT-004-protected-file-notice-20261120`。仅修改 `music/music.html` 的文件探测读取超时、读取异常后提醒与批量跳过；已有 `tests/music-extensionless-import.test.mjs` 新增异常抛出、连续文件、受保护文件重复提示去重、悬而未决的读取超时的测试；不改音乐库数据存储、聊天、UI 主题、账号、Worker 或正式版。
+- 受保护文件读取拒绝会显示不带技术错误码的友好提示，建议复制/移动到普通手机本地存储「下载」目录，允许重新选文件；再次尝试不修改旧歌曲。受限公共测试运行 [#44711875620](https://github.com/Bella0960/web-runtime-lab/actions/runs/44711875620) **专项 PASS**；完整 Node/Vite/Chromium、QA-only 正式发布与真机「下载」MP3 测试仍以稍后真实记录为准。
