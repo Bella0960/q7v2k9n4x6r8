@@ -258,7 +258,8 @@ test('confirmed session expiry, disabled account and identity switch still redir
   const scenarios = [
     { status: 401, code: 'LOGIN_REQUIRED', expected: '/account/index.html' },
     { status: 403, code: 'ACCOUNT_DISABLED', expected: '/account/index.html?disabled=1' },
-    { status: 403, code: 'IDENTITY_AUTHORITY_CHANGED', expected: '/account/index.html?switched=1' }
+    { status: 403, code: 'IDENTITY_AUTHORITY_CHANGED', expected: '/account/index.html?switched=1' },
+    { status: 409, code: 'ACCOUNT_CONTEXT_CHANGED', expected: '/account/index.html?switched=1' }
   ];
   for (const scenario of scenarios) {
     const a = createScope({
@@ -271,6 +272,79 @@ test('confirmed session expiry, disabled account and identity switch still redir
     await new Promise(resolve => setTimeout(resolve, 0));
     assert.equal(a.window.redirectedTo, scenario.expected, scenario.code);
   }
+});
+
+test('409 with unrelated error code must not log out or clear a scoped account', async () => {
+  const accountId = 'MAO-AAAAAAAAAAAA';
+  const a = createScope({
+    accountId,
+    fetchImpl: async () => ({
+      ok: false, status: 409,
+      json: async () => ({ error: { code: 'OTHER_CONFLICT' } })
+    })
+  });
+  a.window.localStorage.setItem('chat_history_1', '[{"mid":"m1"}]');
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(a.window.redirectedTo, undefined);
+  assert.equal(a.window.localStorage.getItem('chat_history_1'), '[{"mid":"m1"}]');
+  assert.equal(a.window.__MAO_ACCOUNT_SCOPE__?.ready, true);
+});
+
+test('late 409 from older heartbeat cannot undo a newer verified session', async () => {
+  const pending = [];
+  const accountId = 'MAO-AAAAAAAAAAAA';
+  const a = createScope({
+    accountId,
+    fetchImpl: () => new Promise(resolve => pending.push(resolve))
+  });
+  assert.equal(pending.length, 1);
+  a.window.localStorage.setItem('ai_custom_characters', '[{"id":"own"}]');
+  const focus = a.storageListeners.find(item => item.type === 'focus');
+  assert.ok(focus, 'session validation must also run when tab receives focus');
+  focus.listener();
+  assert.equal(pending.length, 2);
+
+  // A newer check sees the correct account first.
+  pending[1]({
+    ok: true, status: 200, json: async () => ({
+      account: { id: accountId, role: 'user', status: 'active' }
+    })
+  });
+  await new Promise(resolve => setTimeout(resolve, 0));
+
+  // A stale older response arrives last and must not forcibly redirect.
+  pending[0]({
+    ok: false, status: 409, json: async () => ({
+      error: { code: 'ACCOUNT_CONTEXT_CHANGED' }
+    })
+  });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(a.window.redirectedTo, undefined);
+  assert.equal(a.window.localStorage.getItem('ai_custom_characters'), '[{"id":"own"}]');
+});
+
+test('latest 409 redirects an old account tab even when an earlier check was valid', async () => {
+  const pending = [];
+  const a = createScope({
+    accountId: 'MAO-AAAAAAAAAAAA',
+    fetchImpl: () => new Promise(resolve => pending.push(resolve))
+  });
+  const focus = a.storageListeners.find(item => item.type === 'focus');
+  focus.listener();
+  pending[1]({
+    ok: false, status: 409, json: async () => ({
+      error: { code: 'ACCOUNT_CONTEXT_CHANGED' }
+    })
+  });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(a.window.redirectedTo, '/account/index.html?switched=1');
+  pending[0]({
+    ok: true, status: 200, json: async () => ({
+      account: { id: 'MAO-AAAAAAAAAAAA', role: 'user', status: 'active' }
+    })
+  });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(a.window.redirectedTo, '/account/index.html?switched=1');
 });
 
 test('不同 MAO 永久 ID 的 localStorage、IndexedDB 与 CacheStorage 相互隔离', async () => {

@@ -117,6 +117,9 @@
   }
 
   var redirectingToAccountEntry = false;
+  // Focus/visibility/heartbeat probes can overlap. Ignore an older reply
+  // after a newer session check has started, even if it arrives last.
+  var latestSessionProbe = 0;
 
   function redirectToAccountEntry(query) {
     if (redirectingToAccountEntry) return;
@@ -129,6 +132,7 @@
 
   function verifyAccountSession() {
     if (typeof global.fetch !== 'function' || redirectingToAccountEntry) return;
+    var probe = ++latestSessionProbe;
     global.fetch('/api/accounts/me', {
       method: 'GET',
       credentials: 'same-origin',
@@ -136,6 +140,7 @@
       headers: { 'accept': 'application/json' }
     }).then(function (response) {
       return response.json().catch(function () { return {}; }).then(function (payload) {
+        if (probe !== latestSessionProbe || redirectingToAccountEntry) return null;
         var current = payload && payload.account;
         if (response.ok &&
             current &&
@@ -152,7 +157,10 @@
           redirectToAccountEntry('disabled=1');
         } else if (response.status === 401) {
           redirectToAccountEntry('');
-        } else if (errorCode === 'IDENTITY_AUTHORITY_CHANGED') {
+        } else if (errorCode === 'IDENTITY_AUTHORITY_CHANGED' ||
+                   (response.status === 409 && errorCode === 'ACCOUNT_CONTEXT_CHANGED')) {
+          // A different account signed in on another tab: the server rejected
+          // this page's old account context. Leave both accounts' data intact.
           redirectToAccountEntry('switched=1');
         } else if (response.ok && current && current.status !== 'active') {
           redirectToAccountEntry('');
