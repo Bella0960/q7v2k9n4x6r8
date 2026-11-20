@@ -57,7 +57,7 @@ test('all role-specific values are expanded from the same saved protocol without
 test('custom protocol without a {{worldbook}} placeholder still gets activated lore, not duplicate lore', () => {
   assert.match(detail, /worldbookText && !rpProtocol\.includes\('\{\{worldbook\}\}'\)/);
   assert.match(detail, /systemPrompt \+= '[^']*【世界书 \/ 角色生活背景】/);
-  assert.match(detail, /turnSpeakerPersona \|\| '该成员尚未填写具体人设/);
+  assert.match(detail, /thinPersona \? missingPersonaNotice : turnSpeakerPersona/);
   assert.match(detail, /【最终设定优先级】/);
   assert.match(detail, /以用户保存的协议为准/);
   assert.match(detail, /const apiMessages = \[[\s\S]*?role: 'system', content: systemPrompt/);
