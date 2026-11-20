@@ -35,17 +35,17 @@ test('all direct/group requests require saved persona + RP protocol + activated 
   assert.equal(role.validatePersonaRequest({ ...good, worldbook: '', systemPrompt: '生长在深圳，喜欢街巷摄影\n用户自己写的全局协议 任意人物' }).ok, true, 'no keyword match is valid');
 });
 
-test('local worldbooks never leak into another direct role or group; global lore remains available', () => {
+test('no worldbooks leak into other roles or groups without explicit mounting', () => {
   const books = [
     { id: 'global', title: '公共背景', scope: 'global', content: '所有人都知道的街道' },
     { id: 'a-local', title: '角色 A 私有', scope: 'local', content: '秘密 A' },
     { id: 'b-local', title: '角色 B 私有', scope: 'local', content: '秘密 B' }
   ];
   const direct = role.selectWorldbooksForRole(books, { id: 'a', worldBookIds: ['a-local'] }, []);
-  assert.deepEqual(Array.from(direct, b => b.id), ['global', 'a-local']);
+  assert.deepEqual(Array.from(direct, b => b.id), ['a-local']);
   const group = role.selectWorldbooksForGroup(books, ['b-local']);
-  assert.deepEqual(Array.from(group, b => b.id), ['global', 'b-local']);
-  assert.deepEqual(Array.from(role.selectWorldbooksForGroup(books, []), b => b.id), ['global']);
+  assert.deepEqual(Array.from(group, b => b.id), ['b-local']);
+  assert.deepEqual(Array.from(role.selectWorldbooksForGroup(books, []), b => b.id), []);
 });
 
 test('worldbook entries keep existing keyword/disabled activation semantics', () => {
