@@ -70,11 +70,12 @@ test('missing role system or primary authentication failure never triggers backu
     assert.equal(denied.requests.length, 1);
 });
 
-test('backup interrupted mid-reply does not paint or publish partial text', async () => {
-    const flow = scenario([capacity, () => new Response('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n')]);
+test('backup interrupted mid-reply does not paint and the next backup can succeed', async () => {
+    const flow = scenario([capacity, () => new Response('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n'), reply]);
     const paints = [];
     const result = await flow.send({ onPaint: text => paints.push(text) });
-    assert.equal(result.error.kind, 'capacity');
-    assert.equal(result.fullText, '');
+    assert.equal(result.ok, true);
+    assert.equal(result.fullText, '在看书。');
+    assert.equal(flow.requests.length, 3);
     assert.deepEqual(paints, []);
 });
