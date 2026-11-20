@@ -79,12 +79,12 @@ test('legacy object with enabled:false is a real opt-out in offline prompts too'
   assert.equal(result.worldbook,'');
 });
 
-test('without explicit legacy mount, old global books and role-local selection retain historical defaults',()=>{
+test('without saved global mount, only the role explicitly selected book is available',()=>{
   const h=make();
   const result=h.resolve();
   assert.equal(result.ok,true);
-  assert.equal(result.activeBookCount,2);
-  assert.match(result.worldbook,/公开街巷背景/);
+  assert.equal(result.activeBookCount,1);
+  assert.doesNotMatch(result.worldbook,/公开街巷背景/);
   assert.match(result.worldbook,/只有角色A知道的旧书店/);
   assert.doesNotMatch(result.worldbook,/角色B的独有秘密/);
 });
