@@ -3453,26 +3453,152 @@ body {
         if (replySuggestionsPanel) replySuggestionsPanel.hidden = false;
     }
     function parseReplyOptions(rawText, expectedStyles) {
-        var expectedCount = expectedStyles.length;
-        var raw = String(rawText || '').trim()
-            .replace(/^\s*```(?:json)?\s*/i, '')
-            .replace(/\s*```\s*$/i, '');
-        var parsed;
-        try { parsed = JSON.parse(raw); }
-        catch (e) {
-            var first = raw.indexOf('{'), last = raw.lastIndexOf('}');
-            if (first < 0 || last <= first) throw new Error('AI 返回的内容不是有效 JSON');
-            parsed = JSON.parse(raw.slice(first, last + 1));
+        var raw = String(rawText == null ? '' : rawText).trim();
+        var styles = Array.isArray(expectedStyles) ? expectedStyles : [];
+        var limit = Math.max(1, styles.length);
+
+        function getStyle(index, item) {
+            var fallback = styles[index] || { name: '风格 ' + (index + 1) };
+            return String(
+                (item && (item.style || item.name)) ||
+                fallback.name ||
+                ('风格 ' + (index + 1))
+            ).trim().slice(0, 24);
         }
-        var options = Array.isArray(parsed) ? parsed : parsed.options || parsed.replies || parsed.choices;
-        if (!Array.isArray(options) || options.length < expectedCount) throw new Error('没有成功识别出 ' + expectedCount + ' 条回复，请重新生成');
-        return options.slice(0, expectedCount).map(function (item, index) {
-            var fallback = expectedStyles[index] || { name: '风格 ' + (index + 1) };
-            var text = String(item.text || item.reply || item.content || '').trim();
-            var style = String(item.style || item.name || fallback.name).trim();
-            if (!text) throw new Error('第 ' + (index + 1) + ' 条回复为空，请重新生成');
-            return { style: style.slice(0, 24), text: text.slice(0, 1400) };
-        });
+
+        // 兼容标准 JSON 数组、含数组的对象、单对象及字符串数组。
+        function normalizeOptions(parsed) {
+            var options = null;
+
+            if (Array.isArray(parsed)) {
+                options = parsed;
+            } else if (parsed && typeof parsed === 'object') {
+                if (Array.isArray(parsed.options)) {
+                    options = parsed.options;
+                } else if (Array.isArray(parsed.replies)) {
+                    options = parsed.replies;
+                } else if (Array.isArray(parsed.choices)) {
+                    options = parsed.choices;
+                } else if (
+                    typeof parsed.text === 'string' ||
+                    typeof parsed.reply === 'string' ||
+                    typeof parsed.content === 'string'
+                ) {
+                    options = [parsed];
+                }
+            }
+
+            if (!options || !options.length) return null;
+
+            var result = [];
+            for (var i = 0; i < options.length && result.length < limit; i++) {
+                var item = options[i];
+                var value = typeof item === 'string'
+                    ? item
+                    : (item && typeof item === 'object'
+                        ? (item.text != null
+                            ? item.text
+                            : (item.reply != null ? item.reply : item.content))
+                        : '');
+
+                if (value == null && item && item.message) {
+                    value = item.message.content;
+                }
+
+                var content = typeof value === 'string' ? value.trim() : '';
+                if (content) {
+                    result.push({
+                        style: getStyle(i, item),
+                        text: content.slice(0, 1400)
+                    });
+                }
+            }
+            return result.length ? result : null;
+        }
+
+        function parseCandidate(candidate) {
+            try {
+                return normalizeOptions(JSON.parse(String(candidate).trim()));
+            } catch (e) {
+                return null;
+            }
+        }
+
+        // 优先直接解析符合约定的 JSON。
+        var parsed = parseCandidate(raw);
+        if (parsed) return parsed;
+
+        // 提取混合 Markdown 里的 JSON 代码块。
+        var fenceRegex = /```[^\r\n`]*\r?\n([\s\S]*?)```/g;
+        var fenced;
+        while ((fenced = fenceRegex.exec(raw)) !== null) {
+            parsed = parseCandidate(fenced[1]);
+            if (parsed) return parsed;
+        }
+
+        // 从解释文字中按成对括号提取完整 JSON，避免首 { 末 } 截取错误。
+        // 跳过字符串内容中的括号与转义字符。
+        for (var start = 0; start < raw.length; start++) {
+            var first = raw[start];
+            if (first !== '{' && first !== '[') continue;
+
+            var stack = [first];
+            var inString = false;
+            var escaped = false;
+            for (var end = start + 1; end < raw.length; end++) {
+                var ch = raw[end];
+                if (inString) {
+                    if (escaped) {
+                        escaped = false;
+                    } else if (ch === '\\') {
+                        escaped = true;
+                    } else if (ch === '"') {
+                        inString = false;
+                    }
+                    continue;
+                }
+                if (ch === '"') {
+                    inString = true;
+                } else if (ch === '{' || ch === '[') {
+                    stack.push(ch);
+                } else if (ch === '}' || ch === ']') {
+                    var opener = stack.pop();
+                    if (
+                        (ch === '}' && opener !== '{') ||
+                        (ch === ']' && opener !== '[')
+                    ) {
+                        break;
+                    }
+                    if (!stack.length) {
+                        parsed = parseCandidate(raw.slice(start, end + 1));
+                        if (parsed) return parsed;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 最终兜底：清理常见 Markdown 排版，保留模型实际返回的文本。
+        var plain = raw
+            .replace(/^\s*```[^\r\n]*$/gm, '')
+            .replace(/```/g, '')
+            .replace(/^\s{0,3}(?:#{1,6}\s*|>\s*|[-*+]\s+|\d+[.)]\s+)/gm, '')
+            .replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1')
+            .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+            .replace(/\*\*([^*]+)\*\*/g, '$1')
+            .replace(/__([^_]+)__/g, '$1')
+            .replace(/~~([^~]+)~~/g, '$1')
+            .replace(/`([^`\n]+)`/g, '$1')
+            .replace(/(^|[^\w])\*([^*\n]+)\*/g, '$1$2')
+            .replace(/(^|[^\w])_([^_\n]+)_(?!\w)/g, '$1$2')
+            .replace(/^\s*[-*_]{3,}\s*$/gm, '')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+
+        return [{
+            style: getStyle(0),
+            text: (plain || '模型未返回可用文本，请重试。').slice(0, 1400)
+        }];
     }
     function renderReplyOptions(options) {
         if (!replySuggestionsList) return;
