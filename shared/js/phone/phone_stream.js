@@ -109,6 +109,8 @@
             // 无条件再跑一次。result 是闭包里的同一个对象，resolve 之后仍会被改写，
             // 导致 ok 被改回 true、error 被清空 —— 401/429 在调用方表现为"成功但无内容"。
             var settled = false;
+            var monitor;
+            var usage;
             function finish(err) {
                 if (settled) return;
                 settled = true;
@@ -116,6 +118,9 @@
                 result.fullText = fullText;
                 result.error = err || null;
                 resolve(result);
+                try {
+                    monitor?.record(requestUrl, body.messages, fullText, err, usage);
+                } catch { /* Diagnostics must never affect the chat result. */ }
             }
 
             /* ---------- 入参防御 ---------- */
@@ -193,7 +198,11 @@
             }
 
             /* ---------- 主流程 ---------- */
-            fetch(baseUrl + '/chat/completions', {
+            var requestUrl = baseUrl + '/chat/completions';
+            try {
+                if (global.PhoneApiMonitor?.enabled()) monitor = global.PhoneApiMonitor;
+            } catch { /* Monitoring is optional. */ }
+            fetch(requestUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -240,6 +249,8 @@
                     var json;
                     try { json = JSON.parse(payload); }
                     catch (e) { return; }   // 碎片/非 JSON，忽略
+
+                    if (monitor && json.usage && typeof json.usage === 'object') usage = json.usage;
 
                     if (json.error) {
                         var se = new Error((json.error && json.error.message) || JSON.stringify(json.error));
