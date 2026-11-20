@@ -6473,14 +6473,15 @@
                     .replace(/\{\{worldbook\}\}/g, worldbookText || '暂无世界书');
             }
 
+            if (thinPersona && !String(localStorage.getItem('chat_rp_protocol_') || '').trim()) {
+                rpProtocol = missingPersonaNotice;
+            }
             let systemPrompt;
             if (rpProtocol) {
                 // 协议存在：替换变量后置于 System Prompt 最顶端（最高优先级，覆盖底层默认规则）
                 // Do not cut the user's saved text or the resolved {{persona}}/{{worldbook}}
                 // sections after expansion. A silent slice discards authored rules.
-                systemPrompt = thinPersona && !String(localStorage.getItem('chat_rp_protocol_') || '').trim()
-                    ? missingPersonaNotice
-                    : applyProtocolVars(rpProtocol);
+                systemPrompt = applyProtocolVars(rpProtocol);
             } else {
                 // 协议不存在：使用原有的人设/用户信息/记忆/回复要求拼接逻辑
                 systemPrompt = [
