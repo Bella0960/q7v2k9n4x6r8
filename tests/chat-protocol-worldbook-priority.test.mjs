@@ -23,16 +23,16 @@ function actualProtocolRenderer({ name, persona, memory, worldbook, user = '用�
   const end = detail.indexOf('\n            let systemPrompt;', start);
   assert.ok(start >= 0 && end > start);
   const body = detail.slice(start, end);
-  const compile = new Function('turnSpeakerName', 'userName', 'turnSpeakerPersona', 'roleMemory', 'worldbookText', 'thinPersona', 'missingPersonaNotice',
+  const compile = new Function('turnSpeakerName', 'userName', 'turnSpeakerPersona', 'roleMemory', 'worldbookText',
     body + '\nreturn applyProtocolVars;');
-  return compile(name, user, persona, memory, worldbook, false, '注意：当前角色档案缺失');
+  return compile(name, user, persona, memory, worldbook);
 }
 
 test('one global protocol key is shared by settings, direct chat, and group chat', () => {
   assert.match(settings, /var STORAGE_KEY = 'chat_rp_protocol_';/);
   assert.match(detail, /const globalRpKey = 'chat_rp_protocol_';/);
   assert.match(detail, /rpProtocol = localStorage\.getItem\(globalRpKey\) \|\| ''/);
-  assert.match(detail, /rpProtocol = rpProtocol\.trim\(\) \|\| String\(window\.MAOMAO_RP_DEFAULT_PROTOCOL \|\| ''\)/);
+  assert.match(detail, /rpProtocol = rpProtocol\.trim\(\) \|\| \(personaIncomplete/);
   assert.match(detail, /const turnSpeakerName = isGroupChat && groupReplyPick/);
   assert.match(detail, /const roleForTurn = !isGroupChat/);
 });
@@ -57,13 +57,13 @@ test('all role-specific values are expanded from the same saved protocol without
 test('custom protocol without a {{worldbook}} placeholder still gets activated lore, not duplicate lore', () => {
   assert.match(detail, /worldbookText && !rpProtocol\.includes\('\{\{worldbook\}\}'\)/);
   assert.match(detail, /systemPrompt \+= '[^']*【世界书 \/ 角色生活背景】/);
-  assert.match(detail, /thinPersona \? missingPersonaNotice : turnSpeakerPersona/);
+  assert.match(detail, /personaPolicy\.MINIMAL_PERSONA_PROMPT/);
   assert.match(detail, /【最终设定优先级】/);
   assert.match(detail, /以用户保存的协议为准/);
   assert.match(detail, /const apiMessages = \[[\s\S]*?role: 'system', content: systemPrompt/);
 });
 
-test('global lore is included in every chat while unrelated local lore remains isolated', () => {
+test('even global lore requires an explicit mount before it can enter a chat', () => {
   const books = [
     { id: 'global', scope: 'global', title: '全局设定', content: '城市有高架桥' },
     { id: 'local_a', scope: 'local', title: '角色A的秘密', content: '不该让B看见' },
@@ -75,10 +75,10 @@ test('global lore is included in every chat while unrelated local lore remains i
   const singleB = Array.from(roles.selectWorldbooksForRole(books, { worldBookIds: ['local_b'] }, []), b => b.id);
   const groupNone = Array.from(roles.selectWorldbooksForGroup(books, []), b => b.id);
   const groupMounted = Array.from(roles.selectWorldbooksForGroup(books, ['local_b']), b => b.id);
-  assert.deepEqual(singleA, ['global', 'local_a', 'legacy']);
-  assert.deepEqual(singleB, ['global', 'local_b', 'legacy']);
-  assert.deepEqual(groupNone, ['global', 'legacy']);
-  assert.deepEqual(groupMounted, ['global', 'local_b', 'legacy']);
+  assert.deepEqual(singleA, ['local_a']);
+  assert.deepEqual(singleB, ['local_b']);
+  assert.deepEqual(groupNone, []);
+  assert.deepEqual(groupMounted, ['local_b']);
   assert.equal(JSON.stringify(books), before);
 });
 
@@ -92,7 +92,7 @@ test('worldbook activation settings still decide which entries enter an AI turn'
       ] },
     { id: 'local', scope: 'local', title: '未绑定私有书', content: '不能出现在群里' }
   ];
-  const safe = Array.from(roles.selectWorldbooksForGroup(books, []));
+  const safe = Array.from(roles.selectWorldbooksForGroup(books, ['global']));
   const initial = context.buildWorldbookInjectionText(safe, { currentText: '今天好热', recentMessages: [] });
   const triggered = context.buildWorldbookInjectionText(safe, { currentText: '地铁什么时候来', recentMessages: [] });
   assert.ok(initial.includes('城里有雨'));
