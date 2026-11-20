@@ -16,6 +16,7 @@ function runtime(fetch) {
     const entries = new Map();
     const window = {
         location: { href: 'https://example.test/' },
+        PhoneStorage: { getApiConfig: () => ({ apiKey: 'fixture', baseUrl: 'https://example.test' }), pushApiLog() {} },
         localStorage: {
             getItem: key => entries.get(key) ?? null,
             setItem: (key, value) => entries.set(key, value)
@@ -58,7 +59,7 @@ test('shared non-stream completion collects usage before the ball is enabled', a
         choices: [{ message: { content: 'hello' } }],
         usage: { prompt_tokens: 8, completion_tokens: 2 }
     }));
-    const result = await window.PhoneAPI.complete({ baseUrl: 'https://example.test', apiKey: 'fixture', messages: [] });
+    const result = await window.PhoneAPI.complete({ messages: [] });
     assert.equal(result, 'hello');
     const data = JSON.parse(entries.get(ledgerKey));
     assert.deepEqual([data.requests, data.input, data.output], [1, 8, 2]);
