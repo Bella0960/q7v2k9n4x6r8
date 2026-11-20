@@ -72,7 +72,8 @@ test('app is integrated with desktop drag layout and icon customization', () => 
   assert.match(index, /data-drag="app_luckroom"/);
   assert.match(index, /addLuckRoomShortcutToExistingLayouts/);
   // The current icon manager discovers all desktop tiles dynamically (no stale hard-coded catalogue).
-  assert.match(icons, /querySelectorAll\('\[data-drag\]'\)/);
+  assert.match(icons, /desktopDoc\.querySelectorAll/);
+  assert.match(icons, /button\[data-drag\^="app_"\]/);
   assert.match(icons, /svgNode\.innerHTML/);
 });
 
