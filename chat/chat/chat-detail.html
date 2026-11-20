@@ -6468,7 +6468,7 @@
                 return String(text || '')
                     .replace(/\{\{char\}\}/g, turnSpeakerName)
                     .replace(/\{\{user\}\}/g, userName)
-                    .replace(/\{\{persona\}\}/g, turnSpeakerPersona || '根据此角色已知言行自然说话，不编造资料')
+                    .replace(/\{\{persona\}\}/g, thinPersona ? missingPersonaNotice : turnSpeakerPersona)
                     .replace(/\{\{memory\}\}/g, roleMemory)
                     .replace(/\{\{worldbook\}\}/g, worldbookText || '暂无世界书');
             }
