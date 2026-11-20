@@ -658,3 +658,80 @@
   .maomao-call-group-tile { transition: none; }
 }
 
+/* Incoming invitation stays inside the established in-chat call layer. */
+.maomao-call-invite {
+  position: absolute;
+  inset: 0;
+  z-index: 9901;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 22px;
+  background: rgba(17, 17, 19, .35);
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+}
+.maomao-call-invite.is-fixed { position: fixed; }
+.maomao-call-invite-card {
+  width: min(100%, 320px);
+  padding: 30px 24px 22px;
+  border: 1px solid #E5E5EA;
+  border-radius: 20px;
+  background: #F7F7F9;
+  box-shadow: 0 12px 35px rgba(0, 0, 0, .09);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: #171719;
+}
+.maomao-call-invite-avatar {
+  display: grid;
+  place-items: center;
+  width: 78px;
+  height: 78px;
+  overflow: hidden;
+  border-radius: 50%;
+  background: #E5E5E9;
+  color: #55555A;
+  font-size: 26px;
+}
+.maomao-call-invite-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.maomao-call-invite-name {
+  margin-top: 17px;
+  max-width: 100%;
+  font-size: 17px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.maomao-call-invite-caption {
+  margin: 7px 0 25px;
+  color: #77777E;
+  font-size: 12px;
+}
+.maomao-call-invite-actions {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+}
+.maomao-call-invite-actions button {
+  min-height: 44px;
+  flex: 1;
+  border: 0;
+  border-radius: 13px;
+  background: #EAEAEE;
+  color: #525258;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.maomao-call-invite-actions button[data-invite-action="accept"] {
+  background: #171719;
+  color: #fff;
+}
+.maomao-call-invite-actions button:focus-visible {
+  outline: 2px solid #77777E;
+  outline-offset: 2px;
+}
