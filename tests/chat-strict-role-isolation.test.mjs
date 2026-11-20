@@ -152,7 +152,7 @@ test('weak persona does not override saved or default global protocol, and missi
 
 test('global identity seal leads default and saved agreements; weak role identity remains exact',()=>{
   const {window,context,role,data,storage,binding}=fixture({phone_worldbooks:'[]'});
-  vm.runInContext(defaultProtocolScript,context);
+  vm.runInNewContext(defaultProtocolScript,{window});
   const seal=window.MAOMAO_RP_IDENTITY_GUARD;
   assert.ok(seal.startsWith('【全局身份封印'), 'must export a shared top-of-System identity seal');
   assert.match(seal,/绝对不允许说自己是虚拟人物、虚拟朋友、程序或模型/);
