@@ -36,7 +36,7 @@ test('enabled regex output rules are represented in System without modifying the
   assert.equal(policy.applySaved('我是机器人',local),'我是角色本人');
   assert.equal(policy.buildSystemRules(storage([])),'');
 });
-test('source-first prompt keeps protocol before compact identity lock and regex at absolute front',()=>{
+test('prompt keeps the saved protocol before output-format rules and preserves regex rules',()=>{
   assert.match(detail,/systemPrompt = applyProtocolVars\(rpProtocol\);/);
   assert.match(detail,/systemPrompt \+= '\\n\\n' \+ IDENTITY_LOCK/);
   assert.doesNotMatch(detail,/systemPrompt = IDENTITY_LOCK\s*\+/);
@@ -50,6 +50,30 @@ test('source-first prompt keeps protocol before compact identity lock and regex 
     '【群聊模式：线下共同场景】','[发起语音通话]','[群私聊:'])
     assert.ok(detail.includes(marker),'must preserve app features: '+marker);
 });
+
+test('chat binds the saved role name literally and puts the identity rules before all other sources', () => {
+  const expand = detail.match(/function applyProtocolVars\(text\) \{[\s\S]*?\n {12}\}/)[0];
+  const identity = detail.match(/const roleIdentityHead = \[[\s\S]*?systemPrompt = roleIdentityHead \+ '\\n\\n' \+ systemPrompt;/)[0];
+  const scope = {
+    turnSpeakerName: '测试一号 test('all actual inline {{user}}', userName: '用户',
+    turnSpeakerPersona: '{{memory}}', roleMemory: '旧回复自称阿晴',
+    worldbookText: '', nameSeal: '空白档案姓名约束', globalIdentitySeal: '全局身份约束'
+  };
+  const prompt = vm.runInNewContext(
+    expand + '\nlet systemPrompt = "正则\\n" + applyProtocolVars("{{char}} / {{user}} / {{persona}} / {{memory}}");\n' +
+    identity + '\nsystemPrompt;', scope);
+  assert.ok(prompt.startsWith('【角色扮演最高优先级】'));
+  assert.match(prompt, /不要自称 AI/);
+  assert.match(prompt, /没有对应设定就自然略过/);
+  assert.ok(prompt.includes('正则\n测试一号 test('all actual inline {{user}} / 用户 / {{memory}} / 旧回复自称阿晴'));
+  assert.ok(detail.indexOf(identity) < detail.indexOf('const apiMessages = ['));
+});
+test('chat gives both response headers and stream inactivity a 60 second budget', () => {
+  assert.match(detail, /const chatResponseTimeoutMs = 60000;/);
+  assert.match(detail, /PhoneStream\.chat\(\{[^}]*connectMs: chatResponseTimeoutMs,[^}]*watchdogMs: chatResponseTimeoutMs,/);
+  assert.doesNotMatch(detail, /15秒未响应/);
+});
+
 test('all actual inline chat scripts still compile with streamlined prompt',()=>{
   const main=[...detail.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)]
     .map(x=>x[1]).find(x=>x.includes('async function sendMsg(opts)'));
