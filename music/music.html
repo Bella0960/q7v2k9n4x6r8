@@ -1517,7 +1517,6 @@
         live.dur = musicFormatDuration(seconds);
         renderRecent();
         renderAlbum();
-        renderSearch(tracks);
         var favView = document.getElementById('favView');
         if (favView && favView.style.display !== 'none') renderFav();
       }
@@ -1566,8 +1565,8 @@
       if (!t) return;
       recentList.innerHTML += `<div class="track-item" onclick="playTrack(${musicSafeText(JSON.stringify(t.id))})">
         <div class="t-cover" data-music-track-id="${musicSafeText(t.id)}" title="点击添加或更换封面" role="button" tabindex="0" aria-label="为${musicSafeText(t.name)}添加或更换封面"><span class="music-placeholder-art" aria-hidden="true"></span></div>
-        <div class="t-info"><div class="t-name">${musicSafeText(t.name)}</div><div class="t-artist">${musicSafeText(t.artist)}</div></div>
-        <div class="t-dur">${musicSafeText(t.dur)}</div></div>`;
+        <div class="t-info"><div class="t-name">${musicSafeText(t.name)}</div><div class="t-artist">${musicSafeText(musicDisplayArtist(t))}</div></div>
+        <div class="t-dur">${musicSafeText(musicTrackDurationLabel(t))}</div></div>`;
     });
     musicApplyTrackThumbnails(recentList);
   }
@@ -1584,7 +1583,7 @@
         : `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#bbb" stroke-width="2" stroke-linecap="round"><path d="M5 8h14M5 12h14M5 16h14"/></svg>`;
       albumSongs.innerHTML += `<div class="song-row ${isCur ? 'playing' : ''}" onclick="playTrack(${musicSafeText(JSON.stringify(t.id))})">
         <div class="num">${String(i+1).padStart(2,'0')}</div>
-        <div><div class="s-name">${musicSafeText(t.name)}</div><div class="s-artist">${musicSafeText(t.artist)} · ${musicSafeText(t.dur)}</div></div>
+        <div><div class="s-name">${musicSafeText(t.name)}</div><div class="s-artist">${musicSafeText(musicDisplayArtist(t))} · ${musicSafeText(musicTrackDurationLabel(t))}</div></div>
         <div class="s-dur">${icon}</div></div>`;
     });
   }
@@ -1598,11 +1597,12 @@
       if (!t || !t.id) return;
       searchResults.innerHTML += `<div class="track-item" onclick="playTrack(${musicSafeText(JSON.stringify(t.id))})">
         <div class="t-cover" data-music-track-id="${musicSafeText(t.id)}" title="点击添加或更换封面" role="button" tabindex="0" aria-label="为${musicSafeText(t.name)}添加或更换封面"><span class="music-placeholder-art" aria-hidden="true"></span></div>
-        <div class="t-info"><div class="t-name">${musicSafeText(t.name)}</div><div class="t-artist">${musicSafeText(t.artist)}</div></div></div>`;
+        <div class="t-info"><div class="t-name">${musicSafeText(t.name)}</div><div class="t-artist">${musicSafeText(musicDisplayArtist(t))}</div></div></div>`;
     });
     musicApplyTrackThumbnails(searchResults);
   }
   renderSearch(tracks);
+  musicRecoverExistingDurations();
 
   // ===== 渲染热门榜 =====
   const hotlistEl = document.getElementById('hotlist');
@@ -1677,9 +1677,9 @@
     if (playRequest !== playbackRevision) return; // 前一个异步切歌不得覆盖新请求
     currentIdx = tracks.indexOf(t);
     document.getElementById('miniName').textContent = t.name;
-    document.getElementById('miniArtist').textContent = t.artist;
+    document.getElementById('miniArtist').textContent = musicDisplayArtist(t);
     document.getElementById('npTitle').textContent = t.name;
-    document.getElementById('npArtist').textContent = t.artist;
+    document.getElementById('npArtist').textContent = musicDisplayArtist(t);
     renderTrackLyrics(t);
     playing = !window.audio.paused;
     renderAlbum();
@@ -2493,8 +2493,8 @@
       }
       var tid = 'local_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2, 7);
       var name = file.name.replace(/\.[^.]+$/, '');
-      var track = { id: tid, name: name, artist: '本地导入',
-        dur: '本地', durSec: 0, source: 'local', lyrics: [] };
+      var track = { id: tid, name: name, artist: '未知歌手',
+        dur: '--:--', durSec: 0, source: 'local', lyrics: [] };
       try {
         // 先保存二进制，后保存目录；目录失败时只清理由本次新建的 ID。
         // Normalize missing/misreported Android picker types before IndexedDB
@@ -2515,6 +2515,7 @@
         localMeta.push(track);
         tracks.push(track);
         lastImported = track;
+        musicScheduleLocalDuration(track, audioBlob);
       } catch (err) { toast('音频未导入：' + err.message); }
     }
     renderAlbum();
@@ -2555,9 +2556,9 @@
       if (!t) return;
       currentIdx = tracks.indexOf(t);
       document.getElementById('miniName').textContent = t.name;
-      document.getElementById('miniArtist').textContent = t.artist;
+      document.getElementById('miniArtist').textContent = musicDisplayArtist(t);
       document.getElementById('npTitle').textContent = t.name;
-      document.getElementById('npArtist').textContent = t.artist;
+      document.getElementById('npArtist').textContent = musicDisplayArtist(t);
       renderTrackLyrics(t);
       // 本地曲的 audio.src 延迟到用户点击播放时再走 playTrack 的 async 分支
       if (t.source !== 'local') {
@@ -2607,7 +2608,7 @@
       var isCur = i === currentIdx;
       body.innerHTML += `<div class="queue-item ${isCur ? 'playing' : ''}" onclick="closeQueue();playTrack('${t.id}')">
         <div class="t-cover" style="width:40px;height:40px;flex-shrink:0;"><span class="music-placeholder-art" aria-hidden="true"></span></div>
-        <div style="flex:1;"><div class="qi-name">${t.name}</div><div class="qi-artist">${t.artist} · ${t.dur}</div></div>
+        <div style="flex:1;"><div class="qi-name">${t.name}</div><div class="qi-artist">${musicSafeText(musicDisplayArtist(t))} · ${musicSafeText(musicTrackDurationLabel(t))}</div></div>
         ${isCur ? '<span style="color:#000;font-size:12px;">正在播放</span>' : ''}
       </div>`;
     });
@@ -2712,8 +2713,8 @@
     list.forEach(function (t) {
       box.innerHTML += `<div class="track-item" onclick="playTrack(${musicSafeText(JSON.stringify(t.id))})">
         <div class="t-cover" data-music-track-id="${musicSafeText(t.id)}" title="点击添加或更换封面" role="button" tabindex="0" aria-label="为${musicSafeText(t.name)}添加或更换封面"><span class="music-placeholder-art" aria-hidden="true"></span></div>
-        <div class="t-info"><div class="t-name">${musicSafeText(t.name)}</div><div class="t-artist">${musicSafeText(t.artist)}</div></div>
-        <div class="t-dur">${musicSafeText(t.dur)}</div></div>`;
+        <div class="t-info"><div class="t-name">${musicSafeText(t.name)}</div><div class="t-artist">${musicSafeText(musicDisplayArtist(t))}</div></div>
+        <div class="t-dur">${musicSafeText(musicTrackDurationLabel(t))}</div></div>`;
     });
     musicApplyTrackThumbnails(box);
   }
