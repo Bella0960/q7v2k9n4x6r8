@@ -83,7 +83,6 @@
                     totalMs: remaining
                 });
                 if (result.ok) return result;
-                if (result.fullText) break;
             }
             return { ok: false, fullText: '', error: { kind: 'capacity' } };
         } catch (error) {
