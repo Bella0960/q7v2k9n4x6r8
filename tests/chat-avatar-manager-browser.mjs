@@ -234,7 +234,7 @@ async function verifyPage(browser, base, width) {
       };
     });
     assert.ok(geometry.scrollWidth <= geometry.viewportWidth + 1, 'page must not overflow horizontally');
-    assert.ok(geometry.frameX >= -1 && geometry.frameRight <= width + 1, 'frame must fit viewport: ' + JSON.stringify({ width, frameX: geometry.frameX, frameRight: geometry.frameRight, viewportWidth: geometry.viewportWidth }));
+    assert.ok(geometry.frameX >= -1 && geometry.frameRight <= geometry.viewportWidth + 1, 'frame must fit viewport: ' + JSON.stringify({ width, frameX: geometry.frameX, frameRight: geometry.frameRight, viewportWidth: geometry.viewportWidth }));
     assert.ok(geometry.scrollBottom <= geometry.viewportHeight + 1, 'scroll area must fit visible phone');
     assert.deepEqual(errors, [], 'the page must not raise uncaught JavaScript errors');
     assert.deepEqual(missing, [], 'no local page asset may return 4xx');
