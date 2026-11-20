@@ -8,7 +8,7 @@ const baseUrl = 'http://127.0.0.1:4173';
 const artifactDir = path.join(root, 'artifacts');
 fs.mkdirSync(artifactDir, { recursive: true });
 
-const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '4173', '--strictPort'], {
+const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--host', '127.0.0.1', '--port', '4173', '--strictPort'], {
   cwd: root,
   stdio: 'ignore',
   env: { ...process.env, NODE_ENV: 'test' }
