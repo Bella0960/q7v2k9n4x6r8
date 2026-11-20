@@ -495,3 +495,12 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 两个原线下 HTML 在原共享角色上下文前按顺序加载已有桥，更新角色脚本版本；SW 仅递增原 shell v262→v263 并增加已有模块的新离线缓存 URL，保留登录/身份核心安全策略。
 - 新增 `tests/offline-worldbook-binding-parity.test.mjs` 8 组真实模块 Node VM 行为与页面接线断言，纳入现有 `test:chat:contract`；覆盖明确解绑、禁用对象、旧全局默认、跨角色隔离、触发词、损坏数据拒发、缺桥拒发与两个线下页的脚本引用。
 - 当前状态：**独立 QA 派生 staging 分支，尚未运行原生 Node/Vite/Chromium 全套门禁，尚未合入唯一 QA，未发布**。必须等待并行发布结束、比对当时最新 #299 HEAD 后再做安全快进；随后完整测试并 QA-only 发布且核对同源回执与账号身份核心不变。**不要虚报用户现有手机链接已经包含这次补丁。**
+
+## 2026-11-20｜CHAT-PARSER-001｜全局 AI 回复格式识别共享层
+
+- 原唯一 QA #299 起点：303d3e025ede6b5bd068459a00047b55424457f7；独立任务 PR #308，代码快照 7039afb10d4abddb663ff51d78cc371aa045b956。只更新模型输出解释层和共享脚本加载，不改人设/世界书/聊天数据、主题、账号后端或正式环境。
+- 新公共模块 shared/js/phone/ai-response-parser.js 将三个模式独立：严格 JSON（非法数据不得冒充成功）、正常聊天正文（仅解包确实结构化的完整文本）、面对面回复候选（唯一允许原文 Markdown 兜底）。普通聊天、群聊、多气泡、重新生成共用新回复处理；旧历史渲染和流中断保文未改。
+- chat/date/date.html 将已测试的 150 行健壮函数移入共享模块，保留小型兼容包装；chat/date/journey.html 复用 JSON 提取但仍严格校验 4 条；PhoneAPI.completeJSON 与各已有 API 入口使用严格解析器，主动联系可按需先加载依赖。
+- 浏览器页面只新增共享脚本标签（多数仅 1 处引用），不改 UI/CSS、钱包数据格式、SW、安全配置或 Worker。
+- 独立专项 Node 真实隔离测试：44703025637、44703616046 均 PASS。原 QA TESTS 定义的完整 Node/Vite/Chromium 逐项门禁在固定代码快照上执行：44703782100 PASS。相关记录在 Bella0960/web-runtime-lab Actions。
+- 本条记录时 QA #299 尚未整合新解析器、Cloudflare 未更新、Android/iOS 真机未验收；最终整合后需要对原 QA 新提交完整复测，且仅通过既有 QA-only 发布路径，核对同源构建回执和身份核心不变。

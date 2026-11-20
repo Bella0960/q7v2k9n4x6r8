@@ -422,3 +422,12 @@ Only after these reports are reviewed should implementation tasks be assigned.
 - Required: use verified same-role saved sources as before; before displaying streamed text or saving a generated direct online response, refuse high-confidence generic AI self-identification and assistant boilerplate for ordinary roles. Explicitly digital/AI-authored characters must retain their chosen identity.
 - Preserve saved history, message format, all character data, worldbooks, offline routes, group guard, and the existing one-QA-release safety process. Do not silently re-request paid AI completions.
 - Acceptance: real Node/Vite/Chromium, direct/group role-policy regression, same-origin QA release receipt, account/core unchanged; device verification remains a separate human acceptance step.
+
+### CHAT-PARSER-001 — Unify AI reply format adapters without flattening business schemas
+
+**Priority:** P0 · **Status:** IN PROGRESS (2026-11-20)
+
+- User-requested global parser audit and shared extraction layer for ordinary private/group/multi-bubble/regenerate and offline chat, with reusable strict JSON extraction for existing PhoneAPI consumers.
+- Preserve plain dialogue, model stream errors/partials, narration/translation/role markers, role/group IDs, persona/worldbooks/global protocol, legacy historical bubbles, account boundaries and all persisted records.
+- Business JSON must still satisfy each app's own schema; fallback plaintext is allowed only for user-facing reply suggestions. No fabricated persistence or successful HTTP/API responses.
+- Acceptance: shared parser behavior tests, parser-load order, existing Node/Vite/Chromium full regression, original QA-only source receipt and identity-core continuity. Android/iPhone manual experience test separately.

@@ -8,6 +8,7 @@
 <script src="../../shared/js/font-loader.js?v=20261028modes"></script>
 <script src="../../shared/js/native-feel.js"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
+    <script src="../../shared/js/phone/ai-response-parser.js?v=20261120parser1"></script>
 <script src="../../shared/js/phone/rp-default-protocol.js?v=20261118v1"></script>
 <script src="../../shared/js/phone/chat-context-policy.js?v=20261118groupvoice1"></script>
 <script src="../../shared/js/phone/role-worldbook-bindings.js?v=20261119-qa1"></script>
@@ -463,8 +464,11 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
       if(!response.ok) return;
       var data=await response.json();
       var raw=String(data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content || '').trim();
-      var match=raw.match(/\[[\s\S]*\]/);
-      var parsed=JSON.parse(match?match[0]:raw);
+      var normalized=window.AIResponseParser && typeof window.AIResponseParser.parseJSON==='function'
+        ? window.AIResponseParser.parseJSON(raw,function(value){return Array.isArray(value);})
+        : null;
+      var parsed=normalized ? (normalized.ok ? normalized.data : []) :
+        JSON.parse((raw.match(/\[[\s\S]*\]/)||[])[0]||raw);
       if(!Array.isArray(parsed) || parsed.length<4) return;
       var next=parsed.slice(0,4).map(function(value,index){
         var line=String(value||'').replace(/^\s*[-\d.、)）]+\s*/,'').trim();

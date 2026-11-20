@@ -398,6 +398,17 @@
     }
 
     function ensureProactiveDependencies() {
+        // Dynamically initiated proactive chats must load the shared JSON parser
+        // before PhoneAPI.completeJSON (normal pages include it synchronously).
+        if (!global.AIResponseParser || typeof global.AIResponseParser.parseJSON !== 'function') {
+            return loadProactiveScript(
+                proactiveAsset('shared/js/phone/ai-response-parser.js?v=20261120parser1'),
+                function () { return !!global.AIResponseParser &&
+                    typeof global.AIResponseParser.parseJSON === 'function'; }
+            ).then(function (ready) {
+                return ready ? ensureProactiveDependencies() : false;
+            });
+        }
         if (global.PhoneStorage && global.PhoneAPI && typeof global.PhoneAPI.completeJSON === 'function' &&
             global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function') {
             return loadProactiveScript(
