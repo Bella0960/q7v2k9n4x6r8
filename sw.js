@@ -91,7 +91,7 @@ const APP_SHELL = [
   './chat/date/journey.html',
   './chat/chat/chat-detail.html',
   './chat/chat/chat-settings.html',
-  './chat/chat/js/chat-extras.js?t=20261120action-sheet1',
+  './chat/chat/js/chat-extras.js?t=20261120fanwai24',
   './worldbook/characters/characters.html',
   './worldbook/characters/js/characters-manager.js?v=20261118-avatar-fold1',
   './shared/js/phone/role-worldbook-bindings.js?v=20261119-qa1',
