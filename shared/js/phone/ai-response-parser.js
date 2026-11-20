@@ -26,7 +26,7 @@
         if (found) return found;
 
         // Prefer explicit JSON fences even when prose surrounds them.
-        var fenceRegex = new RegExp(FENCE + '[^\r\n]*\r?\n([\s\S]*?)' + FENCE, 'g');
+        var fenceRegex = new RegExp(FENCE + '[^\\r\\n]*\\r?\\n([\\s\\S]*?)' + FENCE, 'g');
         var fence;
         while ((fence = fenceRegex.exec(text)) !== null) {
             found = attempt(fence[1], 'fence');
