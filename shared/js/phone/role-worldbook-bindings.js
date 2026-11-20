@@ -38,7 +38,9 @@
         else return { ok: false, error: 'CORRUPT_LEGACY_BINDING' };
       }
       var primary = role && Array.isArray(role.worldBookIds) ? role.worldBookIds : [];
-      // No implicit global lore inheritance. Only explicit role or chat mounts count.
+      // Nothing is mounted by default, including books marked global.
+      // A character's explicit worldBookIds or saved chat mount is required.
+      // Read-only change: do not rewrite or delete any legacy stored binding.
       // An explicitly disabled legacy object is a user opt-out, not a stale list.
       var suspended = legacy && !Array.isArray(legacy) && legacy.enabled === false;
       // An explicitly saved empty chat mount must win over a stale role field.
