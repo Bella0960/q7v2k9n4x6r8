@@ -8,7 +8,10 @@ const page = readFileSync(new URL('../chat/date/date.html', import.meta.url), 'u
 const begin = page.indexOf('    function parseReplyOptions(rawText, expectedStyles) {');
 const end = page.indexOf('    function renderReplyOptions(options) {', begin);
 assert.ok(begin >= 0 && end > begin, 'Offline response parser is present');
-const parse = runInNewContext(page.slice(begin, end) + '\nparseReplyOptions;', {});
+const shared = readFileSync(new URL('../shared/js/phone/ai-response-parser.js', import.meta.url), 'utf8');
+const window = {};
+runInNewContext(shared, { window });
+const parse = runInNewContext(page.slice(begin, end) + '\nparseReplyOptions;', { window });
 const styles = [{ name: '平静' }, { name: '随性' }, { name: '简短' }];
 const fence = String.fromCharCode(96).repeat(3);
 
