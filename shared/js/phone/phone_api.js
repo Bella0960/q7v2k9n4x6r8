@@ -250,6 +250,11 @@
     /* ========== JSON 清洗 ========== */
 
     function cleanJSON(raw) {
+        // Shared balanced JSON extractor, when loaded by the host app.
+        // Invalid business data stays invalid; never turn prose into fake records.
+        if (global.AIResponseParser && typeof global.AIResponseParser.parseJSON === 'function') {
+            return global.AIResponseParser.parseJSON(raw);
+        }
         var text = String(raw || '').trim();
 
         // 1. 去掉 markdown ```json ... ``` 包裹
