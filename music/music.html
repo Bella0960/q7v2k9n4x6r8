@@ -2252,16 +2252,21 @@
   // Some Android SAF/cloud pickers report size: 0 even while the selected
   // file can be read. Probe actual bytes, falling back to FileReader once.
   // An inaccessible file must NOT be classified as a confirmed empty audio.
-  async function musicReadAudioBytes(source) {
+  async function musicReadAudioBytes(source, timeoutMs) {
     var lastError = null, sawEmptyRead = false;
+    // Android SAF providers may leave an unreadable request pending forever.
+    // Bound each read attempt; never keep the picker in a busy state.
+    var readLimit = Number.isFinite(timeoutMs) && timeoutMs > 0
+      ? Math.min(timeoutMs, 10000) : 10000;
     for (var attempt = 0; attempt < 2; attempt++) {
+      var timer = null;
       try {
-        var buffer;
+        var pending;
         if ((attempt === 0 || typeof FileReader !== 'function') &&
             source && typeof source.arrayBuffer === 'function') {
-          buffer = await source.arrayBuffer();
+          pending = source.arrayBuffer();
         } else if (typeof FileReader === 'function') {
-          buffer = await new Promise(function(resolve, reject) {
+          pending = new Promise(function(resolve, reject) {
             var reader = new FileReader();
             reader.onload = function() { resolve(reader.result); };
             reader.onerror = function() { reject(reader.error || new Error('音频读取失败')); };
@@ -2271,11 +2276,19 @@
         } else {
           throw new Error('浏览器无法读取所选文件');
         }
+        var buffer = await Promise.race([
+          Promise.resolve(pending),
+          new Promise(function(resolve, reject) {
+            timer = setTimeout(function() { reject(new Error('音频读取超时')); }, readLimit);
+          })
+        ]);
         if (!(buffer instanceof ArrayBuffer)) throw new Error('无效的音频读取结果');
         if (buffer.byteLength > 0) return { ok: true, bytes: new Uint8Array(buffer) };
         sawEmptyRead = true;
       } catch (err) {
         lastError = err;
+      } finally {
+        if (timer !== null) clearTimeout(timer);
       }
     }
     return { ok: false, reason: lastError ? 'read' : sawEmptyRead ? 'empty' : 'read' };
@@ -2335,14 +2348,33 @@
     var files = Array.from(e.target.files || []);
     e.target.value = '';
     var localMeta = readLocalTracksMeta(), lastImported = null;
+    var protectedFileNoticeShown = false;
     if (musicMetaReadFailure) { toast('原歌曲列表读取失败，已停止导入，避免覆盖旧歌曲'); return; }
     for (var i = 0; i < files.length; i++) {
       var file = files[i];
-      var resolvedFormat = await musicResolveAudioFormat(file);
-      if (!resolvedFormat.ok) {
-        toast((resolvedFormat.reason === 'read' ? '音频读取失败，请检查文件权限后重新选择：' :
-          resolvedFormat.reason === 'empty' ? '音频内容为空，请确认原文件后重新选择：' :
-          '无法识别音频文件格式：') + (file.name || '未命名文件'));
+      // Do not let a misbehaving Android file provider abort the batch or
+      // prevent the file picker from being opened again.
+      var resolvedFormat;
+      try {
+        resolvedFormat = await musicResolveAudioFormat(file);
+      } catch (err) {
+        resolvedFormat = { ok: false, reason: 'read' };
+      }
+      if (!resolvedFormat || !resolvedFormat.ok) {
+        if (!resolvedFormat || resolvedFormat.reason === 'read') {
+          if (!protectedFileNoticeShown) {
+            protectedFileNoticeShown = true;
+            var guidance = '当前音频文件可能受手机系统保护，应用无法读取。' +
+              '请先将音频复制或移动到手机本地存储（如“下载”文件夹），' +
+              '或者换一个可访问的 MP3 文件后重试。';
+            if (typeof window.alert === 'function') window.alert(guidance);
+            else toast(guidance);
+          }
+        } else {
+          toast((resolvedFormat.reason === 'empty'
+            ? '音频内容为空，请确认原文件后重新选择：'
+            : '无法识别音频文件格式：') + (file.name || '未命名文件'));
+        }
         continue;
       }
       var tid = 'local_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2, 7);
