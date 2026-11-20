@@ -321,3 +321,19 @@ test('existing valid empty primary stays authoritative without importing old dup
   assert.equal(saved[0].text,'只追加这一条');
   assert.equal(h.privatePopupCount,1);
 });
+
+test('explicit group mentions bypass hours while keeping mute and live persona checks', () => {
+  const start = html.indexOf('        function getAvailableGroupMembers(');
+  const end = html.indexOf('        function saveCurrentGroupObject(', start);
+  const members = [{id:'awake'}, {id:'sleep'}, {id:'muted', muted:true}, {id:'deleted'}];
+  const create = new Function('currentGroup','window','isGroupMemberInActiveHours','getRoleById',
+    html.slice(start,end) + '\nreturn {getAvailableGroupMembers,getGroupWakeMentionIds};');
+  const gate = create({members}, {GroupChatPolicy:{
+    extractMentionedMemberIds: () => ['sleep','muted','deleted'],
+    getPendingMentionIds: () => ['sleep']
+  }}, member => member.id === 'awake', id => id !== 'deleted' && {persona:'saved'});
+  assert.deepEqual(gate.getAvailableGroupMembers().map(m => m.id), ['awake']);
+  assert.deepEqual(gate.getAvailableGroupMembers(gate.getGroupWakeMentionIds('@sleep')).map(m => m.id), ['awake','sleep']);
+  assert.deepEqual(gate.getGroupWakeMentionIds('', []), ['sleep']);
+  assert.match(html, /getAvailableGroupMembers: function \(\) \{ return getAvailableGroupMembers\(wakeMentionIds\); \}/);
+});

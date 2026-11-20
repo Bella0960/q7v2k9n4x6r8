@@ -2505,16 +2505,24 @@
             if (start === end) return true;
             return start < end ? (current >= start && current <= end) : (current >= start || current <= end);
         }
-        function getAvailableGroupMembers() {
+        function getAvailableGroupMembers(wakeIds = []) {
             var members = (currentGroup && Array.isArray(currentGroup.members)) ? currentGroup.members : [];
             return members.filter(function(member) {
                 if (!member || (window.GroupGovernance ? window.GroupGovernance.isMuted(member) : member.muted) ||
-                    !isGroupMemberInActiveHours(member)) return false;
+                    (!wakeIds.includes(String(member.id)) && !isGroupMemberInActiveHours(member))) return false;
                 // The current role library, not a copied group-member snapshot, owns
                 // the persona. Deleted or empty-persona characters cannot speak.
                 var liveRole = getRoleById(member.id);
                 return !!(liveRole && String(liveRole.persona || liveRole.prompt || '').trim());
             });
+        }
+        function getGroupWakeMentionIds(text, history) {
+            const members = currentGroup && currentGroup.members;
+            const policy = window.GroupChatPolicy;
+            if (!Array.isArray(members) || !policy) return [];
+            return history
+                ? policy.getPendingMentionIds(history, members, members, '')
+                : policy.extractMentionedMemberIds(text, members);
         }
         function saveCurrentGroupObject() {
             if (!currentGroup || !currentGroup.id) return false;
@@ -5627,6 +5635,8 @@
                 : [];
             var avatarCandidateImages = [];
             window.__groupAutoStopRequested = false;
+            const wakeMentionIds = !isRegen && !contextOnly && !silent && !isGroupFollowup
+                ? getGroupWakeMentionIds(text) : [];
             let preflightReason;
             if (window.ChatSendPolicy && typeof window.ChatSendPolicy.evaluatePreflight === 'function') {
                 preflightReason = window.ChatSendPolicy.evaluatePreflight({
@@ -5637,14 +5647,14 @@
                     isSending: function () { return aiSending; },
                     isGroupChat: function () { return isGroupChat; },
                     hasGroup: function () { return !!currentGroup; },
-                    getAvailableGroupMembers: function () { return getAvailableGroupMembers(); }
+                    getAvailableGroupMembers: function () { return getAvailableGroupMembers(wakeMentionIds); }
                 });
             } else {
                 // Compatibility fallback: keep every guard in its original order.
                 if (!text && !isRegen && !contextOnly) preflightReason = 'empty';
                 else if (isBlocked(aliasRoleId)) preflightReason = 'blocked';
                 else if (aiSending) preflightReason = 'busy';
-                else if (isGroupChat && currentGroup && !isRegen && !contextOnly && !getAvailableGroupMembers().length) {
+                else if (isGroupChat && currentGroup && !isRegen && !contextOnly && !getAvailableGroupMembers(wakeMentionIds).length) {
                     preflightReason = 'group-unavailable';
                 } else preflightReason = 'ready';
             }
@@ -5945,7 +5955,8 @@
             let groupContextPrompt = '';
             if (isGroupChat && currentGroup) {
                 const members = currentGroup.members || [];
-                const availableMembers = getAvailableGroupMembers();
+                const turnWakeIds = isGroupFollowup ? getGroupWakeMentionIds('', historyList) : wakeMentionIds;
+                const availableMembers = getAvailableGroupMembers(turnWakeIds);
                 // Only public group identities belong in the shared roster.
                 // Do not flood this member's request with all other roles' private
                 // persona text: it blurs voices and exposes facts they may not know.
@@ -5985,7 +5996,7 @@
                             '请结合自己的角色人设、与发言者的关系和真实聊天上下文自然回应，不要为了匹配标签而强行接话。';
                     }
                     if (groupPolicy && typeof groupPolicy.selectSpeaker === 'function') {
-                        var mentionQueue = typeof groupPolicy.getPendingMentionIds === 'function'
+                        var mentionQueue = wakeMentionIds.length ? wakeMentionIds : typeof groupPolicy.getPendingMentionIds === 'function'
                             ? groupPolicy.getPendingMentionIds(historyList, members, availableMembers, selectionText)
                             : (typeof groupPolicy.extractMentionedMemberIds === 'function'
                                 ? groupPolicy.extractMentionedMemberIds(selectionText, members)
@@ -8098,7 +8109,7 @@
                 ? window.GroupChatPolicy.getPendingMentionIds(
                     loadMessages(),
                     currentGroup.members || [],
-                    getAvailableGroupMembers(),
+                    getAvailableGroupMembers(getGroupWakeMentionIds('', loadMessages())),
                     ''
                 )
                 : [];
@@ -8110,7 +8121,7 @@
                 isGroupChat && currentGroup &&
                 (autoSettings.autoTalkEnabled || pendingMentionIds.length > 0) &&
                 maxAutoRounds > groupAutoDepth &&
-                hasTwoAvailableMembers &&
+                (hasTwoAvailableMembers || pendingMentionIds.length > 0) &&
                 groupReplyVisible &&
                 streamResult && streamResult.ok &&
                 !window.__groupAutoStopRequested &&

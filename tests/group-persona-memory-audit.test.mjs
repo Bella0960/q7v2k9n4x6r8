@@ -47,7 +47,7 @@ test('autonomous turns may naturally end without forcing a quiet high-threshold 
 });
 
 test('group speaking pool requires each existing saved role to have an actual persona', () => {
-  const start=detail.indexOf('        function getAvailableGroupMembers() {');
+  const start=detail.indexOf('        function getAvailableGroupMembers(');
   const end=detail.indexOf('        function saveCurrentGroupObject()',start);
   assert.ok(start>=0&&end>start);
   const source=detail.slice(start,end);
