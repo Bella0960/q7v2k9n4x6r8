@@ -26,6 +26,18 @@
 
     var DEFAULT_TIMEOUT = 15000;
 
+    function observeRequest(url, messages) {
+        try {
+            var monitor = global.PhoneApiMonitor;
+            var request = monitor?.begin(url);
+            if (!request) return;
+            return function (text, error, usage) {
+                try { monitor.complete(request, messages, text, error, usage); }
+                catch { /* Diagnostics cannot change the request outcome. */ }
+            };
+        } catch { /* Storage and diagnostics are optional. */ }
+    }
+
     /* ========== 单次 completion ========== */
 
     NS.complete = function (opts) {
@@ -76,7 +88,10 @@
         }
         var timer = setTimeout(function () { timedOut = true; controller.abort(); }, timeoutMs);
 
-        return fetch(baseUrl + '/chat/completions', {
+        var requestUrl = baseUrl + '/chat/completions';
+        var observe = observeRequest(requestUrl, body.messages);
+        var httpStatus;
+        return fetch(requestUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -87,6 +102,7 @@
         }).then(function (response) {
             clearTimeout(timer);
             if (!response.ok) {
+                httpStatus = response.status;
                 return response.text().then(function (txt) {
                     var e = new Error('HTTP ' + response.status + ' ' + txt.slice(0, 200));
                     log('error', model, start, e.message);
@@ -97,9 +113,13 @@
         }).then(function (data) {
             var text = (((data || {}).choices || [])[0] || {}).message
                 ? (data.choices[0].message.content || '') : '';
+            observe?.(text, null, data?.usage);
             log('success', model, start);
             return text;
         }).catch(function (err) {
+            observe?.('', httpStatus ? { kind: 'http', status: httpStatus }
+                : timedOut ? { kind: 'abort', reason: 'connect' }
+                : { kind: err?.name === 'AbortError' ? 'cancelled' : 'network' });
             if (err && err.name === 'AbortError') {
                 err = new Error(cancelledByCaller ? '请求已取消' :
                     (timedOut ? '请求超时（' + timeoutMs + 'ms）' : '请求已中断'));
@@ -181,6 +201,9 @@
             return new Blob([bytes], { type: mimeType || 'image/png' });
         }
 
+        var observe = observeRequest(endpointUrl.href, [{ content: body.prompt }]);
+        var httpStatus;
+        var usage;
         return fetch(endpointUrl.href, {
             method: 'POST',
             headers: {
@@ -191,12 +214,14 @@
             body: JSON.stringify(body)
         }).then(function (response) {
             if (!response.ok) {
+                httpStatus = response.status;
                 return response.text().then(function (txt) {
                     throw new Error('图片生成接口 HTTP ' + response.status + ' ' + txt.slice(0, 220));
                 });
             }
             return response.json();
         }).then(function (payload) {
+            usage = payload?.usage;
             var item = payload && Array.isArray(payload.data) ? payload.data[0] : null;
             if (!item) throw new Error('图片生成服务没有返回图片');
             if (item.b64_json) {
@@ -205,7 +230,10 @@
             if (item.url) {
                 // 图片 URL 通常为临时地址。立即下载为 Blob，随后交给 MediaRepository 持久化。
                 return fetch(String(item.url), { method: 'GET', signal: controller.signal }).then(function (imageResponse) {
-                    if (!imageResponse.ok) throw new Error('生成图片下载失败（HTTP ' + imageResponse.status + '）');
+                    if (!imageResponse.ok) {
+                        httpStatus = imageResponse.status;
+                        throw new Error('生成图片下载失败（HTTP ' + imageResponse.status + '）');
+                    }
                     return imageResponse.blob();
                 }).then(function (blob) {
                     var type = blob && blob.type ? blob.type.toLowerCase() : '';
@@ -228,8 +256,11 @@
             }
             clearTimeout(timer);
             log('success', model, start);
+            observe?.('', null, usage);
             return { blob: blob, mimeType: blob.type, model: model };
         }).catch(function (error) {
+            observe?.('', httpStatus ? { kind: 'http', status: httpStatus }
+                : { kind: error?.name === 'AbortError' ? 'abort' : 'network' });
             clearTimeout(timer);
             if (error && error.name === 'AbortError') error = new Error('图片生成请求超时（' + timeoutMs + 'ms）');
             log('error', model, start, error && error.message ? error.message : String(error));
