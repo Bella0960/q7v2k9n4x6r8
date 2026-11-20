@@ -531,3 +531,9 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 只修一个 DATA/CHAT-HISTORY-001 问题：从当前 QA 创建 `task-CHAT-HISTORY-001/group-private-safe-append-20261120`，只修改群私聊回执的目标角色写入路径：优先现有 `PhoneStorage.result.appendChatHistory`，对读回的原始 `chat_history_<id>` 做 MID/身份/群来源验证；失败不生成公开群私聊卡，也不误提示保存成功。不重新写普通私聊、世界书、外观或推送。
 - 追加 `tests/group-turn-integration.test.mjs` 的五类损坏主键/旧 v2 副本/保留图片与引用字段/伪成功/空数组主键回归，原合同测试保持。已有公共隔离 Runner 定向五组测试 [#44719212719](https://github.com/Bella0960/web-runtime-lab/actions/runs/44719212719) **PASS**，固定功能提交 `282be457deb747b3838c26b2d9290bf79a9fc251`。
 - 完整 Node/Vite/Chromium 和唯一 Cloudflare QA-only 发版尚待最终回执；真实 Android/iOS 群聊私聊验收仍需用户确认。正式 main、身份核心和生产账号未变。
+
+## 2026-11-20｜CHAT-RP-001｜人设与协议缺失时用户消息无重试入口
+
+- 从唯一 QA #299 `5b16f7890b302810039d59970ce75451d2fadc47` 排查世界书/人设/发送链：旧世界书绑定分支内容已经进入 QA，未重新合并或覆盖。实际 P0 缺口出在 `chat/chat/chat-detail.html` 保存用户消息后但发起 PhoneStream 前的 required-source 检查：缺少/读取失败的全局协议、最终人设源校验失败、世界书或群人物设定过长会直接 return，导致已经存下的用户气泡不带失败感叹号且无法快速重试。
+- 在 `task-CHAT-RP-001/required-source-retry-20261120` 最小修复：仅在当前用户消息经过安全写入和 MID 校验后抓取同一个 MID；复用 `_markUserSendFailed` 写入失败原因，显示已有 UI 感叹号，不重复提交、不绕过必需的人设/协议/世界书 API 前置保护。若标记落库失败，真实告警、不报成功；重生成/继续聊天和既有 retryTarget 不追加消息。
+- 影响文件：`chat/chat/chat-detail.html`, `tests/chat-required-source-retry.test.mjs`, `package.json`, 工程记录。角色用户数据结构、worldbook、原全局人设协议、群身份和正式 Worker 均未更改。专项、完整 QA、Cloudflare 发布结果以实际独立运行回执为准。
