@@ -267,13 +267,15 @@
     };
   }
   
-  // Keep legacy entries without sourceRoleId globally visible for compatibility;
-  // explicitly role-scoped entries must only be injected for their matching role.
+  // Role memory is never global. Unscoped legacy entries remain in storage,
+  // but cannot enter any role's AI context without an explicit sourceRoleId.
   function filterUserMemoriesForRole(memories, roleId) {
     if (!Array.isArray(memories)) return [];
-    var activeRoleId = String(roleId || '');
+    var activeRoleId = String(roleId == null ? '' : roleId).trim();
+    if (!activeRoleId) return [];
     return memories.filter(function (memory) {
-      return !!activeRoleId && !!memory && !!memory.sourceRoleId && String(memory.sourceRoleId) === activeRoleId;
+      return memory && typeof memory === 'object' && memory.sourceRoleId != null &&
+        String(memory.sourceRoleId).trim() === activeRoleId;
     });
   }
 
