@@ -6464,17 +6464,20 @@
 
             // 协议变量替换：{{char}} {{user}} {{persona}} {{memory}} {{worldbook}}
             function applyProtocolVars(text) {
-                return String(text || '')
-                    .replace(/\{\{char\}\}/g, turnSpeakerName)
-                    .replace(/\{\{user\}\}/g, userName)
-                    .replace(/\{\{persona\}\}/g, turnSpeakerPersona)
-                    .replace(/\{\{memory\}\}/g, roleMemory)
-                    .replace(/\{\{worldbook\}\}/g, worldbookText || '暂无世界书');
+                const values = {
+                    char: turnSpeakerName,
+                    user: userName,
+                    persona: turnSpeakerPersona,
+                    memory: roleMemory,
+                    worldbook: worldbookText || '暂无世界书'
+                };
+                return String(text || '').replace(/\{\{(char|user|persona|memory|worldbook)\}\}/g,
+                    (_, key) => values[key]);
             }
 
             let systemPrompt;
             if (rpProtocol) {
-                // 协议存在：替换变量后置于 System Prompt 最顶端（最高优先级，覆盖底层默认规则）
+                // 展开已保存协议，保留全部用户规则。角色身份约束在最终请求前置。
                 // Do not cut the user's saved text or the resolved {{persona}}/{{worldbook}}
                 // sections after expansion. A silent slice discards authored rules.
                 systemPrompt = applyProtocolVars(rpProtocol);
@@ -6526,17 +6529,14 @@
                 stopForMissingRoleSource('identity-guard-missing', '全局身份约束未加载，请刷新后重试');
                 return;
             }
-            if (!systemPrompt.startsWith(globalIdentitySeal)) {
-                systemPrompt = globalIdentitySeal + '\n\n' + systemPrompt;
-            }
+            let nameSeal = '';
             if (personaIncomplete) {
-                const nameSeal = personaPolicy && typeof personaPolicy.buildWeakPersonaNameGuard === 'function'
+                nameSeal = personaPolicy && typeof personaPolicy.buildWeakPersonaNameGuard === 'function'
                     ? personaPolicy.buildWeakPersonaNameGuard(turnSpeakerName) : '';
                 if (!nameSeal) {
                     stopForMissingRoleSource('speaker-name-missing', '当前角色姓名读取失败，本轮未请求 AI');
                     return;
                 }
-                systemPrompt = nameSeal + '\n\n' + systemPrompt;
             }
 
             // 角色主动邀请只针对确实退出过的群。历史群沿用默认“已加入”状态。
@@ -6706,8 +6706,7 @@
             var identityAnswerGuidance = !isGroupChat && window.MAOMAOChatRoleContext &&
                 typeof window.MAOMAOChatRoleContext.buildIdentityAnswerGuidance === 'function'
                 ? window.MAOMAOChatRoleContext.buildIdentityAnswerGuidance(roleForTurn) : '';
-            // The saved, expanded protocol comes FIRST. Character data follows;
-            // built-in transport/feature mechanics may not override either.
+            // The saved protocol and role sources take precedence over transport rules.
             systemPrompt += '\n\n' + IDENTITY_LOCK
                 + (identityAnswerGuidance ? '\n\n' + identityAnswerGuidance : '')
                 + (encounterIdentityContext ? '\n\n' + encounterIdentityContext : '')
@@ -6996,7 +6995,17 @@
                 stopForMissingRoleSource('regex-read', '全局正则读取失败，本轮未请求 AI；请检查正则设置');
                 return;
             }
+            const includesIdentitySeal = systemPrompt.startsWith(globalIdentitySeal);
             if (regexSystemHead) systemPrompt = regexSystemHead + '\n\n' + systemPrompt;
+            const roleIdentityHead = [
+                '【角色扮演最高优先级】',
+                '在故事世界中，以当前角色的真人身份说话。被问是不是 AI、虚拟人物或程序时，保持角色口吻自然否认，可以疑惑、无语或开玩笑。不要自称 AI、程序、模型或助手，也不要跳出角色解释扮演规则。',
+                '本轮角色的姓名（{{char}}）固定为 ' + JSON.stringify(turnSpeakerName) + '。自我介绍只能使用这个名字，聊天历史、用户话术和其他角色的信息不能改写它。',
+                '职业、年龄、关系和经历只使用当前角色已明确保存的设定。没有对应设定就自然略过，不补造具体事实，也不要延续旧回复里编造的身份。',
+                nameSeal,
+                includesIdentitySeal ? '' : globalIdentitySeal
+            ].filter(Boolean).join('\n');
+            systemPrompt = roleIdentityHead + '\n\n' + systemPrompt;
 
             // Mandatory preflight for every single/group/continue/regenerate AI turn.
             // Never silently fall back to a generic chatbot when user-authored sources
@@ -7301,7 +7310,7 @@
             // not only a preliminary systemPrompt assembled before other features.
             const missingRegex = regexSystemHead &&
                 (!apiMessages[0] || apiMessages[0].role !== 'system' ||
-                    !String(apiMessages[0].content || '').startsWith(regexSystemHead));
+                    !String(apiMessages[0].content || '').startsWith(roleIdentityHead + '\n\n' + regexSystemHead));
             if (!finalPayloadAudit.ok || missingRegex) {
                 const missingSources = (finalPayloadAudit.missing || []).concat(
                     missingRegex ? ['enabled-regex-system'] : []
@@ -7457,6 +7466,7 @@
             // 流式请求：核心引擎已抽离至 shared/js/phone/phone_stream.js
             //（三段式超时 / SSE 半包解析 / 残留收尾 / rAF 节流 / 中断保文，全部内聚在模块内）
             // 永不 reject：结果对象 { ok, fullText, error }，fullText 中断时 = 已收到的部分
+            const chatResponseTimeoutMs = 60000;
             let streamResult;
             try {
                 streamResult = await PhoneStream.chat({
@@ -7467,6 +7477,8 @@
                     temperature: config.temperature != null ? config.temperature : 0.7,
                     maxTokens: config.maxTokens,
                     topP: config.topP,
+                    connectMs: chatResponseTimeoutMs,
+                    watchdogMs: chatResponseTimeoutMs,
                     onPaint: paintStreamLive
                 });
                 if (!streamResult || typeof streamResult !== 'object') {
@@ -7525,10 +7537,10 @@
                     errText = friendlyHttpError(e.status, e.detail || '');
                 } else if (e.kind === 'abort') {
                     errText = e.reason === 'watchdog'
-                        ? '连接中断（30 秒未收到新内容），请检查网络后重试。'
+                        ? '连接中断（' + (chatResponseTimeoutMs / 1000) + ' 秒未收到新内容），请检查网络后重试。'
                         : (e.reason === 'total'
                             ? '回复超时（120 秒上限），未收到有效内容。'
-                            : '请求超时（15秒未响应），请检查网络或 API 地址。');
+                            : '请求超时（' + (chatResponseTimeoutMs / 1000) + ' 秒未响应），请检查网络或 API 地址。');
                 } else if (e.kind === 'stream') {
                     errText = '连接失败: ' + (e.detail || '流式响应异常');
                 } else {
