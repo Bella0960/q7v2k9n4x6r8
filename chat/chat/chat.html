@@ -1518,6 +1518,7 @@
     });
     window.addEventListener('storage', function(event) {
       if (event.key === PROFILE_KEY) renderProfile();
+      if (event.key === CHARACTERS_KEY || event.key === null) renderChatList();
     });
   </script>
 <script src="../../shared/js/statusbar-control.js"></script>

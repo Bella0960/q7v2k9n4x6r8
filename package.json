@@ -10,7 +10,7 @@
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0 --port 3000",
     "lint": "node -e 'console.log(\"Lint passed\")'",
-    "test:chat:contract": "node --test tests/chat-regression-contract.test.mjs tests/chat-role-sticker-library.test.mjs tests/role-avatar-library.test.mjs tests/chat-image-vision.test.mjs tests/role-gallery-image-autonomy.test.mjs tests/chat-fanwai.test.mjs tests/chat-fanwai-ui.test.mjs tests/chat-fanwai-extension.test.mjs tests/phone-api-abort.test.mjs tests/chat-history-corruption-guard.test.mjs tests/chat-phone-storage-primary-guard.test.mjs tests/chat-forward-media-rollback.test.mjs tests/role-worldbook-bindings.test.mjs tests/chat-history-atomic.test.mjs tests/chat-primary-send-lock.test.mjs tests/chat-selection-delete-atomic.test.mjs tests/chat-direct-online-identity-guard.test.mjs tests/offline-worldbook-binding-parity.test.mjs tests/chat-scheduled-persona-source.test.mjs tests/ai-response-parser.test.mjs tests/date-reply-options-parser.test.mjs tests/chat-required-source-retry.test.mjs tests/chat-prompt-payload-diagnostic.test.mjs tests/chat-strict-role-isolation.test.mjs",
+    "test:chat:contract": "node --test tests/chat-regression-contract.test.mjs tests/chat-role-sticker-library.test.mjs tests/role-avatar-library.test.mjs tests/chat-image-vision.test.mjs tests/role-gallery-image-autonomy.test.mjs tests/chat-fanwai.test.mjs tests/chat-fanwai-ui.test.mjs tests/chat-fanwai-extension.test.mjs tests/phone-api-abort.test.mjs tests/chat-history-corruption-guard.test.mjs tests/chat-phone-storage-primary-guard.test.mjs tests/chat-forward-media-rollback.test.mjs tests/role-worldbook-bindings.test.mjs tests/chat-history-atomic.test.mjs tests/chat-primary-send-lock.test.mjs tests/chat-selection-delete-atomic.test.mjs tests/chat-direct-online-identity-guard.test.mjs tests/offline-worldbook-binding-parity.test.mjs tests/chat-scheduled-persona-source.test.mjs tests/ai-response-parser.test.mjs tests/date-reply-options-parser.test.mjs tests/chat-required-source-retry.test.mjs tests/chat-prompt-payload-diagnostic.test.mjs tests/chat-strict-role-isolation.test.mjs tests/role-avatar-choice.test.mjs tests/chat-avatar-manager.test.mjs",
     "test:chat:selection-delete": "node --test tests/chat-selection-delete-atomic.test.mjs",
     "test:chat:reply": "node --test tests/chat-reply-bubble-mode.test.mjs",
     "test:chat:isolation": "node --test tests/chat-data-isolation.test.mjs",
@@ -49,7 +49,7 @@
     "test:icons:presets": "node --test tests/icon-presets-contract.test.mjs",
     "test:images": "node --test tests/image-generation-pipeline.test.mjs",
     "test:luck-room": "node --test tests/luck-room-contract.test.mjs",
-    "test:role:avatars": "node --test tests/role-avatar-library.test.mjs",
+    "test:role:avatars": "node --test tests/role-avatar-library.test.mjs tests/role-avatar-choice.test.mjs tests/chat-avatar-manager.test.mjs",
     "test:chat:image-vision": "node --test tests/chat-image-vision.test.mjs",
     "postbuild": "node --test tests/production-assets-isolation.test.mjs && node scripts/record-encounter-build.mjs",
     "test:account:ui-candidate": "node --test tests/admin-center-ui.test.mjs tests/admin-center-mobile-release.test.mjs tests/account-bootstrap-runtime.test.mjs tests/account-password-kdf.test.mjs tests/account-session-expiry.test.mjs tests/worker-page-auth-runtime.test.mjs tests/account-storage-isolation.test.mjs && npm run test:account:release-gate && npm run test:account:registration-persistence",
@@ -67,7 +67,9 @@
     "test:encounter": "node --test tests/encounter-contract.test.mjs tests/encounter-ui-contract.test.mjs tests/encounter-actual-scope.test.mjs && node scripts/record-encounter-tests.mjs encounter",
     "test:encounter:browser": "node tests/encounter-browser.mjs",
     "gate:encounter": "node scripts/verify-encounter-release.mjs",
-    "test:settings:regex": "node --test tests/regex-editor-ui.test.mjs"
+    "test:settings:regex": "node --test tests/regex-editor-ui.test.mjs",
+    "test:role:avatars:browser": "node tests/chat-avatar-manager-browser.mjs",
+    "test:role:avatars:acceptance": "npm run test:role:avatars && npm run build && npm run test:role:avatars:browser"
   },
   "devDependencies": {
     "playwright": "^1.64.1",

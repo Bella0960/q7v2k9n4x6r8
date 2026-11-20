@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v274';
+const CACHE_NAME = 'phone-app-pwa-v276';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 function cacheablePublicResponse(response) {
   return !!(response && response.ok && !response.redirected &&
@@ -91,9 +91,11 @@ const APP_SHELL = [
   './chat/date/journey.html',
   './chat/chat/chat-detail.html',
   './chat/chat/chat-settings.html',
+  './chat/chat/avatar-manager.html',
+  './chat/chat/avatar-manager.js?v=20261117v1',
   './chat/chat/js/chat-extras.js?t=20261120fanwai24',
   './worldbook/characters/characters.html',
-  './worldbook/characters/js/characters-manager.js?v=20261118-avatar-fold1',
+  './worldbook/characters/js/characters-manager.js?v=20261121avatar1',
   './shared/js/phone/role-worldbook-bindings.js?v=20261119-qa1',
   './shared/js/phone/chat-regex-policy.js?v=20261119regex1',
   './shared/js/phone/chat-history-atomic.js?v=20261118v3',
@@ -152,7 +154,8 @@ const APP_SHELL = [
   'shared/js/phone/storage/repository.js',
   'shared/js/phone/storage/media-repository.js?v=20261107v2',
   './shared/js/phone/role-sticker-library.js?v=20261107v2',
-  './shared/js/phone/role-avatar-library.js?v=20261113v1',
+  './shared/js/phone/role-avatar-library.js?v=20261121avatar1',
+  './shared/js/phone/role-avatar-choice.js?v=20261113v1',
   'shared/js/phone/phone_api.js?v=20261106v1',
   'shared/js/phone/image-generation.js?v=20261106v1',
   './shared/js/phone/role-gallery-image-autonomy.js?v=20261111v2',

@@ -319,9 +319,14 @@ async function retryPendingRoleAvatarCleanup() {
         attempted += 1;
         try {
             const result = await library.removeRole(item.roleId);
-            if (!result || !result.ok) {
+            // A successful character deletion also owns the autonomous
+            // selection cooldown. Retry both cleanup tasks if either fails.
+            const choice = window.RoleAvatarChoice;
+            const cooldownCleared = !!choice && typeof choice.clearRole === 'function' &&
+                choice.clearRole(item.roleId);
+            if (!result || !result.ok || !cooldownCleared) {
                 pending.push(item);
-                console.warn('角色头像清理仍未完成，将在下次打开角色档案页时重试:', item.roleId);
+                console.warn('角色头像或自主选择记录清理仍未完成，将在下次打开角色档案页时重试:', item.roleId);
             }
         } catch (error) {
             pending.push(item);
@@ -541,7 +546,7 @@ function openAvatarLibraryUpload() {
 async function selectRoleAvatarFromLibrary(avatarId) {
     const roleId = String(currentProfileRoleId || '');
     const library = window.RoleAvatarLibrary;
-    if (!roleId || !library) return;
+    if (!roleId || !library || typeof library.applyToCharacter !== 'function') return;
     const item = library.find(roleId, avatarId);
     if (!item) {
         setAvatarLibraryStatus('这张头像不属于当前角色，未进行更改。', 'error');
@@ -549,38 +554,29 @@ async function selectRoleAvatarFromLibrary(avatarId) {
     }
 
     setAvatarLibraryStatus('正在切换当前头像…', 'info');
-    const resolved = await library.toDataUrl(item.assetId);
-    if (!resolved || !resolved.ok || typeof resolved.value !== 'string') {
-        setAvatarLibraryStatus('图片暂时无法读取，原头像没有变化。', 'error');
+    // Reuse the library's snapshot/rollback and deletion protection instead
+    // of writing ai_custom_characters and activeId separately on this page.
+    const result = await library.applyToCharacter(roleId, item.id, {
+        isCurrent: function () {
+            return String(currentProfileRoleId || '') === roleId;
+        }
+    });
+    // The user may have opened another role while IndexedDB was loading.
+    if (String(currentProfileRoleId || '') !== roleId) return;
+    if (!result || !result.ok) {
+        const code = result && result.error && result.error.code;
+        const message = code === 'PARTIAL_ROLLBACK'
+            ? '保存未完全恢复，请检查当前头像标记。'
+            : code === 'STALE_SELECTION'
+                ? '角色资料或收藏已更新，原头像未被覆盖。请刷新后重试。'
+                : code === 'ROLE_DELETED'
+                    ? '角色已被删除，不能继续修改头像。'
+                    : code === 'DB_UNAVAILABLE'
+                        ? '图片暂时无法读取，原头像没有变化。'
+                        : '头像保存失败，原有资料未更改。请检查浏览器存储空间。';
+        setAvatarLibraryStatus(message, 'error');
         return;
     }
-
-    const roles = loadRoles();
-    const target = roles.find(function (role) { return String(role.id) === roleId; });
-    if (!target) {
-        setAvatarLibraryStatus('找不到当前角色，原头像没有变化。', 'error');
-        return;
-    }
-
-    const previousAvatar = target.avatar || '';
-    const previousAssetId = target.avatarAssetId || '';
-    const previousActive = library.getActive(roleId);
-    const activated = library.setActive(roleId, item.id);
-    if (!activated.ok) {
-        setAvatarLibraryStatus('当前头像标记保存失败，未更改角色资料。', 'error');
-        return;
-    }
-
-    target.avatar = resolved.value;
-    target.avatarAssetId = item.assetId;
-    if (!saveRoles(roles)) {
-        target.avatar = previousAvatar;
-        target.avatarAssetId = previousAssetId;
-        library.setActive(roleId, previousActive ? previousActive.id : '');
-        setAvatarLibraryStatus('保存失败，已恢复原头像。请检查浏览器存储空间。', 'error');
-        return;
-    }
-
     renderRoleProfile();
     setAvatarLibraryStatus('已设为当前头像。聊天列表与角色资料会读取这份角色头像。', 'success');
 }
@@ -625,6 +621,7 @@ async function createRoleAvatarPairFromDraft() {
     }
     avatarPairDraftIds = [];
     await renderAvatarLibrary(roleId);
+    if (String(currentProfileRoleId || '') !== roleId) return;
     setAvatarLibraryStatus('已建立配对，两张头像仍可分别设为当前头像。', 'success');
 }
 
@@ -638,6 +635,7 @@ async function renameRoleAvatarPair(pairId, label) {
         return;
     }
     await renderAvatarLibrary(roleId);
+    if (String(currentProfileRoleId || '') !== roleId) return;
     setAvatarLibraryStatus('配对名称已更新。', 'success');
 }
 
@@ -649,6 +647,9 @@ async function applyRoleAvatarPairToChat(pairId) {
     const result = await library.applyPairToChat(roleId, pairId, {
         isCurrent: function () { return String(currentProfileRoleId || '') === roleId; }
     });
+    // The asynchronous media read may complete after a different role opens.
+    // Do not show old-role status or redraw a different profile.
+    if (String(currentProfileRoleId || '') !== roleId) return;
     if (!result || !result.ok) {
         const code = result && result.error && result.error.code;
         setAvatarLibraryStatus(code === 'PARTIAL_ROLLBACK'
@@ -670,6 +671,7 @@ async function swapRoleAvatarPair(pairId) {
         return;
     }
     await renderAvatarLibrary(roleId);
+    if (String(currentProfileRoleId || '') !== roleId) return;
     setAvatarLibraryStatus('已交换配对头像 A/B 顺序，当前使用的头像没有改变。', 'success');
 }
 
@@ -685,7 +687,10 @@ async function unlinkRoleAvatarPair(pairId) {
         return;
     }
     await renderAvatarLibrary(roleId);
-    setAvatarLibraryStatus('已解除配对，两张头像仍保留在收藏中。', 'success');
+    if (String(currentProfileRoleId || '') !== roleId) return;
+    setAvatarLibraryStatus(result.meta && result.meta.chatSelectionCleared
+        ? '已解除配对及当前聊天中的配对头像设置，两张原图仍保留在收藏中。'
+        : '已解除配对，两张原图仍保留在收藏中。', 'success');
 }
 
 async function removeRoleAvatarFromLibrary(avatarId) {
@@ -702,12 +707,14 @@ async function removeRoleAvatarFromLibrary(avatarId) {
 
     setAvatarLibraryStatus('正在移除头像…', 'info');
     const result = await library.remove(roleId, avatarId);
+    if (String(currentProfileRoleId || '') !== roleId) return;
     if (!result || !result.ok) {
         setAvatarLibraryStatus(result && result.error && result.error.message
             ? result.error.message : '移除失败，图片没有从图库中删除。', 'error');
         return;
     }
     await renderAvatarLibrary(roleId);
+    if (String(currentProfileRoleId || '') !== roleId) return;
     setAvatarLibraryStatus('已从这个角色的头像收藏中移除。', 'success');
 }
 
@@ -857,6 +864,9 @@ function renderRoleProfile() {
         '<section class="avatar-library-section" aria-labelledby="avatarLibraryTitle">' +
             '<div class="avatar-library-heading"><div><div class="avatar-library-kicker">PORTRAIT ARCHIVE / PRIVATE COLLECTION</div><h3 id="avatarLibraryTitle">头像收藏</h3><p>每个角色独立保存，互不混用。</p></div>' +
             '<button class="avatar-library-add" type="button" data-profile-action="avatar-add"><span aria-hidden="true">＋</span> 添加头像</button></div>' +
+            '<div class="avatar-library-autonomy"><div class="avatar-library-autonomy-copy"><strong>自主更换头像</strong><span>允许 TA 从自己的头像收藏中挑选；不会影响你的头像。</span></div>' +
+                '<button class="avatar-library-autonomy-toggle" type="button" data-profile-action="avatar-autonomy" aria-pressed="' + (role.avatarAutonomyEnabled !== false ? 'true' : 'false') + '">' +
+                (role.avatarAutonomyEnabled !== false ? '已开启' : '已关闭') + '</button></div>' +
             '<div class="avatar-library-status" id="avatarLibraryStatus" aria-live="polite" role="status"></div>' +
             '<details class="avatar-pair-disclosure" id="avatarPairDisclosure">' +
                 '<summary class="avatar-pair-summary">配对头像</summary>' +
@@ -911,6 +921,34 @@ function renderRoleProfile() {
         if (!button) return;
         const action = button.getAttribute('data-profile-action');
         if (action === 'avatar-add') openAvatarLibraryUpload();
+        if (action === 'avatar-autonomy') {
+            const active = getActiveProfileRole();
+            const enabled = !!active && active.avatarAutonomyEnabled !== false;
+            const saved = saveActiveRoleMutation(function (target) { target.avatarAutonomyEnabled = !enabled; });
+            if (saved) {
+                renderRoleProfile();
+                setAvatarLibraryStatus(enabled
+                    ? '已关闭 TA 的自主换头像，原头像与收藏没有变化。'
+                    : '已允许 TA 自主从自己的头像收藏中选择。', 'success');
+            } else {
+                setAvatarLibraryStatus('设置未保存成功，原有选项没有变化。', 'error');
+            }
+        }
+        if (action === 'avatar-autonomy') {
+            const active = getActiveProfileRole();
+            const enabled = !!active && active.avatarAutonomyEnabled !== false;
+            const saved = saveActiveRoleMutation(function (target) {
+                target.avatarAutonomyEnabled = !enabled;
+            });
+            if (saved) {
+                renderRoleProfile();
+                setAvatarLibraryStatus(enabled
+                    ? '已关闭 TA 的自主换头像，原头像与收藏没有变化。'
+                    : '已允许 TA 自主从自己的头像收藏中选择。', 'success');
+            } else {
+                setAvatarLibraryStatus('设置未保存成功，原有选项没有变化。', 'error');
+            }
+        }
         if (action === 'basic') openMainRoleEditor(false);
         if (action === 'tone') openMainRoleEditor(true);
         if (action === 'relationships') showAppView('relationshipView');
@@ -1719,6 +1757,14 @@ async function handleDeleteRole(id) {
         console.warn('角色已删除，但角色列表刷新失败:', error);
     }
 
+    // Only remove the role's cooldown after the character list save succeeds.
+    // If local storage fails, keep a retry record instead of claiming cleanup.
+    const choice = window.RoleAvatarChoice;
+    const cooldownCleared = !!choice && typeof choice.clearRole === 'function' &&
+        choice.clearRole(String(id));
+    if (!cooldownCleared && !enqueueRoleAvatarCleanup(id)) {
+        console.warn('角色已删除，但自主换头像的历史记录未清理且重试队列无法保存。');
+    }
     const library = window.RoleAvatarLibrary;
     if (!library || typeof library.removeRole !== 'function') {
         const queued = enqueueRoleAvatarCleanup(id);
@@ -2247,6 +2293,113 @@ if (cropCanvas) {
     cropCanvas.addEventListener('pointercancel', stopCropDrag);
     cropCanvas.addEventListener('lostpointercapture', stopCropDrag);
 }
+
+// Keep an already-open character profile in sync with other tabs without
+// re-rendering unrelated editor pages or writing back into role storage.
+// Feature hooks stay scoped to the active role so later modules can extend
+// this listener without coupling the rest of the character manager.
+(function watchExternalRoleAvatarChanges() {
+    let pending = false;
+    let pendingRoleId = '';
+    let deferredWhileEditing = false;
+    let refreshTimer = null;
+
+    function currentVisibleRole() {
+        const panel = document.getElementById('profileView');
+        if (!panel || panel.classList.contains('hidden')) return '';
+        return String(currentProfileRoleId || '');
+    }
+
+    function updateProfileAvatar(role) {
+        const container = document.getElementById('profileContent');
+        if (!container) return;
+        const oldAvatar = container.querySelector('.profile-hero-avatar');
+        if (!oldAvatar) return;
+        const nextSrc = String(role.avatar || '');
+        const currentSrc = oldAvatar.tagName === 'IMG' ? oldAvatar.getAttribute('src') || '' : '';
+        // A text-only fallback also needs to reflect a renamed character,
+        // without recreating the entire profile or touching editor fields.
+        if (!nextSrc && oldAvatar.tagName !== 'IMG') {
+            const initial = String(role.name || '角').slice(0, 1);
+            if (oldAvatar.textContent !== initial) oldAvatar.textContent = initial;
+            return;
+        }
+        if (nextSrc !== currentSrc) {
+            const nextAvatar = document.createElement(nextSrc ? 'img' : 'div');
+            nextAvatar.className = 'profile-hero-avatar';
+            if (nextSrc) {
+                nextAvatar.src = nextSrc;
+                nextAvatar.alt = '';
+            } else {
+                nextAvatar.textContent = String(role.name || '角').slice(0, 1);
+            }
+            oldAvatar.replaceWith(nextAvatar);
+        }
+    }
+
+    function executeRefresh() {
+        refreshTimer = null;
+        if (!pending) return;
+        const roleId = currentVisibleRole();
+        if (!roleId || document.hidden) return;
+        // If another role was opened during the debounce, discard the event.
+        if (roleId !== pendingRoleId) {
+            pending = false;
+            deferredWhileEditing = false;
+            return;
+        }
+        const container = document.getElementById('profileContent');
+        // Preserve any unsaved pair-name typing, including IME composition.
+        if (container && container.contains(document.activeElement) &&
+            document.activeElement.matches &&
+            document.activeElement.matches('[data-avatar-pair-label-input]')) {
+            deferredWhileEditing = true;
+            return;
+        }
+        pending = false;
+        deferredWhileEditing = false;
+        const role = getRoleById(roleId);
+        if (!role) {
+            showAppView('listView');
+            return;
+        }
+        updateProfileAvatar(role);
+        void renderAvatarLibrary(roleId);
+    }
+
+    function requestRefresh() {
+        const roleId = currentVisibleRole();
+        if (!roleId) return;
+        pending = true;
+        pendingRoleId = roleId;
+        if (refreshTimer !== null) return;
+        refreshTimer = setTimeout(executeRefresh, 60);
+    }
+
+    window.addEventListener('storage', function (event) {
+        const roleId = currentVisibleRole();
+        if (!roleId || !event) return;
+        const encoded = encodeURIComponent(roleId);
+        // Never react to a different character, myProfile, or unrelated keys.
+        if (event.key === null ||
+            event.key === 'maomao_role_avatar_library_v1_' + encoded ||
+            event.key === 'maomao_chat_pair_user_avatar_v1_' + encoded ||
+            event.key === 'ai_custom_characters') {
+            requestRefresh();
+        }
+    });
+    window.addEventListener('pageshow', function (event) {
+        if (event && event.persisted && currentVisibleRole()) requestRefresh();
+    });
+    document.addEventListener('visibilitychange', function () {
+        if (!document.hidden && currentVisibleRole()) requestRefresh();
+    });
+    const profileContent = document.getElementById('profileContent');
+    if (profileContent) profileContent.addEventListener('focusout', function () {
+        if (deferredWhileEditing) requestRefresh();
+    });
+})();
+
 
 // 从邂逅候选收藏进入原有角色编辑器；不新建第二套角色数据库。
 function openEncounterCandidateFromQuery() {
