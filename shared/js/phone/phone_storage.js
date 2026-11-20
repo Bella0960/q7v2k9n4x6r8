@@ -307,6 +307,16 @@
         return true;
     };
 
+    NS.deleteMemoryEntry = function (contactId, expected) {
+        if (!contactId || !expected) return false;
+        var list = NS.getMemories(contactId);
+        var snapshot = JSON.stringify(expected);
+        var index = list.findIndex(function (entry) { return JSON.stringify(entry) === snapshot; });
+        if (index < 0) return false;
+        list.splice(index, 1);
+        return NS.saveMemories(contactId, list);
+    };
+
     function archiveKey(contactId) { return 'chat_memory_archive_v1_' + contactId; }
 
     NS.getMemoryArchive = function (contactId) {
@@ -347,8 +357,11 @@
         var state = NS.getMemoryArchive(contactId);
         if (state.hidden.includes(entryKey)) return true;
         state.hidden.push(entryKey);
+        state.revision = newArchiveRevision();
         return NS.rawSet(archiveKey(contactId), state);
     };
+
+    function newArchiveRevision() { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
 
     // Clear primary keys and their legacy fallback as a single synchronous operation.
     // Restore already-written keys if a later localStorage call fails.
@@ -374,7 +387,7 @@
             var history = includeChat ? [] : NS.getChatHistory(contactId);
             changes.set('chat_summary_processed_' + contactId, includeChat ? null : String(history.length));
             changes.set(archiveKey(contactId), JSON.stringify({
-                revision: Date.now().toString(36) + Math.random().toString(36).slice(2),
+                revision: newArchiveRevision(),
                 hidden: archiveEntries(history).map(function (entry) { return entry.key; })
             }));
             changes.forEach(function (_, key) { before.set(key, localStorage.getItem(key)); });

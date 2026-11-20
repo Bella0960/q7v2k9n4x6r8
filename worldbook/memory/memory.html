@@ -6,7 +6,7 @@
     <title>记忆空间 · 小手机</title>
     <script src="../../shared/js/font-loader.js?v=20261022v1"></script>
     <script src="../../shared/js/native-feel.js"></script>
-    <script src="../../shared/js/phone/phone_storage.js"></script>
+    <script src="../../shared/js/phone/phone_storage.js?v=20261121memory1"></script>
     <script src="../../shared/js/phone/memory_recall.js?v=20261024v2"></script>
     <style>
         /* 全局重置 */
@@ -1155,9 +1155,11 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         if (fixed) parts.push(fixed + '条已固定');
         el.textContent = parts.join(' · ');
     }
+    let renderedMemories = [];
     function renderLib() {
         const list = document.getElementById('libList');
-        const arr = loadMemories(currentMemId).map((memory, index) => ({ memory, index })).filter(entry => entry.memory);
+        renderedMemories = loadMemories(currentMemId);
+        const arr = renderedMemories.map((memory, index) => ({ memory, index })).filter(entry => entry.memory);
         refreshLibSub();
         if (!arr.length) {
             list.innerHTML = '<div class="lib-empty">暂无记忆，总结后会自动生成</div>';
@@ -1596,11 +1598,17 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         const act = btn.getAttribute('data-act');
         const idx = parseInt(btn.getAttribute('data-i'), 10);
         const arr = loadMemories(currentMemId);
-        if (isNaN(idx) || !arr[idx]) return;
+        if (isNaN(idx) || !renderedMemories[idx]) return;
+        if (act === 'del') {
+            if (!confirm('删除这条记忆？')) return;
+            if (!_storage.deleteMemoryEntry(currentMemId, renderedMemories[idx])) { alert('删除失败，请重试'); return; }
+            document.dispatchEvent(new Event('memory-space-change'));
+            return;
+        }
+        if (JSON.stringify(arr[idx]) !== JSON.stringify(renderedMemories[idx])) { renderLib(); return; }
         if (act === 'confirm') arr[idx].status = 'confirmed';
         else if (act === 'fix') arr[idx].status = 'fixed';
         else if (act === 'unfix') arr[idx].status = 'confirmed';
-        else if (act === 'del') { if (!confirm('删除这条记忆？')) return; arr.splice(idx, 1); }
         if (!saveMemories(currentMemId, arr)) { alert('保存失败，请重试'); return; }
         document.dispatchEvent(new Event('memory-space-change'));
     });
@@ -1627,7 +1635,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
 </script>
 <script src="../../shared/js/statusbar-control.js"></script>
 
-<script src="../../shared/js/phone/group_memory_view.js?v=20261115gm1"></script>
+<script src="../../shared/js/phone/group_memory_view.js?v=20261121memory1"></script>
 <script id="memory-space-framework">
 /* 框架脚本：只做视图切换。不改动任何业务函数与存储键。 */
 (function () {

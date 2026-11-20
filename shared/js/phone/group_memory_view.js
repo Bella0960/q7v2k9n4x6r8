@@ -13,7 +13,6 @@
     style.id = 'memory-group-view-style';
     style.textContent =
       '.group-memory-view{padding:5px 22px 30px;color:#171717}' +
-      '.group-memory-kicker{font:500 9px/1.7 -apple-system,BlinkMacSystemFont,sans-serif;letter-spacing:.15em;color:#999;margin-top:16px}' +
       '.group-memory-title{font:400 25px/1.3 "Songti SC",Georgia,serif;margin:9px 0 8px}' +
       '.group-memory-caption{font:11px/1.8 -apple-system,BlinkMacSystemFont,sans-serif;color:#888;margin-bottom:17px}' +
       '.group-memory-field{display:block;font:11px/1.7 -apple-system,BlinkMacSystemFont,sans-serif;color:#777;margin:12px 0 7px}' +
@@ -23,10 +22,10 @@
       '.group-memory-save:disabled{opacity:.45;cursor:not-allowed}' +
       '.group-memory-status{min-height:17px;margin-top:7px;font:10px/1.5 -apple-system,BlinkMacSystemFont,sans-serif;color:#666}' +
       '.group-memory-items{list-style:none;padding:0;margin:6px 0 0}' +
-      '.group-memory-item{border-bottom:1px solid #ebebee;padding:13px 0;font:12px/1.8 -apple-system,BlinkMacSystemFont,sans-serif;color:#333;overflow-wrap:anywhere}' +
+      '.group-memory-item{margin:0 0 12px;padding:14px;border-radius:16px;background:#fff;box-shadow:0 2px 14px #00000010;font:13px/1.8 -apple-system,BlinkMacSystemFont,sans-serif;color:#333;overflow-wrap:anywhere}' +
       '.group-memory-date{display:block;font-size:9px;color:#aaa;margin-bottom:3px}' +
       '.group-memory-empty{font:11px/1.8 -apple-system,BlinkMacSystemFont,sans-serif;color:#999;padding:12px 0}' +
-      '.group-memory-divider{border:0;border-top:1px solid #ededed;margin:24px 0 17px}' +
+      '.group-memory-delete,.group-memory-clear{display:block;margin-left:auto;min-height:44px;border:0;background:#fff;color:#555;font-size:12px}' +
       '.group-memory-link{color:#333;text-decoration:none;font-size:11px;border-bottom:1px solid #aaa}' +
       '@media(max-width:360px){.group-memory-view{padding-left:18px;padding-right:18px}}';
     document.head.appendChild(style);
@@ -43,20 +42,16 @@
     view.dataset.view = 'groups';
     view.hidden = true;
     view.innerHTML =
-      '<div class="group-memory-kicker">GROUP / MEMORY</div>' +
-      '<h2 class="group-memory-title">每个群，都有自己的故事。</h2>' +
-      '<p class="group-memory-caption">这里保存你确认过的群聊共同回忆。角色私聊与游戏未公开的秘密不会自动成为群记忆。</p>' +
+      '<h2 class="group-memory-title">群聊记忆</h2>' +
       '<label class="group-memory-field" for="groupMemoryPicker">选择群聊</label>' +
       '<select id="groupMemoryPicker" class="group-memory-control" aria-label="选择需要查看记忆的群聊"></select>' +
       '<div id="groupMemoryStats" class="group-memory-caption" style="margin:12px 0"></div>' +
-      '<h3 class="group-memory-field">已保存的共同回忆</h3>' +
+      '<button type="button" class="group-memory-clear" id="groupMemoryClear">清空当前群记忆</button>' +
       '<ul id="groupMemoryList" class="group-memory-items"></ul>' +
-      '<hr class="group-memory-divider">' +
       '<label for="groupMemoryDraft" class="group-memory-field">固定一段真实发生过的事</label>' +
       '<textarea id="groupMemoryDraft" class="group-memory-editor" maxlength="600" placeholder="例如：大家一起玩接龙，最后把故事接成了旅行计划。"></textarea>' +
       '<button type="button" id="groupMemorySave" class="group-memory-save">保存到本群记忆</button>' +
-      '<div id="groupMemoryStatus" class="group-memory-status" role="status" aria-live="polite"></div>' +
-      '<p class="group-memory-caption" style="margin-top:15px">只记录已经发生的事。自动提炼、纠错、角色可见范围与云端同步后续独立验收。</p>';
+      '<div id="groupMemoryStatus" class="group-memory-status" role="status" aria-live="polite"></div>';
     scroll.appendChild(view);
 
     var picker = view.querySelector('#groupMemoryPicker');
@@ -64,6 +59,7 @@
     var count = view.querySelector('#groupMemoryStats');
     var status = view.querySelector('#groupMemoryStatus');
     var draft = view.querySelector('#groupMemoryDraft');
+    var clearButton = view.querySelector('#groupMemoryClear');
     var saveButton = view.querySelector('#groupMemorySave');
     var params = new URLSearchParams(root.location.search);
     function allGroups() {
@@ -85,6 +81,7 @@
       var all = memories(groupId);
       list.textContent = '';
       status.textContent = '';
+      clearButton.disabled = !groupId;
       saveButton.disabled = !groupId || !root.MemoryRecall || !root.MemoryRecall.upsertMemory;
       if (!groupId) {
         count.textContent = '还没有群聊。创建群聊后，这里会自动出现独立的群记忆空间。';
@@ -117,8 +114,18 @@
           ? new Date(time).toLocaleDateString('zh-CN') : '群聊回忆';
         var body = document.createElement('div');
         body.textContent = String(entry.content || entry.text || '');
+        var remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'group-memory-delete';
+        remove.textContent = '删除';
+        remove.addEventListener('click', function () {
+          if (!root.confirm('删除这条群记忆？')) return;
+          if (!root.PhoneStorage.deleteMemoryEntry(groupId, entry)) { status.textContent = '删除失败，请重试。'; return; }
+          document.dispatchEvent(new Event('memory-space-change'));
+        });
         li.appendChild(stamp);
         li.appendChild(body);
+        li.appendChild(remove);
         list.appendChild(li);
       });
     }
@@ -144,6 +151,13 @@
       renderMemories();
     }
     picker.addEventListener('change', renderMemories);
+    document.addEventListener('memory-space-change', renderMemories);
+    clearButton.addEventListener('click', function () {
+      var groupId = getSelectedId();
+      if (!groupId || !root.confirm('清空当前群的时间流和长期记忆？聊天原文会保留。')) return;
+      if (!root.PhoneStorage.clearConversationMemory(groupId, false)) { status.textContent = '清空失败，请重试。'; return; }
+      document.dispatchEvent(new Event('memory-space-change'));
+    });
     saveButton.addEventListener('click', function () {
       var groupId = getSelectedId();
       var content = draft.value.trim();
@@ -172,7 +186,7 @@
         status.textContent = '无法确认写入，请检查存储后重试。'; return;
       }
       draft.value = '';
-      renderMemories();
+      document.dispatchEvent(new Event('memory-space-change'));
       status.textContent = result.duplicate ? '这段回忆已经存在，已强化记忆。' : '已固定到本群记忆。';
     });
     tab.addEventListener('click', refreshGroups);

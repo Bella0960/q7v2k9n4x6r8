@@ -13,7 +13,8 @@ try {
         args: ['--no-sandbox']
     });
     for (const width of [375, 390, 430, 1100]) {
-        const page = await browser.newPage({ viewport: { width, height: 820 } });
+        const page = await browser.newPage({ viewport: { width, height: 820 }, isMobile: width < 500, hasTouch: width < 500 });
+        page.setDefaultTimeout(12000);
         page.on('dialog', dialog => dialog.accept());
         await page.addInitScript(() => {
             if (localStorage.getItem('memory-browser-seeded')) return;
@@ -41,6 +42,13 @@ try {
         assert.equal(await page.evaluate(() => PhoneStorage.getChatHistory('solo').length), 2);
         assert.equal(await page.evaluate(() => PhoneStorage.getMemoryArchiveEntries('solo').length), 0);
         assert.equal(await page.evaluate(() => PhoneStorage.getMemories('group').length), 1);
+        await page.getByRole('button', { name: '群聊', exact: true }).click();
+        await page.locator('.group-memory-item').getByRole('button', { name: '删除', exact: true }).click();
+        assert.equal(await page.locator('.group-memory-item').count(), 0);
+        await page.getByRole('button', { name: '清空当前群记忆' }).click();
+        assert.equal(await page.evaluate(() => PhoneStorage.getChatHistory('group').length), 2);
+        assert.equal(await page.evaluate(() => PhoneStorage.getMemoryArchiveEntries('group').length), 0);
+        await page.evaluate(() => PhoneStorage.saveMemories('group', [{ id: 'again', content: '群记忆' }]));
         await page.evaluate(() => PhoneStorage.saveMemories('solo', [{ id: 'again', content: '单聊记忆' }]));
         for (const [id, button] of [['solo', '#actionClear'], ['group', '#actionGpClearRecord']]) {
             await page.goto(base + '/chat/chat/chat-settings.html?roleId=' + id);

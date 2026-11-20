@@ -68,3 +68,13 @@ test('a late write failure rolls back both primary and compatibility data', () =
     assert.equal(storage.clearConversationMemory('solo', true), false);
     assert.deepEqual(Object.fromEntries(data), original);
 });
+
+test('single memory deletion uses the selected record even when it came from the legacy store', () => {
+    const { storage } = fixture();
+    const target = storage.getMemories('group')[0];
+    assert.equal(storage.deleteMemoryEntry('group', { ...target, text: 'outdated' }), false);
+    assert.equal(storage.deleteMemoryEntry('group', target), true);
+    assert.equal(storage.getMemories('group').length, 0);
+    assert.equal(storage.getMemories('solo').length, 1);
+    assert.equal(storage.getChatHistory('group').length, 1);
+});
