@@ -38,6 +38,13 @@
           return nativeFetch(input, init);
         }
 
+        // A no-cors Request silently drops custom account headers. Never send
+        // a private API call that the browser cannot bind to this page identity.
+        if ((init && init.mode === 'no-cors') ||
+            (!init || init.mode === undefined) && input && input.mode === 'no-cors') {
+          return Promise.reject(new TypeError('Account-bound API requests require CORS-capable fetch mode'));
+        }
+
         // fetch(Request, { headers }) replaces Request headers rather than merging
         // them. Preserve that behavior so stale credentials cannot leak through.
         var headers = new global.Headers(
