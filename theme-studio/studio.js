@@ -188,7 +188,9 @@
   }
   function renderImageSlots(){
     var panel=$('imagePanel'),box=$('imageSlots');
-    panel.hidden=tab==='bubble';box.replaceChildren();
+    panel.hidden=tab==='bubble';
+    box.querySelectorAll('.image-thumb').forEach(function(el){if(el._asset)el._asset.revoke();});
+    box.replaceChildren();
     if(tab==='bubble')return;
     imageFields[tab].forEach(function(row){
       var key=row[0],slot=tab+'.'+key,id=drafts[tab][key];

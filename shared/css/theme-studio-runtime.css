@@ -60,7 +60,7 @@
   color: var(--ts-list-header-sub-text) !important;
 }
 .phone-mockup[data-ts-list="1"] .cover-gradient-banner {
-  opacity: calc(var(--ts-list-cover-opacity) / 100) !important;
+  opacity: var(--ts-list-cover-opacity) !important;
   background-position: center var(--ts-list-cover-position) !important;
 }
 .phone-mockup[data-ts-list="1"][data-ts-list-cover="1"] #coverBox {

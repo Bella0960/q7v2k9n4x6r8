@@ -132,7 +132,7 @@
       var unit=type === 'number' ? 'px' : '';
       if (key === 'avatarRadius' || key === 'coverPosition' ||
           key === 'chatImagePosition') unit='%';
-      if (key === 'coverOpacity') unit='';
+      if (key === 'coverOpacity') unit='%';
       shell.style.setProperty('--ts-' + group + '-' + cssKey(key), state[group][key] + unit);
     });
     shell.setAttribute(flag, '1');
