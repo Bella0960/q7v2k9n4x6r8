@@ -414,3 +414,14 @@ Do not parallelize:
 5. Agent E: PERF-001 — image asset inventory and safe optimization recommendations, no replacements yet.
 
 Only after these reports are reviewed should implementation tasks be assigned.
+
+## Owner-approved addition — 2026-11-21
+
+### THEME-STUDIO-001 — Mobile-first chat theme workbench
+**Priority:** P1 · **Status:** IN PROGRESS (isolated implementation branch, NOT VERIFIED on real devices)
+
+Scope: one native mobile page (375/390/430px), live mock preview, independent list/detail appearance controls, ChatBeauty-compatible scoped bubble controls, saved presets and validated JSON/CSS-variable exchange. The feature is opt-in: no user theme or chat data changes until explicit Apply.
+
+Acceptance: list/detail styles do not leak to unrelated apps, global/role bubble settings use ChatBeauty without changing schemas, storage failures produce errors, old launcher layout remains intact, CSS import cannot execute untrusted scripts, Node/Vite/Chromium and Android/iPhone viewport acceptance pass before phone QA deployment. Keep PR #187 .maomaotheme packaging separate; integration requires explicit compatibility review.
+
+Source branch: THEME-STUDIO-001/mobile-workbench-20261121. No production merge/deploy authorized by this task.
