@@ -13,6 +13,15 @@ const htmlFiles = {};
 const excludedHtmlDirs = new Set(['node_modules', 'dist', '.wrangler', 'tests', 'test-results']);
 // Production Worker source and build scripts are never browser pages or assets.
 const privateRuntimeDirs = new Set(['worker', 'scripts']);
+// Historical design/preview/documentation pages stay in the repository as
+// source archives, but must not remain app routes. Excluding them here keeps
+// them out of rollup inputs, dist/ and the generated pwa-pages.json manifest.
+const archivedHtmlPaths = new Set([
+  'docs/audit-report.html',
+  'previews/diary-redesign.html',
+  'previews/diary-redesign-v2.html',
+  'design/note-ribbon-gallery.html'
+]);
 (function collectHtml(dir, prefix) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (entry.name.startsWith('.') || excludedHtmlDirs.has(entry.name) ||
@@ -21,6 +30,7 @@ const privateRuntimeDirs = new Set(['worker', 'scripts']);
     if (entry.isDirectory()) {
       collectHtml(abs, prefix + entry.name + '/');
     } else if (entry.name.endsWith('.html')) {
+      if (archivedHtmlPaths.has(prefix + entry.name)) continue;
       htmlFiles[prefix + entry.name.replace(/\.html$/, '')] = abs;
     }
   }
