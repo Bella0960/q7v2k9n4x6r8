@@ -6,9 +6,18 @@
   <meta name="theme-color" content="#f9f6f3">
   <meta name="description" content="MAO 独立账号入口 · 象牙花笺">
   <title>MAO · 象牙花笺</title>
-  <link rel="stylesheet" href="/account/account.css?v=62fd2c1a">
-  <link rel="stylesheet" href="/account/ivory-entry.css?v=f81232e2">
-  <script src="/account/account.js?v=20261119reconnect1" defer></script>
+  <link rel="stylesheet" href="/account/account.css?v=20261121-login-recovery1">
+  <link rel="stylesheet" href="/account/ivory-entry.css?v=20261121-login-recovery1">
+  <script src="/account/account.js?v=20261121-login-recovery1" defer></script>
+  <!-- Login-only critical layout fallback. External editorial styles remain authoritative. -->
+  <style>
+    #loginPanel .form { display:grid; width:100%; max-width:100%; min-width:0; }
+    #loginPanel .form>label { display:grid; width:100%; min-width:0; }
+    #loginPanel .form>label>input { box-sizing:border-box; display:block; width:100%; min-width:0; }
+    #loginPanel .password-field { box-sizing:border-box; display:flex; align-items:center; width:100%; min-width:0; }
+    #loginPanel .password-field input { box-sizing:border-box; min-width:0; flex:1 1 0; }
+    #loginPanel .password-field .password-toggle { flex:0 0 43px; }
+  </style>
 </head>
 <body>
   <main id="ivoryApp" class="account-shell app ivory-entry" data-view="welcome">
@@ -22,7 +31,7 @@
         <span class="titlebar-title" id="ivoryWindowTitle">welcome.html — private space</span>
       </header>
       <div class="hero">
-        <img class="hero-image" src="../assets/ivory-mao/hero.webp?v=8a2b38cd"
+        <img class="hero-image" src="/assets/ivory-mao/hero.webp?v=20261121-login-recovery1"
           alt="圆脸小白兔探出信笺，周围环绕浅粉百合、珍珠相框与薄纱" width="771" height="579" decoding="async" fetchpriority="high">
       </div>
       <div class="hairline" aria-hidden="true"></div>
