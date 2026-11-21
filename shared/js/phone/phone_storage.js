@@ -914,11 +914,28 @@
                     matched = previous;
                 }
                 if (matched !== null) {
+                    // Object property insertion order may differ after a retry
+                    // (e.g. a rebuilt forwarded message). Compare JSON values
+                    // structurally, preserving array order and all nested fields.
+                    function canonicalJSON(value) {
+                        function normalize(item) {
+                            if (Array.isArray(item)) return item.map(normalize);
+                            if (item && typeof item === 'object') {
+                                var sorted = {};
+                                Object.keys(item).sort().forEach(function (key) {
+                                    sorted[key] = normalize(item[key]);
+                                });
+                                return sorted;
+                            }
+                            return item;
+                        }
+                        return JSON.stringify(normalize(JSON.parse(JSON.stringify(value))));
+                    }
                     var previousJSON;
                     var nextJSON;
                     try {
-                        previousJSON = JSON.stringify(matched);
-                        nextJSON = JSON.stringify(message);
+                        previousJSON = canonicalJSON(matched);
+                        nextJSON = canonicalJSON(message);
                     } catch (err) {
                         return failResult(ERR.VALIDATION_FAILED, 'message cannot be serialized', false);
                     }
