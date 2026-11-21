@@ -590,10 +590,10 @@ test('09 Service Worker navigation verifies private sessions online; public sign
     'private HTML must be network-first for every login/revocation');
   assert.doesNotMatch(privateNavigation, /caches\.match\(req\)|cache\.match\(req\)/,
     'cached private HTML must never bypass Worker identity checks');
-  assert.match(privateNavigation, /account\/index\.html/,
-    'offline private navigation may only show the public sign-in entry');
-  assert.match(privateNavigation, /cacheablePublicResponse\(cachedEntry\)/,
-    'offline fallback must refuse no-store/private cached responses');
+  assert.doesNotMatch(privateNavigation, /cachedEntry|cacheablePublicResponse\(cachedEntry\)/,
+    'offline private navigation must not substitute any cached login page');
+  assert.match(privateNavigation, /status: 503/,
+    'offline protected navigation must fail closed without redirecting to login');
   const publicNavigation = sw.slice(end);
   assert.match(publicNavigation, /fetch\(req, \{ cache: 'no-store' \}\)/);
   assert.match(publicNavigation, /return new Response\('此页面暂时无法连接/,
