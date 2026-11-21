@@ -2796,16 +2796,13 @@
               console.warn('PWA 更新检查失败：', error);
             });
         });
-        // 收到 SW 发过来的"已接管"消息，刷新页面拿新资源。
-        // 首访安装时 sw.js 会 clients.claim() 让本页立刻收到 controllerchange，
-        // 此时预缓存已就绪，无需重载；只有本页加载时已有旧 controller（真正更新）才刷新。
+        // SW 接管会立即淘汰旧缓存，但不要在桌面打开期间强制刷新：
+        // 强制导航会重复经过账号守卫，短时网络中断曾把私有页替换成登录页。
+        // 后续正常打开应用时即由新版 SW 获取全新资源。
         var hadController = !!navigator.serviceWorker.controller;
-        var reloaded = false;
         navigator.serviceWorker.addEventListener('controllerchange', function () {
           if (!hadController) { hadController = true; return; }
-          if (reloaded) return;
-          reloaded = true;
-          location.reload();
+          document.documentElement.setAttribute('data-maomao-sw-updated', '1');
         });
       })();
     </script>
