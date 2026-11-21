@@ -175,6 +175,19 @@ test('页面同源 API 请求会自动绑定注入的 MAO 永久 ID', async () =
   assert.equal(requests[2].headers.get('x-mao-account-context'), accountId,
     '页面账号绑定不能被 Request 原有的账号头覆盖');
 
+  const beforeBlocked = requests.length;
+  await assert.rejects(
+    a.window.fetch('/api/accounts/security', { mode: 'no-cors' }),
+    /Account-bound API requests require CORS-capable fetch mode/,
+    'no-cors API request must fail before any unbound network access'
+  );
+  assert.equal(requests.length, beforeBlocked);
+  await assert.rejects(
+    a.window.fetch(new Request('https://mao.test/api/accounts/security', { mode: 'no-cors' })),
+    /Account-bound API requests require CORS-capable fetch mode/
+  );
+  assert.equal(requests.length, beforeBlocked);
+
   await a.window.fetch('/shared/js/font-loader.js');
   assert.equal(requests[3].headers.has('x-mao-account-context'), false,
     '同源静态资源不得被附加账号身份头');
