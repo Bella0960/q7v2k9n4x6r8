@@ -7,6 +7,8 @@
 <script src="../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../shared/js/native-feel.js"></script>
 <script src="../shared/js/phone/phone_storage.js"></script>
+<script src="../shared/js/phone/chat-history-atomic.js?v=20261122v4"></script>
+<script src="../shared/js/phone/chat-history-append.js?v=20261122v3"></script>
 <script src="../shared/js/phone/storage/repository.js"></script>
 <script src="../shared/js/phone/storage/media-repository.js"></script>
 <script src="forum-media.js"></script>
@@ -1375,47 +1377,65 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       return;
     }
 
+    // 连点只允许一次写入：追加本身是原子的，但重复调用会追加两条。
+    if (sharePost.inFlight) return;
     const target = roles[0];
-    const msg = '【分享帖子】' + (postBody() || postTitle()).substring(0, 50);
-    const message = { role: 'user', text: msg, time: Date.now(), type: 'text' };
-
-    try {
-      const storage = window.PhoneStorage;
-      let history;
-      if (storage && typeof storage.getChatHistory === 'function') {
-        history = storage.getChatHistory(target.id);
-      } else {
-        const raw = localStorage.getItem('chat_history_' + target.id);
-        history = raw ? JSON.parse(raw) : [];
-      }
-      if (!Array.isArray(history)) throw new Error('聊天记录格式无法识别');
-
-      const next = history.slice();
-      next.push(message);
-      let saved = false;
-      if (storage && typeof storage.saveChatHistory === 'function') {
-        saved = storage.saveChatHistory(target.id, next) === true;
-      } else {
-        localStorage.setItem('chat_history_' + target.id, JSON.stringify(next));
-        saved = true;
-      }
-      if (!saved) throw new Error('聊天记录写入失败');
-
-      const verified = storage && typeof storage.getChatHistory === 'function'
-        ? storage.getChatHistory(target.id)
-        : JSON.parse(localStorage.getItem('chat_history_' + target.id) || '[]');
-      const last = Array.isArray(verified) && verified.length ? verified[verified.length - 1] : null;
-      if (!Array.isArray(verified) || verified.length !== next.length ||
-          !last || last.role !== message.role || last.type !== message.type ||
-          last.time !== message.time || last.text !== message.text) {
-        throw new Error('聊天记录写入后校验失败');
-      }
-
-      alert('已分享给 ' + (target.name || '该联系人'));
-    } catch (error) {
-      console.error('[Forum] sharePost chat history persistence failed:', error);
-      alert('帖子分享失败：聊天记录没有保存成功，请检查存储空间后重试');
+    if (typeof target.id !== 'string' || !target.id.trim()) {
+      alert('联系人信息不完整，请重新选择联系人后再分享');
+      return;
     }
+    sharePost.inFlight = true;
+
+    const msg = '【分享帖子】' + (postBody() || postTitle()).substring(0, 50);
+    // 同一张帖子分享给同一个角色 = 同一个动作：失败重试复用同一个 mid，
+    // 避免「其实已经写进去、只是读回失败」时再点一次变成两条消息。
+    const shareKey = 'forum-share:' + target.id + ':' + (post && post.id ? String(post.id) : msg);
+
+    // 统一入口：ChatHistoryAppend 内部复用 ChatHistoryAtomic 的会话锁与共享根锁，
+    // 主键缺失时用 phone_data_v2 旧副本做种子创建；旧数据读不出来就失败关闭。
+    const appender = window.ChatHistoryAppend;
+    const outcomePromise = appender && typeof appender.appendStable === 'function'
+      ? appender.appendStable(shareKey, target.id, function () {
+          const stamp = Date.now();
+          return {
+            mid: 'm' + stamp + Math.random().toString(36).slice(2, 5),
+            role: 'user', text: msg, time: stamp, type: 'text'
+          };
+        })
+      : Promise.resolve({ ok: false, reason: 'ATOMIC_UNAVAILABLE' });
+
+    outcomePromise.then(function (outcome) {
+      if (!outcome.ok) {
+        console.error('[Forum] sharePost chat history persistence failed:', outcome.reason);
+        alert(outcome.writeMayHavePersisted
+          ? '聊天通知结果尚未确认，请先进入对应聊天检查，避免重复操作。'
+          : shareFailureNotice(outcome.reason));
+        return;
+      }
+      alert('已分享给 ' + (target.name || '该联系人'));
+    }, function (error) {
+      console.error('[Forum] sharePost chat history persistence failed:', error);
+      alert(shareFailureNotice('UNEXPECTED'));
+    }).then(function () {
+      sharePost.inFlight = false;
+    });
+  }
+
+  function shareFailureNotice(reason) {
+    if (reason === 'LOCK_UNAVAILABLE') return '当前环境无法安全写入聊天记录，帖子未分享。';
+    if (reason === 'ATOMIC_UNAVAILABLE' || reason === 'CREATE_UNAVAILABLE') {
+      return '当前浏览器不支持安全的聊天记录写入，帖子没有分享成功';
+    }
+    if (reason === 'QUOTA_EXCEEDED') return '存储空间已满，帖子没有分享成功，请清理后再试';
+    if (reason === 'ACCOUNT_SCOPE_UNAVAILABLE') return '登录状态校验失败，帖子没有分享成功，请刷新后重试';
+    if (reason === 'DB_UNAVAILABLE') return '浏览器存储暂时不可用，帖子没有分享成功，请稍后重试';
+    if (reason === 'LEGACY_CORRUPT') {
+      return '这个角色的旧聊天记录格式异常，为避免覆盖，帖子没有分享；请先备份聊天记录后再试';
+    }
+    if (reason === 'LEGACY_UNREADABLE') {
+      return '这个角色的旧聊天记录暂时读不出来，为避免覆盖，帖子没有分享，请稍后重试';
+    }
+    return '帖子分享失败：聊天记录没有保存成功，请检查存储空间后重试';
   }
 
   function deletePost() {
