@@ -176,3 +176,42 @@ test('stale snapshot is rejected before serializing a large pending write', () =
     assert.equal(history.length, 1);
     assert.match(warnings[0], /刷新页面/);
 });
+
+test('PhoneStorage.result CAS conflict is delegated and blocks a stale editor write', () => {
+    const source = readFileSync(new URL('../chat/date/date.html', import.meta.url), 'utf8');
+    const s = source.indexOf("    var HISTORY_KEY = 'chat_history_' + roleId;");
+    const e = source.indexOf('    /* ---------- 本地内容生成', s);
+    const key = 'chat_history_role-a';
+    const raw = '[{"text":"old"}]';
+    const records = new Map([[key, raw]]);
+    const localStorage = {
+        getItem: (name) => records.get(name) ?? null,
+        setItem: (name, value) => records.set(name, value)
+    };
+    let casToken;
+    const warnings = [];
+    const context = {
+        roleId: 'role-a', localStorage,
+        toast: (message) => warnings.push(message),
+        console: { error() {} },
+        window: { PhoneStorage: {
+            getChatHistory: () => JSON.parse(raw),
+            saveChatHistory: () => { throw new Error('legacy writer must not be used'); },
+            result: {
+                saveChatHistory: (id, list, expected) => {
+                    casToken = expected;
+                    return { ok: false, error: { code: 'CONFLICT' } };
+                }
+            }
+        } }
+    };
+    runInNewContext(source.slice(s, e), context);
+    const history = context.loadEditableHistory();
+    const rollback = history.slice();
+    history.push({ text: 'late offline reply' });
+    assert.equal(context.saveHistory(history, rollback), false);
+    assert.equal(casToken, raw, 'the loaded primary bytes must be passed as CAS token');
+    assert.equal(records.get(key), raw);
+    assert.equal(history.length, 1);
+    assert.match(warnings[0], /刷新页面/);
+});

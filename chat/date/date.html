@@ -2871,7 +2871,17 @@ body {
             // Reject stale editors before serializing potentially large histories
             // (including image payloads) that we will not be allowed to save.
             var expected = JSON.stringify(list);
-            if (_storage && typeof _storage.saveChatHistory === 'function') {
+            // The snapshot check above is a fast stale-editor guard, not a strict
+            // atomic CAS. Delegate the real compare-and-set to PhoneStorage.result
+            // so the read/check/write sequence is verified inside one call.
+            if (_storage && _storage.result && typeof _storage.result.saveChatHistory === 'function') {
+                var saved = _storage.result.saveChatHistory(roleId, list, historySnapshot);
+                if (!saved || saved.ok !== true) {
+                    var conflict = !!(saved && saved.error && saved.error.code === 'CONFLICT');
+                    if (conflict) historyChanged = true;
+                    throw new Error(conflict ? '聊天记录已在别处更新' : 'PhoneStorage 写入失败');
+                }
+            } else if (_storage && typeof _storage.saveChatHistory === 'function') {
                 if (_storage.saveChatHistory(roleId, list) !== true) throw new Error('PhoneStorage 写入失败');
             } else {
                 localStorage.setItem(HISTORY_KEY, expected);
