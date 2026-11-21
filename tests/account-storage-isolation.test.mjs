@@ -437,7 +437,8 @@ test('Worker 只对已授权账号页面注入数据命名空间，并禁止缓�
   assert.match(workerSource, /accountStatus === 'disabled'/);
   assert.match(workerSource, /accountStatus === 'revoked'/);
   assert.match(workerSource, /if \(accountStatus !== 'active'\) \{[\s\S]*?return accountAuthenticationUnavailable\(\)/);
-  assert.match(workerSource, /return Response.redirect\(target, 302\)/);
+  assert.match(workerSource, /return redirectToVerifiedLogin\(url,/);
+  assert.match(workerSource, /return Response.redirect\(new URL\('\/index\.html', url\), 302\)/);
   assert.match(workerSource, /url\.pathname\.startsWith\('\/admin\/'\) && authorizedAccount\.role !== 'super_admin'/);
   assert.match(workerSource, /meta name="mao-account-id"/);
   assert.match(workerSource, /mao-account-role/);
