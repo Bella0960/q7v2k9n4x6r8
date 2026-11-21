@@ -38,6 +38,7 @@
     var bgKey = 'chat_bg_' + gid;
     var selectedAction;
     var activeView = 'home';
+    var expanded = false;
     var displayName = function (member) { return member.nickname || member.name || '成员'; };
     var quick = [
       ['muted', '消息免打扰'], ['pinned', '置顶聊天'], ['savedToContacts', '保存到通讯录']
@@ -151,23 +152,32 @@
       var canManage = governance.rank(group, '__user') >= 2;
       var name = group.name || '未命名群聊';
       var me = profile();
-      var hero = node('section', '', 'group-home-cover');
+      var hero = button('', 'avatar');
+      hero.className = 'group-home-cover';
+      hero.setAttribute('aria-label', '更换群头像');
+      hero.disabled = !canManage;
       var photo = node('img', '', 'group-home-photo');
       photo.alt = '';
       photo.hidden = true;
-      if (wallpaper) wallpaper.getByKey(bgKey).then(function (url) {
-        if (typeof url !== 'string' || !/^data:image\//i.test(url)) return;
+      function showCover(url) {
+        if (!/^(?:data:image\/|https?:\/\/|blob:|\.?\.?\/)/i.test(url || '')) return;
         photo.src = url;
         photo.hidden = false;
-        hero.classList.add('has-photo');
-      }).catch(function () {});
-      var nameButton = button(name, 'name');
-      nameButton.append(node('small', (group.members.length + 1) + ' 位成员'));
-      hero.append(photo, nameButton);
-      var assets = node('div', '', 'group-home-assets');
-      var avatarButton = button('群头像', 'avatar');
-      avatarButton.prepend(avatar(group.avatar, name));
-      assets.append(avatarButton, button('群背景', 'background'));
+      }
+      showCover(group.avatar);
+      if (wallpaper) wallpaper.getByKey(bgKey).then(showCover).catch(function () {});
+      hero.append(photo);
+
+      var title = node('div', '', 'group-home-title');
+      title.append(node('h2', name), node('p', (group.members.length + 1) + ' 位成员'));
+      var arrow = button('', 'drawer');
+      arrow.className = 'group-home-arrow';
+      arrow.setAttribute('aria-controls', 'groupSettingsDrawer');
+      var drawer = node('div', '', 'group-home-drawer');
+      drawer.id = 'groupSettingsDrawer';
+      var content = node('div', '', 'group-home-drawer-content');
+      drawer.append(content);
+
       var memberRow = node('div', '', 'group-home-members');
       memberRow.setAttribute('aria-label', '群成员');
       memberRow.tabIndex = 0;
@@ -178,11 +188,16 @@
         item.append(avatar(member.avatar, label), node('span', label));
         memberRow.append(item);
       });
-      var memberActions = node('div', '', 'group-home-member-actions');
       ['invite', 'remove'].forEach(function (action) {
-        var item = button(action === 'invite' ? '邀请' : '移除', action);
+        var invite = action === 'invite';
+        var label = invite ? '邀请' : '移除';
+        var item = button('', action);
+        item.className = 'group-home-member-action';
         item.disabled = !canManage;
-        memberActions.append(item);
+        var mark = node('span', invite ? '+' : '−', 'group-home-avatar');
+        mark.setAttribute('aria-hidden', 'true');
+        item.append(mark, node('span', label));
+        memberRow.append(item);
       });
       var grid = node('div', '', 'group-home-tools');
       tiles.forEach(function (tool) {
@@ -205,8 +220,16 @@
         row('我在群组的昵称', 'myNickname', (group.preferences || {}).myNickname || '未设置'),
         toggle(group, 'showMemberNicknames', '显示成员昵称'),
         row('群聊玩法与记忆', 'advanced'), row('其他群聊选项', 'legacy'));
-      home.replaceChildren(hero, assets, memberRow, memberActions, grid,
-        node('h2', '快捷设置'), switches, node('h2', '群组设置'), rows, live);
+      content.append(memberRow, grid, node('h2', '快捷设置'), switches,
+        node('h2', '群组设置'), rows);
+      updateDrawer(arrow, drawer);
+      home.replaceChildren(hero, title, arrow, drawer, live);
+    }
+    function updateDrawer(arrow, drawer) {
+      arrow.setAttribute('aria-expanded', String(expanded));
+      arrow.setAttribute('aria-label', expanded ? '收起' : '展开');
+      drawer.inert = !expanded;
+      drawer.classList.toggle('is-expanded', expanded);
     }
     function show(label, items) {
       var heading = node('h2', label);
@@ -318,6 +341,10 @@
       show(kind === 'avatar' ? '群头像' : '群背景', [file].concat(kind === 'background' && wallpaper ? [button('恢复默认背景', 'reset-background')] : []));
     }
     var handlers = {
+      drawer: function (id, arrow) {
+        expanded = !expanded;
+        updateDrawer(arrow, document.getElementById(arrow.getAttribute('aria-controls')));
+      },
       close: function () { dialog.close(); },
       preference: function (id, target) { setPreference(id, target.getAttribute('aria-checked') !== 'true'); },
       name: function () {
