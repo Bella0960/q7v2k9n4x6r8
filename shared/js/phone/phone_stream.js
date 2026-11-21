@@ -148,8 +148,13 @@
 
                 /* -- HTTP 层错误（401/404/429/5xx 等）：读 body 提取详情，不进入流解析 -- */
                 if (!response.ok || !response.body) {
-                    clearAllTimers();
-                    return response.text().catch(function () { return ''; }).then(function (bodyText) {
+                    // The response body can stall even after the headers arrive.
+                    enterStreamMode();
+                    return response.text().catch(function (err) {
+                        if (controller.signal.aborted) throw err;
+                        return '';
+                    }).then(function (bodyText) {
+                        clearAllTimers();
                         var detail = '';
                         try {
                             var parsed = JSON.parse(bodyText);
