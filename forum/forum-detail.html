@@ -7,6 +7,7 @@
 <script src="../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../shared/js/native-feel.js"></script>
 <script src="../shared/js/phone/phone_storage.js"></script>
+<script src="../shared/js/phone/chat-history-atomic.js"></script>
 <script src="../shared/js/phone/storage/repository.js"></script>
 <script src="../shared/js/phone/storage/media-repository.js"></script>
 <script src="forum-media.js"></script>
@@ -1375,47 +1376,99 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       return;
     }
 
+    // 连点只允许一次写入：追加本身是原子的，但重复调用会追加两条。
+    if (sharePost.inFlight) return;
     const target = roles[0];
-    const msg = '【分享帖子】' + (postBody() || postTitle()).substring(0, 50);
-    const message = { role: 'user', text: msg, time: Date.now(), type: 'text' };
-
-    try {
-      const storage = window.PhoneStorage;
-      let history;
-      if (storage && typeof storage.getChatHistory === 'function') {
-        history = storage.getChatHistory(target.id);
-      } else {
-        const raw = localStorage.getItem('chat_history_' + target.id);
-        history = raw ? JSON.parse(raw) : [];
-      }
-      if (!Array.isArray(history)) throw new Error('聊天记录格式无法识别');
-
-      const next = history.slice();
-      next.push(message);
-      let saved = false;
-      if (storage && typeof storage.saveChatHistory === 'function') {
-        saved = storage.saveChatHistory(target.id, next) === true;
-      } else {
-        localStorage.setItem('chat_history_' + target.id, JSON.stringify(next));
-        saved = true;
-      }
-      if (!saved) throw new Error('聊天记录写入失败');
-
-      const verified = storage && typeof storage.getChatHistory === 'function'
-        ? storage.getChatHistory(target.id)
-        : JSON.parse(localStorage.getItem('chat_history_' + target.id) || '[]');
-      const last = Array.isArray(verified) && verified.length ? verified[verified.length - 1] : null;
-      if (!Array.isArray(verified) || verified.length !== next.length ||
-          !last || last.role !== message.role || last.type !== message.type ||
-          last.time !== message.time || last.text !== message.text) {
-        throw new Error('聊天记录写入后校验失败');
-      }
-
-      alert('已分享给 ' + (target.name || '该联系人'));
-    } catch (error) {
-      console.error('[Forum] sharePost chat history persistence failed:', error);
-      alert('帖子分享失败：聊天记录没有保存成功，请检查存储空间后重试');
+    if (typeof target.id !== 'string' || !target.id.trim()) {
+      alert('联系人信息不完整，请重新选择联系人后再分享');
+      return;
     }
+    sharePost.inFlight = true;
+
+    const now = Date.now();
+    const msg = '【分享帖子】' + (postBody() || postTitle()).substring(0, 50);
+    const message = {
+      mid: 'm' + now + Math.random().toString(36).slice(2, 5),
+      role: 'user', text: msg, time: now, type: 'text'
+    };
+
+    appendSharedPostMessage(target.id, message).then(function (outcome) {
+      if (!outcome.ok) {
+        console.error('[Forum] sharePost chat history persistence failed:', outcome.reason);
+        alert(shareFailureNotice(outcome.reason));
+        return;
+      }
+      alert('已分享给 ' + (target.name || '该联系人'));
+    }, function (error) {
+      console.error('[Forum] sharePost chat history persistence failed:', error);
+      alert(shareFailureNotice('UNEXPECTED'));
+    }).then(function () {
+      sharePost.inFlight = false;
+    });
+  }
+
+  // 分享消息只走 ChatHistoryAtomic：读取、去重、追加、写后读回都在同一把会话锁内完成。
+  // Web Locks 不可用时明确失败，绝不退回整表覆盖写入。
+  function appendSharedPostMessage(roleId, message) {
+    const atomic = window.ChatHistoryAtomic;
+    const storage = window.PhoneStorage;
+    if (!atomic || typeof atomic.appendIf !== 'function') {
+      return Promise.resolve({ ok: false, reason: 'ATOMIC_UNAVAILABLE' });
+    }
+    let attempts = 0;
+    const attempt = function () {
+      attempts += 1;
+      return atomic.appendIf(roleId, message).then(function (outcome) {
+        if (outcome && outcome.ok) {
+          return verifySharedPostMessage(storage, roleId, message)
+            ? { ok: true }
+            : { ok: false, reason: 'VERIFY_FAILED' };
+        }
+        const code = outcome && outcome.error ? outcome.error.code : 'APPEND_FAILED';
+        if (code === 'CONFLICT' && attempts < 2) return attempt();
+        if (code !== 'NOT_FOUND') return { ok: false, reason: code };
+        // 主键还不存在：先读出旧 phone_data_v2 副本，再以「主键必须缺失」为前置条件
+        // 创建，避免把旧会话历史覆盖成只剩这条分享。
+        const legacy = storage && typeof storage.getChatHistory === 'function'
+          ? storage.getChatHistory(roleId) : null;
+        if (!Array.isArray(legacy)) return { ok: false, reason: 'LEGACY_UNREADABLE' };
+        if (!storage || !storage.result || typeof storage.result.saveChatHistory !== 'function') {
+          return { ok: false, reason: 'CREATE_UNAVAILABLE' };
+        }
+        const created = storage.result.saveChatHistory(roleId, legacy.concat([message]), null);
+        if (created && created.ok) {
+          return verifySharedPostMessage(storage, roleId, message)
+            ? { ok: true }
+            : { ok: false, reason: 'VERIFY_FAILED' };
+        }
+        const createCode = created && created.error ? created.error.code : 'CREATE_FAILED';
+        if (createCode === 'CONFLICT' && attempts < 2) return attempt();
+        return { ok: false, reason: createCode };
+      });
+    };
+    return attempt();
+  }
+
+  // 只确认这条消息（mid）确实落盘。不再比较整表长度：别的标签页同时追加
+  // 会让长度断言误报失败。
+  function verifySharedPostMessage(storage, roleId, message) {
+    if (!storage || typeof storage.getChatHistory !== 'function') return false;
+    const history = storage.getChatHistory(roleId);
+    if (!Array.isArray(history)) return false;
+    return history.some(function (item) {
+      return item && item.mid != null && String(item.mid) === String(message.mid);
+    });
+  }
+
+  function shareFailureNotice(reason) {
+    if (reason === 'LOCK_UNAVAILABLE') return '其他标签页正在写入聊天记录，请稍后重试';
+    if (reason === 'ATOMIC_UNAVAILABLE' || reason === 'CREATE_UNAVAILABLE') {
+      return '当前浏览器不支持安全的聊天记录写入，帖子没有分享成功';
+    }
+    if (reason === 'QUOTA_EXCEEDED') return '存储空间已满，帖子没有分享成功，请清理后再试';
+    if (reason === 'ACCOUNT_SCOPE_UNAVAILABLE') return '登录状态校验失败，帖子没有分享成功，请刷新后重试';
+    if (reason === 'DB_UNAVAILABLE') return '浏览器存储暂时不可用，帖子没有分享成功，请稍后重试';
+    return '帖子分享失败：聊天记录没有保存成功，请检查存储空间后重试';
   }
 
   function deletePost() {
