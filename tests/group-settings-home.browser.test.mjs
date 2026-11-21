@@ -48,7 +48,8 @@ test('group settings support extension tiles, member controls and persisted pref
       assert.equal(await page.locator('.group-home-tools button').first().evaluate(button =>
         getComputedStyle(button).backgroundColor), 'rgba(0, 0, 0, 0)');
       await arrow.click();
-      await page.waitForFunction(() => document.querySelector('#groupSettingsDrawer').offsetHeight === 0);
+      await drawer.waitFor({state:'hidden'});
+      assert.equal(await drawer.evaluate(el => el.inert && el.offsetHeight === 0), true);
       assert.equal(await page.getByRole('button',{name:'群组管理'}).count(), 0);
       await arrow.click();
       assert.equal(await page.locator('.group-home-tools button').count(),3);
