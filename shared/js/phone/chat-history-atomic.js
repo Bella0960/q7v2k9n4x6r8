@@ -16,9 +16,27 @@
         return !!message && typeof message === 'object' && !Array.isArray(message);
     }
 
+    function findMessage(history, mid) {
+        for (var i = 0; i < history.length; i++) {
+            if (history[i] && history[i].mid != null && String(history[i].mid) === mid) return history[i];
+        }
+        return null;
+    }
+
     // All operations use the same per-conversation lock. The entire
     // read/check/write/readback sequence runs inside the lock callback.
-    async function withLatest(contactId, operation) {
+    //
+    // options（可选，默认关闭，appendIf / appendManyIf / replaceIfUnchanged 的行为不变）：
+    //   allowMissingPrimary —— 主键缺失时用 seed() 取到的旧副本继续，而不是直接 NOT_FOUND。
+    //   seed()              —— 只在 allowMissingPrimary 且主键确实缺失时于锁内调用；
+    //                          抛异常表示旧副本不可读，按 LEGACY_UNREADABLE / LEGACY_CORRUPT 失败。
+    //   commit(list, ctx)   —— 自定义落盘。返回 { ok: true } 表示写完并由本函数读回校验；
+    //                          返回失败对象表示失败；返回 undefined 表示走默认的锁内 setItem；
+    //                          可以返回 Promise，锁会一直持有到它结束。
+    //   sharedRootLock      —— 额外先取一把共享的 phone_data_v2 根锁（见下方说明）。
+    // 约定：调用方不得在持锁期间再次申请同名锁，本函数也绝不复用外层锁。
+    async function withLatest(contactId, operation, options) {
+        var opts = options || {};
         var id = String(contactId == null ? '' : contactId);
         if (!id) return fail('VALIDATION_FAILED');
         var lockManager = global.navigator && global.navigator.locks;
@@ -37,21 +55,35 @@
         var lockScope = accountScope && accountScope.ready === true && accountScope.accountId
             ? encodeURIComponent(String(accountScope.accountId)) + ':' : '';
         var key = 'chat_history_' + id;
-        try {
-            return await lockManager.request('maomao:chat-history:' + lockScope + id, { mode: 'exclusive' }, function () {
+
+        // 会话锁内：读取 → 去重 → 写入 → 读回，全在同一把锁里。
+        function underConversationLock() {
+            return lockManager.request('maomao:chat-history:' + lockScope + id, { mode: 'exclusive' }, async function () {
                 var raw;
                 try { raw = global.localStorage.getItem(key); }
                 catch (e) { return fail('DB_UNAVAILABLE'); }
-                // Do not overwrite a missing primary: it may still have a
-                // legacy phone_data_v2 copy or have just been deleted.
-                if (raw === null) return fail('NOT_FOUND');
+                var ctx = { contactId: id, raw: raw, primaryMissing: raw === null };
                 var latest;
-                try { latest = JSON.parse(raw); }
-                catch (e) { return fail('CORRUPT_DATA'); }
-                if (!Array.isArray(latest)) return fail('CORRUPT_DATA');
+                if (raw === null) {
+                    // Do not overwrite a missing primary by default: it may still have a
+                    // legacy phone_data_v2 copy or have just been deleted.
+                    if (opts.allowMissingPrimary !== true) return fail('NOT_FOUND');
+                    // 首次创建：旧副本也必须在同一把锁内读取，否则两个标签页会各自
+                    // 读到同一份旧副本、各自写出一份「旧副本 + 自己那条」。
+                    var seed;
+                    try { seed = typeof opts.seed === 'function' ? opts.seed() : []; }
+                    catch (e) { return fail(e && e.code === 'LEGACY_CORRUPT' ? 'LEGACY_CORRUPT' : 'LEGACY_UNREADABLE'); }
+                    if (seed == null) seed = [];
+                    if (!Array.isArray(seed)) return fail('LEGACY_UNREADABLE');
+                    latest = seed;
+                } else {
+                    try { latest = JSON.parse(raw); }
+                    catch (e) { return fail('CORRUPT_DATA'); }
+                    if (!Array.isArray(latest)) return fail('CORRUPT_DATA');
+                }
 
                 var decision;
-                try { decision = operation(latest); }
+                try { decision = operation(latest, ctx); }
                 catch (e) { return fail('VALIDATION_FAILED'); }
                 if (!decision || decision.ok !== true) return decision || fail('VALIDATION_FAILED');
 
@@ -63,10 +95,37 @@
                 if (decision.alreadyPersisted && decision.value === latest) {
                     return { ok: true, value: decision.output, meta: meta };
                 }
+                // 只有真的写下去才算创建了这个主键。
+                if (ctx.primaryMissing) meta.createdPrimary = true;
                 var updated;
                 try { updated = JSON.stringify(decision.value); }
                 catch (e) { return fail('VALIDATION_FAILED'); }
                 if (typeof updated !== 'string') return fail('VALIDATION_FAILED');
+
+                // 自定义落盘（例如首次创建走 PhoneStorage 的 CAS 入口）。
+                // 依然在本锁回调内调用与校验，绝不在锁外补写。
+                if (typeof opts.commit === 'function') {
+                    var committed;
+                    try { committed = opts.commit(decision.value, ctx); }
+                    catch (e) { return fail('CREATE_FAILED'); }
+                    if (committed && typeof committed.then === 'function') {
+                        // 落盘实现可以是异步的，锁会持有到它结束为止。
+                        try { committed = await committed; }
+                        catch (e) { return fail('CREATE_FAILED', { writeMayHavePersisted: true }); }
+                    }
+                    if (committed !== undefined) {
+                        if (!committed || committed.ok !== true) {
+                            return committed && committed.error ? committed : fail('CREATE_FAILED');
+                        }
+                        var afterCommit;
+                        try { afterCommit = global.localStorage.getItem(key); }
+                        catch (e) { return fail('DB_UNAVAILABLE', { writeMayHavePersisted: true }); }
+                        if (afterCommit !== updated) {
+                            return fail('VERIFY_FAILED', { writeMayHavePersisted: true });
+                        }
+                        return { ok: true, value: decision.output, meta: meta };
+                    }
+                }
 
                 // A browser adapter can commit setItem then throw, or reject a
                 // post-write read. Never tell a caller to roll back media refs
@@ -93,6 +152,20 @@
                 }
                 return { ok: true, value: decision.output, meta: meta };
             });
+        }
+
+        try {
+            if (opts.sharedRootLock !== true) return await underConversationLock();
+
+            // phone_data_v2 是一个键、一整份对象：首次创建后 saveChatHistory 会
+            // 读-改-写整个根来清掉旧副本。这个动作与会话锁没有交集，两个角色
+            // 同时首次创建就会互相覆盖对方的清理结果，甚至用过期快照盖掉别人
+            // 刚写进去的其他领域数据。所以创建路径额外持有一把共享根锁。
+            //
+            // 顺序固定为「根锁 → 会话锁」，只有本文件会同时持有两把锁，
+            // 不存在反序获取，因此不会形成死锁；两把锁名字不同，也不会自我重入。
+            return await lockManager.request('maomao:phone-data-root:' + lockScope + 'phone_data_v2',
+                { mode: 'exclusive' }, underConversationLock);
         } catch (e) {
             return fail('LOCK_FAILED');
         }
@@ -159,6 +232,42 @@
             var outcome = await ChatHistoryAtomic.appendManyIf(contactId, [message], guard);
             if (!outcome.ok) return outcome;
             return { ok: true, value: message, meta: outcome.meta };
+        },
+
+        // 首次创建 + 追加：读取旧副本、mid 去重、写入、读回全在同一把会话锁内完成。
+        // 两个标签页同时创建同一个缺失主键时，只有一个真正创建，另一个在锁内
+        // 看到已存在的主键后按普通追加处理，不会各写一份。
+        // 与 appendIf 的差别仅在「主键缺失」：appendIf 仍返回 NOT_FOUND，行为不变。
+        appendOrCreateIfMissing: async function (contactId, message, options) {
+            if (!validMessage(message)) return fail('VALIDATION_FAILED');
+            var opts = options || {};
+            if (opts.seed != null && typeof opts.seed !== 'function') return fail('VALIDATION_FAILED');
+            if (opts.commit != null && typeof opts.commit !== 'function') return fail('VALIDATION_FAILED');
+
+            return withLatest(contactId, function (latest, ctx) {
+                var mid = message.mid == null ? '' : String(message.mid);
+                if (mid !== '') {
+                    var existing = findMessage(latest, mid);
+                    if (existing) {
+                        // 同 mid 不同内容：不静默覆盖，交给调用方处理。
+                        if (JSON.stringify(existing) !== JSON.stringify(message)) return fail('CONFLICT');
+                        return {
+                            ok: true, value: latest, alreadyPersisted: true,
+                            output: { appended: 0, skipped: 1, created: false }
+                        };
+                    }
+                }
+                return {
+                    ok: true, value: latest.concat([message]),
+                    output: { appended: 1, skipped: 0, created: ctx.primaryMissing === true }
+                };
+            }, {
+                allowMissingPrimary: true,
+                seed: opts.seed,
+                commit: opts.commit,
+                // 创建会重写 phone_data_v2 根，默认必须同时持有共享根锁。
+                sharedRootLock: opts.sharedRootLock !== false
+            });
         },
 
         // For edits, removals or regenerated replies: reject changes when
