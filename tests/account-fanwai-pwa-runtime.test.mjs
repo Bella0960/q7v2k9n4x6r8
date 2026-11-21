@@ -82,15 +82,17 @@ test('private chat navigations always use authenticated network, never cached ac
   assert.equal(app.puts.length, 0, 'private HTML must never enter shared cache');
 });
 
-test('offline protected page cannot reveal old chat cache; only public login may appear', async () => {
+test('offline protected navigation stays on a no-store 503, never substitutes cached sign-in', async () => {
   const app = harness({
     cached: page('public sign in'),
     server: async () => { throw Error('offline'); }
   });
   const event = app.navigate('/chat/chat/chat-detail.html');
   const result = await event.result;
-  assert.equal(await result.text(), 'public sign in');
-  assert.ok(app.cacheLookups >= 1);
+  assert.equal(result.status, 503);
+  assert.equal(result.headers.get('cache-control'), 'no-store');
+  assert.match(await result.text(), /连接暂时中断/);
+  assert.equal(app.cacheLookups, 0, 'a private route must not even read public login cache');
 });
 
 test('redirected private content is never stored as a public login page', async () => {
