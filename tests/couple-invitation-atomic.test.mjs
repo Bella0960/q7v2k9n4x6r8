@@ -51,8 +51,9 @@ function createEnv(options) {
   };
   if (opts.append !== null) {
     env.window.ChatHistoryAppend = {
-      appendOrCreate(roleId, message) {
-        calls.push({ roleId, message });
+      appendStable(actionKey, roleId, factory) {
+        const message = factory();
+        calls.push({ actionKey, roleId, message });
         return opts.append(roleId, message);
       }
     };
@@ -84,6 +85,7 @@ test('first-time partner binding appends one invitation through the shared entry
   assert.equal(calls[0].message.type, 'text');
   assert.ok(calls[0].message.text.startsWith('♡ 邀请你绑定我们的情侣空间'));
   assert.ok(calls[0].message.mid, '邀请消息必须带稳定 mid');
+  assert.equal(calls[0].actionKey, 'couple-invite:role-a', '动作 key 必须能唯一标识「邀请这个伴侣」');
   assert.deepEqual(toasts, ['已保存']);
   assert.ok(writes.some(([key]) => key === 'couple_profile'), '资料始终先保存');
 });
@@ -139,4 +141,24 @@ test('an unexpected rejection falls back to the original invitation warning', as
   await flush();
 
   assert.deepEqual(toasts, ['资料已保存，但邀请消息没有写入聊天记录，请稍后在聊天中重试']);
+});
+
+test('邀请写入可能已落盘时提示结果未确认，不谎报完整成功', async () => {
+  const { env, toasts } = createEnv({
+    append: async () => ({ ok: false, reason: 'DB_UNAVAILABLE', writeMayHavePersisted: true })
+  });
+  const run = runInNewContext(saveSetSource, env);
+  run();
+  await new Promise((done) => setTimeout(done, 8));
+
+  assert.equal(toasts.length, 1);
+  assert.match(toasts[0], /可能已经发出/);
+  assert.doesNotMatch(toasts[0], /^已保存$/);
+});
+
+test('旧聊天记录损坏或读不出来时给出对应的失败提示', () => {
+  assert.match(page, /LEGACY_CORRUPT/);
+  assert.match(page, /旧聊天记录格式异常/);
+  assert.match(page, /LEGACY_UNREADABLE/);
+  assert.match(page, /旧聊天记录暂时读不出来/);
 });
