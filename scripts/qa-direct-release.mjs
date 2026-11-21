@@ -293,7 +293,7 @@ async function qaHttpSmoke(coreInitialized) {
     '/api/admin/bootstrap/status',
     '/account/index.html',
     '/account/account.js?v=20261121-login-recovery1',
-    '/account/ivory-entry.css?v=20261116-qa1',
+    '/account/ivory-entry.css?v=20261121-login-recovery1',
     '/account/bootstrap.html',
     '/account/bootstrap.js?v=20261116-qa1'
   ];
