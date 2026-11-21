@@ -4,6 +4,22 @@
 > 数据来源：GitHub API 静态审计（文件树 418 blobs 未截断、68 个开放 PR、200+ 分支、main 30 条提交）+ 公开 QA 站点 Service Worker / API 取证。
 > **本台账是审计快照，不代表功能已验收或已合并。所有结论均可复核。**
 
+## 0a. 部署提交号精确核实（2026-11-21，git blob 逐字节比对）
+
+| 核验项 | 结果 |
+|---|---|
+| QA 部署源分支 | `integration/account-fanwai-stack-20261115` |
+| 该分支 HEAD 提交 | `c9cf33e7c6bf67ed3842426efc9dba6bb7932da5` |
+| QA 线上 sw.js 大小 | 28976 字节 |
+| QA sw.js git blob sha | `c3c6147def2fb54f889806853fc5dc3f334ced0b` |
+| 集成分支 sw.js git blob sha | `c3c6147def2fb54f889806853fc5dc3f334ced0b`（完全一致） |
+| QA 线上 chat-role-context.js git blob sha | `4f46f9a3e3c2552fa5d6ca85c458d6b793f198c5` |
+| 集成分支同名文件 sha | `4f46f9a3e3c2552fa5d6ca85c458d6b793f198c5`（完全一致） |
+
+**结论：QA 测试版运行的正是集成分支 `c9cf33e7` 的代码。** 由此确认：
+- P0「角色记忆/世界书严格隔离 + 缺失人设不编造」（PR #318 的修复）在 QA 线上**已生效**：线上文件含 `MINIMAL_PERSONA_PROMPT`，旧的宽松世界书逻辑 `book.scope !== 'local'` 命中数为 0。用户担心的串人设/串世界书问题，**在手机测试版上已不是当前缺陷**。
+- 该 P0 修复类文件 `shared/js/phone/chat-role-context.js` 在 main 上不存在（404），main 使用不同的聊天上下文架构。因此「把它合回 main」不是单文件移植，而是两套架构收敛，属于需负责人确认的重大范围，本轮不执行。
+
 ## 0. 关键结论（为什么新功能没进测试版）
 
 **根因：主线与 QA 部署源分叉。**
