@@ -113,7 +113,7 @@ function runHttpSmoke(coreInitialized, {
       }
       const assets = {
         '/account/index.html': html,
-        '/account/account.js?v=20261119reconnect1': loginJs,
+        '/account/account.js?v=20261121-login-recovery1': loginJs,
         '/account/ivory-entry.css?v=20261116-qa1': loginCss,
         '/account/ivory-entry.css?v=f81232e2': loginCss,
         '/account/account.css?v=62fd2c1a':
@@ -139,7 +139,7 @@ test('original QA URL smoke accepts first-run setup and a ready disabled setup',
     assert.deepEqual(fixture.calls.map(x => x.url), [
       'https://maomao-aw-qa-20261114.miamor520000.workers.dev/api/admin/bootstrap/status',
       'https://maomao-aw-qa-20261114.miamor520000.workers.dev/account/index.html',
-      'https://maomao-aw-qa-20261114.miamor520000.workers.dev/account/account.js?v=20261119reconnect1',
+      'https://maomao-aw-qa-20261114.miamor520000.workers.dev/account/account.js?v=20261121-login-recovery1',
       'https://maomao-aw-qa-20261114.miamor520000.workers.dev/account/ivory-entry.css?v=20261116-qa1',
       'https://maomao-aw-qa-20261114.miamor520000.workers.dev/account/bootstrap.html',
       'https://maomao-aw-qa-20261114.miamor520000.workers.dev/account/bootstrap.js?v=20261116-qa1',
@@ -171,12 +171,12 @@ test('QA URL smoke blocks a disconnected core, inconsistent setup, or missing lo
   await assert.rejects(runHttpSmoke(false, { bootstrapHtml: 'stale setup HTML' }).promise);
   await assert.rejects(runHttpSmoke(false, { bootstrapJs: 'stale setup script' }).promise);
   await assert.rejects(runHttpSmoke(false, {
-    html: '<form id="loginForm"></form><script src="/account/account.js?v=20261119reconnect1"></script><link rel="stylesheet" href="https://external.example.test/css.css">'
+    html: '<form id="loginForm"></form><script src="/account/account.js?v=20261121-login-recovery1"></script><link rel="stylesheet" href="https://external.example.test/css.css">'
   }).promise);
 });
 
 test('accepts Vite fingerprinted stylesheet when the actual linked CSS contains QA warning', async () => {
-  const html = '<form id="loginForm"></form><script src="/account/account.js?v=20261119reconnect1"></script><link rel="stylesheet" crossorigin href="./assets/qa-abcdef.css">';
+  const html = '<form id="loginForm"></form><script src="/account/account.js?v=20261121-login-recovery1"></script><link rel="stylesheet" crossorigin href="./assets/qa-abcdef.css">';
   const href = '/account/assets/qa-abcdef.css';
   const probe = runHttpSmoke(false, {
     html,
