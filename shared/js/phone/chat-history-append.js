@@ -1,15 +1,16 @@
 /*
  * ChatHistoryAppend —— 追加单条聊天消息的统一入口。
  *
- * 只做一件事：把「追加一条消息」收敛到一个地方，内部复用
- * ChatHistoryAtomic（Web Locks 串行化 + mid 去重 + 写后读回）。
+ * 只做一件事：把「追加一条消息（必要时先创建主键）」收敛到一个地方，
+ * 全部工作交给 ChatHistoryAtomic.appendOrCreateIfMissing 在同一把会话锁内完成：
  *
- * 约定：
- *   - 主键 chat_history_<id> 不存在时，先用 PhoneStorage.getChatHistory() 取出
- *     旧 phone_data_v2 副本当种子，再以「主键必须缺失」为前置条件创建，
- *     不把老会话覆盖成只剩这条新消息。
- *   - Web Locks 不可用（LOCK_UNAVAILABLE）、账号作用域未就绪等情况一律返回失败，
- *     调用方必须明确提示用户，禁止退回整表覆盖写入。
+ *   锁内读取主键（缺失则读旧 phone_data_v2 副本）→ mid 去重 → 写入 → 读回校验
+ *
+ * 因此本文件不再持有任何「锁外补写」的路径：
+ *   - 主键缺失时不再调用 appendIf 再自行创建；appendIf 的 NOT_FOUND 语义保持不变。
+ *   - 首次创建通过 commit 回调在**锁内**复用 PhoneStorage 的 CAS 入口
+ *     （expectedPrimary 取锁内读到的原始字节），并沿用它的写后读回与旧副本清理。
+ *   - Web Locks 不可用（LOCK_UNAVAILABLE）一律失败，不退回整表覆盖写入。
  *   - 返回 { ok: true, created } 或 { ok: false, reason }，不抛异常。
  */
 (function (global) {
@@ -17,35 +18,41 @@
 
     function failure(reason) { return { ok: false, reason: reason }; }
 
-    function presentIn(history, mid) {
-        if (!Array.isArray(history)) return false;
-        for (var i = 0; i < history.length; i++) {
-            var item = history[i];
-            if (item && item.mid != null && String(item.mid) === String(mid)) return true;
+    // 锁内调用：主键缺失时才走这里，取旧 phone_data_v2 副本当种子。
+    // 抛异常表示旧副本不可读（损坏/存储不可用），不能当成空历史继续创建，
+    // 否则会把老会话覆盖成只剩这条新消息。
+    function readLegacySeed(roleId) {
+        var storage = global.PhoneStorage;
+        if (!storage || typeof storage.getChatHistory !== 'function') {
+            throw new Error('PhoneStorage.getChatHistory unavailable');
         }
-        return false;
+        var history = storage.getChatHistory(roleId);
+        if (history == null) return [];
+        if (!Array.isArray(history)) throw new Error('legacy chat history is not an array');
+        return history;
     }
 
-    // 读取当前历史：主键缺失时 PhoneStorage 会回退到 phone_data_v2 旧副本。
-    function readHistory(roleId) {
+    // 锁内调用：首次创建的落盘方式。只有主键仍缺失时才走这里；
+    // 已被别的标签页创建则返回 undefined，交给默认的锁内写入。
+    function createPrimary(roleId, list, ctx) {
+        if (!ctx || ctx.primaryMissing !== true) return undefined;
         var storage = global.PhoneStorage;
-        if (!storage || typeof storage.getChatHistory !== 'function') return null;
-        var history;
-        try { history = storage.getChatHistory(roleId); } catch (e) { return null; }
-        return Array.isArray(history) ? history : null;
-    }
-
-    // 只确认这条消息（mid）确实落盘，不比较整表长度：别的标签页同时追加
-    // 会让长度断言误报失败。
-    function verify(roleId, message) {
-        var storage = global.PhoneStorage;
-        if (!storage || typeof storage.getChatHistory !== 'function') return true;
-        return presentIn(readHistory(roleId), message.mid);
+        if (!storage || !storage.result || typeof storage.result.saveChatHistory !== 'function') {
+            return { ok: false, error: { code: 'CREATE_UNAVAILABLE' } };
+        }
+        var saved;
+        try {
+            saved = storage.result.saveChatHistory(roleId, list, ctx.raw === null ? null : ctx.raw);
+        } catch (e) {
+            return { ok: false, error: { code: 'CREATE_FAILED' } };
+        }
+        if (saved && saved.ok === true) return { ok: true };
+        return { ok: false, error: { code: (saved && saved.error && saved.error.code) || 'CREATE_FAILED' } };
     }
 
     function appendOrCreate(roleId, message) {
         var atomic = global.ChatHistoryAtomic;
-        if (!atomic || typeof atomic.appendIf !== 'function') {
+        if (!atomic || typeof atomic.appendOrCreateIfMissing !== 'function') {
             return Promise.resolve(failure('ATOMIC_UNAVAILABLE'));
         }
         if (typeof roleId !== 'string' || !roleId.trim()) return Promise.resolve(failure('VALIDATION_FAILED'));
@@ -53,31 +60,25 @@
             return Promise.resolve(failure('VALIDATION_FAILED'));
         }
 
+        var options = {
+            seed: function () { return readLegacySeed(roleId); },
+            commit: function (list, ctx) { return createPrimary(roleId, list, ctx); }
+        };
+
+        // 仅 CONFLICT 重试：只可能来自「不参与会话锁的旧写入者」在锁内读之后抢先
+        // 建立主键。重试是重新申请一次锁、重跑整条序列，绝不在锁外补写。
         var attempts = 0;
         function attempt() {
             attempts += 1;
-            return atomic.appendIf(roleId, message).then(function (outcome) {
-                if (outcome && outcome.ok) {
-                    return verify(roleId, message) ? { ok: true, created: false } : failure('VERIFY_FAILED');
+            return atomic.appendOrCreateIfMissing(roleId, message, options).then(function (outcome) {
+                if (outcome && outcome.ok === true) {
+                    // 原子层沿用 appendManyIf 的约定：value 承载操作输出。
+                    var output = outcome.value && typeof outcome.value === 'object' ? outcome.value : {};
+                    return { ok: true, created: output.created === true };
                 }
                 var code = outcome && outcome.error ? outcome.error.code : 'APPEND_FAILED';
                 if (code === 'CONFLICT' && attempts < 2) return attempt();
-                if (code !== 'NOT_FOUND') return failure(code);
-
-                var legacy = readHistory(roleId);
-                if (legacy === null) return failure('LEGACY_UNREADABLE');
-                var storage = global.PhoneStorage;
-                if (!storage || !storage.result ||
-                    typeof storage.result.saveChatHistory !== 'function') {
-                    return failure('CREATE_UNAVAILABLE');
-                }
-                var created = storage.result.saveChatHistory(roleId, legacy.concat([message]), null);
-                if (created && created.ok) {
-                    return verify(roleId, message) ? { ok: true, created: true } : failure('VERIFY_FAILED');
-                }
-                var createCode = created && created.error ? created.error.code : 'CREATE_FAILED';
-                if (createCode === 'CONFLICT' && attempts < 2) return attempt();
-                return failure(createCode);
+                return failure(code);
             }, function () {
                 return failure('APPEND_FAILED');
             });
