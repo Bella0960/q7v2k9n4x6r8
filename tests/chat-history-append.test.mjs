@@ -9,26 +9,56 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const atomicSource = readFileSync(resolve(root, 'shared/js/phone/chat-history-atomic.js'), 'utf8');
 const appendSource = readFileSync(resolve(root, 'shared/js/phone/chat-history-append.js'), 'utf8');
 
-// 真实的 ChatHistoryAtomic + 真实的 ChatHistoryAppend，只把 localStorage 和
-// Web Locks 换成可观察的桩。backend 用来模拟「多个标签页共享同一份存储与同一把锁」。
+// 真实的 ChatHistoryAtomic + 真实的 ChatHistoryAppend，只把 localStorage、
+// Web Locks 和 PhoneStorage 换成可观察的桩。backend 模拟「多个标签页共享同一份
+// 存储与同一把锁」。
 function createBackend(records) {
   return {
     records: new Map(Object.entries(records || {})),
     queues: new Map(),
     storageWrites: [],   // { roleId, list, expectedPrimary, lockHeld }
     lockCalls: [],       // { name, tab }
-    deadlocks: []
+    deadlocks: [],
+    // saveChatHistory 的「写主键 + 清理 phone_data_v2 旧副本」临界区并发深度。
+    rootDepth: 0,
+    rootMaxDepth: 0,
+    failNextRead: null
   };
+}
+
+// legacy: { roleId: [历史消息] } → 物化成 phone_data_v2 里 { roleId: { chat: { history } } }
+function seedLegacy(backend, legacy) {
+  if (!legacy || backend.legacySeeded) return;
+  backend.legacySeeded = true;
+  const raw = backend.records.get('phone_data_v2');
+  const current = raw == null ? {} : JSON.parse(raw);
+  for (const [roleId, history] of Object.entries(legacy)) {
+    const bucket = current[roleId] && typeof current[roleId] === 'object' ? current[roleId] : {};
+    current[roleId] = { ...bucket, chat: { history } };
+  }
+  backend.records.set('phone_data_v2', JSON.stringify(current));
+}
+
+function tick() {
+  return new Promise((done) => setTimeout(done, 1));
 }
 
 function createTab(backend, options) {
   const opts = options || {};
   const executing = new Set();
+  seedLegacy(backend, opts.legacy);
 
   const realm = { Promise, console: { warn() {}, error() {}, log() {} } };
   realm.window = realm;
   realm.localStorage = {
-    getItem: (key) => (backend.records.has(key) ? backend.records.get(key) : null),
+    getItem: (key) => {
+      // 模拟「setItem 成功、随后的读回抛异常」：写入其实已落盘。
+      if (backend.failNextRead && key === backend.failNextRead) {
+        backend.failNextRead = null;
+        throw new Error('storage read failed after write');
+      }
+      return backend.records.has(key) ? backend.records.get(key) : null;
+    },
     setItem: (key, value) => {
       if (opts.dropWrites) return; // 模拟存储吞掉写入
       backend.records.set(key, String(value));
@@ -59,42 +89,79 @@ function createTab(backend, options) {
 
   runInNewContext(atomicSource, realm);
 
-  const legacy = opts.legacy || {};
   realm.PhoneStorage = {
+    // 旧门面：损坏/不可读一律折成 []，正是本次修复要绕开的东西。
     getChatHistory(roleId) {
       const raw = backend.records.get('chat_history_' + roleId);
       if (raw != null) return JSON.parse(raw);
-      if (opts.seedThrows) throw new Error('legacy unreadable');
-      return Array.isArray(legacy[roleId]) ? legacy[roleId] : [];
+      return [];
     },
     result: {
-      saveChatHistory(roleId, list, expectedPrimary) {
+      // 三态根读取：缺失 → ok({})，损坏 → CORRUPT_DATA，不可读 → DB_UNAVAILABLE。
+      getRoot() {
+        if (opts.getRootThrows) throw new Error('root unreadable');
+        if (opts.rootUnavailable) return { ok: false, error: { code: 'DB_UNAVAILABLE' } };
+        const raw = backend.records.get('phone_data_v2');
+        if (raw == null) return { ok: true, value: {}, meta: { found: false } };
+        let parsed;
+        try { parsed = JSON.parse(raw); }
+        catch (e) { return { ok: false, error: { code: 'CORRUPT_DATA' } }; }
+        if (parsed == null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          return { ok: false, error: { code: 'CORRUPT_DATA' } };
+        }
+        return { ok: true, value: parsed, meta: { found: true } };
+      },
+      // 真实 saveChatHistory 的两段式：写主键（带 expectedPrimary），
+      // 再读-改-写 phone_data_v2 删掉旧副本。这里保留同一形状，
+      // 并在两段之间插入 await，模拟另一标签页在真实进程里插进来的窗口。
+      async saveChatHistory(roleId, list, expectedPrimary) {
         backend.storageWrites.push({
           roleId, list, expectedPrimary,
-          // 关键回归断言：创建必须发生在会话锁回调内部。
+          // 关键回归断言：创建必须发生在锁回调内部。
           lockHeld: executing.size > 0
         });
-        if (opts.beforeSave) opts.beforeSave(roleId, backend.records);
-        const key = 'chat_history_' + roleId;
-        const raw = backend.records.has(key) ? backend.records.get(key) : null;
-        if (expectedPrimary !== undefined && raw !== expectedPrimary) {
-          return { ok: false, error: { code: 'CONFLICT' } };
+        backend.rootDepth += 1;
+        backend.rootMaxDepth = Math.max(backend.rootMaxDepth, backend.rootDepth);
+        try {
+          if (opts.beforeSave) opts.beforeSave(roleId, backend.records);
+          const key = 'chat_history_' + roleId;
+          const raw = backend.records.has(key) ? backend.records.get(key) : null;
+          if (expectedPrimary !== undefined && raw !== expectedPrimary) {
+            return { ok: false, error: { code: 'CONFLICT' } };
+          }
+          if (!opts.dropWrites) backend.records.set(key, JSON.stringify(list));
+
+          const rootRaw = backend.records.get('phone_data_v2');
+          const root = rootRaw == null ? {} : JSON.parse(rootRaw);
+          if (opts.rootCleanupDelay) await tick();
+          const bucket = root[roleId];
+          if (bucket && bucket.chat != null) {
+            delete bucket.chat;
+            if (!Object.keys(bucket).length) delete root[roleId];
+            backend.records.set('phone_data_v2', JSON.stringify(root));
+          }
+          if (opts.readBackFailsAfterWrite) backend.failNextRead = key;
+          return { ok: true, value: true };
+        } finally {
+          backend.rootDepth -= 1;
         }
-        backend.records.set(key, JSON.stringify(list));
-        return { ok: true, value: true };
       }
     }
   };
 
   runInNewContext(appendSource, realm);
-  const tab = { realm, append: realm.ChatHistoryAppend.appendOrCreate };
+  const tab = {
+    realm,
+    append: realm.ChatHistoryAppend.appendOrCreate,
+    appendStable: realm.ChatHistoryAppend.appendStable
+  };
   return tab;
 }
 
 function createRealm(options) {
   const opts = options || {};
   const backend = createBackend(opts.records);
-  const tab = createTab(backend, { legacy: opts.legacy, dropWrites: opts.dropWrites, locks: opts.locks });
+  const tab = createTab(backend, opts);
   return { realm: tab.realm, records: backend.records, storageWrites: backend.storageWrites, append: tab.append, backend };
 }
 
@@ -108,6 +175,11 @@ function expectOutcome(result, expected) {
 
 function message(mid, text) {
   return { mid, role: 'user', text: text, time: 1, type: 'text' };
+}
+
+function readRoot(backend) {
+  const raw = backend.records.get('phone_data_v2');
+  return raw == null ? {} : JSON.parse(raw);
 }
 
 test('appendOrCreate appends to an existing history without touching other messages', async () => {
@@ -205,7 +277,7 @@ test('appendOrCreate reports VERIFY_FAILED when the write is silently dropped', 
     '写入被吞掉时不得报告成功');
 });
 
-test('首次创建只在会话锁内发生，且不为同一会话重复申请锁', async () => {
+test('首次创建只在会话锁内发生，且先取根锁再取会话锁', async () => {
   const backend = createBackend();
   const tab = createTab(backend, { legacy: { role_a: [{ mid: 'old', text: '旧版副本消息' }] } });
   const result = await tab.append('role_a', message('m2', '邀请消息'));
@@ -214,7 +286,10 @@ test('首次创建只在会话锁内发生，且不为同一会话重复申请�
   assert.equal(backend.storageWrites.length, 1);
   assert.equal(backend.storageWrites[0].lockHeld, true,
     'saveChatHistory 必须在会话锁回调内调用，不能在锁外补写');
-  assert.equal(backend.lockCalls.length, 1, '整条序列只能申请一次会话锁');
+  assert.deepEqual(backend.lockCalls.map((call) => call.name), [
+    'maomao:phone-data-root:phone_data_v2',
+    'maomao:chat-history:role_a'
+  ], '顺序固定为根锁 → 会话锁，且每把锁只申请一次');
   assert.deepEqual(backend.deadlocks, [], '持锁期间不得再次申请同名锁');
 });
 
@@ -264,12 +339,13 @@ test('非协作写入抢先建立主键时重新申请锁重试，且不覆盖�
   assert.deepEqual(saved.map((item) => item.text), ['别的标签页', '邀请消息'],
     '对方的写入必须保留，重试后改走追加');
   assert.equal(backend.storageWrites.length, 1, '重试不得在锁外再次创建');
-  assert.equal(backend.lockCalls.length, 2, '重试必须重新申请会话锁，而不是锁内补写');
+  const conversationLocks = backend.lockCalls.filter((call) => call.name === 'maomao:chat-history:role_a');
+  assert.equal(conversationLocks.length, 2, '重试必须重新申请会话锁，而不是锁内补写');
 });
 
 test('旧副本不可读时返回 LEGACY_UNREADABLE 且不创建主键', async () => {
   const backend = createBackend();
-  const tab = createTab(backend, { seedThrows: true });
+  const tab = createTab(backend, { getRootThrows: true });
   const result = await tab.append('role_a', message('m2', '邀请消息'));
 
   expectOutcome(result, { ok: false, reason: 'LEGACY_UNREADABLE' });
@@ -289,7 +365,10 @@ test('原子层缺少创建能力时明确失败，不退回整表覆盖', async
   realm.navigator = { locks: { request: async (_n, _o, cb) => cb() } };
   realm.PhoneStorage = {
     getChatHistory: () => [],
-    result: { saveChatHistory: () => { throw new Error('must not be called'); } }
+    result: {
+      getRoot: () => ({ ok: true, value: {} }),
+      saveChatHistory: () => { throw new Error('must not be called'); }
+    }
   };
   runInNewContext(appendSource, realm);
   const result = await realm.ChatHistoryAppend.appendOrCreate('role_a', message('m2', '邀请消息'));
@@ -335,4 +414,199 @@ test('论坛分享 / 情侣邀请 / 亲属卡通知同时首次写入同一会�
   assert.equal(backend.storageWrites.length, 1);
   assert.equal(backend.storageWrites[0].lockHeld, true);
   assert.deepEqual(backend.deadlocks, []);
+});
+
+/* ============================================================
+ * 旧数据读取：必须失败关闭，不能把「读不出来」当成「没有记录」
+ * ============================================================ */
+
+test('phone_data_v2 是损坏 JSON 时拒绝创建，旧数据原样保留', async () => {
+  const corrupt = '{"role_a": {"chat": {"history": [{"mid":"old"';
+  const backend = createBackend({ phone_data_v2: corrupt });
+  const tab = createTab(backend, {});
+  const result = await tab.append('role_a', message('m2', '邀请消息'));
+
+  expectOutcome(result, { ok: false, reason: 'LEGACY_CORRUPT' });
+  assert.equal(backend.records.get('chat_history_role_a'), undefined, '损坏时不得创建主键');
+  assert.equal(backend.storageWrites.length, 0, '损坏时不得调用 saveChatHistory');
+  assert.equal(backend.records.get('phone_data_v2'), corrupt, '旧根必须原样保留');
+});
+
+test('phone_data_v2 结构非法时拒绝创建（根是数组 / 桶不是对象 / history 不是数组）', async () => {
+  const cases = [
+    { name: '根是数组', root: '[]' },
+    { name: '根是字符串', root: '"legacy"' },
+    { name: '桶是字符串', root: JSON.stringify({ role_a: 'broken' }) },
+    { name: 'chat 是数组', root: JSON.stringify({ role_a: { chat: [] } }) },
+    { name: 'history 是对象', root: JSON.stringify({ role_a: { chat: { history: { 0: { text: 'x' } } } } }) }
+  ];
+
+  for (const item of cases) {
+    const backend = createBackend({ phone_data_v2: item.root });
+    const tab = createTab(backend, {});
+    const result = await tab.append('role_a', message('m2', '邀请消息'));
+
+    assert.equal(result.ok, false, item.name + '：必须失败');
+    assert.equal(result.reason, 'LEGACY_CORRUPT', item.name + '：应报告 LEGACY_CORRUPT');
+    assert.equal(backend.records.get('chat_history_role_a'), undefined, item.name + '：不得创建主键');
+    assert.equal(backend.storageWrites.length, 0, item.name + '：不得调用 saveChatHistory');
+    assert.equal(backend.records.get('phone_data_v2'), item.root, item.name + '：旧根必须原样保留');
+  }
+});
+
+test('根读取异常（getRoot 报错或返回 DB_UNAVAILABLE）时拒绝创建', async () => {
+  for (const opts of [{ getRootThrows: true }, { rootUnavailable: true }]) {
+    const backend = createBackend({ phone_data_v2: JSON.stringify({ role_a: { chat: { history: [{ mid: 'old' }] } } }) });
+    const tab = createTab(backend, opts);
+    const result = await tab.append('role_a', message('m2', '邀请消息'));
+
+    expectOutcome(result, { ok: false, reason: 'LEGACY_UNREADABLE' });
+    assert.equal(backend.records.get('chat_history_role_a'), undefined, '读不出来时不得创建主键');
+    assert.equal(backend.storageWrites.length, 0);
+  }
+});
+
+test('真正没有旧记录时允许创建空历史（整根缺失 / 无该角色 / 无 chat / chat 无 history）', async () => {
+  const cases = [
+    { name: '整根缺失', records: {} },
+    { name: '没有该角色', records: { phone_data_v2: JSON.stringify({ role_b: { chat: { history: [{ mid: 'b' }] } } }) } },
+    { name: '该角色没有 chat', records: { phone_data_v2: JSON.stringify({ role_a: { memories: { items: ['记忆'] } } }) } },
+    { name: 'chat 里没有 history', records: { phone_data_v2: JSON.stringify({ role_a: { chat: {} } }) } }
+  ];
+
+  for (const item of cases) {
+    const backend = createBackend(item.records);
+    const tab = createTab(backend, {});
+    const result = await tab.append('role_a', message('m2', '邀请消息'));
+
+    expectOutcome(result, { ok: true, created: true });
+    const saved = JSON.parse(backend.records.get('chat_history_role_a'));
+    assert.deepEqual(saved.map((msg) => msg.mid), ['m2'], item.name + '：应以单条消息创建');
+  }
+});
+
+/* ============================================================
+ * 跨角色首次创建：phone_data_v2 的整对象重写
+ * ============================================================ */
+
+test('两个不同角色同时首次创建：两份旧 chat 都被清理，其他领域数据不变', async () => {
+  const backend = createBackend({
+    phone_data_v2: JSON.stringify({
+      role_a: { chat: { history: [{ mid: 'oldA', text: 'A 旧消息' }] }, memories: { items: ['A 记忆'] } },
+      role_b: { chat: { history: [{ mid: 'oldB', text: 'B 旧消息' }] }, profile: { name: 'B' } },
+      role_c: { memories: { items: ['C 记忆'] }, settings: { theme: 'dark' } }
+    })
+  });
+  // rootCleanupDelay 让「写主键」和「重写根」之间出现真实的异步窗口。
+  const tabA = createTab(backend, { rootCleanupDelay: true });
+  const tabB = createTab(backend, { rootCleanupDelay: true });
+
+  const [a, b] = await Promise.all([
+    tabA.append('role_a', message('mA', 'A 的新消息')),
+    tabB.append('role_b', message('mB', 'B 的新消息'))
+  ]);
+
+  expectOutcome(a, { ok: true, created: true });
+  expectOutcome(b, { ok: true, created: true });
+  assert.deepEqual(JSON.parse(backend.records.get('chat_history_role_a')).map((m) => m.text),
+    ['A 旧消息', 'A 的新消息']);
+  assert.deepEqual(JSON.parse(backend.records.get('chat_history_role_b')).map((m) => m.text),
+    ['B 旧消息', 'B 的新消息']);
+
+  const root = readRoot(backend);
+  assert.equal(root.role_a.chat, undefined, 'role_a 的旧副本必须被清理');
+  assert.equal(root.role_b.chat, undefined, 'role_b 的旧副本必须被清理（不得被对方的旧快照写回）');
+  assert.deepEqual(root.role_a.memories, { items: ['A 记忆'] }, 'A 的记忆不得丢失');
+  assert.deepEqual(root.role_b.profile, { name: 'B' }, 'B 的资料不得丢失');
+  assert.deepEqual(root.role_c.memories, { items: ['C 记忆'] }, '无关角色的数据不得丢失');
+  assert.deepEqual(root.role_c.settings, { theme: 'dark' }, '无关领域的数据不得丢失');
+  assert.equal(backend.rootMaxDepth, 1, '根重写临界区必须串行，不得并发进入');
+  assert.deepEqual(backend.deadlocks, []);
+});
+
+test('对照：绕过根锁直接并发调用 saveChatHistory 会互相覆盖（残余风险证据）', async () => {
+  // 复刻 chat/date/date.html 这类「不参与统一入口」的写入者：不申请根锁，
+  // 直接 saveChatHistory。这里完全不加锁，用同一个桩证明窗口真实存在。
+  const backend = createBackend({
+    phone_data_v2: JSON.stringify({
+      role_a: { chat: { history: [{ mid: 'oldA' }] }, memories: { items: ['A 记忆'] } },
+      role_b: { chat: { history: [{ mid: 'oldB' }] } },
+      role_c: { memories: { items: ['C 记忆'] } }
+    })
+  });
+  const tabA = createTab(backend, { rootCleanupDelay: true });
+  const tabB = createTab(backend, { rootCleanupDelay: true });
+
+  await Promise.all([
+    tabA.realm.PhoneStorage.result.saveChatHistory('role_a', [{ mid: 'mA' }], null),
+    tabB.realm.PhoneStorage.result.saveChatHistory('role_b', [{ mid: 'mB' }], null)
+  ]);
+
+  const root = readRoot(backend);
+  const survived = ['role_a', 'role_b'].filter((id) => root[id] && root[id].chat);
+  assert.equal(backend.rootMaxDepth, 2, '无锁时两个临界区会重叠');
+  assert.equal(survived.length, 1, '无锁时必有一份旧副本被对方的旧快照写回');
+  assert.deepEqual(root.role_c.memories, { items: ['C 记忆'] }, '本用例里 C 未被并发写入，数据仍在');
+});
+
+/* ============================================================
+ * 失败重试的幂等性
+ * ============================================================ */
+
+test('写入已落盘但读回失败后重试：复用同一个 mid，不产生第二条消息', async () => {
+  const backend = createBackend({});
+  const tab = createTab(backend, { readBackFailsAfterWrite: true });
+
+  const first = await tab.appendStable('forum-share:role_a:p1', 'role_a', () => message('mFixed', '【分享帖子】正文'));
+  assert.equal(first.ok, false);
+  assert.equal(first.reason, 'DB_UNAVAILABLE');
+  assert.equal(first.writeMayHavePersisted, true, '必须告诉调用方写入可能已落盘');
+  assert.equal(JSON.parse(backend.records.get('chat_history_role_a')).length, 1,
+    '第一次其实已经写进去了');
+
+  const retry = await tab.appendStable('forum-share:role_a:p1', 'role_a', () => message('mNew', '【分享帖子】正文'));
+  assert.equal(retry.ok, true);
+  assert.equal(retry.created, false, '重试走「已存在」分支');
+  const saved = JSON.parse(backend.records.get('chat_history_role_a'));
+  assert.equal(saved.length, 1, '重试不得产生第二条消息');
+  assert.equal(saved[0].mid, 'mFixed', '重试必须复用第一次的 mid');
+  assert.equal(backend.storageWrites.length, 1, '重试不得再写一次主键');
+});
+
+test('对照：每次点击都生成新 mid 时，读回失败会造成重复消息', async () => {
+  const backend = createBackend({});
+  const tab = createTab(backend, { readBackFailsAfterWrite: true });
+
+  const first = await tab.append('role_a', message('mFirst', '【分享帖子】正文'));
+  assert.equal(first.ok, false);
+  assert.equal(first.writeMayHavePersisted, true);
+
+  // 用户再点一次，页面重新生成 mid（修复前的行为）。
+  await tab.append('role_a', message('mSecond', '【分享帖子】正文'));
+  const saved = JSON.parse(backend.records.get('chat_history_role_a'));
+  assert.equal(saved.length, 2, '这就是本次要消除的重复消息');
+  assert.deepEqual(saved.map((msg) => msg.mid), ['mFirst', 'mSecond']);
+});
+
+test('appendStable 成功后清空缓存：再次分享同一帖子会生成新消息', async () => {
+  const backend = createBackend({});
+  const tab = createTab(backend, {});
+
+  const first = await tab.appendStable('forum-share:role_a:p1', 'role_a', () => message('mA', '正文'));
+  assert.equal(first.ok, true);
+  const second = await tab.appendStable('forum-share:role_a:p1', 'role_a', () => message('mB', '正文'));
+  assert.equal(second.ok, true);
+  const saved = JSON.parse(backend.records.get('chat_history_role_a'));
+  assert.deepEqual(saved.map((msg) => msg.mid), ['mA', 'mB'], '成功后的新动作应当是新消息');
+});
+
+test('appendStable 在写入被吞掉时明确失败，不得报告成功', async () => {
+  const backend = createBackend({});
+  const broken = createTab(backend, { dropWrites: true });
+
+  const first = await broken.appendStable('couple-invite:role_a', 'role_a', () => message('mInvite', '邀请'));
+  assert.equal(first.ok, false);
+  assert.equal(first.reason, 'VERIFY_FAILED');
+  assert.equal(first.writeMayHavePersisted, true, '写入被吞掉时也属于「结果未确认」');
+  assert.equal(backend.records.get('chat_history_role_a'), undefined);
 });
