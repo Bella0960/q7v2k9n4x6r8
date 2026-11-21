@@ -108,3 +108,12 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 5. Break cloud-push work into small, reviewable milestones. A code-only PR is not proof of scheduled execution, server model response, OS push delivery, or two-device message persistence.
 6. No merge to main, production deployment, APK update, Worker secret configuration, or destructive user-data operation without explicit owner approval.
 7. This conversation cannot run after the chat/session is closed. Leave this checkpoint so the next session can resume without asking the owner to repeat the task.
+
+## 2026-11-21 — THEME-STUDIO-001 mobile workbench
+
+- **Request:** integrate a phone-native visual theme workbench into MAOMAO, based on the uploaded CSS-analysis reference.
+- **Branch:** THEME-STUDIO-001/mobile-workbench-20261121, based on main SHA a5415d7e28280fd07cea4d02e19e87d9ec36083e.
+- **Changes:** new theme-studio/ editor (mobile preview, list/detail/bubbles, draft/apply, role scope, named presets, JSON/CSS variable import/export); separate opt-in shared/js/theme-studio-runtime.js + stylesheet; additive launcher entry and chat list/detail style includes; focused contract tests.
+- **Isolation:** only chat.html and chat-detail.html consume the new runtime; built-in themes and ChatBeauty keys are unchanged until user action. No changes to message generation, group collapse UI, cloud identity/route guard, Service Worker, chat records or API settings.
+- **Verified in connected-code V8 check:** JS syntax parsed; seven independent runtime assertions passed (disabled default, cross-page isolation, type/color allowlist, storage failure handling). This does **not** establish a Node CLI run, Vite production build, Chromium layout check, Android/iOS browser acceptance, or QA Worker deploy.
+- **To complete:** run node --test tests/theme-studio.test.mjs and npm run build; check 375/390/430 mobile layout and actual chat surfaces with Chromium; check Android Chrome and iPhone Safari; reconcile with unmerged PR #187 before .maomaotheme package support. Do not merge or publish without passing gates.

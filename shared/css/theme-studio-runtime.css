@@ -1,0 +1,47 @@
+/* Opt-in only, tied to THEME-STUDIO-001 schema and chat pages.
+   Deliberately leaves cover art, group management, rich messages and controls intact. */
+.phone-mockup[data-ts-list="1"] .chat-theme-header,
+.phone-mockup[data-ts-list="1"] .wechat-home-header {
+  background: var(--ts-list-header-bg) !important;
+}
+.phone-mockup[data-ts-list="1"] #chatListContainer {
+  background: var(--ts-list-list-bg) !important;
+  gap: var(--ts-list-item-gap) !important;
+}
+.phone-mockup[data-ts-list="1"] .chat-slim-card {
+  background: var(--ts-list-item-bg) !important;
+  border-radius: var(--ts-list-item-radius) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+.phone-mockup[data-ts-list="1"] .chat-slim-card .chat-name {
+  color: var(--ts-list-text-color) !important;
+  font-size: var(--ts-list-title-size) !important;
+}
+.phone-mockup[data-ts-list="1"] .chat-slim-card .chat-avatar:not(.group-avatar) {
+  border-radius: var(--ts-list-avatar-radius) !important;
+}
+.phone-mockup[data-ts-detail="1"] .chat-header {
+  background: var(--ts-detail-header-bg) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+.phone-mockup[data-ts-detail="1"] .chat-user-name {
+  color: var(--ts-detail-header-text) !important;
+  font-size: var(--ts-detail-header-size) !important;
+}
+.phone-mockup[data-ts-detail="1"] .chat-stage {
+  background: var(--ts-detail-chat-bg) !important;
+}
+.phone-mockup[data-ts-detail="1"] .input-dock {
+  background: var(--ts-detail-composer-bg) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+.phone-mockup[data-ts-detail="1"] .input-capsule {
+  background: var(--ts-detail-input-bg) !important;
+  border-radius: var(--ts-detail-input-radius) !important;
+}
+.phone-mockup[data-ts-detail="1"] .send-icon-btn:not(:disabled) {
+  background: var(--ts-detail-send-bg) !important;
+}
