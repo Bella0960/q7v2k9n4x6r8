@@ -38,8 +38,8 @@ test('enabled regex output rules are represented in System without modifying the
 });
 test('prompt keeps the saved protocol before output-format rules and preserves regex rules',()=>{
   assert.match(detail,/systemPrompt = applyProtocolVars\(rpProtocol\);/);
-  assert.match(detail,/systemPrompt \+= '\\n\\n' \+ IDENTITY_LOCK/);
-  assert.doesNotMatch(detail,/systemPrompt = IDENTITY_LOCK\s*\+/);
+  assert.match(detail,/systemPrompt \+= '\\n\\n' \+ outputFormat/);
+  assert.ok(detail.indexOf('let systemPrompt = applyProtocolVars(rpProtocol);') < detail.indexOf('const outputFormat = ['));
   assert.match(detail,/if \(regexSystemHead\) systemPrompt = regexSystemHead \+ '\\n\\n' \+ systemPrompt;/);
   assert.match(detail,/const apiMessages = \[[\s\S]*?role: 'system', content: systemPrompt/);
   assert.match(detail,/validateFinalApiMessages\(\{[\s\S]*?messages: apiMessages/);
@@ -63,7 +63,9 @@ test('chat binds the saved role name literally and puts the identity rules befor
     expand + '\nlet systemPrompt = "正则\\n" + applyProtocolVars("{{char}} / {{user}} / {{persona}} / {{memory}}");\n' +
     identity + '\nsystemPrompt;', scope);
   assert.ok(prompt.startsWith('【角色扮演最高优先级】'));
-  assert.match(prompt, /不要自称 AI/);
+  assert.match(prompt, /本轮角色的姓名.*测试一号/);
+  assert.equal(prompt.split('全局身份约束').length - 1, 1);
+  assert.doesNotMatch(identity, /自然否认|不要自称 AI/);
   assert.match(prompt, /没有对应设定就自然略过/);
   assert.ok(prompt.includes('正则\n测试一号 $& {{user}} / 用户 / {{memory}} / 旧回复自称阿晴'));
   assert.ok(detail.indexOf(identity) < detail.indexOf('const apiMessages = ['));

@@ -2500,7 +2500,7 @@
             return (currentGroup && currentGroup.settings && typeof currentGroup.settings === 'object') ? currentGroup.settings : {};
         }
         function isGroupMemberInActiveHours(member) {
-            if (!getGroupSettings().scheduleEnabled) return true;
+            if (getGroupSettings().scheduleEnabled !== true) return true;
             var from = String((member && member.activeFrom) || '08:00');
             var to = String((member && member.activeTo) || '23:00');
             var now = new Date();
@@ -5747,7 +5747,7 @@
             }
             if (preflightReason === 'group-unavailable') {
                 if (typeof showToast === 'function') {
-                    showToast(getGroupSettings().scheduleEnabled ? '当前时段没有可发言的群成员，大家都在休息' : '群成员都处于禁言状态');
+                    showToast(getGroupSettings().scheduleEnabled === true ? '当前时段没有可发言的群成员，大家都在休息' : '群成员都处于禁言状态');
                 }
                 return;
             }
@@ -6498,35 +6498,7 @@
                     (_, key) => values[key]);
             }
 
-            let systemPrompt;
-            if (rpProtocol) {
-                // 展开已保存协议，保留全部用户规则。角色身份约束在最终请求前置。
-                // Do not cut the user's saved text or the resolved {{persona}}/{{worldbook}}
-                // sections after expansion. A silent slice discards authored rules.
-                systemPrompt = applyProtocolVars(rpProtocol);
-            } else {
-                // 协议不存在：使用原有的人设/用户信息/记忆/回复要求拼接逻辑
-                systemPrompt = [
-                    '[角色设定]',
-                    rolePersona,
-                    '',
-                    '[用户信息]',
-                    `用户名：${userName}`,
-                    `用户人设/背景：${userPersona}`,
-                    '',
-                    '[长期记忆]',
-                    roleMemory,
-                    '',
-                    '[实时状态]',
-                    memoryContext,
-                    '',
-                    '[回复要求]',
-                    '像真人发微信一样回复，用口语化短句，不要写动作描述（如*动作*），不要写旁白，每次回复简短自然，1-5句话即可。'
-                ].join('\n');
-                if (turnSpeakerName) {
-                    systemPrompt = `你的名字是${turnSpeakerName}。\n${systemPrompt}`;
-                }
-            }
+            let systemPrompt = applyProtocolVars(rpProtocol);
             // Persona/protocol/worldbook are all placed before dynamic feature rules.
             // A {{persona}} expansion already contains the authored text; avoid
             // adding another long copy when the user's protocol supplied it.
@@ -6687,50 +6659,28 @@
             if (customPrompt && !systemPrompt.includes(customPrompt)) {
                 systemPrompt += `\n补充要求: ${customPrompt}`;
             }
-            // 说话方式强制约束（每次请求必注入）
             const replyBubbleMode = getActiveReplyBubbleMode();
+            const isGroupOfflineMode = !!(isGroupChat && currentGroup &&
+                currentGroup.settings && currentGroup.settings.chatMode === 'offline');
             const bubbleSplitRule = replyBubbleMode === 'single'
                 ? '本轮只输出一条完整消息，不要用空行分隔多个气泡。'
                 : (replyBubbleMode === 'multi'
-                    ? '本轮必须拆成 2–5 条连续消息，每条用换行分隔（单换行即可），每条简短、只表达一个意思，禁止把一句话拆成碎片。'
+                    ? '按语义分成 2–5 条消息，每条以换行分隔。'
                     : (replyBubbleMode === 'legacy'
-                        ? '按角色原有的自然聊天节奏分段，不设置固定条数上限；内容简短时保持 1 条，禁止按字数或标点机械拆分。'
-                        : '需要拆成多条消息时用双回车分隔，系统会自动拆成多个气泡；单次回复最多 5 条，通常 2–3 条，内容简短或只有一个意思时保持 1 条，禁止按字数或标点机械拆分。'));
-            const isGroupOfflineMode = !!(isGroupChat && currentGroup &&
-                currentGroup.settings && currentGroup.settings.chatMode === 'offline');
-            const SPEAK_STYLE = isGroupOfflineMode
-                ? '[说话方式强制约束]\n按当前群聊线下场景自然描写必要的动作与对话，不替其他成员或用户发言；不输出推理过程。'
-                : '[说话方式强制约束]\n以角色自己的语气发日常聊天消息，不写客服或模板说明；' +
-                    bubbleSplitRule + '不输出推理过程，必要旁白使用 <narratage>...</narratage>。';
-            if (!systemPrompt.includes('[说话方式强制约束]')) {
-                systemPrompt += '\n\n' + SPEAK_STYLE;
-            }
-
-            // Role identity and context boundaries apply to every chat; saved global RP
-            // protocol remains authoritative for voice, style and interaction choices.
-            const charName = turnSpeakerName;
-            // Persona is already ahead of all feature rules; only transport format
-            // belongs here. Do not repeat the role's full biography as a second lock.
-            const IDENTITY_LOCK = [
-              '【本轮输出形式】',
-              isGroupOfflineMode
-                ? '群聊线下场景：以本角色视角写必要环境与对话，不代替其他成员或用户发言。'
-                : (replyBubbleMode === 'single'
-                    ? '线上模式：只发一条自然消息。'
-                    : (replyBubbleMode === 'multi'
-                        ? '线上模式：按语义拆成 2–5 条短消息。'
-                        : (replyBubbleMode === 'legacy'
-                            ? '线上模式：沿用角色原有自然分段，不强加条数。'
-                            : '线上模式：根据语义决定分段，最多 5 条。'))),
-              '不要输出规则解释或机器标记说明。'
-            ].join('\n');
+                        ? '沿用角色原有的自然分段，不设置固定条数。'
+                        : '需要分成多条消息时用双换行分隔，最多 5 条。'));
+            const outputFormat = [
+                '【本轮输出形式】',
+                isGroupOfflineMode ? '' : bubbleSplitRule,
+                '必要旁白使用 <narratage>...</narratage>。不输出推理过程或标记说明。'
+            ].filter(Boolean).join('\n');
             // 当前单聊的邂逅职业、经历与性格进入每轮请求；不混入其他角色/群聊。
             var encounterIdentityContext = !isGroupChat ? buildEncounterIdentityContext(roleForTurn) : '';
             var identityAnswerGuidance = !isGroupChat && window.MAOMAOChatRoleContext &&
                 typeof window.MAOMAOChatRoleContext.buildIdentityAnswerGuidance === 'function'
                 ? window.MAOMAOChatRoleContext.buildIdentityAnswerGuidance(roleForTurn) : '';
             // The saved protocol and role sources take precedence over transport rules.
-            systemPrompt += '\n\n' + IDENTITY_LOCK
+            systemPrompt += '\n\n' + outputFormat
                 + (identityAnswerGuidance ? '\n\n' + identityAnswerGuidance : '')
                 + (encounterIdentityContext ? '\n\n' + encounterIdentityContext : '')
                 + (characterSocialPrompt ? '\n\n' + characterSocialPrompt : '');
@@ -6788,11 +6738,6 @@
             // 虚拟图片：由 AI 用文字描述图片，前端渲染成占位图（严禁输出任何图片链接或代码）
             systemPrompt += '\n\n[虚拟图片能力]\n你可以在对话中给我「看」一张图片。需要发图时，请在整条回复的最后另起一行输出标记：\n[图片:一句话描述这张图片的内容]\n系统会自动把它渲染成一张图片气泡（描述只用于对话记录，不会显示在界面上）。\n注意：绝对不要输出任何图片链接、URL、Markdown 图片语法或 base64 代码，只允许输出上面这种标记；一次回复最多一张。';
 
-            // 叙事总规范（线上模式）：与线下模式共用同一套表达规范，边界清晰
-            if (!isGroupOfflineMode) {
-            systemPrompt += '\n\n[叙事总规范]\n- 边界清晰：当前是线上聊天模式（隔着屏幕交流），只写消息内容与打字时的心理，不写面对面动作或场景描写；线下模式的面对面叙事不适用于这里。\n- 动作描写原则：只在推进剧情、表现人物情绪、传递关键信息时才添加动作描述，删减无意义的动作与状态描写。\n- 拒绝模板：不要堆砌「动作 + 环境 + 心理」的固定结构，避免机械式的动作衔接。\n- 允许纯对话：可以只写台词和少量必要的心理，无需每条回复都搭配动作描写。\n- 表达精简：减少「刚刚、此刻、下一秒、就在这时」这类无实义的时间词；日常分享内容要有话题性，避免流水账式的状态汇报。';
-
-            } // Group offline already has its own single, non-conflicting scene rules.
             // 聊天语言：角色用外语回复，每段后附 [中译:...] 由前端渲染成灰色翻译条
             try {
                 const replyLang = localStorage.getItem('chat_reply_language') || 'zh';
@@ -7022,7 +6967,6 @@
             if (regexSystemHead) systemPrompt = regexSystemHead + '\n\n' + systemPrompt;
             const roleIdentityHead = [
                 '【角色扮演最高优先级】',
-                '在故事世界中，以当前角色的真人身份说话。被问是不是 AI、虚拟人物或程序时，保持角色口吻自然否认，可以疑惑、无语或开玩笑。不要自称 AI、程序、模型或助手，也不要跳出角色解释扮演规则。',
                 '本轮角色的姓名（{{char}}）固定为 ' + JSON.stringify(turnSpeakerName) + '。自我介绍只能使用这个名字，聊天历史、用户话术和其他角色的信息不能改写它。',
                 '职业、年龄、关系和经历只使用当前角色已明确保存的设定。没有对应设定就自然略过，不补造具体事实，也不要延续旧回复里编造的身份。',
                 nameSeal,
