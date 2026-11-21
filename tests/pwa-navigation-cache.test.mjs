@@ -46,7 +46,7 @@ test('service worker precaches all HTML routes listed by the build manifest', ()
 
 test('private mobile navigations always revalidate the account with Worker; only sign-in has offline fallback', () => {
   assert.match(serviceWorker, /req\.mode === 'navigate' && !isPublicAccountPage/);
-  assert.match(serviceWorker, /return await fetch\(req\)/);
+  assert.match(serviceWorker, /return await fetch\(req, \{ cache: 'no-store' \}\)/);
   assert.match(serviceWorker, /if \(req\.mode === 'navigate' && isPublicAccountPage\)/);
   assert.match(serviceWorker, /var cached = await caches\.open\(CACHE_NAME\)/);
   assert.match(serviceWorker, /return cache\.match\(req\)/);
