@@ -159,3 +159,11 @@ body:before{content:none}
 .ivory-entry[data-view=authorized] .state-panel>.lead{display:block;max-width:285px;margin:12px auto 22px;color:#8d8178;font:12px/1.85 var(--serif);letter-spacing:.02em}
 .ivory-entry[data-view=authorized] .state-panel>.identity-card{text-align:left;margin:0 0 19px}
 .ivory-entry[data-view=authorized] .state-panel>#enterMao{margin:0}
+
+/* QA sign-in only: prevent intrinsic input widths from collapsing the mobile form. */
+.ivory-entry #loginPanel,.ivory-entry #loginForm{width:100%;max-width:100%;min-width:0}
+.ivory-entry #loginForm>label{width:100%;min-width:0}
+.ivory-entry #loginForm>label>input{display:block;width:100%;min-width:0;box-sizing:border-box}
+.ivory-entry #loginForm .password-field{display:flex;width:100%;min-width:0;box-sizing:border-box}
+.ivory-entry #loginForm .password-field input{min-width:0;width:0;flex:1 1 0}
+.ivory-entry #loginForm .password-field .password-toggle{flex:0 0 43px}
