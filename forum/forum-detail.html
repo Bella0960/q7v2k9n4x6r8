@@ -7,7 +7,8 @@
 <script src="../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../shared/js/native-feel.js"></script>
 <script src="../shared/js/phone/phone_storage.js"></script>
-<script src="../shared/js/phone/chat-history-atomic.js"></script>
+<script src="../shared/js/phone/chat-history-atomic.js?v=20261118v3"></script>
+<script src="../shared/js/phone/chat-history-append.js?v=20261122v1"></script>
 <script src="../shared/js/phone/storage/repository.js"></script>
 <script src="../shared/js/phone/storage/media-repository.js"></script>
 <script src="forum-media.js"></script>
@@ -1392,7 +1393,14 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       role: 'user', text: msg, time: now, type: 'text'
     };
 
-    appendSharedPostMessage(target.id, message).then(function (outcome) {
+    // 统一入口：ChatHistoryAppend 内部复用 ChatHistoryAtomic 的会话锁，
+    // 主键缺失时用旧 phone_data_v2 副本做种子创建，失败一律明确提示。
+    const appender = window.ChatHistoryAppend;
+    const outcomePromise = appender && typeof appender.appendOrCreate === 'function'
+      ? appender.appendOrCreate(target.id, message)
+      : Promise.resolve({ ok: false, reason: 'ATOMIC_UNAVAILABLE' });
+
+    outcomePromise.then(function (outcome) {
       if (!outcome.ok) {
         console.error('[Forum] sharePost chat history persistence failed:', outcome.reason);
         alert(shareFailureNotice(outcome.reason));
@@ -1404,59 +1412,6 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       alert(shareFailureNotice('UNEXPECTED'));
     }).then(function () {
       sharePost.inFlight = false;
-    });
-  }
-
-  // 分享消息只走 ChatHistoryAtomic：读取、去重、追加、写后读回都在同一把会话锁内完成。
-  // Web Locks 不可用时明确失败，绝不退回整表覆盖写入。
-  function appendSharedPostMessage(roleId, message) {
-    const atomic = window.ChatHistoryAtomic;
-    const storage = window.PhoneStorage;
-    if (!atomic || typeof atomic.appendIf !== 'function') {
-      return Promise.resolve({ ok: false, reason: 'ATOMIC_UNAVAILABLE' });
-    }
-    let attempts = 0;
-    const attempt = function () {
-      attempts += 1;
-      return atomic.appendIf(roleId, message).then(function (outcome) {
-        if (outcome && outcome.ok) {
-          return verifySharedPostMessage(storage, roleId, message)
-            ? { ok: true }
-            : { ok: false, reason: 'VERIFY_FAILED' };
-        }
-        const code = outcome && outcome.error ? outcome.error.code : 'APPEND_FAILED';
-        if (code === 'CONFLICT' && attempts < 2) return attempt();
-        if (code !== 'NOT_FOUND') return { ok: false, reason: code };
-        // 主键还不存在：先读出旧 phone_data_v2 副本，再以「主键必须缺失」为前置条件
-        // 创建，避免把旧会话历史覆盖成只剩这条分享。
-        const legacy = storage && typeof storage.getChatHistory === 'function'
-          ? storage.getChatHistory(roleId) : null;
-        if (!Array.isArray(legacy)) return { ok: false, reason: 'LEGACY_UNREADABLE' };
-        if (!storage || !storage.result || typeof storage.result.saveChatHistory !== 'function') {
-          return { ok: false, reason: 'CREATE_UNAVAILABLE' };
-        }
-        const created = storage.result.saveChatHistory(roleId, legacy.concat([message]), null);
-        if (created && created.ok) {
-          return verifySharedPostMessage(storage, roleId, message)
-            ? { ok: true }
-            : { ok: false, reason: 'VERIFY_FAILED' };
-        }
-        const createCode = created && created.error ? created.error.code : 'CREATE_FAILED';
-        if (createCode === 'CONFLICT' && attempts < 2) return attempt();
-        return { ok: false, reason: createCode };
-      });
-    };
-    return attempt();
-  }
-
-  // 只确认这条消息（mid）确实落盘。不再比较整表长度：别的标签页同时追加
-  // 会让长度断言误报失败。
-  function verifySharedPostMessage(storage, roleId, message) {
-    if (!storage || typeof storage.getChatHistory !== 'function') return false;
-    const history = storage.getChatHistory(roleId);
-    if (!Array.isArray(history)) return false;
-    return history.some(function (item) {
-      return item && item.mid != null && String(item.mid) === String(message.mid);
     });
   }
 
