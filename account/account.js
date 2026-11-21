@@ -503,6 +503,10 @@
   if (isKnownQaHost) {
     window.addEventListener('online', retryQaIdentityOnForeground);
     document.addEventListener('visibilitychange', retryQaIdentityOnForeground);
+    // A mobile PWA restored from back/forward cache may not fire visibilitychange.
+    // Always recheck authority on foreground, without bypassing the login gate.
+    window.addEventListener('pageshow', retryQaIdentityOnForeground);
+    window.addEventListener('focus', retryQaIdentityOnForeground);
   }
 
   (async function restoreSession() {
