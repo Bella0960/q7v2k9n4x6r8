@@ -30,7 +30,7 @@ const archivedHtmlPaths = new Set([
     if (entry.isDirectory()) {
       collectHtml(abs, prefix + entry.name + '/');
     } else if (entry.name.endsWith('.html')) {
-      if (archivedHtmlPaths.has(prefix + entry.name)) return;
+      if (archivedHtmlPaths.has(prefix + entry.name)) continue;
       htmlFiles[prefix + entry.name.replace(/\.html$/, '')] = abs;
     }
   }
