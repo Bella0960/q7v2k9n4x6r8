@@ -513,6 +513,7 @@ function currentRetryFixture(seed) {
     const sendMsg=opts=>{sends.push(opts);return Promise.reject(Error('synthetic-api-unavailable'));};
     const console={warn(){}};
     var aiSending=false;
+    var singleChatSendPending=false;
     ${source}
     return {retry:window.retryFailedMessage,project:_buildRetryModelHistory};
   `);
