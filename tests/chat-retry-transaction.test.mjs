@@ -15,17 +15,28 @@ const failedMessage = (id='m1') => ({
 const locate = (history,mid,time) => history.findIndex(m=>
   m.role==='user' && m.sendFailed &&
   ((mid && m.mid===mid) || (!mid && String(m.time)===String(time))));
-function createRetryEnv(messages,sendMsg) {
+function createRetryEnv(messages,sendMsg, pending=false) {
   const window={};
   const config=()=>({apiKey:'FAKE_NOT_USED'});
   const init = new Function('window','getAiConfig','loadMessages','sendMsg',
-    'aiSending','isBlocked','aliasRoleId','showToast','_locateRetryMessage','console',
+    'aiSending','singleChatSendPending','isBlocked','aliasRoleId','showToast','_locateRetryMessage','console',
     retryCode+'\nreturn _buildRetryModelHistory;');
-  const project=init(window,config,()=>messages,sendMsg,false,()=>false,'role1',
+  const project=init(window,config,()=>messages,sendMsg,false,pending,()=>false,'role1',
     ()=>{},locate,{warn(){}});
   return {window,project};
 }
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
+
+test('retry does not start another request while single-chat preparation is pending', async()=>{
+  const history=[failedMessage()];
+  let calls=0;
+  const env=createRetryEnv(history,()=>{calls++;return Promise.resolve();},true);
+  env.window.retryFailedMessage('m1',1234);
+  await tick();
+  assert.equal(calls,0);
+  assert.equal(history[0].sendFailed,true);
+});
+
 
 test('retry keeps the original failed message intact if request exits before an API call', async()=>{
   const history=[failedMessage()];
