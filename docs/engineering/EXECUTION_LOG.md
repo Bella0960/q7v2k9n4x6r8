@@ -1,5 +1,15 @@
 # MAOMAO Execution Log
 
+## 2026-11-21｜THEME-STUDIO-002｜手机版精细主题工作台与图片素材
+
+- **起点与独立范围：** 原唯一 QA `f4c7c4488384a03f4030c66c60453d1b5f3ea78f`，单独分支 `THEME-STUDIO-002/mobile-editor-images-preview-20261121`，只调整工作台与仅在聊天列表/详情生效的可选样式。群聊折叠、聊天消息、人设、记忆、账号和正式 Worker 未修改。
+- **预览按原生页面重建：** 封面、Chat 标题、头像拱桥、用户标识、音乐舱、原有 .chat-slim-card 卡片流及消息摘要；加入微信顶部与原生顶部切换。不是运行真实聊天的 iframe，不执行 API 请求或修改现有角色。
+- **新增精细参数与图片：** 聊天主页标题/封面显示浓度/音乐卡/边框/卡片/头像/摘要/时间、详情顶部/消息区/输入栏、双侧气泡字体/描边/透明度/行距。三个图片槽位仅保存 `as_...` ID 到原 `maomao_theme_studio_v1`，Blob 通过项目现有 MediaRepository 写入已登记备份的 `maomao-assets` v2，校验来源 MIME/体积、缩放压缩、显式保存错误。
+- **留扩展接口：** `MAOMAOThemeStudio.registerField()` 与 `EXTENSION_FIELDS` 注册未来细项；`MAOMAOThemeStudioAssets.upload/resolve/apply` 与 `SLOTS` 注册图片槽。文档 `docs/engineering/THEME_STUDIO_EXTENSION_CONTRACT.md`；旧 v1 配置保持兼容，不用修改聊天数据 schema。
+- **缓存与恢复：** SW 只增加手机静态缓存版本号 v283→v284，不调整身份/推送策略；恢复原样直接停用对应模块或删除该模块草稿，其他美化仍保留。
+- **验收：** 公共隔离验证 [#44893744770](https://github.com/Bella0960/web-runtime-lab/actions/runs/44893744770) Node、Vite、教程和 Chromium 375/390/430 中的图片上传、IDB 读取、预览与真实聊天 CSS 均通过。完整 QA 发布结果以公共 QA-only release 及 Cloudflare 回执为准。
+
+
 ## 2026-11-18｜CHAT-UI-001｜聊天留白进入唯一 QA 整合分支
 
 - **从原 PR #264 对接原 #299，不新建 PR/Worker/数据库。** QA 起点 `81ec1e81b06f3e63f3cc46da27310f9f7c5f3eec`，从原 PR #264 定向复制 `shared/css/chat-light-surfaces.css`，仅在当前 QA 的 56 万字符聊天详情页精确加入 body class / CSS link / 默认与 iMessage 的原生发送按钮同步（增加约 1010 字符），聊天列表仅增加 109 字符；`shared/js/chat-beauty.js` 仅添加默认主题独立参数（890 字符），不覆盖 QA 新账号/人设/群聊/番外。
