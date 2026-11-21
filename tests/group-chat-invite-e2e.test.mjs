@@ -75,6 +75,8 @@ async function setupGroup(page, groups, roles) {
 const inviteCandidates = 'dialog [data-group-action="invite-confirm"]';
 
 async function openInvite(page) {
+  const expand = page.getByRole('button', { name: '展开', exact: true });
+  if (await expand.isVisible()) await expand.click();
   await page.getByRole('button', { name: '邀请', exact: true }).click();
   await page.locator(inviteCandidates).first().waitFor();
 }
