@@ -3403,6 +3403,11 @@ body {
                 .replace(/\[发起语音通话\]/g, '')
                 .replace(/\[记住:[^\]]*\]/g, '')
                 .replace(/\n{3,}/g, '\n\n').trim();
+            if (!fullText) {
+                appendSys(replaceLast ? '生成内容无有效正文，原回复已保留。' : '这一幕没有有效正文，再试一次吧');
+                setSending(false);
+                return;
+            }
 
             var aiMsg = { role: 'assistant', text: fullText, time: Date.now(), mode: 'date', scene: sceneName || undefined };
             var previousHistory = history.slice();
