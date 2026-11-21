@@ -8,6 +8,8 @@
 <script src="../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../shared/js/native-feel.js?v=20261118statusbar1"></script>
 <script src="../shared/js/phone/phone_storage.js"></script>
+<script src="../shared/js/phone/chat-history-atomic.js?v=20261122v4"></script>
+<script src="../shared/js/phone/chat-history-append.js?v=20261122v3"></script>
 <script src="../shared/js/phone/role_family_cards.js?v=20261028v3"></script>
 <style>
 :root{color-scheme:light;--ink:#111;--muted:#8e8e93;--line:#e5e5ea;--paper:#f7f7f9;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
@@ -271,41 +273,39 @@ button,a{font:inherit}
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, 1800);
   }
-  function appendRoleNotice(card, message) {
-    if (!card || !card.roleId) return false;
-    try {
-      var storage = window.PhoneStorage;
-      var history = storage && typeof storage.getChatHistory === 'function'
-        ? storage.getChatHistory(card.roleId)
-        : JSON.parse(localStorage.getItem('chat_history_' + card.roleId) || '[]');
-      if (!Array.isArray(history)) throw new Error('聊天记录格式无法识别');
-
-      var next = history.slice();
-      var notice = { role:'user', type:'text', text:message, time:Date.now() };
-      next.push(notice);
-      var saved = false;
-      if (storage && typeof storage.saveChatHistory === 'function') {
-        saved = storage.saveChatHistory(card.roleId, next) === true;
-      } else {
-        localStorage.setItem('chat_history_' + card.roleId, JSON.stringify(next));
-        saved = true;
-      }
-      if (!saved) throw new Error('聊天记录写入失败');
-
-      var verified = storage && typeof storage.getChatHistory === 'function'
-        ? storage.getChatHistory(card.roleId)
-        : JSON.parse(localStorage.getItem('chat_history_' + card.roleId) || '[]');
-      var last = Array.isArray(verified) && verified.length ? verified[verified.length - 1] : null;
-      if (!Array.isArray(verified) || verified.length !== next.length ||
-          !last || last.role !== notice.role || last.type !== notice.type ||
-          last.time !== notice.time || last.text !== notice.text) {
-        throw new Error('聊天记录写入后校验失败');
-      }
-      return true;
-    } catch (error) {
-      console.error('[Wallet:family-cards] chat history persistence failed:', error);
-      return false;
+  // 卡片状态通知只走统一追加入口：锁内追加 + mid 去重 + 写后读回；
+  // 锁不可用时明确失败，绝不退回整表覆盖写入。
+  function appendRoleNotice(card, message, actionKey) {
+    if (!card || !card.roleId) return Promise.resolve({ ok: false, reason: 'MISSING_ROLE' });
+    var append = window.ChatHistoryAppend;
+    if (!append || typeof append.appendStable !== 'function') {
+      return Promise.resolve({ ok: false, reason: 'ATOMIC_UNAVAILABLE' });
     }
+    // 同一张卡的同一种操作 = 同一个动作：失败重试复用同一个 mid，
+    // 「已落盘但读回失败」时再点一次不会补发第二条通知。
+    var key = actionKey || ('family-card:' + (card.id || '') + ':' + message);
+    return append.appendStable(key, String(card.roleId), function () {
+      var stamp = Date.now();
+      return {
+        mid: 'm' + stamp + Math.random().toString(36).slice(2, 5),
+        role: 'user', type: 'text', text: message, time: stamp
+      };
+    }).then(function (result) {
+      return result;
+    }, function (error) {
+      console.error('[Wallet:family-cards] chat history persistence failed:', error);
+      return { ok: false, reason: 'UNEXPECTED' };
+    });
+  }
+  function noticeFailureMessage(reason) {
+    if (reason === 'LOCK_UNAVAILABLE') return '卡片操作已保存，但当前环境无法安全写入聊天记录，请稍后在对应聊天中补发通知。';
+    if (reason === 'ATOMIC_UNAVAILABLE' || reason === 'CREATE_UNAVAILABLE') {
+      return '卡片操作已保存，但当前浏览器不支持安全的聊天记录写入，请更新浏览器后补发';
+    }
+    if (reason === 'LEGACY_CORRUPT' || reason === 'LEGACY_UNREADABLE') {
+      return '卡片操作已保存，但这个角色的旧聊天记录读不出来，为避免覆盖，通知没有写入';
+    }
+    return '卡片操作已保存，但聊天通知未写入，请稍后在对应聊天中补发';
   }
   function runAction(action, id) {
     if (!api) return;
@@ -322,11 +322,18 @@ button,a{font:inherit}
       pause:'我先把你给我的卡暂停使用了。',
       resume:'我恢复使用你给我的卡了。'
     })[action];
-    var noticeSaved = !verb || appendRoleNotice(card, verb);
+    var doneLabel = ({accept:'已领取，可以在商店和外卖结算使用',reject:'已婉拒这张卡',pause:'卡片已暂停',resume:'卡片已恢复使用'})[action] || '已更新';
     render();
-    toast(noticeSaved
-      ? (({accept:'已领取，可以在商店和外卖结算使用',reject:'已婉拒这张卡',pause:'卡片已暂停',resume:'卡片已恢复使用'})[action] || '已更新')
-      : '卡片操作已保存，但聊天通知未写入，请稍后在对应聊天中补发');
+    if (!verb) {
+      toast(doneLabel);
+      return;
+    }
+    appendRoleNotice(card, verb, 'family-card:' + (card.id || '') + ':' + action).then(function (notice) {
+      if (notice && notice.ok) { toast(doneLabel); return; }
+      toast(notice && notice.writeMayHavePersisted
+        ? '聊天通知结果尚未确认，请先进入对应聊天检查，避免重复操作。'
+        : noticeFailureMessage(notice && notice.reason));
+    });
   }
 
   document.querySelector('.filters').addEventListener('click', function (event) {
