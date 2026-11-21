@@ -3824,8 +3824,8 @@ body {
             history[idx].text = v;
             if (!saveHistory(history, previousHistory)) {
                 history[idx].text = previousText;
-                renderAll();
-                scrollBottom();
+                // Keep the edit box and its unsaved text visible on a stale-write
+                // or storage failure. Re-rendering here would discard the draft.
                 return;
             }
             renderAll();
