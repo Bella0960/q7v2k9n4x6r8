@@ -57,6 +57,23 @@
     syncLoginAvailability();
   }
 
+  // The public login illustration is non-sensitive. Retry a transient failed
+  // mobile asset request once, without touching account state or form handlers.
+  const heroArtwork = document.querySelector('.hero-image');
+  if (heroArtwork) {
+    let heroRetryCount = 0;
+    const retryHeroArtwork = () => {
+      if (heroRetryCount++ === 0) {
+        heroArtwork.src = '/assets/ivory-mao/hero.webp?v=20261121-login-recovery1&retry=' + Date.now();
+      } else {
+        // Do not spill descriptive alt text across the sign-in layout if offline.
+        heroArtwork.style.visibility = 'hidden';
+      }
+    };
+    heroArtwork.addEventListener('error', retryHeroArtwork);
+    if (heroArtwork.complete && heroArtwork.naturalWidth === 0) retryHeroArtwork();
+  }
+
   syncLoginAvailability();
   if (isKnownQaHost) {
     // Hide registration before the async identity-status probe finishes:
