@@ -33,9 +33,15 @@ test('group settings support extension tiles, member controls and persisted pref
       },{group,owner});
       await page.goto(origin + '/chat/chat/chat-settings.html?roleId=g-test');
       await page.waitForURL('**/group-play.html?id=g-test');
+      // The overview is photo-first and collapsed. Unfold before accessing the controls.
+      const expand = page.locator('[data-group-action="expand"]');
+      await expand.waitFor({state:'visible'});
+      assert.equal(await expand.getAttribute('aria-expanded'),'false');
+      await expand.click();
+      assert.equal(await expand.getAttribute('aria-expanded'),'true');
       await page.getByRole('button',{name:'群组管理'}).waitFor();
       assert.equal(await page.locator('.group-home-tools button').count(),3);
-      assert.equal(await page.getByRole('button',{name:'邀请',exact:true}).isEnabled(),owner==='__user');
+      assert.equal(await page.getByRole('button',{name:'邀请成员'}).isEnabled(),owner==='__user');
       await page.getByRole('button',{name:'群组管理'}).click();
       if (owner !== '__user') {
         assert.equal(await page.getByRole('button',{name:'设为管理员'}).count(),0);
@@ -55,12 +61,17 @@ test('group settings support extension tiles, member controls and persisted pref
       await page.getByRole('switch',{name:'保存到通讯录'}).click();
       await page.getByRole('switch',{name:'消息免打扰'}).click();
       await page.getByRole('switch',{name:'置顶聊天'}).click();
-      await page.getByRole('button',{name:'邀请',exact:true}).click();
+      await page.getByRole('button',{name:'邀请成员'}).click();
       await page.locator('dialog').getByRole('button',{name:'邀请',exact:true}).click();
-      await page.getByRole('button',{name:'移除',exact:true}).click();
+      await page.getByRole('button',{name:'移除成员'}).click();
       await page.locator('dialog .group-dialog-member').filter({hasText:'新角色'}).getByRole('button',{name:'移除',exact:true}).click();
       await page.getByRole('button',{name:'确认移除'}).click();
       await page.reload();
+      const reloadExpand = page.locator('[data-group-action="expand"]');
+      await reloadExpand.waitFor({state:'visible'});
+      assert.equal(await reloadExpand.getAttribute('aria-expanded'),'false',
+        'page reload must default to collapsed overview');
+      await reloadExpand.click();
       await page.getByRole('switch',{name:'置顶聊天',checked:true}).waitFor();
       saved=await page.evaluate(()=>JSON.parse(localStorage.phone_groups)[0]);
       assert.equal(saved.preferences.savedToContacts,true);
