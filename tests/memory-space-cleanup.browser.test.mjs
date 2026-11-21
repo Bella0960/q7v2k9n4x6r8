@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { preview } from 'vite';
+import test from 'node:test';
 
+test('memory-space browser storage isolation and UI at phone widths', async () => {
 const previewServer = process.env.MEMORY_TEST_ORIGIN ? null : await preview({
     preview: { host: '127.0.0.1', port: 0 }
 });
@@ -93,3 +95,4 @@ try {
     await browser?.close();
     if (previewServer) await new Promise(resolve => previewServer.httpServer.close(resolve));
 }
+});
