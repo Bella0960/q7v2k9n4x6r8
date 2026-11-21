@@ -7,8 +7,8 @@
 <script src="../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../shared/js/native-feel.js"></script>
 <script src="../shared/js/phone/phone_storage.js"></script>
-<script src="../shared/js/phone/chat-history-atomic.js?v=20261118v3"></script>
-<script src="../shared/js/phone/chat-history-append.js?v=20261122v1"></script>
+<script src="../shared/js/phone/chat-history-atomic.js?v=20261122v4"></script>
+<script src="../shared/js/phone/chat-history-append.js?v=20261122v2"></script>
 <script src="../shared/js/phone/storage/repository.js"></script>
 <script src="../shared/js/phone/storage/media-repository.js"></script>
 <script src="forum-media.js"></script>
@@ -1386,24 +1386,30 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     }
     sharePost.inFlight = true;
 
-    const now = Date.now();
     const msg = '【分享帖子】' + (postBody() || postTitle()).substring(0, 50);
-    const message = {
-      mid: 'm' + now + Math.random().toString(36).slice(2, 5),
-      role: 'user', text: msg, time: now, type: 'text'
-    };
+    // 同一张帖子分享给同一个角色 = 同一个动作：失败重试复用同一个 mid，
+    // 避免「其实已经写进去、只是读回失败」时再点一次变成两条消息。
+    const shareKey = 'forum-share:' + target.id + ':' + (post && post.id ? String(post.id) : msg);
 
-    // 统一入口：ChatHistoryAppend 内部复用 ChatHistoryAtomic 的会话锁，
-    // 主键缺失时用旧 phone_data_v2 副本做种子创建，失败一律明确提示。
+    // 统一入口：ChatHistoryAppend 内部复用 ChatHistoryAtomic 的会话锁与共享根锁，
+    // 主键缺失时用 phone_data_v2 旧副本做种子创建；旧数据读不出来就失败关闭。
     const appender = window.ChatHistoryAppend;
-    const outcomePromise = appender && typeof appender.appendOrCreate === 'function'
-      ? appender.appendOrCreate(target.id, message)
+    const outcomePromise = appender && typeof appender.appendStable === 'function'
+      ? appender.appendStable(shareKey, target.id, function () {
+          const stamp = Date.now();
+          return {
+            mid: 'm' + stamp + Math.random().toString(36).slice(2, 5),
+            role: 'user', text: msg, time: stamp, type: 'text'
+          };
+        })
       : Promise.resolve({ ok: false, reason: 'ATOMIC_UNAVAILABLE' });
 
     outcomePromise.then(function (outcome) {
       if (!outcome.ok) {
         console.error('[Forum] sharePost chat history persistence failed:', outcome.reason);
-        alert(shareFailureNotice(outcome.reason));
+        alert(outcome.writeMayHavePersisted
+          ? '分享结果未确认：消息可能已经发出，请刷新聊天确认后重试（重试不会重复发送）'
+          : shareFailureNotice(outcome.reason));
         return;
       }
       alert('已分享给 ' + (target.name || '该联系人'));
@@ -1423,6 +1429,12 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     if (reason === 'QUOTA_EXCEEDED') return '存储空间已满，帖子没有分享成功，请清理后再试';
     if (reason === 'ACCOUNT_SCOPE_UNAVAILABLE') return '登录状态校验失败，帖子没有分享成功，请刷新后重试';
     if (reason === 'DB_UNAVAILABLE') return '浏览器存储暂时不可用，帖子没有分享成功，请稍后重试';
+    if (reason === 'LEGACY_CORRUPT') {
+      return '这个角色的旧聊天记录格式异常，为避免覆盖，帖子没有分享；请先备份聊天记录后再试';
+    }
+    if (reason === 'LEGACY_UNREADABLE') {
+      return '这个角色的旧聊天记录暂时读不出来，为避免覆盖，帖子没有分享，请稍后重试';
+    }
     return '帖子分享失败：聊天记录没有保存成功，请检查存储空间后重试';
   }
 
