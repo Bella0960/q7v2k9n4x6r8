@@ -2180,7 +2180,7 @@ document.getElementById('btnExpandEncounterPersona').addEventListener('click', a
 });
 
 // MAOMAO 自有格式：明确格式版本，只导出角色文字，不包含个人聊天、记忆、头像、API 密钥。
-document.getElementById('btnExportRole').addEventListener('click', function () {
+document.getElementById('btnExportRole').addEventListener('click', async function () {
     const id = document.getElementById('editRoleId').value.trim();
     const role = loadRoles().find(function (item) { return String(item.id) === id; });
     if (!role) {
@@ -2202,7 +2202,17 @@ document.getElementById('btnExportRole').addEventListener('click', function () {
             styleKeywords: Array.isArray(role.styleKeywords) ? role.styleKeywords : []
         }
     };
-    const blob = new Blob([JSON.stringify(file, null, 2)], {type:'application/json;charset=utf-8'});
+    // A client-authored format string is not a signature.
+    // Only the trusted Worker can issue a signed export.
+    let signedFile;
+    try {
+        if (!window.MAOMAOCharacterCards) throw new Error('角色卡签名模块未载入，请刷新页面');
+        signedFile = await window.MAOMAOCharacterCards.sign(file.character);
+    } catch (error) {
+        setSaveStatus('导出失败：' + (error && error.message || '签名服务不可用') + '。角色原资料没有更改。', 'error');
+        return;
+    }
+    const blob = new Blob([JSON.stringify(signedFile, null, 2)], {type:'application/json;charset=utf-8'});
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -2211,7 +2221,7 @@ document.getElementById('btnExportRole').addEventListener('click', function () {
     link.click();
     link.remove();
     setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
-    setSaveStatus('已导出 MAOMAO 人设 JSON（不包含聊天与私密资料）', 'success');
+    setSaveStatus('已导出带服务器签名的 MAOMAO 角色卡（不含聊天与私密资料）', 'success');
 });
 
 // ====== 导入角色 JSON ======
@@ -2225,31 +2235,29 @@ document.getElementById('roleImportFile').addEventListener('change', function(e)
     const isTxt = /\.txt$/i.test(file.name);
     if (file.size > 1024 * 1024) { setSaveStatus('文件超过 1 MB，请拆分或精简后再导入。', 'error'); return; }
     const reader = new FileReader();
-    reader.onload = function(ev) {
+    reader.onload = async function(ev) {
         try {
             const text = String(ev.target.result || '');
-            if (isTxt) {
-                if (/^[\s]*[\[{]/.test(text)) throw new Error('不支持把其他平台的 JSON 角色卡作为 TXT 导入');
-                // txt：整段当人设，第一行若很短（<=20字）当姓名
-                const lines = text.split(/\r?\n/);
-                let name = '', persona = text;
-                if (lines.length > 1 && lines[0].trim() && lines[0].trim().length <= 20) {
-                    name = lines[0].trim();
-                    persona = lines.slice(1).join('\n').trim();
-                }
-                document.getElementById('editRoleName').value = name;
-                document.getElementById('editRolePersona').value = persona;
-                setSaveStatus('已导入 txt，检查后点保存', 'success');
-                persistEditorDraft();
-                return;
+            // TXT is accepted only as a signed MAOMAO JSON envelope stored
+            // with a .txt extension; arbitrary plain-text role cards are denied.
+            if (isTxt && !/^\s*\{/.test(text)) {
+                throw new Error('TXT 角色卡必须包含 MAOMAO 签名数据，不接受外部纯文本角色卡');
             }
-            const data = JSON.parse(text);
-            // 只读取 MAOMAO 自己导出的 JSON；不识别酒馆/第三方角色卡字段。
-            if (!data || data.format !== 'maomao-character' || data.version !== 1 ||
-                !data.character || typeof data.character !== 'object' || Array.isArray(data.character)) {
-                throw new Error('仅支持从 MAOMAO 导出的角色 JSON（版本 1）');
+            let data;
+            try {
+                data = JSON.parse(text);
+            } catch {
+                throw new Error('文件不是有效的 MAOMAO 签名角色卡');
             }
-            const item = data.character;
+            if (!data || data.format !== 'maomao-character' || data.version !== 2 ||
+                !data.proof || data.proof.algorithm !== 'HMAC-SHA256') {
+                throw new Error('仅允许导入 MAOMAO 服务器签发的角色卡；旧版无签名文件需重新导出');
+            }
+            if (!window.MAOMAOCharacterCards) {
+                throw new Error('签名验证模块未加载，请重新打开角色档案');
+            }
+            // Never update draft fields until server verifies account and signature.
+            const item = await window.MAOMAOCharacterCards.verify(data);
             const name = typeof item.name === 'string' ? item.name.trim() : '';
             const persona = typeof item.persona === 'string' ? item.persona : '';
             const tone = typeof item.tone === 'string' ? item.tone : '';
@@ -2264,7 +2272,7 @@ document.getElementById('roleImportFile').addEventListener('change', function(e)
                 Array.isArray(item.styleKeywords) ? item.styleKeywords.filter(x => typeof x === 'string').join(', ') : '';
             // JSON 只导入文字。保留编辑器当前头像，避免覆盖既有角色图片。
             updateAvatarPreview();
-            setSaveStatus('已导入 MAOMAO 角色，请检查后保存', 'success');
+            setSaveStatus('签名已验证，已载入本账号 MAOMAO 角色，请检查后保存', 'success');
             persistEditorDraft();
         } catch (err) {
             setSaveStatus('导入失败：' + (err && err.message ? err.message : '文件格式不对'), 'error');
