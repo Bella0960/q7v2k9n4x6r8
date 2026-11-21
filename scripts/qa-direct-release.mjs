@@ -416,6 +416,8 @@ async function cloudflarePreflight() {
   assert.equal(binding(qa, 'MAO_IDENTITY_BRIDGE_SECRET')?.type, 'secret_text');
   assert.equal(binding(qa, 'DEVICE_SECRET_PEPPER')?.type, 'secret_text');
   assert.equal(binding(qa, 'VAPID_PRIVATE_KEY')?.type, 'secret_text');
+  assert.equal(binding(qa, 'MAO_CHARACTER_CARD_SIGNING_SECRET')?.type, 'secret_text',
+    'Batch1 signing secret missing from QA Worker production environment; refuse deployment');
   for (const name of ['MAO_SUPER_ADMIN_BOOTSTRAP_SECRET', 'DEVICE_SECRET_PEPPER']) {
     assert.equal(binding(core, name)?.type, 'secret_text',
       'Isolated core missing QA-only ' + name + '; configure securely before deployment');
@@ -558,6 +560,8 @@ async function main() {
   assert.equal(qaBinding('AI')?.type, 'ai', 'Existing QA AI binding was lost');
   assert.equal(qaBinding('ASSETS')?.type, 'assets', 'Existing QA web assets binding was lost');
   assert.equal(qaBinding('CLOUD_DB')?.namespace_id, QA_DB);
+  assert.equal(qaBinding('MAO_CHARACTER_CARD_SIGNING_SECRET')?.type, 'secret_text',
+    'QA role card signing secret missing after deployment');
   assert.equal(qaBinding('MAO_IDENTITY_AUTHORITY')?.service, CORE);
   assert.equal(qaBinding('MAO_IDENTITY_MODE')?.text, 'delegated_preview');
   assert.equal(qaBinding('MAO_IDENTITY_AUTHORITY_MODE')?.text, 'existing_worker');
