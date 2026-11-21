@@ -99,7 +99,7 @@ test('native chat structures and preview share semantics; image scopes never aff
   assert.match(studioHTML,/id="imageSlots"/);
   assert.match(studioHTML,/id="imageFile"/);
   assert.match(studioHTML,/id="previewMode"/);
-  assert.match(studioJS,/MAOMAOThemeStudioAssets\.upload/);
+  assert.match(studioJS,/assets\.upload\(file,/);
   assert.match(css,/data-ts-list-cover="1"/);
   assert.match(css,/data-ts-list-paper="1"/);
   assert.match(css,/data-ts-detail-image="1"/);
