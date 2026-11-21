@@ -38,7 +38,6 @@
     var bgKey = 'chat_bg_' + gid;
     var selectedAction;
     var activeView = 'home';
-    var drawerExpanded = false;
     var displayName = function (member) { return member.nickname || member.name || '成员'; };
     var quick = [
       ['muted', '消息免打扰'], ['pinned', '置顶聊天'], ['savedToContacts', '保存到通讯录']
@@ -144,7 +143,6 @@
       item.append(node('span', label), node('span', '', 'group-home-track'));
       return item;
     }
-    // Group-only presentation: keep the data and permission handlers unchanged.
     function render() {
       var current = state();
       if (!current) return;
@@ -153,77 +151,39 @@
       var canManage = governance.rank(group, '__user') >= 2;
       var name = group.name || '未命名群聊';
       var me = profile();
-
-      // The photo is intentionally text-free. Background takes precedence over group avatar.
-      var cover = button('', 'cover');
-      cover.className = 'group-home-cover';
-      cover.setAttribute('aria-label', '管理群图片');
+      var hero = node('section', '', 'group-home-cover');
       var photo = node('img', '', 'group-home-photo');
       photo.alt = '';
       photo.hidden = true;
-      function usePhoto(url) {
-        if (typeof url !== 'string' ||
-          !/^(?:data:image\/(?:jpeg|jpg|png|webp|gif);|https?:\/\/|blob:|\.{1,2}\/)/i.test(url)) return;
+      if (wallpaper) wallpaper.getByKey(bgKey).then(function (url) {
+        if (typeof url !== 'string' || !/^data:image\//i.test(url)) return;
         photo.src = url;
         photo.hidden = false;
-        cover.classList.add('has-photo');
-      }
-      usePhoto(group.avatar);
-      cover.append(photo);
-      if (wallpaper && typeof wallpaper.getByKey === 'function') {
-        Promise.resolve(wallpaper.getByKey(bgKey)).then(function (url) {
-          if (typeof url === 'string' && /^data:image\//i.test(url)) usePhoto(url);
-        }).catch(function () {});
-      }
-
-      var identity = button('', 'name');
-      identity.className = 'group-home-identity';
-      identity.append(node('span', name, 'group-home-name'),
-        node('small', (group.members.length + 1) + ' 位成员', 'group-home-count'));
-
-      var expand = button('', 'expand');
-      expand.className = 'group-home-expand';
-      expand.setAttribute('aria-controls', 'groupHomeDrawer');
-      expand.setAttribute('aria-expanded', String(drawerExpanded));
-      var chevron = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      chevron.setAttribute('viewBox', '0 0 24 24');
-      chevron.setAttribute('aria-hidden', 'true');
-      var stroke = document.createElementNS(chevron.namespaceURI, 'path');
-      stroke.setAttribute('d', 'm6 9 6 6 6-6');
-      chevron.append(stroke);
-      expand.append(chevron, node('span', drawerExpanded ? '收起' : '展开', 'group-home-expand-label'));
-
-      var drawer = node('div', '', 'group-home-drawer' + (drawerExpanded ? ' is-expanded' : ''));
-      drawer.id = 'groupHomeDrawer';
-      drawer.setAttribute('aria-hidden', String(!drawerExpanded));
-      if (!drawerExpanded) drawer.setAttribute('inert', '');
-      var inside = node('div', '', 'group-home-drawer-inner');
-
-      // One horizontal strip: member portraits followed immediately by dashed +/- tiles.
+        hero.classList.add('has-photo');
+      }).catch(function () {});
+      var nameButton = button(name, 'name');
+      nameButton.append(node('small', (group.members.length + 1) + ' 位成员'));
+      hero.append(photo, nameButton);
+      var assets = node('div', '', 'group-home-assets');
+      var avatarButton = button('群头像', 'avatar');
+      avatarButton.prepend(avatar(group.avatar, name));
+      assets.append(avatarButton, button('群背景', 'background'));
       var memberRow = node('div', '', 'group-home-members');
       memberRow.setAttribute('aria-label', '群成员');
-      memberRow.tabIndex = drawerExpanded ? 0 : -1;
-      var members = [{name: (group.preferences || {}).myNickname || me.nickname || me.name || '我',
-        avatar: me.avatar, id: '__user'}].concat(group.members);
-      members.forEach(function (member) {
+      memberRow.tabIndex = 0;
+      var names = [{name: (group.preferences || {}).myNickname || me.nickname || me.name || '我', avatar: me.avatar, id: '__user'}].concat(group.members);
+      names.forEach(function (member) {
         var label = displayName(member);
         var item = button('', member.id === '__user' ? 'myNickname' : 'member', member.id);
-        item.className = 'group-home-member';
         item.append(avatar(member.avatar, label), node('span', label));
         memberRow.append(item);
       });
-      [['invite', '+', '邀请'], ['remove', '−', '移除']].forEach(function (entry) {
-        var item = button('', entry[0]);
-        item.className = 'group-home-member-add';
+      var memberActions = node('div', '', 'group-home-member-actions');
+      ['invite', 'remove'].forEach(function (action) {
+        var item = button(action === 'invite' ? '邀请' : '移除', action);
         item.disabled = !canManage;
-        item.setAttribute('aria-label', entry[2] + '成员');
-        item.append(node('span', entry[1], 'group-home-add-icon'),
-          node('span', entry[2], 'group-home-add-caption'));
-        memberRow.append(item);
+        memberActions.append(item);
       });
-      inside.append(memberRow);
-
-      // Existing registered tile actions are reused; no background cards.
       var grid = node('div', '', 'group-home-tools');
       tiles.forEach(function (tool) {
         if (tool.visible && !tool.visible(group)) return;
@@ -237,21 +197,16 @@
         item.prepend(svg);
         grid.append(item);
       });
-      inside.append(grid);
-
       var switches = node('div', '', 'group-home-quick');
       quick.forEach(function (field) { switches.append(toggle(group, field[0], field[1])); });
-      inside.append(node('h2', '快捷设置'), switches);
-
       var rows = node('div', '', 'group-home-list');
       rows.append(row('群组管理', 'manage'), row('群组名称', 'name', name),
         row('备注', 'alias', read('chat_group_alias_' + gid, '') || '未填写'),
         row('我在群组的昵称', 'myNickname', (group.preferences || {}).myNickname || '未设置'),
         toggle(group, 'showMemberNicknames', '显示成员昵称'),
         row('群聊玩法与记忆', 'advanced'), row('其他群聊选项', 'legacy'));
-      inside.append(node('h2', '群组设置'), rows);
-      drawer.append(inside);
-      home.replaceChildren(cover, identity, expand, drawer, live);
+      home.replaceChildren(hero, assets, memberRow, memberActions, grid,
+        node('h2', '快捷设置'), switches, node('h2', '群组设置'), rows, live);
     }
     function show(label, items) {
       var heading = node('h2', label);
@@ -364,27 +319,6 @@
     }
     var handlers = {
       close: function () { dialog.close(); },
-      cover: function () {
-        var current = state();
-        if (!current) return;
-        var changeAvatar = button('更换群头像', 'avatar');
-        changeAvatar.disabled = governance.rank(current.group, '__user') < 2;
-        show('群图片', [changeAvatar, button('更换群背景', 'background')]);
-      },
-      expand: function () {
-        drawerExpanded = !drawerExpanded;
-        var drawer = home.querySelector('#groupHomeDrawer');
-        var trigger = home.querySelector('[data-group-action="expand"]');
-        if (!drawer || !trigger) { render(); return; }
-        drawer.classList.toggle('is-expanded', drawerExpanded);
-        drawer.setAttribute('aria-hidden', String(!drawerExpanded));
-        if (drawerExpanded) drawer.removeAttribute('inert');
-        else drawer.setAttribute('inert', '');
-        trigger.setAttribute('aria-expanded', String(drawerExpanded));
-        trigger.querySelector('.group-home-expand-label').textContent = drawerExpanded ? '收起' : '展开';
-        var strip = drawer.querySelector('.group-home-members');
-        if (strip) strip.tabIndex = drawerExpanded ? 0 : -1;
-      },
       preference: function (id, target) { setPreference(id, target.getAttribute('aria-checked') !== 'true'); },
       name: function () {
         var current = state();

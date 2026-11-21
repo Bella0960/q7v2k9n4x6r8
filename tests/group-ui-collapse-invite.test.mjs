@@ -112,16 +112,8 @@ async function withPage(seed, urlPath, fn) {
 
 const inviteCandidates = 'dialog [data-group-action="invite-confirm"]';
 
-async function expandOverview(page) {
-  const toggle = page.locator('[data-group-action="expand"]');
-  await toggle.waitFor({ state: 'visible' });
-  if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
-  await page.locator('#groupHomeDrawer[aria-hidden="false"]').waitFor();
-}
-
 async function openInvite(page) {
-  await expandOverview(page);
-  await page.locator('.group-home-members [data-group-action="invite"]').click();
+  await page.getByRole('button', { name: '邀请', exact: true }).click();
   await page.locator(inviteCandidates).first().waitFor();
 }
 
@@ -425,8 +417,7 @@ test('7. a removed member becomes invitable again', async () => {
       assert.deepEqual((await candidateIds(page)).sort(), ['c3', 'c4']);
 
       await page.getByRole('button', { name: '关闭', exact: true }).click();
-      await expandOverview(page);
-      await page.locator('.group-home-members [data-group-action="remove"]').click();
+      await page.getByRole('button', { name: '移除', exact: true }).click();
       await page.locator('dialog [data-group-action="remove-review"][data-target="c2"]').click();
       await page.getByRole('button', { name: '确认移除' }).click();
       await page.waitForFunction(() => document.querySelectorAll('.group-home-members [data-group-action="member"]').length === 1);
@@ -554,17 +545,14 @@ test('10. legacy group-play and group-management controls still work', async () 
   await withPage({ phone_groups: [makeGroup('g1', '旧群名', members)], ai_custom_characters: makeRoles(4) },
     '/chat/chat/group-play.html?id=g1', async (page) => {
       await page.waitForFunction(() => document.querySelectorAll('.group-home-members [data-group-action="member"]').length === 2);
-      await expandOverview(page);
-      await page.locator('.group-home-list [data-group-action="name"]').click();
+      await page.getByRole('button', { name: /群组名称/ }).click();
       await page.getByRole('textbox', { name: '群组名称' }).fill('新群名');
       await page.getByRole('button', { name: '保存', exact: true }).click();
       await page.waitForFunction(() => {
         const groups = JSON.parse(localStorage.getItem('phone_groups'));
         return groups[0].name === '新群名';
       });
-      assert.equal((await page.locator('.group-home-name').textContent()).trim(), '新群名');
-      assert.equal((await page.locator('.group-home-cover').textContent()).trim(), '',
-        'the cover must remain text-free after renaming');
+      assert.match(await page.locator('.group-home-cover').innerText(), /新群名/);
     });
 });
 
@@ -580,62 +568,4 @@ test('11. group-play page exposes no invite UI at runtime', async () => {
       assert.equal(await page.locator('[data-add-member]').count(), 0);
       assert.equal(await page.getByText('邀请角色', { exact: false }).count(), 0);
     });
-});
-
-
-test('group overview starts collapsed and expands a photo-first drawer at mobile widths', async () => {
-  for (const width of [375, 390, 430]) {
-    const seed = {
-      phone_groups: [makeGroup('g1', '测试群聊', [makeMember('c1', '洛'), makeMember('c2', '陆')])],
-      ai_custom_characters: makeRoles(4)
-    };
-    await withPage(seed, '/chat/chat/group-play.html?id=g1', async (page) => {
-      await page.setViewportSize({ width, height: 844 });
-      const cover = page.locator('.group-home-cover');
-      await cover.waitFor({ state: 'visible' });
-      assert.equal((await cover.textContent()).trim(), '', 'banner image must have no overlaid name or count');
-      assert.equal((await page.locator('.group-home-name').textContent()).trim(), '测试群聊');
-      assert.match(await page.locator('.group-home-count').textContent(), /3 位成员/);
-      const expand = page.locator('[data-group-action="expand"]');
-      const drawer = page.locator('#groupHomeDrawer');
-      assert.equal(await expand.getAttribute('aria-expanded'), 'false');
-      assert.equal(await drawer.getAttribute('aria-hidden'), 'true');
-      assert.notEqual(await drawer.getAttribute('inert'), null);
-      await expand.click();
-      assert.equal(await expand.getAttribute('aria-expanded'), 'true');
-      assert.equal(await drawer.getAttribute('aria-hidden'), 'false');
-      assert.equal(await drawer.getAttribute('inert'), null);
-      assert.equal(await page.locator('.group-home-members > button').count(), 5);
-      const actions = await page.locator('.group-home-members > button').evaluateAll((items) =>
-        items.slice(-2).map((item) => item.getAttribute('data-group-action')));
-      assert.deepEqual(actions, ['invite', 'remove'], 'dashed +/- must directly follow last avatar');
-      assert.equal(await page.locator('.group-home-member-add').count(), 2);
-      const dashed = await page.locator('.group-home-add-icon').first().evaluate((el) =>
-        getComputedStyle(el).borderTopStyle);
-      assert.equal(dashed, 'dashed');
-      const background = await page.locator('.group-home-tools button').first().evaluate((el) =>
-        getComputedStyle(el).backgroundColor);
-      assert.equal(background, 'rgba(0, 0, 0, 0)', 'action grid must be transparent');
-      assert.equal(await page.locator('.group-home-quick [role="switch"]').count(), 3);
-
-      const mute = page.locator('.group-home-quick [data-target="muted"]');
-      await mute.click();
-      const saved = await readStorage(page, 'phone_groups');
-      assert.equal(saved[0].preferences.muted, true, 'quick toggle retains existing storage behavior');
-      assert.equal(await page.locator('[data-group-action="expand"]').getAttribute('aria-expanded'), 'true',
-        'saving must not collapse the drawer');
-
-      await page.locator('[data-group-action="cover"]').click();
-      assert.ok(await page.getByRole('button', { name: '更换群头像' }).isVisible());
-      assert.ok(await page.getByRole('button', { name: '更换群背景' }).isVisible());
-      await page.getByRole('button', { name: '关闭', exact: true }).click();
-
-      await page.locator('[data-group-action="expand"]').click();
-      assert.equal(await page.locator('#groupHomeDrawer').getAttribute('aria-hidden'), 'true');
-      assert.equal((await cover.textContent()).trim(), '');
-      assert.equal(await page.evaluate(() =>
-        document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1), true,
-        'mobile view must not overflow horizontally');
-    });
-  }
 });
