@@ -731,6 +731,40 @@
 
         function _probeRoot() { return _probe(NS._PHONE_DATA_KEY || 'phone_data_v2'); }
 
+        /* ---------- 私有：安全清理 phone_data_v2 里的聊天旧副本 ----------
+         * phone_data_v2 是「一个键 + 一整份对象」，任何清理都必须整体重写。
+         * 如果只是「读一份快照 → 改一处 → 写回去」，另一标签页在这段窗口里
+         * 写进其他角色/其他领域的数据会被过期快照盖掉。
+         *
+         * 因此这里做三件事：
+         *   1. 写回前重新探测根，原始字节变了就重新读取（不写回旧快照）；
+         *   2. 重试用尽仍冲突就放弃清理——留一份旧副本是无害的（读取以主 key
+         *      为准），覆盖别人的数据不可接受；
+         *   3. 只删自己这一桶的 chat，绝不整桶删除、绝不删除其他领域字段。
+         */
+        var LEGACY_CLEANUP_ATTEMPTS = 3;
+        function _cleanupLegacyChatCopy(contactId) {
+            for (var attempt = 0; attempt < LEGACY_CLEANUP_ATTEMPTS; attempt++) {
+                var probe = _probe('phone_data_v2');
+                if (probe.state === 'missing') return { state: 'ok', cleaned: false };
+                if (probe.state !== 'ok') return { state: probe.state };
+                var root = probe.parsed;
+                if (!root || typeof root !== 'object' || Array.isArray(root)) return { state: 'corrupt' };
+                var bucket = root[contactId];
+                if (!(bucket && typeof bucket === 'object' && bucket.chat != null)) {
+                    return { state: 'ok', cleaned: false };
+                }
+                delete bucket.chat;
+                if (!Object.keys(bucket).length) delete root[contactId];
+                // 快照仍是最新的才写回；否则说明有人并发写过，重读再来。
+                if (_probe('phone_data_v2').raw !== probe.raw) continue;
+                var out = _write('phone_data_v2', root);
+                if (out.state === 'ok') return { state: 'ok', cleaned: true };
+                return { state: out.state, error: out.error };
+            }
+            return { state: 'skipped' };
+        }
+
         // getRoot —— 三态
         R.getRoot = function () {
             // 需要先知道 PHONE_DATA_KEY 的值，它在 NS 闭包里
@@ -940,22 +974,17 @@
                     writeMayHavePersisted: verified.state === 'unavailable' || verified.raw !== before.raw
                 });
             }
-            // 清除 phone_data_v2 中的重复副本（与原 saveChatHistory 行为一致）
-            var rootRes = R.getRoot();
-            if (rootRes.ok && rootRes.value) {
-                var root = rootRes.value;
-                var bucket = root[contactId];
-                if (bucket && bucket.chat != null) {
-                    delete bucket.chat;
-                    if (!Object.keys(bucket).length) delete root[contactId];
-                    var sub = _write('phone_data_v2', root);
-                    if (sub.state !== 'ok') {
-                        // 主 key 已写成功，phone_data_v2 写不回去不算致命
-                        console.warn('[PhoneStorage.result] phone_data_v2 cleanup failed', sub.error);
-                    }
-                }
+            // 清除 phone_data_v2 中的重复副本（与原 saveChatHistory 行为一致）。
+            // 根是单键整对象，只能整体重写，所以走带冲突检测的清理：
+            // 检测到并发修改就重读重试，始终冲突则放弃清理（宁可留一份旧副本，
+            // 也不拿过期快照盖掉别人刚写进去的其他领域数据）。
+            var cleanup = _cleanupLegacyChatCopy(contactId);
+            if (cleanup.state !== 'ok' && cleanup.state !== 'skipped') {
+                // 主 key 已写成功，phone_data_v2 写不回去不算致命
+                console.warn('[PhoneStorage.result] phone_data_v2 cleanup failed', cleanup.state,
+                    cleanup.error || null);
             }
-            return okResult(true, { written: 'chat_history_' + contactId });
+            return okResult(true, { written: 'chat_history_' + contactId, legacyCleanup: cleanup.state });
         };
 
         R.appendChatHistory = function (contactId, message) {
