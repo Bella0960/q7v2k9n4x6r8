@@ -91,7 +91,15 @@ test('verified finish publishes once to original group chat; private votes never
   assert.equal(record.groupGame.voteCount, 2);
   assert.equal(record.groupGame.correctVotes, 1);
   assert.equal(record.groupGame.voteTally.find(v => v.targetId === 'r2').count, 1);
-  assert.doesNotMatch(JSON.stringify(record), /gvr1|gvr3|voterId|私聊内容/);
+  // Vote events and voter identities must not appear in public tally rows.
+  // Do not scan opaque random session IDs for accidental matching bytes.
+  assert.doesNotMatch(record.text, /gvr1|gvr3|私聊内容/);
+  assert.equal(Object.hasOwn(record.groupGame, 'voterId'), false);
+  for (const tally of record.groupGame.voteTally) {
+    assert.equal(Object.hasOwn(tally, 'voterId'), false);
+    assert.equal(Object.hasOwn(tally, 'eventId'), false);
+    assert.equal(Object.hasOwn(tally, 'privateMessage'), false);
+  }
   assert.equal(h.receipts.check({ group: group(), session: ended.session,
     actorId: '__user' }).exists, true);
 });
@@ -286,7 +294,12 @@ test('appointed role moderator stays credited after group nickname changes', () 
   assert.equal(previous.groupGame.hostId,'r3');
   assert.equal(previous.groupGame.hostName,'沈知');
   assert.equal(previous.groupGame.revealedName,'陈望');
-  assert.doesNotMatch(JSON.stringify(previous),/mod-r1|mod-r2|voterId/);
+  assert.doesNotMatch(previous.text, /mod-r1|mod-r2/);
+  assert.equal(Object.hasOwn(previous.groupGame, 'voterId'), false);
+  for (const tally of previous.groupGame.voteTally) {
+    assert.equal(Object.hasOwn(tally, 'voterId'), false);
+    assert.equal(Object.hasOwn(tally, 'eventId'), false);
+  }
   const renamed=group();
   renamed.members[2].nickname='改了名字的主持人';
   assert.equal(post(h,closed.session,renamed).duplicate,true);
