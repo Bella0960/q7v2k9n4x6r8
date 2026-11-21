@@ -145,6 +145,14 @@
                   <span class="ds-del" title="移除">×</span>
                 </button>
 
+                <button class="app-card app-tile" type="button" data-href="theme-studio/theme-studio.html" data-drag="app_theme_studio" data-name="主题工作台" title="主题工作台">
+                  <span class="app-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M9 9v12M13 13h5M13 17h3"/></svg>
+                  </span>
+                  <span class="app-name">主题工作台</span>
+                  <span class="ds-del" title="移除">×</span>
+                </button>
+
                 <button class="app-card app-tile" type="button" data-href="theme-store/theme-store.html" data-drag="app_theme_store" data-name="主题商城" title="主题商城">
                   <span class="app-icon">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h16v13H4z"/><path d="M7.5 9h9M7.5 12h5M7.5 15h7"/><circle cx="17" cy="15" r="1.1"/></svg>
@@ -797,6 +805,21 @@
         while (currentLayout.pages.length <= pageIndex) currentLayout.pages.push([]);
         var beautyIndex = currentLayout.pages[pageIndex].indexOf('app_beauty');
         currentLayout.pages[pageIndex].splice(beautyIndex >= 0 ? beautyIndex + 1 : currentLayout.pages[pageIndex].length, 0, id);
+        saveLayout(currentLayout);
+      })();
+
+      // 手机主题工作台：旧布局只新增入口，绝不重排已有图标、挂件和 Dock。
+      (function addThemeStudioShortcut() {
+        var id = 'app_theme_studio';
+        var exists = (currentLayout.pages || []).some(function (page) { return page.indexOf(id) >= 0; })
+          || (currentLayout.dock || []).indexOf(id) >= 0
+          || (currentLayout.removed || []).indexOf(id) >= 0;
+        if (exists) return;
+        var pageIndex = (currentLayout.pages || []).findIndex(function (page) { return page.indexOf('app_beauty') >= 0; });
+        if (pageIndex < 0) pageIndex = 0;
+        while (currentLayout.pages.length <= pageIndex) currentLayout.pages.push([]);
+        var anchor = currentLayout.pages[pageIndex].indexOf('app_beauty');
+        currentLayout.pages[pageIndex].splice(anchor < 0 ? currentLayout.pages[pageIndex].length : anchor + 1, 0, id);
         saveLayout(currentLayout);
       })();
 
