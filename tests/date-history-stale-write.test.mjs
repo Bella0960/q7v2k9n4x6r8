@@ -78,3 +78,81 @@ test('legacy changes, corrupt storage and role drift block writes', () => {
     assert.equal(wrongRole.context.saveHistory([{ text: 'unsafe' }]), false);
     assert.equal(wrongRole.records.has('chat_history_role-b'), false);
 });
+
+
+test('a failed edit keeps the unsaved textarea visible for copying', () => {
+    const start = page.indexOf('    function editMsg(idx) {');
+    const end = page.indexOf('    // 删除：从剧情', start);
+    assert.ok(start >= 0 && end > start, 'must exercise real editMsg implementation');
+
+    const history = [{ role: 'assistant', text: 'original reply' }];
+    let editor;
+    let renderCount = 0;
+    let scrollCount = 0;
+
+    function element(tag) {
+        return {
+            tag, style: {}, children: [], handlers: {},
+            appendChild(child) { this.children.push(child); },
+            addEventListener(type, handler) { this.handlers[type] = handler; },
+            before(node) { editor = node; },
+            remove() { this.removed = true; }
+        };
+    }
+    const anchor = element('div');
+    const context = {
+        history,
+        storyEl: { querySelectorAll: () => [anchor] },
+        document: { createElement: element },
+        saveHistory: () => false,
+        renderAll: () => { renderCount++; },
+        scrollBottom: () => { scrollCount++; },
+        toast: () => {},
+        setTimeout: () => {}
+    };
+    runInNewContext(page.slice(start, end), context);
+    context.editMsg(0);
+
+    const textarea = editor.children[0];
+    textarea.value = 'edited text that has not been saved';
+    const actions = editor.children[1];
+    actions.children[0].handlers.click();
+
+    assert.equal(history[0].text, 'original reply');
+    assert.equal(textarea.value, 'edited text that has not been saved');
+    assert.equal(renderCount, 0, 'rerender would destroy the unsaved edit box');
+    assert.equal(scrollCount, 0);
+    assert.equal(anchor.style.display, 'none', 'editor must remain visible');
+    actions.children[1].handlers.click();
+    assert.equal(anchor.style.display, '', 'cancel restores the original bubble');
+    assert.equal(editor.removed, true);
+});
+
+test('a stale send keeps the original input draft and never requests AI', () => {
+    const start = page.indexOf('    function send() {');
+    const end = page.indexOf('    /* ---------- 三颗行动钮', start);
+    assert.ok(start >= 0 && end > start, 'must exercise real send implementation');
+
+    const input = { value: 'draft that must not disappear', style: {} };
+    const history = [{ role: 'assistant', text: 'prior reply' }];
+    const sendingStates = [];
+    let apiCalls = 0;
+    let appended = 0;
+    const context = {
+        input, history, sceneName: 'test scene', sending: false,
+        generatingReplyOptions: false,
+        closeReplyOptionsPanel: () => {},
+        setSending: value => sendingStates.push(value),
+        saveHistory: () => false,
+        appendMessage: () => { appended++; },
+        requestReply: () => { apiCalls++; }
+    };
+    runInNewContext(page.slice(start, end), context);
+    context.send();
+
+    assert.equal(input.value, 'draft that must not disappear');
+    assert.equal(history.length, 1, 'failed persistence must not add a phantom message');
+    assert.equal(apiCalls, 0, 'never contact AI for an unsaved message');
+    assert.equal(appended, 0, 'no unsaved bubble may appear');
+    assert.deepEqual(sendingStates, [true, false]);
+});
