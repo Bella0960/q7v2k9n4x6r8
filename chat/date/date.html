@@ -2863,12 +2863,14 @@ body {
         try {
             if (!Array.isArray(list) || HISTORY_KEY !== 'chat_history_' + roleId ||
                 historySnapshot === undefined) throw new Error('聊天记录不可安全写入');
-            var expected = JSON.stringify(list);
             if (localStorage.getItem(HISTORY_KEY) !== historySnapshot ||
                 (historySnapshot === null && JSON.stringify(loadHistory()) !== legacyHistorySnapshot)) {
                 historyChanged = true;
                 throw new Error('聊天记录已在别处更新');
             }
+            // Reject stale editors before serializing potentially large histories
+            // (including image payloads) that we will not be allowed to save.
+            var expected = JSON.stringify(list);
             if (_storage && typeof _storage.saveChatHistory === 'function') {
                 if (_storage.saveChatHistory(roleId, list) !== true) throw new Error('PhoneStorage 写入失败');
             } else {
