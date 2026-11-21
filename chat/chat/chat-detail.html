@@ -3228,7 +3228,7 @@
 
         // 一键重试：复用已落库的原用户消息，只发起 AI 回合（contextOnly），不会插入第二条用户消息。
         window.retryFailedMessage = function (mid, time) {
-            if (aiSending) {
+            if (aiSending || singleChatSendPending) {
                 if (typeof showToast === 'function') showToast('TA 正在回复中，稍等一下');
                 return;
             }
@@ -5111,6 +5111,7 @@
 
         // R3 防重入锁：AI 回复期间（含流式）忽略重复发送，防止并发请求交错写坏聊天记录
         let aiSending = false;
+        let singleChatSendPending = false;
         let lastGroupUserSend = { text: '', time: 0 };
         let groupAutoFollowupToken = 0;
 
@@ -5190,6 +5191,21 @@
 
         // 3. 核心真实 AI 聊天发送逻辑 (含历史记录、人设构造与 15 秒超时控制)
         async function sendMsg(opts) {
+            if (isGroupChat) return sendMsgTurn(opts);
+            if (singleChatSendPending) {
+                if (typeof showToast === 'function') showToast('TA 正在回复中，稍等一下');
+                return;
+            }
+            singleChatSendPending = true;
+            try {
+                return await sendMsgTurn(opts);
+            } finally {
+                aiSending = false;
+                singleChatSendPending = false;
+            }
+        }
+
+        async function sendMsgTurn(opts) {
             const input = document.getElementById('chat-input');
             const sendState = (window.ChatSendPolicy && typeof window.ChatSendPolicy.normalizeOptions === 'function')
                 ? window.ChatSendPolicy.normalizeOptions(opts, input.value)
@@ -6445,7 +6461,7 @@
                 pinToBottom();
             }
 
-            aiSending = true;   // R3：进入请求阶段，到流式结束由收尾统一解锁（此前无 await，不存在并发窗口）
+            aiSending = true;   // 请求阶段标记，单聊的入口锁已覆盖上方异步准备。
 
             // 流式请求：核心引擎已抽离至 shared/js/phone/phone_stream.js
             //（三段式超时 / SSE 半包解析 / 残留收尾 / rAF 节流 / 中断保文，全部内聚在模块内）
@@ -6948,7 +6964,7 @@
             scrollToBottom(true);
         });
         window.regenerateReply = function(direction, mid) {
-            if (aiSending) { if (typeof showToast === 'function') showToast('TA 正在回复中，稍等一下'); return; }
+            if (aiSending || singleChatSendPending) { if (typeof showToast === 'function') showToast('TA 正在回复中，稍等一下'); return; }
             if (isBlocked(aliasRoleId)) {
                 if (typeof showToast === 'function') showToast('你已把 TA 拉黑，无法重玩或改写');
                 return;
