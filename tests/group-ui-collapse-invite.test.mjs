@@ -113,6 +113,8 @@ async function withPage(seed, urlPath, fn) {
 const inviteCandidates = 'dialog [data-group-action="invite-confirm"]';
 
 async function openInvite(page) {
+  const expand = page.getByRole('button', { name: '展开', exact: true });
+  if (await expand.isVisible()) await expand.click();
   await page.getByRole('button', { name: '邀请', exact: true }).click();
   await page.locator(inviteCandidates).first().waitFor();
 }
@@ -545,6 +547,7 @@ test('10. legacy group-play and group-management controls still work', async () 
   await withPage({ phone_groups: [makeGroup('g1', '旧群名', members)], ai_custom_characters: makeRoles(4) },
     '/chat/chat/group-play.html?id=g1', async (page) => {
       await page.waitForFunction(() => document.querySelectorAll('.group-home-members [data-group-action="member"]').length === 2);
+      await page.getByRole('button', { name: '展开', exact: true }).click();
       await page.getByRole('button', { name: /群组名称/ }).click();
       await page.getByRole('textbox', { name: '群组名称' }).fill('新群名');
       await page.getByRole('button', { name: '保存', exact: true }).click();
@@ -552,7 +555,7 @@ test('10. legacy group-play and group-management controls still work', async () 
         const groups = JSON.parse(localStorage.getItem('phone_groups'));
         return groups[0].name === '新群名';
       });
-      assert.match(await page.locator('.group-home-cover').innerText(), /新群名/);
+      assert.match(await page.locator('.group-home-title').innerText(), /新群名/);
     });
 });
 
