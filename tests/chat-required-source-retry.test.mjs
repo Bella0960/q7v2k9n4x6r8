@@ -57,6 +57,20 @@ test('source failure updates exact original user message, without duplicating hi
   assert.match(h.notices[0],/感叹号重试/);
 });
 
+test('worldbook failure leaves an identical-text message untouched', () => {
+  const h = fixture();
+  h.list.push({ ...h.user, mid: 'u-002', time: h.user.time + 1 });
+
+  h.stop('worldbook-read', '世界书读取失败');
+
+  assert.equal(h.saves, 1);
+  assert.equal(h.saved.length, 3);
+  assert.equal(h.saved[1].mid, 'u-001');
+  assert.equal(h.saved[1].sendFailedReason, 'worldbook-read');
+  assert.equal(h.saved[2].mid, 'u-002');
+  assert.equal(h.saved[2].sendFailed, undefined);
+});
+
 test('failed storage write rolls marker back, preserves original role dialogue, and warns', () => {
   const h=fixture({failSave:true});
   h.stop('persona-sources-incomplete','设定校验失败');
