@@ -54,6 +54,61 @@ try{
     await page.locator('[data-tab="bubble"]').click();
     assert.equal(await page.locator('#mockDetail').isVisible(),true);
     assert.ok(await page.locator('#editorFields input').count()>=8);
+    // The gallery preview is an inert reconstruction of the existing native chat home.
+    await page.locator('[data-tab="list"]').click();
+    await page.locator('#previewMode').selectOption('wechat');
+    assert.equal(await page.locator('#mockWechatHeader').isVisible(),true);
+    assert.equal(await page.locator('#mockNativeHeader').isVisible(),false);
+    await page.locator('#previewMode').selectOption('native');
+    assert.equal(await page.locator('#mockNativeHeader').isVisible(),true);
+    assert.equal(await page.locator('.mock-music-card').isVisible(),true);
+    assert.equal(await page.locator('.mock-profile-avatar').isVisible(),true);
+    // A generated synthetic canvas image: no private user assets or photo fixtures.
+    const imageData=await page.evaluate(()=>{
+      const canvas=document.createElement('canvas');
+      canvas.width=16;canvas.height=12;
+      const ctx=canvas.getContext('2d');ctx.fillStyle='#777777';ctx.fillRect(0,0,16,12);
+      return canvas.toDataURL('image/png');
+    });
+    const buffer=Buffer.from(imageData.slice(imageData.indexOf(',')+1),'base64');
+    await page.locator('#imageSlots .image-slot').first().locator('button').first().click();
+    await page.locator('#imageFile').setInputFiles({name:'synthetic-qa.png',mimeType:'image/png',buffer});
+    await page.waitForFunction(()=>
+      getComputedStyle(document.querySelector('#mockCover')).backgroundImage.includes('blob:'),
+      {timeout:15000});
+    const storageBefore=await page.evaluate(()=>JSON.parse(localStorage.getItem('maomao_theme_studio_v1')));
+    assert.equal(storageBefore.enabled.list,false,'image upload must remain a draft until Apply');
+    await page.locator('#applyButton').click();
+    const savedImage=await page.evaluate(()=>JSON.parse(localStorage.getItem('maomao_theme_studio_v1')));
+    assert.equal(savedImage.enabled.list,true);
+    assert.match(savedImage.list.coverImage,/^as_[A-Z2-7]{32}$/);
+    assert.ok(!JSON.stringify(savedImage).includes('data:image'));
+    // Exercise native opt-in selectors against a harmless same-origin DOM fixture.
+    await page.addStyleTag({url:'/shared/css/theme-studio-runtime.css'});
+    await page.evaluate(()=>{
+      history.replaceState(null,'','/chat/chat/chat.html');
+      const shell=document.createElement('div');shell.className='phone-mockup';
+      shell.innerHTML='<div class="cover-gradient-banner" id="coverBox"></div>'+
+        '<div class="white-profile-stage"><div class="floating-music-card">'+
+        '<span class="m-title">music</span></div><div id="chatListContainer">'+
+        '<div class="chat-slim-card"><span class="chat-avatar"></span>'+
+        '<div class="chat-meta"><span class="chat-name">A</span><span class="chat-last-msg">B</span></div>'+
+        '</div></div></div>';
+      document.body.appendChild(shell);
+      window.MAOMAOThemeStudio.apply();
+    });
+    await page.waitForFunction(()=>
+      document.querySelector('.phone-mockup')?.getAttribute('data-ts-list-cover')==='1',
+      {timeout:15000});
+    const applied=await page.evaluate(()=>{
+      const shell=document.querySelector('.phone-mockup');
+      return {enabled:shell.getAttribute('data-ts-list'),
+        cover:getComputedStyle(shell.querySelector('#coverBox')).backgroundImage,
+        avatar:shell.style.getPropertyValue('--ts-list-avatar-size')};
+    });
+    assert.equal(applied.enabled,'1');
+    assert.match(applied.cover,/blob:/);
+    assert.equal(applied.avatar,'32px');
     assert.equal(errors.length,0,'page JS errors at '+width+': '+errors.join('; '));
     await page.close();
     console.log('THEME_STUDIO_MOBILE_PASS '+width);
