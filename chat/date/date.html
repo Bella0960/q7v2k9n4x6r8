@@ -2841,37 +2841,43 @@ body {
         } catch (e) {}
         return [];
     }
-    // 写入后只核对数组长度和本次变更位置，避免为包含大图片的整份历史重复序列化。
-    // 保存失败时恢复调用前的数组，禁止界面把未持久化操作当成成功。
-    function saveHistory(list, rollback, verifyIndex) {
+    // Bind writes to the primary bytes seen when this editor loaded its history.
+    // Context reads used by prompts must not advance this snapshot.
+    var historySnapshot;
+    var legacyHistorySnapshot;
+    function loadEditableHistory() {
         try {
-            if (!Array.isArray(list)) throw new Error('聊天记录格式无效');
-            var wrote = false;
-            var verified;
+            var raw = localStorage.getItem(HISTORY_KEY);
+            var list = raw === null ? loadHistory() : JSON.parse(raw);
+            if (!Array.isArray(list)) return [];
+            if (raw === null) legacyHistorySnapshot = JSON.stringify(list);
+            historySnapshot = raw;
+            return list;
+        } catch (error) {
+            return [];
+        }
+    }
+
+    function saveHistory(list, rollback) {
+        var historyChanged = false;
+        try {
+            if (!Array.isArray(list) || HISTORY_KEY !== 'chat_history_' + roleId ||
+                historySnapshot === undefined) throw new Error('聊天记录不可安全写入');
+            if (localStorage.getItem(HISTORY_KEY) !== historySnapshot ||
+                (historySnapshot === null && JSON.stringify(loadHistory()) !== legacyHistorySnapshot)) {
+                historyChanged = true;
+                throw new Error('聊天记录已在别处更新');
+            }
+            // Reject stale editors before serializing potentially large histories
+            // (including image payloads) that we will not be allowed to save.
+            var expected = JSON.stringify(list);
             if (_storage && typeof _storage.saveChatHistory === 'function') {
-                wrote = _storage.saveChatHistory(roleId, list) === true;
-                if (!wrote) throw new Error('PhoneStorage 写入失败');
-                if (typeof _storage.getChatHistory !== 'function') throw new Error('缺少聊天记录读回接口');
-                verified = _storage.getChatHistory(roleId);
+                if (_storage.saveChatHistory(roleId, list) !== true) throw new Error('PhoneStorage 写入失败');
             } else {
-                localStorage.setItem(HISTORY_KEY, JSON.stringify(list));
-                wrote = true;
-                verified = JSON.parse(localStorage.getItem(HISTORY_KEY) || 'null');
+                localStorage.setItem(HISTORY_KEY, expected);
             }
-            if (!wrote || !Array.isArray(verified) || verified.length !== list.length) {
-                throw new Error('聊天记录写入后校验失败');
-            }
-            var indexToVerify = typeof verifyIndex === 'number' ? verifyIndex : list.length - 1;
-            if (indexToVerify >= 0) {
-                var expected = list[indexToVerify];
-                var actual = verified[indexToVerify];
-                var fields = ['role', 'type', 'time', 'text', 'content', 'mode', 'scene', 'mid', 'arrivalJourneyId'];
-                if (!expected || !actual || fields.some(function (field) {
-                    return expected[field] !== actual[field];
-                })) {
-                    throw new Error('聊天记录写入后校验失败');
-                }
-            }
+            if (localStorage.getItem(HISTORY_KEY) !== expected) throw new Error('聊天记录写入后校验失败');
+            historySnapshot = expected;
             return true;
         } catch (error) {
             if (Array.isArray(rollback) && Array.isArray(list)) {
@@ -2881,7 +2887,8 @@ body {
                 }
             }
             console.error('[Date] chat history persistence failed:', error);
-            toast('聊天记录保存失败，本次操作没有完成，请检查存储空间后重试');
+            toast(historyChanged ? '聊天记录已在别处更新，请先保留草稿，再刷新页面重试' :
+                '聊天记录保存失败，本次操作没有完成，请检查存储空间后重试');
             return false;
         }
     }
@@ -2976,7 +2983,7 @@ body {
         saveHistory(history, previousHistory);
     }
     // 本地模拟流式：逐字上屏，最终落库并渲染为气泡
-    function localReplySim() {
+    function localReplySim(replaceLast) {
         var text = buildLocalReply();
         var ind = document.getElementById('dateIndicator');
         if (ind) ind.remove();
@@ -2989,7 +2996,14 @@ body {
             if (i >= text.length) {
                 clearInterval(timer);
                 var previousHistory = history.slice();
-                history.push({ role: 'assistant', text: text, time: Date.now(), mode: 'date', scene: sceneName || undefined });
+                if (replaceLast && history[history.length - 1] !== replaceLast) {
+                    appendSys('重新生成时聊天记录发生变化，原回复已保留，请刷新后重试。');
+                    setSending(false);
+                    return;
+                }
+                var simulatedReply = { role: 'assistant', text: text, time: Date.now(), mode: 'date', scene: sceneName || undefined };
+                if (replaceLast) history[history.length - 1] = simulatedReply;
+                else history.push(simulatedReply);
                 if (!saveHistory(history, previousHistory)) {
                     appendSys('这段角色回复尚未保存，请先复制上方文字，再检查存储空间后重试。');
                     setSending(false);
@@ -2997,7 +3011,8 @@ body {
                     return;
                 }
                 removeStreaming();
-                appendAiParagraphs(text, history.length - 1);
+                if (replaceLast) renderAll();
+                else appendAiParagraphs(text, history.length - 1);
                 setSending(false);
                 scrollBottom();
             }
@@ -3154,7 +3169,7 @@ body {
         }
         return str.slice(0, max) + '\n…（内容过长，已自动截断）';
     }
-    function buildSystemPrompt(source) {
+    function buildSystemPrompt(source, recentHistory) {
         // Build from the same fresh saved role/protocol/activated lore used online.
         // Never truncate a user's persona into a generic offline placeholder.
         var persona = source.persona;
@@ -3242,7 +3257,7 @@ body {
         } catch (e) {}
 
         // 最近对话（线上线下连贯：直接取 chat_history 最近 12 条）
-        var recent = loadHistory().slice(-12);
+        var recent = (Array.isArray(recentHistory) ? recentHistory : loadHistory()).slice(-12);
         var dialogLines = [];
         recent.forEach(function (m) {
             var t = String(m.text || m.content || '').trim();
@@ -3261,14 +3276,20 @@ body {
 
     /* ---------- 流式请求（send / continue / reroll 共用） ----------
      * opts.nudge：瞬态指令（如「(请继续)」）——只进 AI 上下文，不写入聊天记录 */
-    function requestReply(nudge) {
+    function requestReply(nudge, replaceLast) {
         var cfg = {};
         try { cfg = JSON.parse(localStorage.getItem('api_settings') || '{}') || {}; } catch (e) {}
         if (!(cfg.apiKey || '').trim()) {
-            if (isPreview) localReplySim();
-            else toast('尚未配置聊天 API，本轮没有生成角色回复');
+            if (isPreview) localReplySim(replaceLast);
+            else {
+                toast('尚未配置聊天 API，本轮没有生成角色回复');
+                setSending(false);
+            }
             return;
         }
+        // Regeneration uses the history before the old reply in every
+        // prompt input, without deleting the old reply from storage.
+        var requestHistory = replaceLast ? history.slice(0, -1) : history;
         const currentRole = readRoles().find(function(item) {
             return item && String(item.id) === String(roleId);
         }) || null;
@@ -3282,18 +3303,19 @@ body {
                 role:currentRole, storage:localStorage, conversationId:roleId,
                 contextPolicy:window.ChatContextPolicy,
                 currentText:String(nudge || '') + ' ' + String(sceneName || ''),
-                recentMessages:loadHistory(), userName:savedUserName,
+                recentMessages:replaceLast ? requestHistory : loadHistory(), userName:savedUserName,
                 defaultProtocol:window.MAOMAO_RP_DEFAULT_PROTOCOL
             }) : {ok:false,code:'resolver'};
         if (!source.ok) {
             toast('角色档案、伴侣协议或世界书未完整加载（' + source.code + '），本轮已停止');
+            setSending(false);
             return;
         }
         // The scene may have been open for hours. Use the latest saved role.
         character = currentRole;
         charName = String(currentRole.name || 'TA');
-        var apiMessages = [{ role: 'system', content: buildSystemPrompt(source) }];
-        history.slice(-12).forEach(function (m) {
+        var apiMessages = [{ role: 'system', content: buildSystemPrompt(source, replaceLast ? requestHistory : null) }];
+        requestHistory.slice(-12).forEach(function (m) {
             var t = String(m.text || m.content || '').trim();
             if (!t) return;
             t = capText(t, 800);
@@ -3314,10 +3336,13 @@ body {
         if (!deliveryCheck.ok) {
             console.error('[ChatPersonaSources] offline-long source not delivered:', deliveryCheck.missing);
             toast('线下角色资料未完整进入请求，本轮已停止');
+            setSending(false);
             return;
         }
         streamingP = null;
-        PhoneStream.chat({
+        var pendingReply;
+        try {
+            pendingReply = PhoneStream.chat({
             baseUrl: cfg.baseUrl || 'https://api.openai.com/v1',
             apiKey: cfg.apiKey || '',
             model: cfg.model || 'gpt-3.5-turbo',
@@ -3326,7 +3351,14 @@ body {
             maxTokens: cfg.maxTokens,
             topP: cfg.topP,
             onPaint: paintStream
-        }).then(function (result) {
+            });
+        } catch (error) {
+            console.error('[Date] unable to start reply generation:', error);
+            appendSys(replaceLast ? '重新生成未启动，原回复已保留。' : '回复生成未启动，请检查 API 配置。');
+            setSending(false);
+            return;
+        }
+        Promise.resolve(pendingReply).then(function (result) {
             var ind = document.getElementById('dateIndicator');
             if (ind) ind.remove();
             var fullText = (result.fullText || '').trim();
@@ -3344,6 +3376,16 @@ body {
                     : e.kind === 'abort'
                         ? (e.reason === 'total' ? '剧情较长已截断（120 秒上限）' : '连接中断了，稍后再续写这一幕')
                         : '网络断开了，剧情停在这里等你回来';
+                if (replaceLast) {
+                    // A failed reroll never changes the original reply in storage.
+                    if (fullText && !streamingP) paintStream(fullText);
+                    appendSys('重新生成失败，原回复已保留。' +
+                        (fullText ? '上方未保存的片段可以先复制。' : ''));
+                    appendSys(msg);
+                    setSending(false);
+                    scrollBottom();
+                    return;
+                }
                 if (fullText) {
                     appendSys('连接中断，以上为已写出的内容');
                     var aiPartial = { role: 'assistant', text: fullText, time: Date.now(), mode: 'date', scene: sceneName || undefined };
@@ -3366,7 +3408,7 @@ body {
             }
 
             if (!fullText) {
-                appendSys('这一幕没有写出内容，再试一次吧');
+                appendSys(replaceLast ? '本次没有生成新回复，原回复已保留。' : '这一幕没有写出内容，再试一次吧');
                 setSending(false);
                 return;
             }
@@ -3377,10 +3419,23 @@ body {
                 .replace(/\[发起语音通话\]/g, '')
                 .replace(/\[记住:[^\]]*\]/g, '')
                 .replace(/\n{3,}/g, '\n\n').trim();
+            if (!fullText) {
+                appendSys(replaceLast ? '生成内容无有效正文，原回复已保留。' : '这一幕没有有效正文，再试一次吧');
+                setSending(false);
+                return;
+            }
 
             var aiMsg = { role: 'assistant', text: fullText, time: Date.now(), mode: 'date', scene: sceneName || undefined };
             var previousHistory = history.slice();
-            history.push(aiMsg);
+            if (replaceLast && history[history.length - 1] !== replaceLast) {
+                appendSys('聊天记录已发生变化，原回复已保留，本次新回复未保存。');
+                setSending(false);
+                return;
+            }
+            // Commit the replacement only after generation succeeded.
+            // A failed persistence rolls the array back to the old reply.
+            if (replaceLast) history[history.length - 1] = aiMsg;
+            else history.push(aiMsg);
             if (!saveHistory(history, previousHistory)) {
                 appendSys('上方角色回复尚未保存，请先复制需要保留的文字，再检查存储空间后重试。');
                 setSending(false);
@@ -3388,9 +3443,15 @@ body {
                 return;
             }
             if (streamingP) removeStreaming();
-            appendAiParagraphs(fullText, history.length - 1);
+            if (replaceLast) renderAll();
+            else appendAiParagraphs(fullText, history.length - 1);
             setSending(false);
             scrollBottom();
+        }).catch(function (error) {
+            console.error('[Date] reply generation failed:', error);
+            appendSys(replaceLast ? '重新生成失败，原回复已保留，请检查网络后重试。' :
+                '生成发生错误，请检查网络后重试。');
+            setSending(false);
         });
     }
 
@@ -3438,7 +3499,7 @@ body {
         streamingRow = null;
     }
 
-    var history = loadHistory();
+    var history = loadEditableHistory();
     var replyOptionsBtn = document.getElementById('replyOptionsBtn');
     var replySuggestionsPanel = document.getElementById('replySuggestionsPanel');
     var replySuggestionsStatus = document.getElementById('replySuggestionsStatus');
@@ -3643,7 +3704,7 @@ body {
         setSending(true);
         requestReply('(请继续当前剧情，自然地往下写)');
     }
-    // 重 Roll：删掉最后一条 AI 回复（仅一条），基于之前的行动重新生成
+    // 重 Roll：先生成后替换；失败时原回复和历史记录保持不变。
     function actReroll() {
         if (sending) return;
         var last = history[history.length - 1];
@@ -3651,17 +3712,8 @@ body {
             toast('没有可以重写的回复');
             return;
         }
-        var previousHistory = history.slice();
-        history.pop();
-        if (!saveHistory(history, previousHistory)) {
-            renderAll();
-            scrollBottom();
-            return;
-        }
-        renderAll();   // 气泡结构统一重渲染，避免残留旧气泡
-        scrollBottom();
         setSending(true);
-        requestReply(null);
+        requestReply(null, last);
     }
     // 保存：把当前线下模式剧情导出为 .txt 文稿下载
     function actSave() {
@@ -3817,10 +3869,10 @@ body {
             var previousHistory = history.slice();
             var previousText = history[idx].text;
             history[idx].text = v;
-            if (!saveHistory(history, previousHistory, idx)) {
+            if (!saveHistory(history, previousHistory)) {
                 history[idx].text = previousText;
-                renderAll();
-                scrollBottom();
+                // Keep the edit box and its unsaved text visible on a stale-write
+                // or storage failure. Re-rendering here would discard the draft.
                 return;
             }
             renderAll();
@@ -3838,7 +3890,7 @@ body {
         if (history[idx]) {
             var previousHistory = history.slice();
             history.splice(idx, 1);
-            if (!saveHistory(history, previousHistory, Math.min(idx, history.length - 1))) {
+            if (!saveHistory(history, previousHistory)) {
                 renderAll();
                 scrollBottom();
                 return;
