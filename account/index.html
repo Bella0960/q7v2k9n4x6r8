@@ -17,6 +17,50 @@
     #loginPanel .password-field { box-sizing:border-box; display:flex; align-items:center; width:100%; min-width:0; }
     #loginPanel .password-field input { box-sizing:border-box; min-width:0; flex:1 1 0; }
     #loginPanel .password-field .password-toggle { flex:0 0 43px; }
+
+    /* Offline/partial-load fallback. Lower cascade priority than the normal site CSS. */
+    @layer login-essential {
+      html,body{margin:0;min-height:100%;background:#f9f6f3;color:#504944;
+        font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
+      .account-shell.app{display:block;min-height:100svh;width:min(100%,472px);
+        margin:0 auto;padding:0;overflow:hidden;background:#fdfbf9}
+      .ivory-entry .content{padding:calc(24px + env(safe-area-inset-top)) 24px 30px;min-width:0}
+      .ivory-entry .titlebar{height:43px;display:flex;align-items:center;justify-content:center;
+        border-bottom:1px solid #e2dcd6;color:#968b82;font-size:12px}
+      .ivory-entry .titlebar-title{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .ivory-entry .titlebar .dots,.ivory-entry .ornamental-frame,
+      .ivory-entry .floral-shadow,.ivory-entry .frame-stroke{pointer-events:none}
+      .ivory-entry .hero{display:grid;place-items:center;height:190px;margin:8px auto 4px}
+      .ivory-entry .hero-image{display:block;width:100%;height:100%;object-fit:contain}
+      .ivory-entry .story{text-align:center}
+      .ivory-entry .kicker{font:11px Georgia,serif;letter-spacing:.2em;color:#91877e}
+      .ivory-entry .story h1{margin:10px 0;font:normal 26px/1.4 Georgia,"Songti SC",serif}
+      .ivory-entry .swash{display:block;width:160px;height:17px;margin:8px auto}
+      .ivory-entry .subtitle,.ivory-entry .top-meta{color:#988b80;font-size:12px}
+      .ivory-entry .actions{width:100%;max-width:360px;margin:30px auto 0}
+      .ivory-entry .panel[hidden],.ivory-entry [hidden]{display:none!important}
+      .ivory-entry .panel{width:100%;min-width:0}
+      .ivory-entry .panel>.eyebrow,.ivory-entry .panel>h1,
+      .ivory-entry .panel>.lead{display:none}
+      .ivory-entry #loginPanel>.lead.qa-login-hint{display:block;font-size:12px;line-height:1.6}
+      .ivory-entry .form{display:grid;gap:14px;width:100%;min-width:0}
+      .ivory-entry .form label{display:grid;gap:8px;min-width:0;font-size:12px}
+      .ivory-entry .form label>input,.ivory-entry .password-field{
+        display:block;width:100%;height:48px;border:1px solid #dbcec4;
+        border-radius:24px;background:#fff;box-sizing:border-box}
+      .ivory-entry .form label>input{padding:0 17px}
+      .ivory-entry .password-field{display:flex;align-items:center;overflow:hidden}
+      .ivory-entry .password-field input{flex:1 1 0;min-width:0;height:46px;
+        border:0;background:transparent;padding:0 16px}
+      .ivory-entry .password-toggle{flex:0 0 43px;height:43px;border:0;background:none}
+      .ivory-entry .password-toggle svg{width:18px;height:18px;fill:none;
+        stroke:#8b8178;stroke-width:1.5}
+      .ivory-entry .primary-button{width:100%;min-height:52px;border:0;border-radius:28px;
+        background:#59534e;color:#fff;font-size:15px}
+      .ivory-entry .primary-button:disabled{opacity:.5}
+      .ivory-entry .form-error{font-size:12px;line-height:1.5;color:#a35d5b}
+      .ivory-entry .form-error:empty{display:none}
+    }
   </style>
 </head>
 <body>
