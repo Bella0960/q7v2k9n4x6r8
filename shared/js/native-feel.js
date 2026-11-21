@@ -273,21 +273,15 @@
         }
     }, true);
 
-    /* ---------- 五、Service Worker 更新后自动刷新一次 ----------
-       本地开发改了代码，浏览器可能仍被旧 SW 缓存命中。
-       新 SW 接管页面时 controllerchange 触发，自动刷新一次拿到最新版。
-       首访安装时本来没有 controller，skipWaiting + clients.claim() 会让本页
-       立刻收到 controllerchange；此时缓存已就绪，跳过刷新，避免二次文档加载。
-       sessionStorage 标记防循环刷新。 */
+    /* ---------- 五、SW 更新不再中途强制重载受保护页面 ----------
+       新 SW 激活时会淘汰旧缓存；下一次正常页面跳转自然读取新版。
+       在已有登录态的页面自动 reload 会引发第二次身份守卫校验，
+       网络短时波动时造成看起来被踢回登录页的现象。 */
     if ('serviceWorker' in navigator) {
         var swHadController = !!navigator.serviceWorker.controller;
         navigator.serviceWorker.addEventListener('controllerchange', function () {
             if (!swHadController) { swHadController = true; return; }
-            try {
-                if (sessionStorage.getItem('sw_reloaded')) return;
-                sessionStorage.setItem('sw_reloaded', '1');
-                location.reload();
-            } catch (err) { /* 隐私模式等异常场景直接忽略 */ }
+            document.documentElement.setAttribute('data-maomao-sw-updated', '1');
         });
     }
 

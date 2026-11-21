@@ -47,6 +47,9 @@ function makeEnv(account = null, overrides = {}) {
         if (overrides.authDenied) {
           return Response.json({ ok: false, error: { code: 'DELEGATED_ACCOUNT_MANAGED_CENTRALLY' } }, { status: 403 });
         }
+        if (overrides.unknownUnauthorized) {
+          return Response.json({ ok: false, error: { code: 'IDENTITY_SERVICE_TRANSIENT' } }, { status: 401 });
+        }
         if (overrides.badIdentityResponse) {
           return Response.json({ ok: true, account: null });
         }
@@ -90,6 +93,20 @@ test('only public account entry is readable without an account session', async (
   }
   assert.equal(calls.auth.length, 0);
   assert.equal(calls.assets.length, 2);
+});
+
+test('only explicit lost-session 401 may redirect; identity errors never impersonate logout', async () => {
+  const confirmed = makeEnv();
+  const login = await worker.fetch(req('/chat/chat/chat-detail.html'), confirmed.env);
+  assert.equal(login.status, 302);
+  assert.equal(login.headers.get('cache-control'), 'private, no-store, max-age=0');
+  assert.equal(login.headers.get('vary'), 'Cookie');
+  const unknown = makeEnv(active(), { unknownUnauthorized: true });
+  const errorPage = await worker.fetch(req('/chat/chat/chat-detail.html'), unknown.env);
+  assert.equal(errorPage.status, 503);
+  assert.equal(errorPage.headers.get('location'), null);
+  assert.equal(errorPage.headers.get('cache-control'), 'no-store');
+  assert.equal(unknown.calls.assets.length, 0);
 });
 
 test('active ordinary account receives scoped private HTML, no public cache metadata', async () => {
