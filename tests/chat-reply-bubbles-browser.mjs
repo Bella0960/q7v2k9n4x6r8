@@ -286,9 +286,9 @@ async function main() {
     ]) {
       const key = 'chat_history_bubA';
       const oldReply = { role: 'assistant', text: '上一轮回复', time: 1, mid: 'old_reply' };
-      await page.goto(origin + '/chat/chat/chat-detail.html?id=bubA');
+      await page.goto(origin + '/chat/chat/chat-detail.html?id=bubA', { waitUntil: 'domcontentloaded' });
       await setSeed(page, { [key]: JSON.stringify([oldReply]) });
-      await page.reload();
+      await page.reload({ waitUntil: 'domcontentloaded' });
       mockReplyText = reply;
       mockStatus = status;
       await page.evaluate(() => window.sendMsg({ text: '只保存一条用户消息' }));
@@ -301,7 +301,7 @@ async function main() {
       mockReplyText = '重试成功';
       await page.locator('.msg-send-failed').click();
       await page.waitForFunction(storageKey =>
-        JSON.parse(localStorage.getItem(storageKey)).some(message => message.text === '重试成功'),
+        JSON.parse(localStorage.getItem(storageKey)).some(message => message.role === 'assistant' && /^重试成功[。！!]?$/.test(message.text)),
       key);
       const recovered = await readHistory(page, key);
       assert.equal(recovered.filter(message => message.role === 'user').length, 1);
