@@ -12,7 +12,7 @@ const activeName = (sw.match(/const CACHE_NAME = '([^']+)'/) || [])[1];
 
 function harness(fetchImpl = async () => { throw Error('offline'); }) {
   const listeners = {}, names = [
-    'phone-app-pwa-v282', 'phone-app-shell-v244', 'maomao-app-shell-v100',
+    'phone-app-pwa-v282', 'phone-app-pwa-v283', 'phone-app-shell-v244', 'maomao-app-shell-v100',
     activeName, 'maomao-font-assets-v1',
     '__mao_account_v1__synthetic__maomao-font-assets-v1',
     'maomao-assets'
@@ -61,14 +61,15 @@ function harness(fetchImpl = async () => { throw Error('offline'); }) {
     get claimCount(){return claimCount;}};
 }
 
-test('v283 activates after removing old public app shells but preserving account and font media',async()=>{
-  assert.equal(activeName,'phone-app-pwa-v283');
+test('new SW version removes stale app shell caches and preserves account and font media',async()=>{
+  assert.ok(/^phone-app-pwa-v\d+$/.test(activeName));
+  assert.ok(Number(activeName.slice('phone-app-pwa-v'.length)) >= 284);
   const h=harness();
   let task;
   h.listeners.activate({waitUntil(p){task=Promise.resolve(p);}});
   await task;
   assert.deepEqual([...h.deletedKeys].sort(),[
-    'maomao-app-shell-v100','phone-app-pwa-v282','phone-app-shell-v244'].sort());
+    'maomao-app-shell-v100','phone-app-pwa-v282','phone-app-pwa-v283','phone-app-shell-v244'].sort());
   assert.equal(h.claimCount,1);
 });
 
