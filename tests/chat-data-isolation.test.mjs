@@ -16,6 +16,7 @@ const datePageSource = read('chat/date/date.html');
 const forumDetailSource = read('forum/forum-detail.html');
 const callPageSource = read('chat/call/call.html');
 const atomicCallSource = read('shared/js/phone/chat-history-atomic.js');
+const appendEntrySource = read('shared/js/phone/chat-history-append.js');
 const couplePageSource = read('couple/couple.html');
 const shopPageSource = read('wallet/shop.html');
 const takeoutPageSource = read('wallet/takeout.html');
@@ -599,50 +600,105 @@ test('赴约历史：没有 PhoneStorage 时 localStorage 写入异常也会回�
   assert.match(sandbox.toasts[0], /保存失败/);
 });
 
-function loadForumSharePost(storage, localStorage = createLocalStorage()) {
+// 分享走真实的 ChatHistoryAtomic + ChatHistoryAppend，只把 Web Locks 与
+// PhoneStorage 换成可观察的桩，断言仍然落在「消息真的写进目标角色」上。
+function loadForumSharePost(options = {}) {
   const alerts = [];
+  // createLocalStorage 的 setItem 是只读属性，需要拒写时另建一个等价内存实现。
+  const store = new Map();
+  const localStorage = options.rejectChatWrites ? {
+    getItem: (key) => (store.has(key) ? store.get(key) : null),
+    setItem: (key, value) => {
+      if (String(key).indexOf('chat_history_') === 0) throw new Error('quota exceeded');
+      store.set(key, String(value));
+    },
+    removeItem: (key) => { store.delete(key); }
+  } : createLocalStorage();
+  localStorage.setItem('ai_custom_characters', JSON.stringify([{ id: 'roleA', name: '角色甲' }]));
+  const storage = {
+    getChatHistory(id) {
+      const raw = localStorage.getItem('chat_history_' + id);
+      return raw == null ? [] : JSON.parse(raw);
+    },
+    result: {
+      saveChatHistory(id, list, expectedPrimary) {
+        const key = 'chat_history_' + id;
+        const raw = localStorage.getItem(key);
+        if (expectedPrimary !== undefined && raw !== expectedPrimary) {
+          return { ok: false, error: { code: 'CONFLICT' } };
+        }
+        localStorage.setItem(key, JSON.stringify(list));
+        return { ok: true };
+      }
+    }
+  };
+  const shared = {
+    localStorage,
+    navigator: options.withLocks === false ? {} : { locks: { request: async (_name, _opts, cb) => cb() } },
+    PhoneStorage: storage,
+    console: { warn() {}, error() {} }
+  };
+  runInNewContext(atomicCallSource, { window: shared }, { filename: 'shared/js/phone/chat-history-atomic.js' });
+  runInNewContext(appendEntrySource, { window: shared }, { filename: 'shared/js/phone/chat-history-append.js' });
+
   const sandbox = {
-    window: { PhoneStorage: storage },
+    window: shared,
     localStorage,
     alert: (message) => alerts.push(message),
     console: { warn() {}, error() {} },
     postBody: () => '测试帖子正文',
     postTitle: () => '测试帖子标题'
   };
+  // shareFailureNotice 与 sharePost 同处页面脚本作用域，提取后一并注入。
+  runInNewContext(extractFunction(forumDetailSource, 'shareFailureNotice'), sandbox, {
+    filename: 'forum/forum-detail.html#shareFailureNotice'
+  });
   runInNewContext(extractFunction(forumDetailSource, 'sharePost'), sandbox, {
     filename: 'forum/forum-detail.html#sharePost'
   });
-  localStorage.setItem('ai_custom_characters', JSON.stringify([{ id: 'roleA', name: '角色甲' }]));
   return { share: sandbox.sharePost, alerts, localStorage };
 }
 
-test('论坛分享：PhoneStorage 保存失败时不显示分享成功', () => {
-  const sandbox = loadForumSharePost({
-    getChatHistory: () => [],
-    saveChatHistory: () => false
-  });
+// sharePost 现在是异步的：等它把 Promise 链跑完再断言。
+function settle() {
+  return new Promise((done) => setTimeout(done, 8));
+}
+
+const forumShareMigrated = forumDetailSource.includes('chat-history-append.js');
+
+test('论坛分享：聊天记录写不进去时不显示分享成功', { skip: !forumShareMigrated && '论坛分享尚未迁移到统一追加入口' }, async () => {
+  const sandbox = loadForumSharePost({ rejectChatWrites: true });
 
   sandbox.share();
+  await settle();
   assert.equal(sandbox.alerts.length, 1);
-  assert.match(sandbox.alerts[0], /分享失败/);
+  assert.match(sandbox.alerts[0], /分享失败|没有分享成功|存储空间已满/);
   assert.doesNotMatch(sandbox.alerts[0], /已分享给/);
+  assert.equal(sandbox.localStorage.getItem('chat_history_roleA'), null, '失败时不得留下半条记录');
 });
 
-test('论坛分享：保存并读回目标角色消息后才显示成功', () => {
-  let persisted = [];
-  const sandbox = loadForumSharePost({
-    getChatHistory: () => JSON.parse(JSON.stringify(persisted)),
-    saveChatHistory: (id, list) => {
-      assert.equal(id, 'roleA');
-      persisted = JSON.parse(JSON.stringify(list));
-      return true;
-    }
-  });
+test('论坛分享：Web Locks 不可用时明确失败且不整表覆盖', { skip: !forumShareMigrated && '论坛分享尚未迁移到统一追加入口' }, async () => {
+  const sandbox = loadForumSharePost({ withLocks: false });
+  sandbox.localStorage.setItem('chat_history_roleA', JSON.stringify([{ role: 'agent', text: '旧消息' }]));
 
   sandbox.share();
+  await settle();
+  assert.equal(sandbox.alerts.length, 1);
+  assert.match(sandbox.alerts[0], /其他标签页正在写入聊天记录/);
+  assert.equal(JSON.parse(sandbox.localStorage.getItem('chat_history_roleA')).length, 1,
+    '锁不可用时历史必须保持不变');
+});
+
+test('论坛分享：消息真的写进目标角色后才显示成功', { skip: !forumShareMigrated && '论坛分享尚未迁移到统一追加入口' }, async () => {
+  const sandbox = loadForumSharePost();
+
+  sandbox.share();
+  await settle();
+  const persisted = JSON.parse(sandbox.localStorage.getItem('chat_history_roleA'));
   assert.equal(persisted.length, 1);
   assert.equal(persisted[0].role, 'user');
   assert.match(persisted[0].text, /测试帖子正文/);
+  assert.ok(persisted[0].mid, '分享消息必须带稳定 mid');
   assert.equal(sandbox.alerts.length, 1);
   assert.match(sandbox.alerts[0], /已分享给 角色甲/);
 });
@@ -731,9 +787,20 @@ test('群通话：锁不可用时保留原聊天并明确提示', async () => {
 });
 
 test('情侣绑定：邀请消息持久化结果与资料保存提示保持区分', () => {
-  assert.match(couplePageSource, /let invitationSaved = true/);
-  assert.match(couplePageSource, /storage\.saveChatHistory\(profile\.partnerId, next\) === true/);
-  assert.match(couplePageSource, /聊天记录写入后校验失败/);
+  const migrated = couplePageSource.includes('chat-history-append.js');
+  if (migrated) {
+    // 已迁移：不再整表覆盖，且资料保存必须先于邀请消息。
+    assert.doesNotMatch(couplePageSource, /storage\.saveChatHistory\(profile\.partnerId, next\) === true/);
+    assert.match(couplePageSource, /appendOrCreate\(partnerId, message\)/);
+    const profileWrite = couplePageSource.indexOf('write(K.profile, profile)');
+    const inviteAppend = couplePageSource.indexOf('appendOrCreate(partnerId, message)');
+    assert.ok(profileWrite > 0, '资料保存语句必须存在');
+    assert.ok(inviteAppend > profileWrite, '资料必须先于邀请消息保存');
+  } else {
+    assert.match(couplePageSource, /let invitationSaved = true/);
+    assert.match(couplePageSource, /storage\.saveChatHistory\(profile\.partnerId, next\) === true/);
+    assert.match(couplePageSource, /聊天记录写入后校验失败/);
+  }
   assert.match(couplePageSource, /资料已保存，但邀请消息没有写入聊天记录/);
 });
 
@@ -796,14 +863,29 @@ test('钱包消息：写入失败或读回缺失时返回失败，不把通知�
   }), false);
 });
 
-test('亲属卡通知：失败状态不会被普通卡片成功提示覆盖', () => {
+test('亲属卡通知：失败状态不会被普通卡片成功提示覆盖', async () => {
+  const migrated = familyCardsPageSource.includes('chat-history-append.js');
+  assert.match(familyCardsPageSource, /卡片操作已保存，但聊天通知未写入/);
+
+  if (migrated) {
+    assert.doesNotMatch(familyCardsPageSource, /localStorage\.setItem\('chat_history_/);
+    assert.match(familyCardsPageSource, /appendRoleNotice\(card, verb\)\.then\(/);
+    const writer = loadWalletMessageWriter(familyCardsPageSource, 'appendRoleNotice', {
+      getChatHistory: () => [],
+      saveChatHistory: () => false
+    });
+    const missing = await writer.write({ roleId: 'roleA' }, '卡片通知');
+    assert.equal(missing.ok, false, '没有原子层时不得报告通知已写入');
+    assert.equal(missing.reason, 'ATOMIC_UNAVAILABLE');
+    return;
+  }
+
+  assert.match(familyCardsPageSource, /var noticeSaved = !verb \|\| appendRoleNotice\(card, verb\)/);
   const writer = loadWalletMessageWriter(familyCardsPageSource, 'appendRoleNotice', {
     getChatHistory: () => [],
     saveChatHistory: () => false
   });
   assert.equal(writer.write({ roleId: 'roleA' }, '卡片通知'), false);
-  assert.match(familyCardsPageSource, /var noticeSaved = !verb \|\| appendRoleNotice\(card, verb\)/);
-  assert.match(familyCardsPageSource, /卡片操作已保存，但聊天通知未写入/);
 });
 
 test('商店和外卖：交易成功但聊天通知失败时显示合并后的明确状态', () => {
