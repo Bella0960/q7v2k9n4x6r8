@@ -77,7 +77,7 @@ test('runtime CSS is opt-in and scoped to native chat pages',()=>{
   const css=readFileSync(new URL('../shared/css/theme-studio-runtime.css',import.meta.url),'utf8');
   assert.match(css,/data-ts-list="1"/);
   assert.match(css,/data-ts-detail="1"/);
-  assert.doesNotMatch(css,/(\\.group-composer|\\.group-settings|#groupModal)/);
+  assert.doesNotMatch(css,/(group-composer|group-settings|groupModal)/);
   const launcher=readFileSync(new URL('../index.html',import.meta.url),'utf8');
   assert.match(launcher,/data-drag="app_theme_studio"/);
   assert.match(launcher,/addThemeStudioShortcut/);
