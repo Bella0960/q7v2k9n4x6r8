@@ -45,3 +45,84 @@
 .phone-mockup[data-ts-detail="1"] .send-icon-btn:not(:disabled) {
   background: var(--ts-detail-send-bg) !important;
 }
+
+/* THEME-STUDIO-002: richer opt-in chat-native controls; no group management selectors. */
+.phone-mockup[data-ts-list="1"] .chat-theme-header,
+.phone-mockup[data-ts-list="1"] .wechat-home-header {
+  color: var(--ts-list-header-text) !important;
+}
+.phone-mockup[data-ts-list="1"] .chat-theme-copy h1,
+.phone-mockup[data-ts-list="1"] .wechat-home-header h1 {
+  color: var(--ts-list-header-text) !important;
+  font-size: var(--ts-list-header-title-size) !important;
+}
+.phone-mockup[data-ts-list="1"] .chat-theme-copy p {
+  color: var(--ts-list-header-sub-text) !important;
+}
+.phone-mockup[data-ts-list="1"] .cover-gradient-banner {
+  opacity: calc(var(--ts-list-cover-opacity) / 100) !important;
+  background-position: center var(--ts-list-cover-position) !important;
+}
+.phone-mockup[data-ts-list="1"][data-ts-list-cover="1"] #coverBox {
+  background-image: var(--ts-list-cover-image) !important;
+  background-repeat: no-repeat !important;
+  background-size: cover !important;
+}
+.phone-mockup[data-ts-list="1"] .white-profile-stage {
+  background: linear-gradient(180deg,var(--ts-list-stage-bg) 0%,var(--ts-list-stage-bg) 35%,transparent 100%) !important;
+}
+.phone-mockup[data-ts-list="1"][data-ts-list-paper="1"] .white-profile-stage {
+  background-image: var(--ts-list-paper-image) !important;
+  background-position: center !important;
+  background-size: cover !important;
+}
+.phone-mockup[data-ts-list="1"] .floating-music-card {
+  background: var(--ts-list-music-bg) !important;
+  border-color: var(--ts-list-item-border-color) !important;
+  border-width: var(--ts-list-item-border-width) !important;
+  border-style: solid !important;
+}
+.phone-mockup[data-ts-list="1"] .floating-music-card .m-title {
+  color: var(--ts-list-music-text) !important;
+}
+.phone-mockup[data-ts-list="1"] .chat-slim-card:not(.group-invitation-card) {
+  padding: var(--ts-list-item-padding) !important;
+  border-width: var(--ts-list-item-border-width) !important;
+  border-style: solid !important;
+  border-color: var(--ts-list-item-border-color) !important;
+}
+.phone-mockup[data-ts-list="1"] .chat-slim-card:not(.group-invitation-card) .chat-avatar:not(.group-avatar) {
+  width: var(--ts-list-avatar-size) !important;
+  height: var(--ts-list-avatar-size) !important;
+}
+.phone-mockup[data-ts-list="1"] .chat-slim-card .chat-last-msg {
+  color: var(--ts-list-preview-color) !important;
+  font-size: var(--ts-list-preview-size) !important;
+}
+.phone-mockup[data-ts-list="1"] .chat-slim-card .chat-time {
+  color: var(--ts-list-time-color) !important;
+}
+.phone-mockup[data-ts-detail="1"] .chat-header {
+  min-height: var(--ts-detail-header-height) !important;
+}
+.phone-mockup[data-ts-detail="1"] .chat-stage {
+  padding-left: var(--ts-detail-chat-padding) !important;
+  padding-right: var(--ts-detail-chat-padding) !important;
+}
+.phone-mockup[data-ts-detail="1"][data-ts-detail-image="1"] .chat-stage {
+  background-image: var(--ts-detail-image) !important;
+  background-position: center var(--ts-detail-chat-image-position) !important;
+  background-size: cover !important;
+  background-repeat: no-repeat !important;
+}
+.phone-mockup[data-ts-detail="1"] .input-dock {
+  padding-left: var(--ts-detail-composer-padding) !important;
+  padding-right: var(--ts-detail-composer-padding) !important;
+}
+.phone-mockup[data-ts-detail="1"] .input-capsule {
+  color: var(--ts-detail-input-text) !important;
+}
+.phone-mockup[data-ts-detail="1"] .chat-stage .message-date,
+.phone-mockup[data-ts-detail="1"] .chat-stage .time-divider {
+  color: var(--ts-detail-date-color) !important;
+}
