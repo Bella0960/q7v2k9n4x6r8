@@ -34,7 +34,12 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .mock-bubble-row.mine{align-self:flex-end}
 .mock-bubble-row.partner{align-self:flex-start}
 .mock-bubble-avatar{flex:none;width:23px;height:23px;background:#ddd;color:#555;border-radius:50%;font-size:9px;display:grid;place-items:center}
-.mock-bubble{font-size:var(--p-bubble-font,11px);line-height:1.5;padding:var(--p-bubble-pad,7px 10px);max-width:100%;overflow-wrap:anywhere}
+.mock-bubble{position:relative;font-size:var(--p-bubble-font,11px);line-height:1.5;max-width:100%;overflow-wrap:anywhere}
+.mock-bubble-row.partner .mock-bubble{padding:var(--p-partner-pad,7px 10px)}
+.mock-bubble-row.mine .mock-bubble{padding:var(--p-my-pad,7px 10px)}
+.mock-bubble-row.partner .mock-bubble::before,.mock-bubble-row.mine .mock-bubble::before{content:"";position:absolute;top:9px;pointer-events:none;clip-path:polygon(0 0,100% 0,100% 100%)}
+.mock-bubble-row.partner .mock-bubble::before{left:-4px;width:var(--p-partner-tail-size,0px);height:var(--p-partner-tail-size,0px);background:var(--p-partner-bg,#fff);transform:rotate(135deg)}
+.mock-bubble-row.mine .mock-bubble::before{right:-4px;width:var(--p-my-tail-size,0px);height:var(--p-my-tail-size,0px);background:var(--p-my-bg,#111);transform:rotate(45deg)}
 .mock-bubble-row.partner .mock-bubble{background:var(--p-partner-bg,#fff);color:var(--p-partner-text,#111);border-radius:var(--p-partner-radius,13px)}
 .mock-bubble-row.mine .mock-bubble{background:var(--p-my-bg,#111);color:var(--p-my-text,#fff);border-radius:var(--p-my-radius,13px)}
 .mock-composer{display:flex;align-items:center;gap:9px;padding:8px 12px 10px;background:var(--p-detail-composer-bg,#f4f4f6);font-size:18px}
