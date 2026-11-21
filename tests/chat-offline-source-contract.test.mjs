@@ -84,7 +84,10 @@ test('corrupt saved worldbook or missing persona fails closed rather than genera
   }).ok,false);
   assert.match(long,/角色档案、伴侣协议或世界书未完整加载/);
   assert.match(short,/角色资料未加载/);
-  assert.match(short,/Only publish a role-verified, actually generated message/);
+  // The real journey route now saves through an atomic append, not the old fallback template.
+  assert.match(short,/if\(!roleAudit\.ok\)\{/);
+  assert.match(short,/var messageList=Array\.isArray\(state\.messages\)\?state\.messages:\[\]/);
+  assert.match(short,/if\(!text\) return false;/);
   assert.match(long,/source\.expandedProtocol \+ '\\n\\n' \+ parts\.join/);
 });
 
