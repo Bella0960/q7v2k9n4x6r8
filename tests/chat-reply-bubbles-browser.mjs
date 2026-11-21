@@ -231,6 +231,7 @@ async function main() {
   // API mock：真实 sendMsg -> PhoneStream -> fetch，本地 SSE 回包。
   let mockReplyText = '';
   let mockTranslation = '';
+  let mockStatus = 200;
   await page.route(MOCK_BASE + '/**', async (route) => {
     const req = route.request();
     if (req.method() === 'OPTIONS') {
@@ -259,6 +260,13 @@ async function main() {
         body: JSON.stringify({ choices: [{ message: { content: mockTranslation } }] })
       });
     }
+    if (mockStatus !== 200) {
+      return route.fulfill({
+        status: mockStatus,
+        headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: { message: 'test provider unavailable' } })
+      });
+    }
     return route.fulfill({
       status: 200,
       headers: {
@@ -271,6 +279,37 @@ async function main() {
   });
 
   try {
+    for (const [status, reply, reason] of [
+      [503, '', 'api-error'],
+      [200, '', 'empty-reply'],
+      [200, '<think>内部推理</think>', 'empty-reply']
+    ]) {
+      const key = 'chat_history_bubA';
+      const oldReply = { role: 'assistant', text: '上一轮回复', time: 1, mid: 'old_reply' };
+      await page.goto(origin + '/chat/chat/chat-detail.html?id=bubA');
+      await setSeed(page, { [key]: JSON.stringify([oldReply]) });
+      await page.reload();
+      mockReplyText = reply;
+      mockStatus = status;
+      await page.evaluate(() => window.sendMsg({ text: '只保存一条用户消息' }));
+      const failed = await readHistory(page, key);
+      const [userMessage] = failed.filter(message => message.role === 'user');
+      assert.equal(userMessage.sendFailedReason, reason);
+      assert.equal(failed.filter(message => message.role === 'assistant').length, 1);
+
+      mockStatus = 200;
+      mockReplyText = '重试成功';
+      await page.locator('.msg-send-failed').click();
+      await page.waitForFunction(storageKey =>
+        JSON.parse(localStorage.getItem(storageKey)).some(message => message.text === '重试成功'),
+      key);
+      const recovered = await readHistory(page, key);
+      assert.equal(recovered.filter(message => message.role === 'user').length, 1);
+      assert.equal(recovered.find(message => message.role === 'user').mid, userMessage.mid);
+      assert.equal(recovered.find(message => message.mid === userMessage.mid).sendFailed, undefined);
+      results.push('首次 ' + (status === 503 ? 'HTTP 失败' : reason) + '后，原气泡可重试且不重复');
+    }
+
     // ================= 1. 设置页三种模式 =================
     await page.goto(origin + '/chat/chat/chat-settings.html?roleId=bubA', { waitUntil: 'domcontentloaded' });
     await page.locator('#bubbleModeCard').waitFor({ state: 'visible', timeout: 8000 });

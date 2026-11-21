@@ -392,6 +392,8 @@ test('封面：两套独立封面都存在时，编辑 myProfile.cover 不改变
 
 function loadHistoryFunctions(storageSlots) {
   const sandbox = {
+    isGroupChat: false,
+    singleChatTurnSnapshots: new WeakMap(),
     console,
     localStorage: createLocalStorage(),
     currentCharacter: { id: 'roleA' },
