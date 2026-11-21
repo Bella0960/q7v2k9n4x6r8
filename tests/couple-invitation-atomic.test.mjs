@@ -97,7 +97,7 @@ test('a lock failure keeps the profile saved and reports the invitation failure'
   await flush();
 
   assert.equal(calls.length, 1);
-  assert.deepEqual(toasts, ['资料已保存，但其他标签页正在写入聊天记录，请稍后在聊天中重试']);
+  assert.deepEqual(toasts, ['资料已保存，但当前环境无法安全写入聊天记录，请稍后在聊天中补发邀请。']);
 });
 
 test('missing atomic layer fails loudly instead of falling back to a whole-array write', async () => {
@@ -152,7 +152,7 @@ test('邀请写入可能已落盘时提示结果未确认，不谎报完整成�
   await new Promise((done) => setTimeout(done, 8));
 
   assert.equal(toasts.length, 1);
-  assert.match(toasts[0], /可能已经发出/);
+  assert.match(toasts[0], /聊天通知结果尚未确认，请先进入对应聊天检查，避免重复操作。/);
   assert.doesNotMatch(toasts[0], /^已保存$/);
 });
 

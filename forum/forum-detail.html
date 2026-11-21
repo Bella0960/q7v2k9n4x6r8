@@ -8,7 +8,7 @@
 <script src="../shared/js/native-feel.js"></script>
 <script src="../shared/js/phone/phone_storage.js"></script>
 <script src="../shared/js/phone/chat-history-atomic.js?v=20261122v4"></script>
-<script src="../shared/js/phone/chat-history-append.js?v=20261122v2"></script>
+<script src="../shared/js/phone/chat-history-append.js?v=20261122v3"></script>
 <script src="../shared/js/phone/storage/repository.js"></script>
 <script src="../shared/js/phone/storage/media-repository.js"></script>
 <script src="forum-media.js"></script>
@@ -1408,7 +1408,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       if (!outcome.ok) {
         console.error('[Forum] sharePost chat history persistence failed:', outcome.reason);
         alert(outcome.writeMayHavePersisted
-          ? '分享结果未确认：消息可能已经发出，请刷新聊天确认后重试（重试不会重复发送）'
+          ? '聊天通知结果尚未确认，请先进入对应聊天检查，避免重复操作。'
           : shareFailureNotice(outcome.reason));
         return;
       }
@@ -1422,7 +1422,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
   }
 
   function shareFailureNotice(reason) {
-    if (reason === 'LOCK_UNAVAILABLE') return '其他标签页正在写入聊天记录，请稍后重试';
+    if (reason === 'LOCK_UNAVAILABLE') return '当前环境无法安全写入聊天记录，帖子未分享。';
     if (reason === 'ATOMIC_UNAVAILABLE' || reason === 'CREATE_UNAVAILABLE') {
       return '当前浏览器不支持安全的聊天记录写入，帖子没有分享成功';
     }

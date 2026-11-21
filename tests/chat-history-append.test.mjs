@@ -7,6 +7,7 @@ import test from 'node:test';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const atomicSource = readFileSync(resolve(root, 'shared/js/phone/chat-history-atomic.js'), 'utf8');
+const phoneStorageSource = readFileSync(resolve(root, 'shared/js/phone/phone_storage.js'), 'utf8');
 const appendSource = readFileSync(resolve(root, 'shared/js/phone/chat-history-append.js'), 'utf8');
 
 // 真实的 ChatHistoryAtomic + 真实的 ChatHistoryAppend，只把 localStorage、
@@ -609,4 +610,37 @@ test('appendStable 在写入被吞掉时明确失败，不得报告成功', asyn
   assert.equal(first.reason, 'VERIFY_FAILED');
   assert.equal(first.writeMayHavePersisted, true, '写入被吞掉时也属于「结果未确认」');
   assert.equal(backend.records.get('chat_history_role_a'), undefined);
+});
+
+test('首次创建：真实 PhoneStorage 写后读回失败，保留失败码并按同一 mid 去重', async () => {
+  const oldMessage = { mid: 'legacy', role: 'user', text: '旧消息', time: 1 };
+  const otherRole = '[{"mid":"other"}]';
+  const backend = createBackend({ chat_history_roleB: otherRole });
+  const { realm, appendStable } = createTab(backend, { legacy: { roleA: [oldMessage] } });
+  runInNewContext(phoneStorageSource, realm);
+  const setItem = realm.localStorage.setItem;
+  let primaryWrites = 0;
+  realm.localStorage.setItem = (key, value) => {
+    setItem(key, value);
+    if (key === 'chat_history_roleA') {
+      primaryWrites += 1;
+      backend.failNextRead = key;
+    }
+  };
+
+  let builds = 0;
+  const factory = () => ({ mid: 'notice-' + ++builds, role: 'user', text: '通知', time: 2 });
+  const first = await appendStable('notice:roleA', 'roleA', factory);
+  expectOutcome(first, { ok: false, reason: 'DB_UNAVAILABLE', writeMayHavePersisted: true });
+  assert.equal(first.writeMayHavePersisted, true);
+
+  const retry = await appendStable('notice:roleA', 'roleA', factory);
+  expectOutcome(retry, { ok: true, created: false });
+  assert.equal(builds, 1);
+  assert.equal(primaryWrites, 1);
+  assert.deepEqual(JSON.parse(backend.records.get('chat_history_roleA')), [
+    oldMessage, { mid: 'notice-1', role: 'user', text: '通知', time: 2 }
+  ]);
+  assert.equal(backend.records.get('chat_history_roleB'), otherRole);
+  assert.deepEqual(JSON.parse(backend.records.get('phone_data_v2')).roleA.chat.history, [oldMessage]);
 });
