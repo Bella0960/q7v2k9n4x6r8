@@ -320,7 +320,16 @@ test('character deletion cleans cooldown only after save, with the existing retr
   assert.match(manager, /const cooldownCleared = !!choice && typeof choice\.clearRole === 'function' &&\s*choice\.clearRole\(item\.roleId\)/);
   assert.match(manager, /!result \|\| !result\.ok \|\| !cooldownCleared/);
   assert.ok(characterPage.includes('../../shared/js/phone/role-avatar-choice.js?v=20261113v1'));
-  assert.ok(characterPage.indexOf('role-avatar-choice.js?v=20261113v1') < characterPage.indexOf('characters-manager.js?v=20261121avatar1'));
+  // Verify actual script order without freezing an unrelated cache-busting version.
+  // Signed-card bridge and avatar autonomy both need to load before the editor.
+  const avatarChoiceScript = 'role-avatar-choice.js?v=20261113v1';
+  const editorScript = characterPage.match(/<script\s+src="js\/characters-manager\.js\?v=[^"]+"\s*><\/script>/);
+  assert.ok(editorScript, 'character editor must load a versioned manager script');
+  const editorPosition = characterPage.indexOf(editorScript[0]);
+  const avatarPosition = characterPage.indexOf(avatarChoiceScript);
+  const cardBridgePosition = characterPage.indexOf('character-card-client.js?v=');
+  assert.ok(avatarPosition >= 0 && avatarPosition < editorPosition, 'avatar choice must load before the character editor');
+  assert.ok(cardBridgePosition >= 0 && cardBridgePosition < editorPosition, 'signed card bridge must load before the character editor');
 });
 
 
