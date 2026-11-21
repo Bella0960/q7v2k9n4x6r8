@@ -586,7 +586,7 @@ test('09 Service Worker navigation verifies private sessions online; public sign
   const end = sw.indexOf("if (req.mode === 'navigate' && isPublicAccountPage)", start);
   assert.ok(start >= 0 && end > start, 'private and public navigations must be separated');
   const privateNavigation = sw.slice(start, end);
-  assert.match(privateNavigation, /return await fetch\(req\)/,
+  assert.match(privateNavigation, /return await fetch\(req, \{ cache: 'no-store' \}\)/,
     'private HTML must be network-first for every login/revocation');
   assert.doesNotMatch(privateNavigation, /caches\.match\(req\)|cache\.match\(req\)/,
     'cached private HTML must never bypass Worker identity checks');
