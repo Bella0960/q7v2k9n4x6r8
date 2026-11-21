@@ -6855,6 +6855,9 @@
                         if (replySaved && (replyMessages.length || aiStickerMessages.length || aiRoleGalleryMessages.length)) {
                             if (_vl) {
                                 vlRefresh();
+                            } else if (!isGroupChat && isRegen) {
+                                // The saved replacement also removed the previous turn.
+                                renderAllMessages();
                             } else {
                                 var aiMessageIndex = chatMessages.querySelectorAll('.msg-row[data-idx]').length;
                                 var shouldPaceBubbles = activeChatModeForPrompt !== 'narration' &&

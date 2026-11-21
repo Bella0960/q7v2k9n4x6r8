@@ -310,6 +310,21 @@ async function main() {
       results.push('首次 ' + (status === 503 ? 'HTTP 失败' : reason) + '后，原气泡可重试且不重复');
     }
 
+    const regenKey = 'chat_history_bubA';
+    const regenSeed = JSON.stringify([
+      { role: 'user', text: '原问题', time: 1, mid: 'kept_user' },
+      { role: 'assistant', text: '原回复', time: 2, mid: 'kept_reply' }
+    ]);
+    await setSeed(page, { [regenKey]: regenSeed });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    mockReplyText = '[心声:没说出口的内容]';
+    const regenResponse = page.waitForResponse(response => response.url() === MOCK_BASE + '/chat/completions');
+    await page.evaluate(() => window.regenerateReply('', 'kept_reply'));
+    await regenResponse;
+    await page.getByText('重新生成未成功，原回复已保留', { exact: true }).waitFor();
+    assert.equal(await page.evaluate(key => localStorage.getItem(key), regenKey), regenSeed);
+    results.push('重生成只返回非正文标记时，旧回复与用户消息原样保留');
+
     // ================= 1. 设置页三种模式 =================
     await page.goto(origin + '/chat/chat/chat-settings.html?roleId=bubA', { waitUntil: 'domcontentloaded' });
     await page.locator('#bubbleModeCard').waitFor({ state: 'visible', timeout: 8000 });
