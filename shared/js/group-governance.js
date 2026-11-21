@@ -141,7 +141,9 @@
     var role = matches[0];
     if (c.members.some(function (m) { return id(m.id) === id(role.id); })) return fail('ALREADY_MEMBER', '角色已在群里');
     c.group.members.push({ id: id(role.id), name: role.name || '角色', avatar: role.avatar || '',
-      nickname: '', title: '', isAdmin: false, memberRole: 'member', muted: false, isMuted: false, activeFrom: '08:00', activeTo: '23:00' });
+      nickname: '', title: '', isAdmin: false, memberRole: 'member', muted: false, isMuted: false,
+      activeFrom: '08:00', activeTo: '23:00', talkativeness: 0.5, replyThreshold: 55,
+      interests: [], interestTags: [], expertiseTags: [], backgroundTags: [] });
     return { ok: true, message: '已邀请角色入群' };
   }});
   function read(storage, key) {
