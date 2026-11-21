@@ -816,40 +816,50 @@ test('商店和外卖：交易成功但聊天通知失败时显示合并后的�
 
 
 function loadJourneyMessageWriter(storage, saved = []) {
+  // Exercise the CURRENT atomic append pathway, not the retired saveHistory
+  // whole-history writer. Seed the same authoritative primary key read by the page.
   let persisted = JSON.parse(JSON.stringify(saved));
   let attempts = 0;
   let warnings = 0;
   let stateWrites = 0;
+  const localStorage = createLocalStorage({
+    chat_history_roleA: JSON.stringify(saved)
+  });
   const sandbox = {
-    window: {},
-    localStorage: createLocalStorage(),
+    window: {
+      ChatHistoryAtomic: {
+        async appendIf(id, entry, predicate) {
+          attempts += 1;
+          assert.equal(id, 'roleA');
+          const latest = JSON.parse(localStorage.getItem('chat_history_roleA'));
+          if (!predicate(latest)) return { ok: false, error: { code: 'STALE_CONTEXT' } };
+          const next = latest.concat([JSON.parse(JSON.stringify(entry))]);
+          const savedOk = await storage.saveChatHistory(id, next, (value) => {
+            persisted = JSON.parse(JSON.stringify(value));
+            localStorage.setItem('chat_history_roleA', JSON.stringify(value));
+          });
+          return savedOk
+            ? { ok: true }
+            : { ok: false, error: { code: 'STORAGE_WRITE_FAILED' } };
+        }
+      }
+    },
+    localStorage,
     roleId: 'roleA',
     historyKey: 'chat_history_roleA',
     stateKey: 'chat_journey_state_roleA',
     state: { startedAt: 1000, scene: '咖啡馆', sentStages: [], messages: ['刚出门'] },
     stages: [{ at: 0 }],
-    fallbackMessages: ['刚出门'],
-    PhoneStorage: undefined,
     console: { error() {} },
     saveState() { stateWrites += 1; },
-    showStorageWarning() { warnings += 1; },
-    generateFallbackText() { return '刚出门'; },
-    loadHistory() { return JSON.parse(JSON.stringify(persisted)); }
+    showStorageWarning() { warnings += 1; }
   };
-  sandbox.window.PhoneStorage = storage ? {
-    saveChatHistory(id, list) {
-      attempts += 1;
-      return storage.saveChatHistory(id, list, (next) => {
-        persisted = JSON.parse(JSON.stringify(next));
-      });
-    },
-    getChatHistory() {
-      return JSON.parse(JSON.stringify(persisted));
-    }
-  } : null;
+  assert.match(journeyPageSource, /async function appendJourneyMessage\(/);
   const source = [
-    extractFunction(journeyPageSource, 'saveHistory'),
-    extractFunction(journeyPageSource, 'appendJourneyMessage')
+    'var pendingJourneyStageWrites = Object.create(null);',
+    extractFunction(journeyPageSource, 'readJourneyPrimary'),
+    extractFunction(journeyPageSource, 'hasJourneyStage'),
+    extractFunction(journeyPageSource, 'appendJourneyMessage').replace(/^function /, 'async function ')
   ].join('\n') + '\nappendJourneyMessage;';
   const append = runInNewContext(source, sandbox, { filename: 'chat/date/journey.html#appendJourneyMessage' });
   return {
@@ -862,7 +872,7 @@ function loadJourneyMessageWriter(storage, saved = []) {
   };
 }
 
-test('赴约行程：阶段消息写入失败时不标记已发送，并在下一帧重试', () => {
+test('赴约行程：阶段消息写入失败时不标记已发送，并在下一帧重试', async () => {
   let allowSave = false;
   const writer = loadJourneyMessageWriter({
     saveChatHistory(id, list, persist) {
@@ -873,13 +883,13 @@ test('赴约行程：阶段消息写入失败时不标记已发送，并在下�
     }
   });
 
-  writer.append(0);
+  await writer.append(0);
   assert.deepEqual(writer.state.sentStages, [], '失败时不能写入 sentStages');
   assert.equal(writer.read().length, 0);
   assert.equal(writer.warnings, 1);
 
   allowSave = true;
-  writer.append(0);
+  await writer.append(0);
   assert.deepEqual(writer.state.sentStages, [0]);
   assert.equal(writer.read().length, 1);
   assert.equal(writer.read()[0].mode, 'journey');
@@ -887,7 +897,7 @@ test('赴约行程：阶段消息写入失败时不标记已发送，并在下�
   assert.equal(writer.attempts, 2);
 });
 
-test('赴约行程：历史中已存在相同 journeyId/stage 时不重复插入', () => {
+test('赴约行程：历史中已存在相同 journeyId/stage 时不重复插入', async () => {
   const existing = [{
     role: 'assistant',
     type: 'text',
@@ -904,7 +914,7 @@ test('赴约行程：历史中已存在相同 journeyId/stage 时不重复插入
     }
   }, existing);
 
-  writer.append(0);
+  await writer.append(0);
   assert.equal(writer.read().length, 1);
   assert.deepEqual(writer.state.sentStages, [0]);
   assert.equal(writer.attempts, 0);
