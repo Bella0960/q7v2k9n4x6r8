@@ -9,7 +9,7 @@
 <script src="../shared/js/native-feel.js?v=20261118statusbar1"></script>
 <script src="../shared/js/phone/phone_storage.js"></script>
 <script src="../shared/js/phone/chat-history-atomic.js?v=20261122v4"></script>
-<script src="../shared/js/phone/chat-history-append.js?v=20261122v2"></script>
+<script src="../shared/js/phone/chat-history-append.js?v=20261122v3"></script>
 <script src="../shared/js/phone/role_family_cards.js?v=20261028v3"></script>
 <style>
 :root{color-scheme:light;--ink:#111;--muted:#8e8e93;--line:#e5e5ea;--paper:#f7f7f9;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
@@ -298,7 +298,7 @@ button,a{font:inherit}
     });
   }
   function noticeFailureMessage(reason) {
-    if (reason === 'LOCK_UNAVAILABLE') return '卡片操作已保存，但其他标签页正在写入聊天记录，请稍后在对应聊天中补发';
+    if (reason === 'LOCK_UNAVAILABLE') return '卡片操作已保存，但当前环境无法安全写入聊天记录，请稍后在对应聊天中补发通知。';
     if (reason === 'ATOMIC_UNAVAILABLE' || reason === 'CREATE_UNAVAILABLE') {
       return '卡片操作已保存，但当前浏览器不支持安全的聊天记录写入，请更新浏览器后补发';
     }
@@ -331,7 +331,7 @@ button,a{font:inherit}
     appendRoleNotice(card, verb, 'family-card:' + (card.id || '') + ':' + action).then(function (notice) {
       if (notice && notice.ok) { toast(doneLabel); return; }
       toast(notice && notice.writeMayHavePersisted
-        ? '卡片操作已保存，聊天通知可能已经发出，请刷新聊天确认（重试不会重复发送）'
+        ? '聊天通知结果尚未确认，请先进入对应聊天检查，避免重复操作。'
         : noticeFailureMessage(notice && notice.reason));
     });
   }

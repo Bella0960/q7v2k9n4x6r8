@@ -77,7 +77,7 @@ test('a lock failure is surfaced instead of silently degrading', async () => {
   assert.equal(result.reason, 'LOCK_UNAVAILABLE');
   assert.equal(calls.length, 1);
   assert.equal(helpers.noticeFailureMessage(result.reason),
-    '卡片操作已保存，但其他标签页正在写入聊天记录，请稍后在对应聊天中补发');
+    '卡片操作已保存，但当前环境无法安全写入聊天记录，请稍后在对应聊天中补发通知。');
 });
 
 test('a missing atomic layer fails loudly', async () => {
@@ -116,5 +116,5 @@ test('旧聊天记录损坏时给出「为避免覆盖」的提示', () => {
   const helpers = load(createEnv(async () => ({ ok: true })).env);
   assert.match(helpers.noticeFailureMessage('LEGACY_CORRUPT'), /为避免覆盖/);
   assert.match(helpers.noticeFailureMessage('LEGACY_UNREADABLE'), /为避免覆盖/);
-  assert.match(page, /可能已经发出/);
+  assert.match(page, /聊天通知结果尚未确认，请先进入对应聊天检查，避免重复操作。/);
 });
