@@ -10,13 +10,27 @@
       headerBg: ['color','#FFFFFF'], listBg: ['color','#FFFFFF'],
       itemBg: ['color','#F5F5F5'], textColor: ['color','#111111'],
       itemRadius: ['number',14,0,30], itemGap: ['number',8,0,26],
-      avatarRadius: ['number',50,0,50], titleSize: ['number',12,10,20]
+      avatarRadius: ['number',50,0,50], titleSize: ['number',12,10,20],
+      headerText: ['color','#111111'], headerSubText: ['color','#777777'],
+      headerTitleSize: ['number',23,15,32],
+      coverOpacity: ['number',100,0,100], coverPosition: ['number',50,0,100],
+      stageBg: ['color','#FFFFFF'],
+      musicBg: ['color','#F5F5F5'], musicText: ['color','#111111'],
+      previewColor: ['color','#666666'], previewSize: ['number',10,8,16],
+      timeColor: ['color','#888888'], itemBorderColor: ['color','#E1E1E1'],
+      itemBorderWidth: ['number',1,0,4], itemPadding: ['number',8,4,22],
+      avatarSize: ['number',32,22,60],
+      coverImage: ['asset',''], listImage: ['asset','']
     },
     detail: {
       headerBg: ['color','#FFFFFF'], headerText: ['color','#111111'],
       headerSize: ['number',14,11,22], chatBg: ['color','#F7F7F9'],
       composerBg: ['color','#F4F4F6'], inputBg: ['color','#FFFFFF'],
-      inputRadius: ['number',18,0,32], sendBg: ['color','#111111']
+      inputRadius: ['number',18,0,32], sendBg: ['color','#111111'],
+      dateColor: ['color','#999999'], inputText: ['color','#777777'],
+      chatPadding: ['number',12,0,28], headerHeight: ['number',46,36,72],
+      composerPadding: ['number',10,4,22], chatImagePosition: ['number',50,0,100],
+      chatImage: ['asset','']
     }
   };
   function defaults(group) {
@@ -32,6 +46,8 @@
       var value = input[key], field = spec[key];
       if (field[0] === 'color') {
         if (typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value)) out[key] = value;
+      } else if (field[0] === 'asset') {
+        if (typeof value === 'string' && (/^as_[A-Z2-7]{32}$/.test(value) || value === '')) out[key] = value;
       } else if (value !== null && value !== '' && Number.isFinite(Number(value))) {
         out[key] = Math.max(field[2], Math.min(field[3], Number(value)));
       }
@@ -73,6 +89,29 @@
     } catch (e) { return false; }
   }
   function cssKey(key) { return key.replace(/[A-Z]/g, function (s) { return '-' + s.toLowerCase(); }); }
+  // Stable extension point for future editor panels: register a safe typed field.
+  // Extensions provide their own opt-in CSS selector for the generated --ts-* value.
+  var EXTENSION_FIELDS = {list:[],detail:[]};
+  function registerField(group, field) {
+    if (!EXTENSION_FIELDS[group] || !field || typeof field !== 'object') return false;
+    var key = field.key;
+    if (typeof key !== 'string' || !/^[a-z][a-zA-Z0-9]{1,35}$/.test(key) ||
+        Object.prototype.hasOwnProperty.call(SPECS[group],key)) return false;
+    var type = field.type;
+    if (type !== 'color' && type !== 'number') return false;
+    var definition = type === 'color'
+      ? ['color',field.default]
+      : ['number',field.default,field.min,field.max];
+    if (type === 'color' && !/^#[a-f0-9]{6}$/i.test(definition[1])) return false;
+    if (type === 'number' && (!Number.isFinite(definition[1]) ||
+        !Number.isFinite(definition[2]) || !Number.isFinite(definition[3]) ||
+        definition[2] > definition[1] || definition[1] > definition[3])) return false;
+    SPECS[group][key] = definition;
+    EXTENSION_FIELDS[group].push([key,String(field.label||key).slice(0,40),
+      String(field.section||'更多选项').slice(0,24),String(field.unit||'px').slice(0,4)]);
+    return true;
+  }
+
   function apply() {
     if (!global.document || !global.location) return;
     var pathname = (global.location.pathname || '').toLowerCase();
@@ -82,17 +121,27 @@
     var shell = global.document.querySelector('.phone-mockup');
     if (!shell) return;
     var state = read(), flag = 'data-ts-' + group;
-    if (!state.enabled[group]) { shell.removeAttribute(flag); return; }
+    if (!state.enabled[group]) {
+      shell.removeAttribute(flag);
+      if (global.MAOMAOThemeStudioAssets) global.MAOMAOThemeStudioAssets.apply(shell,group,{});
+      return;
+    }
     Object.keys(SPECS[group]).forEach(function (key) {
-      var unit = SPECS[group][key][0] === 'number' ? 'px' : '';
-      if (key === 'avatarRadius') unit = '%';
+      var type=SPECS[group][key][0];
+      if (type === 'asset') return;
+      var unit=type === 'number' ? 'px' : '';
+      if (key === 'avatarRadius' || key === 'coverPosition' ||
+          key === 'chatImagePosition') unit='%';
+      if (key === 'coverOpacity') unit='';
       shell.style.setProperty('--ts-' + group + '-' + cssKey(key), state[group][key] + unit);
     });
     shell.setAttribute(flag, '1');
+    if (global.MAOMAOThemeStudioAssets) global.MAOMAOThemeStudioAssets.apply(shell,group,state[group]);
   }
   global.MAOMAOThemeStudio = {
     KEY: KEY, SPECS: SPECS, defaults: defaults, clean: clean, normalize: normalize,
-    read: read, save: save, cssKey: cssKey, apply: apply
+    read: read, save: save, cssKey: cssKey, apply: apply,
+    EXTENSION_FIELDS: EXTENSION_FIELDS, registerField: registerField
   };
   if (global.document) {
     if (global.document.readyState === 'loading') {
