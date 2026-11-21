@@ -7,6 +7,7 @@ import {
   usesExistingAccountAuthority
 } from './identity-bridge.js';
 import { qaIsolatedSetupEnabled, isolatedQaAuthorityFounderId, resolveQaAuthorityFounderId, initializeIsolatedQaAuthority } from './qa-identity-bootstrap.js';
+import { issueCharacterCard, verifyCharacterCard } from './character-card-signature.js';
 
 const SESSION_COOKIE = 'MAO_SESSION';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -210,6 +211,30 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     // Only the final conditional database write may authorize this request.
     if (store.touchMaoAccountSession(session.session_id, now()) !== true) return null;
     return session;
+  }
+
+  // The role card is always signed/checked by the authenticated Worker.
+  // A user-supplied format field, role ID, or local checksum cannot authorize an import.
+  async function handleCharacterCard(request, action) {
+    const session = await getAuthenticatedAccount(request);
+    if (!session) throw new ApiError(401, 'ACCOUNT_SESSION_REQUIRED', '请先登录 MAO 账号，再导出或导入签名角色卡');
+    if (session.status !== 'active') throw new ApiError(403, 'ACCOUNT_NOT_ACTIVE', '账号尚未获得角色卡导入导出资格');
+    const signingKey = String(env.MAO_CHARACTER_CARD_SIGNING_SECRET || '');
+    if (signingKey.length < 32) {
+      throw new ApiError(503, 'CHARACTER_CARD_SIGNING_NOT_CONFIGURED', '角色卡签名服务尚未配置，原有角色不会受影响');
+    }
+    const body = await readJsonBody(request);
+    if (JSON.stringify(body || {}).length > 65536) {
+      throw new ApiError(413, 'CHARACTER_CARD_TOO_LARGE', '角色卡内容过长');
+    }
+    try {
+      if (action === 'sign') {
+        return ok({ card: issueCharacterCard(body?.character, session.account_id, signingKey) });
+      }
+      return ok({ character: verifyCharacterCard(body?.card, session.account_id, signingKey) });
+    } catch {
+      throw new ApiError(400, 'CHARACTER_CARD_SIGNATURE_INVALID', '角色卡无效、签名错误或不属于当前账号，已拒绝导入');
+    }
   }
 
   async function requireActiveAdmin(request) {
@@ -1096,6 +1121,8 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       if (path === '/api/accounts/login' && method === 'POST') return await login(request);
       if (path === '/api/accounts/logout' && method === 'POST') return await logout(request);
       if (path === '/api/accounts/me' && method === 'GET') return await currentAccount(request);
+      if (path === '/api/character-cards/sign' && method === 'POST') return await handleCharacterCard(request, 'sign');
+      if (path === '/api/character-cards/verify' && method === 'POST') return await handleCharacterCard(request, 'verify');
       if (path === '/api/accounts/security' && method === 'GET') return await accountSecurity(request);
       if (path === '/api/accounts/password/change' && method === 'POST') return await changePassword(request);
       if (path === '/api/accounts/invites/redeem' && method === 'POST') return await redeemInvite(request);
