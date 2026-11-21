@@ -104,7 +104,7 @@ test('a failed edit keeps the unsaved textarea visible for copying', () => {
         history,
         storyEl: { querySelectorAll: () => [anchor] },
         document: { createElement: element },
-        saveHistory: () => false,
+        saveHistory: (list, rollback) => { list.splice(0, list.length, ...rollback); return false; },
         renderAll: () => { renderCount++; },
         scrollBottom: () => { scrollCount++; },
         toast: () => {},
@@ -143,7 +143,7 @@ test('a stale send keeps the original input draft and never requests AI', () => 
         generatingReplyOptions: false,
         closeReplyOptionsPanel: () => {},
         setSending: value => sendingStates.push(value),
-        saveHistory: () => false,
+        saveHistory: (list, rollback) => { list.splice(0, list.length, ...rollback); return false; },
         appendMessage: () => { appended++; },
         requestReply: () => { apiCalls++; }
     };
