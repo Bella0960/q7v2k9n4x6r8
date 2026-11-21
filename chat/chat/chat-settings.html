@@ -1985,8 +1985,9 @@
   var storedRole = getRoleById(roleId);
   var role = storedRole || { id: roleId || 'default', name: '聊天' };
   var selectedGroup = null;
-  // 群聊支持：roleId 以 g 开头时从 phone_groups 读取群信息
-  if (!getRoleById(roleId) && roleId && String(roleId).indexOf('g') === 0) {
+  // 明确从群聊设置进入时，优先按群 ID 查找，兼容旧档案中的同 ID 角色副本。
+  var explicitGroupOptions = new URLSearchParams(location.search).get('groupOptions') === '1';
+  if (roleId && (explicitGroupOptions || (!storedRole && String(roleId).indexOf('g') === 0))) {
     try {
       var rawGroups = localStorage.getItem('phone_groups');
       if (rawGroups) {
@@ -2009,7 +2010,7 @@
   // 普通单聊不受影响
   var isGroupSetting = !!selectedGroup;
   if (isGroupSetting && (!window.GroupGovernance?.userIsInGroup(selectedGroup) ||
-      new URLSearchParams(location.search).get('groupOptions') !== '1')) {
+      !explicitGroupOptions)) {
     location.replace('group-play.html?id=' + encodeURIComponent(roleId));
   } else {
   if (isGroupSetting) {
