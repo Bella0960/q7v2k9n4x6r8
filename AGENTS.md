@@ -13,7 +13,8 @@ Read these files first:
 5. docs/engineering/REMEDIATION_BACKLOG.md — approved task IDs and acceptance criteria.
 6. docs/chat-architecture-contract.md and docs/chat-regression-baseline.md before touching chat.
 7. docs/MAOMAO_VISUAL_DESIGN_CONSTITUTION.md before touching UI or visual design.
-8. CLAUDE.md for additional repository-specific context. If it conflicts with the engineering documents, report the conflict and follow the newer, explicitly verified engineering baseline.
+8. docs/product/OWNER_PREFERENCES.md — owner long-term aesthetic preferences, product rules and ABSOLUTE PROHIBITIONS (V1.0). Read and obey before any code, UI, data, or cleanup work; the prohibitions are hard constraints.
+9. CLAUDE.md for additional repository-specific context. If it conflicts with the engineering documents, report the conflict and follow the newer, explicitly verified engineering baseline.
 
 ## Non-negotiable project constraints
 
