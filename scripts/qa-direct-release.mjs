@@ -482,7 +482,27 @@ async function main() {
     console.log('Pinned existing QA Worker version before tests: ' + qaBaseline.versionId);
   }
   console.log('Validating original MAOMAO QA candidate; production is never targeted.');
-  for (const [command, args] of TESTS) run(command, args);
+  // Diagnostics mode is permitted ONLY for validation, never for a release.
+  // It still runs every required gate, records all failures and exits nonzero
+  // without a deployment. This avoids one manual CI round trip per stale test.
+  const collectTestFailures = !deploy && process.env.MAOMAO_QA_DIAGNOSE_ALL === '1';
+  const failedTestGates = [];
+  for (const [index, [command, args]] of TESTS.entries()) {
+    try {
+      run(command, args);
+    } catch (error) {
+      // A failed dependency installation invalidates every later result.
+      // Never attempt to run tests against incomplete dependencies.
+      if (!collectTestFailures || index === 0) throw error;
+      failedTestGates.push(index + 1);
+    }
+  }
+  if (failedTestGates.length) {
+    // Only bounded numeric gate identifiers are published by the sealed
+    // runner; the actual command output stays in its ephemeral private log.
+    console.error('QA_DIAGNOSTIC_FAILED_GATES:' + failedTestGates.join(','));
+    throw new Error('Required QA validation gates failed; no deployment attempted');
+  }
   console.log('Node, Vite and Chromium tests passed.');
   if (!deploy) {
     console.log('Validation only. No Cloudflare release attempted.');
