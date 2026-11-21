@@ -353,3 +353,27 @@ test('valid chat read targets preserve the primary and legacy fallback contracts
   assert.equal(f.api.result.getChatHistory('B').value[0].text, 'untouched B');
   assert.equal(f.writes.filter(key => String(key).startsWith('chat_history_')).length, 0);
 });
+
+test('retry treats reordered nested JSON object keys as the same persisted message', () => {
+  const original = { mid: 'fwd-order', role: 'user', metadata: { b: 2, a: { y: 9, x: 8 } }, items: [{ z: 3, a: 1 }] };
+  const raw = JSON.stringify([original]);
+  const f = fixture({ chat_history_A: raw, chat_history_B: '[{"mid":"B"}]' });
+  const retry = { items: [{ a: 1, z: 3 }], metadata: { a: { x: 8, y: 9 }, b: 2 }, role: 'user', mid: 'fwd-order' };
+  const res = f.api.result.appendChatHistory('A', retry);
+  assert.equal(res.ok, true);
+  assert.equal(res.meta.alreadyPersisted, true);
+  assert.equal(f.data.chat_history_A, raw);
+  assert.equal(f.data.chat_history_B, '[{"mid":"B"}]');
+  assert.equal(f.writes.filter(key => key === 'chat_history_A').length, 0);
+});
+
+test('retry detects changed nested media payload and never overwrites the original', () => {
+  const original = { mid: 'fwd-nested', media: { assetId: 'asset-A', alt: 'synthetic' } };
+  const raw = JSON.stringify([original]);
+  const f = fixture({ chat_history_A: raw });
+  const res = f.api.result.appendChatHistory('A', { media: { alt: 'synthetic', assetId: 'asset-B' }, mid: 'fwd-nested' });
+  assert.equal(res.ok, false);
+  assert.equal(res.error.code, 'CONFLICT');
+  assert.equal(f.data.chat_history_A, raw);
+  assert.equal(f.writes.filter(key => key === 'chat_history_A').length, 0);
+});
