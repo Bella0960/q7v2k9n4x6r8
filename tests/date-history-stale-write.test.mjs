@@ -156,3 +156,23 @@ test('a stale send keeps the original input draft and never requests AI', () => 
     assert.equal(appended, 0, 'no unsaved bubble may appear');
     assert.deepEqual(sendingStates, [true, false]);
 });
+
+test('stale snapshot is rejected before serializing a large pending write', () => {
+    const { context, key, records, warnings } = setup('[{"text":"original"}]');
+    const history = context.loadEditableHistory();
+    const newer = '[{"text":"original"},{"text":"newer online reply"}]';
+    records.set(key, newer);
+
+    let serialized = 0;
+    const rollback = history.slice();
+    history.push({
+        text: 'pending draft',
+        toJSON() { serialized++; return { text: 'pending draft' }; }
+    });
+
+    assert.equal(context.saveHistory(history, rollback), false);
+    assert.equal(serialized, 0, 'a stale writer must not serialize its entire draft history');
+    assert.equal(records.get(key), newer, 'newer primary chat history must survive');
+    assert.equal(history.length, 1);
+    assert.match(warnings[0], /刷新页面/);
+});
