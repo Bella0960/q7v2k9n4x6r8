@@ -1098,7 +1098,8 @@ test('offline date mode shares the existing history key and marks scene messages
   assert.match(date, /_storage\.getChatHistory\(roleId\)/);
   assert.match(date, /_storage\.saveChatHistory\(roleId, list\)/);
   assert.match(journey, /var historyKey = 'chat_history_' \+ roleId/);
-  assert.match(journey, /PhoneStorage\.saveChatHistory\(roleId,list\)/);
+  assert.match(journey, /await atomic\.appendIf\(roleId,entry,/);
+  assert.doesNotMatch(journey, /PhoneStorage\.saveChatHistory\(/);
 });
 
 test('PhoneStorage remains backward-compatible and only compacts after a successful primary save', () => {
