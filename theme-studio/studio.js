@@ -94,7 +94,10 @@
     stage.style.setProperty('--p-bubble-width',bubble.bubbleMaxWidth+'%');
     stage.style.setProperty('--p-my-radius',bubble.myBubbleRadiusSize+'px');
     stage.style.setProperty('--p-partner-radius',bubble.partnerBubbleRadiusSize+'px');
-    stage.style.setProperty('--p-bubble-pad',(bubble.myBubblePadding-2)+'px '+(bubble.myBubblePadding+1)+'px');
+    stage.style.setProperty('--p-my-pad',(bubble.myBubblePadding-2)+'px '+(bubble.myBubblePadding+1)+'px');
+    stage.style.setProperty('--p-partner-pad',(bubble.partnerBubblePadding-2)+'px '+(bubble.partnerBubblePadding+1)+'px');
+    stage.style.setProperty('--p-my-tail-size',bubble.myBubbleTailSize+'px');
+    stage.style.setProperty('--p-partner-tail-size',bubble.partnerBubbleTailSize+'px');
     document.querySelectorAll('.mock-bubble-avatar').forEach(function(el){
       el.style.width=Math.round(bubble.avatarSize*.72)+'px';
       el.style.height=Math.round(bubble.avatarSize*.72)+'px';
