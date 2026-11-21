@@ -112,8 +112,16 @@ async function withPage(seed, urlPath, fn) {
 
 const inviteCandidates = 'dialog [data-group-action="invite-confirm"]';
 
+async function expandOverview(page) {
+  const toggle = page.locator('[data-group-action="expand"]');
+  await toggle.waitFor({ state: 'visible' });
+  if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
+  await page.locator('#groupHomeDrawer[aria-hidden="false"]').waitFor();
+}
+
 async function openInvite(page) {
-  await page.getByRole('button', { name: '邀请', exact: true }).click();
+  await expandOverview(page);
+  await page.locator('.group-home-members [data-group-action="invite"]').click();
   await page.locator(inviteCandidates).first().waitFor();
 }
 
@@ -417,7 +425,8 @@ test('7. a removed member becomes invitable again', async () => {
       assert.deepEqual((await candidateIds(page)).sort(), ['c3', 'c4']);
 
       await page.getByRole('button', { name: '关闭', exact: true }).click();
-      await page.getByRole('button', { name: '移除', exact: true }).click();
+      await expandOverview(page);
+      await page.locator('.group-home-members [data-group-action="remove"]').click();
       await page.locator('dialog [data-group-action="remove-review"][data-target="c2"]').click();
       await page.getByRole('button', { name: '确认移除' }).click();
       await page.waitForFunction(() => document.querySelectorAll('.group-home-members [data-group-action="member"]').length === 1);
@@ -545,14 +554,17 @@ test('10. legacy group-play and group-management controls still work', async () 
   await withPage({ phone_groups: [makeGroup('g1', '旧群名', members)], ai_custom_characters: makeRoles(4) },
     '/chat/chat/group-play.html?id=g1', async (page) => {
       await page.waitForFunction(() => document.querySelectorAll('.group-home-members [data-group-action="member"]').length === 2);
-      await page.getByRole('button', { name: /群组名称/ }).click();
+      await expandOverview(page);
+      await page.locator('.group-home-list [data-group-action="name"]').click();
       await page.getByRole('textbox', { name: '群组名称' }).fill('新群名');
       await page.getByRole('button', { name: '保存', exact: true }).click();
       await page.waitForFunction(() => {
         const groups = JSON.parse(localStorage.getItem('phone_groups'));
         return groups[0].name === '新群名';
       });
-      assert.match(await page.locator('.group-home-cover').innerText(), /新群名/);
+      assert.equal((await page.locator('.group-home-name').textContent()).trim(), '新群名');
+      assert.equal((await page.locator('.group-home-cover').textContent()).trim(), '',
+        'the cover must remain text-free after renaming');
     });
 });
 
