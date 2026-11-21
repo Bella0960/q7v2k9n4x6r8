@@ -114,6 +114,7 @@ const APP_SHELL = [
   './shared/js/phone/role-worldbook-bindings.js?v=20261119-qa1',
   './shared/js/phone/chat-regex-policy.js?v=20261119regex1',
   './shared/js/phone/chat-history-atomic.js?v=20261118v3',
+  './shared/js/phone/chat-history-append.js?v=20261122v1',
   './worldbook/settings/regex-editor.css?v=20261119regex1',
   './worldbook/settings/regex-editor.js?v=20261119regex1',
   './travel/dream-travel.html',
