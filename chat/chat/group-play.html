@@ -296,7 +296,8 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
     if (!group.ownerId) group.ownerId='__user';
     function renderSettings(){
       document.querySelectorAll('[data-setting]').forEach(function(input){
-        input.checked=!!group.settings[input.getAttribute('data-setting')];
+        var setting = input.getAttribute('data-setting');
+        input.checked=setting === 'scheduleEnabled' ? group.settings[setting] === true : !!group.settings[setting];
       });
       var roundsSelect=document.getElementById('autoTalkRounds');
       if(roundsSelect)roundsSelect.value=String(group.settings.autoTalkRounds);

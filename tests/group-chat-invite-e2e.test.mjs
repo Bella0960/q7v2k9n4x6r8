@@ -216,7 +216,10 @@ test('C6-C8 chat.html -> chat-detail renders 3 members and request context conta
     // 从 chat.html 真实点击群条目
     const page = await context.newPage();
     const personaDiagnostics = [];
+    const replyErrors = [];
+    page.on('pageerror', err => replyErrors.push(err.name));
     page.on('console', (msg) => {
+      if (msg.text().includes('流式收尾处理异常')) replyErrors.push(msg.text().match(/(?:Reference|Type|Syntax|Range)Error/)?.[0] || 'PostError');
       if (msg.type() === 'error' && msg.text().includes('[ChatPersonaSources] mandatory source check failed')) {
         personaDiagnostics.push(msg.text());
       }
@@ -300,7 +303,21 @@ test('C6-C8 chat.html -> chat-detail renders 3 members and request context conta
     assert.ok(!system.includes('【群聊口吻纠偏】') && system.includes('[群成员自然互动]'),
       'group reply should retain natural speaker context without a duplicate bot lecture');
     const received = page.locator('.msg-row.received.group-member-row').last();
-    await received.waitFor({ state: 'visible', timeout: 12000 });
+    try { await received.waitFor({ state: 'visible', timeout: 12000 }); }
+    catch (error) {
+      const records = await read(page, 'chat_history_g1');
+      const stats = await page.evaluate(() => ({
+        named: document.querySelectorAll('.msg-sender').length,
+        error: document.querySelectorAll('.msg-row.received .msg-avatar').length,
+        savedFailure: document.body.textContent.includes('没有保存成功'),
+        senderFailure: document.body.textContent.includes('退出角色设定'),
+        stop: document.body.textContent.includes('提前中断')
+      }));
+      throw new Error('GROUP_DIAG ' + JSON.stringify({
+        ...stats, assistant: (records || []).filter(row => row.role === 'assistant').length,
+        errors: replyErrors
+      }), { cause: error });
+    }
     await received.scrollIntoViewIfNeeded();
     assert.equal((await received.locator('.msg-sender').textContent() || '').trim(), '阿五');
     for (const width of [375, 390, 430]) {

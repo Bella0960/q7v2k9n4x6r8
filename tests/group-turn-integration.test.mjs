@@ -337,3 +337,55 @@ test('explicit group mentions bypass hours while keeping mute and live persona c
   assert.deepEqual(gate.getGroupWakeMentionIds('', []), ['sleep']);
   assert.match(html, /getAvailableGroupMembers: function \(\) \{ return getAvailableGroupMembers\(wakeMentionIds\); \}/);
 });
+
+test('group reply text keeps all paragraphs in one bubble and extracts private thoughts', () => {
+  const start = html.indexOf('        function extractGroupThoughts(');
+  const end = html.indexOf('        // 虚拟图片落库', start);
+  const parse = new Function(html.slice(start,end) + '\nreturn extractGroupThoughts;')();
+  const result = parse('第一段。\n\n第二段。\n［心声：只在头像下看］\n[心声]第二条[/心声]');
+  assert.equal(result.text, '第一段。\n\n第二段。');
+  assert.deepEqual(result.hearts, ['只在头像下看', '第二条']);
+  assert.equal(parse('你好\n[心声:未关闭的心声').text, '你好');
+  assert.deepEqual(parse('[心声]只有秘密').hearts, ['只有秘密']);
+  const policySource = read('shared/js/phone/chat-message-policy.js');
+  const win = {};
+  new Function('window', policySource)(win);
+  const replies = win.ChatMessagePolicy.buildReplyMessages(result.text, 'single', {memberId:'r1'});
+  assert.equal(replies.length, 1);
+  assert.equal(replies[0].text, '第一段。\n第二段。');
+  assert.match(html, /const replyBubbleMode = isGroupChat \? 'single'/);
+  assert.match(html, /buildReplyMessages\(fullText, replyBubbleMode,/);
+  assert.match(html, /Group replies appear only after[\s\S]*?if \(isGroupChat\) return;/);
+  assert.match(html, /groupAvatarThoughts\.get\(avatar\)/);
+});
+test('new groups save an explicit disabled schedule and old groups require true to enable it', () => {
+  assert.match(read('chat/chat/chat.html'), /settings: \{ scheduleEnabled: false \}/);
+  assert.match(read('shared/js/group-governance.js'), /settings: \{ scheduleEnabled: false,/);
+  assert.match(html, /getGroupSettings\(\)\.scheduleEnabled !== true/);
+});
+
+test('group reply text keeps all paragraphs in one bubble and extracts private thoughts', () => {
+  const start = html.indexOf('        function extractGroupThoughts(');
+  const end = html.indexOf('        // 虚拟图片落库', start);
+  const parse = new Function(html.slice(start,end) + '\nreturn extractGroupThoughts;')();
+  const result = parse('第一段。\n\n第二段。\n［心声：只在头像下看］\n[心声]第二条[/心声]');
+  assert.equal(result.text, '第一段。\n\n第二段。');
+  assert.deepEqual(result.hearts, ['只在头像下看', '第二条']);
+  assert.equal(parse('你好\n[心声:未关闭的心声').text, '你好');
+  assert.deepEqual(parse('[心声]只有秘密').hearts, ['只有秘密']);
+  const policySource = read('shared/js/phone/chat-message-policy.js');
+  const win = {};
+  new Function('window', policySource)(win);
+  const replies = win.ChatMessagePolicy.buildReplyMessages(result.text, 'single', {memberId:'r1'});
+  assert.equal(replies.length, 1);
+  assert.equal(replies[0].text, '第一段。\n第二段。');
+  assert.match(html, /const replyBubbleMode = isGroupChat \? 'single'/);
+  assert.match(html, /buildReplyMessages\(fullText, replyBubbleMode,/);
+  assert.match(html, /Group replies appear only after[\s\S]*?if \(isGroupChat\) return;/);
+  assert.match(html, /groupAvatarThoughts\.get\(avatar\)/);
+});
+test('new groups save an explicit disabled schedule and old groups require true to enable it', () => {
+  assert.match(read('chat/chat/chat.html'), /settings: \{ scheduleEnabled: false \}/);
+  assert.match(read('shared/js/group-governance.js'), /settings: \{ scheduleEnabled: false,/);
+  assert.match(html, /getGroupSettings\(\)\.scheduleEnabled !== true/);
+});
