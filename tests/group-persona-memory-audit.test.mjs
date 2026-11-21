@@ -168,7 +168,7 @@ test('human characters do not learn an incorrect old AI identity but digital cha
 });
 
 test('online and offline group chats have non-contradictory style guidance for one speaker', () => {
-  const start=detail.indexOf('            const replyBubbleMode = getActiveReplyBubbleMode();');
+  const start=detail.indexOf("            const replyBubbleMode = isGroupChat ? 'single' : getActiveReplyBubbleMode();");
   const end=detail.indexOf('            // 当前单聊的邂逅职业',start);
   assert.ok(start>=0&&end>start);
   const f=new Function('isGroupChat','currentGroup','getActiveReplyBubbleMode',
@@ -177,7 +177,9 @@ test('online and offline group chats have non-contradictory style guidance for o
   const offline=f(true,{settings:{chatMode:'offline'}},()=>'multi');
   assert.equal(online.isGroupOfflineMode,false);
   assert.equal(offline.isGroupOfflineMode,true);
-  assert.match(online.outputFormat,/2–5 条消息，每条以换行分隔/);
+  assert.match(online.outputFormat,/本轮只输出一条完整消息/);
+  assert.doesNotMatch(offline.outputFormat,/本轮只输出一条完整消息|2–5 条消息|换行分隔/);
+  assert.doesNotMatch(online.outputFormat,/2–5 条消息|换行分隔/);
   assert.doesNotMatch(offline.outputFormat,/2–5 条消息|换行分隔/);
   assert.match(detail,/【群聊模式：线下共同场景】/);
   assert.match(detail,/if \(!isGroupChat && activeChatModeForPrompt === 'narration'\)/);

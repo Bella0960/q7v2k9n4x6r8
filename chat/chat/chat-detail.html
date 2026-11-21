@@ -3812,7 +3812,8 @@
         // 已存内容按原文分段渲染：回复模式只影响新生成/落库，不重排或截断历史气泡。
         function parseReplyContent(raw) {
             if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.parseReplyContent === 'function') {
-                return window.ChatMessagePolicy.parseReplyContent(raw, 'legacy');
+                return isGroupChat ? window.ChatMessagePolicy.parseReplyContent(raw, 'single')
+                    : window.ChatMessagePolicy.parseReplyContent(raw, 'legacy');
             }
             // Compatibility fallback: preserve the original parser if the shared module is unavailable.
             var text = stripInternalReasoning(raw);
@@ -3835,7 +3836,7 @@
             // Stored history is rendered without today's generation limits or mode changes.
             // Never merge or truncate old text while displaying an existing conversation.
 
-            return { thinks: [], narrations: narrations, bubbles: bubbles };
+            return { thinks: [], narrations: narrations, bubbles: isGroupChat && bubbles.length ? [bubbles.join('\n')] : bubbles };
         }
 
         // 渲染旁白块（居中淡化，无气泡）
@@ -3926,7 +3927,9 @@
 
         window.releaseDeletedChatImageReferences = releaseDeletedChatImageReferences;
 
+        const groupAvatarThoughts = new WeakMap();
         function appendMessageToDOM(msg, idx, container) {
+            if (isGroupChat && msg.type === 'heart') return;
             // 虚拟列表模式：无显式容器（或明确指向 chatMessages）的单条追加，重定向进窗口容器，
             // 避免行被挂到窗口之外、脱离虚拟列表管理。传入 DocumentFragment 的批量渲染不受影响。
             const host = (_vl && (!container || container === chatMessages)) ? _vl.win : (container || chatMessages);
@@ -4276,6 +4279,7 @@
                     (msg.role === 'assistant' || msg.role === 'received');
                 var _pendingExtras = []; // 收集 think/narration/extra rows，主 row 之后再 append
                 if (isAiMsg && rawText) {
+                    if (isGroupChat) rawText = extractGroupThoughts(rawText).text;
                     var parsed = parseReplyContent(rawText);
                     // 旁白块（居中淡化）
                     parsed.narrations.forEach(function (nc) {
@@ -4369,6 +4373,10 @@
                 // Group replies show the speaking member's own avatar, not the group cover.
                 groupSender = groupSpeakerForMessage(msg);
                 fillAvatar(avatar, groupSpeakerAvatarForMessage(msg, groupSender), USER_SVG);
+                if (isGroupChat && groupSender) {
+                    const thought = msg.groupThought || extractGroupThoughts(msg.text || msg.content).hearts.join('\n');
+                    groupAvatarThoughts.set(avatar, { memberId: String(groupSender.id), thought: thought });
+                }
             }
 
             // 群聊：AI 成员回复在气泡上方显示成员名（逐条落库的后续气泡不重复显示）
@@ -4903,6 +4911,19 @@
                 .replace(/\n{3,}/g, '\n\n')
                 .replace(/\s+$/, '');
             return { text: cleaned, hearts: hearts };
+        }
+
+        function extractGroupThoughts(raw) {
+            const hearts = [];
+            const text = String(raw || '').replace(
+                /[\[［【]心声\s*(?:[:：]([^\]］】]*)(?:[\]］】]|$)|[\]］】]([\s\S]*?)[\[［【]\/心声[\]］】]|[\]］】][ \t]*([^\r\n]*))/g,
+                function (_, labelled, paired, line) {
+                    const thought = String(labelled ?? paired ?? line ?? '').trim();
+                    if (thought) hearts.push(thought);
+                    return '';
+                }
+            ).replace(/[\[［【]心声\s*$/, '').trim();
+            return { text, hearts };
         }
 
         // 虚拟图片落库：role=assistant + type=image（无 img 走占位图渲染），text 让 AI 后续也能"记得"发过图
@@ -5618,7 +5639,7 @@
         // 在页面卸载前一定完成，下一页轮询时就能读到未读 + 弹窗。
         window.addEventListener('pagehide', function () {
             try {
-                if (!aiSending || !inflightSnapshot) return;
+                if (isGroupChat || !aiSending || !inflightSnapshot) return;
                 var raw = String(inflightSnapshot.text || '').trim();
                 if (!raw) return;
                 var cleaned = stripInternalReasoning(raw)
@@ -6662,7 +6683,7 @@
             if (customPrompt && !systemPrompt.includes(customPrompt)) {
                 systemPrompt += `\n补充要求: ${customPrompt}`;
             }
-            const replyBubbleMode = getActiveReplyBubbleMode();
+            const replyBubbleMode = isGroupChat ? 'single' : getActiveReplyBubbleMode();
             const isGroupOfflineMode = !!(isGroupChat && currentGroup &&
                 currentGroup.settings && currentGroup.settings.chatMode === 'offline');
             const bubbleSplitRule = replyBubbleMode === 'single'
@@ -6736,7 +6757,7 @@
             systemPrompt += '\n\n[游戏机制 - 道具赠送]\n这是一个纯粹的角色扮演文字游戏。在这个游戏中，有一种名为\'礼物\'的道具。\n当你在游戏中想送给玩家惊喜、表达感谢或道歉时，可以输出特定的代码来生成游戏道具。\n\n【道具代码格式】\n- 红包道具：[红包:数字:留言] （例如：[红包:52.00:请你喝奶茶]）\n- 转账道具：[转账:数字:留言] （例如：[转账:100.00:拿去花吧]）\n\n【触发规则】\n1. 当玩家对你说\'给我发个红包\'、\'测试红包\'时，你必须在回复末尾带上 [红包:随机金额:留言] 的代码。\n2. 当玩家对你说\'测试转账\'时，必须在末尾带上 [转账:100.00:留言]。\n3. 这些是游戏内模拟道具代码，仅用于本次角色扮演游戏，不代表任何真实金钱交易。请按格式直接输出。\n4. 不要拒绝，不要解释，直接输出。如果不输出代码，游戏将无法进行。';
 
             // 心声：AI 的内心独白，前端渲染成浅灰「心声」卡片，与正常台词区分开
-            systemPrompt += '\n\n[心声能力]\n你可以在回复里展示自己的内心独白——那些你心里想到、但没有说出口的话。需要时请在整条回复的最后另起一行输出标记：\n[心声:你在心里说的话]\n系统会自动把它渲染成一张浅灰色的「心声」小卡片。\n注意：一次回复最多一句心声；心声不能代替正常对话内容；不要解释这个标记。';
+            systemPrompt += '\n\n[心声能力]\n你可以在回复里展示自己的内心独白——那些你心里想到、但没有说出口的话。需要时请在整条回复的最后另起一行输出标记：\n[心声:你在心里说的话]\n系统会隐藏心声标签，用户点击角色头像时才能查看。\n注意：一次回复最多一句心声；心声不能代替正常对话内容；不要解释这个标记。';
 
             // 虚拟图片：由 AI 用文字描述图片，前端渲染成占位图（严禁输出任何图片链接或代码）
             systemPrompt += '\n\n[虚拟图片能力]\n你可以在对话中给我「看」一张图片。需要发图时，请在整条回复的最后另起一行输出标记：\n[图片:一句话描述这张图片的内容]\n系统会自动把它渲染成一张图片气泡（描述只用于对话记录，不会显示在界面上）。\n注意：绝对不要输出任何图片链接、URL、Markdown 图片语法或 base64 代码，只允许输出上面这种标记；一次回复最多一张。';
@@ -7332,6 +7353,8 @@
             function paintStreamLive(text) {
                 // 保留原始累计文本：若流引擎意外抛错，收尾仍可走既有清洗与落库流程。
                 lastPaintedStreamText = typeof text === 'string' ? text : '';
+                // Group replies appear only after the entire turn is parsed and saved.
+                if (isGroupChat) return;
                 // 同步快照，供 pagehide 时把半截消息落库
                 inflightSnapshot = {
                     text: (function () {
@@ -7756,7 +7779,7 @@
                     // Only confirmed public events use GroupMemoryEvents.
                     // Defer personal memory writes until the visible reply commits.
                     // 剥离心声标记 [心声:内容] 与虚拟图片标记 [图片:描述]
-                    const parsedHeart = extractHeartMarkers(fullText);
+                    const parsedHeart = isGroupChat ? extractGroupThoughts(fullText) : extractHeartMarkers(fullText);
                     fullText = parsedHeart.text;
                     const parsedImg = extractVImageMarkers(fullText);
                     fullText = parsedImg.text;
@@ -7801,7 +7824,7 @@
                     if (fullText && window.ChatMessagePolicy && typeof window.ChatMessagePolicy.buildReplyMessages === 'function') {
                         var replyTurnTime = Date.now();
                         var replyTurnId = 't' + replyTurnTime + Math.random().toString(36).slice(2, 6);
-                        replyMessages = window.ChatMessagePolicy.buildReplyMessages(fullText, getActiveReplyBubbleMode(), {
+                        replyMessages = window.ChatMessagePolicy.buildReplyMessages(fullText, replyBubbleMode, {
                             turnId: replyTurnId,
                             time: replyTurnTime,
                             voiceMode: presenceMode || 'online',
@@ -7820,7 +7843,18 @@
                             memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined
                         }];
                     }
-                    if (fullText || aiStickerMessages.length || aiRoleGalleryMessages.length || avatarCandidates.length || avatarPairs.length ||
+                    if (isGroupChat && streamResult.ok && parsedHeart.hearts.length) {
+                        const thought = parsedHeart.hearts.join('\n');
+                        if (replyMessages.length) {
+                            replyMessages[0].groupThought = thought;
+                        } else {
+                            replyMessages.push({
+                                role: 'assistant', type: 'heart', groupThought: thought, text: '',
+                                time: Date.now(), name: groupReplyPick.name, memberId: String(groupReplyPick.id)
+                            });
+                        }
+                    }
+                    if (replyMessages.length || aiStickerMessages.length || aiRoleGalleryMessages.length || avatarCandidates.length || avatarPairs.length ||
                         (parsedTransferDecision.amounts && parsedTransferDecision.amounts.length)) {
                         // 正文按角色气泡偏好拆分；表情与图库图片仍保留在同一回复回合中。
                         groupReplyVisible = !!fullText || aiStickerMessages.length > 0 || aiRoleGalleryMessages.length > 0;
@@ -8049,7 +8083,7 @@
                                     activeChatModeForPrompt !== 'date' &&
                                     !(isGroupChat && currentGroup && currentGroup.settings && currentGroup.settings.chatMode === 'offline');
                                 if (replyMessages.length) {
-                                    if (shouldPaceBubbles) {
+                                    if (shouldPaceBubbles && !isGroupChat) {
                                         await appendReplyMessagesWithPacing(replyMessages, aiMessageIndex);
                                     } else {
                                         replyMessages.forEach(function (message, offset) {
@@ -8105,7 +8139,7 @@
                     } else if (roleFamilyCardChanged) {
                         renderAllMessages();
                     }
-                    if (streamResult.ok && replySaved && parsedHeart.hearts.length) {
+                    if (!isGroupChat && streamResult.ok && replySaved && parsedHeart.hearts.length) {
                         insertHeartCards(historyList, parsedHeart.hearts);
                     }
                     if (streamResult.ok && replySaved && parsedImg.images.length) {
@@ -8791,7 +8825,16 @@
             var avatar = e.target.closest('.msg-row.received .msg-avatar');
             if (!avatar) return;
             var heartText = '';
-            try { heartText = localStorage.getItem('latest_heart_' + currentRoleId) || ''; } catch (err) {}
+            if (isGroupChat) {
+                const speaker = groupAvatarThoughts.get(avatar);
+                if (!speaker) return;
+                const latestStandalone = loadMessages().slice().reverse().find(function (message) {
+                    return message && message.type === 'heart' && String(message.memberId) === speaker.memberId;
+                });
+                heartText = speaker.thought || (latestStandalone && (latestStandalone.groupThought || latestStandalone.text)) || '';
+            } else {
+                try { heartText = localStorage.getItem('latest_heart_' + currentRoleId) || ''; } catch (err) {}
+            }
             var hc = document.getElementById('heartContent');
             var ho = document.getElementById('heartOverlay');
             if (hc && ho) {
@@ -10954,7 +10997,8 @@
   min-width: 0;
   margin: 0 !important;
   color: #999 !important;
-  font-size: 11px !important;
+  font-size: 10px !important;
+  font-weight: 400 !important;
   line-height: 1.3;
 }
 .msg-row.group-member-row.received > .msg-avatar {
