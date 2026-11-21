@@ -244,3 +244,33 @@ test('API calls are delegated to DO and never served from static ASSETS', async 
   assert.equal(calls.assets.length, 0);
   assert.equal(calls.auth.length, 1);
 });
+
+
+test('delegated QA only exposes the admin route and desktop icon to the exact configured founder UID', async () => {
+  const untrusted = makeEnv(active('super_admin', OTHER_ID));
+  untrusted.env.MAO_IDENTITY_MODE = 'delegated_preview';
+  untrusted.env.MAO_EXPECTED_FOUNDER_ID = ACCOUNT_ID;
+  const forbidden = await worker.fetch(req('/admin/admin-center.html'), untrusted.env);
+  assert.equal(forbidden.status, 302);
+  assert.equal(new URL(forbidden.headers.get('location')).pathname, '/index.html');
+  const desktop = await worker.fetch(req('/index.html'), untrusted.env);
+  assert.equal(desktop.status, 200);
+  assert.match(await desktop.text(), /meta name="mao-account-role" content="user"/);
+
+  const founder = makeEnv(active('super_admin', ACCOUNT_ID));
+  founder.env.MAO_IDENTITY_MODE = 'delegated_preview';
+  founder.env.MAO_EXPECTED_FOUNDER_ID = ACCOUNT_ID;
+  const allowed = await worker.fetch(req('/admin/admin-center.html'), founder.env);
+  assert.equal(allowed.status, 200);
+  assert.match(await allowed.text(), /meta name="mao-account-role" content="super_admin"/);
+});
+
+test('delegated QA fails closed when the trusted founder ID configuration is missing', async () => {
+  const { env } = makeEnv(active('super_admin'));
+  env.MAO_IDENTITY_MODE = 'delegated_preview';
+  const r = await worker.fetch(req('/admin/admin-center.html'), env);
+  assert.equal(r.status, 302);
+  const desktop = await worker.fetch(req('/index.html'), env);
+  assert.equal(desktop.status, 200);
+  assert.match(await desktop.text(), /meta name="mao-account-role" content="user"/);
+});
