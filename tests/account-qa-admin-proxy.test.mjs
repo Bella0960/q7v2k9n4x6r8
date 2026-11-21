@@ -7,10 +7,10 @@ const TOKEN = 'syntheticQaTokenForContractTests123456789012345';
 const ORIGIN = 'https://mao520.com';
 const BRIDGE_SECRET = 'qa-admin-proxy-test-bridge-key-1234567890';
 
-function fixture({ role = 'super_admin', disabled = false, wrongAuthority = false, wrongFounder = false, authorityError = '', revokedSession = false } = {}) {
+function fixture({ role = 'super_admin', disabled = false, wrongAuthority = false, wrongFounder = false, forgedFounderSession = false, authorityError = '', revokedSession = false } = {}) {
   const calls = [];
   const account = {
-    id: role === 'super_admin' ? FOUNDER_ID : 'MAO-SYNTHACCOUNT001',
+    id: role === 'super_admin' ? (forgedFounderSession ? 'MAO-SYNTHOTHER001' : FOUNDER_ID) : 'MAO-SYNTHACCOUNT001',
     username: 'testcreator',
     role,
     status: 'active',
@@ -197,4 +197,18 @@ test('a misbound authority with the wrong founder ID cannot receive privileged r
   }
   assert.equal(calls.filter(call => call.path === '/api/admin/accounts' ||
     call.path === '/api/admin/invites').length, 0);
+});
+
+
+test('a forged super-admin role under another UID is rejected before the isolated authority is contacted', async () => {
+  const { calls, invoke } = fixture({ forgedFounderSession: true });
+  await assert.rejects(invoke('/api/admin/accounts'), error =>
+    error.code === 'QA_FOUNDER_MISMATCH');
+  await assert.rejects(invoke('/api/admin/invites', 'POST', {
+    targetAccountId: 'MAO-SYNTHACCOUNT001',
+    uid: FOUNDER_ID
+  }), error => error.code === 'QA_FOUNDER_MISMATCH');
+  // The identity core may answer a read-only /me call; no manager endpoints
+  // or mutations are reachable even if the client claims the founder UID.
+  assert.deepEqual(calls.map(call => call.path), ['/api/accounts/me', '/api/accounts/me']);
 });
