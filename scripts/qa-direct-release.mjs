@@ -11,7 +11,7 @@
  *   MAOMAO_QA_DEPLOY_CONFIRM=maomao-aw-qa-20261114 node scripts/qa-direct-release.mjs --qa-only
  * The --qa-only mode never uploads or redeploys the identity core.
  *
- * Requires a full checkout of the existing #299 integration branch, Node 22,
+ * Requires a full checkout of the approved isolated QA candidate branch, Node 22,
  * npm, Playwright Chromium, CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN.
  * Never touches main, mao, mao-auth-preview, curly-dream-324c or app.mao520.com.
  */
@@ -27,7 +27,7 @@ const QA_DB = '4a24ce58079f468c87c2f75e107c4d1c';
 const CORE_DB = 'e1b78d3813ae4a819841e8c5c3e9e8ec';
 const QA_DO = '4a10d3dab4e16639445f4afdb0b7e5e2462cf06894cb4ae85f0ac3cd3cdba101';
 const CORE_DO = 'dba114c7b0abd8e53d1d78e579924852b8e40907e50213634aeeaeb41ab51a98';
-const BRANCH = 'integration/account-fanwai-stack-20261115';
+const BRANCH = 'integration/qa-single-chat-375';
 const QA_SETUP_OPEN = 'isolated_authority';
 const QA_SETUP_CLOSED = 'disabled';
 const TESTS = [
@@ -87,7 +87,7 @@ function run(command, args, quiet = false) {
 }
 
 function assertQaCandidate({ allowPinned = false } = {}) {
-  // Start of every release is strict: the checkout must be current #299 HEAD.
+  // Start of every release is strict: the checkout must be the current approved candidate HEAD.
   // Only AFTER all real tests pass, QA-only may deploy its immutable tested
   // snapshot if other windows added new commits on top while tests were running.
   const localSha = run('git', ['rev-parse', 'HEAD'], true);
@@ -116,7 +116,7 @@ function assertQaCandidate({ allowPinned = false } = {}) {
   });
   if (candidate.mode === 'tested-snapshot') {
     console.log('QA snapshot is verified at ' + localSha +
-      '; newer #299 commits are queued for the NEXT release: ' + remoteSha);
+      '; newer candidate commits are queued for the NEXT release: ' + remoteSha);
   }
   return candidate;
 }
@@ -199,10 +199,10 @@ function verifyQaRuntimeVars(bindings, plannedVars, { allowClosingSetup = false 
 
 function preflightCheckout() {
   assert.equal(run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], true), BRANCH,
-    'Only the original #299 integration branch may be used for the QA release');
+    'Only the approved isolated QA candidate branch may be used for the QA release');
   const origin = run('git', ['remote', 'get-url', 'origin'], true);
   assert.match(origin, /^(?:https:\/\/github\.com\/|ssh:\/\/git@github\.com\/|git@github\.com:)Bella0960\/(?:MAOMAO|q7v2k9n4x6r8)(?:\.git)?\/?$/, 'Unexpected repository origin');
-  // A clean local branch can still be stale: never release an older #299 HEAD.
+  // A clean local branch can still be stale: never release an older candidate HEAD.
   assertLatestGitHead();
   assert.equal(run('git', ['status', '--porcelain'], true), '', 'Checkout must be clean');
   for (const path of ['package-lock.json', 'worker.js', 'vite.config.js']) {
