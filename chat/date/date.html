@@ -3333,7 +3333,9 @@ body {
             return;
         }
         streamingP = null;
-        PhoneStream.chat({
+        var pendingReply;
+        try {
+            pendingReply = PhoneStream.chat({
             baseUrl: cfg.baseUrl || 'https://api.openai.com/v1',
             apiKey: cfg.apiKey || '',
             model: cfg.model || 'gpt-3.5-turbo',
@@ -3342,7 +3344,14 @@ body {
             maxTokens: cfg.maxTokens,
             topP: cfg.topP,
             onPaint: paintStream
-        }).then(function (result) {
+            });
+        } catch (error) {
+            console.error('[Date] unable to start reply generation:', error);
+            appendSys(replaceLast ? '重新生成未启动，原回复已保留。' : '回复生成未启动，请检查 API 配置。');
+            setSending(false);
+            return;
+        }
+        Promise.resolve(pendingReply).then(function (result) {
             var ind = document.getElementById('dateIndicator');
             if (ind) ind.remove();
             var fullText = (result.fullText || '').trim();
