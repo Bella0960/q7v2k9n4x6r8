@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v282';
+const CACHE_NAME = 'phone-app-pwa-v283';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 function cacheablePublicResponse(response) {
   return !!(response && response.ok && !response.redirected &&
@@ -10,6 +10,20 @@ function cacheablePublicResponse(response) {
 }
 // Navigation HTML must not cache a JSON/API/error payload with a 200 status.
 // Keep static image, script and style caching on its existing independent path.
+// Do not retain a stale HTML fallback in a JavaScript, CSS or image cache entry.
+function cacheableStaticAsset(response, request) {
+  if (!cacheablePublicResponse(response)) return false;
+  const path = new URL(request.url).pathname.toLowerCase();
+  const type = String(response.headers && response.headers.get('content-type') || '').toLowerCase();
+  if (/\.css$/.test(path) || request.destination === 'style') return /^text\/css(?:;|\s|$)/.test(type);
+  if (/\.(?:js|mjs)$/.test(path) || request.destination === 'script') {
+    return /^(?:text|application)\/(?:javascript|ecmascript)(?:;|\s|$)/.test(type);
+  }
+  if (/\.(?:png|jpe?g|webp|gif|svg|avif|ico)$/.test(path) || request.destination === 'image') {
+    return /^image\//.test(type);
+  }
+  return true;
+}
 function cacheablePublicNavigationHtml(response) {
   return cacheablePublicResponse(response) && /^\s*text\/html\s*(?:;|$)/i.test(
     String(response.headers && response.headers.get('content-type') || ''));
@@ -215,9 +229,12 @@ self.addEventListener('install', event => {
 });
 
 self.addEventListener('activate', event => {
+  // Remove every obsolete app-shell generation before controlling any page.
+  // Leave imported user media, font assets and account-scoped caches untouched.
   event.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(key => key.startsWith('phone-app-') && key !== CACHE_NAME)
+      .then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME &&
+        (key.startsWith('phone-app-') || key.startsWith('maomao-app-shell-')))
         .map(key => caches.delete(key))))
       .then(() => self.clients.claim())
   );
@@ -313,7 +330,8 @@ self.addEventListener('fetch', event => {
 
   // Protected app documents must reach the Worker on every navigation so
   // account disable/revocation cannot be bypassed by a stale offline HTML cache.
-  // On network loss, fall back only to the public account entry, never cached app pages.
+  // Never replace a protected URL with a cached login page when the network drops:
+  // that impersonates a logout and breaks relative resource resolution.
   const accountPath = new URL('account/', self.registration.scope).pathname;
   const isPublicAccountPage = url.pathname === accountPath ||
     url.pathname === accountPath + 'index.html' ||
@@ -321,16 +339,23 @@ self.addEventListener('fetch', event => {
   if (req.mode === 'navigate' && !isPublicAccountPage) {
     event.respondWith((async function () {
       try {
-        return await fetch(req);
+        // Always reach the Worker account guard; never reuse a previous 302.
+        return await fetch(req, { cache: 'no-store' });
       } catch {
-        const entry = new URL('account/index.html', self.registration.scope);
-        const cachedEntry = await caches.open(CACHE_NAME).then(function (cache) {
-          return cache.match(entry.href);
-        }).catch(function () { return null; });
-        return cacheablePublicResponse(cachedEntry) ? cachedEntry : new Response('当前处于离线状态，请联网验证 MAO 账号后继续。', {
-          status: 503,
-          headers: { 'Content-Type': 'text/plain; charset=UTF-8', 'Cache-Control': 'no-store' }
-        });
+        // No private HTML may be read from CacheStorage. Equally, do not inject
+        // public sign-in HTML into a private route just because fetch failed.
+        return new Response(
+          '<!doctype html><html lang="zh-CN"><meta charset="utf-8">' +
+          '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">' +
+          '<title>暂时无法连接</title><body style="margin:0;padding:12vh 8vw;background:#fafafa;color:#333;' +
+          'font:15px/1.8 -apple-system,BlinkMacSystemFont,sans-serif">' +
+          '<h1 style="font-size:19px;font-weight:500">连接暂时中断</h1>' +
+          '<p>登录状态尚未确认，没有退出账号。请恢复网络后重新打开当前页面。</p>' +
+          '<button onclick="location.reload()" style="padding:9px 20px;border:1px solid #bbb;' +
+          'border-radius:9px;background:#fff;color:#333">重新连接</button></body></html>',
+          { status: 503, headers: { 'Content-Type': 'text/html; charset=UTF-8',
+            'Cache-Control': 'no-store', 'Retry-After': '5' } }
+        );
       }
     })());
     return;
@@ -455,17 +480,23 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // 静态文件缓存优先，并在后台更新缓存。
+  // Read only this SW generation, not other CacheStorage namespaces: an older
+  // image/CSS response must never hijack a newer asset URL.
   event.respondWith(
-    caches.match(req).then(cached => {
+    caches.open(CACHE_NAME).then(async cache => {
+      let cached = await cache.match(req).catch(() => null);
+      if (cached && !cacheableStaticAsset(cached, req)) {
+        await cache.delete(req).catch(() => undefined);
+        cached = null;
+      }
       const fresh = fetch(req).then(response => {
-        if (cacheablePublicResponse(response)) {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(req, copy))
-            .catch(() => undefined);
+        if (cacheableStaticAsset(response, req)) {
+          cache.put(req, response.clone()).catch(() => undefined);
         }
         return response;
-      }).catch(() => cached);
+      }).catch(() => cached || new Response('', {
+        status: 503, headers: { 'Cache-Control': 'no-store' }
+      }));
       return cached || fresh;
     })
   );
