@@ -625,3 +625,5 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 
 - 公共隔离发布 #44840730842 在完整 Node 门禁失败。Chromium 诊断确认旧邀请和群名回归仍走隐藏的旧设置入口。将测试更新为当前群聊设置页的邀请、移除、重邀、改名与分群隔离，并保留高级玩法页断言。GroupGovernance 邀请补齐既有成员默认字段，同时保存新旧权限字段，无需迁移。
 - ecf05ba270afe7b323c6dd6172e8029a308cf219 的三套群设置 Chromium 回归在 #44843160164 通过。完整发布仍须以 QA-only 门禁和同源 SHA 回执为准。
+
+- 第二轮定位记忆清理回归仍走旧入口，旧档案的角色副本与群共享 ID 时还会遮蔽群记录。明确从群选项入口进入时优先按群 ID 读取，单聊入口沿用原规则。Vite 和四套 Chromium 专项（含 375、390、430、1100px 的记忆清理）在 #44843984791 通过。
