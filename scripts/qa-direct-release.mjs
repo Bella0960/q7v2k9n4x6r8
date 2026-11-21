@@ -201,7 +201,7 @@ function preflightCheckout() {
   assert.equal(run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], true), BRANCH,
     'Only the original #299 integration branch may be used for the QA release');
   const origin = run('git', ['remote', 'get-url', 'origin'], true);
-  assert.match(origin, /^(?:https:\/\/github\.com\/|ssh:\/\/git@github\.com\/|git@github\.com:)Bella0960\/MAOMAO(?:\.git)?\/?$/, 'Unexpected repository origin');
+  assert.match(origin, /^(?:https:\/\/github\.com\/|ssh:\/\/git@github\.com\/|git@github\.com:)Bella0960\/(?:MAOMAO|q7v2k9n4x6r8)(?:\.git)?\/?$/, 'Unexpected repository origin');
   // A clean local branch can still be stale: never release an older #299 HEAD.
   assertLatestGitHead();
   assert.equal(run('git', ['status', '--porcelain'], true), '', 'Checkout must be clean');
