@@ -8,7 +8,7 @@
 <script src="../shared/js/native-feel.js"></script>
 <script src="../shared/js/phone/phone_storage.js"></script>
 <script src="../shared/js/phone/chat-history-atomic.js?v=20261122v4"></script>
-<script src="../shared/js/phone/chat-history-append.js?v=20261122v2"></script>
+<script src="../shared/js/phone/chat-history-append.js?v=20261122v3"></script>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -570,7 +570,7 @@
       outcome.then(function(result){
         if(result.ok){ toast('已保存'); return; }
         toast(result.writeMayHavePersisted
-          ? '资料已保存，邀请消息可能已经发出，请刷新聊天确认（重试不会重复发送）'
+          ? '聊天通知结果尚未确认，请先进入对应聊天检查，避免重复操作。'
           : invitationNotice(result.reason));
       }, function(error){
         console.error('[Couple] partner invitation history persistence failed:', error);
@@ -582,7 +582,7 @@
     toast('已保存');
   };
   function invitationNotice(reason){
-    if(reason === 'LOCK_UNAVAILABLE') return '资料已保存，但其他标签页正在写入聊天记录，请稍后在聊天中重试';
+    if(reason === 'LOCK_UNAVAILABLE') return '资料已保存，但当前环境无法安全写入聊天记录，请稍后在聊天中补发邀请。';
     if(reason === 'ATOMIC_UNAVAILABLE' || reason === 'CREATE_UNAVAILABLE'){
       return '资料已保存，但当前浏览器不支持安全的聊天记录写入，请更新浏览器后重试';
     }

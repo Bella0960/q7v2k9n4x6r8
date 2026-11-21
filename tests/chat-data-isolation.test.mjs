@@ -692,7 +692,7 @@ test('论坛分享：Web Locks 不可用时明确失败且不整表覆盖', { sk
   sandbox.share();
   await settle();
   assert.equal(sandbox.alerts.length, 1);
-  assert.match(sandbox.alerts[0], /其他标签页正在写入聊天记录/);
+  assert.match(sandbox.alerts[0], /当前环境无法安全写入聊天记录/);
   assert.equal(JSON.parse(sandbox.localStorage.getItem('chat_history_roleA')).length, 1,
     '锁不可用时历史必须保持不变');
 });

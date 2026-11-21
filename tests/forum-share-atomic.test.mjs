@@ -85,7 +85,7 @@ test('sharePost fails loudly and writes nothing when the lock is unavailable', a
   run();
   await flush();
 
-  assert.deepEqual(alerts, ['其他标签页正在写入聊天记录，请稍后重试']);
+  assert.deepEqual(alerts, ['当前环境无法安全写入聊天记录，帖子未分享。']);
   assert.equal(calls.length, 1);
   assert.equal(localWrites.length, 0, '不得退回 localStorage 整表写入');
 });
@@ -154,7 +154,7 @@ test('写入可能已落盘时提示「结果未确认」，不得显示分享�
   await flush();
 
   assert.equal(alerts.length, 1);
-  assert.match(alerts[0], /可能已经发出/);
+  assert.match(alerts[0], /聊天通知结果尚未确认，请先进入对应聊天检查，避免重复操作。/);
   assert.doesNotMatch(alerts[0], /已分享给/);
 });
 

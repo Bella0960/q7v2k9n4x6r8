@@ -90,7 +90,8 @@
             return { ok: false, error: { code: 'CREATE_FAILED' } };
         }
         if (saved && saved.ok === true) return { ok: true };
-        return { ok: false, error: { code: (saved && saved.error && saved.error.code) || 'CREATE_FAILED' } };
+        if (saved && saved.ok === false && saved.error && saved.error.code) return saved;
+        return { ok: false, error: { code: 'CREATE_FAILED' } };
     }
 
     function appendOrCreate(roleId, message) {
