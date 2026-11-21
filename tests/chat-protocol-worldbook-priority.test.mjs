@@ -20,7 +20,7 @@ const context = sandbox.window.ChatContextPolicy;
 function actualProtocolRenderer({ name, persona, memory, worldbook, user = '用户' }) {
   // Compile the same template substitution function used by the actual send path.
   const start = detail.indexOf('            function applyProtocolVars(text) {');
-  const end = detail.indexOf('\n            let systemPrompt;', start);
+  const end = detail.indexOf('\n            let systemPrompt = applyProtocolVars(rpProtocol);', start);
   assert.ok(start >= 0 && end > start);
   const body = detail.slice(start, end);
   const compile = new Function('turnSpeakerName', 'userName', 'turnSpeakerPersona', 'roleMemory', 'worldbookText',
