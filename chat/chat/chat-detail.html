@@ -3631,7 +3631,7 @@
         // exit must leave the user's retry affordance intact.
         var _retryInFlight = false;
         window.retryFailedMessage = function (mid, time) {
-            if (aiSending || _retryInFlight) {
+            if (aiSending || _retryInFlight || singleChatSendPending) {
                 if (typeof showToast === 'function') showToast('TA 正在回复中，稍等一下');
                 return;
             }
@@ -5564,6 +5564,8 @@
 
         // R3 防重入锁：AI 回复期间（含流式）忽略重复发送，防止并发请求交错写坏聊天记录
         let aiSending = false;
+        let singleChatSendPending = false;
+        let singleChatPartialSaved = false;
         let lastGroupUserSend = { text: '', time: 0 };
         let groupAutoFollowupToken = 0;
 
@@ -5618,7 +5620,7 @@
         // 在页面卸载前一定完成，下一页轮询时就能读到未读 + 弹窗。
         window.addEventListener('pagehide', function () {
             try {
-                if (!aiSending || !inflightSnapshot) return;
+                if (!aiSending || !inflightSnapshot || singleChatPartialSaved) return;
                 var raw = String(inflightSnapshot.text || '').trim();
                 if (!raw) return;
                 var cleaned = stripInternalReasoning(raw)
@@ -5637,12 +5639,29 @@
                     name: inflightSnapshot.groupName,
                     memberId: inflightSnapshot.memberId
                 });
-                saveMessages(list);
+                if (saveMessages(list) && !isGroupChat) singleChatPartialSaved = true;
             } catch (e) {}
         });
 
         // 3. 核心真实 AI 聊天发送逻辑 (含历史记录、人设构造与 15 秒超时控制)
         async function sendMsg(opts) {
+            if (isGroupChat) return sendMsgTurn(opts);
+            if (singleChatSendPending) {
+                if (typeof showToast === 'function') showToast('TA 正在回复中，稍等一下');
+                return;
+            }
+            singleChatSendPending = true;
+            try {
+                return await sendMsgTurn(opts);
+            } finally {
+                aiSending = false;
+                singleChatSendPending = false;
+                inflightSnapshot = null;
+                singleChatPartialSaved = false;
+            }
+        }
+
+        async function sendMsgTurn(opts) {
             const input = document.getElementById('chat-input');
             const sendState = (window.ChatSendPolicy && typeof window.ChatSendPolicy.normalizeOptions === 'function')
                 ? window.ChatSendPolicy.normalizeOptions(opts, input.value)
@@ -7333,7 +7352,7 @@
                 // 保留原始累计文本：若流引擎意外抛错，收尾仍可走既有清洗与落库流程。
                 lastPaintedStreamText = typeof text === 'string' ? text : '';
                 // 同步快照，供 pagehide 时把半截消息落库
-                inflightSnapshot = {
+                inflightSnapshot = !isGroupChat && isRegen ? null : {
                     text: (function () {
                         var snapshotText = lastPaintedStreamText;
                         if (window.RoleStickerLibrary && typeof window.RoleStickerLibrary.stripStreamMarker === 'function') {
@@ -7499,6 +7518,11 @@
                 fullText = window.AIResponseParser.chatText(fullText);
             }
 
+            if (!isGroupChat && !stripInternalReasoning(fullText).trim()) {
+                fullText = '';
+                if (streamResult.ok) streamResult = { ok: false, error: { kind: 'empty' } };
+            }
+
             // Recheck live membership before committing the reply: a muted/removed role
             // must not speak even if another tab changed permissions mid-stream.
             if (isGroupChat && currentGroup && groupReplyPick && window.GroupGovernance) {
@@ -7533,6 +7557,8 @@
                         : (e.reason === 'total'
                             ? '回复超时（120 秒上限），未收到有效内容。'
                             : '请求超时（' + (chatResponseTimeoutMs / 1000) + ' 秒未响应），请检查网络或 API 地址。');
+                } else if (e.kind === 'empty') {
+                    errText = '模型没有返回可用回复，请重试。';
                 } else if (e.kind === 'stream') {
                     errText = '连接失败: ' + (e.detail || '流式响应异常');
                 } else {
@@ -7611,7 +7637,7 @@
 
             // Regeneration is replacement, not deletion: a failed/empty AI turn must
             // never overwrite the saved old reply with the filtered prompt history.
-            if (isRegen && (!streamResult.ok || !String(fullText || '').trim())) {
+            function restoreFailedRegeneration() {
                 for (var regenNode = 0; regenNode < streamNodes.length; regenNode++) {
                     if (streamNodes[regenNode] && streamNodes[regenNode].parentNode) {
                         streamNodes[regenNode].parentNode.removeChild(streamNodes[regenNode]);
@@ -7623,7 +7649,16 @@
                 if (chatTitleEl) chatTitleEl.textContent = originalTitleText;
                 if (_vl) vlRefresh(); else renderAllMessages();
                 if (typeof showToast === 'function') showToast('重新生成未成功，原回复已保留');
+            }
+            if (isRegen && (!streamResult.ok || !String(fullText || '').trim())) {
+                restoreFailedRegeneration();
                 return;
+            }
+
+            var firstFailureMarked = false;
+            if (!isGroupChat && !silent && !streamResult.ok && !fullText && !retryTarget && sourceGateUser) {
+                firstFailureMarked = _markUserSendFailed(historyList, sourceGateUser.mid, sourceGateUser.time,
+                    streamResult.error && streamResult.error.kind === 'empty' ? 'empty-reply' : 'api-error');
             }
 
             // Failed retries leave the original sendFailed marker untouched.
@@ -7767,6 +7802,10 @@
                     // 删除模型意外输出的推理草稿，再进行普通聊天文本清洗
                     fullText = stripInternalReasoning(fullText);
                     fullText = cleanupAiReply(fullText);
+                    if (!isGroupChat && isRegen && !String(fullText || '').trim()) {
+                        restoreFailedRegeneration();
+                        return;
+                    }
                     groupReplyVisible = !!fullText;
                     var aiStickerMessages = (parsedRoleSticker.stickers || []).map(function (sticker) {
                         var stickerMessage = {
@@ -8042,6 +8081,8 @@
                         if (replySaved && (replyMessages.length || aiStickerMessages.length || aiRoleGalleryMessages.length)) {
                             if (_vl) {
                                 vlRefresh();
+                            } else if (!isGroupChat && isRegen) {
+                                renderAllMessages();
                             } else {
                                 var aiMessageIndex = chatMessages.querySelectorAll('.msg-row[data-idx]').length;
                                 var shouldPaceBubbles = activeChatModeForPrompt !== 'narration' &&
@@ -8152,6 +8193,9 @@
                             appendMessageToDOM(errorMsg);
                         }
                     }
+                }
+                if (firstFailureMarked) {
+                    if (_vl) vlRefresh(); else renderAllMessages();
                 }
                 scrollToBottom(true);
             } catch (postErr) {

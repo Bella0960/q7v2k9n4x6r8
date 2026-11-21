@@ -217,7 +217,10 @@
                 /* -- HTTP 层错误（401/404/429/5xx 等）：读 body 提取详情，不进入流解析 -- */
                 if (!response.ok || !response.body) {
                     enterStreamMode();
-                    return response.text().catch(function () { return ''; }).then(function (bodyText) {
+                    return response.text().catch(function (err) {
+                        if (controller.signal.aborted) throw err;
+                        return '';
+                    }).then(function (bodyText) {
                         var detail = '';
                         try {
                             var parsed = JSON.parse(bodyText);
@@ -252,6 +255,7 @@
                     try { json = JSON.parse(payload); }
                     catch (e) { return; }   // 碎片/非 JSON，忽略
 
+                    if (!json || typeof json !== 'object') return;
                     if (monitor && json.usage && typeof json.usage === 'object') usage = json.usage;
 
                     if (json.error) {
@@ -263,7 +267,7 @@
                     var choice = json.choices && json.choices[0];
                     if (choice && choice.finish_reason != null) finishReason = String(choice.finish_reason);
                     var delta = choice && choice.delta && choice.delta.content;
-                    if (delta) {
+                    if (typeof delta === 'string' && delta) {
                         fullText += delta;
                         schedulePaint();
                     }
