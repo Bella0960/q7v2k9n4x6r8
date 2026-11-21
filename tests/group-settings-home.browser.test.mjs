@@ -33,7 +33,24 @@ test('group settings support extension tiles, member controls and persisted pref
       },{group,owner});
       await page.goto(origin + '/chat/chat/chat-settings.html?roleId=g-test');
       await page.waitForURL('**/group-play.html?id=g-test');
-      await page.getByRole('button',{name:'群组管理'}).waitFor();
+      const arrow = page.locator('.group-home-arrow');
+      const drawer = page.locator('#groupSettingsDrawer');
+      await arrow.waitFor();
+      assert.equal(await arrow.getAttribute('aria-expanded'), 'false');
+      assert.equal(await drawer.evaluate(el => el.inert && el.offsetHeight === 0), true);
+      assert.equal(await page.locator('.group-home-cover').innerText(), '');
+      assert.match(await page.locator('.group-home-title').innerText(), /每周碰面\s+3 位成员/);
+      await arrow.click();
+      assert.equal(await arrow.getAttribute('aria-expanded'), 'true');
+      assert.deepEqual(await page.locator('.group-home-members button').evaluateAll(buttons =>
+        buttons.slice(-2).map(button => [button.dataset.groupAction, getComputedStyle(button.firstElementChild).borderStyle])),
+        [['invite', 'dashed'], ['remove', 'dashed']]);
+      assert.equal(await page.locator('.group-home-tools button').first().evaluate(button =>
+        getComputedStyle(button).backgroundColor), 'rgba(0, 0, 0, 0)');
+      await arrow.click();
+      await page.waitForFunction(() => document.querySelector('#groupSettingsDrawer').offsetHeight === 0);
+      assert.equal(await page.getByRole('button',{name:'群组管理'}).count(), 0);
+      await arrow.click();
       assert.equal(await page.locator('.group-home-tools button').count(),3);
       assert.equal(await page.getByRole('button',{name:'邀请',exact:true}).isEnabled(),owner==='__user');
       await page.getByRole('button',{name:'群组管理'}).click();
@@ -61,6 +78,7 @@ test('group settings support extension tiles, member controls and persisted pref
       await page.locator('dialog .group-dialog-member').filter({hasText:'新角色'}).getByRole('button',{name:'移除',exact:true}).click();
       await page.getByRole('button',{name:'确认移除'}).click();
       await page.reload();
+      await page.getByRole('button',{name:'展开',exact:true}).click();
       await page.getByRole('switch',{name:'置顶聊天',checked:true}).waitFor();
       saved=await page.evaluate(()=>JSON.parse(localStorage.phone_groups)[0]);
       assert.equal(saved.preferences.savedToContacts,true);
