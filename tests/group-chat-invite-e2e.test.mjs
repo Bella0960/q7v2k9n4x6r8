@@ -107,7 +107,7 @@ test('C1-C5 invite writes group, role library unchanged, candidate disappears', 
   const page = await context.newPage();
   try {
     await setupGroup(page, groups, roles);
-    await page.goto(baseUrl + '/chat/chat/chat-settings.html?roleId=g1', { waitUntil: 'load' });
+    await page.goto(baseUrl + '/chat/chat/chat-settings.html?roleId=g1&groupOptions=1', { waitUntil: 'load' });
     await page.waitForFunction(() => document.querySelectorAll('.gp-member-row').length === 2);
     const snapshot = (await read(page, 'ai_custom_characters')).find((r) => r.id === 'c3');
     assert.deepEqual(snapshot, roles.find((r) => r.id === 'c3'));
@@ -147,7 +147,7 @@ test('C6-C8 chat.html -> chat-detail renders 3 members and request context conta
   const settingsPage = await context.newPage();
   try {
     await setupGroup(settingsPage, groups, roles);
-    await settingsPage.goto(baseUrl + '/chat/chat/chat-settings.html?roleId=g1', { waitUntil: 'load' });
+    await settingsPage.goto(baseUrl + '/chat/chat/chat-settings.html?roleId=g1&groupOptions=1', { waitUntil: 'load' });
     await settingsPage.waitForFunction(() => document.querySelectorAll('.gp-member-row').length === 2);
     await settingsPage.locator('#actionGroupManage').click();
     await settingsPage.locator('#gpInviteToggle').click();
@@ -160,7 +160,7 @@ test('C6-C8 chat.html -> chat-detail renders 3 members and request context conta
 
     // 用群设置页真实编辑新成员资料，并让其余成员禁言，确保本轮发言者确定性为新成员
     const detailSeedPage = await context.newPage();
-    await detailSeedPage.goto(baseUrl + '/chat/chat/group-play.html?id=g1', { waitUntil: 'load' });
+    await detailSeedPage.goto(baseUrl + '/chat/chat/group-play.html?id=g1&panel=advanced', { waitUntil: 'load' });
     await detailSeedPage.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 3);
     await openGroupCategory(detailSeedPage, 'members');
     const c1Card = detailSeedPage.locator('#membersList .member[data-member-id="c1"]');
@@ -317,7 +317,7 @@ test('C9 spectatorMode saved in settings page is reflected in a fresh chat-detai
     // 设置页开启旁观模式并保存
     const settings = await context.newPage();
     await setupGroup(settings, groups, roles);
-    await settings.goto(baseUrl + '/chat/chat/group-play.html?id=g1', { waitUntil: 'load' });
+    await settings.goto(baseUrl + '/chat/chat/group-play.html?id=g1&panel=advanced', { waitUntil: 'load' });
     await settings.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 3);
     await openAtmosphereAdvanced(settings);
     await settings.locator('input[data-setting="spectatorMode"]').check();
@@ -425,7 +425,7 @@ test('C9 spectatorMode saved in settings page is reflected in a fresh chat-detai
 
     // 关闭并保存，再用新的页面实例验证规则消失
     const settings2 = await context.newPage();
-    await settings2.goto(baseUrl + '/chat/chat/group-play.html?id=g1', { waitUntil: 'load' });
+    await settings2.goto(baseUrl + '/chat/chat/group-play.html?id=g1&panel=advanced', { waitUntil: 'load' });
     await settings2.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 3);
     await openAtmosphereAdvanced(settings2);
     await settings2.locator('input[data-setting="spectatorMode"]').uncheck();
