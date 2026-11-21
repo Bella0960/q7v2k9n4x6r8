@@ -100,6 +100,7 @@ async function seedStorage(page, data) {
 async function withPage(seed, urlPath, fn) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const page = await context.newPage();
+  page.setDefaultTimeout(10000);
   try {
     await seedStorage(page, seed);
     await page.goto(baseUrl + urlPath, { waitUntil: 'load' });
@@ -180,7 +181,7 @@ test('1. every member card is collapsed by default for 2, 5 and 8 members', asyn
   for (const size of [2, 5, 8]) {
     const members = Array.from({ length: size }, (_, i) => makeMember('c' + (i + 1), '角色' + (i + 1)));
     const seed = { phone_groups: [makeGroup('g1', '测试群', members)], ai_custom_characters: makeRoles(10) };
-    await withPage(seed, '/chat/chat/group-play.html?id=g1', async (page) => {
+    await withPage(seed, '/chat/chat/group-play.html?id=g1&panel=advanced', async (page) => {
       await page.waitForFunction((n) => document.querySelectorAll('#membersList .member').length === n, size);
       const memberState = await page.$$eval('#membersList .member', (cards) => cards.map((card) => ({
         open: card.classList.contains('is-open'),
@@ -208,7 +209,7 @@ test('1b. status compacts keep avatar, nickname, role name and group nickname', 
     makeMember('c2', '角色二')
   ];
   await withPage({ phone_groups: [makeGroup('g1', '测试群', members)], ai_custom_characters: makeRoles(4) },
-    '/chat/chat/group-play.html?id=g1', async (page) => {
+    '/chat/chat/group-play.html?id=g1&panel=advanced', async (page) => {
       await page.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 2);
       await openGroupCategory(page, 'members');
       const card = page.locator('#membersList .member').first();
@@ -226,7 +227,7 @@ test('1b. status compacts keep avatar, nickname, role name and group nickname', 
 test('2. member cards open and close independently', async () => {
   const members = [makeMember('c1', '角色一'), makeMember('c2', '角色二'), makeMember('c3', '角色三')];
   await withPage({ phone_groups: [makeGroup('g1', '测试群', members)], ai_custom_characters: makeRoles(5) },
-    '/chat/chat/group-play.html?id=g1', async (page) => {
+    '/chat/chat/group-play.html?id=g1&panel=advanced', async (page) => {
       await page.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 3);
       await openGroupCategory(page, 'members');
       const cards = page.locator('#membersList .member');
@@ -257,7 +258,7 @@ test('2. member cards open and close independently', async () => {
 test('3. editing fields after expanding still persists and keeps the card open', async () => {
   const members = [makeMember('c1', '角色一'), makeMember('c2', '角色二')];
   await withPage({ phone_groups: [makeGroup('g1', '测试群', members)], ai_custom_characters: makeRoles(4) },
-    '/chat/chat/group-play.html?id=g1', async (page) => {
+    '/chat/chat/group-play.html?id=g1&panel=advanced', async (page) => {
       await page.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 2);
       await openGroupCategory(page, 'members');
       const card = page.locator('.member[data-member-id="c1"]');
@@ -299,7 +300,7 @@ test('3. editing fields after expanding still persists and keeps the card open',
 test('4. relationship pairs collapse one by one and keep saving fields', async () => {
   const members = [makeMember('c1', '角色一'), makeMember('c2', '角色二'), makeMember('c3', '角色三')];
   await withPage({ phone_groups: [makeGroup('g1', '测试群', members)], ai_custom_characters: makeRoles(5) },
-    '/chat/chat/group-play.html?id=g1', async (page) => {
+    '/chat/chat/group-play.html?id=g1&panel=advanced', async (page) => {
       await page.waitForFunction(() => document.querySelectorAll('.relationship').length === 3);
       await openGroupCategory(page, 'members');
       const pairs = page.locator('.relationship');
@@ -340,7 +341,7 @@ test('4. relationship pairs collapse one by one and keep saving fields', async (
 test('5. inviting a role from chat-settings writes it into the current group', async () => {
   const group = makeGroup('g1', '测试群', [makeMember('c1', '角色一'), makeMember('c2', '角色二')]);
   await withPage({ phone_groups: [group], ai_custom_characters: makeRoles(4) },
-    '/chat/chat/chat-settings.html?roleId=g1', async (page) => {
+    '/chat/chat/chat-settings.html?roleId=g1&groupOptions=1', async (page) => {
       await page.waitForFunction(() => document.querySelectorAll('.gp-member-row').length === 2);
       await page.locator('#actionGroupManage').click();
       await page.locator('#gpInviteToggle').waitFor({ state: 'visible' });
@@ -376,7 +377,7 @@ test('5. inviting a role from chat-settings writes it into the current group', a
 test('6. roles already in the group are not offered again', async () => {
   const group = makeGroup('g1', '测试群', [makeMember('c1', '角色一'), makeMember('c2', '角色二')]);
   await withPage({ phone_groups: [group], ai_custom_characters: makeRoles(4) },
-    '/chat/chat/chat-settings.html?roleId=g1', async (page) => {
+    '/chat/chat/chat-settings.html?roleId=g1&groupOptions=1', async (page) => {
       await page.waitForFunction(() => document.querySelectorAll('.gp-member-row').length === 2);
       await page.locator('#actionGroupManage').click();
       await page.locator('#gpInviteToggle').click();
@@ -399,7 +400,7 @@ test('6. roles already in the group are not offered again', async () => {
 test('7. a removed member becomes invitable again', async () => {
   const group = makeGroup('g1', '测试群', [makeMember('c1', '角色一'), makeMember('c2', '角色二')]);
   await withPage({ phone_groups: [group], ai_custom_characters: makeRoles(4) },
-    '/chat/chat/chat-settings.html?roleId=g1', async (page) => {
+    '/chat/chat/chat-settings.html?roleId=g1&groupOptions=1', async (page) => {
       await page.waitForFunction(() => document.querySelectorAll('.gp-member-row').length === 2);
       await page.locator('#actionGroupManage').click();
       await page.locator('#gpInviteToggle').click();
@@ -425,7 +426,7 @@ test('7. a removed member becomes invitable again', async () => {
 test('8. members and per-member config survive a reload on both pages', async () => {
   const group = makeGroup('g1', '测试群', [makeMember('c1', '角色一')]);
   await withPage({ phone_groups: [group], ai_custom_characters: makeRoles(5) },
-    '/chat/chat/group-play.html?id=g1', async (page) => {
+    '/chat/chat/group-play.html?id=g1&panel=advanced', async (page) => {
       await page.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 1);
       await openGroupCategory(page, 'members');
       await page.locator('.member-toggle').click();
@@ -462,7 +463,7 @@ test('9. groups do not leak members into each other', async () => {
   const g2 = makeGroup('g2', '群二', [makeMember('c4', '角色四')]);
   const seed = { phone_groups: [g1, g2], ai_custom_characters: makeRoles(5) };
 
-  await withPage(seed, '/chat/chat/chat-settings.html?roleId=g1', async (page) => {
+  await withPage(seed, '/chat/chat/chat-settings.html?roleId=g1&groupOptions=1', async (page) => {
     await page.waitForFunction(() => document.querySelectorAll('.gp-member-row').length === 2);
     await page.locator('#actionGroupManage').click();
     // The collapsed-by-default behavior is tested in case 5; this case
@@ -488,7 +489,7 @@ test('9. groups do not leak members into each other', async () => {
       'inviting into g1 must not change the member list of g2');
   });
 
-  await withPage(seed, '/chat/chat/group-play.html?id=g2', async (page) => {
+  await withPage(seed, '/chat/chat/group-play.html?id=g2&panel=advanced', async (page) => {
     await page.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 1);
     assert.equal((await page.locator('#membersList .member-name').first().innerText()).trim(), '角色四');
   });
@@ -500,7 +501,7 @@ test('9. groups do not leak members into each other', async () => {
 test('10. legacy group-play and group-management controls still work', async () => {
   const members = [makeMember('c1', '角色一'), makeMember('c2', '角色二')];
   await withPage({ phone_groups: [makeGroup('g1', '旧群名', members)], ai_custom_characters: makeRoles(4) },
-    '/chat/chat/group-play.html?id=g1', async (page) => {
+    '/chat/chat/group-play.html?id=g1&panel=advanced', async (page) => {
       await page.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 2);
       await openGroupCategory(page, 'atmosphere');
 
@@ -539,7 +540,7 @@ test('10. legacy group-play and group-management controls still work', async () 
     });
 
   await withPage({ phone_groups: [makeGroup('g1', '旧群名', members)], ai_custom_characters: makeRoles(4) },
-    '/chat/chat/chat-settings.html?roleId=g1', async (page) => {
+    '/chat/chat/chat-settings.html?roleId=g1&groupOptions=1', async (page) => {
       await page.waitForFunction(() => document.querySelectorAll('.gp-member-row').length === 2);
       await page.locator('#actionGroupInfo').click();
       await page.locator('#gpNameInput').waitFor({ state: 'visible' });
@@ -559,7 +560,7 @@ test('10. legacy group-play and group-management controls still work', async () 
 test('11. group-play page exposes no invite UI at runtime', async () => {
   const group = makeGroup('g1', '测试群', [makeMember('c1', '角色一'), makeMember('c2', '角色二')]);
   await withPage({ phone_groups: [group], ai_custom_characters: makeRoles(4) },
-    '/chat/chat/group-play.html?id=g1', async (page) => {
+    '/chat/chat/group-play.html?id=g1&panel=advanced', async (page) => {
       await page.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 2);
       assert.equal(await page.locator('#addList').count(), 0);
       assert.equal(await page.locator('[data-add-member]').count(), 0);
