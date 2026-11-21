@@ -29,9 +29,11 @@
     // options（可选，默认关闭，appendIf / appendManyIf / replaceIfUnchanged 的行为不变）：
     //   allowMissingPrimary —— 主键缺失时用 seed() 取到的旧副本继续，而不是直接 NOT_FOUND。
     //   seed()              —— 只在 allowMissingPrimary 且主键确实缺失时于锁内调用；
-    //                          抛异常表示旧副本不可读，按 LEGACY_UNREADABLE 失败。
+    //                          抛异常表示旧副本不可读，按 LEGACY_UNREADABLE / LEGACY_CORRUPT 失败。
     //   commit(list, ctx)   —— 自定义落盘。返回 { ok: true } 表示写完并由本函数读回校验；
-    //                          返回失败对象表示失败；返回 undefined 表示走默认的锁内 setItem。
+    //                          返回失败对象表示失败；返回 undefined 表示走默认的锁内 setItem；
+    //                          可以返回 Promise，锁会一直持有到它结束。
+    //   sharedRootLock      —— 额外先取一把共享的 phone_data_v2 根锁（见下方说明）。
     // 约定：调用方不得在持锁期间再次申请同名锁，本函数也绝不复用外层锁。
     async function withLatest(contactId, operation, options) {
         var opts = options || {};
@@ -53,8 +55,10 @@
         var lockScope = accountScope && accountScope.ready === true && accountScope.accountId
             ? encodeURIComponent(String(accountScope.accountId)) + ':' : '';
         var key = 'chat_history_' + id;
-        try {
-            return await lockManager.request('maomao:chat-history:' + lockScope + id, { mode: 'exclusive' }, function () {
+
+        // 会话锁内：读取 → 去重 → 写入 → 读回，全在同一把锁里。
+        function underConversationLock() {
+            return lockManager.request('maomao:chat-history:' + lockScope + id, { mode: 'exclusive' }, async function () {
                 var raw;
                 try { raw = global.localStorage.getItem(key); }
                 catch (e) { return fail('DB_UNAVAILABLE'); }
@@ -68,7 +72,7 @@
                     // 读到同一份旧副本、各自写出一份「旧副本 + 自己那条」。
                     var seed;
                     try { seed = typeof opts.seed === 'function' ? opts.seed() : []; }
-                    catch (e) { return fail('LEGACY_UNREADABLE'); }
+                    catch (e) { return fail(e && e.code === 'LEGACY_CORRUPT' ? 'LEGACY_CORRUPT' : 'LEGACY_UNREADABLE'); }
                     if (seed == null) seed = [];
                     if (!Array.isArray(seed)) return fail('LEGACY_UNREADABLE');
                     latest = seed;
@@ -104,6 +108,11 @@
                     var committed;
                     try { committed = opts.commit(decision.value, ctx); }
                     catch (e) { return fail('CREATE_FAILED'); }
+                    if (committed && typeof committed.then === 'function') {
+                        // 落盘实现可以是异步的，锁会持有到它结束为止。
+                        try { committed = await committed; }
+                        catch (e) { return fail('CREATE_FAILED', { writeMayHavePersisted: true }); }
+                    }
                     if (committed !== undefined) {
                         if (!committed || committed.ok !== true) {
                             return committed && committed.error ? committed : fail('CREATE_FAILED');
@@ -143,6 +152,20 @@
                 }
                 return { ok: true, value: decision.output, meta: meta };
             });
+        }
+
+        try {
+            if (opts.sharedRootLock !== true) return await underConversationLock();
+
+            // phone_data_v2 是一个键、一整份对象：首次创建后 saveChatHistory 会
+            // 读-改-写整个根来清掉旧副本。这个动作与会话锁没有交集，两个角色
+            // 同时首次创建就会互相覆盖对方的清理结果，甚至用过期快照盖掉别人
+            // 刚写进去的其他领域数据。所以创建路径额外持有一把共享根锁。
+            //
+            // 顺序固定为「根锁 → 会话锁」，只有本文件会同时持有两把锁，
+            // 不存在反序获取，因此不会形成死锁；两把锁名字不同，也不会自我重入。
+            return await lockManager.request('maomao:phone-data-root:' + lockScope + 'phone_data_v2',
+                { mode: 'exclusive' }, underConversationLock);
         } catch (e) {
             return fail('LOCK_FAILED');
         }
@@ -238,7 +261,13 @@
                     ok: true, value: latest.concat([message]),
                     output: { appended: 1, skipped: 0, created: ctx.primaryMissing === true }
                 };
-            }, { allowMissingPrimary: true, seed: opts.seed, commit: opts.commit });
+            }, {
+                allowMissingPrimary: true,
+                seed: opts.seed,
+                commit: opts.commit,
+                // 创建会重写 phone_data_v2 根，默认必须同时持有共享根锁。
+                sharedRootLock: opts.sharedRootLock !== false
+            });
         },
 
         // For edits, removals or regenerated replies: reject changes when
