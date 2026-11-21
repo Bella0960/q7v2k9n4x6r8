@@ -20,7 +20,7 @@ const context = sandbox.window.ChatContextPolicy;
 function actualProtocolRenderer({ name, persona, memory, worldbook, user = '用户' }) {
   // Compile the same template substitution function used by the actual send path.
   const start = detail.indexOf('            function applyProtocolVars(text) {');
-  const end = detail.indexOf('\n            let systemPrompt;', start);
+  const end = detail.indexOf('\n            let systemPrompt = applyProtocolVars(rpProtocol);', start);
   assert.ok(start >= 0 && end > start);
   const body = detail.slice(start, end);
   const compile = new Function('turnSpeakerName', 'userName', 'turnSpeakerPersona', 'roleMemory', 'worldbookText',
@@ -148,7 +148,7 @@ test('inline chat message pipeline still compiles after the unified prompt fix',
 });
 
 test('source-first system stack preserves complete protocol, selected persona and lore without repeat copies', () => {
-  const start = detail.indexOf('            let systemPrompt;');
+  const start = detail.indexOf('            let systemPrompt = applyProtocolVars(rpProtocol);');
   const end = detail.indexOf('            // Role-level identity seals belong ahead of all feature mechanics.', start);
   assert.ok(start >= 0 && end > start, 'real top-of-system assembly must be present');
   const builder = new Function(
@@ -221,7 +221,9 @@ test('final outbound audit fails safely, and long built-in character lectures ar
   assert.match(detail,/stopForMissingRoleSource\('protocol-updated'/);
   assert.doesNotMatch(detail,/【活人感世界书使用原则】/);
   assert.doesNotMatch(detail,/【发送前的角色一致性核对】/);
-  assert.match(detail,/const IDENTITY_LOCK = \[/);
+  assert.match(detail,/const roleIdentityHead = \[/);
+  assert.match(detail,/systemPrompt = roleIdentityHead \+ '\\n\\n' \+ systemPrompt/);
+  assert.match(detail,/const globalIdentitySeal = String\(window\.MAOMAO_RP_IDENTITY_GUARD/);
   assert.match(detail,/【本轮输出形式】/);
   const a=detail.indexOf('            // Persona/protocol/worldbook are all placed');
   const b=detail.indexOf('            // 角色主动邀请只针对确实退出过的群。',a);

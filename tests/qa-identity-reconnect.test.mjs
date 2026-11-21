@@ -42,6 +42,11 @@ function harness(probe) {
   const document = {
     visibilityState: 'visible',
     getElementById: node,
+    querySelector(selector) {
+      // No artwork in the synthetic login fixture; the real page may retry its hero image.
+      if (selector === '.hero-image') return null;
+      return null;
+    },
     querySelectorAll() { return []; },
     addEventListener(type, fn) { listeners.document.set(type, fn); }
   };
@@ -154,8 +159,9 @@ test('a wrong identity mode fails closed even when signInReady is true', async (
 
 test('QA account entry changes script URL so existing mobile PWA caches cannot serve the old login code', () => {
   const html = readFileSync(new URL('../account/index.html', import.meta.url), 'utf8');
-  assert.match(html, /\/account\/account\.js\?v=20261119reconnect1/);
+  const expectedAsset = '/account/account.js?v=20261121-login-recovery1';
+  assert.ok(html.includes(expectedAsset), 'account entry must reference the latest mobile login script');
   assert.doesNotMatch(html, /\/account\/account\.js\?v=20261116-qa1/);
   const release = readFileSync(new URL('../scripts/qa-direct-release.mjs', import.meta.url), 'utf8');
-  assert.match(release, /account\.js\?v=20261119reconnect1/);
+  assert.ok(release.includes(expectedAsset), 'QA smoke must verify the same login script version as the real page');
 });
