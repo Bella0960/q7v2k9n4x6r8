@@ -621,6 +621,13 @@ function loadForumSharePost(options = {}) {
       return raw == null ? [] : JSON.parse(raw);
     },
     result: {
+      // 三态根读取：旧数据读取必须走 getRoot，不能再用会折成 [] 的 getChatHistory。
+      getRoot() {
+        const raw = localStorage.getItem('phone_data_v2');
+        if (raw == null) return { ok: true, value: {}, meta: { found: false } };
+        try { return { ok: true, value: JSON.parse(raw), meta: { found: true } }; }
+        catch (e) { return { ok: false, error: { code: 'CORRUPT_DATA' } }; }
+      },
       saveChatHistory(id, list, expectedPrimary) {
         const key = 'chat_history_' + id;
         const raw = localStorage.getItem(key);
@@ -647,7 +654,8 @@ function loadForumSharePost(options = {}) {
     alert: (message) => alerts.push(message),
     console: { warn() {}, error() {} },
     postBody: () => '测试帖子正文',
-    postTitle: () => '测试帖子标题'
+    postTitle: () => '测试帖子标题',
+    post: { id: 'p-test' }
   };
   // shareFailureNotice 与 sharePost 同处页面脚本作用域，提取后一并注入。
   runInNewContext(extractFunction(forumDetailSource, 'shareFailureNotice'), sandbox, {
@@ -791,9 +799,10 @@ test('情侣绑定：邀请消息持久化结果与资料保存提示保持区�
   if (migrated) {
     // 已迁移：不再整表覆盖，且资料保存必须先于邀请消息。
     assert.doesNotMatch(couplePageSource, /storage\.saveChatHistory\(profile\.partnerId, next\) === true/);
-    assert.match(couplePageSource, /appendOrCreate\(partnerId, message\)/);
+    assert.match(couplePageSource, /appendStable\('couple-invite:' \+ partnerId, partnerId/);
+    assert.doesNotMatch(couplePageSource, /appendOrCreate\(/, '页面层必须走带动作 key 的幂等入口');
     const profileWrite = couplePageSource.indexOf('write(K.profile, profile)');
-    const inviteAppend = couplePageSource.indexOf('appendOrCreate(partnerId, message)');
+    const inviteAppend = couplePageSource.indexOf("appendStable('couple-invite:' + partnerId");
     assert.ok(profileWrite > 0, '资料保存语句必须存在');
     assert.ok(inviteAppend > profileWrite, '资料必须先于邀请消息保存');
   } else {
@@ -869,7 +878,8 @@ test('亲属卡通知：失败状态不会被普通卡片成功提示覆盖', as
 
   if (migrated) {
     assert.doesNotMatch(familyCardsPageSource, /localStorage\.setItem\('chat_history_/);
-    assert.match(familyCardsPageSource, /appendRoleNotice\(card, verb\)\.then\(/);
+    assert.match(familyCardsPageSource,
+      /appendRoleNotice\(card, verb, 'family-card:' \+ \(card\.id \|\| ''\) \+ ':' \+ action\)\.then\(/);
     const writer = loadWalletMessageWriter(familyCardsPageSource, 'appendRoleNotice', {
       getChatHistory: () => [],
       saveChatHistory: () => false
