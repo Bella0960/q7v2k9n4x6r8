@@ -72,6 +72,22 @@ async function setupGroup(page, groups, roles) {
 }
 
 
+const inviteCandidates = 'dialog [data-group-action="invite-confirm"]';
+
+async function openInvite(page) {
+  await page.getByRole('button', { name: '邀请', exact: true }).click();
+  await page.locator(inviteCandidates).first().waitFor();
+}
+
+async function inviteRole(page, id) {
+  await page.locator(inviteCandidates + '[data-target="' + id + '"]').click();
+  await page.getByRole('dialog').waitFor({ state: 'hidden' });
+}
+
+async function candidateIds(page) {
+  return page.locator(inviteCandidates).evaluateAll((buttons) => buttons.map((button) => button.dataset.target));
+}
+
 async function openGroupCategory(page, category) {
   await page.locator(
     '[data-open-category="' + category + '"]'
@@ -107,19 +123,17 @@ test('C1-C5 invite writes group, role library unchanged, candidate disappears', 
   const page = await context.newPage();
   try {
     await setupGroup(page, groups, roles);
-    await page.goto(baseUrl + '/chat/chat/chat-settings.html?roleId=g1&groupOptions=1', { waitUntil: 'load' });
-    await page.waitForFunction(() => document.querySelectorAll('.gp-member-row').length === 2);
+    await page.goto(baseUrl + '/chat/chat/group-play.html?id=g1', { waitUntil: 'load' });
+    await page.waitForFunction(() => document.querySelectorAll('.group-home-members [data-group-action="member"]').length === 2);
     const snapshot = (await read(page, 'ai_custom_characters')).find((r) => r.id === 'c3');
     assert.deepEqual(snapshot, roles.find((r) => r.id === 'c3'));
 
-    await page.locator('#actionGroupManage').click();
-    await page.locator('#gpInviteToggle').click();
-    await page.locator('.gp-invite-row').first().waitFor({ state: 'visible' });
-    const beforeIds = await page.$$eval('.gp-invite-row', (rows) => rows.map((r) => r.getAttribute('data-role-id')));
+    await openInvite(page);
+    const beforeIds = await candidateIds(page);
     assert.deepEqual(beforeIds.sort(), ['c3', 'c4']);
 
-    await page.locator('.gp-invite-row[data-role-id="c3"] .gp-invite-add').click();
-    await page.waitForFunction(() => document.querySelectorAll('.gp-member-row').length === 3);
+    await inviteRole(page, 'c3');
+    await page.waitForFunction(() => document.querySelectorAll('.group-home-members [data-group-action="member"]').length === 3);
 
     const storedGroups = await read(page, 'phone_groups');
     const g = storedGroups.find((x) => x.id === 'g1');
@@ -130,10 +144,11 @@ test('C1-C5 invite writes group, role library unchanged, candidate disappears', 
     assert.deepEqual(storedRoles, roles, 'entire role library must be byte-identical after invite');
     assert.deepEqual(storedRoles.find((r) => r.id === 'c3'), snapshot, 'invited role profile deep-equals snapshot');
 
-    const afterIds = await page.$$eval('.gp-invite-row', (rows) => rows.map((r) => r.getAttribute('data-role-id')));
+    await openInvite(page);
+    const afterIds = await candidateIds(page);
     assert.deepEqual(afterIds, ['c4'], 'invited role disappears from candidates');
-    assert.equal((await page.locator('#gpInviteCount').innerText()).trim(), '1 位可邀请');
-    assert.equal(await page.locator('.gp-invite-row[data-role-id="c3"]').count(), 0, 'no duplicate invite entry for c3');
+    assert.equal(await page.locator(inviteCandidates).count(), 1);
+    assert.equal(await page.locator(inviteCandidates + '[data-target="c3"]').count(), 0, 'no duplicate invite entry for c3');
   } finally {
     await context.close();
   }
@@ -147,13 +162,11 @@ test('C6-C8 chat.html -> chat-detail renders 3 members and request context conta
   const settingsPage = await context.newPage();
   try {
     await setupGroup(settingsPage, groups, roles);
-    await settingsPage.goto(baseUrl + '/chat/chat/chat-settings.html?roleId=g1&groupOptions=1', { waitUntil: 'load' });
-    await settingsPage.waitForFunction(() => document.querySelectorAll('.gp-member-row').length === 2);
-    await settingsPage.locator('#actionGroupManage').click();
-    await settingsPage.locator('#gpInviteToggle').click();
-    await settingsPage.locator('.gp-invite-row').first().waitFor({ state: 'visible' });
-    await settingsPage.locator('.gp-invite-row[data-role-id="c3"] .gp-invite-add').click();
-    await settingsPage.waitForFunction(() => document.querySelectorAll('.gp-member-row').length === 3);
+    await settingsPage.goto(baseUrl + '/chat/chat/group-play.html?id=g1', { waitUntil: 'load' });
+    await settingsPage.waitForFunction(() => document.querySelectorAll('.group-home-members [data-group-action="member"]').length === 2);
+    await openInvite(settingsPage);
+    await inviteRole(settingsPage, 'c3');
+    await settingsPage.waitForFunction(() => document.querySelectorAll('.group-home-members [data-group-action="member"]').length === 3);
     const invitedGroups = await read(settingsPage, 'phone_groups');
     assert.equal(invitedGroups[0].members.length, 3);
     await settingsPage.close();
