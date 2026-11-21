@@ -23,6 +23,7 @@ test('sign in keeps full-width fields when mobile CSS is slow',()=>{
   const html=read('account/index.html');
   const css=read('account/ivory-entry.css');
   assert.match(html,/#loginPanel \.password-field input \{[^}]*min-width:0;/);
+  assert.ok(html.includes('@layer login-essential'), 'Missing mobile fallback when external CSS is unavailable');
   assert.match(css,/\.ivory-entry #loginForm>label>input\{[^}]*width:100%;min-width:0/);
   assert.match(css,/\.ivory-entry #loginForm \.password-field input\{[^}]*min-width:0;width:0;flex:1 1 0/);
 });
@@ -33,4 +34,5 @@ test('QA auth remains fail closed but retries on mobile page restore',()=>{
   assert.ok(js.includes('authBusy || (delegatedIdentity && !delegatedSignInReady)'));
   assert.ok(js.includes("addEventListener('pageshow', retryQaIdentityOnForeground)"));
   assert.ok(js.includes("addEventListener('focus', retryQaIdentityOnForeground)"));
+  assert.ok(js.includes("heroArtwork.addEventListener('error', retryHeroArtwork)"));
 });
