@@ -6457,30 +6457,8 @@
             } catch(e) { worldbookReadError = e; }
             if (worldbookReadError) {
                 console.error('[ChatPersonaSources] worldbook read/activation failed:', worldbookReadError);
-                // The user's bubble was already persisted before prompt construction.
-                // Reuse the existing failed-message/retry path; do not duplicate
-                // messages, and do not request the model with incomplete lore.
-                let wbFailureTarget = retryTarget;
-                if (!wbFailureTarget && !isRegen && !contextOnly && !silent) {
-                    for (let i = historyList.length - 1; i >= 0; i--) {
-                        const item = historyList[i];
-                        if (item && item.role === 'user' &&
-                            String(item.text || '') === String(text || '')) {
-                            wbFailureTarget = { mid: item.mid, time: item.time };
-                            break;
-                        }
-                    }
-                }
-                const wbMarked = !!(wbFailureTarget && _markUserSendFailed(
-                    historyList, wbFailureTarget.mid, wbFailureTarget.time, 'worldbook-read'
-                ));
-                if (wbMarked) {
-                    if (_vl) vlRefresh();
-                    else renderAllMessages();
-                }
-                if (typeof showToast === 'function') showToast(wbMarked
-                    ? '世界书读取失败，本轮未请求 AI。检查挂载后点击消息旁的感叹号重试'
-                    : '世界书读取失败，本轮未请求 AI。请检查挂载和本机存储');
+                stopForMissingRoleSource('worldbook-read',
+                    '世界书读取失败，本轮未请求 AI。请检查挂载和本机存储');
                 return;
             }
             if (worldbookText.length > 32000) {
