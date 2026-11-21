@@ -69,6 +69,7 @@ function setup(options = {}) {
         calls++;
         apiMessages = config.messages;
         if (options.pending) return new Promise(resolve => { pendingResolve = resolve; });
+        if (options.throwSync) throw new Error('stream startup exception');
         if (options.reject) return Promise.reject(new Error('network rejected'));
         return Promise.resolve(options.result ?? { ok: true, fullText: 'new reply' });
       }
@@ -194,4 +195,64 @@ test('normal non-reroll reply still appends a new message', async () => {
   assert.equal(s.history[2].text, 'new reply');
   assert.equal(s.appendCount, 1);
   assert.equal(s.renderCount, 0);
+});
+
+
+test('synchronous stream startup errors keep the reply and unlock controls', () => {
+  const s = setup({ throwSync: true });
+  s.context.actReroll();
+  assert.equal(s.calls, 1);
+  assert.equal(s.writes, 0);
+  assert.equal(s.history[1], s.oldReply);
+  assert.equal(s.persisted[1], s.oldReply);
+  assert.equal(s.context.sending, false);
+  assert.ok(s.notices.some(text => /原回复已保留/.test(text)));
+});
+
+test('an apparently successful but fully filtered response cannot erase the original', async () => {
+  const s = setup({ result: { ok: true, fullText: '[红包:无效标记]' } });
+  s.context.actReroll();
+  await flush();
+  assert.equal(s.writes, 0);
+  assert.equal(s.history[1], s.oldReply);
+  assert.equal(s.context.sending, false);
+});
+
+test('preview-mode reroll also keeps its old reply until a simulated response succeeds', () => {
+  const previewSource = sourceBetween('    function localReplySim(replaceLast) {',
+    '    /* ---------- 渲染：气泡对话');
+  const oldReply = { role: 'assistant', text: 'preview old reply' };
+  const history = [{ role: 'user', text: 'preview user text' }, oldReply];
+  let persisted = history.slice();
+  let tick;
+  let writes = 0;
+  let rendered = 0;
+  const context = {
+    history, sceneName: 'scene', streamingP: null, streamingRow: null,
+    buildLocalReply: () => 'preview new reply',
+    document: { getElementById: () => null },
+    setInterval: fn => { tick = fn; return 1; },
+    clearInterval: () => {},
+    paintStream: () => { context.streamingP = {}; },
+    removeStreaming: () => { context.streamingP = null; },
+    saveHistory: (list, rollback) => { writes++; persisted = list.slice(); return true; },
+    appendSys: () => {},
+    appendAiParagraphs: () => { throw new Error('preview reroll must rerender'); },
+    renderAll: () => { rendered++; },
+    setSending: () => {},
+    scrollBottom: () => {},
+    Date
+  };
+  runInNewContext(previewSource, context);
+  context.localReplySim(oldReply);
+  assert.equal(writes, 0);
+  assert.equal(history[1], oldReply);
+  assert.equal(persisted[1], oldReply);
+  tick();
+  tick();
+  tick();
+  assert.equal(writes, 1);
+  assert.equal(history[1].text, 'preview new reply');
+  assert.equal(persisted[1].text, 'preview new reply');
+  assert.equal(rendered, 1);
 });
