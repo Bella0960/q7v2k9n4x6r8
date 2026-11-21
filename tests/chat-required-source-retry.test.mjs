@@ -43,7 +43,7 @@ function fixture(opts={}) {
 
 test('source failure updates exact original user message, without duplicating history', () => {
   const h=fixture();
-  h.stop('protocol-read','人设协议读取失败');
+  h.stop('worldbook-read','世界书读取失败');
   assert.equal(h.saves,1);
   assert.equal(h.saved.length,2);
   assert.equal(h.saved[0].mid,h.previous.mid);
@@ -52,7 +52,7 @@ test('source failure updates exact original user message, without duplicating hi
   assert.equal(h.saved[1].text,'深圳今晚有没有下雨？');
   assert.deepEqual(h.saved[1].quote,{mid:'ref-001',text:'上次的回复'});
   assert.equal(h.saved[1].sendFailed,true);
-  assert.equal(h.saved[1].sendFailedReason,'protocol-read');
+  assert.equal(h.saved[1].sendFailedReason,'worldbook-read');
   assert.equal(h.rendered,1);
   assert.match(h.notices[0],/感叹号重试/);
 });
@@ -90,6 +90,7 @@ test('all required-source aborts invoke one guarded failure handler, not a fake 
     ['group-persona-too-long','群成员人设合计过长'],
     ['protocol-read','人设协议读取失败'],
     ['protocol-missing','人设协议未加载'],
+    ['worldbook-read','世界书读取失败'],
     ['worldbook-too-long','世界书过长'],
     ['persona-sources-incomplete','角色人设、世界书或设置协议未完整载入']
   ]) {
