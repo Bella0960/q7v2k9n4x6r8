@@ -61,3 +61,24 @@ test('legacy beauty keys and role settings are never written by studio adapter',
   assert.equal(s.api.save(data),true);
   assert.deepEqual([...s.storage.keys()],['maomao_theme_studio_v1']);
 });
+
+test('phone viewport and safe-area layout exist without a separate desktop app',()=>{
+  const html=readFileSync(new URL('../theme-studio/theme-studio.html',import.meta.url),'utf8');
+  const css=readFileSync(new URL('../theme-studio/studio.css',import.meta.url),'utf8');
+  assert.match(html,/viewport-fit=cover/);
+  assert.match(html,/data-tab="list"/);
+  assert.match(html,/data-tab="detail"/);
+  assert.match(html,/data-tab="bubble"/);
+  assert.match(css,/height:100dvh/);
+  assert.match(css,/safe-area-inset-bottom/);
+  assert.match(css,/-webkit-overflow-scrolling:touch/);
+});
+test('runtime CSS is opt-in and scoped to native chat pages',()=>{
+  const css=readFileSync(new URL('../shared/css/theme-studio-runtime.css',import.meta.url),'utf8');
+  assert.match(css,/data-ts-list="1"/);
+  assert.match(css,/data-ts-detail="1"/);
+  assert.doesNotMatch(css,/(\\.group-composer|\\.group-settings|#groupModal)/);
+  const launcher=readFileSync(new URL('../index.html',import.meta.url),'utf8');
+  assert.match(launcher,/data-drag="app_theme_studio"/);
+  assert.match(launcher,/addThemeStudioShortcut/);
+});
