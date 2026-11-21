@@ -81,7 +81,8 @@ try {
         await page.evaluate(() => PhoneStorage.saveMemories('group', [{ id: 'again', content: '群记忆' }]));
         await page.evaluate(() => PhoneStorage.saveMemories('solo', [{ id: 'again', content: '单聊记忆' }]));
         for (const [id, button] of [['solo', '#actionClear'], ['group', '#actionGpClearRecord']]) {
-            await page.goto(base + '/chat/chat/chat-settings.html?roleId=' + id);
+            const groupOptions = id === 'group' ? '&groupOptions=1' : '';
+            await page.goto(base + '/chat/chat/chat-settings.html?roleId=' + id + groupOptions);
             await page.locator(button).click();
             assert.deepEqual(await page.evaluate(id => [PhoneStorage.getChatHistory(id).length, PhoneStorage.getMemories(id).length], id), [0, 0]);
         }
