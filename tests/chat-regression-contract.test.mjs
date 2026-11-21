@@ -1117,19 +1117,41 @@ test('known external history writers remain on the migration inventory', () => {
     'wallet/shop.html',
     'wallet/takeout.html',
     'wallet/family-cards.html',
-    'forum/forum-detail.html'
+    'forum/forum-detail.html',
+    'couple/couple.html'
   ];
   for (const caller of callers) {
     const source = read(caller);
-    // Group calls now append through the guarded writer, never a stale array.
-    // Other external callers remain on the migration inventory.
+    // Group calls append through the guarded writer.
     const atomicGroupCall = caller === 'chat/call/call.html' &&
       source.includes('chat-history-atomic.js') &&
       /await atomic\.appendIf\(roleId,callMessage\)/.test(source);
+    // 已迁移的页面把契约交给统一追加入口。
+    const sharedAppend = source.includes('chat-history-append.js') &&
+      source.includes('ChatHistoryAppend');
     assert.ok(
-      source.includes('chat_history_') || source.includes('saveChatHistory') || atomicGroupCall,
+      source.includes('chat_history_') || source.includes('saveChatHistory') ||
+        atomicGroupCall || sharedAppend,
       `${caller} must retain a verifiable chat-history write contract`
     );
+  }
+});
+
+test('migrated external history writers no longer overwrite the whole array', () => {
+  // 已迁移页面必须：加载原子层 + 统一入口，且不再手写 chat_history_ 整表。
+  // 未迁移页面由上面的迁移清单继续兜住，不在本用例里放行。
+  const writers = [
+    'forum/forum-detail.html',
+    'couple/couple.html',
+    'wallet/family-cards.html'
+  ];
+  for (const page of writers) {
+    const source = read(page);
+    if (!source.includes('chat-history-append.js')) continue;
+    assert.ok(source.includes('chat-history-atomic.js'), `${page} must load the atomic layer`);
+    assert.doesNotMatch(source, /localStorage\.setItem\('chat_history_/,
+      `${page} must not write the whole chat_history_ array`);
+    assert.match(source, /ChatHistoryAppend/, `${page} must append through the shared entry`);
   }
 });
 
