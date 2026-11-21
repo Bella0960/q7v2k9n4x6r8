@@ -338,6 +338,13 @@ test('character save preserves newer worldbook mounts from another open page', (
   assert.deepEqual(localOnly.getRole().worldBookIds, ['c']);
 });
 
+function readRequiredSourceStop(detail) {
+  const start = detail.indexOf('            function stopForMissingRoleSource(');
+  const end = detail.indexOf('            if (retryTarget && !visionImageMids.length)', start);
+  assert.ok(start >= 0 && end > start, 'must test the actual required-source handler');
+  return detail.slice(start, end);
+}
+
 test('chat AI context validation marks saved user bubble retryable without making an API request', () => {
   const detail = read('chat/chat/chat-detail.html');
   const start = detail.indexOf('            // 世界书：召回当前话题相关条目');
@@ -373,6 +380,8 @@ test('chat AI context validation marks saved user bubble retryable without makin
     const _markUserSendFailed = (list, mid, time, reason) => {
       result.failed.push({ mid, time, reason }); return true;
     };
+    const sourceGateUser = { mid: 'm1', time: 1 };
+    ${readRequiredSourceStop(detail)}
     ${snippet}
     result.validated = true;
   `);
@@ -483,6 +492,8 @@ test('latest QA AI prompt actually filters private/group lore and blocks bad sto
       const _markUserSendFailed = (items, mid, time, reason) => {
         result.failures.push({ mid, time, reason }); return true;
       };
+      const sourceGateUser = { mid: 'm1', time: 1 };
+      ${readRequiredSourceStop(detail)}
       ${snippet}
       result.stopped = false;
       result.text = worldbookText;
