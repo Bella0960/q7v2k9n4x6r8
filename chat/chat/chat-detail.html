@@ -2816,8 +2816,9 @@
         // A damaged history must never be silently replaced with a welcome message.
         // Keep its raw bytes for explicit backup/recovery rather than "repairing" on read.
         var _chatHistoryUnreadable = false;
+        const singleChatTurnSnapshots = new WeakMap();
         function loadMessages() {
-            if (_storage) {
+            if (isGroupChat && _storage) {
                 try {
                     var arr = _storage.getChatHistory(currentCharacter.id);
                     if (Array.isArray(arr) && arr.length) return removeLegacyStickerCaptions(arr);
@@ -2840,6 +2841,19 @@
                 console.warn('读取历史聊天记录失败，已暂停写入以保护原始数据:', err);
                 if (typeof showToast === 'function') showToast('聊天记录读取异常，已暂停保存以防覆盖原始数据');
                 return [];
+            }
+
+            if (!isGroupChat && _storage) {
+                try {
+                    var legacy = _storage.getChatHistory(currentCharacter.id);
+                    if (Array.isArray(legacy) && legacy.length) {
+                        _chatHistoryUnreadable = false;
+                        return removeLegacyStickerCaptions(legacy);
+                    }
+                } catch (err) {
+                    _chatHistoryUnreadable = true;
+                    return [];
+                }
             }
 
             if (_chatHistoryUnreadable) return [];
@@ -2942,6 +2956,8 @@
         }
 
         function saveMessages(list) {
+            const guardedTurn = singleChatTurnSnapshots.has(list);
+            if (guardedTurn && !singleChatTurnIsCurrent(list)) return false;
             if (_chatHistoryUnreadable) {
                 if (typeof showToast === 'function' && _shouldWarnAgain('chat-corrupt')) {
                     showToast('聊天记录异常，未覆盖原始数据；请先备份并修复存储');
@@ -2966,11 +2982,25 @@
                 }
             }
             if (wrote && _verifyHistoryRoundTrip(list)) {
+                if (guardedTurn) {
+                    try { singleChatTurnSnapshots.set(list, localStorage.getItem(storageKey)); }
+                    catch (err) { return false; }
+                }
                 _resetWarnCooldown('chat-save');
                 return true;
             }
             if (_shouldWarnAgain('chat-save') && typeof showToast === 'function') {
                 showToast('聊天记录未能保存，请检查本地存储空间');
+            }
+            return false;
+        }
+
+        function singleChatTurnIsCurrent(list) {
+            try {
+                if (localStorage.getItem(storageKey) === singleChatTurnSnapshots.get(list)) return true;
+            } catch (err) {}
+            if (typeof showToast === 'function' && _shouldWarnAgain('chat-conflict')) {
+                showToast('聊天记录已更新，本轮未覆盖，请刷新聊天后重试');
             }
             return false;
         }
@@ -3202,7 +3232,7 @@
                 var m = list[i];
                 if (!m || m.role !== 'user') continue;
                 if (mid && m.mid === mid) return i;
-                if (timeIndex === -1 && time != null && String(m.time) === String(time)) timeIndex = i;
+                if (timeIndex === -1 && (!mid || !m.mid) && time != null && String(m.time) === String(time)) timeIndex = i;
             }
             return timeIndex;
         }
@@ -3228,7 +3258,7 @@
 
         // 一键重试：复用已落库的原用户消息，只发起 AI 回合（contextOnly），不会插入第二条用户消息。
         window.retryFailedMessage = function (mid, time) {
-            if (aiSending) {
+            if (aiSending || singleChatSendPending) {
                 if (typeof showToast === 'function') showToast('TA 正在回复中，稍等一下');
                 return;
             }
@@ -3938,7 +3968,7 @@
                     var failedMark = document.createElement('span');
                     failedMark.className = 'msg-send-failed';
                     failedMark.textContent = '!';
-                    failedMark.title = (msg.sendFailedReason === 'missing-api-key' ? '尚未配置 API Key；消息已保存' : '消息已发出，但被对方拒收了') + '，点击重试';
+                    failedMark.title = (msg.sendFailedReason === 'missing-api-key' ? '尚未配置 API Key；消息已保存' : (!isGroupChat && msg.sendFailedReason ? '没有收到可用回复；消息已保存' : '消息已发出，但被对方拒收了')) + '，点击重试';
                     failedMark.setAttribute('role', 'button');
                     failedMark.setAttribute('tabindex', '0');
                     var startRetry = function (event) {
@@ -5111,6 +5141,7 @@
 
         // R3 防重入锁：AI 回复期间（含流式）忽略重复发送，防止并发请求交错写坏聊天记录
         let aiSending = false;
+        let singleChatSendPending = false;
         let lastGroupUserSend = { text: '', time: 0 };
         let groupAutoFollowupToken = 0;
 
@@ -5159,13 +5190,14 @@
         // 在 pagehide 里把它落库为一条 assistant 消息，从而变成未读 + 顶部弹窗，
         // 还原 QQ/微信里"你切出去对方消息照到"的真实感。
         let inflightSnapshot = null;
+        let singleChatPartialSaved = false;
 
         // 页面被切走（返回列表/刷空间/发动态）时：如果 AI 还在说话，
         // 把已经流出来的那半截消息立刻落库。localStorage 写入是同步的，
         // 在页面卸载前一定完成，下一页轮询时就能读到未读 + 弹窗。
         window.addEventListener('pagehide', function () {
             try {
-                if (!aiSending || !inflightSnapshot) return;
+                if (!aiSending || !inflightSnapshot || singleChatPartialSaved) return;
                 var raw = String(inflightSnapshot.text || '').trim();
                 if (!raw) return;
                 var cleaned = stripInternalReasoning(raw)
@@ -5184,12 +5216,29 @@
                     name: inflightSnapshot.groupName,
                     memberId: inflightSnapshot.memberId
                 });
-                saveMessages(list);
+                if (saveMessages(list) && !isGroupChat) singleChatPartialSaved = true;
             } catch (e) {}
         });
 
         // 3. 核心真实 AI 聊天发送逻辑 (含历史记录、人设构造与 15 秒超时控制)
         async function sendMsg(opts) {
+            if (isGroupChat) return sendMsgTurn(opts);
+            if (singleChatSendPending) {
+                if (typeof showToast === 'function') showToast('TA 正在回复中，稍等一下');
+                return;
+            }
+            singleChatSendPending = true;
+            try {
+                return await sendMsgTurn(opts);
+            } finally {
+                aiSending = false;
+                singleChatSendPending = false;
+                inflightSnapshot = null;
+                singleChatPartialSaved = false;
+            }
+        }
+
+        async function sendMsgTurn(opts) {
             const input = document.getElementById('chat-input');
             const sendState = (window.ChatSendPolicy && typeof window.ChatSendPolicy.normalizeOptions === 'function')
                 ? window.ChatSendPolicy.normalizeOptions(opts, input.value)
@@ -5222,6 +5271,7 @@
                     time: opts.retryTarget.time
                 }
                 : null;
+            let failureTarget = retryTarget;
             var visionImageMids = (opts && Array.isArray(opts.visionImageMids))
                 ? opts.visionImageMids.map(function (mid) { return String(mid || '').trim(); })
                     .filter(function (mid, index, items) { return mid && items.indexOf(mid) === index; }).slice(0, 4)
@@ -5419,6 +5469,7 @@
                         groupAutoFollowupToken = previousGroupAutoFollowupToken;
                         return;
                     }
+                    if (!isGroupChat && !silent) failureTarget = { mid: userMsg.mid, time: userMsg.time };
                     if (isGroupChat && !silent) groupAutoFollowupToken += 1;
                     if (quoteSnapshot && typeof window.clearQuote === 'function') window.clearQuote();
                     if (!silent) {
@@ -5455,6 +5506,15 @@
                         if (typeof showToast === 'function') showToast('旧回复已变化，重新生成已取消，请刷新聊天');
                         return;
                     }
+                }
+            }
+
+            if (!isGroupChat) {
+                if (_chatHistoryUnreadable) return;
+                try { singleChatTurnSnapshots.set(historyList, localStorage.getItem(storageKey)); }
+                catch (err) {
+                    if (typeof showToast === 'function') showToast('聊天记录暂时无法读取，请刷新后重试');
+                    return;
                 }
             }
 
@@ -6387,7 +6447,7 @@
                 // 保留原始累计文本：若流引擎意外抛错，收尾仍可走既有清洗与落库流程。
                 lastPaintedStreamText = typeof text === 'string' ? text : '';
                 // 同步快照，供 pagehide 时把半截消息落库
-                inflightSnapshot = {
+                inflightSnapshot = !isGroupChat && isRegen ? null : {
                     text: (function () {
                         var snapshotText = lastPaintedStreamText;
                         if (window.RoleStickerLibrary && typeof window.RoleStickerLibrary.stripStreamMarker === 'function') {
@@ -6445,7 +6505,7 @@
                 pinToBottom();
             }
 
-            aiSending = true;   // R3：进入请求阶段，到流式结束由收尾统一解锁（此前无 await，不存在并发窗口）
+            aiSending = true;   // 请求阶段标记，单聊的入口锁已覆盖上方异步准备。
 
             // 流式请求：核心引擎已抽离至 shared/js/phone/phone_stream.js
             //（三段式超时 / SSE 半包解析 / 残留收尾 / rAF 节流 / 中断保文，全部内聚在模块内）
@@ -6486,6 +6546,20 @@
             const loadingEl2 = document.getElementById(statusId);
             if (loadingEl2) loadingEl2.remove();
 
+            if (!isGroupChat && !singleChatTurnIsCurrent(historyList)) {
+                if (_vl) { _vl.streaming = false; vlRefresh(); }
+                else renderAllMessages();
+                if (chatTitleEl) chatTitleEl.textContent = originalTitleText;
+                return;
+            }
+
+            if (!isGroupChat && !stripInternalReasoning(fullText).trim()) {
+                fullText = '';
+                if (streamResult.ok) {
+                    streamResult = { ok: false, error: { kind: 'empty' } };
+                }
+            }
+
             // 错误分类与日志（成功/失败都记录；文案在下方收尾分支组装成气泡）
             var errText = '';
             if (!streamResult.ok) {
@@ -6498,6 +6572,8 @@
                         : (e.reason === 'total'
                             ? '回复超时（120 秒上限），未收到有效内容。'
                             : '请求超时（15秒未响应），请检查网络或 API 地址。');
+                } else if (e.kind === 'empty') {
+                    errText = '模型没有返回可用回复，请重试。';
                 } else if (e.kind === 'stream') {
                     errText = '连接失败: ' + (e.detail || '流式响应异常');
                 } else {
@@ -6510,7 +6586,7 @@
 
             // Regeneration is replacement, not deletion: a failed/empty AI turn must
             // never overwrite the saved old reply with the filtered prompt history.
-            if (isRegen && (!streamResult.ok || !String(fullText || '').trim())) {
+            function restoreFailedRegeneration() {
                 for (var regenNode = 0; regenNode < streamNodes.length; regenNode++) {
                     if (streamNodes[regenNode] && streamNodes[regenNode].parentNode) {
                         streamNodes[regenNode].parentNode.removeChild(streamNodes[regenNode]);
@@ -6522,14 +6598,18 @@
                 if (chatTitleEl) chatTitleEl.textContent = originalTitleText;
                 if (_vl) vlRefresh(); else renderAllMessages();
                 if (typeof showToast === 'function') showToast('重新生成未成功，原回复已保留');
+            }
+            if (isRegen && (!streamResult.ok || !String(fullText || '').trim())) {
+                restoreFailedRegeneration();
                 return;
             }
 
             // 重试后 API 失败：先把同一条用户消息重新标记为失败并落库，
             // 再按既有 _isRepeatedSystemError 去重规则处理错误提示。
             var retryRemarked = false;
-            if (!streamResult.ok && retryTarget) {
-                retryRemarked = _markUserSendFailed(historyList, retryTarget.mid, retryTarget.time);
+            if (!streamResult.ok && failureTarget && (!fullText || isGroupChat)) {
+                retryRemarked = _markUserSendFailed(historyList, failureTarget.mid, failureTarget.time,
+                    streamResult.error && streamResult.error.kind === 'empty' ? 'empty-reply' : 'api-error');
             }
 
             try {
@@ -6570,7 +6650,6 @@
                     fullText = parsedPay.text;
                     const parsedRoleFamilyCard = extractRoleFamilyCardMarkers(fullText);
                     fullText = parsedRoleFamilyCard.text;
-                    const roleFamilyCardChanged = applyRoleFamilyCardChanges(parsedRoleFamilyCard.changes);
                     const parsedTransferDecision = extractTransferDecisionMarkers(fullText);
                     fullText = parsedTransferDecision.text;
                     // 转账状态会与本轮回复一并保存；若主回复写入失败，状态也回滚。
@@ -6578,7 +6657,6 @@
                     // 剥离自动记忆标记 [记住:xxx]，并存进 user_memory
                     const parsedMem = extractMemoryMarkers(fullText);
                     fullText = parsedMem.text;
-                    if (parsedMem.memories.length) saveUserMemories(parsedMem.memories);
                     // 剥离心声标记 [心声:内容] 与虚拟图片标记 [图片:描述]
                     const parsedHeart = extractHeartMarkers(fullText);
                     fullText = parsedHeart.text;
@@ -6641,6 +6719,12 @@
                             memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined
                         }];
                     }
+                    if (!isGroupChat && isRegen && !String(fullText || '').trim()) {
+                        restoreFailedRegeneration();
+                        return;
+                    }
+                    const roleFamilyCardChanged = applyRoleFamilyCardChanges(parsedRoleFamilyCard.changes);
+                    if (parsedMem.memories.length) saveUserMemories(parsedMem.memories);
                     if (fullText || aiStickerMessages.length || aiRoleGalleryMessages.length || avatarCandidates.length || avatarPairs.length ||
                         (parsedTransferDecision.amounts && parsedTransferDecision.amounts.length)) {
                         // 正文按角色气泡偏好拆分；表情与图库图片仍保留在同一回复回合中。
@@ -6771,6 +6855,9 @@
                         if (replySaved && (replyMessages.length || aiStickerMessages.length || aiRoleGalleryMessages.length)) {
                             if (_vl) {
                                 vlRefresh();
+                            } else if (!isGroupChat && isRegen) {
+                                // The saved replacement also removed the previous turn.
+                                renderAllMessages();
                             } else {
                                 var aiMessageIndex = chatMessages.querySelectorAll('.msg-row[data-idx]').length;
                                 var shouldPaceBubbles = activeChatModeForPrompt !== 'narration' &&
@@ -6948,7 +7035,7 @@
             scrollToBottom(true);
         });
         window.regenerateReply = function(direction, mid) {
-            if (aiSending) { if (typeof showToast === 'function') showToast('TA 正在回复中，稍等一下'); return; }
+            if (aiSending || singleChatSendPending) { if (typeof showToast === 'function') showToast('TA 正在回复中，稍等一下'); return; }
             if (isBlocked(aliasRoleId)) {
                 if (typeof showToast === 'function') showToast('你已把 TA 拉黑，无法重玩或改写');
                 return;

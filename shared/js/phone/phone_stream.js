@@ -148,8 +148,13 @@
 
                 /* -- HTTP 层错误（401/404/429/5xx 等）：读 body 提取详情，不进入流解析 -- */
                 if (!response.ok || !response.body) {
-                    clearAllTimers();
-                    return response.text().catch(function () { return ''; }).then(function (bodyText) {
+                    // The response body can stall even after the headers arrive.
+                    enterStreamMode();
+                    return response.text().catch(function (err) {
+                        if (controller.signal.aborted) throw err;
+                        return '';
+                    }).then(function (bodyText) {
+                        clearAllTimers();
                         var detail = '';
                         try {
                             var parsed = JSON.parse(bodyText);
@@ -183,6 +188,7 @@
                     try { json = JSON.parse(payload); }
                     catch (e) { return; }   // 碎片/非 JSON，忽略
 
+                    if (!json || typeof json !== 'object') return;
                     if (json.error) {
                         var se = new Error((json.error && json.error.message) || JSON.stringify(json.error));
                         se.__streamError = true;   // 标记为流内错误，供 catch 分类
@@ -190,7 +196,7 @@
                     }
 
                     var delta = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content;
-                    if (delta) {
+                    if (typeof delta === 'string' && delta) {
                         fullText += delta;
                         schedulePaint();
                     }
