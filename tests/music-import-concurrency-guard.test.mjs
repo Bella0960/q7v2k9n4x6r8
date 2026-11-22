@@ -38,9 +38,12 @@ async function run(files, {
   concurrentRaw = null,
   writeMode = 'normal',
   failBinary = false,
+  readErrorAt = null,
+  concurrentAt = 1,
   uuid = null,
 } = {}) {
   let stored = initialRaw;
+  let readCount = 0;
   const events = { blobs: [], cleanup: [], played: [], notices: [], tracks: [] };
   const input = {
     files, value: 'selected', handler: null,
@@ -51,7 +54,11 @@ async function run(files, {
   const context = {
     document: { getElementById: () => input },
     localStorage: {
-      getItem: () => stored,
+      getItem: () => {
+        readCount++;
+        if (readErrorAt === readCount) throw new Error('SecurityError');
+        return stored;
+      },
       setItem(_key, value) {
         if (writeMode === 'quota') throw new Error('QuotaExceededError');
         if (writeMode !== 'silent') stored = value;
@@ -60,7 +67,7 @@ async function run(files, {
     LOCAL_TRACKS_KEY: 'music_local_tracks',
     putAudioBlob: async (entry) => {
       events.blobs.push(entry);
-      if (events.blobs.length === 1 && concurrentRaw !== null) stored = concurrentRaw;
+      if (events.blobs.length === concurrentAt && concurrentRaw !== null) stored = concurrentRaw;
       if (failBinary) throw new Error('Audio store failed');
     },
     deleteAudioBlob: async (id) => events.cleanup.push(id),
@@ -143,4 +150,33 @@ test('separate tabs at identical timestamps obtain distinct audio IDs', async ()
   const a = await run([audioFile('one.wav')], { uuid });
   const b = await run([audioFile('two.wav')], { uuid });
   assert.notEqual(a.blobs[0].id, b.blobs[0].id);
+});
+
+test('storage access denied at startup reports failure without saving data', async () => {
+  const r = await run([audioFile('new.wav')], { readErrorAt: 1 });
+  assert.equal(r.blobs.length, 0);
+  assert.equal(r.tracks.length, 0);
+  assert.equal(r.stored, '[]');
+  assert.match(r.notices.join(' '), /无法读取音乐目录/);
+});
+
+test('storage access denied after initial read fails closed', async () => {
+  const r = await run([audioFile('new.wav')], { readErrorAt: 3 });
+  assert.equal(r.blobs.length, 0);
+  assert.equal(r.tracks.length, 0);
+  assert.equal(r.stored, '[]');
+  assert.match(r.notices.join(' '), /无法读取音乐目录/);
+});
+
+test('a second-file conflict preserves the first imported track and other-tab changes', async () => {
+  const otherTab = '[{"id":"from-first"},{"id":"other-tab"}]';
+  const r = await run([audioFile('one.wav'), audioFile('two.wav')], {
+    concurrentAt: 2,
+    concurrentRaw: otherTab,
+  });
+  assert.equal(r.stored, otherTab);
+  assert.equal(r.blobs.length, 2);
+  assert.equal(r.cleanup.length, 1);
+  assert.equal(r.tracks.length, 1);
+  assert.equal(r.played.length, 1);
 });
