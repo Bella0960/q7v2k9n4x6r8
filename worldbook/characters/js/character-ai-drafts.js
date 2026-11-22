@@ -109,7 +109,7 @@
     }
     var SPEC = {
         npc: '只输出 JSON 对象，字段 name,relation,category(family/friend/work/other),awareness(known/heard/unknown),profession,personality,background,relationNotes,connections,speechStyle,currentStatus。为当前主角色创造一名符合既有人设的独立人物，禁止替换主角色自身。',
-        relationships: '只输出 JSON 对象：{"people":[人物1,人物2,人物3]}。每个人包含 name,relation,category,awareness,profession,personality,background,relationNotes,connections,speechStyle,currentStatus。创造最多3位彼此不同、符合主角色既有人设的配角，不重复现有关系人物。',
+        relationships: '请仅输出一个合法 JSON 对象，格式示例：{"people":[{"name":"姓名","relation":"同事","category":"work","awareness":"heard","profession":"摄影师","personality":"温和","background":"背景","relationNotes":"相处方式","connections":"人物关系","speechStyle":"表达方式","currentStatus":"近期状态"}]}。people 数组请生成1至3位彼此不同、符合主角色人设的配角，不得重复既有人物；category 只能为 family、friend、work、other，awareness 只能为 known、heard、unknown。请用真实生成内容替换示例值，禁止解释和代码围栏。',
         life: '只输出 JSON 对象，字段 title,date(YYYY-MM-DD),people,status(planned/ongoing/done),detail。生成一条与主角色既有人设和生活连续性一致的生活事件；不要当成已实际发生的聊天事实。'
     };
     async function generate(kind, button) {
