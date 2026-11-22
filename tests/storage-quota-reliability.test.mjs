@@ -179,11 +179,11 @@ test('invalid memory target or non-array input does not write new records', () =
 
 test('memory management actions do not claim success after storage failure', () => {
   const html = source('worldbook/memory/memory.html');
-  assert.match(html, /if \(!saveMemories\(currentMemId, arr\)\) return;\s*box\.innerHTML = '';/);
-  assert.match(html, /if \(!saveMemories\(mergeRoleId, arr\)\) return;/);
+  assert.match(html, /if \(!saveMemories\(currentMemId, arr\)\) \{ alert\('记忆保存失败/);
+  assert.match(html, /if \(!saveMemories\(mergeRoleId, arr\)\) \{/);
   assert.match(html, /const mergeRoleId = currentMemId;/);
   assert.match(html, /const mems = loadMemories\(mergeRoleId\);/);
-  assert.match(html, /if \(!saveMemories\(currentMemId, arr\)\) return;\s*renderLib\(\);/);
+  assert.match(html, /if \(!saveMemories\(currentMemId, arr\)\) \{ alert\('保存失败/);
 });
 
 test('failure reporting cannot itself cause a second failure', () => {
@@ -198,7 +198,7 @@ test('chat summary cursor advances only after successful memory persistence', ()
   const cursor = html.lastIndexOf("localStorage.setItem('chat_summary_processed_' + rid");
   assert.ok(guard !== -1 && cursor > guard);
   const block = html.slice(guard, cursor);
-  assert.match(block, /sumToast\('本批记忆没有保存/);
+  assert.match(block, /sumToast\('本批记忆未保存/);
   assert.match(block, /return;/);
   assert.match(html, /addEventListener\('phone:storage-failure'/);
 });
