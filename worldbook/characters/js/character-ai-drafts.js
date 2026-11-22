@@ -75,13 +75,20 @@
         status('npc', '已填入草稿，请检查后保存。');
     }
     function applyLife(item) {
-        if (!item || typeof item !== 'object' || !safe(item.title,80)) throw new Error('缺少生活事件名称');
-        field('lifeEventTitle', item.title);
-        field('lifeEventPeople', item.people);
-        field('lifeEventDetail', item.detail);
-        if (['planned','ongoing','done'].includes(item.status)) field('lifeEventStatus', item.status);
-        if (/^\\d{4}-\\d{2}-\\d{2}$/.test(String(item.date || ''))) field('lifeEventDate', item.date);
-        status('life', '已填入事件草稿，请检查后点击添加。');
+        if (!item || typeof item !== 'object' || !safe(item.title,80)) throw new Error('life-invalid');
+        // A confirmed generation replaces the event draft, including preselected options.
+        field('lifeEventTitle', item.title, true);
+        var people = Array.isArray(item.people) ? item.people.filter(function (v) { return typeof v === 'string'; }).join('、') : item.people;
+        field('lifeEventPeople', people || '', true);
+        field('lifeEventDetail', item.detail || '', true);
+        field('lifeEventStatus', ['planned','ongoing','done'].includes(item.status) ? item.status : 'planned', true);
+        var date = String(item.date || '').trim();
+        field('lifeEventDate', /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '', true);
+        status('life', '已生成生活事件草稿，请检查后点击“添加到生活线”。');
+        var target = element('lifeEventTitle');
+        if (target && typeof target.scrollIntoView === 'function') {
+            target.scrollIntoView({ behavior:'smooth', block:'center' });
+        }
     }
     function applyRelationships(data, roleId) {
         var list = Array.isArray(data.people) ? data.people.slice(0,3).map(normalizeNpc) : [];
@@ -128,10 +135,19 @@
         }
         var conf = global.PhoneStorage && global.PhoneStorage.getApiConfig ? global.PhoneStorage.getApiConfig() : {};
         if (!conf || !String(conf.apiKey || '').trim()) { status(kind,'请先在设置中配置 API。'); return; }
-        if (!global.confirm('AI 解析将发起一次可能计费的请求，使用已配置的 ' + (conf.model || '聊天') + ' 模型 API，可能产生费用。不会自动连续请求，也不会自动覆盖现有资料。确认生成？')) return;
+        var existingLifeDraft = kind === 'life' && ['lifeEventTitle','lifeEventPeople','lifeEventDate','lifeEventDetail'].some(function (id) {
+            var input = element(id); return input && String(input.value || '').trim();
+        });
+        var warning = '本次 AI 生成会调用一次可能产生费用的模型 API（' + (conf.model || '已配置模型') + '）。';
+        if (existingLifeDraft) warning += '当前生活事件表单已有内容，确认后将替换这份未保存的草稿。';
+        else warning += '新内容将先写入草稿，检查后由你保存。';
+        if (!global.confirm(warning + ' 确认生成？')) return;
         busy = true; lastRequestAt = Date.now();
         try { global.localStorage.setItem('character_ai_last_request_' + String(role.id), String(lastRequestAt)); } catch (error) {}
-        button.disabled = true; status(kind,'正在生成，请勿重复点击…');
+        var originalLabel = button.textContent;
+        button.disabled = true;
+        button.textContent = '生成中…';
+        status(kind,'正在联系模型生成草稿，请稍候。');
         var roleId = String(role.id);
         try {
             var response = await global.PhoneAPI.completeJSON({
@@ -148,7 +164,7 @@
             if (kind === 'relationships') applyRelationships(response.data,roleId);
         } catch (error) {
             status(kind,'生成失败：' + safe(error && error.message || '未知错误',160) + '。请勿连续重试。');
-        } finally { busy = false; button.disabled = false; }
+        } finally { busy = false; button.disabled = false; button.textContent = originalLabel; }
     }
     [['btnAiNpc','npc'],['btnAiRelationships','relationships'],['btnAiLife','life']].forEach(function (entry) {
         var button = element(entry[0]);
