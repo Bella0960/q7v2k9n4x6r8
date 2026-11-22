@@ -33,7 +33,7 @@ test('Chromium phone: click life AI, recover fenced JSON and fill form at 375/39
       if(req.method()==='OPTIONS'){await route.fulfill({status:204,headers});return;}
       modelPostCount++;
       modelRequest=JSON.parse(req.postData()||'{}');
-      const text=['模型给出的结果：',String.fromCharCode(96,96,96)+'json','{"event":{"title":"准备摄影展","date":"2026-11-23","people":"同事","status":"ongoing","detail":"挑选照片",}}',String.fromCharCode(96,96,96),'完成'].join('\\n');
+      const text=['模型给出的结果：',String.fromCharCode(96,96,96)+'json','{"event":{"title":"准备摄影展","date":"2026-11-23","people":"同事","status":"ongoing","detail":"挑选照片",}}',String.fromCharCode(96,96,96),'完成'].join('\n');
       await route.fulfill({status:200,headers:{...headers,'content-type':'application/json'},body:JSON.stringify({choices:[{message:{content:text},finish_reason:'stop'}],usage:{total_tokens:50}})});
     });
     await page.addScriptTag({content:phoneApi});
