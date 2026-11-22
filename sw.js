@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v285';
+const CACHE_NAME = 'phone-app-pwa-v286';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 function cacheablePublicResponse(response) {
   return !!(response && response.ok && !response.redirected &&
@@ -110,8 +110,8 @@ const APP_SHELL = [
   './chat/chat/avatar-manager.js?v=20261117v1',
   './chat/chat/js/chat-extras.js?t=20261120fanwai24',
   './worldbook/characters/characters.html',
-  './shared/js/phone/character-card-client.js?v=20261122-signed-v2',
-  './worldbook/characters/js/characters-manager.js?v=20261122-signed-v2',
+  './shared/js/phone/character-card-client.js?v=20261122-neutral-v1',
+  './worldbook/characters/js/characters-manager.js?v=20261122-neutral-v1',
   './shared/js/phone/role-worldbook-bindings.js?v=20261119-qa1',
   './shared/js/phone/chat-regex-policy.js?v=20261119regex1',
   './shared/js/phone/chat-history-atomic.js?v=20261118v3',
@@ -539,7 +539,7 @@ self.addEventListener('push', event => {
     // An empty Web Push has no encrypted content, so it isolates FCM -> Chrome
     // delivery from aes128gcm decryption. Only this generic string is shown.
     if (!event.data) {
-      await self.registration.showNotification('MAOMAO · 远程空载通知', {
+      await self.registration.showNotification('远程连接提醒', {
         body: 'FCM 已唤醒 Chrome；这条通知不包含加密消息。',
         tag: 'maomao-remote-empty-' + Date.now(),
         data: { url: pushTargetUrl('./settings/cloud-push.html'), type: 'test' },
@@ -552,7 +552,7 @@ self.addEventListener('push', event => {
     // Android may have stopped the page/session while Chrome delivers a push.
     // Personal role messages still require a current active account below.
     if (payload.type === 'test') {
-      await self.registration.showNotification('MAOMAO · 云端测试通知', {
+      await self.registration.showNotification('云端推送测试', {
         body: '这条通知由云端推送到当前浏览器。',
         tag: 'maomao-test-' + String(payload.dedupeKey || Date.now()).slice(-36),
         data: { url: pushTargetUrl('./settings/cloud-push.html'), type: 'test' },
@@ -587,7 +587,7 @@ self.addEventListener('push', event => {
         currentAccount.id !== accountId ||
         currentAccount.status !== 'active') return;
 
-    const title = String(payload.title || 'MAOMAO');
+    const title = String(payload.title || '新消息').replace(/MAOMAO/gi, '消息');
     const body = String(payload.body || '你有一条新消息。');
     const targetUrl = pushTargetUrl(payload.url);
     // 相同 tag 的通知会在系统里合并，避免多端/重试造成重复提醒。
