@@ -71,7 +71,8 @@
     "gate:encounter": "node scripts/verify-encounter-release.mjs",
     "test:settings:regex": "node --test tests/regex-editor-ui.test.mjs",
     "test:role:avatars:browser": "node tests/chat-avatar-manager-browser.mjs",
-    "test:role:avatars:acceptance": "npm run test:role:avatars && npm run build && npm run test:role:avatars:browser"
+    "test:role:avatars:acceptance": "npm run test:role:avatars && npm run build && npm run test:role:avatars:browser",
+    "test:storage:reliability": "node --test tests/storage-quota-reliability.test.mjs"
   },
   "devDependencies": {
     "playwright": "^1.64.1",
