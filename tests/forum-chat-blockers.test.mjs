@@ -98,6 +98,8 @@ function createSandboxBase() {
     showToast: () => {},
     _resetWarnCooldown: () => {},
     _shouldWarnAgain: () => false,
+    _chatHistoryUnreadable: false,
+    singleChatTurnSnapshots: new WeakMap(),
     console: { warn: () => {} }
   };
 }
@@ -479,7 +481,9 @@ test('retry API failure re-marks the same user message instead of creating a new
   const context = {
     historyList,
     streamResult: { ok: false, error: { kind: 'http', status: 503 } },
-    retryTarget: { mid: 'm2', time: 2 },
+    failureTarget: { mid: 'm2', time: 2 },
+    fullText: '',
+    isGroupChat: false,
     _markUserSendFailed: helpers._markUserSendFailed
   };
   new Function('context', 'with (context) { ' +
@@ -500,7 +504,9 @@ test('retry API failure re-marks the same user message instead of creating a new
     extractBlock(chatDetail, 'var retryRemarked = false;', '\n            try {') + ' }')({
     historyList: okList,
     streamResult: { ok: true },
-    retryTarget: { mid: 'm2', time: 2 },
+    failureTarget: { mid: 'm2', time: 2 },
+    fullText: '',
+    isGroupChat: false,
     _markUserSendFailed: helpers._markUserSendFailed
   });
   assert.equal(okList[1].sendFailed, undefined);
