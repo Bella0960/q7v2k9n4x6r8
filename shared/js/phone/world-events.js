@@ -95,6 +95,22 @@
       } catch (_error) { return fail('角色库读取失败，未触碰生态数据'); }
     }
 
+    // Read-only identity verification avoids scanning every event key every
+    // time a role's AI-memory consent is checked during chat generation.
+    // Never expose the underlying role/persona object through this API.
+    function hasRole(roleId) {
+      var initial = accountResult();
+      if (!initial.ok) return initial;
+      if (!id(roleId)) return fail('角色 ID 无效');
+      var found = findRole(roleId);
+      if (!found.ok) return found;
+      var latest = accountResult();
+      if (!latest.ok || latest.value !== initial.value) {
+        return fail('账号已切换，拒绝确认角色身份');
+      }
+      return ok(true);
+    }
+
     function eventKey(account, roleId, type, appId, recordId) {
       return PREFIX + [account, roleId, type, appId, recordId].map(encodeURIComponent).join(':');
     }
@@ -250,7 +266,7 @@
 
     return Object.freeze({
       version: VERSION, append: append, listForRole: listForRole, subscribe: subscribe,
-      account: accountResult
+      account: accountResult, hasRole: hasRole
     });
   }
 
@@ -262,6 +278,7 @@
     listForRole: worldEvents.listForRole,
     subscribe: worldEvents.subscribe,
     account: worldEvents.account,
+    hasRole: worldEvents.hasRole,
     createStore: createStore
   });
 })(typeof window !== 'undefined' ? window : globalThis);
