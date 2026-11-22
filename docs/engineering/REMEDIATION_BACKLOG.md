@@ -391,6 +391,38 @@ Acceptance:
 - Unsupported or platform-limited capabilities are listed honestly; static build success alone is not treated as device verification.
 - No production deployment, Android release, or existing user data is changed without separate approval.
 
+
+## Next version TODO — API-CONFIG-002 / 003 / 004 (owner decision, 2026-11-23)
+
+These three items are approved as tracked technical debt, **not included in v120 scope**.
+Do not mark complete on the strength of UI controls or simulated checks.
+
+### API-CONFIG-002 — Enforce cost and context budgets across actual requests
+**Priority:** P1 · **Status:** TODO (next version)
+
+- Inventory all direct fetch calls and PhoneAPI/PhoneStream callers.
+- Define effective max output tokens and recent N messages precedence when role settings differ.
+- Make limit behavior explicit in UI; preserve role persona, long-term memories and worldbooks while bounding budget.
+- Measure actual outbound payloads against a fixture, including streaming, group and offline chat.
+- Verify limits never silently revert when switching API profiles or returning from background.
+
+### API-CONFIG-003 — Protect stored and exported API credentials
+**Priority:** P1 · **Status:** TODO (next version)
+
+- Password-masked input is not encrypted-at-rest; localStorage and current JSON export store plaintext Key.
+- Evaluate a safe, user-controlled encrypted backup with reliable cross-device restore and recovery messaging.
+- Never claim browser localStorage provides secure secret storage; avoid introducing unrecoverable ciphertext.
+- No automatic export of credentials or sending them to public logs/QA fixtures.
+
+### API-CONFIG-004 — Gemini native protocol support
+**Priority:** P1 · **Status:** TODO (next version)
+
+- Current URL bridge uses Google's OpenAI-compatible endpoint, not native generateContent.
+- Implement explicit protocol adapter(s) for native model listing, request bodies, errors, auth and streaming without changing existing OpenAI/reverse-proxy behavior.
+- Verify actual compatible models and timeout/CORS behavior with opt-in non-public credentials only.
+- Isolate cross-provider request formats to avoid breaking existing stored profiles.
+
+
 ## Parallel work plan
 
 Safe to parallelize:
