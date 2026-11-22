@@ -55,6 +55,14 @@
             return true;
         } catch (e) {
             console.warn('[PhoneStorage] set failed', key, e);
+            // Notification hook is additive. Never include a failed value or private payload.
+            try {
+                if (typeof global.dispatchEvent === 'function' && typeof global.CustomEvent === 'function') {
+                    global.dispatchEvent(new global.CustomEvent('phone:storage-failure', {
+                        detail: { key: String(key), error: (e && e.name) || 'Error' }
+                    }));
+                }
+            } catch (ignored) { /* Notification failure must not hide the write failure. */ }
             return false;
         }
     };
