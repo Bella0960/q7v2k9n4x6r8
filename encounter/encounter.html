@@ -455,6 +455,7 @@ function openSettings(){
  });});
 }
 function footprintReturnRoute(roleId) {
+ if(typeof URLSearchParams!=='function'||!window.location||typeof window.location.search!=='string')return '';
  var params=new URLSearchParams(window.location.search);
  if(params.get('from')!=='footprint')return '';
  var date=params.get('returnDate')||'';
@@ -617,11 +618,17 @@ document.getElementById('savedButton').addEventListener('click',openSaved);
 drawNew();
  // The profile can deep-link back to a recognized formal role, without
  // creating a candidate, switching current character, or mutating history.
- var requestedRole=new URLSearchParams(window.location.search).get('reunionRole');
+ var requestedRole='';
+ var requestedScene='';
+ if(typeof URLSearchParams==='function'&&window.location&&typeof window.location.search==='string'){
+   var routeParams=new URLSearchParams(window.location.search);
+   requestedRole=routeParams.get('reunionRole')||'';
+   requestedScene=routeParams.get('scene')||'';
+ }
  if(requestedRole){
    var knownRoles=engine.getEncounteredRoles();
    if(knownRoles.ok&&knownRoles.value.some(function(r){return String(r.id)===requestedRole;})){
-     openReunion(requestedRole,new URLSearchParams(window.location.search).get('scene')||'');
+     openReunion(requestedRole,requestedScene);
    }else{
      notify('这位角色当前没有可查看的邂逅来源。');
    }
