@@ -71,7 +71,10 @@
 
   function classifyUserIntent(text) {
     var value = String(text || '').replace(/\s+/g, '');
-    if (/(别再发|别发了|不要再发|别主动联系|暂停追问|不要追问|先别联系)/.test(value)) return 'pause';
+    // A negative command containing "继续" must never be treated as a resume.
+    // Keep the existing explicit stop phrases and add their negated-continuation forms.
+    if (/(别再发|别发了|不要再发|别主动联系|暂停追问|不要追问|先别联系)/.test(value) ||
+        /(?:别|不要|不再|停止|暂停|先别)(?:再|继续){0,2}(?:主动)?(?:联系|追问|发消息)/.test(value)) return 'pause';
     if (/(恢复主动联系|可以继续主动联系|继续主动联系|可以继续联系|继续追问|重新开启追问|可以再联系)/.test(value)) return 'resume';
     return 'normal';
   }
