@@ -35,7 +35,7 @@
             var first = source[i];
             if (first !== '{' && first !== '[') continue;
             var stack = [], quoted = false, escaped = false;
-            for (var j = i; j < source.length; j++) {
+            for (var j = i; j < Math.min(source.length, i + 16000); j++) {
                 var c = source[j];
                 if (quoted) {
                     if (escaped) escaped = false;
