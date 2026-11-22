@@ -1084,8 +1084,14 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         } catch (e) { return []; }
     }
     function saveMemories(id, arr) {
-        if (_storage) { _storage.saveMemories(id, arr); return; }
-        try { localStorage.setItem('chat_memories_' + id, JSON.stringify(arr)); } catch (e) {}
+        let saved = false;
+        if (_storage) {
+            try { saved = _storage.saveMemories(id, arr) === true; } catch (e) { saved = false; }
+        } else {
+            try { localStorage.setItem('chat_memories_' + id, JSON.stringify(arr)); saved = true; } catch (e) {}
+        }
+        if (!saved) alert('记忆未能保存，整理进度不会推进。请先导出备份并检查存储空间，再重新操作。');
+        return saved;
     }
     function readHistory(id) {
         if (_storage) return _storage.getChatHistory(id);
@@ -1212,6 +1218,9 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         try { return JSON.parse(localStorage.getItem('api_settings') || '{}'); } catch (e) { return {}; }
     }
     async function runSummary(historySlice, isAll, processedTo) {
+        // Keep the original target across the asynchronous AI request and any UI selection changes.
+        const summaryRoleId = currentMemId;
+        if (!summaryRoleId) return;
         const config = getAiConfig();
         const apiKey = (config.apiKey || '').trim();
         if (!apiKey) { alert('请先到设置页配置 API Key'); return; }
@@ -1260,7 +1269,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
             try { items = JSON.parse(jsonMatch[0]); } catch (e) { throw new Error('memory-json-invalid'); }
             if (!Array.isArray(items)) throw new Error('memory-json-invalid');
 
-            const mems = loadMemories(currentMemId);
+            const mems = loadMemories(summaryRoleId);
             const now = Date.now();
             let autoN = 0, pendingN = 0, reinforcedN = 0;
             items.forEach(it => {
@@ -1292,17 +1301,17 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
                     lastReinforcedAt: now,
                     reinforcementCount: 1,
                     source: 'manual-summary',
-                    sourceRoleId: String(currentMemId),
+                    sourceRoleId: String(summaryRoleId),
                     sourceMessageCount: historySlice.length
                 });
             });
-            saveMemories(currentMemId, mems);
+            if (!saveMemories(summaryRoleId, mems)) return;
             // Only chronological "next batch" summaries advance this cursor.
             // Summarizing recent N messages must never mark older history as processed.
             if (isAll && Number.isFinite(Number(processedTo))) {
-                try { localStorage.setItem('chat_summary_processed_' + currentMemId, String(Number(processedTo))); } catch (e) {}
+                try { localStorage.setItem('chat_summary_processed_' + summaryRoleId, String(Number(processedTo))); } catch (e) {}
             }
-            try { localStorage.setItem('chat_last_summary_' + currentMemId, String(now)); } catch (e) {}
+            try { localStorage.setItem('chat_last_summary_' + summaryRoleId, String(now)); } catch (e) {}
             let msg = '已整理：' + autoN + ' 条新记忆';
             if (pendingN > 0) msg += '，' + pendingN + ' 条待确认';
             if (reinforcedN > 0) msg += '，强化旧记忆 ' + reinforcedN + ' 条';
