@@ -1,0 +1,255 @@
+/* Chat beauty studio — editorial treatment, presentation only.
+ * Do not modify ChatBeauty state, persisted presets, bubble variables, or tabs. */
+:root {
+  --beauty-paper: #fff;
+  --beauty-ground: #f7f7f8;
+  --beauty-ink: #151515;
+  --beauty-secondary: #85858b;
+  --beauty-line: #e5e5e8;
+}
+body {
+  background: #eeeeef;
+  color: var(--beauty-ink);
+}
+.phone {
+  background: var(--beauty-paper);
+  border: 1px solid #dedee1;
+  border-radius: 22px;
+  box-shadow: 0 12px 36px rgba(0,0,0,.045);
+}
+.content {
+  background: var(--beauty-paper);
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.content::-webkit-scrollbar { display: none; }
+.header {
+  align-items: center;
+  gap: 12px;
+  padding: 10px 22px 18px;
+  border-bottom: 0;
+}
+.back-btn {
+  width: 31px;
+  height: 31px;
+  flex: 0 0 31px;
+  border: 1px solid var(--beauty-line);
+  border-radius: 50%;
+  padding: 7px;
+  background: #fff;
+}
+.title {
+  font: italic 30px/1 Georgia,"Times New Roman",serif;
+  letter-spacing: -.06em;
+  color: var(--beauty-ink);
+}
+.header-store-link {
+  align-self: center;
+  color: var(--beauty-secondary);
+  border-bottom: 0;
+  font: 10px/1.3 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  letter-spacing: .03em;
+  text-decoration: none;
+}
+.header-actions {
+  margin-left: 4px;
+  gap: 7px;
+}
+.h-act {
+  font: 10px/1.25 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  letter-spacing: .015em;
+  color: #666;
+}
+#btnRight.h-act {
+  color: #151515;
+  font-weight: 600;
+}
+#beautyTabs.beauty-tabs {
+  display: grid;
+  grid-template-columns: repeat(3,minmax(0,1fr));
+  gap: 7px;
+  margin: 8px 22px 16px;
+  padding: 0;
+  border: 0;
+}
+#beautyTabs .btab {
+  min-width: 0;
+  padding: 11px 5px;
+  border: 1px solid var(--beauty-line);
+  border-radius: 11px;
+  background: #fff;
+  font: 11px/1.25 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-style: normal;
+  font-weight: 500;
+  color: var(--beauty-secondary);
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+#beautyTabs .btab.on {
+  color: #fff;
+  background: #202020;
+  border-color: #202020;
+}
+#beautyTabs .btab.on::after { display: none; }
+.vb-preview-bar {
+  padding: 10px;
+  border: 1px solid var(--beauty-line);
+  border-radius: 15px;
+  background: var(--beauty-ground);
+}
+.vb-preview-mode-buttons { gap: 6px; }
+.vb-preview-mode {
+  background: #fff;
+  border: 1px solid var(--beauty-line);
+  border-radius: 8px;
+  color: var(--beauty-secondary);
+  font-size: 10px;
+  min-height: 31px;
+}
+.vb-preview-mode.on {
+  background: #202020;
+  border-color: #202020;
+  color: #fff;
+}
+#vbPreview.vb-preview {
+  top: 8px;
+  z-index: 20;
+  border: 1px solid var(--beauty-line);
+  border-radius: 16px;
+  box-shadow: 0 3px 15px rgba(0,0,0,.028);
+  background: #fff;
+}
+#vbPreview .vbp-stage {
+  border-radius: 15px;
+}
+#vbSettingsScroll {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  padding-bottom: max(48px, env(safe-area-inset-bottom, 0px) + 20px);
+}
+#vbSettingsScroll > .field {
+  margin: 0;
+}
+#vbSettingsScroll > .field select,
+.vb-advanced-field select,
+.vb-advanced-field input,
+.vb-decor-add-row input,
+.field input,
+.field textarea,
+.field select {
+  background: #fff;
+  border: 1px solid var(--beauty-line);
+  border-radius: 10px;
+  min-height: 40px;
+}
+#vbSettingsScroll .vb-slider,
+#vbSettingsScroll .vb-color {
+  padding: 15px 16px;
+  margin: 0;
+  background: var(--beauty-ground);
+  border: 1px solid #f0f0f1;
+  border-radius: 15px;
+}
+#vbSettingsScroll .vb-name,
+#vbSettingsScroll .vb-slider-head {
+  color: var(--beauty-ink);
+}
+#vbSettingsScroll .vb-val,
+#vbSettingsScroll .vb-color-hex {
+  color: var(--beauty-secondary);
+  font-size: 11px;
+}
+#vbSettingsScroll .vb-colors {
+  gap: 10px;
+}
+.vb-advanced {
+  margin-top: 12px;
+}
+.vb-advanced-heading {
+  padding: 12px 4px 8px;
+}
+.vb-advanced-heading h3 {
+  font: 24px/1.18 Georgia,"Times New Roman",serif;
+  font-weight: 400;
+  letter-spacing: -.03em;
+}
+.vb-advanced-kicker {
+  color: var(--beauty-secondary);
+  letter-spacing: .17em;
+}
+.vb-advanced-card {
+  border: 1px solid var(--beauty-line);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 2px 12px rgba(0,0,0,.025);
+  margin-top: 12px;
+}
+.vb-advanced-card summary {
+  padding: 16px;
+}
+.vb-card-number {
+  color: #a0a0a4;
+}
+.vb-advanced-grid,
+.vb-side-color-sliders {
+  gap: 12px;
+}
+.vb-advanced-control,
+.vb-side-color-channel {
+  min-width: 0;
+}
+.vb-preset-panel {
+  border-radius: 17px;
+  border: 1px solid var(--beauty-line);
+  box-shadow: 0 16px 40px rgba(0,0,0,.09);
+}
+.theme-page-intro {
+  border-bottom: 0;
+  background: var(--beauty-ground);
+  border-radius: 16px;
+  margin-inline: 22px;
+  padding: 19px 18px 20px;
+}
+.theme-choice-list { padding-inline: 18px; }
+.theme-choice {
+  padding: 16px 5px;
+  border-bottom-color: var(--beauty-line);
+}
+.theme-choice.selected .theme-choice-art {
+  box-shadow: 0 0 0 1px #333;
+}
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid #666;
+  outline-offset: 2px;
+}
+@media (max-width:430px) {
+  body { background: #fff; }
+  .phone {
+    width: 100vw;
+    height: 100dvh;
+    max-width: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .header { padding-inline: 17px; }
+  #beautyTabs.beauty-tabs { margin-inline: 17px; }
+  .vb-preview-bar,
+  #vbPreview.vb-preview { margin-inline: 17px; }
+  #vbSettingsScroll { padding-inline: 17px; }
+  .theme-page-intro { margin-inline: 17px; }
+  .vb-preview-mode { font-size: 9px; }
+}
+@media (max-width:375px) {
+  .header { gap: 8px; }
+  .title { font-size: 28px; }
+  #beautyTabs .btab { font-size: 10px; }
+}
+@media (prefers-reduced-motion:reduce) {
+  #beautyTabs .btab,
+  .vb-preview-mode { transition: none; }
+}
