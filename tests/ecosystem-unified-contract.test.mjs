@@ -183,7 +183,7 @@ test('deep links only route to existing formal character and retain parent date'
   assert.match(editor,/from === 'footprint'/);
   assert.match(encounter,/data-return-footprint/);
   assert.match(encounter,/footprintReturnRoute\(reunion\.id\)/);
-  assert.match(encounter,/openReunion\(requestedRole,new URLSearchParams/);
+  assert.match(encounter,/openReunion\(requestedRole,requestedScene\)/);
   assert.match(encounter,/provenance:'user-confirmed',allowAI:false/);
 });
 
