@@ -179,3 +179,14 @@ test('backup registry already includes role_ prefixed keys in character backup',
   assert.match(backup, /id:\s*'characters'[\s\S]*?prefixes:\s*\[[\s\S]*?'role_'/);
   assert.match(code, /var PREFIX = 'role_world_event_v1:'/);
 });
+
+
+test('role-existence probe stays read-only, account-scoped and never exposes persona', () => {
+  const t=setup();
+  assert.equal(t.store.hasRole('role-A').ok,true);
+  assert.equal(t.store.hasRole('role-A').value,true);
+  assert.equal(t.store.hasRole('missing').ok,false);
+  t.setAccount('MAO-BBBBBBBBBBBB');
+  assert.equal(t.store.hasRole('role-B').ok,true);
+  assert.equal(t.storage.map.size,0);
+});
