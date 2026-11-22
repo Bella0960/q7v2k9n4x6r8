@@ -2712,9 +2712,9 @@ test('chat plus-menu forward reuses the canonical target resolver and atomic app
 test('chat plus-menu script is refreshed in the page and PWA together', () => {
   const loaded = detail.match(/js\/chat-extras\.js\?t=([\w-]+)/)?.[1];
   const cached = serviceWorker.match(/chat\/chat\/js\/chat-extras\.js\?t=([\w-]+)/)?.[1];
-  assert.equal(loaded, '20261122cards3', 'chat details must load the repaired helper');
+  assert.equal(loaded, '20261122cards4', 'chat details must load the repaired helper');
   assert.equal(cached, loaded, 'PWA must precache exactly the script loaded by the page');
-  assert.ok(pwaCacheVersion >= 295, 'the old cached helper must be invalidated');
+  assert.ok(pwaCacheVersion >= 296, 'the old cached helper must be invalidated');
 });
 
 test('chat extras: every extension card send gates AI dispatch on successful persistence', () => {
