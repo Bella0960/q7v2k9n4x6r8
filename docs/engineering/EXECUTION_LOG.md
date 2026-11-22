@@ -1,5 +1,15 @@
 # MAOMAO Execution Log
 
+## 2026-11-23｜API-UI-002｜API 设置页黑白灰编辑式重构
+
+- **独立分支：** `API-UI-002/editorial-settings-20261123`，起点 v120 QA 源码 `74433602f3be43a18e962e76dda437008c180ae5`；未修改 v120 发布候选、`main` 或任何现有 Cloudflare Worker。
+- **UI 改动：** API 专用顶部标题、横向方案胶囊和单行快捷预设；新建/删除位于紧凑标题行；JSON 导入/导出保持可见；服务商与配置名称双栏；撤掉表单整体大灰卡片，字段统一尺寸；图片生成与高级参数改为默认折叠；测试连接/保存按钮常驻面板底部，避免长表单操作困难；模型选择弹层继承同一黑白灰排版。
+- **保护范围：** API 参数及导入导出工具 JS 均未修改，29 个原控件 ID 完整且唯一，Key 显隐改为真正 button；未更改 localStorage Key、网络请求、数据迁移或其他页面视觉；新 CSS 只作用在 API 面板及其专有模型弹层。
+- **文件：** `settings/settings.html`、`settings/css/api-editorial.css`（新增）、`tests/api-settings-editorial.test.mjs`（新增）、`tests/api-settings-editorial-browser.mjs`（新增）。
+- **已核查：** GitHub 当前源码 HTML 标签闭合、29 个控件 ID 唯一、CSS 括号闭合、模型/URL/迁移相关 JS 均未改变；GitHub compare 仅有上述 4 路径，与 QA 起点没有其他差异。这些是静态/结构检查，不是 Node、Vite 或真实 Chromium 成功报告。
+- **后续验收：** 在隔离验证通道真实执行 `node --test tests/api-settings-editorial.test.mjs tests/api-config-tools.test.mjs`、`npm run build` 和 `node tests/api-settings-editorial-browser.mjs`，并复用 v120 API 功能测试（JSON 导入/导出、URL 修复、模型拉取和超时）；通过后再提出 QA 整合、手机实际视觉验收。未经实测及用户确认不合并到正在发布的 v120 或生产环境。
+
+
 ## 2026-11-21｜THEME-STUDIO-002｜手机版精细主题工作台与图片素材
 
 - **起点与独立范围：** 原唯一 QA `f4c7c4488384a03f4030c66c60453d1b5f3ea78f`，单独分支 `THEME-STUDIO-002/mobile-editor-images-preview-20261121`，只调整工作台与仅在聊天列表/详情生效的可选样式。群聊折叠、聊天消息、人设、记忆、账号和正式 Worker 未修改。
