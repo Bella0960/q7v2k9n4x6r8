@@ -2221,7 +2221,7 @@ document.getElementById('btnExportRole').addEventListener('click', async functio
     link.click();
     link.remove();
     setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
-    setSaveStatus('已导出带服务器签名的 MAOMAO 角色卡（不含聊天与私密资料）', 'success');
+    setSaveStatus('已导出签名角色卡（不含聊天与私密资料）', 'success');
 });
 
 // ====== 导入角色 JSON ======
@@ -2241,17 +2241,17 @@ document.getElementById('roleImportFile').addEventListener('change', function(e)
             // TXT is accepted only as a signed MAOMAO JSON envelope stored
             // with a .txt extension; arbitrary plain-text role cards are denied.
             if (isTxt && !/^\s*\{/.test(text)) {
-                throw new Error('TXT 角色卡必须包含 MAOMAO 签名数据，不接受外部纯文本角色卡');
+                throw new Error('TXT 角色卡必须包含有效签名数据，不接受外部纯文本角色卡');
             }
             let data;
             try {
                 data = JSON.parse(text);
             } catch {
-                throw new Error('文件不是有效的 MAOMAO 签名角色卡');
+                throw new Error('文件不是有效的签名角色卡');
             }
             if (!data || data.format !== 'maomao-character' || data.version !== 2 ||
                 !data.proof || data.proof.algorithm !== 'HMAC-SHA256') {
-                throw new Error('仅允许导入 MAOMAO 服务器签发的角色卡；旧版无签名文件需重新导出');
+                throw new Error('仅允许导入服务器签发的角色卡；旧版无签名文件需重新导出');
             }
             if (!window.MAOMAOCharacterCards) {
                 throw new Error('签名验证模块未加载，请重新打开角色档案');
@@ -2261,7 +2261,7 @@ document.getElementById('roleImportFile').addEventListener('change', function(e)
             const name = typeof item.name === 'string' ? item.name.trim() : '';
             const persona = typeof item.persona === 'string' ? item.persona : '';
             const tone = typeof item.tone === 'string' ? item.tone : '';
-            if (!name || !persona) throw new Error('MAOMAO 文件缺少角色姓名或人设');
+            if (!name || !persona) throw new Error('导入文件缺少角色姓名或人设');
             if (name.length > 30 || persona.length > 30000 || tone.length > 12000) throw new Error('角色字段超过编辑器限制，未截断原文件');
             document.getElementById('editRoleName').value = name;
             document.getElementById('editRolePersona').value = persona;
@@ -2272,7 +2272,7 @@ document.getElementById('roleImportFile').addEventListener('change', function(e)
                 Array.isArray(item.styleKeywords) ? item.styleKeywords.filter(x => typeof x === 'string').join(', ') : '';
             // JSON 只导入文字。保留编辑器当前头像，避免覆盖既有角色图片。
             updateAvatarPreview();
-            setSaveStatus('签名已验证，已载入本账号 MAOMAO 角色，请检查后保存', 'success');
+            setSaveStatus('签名已验证，已载入角色资料，请检查后保存', 'success');
             persistEditorDraft();
         } catch (err) {
             setSaveStatus('导入失败：' + (err && err.message ? err.message : '文件格式不对'), 'error');
