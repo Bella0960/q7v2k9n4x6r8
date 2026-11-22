@@ -16,7 +16,7 @@ assert.ok(from >= 0 && to > from && helperFrom >= 0 && helperTo > helperFrom,
   'production import and metadata persistence helpers should exist');
 const code = html.slice(helperFrom, helperTo) + '\n' + html.slice(from, to);
 
-async function runImport(files, { failNames = [], storageFailure = null, initialMeta = null } = {}) {
+async function runImport(files, { failNames = [], storageFailure = null, initialMeta = null, concurrentMeta = null } = {}) {
   const listeners = {};
   const played = [];
   const toasts = [];
@@ -39,6 +39,7 @@ async function runImport(files, { failNames = [], storageFailure = null, initial
     toast: message => toasts.push(message),
     putAudioBlob: async entry => {
       putCalls++;
+      if (concurrentMeta !== null && putCalls === 1) storedMeta = JSON.stringify(concurrentMeta);
       if (failNames.includes(entry.name)) throw new Error('quota');
     },
     playTrack: id => played.push(id),
@@ -117,5 +118,30 @@ test('existing valid metadata is retained when appending an imported file', asyn
   assert.equal(after.length, 2);
   assert.equal(after[0].id, 'local_existing');
   assert.equal(r.tracks.length, 2);
+  assert.equal(r.played[0], after[1].id);
+});
+
+test('concurrent catalog modification is preserved instead of overwritten', async () => {
+  const old = [{ id: 'local_old', source: 'local' }];
+  const otherTab = [{ id: 'local_old', source: 'local' }, { id: 'local_other_tab', source: 'local' }];
+  const r = await runImport([{ name: 'conflict.wav', size: 100 }], {
+    initialMeta: JSON.stringify(old),
+    concurrentMeta: otherTab
+  });
+  assert.equal(r.putCalls, 1);
+  assert.equal(r.played.length, 0);
+  assert.equal(r.tracks.length, 1);
+  assert.deepEqual(JSON.parse(r.storedMeta), otherTab);
+  assert.ok(r.toasts.some(x => x.includes('其他页面更新')));
+});
+
+test('two sequential files still save without false conflict', async () => {
+  const r = await runImport([
+    { name: 'one.wav', size: 100 },
+    { name: 'two.wav', size: 100 }
+  ]);
+  const after = JSON.parse(r.storedMeta);
+  assert.equal(after.length, 2);
+  assert.equal(r.tracks.length, 3);
   assert.equal(r.played[0], after[1].id);
 });
