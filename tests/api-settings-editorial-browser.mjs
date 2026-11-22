@@ -42,7 +42,19 @@ try{
   try{
    await page.goto(new URL('settings/settings.html#api',base).href);
    await page.locator('#api-panel').waitFor({state:'visible'});
-   await page.locator('#btnApiExportProfiles').waitFor({state:'visible'});
+   await page.locator('#api-tools-drawer summary').waitFor({state:'visible'});
+   assert.equal(await page.locator('#api-tools-drawer').evaluate(el=>el.open),false);
+   for(const id of ['#btnProfileNew','#btnProfileDelete','#presetChips',
+      '#btnApiImportProfiles','#btnApiExportProfiles'])
+     assert.equal(await page.locator(id).isVisible(),false,'secondary control hidden: '+id);
+   assert.equal(await page.locator('#profilePills').isVisible(),true);
+   await page.locator('#api-tools-drawer summary').click();
+   assert.equal(await page.locator('#api-tools-drawer').evaluate(el=>el.open),true);
+   for(const id of ['#btnProfileNew','#btnProfileDelete','#presetChips',
+      '#btnApiImportProfiles','#btnApiExportProfiles'])
+     assert.equal(await page.locator(id).isVisible(),true,'tool reachable on demand: '+id);
+   await page.locator('#api-tools-drawer summary').click();
+   assert.equal(await page.locator('#api-tools-drawer').evaluate(el=>el.open),false);
    const metrics=await page.evaluate(()=>{
     const panel=document.querySelector('#api-panel');
     const footer=panel.querySelector('.api-editorial-footer').getBoundingClientRect();
@@ -51,14 +63,12 @@ try{
      overflow:document.documentElement.scrollWidth>innerWidth,
      formColor:getComputedStyle(document.querySelector('#settingsForm')).backgroundColor,
      footerVisible:footer.top>=container.top&&footer.bottom<=container.bottom+1,
-     presetWrap:getComputedStyle(document.querySelector('#presetChips')).flexWrap,
      footerHeight:footer.height
     };
    });
    assert.equal(metrics.overflow,false,'no horizontal overflow at '+width);
    assert.equal(metrics.formColor,'rgba(0, 0, 0, 0)','no old gray form card');
    assert.equal(metrics.footerVisible,true,'footer stays inside phone frame');
-   assert.equal(metrics.presetWrap,'nowrap','presets stay on one row');
    assert.ok(metrics.footerHeight<155,'footer must not swallow viewport');
    assert.equal(await page.locator('#api-image-settings').evaluate(el=>el.open),false);
    assert.equal(await page.locator('#api-advanced-settings').evaluate(el=>el.open),false);
