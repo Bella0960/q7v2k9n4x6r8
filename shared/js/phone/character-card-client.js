@@ -16,7 +16,7 @@
     const account = body && body.account;
     if (!response.ok || !account || account.status !== 'active' ||
         !/^MAO-[A-Z0-9]{12,24}$/.test(String(account.id || ''))) {
-      return fail('需要已登录且已授权的 MAO 账号，才能使用签名角色卡。');
+      return fail('请先登录已授权账号，再使用签名角色卡。');
     }
     const scope = global.__MAO_ACCOUNT_SCOPE__;
     const scopedId = scope && scope.ready === true ? String(scope.accountId || '') : '';

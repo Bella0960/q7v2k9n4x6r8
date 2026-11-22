@@ -13,23 +13,26 @@ function scopedRule(selector) {
   const marker = '/* ROLE-LIST-V117:';
   const start = inlineCSS.indexOf(marker);
   assert.ok(start >= 0, 'compact role-list styles must have their own scoped guard');
-  const section = inlineCSS.slice(start);
-  const begin = section.indexOf(selector + ' {');
+  const latest = inlineCSS.indexOf('/* ROLE-LIST-PORTRAIT-V118');
+  assert.ok(latest >= start, 'portrait layout override must be present after v117 styles');
+  const endOverride = inlineCSS.indexOf('@media(max-width:360px)', latest);
+  const section = inlineCSS.slice(latest, endOverride >= 0 ? endOverride : undefined);
+  const begin = section.lastIndexOf(selector + ' {');
   assert.ok(begin >= 0, selector + ' must exist in the scoped guard');
   const end = section.indexOf('}', begin);
   return section.slice(begin, end);
 }
 
 test('balanced role rows stay scoped to list, preserve full width, hidden scrollbars and original controls', () => {
-  assert.match(scopedRule('#listView .role-slim-bar'), /grid-template-columns:\s*96px\s+minmax\(0,\s*1fr\)/);
-  assert.match(scopedRule('#listView .role-slim-bar'), /min-height:\s*148px/);
+  assert.match(scopedRule('#listView .role-slim-bar'), /grid-template-columns:\s*minmax\(102px,35%\)\s+minmax\(0,1fr\)/);
+  assert.match(scopedRule('#listView .role-slim-bar'), /min-height:\s*174px/);
   const photo = scopedRule('#listView .role-slim-bar .slim-avatar');
-  assert.match(photo, /width:\s*96px/);
-  assert.match(photo, /height:\s*96px/);
+  assert.match(photo, /width:\s*100%/);
+  assert.match(photo, /height:\s*146px/);
   assert.match(photo, /align-self:\s*start/);
   const desc = scopedRule('#listView .role-slim-bar .slim-desc');
-  assert.match(desc, /-webkit-line-clamp:\s*2/);
-  assert.match(desc, /overflow:\s*hidden/);
+  assert.match(desc, /overflow-y:\s*auto/);
+  assert.match(desc, /scrollbar-width:\s*none/);
   assert.match(original, /role-slim-bar/);
   assert.match(original, /data-role-action="delete"/);
   assert.match(original, /data-role-action="use"/);
@@ -37,7 +40,7 @@ test('balanced role rows stay scoped to list, preserve full width, hidden scroll
   assert.match(archive, /#listView \.role-list\s*\{[\s\S]*?overflow-y:auto\s*!important/);
 });
 
-test('real Chromium: short and long roles align at top with two-line excerpts at 375/390/430px', { timeout: 45000 }, async () => {
+test('real Chromium: short and long roles align at top with scrollable biographies at 375/390/430px', { timeout: 45000 }, async () => {
   const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
   try {
     for (const width of [375, 390, 430]) {
@@ -61,7 +64,7 @@ test('real Chromium: short and long roles align at top with two-line excerpts at
               const buttons=row.querySelector('.bar-right');
               const style=getComputedStyle(desc);
               return { row:rect(row), avatar:rect(avatar), meta:rect(meta), desc:rect(desc), buttons:rect(buttons),
-                clamp:style.webkitLineClamp, lineHeight:parseFloat(style.lineHeight), contentWidth:desc.scrollWidth,
+                clamp:style.webkitLineClamp, lineHeight:parseFloat(style.lineHeight), contentWidth:desc.scrollWidth, scrollHeight:desc.scrollHeight, clientHeight:desc.clientHeight, overflowY:style.overflowY,
                 text:desc.textContent, visible:style.display };
             }),
             list:rect(list), scrollHeight:list.scrollHeight, clientHeight:list.clientHeight,
@@ -79,21 +82,21 @@ test('real Chromium: short and long roles align at top with two-line excerpts at
         assert.ok(Math.abs(short.row.h - long.row.h) <= 12,
           'short/long row heights must stay close: ' + JSON.stringify([short.row.h,long.row.h]));
         for (const item of [short,long]) {
-          assert.ok(item.row.h >= 140 && item.row.h <= 166,
+          assert.ok(item.row.h >= 172 && item.row.h <= 178,
             'card stays compact: ' + item.row.h);
-          assert.equal(item.avatar.w, 96);
-          assert.equal(item.avatar.h, 96);
+          assert.ok(item.avatar.w >= 100 && item.avatar.w <= 150);
+          assert.equal(item.avatar.h, 146);
           assert.ok(Math.abs(item.avatar.y - item.meta.y) <= 2, 'photo top aligns with text');
           assert.ok(item.row.x >= result.list.x && item.row.right <= result.list.right + 1,
             'full-width card must fit without clipping');
-          assert.equal(item.clamp, '2');
-          assert.ok(item.desc.h <= item.lineHeight * 2 + 2, 'persona excerpt limited to two visual lines');
+          assert.equal(item.overflowY, 'auto');
+          assert.ok(item.desc.h <= 73, 'biography viewport remains bounded');
           assert.ok(item.buttons.y >= item.meta.y, 'actions stay below the header');
           assert.ok(item.buttons.y + item.buttons.h <= item.row.y + item.row.h + 1,
             'action buttons cannot escape the row');
         }
         // User can still inspect the entire description by opening the full profile.
-        assert.ok(long.text.length > 100 && long.desc.h < long.lineHeight * 3);
+        assert.ok(long.text.length > 100 && long.scrollHeight > long.clientHeight, 'long biography must be independently scrollable');
       } finally {
         await page.close();
       }

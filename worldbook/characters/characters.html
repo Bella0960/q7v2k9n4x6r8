@@ -1006,7 +1006,59 @@
 
 
     
-        /* Folded, neutral avatar archive after editable profile settings. */
+        /* ROLE-LIST-PORTRAIT-V118: restore the top-aligned portrait after v117 compact override. */
+        #listView .role-slim-bar {
+            grid-template-columns:minmax(102px,35%) minmax(0,1fr);
+            grid-template-rows:minmax(0,1fr) auto;
+            align-items:start;
+            height:174px;
+            min-height:174px;
+            padding:14px 0;
+            column-gap:14px;
+        }
+        #listView .role-slim-bar .slim-avatar {
+            grid-column:1;
+            grid-row:1 / span 2;
+            display:flex;
+            width:100%;
+            height:146px;
+            min-height:146px;
+            align-self:start;
+            justify-self:start;
+            border-radius:0;
+            object-fit:cover;
+        }
+        #listView .role-slim-bar .slim-meta {
+            grid-column:2;
+            grid-row:1;
+            min-width:0;
+            min-height:0;
+            max-height:112px;
+            align-self:start;
+            padding-top:0;
+            overflow:hidden;
+        }
+        #listView .role-slim-bar .slim-desc {
+            display:block;
+            min-height:0;
+            max-height:72px;
+            overflow-y:auto;
+            overflow-x:hidden;
+            white-space:pre-wrap;
+            overflow-wrap:anywhere;
+            -webkit-line-clamp:unset;
+            scrollbar-width:none;
+            overscroll-behavior:contain;
+            -webkit-overflow-scrolling:touch;
+        }
+        #listView .role-slim-bar .slim-desc::-webkit-scrollbar { display:none; }
+        #listView .role-slim-bar .bar-right { grid-column:2;grid-row:2;align-self:end; }
+        @media(max-width:360px) {
+            #listView .role-slim-bar { grid-template-columns:minmax(96px,35%) minmax(0,1fr);column-gap:12px; }
+            #listView .role-slim-bar .slim-avatar { height:146px;min-height:146px;width:100%; }
+        }
+
+    /* Folded, neutral avatar archive after editable profile settings. */
         .avatar-library-section { margin:18px 0 0; padding:0; border:1px solid #E5E5E2; border-radius:12px; background:#FAFAF9; }
         .avatar-library-trigger { display:flex; align-items:center;justify-content:space-between;gap:12px; padding:17px 16px; list-style:none;cursor:pointer;color:#222;font-size:14px; }
         .avatar-library-trigger::-webkit-details-marker { display:none; }
@@ -1353,7 +1405,7 @@
     <script src="../../encounter/encounter-engine.js?v=20261115v1"></script>
     <script src="../../shared/js/phone/role-worldbook-bindings.js?v=20261119-qa1"></script>
     <script src="../../shared/js/phone/character-card-client.js?v=20261122-neutral-v1"></script>
-    <script src="js/characters-manager.js?v=20261122-neutral-v1"></script>
+    <script src="js/characters-manager.js?v=20261122-avatar-archive-v120"></script>
     <script src="../../shared/js/nav.js"></script>
 <script src="../../shared/js/statusbar-control.js"></script>
 </body>

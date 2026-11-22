@@ -80,10 +80,10 @@ test('a card cannot be imported under a different authenticated account', async 
 
 test('anonymous or disabled account cannot sign even an otherwise valid role', async () => {
   const anonymous = clientFixture({authenticated: false});
-  await assert.rejects(anonymous.bridge.sign(character), /需要已登录/);
+  await assert.rejects(anonymous.bridge.sign(character), /请先登录已授权账号/);
   assert.equal(anonymous.requests.some(x => x.path.endsWith('/sign')), false);
   const disabled = clientFixture({active: false});
-  await assert.rejects(disabled.bridge.sign(character), /需要已登录/);
+  await assert.rejects(disabled.bridge.sign(character), /请先登录已授权账号/);
   assert.equal(disabled.requests.some(x => x.path.endsWith('/sign')), false);
 });
 
