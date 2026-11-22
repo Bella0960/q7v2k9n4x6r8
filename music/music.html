@@ -872,14 +872,23 @@
   }
 
   // ===== localStorage：本地曲目元数据 + 向后兼容升级 =====
-  function readLocalTracksMeta() {
+  function readLocalTracksMeta(strict) {
     try {
       var raw = localStorage.getItem(LOCAL_TRACKS_KEY);
-      return raw ? JSON.parse(raw) : [];
-    } catch (e) { return []; }
+      var list = raw ? JSON.parse(raw) : [];
+      if (strict && !Array.isArray(list)) throw new Error('Invalid music metadata');
+      return list;
+    } catch (e) {
+      if (strict) throw e;
+      return [];
+    }
   }
   function saveLocalTracksMeta(list) {
-    try { localStorage.setItem(LOCAL_TRACKS_KEY, JSON.stringify(list || [])); } catch (e) {}
+    var serialized = JSON.stringify(list || []);
+    localStorage.setItem(LOCAL_TRACKS_KEY, serialized);
+    if (localStorage.getItem(LOCAL_TRACKS_KEY) !== serialized) {
+      throw new Error('Music metadata was not persisted');
+    }
   }
   // 合并本地曲目到 tracks 数组（不覆盖示例曲）
   function mergeLocalTracks() {
@@ -1422,7 +1431,14 @@
 
   document.getElementById('musicImport').addEventListener('change', async function(e) {
     var files = Array.from(e.target.files);
-    var localMeta = readLocalTracksMeta();
+    var localMeta;
+    try {
+      localMeta = readLocalTracksMeta(true);
+    } catch (err) {
+      toast('本地音乐记录读取失败，已保留原数据');
+      e.target.value = '';
+      return;
+    }
     var tStart = Date.now();
     var importedTrackId = null;
     for (var i = 0; i < files.length; i++) {
@@ -1437,24 +1453,25 @@
         id: tid, name: name, artist: '本地导入', dur: '本地', durSec: 0,
         source: 'local', lyrics: ['[ 本地导入歌曲 ]', '', '在手机里静静播放', '属于你的那一首']
       };
-      tracks.push(track);
       try {
         await putAudioBlob({
           id: tid, name: name, artist: '本地导入',
           mimeType: file.type || 'audio/mpeg', size: file.size, blob: file
         });
-        localMeta.push({
+        var updatedMeta = localMeta.concat([{
           id: tid, name: name, artist: '本地导入', dur: '本地', durSec: 0,
           source: 'local', lyrics: track.lyrics.slice()
-        });
+        }]);
+        // Only announce/import a track after its metadata is verifiably persisted.
+        // Leave an uncertain blob untouched instead of deleting recoverable user media.
+        saveLocalTracksMeta(updatedMeta);
+        localMeta = updatedMeta;
+        tracks.push(track);
         importedTrackId = tid;
       } catch (err) {
-        // blob 存失败 → 从 tracks 和 localMeta 里摘掉，不让它显示成无数据条目
-        tracks.pop();
         toast('本地音频导入失败：' + (err && err.message ? err.message : '请检查存储空间'));
       }
     }
-    saveLocalTracksMeta(localMeta);
     renderAlbum();
     if (importedTrackId) playTrack(importedTrackId);
     e.target.value = '';
