@@ -11,6 +11,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const source = path => readFileSync(resolve(root, path), 'utf8');
 
 function environment(quota = 1e9) {
+  let allowedQuota = quota;
   const data = new Map();
   const events = [];
   const usage = () => [...data].reduce((sum, [key, value]) => sum + key.length + value.length, 0);
@@ -23,7 +24,7 @@ function environment(quota = 1e9) {
       key = String(key);
       value = String(value);
       const before = data.has(key) ? key.length + data.get(key).length : 0;
-      if (usage() - before + key.length + value.length > quota) {
+      if (usage() - before + key.length + value.length > allowedQuota) {
         const error = new Error('quota exceeded');
         error.name = 'QuotaExceededError';
         throw error;
@@ -44,7 +45,7 @@ function environment(quota = 1e9) {
   for (const path of ['shared/js/phone/phone_storage.js', 'shared/js/phone/memory_recall.js']) {
     vm.runInContext(source(path), context, { filename: path });
   }
-  return { win, data, events, localStorage };
+  return { win, data, events, localStorage, used: usage, setQuota: amount => { allowedQuota = amount; } };
 }
 const history = n => Array.from({ length: n }, (_, i) => ({
   role: 'sent', text: 'message-' + i + '-' + 'x'.repeat(60), time: i
@@ -73,15 +74,15 @@ test('quota error never replaces the previous chat history', () => {
 });
 
 test('failed memory write returns false without creating a new key', () => {
-  const { win, localStorage } = environment(2000);
-  localStorage.setItem('filler', 'x'.repeat(1700));
+  const { win, localStorage, used, setQuota } = environment();
+  setQuota(used() + 60);
   assert.equal(win.MemoryRecall.saveMemories('a', [{ content: 'm'.repeat(700) }]), false);
   assert.equal(localStorage.getItem('chat_memories_a'), null);
 });
 
 test('failed memory upsert returns save-failed instead of a false success', () => {
-  const { win, localStorage } = environment(2000);
-  localStorage.setItem('filler', 'x'.repeat(1750));
+  const { win, localStorage, used, setQuota } = environment();
+  setQuota(used() + 60);
   const result = win.MemoryRecall.upsertMemory('a', { content: 'm'.repeat(600) });
   assert.equal(result.ok, false);
   assert.equal(result.reason, 'save-failed');
@@ -96,9 +97,9 @@ test('successful memory upsert remains compatible with existing role storage', (
 });
 
 test('quota error does not destroy the phone_data_v2 duplicate', () => {
-  const { win, localStorage } = environment(1500);
+  const { win, localStorage, used, setQuota } = environment();
   localStorage.setItem('phone_data_v2', JSON.stringify({ a: { memories: { items: [{ content: 'old' }] } } }));
-  localStorage.setItem('filler', 'x'.repeat(1200));
+  setQuota(used() + 60);
   assert.equal(win.PhoneStorage.saveMemories('a', [{ content: 'n'.repeat(600) }]), false);
   assert.equal(JSON.parse(localStorage.getItem('phone_data_v2')).a.memories.items[0].content, 'old');
 });
