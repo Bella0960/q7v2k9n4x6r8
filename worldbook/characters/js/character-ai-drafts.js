@@ -114,7 +114,8 @@
     };
     async function generate(kind, button) {
         if (busy) return;
-        var role = selectedRole();
+        var role = null;
+        try { role = selectedRole(); } catch (_) { role = null; }
         if (!role || !role.id) { status(kind,'请先打开一位主角色的档案。'); return; }
         var storedAt = 0;
         try { storedAt = Number(global.localStorage.getItem('character_ai_last_request_' + String(role.id))) || 0; } catch (error) {}
@@ -124,9 +125,11 @@
             return;
         }
         if (!global.PhoneAPI || typeof global.PhoneAPI.completeJSON !== 'function') {
-            status(kind, 'API 请求模块未加载。'); return;
+            status(kind, '生成服务暂时不可用，请重新打开此页面后再试。'); return;
         }
-        var conf = global.PhoneStorage && global.PhoneStorage.getApiConfig ? global.PhoneStorage.getApiConfig() : {};
+        var conf = {};
+        try { conf = global.PhoneStorage && global.PhoneStorage.getApiConfig ? global.PhoneStorage.getApiConfig() : {}; }
+        catch (_) { status(kind,'暂时无法读取 API 设置，请到设置中检查配置。'); return; }
         if (!conf || !String(conf.apiKey || '').trim()) { status(kind,'请先在设置中配置 API。'); return; }
         if (!global.confirm('AI 解析将发起一次可能计费的请求，使用已配置的 ' + (conf.model || '聊天') + ' 模型 API，可能产生费用。不会自动连续请求，也不会自动覆盖现有资料。确认生成？')) return;
         busy = true; lastRequestAt = Date.now();
