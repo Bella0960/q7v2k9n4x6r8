@@ -57,9 +57,9 @@
     function normalize(value, kind) {
         if (!value || typeof value !== 'object') return null;
         if (kind === 'relationships') {
-            var arr = Array.isArray(value) ? value : value.people || value.characters || value.relationships;
+            var arr = Array.isArray(value) ? value : value.people || value.characters || value.relationships || (typeof value.name === 'string' && value.name.trim() ? [value] : null);
             if (!Array.isArray(arr)) return null;
-            arr = arr.filter(function (v) { return v && typeof v === 'object' && typeof v.name === 'string' && v.name.trim(); }).slice(0,3);
+            arr = arr.filter(function (v) { return v && typeof v === 'object' && !Array.isArray(v) && typeof v.name === 'string' && v.name.trim() && (typeof v.relation === 'string' && v.relation.trim() || typeof v.background === 'string' && v.background.trim() || typeof v.personality === 'string' && v.personality.trim()); }).slice(0,1);
             return arr.length ? { people:arr } : null;
         }
         if (kind === 'life') {
