@@ -401,3 +401,121 @@ body.settings-home #modelModalOverlay .model-modal-close {
     height: 44px;
     margin-top: 9px;
 }
+
+
+/* API-UI-003: quiet surface. All secondary controls live behind the small
+   management disclosure; native <details> keeps them keyboard/touch accessible. */
+#api-panel .api-profile-section {
+    position: relative;
+    margin-bottom: 23px;
+}
+#api-panel .api-profile-section > .api-editorial-section-title {
+    margin: 0 0 9px;
+}
+#api-panel .api-profile-section .profile-pills {
+    margin: 0;
+    padding: 2px 0 0;
+    min-height: 39px;
+}
+#api-panel .api-tools-drawer {
+    position: static;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+#api-panel .api-tools-drawer > summary {
+    position: absolute;
+    z-index: 1;
+    top: -7px;
+    right: 0;
+    min-width: 58px;
+    min-height: 33px;
+    display: inline-flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 4px;
+    margin: 0;
+    padding: 0 1px 0 6px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--api-hint);
+    font-size: 11.5px;
+    font-weight: 400;
+    list-style: none;
+    cursor: pointer;
+    touch-action: manipulation;
+}
+#api-panel .api-tools-drawer > summary::-webkit-details-marker { display: none; }
+#api-panel .api-tools-drawer > summary svg {
+    width: 13px;
+    height: 13px;
+    flex: 0 0 auto;
+    transition: transform .18s ease;
+}
+#api-panel .api-tools-drawer[open] > summary {
+    color: var(--api-ink);
+}
+#api-panel .api-tools-drawer[open] > summary svg {
+    transform: rotate(180deg);
+}
+#api-panel .api-tools-body {
+    padding: 15px 0 4px;
+    margin-top: 12px;
+    border-top: 1px solid var(--api-line);
+}
+#api-panel .api-tools-group + .api-tools-group {
+    margin-top: 17px;
+}
+#api-panel .api-tools-label {
+    margin: 0 0 7px;
+    color: var(--api-hint);
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: .18px;
+    line-height: 1.5;
+}
+#api-panel .api-profile-commands {
+    display: flex;
+    justify-content: flex-start;
+    gap: 17px;
+}
+#api-panel .api-profile-commands .api-text-button {
+    min-height: 35px;
+    padding: 7px 1px;
+    border: none;
+    border-bottom: 1px solid var(--api-line);
+    border-radius: 0;
+    font-size: 12px;
+}
+#api-panel .api-transfer-row {
+    padding: 0;
+}
+#api-panel .api-tools-group .preset-chips {
+    margin: 0;
+    gap: 17px;
+    border-bottom: 0;
+    flex-wrap: wrap;
+    row-gap: 2px;
+    overflow-x: visible;
+    overflow-y: visible;
+}
+#api-panel .api-tools-group .preset-chip {
+    padding: 8px 0;
+    border: 0;
+    white-space: nowrap;
+}
+#api-panel .api-tools-body .api-security-note {
+    margin: 8px 0 0;
+    padding: 0;
+    color: var(--api-hint);
+    font-size: 10.5px;
+    line-height: 1.65;
+}
+#api-panel .api-tools-drawer > summary:focus-visible {
+    outline: 2px solid var(--api-ink);
+    outline-offset: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+    #api-panel .api-tools-drawer > summary svg { transition: none; }
+}
