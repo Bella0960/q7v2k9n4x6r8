@@ -788,6 +788,57 @@ function openRoleProfile(roleId) {
     showAppView('profileView');
 }
 
+// ECO-LINK-005: Read-only reverse link to the SAME formal character.
+// Legacy roles without a confirmed encounter remain entirely unchanged.
+function renderRoleEncounterHistory(role) {
+    const origin = role && role.encounterOrigin;
+    if (!origin || origin.version !== 1 ||
+        !/^enc_[a-z0-9_-]{3,80}$/i.test(String(origin.sourceCandidateId || ''))) return '';
+    const ledger = window.WorldEvents;
+    let events = [];
+    let warning = '';
+    if (!ledger || typeof ledger.listForRole !== 'function') {
+        warning = '相遇记录暂不可用，原角色资料不受影响。';
+    } else {
+        const result = ledger.listForRole(String(role.id), { limit: 30 });
+        if (!result || !result.ok) warning = '相遇记录暂时无法读取，原始资料未被改动。';
+        else events = result.value.filter(function (item) {
+            return item && (item.type === 'encounter.first_met' ||
+                item.type === 'encounter.reunion');
+        });
+    }
+    const id = encodeURIComponent(String(role.id));
+    const first = events.length ? events[events.length - 1] : null;
+    const firstDate = first && first.occurredAt &&
+        !Number.isNaN(Date.parse(first.occurredAt))
+        ? '&date=' + encodeURIComponent([
+            new Date(first.occurredAt).getFullYear(),
+            String(new Date(first.occurredAt).getMonth() + 1).padStart(2, '0'),
+            String(new Date(first.occurredAt).getDate()).padStart(2, '0')
+        ].join('-')) : '';
+    const rows = events.map(function (event) {
+        const when = new Date(event.occurredAt);
+        const localDate = Number.isNaN(when.getTime()) ? '' :
+            when.toLocaleDateString('zh-CN');
+        return '<li class="eco-record">' +
+            '<span class="eco-record-label">' + escapeHtml(
+                event.type === 'encounter.first_met' ? '初次相识' : '再次相遇') +
+            '</span><span class="eco-record-time">' + escapeHtml(localDate) + '</span>' +
+            '<p>' + escapeHtml(event.summary || '') + '</p></li>';
+    }).join('');
+    return '<details class="eco-profile-history">' +
+        '<summary>相遇经历 <span>' + events.length + ' 条记录</span></summary>' +
+        '<div class="eco-profile-history-body">' +
+          (warning ? '<p class="eco-profile-warning">' + escapeHtml(warning) + '</p>' : '') +
+          (rows ? '<ol class="eco-records">' + rows + '</ol>' :
+            '<p class="eco-profile-empty">已从邂逅加入角色库；此前未保存的经历不会被伪造。</p>') +
+          '<div class="eco-profile-links">' +
+            '<a href="../../encounter/encounter.html?reunionRole=' + id + '">回到邂逅</a>' +
+            '<a href="../../chat/footprint/footprint.html?roleId=' + id + firstDate + '">查看角色足迹</a>' +
+          '</div>' +
+        '</div></details>';
+}
+
 function renderRoleProfile() {
     const role = getActiveProfileRole();
     const content = document.getElementById('profileContent');
@@ -835,6 +886,7 @@ function renderRoleProfile() {
             '<button class="profile-branch" type="button" data-profile-action="relationships"><span class="profile-branch-index">03</span><span class="profile-branch-copy"><span class="profile-branch-title">人物关系网络</span><span class="profile-branch-desc">家人、朋友、同事，以及每个人自己的档案 · ' + count + ' 人</span></span><span class="profile-branch-arrow">›</span></button>' +
             '<button class="profile-branch" type="button" data-profile-action="life"><span class="profile-branch-index">04</span><span class="profile-branch-copy"><span class="profile-branch-title">个人生活线</span><span class="profile-branch-desc">近期计划、日常状态与阶段性事件 · ' + role.lifeEvents.length + ' 条记录</span></span><span class="profile-branch-arrow">›</span></button>' +
         '</div>' +
+        renderRoleEncounterHistory(role) +
         '<p class="profile-bottom-note">人物关系和生活记录只属于这个主角色。其他主角色不会自动继承这些人物或关系。</p>';
 
     content.onclick = function (event) {
