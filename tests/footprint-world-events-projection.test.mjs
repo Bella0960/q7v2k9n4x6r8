@@ -58,7 +58,7 @@ test('actual timeline projection displays existing footprint plus event without 
   const r = render();
   assert.match(r.timeline, /整理书架/);
   assert.match(r.timeline, /初次相识/);
-  assert.match(r.timeline, /相遇/);
+  assert.match(r.timeline, /生态记录/);
   assert.equal(r.writes.length, 0);
 });
 
