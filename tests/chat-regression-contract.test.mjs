@@ -2531,6 +2531,14 @@ test('chat extras: plus-menu cards persist only with a versioned history snapsho
   assert.equal(rendered.length, 1);
 });
 
+test('chat plus-menu script is refreshed in the page and PWA together', () => {
+  const loaded = detail.match(/js\/chat-extras\.js\?t=([\w-]+)/)?.[1];
+  const cached = serviceWorker.match(/chat\/chat\/js\/chat-extras\.js\?t=([\w-]+)/)?.[1];
+  assert.equal(loaded, '20261122cards1', 'chat details must load the repaired helper');
+  assert.equal(cached, loaded, 'PWA must precache exactly the script loaded by the page');
+  assert.ok(pwaCacheVersion >= 293, 'the old cached helper must be invalidated');
+});
+
 test('chat extras: every extension card send gates AI dispatch on successful persistence', () => {
   const helperStart = extras.indexOf('  function insertChatMessage(msg) {');
   const helperEnd = extras.indexOf('\n  // 隐藏指令', helperStart);
