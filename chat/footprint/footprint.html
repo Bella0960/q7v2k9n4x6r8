@@ -467,13 +467,22 @@
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
     });
   }
+  const ecoRouteParams = new URLSearchParams(window.location.search);
+  const ecoRouteRoleId = ecoRouteParams.get('roleId') || '';
   let currentRole = '';
-  let currentRoleId = '';
+  let currentRoleId = ecoRouteRoleId;
   const todayKey = () => {
     const now = new Date();
     return now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
   };
-  let currentDate = todayKey();
+  const requestedEcoDate = ecoRouteParams.get('date') || '';
+  function validEcoDate(value) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const [year, month, day] = value.split('-').map(Number);
+    const parsed = new Date(year, month - 1, day);
+    return parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day;
+  }
+  let currentDate = validEcoDate(requestedEcoDate) ? requestedEcoDate : todayKey();
   let viewMonth = currentDate.slice(0, 7);
   
   // 从 localStorage 读取角色足迹数据
@@ -529,7 +538,8 @@
     realRoles = loadRealRoles();
     // 使用角色 ID 维持选择，避免重名角色串用足迹。
     let selected = realRoles.find(r => String(r.id != null ? r.id : r.name) === String(currentRoleId));
-    if (!selected) selected = realRoles[0] || null;
+    if (!selected && !ecoRouteRoleId) selected = realRoles[0] || null;
+    // Invalid/deleted route role: do not silently show another person's history.
     if (selected) {
       currentRole = selected.name || '角色';
       currentRoleId = String(selected.id != null ? selected.id : selected.name);
