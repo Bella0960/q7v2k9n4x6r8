@@ -26,6 +26,9 @@ const TEST_ACCOUNT = 'MAO-ENCOUNTERQA0001';
 const TEST_COOKIE = 'encounter_local_session=browser-test-only';
 const TEST_SIGNING_KEY = 'encounter-browser-local-only-crypto-key-2026-not-deployed';
 let signedCalls = 0, verifiedCalls = 0, rejectedCalls = 0;
+// An opaque numeric checkpoint is the only browser-failure detail that may
+// leave sealed QA; no page text, role names, or private source values.
+let sealedBrowserCheckpoint = 0;
 const respondJson = (res, status, value) => {
   res.writeHead(status, { 'content-type': 'application/json;charset=utf-8',
     'cache-control': 'no-store' });
@@ -101,6 +104,7 @@ const base = 'http://127.0.0.1:' + server.address().port;
 let browser;
 const failures = [];
 try {
+  sealedBrowserCheckpoint = 10;
   // Keep negative auth checks under try/finally to prevent a leaked HTTP
   // server from hanging CI if an assertion fails during setup.
   const withoutSession = await fetch(base + '/api/accounts/me');
@@ -142,6 +146,7 @@ try {
     if(!browser)throw lastError;
   }
   for (const viewport of [{width:375,height:812},{width:390,height:844},{width:430,height:932}]) {
+    sealedBrowserCheckpoint = viewport.width;
     const context = await browser.newContext({
       viewport,acceptDownloads:true,reducedMotion:'reduce',
       isMobile:true,hasTouch:true,deviceScaleFactor:2
@@ -321,6 +326,7 @@ try {
     assert.equal(savedName,name);
     assert.equal(attemptedApi.length,0,'免费抽卡不可调用 API');
     if(viewport.width===390) {
+      sealedBrowserCheckpoint = 391;
       await page.locator('[data-create]').first().click();
       await page.locator('#editRoleName').waitFor();
       assert.equal(await page.locator('#editRoleName').inputValue(),name,'候选人名应进入原角色编辑器');
@@ -364,6 +370,7 @@ try {
       const persistedCandidates = await page.evaluate(() => window.MAOMAOEncounter.getCandidates());
       assert.equal(persistedCandidates.ok,true,'候选读回不能报错');
       assert.equal(persistedCandidates.value.length,0,'正式保存成功后清理候选（支持旧数据与逐条 V2 存储）');
+      sealedBrowserCheckpoint = 392;
       const downloadEvent=page.waitForEvent('download');
       await page.locator('#btnExportRole').click();
       const download=await downloadEvent;
@@ -386,6 +393,7 @@ try {
       });
       await page.waitForFunction(() => document.querySelector('#saveStatus')?.textContent?.includes('仅允许导入 MAOMAO 服务器签发的角色卡'));
       assert.equal(await page.locator('#editRoleName').inputValue(),name,'拒绝第三方卡后不得覆盖已有人设');
+      sealedBrowserCheckpoint = 393;
       const tampered = JSON.parse(JSON.stringify(exported));
       tampered.character.persona += '伪造内容';
       const tamperReject = page.waitForResponse(response =>
@@ -398,6 +406,7 @@ try {
       await page.waitForFunction(() => document.querySelector('#saveStatus')?.textContent?.includes('invalid signed character card'));
       assert.equal(await page.locator('#editRolePersona').inputValue(),
         exported.character.persona,'篡改签名后不得覆盖人设');
+      sealedBrowserCheckpoint = 394;
       const crossAccount = JSON.parse(JSON.stringify(exported));
       crossAccount.ownerId = 'MAO-FOREIGNACCOUNT12';
       // Clear the previous failure text to avoid a stale-status false pass.
@@ -418,6 +427,7 @@ try {
     if(jsErrors.length)failures.push(...jsErrors.map(e=>viewport.width+': '+e));
     await context.close();
   }
+  sealedBrowserCheckpoint = 500;
   // 另建隔离浏览器上下文测试命运选择：不碰上述普通相遇的既有候选和截图。
   const fateContext=await browser.newContext({
     viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:2,
@@ -466,6 +476,7 @@ try {
   assert.ok(verifiedCalls >= 1, 'browser must actually call test-only verification server');
   assert.ok(rejectedCalls >= 2, 'tampered and cross-account cards must be refused by signer');
   if(failures.length)throw new Error('Browser JS errors:\n'+failures.join('\n'));
+  sealedBrowserCheckpoint = 600;
   const files=['encounter-375.png','encounter-390.png','encounter-430.png',
     'encounter-original-role-editor.png','encounter-object-concealed.png',
     'encounter-object-guess-390.png','encounter-blind-guess-390.png',
@@ -488,8 +499,14 @@ try {
       nativeSystemStatusBar:true
     },captured
   };
+  sealedBrowserCheckpoint = 700;
   await fs.writeFile(receiptPath,JSON.stringify(receipt,null,2)+'\n','utf8');
   console.log('PASS: 邂逅已在真实 Chromium 通过三视口和角色完整创建流程；回执对应 '+receipt.gitHead);
+} catch (error) {
+  // Fixed numeric stage only; the sealed public runner never echoes raw
+  // assertion messages, sensitive actor names or private file paths.
+  console.error('SEALED_BROWSER_CHECKPOINT:' + sealedBrowserCheckpoint);
+  throw error;
 } finally {
   if(browser)await browser.close();
   await new Promise(r=>server.close(r));
