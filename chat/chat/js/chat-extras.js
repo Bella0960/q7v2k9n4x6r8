@@ -643,9 +643,27 @@
 
     if (!messages.length) return;
 
-    var history = loadMessages();
-    var next = history.concat(messages);
-    if (!saveMessages(next)) {
+    // Save the exact versioned array returned by loadMessages().
+    // concat() drops its optimistic-concurrency baseline and is always rejected.
+    var history = null;
+    var saved = false;
+    try {
+      history = loadMessages();
+      if (Array.isArray(history)) {
+        history.push.apply(history, messages);
+        saved = saveMessages(history) === true;
+      }
+    } catch (error) {
+      saved = false;
+    }
+    if (!saved) {
+      // A rejected write must not leak phantom images into the loaded history.
+      if (Array.isArray(history) && history.length >= messages.length &&
+          messages.every(function (message, index) {
+            return history[history.length - messages.length + index] === message;
+          })) {
+        history.splice(history.length - messages.length, messages.length);
+      }
       await storedAssets.reduce(function (chain, item) {
         return chain.then(function () {
           return chatImageMediaRepo.removeRef(item.assetId, 'chat-message', item.mid).then(function (released) {
