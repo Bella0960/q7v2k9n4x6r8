@@ -84,11 +84,13 @@ test('profile history is placed after original social branches and collapsed by 
 });
 
 test('encounter role deep-link uses existing role lookup and never saves candidate or role', () => {
-  const start = encounter.indexOf('var requestedRole=new URLSearchParams');
+  const start = encounter.indexOf("var requestedRole='';");
   assert.ok(start>0);
   const code = encounter.slice(start, encounter.indexOf('\n})();', start));
+  assert.match(code,/typeof URLSearchParams==='function'/);
+  assert.match(code,/routeParams\.get\('reunionRole'\)/);
   assert.match(code,/engine\.getEncounteredRoles\(\)/);
-  assert.match(code,/openReunion\(requestedRole\)/);
+  assert.match(code,/openReunion\(requestedRole,requestedScene\)/);
   assert.doesNotMatch(code,/saveCandidate|saveRoles|setItem/);
 });
 
