@@ -663,120 +663,107 @@
     switchPage('detail');
   }
 
-  // ================= 刷新（右上角 ↻） =================
-  function refreshToday() {
-    const icon = document.querySelector('.top-bar .icon-btn svg');
-    if (icon) { icon.classList.remove('rot'); void icon.offsetWidth; icon.classList.add('rot'); }
-
-    const requestRoleId = String(currentRoleId || '');
-    const requestDate = String(currentDate);
-    const roleInfo = realRoles.find(r => String(r.id != null ? r.id : r.name) === requestRoleId);
-    const requestRoleName = currentRole;
-    const roleBio = String((roleInfo && [roleInfo.description, roleInfo.bio, roleInfo.personality,
-      roleInfo.character, roleInfo.speechStyle, roleInfo.prompt, roleInfo.systemPrompt].filter(Boolean).join('\n')) || '');
-    if (!requestRoleId) {
-      showToast('请先选择一个角色');
-      return;
-    }
-    showToast('正在生成今日行程...');
-
-    const cfg = window.PhoneStorage && PhoneStorage.getApiConfig ? PhoneStorage.getApiConfig() : {};
-    const canCallAI = cfg && String(cfg.apiKey || '').trim() && window.PhoneAPI && typeof window.PhoneAPI.complete === 'function';
-
-    if (canCallAI && roleBio) {
-      // 调用 AI 根据人设生成行程
-      const systemPrompt = '你是一个行程规划助手。根据角色的人设，生成她/他在指定日期一天的完整行程时间线。输出格式要求：每行一条，格式为"时间 | 标题 | 描述"，比如"08:30 | 起床 | 阳光透过窗帘洒进来，慢慢醒来"。要求：1. 生成8-10条行程，从早上起床到晚上睡觉，覆盖全天各个时段（起床、早餐、上午工作、午餐、下午休闲、傍晚、晚餐、晚间放松、睡前）；2. 行程要完全符合角色的人设、职业、性格和生活习惯，比如学生就是上课自习，上班族就是通勤上班，自由职业者就是在家工作；3. 时间安排要合理，不要太密也不要太松，间隔1-3小时一条；4. 描述要具体有细节，符合角色的语气和生活场景；5. 只输出行程列表，不要其他解释。';
-      const userPrompt = '日期：' + requestDate + '\n角色名字：' + requestRoleName + '\n角色人设：' + roleBio + '\n\n请生成这个角色在该日期一天的行程时间线。';
-      
-      window.PhoneAPI.complete({
-        system: systemPrompt,
-        user: userPrompt,
-        temperature: 0.8,
-        timeoutMs: 15000
-      }).then(function(text) {
-        if (!text) throw new Error('empty');
-        // 解析 AI 输出的行程
-        const lines = String(text).split('\n').filter(l => l.trim());
-        const items = lines.map(function(line, idx) {
-          const parts = line.split('|').map(s => s.trim());
-          if (parts.length < 3) return null;
-          const time = parts[0] || ('09:' + pad(idx*15));
-          const title = parts[1] || '日常事项';
-          const desc = parts[2] || '';
-          // 随机选一个配图
-          const imgs = [IMG.meadow, IMG.plant, IMG.sea, IMG.star, IMG.flower];
-          return {
-            id: requestRoleId + '-' + requestDate + '-' + idx,
-            time: time,
-            title: title,
-            desc: desc,
-            tag: '♡ 今日行程',
-            loc: title,
-            img: imgs[idx % imgs.length]
-          };
-        }).filter(Boolean);
-        
-        if (items.length >= 2) {
-          // 保存到 localStorage
-          const localData = loadFootprintData(requestRoleId);
-          localData[requestDate] = items;
-          saveFootprintData(requestRoleId, localData);
-          if (String(currentRoleId) === requestRoleId && currentDate === requestDate) {
-            renderTimeline();
-            updateCount();
-            renderCalendar();
-            showToast('已根据人设生成今日行程');
-          }
-        } else {
-          // 解析失败，用默认数据
-          generateDefaultFootprint(requestRoleId, requestDate, false);
-        }
-      }).catch(function() {
-        // 调用失败，用默认数据
-        generateDefaultFootprint(requestRoleId, requestDate, false);
-      });
-    } else {
-      // 没有 API Key，直接用默认数据
-      setTimeout(function() {
-        generateDefaultFootprint(requestRoleId, requestDate, false);
-      }, 600);
+  // ================= 按需生成：不在页面打开时静默计费 =================
+  let footprintGenerating = false;
+  function footprintStatus(message, state) {
+    const el = document.getElementById('footprintGenerationStatus');
+    if (el) {
+      el.textContent = message || '';
+      el.dataset.state = state || '';
     }
   }
-  
-  // 生成默认足迹（fallback）
-  function generateDefaultFootprint(targetRoleId, targetDate, forceReplace) {
-    const targetId = String(targetRoleId || currentRoleId || '');
-    const dateKey = String(targetDate || currentDate || todayKey());
-    if (!targetId) return;
-    const localData = loadFootprintData(targetId);
-    const hasExisting = Array.isArray(localData[dateKey]) && localData[dateKey].length > 0;
-    if (!forceReplace && hasExisting) {
-      if (String(currentRoleId) === targetId && currentDate === dateKey) showToast('未能生成新行程，已保留原有足迹');
+  async function refreshToday() {
+    if (footprintGenerating) return;
+    const requestRoleId = String(currentRoleId || '');
+    const requestDate = String(currentDate);
+    const button = document.querySelector('.top-bar .icon-btn');
+    // Reload the saved character each time; never generate from a stale
+    // in-memory profile captured before persona or life-line edits.
+    const roles = loadRealRoles();
+    const role = roles.find(function(item) {
+      return String(item.id != null ? item.id : item.name) === requestRoleId;
+    });
+    if (!requestRoleId || !role || !window.FootprintAI) {
+      footprintStatus('请先创建并选择角色，再生成足迹。','error');
       return;
     }
-    if (forceReplace || !hasExisting) {
-      const dateSeed = Number(dateKey.replace(/-/g, '').slice(-4)) || 1;
-      const variants = [
-        { time: '07:30', title: '起床洗漱', desc: '拉开窗帘，让早晨的阳光慢慢进来，泡一杯热饮清醒一下。', tag: '♡ 晨间 · 日常', loc: '卧室 · 厨房', img: IMG.meadow },
-        { time: '09:00', title: '早餐时间', desc: '慢慢吃一顿早饭，听听歌，不赶时间地开始这一天。', tag: '⌖ 早餐 · 松弛', loc: '餐厅', img: IMG.plant },
-        { time: '11:00', title: '处理今日事项', desc: '把最重要的事先做完，节奏不急不缓，状态刚好的时候效率最高。', tag: '✦ 上午 · 工作', loc: '书桌前', img: IMG.plant },
-        { time: '12:30', title: '午餐', desc: '好好吃一顿午饭，饭后走一走，看看窗外的树和行人。', tag: '♡ 午间 · 休息', loc: '餐厅 · 楼下', img: IMG.meadow },
-        { time: '15:00', title: '下午时光', desc: '泡杯茶或者咖啡，做点喜欢的事，读几页书，或者发发呆。', tag: '⌖ 午后 · 松弛', loc: '阳台 · 书房', img: IMG.plant },
-        { time: '18:00', title: '晚餐', desc: '晚上吃点简单又舒服的，吃完收拾一下厨房，今天的事就告一段落。', tag: '✦ 傍晚 · 日常', loc: '厨房 · 餐厅', img: IMG.meadow },
-        { time: '20:00', title: '晚间放松', desc: '看会儿电影或者刷刷手机，不用想明天的事，现在就好好放松。', tag: '♡ 夜晚 · 休闲', loc: '客厅', img: IMG.star },
-        { time: '22:30', title: '准备睡觉', desc: '洗漱完躺到床上，回想今天的小事，准备进入睡眠。', tag: '✦ 深夜 · 安睡', loc: '卧室', img: IMG.star }
-      ];
-      const offset = dateSeed % variants.length;
-      localData[dateKey] = variants.map(function (item, idx) {
-        return Object.assign({ id: targetId + '-' + dateKey + '-' + (idx + 1) }, variants[(idx + offset) % variants.length]);
+    const model = window.FootprintAI;
+    let prompts, fingerprint, apiConfig;
+    try {
+      const profile = model.context(role, requestDate);
+      const configured = ['persona','personality','profession','occupation','background',
+        'backstory','bio','description','character','story','world','era','setting',
+        'lifeLine','lifeEvents'].some(function(key) {
+        const value = profile[key];
+        return typeof value === 'string' ? !!value.trim() :
+          Array.isArray(value) && value.length > 0;
       });
-      saveFootprintData(targetId, localData);
+      if (!configured) throw new Error('该角色还没有核心人设或生活线，请先填写设定，不能凭空生成模板足迹');
+      prompts = model.prompts(role,requestDate);
+      fingerprint = JSON.stringify(profile);
+      apiConfig = model.selectedApi(window.PhoneStorage);
+      if (!apiConfig || !String(apiConfig.apiKey || '').trim()) {
+        throw new Error('当前 API 方案尚未填写 Key，请先到 API 设置配置');
+      }
+      if (!String(apiConfig.model || '').trim()) throw new Error('当前 API 方案尚未选择模型');
+      if (!window.PhoneAPI || typeof window.PhoneAPI.completeJSON !== 'function') {
+        throw new Error('足迹生成请求服务没有加载，请重新打开此页面');
+      }
+    } catch (error) {
+      footprintStatus(String(error && error.message || '生成设置不可用'),'error');
+      return;
     }
-    if (String(currentRoleId) === targetId && currentDate === dateKey) {
-      renderTimeline();
-      updateCount();
-      renderCalendar();
-      showToast('已刷新今日行程');
+    const exists = itemsOf(currentRole,requestDate).length > 0;
+    const prompt = '将调用一次当前选中的模型 API 生成该角色 '+requestDate+' 的足迹，可能产生费用。' +
+      (exists ? '成功后将替换该角色这一天的旧足迹；失败则保留原记录。' : '失败不会写入默认假行程。') +
+      ' 确认继续？';
+    if (!window.confirm(prompt)) return;
+    footprintGenerating = true;
+    if (button) button.disabled = true;
+    footprintStatus('正在根据完整人设和生活线生成足迹…','busy');
+    try {
+      let diagnostic = null;
+      const result = await window.PhoneAPI.completeJSON({
+        apiConfig:apiConfig, system:prompts.system, user:prompts.user,
+        temperature:0.75, timeoutMs:45000,
+        onDiagnostic:function(info) {
+          if (info && info.stage==='response') diagnostic=info;
+        }
+      });
+      let entries;
+      try {
+        entries = model.parse(result,window.AIResponseParser);
+      } catch(error) {
+        if (diagnostic && diagnostic.finish==='length') {
+          throw new Error('模型输出被 Token 上限截断，请提高最大输出 Token 后手动重试，旧足迹仍在');
+        }
+        if (diagnostic && diagnostic.reasoningOnly) {
+          throw new Error('当前模型只返回思考内容，没有生成 JSON 正文，旧足迹仍在');
+        }
+        throw error;
+      }
+      // A slow model must never save into a different character, date, or
+      // a profile whose persona/life line changed during the paid request.
+      const stillSelected=String(currentRoleId)===requestRoleId && currentDate===requestDate;
+      const latest=loadRealRoles().find(function(item){
+        return String(item.id != null ? item.id : item.name)===requestRoleId;
+      });
+      if (!stillSelected || !latest || JSON.stringify(model.context(latest,requestDate))!==fingerprint) {
+        throw new Error('生成期间切换了角色/日期或修改了人设，本次结果未写入');
+      }
+      const saved = model.writeDay(localStorage,requestRoleId,requestDate,entries);
+      renderTimeline(); updateCount(); renderCalendar();
+      footprintStatus('已生成 '+saved.length+' 条符合该角色设定的足迹，可查看心声与状态。','success');
+      showToast('足迹已生成');
+    } catch(error) {
+      const message=String(error && error.message || '');
+      const safe=/足迹|角色|日期|模型|Token|API|JSON|存储|读取|修改|写入/.test(message) ?
+        message.slice(0,160) : '生成请求失败，请检查网络或 API 设置；旧足迹仍保留';
+      footprintStatus(safe,'error');
+      showToast('生成未完成，原足迹已保留');
+    } finally {
+      footprintGenerating=false;
+      if (button) button.disabled=false;
     }
   }
 
@@ -932,15 +919,7 @@
   updateCount();
   renderCalendar();
   
-  // 如果当天没有数据，自动根据人设生成行程
-  setTimeout(function() {
-    if (currentRoleId) {
-      const localData = loadFootprintData(currentRoleId);
-      if (!localData[currentDate] || !localData[currentDate].length) {
-        refreshToday();
-      }
-    }
-  }, 300);
+  // Opening the page never calls a paid API or invents a daily routine.
 </script>
 
 <script>
