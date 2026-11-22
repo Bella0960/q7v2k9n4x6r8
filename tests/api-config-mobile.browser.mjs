@@ -36,6 +36,9 @@ try{
   page.on('dialog',dialog=>dialog.accept());
   try{
    await page.goto(new URL('settings/settings.html#api',base).href);
+   await page.locator('#api-tools-drawer summary').waitFor({state:'visible',timeout:12000});
+   assert.equal(await page.locator('#btnApiExportProfiles').isVisible(),false,'export is hidden on the default API surface');
+   await page.locator('#api-tools-drawer summary').click();
    await page.locator('#btnApiExportProfiles').waitFor({state:'visible',timeout:12000});
    assert.equal(await page.locator('#api-key').getAttribute('type'),'password');
    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
