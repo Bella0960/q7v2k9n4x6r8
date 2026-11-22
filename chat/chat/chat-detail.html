@@ -8604,65 +8604,84 @@
         var editCancelBtn = document.getElementById('editCancel');
         var editConfirmBtn = document.getElementById('editConfirm');
         var editMid = '';
+        var editOriginalText = '';
+        var editSaving = false;
         var editOpenedAt = 0;
 
         function closeEditSheet() {
             if (editOverlay) editOverlay.classList.remove('active');
             editMid = '';
+            editOriginalText = '';
         }
 
         function openEditSheet(bubbleId) {
+            if (editSaving) return;
             var resolved = resolveBubbleInPage(bubbleId);
             if (!resolved || !editOverlay) return;
             var isAi = resolved.message.role === 'received' || resolved.message.role === 'assistant';
             editMid = bubbleId;
+            editOriginalText = String(resolved.text || '');
             if (editTitleEl) editTitleEl.textContent = isAi ? '修改 TA 说的话' : '修改内容';
-            if (editInput) editInput.value = String(resolved.text || '');
+            if (editInput) editInput.value = editOriginalText;
             editOpenedAt = Date.now();
             editOverlay.classList.add('active');
             setTimeout(function () { try { editInput.focus(); } catch (e) {} }, 60);
         }
 
-        function saveEditedMessage() {
+        async function saveEditedMessage() {
+            if (editSaving || !editMid) return;
             var bubbleId = editMid;
-            var resolved = resolveBubbleInPage(bubbleId);
-            if (!resolved) {
-                if (typeof showToast === 'function') showToast('消息已不存在');
-                closeEditSheet();
-                return;
-            }
             var newText = String(editInput.value || '').trim();
             if (!newText) {
                 if (typeof showToast === 'function') showToast('内容不能为空');
                 return;
             }
-            if (newText === String(resolved.text || '').trim()) { closeEditSheet(); return; }
-            var list = loadMessages();
-            var idx = -1;
-            for (var i = 0; i < list.length; i++) { if (ensureMid(list[i]) === resolved.mid) { idx = i; break; } }
-            if (idx === -1) {
-                if (typeof showToast === 'function') showToast('消息已不存在');
+            if (newText === editOriginalText.trim()) { closeEditSheet(); return; }
+            editSaving = true;
+            try {
+                var list = loadMessages();
+                var resolved = window.ChatMessagePolicy && typeof window.ChatMessagePolicy.resolveBubble === 'function'
+                    ? window.ChatMessagePolicy.resolveBubble(list, bubbleId) : resolveBubbleInPage(bubbleId);
+                if (!resolved) {
+                    if (typeof showToast === 'function') showToast('消息已不存在');
+                    closeEditSheet();
+                    return;
+                }
+                // A message edited in another tab since this sheet opened must not
+                // be silently overwritten, even when it changed before our read.
+                if (String(resolved.text || '') !== editOriginalText) {
+                    if (typeof showToast === 'function') showToast('其他窗口已修改这条消息，请刷新后重试');
+                    return;
+                }
+                var idx = -1;
+                for (var i = 0; i < list.length; i++) { if (ensureMid(list[i]) === resolved.mid) { idx = i; break; } }
+                if (idx === -1) {
+                    if (typeof showToast === 'function') showToast('消息已不存在');
+                    closeEditSheet();
+                    return;
+                }
+                // Copy on write: a rejected save cannot mutate the loaded history.
+                var next = list.slice();
+                var msg = Object.assign({}, list[idx]);
+                next[idx] = msg;
+                var textField = (msg.content != null && msg.text == null) ? 'content' : 'text';
+                if (resolved.count > 1 && window.ChatMessagePolicy && typeof window.ChatMessagePolicy.replaceBubbleInText === 'function') {
+                    var rebuilt = window.ChatMessagePolicy.replaceBubbleInText(String(msg.text || msg.content || ''), resolved.index, newText);
+                    msg[textField] = rebuilt || newText;
+                } else {
+                    msg[textField] = newText;
+                }
+                msg.edited = true;
+                msg.editedAt = Date.now();
+                if (!await replaceChatSafely(list, next)) return;
+                rerenderFromList(loadMessages());
                 closeEditSheet();
-                return;
+                if (typeof showToast === 'function') showToast('已保存');
+            } catch (error) {
+                if (typeof showToast === 'function') showToast('保存失败，原消息已保留');
+            } finally {
+                editSaving = false;
             }
-            var msg = list[idx];
-            var textField = (msg.content != null && msg.text == null) ? 'content' : 'text';
-            if (resolved.count > 1 && window.ChatMessagePolicy && typeof window.ChatMessagePolicy.replaceBubbleInText === 'function') {
-                // 老记录一条消息含多个气泡：只替换目标段，兄弟气泡原样重建。
-                var rebuilt = window.ChatMessagePolicy.replaceBubbleInText(String(msg.text || msg.content || ''), resolved.index, newText);
-                msg[textField] = rebuilt || newText;
-            } else {
-                msg[textField] = newText;
-            }
-            msg.edited = true;
-            msg.editedAt = Date.now();
-            if (!saveMessages(list)) {
-                if (typeof showToast === 'function') showToast('保存失败，未修改');
-                return;
-            }
-            rerenderFromList(list);
-            closeEditSheet();
-            if (typeof showToast === 'function') showToast('已保存');
         }
 
         if (editBackdrop) {
