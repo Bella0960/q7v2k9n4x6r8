@@ -2186,7 +2186,25 @@ function handleCancelEdit() {
 }
 
 
-document.getElementById('btnBackProfile').addEventListener('click', function () { showAppView('listView'); });
+document.getElementById('btnBackProfile').addEventListener('click', function () {
+    // Only the explicit verified footprint -> character route can return
+    // directly to its original role/day. All other profiles return to list.
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('from') === 'footprint' &&
+        params.get('encounterRole') === String(currentProfileRoleId || '')) {
+        const role = getRoleById(currentProfileRoleId);
+        const link = document.querySelector('#listView .back-circle');
+        const href = link ? String(link.getAttribute('href') || '') : '';
+        const prefix = '../../chat/footprint/footprint.html?roleId=' +
+            encodeURIComponent(String(currentProfileRoleId));
+        if (role && role.encounterOrigin && role.encounterOrigin.version === 1 &&
+            href.indexOf(prefix) === 0) {
+            window.location.href = href;
+            return;
+        }
+    }
+    showAppView('listView');
+});
 document.getElementById('btnUseFromProfile').addEventListener('click', function () {
     if (currentProfileRoleId) selectRoleAndEnterPhone(currentProfileRoleId);
 });
