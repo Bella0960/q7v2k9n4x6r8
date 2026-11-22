@@ -2547,7 +2547,8 @@
       } catch (err) { toast('音频未导入：' + err.message); }
     }
     pendingDurationProbes.forEach(function(entry) {
-      musicScheduleLocalDuration(entry.track, entry.blob);
+      var track = entry.track, audioBlob = entry.blob;
+      musicScheduleLocalDuration(track, audioBlob);
     });
     renderAlbum();
     renderRecent();
