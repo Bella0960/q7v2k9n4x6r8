@@ -148,6 +148,18 @@ try{
     await page.waitForFunction(id=>window.WorldEvents.listForRole(id).value.length===2,roleId);
     const events=await page.evaluate(id=>window.WorldEvents.listForRole(id),roleId);
     const reunion=events.value.find(e=>e.type==='encounter.reunion');
+    // A real repeat of the same event is permitted but must never duplicate it.
+    const repeated=await page.evaluate(async event=>{
+      const copy={
+        roleId:event.roleId, type:event.type, source:event.source,
+        occurredAt:event.occurredAt, summary:event.summary,
+        provenance:event.provenance,allowAI:event.allowAI
+      };
+      return await window.WorldEvents.append(copy);
+    },reunion);
+    assert.equal(repeated.ok,true,'same-key retry must be idempotent');
+    assert.equal((await page.evaluate(id=>window.WorldEvents.listForRole(id),roleId)).value.length,
+      2,'a repeat must not create a third event');
     assert.ok(reunion&&reunion.roleId===roleId);
     await page.locator('[data-return-footprint]').click();
     await page.waitForURL(url=>url.pathname.endsWith('/chat/footprint/footprint.html'));
@@ -200,17 +212,21 @@ try{
     serverAccount=B;
     const t0=Date.now();
     await page.reload({waitUntil:'load'});
-    const bView=await page.evaluate(id=>({
-      account:window.WorldEvents.account(),
-      events:window.WorldEvents.listForRole(id),
-      memory:window.RoleEventMemory.buildPrompt(id)
-    }),roleId);
+    const bView=await page.evaluate(id=>{
+      const queryStart=performance.now();
+      const account=window.WorldEvents.account();
+      const events=window.WorldEvents.listForRole(id);
+      const memory=window.RoleEventMemory.buildPrompt(id);
+      return { account, events, memory, isolationCheckMs:performance.now()-queryStart };
+    },roleId);
     assert.equal(bView.account.value,B);
     assert.equal(bView.events.ok,true);
     assert.equal(bView.events.value.length,0,'account B saw account A events');
     assert.equal(bView.memory.value,'','account B inherited A chat memory');
     const isolationMs=Date.now()-t0;
     report.timings['syntheticAccountSwitchMs'+width]=isolationMs;
+    report.timings['syntheticAccountIsolationQueryMs'+width]=
+      Number(bView.isolationCheckMs.toFixed(3));
     serverAccount=A;
     await page.reload({waitUntil:'load'});
     const aView=await page.evaluate(id=>window.WorldEvents.listForRole(id),roleId);
