@@ -4,17 +4,20 @@ import { preview } from 'vite';
 import test from 'node:test';
 
 test('memory-space browser storage isolation and UI at phone widths', async () => {
+let memoryCheckpoint = 1;
 const previewServer = process.env.MEMORY_TEST_ORIGIN ? null : await preview({
     preview: { host: '127.0.0.1', port: 0 }
 });
 const base = process.env.MEMORY_TEST_ORIGIN || 'http://127.0.0.1:' + previewServer.httpServer.address().port;
 let browser;
 try {
+    memoryCheckpoint = 2;
     browser = await chromium.launch({
         executablePath: process.env.CHROMIUM_PATH || undefined,
         args: ['--no-sandbox']
     });
     for (const width of [375, 390, 430, 1100]) {
+        memoryCheckpoint = width;
         const page = await browser.newPage({ viewport: { width, height: 820 }, isMobile: width < 500, hasTouch: width < 500 });
         page.setDefaultTimeout(12000);
         page.on('dialog', dialog => dialog.accept());
@@ -39,6 +42,7 @@ try {
         await page.goto(base + '/worldbook/memory/memory.html');
         assert.deepEqual(await page.locator('#charPicker .char-item').evaluateAll(items =>
             items.map(item => item.dataset.id)), ['solo', 'single']);
+        memoryCheckpoint = width + 1;
         const layout = await page.locator('#mem-list').evaluate(list => {
             const [first, second] = list.querySelectorAll('.memory-archive-entry');
             const search = document.querySelector('.memory-search-wrap');
@@ -58,12 +62,14 @@ try {
                 timeColor: getComputedStyle(first.querySelector('.memory-archive-time')).color
             };
         });
+        memoryCheckpoint = width + 2;
         assert.deepEqual(layout, {
             searchHeight: 36, searchFont: '12px', alignment: 0, actionFonts: ['12px', '12px'],
             gap: 12, leftBorders: ['0px', '0px'], bodyFont: '14px', timeColor: 'rgb(153, 153, 153)'
         });
         await page.locator('.memory-archive-entry').filter({ hasText: '待删除原文' }).getByRole('button', { name: '删除', exact: true }).click();
         await page.reload();
+        memoryCheckpoint = width + 3;
         assert.equal(await page.locator('.memory-archive-entry').count(), 1);
         await page.getByRole('button', { name: '记忆库', exact: true }).click();
         await page.locator('.lib-item').filter({ hasText: '待删除记忆' }).getByRole('button', { name: '删除', exact: true }).click();
@@ -71,9 +77,11 @@ try {
         assert.match(await page.locator('.lib-item').innerText(), /保留记忆/);
         await page.getByRole('button', { name: '清空当前记忆' }).click();
         assert.equal(await page.locator('.lib-item').count(), 0);
+        memoryCheckpoint = width + 4;
         assert.equal(await page.evaluate(() => PhoneStorage.getChatHistory('solo').length), 2);
         assert.equal(await page.evaluate(() => PhoneStorage.getMemoryArchiveEntries('solo').length), 0);
         assert.equal(await page.evaluate(() => PhoneStorage.getMemories('group').length), 1);
+        memoryCheckpoint = width + 5;
         await page.getByRole('button', { name: '群聊', exact: true }).click();
         await page.locator('.group-memory-item').getByRole('button', { name: '删除', exact: true }).click();
         assert.equal(await page.locator('.group-memory-item').count(), 0);
@@ -82,15 +90,21 @@ try {
         assert.equal(await page.evaluate(() => PhoneStorage.getMemoryArchiveEntries('group').length), 0);
         await page.evaluate(() => PhoneStorage.saveMemories('group', [{ id: 'again', content: '群记忆' }]));
         await page.evaluate(() => PhoneStorage.saveMemories('solo', [{ id: 'again', content: '单聊记忆' }]));
+        memoryCheckpoint = width + 6;
         for (const [id, button] of [['solo', '#actionClear'], ['group', '#actionGpClearRecord']]) {
             const groupOptions = id === 'group' ? '&groupOptions=1' : '';
             await page.goto(base + '/chat/chat/chat-settings.html?roleId=' + id + groupOptions);
             await page.locator(button).click();
             assert.deepEqual(await page.evaluate(id => [PhoneStorage.getChatHistory(id).length, PhoneStorage.getMemories(id).length], id), [0, 0]);
         }
+        memoryCheckpoint = width + 7;
         console.log('Memory Space passed at ' + width + 'px');
         await page.close();
     }
+} catch (error) {
+    // Only an allowlisted numeric checkpoint may exit the sealed CI log.
+    console.error('SEALED_MEMORY_CHECKPOINT:' + memoryCheckpoint);
+    throw error;
 } finally {
     await browser?.close();
     if (previewServer) await new Promise(resolve => previewServer.httpServer.close(resolve));
