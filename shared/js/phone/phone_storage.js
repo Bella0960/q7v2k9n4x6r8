@@ -921,7 +921,8 @@
                         function normalize(item) {
                             if (Array.isArray(item)) return item.map(normalize);
                             if (item && typeof item === 'object') {
-                                var sorted = {};
+                                // Null prototype keeps JSON keys such as __proto__ as data.
+                                var sorted = Object.create(null);
                                 Object.keys(item).sort().forEach(function (key) {
                                     sorted[key] = normalize(item[key]);
                                 });
