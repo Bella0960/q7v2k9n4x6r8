@@ -48,20 +48,7 @@ function accountAuthenticationUnavailable() {
   );
 }
 
-function isVerifiedFounderSession(account, env) {
-  if (!account || account.role !== 'super_admin' || account.status !== 'active') return false;
-  // Isolated QA honors the exact configured founder UID. Do not trust a
-  // browser role flag, a request header, or the editable page metadata.
-  if (env?.MAO_IDENTITY_MODE === 'delegated_preview') {
-    const expected = String(env.MAO_EXPECTED_FOUNDER_ID || '');
-    return /^MAO-[A-Z0-9]{12,24}$/.test(expected) && account.id === expected;
-  }
-  // Non-delegated identity authorities already enforce the unique founder
-  // role at account creation; keep their existing behavior unchanged.
-  return true;
-}
-
-async function injectAccountScope(response, account, env) {
+async function injectAccountScope(response, account) {
   if (!response || !response.ok || !String(response.headers.get('content-type') || '').toLowerCase().includes('text/html')) {
     return response;
   }
@@ -81,7 +68,7 @@ async function injectAccountScope(response, account, env) {
   const source = await response.text();
   const tags =
     '<meta name="mao-account-id" content="' + accountId + '">' +
-    '<meta name="mao-account-role" content="' + (isVerifiedFounderSession(account, env) ? 'super_admin' : 'user') + '">' +
+    '<meta name="mao-account-role" content="' + (role === 'super_admin' ? 'super_admin' : 'user') + '">' +
     '<script src="/shared/js/mao-account-scope.js?v=3" data-mao-account-scope></script>';
   let injected = false;
   const html = source.replace(/<head\b[^>]*>/i, match => {
@@ -286,7 +273,7 @@ export default {
           return accountAuthenticationUnavailable();
         }
         authorizedAccount = authPayload.account;
-        if (url.pathname.startsWith('/admin/') && !isVerifiedFounderSession(authorizedAccount, env)) {
+        if (url.pathname.startsWith('/admin/') && authorizedAccount.role !== 'super_admin') {
           return Response.redirect(new URL('/index.html', url), 302);
         }
       } catch {
@@ -298,7 +285,7 @@ export default {
     if (url.pathname === "/" && request.method === "GET") {
       const indexUrl = new URL("/index.html", url);
       const response = await env.ASSETS.fetch(new Request(indexUrl, request));
-      return authorizedAccount ? await injectAccountScope(response, authorizedAccount, env) : response;
+      return authorizedAccount ? await injectAccountScope(response, authorizedAccount) : response;
     }
     if (env.ASSETS) {
       let assetRequest = request;
@@ -313,7 +300,7 @@ export default {
       }
       const response = await env.ASSETS.fetch(assetRequest);
       return isHtmlDocument && authorizedAccount
-        ? await injectAccountScope(response, authorizedAccount, env)
+        ? await injectAccountScope(response, authorizedAccount)
         : response;
     }
     return new Response('Not found', { status: 404 });
