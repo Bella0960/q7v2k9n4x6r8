@@ -28,9 +28,12 @@
         var account = events.account();
         if (!account || !account.ok || !account.value ||
             typeof account.value !== 'string') return fail('无法核验账号');
-        // Fails closed for missing, removed, or corrupted formal roles/events.
-        var result = events.listForRole(roleId, {limit: 1});
-        if (!result || !result.ok) return fail('当前角色事件仓储不可安全读取');
+        // A chat prompt would otherwise scan all localStorage event keys
+        // several times per message. Verify the canonical role cheaply here;
+        // buildPrompt still validates the complete event ledger before reading.
+        var result = typeof events.hasRole === 'function'
+          ? events.hasRole(roleId) : events.listForRole(roleId, {limit: 1});
+        if (!result || !result.ok) return fail('当前正式角色不可安全读取');
         return ok({
           accountId: account.value,
           key: PREFIX + encodeURIComponent(account.value) + ':' + encodeURIComponent(roleId)
