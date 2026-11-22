@@ -104,3 +104,53 @@ test('Chromium phone: short natural-language NPC draft is saved once at 375/390/
   }
  }finally{await browser.close();}
 });
+
+test('Chromium phone: all AI calls honor selected API profile and recover structured event JSON',{timeout:60000},async()=>{
+  const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+  try {
+    for(const width of [375,390,430]){
+      const page=await browser.newPage({viewport:{width,height:820}});
+      try {
+        await page.setContent(markup);
+        await page.evaluate(()=>{
+          window.__role={id:'selected-role',name:'角色A',persona:'从事摄影工作',npcCharacters:[],lifeEvents:[]};
+          window.getActiveProfileRole=()=>window.__role;
+          window.confirm=()=>true;
+          window.PhoneStorage={
+            getApiConfig:()=>({apiKey:'obsolete-key',model:'obsolete-model',baseUrl:'https://obsolete.invalid/v1'}),
+            getActiveProfileId:()=> 'live-profile',
+            getApiProfiles:()=> [{id:'live-profile',apiKey:'current-key',model:'current-model',baseUrl:'https://active-model.invalid/v1',maxTokens:512}],
+            pushApiLog:()=>{}
+          };
+          window.__seen=[];
+          window.fetch=async(url,options)=>{
+            const payload=JSON.parse(options.body);
+            window.__seen.push({url:String(url),auth:options.headers.Authorization,model:payload.model,maxTokens:payload.max_tokens});
+            const raw='生成结果：'+String.fromCharCode(96,96,96)+'json\n'+
+              '{"event":{"title":"准备摄影展","detail":"整理展品","people":"同事"}}'+
+              '\n'+String.fromCharCode(96,96,96);
+            return new Response(JSON.stringify({choices:[{message:{content:raw},finish_reason:'stop'}]}),{
+              status:200,headers:{'content-type':'application/json'}
+            });
+          };
+        });
+        await page.addScriptTag({content:phoneApi});
+        await page.addScriptTag({content:parser});
+        await page.addScriptTag({content:generator});
+        await page.click('#btnAiLife');
+        await page.waitForFunction(()=>document.getElementById('lifeEventTitle').value==='准备摄影展');
+        const result=await page.evaluate(()=>({
+          seen:window.__seen,detail:document.getElementById('lifeEventDetail').value,
+          status:document.getElementById('lifeAiStatus').textContent
+        }));
+        assert.equal(result.seen.length,1);
+        assert.deepEqual(result.seen[0],{
+          url:'https://active-model.invalid/v1/chat/completions',
+          auth:'Bearer current-key',model:'current-model',maxTokens:512
+        });
+        assert.equal(result.detail,'整理展品');
+        assert.match(result.status,/已生成生活事件草稿/);
+      } finally {await page.close();}
+    }
+  } finally {await browser.close();}
+});

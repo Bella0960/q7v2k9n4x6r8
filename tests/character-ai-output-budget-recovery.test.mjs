@@ -193,3 +193,62 @@ test('infer relationship-network filters from brief AI relations without request
   assert.equal(x.role.npcCharacters.find(v=>v.name==='林青').category,'work');
   assert.equal(x.role.npcCharacters.find(v=>v.name==='苏禾').category,'friend');
 });
+
+test('all three AI buttons use the activated API profile, not stale api_settings mirror', async () => {
+  for (const kind of [
+    {id:'btnAiNpc', expected:'npc'},
+    {id:'btnAiRelationships', expected:'relationships'},
+    {id:'btnAiLife', expected:'life'}
+  ]) {
+    const x=setup({apiKey:'old-key',model:'old-model',baseUrl:'https://old.invalid/v1'},
+      async()=>({ok:true,data: kind.expected==='life'
+        ? {title:'新活动',detail:'准备'}
+        : kind.expected==='npc'
+          ? {name:'林青',relation:'同事'}
+          : {people:[{name:'林青',relation:'同事'}]}}));
+    x.window.PhoneStorage.getActiveProfileId=()=> 'selected';
+    x.window.PhoneStorage.getApiProfiles=()=> [
+      {id:'old',apiKey:'old-key',model:'old-model',baseUrl:'https://old.invalid/v1'},
+      {id:'selected',apiKey:'new-key',model:'new-model',baseUrl:'https://new.invalid/v1',maxTokens:512}
+    ];
+    x.nodes[kind.id].click();await settle();
+    assert.equal(x.calls.length,1,kind.id);
+    assert.equal(x.calls[0].apiConfig.apiKey,'new-key');
+    assert.equal(x.calls[0].apiConfig.model,'new-model');
+    assert.equal(x.calls[0].apiConfig.baseUrl,'https://new.invalid/v1');
+    assert.equal(x.calls[0].apiConfig.maxTokens,512);
+  }
+});
+
+test('deleted active API profile must not fall back to stale credentials',async()=>{
+  const x=setup({apiKey:'stale-key',model:'stale-model'});
+  x.window.PhoneStorage.getActiveProfileId=()=> 'deleted';
+  x.window.PhoneStorage.getApiProfiles=()=> [{id:'available',apiKey:'safe',model:'safe'}];
+  x.nodes.btnAiLife.click();await settle();
+  assert.equal(x.calls.length,0);
+  assert.match(x.nodes.lifeAiStatus.textContent,/方案已不存在/);
+});
+
+test('empty selected key or model blocks request rather than borrowing mirror credentials',async()=>{
+  for(const profile of [
+    {id:'active',model:'new-model'},
+    {id:'active',apiKey:'new-key'}
+  ]){
+    const x=setup({apiKey:'stale-key',model:'stale-model'});
+    x.window.PhoneStorage.getActiveProfileId=()=> 'active';
+    x.window.PhoneStorage.getApiProfiles=()=> [profile];
+    x.nodes.btnAiRelationships.click();await settle();
+    assert.equal(x.calls.length,0);
+    assert.match(x.nodes.relationshipsAiStatus.textContent,/当前 API 方案|当前选中的 API 方案/);
+  }
+});
+
+test('legacy api_settings without an active ID remains backwards compatible',async()=>{
+  const x=setup({apiKey:'legacy',model:'legacy-model'},async()=>({
+    ok:true,data:{title:'计划旅行',detail:'准备清单'}
+  }));
+  x.nodes.btnAiLife.click();await settle();
+  assert.equal(x.calls.length,1);
+  assert.equal(x.calls[0].apiConfig.apiKey,'legacy');
+  assert.equal(x.nodes.lifeEventTitle.value,'计划旅行');
+});
