@@ -27,7 +27,7 @@ const QA_DB = '4a24ce58079f468c87c2f75e107c4d1c';
 const CORE_DB = 'e1b78d3813ae4a819841e8c5c3e9e8ec';
 const QA_DO = '4a10d3dab4e16639445f4afdb0b7e5e2462cf06894cb4ae85f0ac3cd3cdba101';
 const CORE_DO = 'dba114c7b0abd8e53d1d78e579924852b8e40907e50213634aeeaeb41ab51a98';
-const BRANCH = 'integration/qa-api-ui-003-v123-20261123';
+const BRANCH = 'integration/qa-eco-unified';
 const QA_SETUP_OPEN = 'isolated_authority';
 const QA_SETUP_CLOSED = 'disabled';
 const TESTS = [
@@ -51,6 +51,7 @@ const TESTS = [
   // Build first so this works on a clean checkout, not only after an older build.
   ['npm', ['run', 'build']],
   ['npm', ['run', 'test:encounter']],
+  ['npm', ['run', 'test:eco:node']],
   ['npm', ['run', 'test:pwa:navigation']],
   // Full Node regression includes Playwright browser tests (group UI and gesture).
   // Provision Chromium AND its Linux shared libraries BEFORE browser tests.
@@ -62,6 +63,7 @@ const TESTS = [
   // Run the browser gesture gate before the expensive full 1000+ test Node suite:
   // failures should stop early, never consume repeated full-suite minutes.
   ['npm', ['run', 'test:encounter:browser']],
+  ['npm', ['run', 'test:eco:browser']],
   ['npm', ['run', 'test:role:avatars:browser']],
   // Music now-playing visual QA must pass before replacing static assets on the existing QA Worker.
   ['node', ['tests/music-mobile-browser.mjs']],
