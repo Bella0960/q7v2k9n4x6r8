@@ -978,9 +978,10 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
 
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
-  assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
+  assert.match(search, /chat-message-policy\.js\?v=20261122search1/);
   assert.ok(pwaCacheVersion >= 204, 'PWA cache must not regress below v204');
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
+  assert.match(serviceWorker, /chat-message-policy\.js\?v=20261122search1/);
   const sendPolicyVersion = detail.match(/chat-send-policy\.js\?v=([\w-]+)/)?.[1];
   const precachedSendPolicyVersion = serviceWorker.match(/chat-send-policy\.js\?v=([\w-]+)/)?.[1];
   assert.ok(sendPolicyVersion, 'chat page must load a versioned send policy');

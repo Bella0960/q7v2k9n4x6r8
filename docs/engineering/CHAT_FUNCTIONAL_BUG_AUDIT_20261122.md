@@ -36,3 +36,13 @@
 4. 再查富消息、记忆/世界书、跨应用追加，按一项一 PR 处理。
 
 不因本台账存在而将「待查」标为修复完成。
+
+## CHAT-FUNCTION-002：搜索结果跳转错位（P1，功能逻辑）
+
+**确认来源**：`chat/chat/chat-detail.html` 的 `computeVisibleList` 在渲染前去掉 `arrivalStart` 及开头为 `[语音消息]` 的旧占位消息；`chat/chat/chat-search.html` 使用的 `ChatMessagePolicy.isOnlineSearchIndexVisible` 原先只排除 `mode=date`、`silent` 和诊断文案，漏掉上述两类。搜索结果的 `hl` 因此可能比实际聊天气泡的 `data-idx` 大，导致搜索跳转定位失败或落到别的消息上。
+
+**最小修复**：让搜索索引复用 `isHiddenFromOnlineTimeline` 的同一套隐藏条件，同时继续把系统错误消息留在索引中保持序号，但不让它出现在搜索结果。同步修复搜索页在策略加载失败时的兼容兜底；仅为搜索页增加新的策略脚本资源版本，并增量更新 SW v291 缓存，不改聊天详情 UI、消息格式、存储 key、搜索页面布局或 CSS。
+
+**新增测试**：`tests/chat-search-index-parity.test.mjs` 以真实策略代码运行，确认到达开场、旧语音占位、silent、date、诊断消息过滤后，搜索索引与聊天显示序号完全相同；错误消息仍占索引槽但不可搜索；兼容兜底与共享策略一致。
+
+**状态**：独立草稿分支 `CHAT-FUNCTION-002/search-index-hidden-rows-20261122`，专项 Node、完整 Node/Vite/Chromium、QA 及真机尚未验证；第 001 项发布完成前不得混合发布。
