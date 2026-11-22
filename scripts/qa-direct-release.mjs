@@ -485,7 +485,7 @@ async function main() {
   // Diagnostics mode is permitted ONLY for validation, never for a release.
   // It still runs every required gate, records all failures and exits nonzero
   // without a deployment. This avoids one manual CI round trip per stale test.
-  const collectTestFailures = !deploy && process.env.MAOMAO_QA_DIAGNOSE_ALL === '1';
+  const collectTestFailures = !deploy && process.env.SEALED_VERIFY_COLLECT_GATES === '1';
   const failedTestGates = [];
   for (const [index, [command, args]] of TESTS.entries()) {
     try {
