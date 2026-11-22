@@ -83,6 +83,16 @@ test('family-card consumption uses the same lock and is idempotent', async () =>
   assert.equal(replay.replayed, true);
   assert.equal(cards.find(invite.id).history.length, 1);
   assert.equal(cards.usedThisMonth(cards.find(invite.id)), 12);
+  const conflictingAmount = await ledger.runExclusive(() =>
+    cards.consume(invite.id, 13, '购物', 'shop', 'checkout-1'));
+  const conflictingApp = await ledger.runExclusive(() =>
+    cards.consume(invite.id, 12, '购物', 'takeout', 'checkout-1'));
+  assert.equal(conflictingAmount.ok, false, '同一交易号不能改金额重复扣款');
+  assert.equal(conflictingAmount.reason, 'transaction-conflict');
+  assert.equal(conflictingApp.ok, false, '同一交易号不能跨商户重复扣款');
+  assert.equal(conflictingApp.reason, 'transaction-conflict');
+  assert.equal(cards.find(invite.id).history.length, 1, '冲突重放不能追加流水');
+  assert.equal(cards.usedThisMonth(cards.find(invite.id)), 12, '冲突重放不能增加已用额度');
   assert.equal(cards.update(invite.id, 'pause').ok, false);
 });
 
