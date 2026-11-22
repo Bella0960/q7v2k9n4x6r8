@@ -48,6 +48,14 @@ test('intentional explicit text remains authoritative, including context-only ca
   assert.equal(send.normalizeOptions({ silent: true, text: '旁白' }, '草稿').text, '旁白');
 });
 
+test('phone PWA loads the newly versioned send policy without touching the visual layout', () => {
+  const sw = read('sw.js');
+  const asset = 'chat-send-policy.js?v=20261122-draftfix1';
+  assert.ok(chatPage.includes(asset), 'chat page must request the fixed policy');
+  assert.ok(sw.includes(asset), 'PWA pre-cache must use the same script URL');
+  assert.match(sw, /const CACHE_NAME = 'phone-app-pwa-v290'/);
+});
+
 test('legacy fallback uses the same draft-isolation rule when shared policy is unavailable', () => {
   const start = chatPage.indexOf('Compatibility fallback: preserve the original sendMsg option normalization');
   const end = chatPage.indexOf('const customText = sendState.customText', start);
