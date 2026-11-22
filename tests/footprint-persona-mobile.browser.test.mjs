@@ -80,27 +80,21 @@ test('actual footprint page on Chromium 375/390/430px: two incompatible personas
       const page=await context.newPage();
       try {
         await page.goto(origin+'/chat/footprint/footprint.html',{waitUntil:'domcontentloaded'});
-        console.log('FP_PHASE width='+width+' step=loaded');
         await page.waitForSelector('.role-item[data-role-id="coder-a"]');
         assert.equal(await page.locator('.timeline .t-item').count(),0,'loading the page cannot auto-generate');
         await page.locator('.top-bar .icon-btn').click();
         await page.waitForFunction(()=>document.querySelector('#footprintGenerationStatus')?.dataset.state==='success');
         assert.equal(await page.locator('.timeline .t-item').count(),3);
-        console.log('FP_PHASE width='+width+' step=first-generated');
         const first=await page.locator('.timeline').innerText();
-        console.log('FP_FLAGS width='+width+' hasAction='+/检查昨夜的构建日志/.test(first)+' hasThought='+/心声 ·/.test(first)+' hasStatus='+/状态 ·/.test(first)+' unexpected='+/祖师殿|御剑/.test(first));
         assert.match(first,/检查昨夜的构建日志/);
         assert.match(first,/心声 ·/);
         assert.match(first,/状态 ·/);
         assert.doesNotMatch(first,/祖师殿|御剑/);
-        console.log('FP_PHASE width='+width+' step=before-second-role-click');
-        await page.locator('.role-item[data-role-id="cult-b"]').click();
-        console.log('FP_PHASE width='+width+' step=role-switched');
+        await page.locator('#rolesScroll .role-item[data-role-id="cult-b"]').click();
         assert.equal(await page.locator('.timeline .t-item').count(),0,'new role must not see previous role timeline');
         await page.locator('.top-bar .icon-btn').click();
         await page.waitForFunction(()=>window.__requests.length===2&&document.querySelector('#footprintGenerationStatus')?.dataset.state==='success');
         assert.equal(await page.locator('.timeline .t-item').count(),3);
-        console.log('FP_PHASE width='+width+' step=second-generated');
         const second=await page.locator('.timeline').innerText();
         assert.match(second,/祖师殿|御剑/);
         assert.doesNotMatch(second,/写补丁|游戏崩溃|点夜宵/);
@@ -116,7 +110,6 @@ test('actual footprint page on Chromium 375/390/430px: two incompatible personas
         assert.equal(record.requests[0].model,'current-model');
         assert.equal(record.requests[1].auth,'Bearer current-key');
         assert.match(record.requests[0].system,/严格合法的 JSON/);
-        console.log('FP_PHASE width='+width+' step=before-overflow-check overflow='+record.overflow);
         assert.equal(record.overflow,false);
         for(const key of ['coder','cultivator']) {
           const dates=Object.values(record[key]);
@@ -124,7 +117,6 @@ test('actual footprint page on Chromium 375/390/430px: two incompatible personas
           assert.equal(dates[0].length,3);
           assert.ok(dates[0].every(x=>x.time&&x.action&&x.status&&x.thought));
         }
-        console.log('FP_PHASE width='+width+' step=before-reload');
         await page.reload({waitUntil:'domcontentloaded'});
         assert.equal(await page.locator('.timeline .t-item').count(),3,'first role records persist through reload');
         assert.match(await page.locator('.timeline').innerText(),/检查昨夜的构建日志/);
