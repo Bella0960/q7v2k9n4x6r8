@@ -239,6 +239,12 @@
                         <button type="button" class="profile-mini-btn" id="btnProfileNew">＋ 新建方案</button>
                         <button type="button" class="profile-mini-btn" id="btnProfileDelete">删除当前</button>
                     </div>
+                    <div class="profile-actions" aria-label="API 方案迁移">
+                        <button type="button" class="profile-mini-btn" id="btnApiExportProfiles">导出 API 方案</button>
+                        <button type="button" class="profile-mini-btn" id="btnApiImportProfiles">导入 API 方案</button>
+                        <input type="file" id="apiProfilesImportFile" accept=".json,application/json" hidden>
+                    </div>
+                    <p class="param-hint">导出的 JSON 包含明文 API Key，仅用于个人设备迁移。</p>
                 </div>
 
                 <!-- 快捷预设：一键填地址与模型，绝不动 API Key -->
@@ -259,6 +265,7 @@
                             <option value="custom">自定义</option>
                             <option value="openai">OpenAI</option>
                             <option value="deepseek">DeepSeek</option>
+                            <option value="gemini">Gemini</option>
                             <option value="moonshot">Moonshot Kimi</option>
                             <option value="zhipu">智谱 GLM</option>
                             <option value="siliconflow">硅基流动</option>
@@ -370,6 +377,7 @@
         </div>
     </div>
     <script src="js/settings.js"></script>
+    <script src="js/api-config-tools.js"></script>
     <script src="js/backup-modules.js"></script>
     <script src="js/backup.js"></script>
     <script>
