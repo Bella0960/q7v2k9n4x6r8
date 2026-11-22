@@ -1,5 +1,13 @@
 # MAOMAO Execution Log
 
+## 2026-11-22｜CHAT-DELETE-001｜长按单条消息删除改用原子替换
+
+- **确认的缺陷**：`chat-detail.html` 单条删除路径仍调用同步 `saveMessages(_inheritChatBaseline(keep, list))`，跨标签页时没有和已有 `ChatHistoryAtomic` 的 per-conversation Web Locks 使用同一锁；独立写入可能与其他窗口的消息追加交叉。
+- **最小修复**：改为与多选删除、清空记录相同的 `await replaceChatSafely(list, keep)`；底层只在原历史快照未变化时保存。只有提交成功后才释放被删除图片引用，UI 从已保存历史重新读取并渲染；异常保持消息和图片不动。
+- **回归**：扩充 `tests/chat-selection-delete-atomic.test.mjs`，直接执行真实删除函数及原子模块，验证按气泡 ID 删除、其他角色隔离、并发新增保护、存储配额失败、无锁、账号隔离与缺失气泡；PWA 缓存 v297 保证手机加载新页面。
+- **范围**：不更改用户历史数据格式、角色 ID、消息菜单或 UI；只改聊天详情的单条删除和必要缓存/测试。完整测试、合并、手机 QA 实际结果以公开隔离门禁和 Cloudflare 回执为准。
+
+
 ## 2026-11-22｜CHAT-CLEAR-001｜聊天加号菜单清空安全修复
 
 - **实际缺陷**：`chat/chat/js/chat-extras.js` 中清空调用 `saveMessages([])`，空数组未继承当前会话的版本基线，因此会被详情页的 `_chatHistoryBaselines` 拒绝；清空操作也缺少跨标签页原子删除保证。

@@ -320,3 +320,144 @@ test('image cleanup rejection does not misreport already committed clear as fail
   assert.equal(s.events.filter(e => e.type === 'release').length, 1);
   assert.match(s.events.filter(e => e.type === 'toast').at(-1).message, /已清空/);
 });
+
+
+// Single-message long-press delete must obey the same locked destructive-write
+// contract as multi-select and chat-clear; exercise the actual page handler.
+const singleDeleteHandler = section(
+  'async function deleteOneMessage(bubbleId) {',
+  '\n        // ---------- 编辑消息'
+);
+
+function singleDeleteScenario(options = {}) {
+  const key = 'chat_history_role-1';
+  const original = [
+    { mid: 'img-1', role: 'user', text: 'photo', type: 'image', assetId: 'asset-1' },
+    { mid: 'keep-2', role: 'assistant', text: 'remain' }
+  ];
+  const db = new Map([
+    [key, JSON.stringify(original)],
+    ['chat_history_role-2', JSON.stringify([{ mid: 'other', text: 'other role' }])]
+  ]);
+  const events = [];
+  let lockCount = 0;
+  let concurrentWrite = false;
+  const localStorage = {
+    getItem(k) { return db.has(k) ? db.get(k) : null; },
+    setItem(k, value) {
+      if (options.quota) {
+        const error = new Error('QuotaExceededError');
+        error.name = 'QuotaExceededError';
+        throw error;
+      }
+      db.set(k, String(value));
+    }
+  };
+  const document = {
+    querySelector(selector) {
+      return options.declaredAccount && selector === 'meta[name="mao-account-id"]'
+        ? { content: options.declaredAccount } : null;
+    }
+  };
+  const navigator = options.noLock ? {} : { locks: {
+    request(name, settings, callback) {
+      lockCount++;
+      assert.equal(name, 'maomao:chat-history:role-1');
+      assert.equal(settings.mode, 'exclusive');
+      if (options.concurrent && !concurrentWrite) {
+        concurrentWrite = true;
+        const latest = JSON.parse(db.get(key));
+        latest.push({ mid: 'new-tab', role: 'user', text: 'concurrent message' });
+        db.set(key, JSON.stringify(latest));
+      }
+      return callback();
+    }
+  } };
+  const window = {
+    navigator, document, localStorage,
+    ChatMessagePolicy: {
+      removeBubblesFromHistory(list, mids) {
+        return list.filter(m => !mids.includes(m.mid));
+      }
+    }
+  };
+  if (options.scope) window.__MAO_ACCOUNT_SCOPE__ = options.scope;
+  const context = {
+    window, document, navigator, localStorage,
+    currentCharacter: { id: 'role-1' }, storageKey: key,
+    _chatHistoryUnreadable: false,
+    loadMessages() { return JSON.parse(localStorage.getItem(key)); },
+    resolveBubbleInPage(bubbleId) {
+      const message = original.find(m => m.mid === bubbleId);
+      return message ? { mid: bubbleId, message } : null;
+    },
+    ensureMid(msg) { return msg.mid; },
+    releaseDeletedChatImageReferences(messages) {
+      events.push({ kind: 'release', mids: messages.map(m => m.mid), raw: db.get(key) });
+    },
+    rerenderFromList(list) {
+      events.push({ kind: 'render', mids: list.map(m => m.mid), raw: db.get(key) });
+    },
+    showToast(message) { events.push({ kind: 'toast', message }); }
+  };
+  runInNewContext(atomicSource, context, { timeout: 2000 });
+  runInNewContext(helper + '\n' + singleDeleteHandler + '\nthis.deleteSingle = deleteOneMessage;', context, { timeout: 2000 });
+  return {
+    remove(mid = 'img-1') { return context.deleteSingle(mid); },
+    history() { return JSON.parse(db.get(key)); },
+    other() { return JSON.parse(db.get('chat_history_role-2')); },
+    events,
+    locks() { return lockCount; }
+  };
+}
+
+test('single delete uses locked atomic replace, never an unguarded full-history save', () => {
+  assert.match(singleDeleteHandler, /await replaceChatSafely\(list, keep\)/);
+  assert.doesNotMatch(singleDeleteHandler, /saveMessages\(/);
+  assert.match(singleDeleteHandler, /rerenderFromList\(loadMessages\(\)\)/);
+});
+
+test('single delete commits only target message and then releases its media reference', async () => {
+  const s = singleDeleteScenario();
+  await s.remove();
+  assert.deepEqual(s.history().map(m => m.mid), ['keep-2']);
+  assert.equal(s.other()[0].mid, 'other');
+  assert.equal(s.locks(), 1);
+  const events = s.events.filter(e => e.kind !== 'toast');
+  assert.deepEqual(events.map(e => e.kind), ['release', 'render']);
+  assert.equal(events[0].raw, JSON.stringify(s.history()), 'media released only after the commit');
+  assert.deepEqual(Array.from(events[0].mids), ['img-1']);
+  assert.deepEqual(Array.from(events[1].mids), ['keep-2']);
+  assert.match(s.events.at(-1).message, /已删除 1 条消息/);
+});
+
+test('single delete rejects stale history without removing concurrent messages or media', async () => {
+  const s = singleDeleteScenario({ concurrent: true });
+  await s.remove();
+  assert.deepEqual(s.history().map(m => m.mid), ['img-1', 'keep-2', 'new-tab']);
+  assert.equal(s.events.some(e => e.kind === 'release' || e.kind === 'render'), false);
+  assert.equal(s.events.some(e => e.kind === 'toast' && /其他窗口/.test(e.message)), true);
+});
+
+test('single delete fails closed on quota error or missing browser lock', async () => {
+  for (const opts of [{ quota: true }, { noLock: true }]) {
+    const s = singleDeleteScenario(opts);
+    await s.remove();
+    assert.deepEqual(s.history().map(m => m.mid), ['img-1', 'keep-2']);
+    assert.equal(s.events.some(e => e.kind === 'release' || e.kind === 'render'), false);
+  }
+});
+
+test('single delete never crosses account scope or deletes an unresolvable bubble', async () => {
+  const scoped = singleDeleteScenario({
+    declaredAccount: 'account-A',
+    scope: { ready: true, accountId: 'account-B' }
+  });
+  await scoped.remove();
+  assert.deepEqual(scoped.history().map(m => m.mid), ['img-1', 'keep-2']);
+  assert.equal(scoped.events.some(e => e.kind === 'release'), false);
+  const absent = singleDeleteScenario();
+  await absent.remove('missing-mid');
+  assert.deepEqual(absent.history().map(m => m.mid), ['img-1', 'keep-2']);
+  assert.equal(absent.locks(), 0);
+});

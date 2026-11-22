@@ -8563,7 +8563,7 @@
 
         // ---------- 单条删除 ----------
         // ---------- 单条删除（按气泡身份，只删目标气泡） ----------
-        function deleteOneMessage(bubbleId) {
+        async function deleteOneMessage(bubbleId) {
             var list = loadMessages();
             var resolved = resolveBubbleInPage(bubbleId);
             var keep;
@@ -8579,14 +8579,19 @@
                 if (typeof showToast === 'function') showToast('消息已不存在');
                 return;
             }
-            if (!saveMessages(_inheritChatBaseline(keep, list))) {
+            // Like multi-select deletion, commit only if the locked latest history
+            // still matches this snapshot. Another tab's new messages must survive.
+            try {
+                if (!await replaceChatSafely(list, keep)) return;
+            } catch (error) {
                 if (typeof showToast === 'function') showToast('删除失败，消息和图片均已保留');
                 return;
             }
             var keptMids = new Set(keep.map(function (m) { return String(ensureMid(m)); }));
             var removedMessages = list.filter(function (m) { return !keptMids.has(String(ensureMid(m))); });
+            // Release media only after the history replacement has committed.
             if (removedMessages.length) releaseDeletedChatImageReferences(removedMessages);
-            rerenderFromList(keep);
+            rerenderFromList(loadMessages());
             if (typeof showToast === 'function') showToast('已删除 1 条消息');
         }
 

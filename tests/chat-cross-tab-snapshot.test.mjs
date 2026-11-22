@@ -109,7 +109,14 @@ test('corrupt primary content is protected from accidental replacement',()=>{
 
 test('derived write paths remain source-tracked in the real chat page',()=>{
   assert.match(page,/var withPending = _inheritChatBaseline\(prior\.slice\(\), prior\)/);
-  assert.match(page,/saveMessages\(_inheritChatBaseline\(keep, list\)\)/);
+  assert.match(page,/async function deleteOneMessage\(bubbleId\)/);
+  assert.match(page,/await replaceChatSafely\(list, keep\)/);
+  // Single-message deletion now shares the locked compare-and-swap path with
+  // bulk deletion; source-version inheritance remains for other legacy writers.
+  const singleStart = page.indexOf('async function deleteOneMessage(bubbleId)');
+  const singleEnd = page.indexOf('// ---------- 编辑消息', singleStart);
+  assert.ok(singleStart >= 0 && singleEnd > singleStart);
+  assert.doesNotMatch(page.slice(singleStart, singleEnd), /saveMessages\(/);
   assert.match(page,/saveMessages\(_inheritChatBaseline\(cleaned, list\)\)/);
   assert.match(page,/_inheritChatBaseline\(historyList, regenSource\)/);
 });
