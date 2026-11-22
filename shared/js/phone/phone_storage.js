@@ -33,6 +33,17 @@
 
     var NS = global.PhoneStorage = {};
 
+    // Storage diagnostics extension hook: never emit private content or credentials.
+    function emitStorageFailure(key, errorName) {
+        try {
+            if (typeof global.dispatchEvent === 'function' && typeof global.CustomEvent === 'function') {
+                global.dispatchEvent(new global.CustomEvent('phone:storage-failure', {
+                    detail: { key: String(key), error: String(errorName || 'Error') }
+                }));
+            }
+        } catch (ignored) { /* Failure reporting must never mask the original write result. */ }
+    }
+
     /* ========== 原始读写 ========== */
 
     NS.rawGet = function (key, fallback) {
@@ -55,6 +66,7 @@
             return true;
         } catch (e) {
             console.warn('[PhoneStorage] set failed', key, e);
+            emitStorageFailure(key, (e && e.name) || 'Error');
             return false;
         }
     };
@@ -294,9 +306,32 @@
     };
 
     NS.saveMemories = function (contactId, list) {
-        // 与聊天记录一样，先确认主 key 写入成功，再清除重复副本。
-        var saved = NS.rawSet('chat_memories_' + contactId, Array.isArray(list) ? list : []);
-        if (!saved) return false;
+        // A missing primary may be initialized; a malformed primary must not be overwritten.
+        if (contactId == null || !String(contactId).trim() || !Array.isArray(list)) return false;
+        var key = 'chat_memories_' + contactId;
+        try {
+            var oldBytes = localStorage.getItem(key);
+            if (oldBytes !== null && !Array.isArray(JSON.parse(oldBytes))) {
+                emitStorageFailure(key, 'CorruptPrimary');
+                return false;
+            }
+        } catch (error) {
+            emitStorageFailure(key, error && error.name === 'SyntaxError' ? 'CorruptPrimary' : 'PrimaryUnavailable');
+            return false;
+        }
+        var serialized;
+        try { serialized = JSON.stringify(list); } catch (error) { return false; }
+        if (!NS.rawSet(key, serialized)) return false;
+        // Silent drops and storage-shim success must not authorize deleting a legacy duplicate.
+        try {
+            if (localStorage.getItem(key) !== serialized) {
+                emitStorageFailure(key, 'WriteNotPersisted');
+                return false;
+            }
+        } catch (error) {
+            emitStorageFailure(key, 'ReadbackUnavailable');
+            return false;
+        }
         var root = NS._getRoot();
         var bucket = root[contactId];
         if (bucket && bucket.memories != null) {
