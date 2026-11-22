@@ -50,11 +50,24 @@ function installImport(ports) {
   let handler;
   const input={addEventListener(name, fn){assert.equal(name,'change'); handler=fn;}};
   const doc={getElementById(id){assert.equal(id,'musicImport');return input;}};
-  new Function('document','musicResolveAudioFormat','readLocalTracksMeta','musicMetaReadFailure',
+  // The production listener compares localStorage snapshots before and after
+  // async imports; mirror catalog writes so this fixture behaves like a browser.
+  let catalogRaw = JSON.stringify(ports.readMeta());
+  const storage = { getItem: key => {
+    assert.equal(key, 'music_local_tracks');
+    return catalogRaw;
+  } };
+  const saveWithSnapshot = records => {
+    ports.saveMeta(records);
+    catalogRaw = JSON.stringify(records);
+  };
+  new Function('document','localStorage','LOCAL_TRACKS_KEY',
+    'musicResolveAudioFormat','readLocalTracksMeta','musicMetaReadFailure',
     'toast','putAudioBlob','saveLocalTracksMeta','deleteAudioBlob','tracks',
     'renderAlbum','renderRecent','renderSearch','playTrack','Blob','window','musicScheduleLocalDuration',
     html.slice(listenerStart, listenerEnd)
-  )(doc,ports.detect || detect,ports.readMeta,false,ports.toast,ports.putBlob,ports.saveMeta,ports.deleteBlob,
+  )(doc,storage,'music_local_tracks',ports.detect || detect,ports.readMeta,false,
+    ports.toast,ports.putBlob,saveWithSnapshot,ports.deleteBlob,
     ports.tracks,()=>{},()=>{},()=>{},ports.play,Blob,
     { alert: ports.alert || ports.toast },ports.scheduleDuration || (() => {}));
   return handler;
