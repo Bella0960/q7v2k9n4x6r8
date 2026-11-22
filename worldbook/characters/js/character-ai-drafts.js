@@ -147,6 +147,7 @@
         registeredKinds[kind] = {
             prompt: options.prompt.slice(0, 1200),
             apply: options.apply,
+            parse: typeof options.parse === 'function' ? options.parse : null,
             statusId: typeof options.statusId === 'string' ? options.statusId : ''
         };
         return true;
@@ -202,7 +203,9 @@
                     if (data && data.stage === 'response') diagnostic = { finish:data.finish, reasoningOnly:data.reasoningOnly, characters:data.characters };
                 }
             });
-            var decoded = global.CharacterAiJSON && global.CharacterAiJSON.fromCompletion(response,kind);
+            var extension = registeredKinds[kind];
+            var decoded = extension ? (extension.parse ? extension.parse(response) : { ok:!!(response && response.ok && response.data), data:response && response.data }) :
+                (global.CharacterAiJSON && global.CharacterAiJSON.fromCompletion(response,kind));
             if (!decoded || !decoded.ok || !decoded.data) {
                 if (diagnostic && diagnostic.finish === 'length') throw new Error('character-ai-truncated');
                 if (diagnostic && diagnostic.reasoningOnly) throw new Error('character-ai-reasoning-only');
