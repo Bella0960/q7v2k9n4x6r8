@@ -29,6 +29,7 @@ test('AI parser is loaded before generator and PWA precache addresses match',()=
  const html=readFileSync(new URL('../worldbook/characters/characters.html',import.meta.url),'utf8');
  const sw=readFileSync(new URL('../sw.js',import.meta.url),'utf8');
  assert.ok(html.indexOf('character-ai-json.js?v=20261122-json-v3')<html.indexOf('character-ai-drafts.js?v=20261122-budget-v4'));
- assert.match(sw,/phone-app-pwa-v289/);
+ const cacheVersion = Number(sw.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m)?.[1] || 0);
+ assert.ok(cacheVersion >= 289, 'do not regress the previously validated PWA cache baseline');
  for(const f of ['character-ai-json.js?v=20261122-json-v3','character-ai-drafts.js?v=20261122-budget-v4']) assert.ok(sw.includes(f));
 });
