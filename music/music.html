@@ -1424,8 +1424,13 @@
     var files = Array.from(e.target.files);
     var localMeta = readLocalTracksMeta();
     var tStart = Date.now();
+    var importedTrackId = null;
     for (var i = 0; i < files.length; i++) {
       var file = files[i];
+      if (!file || file.size === 0) {
+        toast('无法导入空音频文件');
+        continue;
+      }
       var tid = 'local_' + tStart + '_' + i;
       var name = file.name.replace(/\.[^.]+$/, '');
       var track = {
@@ -1442,6 +1447,7 @@
           id: tid, name: name, artist: '本地导入', dur: '本地', durSec: 0,
           source: 'local', lyrics: track.lyrics.slice()
         });
+        importedTrackId = tid;
       } catch (err) {
         // blob 存失败 → 从 tracks 和 localMeta 里摘掉，不让它显示成无数据条目
         tracks.pop();
@@ -1450,10 +1456,7 @@
     }
     saveLocalTracksMeta(localMeta);
     renderAlbum();
-    if (files.length > 0 && tracks.length > 0) {
-      var lastLocal = tracks[tracks.length - 1];
-      if (lastLocal) playTrack(lastLocal.id);
-    }
+    if (importedTrackId) playTrack(importedTrackId);
     e.target.value = '';
   });
 
