@@ -480,7 +480,8 @@
     const actual = new Date(year, month - 1, day);
     return actual.getFullYear() === year && actual.getMonth() === month - 1 && actual.getDate() === day;
   }
-  let currentDate = validEcoDate(requestedEcoDate) ? requestedEcoDate : todayKey();
+  let currentDate = todayKey();
+  if (validEcoDate(requestedEcoDate)) currentDate = requestedEcoDate;
   let viewMonth = currentDate.slice(0, 7);
   
   // 从 localStorage 读取角色足迹数据
