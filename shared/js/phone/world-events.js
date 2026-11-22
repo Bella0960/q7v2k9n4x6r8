@@ -151,7 +151,9 @@
     function append(input) {
       var initial = accountResult();
       if (!initial.ok) return Promise.resolve(initial);
-      var prepared = normalize(input, initial.value);
+      var prepared;
+      try { prepared = normalize(input, initial.value); }
+      catch (_error) { return Promise.resolve(fail('事件 ID 编码失败，未写入')); }
       if (!prepared.ok) return Promise.resolve(prepared);
       var key = prepared.value.key, event = prepared.value.value;
       function write() {
@@ -193,9 +195,9 @@
       if (!id(roleId)) return fail('角色 ID 无效');
       var found = findRole(roleId);
       if (!found.ok) return found;
-      var prefix = rolePrefix(account.value, roleId);
       var output = [];
       try {
+        var prefix = rolePrefix(account.value, roleId);
         for (var i = 0, size = storage.length; i < size; i++) {
           var key = storage.key(i);
           if (!key || key.indexOf(prefix) !== 0) continue;
@@ -250,6 +252,15 @@
     });
   }
 
-  root.WorldEvents = createStore();
-  root.WorldEvents.createStore = createStore; // isolated, dependency-injected contract tests
+  // The public singleton is immutable; expose the pure factory before freezing it.
+  var worldEvents = createStore();
+  root.WorldEvents = Object.freeze({
+    version: worldEvents.version,
+    append: worldEvents.append,
+    listForRole: worldEvents.listForRole,
+    subscribe: worldEvents.subscribe,
+    getRole: worldEvents.getRole,
+    account: worldEvents.account,
+    createStore: createStore
+  });
 })(typeof window !== 'undefined' ? window : globalThis);
