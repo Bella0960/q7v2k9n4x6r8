@@ -27,6 +27,8 @@
     <script src="../../shared/js/phone/chat-context-policy.js?v=20261107vision1"></script>
     <script src="../../shared/js/phone/chat-presence-policy.js?v=20261102v17"></script>
     <script src="../../shared/js/phone/role-public-timeline.js?v=20261102v1"></script>
+    <script src="../../shared/js/phone/world-events.js?v=20261123-eco2"></script>
+    <script src="../../shared/js/phone/world-events-memory.js?v=20261123-eco6"></script>
     <script src="../../shared/js/phone/group-chat-policy.js?v=20261102v5"></script>
     <script src="../../shared/js/chat-notifier.js?v=20261102v3"></script>
     <style>
@@ -5931,6 +5933,23 @@
               '【以下为当前角色完整资料与对话背景】'
             ].join('\n');
             systemPrompt = IDENTITY_LOCK + (characterSocialPrompt ? '\n\n' + characterSocialPrompt + '\n\n' : '') + systemPrompt;
+
+            // ECO-LINK-006: private 1:1 encounter history is opt-in, role-scoped,
+            // read-only, and never replaces persona, worldbook or user RP protocol.
+            // Group chat does NOT inherit private 1:1 consent or another speaker's events.
+            if (!isGroupChat && currentCharacter && currentCharacter.id != null &&
+                window.RoleEventMemory &&
+                typeof window.RoleEventMemory.buildPrompt === 'function') {
+                try {
+                    const eventContext = window.RoleEventMemory.buildPrompt(String(currentCharacter.id));
+                    if (eventContext && eventContext.ok && eventContext.value) {
+                        systemPrompt += '\n\n' + capText(eventContext.value, 900);
+                    }
+                } catch (_ecoContextError) {
+                    // Missing scope or corrupted events must never block chat or leak data.
+                }
+            }
+
             if (isGroupChat && currentGroup) {
               const groupMode = currentGroup.settings && currentGroup.settings.chatMode === 'offline' ? 'offline' : 'online';
               if (groupMode === 'offline') {

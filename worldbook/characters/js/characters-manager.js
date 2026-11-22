@@ -827,6 +827,19 @@ function renderRoleEncounterHistory(role) {
             }
         }
     }
+    const roleMemory = window.RoleEventMemory;
+    const memoryState = roleMemory && typeof roleMemory.getConsent === 'function'
+        ? roleMemory.getConsent(String(role.id)) : { ok: false };
+    const memoryOn = !!(memoryState && memoryState.ok && memoryState.value);
+    const memoryControl = '<label class="eco-memory-toggle">' +
+        '<input type="checkbox" data-eco-memory-consent ' +
+            (memoryOn ? 'checked ' : '') + (memoryState && memoryState.ok ? '' : 'disabled ') + '>' +
+        '<span>允许聊天参考已确认的相遇记录</span></label>' +
+        '<div class="eco-memory-note" data-eco-memory-status role="status">' +
+            (memoryState && memoryState.ok
+                ? (memoryOn ? '已开启，仅使用本角色已确认的事件。' : '默认关闭，不会加入聊天上下文。')
+                : '账号或相遇记忆权限尚未就绪，暂不可开启。') +
+        '</div>';
     const id = encodeURIComponent(String(role.id));
     const first = confirmedFirst || events.find(function (item) {
         return item.type === 'encounter.first_met';
@@ -854,6 +867,7 @@ function renderRoleEncounterHistory(role) {
           (warning ? '<p class="eco-profile-warning">' + escapeHtml(warning) + '</p>' : '') +
           (rows ? '<ol class="eco-records">' + rows + '</ol>' :
             '<p class="eco-profile-empty">已从邂逅加入角色库；此前未保存的经历不会被伪造。</p>') +
+          memoryControl +
           (restoreNeeded && !warning
               ? '<button type="button" class="eco-restore-first" data-eco-restore-first>补全初次相遇记录</button>' +
                 '<p class="eco-profile-warning" data-eco-restore-status role="status"></p>'
@@ -914,6 +928,30 @@ function renderRoleProfile() {
         '</div>' +
         renderRoleEncounterHistory(role) +
         '<p class="profile-bottom-note">人物关系和生活记录只属于这个主角色。其他主角色不会自动继承这些人物或关系。</p>';
+
+    content.onchange = async function (event) {
+        const toggle = event.target && event.target.closest
+            ? event.target.closest('[data-eco-memory-consent]') : null;
+        if (!toggle || !content.contains(toggle)) return;
+        const savedRoleId = String(role.id);
+        const requested = !!toggle.checked;
+        const note = content.querySelector('[data-eco-memory-status]');
+        const module = window.RoleEventMemory;
+        if (!module || typeof module.setConsent !== 'function') return;
+        toggle.disabled = true;
+        if (note) note.textContent = '正在核对记忆授权…';
+        let result;
+        try { result = await module.setConsent(savedRoleId, requested); }
+        catch (error) { result = { ok: false, error: '保存失败' }; }
+        if (String(currentProfileRoleId) !== savedRoleId || !content.contains(toggle)) return;
+        const checked = module.getConsent(savedRoleId);
+        if (checked.ok) toggle.checked = checked.value;
+        else toggle.checked = !requested;
+        toggle.disabled = !checked.ok;
+        if (note) note.textContent = !result || !result.ok || !checked.ok
+            ? '授权状态未能确认，未将事件加入聊天。请检查存储后重试。'
+            : (checked.value ? '已开启，仅使用本角色已确认的事件。' : '已关闭，不再加入聊天上下文。');
+    };
 
     content.onclick = function (event) {
         const restoreButton = event.target.closest ? event.target.closest('[data-eco-restore-first]') : null;
