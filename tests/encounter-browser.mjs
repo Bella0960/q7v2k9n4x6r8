@@ -98,16 +98,17 @@ for(const required of ['encounter/encounter.html','worldbook/characters/characte
 }
 await new Promise(r => server.listen(0, '127.0.0.1', r));
 const base = 'http://127.0.0.1:' + server.address().port;
-const withoutSession = await fetch(base + '/api/accounts/me');
-assert.equal(withoutSession.status, 401, 'unsigned localhost API must reject anonymous access');
-const anonCard = await fetch(base + '/api/character-cards/sign', {method:'POST',
-  headers:{'content-type':'application/json','x-mao-account-context':TEST_ACCOUNT},
-  body:JSON.stringify({character:{name:'访客',persona:'未登录不应签发'}})});
-assert.equal(anonCard.status, 401, 'signed export requires a local authenticated session');
-
 let browser;
 const failures = [];
 try {
+  // Keep negative auth checks under try/finally to prevent a leaked HTTP
+  // server from hanging CI if an assertion fails during setup.
+  const withoutSession = await fetch(base + '/api/accounts/me');
+  assert.equal(withoutSession.status, 401, 'local auth endpoint must reject anonymous access');
+  const anonCard = await fetch(base + '/api/character-cards/sign', {method:'POST',
+    headers:{'content-type':'application/json','x-mao-account-context':TEST_ACCOUNT},
+    body:JSON.stringify({character:{name:'访客',persona:'未登录不应签发'}})});
+  assert.equal(anonCard.status, 401, 'signed export requires a local authenticated session');
   mkdirSync(artifacts, {recursive: true});
   // 先取消上一次“通过”回执；本轮任何中断都不得继承旧结果。
   await fs.rm(receiptPath,{force:true});
@@ -387,20 +388,28 @@ try {
       assert.equal(await page.locator('#editRoleName').inputValue(),name,'拒绝第三方卡后不得覆盖已有人设');
       const tampered = JSON.parse(JSON.stringify(exported));
       tampered.character.persona += '伪造内容';
+      const tamperReject = page.waitForResponse(response =>
+        response.url().includes('/api/character-cards/verify') && response.status() === 400);
       await page.locator('#roleImportFile').setInputFiles({
         name:'tampered-card.json',mimeType:'application/json',
         buffer:Buffer.from(JSON.stringify(tampered))
       });
-      await page.waitForFunction(() => document.querySelector('#saveStatus')?.textContent?.includes('导入失败'));
+      await tamperReject;
+      await page.waitForFunction(() => document.querySelector('#saveStatus')?.textContent?.includes('invalid signed character card'));
       assert.equal(await page.locator('#editRolePersona').inputValue(),
         exported.character.persona,'篡改签名后不得覆盖人设');
       const crossAccount = JSON.parse(JSON.stringify(exported));
       crossAccount.ownerId = 'MAO-FOREIGNACCOUNT12';
+      // Clear the previous failure text to avoid a stale-status false pass.
+      await page.locator('#saveStatus').evaluate(node => { node.textContent = ''; });
+      const foreignReject = page.waitForResponse(response =>
+        response.url().includes('/api/character-cards/verify') && response.status() === 400);
       await page.locator('#roleImportFile').setInputFiles({
         name:'cross-account.json',mimeType:'application/json',
         buffer:Buffer.from(JSON.stringify(crossAccount))
       });
-      await page.waitForFunction(() => document.querySelector('#saveStatus')?.textContent?.includes('导入失败'));
+      await foreignReject;
+      await page.waitForFunction(() => document.querySelector('#saveStatus')?.textContent?.includes('invalid signed character card'));
       assert.equal(await page.locator('#editRoleName').inputValue(),name,
         '跨账号角色卡必须拒绝且不能修改档案');
 
