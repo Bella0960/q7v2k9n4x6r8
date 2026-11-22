@@ -71,6 +71,25 @@
             worldBooks: boundWorldBooks(role)
         };
     }
+    // Resolve the selected API profile at click time. api_settings is only a
+    // compatibility mirror and can lag behind the active profile switch.
+    // Pass the same snapshot to PhoneAPI, otherwise its internal call would
+    // re-read the stale mirror after our preflight check.
+    function activeApiConfig() {
+        var storage = global.PhoneStorage;
+        if (!storage) return {};
+        var mirror = typeof storage.getApiConfig === 'function' ? storage.getApiConfig() : {};
+        if (!mirror || typeof mirror !== 'object' || Array.isArray(mirror)) mirror = {};
+        var activeId = typeof storage.getActiveProfileId === 'function'
+            ? String(storage.getActiveProfileId() || '').trim() : '';
+        if (!activeId) return mirror;
+        var profiles = typeof storage.getApiProfiles === 'function' ? storage.getApiProfiles() : [];
+        var profile = Array.isArray(profiles) ? profiles.find(function(item) {
+            return item && typeof item === 'object' && String(item.id) === activeId;
+        }) : null;
+        if (!profile) return { activeProfileUnavailable:true };
+        return Object.assign({}, mirror, profile);
+    }
     function status(kind, message) {
         var extra = registeredKinds[kind];
         var id = extra ? extra.statusId : kind === 'npc' ? 'npcAiStatus' : kind === 'relationships' ? 'relationshipsAiStatus' : 'lifeAiStatus';
@@ -203,9 +222,12 @@
             status(kind, '生成服务暂时不可用，请重新打开此页面后再试。'); return;
         }
         var conf = {};
-        try { conf = global.PhoneStorage && global.PhoneStorage.getApiConfig ? global.PhoneStorage.getApiConfig() : {}; }
+        try { conf = activeApiConfig(); }
         catch (_) { status(kind,'暂时无法读取 API 设置，请到设置中检查配置。'); return; }
-        if (!conf || !String(conf.apiKey || '').trim()) { status(kind,'请先在设置中配置 API。'); return; }
+        if (conf.activeProfileUnavailable) {
+            status(kind,'当前选中的 API 方案已不存在，请到设置里重新选择后生成。'); return;
+        }
+        if (!conf || !String(conf.apiKey || '').trim()) { status(kind,'请先在设置中配置当前 API 方案。'); return; }
         var configuredLimit = Number(conf.maxTokens) || 0;
         if (configuredLimit > 0 && configuredLimit < MIN_EXPLICIT_OUTPUT_TOKENS) {
             status(kind,'这次还没有调用 API：你设置的最大输出 Token 偏低（' + Math.floor(configuredLimit) + '），容易让人物或事件资料被截断。请先在 API 设置中适当提高后再生成。');
@@ -228,6 +250,7 @@
         try {
             var diagnostic = null;
             var response = await global.PhoneAPI.completeJSON({
+                apiConfig:conf,
                 system:'请像普通的写作助手一样，阅读下面的虚构人物设定，整理或合理补充内容。只返回简短且严格合法的 JSON 供页面填表，不必写满每个字段，也不要额外解释。' + (registeredKinds[kind] ? registeredKinds[kind].prompt : SPEC[kind]),
                 user:JSON.stringify({ role:context(role), existingForm:kind === 'npc' ? currentNpcDraft() : null }),
                 temperature:0.25,
