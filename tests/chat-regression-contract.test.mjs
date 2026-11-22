@@ -2610,12 +2610,111 @@ test('chat extras: image batches retain the versioned history, roll back errors 
   assert.equal(cleanup.filter(item => item.op === 'ref').length, 3);
 });
 
+test('chat plus-menu forward reuses the canonical target resolver and atomic append', async () => {
+  const plusStart = extras.indexOf('  function coreForward() {');
+  const plusEnd = extras.indexOf('\n  // 给现有加号面板补充入口', plusStart);
+  const targetStart = detail.indexOf('        function getForwardTargets() {');
+  const targetEnd = detail.indexOf('\n        function openForwardSheet(', targetStart);
+  const forwardStart = detail.indexOf('        async function forwardMessage(resolved, targetId, targetName) {');
+  const forwardEnd = detail.indexOf('\n        // 点 AI 头像', forwardStart);
+  assert.ok(plusStart >= 0 && plusEnd > plusStart);
+  assert.ok(targetStart >= 0 && targetEnd > targetStart);
+  assert.ok(forwardStart >= 0 && forwardEnd > forwardStart);
+
+  const history = [{ role: 'assistant', mid: 'source-mid', type: 'text', text: '已发送的原消息' }];
+  const keys = {
+    ai_custom_characters: JSON.stringify([
+      { id: 'self', name: '当前会话' },
+      { id: 'hidden', name: '已隐藏' },
+      { id: 'target', name: '目标角色' }
+    ]),
+    hidden_chat_dialog_ids: JSON.stringify(['hidden']),
+    phone_groups: JSON.stringify([{ id: 'group', name: '目标群聊' }])
+  };
+  const append = [];
+  const toast = [];
+  let written = 0;
+  let successful = true;
+  let buttons = [];
+  let lastModalHtml = '';
+  const copyButton = {};
+  const context = {
+    loadMessages: () => history,
+    getForwardTargets: undefined,
+    localStorage: {
+      getItem(key) { return keys[key] || null; },
+      setItem() { throw new Error('legacy localStorage write is forbidden'); }
+    },
+    aliasRoleId: 'self',
+    chatTitle: { textContent: '来源会话' },
+    contactName: '来源会话',
+    _storage: {
+      result: {
+        appendChatHistory(id, msg) {
+          append.push({ id, msg });
+          return successful ? { ok: true } : { ok: false, error: { code: 'QUOTA_EXCEEDED' } };
+        }
+      }
+    },
+    _chatImageMediaRepo: null,
+    ensureMid: (msg) => { if (!msg.mid) msg.mid = 'forward-mid-' + (++written); return msg.mid; },
+    plainTextOf: (msg) => String(msg.text || ''),
+    showToast: (msg) => toast.push(msg),
+    openModal: (_title, html) => {
+      lastModalHtml = html;
+      const matches = [...html.matchAll(/data-forward="([0-9]+)"/g)];
+      buttons = matches.map(match => ({ dataset: { forward: match[1] }, disabled: false }));
+    },
+    modalBody: { querySelectorAll: () => buttons },
+    closeModal: () => {},
+    escapeHtml: (text) => String(text),
+    document: { getElementById: (id) => id === 'forwardCopy' ? copyButton : null },
+    navigator: { clipboard: { writeText: async () => {} } },
+    window: { prompt: () => {} },
+    Date, String, Array
+  };
+  runInNewContext(
+    detail.slice(targetStart, targetEnd) + '\n' +
+    detail.slice(forwardStart, forwardEnd) + '\n' +
+    extras.slice(plusStart, plusEnd) + '\nglobalThis.runPlusForward = coreForward;',
+    context, { timeout: 2000 }
+  );
+  context.runPlusForward();
+  assert.match(lastModalHtml, /目标角色/);
+  assert.match(lastModalHtml, /目标群聊/);
+  assert.doesNotMatch(lastModalHtml, /当前会话|已隐藏/);
+  assert.equal(buttons.length, 2);
+
+  const firstButton = buttons[0];
+  await Promise.all([firstButton.onclick(), firstButton.onclick()]);
+  assert.equal(append.length, 1, 'double tapping must not duplicate a forwarded message');
+  assert.equal(append[0].id, 'target');
+  assert.equal(append[0].msg.forwarded, true);
+  assert.equal(append[0].msg.forwardFrom.id, 'self');
+  assert.equal(append[0].msg.text, '已发送的原消息');
+  assert.match(toast.at(-1), /已转发给 目标角色/);
+
+  successful = false;
+  context.runPlusForward();
+  await buttons[0].onclick();
+  assert.equal(append.length, 2, 'storage rejection reached canonical append instead of legacy keys');
+  assert.match(toast.at(-1), /转发失败：本地存储空间不足/);
+  assert.equal(toast.filter(s => /已转发给/.test(s)).length, 1, 'failure cannot show false success');
+
+  history[0] = { role: 'user', type: 'transfer', text: '转账信息' };
+  const modalBefore = lastModalHtml;
+  context.runPlusForward();
+  assert.equal(lastModalHtml, modalBefore, 'financial messages must not open the transfer chooser');
+  assert.equal(append.length, 2);
+  assert.match(toast.at(-1), /红包\/转账不支持转发/);
+});
+
 test('chat plus-menu script is refreshed in the page and PWA together', () => {
   const loaded = detail.match(/js\/chat-extras\.js\?t=([\w-]+)/)?.[1];
   const cached = serviceWorker.match(/chat\/chat\/js\/chat-extras\.js\?t=([\w-]+)/)?.[1];
-  assert.equal(loaded, '20261122cards2', 'chat details must load the repaired helper');
+  assert.equal(loaded, '20261122cards3', 'chat details must load the repaired helper');
   assert.equal(cached, loaded, 'PWA must precache exactly the script loaded by the page');
-  assert.ok(pwaCacheVersion >= 294, 'the old cached helper must be invalidated');
+  assert.ok(pwaCacheVersion >= 295, 'the old cached helper must be invalidated');
 });
 
 test('chat extras: every extension card send gates AI dispatch on successful persistence', () => {
