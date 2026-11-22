@@ -111,6 +111,11 @@ test('new picture adapter is loaded only by chat list, detail and studio',()=>{
     assert.match(html,/theme-studio-assets\.js/);
     assert.match(html,/storage\/media-repository\.js/);
   }
-  assert.match(read('sw.js'),/phone-app-pwa-v284/);
+  // SW cache can advance, but may not regress to the pre-signing build.
+  const workerCache = read('sw.js');
+  const version = Number(workerCache.match(/const CACHE_NAME = 'phone-app-pwa-v(\d+)'/)?.[1] || 0);
+  assert.ok(version >= 285, 'signed-card runtime requires a cache generation newer than v284');
+  assert.match(workerCache, /character-card-client\.js\?v=20261122-signed-v2/);
+  assert.match(workerCache, /characters-manager\.js\?v=20261122-signed-v2/);
   assert.doesNotMatch(read('theme-studio/studio.js'),/localStorage\.setItem\([^)]*data:image/);
 });

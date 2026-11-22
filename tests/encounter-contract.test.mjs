@@ -121,7 +121,12 @@ test('角色库已有原生编辑器、邂逅候选交接、仅接受 MAOMAO JSO
   assert.match(managerSource,/btnExpandEncounterPersona/);
   assert.match(managerSource,/PhoneAPI\.complete/);
   assert.match(managerSource,/confirm\('完善完整人设将调用一次/);
-  assert.match(managerSource,/不支持把其他平台的 JSON 角色卡作为 TXT 导入/);
+  // Signed-only imports supersede the previous text warning. A format label
+  // alone must never grant permission to import an external character card.
+  assert.match(managerSource, /data\.version !== 2/);
+  assert.match(managerSource, /data\.proof\.algorithm !== 'HMAC-SHA256'/);
+  assert.match(managerSource, /const item = await window\.MAOMAOCharacterCards\.verify\(data\)/);
+  assert.match(managerSource, /不接受外部纯文本角色卡/);
   assert.match(managerSource,/saveRoles\(roles\)/);
 });
 
