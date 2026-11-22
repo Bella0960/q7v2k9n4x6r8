@@ -117,6 +117,15 @@ test('missing, malformed or permission denied storage fails closed and retains a
  races.getItem=(key)=>{calls++;return calls===2?'{"new-data":"other tab"}':originalRead(key);};
  assert.throws(()=>ai.writeDay(races,'coder-a','2026-11-23',night),/其他页面/);
 });
+test('concurrent second-tab edit during paid model request refuses to overwrite anything',()=>{
+ const ai=module();
+ const db=store(JSON.stringify({'2026-11-22':[{id:'history'}]}));
+ const captured=db.getItem('footprint_coder-a');
+ const other=JSON.stringify({'2026-11-22':[{id:'history'}],'2026-11-23':[{id:'other-tab'}]});
+ db.setItem('footprint_coder-a',other);
+ assert.throws(()=>ai.writeDay(db,'coder-a','2026-11-23',night,captured),/其他页面/);
+ assert.equal(db.raw('footprint_coder-a'),other);
+});
 test('active API profile never borrows old mirror credentials from different account',()=>{
  const ai=module();
  const cfg=ai.selectedApi({
