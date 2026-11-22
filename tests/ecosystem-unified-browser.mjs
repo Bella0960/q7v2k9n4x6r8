@@ -81,6 +81,7 @@ try{
     if(!browser) throw error;
   }
   for(const width of [375,390,430]){
+    console.log('SEALED_BROWSER_CHECKPOINT:'+width);
     const context=await browser.newContext({viewport:{width,height:width===430?932:width===390?844:812},
       isMobile:true,hasTouch:true,deviceScaleFactor:2,timezoneId:'Asia/Shanghai',
       reducedMotion:'reduce'});
@@ -123,7 +124,7 @@ try{
     await page.reload({waitUntil:'load'});
     assert.equal(await page.locator('[data-eco-restore-first]').count(),0,
       'an existing first-meet event must not show a duplicate repair button');
-    await page.locator('.back-circle').click();
+    await page.locator('#btnBackProfile').click();
     await page.waitForURL(url=>url.pathname.endsWith('/chat/footprint/footprint.html'));
     assert.equal(new URL(page.url()).searchParams.get('roleId'),roleId);
     assert.equal(new URL(page.url()).searchParams.get('date'),firstDate);
@@ -132,10 +133,11 @@ try{
     await page.locator('.t-eco-item').first().click();
     await page.waitForURL(url=>url.pathname.endsWith('/worldbook/characters/characters.html'));
     assert.equal(await page.locator('details.eco-profile-history[open]').count(),1);
-    await page.locator('.back-circle').click();
+    await page.locator('#btnBackProfile').click();
     await page.waitForURL(url=>url.pathname.endsWith('/chat/footprint/footprint.html'));
     assert.equal(new URL(page.url()).searchParams.get('date'),firstDate);
     report.checked['firstMeetAndRoute'+width]=true;
+    if(width===375) console.log('SEALED_BROWSER_CHECKPOINT:391');
 
     // Direct reunion preview alone is read-only; only confirmation saves.
     const reunionLink=base+'/encounter/encounter.html?from=footprint&reunionRole='+
@@ -181,6 +183,7 @@ try{
     await page.waitForURL(url=>url.pathname.endsWith('/chat/footprint/footprint.html'));
     assert.equal(new URL(page.url()).searchParams.get('date'),recentDay);
     report.checked['reunionAndReturn'+width]=true;
+    if(width===375) console.log('SEALED_BROWSER_CHECKPOINT:392');
 
     // User opt-in and one-event-scan performance measurement in real Chromium JS.
     await page.goto(base+path,{waitUntil:'load'});
@@ -206,6 +209,7 @@ try{
     assert.match(memoryTiming.text,/初遇|认识/);
     report.timings['singleChatMemoryQueryMs'+width]=Number(memoryTiming.singleMs.toFixed(3));
     report.checked['chatMemoryScoped'+width]=true;
+    if(width===375) console.log('SEALED_BROWSER_CHECKPOINT:393');
 
     // Switch synthetic account identity without replacing the browser origin;
     // account A's event keys must not be visible under B, then recover under A.
@@ -232,6 +236,7 @@ try{
     const aView=await page.evaluate(id=>window.WorldEvents.listForRole(id),roleId);
     assert.equal(aView.value.length,2,'switching back to A lost its history');
     report.checked['accountIsolationSynthetic'+width]=true;
+    if(width===375) console.log('SEALED_BROWSER_CHECKPOINT:394');
     const doc=await page.evaluate(()=>({
       horizontalOverflow:document.documentElement.scrollWidth>
         document.documentElement.clientWidth+1
