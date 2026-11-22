@@ -2858,7 +2858,27 @@
   document.getElementById('musicImport').addEventListener('change', async function(e) {
     var files = Array.from(e.target.files || []);
     e.target.value = '';
+    // Snapshot the catalog before async File/IndexedDB work; do not overwrite
+    // changes made by another tab while the file is being imported.
+    var catalogAtStart = null;
+    try {
+      if (typeof localStorage !== 'undefined')
+        catalogAtStart = localStorage.getItem(LOCAL_TRACKS_KEY);
+    } catch (readError) {
+      toast('无法读取音乐目录，已停止导入以保护原数据');
+      return;
+    }
     var localMeta = readLocalTracksMeta(), lastImported = null, importedCount = 0;
+    try {
+      if (typeof localStorage !== 'undefined' &&
+          localStorage.getItem(LOCAL_TRACKS_KEY) !== catalogAtStart) {
+        toast('其他页面更新了音乐列表，请重新选择文件后导入');
+        return;
+      }
+    } catch (readError) {
+      toast('无法读取音乐目录，已停止导入以保护原数据');
+      return;
+    }
     if (musicMetaReadFailure) { toast('原歌曲列表读取失败，已停止导入，避免覆盖旧歌曲'); return; }
     for (var i = 0; i < files.length; i++) {
       var file = files[i];
@@ -2869,7 +2889,9 @@
           '无法识别音频文件格式：') + (file.name || '未命名文件'));
         continue;
       }
-      var tid = 'local_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2, 7);
+      var importEntropy = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID() : Math.random().toString(36).slice(2, 13);
+      var tid = 'local_' + Date.now() + '_' + i + '_' + importEntropy;
       var name = file.name.replace(/\.[^.]+$/, '');
       var track = { id: tid, name: name, artist: '本地导入',
         dur: '本地', durSec: 0, source: 'local', lyrics: [] };
@@ -2880,6 +2902,10 @@
         await putAudioBlob({ id: tid, name: name, artist: track.artist,
           mimeType: resolvedFormat.mimeType, size: file.size, blob: audioBlob });
         try {
+          if (typeof localStorage !== 'undefined' &&
+              localStorage.getItem(LOCAL_TRACKS_KEY) !== catalogAtStart) {
+            throw new Error('其他页面更新了音乐列表，已停止本次导入以防覆盖');
+          }
           saveLocalTracksMeta(localMeta.concat([track]));
         } catch (err) {
           try { await deleteAudioBlob(tid); }
@@ -2887,6 +2913,7 @@
           throw err;
         }
         localMeta.push(track);
+        catalogAtStart = JSON.stringify(localMeta);
         tracks.push(track);
         lastImported = track;
         importedCount++;
