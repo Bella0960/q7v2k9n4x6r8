@@ -80,3 +80,31 @@ test('backend authorizes signing and verification through account session, never
   assert.match(backend,/\/api\/character-cards\/sign/);
   assert.match(backend,/\/api\/character-cards\/verify/);
 });
+
+
+test('long role personas use the explicitly bounded 64KiB signed-card endpoint rather than the default 8KiB body reader', async () => {
+  const { readJsonBody } = await import('../worker/lib/http.js');
+  const accountAuthSource = readFileSync(new URL('../worker/lib/account-auth.js', import.meta.url), 'utf8');
+  const start = accountAuthSource.indexOf('async function handleCharacterCard(');
+  const end = accountAuthSource.indexOf('async function requireActiveAdmin(', start);
+  assert.ok(start >= 0 && end > start, 'signed-card handler must exist');
+  assert.match(accountAuthSource.slice(start, end), /readJsonBody\(request, 65536\)/);
+
+  const longCard = { ...original, persona: '详细人设'.repeat(3000) };
+  const raw = JSON.stringify({ character: longCard });
+  assert.ok(raw.length > 8192 && raw.length < 65536, 'fixture must exercise former 8KiB rejection');
+  const request = () => new Request('https://localhost/api/character-cards/sign', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: raw
+  });
+  await assert.rejects(readJsonBody(request()), error => error.code === 'PAYLOAD_TOO_LARGE',
+    'the old default reader would reject the same legitimate persona');
+  const accepted = await readJsonBody(request(), 65536);
+  const signed = issueCharacterCard(accepted.character, owner, key);
+  assert.equal(verifyCharacterCard(signed, owner, key).persona, longCard.persona);
+  const huge = new Request('https://localhost/api/character-cards/sign', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ character: { ...original, persona: '文'.repeat(70000) } })
+  });
+  await assert.rejects(readJsonBody(huge, 65536), error => error.code === 'PAYLOAD_TOO_LARGE',
+    'requests past the 64KiB ceiling must still fail closed');
+});
