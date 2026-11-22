@@ -231,27 +231,39 @@
             </header>
             <main class="content api-editorial-content">
                 <section class="api-editorial-section api-profile-section" aria-label="配置方案">
-                    <div class="api-editorial-heading-row">
-                        <h2 class="api-editorial-section-title">配置方案</h2>
-                        <div class="api-profile-commands">
-                            <button type="button" class="api-text-button" id="btnProfileNew">新建方案</button>
-                            <button type="button" class="api-text-button" id="btnProfileDelete">删除</button>
-                        </div>
-                    </div>
+                    <h2 class="api-editorial-section-title">配置方案</h2>
                     <div class="profile-pills" id="profilePills"></div>
-                    <div class="api-transfer-row" aria-label="API 方案迁移">
-                        <button type="button" class="api-transfer-button" id="btnApiImportProfiles">导入 JSON</button>
-                        <button type="button" class="api-transfer-button" id="btnApiExportProfiles">导出 JSON</button>
-                        <input type="file" id="apiProfilesImportFile" accept=".json,application/json" hidden>
-                    </div>
-                </section>
-                <section class="api-editorial-section api-preset-section" aria-label="快捷预设">
-                    <h2 class="api-editorial-section-title">快捷预设</h2>
-                    <div class="preset-chips" id="presetChips"></div>
+                    <details class="api-tools-drawer" id="api-tools-drawer">
+                        <summary aria-label="展开方案管理">
+                            <span>管理</span>
+                            <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6.5 8 3.5 3.5L13.5 8"/></svg>
+                        </summary>
+                        <div class="api-tools-body">
+                            <div class="api-tools-group">
+                                <h3 class="api-tools-label">方案操作</h3>
+                                <div class="api-profile-commands">
+                                    <button type="button" class="api-text-button" id="btnProfileNew">新建方案</button>
+                                    <button type="button" class="api-text-button" id="btnProfileDelete">删除当前</button>
+                                </div>
+                            </div>
+                            <div class="api-tools-group">
+                                <h3 class="api-tools-label">快捷预设</h3>
+                                <div class="preset-chips" id="presetChips"></div>
+                            </div>
+                            <div class="api-tools-group">
+                                <h3 class="api-tools-label">数据迁移</h3>
+                                <div class="api-transfer-row" aria-label="API 方案迁移">
+                                    <button type="button" class="api-transfer-button" id="btnApiImportProfiles">导入 JSON</button>
+                                    <button type="button" class="api-transfer-button" id="btnApiExportProfiles">导出 JSON</button>
+                                    <input type="file" id="apiProfilesImportFile" accept=".json,application/json" hidden>
+                                </div>
+                                <p class="api-security-note">导出的 JSON 包含明文 API Key，请妥善保管。</p>
+                            </div>
+                        </div>
+                    </details>
                 </section>
 
                 <form id="settingsForm" class="api-editorial-form">
-                    <h2 class="api-editorial-section-title api-form-heading">连接信息</h2>
                     <div class="api-fields-pair">
                     <div class="api-row">
                         <label for="api-name">配置名称</label>
@@ -350,7 +362,7 @@
 
                     </details>
                 </form>
-                <p class="api-security-note">配置保存在本机。导出的 JSON 含明文 API Key，请妥善保管。</p>
+                
             </main>
             <div class="api-editorial-footer">
                 <div class="api-editorial-footer-actions">
