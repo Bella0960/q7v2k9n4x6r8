@@ -32,7 +32,7 @@ function setup(config, reply) {
     saveActiveRoleMutation:fn=>{saves++;fn(role);return true;},renderRelationshipView:()=>{}});
   vm.runInContext(parserSource,context);
   vm.runInContext(generatorSource,context);
-  return {nodes,calls,prompt,role,storage,get saves(){return saves;}};
+  return {nodes,calls,prompt,role,storage,window,get saves(){return saves;}};
 }
 async function settle() { for(let i=0;i<25;i++)await Promise.resolve(); }
 
@@ -64,7 +64,7 @@ test('one compact relationship response preserves an existing persona name and s
   assert.equal(x.calls.length,1);
   assert.equal(x.saves,1);
   assert.equal(x.role.npcCharacters[0].name,'林青');
-  assert.match(x.prompt[0],/一次只生成一位/);
+  assert.match(x.prompt[0],/拟出 1 到 2 位/);
   assert.match(x.calls[0].user,/林青/);
   x.nodes.btnAiRelationships.click();await settle();
   assert.equal(x.calls.length,1,'cooldown never silently repeats a paid request');
@@ -94,4 +94,40 @@ test('life output with valid fields populates form once without automatic persis
   assert.equal(x.nodes.lifeEventTitle.value,'准备摄影展');
   assert.equal(x.nodes.lifeEventPeople.value,'林青');
   assert.match(x.nodes.lifeAiStatus.textContent,/已生成生活事件草稿/);
+});
+
+test('one brief AI response with only name and relationship saves useful NPC data',async()=>{
+  const x=setup({apiKey:'mock',model:'mock',maxTokens:256},async()=>({
+    ok:true,data:{people:[{name:'小安',relation:'高中同学'}]}
+  }));
+  x.nodes.btnAiRelationships.click();await settle();
+  assert.equal(x.calls.length,1);
+  assert.equal(x.saves,1);
+  assert.equal(x.role.npcCharacters[0].name,'小安');
+  assert.equal(x.role.npcCharacters[0].relation,'高中同学');
+});
+test('two short relationship candidates can save together without requiring 11 fields each',async()=>{
+  const x=setup({apiKey:'mock',model:'mock',maxTokens:512},async()=>({
+    ok:true,data:{people:[{name:'小安',relation:'同学'},{name:'阿青',relation:'同事'}]}
+  }));
+  x.nodes.btnAiRelationships.click();await settle();
+  assert.equal(x.calls.length,1);
+  assert.equal(x.role.npcCharacters.length,2);
+});
+test('extensible generator hook reuses one-call billing guard and role isolation',async()=>{
+  const x=setup({apiKey:'mock',model:'mock'},async()=>({ok:true,data:{caption:'今天的故事'}}));
+  const handled=[];
+  assert.equal(x.window.CharacterWorldAI.registerKind('caption',{
+    prompt:'给角色拟一句日常记录',
+    statusId:'npcAiStatus',
+    apply:(data,helpers)=>{ handled.push(data.caption);helpers.status('已生成扩展草稿'); }
+  }),true);
+  assert.equal(x.window.CharacterWorldAI.registerKind('relationships',{prompt:'绕过规则',apply:()=>{}}),false);
+  const extra={disabled:false,textContent:'扩展生成'};
+  await x.window.CharacterWorldAI.generate('caption',extra);
+  assert.equal(x.calls.length,1);
+  assert.deepEqual(handled,['今天的故事']);
+  assert.equal(x.nodes.npcAiStatus.textContent,'已生成扩展草稿');
+  await x.window.CharacterWorldAI.generate('caption',extra);
+  assert.equal(x.calls.length,1,'extension cannot bypass shared rate limiter');
 });
