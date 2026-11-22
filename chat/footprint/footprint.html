@@ -4,6 +4,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>角色足迹</title>
 <script src="../../shared/js/phone/phone_storage.js"></script>
+ <script src="../../shared/js/phone/world-events.js?v=20261123-eco2"></script>
 <script src="../../shared/js/phone/ai-response-parser.js?v=20261120parser1"></script><script src="../../shared/js/phone/phone_api.js"></script>
 <script src="footprint-ai.js?v=20261123-persona-json-v1"></script>
 <script src="../../shared/js/native-feel.js"></script>
@@ -304,6 +305,13 @@
   .t-tags { overflow-wrap:anywhere; }
   .t-content { min-width:0; }
   .top-bar .icon-btn:disabled { opacity:.45; pointer-events:none; }
+
+  /* ECO-LINK: compact, independent projection; original AI footprint cards stay untouched. */
+  .t-eco-item { margin: 10px 0; padding: 13px 15px; background: #F7F7F8;
+    border-left: 2px solid #C9C9CD; border-radius: 6px; }
+  .t-eco-item .t-title { font-size: 14px; margin-top: 5px; }
+  .t-eco-summary { margin-top: 6px; font-size: 12px; line-height: 1.65; color: #555; }
+
 </style>
 </head>
 <body>
@@ -552,15 +560,51 @@
     build('calRoles');
   }
 
+  // Public event projection: never writes to footprint_<roleId>.
+  // Use local-calendar boundaries, not UTC date prefixes, for phone day views.
+  function worldEventsBetween(start, end) {
+    if (!currentRoleId) return { ok: true, value: [] };
+    if (!window.WorldEvents || typeof window.WorldEvents.listForRole !== 'function') {
+      return { ok: false, error: '相遇记录模块暂时不可用' };
+    }
+    return window.WorldEvents.listForRole(String(currentRoleId), {
+      from: start.toISOString(), to: end.toISOString(), limit: 200
+    });
+  }
+  function worldEventsForDay(date) {
+    const [year, month, day] = date.split('-').map(Number);
+    return worldEventsBetween(
+      new Date(year, month - 1, day),
+      new Date(year, month - 1, day + 1)
+    );
+  }
+  function worldEventDaysForMonth(year, month) {
+    const result = worldEventsBetween(
+      new Date(year, month - 1, 1),
+      new Date(year, month, 1)
+    );
+    if (!result.ok) return result;
+    const days = new Set();
+    result.value.forEach(function (event) {
+      const date = new Date(event.occurredAt);
+      if (!Number.isNaN(date.getTime())) {
+        days.add(date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate()));
+      }
+    });
+    return { ok: true, value: days };
+  }
+
   // ================= 主页：角色独有的 JSON 足迹 =================
   function renderTimeline() {
     const box = document.querySelector('.timeline');
     const items = itemsOf(currentRole, currentDate);
-    if (!items.length) {
+    const eventResult = worldEventsForDay(currentDate);
+    const events = eventResult.ok ? eventResult.value : [];
+    if (!items.length && !events.length && eventResult.ok) {
       box.innerHTML = '<div class="t-empty">这一天还没有足迹，点击右上角生成。</div>';
       return;
     }
-    box.innerHTML = items.map(function(it) {
+    const originalCards = items.map(function(it) {
       const time = String(it.time || '');
       const hour = Number(time.slice(0, 2)) || 0;
       const action = String(it.action || it.title || '');
@@ -575,10 +619,29 @@
           '<div class="t-thought">心声 · ' + escapeFootprintHtml(thought) + '</div>' +
         '</div>' + photo + '</div>';
     }).join('');
+    // These are read-only references to confirmed events, not AI-generated
+    // action/status/thought records. They have no data-id and cannot open
+    // footprint detail editing or alter the existing daily array.
+    const eventCards = events.map(function (event) {
+      const clock = new Date(event.occurredAt);
+      const time = pad(clock.getHours()) + ':' + pad(clock.getMinutes());
+      const label = event.type === 'encounter.first_met' ? '初次相识' :
+        event.type === 'encounter.reunion' ? '再次相遇' : '生活事件';
+      return '<div class="t-eco-item" data-eco-event="' + escapeFootprintHtml(event.eventId) + '">' +
+        '<div class="t-time">' + escapeFootprintHtml(time) + '　· 生态记录</div>' +
+        '<div class="t-title">' + escapeFootprintHtml(label) + '</div>' +
+        '<div class="t-eco-summary">' + escapeFootprintHtml(event.summary) + '</div>' +
+        '</div>';
+    }).join('');
+    const readError = eventResult.ok ? '' :
+      '<div class="t-empty">相遇记录暂时无法读取，已有足迹保持不变。</div>';
+    box.innerHTML = originalCards + eventCards + readError;
   }
 
   function updateCount() {
-    const n = itemsOf(currentRole, currentDate).length;
+    const result = worldEventsForDay(currentDate);
+    const n = itemsOf(currentRole, currentDate).length +
+      (result.ok ? result.value.length : 0);
     document.querySelector('.today-count strong').textContent = n;
   }
 
@@ -595,6 +658,8 @@
     const inMonth = viewMonth === currentDate.slice(0, 7);
     const curDay = Number(currentDate.slice(8, 10));
     const roleDays = loadFootprintData(currentRoleId);
+    const monthEvents = worldEventDaysForMonth(y, m);
+    const eventDays = monthEvents.ok ? monthEvents.value : new Set();
 
     let cells = '<div class="cal-head">一</div><div class="cal-head">二</div><div class="cal-head">三</div><div class="cal-head">四</div><div class="cal-head">五</div><div class="cal-head">六</div><div class="cal-head">日</div>';
     const totalCells = Math.ceil((lead + daysIn) / 7) * 7;
@@ -607,7 +672,7 @@
       } else {
         const key = viewMonth + '-' + pad(dayNum);
         const isActive = inMonth && dayNum === curDay;
-        const dot = isActive || roleDays[key] ? '<div class="dot"></div>' : '';
+        const dot = isActive || roleDays[key] || eventDays.has(key) ? '<div class="dot"></div>' : '';
         cells += `<div class="cal-day${isActive ? ' active' : ''}" data-day="${dayNum}">${dayNum}${dot}</div>`;
       }
     }
