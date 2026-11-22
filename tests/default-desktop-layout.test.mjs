@@ -99,3 +99,19 @@ test('all desktop app tiles have valid relative destinations and delegated click
     'the legacy bubble-phase handler must not duplicate the capture-phase navigation');
   assert.match(index, /home-editing/);
 });
+
+test('the Dock centers one to five shortcuts without losing the default app pair', () => {
+  const dockRule = desktopCss.match(/(?:^|\n)\.dock-bar\s*\{([^}]+)\}/)?.[1];
+  assert.ok(dockRule, 'Dock layout rule must exist');
+  assert.match(dockRule, /justify-content:\s*center\s*;/,
+    'a sparse Dock must keep its shortcuts centered as a group');
+  const gap = Number(dockRule.match(/gap:\s*(\d+)px\s*;/)?.[1]);
+  assert.equal(gap, 12, 'keep a small, consistent spacing between Dock shortcuts');
+  assert.match(dockRule, /padding:\s*0\s+8px\s*;/);
+  assert.match(mobileCss, /\.dock-wrapper\s*\{[^}]*padding:\s*0\s+14px\s+max\(/);
+  assert.match(index, /dockItems\.length\s*>=\s*5/);
+  assert.match(index, /dock:\s*\['app_chat',\s*'app_shop'\]/);
+  // 375px viewport: outer 14px padding per side, Dock 8px inner padding and 1px border.
+  // All five allowed 50px tiles must fit even on the narrowest required phone viewport.
+  assert.ok(5 * 50 + 4 * gap <= 375 - 2 * (14 + 8 + 1));
+});
