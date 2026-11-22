@@ -833,6 +833,97 @@ function openRoleProfile(roleId) {
     showAppView('profileView');
 }
 
+function renderRoleEncounterHistory(role) {
+    const origin = role && role.encounterOrigin;
+    if (!origin || origin.version !== 1 ||
+        !/^enc_[a-z0-9_-]{3,80}$/i.test(String(origin.sourceCandidateId || ''))) return '';
+    const ledger = window.WorldEvents;
+    let events = [];
+    let warning = '';
+    let restoreNeeded = false;
+    let confirmedFirst = null;
+    if (!ledger || typeof ledger.listForRole !== 'function') {
+        warning = '相遇记录暂不可用，原角色资料不受影响。';
+    } else {
+        const result = ledger.listForRole(String(role.id), { limit: 30 });
+        if (!result || !result.ok) warning = '相遇记录暂时无法读取，原始资料未被改动。';
+        else {
+            events = result.value.filter(function (item) {
+                return item && (item.type === 'encounter.first_met' ||
+                    item.type === 'encounter.reunion');
+            });
+            // Recover only an ACTUALLY confirmed character-library link whose
+            // event append may have failed. Opening a profile never auto-writes.
+            if (origin.linkedAt && !Number.isNaN(Date.parse(origin.linkedAt))) {
+                const firstQuery = ledger.listForRole(String(role.id), {
+                    type: 'encounter.first_met', limit: 200
+                });
+                if (!firstQuery || !firstQuery.ok) {
+                    warning = '初次相遇记录暂时无法核验，原资料保持不变。';
+                } else {
+                    confirmedFirst = firstQuery.value.find(function (item) {
+                        return item && item.source && item.source.appId === 'encounter' &&
+                            item.source.recordId === String(origin.sourceCandidateId);
+                    }) || null;
+                    restoreNeeded = !confirmedFirst;
+                }
+            }
+        }
+    }
+    const roleMemory = window.RoleEventMemory;
+    const memoryState = roleMemory && typeof roleMemory.getConsent === 'function'
+        ? roleMemory.getConsent(String(role.id)) : { ok: false };
+    const memoryOn = !!(memoryState && memoryState.ok && memoryState.value);
+    const memoryControl = '<label class="eco-memory-toggle">' +
+        '<input type="checkbox" data-eco-memory-consent ' +
+            (memoryOn ? 'checked ' : '') + (memoryState && memoryState.ok ? '' : 'disabled ') + '>' +
+        '<span>允许聊天参考已确认的相遇记录</span></label>' +
+        '<div class="eco-memory-note" data-eco-memory-status role="status">' +
+            (memoryState && memoryState.ok
+                ? (memoryOn ? '已开启，仅使用本角色已确认的事件。' : '默认关闭，不会加入聊天上下文。')
+                : '账号或相遇记忆权限尚未就绪，暂不可开启。') +
+        '</div>';
+    const id = encodeURIComponent(String(role.id));
+    // Never substitute a reunion timestamp, role creation time or today's date
+    // when the actual confirmed first-meeting record is unavailable.
+    const first = confirmedFirst || events.find(function (item) {
+        return item.type === 'encounter.first_met';
+    }) || null;
+    const firstDate = first && first.occurredAt &&
+        !Number.isNaN(Date.parse(first.occurredAt))
+        ? '&date=' + encodeURIComponent([
+            new Date(first.occurredAt).getFullYear(),
+            String(new Date(first.occurredAt).getMonth() + 1).padStart(2, '0'),
+            String(new Date(first.occurredAt).getDate()).padStart(2, '0')
+        ].join('-')) : '';
+    const rows = events.map(function (event) {
+        const when = new Date(event.occurredAt);
+        const localDate = Number.isNaN(when.getTime()) ? '' :
+            when.toLocaleDateString('zh-CN');
+        return '<li class="eco-record">' +
+            '<span class="eco-record-label">' + escapeHtml(
+                event.type === 'encounter.first_met' ? '初次相识' : '再次相遇') +
+            '</span><span class="eco-record-time">' + escapeHtml(localDate) + '</span>' +
+            '<p>' + escapeHtml(event.summary || '') + '</p></li>';
+    }).join('');
+    return '<details class="eco-profile-history">' +
+        '<summary>相遇经历 <span>' + events.length + ' 条记录</span></summary>' +
+        '<div class="eco-profile-history-body">' +
+          (warning ? '<p class="eco-profile-warning">' + escapeHtml(warning) + '</p>' : '') +
+          (rows ? '<ol class="eco-records">' + rows + '</ol>' :
+            '<p class="eco-profile-empty">已从邂逅加入角色库；此前未保存的经历不会被伪造。</p>') +
+          memoryControl +
+          (restoreNeeded && !warning
+              ? '<button type="button" class="eco-restore-first" data-eco-restore-first>补全初次相遇记录</button>' +
+                '<p class="eco-profile-warning" data-eco-restore-status role="status"></p>'
+              : '') +
+          '<div class="eco-profile-links">' +
+            '<a href="../../encounter/encounter.html?reunionRole=' + id + '">回到邂逅</a>' +
+            '<a href="../../chat/footprint/footprint.html?roleId=' + id + firstDate + '">查看角色足迹</a>' +
+          '</div>' +
+        '</div></details>';
+}
+
 function renderRoleProfile() {
     const role = getActiveProfileRole();
     const content = document.getElementById('profileContent');
@@ -892,9 +983,82 @@ function renderRoleProfile() {
             '<button class="profile-branch" type="button" data-profile-action="relationships"><span class="profile-branch-index">04</span><span class="profile-branch-copy"><span class="profile-branch-title">人物关系网络</span><span class="profile-branch-desc">家人、朋友、同事，以及每个人自己的档案 · ' + count + ' 人</span></span><span class="profile-branch-arrow">›</span></button>' +
             '<button class="profile-branch" type="button" data-profile-action="life"><span class="profile-branch-index">05</span><span class="profile-branch-copy"><span class="profile-branch-title">个人生活线</span><span class="profile-branch-desc">近期计划、日常状态与阶段性事件 · ' + role.lifeEvents.length + ' 条记录</span></span><span class="profile-branch-arrow">›</span></button>' +
         '</div>' +
+        renderRoleEncounterHistory(role) +
         '<p class="profile-bottom-note">人物关系和生活记录只属于这个主角色。其他主角色不会自动继承这些人物或关系。</p>';
 
+    content.onchange = async function (event) {
+        const toggle = event.target && event.target.closest
+            ? event.target.closest('[data-eco-memory-consent]') : null;
+        if (!toggle || !content.contains(toggle)) return;
+        const savedRoleId = String(role.id);
+        const requested = !!toggle.checked;
+        const note = content.querySelector('[data-eco-memory-status]');
+        const module = window.RoleEventMemory;
+        if (!module || typeof module.setConsent !== 'function') return;
+        toggle.disabled = true;
+        if (note) note.textContent = '正在核对记忆授权…';
+        let result;
+        try { result = await module.setConsent(savedRoleId, requested); }
+        catch (error) { result = { ok: false, error: '保存失败' }; }
+        if (String(currentProfileRoleId) !== savedRoleId || !content.contains(toggle)) return;
+        const checked = module.getConsent(savedRoleId);
+        if (checked.ok) toggle.checked = checked.value;
+        else toggle.checked = !requested;
+        toggle.disabled = !checked.ok;
+        if (note) note.textContent = !result || !result.ok || !checked.ok
+            ? '授权状态未能确认，未将事件加入聊天。请检查存储后重试。'
+            : (checked.value ? '已开启，仅使用本角色已确认的事件。' : '已关闭，不再加入聊天上下文。');
+    };
+
     content.onclick = function (event) {
+        const restoreButton = event.target.closest ? event.target.closest('[data-eco-restore-first]') : null;
+        if (restoreButton && content.contains(restoreButton)) {
+            const roleIdAtClick = String(currentProfileRoleId);
+            const freshRole = getRoleById(roleIdAtClick);
+            const linked = freshRole && freshRole.encounterOrigin;
+            if (!linked || linked.version !== 1 || !linked.linkedAt ||
+                Number.isNaN(Date.parse(linked.linkedAt)) ||
+                !/^enc_[a-z0-9_-]{3,80}$/i.test(String(linked.sourceCandidateId || ''))) return;
+            const events = window.WorldEvents;
+            if (!events || typeof events.append !== 'function' ||
+                typeof events.listForRole !== 'function') return;
+            const note = content.querySelector('[data-eco-restore-status]');
+            const currentFirst = events.listForRole(roleIdAtClick, {type: 'encounter.first_met', limit: 200});
+            if (!currentFirst || !currentFirst.ok) {
+                if (note) note.textContent = '暂时无法核验初遇记录，未修改数据。';
+                return;
+            }
+            if (currentFirst.value.some(function (item) {
+                return item && item.source && item.source.appId === 'encounter' &&
+                    item.source.recordId === linked.sourceCandidateId;
+            })) {
+                renderRoleProfile();
+                return;
+            }
+            restoreButton.disabled = true;
+            const response = events.append({
+                roleId: roleIdAtClick, type: 'encounter.first_met',
+                source: {appId: 'encounter', recordId: linked.sourceCandidateId},
+                occurredAt: linked.linkedAt,
+                summary: ('通过邂逅正式认识了' + String(freshRole.name || '一位角色'))
+                    .replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 240),
+                provenance: 'user-confirmed', allowAI: false
+            });
+            Promise.resolve(response).then(function (saved) {
+                if (String(currentProfileRoleId) !== roleIdAtClick || !content.contains(restoreButton)) return;
+                if (saved && saved.ok) {
+                    renderRoleProfile();
+                } else {
+                    restoreButton.disabled = false;
+                    if (note) note.textContent = '补录尚未成功，原角色和足迹资料保持不变。';
+                }
+            }).catch(function () {
+                if (String(currentProfileRoleId) !== roleIdAtClick || !content.contains(restoreButton)) return;
+                restoreButton.disabled = false;
+                if (note) note.textContent = '无法补录初遇，原角色资料未改变。';
+            });
+            return;
+        }
         const pairButton = event.target.closest ? event.target.closest('[data-avatar-pair-action]') : null;
         if (pairButton) {
             event.preventDefault();
@@ -1663,6 +1827,7 @@ function handleSaveRole() {
             const card = candidates.ok && candidates.value.find(function (c) { return c.id === activeEncounterDraftId; });
             if (card) encounterOrigin = {
                 version: 1, sourceCandidateId: card.id, createdAt: card.createdAt || Date.now(),
+                linkedAt: new Date().toISOString(),
                 gender: card.gender || '', species: card.species || '', era: card.era || '', job: card.job || '',
                 relationVibe: card.relationVibe || '',
                 trait: card.trait || '', contrast: card.contrast || '',
@@ -1698,6 +1863,44 @@ function handleSaveRole() {
         setSaveStatus('保存失败：角色资料与世界书挂载未能一致保存，修改已保留。', 'error');
         persistEditorDraft(true);
         return;
+    }
+
+    // ECO-LINK-003: A candidate is not a formal character. Only after saveRoles
+    // AND its read-back succeeded may we append the first confirmed encounter.
+    // This ledger is independent: failure never rolls back or rewrites the role.
+    const createdEncounter = !roleId && activeEncounterDraftId
+        ? roles.find(function (item) { return String(item.id) === String(savedRoleId); })
+        : null;
+    const confirmedOrigin = createdEncounter && createdEncounter.encounterOrigin;
+    if (confirmedOrigin && confirmedOrigin.version === 1 && confirmedOrigin.sourceCandidateId) {
+        const displayRoleId = String(savedRoleId);
+        const worldEvents = window.WorldEvents;
+        if (!worldEvents || typeof worldEvents.append !== 'function') {
+            setSaveStatus('角色已保存，但相遇记录模块未加载，暂未记入足迹。', 'info');
+        } else {
+            // No invented physical location or dialogue. This records the actual
+            // confirmed action of linking a candidate into the existing role library.
+            const verifiedSummary = ('通过邂逅正式认识了' + String(createdEncounter.name || '一位角色'))
+                .replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 240);
+            worldEvents.append({
+                roleId: displayRoleId,
+                type: 'encounter.first_met',
+                source: { appId: 'encounter', recordId: confirmedOrigin.sourceCandidateId },
+                occurredAt: confirmedOrigin.linkedAt,
+                summary: verifiedSummary,
+                provenance: 'user-confirmed',
+                allowAI: false // Separate explicit memory opt-in comes later.
+            }).then(function (result) {
+                if ((!result || !result.ok) &&
+                    document.getElementById('editRoleId').value === displayRoleId) {
+                    setSaveStatus('角色已保存，但相遇记录未能写入；原人物资料完整保留。', 'info');
+                }
+            }).catch(function () {
+                if (document.getElementById('editRoleId').value === displayRoleId) {
+                    setSaveStatus('角色已保存，相遇记录暂未写入；请检查存储。', 'info');
+                }
+            });
+        }
     }
 
     const oldDraftKey = currentDraftKey;
@@ -2463,6 +2666,10 @@ function openEncounterRoleFromQuery() {
         return;
     }
     openRoleProfile(role.id);
+    if (params.get('showEncounter') === '1') {
+        const history = document.querySelector('#profileContent details.eco-profile-history');
+        if (history) history.open = true;
+    }
 }
 
 // 页面初始化
@@ -2484,5 +2691,18 @@ retryPendingRoleAvatarCleanup().catch(function (error) {
         backBtn.setAttribute('href', '../../chat/contacts/contacts.html');
     } else if (from === 'encounter') {
         backBtn.setAttribute('href', '../../encounter/encounter.html');
+    } else if (from === 'footprint' && params.get('encounterRole')) {
+        // Return only to the same formally validated character; never trust
+        // external redirect URLs or fall back to a different character.
+        const roleId = params.get('encounterRole');
+        const role = getRoleById(roleId);
+        if (role && role.encounterOrigin && role.encounterOrigin.version === 1) {
+            const date = params.get('returnDate') || '';
+            const validDate = /^\d{4}-\d{2}-\d{2}$/.test(date) &&
+                !Number.isNaN(Date.parse(date + 'T12:00:00'));
+            backBtn.setAttribute('href',
+                '../../chat/footprint/footprint.html?roleId=' + encodeURIComponent(String(role.id)) +
+                (validDate ? '&date=' + encodeURIComponent(date) : ''));
+        }
     }
 })();
