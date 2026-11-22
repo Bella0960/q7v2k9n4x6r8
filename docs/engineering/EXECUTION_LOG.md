@@ -1,5 +1,13 @@
 # MAOMAO Execution Log
 
+## 2026-11-22｜CHAT-CLEAR-001｜聊天加号菜单清空安全修复
+
+- **实际缺陷**：`chat/chat/js/chat-extras.js` 中清空调用 `saveMessages([])`，空数组未继承当前会话的版本基线，因此会被详情页的 `_chatHistoryBaselines` 拒绝；清空操作也缺少跨标签页原子删除保证。
+- **修复**：仅将清空写入改为已有 `replaceChatSafely(previousMessages, [])`，沿用 `ChatHistoryAtomic.replaceIfUnchanged` 的会话锁、账户隔离、版本相等保护与失败安全返回。重复点击不重复提交。只有成功提交后才触发图片引用释放和 UI 重绘；资源释放异常不把已提交的清空错误提示为失败。
+- **测试**：扩展现有 `tests/chat-selection-delete-atomic.test.mjs` 执行真实清空回调和原子模块，覆盖成功提交、重入、并发冲突、配额、无锁、账号作用域/历史损坏及媒体清理拒绝。脚本 URL 改为 cards4，SW v296，保留既有视觉与数据格式。
+- **范围限制**：不涉及其他功能、聊天历史迁移、正式环境或账号数据库。完整 Node/Vite/Chromium、手机 QA 部署及真机验收结果以实际回执为准；未经验证不得标记已上线。
+
+
 ## 2026-11-22｜DATA-008｜聊天加号菜单图片批量保存兼容
 
 - **根因：** `chat/chat/js/chat-extras.js` 的图片上传使用 `history.concat(messages)` 形成新数组，丢失 `saveMessages` 必需的历史版本基线，图片已上传本机媒体仓库却无法加入聊天。
