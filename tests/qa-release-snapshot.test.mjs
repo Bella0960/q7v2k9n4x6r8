@@ -9,7 +9,7 @@ const later = 'b'.repeat(40);
 // Both the original strict runner and the verify-only diagnostic runner must
 // execute every required gate before stamping and deploying a tested artifact.
 function requiredGateLoop(script) {
-  const legacy = requiredGateLoop(script);
+  const legacy = script.indexOf('for (const [command, args] of TESTS) run(command, args);');
   const diagnostic = script.indexOf('for (const [index, [command, args]] of TESTS.entries()) {');
   assert.equal(Number(legacy >= 0) + Number(diagnostic >= 0), 1,
     'the release script must have exactly one mandatory full test-gate loop');
