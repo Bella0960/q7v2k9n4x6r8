@@ -76,7 +76,7 @@ test('complete clean JSON maps to all four fields, chronological order and same 
 });
 test('recover fenced JSON with prose and a trailing comma outside quoted text without inventing fields',()=>{
  const ai=module();
- const raw='返回数据：\n'+String.fromCharCode(96,96,96)+'json\n'+JSON.stringify({entries:fantasy}).replace(/\}\]$/, '},]')+'\n'+String.fromCharCode(96,96,96)+'\n无关文字';
+ const raw='返回数据：\n'+String.fromCharCode(96,96,96)+'json\n'+JSON.stringify({entries:fantasy}).replace(/\]\}$/, ',]}')+'\n'+String.fromCharCode(96,96,96)+'\n无关文字';
  const parsed=ai.parse({ok:false,raw});
  assert.equal(parsed.length,3);
  assert.match(parsed[0].action,/打坐/);
