@@ -83,13 +83,13 @@ test('the UI binds to a user-changed explicit control in the folded role profile
 });
 
 test('chat preserves identity and RP assembly and only injects opt-in memory in 1:1', () => {
-  const marker=chat.indexOf('// ECO-LINK-006: private 1:1 encounter history');
+  const marker=chat.indexOf('// ECO-LINK: only the exact, confirmed single-chat role');
   assert.ok(marker>0);
   const excerpt=chat.slice(marker,marker+950);
   assert.match(excerpt,/!isGroupChat/);
   assert.match(excerpt,/String\(roleForTurn\.id\)/);
-  assert.match(excerpt,/eventContext && eventContext\.ok && eventContext\.value/);
-  assert.match(excerpt,/capText\(eventContext\.value, 900\)/);
+  assert.match(excerpt,/eventHistory && eventHistory\.ok && eventHistory\.value/);
+  assert.match(excerpt,/capText\(eventHistory\.value, 900\)/);
   assert.match(chat,/systemPrompt = roleIdentityHead/);
   assert.match(chat,/【世界书 \/ 角色生活背景】/);
 });
