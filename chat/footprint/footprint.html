@@ -4,6 +4,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>角色足迹</title>
 <script src="../../shared/js/phone/phone_storage.js"></script>
+<script src="../../shared/js/phone/world-events.js?v=20261123-eco2"></script>
 <script src="../../shared/js/phone/ai-response-parser.js?v=20261120parser1"></script><script src="../../shared/js/phone/phone_api.js"></script>
 <script src="footprint-ai.js?v=20261123-persona-json-v1"></script>
 <script src="../../shared/js/native-feel.js"></script>
@@ -304,6 +305,11 @@
   .t-tags { overflow-wrap:anywhere; }
   .t-content { min-width:0; }
   .top-bar .icon-btn:disabled { opacity:.45; pointer-events:none; }
+
+.t-eco-item,.cal-eco-item { display:block; padding:12px 14px; margin:8px 0; color:#333; text-decoration:none; background:#F7F7F8; border-radius:8px; font-size:12px; }
+.t-eco-summary { margin-top:5px; color:#777; line-height:1.7; }
+.cal-eco-item { display:flex; gap:8px; align-items:center; }
+.cal-eco-item span:last-child { color:#777; overflow-wrap:anywhere; }
 </style>
 </head>
 <body>
@@ -459,13 +465,22 @@
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
     });
   }
+  const ecoRouteParams = new URLSearchParams(window.location.search);
+  const ecoRouteRoleId = ecoRouteParams.get('roleId') || '';
   let currentRole = '';
-  let currentRoleId = '';
+  let currentRoleId = ecoRouteRoleId;
   const todayKey = () => {
     const now = new Date();
     return now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
   };
-  let currentDate = todayKey();
+  const requestedEcoDate = ecoRouteParams.get('date') || '';
+  function validEcoDate(value) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const [year, month, day] = value.split('-').map(Number);
+    const actual = new Date(year, month - 1, day);
+    return actual.getFullYear() === year && actual.getMonth() === month - 1 && actual.getDate() === day;
+  }
+  let currentDate = validEcoDate(requestedEcoDate) ? requestedEcoDate : todayKey();
   let viewMonth = currentDate.slice(0, 7);
   
   // 从 localStorage 读取角色足迹数据
@@ -521,7 +536,7 @@
     realRoles = loadRealRoles();
     // 使用角色 ID 维持选择，避免重名角色串用足迹。
     let selected = realRoles.find(r => String(r.id != null ? r.id : r.name) === String(currentRoleId));
-    if (!selected) selected = realRoles[0] || null;
+    if (!selected && !ecoRouteRoleId) selected = realRoles[0] || null;
     if (selected) {
       currentRole = selected.name || '角色';
       currentRoleId = String(selected.id != null ? selected.id : selected.name);
@@ -553,14 +568,49 @@
   }
 
   // ================= 主页：角色独有的 JSON 足迹 =================
+  function worldEventsBetween(start, end) {
+    if (!currentRoleId) return { ok: true, value: [] };
+    const api = window.WorldEvents;
+    if (!api || typeof api.listForRole !== 'function') {
+      return { ok: false, error: '事件仓储不可用' };
+    }
+    const result = api.listForRole(String(currentRoleId), {
+      from: start.toISOString(), to: end.toISOString(), limit: 200
+    });
+    if (!result || !result.ok) return { ok: false, error: '事件不可读取' };
+    return { ok: true, value: result.value.filter(event =>
+      event && (event.type === 'encounter.first_met' ||
+                event.type === 'encounter.reunion')) };
+  }
+  function worldEventsForDay(day) {
+    const [year, month, date] = day.split('-').map(Number);
+    return worldEventsBetween(new Date(year, month - 1, date),
+      new Date(year, month - 1, date + 1));
+  }
+  function worldEventDaysForMonth(year, month) {
+    const result = worldEventsBetween(new Date(year, month - 1, 1),
+      new Date(year, month, 1));
+    if (!result.ok) return result;
+    const days = new Set(result.value.map(item => {
+      const date = new Date(item.occurredAt);
+      return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate());
+    }));
+    return { ok: true, value: days };
+  }
+
   function renderTimeline() {
     const box = document.querySelector('.timeline');
     const items = itemsOf(currentRole, currentDate);
-    if (!items.length) {
-      box.innerHTML = '<div class="t-empty">这一天还没有足迹，点击右上角生成。</div>';
+    const eventResult = worldEventsForDay(currentDate);
+    const events = eventResult.ok ? eventResult.value : [];
+    if (!items.length && !events.length && eventResult.ok) {
+      box.innerHTML = '<div class="t-empty">' +
+        (ecoRouteRoleId && !currentRoleId
+          ? '没有找到链接指定的角色，未切换到其他人物。'
+          : '这一天还没有足迹。') + '</div>';
       return;
     }
-    box.innerHTML = items.map(function(it) {
+    const originalCards = items.map(function(it) {
       const time = String(it.time || '');
       const hour = Number(time.slice(0, 2)) || 0;
       const action = String(it.action || it.title || '');
@@ -575,10 +625,33 @@
           '<div class="t-thought">心声 · ' + escapeFootprintHtml(thought) + '</div>' +
         '</div>' + photo + '</div>';
     }).join('');
+    const eventCards = events.map(function(item) {
+      const at = new Date(item.occurredAt);
+      const clock = pad(at.getHours()) + ':' + pad(at.getMinutes());
+      const isFirst = item.type === 'encounter.first_met';
+      const source = item.source || {};
+      const match = /^reunion_\d{4}-\d\d-\d\d_(.+)$/.exec(String(source.recordId || ''));
+      const id = encodeURIComponent(String(currentRoleId));
+      const date = encodeURIComponent(currentDate);
+      const url = isFirst
+        ? '../../worldbook/characters/characters.html?from=footprint&encounterRole=' + id +
+          '&showEncounter=1&returnDate=' + date
+        : '../../encounter/encounter.html?from=footprint&reunionRole=' + id +
+          '&returnDate=' + date + (match ? '&scene=' + encodeURIComponent(match[1]) : '');
+      return '<a class="t-eco-item" href="' + escapeFootprintHtml(url) + '">' +
+        '<div class="t-time">' + escapeFootprintHtml(clock) + ' · 生态记录</div>' +
+        '<div class="t-title">' + (isFirst ? '初次相识' : '再次相遇') + '</div>' +
+        '<div class="t-eco-summary">' + escapeFootprintHtml(item.summary || '') + '</div>' +
+        '</a>';
+    }).join('');
+    box.innerHTML = originalCards + eventCards +
+      (eventResult.ok ? '' : '<div class="t-empty">相遇记录暂不可读取，原有足迹未修改。</div>');
   }
 
   function updateCount() {
-    const n = itemsOf(currentRole, currentDate).length;
+    const events = worldEventsForDay(currentDate);
+    const n = itemsOf(currentRole, currentDate).length +
+      (events.ok ? events.value.length : 0);
     document.querySelector('.today-count strong').textContent = n;
   }
 
@@ -595,6 +668,8 @@
     const inMonth = viewMonth === currentDate.slice(0, 7);
     const curDay = Number(currentDate.slice(8, 10));
     const roleDays = loadFootprintData(currentRoleId);
+    const monthEvents = worldEventDaysForMonth(y, m);
+    const eventDays = monthEvents.ok ? monthEvents.value : new Set();
 
     let cells = '<div class="cal-head">一</div><div class="cal-head">二</div><div class="cal-head">三</div><div class="cal-head">四</div><div class="cal-head">五</div><div class="cal-head">六</div><div class="cal-head">日</div>';
     const totalCells = Math.ceil((lead + daysIn) / 7) * 7;
@@ -607,7 +682,7 @@
       } else {
         const key = viewMonth + '-' + pad(dayNum);
         const isActive = inMonth && dayNum === curDay;
-        const dot = isActive || roleDays[key] ? '<div class="dot"></div>' : '';
+        const dot = isActive || roleDays[key] || eventDays.has(key) ? '<div class="dot"></div>' : '';
         cells += `<div class="cal-day${isActive ? ' active' : ''}" data-day="${dayNum}">${dayNum}${dot}</div>`;
       }
     }
@@ -617,16 +692,34 @@
 
   function renderCalList() {
     const items = itemsOf(currentRole, currentDate);
+    const ecoEvents = worldEventsForDay(currentDate);
+    const events = ecoEvents.ok ? ecoEvents.value : [];
     const mm = currentDate.slice(5, 7), dd = currentDate.slice(8, 10);
     document.querySelector('.cal-list-header h3').textContent = mm + ' / ' + dd + ' · 今日足迹';
-    document.querySelector('.cal-list-header span').textContent = items.length + ' 条';
+    document.querySelector('.cal-list-header span').textContent = (items.length + events.length) + ' 条';
     const list = document.querySelector('.cal-list');
-    if (!items.length) { list.innerHTML = '<div class="t-empty">这一天还没有足迹。</div>'; return; }
+    if (!items.length && !events.length && ecoEvents.ok) { list.innerHTML = '<div class="t-empty">这一天还没有足迹。</div>'; return; }
     list.innerHTML = items.map(it => `<div class="cal-list-item" data-id="${escapeFootprintHtml(it.id)}">
       <time>${escapeFootprintHtml(it.time)}</time>
       <span class="title">${escapeFootprintHtml(it.action || it.title)}</span>
       <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
     </div>`).join('');
+    const eventLinks = events.map(event => {
+      const first = event.type === 'encounter.first_met';
+      const match = /^reunion_\d{4}-\d\d-\d\d_(.+)$/.exec(String(event.source?.recordId || ''));
+      const id = encodeURIComponent(String(currentRoleId));
+      const date = encodeURIComponent(currentDate);
+      const href = first
+        ? '../../worldbook/characters/characters.html?from=footprint&encounterRole=' + id +
+          '&showEncounter=1&returnDate=' + date
+        : '../../encounter/encounter.html?from=footprint&reunionRole=' + id +
+          '&returnDate=' + date + (match ? '&scene=' + encodeURIComponent(match[1]) : '');
+      return '<a class="cal-eco-item" href="' + escapeFootprintHtml(href) +
+        '"><span>' + (first ? '初次相识' : '再次相遇') +
+        '</span><span>' + escapeFootprintHtml(event.summary || '') + '</span></a>';
+    }).join('');
+    list.innerHTML += eventLinks +
+      (ecoEvents.ok ? '' : '<div class="t-empty">相遇记录暂不可读取。</div>');
   }
 
   // ================= 详情联动（按角色 ID，不混用其他角色） =================
