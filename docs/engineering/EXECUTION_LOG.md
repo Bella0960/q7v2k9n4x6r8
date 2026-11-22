@@ -637,3 +637,10 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - ecf05ba270afe7b323c6dd6172e8029a308cf219 的三套群设置 Chromium 回归在 #44843160164 通过。完整发布仍须以 QA-only 门禁和同源 SHA 回执为准。
 
 - 第二轮定位记忆清理回归仍走旧入口，旧档案的角色副本与群共享 ID 时还会遮蔽群记录。明确从群选项入口进入时优先按群 ID 读取，单聊入口沿用原规则。Vite 和四套 Chromium 专项（含 375、390、430、1100px 的记忆清理）在 #44843984791 通过。
+
+## 2026-11-22｜UI-DOCK-001｜桌面 Dock 稀疏图标居中（独立草稿）
+
+- 范围仅限桌面 Dock 横向排列：修正原 `space-evenly` 将一至两个快捷应用拉散的问题，固定为居中且 12px 间隔。现有最多五个应用、拖拽顺序、布局键 `ds_layout_v14`、隐藏与恢复逻辑未修改。
+- 添加 `tests/default-desktop-layout.test.mjs` 的静态契约用例；375px 下五个 50px 图标及间隔预计可容纳。基于本分支远端文件的 9/9 项只读静态检查通过。
+- Node、Vite、Chromium、真机验收：NOT VERIFIED（当前连接仅支持远端仓库文件修改，无可复用本地 checkout；不得将静态检查冒充运行结果）。
+- 从整合分支 `integration/batch1-qa-merge-20261122` 派生独立分支 `task-UI-DOCK-001/center-shortcuts-20261122`。未修改 main、未合并、未部署、未触发私有仓库 Actions。回滚只需撤销对应 CSS 调整。
