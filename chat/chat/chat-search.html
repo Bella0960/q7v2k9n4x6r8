@@ -7,7 +7,7 @@
 <script src="../../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../../shared/js/native-feel.js"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
-<script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
+<script src="../../shared/js/phone/chat-message-policy.js?v=20261122search1"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   body {
@@ -267,9 +267,10 @@
       return window.ChatMessagePolicy.isOnlineSearchIndexVisible(m);
     }
     // Compatibility fallback: retain the original index filter when policy JS is unavailable.
-    if (!m || m.mode === 'date' || m.silent) return false;
+    if (!m || m.mode === 'date' || m.silent || m.arrivalStart) return false;
     var t = String((m && (m.text || m.content)) || '');
-    return t.indexOf('定位失败') === -1 && t.indexOf('Timeout expired') === -1;
+    return t.indexOf('[语音消息]') !== 0 &&
+      t.indexOf('定位失败') === -1 && t.indexOf('Timeout expired') === -1;
   });
 
   function isSentMsg(m) {
