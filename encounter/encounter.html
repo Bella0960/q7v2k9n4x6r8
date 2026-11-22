@@ -392,10 +392,26 @@ function openSettings(){
    notify('偏好已保存，下一张卡片起生效');
  });});
 }
+// Use only a validated in-project return path for a formal character.
+function footprintReturnRoute(roleId) {
+ var params=new URLSearchParams(window.location.search);
+ if(params.get('from')!=='footprint')return '';
+ var date=params.get('returnDate')||'';
+ if(date){
+   if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return '';
+   var parts=date.split('-').map(Number);
+   var value=new Date(parts[0],parts[1]-1,parts[2]);
+   if(value.getFullYear()!==parts[0]||value.getMonth()!==parts[1]-1||
+     value.getDate()!==parts[2])return '';
+ }
+ return '../chat/footprint/footprint.html?roleId='+encodeURIComponent(roleId)+
+   (date?'&date='+encodeURIComponent(date):'');
+}
 function openReunion(roleId,sceneId){
  var result=engine.getReunionScenes(roleId);
  if(!result.ok){notify(result.error);return;}
  var reunion=result.value;
+ var returnToFootprint=footprintReturnRoute(reunion.id);
  var scene=reunion.scenes.find(function(item){return item.id===sceneId;})||reunion.scenes[0];
  var html=head('ENCOUNTER / AGAIN','再次相遇')+
  '<p class="tiny">与 '+escapeHtml(reunion.name)+' 的另一种相遇。选一个故事起点，只在这里预览，不会自动写进聊天或角色记忆。</p>'+
@@ -407,6 +423,7 @@ function openReunion(roleId,sceneId){
  '<p class="story-preview" role="status">'+escapeHtml(scene.text)+'</p>'+
  '<div class="reunion-consent"><button type="button" class="mini" data-reunion-confirm>确认这次重逢并记录足迹</button></div>'+
  '<div class="saved-detail-actions"><button type="button" class="mini" data-return-collection>返回收藏</button>'+
+ (returnToFootprint ? '<button type="button" class="mini" data-return-footprint>返回足迹</button>' : '')+
  '<button type="button" class="mini" data-reunion-profile>去档案</button>'+
  '<button type="button" class="mini dark" data-reunion-chat>去聊天</button></div>';
  openSheet(html,'再次相遇');
@@ -415,6 +432,10 @@ function openReunion(roleId,sceneId){
  });
  var back=sheet.querySelector('[data-return-collection]');
  if(back)back.addEventListener('click',openSaved);
+ var toFootprint=sheet.querySelector('[data-return-footprint]');
+ if(toFootprint&&returnToFootprint){
+   toFootprint.addEventListener('click',function(){window.location.href=returnToFootprint;});
+ }
  var profile=sheet.querySelector('[data-reunion-profile]');
  if(profile)profile.addEventListener('click',function(){
    var fresh=engine.getReunionScenes(roleId);
@@ -539,7 +560,7 @@ drawNew();
  if(requestedRole){
    var knownRoles=engine.getEncounteredRoles();
    if(knownRoles.ok&&knownRoles.value.some(function(r){return String(r.id)===requestedRole;})){
-     openReunion(requestedRole);
+     openReunion(requestedRole,new URLSearchParams(window.location.search).get('scene')||'');
    }else{
      notify('这位角色当前没有可查看的邂逅来源。');
    }
