@@ -797,15 +797,35 @@ function renderRoleEncounterHistory(role) {
     const ledger = window.WorldEvents;
     let events = [];
     let warning = '';
+    let restoreNeeded = false;
+    let confirmedFirst = null;
     if (!ledger || typeof ledger.listForRole !== 'function') {
         warning = '相遇记录暂不可用，原角色资料不受影响。';
     } else {
         const result = ledger.listForRole(String(role.id), { limit: 30 });
         if (!result || !result.ok) warning = '相遇记录暂时无法读取，原始资料未被改动。';
-        else events = result.value.filter(function (item) {
-            return item && (item.type === 'encounter.first_met' ||
-                item.type === 'encounter.reunion');
-        });
+        else {
+            events = result.value.filter(function (item) {
+                return item && (item.type === 'encounter.first_met' ||
+                    item.type === 'encounter.reunion');
+            });
+            // Recover only an ACTUALLY confirmed character-library link whose
+            // event append may have failed. Opening a profile never auto-writes.
+            if (origin.linkedAt && !Number.isNaN(Date.parse(origin.linkedAt))) {
+                const firstQuery = ledger.listForRole(String(role.id), {
+                    type: 'encounter.first_met', limit: 200
+                });
+                if (!firstQuery || !firstQuery.ok) {
+                    warning = '初次相遇记录暂时无法核验，原资料保持不变。';
+                } else {
+                    confirmedFirst = firstQuery.value.find(function (item) {
+                        return item && item.source && item.source.appId === 'encounter' &&
+                            item.source.recordId === String(origin.sourceCandidateId);
+                    }) || null;
+                    restoreNeeded = !confirmedFirst;
+                }
+            }
+        }
     }
     const roleMemory = window.RoleEventMemory;
     const memoryState = roleMemory && typeof roleMemory.getConsent === 'function'
@@ -821,7 +841,9 @@ function renderRoleEncounterHistory(role) {
                 : '账号或相遇记忆权限尚未就绪，暂不可开启。') +
         '</div>';
     const id = encodeURIComponent(String(role.id));
-    const first = events.length ? events[events.length - 1] : null;
+    const first = confirmedFirst || events.find(function (item) {
+        return item.type === 'encounter.first_met';
+    }) || events[0] || null;
     const firstDate = first && first.occurredAt &&
         !Number.isNaN(Date.parse(first.occurredAt))
         ? '&date=' + encodeURIComponent([
@@ -846,6 +868,10 @@ function renderRoleEncounterHistory(role) {
           (rows ? '<ol class="eco-records">' + rows + '</ol>' :
             '<p class="eco-profile-empty">已从邂逅加入角色库；此前未保存的经历不会被伪造。</p>') +
           memoryControl +
+          (restoreNeeded && !warning
+              ? '<button type="button" class="eco-restore-first" data-eco-restore-first>补全初次相遇记录</button>' +
+                '<p class="eco-profile-warning" data-eco-restore-status role="status"></p>'
+              : '') +
           '<div class="eco-profile-links">' +
             '<a href="../../encounter/encounter.html?reunionRole=' + id + '">回到邂逅</a>' +
             '<a href="../../chat/footprint/footprint.html?roleId=' + id + firstDate + '">查看角色足迹</a>' +
@@ -928,6 +954,54 @@ function renderRoleProfile() {
     };
 
     content.onclick = function (event) {
+        const restoreButton = event.target.closest ? event.target.closest('[data-eco-restore-first]') : null;
+        if (restoreButton && content.contains(restoreButton)) {
+            const roleIdAtClick = String(currentProfileRoleId);
+            const freshRole = getRoleById(roleIdAtClick);
+            const linked = freshRole && freshRole.encounterOrigin;
+            if (!linked || linked.version !== 1 || !linked.linkedAt ||
+                Number.isNaN(Date.parse(linked.linkedAt)) ||
+                !/^enc_[a-z0-9_-]{3,80}$/i.test(String(linked.sourceCandidateId || ''))) return;
+            const events = window.WorldEvents;
+            if (!events || typeof events.append !== 'function' ||
+                typeof events.listForRole !== 'function') return;
+            const note = content.querySelector('[data-eco-restore-status]');
+            const currentFirst = events.listForRole(roleIdAtClick, {type: 'encounter.first_met', limit: 200});
+            if (!currentFirst || !currentFirst.ok) {
+                if (note) note.textContent = '暂时无法核验初遇记录，未修改数据。';
+                return;
+            }
+            if (currentFirst.value.some(function (item) {
+                return item && item.source && item.source.appId === 'encounter' &&
+                    item.source.recordId === linked.sourceCandidateId;
+            })) {
+                renderRoleProfile();
+                return;
+            }
+            restoreButton.disabled = true;
+            const response = events.append({
+                roleId: roleIdAtClick, type: 'encounter.first_met',
+                source: {appId: 'encounter', recordId: linked.sourceCandidateId},
+                occurredAt: linked.linkedAt,
+                summary: ('通过邂逅正式认识了' + String(freshRole.name || '一位角色'))
+                    .replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 240),
+                provenance: 'user-confirmed', allowAI: false
+            });
+            Promise.resolve(response).then(function (saved) {
+                if (String(currentProfileRoleId) !== roleIdAtClick || !content.contains(restoreButton)) return;
+                if (saved && saved.ok) {
+                    renderRoleProfile();
+                } else {
+                    restoreButton.disabled = false;
+                    if (note) note.textContent = '补录尚未成功，原角色和足迹资料保持不变。';
+                }
+            }).catch(function () {
+                if (String(currentProfileRoleId) !== roleIdAtClick || !content.contains(restoreButton)) return;
+                restoreButton.disabled = false;
+                if (note) note.textContent = '无法补录初遇，原角色资料未改变。';
+            });
+            return;
+        }
         const pairButton = event.target.closest ? event.target.closest('[data-avatar-pair-action]') : null;
         if (pairButton) {
             event.preventDefault();
