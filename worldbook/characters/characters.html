@@ -883,6 +883,56 @@
         .avatar-library-empty-mark { color:#999; font:400 22px Georgia,serif; }
         @media (prefers-reduced-motion:reduce) { .avatar-library-photo img { transition:none; } }
 
+    
+        /* Mobile portrait archive cards: fixed editorial portrait, independent text scroll. */
+        #listView .role-slim-bar {
+            grid-template-columns:minmax(96px,35%) minmax(0,1fr);
+            grid-template-rows:minmax(0,1fr) auto;
+            min-height:174px;
+            height:174px;
+            padding:14px 0;
+            align-items:start;
+        }
+        #listView .slim-avatar {
+            grid-column:1;
+            grid-row:1 / 3;
+            display:block;
+            width:100%;
+            height:146px;
+            min-height:146px;
+            border-radius:0;
+            align-self:start;
+            object-fit:cover;
+        }
+        #listView .bar-left { display:contents; }
+        #listView .slim-meta {
+            grid-column:2;
+            grid-row:1;
+            min-width:0;
+            min-height:0;
+            max-height:112px;
+            overflow:hidden;
+            align-self:start;
+        }
+        #listView .slim-desc {
+            display:block;
+            min-height:0;
+            max-height:72px;
+            overflow-y:auto;
+            overflow-x:hidden;
+            overflow-wrap:anywhere;
+            white-space:pre-wrap;
+            -webkit-line-clamp:unset;
+            scrollbar-width:none;
+            overscroll-behavior:contain;
+            -webkit-overflow-scrolling:touch;
+        }
+        #listView .slim-desc::-webkit-scrollbar { display:none; }
+        #listView .bar-right { grid-column:2;grid-row:2;align-self:end; }
+        @media(max-width:360px) {
+            #listView .role-slim-bar { grid-template-columns:minmax(92px,35%) minmax(0,1fr);gap:12px; }
+        }
+
     </style>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
 </head>
