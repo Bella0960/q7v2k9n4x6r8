@@ -2418,6 +2418,12 @@ function openEncounterRoleFromQuery() {
         return;
     }
     openRoleProfile(role.id);
+    // Explicit encounter history route: reveal only this character's existing
+    // read-only history. No new fact, no role switch, no save.
+    if (params.get('showEncounter') === '1') {
+        const history = document.querySelector('#profileContent details.eco-profile-history');
+        if (history) history.open = true;
+    }
 }
 
 // 页面初始化
@@ -2439,5 +2445,18 @@ retryPendingRoleAvatarCleanup().catch(function (error) {
         backBtn.setAttribute('href', '../../chat/contacts/contacts.html');
     } else if (from === 'encounter') {
         backBtn.setAttribute('href', '../../encounter/encounter.html');
+    } else if (from === 'footprint' && params.get('encounterRole')) {
+        // Return only to the same formally validated character; never trust
+        // external redirect URLs or fall back to a different character.
+        const roleId = params.get('encounterRole');
+        const role = getRoleById(roleId);
+        if (role && role.encounterOrigin && role.encounterOrigin.version === 1) {
+            const date = params.get('returnDate') || '';
+            const validDate = /^\d{4}-\d{2}-\d{2}$/.test(date) &&
+                !Number.isNaN(Date.parse(date + 'T12:00:00'));
+            backBtn.setAttribute('href',
+                '../../chat/footprint/footprint.html?roleId=' + encodeURIComponent(String(role.id)) +
+                (validDate ? '&date=' + encodeURIComponent(date) : ''));
+        }
     }
 })();
