@@ -11,12 +11,12 @@ test('three character-world AI tools have text-only controls and per-page feedba
 });
 test('AI generation requires opt-in, has cooldown and explicit persistence',()=>{
   assert.match(js,/COOLDOWN_MS = 30000/);
-  assert.match(js,/global\.confirm\('AI 解析将发起一次/);
+  assert.match(js,/global\.confirm\(warning \+ ' 确认生成/);
   assert.match(js,/if \(busy\) return/);
   assert.match(js,/PhoneAPI\.completeJSON/);
   assert.match(js,/saveActiveRoleMutation/);
   assert.match(js,/character_ai_last_request_/);
   assert.match(js,/boundWorldBooks/);
   assert.match(js,/currentNpcDraft/);
-  assert.match(js,/applyNpc\(normalizeNpc\(response\.data\)\)/);
+  assert.match(js,/applyNpc\(normalizeNpc\(decoded\.data\)\)/);
 });
