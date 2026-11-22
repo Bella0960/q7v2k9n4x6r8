@@ -91,3 +91,65 @@ test('encounter role deep-link uses existing role lookup and never saves candida
   assert.match(code,/openReunion\(requestedRole\)/);
   assert.doesNotMatch(code,/saveCandidate|saveRoles|setItem/);
 });
+
+
+test('verified encounter with missing first-meet event offers explicit recovery, not an automatic write', () => {
+  let scanned = 0;
+  const confirmed = {...role, encounterOrigin:{
+    ...role.encounterOrigin, linkedAt:'2026-11-21T09:00:00.000Z'
+  }};
+  const html = render(confirmed,{
+    listForRole(id, opts) {
+      assert.equal(id, 'role_enc_123');
+      scanned++;
+      return {ok:true,value:[]};
+    },
+    append() { throw new Error('render must remain read-only'); }
+  });
+  assert.equal(scanned, 2);
+  assert.match(html,/data-eco-restore-first/);
+  assert.match(html,/<details/);
+});
+
+test('successful first-meet lookup hides recovery and links to the actual first date', () => {
+  const confirmed = {...role, encounterOrigin:{
+    ...role.encounterOrigin, linkedAt:'2026-11-21T09:00:00.000Z'
+  }};
+  const first = {
+    roleId:'role_enc_123',
+    type:'encounter.first_met',
+    source:{appId:'encounter', recordId:'enc_123'},
+    summary:'通过邂逅正式认识',occurredAt:'2026-11-21T09:00:00.000Z'
+  };
+  const html = render(confirmed,{
+    listForRole(id,opts) {
+      return {ok:true,value:opts.type === 'encounter.first_met' ? [first] :
+        [{type:'encounter.reunion',summary:'再遇',occurredAt:'2026-11-22T12:00:00.000Z'},first]};
+    }
+  });
+  assert.doesNotMatch(html,/data-eco-restore-first/);
+  assert.match(html,/date=\d{4}-\d{2}-\d{2}/);
+  assert.match(html,/初次相识/);
+});
+
+test('corrupt first-meet lookup prohibits recovery rather than inventing history', () => {
+  const confirmed={...role,encounterOrigin:{
+    ...role.encounterOrigin,linkedAt:'2026-11-21T09:00:00.000Z'
+  }};
+  const html=render(confirmed,{
+    listForRole(id,opts) {
+      if (opts.type === 'encounter.first_met') return {ok:false,error:'corrupt'};
+      return {ok:true,value:[]};
+    }
+  });
+  assert.doesNotMatch(html,/data-eco-restore-first/);
+  assert.match(html,/初次相遇记录暂时无法核验/);
+});
+
+test('manual recovery handler uses the same formal role and preserved linkedAt', () => {
+  assert.match(manager,/data-eco-restore-first/);
+  assert.match(manager,/typeof events\.append !== 'function'/);
+  assert.match(manager,/occurredAt: linked\.linkedAt/);
+  assert.match(manager,/roleId: roleIdAtClick, type: 'encounter\.first_met'/);
+  assert.match(manager,/allowAI: false/);
+});
