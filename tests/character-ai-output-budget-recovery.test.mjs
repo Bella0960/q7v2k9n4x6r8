@@ -71,7 +71,7 @@ test('one compact relationship response preserves an existing persona name and s
 });
 test('long persona includes a named relationship from its middle without a second paid call',async()=>{
   const x=setup({apiKey:'mock',model:'mock',maxTokens:1024});
-  x.role.persona = '普通成长经历。'.repeat(1000) + '\\n旧友苏禾是主角多年的朋友，经常一起旅行。\\n' + '其他日常设定。'.repeat(200);
+  x.role.persona = '普通成长经历。'.repeat(1000) + '\n旧友苏禾是主角多年的朋友，经常一起旅行。\n' + '其他日常设定。'.repeat(200);
   x.nodes.btnAiRelationships.click();await settle();
   assert.equal(x.calls.length,1);
   assert.match(x.calls[0].user,/苏禾/);
@@ -139,7 +139,7 @@ test('accept a short Chinese-field JSON person without discarding the paid respo
   assert.equal(out.data.people[0].background,'一起旅行');
 });
 test('recover a model short labelled-text person without a second request',()=>{
-  const out=parser().fromCompletion({ok:false,raw:'姓名：林青\\n关系：同事\\n简介：一起准备摄影展'},'relationships');
+  const out=parser().fromCompletion({ok:false,raw:'姓名：林青\n关系：同事\n简介：一起准备摄影展'},'relationships');
   assert.equal(out.ok,true);
   assert.equal(out.data.people[0].name,'林青');
 });
@@ -149,7 +149,7 @@ test('accept a short Chinese-field life event and labelled life draft',()=>{
   assert.equal(a.ok,true);
   assert.equal(a.data.title,'摄影展');
   assert.equal(a.data.people,'林青');
-  const b=p.fromCompletion({ok:false,raw:'事件名称：整理照片\\n内容：和林青挑选照片\\n涉及人物：林青'},'life');
+  const b=p.fromCompletion({ok:false,raw:'事件名称：整理照片\n内容：和林青挑选照片\n涉及人物：林青'},'life');
   assert.equal(b.ok,true);
   assert.equal(b.data.title,'整理照片');
 });
