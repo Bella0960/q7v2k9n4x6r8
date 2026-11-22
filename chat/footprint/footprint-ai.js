@@ -171,11 +171,13 @@
       };
     });
   }
-  function writeDay(storage, roleId, date, entries) {
+  function writeDay(storage, roleId, date, entries, expectedRaw) {
     if(!storage || !roleId || !/^\d{4}-\d{2}-\d{2}$/.test(String(date)))
       throw new Error('角色或日期无效');
     var key='footprint_'+String(roleId);
     var original=storage.getItem(key);
+    if (arguments.length >= 5 && original !== expectedRaw)
+      throw new Error('生成期间足迹被其他页面修改，未覆盖最新记录');
     var document={};
     if(original!==null){
       try{document=JSON.parse(original);}catch(_){throw new Error('旧足迹数据已损坏，未覆盖原数据');}
