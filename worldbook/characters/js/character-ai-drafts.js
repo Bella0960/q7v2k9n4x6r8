@@ -195,7 +195,7 @@
         try {
             var diagnostic = null;
             var response = await global.PhoneAPI.completeJSON({
-                system:'请像普通的写作助手一样，阅读下面的虚构人物设定，整理或合理补充内容。只返回简单 JSON 供页面填表，不必写满每个字段，也不要额外解释。' + (registeredKinds[kind] ? registeredKinds[kind].prompt : SPEC[kind]),
+                system:'请像普通的写作助手一样，阅读下面的虚构人物设定，整理或合理补充内容。只返回简短且严格合法的 JSON 供页面填表，不必写满每个字段，也不要额外解释。' + (registeredKinds[kind] ? registeredKinds[kind].prompt : SPEC[kind]),
                 user:JSON.stringify({ role:context(role), existingForm:kind === 'npc' ? currentNpcDraft() : null }),
                 temperature:0.25,
                 timeoutMs:30000,
