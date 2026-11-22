@@ -883,6 +883,21 @@
         .avatar-library-empty-mark { color:#999; font:400 22px Georgia,serif; }
         @media (prefers-reduced-motion:reduce) { .avatar-library-photo img { transition:none; } }
 
+    
+        /* Ecosystem records are a secondary, collapsed profile detail. */
+        .eco-profile-history { margin: 12px 0 8px; padding: 0 14px; background: #F7F7F8; border-radius: 8px; color: #222; }
+        .eco-profile-history summary { cursor: pointer; padding: 14px 0; font-size: 13px; font-weight: 600; list-style-position: inside; }
+        .eco-profile-history summary span { float: right; font-size: 11px; font-weight: 400; color: #888; }
+        .eco-profile-history-body { padding: 0 0 14px 3px; font-size: 12px; line-height: 1.7; }
+        .eco-records { list-style: none; padding: 0; margin: 0 0 12px; }
+        .eco-record { padding: 8px 0; border-top: 1px solid #E5E5E8; }
+        .eco-record-label { font-size: 12px; font-weight: 600; }
+        .eco-record-time { float: right; color: #929296; font-size: 11px; }
+        .eco-record p { margin: 4px 0 0; overflow-wrap: anywhere; color: #666; }
+        .eco-profile-warning, .eco-profile-empty { color: #777; padding: 5px 0; margin: 0 0 9px; }
+        .eco-profile-links { display: flex; flex-wrap: wrap; gap: 8px; }
+        .eco-profile-links a { text-decoration: none; color: #333; border: 1px solid #D8D8DB; border-radius: 6px; padding: 7px 10px; }
+
     </style>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
 </head>
@@ -1162,7 +1177,9 @@
                 <!-- 6. 导入角色 JSON -->
                 <div class="editor-field-group">
                     <label class="field-label" style="color: #8E8E93;">导入角色</label>
-                    <button type="button" id="btnImportRole" class="import-json-btn">选择角色 JSON 文件</button>
+                    <button type="button" id="btnImportRole" class="import-json-btn">导入 MAOMAO JSON / TXT</button>
+                    <button type="button" id="btnExportRole" class="import-json-btn">导出当前角色 JSON</button>
+                    <button type="button" id="btnExpandEncounterPersona" class="import-json-btn hidden">AI 完善人设 · 使用 API</button>
                     <input type="file" id="roleImportFile" accept=".json,.txt,application/json,text/plain" class="hidden">
                 </div>
 
@@ -1208,7 +1225,10 @@
     <script src="../../shared/js/phone/storage/repository.js"></script>
     <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
     <script src="../../shared/js/phone/role-avatar-library.js?v=20261113v1"></script>
-    <script src="js/characters-manager.js?v=20261107v11"></script>
+    <script src="../../shared/js/phone/phone_api.js?v=20261115a"></script>
+    <script src="../../encounter/encounter-engine.js?v=20261115v1"></script>
+    <script src="../../shared/js/phone/world-events.js?v=20261123-eco2"></script>
+    <script src="js/characters-manager.js?v=20261115-encounter1"></script>
     <script src="../../shared/js/nav.js"></script>
 <script src="../../shared/js/statusbar-control.js"></script>
 </body>

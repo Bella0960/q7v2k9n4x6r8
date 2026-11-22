@@ -52,8 +52,10 @@ let selectedColor = AVATAR_COLORS[0];
 let avatarDataUrl = ''; // 当前待保存头像
 let selectedWorldBookIds = []; // 当前编辑会话中勾选的世界书 ID
 let currentDraftKey = '';
+let activeEncounterDraftId = '';
 let editorOriginalState = null;
 let pendingDraftRecovery = null;
+let unreadableDraftKey = ''; // 未经用户明确放弃，任何流程都不可覆盖损坏的原草稿
 let cropSourceImage = null;
 let cropBaseScale = 1;
 let cropZoom = 1;
@@ -137,33 +139,66 @@ function getRandomColor() {
     return AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
 }
 
+// 读取失败不能被当成空角色库：更不能用空数组覆盖原有角色数据。
+let roleStoreReadError = false;
 function loadRoles() {
     try {
-        if (window.PhoneStorage && typeof PhoneStorage.getCharacters === 'function') {
-            const stored = PhoneStorage.getCharacters();
-            if (Array.isArray(stored)) return stored;
+        if (window.PhoneStorage && PhoneStorage.result &&
+            typeof PhoneStorage.result.getCharacters === 'function') {
+            const result = PhoneStorage.result.getCharacters();
+            if (result && result.ok && Array.isArray(result.value)) {
+                // 编辑前先取独立快照，失败的保存不会污染原 PhoneStorage 缓存对象。
+                const snapshot = JSON.parse(JSON.stringify(result.value));
+                roleStoreReadError = false;
+                return snapshot;
+            }
+            if (result && result.error && result.error.code === 'NOT_FOUND') {
+                roleStoreReadError = false;
+                return DEFAULT_ROLES.slice();
+            }
+            roleStoreReadError = true;
+            console.warn('角色库读取失败，暂时禁止写入，避免覆盖旧资料。');
+            return DEFAULT_ROLES.slice();
         }
         const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) {
-            const parsed = JSON.parse(raw);
-            if (Array.isArray(parsed)) return parsed;
+        if (raw === null) {
+            roleStoreReadError = false;
+            return DEFAULT_ROLES.slice();
         }
-    } catch (e) {
-        console.error('读取角色数据异常:', e);
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) throw new Error('角色数据不是数组');
+        roleStoreReadError = false;
+        return parsed;
+    } catch (error) {
+        console.warn('角色库读取异常，原始数据保持不变：', error);
+        roleStoreReadError = true;
+        return DEFAULT_ROLES.slice();
     }
-    saveRoles(DEFAULT_ROLES);
-    return DEFAULT_ROLES;
 }
 
 function saveRoles(roles) {
+    if (roleStoreReadError || !Array.isArray(roles)) {
+        console.warn('已拒绝保存角色：角色库尚未安全读取，防止空列表覆盖已有数据。');
+        return false;
+    }
     try {
+        const serialized = JSON.stringify(roles);
         if (window.PhoneStorage && PhoneStorage.result &&
             typeof PhoneStorage.result.saveCharacters === 'function') {
             const result = PhoneStorage.result.saveCharacters(roles);
-            return !!(result && result.ok);
+            if (!result || !result.ok) return false;
+            // PhoneStorage 可能收到浏览器静默丢写，不能只信任返回值。
+            const reread = PhoneStorage.result.getCharacters();
+            if (reread && reread.ok && Array.isArray(reread.value) &&
+                JSON.stringify(reread.value) === serialized) return true;
+        } else {
+            localStorage.setItem(STORAGE_KEY, serialized);
+            if (localStorage.getItem(STORAGE_KEY) === serialized) return true;
         }
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(roles));
-        return true;
+        // 不再继续写旧数据；原文保留给用户备份或恢复。
+        roleStoreReadError = true;
+        console.warn('角色保存后读取校验失败，已停止后续写入。请检查空间和已有备份。');
+        return false;
     } catch (e) {
         console.error('保存角色数据异常:', e);
         return false;
@@ -653,6 +688,10 @@ function renderRoleList() {
     if (!container) return;
     const roles = loadRoles();
 
+    if (roleStoreReadError) {
+        container.innerHTML = '<div class="empty-tip" role="alert">角色资料读取失败，已暂停保存和删除。原始数据未修改；请先检查浏览器存储或恢复备份，不要新建角色覆盖。</div>';
+        return;
+    }
     if (!roles || roles.length === 0) {
         container.innerHTML = '<div class="empty-tip">暂无角色，点击右上角“添加”创建一位主角色</div>';
         return;
@@ -749,6 +788,83 @@ function openRoleProfile(roleId) {
     showAppView('profileView');
 }
 
+// ECO-LINK-005: Read-only reverse link to the SAME formal character.
+// Legacy roles without a confirmed encounter remain entirely unchanged.
+function renderRoleEncounterHistory(role) {
+    const origin = role && role.encounterOrigin;
+    if (!origin || origin.version !== 1 ||
+        !/^enc_[a-z0-9_-]{3,80}$/i.test(String(origin.sourceCandidateId || ''))) return '';
+    const ledger = window.WorldEvents;
+    let events = [];
+    let warning = '';
+    let restoreNeeded = false;
+    let confirmedFirst = null;
+    if (!ledger || typeof ledger.listForRole !== 'function') {
+        warning = '相遇记录暂不可用，原角色资料不受影响。';
+    } else {
+        const result = ledger.listForRole(String(role.id), { limit: 30 });
+        if (!result || !result.ok) warning = '相遇记录暂时无法读取，原始资料未被改动。';
+        else {
+            events = result.value.filter(function (item) {
+                return item && (item.type === 'encounter.first_met' ||
+                    item.type === 'encounter.reunion');
+            });
+            // Recover only an ACTUALLY confirmed character-library link whose
+            // event append may have failed. Opening a profile never auto-writes.
+            if (origin.linkedAt && !Number.isNaN(Date.parse(origin.linkedAt))) {
+                const firstQuery = ledger.listForRole(String(role.id), {
+                    type: 'encounter.first_met', limit: 200
+                });
+                if (!firstQuery || !firstQuery.ok) {
+                    warning = '初次相遇记录暂时无法核验，原资料保持不变。';
+                } else {
+                    confirmedFirst = firstQuery.value.find(function (item) {
+                        return item && item.source && item.source.appId === 'encounter' &&
+                            item.source.recordId === String(origin.sourceCandidateId);
+                    }) || null;
+                    restoreNeeded = !confirmedFirst;
+                }
+            }
+        }
+    }
+    const id = encodeURIComponent(String(role.id));
+    const first = confirmedFirst || events.find(function (item) {
+        return item.type === 'encounter.first_met';
+    }) || events[0] || null;
+    const firstDate = first && first.occurredAt &&
+        !Number.isNaN(Date.parse(first.occurredAt))
+        ? '&date=' + encodeURIComponent([
+            new Date(first.occurredAt).getFullYear(),
+            String(new Date(first.occurredAt).getMonth() + 1).padStart(2, '0'),
+            String(new Date(first.occurredAt).getDate()).padStart(2, '0')
+        ].join('-')) : '';
+    const rows = events.map(function (event) {
+        const when = new Date(event.occurredAt);
+        const localDate = Number.isNaN(when.getTime()) ? '' :
+            when.toLocaleDateString('zh-CN');
+        return '<li class="eco-record">' +
+            '<span class="eco-record-label">' + escapeHtml(
+                event.type === 'encounter.first_met' ? '初次相识' : '再次相遇') +
+            '</span><span class="eco-record-time">' + escapeHtml(localDate) + '</span>' +
+            '<p>' + escapeHtml(event.summary || '') + '</p></li>';
+    }).join('');
+    return '<details class="eco-profile-history">' +
+        '<summary>相遇经历 <span>' + events.length + ' 条记录</span></summary>' +
+        '<div class="eco-profile-history-body">' +
+          (warning ? '<p class="eco-profile-warning">' + escapeHtml(warning) + '</p>' : '') +
+          (rows ? '<ol class="eco-records">' + rows + '</ol>' :
+            '<p class="eco-profile-empty">已从邂逅加入角色库；此前未保存的经历不会被伪造。</p>') +
+          (restoreNeeded && !warning
+              ? '<button type="button" class="eco-restore-first" data-eco-restore-first>补全初次相遇记录</button>' +
+                '<p class="eco-profile-warning" data-eco-restore-status role="status"></p>'
+              : '') +
+          '<div class="eco-profile-links">' +
+            '<a href="../../encounter/encounter.html?reunionRole=' + id + '">回到邂逅</a>' +
+            '<a href="../../chat/footprint/footprint.html?roleId=' + id + firstDate + '">查看角色足迹</a>' +
+          '</div>' +
+        '</div></details>';
+}
+
 function renderRoleProfile() {
     const role = getActiveProfileRole();
     const content = document.getElementById('profileContent');
@@ -796,9 +912,58 @@ function renderRoleProfile() {
             '<button class="profile-branch" type="button" data-profile-action="relationships"><span class="profile-branch-index">03</span><span class="profile-branch-copy"><span class="profile-branch-title">人物关系网络</span><span class="profile-branch-desc">家人、朋友、同事，以及每个人自己的档案 · ' + count + ' 人</span></span><span class="profile-branch-arrow">›</span></button>' +
             '<button class="profile-branch" type="button" data-profile-action="life"><span class="profile-branch-index">04</span><span class="profile-branch-copy"><span class="profile-branch-title">个人生活线</span><span class="profile-branch-desc">近期计划、日常状态与阶段性事件 · ' + role.lifeEvents.length + ' 条记录</span></span><span class="profile-branch-arrow">›</span></button>' +
         '</div>' +
+        renderRoleEncounterHistory(role) +
         '<p class="profile-bottom-note">人物关系和生活记录只属于这个主角色。其他主角色不会自动继承这些人物或关系。</p>';
 
     content.onclick = function (event) {
+        const restoreButton = event.target.closest ? event.target.closest('[data-eco-restore-first]') : null;
+        if (restoreButton && content.contains(restoreButton)) {
+            const roleIdAtClick = String(currentProfileRoleId);
+            const freshRole = getRoleById(roleIdAtClick);
+            const linked = freshRole && freshRole.encounterOrigin;
+            if (!linked || linked.version !== 1 || !linked.linkedAt ||
+                Number.isNaN(Date.parse(linked.linkedAt)) ||
+                !/^enc_[a-z0-9_-]{3,80}$/i.test(String(linked.sourceCandidateId || ''))) return;
+            const events = window.WorldEvents;
+            if (!events || typeof events.append !== 'function' ||
+                typeof events.listForRole !== 'function') return;
+            const note = content.querySelector('[data-eco-restore-status]');
+            const currentFirst = events.listForRole(roleIdAtClick, {type: 'encounter.first_met', limit: 200});
+            if (!currentFirst || !currentFirst.ok) {
+                if (note) note.textContent = '暂时无法核验初遇记录，未修改数据。';
+                return;
+            }
+            if (currentFirst.value.some(function (item) {
+                return item && item.source && item.source.appId === 'encounter' &&
+                    item.source.recordId === linked.sourceCandidateId;
+            })) {
+                renderRoleProfile();
+                return;
+            }
+            restoreButton.disabled = true;
+            const response = events.append({
+                roleId: roleIdAtClick, type: 'encounter.first_met',
+                source: {appId: 'encounter', recordId: linked.sourceCandidateId},
+                occurredAt: linked.linkedAt,
+                summary: ('通过邂逅正式认识了' + String(freshRole.name || '一位角色'))
+                    .replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 240),
+                provenance: 'user-confirmed', allowAI: false
+            });
+            Promise.resolve(response).then(function (saved) {
+                if (String(currentProfileRoleId) !== roleIdAtClick || !content.contains(restoreButton)) return;
+                if (saved && saved.ok) {
+                    renderRoleProfile();
+                } else {
+                    restoreButton.disabled = false;
+                    if (note) note.textContent = '补录尚未成功，原角色和足迹资料保持不变。';
+                }
+            }).catch(function () {
+                if (String(currentProfileRoleId) !== roleIdAtClick || !content.contains(restoreButton)) return;
+                restoreButton.disabled = false;
+                if (note) note.textContent = '无法补录初遇，原角色资料未改变。';
+            });
+            return;
+        }
         const pairButton = event.target.closest ? event.target.closest('[data-avatar-pair-action]') : null;
         if (pairButton) {
             event.preventDefault();
@@ -1347,7 +1512,14 @@ function updateAvatarPreview() {
 
 
 // 打开添加角色
-function openAddRole() {
+function openAddRole(options) {
+    // 普通「添加角色」与邂逅候选导入共用编辑器，但不得共用未保存草稿。
+    // 点击事件是 Event，不会拥有 skipDraftRecovery=true。
+    const skipDraftRecovery = !!(options && options.skipDraftRecovery === true);
+    closeRecoveryDialog();
+    activeEncounterDraftId = '';
+    const aiExpand = document.getElementById('btnExpandEncounterPersona');
+    if (aiExpand) aiExpand.classList.add('hidden');
     portraitPurpose = 'profile';
     editorReturnView = 'listView';
     document.getElementById('editorTitle').textContent = 'New Character';
@@ -1364,16 +1536,23 @@ function openAddRole() {
     currentDraftKey = getDraftKey('');
     editorOriginalState = captureEditorState();
     showView('editor');
-    offerDraftRecovery();
+    if (!skipDraftRecovery) offerDraftRecovery();
 }
 
 // 打开编辑旧角色
 function openEditRole(id) {
+    activeEncounterDraftId = '';
+    const aiExpand = document.getElementById('btnExpandEncounterPersona');
+    if (aiExpand) aiExpand.classList.add('hidden');
     portraitPurpose = 'profile';
     editorReturnView = 'profileView';
     const roles = loadRoles();
     const target = roles.find(r => r.id === id);
     if (!target) return;
+    // 已创建过的「邂逅」角色，之后回到角色库仍可选择 AI 完善，不强迫立刻付费。
+    if (aiExpand && target.encounterOrigin && target.encounterOrigin.version === 1) {
+        aiExpand.classList.remove('hidden');
+    }
 
     document.getElementById('editorTitle').textContent = 'Edit Character';
     document.getElementById('editRoleId').value = target.id;
@@ -1396,6 +1575,10 @@ function openEditRole(id) {
 
 // 保存角色：仅在本地存储确认成功后显示成功状态，并留在当前编辑页
 function handleSaveRole() {
+    if (currentDraftKey && currentDraftKey === unreadableDraftKey) {
+        setSaveStatus('这份未完成草稿暂时无法读取，原文已保留。请先在恢复提示中明确放弃后再创建角色。', 'error');
+        return;
+    }
     const roleId = document.getElementById('editRoleId').value.trim();
     const nameVal = document.getElementById('editRoleName').value.trim();
     const personaVal = document.getElementById('editRolePersona').value;
@@ -1412,6 +1595,42 @@ function handleSaveRole() {
     }
 
     const roles = loadRoles();
+    // 候选只可创建一次；两个标签页重复保存必须拒绝，而不是生成两个相同角色。
+    if (!roleId && activeEncounterDraftId) {
+        const origin = String(activeEncounterDraftId);
+        const alreadyCreated = roles.some(function (role) {
+            return role && role.encounterOrigin &&
+                String(role.encounterOrigin.sourceCandidateId || '') === origin;
+        });
+        if (alreadyCreated) {
+            setSaveStatus('该候选已经在另一页面创建为正式角色，不能重复创建。', 'error');
+            return;
+        }
+        const candidateResult = window.MAOMAOEncounter && window.MAOMAOEncounter.getCandidates();
+        if (!candidateResult || !candidateResult.ok) {
+            setSaveStatus('候选收藏读取失败，已停止创建，原有资料不会被覆盖。', 'error');
+            return;
+        }
+        if (!candidateResult.value.some(function (candidate) { return candidate.id === origin; })) {
+            setSaveStatus('候选卡已不在收藏中，请返回「邂逅」重新选择。', 'error');
+            return;
+        }
+        const normalized = window.MAOMAOEncounter.normalizeName(nameVal);
+        const collision = roles.some(function (role) {
+            function sameName(person) {
+                if (!person) return false;
+                const aliases = Array.isArray(person.aliases) ? person.aliases : [];
+                return [person.name].concat(aliases).some(function (existingName) {
+                    return window.MAOMAOEncounter.normalizeName(existingName) === normalized;
+                });
+            }
+            return sameName(role) || (Array.isArray(role.npcCharacters) && role.npcCharacters.some(sameName));
+        });
+        if (collision) {
+            setSaveStatus('姓名与已有角色或别名重复，请先修改新角色名称。', 'error');
+            return;
+        }
+    }
     let savedRoleId = roleId;
 
     if (roleId) {
@@ -1430,7 +1649,39 @@ function handleSaveRole() {
         target.avatarBg = selectedColor;
         target.worldBookIds = selectedWorldBookIds.slice();
     } else {
-        savedRoleId = 'role_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+        // 候选来源固定映射到同一正式角色 ID。即使旧 Safari 没有 Web Locks、
+        // 两个标签页并发保存同一候选，也不能凭随机 ID 生成两个独立角色。
+        savedRoleId = activeEncounterDraftId
+            ? 'role_' + String(activeEncounterDraftId)
+            : 'role_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+        if (roles.some(function (role) { return String(role.id) === savedRoleId; })) {
+            setSaveStatus('这个角色 ID 已存在，已停止创建，原角色不会被覆盖。', 'error');
+            return;
+        }
+        // 保留「邂逅」的结构化来源，供后续物件、命运、人物关系玩法读取。
+        // 不影响已有角色字段，也绝不对旧角色追加或覆盖设定。
+        let encounterOrigin = null;
+        if (activeEncounterDraftId && window.MAOMAOEncounter) {
+            const candidates = window.MAOMAOEncounter.getCandidates();
+            const card = candidates.ok && candidates.value.find(function (c) { return c.id === activeEncounterDraftId; });
+            if (card) encounterOrigin = {
+                version: 1, sourceCandidateId: card.id, createdAt: card.createdAt || Date.now(),
+                // Persist the confirmed library-link time once; retries must reuse the same instant.
+                linkedAt: new Date().toISOString(),
+                gender: card.gender || '', species: card.species || '', era: card.era || '', job: card.job || '',
+                relationVibe: card.relationVibe || '',
+                trait: card.trait || '', contrast: card.contrast || '',
+                object: card.object || '', fate: card.selectedChoice || card.fate || '',
+                // fate 保留旧版读取契约；新增分支字段供后续故事、足迹玩法独立扩展。
+                originalFate: card.fate || '',
+                storyChoice: (Array.isArray(card.choices) && card.choices.includes(card.selectedChoice))
+                    ? card.selectedChoice : '',
+                storyOpening: (Array.isArray(card.choices) && card.choices.includes(card.selectedChoice) &&
+                    typeof window.MAOMAOEncounter.storyOpening === 'function')
+                    ? window.MAOMAOEncounter.storyOpening(card,card.selectedChoice) : '',
+                encounterType: card.type || '', rarity: card.rarity || '普通'
+            };
+        }
         roles.unshift({
             id: savedRoleId,
             name: nameVal,
@@ -1441,7 +1692,8 @@ function handleSaveRole() {
             appearanceDescription: appearanceVal,
             styleKeywords: styleKeywordsVal,
             worldBookIds: selectedWorldBookIds.slice(),
-            replyBubbleMode: 'auto'
+            replyBubbleMode: 'auto',
+            ...(encounterOrigin ? { encounterOrigin: encounterOrigin } : {})
         });
     }
 
@@ -1449,6 +1701,44 @@ function handleSaveRole() {
         setSaveStatus('保存失败：浏览器可能没有可用存储空间。修改仍保留，请重试。', 'error');
         persistEditorDraft(true);
         return;
+    }
+
+    // ECO-LINK-003: A candidate is not a formal character. Only after saveRoles
+    // AND its read-back succeeded may we append the first confirmed encounter.
+    // This ledger is independent: failure never rolls back or rewrites the role.
+    const createdEncounter = !roleId && activeEncounterDraftId
+        ? roles.find(function (item) { return String(item.id) === String(savedRoleId); })
+        : null;
+    const confirmedOrigin = createdEncounter && createdEncounter.encounterOrigin;
+    if (confirmedOrigin && confirmedOrigin.version === 1 && confirmedOrigin.sourceCandidateId) {
+        const displayRoleId = String(savedRoleId);
+        const worldEvents = window.WorldEvents;
+        if (!worldEvents || typeof worldEvents.append !== 'function') {
+            setSaveStatus('角色已保存，但相遇记录模块未加载，暂未记入足迹。', 'info');
+        } else {
+            // No invented physical location or dialogue. This records the actual
+            // confirmed action of linking a candidate into the existing role library.
+            const verifiedSummary = ('通过邂逅正式认识了' + String(createdEncounter.name || '一位角色'))
+                .replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 240);
+            worldEvents.append({
+                roleId: displayRoleId,
+                type: 'encounter.first_met',
+                source: { appId: 'encounter', recordId: confirmedOrigin.sourceCandidateId },
+                occurredAt: confirmedOrigin.linkedAt,
+                summary: verifiedSummary,
+                provenance: 'user-confirmed',
+                allowAI: false // Separate explicit memory opt-in comes later.
+            }).then(function (result) {
+                if ((!result || !result.ok) &&
+                    document.getElementById('editRoleId').value === displayRoleId) {
+                    setSaveStatus('角色已保存，但相遇记录未能写入；原人物资料完整保留。', 'info');
+                }
+            }).catch(function () {
+                if (document.getElementById('editRoleId').value === displayRoleId) {
+                    setSaveStatus('角色已保存，相遇记录暂未写入；请检查存储。', 'info');
+                }
+            });
+        }
     }
 
     const oldDraftKey = currentDraftKey;
@@ -1462,7 +1752,24 @@ function handleSaveRole() {
         try { localStorage.removeItem(currentDraftKey); } catch (e) {}
     }
     editorOriginalState = captureEditorState();
-    setSaveStatus('已保存', 'success');
+    if (activeEncounterDraftId && !roleId && window.MAOMAOEncounter) {
+        const result = window.MAOMAOEncounter.removeCandidate(activeEncounterDraftId);
+        activeEncounterDraftId = '';
+        // 创建成功后 URL 不可继续指向已消费的候选。否则刷新会尝试再次
+        // 导入同一张卡并弹“候选已不存在”，妨碍正常返回角色档案。
+        try {
+            const url = new URL(window.location.href);
+            if (url.searchParams.has('encounterDraft')) {
+                url.searchParams.delete('encounterDraft');
+                window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+            }
+        } catch (error) { console.warn('创建已保存，清理邂逅来源参数失败：', error); }
+        // 保存成功后仍可主动扩写，不需要重新抽卡或重复创建角色。
+        document.getElementById('btnExpandEncounterPersona').classList.remove('hidden');
+        setSaveStatus(result.ok ? '已保存到角色库' : '角色已保存，候选收藏暂时未清理', result.ok ? 'success' : 'info');
+    } else {
+        setSaveStatus('已保存', 'success');
+    }
 }
 
 
@@ -1530,6 +1837,11 @@ function getDraftKey(roleId) {
     return 'maomao_character_draft_v1:' + (roleId ? String(roleId) : 'new');
 }
 
+// 每位邂逅候选拥有独立草稿。保留旧 new 草稿和已保存角色的旧 key 不动。
+function getEncounterDraftKey(candidateId) {
+    return getDraftKey('encounter:' + String(candidateId));
+}
+
 function captureEditorState() {
     return {
         roleId: document.getElementById('editRoleId').value.trim(),
@@ -1566,18 +1878,29 @@ function setSaveStatus(message, state) {
 }
 
 function persistEditorDraft(force) {
-    if (!currentDraftKey) return;
+    if (!currentDraftKey) return false;
+    if (unreadableDraftKey === currentDraftKey) {
+        setSaveStatus('原草稿无法读取，已禁止覆盖。请先备份原始资料，或在恢复提示中明确放弃这份草稿。', 'error');
+        return false;
+    }
     const state = captureEditorState();
     if (!force && editorOriginalState && editorStatesEqual(state, editorOriginalState)) {
-        try { localStorage.removeItem(currentDraftKey); } catch (e) {}
-        return;
+        try {
+            localStorage.removeItem(currentDraftKey);
+            return true;
+        } catch (error) {
+            setSaveStatus('草稿状态读取异常，请检查存储后再离开。', 'error');
+            return false;
+        }
     }
     const draft = { version: 1, savedAt: Date.now(), state: state };
     try {
         localStorage.setItem(currentDraftKey, JSON.stringify(draft));
-    } catch (e) {
-        console.warn('角色草稿暂存失败:', e);
-        setSaveStatus('草稿暂存失败，请尽快手动保存。', 'error');
+        return true;
+    } catch (error) {
+        console.warn('角色草稿暂存失败:', error);
+        setSaveStatus('草稿暂存失败，请立即复制当前人设或检查空间后手动保存。', 'error');
+        return false;
     }
 }
 
@@ -1598,14 +1921,33 @@ function applyEditorState(state) {
 function offerDraftRecovery() {
     if (!currentDraftKey) return false;
     let draft = null;
+    let raw = null;
+    let malformed = false;
     try {
-        const raw = localStorage.getItem(currentDraftKey);
-        if (raw) draft = JSON.parse(raw);
-    } catch (e) {
-        console.warn('读取角色草稿失败:', e);
-        try { localStorage.removeItem(currentDraftKey); } catch (_) {}
+        raw = localStorage.getItem(currentDraftKey);
+        if (raw !== null) draft = JSON.parse(raw);
+    } catch (error) {
+        console.warn('读取角色草稿失败，原始内容已保留：', error);
+        malformed = true;
     }
-    if (!draft || draft.version !== 1 || !draft.state) return false;
+    if (malformed || (raw !== null && (!draft || draft.version !== 1 ||
+        !draft.state || typeof draft.state !== 'object' || Array.isArray(draft.state)))) {
+        // 旧逻辑曾自动 removeItem 丢弃损坏草稿，此处不再静默删除。
+        unreadableDraftKey = currentDraftKey;
+        pendingDraftRecovery = {
+            draft: null,
+            base: editorOriginalState || captureEditorState(),
+            unreadable: true
+        };
+        const copy = document.getElementById('recoveryCopy');
+        if (copy) copy.textContent = '上一份草稿内容异常，无法自动恢复，但原文已保留。只有主动选择「放弃草稿」才会清理这份原文；否则请先备份资料。';
+        const dialog = document.getElementById('recoveryDialog');
+        if (dialog) dialog.classList.remove('hidden');
+        setSaveStatus('已有草稿读取异常，禁止自动覆盖旧内容。', 'error');
+        return true;
+    }
+    if (!draft) return false;
+    if (unreadableDraftKey === currentDraftKey) unreadableDraftKey = '';
     const base = editorOriginalState || captureEditorState();
     if (editorStatesEqual(draft.state, base)) {
         try { localStorage.removeItem(currentDraftKey); } catch (e) {}
@@ -1633,6 +1975,10 @@ function closeRecoveryDialog() {
 
 function recoverPendingDraft() {
     if (!pendingDraftRecovery) return;
+    if (pendingDraftRecovery.unreadable || !pendingDraftRecovery.draft) {
+        setSaveStatus('原草稿内容异常，无法自动恢复。原始内容已保留；请先备份，或主动放弃这份草稿。', 'error');
+        return;
+    }
     applyEditorState(pendingDraftRecovery.draft.state);
     closeRecoveryDialog();
     persistEditorDraft(true);
@@ -1641,7 +1987,13 @@ function recoverPendingDraft() {
 
 function discardPendingDraft() {
     if (!currentDraftKey) return;
-    try { localStorage.removeItem(currentDraftKey); } catch (e) {}
+    try {
+        localStorage.removeItem(currentDraftKey);
+    } catch (error) {
+        setSaveStatus('无法清理旧草稿，原始内容保持不变。请检查存储空间。', 'error');
+        return;
+    }
+    if (unreadableDraftKey === currentDraftKey) unreadableDraftKey = '';
     if (pendingDraftRecovery) applyEditorState(pendingDraftRecovery.base);
     closeRecoveryDialog();
     setSaveStatus('', 'info');
@@ -1654,7 +2006,8 @@ function handleCancelEdit() {
         const shouldDiscard = confirm('当前有尚未保存的修改。放弃本次全部修改并返回上一层吗？');
         if (!shouldDiscard) return;
     }
-    if (currentDraftKey) {
+    // 关闭编辑页不能当作“主动放弃一份损坏草稿”的授权。
+    if (currentDraftKey && unreadableDraftKey !== currentDraftKey) {
         try { localStorage.removeItem(currentDraftKey); } catch (e) {}
     }
     closeRecoveryDialog();
@@ -1684,7 +2037,58 @@ document.getElementById('relationshipFilters').addEventListener('click', functio
 
 document.getElementById('btnAddRole').addEventListener('click', openAddRole);
 document.getElementById('btnCancelEdit').addEventListener('click', handleCancelEdit);
-document.getElementById('btnSaveRole').addEventListener('click', handleSaveRole);
+// 邂逅候选正式入库：同一账号的两个标签页不可同时根据旧列表创建同一人物。
+// 普通角色编辑依旧复用原有 handleSaveRole，不添加第二套角色系统。
+let encounterRoleSaveBusy = false;
+async function saveEncounterRoleWithLock() {
+    if (!activeEncounterDraftId) {
+        handleSaveRole();
+        return;
+    }
+    if (encounterRoleSaveBusy) return;
+    const initialCandidateId = String(activeEncounterDraftId);
+    const access = window.MAOMAOEncounter &&
+        typeof window.MAOMAOEncounter.checkAccountScope === 'function' &&
+        window.MAOMAOEncounter.checkAccountScope();
+    if (!access || !access.ok) {
+        setSaveStatus(access && access.error || '当前账号状态不可用，未创建角色。', 'error');
+        return;
+    }
+    const initialAccountId = access.value.id;
+    const saveButton = document.getElementById('btnSaveRole');
+    encounterRoleSaveBusy = true;
+    saveButton.disabled = true;
+    try {
+        const create = function () {
+            const currentAccess = window.MAOMAOEncounter.checkAccountScope();
+            if (!currentAccess.ok || currentAccess.value.id !== initialAccountId ||
+                activeEncounterDraftId !== initialCandidateId ||
+                document.getElementById('editorView').classList.contains('hidden') ||
+                document.getElementById('editRoleId').value.trim()) {
+                setSaveStatus('账号或当前人物已变化，未创建角色。', 'error');
+                return;
+            }
+            // 必须在取得锁之后重新读取原角色和候选：handleSaveRole 内部做重复来源、
+            // 姓名冲突、存储读回和候选删除校验。
+            handleSaveRole();
+        };
+        const manager = window.navigator && window.navigator.locks;
+        if (manager && typeof manager.request === 'function') {
+            await manager.request('maomao:encounter:role-create:' + initialAccountId,
+                {mode:'exclusive'}, create);
+        } else {
+            // 不支持 Web Locks 时仍是一次同步读-查-写；不承诺跨进程事务安全。
+            create();
+        }
+    } catch (error) {
+        console.error('邂逅角色创建同步失败：', error);
+        setSaveStatus('角色创建未确认成功，请重新查看角色库，避免重复创建。', 'error');
+    } finally {
+        encounterRoleSaveBusy = false;
+        saveButton.disabled = false;
+    }
+}
+document.getElementById('btnSaveRole').addEventListener('click', saveEncounterRoleWithLock);
 ['editRoleName', 'editRolePersona', 'editRoleTone'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -1714,6 +2118,139 @@ document.getElementById('btnConfirmPortrait').addEventListener('click', confirmP
 document.getElementById('btnRecoverDraft').addEventListener('click', recoverPendingDraft);
 document.getElementById('btnDiscardDraft').addEventListener('click', discardPendingDraft);
 
+// 只在邂逅候选编辑页可用。严格由用户主动点击并确认，不自动调用收费 API。
+document.getElementById('btnExpandEncounterPersona').addEventListener('click', async function () {
+    const editorRoleId = document.getElementById('editRoleId').value.trim();
+    const savedRole = editorRoleId ? getRoleById(editorRoleId) : null;
+    const editingSavedEncounter = !!(savedRole && savedRole.encounterOrigin &&
+        savedRole.encounterOrigin.version === 1);
+    if (!activeEncounterDraftId && !editingSavedEncounter) {
+        setSaveStatus('只支持对「邂逅」创建的人物进行 AI 完善。', 'error');
+        return;
+    }
+    if (activeEncounterDraftId) {
+        const candidates = window.MAOMAOEncounter && window.MAOMAOEncounter.getCandidates();
+        if (!candidates || !candidates.ok || !candidates.value.some(function (c) {
+            return c.id === activeEncounterDraftId;
+        })) {
+            setSaveStatus('这张候选卡不再存在，未调用 API。请返回邂逅核实收藏。', 'error');
+            return;
+        }
+    }
+    if (!window.PhoneAPI || typeof window.PhoneAPI.complete !== 'function') {
+        setSaveStatus('当前 AI 请求模块不可用，请检查 API 设置。', 'error');
+        return;
+    }
+    if (roleStoreReadError) {
+        setSaveStatus('角色库读取异常，已暂停 API 完善，避免产生无法保存的付费结果。', 'error');
+        return;
+    }
+    // 先确认浏览器能暂存短卡；容量不足时不发送可能计费的生成请求。
+    if (!persistEditorDraft(true)) {
+        setSaveStatus('草稿暂存失败，尚未调用 API。请先检查浏览器剩余存储空间。', 'error');
+        return;
+    }
+    if (!confirm('完善完整人设将调用一次你配置的聊天 API，可能产生费用。确定生成吗？')) return;
+    const button = this;
+    const draftId = activeEncounterDraftId;
+    const targetRoleId = editorRoleId;
+    const personaEl = document.getElementById('editRolePersona');
+    const sourceText = personaEl.value;
+    const roleName = document.getElementById('editRoleName').value.trim();
+    button.disabled = true;
+    button.textContent = '正在确认账号…';
+    setSaveStatus('正在核验账号，还没有调用收费 AI。', 'info');
+    try {
+        const access = window.MAOMAOEncounter &&
+            typeof window.MAOMAOEncounter.verifyLiveAccountContext === 'function'
+            ? await window.MAOMAOEncounter.verifyLiveAccountContext() : null;
+        if (!access || !access.ok) {
+            setSaveStatus(access && access.error ? access.error : '无法核验账号，未调用 API。', 'error');
+            return;
+        }
+        // 核验登录会话期间，用户可能已切换角色或关闭编辑页。
+        if (draftId !== activeEncounterDraftId ||
+            targetRoleId !== document.getElementById('editRoleId').value.trim() ||
+            document.getElementById('editorView').classList.contains('hidden')) {
+            setSaveStatus('当前角色已变化，未调用 API。', 'error');
+            return;
+        }
+        button.textContent = 'AI 正在完善人设…';
+        setSaveStatus('正在调用你配置的 API（只请求一次），当前人设已保留。', 'info');
+        const result = await window.PhoneAPI.complete({
+            system: '你是一位擅长原创人物设定的中文编辑。请在不改变提供的姓名、种族、时代、职业、核心性格、重要物件和命运线索的前提下，把短卡扩展为完整、具体、逻辑自洽的人设。组织成自然段落与清晰小节，约 1000 至 1600 中文字。包括成长经历、职业日常、外在与内在性格反差、说话习惯、重要关系、兴趣、目标、弱点与只供创作者查看的隐藏秘密。给人物真实平凡的生活细节，避免空泛标签、公式化人物、重复修饰，不要捏造已有用户聊天经历。不得输出格式之外的说明。',
+            user: '以下为本项目用户主动收藏的人物短卡，请依据其内容扩写，不要换人设。\n角色姓名：' + roleName + '\n' + sourceText,
+            temperature: 0.85,
+            timeoutMs: 45000
+        });
+        const expanded = String(result || '').trim();
+        if (!expanded) throw new Error('API 返回空内容，已保留原始短卡');
+        // 即使服务商截断了较短的付费返回，也保留可用文字，不强迫二次付费。
+        // 用户在网络请求期间修改的内容不应被无声覆盖。
+        if (draftId !== activeEncounterDraftId ||
+            document.getElementById('editRoleId').value.trim() !== targetRoleId ||
+            document.getElementById('editorView').classList.contains('hidden')) {
+            setSaveStatus('页面已切换，生成结果未覆盖当前角色。', 'error');
+            return;
+        }
+        const nameChanged = document.getElementById('editRoleName').value.trim() !== roleName;
+        if ((personaEl.value !== sourceText || nameChanged) &&
+            !confirm('生成期间你修改了姓名或人设。要将这份 AI 草稿应用到当前编辑内容吗？')) {
+            setSaveStatus('保留了你手动编辑的人设，未应用 AI 草稿。', 'info');
+            return;
+        }
+        personaEl.value = expanded;
+        const draftSaved = persistEditorDraft(true);
+        if (!draftSaved) {
+            setSaveStatus('AI 内容已留在编辑框，但存储失败。请立即复制这份内容，清理空间后再保存。', 'error');
+            return;
+        }
+        setSaveStatus(expanded.length < 150
+            ? 'API 返回内容较短，已存为可编辑草稿；不会自动再次扣费。'
+            : 'AI 人设草稿已暂存，请检查并点击「保存设定」。', 'success');
+    } catch (error) {
+        setSaveStatus('AI 完善未成功：' + (error && error.message ? error.message : '请求异常') + '。原有人设仍保留。', 'error');
+    } finally {
+        button.disabled = false;
+        button.textContent = 'AI 完善人设 · 使用 API';
+    }
+});
+
+// MAOMAO 自有格式：明确格式版本，只导出角色文字，不包含个人聊天、记忆、头像、API 密钥。
+document.getElementById('btnExportRole').addEventListener('click', function () {
+    const id = document.getElementById('editRoleId').value.trim();
+    const role = loadRoles().find(function (item) { return String(item.id) === id; });
+    if (!role) {
+        setSaveStatus('请先保存角色，再导出专属 JSON。', 'error');
+        return;
+    }
+    if (document.getElementById('editRoleName').value !== (role.name || '') ||
+        document.getElementById('editRolePersona').value !== (role.persona || '') ||
+        document.getElementById('editRoleTone').value !== (role.tone || '')) {
+        setSaveStatus('有尚未保存的修改，请先保存再导出。', 'error');
+        return;
+    }
+    const file = {
+        format: 'maomao-character',
+        version: 1,
+        character: {
+            name: role.name || '', persona: role.persona || '',
+            tone: role.tone || '', appearanceDescription: role.appearanceDescription || '',
+            styleKeywords: Array.isArray(role.styleKeywords) ? role.styleKeywords : []
+        }
+    };
+    const blob = new Blob([JSON.stringify(file, null, 2)], {type:'application/json;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'character-' + String(role.name || 'role').replace(/[\\/:*?"<>|]/g, '_') + '.json';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
+    setSaveStatus('已导出 MAOMAO 人设 JSON（不包含聊天与私密资料）', 'success');
+});
+
 // ====== 导入角色 JSON ======
 document.getElementById('btnImportRole').addEventListener('click', function() {
     document.getElementById('roleImportFile').click();
@@ -1722,12 +2259,14 @@ document.getElementById('roleImportFile').addEventListener('change', function(e)
     const file = e.target.files && e.target.files[0];
     e.target.value = '';
     if (!file) return;
-    const isTxt = /\.txt$/i.test(file.name) || (file.type || '').indexOf('text/plain') === 0;
+    const isTxt = /\.txt$/i.test(file.name);
+    if (file.size > 1024 * 1024) { setSaveStatus('文件超过 1 MB，请拆分或精简后再导入。', 'error'); return; }
     const reader = new FileReader();
     reader.onload = function(ev) {
         try {
             const text = String(ev.target.result || '');
             if (isTxt) {
+                if (/^[\s]*[\[{]/.test(text)) throw new Error('不支持把其他平台的 JSON 角色卡作为 TXT 导入');
                 // txt：整段当人设，第一行若很短（<=20字）当姓名
                 const lines = text.split(/\r?\n/);
                 let name = '', persona = text;
@@ -1741,23 +2280,28 @@ document.getElementById('roleImportFile').addEventListener('change', function(e)
                 persistEditorDraft();
                 return;
             }
-            let data = JSON.parse(text);
-            if (Array.isArray(data)) data = data[0];
-            if (!data || typeof data !== 'object') throw new Error('文件不是角色数据');
-            // 兼容常见字段名
-            const name = data.name || data.char_name || data.title || '';
-            const persona = data.persona || data.description || data.personality || data.system || '';
-            const tone = data.tone || data.dialogue_example || data.culture_example || '';
-            const avatar = data.avatar || data.avatar_url || '';
-            if (!name && !persona) throw new Error('文件里没找到角色名或人设');
-            document.getElementById('editRoleName').value = String(name);
-            document.getElementById('editRolePersona').value = String(persona);
-            document.getElementById('editRoleTone').value = String(tone);
-            if (avatar && typeof avatar === 'string' && /^data:image\//.test(avatar)) {
-                avatarDataUrl = avatar;
-                updateAvatarPreview();
+            const data = JSON.parse(text);
+            // 只读取 MAOMAO 自己导出的 JSON；不识别酒馆/第三方角色卡字段。
+            if (!data || data.format !== 'maomao-character' || data.version !== 1 ||
+                !data.character || typeof data.character !== 'object' || Array.isArray(data.character)) {
+                throw new Error('仅支持从 MAOMAO 导出的角色 JSON（版本 1）');
             }
-            setSaveStatus('已导入「' + (name || '未命名') + '」，检查后点保存', 'success');
+            const item = data.character;
+            const name = typeof item.name === 'string' ? item.name.trim() : '';
+            const persona = typeof item.persona === 'string' ? item.persona : '';
+            const tone = typeof item.tone === 'string' ? item.tone : '';
+            if (!name || !persona) throw new Error('MAOMAO 文件缺少角色姓名或人设');
+            if (name.length > 30 || persona.length > 30000 || tone.length > 12000) throw new Error('角色字段超过编辑器限制，未截断原文件');
+            document.getElementById('editRoleName').value = name;
+            document.getElementById('editRolePersona').value = persona;
+            document.getElementById('editRoleTone').value = tone;
+            document.getElementById('editRoleAppearance').value =
+                typeof item.appearanceDescription === 'string' ? item.appearanceDescription : '';
+            document.getElementById('editRoleStyleKeywords').value =
+                Array.isArray(item.styleKeywords) ? item.styleKeywords.filter(x => typeof x === 'string').join(', ') : '';
+            // JSON 只导入文字。保留编辑器当前头像，避免覆盖既有角色图片。
+            updateAvatarPreview();
+            setSaveStatus('已导入 MAOMAO 角色，请检查后保存', 'success');
             persistEditorDraft();
         } catch (err) {
             setSaveStatus('导入失败：' + (err && err.message ? err.message : '文件格式不对'), 'error');
@@ -1787,8 +2331,61 @@ if (cropCanvas) {
     cropCanvas.addEventListener('lostpointercapture', stopCropDrag);
 }
 
+// 从邂逅候选收藏进入原有角色编辑器；不新建第二套角色数据库。
+function openEncounterCandidateFromQuery() {
+    const candidateId = new URLSearchParams(window.location.search).get('encounterDraft');
+    if (!candidateId || !window.MAOMAOEncounter) return;
+    const source = window.MAOMAOEncounter.getCandidates();
+    if (!source.ok) {
+        alert(source.error);
+        return;
+    }
+    const candidate = source.value.find(function (item) { return item.id === candidateId; });
+    if (!candidate) {
+        alert('这张候选人物卡已不存在。');
+        return;
+    }
+    // 只打开干净的编辑器，不读取/修改手动新建人物的 'new' 草稿。
+    openAddRole({ skipDraftRecovery: true });
+    activeEncounterDraftId = candidateId;
+    currentDraftKey = getEncounterDraftKey(candidateId);
+    selectedColor = '#D2D3D0'; // 邂逅新角色默认低饱和灰色，保存前仍可更换头像。
+    updateAvatarPreview();
+    document.getElementById('btnExpandEncounterPersona').classList.remove('hidden');
+    document.getElementById('editRoleName').value = candidate.name || '';
+    document.getElementById('editRolePersona').value = window.MAOMAOEncounter.formatBrief(candidate);
+    document.getElementById('editRoleTone').value = candidate.quote || '';
+    document.getElementById('editRoleStyleKeywords').value = [candidate.trait,candidate.species,candidate.era].join(', ');
+    editorOriginalState = captureEditorState();
+    editorReturnView = 'listView';
+    // 有同一候选的历史草稿时先询问恢复，不可提前用新卡片模板覆盖原文。
+    if (offerDraftRecovery()) {
+        setSaveStatus('发现这位邂逅人物尚未保存的草稿，可先恢复后继续编辑。', 'info');
+        return;
+    }
+    // 不强制写入一份与候选完全相同的草稿；用户改动由原编辑器自动暂存。
+    setSaveStatus('已带入邂逅人设，可继续完善；保存后才会加入正式角色库。', 'info');
+}
+
+// 「已相识」返回现有角色档案，只读检查邂逅来源，不自动设为当前角色。
+function openEncounterRoleFromQuery() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('encounterDraft')) return; // 候选导入优先，拒绝混用两种意图。
+    const roleId = params.get('encounterRole');
+    if (!roleId) return;
+    const role = getRoleById(roleId);
+    if (!role || !role.encounterOrigin || role.encounterOrigin.version !== 1 ||
+        !/^enc_[a-z0-9_-]{3,80}$/i.test(String(role.encounterOrigin.sourceCandidateId || ''))) {
+        console.warn('未找到对应的邂逅角色，保留原角色列表。');
+        return;
+    }
+    openRoleProfile(role.id);
+}
+
 // 页面初始化
 renderRoleList();
+openEncounterCandidateFromQuery();
+openEncounterRoleFromQuery();
 retryPendingRoleAvatarCleanup().catch(function (error) {
     console.warn('角色头像清理队列暂时无法执行:', error);
 });
@@ -1802,5 +2399,7 @@ retryPendingRoleAvatarCleanup().catch(function (error) {
     var from = params.get('from');
     if (from === 'contacts') {
         backBtn.setAttribute('href', '../../chat/contacts/contacts.html');
+    } else if (from === 'encounter') {
+        backBtn.setAttribute('href', '../../encounter/encounter.html');
     }
 })();
