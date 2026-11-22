@@ -42,10 +42,24 @@
         });
         return draft;
     }
+    // Keep relationship/name passages from the middle of a long persona
+    // instead of silently discarding everything after the first 9000 chars.
+    // This is only local text selection; no AI summarization or paid extra call.
+    function personaExcerpt(persona) {
+        var full = typeof persona === 'string' ? persona : '';
+        if (full.length <= 9000) return full;
+        var head = full.slice(0, 5400);
+        var tail = full.slice(-800);
+        var middle = full.slice(5400, -800).split(/[\n。；]+/);
+        var clues = middle.filter(function (line) {
+            return /关系|人物|朋友|同事|同学|家人|亲属|师父|导师|老板|搭档|父亲|母亲|哥哥|姐姐|弟弟|妹妹|认识|名叫|叫做/.test(line);
+        }).join('。').slice(0, 2500);
+        return [head, clues ? '相关人物设定：' + clues : '', '末尾设定：' + tail].filter(Boolean).join('\n').slice(0, 9000);
+    }
     function context(role) {
         return {
             name: safe(role.name, 80),
-            persona: safe(role.persona, 9000),
+            persona: personaExcerpt(role.persona),
             tone: safe(role.tone || role.speechStyle || '', 2500),
             lifeLine: safe(role.lifeLine || '', 1800),
             relationships: (Array.isArray(role.npcCharacters) ? role.npcCharacters : []).slice(0, 20).map(function (npc) {
