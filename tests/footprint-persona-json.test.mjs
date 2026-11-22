@@ -151,5 +151,5 @@ test('shipped footprint page contains no fabricated demo schedule, does not auto
  assert.match(html,/footprint-ai\.js\?v=20261123-persona-json-v1/);
  assert.match(html,/心声 · /);
  assert.match(html,/状态 · /);
- assert.match(html,/writeDay\(localStorage,requestRoleId,requestDate,entries\)/);
+ assert.match(html,/writeDay\(localStorage,requestRoleId,requestDate,entries,originalFootprintRaw\)/);
 });
