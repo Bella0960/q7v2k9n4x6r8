@@ -1073,6 +1073,12 @@
         .avatar-library-add { border-radius:7px;background:transparent; }
         .avatar-pair-heading { margin-top:12px; }
 
+    /* Text-only opt-in AI actions, scoped to character world pages. */
+        .character-ai-action { display:inline-block;flex-shrink:0;padding:7px 0;border:0;border-bottom:1px solid #999;border-radius:0;background:transparent;color:#333;font:inherit;font-size:11px;letter-spacing:.03em;cursor:pointer; }
+        .character-ai-action:disabled { color:#999;cursor:default; }
+        .character-ai-status { min-height:18px;padding:9px 0 4px;color:#888;font-size:10px;line-height:1.6; }
+        #btnAiRelationships { margin-top:10px; }
+        #npcEditorView .header-title,#lifeView .header-title { min-width:0; }
     </style>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
 </head>
@@ -1125,6 +1131,8 @@
                     <h2 class="subpage-heading">人物关系网络</h2>
                     <p class="subpage-description" id="relationshipDescription">家人、朋友，以及在 TA 生活里出现的其他人。</p>
                     <div class="subpage-count" id="relationshipCount">00 PEOPLE</div>
+                    <button class="character-ai-action" id="btnAiRelationships" type="button">AI 生成人物</button>
+                    <div class="character-ai-status" id="relationshipsAiStatus" aria-live="polite"></div>
                 </section>
                 <div class="relation-filter" id="relationshipFilters">
                     <button type="button" class="active" data-rel-filter="all">全部</button>
@@ -1152,7 +1160,7 @@
             <header class="header">
                 <button class="btn-header-cancel" id="btnCancelNpcEdit" type="button" aria-label="取消编辑">‹</button>
                 <h1 class="header-title" id="npcEditorTitle">New Person</h1>
-                <span style="width:36px"></span>
+                <button class="character-ai-action" id="btnAiNpc" type="button">AI 解析</button>
             </header>
             <main class="npc-editor-container">
                 <input type="hidden" id="npcId" value="">
@@ -1212,6 +1220,7 @@
                         <textarea class="branch-textarea" id="npcCurrentStatus" placeholder="近期计划、正在经历的事情、生活状态…"></textarea>
                     </div>
                 </div>
+                <div class="character-ai-status" id="npcAiStatus" aria-live="polite"></div>
                 <div class="branch-status" id="npcSaveStatus" aria-live="polite"></div>
                 <button class="branch-save" id="btnSaveNpc" type="button">保存人物档案</button>
             </main>
@@ -1222,7 +1231,7 @@
             <header class="header">
                 <button class="btn-header-cancel" id="btnBackLife" type="button" aria-label="返回主角色档案">‹</button>
                 <h1 class="header-title">LIFE LINE</h1>
-                <span style="width:36px"></span>
+                <button class="character-ai-action" id="btnAiLife" type="button">AI 生成</button>
             </header>
             <main class="life-container">
                 <section class="subpage-intro">
@@ -1267,6 +1276,7 @@
                             <textarea class="branch-textarea" id="lifeEventDetail" placeholder="发生了什么？角色对此有什么想法？"></textarea>
                         </div>
                     </div>
+                    <div class="character-ai-status" id="lifeAiStatus" aria-live="polite"></div>
                     <button class="branch-save" id="btnAddLifeEvent" type="button">添加到生活线</button>
                     <div class="branch-status" id="lifeEventStatusText" aria-live="polite"></div>
                 </section>
@@ -1406,6 +1416,7 @@
     <script src="../../shared/js/phone/role-worldbook-bindings.js?v=20261119-qa1"></script>
     <script src="../../shared/js/phone/character-card-client.js?v=20261122-neutral-v1"></script>
     <script src="js/characters-manager.js?v=20261122-avatar-archive-v120"></script>
+    <script src="js/character-ai-drafts.js?v=20261122-draft1"></script>
     <script src="../../shared/js/nav.js"></script>
 <script src="../../shared/js/statusbar-control.js"></script>
 </body>
