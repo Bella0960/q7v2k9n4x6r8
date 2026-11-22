@@ -93,3 +93,20 @@ test('chat preserves identity and RP assembly and only injects opt-in memory in 
   assert.match(chat,/systemPrompt = IDENTITY_LOCK/);
   assert.match(chat,/【世界书 \/ 角色生活背景】/);
 });
+
+
+test('consent construction does not repeatedly scan world event keys when hasRole exists', async () => {
+  const t = session();
+  let scans=0;
+  t.world.hasRole=id=>({ok:id==='role-A',value:true});
+  const original=t.world.listForRole;
+  t.world.listForRole=(id,opts)=>{scans++;return original(id,opts)};
+  t.records.push({roleId:'role-A',provenance:'user-confirmed',type:'encounter.first_met',
+    occurredAt:'2026-11-21T08:00:00.000Z',summary:'确实相遇',allowAI:false});
+  await t.adapter.setConsent('role-A',true);
+  scans=0;
+  const prompt=t.adapter.buildPrompt('role-A');
+  assert.equal(prompt.ok,true);
+  assert.match(prompt.value,/确实相遇/);
+  assert.equal(scans,1,'the single prompt build should query events once');
+});
