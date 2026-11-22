@@ -48,7 +48,7 @@
     "test:chat:bubbles": "node tests/chat-reply-bubbles-browser.mjs",
     "test:icons:presets": "node --test tests/icon-presets-contract.test.mjs",
     "test:images": "node --test tests/image-generation-pipeline.test.mjs",
-    "test:luck-room": "node --test tests/luck-room-contract.test.mjs",
+    "test:luck-room": "node --test tests/luck-room-contract.test.mjs tests/luck-room-scroll-regression.test.mjs",
     "test:role:avatars": "node --test tests/role-avatar-library.test.mjs tests/role-avatar-choice.test.mjs tests/chat-avatar-manager.test.mjs",
     "test:chat:image-vision": "node --test tests/chat-image-vision.test.mjs",
     "postbuild": "node --test tests/production-assets-isolation.test.mjs && node scripts/record-encounter-build.mjs",
