@@ -1451,7 +1451,10 @@
         toast('无法导入空音频文件');
         continue;
       }
-      var tid = 'local_' + tStart + '_' + i;
+      // Distinct tabs can import at the same millisecond; never reuse an audio-store key.
+      var entropy = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+      var tid = 'local_' + tStart + '_' + i + '_' + entropy;
       var name = file.name.replace(/\.[^.]+$/, '');
       var track = {
         id: tid, name: name, artist: '本地导入', dur: '本地', durSec: 0,
