@@ -76,7 +76,7 @@ test('integration loads the shared ledger before every consumer',()=>{
   assert.ok(encounter.indexOf('world-events.js')>0);
   assert.ok(footprint.indexOf('world-events.js')>0);
   assert.match(profile,/characters-manager\.js/);
-  assert.match(chat,/!isGroupChat && currentCharacter/);
+  assert.match(chat,/!isGroupChat && roleForTurn/);
 });
 
 test('first-met action attaches the already saved formal role exactly once', async()=>{
@@ -173,7 +173,7 @@ test('event projection preserves the original footprint DOM structure and local 
   assert.match(footprint,/t-eco-item/);
   assert.match(footprint,/showEncounter=1&returnDate=/);
   assert.match(footprint,/encounterRole=' \+ id/);
-  assert.match(footprint,/if \(ecoRouteRoleId\) return \[\]/);
+  assert.match(footprint,/if \(!currentRoleId\) return \[\]/);
   assert.doesNotMatch(footprint,/WorldEvents\.append\(/,'footprint must be a read-only projection');
 });
 
