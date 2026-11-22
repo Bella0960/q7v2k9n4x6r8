@@ -54,21 +54,93 @@
         }
         return output;
     }
+    function firstText(record, keys) {
+        if (!record || typeof record !== 'object' || Array.isArray(record)) return '';
+        for (var i = 0; i < keys.length; i++) {
+            var value = record[keys[i]];
+            if (typeof value === 'string' && value.trim()) return value.trim();
+        }
+        return '';
+    }
+    function personDraft(item) {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+        var name = firstText(item, ['name','姓名','名字','人物姓名']);
+        var relation = firstText(item, ['relation','relationship','关系','与主角的关系','与主角色的关系']);
+        var background = firstText(item, ['background','bio','description','summary','简介','背景','人物背景']);
+        var personality = firstText(item, ['personality','性格','性格特点']);
+        if (!name || !(relation || background || personality)) return null;
+        return {
+            name:name, relation:relation, background:background, personality:personality,
+            category:firstText(item,['category','分类']),
+            awareness:firstText(item,['awareness']),
+            profession:firstText(item,['profession','职业','身份']),
+            relationNotes:firstText(item,['relationNotes','相处方式']),
+            connections:firstText(item,['connections','其他关系']),
+            speechStyle:firstText(item,['speechStyle','说话方式']),
+            currentStatus:firstText(item,['currentStatus','近况'])
+        };
+    }
+    function lifeDraft(item) {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+        var title = firstText(item, ['title','eventTitle','name','事件名称','标题','事件']);
+        var detail = firstText(item, ['detail','description','content','内容','事件内容','描述']);
+        if (!title) return null;
+        return {
+            title:title, detail:detail,
+            date:firstText(item,['date','日期']),
+            people:item.people || item.persons || item.人物 || item.涉及人物 || '',
+            status:firstText(item,['status','状态']) || 'planned'
+        };
+    }
     function normalize(value, kind) {
         if (!value || typeof value !== 'object') return null;
         if (kind === 'relationships') {
-            var arr = Array.isArray(value) ? value : value.people || value.characters || value.relationships;
+            var arr = Array.isArray(value) ? value :
+                value.people || value.characters || value.relationships || value.人物 || value.人物关系 ||
+                (firstText(value,['name','姓名','名字','人物姓名']) ? [value] : null);
+            if (arr && !Array.isArray(arr)) arr = [arr];
             if (!Array.isArray(arr)) return null;
-            arr = arr.filter(function (v) { return v && typeof v === 'object' && typeof v.name === 'string' && v.name.trim(); }).slice(0,3);
+            arr = arr.map(personDraft).filter(Boolean).slice(0,2);
             return arr.length ? { people:arr } : null;
         }
         if (kind === 'life') {
-            var event = Array.isArray(value) ? value[0] : value.event || value.lifeEvent || (Array.isArray(value.events) ? value.events[0] : value);
-            return event && typeof event === 'object' && typeof event.title === 'string' && event.title.trim() ? event : null;
+            var item = Array.isArray(value) ? value[0] :
+                value.event || value.lifeEvent || value.生活事件 ||
+                (Array.isArray(value.events) ? value.events[0] : value);
+            return lifeDraft(item);
         }
         if (kind === 'npc') {
-            var person = Array.isArray(value) ? value[0] : value.character || value.person || value;
-            return person && typeof person === 'object' && typeof person.name === 'string' && person.name.trim() ? person : null;
+            var person = Array.isArray(value) ? value[0] : value.character || value.person || value.人物 || value;
+            return personDraft(person);
+        }
+        return null;
+    }
+    function parseLabeledText(raw, kind) {
+        // Only accept explicitly labeled text. Never guess identities from prose.
+        var source = String(raw || '').replace(/\r/g,'').slice(0,4000);
+        function label(names) {
+            var lines = source.split('\n');
+            for (var i=0;i<lines.length;i++) {
+                var match = lines[i].match(/^\s*(?:[-*] |\d+[.)、]\s*)?([^：:]{1,18})[：:]\s*(.{1,400})\s*$/);
+                if (match && names.indexOf(match[1].replace(/\*/g,'').trim())>=0) return match[2].trim();
+            }
+            return '';
+        }
+        if (kind === 'relationships' || kind === 'npc') {
+            var person = personDraft({
+                name:label(['姓名','名字','人物姓名']),
+                relation:label(['关系','与主角色的关系','与主角的关系']),
+                background:label(['简介','背景','人物背景'])
+            });
+            return person ? (kind === 'npc' ? person : {people:[person]}) : null;
+        }
+        if (kind === 'life') {
+            var event = lifeDraft({
+                title:label(['事件','事件名称','标题']),
+                detail:label(['内容','事件内容','描述']),
+                people:label(['涉及人物','人物'])
+            });
+            return event && event.detail ? event : null;
         }
         return null;
     }
@@ -89,6 +161,8 @@
             var valid = normalize(candidate,kind);
             if (valid) return { ok:true,data:valid };
         }
+        var labeled = parseLabeledText(text,kind);
+        if (labeled) return {ok:true,data:labeled};
         return {ok:false,data:null,reason:'format'};
     }
     global.CharacterAiJSON = Object.freeze({ fromCompletion:fromCompletion });

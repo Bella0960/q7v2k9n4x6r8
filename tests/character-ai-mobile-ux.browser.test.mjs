@@ -57,3 +57,50 @@ test('Chromium phone: click life AI, recover fenced JSON and fill form at 375/39
   }
  }finally{await browser.close();}
 });
+test('Chromium phone: short natural-language NPC draft is saved once at 375/390/430px',{timeout:60000},async()=>{
+ const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+ try {
+  for(const width of [375,390,430]){
+   const page=await browser.newPage({viewport:{width,height:820}});
+   try {
+    await page.setContent(markup);
+    await page.evaluate(()=>{
+      window.__role={id:'relationship-test',name:'主角',persona:'林青是主角认识多年的同事。',
+        npcCharacters:[],lifeEvents:[],worldBookIds:[]};
+      window.getActiveProfileRole=()=>window.__role;
+      window.confirm=()=>true;
+      window.__writes=0;
+      window.saveActiveRoleMutation=fn=>{window.__writes++;fn(window.__role);return true;};
+      window.renderRelationshipView=()=>{};
+      window.PhoneStorage={getApiConfig:()=>({apiKey:'mock-key-not-real',model:'mock',baseUrl:'https://character-ai-qa.invalid/v1'}),
+        pushApiLog:()=>{}};
+      window.__calls=0;window.__lastUser='';
+      window.fetch=async (_url,opts)=>{
+        window.__calls++;
+        const body=JSON.parse(opts.body);
+        window.__lastUser=body.messages[1].content;
+        const raw=['姓名：林青','关系：同事','简介：多年合作的同事'].join('\n');
+        return new Response(JSON.stringify({choices:[{message:{content:raw},finish_reason:'stop'}],usage:{total_tokens:42}}),
+          {status:200,headers:{'content-type':'application/json'}});
+      };
+    });
+    await page.addScriptTag({content:phoneApi});
+    await page.addScriptTag({content:parser});
+    await page.addScriptTag({content:generator});
+    await page.click('#btnAiRelationships');
+    await page.waitForFunction(()=>window.__role.npcCharacters.length===1);
+    const actual=await page.evaluate(()=>({calls:window.__calls,writes:window.__writes,
+      name:window.__role.npcCharacters[0].name,relation:window.__role.npcCharacters[0].relation,
+      context:window.__lastUser,status:document.getElementById('relationshipsAiStatus').textContent}));
+    assert.equal(actual.calls,1);
+    assert.equal(actual.writes,1);
+    assert.equal(actual.name,'林青');
+    assert.equal(actual.relation,'同事');
+    assert.match(actual.context,/林青/);
+    assert.match(actual.status,/已添加 1 位/);
+    await page.click('#btnAiRelationships');
+    assert.equal(await page.evaluate(()=>window.__calls),1,'repeat click must never bill again during cooldown');
+   }finally {await page.close();}
+  }
+ }finally{await browser.close();}
+});
