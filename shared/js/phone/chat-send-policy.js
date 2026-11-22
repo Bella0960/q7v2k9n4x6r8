@@ -12,7 +12,10 @@
     var isRegen = !!(opts && opts.isRegenerate);
     var isGroupFollowup = !!(opts && opts.groupFollowup);
     var groupAutoDepth = Math.max(0, parseInt(opts && opts.groupAutoDepth, 10) || 0);
-    var text = customText || (typeof inputValue === 'string' ? inputValue.trim() : '');
+    // A draft is not a sent message: retries/regeneration must consult saved history only.
+    // Explicit opts.text remains authoritative for intentional internal prompts.
+    var text = customText || ((contextOnly || isRegen) ? '' :
+      (typeof inputValue === 'string' ? inputValue.trim() : ''));
 
     return {
       customText: customText,
