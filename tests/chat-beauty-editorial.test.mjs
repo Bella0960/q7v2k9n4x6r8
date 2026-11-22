@@ -18,7 +18,7 @@ test('editorial stylesheet is isolated to beauty page and loaded after original 
 
 test('presets, CSS editor, theme choice and message preview controls remain intact', () => {
   for (const id of ['btnLeft','btnPreset','btnRight','beautyTabs','tabVisual',
-    'tabCSS','tabTheme','vbPreview','vbSettingsScroll','vbScope','vbEditSide',
+    'tabCss','tabTheme','vbPreview','vbSettingsScroll','vbScope','vbEditSide',
     'vbDecorUrl','vbSavePresetBtn','vbAvatarSize','vbMyBg','vbPartnerBg']) {
     assert.ok(page.includes('id="' + id + '"'), id + ' must remain present');
   }
