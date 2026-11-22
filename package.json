@@ -50,6 +50,7 @@
     "test:images": "node --test tests/image-generation-pipeline.test.mjs",
     "test:luck-room": "node --test tests/luck-room-contract.test.mjs tests/luck-room-scroll-regression.test.mjs",
     "test:role:avatars": "node --test tests/role-avatar-library.test.mjs tests/role-avatar-choice.test.mjs tests/chat-avatar-manager.test.mjs",
+    "test:role:layout": "node --test tests/character-role-list-mobile.test.mjs tests/character-role-card-layout.test.mjs",
     "test:chat:image-vision": "node --test tests/chat-image-vision.test.mjs",
     "postbuild": "node --test tests/production-assets-isolation.test.mjs && node scripts/record-encounter-build.mjs",
     "test:account:ui-candidate": "node --test tests/admin-center-ui.test.mjs tests/admin-center-mobile-release.test.mjs tests/account-bootstrap-runtime.test.mjs tests/account-password-kdf.test.mjs tests/account-session-expiry.test.mjs tests/worker-page-auth-runtime.test.mjs tests/account-storage-isolation.test.mjs && npm run test:account:release-gate && npm run test:account:registration-persistence",
