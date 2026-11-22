@@ -69,6 +69,13 @@ test('one compact relationship response preserves an existing persona name and s
   x.nodes.btnAiRelationships.click();await settle();
   assert.equal(x.calls.length,1,'cooldown never silently repeats a paid request');
 });
+test('long persona includes a named relationship from its middle without a second paid call',async()=>{
+  const x=setup({apiKey:'mock',model:'mock',maxTokens:1024});
+  x.role.persona = '普通成长经历。'.repeat(1000) + '\\n旧友苏禾是主角多年的朋友，经常一起旅行。\\n' + '其他日常设定。'.repeat(200);
+  x.nodes.btnAiRelationships.click();await settle();
+  assert.equal(x.calls.length,1);
+  assert.match(x.calls[0].user,/苏禾/);
+});
 test('distinguish output truncation; do not write partial data or retry',async()=>{
   const x=setup({apiKey:'mock',model:'mock',maxTokens:1024},async opts=>{
     opts.onDiagnostic?.({stage:'response',finish:'length',characters:48,reasoningOnly:false});
