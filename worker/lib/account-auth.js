@@ -247,6 +247,15 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     if (account.status !== 'active' || account.role !== 'super_admin') {
       throw new ApiError(403, 'ADMIN_ONLY', '仅超级管理员可以使用此功能');
     }
+    // In delegated QA, require the exact founder ID from trusted Worker
+    // configuration, not a client-provided UID or a claimed admin role.
+    // The central identity core independently checks the same founder.
+    if (delegated && usesExistingAccountAuthority(env)) {
+      const expectedFounderId = String(env.MAO_EXPECTED_FOUNDER_ID || '');
+      if (!ACCOUNT_ID_RE.test(expectedFounderId) || account.account_id !== expectedFounderId) {
+        throw new ApiError(403, 'QA_FOUNDER_MISMATCH', '管理员永久身份未通过校验');
+      }
+    }
     return account;
   }
 
