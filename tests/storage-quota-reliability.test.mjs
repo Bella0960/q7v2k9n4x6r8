@@ -132,6 +132,45 @@ test('unreadable memory readback fails closed and retains legacy data', () => {
   assert.equal(events.at(-1).detail.error, 'ReadbackUnavailable');
 });
 
+test('corrupt primary memories are never silently overwritten', () => {
+  const { win, localStorage, events } = environment();
+  localStorage.setItem('chat_memories_a', '{"unfinished":');
+  const broken = localStorage.getItem('chat_memories_a');
+  assert.equal(win.PhoneStorage.saveMemories('a', [{ content: 'new' }]), false);
+  assert.equal(localStorage.getItem('chat_memories_a'), broken);
+  assert.equal(events.at(-1).detail.error, 'CorruptPrimary');
+});
+
+test('non-array primary memories remain untouched even if legacy v2 looks usable', () => {
+  const { win, localStorage, events } = environment();
+  localStorage.setItem('chat_memories_a', '{"old":"payload"}');
+  localStorage.setItem('phone_data_v2', JSON.stringify({
+    a: { memories: { items: [{ content: 'legacy' }] } }
+  }));
+  const previous = localStorage.getItem('phone_data_v2');
+  assert.equal(win.PhoneStorage.saveMemories('a', [{ content: 'new' }]), false);
+  assert.equal(localStorage.getItem('chat_memories_a'), '{"old":"payload"}');
+  assert.equal(localStorage.getItem('phone_data_v2'), previous);
+  assert.equal(events.at(-1).detail.error, 'CorruptPrimary');
+});
+
+test('invalid memory target or non-array input does not write new records', () => {
+  const { win, localStorage } = environment();
+  assert.equal(win.PhoneStorage.saveMemories('', [{ content: 'bad' }]), false);
+  assert.equal(win.PhoneStorage.saveMemories('a', null), false);
+  assert.equal(localStorage.getItem('chat_memories_'), null);
+  assert.equal(localStorage.getItem('chat_memories_a'), null);
+});
+
+test('memory management actions do not claim success after storage failure', () => {
+  const html = source('worldbook/memory/memory.html');
+  assert.match(html, /if \(!saveMemories\(currentMemId, arr\)\) return;\s*box\.innerHTML = '';/);
+  assert.match(html, /if \(!saveMemories\(mergeRoleId, arr\)\) return;/);
+  assert.match(html, /const mergeRoleId = currentMemId;/);
+  assert.match(html, /const mems = loadMemories\(mergeRoleId\);/);
+  assert.match(html, /if \(!saveMemories\(currentMemId, arr\)\) return;\s*renderLib\(\);/);
+});
+
 test('failure reporting cannot itself cause a second failure', () => {
   const { win } = environment(100);
   win.dispatchEvent = undefined;
