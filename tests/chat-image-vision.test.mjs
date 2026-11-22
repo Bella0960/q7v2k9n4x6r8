@@ -217,7 +217,7 @@ test('user image shares require first-use privacy confirmation and pass only cur
 
 test('AI sees current-turn images and can only add an explicit avatar candidate after a successful reply', () => {
   assert.ok(chatDetailSource.includes('chat-image-vision.js?v=20261113v1'));
-  assert.ok(chatDetailSource.includes('role-avatar-library.js?v=20261113v1'));
+  assert.match(chatDetailSource, /role-avatar-library\.js\?v=20261121avatar\d+/, 'chat loads a versioned role avatar library');
   assert.ok(chatDetailSource.indexOf('storage/media-repository.js') < chatDetailSource.indexOf('role-avatar-library.js'));
   assert.ok(chatDetailSource.includes('ChatImageVision.prepareHistory'));
   assert.ok(chatDetailSource.includes('visionImageMids'));
@@ -257,13 +257,21 @@ test('deleted chat images release only chat references after single or bulk dele
   assert.ok(chatDetailSource.includes("String(message.assetId),\n                        'chat-message',"));
   const single = chatDetailSource.slice(chatDetailSource.indexOf('function deleteOneMessage(bubbleId)'));
   const bulk = chatDetailSource.slice(chatDetailSource.indexOf("document.getElementById('selectDeleteBtn').addEventListener"));
-  for (const handler of [single, bulk]) {
-    const save = handler.indexOf('if (!saveMessages(keep))');
+  // The single-message route retains its optimistic sync version check;
+  // the bulk route now uses the cross-tab Web Lock / compare-and-swap path.
+  for (const [handler, saveCall] of [
+    [single, 'if (!saveMessages(_inheritChatBaseline(keep, list)))'],
+    [bulk, 'if (!await replaceChatSafely(originalSnapshot, keep))']
+  ]) {
+    const save = handler.indexOf(saveCall);
     const release = handler.indexOf('releaseDeletedChatImageReferences(removedMessages)');
-    assert.ok(save >= 0 && release > save, 'reference cleanup must follow a successful save');
+    assert.ok(save >= 0 && release > save, 'reference cleanup must follow a successful, verified save');
     assert.match(handler.slice(save, release), /删除失败[\s\S]*?return;/);
     assert.match(handler.slice(0, release), /removedMessages = list\.filter\(function \(m\) \{ return !keptMids\.has/);
   }
+  assert.match(bulk, /await replaceChatSafely\(originalSnapshot, keep\)/);
+  assert.doesNotMatch(bulk.slice(0, bulk.indexOf('releaseDeletedChatImageReferences(removedMessages)')),
+    /saveMessages\(/);
   assert.ok(chatExtrasSource.includes('releaseDeletedChatImageReferences(previousMessages)'));
   assert.ok(chatDetailSource.includes('window.releaseDeletedChatImageReferences = releaseDeletedChatImageReferences'));
 });
@@ -272,20 +280,39 @@ test('PWA shell and package contracts include the chat vision runtime', () => {
   const currentCacheVersion = Number(serviceWorkerSource.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m)?.[1] || 0);
   assert.ok(currentCacheVersion >= 203, 'PWA app shell must not regress below feature minimum v203');
   assert.ok(serviceWorkerSource.includes('chat-image-vision.js?v=20261113v1'));
-  assert.ok(serviceWorkerSource.includes('chat-context-policy.js?v=20261107vision1'));
-  assert.ok(serviceWorkerSource.includes('chat-extras.js?t=20261107imagevision1'));
+  assert.ok(serviceWorkerSource.includes('chat-context-policy.js?v=20261118historybudget1'));
+  const extrasVersion = chatDetailSource.match(/src="js\/(chat-extras\.js\?t=[^"]+)"/)?.[1];
+  assert.ok(extrasVersion, 'chat details load versioned extras');
+  assert.ok(serviceWorkerSource.includes("'./chat/chat/js/" + extrasVersion + "'"),
+    'PWA precaches the exact extras URL used by chat details');
   assert.ok(packageJson.scripts['test:chat:image-vision']);
   assert.ok(packageJson.scripts['test:chat:contract'].includes('tests/chat-image-vision.test.mjs'));
 });
 
 
 test('forwarding an asset-backed chat image adds a destination chat reference', () => {
-  assert.match(chatDetailSource,
-    /async function forwardMessage\(resolved, targetId, targetName\)\s*\{\s*var msg = resolved\.message;/);
+  const forwardStart = chatDetailSource.indexOf('async function forwardMessage(resolved, targetId, targetName) {');
+  const forwardEnd = chatDetailSource.indexOf('// 点 AI 头像', forwardStart);
+  assert.ok(forwardStart >= 0 && forwardEnd > forwardStart, 'real forward handler must exist');
+  const forwardBody = chatDetailSource.slice(forwardStart, forwardEnd);
+  // The destination storage guard must run before any image ref is acquired.
+  // A previous test required 'var msg' to be the first statement and broke
+  // when forwarding was made safe against missing/corrupt target history.
+  const storageGuard = forwardBody.indexOf("typeof historyStorage.appendChatHistory !== 'function'");
+  const messageRead = forwardBody.indexOf('var msg = resolved.message;');
+  const imageRef = forwardBody.indexOf("_chatImageMediaRepo.addRef(fwd.assetId, 'chat-message', String(fwd.mid))");
+  const append = forwardBody.indexOf('historyStorage.appendChatHistory(targetId, fwd)');
+  assert.ok(storageGuard >= 0 && messageRead > storageGuard,
+    'destination storage is validated before accessing forwarded message');
+  assert.ok(imageRef > messageRead && append > imageRef,
+    'forwarded image ref is linked before writing destination history');
   assert.ok(chatDetailSource.includes("_chatImageMediaRepo.addRef(fwd.assetId, 'chat-message', String(fwd.mid))"));
   assert.ok(chatDetailSource.includes('fwd.assetId = String(msg.assetId)'));
-  assert.ok(chatDetailSource.includes('if (linkedImageRef)'));
-  assert.ok(chatDetailSource.includes('await _chatImageMediaRepo.removeRef(fwd.assetId'));
+  // A definitive failed append must roll back the image ref, but an uncertain
+  // readback may have persisted the message and must keep its media alive.
+  assert.ok(forwardBody.includes('var unverified = saved.meta && saved.meta.writeMayHavePersisted;'));
+  assert.ok(forwardBody.includes('if (linkedImageRef && !unverified)'));
+  assert.ok(forwardBody.includes('await _chatImageMediaRepo.removeRef(fwd.assetId'));
 });
 
 test('paired avatar markers resolve two distinct current images and never collapse into two unrelated singles', () => {
@@ -353,7 +380,7 @@ test('profile archive renders paired previews and supports switching either side
   assert.ok(characterManagerSource.includes('library.getPairForAvatar(roleId, item.id)'));
   assert.ok(characterManagerSource.includes('unlinkRoleAvatarPair'));
   assert.ok(characterManagerSource.includes('library.unlinkPair(roleId, pairId)'));
-  assert.ok(characterManagerSource.includes('两张头像仍保留在收藏中'));
+  assert.ok(characterManagerSource.includes('两张原图仍保留在收藏中'), 'unlinking retains both original portraits');
 });
 
 test('portrait archive provides a two-image manual pairing fallback for AI recognition misses', () => {

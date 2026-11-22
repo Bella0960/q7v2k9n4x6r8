@@ -14,25 +14,12 @@
       ? window.MemoryRecall.cleanText(value)
       : String(value || '').replace(/<think>[\s\S]*?<\/think>/gi, ' ').replace(/<narratage>[\s\S]*?<\/narratage>/gi, ' ').trim();
   }
-  function readHistory(id) {
-    if (!id) return [];
-    try {
-      if (window.PhoneStorage && window.PhoneStorage.getChatHistory) return window.PhoneStorage.getChatHistory(id) || [];
-      var arr = JSON.parse(localStorage.getItem('chat_history_' + id) || '[]');
-      return Array.isArray(arr) ? arr : [];
-    } catch (e) { return []; }
-  }
   function readMemories(id) {
     if (window.MemoryRecall) return window.MemoryRecall.getMemories(id);
     try {
       var arr = JSON.parse(localStorage.getItem('chat_memories_' + id) || '[]');
       return Array.isArray(arr) ? arr : [];
     } catch (e) { return []; }
-  }
-  function activeCharacter() {
-    var el = $('#charPicker .char-item.active');
-    if (!el) return null;
-    return { id: String(el.getAttribute('data-id') || ''), name: ($('.char-name', el) || {}).textContent || '当前角色' };
   }
   function stamp(value) {
     var n = Number(value) || 0;
@@ -54,36 +41,26 @@
     if ($('#memory-archive-v2-style')) return;
     var style = document.createElement('style');
     style.id = 'memory-archive-v2-style';
-    style.textContent =
-      '.memory-overview{margin:17px 0 22px;padding:17px 0 15px;border-top:1px solid #171717;border-bottom:1px solid #d9d9d9;background:#fff}' +
-      '.memory-overview-kicker{font:600 8px/1.5 var(--sans,Arial,sans-serif);letter-spacing:.17em;color:#777}' +
-      '.memory-overview-title{margin-top:11px;color:#171717;font:400 clamp(24px,6.6vw,30px)/1.15 var(--serif,Georgia,serif);letter-spacing:-.055em}' +
-      '.memory-overview-title em{font-style:italic;color:#777}' +
-      '.memory-overview-note{max-width:310px;margin-top:9px;color:#777;font:10px/1.8 var(--sans,Arial,sans-serif)}' +
-      '.memory-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:17px;padding:12px 0;border-top:1px solid #e7e7e7;border-bottom:1px solid #e7e7e7}' +
-      '.memory-metrics>div{min-width:0;display:flex;flex-direction:column;gap:5px}' +
-      '.memory-metrics span{color:#888;font:9px/1.4 var(--sans,Arial,sans-serif);white-space:nowrap}' +
-      '.memory-metrics strong{color:#171717;font:400 22px/1 var(--serif,Georgia,serif);font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis}' +
-      '.memory-archive-cta{display:flex;justify-content:space-between;align-items:center;width:100%;margin-top:13px;padding:8px 0;border:0;border-bottom:1px solid #171717;background:transparent;color:#171717;font:500 11px/1.4 var(--sans,Arial,sans-serif);text-align:left}' +
-      '.memory-archive-cta span{font-size:16px}' +
-      '.memory-latest-card{border-radius:0!important;border-top:1px solid #e8e8e8;border-bottom:1px solid #e8e8e8;box-shadow:none!important}' +
-      '.memory-latest-card .mem-event-text{overflow-wrap:anywhere;line-height:1.8}' +
-      '.memory-archive-tools{padding:10px 0 13px;border-bottom:1px solid #e9e9e9}' +
-      '.memory-search-wrap{display:flex;align-items:center;gap:8px;padding:10px 11px;border:1px solid #dfdfdf;background:#fafafa;color:#777}' +
-      '.memory-search-wrap span{font:20px/1 var(--sans,Arial,sans-serif)}' +
-      '.memory-search-wrap input{width:100%;min-width:0;border:0;outline:0;background:transparent;color:#171717;font:11px/1.5 var(--sans,Arial,sans-serif)}' +
-      '.memory-archive-caption{margin-top:7px;color:#aaa;font:9px/1.5 var(--sans,Arial,sans-serif)}' +
-      '.memory-archive-entry{display:flex!important;flex-wrap:wrap!important;align-items:flex-start!important;gap:8px 10px!important;padding:12px 0!important;border-bottom:1px solid #ededed!important}' +
-      '.memory-archive-entry .mem-line-time{flex:0 0 66px!important;min-width:66px!important;color:#aaa;font:9px/1.6 var(--sans,Arial,sans-serif)!important}' +
-      '.memory-archive-entry .mem-line-content{flex:1 1 calc(100% - 76px);min-width:0;color:#444;font:10px/1.8 var(--sans,Arial,sans-serif)!important;white-space:pre-wrap;overflow-wrap:anywhere}' +
-      '.memory-archive-role{display:inline-block;margin-right:4px;color:#171717;font-weight:700}' +
-      '.memory-save-as-longterm{margin-left:76px;padding:4px 0;border:0;border-bottom:1px solid #c7c7c7;background:transparent;color:#555;font:9px/1.5 var(--sans,Arial,sans-serif);text-align:left}' +
-      '.memory-save-as-longterm:disabled{color:#aaa;border-bottom-color:#eee}' +
-      '.memory-archive-empty{padding:28px 0;color:#999;font:11px/1.8 var(--sans,Arial,sans-serif)}' +
-      '.memory-archive-more{width:100%;padding:12px 0;border:0;border-bottom:1px solid #ddd;background:transparent;color:#666;font:10px/1.5 var(--sans,Arial,sans-serif)}' +
-      '.memory-archive-more[hidden]{display:none!important}' +
-      '.mem-tools-corner{border-radius:0!important;background:#fff!important;border:1px solid #ddd!important;color:#444!important}' +
-      '@media(max-width:360px){.memory-metrics{gap:5px}.memory-metrics strong{font-size:19px}.memory-overview-title{font-size:24px}}';
+    style.textContent = `
+      .memory-overview { margin: 18px 0; }
+      .memory-metrics { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: clamp(12px, 4vw, 24px); }
+      .memory-metrics > div { display: flex; flex-direction: column; gap: 6px; padding: 10px 0; text-align: center; }
+      .memory-metrics span { color: #777; font-size: 10px; white-space: nowrap; }
+      .memory-metrics strong { color: #111; font: 22px Georgia, serif; }
+      .memory-archive-tools { margin: 10px 0 16px; }
+      .memory-search-wrap { display: flex; align-items: center; box-sizing: border-box; height: 36px; padding: 0 10px; gap: 6px; border-radius: 7px; background: #f5f5f5; color: #888; font-size: 12px; }
+      .memory-search-wrap input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; color: #333; font-size: 12px; }
+      #mem-list .memory-archive-entry { margin: 0 0 12px; padding: 12px 14px; border: 0; border-radius: 10px; background: #fff; box-shadow: 0 2px 10px #00000010; }
+      .memory-archive-time { display: block; color: #999; font-size: 10px; line-height: 1.4; font-variant-numeric: tabular-nums; }
+      .memory-archive-text { display: block; margin-top: 5px; color: #333; font-size: 14px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
+      .memory-archive-actions { display: flex; justify-content: flex-end; align-items: center; gap: 4px; }
+      .memory-archive-actions button { display: flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 44px; height: 44px; margin: 0; padding: 0; border: 0; background: transparent; color: #888; font: 12px/1 var(--sans, sans-serif); }
+      .memory-archive-more { min-height: 44px; border: 0; background: #fff; color: #555; font-size: 12px; }
+      .memory-save-as-longterm:disabled { opacity: .45; }
+      .memory-save-as-longterm svg { display: block; width: 12px; height: 12px; }
+      .memory-archive-empty { padding: 26px 6px; color: #777; font-size: 13px; }
+      .memory-archive-more[hidden] { display: none; }
+    `;
     document.head.appendChild(style);
   }
   function buildDashboard() {
@@ -94,15 +71,12 @@
     panel.className = 'memory-overview';
     panel.id = 'memory-overview';
     panel.innerHTML =
-      '<div class="memory-overview-kicker">MEMORY / CONTINUITY</div>' +
-      '<div class="memory-overview-title">不是一段摘要。<br><em>是你们真正经历过的时间。</em></div>' +
-      '<p class="memory-overview-note">原始对话完整保留。重要的事情单独强化，旧话题需要时再查找。不必每次把所有历史发给模型。</p>' +
       '<div class="memory-metrics">' +
         '<div><span>真实消息</span><strong id="memory-stat-messages">0</strong></div>' +
         '<div><span>长期记忆</span><strong id="memory-stat-long">0</strong></div>' +
         '<div><span>已固定</span><strong id="memory-stat-fixed">0</strong></div>' +
         '<div><span>待确认</span><strong id="memory-stat-pending">0</strong></div>' +
-      '</div><button type="button" class="memory-archive-cta" id="memory-open-archive">回看真实聊天 </button>';
+      '</div>';
     card.insertAdjacentElement('afterend', panel);
 
     var daily = $('#mem-daily-mood'), latestCard = daily && daily.closest('.mem-card-glass');
@@ -111,7 +85,7 @@
     if (label) label.textContent = '最近一次真实对话';
     if (daily) daily.textContent = '选择角色后显示最新保存的消息';
     var event = $('#mem-daily-event');
-    if (event) event.textContent = '这里不再随机生成不存在的心情或事件。';
+    if (event) event.textContent = '暂无聊天记录';
   }
   function buildArchiveControls() {
     var drawer = $('#mem-stream-drawer'), panel = $('.mem-stream-panel', drawer);
@@ -121,8 +95,7 @@
     tools.id = 'memory-archive-tools';
     tools.className = 'memory-archive-tools';
     tools.innerHTML = '<label class="memory-search-wrap"><span aria-hidden="true">⌕</span>' +
-      '<input id="memory-archive-search" type="search" autocomplete="off" placeholder="搜索这个角色的完整聊天记录"></label>' +
-      '<div class="memory-archive-caption">只在本机检索 · 搜索不会触发 API 调用</div>';
+      '<input id="memory-archive-search" type="search" autocomplete="off" placeholder="搜索时间流"></label>';
     heading.insertAdjacentElement('afterend', tools);
     var more = document.createElement('button');
     more.type = 'button'; more.id = 'memory-archive-more'; more.className = 'memory-archive-more';
@@ -132,15 +105,11 @@
       query = String(this.value || '').trim().toLowerCase(); pageSize = 40; renderTimeline();
     });
     more.addEventListener('click', function () { pageSize += 40; renderTimeline(); });
-    $('#memory-open-archive').addEventListener('click', function () {
-      var open = $('.mem-preview-open');
-      if (open) open.click();
-    });
   }
   function updateDashboard() {
     var active = getActive();
     roleId = active ? active.id : '';
-    var history = readHistory(roleId), memories = readMemories(roleId);
+    var history = fullHistory.map(function (entry) { return entry.message; }), memories = readMemories(roleId);
     var texts = history.filter(function (m) { return !!msgText(m); });
     var set = function (id, value) { var el = $('#' + id); if (el) el.textContent = String(value); };
     set('memory-stat-messages', texts.length.toLocaleString('zh-CN'));
@@ -170,12 +139,10 @@
     if (!list) return;
     var active = getActive();
     roleId = active ? active.id : '';
-    fullHistory = readHistory(roleId);
-    var records = [];
-    fullHistory.forEach(function (m,index) {
-      var text = msgText(m);
-      if (text) records.push({ index:index, message:m, text:text });
-    });
+    fullHistory = window.PhoneStorage.getMemoryArchiveEntries(roleId);
+    var records = fullHistory.map(function (entry, position) {
+      return { index: entry.index, position: position, message: entry.message, text: msgText(entry.message) };
+    }).filter(function (entry) { return entry.text; });
     var filtered = query ? records.filter(function (entry) {
       return (entry.text + ' ' + msgRole(entry.message)).toLowerCase().indexOf(query) >= 0;
     }) : records;
@@ -191,14 +158,18 @@
         var sourceExcerpt = original.slice(0, 600);
         var normalized = window.MemoryRecall ? window.MemoryRecall.normalize(sourceExcerpt) : sourceExcerpt.trim().toLowerCase();
         var already = memories.some(function (memory) {
-          if (memory.source === 'chat-archive' && Number(memory.sourceMessageIndex) === entry.index) return true;
+          if (!memory) return false;
           return (window.MemoryRecall ? window.MemoryRecall.normalize(memory.content || memory.text || '') : String(memory.content || memory.text || '').trim().toLowerCase()) === normalized;
         });
-        return '<div class="mem-line memory-archive-entry" data-index="' + entry.index + '">' +
-          '<span class="mem-line-time">' + esc(stamp(m.time || m.timestamp)) + '</span>' +
-          '<span class="mem-line-content"><span class="memory-archive-role">' + msgRole(m) + '</span> ' + esc(content) + '</span>' +
-          '<button type="button" class="memory-save-as-longterm" data-action="remember" data-index="' + entry.index + '"' +
-          (already ? ' disabled' : '') + '>' + (already ? '已在长期记忆中' : '加入长期记忆 +') + '</button></div>';
+        return '<div class="memory-archive-entry" data-index="' + entry.index + '">' +
+          '<span class="memory-archive-time">' + esc(stamp(m.time || m.timestamp)) + '</span>' +
+          '<span class="memory-archive-text"><span class="memory-archive-role">' + msgRole(m) + '</span> ' + esc(content) + '</span>' +
+          '<div class="memory-archive-actions">' +
+          '<button type="button" class="memory-save-as-longterm" data-action="remember" data-index="' + entry.position + '"' +
+          (already ? ' disabled aria-label="已加入长期记忆"' : ' aria-label="加入长期记忆"') +
+          '><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' +
+          (already ? 'M5 12l4 4L19 6' : 'M6 4h12v16l-6-4-6 4zM9 10h6m-3-3v6') +
+          '"/></svg></button><button type="button" data-action="delete" data-index="' + entry.position + '">删除</button></div></div>';
       }).join('');
     }
     if (more) {
@@ -207,36 +178,43 @@
     }
     updateDashboard();
   }
-  function onRememberClick(event) {
-    var button = event.target.closest('.memory-save-as-longterm');
+  function onArchiveClick(event) {
+    var button = event.target.closest('button[data-action]');
     if (!button || button.disabled) return;
-    var index = Number(button.getAttribute('data-index')), m = fullHistory[index], text = msgText(m);
-    if (!roleId || !text || !window.MemoryRecall) return;
-    var result = window.MemoryRecall.upsertMemory(roleId, {
-      content:text, category:'detail', importance:3, status:'confirmed',
-      source:'chat-archive', sourceMessageTime:Number(m.time || m.timestamp) || Date.now(),
-      sourceMessageIndex:index
-    });
-    if (result && result.ok) {
-      button.textContent = result.duplicate ? '已强化这条记忆' : '已加入长期记忆';
-      button.disabled = true;
-      updateDashboard();
-    } else button.textContent = '保存失败，请重试';
+    var entry = fullHistory[Number(button.dataset.index)];
+    if (!roleId || !entry) return;
+    if (button.dataset.action === 'delete') {
+      if (!confirm('从记忆空间删除这条时间流记录？聊天原文会保留。')) return;
+      if (!window.PhoneStorage.hideMemoryArchiveEntry(roleId, entry.key)) { alert('删除失败，请重试'); return; }
+    } else {
+      var m = entry.message;
+      var result = window.MemoryRecall.upsertMemory(roleId, {
+        content: msgText(m), category: 'detail', importance: 3, status: 'confirmed',
+        source: 'chat-archive', sourceMessageTime: Number(m.time || m.timestamp) || Date.now(),
+        sourceMessageIndex: entry.index
+      });
+      if (!result || !result.ok) { alert('保存失败，请重试'); return; }
+    }
+    document.dispatchEvent(new Event('memory-space-change'));
   }
   function init() {
     addStyles(); buildDashboard(); buildArchiveControls();
     var list = $('#mem-list');
-    if (list) list.addEventListener('click', onRememberClick);
+    if (list) list.addEventListener('click', onArchiveClick);
     var picker = $('#charPicker');
     if (picker) picker.addEventListener('click', function () {
       query = ''; pageSize = 40;
       var input = $('#memory-archive-search'); if (input) input.value = '';
       renderTimeline();
     });
-    renderTimeline(); updateDashboard();
-    $('#memory-open-archive')?.addEventListener('click', function () {
-      var open = $('.mem-preview-open'); if (open) open.click();
+    document.addEventListener('memory-space-change', renderTimeline);
+    window.addEventListener('storage', function (event) {
+      if (!event.key || event.key === 'phone_data_v2' || event.key === 'chat_history_' + roleId ||
+          event.key === 'chat_memories_' + roleId || event.key === 'chat_memory_archive_v1_' + roleId) {
+        document.dispatchEvent(new Event('memory-space-change'));
+      }
     });
+    renderTimeline();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();

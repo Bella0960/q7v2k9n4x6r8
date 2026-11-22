@@ -5,31 +5,55 @@
 (function () {
   'use strict';
 
-  var GUIDE_VERSION = '2026.11.11 · v2';
+  // Reader-facing edition is NOT a software release number.
+  var GUIDE_VERSION = '2026.11 · 阅读版';
   var STORAGE_KEY = 'maomao_tutorial_progress_v1';
 
-  var GUIDE_UPDATES = [
-    {
-      date: '2026-11-11',
-      title: '教程全面补全',
-      items: [
-        '新增逐步引导模式：一次显示一个操作步骤，带界面定位示意、真实页面入口、练习目标和本地步骤进度。',
-        '教程扩展到 50 项，覆盖全部 29 个桌面应用；聊天底部「＋」菜单 19 个入口单独说明，并增加常见问题。',
-        '补正头像配对和表情收藏操作名称；角色自主挑图只使用标记为「公开」的图片，并补上对话设置直达兜底。'
-      ]
-    },
-    {
-      date: '2026-11-11',
-      title: '聊天多媒体功能更新',
-      items: [
-        'PR #241：多气泡回复、角色专属表情收藏与自动发送、角色头像收藏、配对头像和图片识别。',
-        'PR #240：角色可以根据聊天语境，从自己的角色图片图库中自主挑图发送。',
-        '对话设置的「单条 / 自动 / 连续多条」入口已写入教程；主动联系与真实后台推送仍分开验收。'
-      ]
-    }
-  ];
+  // Only explicitly approved, publicly released versions belong here.
+  // Do not automatically promote PR numbers, QA patches, personal test notes,
+  // or unverified preview features to a product release announcement.
+  // Format: {version:'1.0.0', date:'YYYY-MM-DD', approved:true,
+  //          status:'published', title:'...', highlights:['...']}.
+  var OFFICIAL_RELEASE_NOTES = [];
 
   var GUIDES = [
+    {
+      "id": "fanwai-story-qa",
+      "category": "聊天",
+      "title": "番外剧场与隐藏故事设置（QA 待验收）",
+      "summary": "角色线上单聊中的独立番外；先选择预设主题或自定义故事，设置默认折叠，不干扰主线聊天或长期记忆。",
+      "location": "桌面 → 聊天 → 打开一位角色的单聊 → 输入栏「＋」→「番外」→ 故事页面「···」。",
+      "steps": [
+        "进入一对一角色聊天，点底部「＋」，选择「番外」；群聊与未登录的错误账号环境不应显示该入口。",
+        "选择番外主题并预览，或者填写自定义故事；点故事页的「···」展开隐藏的「故事设置」。",
+        "在「记忆方式」中选「不带记忆」或「参考角色记忆」，并可将「对话篇幅」设为短篇 40 条、中篇 80 条、长篇 100 条。",
+        "角色人设始终保留；可选记忆只用于这篇番外，不允许写入原聊天、长期记忆或钱包。保存失败或设置未安全读取时，应阻止按错误偏好开始生成。",
+        "先用测试角色验证番外创建、目录、恢复阅读和删除确认；没有完成真实手机验收前，不能当作成功，不要把测试保存结果误报成正式验收。"
+      ],
+      "test": "在唯一隔离 QA 里创建一篇短篇，再关闭重进确认目录与设置仍在；验证不带记忆/参考角色记忆切换不影响主线聊天和记忆。",
+      "href": "../chat/chat/chat.html",
+      "action": "打开聊天",
+      "issue": true,
+      "defaultNote": "番外页面仍待 Vite/Chromium/Android/iPhone 验收；发现保存失败、账号不一致或主线记录变化时停止操作。"
+    },
+    {
+      "id": "account-qa",
+      "category": "设置",
+      "title": "账号与管理员中心（QA 待验收）",
+      "summary": "从已有账号登录入口进入，查看永久账号 ID、设备、会话以及管理员权限；该功能仍须经过独立 QA 验收。",
+      "location": "账号入口 → 已有账号 · 登录；登录后桌面 → 设置 → 顶部账号 → 账号管理。",
+      "steps": [
+        "在隔离测试版使用已有测试账号，选「已有账号 · 登录」；不要为了测试重新注册或覆盖管理员 001。",
+        "登录后打开「设置」，点击顶部账号信息进入「账号管理」，检查永久 ID、登录设备、登录会话及退出入口。",
+        "管理员中心只有受服务器授权的管理员会话能访问；不能仅根据页面是否显示按钮判断权限安全。",
+        "本机备份不等于云端账号的可恢复备份。原密码登录、跨账号隔离、回滚与 Android/iPhone 真机均需要独立验收。"
+      ],
+      "test": "仅在隔离 QA 环境使用测试账号检查登录、账号资料和退出；不得对正式账号执行停用、重置或清空。",
+      "href": "../account/index.html",
+      "action": "打开账号入口",
+      "issue": true,
+      "defaultNote": "账号安全与生产切换未完成完整验收。发现账号不一致时立即停止，不尝试清空或重新创建管理员。"
+    },
     {
       id: 'desktop', category: '入门', title: '桌面、翻页与应用入口',
       summary: '先认识桌面图标、页面翻页和编辑模式。新应用会自动出现在桌面，不需要重新摆放旧图标。',
@@ -321,7 +345,8 @@
       href:'../chat/chat/chat.html', action:'打开聊天'
     },
 
-    // 桌面 29 个应用逐项说明：以每个应用当前真实页面结构为准。
+    // 桌面应用逐项说明：数量由真实桌面决定，新增入口须同步教程与速查。
+    {id:'app-theme-studio',category:'外观',title:'主题工作台',summary:'直接在手机上制作聊天列表、聊天详情与气泡样式，先预览再应用，不影响其他应用。',location:'桌面 → 主题工作台。',steps:['从桌面打开「主题工作台」，上方是固定的聊天预览，下方可以手指上下滚动调节。','选「聊天主页」可以调封面、音乐舱、聊天卡片、头像、字号与留白；上方预览保留当前聊天首页结构，还能切换微信顶部。','切到「聊天详情」调顶栏、对话背景和底部输入框，支持独立上传背景图片；没有点击「应用」前都只是草稿。','在「图片素材」里分别给主页封面、聊天卡片底纸和对话背景选择图片。图片保存在本机素材库，JSON/CSS 不包含图片本身，换设备需要重新导入。','选「聊天气泡」，可以切换全部角色或单个角色，调颜色、圆角、尾巴和大小。','点「保存为方案」保存命名预设；需要交换样式时用「导出」或「导入 JSON / CSS」。想恢复旧版样式，点「停用当前定制」。'],test:'先改一项列表或详情颜色并应用，进入聊天验证生效；再停用确认原有样式恢复。单独切换角色验证气泡不会串号。',href:'../theme-studio/theme-studio.html',action:'打开主题工作台'},
     {id:'app-tutorial',category:'入门',title:'教程',summary:'从这里查功能入口、一步一步跟着真实页面操作，并保存测试记录。',location:'桌面 → 教程。',steps:['打开教程，先看「最近更新」了解当前版本增加了什么。','通过分类或搜索找到功能，点「一步一步跟着做」进入单步引导。','每一步可以打开真实页面，在新标签页完成操作后切回教程继续。','测试后勾选「我已经在手机上实际测试过这一项」，遇到问题写备注并导出测试记录。'],test:'启动任意一项分步教程，前进和后退，再勾选一条测试状态，刷新页面确认进度保留。',href:'../tutorial/tutorial.html',action:'打开教程'},
     {id:'app-inspect',category:'应用',title:'查手机',summary:'查看虚构角色的微信、朋友圈、浏览器、备忘录、钱包、音乐、地图、相册与设备剧情。支持角色许可、选择板块、单独刷新和剧情密码。',location:'桌面 → 查手机。',steps:['打开「查手机」后先选角色，进入该角色的虚构手机。','按照锁屏提示上滑或轻点，阅读角色的同意、犹豫或拒绝反馈；拒绝时不能强行进入。','勾选需要查看的板块，点「开始查看已选板块」，回到手机桌面后打开相应应用。','微信可以看具名联系人、撤回和已读未回，也可以以角色身份发送虚构消息；只有配置聊天 API 才会生成联系人回复。','在某个板块右上角点「刷新本板块」只更新该板块。未设置 API 时显示明确标记的本地剧情样例。','备忘录锁定区的剧情密码默认为111111，隐藏相册使用角色专属密码，能看到的内容随角色关系进度变化。','切换另一个角色检查聊天、秘密、相册与消费记录是否完全隔离；历史记录不会因自然跨天而直接清空。'],test:'选择两个角色分别打开，检查角色许可、5位以上联系人、10个板块、独立刷新、错误结果保留及跨角色记录隔离。此功能不读取真实通讯录、GPS 或支付记录。',href:'../inspect-phone/select.html',action:'打开查手机'},
     {id:'app-worldbook',category:'应用',title:'世界书',summary:'用于管理故事世界设定和可供角色引用的资料条目。',location:'桌面 → 世界书。',steps:['打开「世界书」，查看现有世界设定列表。','新增或编辑条目时，先写清条目标题、背景内容和触发线索，再保存。','返回角色聊天，用条目中明确的关键词验证上下文是否能引用该设定。'],test:'新增一条无敏感内容的测试设定，保存后重新进入世界书确认仍存在。',href:'../worldbook/worldbook/worldbook.html',action:'打开世界书'},
@@ -334,17 +359,20 @@
     {id:'app-characters',category:'角色',title:'角色库',summary:'创建和管理主角色，进入每个角色独立档案。',location:'桌面 → 角色库。',steps:['打开角色库，查看角色列表。','点开某个角色进入档案；可继续管理头像、基本资料、人设和说话习惯。','使用右上角添加入口创建新主角色，保存后回列表确认。'],test:'打开两位主角色档案，确认头像收藏和生活线数据各自独立。',href:'../worldbook/characters/characters.html',action:'打开角色库'},
     {id:'app-footprint',category:'角色',title:'角色足迹',summary:'按时间查看角色的行程和生活记录。',location:'桌面 → 角色足迹；也可从角色对话设置的 CHAT TOOLS → 足迹进入。',steps:['打开「角色足迹」，查看本周时间线和日期分组。','点开某条足迹记录，阅读当天行程和相关记忆。','切换角色或日期，查看对应记录是否更新。'],test:'打开一条足迹详情再返回时间线，确认页面导航和日期显示正常。',href:'../chat/footprint/footprint.html',action:'打开角色足迹'},
     {id:'app-settings',category:'设置',title:'设置',summary:'管理 API、图片生成、语音和手机外观等全局配置。',location:'桌面 → 设置。',steps:['打开设置，先查看 API 设置区域。','进入 API 设置，按服务商要求配置聊天模型；要生图还需单独配置图片模型。','回到设置，打开「角色生图与图库」可为某个角色保存外貌、生成图片和管理图库。'],test:'检查设置页和 API 设置能否打开；不要把 API Key 写入教程备注。',href:'../settings/settings.html',action:'打开设置'},
+    {id:'app-admin-center',category:'管理',title:'管理中心',summary:'只有登录并获得超级管理员授权的账号可以管理 MAOMAO 的账号与邀请码。',location:'桌面 → 管理中心（管理员专用）。',steps:['先在当前隔离 QA 使用已有管理员账号登录；未经授权的账号不能进入管理中心。','从桌面打开「管理中心」，确认账号状态、授权列表和审计入口是否正常显示。','仅做只读验收，确认错误账号被引导至登录页；不要在正式版停用、重置、撤销或清空任何账户。'],test:'在隔离 QA 中验证管理员能打开管理中心、普通账号不能访问；不修改正式数据或执行破坏性管理操作。',href:'../admin/admin-center.html',action:'打开管理中心'},
     {id:'app-finance',category:'应用',title:'记账',summary:'记录和回顾 MAOMAO 内的收支条目。',location:'桌面 → 记账。',steps:['打开记账页，查看最近交易列表。','按页面可见的新增入口填写一笔测试记录，再检查金额和分类。','确认新记录显示在最近交易中后再离开。'],test:'新增一笔可辨认的测试记录，确认列表出现；随后按页面功能清理测试数据。',href:'../wallet/finance.html',action:'打开记账'},
     {id:'app-takeout',category:'应用',title:'外卖',summary:'浏览菜单并体验应用内模拟点餐和结算。',location:'桌面 → 外卖。',steps:['打开外卖页面，先浏览店铺和菜品分类。','选一份测试商品，查看购物车的数量和金额变化。','结算前确认这是 MAOMAO 内模拟订单，不会向真实商家下单。'],test:'仅将商品加入购物车并核对金额；不填写真实地址、电话或支付信息。',href:'../wallet/takeout.html',action:'打开外卖'},
     {id:'app-couple',category:'社交',title:'情侣空间',summary:'查看共同资料、愿望清单、动态和私密留言等区域。',location:'桌面 → 情侣空间。',steps:['打开情侣空间，依次认识 Profile、Bucket List、Moments、Whispers、Today。','在对应区域查看资料、愿望和记录；保存前确认对象和内容。','返回首页确认各区域仍显示对应内容。'],test:'只新增一条不含隐私的测试愿望或记录，确认显示后再决定是否保留。',href:'../couple/couple.html',action:'打开情侣空间'},
     {id:'app-growth',category:'应用',title:'共同成长',summary:'查看成长清单和一起解锁的项目。',location:'桌面 → 共同成长。',steps:['打开共同成长，查看「成长清单」和「一起解锁」。','选择一项适合的清单内容，按页面现有控件更新进度。','回到页面确认进度状态已更新。'],test:'完成一项可撤销的测试清单项，确认状态变化并记录结果。',href:'../growth/growth.html',action:'打开共同成长'},
     {id:'app-companion',category:'应用',title:'陪伴日历',summary:'查看日历、今天想聊的话题和重要日子。',location:'桌面 → 陪伴日历。',steps:['打开陪伴日历，查看今天日期和日历区域。','浏览「今天想聊什么」的提示。','进入「记住重要日子」区域，查看已保存的日期或按页面入口添加新日期。'],test:'查看一个已有日期提醒，确认日期和文字正常显示。',href:'../companion/companion.html',action:'打开陪伴日历'},
     {id:'app-games',category:'应用',title:'游戏大厅',summary:'查看可玩的互动游戏和调查类工具。',location:'桌面 → 游戏大厅。',steps:['打开游戏大厅，查看默契猜词、调查工具箱等卡片。','选择一个游戏进入，先阅读页面规则再开始。','结束后返回大厅，确认进度或结果按页面提示保存。'],test:'打开一个游戏并完成一次非破坏性练习，确认入口和返回流程正常。',href:'../games/games.html',action:'打开游戏大厅'},
+    {id:'app-luckroom',category:'应用',title:'一点运气',summary:'和角色一起体验抽签、大转盘、78 张塔罗与今日运势。结果仅供娱乐参考。',location:'桌面 → 一点运气。',steps:['打开「一点运气」，可先选择一位角色，也可以选择独自游玩。','在「抽签」选择签筒并抽取；也能设置由你、角色或轮流抽签。','在「大转盘」中选择或编辑选项，点击旋转查看结果。','在「塔罗」中选择单张或过去／现在／未来三张牌阵，洗牌后点每张水晶牌翻开解读。','在「今日运势」查看娱乐化的今日卡片；通过历史记录检查不同角色的结果是否独立。'],test:'切换单张和三张塔罗，确认重新洗牌期间旧牌被隐藏、三张牌能分别翻开；切换角色后历史记录不串台。',href:'../luck-room/luck-room.html',action:'打开一点运气'},
     {id:'app-cafe',category:'应用',title:'咖啡馆',summary:'体验小店经营页面及经营事件。',location:'桌面 → 咖啡馆。',steps:['打开咖啡馆，查看「把一家小店，慢慢经营好」的首页内容。','按页面卡片进入经营项目或事件，先读清楚操作说明。','返回首页检查店铺状态或记录是否发生变化。'],test:'只进行一次低风险经营操作，检查页面响应及状态显示。',href:'../cafe/cafe.html',action:'打开咖啡馆'},
     {id:'app-live',category:'应用',title:'直播间',summary:'进入直播间页面查看当前可用直播内容与互动入口。',location:'桌面 → 直播间。',steps:['打开直播间，确认页面加载。','查看当前直播内容、角色信息和页面上实际出现的互动控件。','若没有直播内容，先确认角色资料和相关数据是否已准备，不要把空状态当成已开播。'],test:'打开直播间并返回桌面，确认页面不白屏；未显示直播时记录空状态提示。',href:'../companion/live.html',action:'打开直播间'},
     {id:'app-poster',category:'应用',title:'视觉档案',summary:'浏览保存的视觉海报与档案展示。',location:'桌面 → 视觉档案。',steps:['打开视觉档案，查看 VISUAL Archive 页面。','浏览已有视觉作品，选择一项打开详情。','返回列表检查作品卡片和图片是否正常载入。'],test:'打开一张已有视觉作品并返回，确认图片资源可正常显示。',href:'../poster/poster.html',action:'打开视觉档案'},
     {id:'app-library',category:'应用',title:'阅读',summary:'在书架中浏览和阅读书籍，并查看阅读设置。',location:'桌面 → 阅读。',steps:['打开阅读页，先查看「书架」中的书目。','点一本书进入阅读内容，按页面操作翻页或继续阅读。','需要调整阅读体验时打开页面内「设置」，完成后返回书架。'],test:'打开一本已有书并返回书架，确认书目和阅读位置仍正常。',href:'../library/library.html',action:'打开阅读'},
     {id:'app-envelope',category:'应用',title:'信封',summary:'为选定角色写下私人信件并查看往来信笺。',location:'桌面 → 信封。',steps:['打开信封，先在页面的「选择通信对象」处选择收信角色。','进入写信界面，填写信件内容和标题，再按页面保存或发送。','返回信封列表，检查信件是否归属于正确通信对象。'],test:'给测试角色写一封不含隐私的短测试信，确认收件角色正确。',href:'../envelope/envelope.html',action:'打开信封'},
+    {id:'app-encounter',category:'应用',title:'邂逅',summary:'随机认识新人物，先收藏候选，再决定是否加入角色库；已有角色保持不变。',location:'桌面 → 邂逅；右上角「···」调整抽卡偏好。',steps:['打开邂逅，查看当前人物卡；向左滑动可跳过，向右滑动或点「收藏」可保留候选。','打开「候选收藏」查看已保存的人物；更换卡片不会把原角色库中的人设覆盖。','需要深入认识时从候选详情选择故事起点；只有主动确认创建后才将候选加入正式角色库。','返回「角色库」核对新角色与原有角色均正常；如果提示重名、保存失败或身份冲突，停止提交并记录报错。'],test:'在唯一 QA 使用测试候选完成一次收藏与重新打开，确认候选保留；正式创建角色要另外核对不会重复或覆盖已有角色。',href:'../encounter/encounter.html',action:'打开邂逅',issue:true},
     {id:'app-diary',category:'应用',title:'日记',summary:'按日期写入和回顾日记记录。',location:'桌面 → 日记。',steps:['打开日记，查看日历和已有记录。','选择日期后查看当日条目；使用页面内编辑入口新建或修改记录。','若页面提供「让角色读读这一页」，先检查选定角色，再决定是否发送给角色阅读。'],test:'新增一条无隐私的测试日记，切换日期后再返回确认记录保留。',href:'../diary/diary.html',action:'打开日记'},
     {id:'app-novel',category:'应用',title:'小说工坊',summary:'从作品书架进入作品设定、故事资料库、章节策划和读者来信。',location:'桌面 → 小说工坊。',steps:['打开小说工坊，查看「书架」和「所有作品」。','进入一部作品后，先补充「作品设定」和「故事资料库」。','按创作需要打开「章节策划台」或「读者来信」，不同工具负责不同环节。'],test:'创建一部测试作品并返回书架，确认作品卡片出现。',href:'../novel/novel.html',action:'打开小说工坊'},
     {id:'app-travel',category:'应用',title:'触梦旅行',summary:'浏览目的地档案、即将出发和已经抵达的旅程。',location:'桌面 → 触梦旅行。',steps:['打开触梦旅行，查看「旅程档案」首页。','在目的地档案中浏览地点和介绍，再选择想查看的目的地。','在「即将出发」与「已经抵达」区域查看旅程状态。'],test:'打开一个目的地详情再返回，确认卡片和介绍都能显示。',href:'../travel/dream-travel.html',action:'打开触梦旅行'},
@@ -375,10 +403,12 @@
     ['钱包', 'wallet/wallet.html', '钱包与虚拟交易'],
     ['音乐', 'music/music.html', '音乐播放器'],
     ['聊天美化', 'beauty/beauty.html', '聊天界面美化'],
+    ['主题工作台', 'theme-studio/theme-studio.html', '手机聊天列表、详情及气泡样式编辑'],
     ['主题商城', 'theme-store/theme-store.html', '主题方案'],
     ['角色库', 'worldbook/characters/characters.html', '角色资料、头像收藏与配对'],
     ['角色足迹', 'chat/footprint/footprint.html', '角色相关足迹'],
     ['设置', 'settings/settings.html', 'API 与应用设置'],
+    ['管理中心', 'admin/admin-center.html', '仅管理员使用的账号与授权管理'],
     ['教程', 'tutorial/tutorial.html', '逐步学习、练习与测试记录'],
     ['记账', 'wallet/finance.html', '账目记录'],
     ['外卖', 'wallet/takeout.html', '外卖模拟应用'],
@@ -386,11 +416,13 @@
     ['共同成长', 'growth/growth.html', '成长记录'],
     ['陪伴日历', 'companion/companion.html', '陪伴日历'],
     ['游戏大厅', 'games/games.html', '游戏入口'],
+    ['一点运气', 'luck-room/luck-room.html', '抽签、转盘、塔罗与今日运势'],
     ['咖啡馆', 'cafe/cafe.html', '咖啡馆'],
     ['直播间', 'companion/live.html', '直播间'],
     ['视觉档案', 'poster/poster.html', '视觉资料'],
     ['阅读', 'library/library.html', '阅读与书架'],
     ['信封', 'envelope/envelope.html', '私人信件'],
+    ['邂逅', 'encounter/encounter.html', '人物抽卡、候选收藏与加入角色库'],
     ['日记', 'diary/diary.html', '日记记录'],
     ['小说工坊', 'novel/novel.html', '小说创作'],
     ['触梦旅行', 'travel/dream-travel.html', '旅行探索'],
@@ -426,17 +458,34 @@
   function renderUpdates() {
     $('guideVersion').textContent = GUIDE_VERSION;
     $('footerVersion').textContent = GUIDE_VERSION;
-    var latest = GUIDE_UPDATES[0];
-    $('updatesDate').textContent = latest ? latest.date : '暂无记录';
-    $('updateList').innerHTML = '';
-    GUIDE_UPDATES.forEach(function (update) {
-      update.items.forEach(function (item) {
-        var row = document.createElement('div');
-        row.className = 'update-item';
-        row.innerHTML = '<span class="update-dot"></span><span>' + escapeHtml(item) + '</span>';
-        $('updateList').appendChild(row);
-      });
+    var published = OFFICIAL_RELEASE_NOTES.filter(function (release) {
+      return release && release.approved === true &&
+        release.status === 'published' && release.version &&
+        release.date && Array.isArray(release.highlights);
     });
+    var newest = published[0];
+    $('updatesDate').textContent = newest
+      ? ('VERSION ' + newest.version + ' / ' + newest.date)
+      : 'PUBLIC RELEASE NOTES';
+    if (!newest) {
+      $('updateList').innerHTML =
+        '<div class="release-empty">' +
+          '<div class="release-status">NO PUBLIC RELEASE YET · 尚未发布</div>' +
+          '<h3>正式更新公告将在发布后登载。</h3>' +
+          '<p>这里仅记录正式版本的重要新功能、核心体验改进与安全稳定性更新。' +
+          '开发测试、内部任务和零碎调整不作为版本公告发布。</p>' +
+        '</div>';
+      return;
+    }
+    $('updateList').innerHTML = published.map(function (release) {
+      return '<article class="release-entry">' +
+        '<div class="release-status">PUBLIC RELEASE / ' + escapeHtml(release.version) +
+          ' · ' + escapeHtml(release.date) + '</div>' +
+        '<h3>' + escapeHtml(release.title || '版本更新') + '</h3>' +
+        '<ul>' + release.highlights.slice(0, 4).map(function (item) {
+          return '<li>' + escapeHtml(item) + '</li>';
+        }).join('') + '</ul></article>';
+    }).join('');
   }
   function renderFilters() {
     $('guideFilters').innerHTML = categories.map(function (name) {
@@ -464,32 +513,44 @@
   var activeWalkthrough = null;
   var activeStepIndex = 0;
 
-  function guideCard(guide) {
+  function guideCard(guide, index) {
     var state = entryState(guide.id);
     var checked = state.done === true;
     var note = state.note == null ? (guide.defaultNote || '') : String(state.note);
     var walked = Array.isArray(state.walked) ? state.walked.length : 0;
     var status = guide.issue
       ? '<span class="status issue">待真机复测</span>'
-      : '<span class="status">操作指南</span>';
+      : '<span class="status">阅读指南</span>';
     var stepCount = (guide.steps || []).length;
     var open = guide.href
-      ? '<a class="open-link" href="' + escapeHtml(guide.href) + '" target="_blank" rel="noopener">' + escapeHtml(guide.action || '打开功能') +
-        '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></a>'
+      ? '<a class="open-link" href="' + escapeHtml(guide.href) +
+          '" target="_blank" rel="noopener">' +
+          escapeHtml(guide.action || '打开功能') + '</a>'
       : '';
+    var number = String(index + 1).padStart(2, '0');
     return '<article class="guide-card" data-guide-id="' + escapeHtml(guide.id) + '">' +
-      '<div class="guide-top"><div class="guide-title-wrap"><div class="guide-category">' + escapeHtml(guide.category.toUpperCase()) +
-      '</div><h3 class="guide-title">' + escapeHtml(guide.title) + '</h3><p class="guide-summary">' + escapeHtml(guide.summary) +
-      '</p></div>' + status + '</div>' +
-      '<div class="guide-location"><b>入口：</b>' + escapeHtml(guide.location) + '</div>' +
-      '<div class="test-description" style="margin-top:10px;">' + stepCount + ' 个分步操作 · 已走完 ' + walked + ' 步</div>' +
-      '<div class="test-box"><div class="test-title">本项怎么测</div><p class="test-description">' + escapeHtml(guide.test || '按步骤打开功能并确认页面正常。') + '</p>' +
-      '<label class="test-mark"><input type="checkbox" data-done="' + escapeHtml(guide.id) + '"' + (checked ? ' checked' : '') +
-      '> 我已经在手机上实际测试过这一项</label>' +
-      '<textarea class="note" data-note="' + escapeHtml(guide.id) + '" rows="2" placeholder="测试备注 / 遇到的问题">' + escapeHtml(note) + '</textarea></div>' +
-      '<div class="guide-actions"><button class="start-guide" type="button" data-start-guide="' + escapeHtml(guide.id) + '">一步一步跟着做</button>' +
-      open + '<span class="guide-hint">' + (guide.issue ? '有待真机复测记录；完成测试后请在备注写下设备和现象。' : '勾选状态和备注只保存在本浏览器。') + '</span></div>' +
-      '</article>';
+      '<details class="guide-sheet"><summary class="guide-top">' +
+      '<span class="guide-index">' + number + '</span>' +
+      '<span class="guide-title-wrap"><span class="guide-category">' +
+        escapeHtml(guide.category.toUpperCase()) +
+      '</span><span class="guide-title">' + escapeHtml(guide.title) +
+      '</span><span class="guide-summary">' + escapeHtml(guide.summary) + '</span></span>' +
+      '<span class="guide-read">阅读</span></summary>' +
+      '<div class="guide-details"><div class="guide-location"><b>操作入口</b>' +
+        escapeHtml(guide.location) + '</div>' +
+      '<p class="guide-step-meta">' + stepCount + ' 个分步操作 · 已阅读 ' +
+        walked + ' 步</p>' +
+      '<div class="guide-actions"><button class="start-guide" type="button" data-start-guide="' +
+        escapeHtml(guide.id) + '">开始逐步阅读</button>' + open + '</div>' +
+      '<div class="test-box"><div class="test-title">个人验证与笔记　' + status + '</div>' +
+      '<p class="test-description">' +
+        escapeHtml(guide.test || '按步骤打开功能并确认页面正常。') + '</p>' +
+      '<label class="test-mark"><input type="checkbox" data-done="' +
+        escapeHtml(guide.id) + '"' + (checked ? ' checked' : '') +
+        '> 我已在自己的设备上完成检查</label>' +
+      '<textarea class="note" data-note="' + escapeHtml(guide.id) +
+        '" rows="2" placeholder="随手记下操作结果和问题">' +
+        escapeHtml(note) + '</textarea></div></div></details></article>';
   }
   function renderGuides() {
     var query = String($('guideSearch').value || '').trim().toLowerCase();
@@ -542,16 +603,16 @@
     var target = typeof raw === 'object' && raw.target ? raw.target : targetLabel(text);
     var route = String(guide.location || '').split(/\s*→\s*/).filter(Boolean);
     $('walkTitle').textContent = guide.title;
-    $('walkStepCount').textContent = '第 ' + (activeStepIndex + 1) + ' 步 / 共 ' + steps.length + ' 步';
+    $('walkStepCount').textContent = 'PAGE ' + (activeStepIndex + 1) + ' / ' + steps.length;
     $('walkPercent').textContent = Math.round((activeStepIndex + 1) / steps.length * 100) + '%';
     $('walkProgressBar').style.width = ((activeStepIndex + 1) / steps.length * 100) + '%';
     $('walkRoute').innerHTML = route.map(function (part, index) {
-      return (index ? '<span class="walk-route-arrow">›</span>' : '') +
+      return (index ? '<span class="walk-route-separator" aria-hidden="true">/</span>' : '') +
         '<span class="walk-route-chip">' + escapeHtml(part) + '</span>';
     }).join('');
     $('walkPhoneTarget').textContent = target.slice(0, 15);
     $('walkVisualTarget').textContent = target;
-    $('walkStepTitle').textContent = '操作 ' + (activeStepIndex + 1);
+    $('walkStepTitle').textContent = 'STEP ' + String(activeStepIndex + 1).padStart(2, '0');
     $('walkStepCopy').textContent = text;
     $('walkStepTip').textContent = typeof raw === 'object' && raw.tip
       ? String(raw.tip) : '按当前步骤操作真实页面。若页面上的按钮名称或布局与这里不同，先不要猜，记录差异并在对应教程卡片里备注。';
@@ -562,6 +623,18 @@
     $('walkNext').textContent = activeStepIndex === steps.length - 1 ? '完成引导' : '下一步';
     $('walkOpenPage').href = guide.href || '../index.html';
   }
+  // The book is a live reader: updating a chapter's progress must not
+  // rebuild the whole list and collapse the chapter the user was reading.
+  function refreshChapterProgress(guide) {
+    if (!guide || !$('guideGrid')) return;
+    var sheet = $('guideGrid').querySelector('[data-guide-id="' + guide.id + '"]');
+    var counter = sheet && sheet.querySelector('.guide-step-meta');
+    if (!counter) return;
+    var state = stepState(guide);
+    counter.textContent = (guide.steps || []).length + ' 个分步操作 · 已阅读 ' +
+      state.walked.length + ' 步';
+  }
+
   function startGuide(id) {
     var guide = GUIDES.find(function (item) { return item.id === id; });
     if (!guide) return;
@@ -587,6 +660,7 @@
       state.learned = state.walked.length === activeWalkthrough.steps.length;
       state.lastStep = activeStepIndex;
       saveWalkthroughState();
+      refreshChapterProgress(activeWalkthrough);
       closeGuide();
       return;
     }
@@ -594,7 +668,7 @@
     state.lastStep = activeStepIndex;
     saveWalkthroughState();
     renderWalkthrough();
-    renderGuides();
+    refreshChapterProgress(activeWalkthrough);
   }
 
   function exportProgress() {
@@ -644,7 +718,7 @@
     if (this.checked && index === -1) state.walked.push(activeStepIndex);
     if (!this.checked && index !== -1) state.walked.splice(index, 1);
     saveWalkthroughState();
-    renderGuides();
+    refreshChapterProgress(activeWalkthrough);
   });
   $('walkthroughModal').addEventListener('click', function (event) {
     if (event.target === $('walkthroughModal')) closeGuide();

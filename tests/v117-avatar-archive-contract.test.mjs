@@ -11,4 +11,6 @@ test('archive is after core role settings and folded by default',()=>{
   assert.doesNotMatch(role,/<details class="avatar-library-section" open/);
   assert.match(html,/\.avatar-library-trigger\s*\{/);
   assert.match(role,/id="avatarPairList"/);
+  assert.match(role,/avatar-autonomy/);
+  assert.match(role,/id="avatarPairDisclosure"/);
 });

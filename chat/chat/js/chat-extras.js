@@ -89,11 +89,25 @@
   const panelOverlay = document.getElementById('plusPanelOverlay');
   const plusBtn = document.getElementById('plus-action-btn');
 
+  const sectionButtons = panelOverlay ? panelOverlay.querySelectorAll('[data-plus-section]') : [];
+  function setPlusSection(name) {
+    sectionButtons.forEach(function (button) {
+      const selected = button.dataset.plusSection === name;
+      button.setAttribute('aria-expanded', String(selected));
+      document.getElementById(button.getAttribute('aria-controls')).hidden = !selected;
+    });
+  }
+
   function openPlusPanel() {
-    if (panelOverlay) panelOverlay.classList.add('active');
+    if (!panelOverlay) return;
+    panelOverlay.classList.add('active');
+    if (plusBtn) plusBtn.setAttribute('aria-expanded', 'true');
   }
   function closePlusPanel() {
-    if (panelOverlay) panelOverlay.classList.remove('active');
+    if (!panelOverlay) return;
+    panelOverlay.classList.remove('active');
+    if (plusBtn) plusBtn.setAttribute('aria-expanded', 'false');
+    setPlusSection('');
   }
   function togglePlusPanel() {
     if (panelOverlay && panelOverlay.classList.contains('active')) closePlusPanel();
@@ -104,15 +118,38 @@
 
   if (plusBtn) plusBtn.addEventListener('click', togglePlusPanel);
   if (panelOverlay) {
-    document.getElementById('plusPanelBackdrop').addEventListener('click', closePlusPanel);
-    panelOverlay.querySelectorAll('.plus-item').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        const feat = btn.getAttribute('data-feat');
-        closePlusPanel();
-        handleFeature(feat);
+    sectionButtons.forEach(function (button) {
+      button.addEventListener('click', function () {
+        setPlusSection(button.getAttribute('aria-expanded') === 'true' ? '' : button.dataset.plusSection);
       });
     });
+    panelOverlay.querySelectorAll('.plus-item[data-feat]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        closePlusPanel();
+        handleFeature(btn.dataset.feat);
+      });
+    });
+    document.addEventListener('click', function (event) {
+      if (panelOverlay.classList.contains('active') &&
+          !panelOverlay.contains(event.target) && !event.target.closest('#chat-form')) {
+        closePlusPanel();
+      }
+    });
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape' && panelOverlay.classList.contains('active')) {
+        const restoreFocus = panelOverlay.contains(document.activeElement);
+        closePlusPanel();
+        if (restoreFocus && plusBtn) plusBtn.focus();
+      }
+    });
   }
+
+  // 原「＋」面板初始化完成后立刻装载番外，避免其他可选扩展初始化异常阻断入口。
+  // 只加载现有模块，不增设第二套聊天页面或事件系统。
+  var fanwaiScript = document.createElement('script');
+  fanwaiScript.src = 'js/chat-fanwai.js?v=20261116v23';
+  fanwaiScript.onerror = function () { console.warn('[Fanwai] 扩展模块加载失败'); };
+  document.body.appendChild(fanwaiScript);
 
   // 手机返回键（popstate）关闭顶层弹层
   window.addEventListener('popstate', function () {
@@ -290,12 +327,9 @@
       window.MAOMAOCallExperience.start(mode, currentCharacter);
       return;
     }
-    var cid = encodeURIComponent(currentCharacter.id);
-    if (mode === 'video') {
-      window.location.href = '../call/call.html?id=' + cid + '&type=video';
-    } else {
-      window.location.href = '../call/call-ui.html?roleId=' + cid;
-    }
+    // An unavailable call layer is an error, not a reason to silently downgrade
+    // to the superseded standalone call screens.
+    showToast('通话暂不可用，请刷新后重试');
   }
 
   // ---------- 通话返回：读取 sessionStorage 结果，插入一张通话卡（不发 AI 指令） ----------
@@ -813,9 +847,17 @@
       case 'date': featDate(); break;
       case 'gift': featGift(); break;
       case 'narration': featureAside(); break;
+      case 'favorites':
       case 'sticker':
         var stickerBtn = document.getElementById('stickerOpenBtn');
-        if (stickerBtn) stickerBtn.click();
+        if (stickerBtn) {
+          if (feat === 'favorites') stickerBtn.dataset.stickerView = 'role';
+          try {
+            stickerBtn.click();
+          } finally {
+            delete stickerBtn.dataset.stickerView;
+          }
+        }
         break;
     }
   }

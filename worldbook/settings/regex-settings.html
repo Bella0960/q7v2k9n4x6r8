@@ -2,299 +2,136 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>正则过滤</title>
-<script src="../../shared/js/native-feel.js"></script>
-<script src="../../shared/js/statusbar-control.js"></script>
-<link rel="stylesheet" href="../../shared/css/mobile-fit.css">
-<style>
-    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-    body {
-        background-color: #E5E5E5;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        min-height: 100vh;
-        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", sans-serif;
-        color: #111111;
-        user-select: none;
-    }
-    .phone-mockup {
-        position: relative;
-        width: min(390px, calc(100vw - 24px));
-        height: min(844px, calc(100vh - 24px));
-        background-color: #F7F7F9;
-        border-radius: 45px;
-        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08);
-        overflow: hidden;
-        border: 1px solid rgba(0, 0, 0, 0.06);
-        display: flex;
-        flex-direction: column;
-    }
-    .status-bar {
-        position: absolute;
-        top: 0;
-        width: 100%;
-        padding: 14px 28px;
-        font-size: 0.875rem;
-        font-weight: 600;
-        color: #000;
-        z-index: 50;
-        pointer-events: none;
-    }
-    .topbar {
-        position: relative;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 14px;
-        padding: calc(56px + env(safe-area-inset-top, 0px)) 22px 14px 22px;
-        background: transparent;
-        flex-shrink: 0;
-    }
-    .topbar-left {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-    }
-    .back-btn {
-        width: 36px;
-        height: 36px;
-        border-radius: 0;
-        background: transparent;
-        border: none;
-        border-bottom: 1px solid #bdbdbd;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        color: #111111;
-        flex-shrink: 0;
-        transition: transform 0.2s ease, border-color 0.2s ease;
-    }
-    .back-btn:active { transform: translateY(1px); border-color: #171717; }
-    .page-title {
-        font-size: 1.375rem;
-        font-weight: 700;
-        color: #111111;
-        line-height: 1;
-    }
-    .refresh-btn {
-        width: 36px;
-        height: 36px;
-        border-radius: 0;
-        background: transparent;
-        border: none;
-        border-bottom: 1px solid #d7d7d7;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        color: #666666;
-        flex-shrink: 0;
-        transition: transform 0.2s ease, border-color 0.2s ease;
-    }
-    .refresh-btn:active { transform: translateY(1px); border-color: #171717; }
-
-    .content {
-        flex: 1;
-        overflow-y: auto;
-        padding: 10px 16px 140px 16px;
-        -webkit-overflow-scrolling: touch;
-    }
-    .group-title {
-        font-size: 0.688rem;
-        font-weight: 600;
-        color: #999999;
-        letter-spacing: 1px;
-        padding: 14px 6px 8px 6px;
-    }
-    .card {
-        background: #FFFFFF;
-        border-radius: 16px;
-        overflow: hidden;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.03);
-    }
-    .rule-row {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 14px 16px;
-        border-bottom: 0.5px solid #E5E5EA;
-    }
-    .rule-row:last-child { border-bottom: none; }
-    .rule-info { flex: 1; min-width: 0; }
-    .rule-name {
-        font-size: 0.875rem;
-        color: #111111;
-        line-height: 1.3;
-        margin-bottom: 3px;
-    }
-    .rule-pattern {
-        font-family: "SF Mono", Menlo, Consolas, monospace;
-        font-size: 0.688rem;
-        color: #999999;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    /* 极简 ON/OFF 按钮 */
-    .onoff {
-        flex-shrink: 0;
-        min-width: 48px;
-        height: 26px;
-        padding: 0 10px;
-        border-radius: 13px;
-        border: none;
-        font-size: 0.688rem;
-        font-weight: 600;
-        letter-spacing: 0.5px;
-        cursor: pointer;
-        transition: background 0.2s ease, color 0.2s ease;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-    .onoff.on { background: #111111; color: #FFFFFF; }
-    .onoff.off { background: #E5E5EA; color: #999999; }
-
-    .empty {
-        text-align: center;
-        color: #B0B0B5;
-        font-size: 0.813rem;
-        padding: 60px 20px;
-    }
-
-    /* 右下角圆形加号 */
-    .add-fab {
-        position: absolute;
-        right: 20px;
-        bottom: 24px;
-        z-index: 10;
-        width: 56px;
-        height: 56px;
-        border-radius: 50%;
-        background: #111111;
-        border: none;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        box-shadow: 0 4px 14px rgba(0,0,0,0.16);
-    }
-    .add-fab:active { transform: scale(0.94); }
-
-    /* 底部弹窗 */
-    .sheet-mask {
-        position: absolute;
-        inset: 0;
-        background: rgba(0,0,0,0.25);
-        z-index: 20;
-        display: none;
-        align-items: flex-end;
-    }
-    .sheet-mask.show { display: flex; }
-    .sheet {
-        width: 100%;
-        background: #FFFFFF;
-        border-radius: 20px 20px 0 0;
-        padding: 20px 20px calc(20px + env(safe-area-inset-bottom, 0px));
-        animation: up 0.25s ease;
-    }
-    @keyframes up { from { transform: translateY(40px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-    .sheet-title {
-        font-size: 1.063rem;
-        font-weight: 700;
-        margin-bottom: 16px;
-    }
-    .field { margin-bottom: 12px; }
-    .field label {
-        display: block;
-        font-size: 0.688rem;
-        color: #999999;
-        margin-bottom: 6px;
-        letter-spacing: 0.5px;
-    }
-    .field input {
-        width: 100%;
-        border: 0.5px solid #E5E5EA;
-        background: #F7F7F9;
-        border-radius: 10px;
-        padding: 11px 12px;
-        font-size: 0.875rem;
-        font-family: inherit;
-        color: #111111;
-        outline: none;
-    }
-    .field input:focus { border-color: #111111; }
-    .field input::placeholder { color: #B0B0B5; }
-    .sheet-actions {
-        display: flex;
-        gap: 10px;
-        margin-top: 18px;
-    }
-    .btn-cancel, .btn-save {
-        flex: 1;
-        border: none;
-        border-radius: 12px;
-        padding: 13px;
-        font-size: 0.938rem;
-        font-family: inherit;
-        cursor: pointer;
-        font-weight: 600;
-    }
-    .btn-cancel { background: #F2F2F7; color: #666666; }
-    .btn-save { background: #111111; color: #FFFFFF; }
-</style>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#F7F7F9">
+<title>正则规则</title>
+<link rel="stylesheet" href="regex-editor.css?v=20261119regex1">
 </head>
 <body>
-<div class="phone-mockup">
-    <div class="status-bar" id="statusBar"></div>
-
-    <div class="topbar">
-        <div class="topbar-left">
-            <button class="back-btn" onclick="location.href='../../settings/settings.html'" aria-label="返回">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-            </button>
-            <div class="page-title">正则设置</div>
-        </div>
-        <button class="refresh-btn" onclick="render()" aria-label="刷新">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-        </button>
+<main class="shell">
+  <header class="topbar">
+    <div class="topbar__left">
+      <a class="back" href="../../settings/settings.html" aria-label="返回设置">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+          <path d="m15 5-7 7 7 7" stroke-linejoin="round" stroke-linecap="round"/>
+        </svg>
+      </a>
+      <span class="topbar__label">正则规则</span>
     </div>
+    <button type="button" class="top-action" id="createRuleBtn">新建规则</button>
+  </header>
 
-    <div class="content">
-        <div class="card" id="ruleList"></div>
-        <div class="empty" id="emptyTip" style="display:none;">暂无规则，点击右下角新增</div>
+  <section class="headline" aria-labelledby="pageHeading">
+    <div class="eyebrow">回复文字处理</div>
+    <h1 id="pageHeading">调整文字，保留原意。</h1>
+    <p class="intro">正则会在 AI 生成回复后，按顺序匹配并替换文字。
+      可以清理固定格式、提取标签或替换指定用词；不会改动已经保存的聊天记录。</p>
+    <div class="statusline">
+      <span id="statusDot" class="statusdot" aria-hidden="true"></span>
+      <span id="statusText" role="status">正在读取规则状态…</span>
+      <button type="button" class="linklike" id="refreshRules">刷新</button>
     </div>
+    <details class="lesson">
+      <summary>正则能做什么？</summary>
+      <p>比如把「你好呀呀」替换成「你好呀」，或提取 <code>&lt;output&gt;文字&lt;/output&gt;</code> 中的内容。
+      它不能决定角色的性格、记忆或说话方式；这些仍由角色档案、世界书和协议控制。</p>
+    </details>
+  </section>
 
-    <button class="add-fab" onclick="openSheet()" aria-label="新增规则">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-    </button>
-
-    <div class="sheet-mask" id="sheetMask" onclick="if(event.target===this)closeSheet()">
-        <div class="sheet">
-            <div class="sheet-title">新增正则规则</div>
-            <div class="field">
-                <label>规则名称</label>
-                <input id="fName" type="text" placeholder="例：去除多余语气词">
-            </div>
-            <div class="field">
-                <label>正则表达式</label>
-                <input id="fPattern" type="text" placeholder="例：啊{2,}|哦{2,}">
-            </div>
-            <div class="field">
-                <label>替换为（留空 = 直接删除）</label>
-                <input id="fReplace" type="text" placeholder="留空即删除匹配内容">
-            </div>
-            <div class="sheet-actions">
-                <button class="btn-cancel" onclick="closeSheet()">取消</button>
-                <button class="btn-save" onclick="saveRule()">保存</button>
-            </div>
-        </div>
+  <section class="section" aria-labelledby="previewHeading">
+    <div class="section-head">
+      <h2 class="section-title" id="previewHeading">效果试验台</h2>
+      <span class="section-sub">不发送给 AI · 不消耗 API</span>
     </div>
+    <div class="workbench">
+      <label class="field-title" for="previewInput">输入原文</label>
+      <textarea id="previewInput" class="editor-input" maxlength="1500" spellcheck="false"
+        placeholder="输入一段想测试的 AI 回复…"></textarea>
+      <div class="preview-samples">
+        <button class="sample-link" type="button" data-sample="你好呀呀，今天想去散步。">试试普通对话</button>
+        <button class="sample-link" type="button" data-sample="&lt;output&gt;今天的风很轻&#10;一起走走吧&lt;/output&gt;">试试标签文字</button>
+      </div>
+      <div class="preview-actions">
+        <span class="preview-help">只运行已保存并启用的规则</span>
+        <button type="button" class="primary-small" id="previewRun">运行预览</button>
+      </div>
+      <div class="compare">
+        <div class="compare__head"><span class="compare__label">处理结果</span></div>
+        <output class="compare__text empty" id="previewOutput" aria-live="polite">处理后的文字会显示在这里。</output>
+      </div>
+      <p class="trace" id="previewTrace">预览不会修改任何设置或聊天记录。</p>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="customHeading">
+    <div class="section-head">
+      <h2 class="section-title" id="customHeading">我的规则</h2>
+      <span class="section-sub"><span id="customCount">0</span> 条</span>
+    </div>
+    <div class="rule-group" id="customRules"></div>
+    <p class="notify" role="status" aria-live="polite" id="notify"></p>
+  </section>
+
+  <section class="section" aria-label="系统预设">
+    <details class="rule-group" id="presetDetails">
+      <summary class="system-summary">
+        <span class="system-summary__name">系统预设</span>
+        <span class="system-summary__note">高级格式处理 · <span id="presetCount">7</span> 条</span>
+        <span class="chevron" aria-hidden="true"></span>
+      </summary>
+      <p class="system-caption" id="presetWarning">这里是可选规则，不建议全部开启。</p>
+      <div id="presetRules"></div>
+      <div class="system-footer">
+        <span class="footer-note">仅补充缺少的预设，不覆盖已有规则</span>
+        <button type="button" class="footer-action" id="regexApplyPreset">添加推荐预设</button>
+      </div>
+    </details>
+  </section>
+</main>
+
+<div class="sheet-mask" id="sheetMask" role="presentation">
+  <section class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+    <div class="sheet-grip" aria-hidden="true"></div>
+    <div class="sheet-header">
+      <h2 class="sheet-title" id="sheetTitle">新建规则</h2>
+      <button type="button" class="linklike" id="sheetClose">关闭</button>
+    </div>
+    <div class="field">
+      <label for="editName">规则名称</label>
+      <input type="text" id="editName" maxlength="80" autocomplete="off"
+        placeholder="例如：调整重复语气词">
+    </div>
+    <div class="field">
+      <label for="editPattern">匹配表达式</label>
+      <input type="text" id="editPattern" maxlength="512" spellcheck="false" autocomplete="off"
+        placeholder="例如：呀{2,}">
+      <p class="field-hint">匹配到的部分会被替换；支持 JavaScript 正则表达式，自动全局匹配。</p>
+    </div>
+    <div class="field">
+      <label for="editReplacement">替换为</label>
+      <input type="text" id="editReplacement" maxlength="2000" spellcheck="false" autocomplete="off"
+        placeholder="例如：呀（留空则删除）">
+    </div>
+    <div class="sheet-row">
+      <span class="field-hint">保存后启用此规则</span>
+      <label><input type="checkbox" id="editEnabled" checked aria-label="启用规则"></label>
+    </div>
+    <div class="field" style="margin-top:15px;">
+      <label for="editSample">保存前试一下（可选）</label>
+      <textarea id="editSample" class="editor-input" maxlength="700" rows="2"
+        placeholder="输入测试文字，如：你好呀呀"></textarea>
+      <button type="button" class="linklike" id="editPreviewButton">试用当前表达式</button>
+      <div class="sheet-preview" id="editPreview" role="status">填写示例文字后，可先预览再保存。</div>
+    </div>
+    <p class="modal-error" role="alert" id="editStatus"></p>
+    <div class="sheet-actions">
+      <button type="button" class="cancel" id="sheetCancel">取消</button>
+      <button type="button" class="save" id="sheetSave">保存规则</button>
+    </div>
+  </section>
 </div>
 
+<script src="../../shared/js/phone/chat-regex-policy.js?v=20261119regex1"></script>
 <script>
     var DEFAULT_RULES = [
         {
@@ -310,7 +147,7 @@
             name: "JSON 数组包裹",
             pattern: "^(\\{[\\s\\S]*\\})$",
             replacement: "$1",
-            enabled: true,
+            enabled: false,
             builtin: true
         },
         {
@@ -318,7 +155,7 @@
             name: "缺少逗号修复",
             pattern: "\\}\\s*\\{",
             replacement: "},{",
-            enabled: true,
+            enabled: false,
             builtin: true
         },
         {
@@ -326,13 +163,13 @@
             name: "尾随逗号修复",
             pattern: ",\\s*([\\]\\}])",
             replacement: "$1",
-            enabled: true,
+            enabled: false,
             builtin: true
         },
         {
             id: "r_builtin_xml",
             name: "XML 标签提取",
-            pattern: "<output>(.*?)</output>",
+            pattern: "<output>([\\s\\S]*?)</output>",
             replacement: "$1",
             enabled: true,
             builtin: true
@@ -340,9 +177,9 @@
         {
             id: "r_builtin_id",
             name: "ID 格式校验",
-            pattern: "^\\d{4}$",
+            pattern: "^(\\d{4})$",
             replacement: "$1",
-            enabled: true,
+            enabled: false,
             builtin: true
         },
         {
@@ -355,104 +192,48 @@
         }
     ];
 
+    // Existing user rules are authoritative. Old "v2" markers are *never* a
+    // reason to replace the whole list. The defaults are only initial values.
+    function repairKnownBuiltin(rule) {
+        if (window.ChatRegexPolicy) return window.ChatRegexPolicy.repairKnownBuiltin(rule);
+        // Fail closed when the same engine used by chat has not loaded.
+        return rule;
+    }
     function loadRules() {
         try {
-            // 版本标记：旧版规则（动作描写/烂俗比喻/爹味）自动重置为新格式规则
-            var LS_VER = 'regex_rules_v2';
             var raw = localStorage.getItem('regex_rules');
-            if (!raw) {
-                localStorage.setItem('regex_rules', JSON.stringify(DEFAULT_RULES));
-                localStorage.setItem(LS_VER, '1');
-                return DEFAULT_RULES.slice();
-            }
+            if (raw == null) return DEFAULT_RULES.map(repairKnownBuiltin);
             var arr = JSON.parse(raw);
-            if (!Array.isArray(arr)) return DEFAULT_RULES.slice();
-            // 检测是否为旧版规则（包含"去除动作"等旧名称）
-            var isOld = arr.some(function (r) {
-                return r.name && (r.name.indexOf('去除动作') !== -1 || r.name.indexOf('烂俗') !== -1 || r.name.indexOf('爹味') !== -1 || r.name.indexOf('管家婆') !== -1);
-            });
-            if (isOld || !localStorage.getItem(LS_VER)) {
-                localStorage.setItem('regex_rules', JSON.stringify(DEFAULT_RULES));
-                localStorage.setItem(LS_VER, '1');
-                return DEFAULT_RULES.slice();
-            }
-            return arr;
-        } catch (e) {
-            return DEFAULT_RULES.slice();
+            if (!Array.isArray(arr)) throw new Error('Regex rules are not an array');
+            window.__regexRulesReadError = false;
+            return arr.map(repairKnownBuiltin);
+        } catch (error) {
+            // Never overwrite unreadable JSON: the user may have a backup copy.
+            window.__regexRulesReadError = true;
+            return [];
         }
     }
-    function saveRules(arr) {
-        localStorage.setItem('regex_rules', JSON.stringify(arr));
+    function saveRules(arr, expectedRaw) {
+        try {
+            var prior = localStorage.getItem('regex_rules');
+            // Conditionally persist against the state displayed to the user.
+            if (arguments.length >= 2 && prior !== expectedRaw) return false;
+            if (prior != null && !Array.isArray(JSON.parse(prior))) return false;
+            if (!Array.isArray(arr)) return false;
+            var encoded = JSON.stringify(arr);
+            localStorage.setItem('regex_rules', encoded);
+            if (localStorage.getItem('regex_rules') !== encoded) return false;
+            window.__regexRulesReadError = false;
+            return true;
+        } catch (error) { return false; }
     }
 
+
+    // Public editor bridge retained for compatibility with existing tests.
     function render() {
-        var rules = loadRules();
-        var list = document.getElementById('ruleList');
-        var empty = document.getElementById('emptyTip');
-        list.innerHTML = '';
-        if (rules.length === 0) {
-            empty.style.display = 'block';
-            return;
-        }
-        empty.style.display = 'none';
-        rules.forEach(function (r, idx) {
-            var row = document.createElement('div');
-            row.className = 'rule-row';
-            var info = document.createElement('div');
-            info.className = 'rule-info';
-            var nm = document.createElement('div');
-            nm.className = 'rule-name';
-            nm.textContent = r.name;
-            var pt = document.createElement('div');
-            pt.className = 'rule-pattern';
-            pt.textContent = '正则: ' + r.pattern;
-            info.appendChild(nm);
-            info.appendChild(pt);
-
-            var btn = document.createElement('button');
-            btn.className = 'onoff ' + (r.enabled ? 'on' : 'off');
-            btn.textContent = r.enabled ? 'ON' : 'OFF';
-            btn.onclick = function () {
-                rules[idx].enabled = !rules[idx].enabled;
-                saveRules(rules);
-                render();
-            };
-
-            row.appendChild(info);
-            row.appendChild(btn);
-            list.appendChild(row);
-        });
+      if (window.RegexEditorUI) window.RegexEditorUI.render();
     }
-
-    function openSheet() { document.getElementById('sheetMask').classList.add('show'); }
-    function closeSheet() {
-        document.getElementById('sheetMask').classList.remove('show');
-        document.getElementById('fName').value = '';
-        document.getElementById('fPattern').value = '';
-        document.getElementById('fReplace').value = '';
-    }
-    function saveRule() {
-        var name = document.getElementById('fName').value.trim();
-        var pattern = document.getElementById('fPattern').value.trim();
-        var replace = document.getElementById('fReplace').value;
-        if (!name || !pattern) { alert('请填写规则名称和正则表达式'); return; }
-        // 简单校验正则合法性
-        try { new RegExp(pattern, 'g'); } catch (e) { alert('正则表达式不合法：' + e.message); return; }
-        var rules = loadRules();
-        rules.push({
-            id: 'r_' + Date.now(),
-            name: name,
-            pattern: pattern,
-            replacement: replace,
-            enabled: true,
-            builtin: false
-        });
-        saveRules(rules);
-        closeSheet();
-        render();
-    }
-
-    render();
 </script>
+<script src="regex-editor.js?v=20261119regex1"></script>
 </body>
 </html>

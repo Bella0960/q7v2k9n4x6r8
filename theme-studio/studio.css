@@ -1,0 +1,154 @@
+:root{color-scheme:light;--ink:#111;--muted:#8e8e93;--line:#e9e9ec;--paper:#fff}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;min-height:100%;width:100%;background:#eee;color:var(--ink)}
+body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI",sans-serif}
+button,input,select{font:inherit}
+button{cursor:pointer}
+button:disabled{opacity:.45;cursor:not-allowed}
+.studio{width:min(100%,460px);height:100vh;height:100dvh;max-height:100dvh;margin:0 auto;background:#fff;display:flex;flex-direction:column;overflow:hidden}
+.topbar{flex:none;display:flex;align-items:center;gap:8px;height:auto;min-height:54px;padding:calc(7px + env(safe-area-inset-top,0px)) 18px 7px;border-bottom:1px solid #f5f5f6}
+.topbar h1{font:400 20px/1.2 Georgia,"Songti SC",serif;letter-spacing:-.02em;margin:0;flex:1;text-align:center}
+.back{width:42px;height:42px;color:#111;display:grid;place-items:center}
+.back svg{width:22px;height:22px}
+.text-button{width:42px;height:42px;background:none;border:0;font-size:12px}
+.preview-area{flex:none;padding:13px 17px 12px;background:#fff}
+.preview-caption{display:flex;justify-content:space-between;font-size:10px;color:#888;margin:0 2px 8px;letter-spacing:.04em}
+.preview-caption span:last-child{color:#333}
+.preview-surface{height:218px;background:#f7f7f9;overflow:hidden;border:1px solid #e9e9ec;border-radius:16px}
+.mock-list,.mock-detail{height:100%;display:flex;flex-direction:column;overflow:hidden}
+.mock-list[hidden],.mock-detail[hidden]{display:none}
+.mock-list-header{display:flex;justify-content:space-between;align-items:center;background:var(--p-list-header-bg,#fff);color:#111;padding:15px 19px 12px;font:400 22px/1.2 Georgia,"Songti SC",serif}
+.mock-header-actions{font:20px/1 Arial,sans-serif;color:#555}
+.mock-list-rows{background:var(--p-list-list-bg,#fff);padding:8px 12px;display:flex;flex:1;flex-direction:column;gap:var(--p-list-item-gap,8px)}
+.mock-card{display:flex;align-items:center;gap:10px;padding:10px;background:var(--p-list-item-bg,#f5f5f5);border-radius:var(--p-list-item-radius,14px);min-height:62px}
+.mock-avatar{width:34px;height:34px;border-radius:var(--p-list-avatar-radius,50%);background:#ddd;display:grid;place-items:center;font:13px Georgia,serif;flex:none}
+.mock-card-copy{display:flex;flex:1;flex-direction:column;min-width:0;gap:5px}
+.mock-card-copy b{color:var(--p-list-text-color,#111);font-size:var(--p-list-title-size,12px);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mock-card-copy small,.mock-card>small{font-size:9px;color:#888;white-space:nowrap}
+.mock-detail-header{flex:none;background:var(--p-detail-header-bg,#fff);color:var(--p-detail-header-text,#111);height:42px;display:flex;align-items:center;justify-content:space-between;padding:0 14px}
+.mock-detail-header b{font-size:var(--p-detail-header-size,14px);font-weight:500}
+.mock-detail-header span{font-size:20px}
+.mock-messages{flex:1;min-height:0;background:var(--p-detail-chat-bg,#f7f7f9);display:flex;flex-direction:column;gap:12px;padding:7px 12px}
+.mock-message-date{font-size:9px;color:#aaa;text-align:center;margin:0 0 2px}
+.mock-bubble-row{display:flex;gap:6px;align-items:flex-start;max-width:var(--p-bubble-width,86%)}
+.mock-bubble-row.mine{align-self:flex-end}
+.mock-bubble-row.partner{align-self:flex-start}
+.mock-bubble-avatar{flex:none;width:23px;height:23px;background:#ddd;color:#555;border-radius:50%;font-size:9px;display:grid;place-items:center}
+.mock-bubble{position:relative;font-size:var(--p-bubble-font,11px);line-height:1.5;max-width:100%;overflow-wrap:anywhere}
+.mock-bubble-row.partner .mock-bubble{padding:var(--p-partner-pad,7px 10px)}
+.mock-bubble-row.mine .mock-bubble{padding:var(--p-my-pad,7px 10px)}
+.mock-bubble-row.partner .mock-bubble::before,.mock-bubble-row.mine .mock-bubble::before{content:"";position:absolute;top:9px;pointer-events:none;clip-path:polygon(0 0,100% 0,100% 100%)}
+.mock-bubble-row.partner .mock-bubble::before{left:-4px;width:var(--p-partner-tail-size,0px);height:var(--p-partner-tail-size,0px);background:var(--p-partner-bg,#fff);transform:rotate(135deg)}
+.mock-bubble-row.mine .mock-bubble::before{right:-4px;width:var(--p-my-tail-size,0px);height:var(--p-my-tail-size,0px);background:var(--p-my-bg,#111);transform:rotate(45deg)}
+.mock-bubble-row.partner .mock-bubble{background:var(--p-partner-bg,#fff);color:var(--p-partner-text,#111);border-radius:var(--p-partner-radius,13px)}
+.mock-bubble-row.mine .mock-bubble{background:var(--p-my-bg,#111);color:var(--p-my-text,#fff);border-radius:var(--p-my-radius,13px)}
+.mock-composer{display:flex;align-items:center;gap:9px;padding:8px 12px 10px;background:var(--p-detail-composer-bg,#f4f4f6);font-size:18px}
+.mock-input{flex:1;background:var(--p-detail-input-bg,#fff);border-radius:var(--p-detail-input-radius,18px);padding:7px 12px;color:#aaa;font-size:11px}
+.mock-send{background:var(--p-detail-send-bg,#111);color:#fff;font-size:13px;width:25px;height:25px;border-radius:50%;display:grid;place-items:center}
+.editor-tabs{display:grid;grid-template-columns:repeat(3,1fr);flex:none;margin:0 17px;border-bottom:1px solid var(--line);gap:2px}
+.editor-tabs button{background:transparent;color:#888;font-size:12px;padding:13px 2px;border:0;border-bottom:2px solid transparent}
+.editor-tabs button.selected{color:#111;border-bottom-color:#111;font-weight:600}
+.editor{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:18px 18px 28px;scrollbar-width:none}
+.editor::-webkit-scrollbar{display:none}
+.section-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.section-heading small{display:block;font-size:10px;color:#999;margin-bottom:4px}
+.section-heading h2{font:400 23px Georgia,"Songti SC",serif;margin:0}
+#restoreDraft{border:none;background:none;color:#777;font-size:11px;text-decoration:underline;text-underline-offset:3px;padding:9px}
+.scope{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.scope[hidden]{display:none}
+.scope label{font-size:12px}
+.scope select{padding:9px 12px;border:1px solid #e5e5e9;border-radius:9px;background:white;color:#111;max-width:65%}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:16px 12px}
+.field{min-width:0;display:flex;flex-direction:column;gap:8px}
+.field label{font-size:11px;color:#555;line-height:1.5;display:flex;justify-content:space-between;align-items:center;gap:4px}
+.field output{font-size:10px;color:#999;white-space:nowrap}
+.field input[type=color]{width:100%;height:41px;border:1px solid #e6e6e9;padding:4px;border-radius:9px;background:#fff;cursor:pointer}
+.field input[type=range]{width:100%;margin:2px 0 10px;accent-color:#111;height:30px;touch-action:pan-y}
+.subsection{margin-top:22px;padding-top:14px;border-top:1px solid #f1f1f3}
+.subsection-head{display:flex;justify-content:space-between;align-items:center}
+.subsection h3{font-size:13px;font-weight:500}
+.subsection button{background:#f6f6f7;border:0;border-radius:9px;padding:10px;color:#333;font-size:11px}
+.preset-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.preset-list p{font-size:11px;color:#999}
+.preset-entry{display:flex;align-items:center;border:1px solid #ececef;border-radius:8px;overflow:hidden}
+.preset-entry button{background:white;border:0;border-radius:0;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.preset-entry .remove{font-size:15px;color:#999;padding:7px}
+.utilities{display:flex;gap:8px;flex-wrap:wrap;margin-top:19px}
+.utilities button,.utilities a{padding:9px 10px;border:1px solid #e5e5e9;border-radius:9px;background:#fff;text-decoration:none;color:#555;font-size:11px}
+.explain{font-size:11px;line-height:1.65;color:#999;margin-top:20px}
+.actions{display:flex;flex:none;gap:10px;padding:10px 18px calc(10px + env(safe-area-inset-bottom,0px));border-top:1px solid #f1f1f3;background:#fff}
+.actions button{height:44px;font-size:12px;border-radius:10px}
+.actions .secondary{flex:1;border:1px solid #e6e6e9;background:white;color:#666}
+.actions .primary{flex:1.5;border:1px solid #111;background:#111;color:#fff}
+.notice{position:fixed;z-index:20;bottom:calc(85px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);width:max-content;max-width:85%;background:#111;color:#fff;border-radius:10px;padding:10px 14px;font-size:12px;line-height:1.5;opacity:0;pointer-events:none;transition:opacity .2s}
+.notice.show{opacity:1}
+@media(min-width:480px){.studio{box-shadow:0 3px 24px rgba(0,0,0,.08)}}
+@media(max-width:360px){.preview-area{padding:9px 12px}.editor-tabs{margin:0 12px}.editor{padding:14px 13px}.topbar{padding-left:12px;padding-right:12px}.preview-surface{height:200px}}
+@media(max-height:650px){.preview-surface{height:170px}.preview-area{padding-top:8px;padding-bottom:6px}}
+@media(prefers-reduced-motion:reduce){.notice{transition:none}}
+
+/* THEME-STUDIO-002: faithful inert chat-home preview, photo controls and fine-grained editor. */
+.preview-area{padding-bottom:10px}
+.preview-switch{display:flex;align-items:center;justify-content:space-between;gap:9px;margin-bottom:7px}
+.preview-switch label{font-size:10px;color:#999}
+.preview-switch select{font-size:10px;max-width:66%;background:#f8f8f9;color:#555;border:1px solid #ededf0;padding:6px 8px;border-radius:7px}
+.preview-switch[hidden]{display:none}
+.preview-surface{height:262px;position:relative}
+.mock-list{position:relative;isolation:isolate;background:var(--p-list-list-bg,#f8f8f9)}
+.mock-cover{position:absolute;inset:0;background-image:var(--p-list-cover-image,linear-gradient(180deg,#454545,#aaaaaa 53%,#f3f3f3));background-position:center var(--p-list-cover-position,50%);background-size:cover;opacity:var(--p-list-cover-opacity,1);pointer-events:none;z-index:-1}
+.mock-native-header,.mock-wechat-header{position:relative;display:flex;align-items:flex-start;justify-content:space-between;padding:11px 14px 5px;min-height:62px;gap:10px;background:var(--p-list-header-bg,rgba(255,255,255,.8));color:var(--p-list-header-text,#111)}
+.mock-wechat-header{align-items:center;min-height:45px}
+.mock-native-header[hidden],.mock-wechat-header[hidden]{display:none}
+.mock-title-copy{display:flex;flex-direction:column;gap:3px}
+.mock-title-copy>b{font:normal var(--p-list-header-title-size,23px)/1 Georgia,serif}
+.mock-title-copy>small{font:9px/1.3 Georgia,serif;color:var(--p-list-header-sub-text,#777);letter-spacing:.03em}
+.mock-wechat-header b{font-size:16px;font-weight:600}
+.mock-head-actions{display:flex;align-items:center;gap:11px;padding-top:3px}
+.mock-head-actions svg,.mock-detail-header svg{width:16px;height:16px;stroke:currentColor;stroke-width:1.5;fill:none;stroke-linecap:round}
+.mock-profile-stage{position:relative;flex:1;margin-top:21px;padding:15px 10px 18px;background:linear-gradient(180deg,var(--p-list-stage-bg,#fff) 0%,var(--p-list-stage-bg,#fff) 36%,transparent 100%);background-image:var(--p-list-paper-image,none);background-size:cover;background-position:center;display:flex;flex-direction:column;min-height:0}
+.mock-profile-avatar{position:absolute;top:-22px;left:50%;transform:translateX(-50%);width:34px;height:34px;padding:3px;border-radius:50%;background:#fff;display:grid;place-items:center}
+.mock-profile-avatar span{width:100%;height:100%;border-radius:50%;background:#ddd;display:grid;place-items:center;font-size:10px;color:#777}
+.mock-user-handle{text-align:center;font-size:9px;font-weight:700;letter-spacing:.04em;margin:1px 0 8px;color:#111}
+.mock-list .mock-list-rows{display:flex;flex-direction:column;flex:0 0 auto;gap:var(--p-list-item-gap,8px);background:transparent;padding:0}
+.mock-music-card,.mock-list .mock-card{display:flex;align-items:center;flex:0 0 auto;min-height:33px;gap:8px;padding:var(--p-list-item-padding,8px);border:var(--p-list-item-border-width,1px) solid var(--p-list-item-border-color,#e1e1e1);border-radius:var(--p-list-item-radius,14px)}
+.mock-music-card{background:var(--p-list-music-bg,#f5f5f5)}
+.mock-list .mock-card{background:var(--p-list-item-bg,#f5f5f5);min-height:41px}
+.mock-disc{width:17px;height:17px;background:#111;border-radius:50%;flex:none;position:relative}
+.mock-disc::after{content:"";width:5px;height:5px;position:absolute;inset:6px;background:#fff;border-radius:50%}
+.mock-music-copy{min-width:0;flex:1;display:flex;flex-direction:column;gap:2px}
+.mock-music-copy b{font-size:8px;font-weight:600;color:var(--p-list-music-text,#111);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mock-music-copy small{font:7px monospace;color:#888}
+.mock-music-action{font-size:10px;color:#777;white-space:nowrap}
+.mock-list .mock-avatar{width:var(--p-list-avatar-size,32px);height:var(--p-list-avatar-size,32px);font-size:11px;border-radius:var(--p-list-avatar-radius,50%);background:#e3e3e6}
+.mock-list .mock-card-copy{flex:1;min-width:0;gap:3px}
+.mock-title-row{display:flex;align-items:center;justify-content:space-between;gap:5px}
+.mock-list .chat-name{font-size:var(--p-list-title-size,12px);color:var(--p-list-text-color,#111);font-weight:700}
+.mock-list .chat-time{font:8px monospace;color:var(--p-list-time-color,#888)}
+.mock-list .chat-last-msg{font-size:var(--p-list-preview-size,10px);color:var(--p-list-preview-color,#666);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mock-detail-header{min-height:var(--p-detail-header-height,46px);height:auto;gap:8px}
+.mock-detail-header svg{flex:none}
+.mock-menu-dots{margin-left:auto;font-size:18px;line-height:1}
+.mock-detail-header .chat-user-name{font-size:var(--p-detail-header-size,14px);flex:1;text-align:center}
+.mock-messages{padding-left:var(--p-detail-chat-padding,12px);padding-right:var(--p-detail-chat-padding,12px);background-image:var(--p-detail-chat-image,none);background-size:cover;background-position:center var(--p-detail-chat-image-position,50%)}
+.mock-message-date{color:var(--p-detail-date-color,#999)}
+.mock-composer{padding-left:var(--p-detail-composer-padding,10px);padding-right:var(--p-detail-composer-padding,10px)}
+.mock-composer .mock-input{color:var(--p-detail-input-text,#777)}
+.mock-bubble-row.partner .mock-bubble{border:var(--p-partner-border-width,1px) solid var(--p-partner-border-color,#dadade);font-size:var(--p-partner-font-size,11px)}
+.mock-bubble-row.mine .mock-bubble{border:var(--p-my-border-width,0px) solid var(--p-my-border-color,#111);font-size:var(--p-my-font-size,11px)}
+.mock-bubble-row.partner .mock-bubble,.mock-bubble-row.mine .mock-bubble{opacity:var(--p-bubble-opacity,1)}
+.fields{gap:15px 12px}
+.field-section{grid-column:1/-1;margin:8px 0 -4px;color:#999;font-size:10px;font-weight:500;letter-spacing:.08em;text-transform:uppercase}
+.field-section:first-child{margin-top:0}
+.image-panel .subsection-head small{font-size:10px;color:#aaa}
+.image-slot-list{display:grid;grid-template-columns:1fr;gap:9px;margin-top:12px}
+.image-slot{display:flex;align-items:center;gap:11px;border:1px solid #ebebee;border-radius:12px;padding:10px;min-width:0}
+.image-slot .image-thumb{width:56px;height:49px;flex:none;background:#f1f1f3;border-radius:8px;background-size:cover;background-position:center;display:grid;place-items:center;color:#aaa;font-size:10px}
+.image-slot .image-copy{display:flex;min-width:0;flex:1;flex-direction:column;gap:4px}
+.image-slot .image-copy b{font-size:11px;font-weight:500}
+.image-slot .image-copy small{font-size:9px;color:#aaa}
+.image-slot .image-actions{display:flex;flex-direction:column;gap:5px}
+.image-slot .image-actions button{background:#fafafa;border:1px solid #eee;border-radius:7px;padding:6px 8px;font-size:10px;color:#555}
+.image-slot .image-actions button:first-child{background:#111;border-color:#111;color:#fff}
+.image-note{font-size:10px;line-height:1.7;color:#aaa;margin:10px 1px 0}
+@media(max-height:690px){.preview-surface{height:194px}.mock-profile-stage{margin-top:10px;padding-top:12px}.preview-switch{margin-bottom:4px}.preview-area{padding-top:7px}}
+@media(max-width:360px){.preview-surface{height:215px}.mock-profile-stage{margin-top:11px}}

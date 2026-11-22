@@ -15,6 +15,7 @@ const chatDetailSource = read('chat/chat/chat-detail.html');
 const datePageSource = read('chat/date/date.html');
 const forumDetailSource = read('forum/forum-detail.html');
 const callPageSource = read('chat/call/call.html');
+const atomicCallSource = read('shared/js/phone/chat-history-atomic.js');
 const couplePageSource = read('couple/couple.html');
 const shopPageSource = read('wallet/shop.html');
 const takeoutPageSource = read('wallet/takeout.html');
@@ -390,34 +391,53 @@ test('封面：两套独立封面都存在时，编辑 myProfile.cover 不改变
 
 /* ---------- 名片：真实执行 chat-detail.html 的历史读写函数 ---------- */
 
-function loadHistoryFunctions(storageSlots) {
+function loadHistoryFunctions(storageSlots, contactId = 'roleA', sharedStorage) {
+  // Real chat pages bind storageKey to the role opened at page load. A role
+  // switch requires a new page; changing the global role must never reroute
+  // reads or writes to a different conversation.
+  const localStorage = sharedStorage || createLocalStorage();
+  for (const [id, history] of Object.entries(storageSlots)) {
+    const key = 'chat_history_' + id;
+    if (localStorage.getItem(key) === null) {
+      localStorage.setItem(key, JSON.stringify(history));
+    }
+  }
   const sandbox = {
     console,
-    localStorage: createLocalStorage(),
-    currentCharacter: { id: 'roleA' },
-    removeLegacyStickerCaptions: (list) => list,
+    localStorage,
+    currentCharacter: { id: contactId },
+    storageKey: 'chat_history_' + contactId,
+    removeLegacyStickerCaptions: (list, raw) => sandbox._rememberChatBaseline(list, raw),
     getInitialMessages: () => [],
     _resetWarnCooldown() {},
     _shouldWarnAgain: () => false,
+    _chatHistoryUnreadable: false,
     showToast() {},
     _storage: {
-      getChatHistory(contactId) {
-        const slot = storageSlots[contactId];
-        return Array.isArray(slot) ? slot.slice() : [];
+      getChatHistory(id) {
+        const raw = localStorage.getItem('chat_history_' + id);
+        if (raw === null) return [];
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) throw new Error('chat history is not an array');
+        return parsed;
       },
-      saveChatHistory(contactId, list) {
-        storageSlots[contactId] = JSON.parse(JSON.stringify(list));
+      saveChatHistory(id, list) {
+        // Simulate the real PhoneStorage contract: persist to the authoritative
+        // per-role key so chat-detail can independently verify the readback.
+        if (typeof id !== 'string' || !id || !Array.isArray(list)) return false;
+        const key = 'chat_history_' + id;
+        const before = localStorage.getItem(key);
+        if (before !== null && !Array.isArray(JSON.parse(before))) return false;
+        const bytes = JSON.stringify(list);
+        localStorage.setItem(key, bytes);
+        if (localStorage.getItem(key) !== bytes) return false;
+        storageSlots[id] = JSON.parse(bytes);
         return true;
       }
     }
   };
-  Object.defineProperty(sandbox, 'storageKey', {
-    enumerable: true,
-    get() {
-      return 'chat_history_' + (sandbox.currentCharacter && sandbox.currentCharacter.id);
-    }
-  });
-  const code = ['_messageIdentity', '_readBackHistory', '_verifyHistoryRoundTrip', 'loadMessages', 'saveMessages']
+  const code = 'var _chatHistoryBaselines = new WeakMap();\n' +
+    ['_rememberChatBaseline', '_inheritChatBaseline', '_messageIdentity', '_readBackHistory', '_verifyHistoryRoundTrip', 'loadMessages', 'saveMessages']
     .map((name) => extractFunction(chatDetailSource, name))
     .join('\n');
   runInNewContext(code, sandbox, { filename: 'chat/chat/chat-detail.html#history' });
@@ -426,7 +446,8 @@ function loadHistoryFunctions(storageSlots) {
 
 test('名片：卡片快照只写入当前会话历史，不在其他会话出现', () => {
   const slots = {};
-  const sandbox = loadHistoryFunctions(slots);
+  const shared = createLocalStorage();
+  const roleA = loadHistoryFunctions(slots, 'roleA', shared);
   const card = {
     role: 'user',
     type: 'card',
@@ -435,17 +456,17 @@ test('名片：卡片快照只写入当前会话历史，不在其他会话出�
     mid: 'm1'
   };
 
-  sandbox.currentCharacter = { id: 'roleA' };
-  const listA = sandbox.loadMessages();
+  const listA = roleA.loadMessages();
   listA.push(card);
-  assert.equal(sandbox.saveMessages(listA), true);
-  assert.deepEqual(sandbox.loadMessages(), [card]);
+  assert.equal(roleA.saveMessages(listA), true);
+  assert.deepEqual(JSON.parse(JSON.stringify(roleA.loadMessages())), [card]);
   assert.match(JSON.stringify(slots.roleA), /卡片甲/);
+  assert.match(shared.getItem('chat_history_roleA'), /卡片甲/);
 
-  sandbox.currentCharacter = { id: 'roleB' };
-  assert.deepEqual(sandbox.loadMessages(), []);
+  const roleB = loadHistoryFunctions(slots, 'roleB', shared);
+  assert.deepEqual(JSON.parse(JSON.stringify(roleB.loadMessages())), []);
   assert.equal(JSON.stringify(slots.roleB || []).includes('卡片甲'), false);
-  assert.equal(sandbox.localStorage.getItem('chat_history_roleB'), null);
+  assert.equal((shared.getItem('chat_history_roleB') || '').includes('卡片甲'), false);
 });
 
 test('名片：刷新后仍只从所属会话读回，不与其他角色共享存储槽', () => {
@@ -453,18 +474,32 @@ test('名片：刷新后仍只从所属会话读回，不与其他角色共享�
     roleA: [{ role: 'user', type: 'card', card: { id: 'card-1', name: '卡片甲', avatar: '' }, time: 1, mid: 'm1' }],
     roleB: [{ role: 'received', text: 'B 的普通消息', time: 2, mid: 'm2' }]
   };
-  const sandbox = loadHistoryFunctions(slots);
-
-  sandbox.currentCharacter = { id: 'roleA' };
-  const reloadedA = sandbox.loadMessages();
+  const shared = createLocalStorage();
+  const roleA = loadHistoryFunctions(slots, 'roleA', shared);
+  const reloadedA = roleA.loadMessages();
   assert.equal(reloadedA.length, 1);
   assert.equal(reloadedA[0].card.name, '卡片甲');
 
-  sandbox.currentCharacter = { id: 'roleB' };
-  const reloadedB = sandbox.loadMessages();
+  const roleB = loadHistoryFunctions(slots, 'roleB', shared);
+  const reloadedB = roleB.loadMessages();
   assert.equal(reloadedB.length, 1);
   assert.equal(reloadedB[0].text, 'B 的普通消息');
   assert.equal(reloadedB.some((msg) => msg.type === 'card'), false);
+});
+
+test('名片：页面打开后角色 ID 变化不能将名片写入另一会话', () => {
+  const slots = { roleB: [{ role: 'received', text: '原角色 B 的消息', mid: 'b1' }] };
+  const shared = createLocalStorage();
+  const roleA = loadHistoryFunctions(slots, 'roleA', shared);
+  roleA.loadMessages();
+  const originalB = shared.getItem('chat_history_roleB');
+  roleA.currentCharacter = { id: 'roleB' };
+  assert.deepEqual(JSON.parse(JSON.stringify(roleA.loadMessages())), []);
+  assert.equal(roleA.saveMessages([
+    { role: 'user', type: 'card', card: { name: '不应串写的名片' }, mid: 'm2' }
+  ]), false);
+  assert.equal(shared.getItem('chat_history_roleB'), originalB);
+  assert.equal(JSON.stringify(slots.roleB).includes('不应串写的名片'), false);
 });
 
 
@@ -613,14 +648,30 @@ test('论坛分享：保存并读回目标角色消息后才显示成功', () =>
 });
 
 
-function loadGroupCallEndCall(storage, localStorage = createLocalStorage()) {
+function loadGroupCallEndCall(options = {}) {
   const alerts = [];
   const sessionValues = {};
+  const original = options.history || [{ mid: 'saved', type: 'image', assetId: 'old-photo' }];
+  const localStorage = createLocalStorage({
+    chat_history_groupA: JSON.stringify(original)
+  });
+  const callWindow = {
+    localStorage,
+    navigator: options.withLocks === false ? {} : {
+      locks: { request: async (_name, _opts, callback) => callback() }
+    },
+    location: { href: '' }
+  };
+  runInNewContext(atomicCallSource, { window: callWindow }, {
+    filename: 'shared/js/phone/chat-history-atomic.js'
+  });
+  const hangup = { disabled: false };
   const sandbox = {
     connectTimer: null,
     tickTimer: null,
     clearTimeout() {},
     clearInterval() {},
+    document: { getElementById: () => hangup },
     sessionStorage: {
       setItem(key, value) { sessionValues[key] = String(value); }
     },
@@ -630,45 +681,50 @@ function loadGroupCallEndCall(storage, localStorage = createLocalStorage()) {
     seconds: 65,
     isGroupCall: true,
     currentGroup: { members: [{ nickname: '成员甲' }] },
-    window: { PhoneStorage: storage, location: { href: '' } },
+    window: callWindow,
     localStorage,
     formatTime: (seconds) => String(seconds),
     alert: (message) => alerts.push(message),
     console: { error() {} },
     encodeURIComponent
   };
-  runInNewContext(extractFunction(callPageSource, 'endCall'), sandbox, {
+  // endCall is now async; extractFunction handles the body but not the prefix.
+  runInNewContext('var endingCall=false;\nasync ' +
+    extractFunction(callPageSource, 'endCall'), sandbox, {
     filename: 'chat/call/call.html#endCall'
   });
-  return { endCall: sandbox.endCall, alerts, sessionValues, window: sandbox.window };
+  return {
+    endCall: sandbox.endCall, alerts, sessionValues, window: callWindow,
+    hangup, history: () => JSON.parse(localStorage.getItem('chat_history_groupA'))
+  };
 }
 
-test('群通话：保存并读回通话卡片后才视为聊天记录已保存', () => {
-  let persisted = [];
-  const sandbox = loadGroupCallEndCall({
-    getChatHistory: () => JSON.parse(JSON.stringify(persisted)),
-    saveChatHistory: (id, list) => {
-      assert.equal(id, 'groupA');
-      persisted = JSON.parse(JSON.stringify(list));
-      return true;
-    }
-  });
-
-  sandbox.endCall();
-  assert.equal(persisted.length, 1);
-  assert.equal(persisted[0].type, 'call');
-  assert.equal(persisted[0].call.title, '群语音通话');
+test('群通话：安全追加通话卡片，保留原消息及媒体字段', async () => {
+  const sandbox = loadGroupCallEndCall();
+  await sandbox.endCall();
+  const history = sandbox.history();
+  assert.equal(history.length, 2);
+  assert.deepEqual(history[0], { mid: 'saved', type: 'image', assetId: 'old-photo' });
+  assert.equal(history[1].type, 'call');
+  assert.equal(history[1].call.title, '群语音通话');
+  assert.deepEqual(Array.from(history[1].call.participants), ['成员甲']);
+  assert.equal(sandbox.hangup.disabled, true);
   assert.deepEqual(sandbox.alerts, []);
   assert.match(sandbox.window.location.href, /chat-detail\.html\?id=groupA/);
 });
 
-test('群通话：PhoneStorage 写入失败时明确提示，不把失败当成功', () => {
-  const sandbox = loadGroupCallEndCall({
-    getChatHistory: () => [],
-    saveChatHistory: () => false
-  });
+test('群通话：重复点击挂断只产生一张通话卡片', async () => {
+  const sandbox = loadGroupCallEndCall();
+  await Promise.all([sandbox.endCall(), sandbox.endCall()]);
+  assert.equal(sandbox.history().length, 2);
+});
 
-  sandbox.endCall();
+test('群通话：锁不可用时保留原聊天并明确提示', async () => {
+  const sandbox = loadGroupCallEndCall({ withLocks: false });
+  await sandbox.endCall();
+  assert.deepEqual(sandbox.history(), [
+    { mid: 'saved', type: 'image', assetId: 'old-photo' }
+  ]);
   assert.equal(sandbox.alerts.length, 1);
   assert.match(sandbox.alerts[0], /群通话记录未能保存/);
   assert.match(sandbox.window.location.href, /chat-detail\.html\?id=groupA/);
@@ -760,40 +816,50 @@ test('商店和外卖：交易成功但聊天通知失败时显示合并后的�
 
 
 function loadJourneyMessageWriter(storage, saved = []) {
+  // Exercise the CURRENT atomic append pathway, not the retired saveHistory
+  // whole-history writer. Seed the same authoritative primary key read by the page.
   let persisted = JSON.parse(JSON.stringify(saved));
   let attempts = 0;
   let warnings = 0;
   let stateWrites = 0;
+  const localStorage = createLocalStorage({
+    chat_history_roleA: JSON.stringify(saved)
+  });
   const sandbox = {
-    window: {},
-    localStorage: createLocalStorage(),
+    window: {
+      ChatHistoryAtomic: {
+        async appendIf(id, entry, predicate) {
+          attempts += 1;
+          assert.equal(id, 'roleA');
+          const latest = JSON.parse(localStorage.getItem('chat_history_roleA'));
+          if (!predicate(latest)) return { ok: false, error: { code: 'STALE_CONTEXT' } };
+          const next = latest.concat([JSON.parse(JSON.stringify(entry))]);
+          const savedOk = await storage.saveChatHistory(id, next, (value) => {
+            persisted = JSON.parse(JSON.stringify(value));
+            localStorage.setItem('chat_history_roleA', JSON.stringify(value));
+          });
+          return savedOk
+            ? { ok: true }
+            : { ok: false, error: { code: 'STORAGE_WRITE_FAILED' } };
+        }
+      }
+    },
+    localStorage,
     roleId: 'roleA',
     historyKey: 'chat_history_roleA',
     stateKey: 'chat_journey_state_roleA',
     state: { startedAt: 1000, scene: '咖啡馆', sentStages: [], messages: ['刚出门'] },
     stages: [{ at: 0 }],
-    fallbackMessages: ['刚出门'],
-    PhoneStorage: undefined,
     console: { error() {} },
     saveState() { stateWrites += 1; },
-    showStorageWarning() { warnings += 1; },
-    generateFallbackText() { return '刚出门'; },
-    loadHistory() { return JSON.parse(JSON.stringify(persisted)); }
+    showStorageWarning() { warnings += 1; }
   };
-  sandbox.window.PhoneStorage = storage ? {
-    saveChatHistory(id, list) {
-      attempts += 1;
-      return storage.saveChatHistory(id, list, (next) => {
-        persisted = JSON.parse(JSON.stringify(next));
-      });
-    },
-    getChatHistory() {
-      return JSON.parse(JSON.stringify(persisted));
-    }
-  } : null;
+  assert.match(journeyPageSource, /async function appendJourneyMessage\(/);
   const source = [
-    extractFunction(journeyPageSource, 'saveHistory'),
-    extractFunction(journeyPageSource, 'appendJourneyMessage')
+    'var pendingJourneyStageWrites = Object.create(null);',
+    extractFunction(journeyPageSource, 'readJourneyPrimary'),
+    extractFunction(journeyPageSource, 'hasJourneyStage'),
+    extractFunction(journeyPageSource, 'appendJourneyMessage').replace(/^function /, 'async function ')
   ].join('\n') + '\nappendJourneyMessage;';
   const append = runInNewContext(source, sandbox, { filename: 'chat/date/journey.html#appendJourneyMessage' });
   return {
@@ -806,7 +872,7 @@ function loadJourneyMessageWriter(storage, saved = []) {
   };
 }
 
-test('赴约行程：阶段消息写入失败时不标记已发送，并在下一帧重试', () => {
+test('赴约行程：阶段消息写入失败时不标记已发送，并在下一帧重试', async () => {
   let allowSave = false;
   const writer = loadJourneyMessageWriter({
     saveChatHistory(id, list, persist) {
@@ -817,13 +883,13 @@ test('赴约行程：阶段消息写入失败时不标记已发送，并在下�
     }
   });
 
-  writer.append(0);
+  await writer.append(0);
   assert.deepEqual(writer.state.sentStages, [], '失败时不能写入 sentStages');
   assert.equal(writer.read().length, 0);
   assert.equal(writer.warnings, 1);
 
   allowSave = true;
-  writer.append(0);
+  await writer.append(0);
   assert.deepEqual(writer.state.sentStages, [0]);
   assert.equal(writer.read().length, 1);
   assert.equal(writer.read()[0].mode, 'journey');
@@ -831,7 +897,7 @@ test('赴约行程：阶段消息写入失败时不标记已发送，并在下�
   assert.equal(writer.attempts, 2);
 });
 
-test('赴约行程：历史中已存在相同 journeyId/stage 时不重复插入', () => {
+test('赴约行程：历史中已存在相同 journeyId/stage 时不重复插入', async () => {
   const existing = [{
     role: 'assistant',
     type: 'text',
@@ -848,7 +914,7 @@ test('赴约行程：历史中已存在相同 journeyId/stage 时不重复插入
     }
   }, existing);
 
-  writer.append(0);
+  await writer.append(0);
   assert.equal(writer.read().length, 1);
   assert.deepEqual(writer.state.sentStages, [0]);
   assert.equal(writer.attempts, 0);

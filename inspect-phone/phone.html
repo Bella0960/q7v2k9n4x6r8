@@ -5,8 +5,15 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>查手机</title>
 <script src="../shared/js/phone/phone_storage.js"></script>
-<script src="../shared/js/phone/phone_api.js"></script>
-<script src="./inspect-feature.js?v=20261111v1"></script>
+<script src="../shared/js/phone/ai-response-parser.js?v=20261120parser1"></script><script src="../shared/js/phone/phone_api.js?v=20261121inspect1"></script>
+<script src="../shared/js/statusbar-control.js"></script>
+<script src="../shared/js/phone/inspect_account_guard.js?v=20261112v2"></script>
+<script src="../shared/js/phone/inspect_interaction_bridge.js?v=20261112v5"></script>
+<script src="./inspect-persona-web.js?v=20261112v3"></script>
+<script src="./inspect-life-clock.js?v=20261112v1"></script>
+<script src="./inspect-native-view.js?v=20261121v7"></script>
+<script src="./inspect-feature.js?v=20261121v12"></script>
+<link rel="stylesheet" href="./inspect-native.css?v=20261121v7">
 <style>
 :root{color-scheme:light;--ink:#222226;--muted:#8d8d95;--line:#e5e5ea;--bg:#f7f7f9;--card:#fff;font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif}
 *{box-sizing:border-box}
@@ -39,6 +46,7 @@ body{
 .lock-hint svg{width:20px;height:20px;display:block;margin:0 auto 7px}
 .phone{position:absolute;inset:0;display:grid;grid-template-rows:34px 1fr;opacity:0;transition:opacity .24s ease}
 .phone.show{opacity:1}
+html[data-maomao-statusbar-hidden] #phone{grid-template-rows:minmax(0,1fr)}
 .statusbar{display:flex;align-items:center;justify-content:space-between;padding:0 16px;font-size:12px;color:#333;background:transparent;z-index:2}
 .status-icons{display:flex;align-items:center;gap:7px;color:#4d4d55}
 .status-icons svg{display:block}
@@ -52,8 +60,12 @@ body{
 .icon svg{width:24px;height:24px}
 .badge{position:absolute;top:-4px;right:8px;min-width:17px;height:17px;border-radius:999px;background:#e03131;color:#fff;font-size:10px;display:grid;place-items:center;padding:0 4px;border:2px solid #f6f6f8}
 .label{font-size:11px;color:#5c5c64}
-.dock{margin-top:auto;display:grid;grid-template-columns:repeat(2,1fr);gap:18px;padding:12px 10px 26px;background:rgba(255,255,255,.55);backdrop-filter:blur(10px);border-top:1px solid rgba(0,0,0,.05)}
-.gesture{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);width:120px;height:4px;border-radius:999px;background:rgba(0,0,0,.22);z-index:3}
+.dock{margin:auto auto 14px;width:min(100%,232px);display:flex;justify-content:center;align-items:center;gap:28px;padding:10px 18px;background:rgba(255,255,255,.66);border:1px solid rgba(0,0,0,.05);border-radius:18px}
+.dock .app{flex:0 0 66px}
+.gesture{position:absolute;inset:auto 0 0;width:100%;height:calc(44px + env(safe-area-inset-bottom,0px));box-sizing:border-box;border:0;padding:0 0 env(safe-area-inset-bottom,0px);background:transparent;z-index:2147483647;display:flex;align-items:center;justify-content:center;cursor:pointer;touch-action:manipulation}
+.gesture::after{content:"";width:120px;height:4px;border-radius:999px;background:rgba(0,0,0,.32)}
+.gesture[hidden]{display:none}
+.gesture:not([hidden]) + .app-layer{padding-bottom:calc(44px + env(safe-area-inset-bottom,0px))}
 .app-layer{position:absolute;inset:0;z-index:4;display:flex;flex-direction:column;background:var(--bg);transform:scale(.28);opacity:0;pointer-events:none;transition:transform .26s cubic-bezier(.2,.8,.2,1),opacity .2s ease}
 .app-layer.open{transform:scale(1);opacity:1;pointer-events:auto}
 .app-bar{height:50px;display:grid;grid-template-columns:44px 1fr 44px;align-items:center;border-bottom:1px solid var(--line);background:rgba(255,255,255,.85)}
@@ -163,7 +175,7 @@ body{
 .inspect-transaction{padding:12px 2px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:12px;align-items:center}
 .inspect-transaction b{font-weight:500;font-size:13px}.inspect-transaction small{font-size:11px;color:var(--muted);display:block;line-height:1.5}
 .inspect-transaction>strong{font-size:13px;font-weight:500;white-space:nowrap}
-@media(max-width:480px){.app-body{padding-bottom:calc(30px + env(safe-area-inset-bottom,0px))}.grid{gap:16px 6px}.dock{padding-bottom:calc(22px + env(safe-area-inset-bottom,0px))}}
+@media(max-width:480px){.app-body{padding-bottom:calc(30px + env(safe-area-inset-bottom,0px))}.grid{gap:16px 6px}.dock{margin-bottom:calc(14px + env(safe-area-inset-bottom,0px))}}
 </style>
 </head>
 <body>
@@ -180,7 +192,7 @@ body{
       </div>
     </div>
     <section class="phone" id="phone">
-      <header class="statusbar">
+      <header class="statusbar" data-maomao-system-statusbar>
         <span id="clock">--:--</span>
         <span class="status-icons">
           <svg width="15" height="12" viewBox="0 0 24 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2 15h3v-4H2zM8 15h3V8H8zM14 15h3V4h-3z"/></svg>
@@ -222,11 +234,12 @@ body{
             </button>
           </div>
         </section>
-        <div class="gesture"></div>
+        <button class="gesture" id="appHome" type="button" aria-label="返回桌面" hidden></button>
         <section class="app-layer" id="appLayer">
           <header class="app-bar">
             <button class="back" id="appBack" aria-label="返回"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></button>
             <h2 class="app-title" id="appTitle"></h2>
+            <button class="inspect-reload" id="appReload" type="button" aria-label="更多操作" title="更多操作"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg></button>
           </header>
           <div class="app-body" id="appBody"></div>
         </section>
@@ -247,7 +260,7 @@ body{
     roles=[];
   }
   roles=roles.filter(function(r){return r&&r.name;});
-  var role=roles.find(function(r,i){return String(r.id!==undefined&&r.id!==null?r.id:i)===String(requestedId);})||roles[0]||null;
+  var role=roles.find(function(r,i){return String(r.id!==undefined&&r.id!==null?r.id:i)===String(requestedId);})||(requestedId?null:roles[0])||null;
   if(!role){location.href='select.html';return;}
 
   // ---- 初始化：DOM 查询 ----
@@ -429,7 +442,7 @@ body{
 
   // 保留原手机外壳及上滑解锁；内容由独立的虚构角色剧情模块接管。
   if(window.InspectPhoneFeature&&typeof window.InspectPhoneFeature.mount==='function'){
-    window.InspectPhoneFeature.mount({role:role,requestedId:requestedId,appLayer:appLayer,appBody:appBody,appTitle:appTitle,phone:phone,lock:lock});
+    window.InspectPhoneFeature.mount({role:role,requestedId:requestedId,appLayer:appLayer,appBody:appBody,appTitle:appTitle,appHome:document.getElementById('appHome'),phone:phone,lock:lock});
   }else{appBody.textContent='剧情模块加载失败，请刷新页面。';}
 })();
 </script>

@@ -145,6 +145,12 @@ function setupInteractive(role={id:'interactive-role',name:'测试',relationship
     preventDefault(){}
   });
   const start=()=>{
+    if(apiKey&&!read()){
+      mount();
+      const cached=read();
+      Object.assign(cached.source,{chat:'ai',moments:'ai',notes:'ai'});
+      storage.setItem(key,JSON.stringify(cached));
+    }
     mount();window.InspectPhoneFeature.onUnlock();
     action('grant');action('all');action('start');
   };
@@ -323,4 +329,41 @@ test('手机模拟存储静默拒绝写入时，不能显示已授权或制造�
   assert.equal(ui.read().sections.chat.contacts[0].messages.length,count);
   assert.doesNotMatch(ui.appBody.innerHTML,/这条消息存储静默丢弃/);
   ui.setIgnoreWrites(false);
+});
+
+test('微信刷新使用最新激活方案并接受少量可用消息，保留首位用户单聊',async()=>{
+  const ui=setupInteractive(undefined,true);
+  ui.start();
+  ui.openApp('chat');
+  ui.store.set('api_active_profile','new-profile');
+  ui.store.set('api_profiles_v1',JSON.stringify([
+    {id:'old-profile',apiKey:'stale',model:'old-model'},
+    {id:'new-profile',apiKey:'test-only',baseUrl:'https://example.test/v1',model:'new-model'}
+  ]));
+  let captured;
+  const iso=new Date(Date.now()-60000).toISOString();
+  ui.window.PhoneAPI.completeJSON=async opts=>{
+    captured=opts;
+    return {ok:true,data:{contacts:[
+      {name:'无效',messages:[]},
+      {name:'同事',messages:[{side:'ai',text:'稍后见。',time:iso}]}
+    ]}};
+  };
+  ui.action('refresh');
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(captured.apiConfig.model,'new-model');
+  assert.equal(captured.apiConfig.baseUrl,'https://example.test/v1');
+  assert.match(captured.system,/contacts\[0\].*id 为 user/);
+  const contacts=ui.read().sections.chat.contacts;
+  assert.deepEqual(contacts.map(c=>c.id),['user','contact-1']);
+  assert.equal(contacts[0].name,'我');
+  assert.equal(contacts[1].messages[0].time,Date.parse(iso));
+  assert.equal(contacts[1].messages[0].text,'稍后见。');
+});
+
+test('微信有效单聊无需群聊、撤回状态或八条消息',()=>{
+  const {window}=setup();
+  assert.equal(window.InspectPhoneFeature.valid('chat',{contacts:[
+    {id:'user',name:'我',messages:[{side:'ai',text:'你回来了。',time:'18:30'}]}
+  ]},Date.now()),true);
 });

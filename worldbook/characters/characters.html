@@ -860,9 +860,30 @@
         .avatar-library-add { display:inline-flex; align-items:center; gap:5px; flex-shrink:0; min-height:33px; padding:0 10px; border:1px solid #D8D8D3; border-radius:0; background:#fff; color:#222; font:inherit; font-size:10px; cursor:pointer; }
         .avatar-library-add span { font-size:15px; line-height:1; }
         .avatar-library-add:active { background:#F4F4F2; }
+        .avatar-library-autonomy { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:15px; padding:12px 0 10px; }
+        .avatar-library-autonomy-copy { flex:1; min-width:0; display:flex; flex-direction:column; gap:4px; }
+        .avatar-library-autonomy-copy strong { color:#242424; font-size:12px; font-weight:500; }
+        .avatar-library-autonomy-copy span { color:#999; font-size:10px; line-height:1.5; }
+        .avatar-library-autonomy-toggle { flex-shrink:0; min-width:62px; min-height:32px; padding:0 10px; border:1px solid #303030; border-radius:0; background:#111; color:#fff; font-size:10px; cursor:pointer; }
+        .avatar-library-autonomy-toggle[aria-pressed="false"] { background:#fff; color:#666; border-color:#D8D8D3; }
+        .avatar-library-autonomy-toggle:focus-visible { outline:2px solid #666; outline-offset:3px; }
         .avatar-library-status { min-height:16px; padding-top:9px; color:#999; font-size:9px; line-height:1.5; }
         .avatar-library-status[data-state="error"] { color:#777; }
         .avatar-library-status[data-state="success"] { color:#555; }
+        /* 次要的配对操作默认隐藏，用户主动打开时才显示；遵循头像收藏原有字号。 */
+        .avatar-pair-disclosure { margin:11px 0 14px; border-top:1px solid #E6E6E3; color:#333; font-family:inherit; }
+        .avatar-pair-summary { display:flex; align-items:center; justify-content:space-between; min-height:40px; padding:9px 2px; color:#555; font-family:inherit; font-size:11px; font-weight:500; line-height:1.5; list-style:none; cursor:pointer; }
+        .avatar-pair-summary::-webkit-details-marker { display:none; }
+        .avatar-pair-summary::after { content:''; width:6px; height:6px; border-right:1px solid #888; border-bottom:1px solid #888; transform:rotate(45deg); transition:transform .15s ease; }
+        .avatar-pair-disclosure[open] .avatar-pair-summary::after { transform:rotate(225deg); }
+        .avatar-pair-summary:focus-visible { outline:2px solid #777; outline-offset:2px; }
+        .avatar-pair-panel { padding:3px 0 9px; font-family:inherit; font-size:10px; line-height:1.5; }
+        .avatar-pair-panel .avatar-pair-builder, .avatar-pair-panel .avatar-pair-card-head { font-family:inherit; font-size:10px; line-height:1.5; }
+        .avatar-pair-panel .avatar-pair-builder button, .avatar-pair-panel .avatar-pair-label-input, .avatar-pair-panel .avatar-pair-actions button, .avatar-library-grid .avatar-pair-pick { font-family:inherit; font-size:10px; line-height:1.5; letter-spacing:normal; }
+        .avatar-pair-panel .avatar-pair-actions button { border:0; border-radius:9px; background:#F7F7F9; color:#555; padding:6px 9px; cursor:pointer; }
+        .avatar-pair-panel .avatar-pair-actions .avatar-pair-swap { background:#111; color:#fff; }
+        .avatar-pair-disclosure:not([open]) ~ .avatar-library-grid .avatar-pair-pick { display:none; }
+        @media (prefers-reduced-motion:reduce) { .avatar-pair-summary::after { transition:none; } }
         .avatar-library-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px 10px; padding:3px 0 20px; }
         .avatar-library-card { min-width:0; }
         .avatar-library-preview { display:block; width:100%; padding:0; border:1px solid transparent; background:transparent; color:#222; text-align:left; cursor:pointer; font:inherit; }
@@ -883,20 +904,121 @@
         .avatar-library-empty-mark { color:#999; font:400 22px Georgia,serif; }
         @media (prefers-reduced-motion:reduce) { .avatar-library-photo img { transition:none; } }
 
+
+        /* UI-CHROME-001：手机上移除双重顶部安全区/状态栏留白。
+           PC 预览仍保持原来的编辑式画布，所有档案及子页面共用同一薄顶栏。 */
+        @media (max-width: 480px) {
+            .phone-mockup > .view-section > .header {
+                padding: 8px 20px !important;
+                min-height: 52px;
+                flex: 0 0 auto;
+            }
+            .phone-mockup > .view-section > .header .header-title {
+                min-width: 0;
+                overflow-wrap: anywhere;
+            }
+        }
+
+        /* P0-BATCH1: each role occupies the entire list width, no crowding
+           when the library contains many roles; scrollbars stay invisible. */
+        #listView { min-width:0; min-height:0; }
+        #listView .role-list {
+            box-sizing:border-box;
+            width:100%; min-width:0; max-width:100%; min-height:0;
+            flex:1 1 auto; align-items:stretch;
+            overflow-x:hidden; overflow-y:auto !important;
+            overscroll-behavior-y:contain;
+            scrollbar-width:none; -ms-overflow-style:none;
+            -webkit-overflow-scrolling:touch;
+        }
+        #listView .role-list::-webkit-scrollbar { display:none; width:0; height:0; }
+        #listView .role-slim-bar {
+            box-sizing:border-box; width:100%; min-width:0; max-width:100%;
+            flex:0 0 auto; align-self:stretch;
+        }
+        #listView .role-slim-bar .slim-meta { min-width:0; }
+
+        /* ROLE-LIST-V117: compact, consistently spaced rows. Scoped to the
+           archive list so the editor, profiles and group UI stay untouched. */
+        #listView .role-slim-bar {
+            grid-template-columns:96px minmax(0, 1fr);
+            grid-template-rows:minmax(0, 1fr) auto;
+            align-items:start;
+            column-gap:14px;
+            row-gap:0;
+            min-height:148px;
+            padding:13px 0;
+        }
+        #listView .role-slim-bar .slim-avatar {
+            grid-column:1;
+            grid-row:1 / span 2;
+            width:96px;
+            height:96px;
+            flex:none;
+            align-self:start;
+            justify-self:start;
+            object-fit:cover;
+        }
+        #listView .role-slim-bar .slim-meta {
+            grid-column:2;
+            grid-row:1;
+            min-width:0;
+            align-self:start;
+            padding-top:0;
+            gap:6px;
+            overflow:hidden;
+        }
+        #listView .role-slim-bar .slim-name {
+            display:-webkit-box;
+            -webkit-box-orient:vertical;
+            -webkit-line-clamp:2;
+            overflow:hidden;
+            overflow-wrap:anywhere;
+        }
+        #listView .role-slim-bar .slim-desc {
+            display:-webkit-box;
+            -webkit-box-orient:vertical;
+            -webkit-line-clamp:2;
+            overflow:hidden;
+            white-space:normal;
+            overflow-wrap:anywhere;
+            line-height:1.5;
+        }
+        #listView .role-slim-bar .bar-right {
+            grid-column:2;
+            grid-row:2;
+            align-self:end;
+            min-width:0;
+            margin-top:6px;
+            padding-top:7px;
+        }
+        @media (max-width:360px) {
+            #listView .role-slim-bar {
+                grid-template-columns:86px minmax(0, 1fr);
+                column-gap:12px;
+                min-height:140px;
+            }
+            #listView .role-slim-bar .slim-avatar {
+                width:86px;
+                height:86px;
+            }
+        }
+
+
     
-        /* Avatar archive belongs after the editable character settings, folded by default. */
+        /* Folded, neutral avatar archive after editable profile settings. */
         .avatar-library-section { margin:18px 0 0; padding:0; border:1px solid #E5E5E2; border-radius:12px; background:#FAFAF9; }
-        .avatar-library-trigger { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:17px 16px; list-style:none; cursor:pointer; color:#222; font-size:14px; }
+        .avatar-library-trigger { display:flex; align-items:center;justify-content:space-between;gap:12px; padding:17px 16px; list-style:none;cursor:pointer;color:#222;font-size:14px; }
         .avatar-library-trigger::-webkit-details-marker { display:none; }
-        .avatar-library-trigger span { color:#888; font-size:10px; font-weight:400; }
+        .avatar-library-trigger span { color:#888;font-size:10px;font-weight:400; }
         .avatar-library-section[open] .avatar-library-trigger { border-bottom:1px solid #E8E8E5; }
         .avatar-library-section[open] .avatar-library-trigger span { font-size:0; }
         .avatar-library-section[open] .avatar-library-trigger span::after { content:'收起';font-size:10px; }
         .avatar-library-inner { padding:16px; }
-        .avatar-library-heading { align-items:center; flex-wrap:wrap; }
+        .avatar-library-heading { align-items:center;flex-wrap:wrap; }
         .avatar-library-heading h3 { font-size:19px; }
         .avatar-library-heading p { margin-bottom:3px; }
-        .avatar-library-add { border-radius:7px; background:transparent; }
+        .avatar-library-add { border-radius:7px;background:transparent; }
         .avatar-pair-heading { margin-top:12px; }
 
     </style>
@@ -904,7 +1026,7 @@
 </head>
 <body>
     <div class="phone-mockup">
-        <div class="status-bar"><span>09:41</span></div>
+        <!-- 真机状态栏由系统绘制，角色档案不再渲染模拟时间。 -->
         
         <!-- 角色列表界面 -->
         <div class="view-section" id="listView">
@@ -1178,7 +1300,9 @@
                 <!-- 6. 导入角色 JSON -->
                 <div class="editor-field-group">
                     <label class="field-label" style="color: #8E8E93;">导入角色</label>
-                    <button type="button" id="btnImportRole" class="import-json-btn">选择角色 JSON 文件</button>
+                    <button type="button" id="btnImportRole" class="import-json-btn">导入角色档案（JSON / TXT）</button>
+                    <button type="button" id="btnExportRole" class="import-json-btn">导出当前角色 JSON</button>
+                    <button type="button" id="btnExpandEncounterPersona" class="import-json-btn hidden">AI 完善人设 · 使用 API</button>
                     <input type="file" id="roleImportFile" accept=".json,.txt,application/json,text/plain" class="hidden">
                 </div>
 
@@ -1190,7 +1314,7 @@
 
         <!-- 沉浸式头像裁切页 -->
         <section class="portrait-studio hidden" id="portraitStudio" aria-label="头像照片编辑器">
-            <div class="studio-topline"><span>MAOMAO / IMAGE STUDIO</span><span>01 — PORTRAIT</span></div>
+            <div class="studio-topline"><span>头像编辑</span><span>01 — PORTRAIT</span></div>
             <h2 class="studio-heading">Portrait</h2>
             <p class="studio-subtitle">拖动照片调整构图，使用滑杆微调缩放。</p>
             <div class="studio-canvas-wrap"><canvas id="portraitCropCanvas" width="600" height="600" aria-label="拖动以调整头像裁切"></canvas></div>
@@ -1208,7 +1332,7 @@
         <!-- 草稿恢复提示 -->
         <div class="recovery-dialog-backdrop hidden" id="recoveryDialog" role="dialog" aria-modal="true" aria-labelledby="recoveryTitle">
             <div class="recovery-dialog">
-                <div class="recovery-kicker">MAOMAO / LOCAL ARCHIVE</div>
+                <div class="recovery-kicker">草稿恢复</div>
                 <h2 class="recovery-title" id="recoveryTitle">A moment left unfinished.</h2>
                 <p class="recovery-copy" id="recoveryCopy">检测到上次未正式保存的角色资料。要恢复这份草稿吗？</p>
                 <div class="recovery-actions">
@@ -1223,8 +1347,13 @@
     <script src="../../shared/js/phone/phone_storage.js?v=20261102a"></script>
     <script src="../../shared/js/phone/storage/repository.js"></script>
     <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
-    <script src="../../shared/js/phone/role-avatar-library.js?v=20261113v1"></script>
-    <script src="js/characters-manager.js?v=20261107v11"></script>
+    <script src="../../shared/js/phone/role-avatar-library.js?v=20261121avatar1"></script>
+    <script src="../../shared/js/phone/role-avatar-choice.js?v=20261113v1"></script>
+    <script src="../../shared/js/phone/phone_api.js?v=20261115a"></script>
+    <script src="../../encounter/encounter-engine.js?v=20261115v1"></script>
+    <script src="../../shared/js/phone/role-worldbook-bindings.js?v=20261119-qa1"></script>
+    <script src="../../shared/js/phone/character-card-client.js?v=20261122-neutral-v1"></script>
+    <script src="js/characters-manager.js?v=20261122-neutral-v1"></script>
     <script src="../../shared/js/nav.js"></script>
 <script src="../../shared/js/statusbar-control.js"></script>
 </body>

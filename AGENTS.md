@@ -14,6 +14,7 @@ Read these files first:
 6. docs/chat-architecture-contract.md and docs/chat-regression-baseline.md before touching chat.
 7. docs/MAOMAO_VISUAL_DESIGN_CONSTITUTION.md before touching UI or visual design.
 8. CLAUDE.md for additional repository-specific context. If it conflicts with the engineering documents, report the conflict and follow the newer, explicitly verified engineering baseline.
+9. **docs/engineering/QA_TEST_RELEASE_RUNBOOK.md — the current, verified route for integrating fixes into the one existing mobile QA site.** Read it whenever the owner requests a phone-test release. It does not authorize production deployment. Do not copy historical pinned SHAs into a new release.
 
 ## Non-negotiable project constraints
 

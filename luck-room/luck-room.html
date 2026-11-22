@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#F7F7F9">
+  <meta name="description" content="抽签、大转盘、塔罗与今日运势。和喜欢的角色一起，把小决定交给一点运气。">
+  <title>一点运气 · MAOMAO</title>
+  <link rel="stylesheet" href="../shared/css/mobile-fit.css?v=20261106">
+  <link rel="stylesheet" href="css/luck-room.css?v=20261106-ftr001">
+  <script src="../shared/js/native-feel.js"></script>
+  <script src="../shared/js/phone/phone_storage.js"></script>
+  <script src="../shared/js/phone/phone_api.js"></script>
+  <script src="../shared/js/phone/phone_context.js"></script>
+</head>
+<body>
+<main class="luck-app">
+  <header class="topbar">
+    <a class="back-link" href="../index.html" aria-label="返回桌面">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6M9 12h11"/></svg>
+    </a>
+    <div class="topbar-title">一点运气</div>
+    <button class="history-toggle" id="historyToggle" type="button">记录 <span id="historyCount">0</span></button>
+  </header>
+
+  <section class="intro">
+    <p class="eyebrow">随机小决定</p>
+    <h1>今天，<br><em>交给一点运气。</em></h1>
+    <p class="intro-note">不必每件事都想很久。偶尔，让随机替你做个小决定。</p>
+  </section>
+
+  <section class="companion-row" aria-label="选择一起参与的角色">
+    <div class="companion-mark" aria-hidden="true"><img id="companionAvatar" alt="" hidden><svg id="companionFallback" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20c.8-4 3.3-6 7.5-6s6.7 2 7.5 6"/></svg></div>
+    <div class="companion-copy">
+      <label for="roleSelect">一起参与</label>
+      <span id="roleStatus">可以自己玩，也可以叫一个角色来陪你。</span>
+    </div>
+    <select id="roleSelect" aria-label="选择参与角色">
+      <option value="">独自体验</option>
+    </select>
+  </section>
+  <p class="role-prompt" id="rolePrompt" hidden aria-live="polite"></p>
+
+  <nav class="play-nav" aria-label="选择玩法">
+    <button type="button" class="play-tab active" data-tab="lots" aria-selected="true"><span>01</span>抽签</button>
+    <button type="button" class="play-tab" data-tab="wheel" aria-selected="false"><span>02</span>转盘</button>
+    <button type="button" class="play-tab" data-tab="tarot" aria-selected="false"><span>03</span>塔罗</button>
+    <button type="button" class="play-tab" data-tab="daily" aria-selected="false"><span>04</span>运势</button>
+  </nav>
+
+  <section class="play-panel active" id="panel-lots" data-panel="lots">
+    <div class="panel-heading">
+      <div><p class="eyebrow">01 / 抽签</p><h2>抽一支签。</h2></div>
+      <p>把选择写进签筒，<br>今天由它替你回答。</p>
+    </div>
+    <div class="template-line">
+      <label for="lotPoolSelect">当前签筒</label>
+      <select id="lotPoolSelect"></select>
+      <button class="template-delete" id="deleteLotPoolBtn" type="button">删除</button>
+    </div>
+    <div class="lot-draw-control">
+      <label for="lotDrawMode">这次由谁抽</label>
+      <select id="lotDrawMode">
+        <option value="user">我来抽</option>
+        <option value="role">角色代抽</option>
+        <option value="alternate">我们轮流抽</option>
+      </select>
+      <p id="lotDrawHint" aria-live="polite">选择角色后，可以让角色代抽或与你轮流抽取。</p>
+    </div>
+    <div class="lot-vessel" id="lotVessel" aria-label="签筒">
+      <div class="lot-sticks"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="vessel-rim"></div><div class="vessel-body"><span>签</span></div>
+      <div class="vessel-foot"></div>
+    </div>
+    <div class="result-sheet" id="lotResult" hidden aria-live="polite">
+      <span class="result-kicker">抽签结果</span>
+      <strong id="lotResultText"></strong>
+      <p class="role-reaction" id="lotRoleReaction"></p>
+      <p class="disclaimer">以上内容均为娱乐体验，不具备预测未来或指导现实决策的作用，请勿当真，一切仅供娱乐参考。</p>
+    </div>
+    <button class="primary-action" id="drawLotBtn" type="button">摇一摇，抽一支</button>
+    <div class="editor-block">
+      <div class="editor-heading"><span>签筒内容</span><span class="editor-hint">自己添加，随时修改</span></div>
+      <label class="field-label" for="lotPoolTitleInput">签筒名称</label>
+      <input class="wide-input" id="lotPoolTitleInput" maxlength="20" autocomplete="off">
+      <div class="item-list" id="lotItems"></div>
+      <form class="inline-add" id="addLotForm">
+        <input id="newLotItem" type="text" maxlength="36" placeholder="添加一条签文" autocomplete="off">
+        <button type="submit" aria-label="添加签文">＋</button>
+      </form>
+      <form class="create-template" id="newLotPoolForm">
+        <input id="newLotPoolName" type="text" maxlength="20" placeholder="新建签筒名称" autocomplete="off">
+        <button type="submit">新建签筒</button>
+      </form>
+    </div>
+  </section>
+
+  <section class="play-panel" id="panel-wheel" data-panel="wheel" hidden>
+    <div class="panel-heading">
+      <div><p class="eyebrow">02 / 转盘</p><h2>让它转一圈。</h2></div>
+      <p>纠结的时候，<br>把选项交给转盘。</p>
+    </div>
+    <div class="template-line">
+      <label for="wheelTemplateSelect">当前转盘</label>
+      <select id="wheelTemplateSelect"></select>
+      <button class="template-delete" id="deleteWheelBtn" type="button">删除</button>
+    </div>
+    <div class="wheel-stage">
+      <div class="wheel-pointer" aria-hidden="true"></div>
+      <canvas id="wheelCanvas" width="640" height="640" aria-label="随机选择转盘"></canvas>
+      <div class="wheel-hub" aria-hidden="true"><span>转</span></div>
+    </div>
+    <div class="wheel-result" id="wheelResult" hidden aria-live="polite">
+      <span class="result-kicker">今天就选这个</span>
+      <strong id="wheelResultText"></strong>
+      <p class="role-reaction" id="wheelRoleReaction"></p>
+      <p class="disclaimer">以上内容均为娱乐体验，不具备预测未来或指导现实决策的作用，请勿当真，一切仅供娱乐参考。</p>
+    </div>
+    <button class="primary-action" id="spinWheelBtn" type="button">开始旋转</button>
+    <div class="editor-block">
+      <div class="editor-heading"><span>转盘选项</span><span class="editor-hint">最多 12 项</span></div>
+      <label class="field-label" for="wheelTitleInput">转盘名称</label>
+      <input class="wide-input" id="wheelTitleInput" maxlength="24" autocomplete="off">
+      <div class="item-list" id="wheelItems"></div>
+      <form class="inline-add" id="addWheelForm">
+        <input id="newWheelItem" type="text" maxlength="24" placeholder="添加一个选项" autocomplete="off">
+        <button type="submit" aria-label="添加转盘选项">＋</button>
+      </form>
+      <form class="create-template" id="newWheelForm">
+        <input id="newWheelName" type="text" maxlength="20" placeholder="新建转盘模板" autocomplete="off">
+        <button type="submit">保存为新模板</button>
+      </form>
+    </div>
+  </section>
+
+  <section class="play-panel" id="panel-tarot" data-panel="tarot" hidden>
+    <div class="panel-heading">
+      <div><p class="eyebrow">03 / 塔罗</p><h2>翻开一张牌。</h2></div>
+      <p>给此刻一个不同的视角，<br>不替你决定未来。</p>
+    </div>
+    <div class="tarot-controls">
+      <label for="tarotSpreadSelect">抽牌方式 · 完整 78 张牌组</label>
+      <select id="tarotSpreadSelect">
+        <option value="1">单张 · 此刻的提示</option>
+        <option value="3">三张 · 过去 / 现在 / 未来</option>
+      </select>
+    </div>
+    <p class="tarot-deck-note">大阿卡纳 22 张 · 权杖、圣杯、宝剑、星币各 14 张</p>
+    <div class="tarot-deck-scene" id="tarotDeckScene">
+      <div class="deck-halo"></div>
+      <div class="deck-stack deck-back-one"></div>
+      <div class="deck-stack deck-back-two"></div>
+      <div class="deck-stack deck-back-main">
+        <svg viewBox="0 0 160 270" aria-hidden="true">
+          <polygon points="80,5 139,28 139,213 80,265 21,213 21,28"/>
+          <polygon points="80,17 128,36 128,207 80,250 32,207 32,36"/>
+          <path d="M80 17V250M32 36l48 54 48-54M32 207l48-62 48 62M80 90v55"/>
+          <circle cx="80" cy="130" r="24"/><path d="M80 96l7 27-7 38-7-38z"/>
+        </svg>
+      </div>
+    </div>
+    <p class="tarot-pool-count" id="tarotDeckCount">牌组共 78 张 · 每次随机洗牌</p>
+    <p class="tarot-hint" id="tarotHint">洗好牌后，抽取一张。点击水晶牌翻开它。</p>
+    <div class="tarot-spread" id="tarotSpread" hidden></div>
+    <div class="tarot-readings" id="tarotReadings" hidden></div>
+    <p class="role-reaction tarot-reaction" id="tarotRoleReaction" hidden></p>
+    <button class="primary-action" id="drawTarotBtn" type="button">洗牌并抽取</button>
+    <div class="tarot-disclaimer" id="tarotDisclaimer" hidden>
+      以上内容均为娱乐体验，不具备预测未来或指导现实决策的作用，请勿当真，一切仅供娱乐参考。
+    </div>
+  </section>
+
+  <section class="play-panel" id="panel-daily" data-panel="daily" hidden>
+    <div class="panel-heading">
+      <div><p class="eyebrow">04 / 今日</p><h2>今天运气如何？</h2></div>
+      <p>给今天一点轻松的期待，<br>也给自己一个好心情。</p>
+    </div>
+    <div class="daily-stage">
+      <div class="daily-orbit" aria-hidden="true"><span></span><i></i></div>
+      <div class="daily-word">今日</div>
+      <div class="daily-score" id="dailyScore">—</div>
+      <div class="daily-caption">今日趣味指数</div>
+    </div>
+    <div class="daily-result" id="dailyResult" hidden aria-live="polite">
+      <p class="daily-keyword" id="dailyKeyword"></p>
+      <strong id="dailyHeadline"></strong>
+      <p id="dailyDescription"></p>
+      <div class="daily-categories" id="dailyCategories"></div>
+      <p class="role-reaction" id="dailyRoleReaction"></p>
+      <p class="disclaimer">以上内容均为娱乐体验，不具备预测未来或指导现实决策的作用，请勿当真，一切仅供娱乐参考。</p>
+    </div>
+    <button class="primary-action" id="dailyDrawBtn" type="button">测测今天的运气</button>
+  </section>
+
+  <section class="history-drawer" id="historyDrawer" hidden>
+    <div class="history-head"><div><p class="eyebrow">游戏记录</p><h2>最近的结果</h2></div><button id="closeHistory" type="button" aria-label="关闭记录">×</button></div>
+    <div class="history-list" id="historyList"></div>
+    <button class="clear-history" id="clearHistoryBtn" type="button">清除当前视图记录</button>
+  </section>
+
+  <footer class="page-foot">一点随机，一点轻松。</footer>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</main>
+<script src="js/luck-room.js?v=20261106-ftr001"></script>
+</body>
+</html>

@@ -12,20 +12,66 @@
         try { return localStorage.getItem(key); } catch (e) { return null; }
     }
 
-    function apply() {
-        var hideStatusbar = getPref('settings_statusbar') === '0';
-        var hideHomeIndicator = getPref('settings_home_indicator_visible') === '0';
-        var bars = document.querySelectorAll('.status-bar');
-        for (var i = 0; i < bars.length; i++) {
-            var sb = bars[i];
-            sb.style.display = hideStatusbar ? 'none' : '';
+    /* Keep the visual state on the document root. The CSS rule also covers status
+     * bars inserted after startup, without watching/mutating every child element.
+     * Do not overwrite inline display values used by page-specific layouts. */
+    var STATUSBAR_HIDDEN_ATTR = 'data-maomao-statusbar-hidden';
+    var STATUSBAR_STYLE_ID = 'maomao-global-statusbar-rule';
+
+    function ensureStatusbarRule() {
+        if (document.getElementById(STATUSBAR_STYLE_ID)) return;
+        var rule = document.createElement('style');
+        rule.id = STATUSBAR_STYLE_ID;
+        rule.textContent = 'html[' + STATUSBAR_HIDDEN_ATTR + '] .status-bar,' +
+            'html[' + STATUSBAR_HIDDEN_ATTR + '] [data-maomao-system-statusbar]{display:none!important;}';
+        (document.head || document.documentElement).appendChild(rule);
+    }
+
+    function applyStatusbarPreference() {
+        ensureStatusbarRule();
+        if (getPref('settings_statusbar') === '0') {
+            document.documentElement.setAttribute(STATUSBAR_HIDDEN_ATTR, '');
+        } else {
+            document.documentElement.removeAttribute(STATUSBAR_HIDDEN_ATTR);
         }
+    }
+
+    /* Apply at script evaluation (normally in <head>) to avoid a visible flash
+     * before DOMContentLoaded when the preference was already disabled. */
+    applyStatusbarPreference();
+
+    /* Preserve each bar's existing inline display while this controller hides it.
+     * The dedicated Home Indicator module may update the same bar independently;
+     * never overwrite a newer display change made by that owner. */
+    var hiddenHomeIndicatorDisplay = new WeakMap();
+
+    function apply() {
+        applyStatusbarPreference();
+        var hideHomeIndicator = getPref('settings_home_indicator_visible') === '0';
 
         /* The bottom home indicator is separate from the top status bar and has its own setting. */
         var homeIndicators = document.querySelectorAll('.gesture-bar');
         for (var j = 0; j < homeIndicators.length; j++) {
-            homeIndicators[j].style.display = hideHomeIndicator ? 'none' : '';
-            homeIndicators[j].setAttribute('aria-hidden', 'true');
+            var indicator = homeIndicators[j];
+            if (hideHomeIndicator) {
+                if (!hiddenHomeIndicatorDisplay.has(indicator)) {
+                    hiddenHomeIndicatorDisplay.set(indicator, indicator.style.display);
+                }
+                indicator.style.display = 'none';
+            } else if (hiddenHomeIndicatorDisplay.has(indicator)) {
+                if (indicator.style.display === 'none') {
+                    indicator.style.display = hiddenHomeIndicatorDisplay.get(indicator);
+                }
+                hiddenHomeIndicatorDisplay.delete(indicator);
+            }
+            /* The existing home-indicator controller exposes desktop bars as
+             * role=button. Do not hide a visible, operable return target from
+             * assistive technology when only the top status bar is toggled. */
+            if (!hideHomeIndicator && indicator.getAttribute('role') === 'button') {
+                indicator.removeAttribute('aria-hidden');
+            } else {
+                indicator.setAttribute('aria-hidden', 'true');
+            }
         }
     }
 
