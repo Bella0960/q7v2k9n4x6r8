@@ -267,9 +267,10 @@
       return window.ChatMessagePolicy.isOnlineSearchIndexVisible(m);
     }
     // Compatibility fallback: retain the original index filter when policy JS is unavailable.
-    if (!m || m.mode === 'date' || m.silent) return false;
+    if (!m || m.mode === 'date' || m.silent || m.arrivalStart) return false;
     var t = String((m && (m.text || m.content)) || '');
-    return t.indexOf('定位失败') === -1 && t.indexOf('Timeout expired') === -1;
+    return t.indexOf('[语音消息]') !== 0 &&
+      t.indexOf('定位失败') === -1 && t.indexOf('Timeout expired') === -1;
   });
 
   function isSentMsg(m) {
