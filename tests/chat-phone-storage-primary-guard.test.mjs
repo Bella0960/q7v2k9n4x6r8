@@ -377,3 +377,28 @@ test('retry detects changed nested media payload and never overwrites the origin
   assert.equal(f.data.chat_history_A, raw);
   assert.equal(f.writes.filter(key => key === 'chat_history_A').length, 0);
 });
+
+test('idempotent retry compares own __proto__ JSON data without prototype-key loss', () => {
+  const oldMessage = JSON.parse('{"mid":"fwd-proto","meta":{"__proto__":{"assetId":"asset-A"},"normal":1}}');
+  const changed = JSON.parse('{"mid":"fwd-proto","meta":{"normal":1,"__proto__":{"assetId":"asset-B"}}}');
+  const original = JSON.stringify([oldMessage]);
+  const f = fixture({ chat_history_A: original, chat_history_B: '[{"mid":"B"}]' });
+  const result = f.api.result.appendChatHistory('A', changed);
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, 'CONFLICT');
+  assert.equal(f.data.chat_history_A, original);
+  assert.equal(f.data.chat_history_B, '[{"mid":"B"}]');
+  assert.equal(f.writes.filter(key => key === 'chat_history_A').length, 0);
+});
+
+test('reordered special JSON keys remain idempotent when payload is unchanged', () => {
+  const oldMessage = JSON.parse('{"mid":"fwd-special","meta":{"__proto__":{"assetId":"asset-A"},"constructor":"data"}}');
+  const same = JSON.parse('{"meta":{"constructor":"data","__proto__":{"assetId":"asset-A"}},"mid":"fwd-special"}');
+  const original = JSON.stringify([oldMessage]);
+  const f = fixture({ chat_history_A: original });
+  const result = f.api.result.appendChatHistory('A', same);
+  assert.equal(result.ok, true);
+  assert.equal(result.meta.alreadyPersisted, true);
+  assert.equal(f.data.chat_history_A, original);
+  assert.equal(f.writes.filter(key => key === 'chat_history_A').length, 0);
+});
