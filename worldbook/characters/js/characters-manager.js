@@ -1540,6 +1540,8 @@ function handleSaveRole() {
             const card = candidates.ok && candidates.value.find(function (c) { return c.id === activeEncounterDraftId; });
             if (card) encounterOrigin = {
                 version: 1, sourceCandidateId: card.id, createdAt: card.createdAt || Date.now(),
+                // Persist the confirmed library-link time once; retries must reuse the same instant.
+                linkedAt: new Date().toISOString(),
                 gender: card.gender || '', species: card.species || '', era: card.era || '', job: card.job || '',
                 relationVibe: card.relationVibe || '',
                 trait: card.trait || '', contrast: card.contrast || '',
@@ -1573,6 +1575,44 @@ function handleSaveRole() {
         setSaveStatus('保存失败：浏览器可能没有可用存储空间。修改仍保留，请重试。', 'error');
         persistEditorDraft(true);
         return;
+    }
+
+    // ECO-LINK-003: A candidate is not a formal character. Only after saveRoles
+    // AND its read-back succeeded may we append the first confirmed encounter.
+    // This ledger is independent: failure never rolls back or rewrites the role.
+    const createdEncounter = !roleId && activeEncounterDraftId
+        ? roles.find(function (item) { return String(item.id) === String(savedRoleId); })
+        : null;
+    const confirmedOrigin = createdEncounter && createdEncounter.encounterOrigin;
+    if (confirmedOrigin && confirmedOrigin.version === 1 && confirmedOrigin.sourceCandidateId) {
+        const displayRoleId = String(savedRoleId);
+        const worldEvents = window.WorldEvents;
+        if (!worldEvents || typeof worldEvents.append !== 'function') {
+            setSaveStatus('角色已保存，但相遇记录模块未加载，暂未记入足迹。', 'info');
+        } else {
+            // No invented physical location or dialogue. This records the actual
+            // confirmed action of linking a candidate into the existing role library.
+            const verifiedSummary = ('通过邂逅正式认识了' + String(createdEncounter.name || '一位角色'))
+                .replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 240);
+            worldEvents.append({
+                roleId: displayRoleId,
+                type: 'encounter.first_met',
+                source: { appId: 'encounter', recordId: confirmedOrigin.sourceCandidateId },
+                occurredAt: confirmedOrigin.linkedAt,
+                summary: verifiedSummary,
+                provenance: 'user-confirmed',
+                allowAI: false // Separate explicit memory opt-in comes later.
+            }).then(function (result) {
+                if ((!result || !result.ok) &&
+                    document.getElementById('editRoleId').value === displayRoleId) {
+                    setSaveStatus('角色已保存，但相遇记录未能写入；原人物资料完整保留。', 'info');
+                }
+            }).catch(function () {
+                if (document.getElementById('editRoleId').value === displayRoleId) {
+                    setSaveStatus('角色已保存，相遇记录暂未写入；请检查存储。', 'info');
+                }
+            });
+        }
     }
 
     const oldDraftKey = currentDraftKey;
