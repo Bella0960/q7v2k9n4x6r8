@@ -16,7 +16,7 @@ function group(id = 'g1') {
       { id: 'r3', name: '沈知' }
     ] };
 }
-function createHarness() {
+function createHarness(randomOverride = null) {
   const records = new Map();
   const storage = {
     failWrite: false,
@@ -29,6 +29,12 @@ function createHarness() {
   };
   const window = { localStorage: storage };
   const context = { window, localStorage: storage, console };
+  // Deterministic regression: opaque session IDs can accidentally contain a role ID.
+  if (typeof randomOverride === 'number') {
+    const controlledMath = Object.create(Math);
+    controlledMath.random = () => randomOverride;
+    context.Math = controlledMath;
+  }
   for (const script of [
     'shared/js/phone/phone_storage.js',
     'shared/js/phone/group-game-session.js',
@@ -85,7 +91,15 @@ test('verified finish publishes once to original group chat; private votes never
   assert.equal(record.groupGame.voteCount, 2);
   assert.equal(record.groupGame.correctVotes, 1);
   assert.equal(record.groupGame.voteTally.find(v => v.targetId === 'r2').count, 1);
-  assert.doesNotMatch(JSON.stringify(record), /gvr1|gvr3|voterId|私聊内容/);
+  // Vote events and voter identities must not appear in public tally rows.
+  // Do not scan opaque random session IDs for accidental matching bytes.
+  assert.doesNotMatch(record.text, /gvr1|gvr3|私聊内容/);
+  assert.equal(Object.hasOwn(record.groupGame, 'voterId'), false);
+  for (const tally of record.groupGame.voteTally) {
+    assert.equal(Object.hasOwn(tally, 'voterId'), false);
+    assert.equal(Object.hasOwn(tally, 'eventId'), false);
+    assert.equal(Object.hasOwn(tally, 'privateMessage'), false);
+  }
   assert.equal(h.receipts.check({ group: group(), session: ended.session,
     actorId: '__user' }).exists, true);
 });
@@ -104,9 +118,39 @@ test('cancelled session generates a no-reveal receipt with no secret fields', ()
   assert.equal(record.groupGame.revealedName, '');
   assert.deepEqual(Array.from(record.groupGame.voteTally), []);
   assert.match(record.text, /身份未揭晓/);
-  assert.doesNotMatch(JSON.stringify(record), /陈望|r2|bad|winner/);
+  // Only public disclosure fields are relevant. An opaque random sessionId
+  // can contain "r2" by chance without revealing any player's hidden role.
+  assert.doesNotMatch(record.text, /陈望|r2|bad|winner/);
+  assert.equal(record.groupGame.revealedRoleId, '');
+  assert.equal(record.groupGame.revealedName, '');
+  assert.deepEqual(Array.from(record.groupGame.voteTally), []);
+  for (const privateField of ['badRoleId', 'secretRoleId', 'secret', 'ballots',
+    'privateVotes', 'privateMessages', 'winner']) {
+    assert.equal(Object.hasOwn(record.groupGame, privateField), false,
+      privateField + ' must not enter the public cancellation receipt');
+  }
   assert.equal(post(h, cancelled.session).duplicate, true);
   assert.equal(start(h).ok, true, 'the next round can start after posting cancellation');
+});
+
+
+test('opaque cancellation session ID containing r2 must not look like a private role leak', () => {
+  const forcedRandom = Number.parseInt('7r2abcde', 36) / (36 ** 8);
+  const h = createHarness(forcedRandom);
+  const started = start(h);
+  assert.equal(started.ok, true);
+  assert.match(started.session.sessionId, /r2/, 'fixture must contain role-like bytes');
+  const cancelled = h.games.cancel({ group: group(), groupId: 'g1', actorId: '__user' });
+  assert.equal(cancelled.ok, true);
+  assert.equal(post(h, cancelled.session).ok, true);
+  const receipt = history(h)[0];
+  assert.equal(receipt.groupGame.sessionId, cancelled.session.sessionId);
+  assert.equal(receipt.groupGame.revealedRoleId, '');
+  assert.equal(receipt.groupGame.revealedName, '');
+  assert.deepEqual(Array.from(receipt.groupGame.voteTally), []);
+  assert.doesNotMatch(receipt.text, /陈望|r2|bad|winner/);
+  assert.equal(Object.hasOwn(receipt.groupGame, 'badRoleId'), false);
+  assert.equal(Object.hasOwn(receipt.groupGame, 'privateVotes'), false);
 });
 
 test('malformed or non-array history is protected, with no replacement', () => {
@@ -250,7 +294,12 @@ test('appointed role moderator stays credited after group nickname changes', () 
   assert.equal(previous.groupGame.hostId,'r3');
   assert.equal(previous.groupGame.hostName,'沈知');
   assert.equal(previous.groupGame.revealedName,'陈望');
-  assert.doesNotMatch(JSON.stringify(previous),/mod-r1|mod-r2|voterId/);
+  assert.doesNotMatch(previous.text, /mod-r1|mod-r2/);
+  assert.equal(Object.hasOwn(previous.groupGame, 'voterId'), false);
+  for (const tally of previous.groupGame.voteTally) {
+    assert.equal(Object.hasOwn(tally, 'voterId'), false);
+    assert.equal(Object.hasOwn(tally, 'eventId'), false);
+  }
   const renamed=group();
   renamed.members[2].nickname='改了名字的主持人';
   assert.equal(post(h,closed.session,renamed).duplicate,true);

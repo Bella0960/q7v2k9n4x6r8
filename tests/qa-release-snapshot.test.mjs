@@ -6,6 +6,23 @@ import { readFileSync } from 'node:fs';
 const candidate = 'a'.repeat(40);
 const later = 'b'.repeat(40);
 
+// Both the original strict runner and the verify-only diagnostic runner must
+// execute every required gate before stamping and deploying a tested artifact.
+function requiredGateLoop(script) {
+  const legacy = script.indexOf('for (const [command, args] of TESTS) run(command, args);');
+  const diagnostic = script.indexOf('for (const [index, [command, args]] of TESTS.entries()) {');
+  assert.equal(Number(legacy >= 0) + Number(diagnostic >= 0), 1,
+    'the release script must have exactly one mandatory full test-gate loop');
+  if (diagnostic >= 0) {
+    assert.match(script, /const collectTestFailures = !deploy && process\.env\.SEALED_VERIFY_COLLECT_GATES === '1'/);
+    assert.match(script, /if \(!collectTestFailures \|\| index === 0\) throw error/);
+    assert.match(script, /if \(failedTestGates\.length\) \{/);
+    assert.ok(script.indexOf('if (failedTestGates.length) {') <
+      script.indexOf('if (!deploy) {'), 'failed diagnostic gates must stop release before upload');
+  }
+  return Math.max(legacy, diagnostic);
+}
+
 test('QA release uses the exact tested candidate when heads match', () => {
   assert.deepEqual(evaluateQaSnapshot({ candidateSha: candidate, remoteSha: candidate }), {
     mode: 'current', candidateSha: candidate, remoteSha: candidate
@@ -50,7 +67,7 @@ test('rejects invalid or missing candidate and remote SHA', () => {
 
 test('QA release retains all existing gates and verifies the phone-facing domain', () => {
   const script = readFileSync(new URL('../scripts/qa-direct-release.mjs', import.meta.url), 'utf8');
-  const afterTests = script.indexOf('for (const [command, args] of TESTS) run(command, args);');
+  const afterTests = requiredGateLoop(script);
   const stamp = script.indexOf('const testedCommit = stampQaBuildReceipt();');
   const publish = script.indexOf("run('npx', ['--yes', 'wrangler@4', 'deploy', '--config', 'wrangler.qa.jsonc']);");
   assert.ok(afterTests > 0 && afterTests < stamp && stamp < publish);
@@ -67,14 +84,14 @@ test('QA explicit confirmation and live deployment baselines run BEFORE costly t
   const script = readFileSync(new URL('../scripts/qa-direct-release.mjs', import.meta.url), 'utf8');
   const confirm = script.indexOf('if (deploy) {\n    assert.equal(process.env.MAOMAO_QA_DEPLOY_CONFIRM');
   const baseline = script.indexOf('liveWorkerVersion(QA), liveWorkerVersion(CORE)');
-  const suite = script.indexOf('for (const [command, args] of TESTS) run(command, args);');
+  const suite = requiredGateLoop(script);
   assert.ok(confirm >= 0 && confirm < baseline && baseline < suite);
   assert.match(script, /if \(!deploy\) \{/);
 });
 
 test('QA release refuses concurrent Worker and identity-core deployments', () => {
   const script = readFileSync(new URL('../scripts/qa-direct-release.mjs', import.meta.url), 'utf8');
-  const suite = script.indexOf('for (const [command, args] of TESTS) run(command, args);');
+  const suite = requiredGateLoop(script);
   const baselineCheck = script.indexOf('qaPrevious.versionId, qaBaseline.versionId');
   const coreBaselineCheck = script.indexOf('corePrevious.versionId, coreBaseline.versionId');
   const beforeUploadCheck = script.indexOf('qaCurrent.versionId, qaPrevious.versionId');
