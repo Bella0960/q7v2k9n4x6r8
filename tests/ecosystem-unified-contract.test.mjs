@@ -170,7 +170,7 @@ test('event projection preserves the original footprint DOM structure and local 
   assert.match(footprint,/const originalCards = items\.map/);
   assert.match(footprint,/worldEventsForDay\(currentDate\)/);
   assert.match(footprint,/eventDays\.has\(key\)/);
-  assert.match(footprint,/data-eco/);
+  assert.match(footprint,/t-eco-item/);
   assert.match(footprint,/showEncounter=1&returnDate=/);
   assert.match(footprint,/roleId=' \+ id/);
   assert.match(footprint,/if \(ecoRouteRoleId\) return \[\]/);
