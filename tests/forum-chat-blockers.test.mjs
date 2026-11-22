@@ -98,6 +98,8 @@ function createSandboxBase() {
     showToast: () => {},
     _resetWarnCooldown: () => {},
     _shouldWarnAgain: () => false,
+    _chatHistoryUnreadable: false,
+    singleChatTurnSnapshots: new WeakMap(),
     console: { warn: () => {} }
   };
 }
