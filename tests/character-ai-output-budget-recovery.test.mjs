@@ -131,3 +131,55 @@ test('extensible generator hook reuses one-call billing guard and role isolation
   await x.window.CharacterWorldAI.generate('caption',extra);
   assert.equal(x.calls.length,1,'extension cannot bypass shared rate limiter');
 });
+
+test('accept a short Chinese-field JSON person without discarding the paid response',()=>{
+  const out=parser().fromCompletion({ok:true,data:{人物关系:[{姓名:'苏禾',关系:'朋友',简介:'一起旅行'}]}},'relationships');
+  assert.equal(out.ok,true);
+  assert.equal(out.data.people[0].name,'苏禾');
+  assert.equal(out.data.people[0].background,'一起旅行');
+});
+test('recover a model short labelled-text person without a second request',()=>{
+  const out=parser().fromCompletion({ok:false,raw:'姓名：林青\\n关系：同事\\n简介：一起准备摄影展'},'relationships');
+  assert.equal(out.ok,true);
+  assert.equal(out.data.people[0].name,'林青');
+});
+test('accept a short Chinese-field life event and labelled life draft',()=>{
+  const p=parser();
+  const a=p.fromCompletion({ok:true,data:{生活事件:{事件名称:'摄影展',内容:'挑选摄影作品',涉及人物:'林青'}}},'life');
+  assert.equal(a.ok,true);
+  assert.equal(a.data.title,'摄影展');
+  assert.equal(a.data.people,'林青');
+  const b=p.fromCompletion({ok:false,raw:'事件名称：整理照片\\n内容：和林青挑选照片\\n涉及人物：林青'},'life');
+  assert.equal(b.ok,true);
+  assert.equal(b.data.title,'整理照片');
+});
+test('repeated model person cannot duplicate an existing relationship profile',async()=>{
+  const x=setup({apiKey:'mock',model:'mock',maxTokens:512});
+  x.role.npcCharacters=[{id:'npc-old',name:'林青',relation:'同事',background:'原有人物资料'}];
+  x.nodes.btnAiRelationships.click();await settle();
+  assert.equal(x.calls.length,1);
+  assert.equal(x.role.npcCharacters.length,1);
+  assert.equal(x.role.npcCharacters[0].id,'npc-old');
+  assert.equal(x.role.npcCharacters[0].background,'原有人物资料');
+  assert.equal(x.saves,0);
+  assert.match(x.nodes.relationshipsAiStatus.textContent,/未重复添加/);
+});
+test('a response containing an old and new person only adds the new one',async()=>{
+  const x=setup({apiKey:'mock',model:'mock',maxTokens:512},async()=>({
+    ok:true,data:{people:[{name:'林青',relation:'同事'},{name:'苏禾',relation:'朋友'}]}
+  }));
+  x.role.npcCharacters=[{id:'keep',name:'林青',relation:'原同事'}];
+  x.nodes.btnAiRelationships.click();await settle();
+  assert.equal(x.calls.length,1);
+  assert.equal(x.saves,1);
+  assert.equal(x.role.npcCharacters.length,2);
+  assert.equal(x.role.npcCharacters.find(v=>v.name==='林青').id,'keep');
+  assert.equal(x.role.npcCharacters.find(v=>v.name==='苏禾').relation,'朋友');
+});
+test('a model may freely invent a fitting new name but never add the main role as an NPC',async()=>{
+  const x=setup({apiKey:'mock',model:'mock',maxTokens:512},async()=>({
+    ok:true,data:{people:[{name:'测试主角色',relation:'本人'},{name:'新邻居',relation:'邻居'}]}
+  }));
+  x.nodes.btnAiRelationships.click();await settle();
+  assert.deepEqual(x.role.npcCharacters.map(v=>v.name),['新邻居']);
+});
