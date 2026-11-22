@@ -19,6 +19,7 @@ function fixture(raw, options = {}) {
   const toasts = [];
   const sandbox = {
     _storage: options.storage || null,
+    isGroupChat: false,
     currentCharacter: { id: 'role-A' },
     storageKey: 'chat_history_role-A',
     localStorage: {
@@ -34,11 +35,13 @@ function fixture(raw, options = {}) {
     console: { warn: () => {} }
   };
   vm.createContext(sandbox);
-  vm.runInContext(code + '\nglobalThis.chatGuard = { loadMessages, saveMessages };', sandbox);
+  vm.runInContext(code + '\nglobalThis.chatGuard = { loadMessages, saveMessages, watch: list => singleChatTurnSnapshots.set(list, localStorage.getItem(storageKey)) };', sandbox);
   return {
     read: () => sandbox.chatGuard.loadMessages(),
     write: list => sandbox.chatGuard.saveMessages(list),
     bytes: () => bytes,
+    replace: value => { bytes = value; },
+    watch: list => sandbox.chatGuard.watch(list),
     writes: () => writes,
     initialized: () => initialized,
     toasts
@@ -82,10 +85,30 @@ test('a genuinely absent history initializes once and verifies persistence', () 
 });
 
 test('PhoneStorage throwing must not fall back to overwriting localStorage', () => {
-  const raw = '{"legacy":"preserve"}';
+  const raw = null;
   const chat = fixture(raw, { storage: { getChatHistory() { throw Error('storage unavailable'); } } });
   assert.equal(chat.read().length, 0);
   assert.equal(chat.write([{ role: 'user', text: 'not saved' }]), false);
   assert.equal(chat.bytes(), raw);
+  assert.equal(chat.writes(), 0);
+});
+
+test('a stale legacy duplicate cannot mask a corrupt primary history', () => {
+  const raw = '{broken';
+  const chat = fixture(raw, { storage: { getChatHistory: () => [{ role: 'received', text: 'old copy' }] } });
+  assert.equal(chat.read().length, 0);
+  assert.equal(chat.write([]), false);
+  assert.equal(chat.bytes(), raw);
+});
+
+test('a reply cannot replace history updated after the turn began', () => {
+  const chat = fixture('[{"role":"user","text":"first"}]');
+  const turn = chat.read();
+  chat.watch(turn);
+  const newer = '[{"role":"user","text":"first"},{"role":"user","text":"later"}]';
+  chat.replace(newer);
+  turn.push({ role: 'assistant', text: 'stale answer' });
+  assert.equal(chat.write(turn), false);
+  assert.equal(chat.bytes(), newer);
   assert.equal(chat.writes(), 0);
 });
