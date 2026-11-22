@@ -459,7 +459,7 @@
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
     });
   }
-  let currentRole = '宝宝';
+  let currentRole = '';
   let currentRoleId = '';
   const todayKey = () => {
     const now = new Date();
@@ -486,14 +486,11 @@
     } catch (e) {}
   }
   
-  // 获取某角色某天的足迹项：先从 localStorage 读，没有再从演示数据 DATA 读
-  const itemsOf = (role, date) => {
-    // 先按角色 ID 从 localStorage 读，真实行程优先于演示数据。
-    if (currentRoleId) {
-      const localData = loadFootprintData(currentRoleId);
-      if (Array.isArray(localData[date])) return localData[date];
-    }
-    return (DATA[role] && DATA[role][date]) || [];
+  // Records are strictly keyed by immutable character ID, never by display name.
+  const itemsOf = (_role, date) => {
+    if (!currentRoleId) return [];
+    const data = loadFootprintData(currentRoleId);
+    return Array.isArray(data[date]) ? data[date] : [];
   };
 
   function loadRealRoles() {
@@ -515,9 +512,9 @@
     const name = role.name || '角';
     const ch = name.charAt(0);
     if (role.avatar) {
-      return '<div class="avatar"><img src="' + role.avatar + '" alt=""></div>';
+      return '<div class="avatar"><img src="' + escapeFootprintHtml(role.avatar) + '" alt=""></div>';
     }
-    return '<div class="avatar placeholder">' + ch + '</div>';
+    return '<div class="avatar placeholder">' + escapeFootprintHtml(ch) + '</div>';
   }
 
   function renderRoles() {
@@ -528,27 +525,26 @@
     if (selected) {
       currentRole = selected.name || '角色';
       currentRoleId = String(selected.id != null ? selected.id : selected.name);
+    } else {
+      currentRole = '';
+      currentRoleId = '';
     }
 
     const build = (containerId) => {
       const box = document.getElementById(containerId);
       if (!box) return;
       if (!realRoles.length) {
-        // 还没有任何角色：渲染一个默认占位项
-        box.innerHTML =
-          '<button class="role-item active" data-role-name="未命名角色">' +
-            '<div class="avatar placeholder">角</div>' +
-            '<span class="role-name">未命名角色</span>' +
-          '</button>';
+        box.innerHTML = '<div class="t-empty">还没有角色，请先在角色档案中创建。</div>';
         return;
       }
       box.innerHTML = realRoles.map(r => {
         const nm = r.name || '角色';
         const rid = r.id != null ? String(r.id) : String(r.name || '');
-        const active = nm === currentRole ? ' active' : '';
-        return '<button class="role-item' + active + '" data-role-name="' + nm + '" data-role-id="' + rid + '">' +
+        const active = rid === currentRoleId ? ' active' : '';
+        return '<button class="role-item' + active + '" data-role-name="' +
+                 escapeFootprintHtml(nm) + '" data-role-id="' + escapeFootprintHtml(rid) + '">' +
                  avatarHTML(r) +
-                 '<span class="role-name">' + nm + '</span>' +
+                 '<span class="role-name">' + escapeFootprintHtml(nm) + '</span>' +
                '</button>';
       }).join('');
     };
@@ -556,23 +552,28 @@
     build('calRoles');
   }
 
-  // ================= 主页：时间线 =================
+  // ================= 主页：角色独有的 JSON 足迹 =================
   function renderTimeline() {
     const box = document.querySelector('.timeline');
     const items = itemsOf(currentRole, currentDate);
-    if (!items.length) { box.innerHTML = '<div class="t-empty">这一天还没有足迹。</div>'; return; }
-    box.innerHTML = items.map(it => {
-      const time = String(it.time || '09:00');
-      const h = parseInt(time.split(':')[0], 10) || 0;
-      return `<div class="t-item" data-id="${escapeFootprintHtml(it.id)}">
-        <div class="t-content">
-          <div class="t-time">${escapeFootprintHtml(time)}　${periodOf(h)}</div>
-          <div class="t-title">${escapeFootprintHtml(it.title)}</div>
-          <div class="t-desc">${escapeFootprintHtml(it.desc)}</div>
-          <div class="t-tags">${escapeFootprintHtml(it.tag)}</div>
-        </div>
-        <img class="t-img" src="${escapeFootprintHtml(it.img)}" alt="">
-      </div>`;
+    if (!items.length) {
+      box.innerHTML = '<div class="t-empty">这一天还没有足迹，点击右上角生成。</div>';
+      return;
+    }
+    box.innerHTML = items.map(function(it) {
+      const time = String(it.time || '');
+      const hour = Number(time.slice(0, 2)) || 0;
+      const action = String(it.action || it.title || '');
+      const status = String(it.status || it.tag || '');
+      const thought = String(it.thought || it.desc || '');
+      const photo = it.img ? '<img class="t-img" src="' + escapeFootprintHtml(it.img) + '" alt="">' : '';
+      return '<div class="t-item" data-id="' + escapeFootprintHtml(it.id) + '">' +
+        '<div class="t-content">' +
+          '<div class="t-time">' + escapeFootprintHtml(time) + '　' + periodOf(hour) + '</div>' +
+          '<div class="t-title">' + escapeFootprintHtml(action) + '</div>' +
+          '<div class="t-tags">状态 · ' + escapeFootprintHtml(status) + '</div>' +
+          '<div class="t-thought">心声 · ' + escapeFootprintHtml(thought) + '</div>' +
+        '</div>' + photo + '</div>';
     }).join('');
   }
 
@@ -593,7 +594,7 @@
     const prevDays = new Date(y, m - 1, 0).getDate();
     const inMonth = viewMonth === currentDate.slice(0, 7);
     const curDay = Number(currentDate.slice(8, 10));
-    const roleDays = Object.assign({}, DATA[currentRole] || {}, loadFootprintData(currentRoleId));
+    const roleDays = loadFootprintData(currentRoleId);
 
     let cells = '<div class="cal-head">一</div><div class="cal-head">二</div><div class="cal-head">三</div><div class="cal-head">四</div><div class="cal-head">五</div><div class="cal-head">六</div><div class="cal-head">日</div>';
     const totalCells = Math.ceil((lead + daysIn) / 7) * 7;
@@ -623,40 +624,42 @@
     if (!items.length) { list.innerHTML = '<div class="t-empty">这一天还没有足迹。</div>'; return; }
     list.innerHTML = items.map(it => `<div class="cal-list-item" data-id="${escapeFootprintHtml(it.id)}">
       <time>${escapeFootprintHtml(it.time)}</time>
-      <span class="title">${escapeFootprintHtml(it.title)}</span>
+      <span class="title">${escapeFootprintHtml(it.action || it.title)}</span>
       <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
     </div>`).join('');
   }
 
-  // ================= 详情联动（按 ID） =================
+  // ================= 详情联动（按角色 ID，不混用其他角色） =================
   function findItem(id) {
-    const localRole = loadFootprintData(currentRoleId);
-    for (const date in localRole) {
-      const list = Array.isArray(localRole[date]) ? localRole[date] : [];
-      const it = list.find(x => x && String(x.id) === String(id));
-      if (it) return { item: it, date: date };
-    }
-    const demoRole = DATA[currentRole] || {};
-    for (const date in demoRole) {
-      const it = demoRole[date].find(x => String(x.id) === String(id));
-      if (it) return { item: it, date: date };
+    const days = loadFootprintData(currentRoleId);
+    for (const date of Object.keys(days)) {
+      const entries = Array.isArray(days[date]) ? days[date] : [];
+      const item = entries.find(function(row) { return row && String(row.id) === String(id); });
+      if (item) return {item:item,date:date};
     }
     return null;
   }
 
   function openDetail(id) {
     const found = findItem(id);
-    if (found) {
-      const it = found.item;
-      document.querySelector('#page-detail .detail-title').textContent = it.title;
-      document.querySelector('#page-detail .story').textContent = it.story || it.desc;
-      document.querySelector('#page-detail .tag').textContent = it.tag;
-      document.querySelector('#page-detail .main-photo-wrapper img:last-of-type').src = it.img;
-      document.querySelector('#page-detail .date-text').innerHTML =
-        escapeFootprintHtml(found.date.slice(5, 7) + ' / ' + found.date.slice(8, 10)) + '<br>' + escapeFootprintHtml(it.time);
-      const loc = document.querySelector('#page-detail .location span');
-      if (loc) loc.textContent = it.loc || '今日 · 珍藏';
+    if (!found) { showToast('足迹不存在或已被更新'); return; }
+    const it = found.item;
+    const action = String(it.action || it.title || '');
+    const status = String(it.status || it.tag || '');
+    const thought = String(it.thought || it.story || it.desc || '');
+    document.querySelector('#page-detail .detail-title').textContent = action;
+    document.querySelector('#page-detail .story').textContent = thought;
+    document.querySelector('#page-detail .tag').textContent = '状态 · ' + status;
+    const photo = document.querySelector('#page-detail .main-photo-wrapper');
+    if (photo) {
+      photo.style.display = it.img ? '' : 'none';
+      if (it.img) photo.querySelector('img').src = it.img;
     }
+    document.querySelector('#page-detail .date-text').innerHTML =
+      escapeFootprintHtml(found.date.slice(5,7)+' / '+found.date.slice(8,10)) +
+      '<br>' + escapeFootprintHtml(it.time);
+    const location = document.querySelector('#page-detail .location span');
+    if (location) location.textContent = '时间 · ' + String(it.time || '');
     switchPage('detail');
   }
 
